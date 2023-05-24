@@ -41,7 +41,7 @@ import (
 	syncconf "zotregistry.io/zot/pkg/extensions/config/sync"
 	"zotregistry.io/zot/pkg/extensions/sync"
 	logger "zotregistry.io/zot/pkg/log"
-	"zotregistry.io/zot/pkg/meta/repodb"
+	"zotregistry.io/zot/pkg/meta/signatures"
 	"zotregistry.io/zot/pkg/storage"
 	"zotregistry.io/zot/pkg/storage/local"
 	"zotregistry.io/zot/pkg/test"
@@ -3722,10 +3722,10 @@ func TestSyncedSignaturesRepoDB(t *testing.T) {
 		So(repoMeta.Signatures, ShouldContainKey, signedImageDigest.String())
 
 		imageSignatures := repoMeta.Signatures[signedImageDigest.String()]
-		So(imageSignatures, ShouldContainKey, repodb.CosignType)
-		So(len(imageSignatures[repodb.CosignType]), ShouldEqual, 1)
-		So(imageSignatures, ShouldContainKey, repodb.NotationType)
-		So(len(imageSignatures[repodb.NotationType]), ShouldEqual, 1)
+		So(imageSignatures, ShouldContainKey, signatures.CosignSignature)
+		So(len(imageSignatures[signatures.CosignSignature]), ShouldEqual, 1)
+		So(imageSignatures, ShouldContainKey, signatures.NotationSignature)
+		So(len(imageSignatures[signatures.NotationSignature]), ShouldEqual, 1)
 	})
 }
 

@@ -2,11 +2,13 @@ package repodbfactory_test
 
 import (
 	"os"
+	"path"
 	"testing"
 
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	. "github.com/smartystreets/goconvey/convey"
 
+	"zotregistry.io/zot/pkg/api/config"
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/meta/bolt"
 	"zotregistry.io/zot/pkg/meta/dynamo"
@@ -70,6 +72,31 @@ func TestCreateBoltDB(t *testing.T) {
 		log := log.NewLogger("debug", "")
 
 		So(func() { _, _ = repodbfactory.Create("boltdb", nil, dynamo.DBDriverParameters{}, log) }, ShouldPanic)
+	})
+}
+
+func TestNew(t *testing.T) {
+	Convey("InitCosignAndNotationDirs fails", t, func() {
+		rootDir := t.TempDir()
+
+		var storageConfig config.StorageConfig
+
+		storageConfig.RootDirectory = rootDir
+		storageConfig.RemoteCache = false
+		log := log.NewLogger("debug", "")
+
+		_, err := os.Create(path.Join(rootDir, "repo.db"))
+		So(err, ShouldBeNil)
+
+		err = os.Chmod(rootDir, 0o555)
+		So(err, ShouldBeNil)
+
+		newRepodb, err := repodbfactory.New(storageConfig, log)
+		So(newRepodb, ShouldBeNil)
+		So(err, ShouldNotBeNil)
+
+		err = os.Chmod(rootDir, 0o777)
+		So(err, ShouldBeNil)
 	})
 }
 

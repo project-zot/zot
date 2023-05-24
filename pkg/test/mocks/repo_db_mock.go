@@ -55,6 +55,8 @@ type RepoDBMock struct {
 
 	IncrementImageDownloadsFn func(repo string, reference string) error
 
+	UpdateSignaturesValidityFn func(repo string, manifestDigest godigest.Digest) error
+
 	AddManifestSignatureFn func(repo string, signedManifestDigest godigest.Digest, sm repodb.SignatureMetadata) error
 
 	DeleteSignatureFn func(repo string, signedManifestDigest godigest.Digest, sm repodb.SignatureMetadata) error
@@ -214,6 +216,14 @@ func (sdm RepoDBMock) SetManifestMeta(repo string, manifestDigest godigest.Diges
 func (sdm RepoDBMock) IncrementImageDownloads(repo string, reference string) error {
 	if sdm.IncrementImageDownloadsFn != nil {
 		return sdm.IncrementImageDownloadsFn(repo, reference)
+	}
+
+	return nil
+}
+
+func (sdm RepoDBMock) UpdateSignaturesValidity(repo string, manifestDigest godigest.Digest) error {
+	if sdm.UpdateSignaturesValidityFn != nil {
+		return sdm.UpdateSignaturesValidityFn(repo, manifestDigest)
 	}
 
 	return nil

@@ -11,6 +11,7 @@ import (
 	zerr "zotregistry.io/zot/errors"
 	zcommon "zotregistry.io/zot/pkg/common"
 	"zotregistry.io/zot/pkg/log"
+	"zotregistry.io/zot/pkg/meta/signatures"
 	"zotregistry.io/zot/pkg/storage"
 )
 
@@ -105,15 +106,30 @@ func ParseRepo(repo string, repoDB RepoDB, storeController storage.StoreControll
 		}
 
 		if isSignature {
-			err := repoDB.AddManifestSignature(repo, signedManifestDigest,
+			layers, err := GetSignatureLayersInfo(repo, tag, manifest.Digest.String(), signatureType, manifestBlob,
+				imageStore, log)
+			if err != nil {
+				return err
+			}
+
+			err = repoDB.AddManifestSignature(repo, signedManifestDigest,
 				SignatureMetadata{
 					SignatureType:   signatureType,
 					SignatureDigest: digest.String(),
+					LayersInfo:      layers,
 				})
 			if err != nil {
 				log.Error().Err(err).Str("repository", repo).Str("tag", tag).
 					Str("manifestDigest", signedManifestDigest.String()).
-					Msg("load-repo: failed set signature meta for signed image manifest digest")
+					Msg("load-repo: failed set signature meta for signed image")
+
+				return err
+			}
+
+			err = repoDB.UpdateSignaturesValidity(repo, signedManifestDigest)
+			if err != nil {
+				log.Error().Err(err).Str("repository", repo).Str("reference", tag).Str("digest", signedManifestDigest.String()).Msg(
+					"load-repo: failed verify signatures validity for signed image")
 
 				return err
 			}
@@ -197,6 +213,98 @@ func isManifestMetaPresent(repo string, manifest ispec.Descriptor, repoDB RepoDB
 	}
 
 	return true, nil
+}
+
+func GetSignatureLayersInfo(
+	repo, tag, manifestDigest, signatureType string, manifestBlob []byte, imageStore storage.ImageStore, log log.Logger,
+) ([]LayerInfo, error) {
+	switch signatureType {
+	case signatures.CosignSignature:
+		return getCosignSignatureLayersInfo(repo, tag, manifestDigest, manifestBlob, imageStore, log)
+	case signatures.NotationSignature:
+		return getNotationSignatureLayersInfo(repo, manifestDigest, manifestBlob, imageStore, log)
+	default:
+		return []LayerInfo{}, nil
+	}
+}
+
+func getCosignSignatureLayersInfo(
+	repo, tag, manifestDigest string, manifestBlob []byte, imageStore storage.ImageStore, log log.Logger,
+) ([]LayerInfo, error) {
+	layers := []LayerInfo{}
+
+	var manifestContent ispec.Manifest
+	if err := json.Unmarshal(manifestBlob, &manifestContent); err != nil {
+		log.Error().Err(err).Str("repository", repo).Str("reference", tag).Str("digest", manifestDigest).Msg(
+			"load-repo: unable to marshal blob index")
+
+		return layers, err
+	}
+
+	for _, layer := range manifestContent.Layers {
+		layerContent, err := imageStore.GetBlobContent(repo, layer.Digest)
+		if err != nil {
+			log.Error().Err(err).Str("repository", repo).Str("reference", tag).Str("layerDigest", layer.Digest.String()).Msg(
+				"load-repo: unable to get cosign signature layer content")
+
+			return layers, err
+		}
+
+		layerSigKey, ok := layer.Annotations[signatures.CosignSigKey]
+		if !ok {
+			log.Error().Err(err).Str("repository", repo).Str("reference", tag).Str("layerDigest", layer.Digest.String()).Msg(
+				"load-repo: unable to get specific annotation of cosign signature")
+		}
+
+		layers = append(layers, LayerInfo{
+			LayerDigest:  layer.Digest.String(),
+			LayerContent: layerContent,
+			SignatureKey: layerSigKey,
+		})
+	}
+
+	return layers, nil
+}
+
+func getNotationSignatureLayersInfo(
+	repo, manifestDigest string, manifestBlob []byte, imageStore storage.ImageStore, log log.Logger,
+) ([]LayerInfo, error) {
+	layers := []LayerInfo{}
+
+	var manifestContent ispec.Manifest
+	if err := json.Unmarshal(manifestBlob, &manifestContent); err != nil {
+		log.Error().Err(err).Str("repository", repo).Str("reference", manifestDigest).Msg(
+			"load-repo: unable to marshal blob index")
+
+		return layers, err
+	}
+
+	if len(manifestContent.Layers) != 1 {
+		log.Error().Err(zerr.ErrBadManifest).Str("repository", repo).Str("reference", manifestDigest).
+			Msg("load-repo: notation signature manifest requires exactly one layer but it does not")
+
+		return layers, zerr.ErrBadManifest
+	}
+
+	layer := manifestContent.Layers[0].Digest
+
+	layerContent, err := imageStore.GetBlobContent(repo, layer)
+	if err != nil {
+		log.Error().Err(err).Str("repository", repo).Str("reference", manifestDigest).Str("layerDigest", layer.String()).Msg(
+			"load-repo: unable to get notation signature blob content")
+
+		return layers, err
+	}
+
+	layerSigKey := manifestContent.Layers[0].MediaType
+
+	layers = append(layers, LayerInfo{
+		LayerDigest:  layer.String(),
+		LayerContent: layerContent,
+		SignatureKey: layerSigKey,
+	})
+
+	return layers, nil
 }
 
 // NewManifestMeta takes raw data about an image and createa a new ManifestMetadate object.

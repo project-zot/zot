@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	notreg "github.com/notaryproject/notation-go/registry"
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	. "github.com/smartystreets/goconvey/convey"
@@ -92,6 +93,82 @@ func TestOnUpdateManifest(t *testing.T) {
 
 func TestUpdateErrors(t *testing.T) {
 	Convey("Update operations", t, func() {
+		Convey("On UpdateManifest", func() {
+			imageStore := mocks.MockedImageStore{}
+			storeController := storage.StoreController{DefaultStore: &imageStore}
+			repoDB := mocks.RepoDBMock{}
+			log := log.NewLogger("debug", "")
+
+			Convey("CheckIsImageSignature errors", func() {
+				badManifestBlob := []byte("bad")
+
+				imageStore.GetImageManifestFn = func(repo, reference string) ([]byte, godigest.Digest, string, error) {
+					return []byte{}, "", "", zerr.ErrManifestNotFound
+				}
+
+				imageStore.DeleteImageManifestFn = func(repo, reference string, detectCollision bool) error {
+					return nil
+				}
+
+				err := meta.OnUpdateManifest("repo", "tag1", "digest", "media", badManifestBlob,
+					storeController, repoDB, log)
+				So(err, ShouldNotBeNil)
+			})
+
+			Convey("GetSignatureLayersInfo errors", func() {
+				// get notation signature layers info
+				badNotationManifestContent := ispec.Manifest{
+					Subject: &ispec.Descriptor{
+						Digest: "123",
+					},
+					Config: ispec.Descriptor{MediaType: notreg.ArtifactTypeNotation},
+				}
+
+				badNotationManifestBlob, err := json.Marshal(badNotationManifestContent)
+				So(err, ShouldBeNil)
+
+				imageStore.GetImageManifestFn = func(repo, reference string) ([]byte, godigest.Digest, string, error) {
+					return badNotationManifestBlob, "", "", nil
+				}
+
+				err = meta.OnUpdateManifest("repo", "tag1", "", "digest", badNotationManifestBlob,
+					storeController, repoDB, log)
+				So(err, ShouldNotBeNil)
+			})
+
+			Convey("UpdateSignaturesValidity", func() {
+				notationManifestContent := ispec.Manifest{
+					Subject: &ispec.Descriptor{
+						Digest: "123",
+					},
+					Config: ispec.Descriptor{MediaType: notreg.ArtifactTypeNotation},
+					Layers: []ispec.Descriptor{{
+						MediaType: ispec.MediaTypeImageLayer,
+						Digest:    godigest.FromString("blob digest"),
+					}},
+				}
+
+				notationManifestBlob, err := json.Marshal(notationManifestContent)
+				So(err, ShouldBeNil)
+
+				imageStore.GetImageManifestFn = func(repo, reference string) ([]byte, godigest.Digest, string, error) {
+					return notationManifestBlob, "", "", nil
+				}
+
+				imageStore.GetBlobContentFn = func(repo string, digest godigest.Digest) ([]byte, error) {
+					return []byte{}, nil
+				}
+
+				repoDB.UpdateSignaturesValidityFn = func(repo string, manifestDigest godigest.Digest) error {
+					return ErrTestError
+				}
+
+				err = meta.OnUpdateManifest("repo", "tag1", "", "digest", notationManifestBlob,
+					storeController, repoDB, log)
+				So(err, ShouldNotBeNil)
+			})
+		})
+
 		Convey("On DeleteManifest", func() {
 			imageStore := mocks.MockedImageStore{}
 			storeController := storage.StoreController{DefaultStore: &imageStore}

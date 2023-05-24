@@ -111,6 +111,8 @@ type ImageSummary struct {
 	Description *string `json:"Description,omitempty"`
 	// True if the image has a signature associated with it, false otherwise
 	IsSigned *bool `json:"IsSigned,omitempty"`
+	// Info about signature validity
+	SignatureInfo []*SignatureSummary `json:"SignatureInfo,omitempty"`
 	// License(s) under which contained software is distributed as an SPDX License Expression
 	Licenses *string `json:"Licenses,omitempty"`
 	// Labels associated with this image
@@ -168,6 +170,8 @@ type ManifestSummary struct {
 	Size *string `json:"Size,omitempty"`
 	// True if the manifest has a signature associated with it, false otherwise
 	IsSigned *bool `json:"IsSigned,omitempty"`
+	// Info about signature validity
+	SignatureInfo []*SignatureSummary `json:"SignatureInfo,omitempty"`
 	// OS and architecture supported by this image
 	Platform *Platform `json:"Platform,omitempty"`
 	// Total numer of image manifest downloads from this repository
@@ -289,6 +293,16 @@ type RepoSummary struct {
 	IsBookmarked *bool `json:"IsBookmarked,omitempty"`
 	// True if the repository is stared by the current user, fale otherwise
 	IsStarred *bool `json:"IsStarred,omitempty"`
+}
+
+// Contains details about the signature
+type SignatureSummary struct {
+	// Tool is the tool used for signing image
+	Tool *string `json:"Tool,omitempty"`
+	// True if the signature is trusted, false otherwise
+	IsTrusted *bool `json:"IsTrusted,omitempty"`
+	// Author is the author of the signature
+	Author *string `json:"Author,omitempty"`
 }
 
 // All sort criteria usable with pagination, some of these criteria applies only

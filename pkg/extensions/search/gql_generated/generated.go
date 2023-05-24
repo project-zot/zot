@@ -91,6 +91,7 @@ type ComplexityRoot struct {
 		MediaType       func(childComplexity int) int
 		Referrers       func(childComplexity int) int
 		RepoName        func(childComplexity int) int
+		SignatureInfo   func(childComplexity int) int
 		Size            func(childComplexity int) int
 		Source          func(childComplexity int) int
 		Tag             func(childComplexity int) int
@@ -125,6 +126,7 @@ type ComplexityRoot struct {
 		Layers          func(childComplexity int) int
 		Platform        func(childComplexity int) int
 		Referrers       func(childComplexity int) int
+		SignatureInfo   func(childComplexity int) int
 		Size            func(childComplexity int) int
 		Vulnerabilities func(childComplexity int) int
 	}
@@ -196,6 +198,12 @@ type ComplexityRoot struct {
 		Size          func(childComplexity int) int
 		StarCount     func(childComplexity int) int
 		Vendors       func(childComplexity int) int
+	}
+
+	SignatureSummary struct {
+		Author    func(childComplexity int) int
+		IsTrusted func(childComplexity int) int
+		Tool      func(childComplexity int) int
 	}
 }
 
@@ -455,6 +463,13 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 
 		return e.complexity.ImageSummary.RepoName(childComplexity), true
 
+	case "ImageSummary.SignatureInfo":
+		if e.complexity.ImageSummary.SignatureInfo == nil {
+			break
+		}
+
+		return e.complexity.ImageSummary.SignatureInfo(childComplexity), true
+
 	case "ImageSummary.Size":
 		if e.complexity.ImageSummary.Size == nil {
 			break
@@ -608,6 +623,13 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 		}
 
 		return e.complexity.ManifestSummary.Referrers(childComplexity), true
+
+	case "ManifestSummary.SignatureInfo":
+		if e.complexity.ManifestSummary.SignatureInfo == nil {
+			break
+		}
+
+		return e.complexity.ManifestSummary.SignatureInfo(childComplexity), true
 
 	case "ManifestSummary.Size":
 		if e.complexity.ManifestSummary.Size == nil {
@@ -987,6 +1009,27 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 
 		return e.complexity.RepoSummary.Vendors(childComplexity), true
 
+	case "SignatureSummary.Author":
+		if e.complexity.SignatureSummary.Author == nil {
+			break
+		}
+
+		return e.complexity.SignatureSummary.Author(childComplexity), true
+
+	case "SignatureSummary.IsTrusted":
+		if e.complexity.SignatureSummary.IsTrusted == nil {
+			break
+		}
+
+		return e.complexity.SignatureSummary.IsTrusted(childComplexity), true
+
+	case "SignatureSummary.Tool":
+		if e.complexity.SignatureSummary.Tool == nil {
+			break
+		}
+
+		return e.complexity.SignatureSummary.Tool(childComplexity), true
+
 	}
 	return 0, false
 }
@@ -1200,6 +1243,10 @@ type ImageSummary {
     """
     IsSigned: Boolean 
     """
+    Info about signature validity
+    """
+    SignatureInfo: [SignatureSummary]
+    """
     License(s) under which contained software is distributed as an SPDX License Expression
     """
     Licenses: String  #  The value of the annotation if present, 'unknown' otherwise).
@@ -1261,6 +1308,10 @@ type ManifestSummary {
     True if the manifest has a signature associated with it, false otherwise
     """
     IsSigned: Boolean
+    """
+    Info about signature validity
+    """
+    SignatureInfo: [SignatureSummary]
     """
     OS and architecture supported by this image
     """
@@ -1464,6 +1515,24 @@ type Platform {
     Should be values listed in the Go Language document https://go.dev/doc/install/source#environment
     """
     Arch: String
+}
+
+"""
+Contains details about the signature
+"""
+type SignatureSummary {
+    """
+    Tool is the tool used for signing image
+    """
+    Tool: String
+    """
+    True if the signature is trusted, false otherwise
+    """
+    IsTrusted: Boolean
+    """
+    Author is the author of the signature
+    """
+    Author: String
 }
 
 """
@@ -2698,6 +2767,8 @@ func (ec *executionContext) fieldContext_GlobalSearchResult_Images(ctx context.C
 				return ec.fieldContext_ImageSummary_Description(ctx, field)
 			case "IsSigned":
 				return ec.fieldContext_ImageSummary_IsSigned(ctx, field)
+			case "SignatureInfo":
+				return ec.fieldContext_ImageSummary_SignatureInfo(ctx, field)
 			case "Licenses":
 				return ec.fieldContext_ImageSummary_Licenses(ctx, field)
 			case "Labels":
@@ -3248,6 +3319,8 @@ func (ec *executionContext) fieldContext_ImageSummary_Manifests(ctx context.Cont
 				return ec.fieldContext_ManifestSummary_Size(ctx, field)
 			case "IsSigned":
 				return ec.fieldContext_ManifestSummary_IsSigned(ctx, field)
+			case "SignatureInfo":
+				return ec.fieldContext_ManifestSummary_SignatureInfo(ctx, field)
 			case "Platform":
 				return ec.fieldContext_ManifestSummary_Platform(ctx, field)
 			case "DownloadCount":
@@ -3469,6 +3542,55 @@ func (ec *executionContext) fieldContext_ImageSummary_IsSigned(ctx context.Conte
 		IsResolver: false,
 		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
 			return nil, errors.New("field of type Boolean does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _ImageSummary_SignatureInfo(ctx context.Context, field graphql.CollectedField, obj *ImageSummary) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_ImageSummary_SignatureInfo(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.SignatureInfo, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		return graphql.Null
+	}
+	res := resTmp.([]*SignatureSummary)
+	fc.Result = res
+	return ec.marshalOSignatureSummary2ᚕᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐSignatureSummary(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_ImageSummary_SignatureInfo(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "ImageSummary",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "Tool":
+				return ec.fieldContext_SignatureSummary_Tool(ctx, field)
+			case "IsTrusted":
+				return ec.fieldContext_SignatureSummary_IsTrusted(ctx, field)
+			case "Author":
+				return ec.fieldContext_SignatureSummary_Author(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type SignatureSummary", field.Name)
 		},
 	}
 	return fc, nil
@@ -4330,6 +4452,55 @@ func (ec *executionContext) fieldContext_ManifestSummary_IsSigned(ctx context.Co
 	return fc, nil
 }
 
+func (ec *executionContext) _ManifestSummary_SignatureInfo(ctx context.Context, field graphql.CollectedField, obj *ManifestSummary) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_ManifestSummary_SignatureInfo(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.SignatureInfo, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		return graphql.Null
+	}
+	res := resTmp.([]*SignatureSummary)
+	fc.Result = res
+	return ec.marshalOSignatureSummary2ᚕᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐSignatureSummary(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_ManifestSummary_SignatureInfo(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "ManifestSummary",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "Tool":
+				return ec.fieldContext_SignatureSummary_Tool(ctx, field)
+			case "IsTrusted":
+				return ec.fieldContext_SignatureSummary_IsTrusted(ctx, field)
+			case "Author":
+				return ec.fieldContext_SignatureSummary_Author(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type SignatureSummary", field.Name)
+		},
+	}
+	return fc, nil
+}
+
 func (ec *executionContext) _ManifestSummary_Platform(ctx context.Context, field graphql.CollectedField, obj *ManifestSummary) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_ManifestSummary_Platform(ctx, field)
 	if err != nil {
@@ -4970,6 +5141,8 @@ func (ec *executionContext) fieldContext_PaginatedImagesResult_Results(ctx conte
 				return ec.fieldContext_ImageSummary_Description(ctx, field)
 			case "IsSigned":
 				return ec.fieldContext_ImageSummary_IsSigned(ctx, field)
+			case "SignatureInfo":
+				return ec.fieldContext_ImageSummary_SignatureInfo(ctx, field)
 			case "Licenses":
 				return ec.fieldContext_ImageSummary_Licenses(ctx, field)
 			case "Labels":
@@ -5865,6 +6038,8 @@ func (ec *executionContext) fieldContext_Query_Image(ctx context.Context, field 
 				return ec.fieldContext_ImageSummary_Description(ctx, field)
 			case "IsSigned":
 				return ec.fieldContext_ImageSummary_IsSigned(ctx, field)
+			case "SignatureInfo":
+				return ec.fieldContext_ImageSummary_SignatureInfo(ctx, field)
 			case "Licenses":
 				return ec.fieldContext_ImageSummary_Licenses(ctx, field)
 			case "Labels":
@@ -6489,6 +6664,8 @@ func (ec *executionContext) fieldContext_RepoInfo_Images(ctx context.Context, fi
 				return ec.fieldContext_ImageSummary_Description(ctx, field)
 			case "IsSigned":
 				return ec.fieldContext_ImageSummary_IsSigned(ctx, field)
+			case "SignatureInfo":
+				return ec.fieldContext_ImageSummary_SignatureInfo(ctx, field)
 			case "Licenses":
 				return ec.fieldContext_ImageSummary_Licenses(ctx, field)
 			case "Labels":
@@ -6844,6 +7021,8 @@ func (ec *executionContext) fieldContext_RepoSummary_NewestImage(ctx context.Con
 				return ec.fieldContext_ImageSummary_Description(ctx, field)
 			case "IsSigned":
 				return ec.fieldContext_ImageSummary_IsSigned(ctx, field)
+			case "SignatureInfo":
+				return ec.fieldContext_ImageSummary_SignatureInfo(ctx, field)
 			case "Licenses":
 				return ec.fieldContext_ImageSummary_Licenses(ctx, field)
 			case "Labels":
@@ -7028,6 +7207,129 @@ func (ec *executionContext) fieldContext_RepoSummary_IsStarred(ctx context.Conte
 		IsResolver: false,
 		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
 			return nil, errors.New("field of type Boolean does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _SignatureSummary_Tool(ctx context.Context, field graphql.CollectedField, obj *SignatureSummary) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_SignatureSummary_Tool(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.Tool, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		return graphql.Null
+	}
+	res := resTmp.(*string)
+	fc.Result = res
+	return ec.marshalOString2ᚖstring(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_SignatureSummary_Tool(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "SignatureSummary",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type String does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _SignatureSummary_IsTrusted(ctx context.Context, field graphql.CollectedField, obj *SignatureSummary) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_SignatureSummary_IsTrusted(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.IsTrusted, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		return graphql.Null
+	}
+	res := resTmp.(*bool)
+	fc.Result = res
+	return ec.marshalOBoolean2ᚖbool(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_SignatureSummary_IsTrusted(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "SignatureSummary",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Boolean does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _SignatureSummary_Author(ctx context.Context, field graphql.CollectedField, obj *SignatureSummary) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_SignatureSummary_Author(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.Author, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		return graphql.Null
+	}
+	res := resTmp.(*string)
+	fc.Result = res
+	return ec.marshalOString2ᚖstring(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_SignatureSummary_Author(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "SignatureSummary",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type String does not have child fields")
 		},
 	}
 	return fc, nil
@@ -9157,6 +9459,10 @@ func (ec *executionContext) _ImageSummary(ctx context.Context, sel ast.Selection
 
 			out.Values[i] = ec._ImageSummary_IsSigned(ctx, field, obj)
 
+		case "SignatureInfo":
+
+			out.Values[i] = ec._ImageSummary_SignatureInfo(ctx, field, obj)
+
 		case "Licenses":
 
 			out.Values[i] = ec._ImageSummary_Licenses(ctx, field, obj)
@@ -9320,6 +9626,10 @@ func (ec *executionContext) _ManifestSummary(ctx context.Context, sel ast.Select
 		case "IsSigned":
 
 			out.Values[i] = ec._ManifestSummary_IsSigned(ctx, field, obj)
+
+		case "SignatureInfo":
+
+			out.Values[i] = ec._ManifestSummary_SignatureInfo(ctx, field, obj)
 
 		case "Platform":
 
@@ -10007,6 +10317,39 @@ func (ec *executionContext) _RepoSummary(ctx context.Context, sel ast.SelectionS
 		case "IsStarred":
 
 			out.Values[i] = ec._RepoSummary_IsStarred(ctx, field, obj)
+
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch()
+	if invalids > 0 {
+		return graphql.Null
+	}
+	return out
+}
+
+var signatureSummaryImplementors = []string{"SignatureSummary"}
+
+func (ec *executionContext) _SignatureSummary(ctx context.Context, sel ast.SelectionSet, obj *SignatureSummary) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, signatureSummaryImplementors)
+	out := graphql.NewFieldSet(fields)
+	var invalids uint32
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("SignatureSummary")
+		case "Tool":
+
+			out.Values[i] = ec._SignatureSummary_Tool(ctx, field, obj)
+
+		case "IsTrusted":
+
+			out.Values[i] = ec._SignatureSummary_IsTrusted(ctx, field, obj)
+
+		case "Author":
+
+			out.Values[i] = ec._SignatureSummary_Author(ctx, field, obj)
 
 		default:
 			panic("unknown field " + strconv.Quote(field.Name))
@@ -11409,6 +11752,54 @@ func (ec *executionContext) marshalORepoSummary2ᚖzotregistryᚗioᚋzotᚋpkg�
 		return graphql.Null
 	}
 	return ec._RepoSummary(ctx, sel, v)
+}
+
+func (ec *executionContext) marshalOSignatureSummary2ᚕᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐSignatureSummary(ctx context.Context, sel ast.SelectionSet, v []*SignatureSummary) graphql.Marshaler {
+	if v == nil {
+		return graphql.Null
+	}
+	ret := make(graphql.Array, len(v))
+	var wg sync.WaitGroup
+	isLen1 := len(v) == 1
+	if !isLen1 {
+		wg.Add(len(v))
+	}
+	for i := range v {
+		i := i
+		fc := &graphql.FieldContext{
+			Index:  &i,
+			Result: &v[i],
+		}
+		ctx := graphql.WithFieldContext(ctx, fc)
+		f := func(i int) {
+			defer func() {
+				if r := recover(); r != nil {
+					ec.Error(ctx, ec.Recover(ctx, r))
+					ret = nil
+				}
+			}()
+			if !isLen1 {
+				defer wg.Done()
+			}
+			ret[i] = ec.marshalOSignatureSummary2ᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐSignatureSummary(ctx, sel, v[i])
+		}
+		if isLen1 {
+			f(i)
+		} else {
+			go f(i)
+		}
+
+	}
+	wg.Wait()
+
+	return ret
+}
+
+func (ec *executionContext) marshalOSignatureSummary2ᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐSignatureSummary(ctx context.Context, sel ast.SelectionSet, v *SignatureSummary) graphql.Marshaler {
+	if v == nil {
+		return graphql.Null
+	}
+	return ec._SignatureSummary(ctx, sel, v)
 }
 
 func (ec *executionContext) unmarshalOSortCriteria2ᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐSortCriteria(ctx context.Context, v interface{}) (*SortCriteria, error) {

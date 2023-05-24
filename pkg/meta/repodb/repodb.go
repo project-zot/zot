@@ -7,13 +7,6 @@ import (
 	godigest "github.com/opencontainers/go-digest"
 )
 
-const (
-	SignaturesDirPath = "/tmp/zot/signatures"
-	SigKey            = "dev.cosignproject.cosign/signature"
-	NotationType      = "notation"
-	CosignType        = "cosign"
-)
-
 // Used to model changes to an object after a call to the DB.
 type ToggleState int
 
@@ -96,6 +89,9 @@ type RepoDB interface { //nolint:interfacebloat
 
 	// DeleteSignature delets signature metadata to a given manifest from the database
 	DeleteSignature(repo string, signedManifestDigest godigest.Digest, sm SignatureMetadata) error
+
+	// UpdateSignaturesValidity checks and updates signatures validity of a given manifest
+	UpdateSignaturesValidity(repo string, manifestDigest godigest.Digest) error
 
 	// SearchRepos searches for repos given a search string
 	SearchRepos(ctx context.Context, searchText string, filter Filter, requestedPage PageInput) (
@@ -183,6 +179,7 @@ type LayerInfo struct {
 	LayerContent []byte
 	SignatureKey string
 	Signer       string
+	Date         time.Time
 }
 
 type SignatureInfo struct {

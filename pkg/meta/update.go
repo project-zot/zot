@@ -34,13 +34,28 @@ func OnUpdateManifest(repo, reference, mediaType string, digest godigest.Digest,
 	metadataSuccessfullySet := true
 
 	if isSignature {
-		err = repoDB.AddManifestSignature(repo, signedManifestDigest, repodb.SignatureMetadata{
-			SignatureType:   signatureType,
-			SignatureDigest: digest.String(),
-		})
-		if err != nil {
-			log.Error().Err(err).Msg("repodb: error while putting repo meta")
+		layersInfo, errGetLayers := repodb.GetSignatureLayersInfo(repo, reference, digest.String(), signatureType, body,
+			imgStore, log)
+		if errGetLayers != nil {
 			metadataSuccessfullySet = false
+			err = errGetLayers
+		} else {
+			err = repoDB.AddManifestSignature(repo, signedManifestDigest, repodb.SignatureMetadata{
+				SignatureType:   signatureType,
+				SignatureDigest: digest.String(),
+				LayersInfo:      layersInfo,
+			})
+			if err != nil {
+				log.Error().Err(err).Msg("repodb: error while putting repo meta")
+				metadataSuccessfullySet = false
+			} else {
+				err = repoDB.UpdateSignaturesValidity(repo, signedManifestDigest)
+				if err != nil {
+					log.Error().Err(err).Str("repository", repo).Str("reference", reference).Str("digest",
+						signedManifestDigest.String()).Msg("repodb: failed verify signatures validity for signed image")
+					metadataSuccessfullySet = false
+				}
+			}
 		}
 	} else {
 		err := repodb.SetImageMetaFromInput(repo, reference, mediaType, digest, body,

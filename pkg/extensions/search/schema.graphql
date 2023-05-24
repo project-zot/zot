@@ -156,6 +156,10 @@ type ImageSummary {
     """
     IsSigned: Boolean 
     """
+    Info about signature validity
+    """
+    SignatureInfo: [SignatureSummary]
+    """
     License(s) under which contained software is distributed as an SPDX License Expression
     """
     Licenses: String  #  The value of the annotation if present, 'unknown' otherwise).
@@ -217,6 +221,10 @@ type ManifestSummary {
     True if the manifest has a signature associated with it, false otherwise
     """
     IsSigned: Boolean
+    """
+    Info about signature validity
+    """
+    SignatureInfo: [SignatureSummary]
     """
     OS and architecture supported by this image
     """
@@ -420,6 +428,24 @@ type Platform {
     Should be values listed in the Go Language document https://go.dev/doc/install/source#environment
     """
     Arch: String
+}
+
+"""
+Contains details about the signature
+"""
+type SignatureSummary {
+    """
+    Tool is the tool used for signing image
+    """
+    Tool: String
+    """
+    True if the signature is trusted, false otherwise
+    """
+    IsTrusted: Boolean
+    """
+    Author is the author of the signature
+    """
+    Author: String
 }
 
 """
