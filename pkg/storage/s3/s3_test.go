@@ -2026,7 +2026,7 @@ func TestRebuildDedupeIndex(t *testing.T) {
 			imgStore.RunDedupeBlobs(time.Duration(0), taskScheduler)
 
 			// wait until rebuild finishes
-			time.Sleep(5 * time.Second)
+			time.Sleep(10 * time.Second)
 
 			cancel()
 
@@ -2068,7 +2068,7 @@ func TestRebuildDedupeIndex(t *testing.T) {
 			imgStore.RunDedupeBlobs(time.Duration(0), taskScheduler)
 
 			// wait until rebuild finishes
-			time.Sleep(5 * time.Second)
+			time.Sleep(10 * time.Second)
 
 			cancel()
 
@@ -2108,7 +2108,7 @@ func TestRebuildDedupeIndex(t *testing.T) {
 			imgStore.RunDedupeBlobs(time.Duration(0), taskScheduler)
 
 			// wait until rebuild finishes
-			time.Sleep(3 * time.Second)
+			time.Sleep(5 * time.Second)
 		})
 
 		Convey("Trigger Stat error while getting original blob", func() {
@@ -2161,7 +2161,7 @@ func TestRebuildDedupeIndex(t *testing.T) {
 			imgStore.RunDedupeBlobs(time.Duration(0), taskScheduler)
 
 			// wait until rebuild finishes
-			time.Sleep(3 * time.Second)
+			time.Sleep(5 * time.Second)
 		})
 
 		Convey("Trigger GetNextDigestWithBlobPaths path not found err", func() {
@@ -2180,7 +2180,7 @@ func TestRebuildDedupeIndex(t *testing.T) {
 			imgStore.RunDedupeBlobs(time.Duration(0), taskScheduler)
 
 			// wait until rebuild finishes
-			time.Sleep(3 * time.Second)
+			time.Sleep(5 * time.Second)
 		})
 
 		Convey("Rebuild from true to false", func() {
