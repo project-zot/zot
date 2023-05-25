@@ -1297,6 +1297,24 @@ func TestDedupeLinks(t *testing.T) {
 					So(err, ShouldBeNil)
 				})
 
+				Convey("test RunDedupeForDigest directly, trigger stat error on original blob", func() {
+					// rebuild with dedupe true
+					imgStore := local.NewImageStore(dir, false, storage.DefaultGCDelay,
+						true, true, log, metrics, nil, cacheDriver)
+
+					duplicateBlobs := []string{
+						path.Join(dir, "dedupe1", "blobs", "sha256", blobDigest1),
+						path.Join(dir, "dedupe1", "blobs", "sha256", blobDigest2),
+					}
+
+					// remove original blob so that it can not be statted
+					err := os.Remove(path.Join(dir, "dedupe1", "blobs", "sha256", blobDigest1))
+					So(err, ShouldBeNil)
+
+					err = imgStore.RunDedupeForDigest(godigest.Digest(blobDigest1), true, duplicateBlobs)
+					So(err, ShouldNotBeNil)
+				})
+
 				Convey("Intrerrupt rebuilding and restart, checking idempotency", func() {
 					for i := 0; i < 10; i++ {
 						taskScheduler, cancel := runAndGetScheduler()
