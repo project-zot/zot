@@ -12,10 +12,12 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 	"unicode/utf8"
 
+	"github.com/gorilla/mux"
 	"github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 
@@ -31,8 +33,8 @@ const (
 	caCertFilename     = "ca.crt"
 )
 
-func AllowedMethods(method string) []string {
-	return []string{http.MethodOptions, method}
+func AllowedMethods(methods ...string) []string {
+	return append(methods, http.MethodOptions)
 }
 
 func Contains(slice []string, item string) bool {
@@ -282,4 +284,31 @@ func GetManifestArtifactType(manifestContent ispec.Manifest) string {
 	}
 
 	return manifestContent.Config.MediaType
+}
+
+func AddExtensionSecurityHeaders() mux.MiddlewareFunc { //nolint:varnamelen
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(resp http.ResponseWriter, req *http.Request) {
+			resp.Header().Set("X-Content-Type-Options", "nosniff")
+
+			next.ServeHTTP(resp, req)
+		})
+	}
+}
+
+func ACHeadersHandler(allowedMethods ...string) mux.MiddlewareFunc {
+	headerValue := strings.Join(allowedMethods, ",")
+
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(resp http.ResponseWriter, req *http.Request) {
+			resp.Header().Set("Access-Control-Allow-Methods", headerValue)
+			resp.Header().Set("Access-Control-Allow-Headers", "Authorization,content-type")
+
+			if req.Method == http.MethodOptions {
+				return
+			}
+
+			next.ServeHTTP(resp, req)
+		})
+	}
 }
