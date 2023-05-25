@@ -1968,6 +1968,6 @@ func (is *ImageStoreLocal) RunDedupeBlobs(interval time.Duration, sch *scheduler
 			Log:      is.log,
 		}
 
-		sch.SubmitGenerator(generator, interval, scheduler.HighPriority)
+		sch.SubmitGenerator(generator, interval, scheduler.MediumPriority)
 	}
 }

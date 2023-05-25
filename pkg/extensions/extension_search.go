@@ -45,27 +45,16 @@ func GetCVEInfo(config *config.Config, storeController storage.StoreController,
 		return nil
 	}
 
-	dbRepository := ""
+	dbRepository := config.Extensions.Search.CVE.Trivy.DBRepository
+	javaDBRepository := config.Extensions.Search.CVE.Trivy.JavaDBRepository
 
-	if config.Extensions.Search.CVE.Trivy != nil {
-		dbRepository = config.Extensions.Search.CVE.Trivy.DBRepository
-	}
-
-	return cveinfo.NewCVEInfo(storeController, repoDB, dbRepository, log)
+	return cveinfo.NewCVEInfo(storeController, repoDB, dbRepository, javaDBRepository, log)
 }
 
 func EnableSearchExtension(config *config.Config, storeController storage.StoreController,
 	repoDB repodb.RepoDB, taskScheduler *scheduler.Scheduler, cveInfo CveInfo, log log.Logger,
 ) {
 	if config.Extensions.Search != nil && *config.Extensions.Search.Enable && config.Extensions.Search.CVE != nil {
-		defaultUpdateInterval, _ := time.ParseDuration("2h")
-
-		if config.Extensions.Search.CVE.UpdateInterval < defaultUpdateInterval {
-			config.Extensions.Search.CVE.UpdateInterval = defaultUpdateInterval
-
-			log.Warn().Msg("CVE update interval set to too-short interval < 2h, changing update duration to 2 hours and continuing.") //nolint:lll // gofumpt conflicts with lll
-		}
-
 		updateInterval := config.Extensions.Search.CVE.UpdateInterval
 
 		downloadTrivyDB(updateInterval, taskScheduler, cveInfo, log)
@@ -77,6 +66,7 @@ func EnableSearchExtension(config *config.Config, storeController storage.StoreC
 func downloadTrivyDB(interval time.Duration, sch *scheduler.Scheduler, cveInfo CveInfo, log log.Logger) {
 	generator := NewTrivyTaskGenerator(interval, cveInfo, log)
 
+	log.Info().Msg("Submitting CVE DB update scheduler")
 	sch.SubmitGenerator(generator, interval, scheduler.HighPriority)
 }
 

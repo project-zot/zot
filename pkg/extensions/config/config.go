@@ -42,7 +42,8 @@ type CVEConfig struct {
 }
 
 type TrivyConfig struct {
-	DBRepository string // default is "ghcr.io/aquasecurity/trivy-db"
+	DBRepository     string // default is "ghcr.io/aquasecurity/trivy-db"
+	JavaDBRepository string // default is "ghcr.io/aquasecurity/trivy-java-db"
 }
 
 type MetricsConfig struct {
