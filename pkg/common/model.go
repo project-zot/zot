@@ -4,6 +4,11 @@ import (
 	"time"
 )
 
+type PageInfo struct {
+	TotalCount int
+	ItemCount  int
+}
+
 type RepoInfo struct {
 	Summary        RepoSummary
 	ImageSummaries []ImageSummary `json:"images"`
@@ -19,6 +24,11 @@ type RepoSummary struct {
 	IsBookmarked bool         `json:"isBookmarked"`
 	StarCount    int          `json:"starCount"`
 	NewestImage  ImageSummary `json:"newestImage"`
+}
+
+type PaginatedImagesResult struct {
+	Results []ImageSummary `json:"results"`
+	Page    PageInfo       `json:"page"`
 }
 
 type ImageSummary struct {
@@ -49,6 +59,7 @@ type ManifestSummary struct {
 	LastUpdated     time.Time                 `json:"lastUpdated"`
 	Size            string                    `json:"size"`
 	Platform        Platform                  `json:"platform"`
+	IsSigned        bool                      `json:"isSigned"`
 	DownloadCount   int                       `json:"downloadCount"`
 	Layers          []LayerSummary            `json:"layers"`
 	History         []LayerHistory            `json:"history"`
@@ -58,13 +69,9 @@ type ManifestSummary struct {
 }
 
 type Platform struct {
-	Os   string `json:"os"`
-	Arch string `json:"arch"`
-}
-
-type ErrorGraphQL struct {
-	Message string   `json:"message"`
-	Path    []string `json:"path"`
+	Os      string `json:"os"`
+	Arch    string `json:"arch"`
+	Variant string `json:"variant"`
 }
 
 type ImageVulnerabilitySummary struct {
@@ -102,4 +109,139 @@ type Referrer struct {
 type Annotation struct {
 	Key   string `json:"key"`
 	Value string `json:"value"`
+}
+
+type FixedTags struct {
+	Errors                []ErrorGQL `json:"errors"`
+	ImageListWithCVEFixed `json:"data"`
+}
+
+type ImageListWithCVEFixed struct {
+	PaginatedImagesResult `json:"ImageListWithCVEFixed"` //nolint:tagliatelle // graphQL schema
+}
+
+type ImagesForCve struct {
+	Errors           []ErrorGQL `json:"errors"`
+	ImagesForCVEList `json:"data"`
+}
+
+type ImagesForCVEList struct {
+	PaginatedImagesResult `json:"ImageListForCVE"` //nolint:tagliatelle // graphQL schema
+}
+
+type ImagesForDigest struct {
+	Errors              []ErrorGQL `json:"errors"`
+	ImagesForDigestList `json:"data"`
+}
+
+type ImagesForDigestList struct {
+	PaginatedImagesResult `json:"ImageListForDigest"` //nolint:tagliatelle // graphQL schema
+}
+
+type RepoWithNewestImageResponse struct {
+	RepoListWithNewestImage `json:"data"`
+	Errors                  []ErrorGQL `json:"errors"`
+}
+
+type DerivedImageListResponse struct {
+	DerivedImageList `json:"data"`
+	Errors           []ErrorGQL `json:"errors"`
+}
+
+type BaseImageListResponse struct {
+	BaseImageList `json:"data"`
+	Errors        []ErrorGQL `json:"errors"`
+}
+
+type DerivedImageList struct {
+	PaginatedImagesResult `json:"derivedImageList"`
+}
+
+type BaseImageList struct {
+	PaginatedImagesResult `json:"baseImageList"`
+}
+
+type ImageListResponse struct {
+	ImageList `json:"data"`
+	Errors    []ErrorGQL `json:"errors"`
+}
+
+type ImageList struct {
+	PaginatedImagesResult `json:"imageList"`
+}
+
+type ExpandedRepoInfoResp struct {
+	ExpandedRepoInfo `json:"data"`
+	Errors           []ErrorGQL `json:"errors"`
+}
+
+type ReferrersResp struct {
+	ReferrersResult `json:"data"`
+	Errors          []ErrorGQL `json:"errors"`
+}
+
+type ReferrersResult struct {
+	Referrers []Referrer `json:"referrers"`
+}
+type GlobalSearchResultResp struct {
+	GlobalSearchResult `json:"data"`
+	Errors             []ErrorGQL `json:"errors"`
+}
+
+type GlobalSearchResult struct {
+	GlobalSearch `json:"globalSearch"`
+}
+
+type GlobalSearch struct {
+	Images []ImageSummary `json:"images"`
+	Repos  []RepoSummary  `json:"repos"`
+	Layers []LayerSummary `json:"layers"`
+	Page   PageInfo       `json:"page"`
+}
+
+type ExpandedRepoInfo struct {
+	RepoInfo `json:"expandedRepoInfo"`
+}
+
+type PaginatedReposResult struct {
+	Results []RepoSummary `json:"results"`
+	Page    PageInfo      `json:"page"`
+}
+
+//nolint:tagliatelle // graphQL schema
+type RepoListWithNewestImage struct {
+	PaginatedReposResult `json:"RepoListWithNewestImage"`
+}
+
+type ErrorGQL struct {
+	Message string   `json:"message"`
+	Path    []string `json:"path"`
+}
+
+type SingleImageSummary struct {
+	ImageSummary `json:"Image"` //nolint:tagliatelle
+}
+type ImageSummaryResult struct {
+	SingleImageSummary `json:"data"`
+	Errors             []ErrorGQL `json:"errors"`
+}
+
+//nolint:tagliatelle // graphQL schema
+type StarredRepos struct {
+	PaginatedReposResult `json:"StarredRepos"`
+}
+
+//nolint:tagliatelle // graphQL schema
+type BookmarkedRepos struct {
+	PaginatedReposResult `json:"BookmarkedRepos"`
+}
+
+type StarredReposResponse struct {
+	StarredRepos `json:"data"`
+	Errors       []ErrorGQL `json:"errors"`
+}
+
+type BookmarkedReposResponse struct {
+	BookmarkedRepos `json:"data"`
+	Errors          []ErrorGQL `json:"errors"`
 }

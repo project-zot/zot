@@ -5,6 +5,8 @@ import (
 	"time"
 
 	godigest "github.com/opencontainers/go-digest"
+
+	"zotregistry.io/zot/pkg/common"
 )
 
 // Used to model changes to an object after a call to the DB.
@@ -95,19 +97,19 @@ type RepoDB interface { //nolint:interfacebloat
 
 	// SearchRepos searches for repos given a search string
 	SearchRepos(ctx context.Context, searchText string, filter Filter, requestedPage PageInput) (
-		[]RepoMetadata, map[string]ManifestMetadata, map[string]IndexData, PageInfo, error)
+		[]RepoMetadata, map[string]ManifestMetadata, map[string]IndexData, common.PageInfo, error)
 
 	// SearchTags searches for images(repo:tag) given a search string
 	SearchTags(ctx context.Context, searchText string, filter Filter, requestedPage PageInput) (
-		[]RepoMetadata, map[string]ManifestMetadata, map[string]IndexData, PageInfo, error)
+		[]RepoMetadata, map[string]ManifestMetadata, map[string]IndexData, common.PageInfo, error)
 
 	// FilterRepos filters for repos given a filter function
 	FilterRepos(ctx context.Context, filter FilterRepoFunc, requestedPage PageInput) (
-		[]RepoMetadata, map[string]ManifestMetadata, map[string]IndexData, PageInfo, error)
+		[]RepoMetadata, map[string]ManifestMetadata, map[string]IndexData, common.PageInfo, error)
 
 	// FilterTags filters for images given a filter function
 	FilterTags(ctx context.Context, filter FilterFunc,
-		requestedPage PageInput) ([]RepoMetadata, map[string]ManifestMetadata, map[string]IndexData, PageInfo, error)
+		requestedPage PageInput) ([]RepoMetadata, map[string]ManifestMetadata, map[string]IndexData, common.PageInfo, error)
 
 	// GetStarredRepos returns starred repos and takes current user in consideration
 	GetStarredRepos(ctx context.Context) ([]string, error)
@@ -214,11 +216,6 @@ type PageInput struct {
 	Limit  int
 	Offset int
 	SortBy SortCriteria
-}
-
-type PageInfo struct {
-	TotalCount int
-	ItemCount  int
 }
 
 type Filter struct {

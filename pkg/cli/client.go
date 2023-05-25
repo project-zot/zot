@@ -217,6 +217,8 @@ func (p *requestsPool) doJob(ctx context.Context, job *httpJob) {
 		p.outputCh <- stringResult{"", err}
 	}
 
+	verbose := *job.config.verbose
+
 	switch header.Get("Content-Type") {
 	case ispec.MediaTypeImageManifest:
 		image, err := fetchImageManifestStruct(ctx, job)
@@ -230,7 +232,7 @@ func (p *requestsPool) doJob(ctx context.Context, job *httpJob) {
 		}
 		platformStr := getPlatformStr(image.Manifests[0].Platform)
 
-		str, err := image.string(*job.config.outputFormat, len(job.imageName), len(job.tagName), len(platformStr))
+		str, err := image.string(*job.config.outputFormat, len(job.imageName), len(job.tagName), len(platformStr), verbose)
 		if err != nil {
 			if isContextDone(ctx) {
 				return
@@ -258,7 +260,7 @@ func (p *requestsPool) doJob(ctx context.Context, job *httpJob) {
 
 		platformStr := getPlatformStr(image.Manifests[0].Platform)
 
-		str, err := image.string(*job.config.outputFormat, len(job.imageName), len(job.tagName), len(platformStr))
+		str, err := image.string(*job.config.outputFormat, len(job.imageName), len(job.tagName), len(platformStr), verbose)
 		if err != nil {
 			if isContextDone(ctx) {
 				return
@@ -300,7 +302,7 @@ func fetchImageIndexStruct(ctx context.Context, job *httpJob) (*imageStruct, err
 
 	imageSize := indexSize
 
-	manifestList := make([]manifestStruct, 0, len(indexContent.Manifests))
+	manifestList := make([]common.ManifestSummary, 0, len(indexContent.Manifests))
 
 	for _, manifestDescriptor := range indexContent.Manifests {
 		manifest, err := fetchManifestStruct(ctx, job.imageName, manifestDescriptor.Digest.String(),
@@ -312,7 +314,7 @@ func fetchImageIndexStruct(ctx context.Context, job *httpJob) (*imageStruct, err
 		imageSize += int64(atoiWithDefault(manifest.Size, 0))
 
 		if manifestDescriptor.Platform != nil {
-			manifest.Platform = platform{
+			manifest.Platform = common.Platform{
 				Os:      manifestDescriptor.Platform.OS,
 				Arch:    manifestDescriptor.Platform.Architecture,
 				Variant: manifestDescriptor.Platform.Variant,
@@ -333,7 +335,6 @@ func fetchImageIndexStruct(ctx context.Context, job *httpJob) (*imageStruct, err
 		Manifests: manifestList,
 		Size:      strconv.FormatInt(imageSize, 10),
 		IsSigned:  isIndexSigned,
-		verbose:   *job.config.verbose,
 	}, nil
 }
 
@@ -357,18 +358,17 @@ func fetchImageManifestStruct(ctx context.Context, job *httpJob) (*imageStruct, 
 		Tag:       job.tagName,
 		Digest:    manifest.Digest,
 		MediaType: ispec.MediaTypeImageManifest,
-		Manifests: []manifestStruct{
+		Manifests: []common.ManifestSummary{
 			manifest,
 		},
 		Size:     manifest.Size,
 		IsSigned: manifest.IsSigned,
-		verbose:  *job.config.verbose,
 	}, nil
 }
 
 func fetchManifestStruct(ctx context.Context, repo, manifestReference string, searchConf searchConfig,
 	username, password string,
-) (manifestStruct, error) {
+) (common.ManifestSummary, error) {
 	manifestResp := ispec.Manifest{}
 
 	URL := fmt.Sprintf("%s/v2/%s/manifests/%s",
@@ -378,10 +378,10 @@ func fetchManifestStruct(ctx context.Context, repo, manifestReference string, se
 		*searchConf.verifyTLS, *searchConf.debug, &manifestResp, searchConf.resultWriter)
 	if err != nil {
 		if isContextDone(ctx) {
-			return manifestStruct{}, context.Canceled
+			return common.ManifestSummary{}, context.Canceled
 		}
 
-		return manifestStruct{}, err
+		return common.ManifestSummary{}, err
 	}
 
 	manifestDigest := header.Get("docker-content-digest")
@@ -390,10 +390,10 @@ func fetchManifestStruct(ctx context.Context, repo, manifestReference string, se
 	configContent, err := fetchConfig(ctx, repo, configDigest, searchConf, username, password)
 	if err != nil {
 		if isContextDone(ctx) {
-			return manifestStruct{}, context.Canceled
+			return common.ManifestSummary{}, context.Canceled
 		}
 
-		return manifestStruct{}, err
+		return common.ManifestSummary{}, err
 	}
 
 	opSys := ""
@@ -420,7 +420,7 @@ func fetchManifestStruct(ctx context.Context, repo, manifestReference string, se
 
 	manifestSize, err := strconv.ParseInt(header.Get("Content-Length"), 10, 64)
 	if err != nil {
-		return manifestStruct{}, err
+		return common.ManifestSummary{}, err
 	}
 
 	var imageSize int64
@@ -428,15 +428,15 @@ func fetchManifestStruct(ctx context.Context, repo, manifestReference string, se
 	imageSize += manifestResp.Config.Size
 	imageSize += manifestSize
 
-	layers := []layer{}
+	layers := []common.LayerSummary{}
 
 	for _, entry := range manifestResp.Layers {
 		imageSize += entry.Size
 
 		layers = append(
 			layers,
-			layer{
-				Size:   entry.Size,
+			common.LayerSummary{
+				Size:   fmt.Sprintf("%v", entry.Size),
 				Digest: entry.Digest.String(),
 			},
 		)
@@ -445,11 +445,11 @@ func fetchManifestStruct(ctx context.Context, repo, manifestReference string, se
 	isSigned := isCosignSigned(ctx, repo, manifestDigest, searchConf, username, password) ||
 		isNotationSigned(ctx, repo, manifestDigest, searchConf, username, password)
 
-	return manifestStruct{
+	return common.ManifestSummary{
 		ConfigDigest: configDigest,
 		Digest:       manifestDigest,
 		Layers:       layers,
-		Platform:     platform{Os: opSys, Arch: arch, Variant: variant},
+		Platform:     common.Platform{Os: opSys, Arch: arch, Variant: variant},
 		Size:         strconv.FormatInt(imageSize, 10),
 		IsSigned:     isSigned,
 	}, nil

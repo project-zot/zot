@@ -5,6 +5,7 @@ import (
 
 	godigest "github.com/opencontainers/go-digest"
 
+	"zotregistry.io/zot/pkg/common"
 	"zotregistry.io/zot/pkg/meta/repodb"
 )
 
@@ -62,17 +63,17 @@ type RepoDBMock struct {
 	DeleteSignatureFn func(repo string, signedManifestDigest godigest.Digest, sm repodb.SignatureMetadata) error
 
 	SearchReposFn func(ctx context.Context, searchText string, filter repodb.Filter, requestedPage repodb.PageInput) (
-		[]repodb.RepoMetadata, map[string]repodb.ManifestMetadata, map[string]repodb.IndexData, repodb.PageInfo, error)
+		[]repodb.RepoMetadata, map[string]repodb.ManifestMetadata, map[string]repodb.IndexData, common.PageInfo, error)
 
 	SearchTagsFn func(ctx context.Context, searchText string, filter repodb.Filter, requestedPage repodb.PageInput) (
-		[]repodb.RepoMetadata, map[string]repodb.ManifestMetadata, map[string]repodb.IndexData, repodb.PageInfo, error)
+		[]repodb.RepoMetadata, map[string]repodb.ManifestMetadata, map[string]repodb.IndexData, common.PageInfo, error)
 
 	FilterReposFn func(ctx context.Context, filter repodb.FilterRepoFunc, requestedPage repodb.PageInput) (
-		[]repodb.RepoMetadata, map[string]repodb.ManifestMetadata, map[string]repodb.IndexData, repodb.PageInfo, error)
+		[]repodb.RepoMetadata, map[string]repodb.ManifestMetadata, map[string]repodb.IndexData, common.PageInfo, error)
 
 	FilterTagsFn func(ctx context.Context, filter repodb.FilterFunc,
 		requestedPage repodb.PageInput,
-	) ([]repodb.RepoMetadata, map[string]repodb.ManifestMetadata, map[string]repodb.IndexData, repodb.PageInfo, error)
+	) ([]repodb.RepoMetadata, map[string]repodb.ManifestMetadata, map[string]repodb.IndexData, common.PageInfo, error)
 
 	SearchDigestsFn func(ctx context.Context, searchText string, requestedPage repodb.PageInput) (
 		[]repodb.RepoMetadata, map[string]repodb.ManifestMetadata, error)
@@ -251,46 +252,46 @@ func (sdm RepoDBMock) DeleteSignature(repo string, signedManifestDigest godigest
 
 func (sdm RepoDBMock) SearchRepos(ctx context.Context, searchText string, filter repodb.Filter,
 	requestedPage repodb.PageInput,
-) ([]repodb.RepoMetadata, map[string]repodb.ManifestMetadata, map[string]repodb.IndexData, repodb.PageInfo, error) {
+) ([]repodb.RepoMetadata, map[string]repodb.ManifestMetadata, map[string]repodb.IndexData, common.PageInfo, error) {
 	if sdm.SearchReposFn != nil {
 		return sdm.SearchReposFn(ctx, searchText, filter, requestedPage)
 	}
 
 	return []repodb.RepoMetadata{}, map[string]repodb.ManifestMetadata{},
-		map[string]repodb.IndexData{}, repodb.PageInfo{}, nil
+		map[string]repodb.IndexData{}, common.PageInfo{}, nil
 }
 
 func (sdm RepoDBMock) SearchTags(ctx context.Context, searchText string, filter repodb.Filter,
 	requestedPage repodb.PageInput,
-) ([]repodb.RepoMetadata, map[string]repodb.ManifestMetadata, map[string]repodb.IndexData, repodb.PageInfo, error) {
+) ([]repodb.RepoMetadata, map[string]repodb.ManifestMetadata, map[string]repodb.IndexData, common.PageInfo, error) {
 	if sdm.SearchTagsFn != nil {
 		return sdm.SearchTagsFn(ctx, searchText, filter, requestedPage)
 	}
 
 	return []repodb.RepoMetadata{}, map[string]repodb.ManifestMetadata{},
-		map[string]repodb.IndexData{}, repodb.PageInfo{}, nil
+		map[string]repodb.IndexData{}, common.PageInfo{}, nil
 }
 
 func (sdm RepoDBMock) FilterRepos(ctx context.Context, filter repodb.FilterRepoFunc,
 	requestedPage repodb.PageInput,
-) ([]repodb.RepoMetadata, map[string]repodb.ManifestMetadata, map[string]repodb.IndexData, repodb.PageInfo, error) {
+) ([]repodb.RepoMetadata, map[string]repodb.ManifestMetadata, map[string]repodb.IndexData, common.PageInfo, error) {
 	if sdm.FilterReposFn != nil {
 		return sdm.FilterReposFn(ctx, filter, requestedPage)
 	}
 
 	return []repodb.RepoMetadata{}, map[string]repodb.ManifestMetadata{},
-		map[string]repodb.IndexData{}, repodb.PageInfo{}, nil
+		map[string]repodb.IndexData{}, common.PageInfo{}, nil
 }
 
 func (sdm RepoDBMock) FilterTags(ctx context.Context, filter repodb.FilterFunc,
 	requestedPage repodb.PageInput,
-) ([]repodb.RepoMetadata, map[string]repodb.ManifestMetadata, map[string]repodb.IndexData, repodb.PageInfo, error) {
+) ([]repodb.RepoMetadata, map[string]repodb.ManifestMetadata, map[string]repodb.IndexData, common.PageInfo, error) {
 	if sdm.FilterTagsFn != nil {
 		return sdm.FilterTagsFn(ctx, filter, requestedPage)
 	}
 
 	return []repodb.RepoMetadata{}, map[string]repodb.ManifestMetadata{},
-		map[string]repodb.IndexData{}, repodb.PageInfo{}, nil
+		map[string]repodb.IndexData{}, common.PageInfo{}, nil
 }
 
 func (sdm RepoDBMock) SearchDigests(ctx context.Context, searchText string, requestedPage repodb.PageInput,

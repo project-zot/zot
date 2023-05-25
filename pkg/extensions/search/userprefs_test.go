@@ -147,7 +147,7 @@ func TestUserData(t *testing.T) {
 			So(resp, ShouldNotBeNil)
 			So(resp.StatusCode(), ShouldEqual, 200)
 
-			responseStruct := StarredReposResponse{}
+			responseStruct := common.StarredReposResponse{}
 			err = json.Unmarshal(resp.Body(), &responseStruct)
 			So(err, ShouldBeNil)
 			So(len(responseStruct.Results), ShouldEqual, 0)
@@ -162,7 +162,7 @@ func TestUserData(t *testing.T) {
 			So(resp, ShouldNotBeNil)
 			So(resp.StatusCode(), ShouldEqual, 200)
 
-			responseStruct = StarredReposResponse{}
+			responseStruct = common.StarredReposResponse{}
 			err = json.Unmarshal(resp.Body(), &responseStruct)
 			So(err, ShouldBeNil)
 			So(len(responseStruct.Results), ShouldEqual, 1)
@@ -181,7 +181,7 @@ func TestUserData(t *testing.T) {
 			So(resp, ShouldNotBeNil)
 			So(resp.StatusCode(), ShouldEqual, 200)
 
-			responseStruct = StarredReposResponse{}
+			responseStruct = common.StarredReposResponse{}
 			err = json.Unmarshal(resp.Body(), &responseStruct)
 			So(err, ShouldBeNil)
 			So(len(responseStruct.Results), ShouldEqual, 0)
@@ -196,7 +196,7 @@ func TestUserData(t *testing.T) {
 			So(resp, ShouldNotBeNil)
 			So(resp.StatusCode(), ShouldEqual, 200)
 
-			responseStruct := StarredReposResponse{}
+			responseStruct := common.StarredReposResponse{}
 			err = json.Unmarshal(resp.Body(), &responseStruct)
 			So(err, ShouldBeNil)
 			So(len(responseStruct.Results), ShouldEqual, 0)
@@ -211,7 +211,7 @@ func TestUserData(t *testing.T) {
 			So(resp, ShouldNotBeNil)
 			So(resp.StatusCode(), ShouldEqual, 200)
 
-			responseStruct = StarredReposResponse{}
+			responseStruct = common.StarredReposResponse{}
 			err = json.Unmarshal(resp.Body(), &responseStruct)
 			So(err, ShouldBeNil)
 			So(len(responseStruct.Results), ShouldEqual, 0)
@@ -226,7 +226,7 @@ func TestUserData(t *testing.T) {
 			So(resp, ShouldNotBeNil)
 			So(resp.StatusCode(), ShouldEqual, 200)
 
-			responseStruct := StarredReposResponse{}
+			responseStruct := common.StarredReposResponse{}
 			err = json.Unmarshal(resp.Body(), &responseStruct)
 			So(err, ShouldBeNil)
 			So(len(responseStruct.Results), ShouldEqual, 0)
@@ -241,7 +241,7 @@ func TestUserData(t *testing.T) {
 			So(resp, ShouldNotBeNil)
 			So(resp.StatusCode(), ShouldEqual, 200)
 
-			responseStruct = StarredReposResponse{}
+			responseStruct = common.StarredReposResponse{}
 			err = json.Unmarshal(resp.Body(), &responseStruct)
 			So(err, ShouldBeNil)
 			So(len(responseStruct.Results), ShouldEqual, 0)
@@ -256,7 +256,7 @@ func TestUserData(t *testing.T) {
 			So(resp, ShouldNotBeNil)
 			So(resp.StatusCode(), ShouldEqual, 200)
 
-			responseStruct := StarredReposResponse{}
+			responseStruct := common.StarredReposResponse{}
 			err = json.Unmarshal(resp.Body(), &responseStruct)
 			So(err, ShouldBeNil)
 			So(len(responseStruct.Results), ShouldEqual, 0)
@@ -271,7 +271,7 @@ func TestUserData(t *testing.T) {
 			So(resp, ShouldNotBeNil)
 			So(resp.StatusCode(), ShouldEqual, 200)
 
-			responseStruct = StarredReposResponse{}
+			responseStruct = common.StarredReposResponse{}
 			err = json.Unmarshal(resp.Body(), &responseStruct)
 			So(err, ShouldBeNil)
 			So(len(responseStruct.Results), ShouldEqual, 1)
@@ -290,7 +290,7 @@ func TestUserData(t *testing.T) {
 			So(resp, ShouldNotBeNil)
 			So(resp.StatusCode(), ShouldEqual, 200)
 
-			responseStruct = StarredReposResponse{}
+			responseStruct = common.StarredReposResponse{}
 			err = json.Unmarshal(resp.Body(), &responseStruct)
 			So(err, ShouldBeNil)
 			So(len(responseStruct.Results), ShouldEqual, 0)
@@ -305,7 +305,7 @@ func TestUserData(t *testing.T) {
 			So(resp, ShouldNotBeNil)
 			So(resp.StatusCode(), ShouldEqual, 200)
 
-			responseStruct := BookmarkedReposResponse{}
+			responseStruct := common.BookmarkedReposResponse{}
 			err = json.Unmarshal(resp.Body(), &responseStruct)
 			So(err, ShouldBeNil)
 			So(len(responseStruct.Results), ShouldEqual, 0)
@@ -320,7 +320,7 @@ func TestUserData(t *testing.T) {
 			So(resp, ShouldNotBeNil)
 			So(resp.StatusCode(), ShouldEqual, 200)
 
-			responseStruct = BookmarkedReposResponse{}
+			responseStruct = common.BookmarkedReposResponse{}
 			err = json.Unmarshal(resp.Body(), &responseStruct)
 			So(err, ShouldBeNil)
 			So(len(responseStruct.Results), ShouldEqual, 1)
@@ -338,7 +338,7 @@ func TestUserData(t *testing.T) {
 			So(resp, ShouldNotBeNil)
 			So(resp.StatusCode(), ShouldEqual, 200)
 
-			responseStruct = BookmarkedReposResponse{}
+			responseStruct = common.BookmarkedReposResponse{}
 			err = json.Unmarshal(resp.Body(), &responseStruct)
 			So(err, ShouldBeNil)
 			So(len(responseStruct.Results), ShouldEqual, 0)
@@ -353,7 +353,7 @@ func TestUserData(t *testing.T) {
 			So(resp, ShouldNotBeNil)
 			So(resp.StatusCode(), ShouldEqual, 200)
 
-			responseStruct := BookmarkedReposResponse{}
+			responseStruct := common.BookmarkedReposResponse{}
 			err = json.Unmarshal(resp.Body(), &responseStruct)
 			So(err, ShouldBeNil)
 			So(len(responseStruct.Results), ShouldEqual, 0)
@@ -368,7 +368,7 @@ func TestUserData(t *testing.T) {
 			So(resp, ShouldNotBeNil)
 			So(resp.StatusCode(), ShouldEqual, 200)
 
-			responseStruct = BookmarkedReposResponse{}
+			responseStruct = common.BookmarkedReposResponse{}
 			err = json.Unmarshal(resp.Body(), &responseStruct)
 			So(err, ShouldBeNil)
 			So(len(responseStruct.Results), ShouldEqual, 0)
@@ -383,7 +383,7 @@ func TestUserData(t *testing.T) {
 			So(resp, ShouldNotBeNil)
 			So(resp.StatusCode(), ShouldEqual, 200)
 
-			responseStruct := BookmarkedReposResponse{}
+			responseStruct := common.BookmarkedReposResponse{}
 			err = json.Unmarshal(resp.Body(), &responseStruct)
 			So(err, ShouldBeNil)
 			So(len(responseStruct.Results), ShouldEqual, 0)
@@ -398,7 +398,7 @@ func TestUserData(t *testing.T) {
 			So(resp, ShouldNotBeNil)
 			So(resp.StatusCode(), ShouldEqual, 200)
 
-			responseStruct = BookmarkedReposResponse{}
+			responseStruct = common.BookmarkedReposResponse{}
 			err = json.Unmarshal(resp.Body(), &responseStruct)
 			So(err, ShouldBeNil)
 			So(len(responseStruct.Results), ShouldEqual, 0)
@@ -413,7 +413,7 @@ func TestUserData(t *testing.T) {
 			So(resp, ShouldNotBeNil)
 			So(resp.StatusCode(), ShouldEqual, 200)
 
-			responseStruct := BookmarkedReposResponse{}
+			responseStruct := common.BookmarkedReposResponse{}
 			err = json.Unmarshal(resp.Body(), &responseStruct)
 			So(err, ShouldBeNil)
 			So(len(responseStruct.Results), ShouldEqual, 0)
@@ -428,7 +428,7 @@ func TestUserData(t *testing.T) {
 			So(resp, ShouldNotBeNil)
 			So(resp.StatusCode(), ShouldEqual, 200)
 
-			responseStruct = BookmarkedReposResponse{}
+			responseStruct = common.BookmarkedReposResponse{}
 			err = json.Unmarshal(resp.Body(), &responseStruct)
 			So(err, ShouldBeNil)
 			So(len(responseStruct.Results), ShouldEqual, 1)
@@ -446,7 +446,7 @@ func TestUserData(t *testing.T) {
 			So(resp, ShouldNotBeNil)
 			So(resp.StatusCode(), ShouldEqual, 200)
 
-			responseStruct = BookmarkedReposResponse{}
+			responseStruct = common.BookmarkedReposResponse{}
 			err = json.Unmarshal(resp.Body(), &responseStruct)
 			So(err, ShouldBeNil)
 			So(len(responseStruct.Results), ShouldEqual, 0)
@@ -577,7 +577,7 @@ func TestChangingRepoState(t *testing.T) {
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
-		responseStruct := StarredReposResponse{}
+		responseStruct := common.StarredReposResponse{}
 		err = json.Unmarshal(resp.Body(), &responseStruct)
 		So(err, ShouldBeNil)
 		So(len(responseStruct.Results), ShouldEqual, 1)
@@ -599,7 +599,7 @@ func TestChangingRepoState(t *testing.T) {
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
-		responseStruct := BookmarkedReposResponse{}
+		responseStruct := common.BookmarkedReposResponse{}
 		err = json.Unmarshal(resp.Body(), &responseStruct)
 		So(err, ShouldBeNil)
 		So(err, ShouldBeNil)
@@ -714,12 +714,12 @@ func TestGlobalSearchWithUserPrefFiltering(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
 
-		responseStruct := &GlobalSearchResultResp{}
+		responseStruct := &common.GlobalSearchResultResp{}
 
 		err = json.Unmarshal(resp.Body(), responseStruct)
 		So(err, ShouldBeNil)
 
-		foundRepos := responseStruct.GlobalSearchResult.GlobalSearch.Repos
+		foundRepos := responseStruct.Repos
 		So(len(foundRepos), ShouldEqual, 4)
 
 		// Filter by IsStarred = true
@@ -730,12 +730,12 @@ func TestGlobalSearchWithUserPrefFiltering(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
 
-		responseStruct = &GlobalSearchResultResp{}
+		responseStruct = &common.GlobalSearchResultResp{}
 
 		err = json.Unmarshal(resp.Body(), responseStruct)
 		So(err, ShouldBeNil)
 
-		foundRepos = responseStruct.GlobalSearchResult.GlobalSearch.Repos
+		foundRepos = responseStruct.Repos
 		So(len(foundRepos), ShouldEqual, 2)
 		So(foundRepos, ShouldContain, common.RepoSummary{Name: sRepo, IsStarred: true, IsBookmarked: false})
 		So(foundRepos, ShouldContain, common.RepoSummary{Name: sbRepo, IsStarred: true, IsBookmarked: true})
@@ -752,12 +752,12 @@ func TestGlobalSearchWithUserPrefFiltering(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
 
-		responseStruct = &GlobalSearchResultResp{}
+		responseStruct = &common.GlobalSearchResultResp{}
 
 		err = json.Unmarshal(resp.Body(), responseStruct)
 		So(err, ShouldBeNil)
 
-		foundRepos = responseStruct.GlobalSearchResult.GlobalSearch.Repos
+		foundRepos = responseStruct.Repos
 		So(len(foundRepos), ShouldEqual, 1)
 		So(foundRepos, ShouldContain, common.RepoSummary{Name: sRepo, IsStarred: true, IsBookmarked: false})
 
@@ -773,12 +773,12 @@ func TestGlobalSearchWithUserPrefFiltering(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
 
-		responseStruct = &GlobalSearchResultResp{}
+		responseStruct = &common.GlobalSearchResultResp{}
 
 		err = json.Unmarshal(resp.Body(), responseStruct)
 		So(err, ShouldBeNil)
 
-		foundRepos = responseStruct.GlobalSearchResult.GlobalSearch.Repos
+		foundRepos = responseStruct.Repos
 		So(len(foundRepos), ShouldEqual, 2)
 		So(foundRepos, ShouldContain, common.RepoSummary{Name: bRepo, IsStarred: false, IsBookmarked: true})
 		So(foundRepos, ShouldContain, common.RepoSummary{Name: sbRepo, IsStarred: true, IsBookmarked: true})
@@ -795,12 +795,12 @@ func TestGlobalSearchWithUserPrefFiltering(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
 
-		responseStruct = &GlobalSearchResultResp{}
+		responseStruct = &common.GlobalSearchResultResp{}
 
 		err = json.Unmarshal(resp.Body(), responseStruct)
 		So(err, ShouldBeNil)
 
-		foundRepos = responseStruct.GlobalSearchResult.GlobalSearch.Repos
+		foundRepos = responseStruct.Repos
 		So(len(foundRepos), ShouldEqual, 1)
 		So(foundRepos, ShouldContain, common.RepoSummary{Name: bRepo, IsStarred: false, IsBookmarked: true})
 	})
@@ -886,12 +886,12 @@ func TestExpandedRepoInfoWithUserPrefs(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
 
-		responseStruct := ExpandedRepoInfoResp{}
+		responseStruct := common.ExpandedRepoInfoResp{}
 
 		err = json.Unmarshal(resp.Body(), &responseStruct)
 		So(err, ShouldBeNil)
 
-		repoInfo := responseStruct.ExpandedRepoInfo.RepoInfo
+		repoInfo := responseStruct.RepoInfo
 		So(repoInfo.Summary.IsBookmarked, ShouldBeTrue)
 		So(repoInfo.Summary.IsStarred, ShouldBeTrue)
 
@@ -921,12 +921,12 @@ func TestExpandedRepoInfoWithUserPrefs(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
 
-		responseStruct = ExpandedRepoInfoResp{}
+		responseStruct = common.ExpandedRepoInfoResp{}
 
 		err = json.Unmarshal(resp.Body(), &responseStruct)
 		So(err, ShouldBeNil)
 
-		repoInfo = responseStruct.ExpandedRepoInfo.RepoInfo
+		repoInfo = responseStruct.RepoInfo
 		So(repoInfo.Summary.IsBookmarked, ShouldBeFalse)
 		So(repoInfo.Summary.IsStarred, ShouldBeTrue)
 
@@ -956,12 +956,12 @@ func TestExpandedRepoInfoWithUserPrefs(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
 
-		responseStruct = ExpandedRepoInfoResp{}
+		responseStruct = common.ExpandedRepoInfoResp{}
 
 		err = json.Unmarshal(resp.Body(), &responseStruct)
 		So(err, ShouldBeNil)
 
-		repoInfo = responseStruct.ExpandedRepoInfo.RepoInfo
+		repoInfo = responseStruct.RepoInfo
 		So(repoInfo.Summary.IsBookmarked, ShouldBeTrue)
 		So(repoInfo.Summary.IsStarred, ShouldBeFalse)
 
@@ -987,12 +987,12 @@ func TestExpandedRepoInfoWithUserPrefs(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
 
-		responseStruct = ExpandedRepoInfoResp{}
+		responseStruct = common.ExpandedRepoInfoResp{}
 
 		err = json.Unmarshal(resp.Body(), &responseStruct)
 		So(err, ShouldBeNil)
 
-		repoInfo = responseStruct.ExpandedRepoInfo.RepoInfo
+		repoInfo = responseStruct.RepoInfo
 		So(repoInfo.Summary.IsBookmarked, ShouldBeFalse)
 		So(repoInfo.Summary.IsStarred, ShouldBeFalse)
 	})

@@ -188,7 +188,13 @@ func getImages(config searchConfig) error {
 		return err
 	}
 
-	return printResult(config, imageList.Data.Results)
+	imageListData := []imageStruct{}
+
+	for _, image := range imageList.Results {
+		imageListData = append(imageListData, imageStruct(image))
+	}
+
+	return printResult(config, imageListData)
 }
 
 type imagesByDigestSearcher struct{}
@@ -241,7 +247,13 @@ func (search derivedImageListSearcherGQL) search(config searchConfig) (bool, err
 		return true, err
 	}
 
-	if err := printResult(config, imageList.Data.Results); err != nil {
+	imageListData := []imageStruct{}
+
+	for _, image := range imageList.DerivedImageList.Results {
+		imageListData = append(imageListData, imageStruct(image))
+	}
+
+	if err := printResult(config, imageListData); err != nil {
 		return true, err
 	}
 
@@ -266,7 +278,13 @@ func (search baseImageListSearcherGQL) search(config searchConfig) (bool, error)
 		return true, err
 	}
 
-	if err := printResult(config, imageList.Data.Results); err != nil {
+	imageListData := []imageStruct{}
+
+	for _, image := range imageList.BaseImageList.Results {
+		imageListData = append(imageListData, imageStruct(image))
+	}
+
+	if err := printResult(config, imageListData); err != nil {
 		return true, err
 	}
 
@@ -292,7 +310,13 @@ func (search imagesByDigestSearcherGQL) search(config searchConfig) (bool, error
 		return true, err
 	}
 
-	if err := printResult(config, imageList.Data.Results); err != nil {
+	imageListData := []imageStruct{}
+
+	for _, image := range imageList.Results {
+		imageListData = append(imageListData, imageStruct(image))
+	}
+
+	if err := printResult(config, imageListData); err != nil {
 		return true, err
 	}
 
@@ -431,7 +455,13 @@ func (search imagesByCVEIDSearcherGQL) search(config searchConfig) (bool, error)
 		return true, err
 	}
 
-	if err := printResult(config, imageList.Data.Results); err != nil {
+	imageListData := []imageStruct{}
+
+	for _, image := range imageList.Results {
+		imageListData = append(imageListData, imageStruct(image))
+	}
+
+	if err := printResult(config, imageListData); err != nil {
 		return true, err
 	}
 
@@ -557,7 +587,9 @@ func getTagsByCVE(config searchConfig) error {
 			return err
 		}
 
-		imageList = fixedTags.Data.Results
+		for _, image := range fixedTags.Results {
+			imageList = append(imageList, imageStruct(image))
+		}
 	} else {
 		tags, err := config.searchService.getTagsForCVEGQL(ctx, config, username, password,
 			*config.params["imageName"], *config.params["cveID"])
@@ -565,7 +597,10 @@ func getTagsByCVE(config searchConfig) error {
 			return err
 		}
 
-		imageList = tags.Data.Results
+		imageList = nil
+		for _, image := range tags.Results {
+			imageList = append(imageList, imageStruct(image))
+		}
 	}
 
 	return printResult(config, imageList)
@@ -798,9 +833,9 @@ func printResult(config searchConfig, imageList []imageStruct) error {
 
 	for i := range imageList {
 		img := imageList[i]
-		img.verbose = *config.verbose
+		verbose := *config.verbose
 
-		out, err := img.string(*config.outputFormat, maxImgNameLen, maxTagLen, maxPlatformLen)
+		out, err := img.string(*config.outputFormat, maxImgNameLen, maxTagLen, maxPlatformLen, verbose)
 		if err != nil {
 			return err
 		}
