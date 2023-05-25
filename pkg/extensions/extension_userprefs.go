@@ -34,25 +34,12 @@ func SetupUserPreferencesRoutes(config *config.Config, router *mux.Router, store
 	if config.Extensions.Search != nil && *config.Extensions.Search.Enable {
 		log.Info().Msg("setting up user preferences routes")
 
+		allowedMethods := zcommon.AllowedMethods(http.MethodPut)
+
 		userprefsRouter := router.PathPrefix(constants.ExtUserPreferences).Subrouter()
-		userprefsRouter.Use(UserPrefsACHeadersHandler())
-
-		userprefsRouter.HandleFunc("", HandleUserPrefs(repoDB, log)).Methods(zcommon.AllowedMethods(http.MethodPut)...)
-	}
-}
-
-func UserPrefsACHeadersHandler() mux.MiddlewareFunc {
-	return func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(resp http.ResponseWriter, req *http.Request) {
-			resp.Header().Set("Access-Control-Allow-Methods", "HEAD,GET,POST,PUT,OPTIONS")
-			resp.Header().Set("Access-Control-Allow-Headers", "Authorization,content-type")
-
-			if req.Method == http.MethodOptions {
-				return
-			}
-
-			next.ServeHTTP(resp, req)
-		})
+		userprefsRouter.Use(zcommon.ACHeadersHandler(allowedMethods...))
+		userprefsRouter.Use(zcommon.AddExtensionSecurityHeaders())
+		userprefsRouter.HandleFunc("", HandleUserPrefs(repoDB, log)).Methods(allowedMethods...)
 	}
 }
 

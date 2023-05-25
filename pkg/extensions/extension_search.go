@@ -13,6 +13,7 @@ import (
 
 	"zotregistry.io/zot/pkg/api/config"
 	"zotregistry.io/zot/pkg/api/constants"
+	zcommon "zotregistry.io/zot/pkg/common"
 	"zotregistry.io/zot/pkg/extensions/search"
 	cveinfo "zotregistry.io/zot/pkg/extensions/search/cve"
 	"zotregistry.io/zot/pkg/extensions/search/gql_generated"
@@ -165,14 +166,6 @@ func (trivyT *trivyTask) DoWork() error {
 	return nil
 }
 
-func addSearchSecurityHeaders(h http.Handler) http.HandlerFunc { //nolint:varnamelen
-	return func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("X-Content-Type-Options", "nosniff")
-
-		h.ServeHTTP(w, r)
-	}
-}
-
 func SetupSearchRoutes(config *config.Config, router *mux.Router, storeController storage.StoreController,
 	repoDB repodb.RepoDB, cveInfo CveInfo, log log.Logger,
 ) {
@@ -181,24 +174,12 @@ func SetupSearchRoutes(config *config.Config, router *mux.Router, storeControlle
 	if config.Extensions.Search != nil && *config.Extensions.Search.Enable {
 		resConfig := search.GetResolverConfig(log, storeController, repoDB, cveInfo)
 
+		allowedMethods := zcommon.AllowedMethods(http.MethodGet, http.MethodPost)
+
 		extRouter := router.PathPrefix(constants.ExtSearch).Subrouter()
-		extRouter.Use(SearchACHeadersHandler())
-		extRouter.Methods("GET", "POST", "OPTIONS").
-			Handler(addSearchSecurityHeaders(gqlHandler.NewDefaultServer(gql_generated.NewExecutableSchema(resConfig))))
-	}
-}
-
-func SearchACHeadersHandler() mux.MiddlewareFunc {
-	return func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(resp http.ResponseWriter, req *http.Request) {
-			resp.Header().Set("Access-Control-Allow-Methods", "HEAD,GET,POST,OPTIONS")
-			resp.Header().Set("Access-Control-Allow-Headers", "Authorization,content-type")
-
-			if req.Method == http.MethodOptions {
-				return
-			}
-
-			next.ServeHTTP(resp, req)
-		})
+		extRouter.Use(zcommon.ACHeadersHandler(allowedMethods...))
+		extRouter.Use(zcommon.AddExtensionSecurityHeaders())
+		extRouter.Methods(allowedMethods...).
+			Handler(gqlHandler.NewDefaultServer(gql_generated.NewExecutableSchema(resConfig)))
 	}
 }

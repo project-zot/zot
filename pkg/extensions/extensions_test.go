@@ -669,3 +669,32 @@ func TestMgmtWithBearer(t *testing.T) {
 		So(mgmtResp.HTTP.Auth.LDAP, ShouldBeNil)
 	})
 }
+
+func TestAllowedMethodsHeaderMgmt(t *testing.T) {
+	defaultVal := true
+
+	Convey("Test http options response", t, func() {
+		conf := config.New()
+		port := test.GetFreePort()
+		conf.HTTP.Port = port
+		conf.Extensions = &extconf.ExtensionConfig{
+			Mgmt: &extconf.MgmtConfig{
+				BaseConfig: extconf.BaseConfig{Enable: &defaultVal},
+			},
+		}
+		baseURL := test.GetBaseURL(port)
+
+		ctlr := api.NewController(conf)
+		ctlr.Config.Storage.RootDirectory = t.TempDir()
+
+		ctrlManager := test.NewControllerManager(ctlr)
+
+		ctrlManager.StartAndWait(port)
+		defer ctrlManager.StopServer()
+
+		resp, _ := resty.R().Options(baseURL + constants.FullMgmtPrefix)
+		So(resp, ShouldNotBeNil)
+		So(resp.Header().Get("Access-Control-Allow-Methods"), ShouldResemble, "GET,OPTIONS")
+		So(resp.StatusCode(), ShouldEqual, http.StatusNoContent)
+	})
+}

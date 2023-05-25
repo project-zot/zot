@@ -29,7 +29,7 @@ import (
 
 var ErrTestError = errors.New("TestError")
 
-func TestAllowedMethodsHeader(t *testing.T) {
+func TestAllowedMethodsHeaderUserPrefs(t *testing.T) {
 	defaultVal := true
 
 	Convey("Test http options response", t, func() {
@@ -53,7 +53,7 @@ func TestAllowedMethodsHeader(t *testing.T) {
 
 		resp, _ := resty.R().Options(baseURL + constants.FullUserPreferencesPrefix)
 		So(resp, ShouldNotBeNil)
-		So(resp.Header().Get("Access-Control-Allow-Methods"), ShouldResemble, "HEAD,GET,POST,PUT,OPTIONS")
+		So(resp.Header().Get("Access-Control-Allow-Methods"), ShouldResemble, "PUT,OPTIONS")
 		So(resp.StatusCode(), ShouldEqual, http.StatusNoContent)
 	})
 }

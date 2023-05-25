@@ -11,7 +11,7 @@ import (
 
 	"zotregistry.io/zot/pkg/api/config"
 	"zotregistry.io/zot/pkg/api/constants"
-	"zotregistry.io/zot/pkg/common"
+	zcommon "zotregistry.io/zot/pkg/common"
 	"zotregistry.io/zot/pkg/log"
 )
 
@@ -73,7 +73,7 @@ type mgmt struct {
 func (mgmt *mgmt) handler() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		sanitizedConfig := mgmt.config.Sanitize()
-		buf, err := common.MarshalThroughStruct(sanitizedConfig, &StrippedConfig{})
+		buf, err := zcommon.MarshalThroughStruct(sanitizedConfig, &StrippedConfig{})
 		if err != nil {
 			mgmt.log.Error().Err(err).Msg("mgmt: couldn't marshal config response")
 			w.WriteHeader(http.StatusInternalServerError)
@@ -82,20 +82,17 @@ func (mgmt *mgmt) handler() http.Handler {
 	})
 }
 
-func addMgmtSecurityHeaders(h http.Handler) http.HandlerFunc { //nolint:varnamelen
-	return func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("X-Content-Type-Options", "nosniff")
-
-		h.ServeHTTP(w, r)
-	}
-}
-
 func SetupMgmtRoutes(config *config.Config, router *mux.Router, log log.Logger) {
 	if config.Extensions.Mgmt != nil && *config.Extensions.Mgmt.Enable {
 		log.Info().Msg("setting up mgmt routes")
 
 		mgmt := mgmt{config: config, log: log}
 
-		router.PathPrefix(constants.ExtMgmt).Methods("GET").Handler(addMgmtSecurityHeaders(mgmt.handler()))
+		allowedMethods := zcommon.AllowedMethods(http.MethodGet)
+
+		mgmtRouter := router.PathPrefix(constants.ExtMgmt).Subrouter()
+		mgmtRouter.Use(zcommon.ACHeadersHandler(allowedMethods...))
+		mgmtRouter.Use(zcommon.AddExtensionSecurityHeaders())
+		mgmtRouter.Methods(allowedMethods...).Handler(mgmt.handler())
 	}
 }
