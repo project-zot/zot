@@ -14,6 +14,7 @@ const (
 	CosignSignature   = "cosign"
 	NotationSignature = "notation"
 	defaultDirPerms   = 0o700
+	defaultFilePerms  = 0o644
 )
 
 func InitCosignAndNotationDirs(rootDir string) error {

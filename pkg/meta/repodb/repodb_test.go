@@ -13,6 +13,9 @@ import (
 	"time"
 
 	guuid "github.com/gofrs/uuid"
+	"github.com/notaryproject/notation-core-go/signature/jws"
+	"github.com/notaryproject/notation-go"
+	"github.com/notaryproject/notation-go/signer"
 	godigest "github.com/opencontainers/go-digest"
 	"github.com/opencontainers/image-spec/specs-go"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
@@ -25,6 +28,7 @@ import (
 	"zotregistry.io/zot/pkg/meta/repodb"
 	boltdb_wrapper "zotregistry.io/zot/pkg/meta/repodb/boltdb-wrapper"
 	dynamodb_wrapper "zotregistry.io/zot/pkg/meta/repodb/dynamodb-wrapper"
+	"zotregistry.io/zot/pkg/meta/signatures"
 	localCtx "zotregistry.io/zot/pkg/requestcontext"
 	"zotregistry.io/zot/pkg/test"
 )
@@ -71,7 +75,7 @@ func TestBoltDBWrapper(t *testing.T) {
 		So(boltdbWrapper, ShouldNotBeNil)
 		So(err, ShouldBeNil)
 
-		RunRepoDBTests(boltdbWrapper)
+		RunRepoDBTests(t, boltdbWrapper)
 	})
 }
 
@@ -122,11 +126,11 @@ func TestDynamoDBWrapper(t *testing.T) {
 			return err
 		}
 
-		RunRepoDBTests(dynamoDriver, resetDynamoDBTables)
+		RunRepoDBTests(t, dynamoDriver, resetDynamoDBTables)
 	})
 }
 
-func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
+func RunRepoDBTests(t *testing.T, repoDB repodb.RepoDB, preparationFuncs ...func() error) { //nolint: thelper
 	Convey("Test RepoDB Interface implementation", func() {
 		for _, prepFunc := range preparationFuncs {
 			err := prepFunc()
@@ -992,6 +996,170 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 
 			_, err = repoDB.GetManifestMeta(repo1, "badDigest")
 			So(err, ShouldNotBeNil)
+		})
+
+		Convey("Test UpdateSignaturesValidity", func() {
+			Convey("untrusted signature", func() {
+				var (
+					repo1           = "repo1"
+					tag1            = "0.0.1"
+					manifestDigest1 = godigest.FromString("dig")
+				)
+
+				err := repoDB.SetRepoReference(repo1, tag1, manifestDigest1, ispec.MediaTypeImageManifest)
+				So(err, ShouldBeNil)
+
+				err = repoDB.SetManifestMeta(repo1, manifestDigest1, repodb.ManifestMetadata{
+					ManifestBlob: []byte("Bad Manifest"),
+					ConfigBlob:   []byte("Bad Manifest"),
+				})
+				So(err, ShouldBeNil)
+
+				layerInfo := repodb.LayerInfo{LayerDigest: "", LayerContent: []byte{}, SignatureKey: ""}
+
+				err = repoDB.AddManifestSignature(repo1, manifestDigest1, repodb.SignatureMetadata{
+					SignatureType:   "cosign",
+					SignatureDigest: string(manifestDigest1),
+					LayersInfo:      []repodb.LayerInfo{layerInfo},
+				})
+				So(err, ShouldBeNil)
+
+				err = repoDB.UpdateSignaturesValidity(repo1, manifestDigest1)
+				So(err, ShouldBeNil)
+
+				repoData, err := repoDB.GetRepoMeta(repo1)
+				So(err, ShouldBeNil)
+				So(repoData.Signatures[string(manifestDigest1)]["cosign"][0].LayersInfo[0].Signer,
+					ShouldBeEmpty)
+				So(repoData.Signatures[string(manifestDigest1)]["cosign"][0].LayersInfo[0].Date,
+					ShouldBeZeroValue)
+			})
+
+			Convey("trusted signature", func() {
+				_, _, manifest, _ := test.GetRandomImageComponents(10)
+				manifestContent, _ := json.Marshal(manifest)
+				manifestDigest := godigest.FromBytes(manifestContent)
+				repo := "repo"
+				tag := "0.0.1"
+
+				err := repoDB.SetRepoReference(repo, tag, manifestDigest, ispec.MediaTypeImageManifest)
+				So(err, ShouldBeNil)
+
+				err = repoDB.SetManifestMeta(repo, manifestDigest, repodb.ManifestMetadata{
+					ManifestBlob: manifestContent,
+					ConfigBlob:   []byte("configContent"),
+				})
+				So(err, ShouldBeNil)
+
+				mediaType := jws.MediaTypeEnvelope
+
+				signOpts := notation.SignerSignOptions{
+					SignatureMediaType: mediaType,
+					PluginConfig:       map[string]string{},
+					ExpiryDuration:     24 * time.Hour,
+				}
+
+				tdir := t.TempDir()
+				keyName := "notation-sign-test"
+
+				test.NotationPathLock.Lock()
+				defer test.NotationPathLock.Unlock()
+
+				test.LoadNotationPath(tdir)
+
+				err = test.GenerateNotationCerts(tdir, keyName)
+				So(err, ShouldBeNil)
+
+				// getSigner
+				var newSigner notation.Signer
+
+				// ResolveKey
+				signingKeys, err := test.LoadNotationSigningkeys(tdir)
+				So(err, ShouldBeNil)
+
+				idx := test.Index(signingKeys.Keys, keyName)
+				So(idx, ShouldBeGreaterThanOrEqualTo, 0)
+
+				key := signingKeys.Keys[idx]
+
+				if key.X509KeyPair != nil {
+					newSigner, err = signer.NewFromFiles(key.X509KeyPair.KeyPath, key.X509KeyPair.CertificatePath)
+					So(err, ShouldBeNil)
+				}
+
+				descToSign := ispec.Descriptor{
+					MediaType: manifest.MediaType,
+					Digest:    manifestDigest,
+					Size:      int64(len(manifestContent)),
+				}
+
+				ctx := context.Background()
+
+				sig, _, err := newSigner.Sign(ctx, descToSign, signOpts)
+				So(err, ShouldBeNil)
+
+				layerInfo := repodb.LayerInfo{
+					LayerDigest:  string(godigest.FromBytes(sig)),
+					LayerContent: sig, SignatureKey: mediaType,
+				}
+
+				err = repoDB.AddManifestSignature(repo, manifestDigest, repodb.SignatureMetadata{
+					SignatureType:   "notation",
+					SignatureDigest: string(godigest.FromString("signature digest")),
+					LayersInfo:      []repodb.LayerInfo{layerInfo},
+				})
+				So(err, ShouldBeNil)
+
+				err = signatures.InitNotationDir(tdir)
+				So(err, ShouldBeNil)
+
+				trustpolicyPath := path.Join(tdir, "_notation/trustpolicy.json")
+
+				trustPolicy := `
+					{
+						"version": "1.0",
+						"trustPolicies": [
+							{
+								"name": "notation-sign-test",
+								"registryScopes": [ "*" ],
+								"signatureVerification": {
+									"level" : "strict" 
+								},
+								"trustStores": ["ca:notation-sign-test"],
+								"trustedIdentities": [
+									"*"
+								]
+							}
+						]
+					}`
+
+				file, err := os.Create(trustpolicyPath)
+				So(err, ShouldBeNil)
+
+				defer file.Close()
+
+				_, err = file.WriteString(trustPolicy)
+				So(err, ShouldBeNil)
+
+				truststore := "_notation/truststore/x509/ca/notation-sign-test"
+				truststoreSrc := "notation/truststore/x509/ca/notation-sign-test"
+				err = os.MkdirAll(path.Join(tdir, truststore), 0o755)
+				So(err, ShouldBeNil)
+
+				err = test.CopyFile(path.Join(tdir, truststoreSrc, "notation-sign-test.crt"),
+					path.Join(tdir, truststore, "notation-sign-test.crt"))
+				So(err, ShouldBeNil)
+
+				err = repoDB.UpdateSignaturesValidity(repo, manifestDigest) //nolint:contextcheck
+				So(err, ShouldBeNil)
+
+				repoData, err := repoDB.GetRepoMeta(repo)
+				So(err, ShouldBeNil)
+				So(repoData.Signatures[string(manifestDigest)]["notation"][0].LayersInfo[0].Signer,
+					ShouldNotBeEmpty)
+				So(repoData.Signatures[string(manifestDigest)]["notation"][0].LayersInfo[0].Date,
+					ShouldNotBeZeroValue)
+			})
 		})
 
 		Convey("Test AddImageSignature with inverted order", func() {

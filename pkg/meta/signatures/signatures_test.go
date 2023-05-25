@@ -56,6 +56,9 @@ func TestInitCosignAndNotationDirs(t *testing.T) {
 		err = signatures.InitCosignAndNotationDirs(dir)
 		So(err, ShouldNotBeNil)
 
+		err = signatures.InitNotationDir(dir)
+		So(err, ShouldNotBeNil)
+
 		err = os.Chmod(dir, 0o500)
 		So(err, ShouldBeNil)
 
@@ -67,6 +70,51 @@ func TestInitCosignAndNotationDirs(t *testing.T) {
 
 		notationDir, err := signatures.GetNotationDirPath()
 		So(notationDir, ShouldBeEmpty)
+		So(err, ShouldNotBeNil)
+		So(err, ShouldEqual, zerr.ErrSignConfigDirNotSet)
+	})
+
+	Convey("UploadCertificate - notationDir is not set", t, func() {
+		rootDir := t.TempDir()
+
+		test.NotationPathLock.Lock()
+		defer test.NotationPathLock.Unlock()
+
+		test.LoadNotationPath(rootDir)
+
+		// generate a keypair
+		err := test.GenerateNotationCerts(rootDir, "notation-upload-test")
+		So(err, ShouldBeNil)
+
+		certificateContent, err := os.ReadFile(path.Join(rootDir, "notation/localkeys", "notation-upload-test.crt"))
+		So(err, ShouldBeNil)
+		So(certificateContent, ShouldNotBeNil)
+
+		err = signatures.UploadCertificate(certificateContent, "ca", "notation-upload-test")
+		So(err, ShouldNotBeNil)
+		So(err, ShouldEqual, zerr.ErrSignConfigDirNotSet)
+	})
+
+	Convey("UploadPublicKey - cosignDir is not set", t, func() {
+		rootDir := t.TempDir()
+
+		cwd, err := os.Getwd()
+		So(err, ShouldBeNil)
+
+		_ = os.Chdir(rootDir)
+
+		// generate a keypair
+		os.Setenv("COSIGN_PASSWORD", "")
+		err = generate.GenerateKeyPairCmd(context.TODO(), "", "cosign", nil)
+		So(err, ShouldBeNil)
+
+		_ = os.Chdir(cwd)
+
+		publicKeyContent, err := os.ReadFile(path.Join(rootDir, "cosign.pub"))
+		So(err, ShouldBeNil)
+		So(publicKeyContent, ShouldNotBeNil)
+
+		err = signatures.UploadPublicKey(publicKeyContent)
 		So(err, ShouldNotBeNil)
 		So(err, ShouldEqual, zerr.ErrSignConfigDirNotSet)
 	})
@@ -278,6 +326,11 @@ func TestVerifySignatures(t *testing.T) {
 			err := signatures.InitNotationDir(dir)
 			So(err, ShouldBeNil)
 
+			notationDir, _ := signatures.GetNotationDirPath()
+
+			err = os.Remove(path.Join(notationDir, "trustpolicy.json"))
+			So(err, ShouldBeNil)
+
 			_, _, _, err = signatures.VerifySignature("notation", []byte("signature"), "", manifestDigest, manifestContent, repo)
 			So(err, ShouldNotBeNil)
 		})
@@ -292,7 +345,7 @@ func TestVerifySignatures(t *testing.T) {
 			So(err, ShouldBeNil)
 
 			err = test.WriteFileWithPermission(path.Join(notationDir, "trustpolicy.json"), []byte("invalid content"),
-				0o600, false)
+				0o600, true)
 			So(err, ShouldBeNil)
 
 			_, _, _, err = signatures.VerifySignature("notation", []byte("signature"), "", manifestDigest, manifestContent,
@@ -363,7 +416,7 @@ func TestVerifySignatures(t *testing.T) {
 				]
 			}`
 
-			err = test.WriteFileWithPermission(path.Join(notationDir, "trustpolicy.json"), []byte(trustPolicy), 0o600, false)
+			err = test.WriteFileWithPermission(path.Join(notationDir, "trustpolicy.json"), []byte(trustPolicy), 0o600, true)
 			So(err, ShouldBeNil)
 
 			indexContent, err := ctlr.StoreController.DefaultStore.GetIndexContent(repo)
@@ -435,5 +488,224 @@ func TestCheckExpiryErr(t *testing.T) {
 			{Error: errExpiryError, Type: trustpolicy.TypeAuthenticTimestamp},
 		}, time.Now().AddDate(0, 0, -1), errExpiryError)
 		So(isExpiryErr, ShouldBeTrue)
+	})
+}
+
+func TestUploadPublicKey(t *testing.T) {
+	Convey("public key - invalid content", t, func() {
+		err := signatures.UploadPublicKey([]byte("wrong content"))
+		So(err, ShouldNotBeNil)
+	})
+
+	Convey("upload public key successfully", t, func() {
+		rootDir := t.TempDir()
+
+		cwd, err := os.Getwd()
+		So(err, ShouldBeNil)
+
+		_ = os.Chdir(rootDir)
+
+		// generate a keypair
+		os.Setenv("COSIGN_PASSWORD", "")
+		err = generate.GenerateKeyPairCmd(context.TODO(), "", "cosign", nil)
+		So(err, ShouldBeNil)
+
+		_ = os.Chdir(cwd)
+
+		publicKeyContent, err := os.ReadFile(path.Join(rootDir, "cosign.pub"))
+		So(err, ShouldBeNil)
+		So(publicKeyContent, ShouldNotBeNil)
+
+		err = signatures.InitCosignDir(rootDir)
+		So(err, ShouldBeNil)
+
+		err = signatures.UploadPublicKey(publicKeyContent)
+		So(err, ShouldBeNil)
+	})
+}
+
+func TestUploadCertificate(t *testing.T) {
+	Convey("invalid truststore type", t, func() {
+		err := signatures.UploadCertificate([]byte("certificate content"), "wrongType", "store")
+		So(err, ShouldNotBeNil)
+		So(err, ShouldEqual, zerr.ErrInvalidTruststoreType)
+	})
+
+	Convey("invalid truststore name", t, func() {
+		err := signatures.UploadCertificate([]byte("certificate content"), "ca", "*store?")
+		So(err, ShouldNotBeNil)
+		So(err, ShouldEqual, zerr.ErrInvalidTruststoreName)
+	})
+
+	Convey("invalid certificate content", t, func() {
+		err := signatures.UploadCertificate([]byte("invalid content"), "ca", "store")
+		So(err, ShouldNotBeNil)
+
+		content := `-----BEGIN CERTIFICATE-----
+-----END CERTIFICATE-----
+		`
+
+		err = signatures.UploadCertificate([]byte(content), "ca", "store")
+		So(err, ShouldNotBeNil)
+
+		content = ``
+
+		err = signatures.UploadCertificate([]byte(content), "ca", "store")
+		So(err, ShouldNotBeNil)
+	})
+
+	Convey("truststore dir can not be created", t, func() {
+		rootDir := t.TempDir()
+
+		test.NotationPathLock.Lock()
+		defer test.NotationPathLock.Unlock()
+
+		test.LoadNotationPath(rootDir)
+
+		// generate a keypair
+		err := test.GenerateNotationCerts(rootDir, "notation-upload-test")
+		So(err, ShouldBeNil)
+
+		certificateContent, err := os.ReadFile(path.Join(rootDir, "notation/localkeys", "notation-upload-test.crt"))
+		So(err, ShouldBeNil)
+		So(certificateContent, ShouldNotBeNil)
+
+		err = signatures.InitNotationDir(rootDir)
+		So(err, ShouldBeNil)
+
+		notationDir, err := signatures.GetNotationDirPath()
+		So(err, ShouldBeNil)
+
+		err = os.Chmod(notationDir, 0o100)
+		So(err, ShouldBeNil)
+
+		err = signatures.UploadCertificate(certificateContent, "ca", "notation-upload-test")
+		So(err, ShouldNotBeNil)
+
+		err = os.Chmod(notationDir, 0o777)
+		So(err, ShouldBeNil)
+	})
+
+	Convey("certificate can't be stored", t, func() {
+		rootDir := t.TempDir()
+
+		test.NotationPathLock.Lock()
+		defer test.NotationPathLock.Unlock()
+
+		test.LoadNotationPath(rootDir)
+
+		// generate a keypair
+		err := test.GenerateNotationCerts(rootDir, "notation-upload-test")
+		So(err, ShouldBeNil)
+
+		certificateContent, err := os.ReadFile(path.Join(rootDir, "notation/localkeys", "notation-upload-test.crt"))
+		So(err, ShouldBeNil)
+		So(certificateContent, ShouldNotBeNil)
+
+		err = signatures.InitNotationDir(rootDir)
+		So(err, ShouldBeNil)
+
+		notationDir, err := signatures.GetNotationDirPath()
+		So(err, ShouldBeNil)
+
+		err = os.MkdirAll(path.Join(notationDir, "truststore/x509/ca/notation-upload-test"), 0o777)
+		So(err, ShouldBeNil)
+
+		err = os.Chmod(path.Join(notationDir, "truststore/x509/ca/notation-upload-test"), 0o100)
+		So(err, ShouldBeNil)
+
+		err = signatures.UploadCertificate(certificateContent, "ca", "notation-upload-test")
+		So(err, ShouldNotBeNil)
+	})
+
+	Convey("trustpolicy - invalid content", t, func() {
+		rootDir := t.TempDir()
+
+		test.NotationPathLock.Lock()
+		defer test.NotationPathLock.Unlock()
+
+		test.LoadNotationPath(rootDir)
+
+		// generate a keypair
+		err := test.GenerateNotationCerts(rootDir, "notation-upload-test")
+		So(err, ShouldBeNil)
+
+		certificateContent, err := os.ReadFile(path.Join(rootDir, "notation/localkeys", "notation-upload-test.crt"))
+		So(err, ShouldBeNil)
+		So(certificateContent, ShouldNotBeNil)
+
+		err = signatures.InitNotationDir(rootDir)
+		So(err, ShouldBeNil)
+
+		notationDir, err := signatures.GetNotationDirPath()
+		So(err, ShouldBeNil)
+
+		err = test.WriteFileWithPermission(path.Join(notationDir, "trustpolicy.json"), []byte("invalid content"),
+			0o600, true)
+		So(err, ShouldBeNil)
+
+		err = signatures.UploadCertificate(certificateContent, "ca", "notation-upload-test")
+		So(err, ShouldNotBeNil)
+	})
+
+	Convey("trustpolicy - truststore already exists", t, func() {
+		rootDir := t.TempDir()
+
+		test.NotationPathLock.Lock()
+		defer test.NotationPathLock.Unlock()
+
+		test.LoadNotationPath(rootDir)
+
+		// generate a keypair
+		err := test.GenerateNotationCerts(rootDir, "notation-upload-test")
+		So(err, ShouldBeNil)
+
+		certificateContent, err := os.ReadFile(path.Join(rootDir, "notation/localkeys", "notation-upload-test.crt"))
+		So(err, ShouldBeNil)
+		So(certificateContent, ShouldNotBeNil)
+
+		err = signatures.InitNotationDir(rootDir)
+		So(err, ShouldBeNil)
+
+		notationDir, err := signatures.GetNotationDirPath()
+		So(err, ShouldBeNil)
+
+		trustpolicyDoc, err := signatures.LoadTrustPolicyDocument(notationDir)
+		So(err, ShouldBeNil)
+
+		trustpolicyDoc.TrustPolicies[0].TrustStores = append(trustpolicyDoc.TrustPolicies[0].TrustStores,
+			"ca:notation-upload-test")
+
+		trustpolicyDocContent, err := json.Marshal(trustpolicyDoc)
+		So(err, ShouldBeNil)
+
+		err = os.WriteFile(path.Join(notationDir, "trustpolicy.json"), trustpolicyDocContent, 0o400)
+		So(err, ShouldBeNil)
+
+		err = signatures.UploadCertificate(certificateContent, "ca", "notation-upload-test")
+		So(err, ShouldBeNil)
+	})
+
+	Convey("upload certificate successfully", t, func() {
+		rootDir := t.TempDir()
+
+		test.NotationPathLock.Lock()
+		defer test.NotationPathLock.Unlock()
+
+		test.LoadNotationPath(rootDir)
+
+		// generate a keypair
+		err := test.GenerateNotationCerts(rootDir, "notation-upload-test")
+		So(err, ShouldBeNil)
+
+		certificateContent, err := os.ReadFile(path.Join(rootDir, "notation/localkeys", "notation-upload-test.crt"))
+		So(err, ShouldBeNil)
+		So(certificateContent, ShouldNotBeNil)
+
+		err = signatures.InitNotationDir(rootDir)
+		So(err, ShouldBeNil)
+
+		err = signatures.UploadCertificate(certificateContent, "ca", "notation-upload-test")
+		So(err, ShouldBeNil)
 	})
 }
