@@ -560,26 +560,6 @@ func GetOrasReferrers(imgStore storageTypes.ImageStore, repo string, gdigest god
 	return result, nil
 }
 
-func getReferrerFilterAnnotation(artifactTypes []string) string {
-	// as per spec, return what filters were applied as an annotation if artifactTypes
-	annotation := ""
-
-	for _, artifactType := range artifactTypes {
-		if artifactType == "" {
-			// ignore empty artifactTypes
-			continue
-		}
-
-		if annotation == "" {
-			annotation = artifactType
-		} else {
-			annotation += "," + artifactType
-		}
-	}
-
-	return annotation
-}
-
 func GetReferrers(imgStore storageTypes.ImageStore, repo string, gdigest godigest.Digest, artifactTypes []string,
 	log zerolog.Logger,
 ) (ispec.Index, error) {
@@ -651,12 +631,6 @@ func GetReferrers(imgStore storageTypes.ImageStore, repo string, gdigest godiges
 		MediaType:   ispec.MediaTypeImageIndex,
 		Manifests:   result,
 		Annotations: map[string]string{},
-	}
-
-	// as per spec, return what filters were applied as an annotation if artifactTypes
-	if annotation := getReferrerFilterAnnotation(artifactTypes); annotation != "" {
-		index.Annotations[storageConstants.ReferrerFilterAnnotation] = annotation
-		log.Info().Str("annotation", annotation).Msg("filters applied")
 	}
 
 	return index, nil
