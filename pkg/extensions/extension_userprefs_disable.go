@@ -17,7 +17,7 @@ func IsBuiltWithUserPrefsExtension() bool {
 }
 
 func SetupUserPreferencesRoutes(config *config.Config, router *mux.Router, storeController storage.StoreController,
-	repoDB metaTypes.RepoDB, cveInfo CveInfo, log log.Logger,
+	metaDB metaTypes.MetaDB, cveInfo CveInfo, log log.Logger,
 ) {
 	log.Warn().Msg("userprefs extension is disabled because given zot binary doesn't" +
 		"include this feature please build a binary that does so")

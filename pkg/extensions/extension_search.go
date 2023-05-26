@@ -39,7 +39,7 @@ func IsBuiltWithSearchExtension() bool {
 }
 
 func GetCVEInfo(config *config.Config, storeController storage.StoreController,
-	repoDB metaTypes.RepoDB, log log.Logger,
+	metaDB metaTypes.MetaDB, log log.Logger,
 ) CveInfo {
 	if config.Extensions.Search == nil || !*config.Extensions.Search.Enable || config.Extensions.Search.CVE == nil {
 		return nil
@@ -48,11 +48,11 @@ func GetCVEInfo(config *config.Config, storeController storage.StoreController,
 	dbRepository := config.Extensions.Search.CVE.Trivy.DBRepository
 	javaDBRepository := config.Extensions.Search.CVE.Trivy.JavaDBRepository
 
-	return cveinfo.NewCVEInfo(storeController, repoDB, dbRepository, javaDBRepository, log)
+	return cveinfo.NewCVEInfo(storeController, metaDB, dbRepository, javaDBRepository, log)
 }
 
 func EnableSearchExtension(config *config.Config, storeController storage.StoreController,
-	repoDB metaTypes.RepoDB, taskScheduler *scheduler.Scheduler, cveInfo CveInfo, log log.Logger,
+	metaDB metaTypes.MetaDB, taskScheduler *scheduler.Scheduler, cveInfo CveInfo, log log.Logger,
 ) {
 	if config.Extensions.Search != nil && *config.Extensions.Search.Enable && config.Extensions.Search.CVE != nil {
 		updateInterval := config.Extensions.Search.CVE.UpdateInterval
@@ -157,12 +157,12 @@ func (trivyT *trivyTask) DoWork() error {
 }
 
 func SetupSearchRoutes(config *config.Config, router *mux.Router, storeController storage.StoreController,
-	repoDB metaTypes.RepoDB, cveInfo CveInfo, log log.Logger,
+	metaDB metaTypes.MetaDB, cveInfo CveInfo, log log.Logger,
 ) {
 	log.Info().Msg("setting up search routes")
 
 	if config.Extensions.Search != nil && *config.Extensions.Search.Enable {
-		resConfig := search.GetResolverConfig(log, storeController, repoDB, cveInfo)
+		resConfig := search.GetResolverConfig(log, storeController, metaDB, cveInfo)
 
 		allowedMethods := zcommon.AllowedMethods(http.MethodGet, http.MethodPost)
 

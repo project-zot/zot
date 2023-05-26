@@ -33,7 +33,7 @@ type (
 	FilterRepoFunc func(repoMeta RepoMetadata) bool
 )
 
-type RepoDB interface { //nolint:interfacebloat
+type MetaDB interface { //nolint:interfacebloat
 	// IncrementRepoStars adds 1 to the star count of an image
 	IncrementRepoStars(repo string) error
 

@@ -42,25 +42,25 @@ type ImageCVESummary struct {
 type BaseCveInfo struct {
 	Log     log.Logger
 	Scanner Scanner
-	RepoDB  metaTypes.RepoDB
+	MetaDB  metaTypes.MetaDB
 }
 
-func NewCVEInfo(storeController storage.StoreController, repoDB metaTypes.RepoDB,
+func NewCVEInfo(storeController storage.StoreController, metaDB metaTypes.MetaDB,
 	dbRepository, javaDBRepository string, log log.Logger,
 ) *BaseCveInfo {
-	scanner := trivy.NewScanner(storeController, repoDB, dbRepository, javaDBRepository, log)
+	scanner := trivy.NewScanner(storeController, metaDB, dbRepository, javaDBRepository, log)
 
 	return &BaseCveInfo{
 		Log:     log,
 		Scanner: scanner,
-		RepoDB:  repoDB,
+		MetaDB:  metaDB,
 	}
 }
 
 func (cveinfo BaseCveInfo) GetImageListForCVE(repo, cveID string) ([]cvemodel.TagInfo, error) {
 	imgList := make([]cvemodel.TagInfo, 0)
 
-	repoMeta, err := cveinfo.RepoDB.GetRepoMeta(repo)
+	repoMeta, err := cveinfo.MetaDB.GetRepoMeta(repo)
 	if err != nil {
 		cveinfo.Log.Error().Err(err).Str("repository", repo).Str("cve-id", cveID).
 			Msg("unable to get list of tags from repo")
@@ -107,7 +107,7 @@ func (cveinfo BaseCveInfo) GetImageListForCVE(repo, cveID string) ([]cvemodel.Ta
 }
 
 func (cveinfo BaseCveInfo) GetImageListWithCVEFixed(repo, cveID string) ([]cvemodel.TagInfo, error) {
-	repoMeta, err := cveinfo.RepoDB.GetRepoMeta(repo)
+	repoMeta, err := cveinfo.MetaDB.GetRepoMeta(repo)
 	if err != nil {
 		cveinfo.Log.Error().Err(err).Str("repository", repo).Str("cve-id", cveID).
 			Msg("unable to get list of tags from repo")
@@ -133,7 +133,7 @@ func (cveinfo BaseCveInfo) GetImageListWithCVEFixed(repo, cveID string) ([]cvemo
 				continue
 			}
 
-			manifestMeta, err := cveinfo.RepoDB.GetManifestMeta(repo, manifestDigest)
+			manifestMeta, err := cveinfo.MetaDB.GetManifestMeta(repo, manifestDigest)
 			if err != nil {
 				cveinfo.Log.Error().Err(err).Str("repository", repo).Str("tag", tag).
 					Str("cve-id", cveID).Msg("unable to obtain manifest meta")

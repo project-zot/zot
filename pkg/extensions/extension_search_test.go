@@ -33,7 +33,7 @@ func TestTrivyDBGenerator(t *testing.T) {
 		logger := log.NewLogger("debug", logFile.Name())
 		sch := scheduler.NewScheduler(logger)
 
-		repoDB := &mocks.RepoDBMock{
+		metaDB := &mocks.MetaDBMock{
 			GetRepoMetaFn: func(repo string) (metaTypes.RepoMetadata, error) {
 				return metaTypes.RepoMetadata{
 					Tags: map[string]metaTypes.Descriptor{
@@ -46,7 +46,7 @@ func TestTrivyDBGenerator(t *testing.T) {
 			DefaultStore: mocks.MockedImageStore{},
 		}
 
-		cveInfo := cveinfo.NewCVEInfo(storeController, repoDB, "ghcr.io/project-zot/trivy-db", "", logger)
+		cveInfo := cveinfo.NewCVEInfo(storeController, metaDB, "ghcr.io/project-zot/trivy-db", "", logger)
 		generator := NewTrivyTaskGenerator(time.Minute, cveInfo, logger)
 
 		sch.SubmitGenerator(generator, 12000*time.Millisecond, scheduler.HighPriority)

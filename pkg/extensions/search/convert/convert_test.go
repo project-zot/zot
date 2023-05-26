@@ -16,7 +16,7 @@ import (
 	cveinfo "zotregistry.io/zot/pkg/extensions/search/cve"
 	"zotregistry.io/zot/pkg/extensions/search/gql_generated"
 	"zotregistry.io/zot/pkg/log"
-	"zotregistry.io/zot/pkg/meta/bolt"
+	"zotregistry.io/zot/pkg/meta/boltdb"
 	metaTypes "zotregistry.io/zot/pkg/meta/types"
 	"zotregistry.io/zot/pkg/test/mocks"
 )
@@ -25,13 +25,13 @@ var ErrTestError = errors.New("TestError")
 
 func TestConvertErrors(t *testing.T) {
 	Convey("Convert Errors", t, func() {
-		params := bolt.DBParameters{
+		params := boltdb.DBParameters{
 			RootDir: t.TempDir(),
 		}
-		boltDB, err := bolt.GetBoltDriver(params)
+		boltDB, err := boltdb.GetBoltDriver(params)
 		So(err, ShouldBeNil)
 
-		repoDB, err := bolt.NewBoltDBWrapper(boltDB, log.NewLogger("debug", ""))
+		metaDB, err := boltdb.New(boltDB, log.NewLogger("debug", ""))
 		So(err, ShouldBeNil)
 
 		configBlob, err := json.Marshal(ispec.Image{})
@@ -54,12 +54,12 @@ func TestConvertErrors(t *testing.T) {
 		}
 
 		digest11 := godigest.FromString("abc1")
-		err = repoDB.SetManifestMeta("repo1", digest11, repoMeta11)
+		err = metaDB.SetManifestMeta("repo1", digest11, repoMeta11)
 		So(err, ShouldBeNil)
-		err = repoDB.SetRepoReference("repo1", "0.1.0", digest11, ispec.MediaTypeImageManifest)
+		err = metaDB.SetRepoReference("repo1", "0.1.0", digest11, ispec.MediaTypeImageManifest)
 		So(err, ShouldBeNil)
 
-		repoMetas, manifestMetaMap, _, _, err := repoDB.SearchRepos(context.Background(), "", metaTypes.Filter{},
+		repoMetas, manifestMetaMap, _, _, err := metaDB.SearchRepos(context.Background(), "", metaTypes.Filter{},
 			metaTypes.PageInput{})
 		So(err, ShouldBeNil)
 

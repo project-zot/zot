@@ -67,7 +67,7 @@ type cveTrivyController struct {
 }
 
 type Scanner struct {
-	repoDB           metaTypes.RepoDB
+	metaDB           metaTypes.MetaDB
 	cveController    cveTrivyController
 	storeController  storage.StoreController
 	log              log.Logger
@@ -78,7 +78,7 @@ type Scanner struct {
 }
 
 func NewScanner(storeController storage.StoreController,
-	repoDB metaTypes.RepoDB, dbRepository, javaDBRepository string, log log.Logger,
+	metaDB metaTypes.MetaDB, dbRepository, javaDBRepository string, log log.Logger,
 ) *Scanner {
 	cveController := cveTrivyController{}
 
@@ -110,7 +110,7 @@ func NewScanner(storeController storage.StoreController,
 
 	return &Scanner{
 		log:              log,
-		repoDB:           repoDB,
+		metaDB:           metaDB,
 		cveController:    cveController,
 		storeController:  storeController,
 		dbLock:           &sync.Mutex{},
@@ -181,7 +181,7 @@ func (scanner Scanner) IsImageFormatScannable(repo, tag string) (bool, error) {
 		return true, nil
 	}
 
-	repoMeta, err := scanner.repoDB.GetRepoMeta(repo)
+	repoMeta, err := scanner.metaDB.GetRepoMeta(repo)
 	if err != nil {
 		return false, err
 	}
@@ -221,7 +221,7 @@ func (scanner Scanner) isManifestScanable(descriptor metaTypes.Descriptor) (bool
 		return false, err
 	}
 
-	manifestData, err := scanner.repoDB.GetManifestData(manifestDigest)
+	manifestData, err := scanner.metaDB.GetManifestData(manifestDigest)
 	if err != nil {
 		return false, err
 	}

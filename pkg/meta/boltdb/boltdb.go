@@ -1,4 +1,4 @@
-package bolt
+package boltdb
 
 import (
 	"context"
@@ -22,13 +22,13 @@ import (
 	localCtx "zotregistry.io/zot/pkg/requestcontext"
 )
 
-type DBWrapper struct {
+type BoltDB struct {
 	DB      *bbolt.DB
 	Patches []func(DB *bbolt.DB) error
 	Log     log.Logger
 }
 
-func NewBoltDBWrapper(boltDB *bbolt.DB, log log.Logger) (*DBWrapper, error) {
+func New(boltDB *bbolt.DB, log log.Logger) (*BoltDB, error) {
 	err := boltDB.Update(func(transaction *bbolt.Tx) error {
 		versionBuck, err := transaction.CreateBucketIfNotExists([]byte(VersionBucket))
 		if err != nil {
@@ -66,25 +66,25 @@ func NewBoltDBWrapper(boltDB *bbolt.DB, log log.Logger) (*DBWrapper, error) {
 		return nil, err
 	}
 
-	return &DBWrapper{
+	return &BoltDB{
 		DB:      boltDB,
 		Patches: version.GetBoltDBPatches(),
 		Log:     log,
 	}, nil
 }
 
-func (bdw *DBWrapper) SetManifestData(manifestDigest godigest.Digest, manifestData metaTypes.ManifestData) error {
+func (bdw *BoltDB) SetManifestData(manifestDigest godigest.Digest, manifestData metaTypes.ManifestData) error {
 	err := bdw.DB.Update(func(tx *bbolt.Tx) error {
 		buck := tx.Bucket([]byte(ManifestDataBucket))
 
 		mdBlob, err := json.Marshal(manifestData)
 		if err != nil {
-			return fmt.Errorf("repodb: error while calculating blob for manifest with digest %s %w", manifestDigest, err)
+			return fmt.Errorf("metadb: error while calculating blob for manifest with digest %s %w", manifestDigest, err)
 		}
 
 		err = buck.Put([]byte(manifestDigest), mdBlob)
 		if err != nil {
-			return fmt.Errorf("repodb: error while setting manifest data with for digest %s %w", manifestDigest, err)
+			return fmt.Errorf("metadb: error while setting manifest data with for digest %s %w", manifestDigest, err)
 		}
 
 		return nil
@@ -93,7 +93,7 @@ func (bdw *DBWrapper) SetManifestData(manifestDigest godigest.Digest, manifestDa
 	return err
 }
 
-func (bdw *DBWrapper) GetManifestData(manifestDigest godigest.Digest) (metaTypes.ManifestData, error) {
+func (bdw *BoltDB) GetManifestData(manifestDigest godigest.Digest) (metaTypes.ManifestData, error) {
 	var manifestData metaTypes.ManifestData
 
 	err := bdw.DB.View(func(tx *bbolt.Tx) error {
@@ -107,7 +107,7 @@ func (bdw *DBWrapper) GetManifestData(manifestDigest godigest.Digest) (metaTypes
 
 		err := json.Unmarshal(mdBlob, &manifestData)
 		if err != nil {
-			return fmt.Errorf("repodb: error while unmashaling manifest meta for digest %s %w", manifestDigest, err)
+			return fmt.Errorf("metadb: error while unmashaling manifest meta for digest %s %w", manifestDigest, err)
 		}
 
 		return nil
@@ -116,7 +116,7 @@ func (bdw *DBWrapper) GetManifestData(manifestDigest godigest.Digest) (metaTypes
 	return manifestData, err
 }
 
-func (bdw *DBWrapper) SetManifestMeta(repo string, manifestDigest godigest.Digest,
+func (bdw *BoltDB) SetManifestMeta(repo string, manifestDigest godigest.Digest,
 	manifestMeta metaTypes.ManifestMetadata,
 ) error {
 	err := bdw.DB.Update(func(tx *bbolt.Tx) error {
@@ -144,19 +144,19 @@ func (bdw *DBWrapper) SetManifestMeta(repo string, manifestDigest godigest.Diges
 			ConfigBlob:   manifestMeta.ConfigBlob,
 		})
 		if err != nil {
-			return fmt.Errorf("repodb: error while calculating blob for manifest with digest %s %w", manifestDigest, err)
+			return fmt.Errorf("metadb: error while calculating blob for manifest with digest %s %w", manifestDigest, err)
 		}
 
 		err = dataBuck.Put([]byte(manifestDigest), mdBlob)
 		if err != nil {
-			return fmt.Errorf("repodb: error while setting manifest meta with for digest %s %w", manifestDigest, err)
+			return fmt.Errorf("metadb: error while setting manifest meta with for digest %s %w", manifestDigest, err)
 		}
 
 		updatedRepoMeta := common.UpdateManifestMeta(repoMeta, manifestDigest, manifestMeta)
 
 		updatedRepoMetaBlob, err := json.Marshal(updatedRepoMeta)
 		if err != nil {
-			return fmt.Errorf("repodb: error while calculating blob for updated repo meta '%s' %w", repo, err)
+			return fmt.Errorf("metadb: error while calculating blob for updated repo meta '%s' %w", repo, err)
 		}
 
 		return repoBuck.Put([]byte(repo), updatedRepoMetaBlob)
@@ -165,7 +165,7 @@ func (bdw *DBWrapper) SetManifestMeta(repo string, manifestDigest godigest.Diges
 	return err
 }
 
-func (bdw *DBWrapper) GetManifestMeta(repo string, manifestDigest godigest.Digest) (metaTypes.ManifestMetadata, error) {
+func (bdw *BoltDB) GetManifestMeta(repo string, manifestDigest godigest.Digest) (metaTypes.ManifestMetadata, error) {
 	var manifestMetadata metaTypes.ManifestMetadata
 
 	err := bdw.DB.View(func(tx *bbolt.Tx) error {
@@ -182,7 +182,7 @@ func (bdw *DBWrapper) GetManifestMeta(repo string, manifestDigest godigest.Diges
 
 		err := json.Unmarshal(mdBlob, &manifestData)
 		if err != nil {
-			return fmt.Errorf("repodb: error while unmashaling manifest meta for digest %s %w", manifestDigest, err)
+			return fmt.Errorf("metadb: error while unmashaling manifest meta for digest %s %w", manifestDigest, err)
 		}
 
 		var repoMeta metaTypes.RepoMetadata
@@ -191,7 +191,7 @@ func (bdw *DBWrapper) GetManifestMeta(repo string, manifestDigest godigest.Diges
 		if len(repoMetaBlob) > 0 {
 			err = json.Unmarshal(repoMetaBlob, &repoMeta)
 			if err != nil {
-				return fmt.Errorf("repodb: error while unmashaling manifest meta for digest %s %w", manifestDigest, err)
+				return fmt.Errorf("metadb: error while unmashaling manifest meta for digest %s %w", manifestDigest, err)
 			}
 		}
 
@@ -210,7 +210,7 @@ func (bdw *DBWrapper) GetManifestMeta(repo string, manifestDigest godigest.Diges
 	return manifestMetadata, err
 }
 
-func (bdw *DBWrapper) SetIndexData(indexDigest godigest.Digest, indexMetadata metaTypes.IndexData) error {
+func (bdw *BoltDB) SetIndexData(indexDigest godigest.Digest, indexMetadata metaTypes.IndexData) error {
 	// we make the assumption that the oci layout is consistent and all manifests refferenced inside the
 	// index are present
 	err := bdw.DB.Update(func(tx *bbolt.Tx) error {
@@ -218,12 +218,12 @@ func (bdw *DBWrapper) SetIndexData(indexDigest godigest.Digest, indexMetadata me
 
 		imBlob, err := json.Marshal(indexMetadata)
 		if err != nil {
-			return fmt.Errorf("repodb: error while calculating blob for manifest with digest %s %w", indexDigest, err)
+			return fmt.Errorf("metadb: error while calculating blob for manifest with digest %s %w", indexDigest, err)
 		}
 
 		err = buck.Put([]byte(indexDigest), imBlob)
 		if err != nil {
-			return fmt.Errorf("repodb: error while setting manifest meta with for digest %s %w", indexDigest, err)
+			return fmt.Errorf("metadb: error while setting manifest meta with for digest %s %w", indexDigest, err)
 		}
 
 		return nil
@@ -232,7 +232,7 @@ func (bdw *DBWrapper) SetIndexData(indexDigest godigest.Digest, indexMetadata me
 	return err
 }
 
-func (bdw *DBWrapper) GetIndexData(indexDigest godigest.Digest) (metaTypes.IndexData, error) {
+func (bdw *BoltDB) GetIndexData(indexDigest godigest.Digest) (metaTypes.IndexData, error) {
 	var indexMetadata metaTypes.IndexData
 
 	err := bdw.DB.View(func(tx *bbolt.Tx) error {
@@ -246,7 +246,7 @@ func (bdw *DBWrapper) GetIndexData(indexDigest godigest.Digest) (metaTypes.Index
 
 		err := json.Unmarshal(mmBlob, &indexMetadata)
 		if err != nil {
-			return fmt.Errorf("repodb: error while unmashaling manifest meta for digest %s %w", indexDigest, err)
+			return fmt.Errorf("metadb: error while unmashaling manifest meta for digest %s %w", indexDigest, err)
 		}
 
 		return nil
@@ -255,7 +255,7 @@ func (bdw *DBWrapper) GetIndexData(indexDigest godigest.Digest) (metaTypes.Index
 	return indexMetadata, err
 }
 
-func (bdw DBWrapper) SetReferrer(repo string, referredDigest godigest.Digest, referrer metaTypes.ReferrerInfo) error {
+func (bdw BoltDB) SetReferrer(repo string, referredDigest godigest.Digest, referrer metaTypes.ReferrerInfo) error {
 	err := bdw.DB.Update(func(tx *bbolt.Tx) error {
 		buck := tx.Bucket([]byte(RepoMetadataBucket))
 
@@ -315,7 +315,7 @@ func (bdw DBWrapper) SetReferrer(repo string, referredDigest godigest.Digest, re
 	return err
 }
 
-func (bdw DBWrapper) DeleteReferrer(repo string, referredDigest godigest.Digest,
+func (bdw BoltDB) DeleteReferrer(repo string, referredDigest godigest.Digest,
 	referrerDigest godigest.Digest,
 ) error {
 	return bdw.DB.Update(func(tx *bbolt.Tx) error {
@@ -355,7 +355,7 @@ func (bdw DBWrapper) DeleteReferrer(repo string, referredDigest godigest.Digest,
 	})
 }
 
-func (bdw DBWrapper) GetReferrersInfo(repo string, referredDigest godigest.Digest, artifactTypes []string,
+func (bdw BoltDB) GetReferrersInfo(repo string, referredDigest godigest.Digest, artifactTypes []string,
 ) ([]metaTypes.ReferrerInfo, error) {
 	referrersInfoResult := []metaTypes.ReferrerInfo{}
 
@@ -390,7 +390,7 @@ func (bdw DBWrapper) GetReferrersInfo(repo string, referredDigest godigest.Diges
 	return referrersInfoResult, err
 }
 
-func (bdw *DBWrapper) SetRepoReference(repo string, reference string, manifestDigest godigest.Digest,
+func (bdw *BoltDB) SetRepoReference(repo string, reference string, manifestDigest godigest.Digest,
 	mediaType string,
 ) error {
 	if err := common.ValidateRepoReferenceInput(repo, reference, manifestDigest); err != nil {
@@ -448,7 +448,7 @@ func (bdw *DBWrapper) SetRepoReference(repo string, reference string, manifestDi
 	return err
 }
 
-func (bdw *DBWrapper) GetRepoMeta(repo string) (metaTypes.RepoMetadata, error) {
+func (bdw *BoltDB) GetRepoMeta(repo string) (metaTypes.RepoMetadata, error) {
 	var repoMeta metaTypes.RepoMetadata
 
 	err := bdw.DB.Update(func(tx *bbolt.Tx) error {
@@ -473,7 +473,7 @@ func (bdw *DBWrapper) GetRepoMeta(repo string) (metaTypes.RepoMetadata, error) {
 	return repoMeta, err
 }
 
-func (bdw *DBWrapper) GetUserRepoMeta(ctx context.Context, repo string) (metaTypes.RepoMetadata, error) {
+func (bdw *BoltDB) GetUserRepoMeta(ctx context.Context, repo string) (metaTypes.RepoMetadata, error) {
 	var repoMeta metaTypes.RepoMetadata
 
 	err := bdw.DB.Update(func(tx *bbolt.Tx) error {
@@ -503,7 +503,7 @@ func (bdw *DBWrapper) GetUserRepoMeta(ctx context.Context, repo string) (metaTyp
 	return repoMeta, err
 }
 
-func (bdw *DBWrapper) SetRepoMeta(repo string, repoMeta metaTypes.RepoMetadata) error {
+func (bdw *BoltDB) SetRepoMeta(repo string, repoMeta metaTypes.RepoMetadata) error {
 	err := bdw.DB.Update(func(tx *bbolt.Tx) error {
 		buck := tx.Bucket([]byte(RepoMetadataBucket))
 
@@ -520,7 +520,7 @@ func (bdw *DBWrapper) SetRepoMeta(repo string, repoMeta metaTypes.RepoMetadata) 
 	return err
 }
 
-func (bdw *DBWrapper) DeleteRepoTag(repo string, tag string) error {
+func (bdw *BoltDB) DeleteRepoTag(repo string, tag string) error {
 	err := bdw.DB.Update(func(tx *bbolt.Tx) error {
 		buck := tx.Bucket([]byte(RepoMetadataBucket))
 
@@ -552,7 +552,7 @@ func (bdw *DBWrapper) DeleteRepoTag(repo string, tag string) error {
 	return err
 }
 
-func (bdw *DBWrapper) IncrementRepoStars(repo string) error {
+func (bdw *BoltDB) IncrementRepoStars(repo string) error {
 	err := bdw.DB.Update(func(tx *bbolt.Tx) error {
 		buck := tx.Bucket([]byte(RepoMetadataBucket))
 
@@ -581,7 +581,7 @@ func (bdw *DBWrapper) IncrementRepoStars(repo string) error {
 	return err
 }
 
-func (bdw *DBWrapper) DecrementRepoStars(repo string) error {
+func (bdw *BoltDB) DecrementRepoStars(repo string) error {
 	err := bdw.DB.Update(func(tx *bbolt.Tx) error {
 		buck := tx.Bucket([]byte(RepoMetadataBucket))
 
@@ -612,7 +612,7 @@ func (bdw *DBWrapper) DecrementRepoStars(repo string) error {
 	return err
 }
 
-func (bdw *DBWrapper) GetRepoStars(repo string) (int, error) {
+func (bdw *BoltDB) GetRepoStars(repo string) (int, error) {
 	stars := 0
 
 	err := bdw.DB.View(func(tx *bbolt.Tx) error {
@@ -639,7 +639,7 @@ func (bdw *DBWrapper) GetRepoStars(repo string) (int, error) {
 	return stars, err
 }
 
-func (bdw *DBWrapper) GetMultipleRepoMeta(ctx context.Context, filter func(repoMeta metaTypes.RepoMetadata) bool,
+func (bdw *BoltDB) GetMultipleRepoMeta(ctx context.Context, filter func(repoMeta metaTypes.RepoMetadata) bool,
 	requestedPage metaTypes.PageInput,
 ) ([]metaTypes.RepoMetadata, error) {
 	var (
@@ -684,7 +684,7 @@ func (bdw *DBWrapper) GetMultipleRepoMeta(ctx context.Context, filter func(repoM
 	return foundRepos, err
 }
 
-func (bdw *DBWrapper) IncrementImageDownloads(repo string, reference string) error {
+func (bdw *BoltDB) IncrementImageDownloads(repo string, reference string) error {
 	err := bdw.DB.Update(func(tx *bbolt.Tx) error {
 		buck := tx.Bucket([]byte(RepoMetadataBucket))
 
@@ -728,7 +728,7 @@ func (bdw *DBWrapper) IncrementImageDownloads(repo string, reference string) err
 	return err
 }
 
-func (bdw *DBWrapper) UpdateSignaturesValidity(repo string, manifestDigest godigest.Digest) error {
+func (bdw *BoltDB) UpdateSignaturesValidity(repo string, manifestDigest godigest.Digest) error {
 	err := bdw.DB.Update(func(transaction *bbolt.Tx) error {
 		// get ManifestData of signed manifest
 		manifestBuck := transaction.Bucket([]byte(ManifestDataBucket))
@@ -741,7 +741,7 @@ func (bdw *DBWrapper) UpdateSignaturesValidity(repo string, manifestDigest godig
 
 			err := json.Unmarshal(mdBlob, &manifestData)
 			if err != nil {
-				return fmt.Errorf("repodb: %w error while unmashaling manifest meta for digest %s", err, manifestDigest)
+				return fmt.Errorf("metadb: %w error while unmashaling manifest meta for digest %s", err, manifestDigest)
 			}
 
 			blob = manifestData.ManifestBlob
@@ -758,7 +758,7 @@ func (bdw *DBWrapper) UpdateSignaturesValidity(repo string, manifestDigest godig
 
 			err := json.Unmarshal(idBlob, &indexData)
 			if err != nil {
-				return fmt.Errorf("repodb: %w error while unmashaling index meta for digest %s", err, manifestDigest)
+				return fmt.Errorf("metadb: %w error while unmashaling index meta for digest %s", err, manifestDigest)
 			}
 
 			blob = indexData.IndexBlob
@@ -824,7 +824,7 @@ func (bdw *DBWrapper) UpdateSignaturesValidity(repo string, manifestDigest godig
 	return err
 }
 
-func (bdw *DBWrapper) AddManifestSignature(repo string, signedManifestDigest godigest.Digest,
+func (bdw *BoltDB) AddManifestSignature(repo string, signedManifestDigest godigest.Digest,
 	sygMeta metaTypes.SignatureMetadata,
 ) error {
 	err := bdw.DB.Update(func(tx *bbolt.Tx) error {
@@ -906,7 +906,7 @@ func (bdw *DBWrapper) AddManifestSignature(repo string, signedManifestDigest god
 	return err
 }
 
-func (bdw *DBWrapper) DeleteSignature(repo string, signedManifestDigest godigest.Digest,
+func (bdw *BoltDB) DeleteSignature(repo string, signedManifestDigest godigest.Digest,
 	sigMeta metaTypes.SignatureMetadata,
 ) error {
 	err := bdw.DB.Update(func(tx *bbolt.Tx) error {
@@ -960,7 +960,7 @@ func (bdw *DBWrapper) DeleteSignature(repo string, signedManifestDigest godigest
 	return err
 }
 
-func (bdw *DBWrapper) SearchRepos(ctx context.Context, searchText string, filter metaTypes.Filter,
+func (bdw *BoltDB) SearchRepos(ctx context.Context, searchText string, filter metaTypes.Filter,
 	requestedPage metaTypes.PageInput,
 ) ([]metaTypes.RepoMetadata, map[string]metaTypes.ManifestMetadata, map[string]metaTypes.IndexData, zcommon.PageInfo,
 	error,
@@ -1029,13 +1029,13 @@ func (bdw *DBWrapper) SearchRepos(ctx context.Context, searchText string, filter
 					manifestMeta, err := fetchManifestMetaWithCheck(repoMeta, manifestDigest,
 						manifestMetadataMap, manifestBuck)
 					if err != nil {
-						return fmt.Errorf("repodb: error fetching manifest meta for manifest with digest %s %w",
+						return fmt.Errorf("metadb: error fetching manifest meta for manifest with digest %s %w",
 							manifestDigest, err)
 					}
 
 					manifestFilterData, err := collectImageManifestFilterData(manifestDigest, repoMeta, manifestMeta)
 					if err != nil {
-						return fmt.Errorf("repodb: error collecting filter data for manifest with digest %s %w",
+						return fmt.Errorf("metadb: error collecting filter data for manifest with digest %s %w",
 							manifestDigest, err)
 					}
 
@@ -1057,7 +1057,7 @@ func (bdw *DBWrapper) SearchRepos(ctx context.Context, searchText string, filter
 
 					indexData, err := fetchIndexDataWithCheck(indexDigest, indexDataMap, indexBuck)
 					if err != nil {
-						return fmt.Errorf("repodb: error fetching index data for index with digest %s %w",
+						return fmt.Errorf("metadb: error fetching index data for index with digest %s %w",
 							indexDigest, err)
 					}
 
@@ -1065,7 +1065,7 @@ func (bdw *DBWrapper) SearchRepos(ctx context.Context, searchText string, filter
 
 					err = json.Unmarshal(indexData.IndexBlob, &indexContent)
 					if err != nil {
-						return fmt.Errorf("repodb: error while unmashaling index content for %s:%s %w",
+						return fmt.Errorf("metadb: error while unmashaling index content for %s:%s %w",
 							repoName, tag, err)
 					}
 
@@ -1073,7 +1073,7 @@ func (bdw *DBWrapper) SearchRepos(ctx context.Context, searchText string, filter
 					indexFilterData, err := collectImageIndexFilterInfo(indexDigest, repoMeta, indexData, manifestMetadataMap,
 						manifestBuck)
 					if err != nil {
-						return fmt.Errorf("repodb: error collecting filter data for index with digest %s %w",
+						return fmt.Errorf("metadb: error collecting filter data for index with digest %s %w",
 							indexDigest, err)
 					}
 
@@ -1147,7 +1147,7 @@ func fetchManifestMetaWithCheck(repoMeta metaTypes.RepoMetadata, manifestDigest 
 		err := json.Unmarshal(manifestDataBlob, &manifestData)
 		if err != nil {
 			return metaTypes.ManifestMetadata{},
-				fmt.Errorf("repodb: error while unmarshaling manifest metadata for digest %s %w", manifestDigest, err)
+				fmt.Errorf("metadb: error while unmarshaling manifest metadata for digest %s %w", manifestDigest, err)
 		}
 
 		manifestMeta = NewManifestMetadata(manifestDigest, repoMeta, manifestData)
@@ -1175,7 +1175,7 @@ func fetchIndexDataWithCheck(indexDigest string, indexDataMap map[string]metaTyp
 		err := json.Unmarshal(indexDataBlob, &indexData)
 		if err != nil {
 			return metaTypes.IndexData{},
-				fmt.Errorf("repodb: error while unmashaling index data for digest %s %w", indexDigest, err)
+				fmt.Errorf("metadb: error while unmashaling index data for digest %s %w", indexDigest, err)
 		}
 	}
 
@@ -1195,7 +1195,7 @@ func collectImageManifestFilterData(digest string, repoMeta metaTypes.RepoMetada
 	err := json.Unmarshal(manifestMeta.ConfigBlob, &configContent)
 	if err != nil {
 		return metaTypes.FilterData{},
-			fmt.Errorf("repodb: error while unmarshaling config content %w", err)
+			fmt.Errorf("metadb: error while unmarshaling config content %w", err)
 	}
 
 	if configContent.OS != "" {
@@ -1224,7 +1224,7 @@ func collectImageIndexFilterInfo(indexDigest string, repoMeta metaTypes.RepoMeta
 	err := json.Unmarshal(indexData.IndexBlob, &indexContent)
 	if err != nil {
 		return metaTypes.FilterData{},
-			fmt.Errorf("repodb: error while unmarshaling index content for digest %s %w", indexDigest, err)
+			fmt.Errorf("metadb: error while unmarshaling index content for digest %s %w", indexDigest, err)
 	}
 
 	var (
@@ -1289,7 +1289,7 @@ func NewManifestMetadata(manifestDigest string, repoMeta metaTypes.RepoMetadata,
 	return manifestMeta
 }
 
-func (bdw *DBWrapper) FilterTags(ctx context.Context, filter metaTypes.FilterFunc,
+func (bdw *BoltDB) FilterTags(ctx context.Context, filter metaTypes.FilterFunc,
 	requestedPage metaTypes.PageInput,
 ) ([]metaTypes.RepoMetadata, map[string]metaTypes.ManifestMetadata, map[string]metaTypes.IndexData,
 	zcommon.PageInfo, error,
@@ -1347,7 +1347,7 @@ func (bdw *DBWrapper) FilterTags(ctx context.Context, filter metaTypes.FilterFun
 
 					manifestMeta, err := fetchManifestMetaWithCheck(repoMeta, manifestDigest, manifestMetadataMap, manifestBuck)
 					if err != nil {
-						return fmt.Errorf("repodb: error while unmashaling manifest metadata for digest %s %w", manifestDigest, err)
+						return fmt.Errorf("metadb: error while unmashaling manifest metadata for digest %s %w", manifestDigest, err)
 					}
 
 					if !filter(repoMeta, manifestMeta) {
@@ -1362,14 +1362,14 @@ func (bdw *DBWrapper) FilterTags(ctx context.Context, filter metaTypes.FilterFun
 
 					indexData, err := fetchIndexDataWithCheck(indexDigest, indexDataMap, indexBuck)
 					if err != nil {
-						return fmt.Errorf("repodb: error while getting index data for digest %s %w", indexDigest, err)
+						return fmt.Errorf("metadb: error while getting index data for digest %s %w", indexDigest, err)
 					}
 
 					var indexContent ispec.Index
 
 					err = json.Unmarshal(indexData.IndexBlob, &indexContent)
 					if err != nil {
-						return fmt.Errorf("repodb: error while unmashaling index content for digest %s %w", indexDigest, err)
+						return fmt.Errorf("metadb: error while unmashaling index content for digest %s %w", indexDigest, err)
 					}
 
 					manifestHasBeenMatched := false
@@ -1379,7 +1379,7 @@ func (bdw *DBWrapper) FilterTags(ctx context.Context, filter metaTypes.FilterFun
 
 						manifestMeta, err := fetchManifestMetaWithCheck(repoMeta, manifestDigest, manifestMetadataMap, manifestBuck)
 						if err != nil {
-							return fmt.Errorf("repodb: error while getting manifest data for digest %s %w", manifestDigest, err)
+							return fmt.Errorf("metadb: error while getting manifest data for digest %s %w", manifestDigest, err)
 						}
 
 						manifestMetadataMap[manifestDigest] = manifestMeta
@@ -1429,7 +1429,7 @@ func (bdw *DBWrapper) FilterTags(ctx context.Context, filter metaTypes.FilterFun
 	return foundRepos, foundManifestMetadataMap, foundindexDataMap, pageInfo, err
 }
 
-func (bdw *DBWrapper) FilterRepos(ctx context.Context, filter metaTypes.FilterRepoFunc,
+func (bdw *BoltDB) FilterRepos(ctx context.Context, filter metaTypes.FilterRepoFunc,
 	requestedPage metaTypes.PageInput,
 ) ([]metaTypes.RepoMetadata, map[string]metaTypes.ManifestMetadata, map[string]metaTypes.IndexData,
 	zcommon.PageInfo, error,
@@ -1494,7 +1494,7 @@ func (bdw *DBWrapper) FilterRepos(ctx context.Context, filter metaTypes.FilterRe
 	return foundRepos, foundManifestMetadataMap, foundIndexDataMap, pageInfo, err
 }
 
-func (bdw *DBWrapper) SearchTags(ctx context.Context, searchText string, filter metaTypes.Filter,
+func (bdw *BoltDB) SearchTags(ctx context.Context, searchText string, filter metaTypes.Filter,
 	requestedPage metaTypes.PageInput,
 ) ([]metaTypes.RepoMetadata, map[string]metaTypes.ManifestMetadata, map[string]metaTypes.IndexData,
 	zcommon.PageInfo, error,
@@ -1520,7 +1520,7 @@ func (bdw *DBWrapper) SearchTags(ctx context.Context, searchText string, filter 
 	if err != nil {
 		return []metaTypes.RepoMetadata{}, map[string]metaTypes.ManifestMetadata{}, map[string]metaTypes.IndexData{},
 			zcommon.PageInfo{},
-			fmt.Errorf("repodb: error while parsing search text, invalid format %w", err)
+			fmt.Errorf("metadb: error while parsing search text, invalid format %w", err)
 	}
 
 	err = bdw.DB.View(func(transaction *bbolt.Tx) error {
@@ -1569,13 +1569,13 @@ func (bdw *DBWrapper) SearchTags(ctx context.Context, searchText string, filter 
 
 					manifestMeta, err := fetchManifestMetaWithCheck(repoMeta, manifestDigest, manifestMetadataMap, manifestBuck)
 					if err != nil {
-						return fmt.Errorf("repodb: error fetching manifest meta for manifest with digest %s %w",
+						return fmt.Errorf("metadb: error fetching manifest meta for manifest with digest %s %w",
 							manifestDigest, err)
 					}
 
 					imageFilterData, err := collectImageManifestFilterData(manifestDigest, repoMeta, manifestMeta)
 					if err != nil {
-						return fmt.Errorf("repodb: error collecting filter data for manifest with digest %s %w",
+						return fmt.Errorf("metadb: error collecting filter data for manifest with digest %s %w",
 							manifestDigest, err)
 					}
 
@@ -1591,7 +1591,7 @@ func (bdw *DBWrapper) SearchTags(ctx context.Context, searchText string, filter 
 
 					indexData, err := fetchIndexDataWithCheck(indexDigest, indexDataMap, indexBuck)
 					if err != nil {
-						return fmt.Errorf("repodb: error fetching index data for index with digest %s %w",
+						return fmt.Errorf("metadb: error fetching index data for index with digest %s %w",
 							indexDigest, err)
 					}
 
@@ -1599,7 +1599,7 @@ func (bdw *DBWrapper) SearchTags(ctx context.Context, searchText string, filter 
 
 					err = json.Unmarshal(indexData.IndexBlob, &indexContent)
 					if err != nil {
-						return fmt.Errorf("repodb: error collecting filter data for index with digest %s %w",
+						return fmt.Errorf("metadb: error collecting filter data for index with digest %s %w",
 							indexDigest, err)
 					}
 
@@ -1610,13 +1610,13 @@ func (bdw *DBWrapper) SearchTags(ctx context.Context, searchText string, filter 
 
 						manifestMeta, err := fetchManifestMetaWithCheck(repoMeta, manifestDigest, manifestMetadataMap, manifestBuck)
 						if err != nil {
-							return fmt.Errorf("repodb: error fetching from db manifest meta for manifest with digest %s %w",
+							return fmt.Errorf("metadb: error fetching from db manifest meta for manifest with digest %s %w",
 								manifestDigest, err)
 						}
 
 						manifestFilterData, err := collectImageManifestFilterData(manifestDigest, repoMeta, manifestMeta)
 						if err != nil {
-							return fmt.Errorf("repodb: error collecting filter data for manifest with digest %s %w",
+							return fmt.Errorf("metadb: error collecting filter data for manifest with digest %s %w",
 								manifestDigest, err)
 						}
 
@@ -1667,7 +1667,7 @@ func (bdw *DBWrapper) SearchTags(ctx context.Context, searchText string, filter 
 	return foundRepos, foundManifestMetadataMap, foundindexDataMap, pageInfo, err
 }
 
-func (bdw *DBWrapper) ToggleStarRepo(ctx context.Context, repo string) (metaTypes.ToggleState, error) {
+func (bdw *BoltDB) ToggleStarRepo(ctx context.Context, repo string) (metaTypes.ToggleState, error) {
 	acCtx, err := localCtx.GetAccessControlContext(ctx)
 	if err != nil {
 		return metaTypes.NotChanged, err
@@ -1761,7 +1761,7 @@ func (bdw *DBWrapper) ToggleStarRepo(ctx context.Context, repo string) (metaType
 	return res, nil
 }
 
-func (bdw *DBWrapper) GetStarredRepos(ctx context.Context) ([]string, error) {
+func (bdw *BoltDB) GetStarredRepos(ctx context.Context) ([]string, error) {
 	starredRepos := make([]string, 0)
 
 	acCtx, err := localCtx.GetAccessControlContext(ctx)
@@ -1804,7 +1804,7 @@ func (bdw *DBWrapper) GetStarredRepos(ctx context.Context) ([]string, error) {
 	return starredRepos, err
 }
 
-func (bdw *DBWrapper) ToggleBookmarkRepo(ctx context.Context, repo string) (metaTypes.ToggleState, error) {
+func (bdw *BoltDB) ToggleBookmarkRepo(ctx context.Context, repo string) (metaTypes.ToggleState, error) {
 	acCtx, err := localCtx.GetAccessControlContext(ctx)
 	if err != nil {
 		return metaTypes.NotChanged, err
@@ -1866,7 +1866,7 @@ func (bdw *DBWrapper) ToggleBookmarkRepo(ctx context.Context, repo string) (meta
 	return res, nil
 }
 
-func (bdw *DBWrapper) GetBookmarkedRepos(ctx context.Context) ([]string, error) {
+func (bdw *BoltDB) GetBookmarkedRepos(ctx context.Context) ([]string, error) {
 	bookmarkedRepos := []string{}
 
 	acCtx, err := localCtx.GetAccessControlContext(ctx)
@@ -1909,7 +1909,7 @@ func (bdw *DBWrapper) GetBookmarkedRepos(ctx context.Context) ([]string, error) 
 	return bookmarkedRepos, err
 }
 
-func (bdw *DBWrapper) PatchDB() error {
+func (bdw *BoltDB) PatchDB() error {
 	var DBVersion string
 
 	err := bdw.DB.View(func(tx *bbolt.Tx) error {

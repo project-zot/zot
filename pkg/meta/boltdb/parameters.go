@@ -1,4 +1,4 @@
-package bolt
+package boltdb
 
 import (
 	"path"

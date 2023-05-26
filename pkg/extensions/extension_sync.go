@@ -12,7 +12,7 @@ import (
 	"zotregistry.io/zot/pkg/storage"
 )
 
-func EnableSyncExtension(config *config.Config, repoDB metaTypes.RepoDB,
+func EnableSyncExtension(config *config.Config, metaDB metaTypes.MetaDB,
 	storeController storage.StoreController, sch *scheduler.Scheduler, log log.Logger,
 ) (*sync.BaseOnDemand, error) {
 	if config.Extensions.Sync != nil && *config.Extensions.Sync.Enable {
@@ -24,7 +24,7 @@ func EnableSyncExtension(config *config.Config, repoDB metaTypes.RepoDB,
 
 			if isPeriodical || isOnDemand {
 				service, err := sync.New(registryConfig, config.Extensions.Sync.CredentialsFile,
-					storeController, repoDB, log)
+					storeController, metaDB, log)
 				if err != nil {
 					return nil, err
 				}

@@ -7,17 +7,17 @@ import (
 	"zotregistry.io/zot/errors"
 	"zotregistry.io/zot/pkg/api/config"
 	"zotregistry.io/zot/pkg/log"
-	"zotregistry.io/zot/pkg/meta/bolt"
-	"zotregistry.io/zot/pkg/meta/dynamo"
+	"zotregistry.io/zot/pkg/meta/boltdb"
+	dynamodb1 "zotregistry.io/zot/pkg/meta/dynamodb"
 	"zotregistry.io/zot/pkg/meta/signatures"
 	metaTypes "zotregistry.io/zot/pkg/meta/types"
 )
 
-func New(storageConfig config.StorageConfig, log log.Logger) (metaTypes.RepoDB, error) {
+func New(storageConfig config.StorageConfig, log log.Logger) (metaTypes.MetaDB, error) {
 	if storageConfig.RemoteCache {
 		dynamoParams := getDynamoParams(storageConfig.CacheDriver, log)
 
-		client, err := dynamo.GetDynamoClient(dynamoParams)
+		client, err := dynamodb1.GetDynamoClient(dynamoParams)
 		if err != nil {
 			return nil, err
 		}
@@ -25,10 +25,10 @@ func New(storageConfig config.StorageConfig, log log.Logger) (metaTypes.RepoDB, 
 		return Create("dynamodb", client, dynamoParams, log) //nolint:contextcheck
 	}
 
-	params := bolt.DBParameters{}
+	params := boltdb.DBParameters{}
 	params.RootDir = storageConfig.RootDirectory
 
-	driver, err := bolt.GetBoltDriver(params)
+	driver, err := boltdb.GetBoltDriver(params)
 	if err != nil {
 		return nil, err
 	}
@@ -42,7 +42,7 @@ func New(storageConfig config.StorageConfig, log log.Logger) (metaTypes.RepoDB, 
 }
 
 func Create(dbtype string, dbDriver, parameters interface{}, log log.Logger, //nolint:contextcheck
-) (metaTypes.RepoDB, error,
+) (metaTypes.MetaDB, error,
 ) {
 	switch dbtype {
 	case "boltdb":
@@ -52,7 +52,7 @@ func Create(dbtype string, dbDriver, parameters interface{}, log log.Logger, //n
 				panic("failed type assertion")
 			}
 
-			return bolt.NewBoltDBWrapper(properDriver, log)
+			return boltdb.New(properDriver, log)
 		}
 	case "dynamodb":
 		{
@@ -61,12 +61,12 @@ func Create(dbtype string, dbDriver, parameters interface{}, log log.Logger, //n
 				panic("failed type assertion")
 			}
 
-			properParameters, ok := parameters.(dynamo.DBDriverParameters)
+			properParameters, ok := parameters.(dynamodb1.DBDriverParameters)
 			if !ok {
 				panic("failed type assertion")
 			}
 
-			return dynamo.NewDynamoDBWrapper(properDriver, properParameters, log)
+			return dynamodb1.New(properDriver, properParameters, log)
 		}
 	default:
 		{
@@ -75,7 +75,7 @@ func Create(dbtype string, dbDriver, parameters interface{}, log log.Logger, //n
 	}
 }
 
-func getDynamoParams(cacheDriverConfig map[string]interface{}, log log.Logger) dynamo.DBDriverParameters {
+func getDynamoParams(cacheDriverConfig map[string]interface{}, log log.Logger) dynamodb1.DBDriverParameters {
 	allParametersOk := true
 
 	endpoint, ok := toStringIfOk(cacheDriverConfig, "endpoint", log)
@@ -103,7 +103,7 @@ func getDynamoParams(cacheDriverConfig map[string]interface{}, log log.Logger) d
 		panic("dynamo parameters are not specified correctly, can't proceede")
 	}
 
-	return dynamo.DBDriverParameters{
+	return dynamodb1.DBDriverParameters{
 		Endpoint:              endpoint,
 		Region:                region,
 		RepoMetaTablename:     repoMetaTablename,

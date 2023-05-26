@@ -1,4 +1,4 @@
-package dynamo
+package dynamodb
 
 import (
 	"context"
@@ -51,7 +51,7 @@ func TestWrapperErrors(t *testing.T) {
 			config.WithEndpointResolverWithOptions(customResolver))
 		So(err, ShouldBeNil)
 
-		dynamoWrapper := DBWrapper{
+		dynamoWrapper := DynamoDB{
 			Client:                dynamodb.NewFromConfig(cfg),
 			RepoMetaTablename:     repoMetaTablename,
 			ManifestDataTablename: manifestDataTablename,
@@ -91,7 +91,7 @@ func TestWrapperErrors(t *testing.T) {
 			config.WithEndpointResolverWithOptions(customResolver))
 		So(err, ShouldBeNil)
 
-		dynamoWrapper := DBWrapper{
+		dynamoWrapper := DynamoDB{
 			Client:                dynamodb.NewFromConfig(cfg),
 			RepoMetaTablename:     repoMetaTablename,
 			ManifestDataTablename: manifestDataTablename,

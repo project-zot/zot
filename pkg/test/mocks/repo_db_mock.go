@@ -9,7 +9,7 @@ import (
 	metaTypes "zotregistry.io/zot/pkg/meta/types"
 )
 
-type RepoDBMock struct {
+type MetaDBMock struct {
 	SetRepoDescriptionFn func(repo, description string) error
 
 	IncrementRepoStarsFn func(repo string) error
@@ -108,7 +108,7 @@ type RepoDBMock struct {
 	PatchDBFn func() error
 }
 
-func (sdm RepoDBMock) SetRepoDescription(repo, description string) error {
+func (sdm MetaDBMock) SetRepoDescription(repo, description string) error {
 	if sdm.SetRepoDescriptionFn != nil {
 		return sdm.SetRepoDescriptionFn(repo, description)
 	}
@@ -116,7 +116,7 @@ func (sdm RepoDBMock) SetRepoDescription(repo, description string) error {
 	return nil
 }
 
-func (sdm RepoDBMock) IncrementRepoStars(repo string) error {
+func (sdm MetaDBMock) IncrementRepoStars(repo string) error {
 	if sdm.IncrementRepoStarsFn != nil {
 		return sdm.IncrementRepoStarsFn(repo)
 	}
@@ -124,7 +124,7 @@ func (sdm RepoDBMock) IncrementRepoStars(repo string) error {
 	return nil
 }
 
-func (sdm RepoDBMock) DecrementRepoStars(repo string) error {
+func (sdm MetaDBMock) DecrementRepoStars(repo string) error {
 	if sdm.DecrementRepoStarsFn != nil {
 		return sdm.DecrementRepoStarsFn(repo)
 	}
@@ -132,7 +132,7 @@ func (sdm RepoDBMock) DecrementRepoStars(repo string) error {
 	return nil
 }
 
-func (sdm RepoDBMock) GetRepoStars(repo string) (int, error) {
+func (sdm MetaDBMock) GetRepoStars(repo string) (int, error) {
 	if sdm.GetRepoStarsFn != nil {
 		return sdm.GetRepoStarsFn(repo)
 	}
@@ -140,7 +140,7 @@ func (sdm RepoDBMock) GetRepoStars(repo string) (int, error) {
 	return 0, nil
 }
 
-func (sdm RepoDBMock) SetRepoReference(repo string, reference string, manifestDigest godigest.Digest,
+func (sdm MetaDBMock) SetRepoReference(repo string, reference string, manifestDigest godigest.Digest,
 	mediaType string,
 ) error {
 	if sdm.SetRepoReferenceFn != nil {
@@ -150,7 +150,7 @@ func (sdm RepoDBMock) SetRepoReference(repo string, reference string, manifestDi
 	return nil
 }
 
-func (sdm RepoDBMock) DeleteRepoTag(repo string, tag string) error {
+func (sdm MetaDBMock) DeleteRepoTag(repo string, tag string) error {
 	if sdm.DeleteRepoTagFn != nil {
 		return sdm.DeleteRepoTagFn(repo, tag)
 	}
@@ -158,7 +158,7 @@ func (sdm RepoDBMock) DeleteRepoTag(repo string, tag string) error {
 	return nil
 }
 
-func (sdm RepoDBMock) GetRepoMeta(repo string) (metaTypes.RepoMetadata, error) {
+func (sdm MetaDBMock) GetRepoMeta(repo string) (metaTypes.RepoMetadata, error) {
 	if sdm.GetRepoMetaFn != nil {
 		return sdm.GetRepoMetaFn(repo)
 	}
@@ -166,7 +166,7 @@ func (sdm RepoDBMock) GetRepoMeta(repo string) (metaTypes.RepoMetadata, error) {
 	return metaTypes.RepoMetadata{}, nil
 }
 
-func (sdm RepoDBMock) GetUserRepoMeta(ctx context.Context, repo string) (metaTypes.RepoMetadata, error) {
+func (sdm MetaDBMock) GetUserRepoMeta(ctx context.Context, repo string) (metaTypes.RepoMetadata, error) {
 	if sdm.GetUserRepoMetaFn != nil {
 		return sdm.GetUserRepoMetaFn(ctx, repo)
 	}
@@ -174,7 +174,7 @@ func (sdm RepoDBMock) GetUserRepoMeta(ctx context.Context, repo string) (metaTyp
 	return metaTypes.RepoMetadata{}, nil
 }
 
-func (sdm RepoDBMock) SetRepoMeta(repo string, repoMeta metaTypes.RepoMetadata) error {
+func (sdm MetaDBMock) SetRepoMeta(repo string, repoMeta metaTypes.RepoMetadata) error {
 	if sdm.SetRepoMetaFn != nil {
 		return sdm.SetRepoMetaFn(repo, repoMeta)
 	}
@@ -182,7 +182,7 @@ func (sdm RepoDBMock) SetRepoMeta(repo string, repoMeta metaTypes.RepoMetadata) 
 	return nil
 }
 
-func (sdm RepoDBMock) GetMultipleRepoMeta(ctx context.Context, filter func(repoMeta metaTypes.RepoMetadata) bool,
+func (sdm MetaDBMock) GetMultipleRepoMeta(ctx context.Context, filter func(repoMeta metaTypes.RepoMetadata) bool,
 	requestedPage metaTypes.PageInput,
 ) ([]metaTypes.RepoMetadata, error) {
 	if sdm.GetMultipleRepoMetaFn != nil {
@@ -192,7 +192,7 @@ func (sdm RepoDBMock) GetMultipleRepoMeta(ctx context.Context, filter func(repoM
 	return []metaTypes.RepoMetadata{}, nil
 }
 
-func (sdm RepoDBMock) GetManifestData(manifestDigest godigest.Digest) (metaTypes.ManifestData, error) {
+func (sdm MetaDBMock) GetManifestData(manifestDigest godigest.Digest) (metaTypes.ManifestData, error) {
 	if sdm.GetManifestDataFn != nil {
 		return sdm.GetManifestDataFn(manifestDigest)
 	}
@@ -200,7 +200,7 @@ func (sdm RepoDBMock) GetManifestData(manifestDigest godigest.Digest) (metaTypes
 	return metaTypes.ManifestData{}, nil
 }
 
-func (sdm RepoDBMock) SetManifestData(manifestDigest godigest.Digest, md metaTypes.ManifestData) error {
+func (sdm MetaDBMock) SetManifestData(manifestDigest godigest.Digest, md metaTypes.ManifestData) error {
 	if sdm.SetManifestDataFn != nil {
 		return sdm.SetManifestDataFn(manifestDigest, md)
 	}
@@ -208,7 +208,7 @@ func (sdm RepoDBMock) SetManifestData(manifestDigest godigest.Digest, md metaTyp
 	return nil
 }
 
-func (sdm RepoDBMock) GetManifestMeta(repo string, manifestDigest godigest.Digest) (metaTypes.ManifestMetadata, error) {
+func (sdm MetaDBMock) GetManifestMeta(repo string, manifestDigest godigest.Digest) (metaTypes.ManifestMetadata, error) {
 	if sdm.GetManifestMetaFn != nil {
 		return sdm.GetManifestMetaFn(repo, manifestDigest)
 	}
@@ -216,7 +216,7 @@ func (sdm RepoDBMock) GetManifestMeta(repo string, manifestDigest godigest.Diges
 	return metaTypes.ManifestMetadata{}, nil
 }
 
-func (sdm RepoDBMock) SetManifestMeta(repo string, manifestDigest godigest.Digest, mm metaTypes.ManifestMetadata,
+func (sdm MetaDBMock) SetManifestMeta(repo string, manifestDigest godigest.Digest, mm metaTypes.ManifestMetadata,
 ) error {
 	if sdm.SetManifestMetaFn != nil {
 		return sdm.SetManifestMetaFn(repo, manifestDigest, mm)
@@ -225,7 +225,7 @@ func (sdm RepoDBMock) SetManifestMeta(repo string, manifestDigest godigest.Diges
 	return nil
 }
 
-func (sdm RepoDBMock) IncrementImageDownloads(repo string, reference string) error {
+func (sdm MetaDBMock) IncrementImageDownloads(repo string, reference string) error {
 	if sdm.IncrementImageDownloadsFn != nil {
 		return sdm.IncrementImageDownloadsFn(repo, reference)
 	}
@@ -233,7 +233,7 @@ func (sdm RepoDBMock) IncrementImageDownloads(repo string, reference string) err
 	return nil
 }
 
-func (sdm RepoDBMock) UpdateSignaturesValidity(repo string, manifestDigest godigest.Digest) error {
+func (sdm MetaDBMock) UpdateSignaturesValidity(repo string, manifestDigest godigest.Digest) error {
 	if sdm.UpdateSignaturesValidityFn != nil {
 		return sdm.UpdateSignaturesValidityFn(repo, manifestDigest)
 	}
@@ -241,7 +241,7 @@ func (sdm RepoDBMock) UpdateSignaturesValidity(repo string, manifestDigest godig
 	return nil
 }
 
-func (sdm RepoDBMock) AddManifestSignature(repo string, signedManifestDigest godigest.Digest,
+func (sdm MetaDBMock) AddManifestSignature(repo string, signedManifestDigest godigest.Digest,
 	sm metaTypes.SignatureMetadata,
 ) error {
 	if sdm.AddManifestSignatureFn != nil {
@@ -251,7 +251,7 @@ func (sdm RepoDBMock) AddManifestSignature(repo string, signedManifestDigest god
 	return nil
 }
 
-func (sdm RepoDBMock) DeleteSignature(repo string, signedManifestDigest godigest.Digest,
+func (sdm MetaDBMock) DeleteSignature(repo string, signedManifestDigest godigest.Digest,
 	sm metaTypes.SignatureMetadata,
 ) error {
 	if sdm.DeleteSignatureFn != nil {
@@ -261,7 +261,7 @@ func (sdm RepoDBMock) DeleteSignature(repo string, signedManifestDigest godigest
 	return nil
 }
 
-func (sdm RepoDBMock) SearchRepos(ctx context.Context, searchText string, filter metaTypes.Filter,
+func (sdm MetaDBMock) SearchRepos(ctx context.Context, searchText string, filter metaTypes.Filter,
 	requestedPage metaTypes.PageInput,
 ) ([]metaTypes.RepoMetadata, map[string]metaTypes.ManifestMetadata, map[string]metaTypes.IndexData, common.PageInfo,
 	error,
@@ -274,7 +274,7 @@ func (sdm RepoDBMock) SearchRepos(ctx context.Context, searchText string, filter
 		map[string]metaTypes.IndexData{}, common.PageInfo{}, nil
 }
 
-func (sdm RepoDBMock) SearchTags(ctx context.Context, searchText string, filter metaTypes.Filter,
+func (sdm MetaDBMock) SearchTags(ctx context.Context, searchText string, filter metaTypes.Filter,
 	requestedPage metaTypes.PageInput,
 ) ([]metaTypes.RepoMetadata, map[string]metaTypes.ManifestMetadata, map[string]metaTypes.IndexData, common.PageInfo,
 	error,
@@ -287,7 +287,7 @@ func (sdm RepoDBMock) SearchTags(ctx context.Context, searchText string, filter 
 		map[string]metaTypes.IndexData{}, common.PageInfo{}, nil
 }
 
-func (sdm RepoDBMock) FilterRepos(ctx context.Context, filter metaTypes.FilterRepoFunc,
+func (sdm MetaDBMock) FilterRepos(ctx context.Context, filter metaTypes.FilterRepoFunc,
 	requestedPage metaTypes.PageInput,
 ) ([]metaTypes.RepoMetadata, map[string]metaTypes.ManifestMetadata, map[string]metaTypes.IndexData, common.PageInfo,
 	error,
@@ -300,7 +300,7 @@ func (sdm RepoDBMock) FilterRepos(ctx context.Context, filter metaTypes.FilterRe
 		map[string]metaTypes.IndexData{}, common.PageInfo{}, nil
 }
 
-func (sdm RepoDBMock) FilterTags(ctx context.Context, filter metaTypes.FilterFunc,
+func (sdm MetaDBMock) FilterTags(ctx context.Context, filter metaTypes.FilterFunc,
 	requestedPage metaTypes.PageInput,
 ) ([]metaTypes.RepoMetadata, map[string]metaTypes.ManifestMetadata, map[string]metaTypes.IndexData, common.PageInfo,
 	error,
@@ -313,7 +313,7 @@ func (sdm RepoDBMock) FilterTags(ctx context.Context, filter metaTypes.FilterFun
 		map[string]metaTypes.IndexData{}, common.PageInfo{}, nil
 }
 
-func (sdm RepoDBMock) SearchDigests(ctx context.Context, searchText string, requestedPage metaTypes.PageInput,
+func (sdm MetaDBMock) SearchDigests(ctx context.Context, searchText string, requestedPage metaTypes.PageInput,
 ) ([]metaTypes.RepoMetadata, map[string]metaTypes.ManifestMetadata, error) {
 	if sdm.SearchDigestsFn != nil {
 		return sdm.SearchDigestsFn(ctx, searchText, requestedPage)
@@ -322,7 +322,7 @@ func (sdm RepoDBMock) SearchDigests(ctx context.Context, searchText string, requ
 	return []metaTypes.RepoMetadata{}, map[string]metaTypes.ManifestMetadata{}, nil
 }
 
-func (sdm RepoDBMock) SearchLayers(ctx context.Context, searchText string, requestedPage metaTypes.PageInput,
+func (sdm MetaDBMock) SearchLayers(ctx context.Context, searchText string, requestedPage metaTypes.PageInput,
 ) ([]metaTypes.RepoMetadata, map[string]metaTypes.ManifestMetadata, error) {
 	if sdm.SearchLayersFn != nil {
 		return sdm.SearchLayersFn(ctx, searchText, requestedPage)
@@ -331,7 +331,7 @@ func (sdm RepoDBMock) SearchLayers(ctx context.Context, searchText string, reque
 	return []metaTypes.RepoMetadata{}, map[string]metaTypes.ManifestMetadata{}, nil
 }
 
-func (sdm RepoDBMock) SearchForAscendantImages(ctx context.Context, searchText string,
+func (sdm MetaDBMock) SearchForAscendantImages(ctx context.Context, searchText string,
 	requestedPage metaTypes.PageInput,
 ) ([]metaTypes.RepoMetadata, map[string]metaTypes.ManifestMetadata, error) {
 	if sdm.SearchForAscendantImagesFn != nil {
@@ -341,7 +341,7 @@ func (sdm RepoDBMock) SearchForAscendantImages(ctx context.Context, searchText s
 	return []metaTypes.RepoMetadata{}, map[string]metaTypes.ManifestMetadata{}, nil
 }
 
-func (sdm RepoDBMock) SearchForDescendantImages(ctx context.Context, searchText string,
+func (sdm MetaDBMock) SearchForDescendantImages(ctx context.Context, searchText string,
 	requestedPage metaTypes.PageInput,
 ) ([]metaTypes.RepoMetadata, map[string]metaTypes.ManifestMetadata, error) {
 	if sdm.SearchForDescendantImagesFn != nil {
@@ -351,7 +351,7 @@ func (sdm RepoDBMock) SearchForDescendantImages(ctx context.Context, searchText 
 	return []metaTypes.RepoMetadata{}, map[string]metaTypes.ManifestMetadata{}, nil
 }
 
-func (sdm RepoDBMock) SetIndexData(digest godigest.Digest, indexData metaTypes.IndexData) error {
+func (sdm MetaDBMock) SetIndexData(digest godigest.Digest, indexData metaTypes.IndexData) error {
 	if sdm.SetIndexDataFn != nil {
 		return sdm.SetIndexDataFn(digest, indexData)
 	}
@@ -359,7 +359,7 @@ func (sdm RepoDBMock) SetIndexData(digest godigest.Digest, indexData metaTypes.I
 	return nil
 }
 
-func (sdm RepoDBMock) GetIndexData(indexDigest godigest.Digest) (metaTypes.IndexData, error) {
+func (sdm MetaDBMock) GetIndexData(indexDigest godigest.Digest) (metaTypes.IndexData, error) {
 	if sdm.GetIndexDataFn != nil {
 		return sdm.GetIndexDataFn(indexDigest)
 	}
@@ -367,7 +367,7 @@ func (sdm RepoDBMock) GetIndexData(indexDigest godigest.Digest) (metaTypes.Index
 	return metaTypes.IndexData{}, nil
 }
 
-func (sdm RepoDBMock) PatchDB() error {
+func (sdm MetaDBMock) PatchDB() error {
 	if sdm.PatchDBFn != nil {
 		return sdm.PatchDBFn()
 	}
@@ -375,7 +375,7 @@ func (sdm RepoDBMock) PatchDB() error {
 	return nil
 }
 
-func (sdm RepoDBMock) SetReferrer(repo string, referredDigest godigest.Digest, referrer metaTypes.ReferrerInfo) error {
+func (sdm MetaDBMock) SetReferrer(repo string, referredDigest godigest.Digest, referrer metaTypes.ReferrerInfo) error {
 	if sdm.SetReferrerFn != nil {
 		return sdm.SetReferrerFn(repo, referredDigest, referrer)
 	}
@@ -383,7 +383,7 @@ func (sdm RepoDBMock) SetReferrer(repo string, referredDigest godigest.Digest, r
 	return nil
 }
 
-func (sdm RepoDBMock) DeleteReferrer(repo string, referredDigest godigest.Digest,
+func (sdm MetaDBMock) DeleteReferrer(repo string, referredDigest godigest.Digest,
 	referrerDigest godigest.Digest,
 ) error {
 	if sdm.DeleteReferrerFn != nil {
@@ -393,7 +393,7 @@ func (sdm RepoDBMock) DeleteReferrer(repo string, referredDigest godigest.Digest
 	return nil
 }
 
-func (sdm RepoDBMock) GetReferrersInfo(repo string, referredDigest godigest.Digest,
+func (sdm MetaDBMock) GetReferrersInfo(repo string, referredDigest godigest.Digest,
 	artifactTypes []string,
 ) ([]metaTypes.ReferrerInfo, error) {
 	if sdm.GetReferrersInfoFn != nil {
@@ -403,7 +403,7 @@ func (sdm RepoDBMock) GetReferrersInfo(repo string, referredDigest godigest.Dige
 	return []metaTypes.ReferrerInfo{}, nil
 }
 
-func (sdm RepoDBMock) GetStarredRepos(ctx context.Context) ([]string, error) {
+func (sdm MetaDBMock) GetStarredRepos(ctx context.Context) ([]string, error) {
 	if sdm.GetStarredReposFn != nil {
 		return sdm.GetStarredReposFn(ctx)
 	}
@@ -411,7 +411,7 @@ func (sdm RepoDBMock) GetStarredRepos(ctx context.Context) ([]string, error) {
 	return []string{}, nil
 }
 
-func (sdm RepoDBMock) GetBookmarkedRepos(ctx context.Context) ([]string, error) {
+func (sdm MetaDBMock) GetBookmarkedRepos(ctx context.Context) ([]string, error) {
 	if sdm.GetBookmarkedReposFn != nil {
 		return sdm.GetBookmarkedReposFn(ctx)
 	}
@@ -419,7 +419,7 @@ func (sdm RepoDBMock) GetBookmarkedRepos(ctx context.Context) ([]string, error) 
 	return []string{}, nil
 }
 
-func (sdm RepoDBMock) ToggleStarRepo(ctx context.Context, repo string) (metaTypes.ToggleState, error) {
+func (sdm MetaDBMock) ToggleStarRepo(ctx context.Context, repo string) (metaTypes.ToggleState, error) {
 	if sdm.ToggleStarRepoFn != nil {
 		return sdm.ToggleStarRepoFn(ctx, repo)
 	}
@@ -427,7 +427,7 @@ func (sdm RepoDBMock) ToggleStarRepo(ctx context.Context, repo string) (metaType
 	return metaTypes.NotChanged, nil
 }
 
-func (sdm RepoDBMock) ToggleBookmarkRepo(ctx context.Context, repo string) (metaTypes.ToggleState, error) {
+func (sdm MetaDBMock) ToggleBookmarkRepo(ctx context.Context, repo string) (metaTypes.ToggleState, error) {
 	if sdm.ToggleBookmarkRepoFn != nil {
 		return sdm.ToggleBookmarkRepoFn(ctx, repo)
 	}

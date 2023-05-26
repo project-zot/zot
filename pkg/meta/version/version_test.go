@@ -14,8 +14,8 @@ import (
 	"go.etcd.io/bbolt"
 
 	"zotregistry.io/zot/pkg/log"
-	"zotregistry.io/zot/pkg/meta/bolt"
-	"zotregistry.io/zot/pkg/meta/dynamo"
+	"zotregistry.io/zot/pkg/meta/boltdb"
+	dynamodb1 "zotregistry.io/zot/pkg/meta/dynamodb"
 	"zotregistry.io/zot/pkg/meta/version"
 )
 
@@ -24,13 +24,13 @@ var ErrTestError = errors.New("test error")
 func TestVersioningBoltDB(t *testing.T) {
 	Convey("Tests", t, func() {
 		tmpDir := t.TempDir()
-		boltDBParams := bolt.DBParameters{RootDir: tmpDir}
-		boltDriver, err := bolt.GetBoltDriver(boltDBParams)
+		boltDBParams := boltdb.DBParameters{RootDir: tmpDir}
+		boltDriver, err := boltdb.GetBoltDriver(boltDBParams)
 		So(err, ShouldBeNil)
 
 		log := log.NewLogger("debug", "")
 
-		boltdbWrapper, err := bolt.NewBoltDBWrapper(boltDriver, log)
+		boltdbWrapper, err := boltdb.New(boltDriver, log)
 		defer os.Remove("repo.db")
 		So(boltdbWrapper, ShouldNotBeNil)
 		So(err, ShouldBeNil)
@@ -57,7 +57,7 @@ func TestVersioningBoltDB(t *testing.T) {
 
 		Convey("DBVersion is empty", func() {
 			err := boltdbWrapper.DB.Update(func(tx *bbolt.Tx) error {
-				versionBuck := tx.Bucket([]byte(bolt.VersionBucket))
+				versionBuck := tx.Bucket([]byte(boltdb.VersionBucket))
 
 				return versionBuck.Put([]byte(version.DBVersionKey), []byte(""))
 			})
@@ -103,7 +103,7 @@ func TestVersioningBoltDB(t *testing.T) {
 
 func setBoltDBVersion(db *bbolt.DB, vers string) error {
 	err := db.Update(func(tx *bbolt.Tx) error {
-		versionBuck := tx.Bucket([]byte(bolt.VersionBucket))
+		versionBuck := tx.Bucket([]byte(boltdb.VersionBucket))
 
 		return versionBuck.Put([]byte(version.DBVersionKey), []byte(vers))
 	})
@@ -118,7 +118,7 @@ func TestVersioningDynamoDB(t *testing.T) {
 	)
 
 	Convey("Tests", t, func() {
-		params := dynamo.DBDriverParameters{
+		params := dynamodb1.DBDriverParameters{
 			Endpoint:              endpoint,
 			Region:                region,
 			RepoMetaTablename:     "RepoMetadataTable",
@@ -128,12 +128,12 @@ func TestVersioningDynamoDB(t *testing.T) {
 			VersionTablename:      "Version",
 		}
 
-		dynamoClient, err := dynamo.GetDynamoClient(params)
+		dynamoClient, err := dynamodb1.GetDynamoClient(params)
 		So(err, ShouldBeNil)
 
 		log := log.NewLogger("debug", "")
 
-		dynamoWrapper, err := dynamo.NewDynamoDBWrapper(dynamoClient, params, log)
+		dynamoWrapper, err := dynamodb1.New(dynamoClient, params, log)
 		So(err, ShouldBeNil)
 
 		So(dynamoWrapper.ResetManifestDataTable(), ShouldBeNil)

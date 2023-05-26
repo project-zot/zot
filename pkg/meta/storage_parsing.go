@@ -19,7 +19,7 @@ import (
 
 // ParseStorage will sync all repos found in the rootdirectory of the oci layout that zot was deployed on with the
 // ParseStorage database.
-func ParseStorage(repoDB metaTypes.RepoDB, storeController storage.StoreController, log log.Logger) error {
+func ParseStorage(metaDB metaTypes.MetaDB, storeController storage.StoreController, log log.Logger) error {
 	allRepos, err := getAllRepos(storeController)
 	if err != nil {
 		rootDir := storeController.DefaultStore.RootDir()
@@ -30,7 +30,7 @@ func ParseStorage(repoDB metaTypes.RepoDB, storeController storage.StoreControll
 	}
 
 	for _, repo := range allRepos {
-		err := ParseRepo(repo, repoDB, storeController, log)
+		err := ParseRepo(repo, metaDB, storeController, log)
 		if err != nil {
 			log.Error().Err(err).Str("repository", repo).Msg("load-local-layout: failed to sync repo")
 
@@ -42,7 +42,7 @@ func ParseStorage(repoDB metaTypes.RepoDB, storeController storage.StoreControll
 }
 
 // ParseRepo reads the contents of a repo and syncs all images and signatures found.
-func ParseRepo(repo string, repoDB metaTypes.RepoDB, storeController storage.StoreController, log log.Logger) error {
+func ParseRepo(repo string, metaDB metaTypes.MetaDB, storeController storage.StoreController, log log.Logger) error {
 	imageStore := storeController.GetImageStore(repo)
 
 	indexBlob, err := imageStore.GetIndexContent(repo)
@@ -61,7 +61,7 @@ func ParseRepo(repo string, repoDB metaTypes.RepoDB, storeController storage.Sto
 		return err
 	}
 
-	err = resetRepoMetaTags(repo, repoDB, log)
+	err = resetRepoMetaTags(repo, metaDB, log)
 	if err != nil && !errors.Is(err, zerr.ErrRepoMetaNotFound) {
 		log.Error().Err(err).Str("repository", repo).Msg("load-repo: failed to reset tag field in RepoMetadata for repo")
 
@@ -71,16 +71,16 @@ func ParseRepo(repo string, repoDB metaTypes.RepoDB, storeController storage.Sto
 	for _, manifest := range indexContent.Manifests {
 		tag, hasTag := manifest.Annotations[ispec.AnnotationRefName]
 
-		manifestMetaIsPresent, err := isManifestMetaPresent(repo, manifest, repoDB)
+		manifestMetaIsPresent, err := isManifestMetaPresent(repo, manifest, metaDB)
 		if err != nil {
-			log.Error().Err(err).Msg("load-repo: error checking manifestMeta in RepoDB")
+			log.Error().Err(err).Msg("load-repo: error checking manifestMeta in MetaDB")
 
 			return err
 		}
 
 		// this check helps reduce unecesary reads from storage
 		if manifestMetaIsPresent && hasTag {
-			err = repoDB.SetRepoReference(repo, tag, manifest.Digest, manifest.MediaType)
+			err = metaDB.SetRepoReference(repo, tag, manifest.Digest, manifest.MediaType)
 			if err != nil {
 				log.Error().Err(err).Str("repository", repo).Str("tag", tag).Msg("load-repo: failed to set repo tag")
 
@@ -114,7 +114,7 @@ func ParseRepo(repo string, repoDB metaTypes.RepoDB, storeController storage.Sto
 				return err
 			}
 
-			err = repoDB.AddManifestSignature(repo, signedManifestDigest,
+			err = metaDB.AddManifestSignature(repo, signedManifestDigest,
 				metaTypes.SignatureMetadata{
 					SignatureType:   signatureType,
 					SignatureDigest: digest.String(),
@@ -128,7 +128,7 @@ func ParseRepo(repo string, repoDB metaTypes.RepoDB, storeController storage.Sto
 				return err
 			}
 
-			err = repoDB.UpdateSignaturesValidity(repo, signedManifestDigest)
+			err = metaDB.UpdateSignaturesValidity(repo, signedManifestDigest)
 			if err != nil {
 				log.Error().Err(err).Str("repository", repo).Str("reference", tag).Str("digest", signedManifestDigest.String()).Msg(
 					"load-repo: failed verify signatures validity for signed image")
@@ -146,7 +146,7 @@ func ParseRepo(repo string, repoDB metaTypes.RepoDB, storeController storage.Sto
 		}
 
 		err = SetImageMetaFromInput(repo, reference, manifest.MediaType, manifest.Digest, manifestBlob,
-			imageStore, repoDB, log)
+			imageStore, metaDB, log)
 		if err != nil {
 			log.Error().Err(err).Str("repository", repo).Str("tag", tag).
 				Msg("load-repo: failed to set metadata for image")
@@ -159,8 +159,8 @@ func ParseRepo(repo string, repoDB metaTypes.RepoDB, storeController storage.Sto
 }
 
 // resetRepoMetaTags will delete all tags from a repometadata.
-func resetRepoMetaTags(repo string, repoDB metaTypes.RepoDB, log log.Logger) error {
-	repoMeta, err := repoDB.GetRepoMeta(repo)
+func resetRepoMetaTags(repo string, metaDB metaTypes.MetaDB, log log.Logger) error {
+	repoMeta, err := metaDB.GetRepoMeta(repo)
 	if err != nil && !errors.Is(err, zerr.ErrRepoMetaNotFound) {
 		log.Error().Err(err).Str("repository", repo).Msg("load-repo: failed to get RepoMeta for repo")
 
@@ -173,7 +173,7 @@ func resetRepoMetaTags(repo string, repoDB metaTypes.RepoDB, log log.Logger) err
 		return nil
 	}
 
-	return repoDB.SetRepoMeta(repo, metaTypes.RepoMetadata{
+	return metaDB.SetRepoMeta(repo, metaTypes.RepoMetadata{
 		Name:       repoMeta.Name,
 		Tags:       map[string]metaTypes.Descriptor{},
 		Statistics: repoMeta.Statistics,
@@ -204,8 +204,8 @@ func getAllRepos(storeController storage.StoreController) ([]string, error) {
 }
 
 // isManifestMetaPresent checks if the manifest with a certain digest is present in a certain repo.
-func isManifestMetaPresent(repo string, manifest ispec.Descriptor, repoDB metaTypes.RepoDB) (bool, error) {
-	_, err := repoDB.GetManifestMeta(repo, manifest.Digest)
+func isManifestMetaPresent(repo string, manifest ispec.Descriptor, metaDB metaTypes.MetaDB) (bool, error) {
+	_, err := metaDB.GetManifestMeta(repo, manifest.Digest)
 	if err != nil && !errors.Is(err, zerr.ErrManifestMetaNotFound) {
 		return false, err
 	}
@@ -351,7 +351,7 @@ func NewIndexData(repoName string, indexBlob []byte, imageStore storageTypes.Ima
 // SetMetadataFromInput tries to set manifest metadata and update repo metadata by adding the current tag
 // (in case the reference is a tag). The function expects image manifests and indexes (multi arch images).
 func SetImageMetaFromInput(repo, reference, mediaType string, digest godigest.Digest, descriptorBlob []byte,
-	imageStore storageTypes.ImageStore, repoDB metaTypes.RepoDB, log log.Logger,
+	imageStore storageTypes.ImageStore, metaDB metaTypes.MetaDB, log log.Logger,
 ) error {
 	switch mediaType {
 	case ispec.MediaTypeImageManifest:
@@ -360,18 +360,18 @@ func SetImageMetaFromInput(repo, reference, mediaType string, digest godigest.Di
 			return err
 		}
 
-		err = repoDB.SetManifestData(digest, imageData)
+		err = metaDB.SetManifestData(digest, imageData)
 		if err != nil {
-			log.Error().Err(err).Msg("repodb: error while putting manifest meta")
+			log.Error().Err(err).Msg("metadb: error while putting manifest meta")
 
 			return err
 		}
 	case ispec.MediaTypeImageIndex:
 		indexData := NewIndexData(repo, descriptorBlob, imageStore)
 
-		err := repoDB.SetIndexData(digest, indexData)
+		err := metaDB.SetIndexData(digest, indexData)
 		if err != nil {
-			log.Error().Err(err).Msg("repodb: error while putting index data")
+			log.Error().Err(err).Msg("metadb: error while putting index data")
 
 			return err
 		}
@@ -379,17 +379,17 @@ func SetImageMetaFromInput(repo, reference, mediaType string, digest godigest.Di
 
 	refferredDigest, referrerInfo, hasSubject, err := GetReferredSubject(descriptorBlob, digest.String(), mediaType)
 	if hasSubject && err == nil {
-		err := repoDB.SetReferrer(repo, refferredDigest, referrerInfo)
+		err := metaDB.SetReferrer(repo, refferredDigest, referrerInfo)
 		if err != nil {
-			log.Error().Err(err).Msg("repodb: error while settingg referrer")
+			log.Error().Err(err).Msg("metadb: error while settingg referrer")
 
 			return err
 		}
 	}
 
-	err = repoDB.SetRepoReference(repo, reference, digest, mediaType)
+	err = metaDB.SetRepoReference(repo, reference, digest, mediaType)
 	if err != nil {
-		log.Error().Err(err).Msg("repodb: error while putting repo meta")
+		log.Error().Err(err).Msg("metadb: error while putting repo meta")
 
 		return err
 	}
@@ -409,7 +409,7 @@ func GetReferredSubject(descriptorBlob []byte, referrerDigest, mediaType string,
 	err := json.Unmarshal(descriptorBlob, &manifestContent)
 	if err != nil {
 		return "", referrerInfo, false,
-			fmt.Errorf("repodb: can't unmarshal manifest for digest %s: %w", referrerDigest, err)
+			fmt.Errorf("metadb: can't unmarshal manifest for digest %s: %w", referrerDigest, err)
 	}
 
 	referrerSubject = manifestContent.Subject

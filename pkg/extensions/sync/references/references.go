@@ -34,13 +34,13 @@ type References struct {
 }
 
 func NewReferences(httpClient *client.Client, storeController storage.StoreController,
-	repoDB metaTypes.RepoDB, log log.Logger,
+	metaDB metaTypes.MetaDB, log log.Logger,
 ) References {
 	refs := References{log: log}
 
-	refs.refernceList = append(refs.refernceList, NewCosignReference(httpClient, storeController, repoDB, log))
-	refs.refernceList = append(refs.refernceList, NewOciReferences(httpClient, storeController, repoDB, log))
-	refs.refernceList = append(refs.refernceList, NewORASReferences(httpClient, storeController, repoDB, log))
+	refs.refernceList = append(refs.refernceList, NewCosignReference(httpClient, storeController, metaDB, log))
+	refs.refernceList = append(refs.refernceList, NewOciReferences(httpClient, storeController, metaDB, log))
+	refs.refernceList = append(refs.refernceList, NewORASReferences(httpClient, storeController, metaDB, log))
 
 	return refs
 }

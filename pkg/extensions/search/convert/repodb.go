@@ -614,7 +614,7 @@ func RepoMeta2ExpandedRepoInfo(ctx context.Context, repoMeta metaTypes.RepoMetad
 			skip.Vulnerabilities, repoMeta, manifestMetaMap, indexDataMap, cveInfo)
 		if err != nil {
 			log.Error().Str("repository", repoName).Str("reference", tag).
-				Msg("repodb: erorr while converting descriptor for image")
+				Msg("metadb: erorr while converting descriptor for image")
 
 			continue
 		}

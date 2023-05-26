@@ -29,17 +29,17 @@ type ReferenceList struct {
 type ORASReferences struct {
 	client          *client.Client
 	storeController storage.StoreController
-	repoDB          metaTypes.RepoDB
+	metaDB          metaTypes.MetaDB
 	log             log.Logger
 }
 
 func NewORASReferences(httpClient *client.Client, storeController storage.StoreController,
-	repoDB metaTypes.RepoDB, log log.Logger,
+	metaDB metaTypes.MetaDB, log log.Logger,
 ) ORASReferences {
 	return ORASReferences{
 		client:          httpClient,
 		storeController: storeController,
-		repoDB:          repoDB,
+		metaDB:          metaDB,
 		log:             log,
 	}
 }
@@ -139,19 +139,19 @@ func (ref ORASReferences) SyncReferences(localRepo, remoteRepo, subjectDigestStr
 			return err
 		}
 
-		if ref.repoDB != nil {
+		if ref.metaDB != nil {
 			ref.log.Debug().Str("repository", localRepo).Str("subject", subjectDigestStr).
-				Msg("repoDB: trying to sync oras artifact for image")
+				Msg("metaDB: trying to sync oras artifact for image")
 
 			err := meta.SetImageMetaFromInput(localRepo, digest.String(), referrer.MediaType,
 				digest, orasBuf, ref.storeController.GetImageStore(localRepo),
-				ref.repoDB, ref.log)
+				ref.metaDB, ref.log)
 			if err != nil {
-				return fmt.Errorf("repoDB: failed to set metadata for oras artifact '%s@%s': %w", localRepo, subjectDigestStr, err)
+				return fmt.Errorf("metaDB: failed to set metadata for oras artifact '%s@%s': %w", localRepo, subjectDigestStr, err)
 			}
 
 			ref.log.Info().Str("repository", localRepo).Str("subject", subjectDigestStr).
-				Msg("repoDB: successfully added oras artifacts to RepoDB for image")
+				Msg("metaDB: successfully added oras artifacts to MetaDB for image")
 		}
 	}
 

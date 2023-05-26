@@ -14,7 +14,7 @@ import (
 	"zotregistry.io/zot/pkg/extensions/monitoring"
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/meta"
-	"zotregistry.io/zot/pkg/meta/bolt"
+	"zotregistry.io/zot/pkg/meta/boltdb"
 	metaTypes "zotregistry.io/zot/pkg/meta/types"
 	"zotregistry.io/zot/pkg/storage"
 	"zotregistry.io/zot/pkg/storage/local"
@@ -32,13 +32,13 @@ func TestOnUpdateManifest(t *testing.T) {
 			true, true, log, metrics, nil, nil,
 		)
 
-		params := bolt.DBParameters{
+		params := boltdb.DBParameters{
 			RootDir: rootDir,
 		}
-		boltDriver, err := bolt.GetBoltDriver(params)
+		boltDriver, err := boltdb.GetBoltDriver(params)
 		So(err, ShouldBeNil)
 
-		repoDB, err := bolt.NewBoltDBWrapper(boltDriver, log)
+		metaDB, err := boltdb.New(boltDriver, log)
 		So(err, ShouldBeNil)
 
 		config, layers, manifest, err := test.GetRandomImageComponents(100)
@@ -57,10 +57,10 @@ func TestOnUpdateManifest(t *testing.T) {
 
 		digest := godigest.FromBytes(manifestBlob)
 
-		err = meta.OnUpdateManifest("repo", "tag1", "", digest, manifestBlob, storeController, repoDB, log)
+		err = meta.OnUpdateManifest("repo", "tag1", "", digest, manifestBlob, storeController, metaDB, log)
 		So(err, ShouldBeNil)
 
-		repoMeta, err := repoDB.GetRepoMeta("repo")
+		repoMeta, err := metaDB.GetRepoMeta("repo")
 		So(err, ShouldBeNil)
 
 		So(repoMeta.Tags, ShouldContainKey, "tag1")
@@ -75,14 +75,14 @@ func TestOnUpdateManifest(t *testing.T) {
 			true, true, log, metrics, nil, nil,
 		)
 
-		repoDB := mocks.RepoDBMock{
+		metaDB := mocks.MetaDBMock{
 			SetManifestDataFn: func(manifestDigest godigest.Digest, mm metaTypes.ManifestData) error {
 				return ErrTestError
 			},
 		}
 
 		err := meta.OnUpdateManifest("repo", "tag1", ispec.MediaTypeImageManifest, "digest",
-			[]byte("{}"), storeController, repoDB, log)
+			[]byte("{}"), storeController, metaDB, log)
 		So(err, ShouldNotBeNil)
 	})
 }
@@ -92,7 +92,7 @@ func TestUpdateErrors(t *testing.T) {
 		Convey("On UpdateManifest", func() {
 			imageStore := mocks.MockedImageStore{}
 			storeController := storage.StoreController{DefaultStore: &imageStore}
-			repoDB := mocks.RepoDBMock{}
+			metaDB := mocks.MetaDBMock{}
 			log := log.NewLogger("debug", "")
 
 			Convey("CheckIsImageSignature errors", func() {
@@ -107,7 +107,7 @@ func TestUpdateErrors(t *testing.T) {
 				}
 
 				err := meta.OnUpdateManifest("repo", "tag1", "digest", "media", badManifestBlob,
-					storeController, repoDB, log)
+					storeController, metaDB, log)
 				So(err, ShouldNotBeNil)
 			})
 
@@ -128,7 +128,7 @@ func TestUpdateErrors(t *testing.T) {
 				}
 
 				err = meta.OnUpdateManifest("repo", "tag1", "", "digest", badNotationManifestBlob,
-					storeController, repoDB, log)
+					storeController, metaDB, log)
 				So(err, ShouldNotBeNil)
 			})
 
@@ -155,12 +155,12 @@ func TestUpdateErrors(t *testing.T) {
 					return []byte{}, nil
 				}
 
-				repoDB.UpdateSignaturesValidityFn = func(repo string, manifestDigest godigest.Digest) error {
+				metaDB.UpdateSignaturesValidityFn = func(repo string, manifestDigest godigest.Digest) error {
 					return ErrTestError
 				}
 
 				err = meta.OnUpdateManifest("repo", "tag1", "", "digest", notationManifestBlob,
-					storeController, repoDB, log)
+					storeController, metaDB, log)
 				So(err, ShouldNotBeNil)
 			})
 		})
@@ -168,7 +168,7 @@ func TestUpdateErrors(t *testing.T) {
 		Convey("On DeleteManifest", func() {
 			imageStore := mocks.MockedImageStore{}
 			storeController := storage.StoreController{DefaultStore: &imageStore}
-			repoDB := mocks.RepoDBMock{}
+			metaDB := mocks.MetaDBMock{}
 			log := log.NewLogger("debug", "")
 
 			Convey("CheckIsImageSignature errors", func() {
@@ -179,18 +179,18 @@ func TestUpdateErrors(t *testing.T) {
 				}
 
 				err := meta.OnDeleteManifest("repo", "tag1", "digest", "media", badManifestBlob,
-					storeController, repoDB, log)
+					storeController, metaDB, log)
 				So(err, ShouldNotBeNil)
 			})
 
 			Convey("DeleteReferrers errors", func() {
-				repoDB.DeleteReferrerFn = func(repo string, referredDigest, referrerDigest godigest.Digest) error {
+				metaDB.DeleteReferrerFn = func(repo string, referredDigest, referrerDigest godigest.Digest) error {
 					return ErrTestError
 				}
 
 				err := meta.OnDeleteManifest("repo", "tag1", "digest", "media",
 					[]byte(`{"subject": {"digest": "dig"}}`),
-					storeController, repoDB, log)
+					storeController, metaDB, log)
 				So(err, ShouldNotBeNil)
 			})
 		})
@@ -198,7 +198,7 @@ func TestUpdateErrors(t *testing.T) {
 		Convey("On GetManifest", func() {
 			imageStore := mocks.MockedImageStore{}
 			storeController := storage.StoreController{DefaultStore: &imageStore}
-			repoDB := mocks.RepoDBMock{}
+			metaDB := mocks.MetaDBMock{}
 			log := log.NewLogger("debug", "")
 
 			Convey("CheckIsImageSignature errors", func() {
@@ -209,18 +209,18 @@ func TestUpdateErrors(t *testing.T) {
 				}
 
 				err := meta.OnGetManifest("repo", "tag1", badManifestBlob,
-					storeController, repoDB, log)
+					storeController, metaDB, log)
 				So(err, ShouldNotBeNil)
 			})
 		})
 
 		Convey("SetImageMetaFromInput", func() {
 			imageStore := mocks.MockedImageStore{}
-			repoDB := mocks.RepoDBMock{}
+			metaDB := mocks.MetaDBMock{}
 			log := log.NewLogger("debug", "")
 
 			err := meta.SetImageMetaFromInput("repo", "ref", ispec.MediaTypeImageManifest, "digest",
-				[]byte("BadManifestBlob"), imageStore, repoDB, log)
+				[]byte("BadManifestBlob"), imageStore, metaDB, log)
 			So(err, ShouldNotBeNil)
 
 			// reference is digest
@@ -237,7 +237,7 @@ func TestUpdateErrors(t *testing.T) {
 			}
 
 			err = meta.SetImageMetaFromInput("repo", string(godigest.FromString("reference")), "", "digest",
-				manifestBlob, imageStore, repoDB, log)
+				manifestBlob, imageStore, metaDB, log)
 			So(err, ShouldBeNil)
 		})
 
@@ -245,13 +245,13 @@ func TestUpdateErrors(t *testing.T) {
 			imageStore := mocks.MockedImageStore{}
 			log := log.NewLogger("debug", "")
 
-			repoDB := mocks.RepoDBMock{
+			metaDB := mocks.MetaDBMock{
 				SetManifestDataFn: func(manifestDigest godigest.Digest, mm metaTypes.ManifestData) error {
 					return ErrTestError
 				},
 			}
 			err := meta.SetImageMetaFromInput("repo", "ref", ispec.MediaTypeImageManifest, "digest",
-				[]byte("{}"), imageStore, repoDB, log)
+				[]byte("{}"), imageStore, metaDB, log)
 			So(err, ShouldNotBeNil)
 		})
 
@@ -259,13 +259,13 @@ func TestUpdateErrors(t *testing.T) {
 			imageStore := mocks.MockedImageStore{}
 			log := log.NewLogger("debug", "")
 
-			repoDB := mocks.RepoDBMock{
+			metaDB := mocks.MetaDBMock{
 				SetIndexDataFn: func(digest godigest.Digest, indexData metaTypes.IndexData) error {
 					return ErrTestError
 				},
 			}
 			err := meta.SetImageMetaFromInput("repo", "ref", ispec.MediaTypeImageIndex, "digest",
-				[]byte("{}"), imageStore, repoDB, log)
+				[]byte("{}"), imageStore, metaDB, log)
 			So(err, ShouldNotBeNil)
 		})
 
@@ -277,14 +277,14 @@ func TestUpdateErrors(t *testing.T) {
 			}
 			log := log.NewLogger("debug", "")
 
-			repoDB := mocks.RepoDBMock{
+			metaDB := mocks.MetaDBMock{
 				SetReferrerFn: func(repo string, referredDigest godigest.Digest, referrer metaTypes.ReferrerInfo) error {
 					return ErrTestError
 				},
 			}
 
 			err := meta.SetImageMetaFromInput("repo", "ref", ispec.MediaTypeImageManifest, "digest",
-				[]byte(`{"subject": {"digest": "subjDigest"}}`), imageStore, repoDB, log)
+				[]byte(`{"subject": {"digest": "subjDigest"}}`), imageStore, metaDB, log)
 			So(err, ShouldNotBeNil)
 		})
 	})

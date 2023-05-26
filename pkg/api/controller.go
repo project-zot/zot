@@ -36,7 +36,7 @@ const (
 type Controller struct {
 	Config          *config.Config
 	Router          *mux.Router
-	RepoDB          metaTypes.RepoDB
+	MetaDB          metaTypes.MetaDB
 	StoreController storage.StoreController
 	Log             log.Logger
 	Audit           *log.Logger
@@ -224,7 +224,7 @@ func (c *Controller) Init(reloadCtx context.Context) error {
 		return err
 	}
 
-	if err := c.InitRepoDB(reloadCtx); err != nil {
+	if err := c.InitMetaDB(reloadCtx); err != nil {
 		return err
 	}
 
@@ -236,7 +236,7 @@ func (c *Controller) Init(reloadCtx context.Context) error {
 func (c *Controller) InitCVEInfo() {
 	// Enable CVE extension if extension config is provided
 	if c.Config != nil && c.Config.Extensions != nil {
-		c.CveInfo = ext.GetCVEInfo(c.Config, c.StoreController, c.RepoDB, c.Log)
+		c.CveInfo = ext.GetCVEInfo(c.Config, c.StoreController, c.MetaDB, c.Log)
 	}
 }
 
@@ -253,7 +253,7 @@ func (c *Controller) InitImageStore() error {
 	return nil
 }
 
-func (c *Controller) InitRepoDB(reloadCtx context.Context) error {
+func (c *Controller) InitMetaDB(reloadCtx context.Context) error {
 	if c.Config.Extensions != nil && c.Config.Extensions.Search != nil && *c.Config.Extensions.Search.Enable {
 		driver, err := meta.New(c.Config.Storage.StorageConfig, c.Log) //nolint:contextcheck
 		if err != nil {
@@ -270,7 +270,7 @@ func (c *Controller) InitRepoDB(reloadCtx context.Context) error {
 			return err
 		}
 
-		c.RepoDB = driver
+		c.MetaDB = driver
 	}
 
 	return nil
@@ -326,7 +326,7 @@ func (c *Controller) StartBackgroundTasks(reloadCtx context.Context) {
 	// Enable extensions if extension config is provided for DefaultStore
 	if c.Config != nil && c.Config.Extensions != nil {
 		ext.EnableMetricsExtension(c.Config, c.Log, c.Config.Storage.RootDirectory)
-		ext.EnableSearchExtension(c.Config, c.StoreController, c.RepoDB, taskScheduler, c.CveInfo, c.Log)
+		ext.EnableSearchExtension(c.Config, c.StoreController, c.MetaDB, taskScheduler, c.CveInfo, c.Log)
 	}
 
 	if c.Config.Storage.SubPaths != nil {
@@ -352,7 +352,7 @@ func (c *Controller) StartBackgroundTasks(reloadCtx context.Context) {
 	if c.Config.Extensions != nil {
 		ext.EnableScrubExtension(c.Config, c.Log, c.StoreController, taskScheduler)
 
-		syncOnDemand, err := ext.EnableSyncExtension(c.Config, c.RepoDB, c.StoreController, taskScheduler, c.Log)
+		syncOnDemand, err := ext.EnableSyncExtension(c.Config, c.MetaDB, c.StoreController, taskScheduler, c.Log)
 		if err != nil {
 			c.Log.Error().Err(err).Msg("unable to start sync extension")
 		}

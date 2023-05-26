@@ -29,7 +29,7 @@ func IsBuiltWithUserPrefsExtension() bool {
 }
 
 func SetupUserPreferencesRoutes(config *config.Config, router *mux.Router, storeController storage.StoreController,
-	repoDB metaTypes.RepoDB, cveInfo CveInfo, log log.Logger,
+	metaDB metaTypes.MetaDB, cveInfo CveInfo, log log.Logger,
 ) {
 	if config.Extensions.Search != nil && *config.Extensions.Search.Enable {
 		log.Info().Msg("setting up user preferences routes")
@@ -39,11 +39,11 @@ func SetupUserPreferencesRoutes(config *config.Config, router *mux.Router, store
 		userprefsRouter := router.PathPrefix(constants.ExtUserPreferences).Subrouter()
 		userprefsRouter.Use(zcommon.ACHeadersHandler(allowedMethods...))
 		userprefsRouter.Use(zcommon.AddExtensionSecurityHeaders())
-		userprefsRouter.HandleFunc("", HandleUserPrefs(repoDB, log)).Methods(allowedMethods...)
+		userprefsRouter.HandleFunc("", HandleUserPrefs(metaDB, log)).Methods(allowedMethods...)
 	}
 }
 
-func HandleUserPrefs(repoDB metaTypes.RepoDB, log log.Logger) func(w http.ResponseWriter, r *http.Request) {
+func HandleUserPrefs(metaDB metaTypes.MetaDB, log log.Logger) func(w http.ResponseWriter, r *http.Request) {
 	return func(rsp http.ResponseWriter, req *http.Request) {
 		if !queryHasParams(req.URL.Query(), []string{"action"}) {
 			rsp.WriteHeader(http.StatusBadRequest)
@@ -55,11 +55,11 @@ func HandleUserPrefs(repoDB metaTypes.RepoDB, log log.Logger) func(w http.Respon
 
 		switch action {
 		case ToggleRepoBookmarkAction:
-			PutBookmark(rsp, req, repoDB, log) //nolint:contextcheck
+			PutBookmark(rsp, req, metaDB, log) //nolint:contextcheck
 
 			return
 		case ToggleRepoStarAction:
-			PutStar(rsp, req, repoDB, log) //nolint:contextcheck
+			PutStar(rsp, req, metaDB, log) //nolint:contextcheck
 
 			return
 		default:
@@ -70,7 +70,7 @@ func HandleUserPrefs(repoDB metaTypes.RepoDB, log log.Logger) func(w http.Respon
 	}
 }
 
-func PutStar(rsp http.ResponseWriter, req *http.Request, repoDB metaTypes.RepoDB, log log.Logger) {
+func PutStar(rsp http.ResponseWriter, req *http.Request, metaDB metaTypes.MetaDB, log log.Logger) {
 	if !queryHasParams(req.URL.Query(), []string{"repo"}) {
 		rsp.WriteHeader(http.StatusBadRequest)
 
@@ -85,7 +85,7 @@ func PutStar(rsp http.ResponseWriter, req *http.Request, repoDB metaTypes.RepoDB
 		return
 	}
 
-	_, err := repoDB.ToggleStarRepo(req.Context(), repo)
+	_, err := metaDB.ToggleStarRepo(req.Context(), repo)
 	if err != nil {
 		if errors.Is(err, zerr.ErrRepoMetaNotFound) {
 			rsp.WriteHeader(http.StatusNotFound)
@@ -105,7 +105,7 @@ func PutStar(rsp http.ResponseWriter, req *http.Request, repoDB metaTypes.RepoDB
 	rsp.WriteHeader(http.StatusOK)
 }
 
-func PutBookmark(rsp http.ResponseWriter, req *http.Request, repoDB metaTypes.RepoDB, log log.Logger) {
+func PutBookmark(rsp http.ResponseWriter, req *http.Request, metaDB metaTypes.MetaDB, log log.Logger) {
 	if !queryHasParams(req.URL.Query(), []string{"repo"}) {
 		rsp.WriteHeader(http.StatusBadRequest)
 
@@ -120,7 +120,7 @@ func PutBookmark(rsp http.ResponseWriter, req *http.Request, repoDB metaTypes.Re
 		return
 	}
 
-	_, err := repoDB.ToggleBookmarkRepo(req.Context(), repo)
+	_, err := metaDB.ToggleBookmarkRepo(req.Context(), repo)
 	if err != nil {
 		if errors.Is(err, zerr.ErrRepoMetaNotFound) {
 			rsp.WriteHeader(http.StatusNotFound)

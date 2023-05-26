@@ -318,7 +318,7 @@ func FilterDataByRepo(foundRepos []metaTypes.RepoMetadata, manifestMetadataMap m
 				err := json.Unmarshal(indexData.IndexBlob, &indexContent)
 				if err != nil {
 					return map[string]metaTypes.ManifestMetadata{}, map[string]metaTypes.IndexData{},
-						fmt.Errorf("repodb: error while getting manifest data for digest %s %w", descriptor.Digest, err)
+						fmt.Errorf("metadb: error while getting manifest data for digest %s %w", descriptor.Digest, err)
 				}
 
 				for _, manifestDescriptor := range indexContent.Manifests {
@@ -336,7 +336,7 @@ func FilterDataByRepo(foundRepos []metaTypes.RepoMetadata, manifestMetadataMap m
 	return foundManifestMetadataMap, foundindexDataMap, nil
 }
 
-func FetchDataForRepos(repoDB metaTypes.RepoDB, foundRepos []metaTypes.RepoMetadata,
+func FetchDataForRepos(metaDB metaTypes.MetaDB, foundRepos []metaTypes.RepoMetadata,
 ) (map[string]metaTypes.ManifestMetadata, map[string]metaTypes.IndexData, error) {
 	foundManifestMetadataMap := map[string]metaTypes.ManifestMetadata{}
 	foundIndexDataMap := map[string]metaTypes.IndexData{}
@@ -345,7 +345,7 @@ func FetchDataForRepos(repoDB metaTypes.RepoDB, foundRepos []metaTypes.RepoMetad
 		for _, descriptor := range foundRepos[idx].Tags {
 			switch descriptor.MediaType {
 			case ispec.MediaTypeImageManifest:
-				manifestData, err := repoDB.GetManifestData(godigest.Digest(descriptor.Digest))
+				manifestData, err := metaDB.GetManifestData(godigest.Digest(descriptor.Digest))
 				if err != nil {
 					return map[string]metaTypes.ManifestMetadata{}, map[string]metaTypes.IndexData{}, err
 				}
@@ -355,7 +355,7 @@ func FetchDataForRepos(repoDB metaTypes.RepoDB, foundRepos []metaTypes.RepoMetad
 					ConfigBlob:   manifestData.ConfigBlob,
 				}
 			case ispec.MediaTypeImageIndex:
-				indexData, err := repoDB.GetIndexData(godigest.Digest(descriptor.Digest))
+				indexData, err := metaDB.GetIndexData(godigest.Digest(descriptor.Digest))
 				if err != nil {
 					return map[string]metaTypes.ManifestMetadata{}, map[string]metaTypes.IndexData{}, err
 				}
@@ -366,13 +366,13 @@ func FetchDataForRepos(repoDB metaTypes.RepoDB, foundRepos []metaTypes.RepoMetad
 				if err != nil {
 					return map[string]metaTypes.ManifestMetadata{},
 						map[string]metaTypes.IndexData{},
-						fmt.Errorf("repodb: error while getting index data for digest %s %w", descriptor.Digest, err)
+						fmt.Errorf("metadb: error while getting index data for digest %s %w", descriptor.Digest, err)
 				}
 
 				for _, manifestDescriptor := range indexContent.Manifests {
 					manifestDigest := manifestDescriptor.Digest.String()
 
-					manifestData, err := repoDB.GetManifestData(manifestDescriptor.Digest)
+					manifestData, err := metaDB.GetManifestData(manifestDescriptor.Digest)
 					if err != nil {
 						return map[string]metaTypes.ManifestMetadata{}, map[string]metaTypes.IndexData{}, err
 					}

@@ -129,9 +129,9 @@ func (rh *RouteHandler) SetupRoutes() {
 			prefixedExtensionsRouter.Use(CORSHeadersMiddleware(rh.c.Config.HTTP.AllowOrigin))
 
 			ext.SetupMgmtRoutes(rh.c.Config, prefixedExtensionsRouter, rh.c.Log)
-			ext.SetupSearchRoutes(rh.c.Config, prefixedExtensionsRouter, rh.c.StoreController, rh.c.RepoDB, rh.c.CveInfo,
+			ext.SetupSearchRoutes(rh.c.Config, prefixedExtensionsRouter, rh.c.StoreController, rh.c.MetaDB, rh.c.CveInfo,
 				rh.c.Log)
-			ext.SetupUserPreferencesRoutes(rh.c.Config, prefixedExtensionsRouter, rh.c.StoreController, rh.c.RepoDB,
+			ext.SetupUserPreferencesRoutes(rh.c.Config, prefixedExtensionsRouter, rh.c.StoreController, rh.c.MetaDB,
 				rh.c.CveInfo, rh.c.Log)
 
 			ext.SetupUIRoutes(rh.c.Config, rh.c.Router, rh.c.StoreController, rh.c.Log)
@@ -467,8 +467,8 @@ func (rh *RouteHandler) GetManifest(response http.ResponseWriter, request *http.
 		return
 	}
 
-	if rh.c.RepoDB != nil {
-		err := meta.OnGetManifest(name, reference, content, rh.c.StoreController, rh.c.RepoDB, rh.c.Log)
+	if rh.c.MetaDB != nil {
+		err := meta.OnGetManifest(name, reference, content, rh.c.StoreController, rh.c.MetaDB, rh.c.Log)
 		if err != nil {
 			response.WriteHeader(http.StatusInternalServerError)
 
@@ -672,8 +672,8 @@ func (rh *RouteHandler) UpdateManifest(response http.ResponseWriter, request *ht
 		return
 	}
 
-	if rh.c.RepoDB != nil {
-		err := meta.OnUpdateManifest(name, reference, mediaType, digest, body, rh.c.StoreController, rh.c.RepoDB,
+	if rh.c.MetaDB != nil {
+		err := meta.OnUpdateManifest(name, reference, mediaType, digest, body, rh.c.StoreController, rh.c.MetaDB,
 			rh.c.Log)
 		if err != nil {
 			response.WriteHeader(http.StatusInternalServerError)
@@ -773,9 +773,9 @@ func (rh *RouteHandler) DeleteManifest(response http.ResponseWriter, request *ht
 		return
 	}
 
-	if rh.c.RepoDB != nil {
+	if rh.c.MetaDB != nil {
 		err := meta.OnDeleteManifest(name, reference, mediaType, manifestDigest, manifestBlob,
-			rh.c.StoreController, rh.c.RepoDB, rh.c.Log)
+			rh.c.StoreController, rh.c.MetaDB, rh.c.Log)
 		if err != nil {
 			response.WriteHeader(http.StatusInternalServerError)
 

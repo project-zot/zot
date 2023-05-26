@@ -25,17 +25,17 @@ import (
 type OciReferences struct {
 	client          *client.Client
 	storeController storage.StoreController
-	repoDB          metaTypes.RepoDB
+	metaDB          metaTypes.MetaDB
 	log             log.Logger
 }
 
 func NewOciReferences(httpClient *client.Client, storeController storage.StoreController,
-	repoDB metaTypes.RepoDB, log log.Logger,
+	metaDB metaTypes.MetaDB, log log.Logger,
 ) OciReferences {
 	return OciReferences{
 		client:          httpClient,
 		storeController: storeController,
-		repoDB:          repoDB,
+		metaDB:          metaDB,
 		log:             log,
 	}
 }
@@ -166,9 +166,9 @@ func (ref OciReferences) SyncReferences(localRepo, remoteRepo, subjectDigestStr 
 			return err
 		}
 
-		if ref.repoDB != nil {
+		if ref.metaDB != nil {
 			ref.log.Debug().Str("repository", localRepo).Str("subject", subjectDigestStr).
-				Msg("repoDB: trying to add oci references for image")
+				Msg("metaDB: trying to add oci references for image")
 
 			isSig, sigType, signedManifestDig, err := storage.CheckIsImageSignature(localRepo, OCIRefBuf,
 				referrer.Digest.String())
@@ -178,14 +178,14 @@ func (ref OciReferences) SyncReferences(localRepo, remoteRepo, subjectDigestStr 
 			}
 
 			if isSig {
-				err = ref.repoDB.AddManifestSignature(localRepo, signedManifestDig, metaTypes.SignatureMetadata{
+				err = ref.metaDB.AddManifestSignature(localRepo, signedManifestDig, metaTypes.SignatureMetadata{
 					SignatureType:   sigType,
 					SignatureDigest: digest.String(),
 				})
 			} else {
 				err = meta.SetImageMetaFromInput(localRepo, digest.String(), referrer.MediaType,
 					digest, OCIRefBuf, ref.storeController.GetImageStore(localRepo),
-					ref.repoDB, ref.log)
+					ref.metaDB, ref.log)
 			}
 
 			if err != nil {
@@ -193,7 +193,7 @@ func (ref OciReferences) SyncReferences(localRepo, remoteRepo, subjectDigestStr 
 			}
 
 			ref.log.Info().Str("repository", localRepo).Str("subject", subjectDigestStr).
-				Msg("repoDB: successfully added oci references to RepoDB for image")
+				Msg("metaDB: successfully added oci references to MetaDB for image")
 		}
 	}
 

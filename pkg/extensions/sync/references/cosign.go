@@ -26,17 +26,17 @@ import (
 type CosignReference struct {
 	client          *client.Client
 	storeController storage.StoreController
-	repoDB          metaTypes.RepoDB
+	metaDB          metaTypes.MetaDB
 	log             log.Logger
 }
 
 func NewCosignReference(httpClient *client.Client, storeController storage.StoreController,
-	repoDB metaTypes.RepoDB, log log.Logger,
+	metaDB metaTypes.MetaDB, log log.Logger,
 ) CosignReference {
 	return CosignReference{
 		client:          httpClient,
 		storeController: storeController,
-		repoDB:          repoDB,
+		metaDB:          metaDB,
 		log:             log,
 	}
 }
@@ -160,9 +160,9 @@ func (ref CosignReference) SyncReferences(localRepo, remoteRepo, subjectDigestSt
 		ref.log.Info().Str("repository", localRepo).Str("subject", subjectDigestStr).
 			Msg("successfully synced cosign reference for image")
 
-		if ref.repoDB != nil {
+		if ref.metaDB != nil {
 			ref.log.Debug().Str("repository", localRepo).Str("subject", subjectDigestStr).
-				Msg("repoDB: trying to sync cosign reference for image")
+				Msg("metaDB: trying to sync cosign reference for image")
 
 			isSig, sigType, signedManifestDig, err := storage.CheckIsImageSignature(localRepo, manifestBuf,
 				cosignTag)
@@ -172,14 +172,14 @@ func (ref CosignReference) SyncReferences(localRepo, remoteRepo, subjectDigestSt
 			}
 
 			if isSig {
-				err = ref.repoDB.AddManifestSignature(localRepo, signedManifestDig, metaTypes.SignatureMetadata{
+				err = ref.metaDB.AddManifestSignature(localRepo, signedManifestDig, metaTypes.SignatureMetadata{
 					SignatureType:   sigType,
 					SignatureDigest: referenceDigest.String(),
 				})
 			} else {
 				err = meta.SetImageMetaFromInput(localRepo, cosignTag, manifest.MediaType,
 					referenceDigest, manifestBuf, ref.storeController.GetImageStore(localRepo),
-					ref.repoDB, ref.log)
+					ref.metaDB, ref.log)
 			}
 
 			if err != nil {
@@ -187,7 +187,7 @@ func (ref CosignReference) SyncReferences(localRepo, remoteRepo, subjectDigestSt
 			}
 
 			ref.log.Info().Str("repository", localRepo).Str("subject", subjectDigestStr).
-				Msg("repoDB: successfully added cosign reference for image")
+				Msg("metaDB: successfully added cosign reference for image")
 		}
 	}
 

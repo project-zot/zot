@@ -839,8 +839,8 @@ func TestOnDemand(t *testing.T) {
 
 			dctlr := api.NewController(destConfig)
 
-			// repodb fails for syncCosignSignature"
-			dctlr.RepoDB = mocks.RepoDBMock{
+			// metaDB fails for syncCosignSignature"
+			dctlr.MetaDB = mocks.MetaDBMock{
 				AddManifestSignatureFn: func(repo string, signedManifestDigest godigest.Digest,
 					sm metaTypes.SignatureMetadata,
 				) error {
@@ -3764,8 +3764,8 @@ func getPortFromBaseURL(baseURL string) string {
 	return slice[len(slice)-1]
 }
 
-func TestSyncedSignaturesRepoDB(t *testing.T) {
-	Convey("Verify that repodb update correctly when syncing a signature", t, func() {
+func TestSyncedSignaturesMetaDB(t *testing.T) {
+	Convey("Verify that metadb update correctly when syncing a signature", t, func() {
 		repoName := "signed-repo"
 		tag := "random-signed-image"
 		updateDuration := 30 * time.Minute
@@ -3835,7 +3835,7 @@ func TestSyncedSignaturesRepoDB(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
-		repoMeta, err := dctlr.RepoDB.GetRepoMeta(repoName)
+		repoMeta, err := dctlr.MetaDB.GetRepoMeta(repoName)
 		So(err, ShouldBeNil)
 		So(repoMeta.Tags, ShouldContainKey, tag)
 		So(len(repoMeta.Tags), ShouldEqual, 1)

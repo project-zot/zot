@@ -145,7 +145,7 @@ func TestUtils(t *testing.T) {
 		Convey("Errors", func() {
 			// Unmarshal index data error
 			_, _, err := common.FetchDataForRepos(
-				mocks.RepoDBMock{
+				mocks.MetaDBMock{
 					GetIndexDataFn: func(indexDigest digest.Digest) (metaTypes.IndexData, error) {
 						return metaTypes.IndexData{
 							IndexBlob: []byte("bad blob"),
@@ -168,14 +168,14 @@ func TestUtils(t *testing.T) {
 
 func TestFetchDataForRepos(t *testing.T) {
 	Convey("GetReferredSubject", t, func() {
-		mockRepoDB := mocks.RepoDBMock{}
+		mockMetaDB := mocks.MetaDBMock{}
 
 		Convey("GetManifestData errors", func() {
-			mockRepoDB.GetManifestDataFn = func(manifestDigest digest.Digest) (metaTypes.ManifestData, error) {
+			mockMetaDB.GetManifestDataFn = func(manifestDigest digest.Digest) (metaTypes.ManifestData, error) {
 				return metaTypes.ManifestData{}, ErrTestError
 			}
 
-			_, _, err := common.FetchDataForRepos(mockRepoDB, []metaTypes.RepoMetadata{
+			_, _, err := common.FetchDataForRepos(mockMetaDB, []metaTypes.RepoMetadata{
 				{
 					Tags: map[string]metaTypes.Descriptor{
 						"tag1": {Digest: "dig1", MediaType: ispec.MediaTypeImageManifest},
@@ -186,11 +186,11 @@ func TestFetchDataForRepos(t *testing.T) {
 		})
 
 		Convey("GetIndexData errors", func() {
-			mockRepoDB.GetIndexDataFn = func(indexDigest digest.Digest) (metaTypes.IndexData, error) {
+			mockMetaDB.GetIndexDataFn = func(indexDigest digest.Digest) (metaTypes.IndexData, error) {
 				return metaTypes.IndexData{}, ErrTestError
 			}
 
-			_, _, err := common.FetchDataForRepos(mockRepoDB, []metaTypes.RepoMetadata{
+			_, _, err := common.FetchDataForRepos(mockMetaDB, []metaTypes.RepoMetadata{
 				{
 					Tags: map[string]metaTypes.Descriptor{
 						"tag1": {Digest: "dig1", MediaType: ispec.MediaTypeImageIndex},
@@ -201,7 +201,7 @@ func TestFetchDataForRepos(t *testing.T) {
 		})
 
 		Convey("GetIndexData ok, GetManifestData errors", func() {
-			mockRepoDB.GetIndexDataFn = func(indexDigest digest.Digest) (metaTypes.IndexData, error) {
+			mockMetaDB.GetIndexDataFn = func(indexDigest digest.Digest) (metaTypes.IndexData, error) {
 				return metaTypes.IndexData{
 					IndexBlob: []byte(`{
 						"manifests": [
@@ -210,11 +210,11 @@ func TestFetchDataForRepos(t *testing.T) {
 					}`),
 				}, nil
 			}
-			mockRepoDB.GetManifestDataFn = func(manifestDigest digest.Digest) (metaTypes.ManifestData, error) {
+			mockMetaDB.GetManifestDataFn = func(manifestDigest digest.Digest) (metaTypes.ManifestData, error) {
 				return metaTypes.ManifestData{}, ErrTestError
 			}
 
-			_, _, err := common.FetchDataForRepos(mockRepoDB, []metaTypes.RepoMetadata{
+			_, _, err := common.FetchDataForRepos(mockMetaDB, []metaTypes.RepoMetadata{
 				{
 					Tags: map[string]metaTypes.Descriptor{
 						"tag1": {Digest: "dig1", MediaType: ispec.MediaTypeImageIndex},

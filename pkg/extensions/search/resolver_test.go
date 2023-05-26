@@ -19,7 +19,7 @@ import (
 	cvemodel "zotregistry.io/zot/pkg/extensions/search/cve/model"
 	"zotregistry.io/zot/pkg/extensions/search/gql_generated"
 	"zotregistry.io/zot/pkg/log"
-	"zotregistry.io/zot/pkg/meta/bolt"
+	"zotregistry.io/zot/pkg/meta/boltdb"
 	"zotregistry.io/zot/pkg/meta/pagination"
 	metaTypes "zotregistry.io/zot/pkg/meta/types"
 	localCtx "zotregistry.io/zot/pkg/requestcontext"
@@ -32,8 +32,8 @@ var ErrTestError = errors.New("TestError")
 func TestGlobalSearch(t *testing.T) {
 	Convey("globalSearch", t, func() {
 		const query = "repo1"
-		Convey("RepoDB SearchRepos error", func() {
-			mockRepoDB := mocks.RepoDBMock{
+		Convey("MetaDB SearchRepos error", func() {
+			mockMetaDB := mocks.MetaDBMock{
 				SearchReposFn: func(ctx context.Context, searchText string, filter metaTypes.Filter,
 					requestedPage metaTypes.PageInput,
 				) ([]metaTypes.RepoMetadata, map[string]metaTypes.ManifestMetadata, map[string]metaTypes.IndexData,
@@ -46,7 +46,7 @@ func TestGlobalSearch(t *testing.T) {
 			responseContext := graphql.WithResponseContext(context.Background(), graphql.DefaultErrorPresenter,
 				graphql.DefaultRecover)
 			mockCve := mocks.CveInfoMock{}
-			repos, images, layers, err := globalSearch(responseContext, query, mockRepoDB, &gql_generated.Filter{},
+			repos, images, layers, err := globalSearch(responseContext, query, mockMetaDB, &gql_generated.Filter{},
 				&gql_generated.PageInput{}, mockCve, log.NewLogger("debug", ""))
 			So(err, ShouldNotBeNil)
 			So(images, ShouldBeEmpty)
@@ -54,8 +54,8 @@ func TestGlobalSearch(t *testing.T) {
 			So(repos.Results, ShouldBeEmpty)
 		})
 
-		Convey("RepoDB SearchRepo is successful", func() {
-			mockRepoDB := mocks.RepoDBMock{
+		Convey("MetaDB SearchRepo is successful", func() {
+			mockMetaDB := mocks.MetaDBMock{
 				SearchReposFn: func(ctx context.Context, searchText string, filter metaTypes.Filter,
 					requestedPage metaTypes.PageInput,
 				) ([]metaTypes.RepoMetadata, map[string]metaTypes.ManifestMetadata, map[string]metaTypes.IndexData,
@@ -136,7 +136,7 @@ func TestGlobalSearch(t *testing.T) {
 			responseContext := graphql.WithResponseContext(context.Background(), graphql.DefaultErrorPresenter,
 				graphql.DefaultRecover)
 			mockCve := mocks.CveInfoMock{}
-			repos, images, layers, err := globalSearch(responseContext, query, mockRepoDB,
+			repos, images, layers, err := globalSearch(responseContext, query, mockMetaDB,
 				&gql_generated.Filter{}, &pageInput, mockCve, log.NewLogger("debug", ""))
 			So(err, ShouldBeNil)
 			So(images, ShouldBeEmpty)
@@ -145,8 +145,8 @@ func TestGlobalSearch(t *testing.T) {
 			So(len(repos.Results[0].Vendors), ShouldEqual, 2)
 		})
 
-		Convey("RepoDB SearchRepo Bad manifest referenced", func() {
-			mockRepoDB := mocks.RepoDBMock{
+		Convey("MetaDB SearchRepo Bad manifest referenced", func() {
+			mockMetaDB := mocks.MetaDBMock{
 				SearchReposFn: func(ctx context.Context, searchText string, filter metaTypes.Filter,
 					requestedPage metaTypes.PageInput,
 				) ([]metaTypes.RepoMetadata, map[string]metaTypes.ManifestMetadata, map[string]metaTypes.IndexData,
@@ -200,7 +200,7 @@ func TestGlobalSearch(t *testing.T) {
 				graphql.DefaultRecover)
 			mockCve := mocks.CveInfoMock{}
 
-			repos, images, layers, err := globalSearch(responseContext, query, mockRepoDB,
+			repos, images, layers, err := globalSearch(responseContext, query, mockMetaDB,
 				&gql_generated.Filter{}, &pageInput, mockCve, log.NewLogger("debug", ""))
 			So(err, ShouldBeNil)
 			So(images, ShouldBeEmpty)
@@ -211,7 +211,7 @@ func TestGlobalSearch(t *testing.T) {
 
 			responseContext = graphql.WithResponseContext(context.Background(), graphql.DefaultErrorPresenter,
 				graphql.DefaultRecover)
-			repos, images, layers, err = globalSearch(responseContext, query, mockRepoDB,
+			repos, images, layers, err = globalSearch(responseContext, query, mockMetaDB,
 				&gql_generated.Filter{}, &pageInput, mockCve, log.NewLogger("debug", ""))
 			So(err, ShouldBeNil)
 			So(images, ShouldBeEmpty)
@@ -219,8 +219,8 @@ func TestGlobalSearch(t *testing.T) {
 			So(repos.Results, ShouldBeEmpty)
 		})
 
-		Convey("RepoDB SearchRepo good manifest referenced and bad config blob", func() {
-			mockRepoDB := mocks.RepoDBMock{
+		Convey("MetaDB SearchRepo good manifest referenced and bad config blob", func() {
+			mockMetaDB := mocks.MetaDBMock{
 				SearchReposFn: func(ctx context.Context, searchText string, filter metaTypes.Filter,
 					requestedPage metaTypes.PageInput,
 				) ([]metaTypes.RepoMetadata, map[string]metaTypes.ManifestMetadata, map[string]metaTypes.IndexData,
@@ -274,7 +274,7 @@ func TestGlobalSearch(t *testing.T) {
 
 			responseContext := graphql.WithResponseContext(context.Background(), graphql.DefaultErrorPresenter,
 				graphql.DefaultRecover)
-			repos, images, layers, err := globalSearch(responseContext, query, mockRepoDB,
+			repos, images, layers, err := globalSearch(responseContext, query, mockMetaDB,
 				&gql_generated.Filter{}, &pageInput, mockCve, log.NewLogger("debug", ""))
 			So(err, ShouldBeNil)
 			So(images, ShouldBeEmpty)
@@ -284,7 +284,7 @@ func TestGlobalSearch(t *testing.T) {
 			query = "repo1:1.0.1"
 			responseContext = graphql.WithResponseContext(context.Background(), graphql.DefaultErrorPresenter,
 				graphql.DefaultRecover)
-			repos, images, layers, err = globalSearch(responseContext, query, mockRepoDB,
+			repos, images, layers, err = globalSearch(responseContext, query, mockMetaDB,
 				&gql_generated.Filter{}, &pageInput, mockCve, log.NewLogger("debug", ""))
 			So(err, ShouldBeNil)
 			So(images, ShouldBeEmpty)
@@ -292,8 +292,8 @@ func TestGlobalSearch(t *testing.T) {
 			So(repos.Results, ShouldBeEmpty)
 		})
 
-		Convey("RepoDB SearchTags gives error", func() {
-			mockRepoDB := mocks.RepoDBMock{
+		Convey("MetaDB SearchTags gives error", func() {
+			mockMetaDB := mocks.MetaDBMock{
 				SearchTagsFn: func(ctx context.Context, searchText string, filter metaTypes.Filter,
 					requestedPage metaTypes.PageInput,
 				) ([]metaTypes.RepoMetadata, map[string]metaTypes.ManifestMetadata, map[string]metaTypes.IndexData, common.PageInfo,
@@ -308,7 +308,7 @@ func TestGlobalSearch(t *testing.T) {
 
 			responseContext := graphql.WithResponseContext(context.Background(), graphql.DefaultErrorPresenter,
 				graphql.DefaultRecover)
-			repos, images, layers, err := globalSearch(responseContext, query, mockRepoDB, &gql_generated.Filter{},
+			repos, images, layers, err := globalSearch(responseContext, query, mockMetaDB, &gql_generated.Filter{},
 				&gql_generated.PageInput{}, mockCve, log.NewLogger("debug", ""))
 			So(err, ShouldNotBeNil)
 			So(images, ShouldBeEmpty)
@@ -316,8 +316,8 @@ func TestGlobalSearch(t *testing.T) {
 			So(repos.Results, ShouldBeEmpty)
 		})
 
-		Convey("RepoDB SearchTags is successful", func() {
-			mockRepoDB := mocks.RepoDBMock{
+		Convey("MetaDB SearchTags is successful", func() {
+			mockMetaDB := mocks.MetaDBMock{
 				SearchTagsFn: func(ctx context.Context, searchText string, filter metaTypes.Filter,
 					requestedPage metaTypes.PageInput,
 				) ([]metaTypes.RepoMetadata, map[string]metaTypes.ManifestMetadata, map[string]metaTypes.IndexData,
@@ -393,7 +393,7 @@ func TestGlobalSearch(t *testing.T) {
 
 			responseContext := graphql.WithResponseContext(context.Background(), graphql.DefaultErrorPresenter,
 				graphql.DefaultRecover)
-			repos, images, layers, err := globalSearch(responseContext, query, mockRepoDB,
+			repos, images, layers, err := globalSearch(responseContext, query, mockMetaDB,
 				&gql_generated.Filter{}, &pageInput, mockCve, log.NewLogger("debug", ""))
 			So(err, ShouldBeNil)
 			So(images, ShouldNotBeEmpty)
@@ -405,8 +405,8 @@ func TestGlobalSearch(t *testing.T) {
 
 func TestRepoListWithNewestImage(t *testing.T) {
 	Convey("RepoListWithNewestImage", t, func() {
-		Convey("RepoDB SearchRepos error", func() {
-			mockRepoDB := mocks.RepoDBMock{
+		Convey("MetaDB SearchRepos error", func() {
+			mockMetaDB := mocks.MetaDBMock{
 				SearchReposFn: func(ctx context.Context, searchText string, filter metaTypes.Filter,
 					requestedPage metaTypes.PageInput,
 				) ([]metaTypes.RepoMetadata, map[string]metaTypes.ManifestMetadata, map[string]metaTypes.IndexData, common.PageInfo,
@@ -428,13 +428,13 @@ func TestRepoListWithNewestImage(t *testing.T) {
 				Offset: &offset,
 				SortBy: &sortCriteria,
 			}
-			repos, err := repoListWithNewestImage(responseContext, mockCve, log.NewLogger("debug", ""), &pageInput, mockRepoDB)
+			repos, err := repoListWithNewestImage(responseContext, mockCve, log.NewLogger("debug", ""), &pageInput, mockMetaDB)
 			So(err, ShouldNotBeNil)
 			So(repos.Results, ShouldBeEmpty)
 		})
 
-		Convey("RepoDB SearchRepo bad manifest referenced", func() {
-			mockRepoDB := mocks.RepoDBMock{
+		Convey("MetaDB SearchRepo bad manifest referenced", func() {
+			mockMetaDB := mocks.MetaDBMock{
 				SearchReposFn: func(ctx context.Context, searchText string, filter metaTypes.Filter,
 					requestedPage metaTypes.PageInput,
 				) ([]metaTypes.RepoMetadata, map[string]metaTypes.ManifestMetadata, map[string]metaTypes.IndexData,
@@ -511,7 +511,7 @@ func TestRepoListWithNewestImage(t *testing.T) {
 				Offset: &offset,
 				SortBy: &sortCriteria,
 			}
-			repos, err := repoListWithNewestImage(responseContext, mockCve, log.NewLogger("debug", ""), &pageInput, mockRepoDB)
+			repos, err := repoListWithNewestImage(responseContext, mockCve, log.NewLogger("debug", ""), &pageInput, mockMetaDB)
 			So(err, ShouldBeNil)
 			So(repos.Results, ShouldNotBeEmpty)
 		})
@@ -519,7 +519,7 @@ func TestRepoListWithNewestImage(t *testing.T) {
 		Convey("Working SearchRepo function", func() {
 			createTime := time.Now()
 			createTime2 := createTime.Add(time.Second)
-			mockRepoDB := mocks.RepoDBMock{
+			mockMetaDB := mocks.MetaDBMock{
 				SearchReposFn: func(ctx context.Context, searchText string, filter metaTypes.Filter,
 					requestedPage metaTypes.PageInput,
 				) ([]metaTypes.RepoMetadata, map[string]metaTypes.ManifestMetadata, map[string]metaTypes.IndexData,
@@ -610,16 +610,16 @@ func TestRepoListWithNewestImage(t *testing.T) {
 					return repos, manifestMetas, map[string]metaTypes.IndexData{}, common.PageInfo{}, nil
 				},
 			}
-			Convey("RepoDB missing requestedPage", func() {
+			Convey("MetaDB missing requestedPage", func() {
 				responseContext := graphql.WithResponseContext(context.Background(), graphql.DefaultErrorPresenter,
 					graphql.DefaultRecover)
 				mockCve := mocks.CveInfoMock{}
-				repos, err := repoListWithNewestImage(responseContext, mockCve, log.NewLogger("debug", ""), nil, mockRepoDB)
+				repos, err := repoListWithNewestImage(responseContext, mockCve, log.NewLogger("debug", ""), nil, mockMetaDB)
 				So(err, ShouldBeNil)
 				So(repos.Results, ShouldNotBeEmpty)
 			})
 
-			Convey("RepoDB SearchRepo is successful", func() {
+			Convey("MetaDB SearchRepo is successful", func() {
 				limit := 2
 				offset := 0
 				sortCriteria := gql_generated.SortCriteriaUpdateTime
@@ -634,7 +634,7 @@ func TestRepoListWithNewestImage(t *testing.T) {
 
 				mockCve := mocks.CveInfoMock{}
 				repos, err := repoListWithNewestImage(responseContext, mockCve,
-					log.NewLogger("debug", ""), &pageInput, mockRepoDB)
+					log.NewLogger("debug", ""), &pageInput, mockMetaDB)
 				So(err, ShouldBeNil)
 				So(repos, ShouldNotBeEmpty)
 				So(len(repos.Results), ShouldEqual, 2)
@@ -654,7 +654,7 @@ func TestGetBookmarkedRepos(t *testing.T) {
 			mocks.CveInfoMock{},
 			log.NewLogger("debug", ""),
 			nil,
-			mocks.RepoDBMock{
+			mocks.MetaDBMock{
 				GetBookmarkedReposFn: func(ctx context.Context) ([]string, error) {
 					return []string{}, ErrTestError
 				},
@@ -673,7 +673,7 @@ func TestGetStarredRepos(t *testing.T) {
 			mocks.CveInfoMock{},
 			log.NewLogger("debug", ""),
 			nil,
-			mocks.RepoDBMock{
+			mocks.MetaDBMock{
 				GetStarredReposFn: func(ctx context.Context) ([]string, error) {
 					return []string{}, ErrTestError
 				},
@@ -693,7 +693,7 @@ func TestGetFilteredPaginatedRepos(t *testing.T) {
 			func(repoMeta metaTypes.RepoMetadata) bool { return true },
 			log.NewLogger("debug", ""),
 			nil,
-			mocks.RepoDBMock{
+			mocks.MetaDBMock{
 				FilterReposFn: func(ctx context.Context, filter metaTypes.FilterRepoFunc, requestedPage metaTypes.PageInput,
 				) ([]metaTypes.RepoMetadata, map[string]metaTypes.ManifestMetadata, map[string]metaTypes.IndexData, common.PageInfo,
 					error,
@@ -710,7 +710,7 @@ func TestGetFilteredPaginatedRepos(t *testing.T) {
 func TestImageListForDigest(t *testing.T) {
 	Convey("getImageList", t, func() {
 		Convey("no page requested, FilterTagsFn returns error", func() {
-			mockSearchDB := mocks.RepoDBMock{
+			mockSearchDB := mocks.MetaDBMock{
 				FilterTagsFn: func(ctx context.Context, filter metaTypes.FilterFunc,
 					requestedPage metaTypes.PageInput,
 				) ([]metaTypes.RepoMetadata, map[string]metaTypes.ManifestMetadata, map[string]metaTypes.IndexData, common.PageInfo,
@@ -728,7 +728,7 @@ func TestImageListForDigest(t *testing.T) {
 		})
 
 		Convey("invalid manifest blob", func() {
-			mockSearchDB := mocks.RepoDBMock{
+			mockSearchDB := mocks.MetaDBMock{
 				FilterTagsFn: func(ctx context.Context, filter metaTypes.FilterFunc,
 					requestedPage metaTypes.PageInput,
 				) ([]metaTypes.RepoMetadata, map[string]metaTypes.ManifestMetadata, map[string]metaTypes.IndexData,
@@ -778,7 +778,7 @@ func TestImageListForDigest(t *testing.T) {
 
 			manifestDigest := godigest.FromBytes(manifestBlob).String()
 
-			mockSearchDB := mocks.RepoDBMock{
+			mockSearchDB := mocks.MetaDBMock{
 				FilterTagsFn: func(ctx context.Context, filter metaTypes.FilterFunc,
 					requestedPage metaTypes.PageInput,
 				) ([]metaTypes.RepoMetadata, map[string]metaTypes.ManifestMetadata, map[string]metaTypes.IndexData,
@@ -853,7 +853,7 @@ func TestImageListForDigest(t *testing.T) {
 
 			configDigest := godigest.FromBytes(configBlob)
 
-			mockSearchDB := mocks.RepoDBMock{
+			mockSearchDB := mocks.MetaDBMock{
 				FilterTagsFn: func(ctx context.Context, filter metaTypes.FilterFunc,
 					requestedPage metaTypes.PageInput,
 				) ([]metaTypes.RepoMetadata, map[string]metaTypes.ManifestMetadata, map[string]metaTypes.IndexData,
@@ -929,7 +929,7 @@ func TestImageListForDigest(t *testing.T) {
 
 			layerDigest := godigest.Digest("validDigest")
 
-			mockSearchDB := mocks.RepoDBMock{
+			mockSearchDB := mocks.MetaDBMock{
 				FilterTagsFn: func(ctx context.Context, filter metaTypes.FilterFunc,
 					requestedPage metaTypes.PageInput,
 				) ([]metaTypes.RepoMetadata, map[string]metaTypes.ManifestMetadata, map[string]metaTypes.IndexData,
@@ -1005,7 +1005,7 @@ func TestImageListForDigest(t *testing.T) {
 			configBlob, err := json.Marshal(ispec.Image{})
 			So(err, ShouldBeNil)
 
-			mockSearchDB := mocks.RepoDBMock{
+			mockSearchDB := mocks.MetaDBMock{
 				FilterTagsFn: func(ctx context.Context, filter metaTypes.FilterFunc,
 					requestedPage metaTypes.PageInput,
 				) ([]metaTypes.RepoMetadata, map[string]metaTypes.ManifestMetadata, map[string]metaTypes.IndexData,
@@ -1076,7 +1076,7 @@ func TestImageListForDigest(t *testing.T) {
 			configBlob, err := json.Marshal(ispec.Image{})
 			So(err, ShouldBeNil)
 
-			mockSearchDB := mocks.RepoDBMock{
+			mockSearchDB := mocks.MetaDBMock{
 				FilterTagsFn: func(ctx context.Context, filter metaTypes.FilterFunc,
 					requestedPage metaTypes.PageInput,
 				) ([]metaTypes.RepoMetadata, map[string]metaTypes.ManifestMetadata, map[string]metaTypes.IndexData, common.PageInfo,
@@ -1159,9 +1159,9 @@ func TestGetImageSummary(t *testing.T) {
 			graphql.DefaultRecover)
 
 		Convey("Media Type: ImageManifest", func() {
-			Convey("repoDB.GetManifestMeta fails", func() {
+			Convey("metaDB.GetManifestMeta fails", func() {
 				var (
-					repoDB = mocks.RepoDBMock{
+					metaDB = mocks.MetaDBMock{
 						GetManifestDataFn: func(manifestDigest godigest.Digest) (metaTypes.ManifestData, error) {
 							return metaTypes.ManifestData{}, ErrTestError
 						},
@@ -1177,13 +1177,13 @@ func TestGetImageSummary(t *testing.T) {
 					log = log.NewLogger("debug", "")
 				)
 
-				_, err := getImageSummary(responseContext, "repo", "tag", nil, repoDB, mocks.CveInfoMock{}, log)
+				_, err := getImageSummary(responseContext, "repo", "tag", nil, metaDB, mocks.CveInfoMock{}, log)
 				So(err, ShouldNotBeNil)
 			})
 
 			Convey("0 len return", func() {
 				var (
-					repoDB = mocks.RepoDBMock{
+					metaDB = mocks.MetaDBMock{
 						GetRepoMetaFn: func(repo string) (metaTypes.RepoMetadata, error) {
 							return metaTypes.RepoMetadata{
 								Tags: map[string]metaTypes.Descriptor{
@@ -1196,13 +1196,13 @@ func TestGetImageSummary(t *testing.T) {
 					log = log.NewLogger("debug", "")
 				)
 
-				_, err := getImageSummary(responseContext, "repo", "tag", nil, repoDB, mocks.CveInfoMock{}, log)
+				_, err := getImageSummary(responseContext, "repo", "tag", nil, metaDB, mocks.CveInfoMock{}, log)
 				So(err, ShouldBeNil)
 			})
 
 			Convey("digest != nil && *digest != actual image digest", func() {
 				var (
-					repoDB = mocks.RepoDBMock{
+					metaDB = mocks.MetaDBMock{
 						GetManifestMetaFn: func(repo string, manifestDigest godigest.Digest) (metaTypes.ManifestMetadata, error) {
 							return metaTypes.ManifestMetadata{}, ErrTestError
 						},
@@ -1220,15 +1220,15 @@ func TestGetImageSummary(t *testing.T) {
 					digest = "wrongDigest"
 				)
 
-				_, err := getImageSummary(responseContext, "repo", "tag", &digest, repoDB, mocks.CveInfoMock{}, log)
+				_, err := getImageSummary(responseContext, "repo", "tag", &digest, metaDB, mocks.CveInfoMock{}, log)
 				So(err, ShouldNotBeNil)
 			})
 		})
 
 		Convey("Media Type: ImageIndex", func() {
-			Convey("repoDB.GetIndexData fails", func() {
+			Convey("metaDB.GetIndexData fails", func() {
 				var (
-					repoDB = mocks.RepoDBMock{
+					metaDB = mocks.MetaDBMock{
 						GetIndexDataFn: func(indexDigest godigest.Digest) (metaTypes.IndexData, error) {
 							return metaTypes.IndexData{}, ErrTestError
 						},
@@ -1244,13 +1244,13 @@ func TestGetImageSummary(t *testing.T) {
 					log = log.NewLogger("debug", "")
 				)
 
-				_, err := getImageSummary(responseContext, "repo", "tag", nil, repoDB, mocks.CveInfoMock{}, log)
+				_, err := getImageSummary(responseContext, "repo", "tag", nil, metaDB, mocks.CveInfoMock{}, log)
 				So(err, ShouldNotBeNil)
 			})
 
 			Convey("json.Unmarshal(indexData.IndexBlob, &indexContent) fails", func() {
 				var (
-					repoDB = mocks.RepoDBMock{
+					metaDB = mocks.MetaDBMock{
 						GetIndexDataFn: func(indexDigest godigest.Digest) (metaTypes.IndexData, error) {
 							return metaTypes.IndexData{
 								IndexBlob: []byte("bad json"),
@@ -1268,7 +1268,7 @@ func TestGetImageSummary(t *testing.T) {
 					log = log.NewLogger("debug", "")
 				)
 
-				_, err := getImageSummary(responseContext, "repo", "tag", nil, repoDB, mocks.CveInfoMock{}, log)
+				_, err := getImageSummary(responseContext, "repo", "tag", nil, metaDB, mocks.CveInfoMock{}, log)
 				So(err, ShouldNotBeNil)
 			})
 
@@ -1285,7 +1285,7 @@ func TestGetImageSummary(t *testing.T) {
 				indexBlob, err := json.Marshal(index)
 				So(err, ShouldBeNil)
 
-				repoDB := mocks.RepoDBMock{
+				metaDB := mocks.MetaDBMock{
 					GetIndexDataFn: func(indexDigest godigest.Digest) (metaTypes.IndexData, error) {
 						return metaTypes.IndexData{
 							IndexBlob: indexBlob,
@@ -1306,16 +1306,16 @@ func TestGetImageSummary(t *testing.T) {
 
 				Convey("digest not found", func() {
 					wrongDigest := "wrongDigest"
-					_, err = getImageSummary(responseContext, "repo", "tag", &wrongDigest, repoDB, mocks.CveInfoMock{}, log)
+					_, err = getImageSummary(responseContext, "repo", "tag", &wrongDigest, metaDB, mocks.CveInfoMock{}, log)
 					So(err, ShouldNotBeNil)
 				})
 
 				Convey("GetManifestData error", func() {
-					repoDB.GetManifestDataFn = func(manifestDigest godigest.Digest) (metaTypes.ManifestData, error) {
+					metaDB.GetManifestDataFn = func(manifestDigest godigest.Digest) (metaTypes.ManifestData, error) {
 						return metaTypes.ManifestData{}, ErrTestError
 					}
 
-					_, err = getImageSummary(responseContext, "repo", "tag", &goodDigest, repoDB, mocks.CveInfoMock{}, log)
+					_, err = getImageSummary(responseContext, "repo", "tag", &goodDigest, metaDB, mocks.CveInfoMock{}, log)
 					So(err, ShouldNotBeNil)
 				})
 			})
@@ -1323,7 +1323,7 @@ func TestGetImageSummary(t *testing.T) {
 
 		Convey("Media Type: not supported", func() {
 			var (
-				repoDB = mocks.RepoDBMock{
+				metaDB = mocks.MetaDBMock{
 					GetRepoMetaFn: func(repo string) (metaTypes.RepoMetadata, error) {
 						return metaTypes.RepoMetadata{
 							Tags: map[string]metaTypes.Descriptor{
@@ -1336,7 +1336,7 @@ func TestGetImageSummary(t *testing.T) {
 				log = log.NewLogger("debug", "")
 			)
 
-			_, err := getImageSummary(responseContext, "repo", "tag", nil, repoDB, mocks.CveInfoMock{}, log)
+			_, err := getImageSummary(responseContext, "repo", "tag", nil, metaDB, mocks.CveInfoMock{}, log)
 			So(err, ShouldBeNil)
 		})
 	})
@@ -1359,7 +1359,7 @@ func TestImageList(t *testing.T) {
 	Convey("getImageList", t, func() {
 		testLogger := log.NewLogger("debug", "")
 		Convey("no page requested, SearchRepoFn returns error", func() {
-			mockSearchDB := mocks.RepoDBMock{
+			mockSearchDB := mocks.MetaDBMock{
 				FilterTagsFn: func(ctx context.Context, filter metaTypes.FilterFunc,
 					requestedPage metaTypes.PageInput,
 				) ([]metaTypes.RepoMetadata, map[string]metaTypes.ManifestMetadata, map[string]metaTypes.IndexData, common.PageInfo,
@@ -1378,7 +1378,7 @@ func TestImageList(t *testing.T) {
 		})
 
 		Convey("valid repoList returned", func() {
-			mockSearchDB := mocks.RepoDBMock{
+			mockSearchDB := mocks.MetaDBMock{
 				FilterTagsFn: func(ctx context.Context, filter metaTypes.FilterFunc,
 					requestedPage metaTypes.PageInput,
 				) ([]metaTypes.RepoMetadata, map[string]metaTypes.ManifestMetadata, map[string]metaTypes.IndexData,
@@ -1463,13 +1463,13 @@ func TestGetReferrers(t *testing.T) {
 		Convey("referredDigest is empty", func() {
 			testLogger := log.NewLogger("debug", "")
 
-			_, err := getReferrers(mocks.RepoDBMock{}, "test", "", nil, testLogger)
+			_, err := getReferrers(mocks.MetaDBMock{}, "test", "", nil, testLogger)
 			So(err, ShouldNotBeNil)
 		})
 
 		Convey("GetReferrers returns error", func() {
 			testLogger := log.NewLogger("debug", "")
-			mockedStore := mocks.RepoDBMock{
+			mockedStore := mocks.MetaDBMock{
 				GetReferrersInfoFn: func(repo string, referredDigest godigest.Digest, artifactTypes []string,
 				) ([]metaTypes.ReferrerInfo, error) {
 					return nil, ErrTestError
@@ -1491,7 +1491,7 @@ func TestGetReferrers(t *testing.T) {
 					"key": "value",
 				},
 			}
-			mockedStore := mocks.RepoDBMock{
+			mockedStore := mocks.MetaDBMock{
 				GetReferrersInfoFn: func(repo string, referredDigest godigest.Digest, artifactTypes []string,
 				) ([]metaTypes.ReferrerInfo, error) {
 					return []metaTypes.ReferrerInfo{
@@ -1527,7 +1527,7 @@ func TestQueryResolverErrors(t *testing.T) {
 			resolverConfig := NewResolver(
 				log,
 				storage.StoreController{},
-				mocks.RepoDBMock{},
+				mocks.MetaDBMock{},
 				mocks.CveInfoMock{},
 			)
 
@@ -1565,7 +1565,7 @@ func TestQueryResolverErrors(t *testing.T) {
 				storage.StoreController{
 					DefaultStore: mocks.MockedImageStore{},
 				},
-				mocks.RepoDBMock{
+				mocks.MetaDBMock{
 					GetMultipleRepoMetaFn: func(ctx context.Context, filter func(repoMeta metaTypes.RepoMetadata) bool,
 						requestedPage metaTypes.PageInput,
 					) ([]metaTypes.RepoMetadata, error) {
@@ -1589,7 +1589,7 @@ func TestQueryResolverErrors(t *testing.T) {
 				storage.StoreController{
 					DefaultStore: mocks.MockedImageStore{},
 				},
-				mocks.RepoDBMock{
+				mocks.MetaDBMock{
 					FilterTagsFn: func(ctx context.Context, filter metaTypes.FilterFunc, requestedPage metaTypes.PageInput,
 					) ([]metaTypes.RepoMetadata, map[string]metaTypes.ManifestMetadata, map[string]metaTypes.IndexData,
 						common.PageInfo, error,
@@ -1615,7 +1615,7 @@ func TestQueryResolverErrors(t *testing.T) {
 				storage.StoreController{
 					DefaultStore: mocks.MockedImageStore{},
 				},
-				mocks.RepoDBMock{
+				mocks.MetaDBMock{
 					FilterTagsFn: func(ctx context.Context, filter metaTypes.FilterFunc, requestedPage metaTypes.PageInput,
 					) ([]metaTypes.RepoMetadata, map[string]metaTypes.ManifestMetadata, map[string]metaTypes.IndexData,
 						common.PageInfo, error,
@@ -1641,7 +1641,7 @@ func TestQueryResolverErrors(t *testing.T) {
 				storage.StoreController{
 					DefaultStore: mocks.MockedImageStore{},
 				},
-				mocks.RepoDBMock{
+				mocks.MetaDBMock{
 					SearchReposFn: func(ctx context.Context, searchText string, filter metaTypes.Filter,
 						requestedPage metaTypes.PageInput,
 					) ([]metaTypes.RepoMetadata, map[string]metaTypes.ManifestMetadata, map[string]metaTypes.IndexData,
@@ -1665,7 +1665,7 @@ func TestQueryResolverErrors(t *testing.T) {
 			resolverConfig := NewResolver(
 				log,
 				storage.StoreController{},
-				mocks.RepoDBMock{
+				mocks.MetaDBMock{
 					SearchReposFn: func(ctx context.Context, searchText string, filter metaTypes.Filter,
 						requestedPage metaTypes.PageInput,
 					) ([]metaTypes.RepoMetadata, map[string]metaTypes.ManifestMetadata, map[string]metaTypes.IndexData,
@@ -1689,7 +1689,7 @@ func TestQueryResolverErrors(t *testing.T) {
 			resolverConfig := NewResolver(
 				log,
 				storage.StoreController{},
-				mocks.RepoDBMock{
+				mocks.MetaDBMock{
 					FilterTagsFn: func(ctx context.Context, filter metaTypes.FilterFunc, requestedPage metaTypes.PageInput,
 					) ([]metaTypes.RepoMetadata, map[string]metaTypes.ManifestMetadata, map[string]metaTypes.IndexData,
 						common.PageInfo, error,
@@ -1722,7 +1722,7 @@ func TestQueryResolverErrors(t *testing.T) {
 						},
 					},
 				},
-				mocks.RepoDBMock{
+				mocks.MetaDBMock{
 					GetRepoMetaFn: func(repo string) (metaTypes.RepoMetadata, error) {
 						return metaTypes.RepoMetadata{}, ErrTestError
 					},
@@ -1751,7 +1751,7 @@ func TestQueryResolverErrors(t *testing.T) {
 						},
 					},
 				},
-				mocks.RepoDBMock{
+				mocks.MetaDBMock{
 					GetRepoMetaFn: func(repo string) (metaTypes.RepoMetadata, error) {
 						return metaTypes.RepoMetadata{}, ErrTestError
 					},
@@ -1785,7 +1785,7 @@ func TestQueryResolverErrors(t *testing.T) {
 			resolverConfig := NewResolver(
 				log,
 				storage.StoreController{},
-				mocks.RepoDBMock{
+				mocks.MetaDBMock{
 					FilterTagsFn: func(ctx context.Context, filter metaTypes.FilterFunc, requestedPage metaTypes.PageInput,
 					) ([]metaTypes.RepoMetadata, map[string]metaTypes.ManifestMetadata, map[string]metaTypes.IndexData,
 						common.PageInfo, error,
@@ -1832,7 +1832,7 @@ func TestQueryResolverErrors(t *testing.T) {
 						},
 					},
 				},
-				mocks.RepoDBMock{},
+				mocks.MetaDBMock{},
 				mocks.CveInfoMock{},
 			)
 
@@ -1847,23 +1847,23 @@ func TestQueryResolverErrors(t *testing.T) {
 }
 
 func TestCVEResolvers(t *testing.T) { //nolint:gocyclo
-	params := bolt.DBParameters{
+	params := boltdb.DBParameters{
 		RootDir: t.TempDir(),
 	}
 
-	boltDriver, err := bolt.GetBoltDriver(params)
+	boltDriver, err := boltdb.GetBoltDriver(params)
 	if err != nil {
 		panic(err)
 	}
 
 	log := log.NewLogger("debug", "")
 
-	repoDB, err := bolt.NewBoltDBWrapper(boltDriver, log)
+	metaDB, err := boltdb.New(boltDriver, log)
 	if err != nil {
 		panic(err)
 	}
 
-	// Create repodb data for scannable image with vulnerabilities
+	// Create metadb data for scannable image with vulnerabilities
 	// Create manifets metadata first
 	timeStamp1 := time.Date(2008, 1, 1, 12, 0, 0, 0, time.UTC)
 
@@ -1899,7 +1899,7 @@ func TestCVEResolvers(t *testing.T) { //nolint:gocyclo
 
 	digest1 := godigest.FromBytes(manifestBlob1)
 
-	err = repoDB.SetManifestData(digest1, repoMeta1)
+	err = metaDB.SetManifestData(digest1, repoMeta1)
 	if err != nil {
 		panic(err)
 	}
@@ -1938,7 +1938,7 @@ func TestCVEResolvers(t *testing.T) { //nolint:gocyclo
 
 	digest2 := godigest.FromBytes(manifestBlob2)
 
-	err = repoDB.SetManifestData(digest2, repoMeta2)
+	err = metaDB.SetManifestData(digest2, repoMeta2)
 	if err != nil {
 		panic(err)
 	}
@@ -1977,7 +1977,7 @@ func TestCVEResolvers(t *testing.T) { //nolint:gocyclo
 
 	digest3 := godigest.FromBytes(manifestBlob3)
 
-	err = repoDB.SetManifestData(digest3, repoMeta3)
+	err = metaDB.SetManifestData(digest3, repoMeta3)
 	if err != nil {
 		panic(err)
 	}
@@ -1999,7 +1999,7 @@ func TestCVEResolvers(t *testing.T) { //nolint:gocyclo
 	for image, digest := range tagsMap {
 		repo, tag := common.GetImageDirAndTag(image)
 
-		err := repoDB.SetRepoReference(repo, tag, digest, ispec.MediaTypeImageManifest)
+		err := metaDB.SetRepoReference(repo, tag, digest, ispec.MediaTypeImageManifest)
 		if err != nil {
 			panic(err)
 		}
@@ -2007,7 +2007,7 @@ func TestCVEResolvers(t *testing.T) { //nolint:gocyclo
 
 	// Create the repo metadata using previously defined manifests
 
-	// RepoDB loaded with initial data, mock the scanner
+	// MetaDB loaded with initial data, mock the scanner
 	severities := map[string]int{
 		"UNKNOWN":  0,
 		"LOW":      1,
@@ -2092,7 +2092,7 @@ func TestCVEResolvers(t *testing.T) { //nolint:gocyclo
 	cveInfo := &cveinfo.BaseCveInfo{
 		Log:     log,
 		Scanner: scanner,
-		RepoDB:  repoDB,
+		MetaDB:  metaDB,
 	}
 
 	Convey("Get CVE list for image ", t, func() {
@@ -2193,7 +2193,7 @@ func TestCVEResolvers(t *testing.T) { //nolint:gocyclo
 			responseContext := graphql.WithResponseContext(context.Background(), graphql.DefaultErrorPresenter,
 				graphql.DefaultRecover)
 
-			images, err := getImageListForCVE(responseContext, "CVE1", cveInfo, nil, repoDB, log)
+			images, err := getImageListForCVE(responseContext, "CVE1", cveInfo, nil, metaDB, log)
 			So(err, ShouldBeNil)
 
 			expectedImages := []string{
@@ -2206,7 +2206,7 @@ func TestCVEResolvers(t *testing.T) { //nolint:gocyclo
 				So(fmt.Sprintf("%s:%s", *image.RepoName, *image.Tag), ShouldBeIn, expectedImages)
 			}
 
-			images, err = getImageListForCVE(responseContext, "CVE2", cveInfo, nil, repoDB, log)
+			images, err = getImageListForCVE(responseContext, "CVE2", cveInfo, nil, metaDB, log)
 			So(err, ShouldBeNil)
 
 			expectedImages = []string{
@@ -2220,7 +2220,7 @@ func TestCVEResolvers(t *testing.T) { //nolint:gocyclo
 				So(fmt.Sprintf("%s:%s", *image.RepoName, *image.Tag), ShouldBeIn, expectedImages)
 			}
 
-			images, err = getImageListForCVE(responseContext, "CVE3", cveInfo, nil, repoDB, log)
+			images, err = getImageListForCVE(responseContext, "CVE3", cveInfo, nil, metaDB, log)
 			So(err, ShouldBeNil)
 
 			expectedImages = []string{
@@ -2242,7 +2242,7 @@ func TestCVEResolvers(t *testing.T) { //nolint:gocyclo
 
 			pageInput := getPageInput(1, 0)
 
-			images, err := getImageListForCVE(responseContext, "CVE1", cveInfo, pageInput, repoDB, log)
+			images, err := getImageListForCVE(responseContext, "CVE1", cveInfo, pageInput, metaDB, log)
 			So(err, ShouldBeNil)
 
 			expectedImages := []string{
@@ -2256,7 +2256,7 @@ func TestCVEResolvers(t *testing.T) { //nolint:gocyclo
 
 			pageInput = getPageInput(1, 1)
 
-			images, err = getImageListForCVE(responseContext, "CVE1", cveInfo, pageInput, repoDB, log)
+			images, err = getImageListForCVE(responseContext, "CVE1", cveInfo, pageInput, metaDB, log)
 			So(err, ShouldBeNil)
 
 			expectedImages = []string{
@@ -2270,19 +2270,19 @@ func TestCVEResolvers(t *testing.T) { //nolint:gocyclo
 
 			pageInput = getPageInput(1, 2)
 
-			images, err = getImageListForCVE(responseContext, "CVE1", cveInfo, pageInput, repoDB, log)
+			images, err = getImageListForCVE(responseContext, "CVE1", cveInfo, pageInput, metaDB, log)
 			So(err, ShouldBeNil)
 			So(len(images.Results), ShouldEqual, 0)
 
 			pageInput = getPageInput(1, 5)
 
-			images, err = getImageListForCVE(responseContext, "CVE1", cveInfo, pageInput, repoDB, log)
+			images, err = getImageListForCVE(responseContext, "CVE1", cveInfo, pageInput, metaDB, log)
 			So(err, ShouldBeNil)
 			So(len(images.Results), ShouldEqual, 0)
 
 			pageInput = getPageInput(2, 0)
 
-			images, err = getImageListForCVE(responseContext, "CVE1", cveInfo, pageInput, repoDB, log)
+			images, err = getImageListForCVE(responseContext, "CVE1", cveInfo, pageInput, metaDB, log)
 			So(err, ShouldBeNil)
 
 			expectedImages = []string{
@@ -2297,7 +2297,7 @@ func TestCVEResolvers(t *testing.T) { //nolint:gocyclo
 
 			pageInput = getPageInput(5, 0)
 
-			images, err = getImageListForCVE(responseContext, "CVE1", cveInfo, pageInput, repoDB, log)
+			images, err = getImageListForCVE(responseContext, "CVE1", cveInfo, pageInput, metaDB, log)
 			So(err, ShouldBeNil)
 
 			expectedImages = []string{
@@ -2312,7 +2312,7 @@ func TestCVEResolvers(t *testing.T) { //nolint:gocyclo
 
 			pageInput = getPageInput(5, 1)
 
-			images, err = getImageListForCVE(responseContext, "CVE1", cveInfo, pageInput, repoDB, log)
+			images, err = getImageListForCVE(responseContext, "CVE1", cveInfo, pageInput, metaDB, log)
 			So(err, ShouldBeNil)
 
 			expectedImages = []string{
@@ -2326,19 +2326,19 @@ func TestCVEResolvers(t *testing.T) { //nolint:gocyclo
 
 			pageInput = getPageInput(5, 2)
 
-			images, err = getImageListForCVE(responseContext, "CVE1", cveInfo, pageInput, repoDB, log)
+			images, err = getImageListForCVE(responseContext, "CVE1", cveInfo, pageInput, metaDB, log)
 			So(err, ShouldBeNil)
 			So(len(images.Results), ShouldEqual, 0)
 
 			pageInput = getPageInput(5, 5)
 
-			images, err = getImageListForCVE(responseContext, "CVE1", cveInfo, pageInput, repoDB, log)
+			images, err = getImageListForCVE(responseContext, "CVE1", cveInfo, pageInput, metaDB, log)
 			So(err, ShouldBeNil)
 			So(len(images.Results), ShouldEqual, 0)
 
 			pageInput = getPageInput(5, 0)
 
-			images, err = getImageListForCVE(responseContext, "CVE2", cveInfo, pageInput, repoDB, log)
+			images, err = getImageListForCVE(responseContext, "CVE2", cveInfo, pageInput, metaDB, log)
 			So(err, ShouldBeNil)
 
 			expectedImages = []string{
@@ -2354,7 +2354,7 @@ func TestCVEResolvers(t *testing.T) { //nolint:gocyclo
 
 			pageInput = getPageInput(5, 3)
 
-			images, err = getImageListForCVE(responseContext, "CVE2", cveInfo, pageInput, repoDB, log)
+			images, err = getImageListForCVE(responseContext, "CVE2", cveInfo, pageInput, metaDB, log)
 			So(err, ShouldBeNil)
 
 			expectedImages = []string{
@@ -2369,7 +2369,7 @@ func TestCVEResolvers(t *testing.T) { //nolint:gocyclo
 
 			pageInput = getPageInput(5, 0)
 
-			images, err = getImageListForCVE(responseContext, "CVE3", cveInfo, pageInput, repoDB, log)
+			images, err = getImageListForCVE(responseContext, "CVE3", cveInfo, pageInput, metaDB, log)
 			So(err, ShouldBeNil)
 
 			expectedImages = []string{
@@ -2384,7 +2384,7 @@ func TestCVEResolvers(t *testing.T) { //nolint:gocyclo
 
 			pageInput = getPageInput(5, 5)
 
-			images, err = getImageListForCVE(responseContext, "CVE3", cveInfo, pageInput, repoDB, log)
+			images, err = getImageListForCVE(responseContext, "CVE3", cveInfo, pageInput, metaDB, log)
 			So(err, ShouldBeNil)
 
 			expectedImages = []string{
@@ -2399,7 +2399,7 @@ func TestCVEResolvers(t *testing.T) { //nolint:gocyclo
 
 			pageInput = getPageInput(5, 10)
 
-			images, err = getImageListForCVE(responseContext, "CVE3", cveInfo, pageInput, repoDB, log)
+			images, err = getImageListForCVE(responseContext, "CVE3", cveInfo, pageInput, metaDB, log)
 			So(err, ShouldBeNil)
 
 			expectedImages = []string{
@@ -2418,7 +2418,7 @@ func TestCVEResolvers(t *testing.T) { //nolint:gocyclo
 			responseContext := graphql.WithResponseContext(context.Background(), graphql.DefaultErrorPresenter,
 				graphql.DefaultRecover)
 
-			images, err := getImageListWithCVEFixed(responseContext, "CVE1", "repo1", cveInfo, nil, repoDB, log)
+			images, err := getImageListWithCVEFixed(responseContext, "CVE1", "repo1", cveInfo, nil, metaDB, log)
 			So(err, ShouldBeNil)
 
 			expectedImages := []string{
@@ -2430,7 +2430,7 @@ func TestCVEResolvers(t *testing.T) { //nolint:gocyclo
 				So(fmt.Sprintf("%s:%s", *image.RepoName, *image.Tag), ShouldBeIn, expectedImages)
 			}
 
-			images, err = getImageListWithCVEFixed(responseContext, "CVE2", "repo1", cveInfo, nil, repoDB, log)
+			images, err = getImageListWithCVEFixed(responseContext, "CVE2", "repo1", cveInfo, nil, metaDB, log)
 			So(err, ShouldBeNil)
 
 			expectedImages = []string{
@@ -2442,7 +2442,7 @@ func TestCVEResolvers(t *testing.T) { //nolint:gocyclo
 				So(fmt.Sprintf("%s:%s", *image.RepoName, *image.Tag), ShouldBeIn, expectedImages)
 			}
 
-			images, err = getImageListWithCVEFixed(responseContext, "CVE3", "repo1", cveInfo, nil, repoDB, log)
+			images, err = getImageListWithCVEFixed(responseContext, "CVE3", "repo1", cveInfo, nil, metaDB, log)
 			So(err, ShouldBeNil)
 			So(len(images.Results), ShouldEqual, 0)
 		})
@@ -2454,7 +2454,7 @@ func TestCVEResolvers(t *testing.T) { //nolint:gocyclo
 
 			pageInput := getPageInput(1, 0)
 
-			images, err := getImageListWithCVEFixed(responseContext, "CVE1", "repo1", cveInfo, pageInput, repoDB, log)
+			images, err := getImageListWithCVEFixed(responseContext, "CVE1", "repo1", cveInfo, pageInput, metaDB, log)
 			So(err, ShouldBeNil)
 
 			expectedImages := []string{
@@ -2468,7 +2468,7 @@ func TestCVEResolvers(t *testing.T) { //nolint:gocyclo
 
 			pageInput = getPageInput(1, 1)
 
-			images, err = getImageListWithCVEFixed(responseContext, "CVE1", "repo1", cveInfo, pageInput, repoDB, log)
+			images, err = getImageListWithCVEFixed(responseContext, "CVE1", "repo1", cveInfo, pageInput, metaDB, log)
 			So(err, ShouldBeNil)
 
 			expectedImages = []string{
@@ -2482,7 +2482,7 @@ func TestCVEResolvers(t *testing.T) { //nolint:gocyclo
 
 			pageInput = getPageInput(1, 2)
 
-			images, err = getImageListWithCVEFixed(responseContext, "CVE1", "repo1", cveInfo, pageInput, repoDB, log)
+			images, err = getImageListWithCVEFixed(responseContext, "CVE1", "repo1", cveInfo, pageInput, metaDB, log)
 			So(err, ShouldBeNil)
 
 			expectedImages = []string{
@@ -2496,19 +2496,19 @@ func TestCVEResolvers(t *testing.T) { //nolint:gocyclo
 
 			pageInput = getPageInput(1, 3)
 
-			images, err = getImageListWithCVEFixed(responseContext, "CVE1", "repo1", cveInfo, pageInput, repoDB, log)
+			images, err = getImageListWithCVEFixed(responseContext, "CVE1", "repo1", cveInfo, pageInput, metaDB, log)
 			So(err, ShouldBeNil)
 			So(len(images.Results), ShouldEqual, 0)
 
 			pageInput = getPageInput(1, 10)
 
-			images, err = getImageListWithCVEFixed(responseContext, "CVE1", "repo1", cveInfo, pageInput, repoDB, log)
+			images, err = getImageListWithCVEFixed(responseContext, "CVE1", "repo1", cveInfo, pageInput, metaDB, log)
 			So(err, ShouldBeNil)
 			So(len(images.Results), ShouldEqual, 0)
 
 			pageInput = getPageInput(2, 0)
 
-			images, err = getImageListWithCVEFixed(responseContext, "CVE1", "repo1", cveInfo, pageInput, repoDB, log)
+			images, err = getImageListWithCVEFixed(responseContext, "CVE1", "repo1", cveInfo, pageInput, metaDB, log)
 			So(err, ShouldBeNil)
 
 			expectedImages = []string{
@@ -2522,7 +2522,7 @@ func TestCVEResolvers(t *testing.T) { //nolint:gocyclo
 
 			pageInput = getPageInput(2, 1)
 
-			images, err = getImageListWithCVEFixed(responseContext, "CVE1", "repo1", cveInfo, pageInput, repoDB, log)
+			images, err = getImageListWithCVEFixed(responseContext, "CVE1", "repo1", cveInfo, pageInput, metaDB, log)
 			So(err, ShouldBeNil)
 
 			expectedImages = []string{
@@ -2536,7 +2536,7 @@ func TestCVEResolvers(t *testing.T) { //nolint:gocyclo
 
 			pageInput = getPageInput(2, 2)
 
-			images, err = getImageListWithCVEFixed(responseContext, "CVE1", "repo1", cveInfo, pageInput, repoDB, log)
+			images, err = getImageListWithCVEFixed(responseContext, "CVE1", "repo1", cveInfo, pageInput, metaDB, log)
 			So(err, ShouldBeNil)
 
 			expectedImages = []string{
@@ -2550,7 +2550,7 @@ func TestCVEResolvers(t *testing.T) { //nolint:gocyclo
 
 			pageInput = getPageInput(5, 0)
 
-			images, err = getImageListWithCVEFixed(responseContext, "CVE1", "repo1", cveInfo, pageInput, repoDB, log)
+			images, err = getImageListWithCVEFixed(responseContext, "CVE1", "repo1", cveInfo, pageInput, metaDB, log)
 			So(err, ShouldBeNil)
 
 			expectedImages = []string{
@@ -2564,7 +2564,7 @@ func TestCVEResolvers(t *testing.T) { //nolint:gocyclo
 
 			pageInput = getPageInput(5, 0)
 
-			images, err = getImageListWithCVEFixed(responseContext, "CVE2", "repo1", cveInfo, pageInput, repoDB, log)
+			images, err = getImageListWithCVEFixed(responseContext, "CVE2", "repo1", cveInfo, pageInput, metaDB, log)
 			So(err, ShouldBeNil)
 
 			expectedImages = []string{
@@ -2578,7 +2578,7 @@ func TestCVEResolvers(t *testing.T) { //nolint:gocyclo
 
 			pageInput = getPageInput(5, 2)
 
-			images, err = getImageListWithCVEFixed(responseContext, "CVE2", "repo1", cveInfo, pageInput, repoDB, log)
+			images, err = getImageListWithCVEFixed(responseContext, "CVE2", "repo1", cveInfo, pageInput, metaDB, log)
 			So(err, ShouldBeNil)
 			So(len(images.Results), ShouldEqual, 0)
 		})
@@ -2594,7 +2594,7 @@ func TestCVEResolvers(t *testing.T) { //nolint:gocyclo
 				},
 			},
 			nil,
-			mocks.RepoDBMock{
+			mocks.MetaDBMock{
 				GetMultipleRepoMetaFn: func(ctx context.Context, filter func(repoMeta metaTypes.RepoMetadata) bool,
 					requestedPage metaTypes.PageInput,
 				) ([]metaTypes.RepoMetadata, error) {
@@ -2618,8 +2618,8 @@ func getPageInput(limit int, offset int) *gql_generated.PageInput {
 }
 
 func TestDerivedImageList(t *testing.T) {
-	Convey("RepoDB FilterTags error", t, func() {
-		mockSearchDB := mocks.RepoDBMock{
+	Convey("MetaDB FilterTags error", t, func() {
+		mockSearchDB := mocks.MetaDBMock{
 			FilterTagsFn: func(ctx context.Context, filter metaTypes.FilterFunc, requestedPage metaTypes.PageInput,
 			) ([]metaTypes.RepoMetadata, map[string]metaTypes.ManifestMetadata, map[string]metaTypes.IndexData,
 				common.PageInfo, error,
@@ -2645,7 +2645,7 @@ func TestDerivedImageList(t *testing.T) {
 	})
 
 	//nolint: dupl
-	Convey("RepoDB FilterTags no repo available", t, func() {
+	Convey("MetaDB FilterTags no repo available", t, func() {
 		configBlob, err := json.Marshal(ispec.Image{
 			Config: ispec.ImageConfig{
 				Labels: map[string]string{},
@@ -2660,7 +2660,7 @@ func TestDerivedImageList(t *testing.T) {
 
 		manifestDigest := godigest.FromBytes(manifestBlob)
 
-		mockSearchDB := mocks.RepoDBMock{
+		mockSearchDB := mocks.MetaDBMock{
 			FilterTagsFn: func(ctx context.Context, filter metaTypes.FilterFunc, requestedPage metaTypes.PageInput,
 			) ([]metaTypes.RepoMetadata, map[string]metaTypes.ManifestMetadata, map[string]metaTypes.IndexData,
 				common.PageInfo, error,
@@ -2796,7 +2796,7 @@ func TestDerivedImageList(t *testing.T) {
 		}
 		manifestDigest := godigest.FromBytes(manifestBlob)
 
-		mockSearchDB := mocks.RepoDBMock{
+		mockSearchDB := mocks.MetaDBMock{
 			GetRepoMetaFn: func(repo string) (metaTypes.RepoMetadata, error) {
 				return metaTypes.RepoMetadata{
 					Name: "repo1",
@@ -2888,8 +2888,8 @@ func TestDerivedImageList(t *testing.T) {
 }
 
 func TestBaseImageList(t *testing.T) {
-	Convey("RepoDB FilterTags error", t, func() {
-		mockSearchDB := mocks.RepoDBMock{
+	Convey("MetaDB FilterTags error", t, func() {
+		mockSearchDB := mocks.MetaDBMock{
 			FilterTagsFn: func(ctx context.Context, filter metaTypes.FilterFunc, requestedPage metaTypes.PageInput,
 			) ([]metaTypes.RepoMetadata, map[string]metaTypes.ManifestMetadata, map[string]metaTypes.IndexData,
 				common.PageInfo, error,
@@ -2915,7 +2915,7 @@ func TestBaseImageList(t *testing.T) {
 	})
 
 	//nolint: dupl
-	Convey("RepoDB FilterTags no repo available", t, func() {
+	Convey("MetaDB FilterTags no repo available", t, func() {
 		configBlob, err := json.Marshal(ispec.Image{
 			Config: ispec.ImageConfig{
 				Labels: map[string]string{},
@@ -2930,7 +2930,7 @@ func TestBaseImageList(t *testing.T) {
 
 		manifestDigest := godigest.FromBytes(manifestBlob)
 
-		mockSearchDB := mocks.RepoDBMock{
+		mockSearchDB := mocks.MetaDBMock{
 			FilterTagsFn: func(ctx context.Context, filter metaTypes.FilterFunc, requestedPage metaTypes.PageInput,
 			) ([]metaTypes.RepoMetadata, map[string]metaTypes.ManifestMetadata, map[string]metaTypes.IndexData,
 				common.PageInfo, error,
@@ -3060,7 +3060,7 @@ func TestBaseImageList(t *testing.T) {
 		}
 		derivedManifestDigest := godigest.FromBytes(derivedManifestBlob)
 
-		mockSearchDB := mocks.RepoDBMock{
+		mockSearchDB := mocks.MetaDBMock{
 			GetRepoMetaFn: func(repo string) (metaTypes.RepoMetadata, error) {
 				return metaTypes.RepoMetadata{
 					Name: "repo1",
@@ -3236,7 +3236,7 @@ func TestBaseImageList(t *testing.T) {
 		}
 		derivedManifestDigest := godigest.FromBytes(derivedManifestBlob)
 
-		mockSearchDB := mocks.RepoDBMock{
+		mockSearchDB := mocks.MetaDBMock{
 			GetRepoMetaFn: func(repo string) (metaTypes.RepoMetadata, error) {
 				return metaTypes.RepoMetadata{
 					Name: "repo1",
@@ -3310,7 +3310,7 @@ func TestExpandedRepoInfo(t *testing.T) {
 		responseContext := graphql.WithResponseContext(context.Background(), graphql.DefaultErrorPresenter,
 			graphql.DefaultRecover)
 
-		repoDB := mocks.RepoDBMock{
+		metaDB := mocks.MetaDBMock{
 			GetUserRepoMetaFn: func(ctx context.Context, repo string) (metaTypes.RepoMetadata, error) {
 				return metaTypes.RepoMetadata{
 					Tags: map[string]metaTypes.Descriptor{
@@ -3390,7 +3390,7 @@ func TestExpandedRepoInfo(t *testing.T) {
 			},
 		}
 
-		_, err := expandedRepoInfo(responseContext, "repo", repoDB, mocks.CveInfoMock{}, log)
+		_, err := expandedRepoInfo(responseContext, "repo", metaDB, mocks.CveInfoMock{}, log)
 		So(err, ShouldBeNil)
 	})
 
@@ -3408,7 +3408,7 @@ func TestExpandedRepoInfo(t *testing.T) {
 		responseContext := graphql.WithResponseContext(ctx, graphql.DefaultErrorPresenter,
 			graphql.DefaultRecover)
 
-		_, err := expandedRepoInfo(responseContext, "repo", mocks.RepoDBMock{}, mocks.CveInfoMock{}, log)
+		_, err := expandedRepoInfo(responseContext, "repo", mocks.MetaDBMock{}, mocks.CveInfoMock{}, log)
 		So(err, ShouldBeNil)
 	})
 }

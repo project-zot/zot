@@ -195,7 +195,7 @@ func TestCreateCacheDatabaseDriver(t *testing.T) {
 	})
 }
 
-func TestCreateRepoDBDriver(t *testing.T) {
+func TestCreateMetaDBDriver(t *testing.T) {
 	Convey("Test CreateCacheDatabaseDriver dynamo", t, func() {
 		log := log.NewLogger("debug", "")
 		dir := t.TempDir()
