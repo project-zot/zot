@@ -32,9 +32,11 @@ import (
 	"zotregistry.io/zot/pkg/extensions/monitoring"
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/meta/repodb"
-	"zotregistry.io/zot/pkg/storage"
+	storageCommon "zotregistry.io/zot/pkg/storage/common"
+	storageConstants "zotregistry.io/zot/pkg/storage/constants"
 	"zotregistry.io/zot/pkg/storage/local"
-	"zotregistry.io/zot/pkg/test"
+	storageTypes "zotregistry.io/zot/pkg/storage/types"
+	"zotregistry.io/zot/pkg/test/inject"
 )
 
 type ReferenceList struct {
@@ -57,7 +59,7 @@ func getTagFromRef(ref types.ImageReference, log log.Logger) reference.Tagged {
 func getImageTags(ctx context.Context, sysCtx *types.SystemContext, repoRef reference.Named) ([]string, error) {
 	dockerRef, err := docker.NewReference(reference.TagNameOnly(repoRef))
 	// hard to reach test case, injected error, see pkg/test/dev.go
-	if err = test.Error(err); err != nil {
+	if err = inject.Error(err); err != nil {
 		return nil, err // Should never happen for a reference with tag and no digest
 	}
 
@@ -266,7 +268,7 @@ func getFileCredentials(filepath string) (syncconf.CredentialsFile, error) {
 }
 
 func pushSyncedLocalImage(localRepo, reference, localCachePath string,
-	repoDB repodb.RepoDB, imageStore storage.ImageStore, log log.Logger,
+	repoDB repodb.RepoDB, imageStore storageTypes.ImageStore, log log.Logger,
 ) error {
 	log.Info().Str("image", localCachePath+"/"+localRepo+":"+reference).Msg("pushing synced local image to local registry")
 
@@ -275,7 +277,7 @@ func pushSyncedLocalImage(localRepo, reference, localCachePath string,
 	metrics := monitoring.NewMetricsServer(false, log)
 
 	cacheImageStore := local.NewImageStore(localCachePath, false,
-		storage.DefaultGCDelay, false, false, log, metrics, nil, nil)
+		storageConstants.DefaultGCDelay, false, false, log, metrics, nil, nil)
 
 	manifestBlob, manifestDigest, mediaType, err := cacheImageStore.GetImageManifest(localRepo, reference)
 	if err != nil {
@@ -361,7 +363,7 @@ func pushSyncedLocalImage(localRepo, reference, localCachePath string,
 }
 
 func copyManifest(localRepo string, manifestContent []byte, reference string, repoDB repodb.RepoDB,
-	cacheImageStore, imageStore storage.ImageStore, log log.Logger,
+	cacheImageStore, imageStore storageTypes.ImageStore, log log.Logger,
 ) error {
 	var manifest ispec.Manifest
 
@@ -376,7 +378,7 @@ func copyManifest(localRepo string, manifestContent []byte, reference string, re
 	}
 
 	for _, blob := range manifest.Layers {
-		if storage.IsNonDistributable(blob.MediaType) {
+		if storageCommon.IsNonDistributable(blob.MediaType) {
 			continue
 		}
 
@@ -421,7 +423,7 @@ func copyManifest(localRepo string, manifestContent []byte, reference string, re
 
 // Copy a blob from one image store to another image store.
 func copyBlob(localRepo string, blobDigest godigest.Digest, blobMediaType string,
-	souceImageStore, destinationImageStore storage.ImageStore, log log.Logger,
+	souceImageStore, destinationImageStore storageTypes.ImageStore, log log.Logger,
 ) error {
 	if found, _, _ := destinationImageStore.CheckBlob(localRepo, blobDigest); found {
 		// Blob is already at destination, nothing to do
@@ -508,12 +510,12 @@ func getLocalImageRef(localCachePath, repo, reference string) (types.ImageRefere
 }
 
 // Returns the localCachePath with an UUID at the end. Only to be called once per repo.
-func getLocalCachePath(imageStore storage.ImageStore, repo string) (string, error) {
+func getLocalCachePath(imageStore storageTypes.ImageStore, repo string) (string, error) {
 	localRepoPath := path.Join(imageStore.RootDir(), repo, SyncBlobUploadDir)
 	// check if SyncBlobUploadDir exists, create if not
 	var err error
 	if _, err = os.ReadDir(localRepoPath); os.IsNotExist(err) {
-		if err = os.MkdirAll(localRepoPath, local.DefaultDirPerms); err != nil {
+		if err = os.MkdirAll(localRepoPath, storageConstants.DefaultDirPerms); err != nil {
 			return "", err
 		}
 	}
@@ -525,14 +527,14 @@ func getLocalCachePath(imageStore storage.ImageStore, repo string) (string, erro
 	// create uuid folder
 	uuid, err := guuid.NewV4()
 	// hard to reach test case, injected error, see pkg/test/dev.go
-	if err := test.Error(err); err != nil {
+	if err := inject.Error(err); err != nil {
 		return "", err
 	}
 
 	localCachePath := path.Join(localRepoPath, uuid.String())
 
 	cachedRepoPath := path.Join(localCachePath, repo)
-	if err = os.MkdirAll(cachedRepoPath, local.DefaultDirPerms); err != nil {
+	if err = os.MkdirAll(cachedRepoPath, storageConstants.DefaultDirPerms); err != nil {
 		return "", err
 	}
 
@@ -540,7 +542,7 @@ func getLocalCachePath(imageStore storage.ImageStore, repo string) (string, erro
 }
 
 // canSkipImage returns whether or not we already synced this image.
-func canSkipImage(repo, tag string, digest godigest.Digest, imageStore storage.ImageStore, log log.Logger,
+func canSkipImage(repo, tag string, digest godigest.Digest, imageStore storageTypes.ImageStore, log log.Logger,
 ) (bool, error) {
 	// check image already synced
 	_, localImageManifestDigest, _, err := imageStore.GetImageManifest(repo, tag)

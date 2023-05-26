@@ -39,8 +39,9 @@ import (
 	"zotregistry.io/zot/pkg/meta"
 	zreg "zotregistry.io/zot/pkg/regexp"
 	localCtx "zotregistry.io/zot/pkg/requestcontext"
-	"zotregistry.io/zot/pkg/storage"
-	"zotregistry.io/zot/pkg/test" //nolint:goimports
+	storageCommon "zotregistry.io/zot/pkg/storage/common"
+	storageTypes "zotregistry.io/zot/pkg/storage/types"
+	"zotregistry.io/zot/pkg/test/inject"
 )
 
 type RouteHandler struct {
@@ -488,7 +489,7 @@ type ImageIndex struct {
 }
 
 func getReferrers(ctx context.Context, routeHandler *RouteHandler,
-	imgStore storage.ImageStore, name string, digest godigest.Digest,
+	imgStore storageTypes.ImageStore, name string, digest godigest.Digest,
 	artifactTypes []string,
 ) (ispec.Index, error) {
 	references, err := imgStore.GetReferrers(name, digest, artifactTypes)
@@ -621,7 +622,7 @@ func (rh *RouteHandler) UpdateManifest(response http.ResponseWriter, request *ht
 	}
 
 	mediaType := request.Header.Get("Content-Type")
-	if !storage.IsSupportedMediaType(mediaType) {
+	if !storageCommon.IsSupportedMediaType(mediaType) {
 		// response.WriteHeader(http.StatusUnsupportedMediaType)
 		WriteJSON(response, http.StatusUnsupportedMediaType,
 			NewErrorList(NewError(MANIFEST_INVALID, map[string]string{"mediaType": mediaType})))
@@ -632,7 +633,7 @@ func (rh *RouteHandler) UpdateManifest(response http.ResponseWriter, request *ht
 	body, err := io.ReadAll(request.Body)
 	// hard to reach test case, injected error (simulates an interrupted image manifest upload)
 	// err could be io.ErrUnexpectedEOF
-	if err := test.Error(err); err != nil {
+	if err := inject.Error(err); err != nil {
 		rh.c.Log.Error().Err(err).Msg("unexpected error")
 		response.WriteHeader(http.StatusInternalServerError)
 
@@ -1716,12 +1717,12 @@ func WriteDataFromReader(response http.ResponseWriter, status int, length int64,
 }
 
 // will return image storage corresponding to subpath provided in config.
-func (rh *RouteHandler) getImageStore(name string) storage.ImageStore {
+func (rh *RouteHandler) getImageStore(name string) storageTypes.ImageStore {
 	return rh.c.StoreController.GetImageStore(name)
 }
 
 // will sync on demand if an image is not found, in case sync extensions is enabled.
-func getImageManifest(ctx context.Context, routeHandler *RouteHandler, imgStore storage.ImageStore,
+func getImageManifest(ctx context.Context, routeHandler *RouteHandler, imgStore storageTypes.ImageStore,
 	name, reference string,
 ) ([]byte, godigest.Digest, string, error) {
 	syncEnabled := false
@@ -1757,7 +1758,7 @@ func getImageManifest(ctx context.Context, routeHandler *RouteHandler, imgStore 
 
 // will sync referrers on demand if they are not found, in case sync extensions is enabled.
 func getOrasReferrers(ctx context.Context, routeHandler *RouteHandler,
-	imgStore storage.ImageStore, name string, digest godigest.Digest,
+	imgStore storageTypes.ImageStore, name string, digest godigest.Digest,
 	artifactType string,
 ) ([]artifactspec.Descriptor, error) {
 	refs, err := imgStore.GetOrasReferrers(name, digest, artifactType)

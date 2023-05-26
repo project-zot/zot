@@ -24,6 +24,7 @@ import (
 	"zotregistry.io/zot/pkg/meta/repodb"
 	"zotregistry.io/zot/pkg/meta/signatures"
 	"zotregistry.io/zot/pkg/storage"
+	storageTypes "zotregistry.io/zot/pkg/storage/types"
 )
 
 type signaturesCopier struct {
@@ -520,7 +521,7 @@ func (sig *signaturesCopier) canSkipOCIRefs(localRepo, digestStr string, index i
 	return true, nil
 }
 
-func syncBlob(sig *signaturesCopier, imageStore storage.ImageStore, localRepo, remoteRepo string,
+func syncBlob(sig *signaturesCopier, imageStore storageTypes.ImageStore, localRepo, remoteRepo string,
 	digest godigest.Digest,
 ) error {
 	getBlobURL := sig.upstreamURL

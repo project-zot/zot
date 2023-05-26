@@ -13,6 +13,7 @@ import (
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/meta/signatures"
 	"zotregistry.io/zot/pkg/storage"
+	storageTypes "zotregistry.io/zot/pkg/storage/types"
 )
 
 // ParseStorage will sync all repos found in the rootdirectory of the oci layout that zot was deployed on with the
@@ -215,8 +216,8 @@ func isManifestMetaPresent(repo string, manifest ispec.Descriptor, repoDB RepoDB
 	return true, nil
 }
 
-func GetSignatureLayersInfo(
-	repo, tag, manifestDigest, signatureType string, manifestBlob []byte, imageStore storage.ImageStore, log log.Logger,
+func GetSignatureLayersInfo(repo, tag, manifestDigest, signatureType string, manifestBlob []byte,
+	imageStore storageTypes.ImageStore, log log.Logger,
 ) ([]LayerInfo, error) {
 	switch signatureType {
 	case signatures.CosignSignature:
@@ -229,7 +230,7 @@ func GetSignatureLayersInfo(
 }
 
 func getCosignSignatureLayersInfo(
-	repo, tag, manifestDigest string, manifestBlob []byte, imageStore storage.ImageStore, log log.Logger,
+	repo, tag, manifestDigest string, manifestBlob []byte, imageStore storageTypes.ImageStore, log log.Logger,
 ) ([]LayerInfo, error) {
 	layers := []LayerInfo{}
 
@@ -267,7 +268,7 @@ func getCosignSignatureLayersInfo(
 }
 
 func getNotationSignatureLayersInfo(
-	repo, manifestDigest string, manifestBlob []byte, imageStore storage.ImageStore, log log.Logger,
+	repo, manifestDigest string, manifestBlob []byte, imageStore storageTypes.ImageStore, log log.Logger,
 ) ([]LayerInfo, error) {
 	layers := []LayerInfo{}
 
@@ -308,7 +309,7 @@ func getNotationSignatureLayersInfo(
 }
 
 // NewManifestMeta takes raw data about an image and createa a new ManifestMetadate object.
-func NewManifestData(repoName string, manifestBlob []byte, imageStore storage.ImageStore,
+func NewManifestData(repoName string, manifestBlob []byte, imageStore storageTypes.ImageStore,
 ) (ManifestData, error) {
 	var (
 		manifestContent ispec.Manifest
@@ -337,7 +338,7 @@ func NewManifestData(repoName string, manifestBlob []byte, imageStore storage.Im
 	return manifestData, nil
 }
 
-func NewIndexData(repoName string, indexBlob []byte, imageStore storage.ImageStore,
+func NewIndexData(repoName string, indexBlob []byte, imageStore storageTypes.ImageStore,
 ) IndexData {
 	indexData := IndexData{}
 
@@ -349,7 +350,7 @@ func NewIndexData(repoName string, indexBlob []byte, imageStore storage.ImageSto
 // SetMetadataFromInput tries to set manifest metadata and update repo metadata by adding the current tag
 // (in case the reference is a tag). The function expects image manifests and indexes (multi arch images).
 func SetImageMetaFromInput(repo, reference, mediaType string, digest godigest.Digest, descriptorBlob []byte,
-	imageStore storage.ImageStore, repoDB RepoDB, log log.Logger,
+	imageStore storageTypes.ImageStore, repoDB RepoDB, log log.Logger,
 ) error {
 	switch mediaType {
 	case ispec.MediaTypeImageManifest:

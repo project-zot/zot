@@ -3,7 +3,7 @@
 
 // This file should be linked only in **development** mode.
 
-package test
+package inject
 
 import (
 	"net/http"

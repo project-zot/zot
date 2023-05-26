@@ -1,7 +1,7 @@
 //go:build !dev
 // +build !dev
 
-package test
+package inject
 
 func Error(err error) error {
 	return err

@@ -40,7 +40,9 @@ import (
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/meta/repodb"
 	"zotregistry.io/zot/pkg/storage"
+	storageConstants "zotregistry.io/zot/pkg/storage/constants"
 	"zotregistry.io/zot/pkg/storage/local"
+	storageTypes "zotregistry.io/zot/pkg/storage/types"
 	. "zotregistry.io/zot/pkg/test"
 	"zotregistry.io/zot/pkg/test/mocks"
 	ocilayout "zotregistry.io/zot/pkg/test/oci-layout"
@@ -1218,7 +1220,7 @@ func TestExpandedRepoInfo(t *testing.T) {
 
 		log := log.NewLogger("debug", "")
 		metrics := monitoring.NewMetricsServer(false, log)
-		testStorage := local.NewImageStore(rootDir, false, storage.DefaultGCDelay,
+		testStorage := local.NewImageStore(rootDir, false, storageConstants.DefaultGCDelay,
 			false, false, log, metrics, nil, nil)
 
 		resp, err := resty.R().Get(baseURL + "/v2/")
@@ -2821,7 +2823,7 @@ func TestGetRepositories(t *testing.T) {
 
 		storeController := storage.StoreController{
 			DefaultStore: mockImageStore,
-			SubStore:     map[string]storage.ImageStore{"test": mockImageStore},
+			SubStore:     map[string]storageTypes.ImageStore{"test": mockImageStore},
 		}
 		olu := ocilayout.NewBaseOciLayoutUtils(storeController, log.NewLogger("debug", ""))
 
@@ -2831,7 +2833,7 @@ func TestGetRepositories(t *testing.T) {
 
 		storeController = storage.StoreController{
 			DefaultStore: mocks.MockedImageStore{},
-			SubStore:     map[string]storage.ImageStore{"test": mockImageStore},
+			SubStore:     map[string]storageTypes.ImageStore{"test": mockImageStore},
 		}
 		olu = ocilayout.NewBaseOciLayoutUtils(storeController, log.NewLogger("debug", ""))
 
@@ -5446,7 +5448,7 @@ func TestRepoDBWhenDeletingImages(t *testing.T) {
 			// get signatur digest
 			log := log.NewLogger("debug", "")
 			metrics := monitoring.NewMetricsServer(false, log)
-			storage := local.NewImageStore(dir, false, storage.DefaultGCDelay,
+			storage := local.NewImageStore(dir, false, storageConstants.DefaultGCDelay,
 				false, false, log, metrics, nil, nil)
 
 			indexBlob, err := storage.GetIndexContent(repo)
@@ -5523,7 +5525,7 @@ func TestRepoDBWhenDeletingImages(t *testing.T) {
 			// get signatur digest
 			log := log.NewLogger("debug", "")
 			metrics := monitoring.NewMetricsServer(false, log)
-			storage := local.NewImageStore(dir, false, storage.DefaultGCDelay,
+			storage := local.NewImageStore(dir, false, storageConstants.DefaultGCDelay,
 				false, false, log, metrics, nil, nil)
 
 			indexBlob, err := storage.GetIndexContent(repo)

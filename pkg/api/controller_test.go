@@ -51,8 +51,9 @@ import (
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/meta/repodb/repodbfactory"
 	"zotregistry.io/zot/pkg/storage"
-	"zotregistry.io/zot/pkg/storage/local"
+	storageConstants "zotregistry.io/zot/pkg/storage/constants"
 	"zotregistry.io/zot/pkg/test"
+	"zotregistry.io/zot/pkg/test/inject"
 )
 
 const (
@@ -121,13 +122,13 @@ func TestCreateCacheDatabaseDriver(t *testing.T) {
 			panic(err)
 		}
 
-		driver := api.CreateCacheDatabaseDriver(conf.Storage.StorageConfig, log)
+		driver := storage.CreateCacheDatabaseDriver(conf.Storage.StorageConfig, log)
 		So(driver, ShouldBeNil)
 
 		conf.Storage.RemoteCache = true
 		conf.Storage.RootDirectory = t.TempDir()
 
-		driver = api.CreateCacheDatabaseDriver(conf.Storage.StorageConfig, log)
+		driver = storage.CreateCacheDatabaseDriver(conf.Storage.StorageConfig, log)
 		So(driver, ShouldBeNil)
 	})
 	skipDynamo(t)
@@ -160,7 +161,7 @@ func TestCreateCacheDatabaseDriver(t *testing.T) {
 			"versionTablename":      "Version",
 		}
 
-		driver := api.CreateCacheDatabaseDriver(conf.Storage.StorageConfig, log)
+		driver := storage.CreateCacheDatabaseDriver(conf.Storage.StorageConfig, log)
 		So(driver, ShouldNotBeNil)
 
 		// negative test cases
@@ -175,7 +176,7 @@ func TestCreateCacheDatabaseDriver(t *testing.T) {
 			"versionTablename":      "Version",
 		}
 
-		driver = api.CreateCacheDatabaseDriver(conf.Storage.StorageConfig, log)
+		driver = storage.CreateCacheDatabaseDriver(conf.Storage.StorageConfig, log)
 		So(driver, ShouldBeNil)
 
 		conf.Storage.CacheDriver = map[string]interface{}{
@@ -189,7 +190,7 @@ func TestCreateCacheDatabaseDriver(t *testing.T) {
 			"versionTablename":      "Version",
 		}
 
-		driver = api.CreateCacheDatabaseDriver(conf.Storage.StorageConfig, log)
+		driver = storage.CreateCacheDatabaseDriver(conf.Storage.StorageConfig, log)
 		So(driver, ShouldBeNil)
 	})
 }
@@ -360,7 +361,7 @@ func TestObjectStorageController(t *testing.T) {
 		conf.HTTP.Port = port
 		storageDriverParams := map[string]interface{}{
 			"rootdirectory": "zot",
-			"name":          storage.S3StorageDriverName,
+			"name":          storageConstants.S3StorageDriverName,
 		}
 		conf.Storage.StorageDriver = storageDriverParams
 		ctlr := makeController(conf, "zot", "")
@@ -380,7 +381,7 @@ func TestObjectStorageController(t *testing.T) {
 
 		storageDriverParams := map[string]interface{}{
 			"rootdirectory":  "zot",
-			"name":           storage.S3StorageDriverName,
+			"name":           storageConstants.S3StorageDriverName,
 			"region":         "us-east-2",
 			"bucket":         bucket,
 			"regionendpoint": endpoint,
@@ -409,7 +410,7 @@ func TestObjectStorageControllerSubPaths(t *testing.T) {
 
 		storageDriverParams := map[string]interface{}{
 			"rootdirectory":  "zot",
-			"name":           storage.S3StorageDriverName,
+			"name":           storageConstants.S3StorageDriverName,
 			"region":         "us-east-2",
 			"bucket":         bucket,
 			"regionendpoint": endpoint,
@@ -5533,7 +5534,7 @@ func TestManifestImageIndex(t *testing.T) {
 
 				Convey("Corrupt index", func() {
 					err = os.WriteFile(path.Join(dir, "index", "blobs", index1dgst.Algorithm().String(), index1dgst.Encoded()),
-						[]byte("deadbeef"), local.DefaultFilePerms)
+						[]byte("deadbeef"), storageConstants.DefaultFilePerms)
 					So(err, ShouldBeNil)
 					resp, err = resty.R().Delete(baseURL + fmt.Sprintf("/v2/index/manifests/%s", index1dgst))
 					So(err, ShouldBeNil)
@@ -5906,7 +5907,7 @@ func TestInjectInterruptedImageManifest(t *testing.T) {
 
 			// Testing router path:  @Router /v2/{name}/manifests/{reference} [put]
 			Convey("Uploading an image manifest blob (when injected simulates an interrupted image manifest upload)", func() {
-				injected := test.InjectFailure(0)
+				injected := inject.InjectFailure(0)
 
 				request, _ := http.NewRequestWithContext(context.TODO(), http.MethodPut, baseURL, bytes.NewReader(content))
 				request = mux.SetURLVars(request, map[string]string{"name": "repotest", "reference": "1.0"})
@@ -5967,7 +5968,7 @@ func TestInjectTooManyOpenFiles(t *testing.T) {
 		So(digest, ShouldNotBeNil)
 
 		// monolithic blob upload
-		injected := test.InjectFailure(0)
+		injected := inject.InjectFailure(0)
 		if injected {
 			request, _ := http.NewRequestWithContext(context.TODO(), http.MethodPut, loc, bytes.NewReader(content))
 			tokens := strings.Split(loc, "/")
@@ -6040,7 +6041,7 @@ func TestInjectTooManyOpenFiles(t *testing.T) {
 		// Testing router path:  @Router /v2/{name}/manifests/{reference} [put]
 		//nolint:lll // gofumpt conflicts with lll
 		Convey("Uploading an image manifest blob (when injected simulates that PutImageManifest failed due to 'too many open files' error)", func() {
-			injected := test.InjectFailure(1)
+			injected := inject.InjectFailure(1)
 
 			request, _ := http.NewRequestWithContext(context.TODO(), http.MethodPut, baseURL, bytes.NewReader(content))
 			request = mux.SetURLVars(request, map[string]string{"name": "repotest", "reference": "1.0"})
@@ -6060,7 +6061,7 @@ func TestInjectTooManyOpenFiles(t *testing.T) {
 			}
 		})
 		Convey("when injected simulates a `too many open files` error inside PutImageManifest method of img store", func() {
-			injected := test.InjectFailure(2)
+			injected := inject.InjectFailure(2)
 
 			request, _ := http.NewRequestWithContext(context.TODO(), http.MethodPut, baseURL, bytes.NewReader(content))
 			request = mux.SetURLVars(request, map[string]string{"name": "repotest", "reference": "1.0"})
@@ -6081,7 +6082,7 @@ func TestInjectTooManyOpenFiles(t *testing.T) {
 			}
 		})
 		Convey("code coverage: error inside PutImageManifest method of img store (unable to marshal JSON)", func() {
-			injected := test.InjectFailure(1)
+			injected := inject.InjectFailure(1)
 
 			request, _ := http.NewRequestWithContext(context.TODO(), http.MethodPut, baseURL, bytes.NewReader(content))
 			request = mux.SetURLVars(request, map[string]string{"name": "repotest", "reference": "1.0"})
@@ -6102,7 +6103,7 @@ func TestInjectTooManyOpenFiles(t *testing.T) {
 			}
 		})
 		Convey("code coverage: error inside PutImageManifest method of img store (umoci.OpenLayout error)", func() {
-			injected := test.InjectFailure(3)
+			injected := inject.InjectFailure(3)
 
 			request, _ := http.NewRequestWithContext(context.TODO(), http.MethodPut, baseURL, bytes.NewReader(content))
 			request = mux.SetURLVars(request, map[string]string{"name": "repotest", "reference": "1.0"})
@@ -6123,7 +6124,7 @@ func TestInjectTooManyOpenFiles(t *testing.T) {
 			}
 		})
 		Convey("code coverage: error inside PutImageManifest method of img store (oci.GC)", func() {
-			injected := test.InjectFailure(4)
+			injected := inject.InjectFailure(4)
 
 			request, _ := http.NewRequestWithContext(context.TODO(), http.MethodPut, baseURL, bytes.NewReader(content))
 			request = mux.SetURLVars(request, map[string]string{"name": "repotest", "reference": "1.0"})

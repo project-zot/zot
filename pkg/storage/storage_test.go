@@ -30,8 +30,10 @@ import (
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/storage"
 	"zotregistry.io/zot/pkg/storage/cache"
+	storageConstants "zotregistry.io/zot/pkg/storage/constants"
 	"zotregistry.io/zot/pkg/storage/local"
 	"zotregistry.io/zot/pkg/storage/s3"
+	storageTypes "zotregistry.io/zot/pkg/storage/types"
 	"zotregistry.io/zot/pkg/test"
 	"zotregistry.io/zot/pkg/test/mocks"
 )
@@ -48,7 +50,7 @@ func skipIt(t *testing.T) {
 	}
 }
 
-func createObjectsStore(rootDir string, cacheDir string) (driver.StorageDriver, storage.ImageStore, error) {
+func createObjectsStore(rootDir string, cacheDir string) (driver.StorageDriver, storageTypes.ImageStore, error) {
 	bucket := "zot-storage-test"
 	endpoint := os.Getenv("S3MOCK_ENDPOINT")
 	storageDriverParams := map[string]interface{}{
@@ -85,7 +87,7 @@ func createObjectsStore(rootDir string, cacheDir string) (driver.StorageDriver, 
 		UseRelPaths: false,
 	}, log)
 
-	il := s3.NewImageStore(rootDir, cacheDir, false, storage.DefaultGCDelay,
+	il := s3.NewImageStore(rootDir, cacheDir, false, storageConstants.DefaultGCDelay,
 		true, false, log, metrics, nil, store, cacheDriver,
 	)
 
@@ -111,7 +113,7 @@ func TestStorageAPIs(t *testing.T) {
 	for _, testcase := range testCases {
 		testcase := testcase
 		t.Run(testcase.testCaseName, func(t *testing.T) {
-			var imgStore storage.ImageStore
+			var imgStore storageTypes.ImageStore
 			if testcase.storageType == "s3" {
 				skipIt(t)
 
@@ -136,7 +138,7 @@ func TestStorageAPIs(t *testing.T) {
 					Name:        "cache",
 					UseRelPaths: true,
 				}, log)
-				imgStore = local.NewImageStore(dir, true, storage.DefaultGCDelay, true,
+				imgStore = local.NewImageStore(dir, true, storageConstants.DefaultGCDelay, true,
 					true, log, metrics, nil, cacheDriver)
 			}
 
@@ -710,7 +712,7 @@ func TestMandatoryAnnotations(t *testing.T) {
 	for _, testcase := range testCases {
 		testcase := testcase
 		t.Run(testcase.testCaseName, func(t *testing.T) {
-			var imgStore storage.ImageStore
+			var imgStore storageTypes.ImageStore
 			var testDir, tdir string
 			var store driver.StorageDriver
 
@@ -731,7 +733,7 @@ func TestMandatoryAnnotations(t *testing.T) {
 				store, _, _ = createObjectsStore(testDir, tdir)
 				imgStore = s3.NewImageStore(testDir, tdir, false, 1, false, false, log, metrics,
 					&mocks.MockedLint{
-						LintFn: func(repo string, manifestDigest godigest.Digest, imageStore storage.ImageStore) (bool, error) {
+						LintFn: func(repo string, manifestDigest godigest.Digest, imageStore storageTypes.ImageStore) (bool, error) {
 							return false, nil
 						},
 					}, store, nil)
@@ -744,9 +746,9 @@ func TestMandatoryAnnotations(t *testing.T) {
 					Name:        "cache",
 					UseRelPaths: true,
 				}, log)
-				imgStore = local.NewImageStore(tdir, true, storage.DefaultGCDelay, true,
+				imgStore = local.NewImageStore(tdir, true, storageConstants.DefaultGCDelay, true,
 					true, log, metrics, &mocks.MockedLint{
-						LintFn: func(repo string, manifestDigest godigest.Digest, imageStore storage.ImageStore) (bool, error) {
+						LintFn: func(repo string, manifestDigest godigest.Digest, imageStore storageTypes.ImageStore) (bool, error) {
 							return false, nil
 						},
 					}, cacheDriver)
@@ -798,7 +800,7 @@ func TestMandatoryAnnotations(t *testing.T) {
 					if testcase.storageType == "s3" {
 						imgStore = s3.NewImageStore(testDir, tdir, false, 1, false, false, log, metrics,
 							&mocks.MockedLint{
-								LintFn: func(repo string, manifestDigest godigest.Digest, imageStore storage.ImageStore) (bool, error) {
+								LintFn: func(repo string, manifestDigest godigest.Digest, imageStore storageTypes.ImageStore) (bool, error) {
 									//nolint: goerr113
 									return false, errors.New("linter error")
 								},
@@ -809,9 +811,9 @@ func TestMandatoryAnnotations(t *testing.T) {
 							Name:        "cache",
 							UseRelPaths: true,
 						}, log)
-						imgStore = local.NewImageStore(tdir, true, storage.DefaultGCDelay, true,
+						imgStore = local.NewImageStore(tdir, true, storageConstants.DefaultGCDelay, true,
 							true, log, metrics, &mocks.MockedLint{
-								LintFn: func(repo string, manifestDigest godigest.Digest, imageStore storage.ImageStore) (bool, error) {
+								LintFn: func(repo string, manifestDigest godigest.Digest, imageStore storageTypes.ImageStore) (bool, error) {
 									//nolint: goerr113
 									return false, errors.New("linter error")
 								},
@@ -830,9 +832,9 @@ func TestStorageHandler(t *testing.T) {
 	for _, testcase := range testCases {
 		testcase := testcase
 		t.Run(testcase.testCaseName, func(t *testing.T) {
-			var firstStore storage.ImageStore
-			var secondStore storage.ImageStore
-			var thirdStore storage.ImageStore
+			var firstStore storageTypes.ImageStore
+			var secondStore storageTypes.ImageStore
+			var thirdStore storageTypes.ImageStore
 			var firstRootDir string
 			var secondRootDir string
 			var thirdRootDir string
@@ -865,13 +867,13 @@ func TestStorageHandler(t *testing.T) {
 				metrics := monitoring.NewMetricsServer(false, log)
 
 				// Create ImageStore
-				firstStore = local.NewImageStore(firstRootDir, false, storage.DefaultGCDelay,
+				firstStore = local.NewImageStore(firstRootDir, false, storageConstants.DefaultGCDelay,
 					false, false, log, metrics, nil, nil)
 
 				secondStore = local.NewImageStore(secondRootDir, false,
-					storage.DefaultGCDelay, false, false, log, metrics, nil, nil)
+					storageConstants.DefaultGCDelay, false, false, log, metrics, nil, nil)
 
-				thirdStore = local.NewImageStore(thirdRootDir, false, storage.DefaultGCDelay,
+				thirdStore = local.NewImageStore(thirdRootDir, false, storageConstants.DefaultGCDelay,
 					false, false, log, metrics, nil, nil)
 			}
 
@@ -880,7 +882,7 @@ func TestStorageHandler(t *testing.T) {
 
 				storeController.DefaultStore = firstStore
 
-				subStore := make(map[string]storage.ImageStore)
+				subStore := make(map[string]storageTypes.ImageStore)
 
 				subStore["/a"] = secondStore
 				subStore["/b"] = thirdStore

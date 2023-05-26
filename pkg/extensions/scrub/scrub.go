@@ -9,10 +9,11 @@ import (
 
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/storage"
+	storageTypes "zotregistry.io/zot/pkg/storage/types"
 )
 
 // Scrub Extension for repo...
-func RunScrubRepo(imgStore storage.ImageStore, repo string, log log.Logger) error {
+func RunScrubRepo(imgStore storageTypes.ImageStore, repo string, log log.Logger) error {
 	execMsg := fmt.Sprintf("executing scrub to check manifest/blob integrity for %s", path.Join(imgStore.RootDir(), repo))
 	log.Info().Msg(execMsg)
 
@@ -48,12 +49,12 @@ func RunScrubRepo(imgStore storage.ImageStore, repo string, log log.Logger) erro
 }
 
 type Task struct {
-	imgStore storage.ImageStore
+	imgStore storageTypes.ImageStore
 	repo     string
 	log      log.Logger
 }
 
-func NewTask(imgStore storage.ImageStore, repo string, log log.Logger) *Task {
+func NewTask(imgStore storageTypes.ImageStore, repo string, log log.Logger) *Task {
 	return &Task{imgStore, repo, log}
 }
 

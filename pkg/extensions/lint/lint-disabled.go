@@ -6,13 +6,13 @@ package lint
 import (
 	godigest "github.com/opencontainers/go-digest"
 
-	"zotregistry.io/zot/pkg/storage"
+	storageTypes "zotregistry.io/zot/pkg/storage/types"
 )
 
 type Linter struct{}
 
 func (linter *Linter) Lint(repo string, manifestDigest godigest.Digest,
-	imageStore storage.ImageStore,
+	imageStore storageTypes.ImageStore,
 ) (bool, error) {
 	return true, nil
 }

@@ -22,7 +22,7 @@ import (
 	"zotregistry.io/zot/pkg/api/config"
 	"zotregistry.io/zot/pkg/api/constants"
 	localCtx "zotregistry.io/zot/pkg/requestcontext"
-	"zotregistry.io/zot/pkg/storage"
+	storageTypes "zotregistry.io/zot/pkg/storage/types"
 	"zotregistry.io/zot/pkg/test"
 	"zotregistry.io/zot/pkg/test/mocks"
 )
@@ -1200,7 +1200,7 @@ func TestRoutes(t *testing.T) {
 				ism *mocks.MockedImageStore,
 			) int {
 				ctlr.StoreController.DefaultStore = ism
-				ctlr.StoreController.SubStore = map[string]storage.ImageStore{
+				ctlr.StoreController.SubStore = map[string]storageTypes.ImageStore{
 					"test": &mocks.MockedImageStore{
 						GetRepositoriesFn: func() ([]string, error) {
 							return []string{}, ErrUnexpectedError
@@ -1238,7 +1238,7 @@ func TestRoutes(t *testing.T) {
 				ism *mocks.MockedImageStore,
 			) int {
 				ctlr.StoreController.DefaultStore = ism
-				ctlr.StoreController.SubStore = map[string]storage.ImageStore{}
+				ctlr.StoreController.SubStore = map[string]storageTypes.ImageStore{}
 				request, _ := http.NewRequestWithContext(context.TODO(), http.MethodPatch, baseURL, nil)
 
 				request = mux.SetURLVars(request, vars)
@@ -1300,7 +1300,7 @@ func TestRoutes(t *testing.T) {
 					return []string{"repo"}, nil
 				},
 			}
-			ctlr.StoreController.SubStore = map[string]storage.ImageStore{
+			ctlr.StoreController.SubStore = map[string]storageTypes.ImageStore{
 				"test1": &mocks.MockedImageStore{
 					GetRepositoriesFn: func() ([]string, error) {
 						return []string{"repo1"}, nil

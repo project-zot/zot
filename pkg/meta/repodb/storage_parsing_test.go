@@ -25,6 +25,7 @@ import (
 	"zotregistry.io/zot/pkg/meta/signatures"
 	"zotregistry.io/zot/pkg/storage"
 	"zotregistry.io/zot/pkg/storage/local"
+	storageTypes "zotregistry.io/zot/pkg/storage/types"
 	"zotregistry.io/zot/pkg/test"
 	"zotregistry.io/zot/pkg/test/mocks"
 )
@@ -63,7 +64,7 @@ func TestParseStorageErrors(t *testing.T) {
 			}
 			storeController := storage.StoreController{
 				DefaultStore: imageStore1,
-				SubStore: map[string]storage.ImageStore{
+				SubStore: map[string]storageTypes.ImageStore{
 					"a": imageStore2,
 				},
 			}

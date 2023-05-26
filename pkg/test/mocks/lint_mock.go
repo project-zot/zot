@@ -3,14 +3,15 @@ package mocks
 import (
 	godigest "github.com/opencontainers/go-digest"
 
-	"zotregistry.io/zot/pkg/storage"
+	storageTypes "zotregistry.io/zot/pkg/storage/types"
 )
 
 type MockedLint struct {
-	LintFn func(repo string, manifestDigest godigest.Digest, imageStore storage.ImageStore) (bool, error)
+	LintFn func(repo string, manifestDigest godigest.Digest, imageStore storageTypes.ImageStore) (bool, error)
 }
 
-func (lint MockedLint) Lint(repo string, manifestDigest godigest.Digest, imageStore storage.ImageStore) (bool, error) {
+func (lint MockedLint) Lint(repo string, manifestDigest godigest.Digest, imageStore storageTypes.ImageStore,
+) (bool, error) {
 	if lint.LintFn != nil {
 		return lint.LintFn(repo, manifestDigest, imageStore)
 	}

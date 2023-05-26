@@ -13,7 +13,6 @@ import (
 	"zotregistry.io/zot/pkg/api"
 	"zotregistry.io/zot/pkg/api/config"
 	"zotregistry.io/zot/pkg/cli"
-	"zotregistry.io/zot/pkg/storage"
 	storageConstants "zotregistry.io/zot/pkg/storage/constants"
 	"zotregistry.io/zot/pkg/storage/s3"
 	. "zotregistry.io/zot/pkg/test"
@@ -1227,10 +1226,10 @@ func TestGC(t *testing.T) {
 		config := config.New()
 		err := cli.LoadConfiguration(config, "../../examples/config-multiple.json")
 		So(err, ShouldBeNil)
-		So(config.Storage.GCDelay, ShouldEqual, storage.DefaultGCDelay)
+		So(config.Storage.GCDelay, ShouldEqual, storageConstants.DefaultGCDelay)
 		err = cli.LoadConfiguration(config, "../../examples/config-gc.json")
 		So(err, ShouldBeNil)
-		So(config.Storage.GCDelay, ShouldNotEqual, storage.DefaultGCDelay)
+		So(config.Storage.GCDelay, ShouldNotEqual, storageConstants.DefaultGCDelay)
 		err = cli.LoadConfiguration(config, "../../examples/config-gc-periodic.json")
 		So(err, ShouldBeNil)
 	})

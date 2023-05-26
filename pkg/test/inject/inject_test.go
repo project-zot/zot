@@ -3,7 +3,7 @@
 
 // This file should be linked only in **development** mode.
 
-package test_test
+package inject_test
 
 import (
 	"errors"
@@ -11,7 +11,7 @@ import (
 
 	. "github.com/smartystreets/goconvey/convey"
 
-	"zotregistry.io/zot/pkg/test"
+	"zotregistry.io/zot/pkg/test/inject"
 )
 
 var (
@@ -26,12 +26,12 @@ func foo() error {
 	fmap := map[string]string{"key1": "val1", "key2": "val2"}
 
 	_, ok := fmap["key1"] // should never fail
-	if !test.Ok(ok) {
+	if !inject.Ok(ok) {
 		return errKey1
 	}
 
 	_, ok = fmap["key2"] // should never fail
-	if !test.Ok(ok) {
+	if !inject.Ok(ok) {
 		return errKey2
 	}
 
@@ -48,12 +48,12 @@ func errgen(i int) error {
 
 func bar() error {
 	err := errgen(0) // should never fail
-	if test.Error(err) != nil {
+	if inject.Error(err) != nil {
 		return errCall1
 	}
 
 	err = errgen(0) // should never fail
-	if test.Error(err) != nil {
+	if inject.Error(err) != nil {
 		return errCall2
 	}
 
@@ -61,11 +61,11 @@ func bar() error {
 }
 
 func baz() error {
-	if test.ErrStatusCode(0) != 0 {
+	if inject.ErrStatusCode(0) != 0 {
 		return errCall1
 	}
 
-	if test.ErrStatusCode(0) != 0 {
+	if inject.ErrStatusCode(0) != 0 {
 		return errCall2
 	}
 
@@ -88,15 +88,15 @@ func TestInject(t *testing.T) {
 
 		Convey("Check Ok", func() {
 			Convey("Without skipping", func() {
-				test.InjectFailure(0)   // inject a failure
+				inject.InjectFailure(0) // inject a failure
 				err := foo()            // should be a failure
 				So(err, ShouldNotBeNil) // should be a failure
 				So(errors.Is(err, errKey1), ShouldBeTrue)
 			})
 
 			Convey("With skipping", func() {
-				test.InjectFailure(1) // inject a failure but skip first one
-				err := foo()          // should be a failure
+				inject.InjectFailure(1) // inject a failure but skip first one
+				err := foo()            // should be a failure
 				So(errors.Is(err, errKey1), ShouldBeFalse)
 				So(errors.Is(err, errKey2), ShouldBeTrue)
 			})
@@ -108,15 +108,15 @@ func TestInject(t *testing.T) {
 
 		Convey("Check Err", func() {
 			Convey("Without skipping", func() {
-				test.InjectFailure(0)   // inject a failure
+				inject.InjectFailure(0) // inject a failure
 				err := bar()            // should be a failure
 				So(err, ShouldNotBeNil) // should be a failure
 				So(errors.Is(err, errCall1), ShouldBeTrue)
 			})
 
 			Convey("With skipping", func() {
-				test.InjectFailure(1) // inject a failure but skip first one
-				err := bar()          // should be a failure
+				inject.InjectFailure(1) // inject a failure but skip first one
+				err := bar()            // should be a failure
 				So(errors.Is(err, errCall1), ShouldBeFalse)
 				So(errors.Is(err, errCall2), ShouldBeTrue)
 			})
@@ -124,15 +124,15 @@ func TestInject(t *testing.T) {
 
 		Convey("Check ErrStatusCode", func() {
 			Convey("Without skipping", func() {
-				test.InjectFailure(0)   // inject a failure
+				inject.InjectFailure(0) // inject a failure
 				err := baz()            // should be a failure
 				So(err, ShouldNotBeNil) // should be a failure
 				So(errors.Is(err, errCall1), ShouldBeTrue)
 			})
 
 			Convey("With skipping", func() {
-				test.InjectFailure(1) // inject a failure but skip first one
-				err := baz()          // should be a failure
+				inject.InjectFailure(1) // inject a failure but skip first one
+				err := baz()            // should be a failure
 				So(errors.Is(err, errCall1), ShouldBeFalse)
 				So(errors.Is(err, errCall2), ShouldBeTrue)
 			})
@@ -141,14 +141,14 @@ func TestInject(t *testing.T) {
 
 	Convey("Without injected failure", t, func(c C) {
 		err := alwaysErr()
-		So(test.Error(err), ShouldNotBeNil)
+		So(inject.Error(err), ShouldNotBeNil)
 
 		ok := alwaysNotOk()
-		So(test.Ok(ok), ShouldBeFalse)
+		So(inject.Ok(ok), ShouldBeFalse)
 	})
 
 	Convey("Incomplete injected failure", t, func(c C) {
-		test.InjectFailure(0) // inject a failure
-		So(func() { test.InjectFailure(0) }, ShouldPanic)
+		inject.InjectFailure(0) // inject a failure
+		So(func() { inject.InjectFailure(0) }, ShouldPanic)
 	})
 }

@@ -80,7 +80,7 @@ func NewDynamoDBCache(parameters interface{}, log zlog.Logger) Cache {
 	// Using the SDK's default configuration, loading additional config
 	// and credentials values from the environment variables, shared
 	// credentials, and shared configuration files
-	cfg, err := config.LoadDefaultConfig(context.TODO(), config.WithRegion(properParameters.Region),
+	cfg, err := config.LoadDefaultConfig(context.Background(), config.WithRegion(properParameters.Region),
 		config.WithEndpointResolverWithOptions(customResolver))
 	if err != nil {
 		log.Error().Err(err).Msg("unable to load AWS SDK config for dynamodb")

@@ -34,7 +34,9 @@ import (
 	"zotregistry.io/zot/pkg/storage/cache"
 	storageConstants "zotregistry.io/zot/pkg/storage/constants"
 	"zotregistry.io/zot/pkg/storage/local"
+	storageTypes "zotregistry.io/zot/pkg/storage/types"
 	"zotregistry.io/zot/pkg/test"
+	"zotregistry.io/zot/pkg/test/inject"
 	"zotregistry.io/zot/pkg/test/mocks"
 )
 
@@ -65,7 +67,7 @@ func TestStorageFSAPIs(t *testing.T) {
 		Name:        "cache",
 		UseRelPaths: true,
 	}, log)
-	imgStore := local.NewImageStore(dir, true, storage.DefaultGCDelay, true,
+	imgStore := local.NewImageStore(dir, true, storageConstants.DefaultGCDelay, true,
 		true, log, metrics, nil, cacheDriver)
 
 	Convey("Repo layout", t, func(c C) {
@@ -202,7 +204,7 @@ func TestGetOrasReferrers(t *testing.T) {
 		Name:        "cache",
 		UseRelPaths: true,
 	}, log)
-	imgStore := local.NewImageStore(dir, true, storage.DefaultGCDelay, true, true, log, metrics, nil, cacheDriver)
+	imgStore := local.NewImageStore(dir, true, storageConstants.DefaultGCDelay, true, true, log, metrics, nil, cacheDriver)
 
 	Convey("Get referrers", t, func(c C) {
 		err := test.CopyFiles("../../../test/data/zot-test", path.Join(dir, "zot-test"))
@@ -257,7 +259,8 @@ func FuzzNewBlobUpload(f *testing.F) {
 			Name:        "cache",
 			UseRelPaths: true,
 		}, log)
-		imgStore := local.NewImageStore(dir, true, storage.DefaultGCDelay, true, true, log, metrics, nil, cacheDriver)
+		imgStore := local.NewImageStore(dir, true, storageConstants.DefaultGCDelay, true, true, log, metrics, nil,
+			cacheDriver)
 
 		_, err := imgStore.NewBlobUpload(data)
 		if err != nil {
@@ -282,7 +285,8 @@ func FuzzPutBlobChunk(f *testing.F) {
 			Name:        "cache",
 			UseRelPaths: true,
 		}, log)
-		imgStore := local.NewImageStore(dir, true, storage.DefaultGCDelay, true, true, log, metrics, nil, cacheDriver)
+		imgStore := local.NewImageStore(dir, true, storageConstants.DefaultGCDelay, true, true, log, metrics, nil,
+			cacheDriver)
 
 		repoName := data
 		uuid, err := imgStore.NewBlobUpload(repoName)
@@ -315,7 +319,8 @@ func FuzzPutBlobChunkStreamed(f *testing.F) {
 			Name:        "cache",
 			UseRelPaths: true,
 		}, log)
-		imgStore := local.NewImageStore(dir, true, storage.DefaultGCDelay, true, true, log, metrics, nil, cacheDriver)
+		imgStore := local.NewImageStore(dir, true, storageConstants.DefaultGCDelay, true, true, log, metrics, nil,
+			cacheDriver)
 
 		repoName := data
 
@@ -347,7 +352,8 @@ func FuzzGetBlobUpload(f *testing.F) {
 			Name:        "cache",
 			UseRelPaths: true,
 		}, log)
-		imgStore := local.NewImageStore(dir, true, storage.DefaultGCDelay, true, true, log, metrics, nil, cacheDriver)
+		imgStore := local.NewImageStore(dir, true, storageConstants.DefaultGCDelay, true, true, log, metrics, nil,
+			cacheDriver)
 
 		_, err := imgStore.GetBlobUpload(data1, data2)
 		if err != nil {
@@ -372,7 +378,8 @@ func FuzzTestPutGetImageManifest(f *testing.F) {
 			Name:        "cache",
 			UseRelPaths: true,
 		}, *log)
-		imgStore := local.NewImageStore(dir, true, storage.DefaultGCDelay, true, true, *log, metrics, nil, cacheDriver)
+		imgStore := local.NewImageStore(dir, true, storageConstants.DefaultGCDelay, true, true, *log, metrics, nil,
+			cacheDriver)
 
 		cblob, cdigest := test.GetRandomImageConfig()
 
@@ -423,7 +430,8 @@ func FuzzTestPutDeleteImageManifest(f *testing.F) {
 			Name:        "cache",
 			UseRelPaths: true,
 		}, *log)
-		imgStore := local.NewImageStore(dir, true, storage.DefaultGCDelay, true, true, *log, metrics, nil, cacheDriver)
+		imgStore := local.NewImageStore(dir, true, storageConstants.DefaultGCDelay, true, true, *log, metrics, nil,
+			cacheDriver)
 
 		cblob, cdigest := test.GetRandomImageConfig()
 
@@ -481,7 +489,8 @@ func FuzzTestDeleteImageManifest(f *testing.F) {
 			Name:        "cache",
 			UseRelPaths: true,
 		}, *log)
-		imgStore := local.NewImageStore(dir, true, storage.DefaultGCDelay, true, true, *log, metrics, nil, cacheDriver)
+		imgStore := local.NewImageStore(dir, true, storageConstants.DefaultGCDelay, true, true, *log, metrics, nil,
+			cacheDriver)
 
 		digest, _, err := newRandomBlobForFuzz(data)
 		if err != nil {
@@ -516,7 +525,8 @@ func FuzzInitRepo(f *testing.F) {
 			Name:        "cache",
 			UseRelPaths: true,
 		}, *log)
-		imgStore := local.NewImageStore(dir, true, storage.DefaultGCDelay, true, true, *log, metrics, nil, cacheDriver)
+		imgStore := local.NewImageStore(dir, true, storageConstants.DefaultGCDelay, true, true, *log, metrics, nil,
+			cacheDriver)
 		err := imgStore.InitRepo(data)
 		if err != nil {
 			if isKnownErr(err) {
@@ -540,7 +550,8 @@ func FuzzInitValidateRepo(f *testing.F) {
 			Name:        "cache",
 			UseRelPaths: true,
 		}, *log)
-		imgStore := local.NewImageStore(dir, true, storage.DefaultGCDelay, true, true, *log, metrics, nil, cacheDriver)
+		imgStore := local.NewImageStore(dir, true, storageConstants.DefaultGCDelay, true, true, *log, metrics, nil,
+			cacheDriver)
 		err := imgStore.InitRepo(data)
 		if err != nil {
 			if isKnownErr(err) {
@@ -571,7 +582,8 @@ func FuzzGetImageTags(f *testing.F) {
 			Name:        "cache",
 			UseRelPaths: true,
 		}, *log)
-		imgStore := local.NewImageStore(dir, true, storage.DefaultGCDelay, true, true, *log, metrics, nil, cacheDriver)
+		imgStore := local.NewImageStore(dir, true, storageConstants.DefaultGCDelay, true, true, *log, metrics, nil,
+			cacheDriver)
 		_, err := imgStore.GetImageTags(data)
 		if err != nil {
 			if errors.Is(err, zerr.ErrRepoNotFound) || isKnownErr(err) {
@@ -595,7 +607,8 @@ func FuzzBlobUploadPath(f *testing.F) {
 			Name:        "cache",
 			UseRelPaths: true,
 		}, *log)
-		imgStore := local.NewImageStore(dir, true, storage.DefaultGCDelay, true, true, *log, metrics, nil, cacheDriver)
+		imgStore := local.NewImageStore(dir, true, storageConstants.DefaultGCDelay, true, true, *log, metrics, nil,
+			cacheDriver)
 
 		_ = imgStore.BlobUploadPath(repo, uuid)
 	})
@@ -614,7 +627,8 @@ func FuzzBlobUploadInfo(f *testing.F) {
 			Name:        "cache",
 			UseRelPaths: true,
 		}, *log)
-		imgStore := local.NewImageStore(dir, true, storage.DefaultGCDelay, true, true, *log, metrics, nil, cacheDriver)
+		imgStore := local.NewImageStore(dir, true, storageConstants.DefaultGCDelay, true, true, *log, metrics, nil,
+			cacheDriver)
 		repo := data
 
 		_, err := imgStore.BlobUploadInfo(repo, uuid)
@@ -639,7 +653,8 @@ func FuzzTestGetImageManifest(f *testing.F) {
 			Name:        "cache",
 			UseRelPaths: true,
 		}, log)
-		imgStore := local.NewImageStore(dir, true, storage.DefaultGCDelay, true, true, log, metrics, nil, cacheDriver)
+		imgStore := local.NewImageStore(dir, true, storageConstants.DefaultGCDelay, true, true, log, metrics, nil,
+			cacheDriver)
 
 		repoName := data
 
@@ -667,7 +682,8 @@ func FuzzFinishBlobUpload(f *testing.F) {
 			Name:        "cache",
 			UseRelPaths: true,
 		}, log)
-		imgStore := local.NewImageStore(dir, true, storage.DefaultGCDelay, true, true, log, metrics, nil, cacheDriver)
+		imgStore := local.NewImageStore(dir, true, storageConstants.DefaultGCDelay, true, true, log, metrics, nil,
+			cacheDriver)
 
 		repoName := data
 
@@ -716,7 +732,8 @@ func FuzzFullBlobUpload(f *testing.F) {
 			Name:        "cache",
 			UseRelPaths: true,
 		}, *log)
-		imgStore := local.NewImageStore(dir, true, storage.DefaultGCDelay, true, true, *log, metrics, nil, cacheDriver)
+		imgStore := local.NewImageStore(dir, true, storageConstants.DefaultGCDelay, true, true, *log, metrics, nil,
+			cacheDriver)
 
 		ldigest, lblob, err := newRandomBlobForFuzz(data)
 		if err != nil {
@@ -746,7 +763,7 @@ func TestStorageCacheErrors(t *testing.T) {
 		cblob, cdigest := test.GetRandomImageConfig()
 
 		getBlobPath := ""
-		imgStore := local.NewImageStore(dir, false, storage.DefaultGCDelay,
+		imgStore := local.NewImageStore(dir, false, storageConstants.DefaultGCDelay,
 			true, true, log, metrics, nil, &mocks.CacheMock{
 				PutBlobFn: func(digest godigest.Digest, path string) error {
 					if strings.Contains(path, dedupedRepo) {
@@ -788,7 +805,8 @@ func FuzzDedupeBlob(f *testing.F) {
 			Name:        "cache",
 			UseRelPaths: true,
 		}, *log)
-		imgStore := local.NewImageStore(dir, true, storage.DefaultGCDelay, true, true, *log, metrics, nil, cacheDriver)
+		imgStore := local.NewImageStore(dir, true, storageConstants.DefaultGCDelay, true, true, *log, metrics, nil,
+			cacheDriver)
 
 		blobDigest := godigest.FromString(data)
 
@@ -829,7 +847,8 @@ func FuzzDeleteBlobUpload(f *testing.F) {
 			Name:        "cache",
 			UseRelPaths: true,
 		}, *log)
-		imgStore := local.NewImageStore(dir, true, storage.DefaultGCDelay, true, true, *log, metrics, nil, cacheDriver)
+		imgStore := local.NewImageStore(dir, true, storageConstants.DefaultGCDelay, true, true, *log, metrics, nil,
+			cacheDriver)
 
 		uuid, err := imgStore.NewBlobUpload(repoName)
 		if err != nil {
@@ -860,7 +879,8 @@ func FuzzBlobPath(f *testing.F) {
 			Name:        "cache",
 			UseRelPaths: true,
 		}, *log)
-		imgStore := local.NewImageStore(dir, true, storage.DefaultGCDelay, true, true, *log, metrics, nil, cacheDriver)
+		imgStore := local.NewImageStore(dir, true, storageConstants.DefaultGCDelay, true, true, *log, metrics, nil,
+			cacheDriver)
 		digest := godigest.FromString(data)
 
 		_ = imgStore.BlobPath(repoName, digest)
@@ -881,7 +901,8 @@ func FuzzCheckBlob(f *testing.F) {
 			Name:        "cache",
 			UseRelPaths: true,
 		}, *log)
-		imgStore := local.NewImageStore(dir, true, storage.DefaultGCDelay, true, true, *log, metrics, nil, cacheDriver)
+		imgStore := local.NewImageStore(dir, true, storageConstants.DefaultGCDelay, true, true, *log, metrics, nil,
+			cacheDriver)
 		digest := godigest.FromString(data)
 
 		_, _, err := imgStore.FullBlobUpload(repoName, bytes.NewReader([]byte(data)), digest)
@@ -912,7 +933,8 @@ func FuzzGetBlob(f *testing.F) {
 			Name:        "cache",
 			UseRelPaths: true,
 		}, *log)
-		imgStore := local.NewImageStore(dir, true, storage.DefaultGCDelay, true, true, *log, metrics, nil, cacheDriver)
+		imgStore := local.NewImageStore(dir, true, storageConstants.DefaultGCDelay, true, true, *log, metrics, nil,
+			cacheDriver)
 		digest := godigest.FromString(data)
 
 		_, _, err := imgStore.FullBlobUpload(repoName, bytes.NewReader([]byte(data)), digest)
@@ -950,7 +972,8 @@ func FuzzDeleteBlob(f *testing.F) {
 			Name:        "cache",
 			UseRelPaths: true,
 		}, *log)
-		imgStore := local.NewImageStore(dir, true, storage.DefaultGCDelay, true, true, *log, metrics, nil, cacheDriver)
+		imgStore := local.NewImageStore(dir, true, storageConstants.DefaultGCDelay, true, true, *log, metrics, nil,
+			cacheDriver)
 		digest := godigest.FromString(data)
 
 		_, _, err := imgStore.FullBlobUpload(repoName, bytes.NewReader([]byte(data)), digest)
@@ -985,7 +1008,8 @@ func FuzzGetIndexContent(f *testing.F) {
 			Name:        "cache",
 			UseRelPaths: true,
 		}, *log)
-		imgStore := local.NewImageStore(dir, true, storage.DefaultGCDelay, true, true, *log, metrics, nil, cacheDriver)
+		imgStore := local.NewImageStore(dir, true, storageConstants.DefaultGCDelay, true, true, *log, metrics, nil,
+			cacheDriver)
 		digest := godigest.FromString(data)
 
 		_, _, err := imgStore.FullBlobUpload(repoName, bytes.NewReader([]byte(data)), digest)
@@ -1020,7 +1044,8 @@ func FuzzGetBlobContent(f *testing.F) {
 			Name:        "cache",
 			UseRelPaths: true,
 		}, *log)
-		imgStore := local.NewImageStore(dir, true, storage.DefaultGCDelay, true, true, *log, metrics, nil, cacheDriver)
+		imgStore := local.NewImageStore(dir, true, storageConstants.DefaultGCDelay, true, true, *log, metrics, nil,
+			cacheDriver)
 		digest := godigest.FromString(data)
 
 		_, _, err := imgStore.FullBlobUpload(repoName, bytes.NewReader([]byte(data)), digest)
@@ -1054,7 +1079,8 @@ func FuzzGetOrasReferrers(f *testing.F) {
 			Name:        "cache",
 			UseRelPaths: true,
 		}, *log)
-		imgStore := local.NewImageStore(dir, true, storage.DefaultGCDelay, true, true, *log, metrics, nil, cacheDriver)
+		imgStore := local.NewImageStore(dir, true, storageConstants.DefaultGCDelay, true, true, *log, metrics, nil,
+			cacheDriver)
 
 		err := test.CopyFiles("../../../test/data/zot-test", path.Join(dir, "zot-test"))
 		if err != nil {
@@ -1114,7 +1140,8 @@ func FuzzRunGCRepo(f *testing.F) {
 			Name:        "cache",
 			UseRelPaths: true,
 		}, *log)
-		imgStore := local.NewImageStore(dir, true, storage.DefaultGCDelay, true, true, *log, metrics, nil, cacheDriver)
+		imgStore := local.NewImageStore(dir, true, storageConstants.DefaultGCDelay, true, true, *log, metrics, nil,
+			cacheDriver)
 
 		if err := imgStore.RunGCRepo(data); err != nil {
 			t.Error(err)
@@ -1149,13 +1176,13 @@ func TestDedupeLinks(t *testing.T) {
 			UseRelPaths: true,
 		}, log)
 
-		var imgStore storage.ImageStore
+		var imgStore storageTypes.ImageStore
 
 		if testCase.dedupe {
-			imgStore = local.NewImageStore(dir, false, storage.DefaultGCDelay,
+			imgStore = local.NewImageStore(dir, false, storageConstants.DefaultGCDelay,
 				testCase.dedupe, true, log, metrics, nil, cacheDriver)
 		} else {
-			imgStore = local.NewImageStore(dir, false, storage.DefaultGCDelay,
+			imgStore = local.NewImageStore(dir, false, storageConstants.DefaultGCDelay,
 				testCase.dedupe, true, log, metrics, nil, nil)
 		}
 
@@ -1299,7 +1326,7 @@ func TestDedupeLinks(t *testing.T) {
 
 				Convey("test RunDedupeForDigest directly, trigger stat error on original blob", func() {
 					// rebuild with dedupe true
-					imgStore := local.NewImageStore(dir, false, storage.DefaultGCDelay,
+					imgStore := local.NewImageStore(dir, false, storageConstants.DefaultGCDelay,
 						true, true, log, metrics, nil, cacheDriver)
 
 					duplicateBlobs := []string{
@@ -1319,7 +1346,7 @@ func TestDedupeLinks(t *testing.T) {
 					for i := 0; i < 10; i++ {
 						taskScheduler, cancel := runAndGetScheduler()
 						// rebuild with dedupe true
-						imgStore := local.NewImageStore(dir, false, storage.DefaultGCDelay,
+						imgStore := local.NewImageStore(dir, false, storageConstants.DefaultGCDelay,
 							true, true, log, metrics, nil, cacheDriver)
 
 						imgStore.RunDedupeBlobs(time.Duration(0), taskScheduler)
@@ -1332,7 +1359,7 @@ func TestDedupeLinks(t *testing.T) {
 					taskScheduler, cancel := runAndGetScheduler()
 
 					// rebuild with dedupe true
-					imgStore := local.NewImageStore(dir, false, storage.DefaultGCDelay,
+					imgStore := local.NewImageStore(dir, false, storageConstants.DefaultGCDelay,
 						true, true, log, metrics, nil, cacheDriver)
 					imgStore.RunDedupeBlobs(time.Duration(0), taskScheduler)
 
@@ -1352,7 +1379,7 @@ func TestDedupeLinks(t *testing.T) {
 					// switch dedupe to true from false
 					taskScheduler, cancel := runAndGetScheduler()
 
-					imgStore := local.NewImageStore(dir, false, storage.DefaultGCDelay,
+					imgStore := local.NewImageStore(dir, false, storageConstants.DefaultGCDelay,
 						true, true, log, metrics, nil, nil)
 
 					// rebuild with dedupe true
@@ -1375,7 +1402,7 @@ func TestDedupeLinks(t *testing.T) {
 					// switch dedupe to true from false
 					taskScheduler, cancel := runAndGetScheduler()
 
-					imgStore := local.NewImageStore(dir, false, storage.DefaultGCDelay,
+					imgStore := local.NewImageStore(dir, false, storageConstants.DefaultGCDelay,
 						true, true, log, metrics, nil, &mocks.CacheMock{
 							HasBlobFn: func(digest godigest.Digest, path string) bool {
 								return false
@@ -1404,7 +1431,7 @@ func TestDedupeLinks(t *testing.T) {
 					// switch dedupe to true from false
 					taskScheduler, cancel := runAndGetScheduler()
 
-					imgStore := local.NewImageStore(dir, false, storage.DefaultGCDelay,
+					imgStore := local.NewImageStore(dir, false, storageConstants.DefaultGCDelay,
 						true, true, log, metrics, nil, &mocks.CacheMock{
 							HasBlobFn: func(digest godigest.Digest, path string) bool {
 								return false
@@ -1479,7 +1506,7 @@ func TestDedupeLinks(t *testing.T) {
 func TestDedupe(t *testing.T) {
 	Convey("Dedupe", t, func(c C) {
 		Convey("Nil ImageStore", func() {
-			var is storage.ImageStore
+			var is storageTypes.ImageStore
 			So(func() { _ = is.DedupeBlob("", "", "") }, ShouldPanic)
 		})
 
@@ -1493,7 +1520,7 @@ func TestDedupe(t *testing.T) {
 				Name:        "cache",
 				UseRelPaths: true,
 			}, log)
-			il := local.NewImageStore(dir, true, storage.DefaultGCDelay, true, true, log, metrics, nil, cacheDriver)
+			il := local.NewImageStore(dir, true, storageConstants.DefaultGCDelay, true, true, log, metrics, nil, cacheDriver)
 
 			So(il.DedupeBlob("", "", ""), ShouldNotBeNil)
 		})
@@ -1512,7 +1539,7 @@ func TestNegativeCases(t *testing.T) {
 			Name:        "cache",
 			UseRelPaths: true,
 		}, log)
-		So(local.NewImageStore(dir, true, storage.DefaultGCDelay, true,
+		So(local.NewImageStore(dir, true, storageConstants.DefaultGCDelay, true,
 			true, log, metrics, nil, cacheDriver), ShouldNotBeNil)
 		if os.Geteuid() != 0 {
 			cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
@@ -1520,7 +1547,7 @@ func TestNegativeCases(t *testing.T) {
 				Name:        "cache",
 				UseRelPaths: true,
 			}, log)
-			So(local.NewImageStore("/deadBEEF", true, storage.DefaultGCDelay,
+			So(local.NewImageStore("/deadBEEF", true, storageConstants.DefaultGCDelay,
 				true, true, log, metrics, nil, cacheDriver), ShouldBeNil)
 		}
 	})
@@ -1535,7 +1562,7 @@ func TestNegativeCases(t *testing.T) {
 			Name:        "cache",
 			UseRelPaths: true,
 		}, log)
-		imgStore := local.NewImageStore(dir, true, storage.DefaultGCDelay,
+		imgStore := local.NewImageStore(dir, true, storageConstants.DefaultGCDelay,
 			true, true, log, metrics, nil, cacheDriver)
 
 		err := os.Chmod(dir, 0o000) // remove all perms
@@ -1585,7 +1612,7 @@ func TestNegativeCases(t *testing.T) {
 			Name:        "cache",
 			UseRelPaths: true,
 		}, log)
-		imgStore := local.NewImageStore(dir, true, storage.DefaultGCDelay, true,
+		imgStore := local.NewImageStore(dir, true, storageConstants.DefaultGCDelay, true,
 			true, log, metrics, nil, cacheDriver)
 
 		So(imgStore, ShouldNotBeNil)
@@ -1705,7 +1732,7 @@ func TestNegativeCases(t *testing.T) {
 			Name:        "cache",
 			UseRelPaths: true,
 		}, log)
-		imgStore := local.NewImageStore(dir, true, storage.DefaultGCDelay,
+		imgStore := local.NewImageStore(dir, true, storageConstants.DefaultGCDelay,
 			true, true, log, metrics, nil, cacheDriver)
 
 		So(imgStore, ShouldNotBeNil)
@@ -1734,7 +1761,7 @@ func TestNegativeCases(t *testing.T) {
 			Name:        "cache",
 			UseRelPaths: true,
 		}, log)
-		imgStore := local.NewImageStore(dir, true, storage.DefaultGCDelay, true,
+		imgStore := local.NewImageStore(dir, true, storageConstants.DefaultGCDelay, true,
 			true, log, metrics, nil, cacheDriver)
 
 		So(imgStore, ShouldNotBeNil)
@@ -1781,7 +1808,7 @@ func TestNegativeCases(t *testing.T) {
 			Name:        "cache",
 			UseRelPaths: true,
 		}, log)
-		imgStore := local.NewImageStore(dir, true, storage.DefaultGCDelay,
+		imgStore := local.NewImageStore(dir, true, storageConstants.DefaultGCDelay,
 			true, true, log, metrics, nil, cacheDriver)
 
 		So(imgStore, ShouldNotBeNil)
@@ -1952,11 +1979,11 @@ func TestInjectWriteFile(t *testing.T) {
 			Name:        "cache",
 			UseRelPaths: true,
 		}, log)
-		imgStore := local.NewImageStore(dir, true, storage.DefaultGCDelay,
+		imgStore := local.NewImageStore(dir, true, storageConstants.DefaultGCDelay,
 			true, true, log, metrics, nil, cacheDriver)
 
 		Convey("Failure path1", func() {
-			injected := test.InjectFailure(0)
+			injected := inject.InjectFailure(0)
 
 			err := imgStore.InitRepo("repo1")
 			if injected {
@@ -1967,7 +1994,7 @@ func TestInjectWriteFile(t *testing.T) {
 		})
 
 		Convey("Failure path2", func() {
-			injected := test.InjectFailure(1)
+			injected := inject.InjectFailure(1)
 
 			err := imgStore.InitRepo("repo2")
 			if injected {
@@ -1988,7 +2015,7 @@ func TestInjectWriteFile(t *testing.T) {
 			Name:        "cache",
 			UseRelPaths: true,
 		}, log)
-		imgStore := local.NewImageStore(dir, true, storage.DefaultGCDelay,
+		imgStore := local.NewImageStore(dir, true, storageConstants.DefaultGCDelay,
 			true, false, log, metrics, nil, cacheDriver)
 
 		Convey("Failure path not reached", func() {
@@ -2011,7 +2038,7 @@ func TestGarbageCollect(t *testing.T) {
 				Name:        "cache",
 				UseRelPaths: true,
 			}, log)
-			imgStore := local.NewImageStore(dir, true, storage.DefaultGCDelay,
+			imgStore := local.NewImageStore(dir, true, storageConstants.DefaultGCDelay,
 				true, true, log, metrics, nil, cacheDriver)
 			repoName := "gc-long"
 
@@ -2693,7 +2720,7 @@ func TestInitRepo(t *testing.T) {
 			Name:        "cache",
 			UseRelPaths: true,
 		}, log)
-		imgStore := local.NewImageStore(dir, true, storage.DefaultGCDelay,
+		imgStore := local.NewImageStore(dir, true, storageConstants.DefaultGCDelay,
 			true, true, log, metrics, nil, cacheDriver)
 
 		err := os.Mkdir(path.Join(dir, "test-dir"), 0o000)
@@ -2715,7 +2742,7 @@ func TestValidateRepo(t *testing.T) {
 			Name:        "cache",
 			UseRelPaths: true,
 		}, log)
-		imgStore := local.NewImageStore(dir, true, storage.DefaultGCDelay,
+		imgStore := local.NewImageStore(dir, true, storageConstants.DefaultGCDelay,
 			true, true, log, metrics, nil, cacheDriver)
 
 		err := os.Mkdir(path.Join(dir, "test-dir"), 0o000)
@@ -2735,7 +2762,7 @@ func TestValidateRepo(t *testing.T) {
 			Name:        "cache",
 			UseRelPaths: true,
 		}, log)
-		imgStore := local.NewImageStore(dir, true, storage.DefaultGCDelay,
+		imgStore := local.NewImageStore(dir, true, storageConstants.DefaultGCDelay,
 			true, true, log, metrics, nil, cacheDriver)
 
 		_, err := imgStore.ValidateRepo(".")
@@ -2780,7 +2807,7 @@ func TestGetRepositories(t *testing.T) {
 			Name:        "cache",
 			UseRelPaths: true,
 		}, log)
-		imgStore := local.NewImageStore(dir, true, storage.DefaultGCDelay,
+		imgStore := local.NewImageStore(dir, true, storageConstants.DefaultGCDelay,
 			true, true, log, metrics, nil, cacheDriver,
 		)
 
@@ -2877,7 +2904,7 @@ func TestGetRepositories(t *testing.T) {
 			UseRelPaths: true,
 		}, log)
 
-		imgStore := local.NewImageStore(dir, true, storage.DefaultGCDelay,
+		imgStore := local.NewImageStore(dir, true, storageConstants.DefaultGCDelay,
 			true, true, log, metrics, nil, cacheDriver,
 		)
 
@@ -2925,7 +2952,7 @@ func TestGetRepositories(t *testing.T) {
 			UseRelPaths: true,
 		}, log)
 
-		imgStore := local.NewImageStore(rootDir, true, storage.DefaultGCDelay,
+		imgStore := local.NewImageStore(rootDir, true, storageConstants.DefaultGCDelay,
 			true, true, log, metrics, nil, cacheDriver,
 		)
 
@@ -2968,7 +2995,7 @@ func TestGetNextRepository(t *testing.T) {
 		Name:        "cache",
 		UseRelPaths: true,
 	}, log)
-	imgStore := local.NewImageStore(dir, true, storage.DefaultGCDelay,
+	imgStore := local.NewImageStore(dir, true, storageConstants.DefaultGCDelay,
 		true, true, log, metrics, nil, cacheDriver,
 	)
 	firstRepoName := "repo1"
@@ -3013,7 +3040,7 @@ func TestPutBlobChunkStreamed(t *testing.T) {
 			Name:        "cache",
 			UseRelPaths: true,
 		}, log)
-		imgStore := local.NewImageStore(dir, true, storage.DefaultGCDelay,
+		imgStore := local.NewImageStore(dir, true, storageConstants.DefaultGCDelay,
 			true, true, log, metrics, nil, cacheDriver)
 
 		uuid, err := imgStore.NewBlobUpload("test")
@@ -3042,7 +3069,7 @@ func TestPullRange(t *testing.T) {
 				Name:        "cache",
 				UseRelPaths: true,
 			}, log)
-			imgStore := local.NewImageStore(dir, true, storage.DefaultGCDelay,
+			imgStore := local.NewImageStore(dir, true, storageConstants.DefaultGCDelay,
 				true, true, log, metrics, nil, cacheDriver)
 			repoName := "pull-range"
 

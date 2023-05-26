@@ -6,7 +6,6 @@ import (
 	"path"
 	"strings"
 
-	"github.com/gobwas/glob"
 	notreg "github.com/notaryproject/notation-go/registry"
 	godigest "github.com/opencontainers/go-digest"
 	imeta "github.com/opencontainers/image-spec/specs-go"
@@ -19,11 +18,7 @@ import (
 	zcommon "zotregistry.io/zot/pkg/common"
 	"zotregistry.io/zot/pkg/scheduler"
 	storageConstants "zotregistry.io/zot/pkg/storage/constants"
-)
-
-const (
-	CosignType   = "cosign"
-	NotationType = "notation"
+	storageTypes "zotregistry.io/zot/pkg/storage/types"
 )
 
 func GetTagsByIndex(index ispec.Index) []string {
@@ -56,7 +51,7 @@ func GetManifestDescByReference(index ispec.Index, reference string) (ispec.Desc
 	return manifestDesc, false
 }
 
-func ValidateManifest(imgStore ImageStore, repo, reference, mediaType string, body []byte,
+func ValidateManifest(imgStore storageTypes.ImageStore, repo, reference, mediaType string, body []byte,
 	log zerolog.Logger,
 ) (godigest.Digest, error) {
 	// validate the manifest
@@ -111,8 +106,8 @@ func ValidateManifest(imgStore ImageStore, repo, reference, mediaType string, bo
 	return "", nil
 }
 
-func validateOCIManifest(imgStore ImageStore, repo, reference string, manifest *ispec.Manifest, //nolint:unparam
-	log zerolog.Logger,
+func validateOCIManifest(imgStore storageTypes.ImageStore, repo, reference string, //nolint:unparam
+	manifest *ispec.Manifest, log zerolog.Logger,
 ) (godigest.Digest, error) {
 	if manifest.SchemaVersion != storageConstants.SchemaVersion {
 		log.Error().Int("SchemaVersion", manifest.SchemaVersion).Msg("invalid manifest")
@@ -245,7 +240,7 @@ func CheckIfIndexNeedsUpdate(index *ispec.Index, desc *ispec.Descriptor,
 }
 
 // GetIndex returns the contents of index.json.
-func GetIndex(imgStore ImageStore, repo string, log zerolog.Logger) (ispec.Index, error) {
+func GetIndex(imgStore storageTypes.ImageStore, repo string, log zerolog.Logger) (ispec.Index, error) {
 	var index ispec.Index
 
 	buf, err := imgStore.GetIndexContent(repo)
@@ -263,7 +258,8 @@ func GetIndex(imgStore ImageStore, repo string, log zerolog.Logger) (ispec.Index
 }
 
 // GetImageIndex returns a multiarch type image.
-func GetImageIndex(imgStore ImageStore, repo string, digest godigest.Digest, log zerolog.Logger) (ispec.Index, error) {
+func GetImageIndex(imgStore storageTypes.ImageStore, repo string, digest godigest.Digest, log zerolog.Logger,
+) (ispec.Index, error) {
 	var imageIndex ispec.Index
 
 	if err := digest.Validate(); err != nil {
@@ -287,7 +283,7 @@ func GetImageIndex(imgStore ImageStore, repo string, digest godigest.Digest, log
 	return imageIndex, nil
 }
 
-func GetImageManifest(imgStore ImageStore, repo string, digest godigest.Digest, log zerolog.Logger,
+func GetImageManifest(imgStore storageTypes.ImageStore, repo string, digest godigest.Digest, log zerolog.Logger,
 ) (ispec.Manifest, error) {
 	var manifestContent ispec.Manifest
 
@@ -353,7 +349,7 @@ Unmarshal an image index and for all manifests in that
 index, ensure that they do not have a name or they are not in other
 manifest indexes else GC can never clean them.
 */
-func UpdateIndexWithPrunedImageManifests(imgStore ImageStore, index *ispec.Index, repo string,
+func UpdateIndexWithPrunedImageManifests(imgStore storageTypes.ImageStore, index *ispec.Index, repo string,
 	desc ispec.Descriptor, oldDgst godigest.Digest, log zerolog.Logger,
 ) error {
 	if (desc.MediaType == ispec.MediaTypeImageIndex) && (oldDgst != "") {
@@ -386,7 +382,7 @@ same constitutent manifests so that they can be garbage-collected correctly
 
 PruneImageManifestsFromIndex is a helper routine to achieve this.
 */
-func PruneImageManifestsFromIndex(imgStore ImageStore, repo string, digest godigest.Digest, //nolint:gocyclo
+func PruneImageManifestsFromIndex(imgStore storageTypes.ImageStore, repo string, digest godigest.Digest, //nolint:gocyclo,lll
 	outIndex ispec.Index, otherImgIndexes []ispec.Descriptor, log zerolog.Logger,
 ) ([]ispec.Descriptor, error) {
 	dir := path.Join(imgStore.RootDir(), repo)
@@ -461,7 +457,8 @@ func PruneImageManifestsFromIndex(imgStore ImageStore, repo string, digest godig
 	return prunedManifests, nil
 }
 
-func ApplyLinter(imgStore ImageStore, linter Lint, repo string, descriptor ispec.Descriptor) (bool, error) {
+func ApplyLinter(imgStore storageTypes.ImageStore, linter Lint, repo string, descriptor ispec.Descriptor,
+) (bool, error) {
 	pass := true
 
 	// we'll skip anything that's not a image manifest
@@ -505,7 +502,7 @@ func IsSignature(descriptor ispec.Descriptor) bool {
 	return false
 }
 
-func GetOrasReferrers(imgStore ImageStore, repo string, gdigest godigest.Digest, artifactType string,
+func GetOrasReferrers(imgStore storageTypes.ImageStore, repo string, gdigest godigest.Digest, artifactType string,
 	log zerolog.Logger,
 ) ([]oras.Descriptor, error) {
 	if err := gdigest.Validate(); err != nil {
@@ -583,7 +580,7 @@ func getReferrerFilterAnnotation(artifactTypes []string) string {
 	return annotation
 }
 
-func GetReferrers(imgStore ImageStore, repo string, gdigest godigest.Digest, artifactTypes []string,
+func GetReferrers(imgStore storageTypes.ImageStore, repo string, gdigest godigest.Digest, artifactTypes []string,
 	log zerolog.Logger,
 ) (ispec.Index, error) {
 	nilIndex := ispec.Index{}
@@ -665,7 +662,7 @@ func GetReferrers(imgStore ImageStore, repo string, gdigest godigest.Digest, art
 	return index, nil
 }
 
-func GetOrasManifestByDigest(imgStore ImageStore, repo string, digest godigest.Digest, log zerolog.Logger,
+func GetOrasManifestByDigest(imgStore storageTypes.ImageStore, repo string, digest godigest.Digest, log zerolog.Logger,
 ) (oras.Manifest, error) {
 	var artManifest oras.Manifest
 
@@ -703,57 +700,14 @@ func IsNonDistributable(mediaType string) bool {
 		mediaType == ispec.MediaTypeImageLayerNonDistributableZstd //nolint:staticcheck
 }
 
-// CheckIsImageSignature checks if the given image (repo:tag) represents a signature. The function
-// returns:
-//
-// - bool: if the image is a signature or not
-//
-// - string: the type of signature
-//
-// - string: the digest of the image it signs
-//
-// - error: any errors that occur.
-func CheckIsImageSignature(repoName string, manifestBlob []byte, reference string,
-) (bool, string, godigest.Digest, error) {
-	var manifestContent ispec.Manifest
-
-	err := json.Unmarshal(manifestBlob, &manifestContent)
-	if err != nil {
-		return false, "", "", err
-	}
-
-	manifestArtifactType := zcommon.GetManifestArtifactType(manifestContent)
-
-	// check notation signature
-	if manifestArtifactType == notreg.ArtifactTypeNotation && manifestContent.Subject != nil {
-		return true, NotationType, manifestContent.Subject.Digest, nil
-	}
-
-	// check cosign
-	cosignTagRule := glob.MustCompile("sha256-*.sig")
-
-	if tag := reference; cosignTagRule.Match(reference) {
-		prefixLen := len("sha256-")
-		digestLen := 64
-		signedImageManifestDigestEncoded := tag[prefixLen : prefixLen+digestLen]
-
-		signedImageManifestDigest := godigest.NewDigestFromEncoded(godigest.SHA256,
-			signedImageManifestDigestEncoded)
-
-		return true, CosignType, signedImageManifestDigest, nil
-	}
-
-	return false, "", "", nil
-}
-
 /*
-	DedupeTaskGenerator takes all blobs paths found in the imagestore and groups them by digest
+	DedupeTaskGenerator takes all blobs paths found in the storage.imagestore and groups them by digest
 
 for each digest and based on the dedupe value it will dedupe or restore deduped blobs to the original state(undeduped)\
 by creating a task for each digest and pushing it to the task scheduler.
 */
 type DedupeTaskGenerator struct {
-	ImgStore ImageStore
+	ImgStore storageTypes.ImageStore
 	// storage dedupe value
 	Dedupe bool
 	// store blobs paths grouped by digest
@@ -769,7 +723,7 @@ type DedupeTaskGenerator struct {
 func (gen *DedupeTaskGenerator) GenerateTask() (scheduler.Task, error) {
 	var err error
 
-	// get all blobs from imageStore and group them by digest
+	// get all blobs from storage.imageStore and group them by digest
 	gen.digest, gen.duplicateBlobs, err = gen.ImgStore.GetNextDigestWithBlobPaths(gen.lastDigests)
 	if err != nil {
 		gen.Log.Error().Err(err).Msg("dedupe rebuild: failed to get next digest")
@@ -805,7 +759,7 @@ func (gen *DedupeTaskGenerator) Reset() {
 }
 
 type dedupeTask struct {
-	imgStore ImageStore
+	imgStore storageTypes.ImageStore
 	// digest of duplicateBLobs
 	digest godigest.Digest
 	// blobs paths with the same digest ^
@@ -814,7 +768,7 @@ type dedupeTask struct {
 	log            zerolog.Logger
 }
 
-func newDedupeTask(imgStore ImageStore, digest godigest.Digest, dedupe bool,
+func newDedupeTask(imgStore storageTypes.ImageStore, digest godigest.Digest, dedupe bool,
 	duplicateBlobs []string, log zerolog.Logger,
 ) *dedupeTask {
 	return &dedupeTask{imgStore, digest, duplicateBlobs, dedupe, log}
