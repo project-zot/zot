@@ -22,8 +22,8 @@ import (
 	ext "zotregistry.io/zot/pkg/extensions"
 	"zotregistry.io/zot/pkg/extensions/monitoring"
 	"zotregistry.io/zot/pkg/log"
-	"zotregistry.io/zot/pkg/meta/repodb"
-	"zotregistry.io/zot/pkg/meta/repodb/repodbfactory"
+	"zotregistry.io/zot/pkg/meta"
+	metaTypes "zotregistry.io/zot/pkg/meta/types"
 	"zotregistry.io/zot/pkg/scheduler"
 	"zotregistry.io/zot/pkg/storage"
 )
@@ -36,7 +36,7 @@ const (
 type Controller struct {
 	Config          *config.Config
 	Router          *mux.Router
-	RepoDB          repodb.RepoDB
+	RepoDB          metaTypes.RepoDB
 	StoreController storage.StoreController
 	Log             log.Logger
 	Audit           *log.Logger
@@ -255,7 +255,7 @@ func (c *Controller) InitImageStore() error {
 
 func (c *Controller) InitRepoDB(reloadCtx context.Context) error {
 	if c.Config.Extensions != nil && c.Config.Extensions.Search != nil && *c.Config.Extensions.Search.Enable {
-		driver, err := repodbfactory.New(c.Config.Storage.StorageConfig, c.Log) //nolint:contextcheck
+		driver, err := meta.New(c.Config.Storage.StorageConfig, c.Log) //nolint:contextcheck
 		if err != nil {
 			return err
 		}
@@ -265,7 +265,7 @@ func (c *Controller) InitRepoDB(reloadCtx context.Context) error {
 			return err
 		}
 
-		err = repodb.ParseStorage(driver, c.StoreController, c.Log)
+		err = meta.ParseStorage(driver, c.StoreController, c.Log)
 		if err != nil {
 			return err
 		}

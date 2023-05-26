@@ -19,15 +19,15 @@ import (
 	cvemodel "zotregistry.io/zot/pkg/extensions/search/cve/model"
 	"zotregistry.io/zot/pkg/extensions/search/gql_generated"
 	"zotregistry.io/zot/pkg/log"
-	"zotregistry.io/zot/pkg/meta/repodb"
+	metaTypes "zotregistry.io/zot/pkg/meta/types"
 )
 
 type SkipQGLField struct {
 	Vulnerabilities bool
 }
 
-func RepoMeta2RepoSummary(ctx context.Context, repoMeta repodb.RepoMetadata,
-	manifestMetaMap map[string]repodb.ManifestMetadata, indexDataMap map[string]repodb.IndexData,
+func RepoMeta2RepoSummary(ctx context.Context, repoMeta metaTypes.RepoMetadata,
+	manifestMetaMap map[string]metaTypes.ManifestMetadata, indexDataMap map[string]metaTypes.IndexData,
 	skip SkipQGLField, cveInfo cveinfo.CveInfo,
 ) *gql_generated.RepoSummary {
 	var (
@@ -152,9 +152,9 @@ func UpdateLastUpdatedTimestamp(repoLastUpdatedTimestamp *time.Time,
 	return newLastUpdatedImageSummary
 }
 
-func Descriptor2ImageSummary(ctx context.Context, descriptor repodb.Descriptor, repo, tag string, skipCVE bool,
-	repoMeta repodb.RepoMetadata, manifestMetaMap map[string]repodb.ManifestMetadata,
-	indexDataMap map[string]repodb.IndexData, cveInfo cveinfo.CveInfo,
+func Descriptor2ImageSummary(ctx context.Context, descriptor metaTypes.Descriptor, repo, tag string, skipCVE bool,
+	repoMeta metaTypes.RepoMetadata, manifestMetaMap map[string]metaTypes.ManifestMetadata,
+	indexDataMap map[string]metaTypes.IndexData, cveInfo cveinfo.CveInfo,
 ) (*gql_generated.ImageSummary, map[string]int64, error) {
 	switch descriptor.MediaType {
 	case ispec.MediaTypeImageManifest:
@@ -169,7 +169,7 @@ func Descriptor2ImageSummary(ctx context.Context, descriptor repodb.Descriptor, 
 }
 
 func ImageIndex2ImageSummary(ctx context.Context, repo, tag string, indexDigest godigest.Digest, skipCVE bool,
-	repoMeta repodb.RepoMetadata, indexData repodb.IndexData, manifestMetaMap map[string]repodb.ManifestMetadata,
+	repoMeta metaTypes.RepoMetadata, indexData metaTypes.IndexData, manifestMetaMap map[string]metaTypes.ManifestMetadata,
 	cveInfo cveinfo.CveInfo,
 ) (*gql_generated.ImageSummary, map[string]int64, error) {
 	var indexContent ispec.Index
@@ -274,7 +274,7 @@ func ImageIndex2ImageSummary(ctx context.Context, repo, tag string, indexDigest 
 }
 
 func ImageManifest2ImageSummary(ctx context.Context, repo, tag string, digest godigest.Digest, skipCVE bool,
-	repoMeta repodb.RepoMetadata, manifestMeta repodb.ManifestMetadata, cveInfo cveinfo.CveInfo,
+	repoMeta metaTypes.RepoMetadata, manifestMeta metaTypes.ManifestMetadata, cveInfo cveinfo.CveInfo,
 ) (*gql_generated.ImageSummary, map[string]int64, error) {
 	var (
 		manifestContent ispec.Manifest
@@ -407,7 +407,7 @@ func ImageManifest2ImageSummary(ctx context.Context, repo, tag string, digest go
 	return &imageSummary, imageBlobsMap, nil
 }
 
-func getReferrers(referrersInfo []repodb.ReferrerInfo) []*gql_generated.Referrer {
+func getReferrers(referrersInfo []metaTypes.ReferrerInfo) []*gql_generated.Referrer {
 	referrers := make([]*gql_generated.Referrer, 0, len(referrersInfo))
 
 	for _, referrerInfo := range referrersInfo {
@@ -442,8 +442,8 @@ func getAnnotationsFromMap(annotationsMap map[string]string) []*gql_generated.An
 }
 
 func ImageManifest2ManifestSummary(ctx context.Context, repo, tag string, descriptor ispec.Descriptor,
-	skipCVE bool, repoMeta repodb.RepoMetadata, manifestMeta repodb.ManifestMetadata, referrersInfo []repodb.ReferrerInfo,
-	cveInfo cveinfo.CveInfo,
+	skipCVE bool, repoMeta metaTypes.RepoMetadata, manifestMeta metaTypes.ManifestMetadata,
+	referrersInfo []metaTypes.ReferrerInfo, cveInfo cveinfo.CveInfo,
 ) (*gql_generated.ManifestSummary, map[string]int64, error) {
 	var (
 		manifestContent ispec.Manifest
@@ -565,8 +565,8 @@ func getImageBlobsInfo(manifestDigest string, manifestSize int64, configDigest s
 	return imageSize, imageBlobsMap
 }
 
-func RepoMeta2ImageSummaries(ctx context.Context, repoMeta repodb.RepoMetadata,
-	manifestMetaMap map[string]repodb.ManifestMetadata, indexDataMap map[string]repodb.IndexData,
+func RepoMeta2ImageSummaries(ctx context.Context, repoMeta metaTypes.RepoMetadata,
+	manifestMetaMap map[string]metaTypes.ManifestMetadata, indexDataMap map[string]metaTypes.IndexData,
 	skip SkipQGLField, cveInfo cveinfo.CveInfo,
 ) []*gql_generated.ImageSummary {
 	imageSummaries := make([]*gql_generated.ImageSummary, 0, len(repoMeta.Tags))
@@ -584,8 +584,8 @@ func RepoMeta2ImageSummaries(ctx context.Context, repoMeta repodb.RepoMetadata,
 	return imageSummaries
 }
 
-func RepoMeta2ExpandedRepoInfo(ctx context.Context, repoMeta repodb.RepoMetadata,
-	manifestMetaMap map[string]repodb.ManifestMetadata, indexDataMap map[string]repodb.IndexData,
+func RepoMeta2ExpandedRepoInfo(ctx context.Context, repoMeta metaTypes.RepoMetadata,
+	manifestMetaMap map[string]metaTypes.ManifestMetadata, indexDataMap map[string]metaTypes.IndexData,
 	skip SkipQGLField, cveInfo cveinfo.CveInfo, log log.Logger,
 ) (*gql_generated.RepoSummary, []*gql_generated.ImageSummary) {
 	var (
@@ -755,7 +755,7 @@ func GetPreloadString(prefix, name string) string {
 	return name
 }
 
-func GetSignaturesInfo(isSigned bool, repoMeta repodb.RepoMetadata, indexDigest godigest.Digest,
+func GetSignaturesInfo(isSigned bool, repoMeta metaTypes.RepoMetadata, indexDigest godigest.Digest,
 ) []*gql_generated.SignatureSummary {
 	signaturesInfo := []*gql_generated.SignatureSummary{}
 

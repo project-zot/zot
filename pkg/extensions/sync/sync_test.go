@@ -40,8 +40,8 @@ import (
 	extconf "zotregistry.io/zot/pkg/extensions/config"
 	syncconf "zotregistry.io/zot/pkg/extensions/config/sync"
 	"zotregistry.io/zot/pkg/extensions/sync"
-	"zotregistry.io/zot/pkg/meta/repodb"
 	"zotregistry.io/zot/pkg/meta/signatures"
+	metaTypes "zotregistry.io/zot/pkg/meta/types"
 	storageConstants "zotregistry.io/zot/pkg/storage/constants"
 	"zotregistry.io/zot/pkg/test"
 	"zotregistry.io/zot/pkg/test/mocks"
@@ -842,7 +842,7 @@ func TestOnDemand(t *testing.T) {
 			// repodb fails for syncCosignSignature"
 			dctlr.RepoDB = mocks.RepoDBMock{
 				AddManifestSignatureFn: func(repo string, signedManifestDigest godigest.Digest,
-					sm repodb.SignatureMetadata,
+					sm metaTypes.SignatureMetadata,
 				) error {
 					if sm.SignatureType == signatures.CosignSignature || sm.SignatureType == signatures.NotationSignature {
 						return sync.ErrTestError

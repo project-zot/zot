@@ -20,7 +20,8 @@ import (
 	"zotregistry.io/zot/pkg/common"
 	"zotregistry.io/zot/pkg/extensions/monitoring"
 	"zotregistry.io/zot/pkg/log"
-	"zotregistry.io/zot/pkg/meta/repodb"
+	"zotregistry.io/zot/pkg/meta"
+	metaTypes "zotregistry.io/zot/pkg/meta/types"
 	"zotregistry.io/zot/pkg/storage"
 	storageCommon "zotregistry.io/zot/pkg/storage/common"
 	storageConstants "zotregistry.io/zot/pkg/storage/constants"
@@ -31,11 +32,11 @@ import (
 type LocalRegistry struct {
 	storeController storage.StoreController
 	tempStorage     OciLayoutStorage
-	repoDB          repodb.RepoDB
+	repoDB          metaTypes.RepoDB
 	log             log.Logger
 }
 
-func NewLocalRegistry(storeController storage.StoreController, repoDB repodb.RepoDB, log log.Logger) Local {
+func NewLocalRegistry(storeController storage.StoreController, repoDB metaTypes.RepoDB, log log.Logger) Local {
 	return &LocalRegistry{
 		storeController: storeController,
 		repoDB:          repoDB,
@@ -164,7 +165,7 @@ func (registry *LocalRegistry) CommitImage(imageReference types.ImageReference, 
 		}
 
 		if registry.repoDB != nil {
-			err = repodb.SetImageMetaFromInput(repo, reference, mediaType,
+			err = meta.SetImageMetaFromInput(repo, reference, mediaType,
 				manifestDigest, manifestBlob, imageStore, registry.repoDB, registry.log)
 			if err != nil {
 				return fmt.Errorf("repoDB: failed to set metadata for image '%s %s': %w", repo, reference, err)
@@ -222,7 +223,7 @@ func (registry *LocalRegistry) copyManifest(repo string, manifestContent []byte,
 	}
 
 	if registry.repoDB != nil {
-		err = repodb.SetImageMetaFromInput(repo, reference, ispec.MediaTypeImageManifest,
+		err = meta.SetImageMetaFromInput(repo, reference, ispec.MediaTypeImageManifest,
 			digest, manifestContent, imageStore, registry.repoDB, registry.log)
 		if err != nil {
 			registry.log.Error().Str("errorType", common.TypeOf(err)).

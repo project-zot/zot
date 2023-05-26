@@ -1,4 +1,4 @@
-package repodb_test
+package meta_test
 
 import (
 	"context"
@@ -22,9 +22,7 @@ import (
 	"zotregistry.io/zot/pkg/meta/bolt"
 	"zotregistry.io/zot/pkg/meta/common"
 	"zotregistry.io/zot/pkg/meta/dynamo"
-	"zotregistry.io/zot/pkg/meta/repodb"
-	boltdb_wrapper "zotregistry.io/zot/pkg/meta/repodb/boltdb-wrapper"
-	dynamodb_wrapper "zotregistry.io/zot/pkg/meta/repodb/dynamodb-wrapper"
+	metaTypes "zotregistry.io/zot/pkg/meta/types"
 	localCtx "zotregistry.io/zot/pkg/requestcontext"
 	"zotregistry.io/zot/pkg/test"
 )
@@ -43,7 +41,7 @@ func TestBoltDBWrapper(t *testing.T) {
 
 		log := log.NewLogger("debug", "")
 
-		repoDB, err := boltdb_wrapper.NewBoltDBWrapper(boltDriver, log)
+		repoDB, err := bolt.NewBoltDBWrapper(boltDriver, log)
 		So(repoDB, ShouldNotBeNil)
 		So(err, ShouldBeNil)
 
@@ -66,7 +64,7 @@ func TestBoltDBWrapper(t *testing.T) {
 
 		log := log.NewLogger("debug", "")
 
-		boltdbWrapper, err := boltdb_wrapper.NewBoltDBWrapper(boltDriver, log)
+		boltdbWrapper, err := bolt.NewBoltDBWrapper(boltDriver, log)
 		defer os.Remove("repo.db")
 		So(boltdbWrapper, ShouldNotBeNil)
 		So(err, ShouldBeNil)
@@ -105,7 +103,7 @@ func TestDynamoDBWrapper(t *testing.T) {
 
 		log := log.NewLogger("debug", "")
 
-		dynamoDriver, err := dynamodb_wrapper.NewDynamoDBWrapper(dynamoClient, dynamoDBDriverParams, log)
+		dynamoDriver, err := dynamo.NewDynamoDBWrapper(dynamoClient, dynamoDBDriverParams, log)
 		So(dynamoDriver, ShouldNotBeNil)
 		So(err, ShouldBeNil)
 
@@ -126,7 +124,7 @@ func TestDynamoDBWrapper(t *testing.T) {
 	})
 }
 
-func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
+func RunRepoDBTests(repoDB metaTypes.RepoDB, preparationFuncs ...func() error) {
 	Convey("Test RepoDB Interface implementation", func() {
 		for _, prepFunc := range preparationFuncs {
 			err := prepFunc()
@@ -139,7 +137,7 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 
 			manifestDigest := godigest.FromBytes(manifestBlob)
 
-			err = repoDB.SetManifestData(manifestDigest, repodb.ManifestData{
+			err = repoDB.SetManifestData(manifestDigest, metaTypes.ManifestData{
 				ManifestBlob: manifestBlob,
 				ConfigBlob:   configBlob,
 			})
@@ -163,11 +161,11 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 					manifestBlob   = []byte("manifestBlob")
 					configBlob     = []byte("configBlob")
 
-					signatures = repodb.ManifestSignatures{
-						"digest1": []repodb.SignatureInfo{
+					signatures = metaTypes.ManifestSignatures{
+						"digest1": []metaTypes.SignatureInfo{
 							{
 								SignatureManifestDigest: "signatureDigest",
-								LayersInfo: []repodb.LayerInfo{
+								LayersInfo: []metaTypes.LayerInfo{
 									{
 										LayerDigest:  "layerDigest",
 										LayerContent: []byte("layerContent"),
@@ -178,7 +176,7 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 					}
 				)
 
-				err := repoDB.SetManifestMeta("repo", manifestDigest, repodb.ManifestMetadata{
+				err := repoDB.SetManifestMeta("repo", manifestDigest, metaTypes.ManifestMetadata{
 					ManifestBlob:  manifestBlob,
 					ConfigBlob:    configBlob,
 					DownloadCount: 10,
@@ -217,7 +215,7 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 				So(repoMeta.Name, ShouldResemble, repo1)
 				So(repoMeta.Tags[tag1].Digest, ShouldEqual, manifestDigest1)
 
-				err = repoDB.SetRepoMeta(repo2, repodb.RepoMetadata{Tags: map[string]repodb.Descriptor{
+				err = repoDB.SetRepoMeta(repo2, metaTypes.RepoMetadata{Tags: map[string]metaTypes.Descriptor{
 					tag2: {
 						Digest: manifestDigest2.String(),
 					},
@@ -398,15 +396,15 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 			So(err, ShouldBeNil)
 
 			Convey("Get all Repometa", func() {
-				repoMetaSlice, err := repoDB.GetMultipleRepoMeta(context.TODO(), func(repoMeta repodb.RepoMetadata) bool {
+				repoMetaSlice, err := repoDB.GetMultipleRepoMeta(context.TODO(), func(repoMeta metaTypes.RepoMetadata) bool {
 					return true
-				}, repodb.PageInput{})
+				}, metaTypes.PageInput{})
 				So(err, ShouldBeNil)
 				So(len(repoMetaSlice), ShouldEqual, 2)
 			})
 
 			Convey("Get repo with a tag", func() {
-				repoMetaSlice, err := repoDB.GetMultipleRepoMeta(context.TODO(), func(repoMeta repodb.RepoMetadata) bool {
+				repoMetaSlice, err := repoDB.GetMultipleRepoMeta(context.TODO(), func(repoMeta metaTypes.RepoMetadata) bool {
 					for tag := range repoMeta.Tags {
 						if tag == tag1 {
 							return true
@@ -414,14 +412,14 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 					}
 
 					return false
-				}, repodb.PageInput{})
+				}, metaTypes.PageInput{})
 				So(err, ShouldBeNil)
 				So(len(repoMetaSlice), ShouldEqual, 1)
 				So(repoMetaSlice[0].Tags[tag1].Digest == manifestDigest1.String(), ShouldBeTrue)
 			})
 
 			Convey("Wrong page input", func() {
-				repoMetaSlice, err := repoDB.GetMultipleRepoMeta(context.TODO(), func(repoMeta repodb.RepoMetadata) bool {
+				repoMetaSlice, err := repoDB.GetMultipleRepoMeta(context.TODO(), func(repoMeta metaTypes.RepoMetadata) bool {
 					for tag := range repoMeta.Tags {
 						if tag == tag1 {
 							return true
@@ -429,7 +427,7 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 					}
 
 					return false
-				}, repodb.PageInput{Limit: -1, Offset: -1})
+				}, metaTypes.PageInput{Limit: -1, Offset: -1})
 
 				So(err, ShouldNotBeNil)
 				So(len(repoMetaSlice), ShouldEqual, 0)
@@ -605,7 +603,7 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 			// User 1 bookmarks repo 1, User 2 has no stars
 			toggleState, err := repoDB.ToggleStarRepo(ctx1, repo1)
 			So(err, ShouldBeNil)
-			So(toggleState, ShouldEqual, repodb.Added)
+			So(toggleState, ShouldEqual, metaTypes.Added)
 
 			repoMeta, err := repoDB.GetRepoMeta(repo1)
 			So(err, ShouldBeNil)
@@ -631,7 +629,7 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 			// User 1 and User 2 star only repo 1
 			toggleState, err = repoDB.ToggleStarRepo(ctx2, repo1)
 			So(err, ShouldBeNil)
-			So(toggleState, ShouldEqual, repodb.Added)
+			So(toggleState, ShouldEqual, metaTypes.Added)
 
 			repoMeta, err = repoDB.GetRepoMeta(repo1)
 			So(err, ShouldBeNil)
@@ -658,7 +656,7 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 			// User 1 stars repos 1 and 2, and User 2 stars only repo 1
 			toggleState, err = repoDB.ToggleStarRepo(ctx1, repo2)
 			So(err, ShouldBeNil)
-			So(toggleState, ShouldEqual, repodb.Added)
+			So(toggleState, ShouldEqual, metaTypes.Added)
 
 			repoMeta, err = repoDB.GetRepoMeta(repo2)
 			So(err, ShouldBeNil)
@@ -686,7 +684,7 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 			// User 1 stars only repo 2, and User 2 stars only repo 1
 			toggleState, err = repoDB.ToggleStarRepo(ctx1, repo1)
 			So(err, ShouldBeNil)
-			So(toggleState, ShouldEqual, repodb.Removed)
+			So(toggleState, ShouldEqual, metaTypes.Removed)
 
 			repoMeta, err = repoDB.GetRepoMeta(repo1)
 			So(err, ShouldBeNil)
@@ -713,11 +711,11 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 			// User 1 stars both repos 1 and 2, and User 2 removes all stars
 			toggleState, err = repoDB.ToggleStarRepo(ctx1, repo1)
 			So(err, ShouldBeNil)
-			So(toggleState, ShouldEqual, repodb.Added)
+			So(toggleState, ShouldEqual, metaTypes.Added)
 
 			toggleState, err = repoDB.ToggleStarRepo(ctx2, repo1)
 			So(err, ShouldBeNil)
-			So(toggleState, ShouldEqual, repodb.Removed)
+			So(toggleState, ShouldEqual, metaTypes.Removed)
 
 			repoMeta, err = repoDB.GetRepoMeta(repo1)
 			So(err, ShouldBeNil)
@@ -752,7 +750,7 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 			// Anonyous user attempts to toggle a star
 			toggleState, err = repoDB.ToggleStarRepo(ctx3, repo1)
 			So(err, ShouldNotBeNil)
-			So(toggleState, ShouldEqual, repodb.NotChanged)
+			So(toggleState, ShouldEqual, metaTypes.NotChanged)
 
 			starCount, err = repoDB.GetRepoStars(repo1)
 			So(err, ShouldBeNil)
@@ -765,7 +763,7 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 			// User 1 stars just repo 1
 			toggleState, err = repoDB.ToggleStarRepo(ctx1, repo2)
 			So(err, ShouldBeNil)
-			So(toggleState, ShouldEqual, repodb.Removed)
+			So(toggleState, ShouldEqual, metaTypes.Removed)
 
 			starCount, err = repoDB.GetRepoStars(repo2)
 			So(err, ShouldBeNil)
@@ -840,7 +838,7 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 
 			toggleState, err := repoDB.ToggleBookmarkRepo(ctx3, repo1)
 			So(err, ShouldNotBeNil)
-			So(toggleState, ShouldEqual, repodb.NotChanged)
+			So(toggleState, ShouldEqual, metaTypes.NotChanged)
 
 			repos, err = repoDB.GetBookmarkedRepos(ctx3)
 			So(err, ShouldBeNil)
@@ -849,7 +847,7 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 			// User 1 bookmarks repo 1, User 2 has no bookmarks
 			toggleState, err = repoDB.ToggleBookmarkRepo(ctx1, repo1)
 			So(err, ShouldBeNil)
-			So(toggleState, ShouldEqual, repodb.Added)
+			So(toggleState, ShouldEqual, metaTypes.Added)
 
 			repos, err = repoDB.GetBookmarkedRepos(ctx1)
 			So(err, ShouldBeNil)
@@ -863,7 +861,7 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 			// User 1 and User 2 bookmark only repo 1
 			toggleState, err = repoDB.ToggleBookmarkRepo(ctx2, repo1)
 			So(err, ShouldBeNil)
-			So(toggleState, ShouldEqual, repodb.Added)
+			So(toggleState, ShouldEqual, metaTypes.Added)
 
 			repos, err = repoDB.GetBookmarkedRepos(ctx1)
 			So(err, ShouldBeNil)
@@ -878,7 +876,7 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 			// User 1 bookmarks repos 1 and 2, and User 2 bookmarks only repo 1
 			toggleState, err = repoDB.ToggleBookmarkRepo(ctx1, repo2)
 			So(err, ShouldBeNil)
-			So(toggleState, ShouldEqual, repodb.Added)
+			So(toggleState, ShouldEqual, metaTypes.Added)
 
 			repos, err = repoDB.GetBookmarkedRepos(ctx1)
 			So(err, ShouldBeNil)
@@ -894,7 +892,7 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 			// User 1 bookmarks only repo 2, and User 2 bookmarks only repo 1
 			toggleState, err = repoDB.ToggleBookmarkRepo(ctx1, repo1)
 			So(err, ShouldBeNil)
-			So(toggleState, ShouldEqual, repodb.Removed)
+			So(toggleState, ShouldEqual, metaTypes.Removed)
 
 			repos, err = repoDB.GetBookmarkedRepos(ctx1)
 			So(err, ShouldBeNil)
@@ -909,11 +907,11 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 			// User 1 bookmarks both repos 1 and 2, and User 2 removes all bookmarks
 			toggleState, err = repoDB.ToggleBookmarkRepo(ctx1, repo1)
 			So(err, ShouldBeNil)
-			So(toggleState, ShouldEqual, repodb.Added)
+			So(toggleState, ShouldEqual, metaTypes.Added)
 
 			toggleState, err = repoDB.ToggleBookmarkRepo(ctx2, repo1)
 			So(err, ShouldBeNil)
-			So(toggleState, ShouldEqual, repodb.Removed)
+			So(toggleState, ShouldEqual, metaTypes.Removed)
 
 			repos, err = repoDB.GetBookmarkedRepos(ctx1)
 			So(err, ShouldBeNil)
@@ -940,7 +938,7 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 			err = repoDB.SetRepoReference(repo1, tag1, manifestDigest, ispec.MediaTypeImageManifest)
 			So(err, ShouldBeNil)
 
-			err = repoDB.SetManifestMeta(repo1, manifestDigest, repodb.ManifestMetadata{
+			err = repoDB.SetManifestMeta(repo1, manifestDigest, metaTypes.ManifestMetadata{
 				ManifestBlob: manifestBlob,
 				ConfigBlob:   configBlob,
 			})
@@ -976,10 +974,10 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 			err := repoDB.SetRepoReference(repo1, tag1, manifestDigest1, ispec.MediaTypeImageManifest)
 			So(err, ShouldBeNil)
 
-			err = repoDB.SetManifestMeta(repo1, manifestDigest1, repodb.ManifestMetadata{})
+			err = repoDB.SetManifestMeta(repo1, manifestDigest1, metaTypes.ManifestMetadata{})
 			So(err, ShouldBeNil)
 
-			err = repoDB.AddManifestSignature(repo1, manifestDigest1, repodb.SignatureMetadata{
+			err = repoDB.AddManifestSignature(repo1, manifestDigest1, metaTypes.SignatureMetadata{
 				SignatureType:   "cosign",
 				SignatureDigest: "digest",
 			})
@@ -1001,7 +999,7 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 				manifestDigest1 = godigest.FromString("fake-manifest1")
 			)
 
-			err := repoDB.AddManifestSignature(repo1, manifestDigest1, repodb.SignatureMetadata{
+			err := repoDB.AddManifestSignature(repo1, manifestDigest1, metaTypes.SignatureMetadata{
 				SignatureType:   "cosign",
 				SignatureDigest: "digest",
 			})
@@ -1010,7 +1008,7 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 			err = repoDB.SetRepoReference(repo1, tag1, manifestDigest1, ispec.MediaTypeImageManifest)
 			So(err, ShouldBeNil)
 
-			err = repoDB.SetManifestData(manifestDigest1, repodb.ManifestData{})
+			err = repoDB.SetManifestData(manifestDigest1, metaTypes.ManifestData{})
 			So(err, ShouldBeNil)
 
 			repoMeta, err := repoDB.GetRepoMeta(repo1)
@@ -1032,10 +1030,10 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 			err := repoDB.SetRepoReference(repo1, tag1, manifestDigest1, ispec.MediaTypeImageManifest)
 			So(err, ShouldBeNil)
 
-			err = repoDB.SetManifestData(manifestDigest1, repodb.ManifestData{})
+			err = repoDB.SetManifestData(manifestDigest1, metaTypes.ManifestData{})
 			So(err, ShouldBeNil)
 
-			err = repoDB.AddManifestSignature(repo1, manifestDigest1, repodb.SignatureMetadata{
+			err = repoDB.AddManifestSignature(repo1, manifestDigest1, metaTypes.SignatureMetadata{
 				SignatureType:   "cosign",
 				SignatureDigest: "digest",
 			})
@@ -1046,7 +1044,7 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 			So(repoMeta.Signatures[manifestDigest1.String()]["cosign"][0].SignatureManifestDigest,
 				ShouldResemble, "digest")
 
-			err = repoDB.DeleteSignature(repo1, manifestDigest1, repodb.SignatureMetadata{
+			err = repoDB.DeleteSignature(repo1, manifestDigest1, metaTypes.SignatureMetadata{
 				SignatureType:   "cosign",
 				SignatureDigest: "digest",
 			})
@@ -1056,7 +1054,7 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 			So(err, ShouldBeNil)
 			So(repoMeta.Signatures[manifestDigest1.String()]["cosign"], ShouldBeEmpty)
 
-			err = repoDB.DeleteSignature(repo1, "badDigest", repodb.SignatureMetadata{
+			err = repoDB.DeleteSignature(repo1, "badDigest", metaTypes.SignatureMetadata{
 				SignatureType:   "cosign",
 				SignatureDigest: "digest",
 			})
@@ -1084,7 +1082,7 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 			emptyConfigBlob, err := json.Marshal(emptyConfig)
 			So(err, ShouldBeNil)
 
-			emptyRepoMeta := repodb.ManifestMetadata{
+			emptyRepoMeta := metaTypes.ManifestMetadata{
 				ManifestBlob: emptyManifestBlob,
 				ConfigBlob:   emptyConfigBlob,
 			}
@@ -1104,7 +1102,7 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 				err = repoDB.SetManifestMeta(repo1, manifestDigest3, emptyRepoMeta)
 				So(err, ShouldBeNil)
 
-				repos, manifestMetaMap, _, _, err := repoDB.SearchRepos(ctx, "", repodb.Filter{}, repodb.PageInput{})
+				repos, manifestMetaMap, _, _, err := repoDB.SearchRepos(ctx, "", metaTypes.Filter{}, metaTypes.PageInput{})
 				So(err, ShouldBeNil)
 				So(len(repos), ShouldEqual, 2)
 				So(len(manifestMetaMap), ShouldEqual, 3)
@@ -1120,7 +1118,7 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 				err = repoDB.SetManifestMeta(repo1, manifestDigest1, emptyRepoMeta)
 				So(err, ShouldBeNil)
 
-				repos, manifestMetaMap, _, _, err := repoDB.SearchRepos(ctx, repo1, repodb.Filter{}, repodb.PageInput{})
+				repos, manifestMetaMap, _, _, err := repoDB.SearchRepos(ctx, repo1, metaTypes.Filter{}, metaTypes.PageInput{})
 				So(err, ShouldBeNil)
 				So(len(repos), ShouldEqual, 1)
 				So(len(manifestMetaMap), ShouldEqual, 1)
@@ -1134,8 +1132,8 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 				err = repoDB.SetRepoReference(repo1, tag2, manifestDigest2, ispec.MediaTypeImageManifest)
 				So(err, ShouldBeNil)
 
-				repos, manifestMetaMap, _, _, err := repoDB.SearchRepos(ctx, "RepoThatDoesntExist", repodb.Filter{},
-					repodb.PageInput{})
+				repos, manifestMetaMap, _, _, err := repoDB.SearchRepos(ctx, "RepoThatDoesntExist", metaTypes.Filter{},
+					metaTypes.PageInput{})
 				So(err, ShouldBeNil)
 				So(len(repos), ShouldEqual, 0)
 				So(len(manifestMetaMap), ShouldEqual, 0)
@@ -1156,7 +1154,7 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 				err = repoDB.SetManifestMeta("golang", manifestDigest3, emptyRepoMeta)
 				So(err, ShouldBeNil)
 
-				repos, manifestMetaMap, _, _, err := repoDB.SearchRepos(ctx, "pine", repodb.Filter{}, repodb.PageInput{})
+				repos, manifestMetaMap, _, _, err := repoDB.SearchRepos(ctx, "pine", metaTypes.Filter{}, metaTypes.PageInput{})
 				So(err, ShouldBeNil)
 				So(len(repos), ShouldEqual, 2)
 				So(manifestMetaMap, ShouldContainKey, manifestDigest1.String())
@@ -1179,7 +1177,7 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 				err = repoDB.SetManifestMeta(repo3, manifestDigest1, emptyRepoMeta)
 				So(err, ShouldBeNil)
 
-				repos, manifestMetaMap, _, _, err := repoDB.SearchRepos(ctx, "", repodb.Filter{}, repodb.PageInput{})
+				repos, manifestMetaMap, _, _, err := repoDB.SearchRepos(ctx, "", metaTypes.Filter{}, metaTypes.PageInput{})
 				So(err, ShouldBeNil)
 				So(len(repos), ShouldEqual, 3)
 				So(len(manifestMetaMap), ShouldEqual, 1)
@@ -1210,7 +1208,7 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 				authzCtxKey := localCtx.GetContextKey()
 				ctx := context.WithValue(context.Background(), authzCtxKey, acCtx)
 
-				repos, _, _, _, err := repoDB.SearchRepos(ctx, "repo", repodb.Filter{}, repodb.PageInput{})
+				repos, _, _, _, err := repoDB.SearchRepos(ctx, "repo", metaTypes.Filter{}, metaTypes.PageInput{})
 				So(err, ShouldBeNil)
 				So(len(repos), ShouldEqual, 2)
 				for _, k := range repos {
@@ -1239,7 +1237,7 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 					configBlob, err := json.Marshal(configContent)
 					So(err, ShouldBeNil)
 
-					manifestMeta := repodb.ManifestMetadata{
+					manifestMeta := metaTypes.ManifestMetadata{
 						ManifestBlob:  emptyManifestBlob,
 						ConfigBlob:    configBlob,
 						DownloadCount: i,
@@ -1255,86 +1253,86 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 					repoNameBuilder.Reset()
 				}
 
-				repos, _, _, _, err := repoDB.SearchRepos(ctx, "repo", repodb.Filter{}, repodb.PageInput{})
+				repos, _, _, _, err := repoDB.SearchRepos(ctx, "repo", metaTypes.Filter{}, metaTypes.PageInput{})
 				So(err, ShouldBeNil)
 				So(len(repos), ShouldEqual, reposCount)
 
-				repos, _, _, _, err = repoDB.SearchRepos(ctx, "repo", repodb.Filter{}, repodb.PageInput{
+				repos, _, _, _, err = repoDB.SearchRepos(ctx, "repo", metaTypes.Filter{}, metaTypes.PageInput{
 					Limit:  20,
-					SortBy: repodb.AlphabeticAsc,
+					SortBy: metaTypes.AlphabeticAsc,
 				})
 				So(err, ShouldBeNil)
 				So(len(repos), ShouldEqual, 20)
 
-				repos, _, _, _, err = repoDB.SearchRepos(ctx, "repo", repodb.Filter{}, repodb.PageInput{
+				repos, _, _, _, err = repoDB.SearchRepos(ctx, "repo", metaTypes.Filter{}, metaTypes.PageInput{
 					Limit:  1,
 					Offset: 0,
-					SortBy: repodb.AlphabeticAsc,
+					SortBy: metaTypes.AlphabeticAsc,
 				})
 				So(err, ShouldBeNil)
 				So(len(repos), ShouldEqual, 1)
 				So(repos[0].Name, ShouldResemble, "repo0")
 
-				repos, _, _, _, err = repoDB.SearchRepos(ctx, "repo", repodb.Filter{}, repodb.PageInput{
+				repos, _, _, _, err = repoDB.SearchRepos(ctx, "repo", metaTypes.Filter{}, metaTypes.PageInput{
 					Limit:  1,
 					Offset: 1,
-					SortBy: repodb.AlphabeticAsc,
+					SortBy: metaTypes.AlphabeticAsc,
 				})
 				So(err, ShouldBeNil)
 				So(len(repos), ShouldEqual, 1)
 				So(repos[0].Name, ShouldResemble, "repo1")
 
-				repos, _, _, _, err = repoDB.SearchRepos(ctx, "repo", repodb.Filter{}, repodb.PageInput{
+				repos, _, _, _, err = repoDB.SearchRepos(ctx, "repo", metaTypes.Filter{}, metaTypes.PageInput{
 					Limit:  1,
 					Offset: 49,
-					SortBy: repodb.AlphabeticAsc,
+					SortBy: metaTypes.AlphabeticAsc,
 				})
 				So(err, ShouldBeNil)
 				So(len(repos), ShouldEqual, 1)
 				So(repos[0].Name, ShouldResemble, "repo9")
 
-				repos, _, _, _, err = repoDB.SearchRepos(ctx, "repo", repodb.Filter{}, repodb.PageInput{
+				repos, _, _, _, err = repoDB.SearchRepos(ctx, "repo", metaTypes.Filter{}, metaTypes.PageInput{
 					Limit:  1,
 					Offset: 49,
-					SortBy: repodb.AlphabeticDsc,
+					SortBy: metaTypes.AlphabeticDsc,
 				})
 				So(err, ShouldBeNil)
 				So(len(repos), ShouldEqual, 1)
 				So(repos[0].Name, ShouldResemble, "repo0")
 
-				repos, _, _, _, err = repoDB.SearchRepos(ctx, "repo", repodb.Filter{}, repodb.PageInput{
+				repos, _, _, _, err = repoDB.SearchRepos(ctx, "repo", metaTypes.Filter{}, metaTypes.PageInput{
 					Limit:  1,
 					Offset: 0,
-					SortBy: repodb.AlphabeticDsc,
+					SortBy: metaTypes.AlphabeticDsc,
 				})
 				So(err, ShouldBeNil)
 				So(len(repos), ShouldEqual, 1)
 				So(repos[0].Name, ShouldResemble, "repo9")
 
 				// sort by downloads
-				repos, _, _, _, err = repoDB.SearchRepos(ctx, "repo", repodb.Filter{}, repodb.PageInput{
+				repos, _, _, _, err = repoDB.SearchRepos(ctx, "repo", metaTypes.Filter{}, metaTypes.PageInput{
 					Limit:  1,
 					Offset: 0,
-					SortBy: repodb.Downloads,
+					SortBy: metaTypes.Downloads,
 				})
 				So(err, ShouldBeNil)
 				So(len(repos), ShouldEqual, 1)
 				So(repos[0].Name, ShouldResemble, "repo49")
 
 				// sort by last update
-				repos, _, _, _, err = repoDB.SearchRepos(ctx, "repo", repodb.Filter{}, repodb.PageInput{
+				repos, _, _, _, err = repoDB.SearchRepos(ctx, "repo", metaTypes.Filter{}, metaTypes.PageInput{
 					Limit:  1,
 					Offset: 0,
-					SortBy: repodb.UpdateTime,
+					SortBy: metaTypes.UpdateTime,
 				})
 				So(err, ShouldBeNil)
 				So(len(repos), ShouldEqual, 1)
 				So(repos[0].Name, ShouldResemble, "repo49")
 
-				repos, _, _, _, err = repoDB.SearchRepos(ctx, "repo", repodb.Filter{}, repodb.PageInput{
+				repos, _, _, _, err = repoDB.SearchRepos(ctx, "repo", metaTypes.Filter{}, metaTypes.PageInput{
 					Limit:  1,
 					Offset: 100,
-					SortBy: repodb.UpdateTime,
+					SortBy: metaTypes.UpdateTime,
 				})
 				So(err, ShouldBeNil)
 				So(len(repos), ShouldEqual, 0)
@@ -1342,31 +1340,31 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 			})
 
 			Convey("Search with wrong pagination input", func() {
-				_, _, _, _, err = repoDB.SearchRepos(ctx, "repo", repodb.Filter{}, repodb.PageInput{
+				_, _, _, _, err = repoDB.SearchRepos(ctx, "repo", metaTypes.Filter{}, metaTypes.PageInput{
 					Limit:  1,
 					Offset: 100,
-					SortBy: repodb.UpdateTime,
+					SortBy: metaTypes.UpdateTime,
 				})
 				So(err, ShouldBeNil)
 
-				_, _, _, _, err = repoDB.SearchRepos(ctx, "repo", repodb.Filter{}, repodb.PageInput{
+				_, _, _, _, err = repoDB.SearchRepos(ctx, "repo", metaTypes.Filter{}, metaTypes.PageInput{
 					Limit:  -1,
 					Offset: 100,
-					SortBy: repodb.UpdateTime,
+					SortBy: metaTypes.UpdateTime,
 				})
 				So(err, ShouldNotBeNil)
 
-				_, _, _, _, err = repoDB.SearchRepos(ctx, "repo", repodb.Filter{}, repodb.PageInput{
+				_, _, _, _, err = repoDB.SearchRepos(ctx, "repo", metaTypes.Filter{}, metaTypes.PageInput{
 					Limit:  1,
 					Offset: -1,
-					SortBy: repodb.UpdateTime,
+					SortBy: metaTypes.UpdateTime,
 				})
 				So(err, ShouldNotBeNil)
 
-				_, _, _, _, err = repoDB.SearchRepos(ctx, "repo", repodb.Filter{}, repodb.PageInput{
+				_, _, _, _, err = repoDB.SearchRepos(ctx, "repo", metaTypes.Filter{}, metaTypes.PageInput{
 					Limit:  1,
 					Offset: 1,
-					SortBy: repodb.SortCriteria("InvalidSortingCriteria"),
+					SortBy: metaTypes.SortCriteria("InvalidSortingCriteria"),
 				})
 				So(err, ShouldNotBeNil)
 			})
@@ -1382,7 +1380,7 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 					manifestDigest3 = godigest.FromString("manifestDigest3")
 				)
 
-				err := repoDB.SetManifestData(manifestDigest1, repodb.ManifestData{
+				err := repoDB.SetManifestData(manifestDigest1, metaTypes.ManifestData{
 					ManifestBlob: []byte("{}"),
 					ConfigBlob:   []byte("{}"),
 				})
@@ -1398,12 +1396,12 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 				confBlob, err := json.Marshal(config)
 				So(err, ShouldBeNil)
 
-				err = repoDB.SetManifestData(manifestDigest2, repodb.ManifestData{
+				err = repoDB.SetManifestData(manifestDigest2, metaTypes.ManifestData{
 					ManifestBlob: []byte("{}"),
 					ConfigBlob:   confBlob,
 				})
 				So(err, ShouldBeNil)
-				err = repoDB.SetManifestData(manifestDigest3, repodb.ManifestData{
+				err = repoDB.SetManifestData(manifestDigest3, metaTypes.ManifestData{
 					ManifestBlob: []byte("{}"),
 					ConfigBlob:   []byte("{}"),
 				})
@@ -1424,7 +1422,7 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 				indexBlob, err := json.Marshal(indexContent)
 				So(err, ShouldBeNil)
 
-				err = repoDB.SetIndexData(indexDigest, repodb.IndexData{
+				err = repoDB.SetIndexData(indexDigest, metaTypes.IndexData{
 					IndexBlob: indexBlob,
 				})
 				So(err, ShouldBeNil)
@@ -1435,7 +1433,8 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 				err = repoDB.SetRepoReference("repo", tag5, manifestDigest3, ispec.MediaTypeImageManifest)
 				So(err, ShouldBeNil)
 
-				repos, manifestMetaMap, indexDataMap, _, err := repoDB.SearchRepos(ctx, "repo", repodb.Filter{}, repodb.PageInput{})
+				repos, manifestMetaMap, indexDataMap, _, err := repoDB.SearchRepos(ctx, "repo", metaTypes.Filter{},
+					metaTypes.PageInput{})
 				So(err, ShouldBeNil)
 
 				So(len(repos), ShouldEqual, 1)
@@ -1467,7 +1466,7 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 			emptyConfigBlob, err := json.Marshal(emptyConfig)
 			So(err, ShouldBeNil)
 
-			emptyRepoMeta := repodb.ManifestMetadata{
+			emptyRepoMeta := metaTypes.ManifestMetadata{
 				ManifestBlob: emptyManifestBlob,
 				ConfigBlob:   emptyConfigBlob,
 			}
@@ -1495,7 +1494,8 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 			So(err, ShouldBeNil)
 
 			Convey("With exact match", func() {
-				repos, manifestMetaMap, _, _, err := repoDB.SearchTags(ctx, "repo1:0.0.1", repodb.Filter{}, repodb.PageInput{})
+				repos, manifestMetaMap, _, _, err := repoDB.SearchTags(ctx, "repo1:0.0.1", metaTypes.Filter{},
+					metaTypes.PageInput{})
 				So(err, ShouldBeNil)
 				So(len(repos), ShouldEqual, 1)
 				So(len(repos[0].Tags), ShouldEqual, 1)
@@ -1504,14 +1504,14 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 			})
 
 			Convey("With partial repo path", func() {
-				repos, manifestMetaMap, _, _, err := repoDB.SearchTags(ctx, "repo:0.0.1", repodb.Filter{}, repodb.PageInput{})
+				repos, manifestMetaMap, _, _, err := repoDB.SearchTags(ctx, "repo:0.0.1", metaTypes.Filter{}, metaTypes.PageInput{})
 				So(err, ShouldBeNil)
 				So(len(repos), ShouldEqual, 0)
 				So(len(manifestMetaMap), ShouldEqual, 0)
 			})
 
 			Convey("With partial tag", func() {
-				repos, manifestMetaMap, _, _, err := repoDB.SearchTags(ctx, "repo1:0.0", repodb.Filter{}, repodb.PageInput{})
+				repos, manifestMetaMap, _, _, err := repoDB.SearchTags(ctx, "repo1:0.0", metaTypes.Filter{}, metaTypes.PageInput{})
 				So(err, ShouldBeNil)
 				So(len(repos), ShouldEqual, 1)
 				So(len(repos[0].Tags), ShouldEqual, 2)
@@ -1520,7 +1520,7 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 				So(manifestMetaMap, ShouldContainKey, manifestDigest1.String())
 				So(manifestMetaMap, ShouldContainKey, manifestDigest3.String())
 
-				repos, manifestMetaMap, _, _, err = repoDB.SearchTags(ctx, "repo1:0.", repodb.Filter{}, repodb.PageInput{})
+				repos, manifestMetaMap, _, _, err = repoDB.SearchTags(ctx, "repo1:0.", metaTypes.Filter{}, metaTypes.PageInput{})
 				So(err, ShouldBeNil)
 				So(len(repos), ShouldEqual, 1)
 				So(len(repos[0].Tags), ShouldEqual, 3)
@@ -1533,7 +1533,8 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 			})
 
 			Convey("With bad query", func() {
-				repos, manifestMetaMap, _, _, err := repoDB.SearchTags(ctx, "repo:0.0.1:test", repodb.Filter{}, repodb.PageInput{})
+				repos, manifestMetaMap, _, _, err := repoDB.SearchTags(ctx, "repo:0.0.1:test", metaTypes.Filter{},
+					metaTypes.PageInput{})
 				So(err, ShouldNotBeNil)
 				So(len(repos), ShouldEqual, 0)
 				So(len(manifestMetaMap), ShouldEqual, 0)
@@ -1561,11 +1562,11 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 				configBlob, err := json.Marshal(config)
 				So(err, ShouldBeNil)
 
-				err = repoDB.SetManifestMeta(repo1, manifestDigest1, repodb.ManifestMetadata{ConfigBlob: configBlob})
+				err = repoDB.SetManifestMeta(repo1, manifestDigest1, metaTypes.ManifestMetadata{ConfigBlob: configBlob})
 				So(err, ShouldBeNil)
-				err = repoDB.SetManifestMeta(repo2, manifestDigest1, repodb.ManifestMetadata{ConfigBlob: configBlob})
+				err = repoDB.SetManifestMeta(repo2, manifestDigest1, metaTypes.ManifestMetadata{ConfigBlob: configBlob})
 				So(err, ShouldBeNil)
-				err = repoDB.SetManifestMeta(repo3, manifestDigest1, repodb.ManifestMetadata{ConfigBlob: configBlob})
+				err = repoDB.SetManifestMeta(repo3, manifestDigest1, metaTypes.ManifestMetadata{ConfigBlob: configBlob})
 				So(err, ShouldBeNil)
 
 				acCtx := localCtx.AccessControlContext{
@@ -1578,18 +1579,18 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 				authzCtxKey := localCtx.GetContextKey()
 				ctx := context.WithValue(context.Background(), authzCtxKey, acCtx)
 
-				repos, _, _, _, err := repoDB.SearchTags(ctx, "repo1:", repodb.Filter{}, repodb.PageInput{})
+				repos, _, _, _, err := repoDB.SearchTags(ctx, "repo1:", metaTypes.Filter{}, metaTypes.PageInput{})
 				So(err, ShouldBeNil)
 				So(len(repos), ShouldEqual, 1)
 				So(repos[0].Name, ShouldResemble, repo1)
 
-				repos, _, _, _, err = repoDB.SearchTags(ctx, "repo2:", repodb.Filter{}, repodb.PageInput{})
+				repos, _, _, _, err = repoDB.SearchTags(ctx, "repo2:", metaTypes.Filter{}, metaTypes.PageInput{})
 				So(err, ShouldBeNil)
 				So(repos, ShouldBeEmpty)
 			})
 
 			Convey("With wrong pagination input", func() {
-				repos, _, _, _, err := repoDB.SearchTags(ctx, "repo2:", repodb.Filter{}, repodb.PageInput{
+				repos, _, _, _, err := repoDB.SearchTags(ctx, "repo2:", metaTypes.Filter{}, metaTypes.PageInput{
 					Limit: -1,
 				})
 				So(err, ShouldNotBeNil)
@@ -1610,7 +1611,7 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 					manifestDigest4 = godigest.FromString("manifestDigest4")
 				)
 
-				err := repoDB.SetManifestData(manifestDigest1, repodb.ManifestData{
+				err := repoDB.SetManifestData(manifestDigest1, metaTypes.ManifestData{
 					ManifestBlob: []byte("{}"),
 					ConfigBlob:   []byte("{}"),
 				})
@@ -1626,18 +1627,18 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 				confBlob, err := json.Marshal(config)
 				So(err, ShouldBeNil)
 
-				err = repoDB.SetManifestData(manifestDigest2, repodb.ManifestData{
+				err = repoDB.SetManifestData(manifestDigest2, metaTypes.ManifestData{
 					ManifestBlob: []byte("{}"),
 					ConfigBlob:   confBlob,
 				})
 				So(err, ShouldBeNil)
-				err = repoDB.SetManifestData(manifestDigest3, repodb.ManifestData{
+				err = repoDB.SetManifestData(manifestDigest3, metaTypes.ManifestData{
 					ManifestBlob: []byte("{}"),
 					ConfigBlob:   []byte("{}"),
 				})
 				So(err, ShouldBeNil)
 
-				err = repoDB.SetManifestData(manifestDigest4, repodb.ManifestData{
+				err = repoDB.SetManifestData(manifestDigest4, metaTypes.ManifestData{
 					ManifestBlob: []byte("{}"),
 					ConfigBlob:   []byte("{}"),
 				})
@@ -1651,7 +1652,7 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 				)
 				So(err, ShouldBeNil)
 
-				err = repoDB.SetIndexData(indexDigest, repodb.IndexData{
+				err = repoDB.SetIndexData(indexDigest, metaTypes.IndexData{
 					IndexBlob: indexBlob,
 				})
 				So(err, ShouldBeNil)
@@ -1665,8 +1666,8 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 				err = repoDB.SetRepoReference("repo", tag6, manifestDigest4, ispec.MediaTypeImageManifest)
 				So(err, ShouldBeNil)
 
-				repos, manifestMetaMap, indexDataMap, _, err := repoDB.SearchTags(ctx, "repo:0.0", repodb.Filter{},
-					repodb.PageInput{})
+				repos, manifestMetaMap, indexDataMap, _, err := repoDB.SearchTags(ctx, "repo:0.0", metaTypes.Filter{},
+					metaTypes.PageInput{})
 				So(err, ShouldBeNil)
 
 				So(len(repos), ShouldEqual, 1)
@@ -1708,13 +1709,13 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 			configBlob, err := json.Marshal(config)
 			So(err, ShouldBeNil)
 
-			err = repoDB.SetManifestMeta(repo1, manifestDigest1, repodb.ManifestMetadata{ConfigBlob: configBlob})
+			err = repoDB.SetManifestMeta(repo1, manifestDigest1, metaTypes.ManifestMetadata{ConfigBlob: configBlob})
 			So(err, ShouldBeNil)
 
-			repos, _, _, _, err := repoDB.SearchTags(context.TODO(), "repo1:", repodb.Filter{}, repodb.PageInput{
+			repos, _, _, _, err := repoDB.SearchTags(context.TODO(), "repo1:", metaTypes.Filter{}, metaTypes.PageInput{
 				Limit:  1,
 				Offset: 0,
-				SortBy: repodb.AlphabeticAsc,
+				SortBy: metaTypes.AlphabeticAsc,
 			})
 
 			So(err, ShouldBeNil)
@@ -1724,10 +1725,10 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 				keys = append(keys, k)
 			}
 
-			repos, _, _, _, err = repoDB.SearchTags(context.TODO(), "repo1:", repodb.Filter{}, repodb.PageInput{
+			repos, _, _, _, err = repoDB.SearchTags(context.TODO(), "repo1:", metaTypes.Filter{}, metaTypes.PageInput{
 				Limit:  1,
 				Offset: 1,
-				SortBy: repodb.AlphabeticAsc,
+				SortBy: metaTypes.AlphabeticAsc,
 			})
 
 			So(err, ShouldBeNil)
@@ -1736,10 +1737,10 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 				keys = append(keys, k)
 			}
 
-			repos, _, _, _, err = repoDB.SearchTags(context.TODO(), "repo1:", repodb.Filter{}, repodb.PageInput{
+			repos, _, _, _, err = repoDB.SearchTags(context.TODO(), "repo1:", metaTypes.Filter{}, metaTypes.PageInput{
 				Limit:  1,
 				Offset: 2,
-				SortBy: repodb.AlphabeticAsc,
+				SortBy: metaTypes.AlphabeticAsc,
 			})
 
 			So(err, ShouldBeNil)
@@ -1799,62 +1800,62 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 			configBlob3, err := json.Marshal(config3)
 			So(err, ShouldBeNil)
 
-			err = repoDB.SetManifestMeta(repo1, manifestDigest1, repodb.ManifestMetadata{ConfigBlob: configBlob1})
+			err = repoDB.SetManifestMeta(repo1, manifestDigest1, metaTypes.ManifestMetadata{ConfigBlob: configBlob1})
 			So(err, ShouldBeNil)
 
-			err = repoDB.SetManifestMeta(repo1, manifestDigest2, repodb.ManifestMetadata{ConfigBlob: configBlob2})
+			err = repoDB.SetManifestMeta(repo1, manifestDigest2, metaTypes.ManifestMetadata{ConfigBlob: configBlob2})
 			So(err, ShouldBeNil)
 
-			err = repoDB.SetManifestMeta(repo2, manifestDigest1, repodb.ManifestMetadata{ConfigBlob: configBlob1})
+			err = repoDB.SetManifestMeta(repo2, manifestDigest1, metaTypes.ManifestMetadata{ConfigBlob: configBlob1})
 			So(err, ShouldBeNil)
 
-			err = repoDB.SetManifestMeta(repo3, manifestDigest2, repodb.ManifestMetadata{ConfigBlob: configBlob2})
+			err = repoDB.SetManifestMeta(repo3, manifestDigest2, metaTypes.ManifestMetadata{ConfigBlob: configBlob2})
 			So(err, ShouldBeNil)
 
-			err = repoDB.SetManifestMeta(repo4, manifestDigest3, repodb.ManifestMetadata{ConfigBlob: configBlob3})
+			err = repoDB.SetManifestMeta(repo4, manifestDigest3, metaTypes.ManifestMetadata{ConfigBlob: configBlob3})
 			So(err, ShouldBeNil)
 
 			opSys := LINUX
 			arch := ""
-			filter := repodb.Filter{
+			filter := metaTypes.Filter{
 				Os: []*string{&opSys},
 			}
 
 			repos, _, _, _, err := repoDB.SearchRepos(context.TODO(), "", filter,
-				repodb.PageInput{SortBy: repodb.AlphabeticAsc})
+				metaTypes.PageInput{SortBy: metaTypes.AlphabeticAsc})
 			So(err, ShouldBeNil)
 			So(len(repos), ShouldEqual, 2)
 			So(repos[0].Name, ShouldResemble, "repo1")
 			So(repos[1].Name, ShouldResemble, "repo2")
 
 			opSys = WINDOWS
-			filter = repodb.Filter{
+			filter = metaTypes.Filter{
 				Os: []*string{&opSys},
 			}
 			repos, _, _, _, err = repoDB.SearchRepos(context.TODO(), "repo", filter,
-				repodb.PageInput{SortBy: repodb.AlphabeticAsc})
+				metaTypes.PageInput{SortBy: metaTypes.AlphabeticAsc})
 			So(err, ShouldBeNil)
 			So(len(repos), ShouldEqual, 2)
 			So(repos[0].Name, ShouldResemble, "repo1")
 			So(repos[1].Name, ShouldResemble, "repo3")
 
 			opSys = "wrong"
-			filter = repodb.Filter{
+			filter = metaTypes.Filter{
 				Os: []*string{&opSys},
 			}
 			repos, _, _, _, err = repoDB.SearchRepos(context.TODO(), "repo", filter,
-				repodb.PageInput{SortBy: repodb.AlphabeticAsc})
+				metaTypes.PageInput{SortBy: metaTypes.AlphabeticAsc})
 			So(err, ShouldBeNil)
 			So(len(repos), ShouldEqual, 0)
 
 			opSys = LINUX
 			arch = AMD
-			filter = repodb.Filter{
+			filter = metaTypes.Filter{
 				Os:   []*string{&opSys},
 				Arch: []*string{&arch},
 			}
 			repos, _, _, _, err = repoDB.SearchRepos(context.TODO(), "repo", filter,
-				repodb.PageInput{SortBy: repodb.AlphabeticAsc})
+				metaTypes.PageInput{SortBy: metaTypes.AlphabeticAsc})
 			So(err, ShouldBeNil)
 			So(len(repos), ShouldEqual, 2)
 			So(repos[0].Name, ShouldResemble, "repo1")
@@ -1862,12 +1863,12 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 
 			opSys = WINDOWS
 			arch = AMD
-			filter = repodb.Filter{
+			filter = metaTypes.Filter{
 				Os:   []*string{&opSys},
 				Arch: []*string{&arch},
 			}
 			repos, _, _, _, err = repoDB.SearchRepos(context.TODO(), "repo", filter,
-				repodb.PageInput{SortBy: repodb.AlphabeticAsc})
+				metaTypes.PageInput{SortBy: metaTypes.AlphabeticAsc})
 			So(err, ShouldBeNil)
 			So(len(repos), ShouldEqual, 1)
 		})
@@ -1901,7 +1902,7 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 			)
 			So(err, ShouldBeNil)
 
-			err = repoDB.SetIndexData(indexDigest, repodb.IndexData{
+			err = repoDB.SetIndexData(indexDigest, metaTypes.IndexData{
 				IndexBlob: indexBlob,
 			})
 			So(err, ShouldBeNil)
@@ -1939,49 +1940,49 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 			configBlob3, err := json.Marshal(config3)
 			So(err, ShouldBeNil)
 
-			err = repoDB.SetManifestMeta(repo1, manifestDigest1, repodb.ManifestMetadata{ConfigBlob: configBlob1})
+			err = repoDB.SetManifestMeta(repo1, manifestDigest1, metaTypes.ManifestMetadata{ConfigBlob: configBlob1})
 			So(err, ShouldBeNil)
 
-			err = repoDB.SetManifestMeta(repo1, manifestDigest2, repodb.ManifestMetadata{ConfigBlob: configBlob2})
+			err = repoDB.SetManifestMeta(repo1, manifestDigest2, metaTypes.ManifestMetadata{ConfigBlob: configBlob2})
 			So(err, ShouldBeNil)
 
-			err = repoDB.SetManifestMeta(repo2, manifestDigest1, repodb.ManifestMetadata{ConfigBlob: configBlob1})
+			err = repoDB.SetManifestMeta(repo2, manifestDigest1, metaTypes.ManifestMetadata{ConfigBlob: configBlob1})
 			So(err, ShouldBeNil)
 
-			err = repoDB.SetManifestMeta(repo3, manifestDigest2, repodb.ManifestMetadata{ConfigBlob: configBlob2})
+			err = repoDB.SetManifestMeta(repo3, manifestDigest2, metaTypes.ManifestMetadata{ConfigBlob: configBlob2})
 			So(err, ShouldBeNil)
 
-			err = repoDB.SetManifestMeta(repo4, manifestDigest3, repodb.ManifestMetadata{ConfigBlob: configBlob3})
+			err = repoDB.SetManifestMeta(repo4, manifestDigest3, metaTypes.ManifestMetadata{ConfigBlob: configBlob3})
 			So(err, ShouldBeNil)
 
 			err = repoDB.SetManifestMeta(repo1, manifestFromIndexDigest1,
-				repodb.ManifestMetadata{ConfigBlob: []byte("{}")})
+				metaTypes.ManifestMetadata{ConfigBlob: []byte("{}")})
 			So(err, ShouldBeNil)
 
 			err = repoDB.SetManifestMeta(repo1, manifestFromIndexDigest2,
-				repodb.ManifestMetadata{ConfigBlob: []byte("{}")})
+				metaTypes.ManifestMetadata{ConfigBlob: []byte("{}")})
 			So(err, ShouldBeNil)
 
 			opSys := LINUX
 			arch := AMD
-			filter := repodb.Filter{
+			filter := metaTypes.Filter{
 				Os:   []*string{&opSys},
 				Arch: []*string{&arch},
 			}
 			repos, _, _, _, err := repoDB.SearchTags(context.TODO(), "repo1:", filter,
-				repodb.PageInput{SortBy: repodb.AlphabeticAsc})
+				metaTypes.PageInput{SortBy: metaTypes.AlphabeticAsc})
 			So(err, ShouldBeNil)
 			So(len(repos), ShouldEqual, 1)
 			So(repos[0].Tags, ShouldContainKey, tag1)
 
 			opSys = LINUX
 			arch = "badArch"
-			filter = repodb.Filter{
+			filter = metaTypes.Filter{
 				Os:   []*string{&opSys},
 				Arch: []*string{&arch},
 			}
 			repos, _, _, _, err = repoDB.SearchTags(context.TODO(), "repo1:", filter,
-				repodb.PageInput{SortBy: repodb.AlphabeticAsc})
+				metaTypes.PageInput{SortBy: metaTypes.AlphabeticAsc})
 			So(err, ShouldBeNil)
 			So(len(repos), ShouldEqual, 0)
 		})
@@ -2008,12 +2009,12 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 			emptyConfigBlob, err := json.Marshal(emptyConfig)
 			So(err, ShouldBeNil)
 
-			emptyManifestMeta := repodb.ManifestMetadata{
+			emptyManifestMeta := metaTypes.ManifestMetadata{
 				ManifestBlob: emptyManifestBlob,
 				ConfigBlob:   emptyConfigBlob,
 			}
 
-			emptyManifestData := repodb.ManifestData{
+			emptyManifestData := metaTypes.ManifestData{
 				ManifestBlob: emptyManifestBlob,
 				ConfigBlob:   emptyConfigBlob,
 			}
@@ -2027,7 +2028,7 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 			})
 			So(err, ShouldBeNil)
 
-			err = repoDB.SetIndexData(indexDigest, repodb.IndexData{
+			err = repoDB.SetIndexData(indexDigest, metaTypes.IndexData{
 				IndexBlob: indexBlob,
 			})
 			So(err, ShouldBeNil)
@@ -2062,10 +2063,10 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 			Convey("Return all tags", func() {
 				repos, manifestMetaMap, indexDataMap, pageInfo, err := repoDB.FilterTags(
 					ctx,
-					func(repoMeta repodb.RepoMetadata, manifestMeta repodb.ManifestMetadata) bool {
+					func(repoMeta metaTypes.RepoMetadata, manifestMeta metaTypes.ManifestMetadata) bool {
 						return true
 					},
-					repodb.PageInput{Limit: 10, Offset: 0, SortBy: repodb.AlphabeticAsc},
+					metaTypes.PageInput{Limit: 10, Offset: 0, SortBy: metaTypes.AlphabeticAsc},
 				)
 
 				So(err, ShouldBeNil)
@@ -2094,10 +2095,10 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 			Convey("Return all tags in a specific repo", func() {
 				repos, manifestMetaMap, indexDataMap, pageInfo, err := repoDB.FilterTags(
 					ctx,
-					func(repoMeta repodb.RepoMetadata, manifestMeta repodb.ManifestMetadata) bool {
+					func(repoMeta metaTypes.RepoMetadata, manifestMeta metaTypes.ManifestMetadata) bool {
 						return repoMeta.Name == repo1
 					},
-					repodb.PageInput{Limit: 10, Offset: 0, SortBy: repodb.AlphabeticAsc},
+					metaTypes.PageInput{Limit: 10, Offset: 0, SortBy: metaTypes.AlphabeticAsc},
 				)
 
 				So(err, ShouldBeNil)
@@ -2123,10 +2124,10 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 			Convey("Filter everything out", func() {
 				repos, manifestMetaMap, _, pageInfo, err := repoDB.FilterTags(
 					ctx,
-					func(repoMeta repodb.RepoMetadata, manifestMeta repodb.ManifestMetadata) bool {
+					func(repoMeta metaTypes.RepoMetadata, manifestMeta metaTypes.ManifestMetadata) bool {
 						return false
 					},
-					repodb.PageInput{Limit: 10, Offset: 0, SortBy: repodb.AlphabeticAsc},
+					metaTypes.PageInput{Limit: 10, Offset: 0, SortBy: metaTypes.AlphabeticAsc},
 				)
 
 				So(err, ShouldBeNil)
@@ -2150,10 +2151,10 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 
 				repos, manifestMetaMap, _, pageInfo, err := repoDB.FilterTags(
 					ctx,
-					func(repoMeta repodb.RepoMetadata, manifestMeta repodb.ManifestMetadata) bool {
+					func(repoMeta metaTypes.RepoMetadata, manifestMeta metaTypes.ManifestMetadata) bool {
 						return true
 					},
-					repodb.PageInput{Limit: 10, Offset: 0, SortBy: repodb.AlphabeticAsc},
+					metaTypes.PageInput{Limit: 10, Offset: 0, SortBy: metaTypes.AlphabeticAsc},
 				)
 
 				So(err, ShouldBeNil)
@@ -2169,10 +2170,10 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 			Convey("With wrong pagination input", func() {
 				repos, _, _, _, err := repoDB.FilterTags(
 					ctx,
-					func(repoMeta repodb.RepoMetadata, manifestMeta repodb.ManifestMetadata) bool {
+					func(repoMeta metaTypes.RepoMetadata, manifestMeta metaTypes.ManifestMetadata) bool {
 						return true
 					},
-					repodb.PageInput{Limit: -1},
+					metaTypes.PageInput{Limit: -1},
 				)
 				So(err, ShouldNotBeNil)
 				So(repos, ShouldBeEmpty)
@@ -2213,7 +2214,7 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 			configBlob, err := json.Marshal(image.Config)
 			So(err, ShouldBeNil)
 
-			manifestData := repodb.ManifestData{
+			manifestData := metaTypes.ManifestData{
 				ManifestBlob: manifestBlob,
 				ConfigBlob:   configBlob,
 			}
@@ -2235,7 +2236,7 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 			artifactDigest1, err := artifact1.Digest()
 			So(err, ShouldBeNil)
 
-			err = repoDB.SetReferrer("repo", referredDigest, repodb.ReferrerInfo{
+			err = repoDB.SetReferrer("repo", referredDigest, metaTypes.ReferrerInfo{
 				Digest:    artifactDigest1.String(),
 				MediaType: ispec.MediaTypeImageManifest,
 			})
@@ -2252,7 +2253,7 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 			artifactDigest2, err := artifact2.Digest()
 			So(err, ShouldBeNil)
 
-			err = repoDB.SetReferrer("repo", referredDigest, repodb.ReferrerInfo{
+			err = repoDB.SetReferrer("repo", referredDigest, metaTypes.ReferrerInfo{
 				Digest:    artifactDigest2.String(),
 				MediaType: ispec.MediaTypeImageManifest,
 			})
@@ -2262,11 +2263,11 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 
 			referrers, err := repoDB.GetReferrersInfo("repo", referredDigest, nil)
 			So(len(referrers), ShouldEqual, 2)
-			So(referrers, ShouldContain, repodb.ReferrerInfo{
+			So(referrers, ShouldContain, metaTypes.ReferrerInfo{
 				Digest:    artifactDigest1.String(),
 				MediaType: ispec.MediaTypeImageManifest,
 			})
-			So(referrers, ShouldContain, repodb.ReferrerInfo{
+			So(referrers, ShouldContain, metaTypes.ReferrerInfo{
 				Digest:    artifactDigest2.String(),
 				MediaType: ispec.MediaTypeImageManifest,
 			})
@@ -2288,12 +2289,12 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 		Convey("Test Referrers on empty Repo", func() {
 			repoMeta, err := repoDB.GetRepoMeta("repo")
 			So(err, ShouldNotBeNil)
-			So(repoMeta, ShouldResemble, repodb.RepoMetadata{})
+			So(repoMeta, ShouldResemble, metaTypes.RepoMetadata{})
 
 			referredDigest := godigest.FromString("referredDigest")
 			referrerDigest := godigest.FromString("referrerDigest")
 
-			err = repoDB.SetReferrer("repo", referredDigest, repodb.ReferrerInfo{
+			err = repoDB.SetReferrer("repo", referredDigest, metaTypes.ReferrerInfo{
 				Digest:    referrerDigest.String(),
 				MediaType: ispec.MediaTypeImageManifest,
 			})
@@ -2307,18 +2308,18 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 		Convey("Test Referrers add same one twice", func() {
 			repoMeta, err := repoDB.GetRepoMeta("repo")
 			So(err, ShouldNotBeNil)
-			So(repoMeta, ShouldResemble, repodb.RepoMetadata{})
+			So(repoMeta, ShouldResemble, metaTypes.RepoMetadata{})
 
 			referredDigest := godigest.FromString("referredDigest")
 			referrerDigest := godigest.FromString("referrerDigest")
 
-			err = repoDB.SetReferrer("repo", referredDigest, repodb.ReferrerInfo{
+			err = repoDB.SetReferrer("repo", referredDigest, metaTypes.ReferrerInfo{
 				Digest:    referrerDigest.String(),
 				MediaType: ispec.MediaTypeImageManifest,
 			})
 			So(err, ShouldBeNil)
 
-			err = repoDB.SetReferrer("repo", referredDigest, repodb.ReferrerInfo{
+			err = repoDB.SetReferrer("repo", referredDigest, metaTypes.ReferrerInfo{
 				Digest:    referrerDigest.String(),
 				MediaType: ispec.MediaTypeImageManifest,
 			})
@@ -2332,27 +2333,27 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 		Convey("GetReferrersInfo", func() {
 			referredDigest := godigest.FromString("referredDigest")
 
-			err := repoDB.SetReferrer("repo", referredDigest, repodb.ReferrerInfo{
+			err := repoDB.SetReferrer("repo", referredDigest, metaTypes.ReferrerInfo{
 				Digest:    "inexistendManifestDigest",
 				MediaType: ispec.MediaTypeImageManifest,
 			})
 			So(err, ShouldBeNil)
 
 			// ------- Set existent manifest and artifact manifest
-			err = repoDB.SetManifestData("goodManifest", repodb.ManifestData{
+			err = repoDB.SetManifestData("goodManifest", metaTypes.ManifestData{
 				ManifestBlob: []byte(`{"artifactType": "unwantedType"}`),
 				ConfigBlob:   []byte("{}"),
 			})
 			So(err, ShouldBeNil)
 
-			err = repoDB.SetReferrer("repo", referredDigest, repodb.ReferrerInfo{
+			err = repoDB.SetReferrer("repo", referredDigest, metaTypes.ReferrerInfo{
 				Digest:       "goodManifestUnwanted",
 				MediaType:    ispec.MediaTypeImageManifest,
 				ArtifactType: "unwantedType",
 			})
 			So(err, ShouldBeNil)
 
-			err = repoDB.SetReferrer("repo", referredDigest, repodb.ReferrerInfo{
+			err = repoDB.SetReferrer("repo", referredDigest, metaTypes.ReferrerInfo{
 				Digest:       "goodManifest",
 				MediaType:    ispec.MediaTypeImageManifest,
 				ArtifactType: "wantedType",
@@ -2407,12 +2408,12 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 			So(err, ShouldBeNil)
 
 			repoMetas, _, _, _, err := repoDB.FilterRepos(context.Background(),
-				func(repoMeta repodb.RepoMetadata) bool { return true }, repodb.PageInput{})
+				func(repoMeta metaTypes.RepoMetadata) bool { return true }, metaTypes.PageInput{})
 			So(err, ShouldBeNil)
 			So(len(repoMetas), ShouldEqual, 1)
 
 			_, _, _, _, err = repoDB.FilterRepos(context.Background(),
-				func(repoMeta repodb.RepoMetadata) bool { return true }, repodb.PageInput{
+				func(repoMeta metaTypes.RepoMetadata) bool { return true }, metaTypes.PageInput{
 					Limit:  -1,
 					Offset: -1,
 				})
@@ -2432,7 +2433,7 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 			ctx := context.WithValue(context.Background(), authzCtxKey, acCtx)
 
 			manifestDigest := godigest.FromString("dig")
-			err := repoDB.SetManifestData(manifestDigest, repodb.ManifestData{
+			err := repoDB.SetManifestData(manifestDigest, metaTypes.ManifestData{
 				ManifestBlob: []byte("{}"),
 				ConfigBlob:   []byte("{}"),
 			})
@@ -2441,29 +2442,29 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 			err = repoDB.SetRepoReference(repo99, "tag", manifestDigest, ispec.MediaTypeImageManifest)
 			So(err, ShouldBeNil)
 
-			repoMetas, _, _, _, err := repoDB.SearchRepos(ctx, repo99, repodb.Filter{}, repodb.PageInput{})
+			repoMetas, _, _, _, err := repoDB.SearchRepos(ctx, repo99, metaTypes.Filter{}, metaTypes.PageInput{})
 			So(err, ShouldBeNil)
 			So(len(repoMetas), ShouldEqual, 1)
 			So(repoMetas[0].IsBookmarked, ShouldBeFalse)
 			So(repoMetas[0].IsStarred, ShouldBeFalse)
 
-			repoMetas, _, _, _, err = repoDB.SearchTags(ctx, repo99+":", repodb.Filter{}, repodb.PageInput{})
+			repoMetas, _, _, _, err = repoDB.SearchTags(ctx, repo99+":", metaTypes.Filter{}, metaTypes.PageInput{})
 			So(err, ShouldBeNil)
 			So(len(repoMetas), ShouldEqual, 1)
 			So(repoMetas[0].IsBookmarked, ShouldBeFalse)
 			So(repoMetas[0].IsStarred, ShouldBeFalse)
 
-			repoMetas, _, _, _, err = repoDB.FilterRepos(ctx, func(repoMeta repodb.RepoMetadata) bool {
+			repoMetas, _, _, _, err = repoDB.FilterRepos(ctx, func(repoMeta metaTypes.RepoMetadata) bool {
 				return true
-			}, repodb.PageInput{})
+			}, metaTypes.PageInput{})
 			So(err, ShouldBeNil)
 			So(len(repoMetas), ShouldEqual, 1)
 			So(repoMetas[0].IsBookmarked, ShouldBeFalse)
 			So(repoMetas[0].IsStarred, ShouldBeFalse)
 
 			repoMetas, _, _, _, err = repoDB.FilterTags(ctx,
-				func(repoMeta repodb.RepoMetadata, manifestMeta repodb.ManifestMetadata) bool { return true },
-				repodb.PageInput{},
+				func(repoMeta metaTypes.RepoMetadata, manifestMeta metaTypes.ManifestMetadata) bool { return true },
+				metaTypes.PageInput{},
 			)
 			So(err, ShouldBeNil)
 			So(len(repoMetas), ShouldEqual, 1)
@@ -2476,29 +2477,29 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 			_, err = repoDB.ToggleStarRepo(ctx, repo99)
 			So(err, ShouldBeNil)
 
-			repoMetas, _, _, _, err = repoDB.SearchRepos(ctx, repo99, repodb.Filter{}, repodb.PageInput{})
+			repoMetas, _, _, _, err = repoDB.SearchRepos(ctx, repo99, metaTypes.Filter{}, metaTypes.PageInput{})
 			So(err, ShouldBeNil)
 			So(len(repoMetas), ShouldEqual, 1)
 			So(repoMetas[0].IsBookmarked, ShouldBeTrue)
 			So(repoMetas[0].IsStarred, ShouldBeTrue)
 
-			repoMetas, _, _, _, err = repoDB.SearchTags(ctx, repo99+":", repodb.Filter{}, repodb.PageInput{})
+			repoMetas, _, _, _, err = repoDB.SearchTags(ctx, repo99+":", metaTypes.Filter{}, metaTypes.PageInput{})
 			So(err, ShouldBeNil)
 			So(len(repoMetas), ShouldEqual, 1)
 			So(repoMetas[0].IsBookmarked, ShouldBeTrue)
 			So(repoMetas[0].IsStarred, ShouldBeTrue)
 
-			repoMetas, _, _, _, err = repoDB.FilterRepos(ctx, func(repoMeta repodb.RepoMetadata) bool {
+			repoMetas, _, _, _, err = repoDB.FilterRepos(ctx, func(repoMeta metaTypes.RepoMetadata) bool {
 				return true
-			}, repodb.PageInput{})
+			}, metaTypes.PageInput{})
 			So(err, ShouldBeNil)
 			So(len(repoMetas), ShouldEqual, 1)
 			So(repoMetas[0].IsBookmarked, ShouldBeTrue)
 			So(repoMetas[0].IsStarred, ShouldBeTrue)
 
 			repoMetas, _, _, _, err = repoDB.FilterTags(ctx,
-				func(repoMeta repodb.RepoMetadata, manifestMeta repodb.ManifestMetadata) bool { return true },
-				repodb.PageInput{},
+				func(repoMeta metaTypes.RepoMetadata, manifestMeta metaTypes.ManifestMetadata) bool { return true },
+				metaTypes.PageInput{},
 			)
 			So(err, ShouldBeNil)
 			So(len(repoMetas), ShouldEqual, 1)
@@ -2537,26 +2538,26 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 	})
 }
 
-func NewManifestData(manifest ispec.Manifest, config ispec.Image) (repodb.ManifestData, error) {
+func NewManifestData(manifest ispec.Manifest, config ispec.Image) (metaTypes.ManifestData, error) {
 	configBlob, err := json.Marshal(config)
 	if err != nil {
-		return repodb.ManifestData{}, err
+		return metaTypes.ManifestData{}, err
 	}
 
 	manifest.Config.Digest = godigest.FromBytes(configBlob)
 
 	manifestBlob, err := json.Marshal(manifest)
 	if err != nil {
-		return repodb.ManifestData{}, err
+		return metaTypes.ManifestData{}, err
 	}
 
-	return repodb.ManifestData{ManifestBlob: manifestBlob, ConfigBlob: configBlob}, nil
+	return metaTypes.ManifestData{ManifestBlob: manifestBlob, ConfigBlob: configBlob}, nil
 }
 
-func NewIndexData(index ispec.Index) (repodb.IndexData, error) {
+func NewIndexData(index ispec.Index) (metaTypes.IndexData, error) {
 	indexBlob, err := json.Marshal(index)
 
-	return repodb.IndexData{IndexBlob: indexBlob}, err
+	return metaTypes.IndexData{IndexBlob: indexBlob}, err
 }
 
 func TestRelevanceSorting(t *testing.T) {
@@ -2588,7 +2589,7 @@ func TestRelevanceSorting(t *testing.T) {
 
 			log := log.NewLogger("debug", "")
 
-			repoDB, err := boltdb_wrapper.NewBoltDBWrapper(boltDriver, log)
+			repoDB, err := bolt.NewBoltDBWrapper(boltDriver, log)
 			So(repoDB, ShouldNotBeNil)
 			So(err, ShouldBeNil)
 
@@ -2615,7 +2616,7 @@ func TestRelevanceSorting(t *testing.T) {
 			emptyConfigBlob, err := json.Marshal(emptyConfig)
 			So(err, ShouldBeNil)
 
-			emptyRepoMeta := repodb.ManifestMetadata{
+			emptyRepoMeta := metaTypes.ManifestMetadata{
 				ManifestBlob: emptyManifestBlob,
 				ConfigBlob:   emptyConfigBlob,
 			}
@@ -2646,8 +2647,8 @@ func TestRelevanceSorting(t *testing.T) {
 			err = repoDB.SetManifestMeta(repo4, manifestDigest3, emptyRepoMeta)
 			So(err, ShouldBeNil)
 
-			repos, _, _, _, err := repoDB.SearchRepos(ctx, "pine", repodb.Filter{},
-				repodb.PageInput{SortBy: repodb.Relevance},
+			repos, _, _, _, err := repoDB.SearchRepos(ctx, "pine", metaTypes.Filter{},
+				metaTypes.PageInput{SortBy: metaTypes.Relevance},
 			)
 
 			So(err, ShouldBeNil)

@@ -1,4 +1,4 @@
-package repodbfactory_test
+package meta_test
 
 import (
 	"os"
@@ -10,9 +10,9 @@ import (
 
 	"zotregistry.io/zot/pkg/api/config"
 	"zotregistry.io/zot/pkg/log"
+	"zotregistry.io/zot/pkg/meta"
 	"zotregistry.io/zot/pkg/meta/bolt"
 	"zotregistry.io/zot/pkg/meta/dynamo"
-	"zotregistry.io/zot/pkg/meta/repodb/repodbfactory"
 )
 
 func TestCreateDynamo(t *testing.T) {
@@ -34,7 +34,7 @@ func TestCreateDynamo(t *testing.T) {
 
 		log := log.NewLogger("debug", "")
 
-		repoDB, err := repodbfactory.Create("dynamodb", client, dynamoDBDriverParams, log)
+		repoDB, err := meta.Create("dynamodb", client, dynamoDBDriverParams, log)
 		So(repoDB, ShouldNotBeNil)
 		So(err, ShouldBeNil)
 	})
@@ -42,11 +42,11 @@ func TestCreateDynamo(t *testing.T) {
 	Convey("Fails", t, func() {
 		log := log.NewLogger("debug", "")
 
-		So(func() { _, _ = repodbfactory.Create("dynamodb", nil, bolt.DBParameters{RootDir: "root"}, log) }, ShouldPanic)
+		So(func() { _, _ = meta.Create("dynamodb", nil, bolt.DBParameters{RootDir: "root"}, log) }, ShouldPanic)
 
-		So(func() { _, _ = repodbfactory.Create("dynamodb", &dynamodb.Client{}, "bad", log) }, ShouldPanic)
+		So(func() { _, _ = meta.Create("dynamodb", &dynamodb.Client{}, "bad", log) }, ShouldPanic)
 
-		repoDB, err := repodbfactory.Create("random", nil, bolt.DBParameters{RootDir: "root"}, log)
+		repoDB, err := meta.Create("random", nil, bolt.DBParameters{RootDir: "root"}, log)
 		So(repoDB, ShouldBeNil)
 		So(err, ShouldNotBeNil)
 	})
@@ -63,7 +63,7 @@ func TestCreateBoltDB(t *testing.T) {
 
 		log := log.NewLogger("debug", "")
 
-		repoDB, err := repodbfactory.Create("boltdb", boltDriver, params, log)
+		repoDB, err := meta.Create("boltdb", boltDriver, params, log)
 		So(repoDB, ShouldNotBeNil)
 		So(err, ShouldBeNil)
 	})
@@ -71,7 +71,7 @@ func TestCreateBoltDB(t *testing.T) {
 	Convey("fails", t, func() {
 		log := log.NewLogger("debug", "")
 
-		So(func() { _, _ = repodbfactory.Create("boltdb", nil, dynamo.DBDriverParameters{}, log) }, ShouldPanic)
+		So(func() { _, _ = meta.Create("boltdb", nil, dynamo.DBDriverParameters{}, log) }, ShouldPanic)
 	})
 }
 
@@ -91,7 +91,7 @@ func TestNew(t *testing.T) {
 		err = os.Chmod(rootDir, 0o555)
 		So(err, ShouldBeNil)
 
-		newRepodb, err := repodbfactory.New(storageConfig, log)
+		newRepodb, err := meta.New(storageConfig, log)
 		So(newRepodb, ShouldBeNil)
 		So(err, ShouldNotBeNil)
 

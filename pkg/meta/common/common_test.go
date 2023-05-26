@@ -10,7 +10,7 @@ import (
 	. "github.com/smartystreets/goconvey/convey"
 
 	"zotregistry.io/zot/pkg/meta/common"
-	"zotregistry.io/zot/pkg/meta/repodb"
+	metaTypes "zotregistry.io/zot/pkg/meta/types"
 	"zotregistry.io/zot/pkg/test/mocks"
 )
 
@@ -35,7 +35,7 @@ func TestUtils(t *testing.T) {
 			repoLastUpdated := time.Time{}
 			isSigned := false
 			noImageChecked := true
-			manifestFilterData := repodb.FilterData{
+			manifestFilterData := metaTypes.FilterData{
 				DownloadCount: 10,
 				LastUpdated:   time.Time{},
 				IsSigned:      true,
@@ -52,7 +52,7 @@ func TestUtils(t *testing.T) {
 			repoLastUpdated := time.Time{}
 			isSigned := false
 			noImageChecked := true
-			manifestFilterData := repodb.FilterData{
+			manifestFilterData := metaTypes.FilterData{
 				DownloadCount: 10,
 				LastUpdated:   time.Date(2000, 1, 1, 1, 1, 1, 1, time.UTC),
 				IsSigned:      true,
@@ -69,7 +69,7 @@ func TestUtils(t *testing.T) {
 			repoLastUpdated := time.Date(2000, 1, 1, 1, 1, 1, 1, time.UTC)
 			isSigned := true
 			noImageChecked := false
-			manifestFilterData := repodb.FilterData{
+			manifestFilterData := metaTypes.FilterData{
 				DownloadCount: 10,
 				LastUpdated:   time.Date(2023, 1, 1, 1, 1, 1, 1, time.UTC),
 				IsSigned:      false,
@@ -86,7 +86,7 @@ func TestUtils(t *testing.T) {
 			repoLastUpdated := time.Date(2024, 1, 1, 1, 1, 1, 1, time.UTC)
 			isSigned := false
 			noImageChecked := false
-			manifestFilterData := repodb.FilterData{
+			manifestFilterData := metaTypes.FilterData{
 				DownloadCount: 10,
 				LastUpdated:   time.Date(2022, 1, 1, 1, 1, 1, 1, time.UTC),
 				IsSigned:      true,
@@ -103,15 +103,15 @@ func TestUtils(t *testing.T) {
 
 	Convey("SignatureAlreadyExists", t, func() {
 		res := common.SignatureAlreadyExists(
-			[]repodb.SignatureInfo{{SignatureManifestDigest: "digest"}},
-			repodb.SignatureMetadata{SignatureDigest: "digest"},
+			[]metaTypes.SignatureInfo{{SignatureManifestDigest: "digest"}},
+			metaTypes.SignatureMetadata{SignatureDigest: "digest"},
 		)
 
 		So(res, ShouldEqual, true)
 
 		res = common.SignatureAlreadyExists(
-			[]repodb.SignatureInfo{{SignatureManifestDigest: "digest"}},
-			repodb.SignatureMetadata{SignatureDigest: "digest2"},
+			[]metaTypes.SignatureInfo{{SignatureManifestDigest: "digest"}},
+			metaTypes.SignatureMetadata{SignatureDigest: "digest2"},
 		)
 
 		So(res, ShouldEqual, false)
@@ -121,16 +121,16 @@ func TestUtils(t *testing.T) {
 		Convey("Errors", func() {
 			// Unmarshal index data error
 			_, _, err := common.FilterDataByRepo(
-				[]repodb.RepoMetadata{{
-					Tags: map[string]repodb.Descriptor{
+				[]metaTypes.RepoMetadata{{
+					Tags: map[string]metaTypes.Descriptor{
 						"tag": {
 							Digest:    "indexDigest",
 							MediaType: ispec.MediaTypeImageIndex,
 						},
 					},
 				}},
-				map[string]repodb.ManifestMetadata{},
-				map[string]repodb.IndexData{
+				map[string]metaTypes.ManifestMetadata{},
+				map[string]metaTypes.IndexData{
 					"indexDigest": {
 						IndexBlob: []byte("bad blob"),
 					},
@@ -146,14 +146,14 @@ func TestUtils(t *testing.T) {
 			// Unmarshal index data error
 			_, _, err := common.FetchDataForRepos(
 				mocks.RepoDBMock{
-					GetIndexDataFn: func(indexDigest digest.Digest) (repodb.IndexData, error) {
-						return repodb.IndexData{
+					GetIndexDataFn: func(indexDigest digest.Digest) (metaTypes.IndexData, error) {
+						return metaTypes.IndexData{
 							IndexBlob: []byte("bad blob"),
 						}, nil
 					},
 				},
-				[]repodb.RepoMetadata{{
-					Tags: map[string]repodb.Descriptor{
+				[]metaTypes.RepoMetadata{{
+					Tags: map[string]metaTypes.Descriptor{
 						"tag": {
 							Digest:    "indexDigest",
 							MediaType: ispec.MediaTypeImageIndex,
@@ -171,13 +171,13 @@ func TestFetchDataForRepos(t *testing.T) {
 		mockRepoDB := mocks.RepoDBMock{}
 
 		Convey("GetManifestData errors", func() {
-			mockRepoDB.GetManifestDataFn = func(manifestDigest digest.Digest) (repodb.ManifestData, error) {
-				return repodb.ManifestData{}, ErrTestError
+			mockRepoDB.GetManifestDataFn = func(manifestDigest digest.Digest) (metaTypes.ManifestData, error) {
+				return metaTypes.ManifestData{}, ErrTestError
 			}
 
-			_, _, err := common.FetchDataForRepos(mockRepoDB, []repodb.RepoMetadata{
+			_, _, err := common.FetchDataForRepos(mockRepoDB, []metaTypes.RepoMetadata{
 				{
-					Tags: map[string]repodb.Descriptor{
+					Tags: map[string]metaTypes.Descriptor{
 						"tag1": {Digest: "dig1", MediaType: ispec.MediaTypeImageManifest},
 					},
 				},
@@ -186,13 +186,13 @@ func TestFetchDataForRepos(t *testing.T) {
 		})
 
 		Convey("GetIndexData errors", func() {
-			mockRepoDB.GetIndexDataFn = func(indexDigest digest.Digest) (repodb.IndexData, error) {
-				return repodb.IndexData{}, ErrTestError
+			mockRepoDB.GetIndexDataFn = func(indexDigest digest.Digest) (metaTypes.IndexData, error) {
+				return metaTypes.IndexData{}, ErrTestError
 			}
 
-			_, _, err := common.FetchDataForRepos(mockRepoDB, []repodb.RepoMetadata{
+			_, _, err := common.FetchDataForRepos(mockRepoDB, []metaTypes.RepoMetadata{
 				{
-					Tags: map[string]repodb.Descriptor{
+					Tags: map[string]metaTypes.Descriptor{
 						"tag1": {Digest: "dig1", MediaType: ispec.MediaTypeImageIndex},
 					},
 				},
@@ -201,8 +201,8 @@ func TestFetchDataForRepos(t *testing.T) {
 		})
 
 		Convey("GetIndexData ok, GetManifestData errors", func() {
-			mockRepoDB.GetIndexDataFn = func(indexDigest digest.Digest) (repodb.IndexData, error) {
-				return repodb.IndexData{
+			mockRepoDB.GetIndexDataFn = func(indexDigest digest.Digest) (metaTypes.IndexData, error) {
+				return metaTypes.IndexData{
 					IndexBlob: []byte(`{
 						"manifests": [
 							{"digest": "dig1"}
@@ -210,13 +210,13 @@ func TestFetchDataForRepos(t *testing.T) {
 					}`),
 				}, nil
 			}
-			mockRepoDB.GetManifestDataFn = func(manifestDigest digest.Digest) (repodb.ManifestData, error) {
-				return repodb.ManifestData{}, ErrTestError
+			mockRepoDB.GetManifestDataFn = func(manifestDigest digest.Digest) (metaTypes.ManifestData, error) {
+				return metaTypes.ManifestData{}, ErrTestError
 			}
 
-			_, _, err := common.FetchDataForRepos(mockRepoDB, []repodb.RepoMetadata{
+			_, _, err := common.FetchDataForRepos(mockRepoDB, []metaTypes.RepoMetadata{
 				{
-					Tags: map[string]repodb.Descriptor{
+					Tags: map[string]metaTypes.Descriptor{
 						"tag1": {Digest: "dig1", MediaType: ispec.MediaTypeImageIndex},
 					},
 				},

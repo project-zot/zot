@@ -18,8 +18,7 @@ import (
 	cvemodel "zotregistry.io/zot/pkg/extensions/search/cve/model"
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/meta/bolt"
-	"zotregistry.io/zot/pkg/meta/repodb"
-	boltdb_wrapper "zotregistry.io/zot/pkg/meta/repodb/boltdb-wrapper"
+	metaTypes "zotregistry.io/zot/pkg/meta/types"
 	"zotregistry.io/zot/pkg/test/mocks"
 )
 
@@ -31,7 +30,7 @@ func TestCVEPagination(t *testing.T) {
 		boltDriver, err := bolt.GetBoltDriver(params)
 		So(err, ShouldBeNil)
 
-		repoDB, err := boltdb_wrapper.NewBoltDBWrapper(boltDriver, log.NewLogger("debug", ""))
+		repoDB, err := bolt.NewBoltDBWrapper(boltDriver, log.NewLogger("debug", ""))
 		So(err, ShouldBeNil)
 
 		// Create repodb data for scannable image with vulnerabilities
@@ -58,7 +57,7 @@ func TestCVEPagination(t *testing.T) {
 		})
 		So(err, ShouldBeNil)
 
-		repoMeta11 := repodb.ManifestMetadata{
+		repoMeta11 := metaTypes.ManifestMetadata{
 			ManifestBlob: manifestBlob11,
 			ConfigBlob:   configBlob11,
 		}
@@ -92,7 +91,7 @@ func TestCVEPagination(t *testing.T) {
 		})
 		So(err, ShouldBeNil)
 
-		repoMeta12 := repodb.ManifestMetadata{
+		repoMeta12 := metaTypes.ManifestMetadata{
 			ManifestBlob: manifestBlob12,
 			ConfigBlob:   configBlob12,
 		}

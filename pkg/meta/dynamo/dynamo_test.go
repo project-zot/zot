@@ -19,8 +19,7 @@ import (
 
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/meta/dynamo"
-	"zotregistry.io/zot/pkg/meta/repodb"
-	dynamoWrapper "zotregistry.io/zot/pkg/meta/repodb/dynamodb-wrapper"
+	metaTypes "zotregistry.io/zot/pkg/meta/types"
 	localCtx "zotregistry.io/zot/pkg/requestcontext"
 	"zotregistry.io/zot/pkg/test"
 )
@@ -59,7 +58,7 @@ func TestIterator(t *testing.T) {
 		client, err := dynamo.GetDynamoClient(params)
 		So(err, ShouldBeNil)
 
-		dynamoWrapper, err := dynamoWrapper.NewDynamoDBWrapper(client, params, log)
+		dynamoWrapper, err := dynamo.NewDynamoDBWrapper(client, params, log)
 		So(err, ShouldBeNil)
 
 		So(dynamoWrapper.ResetManifestDataTable(), ShouldBeNil)
@@ -162,7 +161,7 @@ func TestWrapperErrors(t *testing.T) {
 		client, err := dynamo.GetDynamoClient(params) //nolint:contextcheck
 		So(err, ShouldBeNil)
 
-		dynamoWrapper, err := dynamoWrapper.NewDynamoDBWrapper(client, params, log) //nolint:contextcheck
+		dynamoWrapper, err := dynamo.NewDynamoDBWrapper(client, params, log) //nolint:contextcheck
 		So(err, ShouldBeNil)
 
 		So(dynamoWrapper.ResetManifestDataTable(), ShouldBeNil) //nolint:contextcheck
@@ -196,7 +195,7 @@ func TestWrapperErrors(t *testing.T) {
 
 			status, err := dynamoWrapper.ToggleBookmarkRepo(ctx, "repo")
 			So(err, ShouldBeNil)
-			So(status, ShouldEqual, repodb.NotChanged)
+			So(status, ShouldEqual, metaTypes.NotChanged)
 		})
 
 		Convey("ToggleBookmarkRepo GetUserMeta client error", func() {
@@ -214,7 +213,7 @@ func TestWrapperErrors(t *testing.T) {
 
 			status, err := dynamoWrapper.ToggleBookmarkRepo(ctx, "repo")
 			So(err, ShouldNotBeNil)
-			So(status, ShouldEqual, repodb.NotChanged)
+			So(status, ShouldEqual, metaTypes.NotChanged)
 		})
 
 		Convey("GetBookmarkedRepos", func() {
@@ -337,14 +336,14 @@ func TestWrapperErrors(t *testing.T) {
 			authzCtxKey := localCtx.GetContextKey()
 			ctx := context.WithValue(context.Background(), authzCtxKey, "bad context")
 
-			err := dynamoWrapper.SetUserMeta(ctx, repodb.UserData{})
+			err := dynamoWrapper.SetUserMeta(ctx, metaTypes.UserData{})
 			So(err, ShouldNotBeNil)
 		})
 
 		Convey("SetManifestData", func() {
 			dynamoWrapper.ManifestDataTablename = "WRONG tables"
 
-			err := dynamoWrapper.SetManifestData("dig", repodb.ManifestData{})
+			err := dynamoWrapper.SetManifestData("dig", metaTypes.ManifestData{})
 			So(err, ShouldNotBeNil)
 		})
 
@@ -382,7 +381,7 @@ func TestWrapperErrors(t *testing.T) {
 			err := setBadRepoMeta(dynamoWrapper.Client, repoMetaTablename, "repo1")
 			So(err, ShouldBeNil)
 
-			err = dynamoWrapper.SetManifestMeta("repo1", "dig", repodb.ManifestMetadata{})
+			err = dynamoWrapper.SetManifestMeta("repo1", "dig", metaTypes.ManifestMetadata{})
 			So(err, ShouldNotBeNil)
 		})
 
@@ -395,7 +394,7 @@ func TestWrapperErrors(t *testing.T) {
 		})
 
 		Convey("GetManifestMeta GetRepoMeta Not Found error", func() {
-			err := dynamoWrapper.SetManifestData("dig", repodb.ManifestData{})
+			err := dynamoWrapper.SetManifestData("dig", metaTypes.ManifestData{})
 			So(err, ShouldBeNil)
 
 			_, err = dynamoWrapper.GetManifestMeta("repoNotFound", "dig")
@@ -403,7 +402,7 @@ func TestWrapperErrors(t *testing.T) {
 		})
 
 		Convey("GetManifestMeta GetRepoMeta error", func() {
-			err := dynamoWrapper.SetManifestData("dig", repodb.ManifestData{})
+			err := dynamoWrapper.SetManifestData("dig", metaTypes.ManifestData{})
 			So(err, ShouldBeNil)
 
 			err = setBadRepoMeta(dynamoWrapper.Client, repoMetaTablename, "repo")
@@ -422,7 +421,7 @@ func TestWrapperErrors(t *testing.T) {
 
 		Convey("SetReferrer client error", func() {
 			dynamoWrapper.RepoMetaTablename = badTablename
-			err := dynamoWrapper.SetReferrer("repo", "", repodb.ReferrerInfo{})
+			err := dynamoWrapper.SetReferrer("repo", "", metaTypes.ReferrerInfo{})
 			So(err, ShouldNotBeNil)
 		})
 
@@ -430,7 +429,7 @@ func TestWrapperErrors(t *testing.T) {
 			err := setBadRepoMeta(dynamoWrapper.Client, repoMetaTablename, "repo")
 			So(err, ShouldBeNil)
 
-			err = dynamoWrapper.SetReferrer("repo", "", repodb.ReferrerInfo{})
+			err = dynamoWrapper.SetReferrer("repo", "", metaTypes.ReferrerInfo{})
 			So(err, ShouldNotBeNil)
 		})
 
@@ -470,13 +469,13 @@ func TestWrapperErrors(t *testing.T) {
 
 		Convey("GetReferrersInfo getData fails", func() {
 			dynamoWrapper.ManifestDataTablename = badTablename
-			err = dynamoWrapper.SetReferrer("repo", "rf", repodb.ReferrerInfo{
+			err = dynamoWrapper.SetReferrer("repo", "rf", metaTypes.ReferrerInfo{
 				Digest:    "dig1",
 				MediaType: ispec.MediaTypeImageManifest,
 			})
 			So(err, ShouldBeNil)
 
-			err = dynamoWrapper.SetReferrer("repo", "rf", repodb.ReferrerInfo{
+			err = dynamoWrapper.SetReferrer("repo", "rf", metaTypes.ReferrerInfo{
 				Digest:    "dig2",
 				MediaType: ispec.MediaTypeImageManifest,
 			})
@@ -487,18 +486,18 @@ func TestWrapperErrors(t *testing.T) {
 		})
 
 		Convey("GetReferrersInfo bad descriptor blob", func() {
-			err = dynamoWrapper.SetManifestData("dig3", repodb.ManifestData{
+			err = dynamoWrapper.SetManifestData("dig3", metaTypes.ManifestData{
 				ManifestBlob: []byte("bad json"),
 			})
 			So(err, ShouldBeNil)
 
-			err = dynamoWrapper.SetReferrer("repo", "rf", repodb.ReferrerInfo{
+			err = dynamoWrapper.SetReferrer("repo", "rf", metaTypes.ReferrerInfo{
 				Digest:    "dig2",
 				MediaType: ispec.MediaTypeImageManifest,
 			})
 			So(err, ShouldBeNil)
 
-			err = dynamoWrapper.SetReferrer("repo", "rf", repodb.ReferrerInfo{
+			err = dynamoWrapper.SetReferrer("repo", "rf", metaTypes.ReferrerInfo{
 				Digest:    "dig3",
 				MediaType: ispec.MediaTypeImageManifest,
 			})
@@ -567,7 +566,7 @@ func TestWrapperErrors(t *testing.T) {
 			err := dynamoWrapper.SetRepoReference("repo", "tag", "dig", "")
 			So(err, ShouldBeNil)
 
-			err = dynamoWrapper.AddManifestSignature("repoNotFound", "tag", repodb.SignatureMetadata{})
+			err = dynamoWrapper.AddManifestSignature("repoNotFound", "tag", metaTypes.SignatureMetadata{})
 			So(err, ShouldNotBeNil)
 		})
 
@@ -575,7 +574,7 @@ func TestWrapperErrors(t *testing.T) {
 			err := dynamoWrapper.SetRepoReference("repo", "tag", "dig", "")
 			So(err, ShouldBeNil)
 
-			err = dynamoWrapper.AddManifestSignature("repo", "tagNotFound", repodb.SignatureMetadata{})
+			err = dynamoWrapper.AddManifestSignature("repo", "tagNotFound", metaTypes.SignatureMetadata{})
 			So(err, ShouldNotBeNil)
 		})
 
@@ -583,23 +582,23 @@ func TestWrapperErrors(t *testing.T) {
 			err := dynamoWrapper.SetRepoReference("repo", "tag", "dig", "")
 			So(err, ShouldBeNil)
 
-			err = dynamoWrapper.AddManifestSignature("repo", "tagNotFound", repodb.SignatureMetadata{
+			err = dynamoWrapper.AddManifestSignature("repo", "tagNotFound", metaTypes.SignatureMetadata{
 				SignatureType: "notation",
 			})
 			So(err, ShouldBeNil)
 		})
 
 		Convey("DeleteSignature GetRepoMeta error", func() {
-			err = dynamoWrapper.DeleteSignature("repoNotFound", "tagNotFound", repodb.SignatureMetadata{})
+			err = dynamoWrapper.DeleteSignature("repoNotFound", "tagNotFound", metaTypes.SignatureMetadata{})
 			So(err, ShouldNotBeNil)
 		})
 
 		Convey("DeleteSignature sigDigest.SignatureManifestDigest != sigMeta.SignatureDigest true", func() {
-			err := setRepoMeta(dynamoWrapper.Client, repoMetaTablename, repodb.RepoMetadata{
+			err := setRepoMeta(dynamoWrapper.Client, repoMetaTablename, metaTypes.RepoMetadata{
 				Name: "repo",
-				Signatures: map[string]repodb.ManifestSignatures{
+				Signatures: map[string]metaTypes.ManifestSignatures{
 					"tag1": {
-						"cosign": []repodb.SignatureInfo{
+						"cosign": []metaTypes.SignatureInfo{
 							{SignatureManifestDigest: "dig1"},
 							{SignatureManifestDigest: "dig2"},
 						},
@@ -608,7 +607,7 @@ func TestWrapperErrors(t *testing.T) {
 			})
 			So(err, ShouldBeNil)
 
-			err = dynamoWrapper.DeleteSignature("repo", "tag1", repodb.SignatureMetadata{
+			err = dynamoWrapper.DeleteSignature("repo", "tag1", metaTypes.SignatureMetadata{
 				SignatureDigest: "dig2",
 				SignatureType:   "cosign",
 			})
@@ -619,8 +618,8 @@ func TestWrapperErrors(t *testing.T) {
 			err = setBadRepoMeta(dynamoWrapper.Client, repoMetaTablename, "repo") //nolint:contextcheck
 			So(err, ShouldBeNil)
 
-			_, err = dynamoWrapper.GetMultipleRepoMeta(ctx, func(repoMeta repodb.RepoMetadata) bool { return true },
-				repodb.PageInput{})
+			_, err = dynamoWrapper.GetMultipleRepoMeta(ctx, func(repoMeta metaTypes.RepoMetadata) bool { return true },
+				metaTypes.PageInput{})
 
 			So(err, ShouldNotBeNil)
 		})
@@ -629,7 +628,7 @@ func TestWrapperErrors(t *testing.T) {
 			err = setBadRepoMeta(dynamoWrapper.Client, repoMetaTablename, "repo") //nolint:contextcheck
 			So(err, ShouldBeNil)
 
-			_, _, _, _, err = dynamoWrapper.SearchRepos(ctx, "", repodb.Filter{}, repodb.PageInput{})
+			_, _, _, _, err = dynamoWrapper.SearchRepos(ctx, "", metaTypes.Filter{}, metaTypes.PageInput{})
 
 			So(err, ShouldNotBeNil)
 		})
@@ -639,7 +638,7 @@ func TestWrapperErrors(t *testing.T) {
 				ispec.MediaTypeImageManifest)
 			So(err, ShouldBeNil)
 
-			_, _, _, _, err = dynamoWrapper.SearchRepos(ctx, "", repodb.Filter{}, repodb.PageInput{})
+			_, _, _, _, err = dynamoWrapper.SearchRepos(ctx, "", metaTypes.Filter{}, metaTypes.PageInput{})
 
 			So(err, ShouldNotBeNil)
 		})
@@ -648,13 +647,13 @@ func TestWrapperErrors(t *testing.T) {
 			err := dynamoWrapper.SetRepoReference("repo", "tag1", "dig1", ispec.MediaTypeImageManifest) //nolint:contextcheck
 			So(err, ShouldBeNil)
 
-			err = dynamoWrapper.SetManifestData("dig1", repodb.ManifestData{ //nolint:contextcheck
+			err = dynamoWrapper.SetManifestData("dig1", metaTypes.ManifestData{ //nolint:contextcheck
 				ManifestBlob: []byte("{}"),
 				ConfigBlob:   []byte("bad json"),
 			})
 			So(err, ShouldBeNil)
 
-			_, _, _, _, err = dynamoWrapper.SearchRepos(ctx, "", repodb.Filter{}, repodb.PageInput{})
+			_, _, _, _, err = dynamoWrapper.SearchRepos(ctx, "", metaTypes.Filter{}, metaTypes.PageInput{})
 
 			So(err, ShouldNotBeNil)
 		})
@@ -665,16 +664,16 @@ func TestWrapperErrors(t *testing.T) {
 			err := dynamoWrapper.SetRepoReference("repo", "tag1", digest, "invalid type") //nolint:contextcheck
 			So(err, ShouldBeNil)
 
-			_, _, _, _, err = dynamoWrapper.SearchRepos(ctx, "", repodb.Filter{}, repodb.PageInput{})
+			_, _, _, _, err = dynamoWrapper.SearchRepos(ctx, "", metaTypes.Filter{}, metaTypes.PageInput{})
 			So(err, ShouldBeNil)
 
-			_, _, _, _, err = dynamoWrapper.SearchTags(ctx, "repo:", repodb.Filter{}, repodb.PageInput{})
+			_, _, _, _, err = dynamoWrapper.SearchTags(ctx, "repo:", metaTypes.Filter{}, metaTypes.PageInput{})
 			So(err, ShouldBeNil)
 
 			_, _, _, _, err = dynamoWrapper.FilterTags(
 				ctx,
-				func(repoMeta repodb.RepoMetadata, manifestMeta repodb.ManifestMetadata) bool { return true },
-				repodb.PageInput{},
+				func(repoMeta metaTypes.RepoMetadata, manifestMeta metaTypes.ManifestMetadata) bool { return true },
+				metaTypes.PageInput{},
 			)
 			So(err, ShouldBeNil)
 		})
@@ -688,7 +687,7 @@ func TestWrapperErrors(t *testing.T) {
 			err = setBadIndexData(dynamoWrapper.Client, indexDataTablename, indexDigest.String()) //nolint:contextcheck
 			So(err, ShouldBeNil)
 
-			_, _, _, _, err = dynamoWrapper.SearchRepos(ctx, "", repodb.Filter{}, repodb.PageInput{})
+			_, _, _, _, err = dynamoWrapper.SearchRepos(ctx, "", metaTypes.Filter{}, metaTypes.PageInput{})
 			So(err, ShouldNotBeNil)
 		})
 
@@ -698,12 +697,12 @@ func TestWrapperErrors(t *testing.T) {
 			err := dynamoWrapper.SetRepoReference("repo", "tag1", indexDigest, ispec.MediaTypeImageIndex) //nolint:contextcheck
 			So(err, ShouldBeNil)
 
-			err = dynamoWrapper.SetIndexData(indexDigest, repodb.IndexData{ //nolint:contextcheck
+			err = dynamoWrapper.SetIndexData(indexDigest, metaTypes.IndexData{ //nolint:contextcheck
 				IndexBlob: []byte("bad json"),
 			})
 			So(err, ShouldBeNil)
 
-			_, _, _, _, err = dynamoWrapper.SearchRepos(ctx, "", repodb.Filter{}, repodb.PageInput{})
+			_, _, _, _, err = dynamoWrapper.SearchRepos(ctx, "", metaTypes.Filter{}, metaTypes.PageInput{})
 			So(err, ShouldNotBeNil)
 		})
 
@@ -722,24 +721,24 @@ func TestWrapperErrors(t *testing.T) {
 			})
 			So(err, ShouldBeNil)
 
-			err = dynamoWrapper.SetIndexData(indexDigest, repodb.IndexData{ //nolint:contextcheck
+			err = dynamoWrapper.SetIndexData(indexDigest, metaTypes.IndexData{ //nolint:contextcheck
 				IndexBlob: indexBlob,
 			})
 			So(err, ShouldBeNil)
 
-			err = dynamoWrapper.SetManifestData(manifestDigestFromIndex1, repodb.ManifestData{ //nolint:contextcheck
+			err = dynamoWrapper.SetManifestData(manifestDigestFromIndex1, metaTypes.ManifestData{ //nolint:contextcheck
 				ManifestBlob: []byte("Bad Manifest"),
 				ConfigBlob:   []byte("Bad Manifest"),
 			})
 			So(err, ShouldBeNil)
 
-			err = dynamoWrapper.SetManifestData(manifestDigestFromIndex2, repodb.ManifestData{ //nolint:contextcheck
+			err = dynamoWrapper.SetManifestData(manifestDigestFromIndex2, metaTypes.ManifestData{ //nolint:contextcheck
 				ManifestBlob: []byte("Bad Manifest"),
 				ConfigBlob:   []byte("Bad Manifest"),
 			})
 			So(err, ShouldBeNil)
 
-			_, _, _, _, err = dynamoWrapper.SearchRepos(ctx, "", repodb.Filter{}, repodb.PageInput{})
+			_, _, _, _, err = dynamoWrapper.SearchRepos(ctx, "", metaTypes.Filter{}, metaTypes.PageInput{})
 			So(err, ShouldNotBeNil)
 		})
 
@@ -747,7 +746,7 @@ func TestWrapperErrors(t *testing.T) {
 			err = setBadRepoMeta(dynamoWrapper.Client, repoMetaTablename, "repo") //nolint:contextcheck
 			So(err, ShouldBeNil)
 
-			_, _, _, _, err = dynamoWrapper.SearchTags(ctx, "repo:", repodb.Filter{}, repodb.PageInput{})
+			_, _, _, _, err = dynamoWrapper.SearchTags(ctx, "repo:", metaTypes.Filter{}, metaTypes.PageInput{})
 
 			So(err, ShouldNotBeNil)
 		})
@@ -757,7 +756,7 @@ func TestWrapperErrors(t *testing.T) {
 				ispec.MediaTypeImageManifest)
 			So(err, ShouldBeNil)
 
-			_, _, _, _, err = dynamoWrapper.SearchTags(ctx, "repo:", repodb.Filter{}, repodb.PageInput{})
+			_, _, _, _, err = dynamoWrapper.SearchTags(ctx, "repo:", metaTypes.Filter{}, metaTypes.PageInput{})
 
 			So(err, ShouldNotBeNil)
 		})
@@ -768,14 +767,14 @@ func TestWrapperErrors(t *testing.T) {
 
 			err = dynamoWrapper.SetManifestData( //nolint:contextcheck
 				"dig1",
-				repodb.ManifestData{
+				metaTypes.ManifestData{
 					ManifestBlob: []byte("{}"),
 					ConfigBlob:   []byte("bad json"),
 				},
 			)
 			So(err, ShouldBeNil)
 
-			_, _, _, _, err = dynamoWrapper.SearchTags(ctx, "repo:", repodb.Filter{}, repodb.PageInput{})
+			_, _, _, _, err = dynamoWrapper.SearchTags(ctx, "repo:", metaTypes.Filter{}, metaTypes.PageInput{})
 
 			So(err, ShouldNotBeNil)
 		})
@@ -789,7 +788,7 @@ func TestWrapperErrors(t *testing.T) {
 			err = setBadIndexData(dynamoWrapper.Client, indexDataTablename, indexDigest.String()) //nolint:contextcheck
 			So(err, ShouldBeNil)
 
-			_, _, _, _, err = dynamoWrapper.SearchTags(ctx, "repo:", repodb.Filter{}, repodb.PageInput{})
+			_, _, _, _, err = dynamoWrapper.SearchTags(ctx, "repo:", metaTypes.Filter{}, metaTypes.PageInput{})
 			So(err, ShouldNotBeNil)
 		})
 
@@ -799,12 +798,12 @@ func TestWrapperErrors(t *testing.T) {
 			err := dynamoWrapper.SetRepoReference("repo", "tag1", indexDigest, ispec.MediaTypeImageIndex) //nolint:contextcheck
 			So(err, ShouldBeNil)
 
-			err = dynamoWrapper.SetIndexData(indexDigest, repodb.IndexData{ //nolint:contextcheck
+			err = dynamoWrapper.SetIndexData(indexDigest, metaTypes.IndexData{ //nolint:contextcheck
 				IndexBlob: []byte("bad json"),
 			})
 			So(err, ShouldBeNil)
 
-			_, _, _, _, err = dynamoWrapper.SearchTags(ctx, "repo:", repodb.Filter{}, repodb.PageInput{})
+			_, _, _, _, err = dynamoWrapper.SearchTags(ctx, "repo:", metaTypes.Filter{}, metaTypes.PageInput{})
 			So(err, ShouldNotBeNil)
 		})
 
@@ -823,29 +822,30 @@ func TestWrapperErrors(t *testing.T) {
 			})
 			So(err, ShouldBeNil)
 
-			err = dynamoWrapper.SetIndexData(indexDigest, repodb.IndexData{ //nolint:contextcheck
+			err = dynamoWrapper.SetIndexData(indexDigest, metaTypes.IndexData{ //nolint:contextcheck
 				IndexBlob: indexBlob,
 			})
 			So(err, ShouldBeNil)
 
-			err = dynamoWrapper.SetManifestData(manifestDigestFromIndex1, repodb.ManifestData{ //nolint:contextcheck
+			err = dynamoWrapper.SetManifestData(manifestDigestFromIndex1, metaTypes.ManifestData{ //nolint:contextcheck
 				ManifestBlob: []byte("Bad Manifest"),
 				ConfigBlob:   []byte("Bad Manifest"),
 			})
 			So(err, ShouldBeNil)
 
-			err = dynamoWrapper.SetManifestData(manifestDigestFromIndex2, repodb.ManifestData{ //nolint:contextcheck
+			err = dynamoWrapper.SetManifestData(manifestDigestFromIndex2, metaTypes.ManifestData{ //nolint:contextcheck
 				ManifestBlob: []byte("Bad Manifest"),
 				ConfigBlob:   []byte("Bad Manifest"),
 			})
 			So(err, ShouldBeNil)
 
-			_, _, _, _, err = dynamoWrapper.SearchTags(ctx, "repo:", repodb.Filter{}, repodb.PageInput{})
+			_, _, _, _, err = dynamoWrapper.SearchTags(ctx, "repo:", metaTypes.Filter{}, metaTypes.PageInput{})
 			So(err, ShouldNotBeNil)
 		})
 
 		Convey("FilterRepos NewBaseRepoPageFinder errors", func() {
-			_, _, _, _, err := dynamoWrapper.SearchRepos(ctx, "text", repodb.Filter{}, repodb.PageInput{Offset: -2, Limit: -2})
+			_, _, _, _, err := dynamoWrapper.SearchRepos(ctx, "text", metaTypes.Filter{},
+				metaTypes.PageInput{Offset: -2, Limit: -2})
 			So(err, ShouldNotBeNil)
 		})
 
@@ -853,7 +853,7 @@ func TestWrapperErrors(t *testing.T) {
 			err = setBadRepoMeta(dynamoWrapper.Client, repoMetaTablename, "repo") //nolint:contextcheck
 			So(err, ShouldBeNil)
 
-			_, _, _, _, err := dynamoWrapper.SearchRepos(ctx, "repo", repodb.Filter{}, repodb.PageInput{})
+			_, _, _, _, err := dynamoWrapper.SearchRepos(ctx, "repo", metaTypes.Filter{}, metaTypes.PageInput{})
 			So(err, ShouldNotBeNil)
 		})
 
@@ -863,10 +863,10 @@ func TestWrapperErrors(t *testing.T) {
 
 			_, _, _, _, err = dynamoWrapper.FilterTags(
 				ctx,
-				func(repoMeta repodb.RepoMetadata, manifestMeta repodb.ManifestMetadata) bool {
+				func(repoMeta metaTypes.RepoMetadata, manifestMeta metaTypes.ManifestMetadata) bool {
 					return true
 				},
-				repodb.PageInput{},
+				metaTypes.PageInput{},
 			)
 
 			So(err, ShouldNotBeNil)
@@ -879,10 +879,10 @@ func TestWrapperErrors(t *testing.T) {
 
 			_, _, _, _, err = dynamoWrapper.FilterTags(
 				ctx,
-				func(repoMeta repodb.RepoMetadata, manifestMeta repodb.ManifestMetadata) bool {
+				func(repoMeta metaTypes.RepoMetadata, manifestMeta metaTypes.ManifestMetadata) bool {
 					return true
 				},
-				repodb.PageInput{},
+				metaTypes.PageInput{},
 			)
 
 			So(err, ShouldNotBeNil)
@@ -897,10 +897,10 @@ func TestWrapperErrors(t *testing.T) {
 
 			_, _, _, _, err = dynamoWrapper.FilterTags(
 				ctx,
-				func(repoMeta repodb.RepoMetadata, manifestMeta repodb.ManifestMetadata) bool {
+				func(repoMeta metaTypes.RepoMetadata, manifestMeta metaTypes.ManifestMetadata) bool {
 					return true
 				},
-				repodb.PageInput{},
+				metaTypes.PageInput{},
 			)
 
 			So(err, ShouldNotBeNil)
@@ -916,8 +916,8 @@ func TestWrapperErrors(t *testing.T) {
 			So(err, ShouldBeNil)
 
 			_, _, _, _, err = dynamoWrapper.FilterTags(ctx,
-				func(repoMeta repodb.RepoMetadata, manifestMeta repodb.ManifestMetadata) bool { return true },
-				repodb.PageInput{},
+				func(repoMeta metaTypes.RepoMetadata, manifestMeta metaTypes.ManifestMetadata) bool { return true },
+				metaTypes.PageInput{},
 			)
 			So(err, ShouldNotBeNil)
 		})
@@ -928,14 +928,14 @@ func TestWrapperErrors(t *testing.T) {
 			err := dynamoWrapper.SetRepoReference("repo", "tag1", indexDigest, ispec.MediaTypeImageIndex) //nolint:contextcheck
 			So(err, ShouldBeNil)
 
-			err = dynamoWrapper.SetIndexData(indexDigest, repodb.IndexData{ //nolint:contextcheck
+			err = dynamoWrapper.SetIndexData(indexDigest, metaTypes.IndexData{ //nolint:contextcheck
 				IndexBlob: []byte("bad json"),
 			})
 			So(err, ShouldBeNil)
 
 			_, _, _, _, err = dynamoWrapper.FilterTags(ctx,
-				func(repoMeta repodb.RepoMetadata, manifestMeta repodb.ManifestMetadata) bool { return true },
-				repodb.PageInput{},
+				func(repoMeta metaTypes.RepoMetadata, manifestMeta metaTypes.ManifestMetadata) bool { return true },
+				metaTypes.PageInput{},
 			)
 			So(err, ShouldNotBeNil)
 		})
@@ -955,26 +955,26 @@ func TestWrapperErrors(t *testing.T) {
 			})
 			So(err, ShouldBeNil)
 
-			err = dynamoWrapper.SetIndexData(indexDigest, repodb.IndexData{ //nolint:contextcheck
+			err = dynamoWrapper.SetIndexData(indexDigest, metaTypes.IndexData{ //nolint:contextcheck
 				IndexBlob: indexBlob,
 			})
 			So(err, ShouldBeNil)
 
-			err = dynamoWrapper.SetManifestData(manifestDigestFromIndex1, repodb.ManifestData{ //nolint:contextcheck
+			err = dynamoWrapper.SetManifestData(manifestDigestFromIndex1, metaTypes.ManifestData{ //nolint:contextcheck
 				ManifestBlob: []byte("{}"),
 				ConfigBlob:   []byte("{}"),
 			})
 			So(err, ShouldBeNil)
 
-			err = dynamoWrapper.SetManifestData(manifestDigestFromIndex2, repodb.ManifestData{ //nolint:contextcheck
+			err = dynamoWrapper.SetManifestData(manifestDigestFromIndex2, metaTypes.ManifestData{ //nolint:contextcheck
 				ManifestBlob: []byte("{}"),
 				ConfigBlob:   []byte("{}"),
 			})
 			So(err, ShouldBeNil)
 
 			_, _, _, _, err = dynamoWrapper.FilterTags(ctx,
-				func(repoMeta repodb.RepoMetadata, manifestMeta repodb.ManifestMetadata) bool { return false },
-				repodb.PageInput{},
+				func(repoMeta metaTypes.RepoMetadata, manifestMeta metaTypes.ManifestMetadata) bool { return false },
+				metaTypes.PageInput{},
 			)
 			So(err, ShouldBeNil)
 		})
@@ -1077,7 +1077,7 @@ func TestWrapperErrors(t *testing.T) {
 		client, err := dynamo.GetDynamoClient(params)
 		So(err, ShouldBeNil)
 
-		_, err = dynamoWrapper.NewDynamoDBWrapper(client, params, log)
+		_, err = dynamo.NewDynamoDBWrapper(client, params, log)
 		So(err, ShouldNotBeNil)
 
 		params = dynamo.DBDriverParameters{ //nolint:contextcheck
@@ -1092,7 +1092,7 @@ func TestWrapperErrors(t *testing.T) {
 		client, err = dynamo.GetDynamoClient(params)
 		So(err, ShouldBeNil)
 
-		_, err = dynamoWrapper.NewDynamoDBWrapper(client, params, log)
+		_, err = dynamo.NewDynamoDBWrapper(client, params, log)
 		So(err, ShouldNotBeNil)
 
 		params = dynamo.DBDriverParameters{ //nolint:contextcheck
@@ -1107,7 +1107,7 @@ func TestWrapperErrors(t *testing.T) {
 		client, err = dynamo.GetDynamoClient(params)
 		So(err, ShouldBeNil)
 
-		_, err = dynamoWrapper.NewDynamoDBWrapper(client, params, log)
+		_, err = dynamo.NewDynamoDBWrapper(client, params, log)
 		So(err, ShouldNotBeNil)
 
 		params = dynamo.DBDriverParameters{ //nolint:contextcheck
@@ -1122,7 +1122,7 @@ func TestWrapperErrors(t *testing.T) {
 		client, err = dynamo.GetDynamoClient(params)
 		So(err, ShouldBeNil)
 
-		_, err = dynamoWrapper.NewDynamoDBWrapper(client, params, log)
+		_, err = dynamo.NewDynamoDBWrapper(client, params, log)
 		So(err, ShouldNotBeNil)
 
 		params = dynamo.DBDriverParameters{ //nolint:contextcheck
@@ -1137,7 +1137,7 @@ func TestWrapperErrors(t *testing.T) {
 		client, err = dynamo.GetDynamoClient(params)
 		So(err, ShouldBeNil)
 
-		_, err = dynamoWrapper.NewDynamoDBWrapper(client, params, log)
+		_, err = dynamo.NewDynamoDBWrapper(client, params, log)
 		So(err, ShouldNotBeNil)
 	})
 }
@@ -1267,7 +1267,7 @@ func setVersion(client *dynamodb.Client, versionTablename string, version string
 	return err
 }
 
-func setRepoMeta(client *dynamodb.Client, repoMetadataTableName string, repoMeta repodb.RepoMetadata) error {
+func setRepoMeta(client *dynamodb.Client, repoMetadataTableName string, repoMeta metaTypes.RepoMetadata) error {
 	repoAttributeValue, err := attributevalue.Marshal(repoMeta)
 	if err != nil {
 		return err

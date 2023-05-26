@@ -32,7 +32,7 @@ import (
 	cveinfo "zotregistry.io/zot/pkg/extensions/search/cve"
 	cvemodel "zotregistry.io/zot/pkg/extensions/search/cve/model"
 	"zotregistry.io/zot/pkg/log"
-	"zotregistry.io/zot/pkg/meta/repodb"
+	metaTypes "zotregistry.io/zot/pkg/meta/types"
 	"zotregistry.io/zot/pkg/storage"
 	"zotregistry.io/zot/pkg/storage/local"
 	"zotregistry.io/zot/pkg/test"
@@ -1115,7 +1115,7 @@ func MockSearchCve(searchConfig searchConfig) error {
 	return zotErrors.ErrInvalidFlagsCombination
 }
 
-func getMockCveInfo(repoDB repodb.RepoDB, log log.Logger) cveinfo.CveInfo {
+func getMockCveInfo(repoDB metaTypes.RepoDB, log log.Logger) cveinfo.CveInfo {
 	// RepoDB loaded with initial data, mock the scanner
 	severities := map[string]int{
 		"UNKNOWN":  0,

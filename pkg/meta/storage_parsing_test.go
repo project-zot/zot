@@ -1,4 +1,4 @@
-package repodb_test
+package meta_test
 
 import (
 	"context"
@@ -17,12 +17,11 @@ import (
 	zerr "zotregistry.io/zot/errors"
 	"zotregistry.io/zot/pkg/extensions/monitoring"
 	"zotregistry.io/zot/pkg/log"
+	"zotregistry.io/zot/pkg/meta"
 	"zotregistry.io/zot/pkg/meta/bolt"
 	"zotregistry.io/zot/pkg/meta/dynamo"
-	"zotregistry.io/zot/pkg/meta/repodb"
-	bolt_wrapper "zotregistry.io/zot/pkg/meta/repodb/boltdb-wrapper"
-	dynamo_wrapper "zotregistry.io/zot/pkg/meta/repodb/dynamodb-wrapper"
 	"zotregistry.io/zot/pkg/meta/signatures"
+	metaTypes "zotregistry.io/zot/pkg/meta/types"
 	"zotregistry.io/zot/pkg/storage"
 	"zotregistry.io/zot/pkg/storage/local"
 	storageTypes "zotregistry.io/zot/pkg/storage/types"
@@ -48,7 +47,7 @@ func TestParseStorageErrors(t *testing.T) {
 		repoDB := mocks.RepoDBMock{}
 
 		// sync repo fail
-		err := repodb.ParseStorage(repoDB, storeController, log.NewLogger("debug", ""))
+		err := meta.ParseStorage(repoDB, storeController, log.NewLogger("debug", ""))
 		So(err, ShouldNotBeNil)
 
 		Convey("getAllRepos errors", func() {
@@ -69,7 +68,7 @@ func TestParseStorageErrors(t *testing.T) {
 				},
 			}
 
-			err := repodb.ParseStorage(repoDB, storeController, log.NewLogger("debug", ""))
+			err := meta.ParseStorage(repoDB, storeController, log.NewLogger("debug", ""))
 			So(err, ShouldNotBeNil)
 		})
 	})
@@ -85,7 +84,7 @@ func TestParseStorageErrors(t *testing.T) {
 				return nil, ErrTestError
 			}
 
-			err := repodb.ParseRepo("repo", repoDB, storeController, log)
+			err := meta.ParseRepo("repo", repoDB, storeController, log)
 			So(err, ShouldNotBeNil)
 		})
 
@@ -94,7 +93,7 @@ func TestParseStorageErrors(t *testing.T) {
 				return []byte("Invalid JSON"), nil
 			}
 
-			err := repodb.ParseRepo("repo", repoDB, storeController, log)
+			err := meta.ParseRepo("repo", repoDB, storeController, log)
 			So(err, ShouldNotBeNil)
 		})
 
@@ -104,11 +103,11 @@ func TestParseStorageErrors(t *testing.T) {
 			}
 
 			Convey("repoDB.GetRepoMeta errors", func() {
-				repoDB.GetRepoMetaFn = func(repo string) (repodb.RepoMetadata, error) {
-					return repodb.RepoMetadata{}, ErrTestError
+				repoDB.GetRepoMetaFn = func(repo string) (metaTypes.RepoMetadata, error) {
+					return metaTypes.RepoMetadata{}, ErrTestError
 				}
 
-				err := repodb.ParseRepo("repo", repoDB, storeController, log)
+				err := meta.ParseRepo("repo", repoDB, storeController, log)
 				So(err, ShouldNotBeNil)
 			})
 		})
@@ -133,11 +132,11 @@ func TestParseStorageErrors(t *testing.T) {
 			}
 
 			Convey("repoDB.GetManifestMeta errors", func() {
-				repoDB.GetManifestMetaFn = func(repo string, manifestDigest godigest.Digest) (repodb.ManifestMetadata, error) {
-					return repodb.ManifestMetadata{}, ErrTestError
+				repoDB.GetManifestMetaFn = func(repo string, manifestDigest godigest.Digest) (metaTypes.ManifestMetadata, error) {
+					return metaTypes.ManifestMetadata{}, ErrTestError
 				}
 
-				err = repodb.ParseRepo("repo", repoDB, storeController, log)
+				err = meta.ParseRepo("repo", repoDB, storeController, log)
 				So(err, ShouldNotBeNil)
 			})
 		})
@@ -166,7 +165,7 @@ func TestParseStorageErrors(t *testing.T) {
 					return ErrTestError
 				}
 
-				err = repodb.ParseRepo("repo", repoDB, storeController, log)
+				err = meta.ParseRepo("repo", repoDB, storeController, log)
 				So(err, ShouldNotBeNil)
 			})
 		})
@@ -190,15 +189,15 @@ func TestParseStorageErrors(t *testing.T) {
 				return indexBlob, nil
 			}
 
-			repoDB.GetManifestMetaFn = func(repo string, manifestDigest godigest.Digest) (repodb.ManifestMetadata, error) {
-				return repodb.ManifestMetadata{}, zerr.ErrManifestMetaNotFound
+			repoDB.GetManifestMetaFn = func(repo string, manifestDigest godigest.Digest) (metaTypes.ManifestMetadata, error) {
+				return metaTypes.ManifestMetadata{}, zerr.ErrManifestMetaNotFound
 			}
 
 			Convey("GetImageManifest errors", func() {
 				imageStore.GetImageManifestFn = func(repo, reference string) ([]byte, godigest.Digest, string, error) {
 					return nil, "", "", ErrTestError
 				}
-				err = repodb.ParseRepo("repo", repoDB, storeController, log)
+				err = meta.ParseRepo("repo", repoDB, storeController, log)
 				So(err, ShouldNotBeNil)
 			})
 
@@ -207,7 +206,7 @@ func TestParseStorageErrors(t *testing.T) {
 				imageStore.GetImageManifestFn = func(repo, reference string) ([]byte, godigest.Digest, string, error) {
 					return []byte("Invalid JSON"), "", "", nil
 				}
-				err = repodb.ParseRepo("repo", repoDB, storeController, log)
+				err = meta.ParseRepo("repo", repoDB, storeController, log)
 				So(err, ShouldNotBeNil)
 			})
 			Convey("CheckIsImageSignature -> not signature", func() {
@@ -224,7 +223,7 @@ func TestParseStorageErrors(t *testing.T) {
 						return nil, ErrTestError
 					}
 
-					err = repodb.ParseRepo("repo", repoDB, storeController, log)
+					err = meta.ParseRepo("repo", repoDB, storeController, log)
 					So(err, ShouldNotBeNil)
 				})
 
@@ -233,7 +232,7 @@ func TestParseStorageErrors(t *testing.T) {
 						return []byte("invalid JSON"), nil
 					}
 
-					err = repodb.ParseRepo("repo", repoDB, storeController, log)
+					err = meta.ParseRepo("repo", repoDB, storeController, log)
 					So(err, ShouldNotBeNil)
 				})
 			})
@@ -255,16 +254,16 @@ func TestParseStorageErrors(t *testing.T) {
 				}
 
 				repoDB.AddManifestSignatureFn = func(repo string, signedManifestDigest godigest.Digest,
-					sm repodb.SignatureMetadata,
+					sm metaTypes.SignatureMetadata,
 				) error {
 					return ErrTestError
 				}
 
-				err = repodb.ParseRepo("repo", repoDB, storeController, log)
+				err = meta.ParseRepo("repo", repoDB, storeController, log)
 				So(err, ShouldNotBeNil)
 
 				repoDB.AddManifestSignatureFn = func(repo string, signedManifestDigest godigest.Digest,
-					sm repodb.SignatureMetadata,
+					sm metaTypes.SignatureMetadata,
 				) error {
 					return nil
 				}
@@ -274,7 +273,7 @@ func TestParseStorageErrors(t *testing.T) {
 					return ErrTestError
 				}
 
-				err = repodb.ParseRepo("repo", repoDB, storeController, log)
+				err = meta.ParseRepo("repo", repoDB, storeController, log)
 				So(err, ShouldNotBeNil)
 			})
 
@@ -295,7 +294,7 @@ func TestParseStorageErrors(t *testing.T) {
 				}
 
 				// wrong number of layers of notation manifest
-				err = repodb.ParseRepo("repo", repoDB, storeController, log)
+				err = meta.ParseRepo("repo", repoDB, storeController, log)
 				So(err, ShouldNotBeNil)
 
 				notationManifestContent := ispec.Manifest{
@@ -318,7 +317,7 @@ func TestParseStorageErrors(t *testing.T) {
 				}
 
 				// unable to get layer content
-				err = repodb.ParseRepo("repo", repoDB, storeController, log)
+				err = meta.ParseRepo("repo", repoDB, storeController, log)
 				So(err, ShouldNotBeNil)
 
 				_, _, cosignManifestContent, _ := test.GetRandomImageComponents(10)
@@ -354,7 +353,7 @@ func TestParseStorageErrors(t *testing.T) {
 				}
 
 				// unable to get layer content
-				err = repodb.ParseRepo("repo", repoDB, storeController, log)
+				err = meta.ParseRepo("repo", repoDB, storeController, log)
 				So(err, ShouldNotBeNil)
 			})
 		})
@@ -370,7 +369,7 @@ func TestParseStorageWithBoltDB(t *testing.T) {
 		})
 		So(err, ShouldBeNil)
 
-		repoDB, err := bolt_wrapper.NewBoltDBWrapper(boltDB, log.NewLogger("debug", ""))
+		repoDB, err := bolt.NewBoltDBWrapper(boltDB, log.NewLogger("debug", ""))
 		So(err, ShouldBeNil)
 
 		RunParseStorageTests(rootDir, repoDB)
@@ -396,7 +395,7 @@ func TestParseStorageDynamoWrapper(t *testing.T) {
 		dynamoClient, err := dynamo.GetDynamoClient(params)
 		So(err, ShouldBeNil)
 
-		dynamoWrapper, err := dynamo_wrapper.NewDynamoDBWrapper(dynamoClient, params, log.NewLogger("debug", ""))
+		dynamoWrapper, err := dynamo.NewDynamoDBWrapper(dynamoClient, params, log.NewLogger("debug", ""))
 		So(err, ShouldBeNil)
 
 		err = dynamoWrapper.ResetManifestDataTable()
@@ -409,7 +408,7 @@ func TestParseStorageDynamoWrapper(t *testing.T) {
 	})
 }
 
-func RunParseStorageTests(rootDir string, repoDB repodb.RepoDB) {
+func RunParseStorageTests(rootDir string, repoDB metaTypes.RepoDB) {
 	Convey("Test with simple case", func() {
 		imageStore := local.NewImageStore(rootDir, false, 0, false, false,
 			log.NewLogger("debug", ""), monitoring.NewMetricsServer(false, log.NewLogger("debug", "")), nil, nil)
@@ -480,13 +479,13 @@ func RunParseStorageTests(rootDir string, repoDB repodb.RepoDB) {
 		err = os.WriteFile(indexPath, buf, 0o600)
 		So(err, ShouldBeNil)
 
-		err = repodb.ParseStorage(repoDB, storeController, log.NewLogger("debug", ""))
+		err = meta.ParseStorage(repoDB, storeController, log.NewLogger("debug", ""))
 		So(err, ShouldBeNil)
 
 		repos, err := repoDB.GetMultipleRepoMeta(
 			context.Background(),
-			func(repoMeta repodb.RepoMetadata) bool { return true },
-			repodb.PageInput{},
+			func(repoMeta metaTypes.RepoMetadata) bool { return true },
+			metaTypes.PageInput{},
 		)
 		So(err, ShouldBeNil)
 
@@ -550,13 +549,13 @@ func RunParseStorageTests(rootDir string, repoDB repodb.RepoDB) {
 			storeController)
 		So(err, ShouldBeNil)
 
-		err = repodb.ParseStorage(repoDB, storeController, log.NewLogger("debug", ""))
+		err = meta.ParseStorage(repoDB, storeController, log.NewLogger("debug", ""))
 		So(err, ShouldBeNil)
 
 		repos, err := repoDB.GetMultipleRepoMeta(
 			context.Background(),
-			func(repoMeta repodb.RepoMetadata) bool { return true },
-			repodb.PageInput{},
+			func(repoMeta metaTypes.RepoMetadata) bool { return true },
+			metaTypes.PageInput{},
 		)
 		So(err, ShouldBeNil)
 
@@ -606,7 +605,7 @@ func RunParseStorageTests(rootDir string, repoDB repodb.RepoDB) {
 		So(repoMeta.Statistics[manifestDigest.String()].DownloadCount, ShouldEqual, 3)
 		So(repoMeta.Stars, ShouldEqual, 1)
 
-		err = repodb.ParseStorage(repoDB, storeController, log.NewLogger("debug", ""))
+		err = meta.ParseStorage(repoDB, storeController, log.NewLogger("debug", ""))
 		So(err, ShouldBeNil)
 
 		repoMeta, err = repoDB.GetRepoMeta(repo)
@@ -619,7 +618,7 @@ func RunParseStorageTests(rootDir string, repoDB repodb.RepoDB) {
 
 func TestGetReferredSubject(t *testing.T) {
 	Convey("GetReferredSubject error", t, func() {
-		_, _, _, err := repodb.GetReferredSubject([]byte("bad json"), "digest", ispec.MediaTypeImageManifest)
+		_, _, _, err := meta.GetReferredSubject([]byte("bad json"), "digest", ispec.MediaTypeImageManifest)
 		So(err, ShouldNotBeNil)
 	})
 }
@@ -634,18 +633,18 @@ func skipIt(t *testing.T) {
 
 func TestGetSignatureLayersInfo(t *testing.T) {
 	Convey("wrong signature type", t, func() {
-		layers, err := repodb.GetSignatureLayersInfo("repo", "tag", "123", "wrong signature type", []byte{},
+		layers, err := meta.GetSignatureLayersInfo("repo", "tag", "123", "wrong signature type", []byte{},
 			nil, log.NewLogger("debug", ""))
 		So(err, ShouldBeNil)
 		So(layers, ShouldBeEmpty)
 	})
 
 	Convey("error while unmarshaling manifest content", t, func() {
-		_, err := repodb.GetSignatureLayersInfo("repo", "tag", "123", signatures.CosignSignature, []byte("bad manifest"),
+		_, err := meta.GetSignatureLayersInfo("repo", "tag", "123", signatures.CosignSignature, []byte("bad manifest"),
 			nil, log.NewLogger("debug", ""))
 		So(err, ShouldNotBeNil)
 
-		_, err = repodb.GetSignatureLayersInfo("repo", "tag", "123", signatures.NotationSignature, []byte("bad manifest"),
+		_, err = meta.GetSignatureLayersInfo("repo", "tag", "123", signatures.NotationSignature, []byte("bad manifest"),
 			nil, log.NewLogger("debug", ""))
 		So(err, ShouldNotBeNil)
 	})

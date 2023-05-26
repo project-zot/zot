@@ -14,7 +14,7 @@ import (
 	cvemodel "zotregistry.io/zot/pkg/extensions/search/cve/model"
 	"zotregistry.io/zot/pkg/extensions/search/cve/trivy"
 	"zotregistry.io/zot/pkg/log"
-	"zotregistry.io/zot/pkg/meta/repodb"
+	metaTypes "zotregistry.io/zot/pkg/meta/types"
 	"zotregistry.io/zot/pkg/storage"
 )
 
@@ -42,10 +42,10 @@ type ImageCVESummary struct {
 type BaseCveInfo struct {
 	Log     log.Logger
 	Scanner Scanner
-	RepoDB  repodb.RepoDB
+	RepoDB  metaTypes.RepoDB
 }
 
-func NewCVEInfo(storeController storage.StoreController, repoDB repodb.RepoDB,
+func NewCVEInfo(storeController storage.StoreController, repoDB metaTypes.RepoDB,
 	dbRepository, javaDBRepository string, log log.Logger,
 ) *BaseCveInfo {
 	scanner := trivy.NewScanner(storeController, repoDB, dbRepository, javaDBRepository, log)

@@ -19,9 +19,9 @@ import (
 	zcommon "zotregistry.io/zot/pkg/common"
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/meta/common"
-	"zotregistry.io/zot/pkg/meta/dynamo"
-	"zotregistry.io/zot/pkg/meta/repodb" //nolint:go-staticcheck
+	"zotregistry.io/zot/pkg/meta/pagination"
 	"zotregistry.io/zot/pkg/meta/signatures"
+	metaTypes "zotregistry.io/zot/pkg/meta/types" //nolint:go-staticcheck
 	"zotregistry.io/zot/pkg/meta/version"
 	localCtx "zotregistry.io/zot/pkg/requestcontext"
 )
@@ -39,7 +39,7 @@ type DBWrapper struct {
 	Log                   log.Logger
 }
 
-func NewDynamoDBWrapper(client *dynamodb.Client, params dynamo.DBDriverParameters, log log.Logger) (*DBWrapper, error) {
+func NewDynamoDBWrapper(client *dynamodb.Client, params DBDriverParameters, log log.Logger) (*DBWrapper, error) {
 	dynamoWrapper := DBWrapper{
 		Client:                client,
 		RepoMetaTablename:     params.RepoMetaTablename,
@@ -80,7 +80,7 @@ func NewDynamoDBWrapper(client *dynamodb.Client, params dynamo.DBDriverParameter
 	return &dynamoWrapper, nil
 }
 
-func (dwr *DBWrapper) SetManifestData(manifestDigest godigest.Digest, manifestData repodb.ManifestData) error {
+func (dwr *DBWrapper) SetManifestData(manifestDigest godigest.Digest, manifestData metaTypes.ManifestData) error {
 	mdAttributeValue, err := attributevalue.Marshal(manifestData)
 	if err != nil {
 		return err
@@ -105,7 +105,7 @@ func (dwr *DBWrapper) SetManifestData(manifestDigest godigest.Digest, manifestDa
 	return err
 }
 
-func (dwr *DBWrapper) GetManifestData(manifestDigest godigest.Digest) (repodb.ManifestData, error) {
+func (dwr *DBWrapper) GetManifestData(manifestDigest godigest.Digest) (metaTypes.ManifestData, error) {
 	resp, err := dwr.Client.GetItem(context.Background(), &dynamodb.GetItemInput{
 		TableName: aws.String(dwr.ManifestDataTablename),
 		Key: map[string]types.AttributeValue{
@@ -113,27 +113,28 @@ func (dwr *DBWrapper) GetManifestData(manifestDigest godigest.Digest) (repodb.Ma
 		},
 	})
 	if err != nil {
-		return repodb.ManifestData{}, err
+		return metaTypes.ManifestData{}, err
 	}
 
 	if resp.Item == nil {
-		return repodb.ManifestData{}, zerr.ErrManifestDataNotFound
+		return metaTypes.ManifestData{}, zerr.ErrManifestDataNotFound
 	}
 
-	var manifestData repodb.ManifestData
+	var manifestData metaTypes.ManifestData
 
 	err = attributevalue.Unmarshal(resp.Item["ManifestData"], &manifestData)
 	if err != nil {
-		return repodb.ManifestData{}, err
+		return metaTypes.ManifestData{}, err
 	}
 
 	return manifestData, nil
 }
 
-func (dwr *DBWrapper) SetManifestMeta(repo string, manifestDigest godigest.Digest, manifestMeta repodb.ManifestMetadata,
+func (dwr *DBWrapper) SetManifestMeta(repo string, manifestDigest godigest.Digest,
+	manifestMeta metaTypes.ManifestMetadata,
 ) error {
 	if manifestMeta.Signatures == nil {
-		manifestMeta.Signatures = repodb.ManifestSignatures{}
+		manifestMeta.Signatures = metaTypes.ManifestSignatures{}
 	}
 
 	repoMeta, err := dwr.GetRepoMeta(repo)
@@ -142,16 +143,16 @@ func (dwr *DBWrapper) SetManifestMeta(repo string, manifestDigest godigest.Diges
 			return err
 		}
 
-		repoMeta = repodb.RepoMetadata{
+		repoMeta = metaTypes.RepoMetadata{
 			Name:       repo,
-			Tags:       map[string]repodb.Descriptor{},
-			Statistics: map[string]repodb.DescriptorStatistics{},
-			Signatures: map[string]repodb.ManifestSignatures{},
-			Referrers:  map[string][]repodb.ReferrerInfo{},
+			Tags:       map[string]metaTypes.Descriptor{},
+			Statistics: map[string]metaTypes.DescriptorStatistics{},
+			Signatures: map[string]metaTypes.ManifestSignatures{},
+			Referrers:  map[string][]metaTypes.ReferrerInfo{},
 		}
 	}
 
-	err = dwr.SetManifestData(manifestDigest, repodb.ManifestData{
+	err = dwr.SetManifestData(manifestDigest, metaTypes.ManifestData{
 		ManifestBlob: manifestMeta.ManifestBlob,
 		ConfigBlob:   manifestMeta.ConfigBlob,
 	})
@@ -170,34 +171,34 @@ func (dwr *DBWrapper) SetManifestMeta(repo string, manifestDigest godigest.Diges
 }
 
 func (dwr *DBWrapper) GetManifestMeta(repo string, manifestDigest godigest.Digest,
-) (repodb.ManifestMetadata, error) { //nolint:contextcheck
+) (metaTypes.ManifestMetadata, error) { //nolint:contextcheck
 	manifestData, err := dwr.GetManifestData(manifestDigest)
 	if err != nil {
 		if errors.Is(err, zerr.ErrManifestDataNotFound) {
-			return repodb.ManifestMetadata{}, zerr.ErrManifestMetaNotFound
+			return metaTypes.ManifestMetadata{}, zerr.ErrManifestMetaNotFound
 		}
 
-		return repodb.ManifestMetadata{},
+		return metaTypes.ManifestMetadata{},
 			fmt.Errorf("%w for manifest '%s' from repo '%s'", errRepodb, manifestDigest, repo)
 	}
 
 	repoMeta, err := dwr.GetRepoMeta(repo)
 	if err != nil {
 		if errors.Is(err, zerr.ErrRepoMetaNotFound) {
-			return repodb.ManifestMetadata{}, zerr.ErrManifestMetaNotFound
+			return metaTypes.ManifestMetadata{}, zerr.ErrManifestMetaNotFound
 		}
 
-		return repodb.ManifestMetadata{},
+		return metaTypes.ManifestMetadata{},
 			fmt.Errorf("%w for manifest '%s' from repo '%s'", errRepodb, manifestDigest, repo)
 	}
 
-	manifestMetadata := repodb.ManifestMetadata{}
+	manifestMetadata := metaTypes.ManifestMetadata{}
 
 	manifestMetadata.ManifestBlob = manifestData.ManifestBlob
 	manifestMetadata.ConfigBlob = manifestData.ConfigBlob
 	manifestMetadata.DownloadCount = repoMeta.Statistics[manifestDigest.String()].DownloadCount
 
-	manifestMetadata.Signatures = repodb.ManifestSignatures{}
+	manifestMetadata.Signatures = metaTypes.ManifestSignatures{}
 
 	if repoMeta.Signatures[manifestDigest.String()] != nil {
 		manifestMetadata.Signatures = repoMeta.Signatures[manifestDigest.String()]
@@ -243,7 +244,7 @@ func (dwr *DBWrapper) GetRepoStars(repo string) (int, error) {
 	return repoMeta.Stars, nil
 }
 
-func (dwr *DBWrapper) SetIndexData(indexDigest godigest.Digest, indexData repodb.IndexData) error {
+func (dwr *DBWrapper) SetIndexData(indexDigest godigest.Digest, indexData metaTypes.IndexData) error {
 	indexAttributeValue, err := attributevalue.Marshal(indexData)
 	if err != nil {
 		return err
@@ -268,7 +269,7 @@ func (dwr *DBWrapper) SetIndexData(indexDigest godigest.Digest, indexData repodb
 	return err
 }
 
-func (dwr *DBWrapper) GetIndexData(indexDigest godigest.Digest) (repodb.IndexData, error) {
+func (dwr *DBWrapper) GetIndexData(indexDigest godigest.Digest) (metaTypes.IndexData, error) {
 	resp, err := dwr.Client.GetItem(context.TODO(), &dynamodb.GetItemInput{
 		TableName: aws.String(dwr.IndexDataTablename),
 		Key: map[string]types.AttributeValue{
@@ -278,24 +279,24 @@ func (dwr *DBWrapper) GetIndexData(indexDigest godigest.Digest) (repodb.IndexDat
 		},
 	})
 	if err != nil {
-		return repodb.IndexData{}, err
+		return metaTypes.IndexData{}, err
 	}
 
 	if resp.Item == nil {
-		return repodb.IndexData{}, zerr.ErrRepoMetaNotFound
+		return metaTypes.IndexData{}, zerr.ErrRepoMetaNotFound
 	}
 
-	var indexData repodb.IndexData
+	var indexData metaTypes.IndexData
 
 	err = attributevalue.Unmarshal(resp.Item["IndexData"], &indexData)
 	if err != nil {
-		return repodb.IndexData{}, err
+		return metaTypes.IndexData{}, err
 	}
 
 	return indexData, nil
 }
 
-func (dwr DBWrapper) SetReferrer(repo string, referredDigest godigest.Digest, referrer repodb.ReferrerInfo) error {
+func (dwr DBWrapper) SetReferrer(repo string, referredDigest godigest.Digest, referrer metaTypes.ReferrerInfo) error {
 	resp, err := dwr.Client.GetItem(context.TODO(), &dynamodb.GetItemInput{
 		TableName: aws.String(dwr.RepoMetaTablename),
 		Key: map[string]types.AttributeValue{
@@ -306,12 +307,12 @@ func (dwr DBWrapper) SetReferrer(repo string, referredDigest godigest.Digest, re
 		return err
 	}
 
-	repoMeta := repodb.RepoMetadata{
+	repoMeta := metaTypes.RepoMetadata{
 		Name:       repo,
-		Tags:       map[string]repodb.Descriptor{},
-		Statistics: map[string]repodb.DescriptorStatistics{},
-		Signatures: map[string]repodb.ManifestSignatures{},
-		Referrers:  map[string][]repodb.ReferrerInfo{},
+		Tags:       map[string]metaTypes.Descriptor{},
+		Statistics: map[string]metaTypes.DescriptorStatistics{},
+		Signatures: map[string]metaTypes.ManifestSignatures{},
+		Referrers:  map[string][]metaTypes.ReferrerInfo{},
 	}
 
 	if resp.Item != nil {
@@ -336,7 +337,7 @@ func (dwr DBWrapper) SetReferrer(repo string, referredDigest godigest.Digest, re
 	return dwr.SetRepoMeta(repo, repoMeta)
 }
 
-func (dwr DBWrapper) GetReferrers(repo string, referredDigest godigest.Digest) ([]repodb.ReferrerInfo, error) {
+func (dwr DBWrapper) GetReferrers(repo string, referredDigest godigest.Digest) ([]metaTypes.ReferrerInfo, error) {
 	resp, err := dwr.Client.GetItem(context.TODO(), &dynamodb.GetItemInput{
 		TableName: aws.String(dwr.RepoMetaTablename),
 		Key: map[string]types.AttributeValue{
@@ -344,21 +345,21 @@ func (dwr DBWrapper) GetReferrers(repo string, referredDigest godigest.Digest) (
 		},
 	})
 	if err != nil {
-		return []repodb.ReferrerInfo{}, err
+		return []metaTypes.ReferrerInfo{}, err
 	}
 
-	repoMeta := repodb.RepoMetadata{
+	repoMeta := metaTypes.RepoMetadata{
 		Name:       repo,
-		Tags:       map[string]repodb.Descriptor{},
-		Statistics: map[string]repodb.DescriptorStatistics{},
-		Signatures: map[string]repodb.ManifestSignatures{},
-		Referrers:  map[string][]repodb.ReferrerInfo{},
+		Tags:       map[string]metaTypes.Descriptor{},
+		Statistics: map[string]metaTypes.DescriptorStatistics{},
+		Signatures: map[string]metaTypes.ManifestSignatures{},
+		Referrers:  map[string][]metaTypes.ReferrerInfo{},
 	}
 
 	if resp.Item != nil {
 		err := attributevalue.Unmarshal(resp.Item["RepoMetadata"], &repoMeta)
 		if err != nil {
-			return []repodb.ReferrerInfo{}, err
+			return []metaTypes.ReferrerInfo{}, err
 		}
 	}
 
@@ -378,12 +379,12 @@ func (dwr DBWrapper) DeleteReferrer(repo string, referredDigest godigest.Digest,
 		return err
 	}
 
-	repoMeta := repodb.RepoMetadata{
+	repoMeta := metaTypes.RepoMetadata{
 		Name:       repo,
-		Tags:       map[string]repodb.Descriptor{},
-		Statistics: map[string]repodb.DescriptorStatistics{},
-		Signatures: map[string]repodb.ManifestSignatures{},
-		Referrers:  map[string][]repodb.ReferrerInfo{},
+		Tags:       map[string]metaTypes.Descriptor{},
+		Statistics: map[string]metaTypes.DescriptorStatistics{},
+		Signatures: map[string]metaTypes.ManifestSignatures{},
+		Referrers:  map[string][]metaTypes.ReferrerInfo{},
 	}
 
 	if resp.Item != nil {
@@ -410,13 +411,13 @@ func (dwr DBWrapper) DeleteReferrer(repo string, referredDigest godigest.Digest,
 
 func (dwr DBWrapper) GetReferrersInfo(repo string, referredDigest godigest.Digest,
 	artifactTypes []string,
-) ([]repodb.ReferrerInfo, error) {
+) ([]metaTypes.ReferrerInfo, error) {
 	referrersInfo, err := dwr.GetReferrers(repo, referredDigest)
 	if err != nil {
 		return nil, err
 	}
 
-	filteredResults := make([]repodb.ReferrerInfo, 0, len(referrersInfo))
+	filteredResults := make([]metaTypes.ReferrerInfo, 0, len(referrersInfo))
 
 	for _, referrerInfo := range referrersInfo {
 		if !common.MatchesArtifactTypes(referrerInfo.ArtifactType, artifactTypes) {
@@ -446,12 +447,12 @@ func (dwr *DBWrapper) SetRepoReference(repo string, reference string, manifestDi
 		return err
 	}
 
-	repoMeta := repodb.RepoMetadata{
+	repoMeta := metaTypes.RepoMetadata{
 		Name:       repo,
-		Tags:       map[string]repodb.Descriptor{},
-		Statistics: map[string]repodb.DescriptorStatistics{},
-		Signatures: map[string]repodb.ManifestSignatures{},
-		Referrers:  map[string][]repodb.ReferrerInfo{},
+		Tags:       map[string]metaTypes.Descriptor{},
+		Statistics: map[string]metaTypes.DescriptorStatistics{},
+		Signatures: map[string]metaTypes.ManifestSignatures{},
+		Referrers:  map[string][]metaTypes.ReferrerInfo{},
 	}
 
 	if resp.Item != nil {
@@ -462,22 +463,22 @@ func (dwr *DBWrapper) SetRepoReference(repo string, reference string, manifestDi
 	}
 
 	if !common.ReferenceIsDigest(reference) {
-		repoMeta.Tags[reference] = repodb.Descriptor{
+		repoMeta.Tags[reference] = metaTypes.Descriptor{
 			Digest:    manifestDigest.String(),
 			MediaType: mediaType,
 		}
 	}
 
 	if _, ok := repoMeta.Statistics[manifestDigest.String()]; !ok {
-		repoMeta.Statistics[manifestDigest.String()] = repodb.DescriptorStatistics{DownloadCount: 0}
+		repoMeta.Statistics[manifestDigest.String()] = metaTypes.DescriptorStatistics{DownloadCount: 0}
 	}
 
 	if _, ok := repoMeta.Signatures[manifestDigest.String()]; !ok {
-		repoMeta.Signatures[manifestDigest.String()] = repodb.ManifestSignatures{}
+		repoMeta.Signatures[manifestDigest.String()] = metaTypes.ManifestSignatures{}
 	}
 
 	if _, ok := repoMeta.Referrers[manifestDigest.String()]; !ok {
-		repoMeta.Referrers[manifestDigest.String()] = []repodb.ReferrerInfo{}
+		repoMeta.Referrers[manifestDigest.String()] = []metaTypes.ReferrerInfo{}
 	}
 
 	err = dwr.SetRepoMeta(repo, repoMeta)
@@ -500,7 +501,7 @@ func (dwr *DBWrapper) DeleteRepoTag(repo string, tag string) error {
 		return nil
 	}
 
-	var repoMeta repodb.RepoMetadata
+	var repoMeta metaTypes.RepoMetadata
 
 	err = attributevalue.Unmarshal(resp.Item["RepoMetadata"], &repoMeta)
 	if err != nil {
@@ -533,7 +534,7 @@ func (dwr *DBWrapper) DeleteRepoTag(repo string, tag string) error {
 	return err
 }
 
-func (dwr *DBWrapper) GetRepoMeta(repo string) (repodb.RepoMetadata, error) {
+func (dwr *DBWrapper) GetRepoMeta(repo string) (metaTypes.RepoMetadata, error) {
 	resp, err := dwr.Client.GetItem(context.TODO(), &dynamodb.GetItemInput{
 		TableName: aws.String(dwr.RepoMetaTablename),
 		Key: map[string]types.AttributeValue{
@@ -541,24 +542,24 @@ func (dwr *DBWrapper) GetRepoMeta(repo string) (repodb.RepoMetadata, error) {
 		},
 	})
 	if err != nil {
-		return repodb.RepoMetadata{}, err
+		return metaTypes.RepoMetadata{}, err
 	}
 
 	if resp.Item == nil {
-		return repodb.RepoMetadata{}, zerr.ErrRepoMetaNotFound
+		return metaTypes.RepoMetadata{}, zerr.ErrRepoMetaNotFound
 	}
 
-	var repoMeta repodb.RepoMetadata
+	var repoMeta metaTypes.RepoMetadata
 
 	err = attributevalue.Unmarshal(resp.Item["RepoMetadata"], &repoMeta)
 	if err != nil {
-		return repodb.RepoMetadata{}, err
+		return metaTypes.RepoMetadata{}, err
 	}
 
 	return repoMeta, nil
 }
 
-func (dwr *DBWrapper) GetUserRepoMeta(ctx context.Context, repo string) (repodb.RepoMetadata, error) {
+func (dwr *DBWrapper) GetUserRepoMeta(ctx context.Context, repo string) (metaTypes.RepoMetadata, error) {
 	resp, err := dwr.Client.GetItem(ctx, &dynamodb.GetItemInput{
 		TableName: aws.String(dwr.RepoMetaTablename),
 		Key: map[string]types.AttributeValue{
@@ -566,23 +567,23 @@ func (dwr *DBWrapper) GetUserRepoMeta(ctx context.Context, repo string) (repodb.
 		},
 	})
 	if err != nil {
-		return repodb.RepoMetadata{}, err
+		return metaTypes.RepoMetadata{}, err
 	}
 
 	if resp.Item == nil {
-		return repodb.RepoMetadata{}, zerr.ErrRepoMetaNotFound
+		return metaTypes.RepoMetadata{}, zerr.ErrRepoMetaNotFound
 	}
 
-	var repoMeta repodb.RepoMetadata
+	var repoMeta metaTypes.RepoMetadata
 
 	err = attributevalue.Unmarshal(resp.Item["RepoMetadata"], &repoMeta)
 	if err != nil {
-		return repodb.RepoMetadata{}, err
+		return metaTypes.RepoMetadata{}, err
 	}
 
 	userMeta, err := dwr.GetUserMeta(ctx)
 	if err != nil {
-		return repodb.RepoMetadata{}, err
+		return metaTypes.RepoMetadata{}, err
 	}
 
 	repoMeta.IsBookmarked = zcommon.Contains(userMeta.BookmarkedRepos, repo)
@@ -622,18 +623,18 @@ func (dwr *DBWrapper) UpdateSignaturesValidity(repo string, manifestDigest godig
 }
 
 func (dwr *DBWrapper) AddManifestSignature(repo string, signedManifestDigest godigest.Digest,
-	sygMeta repodb.SignatureMetadata,
+	sygMeta metaTypes.SignatureMetadata,
 ) error {
 	repoMeta, err := dwr.GetRepoMeta(repo)
 	if err != nil {
 		if errors.Is(err, zerr.ErrRepoMetaNotFound) {
-			repoMeta = repodb.RepoMetadata{
+			repoMeta = metaTypes.RepoMetadata{
 				Name:       repo,
-				Tags:       map[string]repodb.Descriptor{},
-				Statistics: map[string]repodb.DescriptorStatistics{},
-				Signatures: map[string]repodb.ManifestSignatures{
+				Tags:       map[string]metaTypes.Descriptor{},
+				Statistics: map[string]metaTypes.DescriptorStatistics{},
+				Signatures: map[string]metaTypes.ManifestSignatures{
 					signedManifestDigest.String(): {
-						sygMeta.SignatureType: []repodb.SignatureInfo{
+						sygMeta.SignatureType: []metaTypes.SignatureInfo{
 							{
 								SignatureManifestDigest: sygMeta.SignatureDigest,
 								LayersInfo:              sygMeta.LayersInfo,
@@ -641,7 +642,7 @@ func (dwr *DBWrapper) AddManifestSignature(repo string, signedManifestDigest god
 						},
 					},
 				},
-				Referrers: map[string][]repodb.ReferrerInfo{},
+				Referrers: map[string][]metaTypes.ReferrerInfo{},
 			}
 
 			return dwr.SetRepoMeta(repo, repoMeta)
@@ -651,23 +652,23 @@ func (dwr *DBWrapper) AddManifestSignature(repo string, signedManifestDigest god
 	}
 
 	var (
-		manifestSignatures repodb.ManifestSignatures
+		manifestSignatures metaTypes.ManifestSignatures
 		found              bool
 	)
 
 	if manifestSignatures, found = repoMeta.Signatures[signedManifestDigest.String()]; !found {
-		manifestSignatures = repodb.ManifestSignatures{}
+		manifestSignatures = metaTypes.ManifestSignatures{}
 	}
 
 	signatureSlice := manifestSignatures[sygMeta.SignatureType]
 	if !common.SignatureAlreadyExists(signatureSlice, sygMeta) {
 		if sygMeta.SignatureType == signatures.NotationSignature {
-			signatureSlice = append(signatureSlice, repodb.SignatureInfo{
+			signatureSlice = append(signatureSlice, metaTypes.SignatureInfo{
 				SignatureManifestDigest: sygMeta.SignatureDigest,
 				LayersInfo:              sygMeta.LayersInfo,
 			})
 		} else if sygMeta.SignatureType == signatures.CosignSignature {
-			signatureSlice = []repodb.SignatureInfo{{
+			signatureSlice = []metaTypes.SignatureInfo{{
 				SignatureManifestDigest: sygMeta.SignatureDigest,
 				LayersInfo:              sygMeta.LayersInfo,
 			}}
@@ -682,7 +683,7 @@ func (dwr *DBWrapper) AddManifestSignature(repo string, signedManifestDigest god
 }
 
 func (dwr *DBWrapper) DeleteSignature(repo string, signedManifestDigest godigest.Digest,
-	sigMeta repodb.SignatureMetadata,
+	sigMeta metaTypes.SignatureMetadata,
 ) error {
 	repoMeta, err := dwr.GetRepoMeta(repo)
 	if err != nil {
@@ -692,7 +693,7 @@ func (dwr *DBWrapper) DeleteSignature(repo string, signedManifestDigest godigest
 	sigType := sigMeta.SignatureType
 
 	var (
-		manifestSignatures repodb.ManifestSignatures
+		manifestSignatures metaTypes.ManifestSignatures
 		found              bool
 	)
 
@@ -702,7 +703,7 @@ func (dwr *DBWrapper) DeleteSignature(repo string, signedManifestDigest godigest
 
 	signatureSlice := manifestSignatures[sigType]
 
-	newSignatureSlice := make([]repodb.SignatureInfo, 0, len(signatureSlice)-1)
+	newSignatureSlice := make([]metaTypes.SignatureInfo, 0, len(signatureSlice)-1)
 
 	for _, sigDigest := range signatureSlice {
 		if sigDigest.SignatureManifestDigest != sigMeta.SignatureDigest {
@@ -720,18 +721,18 @@ func (dwr *DBWrapper) DeleteSignature(repo string, signedManifestDigest godigest
 }
 
 func (dwr *DBWrapper) GetMultipleRepoMeta(ctx context.Context,
-	filter func(repoMeta repodb.RepoMetadata) bool, requestedPage repodb.PageInput,
-) ([]repodb.RepoMetadata, error) {
+	filter func(repoMeta metaTypes.RepoMetadata) bool, requestedPage metaTypes.PageInput,
+) ([]metaTypes.RepoMetadata, error) {
 	var (
-		repoMetaAttributeIterator dynamo.AttributesIterator
-		pageFinder                repodb.PageFinder
+		repoMetaAttributeIterator AttributesIterator
+		pageFinder                pagination.PageFinder
 	)
 
-	repoMetaAttributeIterator = dynamo.NewBaseDynamoAttributesIterator(
+	repoMetaAttributeIterator = NewBaseDynamoAttributesIterator(
 		dwr.Client, dwr.RepoMetaTablename, "RepoMetadata", 0, dwr.Log,
 	)
 
-	pageFinder, err := repodb.NewBaseRepoPageFinder(requestedPage.Limit, requestedPage.Offset, requestedPage.SortBy)
+	pageFinder, err := pagination.NewBaseRepoPageFinder(requestedPage.Limit, requestedPage.Offset, requestedPage.SortBy)
 	if err != nil {
 		return nil, err
 	}
@@ -741,14 +742,14 @@ func (dwr *DBWrapper) GetMultipleRepoMeta(ctx context.Context,
 	for ; repoMetaAttribute != nil; repoMetaAttribute, err = repoMetaAttributeIterator.Next(ctx) {
 		if err != nil {
 			// log
-			return []repodb.RepoMetadata{}, err
+			return []metaTypes.RepoMetadata{}, err
 		}
 
-		var repoMeta repodb.RepoMetadata
+		var repoMeta metaTypes.RepoMetadata
 
 		err := attributevalue.Unmarshal(repoMetaAttribute, &repoMeta)
 		if err != nil {
-			return []repodb.RepoMetadata{}, err
+			return []metaTypes.RepoMetadata{}, err
 		}
 
 		if ok, err := localCtx.RepoIsUserAvailable(ctx, repoMeta.Name); !ok || err != nil {
@@ -756,7 +757,7 @@ func (dwr *DBWrapper) GetMultipleRepoMeta(ctx context.Context,
 		}
 
 		if filter(repoMeta) {
-			pageFinder.Add(repodb.DetailedRepoMeta{
+			pageFinder.Add(metaTypes.DetailedRepoMeta{
 				RepoMetadata: repoMeta,
 			})
 		}
@@ -767,27 +768,29 @@ func (dwr *DBWrapper) GetMultipleRepoMeta(ctx context.Context,
 	return foundRepos, err
 }
 
-func (dwr *DBWrapper) SearchRepos(ctx context.Context, searchText string, filter repodb.Filter,
-	requestedPage repodb.PageInput,
-) ([]repodb.RepoMetadata, map[string]repodb.ManifestMetadata, map[string]repodb.IndexData, zcommon.PageInfo, error) {
+func (dwr *DBWrapper) SearchRepos(ctx context.Context, searchText string, filter metaTypes.Filter,
+	requestedPage metaTypes.PageInput,
+) ([]metaTypes.RepoMetadata, map[string]metaTypes.ManifestMetadata, map[string]metaTypes.IndexData,
+	zcommon.PageInfo, error,
+) {
 	var (
-		manifestMetadataMap       = make(map[string]repodb.ManifestMetadata)
-		indexDataMap              = make(map[string]repodb.IndexData)
-		repoMetaAttributeIterator dynamo.AttributesIterator
-		pageFinder                repodb.PageFinder
+		manifestMetadataMap       = make(map[string]metaTypes.ManifestMetadata)
+		indexDataMap              = make(map[string]metaTypes.IndexData)
+		repoMetaAttributeIterator AttributesIterator
+		pageFinder                pagination.PageFinder
 		pageInfo                  zcommon.PageInfo
 
 		userBookmarks = getUserBookmarks(ctx, dwr)
 		userStars     = getUserStars(ctx, dwr)
 	)
 
-	repoMetaAttributeIterator = dynamo.NewBaseDynamoAttributesIterator(
+	repoMetaAttributeIterator = NewBaseDynamoAttributesIterator(
 		dwr.Client, dwr.RepoMetaTablename, "RepoMetadata", 0, dwr.Log,
 	)
 
-	pageFinder, err := repodb.NewBaseRepoPageFinder(requestedPage.Limit, requestedPage.Offset, requestedPage.SortBy)
+	pageFinder, err := pagination.NewBaseRepoPageFinder(requestedPage.Limit, requestedPage.Offset, requestedPage.SortBy)
 	if err != nil {
-		return []repodb.RepoMetadata{}, map[string]repodb.ManifestMetadata{}, map[string]repodb.IndexData{},
+		return []metaTypes.RepoMetadata{}, map[string]metaTypes.ManifestMetadata{}, map[string]metaTypes.IndexData{},
 			pageInfo, err
 	}
 
@@ -795,15 +798,15 @@ func (dwr *DBWrapper) SearchRepos(ctx context.Context, searchText string, filter
 
 	for ; repoMetaAttribute != nil; repoMetaAttribute, err = repoMetaAttributeIterator.Next(ctx) {
 		if err != nil {
-			return []repodb.RepoMetadata{}, map[string]repodb.ManifestMetadata{}, map[string]repodb.IndexData{},
+			return []metaTypes.RepoMetadata{}, map[string]metaTypes.ManifestMetadata{}, map[string]metaTypes.IndexData{},
 				pageInfo, err
 		}
 
-		var repoMeta repodb.RepoMetadata
+		var repoMeta metaTypes.RepoMetadata
 
 		err := attributevalue.Unmarshal(repoMetaAttribute, &repoMeta)
 		if err != nil {
-			return []repodb.RepoMetadata{}, map[string]repodb.ManifestMetadata{}, map[string]repodb.IndexData{},
+			return []metaTypes.RepoMetadata{}, map[string]metaTypes.ManifestMetadata{}, map[string]metaTypes.IndexData{},
 				pageInfo, err
 		}
 
@@ -836,14 +839,14 @@ func (dwr *DBWrapper) SearchRepos(ctx context.Context, searchText string, filter
 				manifestMeta, err := dwr.fetchManifestMetaWithCheck(repoMeta.Name, manifestDigest, //nolint:contextcheck
 					manifestMetadataMap)
 				if err != nil {
-					return []repodb.RepoMetadata{}, map[string]repodb.ManifestMetadata{}, map[string]repodb.IndexData{},
+					return []metaTypes.RepoMetadata{}, map[string]metaTypes.ManifestMetadata{}, map[string]metaTypes.IndexData{},
 						pageInfo,
 						fmt.Errorf("%w", err)
 				}
 
 				manifestFilterData, err := collectImageManifestFilterData(manifestDigest, repoMeta, manifestMeta)
 				if err != nil {
-					return []repodb.RepoMetadata{}, map[string]repodb.ManifestMetadata{}, map[string]repodb.IndexData{},
+					return []metaTypes.RepoMetadata{}, map[string]metaTypes.ManifestMetadata{}, map[string]metaTypes.IndexData{},
 						pageInfo,
 						fmt.Errorf("%w", err)
 				}
@@ -867,7 +870,7 @@ func (dwr *DBWrapper) SearchRepos(ctx context.Context, searchText string, filter
 
 				indexData, err := dwr.fetchIndexDataWithCheck(indexDigest, indexDataMap) //nolint:contextcheck
 				if err != nil {
-					return []repodb.RepoMetadata{}, map[string]repodb.ManifestMetadata{}, map[string]repodb.IndexData{},
+					return []metaTypes.RepoMetadata{}, map[string]metaTypes.ManifestMetadata{}, map[string]metaTypes.IndexData{},
 						pageInfo,
 						fmt.Errorf("%w", err)
 				}
@@ -876,7 +879,7 @@ func (dwr *DBWrapper) SearchRepos(ctx context.Context, searchText string, filter
 				indexFilterData, err := dwr.collectImageIndexFilterInfo(indexDigest, repoMeta, indexData, //nolint:contextcheck
 					manifestMetadataMap)
 				if err != nil {
-					return []repodb.RepoMetadata{}, map[string]repodb.ManifestMetadata{}, map[string]repodb.IndexData{},
+					return []metaTypes.RepoMetadata{}, map[string]metaTypes.ManifestMetadata{}, map[string]metaTypes.IndexData{},
 						pageInfo,
 						fmt.Errorf("%w", err)
 				}
@@ -902,7 +905,7 @@ func (dwr *DBWrapper) SearchRepos(ctx context.Context, searchText string, filter
 			}
 		}
 
-		repoFilterData := repodb.FilterData{
+		repoFilterData := metaTypes.FilterData{
 			OsList:        common.GetMapKeys(osSet),
 			ArchList:      common.GetMapKeys(archSet),
 			LastUpdated:   repoLastUpdated,
@@ -914,7 +917,7 @@ func (dwr *DBWrapper) SearchRepos(ctx context.Context, searchText string, filter
 			continue
 		}
 
-		pageFinder.Add(repodb.DetailedRepoMeta{
+		pageFinder.Add(metaTypes.DetailedRepoMeta{
 			RepoMetadata: repoMeta,
 			Rank:         rank,
 			Downloads:    repoDownloads,
@@ -949,10 +952,10 @@ func getUserBookmarks(ctx context.Context, dwr *DBWrapper) []string {
 }
 
 func (dwr *DBWrapper) fetchManifestMetaWithCheck(repoName string, manifestDigest string,
-	manifestMetadataMap map[string]repodb.ManifestMetadata,
-) (repodb.ManifestMetadata, error) {
+	manifestMetadataMap map[string]metaTypes.ManifestMetadata,
+) (metaTypes.ManifestMetadata, error) {
 	var (
-		manifestMeta repodb.ManifestMetadata
+		manifestMeta metaTypes.ManifestMetadata
 		err          error
 	)
 
@@ -961,16 +964,16 @@ func (dwr *DBWrapper) fetchManifestMetaWithCheck(repoName string, manifestDigest
 	if !manifestDownloaded {
 		manifestMeta, err = dwr.GetManifestMeta(repoName, godigest.Digest(manifestDigest)) //nolint:contextcheck
 		if err != nil {
-			return repodb.ManifestMetadata{}, err
+			return metaTypes.ManifestMetadata{}, err
 		}
 	}
 
 	return manifestMeta, nil
 }
 
-func collectImageManifestFilterData(digest string, repoMeta repodb.RepoMetadata,
-	manifestMeta repodb.ManifestMetadata,
-) (repodb.FilterData, error) {
+func collectImageManifestFilterData(digest string, repoMeta metaTypes.RepoMetadata,
+	manifestMeta metaTypes.ManifestMetadata,
+) (metaTypes.FilterData, error) {
 	// get fields related to filtering
 	var (
 		configContent ispec.Image
@@ -980,7 +983,7 @@ func collectImageManifestFilterData(digest string, repoMeta repodb.RepoMetadata,
 
 	err := json.Unmarshal(manifestMeta.ConfigBlob, &configContent)
 	if err != nil {
-		return repodb.FilterData{}, fmt.Errorf("repodb: error while unmarshaling config content %w", err)
+		return metaTypes.FilterData{}, fmt.Errorf("repodb: error while unmarshaling config content %w", err)
 	}
 
 	if configContent.OS != "" {
@@ -991,7 +994,7 @@ func collectImageManifestFilterData(digest string, repoMeta repodb.RepoMetadata,
 		archList = append(archList, configContent.Architecture)
 	}
 
-	return repodb.FilterData{
+	return metaTypes.FilterData{
 		DownloadCount: repoMeta.Statistics[digest].DownloadCount,
 		OsList:        osList,
 		ArchList:      archList,
@@ -1000,10 +1003,10 @@ func collectImageManifestFilterData(digest string, repoMeta repodb.RepoMetadata,
 	}, nil
 }
 
-func (dwr *DBWrapper) fetchIndexDataWithCheck(indexDigest string, indexDataMap map[string]repodb.IndexData,
-) (repodb.IndexData, error) {
+func (dwr *DBWrapper) fetchIndexDataWithCheck(indexDigest string, indexDataMap map[string]metaTypes.IndexData,
+) (metaTypes.IndexData, error) {
 	var (
-		indexData repodb.IndexData
+		indexData metaTypes.IndexData
 		err       error
 	)
 
@@ -1012,7 +1015,7 @@ func (dwr *DBWrapper) fetchIndexDataWithCheck(indexDigest string, indexDataMap m
 	if !indexExists {
 		indexData, err = dwr.GetIndexData(godigest.Digest(indexDigest)) //nolint:contextcheck
 		if err != nil {
-			return repodb.IndexData{},
+			return metaTypes.IndexData{},
 				fmt.Errorf("repodb: error while unmarshaling index data for digest %s \n%w", indexDigest, err)
 		}
 	}
@@ -1020,14 +1023,14 @@ func (dwr *DBWrapper) fetchIndexDataWithCheck(indexDigest string, indexDataMap m
 	return indexData, err
 }
 
-func (dwr *DBWrapper) collectImageIndexFilterInfo(indexDigest string, repoMeta repodb.RepoMetadata,
-	indexData repodb.IndexData, manifestMetadataMap map[string]repodb.ManifestMetadata,
-) (repodb.FilterData, error) {
+func (dwr *DBWrapper) collectImageIndexFilterInfo(indexDigest string, repoMeta metaTypes.RepoMetadata,
+	indexData metaTypes.IndexData, manifestMetadataMap map[string]metaTypes.ManifestMetadata,
+) (metaTypes.FilterData, error) {
 	var indexContent ispec.Index
 
 	err := json.Unmarshal(indexData.IndexBlob, &indexContent)
 	if err != nil {
-		return repodb.FilterData{},
+		return metaTypes.FilterData{},
 			fmt.Errorf("repodb: error while unmarshaling index content for digest %s %w", indexDigest, err)
 	}
 
@@ -1044,14 +1047,14 @@ func (dwr *DBWrapper) collectImageIndexFilterInfo(indexDigest string, repoMeta r
 		manifestMeta, err := dwr.fetchManifestMetaWithCheck(repoMeta.Name, manifestDigest.String(),
 			manifestMetadataMap)
 		if err != nil {
-			return repodb.FilterData{},
+			return metaTypes.FilterData{},
 				fmt.Errorf("%w", err)
 		}
 
 		manifestFilterData, err := collectImageManifestFilterData(manifestDigest.String(), repoMeta,
 			manifestMeta)
 		if err != nil {
-			return repodb.FilterData{},
+			return metaTypes.FilterData{},
 				fmt.Errorf("%w", err)
 		}
 
@@ -1066,7 +1069,7 @@ func (dwr *DBWrapper) collectImageIndexFilterInfo(indexDigest string, repoMeta r
 		manifestMetadataMap[manifest.Digest.String()] = manifestMeta
 	}
 
-	return repodb.FilterData{
+	return metaTypes.FilterData{
 		DownloadCount: repoMeta.Statistics[indexDigest].DownloadCount,
 		LastUpdated:   indexLastUpdated,
 		OsList:        indexOsList,
@@ -1075,26 +1078,28 @@ func (dwr *DBWrapper) collectImageIndexFilterInfo(indexDigest string, repoMeta r
 	}, nil
 }
 
-func (dwr *DBWrapper) FilterTags(ctx context.Context, filter repodb.FilterFunc,
-	requestedPage repodb.PageInput,
-) ([]repodb.RepoMetadata, map[string]repodb.ManifestMetadata, map[string]repodb.IndexData, zcommon.PageInfo, error) {
+func (dwr *DBWrapper) FilterTags(ctx context.Context, filter metaTypes.FilterFunc,
+	requestedPage metaTypes.PageInput,
+) ([]metaTypes.RepoMetadata, map[string]metaTypes.ManifestMetadata, map[string]metaTypes.IndexData, zcommon.PageInfo,
+	error,
+) {
 	var (
-		manifestMetadataMap       = make(map[string]repodb.ManifestMetadata)
-		indexDataMap              = make(map[string]repodb.IndexData)
-		repoMetaAttributeIterator dynamo.AttributesIterator
-		pageFinder                repodb.PageFinder
+		manifestMetadataMap       = make(map[string]metaTypes.ManifestMetadata)
+		indexDataMap              = make(map[string]metaTypes.IndexData)
+		repoMetaAttributeIterator AttributesIterator
+		pageFinder                pagination.PageFinder
 		pageInfo                  zcommon.PageInfo
 		userBookmarks             = getUserBookmarks(ctx, dwr)
 		userStars                 = getUserStars(ctx, dwr)
 	)
 
-	repoMetaAttributeIterator = dynamo.NewBaseDynamoAttributesIterator(
+	repoMetaAttributeIterator = NewBaseDynamoAttributesIterator(
 		dwr.Client, dwr.RepoMetaTablename, "RepoMetadata", 0, dwr.Log,
 	)
 
-	pageFinder, err := repodb.NewBaseImagePageFinder(requestedPage.Limit, requestedPage.Offset, requestedPage.SortBy)
+	pageFinder, err := pagination.NewBaseImagePageFinder(requestedPage.Limit, requestedPage.Offset, requestedPage.SortBy)
 	if err != nil {
-		return []repodb.RepoMetadata{}, map[string]repodb.ManifestMetadata{}, map[string]repodb.IndexData{},
+		return []metaTypes.RepoMetadata{}, map[string]metaTypes.ManifestMetadata{}, map[string]metaTypes.IndexData{},
 			pageInfo, err
 	}
 
@@ -1102,15 +1107,15 @@ func (dwr *DBWrapper) FilterTags(ctx context.Context, filter repodb.FilterFunc,
 
 	for ; repoMetaAttribute != nil; repoMetaAttribute, err = repoMetaAttributeIterator.Next(ctx) {
 		if err != nil {
-			return []repodb.RepoMetadata{}, map[string]repodb.ManifestMetadata{}, map[string]repodb.IndexData{},
+			return []metaTypes.RepoMetadata{}, map[string]metaTypes.ManifestMetadata{}, map[string]metaTypes.IndexData{},
 				pageInfo, err
 		}
 
-		var repoMeta repodb.RepoMetadata
+		var repoMeta metaTypes.RepoMetadata
 
 		err := attributevalue.Unmarshal(repoMetaAttribute, &repoMeta)
 		if err != nil {
-			return []repodb.RepoMetadata{}, map[string]repodb.ManifestMetadata{}, map[string]repodb.IndexData{},
+			return []metaTypes.RepoMetadata{}, map[string]metaTypes.ManifestMetadata{}, map[string]metaTypes.IndexData{},
 				pageInfo, err
 		}
 
@@ -1121,7 +1126,7 @@ func (dwr *DBWrapper) FilterTags(ctx context.Context, filter repodb.FilterFunc,
 		repoMeta.IsBookmarked = zcommon.Contains(userBookmarks, repoMeta.Name)
 		repoMeta.IsStarred = zcommon.Contains(userStars, repoMeta.Name)
 
-		matchedTags := make(map[string]repodb.Descriptor)
+		matchedTags := make(map[string]metaTypes.Descriptor)
 		for tag, descriptor := range repoMeta.Tags {
 			matchedTags[tag] = descriptor
 
@@ -1132,7 +1137,7 @@ func (dwr *DBWrapper) FilterTags(ctx context.Context, filter repodb.FilterFunc,
 				manifestMeta, err := dwr.fetchManifestMetaWithCheck(repoMeta.Name, manifestDigest, //nolint:contextcheck
 					manifestMetadataMap)
 				if err != nil {
-					return []repodb.RepoMetadata{}, map[string]repodb.ManifestMetadata{}, map[string]repodb.IndexData{},
+					return []metaTypes.RepoMetadata{}, map[string]metaTypes.ManifestMetadata{}, map[string]metaTypes.IndexData{},
 						pageInfo,
 						fmt.Errorf("repodb: error while unmashaling manifest metadata for digest %s \n%w", manifestDigest, err)
 				}
@@ -1149,7 +1154,7 @@ func (dwr *DBWrapper) FilterTags(ctx context.Context, filter repodb.FilterFunc,
 
 				indexData, err := dwr.fetchIndexDataWithCheck(indexDigest, indexDataMap) //nolint:contextcheck
 				if err != nil {
-					return []repodb.RepoMetadata{}, map[string]repodb.ManifestMetadata{}, map[string]repodb.IndexData{},
+					return []metaTypes.RepoMetadata{}, map[string]metaTypes.ManifestMetadata{}, map[string]metaTypes.IndexData{},
 						pageInfo,
 						fmt.Errorf("repodb: error while getting index data for digest %s %w", indexDigest, err)
 				}
@@ -1158,7 +1163,7 @@ func (dwr *DBWrapper) FilterTags(ctx context.Context, filter repodb.FilterFunc,
 
 				err = json.Unmarshal(indexData.IndexBlob, &indexContent)
 				if err != nil {
-					return []repodb.RepoMetadata{}, map[string]repodb.ManifestMetadata{}, map[string]repodb.IndexData{},
+					return []metaTypes.RepoMetadata{}, map[string]metaTypes.ManifestMetadata{}, map[string]metaTypes.IndexData{},
 						pageInfo,
 						fmt.Errorf("repodb: error while unmashaling index content for digest %s %w", indexDigest, err)
 				}
@@ -1171,7 +1176,7 @@ func (dwr *DBWrapper) FilterTags(ctx context.Context, filter repodb.FilterFunc,
 					manifestMeta, err := dwr.fetchManifestMetaWithCheck(repoMeta.Name, manifestDigest, //nolint:contextcheck
 						manifestMetadataMap)
 					if err != nil {
-						return []repodb.RepoMetadata{}, map[string]repodb.ManifestMetadata{}, map[string]repodb.IndexData{},
+						return []metaTypes.RepoMetadata{}, map[string]metaTypes.ManifestMetadata{}, map[string]metaTypes.IndexData{},
 							pageInfo,
 							fmt.Errorf("%w repodb: error while getting manifest data for digest %s", err, manifestDigest)
 					}
@@ -1207,7 +1212,7 @@ func (dwr *DBWrapper) FilterTags(ctx context.Context, filter repodb.FilterFunc,
 
 		repoMeta.Tags = matchedTags
 
-		pageFinder.Add(repodb.DetailedRepoMeta{
+		pageFinder.Add(metaTypes.DetailedRepoMeta{
 			RepoMetadata: repoMeta,
 		})
 	}
@@ -1220,43 +1225,47 @@ func (dwr *DBWrapper) FilterTags(ctx context.Context, filter repodb.FilterFunc,
 	return foundRepos, foundManifestMetadataMap, foundindexDataMap, pageInfo, err
 }
 
-func (dwr *DBWrapper) FilterRepos(ctx context.Context,
-	filter repodb.FilterRepoFunc,
-	requestedPage repodb.PageInput,
+func (dwr *DBWrapper) FilterRepos(ctx context.Context, filter metaTypes.FilterRepoFunc,
+	requestedPage metaTypes.PageInput,
 ) (
-	[]repodb.RepoMetadata, map[string]repodb.ManifestMetadata, map[string]repodb.IndexData, zcommon.PageInfo, error,
+	[]metaTypes.RepoMetadata, map[string]metaTypes.ManifestMetadata, map[string]metaTypes.IndexData, zcommon.PageInfo,
+	error,
 ) {
 	var (
-		repoMetaAttributeIterator dynamo.AttributesIterator
+		repoMetaAttributeIterator AttributesIterator
 		pageInfo                  zcommon.PageInfo
 		userBookmarks             = getUserBookmarks(ctx, dwr)
 		userStars                 = getUserStars(ctx, dwr)
 	)
 
-	repoMetaAttributeIterator = dynamo.NewBaseDynamoAttributesIterator(
+	repoMetaAttributeIterator = NewBaseDynamoAttributesIterator(
 		dwr.Client, dwr.RepoMetaTablename, "RepoMetadata", 0, dwr.Log,
 	)
 
-	pageFinder, err := repodb.NewBaseRepoPageFinder(requestedPage.Limit, requestedPage.Offset, requestedPage.SortBy)
+	pageFinder, err := pagination.NewBaseRepoPageFinder(requestedPage.Limit, requestedPage.Offset, requestedPage.SortBy)
 	if err != nil {
-		return []repodb.RepoMetadata{}, map[string]repodb.ManifestMetadata{}, map[string]repodb.IndexData{}, pageInfo, err
+		return []metaTypes.RepoMetadata{}, map[string]metaTypes.ManifestMetadata{}, map[string]metaTypes.IndexData{},
+			pageInfo, err
 	}
 
 	repoMetaAttribute, err := repoMetaAttributeIterator.First(ctx)
 	if err != nil {
-		return []repodb.RepoMetadata{}, map[string]repodb.ManifestMetadata{}, map[string]repodb.IndexData{}, pageInfo, err
+		return []metaTypes.RepoMetadata{}, map[string]metaTypes.ManifestMetadata{}, map[string]metaTypes.IndexData{},
+			pageInfo, err
 	}
 
 	for ; repoMetaAttribute != nil; repoMetaAttribute, err = repoMetaAttributeIterator.Next(ctx) {
 		if err != nil {
-			return []repodb.RepoMetadata{}, map[string]repodb.ManifestMetadata{}, map[string]repodb.IndexData{}, pageInfo, err
+			return []metaTypes.RepoMetadata{}, map[string]metaTypes.ManifestMetadata{}, map[string]metaTypes.IndexData{},
+				pageInfo, err
 		}
 
-		var repoMeta repodb.RepoMetadata
+		var repoMeta metaTypes.RepoMetadata
 
 		err := attributevalue.Unmarshal(repoMetaAttribute, &repoMeta)
 		if err != nil {
-			return []repodb.RepoMetadata{}, map[string]repodb.ManifestMetadata{}, map[string]repodb.IndexData{}, pageInfo, err
+			return []metaTypes.RepoMetadata{}, map[string]metaTypes.ManifestMetadata{}, map[string]metaTypes.IndexData{},
+				pageInfo, err
 		}
 
 		if ok, err := localCtx.RepoIsUserAvailable(ctx, repoMeta.Name); !ok || err != nil {
@@ -1267,7 +1276,7 @@ func (dwr *DBWrapper) FilterRepos(ctx context.Context,
 		repoMeta.IsStarred = zcommon.Contains(userStars, repoMeta.Name)
 
 		if filter(repoMeta) {
-			pageFinder.Add(repodb.DetailedRepoMeta{
+			pageFinder.Add(metaTypes.DetailedRepoMeta{
 				RepoMetadata: repoMeta,
 			})
 		}
@@ -1280,32 +1289,34 @@ func (dwr *DBWrapper) FilterRepos(ctx context.Context,
 	return foundRepos, foundManifestMetadataMap, foundIndexDataMap, pageInfo, err
 }
 
-func (dwr *DBWrapper) SearchTags(ctx context.Context, searchText string, filter repodb.Filter,
-	requestedPage repodb.PageInput,
-) ([]repodb.RepoMetadata, map[string]repodb.ManifestMetadata, map[string]repodb.IndexData, zcommon.PageInfo, error) {
+func (dwr *DBWrapper) SearchTags(ctx context.Context, searchText string, filter metaTypes.Filter,
+	requestedPage metaTypes.PageInput,
+) ([]metaTypes.RepoMetadata, map[string]metaTypes.ManifestMetadata, map[string]metaTypes.IndexData, zcommon.PageInfo,
+	error,
+) {
 	var (
-		manifestMetadataMap       = make(map[string]repodb.ManifestMetadata)
-		indexDataMap              = make(map[string]repodb.IndexData)
-		repoMetaAttributeIterator dynamo.AttributesIterator
-		pageFinder                repodb.PageFinder
+		manifestMetadataMap       = make(map[string]metaTypes.ManifestMetadata)
+		indexDataMap              = make(map[string]metaTypes.IndexData)
+		repoMetaAttributeIterator AttributesIterator
+		pageFinder                pagination.PageFinder
 		pageInfo                  zcommon.PageInfo
 		userBookmarks             = getUserBookmarks(ctx, dwr)
 		userStars                 = getUserStars(ctx, dwr)
 	)
 
-	pageFinder, err := repodb.NewBaseImagePageFinder(requestedPage.Limit, requestedPage.Offset, requestedPage.SortBy)
+	pageFinder, err := pagination.NewBaseImagePageFinder(requestedPage.Limit, requestedPage.Offset, requestedPage.SortBy)
 	if err != nil {
-		return []repodb.RepoMetadata{}, map[string]repodb.ManifestMetadata{}, map[string]repodb.IndexData{},
+		return []metaTypes.RepoMetadata{}, map[string]metaTypes.ManifestMetadata{}, map[string]metaTypes.IndexData{},
 			pageInfo, err
 	}
 
-	repoMetaAttributeIterator = dynamo.NewBaseDynamoAttributesIterator(
+	repoMetaAttributeIterator = NewBaseDynamoAttributesIterator(
 		dwr.Client, dwr.RepoMetaTablename, "RepoMetadata", 0, dwr.Log,
 	)
 
 	searchedRepo, searchedTag, err := common.GetRepoTag(searchText)
 	if err != nil {
-		return []repodb.RepoMetadata{}, map[string]repodb.ManifestMetadata{}, map[string]repodb.IndexData{},
+		return []metaTypes.RepoMetadata{}, map[string]metaTypes.ManifestMetadata{}, map[string]metaTypes.IndexData{},
 			pageInfo,
 			fmt.Errorf("repodb: error while parsing search text, invalid format %w", err)
 	}
@@ -1315,15 +1326,15 @@ func (dwr *DBWrapper) SearchTags(ctx context.Context, searchText string, filter 
 	for ; repoMetaAttribute != nil; repoMetaAttribute, err = repoMetaAttributeIterator.Next(ctx) {
 		if err != nil {
 			// log
-			return []repodb.RepoMetadata{}, map[string]repodb.ManifestMetadata{}, map[string]repodb.IndexData{},
+			return []metaTypes.RepoMetadata{}, map[string]metaTypes.ManifestMetadata{}, map[string]metaTypes.IndexData{},
 				pageInfo, err
 		}
 
-		var repoMeta repodb.RepoMetadata
+		var repoMeta metaTypes.RepoMetadata
 
 		err := attributevalue.Unmarshal(repoMetaAttribute, &repoMeta)
 		if err != nil {
-			return []repodb.RepoMetadata{}, map[string]repodb.ManifestMetadata{}, map[string]repodb.IndexData{},
+			return []metaTypes.RepoMetadata{}, map[string]metaTypes.ManifestMetadata{}, map[string]metaTypes.IndexData{},
 				pageInfo, err
 		}
 
@@ -1338,7 +1349,7 @@ func (dwr *DBWrapper) SearchTags(ctx context.Context, searchText string, filter 
 		repoMeta.IsBookmarked = zcommon.Contains(userBookmarks, repoMeta.Name)
 		repoMeta.IsStarred = zcommon.Contains(userStars, repoMeta.Name)
 
-		matchedTags := make(map[string]repodb.Descriptor)
+		matchedTags := make(map[string]metaTypes.Descriptor)
 
 		for tag, descriptor := range repoMeta.Tags {
 			if !strings.HasPrefix(tag, searchedTag) {
@@ -1354,14 +1365,14 @@ func (dwr *DBWrapper) SearchTags(ctx context.Context, searchText string, filter 
 				manifestMeta, err := dwr.fetchManifestMetaWithCheck(repoMeta.Name, manifestDigest, //nolint:contextcheck
 					manifestMetadataMap)
 				if err != nil {
-					return []repodb.RepoMetadata{}, map[string]repodb.ManifestMetadata{}, map[string]repodb.IndexData{},
+					return []metaTypes.RepoMetadata{}, map[string]metaTypes.ManifestMetadata{}, map[string]metaTypes.IndexData{},
 						pageInfo,
 						fmt.Errorf("repodb: error while unmashaling manifest metadata for digest %s %w", descriptor.Digest, err)
 				}
 
 				imageFilterData, err := collectImageManifestFilterData(manifestDigest, repoMeta, manifestMeta)
 				if err != nil {
-					return []repodb.RepoMetadata{}, map[string]repodb.ManifestMetadata{}, map[string]repodb.IndexData{},
+					return []metaTypes.RepoMetadata{}, map[string]metaTypes.ManifestMetadata{}, map[string]metaTypes.IndexData{},
 						pageInfo,
 						fmt.Errorf("%w", err)
 				}
@@ -1378,7 +1389,7 @@ func (dwr *DBWrapper) SearchTags(ctx context.Context, searchText string, filter 
 
 				indexData, err := dwr.fetchIndexDataWithCheck(indexDigest, indexDataMap) //nolint:contextcheck
 				if err != nil {
-					return []repodb.RepoMetadata{}, map[string]repodb.ManifestMetadata{}, map[string]repodb.IndexData{},
+					return []metaTypes.RepoMetadata{}, map[string]metaTypes.ManifestMetadata{}, map[string]metaTypes.IndexData{},
 						pageInfo,
 						fmt.Errorf("%w", err)
 				}
@@ -1387,7 +1398,7 @@ func (dwr *DBWrapper) SearchTags(ctx context.Context, searchText string, filter 
 
 				err = json.Unmarshal(indexData.IndexBlob, &indexContent)
 				if err != nil {
-					return []repodb.RepoMetadata{}, map[string]repodb.ManifestMetadata{}, map[string]repodb.IndexData{},
+					return []metaTypes.RepoMetadata{}, map[string]metaTypes.ManifestMetadata{}, map[string]metaTypes.IndexData{},
 						pageInfo,
 						fmt.Errorf("repodb: error while unmashaling index content for digest %s %w", indexDigest, err)
 				}
@@ -1400,14 +1411,14 @@ func (dwr *DBWrapper) SearchTags(ctx context.Context, searchText string, filter 
 					manifestMeta, err := dwr.fetchManifestMetaWithCheck(repoMeta.Name, manifestDigest, //nolint:contextcheck
 						manifestMetadataMap)
 					if err != nil {
-						return []repodb.RepoMetadata{}, map[string]repodb.ManifestMetadata{}, map[string]repodb.IndexData{},
+						return []metaTypes.RepoMetadata{}, map[string]metaTypes.ManifestMetadata{}, map[string]metaTypes.IndexData{},
 							pageInfo,
 							fmt.Errorf("%w", err)
 					}
 
 					manifestFilterData, err := collectImageManifestFilterData(manifestDigest, repoMeta, manifestMeta)
 					if err != nil {
-						return []repodb.RepoMetadata{}, map[string]repodb.ManifestMetadata{}, map[string]repodb.IndexData{},
+						return []metaTypes.RepoMetadata{}, map[string]metaTypes.ManifestMetadata{}, map[string]metaTypes.IndexData{},
 							pageInfo,
 							fmt.Errorf("%w", err)
 					}
@@ -1443,7 +1454,7 @@ func (dwr *DBWrapper) SearchTags(ctx context.Context, searchText string, filter 
 
 		repoMeta.Tags = matchedTags
 
-		pageFinder.Add(repodb.DetailedRepoMeta{
+		pageFinder.Add(metaTypes.DetailedRepoMeta{
 			RepoMetadata: repoMeta,
 		})
 	}
@@ -1486,7 +1497,7 @@ func (dwr *DBWrapper) PatchDB() error {
 	return nil
 }
 
-func (dwr *DBWrapper) SetRepoMeta(repo string, repoMeta repodb.RepoMetadata) error {
+func (dwr *DBWrapper) SetRepoMeta(repo string, repoMeta metaTypes.RepoMetadata) error {
 	repoMeta.Name = repo
 
 	repoAttributeValue, err := attributevalue.Marshal(repoMeta)
@@ -1736,9 +1747,9 @@ func (dwr *DBWrapper) ResetManifestDataTable() error {
 }
 
 func (dwr *DBWrapper) ToggleBookmarkRepo(ctx context.Context, repo string) (
-	repodb.ToggleState, error,
+	metaTypes.ToggleState, error,
 ) {
-	res := repodb.NotChanged
+	res := metaTypes.NotChanged
 
 	if ok, err := localCtx.RepoIsUserAvailable(ctx, repo); !ok || err != nil {
 		return res, zerr.ErrUserDataNotAllowed
@@ -1747,7 +1758,7 @@ func (dwr *DBWrapper) ToggleBookmarkRepo(ctx context.Context, repo string) (
 	userMeta, err := dwr.GetUserMeta(ctx)
 	if err != nil {
 		if errors.Is(err, zerr.ErrUserDataNotFound) {
-			return repodb.NotChanged, nil
+			return metaTypes.NotChanged, nil
 		}
 
 		return res, err
@@ -1755,18 +1766,18 @@ func (dwr *DBWrapper) ToggleBookmarkRepo(ctx context.Context, repo string) (
 
 	if !zcommon.Contains(userMeta.BookmarkedRepos, repo) {
 		userMeta.BookmarkedRepos = append(userMeta.BookmarkedRepos, repo)
-		res = repodb.Added
+		res = metaTypes.Added
 	} else {
 		userMeta.BookmarkedRepos = zcommon.RemoveFrom(userMeta.BookmarkedRepos, repo)
-		res = repodb.Removed
+		res = metaTypes.Removed
 	}
 
-	if res != repodb.NotChanged {
+	if res != metaTypes.NotChanged {
 		err = dwr.SetUserMeta(ctx, userMeta)
 	}
 
 	if err != nil {
-		res = repodb.NotChanged
+		res = metaTypes.NotChanged
 
 		return res, err
 	}
@@ -1785,9 +1796,9 @@ func (dwr *DBWrapper) GetBookmarkedRepos(ctx context.Context) ([]string, error) 
 }
 
 func (dwr *DBWrapper) ToggleStarRepo(ctx context.Context, repo string) (
-	repodb.ToggleState, error,
+	metaTypes.ToggleState, error,
 ) {
-	res := repodb.NotChanged
+	res := metaTypes.NotChanged
 
 	acCtx, err := localCtx.GetAccessControlContext(ctx)
 	if err != nil {
@@ -1812,33 +1823,33 @@ func (dwr *DBWrapper) ToggleStarRepo(ctx context.Context, repo string) (
 
 	if !zcommon.Contains(userData.StarredRepos, repo) {
 		userData.StarredRepos = append(userData.StarredRepos, repo)
-		res = repodb.Added
+		res = metaTypes.Added
 	} else {
 		userData.StarredRepos = zcommon.RemoveFrom(userData.StarredRepos, repo)
-		res = repodb.Removed
+		res = metaTypes.Removed
 	}
 
-	if res != repodb.NotChanged {
+	if res != metaTypes.NotChanged {
 		repoMeta, err := dwr.GetRepoMeta(repo) //nolint:contextcheck
 		if err != nil {
-			return repodb.NotChanged, err
+			return metaTypes.NotChanged, err
 		}
 
 		switch res {
-		case repodb.Added:
+		case metaTypes.Added:
 			repoMeta.Stars++
-		case repodb.Removed:
+		case metaTypes.Removed:
 			repoMeta.Stars--
 		}
 
 		repoAttributeValue, err := attributevalue.Marshal(repoMeta)
 		if err != nil {
-			return repodb.NotChanged, err
+			return metaTypes.NotChanged, err
 		}
 
 		userAttributeValue, err := attributevalue.Marshal(userData)
 		if err != nil {
-			return repodb.NotChanged, err
+			return metaTypes.NotChanged, err
 		}
 
 		_, err = dwr.Client.TransactWriteItems(ctx, &dynamodb.TransactWriteItemsInput{
@@ -1882,7 +1893,7 @@ func (dwr *DBWrapper) ToggleStarRepo(ctx context.Context, repo string) (
 			},
 		})
 		if err != nil {
-			return repodb.NotChanged, err
+			return metaTypes.NotChanged, err
 		}
 	}
 
@@ -1899,17 +1910,17 @@ func (dwr *DBWrapper) GetStarredRepos(ctx context.Context) ([]string, error) {
 	return userMeta.StarredRepos, err
 }
 
-func (dwr *DBWrapper) GetUserMeta(ctx context.Context) (repodb.UserData, error) {
+func (dwr *DBWrapper) GetUserMeta(ctx context.Context) (metaTypes.UserData, error) {
 	acCtx, err := localCtx.GetAccessControlContext(ctx)
 	if err != nil {
-		return repodb.UserData{}, err
+		return metaTypes.UserData{}, err
 	}
 
 	userid := localCtx.GetUsernameFromContext(acCtx)
 
 	if userid == "" {
 		// empty user is anonymous, it has no data
-		return repodb.UserData{}, nil
+		return metaTypes.UserData{}, nil
 	}
 
 	resp, err := dwr.Client.GetItem(ctx, &dynamodb.GetItemInput{
@@ -1919,18 +1930,18 @@ func (dwr *DBWrapper) GetUserMeta(ctx context.Context) (repodb.UserData, error) 
 		},
 	})
 	if err != nil {
-		return repodb.UserData{}, err
+		return metaTypes.UserData{}, err
 	}
 
 	if resp.Item == nil {
-		return repodb.UserData{}, zerr.ErrUserDataNotFound
+		return metaTypes.UserData{}, zerr.ErrUserDataNotFound
 	}
 
-	var userMeta repodb.UserData
+	var userMeta metaTypes.UserData
 
 	err = attributevalue.Unmarshal(resp.Item["UserData"], &userMeta)
 	if err != nil {
-		return repodb.UserData{}, err
+		return metaTypes.UserData{}, err
 	}
 
 	return userMeta, nil
@@ -1961,7 +1972,7 @@ func (dwr *DBWrapper) createUserDataTable() error {
 	return dwr.waitTableToBeCreated(dwr.UserDataTablename)
 }
 
-func (dwr *DBWrapper) SetUserMeta(ctx context.Context, userMeta repodb.UserData) error {
+func (dwr *DBWrapper) SetUserMeta(ctx context.Context, userMeta metaTypes.UserData) error {
 	acCtx, err := localCtx.GetAccessControlContext(ctx)
 	if err != nil {
 		return err

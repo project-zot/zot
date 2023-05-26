@@ -1,4 +1,4 @@
-package repodb
+package types
 
 import (
 	"context"
@@ -8,6 +8,16 @@ import (
 
 	"zotregistry.io/zot/pkg/common"
 )
+
+// DetailedRepoMeta is a auxiliary structure used for sorting RepoMeta arrays by information
+// that's not directly available in the RepoMetadata structure (ex. that needs to be calculated
+// by iterating the manifests, etc.)
+type DetailedRepoMeta struct {
+	RepoMetadata
+	Rank       int
+	Downloads  int
+	UpdateTime time.Time
+}
 
 // Used to model changes to an object after a call to the DB.
 type ToggleState int
@@ -200,17 +210,6 @@ type UserData struct {
 	StarredRepos    []string
 	BookmarkedRepos []string
 }
-
-type SortCriteria string
-
-const (
-	Relevance     = SortCriteria("RELEVANCE")
-	UpdateTime    = SortCriteria("UPDATE_TIME")
-	AlphabeticAsc = SortCriteria("ALPHABETIC_ASC")
-	AlphabeticDsc = SortCriteria("ALPHABETIC_DSC")
-	Stars         = SortCriteria("STARS")
-	Downloads     = SortCriteria("DOWNLOADS")
-)
 
 type PageInput struct {
 	Limit  int

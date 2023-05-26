@@ -18,9 +18,9 @@ import (
 	"zotregistry.io/zot/pkg/common"
 	"zotregistry.io/zot/pkg/extensions/monitoring"
 	"zotregistry.io/zot/pkg/log"
+	"zotregistry.io/zot/pkg/meta"
 	"zotregistry.io/zot/pkg/meta/bolt"
-	"zotregistry.io/zot/pkg/meta/repodb"
-	boltdb_wrapper "zotregistry.io/zot/pkg/meta/repodb/boltdb-wrapper"
+	metaTypes "zotregistry.io/zot/pkg/meta/types"
 	"zotregistry.io/zot/pkg/storage"
 	storageConstants "zotregistry.io/zot/pkg/storage/constants"
 	"zotregistry.io/zot/pkg/storage/local"
@@ -96,10 +96,10 @@ func TestMultipleStoragePath(t *testing.T) {
 		boltDriver, err := bolt.GetBoltDriver(params)
 		So(err, ShouldBeNil)
 
-		repoDB, err := boltdb_wrapper.NewBoltDBWrapper(boltDriver, log)
+		repoDB, err := bolt.NewBoltDBWrapper(boltDriver, log)
 		So(err, ShouldBeNil)
 
-		err = repodb.ParseStorage(repoDB, storeController, log)
+		err = meta.ParseStorage(repoDB, storeController, log)
 		So(err, ShouldBeNil)
 
 		scanner := NewScanner(storeController, repoDB, "ghcr.io/project-zot/trivy-db", "", log)
@@ -191,10 +191,10 @@ func TestTrivyLibraryErrors(t *testing.T) {
 		boltDriver, err := bolt.GetBoltDriver(params)
 		So(err, ShouldBeNil)
 
-		repoDB, err := boltdb_wrapper.NewBoltDBWrapper(boltDriver, log)
+		repoDB, err := bolt.NewBoltDBWrapper(boltDriver, log)
 		So(err, ShouldBeNil)
 
-		err = repodb.ParseStorage(repoDB, storeController, log)
+		err = meta.ParseStorage(repoDB, storeController, log)
 		So(err, ShouldBeNil)
 
 		// Download DB fails for missing DB url
@@ -258,7 +258,7 @@ func TestImageScannable(t *testing.T) {
 
 	log := log.NewLogger("debug", "")
 
-	repoDB, err := boltdb_wrapper.NewBoltDBWrapper(boltDriver, log)
+	repoDB, err := bolt.NewBoltDBWrapper(boltDriver, log)
 	if err != nil {
 		panic(err)
 	}
@@ -300,7 +300,7 @@ func TestImageScannable(t *testing.T) {
 		panic(err)
 	}
 
-	validRepoMeta := repodb.ManifestData{
+	validRepoMeta := metaTypes.ManifestData{
 		ManifestBlob: validManifestBlob,
 		ConfigBlob:   validConfigBlob,
 	}
@@ -336,7 +336,7 @@ func TestImageScannable(t *testing.T) {
 		panic(err)
 	}
 
-	repoMetaUnscannableLayer := repodb.ManifestData{
+	repoMetaUnscannableLayer := metaTypes.ManifestData{
 		ManifestBlob: manifestBlobUnscannableLayer,
 		ConfigBlob:   validConfigBlob,
 	}
@@ -356,7 +356,7 @@ func TestImageScannable(t *testing.T) {
 
 	// Create RepoDB data for unmarshable manifest
 	unmarshableManifestBlob := []byte("Some string")
-	repoMetaUnmarshable := repodb.ManifestData{
+	repoMetaUnmarshable := metaTypes.ManifestData{
 		ManifestBlob: unmarshableManifestBlob,
 		ConfigBlob:   validConfigBlob,
 	}
@@ -468,10 +468,10 @@ func TestDefaultTrivyDBUrl(t *testing.T) {
 		boltDriver, err := bolt.GetBoltDriver(params)
 		So(err, ShouldBeNil)
 
-		repoDB, err := boltdb_wrapper.NewBoltDBWrapper(boltDriver, log)
+		repoDB, err := bolt.NewBoltDBWrapper(boltDriver, log)
 		So(err, ShouldBeNil)
 
-		err = repodb.ParseStorage(repoDB, storeController, log)
+		err = meta.ParseStorage(repoDB, storeController, log)
 		So(err, ShouldBeNil)
 
 		scanner := NewScanner(storeController, repoDB, "ghcr.io/aquasecurity/trivy-db",

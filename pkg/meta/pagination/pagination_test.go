@@ -1,4 +1,4 @@
-package repodb_test
+package pagination_test
 
 import (
 	"testing"
@@ -6,19 +6,20 @@ import (
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	. "github.com/smartystreets/goconvey/convey"
 
-	"zotregistry.io/zot/pkg/meta/repodb"
+	"zotregistry.io/zot/pkg/meta/pagination"
+	metaTypes "zotregistry.io/zot/pkg/meta/types"
 )
 
 func TestPagination(t *testing.T) {
 	Convey("Repo Pagination", t, func() {
 		Convey("reset", func() {
-			pageFinder, err := repodb.NewBaseRepoPageFinder(1, 0, repodb.AlphabeticAsc)
+			pageFinder, err := pagination.NewBaseRepoPageFinder(1, 0, metaTypes.AlphabeticAsc)
 			So(err, ShouldBeNil)
 			So(pageFinder, ShouldNotBeNil)
 
-			pageFinder.Add(repodb.DetailedRepoMeta{})
-			pageFinder.Add(repodb.DetailedRepoMeta{})
-			pageFinder.Add(repodb.DetailedRepoMeta{})
+			pageFinder.Add(metaTypes.DetailedRepoMeta{})
+			pageFinder.Add(metaTypes.DetailedRepoMeta{})
+			pageFinder.Add(metaTypes.DetailedRepoMeta{})
 
 			pageFinder.Reset()
 
@@ -29,27 +30,27 @@ func TestPagination(t *testing.T) {
 
 	Convey("Image Pagination", t, func() {
 		Convey("create new pageFinder errors", func() {
-			pageFinder, err := repodb.NewBaseImagePageFinder(-1, 10, repodb.AlphabeticAsc)
+			pageFinder, err := pagination.NewBaseImagePageFinder(-1, 10, metaTypes.AlphabeticAsc)
 			So(pageFinder, ShouldBeNil)
 			So(err, ShouldNotBeNil)
 
-			pageFinder, err = repodb.NewBaseImagePageFinder(2, -1, repodb.AlphabeticAsc)
+			pageFinder, err = pagination.NewBaseImagePageFinder(2, -1, metaTypes.AlphabeticAsc)
 			So(pageFinder, ShouldBeNil)
 			So(err, ShouldNotBeNil)
 
-			pageFinder, err = repodb.NewBaseImagePageFinder(2, 1, "wrong sorting criteria")
+			pageFinder, err = pagination.NewBaseImagePageFinder(2, 1, "wrong sorting criteria")
 			So(pageFinder, ShouldBeNil)
 			So(err, ShouldNotBeNil)
 		})
 
 		Convey("Reset", func() {
-			pageFinder, err := repodb.NewBaseImagePageFinder(1, 0, repodb.AlphabeticAsc)
+			pageFinder, err := pagination.NewBaseImagePageFinder(1, 0, metaTypes.AlphabeticAsc)
 			So(err, ShouldBeNil)
 			So(pageFinder, ShouldNotBeNil)
 
-			pageFinder.Add(repodb.DetailedRepoMeta{})
-			pageFinder.Add(repodb.DetailedRepoMeta{})
-			pageFinder.Add(repodb.DetailedRepoMeta{})
+			pageFinder.Add(metaTypes.DetailedRepoMeta{})
+			pageFinder.Add(metaTypes.DetailedRepoMeta{})
+			pageFinder.Add(metaTypes.DetailedRepoMeta{})
 
 			pageFinder.Reset()
 
@@ -59,23 +60,23 @@ func TestPagination(t *testing.T) {
 
 		Convey("Page", func() {
 			Convey("no limit or offset", func() {
-				pageFinder, err := repodb.NewBaseImagePageFinder(0, 0, repodb.AlphabeticAsc)
+				pageFinder, err := pagination.NewBaseImagePageFinder(0, 0, metaTypes.AlphabeticAsc)
 				So(err, ShouldBeNil)
 				So(pageFinder, ShouldNotBeNil)
 
-				pageFinder.Add(repodb.DetailedRepoMeta{
-					RepoMetadata: repodb.RepoMetadata{
+				pageFinder.Add(metaTypes.DetailedRepoMeta{
+					RepoMetadata: metaTypes.RepoMetadata{
 						Name: "repo1",
-						Tags: map[string]repodb.Descriptor{
+						Tags: map[string]metaTypes.Descriptor{
 							"tag1": {Digest: "dig1", MediaType: ispec.MediaTypeImageManifest},
 						},
 					},
 				})
 
-				pageFinder.Add(repodb.DetailedRepoMeta{
-					RepoMetadata: repodb.RepoMetadata{
+				pageFinder.Add(metaTypes.DetailedRepoMeta{
+					RepoMetadata: metaTypes.RepoMetadata{
 						Name: "repo2",
-						Tags: map[string]repodb.Descriptor{
+						Tags: map[string]metaTypes.Descriptor{
 							"Tag1": {Digest: "dig1", MediaType: ispec.MediaTypeImageManifest},
 							"Tag2": {Digest: "dig2", MediaType: ispec.MediaTypeImageManifest},
 							"Tag3": {Digest: "dig3", MediaType: ispec.MediaTypeImageManifest},
@@ -88,23 +89,23 @@ func TestPagination(t *testing.T) {
 				So(pageInfo.TotalCount, ShouldEqual, 5)
 			})
 			Convey("Test 1 limit < len(tags)", func() {
-				pageFinder, err := repodb.NewBaseImagePageFinder(5, 2, repodb.AlphabeticAsc)
+				pageFinder, err := pagination.NewBaseImagePageFinder(5, 2, metaTypes.AlphabeticAsc)
 				So(err, ShouldBeNil)
 				So(pageFinder, ShouldNotBeNil)
 
-				pageFinder.Add(repodb.DetailedRepoMeta{
-					RepoMetadata: repodb.RepoMetadata{
+				pageFinder.Add(metaTypes.DetailedRepoMeta{
+					RepoMetadata: metaTypes.RepoMetadata{
 						Name: "repo1",
-						Tags: map[string]repodb.Descriptor{
+						Tags: map[string]metaTypes.Descriptor{
 							"tag1": {Digest: "dig1", MediaType: ispec.MediaTypeImageManifest},
 						},
 					},
 				})
 
-				pageFinder.Add(repodb.DetailedRepoMeta{
-					RepoMetadata: repodb.RepoMetadata{
+				pageFinder.Add(metaTypes.DetailedRepoMeta{
+					RepoMetadata: metaTypes.RepoMetadata{
 						Name: "repo2",
-						Tags: map[string]repodb.Descriptor{
+						Tags: map[string]metaTypes.Descriptor{
 							"Tag1": {Digest: "dig1", MediaType: ispec.MediaTypeImageManifest},
 							"Tag2": {Digest: "dig2", MediaType: ispec.MediaTypeImageManifest},
 							"Tag3": {Digest: "dig3", MediaType: ispec.MediaTypeImageManifest},
@@ -117,14 +118,14 @@ func TestPagination(t *testing.T) {
 				So(pageInfo.TotalCount, ShouldEqual, 5)
 			})
 			Convey("Test 2 limit < len(tags)", func() {
-				pageFinder, err := repodb.NewBaseImagePageFinder(5, 2, repodb.AlphabeticAsc)
+				pageFinder, err := pagination.NewBaseImagePageFinder(5, 2, metaTypes.AlphabeticAsc)
 				So(err, ShouldBeNil)
 				So(pageFinder, ShouldNotBeNil)
 
-				pageFinder.Add(repodb.DetailedRepoMeta{
-					RepoMetadata: repodb.RepoMetadata{
+				pageFinder.Add(metaTypes.DetailedRepoMeta{
+					RepoMetadata: metaTypes.RepoMetadata{
 						Name: "repo1",
-						Tags: map[string]repodb.Descriptor{
+						Tags: map[string]metaTypes.Descriptor{
 							"tag1": {
 								Digest:    "dig1",
 								MediaType: ispec.MediaTypeImageManifest,
@@ -133,10 +134,10 @@ func TestPagination(t *testing.T) {
 					},
 				})
 
-				pageFinder.Add(repodb.DetailedRepoMeta{
-					RepoMetadata: repodb.RepoMetadata{
+				pageFinder.Add(metaTypes.DetailedRepoMeta{
+					RepoMetadata: metaTypes.RepoMetadata{
 						Name: "repo2",
-						Tags: map[string]repodb.Descriptor{
+						Tags: map[string]metaTypes.Descriptor{
 							"Tag1": {
 								Digest:    "dig1",
 								MediaType: ispec.MediaTypeImageManifest,
@@ -156,10 +157,10 @@ func TestPagination(t *testing.T) {
 						},
 					},
 				})
-				pageFinder.Add(repodb.DetailedRepoMeta{
-					RepoMetadata: repodb.RepoMetadata{
+				pageFinder.Add(metaTypes.DetailedRepoMeta{
+					RepoMetadata: metaTypes.RepoMetadata{
 						Name: "repo3",
-						Tags: map[string]repodb.Descriptor{
+						Tags: map[string]metaTypes.Descriptor{
 							"Tag11": {
 								Digest:    "dig11",
 								MediaType: ispec.MediaTypeImageManifest,
@@ -191,14 +192,14 @@ func TestPagination(t *testing.T) {
 			})
 
 			Convey("Test 2 limit > len(tags)", func() {
-				pageFinder, err := repodb.NewBaseImagePageFinder(3, 0, repodb.AlphabeticAsc)
+				pageFinder, err := pagination.NewBaseImagePageFinder(3, 0, metaTypes.AlphabeticAsc)
 				So(err, ShouldBeNil)
 				So(pageFinder, ShouldNotBeNil)
 
-				pageFinder.Add(repodb.DetailedRepoMeta{
-					RepoMetadata: repodb.RepoMetadata{
+				pageFinder.Add(metaTypes.DetailedRepoMeta{
+					RepoMetadata: metaTypes.RepoMetadata{
 						Name: "repo1",
-						Tags: map[string]repodb.Descriptor{
+						Tags: map[string]metaTypes.Descriptor{
 							"tag1": {
 								Digest:    "dig1",
 								MediaType: ispec.MediaTypeImageManifest,
@@ -207,10 +208,10 @@ func TestPagination(t *testing.T) {
 					},
 				})
 
-				pageFinder.Add(repodb.DetailedRepoMeta{
-					RepoMetadata: repodb.RepoMetadata{
+				pageFinder.Add(metaTypes.DetailedRepoMeta{
+					RepoMetadata: metaTypes.RepoMetadata{
 						Name: "repo2",
-						Tags: map[string]repodb.Descriptor{
+						Tags: map[string]metaTypes.Descriptor{
 							"Tag1": {
 								Digest:    "dig1",
 								MediaType: ispec.MediaTypeImageManifest,
@@ -218,10 +219,10 @@ func TestPagination(t *testing.T) {
 						},
 					},
 				})
-				pageFinder.Add(repodb.DetailedRepoMeta{
-					RepoMetadata: repodb.RepoMetadata{
+				pageFinder.Add(metaTypes.DetailedRepoMeta{
+					RepoMetadata: metaTypes.RepoMetadata{
 						Name: "repo3",
-						Tags: map[string]repodb.Descriptor{
+						Tags: map[string]metaTypes.Descriptor{
 							"Tag11": {
 								Digest:    "dig11",
 								MediaType: ispec.MediaTypeImageManifest,

@@ -7,12 +7,12 @@ import (
 	"zotregistry.io/zot/pkg/api/config"
 	"zotregistry.io/zot/pkg/extensions/sync"
 	"zotregistry.io/zot/pkg/log"
-	"zotregistry.io/zot/pkg/meta/repodb"
+	metaTypes "zotregistry.io/zot/pkg/meta/types"
 	"zotregistry.io/zot/pkg/scheduler"
 	"zotregistry.io/zot/pkg/storage"
 )
 
-func EnableSyncExtension(config *config.Config, repoDB repodb.RepoDB,
+func EnableSyncExtension(config *config.Config, repoDB metaTypes.RepoDB,
 	storeController storage.StoreController, sch *scheduler.Scheduler, log log.Logger,
 ) (*sync.BaseOnDemand, error) {
 	if config.Extensions.Sync != nil && *config.Extensions.Sync.Enable {

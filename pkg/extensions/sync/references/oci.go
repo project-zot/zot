@@ -17,19 +17,20 @@ import (
 	"zotregistry.io/zot/pkg/extensions/sync/constants"
 	client "zotregistry.io/zot/pkg/extensions/sync/httpclient"
 	"zotregistry.io/zot/pkg/log"
-	"zotregistry.io/zot/pkg/meta/repodb"
+	"zotregistry.io/zot/pkg/meta"
+	metaTypes "zotregistry.io/zot/pkg/meta/types"
 	"zotregistry.io/zot/pkg/storage"
 )
 
 type OciReferences struct {
 	client          *client.Client
 	storeController storage.StoreController
-	repoDB          repodb.RepoDB
+	repoDB          metaTypes.RepoDB
 	log             log.Logger
 }
 
 func NewOciReferences(httpClient *client.Client, storeController storage.StoreController,
-	repoDB repodb.RepoDB, log log.Logger,
+	repoDB metaTypes.RepoDB, log log.Logger,
 ) OciReferences {
 	return OciReferences{
 		client:          httpClient,
@@ -177,12 +178,12 @@ func (ref OciReferences) SyncReferences(localRepo, remoteRepo, subjectDigestStr 
 			}
 
 			if isSig {
-				err = ref.repoDB.AddManifestSignature(localRepo, signedManifestDig, repodb.SignatureMetadata{
+				err = ref.repoDB.AddManifestSignature(localRepo, signedManifestDig, metaTypes.SignatureMetadata{
 					SignatureType:   sigType,
 					SignatureDigest: digest.String(),
 				})
 			} else {
-				err = repodb.SetImageMetaFromInput(localRepo, digest.String(), referrer.MediaType,
+				err = meta.SetImageMetaFromInput(localRepo, digest.String(), referrer.MediaType,
 					digest, OCIRefBuf, ref.storeController.GetImageStore(localRepo),
 					ref.repoDB, ref.log)
 			}

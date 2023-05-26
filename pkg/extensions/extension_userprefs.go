@@ -15,7 +15,7 @@ import (
 	"zotregistry.io/zot/pkg/api/constants"
 	zcommon "zotregistry.io/zot/pkg/common"
 	"zotregistry.io/zot/pkg/log"
-	"zotregistry.io/zot/pkg/meta/repodb"
+	metaTypes "zotregistry.io/zot/pkg/meta/types"
 	"zotregistry.io/zot/pkg/storage"
 )
 
@@ -29,7 +29,7 @@ func IsBuiltWithUserPrefsExtension() bool {
 }
 
 func SetupUserPreferencesRoutes(config *config.Config, router *mux.Router, storeController storage.StoreController,
-	repoDB repodb.RepoDB, cveInfo CveInfo, log log.Logger,
+	repoDB metaTypes.RepoDB, cveInfo CveInfo, log log.Logger,
 ) {
 	if config.Extensions.Search != nil && *config.Extensions.Search.Enable {
 		log.Info().Msg("setting up user preferences routes")
@@ -43,7 +43,7 @@ func SetupUserPreferencesRoutes(config *config.Config, router *mux.Router, store
 	}
 }
 
-func HandleUserPrefs(repoDB repodb.RepoDB, log log.Logger) func(w http.ResponseWriter, r *http.Request) {
+func HandleUserPrefs(repoDB metaTypes.RepoDB, log log.Logger) func(w http.ResponseWriter, r *http.Request) {
 	return func(rsp http.ResponseWriter, req *http.Request) {
 		if !queryHasParams(req.URL.Query(), []string{"action"}) {
 			rsp.WriteHeader(http.StatusBadRequest)
@@ -70,7 +70,7 @@ func HandleUserPrefs(repoDB repodb.RepoDB, log log.Logger) func(w http.ResponseW
 	}
 }
 
-func PutStar(rsp http.ResponseWriter, req *http.Request, repoDB repodb.RepoDB, log log.Logger) {
+func PutStar(rsp http.ResponseWriter, req *http.Request, repoDB metaTypes.RepoDB, log log.Logger) {
 	if !queryHasParams(req.URL.Query(), []string{"repo"}) {
 		rsp.WriteHeader(http.StatusBadRequest)
 
@@ -105,7 +105,7 @@ func PutStar(rsp http.ResponseWriter, req *http.Request, repoDB repodb.RepoDB, l
 	rsp.WriteHeader(http.StatusOK)
 }
 
-func PutBookmark(rsp http.ResponseWriter, req *http.Request, repoDB repodb.RepoDB, log log.Logger) {
+func PutBookmark(rsp http.ResponseWriter, req *http.Request, repoDB metaTypes.RepoDB, log log.Logger) {
 	if !queryHasParams(req.URL.Query(), []string{"repo"}) {
 		rsp.WriteHeader(http.StatusBadRequest)
 

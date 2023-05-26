@@ -38,7 +38,7 @@ import (
 	cveinfo "zotregistry.io/zot/pkg/extensions/search/cve"
 	cvemodel "zotregistry.io/zot/pkg/extensions/search/cve/model"
 	"zotregistry.io/zot/pkg/log"
-	"zotregistry.io/zot/pkg/meta/repodb"
+	metaTypes "zotregistry.io/zot/pkg/meta/types"
 	"zotregistry.io/zot/pkg/storage"
 	storageConstants "zotregistry.io/zot/pkg/storage/constants"
 	"zotregistry.io/zot/pkg/storage/local"
@@ -222,7 +222,7 @@ func uploadNewRepoTag(tag string, repoName string, baseURL string, layers [][]by
 	return err
 }
 
-func getMockCveInfo(repoDB repodb.RepoDB, log log.Logger) cveinfo.CveInfo {
+func getMockCveInfo(repoDB metaTypes.RepoDB, log log.Logger) cveinfo.CveInfo {
 	// RepoDB loaded with initial data, mock the scanner
 	severities := map[string]int{
 		"UNKNOWN":  0,
@@ -4429,7 +4429,7 @@ func TestRepoDBWhenSigningImages(t *testing.T) {
 			Convey("image is a signature, AddManifestSignature fails", func() {
 				ctlr.RepoDB = mocks.RepoDBMock{
 					AddManifestSignatureFn: func(repo string, signedManifestDigest godigest.Digest,
-						sm repodb.SignatureMetadata,
+						sm metaTypes.SignatureMetadata,
 					) error {
 						return ErrTestError
 					},
@@ -4516,7 +4516,7 @@ func TestRepoDBWhenPushingImages(t *testing.T) {
 
 		Convey("SetManifestMeta fails", func() {
 			ctlr.RepoDB = mocks.RepoDBMock{
-				SetManifestDataFn: func(manifestDigest godigest.Digest, mm repodb.ManifestData) error {
+				SetManifestDataFn: func(manifestDigest godigest.Digest, mm metaTypes.ManifestData) error {
 					return ErrTestError
 				},
 			}

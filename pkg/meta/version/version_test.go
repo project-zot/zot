@@ -16,8 +16,6 @@ import (
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/meta/bolt"
 	"zotregistry.io/zot/pkg/meta/dynamo"
-	boltdb_wrapper "zotregistry.io/zot/pkg/meta/repodb/boltdb-wrapper"
-	dynamodb_wrapper "zotregistry.io/zot/pkg/meta/repodb/dynamodb-wrapper"
 	"zotregistry.io/zot/pkg/meta/version"
 )
 
@@ -32,7 +30,7 @@ func TestVersioningBoltDB(t *testing.T) {
 
 		log := log.NewLogger("debug", "")
 
-		boltdbWrapper, err := boltdb_wrapper.NewBoltDBWrapper(boltDriver, log)
+		boltdbWrapper, err := bolt.NewBoltDBWrapper(boltDriver, log)
 		defer os.Remove("repo.db")
 		So(boltdbWrapper, ShouldNotBeNil)
 		So(err, ShouldBeNil)
@@ -135,7 +133,7 @@ func TestVersioningDynamoDB(t *testing.T) {
 
 		log := log.NewLogger("debug", "")
 
-		dynamoWrapper, err := dynamodb_wrapper.NewDynamoDBWrapper(dynamoClient, params, log)
+		dynamoWrapper, err := dynamo.NewDynamoDBWrapper(dynamoClient, params, log)
 		So(err, ShouldBeNil)
 
 		So(dynamoWrapper.ResetManifestDataTable(), ShouldBeNil)

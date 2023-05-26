@@ -1,18 +1,15 @@
-package repodb
+package types
 
-import (
-	"time"
+type SortCriteria string
+
+const (
+	Relevance     = SortCriteria("RELEVANCE")
+	UpdateTime    = SortCriteria("UPDATE_TIME")
+	AlphabeticAsc = SortCriteria("ALPHABETIC_ASC")
+	AlphabeticDsc = SortCriteria("ALPHABETIC_DSC")
+	Stars         = SortCriteria("STARS")
+	Downloads     = SortCriteria("DOWNLOADS")
 )
-
-// DetailedRepoMeta is a auxiliary structure used for sorting RepoMeta arrays by information
-// that's not directly available in the RepoMetadata structure (ex. that needs to be calculated
-// by iterating the manifests, etc.)
-type DetailedRepoMeta struct {
-	RepoMetadata
-	Rank       int
-	Downloads  int
-	UpdateTime time.Time
-}
 
 func SortFunctions() map[SortCriteria]func(pageBuffer []DetailedRepoMeta) func(i, j int) bool {
 	return map[SortCriteria]func(pageBuffer []DetailedRepoMeta) func(i, j int) bool{

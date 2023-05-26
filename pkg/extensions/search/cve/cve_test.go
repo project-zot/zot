@@ -29,9 +29,9 @@ import (
 	cveinfo "zotregistry.io/zot/pkg/extensions/search/cve"
 	cvemodel "zotregistry.io/zot/pkg/extensions/search/cve/model"
 	"zotregistry.io/zot/pkg/log"
+	"zotregistry.io/zot/pkg/meta"
 	"zotregistry.io/zot/pkg/meta/bolt"
-	"zotregistry.io/zot/pkg/meta/repodb"
-	boltdb_wrapper "zotregistry.io/zot/pkg/meta/repodb/boltdb-wrapper"
+	metaTypes "zotregistry.io/zot/pkg/meta/types"
 	"zotregistry.io/zot/pkg/storage"
 	storageConstants "zotregistry.io/zot/pkg/storage/constants"
 	"zotregistry.io/zot/pkg/storage/local"
@@ -321,10 +321,10 @@ func TestImageFormat(t *testing.T) {
 		boltDriver, err := bolt.GetBoltDriver(params)
 		So(err, ShouldBeNil)
 
-		repoDB, err := boltdb_wrapper.NewBoltDBWrapper(boltDriver, log)
+		repoDB, err := bolt.NewBoltDBWrapper(boltDriver, log)
 		So(err, ShouldBeNil)
 
-		err = repodb.ParseStorage(repoDB, storeController, log)
+		err = meta.ParseStorage(repoDB, storeController, log)
 		So(err, ShouldBeNil)
 
 		cveInfo := cveinfo.NewCVEInfo(storeController, repoDB, "ghcr.io/project-zot/trivy-db", "", log)
@@ -378,9 +378,9 @@ func TestImageFormat(t *testing.T) {
 		log := log.NewLogger("debug", "")
 
 		repoDB := &mocks.RepoDBMock{
-			GetRepoMetaFn: func(repo string) (repodb.RepoMetadata, error) {
-				return repodb.RepoMetadata{
-					Tags: map[string]repodb.Descriptor{
+			GetRepoMetaFn: func(repo string) (metaTypes.RepoMetadata, error) {
+				return metaTypes.RepoMetadata{
+					Tags: map[string]metaTypes.Descriptor{
 						"tag": {MediaType: ispec.MediaTypeImageIndex},
 					},
 				}, nil
@@ -729,7 +729,7 @@ func TestCVEStruct(t *testing.T) {
 		boltDriver, err := bolt.GetBoltDriver(params)
 		So(err, ShouldBeNil)
 
-		repoDB, err := boltdb_wrapper.NewBoltDBWrapper(boltDriver, log.NewLogger("debug", ""))
+		repoDB, err := bolt.NewBoltDBWrapper(boltDriver, log.NewLogger("debug", ""))
 		So(err, ShouldBeNil)
 
 		// Create repodb data for scannable image with vulnerabilities
@@ -756,11 +756,11 @@ func TestCVEStruct(t *testing.T) {
 		})
 		So(err, ShouldBeNil)
 
-		repoMeta11 := repodb.ManifestMetadata{
+		repoMeta11 := metaTypes.ManifestMetadata{
 			ManifestBlob:  manifestBlob11,
 			ConfigBlob:    configBlob11,
 			DownloadCount: 0,
-			Signatures:    repodb.ManifestSignatures{},
+			Signatures:    metaTypes.ManifestSignatures{},
 		}
 
 		digest11 := godigest.FromBytes(manifestBlob11)
@@ -792,11 +792,11 @@ func TestCVEStruct(t *testing.T) {
 		})
 		So(err, ShouldBeNil)
 
-		repoMeta12 := repodb.ManifestMetadata{
+		repoMeta12 := metaTypes.ManifestMetadata{
 			ManifestBlob:  manifestBlob12,
 			ConfigBlob:    configBlob12,
 			DownloadCount: 0,
-			Signatures:    repodb.ManifestSignatures{},
+			Signatures:    metaTypes.ManifestSignatures{},
 		}
 
 		digest12 := godigest.FromBytes(manifestBlob12)
@@ -828,7 +828,7 @@ func TestCVEStruct(t *testing.T) {
 		})
 		So(err, ShouldBeNil)
 
-		repoMeta13 := repodb.ManifestMetadata{
+		repoMeta13 := metaTypes.ManifestMetadata{
 			ManifestBlob: manifestBlob13,
 			ConfigBlob:   configBlob13,
 		}
@@ -862,7 +862,7 @@ func TestCVEStruct(t *testing.T) {
 		})
 		So(err, ShouldBeNil)
 
-		repoMeta14 := repodb.ManifestMetadata{
+		repoMeta14 := metaTypes.ManifestMetadata{
 			ManifestBlob: manifestBlob14,
 			ConfigBlob:   configBlob14,
 		}
@@ -897,7 +897,7 @@ func TestCVEStruct(t *testing.T) {
 		})
 		So(err, ShouldBeNil)
 
-		repoMeta61 := repodb.ManifestMetadata{
+		repoMeta61 := metaTypes.ManifestMetadata{
 			ManifestBlob: manifestBlob61,
 			ConfigBlob:   configBlob61,
 		}
@@ -932,7 +932,7 @@ func TestCVEStruct(t *testing.T) {
 		})
 		So(err, ShouldBeNil)
 
-		repoMeta21 := repodb.ManifestMetadata{
+		repoMeta21 := metaTypes.ManifestMetadata{
 			ManifestBlob: manifestBlob21,
 			ConfigBlob:   configBlob21,
 		}
@@ -947,7 +947,7 @@ func TestCVEStruct(t *testing.T) {
 		manifestBlob31 := []byte("invalid manifest blob")
 		So(err, ShouldBeNil)
 
-		repoMeta31 := repodb.ManifestMetadata{
+		repoMeta31 := metaTypes.ManifestMetadata{
 			ManifestBlob: manifestBlob31,
 		}
 
@@ -960,7 +960,7 @@ func TestCVEStruct(t *testing.T) {
 		configBlob41 := []byte("invalid config blob")
 		So(err, ShouldBeNil)
 
-		repoMeta41 := repodb.ManifestMetadata{
+		repoMeta41 := metaTypes.ManifestMetadata{
 			ConfigBlob: configBlob41,
 		}
 
@@ -980,7 +980,7 @@ func TestCVEStruct(t *testing.T) {
 		manifestContent1Blob, err := json.Marshal(manifestContent1)
 		So(err, ShouldBeNil)
 		diestManifestFromIndex1 := godigest.FromBytes(manifestContent1Blob)
-		err = repoDB.SetManifestData(diestManifestFromIndex1, repodb.ManifestData{
+		err = repoDB.SetManifestData(diestManifestFromIndex1, metaTypes.ManifestData{
 			ManifestBlob: manifestContent1Blob,
 			ConfigBlob:   []byte("{}"),
 		})
@@ -991,7 +991,7 @@ func TestCVEStruct(t *testing.T) {
 		manifestContent2Blob, err := json.Marshal(manifestContent2)
 		So(err, ShouldBeNil)
 		diestManifestFromIndex2 := godigest.FromBytes(manifestContent2Blob)
-		err = repoDB.SetManifestData(diestManifestFromIndex1, repodb.ManifestData{
+		err = repoDB.SetManifestData(diestManifestFromIndex1, metaTypes.ManifestData{
 			ManifestBlob: manifestContent2Blob,
 			ConfigBlob:   []byte("{}"),
 		})
@@ -1003,7 +1003,7 @@ func TestCVEStruct(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		indexDigest := godigest.FromBytes(indexBlob)
-		err = repoDB.SetIndexData(indexDigest, repodb.IndexData{
+		err = repoDB.SetIndexData(indexDigest, metaTypes.IndexData{
 			IndexBlob: indexBlob,
 		})
 		So(err, ShouldBeNil)

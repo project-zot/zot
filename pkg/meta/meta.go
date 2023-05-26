@@ -1,4 +1,4 @@
-package repodbfactory
+package meta
 
 import (
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
@@ -9,13 +9,11 @@ import (
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/meta/bolt"
 	"zotregistry.io/zot/pkg/meta/dynamo"
-	"zotregistry.io/zot/pkg/meta/repodb"
-	boltdb_wrapper "zotregistry.io/zot/pkg/meta/repodb/boltdb-wrapper"
-	dynamodb_wrapper "zotregistry.io/zot/pkg/meta/repodb/dynamodb-wrapper"
 	"zotregistry.io/zot/pkg/meta/signatures"
+	metaTypes "zotregistry.io/zot/pkg/meta/types"
 )
 
-func New(storageConfig config.StorageConfig, log log.Logger) (repodb.RepoDB, error) {
+func New(storageConfig config.StorageConfig, log log.Logger) (metaTypes.RepoDB, error) {
 	if storageConfig.RemoteCache {
 		dynamoParams := getDynamoParams(storageConfig.CacheDriver, log)
 
@@ -44,7 +42,7 @@ func New(storageConfig config.StorageConfig, log log.Logger) (repodb.RepoDB, err
 }
 
 func Create(dbtype string, dbDriver, parameters interface{}, log log.Logger, //nolint:contextcheck
-) (repodb.RepoDB, error,
+) (metaTypes.RepoDB, error,
 ) {
 	switch dbtype {
 	case "boltdb":
@@ -54,7 +52,7 @@ func Create(dbtype string, dbDriver, parameters interface{}, log log.Logger, //n
 				panic("failed type assertion")
 			}
 
-			return boltdb_wrapper.NewBoltDBWrapper(properDriver, log)
+			return bolt.NewBoltDBWrapper(properDriver, log)
 		}
 	case "dynamodb":
 		{
@@ -68,7 +66,7 @@ func Create(dbtype string, dbDriver, parameters interface{}, log log.Logger, //n
 				panic("failed type assertion")
 			}
 
-			return dynamodb_wrapper.NewDynamoDBWrapper(properDriver, properParameters, log)
+			return dynamo.NewDynamoDBWrapper(properDriver, properParameters, log)
 		}
 	default:
 		{

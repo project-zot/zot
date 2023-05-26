@@ -17,7 +17,8 @@ import (
 	"zotregistry.io/zot/pkg/extensions/sync/constants"
 	client "zotregistry.io/zot/pkg/extensions/sync/httpclient"
 	"zotregistry.io/zot/pkg/log"
-	"zotregistry.io/zot/pkg/meta/repodb"
+	"zotregistry.io/zot/pkg/meta"
+	metaTypes "zotregistry.io/zot/pkg/meta/types"
 	"zotregistry.io/zot/pkg/storage"
 )
 
@@ -28,12 +29,12 @@ type ReferenceList struct {
 type ORASReferences struct {
 	client          *client.Client
 	storeController storage.StoreController
-	repoDB          repodb.RepoDB
+	repoDB          metaTypes.RepoDB
 	log             log.Logger
 }
 
 func NewORASReferences(httpClient *client.Client, storeController storage.StoreController,
-	repoDB repodb.RepoDB, log log.Logger,
+	repoDB metaTypes.RepoDB, log log.Logger,
 ) ORASReferences {
 	return ORASReferences{
 		client:          httpClient,
@@ -142,7 +143,7 @@ func (ref ORASReferences) SyncReferences(localRepo, remoteRepo, subjectDigestStr
 			ref.log.Debug().Str("repository", localRepo).Str("subject", subjectDigestStr).
 				Msg("repoDB: trying to sync oras artifact for image")
 
-			err := repodb.SetImageMetaFromInput(localRepo, digest.String(), referrer.MediaType,
+			err := meta.SetImageMetaFromInput(localRepo, digest.String(), referrer.MediaType,
 				digest, orasBuf, ref.storeController.GetImageStore(localRepo),
 				ref.repoDB, ref.log)
 			if err != nil {

@@ -5,7 +5,7 @@ import (
 
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/meta/common"
-	"zotregistry.io/zot/pkg/meta/repodb"
+	metaTypes "zotregistry.io/zot/pkg/meta/types"
 	"zotregistry.io/zot/pkg/storage"
 )
 
@@ -13,7 +13,7 @@ import (
 // of image pushed(normal images, signatues, etc.). In care of any errors, it makes sure to keep
 // consistency between repodb and the image store.
 func OnUpdateManifest(repo, reference, mediaType string, digest godigest.Digest, body []byte,
-	storeController storage.StoreController, repoDB repodb.RepoDB, log log.Logger,
+	storeController storage.StoreController, repoDB metaTypes.RepoDB, log log.Logger,
 ) error {
 	imgStore := storeController.GetImageStore(repo)
 
@@ -34,13 +34,13 @@ func OnUpdateManifest(repo, reference, mediaType string, digest godigest.Digest,
 	metadataSuccessfullySet := true
 
 	if isSignature {
-		layersInfo, errGetLayers := repodb.GetSignatureLayersInfo(repo, reference, digest.String(), signatureType, body,
+		layersInfo, errGetLayers := GetSignatureLayersInfo(repo, reference, digest.String(), signatureType, body,
 			imgStore, log)
 		if errGetLayers != nil {
 			metadataSuccessfullySet = false
 			err = errGetLayers
 		} else {
-			err = repoDB.AddManifestSignature(repo, signedManifestDigest, repodb.SignatureMetadata{
+			err = repoDB.AddManifestSignature(repo, signedManifestDigest, metaTypes.SignatureMetadata{
 				SignatureType:   signatureType,
 				SignatureDigest: digest.String(),
 				LayersInfo:      layersInfo,
@@ -58,7 +58,7 @@ func OnUpdateManifest(repo, reference, mediaType string, digest godigest.Digest,
 			}
 		}
 	} else {
-		err := repodb.SetImageMetaFromInput(repo, reference, mediaType, digest, body,
+		err := SetImageMetaFromInput(repo, reference, mediaType, digest, body,
 			imgStore, repoDB, log)
 		if err != nil {
 			metadataSuccessfullySet = false
@@ -85,7 +85,7 @@ func OnUpdateManifest(repo, reference, mediaType string, digest godigest.Digest,
 // of image pushed(normal images, signatues, etc.). In care of any errors, it makes sure to keep
 // consistency between repodb and the image store.
 func OnDeleteManifest(repo, reference, mediaType string, digest godigest.Digest, manifestBlob []byte,
-	storeController storage.StoreController, repoDB repodb.RepoDB, log log.Logger,
+	storeController storage.StoreController, repoDB metaTypes.RepoDB, log log.Logger,
 ) error {
 	imgStore := storeController.GetImageStore(repo)
 
@@ -100,7 +100,7 @@ func OnDeleteManifest(repo, reference, mediaType string, digest godigest.Digest,
 	manageRepoMetaSuccessfully := true
 
 	if isSignature {
-		err = repoDB.DeleteSignature(repo, signedManifestDigest, repodb.SignatureMetadata{
+		err = repoDB.DeleteSignature(repo, signedManifestDigest, metaTypes.SignatureMetadata{
 			SignatureDigest: digest.String(),
 			SignatureType:   signatureType,
 		})
@@ -144,7 +144,7 @@ func OnDeleteManifest(repo, reference, mediaType string, digest godigest.Digest,
 
 // OnDeleteManifest is called when a manifest is downloaded. It increments the download couter on that manifest.
 func OnGetManifest(name, reference string, body []byte,
-	storeController storage.StoreController, repoDB repodb.RepoDB, log log.Logger,
+	storeController storage.StoreController, repoDB metaTypes.RepoDB, log log.Logger,
 ) error {
 	// check if image is a signature
 	isSignature, _, _, err := storage.CheckIsImageSignature(name, body, reference)

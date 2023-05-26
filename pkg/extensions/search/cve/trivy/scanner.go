@@ -22,7 +22,7 @@ import (
 	zerr "zotregistry.io/zot/errors"
 	cvemodel "zotregistry.io/zot/pkg/extensions/search/cve/model"
 	"zotregistry.io/zot/pkg/log"
-	"zotregistry.io/zot/pkg/meta/repodb"
+	metaTypes "zotregistry.io/zot/pkg/meta/types"
 	"zotregistry.io/zot/pkg/storage"
 )
 
@@ -67,7 +67,7 @@ type cveTrivyController struct {
 }
 
 type Scanner struct {
-	repoDB           repodb.RepoDB
+	repoDB           metaTypes.RepoDB
 	cveController    cveTrivyController
 	storeController  storage.StoreController
 	log              log.Logger
@@ -78,7 +78,7 @@ type Scanner struct {
 }
 
 func NewScanner(storeController storage.StoreController,
-	repoDB repodb.RepoDB, dbRepository, javaDBRepository string, log log.Logger,
+	repoDB metaTypes.RepoDB, dbRepository, javaDBRepository string, log log.Logger,
 ) *Scanner {
 	cveController := cveTrivyController{}
 
@@ -213,7 +213,7 @@ func (scanner Scanner) IsImageFormatScannable(repo, tag string) (bool, error) {
 	return false, nil
 }
 
-func (scanner Scanner) isManifestScanable(descriptor repodb.Descriptor) (bool, error) {
+func (scanner Scanner) isManifestScanable(descriptor metaTypes.Descriptor) (bool, error) {
 	manifestDigestStr := descriptor.Digest
 
 	manifestDigest, err := godigest.Parse(manifestDigestStr)
@@ -250,7 +250,7 @@ func (scanner Scanner) isManifestScanable(descriptor repodb.Descriptor) (bool, e
 	return true, nil
 }
 
-func (scanner Scanner) isIndexScanable(descriptor repodb.Descriptor) (bool, error) {
+func (scanner Scanner) isIndexScanable(descriptor metaTypes.Descriptor) (bool, error) {
 	return false, nil
 }
 

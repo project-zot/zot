@@ -18,7 +18,7 @@ import (
 	cveinfo "zotregistry.io/zot/pkg/extensions/search/cve"
 	"zotregistry.io/zot/pkg/extensions/search/gql_generated"
 	"zotregistry.io/zot/pkg/log"
-	"zotregistry.io/zot/pkg/meta/repodb"
+	metaTypes "zotregistry.io/zot/pkg/meta/types"
 	"zotregistry.io/zot/pkg/scheduler"
 	"zotregistry.io/zot/pkg/storage"
 )
@@ -39,7 +39,7 @@ func IsBuiltWithSearchExtension() bool {
 }
 
 func GetCVEInfo(config *config.Config, storeController storage.StoreController,
-	repoDB repodb.RepoDB, log log.Logger,
+	repoDB metaTypes.RepoDB, log log.Logger,
 ) CveInfo {
 	if config.Extensions.Search == nil || !*config.Extensions.Search.Enable || config.Extensions.Search.CVE == nil {
 		return nil
@@ -52,7 +52,7 @@ func GetCVEInfo(config *config.Config, storeController storage.StoreController,
 }
 
 func EnableSearchExtension(config *config.Config, storeController storage.StoreController,
-	repoDB repodb.RepoDB, taskScheduler *scheduler.Scheduler, cveInfo CveInfo, log log.Logger,
+	repoDB metaTypes.RepoDB, taskScheduler *scheduler.Scheduler, cveInfo CveInfo, log log.Logger,
 ) {
 	if config.Extensions.Search != nil && *config.Extensions.Search.Enable && config.Extensions.Search.CVE != nil {
 		updateInterval := config.Extensions.Search.CVE.UpdateInterval
@@ -157,7 +157,7 @@ func (trivyT *trivyTask) DoWork() error {
 }
 
 func SetupSearchRoutes(config *config.Config, router *mux.Router, storeController storage.StoreController,
-	repoDB repodb.RepoDB, cveInfo CveInfo, log log.Logger,
+	repoDB metaTypes.RepoDB, cveInfo CveInfo, log log.Logger,
 ) {
 	log.Info().Msg("setting up search routes")
 

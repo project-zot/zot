@@ -18,19 +18,20 @@ import (
 	"zotregistry.io/zot/pkg/extensions/sync/constants"
 	client "zotregistry.io/zot/pkg/extensions/sync/httpclient"
 	"zotregistry.io/zot/pkg/log"
-	"zotregistry.io/zot/pkg/meta/repodb"
+	"zotregistry.io/zot/pkg/meta"
+	metaTypes "zotregistry.io/zot/pkg/meta/types"
 	"zotregistry.io/zot/pkg/storage"
 )
 
 type CosignReference struct {
 	client          *client.Client
 	storeController storage.StoreController
-	repoDB          repodb.RepoDB
+	repoDB          metaTypes.RepoDB
 	log             log.Logger
 }
 
 func NewCosignReference(httpClient *client.Client, storeController storage.StoreController,
-	repoDB repodb.RepoDB, log log.Logger,
+	repoDB metaTypes.RepoDB, log log.Logger,
 ) CosignReference {
 	return CosignReference{
 		client:          httpClient,
@@ -171,12 +172,12 @@ func (ref CosignReference) SyncReferences(localRepo, remoteRepo, subjectDigestSt
 			}
 
 			if isSig {
-				err = ref.repoDB.AddManifestSignature(localRepo, signedManifestDig, repodb.SignatureMetadata{
+				err = ref.repoDB.AddManifestSignature(localRepo, signedManifestDig, metaTypes.SignatureMetadata{
 					SignatureType:   sigType,
 					SignatureDigest: referenceDigest.String(),
 				})
 			} else {
-				err = repodb.SetImageMetaFromInput(localRepo, cosignTag, manifest.MediaType,
+				err = meta.SetImageMetaFromInput(localRepo, cosignTag, manifest.MediaType,
 					referenceDigest, manifestBuf, ref.storeController.GetImageStore(localRepo),
 					ref.repoDB, ref.log)
 			}
