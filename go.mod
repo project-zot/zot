@@ -54,11 +54,11 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/dynamodb v1.19.7
 	github.com/containers/image/v5 v5.25.0
 	github.com/gobwas/glob v0.2.3
-	github.com/notaryproject/notation-go v1.0.0-rc.5
+	github.com/notaryproject/notation-go v1.0.0-rc.6
 	github.com/opencontainers/distribution-spec/specs-go v0.0.0-20230117141039-067a0f5b0e25
 	github.com/sigstore/cosign/v2 v2.0.2
 	github.com/swaggo/http-swagger v1.3.4
-	oras.land/oras-go/v2 v2.1.0
+	oras.land/oras-go/v2 v2.2.0
 )
 
 require (
@@ -361,7 +361,7 @@ require (
 	github.com/mozillazg/docker-credential-acr-helper v0.3.0 // indirect
 	github.com/mpvl/unique v0.0.0-20150818121801-cbe035fff7de // indirect
 	github.com/nmcclain/asn1-ber v0.0.0-20170104154839-2661553a0484 // indirect
-	github.com/notaryproject/notation-core-go v1.0.0-rc.3
+	github.com/notaryproject/notation-core-go v1.0.0-rc.4
 	github.com/oklog/ulid v1.3.1 // indirect
 	github.com/open-policy-agent/opa v0.51.0 // indirect
 	github.com/opencontainers/runc v1.1.5 // indirect
