@@ -1299,8 +1299,8 @@ github.com/nmcclain/asn1-ber v0.0.0-20170104154839-2661553a0484 h1:D9EvfGQvlkKaD
 github.com/nmcclain/asn1-ber v0.0.0-20170104154839-2661553a0484/go.mod h1:O1EljZ+oHprtxDDPHiMWVo/5dBT6PlvWX5PSwj80aBA=
 github.com/nmcclain/ldap v0.0.0-20210720162743-7f8d1e44eeba h1:DO8NFYdcRv1dnyAINJIBm6Bw2XibtLvQniNFGzf2W8E=
 github.com/nmcclain/ldap v0.0.0-20210720162743-7f8d1e44eeba/go.mod h1:4S0XndRL8HNOaQBfdViJ2F/GPCgL524xlXRuXFH12/U=
-github.com/notaryproject/notation-core-go v1.0.0-rc.3 h1:ukRBOwctPF0bWLFs+ThDHwgj+L3+AHdyaOqmziLp8w0=
-github.com/notaryproject/notation-core-go v1.0.0-rc.3/go.mod h1:XWAlhOksW+c9AA/TyobkPv5Xoz8RWGwOAoDdybZLEiI=
+github.com/notaryproject/notation-core-go v1.0.0-rc.4 h1:gzo4JzKRMLGoOeOhPXxoudjL79Mi9X6flS8qJbRtZ+k=
+github.com/notaryproject/notation-core-go v1.0.0-rc.4/go.mod h1:PEHrnhW0mEIVpyYdXqAJoJAaUgfz757tqxB3LG4qcag=
 github.com/notaryproject/notation-go v1.0.0-rc.5 h1:LduZJHOR9oONyL/CFgDg7lKudiQNKDT/lWEyVlVSN0c=
 github.com/notaryproject/notation-go v1.0.0-rc.5/go.mod h1:HTLaDq84hp2wAU2ZpeucH/9nJRg7PnufVtCU4dhz/X8=
 github.com/nxadm/tail v1.4.4/go.mod h1:kenIhsEOeOJmVchQTgglprH7qJGnHDVpk1VPCcaMI8A=
