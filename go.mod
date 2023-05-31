@@ -5,7 +5,6 @@ go 1.20
 require (
 	github.com/99designs/gqlgen v0.17.31
 	github.com/Masterminds/semver v1.5.0
-	github.com/alecthomas/template v0.0.0-20190718012654-fb15b899a751
 	github.com/apex/log v1.9.0
 	github.com/aquasecurity/trivy-db v0.0.0-20230515061101-378ab9ed302c
 	github.com/bmatcuk/doublestar/v4 v4.6.0

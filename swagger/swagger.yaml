@@ -1,7 +1,66 @@
 definitions:
   api.ExtensionList:
+    properties:
+      extensions:
+        items:
+          $ref: '#/definitions/extensions.Extension'
+        type: array
+    type: object
+  api.ImageIndex:
+    properties:
+      annotations:
+        additionalProperties:
+          type: string
+        description: Annotations contains arbitrary metadata for the image index.
+        type: object
+      manifests:
+        description: Manifests references platform specific manifests.
+        items:
+          $ref: '#/definitions/github_com_opencontainers_image-spec_specs-go_v1.Descriptor'
+        type: array
+      mediaType:
+        description: MediaType specifies the type of this document data structure
+          e.g. `application/vnd.oci.image.index.v1+json`
+        type: string
+      schemaVersion:
+        description: SchemaVersion is the image manifest schema that this image follows
+        type: integer
     type: object
   api.ImageManifest:
+    properties:
+      annotations:
+        additionalProperties:
+          type: string
+        description: Annotations contains arbitrary metadata for the image manifest.
+        type: object
+      artifactType:
+        description: ArtifactType specifies the IANA media type of artifact when the
+          manifest is used for an artifact.
+        type: string
+      config:
+        allOf:
+        - $ref: '#/definitions/github_com_opencontainers_image-spec_specs-go_v1.Descriptor'
+        description: |-
+          Config references a configuration object for a container, by digest.
+          The referenced configuration object is a JSON blob that the runtime uses to set up the container.
+      layers:
+        description: Layers is an indexed list of layers referenced by the manifest.
+        items:
+          $ref: '#/definitions/github_com_opencontainers_image-spec_specs-go_v1.Descriptor'
+        type: array
+      mediaType:
+        description: MediaType specifies the type of this document data structure
+          e.g. `application/vnd.oci.image.manifest.v1+json`
+        type: string
+      schemaVersion:
+        description: SchemaVersion is the image manifest schema that this image follows
+        type: integer
+      subject:
+        allOf:
+        - $ref: '#/definitions/github_com_opencontainers_image-spec_specs-go_v1.Descriptor'
+        description: Subject is an optional link from the image manifest to another
+          manifest forming an association between the image manifest and the other
+          manifest.
     type: object
   api.ImageTags:
     properties:
@@ -19,11 +78,91 @@ definitions:
           type: string
         type: array
     type: object
+  extensions.Extension:
+    properties:
+      description:
+        type: string
+      endpoints:
+        items:
+          type: string
+        type: array
+      name:
+        type: string
+      url:
+        type: string
+    type: object
+  github_com_opencontainers_image-spec_specs-go_v1.Descriptor:
+    properties:
+      annotations:
+        additionalProperties:
+          type: string
+        description: Annotations contains arbitrary metadata relating to the targeted
+          content.
+        type: object
+      artifactType:
+        description: ArtifactType is the IANA media type of this artifact.
+        type: string
+      data:
+        description: |-
+          Data is an embedding of the targeted content. This is encoded as a base64
+          string when marshalled to JSON (automatically, by encoding/json). If
+          present, Data can be used directly to avoid fetching the targeted content.
+        items:
+          type: integer
+        type: array
+      digest:
+        description: Digest is the digest of the targeted content.
+        type: string
+      mediaType:
+        description: MediaType is the media type of the object this schema refers
+          to.
+        type: string
+      platform:
+        allOf:
+        - $ref: '#/definitions/github_com_opencontainers_image-spec_specs-go_v1.Platform'
+        description: |-
+          Platform describes the platform which the image in the manifest runs on.
+
+          This should only be used when referring to a manifest.
+      size:
+        description: Size specifies the size in bytes of the blob.
+        type: integer
+      urls:
+        description: URLs specifies a list of URLs from which this object MAY be downloaded
+        items:
+          type: string
+        type: array
+    type: object
+  github_com_opencontainers_image-spec_specs-go_v1.Platform:
+    properties:
+      architecture:
+        description: |-
+          Architecture field specifies the CPU architecture, for example
+          `amd64` or `ppc64`.
+        type: string
+      os:
+        description: OS specifies the operating system, for example `linux` or `windows`.
+        type: string
+      os.features:
+        description: |-
+          OSFeatures is an optional field specifying an array of strings,
+          each listing a required OS feature (for example on Windows `win32k`).
+        items:
+          type: string
+        type: array
+      os.version:
+        description: |-
+          OSVersion is an optional field specifying the operating system
+          version, for example on Windows `10.0.14393.1066`.
+        type: string
+      variant:
+        description: |-
+          Variant is an optional field specifying a variant of the CPU, for
+          example `v7` to specify ARMv7 when architecture is `arm`.
+        type: string
+    type: object
 info:
-  contact:
-    email: support@swagger.io
-    name: API Support
-    url: http://www.swagger.io/support
+  contact: {}
   description: APIs for Open Container Initiative Distribution Specification
   license:
     name: Apache 2.0
@@ -31,7 +170,7 @@ info:
   title: Open Container Initiative Distribution Specification
   version: v1.1.0-dev
 paths:
-  /oras/artifacts/v1/{name:
+  /oras/artifacts/v1/{name}/manifests/{digest}/referrers:
     get:
       consumes:
       - application/json
@@ -180,7 +319,6 @@ paths:
           description: OK
           headers:
             constants.DistContentDigestKey:
-              description: OK
               type: object
           schema:
             $ref: '#/definitions/api.ImageManifest'
@@ -410,7 +548,6 @@ paths:
           description: OK
           headers:
             constants.DistContentDigestKey:
-              description: OK
               type: object
           schema:
             $ref: '#/definitions/api.ImageManifest'
@@ -445,7 +582,6 @@ paths:
           description: ok
           headers:
             cosntants.DistContentDigestKey:
-              description: OK
               type: object
           schema:
             type: string
@@ -493,6 +629,42 @@ paths:
           schema:
             type: string
       summary: Update image manifest
+  /v2/{name}/referrers/{digest}:
+    get:
+      consumes:
+      - application/json
+      description: Get referrers given a digest
+      parameters:
+      - description: repository name
+        in: path
+        name: name
+        required: true
+        type: string
+      - description: digest
+        in: path
+        name: digest
+        required: true
+        type: string
+      - description: artifact type
+        in: query
+        name: artifactType
+        type: string
+      produces:
+      - application/vnd.oci.image.index.v1+json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.ImageIndex'
+        "404":
+          description: not found
+          schema:
+            type: string
+        "500":
+          description: internal server error
+          schema:
+            type: string
+      summary: Get referrers for a given digest
   /v2/{name}/tags/list:
     get:
       consumes:

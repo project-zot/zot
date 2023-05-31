@@ -10,7 +10,7 @@ import (
 
 func TestDocs(t *testing.T) {
 	Convey("Read docs", t, func() {
-		s := swagger.New()
+		s := swagger.SwaggerInfo
 		So(s.ReadDoc(), ShouldNotBeEmpty)
 	})
 }

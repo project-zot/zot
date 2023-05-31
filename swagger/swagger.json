@@ -3,11 +3,7 @@
     "info": {
         "description": "APIs for Open Container Initiative Distribution Specification",
         "title": "Open Container Initiative Distribution Specification",
-        "contact": {
-            "name": "API Support",
-            "url": "http://www.swagger.io/support",
-            "email": "support@swagger.io"
-        },
+        "contact": {},
         "license": {
             "name": "Apache 2.0",
             "url": "http://www.apache.org/licenses/LICENSE-2.0.html"
@@ -15,7 +11,7 @@
         "version": "v1.1.0-dev"
     },
     "paths": {
-        "/oras/artifacts/v1/{name": {
+        "/oras/artifacts/v1/{name}/manifests/{digest}/referrers": {
             "get": {
                 "description": "Get references for an image given a digest and artifact type",
                 "consumes": [
@@ -504,8 +500,7 @@
                         },
                         "headers": {
                             "constants.DistContentDigestKey": {
-                                "type": "object",
-                                "description": "OK"
+                                "type": "object"
                             }
                         }
                     }
@@ -546,8 +541,7 @@
                         },
                         "headers": {
                             "constants.DistContentDigestKey": {
-                                "type": "object",
-                                "description": "OK"
+                                "type": "object"
                             }
                         }
                     },
@@ -684,8 +678,7 @@
                         },
                         "headers": {
                             "cosntants.DistContentDigestKey": {
-                                "type": "object",
-                                "description": "OK"
+                                "type": "object"
                             }
                         }
                     },
@@ -697,6 +690,60 @@
                     },
                     "500": {
                         "description": "internal server error\".",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/v2/{name}/referrers/{digest}": {
+            "get": {
+                "description": "Get referrers given a digest",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/vnd.oci.image.index.v1+json"
+                ],
+                "summary": "Get referrers for a given digest",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "repository name",
+                        "name": "name",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "digest",
+                        "name": "digest",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "artifact type",
+                        "name": "artifactType",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/api.ImageIndex"
+                        }
+                    },
+                    "404": {
+                        "description": "not found",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "internal server error",
                         "schema": {
                             "type": "string"
                         }
@@ -762,10 +809,89 @@
     },
     "definitions": {
         "api.ExtensionList": {
-            "type": "object"
+            "type": "object",
+            "properties": {
+                "extensions": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/extensions.Extension"
+                    }
+                }
+            }
+        },
+        "api.ImageIndex": {
+            "type": "object",
+            "properties": {
+                "annotations": {
+                    "description": "Annotations contains arbitrary metadata for the image index.",
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "string"
+                    }
+                },
+                "manifests": {
+                    "description": "Manifests references platform specific manifests.",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_opencontainers_image-spec_specs-go_v1.Descriptor"
+                    }
+                },
+                "mediaType": {
+                    "description": "MediaType specifies the type of this document data structure e.g. `application/vnd.oci.image.index.v1+json`",
+                    "type": "string"
+                },
+                "schemaVersion": {
+                    "description": "SchemaVersion is the image manifest schema that this image follows",
+                    "type": "integer"
+                }
+            }
         },
         "api.ImageManifest": {
-            "type": "object"
+            "type": "object",
+            "properties": {
+                "annotations": {
+                    "description": "Annotations contains arbitrary metadata for the image manifest.",
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "string"
+                    }
+                },
+                "artifactType": {
+                    "description": "ArtifactType specifies the IANA media type of artifact when the manifest is used for an artifact.",
+                    "type": "string"
+                },
+                "config": {
+                    "description": "Config references a configuration object for a container, by digest.\nThe referenced configuration object is a JSON blob that the runtime uses to set up the container.",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/github_com_opencontainers_image-spec_specs-go_v1.Descriptor"
+                        }
+                    ]
+                },
+                "layers": {
+                    "description": "Layers is an indexed list of layers referenced by the manifest.",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_opencontainers_image-spec_specs-go_v1.Descriptor"
+                    }
+                },
+                "mediaType": {
+                    "description": "MediaType specifies the type of this document data structure e.g. `application/vnd.oci.image.manifest.v1+json`",
+                    "type": "string"
+                },
+                "schemaVersion": {
+                    "description": "SchemaVersion is the image manifest schema that this image follows",
+                    "type": "integer"
+                },
+                "subject": {
+                    "description": "Subject is an optional link from the image manifest to another manifest forming an association between the image manifest and the other manifest.",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/github_com_opencontainers_image-spec_specs-go_v1.Descriptor"
+                        }
+                    ]
+                }
+            }
         },
         "api.ImageTags": {
             "type": "object",
@@ -789,6 +915,104 @@
                     "items": {
                         "type": "string"
                     }
+                }
+            }
+        },
+        "extensions.Extension": {
+            "type": "object",
+            "properties": {
+                "description": {
+                    "type": "string"
+                },
+                "endpoints": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "name": {
+                    "type": "string"
+                },
+                "url": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_opencontainers_image-spec_specs-go_v1.Descriptor": {
+            "type": "object",
+            "properties": {
+                "annotations": {
+                    "description": "Annotations contains arbitrary metadata relating to the targeted content.",
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "string"
+                    }
+                },
+                "artifactType": {
+                    "description": "ArtifactType is the IANA media type of this artifact.",
+                    "type": "string"
+                },
+                "data": {
+                    "description": "Data is an embedding of the targeted content. This is encoded as a base64\nstring when marshalled to JSON (automatically, by encoding/json). If\npresent, Data can be used directly to avoid fetching the targeted content.",
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                },
+                "digest": {
+                    "description": "Digest is the digest of the targeted content.",
+                    "type": "string"
+                },
+                "mediaType": {
+                    "description": "MediaType is the media type of the object this schema refers to.",
+                    "type": "string"
+                },
+                "platform": {
+                    "description": "Platform describes the platform which the image in the manifest runs on.\n\nThis should only be used when referring to a manifest.",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/github_com_opencontainers_image-spec_specs-go_v1.Platform"
+                        }
+                    ]
+                },
+                "size": {
+                    "description": "Size specifies the size in bytes of the blob.",
+                    "type": "integer"
+                },
+                "urls": {
+                    "description": "URLs specifies a list of URLs from which this object MAY be downloaded",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
+        "github_com_opencontainers_image-spec_specs-go_v1.Platform": {
+            "type": "object",
+            "properties": {
+                "architecture": {
+                    "description": "Architecture field specifies the CPU architecture, for example\n`amd64` or `ppc64`.",
+                    "type": "string"
+                },
+                "os": {
+                    "description": "OS specifies the operating system, for example `linux` or `windows`.",
+                    "type": "string"
+                },
+                "os.features": {
+                    "description": "OSFeatures is an optional field specifying an array of strings,\neach listing a required OS feature (for example on Windows `win32k`).",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "os.version": {
+                    "description": "OSVersion is an optional field specifying the operating system\nversion, for example on Windows `10.0.14393.1066`.",
+                    "type": "string"
+                },
+                "variant": {
+                    "description": "Variant is an optional field specifying a variant of the CPU, for\nexample `v7` to specify ARMv7 when architecture is `arm`.",
+                    "type": "string"
                 }
             }
         }
