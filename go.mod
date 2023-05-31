@@ -19,7 +19,7 @@ require (
 	github.com/getlantern/deepcopy v0.0.0-20160317154340-7f45deb8130a
 	github.com/go-ldap/ldap/v3 v3.4.4
 	github.com/gofrs/uuid v4.4.0+incompatible
-	github.com/google/go-containerregistry v0.14.1-0.20230409045903-ed5c185df419
+	github.com/google/go-containerregistry v0.15.2
 	github.com/google/uuid v1.3.0
 	github.com/gorilla/handlers v1.5.1
 	github.com/gorilla/mux v1.8.0
