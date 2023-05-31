@@ -27,8 +27,13 @@ jobs:
     #       - /tmp/data:/data
     #     options: --name=minio --health-cmd "curl http://localhost:9000/minio/health/live"
     steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-go@v4
+      - name: Harden Runner
+        uses: step-security/harden-runner@128a63446a954579617e875aaab7d2978154e969 # v2.4.0
+        with:
+          egress-policy: audit
+
+      - uses: actions/checkout@8e5e7e5ab8b370d6c329ec480221332ada57f0ab # v3.5.2
+      - uses: actions/setup-go@fac708d6674e30b6ba41289acaab6d4b75aa0753 # v4.0.1
         with:
           cache: false
           go-version: 1.20.x
@@ -160,13 +165,13 @@ jobs:
   
       # Download previous benchmark result from cache (if exists)
       - name: Download previous benchmark data
-        uses: actions/cache@v3
+        uses: actions/cache@88522ab9f39a2ea568f7027eddc7d8d8bc9d59c8 # v3.3.1
         with:
           path: ./cache
           key: ${{ runner.os }}-gen1-benchmark-stateless-cluster
       # Run `github-action-benchmark` action
       - name: Store benchmark result
-        uses: benchmark-action/github-action-benchmark@v1.17.0
+        uses: benchmark-action/github-action-benchmark@29e55772d85cc51b2a291bde13f33ef9014d2d1f # v1.17.0
         with:
           # What benchmark tool the output.txt came from
           tool: 'customBiggerIsBetter'

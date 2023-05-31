@@ -20,6 +20,11 @@ jobs:
     name: Build and test ZOT
     runs-on: ubuntu-latest
     steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@128a63446a954579617e875aaab7d2978154e969 # v2.4.0
+        with:
+          egress-policy: audit
+
       - name: Run build and test
         timeout-minutes: 60
         run: |
@@ -35,17 +40,22 @@ jobs:
         os: [linux, darwin]
         arch: [amd64, arm64]
     steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@128a63446a954579617e875aaab7d2978154e969 # v2.4.0
+        with:
+          egress-policy: audit
+
       - name: Install go
-        uses: actions/setup-go@v4
+        uses: actions/setup-go@fac708d6674e30b6ba41289acaab6d4b75aa0753 # v4.0.1
         with:
           cache: false
           go-version: 1.20.x
       - name: Check out source code
-        uses: actions/checkout@v3
+        uses: actions/checkout@8e5e7e5ab8b370d6c329ec480221332ada57f0ab # v3.5.2
 
       - name: Cache go dependencies
         id: cache-go-dependencies
-        uses: actions/cache@v3
+        uses: actions/cache@88522ab9f39a2ea568f7027eddc7d8d8bc9d59c8 # v3.3.1
         with:
           path: |
             ~/go/pkg/mod
@@ -54,7 +64,7 @@ jobs:
             ${{ runner.os }}-go-mod-
       - name: Cache go build output
         id: cache-go-build
-        uses: actions/cache@v3
+        uses: actions/cache@88522ab9f39a2ea568f7027eddc7d8d8bc9d59c8 # v3.3.1
         with:
           path: |
             ~/.cache/go-build
@@ -116,7 +126,7 @@ jobs:
           OS: ${{ matrix.os }}
           ARCH: ${{ matrix.arch }}
       - name: Upload code coverage
-        uses: codecov/codecov-action@v3
+        uses: codecov/codecov-action@eaaf4bedf32dbdc6b720b63067d99c4d77d6047d # v3.1.4
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
 
@@ -130,7 +140,7 @@ jobs:
 
       - if: github.event_name == 'release' && github.event.action == 'published'
         name: Publish artifacts on releases
-        uses: svenstaro/upload-release-action@v2
+        uses: svenstaro/upload-release-action@2b9d2847a97b04d02ad5c3df2d3a27baa97ce689 # v2
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
           file: bin/z*
@@ -151,16 +161,21 @@ jobs:
         os: [linux, darwin]
         arch: [amd64, arm64]
     steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@128a63446a954579617e875aaab7d2978154e969 # v2.4.0
+        with:
+          egress-policy: audit
+
       - name: Check out the repo
-        uses: actions/checkout@v3
+        uses: actions/checkout@8e5e7e5ab8b370d6c329ec480221332ada57f0ab # v3.5.2
       - name: Log in to GitHub Docker Registry
-        uses: docker/login-action@v2
+        uses: docker/login-action@f4ef78c080cd8ba55a85445d5b36e214a81df20a # v2.1.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Build and push zot container image
-        uses: project-stacker/stacker-build-push-action@main
+        uses: project-stacker/stacker-build-push-action@124d166f0fbaf3b69c2ee46825c8008dd2d1d1cd # main
         with:
           file: 'build/stacker.yaml'
           build-args: |
@@ -206,7 +221,7 @@ jobs:
           OS: ${{ matrix.os }}
           ARCH: ${{ matrix.arch }}
       - name: Build and push zot-minimal container image
-        uses: project-stacker/stacker-build-push-action@main
+        uses: project-stacker/stacker-build-push-action@124d166f0fbaf3b69c2ee46825c8008dd2d1d1cd # main
         with:
           file: 'build/stacker-minimal.yaml'
           build-args: |
@@ -253,7 +268,7 @@ jobs:
           OS: ${{ matrix.os }}
           ARCH: ${{ matrix.arch }}
       - name: Build and push zot-exporter container image
-        uses: project-stacker/stacker-build-push-action@main
+        uses: project-stacker/stacker-build-push-action@124d166f0fbaf3b69c2ee46825c8008dd2d1d1cd # main
         with:
           file: 'build/stacker-zxp.yaml'
           build-args: |
@@ -299,7 +314,7 @@ jobs:
           OS: ${{ matrix.os }}
           ARCH: ${{ matrix.arch }}
       - name: Build and push zb container image
-        uses: project-stacker/stacker-build-push-action@main
+        uses: project-stacker/stacker-build-push-action@124d166f0fbaf3b69c2ee46825c8008dd2d1d1cd # main
         with:
           file: 'build/stacker-zb.yaml'
           build-args: |
@@ -329,7 +344,7 @@ jobs:
           OS: ${{ matrix.os }}
           ARCH: ${{ matrix.arch }}
       - name: Run Trivy vulnerability scanner
-        uses: aquasecurity/trivy-action@master
+        uses: aquasecurity/trivy-action@e5f43133f6e8736992c9f3c1b3296e24b37e17f2 # master
         with:
           image-ref: 'ghcr.io/${{ github.repository }}-${{ matrix.os }}-${{ matrix.arch }}:${{ github.event.release.tag_name }}'
           format: 'sarif'
@@ -338,7 +353,7 @@ jobs:
           TRIVY_USERNAME: ${{ github.actor }}
           TRIVY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
       - name: Run Trivy vulnerability scanner (minimal)
-        uses: aquasecurity/trivy-action@master
+        uses: aquasecurity/trivy-action@e5f43133f6e8736992c9f3c1b3296e24b37e17f2 # master
         with:
           image-ref: 'ghcr.io/${{ github.repository }}-minimal-${{ matrix.os }}-${{ matrix.arch }}:${{ github.event.release.tag_name }}'
           format: 'sarif'
@@ -347,7 +362,7 @@ jobs:
           TRIVY_USERNAME: ${{ github.actor }}
           TRIVY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
       - name: Upload Trivy scan results to GitHub Security tab
-        uses: github/codeql-action/upload-sarif@v2
+        uses: github/codeql-action/upload-sarif@0225834cc549ee0ca93cb085b92954821a145866 # v2.3.5
         with:
           sarif_file: 'trivy-results.sarif'
 
@@ -357,13 +372,18 @@ jobs:
     name: Update Helm Chart
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - name: Harden Runner
+        uses: step-security/harden-runner@128a63446a954579617e875aaab7d2978154e969 # v2.4.0
+        with:
+          egress-policy: audit
+
+      - uses: actions/checkout@8e5e7e5ab8b370d6c329ec480221332ada57f0ab # v3.5.2
         with:
           ref: main
           fetch-depth: '0'
 
       - name: Checkout project-zot/helm-charts
-        uses: actions/checkout@v3
+        uses: actions/checkout@8e5e7e5ab8b370d6c329ec480221332ada57f0ab # v3.5.2
         with:
           repository: project-zot/helm-charts
           ref: main
@@ -376,11 +396,11 @@ jobs:
           git config --global user.name 'github-actions'
           git config --global user.email 'github-actions@users.noreply.github.com'
       - name: Update appVersion
-        uses: mikefarah/yq@master
+        uses: mikefarah/yq@845d4ae38915c31cc76ab968393657cceaec60fc # master
         with:
           cmd: yq -i '.appVersion = "${{ github.event.release.tag_name }}"' 'helm-charts/charts/zot/Chart.yaml'
       - name: Update image tag
-        uses: mikefarah/yq@master
+        uses: mikefarah/yq@845d4ae38915c31cc76ab968393657cceaec60fc # master
         with:
           cmd: yq -i '.image.tag = "${{ github.event.release.tag_name }}"' 'helm-charts/charts/zot/values.yaml'
       - name: Update version
