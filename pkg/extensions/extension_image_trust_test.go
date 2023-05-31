@@ -728,6 +728,7 @@ func RunSignatureUploadAndVerificationTests(t *testing.T, cacheDriverParams map[
 		port := test.GetFreePort()
 		testCreds := test.GetCredString("admin", "admin") + "\n" + test.GetCredString("test", "test")
 		htpasswdPath := test.MakeHtpasswdFileFromString(testCreds)
+		defer os.Remove(htpasswdPath)
 
 		conf := config.New()
 		conf.HTTP.Port = port

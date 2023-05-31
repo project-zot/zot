@@ -33,8 +33,8 @@ OS ?= $(shell go env GOOS)
 ARCH ?= $(shell go env GOARCH)
 
 BENCH_OUTPUT ?= stdout
-ALL_EXTENSIONS = debug,imagetrust,lint,metrics,mgmt,scrub,search,sync,ui,userprefs
-EXTENSIONS ?= sync,search,scrub,metrics,lint,ui,mgmt,userprefs,imagetrust
+ALL_EXTENSIONS = debug,imagetrust,lint,metrics,mgmt,profile,scrub,search,sync,ui,userprefs
+EXTENSIONS ?= sync,search,scrub,metrics,lint,ui,mgmt,profile,userprefs,imagetrust
 UI_DEPENDENCIES := search,mgmt,userprefs
 # freebsd/arm64 not supported for pie builds
 BUILDMODE_FLAGS := -buildmode=pie
