@@ -7,13 +7,14 @@ on:
       - main
   workflow_dispatch:
 
-permissions:
-  contents: read
-  packages: write
+permissions: read-all
 
 jobs:
   sync-golang:
     name: 'golang'
+    permissions:
+      contents: read
+      packages: write
     strategy:
       matrix:
         golang_version:
@@ -34,6 +35,9 @@ jobs:
           docker push ghcr.io/${{ github.repository_owner }}/golang:${{ matrix.golang_version }}
   sync-trivy:
     name: 'trivy-db'
+    permissions:
+      contents: read
+      packages: write
     runs-on: ubuntu-latest
     steps:
       - name: Copy trivy-db using oras cli
