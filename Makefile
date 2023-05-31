@@ -334,6 +334,14 @@ test-push-pull-running-dedupe: binary check-skopeo $(BATS) $(REGCLIENT) $(ORAS) 
 test-push-pull-running-dedupe-verbose: binary check-skopeo $(BATS) $(REGCLIENT) $(ORAS) $(HELM) $(CRICTL)
 	$(BATS) --trace --verbose-run --print-output-on-failure --show-output-of-passing-tests test/blackbox/pushpull_running_dedupe.bats
 
+.PHONY: test-sync-harness
+test-sync-harness: binary binary-minimal bench check-skopeo $(BATS)
+	$(BATS) --trace --print-output-on-failure test/blackbox/sync_harness.bats
+
+.PHONY: test-sync-harness-verbose
+test-sync-harness-verbose: binary binary-minimal bench check-skopeo $(BATS)
+	$(BATS) --trace --verbose-run --print-output-on-failure --show-output-of-passing-tests test/blackbox/sync_harness.bats
+
 .PHONY: test-restore-s3-blobs
 test-restore-s3-blobs: binary check-skopeo $(BATS) $(REGCLIENT) $(ORAS) $(HELM) $(CRICTL)
 	$(BATS) --trace --print-output-on-failure test/blackbox/restore_s3_blobs.bats
@@ -362,13 +370,13 @@ test-cloud-only-verbose: binary check-skopeo $(BATS)
 
 .PHONY: test-bats-sync
 test-bats-sync: BUILD_LABELS=sync
-test-bats-sync: binary binary-minimal check-skopeo $(BATS) $(NOTATION) $(COSIGN)
+test-bats-sync: binary binary-minimal bench check-skopeo $(BATS) $(NOTATION) $(COSIGN)
 	$(BATS) --trace --print-output-on-failure test/blackbox/sync.bats
 	$(BATS) --trace --print-output-on-failure test/blackbox/sync_docker.bats
 	
 .PHONY: test-bats-sync-verbose
 test-bats-sync-verbose: BUILD_LABELS=sync
-test-bats-sync-verbose: binary binary-minimal check-skopeo $(BATS) $(NOTATION) $(COSIGN)
+test-bats-sync-verbose: binary binary-minimal bench check-skopeo $(BATS) $(NOTATION) $(COSIGN)
 	$(BATS) --trace -t -x -p --verbose-run --print-output-on-failure --show-output-of-passing-tests test/blackbox/sync.bats
 	$(BATS) --trace -t -x -p --verbose-run --print-output-on-failure --show-output-of-passing-tests test/blackbox/sync_docker.bats
 

@@ -223,7 +223,7 @@ function teardown_file() {
     # attach signature
     echo "{\"artifact\": \"\", \"signature\": \"pat hancock\"}" > signature.json
     start=`date +%s`
-    run oras attach --plain-http 127.0.0.1:8080/golang:1.20 --artifact-type 'signature/example' ./signature.json:application/json
+    run oras attach --plain-http 127.0.0.1:8080/golang:1.20 --image-spec v1.1-image --artifact-type 'signature/example' ./signature.json:application/json
     [ "$status" -eq 0 ]
     end=`date +%s`
     runtime=$((end-start))
@@ -232,7 +232,7 @@ function teardown_file() {
     # attach sbom
     echo "{\"version\": \"0.0.0.0\", \"artifact\": \"'127.0.0.1:8080/golang:1.20'\", \"contents\": \"good\"}" > sbom.json
     start=`date +%s`
-    run oras attach --plain-http 127.0.0.1:8080/golang:1.20 --artifact-type 'sbom/example' ./sbom.json:application/json
+    run oras attach --plain-http 127.0.0.1:8080/golang:1.20 --image-spec v1.1-image --artifact-type 'sbom/example' ./sbom.json:application/json
     [ "$status" -eq 0 ]
     end=`date +%s`
     runtime=$((end-start))

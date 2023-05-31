@@ -258,7 +258,7 @@ type Controller interface {
 
 type ControllerManager struct {
 	controller Controller
-	// used to stop background tasks(goroutines) - task scheduler
+	// used to stop background tasks(goroutines)
 	cancelRoutinesFunc context.CancelFunc
 }
 
@@ -283,7 +283,7 @@ func (cm *ControllerManager) StartServer() {
 }
 
 func (cm *ControllerManager) StopServer() {
-	// stop background tasks - task scheduler
+	// stop background tasks
 	if cm.cancelRoutinesFunc != nil {
 		cm.cancelRoutinesFunc()
 	}

@@ -24,6 +24,7 @@ import (
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	artifactspec "github.com/oras-project/artifacts-spec/specs-go/v1"
+	"github.com/sigstore/cosign/v2/cmd/cosign/cli/attach"
 	"github.com/sigstore/cosign/v2/cmd/cosign/cli/generate"
 	"github.com/sigstore/cosign/v2/cmd/cosign/cli/options"
 	"github.com/sigstore/cosign/v2/cmd/cosign/cli/sign"
@@ -36,11 +37,10 @@ import (
 	"zotregistry.io/zot/pkg/api/config"
 	"zotregistry.io/zot/pkg/api/constants"
 	"zotregistry.io/zot/pkg/cli"
-	"zotregistry.io/zot/pkg/common"
 	extconf "zotregistry.io/zot/pkg/extensions/config"
 	syncconf "zotregistry.io/zot/pkg/extensions/config/sync"
 	"zotregistry.io/zot/pkg/extensions/sync"
-	logger "zotregistry.io/zot/pkg/log"
+	"zotregistry.io/zot/pkg/meta/repodb"
 	"zotregistry.io/zot/pkg/meta/signatures"
 	storageConstants "zotregistry.io/zot/pkg/storage/constants"
 	"zotregistry.io/zot/pkg/test"
@@ -201,6 +201,7 @@ func makeDownstreamServer(
 	}
 	destConfig.Extensions.Sync = syncConfig
 	destConfig.Log.Output = path.Join(destDir, "sync.log")
+	destConfig.Log.Level = "debug"
 
 	dctlr := api.NewController(destConfig)
 
@@ -307,7 +308,6 @@ func TestORAS(t *testing.T) {
 		updateDuration, _ := time.ParseDuration("30m")
 
 		sctlr, srcBaseURL, srcDir, _, _ := makeUpstreamServer(t, false, false)
-
 		scm := test.NewControllerManager(sctlr)
 		scm.StartAndWait(sctlr.Config.HTTP.Port)
 		defer scm.StopServer()
@@ -497,7 +497,6 @@ func TestORAS(t *testing.T) {
 func TestOnDemand(t *testing.T) {
 	Convey("Verify sync on demand feature", t, func() {
 		sctlr, srcBaseURL, _, _, srcClient := makeUpstreamServer(t, false, false)
-
 		scm := test.NewControllerManager(sctlr)
 		scm.StartAndWait(sctlr.Config.HTTP.Port)
 		defer scm.StopServer()
@@ -523,112 +522,180 @@ func TestOnDemand(t *testing.T) {
 			OnDemand:  true,
 		}
 
-		defaultVal := true
-		syncConfig := &syncconf.Config{
-			Enable:     &defaultVal,
-			Registries: []syncconf.RegistryConfig{syncRegistryConfig},
-		}
+		Convey("Verify sync on demand feature with one registryConfig", func() {
+			defaultVal := true
+			syncConfig := &syncconf.Config{
+				Enable:     &defaultVal,
+				Registries: []syncconf.RegistryConfig{syncRegistryConfig},
+			}
 
-		dctlr, destBaseURL, destDir, destClient := makeDownstreamServer(t, false, syncConfig)
+			dctlr, destBaseURL, destDir, destClient := makeDownstreamServer(t, false, syncConfig)
 
-		dcm := test.NewControllerManager(dctlr)
-		dcm.StartAndWait(dctlr.Config.HTTP.Port)
-		defer dcm.StopServer()
+			dcm := test.NewControllerManager(dctlr)
+			dcm.StartAndWait(dctlr.Config.HTTP.Port)
+			defer dcm.StopServer()
 
-		var srcTagsList TagsList
-		var destTagsList TagsList
+			var srcTagsList TagsList
+			var destTagsList TagsList
 
-		resp, _ := srcClient.R().Get(srcBaseURL + "/v2/" + testImage + "/tags/list")
-		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+			resp, _ := srcClient.R().Get(srcBaseURL + "/v2/" + testImage + "/tags/list")
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
-		err := json.Unmarshal(resp.Body(), &srcTagsList)
-		if err != nil {
-			panic(err)
-		}
+			err := json.Unmarshal(resp.Body(), &srcTagsList)
+			if err != nil {
+				panic(err)
+			}
 
-		resp, err = destClient.R().Get(destBaseURL + "/v2/" + "inexistent" + "/manifests/" + testImageTag)
-		So(err, ShouldBeNil)
-		So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
+			resp, err = destClient.R().Get(destBaseURL + "/v2/" + "inexistent" + "/manifests/" + testImageTag)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
 
-		resp, err = destClient.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + "inexistent")
-		So(err, ShouldBeNil)
-		So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
+			resp, err = destClient.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + "inexistent")
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
 
-		err = os.Chmod(path.Join(destDir, testImage), 0o000)
-		if err != nil {
-			panic(err)
-		}
+			err = os.MkdirAll(path.Join(destDir, testImage), 0o000)
+			if err != nil {
+				panic(err)
+			}
 
-		resp, err = destClient.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
-		So(err, ShouldBeNil)
-		So(resp.StatusCode(), ShouldEqual, http.StatusInternalServerError)
+			resp, err = destClient.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusInternalServerError)
 
-		err = os.Chmod(path.Join(destDir, testImage), 0o755)
-		if err != nil {
-			panic(err)
-		}
+			err = os.Chmod(path.Join(destDir, testImage), 0o755)
+			if err != nil {
+				panic(err)
+			}
 
-		resp, err = destClient.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + "1.1.1")
-		So(err, ShouldBeNil)
-		So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
+			resp, err = destClient.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + "1.1.1")
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
 
-		err = os.Chmod(path.Join(destDir, testImage, sync.SyncBlobUploadDir), 0o000)
-		if err != nil {
-			panic(err)
-		}
+			err = os.MkdirAll(path.Join(destDir, testImage, sync.SyncBlobUploadDir), 0o000)
+			if err != nil {
+				panic(err)
+			}
 
-		resp, err = destClient.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + "1.1.1")
-		So(err, ShouldBeNil)
-		So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
+			resp, err = destClient.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + "1.1.1")
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
 
-		resp, err = destClient.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
-		So(err, ShouldBeNil)
-		So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
+			resp, err = destClient.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
 
-		err = os.Chmod(path.Join(destDir, testImage, sync.SyncBlobUploadDir), 0o755)
-		if err != nil {
-			panic(err)
-		}
+			err = os.Chmod(path.Join(destDir, testImage, sync.SyncBlobUploadDir), 0o755)
+			if err != nil {
+				panic(err)
+			}
 
-		err = os.MkdirAll(path.Join(destDir, testImage, "blobs"), 0o000)
-		if err != nil {
-			panic(err)
-		}
+			err = os.MkdirAll(path.Join(destDir, testImage, "blobs"), 0o000)
+			if err != nil {
+				panic(err)
+			}
 
-		resp, err = destClient.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
-		So(err, ShouldBeNil)
-		So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
+			resp, err = destClient.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
 
-		err = os.Chmod(path.Join(destDir, testImage, "blobs"), 0o755)
-		if err != nil {
-			panic(err)
-		}
+			err = os.Chmod(path.Join(destDir, testImage, "blobs"), 0o755)
+			if err != nil {
+				panic(err)
+			}
 
-		resp, err = destClient.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
-		So(err, ShouldBeNil)
-		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+			resp, err = destClient.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
-		resp, err = destClient.R().Get(destBaseURL + "/v2/" + testImage + "/tags/list")
-		So(err, ShouldBeNil)
-		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+			// for coverage, sync again
+			resp, err = destClient.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
-		err = json.Unmarshal(resp.Body(), &destTagsList)
-		if err != nil {
-			panic(err)
-		}
+			resp, err = destClient.R().Get(destBaseURL + "/v2/" + testImage + "/tags/list")
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
-		So(destTagsList, ShouldResemble, srcTagsList)
+			err = json.Unmarshal(resp.Body(), &destTagsList)
+			if err != nil {
+				panic(err)
+			}
 
-		// trigger canSkipImage error
-		err = os.Chmod(path.Join(destDir, testImage, "index.json"), 0o000)
-		if err != nil {
-			panic(err)
-		}
+			So(destTagsList, ShouldResemble, srcTagsList)
 
-		resp, err = destClient.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
-		So(err, ShouldBeNil)
-		So(resp.StatusCode(), ShouldEqual, http.StatusInternalServerError)
+			// trigger canSkipImage error
+			err = os.Chmod(path.Join(destDir, testImage, "index.json"), 0o000)
+			if err != nil {
+				panic(err)
+			}
+
+			resp, err = destClient.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusInternalServerError)
+		})
+		Convey("Verify sync on demand feature with multiple registryConfig", func() {
+			// make a new upstream server
+			sctlr, newSrcBaseURL, srcDir, _, srcClient := makeUpstreamServer(t, false, false)
+			scm := test.NewControllerManager(sctlr)
+			scm.StartAndWait(sctlr.Config.HTTP.Port)
+			defer scm.StopServer()
+
+			// remove remote testImage
+			err := os.RemoveAll(path.Join(srcDir, testImage))
+			So(err, ShouldBeNil)
+
+			// new registryConfig with new server url
+			newRegistryConfig := syncRegistryConfig
+			newRegistryConfig.URLs = []string{newSrcBaseURL}
+			defaultVal := true
+			syncConfig := &syncconf.Config{
+				Enable:     &defaultVal,
+				Registries: []syncconf.RegistryConfig{newRegistryConfig, syncRegistryConfig},
+			}
+
+			dctlr, destBaseURL, _, destClient := makeDownstreamServer(t, false, syncConfig)
+
+			dcm := test.NewControllerManager(dctlr)
+			dcm.StartAndWait(dctlr.Config.HTTP.Port)
+			defer dcm.StopServer()
+
+			var srcTagsList TagsList
+			var destTagsList TagsList
+
+			resp, _ := srcClient.R().Get(srcBaseURL + "/v2/" + testImage + "/tags/list")
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+			err = json.Unmarshal(resp.Body(), &srcTagsList)
+			if err != nil {
+				panic(err)
+			}
+
+			resp, err = destClient.R().Get(destBaseURL + "/v2/" + "inexistent" + "/manifests/" + testImageTag)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
+
+			resp, err = destClient.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + "inexistent")
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
+
+			resp, err = destClient.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+			resp, err = destClient.R().Get(destBaseURL + "/v2/" + testImage + "/tags/list")
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+			err = json.Unmarshal(resp.Body(), &destTagsList)
+			if err != nil {
+				panic(err)
+			}
+
+			So(destTagsList, ShouldResemble, srcTagsList)
+		})
 	})
 
 	Convey("Sync on Demand errors", t, func() {
@@ -665,6 +732,9 @@ func TestOnDemand(t *testing.T) {
 			// sign using cosign
 			err = test.SignImageUsingCosign(fmt.Sprintf("remote-repo@%s", manifestDigest.String()), port)
 			So(err, ShouldBeNil)
+
+			// add cosign sbom
+			attachSBOM(rootDir, port, "remote-repo", manifestDigest)
 
 			// add OCI Ref
 			_ = pushBlob(srcBaseURL, "remote-repo", ispec.ScratchDescriptor.Data)
@@ -764,59 +834,40 @@ func TestOnDemand(t *testing.T) {
 			destConfig.Storage.GC = false
 
 			destConfig.Extensions = &extconf.ExtensionConfig{}
-			defVal := true
-			destConfig.Extensions.Search = &extconf.SearchConfig{
-				BaseConfig: extconf.BaseConfig{Enable: &defVal},
-			}
+
 			destConfig.Extensions.Sync = syncConfig
 
 			dctlr := api.NewController(destConfig)
-			dcm := test.NewControllerManager(dctlr)
-			dcm.StartAndWait(destPort)
-
-			// repodb fails for syncOCIRefs
-
-			dctlr.RepoDB = mocks.RepoDBMock{
-				SetRepoReferenceFn: func(repo, Reference string, manifestDigest godigest.Digest, mediaType string) error {
-					if mediaType == ispec.MediaTypeImageManifest {
-						return sync.ErrTestError
-					}
-
-					return nil
-				},
-			}
-
-			resp, err = resty.R().Get(destBaseURL + "/v2/remote-repo/manifests/test")
-			So(err, ShouldBeNil)
-			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
 			// repodb fails for syncCosignSignature"
-
 			dctlr.RepoDB = mocks.RepoDBMock{
-				SetRepoReferenceFn: func(repo, reference string, manifestDigest godigest.Digest, mediaType string) error {
-					if strings.HasPrefix(reference, "sha256") || strings.HasSuffix(reference, ".sig") {
+				AddManifestSignatureFn: func(repo string, signedManifestDigest godigest.Digest,
+					sm repodb.SignatureMetadata,
+				) error {
+					if sm.SignatureType == signatures.CosignSignature || sm.SignatureType == signatures.NotationSignature {
 						return sync.ErrTestError
 					}
 
 					return nil
 				},
-			}
-
-			resp, err = resty.R().Get(destBaseURL + "/v2/remote-repo/manifests/test")
-			So(err, ShouldBeNil)
-			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
-
-			// repodb fails for getORASRefs
-
-			dctlr.RepoDB = mocks.RepoDBMock{
-				SetRepoReferenceFn: func(repo, Reference string, manifestDigest godigest.Digest, mediaType string) error {
-					if mediaType == artifactspec.MediaTypeArtifactManifest {
+				SetRepoReferenceFn: func(repo, reference string, manifestDigest godigest.Digest,
+					mediaType string,
+				) error {
+					if strings.HasPrefix(reference, "sha256-") &&
+						(strings.HasSuffix(reference, remote.SignatureTagSuffix) ||
+							strings.HasSuffix(reference, remote.SBOMTagSuffix)) ||
+						strings.HasPrefix(reference, "sha256:") {
 						return sync.ErrTestError
 					}
 
+					// don't return err for normal image with tag
 					return nil
 				},
 			}
+
+			dcm := test.NewControllerManager(dctlr)
+			dcm.StartAndWait(destPort)
+			defer dcm.StopServer()
 
 			resp, err = resty.R().Get(destBaseURL + "/v2/remote-repo/manifests/test")
 			So(err, ShouldBeNil)
@@ -1151,7 +1202,7 @@ func TestPermsDenied(t *testing.T) {
 		dcm.StartAndWait(destPort)
 
 		found, err := test.ReadLogFileAndSearchString(dctlr.Config.Log.Output,
-			"couldn't get localCachePath for ", 15*time.Second)
+			"couldn't get a local image reference", 20*time.Second)
 		if err != nil {
 			panic(err)
 		}
@@ -1180,15 +1231,17 @@ func TestPermsDenied(t *testing.T) {
 
 func TestConfigReloader(t *testing.T) {
 	Convey("Verify periodically sync config reloader works", t, func() {
-		duration, _ := time.ParseDuration("3s")
-
-		sctlr, srcBaseURL, _, _, _ := makeUpstreamServer(t, false, false)
+		sctlr, srcBaseURL, srcDir, _, _ := makeUpstreamServer(t, false, false)
+		defer os.RemoveAll(srcDir)
 
 		scm := test.NewControllerManager(sctlr)
 		scm.StartAndWait(sctlr.Config.HTTP.Port)
 		defer scm.StopServer()
 
+		duration, _ := time.ParseDuration("3s")
+
 		var tlsVerify bool
+		defaultVal := true
 
 		syncRegistryConfig := syncconf.RegistryConfig{
 			Content: []syncconf.Content{
@@ -1203,7 +1256,6 @@ func TestConfigReloader(t *testing.T) {
 			OnDemand:     true,
 		}
 
-		defaultVal := true
 		syncConfig := &syncconf.Config{
 			Enable:     &defaultVal,
 			Registries: []syncconf.RegistryConfig{syncRegistryConfig},
@@ -1238,62 +1290,158 @@ func TestConfigReloader(t *testing.T) {
 
 		defer dcm.StopServer()
 
-		content := fmt.Sprintf(`{"distSpecVersion": "1.1.0-dev", "storage": {"rootDirectory": "%s"},
-		"http": {"address": "127.0.0.1", "port": "%s"},
-		"log": {"level": "debug", "output": "%s"}}`, destDir, destPort, logFile.Name())
+		//nolint: dupl
+		Convey("Reload config without sync", func() {
+			content := fmt.Sprintf(`{"distSpecVersion": "1.1.0-dev", "storage": {"rootDirectory": "%s"},
+			"http": {"address": "127.0.0.1", "port": "%s"},
+			"log": {"level": "debug", "output": "%s"}}`, destDir, destPort, logFile.Name())
 
-		cfgfile, err := os.CreateTemp("", "zot-test*.json")
-		So(err, ShouldBeNil)
+			cfgfile, err := os.CreateTemp("", "zot-test*.json")
+			So(err, ShouldBeNil)
 
-		defer os.Remove(cfgfile.Name()) // clean up
+			defer os.Remove(cfgfile.Name()) // clean up
 
-		_, err = cfgfile.Write([]byte(content))
-		So(err, ShouldBeNil)
+			_, err = cfgfile.Write([]byte(content))
+			So(err, ShouldBeNil)
 
-		hotReloader, err := cli.NewHotReloader(dctlr, cfgfile.Name())
-		So(err, ShouldBeNil)
+			hotReloader, err := cli.NewHotReloader(dctlr, cfgfile.Name())
+			So(err, ShouldBeNil)
 
-		reloadCtx := hotReloader.Start()
+			reloadCtx := hotReloader.Start()
 
-		go func() {
-			// this blocks
-			if err := dctlr.Init(reloadCtx); err != nil {
-				return
+			go func() {
+				// this blocks
+				if err := dctlr.Init(reloadCtx); err != nil {
+					return
+				}
+
+				if err := dctlr.Run(reloadCtx); err != nil {
+					return
+				}
+			}()
+
+			// wait till ready
+			for {
+				_, err := resty.R().Get(destBaseURL)
+				if err == nil {
+					break
+				}
+
+				time.Sleep(100 * time.Millisecond)
 			}
 
-			if err := dctlr.Run(reloadCtx); err != nil {
-				return
+			// let it sync
+			time.Sleep(3 * time.Second)
+
+			// modify config
+			_, err = cfgfile.WriteString(" ")
+			So(err, ShouldBeNil)
+
+			err = cfgfile.Close()
+			So(err, ShouldBeNil)
+
+			time.Sleep(2 * time.Second)
+
+			data, err := os.ReadFile(logFile.Name())
+			t.Logf("downstream log: %s", string(data))
+			So(err, ShouldBeNil)
+			So(string(data), ShouldContainSubstring, "reloaded params")
+			So(string(data), ShouldContainSubstring, "new configuration settings")
+			So(string(data), ShouldContainSubstring, "\"Extensions\":null")
+		})
+
+		//nolint: dupl
+		Convey("Reload bad sync config", func() {
+			content := fmt.Sprintf(`{
+				"distSpecVersion": "1.1.0-dev",
+				"storage": {
+					"rootDirectory": "%s"
+				},
+				"http": {
+					"address": "127.0.0.1",
+					"port": "%s"
+				},
+				"log": {
+					"level": "debug",
+					"output": "%s"
+				},
+				"extensions": {
+					"sync": {
+						"registries": [{
+							"urls": ["%%"],
+							"tlsVerify": false,
+							"onDemand": false,
+							"PollInterval": "1s",
+							"maxRetries": 3,
+							"retryDelay": "15m",
+							"certDir": "",
+							"content":[
+								{
+									"prefix": "zot-test",
+									"tags": {
+										"regex": ".*",
+										"semver": true
+									}
+								}
+							]
+						}]
+					}
+				}
+			}`, destDir, destPort, logFile.Name())
+
+			cfgfile, err := os.CreateTemp("", "zot-test*.json")
+			So(err, ShouldBeNil)
+
+			defer os.Remove(cfgfile.Name()) // clean up
+
+			_, err = cfgfile.Write([]byte(content))
+			So(err, ShouldBeNil)
+
+			hotReloader, err := cli.NewHotReloader(dctlr, cfgfile.Name())
+			So(err, ShouldBeNil)
+
+			reloadCtx := hotReloader.Start()
+
+			go func() {
+				// this blocks
+				if err := dctlr.Init(reloadCtx); err != nil {
+					return
+				}
+
+				if err := dctlr.Run(reloadCtx); err != nil {
+					return
+				}
+			}()
+
+			// wait till ready
+			for {
+				_, err := resty.R().Get(destBaseURL)
+				if err == nil {
+					break
+				}
+
+				time.Sleep(100 * time.Millisecond)
 			}
-		}()
 
-		// wait till ready
-		for {
-			_, err := resty.R().Get(destBaseURL)
-			if err == nil {
-				break
-			}
+			// let it sync
+			time.Sleep(3 * time.Second)
 
-			time.Sleep(100 * time.Millisecond)
-		}
+			// modify config
+			_, err = cfgfile.WriteString(" ")
+			So(err, ShouldBeNil)
 
-		// let it sync
-		time.Sleep(3 * time.Second)
+			err = cfgfile.Close()
+			So(err, ShouldBeNil)
 
-		// modify config
-		_, err = cfgfile.WriteString(" ")
-		So(err, ShouldBeNil)
+			time.Sleep(2 * time.Second)
 
-		err = cfgfile.Close()
-		So(err, ShouldBeNil)
-
-		time.Sleep(2 * time.Second)
-
-		data, err := os.ReadFile(logFile.Name())
-		So(err, ShouldBeNil)
-		t.Logf("downstream log: %s", string(data))
-		So(string(data), ShouldContainSubstring, "reloaded params")
-		So(string(data), ShouldContainSubstring, "new configuration settings")
-		So(string(data), ShouldContainSubstring, "\"Sync\":null")
+			data, err := os.ReadFile(logFile.Name())
+			t.Logf("downstream log: %s", string(data))
+			So(err, ShouldBeNil)
+			So(string(data), ShouldContainSubstring, "unable to start sync extension")
+			So(string(data), ShouldContainSubstring, "\"TLSVerify\":false")
+			So(string(data), ShouldContainSubstring, "\"OnDemand\":false")
+		})
 	})
 }
 
@@ -1711,7 +1859,7 @@ func TestBasicAuth(t *testing.T) {
 			defer dcm.StopServer()
 
 			found, err := test.ReadLogFileAndSearchString(dctlr.Config.Log.Output,
-				"status code\":\"401", 15*time.Second)
+				"authentication required", 15*time.Second)
 			if err != nil {
 				panic(err)
 			}
@@ -1815,9 +1963,11 @@ func TestBasicAuth(t *testing.T) {
 			registryName := sync.StripRegistryTransport(srcBaseURL)
 			credentialsFile := makeCredentialsFile(fmt.Sprintf(`{"%s":{"username": "test", "password": "test"}}`, registryName))
 
+			defaultValue := false
 			syncRegistryConfig := syncconf.RegistryConfig{
-				URLs:     []string{srcBaseURL},
-				OnDemand: true,
+				URLs:      []string{srcBaseURL},
+				TLSVerify: &defaultValue,
+				OnDemand:  true,
 			}
 
 			unreacheableSyncRegistryConfig1 := syncconf.RegistryConfig{
@@ -2140,57 +2290,6 @@ func TestNotSemver(t *testing.T) {
 	})
 }
 
-func TestErrorOnCatalog(t *testing.T) {
-	Convey("Verify error on catalog", t, func() {
-		updateDuration, _ := time.ParseDuration("1h")
-
-		sctlr, srcBaseURL, destDir, _, _ := makeUpstreamServer(t, true, false)
-
-		scm := test.NewControllerManager(sctlr)
-		scm.StartAndWait(sctlr.Config.HTTP.Port)
-		defer scm.StopServer()
-
-		err := os.Chmod(destDir, 0o000)
-		So(err, ShouldBeNil)
-
-		tlsVerify := false
-
-		syncRegistryConfig := syncconf.RegistryConfig{
-			Content: []syncconf.Content{
-				{
-					Prefix: testImage,
-				},
-			},
-			URLs:         []string{srcBaseURL},
-			PollInterval: updateDuration,
-			TLSVerify:    &tlsVerify,
-			OnDemand:     true,
-		}
-
-		defaultVal := true
-		syncConfig := &syncconf.Config{
-			Enable:     &defaultVal,
-			Registries: []syncconf.RegistryConfig{syncRegistryConfig},
-		}
-
-		dctlr, _, _, _ := makeDownstreamServer(t, false, syncConfig)
-
-		dcm := test.NewControllerManager(dctlr)
-		dcm.StartAndWait(dctlr.Config.HTTP.Port)
-		defer dcm.StopServer()
-
-		httpClient, err := common.CreateHTTPClient(*syncRegistryConfig.TLSVerify, "localhost", "")
-		So(httpClient, ShouldNotBeNil)
-		So(err, ShouldBeNil)
-
-		_, err = sync.GetUpstreamCatalog(httpClient, srcBaseURL, "", "", logger.NewLogger("", ""))
-		So(err, ShouldNotBeNil)
-
-		err = os.Chmod(destDir, 0o755)
-		So(err, ShouldBeNil)
-	})
-}
-
 func TestInvalidCerts(t *testing.T) {
 	Convey("Verify sync with bad certs", t, func() {
 		updateDuration, _ := time.ParseDuration("1h")
@@ -2255,7 +2354,6 @@ func TestInvalidCerts(t *testing.T) {
 		}
 
 		dctlr, destBaseURL, _, destClient := makeDownstreamServer(t, false, syncConfig)
-
 		dcm := test.NewControllerManager(dctlr)
 		dcm.StartAndWait(dctlr.Config.HTTP.Port)
 		defer dcm.StopServer()
@@ -2269,13 +2367,6 @@ func TestInvalidCerts(t *testing.T) {
 func TestCertsWithWrongPerms(t *testing.T) {
 	Convey("Verify sync with wrong permissions on certs", t, func() {
 		updateDuration, _ := time.ParseDuration("1h")
-
-		sctlr, srcBaseURL, _, _, _ := makeUpstreamServer(t, true, false)
-
-		scm := test.NewControllerManager(sctlr)
-		scm.StartAndWait(sctlr.Config.HTTP.Port)
-		defer scm.StopServer()
-
 		// copy client certs, use them in sync config
 		clientCertDir := t.TempDir()
 
@@ -2308,7 +2399,7 @@ func TestCertsWithWrongPerms(t *testing.T) {
 					Prefix: testImage,
 				},
 			},
-			URLs:         []string{srcBaseURL},
+			URLs:         []string{"http://localhost:9999"},
 			PollInterval: updateDuration,
 			TLSVerify:    &tlsVerify,
 			CertDir:      clientCertDir,
@@ -2320,6 +2411,19 @@ func TestCertsWithWrongPerms(t *testing.T) {
 			Enable:     &defaultVal,
 			Registries: []syncconf.RegistryConfig{syncRegistryConfig},
 		}
+
+		// can't create http client because of no perms on ca cert
+		destPort := test.GetFreePort()
+		destConfig := config.New()
+		destConfig.HTTP.Port = destPort
+
+		destDir := t.TempDir()
+
+		destConfig.Storage.RootDirectory = destDir
+
+		destConfig.Extensions = &extconf.ExtensionConfig{}
+		destConfig.Extensions.Search = nil
+		destConfig.Extensions.Sync = syncConfig
 
 		dctlr, destBaseURL, _, destClient := makeDownstreamServer(t, false, syncConfig)
 
@@ -2940,13 +3044,12 @@ func TestPeriodicallySignaturesErr(t *testing.T) {
 			So(err, ShouldBeNil)
 
 			dctlr, destBaseURL, _, _ := makeDownstreamServer(t, false, syncConfig)
-
 			dcm := test.NewControllerManager(dctlr)
 			dcm.StartAndWait(dctlr.Config.HTTP.Port)
 			defer dcm.StopServer()
 
 			found, err := test.ReadLogFileAndSearchString(dctlr.Config.Log.Output,
-				"finished syncing", 15*time.Second)
+				"finished syncing all repos", 15*time.Second)
 			if err != nil {
 				panic(err)
 			}
@@ -2994,7 +3097,7 @@ func TestPeriodicallySignaturesErr(t *testing.T) {
 			defer dcm.StopServer()
 
 			found, err := test.ReadLogFileAndSearchString(dctlr.Config.Log.Output,
-				"finished syncing", 15*time.Second)
+				"finished syncing all repos", 15*time.Second)
 			if err != nil {
 				panic(err)
 			}
@@ -3012,6 +3115,11 @@ func TestPeriodicallySignaturesErr(t *testing.T) {
 			resp, err := resty.R().Get(destBaseURL + "/v2/" + repoName + "/manifests/" + cosignTag)
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
+
+			data, err := os.ReadFile(dctlr.Config.Log.Output)
+			So(err, ShouldBeNil)
+
+			t.Logf("downstream log: %s", string(data))
 		})
 
 		Convey("Trigger error on notary signature", func() {
@@ -3058,7 +3166,7 @@ func TestPeriodicallySignaturesErr(t *testing.T) {
 			defer dcm.StopServer()
 
 			found, err := test.ReadLogFileAndSearchString(dctlr.Config.Log.Output,
-				"finished syncing", 15*time.Second)
+				"finished syncing all repos", 15*time.Second)
 			if err != nil {
 				panic(err)
 			}
@@ -3132,7 +3240,7 @@ func TestPeriodicallySignaturesErr(t *testing.T) {
 				defer dcm.StopServer()
 
 				found, err := test.ReadLogFileAndSearchString(dctlr.Config.Log.Output,
-					"couldn't copy referrer for", 15*time.Second)
+					"couldn't sync image referrer", 15*time.Second)
 				if err != nil {
 					panic(err)
 				}
@@ -3185,7 +3293,7 @@ func TestPeriodicallySignaturesErr(t *testing.T) {
 				defer dcm.StopServer()
 
 				found, err := test.ReadLogFileAndSearchString(dctlr.Config.Log.Output,
-					"couldn't copy referrer for", 15*time.Second)
+					"couldn't sync image referrer", 15*time.Second)
 				if err != nil {
 					panic(err)
 				}
@@ -3243,14 +3351,18 @@ func TestSignatures(t *testing.T) {
 
 		So(func() { signImage(tdir, srcPort, repoName, digest) }, ShouldNotPanic)
 
+		// attach sbom
+		attachSBOM(srcDir, sctlr.Config.HTTP.Port, repoName, digest)
+
 		regex := ".*"
 		var semver bool
 		var tlsVerify bool
+		onlySigned := true
 
 		syncRegistryConfig := syncconf.RegistryConfig{
 			Content: []syncconf.Content{
 				{
-					Prefix: repoName,
+					Prefix: "**",
 					Tags: &syncconf.Tags{
 						Regex:  &regex,
 						Semver: &semver,
@@ -3261,6 +3373,7 @@ func TestSignatures(t *testing.T) {
 			PollInterval: updateDuration,
 			TLSVerify:    &tlsVerify,
 			CertDir:      "",
+			OnlySigned:   &onlySigned,
 			OnDemand:     true,
 		}
 
@@ -3311,10 +3424,6 @@ func TestSignatures(t *testing.T) {
 		// notation verify the image
 		image := fmt.Sprintf("localhost:%s/%s:%s", destPort, repoName, testImageTag)
 
-		err = test.VerifyWithNotation(image, tdir)
-		So(err, ShouldBeNil)
-
-		// cosign verify the image
 		vrfy := verify.VerifyCommand{
 			RegistryOptions: options.RegistryOptions{AllowInsecure: true},
 			CheckClaims:     true,
@@ -3323,16 +3432,20 @@ func TestSignatures(t *testing.T) {
 			IgnoreTlog:      true,
 		}
 
+		// notation verify signed image
+		err = test.VerifyWithNotation(image, tdir)
+		So(err, ShouldBeNil)
+
+		// cosign verify signed image
 		err = vrfy.Exec(context.TODO(), []string{fmt.Sprintf("localhost:%s/%s:%s", destPort, repoName, testImageTag)})
 		So(err, ShouldBeNil)
 
 		// get oci references from downstream, should be synced
-		getOCIReferrersURL := srcBaseURL + path.Join("/v2", repoName, "referrers", digest.String())
-
+		getOCIReferrersURL := destBaseURL + path.Join("/v2", repoName, "referrers", digest.String())
 		resp, err := resty.R().Get(getOCIReferrersURL)
-
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeEmpty)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
 		var index ispec.Index
 
@@ -3340,6 +3453,14 @@ func TestSignatures(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		So(len(index.Manifests), ShouldEqual, 3)
+
+		// get cosign sbom
+		sbomCosignTag := string(digest.Algorithm()) + "-" + digest.Encoded() +
+			"." + remote.SBOMTagSuffix
+		resp, err = resty.R().Get(destBaseURL + path.Join("/v2/", repoName, "manifests", sbomCosignTag))
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeEmpty)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
 		// test negative cases (trigger errors)
 		// test notary signatures errors
@@ -3815,11 +3936,6 @@ func TestOnDemandRetryGoroutine(t *testing.T) {
 		resp, err = destClient.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
-
-		data, err := os.ReadFile(dctlr.Config.Log.Output)
-		So(err, ShouldBeNil)
-
-		t.Logf("downstream log: %s", string(data))
 	})
 }
 
@@ -3939,7 +4055,7 @@ func TestOnDemandRetryGoroutineErr(t *testing.T) {
 	})
 }
 
-func TestOnDemandMultipleRetries(t *testing.T) {
+func TestOnDemandMultipleImage(t *testing.T) {
 	Convey("Verify ondemand sync retries in background on error, multiple calls should spawn one routine", t, func() {
 		srcPort := test.GetFreePort()
 		srcConfig := config.New()
@@ -3977,6 +4093,7 @@ func TestOnDemandMultipleRetries(t *testing.T) {
 		}
 
 		dctlr, destBaseURL, destDir, destClient := makeDownstreamServer(t, false, syncConfig)
+		defer os.RemoveAll(destDir)
 
 		dcm := test.NewControllerManager(dctlr)
 		dcm.StartAndWait(dctlr.Config.HTTP.Port)
@@ -4086,26 +4203,26 @@ func TestOnDemandPullsOnce(t *testing.T) {
 
 		wg.Add(1)
 		go func(conv C) {
+			defer wg.Done()
 			resp, err := resty.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
 			conv.So(err, ShouldBeNil)
 			conv.So(resp.StatusCode(), ShouldEqual, http.StatusOK)
-			wg.Done()
 		}(conv)
 
 		wg.Add(1)
 		go func(conv C) {
+			defer wg.Done()
 			resp, err := resty.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
 			conv.So(err, ShouldBeNil)
 			conv.So(resp.StatusCode(), ShouldEqual, http.StatusOK)
-			wg.Done()
 		}(conv)
 
 		wg.Add(1)
 		go func(conv C) {
+			defer wg.Done()
 			resp, err := resty.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
 			conv.So(err, ShouldBeNil)
 			conv.So(resp.StatusCode(), ShouldEqual, http.StatusOK)
-			wg.Done()
 		}(conv)
 
 		done := make(chan bool)
@@ -4174,7 +4291,7 @@ func TestError(t *testing.T) {
 			Registries: []syncconf.RegistryConfig{syncRegistryConfig},
 		}
 
-		dctlr, destBaseURL, destDir, client := makeDownstreamServer(t, false, syncConfig)
+		dctlr, _, destDir, _ := makeDownstreamServer(t, false, syncConfig)
 
 		dcm := test.NewControllerManager(dctlr)
 		dcm.StartAndWait(dctlr.Config.HTTP.Port)
@@ -4193,12 +4310,8 @@ func TestError(t *testing.T) {
 			So(err, ShouldBeNil)
 		}()
 
-		resp, err := client.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
-		So(err, ShouldBeNil)
-		So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
-
 		found, err := test.ReadLogFileAndSearchString(dctlr.Config.Log.Output,
-			"finished syncing", 15*time.Second)
+			"finished syncing all repos", 15*time.Second)
 		if err != nil {
 			panic(err)
 		}
@@ -4448,21 +4561,6 @@ func TestSignaturesOnDemand(t *testing.T) {
 		}
 
 		So(found, ShouldBeTrue)
-
-		found, err = test.ReadLogFileAndSearchString(dctlr.Config.Log.Output,
-			"couldn't find upstream referrer", 15*time.Second)
-		if err != nil {
-			panic(err)
-		}
-
-		if !found {
-			data, err := os.ReadFile(dctlr.Config.Log.Output)
-			So(err, ShouldBeNil)
-
-			t.Logf("downstream log: %s", string(data))
-		}
-
-		So(found, ShouldBeTrue)
 	})
 }
 
@@ -4647,7 +4745,7 @@ func TestSyncOnlyDiff(t *testing.T) {
 		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
 		found, err := test.ReadLogFileAndSearchString(dctlr.Config.Log.Output,
-			"already synced image", 15*time.Second)
+			"skipping image because it's already synced", 15*time.Second)
 		if err != nil {
 			panic(err)
 		}
@@ -5016,7 +5114,7 @@ func TestSyncSignaturesDiff(t *testing.T) {
 		So(reflect.DeepEqual(cosignManifest, syncedCosignManifest), ShouldEqual, true)
 
 		found, err := test.ReadLogFileAndSearchString(dctlr.Config.Log.Output,
-			"skipping cosign signature", 15*time.Second)
+			"skipping syncing cosign signature", 15*time.Second)
 		if err != nil {
 			panic(err)
 		}
@@ -5098,7 +5196,7 @@ func TestOnlySignedFlag(t *testing.T) {
 		defer dcm.StopServer()
 
 		found, err := test.ReadLogFileAndSearchString(dctlr.Config.Log.Output,
-			"skipping image without signature", 15*time.Second)
+			"skipping image without mandatory signature", 15*time.Second)
 		if err != nil {
 			panic(err)
 		}
@@ -5147,7 +5245,6 @@ func TestSyncWithDestination(t *testing.T) {
 		testCases := []struct {
 			content  syncconf.Content
 			expected string
-			repo     string
 		}{
 			{
 				expected: "zot-test/zot-fold/zot-test",
@@ -5183,24 +5280,7 @@ func TestSyncWithDestination(t *testing.T) {
 			},
 		}
 
-		srcPort := test.GetFreePort()
-		srcConfig := config.New()
-		srcBaseURL := test.GetBaseURL(srcPort)
-
-		srcConfig.HTTP.Port = srcPort
-
-		srcDir := t.TempDir()
-
-		srcConfig.Storage.RootDirectory = srcDir
-		defVal := true
-		srcConfig.Extensions = &extconf.ExtensionConfig{}
-		srcConfig.Extensions.Search = &extconf.SearchConfig{
-			BaseConfig: extconf.BaseConfig{Enable: &defVal},
-		}
-
-		sctlr := api.NewController(srcConfig)
-
-		test.CopyTestFiles("../../../test/data", srcDir)
+		sctlr, srcBaseURL, _, _, _ := makeUpstreamServer(t, false, false)
 
 		err := os.MkdirAll(path.Join(sctlr.Config.Storage.RootDirectory, "/zot-fold"), storageConstants.DefaultDirPerms)
 		So(err, ShouldBeNil)
@@ -5213,11 +5293,11 @@ func TestSyncWithDestination(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		scm := test.NewControllerManager(sctlr)
-		scm.StartAndWait(srcPort)
+		scm.StartAndWait(sctlr.Config.HTTP.Port)
 		defer scm.StopServer()
 
 		splittedURL := strings.SplitAfter(srcBaseURL, ":")
-		srcPort = splittedURL[len(splittedURL)-1]
+		srcPort := splittedURL[len(splittedURL)-1]
 
 		cwd, err := os.Getwd()
 		So(err, ShouldBeNil)
@@ -5262,7 +5342,13 @@ func TestSyncWithDestination(t *testing.T) {
 				defer dcm.StopServer()
 
 				// give it time to set up sync
-				waitSyncFinish(dctlr.Config.Log.Output)
+				found, err := test.ReadLogFileAndSearchString(dctlr.Config.Log.Output,
+					"finished syncing repo", 60*time.Second)
+				if err != nil {
+					panic(err)
+				}
+
+				So(found, ShouldBeTrue)
 
 				resp, err := destClient.R().Get(destBaseURL + "/v2/" + testCase.expected + "/manifests/0.0.1")
 				t.Logf("testcase: %#v", testCase)
@@ -5513,6 +5599,23 @@ func generateKeyPairs(tdir string) {
 	test.LoadNotationPath(tdir)
 
 	err := test.GenerateNotationCerts(tdir, "good")
+	if err != nil {
+		panic(err)
+	}
+}
+
+func attachSBOM(tdir, port, repoName string, digest godigest.Digest) {
+	sbomFilePath := path.Join(tdir, "sbom.spdx")
+
+	err := os.WriteFile(sbomFilePath, []byte("sbom example"), storageConstants.DefaultFilePerms)
+	if err != nil {
+		panic(err)
+	}
+
+	err = attach.SBOMCmd(context.Background(), options.RegistryOptions{AllowInsecure: true},
+		options.RegistryExperimentalOptions{RegistryReferrersMode: options.RegistryReferrersModeLegacy},
+		sbomFilePath, "text/spdx", fmt.Sprintf("localhost:%s/%s@%s", port, repoName, digest.String()),
+	)
 	if err != nil {
 		panic(err)
 	}
@@ -5820,7 +5923,7 @@ func pushBlob(url string, repoName string, buf []byte) godigest.Digest {
 
 func waitSyncFinish(logPath string) bool {
 	found, err := test.ReadLogFileAndSearchString(logPath,
-		"finished syncing", 60*time.Second)
+		"finished syncing all repos", 60*time.Second)
 	if err != nil {
 		panic(err)
 	}

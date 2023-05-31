@@ -44,7 +44,7 @@ func TestConfigReloader(t *testing.T) {
 		content := fmt.Sprintf(`{
 			"distSpecVersion": "1.1.0-dev",
 			"storage": {
-			  "rootDirectory": "/tmp/zot"
+			  "rootDirectory": "%s"
 			},
 			"http": {
 			  "address": "127.0.0.1",
@@ -65,7 +65,7 @@ func TestConfigReloader(t *testing.T) {
 					  	"actions": ["read"]
 						}
 				  	],
-				  	"defaultPolicy": ["read", "create"] 
+				  	"defaultPolicy": ["read", "create"]
 					}
 				},
 				"adminPolicy": {
@@ -78,7 +78,7 @@ func TestConfigReloader(t *testing.T) {
 			  "level": "debug",
 			  "output": "%s"
 			}
-		  }`, port, htpasswdPath, logFile.Name())
+		  }`, t.TempDir(), port, htpasswdPath, logFile.Name())
 
 		cfgfile, err := os.CreateTemp("", "zot-test*.json")
 		So(err, ShouldBeNil)
@@ -102,7 +102,7 @@ func TestConfigReloader(t *testing.T) {
 		content = fmt.Sprintf(`{
 			"distSpecVersion": "1.1.0-dev",
 			"storage": {
-			  "rootDirectory": "/tmp/zot"
+			  "rootDirectory": "%s"
 			},
 			"http": {
 			  "address": "127.0.0.1",
@@ -123,7 +123,7 @@ func TestConfigReloader(t *testing.T) {
 					  	"actions": ["read", "create", "update", "delete"]
 						}
 				  	],
-				  	"defaultPolicy": ["read"] 
+				  	"defaultPolicy": ["read"]
 					}
 				},
 				"adminPolicy": {
@@ -136,7 +136,7 @@ func TestConfigReloader(t *testing.T) {
 			  "level": "debug",
 			  "output": "%s"
 			}
-		}`, port, htpasswdPath, logFile.Name())
+		}`, t.TempDir(), port, htpasswdPath, logFile.Name())
 
 		err = cfgfile.Truncate(0)
 		So(err, ShouldBeNil)
@@ -155,8 +155,10 @@ func TestConfigReloader(t *testing.T) {
 
 		data, err := os.ReadFile(logFile.Name())
 		So(err, ShouldBeNil)
+
+		t.Logf("log file: %s", data)
 		So(string(data), ShouldContainSubstring, "reloaded params")
-		So(string(data), ShouldContainSubstring, "new configuration settings")
+		So(string(data), ShouldContainSubstring, "loaded new configuration settings")
 		So(string(data), ShouldContainSubstring, "\"Users\":[\"alice\"]")
 		So(string(data), ShouldContainSubstring, "\"Actions\":[\"read\",\"create\",\"update\",\"delete\"]")
 	})
@@ -173,7 +175,7 @@ func TestConfigReloader(t *testing.T) {
 		content := fmt.Sprintf(`{
 				"distSpecVersion": "1.1.0-dev",
 				"storage": {
-					"rootDirectory": "/tmp/zot"
+					"rootDirectory": "%s"
 				},
 				"http": {
 					"address": "127.0.0.1",
@@ -204,7 +206,7 @@ func TestConfigReloader(t *testing.T) {
 						}]
 					}
 				}
-			}`, port, logFile.Name())
+			}`, t.TempDir(), port, logFile.Name())
 
 		cfgfile, err := os.CreateTemp("", "zot-test*.json")
 		So(err, ShouldBeNil)
@@ -228,7 +230,7 @@ func TestConfigReloader(t *testing.T) {
 		content = fmt.Sprintf(`{
 			"distSpecVersion": "1.1.0-dev",
 			"storage": {
-				"rootDirectory": "/tmp/zot"
+				"rootDirectory": "%s"
 			},
 			"http": {
 				"address": "127.0.0.1",
@@ -259,7 +261,7 @@ func TestConfigReloader(t *testing.T) {
 					}]
 				}
 			}
-		}`, port, logFile.Name())
+		}`, t.TempDir(), port, logFile.Name())
 
 		err = cfgfile.Truncate(0)
 		So(err, ShouldBeNil)
@@ -278,8 +280,10 @@ func TestConfigReloader(t *testing.T) {
 
 		data, err := os.ReadFile(logFile.Name())
 		So(err, ShouldBeNil)
+		t.Logf("log file: %s", data)
+
 		So(string(data), ShouldContainSubstring, "reloaded params")
-		So(string(data), ShouldContainSubstring, "new configuration settings")
+		So(string(data), ShouldContainSubstring, "loaded new configuration settings")
 		So(string(data), ShouldContainSubstring, "\"URLs\":[\"http://localhost:9999\"]")
 		So(string(data), ShouldContainSubstring, "\"TLSVerify\":true")
 		So(string(data), ShouldContainSubstring, "\"OnDemand\":false")
@@ -289,6 +293,111 @@ func TestConfigReloader(t *testing.T) {
 		So(string(data), ShouldContainSubstring, "\"Prefix\":\"zot-cve-test\"")
 		So(string(data), ShouldContainSubstring, "\"Regex\":\"tag\"")
 		So(string(data), ShouldContainSubstring, "\"Semver\":false")
+	})
+
+	Convey("reload scrub and CVE config", t, func(c C) {
+		port := test.GetFreePort()
+		baseURL := test.GetBaseURL(port)
+
+		logFile, err := os.CreateTemp("", "zot-log*.txt")
+		So(err, ShouldBeNil)
+
+		defer os.Remove(logFile.Name()) // clean up
+
+		content := fmt.Sprintf(`{
+				"distSpecVersion": "1.1.0-dev",
+				"storage": {
+					"rootDirectory": "%s"
+				},
+				"http": {
+					"address": "127.0.0.1",
+					"port": "%s"
+				},
+				"log": {
+					"level": "debug",
+					"output": "%s"
+				},
+				"extensions": {
+					"search": {
+						"cve": {
+							"updateInterval": "24h",
+							"trivy": {
+								"DBRepository": "ghcr.io/aquasecurity/trivy-db"
+							}
+						}
+					},
+					"scrub": {
+						"enable": true,
+						"interval": "24h"
+					}
+				}
+			}`, t.TempDir(), port, logFile.Name())
+
+		cfgfile, err := os.CreateTemp("", "zot-test*.json")
+		So(err, ShouldBeNil)
+
+		defer os.Remove(cfgfile.Name()) // clean up
+
+		_, err = cfgfile.Write([]byte(content))
+		So(err, ShouldBeNil)
+
+		os.Args = []string{"cli_test", "serve", cfgfile.Name()}
+		go func() {
+			err = cli.NewServerRootCmd().Execute()
+			So(err, ShouldBeNil)
+		}()
+
+		test.WaitTillServerReady(baseURL)
+
+		content = fmt.Sprintf(`{
+			"distSpecVersion": "1.1.0-dev",
+			"storage": {
+				"rootDirectory": "%s"
+			},
+			"http": {
+				"address": "127.0.0.1",
+				"port": "%s"
+			},
+			"log": {
+				"level": "debug",
+				"output": "%s"
+			},
+			"extensions": {
+				"search": {
+					"cve": {
+						"updateInterval": "5h",
+						"trivy": {
+							"DBRepository": "ghcr.io/project-zot/trivy-db"
+						}
+					}
+				}
+			}
+		}`, t.TempDir(), port, logFile.Name())
+
+		err = cfgfile.Truncate(0)
+		So(err, ShouldBeNil)
+
+		_, err = cfgfile.Seek(0, io.SeekStart)
+		So(err, ShouldBeNil)
+
+		_, err = cfgfile.WriteString(content)
+		So(err, ShouldBeNil)
+
+		err = cfgfile.Close()
+		So(err, ShouldBeNil)
+
+		// wait for config reload
+		time.Sleep(2 * time.Second)
+
+		data, err := os.ReadFile(logFile.Name())
+		So(err, ShouldBeNil)
+		t.Logf("log file: %s", data)
+
+		So(string(data), ShouldContainSubstring, "reloaded params")
+		So(string(data), ShouldContainSubstring, "loaded new configuration settings")
+		So(string(data), ShouldContainSubstring, "\"UpdateInterval\":18000000000000")
+		So(string(data), ShouldContainSubstring, "\"Scrub\":null")
+		So(string(data), ShouldContainSubstring, "\"DBRepository\":\"ghcr.io/project-zot/trivy-db\"")
 	})
 
 	Convey("reload bad config", t, func(c C) {
@@ -303,7 +412,7 @@ func TestConfigReloader(t *testing.T) {
 		content := fmt.Sprintf(`{
 				"distSpecVersion": "1.1.0-dev",
 				"storage": {
-					"rootDirectory": "/tmp/zot"
+					"rootDirectory": "%s"
 				},
 				"http": {
 					"address": "127.0.0.1",
@@ -334,7 +443,7 @@ func TestConfigReloader(t *testing.T) {
 						}]
 					}
 				}
-			}`, port, logFile.Name())
+			}`, t.TempDir(), port, logFile.Name())
 
 		cfgfile, err := os.CreateTemp("", "zot-test*.json")
 		So(err, ShouldBeNil)
@@ -374,6 +483,8 @@ func TestConfigReloader(t *testing.T) {
 
 		data, err := os.ReadFile(logFile.Name())
 		So(err, ShouldBeNil)
+		t.Logf("log file: %s", data)
+
 		So(string(data), ShouldNotContainSubstring, "reloaded params")
 		So(string(data), ShouldNotContainSubstring, "new configuration settings")
 		So(string(data), ShouldContainSubstring, "\"URLs\":[\"http://localhost:8080\"]")

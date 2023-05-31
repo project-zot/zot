@@ -115,9 +115,9 @@ func TestCommon(t *testing.T) {
 		var resultPtr interface{}
 		httpClient, err := common.CreateHTTPClient(true, "localhost", tempDir)
 		So(err, ShouldBeNil)
-		_, _, err = common.MakeHTTPGetRequest(httpClient, "", "",
+		_, _, _, err = common.MakeHTTPGetRequest(httpClient, "", "",
 			resultPtr, baseURL+"/v2/", ispec.MediaTypeImageManifest, log.NewLogger("", ""))
-		So(err, ShouldNotBeNil)
+		So(err, ShouldBeNil)
 	})
 
 	Convey("Index func", t, func() {
