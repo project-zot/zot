@@ -641,6 +641,13 @@ func TestServeSearchEnabled(t *testing.T) {
 		substring := `"Extensions":{"Search":{"Enable":true,"CVE":null}`
 
 		found, err := readLogFileAndSearchString(logPath, substring, readLogFileTimeout)
+
+		if !found {
+			data, err := os.ReadFile(logPath)
+			So(err, ShouldBeNil)
+			t.Log(string(data))
+		}
+
 		So(found, ShouldBeTrue)
 		So(err, ShouldBeNil)
 	})
@@ -680,18 +687,24 @@ func TestServeSearchEnabledCVE(t *testing.T) {
 		// to avoid data race when multiple go routines write to trivy DB instance.
 		WaitTillTrivyDBDownloadStarted(tempDir)
 
-		substring := "\"Search\":{\"Enable\":true,\"CVE\":{\"UpdateInterval\":3600000000000,\"Trivy\":null}}"
+		// The default config handling logic will convert the 1h interval to a 2h interval
+		substring := "\"Search\":{\"Enable\":true,\"CVE\":{\"UpdateInterval\":7200000000000,\"Trivy\":" +
+			"{\"DBRepository\":\"ghcr.io/aquasecurity/trivy-db\",\"JavaDBRepository\":\"ghcr.io/aquasecurity/trivy-java-db\"}}}"
 
 		found, err := readLogFileAndSearchString(logPath, substring, readLogFileTimeout)
+
+		defer func() {
+			if !found {
+				data, err := os.ReadFile(logPath)
+				So(err, ShouldBeNil)
+				t.Log(string(data))
+			}
+		}()
+
 		So(found, ShouldBeTrue)
 		So(err, ShouldBeNil)
 
 		found, err = readLogFileAndSearchString(logPath, "updating the CVE database", readLogFileTimeout)
-		So(found, ShouldBeTrue)
-		So(err, ShouldBeNil)
-
-		substring = "CVE update interval set to too-short interval < 2h, changing update duration to 2 hours and continuing." //nolint:lll // gofumpt conflicts with lll
-		found, err = readLogFileAndSearchString(logPath, substring, readLogFileTimeout)
 		So(found, ShouldBeTrue)
 		So(err, ShouldBeNil)
 	})
@@ -729,6 +742,13 @@ func TestServeSearchEnabledNoCVE(t *testing.T) {
 
 		substring := `"Extensions":{"Search":{"Enable":true,"CVE":null}` //nolint:lll // gofumpt conflicts with lll
 		found, err := readLogFileAndSearchString(logPath, substring, readLogFileTimeout)
+
+		if !found {
+			data, err := os.ReadFile(logPath)
+			So(err, ShouldBeNil)
+			t.Log(string(data))
+		}
+
 		So(found, ShouldBeTrue)
 		So(err, ShouldBeNil)
 	})

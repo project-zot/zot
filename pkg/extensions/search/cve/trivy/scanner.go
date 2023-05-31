@@ -12,10 +12,12 @@ import (
 	"github.com/aquasecurity/trivy/pkg/commands/operation"
 	fanalTypes "github.com/aquasecurity/trivy/pkg/fanal/types"
 	"github.com/aquasecurity/trivy/pkg/flag"
+	"github.com/aquasecurity/trivy/pkg/javadb"
 	"github.com/aquasecurity/trivy/pkg/types"
 	regTypes "github.com/google/go-containerregistry/pkg/v1/types"
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
+	_ "modernc.org/sqlite"
 
 	zerr "zotregistry.io/zot/errors"
 	cvemodel "zotregistry.io/zot/pkg/extensions/search/cve/model"
@@ -24,11 +26,9 @@ import (
 	"zotregistry.io/zot/pkg/storage"
 )
 
-const defaultDBRepository = "ghcr.io/aquasecurity/trivy-db"
-
 // getNewScanOptions sets trivy configuration values for our scans and returns them as
 // a trivy Options structure.
-func getNewScanOptions(dir, dbRepository string) *flag.Options {
+func getNewScanOptions(dir, dbRepository, javaDBRepository string) *flag.Options {
 	scanOptions := flag.Options{
 		GlobalOptions: flag.GlobalOptions{
 			CacheDir: dir,
@@ -41,8 +41,10 @@ func getNewScanOptions(dir, dbRepository string) *flag.Options {
 			VulnType: []string{types.VulnTypeOS, types.VulnTypeLibrary},
 		},
 		DBOptions: flag.DBOptions{
-			DBRepository: dbRepository,
-			SkipDBUpdate: true,
+			DBRepository:     dbRepository,
+			JavaDBRepository: javaDBRepository,
+			SkipDBUpdate:     true,
+			SkipJavaDBUpdate: true,
 		},
 		ReportOptions: flag.ReportOptions{
 			Format: "table",
@@ -65,25 +67,22 @@ type cveTrivyController struct {
 }
 
 type Scanner struct {
-	repoDB          repodb.RepoDB
-	cveController   cveTrivyController
-	storeController storage.StoreController
-	log             log.Logger
-	dbLock          *sync.Mutex
-	cache           *CveCache
-	dbRepository    string
+	repoDB           repodb.RepoDB
+	cveController    cveTrivyController
+	storeController  storage.StoreController
+	log              log.Logger
+	dbLock           *sync.Mutex
+	cache            *CveCache
+	dbRepository     string
+	javaDBRepository string
 }
 
 func NewScanner(storeController storage.StoreController,
-	repoDB repodb.RepoDB, dbRepository string, log log.Logger,
+	repoDB repodb.RepoDB, dbRepository, javaDBRepository string, log log.Logger,
 ) *Scanner {
 	cveController := cveTrivyController{}
 
 	subCveConfig := make(map[string]*flag.Options)
-
-	if dbRepository == "" {
-		dbRepository = defaultDBRepository
-	}
 
 	if storeController.DefaultStore != nil {
 		imageStore := storeController.DefaultStore
@@ -91,7 +90,7 @@ func NewScanner(storeController storage.StoreController,
 		rootDir := imageStore.RootDir()
 
 		cacheDir := path.Join(rootDir, "_trivy")
-		opts := getNewScanOptions(cacheDir, dbRepository)
+		opts := getNewScanOptions(cacheDir, dbRepository, javaDBRepository)
 
 		cveController.DefaultCveConfig = opts
 	}
@@ -101,7 +100,7 @@ func NewScanner(storeController storage.StoreController,
 			rootDir := storage.RootDir()
 
 			cacheDir := path.Join(rootDir, "_trivy")
-			opts := getNewScanOptions(cacheDir, dbRepository)
+			opts := getNewScanOptions(cacheDir, dbRepository, javaDBRepository)
 
 			subCveConfig[route] = opts
 		}
@@ -110,13 +109,14 @@ func NewScanner(storeController storage.StoreController,
 	cveController.SubCveConfig = subCveConfig
 
 	return &Scanner{
-		log:             log,
-		repoDB:          repoDB,
-		cveController:   cveController,
-		storeController: storeController,
-		dbLock:          &sync.Mutex{},
-		cache:           NewCveCache(10000, log), //nolint:gomnd
-		dbRepository:    dbRepository,
+		log:              log,
+		repoDB:           repoDB,
+		cveController:    cveController,
+		storeController:  storeController,
+		dbLock:           &sync.Mutex{},
+		cache:            NewCveCache(10000, log), //nolint:gomnd
+		dbRepository:     dbRepository,
+		javaDBRepository: javaDBRepository,
 	}
 }
 
@@ -371,12 +371,23 @@ func (scanner Scanner) updateDB(dbDir string) error {
 
 	ctx := context.Background()
 
-	err := operation.DownloadDB(ctx, "dev", dbDir, scanner.dbRepository, false, false,
-		fanalTypes.RegistryOptions{Insecure: false})
+	registryOpts := fanalTypes.RegistryOptions{Insecure: false}
+
+	err := operation.DownloadDB(ctx, "dev", dbDir, scanner.dbRepository, false, false, registryOpts)
 	if err != nil {
 		scanner.log.Error().Err(err).Str("dbDir", dbDir).Msg("Error downloading Trivy DB to destination dir")
 
 		return err
+	}
+
+	if scanner.javaDBRepository != "" {
+		javadb.Init(dbDir, scanner.javaDBRepository, false, false, registryOpts.Insecure)
+
+		if err := javadb.Update(); err != nil {
+			scanner.log.Error().Err(err).Str("dbDir", dbDir).Msg("Error downloading Trivy Java DB to destination dir")
+
+			return err
+		}
 	}
 
 	scanner.log.Debug().Str("dbDir", dbDir).Msg("Finished downloading Trivy DB to destination dir")

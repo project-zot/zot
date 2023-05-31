@@ -723,7 +723,7 @@ func TestReadLogFileAndSearchString(t *testing.T) {
 	defer os.Remove(logPath)
 
 	Convey("Invalid path", t, func() {
-		_, err = test.ReadLogFileAndSearchString("invalidPath", "DB update completed, next update scheduled", 90*time.Second)
+		_, err = test.ReadLogFileAndSearchString("invalidPath", "DB update completed, next update scheduled", 1*time.Second)
 		So(err, ShouldNotBeNil)
 	})
 
@@ -750,7 +750,7 @@ func TestReadLogFileAndCountStringOccurence(t *testing.T) {
 
 	Convey("Invalid path", t, func() {
 		_, err = test.ReadLogFileAndCountStringOccurence("invalidPath",
-			"DB update completed, next update scheduled", 90*time.Second, 1)
+			"DB update completed, next update scheduled", 1*time.Second, 1)
 		So(err, ShouldNotBeNil)
 	})
 

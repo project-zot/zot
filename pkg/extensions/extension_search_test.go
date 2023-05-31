@@ -46,7 +46,7 @@ func TestTrivyDBGenerator(t *testing.T) {
 			DefaultStore: mocks.MockedImageStore{},
 		}
 
-		cveInfo := cveinfo.NewCVEInfo(storeController, repoDB, "", logger)
+		cveInfo := cveinfo.NewCVEInfo(storeController, repoDB, "ghcr.io/project-zot/trivy-db", "", logger)
 		generator := NewTrivyTaskGenerator(time.Minute, cveInfo, logger)
 
 		sch.SubmitGenerator(generator, 12000*time.Millisecond, scheduler.HighPriority)

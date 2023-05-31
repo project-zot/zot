@@ -448,7 +448,7 @@ func validateAuthzPolicies(config *config.Config) error {
 	return nil
 }
 
-//nolint:gocyclo
+//nolint:gocyclo,cyclop,nestif
 func applyDefaultValues(config *config.Config, viperInstance *viper.Viper) {
 	defaultVal := true
 
@@ -502,6 +502,35 @@ func applyDefaultValues(config *config.Config, viperInstance *viper.Viper) {
 		if config.Extensions.Search != nil {
 			if config.Extensions.Search.Enable == nil {
 				config.Extensions.Search.Enable = &defaultVal
+			}
+
+			if *config.Extensions.Search.Enable && config.Extensions.Search.CVE != nil {
+				defaultUpdateInterval, _ := time.ParseDuration("2h")
+
+				if config.Extensions.Search.CVE.UpdateInterval < defaultUpdateInterval {
+					config.Extensions.Search.CVE.UpdateInterval = defaultUpdateInterval
+
+					log.Warn().Msg("CVE update interval set to too-short interval < 2h, " +
+						"changing update duration to 2 hours and continuing.")
+				}
+
+				if config.Extensions.Search.CVE.Trivy == nil {
+					config.Extensions.Search.CVE.Trivy = &extconf.TrivyConfig{}
+				}
+
+				if config.Extensions.Search.CVE.Trivy.DBRepository == "" {
+					defaultDBDownloadURL := "ghcr.io/aquasecurity/trivy-db"
+					log.Info().Str("trivyDownloadURL", defaultDBDownloadURL).
+						Msg("Config: using default Trivy DB download URL.")
+					config.Extensions.Search.CVE.Trivy.DBRepository = defaultDBDownloadURL
+				}
+
+				if config.Extensions.Search.CVE.Trivy.JavaDBRepository == "" {
+					defaultJavaDBDownloadURL := "ghcr.io/aquasecurity/trivy-java-db"
+					log.Info().Str("trivyJavaDownloadURL", defaultJavaDBDownloadURL).
+						Msg("Config: using default Trivy Java DB download URL.")
+					config.Extensions.Search.CVE.Trivy.JavaDBRepository = defaultJavaDBDownloadURL
+				}
 			}
 		}
 

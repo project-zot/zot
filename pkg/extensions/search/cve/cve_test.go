@@ -327,7 +327,7 @@ func TestImageFormat(t *testing.T) {
 		err = repodb.ParseStorage(repoDB, storeController, log)
 		So(err, ShouldBeNil)
 
-		cveInfo := cveinfo.NewCVEInfo(storeController, repoDB, "", log)
+		cveInfo := cveinfo.NewCVEInfo(storeController, repoDB, "ghcr.io/project-zot/trivy-db", "", log)
 
 		isValidImage, err := cveInfo.Scanner.IsImageFormatScannable("zot-test", "")
 		So(err, ShouldNotBeNil)
@@ -390,7 +390,7 @@ func TestImageFormat(t *testing.T) {
 			DefaultStore: mocks.MockedImageStore{},
 		}
 
-		cveInfo := cveinfo.NewCVEInfo(storeController, repoDB, "", log)
+		cveInfo := cveinfo.NewCVEInfo(storeController, repoDB, "ghcr.io/project-zot/trivy-db", "", log)
 
 		isScanable, err := cveInfo.Scanner.IsImageFormatScannable("repo", "tag")
 		So(err, ShouldBeNil)

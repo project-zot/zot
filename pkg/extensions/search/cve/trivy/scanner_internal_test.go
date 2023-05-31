@@ -102,7 +102,7 @@ func TestMultipleStoragePath(t *testing.T) {
 		err = repodb.ParseStorage(repoDB, storeController, log)
 		So(err, ShouldBeNil)
 
-		scanner := NewScanner(storeController, repoDB, "ghcr.io/project-zot/trivy-db", log)
+		scanner := NewScanner(storeController, repoDB, "ghcr.io/project-zot/trivy-db", "", log)
 
 		So(scanner.storeController.DefaultStore, ShouldNotBeNil)
 		So(scanner.storeController.SubStore, ShouldNotBeNil)
@@ -197,9 +197,23 @@ func TestTrivyLibraryErrors(t *testing.T) {
 		err = repodb.ParseStorage(repoDB, storeController, log)
 		So(err, ShouldBeNil)
 
-		scanner := NewScanner(storeController, repoDB, "ghcr.io/project-zot/trivy-db", log)
+		// Download DB fails for missing DB url
+		scanner := NewScanner(storeController, repoDB, "", "", log)
 
-		// Download DB since DB download on scan is disabled
+		err = scanner.UpdateDB()
+		So(err, ShouldNotBeNil)
+
+		// Download DB fails for invalid Java DB
+		scanner = NewScanner(storeController, repoDB, "ghcr.io/project-zot/trivy-db",
+			"ghcr.io/project-zot/trivy-not-db", log)
+
+		err = scanner.UpdateDB()
+		So(err, ShouldNotBeNil)
+
+		// Download DB passes for valid Trivy DB url, and missing Trivy Java DB url
+		// Download DB is necessary since DB download on scan is disabled
+		scanner = NewScanner(storeController, repoDB, "ghcr.io/project-zot/trivy-db", "", log)
+
 		err = scanner.UpdateDB()
 		So(err, ShouldBeNil)
 
@@ -381,7 +395,8 @@ func TestImageScannable(t *testing.T) {
 	storeController := storage.StoreController{}
 	storeController.DefaultStore = store
 
-	scanner := NewScanner(storeController, repoDB, "ghcr.io/project-zot/trivy-db", log)
+	scanner := NewScanner(storeController, repoDB, "ghcr.io/project-zot/trivy-db",
+		"ghcr.io/aquasecurity/trivy-java-db", log)
 
 	Convey("Valid image should be scannable", t, func() {
 		result, err := scanner.IsImageFormatScannable("repo1", "valid")
@@ -434,6 +449,9 @@ func TestDefaultTrivyDBUrl(t *testing.T) {
 		err := test.CopyFiles("../../../../../test/data/zot-test", path.Join(rootDir, "zot-test"))
 		So(err, ShouldBeNil)
 
+		err = test.CopyFiles("../../../../../test/data/zot-cve-java-test", path.Join(rootDir, "zot-cve-java-test"))
+		So(err, ShouldBeNil)
+
 		log := log.NewLogger("debug", "")
 		metrics := monitoring.NewMetricsServer(false, log)
 
@@ -456,17 +474,24 @@ func TestDefaultTrivyDBUrl(t *testing.T) {
 		err = repodb.ParseStorage(repoDB, storeController, log)
 		So(err, ShouldBeNil)
 
-		// Use empty string for DB repository, the default url would be used internally
-		scanner := NewScanner(storeController, repoDB, "", log)
+		scanner := NewScanner(storeController, repoDB, "ghcr.io/aquasecurity/trivy-db",
+			"ghcr.io/aquasecurity/trivy-java-db", log)
 
 		// Download DB since DB download on scan is disabled
 		err = scanner.UpdateDB()
 		So(err, ShouldBeNil)
 
+		// Scanning image
 		img := "zot-test:0.0.1"
 
-		// Scanning image
 		opts := scanner.getTrivyOptions(img)
+		_, err = scanner.runTrivy(opts)
+		So(err, ShouldBeNil)
+
+		// Scanning image containing a jar file
+		img = "zot-cve-java-test:0.0.1"
+
+		opts = scanner.getTrivyOptions(img)
 		_, err = scanner.runTrivy(opts)
 		So(err, ShouldBeNil)
 	})
