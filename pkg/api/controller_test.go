@@ -1,5 +1,5 @@
-//go:build sync && scrub && metrics && search && lint && userprefs && mgmt && imagetrust && ui
-// +build sync,scrub,metrics,search,lint,userprefs,mgmt,imagetrust,ui
+//go:build sync && scrub && metrics && search && lint && userprefs && mgmt && imagetrust && ui && profile
+// +build sync,scrub,metrics,search,lint,userprefs,mgmt,imagetrust,ui,profile
 
 package api_test
 
@@ -55,6 +55,7 @@ import (
 	"zotregistry.io/zot/pkg/api/constants"
 	apiErr "zotregistry.io/zot/pkg/api/errors"
 	"zotregistry.io/zot/pkg/common"
+	debugConstants "zotregistry.io/zot/pkg/debug/constants"
 	extconf "zotregistry.io/zot/pkg/extensions/config"
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/meta"
@@ -3714,6 +3715,107 @@ func TestGetUsername(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+	})
+}
+
+func TestProfilingWithBasicAuth(t *testing.T) {
+	Convey("Make a new controller", t, func() {
+		port := test.GetFreePort()
+		baseURL := test.GetBaseURL(port)
+		htpasswdPath := test.MakeHtpasswdFile()
+		conf := config.New()
+		conf.HTTP.Port = port
+		conf.HTTP.Auth = &config.AuthConfig{}
+		conf.HTTP.AccessControl = &config.AccessControlConfig{
+			AdminPolicy: config.Policy{
+				Users:   []string{"test"},
+				Actions: []string{"read"},
+			},
+		}
+
+		conf.HTTP.Auth = &config.AuthConfig{
+			HTPasswd: config.AuthHTPasswd{
+				Path: htpasswdPath,
+			},
+		}
+
+		dir := t.TempDir()
+		ctlr := makeController(conf, dir, "")
+		cm := test.NewControllerManager(ctlr)
+		cm.StartAndWait(port)
+		defer cm.StopServer()
+
+		// unauthenticated clients should not have access to /v2/
+		resp, err := resty.R().Get(baseURL + "/v2/")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
+
+		resp, err = resty.R().Get(baseURL + constants.RoutePrefix + debugConstants.ProfilingEndpoint + "trace")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
+
+		resp, err = resty.R().SetBasicAuth(username, passphrase).
+			Get(baseURL + constants.RoutePrefix + debugConstants.ProfilingEndpoint + "trace")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+	})
+}
+
+func TestProfilingNoPasswdAuth(t *testing.T) {
+	Convey("Make a new controller", t, func() {
+		port := test.GetFreePort()
+		baseURL := test.GetBaseURL(port)
+		conf := config.New()
+		conf.HTTP.Port = port
+
+		dir := t.TempDir()
+
+		Convey("WithOnlyAnonymousPolicy", func() {
+			conf.HTTP.AccessControl = &config.AccessControlConfig{
+				Repositories: config.Repositories{
+					AuthorizationAllRepos: config.PolicyGroup{
+						AnonymousPolicy: []string{"read"},
+					},
+				},
+			}
+
+			ctlr := makeController(conf, dir, "")
+			cm := test.NewControllerManager(ctlr)
+			cm.StartAndWait(port)
+			defer cm.StopServer()
+
+			// unauthenticated clients should have access to /v2/
+			resp, err := resty.R().Get(baseURL + "/v2/")
+			So(err, ShouldBeNil)
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+			resp, err = resty.R().Get(baseURL + constants.RoutePrefix + debugConstants.ProfilingEndpoint + "trace")
+			So(err, ShouldBeNil)
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusForbidden)
+		})
+
+		Convey("No access control", func() {
+			ctlr := makeController(conf, dir, "")
+			cm := test.NewControllerManager(ctlr)
+			cm.StartAndWait(port)
+			defer cm.StopServer()
+
+			// unauthenticated clients should have access to /v2/
+			resp, err := resty.R().Get(baseURL + "/v2/")
+			So(err, ShouldBeNil)
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+			resp, err = resty.R().Get(baseURL + constants.RoutePrefix + debugConstants.ProfilingEndpoint + "trace")
+			So(err, ShouldBeNil)
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+		})
 	})
 }
 

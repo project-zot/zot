@@ -33,7 +33,7 @@ OS ?= $(shell go env GOOS)
 ARCH ?= $(shell go env GOARCH)
 
 BENCH_OUTPUT ?= stdout
-ALL_EXTENSIONS = debug,imagetrust,lint,metrics,mgmt,scrub,search,sync,ui,userprefs
+ALL_EXTENSIONS = debug,imagetrust,lint,metrics,mgmt,profile,scrub,search,sync,ui,userprefs
 EXTENSIONS ?= sync,search,scrub,metrics,lint,ui,mgmt,userprefs,imagetrust
 UI_DEPENDENCIES := search,mgmt,userprefs
 # freebsd/arm64 not supported for pie builds
@@ -111,6 +111,12 @@ binary: modcheck build-metadata
 binary-debug: $(if $(findstring ui,$(BUILD_LABELS)), ui)
 binary-debug: modcheck swaggercheck build-metadata
 	env CGO_ENABLED=0 GOOS=$(OS) GOARCH=$(ARCH) go build -o bin/zot-$(OS)-$(ARCH)-debug $(BUILDMODE_FLAGS) -tags $(BUILD_LABELS),debug,containers_image_openpgp -v -gcflags all='-N -l' -ldflags "-X zotregistry.io/zot/pkg/api/config.ReleaseTag=${RELEASE_TAG} -X zotregistry.io/zot/pkg/api/config.Commit=${COMMIT} -X zotregistry.io/zot/pkg/api/config.BinaryType=$(extended-name) -X zotregistry.io/zot/pkg/api/config.GoVersion=${GO_VERSION}" ./cmd/zot
+
+.PHONY: binary-profile
+binary-profile: EXTENSIONS=sync,search,scrub,metrics,lint,ui,mgmt,userprefs,imagetrust,profile
+binary-profile: $(if $(findstring ui,$(BUILD_LABELS)), ui)
+binary-profile: modcheck build-metadata
+	env CGO_ENABLED=0 GOOS=$(OS) GOARCH=$(ARCH) go build -o bin/zot-$(OS)-$(ARCH)-profile $(BUILDMODE_FLAGS) -tags $(BUILD_LABELS),containers_image_openpgp -v -ldflags "-X zotregistry.io/zot/pkg/api/config.ReleaseTag=${RELEASE_TAG} -X zotregistry.io/zot/pkg/api/config.Commit=${COMMIT} -X zotregistry.io/zot/pkg/api/config.BinaryType=$(extended-name) -X zotregistry.io/zot/pkg/api/config.GoVersion=${GO_VERSION}" ./cmd/zot
 
 .PHONY: cli
 cli: modcheck build-metadata

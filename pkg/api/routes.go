@@ -39,6 +39,7 @@ import (
 	apiErr "zotregistry.io/zot/pkg/api/errors"
 	zcommon "zotregistry.io/zot/pkg/common"
 	gqlPlayground "zotregistry.io/zot/pkg/debug/gqlplayground"
+	"zotregistry.io/zot/pkg/debug/pprof"
 	debug "zotregistry.io/zot/pkg/debug/swagger"
 	ext "zotregistry.io/zot/pkg/extensions"
 	syncConstants "zotregistry.io/zot/pkg/extensions/sync/constants"
@@ -176,6 +177,10 @@ func (rh *RouteHandler) SetupRoutes() {
 
 	// swagger
 	debug.SetupSwaggerRoutes(rh.c.Config, rh.c.Router, authHandler, rh.c.Log)
+
+	// pprof
+	pprof.SetupPprofRoutes(rh.c.Config, prefixedRouter, authHandler, rh.c.Log)
+
 	// gql playground
 	gqlPlayground.SetupGQLPlaygroundRoutes(prefixedRouter, rh.c.StoreController, rh.c.Log)
 
