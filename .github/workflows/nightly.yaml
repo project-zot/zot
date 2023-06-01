@@ -23,7 +23,7 @@ jobs:
       - name: Install dependencies
         run: |
           cd $GITHUB_WORKSPACE
-          go install github.com/swaggo/swag/cmd/swag
+          go install github.com/swaggo/swag/cmd/swag@v1.8.12
           go mod download
           sudo apt-get update
           sudo apt-get install libgpgme-dev libassuan-dev libbtrfs-dev libdevmapper-dev pkg-config rpm uidmap
@@ -66,7 +66,7 @@ jobs:
       - name: Install dependencies
         run: |
           cd $GITHUB_WORKSPACE
-          go install github.com/swaggo/swag/cmd/swag
+          go install github.com/swaggo/swag/cmd/swag@v1.8.12
           go mod download
       - name: Run sync harness
         run: |

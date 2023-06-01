@@ -25,6 +25,7 @@ CRICTL_VERSION := v1.26.1
 ACTION_VALIDATOR := $(TOOLSDIR)/bin/action-validator
 ACTION_VALIDATOR_VERSION := v0.2.1
 ZUI_VERSION := commit-05d5f74
+SWAGGER_VERSION := 1.8.12
 STACKER := $(TOOLSDIR)/bin/stacker
 BATS := $(TOOLSDIR)/bin/bats
 TESTDATA := $(TOP_LEVEL)/test/data
@@ -203,7 +204,7 @@ check: ./golangcilint.yaml $(GOLINTER)
 	rm pkg/extensions/build/.empty
 
 swagger/docs.go: 
-	swag -v || go install github.com/swaggo/swag/cmd/swag@1.6.3
+	swag -v || go install github.com/swaggo/swag/cmd/swag@$(SWAGGER_VERSION)
 	swag init -o swagger -g pkg/api/routes.go
 
 .PHONY: swagger
