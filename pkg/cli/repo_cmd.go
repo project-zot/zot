@@ -13,6 +13,8 @@ import (
 	zotErrors "zotregistry.io/zot/errors"
 )
 
+const prefix = "Searching... "
+
 func NewRepoCommand(searchService SearchService) *cobra.Command {
 	var servURL, user, outputFormat string
 
@@ -66,7 +68,7 @@ func NewRepoCommand(searchService SearchService) *cobra.Command {
 			}
 
 			spin := spinner.New(spinner.CharSets[39], spinnerDuration, spinner.WithWriter(cmd.ErrOrStderr()))
-			spin.Prefix = "Searching... "
+			spin.Prefix = prefix
 
 			searchConfig := searchConfig{
 				searchService: searchService,

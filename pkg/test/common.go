@@ -799,16 +799,11 @@ func GetImageWithSubject(subjectDigest godigest.Digest, mediaType string) (Image
 		MediaType: mediaType,
 	}
 
-	manifestBlob, err := json.Marshal(manifest)
-	if err != nil {
-		return Image{}, err
-	}
-
 	return Image{
 		Manifest:  manifest,
 		Config:    conf,
 		Layers:    layers,
-		Reference: godigest.FromBytes(manifestBlob).String(),
+		Reference: "",
 	}, nil
 }
 
@@ -850,7 +845,8 @@ func UploadImage(img Image, baseURL, repo string) error {
 
 	cdigest := godigest.FromBytes(cblob)
 
-	if img.Manifest.Config.MediaType == ispec.MediaTypeEmptyJSON {
+	if img.Manifest.Config.MediaType == ispec.MediaTypeEmptyJSON ||
+		img.Manifest.Config.Digest == ispec.DescriptorEmptyJSON.Digest {
 		cblob = ispec.DescriptorEmptyJSON.Data
 		cdigest = ispec.DescriptorEmptyJSON.Digest
 	}
@@ -886,6 +882,10 @@ func UploadImage(img Image, baseURL, repo string) error {
 	manifestBlob, err := json.Marshal(img.Manifest)
 	if err = inject.Error(err); err != nil {
 		return err
+	}
+
+	if img.Reference == "" {
+		img.Reference = godigest.FromBytes(manifestBlob).String()
 	}
 
 	resp, err = resty.R().
@@ -1519,9 +1519,9 @@ func UploadImageWithBasicAuth(img Image, baseURL, repo, user, password string) e
 
 	cdigest := godigest.FromBytes(cblob)
 
-	if img.Manifest.Config.MediaType == ispec.MediaTypeEmptyJSON {
-		cblob = ispec.DescriptorEmptyJSON.Data
-		cdigest = ispec.DescriptorEmptyJSON.Digest
+	if img.Manifest.Config.MediaType == ispec.MediaTypeScratch {
+		cblob = ispec.ScratchDescriptor.Data
+		cdigest = ispec.ScratchDescriptor.Digest
 	}
 
 	resp, err := resty.R().
@@ -1557,6 +1557,10 @@ func UploadImageWithBasicAuth(img Image, baseURL, repo, user, password string) e
 	manifestBlob, err := json.Marshal(img.Manifest)
 	if err = inject.Error(err); err != nil {
 		return err
+	}
+
+	if img.Reference == "" {
+		img.Reference = godigest.FromBytes(manifestBlob).String()
 	}
 
 	_, err = resty.R().

@@ -1710,6 +1710,29 @@ func (service mockService) getRepos(ctx context.Context, config searchConfig, us
 	channel <- stringResult{"", nil}
 }
 
+func (service mockService) getReferrers(ctx context.Context, config searchConfig, username, password string,
+	repo, digest string,
+) (referrersResult, error) {
+	return referrersResult{}, nil
+}
+
+func (service mockService) getReferrersGQL(ctx context.Context, config searchConfig, username, password string,
+	repo, digest string,
+) (*common.ReferrersResp, error) {
+	return &common.ReferrersResp{
+		ReferrersResult: common.ReferrersResult{
+			Referrers: []common.Referrer{
+				{
+					MediaType:    "MediaType",
+					ArtifactType: "ArtifactType",
+					Size:         100,
+					Digest:       "Digest",
+				},
+			},
+		},
+	}, nil
+}
+
 func (service mockService) getDerivedImageListGQL(ctx context.Context, config searchConfig, username, password string,
 	derivedImage string,
 ) (*common.DerivedImageListResponse, error) {

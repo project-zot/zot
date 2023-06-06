@@ -25,6 +25,12 @@ import (
 	"zotregistry.io/zot/pkg/common"
 )
 
+const (
+	jsonFormat = "json"
+	yamlFormat = "yaml"
+	ymlFormat  = "yml"
+)
+
 type SearchService interface { //nolint:interfacebloat
 	getImagesGQL(ctx context.Context, config searchConfig, username, password string,
 		imageName string) (*common.ImageListResponse, error)
@@ -42,6 +48,8 @@ type SearchService interface { //nolint:interfacebloat
 		derivedImage string) (*common.DerivedImageListResponse, error)
 	getBaseImageListGQL(ctx context.Context, config searchConfig, username, password string,
 		baseImage string) (*common.BaseImageListResponse, error)
+	getReferrersGQL(ctx context.Context, config searchConfig, username, password string,
+		repo, digest string) (*common.ReferrersResp, error)
 
 	getAllImages(ctx context.Context, config searchConfig, username, password string,
 		channel chan stringResult, wtgrp *sync.WaitGroup)
@@ -59,6 +67,8 @@ type SearchService interface { //nolint:interfacebloat
 		channel chan stringResult, wtgrp *sync.WaitGroup)
 	getImageByNameAndCVEID(ctx context.Context, config searchConfig, username, password, imageName, cvid string,
 		channel chan stringResult, wtgrp *sync.WaitGroup)
+	getReferrers(ctx context.Context, config searchConfig, username, password string, repo, digest string,
+	) (referrersResult, error)
 }
 
 type searchService struct{}
@@ -96,6 +106,33 @@ func (service searchService) getDerivedImageListGQL(ctx context.Context, config 
 	result := &common.DerivedImageListResponse{}
 	err := service.makeGraphQLQuery(ctx, config, username, password, query, result)
 
+	if errResult := checkResultGraphQLQuery(ctx, err, result.Errors); errResult != nil {
+		return nil, errResult
+	}
+
+	return result, nil
+}
+
+func (service searchService) getReferrersGQL(ctx context.Context, config searchConfig, username, password string,
+	repo, digest string,
+) (*common.ReferrersResp, error) {
+	query := fmt.Sprintf(`
+		{
+			Referrers( repo: "%s", digest: "%s", type: "" ){
+				ArtifactType,
+				Digest,
+				MediaType,
+				Size,
+				Annotations{
+					Key
+					Value
+				}
+			}
+		}`, repo, digest)
+
+	result := &common.ReferrersResp{}
+
+	err := service.makeGraphQLQuery(ctx, config, username, password, query, result)
 	if errResult := checkResultGraphQLQuery(ctx, err, result.Errors); errResult != nil {
 		return nil, errResult
 	}
@@ -326,6 +363,44 @@ func (service searchService) getFixedTagsForCVEGQL(ctx context.Context, config s
 	}
 
 	return result, nil
+}
+
+func (service searchService) getReferrers(ctx context.Context, config searchConfig, username, password string,
+	repo, digest string,
+) (referrersResult, error) {
+	referrersEndpoint, err := combineServerAndEndpointURL(*config.servURL,
+		fmt.Sprintf("/v2/%s/referrers/%s", repo, digest))
+	if err != nil {
+		if isContextDone(ctx) {
+			return referrersResult{}, nil
+		}
+
+		return referrersResult{}, err
+	}
+
+	referrerResp := &ispec.Index{}
+	_, err = makeGETRequest(ctx, referrersEndpoint, username, password, *config.verifyTLS,
+		*config.debug, &referrerResp, config.resultWriter)
+
+	if err != nil {
+		if isContextDone(ctx) {
+			return referrersResult{}, nil
+		}
+
+		return referrersResult{}, err
+	}
+
+	referrersList := referrersResult{}
+
+	for _, referrer := range referrerResp.Manifests {
+		referrersList = append(referrersList, common.Referrer{
+			ArtifactType: referrer.ArtifactType,
+			Digest:       referrer.Digest.String(),
+			Size:         int(referrer.Size),
+		})
+	}
+
+	return referrersList, nil
 }
 
 func (service searchService) getImageByName(ctx context.Context, config searchConfig,
@@ -940,9 +1015,9 @@ func (cve cveResult) string(format string) (string, error) {
 	switch strings.ToLower(format) {
 	case "", defaultOutoutFormat:
 		return cve.stringPlainText()
-	case "json":
+	case jsonFormat:
 		return cve.stringJSON()
-	case "yml", "yaml":
+	case ymlFormat, yamlFormat:
 		return cve.stringYAML()
 	default:
 		return "", ErrInvalidOutputFormat
@@ -991,15 +1066,77 @@ func (cve cveResult) stringYAML() (string, error) {
 	return string(body), nil
 }
 
+type referrersResult []common.Referrer
+
+func (ref referrersResult) string(format string, maxArtifactTypeLen int) (string, error) {
+	switch strings.ToLower(format) {
+	case "", defaultOutoutFormat:
+		return ref.stringPlainText(maxArtifactTypeLen)
+	case jsonFormat:
+		return ref.stringJSON()
+	case ymlFormat, yamlFormat:
+		return ref.stringYAML()
+	default:
+		return "", ErrInvalidOutputFormat
+	}
+}
+
+func (ref referrersResult) stringPlainText(maxArtifactTypeLen int) (string, error) {
+	var builder strings.Builder
+
+	table := getImageTableWriter(&builder)
+
+	table.SetColMinWidth(refArtifactTypeIndex, maxArtifactTypeLen)
+	table.SetColMinWidth(refDigestIndex, digestWidth)
+	table.SetColMinWidth(refSizeIndex, sizeWidth)
+
+	for _, referrer := range ref {
+		artifactType := ellipsize(referrer.ArtifactType, maxArtifactTypeLen, ellipsis)
+		digest := ellipsize(godigest.Digest(referrer.Digest).Encoded(), digestWidth, "")
+		size := ellipsize(strconv.FormatInt(int64(referrer.Size), 10), sizeWidth, ellipsis)
+
+		row := make([]string, refRowWidth)
+		row[refArtifactTypeIndex] = artifactType
+		row[refDigestIndex] = digest
+		row[refSizeIndex] = size
+
+		table.Append(row)
+	}
+
+	table.Render()
+
+	return builder.String(), nil
+}
+
+func (ref referrersResult) stringJSON() (string, error) {
+	json := jsoniter.ConfigCompatibleWithStandardLibrary
+
+	body, err := json.MarshalIndent(ref, "", "  ")
+	if err != nil {
+		return "", err
+	}
+
+	return string(body), nil
+}
+
+func (ref referrersResult) stringYAML() (string, error) {
+	body, err := yaml.Marshal(ref)
+	if err != nil {
+		return "", err
+	}
+
+	return string(body), nil
+}
+
 type imageStruct common.ImageSummary
 
 func (img imageStruct) string(format string, maxImgNameLen, maxTagLen, maxPlatformLen int, verbose bool) (string, error) { //nolint: lll
 	switch strings.ToLower(format) {
 	case "", defaultOutoutFormat:
 		return img.stringPlainText(maxImgNameLen, maxTagLen, maxPlatformLen, verbose)
-	case "json":
+	case jsonFormat:
 		return img.stringJSON()
-	case "yml", "yaml":
+	case ymlFormat, yamlFormat:
 		return img.stringYAML()
 	default:
 		return "", ErrInvalidOutputFormat
@@ -1283,6 +1420,24 @@ func getCVETableWriter(writer io.Writer) *tablewriter.Table {
 	return table
 }
 
+func getReferrersTableWriter(writer io.Writer) *tablewriter.Table {
+	table := tablewriter.NewWriter(writer)
+
+	table.SetAutoWrapText(false)
+	table.SetAutoFormatHeaders(true)
+	table.SetHeaderAlignment(tablewriter.ALIGN_LEFT)
+	table.SetAlignment(tablewriter.ALIGN_LEFT)
+	table.SetCenterSeparator("")
+	table.SetColumnSeparator("")
+	table.SetRowSeparator("")
+	table.SetHeaderLine(false)
+	table.SetBorder(false)
+	table.SetTablePadding("  ")
+	table.SetNoWhiteSpace(true)
+
+	return table
+}
+
 func (service searchService) getRepos(ctx context.Context, config searchConfig, username, password string,
 	rch chan stringResult, wtgrp *sync.WaitGroup,
 ) {
@@ -1353,4 +1508,12 @@ const (
 	colSizeIndex
 
 	rowWidth
+)
+
+const (
+	refDigestIndex = iota
+	refArtifactTypeIndex
+	refSizeIndex
+
+	refRowWidth
 )

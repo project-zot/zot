@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"strings"
 	"sync"
 	"time"
@@ -56,6 +57,22 @@ func getCveSearchersGQL() []searcher {
 		new(imagesByCVEIDSearcherGQL),
 		new(tagsByImageNameAndCVEIDSearcherGQL),
 		new(fixedTagsSearcherGQL),
+	}
+
+	return searchers
+}
+
+func getReferrersSearchersGQL() []searcher {
+	searchers := []searcher{
+		new(referrerSearcherGQL),
+	}
+
+	return searchers
+}
+
+func getReferrersSearchers() []searcher {
+	searchers := []searcher{
+		new(referrerSearcher),
 	}
 
 	return searchers
@@ -606,6 +623,65 @@ func getTagsByCVE(config searchConfig) error {
 	return printResult(config, imageList)
 }
 
+type referrerSearcherGQL struct{}
+
+func (search referrerSearcherGQL) search(config searchConfig) (bool, error) {
+	if !canSearch(config.params, newSet("repo", "digest")) {
+		return false, nil
+	}
+
+	username, password := getUsernameAndPassword(*config.user)
+	repo, digest := *config.params["repo"], *config.params["digest"]
+
+	response, err := config.searchService.getReferrersGQL(context.Background(), config, username, password, repo, digest)
+	if err != nil {
+		return false, err
+	}
+
+	referrersList := referrersResult(response.Referrers)
+
+	maxArtifactTypeLen := math.MinInt
+
+	for _, referrer := range referrersList {
+		if maxArtifactTypeLen < len(referrer.ArtifactType) {
+			maxArtifactTypeLen = len(referrer.ArtifactType)
+		}
+	}
+
+	printReferrersTableHeader(config.resultWriter, maxArtifactTypeLen)
+
+	return printReferrersResult(config, referrersList, maxArtifactTypeLen)
+}
+
+type referrerSearcher struct{}
+
+func (search referrerSearcher) search(config searchConfig) (bool, error) {
+	if !canSearch(config.params, newSet("repo", "digest")) {
+		return false, nil
+	}
+
+	username, password := getUsernameAndPassword(*config.user)
+	repo, digest := *config.params["repo"], *config.params["digest"]
+
+	referrersList, err := config.searchService.getReferrers(context.Background(), config, username, password,
+		repo, digest)
+	if err != nil {
+		return false, err
+	}
+
+	maxArtifactTypeLen := math.MinInt
+
+	for _, referrer := range referrersList {
+		if maxArtifactTypeLen < len(referrer.ArtifactType) {
+			maxArtifactTypeLen = len(referrer.ArtifactType)
+		}
+	}
+
+	printReferrersTableHeader(config.resultWriter, maxArtifactTypeLen)
+
+	return printReferrersResult(config, referrersList, maxArtifactTypeLen)
+}
+
 func collectResults(config searchConfig, wg *sync.WaitGroup, imageErr chan stringResult,
 	cancel context.CancelFunc, printHeader printHeader, errCh chan error,
 ) {
@@ -800,6 +876,44 @@ func printCVETableHeader(writer io.Writer, verbose bool, maxImgLen, maxTagLen, m
 
 	table.Append(row)
 	table.Render()
+}
+
+func printReferrersTableHeader(writer io.Writer, maxArtifactTypeLen int) {
+	table := getReferrersTableWriter(writer)
+
+	table.SetColMinWidth(refArtifactTypeIndex, digestWidth)
+	table.SetColMinWidth(refDigestIndex, digestWidth)
+	table.SetColMinWidth(refSizeIndex, sizeWidth)
+
+	row := make([]string, refRowWidth)
+
+	// adding spaces so that image name and tag columns are aligned
+	// in case the name/tag are fully shown and too long
+	var offset string
+
+	if maxArtifactTypeLen > len("ARTIFACT TYPE") {
+		offset = strings.Repeat(" ", maxArtifactTypeLen-len("ARTIFACT TYPE"))
+		row[refArtifactTypeIndex] = "ARTIFACT TYPE" + offset
+	} else {
+		row[refArtifactTypeIndex] = "ARTIFACT TYPE"
+	}
+
+	row[refDigestIndex] = "DIGEST"
+	row[refSizeIndex] = "SIZE"
+
+	table.Append(row)
+	table.Render()
+}
+
+func printReferrersResult(config searchConfig, referrersList referrersResult, maxArtifactTypeLen int) (bool, error) {
+	out, err := referrersList.string(*config.outputFormat, maxArtifactTypeLen)
+	if err != nil {
+		return false, err
+	}
+
+	fmt.Fprint(config.resultWriter, out)
+
+	return true, nil
 }
 
 func printResult(config searchConfig, imageList []imageStruct) error {

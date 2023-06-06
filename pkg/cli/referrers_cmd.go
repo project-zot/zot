@@ -6,8 +6,6 @@ package cli
 import (
 	"os"
 	"path"
-	"strconv"
-	"time"
 
 	"github.com/briandowns/spinner"
 	"github.com/spf13/cobra"
@@ -16,7 +14,7 @@ import (
 )
 
 //nolint:dupl
-func NewImageCommand(searchService SearchService) *cobra.Command {
+func NewReferrersCommand(searchService SearchService) *cobra.Command {
 	searchImageParams := make(map[string]*string)
 
 	var servURL, user, outputFormat string
@@ -24,9 +22,9 @@ func NewImageCommand(searchService SearchService) *cobra.Command {
 	var isSpinner, verifyTLS, verbose, debug bool
 
 	imageCmd := &cobra.Command{
-		Use:   "images [config-name]",
-		Short: "List images hosted on the zot registry",
-		Long:  `List images hosted on the zot registry`,
+		Use:   "referrers [config-name]",
+		Short: "List images that refer the given image under Subeject field",
+		Long:  `List images that refer the given image under Subeject field`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			home, err := os.UserHomeDir()
 			if err != nil {
@@ -86,7 +84,7 @@ func NewImageCommand(searchService SearchService) *cobra.Command {
 				resultWriter:  cmd.OutOrStdout(),
 			}
 
-			err = searchImage(searchConfig)
+			err = getReferrers(searchConfig)
 
 			if err != nil {
 				cmd.SilenceUsage = true
@@ -98,36 +96,18 @@ func NewImageCommand(searchService SearchService) *cobra.Command {
 		},
 	}
 
-	setupImageFlags(imageCmd, searchImageParams, &servURL, &user, &outputFormat, &verbose, &debug)
+	setupReferrersFlags(imageCmd, searchImageParams, &servURL, &user, &outputFormat, &verbose, &debug)
 	imageCmd.SetUsageTemplate(imageCmd.UsageTemplate() + usageFooter)
 
 	return imageCmd
 }
 
-func parseBooleanConfig(configPath, configName, configParam string) (bool, error) {
-	config, err := getConfigValue(configPath, configName, configParam)
-	if err != nil {
-		return false, err
-	}
-
-	val, err := strconv.ParseBool(config)
-	if err != nil {
-		return false, err
-	}
-
-	return val, nil
-}
-
-func setupImageFlags(imageCmd *cobra.Command, searchImageParams map[string]*string,
+func setupReferrersFlags(imageCmd *cobra.Command, searchImageParams map[string]*string,
 	servURL, user, outputFormat *string, verbose *bool, debug *bool,
 ) {
-	searchImageParams["imageName"] = imageCmd.Flags().StringP("name", "n", "", "List image details by name")
+	searchImageParams["repo"] = imageCmd.Flags().StringP("repo", "r", "", "List image details by name")
 	searchImageParams["digest"] = imageCmd.Flags().StringP("digest", "d", "",
 		"List images containing a specific manifest, config, or layer digest")
-	searchImageParams["derivedImage"] = imageCmd.Flags().StringP("derived-images", "D", "",
-		"List images that are derived from given image")
-	searchImageParams["baseImage"] = imageCmd.Flags().StringP("base-images", "b", "",
-		"List images that are base for the given image")
 
 	imageCmd.Flags().StringVar(servURL, "url", "", "Specify zot server URL if config-name is not mentioned")
 	imageCmd.Flags().StringVarP(user, "user", "u", "", `User Credentials of zot server in "username:password" format`)
@@ -136,13 +116,13 @@ func setupImageFlags(imageCmd *cobra.Command, searchImageParams map[string]*stri
 	imageCmd.Flags().BoolVar(debug, "debug", false, "Show debug output")
 }
 
-func searchImage(searchConfig searchConfig) error {
+func getReferrers(searchConfig searchConfig) error {
 	var searchers []searcher
 
 	if checkExtEndPoint(searchConfig) {
-		searchers = getImageSearchersGQL()
+		searchers = getReferrersSearchersGQL()
 	} else {
-		searchers = getImageSearchers()
+		searchers = getReferrersSearchers()
 	}
 
 	for _, searcher := range searchers {
@@ -158,10 +138,3 @@ func searchImage(searchConfig searchConfig) error {
 
 	return zotErrors.ErrInvalidFlagsCombination
 }
-
-const (
-	spinnerDuration = 150 * time.Millisecond
-	usageFooter     = `
-Run 'zli config -h' for details on [config-name] argument
-`
-)
