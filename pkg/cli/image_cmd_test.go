@@ -1716,6 +1716,12 @@ func (service mockService) getReferrers(ctx context.Context, config searchConfig
 	return referrersResult{}, nil
 }
 
+func (service mockService) globalSearchGQL(ctx context.Context, config searchConfig, username, password string,
+	query string,
+) (*common.GlobalSearch, error) {
+	return &common.GlobalSearch{}, nil
+}
+
 func (service mockService) getReferrersGQL(ctx context.Context, config searchConfig, username, password string,
 	repo, digest string,
 ) (*common.ReferrersResp, error) {

@@ -70,6 +70,14 @@ func getReferrersSearchersGQL() []searcher {
 	return searchers
 }
 
+func getGlobalSearchersGQL() []searcher {
+	searchers := []searcher{
+		new(globalSearcherGQL),
+	}
+
+	return searchers
+}
+
 func getReferrersSearchers() []searcher {
 	searchers := []searcher{
 		new(referrerSearcher),
@@ -211,7 +219,7 @@ func getImages(config searchConfig) error {
 		imageListData = append(imageListData, imageStruct(image))
 	}
 
-	return printResult(config, imageListData)
+	return printImageResult(config, imageListData)
 }
 
 type imagesByDigestSearcher struct{}
@@ -270,7 +278,7 @@ func (search derivedImageListSearcherGQL) search(config searchConfig) (bool, err
 		imageListData = append(imageListData, imageStruct(image))
 	}
 
-	if err := printResult(config, imageListData); err != nil {
+	if err := printImageResult(config, imageListData); err != nil {
 		return true, err
 	}
 
@@ -301,7 +309,7 @@ func (search baseImageListSearcherGQL) search(config searchConfig) (bool, error)
 		imageListData = append(imageListData, imageStruct(image))
 	}
 
-	if err := printResult(config, imageListData); err != nil {
+	if err := printImageResult(config, imageListData); err != nil {
 		return true, err
 	}
 
@@ -333,7 +341,7 @@ func (search imagesByDigestSearcherGQL) search(config searchConfig) (bool, error
 		imageListData = append(imageListData, imageStruct(image))
 	}
 
-	if err := printResult(config, imageListData); err != nil {
+	if err := printImageResult(config, imageListData); err != nil {
 		return true, err
 	}
 
@@ -478,7 +486,7 @@ func (search imagesByCVEIDSearcherGQL) search(config searchConfig) (bool, error)
 		imageListData = append(imageListData, imageStruct(image))
 	}
 
-	if err := printResult(config, imageListData); err != nil {
+	if err := printImageResult(config, imageListData); err != nil {
 		return true, err
 	}
 
@@ -620,7 +628,7 @@ func getTagsByCVE(config searchConfig) error {
 		}
 	}
 
-	return printResult(config, imageList)
+	return printImageResult(config, imageList)
 }
 
 type referrerSearcherGQL struct{}
@@ -635,7 +643,7 @@ func (search referrerSearcherGQL) search(config searchConfig) (bool, error) {
 
 	response, err := config.searchService.getReferrersGQL(context.Background(), config, username, password, repo, digest)
 	if err != nil {
-		return false, err
+		return true, err
 	}
 
 	referrersList := referrersResult(response.Referrers)
@@ -680,6 +688,48 @@ func (search referrerSearcher) search(config searchConfig) (bool, error) {
 	printReferrersTableHeader(config.resultWriter, maxArtifactTypeLen)
 
 	return printReferrersResult(config, referrersList, maxArtifactTypeLen)
+}
+
+type globalSearcherGQL struct{}
+
+func (search globalSearcherGQL) search(config searchConfig) (bool, error) {
+	if !canSearch(config.params, newSet("query")) {
+		return false, nil
+	}
+
+	username, password := getUsernameAndPassword(*config.user)
+	ctx, cancel := context.WithCancel(context.Background())
+
+	defer cancel()
+
+	query := *config.params["query"]
+
+	globalSearchResult, err := config.searchService.globalSearchGQL(ctx, config, username, password, query)
+	if err != nil {
+		return true, err
+	}
+
+	imagesList := []imageStruct{}
+
+	for _, image := range globalSearchResult.Images {
+		imagesList = append(imagesList, imageStruct(image))
+	}
+
+	reposList := []repoStruct{}
+
+	for _, repo := range globalSearchResult.Repos {
+		reposList = append(reposList, repoStruct(repo))
+	}
+
+	if err := printImageResult(config, imagesList); err != nil {
+		return true, err
+	}
+
+	if err := printRepoResults(config, reposList); err != nil {
+		return true, err
+	}
+
+	return true, nil
 }
 
 func collectResults(config searchConfig, wg *sync.WaitGroup, imageErr chan stringResult,
@@ -855,7 +905,7 @@ func printImageTableHeader(writer io.Writer, verbose bool, maxImageNameLen, maxT
 	}
 
 	row[colDigestIndex] = "DIGEST"
-	row[colSizeIndex] = "SIZE"
+	row[colSizeIndex] = sizeColumn
 	row[colIsSignedIndex] = "SIGNED"
 
 	if verbose {
@@ -899,7 +949,52 @@ func printReferrersTableHeader(writer io.Writer, maxArtifactTypeLen int) {
 	}
 
 	row[refDigestIndex] = "DIGEST"
-	row[refSizeIndex] = "SIZE"
+	row[refSizeIndex] = sizeColumn
+
+	table.Append(row)
+	table.Render()
+}
+
+func printRepoTableHeader(writer io.Writer, repoMaxLen, maxTimeLen int, verbose bool) {
+	table := getRepoTableWriter(writer)
+
+	table.SetColMinWidth(repoNameIndex, repoMaxLen)
+	table.SetColMinWidth(repoSizeIndex, sizeWidth)
+	table.SetColMinWidth(repoLastUpdatedIndex, maxTimeLen)
+	table.SetColMinWidth(repoDownloadsIndex, sizeWidth)
+	table.SetColMinWidth(repoStarsIndex, sizeWidth)
+
+	if verbose {
+		table.SetColMinWidth(repoPlatformsIndex, platformWidth)
+	}
+
+	row := make([]string, repoRowWidth)
+
+	// adding spaces so that image name and tag columns are aligned
+	// in case the name/tag are fully shown and too long
+	var offset string
+
+	if repoMaxLen > len("NAME") {
+		offset = strings.Repeat(" ", repoMaxLen-len("NAME"))
+		row[repoNameIndex] = "NAME" + offset
+	} else {
+		row[repoNameIndex] = "NAME"
+	}
+
+	if repoMaxLen > len("LAST UPDATED") {
+		offset = strings.Repeat(" ", repoMaxLen-len("LAST UPDATED"))
+		row[repoLastUpdatedIndex] = "LAST UPDATED" + offset
+	} else {
+		row[repoLastUpdatedIndex] = "LAST UPDATED"
+	}
+
+	row[repoSizeIndex] = sizeColumn
+	row[repoDownloadsIndex] = "DOWNLOADS"
+	row[repoStarsIndex] = "STARS"
+
+	if verbose {
+		row[repoPlatformsIndex] = "PLATFORMS"
+	}
 
 	table.Append(row)
 	table.Render()
@@ -916,7 +1011,7 @@ func printReferrersResult(config searchConfig, referrersList referrersResult, ma
 	return true, nil
 }
 
-func printResult(config searchConfig, imageList []imageStruct) error {
+func printImageResult(config searchConfig, imageList []imageStruct) error {
 	var builder strings.Builder
 	maxImgNameLen := 0
 	maxTagLen := 0
@@ -960,6 +1055,36 @@ func printResult(config searchConfig, imageList []imageStruct) error {
 	return nil
 }
 
+func printRepoResults(config searchConfig, repoList []repoStruct) error {
+	maxRepoNameLen := 0
+	maxTimeLen := 0
+
+	for _, repo := range repoList {
+		if maxRepoNameLen < len(repo.Name) {
+			maxRepoNameLen = len(repo.Name)
+		}
+
+		if maxTimeLen < len(repo.LastUpdated.String()) {
+			maxTimeLen = len(repo.LastUpdated.String())
+		}
+	}
+
+	if len(repoList) > 0 {
+		printRepoTableHeader(config.resultWriter, maxRepoNameLen, maxTimeLen, *config.verbose)
+	}
+
+	for _, repo := range repoList {
+		out, err := repo.string(*config.outputFormat, maxRepoNameLen, maxTimeLen, *config.verbose)
+		if err != nil {
+			return err
+		}
+
+		fmt.Fprint(config.resultWriter, out)
+	}
+
+	return nil
+}
+
 var (
 	errInvalidImageNameAndTag = errors.New("cli: Invalid input format. Expected IMAGENAME:TAG")
 	errInvalidImageName       = errors.New("cli: Invalid input format. Expected IMAGENAME without :TAG")
@@ -990,3 +1115,7 @@ func (search repoSearcher) searchRepos(config searchConfig) error {
 		return nil
 	}
 }
+
+const (
+	sizeColumn = "SIZE"
+)
