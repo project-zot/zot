@@ -16,6 +16,8 @@ import (
 	"github.com/briandowns/spinner"
 
 	zotErrors "zotregistry.io/zot/errors"
+	"zotregistry.io/zot/pkg/api/constants"
+	zcommon "zotregistry.io/zot/pkg/common"
 )
 
 func getImageSearchers() []searcher {
@@ -62,25 +64,19 @@ func getCveSearchersGQL() []searcher {
 	return searchers
 }
 
-func getReferrersSearchersGQL() []searcher {
+func getGlobalSearchersGQL() []searcher {
 	searchers := []searcher{
+		new(globalSearcherGQL),
 		new(referrerSearcherGQL),
 	}
 
 	return searchers
 }
 
-func getGlobalSearchersGQL() []searcher {
-	searchers := []searcher{
-		new(globalSearcherGQL),
-	}
-
-	return searchers
-}
-
-func getReferrersSearchers() []searcher {
+func getGlobalSearchersREST() []searcher {
 	searchers := []searcher{
 		new(referrerSearcher),
+		new(globalSearcherREST),
 	}
 
 	return searchers
@@ -634,12 +630,25 @@ func getTagsByCVE(config searchConfig) error {
 type referrerSearcherGQL struct{}
 
 func (search referrerSearcherGQL) search(config searchConfig) (bool, error) {
-	if !canSearch(config.params, newSet("repo", "digest")) {
+	if !canSearch(config.params, newSet("subject")) {
 		return false, nil
 	}
 
 	username, password := getUsernameAndPassword(*config.user)
-	repo, digest := *config.params["repo"], *config.params["digest"]
+
+	repo, ref, refIsTag, err := zcommon.GetRepoRefference(*config.params["subject"])
+	if err != nil {
+		return true, err
+	}
+
+	digest := ref
+
+	if refIsTag {
+		digest, err = fetchImageDigest(repo, ref, username, password, config)
+		if err != nil {
+			return true, err
+		}
+	}
 
 	response, err := config.searchService.getReferrersGQL(context.Background(), config, username, password, repo, digest)
 	if err != nil {
@@ -656,25 +665,51 @@ func (search referrerSearcherGQL) search(config searchConfig) (bool, error) {
 		}
 	}
 
-	printReferrersTableHeader(config.resultWriter, maxArtifactTypeLen)
+	printReferrersTableHeader(config, config.resultWriter, maxArtifactTypeLen)
 
-	return printReferrersResult(config, referrersList, maxArtifactTypeLen)
+	return true, printReferrersResult(config, referrersList, maxArtifactTypeLen)
+}
+
+func fetchImageDigest(repo, ref, username, password string, config searchConfig) (string, error) {
+	url, err := combineServerAndEndpointURL(*config.servURL, fmt.Sprintf("/v2/%s/manifests/%s", repo, ref))
+	if err != nil {
+		return "", err
+	}
+
+	res, err := makeHEADRequest(context.Background(), url, username, password, *config.verifyTLS, false)
+
+	digestStr := res.Get(constants.DistContentDigestKey)
+
+	return digestStr, err
 }
 
 type referrerSearcher struct{}
 
 func (search referrerSearcher) search(config searchConfig) (bool, error) {
-	if !canSearch(config.params, newSet("repo", "digest")) {
+	if !canSearch(config.params, newSet("subject")) {
 		return false, nil
 	}
 
 	username, password := getUsernameAndPassword(*config.user)
-	repo, digest := *config.params["repo"], *config.params["digest"]
+
+	repo, ref, refIsTag, err := zcommon.GetRepoRefference(*config.params["subject"])
+	if err != nil {
+		return true, err
+	}
+
+	digest := ref
+
+	if refIsTag {
+		digest, err = fetchImageDigest(repo, ref, username, password, config)
+		if err != nil {
+			return true, err
+		}
+	}
 
 	referrersList, err := config.searchService.getReferrers(context.Background(), config, username, password,
 		repo, digest)
 	if err != nil {
-		return false, err
+		return true, err
 	}
 
 	maxArtifactTypeLen := math.MinInt
@@ -685,9 +720,9 @@ func (search referrerSearcher) search(config searchConfig) (bool, error) {
 		}
 	}
 
-	printReferrersTableHeader(config.resultWriter, maxArtifactTypeLen)
+	printReferrersTableHeader(config, config.resultWriter, maxArtifactTypeLen)
 
-	return printReferrersResult(config, referrersList, maxArtifactTypeLen)
+	return true, printReferrersResult(config, referrersList, maxArtifactTypeLen)
 }
 
 type globalSearcherGQL struct{}
@@ -725,11 +760,17 @@ func (search globalSearcherGQL) search(config searchConfig) (bool, error) {
 		return true, err
 	}
 
-	if err := printRepoResults(config, reposList); err != nil {
-		return true, err
+	return true, printRepoResults(config, reposList)
+}
+
+type globalSearcherREST struct{}
+
+func (search globalSearcherREST) search(config searchConfig) (bool, error) {
+	if !canSearch(config.params, newSet("query")) {
+		return false, nil
 	}
 
-	return true, nil
+	return true, fmt.Errorf("search extension is not enabled: %w", zotErrors.ErrExtensionNotEnabled)
 }
 
 func collectResults(config searchConfig, wg *sync.WaitGroup, imageErr chan stringResult,
@@ -928,10 +969,14 @@ func printCVETableHeader(writer io.Writer, verbose bool, maxImgLen, maxTagLen, m
 	table.Render()
 }
 
-func printReferrersTableHeader(writer io.Writer, maxArtifactTypeLen int) {
+func printReferrersTableHeader(config searchConfig, writer io.Writer, maxArtifactTypeLen int) {
+	if *config.outputFormat != "" && *config.outputFormat != defaultOutoutFormat {
+		return
+	}
+
 	table := getReferrersTableWriter(writer)
 
-	table.SetColMinWidth(refArtifactTypeIndex, digestWidth)
+	table.SetColMinWidth(refArtifactTypeIndex, maxArtifactTypeLen)
 	table.SetColMinWidth(refDigestIndex, digestWidth)
 	table.SetColMinWidth(refSizeIndex, sizeWidth)
 
@@ -1000,15 +1045,15 @@ func printRepoTableHeader(writer io.Writer, repoMaxLen, maxTimeLen int, verbose 
 	table.Render()
 }
 
-func printReferrersResult(config searchConfig, referrersList referrersResult, maxArtifactTypeLen int) (bool, error) {
+func printReferrersResult(config searchConfig, referrersList referrersResult, maxArtifactTypeLen int) error {
 	out, err := referrersList.string(*config.outputFormat, maxArtifactTypeLen)
 	if err != nil {
-		return false, err
+		return err
 	}
 
 	fmt.Fprint(config.resultWriter, out)
 
-	return true, nil
+	return nil
 }
 
 func printImageResult(config searchConfig, imageList []imageStruct) error {

@@ -24,7 +24,14 @@ func NewSearchCommand(searchService SearchService) *cobra.Command {
 	imageCmd := &cobra.Command{
 		Use:   "search [config-name]",
 		Short: "Search images and their tags",
-		Long:  `Search images and their tags`,
+		Long: `Search repos or images
+Example:
+  # For repo search specify a substring of the repo name without the tag
+  zli search --query test/repo
+
+  # For image search specify the full repo name followed by the tag or a prefix of the tag.
+  zli search --query test/repo:2.1.
+		`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			home, err := os.UserHomeDir()
 			if err != nil {
@@ -105,7 +112,10 @@ func NewSearchCommand(searchService SearchService) *cobra.Command {
 func setupSearchFlags(imageCmd *cobra.Command, searchImageParams map[string]*string,
 	servURL, user, outputFormat *string, verbose *bool, debug *bool,
 ) {
-	searchImageParams["query"] = imageCmd.Flags().StringP("query", "q", "", "List image details by name")
+	searchImageParams["query"] = imageCmd.Flags().StringP("query", "q", "",
+		"Specify what repo or image(repo:tag) to be searched")
+
+	searchImageParams["subject"] = imageCmd.Flags().StringP("subject", "s", "", "List all referrers for this subject")
 
 	imageCmd.Flags().StringVar(servURL, "url", "", "Specify zot server URL if config-name is not mentioned")
 	imageCmd.Flags().StringVarP(user, "user", "u", "", `User Credentials of zot server in "username:password" format`)
@@ -120,7 +130,7 @@ func globalSearch(searchConfig searchConfig) error {
 	if checkExtEndPoint(searchConfig) {
 		searchers = getGlobalSearchersGQL()
 	} else {
-		return zotErrors.ErrExtensionNotEnabled
+		searchers = getGlobalSearchersREST()
 	}
 
 	for _, searcher := range searchers {

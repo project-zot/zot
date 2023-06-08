@@ -1136,12 +1136,12 @@ func (ref referrersResult) stringPlainText(maxArtifactTypeLen int) (string, erro
 
 	for _, referrer := range ref {
 		artifactType := ellipsize(referrer.ArtifactType, maxArtifactTypeLen, ellipsis)
-		digest := ellipsize(godigest.Digest(referrer.Digest).Encoded(), digestWidth, "")
-		size := ellipsize(strconv.FormatInt(int64(referrer.Size), 10), sizeWidth, ellipsis)
+		// digest := ellipsize(godigest.Digest(referrer.Digest).Encoded(), digestWidth, "")
+		size := ellipsize(humanize.Bytes(uint64(referrer.Size)), sizeWidth, ellipsis)
 
 		row := make([]string, refRowWidth)
 		row[refArtifactTypeIndex] = artifactType
-		row[refDigestIndex] = digest
+		row[refDigestIndex] = referrer.Digest
 		row[refSizeIndex] = size
 
 		table.Append(row)
@@ -1202,8 +1202,12 @@ func (repo repoStruct) stringPlainText(repoMaxLen, maxTimeLen int, verbose bool)
 		table.SetColMinWidth(repoPlatformsIndex, platformWidth)
 	}
 
+	repoSize, err := strconv.Atoi(repo.Size)
+	if err != nil {
+		return "", err
+	}
+
 	repoName := repo.Name
-	repoSize := repo.Size
 	repoLastUpdated := repo.LastUpdated
 	repoDownloads := repo.DownloadCount
 	repoStars := repo.StarCount
@@ -1211,7 +1215,7 @@ func (repo repoStruct) stringPlainText(repoMaxLen, maxTimeLen int, verbose bool)
 
 	row := make([]string, repoRowWidth)
 	row[repoNameIndex] = repoName
-	row[repoSizeIndex] = repoSize
+	row[repoSizeIndex] = ellipsize(strings.ReplaceAll(humanize.Bytes(uint64(repoSize)), " ", ""), sizeWidth, ellipsis)
 	row[repoLastUpdatedIndex] = repoLastUpdated.String()
 	row[repoDownloadsIndex] = strconv.Itoa(repoDownloads)
 	row[repoStarsIndex] = strconv.Itoa(repoStars)
@@ -1239,11 +1243,23 @@ func (repo repoStruct) stringPlainText(repoMaxLen, maxTimeLen int, verbose bool)
 }
 
 func (repo repoStruct) stringJSON() (string, error) {
-	return "", nil
+	json := jsoniter.ConfigCompatibleWithStandardLibrary
+
+	body, err := json.MarshalIndent(repo, "", "  ")
+	if err != nil {
+		return "", err
+	}
+
+	return string(body), nil
 }
 
 func (repo repoStruct) stringYAML() (string, error) {
-	return "", nil
+	body, err := yaml.Marshal(&repo)
+	if err != nil {
+		return "", err
+	}
+
+	return string(body), nil
 }
 
 type imageStruct common.ImageSummary
@@ -1661,9 +1677,9 @@ const (
 )
 
 const (
-	refDigestIndex = iota
-	refArtifactTypeIndex
+	refArtifactTypeIndex = iota
 	refSizeIndex
+	refDigestIndex
 
 	refRowWidth
 )

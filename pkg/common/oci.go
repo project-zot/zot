@@ -5,6 +5,8 @@ import (
 	"time"
 
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
+
+	zerr "zotregistry.io/zot/errors"
 )
 
 func GetImageDirAndTag(imageName string) (string, string) {
@@ -75,4 +77,31 @@ func GetImageLastUpdated(imageInfo ispec.Image) time.Time {
 	}
 
 	return *timeStamp
+}
+
+// GetRepoRefference returns the components of a repoName:tag or repoName@digest string. If the format is wrong
+// an error is returned.
+// The returned values have the following meaning:
+//
+// - string: repo name
+//
+// - string: reference (tag or digest)
+//
+// - bool: value for the statement: "the reference is a tag"
+//
+// - error: error value.
+func GetRepoRefference(repo string) (string, string, bool, error) {
+	repoName, digest, found := strings.Cut(repo, "@")
+
+	if !found {
+		repoName, tag, found := strings.Cut(repo, ":")
+
+		if !found {
+			return "", "", false, zerr.ErrInvalidRepoTagFormat
+		}
+
+		return repoName, tag, true, nil
+	}
+
+	return repoName, digest, false, nil
 }

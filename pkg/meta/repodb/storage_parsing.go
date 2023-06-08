@@ -159,6 +159,7 @@ func resetRepoMeta(repo string, repoDB RepoDB, log log.Logger) error {
 		Statistics: repoMeta.Statistics,
 		Signatures: map[string]ManifestSignatures{},
 		Referrers:  map[string][]ReferrerInfo{},
+		Stars:      repoMeta.Stars,
 	})
 }
 

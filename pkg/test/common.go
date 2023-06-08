@@ -799,11 +799,16 @@ func GetImageWithSubject(subjectDigest godigest.Digest, mediaType string) (Image
 		MediaType: mediaType,
 	}
 
+	blob, err := json.Marshal(manifest)
+	if err != nil {
+		return Image{}, err
+	}
+
 	return Image{
 		Manifest:  manifest,
 		Config:    conf,
 		Layers:    layers,
-		Reference: "",
+		Reference: godigest.FromBytes(blob).String(),
 	}, nil
 }
 
@@ -1519,9 +1524,9 @@ func UploadImageWithBasicAuth(img Image, baseURL, repo, user, password string) e
 
 	cdigest := godigest.FromBytes(cblob)
 
-	if img.Manifest.Config.MediaType == ispec.MediaTypeScratch {
-		cblob = ispec.ScratchDescriptor.Data
-		cdigest = ispec.ScratchDescriptor.Digest
+	if img.Manifest.Config.MediaType == ispec.MediaTypeEmptyJSON {
+		cblob = ispec.DescriptorEmptyJSON.Data
+		cdigest = ispec.DescriptorEmptyJSON.Digest
 	}
 
 	resp, err := resty.R().

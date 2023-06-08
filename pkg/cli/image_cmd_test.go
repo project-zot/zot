@@ -1719,7 +1719,25 @@ func (service mockService) getReferrers(ctx context.Context, config searchConfig
 func (service mockService) globalSearchGQL(ctx context.Context, config searchConfig, username, password string,
 	query string,
 ) (*common.GlobalSearch, error) {
-	return &common.GlobalSearch{}, nil
+	return &common.GlobalSearch{
+		Images: []common.ImageSummary{
+			{
+				RepoName:  "repo",
+				MediaType: ispec.MediaTypeImageManifest,
+				Manifests: []common.ManifestSummary{
+					{
+						Digest: godigest.FromString("str").String(),
+						Size:   "100",
+					},
+				},
+			},
+		},
+		Repos: []common.RepoSummary{
+			{
+				Name: "repo",
+			},
+		},
+	}, nil
 }
 
 func (service mockService) getReferrersGQL(ctx context.Context, config searchConfig, username, password string,
