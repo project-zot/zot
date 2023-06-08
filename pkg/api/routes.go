@@ -26,7 +26,6 @@ import (
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	artifactspec "github.com/oras-project/artifacts-spec/specs-go/v1"
-	"github.com/sigstore/cosign/v2/pkg/oci/remote"
 
 	zerr "zotregistry.io/zot/errors"
 	"zotregistry.io/zot/pkg/api/constants"
@@ -1734,31 +1733,13 @@ func getImageManifest(routeHandler *RouteHandler, imgStore storageTypes.ImageSto
 		routeHandler.c.Log.Info().Str("repository", name).Str("reference", reference).
 			Msg("trying to get updated image by syncing on demand")
 
-		// we use a custom method for syncing cosign signatures for the moment, even though it's also an oci image.
-		if isCosignTag(reference) {
-			if errSync := routeHandler.c.SyncOnDemand.SyncReference(name, reference, syncConstants.Cosign); errSync != nil {
-				routeHandler.c.Log.Err(errSync).Str("repository", name).Str("reference", reference).
-					Msg("error encounter while syncing cosign signature for image")
-			}
-		} else {
-			if errSync := routeHandler.c.SyncOnDemand.SyncImage(name, reference); errSync != nil {
-				routeHandler.c.Log.Err(errSync).Str("repository", name).Str("reference", reference).
-					Msg("error encounter while syncing image")
-			}
+		if errSync := routeHandler.c.SyncOnDemand.SyncImage(name, reference); errSync != nil {
+			routeHandler.c.Log.Err(errSync).Str("repository", name).Str("reference", reference).
+				Msg("error encounter while syncing image")
 		}
 	}
 
 	return imgStore.GetImageManifest(name, reference)
-}
-
-// this function will check if tag is a cosign tag (signature or sbom).
-func isCosignTag(tag string) bool {
-	if strings.HasPrefix(tag, "sha256-") &&
-		(strings.HasSuffix(tag, remote.SignatureTagSuffix) || strings.HasSuffix(tag, remote.SBOMTagSuffix)) {
-		return true
-	}
-
-	return false
 }
 
 // will sync referrers on demand if they are not found, in case sync extensions is enabled.

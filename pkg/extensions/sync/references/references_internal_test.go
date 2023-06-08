@@ -48,13 +48,13 @@ func TestCosign(t *testing.T) {
 
 		cosign = NewCosignReference(client, storage.StoreController{DefaultStore: mocks.MockedImageStore{
 			GetImageManifestFn: func(repo, reference string) ([]byte, godigest.Digest, string, error) {
-				return []byte{}, "", "", nil
+				return []byte{}, "digest", "", nil
 			},
 		}}, nil, log.NewLogger("debug", ""))
 
-		// trigger unmarshal err
+		// different digest
 		ok, err = cosign.canSkipReferences("repo", "tag", &ispec.Manifest{MediaType: ispec.MediaTypeImageManifest})
-		So(err, ShouldNotBeNil)
+		So(err, ShouldBeNil)
 		So(ok, ShouldBeFalse)
 	})
 }
