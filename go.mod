@@ -7,7 +7,7 @@ require (
 	github.com/Masterminds/semver v1.5.0
 	github.com/alecthomas/template v0.0.0-20190718012654-fb15b899a751
 	github.com/apex/log v1.9.0
-	github.com/aquasecurity/trivy-db v0.0.0-20230411140759-3c2ee2168575
+	github.com/aquasecurity/trivy-db v0.0.0-20230515061101-378ab9ed302c
 	github.com/bmatcuk/doublestar/v4 v4.6.0
 	github.com/briandowns/spinner v1.23.0
 	github.com/chartmuseum/auth v0.5.0
@@ -19,7 +19,7 @@ require (
 	github.com/getlantern/deepcopy v0.0.0-20160317154340-7f45deb8130a
 	github.com/go-ldap/ldap/v3 v3.4.4
 	github.com/gofrs/uuid v4.4.0+incompatible
-	github.com/google/go-containerregistry v0.14.1-0.20230409045903-ed5c185df419
+	github.com/google/go-containerregistry v0.15.2
 	github.com/google/uuid v1.3.0
 	github.com/gorilla/handlers v1.5.1
 	github.com/gorilla/mux v1.8.0
@@ -30,7 +30,7 @@ require (
 	github.com/nmcclain/ldap v0.0.0-20210720162743-7f8d1e44eeba
 	github.com/olekukonko/tablewriter v0.0.5
 	github.com/opencontainers/go-digest v1.0.0
-	github.com/opencontainers/image-spec v1.1.0-rc3
+	github.com/opencontainers/image-spec v1.1.0-rc3.0.20230608172643-f8b2ca8c6ba1
 	github.com/opencontainers/umoci v0.4.8-0.20210922062158-e60a0cc726e6
 	github.com/oras-project/artifacts-spec v1.0.0-rc.2
 	github.com/phayes/freeport v0.0.0-20220201140144-74d24b5ae9f5
@@ -50,7 +50,7 @@ require (
 )
 
 require (
-	github.com/aquasecurity/trivy v0.41.0
+	github.com/aquasecurity/trivy v0.42.0
 	github.com/aws/aws-sdk-go-v2/service/dynamodb v1.19.7
 	github.com/containers/image/v5 v5.25.0
 	github.com/gobwas/glob v0.2.3
@@ -65,7 +65,11 @@ require (
 require (
 	filippo.io/edwards25519 v1.0.0 // indirect
 	github.com/AdamKorcz/go-118-fuzz-build v0.0.0-20221215162035-5330a85ea652 // indirect
+	github.com/Azure/azure-sdk-for-go/sdk/azcore v1.6.0 // indirect
+	github.com/Azure/azure-sdk-for-go/sdk/azidentity v1.3.0 // indirect
+	github.com/Azure/azure-sdk-for-go/sdk/internal v1.3.0 // indirect
 	github.com/Azure/go-ansiterm v0.0.0-20210617225240-d185dfc1b5a1 // indirect
+	github.com/AzureAD/microsoft-authentication-library-for-go v1.0.0 // indirect
 	github.com/CycloneDX/cyclonedx-go v0.7.0 // indirect
 	github.com/MakeNowJust/heredoc v1.0.0 // indirect
 	github.com/Masterminds/semver/v3 v3.2.1 // indirect
@@ -74,7 +78,7 @@ require (
 	github.com/Microsoft/hcsshim v0.10.0-rc.7 // indirect
 	github.com/alecthomas/chroma v0.10.0 // indirect
 	github.com/anchore/go-struct-converter v0.0.0-20221118182256-c68fdcfa2092 // indirect
-	github.com/aquasecurity/defsec v0.85.0 // indirect
+	github.com/aquasecurity/defsec v0.89.0 // indirect
 	github.com/aquasecurity/table v1.8.0 // indirect
 	github.com/aquasecurity/tml v0.6.1 // indirect
 	github.com/aquasecurity/trivy-java-db v0.0.0-20230209231723-7cddb1406728 // indirect
@@ -113,6 +117,7 @@ require (
 	github.com/gregjones/httpcache v0.0.0-20180305231024-9cad4c3443a7 // indirect
 	github.com/jmoiron/sqlx v1.3.5 // indirect
 	github.com/kballard/go-shellquote v0.0.0-20180428030007-95032a82bc51 // indirect
+	github.com/kylelemons/godebug v1.1.0 // indirect
 	github.com/lann/builder v0.0.0-20180802200727-47ae307949d0 // indirect
 	github.com/lann/ps v0.0.0-20150810152359-62de8c46ede0 // indirect
 	github.com/liamg/iamgo v0.0.9 // indirect
@@ -138,17 +143,22 @@ require (
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
 	github.com/opencontainers/selinux v1.11.0 // indirect
 	github.com/openvex/go-vex v0.2.0 // indirect
-	github.com/owenrumney/go-sarif/v2 v2.1.2 // indirect
+	github.com/owenrumney/go-sarif/v2 v2.2.0 // indirect
 	github.com/package-url/packageurl-go v0.1.1-0.20220428063043-89078438f170 // indirect
 	github.com/pborman/uuid v1.2.1 // indirect
 	github.com/peterbourgon/diskv v2.0.1+incompatible // indirect
 	github.com/pjbgf/sha1cd v0.3.0 // indirect
+	github.com/pkg/browser v0.0.0-20210911075715-681adbf594b8 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/remyoudompheng/bigfft v0.0.0-20230126093431-47fa9a501578 // indirect
 	github.com/rubenv/sql-migrate v1.2.0 // indirect
-	github.com/samber/lo v1.37.0 // indirect
+	github.com/samber/lo v1.38.1 // indirect
 	github.com/shopspring/decimal v1.2.0 // indirect
 	github.com/sigstore/protobuf-specs v0.1.0 // indirect
+	github.com/sigstore/sigstore/pkg/signature/kms/aws v1.6.5 // indirect
+	github.com/sigstore/sigstore/pkg/signature/kms/azure v1.6.5 // indirect
+	github.com/sigstore/sigstore/pkg/signature/kms/gcp v1.6.5 // indirect
+	github.com/sigstore/sigstore/pkg/signature/kms/hashivault v1.6.5 // indirect
 	github.com/sigstore/timestamp-authority v1.0.0 // indirect
 	github.com/skeema/knownhosts v1.1.0 // indirect
 	github.com/spdx/tools-golang v0.5.0 // indirect
@@ -226,7 +236,7 @@ require (
 	github.com/aliyun/credentials-go v1.2.3 // indirect
 	github.com/apparentlymart/go-cidr v1.1.0 // indirect
 	github.com/apparentlymart/go-textseg/v13 v13.0.0 // indirect
-	github.com/aquasecurity/go-dep-parser v0.0.0-20230424082450-f8baca321fbf // indirect
+	github.com/aquasecurity/go-dep-parser v0.0.0-20230531031752-12c25a7270cc // indirect
 	github.com/aquasecurity/go-gem-version v0.0.0-20201115065557-8eed6fe000ce // indirect
 	github.com/aquasecurity/go-npm-version v0.0.0-20201110091526-0b796d180798 // indirect
 	github.com/aquasecurity/go-pep440-version v0.0.0-20210121094942-22b2f8951d46 // indirect
@@ -265,7 +275,7 @@ require (
 	github.com/containers/libtrust v0.0.0-20230121012942-c1716e8a8d01 // indirect
 	github.com/containers/ocicrypt v1.1.7 // indirect
 	github.com/containers/storage v1.46.1 // indirect
-	github.com/coreos/go-oidc/v3 v3.5.0 // indirect
+	github.com/coreos/go-oidc/v3 v3.6.0 // indirect
 	github.com/cpuguy83/go-md2man/v2 v2.0.2 // indirect
 	github.com/cyberphone/json-canonicalization v0.0.0-20220623050100-57a0ce2678a7 // indirect
 	github.com/cyphar/filepath-securejoin v0.2.3 // indirect
@@ -325,7 +335,7 @@ require (
 	github.com/gorilla/websocket v1.5.0 // indirect
 	github.com/hashicorp/errwrap v1.1.0 // indirect
 	github.com/hashicorp/go-cleanhttp v0.5.2 // indirect
-	github.com/hashicorp/go-getter v1.7.0 // indirect
+	github.com/hashicorp/go-getter v1.7.1 // indirect
 	github.com/hashicorp/go-multierror v1.1.1 // indirect
 	github.com/hashicorp/go-retryablehttp v0.7.2 // indirect
 	github.com/hashicorp/go-safetemp v1.0.0 // indirect
@@ -349,7 +359,7 @@ require (
 	github.com/knqyf263/go-apk-version v0.0.0-20200609155635-041fdbb8563f // indirect
 	github.com/knqyf263/go-deb-version v0.0.0-20230223133812-3ed183d23422 // indirect
 	github.com/knqyf263/go-rpm-version v0.0.0-20220614171824-631e686d1075 // indirect
-	github.com/knqyf263/go-rpmdb v0.0.0-20230301153543-ba94b245509b // indirect
+	github.com/knqyf263/go-rpmdb v0.0.0-20230517124904-b97c85e63254 // indirect
 	github.com/knqyf263/nested v0.0.1 // indirect
 	github.com/leodido/go-urn v1.2.4 // indirect
 	github.com/letsencrypt/boulder v0.0.0-20230213213521-fdfea0d469b6 // indirect
@@ -397,8 +407,8 @@ require (
 	github.com/sergi/go-diff v1.2.0 // indirect
 	github.com/shibumi/go-pathspec v1.3.0 // indirect
 	github.com/sigstore/fulcio v1.2.0 // indirect
-	github.com/sigstore/rekor v1.2.0 // indirect
-	github.com/sigstore/sigstore v1.6.4
+	github.com/sigstore/rekor v1.2.1 // indirect
+	github.com/sigstore/sigstore v1.6.5
 	github.com/sirupsen/logrus v1.9.0 // indirect
 	github.com/skratchdot/open-golang v0.0.0-20200116055534-eef842397966 // indirect
 	github.com/smartystreets/assertions v1.13.1 // indirect
@@ -421,7 +431,7 @@ require (
 	github.com/transparency-dev/merkle v0.0.2 // indirect
 	github.com/twitchtv/twirp v8.1.2+incompatible // indirect
 	github.com/ulikunitz/xz v0.5.11 // indirect
-	github.com/urfave/cli v1.22.12 // indirect
+	github.com/urfave/cli v1.22.13 // indirect
 	github.com/vbatts/go-mtree v0.5.2 // indirect
 	github.com/vbatts/tar-split v0.11.3 // indirect
 	github.com/xanzy/go-gitlab v0.83.0 // indirect
@@ -443,7 +453,7 @@ require (
 	golang.org/x/exp v0.0.0-20230321023759-10a507213a29 // indirect
 	golang.org/x/mod v0.10.0 // indirect
 	golang.org/x/net v0.10.0 // indirect
-	golang.org/x/oauth2 v0.7.0 // indirect
+	golang.org/x/oauth2 v0.8.0 // indirect
 	golang.org/x/sync v0.2.0 // indirect
 	golang.org/x/sys v0.8.0 // indirect
 	golang.org/x/term v0.8.0 // indirect
@@ -473,3 +483,5 @@ require (
 	sigs.k8s.io/structured-merge-diff/v4 v4.2.3 // indirect
 	sigs.k8s.io/yaml v1.3.0 // indirect
 )
+
+replace github.com/google/go-containerregistry => github.com/google/go-containerregistry v0.14.1-0.20230409045903-ed5c185df419
