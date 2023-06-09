@@ -405,7 +405,7 @@ func TestORAS(t *testing.T) {
 		blobDigest := pushBlob(srcBaseURL, repoName, layer)
 
 		// config
-		_ = pushBlob(srcBaseURL, repoName, ispec.ScratchDescriptor.Data)
+		_ = pushBlob(srcBaseURL, repoName, ispec.DescriptorEmptyJSON.Data)
 
 		artifactManifest := ispec.Manifest{
 			MediaType:    artifactspec.MediaTypeArtifactManifest,
@@ -417,7 +417,7 @@ func TestORAS(t *testing.T) {
 					Size:      int64(len(layer)),
 				},
 			},
-			Config: ispec.ScratchDescriptor,
+			Config: ispec.DescriptorEmptyJSON,
 			Subject: &ispec.Descriptor{
 				MediaType: "application/vnd.oci.image.manifest.v1+json",
 				Digest:    digest,
@@ -737,7 +737,7 @@ func TestOnDemand(t *testing.T) {
 			attachSBOM(rootDir, port, "remote-repo", manifestDigest)
 
 			// add OCI Ref
-			_ = pushBlob(srcBaseURL, "remote-repo", ispec.ScratchDescriptor.Data)
+			_ = pushBlob(srcBaseURL, "remote-repo", ispec.DescriptorEmptyJSON.Data)
 
 			OCIRefManifest := ispec.Manifest{
 				Subject: &ispec.Descriptor{
@@ -745,14 +745,14 @@ func TestOnDemand(t *testing.T) {
 					Digest:    manifestDigest,
 				},
 				Config: ispec.Descriptor{
-					MediaType: ispec.MediaTypeScratch,
-					Digest:    ispec.ScratchDescriptor.Digest,
+					MediaType: ispec.MediaTypeEmptyJSON,
+					Digest:    ispec.DescriptorEmptyJSON.Digest,
 					Size:      2,
 				},
 				Layers: []ispec.Descriptor{
 					{
-						MediaType: ispec.MediaTypeScratch,
-						Digest:    ispec.ScratchDescriptor.Digest,
+						MediaType: ispec.MediaTypeEmptyJSON,
+						Digest:    ispec.DescriptorEmptyJSON.Digest,
 						Size:      2,
 					},
 				},
@@ -5713,7 +5713,7 @@ func pushRepo(url, repoName string) godigest.Digest {
 	}
 
 	loc = test.Location(url, resp)
-	cblob, cdigest := ispec.ScratchDescriptor.Data, ispec.ScratchDescriptor.Digest
+	cblob, cdigest := ispec.DescriptorEmptyJSON.Data, ispec.DescriptorEmptyJSON.Digest
 
 	resp, err = resty.R().
 		SetContentLength(true).
@@ -5824,8 +5824,8 @@ func pushRepo(url, repoName string) godigest.Digest {
 		MediaType:    ispec.MediaTypeImageManifest,
 		ArtifactType: "application/vnd.cncf.icecream",
 		Config: ispec.Descriptor{
-			MediaType: ispec.MediaTypeScratch,
-			Digest:    ispec.ScratchDescriptor.Digest,
+			MediaType: ispec.MediaTypeEmptyJSON,
+			Digest:    ispec.DescriptorEmptyJSON.Digest,
 			Size:      2,
 		},
 		Layers: []ispec.Descriptor{

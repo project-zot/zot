@@ -850,9 +850,9 @@ func UploadImage(img Image, baseURL, repo string) error {
 
 	cdigest := godigest.FromBytes(cblob)
 
-	if img.Manifest.Config.MediaType == ispec.MediaTypeScratch {
-		cblob = ispec.ScratchDescriptor.Data
-		cdigest = ispec.ScratchDescriptor.Digest
+	if img.Manifest.Config.MediaType == ispec.MediaTypeEmptyJSON {
+		cblob = ispec.DescriptorEmptyJSON.Data
+		cdigest = ispec.DescriptorEmptyJSON.Digest
 	}
 
 	resp, err := resty.R().
@@ -1519,9 +1519,9 @@ func UploadImageWithBasicAuth(img Image, baseURL, repo, user, password string) e
 
 	cdigest := godigest.FromBytes(cblob)
 
-	if img.Manifest.Config.MediaType == ispec.MediaTypeScratch {
-		cblob = ispec.ScratchDescriptor.Data
-		cdigest = ispec.ScratchDescriptor.Digest
+	if img.Manifest.Config.MediaType == ispec.MediaTypeEmptyJSON {
+		cblob = ispec.DescriptorEmptyJSON.Data
+		cdigest = ispec.DescriptorEmptyJSON.Digest
 	}
 
 	resp, err := resty.R().

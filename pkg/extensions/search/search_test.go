@@ -876,9 +876,9 @@ func TestGetReferrersGQL(t *testing.T) {
 				Subject:      subjectDescriptor,
 				ArtifactType: artifactType,
 				Config: ispec.Descriptor{
-					MediaType: ispec.MediaTypeScratch,
-					Digest:    ispec.ScratchDescriptor.Digest,
-					Data:      ispec.ScratchDescriptor.Data,
+					MediaType: ispec.MediaTypeEmptyJSON,
+					Digest:    ispec.DescriptorEmptyJSON.Digest,
+					Data:      ispec.DescriptorEmptyJSON.Data,
 				},
 				MediaType: ispec.MediaTypeImageManifest,
 				Annotations: map[string]string{
@@ -6394,7 +6394,7 @@ func TestImageSummary(t *testing.T) {
 
 		img1, err := GetRandomImage("art1")
 		So(err, ShouldBeNil)
-		img1.Manifest.Config = ispec.ScratchDescriptor
+		img1.Manifest.Config = ispec.DescriptorEmptyJSON
 		img1.Manifest.ArtifactType = artType1
 		digest1, err := img1.Digest()
 		So(err, ShouldBeNil)
