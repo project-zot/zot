@@ -58,7 +58,7 @@ require (
 	github.com/opencontainers/distribution-spec/specs-go v0.0.0-20230117141039-067a0f5b0e25
 	github.com/sigstore/cosign/v2 v2.0.2
 	github.com/swaggo/http-swagger v1.3.4
-	modernc.org/sqlite v1.20.3
+	modernc.org/sqlite v1.23.0
 	oras.land/oras-go/v2 v2.2.0
 )
 
@@ -150,7 +150,7 @@ require (
 	github.com/pjbgf/sha1cd v0.3.0 // indirect
 	github.com/pkg/browser v0.0.0-20210911075715-681adbf594b8 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
-	github.com/remyoudompheng/bigfft v0.0.0-20230126093431-47fa9a501578 // indirect
+	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
 	github.com/rubenv/sql-migrate v1.2.0 // indirect
 	github.com/samber/lo v1.38.1 // indirect
 	github.com/shopspring/decimal v1.2.0 // indirect
@@ -180,7 +180,7 @@ require (
 	lukechampine.com/uint128 v1.2.0 // indirect
 	modernc.org/cc/v3 v3.40.0 // indirect
 	modernc.org/ccgo/v3 v3.16.13 // indirect
-	modernc.org/libc v1.22.2 // indirect
+	modernc.org/libc v1.22.5 // indirect
 	modernc.org/mathutil v1.5.0 // indirect
 	modernc.org/memory v1.5.0 // indirect
 	modernc.org/opt v0.1.3 // indirect
