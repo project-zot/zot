@@ -20,6 +20,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -45,6 +46,7 @@ import (
 	"oras.land/oras-go/v2/registry/remote"
 	"oras.land/oras-go/v2/registry/remote/auth"
 
+	zerr "zotregistry.io/zot/errors"
 	"zotregistry.io/zot/pkg/meta/repodb"
 	"zotregistry.io/zot/pkg/storage"
 	"zotregistry.io/zot/pkg/test/inject"
@@ -55,6 +57,8 @@ const (
 	BaseSecureURL = "https://127.0.0.1:%s"
 	SleepTime     = 100 * time.Millisecond
 )
+
+var vulnerableLayer []byte //nolint: gochecknoglobals
 
 var NotationPathLock = new(sync.Mutex) //nolint: gochecknoglobals
 
@@ -604,15 +608,8 @@ func GetRandomImageComponents(layerSize int) (ispec.Image, [][]byte, ispec.Manif
 
 	configDigest := godigest.FromBytes(configBlob)
 
-	layer := make([]byte, layerSize)
-
-	_, err = rand.Read(layer)
-	if err != nil {
-		return ispec.Image{}, [][]byte{}, ispec.Manifest{}, err
-	}
-
 	layers := [][]byte{
-		layer,
+		GetRandomLayer(layerSize),
 	}
 
 	schemaVersion := 2
@@ -637,6 +634,138 @@ func GetRandomImageComponents(layerSize int) (ispec.Image, [][]byte, ispec.Manif
 	}
 
 	return config, layers, manifest, nil
+}
+
+// These are the 2 vulnerabilities found for the returned image by the GetVulnImage function.
+const (
+	Vulnerability1ID = "CVE-2023-2650"
+	Vulnerability2ID = "CVE-2023-1255"
+)
+
+func GetVulnImage(ref string) (Image, error) {
+	const skipStackFrame = 2
+
+	vulnerableLayer, err := GetLayerWithVulnerability(skipStackFrame)
+	if err != nil {
+		return Image{}, err
+	}
+
+	vulnerableConfig := ispec.Image{
+		Platform: ispec.Platform{
+			Architecture: "amd64",
+			OS:           "linux",
+		},
+		Config: ispec.ImageConfig{
+			Env: []string{"PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"},
+			Cmd: []string{"/bin/sh"},
+		},
+		RootFS: ispec.RootFS{
+			Type:    "layers",
+			DiffIDs: []godigest.Digest{"sha256:f1417ff83b319fbdae6dd9cd6d8c9c88002dcd75ecf6ec201c8c6894681cf2b5"},
+		},
+	}
+
+	img, err := GetImageWithComponents(
+		vulnerableConfig,
+		[][]byte{
+			vulnerableLayer,
+		})
+	if err != nil {
+		return Image{}, err
+	}
+
+	img.Reference = ref
+
+	return img, err
+}
+
+func GetVulnImageWithConfig(ref string, config ispec.Image) (Image, error) {
+	const skipStackFrame = 2
+
+	vulnerableLayer, err := GetLayerWithVulnerability(skipStackFrame)
+	if err != nil {
+		return Image{}, err
+	}
+
+	vulnerableConfig := ispec.Image{
+		Platform: config.Platform,
+		Config:   config.Config,
+		RootFS: ispec.RootFS{
+			Type:    "layers",
+			DiffIDs: []godigest.Digest{"sha256:f1417ff83b319fbdae6dd9cd6d8c9c88002dcd75ecf6ec201c8c6894681cf2b5"},
+		},
+		Created: config.Created,
+		History: config.History,
+	}
+
+	img, err := GetImageWithComponents(
+		vulnerableConfig,
+		[][]byte{
+			vulnerableLayer,
+		})
+	if err != nil {
+		return Image{}, err
+	}
+
+	img.Reference = ref
+
+	return img, err
+}
+
+func GetLayerWithVulnerability(skip int) ([]byte, error) {
+	if vulnerableLayer != nil {
+		return vulnerableLayer, nil
+	}
+
+	_, b, _, ok := runtime.Caller(skip)
+	if !ok {
+		return []byte{}, zerr.ErrCallerInfo
+	}
+
+	absoluteCallerpath := filepath.Dir(b)
+	fmt.Println(absoluteCallerpath)
+
+	// we know pkg folder inside zot must exist, and since all tests are called from within pkg we'll use it as reference
+	relCallerPath := absoluteCallerpath[strings.LastIndex(absoluteCallerpath, "pkg"):]
+
+	relCallerSlice := strings.Split(relCallerPath, string(os.PathSeparator))
+	fmt.Println(relCallerPath, relCallerSlice)
+
+	// we'll calculate how many folder we should go back to reach the root of the zot folder relative
+	// to the callers position
+	backPathSlice := make([]string, len(relCallerSlice))
+
+	for i := 0; i < len(backPathSlice); i++ {
+		backPathSlice[i] = ".."
+	}
+
+	backPath := filepath.Join(backPathSlice...)
+
+	// this is the path of the blob relative to the root of the zot folder
+	vulnBlobPath := "test/data/alpine/blobs/sha256/f56be85fc22e46face30e2c3de3f7fe7c15f8fd7c4e5add29d7f64b87abdaa09"
+
+	var err error
+
+	x, _ := filepath.Abs(filepath.Join(backPath, vulnBlobPath))
+	_ = x
+
+	vulnerableLayer, err = os.ReadFile(filepath.Join(backPath, vulnBlobPath)) //nolint: lll
+	if err != nil {
+		return nil, err
+	}
+
+	return vulnerableLayer, nil
+}
+
+func GetRandomLayer(size int) []byte {
+	layer := make([]byte, size)
+
+	_, err := rand.Read(layer)
+	if err != nil {
+		return layer
+	}
+
+	return layer
 }
 
 func GetRandomImage(reference string) (Image, error) {

@@ -1339,7 +1339,6 @@ func (bdw *DBWrapper) FilterTags(ctx context.Context, filter repodb.FilterFunc,
 			matchedTags := make(map[string]repodb.Descriptor)
 			// take all manifestMetas
 			for tag, descriptor := range repoMeta.Tags {
-				matchedTags[tag] = descriptor
 				switch descriptor.MediaType {
 				case ispec.MediaTypeImageManifest:
 					manifestDigest := descriptor.Digest
@@ -1349,13 +1348,10 @@ func (bdw *DBWrapper) FilterTags(ctx context.Context, filter repodb.FilterFunc,
 						return fmt.Errorf("repodb: error while unmashaling manifest metadata for digest %s %w", manifestDigest, err)
 					}
 
-					if !filter(repoMeta, manifestMeta) {
-						delete(matchedTags, tag)
-
-						continue
+					if filter(repoMeta, manifestMeta) {
+						matchedTags[tag] = descriptor
+						manifestMetadataMap[manifestDigest] = manifestMeta
 					}
-
-					manifestMetadataMap[manifestDigest] = manifestMeta
 				case ispec.MediaTypeImageIndex:
 					indexDigest := descriptor.Digest
 
@@ -1371,7 +1367,7 @@ func (bdw *DBWrapper) FilterTags(ctx context.Context, filter repodb.FilterFunc,
 						return fmt.Errorf("repodb: error while unmashaling index content for digest %s %w", indexDigest, err)
 					}
 
-					manifestHasBeenMatched := false
+					matchedManifests := []ispec.Descriptor{}
 
 					for _, manifest := range indexContent.Manifests {
 						manifestDigest := manifest.Digest.String()
@@ -1381,24 +1377,25 @@ func (bdw *DBWrapper) FilterTags(ctx context.Context, filter repodb.FilterFunc,
 							return fmt.Errorf("repodb: error while getting manifest data for digest %s %w", manifestDigest, err)
 						}
 
-						manifestMetadataMap[manifestDigest] = manifestMeta
-
 						if filter(repoMeta, manifestMeta) {
-							manifestHasBeenMatched = true
+							matchedManifests = append(matchedManifests, manifest)
+							manifestMetadataMap[manifestDigest] = manifestMeta
 						}
 					}
 
-					if !manifestHasBeenMatched {
-						delete(matchedTags, tag)
+					if len(matchedManifests) > 0 {
+						indexContent.Manifests = matchedManifests
 
-						for _, manifest := range indexContent.Manifests {
-							delete(manifestMetadataMap, manifest.Digest.String())
+						indexBlob, err := json.Marshal(indexContent)
+						if err != nil {
+							return err
 						}
 
-						continue
-					}
+						indexData.IndexBlob = indexBlob
 
-					indexDataMap[indexDigest] = indexData
+						indexDataMap[indexDigest] = indexData
+						matchedTags[tag] = descriptor
+					}
 				default:
 					bdw.Log.Error().Str("mediaType", descriptor.MediaType).Msg("Unsupported media type")
 

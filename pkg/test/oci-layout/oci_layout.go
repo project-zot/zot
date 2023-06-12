@@ -216,7 +216,7 @@ func (olu BaseOciLayoutUtils) GetImageTagsWithTimestamp(repo string) ([]cvemodel
 
 			tagsInfo = append(tagsInfo,
 				cvemodel.TagInfo{
-					Name:      val,
+					Tag:       val,
 					Timestamp: timeStamp,
 					Descriptor: cvemodel.Descriptor{
 						Digest:    digest,

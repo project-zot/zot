@@ -450,7 +450,7 @@ func TestTagsInfo(t *testing.T) {
 		allTags := make([]cvemodel.TagInfo, 0)
 
 		firstTag := cvemodel.TagInfo{
-			Name: "1.0.0",
+			Tag: "1.0.0",
 			Descriptor: cvemodel.Descriptor{
 				Digest:    "sha256:eca04f027f414362596f2632746d8a178362170b9ac9af772011fedcc3877ebb",
 				MediaType: ispec.MediaTypeImageManifest,
@@ -458,7 +458,7 @@ func TestTagsInfo(t *testing.T) {
 			Timestamp: time.Now(),
 		}
 		secondTag := cvemodel.TagInfo{
-			Name: "1.0.1",
+			Tag: "1.0.1",
 			Descriptor: cvemodel.Descriptor{
 				Digest:    "sha256:eca04f027f414362596f2632746d8a179362170b9ac9af772011fedcc3877ebb",
 				MediaType: ispec.MediaTypeImageManifest,
@@ -466,7 +466,7 @@ func TestTagsInfo(t *testing.T) {
 			Timestamp: time.Now(),
 		}
 		thirdTag := cvemodel.TagInfo{
-			Name: "1.0.2",
+			Tag: "1.0.2",
 			Descriptor: cvemodel.Descriptor{
 				Digest:    "sha256:eca04f027f414362596f2632746d8a170362170b9ac9af772011fedcc3877ebb",
 				MediaType: ispec.MediaTypeImageManifest,
@@ -474,7 +474,7 @@ func TestTagsInfo(t *testing.T) {
 			Timestamp: time.Now(),
 		}
 		fourthTag := cvemodel.TagInfo{
-			Name: "1.0.3",
+			Tag: "1.0.3",
 			Descriptor: cvemodel.Descriptor{
 				Digest:    "sha256:eca04f027f414362596f2632746d8a171362170b9ac9af772011fedcc3877ebb",
 				MediaType: ispec.MediaTypeImageManifest,
@@ -485,6 +485,6 @@ func TestTagsInfo(t *testing.T) {
 		allTags = append(allTags, firstTag, secondTag, thirdTag, fourthTag)
 
 		latestTag := ocilayout.GetLatestTag(allTags)
-		So(latestTag.Name, ShouldEqual, "1.0.3")
+		So(latestTag.Tag, ShouldEqual, "1.0.3")
 	})
 }

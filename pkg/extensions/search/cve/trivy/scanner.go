@@ -22,6 +22,7 @@ import (
 	_ "modernc.org/sqlite"
 
 	zerr "zotregistry.io/zot/errors"
+	zcommon "zotregistry.io/zot/pkg/common"
 	cvemodel "zotregistry.io/zot/pkg/extensions/search/cve/model"
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/meta/repodb"
@@ -181,54 +182,61 @@ func (scanner Scanner) runTrivy(opts flag.Options) (types.Report, error) {
 	return report, nil
 }
 
-func (scanner Scanner) IsImageFormatScannable(repo, tag string) (bool, error) {
-	image := repo + ":" + tag
+func (scanner Scanner) IsImageFormatScannable(repo, ref string) (bool, error) {
+	var (
+		digestStr = ref
+		mediaType string
+	)
 
-	if scanner.cache.Get(image) != nil {
-		return true, nil
+	if zcommon.IsTag(ref) {
+		imgDescriptor, err := repodb.GetImageDescriptor(scanner.repoDB, repo, ref)
+		if err != nil {
+			return false, err
+		}
+
+		digestStr = imgDescriptor.Digest
+		mediaType = imgDescriptor.MediaType
+	} else {
+		var found bool
+
+		found, mediaType = repodb.FindMediaTypeForDigest(scanner.repoDB, godigest.Digest(ref))
+		if !found {
+			return false, zerr.ErrManifestNotFound
+		}
 	}
 
-	repoMeta, err := scanner.repoDB.GetRepoMeta(repo)
-	if err != nil {
-		return false, err
-	}
+	return scanner.IsImageMediaScannable(repo, digestStr, mediaType)
+}
 
-	var ok bool
+func (scanner Scanner) IsImageMediaScannable(repo, digestStr, mediaType string) (bool, error) {
+	image := repo + "@" + digestStr
 
-	imageDescriptor, ok := repoMeta.Tags[tag]
-	if !ok {
-		return false, zerr.ErrTagMetaNotFound
-	}
-
-	switch imageDescriptor.MediaType {
+	switch mediaType {
 	case ispec.MediaTypeImageManifest:
-		ok, err := scanner.isManifestScanable(imageDescriptor)
+		ok, err := scanner.isManifestScanable(digestStr)
 		if err != nil {
 			return ok, fmt.Errorf("image '%s' %w", image, err)
 		}
 
 		return ok, nil
 	case ispec.MediaTypeImageIndex:
-		ok, err := scanner.isIndexScanable(imageDescriptor)
+		ok, err := scanner.isIndexScanable(digestStr)
 		if err != nil {
 			return ok, fmt.Errorf("image '%s' %w", image, err)
 		}
 
 		return ok, nil
+	default:
+		return false, nil
 	}
-
-	return false, nil
 }
 
-func (scanner Scanner) isManifestScanable(descriptor repodb.Descriptor) (bool, error) {
-	manifestDigestStr := descriptor.Digest
-
-	manifestDigest, err := godigest.Parse(manifestDigestStr)
-	if err != nil {
-		return false, err
+func (scanner Scanner) isManifestScanable(digestStr string) (bool, error) {
+	if scanner.cache.Get(digestStr) != nil {
+		return true, nil
 	}
 
-	manifestData, err := scanner.repoDB.GetManifestData(manifestDigest)
+	manifestData, err := scanner.repoDB.GetManifestData(godigest.Digest(digestStr))
 	if err != nil {
 		return false, err
 	}
@@ -257,18 +265,98 @@ func (scanner Scanner) isManifestScanable(descriptor repodb.Descriptor) (bool, e
 	return true, nil
 }
 
-func (scanner Scanner) isIndexScanable(descriptor repodb.Descriptor) (bool, error) {
+func (scanner Scanner) isIndexScanable(digestStr string) (bool, error) {
+	if scanner.cache.Get(digestStr) != nil {
+		return true, nil
+	}
+
+	indexData, err := scanner.repoDB.GetIndexData(godigest.Digest(digestStr))
+	if err != nil {
+		return false, err
+	}
+
+	var indexContent ispec.Index
+
+	err = json.Unmarshal(indexData.IndexBlob, &indexContent)
+	if err != nil {
+		return false, err
+	}
+
+	if len(indexContent.Manifests) == 0 {
+		return true, nil
+	}
+
+	for _, manifest := range indexContent.Manifests {
+		isScannable, err := scanner.isManifestScanable(manifest.Digest.String())
+		if err != nil {
+			continue
+		}
+
+		// if at least 1 manifest is scanable, the whole index is scanable
+		if isScannable {
+			return true, nil
+		}
+	}
+
 	return false, nil
 }
 
 func (scanner Scanner) ScanImage(image string) (map[string]cvemodel.CVE, error) {
-	if scanner.cache.Get(image) != nil {
-		return scanner.cache.Get(image), nil
+	var (
+		originalImageInput = image
+		digest             string
+		mediaType          string
+	)
+
+	repo, ref, isTag := zcommon.GetImageDirAndReference(image)
+
+	digest = ref
+
+	if isTag {
+		imgDescriptor, err := repodb.GetImageDescriptor(scanner.repoDB, repo, ref)
+		if err != nil {
+			return map[string]cvemodel.CVE{}, err
+		}
+
+		digest = imgDescriptor.Digest
+		mediaType = imgDescriptor.MediaType
+	} else {
+		var found bool
+
+		found, mediaType = repodb.FindMediaTypeForDigest(scanner.repoDB, godigest.Digest(ref))
+		if !found {
+			return map[string]cvemodel.CVE{}, zerr.ErrManifestNotFound
+		}
 	}
 
-	cveidMap := make(map[string]cvemodel.CVE)
+	var (
+		cveIDMap map[string]cvemodel.CVE
+		err      error
+	)
 
-	scanner.log.Debug().Str("image", image).Msg("scanning image")
+	switch mediaType {
+	case ispec.MediaTypeImageIndex:
+		cveIDMap, err = scanner.scanIndex(repo, digest)
+	default:
+		cveIDMap, err = scanner.scanManifest(repo, digest)
+	}
+
+	if err != nil {
+		scanner.log.Error().Err(err).Str("image", originalImageInput).Msg("unable to scan image")
+
+		return map[string]cvemodel.CVE{}, err
+	}
+
+	return cveIDMap, nil
+}
+
+func (scanner Scanner) scanManifest(repo, digest string) (map[string]cvemodel.CVE, error) {
+	if cachedMap := scanner.cache.Get(digest); cachedMap != nil {
+		return cachedMap, nil
+	}
+
+	cveidMap := map[string]cvemodel.CVE{}
+	image := repo + "@" + digest
 
 	scanner.dbLock.Lock()
 	opts := scanner.getTrivyOptions(image)
@@ -276,8 +364,6 @@ func (scanner Scanner) ScanImage(image string) (map[string]cvemodel.CVE, error) 
 	scanner.dbLock.Unlock()
 
 	if err != nil { //nolint: wsl
-		scanner.log.Error().Err(err).Str("image", image).Msg("unable to scan image")
-
 		return cveidMap, err
 	}
 
@@ -335,9 +421,40 @@ func (scanner Scanner) ScanImage(image string) (map[string]cvemodel.CVE, error) 
 		}
 	}
 
-	scanner.cache.Add(image, cveidMap)
+	scanner.cache.Add(digest, cveidMap)
 
 	return cveidMap, nil
+}
+
+func (scanner Scanner) scanIndex(repo, digest string) (map[string]cvemodel.CVE, error) {
+	indexData, err := scanner.repoDB.GetIndexData(godigest.Digest(digest))
+	if err != nil {
+		return map[string]cvemodel.CVE{}, err
+	}
+
+	var indexContent ispec.Index
+
+	err = json.Unmarshal(indexData.IndexBlob, &indexContent)
+	if err != nil {
+		return map[string]cvemodel.CVE{}, err
+	}
+
+	indexCveIDMap := map[string]cvemodel.CVE{}
+
+	for _, manifest := range indexContent.Manifests {
+		if isScannable, err := scanner.isManifestScanable(manifest.Digest.String()); isScannable && err == nil {
+			manifestCveIDMap, err := scanner.scanManifest(repo, manifest.Digest.String())
+			if err != nil {
+				return nil, err
+			}
+
+			for vulnerabilityID, CVE := range manifestCveIDMap {
+				indexCveIDMap[vulnerabilityID] = CVE
+			}
+		}
+	}
+
+	return indexCveIDMap, nil
 }
 
 // UpdateDB downloads the Trivy DB / Cache under the store root directory.

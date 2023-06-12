@@ -1122,9 +1122,8 @@ func (dwr *DBWrapper) FilterTags(ctx context.Context, filter repodb.FilterFunc,
 		repoMeta.IsStarred = zcommon.Contains(userStars, repoMeta.Name)
 
 		matchedTags := make(map[string]repodb.Descriptor)
-		for tag, descriptor := range repoMeta.Tags {
-			matchedTags[tag] = descriptor
 
+		for tag, descriptor := range repoMeta.Tags {
 			switch descriptor.MediaType {
 			case ispec.MediaTypeImageManifest:
 				manifestDigest := descriptor.Digest
@@ -1137,13 +1136,10 @@ func (dwr *DBWrapper) FilterTags(ctx context.Context, filter repodb.FilterFunc,
 						fmt.Errorf("repodb: error while unmashaling manifest metadata for digest %s \n%w", manifestDigest, err)
 				}
 
-				if !filter(repoMeta, manifestMeta) {
-					delete(matchedTags, tag)
-
-					continue
+				if filter(repoMeta, manifestMeta) {
+					matchedTags[tag] = descriptor
+					manifestMetadataMap[manifestDigest] = manifestMeta
 				}
-
-				manifestMetadataMap[manifestDigest] = manifestMeta
 			case ispec.MediaTypeImageIndex:
 				indexDigest := descriptor.Digest
 
@@ -1163,7 +1159,7 @@ func (dwr *DBWrapper) FilterTags(ctx context.Context, filter repodb.FilterFunc,
 						fmt.Errorf("repodb: error while unmashaling index content for digest %s %w", indexDigest, err)
 				}
 
-				manifestHasBeenMatched := false
+				matchedManifests := []ispec.Descriptor{}
 
 				for _, manifest := range indexContent.Manifests {
 					manifestDigest := manifest.Digest.String()
@@ -1176,24 +1172,26 @@ func (dwr *DBWrapper) FilterTags(ctx context.Context, filter repodb.FilterFunc,
 							fmt.Errorf("%w repodb: error while getting manifest data for digest %s", err, manifestDigest)
 					}
 
-					manifestMetadataMap[manifestDigest] = manifestMeta
-
 					if filter(repoMeta, manifestMeta) {
-						manifestHasBeenMatched = true
+						matchedManifests = append(matchedManifests, manifest)
+						manifestMetadataMap[manifestDigest] = manifestMeta
 					}
 				}
 
-				if !manifestHasBeenMatched {
-					delete(matchedTags, tag)
+				if len(matchedManifests) > 0 {
+					indexContent.Manifests = matchedManifests
 
-					for _, manifest := range indexContent.Manifests {
-						delete(manifestMetadataMap, manifest.Digest.String())
+					indexBlob, err := json.Marshal(indexContent)
+					if err != nil {
+						return []repodb.RepoMetadata{}, map[string]repodb.ManifestMetadata{}, map[string]repodb.IndexData{},
+							pageInfo, err
 					}
 
-					continue
-				}
+					indexData.IndexBlob = indexBlob
 
-				indexDataMap[indexDigest] = indexData
+					indexDataMap[indexDigest] = indexData
+					matchedTags[tag] = descriptor
+				}
 			default:
 				dwr.Log.Error().Str("mediaType", descriptor.MediaType).Msg("Unsupported media type")
 

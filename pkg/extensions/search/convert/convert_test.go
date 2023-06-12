@@ -13,7 +13,7 @@ import (
 	. "github.com/smartystreets/goconvey/convey"
 
 	"zotregistry.io/zot/pkg/extensions/search/convert"
-	cveinfo "zotregistry.io/zot/pkg/extensions/search/cve"
+	cvemodel "zotregistry.io/zot/pkg/extensions/search/cve/model"
 	"zotregistry.io/zot/pkg/extensions/search/gql_generated"
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/meta/bolt"
@@ -74,9 +74,9 @@ func TestConvertErrors(t *testing.T) {
 			map[string]repodb.IndexData{},
 			convert.SkipQGLField{},
 			mocks.CveInfoMock{
-				GetCVESummaryForImageFn: func(repo string, reference string,
-				) (cveinfo.ImageCVESummary, error) {
-					return cveinfo.ImageCVESummary{}, ErrTestError
+				GetCVESummaryForImageMediaFn: func(repo string, digest, mediaType string,
+				) (cvemodel.ImageCVESummary, error) {
+					return cvemodel.ImageCVESummary{}, ErrTestError
 				},
 			},
 		)
@@ -120,9 +120,8 @@ func TestConvertErrors(t *testing.T) {
 			},
 			map[string]repodb.ManifestMetadata{},
 			mocks.CveInfoMock{
-				GetCVESummaryForImageFn: func(repo, reference string,
-				) (cveinfo.ImageCVESummary, error) {
-					return cveinfo.ImageCVESummary{}, ErrTestError
+				GetCVESummaryForImageMediaFn: func(repo, digest, mediaType string) (cvemodel.ImageCVESummary, error) {
+					return cvemodel.ImageCVESummary{}, ErrTestError
 				},
 			},
 		)
@@ -153,9 +152,8 @@ func TestConvertErrors(t *testing.T) {
 				ConfigBlob:   configBlob,
 			},
 			mocks.CveInfoMock{
-				GetCVESummaryForImageFn: func(repo, reference string,
-				) (cveinfo.ImageCVESummary, error) {
-					return cveinfo.ImageCVESummary{}, ErrTestError
+				GetCVESummaryForImageMediaFn: func(repo, digest, mediaType string) (cvemodel.ImageCVESummary, error) {
+					return cvemodel.ImageCVESummary{}, ErrTestError
 				},
 			},
 		)
@@ -187,12 +185,7 @@ func TestConvertErrors(t *testing.T) {
 				ConfigBlob:   []byte("bad json"),
 			},
 			nil,
-			mocks.CveInfoMock{
-				GetCVESummaryForImageFn: func(repo, reference string,
-				) (cveinfo.ImageCVESummary, error) {
-					return cveinfo.ImageCVESummary{}, ErrTestError
-				},
-			},
+			mocks.CveInfoMock{},
 		)
 		So(err, ShouldNotBeNil)
 
@@ -227,9 +220,8 @@ func TestConvertErrors(t *testing.T) {
 			},
 			nil,
 			mocks.CveInfoMock{
-				GetCVESummaryForImageFn: func(repo, reference string,
-				) (cveinfo.ImageCVESummary, error) {
-					return cveinfo.ImageCVESummary{}, ErrTestError
+				GetCVESummaryForImageMediaFn: func(repo, digest, mediaType string) (cvemodel.ImageCVESummary, error) {
+					return cvemodel.ImageCVESummary{}, ErrTestError
 				},
 			},
 		)
@@ -259,9 +251,8 @@ func TestConvertErrors(t *testing.T) {
 				Vulnerabilities: false,
 			},
 			mocks.CveInfoMock{
-				GetCVESummaryForImageFn: func(repo, reference string,
-				) (cveinfo.ImageCVESummary, error) {
-					return cveinfo.ImageCVESummary{}, ErrTestError
+				GetCVESummaryForImageMediaFn: func(repo, digest, mediaType string) (cvemodel.ImageCVESummary, error) {
+					return cvemodel.ImageCVESummary{}, ErrTestError
 				},
 			}, log.NewLogger("debug", ""),
 		)
@@ -286,9 +277,8 @@ func TestConvertErrors(t *testing.T) {
 				Vulnerabilities: false,
 			},
 			mocks.CveInfoMock{
-				GetCVESummaryForImageFn: func(repo, reference string,
-				) (cveinfo.ImageCVESummary, error) {
-					return cveinfo.ImageCVESummary{}, ErrTestError
+				GetCVESummaryForImageMediaFn: func(repo, digest, mediaType string) (cvemodel.ImageCVESummary, error) {
+					return cvemodel.ImageCVESummary{}, ErrTestError
 				},
 			}, log.NewLogger("debug", ""),
 		)

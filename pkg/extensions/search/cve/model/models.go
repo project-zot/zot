@@ -6,6 +6,11 @@ import (
 	godigest "github.com/opencontainers/go-digest"
 )
 
+type ImageCVESummary struct {
+	Count       int
+	MaxSeverity string
+}
+
 //nolint:tagliatelle // graphQL schema
 type CVE struct {
 	ID          string    `json:"Id"`
@@ -47,8 +52,15 @@ type Descriptor struct {
 	MediaType string
 }
 
+type DescriptorInfo struct {
+	Descriptor
+
+	Timestamp time.Time
+}
+
 type TagInfo struct {
-	Name       string
+	Tag        string
 	Descriptor Descriptor
+	Manifests  []DescriptorInfo
 	Timestamp  time.Time
 }

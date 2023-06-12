@@ -1891,8 +1891,8 @@ func (service mockService) getTagsForCVEGQL(ctx context.Context, config searchCo
 
 func (service mockService) getFixedTagsForCVEGQL(ctx context.Context, config searchConfig, username, password,
 	imageName, cveID string,
-) (*common.FixedTags, error) {
-	fixedTags := &common.FixedTags{
+) (*common.ImageListWithCVEFixedResponse, error) {
+	fixedTags := &common.ImageListWithCVEFixedResponse{
 		Errors: nil,
 		ImageListWithCVEFixed: struct {
 			common.PaginatedImagesResult `json:"ImageListWithCVEFixed"` //nolint:tagliatelle // graphQL schema

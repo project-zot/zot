@@ -9,16 +9,14 @@ import (
 	cvemodel "zotregistry.io/zot/pkg/extensions/search/cve/model"
 )
 
-type SortCriteria string
-
 const (
-	AlphabeticAsc = SortCriteria("ALPHABETIC_ASC")
-	AlphabeticDsc = SortCriteria("ALPHABETIC_DSC")
-	SeverityDsc   = SortCriteria("SEVERITY")
+	AlphabeticAsc = cvemodel.SortCriteria("ALPHABETIC_ASC")
+	AlphabeticDsc = cvemodel.SortCriteria("ALPHABETIC_DSC")
+	SeverityDsc   = cvemodel.SortCriteria("SEVERITY")
 )
 
-func SortFunctions() map[SortCriteria]func(pageBuffer []cvemodel.CVE, cveInfo CveInfo) func(i, j int) bool {
-	return map[SortCriteria]func(pageBuffer []cvemodel.CVE, cveInfo CveInfo) func(i, j int) bool{
+func SortFunctions() map[cvemodel.SortCriteria]func(pageBuffer []cvemodel.CVE, cveInfo CveInfo) func(i, j int) bool {
+	return map[cvemodel.SortCriteria]func(pageBuffer []cvemodel.CVE, cveInfo CveInfo) func(i, j int) bool{
 		AlphabeticAsc: SortByAlphabeticAsc,
 		AlphabeticDsc: SortByAlphabeticDsc,
 		SeverityDsc:   SortBySeverity,
@@ -56,12 +54,12 @@ type PageFinder interface {
 type CvePageFinder struct {
 	limit      int
 	offset     int
-	sortBy     SortCriteria
+	sortBy     cvemodel.SortCriteria
 	pageBuffer []cvemodel.CVE
 	cveInfo    CveInfo
 }
 
-func NewCvePageFinder(limit, offset int, sortBy SortCriteria, cveInfo CveInfo) (*CvePageFinder, error) {
+func NewCvePageFinder(limit, offset int, sortBy cvemodel.SortCriteria, cveInfo CveInfo) (*CvePageFinder, error) {
 	if sortBy == "" {
 		sortBy = SeverityDsc
 	}
@@ -130,10 +128,4 @@ func (bpt *CvePageFinder) Page() ([]cvemodel.CVE, common.PageInfo) {
 	pageInfo.TotalCount = len(bpt.pageBuffer)
 
 	return cves, *pageInfo
-}
-
-type PageInput struct {
-	Limit  int
-	Offset int
-	SortBy SortCriteria
 }

@@ -18,6 +18,7 @@ import (
 	zerr "zotregistry.io/zot/errors"
 	"zotregistry.io/zot/pkg/common"
 	"zotregistry.io/zot/pkg/extensions/monitoring"
+	"zotregistry.io/zot/pkg/extensions/search/cve/model"
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/meta/bolt"
 	"zotregistry.io/zot/pkg/meta/repodb"
@@ -27,6 +28,7 @@ import (
 	"zotregistry.io/zot/pkg/storage/local"
 	storageTypes "zotregistry.io/zot/pkg/storage/types"
 	"zotregistry.io/zot/pkg/test"
+	"zotregistry.io/zot/pkg/test/mocks"
 )
 
 func generateTestImage(storeController storage.StoreController, image string) {
@@ -100,9 +102,6 @@ func TestMultipleStoragePath(t *testing.T) {
 		repoDB, err := boltdb_wrapper.NewBoltDBWrapper(boltDriver, log)
 		So(err, ShouldBeNil)
 
-		err = repodb.ParseStorage(repoDB, storeController, log)
-		So(err, ShouldBeNil)
-
 		scanner := NewScanner(storeController, repoDB, "ghcr.io/project-zot/trivy-db", "", log)
 
 		So(scanner.storeController.DefaultStore, ShouldNotBeNil)
@@ -124,6 +123,9 @@ func TestMultipleStoragePath(t *testing.T) {
 		generateTestImage(storeController, img0)
 		generateTestImage(storeController, img1)
 		generateTestImage(storeController, img2)
+
+		err = repodb.ParseStorage(repoDB, storeController, log)
+		So(err, ShouldBeNil)
 
 		// Try to scan without the DB being downloaded
 		_, err = scanner.ScanImage(img0)
@@ -506,5 +508,140 @@ func TestDefaultTrivyDBUrl(t *testing.T) {
 		opts = scanner.getTrivyOptions(img)
 		_, err = scanner.runTrivy(opts)
 		So(err, ShouldBeNil)
+	})
+}
+
+func TestIsIndexScanable(t *testing.T) {
+	Convey("IsIndexScanable", t, func() {
+		storeController := storage.StoreController{}
+		storeController.DefaultStore = &local.ImageStoreLocal{}
+
+		repoDB := &boltdb_wrapper.DBWrapper{}
+		log := log.NewLogger("debug", "")
+
+		Convey("Find index in cache", func() {
+			scanner := NewScanner(storeController, repoDB, "", "", log)
+
+			scanner.cache.Add("digest", make(map[string]model.CVE))
+
+			found, err := scanner.isIndexScanable("digest")
+			So(err, ShouldBeNil)
+			So(found, ShouldBeTrue)
+		})
+	})
+}
+
+func TestScanIndexErrors(t *testing.T) {
+	Convey("Errors", t, func() {
+		storeController := storage.StoreController{}
+		storeController.DefaultStore = mocks.MockedImageStore{}
+
+		repoDB := mocks.RepoDBMock{}
+		log := log.NewLogger("debug", "")
+
+		Convey("GetIndexData fails", func() {
+			repoDB.GetIndexDataFn = func(indexDigest godigest.Digest) (repodb.IndexData, error) {
+				return repodb.IndexData{}, godigest.ErrDigestUnsupported
+			}
+
+			scanner := NewScanner(storeController, repoDB, "", "", log)
+
+			_, err := scanner.scanIndex("repo", "digest")
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("Bad Index Blob, Unamrshal fails", func() {
+			repoDB.GetIndexDataFn = func(indexDigest godigest.Digest) (repodb.IndexData, error) {
+				return repodb.IndexData{
+					IndexBlob: []byte(`bad-blob`),
+				}, nil
+			}
+
+			scanner := NewScanner(storeController, repoDB, "", "", log)
+
+			_, err := scanner.scanIndex("repo", "digest")
+			So(err, ShouldNotBeNil)
+		})
+	})
+}
+
+func TestIsIndexScanableErrors(t *testing.T) {
+	Convey("Errors", t, func() {
+		storeController := storage.StoreController{}
+		storeController.DefaultStore = mocks.MockedImageStore{}
+
+		repoDB := mocks.RepoDBMock{}
+		log := log.NewLogger("debug", "")
+
+		Convey("GetIndexData errors", func() {
+			repoDB.GetIndexDataFn = func(indexDigest godigest.Digest) (repodb.IndexData, error) {
+				return repodb.IndexData{}, zerr.ErrManifestDataNotFound
+			}
+			scanner := NewScanner(storeController, repoDB, "", "", log)
+
+			_, err := scanner.isIndexScanable("digest")
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("bad index data, can't unmarshal", func() {
+			repoDB.GetIndexDataFn = func(indexDigest godigest.Digest) (repodb.IndexData, error) {
+				return repodb.IndexData{IndexBlob: []byte(`bad`)}, nil
+			}
+			scanner := NewScanner(storeController, repoDB, "", "", log)
+
+			ok, err := scanner.isIndexScanable("digest")
+			So(err, ShouldNotBeNil)
+			So(ok, ShouldBeFalse)
+		})
+
+		Convey("is Manifest Scanable errors", func() {
+			repoDB.GetIndexDataFn = func(indexDigest godigest.Digest) (repodb.IndexData, error) {
+				return repodb.IndexData{IndexBlob: []byte(`{
+					"manifests": [{
+						"digest": "digest2"
+						},
+						{
+							"digest": "digest1"
+						}
+					]
+				}`)}, nil
+			}
+			repoDB.GetManifestDataFn = func(manifestDigest godigest.Digest) (repodb.ManifestData, error) {
+				switch manifestDigest {
+				case "digest1":
+					return repodb.ManifestData{
+						ManifestBlob: []byte("{}"),
+					}, nil
+				case "digest2":
+					return repodb.ManifestData{}, zerr.ErrBadBlob
+				}
+
+				return repodb.ManifestData{}, nil
+			}
+			scanner := NewScanner(storeController, repoDB, "", "", log)
+
+			ok, err := scanner.isIndexScanable("digest")
+			So(err, ShouldBeNil)
+			So(ok, ShouldBeTrue)
+		})
+
+		Convey("is Manifest Scanable returns false because no manifest is scanable", func() {
+			repoDB.GetIndexDataFn = func(indexDigest godigest.Digest) (repodb.IndexData, error) {
+				return repodb.IndexData{IndexBlob: []byte(`{
+					"manifests": [{
+						"digest": "digest2"
+						}
+					]
+				}`)}, nil
+			}
+			repoDB.GetManifestDataFn = func(manifestDigest godigest.Digest) (repodb.ManifestData, error) {
+				return repodb.ManifestData{}, zerr.ErrBadBlob
+			}
+			scanner := NewScanner(storeController, repoDB, "", "", log)
+
+			ok, err := scanner.isIndexScanable("digest")
+			So(err, ShouldBeNil)
+			So(ok, ShouldBeFalse)
+		})
 	})
 }

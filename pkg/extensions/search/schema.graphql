@@ -592,7 +592,7 @@ type Query {
     Returns a CVE list for the image specified in the argument
     """
     CVEListForImage(
-        "Image name in format `repository:tag`"
+        "Image name in format `repository:tag` or `repository@digest`"
         image: String!,
         "Sets the parameters of the requested page"
         requestedPage: PageInput
