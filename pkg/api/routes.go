@@ -509,16 +509,17 @@ func getReferrers(routeHandler *RouteHandler,
 }
 
 // GetReferrers godoc
-// @Summary Get references for a given digest
-// @Description Get references given a digest
+// @Summary Get referrers for a given digest
+// @Description Get referrers given a digest
 // @Accept  json
 // @Produce application/vnd.oci.image.index.v1+json
 // @Param   name     			path    string     true        "repository name"
 // @Param   digest     path    string     true        "digest"
+// @Param artifactType query string false "artifact type"
 // @Success 200 {object} 	api.ImageIndex
 // @Failure 404 {string} string "not found"
 // @Failure 500 {string} string "internal server error"
-// @Router /v2/{name}/references/{digest} [get].
+// @Router /v2/{name}/referrers/{digest} [get].
 func (rh *RouteHandler) GetReferrers(response http.ResponseWriter, request *http.Request) {
 	response.Header().Set("Access-Control-Allow-Methods", "HEAD,GET,POST,OPTIONS")
 	response.Header().Set("Access-Control-Allow-Headers", "Authorization,content-type")
@@ -1798,7 +1799,7 @@ type ReferenceList struct {
 // @Success 200 {string} string "ok"
 // @Failure 404 {string} string "not found"
 // @Failure 500 {string} string "internal server error"
-// @Router /oras/artifacts/v1/{name:%s}/manifests/{digest}/referrers [get].
+// @Router /oras/artifacts/v1/{name}/manifests/{digest}/referrers [get].
 func (rh *RouteHandler) GetOrasReferrers(response http.ResponseWriter, request *http.Request) {
 	vars := mux.Vars(request)
 	name, ok := vars["name"]
