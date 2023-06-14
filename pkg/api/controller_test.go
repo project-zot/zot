@@ -901,6 +901,75 @@ func TestBasicAuth(t *testing.T) {
 	})
 }
 
+func TestBlobReferenced(t *testing.T) {
+	Convey("Make a new controller", t, func() {
+		port := test.GetFreePort()
+		baseURL := test.GetBaseURL(port)
+		conf := config.New()
+		conf.HTTP.Port = port
+
+		ctlr := makeController(conf, t.TempDir(), "")
+
+		cm := test.NewControllerManager(ctlr)
+		cm.StartAndWait(port)
+		defer cm.StopServer()
+
+		// without creds, should get access error
+		resp, err := resty.R().Get(baseURL + "/v2/")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+		repoName := "repo"
+
+		cfg, layers, manifest, err := test.GetImageComponents(2)
+		So(err, ShouldBeNil)
+
+		err = test.UploadImage(
+			test.Image{
+				Config:    cfg,
+				Layers:    layers,
+				Manifest:  manifest,
+				Reference: "1.0",
+			}, baseURL, repoName)
+		So(err, ShouldBeNil)
+
+		manifestContent, err := json.Marshal(manifest)
+		So(err, ShouldBeNil)
+		manifestDigest := godigest.FromBytes(manifestContent)
+		So(manifestDigest, ShouldNotBeNil)
+
+		configContent, err := json.Marshal(cfg)
+		So(err, ShouldBeNil)
+		configDigest := godigest.FromBytes(configContent)
+		So(configDigest, ShouldNotBeNil)
+
+		// delete manifest blob
+		resp, err = resty.R().Delete(baseURL + "/v2/" + repoName + "/blobs/" + manifestDigest.String())
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusMethodNotAllowed)
+
+		// delete config blob
+		resp, err = resty.R().Delete(baseURL + "/v2/" + repoName + "/blobs/" + configDigest.String())
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusMethodNotAllowed)
+
+		// delete manifest with manifest api method
+		resp, err = resty.R().Delete(baseURL + "/v2/" + repoName + "/manifests/" + manifestDigest.String())
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
+
+		// delete blob should work after manifest is deleted
+		resp, err = resty.R().Delete(baseURL + "/v2/" + repoName + "/blobs/" + configDigest.String())
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
+	})
+}
+
 func TestInterruptedBlobUpload(t *testing.T) {
 	Convey("Successfully cleaning interrupted blob uploads", t, func() {
 		port := test.GetFreePort()

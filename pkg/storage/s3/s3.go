@@ -1424,6 +1424,11 @@ func (is *ObjectStorage) DeleteBlob(repo string, digest godigest.Digest) error {
 		return zerr.ErrBlobNotFound
 	}
 
+	// first check if this blob is not currently in use
+	if ok, _ := common.IsBlobReferenced(is, repo, digest, is.log); ok {
+		return zerr.ErrBlobReferenced
+	}
+
 	if fmt.Sprintf("%v", is.cache) != fmt.Sprintf("%v", nil) {
 		dstRecord, err := is.cache.GetBlob(digest)
 		if err != nil && !errors.Is(err, zerr.ErrCacheMiss) {

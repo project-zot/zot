@@ -26,10 +26,12 @@ import (
 	. "github.com/smartystreets/goconvey/convey"
 	"gopkg.in/resty.v1"
 
+	zerr "zotregistry.io/zot/errors"
 	"zotregistry.io/zot/pkg/extensions/monitoring"
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/storage"
 	"zotregistry.io/zot/pkg/storage/cache"
+	storageCommon "zotregistry.io/zot/pkg/storage/common"
 	storageConstants "zotregistry.io/zot/pkg/storage/constants"
 	"zotregistry.io/zot/pkg/storage/local"
 	"zotregistry.io/zot/pkg/storage/s3"
@@ -839,6 +841,297 @@ func TestMandatoryAnnotations(t *testing.T) {
 					_, _, err = imgStore.PutImageManifest("test", "1.0.0", ispec.MediaTypeImageManifest, manifestBuf)
 					So(err, ShouldNotBeNil)
 				})
+			})
+		})
+	}
+}
+
+func TestDeleteBlobsInUse(t *testing.T) {
+	for _, testcase := range testCases {
+		testcase := testcase
+		t.Run(testcase.testCaseName, func(t *testing.T) {
+			var imgStore storageTypes.ImageStore
+			var testDir, tdir string
+			var store driver.StorageDriver
+
+			log := log.Logger{Logger: zerolog.New(os.Stdout)}
+			metrics := monitoring.NewMetricsServer(false, log)
+
+			if testcase.storageType == "s3" {
+				skipIt(t)
+
+				uuid, err := guuid.NewV4()
+				if err != nil {
+					panic(err)
+				}
+
+				testDir = path.Join("/oci-repo-test", uuid.String())
+				tdir = t.TempDir()
+
+				store, imgStore, _ = createObjectsStore(testDir, tdir)
+
+				defer cleanupStorage(store, testDir)
+			} else {
+				tdir = t.TempDir()
+				cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
+					RootDir:     tdir,
+					Name:        "cache",
+					UseRelPaths: true,
+				}, log)
+				imgStore = local.NewImageStore(tdir, true, storageConstants.DefaultGCDelay, true,
+					true, log, metrics, nil, cacheDriver)
+			}
+
+			Convey("Setup manifest", t, func() {
+				// put an unused blob
+				content := []byte("unused blob")
+				buf := bytes.NewBuffer(content)
+				unusedDigest := godigest.FromBytes(content)
+
+				_, _, err := imgStore.FullBlobUpload("repo", bytes.NewReader(buf.Bytes()), unusedDigest)
+				So(err, ShouldBeNil)
+
+				content = []byte("test-data1")
+				buf = bytes.NewBuffer(content)
+				buflen := buf.Len()
+				digest := godigest.FromBytes(content)
+
+				_, _, err = imgStore.FullBlobUpload("repo", bytes.NewReader(buf.Bytes()), digest)
+				So(err, ShouldBeNil)
+
+				cblob, cdigest := test.GetRandomImageConfig()
+				_, clen, err := imgStore.FullBlobUpload("repo", bytes.NewReader(cblob), cdigest)
+				So(err, ShouldBeNil)
+				So(clen, ShouldEqual, len(cblob))
+
+				annotationsMap := make(map[string]string)
+				annotationsMap[ispec.AnnotationRefName] = tag
+
+				manifest := ispec.Manifest{
+					Config: ispec.Descriptor{
+						MediaType: "application/vnd.oci.image.config.v1+json",
+						Digest:    cdigest,
+						Size:      int64(len(cblob)),
+					},
+					Layers: []ispec.Descriptor{
+						{
+							MediaType: "application/vnd.oci.image.layer.v1.tar",
+							Digest:    digest,
+							Size:      int64(buflen),
+						},
+					},
+					Annotations: annotationsMap,
+				}
+
+				manifest.SchemaVersion = 2
+				manifestBuf, err := json.Marshal(manifest)
+				So(err, ShouldBeNil)
+
+				manifestDigest, _, err := imgStore.PutImageManifest("repo", tag, ispec.MediaTypeImageManifest, manifestBuf)
+				So(err, ShouldBeNil)
+
+				Convey("Try to delete blob currently in use", func() {
+					// layer blob
+					err := imgStore.DeleteBlob("repo", digest)
+					So(err, ShouldEqual, zerr.ErrBlobReferenced)
+
+					// manifest
+					err = imgStore.DeleteBlob("repo", manifestDigest)
+					So(err, ShouldEqual, zerr.ErrBlobReferenced)
+
+					// config
+					err = imgStore.DeleteBlob("repo", cdigest)
+					So(err, ShouldEqual, zerr.ErrBlobReferenced)
+				})
+
+				Convey("Delete unused blob", func() {
+					err := imgStore.DeleteBlob("repo", unusedDigest)
+					So(err, ShouldBeNil)
+				})
+
+				Convey("Delete manifest first, then blob", func() {
+					err := imgStore.DeleteImageManifest("repo", manifestDigest.String(), false)
+					So(err, ShouldBeNil)
+
+					err = imgStore.DeleteBlob("repo", digest)
+					So(err, ShouldBeNil)
+
+					// config
+					err = imgStore.DeleteBlob("repo", cdigest)
+					So(err, ShouldBeNil)
+				})
+
+				if testcase.storageType != "s3" {
+					Convey("get image manifest error", func() {
+						err := os.Chmod(path.Join(imgStore.RootDir(), "repo", "blobs", "sha256", manifestDigest.Encoded()), 0o000)
+						So(err, ShouldBeNil)
+
+						ok, _ := storageCommon.IsBlobReferenced(imgStore, "repo", unusedDigest, log.Logger)
+						So(ok, ShouldBeFalse)
+
+						err = os.Chmod(path.Join(imgStore.RootDir(), "repo", "blobs", "sha256", manifestDigest.Encoded()), 0o755)
+						So(err, ShouldBeNil)
+					})
+				}
+			})
+
+			Convey("Setup multiarch manifest", t, func() {
+				// put an unused blob
+				content := []byte("unused blob")
+				buf := bytes.NewBuffer(content)
+				unusedDigest := godigest.FromBytes(content)
+
+				_, _, err := imgStore.FullBlobUpload(repoName, bytes.NewReader(buf.Bytes()), unusedDigest)
+				So(err, ShouldBeNil)
+
+				// create a blob/layer
+				upload, err := imgStore.NewBlobUpload(repoName)
+				So(err, ShouldBeNil)
+				So(upload, ShouldNotBeEmpty)
+
+				content = []byte("this is a blob1")
+				buf = bytes.NewBuffer(content)
+				buflen := buf.Len()
+				digest := godigest.FromBytes(content)
+				So(digest, ShouldNotBeNil)
+				blob, err := imgStore.PutBlobChunkStreamed(repoName, upload, buf)
+				So(err, ShouldBeNil)
+				So(blob, ShouldEqual, buflen)
+				bdgst1 := digest
+				bsize1 := len(content)
+
+				err = imgStore.FinishBlobUpload(repoName, upload, buf, digest)
+				So(err, ShouldBeNil)
+				So(blob, ShouldEqual, buflen)
+
+				var index ispec.Index
+				index.SchemaVersion = 2
+				index.MediaType = ispec.MediaTypeImageIndex
+
+				var cdigest godigest.Digest
+				var cblob []byte
+
+				for i := 0; i < 4; i++ {
+					// upload image config blob
+					upload, err = imgStore.NewBlobUpload(repoName)
+					So(err, ShouldBeNil)
+					So(upload, ShouldNotBeEmpty)
+
+					cblob, cdigest = test.GetRandomImageConfig()
+					buf = bytes.NewBuffer(cblob)
+					buflen = buf.Len()
+					blob, err = imgStore.PutBlobChunkStreamed(repoName, upload, buf)
+					So(err, ShouldBeNil)
+					So(blob, ShouldEqual, buflen)
+
+					err = imgStore.FinishBlobUpload(repoName, upload, buf, cdigest)
+					So(err, ShouldBeNil)
+					So(blob, ShouldEqual, buflen)
+
+					// create a manifest
+					manifest := ispec.Manifest{
+						Config: ispec.Descriptor{
+							MediaType: ispec.MediaTypeImageConfig,
+							Digest:    cdigest,
+							Size:      int64(len(cblob)),
+						},
+						Layers: []ispec.Descriptor{
+							{
+								MediaType: ispec.MediaTypeImageLayer,
+								Digest:    bdgst1,
+								Size:      int64(bsize1),
+							},
+						},
+					}
+					manifest.SchemaVersion = 2
+					content, err = json.Marshal(manifest)
+					So(err, ShouldBeNil)
+					digest = godigest.FromBytes(content)
+					So(digest, ShouldNotBeNil)
+					_, _, err = imgStore.PutImageManifest(repoName, digest.String(), ispec.MediaTypeImageManifest, content)
+					So(err, ShouldBeNil)
+
+					index.Manifests = append(index.Manifests, ispec.Descriptor{
+						Digest:    digest,
+						MediaType: ispec.MediaTypeImageManifest,
+						Size:      int64(len(content)),
+					})
+				}
+
+				// upload index image
+				indexContent, err := json.Marshal(index)
+				So(err, ShouldBeNil)
+				indexDigest := godigest.FromBytes(indexContent)
+				So(indexDigest, ShouldNotBeNil)
+
+				indexManifestDigest, _, err := imgStore.PutImageManifest(repoName, "index", ispec.MediaTypeImageIndex, indexContent)
+				So(err, ShouldBeNil)
+
+				Convey("Try to delete blob currently in use", func() {
+					// layer blob
+					err := imgStore.DeleteBlob("test", bdgst1)
+					So(err, ShouldEqual, zerr.ErrBlobReferenced)
+
+					// manifest
+					err = imgStore.DeleteBlob("test", digest)
+					So(err, ShouldEqual, zerr.ErrBlobReferenced)
+
+					// config
+					err = imgStore.DeleteBlob("test", cdigest)
+					So(err, ShouldEqual, zerr.ErrBlobReferenced)
+				})
+
+				Convey("Delete unused blob", func() {
+					err := imgStore.DeleteBlob(repoName, unusedDigest)
+					So(err, ShouldBeNil)
+				})
+
+				Convey("Delete manifests first, then blob", func() {
+					err := imgStore.DeleteImageManifest(repoName, indexManifestDigest.String(), false)
+					So(err, ShouldBeNil)
+
+					for _, manifestDesc := range index.Manifests {
+						err := imgStore.DeleteImageManifest(repoName, manifestDesc.Digest.String(), false)
+						So(err, ShouldBeNil)
+					}
+
+					err = imgStore.DeleteBlob(repoName, bdgst1)
+					So(err, ShouldBeNil)
+
+					// config
+					err = imgStore.DeleteBlob("test", cdigest)
+					So(err, ShouldBeNil)
+				})
+
+				if testcase.storageType != "s3" {
+					Convey("repo not found", func() {
+						// delete repo
+						err := os.RemoveAll(path.Join(imgStore.RootDir(), repoName))
+						So(err, ShouldBeNil)
+
+						ok, err := storageCommon.IsBlobReferenced(imgStore, repoName, bdgst1, log.Logger)
+						So(err, ShouldNotBeNil)
+						So(ok, ShouldBeFalse)
+					})
+
+					Convey("index.json not found", func() {
+						err := os.Remove(path.Join(imgStore.RootDir(), repoName, "index.json"))
+						So(err, ShouldBeNil)
+
+						ok, err := storageCommon.IsBlobReferenced(imgStore, repoName, bdgst1, log.Logger)
+						So(err, ShouldNotBeNil)
+						So(ok, ShouldBeFalse)
+					})
+
+					Convey("multiarch image not found", func() {
+						err := os.Remove(path.Join(imgStore.RootDir(), repoName, "blobs", "sha256", indexManifestDigest.Encoded()))
+						So(err, ShouldBeNil)
+
+						ok, err := storageCommon.IsBlobReferenced(imgStore, repoName, unusedDigest, log.Logger)
+						So(err, ShouldNotBeNil)
+						So(ok, ShouldBeFalse)
+					})
+				}
 			})
 		})
 	}

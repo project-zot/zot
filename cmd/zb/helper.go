@@ -77,6 +77,12 @@ func deleteTestRepo(repos []string, url string, client *resty.Client) error {
 				return err
 			}
 
+			// delete manifest so that we don't trigger BlobInUse error
+			err = makeHTTPDeleteRequest(fmt.Sprintf("%s/v2/%s/manifests/%s", url, repo, tag), client)
+			if err != nil {
+				return err
+			}
+
 			// delete blobs
 			for _, blob := range manifest.Layers {
 				err := makeHTTPDeleteRequest(fmt.Sprintf("%s/v2/%s/blobs/%s", url, repo, blob.Digest.String()), client)
@@ -87,12 +93,6 @@ func deleteTestRepo(repos []string, url string, client *resty.Client) error {
 
 			// delete config blob
 			err = makeHTTPDeleteRequest(fmt.Sprintf("%s/v2/%s/blobs/%s", url, repo, manifest.Config.Digest.String()), client)
-			if err != nil {
-				return err
-			}
-
-			// delete manifest
-			err = makeHTTPDeleteRequest(fmt.Sprintf("%s/v2/%s/manifests/%s", url, repo, tag), client)
 			if err != nil {
 				return err
 			}
