@@ -1048,6 +1048,10 @@ func (rh *RouteHandler) DeleteBlob(response http.ResponseWriter, request *http.R
 			WriteJSON(response,
 				http.StatusNotFound,
 				NewErrorList(NewError(BLOB_UNKNOWN, map[string]string{".String()": digest.String()})))
+		} else if errors.Is(err, zerr.ErrBlobBusy) {
+			WriteJSON(response,
+				http.StatusConflict,
+				NewErrorList(NewError(BLOB_UNKNOWN, map[string]string{".String()": digest.String()})))
 		} else {
 			rh.c.Log.Error().Err(err).Msg("unexpected error")
 			response.WriteHeader(http.StatusInternalServerError)

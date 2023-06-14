@@ -457,6 +457,79 @@ func PruneImageManifestsFromIndex(imgStore storageTypes.ImageStore, repo string,
 	return prunedManifests, nil
 }
 
+func blobUsedInImageManifest(imgStore storageTypes.ImageStore, repo string,
+	bdigest, mdigest godigest.Digest, log zerolog.Logger,
+) (bool, error) {
+	if bdigest == mdigest {
+		return true, nil
+	}
+
+	manifestContent, err := GetImageManifest(imgStore, repo, mdigest, log)
+	if err != nil {
+		log.Error().Err(err).Str("repo", repo).Str("digest", mdigest.String()).
+			Msg("gc: failed to read manifest image")
+
+		return false, err
+	}
+
+	if bdigest == manifestContent.Config.Digest {
+		return true, nil
+	}
+
+	for _, layer := range manifestContent.Layers {
+		if bdigest == layer.Digest {
+			return true, nil
+		}
+	}
+
+	return false, nil
+}
+
+func blobUsedInImageIndex(imgStore storageTypes.ImageStore, repo string,
+	digest godigest.Digest, index ispec.Index, log zerolog.Logger,
+) (bool, error) {
+	for _, desc := range index.Manifests {
+		var found bool
+
+		switch desc.MediaType {
+		case ispec.MediaTypeImageIndex:
+			indexImage, err := GetImageIndex(imgStore, repo, desc.Digest, log)
+			if err != nil {
+				log.Error().Err(err).Str("repository", repo).Str("digest", desc.Digest.String()).
+					Msg("gc: failed to read multiarch(index) image")
+
+				return false, err
+			}
+
+			found, _ = blobUsedInImageIndex(imgStore, repo, digest, indexImage, log)
+		case ispec.MediaTypeImageManifest:
+			found, _ = blobUsedInImageManifest(imgStore, repo, digest, desc.Digest, log)
+		}
+
+		if found {
+			return true, nil
+		}
+	}
+
+	return false, nil
+}
+
+func BlobInUse(imgStore storageTypes.ImageStore, repo string,
+	digest godigest.Digest, log zerolog.Logger,
+) (bool, error) {
+	dir := path.Join(imgStore.RootDir(), repo)
+	if !imgStore.DirExists(dir) {
+		return false, zerr.ErrRepoNotFound
+	}
+
+	index, err := GetIndex(imgStore, repo, log)
+	if err != nil {
+		return false, err
+	}
+
+	return blobUsedInImageIndex(imgStore, repo, digest, index, log)
+}
+
 func ApplyLinter(imgStore storageTypes.ImageStore, linter Lint, repo string, descriptor ispec.Descriptor,
 ) (bool, error) {
 	pass := true

@@ -1358,6 +1358,11 @@ func (is *ImageStoreLocal) DeleteBlob(repo string, digest godigest.Digest) error
 		return zerr.ErrBlobNotFound
 	}
 
+	// first check if this blob is not currently in use
+	if ok, _ := common.BlobInUse(is, repo, digest, is.log); ok {
+		return zerr.ErrBlobBusy
+	}
+
 	if fmt.Sprintf("%v", is.cache) != fmt.Sprintf("%v", nil) {
 		if err := is.cache.DeleteBlob(digest, blobPath); err != nil {
 			is.log.Error().Err(err).Str("digest", digest.String()).Str("blobPath", blobPath).
