@@ -22,7 +22,7 @@ require (
 	github.com/google/uuid v1.3.0
 	github.com/gorilla/handlers v1.5.1
 	github.com/gorilla/mux v1.8.0
-	github.com/hashicorp/golang-lru/v2 v2.0.2
+	github.com/hashicorp/golang-lru/v2 v2.0.3
 	github.com/json-iterator/go v1.1.12
 	github.com/minio/sha256-simd v1.0.1
 	github.com/mitchellh/mapstructure v1.5.0
@@ -57,7 +57,7 @@ require (
 	github.com/opencontainers/distribution-spec/specs-go v0.0.0-20230117141039-067a0f5b0e25
 	github.com/sigstore/cosign/v2 v2.0.2
 	github.com/swaggo/http-swagger v1.3.4
-	modernc.org/sqlite v1.23.0
+	modernc.org/sqlite v1.23.1
 	oras.land/oras-go/v2 v2.2.0
 )
 
