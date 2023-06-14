@@ -57,7 +57,7 @@ require (
 	github.com/opencontainers/distribution-spec/specs-go v0.0.0-20230117141039-067a0f5b0e25
 	github.com/sigstore/cosign/v2 v2.0.2
 	github.com/swaggo/http-swagger v1.3.4
-	modernc.org/sqlite v1.23.0
+	modernc.org/sqlite v1.23.1
 	oras.land/oras-go/v2 v2.2.0
 )
 
