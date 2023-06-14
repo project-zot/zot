@@ -345,7 +345,7 @@ github.com/alibabacloud-go/tea-utils v1.4.4/go.mod h1:KNcT0oXlZZxOXINnZBs6YvgOd5
 github.com/alibabacloud-go/tea-xml v1.1.2 h1:oLxa7JUXm2EDFzMg+7oRsYc+kutgCVwm+bZlhhmvW5M=
 github.com/alibabacloud-go/tea-xml v1.1.2/go.mod h1:Rq08vgCcCAjHyRi/M7xlHKUykZCEtyBy9+DPF6GgEu8=
 github.com/alicebob/gopher-json v0.0.0-20200520072559-a9ecdc9d1d3a h1:HbKu58rmZpUGpz5+4FfNmIU+FmZg2P3Xaj2v2bfNWmk=
-github.com/alicebob/miniredis/v2 v2.30.3 h1:hrqDB4cHFSHQf4gO3xu6YKQg8PqJpNjLYsQAFYHstqw=
+github.com/alicebob/miniredis/v2 v2.30.2 h1:lc1UAUT9ZA7h4srlfBmBt2aorm5Yftk9nBjxz7EyY9I=
 github.com/aliyun/credentials-go v1.1.2/go.mod h1:ozcZaMR5kLM7pwtCMEpVmQ242suV6qTJya2bDq4X1Tw=
 github.com/aliyun/credentials-go v1.2.3 h1:Vmodnr52Rz1mcbwn0kzMhLRKb6soizewuKXdfZiNemU=
 github.com/aliyun/credentials-go v1.2.3/go.mod h1:/KowD1cfGSLrLsH28Jr8W+xwoId0ywIy5lNzDz6O1vw=
@@ -384,8 +384,8 @@ github.com/aquasecurity/table v1.8.0/go.mod h1:eqOmvjjB7AhXFgFqpJUEE/ietg7RrMSJZ
 github.com/aquasecurity/testdocker v0.0.0-20230111101738-e741bda259da h1:pj/adfN0Wbzc0H8YkI1nX5K92wOU5/1/1TRuuc0y5Nw=
 github.com/aquasecurity/tml v0.6.1 h1:y2ZlGSfrhnn7t4ZJ/0rotuH+v5Jgv6BDDO5jB6A9gwo=
 github.com/aquasecurity/tml v0.6.1/go.mod h1:OnYMWY5lvI9ejU7yH9LCberWaaTBW7hBFsITiIMY2yY=
-github.com/aquasecurity/trivy v0.42.1 h1:rBDGiilP1jdrc5/dyyZ41ESAVb9hOMwginHVn97ggJ0=
-github.com/aquasecurity/trivy v0.42.1/go.mod h1:mbwzUAyy3YdVGYvuqtd1E2ylhfz/k39lMNdJQlU2TZQ=
+github.com/aquasecurity/trivy v0.42.0 h1:wgapYDuijrPvT5hSCurrAEF3PuQ4eF2oZ49T09bs39Y=
+github.com/aquasecurity/trivy v0.42.0/go.mod h1:mYfo1ddFe/ccAc1bWrorGB6G7n1e6XtaiRxCuSwdYQo=
 github.com/aquasecurity/trivy-db v0.0.0-20230515061101-378ab9ed302c h1:mFMfHmb5GC6xrnUGk2mJcKNt5vBaFSzJx1MMW47uzB0=
 github.com/aquasecurity/trivy-db v0.0.0-20230515061101-378ab9ed302c/go.mod h1:s7x7CTxYeiFf6gPOakSsg4mCD93au4dbYplG4h0FGrs=
 github.com/aquasecurity/trivy-java-db v0.0.0-20230209231723-7cddb1406728 h1:0eS+V7SXHgqoT99tV1mtMW6HL4HdoB9qGLMCb1fZp8A=
