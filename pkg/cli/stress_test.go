@@ -21,7 +21,7 @@ import (
 )
 
 const (
-	MaxFileDescriptors = 100
+	MaxFileDescriptors = 50
 	WorkerRunningTime  = 60 * time.Second
 )
 
