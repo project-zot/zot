@@ -129,6 +129,15 @@ function teardown_file() {
     run curl http://127.0.0.1:8090/v2/registry/tags/list
     [ "$status" -eq 0 ]
     [ $(echo "${lines[-1]}" | jq '.tags[]') = '"latest"' ]
+
+    # make sure image is skipped when synced again
+    run skopeo --insecure-policy copy --multi-arch=all --src-tls-verify=false \
+        docker://127.0.0.1:8090/registry \
+        oci:${TEST_DATA_DIR}
+    [ "$status" -eq 0 ]
+
+    run $("cat /tmp/blackbox.log | grep -q registry:latest.*.skipping image because it's already synced")
+    [ "$status" -eq 0 ]
 }
 
 @test "sync docker image on demand" {
@@ -143,6 +152,15 @@ function teardown_file() {
     run curl http://127.0.0.1:8090/v2/archlinux/tags/list
     [ "$status" -eq 0 ]
     [ $(echo "${lines[-1]}" | jq '.tags[]') = '"latest"' ]
+
+    # make sure image is skipped when synced again
+    run skopeo --insecure-policy copy --src-tls-verify=false \
+        docker://127.0.0.1:8090/archlinux \
+        oci:${TEST_DATA_DIR}
+    [ "$status" -eq 0 ]
+
+    run $("cat /tmp/blackbox.log | grep -q archlinux:latest.*.skipping image because it's already synced")
+    [ "$status" -eq 0 ]
 }
 
 @test "sync k8s image list on demand" {
