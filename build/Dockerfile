@@ -1,7 +1,7 @@
 # ---
 # Stage 1: Install certs, build binary, create default config file
 # ---
-FROM ghcr.io/project-zot/golang:1.20 AS builder
+FROM ghcr.io/project-zot/golang:1.20@sha256:3fccedea46315261e4b6205bcffe91ece1e2aea60c23aab0f033f35461849b42 AS builder
 ARG COMMIT
 ARG OS
 ARG ARCH

@@ -13,3 +13,13 @@ updates:
     directory: "/" # Location of package manifests
     schedule:
       interval: "weekly"
+
+  - package-ecosystem: docker
+    directory: /build
+    schedule:
+      interval: daily
+
+  - package-ecosystem: docker
+    directory: /examples/metrics
+    schedule:
+      interval: daily

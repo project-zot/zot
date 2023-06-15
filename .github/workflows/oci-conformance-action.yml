@@ -20,13 +20,18 @@ jobs:
     runs-on: ubuntu-latest
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
+    - name: Harden Runner
+      uses: step-security/harden-runner@128a63446a954579617e875aaab7d2978154e969 # v2.4.0
+      with:
+        egress-policy: audit
+
     - name: Install go 1.20
-      uses: actions/setup-go@v4
+      uses: actions/setup-go@fac708d6674e30b6ba41289acaab6d4b75aa0753 # v4.0.1
       with:
         cache: false
         go-version: 1.20.x
     - name: Checkout this PR 
-      uses: actions/checkout@v3
+      uses: actions/checkout@8e5e7e5ab8b370d6c329ec480221332ada57f0ab # v3.5.2
     - name: Start zot server
       run: |
           cd $GITHUB_WORKSPACE
@@ -35,7 +40,7 @@ jobs:
           IP=`hostname -I | awk '{print $1}'`
           echo "SERVER_URL=http://${IP}:8080" >> $GITHUB_ENV
     - name: Run OCI Distribution Spec conformance tests
-      uses: opencontainers/distribution-spec@main
+      uses: opencontainers/distribution-spec@58a1fe939258cb1c688ab49f819bde65eb401f75 # main
       env:
         OCI_ROOT_URL: ${{ env.SERVER_URL }}
         OCI_NAMESPACE: oci-conformance/distribution-test
@@ -48,7 +53,7 @@ jobs:
       if: always()
       #run: docker run --rm -v $(pwd)/results:/results -w /results -e OCI_ROOT_URL=${{ env.OCI_ROOT_URL }} -e OCI_NAMESPACE="anuvu/zot" -e OCI_TEST_PULL=1 -e OCI_TEST_PUSH=1 -e OCI_TEST_CONTENT_DISCOVERY=1 -e OCI_TEST_CONTENT_MANAGEMENT=1 -e OCI_HIDE_SKIPPED_WORKFLOWS=0 -e OCI_DEBUG="true" ghcr.io/opencontainers/distribution-spec/conformance:db4cc68
     - name: Upload test results zip as build artifact
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@0b7f8abb1508181956e8e162db84b466c27e18ce # v3.1.2
       with:
         name: oci-test-results-${{ github.sha }}
         path: .out/
