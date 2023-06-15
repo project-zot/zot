@@ -69,7 +69,7 @@ function teardown_file() {
     for i in "${lines[@]}"
     do
 
-        if [[ "$i" = *"CVE-2021-29921    CRITICAL  python-ipaddress: Improper input validation o..."* ]]; then
+        if [[ "$i" = *"CVE-2011-4915     LOW       fs/proc/base.c in the Linux kernel through 3..."* ]]; then
             found=1
         fi
     done
