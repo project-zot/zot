@@ -32,6 +32,15 @@ jobs:
         os: [linux, darwin]
         arch: [amd64, arm64]
     steps:
+      - name: Check disk space
+        run: |
+          set -x 
+          df -h
+          ls -lRh /tmp/* || true
+          du -sh /tmp || true
+          du -sh /tmp/* || true
+          sudo find /tmp/ -size +5M | sudo xargs ls -l
+          set +x
       - name: Install go
         uses: actions/setup-go@v4
         with:
@@ -78,6 +87,19 @@ jobs:
           sudo tar xvzf notation.tar.gz -C /usr/bin notation
           go install github.com/wadey/gocovmerge@latest
 
+      - name: Check disk space
+        run: |
+          cd $GITHUB_WORKSPACE
+          set -x 
+          df -h
+          ls -lRh /tmp/* || true
+          du -sh /tmp || true
+          du -sh /tmp/* || true
+          sudo find /tmp/ -size +5M | sudo xargs ls -l
+          du -sh ./* || true
+          find ./ -size +5M   | xargs ls -l
+          set +x
+
       - if: matrix.os == 'linux' && matrix.arch == 'amd64'
         name: Setup localstack service
         run: |
@@ -94,6 +116,20 @@ jobs:
         env:
           AWS_ACCESS_KEY_ID: fake
           AWS_SECRET_ACCESS_KEY: fake
+
+      - name: Check disk space
+        run: |
+          cd $GITHUB_WORKSPACE
+          set -x 
+          df -h
+          ls -lRh /tmp/* || true
+          du -sh /tmp || true
+          du -sh /tmp/* || true
+          sudo find /tmp/ -size +5M | sudo xargs ls -l
+          du -sh ./* || true
+          find ./ -size +5M   | xargs ls -l
+          set +x
+
       - name: Run build and test
         timeout-minutes: 80
         run: |
@@ -116,6 +152,20 @@ jobs:
         uses: codecov/codecov-action@v3
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
+
+      - name: Check disk space again
+        if: always()
+        run: |
+          cd $GITHUB_WORKSPACE
+          set -x 
+          df -h
+          ls -lRh /tmp/* || true
+          du -sh /tmp || true
+          du -sh /tmp/* || true
+          sudo find /tmp/ -size +5M | sudo xargs ls -l
+          du -sh ./* || true
+          find ./ -size +5M   | xargs ls -l
+          set +x
 
       - name: Generate GraphQL Introspection JSON on Release
         if: github.event_name == 'release' && github.event.action == 'published' && matrix.os == 'linux' && matrix.arch == 'amd64'
