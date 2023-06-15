@@ -43,7 +43,11 @@ func TestTrivyDBGenerator(t *testing.T) {
 			},
 		}
 		storeController := storage.StoreController{
-			DefaultStore: mocks.MockedImageStore{},
+			DefaultStore: mocks.MockedImageStore{
+				RootDirFn: func() string {
+					return t.TempDir()
+				},
+			},
 		}
 
 		cveInfo := cveinfo.NewCVEInfo(storeController, repoDB, "ghcr.io/project-zot/trivy-db", "", logger)
