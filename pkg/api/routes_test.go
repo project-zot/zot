@@ -41,11 +41,6 @@ func TestRoutes(t *testing.T) {
 		ctlr.Config.Storage.RootDirectory = t.TempDir()
 		ctlr.Config.Storage.Commit = true
 
-		err := test.CopyFiles("../../test/data", ctlr.Config.Storage.RootDirectory)
-		if err != nil {
-			panic(err)
-		}
-
 		cm := test.NewControllerManager(ctlr)
 		cm.StartAndWait(port)
 		defer cm.StopServer()
