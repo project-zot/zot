@@ -4,12 +4,12 @@
 package references
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
 	"strings"
 
+	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/sigstore/cosign/v2/pkg/oci/remote"
 
@@ -46,12 +46,12 @@ func (ref CosignReference) Name() string {
 
 func (ref CosignReference) IsSigned(upstreamRepo, subjectDigestStr string) bool {
 	cosignSignatureTag := getCosignSignatureTagFromSubjectDigest(subjectDigestStr)
-	_, err := ref.getManifest(upstreamRepo, cosignSignatureTag)
+	_, _, err := ref.getManifest(upstreamRepo, cosignSignatureTag)
 
 	return err == nil
 }
 
-func (ref CosignReference) canSkipReferences(localRepo, cosignTag string, manifest *ispec.Manifest) (
+func (ref CosignReference) canSkipReferences(localRepo, digest string, manifest *ispec.Manifest) (
 	bool, error,
 ) {
 	if manifest == nil {
@@ -59,64 +59,57 @@ func (ref CosignReference) canSkipReferences(localRepo, cosignTag string, manife
 	}
 
 	imageStore := ref.storeController.GetImageStore(localRepo)
+
 	// check cosign signature already synced
-
-	var localManifest ispec.Manifest
-
-	/* we need to use tag (cosign format: sha256-$IMAGE_TAG.sig) instead of digest to get local cosign manifest
-	because of an issue where cosign digests differs between upstream and downstream */
-
-	localManifestBuf, _, _, err := imageStore.GetImageManifest(localRepo, cosignTag)
+	_, localDigest, _, err := imageStore.GetImageManifest(localRepo, digest)
 	if err != nil {
 		if errors.Is(err, zerr.ErrManifestNotFound) {
 			return false, nil
 		}
 
 		ref.log.Error().Str("errorType", common.TypeOf(err)).Err(err).
-			Str("repository", localRepo).Str("reference", cosignTag).
+			Str("repository", localRepo).Str("reference", digest).
 			Msg("couldn't get local cosign manifest")
 
 		return false, err
 	}
 
-	err = json.Unmarshal(localManifestBuf, &localManifest)
-	if err != nil {
-		ref.log.Error().Str("errorType", common.TypeOf(err)).
-			Str("repository", localRepo).Str("reference", cosignTag).
-			Err(err).Msg("couldn't unmarshal local cosign signature manifest")
-
-		return false, err
-	}
-
-	if !manifestsEqual(localManifest, *manifest) {
-		ref.log.Info().Str("repository", localRepo).Str("reference", cosignTag).
-			Msg("upstream cosign signatures changed, syncing again")
-
+	if localDigest.String() != digest {
 		return false, nil
 	}
 
-	ref.log.Info().Str("repository", localRepo).Str("reference", cosignTag).
-		Msg("skipping syncing cosign signature, already synced")
+	ref.log.Info().Str("repository", localRepo).Str("reference", digest).
+		Msg("skipping syncing cosign reference, already synced")
 
 	return true, nil
 }
 
-func (ref CosignReference) SyncReferences(localRepo, remoteRepo, subjectDigestStr string) error {
+func (ref CosignReference) SyncReferences(localRepo, remoteRepo, subjectDigestStr string) ([]godigest.Digest, error) {
 	cosignTags := getCosignTagsFromSubjectDigest(subjectDigestStr)
 
+	refsDigests := make([]godigest.Digest, 0, len(cosignTags))
+
 	for _, cosignTag := range cosignTags {
-		manifest, err := ref.getManifest(remoteRepo, cosignTag)
-		if err != nil && errors.Is(err, zerr.ErrSyncReferrerNotFound) {
-			return err
+		manifest, manifestBuf, err := ref.getManifest(remoteRepo, cosignTag)
+		if err != nil {
+			if errors.Is(err, zerr.ErrSyncReferrerNotFound) {
+				continue
+			}
+
+			return refsDigests, err
 		}
 
-		skip, err := ref.canSkipReferences(localRepo, cosignTag, manifest)
+		digest := godigest.FromBytes(manifestBuf)
+
+		skip, err := ref.canSkipReferences(localRepo, digest.String(), manifest)
 		if err != nil {
 			ref.log.Error().Err(err).Str("repository", localRepo).Str("subject", subjectDigestStr).
 				Msg("couldn't check if the remote image cosign reference can be skipped")
 		}
 
 		if skip {
+			refsDigests = append(refsDigests, digest)
+
 			continue
 		}
 
@@ -127,22 +120,13 @@ func (ref CosignReference) SyncReferences(localRepo, remoteRepo, subjectDigestSt
 
 		for _, blob := range manifest.Layers {
 			if err := syncBlob(ref.client, imageStore, localRepo, remoteRepo, blob.Digest, ref.log); err != nil {
-				return err
+				return refsDigests, err
 			}
 		}
 
 		// sync config blob
 		if err := syncBlob(ref.client, imageStore, localRepo, remoteRepo, manifest.Config.Digest, ref.log); err != nil {
-			return err
-		}
-
-		manifestBuf, err := json.Marshal(manifest)
-		if err != nil {
-			ref.log.Error().Str("errorType", common.TypeOf(err)).
-				Str("repository", localRepo).Str("subject", subjectDigestStr).
-				Err(err).Msg("couldn't marshal cosign reference manifest")
-
-			return err
+			return refsDigests, err
 		}
 
 		// push manifest
@@ -153,8 +137,10 @@ func (ref CosignReference) SyncReferences(localRepo, remoteRepo, subjectDigestSt
 				Str("repository", localRepo).Str("subject", subjectDigestStr).
 				Err(err).Msg("couldn't upload cosign reference manifest for image")
 
-			return err
+			return refsDigests, err
 		}
+
+		refsDigests = append(refsDigests, digest)
 
 		ref.log.Info().Str("repository", localRepo).Str("subject", subjectDigestStr).
 			Msg("successfully synced cosign reference for image")
@@ -166,7 +152,7 @@ func (ref CosignReference) SyncReferences(localRepo, remoteRepo, subjectDigestSt
 			isSig, sigType, signedManifestDig, err := storage.CheckIsImageSignature(localRepo, manifestBuf,
 				cosignTag)
 			if err != nil {
-				return fmt.Errorf("failed to check if cosign reference '%s@%s' is a signature: %w", localRepo,
+				return refsDigests, fmt.Errorf("failed to check if cosign reference '%s@%s' is a signature: %w", localRepo,
 					cosignTag, err)
 			}
 
@@ -176,13 +162,14 @@ func (ref CosignReference) SyncReferences(localRepo, remoteRepo, subjectDigestSt
 					SignatureDigest: referenceDigest.String(),
 				})
 			} else {
-				err = repodb.SetImageMetaFromInput(localRepo, cosignTag, manifest.MediaType,
+				err = repodb.SetImageMetaFromInput(localRepo, cosignTag, ispec.MediaTypeImageManifest,
 					referenceDigest, manifestBuf, ref.storeController.GetImageStore(localRepo),
 					ref.repoDB, ref.log)
 			}
 
 			if err != nil {
-				return fmt.Errorf("failed to set metadata for cosign reference in '%s@%s': %w", localRepo, subjectDigestStr, err)
+				return refsDigests, fmt.Errorf("failed to set metadata for cosign reference in '%s@%s': %w",
+					localRepo, subjectDigestStr, err)
 			}
 
 			ref.log.Info().Str("repository", localRepo).Str("subject", subjectDigestStr).
@@ -190,13 +177,13 @@ func (ref CosignReference) SyncReferences(localRepo, remoteRepo, subjectDigestSt
 		}
 	}
 
-	return nil
+	return refsDigests, nil
 }
 
-func (ref CosignReference) getManifest(repo, cosignTag string) (*ispec.Manifest, error) {
+func (ref CosignReference) getManifest(repo, cosignTag string) (*ispec.Manifest, []byte, error) {
 	var cosignManifest ispec.Manifest
 
-	_, _, statusCode, err := ref.client.MakeGetRequest(&cosignManifest, ispec.MediaTypeImageManifest,
+	body, _, statusCode, err := ref.client.MakeGetRequest(&cosignManifest, ispec.MediaTypeImageManifest,
 		"v2", repo, "manifests", cosignTag)
 	if err != nil {
 		if statusCode == http.StatusNotFound {
@@ -204,17 +191,17 @@ func (ref CosignReference) getManifest(repo, cosignTag string) (*ispec.Manifest,
 				Str("repository", repo).Str("tag", cosignTag).
 				Err(err).Msg("couldn't find any cosign manifest for image")
 
-			return nil, zerr.ErrSyncReferrerNotFound
+			return nil, nil, zerr.ErrSyncReferrerNotFound
 		}
 
 		ref.log.Error().Str("errorType", common.TypeOf(err)).
 			Str("repository", repo).Str("tag", cosignTag).Int("statusCode", statusCode).
 			Err(err).Msg("couldn't get cosign manifest for image")
 
-		return nil, err
+		return nil, nil, err
 	}
 
-	return &cosignManifest, nil
+	return &cosignManifest, body, nil
 }
 
 func getCosignSignatureTagFromSubjectDigest(digestStr string) string {

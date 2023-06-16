@@ -743,6 +743,7 @@ func TestOnDemand(t *testing.T) {
 				Subject: &ispec.Descriptor{
 					MediaType: ispec.MediaTypeImageManifest,
 					Digest:    manifestDigest,
+					Size:      int64(len(manifestBlob)),
 				},
 				Config: ispec.Descriptor{
 					MediaType: ispec.MediaTypeEmptyJSON,
@@ -873,6 +874,147 @@ func TestOnDemand(t *testing.T) {
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 		})
+	})
+}
+
+func TestSyncReferenceInLoop(t *testing.T) {
+	Convey("Verify sync doesn't end up in an infinite loop when syncing image references", t, func() {
+		sctlr, srcBaseURL, srcDir, _, _ := makeUpstreamServer(t, false, false)
+
+		scm := test.NewControllerManager(sctlr)
+		scm.StartAndWait(sctlr.Config.HTTP.Port)
+		defer scm.StopServer()
+
+		var tlsVerify bool
+
+		maxRetries := 1
+		delay := 1 * time.Second
+
+		syncRegistryConfig := syncconf.RegistryConfig{
+			Content: []syncconf.Content{
+				{
+					Prefix: testImage,
+				},
+			},
+			URLs:       []string{srcBaseURL},
+			TLSVerify:  &tlsVerify,
+			OnDemand:   true,
+			MaxRetries: &maxRetries,
+			RetryDelay: &delay,
+		}
+
+		defaultVal := true
+		syncConfig := &syncconf.Config{
+			Enable:     &defaultVal,
+			Registries: []syncconf.RegistryConfig{syncRegistryConfig},
+		}
+
+		dctlr, destBaseURL, _, _ := makeDownstreamServer(t, false, syncConfig)
+
+		dcm := test.NewControllerManager(dctlr)
+		dcm.StartAndWait(dctlr.Config.HTTP.Port)
+		defer dcm.StopServer()
+
+		// we will push references in loop: image A -> sbom A -> oci artifact A -> sbom A (same sbom as before)
+		// recursive syncing it should not get in an infinite loop
+		// sync testImage and get its digest
+		resp, err := resty.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+		imageDigest := godigest.FromBytes(resp.Body())
+
+		// attach sbom
+		attachSBOM(srcDir, sctlr.Config.HTTP.Port, testImage, imageDigest)
+
+		// sbom tag
+		sbomTag := strings.Replace(imageDigest.String(), ":", "-", 1) + "." + remote.SBOMTagSuffix
+
+		// sync sbom and get its digest
+		resp, err = resty.R().
+			SetHeader("Content-type", ispec.MediaTypeImageManifest).
+			Get(destBaseURL + fmt.Sprintf("/v2/%s/manifests/%s", testImage, sbomTag))
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+		sbomManifestBuf := resp.Body()
+		sbomDigest := godigest.FromBytes(sbomManifestBuf)
+
+		// push oci ref referencing sbom
+		_ = pushBlob(srcBaseURL, testImage, ispec.DescriptorEmptyJSON.Data)
+
+		OCIRefManifest := ispec.Manifest{
+			Subject: &ispec.Descriptor{
+				MediaType: ispec.MediaTypeImageManifest,
+				Digest:    sbomDigest,
+				Size:      int64(len(sbomManifestBuf)),
+			},
+			Config: ispec.Descriptor{
+				MediaType: ispec.MediaTypeEmptyJSON,
+				Digest:    ispec.DescriptorEmptyJSON.Digest,
+				Size:      2,
+			},
+			Layers: []ispec.Descriptor{
+				{
+					MediaType: ispec.MediaTypeEmptyJSON,
+					Digest:    ispec.DescriptorEmptyJSON.Digest,
+					Size:      2,
+				},
+			},
+			MediaType: ispec.MediaTypeImageManifest,
+		}
+
+		OCIRefManifestBlob, err := json.Marshal(OCIRefManifest)
+		So(err, ShouldBeNil)
+
+		OCIRefDigest := godigest.FromBytes(OCIRefManifestBlob)
+
+		resp, err = resty.R().
+			SetHeader("Content-type", ispec.MediaTypeImageManifest).
+			SetBody(OCIRefManifestBlob).
+			Put(srcBaseURL + fmt.Sprintf("/v2/%s/manifests/%s", testImage, OCIRefDigest))
+
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
+
+		// attach same sbom we attached to image
+		// can not use same function attachSBOM because its digest will differ
+		sbomTag2 := strings.Replace(OCIRefDigest.String(), ":", "-", 1) + "." + remote.SBOMTagSuffix
+
+		resp, err = resty.R().
+			SetHeader("Content-type", ispec.MediaTypeImageManifest).
+			SetBody(sbomManifestBuf).
+			Put(srcBaseURL + fmt.Sprintf("/v2/%s/manifests/%s", testImage, sbomTag2))
+
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
+
+		// sync image
+		resp, err = resty.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+		// check all references are synced
+		// first sbom
+		resp, err = resty.R().
+			SetHeader("Content-type", ispec.MediaTypeImageManifest).
+			Get(destBaseURL + fmt.Sprintf("/v2/%s/manifests/%s", testImage, sbomTag))
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+		// oci ref
+		resp, err = resty.R().
+			SetHeader("Content-type", ispec.MediaTypeImageManifest).
+			Get(destBaseURL + fmt.Sprintf("/v2/%s/manifests/%s", testImage, OCIRefDigest))
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+		// second sbom
+		resp, err = resty.R().
+			SetHeader("Content-type", ispec.MediaTypeImageManifest).
+			Get(destBaseURL + fmt.Sprintf("/v2/%s/manifests/%s", testImage, sbomTag2))
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 	})
 }
 
@@ -3339,7 +3481,7 @@ func TestSignatures(t *testing.T) {
 
 		splittedURL := strings.SplitAfter(srcBaseURL, ":")
 		srcPort := splittedURL[len(splittedURL)-1]
-
+		t.Logf(srcPort)
 		cwd, err := os.Getwd()
 		So(err, ShouldBeNil)
 
@@ -3353,6 +3495,82 @@ func TestSignatures(t *testing.T) {
 
 		// attach sbom
 		attachSBOM(srcDir, sctlr.Config.HTTP.Port, repoName, digest)
+
+		// sbom tag
+		sbomTag := strings.Replace(digest.String(), ":", "-", 1) + "." + remote.SBOMTagSuffix
+
+		// get sbom digest
+		resp, err := resty.R().
+			SetHeader("Content-type", ispec.MediaTypeImageManifest).
+			Get(srcBaseURL + fmt.Sprintf("/v2/%s/manifests/%s", repoName, sbomTag))
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+		sbomDigest := godigest.FromBytes(resp.Body())
+
+		// sign sbom
+		So(func() { signImage(tdir, srcPort, repoName, sbomDigest) }, ShouldNotPanic)
+
+		// attach oci ref to sbom
+		// add OCI Ref
+		_ = pushBlob(srcBaseURL, repoName, ispec.DescriptorEmptyJSON.Data)
+
+		OCIRefManifest := ispec.Manifest{
+			Subject: &ispec.Descriptor{
+				MediaType: ispec.MediaTypeImageManifest,
+				Digest:    sbomDigest,
+				Size:      int64(len(resp.Body())),
+			},
+			Config: ispec.Descriptor{
+				MediaType: ispec.MediaTypeEmptyJSON,
+				Digest:    ispec.DescriptorEmptyJSON.Digest,
+				Size:      2,
+			},
+			Layers: []ispec.Descriptor{
+				{
+					MediaType: ispec.MediaTypeEmptyJSON,
+					Digest:    ispec.DescriptorEmptyJSON.Digest,
+					Size:      2,
+				},
+			},
+			MediaType: ispec.MediaTypeImageManifest,
+		}
+
+		OCIRefManifestBlob, err := json.Marshal(OCIRefManifest)
+		So(err, ShouldBeNil)
+
+		ociRefDigest := godigest.FromBytes(OCIRefManifestBlob)
+
+		resp, err = resty.R().
+			SetHeader("Content-type", ispec.MediaTypeImageManifest).
+			SetBody(OCIRefManifestBlob).
+			Put(srcBaseURL + fmt.Sprintf("/v2/%s/manifests/%s", repoName, ociRefDigest.String()))
+
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
+
+		// add ORAS Ref to oci ref which points to sbom which points to image
+		ORASRefManifest := artifactspec.Manifest{
+			Subject: &artifactspec.Descriptor{
+				MediaType: ispec.MediaTypeImageManifest,
+				Digest:    ociRefDigest,
+				Size:      int64(len(OCIRefManifestBlob)),
+			},
+			Blobs:     []artifactspec.Descriptor{},
+			MediaType: artifactspec.MediaTypeArtifactManifest,
+		}
+
+		ORASRefManifestBlob, err := json.Marshal(ORASRefManifest)
+		So(err, ShouldBeNil)
+
+		ORASRefManifestDigest := godigest.FromBytes(ORASRefManifestBlob)
+
+		resp, err = resty.R().
+			SetHeader("Content-type", artifactspec.MediaTypeArtifactManifest).
+			SetBody(ORASRefManifestBlob).
+			Put(srcBaseURL + fmt.Sprintf("/v2/%s/manifests/%s", repoName, ORASRefManifestDigest))
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
 
 		regex := ".*"
 		var semver bool
@@ -3413,36 +3631,30 @@ func TestSignatures(t *testing.T) {
 		splittedURL = strings.SplitAfter(destBaseURL, ":")
 		destPort := splittedURL[len(splittedURL)-1]
 
-		a := &options.AnnotationOptions{Annotations: []string{fmt.Sprintf("tag=%s", testImageTag)}}
-		amap, err := a.AnnotationsMap()
-		if err != nil {
-			panic(err)
-		}
-
 		time.Sleep(1 * time.Second)
 
 		// notation verify the image
-		image := fmt.Sprintf("localhost:%s/%s:%s", destPort, repoName, testImageTag)
+		image := fmt.Sprintf("localhost:%s/%s@%s", destPort, repoName, digest)
 
 		vrfy := verify.VerifyCommand{
 			RegistryOptions: options.RegistryOptions{AllowInsecure: true},
 			CheckClaims:     true,
 			KeyRef:          path.Join(tdir, "cosign.pub"),
-			Annotations:     amap,
 			IgnoreTlog:      true,
 		}
 
+		test.LoadNotationPath(tdir)
 		// notation verify signed image
 		err = test.VerifyWithNotation(image, tdir)
 		So(err, ShouldBeNil)
 
 		// cosign verify signed image
-		err = vrfy.Exec(context.TODO(), []string{fmt.Sprintf("localhost:%s/%s:%s", destPort, repoName, testImageTag)})
+		err = vrfy.Exec(context.TODO(), []string{image})
 		So(err, ShouldBeNil)
 
 		// get oci references from downstream, should be synced
 		getOCIReferrersURL := destBaseURL + path.Join("/v2", repoName, "referrers", digest.String())
-		resp, err := resty.R().Get(getOCIReferrersURL)
+		resp, err = resty.R().Get(getOCIReferrersURL)
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeEmpty)
 		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
@@ -3461,6 +3673,55 @@ func TestSignatures(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeEmpty)
 		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+		So(godigest.FromBytes(resp.Body()), ShouldEqual, sbomDigest)
+
+		// verify sbom signature
+		sbom := fmt.Sprintf("localhost:%s/%s@%s", destPort, repoName, sbomDigest)
+
+		test.LoadNotationPath(tdir)
+		// notation verify signed sbom
+		err = test.VerifyWithNotation(sbom, tdir)
+		So(err, ShouldBeNil)
+
+		vrfy = verify.VerifyCommand{
+			RegistryOptions: options.RegistryOptions{AllowInsecure: true},
+			CheckClaims:     true,
+			KeyRef:          path.Join(tdir, "cosign.pub"),
+			IgnoreTlog:      true,
+		}
+
+		// cosign verify signed sbom
+		err = vrfy.Exec(context.TODO(), []string{sbom})
+		So(err, ShouldBeNil)
+
+		// get oci ref pointing to sbom
+		getOCIReferrersURL = destBaseURL + path.Join("/v2", repoName, "referrers", sbomDigest.String())
+		resp, err = resty.R().Get(getOCIReferrersURL)
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeEmpty)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+		err = json.Unmarshal(resp.Body(), &index)
+		So(err, ShouldBeNil)
+
+		So(len(index.Manifests), ShouldEqual, 2)
+		So(index.Manifests[1].Digest, ShouldEqual, ociRefDigest)
+
+		// get oras ref pointing to oci ref
+
+		getORASReferrersURL := destBaseURL + path.Join("/oras/artifacts/v1/", repoName, "manifests", ociRefDigest.String(), "referrers") //nolint:lll
+		resp, err = resty.R().Get(getORASReferrersURL)
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeEmpty)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+		var refs ReferenceList
+
+		err = json.Unmarshal(resp.Body(), &refs)
+		So(err, ShouldBeNil)
+
+		So(len(refs.References), ShouldEqual, 1)
+		So(refs.References[0].Digest, ShouldEqual, ORASRefManifestDigest)
 
 		// test negative cases (trigger errors)
 		// test notary signatures errors
@@ -3527,6 +3788,10 @@ func TestSignatures(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
+		// remove already synced image
+		err = os.RemoveAll(path.Join(destDir, repoName))
+		So(err, ShouldBeNil)
+
 		// triggers perm denied on sig blobs
 		for _, blob := range artifactManifest.Layers {
 			blobPath := path.Join(srcDir, repoName, "blobs", string(blob.Digest.Algorithm()), blob.Digest.Encoded())
@@ -3534,14 +3799,14 @@ func TestSignatures(t *testing.T) {
 			So(err, ShouldBeNil)
 		}
 
-		// remove already synced image
-		err = os.RemoveAll(path.Join(destDir, repoName))
-		So(err, ShouldBeNil)
-
 		// sync on demand
 		resp, err = resty.R().Get(destBaseURL + "/v2/" + repoName + "/manifests/" + testImageTag)
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+		// remove already synced image
+		err = os.RemoveAll(path.Join(destDir, repoName))
+		So(err, ShouldBeNil)
 
 		// test cosign signatures errors
 		// based on manifest digest get cosign manifest
@@ -3550,28 +3815,14 @@ func TestSignatures(t *testing.T) {
 
 		mResp, err := resty.R().Get(getCosignManifestURL)
 		So(err, ShouldBeNil)
+		So(mResp.StatusCode(), ShouldEqual, http.StatusOK)
 
 		var imageManifest ispec.Manifest
 
 		err = json.Unmarshal(mResp.Body(), &imageManifest)
 		So(err, ShouldBeNil)
 
-		downstreaamCosignManifest := ispec.Manifest{
-			MediaType: imageManifest.MediaType,
-			Config: ispec.Descriptor{
-				MediaType:   imageManifest.Config.MediaType,
-				Size:        imageManifest.Config.Size,
-				Digest:      imageManifest.Config.Digest,
-				Annotations: imageManifest.Config.Annotations,
-			},
-			Layers:      imageManifest.Layers,
-			Versioned:   imageManifest.Versioned,
-			Annotations: imageManifest.Annotations,
-		}
-
-		buf, err := json.Marshal(downstreaamCosignManifest)
-		So(err, ShouldBeNil)
-		cosignManifestDigest := godigest.FromBytes(buf)
+		cosignManifestDigest := godigest.FromBytes(mResp.Body())
 
 		for _, blob := range imageManifest.Layers {
 			blobPath := path.Join(srcDir, repoName, "blobs", string(blob.Digest.Algorithm()), blob.Digest.Encoded())
@@ -3752,6 +4003,20 @@ func TestSignatures(t *testing.T) {
 		}
 
 		// sync on demand
+		resp, err = resty.R().Get(destBaseURL + "/v2/" + repoName + "/manifests/" + testImageTag)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+		// remove already synced image
+		err = os.RemoveAll(path.Join(destDir, repoName))
+		So(err, ShouldBeNil)
+
+		// sync on demand
+		resp, err = resty.R().Get(destBaseURL + "/v2/" + repoName + "/manifests/" + testImageTag)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+		// sync on demand again for coverage
 		resp, err = resty.R().Get(destBaseURL + "/v2/" + repoName + "/manifests/" + testImageTag)
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
@@ -4383,12 +4648,6 @@ func TestSignaturesOnDemand(t *testing.T) {
 		splittedURL = strings.SplitAfter(destBaseURL, ":")
 		destPort := splittedURL[len(splittedURL)-1]
 
-		a := &options.AnnotationOptions{Annotations: []string{fmt.Sprintf("tag=%s", testImageTag)}}
-		amap, err := a.AnnotationsMap()
-		if err != nil {
-			panic(err)
-		}
-
 		// notation verify the synced image
 		image := fmt.Sprintf("localhost:%s/%s:%s", destPort, repoName, testImageTag)
 		err = test.VerifyWithNotation(image, tdir)
@@ -4399,7 +4658,6 @@ func TestSignaturesOnDemand(t *testing.T) {
 			RegistryOptions: options.RegistryOptions{AllowInsecure: true},
 			CheckClaims:     true,
 			KeyRef:          path.Join(tdir, "cosign.pub"),
-			Annotations:     amap,
 			IgnoreTlog:      true,
 		}
 		err = vrfy.Exec(context.TODO(), []string{fmt.Sprintf("localhost:%s/%s:%s", destPort, repoName, testImageTag)})
@@ -4625,12 +4883,6 @@ func TestOnlySignaturesOnDemand(t *testing.T) {
 		splittedURL = strings.SplitAfter(destBaseURL, ":")
 		destPort := splittedURL[len(splittedURL)-1]
 
-		a := &options.AnnotationOptions{Annotations: []string{fmt.Sprintf("tag=%s", testImageTag)}}
-		amap, err := a.AnnotationsMap()
-		if err != nil {
-			panic(err)
-		}
-
 		generateKeyPairs(tdir)
 
 		// sync signature on demand when upstream doesn't have the signature
@@ -4643,7 +4895,6 @@ func TestOnlySignaturesOnDemand(t *testing.T) {
 			RegistryOptions: options.RegistryOptions{AllowInsecure: true},
 			CheckClaims:     true,
 			KeyRef:          path.Join(tdir, "cosign.pub"),
-			Annotations:     amap,
 			IgnoreTlog:      true,
 		}
 
@@ -4663,7 +4914,6 @@ func TestOnlySignaturesOnDemand(t *testing.T) {
 			RegistryOptions: options.RegistryOptions{AllowInsecure: true},
 			CheckClaims:     true,
 			KeyRef:          path.Join(tdir, "cosign.pub"),
-			Annotations:     amap,
 			IgnoreTlog:      true,
 		}
 
@@ -4995,12 +5245,6 @@ func TestSyncSignaturesDiff(t *testing.T) {
 		splittedURL = strings.SplitAfter(destBaseURL, ":")
 		destPort := splittedURL[len(splittedURL)-1]
 
-		a := &options.AnnotationOptions{Annotations: []string{fmt.Sprintf("tag=%s", testImageTag)}}
-		amap, err := a.AnnotationsMap()
-		if err != nil {
-			panic(err)
-		}
-
 		// notation verify the image
 		image := fmt.Sprintf("localhost:%s/%s:%s", destPort, repoName, testImageTag)
 		err = test.VerifyWithNotation(image, tdir)
@@ -5011,7 +5255,6 @@ func TestSyncSignaturesDiff(t *testing.T) {
 			RegistryOptions: options.RegistryOptions{AllowInsecure: true},
 			CheckClaims:     true,
 			KeyRef:          path.Join(tdir, "cosign.pub"),
-			Annotations:     amap,
 			IgnoreTlog:      true,
 		}
 		err = vrfy.Exec(context.TODO(), []string{fmt.Sprintf("localhost:%s/%s:%s", destPort, repoName, testImageTag)})
@@ -5038,7 +5281,6 @@ func TestSyncSignaturesDiff(t *testing.T) {
 			RegistryOptions: options.RegistryOptions{AllowInsecure: true},
 			CheckClaims:     true,
 			KeyRef:          path.Join(tdir, "cosign.pub"),
-			Annotations:     amap,
 			IgnoreTlog:      true,
 		}
 		err = vrfy.Exec(context.TODO(), []string{fmt.Sprintf("localhost:%s/%s:%s", destPort, repoName, testImageTag)})
@@ -5114,7 +5356,7 @@ func TestSyncSignaturesDiff(t *testing.T) {
 		So(reflect.DeepEqual(cosignManifest, syncedCosignManifest), ShouldEqual, true)
 
 		found, err := test.ReadLogFileAndSearchString(dctlr.Config.Log.Output,
-			"skipping syncing cosign signature", 15*time.Second)
+			"skipping syncing cosign reference", 15*time.Second)
 		if err != nil {
 			panic(err)
 		}
@@ -5359,12 +5601,6 @@ func TestSyncWithDestination(t *testing.T) {
 				splittedURL = strings.SplitAfter(destBaseURL, ":")
 				destPort := splittedURL[len(splittedURL)-1]
 
-				a := &options.AnnotationOptions{Annotations: []string{fmt.Sprintf("tag=%s", testImageTag)}}
-				amap, err := a.AnnotationsMap()
-				if err != nil {
-					panic(err)
-				}
-
 				// notation verify the synced image
 				image := fmt.Sprintf("localhost:%s/%s:%s", destPort, testCase.expected, testImageTag)
 				err = test.VerifyWithNotation(image, tdir)
@@ -5375,7 +5611,6 @@ func TestSyncWithDestination(t *testing.T) {
 					RegistryOptions: options.RegistryOptions{AllowInsecure: true},
 					CheckClaims:     true,
 					KeyRef:          path.Join(tdir, "cosign.pub"),
-					Annotations:     amap,
 					IgnoreTlog:      true,
 				}
 				err = vrfy.Exec(context.TODO(), []string{fmt.Sprintf("localhost:%s/%s:%s", destPort,
@@ -5416,12 +5651,6 @@ func TestSyncWithDestination(t *testing.T) {
 				splittedURL = strings.SplitAfter(destBaseURL, ":")
 				destPort := splittedURL[len(splittedURL)-1]
 
-				a := &options.AnnotationOptions{Annotations: []string{fmt.Sprintf("tag=%s", testImageTag)}}
-				amap, err := a.AnnotationsMap()
-				if err != nil {
-					panic(err)
-				}
-
 				// notation verify the synced image
 				image := fmt.Sprintf("localhost:%s/%s:%s", destPort, testCase.expected, testImageTag)
 				err = test.VerifyWithNotation(image, tdir)
@@ -5432,7 +5661,6 @@ func TestSyncWithDestination(t *testing.T) {
 					RegistryOptions: options.RegistryOptions{AllowInsecure: true},
 					CheckClaims:     true,
 					KeyRef:          path.Join(tdir, "cosign.pub"),
-					Annotations:     amap,
 					IgnoreTlog:      true,
 				}
 				err = vrfy.Exec(context.TODO(), []string{fmt.Sprintf("localhost:%s/%s:%s", destPort,
@@ -5622,26 +5850,15 @@ func attachSBOM(tdir, port, repoName string, digest godigest.Digest) {
 }
 
 func signImage(tdir, port, repoName string, digest godigest.Digest) {
-	annotations := []string{fmt.Sprintf("tag=%s", testImageTag)}
-
 	// push signatures to upstream server so that we can sync them later
 	// sign the image
 	err := sign.SignCmd(&options.RootOptions{Verbose: true, Timeout: 1 * time.Minute},
 		options.KeyOpts{KeyRef: path.Join(tdir, "cosign.key"), PassFunc: generate.GetPass},
 		options.SignOptions{
-			Registry:          options.RegistryOptions{AllowInsecure: true},
-			AnnotationOptions: options.AnnotationOptions{Annotations: annotations},
-			Upload:            true,
+			Registry: options.RegistryOptions{AllowInsecure: true},
+			Upload:   true,
 		},
 		[]string{fmt.Sprintf("localhost:%s/%s@%s", port, repoName, digest.String())})
-	if err != nil {
-		panic(err)
-	}
-
-	// verify the image
-	a := &options.AnnotationOptions{Annotations: annotations}
-
-	amap, err := a.AnnotationsMap()
 	if err != nil {
 		panic(err)
 	}
@@ -5650,11 +5867,10 @@ func signImage(tdir, port, repoName string, digest godigest.Digest) {
 		RegistryOptions: options.RegistryOptions{AllowInsecure: true},
 		CheckClaims:     true,
 		KeyRef:          path.Join(tdir, "cosign.pub"),
-		Annotations:     amap,
 		IgnoreTlog:      true,
 	}
 
-	err = vrfy.Exec(context.TODO(), []string{fmt.Sprintf("localhost:%s/%s:%s", port, repoName, testImageTag)})
+	err = vrfy.Exec(context.TODO(), []string{fmt.Sprintf("localhost:%s/%s@%s", port, repoName, digest.String())})
 	if err != nil {
 		panic(err)
 	}
@@ -5665,7 +5881,7 @@ func signImage(tdir, port, repoName string, digest godigest.Digest) {
 	test.LoadNotationPath(tdir)
 
 	// sign the image
-	image := fmt.Sprintf("localhost:%s/%s:%s", port, repoName, testImageTag)
+	image := fmt.Sprintf("localhost:%s/%s@%s", port, repoName, digest.String())
 
 	err = test.SignWithNotation("good", image, tdir)
 	if err != nil {

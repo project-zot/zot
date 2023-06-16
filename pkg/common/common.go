@@ -18,7 +18,6 @@ import (
 	"unicode/utf8"
 
 	"github.com/gorilla/mux"
-	"github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 
 	"zotregistry.io/zot/pkg/log"
@@ -37,9 +36,9 @@ func AllowedMethods(methods ...string) []string {
 	return append(methods, http.MethodOptions)
 }
 
-func Contains(slice []string, item string) bool {
-	for _, v := range slice {
-		if item == v {
+func Contains[T comparable](elems []T, v T) bool {
+	for _, s := range elems {
+		if v == s {
 			return true
 		}
 	}
@@ -269,16 +268,6 @@ func MarshalThroughStruct(obj interface{}, throughStruct interface{}) ([]byte, e
 	}
 
 	return toJSON, nil
-}
-
-func DContains(slice []digest.Digest, item digest.Digest) bool {
-	for _, v := range slice {
-		if item == v {
-			return true
-		}
-	}
-
-	return false
 }
 
 func GetManifestArtifactType(manifestContent ispec.Manifest) string {

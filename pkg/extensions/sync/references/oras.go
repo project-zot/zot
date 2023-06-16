@@ -84,10 +84,12 @@ func (ref ORASReferences) canSkipReferences(localRepo, subjectDigestStr string, 
 	return true, nil
 }
 
-func (ref ORASReferences) SyncReferences(localRepo, remoteRepo, subjectDigestStr string) error {
+func (ref ORASReferences) SyncReferences(localRepo, remoteRepo, subjectDigestStr string) ([]godigest.Digest, error) {
+	refsDigests := make([]godigest.Digest, 0, 10)
+
 	referrers, err := ref.getReferenceList(remoteRepo, subjectDigestStr)
 	if err != nil {
-		return err
+		return refsDigests, err
 	}
 
 	skipORASRefs, err := ref.canSkipReferences(localRepo, subjectDigestStr, referrers)
@@ -97,7 +99,11 @@ func (ref ORASReferences) SyncReferences(localRepo, remoteRepo, subjectDigestStr
 	}
 
 	if skipORASRefs {
-		return nil
+		for _, man := range referrers.References {
+			refsDigests = append(refsDigests, man.Digest)
+		}
+
+		return refsDigests, nil
 	}
 
 	imageStore := ref.storeController.GetImageStore(localRepo)
@@ -112,41 +118,44 @@ func (ref ORASReferences) SyncReferences(localRepo, remoteRepo, subjectDigestStr
 			"v2", remoteRepo, "manifests", referrer.Digest.String())
 		if err != nil {
 			if statusCode == http.StatusNotFound {
-				return zerr.ErrSyncReferrerNotFound
+				return refsDigests, zerr.ErrSyncReferrerNotFound
 			}
 
 			ref.log.Error().Str("errorType", common.TypeOf(err)).
 				Str("repository", localRepo).Str("subject", subjectDigestStr).
 				Err(err).Msg("couldn't get ORAS artifact for image")
 
-			return err
+			return refsDigests, err
 		}
 
 		for _, blob := range artifactManifest.Blobs {
 			if err := syncBlob(ref.client, imageStore, localRepo, remoteRepo, blob.Digest, ref.log); err != nil {
-				return err
+				return refsDigests, err
 			}
 		}
 
-		digest, _, err := imageStore.PutImageManifest(localRepo, referrer.Digest.String(),
+		referenceDigest, _, err := imageStore.PutImageManifest(localRepo, referrer.Digest.String(),
 			oras.MediaTypeArtifactManifest, orasBuf)
 		if err != nil {
 			ref.log.Error().Str("errorType", common.TypeOf(err)).
 				Str("repository", localRepo).Str("subject", subjectDigestStr).
 				Err(err).Msg("couldn't upload ORAS artifact for image")
 
-			return err
+			return refsDigests, err
 		}
+
+		refsDigests = append(refsDigests, referenceDigest)
 
 		if ref.repoDB != nil {
 			ref.log.Debug().Str("repository", localRepo).Str("subject", subjectDigestStr).
 				Msg("repoDB: trying to sync oras artifact for image")
 
-			err := repodb.SetImageMetaFromInput(localRepo, digest.String(), referrer.MediaType,
-				digest, orasBuf, ref.storeController.GetImageStore(localRepo),
+			err := repodb.SetImageMetaFromInput(localRepo, referenceDigest.String(), referrer.MediaType,
+				referenceDigest, orasBuf, ref.storeController.GetImageStore(localRepo),
 				ref.repoDB, ref.log)
 			if err != nil {
-				return fmt.Errorf("repoDB: failed to set metadata for oras artifact '%s@%s': %w", localRepo, subjectDigestStr, err)
+				return refsDigests, fmt.Errorf("repoDB: failed to set metadata for oras artifact '%s@%s': %w",
+					localRepo, subjectDigestStr, err)
 			}
 
 			ref.log.Info().Str("repository", localRepo).Str("subject", subjectDigestStr).
@@ -157,7 +166,7 @@ func (ref ORASReferences) SyncReferences(localRepo, remoteRepo, subjectDigestStr
 	ref.log.Info().Str("repository", localRepo).Str("subject", subjectDigestStr).
 		Msg("successfully synced oras artifacts for image")
 
-	return nil
+	return refsDigests, nil
 }
 
 func (ref ORASReferences) getReferenceList(repo, subjectDigestStr string) (ReferenceList, error) {

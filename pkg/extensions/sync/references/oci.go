@@ -90,10 +90,12 @@ func (ref OciReferences) canSkipReferences(localRepo, subjectDigestStr string, i
 	return true, nil
 }
 
-func (ref OciReferences) SyncReferences(localRepo, remoteRepo, subjectDigestStr string) error {
+func (ref OciReferences) SyncReferences(localRepo, remoteRepo, subjectDigestStr string) ([]godigest.Digest, error) {
+	refsDigests := make([]godigest.Digest, 0, 10)
+
 	index, err := ref.getIndex(remoteRepo, subjectDigestStr)
 	if err != nil {
-		return err
+		return refsDigests, err
 	}
 
 	skipOCIRefs, err := ref.canSkipReferences(localRepo, subjectDigestStr, index)
@@ -103,7 +105,13 @@ func (ref OciReferences) SyncReferences(localRepo, remoteRepo, subjectDigestStr 
 	}
 
 	if skipOCIRefs {
-		return nil
+		/* even if it's skip we need to return the digests,
+		because maybe in the meantime a reference pointing to this one was pushed */
+		for _, man := range index.Manifests {
+			refsDigests = append(refsDigests, man.Digest)
+		}
+
+		return refsDigests, nil
 	}
 
 	imageStore := ref.storeController.GetImageStore(localRepo)
@@ -118,14 +126,14 @@ func (ref OciReferences) SyncReferences(localRepo, remoteRepo, subjectDigestStr 
 			"v2", remoteRepo, "manifests", referrer.Digest.String())
 		if err != nil {
 			if statusCode == http.StatusNotFound {
-				return zerr.ErrSyncReferrerNotFound
+				return refsDigests, zerr.ErrSyncReferrerNotFound
 			}
 
 			ref.log.Error().Str("errorType", common.TypeOf(err)).
 				Str("repository", localRepo).Str("subject", subjectDigestStr).
 				Err(err).Msg("couldn't get oci reference manifest for image")
 
-			return err
+			return refsDigests, err
 		}
 
 		if referrer.MediaType == ispec.MediaTypeImageManifest {
@@ -138,32 +146,34 @@ func (ref OciReferences) SyncReferences(localRepo, remoteRepo, subjectDigestStr 
 					Str("repository", localRepo).Str("subject", subjectDigestStr).
 					Err(err).Msg("couldn't unmarshal oci reference manifest for image")
 
-				return err
+				return refsDigests, err
 			}
 
 			for _, layer := range manifest.Layers {
 				if err := syncBlob(ref.client, imageStore, localRepo, remoteRepo, layer.Digest, ref.log); err != nil {
-					return err
+					return refsDigests, err
 				}
 			}
 
 			// sync config blob
 			if err := syncBlob(ref.client, imageStore, localRepo, remoteRepo, manifest.Config.Digest, ref.log); err != nil {
-				return err
+				return refsDigests, err
 			}
 		} else {
 			continue
 		}
 
-		digest, _, err := imageStore.PutImageManifest(localRepo, referrer.Digest.String(),
+		referenceDigest, _, err := imageStore.PutImageManifest(localRepo, referrer.Digest.String(),
 			referrer.MediaType, OCIRefBuf)
 		if err != nil {
 			ref.log.Error().Str("errorType", common.TypeOf(err)).
 				Str("repository", localRepo).Str("subject", subjectDigestStr).
 				Err(err).Msg("couldn't upload oci reference for image")
 
-			return err
+			return refsDigests, err
 		}
+
+		refsDigests = append(refsDigests, referenceDigest)
 
 		if ref.repoDB != nil {
 			ref.log.Debug().Str("repository", localRepo).Str("subject", subjectDigestStr).
@@ -172,23 +182,24 @@ func (ref OciReferences) SyncReferences(localRepo, remoteRepo, subjectDigestStr 
 			isSig, sigType, signedManifestDig, err := storage.CheckIsImageSignature(localRepo, OCIRefBuf,
 				referrer.Digest.String())
 			if err != nil {
-				return fmt.Errorf("failed to check if oci reference '%s@%s' is a signature: %w", localRepo,
+				return refsDigests, fmt.Errorf("failed to check if oci reference '%s@%s' is a signature: %w", localRepo,
 					referrer.Digest.String(), err)
 			}
 
 			if isSig {
 				err = ref.repoDB.AddManifestSignature(localRepo, signedManifestDig, repodb.SignatureMetadata{
 					SignatureType:   sigType,
-					SignatureDigest: digest.String(),
+					SignatureDigest: referenceDigest.String(),
 				})
 			} else {
-				err = repodb.SetImageMetaFromInput(localRepo, digest.String(), referrer.MediaType,
-					digest, OCIRefBuf, ref.storeController.GetImageStore(localRepo),
+				err = repodb.SetImageMetaFromInput(localRepo, referenceDigest.String(), referrer.MediaType,
+					referenceDigest, OCIRefBuf, ref.storeController.GetImageStore(localRepo),
 					ref.repoDB, ref.log)
 			}
 
 			if err != nil {
-				return fmt.Errorf("failed to set metadata for oci reference in '%s@%s': %w", localRepo, subjectDigestStr, err)
+				return refsDigests, fmt.Errorf("failed to set metadata for oci reference in '%s@%s': %w",
+					localRepo, subjectDigestStr, err)
 			}
 
 			ref.log.Info().Str("repository", localRepo).Str("subject", subjectDigestStr).
@@ -199,7 +210,7 @@ func (ref OciReferences) SyncReferences(localRepo, remoteRepo, subjectDigestStr 
 	ref.log.Info().Str("repository", localRepo).Str("subject", subjectDigestStr).
 		Msg("successfully synced oci references for image")
 
-	return nil
+	return refsDigests, nil
 }
 
 func (ref OciReferences) getIndex(repo, subjectDigestStr string) (ispec.Index, error) {

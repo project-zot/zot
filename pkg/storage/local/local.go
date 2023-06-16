@@ -1838,7 +1838,7 @@ func (is *ImageStoreLocal) GetNextDigestWithBlobPaths(lastDigests []godigest.Dig
 			return nil //nolint:nilerr // ignore files which are not blobs
 		}
 
-		if digest == "" && !zcommon.DContains(lastDigests, blobDigest) {
+		if digest == "" && !zcommon.Contains(lastDigests, blobDigest) {
 			digest = blobDigest
 		}
 

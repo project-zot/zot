@@ -367,7 +367,7 @@ func (service *BaseService) syncTag(localRepo, remoteRepo, tag string) (digest.D
 		return "", zerr.ErrMediaTypeNotSupported
 	}
 
-	if service.config.OnlySigned != nil && *service.config.OnlySigned {
+	if service.config.OnlySigned != nil && *service.config.OnlySigned && !references.IsCosignTag(tag) {
 		signed := service.references.IsSigned(remoteRepo, manifestDigest.String())
 		if !signed {
 			// skip unsigned images

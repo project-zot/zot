@@ -9,7 +9,7 @@ import (
 	"net/http"
 
 	notreg "github.com/notaryproject/notation-go/registry"
-	"github.com/opencontainers/go-digest"
+	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	artifactspec "github.com/oras-project/artifacts-spec/specs-go/v1"
 	"github.com/sigstore/cosign/v2/pkg/oci/static"
@@ -23,14 +23,17 @@ import (
 )
 
 type Reference interface {
+	// Returns name of reference (OCIReference/CosignReference/OrasReference)
 	Name() string
+	// Returns whether or not image is signed
 	IsSigned(upstreamRepo, subjectDigestStr string) bool
-	SyncReferences(localRepo, upstreamRepo, subjectDigestStr string) error
+	// Sync recursively all references for a subject digest (can be image/artifacts/signatures)
+	SyncReferences(localRepo, upstreamRepo, subjectDigestStr string) ([]godigest.Digest, error)
 }
 
 type References struct {
-	refernceList []Reference
-	log          log.Logger
+	referenceList []Reference
+	log           log.Logger
 }
 
 func NewReferences(httpClient *client.Client, storeController storage.StoreController,
@@ -38,15 +41,15 @@ func NewReferences(httpClient *client.Client, storeController storage.StoreContr
 ) References {
 	refs := References{log: log}
 
-	refs.refernceList = append(refs.refernceList, NewCosignReference(httpClient, storeController, repoDB, log))
-	refs.refernceList = append(refs.refernceList, NewOciReferences(httpClient, storeController, repoDB, log))
-	refs.refernceList = append(refs.refernceList, NewORASReferences(httpClient, storeController, repoDB, log))
+	refs.referenceList = append(refs.referenceList, NewCosignReference(httpClient, storeController, repoDB, log))
+	refs.referenceList = append(refs.referenceList, NewOciReferences(httpClient, storeController, repoDB, log))
+	refs.referenceList = append(refs.referenceList, NewORASReferences(httpClient, storeController, repoDB, log))
 
 	return refs
 }
 
 func (refs References) IsSigned(upstreamRepo, subjectDigestStr string) bool {
-	for _, ref := range refs.refernceList {
+	for _, ref := range refs.referenceList {
 		ok := ref.IsSigned(upstreamRepo, subjectDigestStr)
 		if ok {
 			return true
@@ -57,15 +60,35 @@ func (refs References) IsSigned(upstreamRepo, subjectDigestStr string) bool {
 }
 
 func (refs References) SyncAll(localRepo, upstreamRepo, subjectDigestStr string) error {
+	seen := &[]godigest.Digest{}
+
+	return refs.syncAll(localRepo, upstreamRepo, subjectDigestStr, seen)
+}
+
+func (refs References) syncAll(localRepo, upstreamRepo, subjectDigestStr string, seen *[]godigest.Digest) error {
 	var err error
 
-	for _, ref := range refs.refernceList {
-		err = ref.SyncReferences(localRepo, upstreamRepo, subjectDigestStr)
+	var syncedRefsDigests []godigest.Digest
+
+	// mark subject digest as seen as soon as it comes in
+	*seen = append(*seen, godigest.Digest(subjectDigestStr))
+
+	// for each reference type(cosign/oci/oras reference)
+	for _, ref := range refs.referenceList {
+		syncedRefsDigests, err = ref.SyncReferences(localRepo, upstreamRepo, subjectDigestStr)
 		if err != nil {
-			refs.log.Error().Err(err).
+			refs.log.Debug().Err(err).
 				Str("reference type", ref.Name()).
 				Str("image", fmt.Sprintf("%s:%s", upstreamRepo, subjectDigestStr)).
 				Msg("couldn't sync image referrer")
+		}
+
+		// for each synced references
+		for _, refDigest := range syncedRefsDigests {
+			if !common.Contains(*seen, refDigest) {
+				// sync all references pointing to this one
+				err = refs.syncAll(localRepo, upstreamRepo, refDigest.String(), seen)
+			}
 		}
 	}
 
@@ -73,9 +96,14 @@ func (refs References) SyncAll(localRepo, upstreamRepo, subjectDigestStr string)
 }
 
 func (refs References) SyncReference(localRepo, upstreamRepo, subjectDigestStr, referenceType string) error {
-	for _, ref := range refs.refernceList {
+	var err error
+
+	var syncedRefsDigests []godigest.Digest
+
+	for _, ref := range refs.referenceList {
 		if ref.Name() == referenceType {
-			if err := ref.SyncReferences(localRepo, upstreamRepo, subjectDigestStr); err != nil {
+			syncedRefsDigests, err = ref.SyncReferences(localRepo, upstreamRepo, subjectDigestStr)
+			if err != nil {
 				refs.log.Error().Err(err).
 					Str("reference type", ref.Name()).
 					Str("image", fmt.Sprintf("%s:%s", upstreamRepo, subjectDigestStr)).
@@ -83,14 +111,18 @@ func (refs References) SyncReference(localRepo, upstreamRepo, subjectDigestStr, 
 
 				return err
 			}
+
+			for _, refDigest := range syncedRefsDigests {
+				err = refs.SyncAll(localRepo, upstreamRepo, refDigest.String())
+			}
 		}
 	}
 
-	return nil
+	return err
 }
 
 func syncBlob(client *client.Client, imageStore storageTypes.ImageStore, localRepo, remoteRepo string,
-	digest digest.Digest, log log.Logger,
+	digest godigest.Digest, log log.Logger,
 ) error {
 	var resultPtr interface{}
 
