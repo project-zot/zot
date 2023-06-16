@@ -60,7 +60,7 @@ jobs:
       - name: Wait for minio to come up
         run: |
           curl --connect-timeout 5 \
-            --max-time 10 \
+            --max-time 120 \
             --retry 12 \
             --retry-max-time 120 \
             'http://localhost:9000/minio/health/live'
