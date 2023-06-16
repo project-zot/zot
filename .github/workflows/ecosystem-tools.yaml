@@ -29,7 +29,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install libgpgme-dev libassuan-dev libbtrfs-dev libdevmapper-dev pkg-config rpm uidmap
           # install skopeo
-          git clone -b v1.9.0 https://github.com/containers/skopeo.git
+          git clone -b v1.12.0 https://github.com/containers/skopeo.git
           cd skopeo
           make bin/skopeo
           sudo cp bin/skopeo /usr/bin
