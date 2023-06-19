@@ -70,6 +70,14 @@ type mgmt struct {
 	log    log.Logger
 }
 
+// mgmtHandler godoc
+// @Summary Get current server configuration
+// @Description Get current server configuration
+// @Router 	/v2/_zot/ext/mgmt [get]
+// @Accept  json
+// @Produce json
+// @Success 200 {object} 	extensions.StrippedConfig
+// @Failure 500 {string} 	string 				"internal server error".
 func (mgmt *mgmt) handler() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		sanitizedConfig := mgmt.config.Sanitize()

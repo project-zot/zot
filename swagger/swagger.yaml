@@ -78,6 +78,25 @@ definitions:
           type: string
         type: array
     type: object
+  extensions.Auth:
+    properties:
+      bearer:
+        $ref: '#/definitions/extensions.BearerConfig'
+      htpasswd:
+        $ref: '#/definitions/extensions.HTPasswd'
+      ldap:
+        properties:
+          address:
+            type: string
+        type: object
+    type: object
+  extensions.BearerConfig:
+    properties:
+      realm:
+        type: string
+      service:
+        type: string
+    type: object
   extensions.Extension:
     properties:
       description:
@@ -90,6 +109,23 @@ definitions:
         type: string
       url:
         type: string
+    type: object
+  extensions.HTPasswd:
+    properties:
+      path:
+        type: string
+    type: object
+  extensions.StrippedConfig:
+    properties:
+      binaryType:
+        type: string
+      distSpecVersion:
+        type: string
+      http:
+        properties:
+          auth:
+            $ref: '#/definitions/extensions.Auth'
+        type: object
     type: object
   github_com_opencontainers_image-spec_specs-go_v1.Descriptor:
     properties:
@@ -138,7 +174,7 @@ definitions:
       architecture:
         description: |-
           Architecture field specifies the CPU architecture, for example
-          `amd64` or `ppc64`.
+          `amd64` or `ppc64le`.
         type: string
       os:
         description: OS specifies the operating system, for example `linux` or `windows`.
@@ -250,6 +286,66 @@ paths:
           schema:
             $ref: '#/definitions/api.ExtensionList'
       summary: List Registry level extensions
+  /v2/_zot/ext/mgmt:
+    get:
+      consumes:
+      - application/json
+      description: Get current server configuration
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/extensions.StrippedConfig'
+        "500":
+          description: internal server error".
+          schema:
+            type: string
+      summary: Get current server configuration
+  /v2/_zot/ext/userprefs:
+    put:
+      consumes:
+      - application/json
+      description: Add bookmarks/stars info
+      parameters:
+      - description: specify action
+        enum:
+        - '"toggleBookmark"'
+        - '"toggleStar"'
+        in: query
+        name: action
+        required: true
+        type: string
+      - description: repository name
+        in: query
+        name: repo
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: ok
+          schema:
+            type: string
+        "400":
+          description: bad request".
+          schema:
+            type: string
+        "403":
+          description: forbidden
+          schema:
+            type: string
+        "404":
+          description: not found
+          schema:
+            type: string
+        "500":
+          description: internal server error
+          schema:
+            type: string
+      summary: Add bookmarks/stars info
   /v2/{name}/blobs/{digest}:
     delete:
       consumes:

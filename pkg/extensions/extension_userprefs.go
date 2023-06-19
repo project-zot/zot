@@ -43,6 +43,19 @@ func SetupUserPreferencesRoutes(config *config.Config, router *mux.Router, store
 	}
 }
 
+// ListTags godoc
+// @Summary Add bookmarks/stars info
+// @Description Add bookmarks/stars info
+// @Router 	/v2/_zot/ext/userprefs [put]
+// @Accept  json
+// @Produce json
+// @Param 	action	 	 query 	 string 		true	"specify action" Enums("toggleBookmark", "toggleStar")
+// @Param   repo     	 query    string			true	"repository name"
+// @Success 200 {string}	string				"ok"
+// @Failure 404 {string} 	string 				"not found"
+// @Failure 403 {string} 	string 				"forbidden"
+// @Failure 500 {string} 	string 				"internal server error"
+// @Failure 400 {string} 	string 				"bad request".
 func HandleUserPrefs(repoDB repodb.RepoDB, log log.Logger) func(w http.ResponseWriter, r *http.Request) {
 	return func(rsp http.ResponseWriter, req *http.Request) {
 		if !queryHasParams(req.URL.Query(), []string{"action"}) {

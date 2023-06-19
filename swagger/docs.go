@@ -141,6 +141,96 @@ const docTemplate = `{
                 }
             }
         },
+        "/v2/_zot/ext/mgmt": {
+            "get": {
+                "description": "Get current server configuration",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "summary": "Get current server configuration",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/extensions.StrippedConfig"
+                        }
+                    },
+                    "500": {
+                        "description": "internal server error\".",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/v2/_zot/ext/userprefs": {
+            "put": {
+                "description": "Add bookmarks/stars info",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "summary": "Add bookmarks/stars info",
+                "parameters": [
+                    {
+                        "enum": [
+                            "\"toggleBookmark\"",
+                            "\"toggleStar\""
+                        ],
+                        "type": "string",
+                        "description": "specify action",
+                        "name": "action",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "repository name",
+                        "name": "repo",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "ok",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "400": {
+                        "description": "bad request\".",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "forbidden",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "404": {
+                        "description": "not found",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "internal server error",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
         "/v2/{name}/blobs/uploads": {
             "post": {
                 "description": "Create a new image blob/layer upload",
@@ -927,6 +1017,36 @@ const docTemplate = `{
                 }
             }
         },
+        "extensions.Auth": {
+            "type": "object",
+            "properties": {
+                "bearer": {
+                    "$ref": "#/definitions/extensions.BearerConfig"
+                },
+                "htpasswd": {
+                    "$ref": "#/definitions/extensions.HTPasswd"
+                },
+                "ldap": {
+                    "type": "object",
+                    "properties": {
+                        "address": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "extensions.BearerConfig": {
+            "type": "object",
+            "properties": {
+                "realm": {
+                    "type": "string"
+                },
+                "service": {
+                    "type": "string"
+                }
+            }
+        },
         "extensions.Extension": {
             "type": "object",
             "properties": {
@@ -944,6 +1064,33 @@ const docTemplate = `{
                 },
                 "url": {
                     "type": "string"
+                }
+            }
+        },
+        "extensions.HTPasswd": {
+            "type": "object",
+            "properties": {
+                "path": {
+                    "type": "string"
+                }
+            }
+        },
+        "extensions.StrippedConfig": {
+            "type": "object",
+            "properties": {
+                "binaryType": {
+                    "type": "string"
+                },
+                "distSpecVersion": {
+                    "type": "string"
+                },
+                "http": {
+                    "type": "object",
+                    "properties": {
+                        "auth": {
+                            "$ref": "#/definitions/extensions.Auth"
+                        }
+                    }
                 }
             }
         },
@@ -1001,7 +1148,7 @@ const docTemplate = `{
             "type": "object",
             "properties": {
                 "architecture": {
-                    "description": "Architecture field specifies the CPU architecture, for example\n` + "`" + `amd64` + "`" + ` or ` + "`" + `ppc64` + "`" + `.",
+                    "description": "Architecture field specifies the CPU architecture, for example\n` + "`" + `amd64` + "`" + ` or ` + "`" + `ppc64le` + "`" + `.",
                     "type": "string"
                 },
                 "os": {
