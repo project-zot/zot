@@ -24,6 +24,7 @@ import (
 	"zotregistry.io/zot/pkg/api"
 	"zotregistry.io/zot/pkg/api/config"
 	"zotregistry.io/zot/pkg/api/constants"
+	apiErr "zotregistry.io/zot/pkg/api/errors"
 	extconf "zotregistry.io/zot/pkg/extensions/config"
 	"zotregistry.io/zot/pkg/extensions/monitoring"
 	cveinfo "zotregistry.io/zot/pkg/extensions/search/cve"
@@ -537,7 +538,7 @@ func TestCVESearch(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 401)
-		var apiErr api.Error
+		var apiErr apiErr.Error
 		err = json.Unmarshal(resp.Body(), &apiErr)
 		So(err, ShouldBeNil)
 

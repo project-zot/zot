@@ -19,6 +19,8 @@ import (
 	"zotregistry.io/zot/errors"
 	"zotregistry.io/zot/pkg/api/config"
 	"zotregistry.io/zot/pkg/api/constants"
+	apiErr "zotregistry.io/zot/pkg/api/errors"
+	"zotregistry.io/zot/pkg/common"
 	localCtx "zotregistry.io/zot/pkg/requestcontext"
 )
 
@@ -76,7 +78,7 @@ func bearerAuthHandler(ctlr *Controller) mux.MiddlewareFunc {
 			if err != nil {
 				ctlr.Log.Error().Err(err).Msg("issue parsing Authorization header")
 				response.Header().Set("Content-Type", "application/json")
-				WriteJSON(response, http.StatusInternalServerError, NewErrorList(NewError(UNSUPPORTED)))
+				common.WriteJSON(response, http.StatusInternalServerError, apiErr.NewErrorList(apiErr.NewError(apiErr.UNSUPPORTED)))
 
 				return
 			}
@@ -205,7 +207,7 @@ func basicAuthHandler(ctlr *Controller) mux.MiddlewareFunc {
 			isMgmtRequested := request.RequestURI == constants.FullMgmtPrefix
 
 			if request.Header.Get("Authorization") == "" {
-				if anonymousPolicyExists(ctlr.Config.HTTP.AccessControl) || isMgmtRequested {
+				if ctlr.Config.HTTP.AccessControl.AnonymousPolicyExists() || isMgmtRequested {
 					// Process request
 					ctx := getReqContextWithAuthorization("", []string{}, request)
 					next.ServeHTTP(response, request.WithContext(ctx)) //nolint:contextcheck
@@ -225,7 +227,7 @@ func basicAuthHandler(ctlr *Controller) mux.MiddlewareFunc {
 			// some client tools might send Authorization: Basic Og== (decoded into ":")
 			// empty username and password
 			if username == "" && passphrase == "" {
-				if anonymousPolicyExists(ctlr.Config.HTTP.AccessControl) || isMgmtRequested {
+				if ctlr.Config.HTTP.AccessControl.AnonymousPolicyExists() || isMgmtRequested {
 					// Process request
 					ctx := getReqContextWithAuthorization("", []string{}, request)
 					next.ServeHTTP(response, request.WithContext(ctx)) //nolint:contextcheck
@@ -316,7 +318,7 @@ func authFail(w http.ResponseWriter, realm string, delay int) {
 	time.Sleep(time.Duration(delay) * time.Second)
 	w.Header().Set("WWW-Authenticate", realm)
 	w.Header().Set("Content-Type", "application/json")
-	WriteJSON(w, http.StatusUnauthorized, NewErrorList(NewError(UNAUTHORIZED)))
+	common.WriteJSON(w, http.StatusUnauthorized, apiErr.NewErrorList(apiErr.NewError(apiErr.UNAUTHORIZED)))
 }
 
 func getUsernamePasswordBasicAuth(request *http.Request) (string, string, error) {

@@ -1,4 +1,4 @@
-package api
+package errors
 
 import (
 	"zotregistry.io/zot/errors"

@@ -46,6 +46,7 @@ import (
 	"zotregistry.io/zot/pkg/api"
 	"zotregistry.io/zot/pkg/api/config"
 	"zotregistry.io/zot/pkg/api/constants"
+	apiErr "zotregistry.io/zot/pkg/api/errors"
 	"zotregistry.io/zot/pkg/common"
 	extconf "zotregistry.io/zot/pkg/extensions/config"
 	"zotregistry.io/zot/pkg/log"
@@ -798,7 +799,7 @@ func TestBasicAuth(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
-		var e api.Error
+		var e apiErr.Error
 		err = json.Unmarshal(resp.Body(), &e)
 		So(err, ShouldBeNil)
 
@@ -1102,7 +1103,7 @@ func TestMultipleInstance(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
-		var e api.Error
+		var e apiErr.Error
 		err = json.Unmarshal(resp.Body(), &e)
 		So(err, ShouldBeNil)
 
@@ -1165,7 +1166,7 @@ func TestMultipleInstance(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
-		var e api.Error
+		var e apiErr.Error
 		err = json.Unmarshal(resp.Body(), &e)
 		So(err, ShouldBeNil)
 
@@ -1224,7 +1225,7 @@ func TestTLSWithBasicAuth(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
-		var e api.Error
+		var e apiErr.Error
 		err = json.Unmarshal(resp.Body(), &e)
 		So(err, ShouldBeNil)
 
@@ -1887,7 +1888,7 @@ func TestBasicAuthWithLDAP(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
-		var e api.Error
+		var e apiErr.Error
 		err = json.Unmarshal(resp.Body(), &e)
 		So(err, ShouldBeNil)
 
@@ -2414,7 +2415,7 @@ func TestAuthorizationWithBasicAuth(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
-		var apiErr api.Error
+		var apiErr apiErr.Error
 		err = json.Unmarshal(resp.Body(), &apiErr)
 		So(err, ShouldBeNil)
 
@@ -2958,7 +2959,7 @@ func TestGetUsername(t *testing.T) {
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
 
-		var e api.Error
+		var e apiErr.Error
 		err = json.Unmarshal(resp.Body(), &e)
 		So(err, ShouldBeNil)
 	})
@@ -2999,7 +3000,7 @@ func TestAuthorizationWithOnlyAnonymousPolicy(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
-		var e api.Error
+		var e apiErr.Error
 		err = json.Unmarshal(resp.Body(), &e)
 		So(err, ShouldBeNil)
 

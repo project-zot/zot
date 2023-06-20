@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
-	"time"
 
 	glob "github.com/bmatcuk/doublestar/v4"
 	"github.com/gorilla/mux"
@@ -323,7 +322,7 @@ func AuthzHandler(ctlr *Controller) mux.MiddlewareFunc {
 
 			can := acCtrlr.can(ctx, identity, action, resource) //nolint:contextcheck
 			if !can {
-				authzFail(response, ctlr.Config.HTTP.Realm, ctlr.Config.HTTP.Auth.FailDelay)
+				common.AuthzFail(response, ctlr.Config.HTTP.Realm, ctlr.Config.HTTP.Auth.FailDelay)
 			} else {
 				next.ServeHTTP(response, request.WithContext(ctx)) //nolint:contextcheck
 			}
@@ -334,25 +333,4 @@ func AuthzHandler(ctlr *Controller) mux.MiddlewareFunc {
 func isExtensionURI(requestURI string) bool {
 	return strings.Contains(requestURI, constants.ExtPrefix) ||
 		requestURI == fmt.Sprintf("%s%s", constants.RoutePrefix, constants.ExtCatalogPrefix)
-}
-
-func authzFail(w http.ResponseWriter, realm string, delay int) {
-	time.Sleep(time.Duration(delay) * time.Second)
-	w.Header().Set("WWW-Authenticate", realm)
-	w.Header().Set("Content-Type", "application/json")
-	WriteJSON(w, http.StatusForbidden, NewErrorList(NewError(DENIED)))
-}
-
-func anonymousPolicyExists(config *config.AccessControlConfig) bool {
-	if config == nil {
-		return false
-	}
-
-	for _, repository := range config.Repositories {
-		if len(repository.AnonymousPolicy) > 0 {
-			return true
-		}
-	}
-
-	return false
 }
