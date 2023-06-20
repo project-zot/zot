@@ -49,7 +49,7 @@ func SetupUserPreferencesRoutes(config *config.Config, router *mux.Router, store
 // @Router 	/v2/_zot/ext/userprefs [put]
 // @Accept  json
 // @Produce json
-// @Param 	action	 	 query 	 string 		true	"specify action" Enums("toggleBookmark", "toggleStar")
+// @Param 	action	 	 query 	 string 		true	"specify action" Enums(toggleBookmark, toggleStar)
 // @Param   repo     	 query    string			true	"repository name"
 // @Success 200 {string}	string				"ok"
 // @Failure 404 {string} 	string 				"not found"

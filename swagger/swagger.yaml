@@ -311,8 +311,8 @@ paths:
       parameters:
       - description: specify action
         enum:
-        - '"toggleBookmark"'
-        - '"toggleStar"'
+        - toggleBookmark
+        - toggleStar
         in: query
         name: action
         required: true

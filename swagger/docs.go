@@ -180,8 +180,8 @@ const docTemplate = `{
                 "parameters": [
                     {
                         "enum": [
-                            "\"toggleBookmark\"",
-                            "\"toggleStar\""
+                            "toggleBookmark",
+                            "toggleStar"
                         ],
                         "type": "string",
                         "description": "specify action",
