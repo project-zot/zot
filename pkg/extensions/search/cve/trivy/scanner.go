@@ -497,9 +497,12 @@ func (scanner Scanner) updateDB(dbDir string) error {
 
 	registryOpts := fanalTypes.RegistryOptions{Insecure: false}
 
+	scanner.log.Debug().Str("dbDir", dbDir).Msg("Started downloading Trivy DB to destination dir")
+
 	err := operation.DownloadDB(ctx, "dev", dbDir, scanner.dbRepository, false, false, registryOpts)
 	if err != nil {
-		scanner.log.Error().Err(err).Str("dbDir", dbDir).Msg("Error downloading Trivy DB to destination dir")
+		scanner.log.Error().Err(err).Str("dbDir", dbDir).
+			Str("dbRepository", scanner.dbRepository).Msg("Error downloading Trivy DB to destination dir")
 
 		return err
 	}
@@ -508,7 +511,8 @@ func (scanner Scanner) updateDB(dbDir string) error {
 		javadb.Init(dbDir, scanner.javaDBRepository, false, false, registryOpts.Insecure)
 
 		if err := javadb.Update(); err != nil {
-			scanner.log.Error().Err(err).Str("dbDir", dbDir).Msg("Error downloading Trivy Java DB to destination dir")
+			scanner.log.Error().Err(err).Str("dbDir", dbDir).
+				Str("javaDBRepository", scanner.javaDBRepository).Msg("Error downloading Trivy Java DB to destination dir")
 
 			return err
 		}

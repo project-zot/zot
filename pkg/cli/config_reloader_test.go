@@ -1,3 +1,6 @@
+//go:build search
+// +build search
+
 package cli_test
 
 import (
@@ -322,7 +325,7 @@ func TestConfigReloader(t *testing.T) {
 						"cve": {
 							"updateInterval": "24h",
 							"trivy": {
-								"DBRepository": "ghcr.io/aquasecurity/trivy-db"
+								"DBRepository": "unreachable/trivy/url1"
 							}
 						}
 					},
@@ -367,7 +370,7 @@ func TestConfigReloader(t *testing.T) {
 					"cve": {
 						"updateInterval": "5h",
 						"trivy": {
-							"DBRepository": "ghcr.io/project-zot/trivy-db"
+							"DBRepository": "another/unreachable/trivy/url2"
 						}
 					}
 				}
@@ -387,7 +390,12 @@ func TestConfigReloader(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		// wait for config reload
-		time.Sleep(2 * time.Second)
+		time.Sleep(5 * time.Second)
+
+		found, err := test.ReadLogFileAndSearchString(logFile.Name(),
+			"Error downloading Trivy DB to destination dir", 30*time.Second)
+		So(err, ShouldBeNil)
+		So(found, ShouldBeTrue)
 
 		data, err := os.ReadFile(logFile.Name())
 		So(err, ShouldBeNil)
@@ -397,7 +405,12 @@ func TestConfigReloader(t *testing.T) {
 		So(string(data), ShouldContainSubstring, "loaded new configuration settings")
 		So(string(data), ShouldContainSubstring, "\"UpdateInterval\":18000000000000")
 		So(string(data), ShouldContainSubstring, "\"Scrub\":null")
-		So(string(data), ShouldContainSubstring, "\"DBRepository\":\"ghcr.io/project-zot/trivy-db\"")
+		So(string(data), ShouldContainSubstring, "\"DBRepository\":\"another/unreachable/trivy/url2\"")
+		// matching log message when it errors out, test that indeed the download will try the second url
+		found, err = test.ReadLogFileAndSearchString(logFile.Name(),
+			"\"dbRepository\":\"another/unreachable/trivy/url2\",\"goroutine", 1*time.Minute)
+		So(err, ShouldBeNil)
+		So(found, ShouldBeTrue)
 	})
 
 	Convey("reload bad config", t, func(c C) {
