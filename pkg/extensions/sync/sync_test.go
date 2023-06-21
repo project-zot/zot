@@ -439,7 +439,6 @@ func TestORAS(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		resp, err = resty.R().Get(getORASReferrersURL)
-
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeEmpty)
 		So(resp.StatusCode(), ShouldEqual, http.StatusInternalServerError)
@@ -449,6 +448,9 @@ func TestORAS(t *testing.T) {
 
 		// trigger getORASRefs err
 		err = os.Chmod(path.Join(srcDir, testImage, "blobs/sha256", artifactDigest.Encoded()), 0o000)
+		So(err, ShouldBeNil)
+
+		err = os.RemoveAll(path.Join(destDir, testImage))
 		So(err, ShouldBeNil)
 
 		resp, err = resty.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + digest.String())
