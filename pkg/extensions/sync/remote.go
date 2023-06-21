@@ -9,8 +9,10 @@ import (
 
 	"github.com/containers/image/v5/docker"
 	dockerReference "github.com/containers/image/v5/docker/reference"
+	"github.com/containers/image/v5/manifest"
 	"github.com/containers/image/v5/types"
 	"github.com/opencontainers/go-digest"
+	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 
 	"zotregistry.io/zot/pkg/api/constants"
 	"zotregistry.io/zot/pkg/common"
@@ -109,7 +111,21 @@ func (registry *RemoteRegistry) GetManifestContent(imageReference types.ImageRef
 		return []byte{}, "", "", err
 	}
 
-	return manifestBuf, mediaType, digest.FromBytes(manifestBuf), nil
+	// if mediatype is docker then convert to OCI
+	switch mediaType {
+	case manifest.DockerV2Schema2MediaType:
+		manifestBuf, err = convertDockerManifestToOCI(imageSource, manifestBuf)
+		if err != nil {
+			return []byte{}, "", "", err
+		}
+	case manifest.DockerV2ListMediaType:
+		manifestBuf, err = convertDockerIndexToOCI(imageSource, manifestBuf)
+		if err != nil {
+			return []byte{}, "", "", err
+		}
+	}
+
+	return manifestBuf, ispec.MediaTypeImageManifest, digest.FromBytes(manifestBuf), nil
 }
 
 func (registry *RemoteRegistry) GetRepoTags(repo string) ([]string, error) {

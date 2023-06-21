@@ -4,6 +4,7 @@
 package sync
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -14,6 +15,7 @@ import (
 	"github.com/containers/image/v5/copy"
 	"github.com/containers/image/v5/docker"
 	"github.com/containers/image/v5/manifest"
+	"github.com/containers/image/v5/pkg/blobinfocache/none"
 	"github.com/containers/image/v5/signature"
 	"github.com/containers/image/v5/types"
 	"github.com/docker/distribution/reference"
@@ -169,4 +171,132 @@ func isSupportedMediaType(mediaType string) bool {
 	}
 
 	return false
+}
+
+// given an imageSource and a docker manifest, convert it to OCI.
+func convertDockerManifestToOCI(imageSource types.ImageSource, dockerManifestBuf []byte) ([]byte, error) {
+	var ociManifest ispec.Manifest
+
+	// unmarshal docker manifest into OCI manifest
+	err := json.Unmarshal(dockerManifestBuf, &ociManifest)
+	if err != nil {
+		return []byte{}, err
+	}
+
+	configContent, err := getImageConfigContent(imageSource, ociManifest.Config.Digest)
+	if err != nil {
+		return []byte{}, err
+	}
+
+	// marshal config blob into OCI config, will remove keys specific to docker
+	var ociConfig ispec.Image
+
+	err = json.Unmarshal(configContent, &ociConfig)
+	if err != nil {
+		return []byte{}, err
+	}
+
+	ociConfigContent, err := json.Marshal(ociConfig)
+	if err != nil {
+		return []byte{}, err
+	}
+
+	// convert layers
+	err = convertDockerLayersToOCI(ociManifest.Layers)
+	if err != nil {
+		return []byte{}, err
+	}
+
+	// convert config and manifest mediatype
+	ociManifest.Config.Size = int64(len(ociConfigContent))
+	ociManifest.Config.Digest = digest.FromBytes(ociConfigContent)
+	ociManifest.Config.MediaType = ispec.MediaTypeImageConfig
+	ociManifest.MediaType = ispec.MediaTypeImageManifest
+
+	return json.Marshal(ociManifest)
+}
+
+// convert docker layers mediatypes to OCI mediatypes.
+func convertDockerLayersToOCI(dockerLayers []ispec.Descriptor) error {
+	for idx, layer := range dockerLayers {
+		switch layer.MediaType {
+		case manifest.DockerV2Schema2ForeignLayerMediaType:
+			dockerLayers[idx].MediaType = ispec.MediaTypeImageLayerNonDistributable //nolint: staticcheck
+		case manifest.DockerV2Schema2ForeignLayerMediaTypeGzip:
+			dockerLayers[idx].MediaType = ispec.MediaTypeImageLayerNonDistributableGzip //nolint: staticcheck
+		case manifest.DockerV2SchemaLayerMediaTypeUncompressed:
+			dockerLayers[idx].MediaType = ispec.MediaTypeImageLayer
+		case manifest.DockerV2Schema2LayerMediaType:
+			dockerLayers[idx].MediaType = ispec.MediaTypeImageLayerGzip
+		default:
+			return zerr.ErrMediaTypeNotSupported
+		}
+	}
+
+	return nil
+}
+
+// given an imageSource and a docker index manifest, convert it to OCI.
+func convertDockerIndexToOCI(imageSource types.ImageSource, dockerManifestBuf []byte) ([]byte, error) {
+	// get docker index
+	originalIndex, err := manifest.ListFromBlob(dockerManifestBuf, manifest.DockerV2ListMediaType)
+	if err != nil {
+		return []byte{}, err
+	}
+
+	// get manifests digests
+	manifestsDigests := originalIndex.Instances()
+
+	manifestsUpdates := make([]manifest.ListUpdate, 0, len(manifestsDigests))
+
+	// convert each manifests in index from docker to OCI
+	for _, manifestDigest := range manifestsDigests {
+		digestCopy := manifestDigest
+
+		indexManifestBuf, _, err := imageSource.GetManifest(context.Background(), &digestCopy)
+		if err != nil {
+			return []byte{}, err
+		}
+
+		convertedIndexManifest, err := convertDockerManifestToOCI(imageSource, indexManifestBuf)
+		if err != nil {
+			return []byte{}, err
+		}
+
+		manifestsUpdates = append(manifestsUpdates, manifest.ListUpdate{
+			Digest:    digest.FromBytes(convertedIndexManifest),
+			Size:      int64(len(convertedIndexManifest)),
+			MediaType: ispec.MediaTypeImageManifest,
+		})
+	}
+
+	// update all manifests in index
+	if err := originalIndex.UpdateInstances(manifestsUpdates); err != nil {
+		return []byte{}, err
+	}
+
+	// convert index to OCI
+	convertedList, err := originalIndex.ConvertToMIMEType(ispec.MediaTypeImageIndex)
+	if err != nil {
+		return []byte{}, err
+	}
+
+	return convertedList.Serialize()
+}
+
+// given an image source and a config blob digest, get blob config content.
+func getImageConfigContent(imageSource types.ImageSource, configDigest digest.Digest,
+) ([]byte, error) {
+	configBlob, _, err := imageSource.GetBlob(context.Background(), types.BlobInfo{
+		Digest: configDigest,
+	}, none.NoCache)
+	if err != nil {
+		return nil, err
+	}
+
+	configBuf := new(bytes.Buffer)
+
+	_, err = configBuf.ReadFrom(configBlob)
+
+	return configBuf.Bytes(), err
 }

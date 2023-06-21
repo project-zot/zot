@@ -9,8 +9,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path"
 	"testing"
 
+	dockerManifest "github.com/containers/image/v5/manifest"
 	"github.com/containers/image/v5/oci/layout"
 	"github.com/containers/image/v5/types"
 	godigest "github.com/opencontainers/go-digest"
@@ -424,5 +426,199 @@ func TestLocalRegistry(t *testing.T) {
 				So(err, ShouldBeNil)
 			})
 		})
+	})
+}
+
+func TestConvertDockerToOCI(t *testing.T) {
+	Convey("test converting docker to oci functions", t, func() {
+		dir := t.TempDir()
+
+		test.CopyTestFiles("../../../test/data/zot-test", path.Join(dir, "zot-test"))
+
+		imageRef, err := layout.NewReference(path.Join(dir, "zot-test"), "0.0.1")
+		So(err, ShouldBeNil)
+
+		imageSource, err := imageRef.NewImageSource(context.Background(), &types.SystemContext{})
+		So(err, ShouldBeNil)
+
+		defer imageSource.Close()
+
+		Convey("trigger Unmarshal manifest error", func() {
+			_, err = convertDockerManifestToOCI(imageSource, []byte{})
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("trigger getImageConfigContent() error", func() {
+			manifestBuf, _, err := imageSource.GetManifest(context.Background(), nil)
+			So(err, ShouldBeNil)
+
+			var manifest ispec.Manifest
+
+			err = json.Unmarshal(manifestBuf, &manifest)
+			So(err, ShouldBeNil)
+
+			err = os.Chmod(path.Join(dir, "zot-test", "blobs/sha256", manifest.Config.Digest.Encoded()), 0o000)
+			So(err, ShouldBeNil)
+
+			_, err = convertDockerManifestToOCI(imageSource, manifestBuf)
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("trigger Unmarshal config error", func() {
+			manifestBuf, _, err := imageSource.GetManifest(context.Background(), nil)
+			So(err, ShouldBeNil)
+
+			var manifest ispec.Manifest
+
+			err = json.Unmarshal(manifestBuf, &manifest)
+			So(err, ShouldBeNil)
+
+			err = os.WriteFile(path.Join(dir, "zot-test", "blobs/sha256", manifest.Config.Digest.Encoded()),
+				[]byte{}, storageConstants.DefaultFilePerms)
+			So(err, ShouldBeNil)
+
+			_, err = convertDockerManifestToOCI(imageSource, manifestBuf)
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("trigger convertDockerLayersToOCI error", func() {
+			manifestBuf, _, err := imageSource.GetManifest(context.Background(), nil)
+			So(err, ShouldBeNil)
+
+			var manifest ispec.Manifest
+
+			err = json.Unmarshal(manifestBuf, &manifest)
+			So(err, ShouldBeNil)
+
+			manifestDigest := godigest.FromBytes(manifestBuf)
+
+			manifest.Layers[0].MediaType = "unknown"
+
+			newManifest, err := json.Marshal(manifest)
+			So(err, ShouldBeNil)
+
+			err = os.WriteFile(path.Join(dir, "zot-test", "blobs/sha256", manifestDigest.Encoded()),
+				newManifest, storageConstants.DefaultFilePerms)
+			So(err, ShouldBeNil)
+
+			_, err = convertDockerManifestToOCI(imageSource, manifestBuf)
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("trigger convertDockerIndexToOCI error", func() {
+			manifestBuf, _, err := imageSource.GetManifest(context.Background(), nil)
+			So(err, ShouldBeNil)
+
+			_, err = convertDockerIndexToOCI(imageSource, manifestBuf)
+			So(err, ShouldNotBeNil)
+
+			// make zot-test image an index image
+
+			var manifest ispec.Manifest
+
+			err = json.Unmarshal(manifestBuf, &manifest)
+			So(err, ShouldBeNil)
+
+			dockerNewManifest := ispec.Manifest{
+				MediaType: dockerManifest.DockerV2Schema2MediaType,
+				Config:    manifest.Config,
+				Layers:    manifest.Layers,
+			}
+
+			dockerNewManifestBuf, err := json.Marshal(dockerNewManifest)
+			So(err, ShouldBeNil)
+
+			dockerManifestDigest := godigest.FromBytes(manifestBuf)
+
+			err = os.WriteFile(path.Join(dir, "zot-test", "blobs/sha256", dockerManifestDigest.Encoded()),
+				dockerNewManifestBuf, storageConstants.DefaultFilePerms)
+			So(err, ShouldBeNil)
+
+			var index ispec.Index
+
+			index.Manifests = append(index.Manifests, ispec.Descriptor{
+				Digest:    dockerManifestDigest,
+				Size:      int64(len(dockerNewManifestBuf)),
+				MediaType: dockerManifest.DockerV2Schema2MediaType,
+			})
+
+			index.MediaType = dockerManifest.DockerV2ListMediaType
+
+			dockerIndexBuf, err := json.Marshal(index)
+			So(err, ShouldBeNil)
+
+			dockerIndexDigest := godigest.FromBytes(dockerIndexBuf)
+
+			err = os.WriteFile(path.Join(dir, "zot-test", "blobs/sha256", dockerIndexDigest.Encoded()),
+				dockerIndexBuf, storageConstants.DefaultFilePerms)
+			So(err, ShouldBeNil)
+
+			// write index.json
+
+			var indexJSON ispec.Index
+
+			indexJSONBuf, err := os.ReadFile(path.Join(dir, "zot-test", "index.json"))
+			So(err, ShouldBeNil)
+
+			err = json.Unmarshal(indexJSONBuf, &indexJSON)
+			So(err, ShouldBeNil)
+
+			indexJSON.Manifests = append(indexJSON.Manifests, ispec.Descriptor{
+				Digest:    dockerIndexDigest,
+				Size:      int64(len(dockerIndexBuf)),
+				MediaType: ispec.MediaTypeImageIndex,
+				Annotations: map[string]string{
+					ispec.AnnotationRefName: "0.0.2",
+				},
+			})
+
+			indexJSONBuf, err = json.Marshal(indexJSON)
+			So(err, ShouldBeNil)
+
+			err = os.WriteFile(path.Join(dir, "zot-test", "index.json"), indexJSONBuf, storageConstants.DefaultFilePerms)
+			So(err, ShouldBeNil)
+
+			imageRef, err := layout.NewReference(path.Join(dir, "zot-test"), "0.0.2")
+			So(err, ShouldBeNil)
+
+			imageSource, err := imageRef.NewImageSource(context.Background(), &types.SystemContext{})
+			So(err, ShouldBeNil)
+
+			_, err = convertDockerIndexToOCI(imageSource, dockerIndexBuf)
+			So(err, ShouldNotBeNil)
+
+			err = os.Chmod(path.Join(dir, "zot-test", "blobs/sha256", dockerManifestDigest.Encoded()), 0o000)
+			So(err, ShouldBeNil)
+
+			_, err = convertDockerIndexToOCI(imageSource, dockerIndexBuf)
+			So(err, ShouldNotBeNil)
+		})
+	})
+}
+
+func TestConvertDockerLayersToOCI(t *testing.T) {
+	Convey("test converting docker to oci functions", t, func() {
+		dockerLayers := []ispec.Descriptor{
+			{
+				MediaType: dockerManifest.DockerV2Schema2ForeignLayerMediaType,
+			},
+			{
+				MediaType: dockerManifest.DockerV2Schema2ForeignLayerMediaTypeGzip,
+			},
+			{
+				MediaType: dockerManifest.DockerV2SchemaLayerMediaTypeUncompressed,
+			},
+			{
+				MediaType: dockerManifest.DockerV2Schema2LayerMediaType,
+			},
+		}
+
+		err := convertDockerLayersToOCI(dockerLayers)
+		So(err, ShouldBeNil)
+
+		So(dockerLayers[0].MediaType, ShouldEqual, ispec.MediaTypeImageLayerNonDistributable)     //nolint: staticcheck
+		So(dockerLayers[1].MediaType, ShouldEqual, ispec.MediaTypeImageLayerNonDistributableGzip) //nolint: staticcheck
+		So(dockerLayers[2].MediaType, ShouldEqual, ispec.MediaTypeImageLayer)
+		So(dockerLayers[3].MediaType, ShouldEqual, ispec.MediaTypeImageLayerGzip)
 	})
 }
