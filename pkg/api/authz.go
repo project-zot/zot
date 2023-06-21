@@ -279,6 +279,9 @@ func AuthzHandler(ctlr *Controller) mux.MiddlewareFunc {
 
 						return
 					}
+
+					// assign identity to authz context, needed for extensions
+					acCtx.Username = identity
 				}
 			}
 

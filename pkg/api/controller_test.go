@@ -1370,8 +1370,19 @@ func TestMutualTLSAuthWithUserPermissions(t *testing.T) {
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
+		resp, err = resty.R().Get(secureBaseURL + "/v2/_catalog")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
 		// with creds, should get expected status code
 		resp, _ = resty.R().Get(secureBaseURL)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
+
+		// reading a repo should not get 403
+		resp, err = resty.R().Get(secureBaseURL + "/v2/repo/tags/list")
+		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
 
