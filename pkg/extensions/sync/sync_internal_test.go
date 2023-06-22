@@ -22,6 +22,7 @@ import (
 
 	"zotregistry.io/zot/errors"
 	"zotregistry.io/zot/pkg/extensions/config"
+	syncconf "zotregistry.io/zot/pkg/extensions/config/sync"
 	"zotregistry.io/zot/pkg/extensions/lint"
 	"zotregistry.io/zot/pkg/extensions/monitoring"
 	client "zotregistry.io/zot/pkg/extensions/sync/httpclient"
@@ -151,6 +152,20 @@ func TestRemoteRegistry(t *testing.T) {
 
 		tags, err := remote.GetRepoTags("repo")
 		So(tags, ShouldBeEmpty)
+		So(err, ShouldNotBeNil)
+	})
+}
+
+func TestService(t *testing.T) {
+	Convey("trigger fetch tags error", t, func() {
+		conf := syncconf.RegistryConfig{
+			URLs: []string{"http://localhost"},
+		}
+
+		service, err := New(conf, "", storage.StoreController{}, mocks.RepoDBMock{}, log.Logger{})
+		So(err, ShouldBeNil)
+
+		err = service.SyncRepo("repo")
 		So(err, ShouldNotBeNil)
 	})
 }
