@@ -799,7 +799,7 @@ func GetImageWithSubject(subjectDigest godigest.Digest, mediaType string) (Image
 		MediaType: mediaType,
 	}
 
-	manifestBlob, err := json.Marshal(manifest)
+	blob, err := json.Marshal(manifest)
 	if err != nil {
 		return Image{}, err
 	}
@@ -808,7 +808,7 @@ func GetImageWithSubject(subjectDigest godigest.Digest, mediaType string) (Image
 		Manifest:  manifest,
 		Config:    conf,
 		Layers:    layers,
-		Reference: godigest.FromBytes(manifestBlob).String(),
+		Reference: godigest.FromBytes(blob).String(),
 	}, nil
 }
 
@@ -850,7 +850,8 @@ func UploadImage(img Image, baseURL, repo string) error {
 
 	cdigest := godigest.FromBytes(cblob)
 
-	if img.Manifest.Config.MediaType == ispec.MediaTypeEmptyJSON {
+	if img.Manifest.Config.MediaType == ispec.MediaTypeEmptyJSON ||
+		img.Manifest.Config.Digest == ispec.DescriptorEmptyJSON.Digest {
 		cblob = ispec.DescriptorEmptyJSON.Data
 		cdigest = ispec.DescriptorEmptyJSON.Digest
 	}
@@ -886,6 +887,10 @@ func UploadImage(img Image, baseURL, repo string) error {
 	manifestBlob, err := json.Marshal(img.Manifest)
 	if err = inject.Error(err); err != nil {
 		return err
+	}
+
+	if img.Reference == "" {
+		img.Reference = godigest.FromBytes(manifestBlob).String()
 	}
 
 	resp, err = resty.R().
@@ -1557,6 +1562,10 @@ func UploadImageWithBasicAuth(img Image, baseURL, repo, user, password string) e
 	manifestBlob, err := json.Marshal(img.Manifest)
 	if err = inject.Error(err); err != nil {
 		return err
+	}
+
+	if img.Reference == "" {
+		img.Reference = godigest.FromBytes(manifestBlob).String()
 	}
 
 	_, err = resty.R().

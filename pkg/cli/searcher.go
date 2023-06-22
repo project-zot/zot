@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"strings"
 	"sync"
 	"time"
@@ -15,6 +16,8 @@ import (
 	"github.com/briandowns/spinner"
 
 	zotErrors "zotregistry.io/zot/errors"
+	"zotregistry.io/zot/pkg/api/constants"
+	zcommon "zotregistry.io/zot/pkg/common"
 )
 
 func getImageSearchers() []searcher {
@@ -56,6 +59,24 @@ func getCveSearchersGQL() []searcher {
 		new(imagesByCVEIDSearcherGQL),
 		new(tagsByImageNameAndCVEIDSearcherGQL),
 		new(fixedTagsSearcherGQL),
+	}
+
+	return searchers
+}
+
+func getGlobalSearchersGQL() []searcher {
+	searchers := []searcher{
+		new(globalSearcherGQL),
+		new(referrerSearcherGQL),
+	}
+
+	return searchers
+}
+
+func getGlobalSearchersREST() []searcher {
+	searchers := []searcher{
+		new(referrerSearcher),
+		new(globalSearcherREST),
 	}
 
 	return searchers
@@ -194,7 +215,7 @@ func getImages(config searchConfig) error {
 		imageListData = append(imageListData, imageStruct(image))
 	}
 
-	return printResult(config, imageListData)
+	return printImageResult(config, imageListData)
 }
 
 type imagesByDigestSearcher struct{}
@@ -253,7 +274,7 @@ func (search derivedImageListSearcherGQL) search(config searchConfig) (bool, err
 		imageListData = append(imageListData, imageStruct(image))
 	}
 
-	if err := printResult(config, imageListData); err != nil {
+	if err := printImageResult(config, imageListData); err != nil {
 		return true, err
 	}
 
@@ -284,7 +305,7 @@ func (search baseImageListSearcherGQL) search(config searchConfig) (bool, error)
 		imageListData = append(imageListData, imageStruct(image))
 	}
 
-	if err := printResult(config, imageListData); err != nil {
+	if err := printImageResult(config, imageListData); err != nil {
 		return true, err
 	}
 
@@ -316,7 +337,7 @@ func (search imagesByDigestSearcherGQL) search(config searchConfig) (bool, error
 		imageListData = append(imageListData, imageStruct(image))
 	}
 
-	if err := printResult(config, imageListData); err != nil {
+	if err := printImageResult(config, imageListData); err != nil {
 		return true, err
 	}
 
@@ -461,7 +482,7 @@ func (search imagesByCVEIDSearcherGQL) search(config searchConfig) (bool, error)
 		imageListData = append(imageListData, imageStruct(image))
 	}
 
-	if err := printResult(config, imageListData); err != nil {
+	if err := printImageResult(config, imageListData); err != nil {
 		return true, err
 	}
 
@@ -603,7 +624,153 @@ func getTagsByCVE(config searchConfig) error {
 		}
 	}
 
-	return printResult(config, imageList)
+	return printImageResult(config, imageList)
+}
+
+type referrerSearcherGQL struct{}
+
+func (search referrerSearcherGQL) search(config searchConfig) (bool, error) {
+	if !canSearch(config.params, newSet("subject")) {
+		return false, nil
+	}
+
+	username, password := getUsernameAndPassword(*config.user)
+
+	repo, ref, refIsTag, err := zcommon.GetRepoRefference(*config.params["subject"])
+	if err != nil {
+		return true, err
+	}
+
+	digest := ref
+
+	if refIsTag {
+		digest, err = fetchImageDigest(repo, ref, username, password, config)
+		if err != nil {
+			return true, err
+		}
+	}
+
+	response, err := config.searchService.getReferrersGQL(context.Background(), config, username, password, repo, digest)
+	if err != nil {
+		return true, err
+	}
+
+	referrersList := referrersResult(response.Referrers)
+
+	maxArtifactTypeLen := math.MinInt
+
+	for _, referrer := range referrersList {
+		if maxArtifactTypeLen < len(referrer.ArtifactType) {
+			maxArtifactTypeLen = len(referrer.ArtifactType)
+		}
+	}
+
+	printReferrersTableHeader(config, config.resultWriter, maxArtifactTypeLen)
+
+	return true, printReferrersResult(config, referrersList, maxArtifactTypeLen)
+}
+
+func fetchImageDigest(repo, ref, username, password string, config searchConfig) (string, error) {
+	url, err := combineServerAndEndpointURL(*config.servURL, fmt.Sprintf("/v2/%s/manifests/%s", repo, ref))
+	if err != nil {
+		return "", err
+	}
+
+	res, err := makeHEADRequest(context.Background(), url, username, password, *config.verifyTLS, false)
+
+	digestStr := res.Get(constants.DistContentDigestKey)
+
+	return digestStr, err
+}
+
+type referrerSearcher struct{}
+
+func (search referrerSearcher) search(config searchConfig) (bool, error) {
+	if !canSearch(config.params, newSet("subject")) {
+		return false, nil
+	}
+
+	username, password := getUsernameAndPassword(*config.user)
+
+	repo, ref, refIsTag, err := zcommon.GetRepoRefference(*config.params["subject"])
+	if err != nil {
+		return true, err
+	}
+
+	digest := ref
+
+	if refIsTag {
+		digest, err = fetchImageDigest(repo, ref, username, password, config)
+		if err != nil {
+			return true, err
+		}
+	}
+
+	referrersList, err := config.searchService.getReferrers(context.Background(), config, username, password,
+		repo, digest)
+	if err != nil {
+		return true, err
+	}
+
+	maxArtifactTypeLen := math.MinInt
+
+	for _, referrer := range referrersList {
+		if maxArtifactTypeLen < len(referrer.ArtifactType) {
+			maxArtifactTypeLen = len(referrer.ArtifactType)
+		}
+	}
+
+	printReferrersTableHeader(config, config.resultWriter, maxArtifactTypeLen)
+
+	return true, printReferrersResult(config, referrersList, maxArtifactTypeLen)
+}
+
+type globalSearcherGQL struct{}
+
+func (search globalSearcherGQL) search(config searchConfig) (bool, error) {
+	if !canSearch(config.params, newSet("query")) {
+		return false, nil
+	}
+
+	username, password := getUsernameAndPassword(*config.user)
+	ctx, cancel := context.WithCancel(context.Background())
+
+	defer cancel()
+
+	query := *config.params["query"]
+
+	globalSearchResult, err := config.searchService.globalSearchGQL(ctx, config, username, password, query)
+	if err != nil {
+		return true, err
+	}
+
+	imagesList := []imageStruct{}
+
+	for _, image := range globalSearchResult.Images {
+		imagesList = append(imagesList, imageStruct(image))
+	}
+
+	reposList := []repoStruct{}
+
+	for _, repo := range globalSearchResult.Repos {
+		reposList = append(reposList, repoStruct(repo))
+	}
+
+	if err := printImageResult(config, imagesList); err != nil {
+		return true, err
+	}
+
+	return true, printRepoResults(config, reposList)
+}
+
+type globalSearcherREST struct{}
+
+func (search globalSearcherREST) search(config searchConfig) (bool, error) {
+	if !canSearch(config.params, newSet("query")) {
+		return false, nil
+	}
+
+	return true, fmt.Errorf("search extension is not enabled: %w", zotErrors.ErrExtensionNotEnabled)
 }
 
 func collectResults(config searchConfig, wg *sync.WaitGroup, imageErr chan stringResult,
@@ -779,7 +946,7 @@ func printImageTableHeader(writer io.Writer, verbose bool, maxImageNameLen, maxT
 	}
 
 	row[colDigestIndex] = "DIGEST"
-	row[colSizeIndex] = "SIZE"
+	row[colSizeIndex] = sizeColumn
 	row[colIsSignedIndex] = "SIGNED"
 
 	if verbose {
@@ -802,7 +969,94 @@ func printCVETableHeader(writer io.Writer, verbose bool, maxImgLen, maxTagLen, m
 	table.Render()
 }
 
-func printResult(config searchConfig, imageList []imageStruct) error {
+func printReferrersTableHeader(config searchConfig, writer io.Writer, maxArtifactTypeLen int) {
+	if *config.outputFormat != "" && *config.outputFormat != defaultOutoutFormat {
+		return
+	}
+
+	table := getReferrersTableWriter(writer)
+
+	table.SetColMinWidth(refArtifactTypeIndex, maxArtifactTypeLen)
+	table.SetColMinWidth(refDigestIndex, digestWidth)
+	table.SetColMinWidth(refSizeIndex, sizeWidth)
+
+	row := make([]string, refRowWidth)
+
+	// adding spaces so that image name and tag columns are aligned
+	// in case the name/tag are fully shown and too long
+	var offset string
+
+	if maxArtifactTypeLen > len("ARTIFACT TYPE") {
+		offset = strings.Repeat(" ", maxArtifactTypeLen-len("ARTIFACT TYPE"))
+		row[refArtifactTypeIndex] = "ARTIFACT TYPE" + offset
+	} else {
+		row[refArtifactTypeIndex] = "ARTIFACT TYPE"
+	}
+
+	row[refDigestIndex] = "DIGEST"
+	row[refSizeIndex] = sizeColumn
+
+	table.Append(row)
+	table.Render()
+}
+
+func printRepoTableHeader(writer io.Writer, repoMaxLen, maxTimeLen int, verbose bool) {
+	table := getRepoTableWriter(writer)
+
+	table.SetColMinWidth(repoNameIndex, repoMaxLen)
+	table.SetColMinWidth(repoSizeIndex, sizeWidth)
+	table.SetColMinWidth(repoLastUpdatedIndex, maxTimeLen)
+	table.SetColMinWidth(repoDownloadsIndex, sizeWidth)
+	table.SetColMinWidth(repoStarsIndex, sizeWidth)
+
+	if verbose {
+		table.SetColMinWidth(repoPlatformsIndex, platformWidth)
+	}
+
+	row := make([]string, repoRowWidth)
+
+	// adding spaces so that image name and tag columns are aligned
+	// in case the name/tag are fully shown and too long
+	var offset string
+
+	if repoMaxLen > len("NAME") {
+		offset = strings.Repeat(" ", repoMaxLen-len("NAME"))
+		row[repoNameIndex] = "NAME" + offset
+	} else {
+		row[repoNameIndex] = "NAME"
+	}
+
+	if repoMaxLen > len("LAST UPDATED") {
+		offset = strings.Repeat(" ", repoMaxLen-len("LAST UPDATED"))
+		row[repoLastUpdatedIndex] = "LAST UPDATED" + offset
+	} else {
+		row[repoLastUpdatedIndex] = "LAST UPDATED"
+	}
+
+	row[repoSizeIndex] = sizeColumn
+	row[repoDownloadsIndex] = "DOWNLOADS"
+	row[repoStarsIndex] = "STARS"
+
+	if verbose {
+		row[repoPlatformsIndex] = "PLATFORMS"
+	}
+
+	table.Append(row)
+	table.Render()
+}
+
+func printReferrersResult(config searchConfig, referrersList referrersResult, maxArtifactTypeLen int) error {
+	out, err := referrersList.string(*config.outputFormat, maxArtifactTypeLen)
+	if err != nil {
+		return err
+	}
+
+	fmt.Fprint(config.resultWriter, out)
+
+	return nil
+}
+
+func printImageResult(config searchConfig, imageList []imageStruct) error {
 	var builder strings.Builder
 	maxImgNameLen := 0
 	maxTagLen := 0
@@ -846,6 +1100,36 @@ func printResult(config searchConfig, imageList []imageStruct) error {
 	return nil
 }
 
+func printRepoResults(config searchConfig, repoList []repoStruct) error {
+	maxRepoNameLen := 0
+	maxTimeLen := 0
+
+	for _, repo := range repoList {
+		if maxRepoNameLen < len(repo.Name) {
+			maxRepoNameLen = len(repo.Name)
+		}
+
+		if maxTimeLen < len(repo.LastUpdated.String()) {
+			maxTimeLen = len(repo.LastUpdated.String())
+		}
+	}
+
+	if len(repoList) > 0 {
+		printRepoTableHeader(config.resultWriter, maxRepoNameLen, maxTimeLen, *config.verbose)
+	}
+
+	for _, repo := range repoList {
+		out, err := repo.string(*config.outputFormat, maxRepoNameLen, maxTimeLen, *config.verbose)
+		if err != nil {
+			return err
+		}
+
+		fmt.Fprint(config.resultWriter, out)
+	}
+
+	return nil
+}
+
 var (
 	errInvalidImageNameAndTag = errors.New("cli: Invalid input format. Expected IMAGENAME:TAG")
 	errInvalidImageName       = errors.New("cli: Invalid input format. Expected IMAGENAME without :TAG")
@@ -876,3 +1160,7 @@ func (search repoSearcher) searchRepos(config searchConfig) error {
 		return nil
 	}
 }
+
+const (
+	sizeColumn = "SIZE"
+)

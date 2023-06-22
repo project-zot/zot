@@ -32,6 +32,7 @@ var (
 	ErrInvalidArgs                    = errors.New("cli: Invalid Arguments")
 	ErrInvalidFlagsCombination        = errors.New("cli: Invalid combination of flags")
 	ErrInvalidURL                     = errors.New("cli: invalid URL format")
+	ErrExtensionNotEnabled            = errors.New("cli: functionality is not built in current version")
 	ErrUnauthorizedAccess             = errors.New("auth: unauthorized access. check credentials")
 	ErrCannotResetConfigKey           = errors.New("cli: cannot reset given config key")
 	ErrConfigNotFound                 = errors.New("cli: config with the given name does not exist")

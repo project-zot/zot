@@ -25,6 +25,12 @@ import (
 	"zotregistry.io/zot/pkg/common"
 )
 
+const (
+	jsonFormat = "json"
+	yamlFormat = "yaml"
+	ymlFormat  = "yml"
+)
+
 type SearchService interface { //nolint:interfacebloat
 	getImagesGQL(ctx context.Context, config searchConfig, username, password string,
 		imageName string) (*common.ImageListResponse, error)
@@ -42,6 +48,10 @@ type SearchService interface { //nolint:interfacebloat
 		derivedImage string) (*common.DerivedImageListResponse, error)
 	getBaseImageListGQL(ctx context.Context, config searchConfig, username, password string,
 		baseImage string) (*common.BaseImageListResponse, error)
+	getReferrersGQL(ctx context.Context, config searchConfig, username, password string,
+		repo, digest string) (*common.ReferrersResp, error)
+	globalSearchGQL(ctx context.Context, config searchConfig, username, password string,
+		query string) (*common.GlobalSearch, error)
 
 	getAllImages(ctx context.Context, config searchConfig, username, password string,
 		channel chan stringResult, wtgrp *sync.WaitGroup)
@@ -59,6 +69,8 @@ type SearchService interface { //nolint:interfacebloat
 		channel chan stringResult, wtgrp *sync.WaitGroup)
 	getImageByNameAndCVEID(ctx context.Context, config searchConfig, username, password, imageName, cvid string,
 		channel chan stringResult, wtgrp *sync.WaitGroup)
+	getReferrers(ctx context.Context, config searchConfig, username, password string, repo, digest string,
+	) (referrersResult, error)
 }
 
 type searchService struct{}
@@ -101,6 +113,75 @@ func (service searchService) getDerivedImageListGQL(ctx context.Context, config 
 	}
 
 	return result, nil
+}
+
+func (service searchService) getReferrersGQL(ctx context.Context, config searchConfig, username, password string,
+	repo, digest string,
+) (*common.ReferrersResp, error) {
+	query := fmt.Sprintf(`
+		{
+			Referrers( repo: "%s", digest: "%s" ){
+				ArtifactType,
+				Digest,
+				MediaType,
+				Size,
+				Annotations{
+					Key
+					Value
+				}
+			}
+		}`, repo, digest)
+
+	result := &common.ReferrersResp{}
+
+	err := service.makeGraphQLQuery(ctx, config, username, password, query, result)
+	if errResult := checkResultGraphQLQuery(ctx, err, result.Errors); errResult != nil {
+		return nil, errResult
+	}
+
+	return result, nil
+}
+
+func (service searchService) globalSearchGQL(ctx context.Context, config searchConfig, username, password string,
+	query string,
+) (*common.GlobalSearch, error) {
+	GQLQuery := fmt.Sprintf(`
+		{
+			GlobalSearch(query:"%s"){
+				Images {
+					RepoName
+					Tag
+					MediaType
+					Digest
+					Size
+					Manifests {
+						Digest
+						ConfigDigest
+						Platform {Os Arch}
+						Size
+						IsSigned
+						Layers {Digest Size}
+					}
+				}
+				Repos {
+					Name
+					Platforms { Os Arch }
+					LastUpdated
+					Size
+					DownloadCount
+					StarCount
+				}
+			}
+		}`, query)
+
+	result := &common.GlobalSearchResultResp{}
+
+	err := service.makeGraphQLQuery(ctx, config, username, password, GQLQuery, result)
+	if errResult := checkResultGraphQLQuery(ctx, err, result.Errors); errResult != nil {
+		return nil, errResult
+	}
+
+	return &result.GlobalSearch, nil
 }
 
 func (service searchService) getBaseImageListGQL(ctx context.Context, config searchConfig, username, password string,
@@ -326,6 +407,44 @@ func (service searchService) getFixedTagsForCVEGQL(ctx context.Context, config s
 	}
 
 	return result, nil
+}
+
+func (service searchService) getReferrers(ctx context.Context, config searchConfig, username, password string,
+	repo, digest string,
+) (referrersResult, error) {
+	referrersEndpoint, err := combineServerAndEndpointURL(*config.servURL,
+		fmt.Sprintf("/v2/%s/referrers/%s", repo, digest))
+	if err != nil {
+		if isContextDone(ctx) {
+			return referrersResult{}, nil
+		}
+
+		return referrersResult{}, err
+	}
+
+	referrerResp := &ispec.Index{}
+	_, err = makeGETRequest(ctx, referrersEndpoint, username, password, *config.verifyTLS,
+		*config.debug, &referrerResp, config.resultWriter)
+
+	if err != nil {
+		if isContextDone(ctx) {
+			return referrersResult{}, nil
+		}
+
+		return referrersResult{}, err
+	}
+
+	referrersList := referrersResult{}
+
+	for _, referrer := range referrerResp.Manifests {
+		referrersList = append(referrersList, common.Referrer{
+			ArtifactType: referrer.ArtifactType,
+			Digest:       referrer.Digest.String(),
+			Size:         int(referrer.Size),
+		})
+	}
+
+	return referrersList, nil
 }
 
 func (service searchService) getImageByName(ctx context.Context, config searchConfig,
@@ -940,9 +1059,9 @@ func (cve cveResult) string(format string) (string, error) {
 	switch strings.ToLower(format) {
 	case "", defaultOutoutFormat:
 		return cve.stringPlainText()
-	case "json":
+	case jsonFormat:
 		return cve.stringJSON()
-	case "yml", "yaml":
+	case ymlFormat, yamlFormat:
 		return cve.stringYAML()
 	default:
 		return "", ErrInvalidOutputFormat
@@ -991,15 +1110,167 @@ func (cve cveResult) stringYAML() (string, error) {
 	return string(body), nil
 }
 
+type referrersResult []common.Referrer
+
+func (ref referrersResult) string(format string, maxArtifactTypeLen int) (string, error) {
+	switch strings.ToLower(format) {
+	case "", defaultOutoutFormat:
+		return ref.stringPlainText(maxArtifactTypeLen)
+	case jsonFormat:
+		return ref.stringJSON()
+	case ymlFormat, yamlFormat:
+		return ref.stringYAML()
+	default:
+		return "", ErrInvalidOutputFormat
+	}
+}
+
+func (ref referrersResult) stringPlainText(maxArtifactTypeLen int) (string, error) {
+	var builder strings.Builder
+
+	table := getImageTableWriter(&builder)
+
+	table.SetColMinWidth(refArtifactTypeIndex, maxArtifactTypeLen)
+	table.SetColMinWidth(refDigestIndex, digestWidth)
+	table.SetColMinWidth(refSizeIndex, sizeWidth)
+
+	for _, referrer := range ref {
+		artifactType := ellipsize(referrer.ArtifactType, maxArtifactTypeLen, ellipsis)
+		// digest := ellipsize(godigest.Digest(referrer.Digest).Encoded(), digestWidth, "")
+		size := ellipsize(humanize.Bytes(uint64(referrer.Size)), sizeWidth, ellipsis)
+
+		row := make([]string, refRowWidth)
+		row[refArtifactTypeIndex] = artifactType
+		row[refDigestIndex] = referrer.Digest
+		row[refSizeIndex] = size
+
+		table.Append(row)
+	}
+
+	table.Render()
+
+	return builder.String(), nil
+}
+
+func (ref referrersResult) stringJSON() (string, error) {
+	json := jsoniter.ConfigCompatibleWithStandardLibrary
+
+	body, err := json.MarshalIndent(ref, "", "  ")
+	if err != nil {
+		return "", err
+	}
+
+	return string(body), nil
+}
+
+func (ref referrersResult) stringYAML() (string, error) {
+	body, err := yaml.Marshal(ref)
+	if err != nil {
+		return "", err
+	}
+
+	return string(body), nil
+}
+
+type repoStruct common.RepoSummary
+
+func (repo repoStruct) string(format string, maxImgNameLen, maxTimeLen int, verbose bool) (string, error) { //nolint: lll
+	switch strings.ToLower(format) {
+	case "", defaultOutoutFormat:
+		return repo.stringPlainText(maxImgNameLen, maxTimeLen, verbose)
+	case jsonFormat:
+		return repo.stringJSON()
+	case ymlFormat, yamlFormat:
+		return repo.stringYAML()
+	default:
+		return "", ErrInvalidOutputFormat
+	}
+}
+
+func (repo repoStruct) stringPlainText(repoMaxLen, maxTimeLen int, verbose bool) (string, error) {
+	var builder strings.Builder
+
+	table := getImageTableWriter(&builder)
+
+	table.SetColMinWidth(repoNameIndex, repoMaxLen)
+	table.SetColMinWidth(repoSizeIndex, sizeWidth)
+	table.SetColMinWidth(repoLastUpdatedIndex, maxTimeLen)
+	table.SetColMinWidth(repoDownloadsIndex, dounloadsWidth)
+	table.SetColMinWidth(repoStarsIndex, signedWidth)
+
+	if verbose {
+		table.SetColMinWidth(repoPlatformsIndex, platformWidth)
+	}
+
+	repoSize, err := strconv.Atoi(repo.Size)
+	if err != nil {
+		return "", err
+	}
+
+	repoName := repo.Name
+	repoLastUpdated := repo.LastUpdated
+	repoDownloads := repo.DownloadCount
+	repoStars := repo.StarCount
+	repoPlatforms := repo.Platforms
+
+	row := make([]string, repoRowWidth)
+	row[repoNameIndex] = repoName
+	row[repoSizeIndex] = ellipsize(strings.ReplaceAll(humanize.Bytes(uint64(repoSize)), " ", ""), sizeWidth, ellipsis)
+	row[repoLastUpdatedIndex] = repoLastUpdated.String()
+	row[repoDownloadsIndex] = strconv.Itoa(repoDownloads)
+	row[repoStarsIndex] = strconv.Itoa(repoStars)
+
+	if verbose && len(repoPlatforms) > 0 {
+		row[repoPlatformsIndex] = getPlatformStr(repoPlatforms[0])
+		repoPlatforms = repoPlatforms[1:]
+	}
+
+	table.Append(row)
+
+	if verbose {
+		for _, platform := range repoPlatforms {
+			row := make([]string, repoRowWidth)
+
+			row[repoPlatformsIndex] = getPlatformStr(platform)
+
+			table.Append(row)
+		}
+	}
+
+	table.Render()
+
+	return builder.String(), nil
+}
+
+func (repo repoStruct) stringJSON() (string, error) {
+	json := jsoniter.ConfigCompatibleWithStandardLibrary
+
+	body, err := json.MarshalIndent(repo, "", "  ")
+	if err != nil {
+		return "", err
+	}
+
+	return string(body), nil
+}
+
+func (repo repoStruct) stringYAML() (string, error) {
+	body, err := yaml.Marshal(&repo)
+	if err != nil {
+		return "", err
+	}
+
+	return string(body), nil
+}
+
 type imageStruct common.ImageSummary
 
 func (img imageStruct) string(format string, maxImgNameLen, maxTagLen, maxPlatformLen int, verbose bool) (string, error) { //nolint: lll
 	switch strings.ToLower(format) {
 	case "", defaultOutoutFormat:
 		return img.stringPlainText(maxImgNameLen, maxTagLen, maxPlatformLen, verbose)
-	case "json":
+	case jsonFormat:
 		return img.stringJSON()
-	case "yml", "yaml":
+	case ymlFormat, yamlFormat:
 		return img.stringYAML()
 	default:
 		return "", ErrInvalidOutputFormat
@@ -1283,6 +1554,42 @@ func getCVETableWriter(writer io.Writer) *tablewriter.Table {
 	return table
 }
 
+func getReferrersTableWriter(writer io.Writer) *tablewriter.Table {
+	table := tablewriter.NewWriter(writer)
+
+	table.SetAutoWrapText(false)
+	table.SetAutoFormatHeaders(true)
+	table.SetHeaderAlignment(tablewriter.ALIGN_LEFT)
+	table.SetAlignment(tablewriter.ALIGN_LEFT)
+	table.SetCenterSeparator("")
+	table.SetColumnSeparator("")
+	table.SetRowSeparator("")
+	table.SetHeaderLine(false)
+	table.SetBorder(false)
+	table.SetTablePadding("  ")
+	table.SetNoWhiteSpace(true)
+
+	return table
+}
+
+func getRepoTableWriter(writer io.Writer) *tablewriter.Table {
+	table := tablewriter.NewWriter(writer)
+
+	table.SetAutoWrapText(false)
+	table.SetAutoFormatHeaders(true)
+	table.SetHeaderAlignment(tablewriter.ALIGN_LEFT)
+	table.SetAlignment(tablewriter.ALIGN_LEFT)
+	table.SetCenterSeparator("")
+	table.SetColumnSeparator("")
+	table.SetRowSeparator("")
+	table.SetHeaderLine(false)
+	table.SetBorder(false)
+	table.SetTablePadding("  ")
+	table.SetNoWhiteSpace(true)
+
+	return table
+}
+
 func (service searchService) getRepos(ctx context.Context, config searchConfig, username, password string,
 	rch chan stringResult, wtgrp *sync.WaitGroup,
 ) {
@@ -1321,15 +1628,18 @@ func (service searchService) getRepos(ctx context.Context, config searchConfig, 
 }
 
 const (
-	imageNameWidth = 10
-	tagWidth       = 8
-	digestWidth    = 8
-	platformWidth  = 14
-	sizeWidth      = 8
-	isSignedWidth  = 8
-	configWidth    = 8
-	layersWidth    = 8
-	ellipsis       = "..."
+	imageNameWidth   = 10
+	tagWidth         = 8
+	digestWidth      = 8
+	platformWidth    = 14
+	sizeWidth        = 10
+	isSignedWidth    = 8
+	dounloadsWidth   = 10
+	signedWidth      = 10
+	lastUpdatedWidth = 14
+	configWidth      = 8
+	layersWidth      = 8
+	ellipsis         = "..."
 
 	cveIDWidth       = 16
 	cveSeverityWidth = 8
@@ -1353,4 +1663,23 @@ const (
 	colSizeIndex
 
 	rowWidth
+)
+
+const (
+	repoNameIndex = iota
+	repoSizeIndex
+	repoLastUpdatedIndex
+	repoDownloadsIndex
+	repoStarsIndex
+	repoPlatformsIndex
+
+	repoRowWidth
+)
+
+const (
+	refArtifactTypeIndex = iota
+	refSizeIndex
+	refDigestIndex
+
+	refRowWidth
 )

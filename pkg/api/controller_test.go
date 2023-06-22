@@ -5226,7 +5226,7 @@ func TestManifestImageIndex(t *testing.T) {
 				Layers:   layers,
 				Manifest: manifest,
 			}, baseURL, repoName)
-		So(err, ShouldNotBeNil)
+		So(err, ShouldBeNil)
 
 		content, err = json.Marshal(manifest)
 		So(err, ShouldBeNil)
@@ -5251,7 +5251,7 @@ func TestManifestImageIndex(t *testing.T) {
 					Layers:   layers,
 					Manifest: manifest,
 				}, baseURL, repoName)
-			So(err, ShouldNotBeNil)
+			So(err, ShouldBeNil)
 
 			content, err = json.Marshal(manifest)
 			So(err, ShouldBeNil)
@@ -5307,7 +5307,7 @@ func TestManifestImageIndex(t *testing.T) {
 					Layers:   layers,
 					Manifest: manifest,
 				}, baseURL, repoName)
-			So(err, ShouldNotBeNil)
+			So(err, ShouldBeNil)
 			content, err = json.Marshal(manifest)
 			So(err, ShouldBeNil)
 			digest = godigest.FromBytes(content)
@@ -5480,7 +5480,7 @@ func TestManifestImageIndex(t *testing.T) {
 						Layers:   layers,
 						Manifest: manifest,
 					}, baseURL, repoName)
-				So(err, ShouldNotBeNil)
+				So(err, ShouldBeNil)
 				content, err = json.Marshal(manifest)
 				So(err, ShouldBeNil)
 				digest = godigest.FromBytes(content)

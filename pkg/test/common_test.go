@@ -464,12 +464,12 @@ func TestUploadImage(t *testing.T) {
 		img := test.Image{
 			Layers: [][]byte{
 				layerBlob,
-			}, // invalid format that will result in an error
+			},
 			Config: ispec.Image{},
 		}
 
 		err := test.UploadImage(img, baseURL, "test")
-		So(err, ShouldNotBeNil)
+		So(err, ShouldBeNil)
 	})
 
 	Convey("Upload image with authentification", t, func() {

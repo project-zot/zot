@@ -60,45 +60,25 @@ func ParseRepo(repo string, repoDB RepoDB, storeController storage.StoreControll
 		return err
 	}
 
-	err = resetRepoMetaTags(repo, repoDB, log)
+	err = resetRepoMeta(repo, repoDB, log)
 	if err != nil && !errors.Is(err, zerr.ErrRepoMetaNotFound) {
 		log.Error().Err(err).Str("repository", repo).Msg("load-repo: failed to reset tag field in RepoMetadata for repo")
 
 		return err
 	}
 
-	for _, manifest := range indexContent.Manifests {
-		tag, hasTag := manifest.Annotations[ispec.AnnotationRefName]
+	for _, descriptor := range indexContent.Manifests {
+		tag := descriptor.Annotations[ispec.AnnotationRefName]
 
-		manifestMetaIsPresent, err := isManifestMetaPresent(repo, manifest, repoDB)
+		descriptorBlob, err := getCachedBlob(repo, descriptor, repoDB, imageStore, log)
 		if err != nil {
 			log.Error().Err(err).Msg("load-repo: error checking manifestMeta in RepoDB")
 
 			return err
 		}
 
-		// this check helps reduce unecesary reads from storage
-		if manifestMetaIsPresent && hasTag {
-			err = repoDB.SetRepoReference(repo, tag, manifest.Digest, manifest.MediaType)
-			if err != nil {
-				log.Error().Err(err).Str("repository", repo).Str("tag", tag).Msg("load-repo: failed to set repo tag")
-
-				return err
-			}
-
-			continue
-		}
-
-		manifestBlob, digest, _, err := imageStore.GetImageManifest(repo, manifest.Digest.String())
-		if err != nil {
-			log.Error().Err(err).Str("repository", repo).Str("tag", tag).
-				Msg("load-repo: failed to set repo tag for image")
-
-			return err
-		}
-
 		isSignature, signatureType, signedManifestDigest, err := storage.CheckIsImageSignature(repo,
-			manifestBlob, tag)
+			descriptorBlob, tag)
 		if err != nil {
 			log.Error().Err(err).Str("repository", repo).Str("tag", tag).
 				Msg("load-repo: failed checking if image is signature for specified image")
@@ -107,8 +87,8 @@ func ParseRepo(repo string, repoDB RepoDB, storeController storage.StoreControll
 		}
 
 		if isSignature {
-			layers, err := GetSignatureLayersInfo(repo, tag, manifest.Digest.String(), signatureType, manifestBlob,
-				imageStore, log)
+			layers, err := GetSignatureLayersInfo(repo, tag, descriptor.Digest.String(), signatureType,
+				descriptorBlob, imageStore, log)
 			if err != nil {
 				return err
 			}
@@ -116,7 +96,7 @@ func ParseRepo(repo string, repoDB RepoDB, storeController storage.StoreControll
 			err = repoDB.AddManifestSignature(repo, signedManifestDigest,
 				SignatureMetadata{
 					SignatureType:   signatureType,
-					SignatureDigest: digest.String(),
+					SignatureDigest: descriptor.Digest.String(),
 					LayersInfo:      layers,
 				})
 			if err != nil {
@@ -141,10 +121,10 @@ func ParseRepo(repo string, repoDB RepoDB, storeController storage.StoreControll
 		reference := tag
 
 		if tag == "" {
-			reference = manifest.Digest.String()
+			reference = descriptor.Digest.String()
 		}
 
-		err = SetImageMetaFromInput(repo, reference, manifest.MediaType, manifest.Digest, manifestBlob,
+		err = SetImageMetaFromInput(repo, reference, descriptor.MediaType, descriptor.Digest, descriptorBlob,
 			imageStore, repoDB, log)
 		if err != nil {
 			log.Error().Err(err).Str("repository", repo).Str("tag", tag).
@@ -157,8 +137,9 @@ func ParseRepo(repo string, repoDB RepoDB, storeController storage.StoreControll
 	return nil
 }
 
-// resetRepoMetaTags will delete all tags from a repometadata.
-func resetRepoMetaTags(repo string, repoDB RepoDB, log log.Logger) error {
+// resetRepoMeta will delete all tags and non-user related information from a RepoMetadata.
+// It is used to recalculate and keep RepoDB consistent with the layout in case of unexpected changes.
+func resetRepoMeta(repo string, repoDB RepoDB, log log.Logger) error {
 	repoMeta, err := repoDB.GetRepoMeta(repo)
 	if err != nil && !errors.Is(err, zerr.ErrRepoMetaNotFound) {
 		log.Error().Err(err).Str("repository", repo).Msg("load-repo: failed to get RepoMeta for repo")
@@ -202,18 +183,41 @@ func getAllRepos(storeController storage.StoreController) ([]string, error) {
 	return allRepos, nil
 }
 
-// isManifestMetaPresent checks if the manifest with a certain digest is present in a certain repo.
-func isManifestMetaPresent(repo string, manifest ispec.Descriptor, repoDB RepoDB) (bool, error) {
-	_, err := repoDB.GetManifestMeta(repo, manifest.Digest)
-	if err != nil && !errors.Is(err, zerr.ErrManifestMetaNotFound) {
-		return false, err
+func getCachedBlob(repo string, descriptor ispec.Descriptor, repoDB RepoDB,
+	imageStore storageTypes.ImageStore, log log.Logger,
+) ([]byte, error) {
+	digest := descriptor.Digest
+
+	descriptorBlob, err := getCachedBlobFromRepoDB(descriptor, repoDB)
+
+	if err != nil || len(descriptorBlob) == 0 {
+		descriptorBlob, _, _, err = imageStore.GetImageManifest(repo, digest.String())
+		if err != nil {
+			log.Error().Err(err).Str("repository", repo).Str("digest", digest.String()).
+				Msg("load-repo: failed to get blob for image")
+
+			return nil, err
+		}
+
+		return descriptorBlob, nil
 	}
 
-	if errors.Is(err, zerr.ErrManifestMetaNotFound) {
-		return false, nil
+	return descriptorBlob, nil
+}
+
+func getCachedBlobFromRepoDB(descriptor ispec.Descriptor, repoDB RepoDB) ([]byte, error) {
+	switch descriptor.MediaType {
+	case ispec.MediaTypeImageManifest:
+		manifestData, err := repoDB.GetManifestData(descriptor.Digest)
+
+		return manifestData.ManifestBlob, err
+	case ispec.MediaTypeImageIndex:
+		indexData, err := repoDB.GetIndexData(descriptor.Digest)
+
+		return indexData.IndexBlob, err
 	}
 
-	return true, nil
+	return nil, nil
 }
 
 func GetSignatureLayersInfo(repo, tag, manifestDigest, signatureType string, manifestBlob []byte,

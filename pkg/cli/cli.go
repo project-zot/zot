@@ -10,4 +10,5 @@ func enableCli(rootCmd *cobra.Command) {
 	rootCmd.AddCommand(NewImageCommand(NewSearchService()))
 	rootCmd.AddCommand(NewCveCommand(NewSearchService()))
 	rootCmd.AddCommand(NewRepoCommand(NewSearchService()))
+	rootCmd.AddCommand(NewSearchCommand(NewSearchService()))
 }
