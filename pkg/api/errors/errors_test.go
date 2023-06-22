@@ -1,15 +1,15 @@
-package api_test
+package errors_test
 
 import (
 	"testing"
 
 	. "github.com/smartystreets/goconvey/convey"
 
-	"zotregistry.io/zot/pkg/api"
+	apiErr "zotregistry.io/zot/pkg/api/errors"
 )
 
 func TestUnknownCodeError(t *testing.T) {
 	Convey("Retrieve a new error with unknown code", t, func() {
-		So(func() { _ = api.NewError(123456789, nil) }, ShouldPanic)
+		So(func() { _ = apiErr.NewError(123456789, nil) }, ShouldPanic)
 	})
 }

@@ -48,6 +48,14 @@ func GetImageDirAndReference(imageName string) (string, string, bool) {
 	return repo, tag, true
 }
 
+func GetManifestArtifactType(manifestContent ispec.Manifest) string {
+	if manifestContent.ArtifactType != "" {
+		return manifestContent.ArtifactType
+	}
+
+	return manifestContent.Config.MediaType
+}
+
 // GetImageLastUpdated This method will return last updated timestamp.
 // The Created timestamp is used, but if it is missing, look at the
 // history field and, if provided, return the timestamp of last entry in history.

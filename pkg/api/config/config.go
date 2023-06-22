@@ -106,6 +106,20 @@ type AccessControlConfig struct {
 	Groups       Groups
 }
 
+func (config *AccessControlConfig) AnonymousPolicyExists() bool {
+	if config == nil {
+		return false
+	}
+
+	for _, repository := range config.Repositories {
+		if len(repository.AnonymousPolicy) > 0 {
+			return true
+		}
+	}
+
+	return false
+}
+
 type (
 	Repositories map[string]PolicyGroup
 	Groups       map[string]Group
