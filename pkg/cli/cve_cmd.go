@@ -7,11 +7,17 @@ import (
 	"fmt"
 	"os"
 	"path"
+	"strings"
+	"time"
 
 	"github.com/briandowns/spinner"
 	"github.com/spf13/cobra"
 
 	zotErrors "zotregistry.io/zot/errors"
+)
+
+const (
+	cveDBRetryInterval = 3
 )
 
 func NewCveCommand(searchService SearchService) *cobra.Command {
@@ -148,13 +154,41 @@ func searchCve(searchConfig searchConfig) error {
 	}
 
 	for _, searcher := range searchers {
-		found, err := searcher.search(searchConfig)
-		if found {
-			if err != nil {
+		// there can be CVE DB readyness issues on the server side
+		// we need a retry mechanism for that specific type of errors
+		maxAttempts := 20
+
+		for i := 0; i < maxAttempts; i++ {
+			found, err := searcher.search(searchConfig)
+			if !found {
+				// searcher does not support this searchConfig
+				// exit the attempts loop and try a different searcher
+				break
+			}
+
+			if err == nil {
+				// searcher matcher search config and results are already printed
+				return nil
+			}
+
+			if i+1 >= maxAttempts {
+				// searcher matches search config but there are errors
+				// this is the last attempt and we cannot retry
 				return err
 			}
 
-			return nil
+			if strings.Contains(err.Error(), zotErrors.ErrCVEDBNotFound.Error()) {
+				// searches matches search config but CVE DB is not ready server side
+				// wait and retry a few more times
+				fmt.Fprintln(searchConfig.resultWriter,
+					"[warning] CVE DB is not ready [", i, "] - retry in ", cveDBRetryInterval, " seconds")
+				time.Sleep(cveDBRetryInterval * time.Second)
+
+				continue
+			}
+
+			// an unrecoverable error occurred
+			return err
 		}
 	}
 

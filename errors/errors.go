@@ -46,6 +46,7 @@ var (
 	ErrEmptyValue                     = errors.New("cache: empty value")
 	ErrEmptyRepoList                  = errors.New("search: no repository found")
 	ErrCVESearchDisabled              = errors.New("search: CVE search is disabled")
+	ErrCVEDBNotFound                  = errors.New("cve: CVE DB is not present")
 	ErrInvalidRepositoryName          = errors.New("repository: not a valid repository name")
 	ErrSyncMissingCatalog             = errors.New("sync: couldn't fetch upstream registry's catalog")
 	ErrMethodNotSupported             = errors.New("storage: method not supported")

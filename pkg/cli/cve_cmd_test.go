@@ -14,7 +14,9 @@ import (
 	"os"
 	"path"
 	"regexp"
+	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -285,6 +287,48 @@ func TestSearchCVECmd(t *testing.T) {
 		str := space.ReplaceAllString(buff.String(), " ")
 		So(strings.TrimSpace(str), ShouldEqual, "IMAGE NAME TAG OS/ARCH DIGEST SIGNED SIZE anImage tag os/arch 6e2f80bf false 123kB") //nolint:lll
 		So(err, ShouldBeNil)
+	})
+
+	Convey("Test images by CVE ID - positive with retries", t, func() {
+		args := []string{"cvetest", "--cve-id", "aCVEID", "--url", "someURL"}
+		configPath := makeConfigFile(`{"configs":[{"_name":"cvetest","showspinner":false}]}`)
+		defer os.Remove(configPath)
+		mockService := mockServiceForRetry{succeedOn: 2} // CVE info will be provided in 2nd attempt
+		cveCmd := NewCveCommand(&mockService)
+		buff := bytes.NewBufferString("")
+		cveCmd.SetOut(buff)
+		cveCmd.SetErr(buff)
+		cveCmd.SetArgs(args)
+		err := cveCmd.Execute()
+		space := regexp.MustCompile(`\s+`)
+		str := space.ReplaceAllString(buff.String(), " ")
+		t.Logf("Output: %s", str)
+		So(strings.TrimSpace(str), ShouldContainSubstring,
+			"[warning] CVE DB is not ready [ 0 ] - retry in "+strconv.Itoa(cveDBRetryInterval)+" seconds")
+		So(strings.TrimSpace(str), ShouldContainSubstring,
+			"IMAGE NAME TAG OS/ARCH DIGEST SIGNED SIZE anImage tag os/arch 6e2f80bf false 123kB")
+		So(err, ShouldBeNil)
+	})
+
+	Convey("Test images by CVE ID - failed after retries", t, func() {
+		args := []string{"cvetest", "--cve-id", "aCVEID", "--url", "someURL"}
+		configPath := makeConfigFile(`{"configs":[{"_name":"cvetest","showspinner":false}]}`)
+		defer os.Remove(configPath)
+		mockService := mockServiceForRetry{succeedOn: -1} // CVE info will be unavailable on all retries
+		cveCmd := NewCveCommand(&mockService)
+		buff := bytes.NewBufferString("")
+		cveCmd.SetOut(buff)
+		cveCmd.SetErr(buff)
+		cveCmd.SetArgs(args)
+		err := cveCmd.Execute()
+		space := regexp.MustCompile(`\s+`)
+		str := space.ReplaceAllString(buff.String(), " ")
+		t.Logf("Output: %s", str)
+		So(strings.TrimSpace(str), ShouldContainSubstring,
+			"[warning] CVE DB is not ready [ 0 ] - retry in "+strconv.Itoa(cveDBRetryInterval)+" seconds")
+		So(strings.TrimSpace(str), ShouldNotContainSubstring,
+			"IMAGE NAME TAG OS/ARCH DIGEST SIGNED SIZE anImage tag os/arch 6e2f80bf false 123kB")
+		So(err, ShouldNotBeNil)
 	})
 
 	Convey("Test images by CVE ID - invalid CVE ID", t, func() {
@@ -1221,4 +1265,27 @@ func getMockCveInfo(repoDB repodb.RepoDB, log log.Logger) cveinfo.CveInfo {
 		Scanner: scanner,
 		RepoDB:  repoDB,
 	}
+}
+
+type mockServiceForRetry struct {
+	mockService
+	retryCounter int
+	succeedOn    int
+}
+
+func (service *mockServiceForRetry) getImagesByCveID(ctx context.Context, config searchConfig,
+	username, password, cvid string, rch chan stringResult, wtgrp *sync.WaitGroup,
+) {
+	service.retryCounter += 1
+
+	if service.retryCounter < service.succeedOn || service.succeedOn < 0 {
+		rch <- stringResult{"", zotErrors.ErrCVEDBNotFound}
+		close(rch)
+
+		wtgrp.Done()
+
+		return
+	}
+
+	service.getImageByName(ctx, config, username, password, "anImage", rch, wtgrp)
 }

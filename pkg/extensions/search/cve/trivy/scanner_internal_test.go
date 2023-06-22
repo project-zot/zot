@@ -15,6 +15,7 @@ import (
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	. "github.com/smartystreets/goconvey/convey"
 
+	zerr "zotregistry.io/zot/errors"
 	"zotregistry.io/zot/pkg/common"
 	"zotregistry.io/zot/pkg/extensions/monitoring"
 	"zotregistry.io/zot/pkg/log"
@@ -124,6 +125,11 @@ func TestMultipleStoragePath(t *testing.T) {
 		generateTestImage(storeController, img1)
 		generateTestImage(storeController, img2)
 
+		// Try to scan without the DB being downloaded
+		_, err = scanner.ScanImage(img0)
+		So(err, ShouldNotBeNil)
+		So(err, ShouldWrap, zerr.ErrCVEDBNotFound)
+
 		// Download DB since DB download on scan is disabled
 		err = scanner.UpdateDB()
 		So(err, ShouldBeNil)
@@ -197,11 +203,19 @@ func TestTrivyLibraryErrors(t *testing.T) {
 		err = repodb.ParseStorage(repoDB, storeController, log)
 		So(err, ShouldBeNil)
 
+		img := "zot-test:0.0.1" //nolint:goconst
+
 		// Download DB fails for missing DB url
 		scanner := NewScanner(storeController, repoDB, "", "", log)
 
 		err = scanner.UpdateDB()
 		So(err, ShouldNotBeNil)
+
+		// Try to scan without the DB being downloaded
+		opts := scanner.getTrivyOptions(img)
+		_, err = scanner.runTrivy(opts)
+		So(err, ShouldNotBeNil)
+		So(err, ShouldWrap, zerr.ErrCVEDBNotFound)
 
 		// Download DB fails for invalid Java DB
 		scanner = NewScanner(storeController, repoDB, "ghcr.io/project-zot/trivy-db",
@@ -217,10 +231,8 @@ func TestTrivyLibraryErrors(t *testing.T) {
 		err = scanner.UpdateDB()
 		So(err, ShouldBeNil)
 
-		img := "zot-test:0.0.1"
-
 		// Scanning image with correct options
-		opts := scanner.getTrivyOptions(img)
+		opts = scanner.getTrivyOptions(img)
 		_, err = scanner.runTrivy(opts)
 		So(err, ShouldBeNil)
 
@@ -482,7 +494,7 @@ func TestDefaultTrivyDBUrl(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		// Scanning image
-		img := "zot-test:0.0.1"
+		img := "zot-test:0.0.1" //nolint:goconst
 
 		opts := scanner.getTrivyOptions(img)
 		_, err = scanner.runTrivy(opts)
