@@ -31,6 +31,10 @@ Example:
 
   # For image search specify the full repo name followed by the tag or a prefix of the tag.
   zli search --query test/repo:2.1.
+
+  # For referrers search specify the referred subject using it's full digest or tag:
+  zli search --subject repo@sha256:f9a0981...
+  zli search --subject repo:tag
 		`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			home, err := os.UserHomeDir()
@@ -115,7 +119,9 @@ func setupSearchFlags(imageCmd *cobra.Command, searchImageParams map[string]*str
 	searchImageParams["query"] = imageCmd.Flags().StringP("query", "q", "",
 		"Specify what repo or image(repo:tag) to be searched")
 
-	searchImageParams["subject"] = imageCmd.Flags().StringP("subject", "s", "", "List all referrers for this subject")
+	searchImageParams["subject"] = imageCmd.Flags().StringP("subject", "s", "",
+		"List all referrers for this subject. The subject can be specified by tag(repo:tag) or by digest"+
+			"(repo@digest)")
 
 	imageCmd.Flags().StringVar(servURL, "url", "", "Specify zot server URL if config-name is not mentioned")
 	imageCmd.Flags().StringVarP(user, "user", "u", "", `User Credentials of zot server in "username:password" format`)
