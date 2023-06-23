@@ -35,6 +35,9 @@ build:
         },
         "ui": {
             "enable": true
+        },
+        "mgmt": {
+          "enable": true
         }
       }
     }
