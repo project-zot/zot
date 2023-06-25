@@ -42,7 +42,8 @@ jobs:
         OCI_TEST_PULL: 1
         OCI_TEST_PUSH: 1
         OCI_TEST_CONTENT_DISCOVERY: 1
-        OCI_TEST_CONTENT_MANGEMENT: 1
+        OCI_TEST_CONTENT_MANAGEMENT: 1
+        OCI_REFERRERS: 1
         OCI_HIDE_SKIPPED_WORKFLOWS: 1
     - run: mkdir -p .out/ && mv {report.html,junit.xml} .out/
       if: always()
