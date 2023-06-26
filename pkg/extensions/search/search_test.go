@@ -1064,6 +1064,107 @@ func TestGetReferrersGQL(t *testing.T) {
 
 		So(referrersResp.Referrers[0].Digest, ShouldEqual, artifactManifestDigest)
 	})
+
+	Convey("Get referrers with index as referrer", t, func() {
+		port := GetFreePort()
+		baseURL := GetBaseURL(port)
+		conf := config.New()
+		conf.HTTP.Port = port
+		conf.Storage.RootDirectory = t.TempDir()
+		conf.Storage.GC = false
+
+		defaultVal := true
+		conf.Extensions = &extconf.ExtensionConfig{
+			Search: &extconf.SearchConfig{BaseConfig: extconf.BaseConfig{Enable: &defaultVal}},
+			Lint: &extconf.LintConfig{
+				BaseConfig: extconf.BaseConfig{
+					Enable: &defaultVal,
+				},
+			},
+		}
+
+		conf.Extensions.Search.CVE = nil
+
+		ctlr := api.NewController(conf)
+		ctlrManager := NewControllerManager(ctlr)
+		ctlrManager.StartAndWait(port)
+		defer ctlrManager.StopServer()
+
+		// Upload the index referrer
+
+		targetImg, err := GetRandomImage("")
+		So(err, ShouldBeNil)
+		targetDigest, err := targetImg.Digest()
+		So(err, ShouldBeNil)
+
+		err = UploadImage(targetImg, baseURL, "repo")
+		So(err, ShouldBeNil)
+
+		indexReferrer, err := GetRandomMultiarchImage("ref")
+		So(err, ShouldBeNil)
+
+		artifactType := "art.type"
+		indexReferrer.Index.ArtifactType = artifactType
+		indexReferrer.Index.Subject = &ispec.Descriptor{
+			MediaType: ispec.MediaTypeImageManifest,
+			Digest:    targetDigest,
+		}
+
+		indexReferrerDigest, err := indexReferrer.Digest()
+		So(err, ShouldBeNil)
+
+		err = UploadMultiarchImage(indexReferrer, baseURL, "repo")
+		So(err, ShouldBeNil)
+
+		// Call Referrers GQL
+
+		referrersQuery := `
+			{
+				Referrers( repo: "%s", digest: "%s"){
+					ArtifactType,
+					Digest,
+					MediaType,
+					Size,
+					Annotations{
+						Key
+						Value
+					}
+		   		}
+			}`
+
+		referrersQuery = fmt.Sprintf(referrersQuery, "repo", targetDigest.String())
+
+		resp, err := resty.R().Get(baseURL + graphqlQueryPrefix + "?query=" + url.QueryEscape(referrersQuery))
+		So(resp, ShouldNotBeNil)
+		So(err, ShouldBeNil)
+
+		So(resp.StatusCode(), ShouldEqual, 200)
+		So(resp.Body(), ShouldNotBeNil)
+		So(err, ShouldBeNil)
+
+		referrersResp := &zcommon.ReferrersResp{}
+
+		err = json.Unmarshal(resp.Body(), referrersResp)
+		So(err, ShouldBeNil)
+		So(len(referrersResp.Referrers), ShouldEqual, 1)
+		So(referrersResp.Referrers[0].ArtifactType, ShouldResemble, artifactType)
+		So(referrersResp.Referrers[0].Digest, ShouldResemble, indexReferrerDigest.String())
+		So(referrersResp.Referrers[0].MediaType, ShouldResemble, ispec.MediaTypeImageIndex)
+
+		// Make REST call
+
+		resp, err = resty.R().Get(baseURL + "/v2/repo/referrers/" + targetDigest.String())
+		So(err, ShouldBeNil)
+
+		var index ispec.Index
+
+		err = json.Unmarshal(resp.Body(), &index)
+		So(err, ShouldBeNil)
+		So(len(index.Manifests), ShouldEqual, 1)
+		So(index.Manifests[0].ArtifactType, ShouldEqual, artifactType)
+		So(index.Manifests[0].Digest.String(), ShouldResemble, indexReferrerDigest.String())
+		So(index.Manifests[0].MediaType, ShouldResemble, ispec.MediaTypeImageIndex)
+	})
 }
 
 func TestExpandedRepoInfo(t *testing.T) {

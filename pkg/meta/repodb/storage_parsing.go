@@ -407,22 +407,43 @@ func GetReferredSubject(descriptorBlob []byte, referrerDigest, mediaType string,
 		referrerSubject *ispec.Descriptor
 	)
 
-	var manifestContent ispec.Manifest
+	switch mediaType {
+	case ispec.MediaTypeImageManifest:
+		var manifestContent ispec.Manifest
 
-	err := json.Unmarshal(descriptorBlob, &manifestContent)
-	if err != nil {
-		return "", referrerInfo, false,
-			fmt.Errorf("repodb: can't unmarshal manifest for digest %s: %w", referrerDigest, err)
-	}
+		err := json.Unmarshal(descriptorBlob, &manifestContent)
+		if err != nil {
+			return "", referrerInfo, false,
+				fmt.Errorf("repodb: can't unmarshal manifest for digest %s: %w", referrerDigest, err)
+		}
 
-	referrerSubject = manifestContent.Subject
+		referrerSubject = manifestContent.Subject
 
-	referrerInfo = ReferrerInfo{
-		Digest:       referrerDigest,
-		MediaType:    mediaType,
-		ArtifactType: zcommon.GetManifestArtifactType(manifestContent),
-		Size:         len(descriptorBlob),
-		Annotations:  manifestContent.Annotations,
+		referrerInfo = ReferrerInfo{
+			Digest:       referrerDigest,
+			MediaType:    mediaType,
+			ArtifactType: zcommon.GetManifestArtifactType(manifestContent),
+			Size:         len(descriptorBlob),
+			Annotations:  manifestContent.Annotations,
+		}
+	case ispec.MediaTypeImageIndex:
+		var indexContent ispec.Index
+
+		err := json.Unmarshal(descriptorBlob, &indexContent)
+		if err != nil {
+			return "", referrerInfo, false,
+				fmt.Errorf("repodb: can't unmarshal manifest for digest %s: %w", referrerDigest, err)
+		}
+
+		referrerSubject = indexContent.Subject
+
+		referrerInfo = ReferrerInfo{
+			Digest:       referrerDigest,
+			MediaType:    mediaType,
+			ArtifactType: zcommon.GetIndexArtifactType(indexContent),
+			Size:         len(descriptorBlob),
+			Annotations:  indexContent.Annotations,
+		}
 	}
 
 	if referrerSubject == nil || referrerSubject.Digest.String() == "" {

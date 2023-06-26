@@ -334,6 +334,49 @@ func TestGetReferrersErrors(t *testing.T) {
 				[]string{artifactType}, log.With().Caller().Logger())
 			So(err, ShouldBeNil)
 		})
+
+		Convey("Index bad blob", func() {
+			imgStore = &mocks.MockedImageStore{
+				GetIndexContentFn: func(repo string) ([]byte, error) {
+					return []byte(`{
+						"manifests": [{
+							"digest": "digest",
+							"mediaType": "application/vnd.oci.image.index.v1+json"
+						}]
+					}`), nil
+				},
+				GetBlobContentFn: func(repo string, digest godigest.Digest) ([]byte, error) {
+					return []byte("bad blob"), nil
+				},
+			}
+
+			_, err = common.GetReferrers(imgStore, "zot-test", validDigest,
+				[]string{}, log.With().Caller().Logger())
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("Index bad artifac type", func() {
+			imgStore = &mocks.MockedImageStore{
+				GetIndexContentFn: func(repo string) ([]byte, error) {
+					return []byte(`{
+						"manifests": [{
+							"digest": "digest",
+							"mediaType": "application/vnd.oci.image.index.v1+json"
+						}]
+					}`), nil
+				},
+				GetBlobContentFn: func(repo string, digest godigest.Digest) ([]byte, error) {
+					return []byte(`{ 
+						"subject": {"digest": "` + validDigest.String() + `"}
+						}`), nil
+				},
+			}
+
+			ref, err := common.GetReferrers(imgStore, "zot-test", validDigest,
+				[]string{"art.type"}, log.With().Caller().Logger())
+			So(err, ShouldBeNil)
+			So(len(ref.Manifests), ShouldEqual, 0)
+		})
 	})
 }
 
