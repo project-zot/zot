@@ -107,4 +107,5 @@ var (
 	ErrInvalidTruststoreName          = errors.New("signatures: invalid truststore name")
 	ErrInvalidCertificateContent      = errors.New("signatures: invalid certificate content")
 	ErrInvalidStateCookie             = errors.New("auth: state cookie not present or differs from original state")
+	ErrSyncNoURLsLeft                 = errors.New("sync: no valid registry urls left after filtering local ones")
 )

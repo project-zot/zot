@@ -125,7 +125,7 @@ func (service *BaseService) SetNextAvailableClient() error {
 		}
 
 		if err != nil {
-			return err
+			continue
 		}
 
 		if !service.client.IsAvailable() {
