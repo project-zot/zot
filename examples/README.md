@@ -252,7 +252,15 @@ Behaviour-based action list
 }
 ```
 
+#### Scheduler Workers
 
+The number of workers for the task scheduler has the default value of runtime.NumCPU()*4, and it is configurable with:
+
+```
+ "scheduler": {
+        "numWorkers": 3
+    
+```
 
 ## Logging
 

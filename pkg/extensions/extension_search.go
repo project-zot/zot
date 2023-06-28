@@ -86,7 +86,7 @@ type TrivyTaskGenerator struct {
 	lock         *sync.Mutex
 }
 
-func (gen *TrivyTaskGenerator) GenerateTask() (scheduler.Task, error) {
+func (gen *TrivyTaskGenerator) Next() (scheduler.Task, error) {
 	var newTask scheduler.Task
 
 	gen.lock.Lock()

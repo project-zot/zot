@@ -57,7 +57,7 @@ type taskGenerator struct {
 	done     bool
 }
 
-func (gen *taskGenerator) GenerateTask() (scheduler.Task, error) {
+func (gen *taskGenerator) Next() (scheduler.Task, error) {
 	repo, err := gen.imgStore.GetNextRepository(gen.lastRepo)
 
 	if err != nil && !errors.Is(err, io.EOF) {

@@ -312,7 +312,7 @@ func (c *Controller) Shutdown() {
 }
 
 func (c *Controller) StartBackgroundTasks(reloadCtx context.Context) {
-	taskScheduler := scheduler.NewScheduler(c.Log)
+	taskScheduler := scheduler.NewScheduler(c.Config, c.Log)
 	taskScheduler.RunScheduler(reloadCtx)
 
 	// Enable running garbage-collect periodically for DefaultStore

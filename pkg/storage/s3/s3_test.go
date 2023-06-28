@@ -201,7 +201,7 @@ func createObjectsStoreDynamo(rootDir string, cacheDir string, dedupe bool, tabl
 }
 
 func runAndGetScheduler() (*scheduler.Scheduler, context.CancelFunc) {
-	taskScheduler := scheduler.NewScheduler(log.Logger{})
+	taskScheduler := scheduler.NewScheduler(config.New(), log.Logger{})
 	taskScheduler.RateLimit = 50 * time.Millisecond
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -2006,7 +2006,7 @@ func TestRebuildDedupeIndex(t *testing.T) {
 
 		Convey("Intrerrupt rebuilding and restart, checking idempotency", func() {
 			for i := 0; i < 10; i++ {
-				taskScheduler := scheduler.NewScheduler(log.Logger{})
+				taskScheduler := scheduler.NewScheduler(config.New(), log.Logger{})
 				taskScheduler.RateLimit = 1 * time.Millisecond
 
 				ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
@@ -2045,7 +2045,7 @@ func TestRebuildDedupeIndex(t *testing.T) {
 
 			// now from dedupe false to true
 			for i := 0; i < 10; i++ {
-				taskScheduler := scheduler.NewScheduler(log.Logger{})
+				taskScheduler := scheduler.NewScheduler(config.New(), log.Logger{})
 				taskScheduler.RateLimit = 1 * time.Millisecond
 
 				ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)

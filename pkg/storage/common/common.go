@@ -694,7 +694,7 @@ type DedupeTaskGenerator struct {
 	Log         zerolog.Logger
 }
 
-func (gen *DedupeTaskGenerator) GenerateTask() (scheduler.Task, error) {
+func (gen *DedupeTaskGenerator) Next() (scheduler.Task, error) {
 	var err error
 
 	// get all blobs from storage.imageStore and group them by digest
