@@ -437,5 +437,5 @@ jobs:
       - name: Push changes to project-zot/helm-charts
         run: |
           cd ./helm-charts
-          git commit -am "Automated update of Helm Chart"
+          git commit -am "build: automated update of Helm Chart"
           git push
