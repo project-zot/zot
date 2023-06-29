@@ -259,6 +259,10 @@ func TestStorageAPIs(t *testing.T) {
 						_, _, err = imgStore.CheckBlob("test", digest)
 						So(err, ShouldBeNil)
 
+						ok, _, err := imgStore.StatBlob("test", digest)
+						So(ok, ShouldBeTrue)
+						So(err, ShouldBeNil)
+
 						blob, _, err := imgStore.GetBlob("test", digest, "application/vnd.oci.image.layer.v1.tar+gzip")
 						So(err, ShouldBeNil)
 
@@ -401,6 +405,10 @@ func TestStorageAPIs(t *testing.T) {
 							So(err, ShouldNotBeNil)
 							So(hasBlob, ShouldEqual, false)
 
+							hasBlob, _, err = imgStore.StatBlob("test", digest)
+							So(err, ShouldNotBeNil)
+							So(hasBlob, ShouldEqual, false)
+
 							err = imgStore.DeleteBlob("test", "inexistent")
 							So(err, ShouldNotBeNil)
 
@@ -457,7 +465,12 @@ func TestStorageAPIs(t *testing.T) {
 						err = imgStore.FinishBlobUpload("test", bupload, buf, digest)
 						So(err, ShouldBeNil)
 
-						_, _, err = imgStore.CheckBlob("test", digest)
+						ok, _, err := imgStore.CheckBlob("test", digest)
+						So(ok, ShouldBeTrue)
+						So(err, ShouldBeNil)
+
+						ok, _, err = imgStore.StatBlob("test", digest)
+						So(ok, ShouldBeTrue)
 						So(err, ShouldBeNil)
 
 						_, _, err = imgStore.GetBlob("test", "inexistent", "application/vnd.oci.image.layer.v1.tar+gzip")
@@ -485,6 +498,9 @@ func TestStorageAPIs(t *testing.T) {
 							So(err, ShouldNotBeNil)
 
 							_, _, err = imgStore.CheckBlob("test", "inexistent")
+							So(err, ShouldNotBeNil)
+
+							_, _, err = imgStore.StatBlob("test", "inexistent")
 							So(err, ShouldNotBeNil)
 						})
 

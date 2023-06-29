@@ -138,8 +138,8 @@ func validateOCIManifest(imgStore storageTypes.ImageStore, repo, reference strin
 			continue
 		}
 
-		_, err := imgStore.GetBlobContent(repo, layer.Digest)
-		if err != nil {
+		ok, _, err := imgStore.StatBlob(repo, layer.Digest)
+		if err != nil || !ok {
 			return layer.Digest, zerr.ErrBlobNotFound
 		}
 	}

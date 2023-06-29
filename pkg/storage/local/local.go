@@ -1074,15 +1074,17 @@ func (is *ImageStoreLocal) BlobPath(repo string, digest godigest.Digest) string 
 	return path.Join(is.rootDir, repo, "blobs", digest.Algorithm().String(), digest.Encoded())
 }
 
-// CheckBlob verifies a blob and returns true if the blob is correct.
+/*
+	CheckBlob verifies a blob and returns true if the blob is correct
+
+If the blob is not found but it's found in cache then it will be copied over.
+*/
 func (is *ImageStoreLocal) CheckBlob(repo string, digest godigest.Digest) (bool, int64, error) {
 	var lockLatency time.Time
 
 	if err := digest.Validate(); err != nil {
 		return false, -1, err
 	}
-
-	blobPath := is.BlobPath(repo, digest)
 
 	if is.dedupe && fmt.Sprintf("%v", is.cache) != fmt.Sprintf("%v", nil) {
 		is.Lock(&lockLatency)
@@ -1092,14 +1094,13 @@ func (is *ImageStoreLocal) CheckBlob(repo string, digest godigest.Digest) (bool,
 		defer is.RUnlock(&lockLatency)
 	}
 
-	binfo, err := os.Stat(blobPath)
-	if err == nil {
-		is.log.Debug().Str("blob path", blobPath).Msg("blob path found")
-
-		return true, binfo.Size(), nil
+	if ok, size, err := is.StatBlob(repo, digest); err == nil || ok {
+		return true, size, nil
 	}
 
-	is.log.Debug().Err(err).Str("blob", blobPath).Msg("failed to find blob, searching it in cache")
+	blobPath := is.BlobPath(repo, digest)
+
+	is.log.Debug().Str("blob", blobPath).Msg("failed to find blob, searching it in cache")
 
 	// Check blobs in cache
 	dstRecord, err := is.checkCacheBlob(digest)
@@ -1120,6 +1121,24 @@ func (is *ImageStoreLocal) CheckBlob(repo string, digest godigest.Digest) (bool,
 	}
 
 	return true, blobSize, nil
+}
+
+// StatBlob verifies if a blob is present inside a repository. The caller function SHOULD lock from outside.
+func (is *ImageStoreLocal) StatBlob(repo string, digest godigest.Digest) (bool, int64, error) {
+	if err := digest.Validate(); err != nil {
+		return false, -1, err
+	}
+
+	blobPath := is.BlobPath(repo, digest)
+
+	binfo, err := os.Stat(blobPath)
+	if err != nil {
+		is.log.Debug().Str("blob path", blobPath).Msg("failed to find blob")
+
+		return false, -1, zerr.ErrBlobNotFound
+	}
+
+	return true, binfo.Size(), nil
 }
 
 func (is *ImageStoreLocal) checkCacheBlob(digest godigest.Digest) (string, error) {

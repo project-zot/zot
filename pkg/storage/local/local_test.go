@@ -2191,7 +2191,15 @@ func TestGarbageCollect(t *testing.T) {
 			So(err, ShouldNotBeNil)
 			So(hasBlob, ShouldEqual, false)
 
+			hasBlob, _, err = imgStore.StatBlob(repoName, odigest)
+			So(err, ShouldNotBeNil)
+			So(hasBlob, ShouldEqual, false)
+
 			hasBlob, _, err = imgStore.CheckBlob(repoName, bdigest)
+			So(err, ShouldBeNil)
+			So(hasBlob, ShouldEqual, true)
+
+			hasBlob, _, err = imgStore.StatBlob(repoName, bdigest)
 			So(err, ShouldBeNil)
 			So(hasBlob, ShouldEqual, true)
 

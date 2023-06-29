@@ -3439,7 +3439,12 @@ func TestCrossRepoMount(t *testing.T) {
 		}
 
 		dir := t.TempDir()
-		ctlr := makeController(conf, dir, "../../test/data")
+		err := os.MkdirAll(path.Join(dir, "zot-cve-test"), storageConstants.DefaultDirPerms)
+		So(err, ShouldBeNil)
+
+		ctlr := makeController(conf, path.Join(dir, "zot-cve-test"), "../../test/data/zot-cve-test")
+
+		ctlr.Config.Storage.RootDirectory = dir
 		ctlr.Config.Storage.RemoteCache = false
 		ctlr.Config.Storage.Dedupe = false
 
@@ -3551,7 +3556,7 @@ func TestCrossRepoMount(t *testing.T) {
 		cm.StartAndWait(port)
 
 		// wait for dedupe task to run
-		time.Sleep(15 * time.Second)
+		time.Sleep(10 * time.Second)
 
 		params["mount"] = string(manifestDigest)
 		postResponse, err = client.R().
