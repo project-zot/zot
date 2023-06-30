@@ -104,8 +104,7 @@ func NewRepoCommand(searchService SearchService) *cobra.Command {
 }
 
 func listRepos(searchConfig searchConfig) error {
-	searcher := new(repoSearcher)
-	err := searcher.searchRepos(searchConfig)
+	searcher := new(allReposSearcherREST)
 
-	return err
+	return searcher.search(searchConfig)
 }

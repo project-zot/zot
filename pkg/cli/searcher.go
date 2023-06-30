@@ -59,6 +59,8 @@ func getCveSearchersGQL() []searcher {
 		new(imagesByCVEIDSearcherGQL),
 		new(tagsByImageNameAndCVEIDSearcherGQL),
 		new(fixedTagsSearcherGQL),
+		new(derivedImageListSearcherGQL),
+		new(baseImageListSearcherGQL),
 	}
 
 	return searchers
@@ -67,7 +69,10 @@ func getCveSearchersGQL() []searcher {
 func getGlobalSearchersGQL() []searcher {
 	searchers := []searcher{
 		new(globalSearcherGQL),
+		new(imagesByDigestSearcherGQL),
 		new(referrerSearcherGQL),
+		new(derivedImageListSearcherGQL),
+		new(baseImageListSearcherGQL),
 	}
 
 	return searchers
@@ -75,8 +80,11 @@ func getGlobalSearchersGQL() []searcher {
 
 func getGlobalSearchersREST() []searcher {
 	searchers := []searcher{
-		new(referrerSearcher),
 		new(globalSearcherREST),
+		new(imagesByDigestSearcher),
+		new(referrerSearcher),
+		new(derivedImageListSearcherREST),
+		new(baseImageListSearcherREST),
 	}
 
 	return searchers
@@ -149,9 +157,7 @@ func (search allImagesSearcherGQL) search(config searchConfig) (bool, error) {
 		return false, nil
 	}
 
-	err := getImages(config)
-
-	return true, err
+	return true, getAllImages(config)
 }
 
 type imageByNameSearcher struct{}
@@ -205,6 +211,26 @@ func getImages(config searchConfig) error {
 	defer cancel()
 
 	imageList, err := config.searchService.getImagesGQL(ctx, config, username, password, *config.params["imageName"])
+	if err != nil {
+		return err
+	}
+
+	imageListData := []imageStruct{}
+
+	for _, image := range imageList.Results {
+		imageListData = append(imageListData, imageStruct(image))
+	}
+
+	return printImageResult(config, imageListData)
+}
+
+func getAllImages(config searchConfig) error {
+	username, password := getUsernameAndPassword(*config.user)
+	ctx, cancel := context.WithCancel(context.Background())
+
+	defer cancel()
+
+	imageList, err := config.searchService.getImagesGQL(ctx, config, username, password, "")
 	if err != nil {
 		return err
 	}
@@ -770,7 +796,27 @@ func (search globalSearcherREST) search(config searchConfig) (bool, error) {
 		return false, nil
 	}
 
-	return true, fmt.Errorf("search extension is not enabled: %w", zotErrors.ErrExtensionNotEnabled)
+	return true, fmt.Errorf("can't search for query: %w", zotErrors.ErrExtensionNotEnabled)
+}
+
+type derivedImageListSearcherREST struct{}
+
+func (search derivedImageListSearcherREST) search(config searchConfig) (bool, error) {
+	if !canSearch(config.params, newSet("derivedImage")) {
+		return false, nil
+	}
+
+	return true, fmt.Errorf("can't search for derived images: %w", zotErrors.ErrExtensionNotEnabled)
+}
+
+type baseImageListSearcherREST struct{}
+
+func (search baseImageListSearcherREST) search(config searchConfig) (bool, error) {
+	if !canSearch(config.params, newSet("baseImage")) {
+		return false, nil
+	}
+
+	return true, fmt.Errorf("can't search for base images: %w", zotErrors.ErrExtensionNotEnabled)
 }
 
 func collectResults(config searchConfig, wg *sync.WaitGroup, imageErr chan stringResult,
@@ -1135,9 +1181,9 @@ var (
 	errInvalidImageName       = errors.New("cli: Invalid input format. Expected IMAGENAME without :TAG")
 )
 
-type repoSearcher struct{}
+type allReposSearcherREST struct{}
 
-func (search repoSearcher) searchRepos(config searchConfig) error {
+func (search allReposSearcherREST) search(config searchConfig) error {
 	username, password := getUsernameAndPassword(*config.user)
 	repoErr := make(chan stringResult)
 	ctx, cancel := context.WithCancel(context.Background())

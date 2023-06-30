@@ -26,15 +26,24 @@ func NewSearchCommand(searchService SearchService) *cobra.Command {
 		Short: "Search images and their tags",
 		Long: `Search repos or images
 Example:
+  # For listing derived images
+  zli search --derived-images test/repo:2.1.0
+
+  # For listing base images
+  zli search --base-images test/repo:2.1.0
+
+  # For listing images containing a blob with the specified digest 
+  zli search --digest 6e2f80bf
+
   # For repo search specify a substring of the repo name without the tag
   zli search --query test/repo
 
-  # For image search specify the full repo name followed by the tag or a prefix of the tag.
+  # For image search specify the full repo name followed by the tag or a prefix of the tag
   zli search --query test/repo:2.1.
 
   # For referrers search specify the referred subject using it's full digest or tag:
   zli search --subject repo@sha256:f9a0981...
-  zli search --subject repo:tag
+  zli search --subject repo:2.1.0
 		`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			home, err := os.UserHomeDir()
@@ -114,7 +123,7 @@ Example:
 }
 
 func setupSearchFlags(imageCmd *cobra.Command, searchImageParams map[string]*string,
-	servURL, user, outputFormat *string, verbose *bool, debug *bool,
+	servURL, user, outputFormat *string, verbose, debug *bool,
 ) {
 	searchImageParams["query"] = imageCmd.Flags().StringP("query", "q", "",
 		"Specify what repo or image(repo:tag) to be searched")
@@ -122,6 +131,15 @@ func setupSearchFlags(imageCmd *cobra.Command, searchImageParams map[string]*str
 	searchImageParams["subject"] = imageCmd.Flags().StringP("subject", "s", "",
 		"List all referrers for this subject. The subject can be specified by tag(repo:tag) or by digest"+
 			"(repo@digest)")
+
+	searchImageParams["digest"] = imageCmd.Flags().StringP("digest", "d", "",
+		"List images containing a specific manifest, config, or layer digest")
+
+	searchImageParams["derivedImage"] = imageCmd.Flags().StringP("derived-images", "D", "",
+		"List images that are derived from given image")
+
+	searchImageParams["baseImage"] = imageCmd.Flags().StringP("base-images", "b", "",
+		"List images that are base for the given image")
 
 	imageCmd.Flags().StringVar(servURL, "url", "", "Specify zot server URL if config-name is not mentioned")
 	imageCmd.Flags().StringVarP(user, "user", "u", "", `User Credentials of zot server in "username:password" format`)

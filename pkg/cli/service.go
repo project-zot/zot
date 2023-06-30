@@ -154,6 +154,7 @@ func (service searchService) globalSearchGQL(ctx context.Context, config searchC
 					MediaType
 					Digest
 					Size
+					IsSigned
 					Manifests {
 						Digest
 						ConfigDigest
