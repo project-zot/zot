@@ -98,6 +98,42 @@ function setup_file() {
 					],
                     "onDemand": true,
                     "tlsVerify": true
+                },
+                {
+                    "urls": [
+                        "https://registry.gitlab.com"
+                    ],
+                    "content": [
+                        {
+                            "prefix": "gitlab-org/public-image-archive/gitlab-ee"
+                        }
+                    ],
+                    "onDemand": true,
+                    "tlsVerify": true
+                },
+                {
+                    "urls": [
+                        "https://quay.io"
+                    ],
+                    "content": [
+                        {
+                            "prefix": "coreos/etcd"
+                        }
+                    ],
+                    "onDemand": true,
+                    "tlsVerify": true
+                },
+                {
+                    "urls": [
+                        "https://ghcr.io"
+                    ],
+                    "content": [
+                        {
+                            "prefix": "project-zot/zot-linux-amd64"
+                        }
+                    ],
+                    "onDemand": true,
+                    "tlsVerify": true
                 }
             ]
         }
@@ -239,6 +275,42 @@ function teardown_file() {
     [ $(echo "${lines[-1]}" | jq '.tags[]') = '"latest"' ]
 }
 
+@test "sync image on demand from registry.gitlab.com" {
+    run skopeo copy docker://127.0.0.1:8090/gitlab-org/public-image-archive/gitlab-ee:15.11.6-ee.0 oci:${TEST_DATA_DIR} --src-tls-verify=false
+    [ "$status" -eq 0 ]
+
+    run curl http://127.0.0.1:8090/v2/_catalog
+    [ "$status" -eq 0 ]
+    [ $(echo "${lines[-1]}"| jq '.repositories | map(select(. == "gitlab-org/public-image-archive/gitlab-ee"))' | jq '.[]') = '"gitlab-org/public-image-archive/gitlab-ee"' ]
+    run curl http://127.0.0.1:8090/v2/gitlab-org/public-image-archive/gitlab-ee/tags/list
+    [ "$status" -eq 0 ]
+    [ $(echo "${lines[-1]}" | jq '.tags[]') = '"15.11.6-ee.0"' ]
+}
+
+@test "sync image on demand from quay.io" {
+    run skopeo copy docker://127.0.0.1:8090/coreos/etcd:v3.4.26 oci:${TEST_DATA_DIR} --src-tls-verify=false
+    [ "$status" -eq 0 ]
+
+    run curl http://127.0.0.1:8090/v2/_catalog
+    [ "$status" -eq 0 ]
+    [ $(echo "${lines[-1]}"| jq '.repositories | map(select(. == "coreos/etcd"))' | jq '.[]') = '"coreos/etcd"' ]
+    run curl http://127.0.0.1:8090/v2/coreos/etcd/tags/list
+    [ "$status" -eq 0 ]
+    [ $(echo "${lines[-1]}" | jq '.tags[]') = '"v3.4.26"' ]
+}
+
+@test "sync image on demand from ghcr.io" {
+    run skopeo copy docker://127.0.0.1:8090/project-zot/zot-linux-amd64:v2.0.0-rc5 oci:${TEST_DATA_DIR} --src-tls-verify=false
+    [ "$status" -eq 0 ]
+
+    run curl http://127.0.0.1:8090/v2/_catalog
+    [ "$status" -eq 0 ]
+    [ $(echo "${lines[-1]}"| jq '.repositories | map(select(. == "project-zot/zot-linux-amd64"))' | jq '.[]') = '"project-zot/zot-linux-amd64"' ]
+    run curl http://127.0.0.1:8090/v2/project-zot/zot-linux-amd64/tags/list
+    [ "$status" -eq 0 ]
+    [ $(echo "${lines[-1]}" | jq '.tags[]') = '"v2.0.0-rc5"' ]
+}
+
 @test "run docker with image synced from docker.io/library" {
     local zot_root_dir=${BATS_FILE_TMPDIR}/zot 
     run rm -rf ${zot_root_dir}
@@ -311,4 +383,40 @@ function teardown_file() {
     [ $(echo "${lines[-1]}" | jq '.tags[]') = '"latest"' ]
 
     run docker kill $(docker ps -q)
+}
+
+@test "run docker with image synced from registry.gitlab.com" {
+    run docker run -d 127.0.0.1:8090/gitlab-org/public-image-archive/gitlab-ee:15.11.6-ee.0
+    [ "$status" -eq 0 ]
+
+    run curl http://127.0.0.1:8090/v2/_catalog
+    [ "$status" -eq 0 ]
+    [ $(echo "${lines[-1]}"| jq '.repositories | map(select(. == "gitlab-org/public-image-archive/gitlab-ee"))' | jq '.[]') = '"gitlab-org/public-image-archive/gitlab-ee"' ]
+    run curl http://127.0.0.1:8090/v2/gitlab-org/public-image-archive/gitlab-ee/tags/list
+    [ "$status" -eq 0 ]
+    [ $(echo "${lines[-1]}" | jq '.tags[]') = '"15.11.6-ee.0"' ]
+}
+
+@test "run docker with image synced from quay.io" {
+    run docker run -d 127.0.0.1:8090/coreos/etcd:v3.4.26
+    [ "$status" -eq 0 ]
+
+    run curl http://127.0.0.1:8090/v2/_catalog
+    [ "$status" -eq 0 ]
+    [ $(echo "${lines[-1]}"| jq '.repositories | map(select(. == "coreos/etcd"))' | jq '.[]') = '"coreos/etcd"' ]
+    run curl http://127.0.0.1:8090/v2/coreos/etcd/tags/list
+    [ "$status" -eq 0 ]
+    [ $(echo "${lines[-1]}" | jq '.tags[]') = '"v3.4.26"' ]
+}
+
+@test "run docker with image synced from ghcr.io" {
+    run docker run -d 127.0.0.1:8090/project-zot/zot-linux-amd64:v2.0.0-rc5
+    [ "$status" -eq 0 ]
+
+    run curl http://127.0.0.1:8090/v2/_catalog
+    [ "$status" -eq 0 ]
+    [ $(echo "${lines[-1]}"| jq '.repositories | map(select(. == "project-zot/zot-linux-amd64"))' | jq '.[]') = '"project-zot/zot-linux-amd64"' ]
+    run curl http://127.0.0.1:8090/v2/project-zot/zot-linux-amd64/tags/list
+    [ "$status" -eq 0 ]
+    [ $(echo "${lines[-1]}" | jq '.tags[]') = '"v2.0.0-rc5"' ]
 }
