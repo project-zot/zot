@@ -15,7 +15,7 @@ import (
 
 	"github.com/briandowns/spinner"
 
-	zotErrors "zotregistry.io/zot/errors"
+	zerr "zotregistry.io/zot/errors"
 	"zotregistry.io/zot/pkg/api/constants"
 	zcommon "zotregistry.io/zot/pkg/common"
 )
@@ -725,10 +725,35 @@ func (search referrerSearcher) search(config searchConfig) (bool, error) {
 	return true, printReferrersResult(config, referrersList, maxArtifactTypeLen)
 }
 
+const (
+	SortByAlphabeticASC = "alphabetic-asc"
+	SortByAlphabeticDSC = "alphabetic-dsc"
+	SortByLastUpdated   = "last-updated"
+	SortByRelevance     = "relevance"
+
+	SupportedCriterias = SortByAlphabeticASC + ", " + SortByAlphabeticDSC + ", " + SortByLastUpdated + ", " +
+		SortByRelevance
+)
+
+func userParamToGQLSortCriteria(param string) (string, error) {
+	switch param {
+	case SortByAlphabeticASC:
+		return "ALPHABETIC_ASC", nil
+	case SortByAlphabeticDSC:
+		return "ALPHABETIC_DSC", nil
+	case SortByLastUpdated:
+		return "UPDATE_TIME", nil
+	case SortByRelevance:
+		return "RELEVANCE", nil
+	default:
+		return "", zerr.ErrSortCriteriaNotSupported
+	}
+}
+
 type globalSearcherGQL struct{}
 
 func (search globalSearcherGQL) search(config searchConfig) (bool, error) {
-	if !canSearch(config.params, newSet("query")) {
+	if query := config.params["query"]; query == nil || *query == "" {
 		return false, nil
 	}
 
@@ -738,8 +763,9 @@ func (search globalSearcherGQL) search(config searchConfig) (bool, error) {
 	defer cancel()
 
 	query := *config.params["query"]
+	sortCriteria := getParamWithDefault("sort", "", config.params)
 
-	globalSearchResult, err := config.searchService.globalSearchGQL(ctx, config, username, password, query)
+	globalSearchResult, err := config.searchService.globalSearchGQL(ctx, config, username, password, query, sortCriteria)
 	if err != nil {
 		return true, err
 	}
@@ -763,6 +789,16 @@ func (search globalSearcherGQL) search(config searchConfig) (bool, error) {
 	return true, printRepoResults(config, reposList)
 }
 
+func getParamWithDefault(param, def string, params map[string]*string) string {
+	val, ok := params[param]
+
+	if !ok || val == nil {
+		return def
+	}
+
+	return *val
+}
+
 type globalSearcherREST struct{}
 
 func (search globalSearcherREST) search(config searchConfig) (bool, error) {
@@ -770,7 +806,7 @@ func (search globalSearcherREST) search(config searchConfig) (bool, error) {
 		return false, nil
 	}
 
-	return true, fmt.Errorf("search extension is not enabled: %w", zotErrors.ErrExtensionNotEnabled)
+	return true, fmt.Errorf("search extension is not enabled: %w", zerr.ErrExtensionNotEnabled)
 }
 
 func collectResults(config searchConfig, wg *sync.WaitGroup, imageErr chan stringResult,
@@ -813,7 +849,7 @@ func collectResults(config searchConfig, wg *sync.WaitGroup, imageErr chan strin
 			config.spinner.stopSpinner()
 			cancel()
 
-			errCh <- zotErrors.ErrCLITimeout
+			errCh <- zerr.ErrCLITimeout
 
 			return
 		}

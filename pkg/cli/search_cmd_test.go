@@ -15,6 +15,7 @@ import (
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	. "github.com/smartystreets/goconvey/convey"
 
+	zerr "zotregistry.io/zot/errors"
 	"zotregistry.io/zot/pkg/api"
 	"zotregistry.io/zot/pkg/api/config"
 	extconf "zotregistry.io/zot/pkg/extensions/config"
@@ -196,6 +197,54 @@ func TestSearchCLI(t *testing.T) {
 		So(str, ShouldContainSubstring, "repo/alpine repo2tag1 Os/Arch "+formatterDigest1+" false 577B")
 		So(str, ShouldContainSubstring, "repo/alpine repo2tag2 linux/amd64 "+formatterDigest2+" false 524B")
 
+		os.Remove(configPath)
+
+		// test that adding the sort flag will change the order results are printed
+		cmd = NewSearchCommand(new(searchService))
+
+		args = []string{"searchtest", "--query", "al", "--sort", "alphabetic-asc"}
+
+		configPath = makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"searchtest","url":"%s","showspinner":false}]}`,
+			baseURL))
+
+		defer os.Remove(configPath)
+
+		buff = &bytes.Buffer{}
+		cmd.SetOut(buff)
+		cmd.SetErr(buff)
+		cmd.SetArgs(args)
+		err = cmd.Execute()
+		So(err, ShouldBeNil)
+		str = strings.TrimSpace(space.ReplaceAllString(buff.String(), " "))
+		So(str, ShouldContainSubstring, "NAME SIZE LAST UPDATED DOWNLOADS STARS")
+		So(str, ShouldContainSubstring, "repo/alpine")
+		So(str, ShouldContainSubstring, "repo/test/alpine")
+		So(strings.Index(str, "repo/alpine"), ShouldBeLessThan, strings.Index(str, "repo/test/alpine"))
+
+		os.Remove(configPath)
+
+		// now change the order to alphabetic
+		cmd = NewSearchCommand(new(searchService))
+
+		args = []string{"searchtest", "--query", "al", "--sort", "alphabetic-dsc"}
+
+		configPath = makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"searchtest","url":"%s","showspinner":false}]}`,
+			baseURL))
+
+		defer os.Remove(configPath)
+
+		buff = &bytes.Buffer{}
+		cmd.SetOut(buff)
+		cmd.SetErr(buff)
+		cmd.SetArgs(args)
+		err = cmd.Execute()
+		So(err, ShouldBeNil)
+		str = strings.TrimSpace(space.ReplaceAllString(buff.String(), " "))
+		So(str, ShouldContainSubstring, "NAME SIZE LAST UPDATED DOWNLOADS STARS")
+		So(str, ShouldContainSubstring, "repo/alpine")
+		So(str, ShouldContainSubstring, "repo/test/alpine")
+		So(strings.Index(str, "repo/test/alpine"), ShouldBeLessThan, strings.Index(str, "repo/alpine"))
+
 		fmt.Println("\n", buff.String())
 	})
 }
@@ -317,6 +366,22 @@ func TestFormatsSearchCLI(t *testing.T) {
 			err = cmd.Execute()
 			So(err, ShouldNotBeNil)
 		})
+
+		Convey("Invalid search parameter", func() {
+			args := []string{"searchtest", "--query", "repo/alpine", "--sort", "invalid-sort-criteria"}
+
+			configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"searchtest","url":"%s","showspinner":false}]}`,
+				baseURL))
+
+			defer os.Remove(configPath)
+
+			buff := &bytes.Buffer{}
+			cmd.SetOut(buff)
+			cmd.SetErr(buff)
+			cmd.SetArgs(args)
+			err = cmd.Execute()
+			So(err, ShouldWrap, zerr.ErrSortCriteriaNotSupported)
+		})
 	})
 }
 
@@ -429,5 +494,33 @@ func TestSearchCLIErrors(t *testing.T) {
 			})
 			So(err, ShouldNotBeNil)
 		})
+	})
+}
+
+func TestConvertingUserParamsToGQLSortVals(t *testing.T) {
+	Convey("", t, func() {
+		gqlSortParam, err := userParamToGQLSortCriteria(SortByAlphabeticASC)
+		So(err, ShouldBeNil)
+		So(gqlSortParam, ShouldResemble, "ALPHABETIC_ASC")
+
+		gqlSortParam, err = userParamToGQLSortCriteria(SortByAlphabeticDSC)
+		So(err, ShouldBeNil)
+		So(gqlSortParam, ShouldResemble, "ALPHABETIC_DSC")
+
+		gqlSortParam, err = userParamToGQLSortCriteria(SortByLastUpdated)
+		So(err, ShouldBeNil)
+		So(gqlSortParam, ShouldResemble, "UPDATE_TIME")
+
+		gqlSortParam, err = userParamToGQLSortCriteria(SortByRelevance)
+		So(err, ShouldBeNil)
+		So(gqlSortParam, ShouldResemble, "RELEVANCE")
+
+		_, err = userParamToGQLSortCriteria("bad-input-flag")
+		So(err, ShouldNotBeNil)
+	})
+
+	Convey("Util test", t, func() {
+		val := getParamWithDefault("param", "default", map[string]*string{})
+		So(val, ShouldResemble, "default")
 	})
 }

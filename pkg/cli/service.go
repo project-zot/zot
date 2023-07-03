@@ -51,7 +51,7 @@ type SearchService interface { //nolint:interfacebloat
 	getReferrersGQL(ctx context.Context, config searchConfig, username, password string,
 		repo, digest string) (*common.ReferrersResp, error)
 	globalSearchGQL(ctx context.Context, config searchConfig, username, password string,
-		query string) (*common.GlobalSearch, error)
+		query, sortCriteria string) (*common.GlobalSearch, error)
 
 	getAllImages(ctx context.Context, config searchConfig, username, password string,
 		channel chan stringResult, wtgrp *sync.WaitGroup)
@@ -143,11 +143,22 @@ func (service searchService) getReferrersGQL(ctx context.Context, config searchC
 }
 
 func (service searchService) globalSearchGQL(ctx context.Context, config searchConfig, username, password string,
-	query string,
+	query string, sortCriteria string,
 ) (*common.GlobalSearch, error) {
+	sortParameter := ""
+
+	if sortCriteria != "" {
+		gqlSortCriteria, err := userParamToGQLSortCriteria(sortCriteria)
+		if err != nil {
+			return nil, fmt.Errorf("%w: use one of [%s]", err, SupportedCriterias)
+		}
+
+		sortParameter = fmt.Sprintf(", requestedPage:{sortBy: %s}", gqlSortCriteria)
+	}
+
 	GQLQuery := fmt.Sprintf(`
 		{
-			GlobalSearch(query:"%s"){
+			GlobalSearch(query:"%s"%s){
 				Images {
 					RepoName
 					Tag
@@ -172,7 +183,7 @@ func (service searchService) globalSearchGQL(ctx context.Context, config searchC
 					StarCount
 				}
 			}
-		}`, query)
+		}`, query, sortParameter)
 
 	result := &common.GlobalSearchResultResp{}
 

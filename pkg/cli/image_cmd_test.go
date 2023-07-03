@@ -1717,7 +1717,7 @@ func (service mockService) getReferrers(ctx context.Context, config searchConfig
 }
 
 func (service mockService) globalSearchGQL(ctx context.Context, config searchConfig, username, password string,
-	query string,
+	query, sortCriteria string,
 ) (*common.GlobalSearch, error) {
 	return &common.GlobalSearch{
 		Images: []common.ImageSummary{
