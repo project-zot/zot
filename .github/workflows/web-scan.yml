@@ -56,7 +56,7 @@ jobs:
         env:
           FLAVOR: ${{ matrix.flavor }}
       - name: ZAP Scan Rest API
-        uses: zaproxy/action-baseline@v0.8.0
+        uses: zaproxy/action-baseline@v0.8.2
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           docker_name: 'owasp/zap2docker-stable'
