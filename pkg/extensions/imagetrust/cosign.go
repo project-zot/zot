@@ -13,10 +13,14 @@ import (
 	"os"
 	"path"
 
+	"github.com/aws/aws-sdk-go-v2/service/secretsmanager"
+	"github.com/aws/aws-sdk-go-v2/service/secretsmanager/types"
+	"github.com/aws/aws-secretsmanager-caching-go/secretcache"
 	godigest "github.com/opencontainers/go-digest"
 	"github.com/sigstore/cosign/v2/pkg/cosign/pkcs11key"
 	sigs "github.com/sigstore/cosign/v2/pkg/signature"
 	"github.com/sigstore/sigstore/pkg/cryptoutils"
+	sigstoreSigs "github.com/sigstore/sigstore/pkg/signature"
 	"github.com/sigstore/sigstore/pkg/signature/options"
 
 	zerr "zotregistry.io/zot/errors"
@@ -24,114 +28,240 @@ import (
 
 const cosignDirRelativePath = "_cosign"
 
-var cosignDir = "" //nolint:gochecknoglobals
+type PublicKeyLocalStorage struct {
+	cosignDir string
+}
 
-func InitCosignDir(rootDir string) error {
+type PublicKeyCloudStorage struct {
+	secretsManagerClient *secretsmanager.Client
+	secretsManagerCache  *secretcache.Cache
+}
+
+type publicKeyStorage interface {
+	StorePublicKey(name godigest.Digest, publicKeyContent []byte) error
+	GetPublicKeyVerifier(name string) (sigstoreSigs.Verifier, []byte, error)
+	GetPublicKeys() ([]string, error)
+}
+
+func NewPublicKeyLocalStorage(rootDir string) (*PublicKeyLocalStorage, error) {
 	dir := path.Join(rootDir, cosignDirRelativePath)
 
 	_, err := os.Stat(dir)
 	if os.IsNotExist(err) {
 		err = os.MkdirAll(dir, defaultDirPerms)
 		if err != nil {
-			return err
+			return nil, err
 		}
 	}
 
-	if err == nil {
-		cosignDir = dir
+	if err != nil {
+		return nil, err
 	}
 
-	return err
+	return &PublicKeyLocalStorage{
+		cosignDir: dir,
+	}, nil
 }
 
-func GetCosignDirPath() (string, error) {
-	if cosignDir != "" {
-		return cosignDir, nil
+func NewPublicKeyCloudStorage(
+	secretsManagerClient *secretsmanager.Client, secretsManagerCache *secretcache.Cache,
+) *PublicKeyCloudStorage {
+	return &PublicKeyCloudStorage{
+		secretsManagerClient: secretsManagerClient,
+		secretsManagerCache:  secretsManagerCache,
+	}
+}
+
+func (local *PublicKeyLocalStorage) GetCosignDirPath() (string, error) {
+	if local.cosignDir != "" {
+		return local.cosignDir, nil
 	}
 
 	return "", zerr.ErrSignConfigDirNotSet
 }
 
 func VerifyCosignSignature(
-	repo string, digest godigest.Digest, signatureKey string, layerContent []byte,
+	cosignStorage publicKeyStorage, repo string, digest godigest.Digest, signatureKey string, layerContent []byte,
 ) (string, bool, error) {
-	cosignDir, err := GetCosignDirPath()
+	publicKeys, err := cosignStorage.GetPublicKeys()
 	if err != nil {
 		return "", false, err
 	}
 
-	files, err := os.ReadDir(cosignDir)
-	if err != nil {
-		return "", false, err
-	}
+	for _, publicKey := range publicKeys {
+		// cosign verify the image
+		pubKeyVerifier, pubKeyContent, err := cosignStorage.GetPublicKeyVerifier(publicKey)
+		if err != nil {
+			continue
+		}
 
-	for _, file := range files {
-		if !file.IsDir() {
-			// cosign verify the image
-			ctx := context.Background()
-			keyRef := path.Join(cosignDir, file.Name())
-			hashAlgorithm := crypto.SHA256
+		pkcs11Key, ok := pubKeyVerifier.(*pkcs11key.Key)
+		if ok {
+			defer pkcs11Key.Close()
+		}
 
-			pubKey, err := sigs.PublicKeyFromKeyRefWithHashAlgo(ctx, keyRef, hashAlgorithm)
-			if err != nil {
-				continue
-			}
+		verifier := pubKeyVerifier
 
-			pkcs11Key, ok := pubKey.(*pkcs11key.Key)
-			if ok {
-				defer pkcs11Key.Close()
-			}
+		b64sig := signatureKey
 
-			verifier := pubKey
+		signature, err := base64.StdEncoding.DecodeString(b64sig)
+		if err != nil {
+			continue
+		}
 
-			b64sig := signatureKey
+		compressed := io.NopCloser(bytes.NewReader(layerContent))
 
-			signature, err := base64.StdEncoding.DecodeString(b64sig)
-			if err != nil {
-				continue
-			}
+		payload, err := io.ReadAll(compressed)
+		if err != nil {
+			continue
+		}
 
-			compressed := io.NopCloser(bytes.NewReader(layerContent))
+		err = verifier.VerifySignature(bytes.NewReader(signature), bytes.NewReader(payload),
+			options.WithContext(context.Background()))
 
-			payload, err := io.ReadAll(compressed)
-			if err != nil {
-				continue
-			}
-
-			err = verifier.VerifySignature(bytes.NewReader(signature), bytes.NewReader(payload), options.WithContext(ctx))
-
-			if err == nil {
-				publicKey, err := os.ReadFile(keyRef)
-				if err != nil {
-					continue
-				}
-
-				return string(publicKey), true, nil
-			}
+		if err == nil {
+			return string(pubKeyContent), true, nil
 		}
 	}
 
 	return "", false, nil
 }
 
-func UploadPublicKey(publicKeyContent []byte) error {
+func (local *PublicKeyLocalStorage) GetPublicKeyVerifier(fileName string) (sigstoreSigs.Verifier, []byte, error) {
+	cosignDir, err := local.GetCosignDirPath()
+	if err != nil {
+		return nil, []byte{}, err
+	}
+
+	ctx := context.Background()
+	keyRef := path.Join(cosignDir, fileName)
+	hashAlgorithm := crypto.SHA256
+
+	pubKeyContent, err := os.ReadFile(keyRef)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	pubKey, err := sigs.PublicKeyFromKeyRefWithHashAlgo(ctx, keyRef, hashAlgorithm)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return pubKey, pubKeyContent, nil
+}
+
+func (cloud *PublicKeyCloudStorage) GetPublicKeyVerifier(secretName string) (sigstoreSigs.Verifier, []byte, error) {
+	hashAlgorithm := crypto.SHA256
+
+	// get key
+	raw, err := cloud.secretsManagerCache.GetSecretString(secretName)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	rawDecoded, err := base64.StdEncoding.DecodeString(raw)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	// PEM encoded file.
+	key, err := cryptoutils.UnmarshalPEMToPublicKey(rawDecoded)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	pubKey, err := sigstoreSigs.LoadVerifier(key, hashAlgorithm)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return pubKey, rawDecoded, nil
+}
+
+func (local *PublicKeyLocalStorage) GetPublicKeys() ([]string, error) {
+	cosignDir, err := local.GetCosignDirPath()
+	if err != nil {
+		return []string{}, err
+	}
+
+	files, err := os.ReadDir(cosignDir)
+	if err != nil {
+		return []string{}, err
+	}
+
+	publicKeys := []string{}
+	for _, file := range files {
+		publicKeys = append(publicKeys, file.Name())
+	}
+
+	return publicKeys, nil
+}
+
+func (cloud *PublicKeyCloudStorage) GetPublicKeys() ([]string, error) {
+	ctx := context.Background()
+	listSecretsInput := secretsmanager.ListSecretsInput{
+		Filters: []types.Filter{
+			{
+				Key:    types.FilterNameStringTypeDescription,
+				Values: []string{"cosign public key"},
+			},
+		},
+	}
+
+	secrets, err := cloud.secretsManagerClient.ListSecrets(ctx, &listSecretsInput)
+	if err != nil {
+		return []string{}, err
+	}
+
+	publicKeys := []string{}
+
+	for _, secret := range secrets.SecretList {
+		publicKeys = append(publicKeys, *(secret.Name))
+	}
+
+	return publicKeys, nil
+}
+
+func UploadPublicKey(cosignStorage publicKeyStorage, publicKeyContent []byte) error {
 	// validate public key
 	if ok, err := validatePublicKey(publicKeyContent); !ok {
 		return err
 	}
 
+	name := godigest.FromBytes(publicKeyContent)
+
+	return cosignStorage.StorePublicKey(name, publicKeyContent)
+}
+
+func (local *PublicKeyLocalStorage) StorePublicKey(name godigest.Digest, publicKeyContent []byte) error {
 	// add public key to "{rootDir}/_cosign/{name.pub}"
-	configDir, err := GetCosignDirPath()
+	cosignDir, err := local.GetCosignDirPath()
 	if err != nil {
 		return err
 	}
 
-	name := godigest.FromBytes(publicKeyContent)
-
 	// store public key
-	publicKeyPath := path.Join(configDir, name.String())
+	publicKeyPath := path.Join(cosignDir, name.String())
 
 	return os.WriteFile(publicKeyPath, publicKeyContent, defaultFilePerms)
+}
+
+func (cloud *PublicKeyCloudStorage) StorePublicKey(name godigest.Digest, publicKeyContent []byte) error {
+	n := name.Encoded()
+	description := "cosign public key"
+	secret := base64.StdEncoding.EncodeToString(publicKeyContent)
+	secretInputParam := &secretsmanager.CreateSecretInput{
+		Name:         &n,
+		Description:  &description,
+		SecretString: &secret,
+	}
+
+	_, err := cloud.secretsManagerClient.CreateSecret(context.Background(), secretInputParam)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func validatePublicKey(publicKeyContent []byte) (bool, error) {

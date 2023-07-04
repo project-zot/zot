@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"math"
 	"testing"
+	"time"
 
 	"github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
@@ -22,6 +23,15 @@ import (
 	"zotregistry.io/zot/pkg/test"
 )
 
+type imgTrustStore struct{}
+
+func (its imgTrustStore) VerifySignature(
+	signatureType string, rawSignature []byte, sigKey string, manifestDigest digest.Digest, manifestContent []byte,
+	repo string,
+) (string, time.Time, bool, error) {
+	return "", time.Time{}, false, nil
+}
+
 func TestWrapperErrors(t *testing.T) {
 	Convey("Errors", t, func() {
 		tmpDir := t.TempDir()
@@ -34,6 +44,8 @@ func TestWrapperErrors(t *testing.T) {
 		boltdbWrapper, err := boltdb.New(boltDriver, log)
 		So(boltdbWrapper, ShouldNotBeNil)
 		So(err, ShouldBeNil)
+
+		boltdbWrapper.SetImageTrustStore(imgTrustStore{})
 
 		repoMeta := mTypes.RepoMetadata{
 			Tags:       map[string]mTypes.Descriptor{},

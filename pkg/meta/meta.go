@@ -6,7 +6,6 @@ import (
 
 	"zotregistry.io/zot/errors"
 	"zotregistry.io/zot/pkg/api/config"
-	"zotregistry.io/zot/pkg/extensions/imagetrust"
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/meta/boltdb"
 	mdynamodb "zotregistry.io/zot/pkg/meta/dynamodb"
@@ -29,11 +28,6 @@ func New(storageConfig config.StorageConfig, log log.Logger) (mTypes.MetaDB, err
 	params.RootDir = storageConfig.RootDirectory
 
 	driver, err := boltdb.GetBoltDriver(params)
-	if err != nil {
-		return nil, err
-	}
-
-	err = imagetrust.InitCosignAndNotationDirs(params.RootDir)
 	if err != nil {
 		return nil, err
 	}

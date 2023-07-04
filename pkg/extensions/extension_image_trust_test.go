@@ -16,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	guuid "github.com/gofrs/uuid"
 	"github.com/sigstore/cosign/v2/cmd/cosign/cli/generate"
 	"github.com/sigstore/cosign/v2/cmd/cosign/cli/options"
 	"github.com/sigstore/cosign/v2/cmd/cosign/cli/sign"
@@ -111,7 +112,49 @@ func TestSignaturesAllowedMethodsHeader(t *testing.T) {
 	})
 }
 
-func TestSignatureUploadAndVerification(t *testing.T) {
+func TestSignatureUploadAndVerificationLocal(t *testing.T) {
+	Convey("test with local storage", t, func() {
+		var cacheDriverParams map[string]interface{}
+
+		RunSignatureUploadAndVerificationTests(t, cacheDriverParams)
+	})
+}
+
+func TestSignatureUploadAndVerificationAWS(t *testing.T) {
+	skipIt(t)
+
+	Convey("test with AWS", t, func() {
+		uuid, err := guuid.NewV4()
+		So(err, ShouldBeNil)
+
+		cacheTablename := "BlobTable" + uuid.String()
+		repoMetaTablename := "RepoMetadataTable" + uuid.String()
+		manifestDataTablename := "ManifestDataTable" + uuid.String()
+		versionTablename := "Version" + uuid.String()
+		indexDataTablename := "IndexDataTable" + uuid.String()
+		userDataTablename := "UserDataTable" + uuid.String()
+		apiKeyTablename := "ApiKeyTable" + uuid.String()
+
+		cacheDriverParams := map[string]interface{}{
+			"name":                  "dynamoDB",
+			"endpoint":              os.Getenv("DYNAMODBMOCK_ENDPOINT"),
+			"region":                "us-east-2",
+			"cacheTablename":        cacheTablename,
+			"repoMetaTablename":     repoMetaTablename,
+			"manifestDataTablename": manifestDataTablename,
+			"indexDataTablename":    indexDataTablename,
+			"userDataTablename":     userDataTablename,
+			"apiKeyTablename":       apiKeyTablename,
+			"versionTablename":      versionTablename,
+		}
+
+		t.Logf("using dynamo driver options: %v", cacheDriverParams)
+
+		RunSignatureUploadAndVerificationTests(t, cacheDriverParams)
+	})
+}
+
+func RunSignatureUploadAndVerificationTests(t *testing.T, cacheDriverParams map[string]interface{}) { //nolint: thelper
 	repo := "repo"
 	tag := "0.0.1"
 	certName := "test"
@@ -128,12 +171,15 @@ func TestSignatureUploadAndVerification(t *testing.T) {
 			}
 		}`
 
-	Convey("Verify cosign public key upload without search or notation being enabled", t, func() {
+	Convey("Verify cosign public key upload without search or notation being enabled", func() {
 		globalDir := t.TempDir()
 		port := test.GetFreePort()
 
 		conf := config.New()
 		conf.HTTP.Port = port
+		if cacheDriverParams != nil {
+			conf.Storage.CacheDriver = cacheDriverParams
+		}
 		conf.Extensions = &extconf.ExtensionConfig{}
 		conf.Extensions.Trust = &extconf.ImageTrustConfig{}
 		conf.Extensions.Trust.Enable = &defaultValue
@@ -246,12 +292,15 @@ func TestSignatureUploadAndVerification(t *testing.T) {
 		So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
 	})
 
-	Convey("Verify notation certificate upload without search or cosign being enabled", t, func() {
+	Convey("Verify notation certificate upload without search or cosign being enabled", func() {
 		globalDir := t.TempDir()
 		port := test.GetFreePort()
 
 		conf := config.New()
 		conf.HTTP.Port = port
+		if cacheDriverParams != nil {
+			conf.Storage.CacheDriver = cacheDriverParams
+		}
 		conf.Extensions = &extconf.ExtensionConfig{}
 		conf.Extensions.Trust = &extconf.ImageTrustConfig{}
 		conf.Extensions.Trust.Enable = &defaultValue
@@ -360,12 +409,15 @@ func TestSignatureUploadAndVerification(t *testing.T) {
 		So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
 	})
 
-	Convey("Verify uploading notation certificates", t, func() {
+	Convey("Verify uploading notation certificates", func() {
 		globalDir := t.TempDir()
 		port := test.GetFreePort()
 
 		conf := config.New()
 		conf.HTTP.Port = port
+		if cacheDriverParams != nil {
+			conf.Storage.CacheDriver = cacheDriverParams
+		}
 		conf.Extensions = &extconf.ExtensionConfig{}
 		conf.Extensions.Search = &extconf.SearchConfig{}
 		conf.Extensions.Search.Enable = &defaultValue
@@ -533,12 +585,15 @@ func TestSignatureUploadAndVerification(t *testing.T) {
 		So(resp.StatusCode(), ShouldEqual, http.StatusBadRequest)
 	})
 
-	Convey("Verify uploading cosign public keys", t, func() {
+	Convey("Verify uploading cosign public keys", func() {
 		globalDir := t.TempDir()
 		port := test.GetFreePort()
 
 		conf := config.New()
 		conf.HTTP.Port = port
+		if cacheDriverParams != nil {
+			conf.Storage.CacheDriver = cacheDriverParams
+		}
 		conf.Extensions = &extconf.ExtensionConfig{}
 		conf.Extensions.Search = &extconf.SearchConfig{}
 		conf.Extensions.Search.Enable = &defaultValue
@@ -698,7 +753,7 @@ func TestSignatureUploadAndVerification(t *testing.T) {
 		So(resp.StatusCode(), ShouldEqual, http.StatusBadRequest)
 	})
 
-	Convey("Verify uploading cosign public keys with auth configured", t, func() {
+	Convey("Verify uploading cosign public keys with auth configured", func() {
 		globalDir := t.TempDir()
 		port := test.GetFreePort()
 		testCreds := test.GetCredString("admin", "admin") + "\n" + test.GetCredString("test", "test")
@@ -712,6 +767,9 @@ func TestSignatureUploadAndVerification(t *testing.T) {
 				Users:   []string{"admin"},
 				Actions: []string{},
 			},
+		}
+		if cacheDriverParams != nil {
+			conf.Storage.CacheDriver = cacheDriverParams
 		}
 		conf.Extensions = &extconf.ExtensionConfig{}
 		conf.Extensions.Search = &extconf.SearchConfig{}
@@ -788,12 +846,15 @@ func TestSignatureUploadAndVerification(t *testing.T) {
 		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 	})
 
-	Convey("Verify signatures are read from the disk and updated in the DB when zot starts", t, func() {
+	Convey("Verify signatures are read from the disk and updated in the DB when zot starts", func() {
 		globalDir := t.TempDir()
 		port := test.GetFreePort()
 
 		conf := config.New()
 		conf.HTTP.Port = port
+		if cacheDriverParams != nil {
+			conf.Storage.CacheDriver = cacheDriverParams
+		}
 		conf.Extensions = &extconf.ExtensionConfig{}
 		conf.Extensions.Search = &extconf.SearchConfig{}
 		conf.Extensions.Search.Enable = &defaultValue
@@ -890,12 +951,15 @@ func TestSignatureUploadAndVerification(t *testing.T) {
 		So(imgSummary.Manifests[0].SignatureInfo[0].Author, ShouldEqual, "")
 	})
 
-	Convey("Verify failures when saving uploaded certificates and public keys", t, func() {
+	Convey("Verify failures when saving uploaded certificates and public keys", func() {
 		globalDir := t.TempDir()
 		port := test.GetFreePort()
 
 		conf := config.New()
 		conf.HTTP.Port = port
+		if cacheDriverParams != nil {
+			conf.Storage.CacheDriver = cacheDriverParams
+		}
 		conf.Extensions = &extconf.ExtensionConfig{}
 		conf.Extensions.Search = &extconf.SearchConfig{}
 		conf.Extensions.Search.Enable = &defaultValue
@@ -965,4 +1029,12 @@ func TestSignatureUploadAndVerification(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusInternalServerError)
 	})
+}
+
+func skipIt(t *testing.T) {
+	t.Helper()
+
+	if os.Getenv("DYNAMODBMOCK_ENDPOINT") == "" {
+		t.Skip("Skipping testing without AWS S3 mock server")
+	}
 }

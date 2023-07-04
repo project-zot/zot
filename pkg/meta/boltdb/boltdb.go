@@ -14,7 +14,6 @@ import (
 
 	zerr "zotregistry.io/zot/errors"
 	zcommon "zotregistry.io/zot/pkg/common"
-	"zotregistry.io/zot/pkg/extensions/imagetrust"
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/meta/common"
 	mTypes "zotregistry.io/zot/pkg/meta/types"
@@ -23,9 +22,10 @@ import (
 )
 
 type BoltDB struct {
-	DB      *bbolt.DB
-	Patches []func(DB *bbolt.DB) error
-	Log     log.Logger
+	DB            *bbolt.DB
+	Patches       []func(DB *bbolt.DB) error
+	imgTrustStore mTypes.ImageTrustStore
+	Log           log.Logger
 }
 
 func New(boltDB *bbolt.DB, log log.Logger) (*BoltDB, error) {
@@ -72,10 +72,19 @@ func New(boltDB *bbolt.DB, log log.Logger) (*BoltDB, error) {
 	}
 
 	return &BoltDB{
-		DB:      boltDB,
-		Patches: version.GetBoltDBPatches(),
-		Log:     log,
+		DB:            boltDB,
+		Patches:       version.GetBoltDBPatches(),
+		imgTrustStore: nil,
+		Log:           log,
 	}, nil
+}
+
+func (bdw *BoltDB) ImageTrustStore() mTypes.ImageTrustStore {
+	return bdw.imgTrustStore
+}
+
+func (bdw *BoltDB) SetImageTrustStore(imgTrustStore mTypes.ImageTrustStore) {
+	bdw.imgTrustStore = imgTrustStore
 }
 
 func (bdw *BoltDB) SetManifestData(manifestDigest godigest.Digest, manifestData mTypes.ManifestData) error {
@@ -721,6 +730,12 @@ func (bdw *BoltDB) IncrementImageDownloads(repo string, reference string) error 
 
 func (bdw *BoltDB) UpdateSignaturesValidity(repo string, manifestDigest godigest.Digest) error {
 	err := bdw.DB.Update(func(transaction *bbolt.Tx) error {
+		imgTrustStore := bdw.ImageTrustStore()
+
+		if imgTrustStore == nil {
+			return nil
+		}
+
 		// get ManifestData of signed manifest
 		manifestBuck := transaction.Bucket([]byte(ManifestDataBucket))
 		mdBlob := manifestBuck.Get([]byte(manifestDigest))
@@ -778,8 +793,8 @@ func (bdw *BoltDB) UpdateSignaturesValidity(repo string, manifestDigest godigest
 				layersInfo := []mTypes.LayerInfo{}
 
 				for _, layerInfo := range sigInfo.LayersInfo {
-					author, date, isTrusted, _ := imagetrust.VerifySignature(sigType, layerInfo.LayerContent, layerInfo.SignatureKey,
-						manifestDigest, blob, repo)
+					author, date, isTrusted, _ := imgTrustStore.VerifySignature(sigType, layerInfo.LayerContent,
+						layerInfo.SignatureKey, manifestDigest, blob, repo)
 
 					if isTrusted {
 						layerInfo.Signer = author

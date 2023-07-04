@@ -55,3 +55,7 @@ func EnableScheduledTasks(conf *config.Config, taskScheduler *scheduler.Schedule
 ) {
 	EnableImageTrustVerification(conf, taskScheduler, metaDB, log)
 }
+
+func SetupExtensions(conf *config.Config, metaDB mTypes.MetaDB, log log.Logger) error {
+	return SetupImageTrustExtension(conf, metaDB, log)
+}

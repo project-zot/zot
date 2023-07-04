@@ -9,19 +9,17 @@ import (
 	godigest "github.com/opencontainers/go-digest"
 )
 
-func InitCosignAndNotationDirs(rootDir string) error {
-	return nil
+func NewLocalImageTrustStore(dir string) (*imageTrustDisabled, error) {
+	return &imageTrustDisabled{}, nil
 }
 
-func InitCosignDir(rootDir string) error {
-	return nil
+func NewCloudImageTrustStore(region, endpoint string) (*imageTrustDisabled, error) {
+	return &imageTrustDisabled{}, nil
 }
 
-func InitNotationDir(rootDir string) error {
-	return nil
-}
+type imageTrustDisabled struct{}
 
-func VerifySignature(
+func (imgTrustStore *imageTrustDisabled) VerifySignature(
 	signatureType string, rawSignature []byte, sigKey string, manifestDigest godigest.Digest, manifestContent []byte,
 	repo string,
 ) (string, time.Time, bool, error) {

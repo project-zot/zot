@@ -6,6 +6,7 @@ package meta_test
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"math/rand"
 	"os"
 	"path"
@@ -22,7 +23,6 @@ import (
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	. "github.com/smartystreets/goconvey/convey"
 
-	"zotregistry.io/zot/pkg/api/config"
 	"zotregistry.io/zot/pkg/extensions/imagetrust"
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/meta"
@@ -43,9 +43,12 @@ const (
 
 func TestBoltDB(t *testing.T) {
 	Convey("BoltDB creation", t, func() {
-		boltDBParams := boltdb.DBParameters{}
+		boltDBParams := boltdb.DBParameters{RootDir: t.TempDir()}
+		repoDBPath := path.Join(boltDBParams.RootDir, "repo.db")
+
 		boltDriver, err := boltdb.GetBoltDriver(boltDBParams)
 		So(err, ShouldBeNil)
+		defer os.Remove(repoDBPath)
 
 		log := log.NewLogger("debug", "")
 
@@ -53,27 +56,36 @@ func TestBoltDB(t *testing.T) {
 		So(metaDB, ShouldNotBeNil)
 		So(err, ShouldBeNil)
 
-		err = os.Chmod("repo.db", 0o200)
+		err = os.Chmod(repoDBPath, 0o200)
 		So(err, ShouldBeNil)
 
 		_, err = boltdb.GetBoltDriver(boltDBParams)
 		So(err, ShouldNotBeNil)
 
-		err = os.Chmod("repo.db", 0o600)
+		err = os.Chmod(repoDBPath, 0o600)
 		So(err, ShouldBeNil)
-
-		defer os.Remove("repo.db")
 	})
 
 	Convey("BoltDB Wrapper", t, func() {
-		boltDBParams := boltdb.DBParameters{}
+		boltDBParams := boltdb.DBParameters{RootDir: t.TempDir()}
 		boltDriver, err := boltdb.GetBoltDriver(boltDBParams)
 		So(err, ShouldBeNil)
 
 		log := log.NewLogger("debug", "")
 
+		imgTrustStore, err := imagetrust.NewLocalImageTrustStore(boltDBParams.RootDir)
+		So(err, ShouldBeNil)
+
 		boltdbWrapper, err := boltdb.New(boltDriver, log)
-		defer os.Remove("repo.db")
+
+		boltdbWrapper.SetImageTrustStore(imgTrustStore)
+
+		defer func() {
+			os.Remove(path.Join(boltDBParams.RootDir, "repo.db"))
+			os.RemoveAll(path.Join(boltDBParams.RootDir, "_cosign"))
+			os.RemoveAll(path.Join(boltDBParams.RootDir, "_notation"))
+		}()
+
 		So(boltdbWrapper, ShouldNotBeNil)
 		So(err, ShouldBeNil)
 
@@ -108,6 +120,8 @@ func TestDynamoDBWrapper(t *testing.T) {
 			Region:                "us-east-2",
 		}
 
+		t.Logf("using dynamo driver options: %v", dynamoDBDriverParams)
+
 		dynamoClient, err := mdynamodb.GetDynamoClient(dynamoDBDriverParams)
 		So(err, ShouldBeNil)
 
@@ -116,6 +130,11 @@ func TestDynamoDBWrapper(t *testing.T) {
 		dynamoDriver, err := mdynamodb.New(dynamoClient, dynamoDBDriverParams, log)
 		So(dynamoDriver, ShouldNotBeNil)
 		So(err, ShouldBeNil)
+
+		imgTrustStore, err := imagetrust.NewCloudImageTrustStore(dynamoDBDriverParams.Region, dynamoDBDriverParams.Endpoint)
+		So(err, ShouldBeNil)
+
+		dynamoDriver.SetImageTrustStore(imgTrustStore)
 
 		resetDynamoDBTables := func() error {
 			err := dynamoDriver.ResetRepoMetaTable()
@@ -1318,7 +1337,6 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 				So(repoData.Signatures[string(manifestDigest1)]["cosign"][0].LayersInfo[0].Date,
 					ShouldBeZeroValue)
 			})
-
 			Convey("trusted signature", func() {
 				_, _, manifest, _ := test.GetRandomImageComponents(10) //nolint:staticcheck
 				manifestContent, _ := json.Marshal(manifest)
@@ -1344,7 +1362,10 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 				}
 
 				tdir := t.TempDir()
-				keyName := "notation-sign-test"
+				uuid, err := guuid.NewV4()
+				So(err, ShouldBeNil)
+
+				keyName := fmt.Sprintf("notation-sign-test-%s", uuid)
 
 				test.NotationPathLock.Lock()
 				defer test.NotationPathLock.Unlock()
@@ -1394,44 +1415,18 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 				})
 				So(err, ShouldBeNil)
 
-				err = imagetrust.InitNotationDir(tdir)
+				certificateContent, err := os.ReadFile(path.Join(
+					tdir,
+					"notation/localkeys",
+					fmt.Sprintf("%s.crt", keyName),
+				))
 				So(err, ShouldBeNil)
+				So(certificateContent, ShouldNotBeNil)
 
-				trustpolicyPath := path.Join(tdir, "_notation/trustpolicy.json")
+				imgTrustStore, ok := metaDB.ImageTrustStore().(*imagetrust.ImageTrustStore)
+				So(ok, ShouldBeTrue)
 
-				trustPolicy := `
-					{
-						"version": "1.0",
-						"trustPolicies": [
-							{
-								"name": "notation-sign-test",
-								"registryScopes": [ "*" ],
-								"signatureVerification": {
-									"level" : "strict" 
-								},
-								"trustStores": ["ca:notation-sign-test"],
-								"trustedIdentities": [
-									"*"
-								]
-							}
-						]
-					}`
-
-				file, err := os.Create(trustpolicyPath)
-				So(err, ShouldBeNil)
-
-				defer file.Close()
-
-				_, err = file.WriteString(trustPolicy)
-				So(err, ShouldBeNil)
-
-				truststore := "_notation/truststore/x509/ca/notation-sign-test"
-				truststoreSrc := "notation/truststore/x509/ca/notation-sign-test"
-				err = os.MkdirAll(path.Join(tdir, truststore), 0o755)
-				So(err, ShouldBeNil)
-
-				err = test.CopyFile(path.Join(tdir, truststoreSrc, "notation-sign-test.crt"),
-					path.Join(tdir, truststore, "notation-sign-test.crt"))
+				err = imagetrust.UploadCertificate(imgTrustStore.NotationStorage, certificateContent, "ca", keyName)
 				So(err, ShouldBeNil)
 
 				err = metaDB.UpdateSignaturesValidity(repo, manifestDigest) //nolint:contextcheck
@@ -1439,6 +1434,7 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 
 				repoData, err := metaDB.GetRepoMeta(repo)
 				So(err, ShouldBeNil)
+
 				So(repoData.Signatures[string(manifestDigest)]["notation"][0].LayersInfo[0].Signer,
 					ShouldNotBeEmpty)
 				So(repoData.Signatures[string(manifestDigest)]["notation"][0].LayersInfo[0].Date,
@@ -2718,31 +2714,6 @@ func TestCreateBoltDB(t *testing.T) {
 		log := log.NewLogger("debug", "")
 
 		So(func() { _, _ = meta.Create("boltdb", nil, mdynamodb.DBDriverParameters{}, log) }, ShouldPanic)
-	})
-}
-
-func TestNew(t *testing.T) {
-	Convey("InitCosignAndNotationDirs fails", t, func() {
-		rootDir := t.TempDir()
-
-		var storageConfig config.StorageConfig
-
-		storageConfig.RootDirectory = rootDir
-		storageConfig.RemoteCache = false
-		log := log.NewLogger("debug", "")
-
-		_, err := os.Create(path.Join(rootDir, "repo.db"))
-		So(err, ShouldBeNil)
-
-		err = os.Chmod(rootDir, 0o555)
-		So(err, ShouldBeNil)
-
-		newMetaDB, err := meta.New(storageConfig, log)
-		So(newMetaDB, ShouldBeNil)
-		So(err, ShouldNotBeNil)
-
-		err = os.Chmod(rootDir, 0o777)
-		So(err, ShouldBeNil)
 	})
 }
 
