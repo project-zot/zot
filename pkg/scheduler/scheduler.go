@@ -3,9 +3,11 @@ package scheduler
 import (
 	"container/heap"
 	"context"
+	"runtime"
 	"sync"
 	"time"
 
+	"zotregistry.io/zot/pkg/api/config"
 	"zotregistry.io/zot/pkg/log"
 )
 
@@ -55,7 +57,7 @@ func (pq *generatorsPriorityQueue) Pop() any {
 const (
 	rateLimiterScheduler = 400
 	rateLimit            = 5 * time.Second
-	numWorkers           = 3
+	numWorkersMultiplier = 4
 )
 
 type Scheduler struct {
@@ -68,13 +70,15 @@ type Scheduler struct {
 	log               log.Logger
 	stopCh            chan struct{}
 	RateLimit         time.Duration
+	NumWorkers        int
 }
 
-func NewScheduler(logC log.Logger) *Scheduler {
+func NewScheduler(cfg *config.Config, logC log.Logger) *Scheduler {
 	chLow := make(chan Task, rateLimiterScheduler)
 	chMedium := make(chan Task, rateLimiterScheduler)
 	chHigh := make(chan Task, rateLimiterScheduler)
 	generatorPQ := make(generatorsPriorityQueue, 0)
+	numWorkers := getNumWorkers(cfg)
 	sublogger := logC.With().Str("component", "scheduler").Logger()
 
 	heap.Init(&generatorPQ)
@@ -88,7 +92,8 @@ func NewScheduler(logC log.Logger) *Scheduler {
 		log:            log.Logger{Logger: sublogger},
 		stopCh:         make(chan struct{}),
 		// default value
-		RateLimit: rateLimit,
+		RateLimit:  rateLimit,
+		NumWorkers: numWorkers,
 	}
 }
 
@@ -110,6 +115,8 @@ func (scheduler *Scheduler) poolWorker(numWorkers int, tasks chan Task) {
 
 func (scheduler *Scheduler) RunScheduler(ctx context.Context) {
 	throttle := time.NewTicker(rateLimit).C
+
+	numWorkers := scheduler.NumWorkers
 	tasksWorker := make(chan Task, numWorkers)
 
 	// start worker pool
@@ -274,8 +281,8 @@ const (
 	done
 )
 
-type Generator interface {
-	GenerateTask() (Task, error)
+type TaskGenerator interface {
+	Next() (Task, error)
 	IsDone() bool
 	Reset()
 }
@@ -285,7 +292,7 @@ type generator struct {
 	lastRun       time.Time
 	done          bool
 	priority      Priority
-	taskGenerator Generator
+	taskGenerator TaskGenerator
 	remainingTask Task
 	index         int
 }
@@ -298,7 +305,7 @@ func (gen *generator) generate(sch *Scheduler) {
 
 	// in case there is no task already generated, generate a new task
 	if gen.remainingTask == nil {
-		nextTask, err := gen.taskGenerator.GenerateTask()
+		nextTask, err := gen.taskGenerator.Next()
 		if err != nil {
 			sch.log.Error().Err(err).Msg("scheduler: error while executing generator")
 
@@ -347,7 +354,7 @@ func (gen *generator) getState() state {
 	return ready
 }
 
-func (scheduler *Scheduler) SubmitGenerator(taskGenerator Generator, interval time.Duration, priority Priority) {
+func (scheduler *Scheduler) SubmitGenerator(taskGenerator TaskGenerator, interval time.Duration, priority Priority) {
 	newGenerator := &generator{
 		interval:      interval,
 		done:          false,
@@ -361,4 +368,12 @@ func (scheduler *Scheduler) SubmitGenerator(taskGenerator Generator, interval ti
 
 	// add generator to the generators priority queue
 	heap.Push(&scheduler.generators, newGenerator)
+}
+
+func getNumWorkers(cfg *config.Config) int {
+	if cfg.Scheduler != nil && cfg.Scheduler.NumWorkers != 0 {
+		return cfg.Scheduler.NumWorkers
+	}
+
+	return runtime.NumCPU() * numWorkersMultiplier
 }

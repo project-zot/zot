@@ -5,11 +5,13 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"runtime"
 	"testing"
 	"time"
 
 	. "github.com/smartystreets/goconvey/convey"
 
+	"zotregistry.io/zot/pkg/api/config"
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/scheduler"
 )
@@ -40,7 +42,7 @@ type generator struct {
 	step     int
 }
 
-func (g *generator) GenerateTask() (scheduler.Task, error) {
+func (g *generator) Next() (scheduler.Task, error) {
 	if g.step > 1 {
 		g.done = true
 	}
@@ -67,7 +69,7 @@ type shortGenerator struct {
 	step     int
 }
 
-func (g *shortGenerator) GenerateTask() (scheduler.Task, error) {
+func (g *shortGenerator) Next() (scheduler.Task, error) {
 	g.done = true
 
 	return &task{log: g.log, msg: fmt.Sprintf("executing %s task; index: %d", g.priority, g.index), err: false}, nil
@@ -90,7 +92,7 @@ func TestScheduler(t *testing.T) {
 		defer os.Remove(logFile.Name()) // clean up
 
 		logger := log.NewLogger("debug", logFile.Name())
-		sch := scheduler.NewScheduler(logger)
+		sch := scheduler.NewScheduler(config.New(), logger)
 
 		genH := &shortGenerator{log: logger, priority: "high priority"}
 		// interval has to be higher than throttle value to simulate
@@ -114,7 +116,9 @@ func TestScheduler(t *testing.T) {
 		defer os.Remove(logFile.Name()) // clean up
 
 		logger := log.NewLogger("debug", logFile.Name())
-		sch := scheduler.NewScheduler(logger)
+		cfg := config.New()
+		cfg.Scheduler = &config.SchedulerConfig{NumWorkers: 3}
+		sch := scheduler.NewScheduler(cfg, logger)
 
 		genL := &generator{log: logger, priority: "low priority"}
 		sch.SubmitGenerator(genL, time.Duration(0), scheduler.LowPriority)
@@ -126,6 +130,7 @@ func TestScheduler(t *testing.T) {
 		sch.SubmitGenerator(genH, time.Duration(0), scheduler.HighPriority)
 
 		ctx, cancel := context.WithCancel(context.Background())
+
 		sch.RunScheduler(ctx)
 
 		time.Sleep(4 * time.Second)
@@ -147,7 +152,7 @@ func TestScheduler(t *testing.T) {
 		defer os.Remove(logFile.Name()) // clean up
 
 		logger := log.NewLogger("debug", logFile.Name())
-		sch := scheduler.NewScheduler(logger)
+		sch := scheduler.NewScheduler(config.New(), logger)
 
 		t := &task{log: logger, msg: "", err: true}
 		sch.SubmitTask(t, scheduler.MediumPriority)
@@ -171,7 +176,7 @@ func TestScheduler(t *testing.T) {
 		defer os.Remove(logFile.Name()) // clean up
 
 		logger := log.NewLogger("debug", logFile.Name())
-		sch := scheduler.NewScheduler(logger)
+		sch := scheduler.NewScheduler(config.New(), logger)
 
 		genL := &generator{log: logger, priority: "low priority"}
 		sch.SubmitGenerator(genL, 20*time.Millisecond, scheduler.LowPriority)
@@ -195,7 +200,7 @@ func TestScheduler(t *testing.T) {
 		defer os.Remove(logFile.Name()) // clean up
 
 		logger := log.NewLogger("debug", logFile.Name())
-		sch := scheduler.NewScheduler(logger)
+		sch := scheduler.NewScheduler(config.New(), logger)
 
 		t := &task{log: logger, msg: "", err: false}
 		sch.SubmitTask(t, -1)
@@ -212,7 +217,7 @@ func TestScheduler(t *testing.T) {
 		defer os.Remove(logFile.Name()) // clean up
 
 		logger := log.NewLogger("debug", logFile.Name())
-		sch := scheduler.NewScheduler(logger)
+		sch := scheduler.NewScheduler(config.New(), logger)
 
 		ctx, cancel := context.WithCancel(context.Background())
 
@@ -226,5 +231,19 @@ func TestScheduler(t *testing.T) {
 		data, err := os.ReadFile(logFile.Name())
 		So(err, ShouldBeNil)
 		So(string(data), ShouldNotContainSubstring, "scheduler: adding a new task")
+	})
+}
+
+func TestGetNumWorkers(t *testing.T) {
+	Convey("Test setting the number of workers - default value", t, func() {
+		sch := scheduler.NewScheduler(config.New(), log.NewLogger("debug", "logFile"))
+		So(sch.NumWorkers, ShouldEqual, runtime.NumCPU()*4)
+	})
+
+	Convey("Test setting the number of workers - getting the value from config", t, func() {
+		cfg := config.New()
+		cfg.Scheduler = &config.SchedulerConfig{NumWorkers: 3}
+		sch := scheduler.NewScheduler(cfg, log.NewLogger("debug", "logFile"))
+		So(sch.NumWorkers, ShouldEqual, 3)
 	})
 }

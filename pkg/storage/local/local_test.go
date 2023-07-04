@@ -26,6 +26,7 @@ import (
 	. "github.com/smartystreets/goconvey/convey"
 
 	zerr "zotregistry.io/zot/errors"
+	"zotregistry.io/zot/pkg/api/config"
 	"zotregistry.io/zot/pkg/common"
 	"zotregistry.io/zot/pkg/extensions/monitoring"
 	"zotregistry.io/zot/pkg/log"
@@ -48,7 +49,7 @@ const (
 var errCache = errors.New("new cache error")
 
 func runAndGetScheduler() (*scheduler.Scheduler, context.CancelFunc) {
-	taskScheduler := scheduler.NewScheduler(log.Logger{})
+	taskScheduler := scheduler.NewScheduler(config.New(), log.Logger{})
 	taskScheduler.RateLimit = 50 * time.Millisecond
 
 	ctx, cancel := context.WithCancel(context.Background())

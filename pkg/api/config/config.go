@@ -74,6 +74,10 @@ type HTTPConfig struct {
 	Ratelimit     *RatelimitConfig `mapstructure:",omitempty"`
 }
 
+type SchedulerConfig struct {
+	NumWorkers int
+}
+
 type LDAPConfig struct {
 	Port               int
 	Insecure           bool
@@ -151,6 +155,7 @@ type Config struct {
 	HTTP            HTTPConfig
 	Log             *LogConfig
 	Extensions      *extconf.ExtensionConfig
+	Scheduler       *SchedulerConfig `json:"scheduler" mapstructure:",omitempty"`
 }
 
 func New() *Config {
