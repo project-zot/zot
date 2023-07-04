@@ -661,17 +661,29 @@ func TestUploadImage(t *testing.T) {
 		Convey("Request fail while pushing layer", func() {
 			err := test.UploadImageWithBasicAuth(test.Image{Layers: [][]byte{{1, 2, 3}}}, "badURL", "", "", "")
 			So(err, ShouldNotBeNil)
+
+			err = test.UploadImageWithBasicAuthRef(test.Image{Layers: [][]byte{{1, 2, 3}}}, "badURL", "", "", "", "")
+			So(err, ShouldNotBeNil)
 		})
 		Convey("Request status is not StatusOk while pushing layer", func() {
-			err := test.UploadImageWithBasicAuth(test.Image{Layers: [][]byte{{1, 2, 3}}}, baseURL, "repo", "", "")
+			err := test.UploadImageWithBasicAuth(test.Image{Layers: [][]byte{{1, 2, 3}}}, baseURL, "", "repo", "")
+			So(err, ShouldNotBeNil)
+
+			err = test.UploadImageWithBasicAuthRef(test.Image{Layers: [][]byte{{1, 2, 3}}}, baseURL, "", "repo", "", "")
 			So(err, ShouldNotBeNil)
 		})
 		Convey("Request fail while pushing config", func() {
 			err := test.UploadImageWithBasicAuth(test.Image{}, "badURL", "", "", "")
 			So(err, ShouldNotBeNil)
+
+			err = test.UploadImageWithBasicAuthRef(test.Image{}, "badURL", "", "", "", "")
+			So(err, ShouldNotBeNil)
 		})
 		Convey("Request status is not StatusOk while pushing config", func() {
-			err := test.UploadImageWithBasicAuth(test.Image{}, baseURL, "repo", "", "")
+			err := test.UploadImageWithBasicAuth(test.Image{}, baseURL, "", "repo", "")
+			So(err, ShouldNotBeNil)
+
+			err = test.UploadImageWithBasicAuthRef(test.Image{}, baseURL, "", "repo", "", "")
 			So(err, ShouldNotBeNil)
 		})
 	})
@@ -819,12 +831,18 @@ func TestInjectUploadImage(t *testing.T) {
 			if injected {
 				err := test.UploadImage(img, baseURL, "test")
 				So(err, ShouldNotBeNil)
+
+				err = test.UploadImageWithRef(img, baseURL, "test", img.DigestStr())
+				So(err, ShouldNotBeNil)
 			}
 		})
 		Convey("CreateBlobUpload POST call", func() {
 			injected := inject.InjectFailure(1)
 			if injected {
 				err := test.UploadImage(img, baseURL, "test")
+				So(err, ShouldNotBeNil)
+
+				err = test.UploadImageWithRef(img, baseURL, "test", img.DigestStr())
 				So(err, ShouldNotBeNil)
 			}
 		})
@@ -833,12 +851,18 @@ func TestInjectUploadImage(t *testing.T) {
 			if injected {
 				err := test.UploadImage(img, baseURL, "test")
 				So(err, ShouldNotBeNil)
+
+				err = test.UploadImageWithRef(img, baseURL, "test", img.DigestStr())
+				So(err, ShouldNotBeNil)
 			}
 		})
 		Convey("second marshal", func() {
 			injected := inject.InjectFailure(5)
 			if injected {
 				err := test.UploadImage(img, baseURL, "test")
+				So(err, ShouldNotBeNil)
+
+				err = test.UploadImageWithRef(img, baseURL, "test", img.DigestStr())
 				So(err, ShouldNotBeNil)
 			}
 		})

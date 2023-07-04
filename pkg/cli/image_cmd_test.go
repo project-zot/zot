@@ -1503,13 +1503,13 @@ func runDisplayIndexTests(baseURL string) {
 		actual := strings.TrimSpace(str)
 		// Actual cli output should be something similar to (order of images may differ):
 		// REPOSITORY    TAG        OS/ARCH           DIGEST    SIGNED  SIZE
-		// repo          multi-arch *                 0f844b3e  false   1.5kB
-		//                          linux/amd64       2ab1a275  false   634B
-		//                          windows/arm64/v6  55fdd23a  false   444B
+		// repo          multi-arch *                 28665f71  false   1.5kB
+		//                          linux/amd64       02e0ac42  false   644B
+		//                          windows/arm64/v6  5e09b7f9  false   444B
 		So(actual, ShouldContainSubstring, "REPOSITORY TAG OS/ARCH DIGEST SIGNED SIZE")
-		So(actual, ShouldContainSubstring, "repo multi-arch * 0f844b3e false 1.5kB ")
-		So(actual, ShouldContainSubstring, "linux/amd64 2ab1a275 false 634B ")
-		So(actual, ShouldContainSubstring, "windows/arm64/v6 55fdd23a false 501B")
+		So(actual, ShouldContainSubstring, "repo multi-arch * 28665f71 false 1.5kB ")
+		So(actual, ShouldContainSubstring, "linux/amd64 02e0ac42 false 644B ")
+		So(actual, ShouldContainSubstring, "windows/arm64/v6 5e09b7f9 false 506B")
 	})
 
 	Convey("Test Image Index Verbose", func() {
@@ -1531,18 +1531,18 @@ func runDisplayIndexTests(baseURL string) {
 		actual := strings.TrimSpace(str)
 		// Actual cli output should be something similar to (order of images may differ):
 		// REPOSITORY    TAG        OS/ARCH           DIGEST    CONFIG    SIGNED  LAYERS    SIZE
-		// repo          multi-arch *                 0f844b3e            false             1.5kB
-		//                          linux/amd64       2ab1a275  58cc9abe  false             634B
+		// repo          multi-arch *                 28665f71            false             1.5kB
+		//                          linux/amd64       02e0ac42  58cc9abe  false             644B
 		//                                                                        cbb5b121  4B
 		//                                                                        a00291e8  4B
-		//                          windows/arm64/v6  55fdd23a  5132a1cd  false             501B
+		//                          windows/arm64/v6  5e09b7f9  5132a1cd  false             506B
 		//                                                                        7d08ce29  4B
 		So(actual, ShouldContainSubstring, "REPOSITORY TAG OS/ARCH DIGEST CONFIG SIGNED LAYERS SIZE")
-		So(actual, ShouldContainSubstring, "repo multi-arch * 0f844b3e false 1.5kB")
-		So(actual, ShouldContainSubstring, "linux/amd64 2ab1a275 58cc9abe false 634B")
+		So(actual, ShouldContainSubstring, "repo multi-arch * 28665f71 false 1.5kB")
+		So(actual, ShouldContainSubstring, "linux/amd64 02e0ac42 58cc9abe false 644B")
 		So(actual, ShouldContainSubstring, "cbb5b121 4B")
 		So(actual, ShouldContainSubstring, "a00291e8 4B")
-		So(actual, ShouldContainSubstring, "windows/arm64/v6 55fdd23a 5132a1cd false 501B")
+		So(actual, ShouldContainSubstring, "windows/arm64/v6 5e09b7f9 5132a1cd false 506B")
 		So(actual, ShouldContainSubstring, "7d08ce29 4B")
 	})
 }
@@ -1552,42 +1552,35 @@ func uploadTestMultiarch(baseURL string) {
 	layer11 := []byte{11, 12, 13, 14}
 	layer12 := []byte{16, 17, 18, 19}
 
-	image1, err := test.GetImageWithComponents(
-		ispec.Image{
-			Platform: ispec.Platform{
-				OS:           "linux",
-				Architecture: "amd64",
-			},
-		},
-		[][]byte{
+	image1 := test.CreateImageWith().
+		LayerBlobs([][]byte{
 			layer11,
 			layer12,
-		},
-	)
-	So(err, ShouldBeNil)
+		}).
+		ImageConfig(
+			ispec.Image{
+				Platform: ispec.Platform{OS: "linux", Architecture: "amd64"},
+			},
+		).Build()
 
 	// ------ Define Image2
 	layer21 := []byte{21, 22, 23, 24}
 
-	image2, err := test.GetImageWithComponents(
-		ispec.Image{
-			Platform: ispec.Platform{
-				OS:           "windows",
-				Architecture: "arm64",
-				Variant:      "v6",
-			},
-		},
-		[][]byte{
+	image2 := test.CreateImageWith().
+		LayerBlobs([][]byte{
 			layer21,
-		},
-	)
-	So(err, ShouldBeNil)
+		}).
+		ImageConfig(
+			ispec.Image{
+				Platform: ispec.Platform{OS: "windows", Architecture: "arm64", Variant: "v6"},
+			},
+		).Build()
 
 	// ------- Upload The multiarch image
 
-	multiarch := test.GetMultiarchImageForImages("multi-arch", []test.Image{image1, image2})
+	multiarch := test.GetMultiarchImageForImages([]test.Image{image1, image2})
 
-	err = test.UploadMultiarchImage(multiarch, baseURL, "repo")
+	err := test.UploadMultiarchImageWithRef(multiarch, baseURL, "repo", "multi-arch")
 	So(err, ShouldBeNil)
 }
 

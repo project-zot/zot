@@ -2121,15 +2121,10 @@ func TestGroupsPermissionsForLDAP(t *testing.T) {
 		cm.StartAndWait(port)
 		defer cm.StopServer()
 
-		cfg, layers, manifest, err := test.GetImageComponents(10000)
-		So(err, ShouldBeNil)
+		img := test.CreateDefaultImage()
 
-		err = test.UploadImageWithBasicAuth(
-			test.Image{
-				Config:   cfg,
-				Layers:   layers,
-				Manifest: manifest,
-			}, baseURL, repo,
+		err = test.UploadImageWithBasicAuthRef(
+			img, baseURL, repo, img.DigestStr(),
 			username, passphrase)
 
 		So(err, ShouldBeNil)

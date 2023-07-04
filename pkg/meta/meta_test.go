@@ -2688,11 +2688,9 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 			multiArch, err := test.GetRandomMultiarchImage("tag1")
 			So(err, ShouldBeNil)
 
-			indexDigest, err := multiArch.Digest()
-			So(err, ShouldBeNil)
+			indexDigest := multiArch.Digest()
 
-			indexData, err := multiArch.IndexData()
-			So(err, ShouldBeNil)
+			indexData := multiArch.IndexData()
 
 			err = metaDB.SetIndexData(indexDigest, indexData)
 			So(err, ShouldBeNil)
@@ -2709,8 +2707,7 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 			image, err := test.GetRandomImage("tag")
 			So(err, ShouldBeNil)
 
-			referredDigest, err := image.Digest()
-			So(err, ShouldBeNil)
+			referredDigest := image.Digest()
 
 			manifestBlob, err := json.Marshal(image.Manifest)
 			So(err, ShouldBeNil)
@@ -2737,8 +2734,7 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 			)
 			So(err, ShouldBeNil)
 
-			artifactDigest1, err := artifact1.Digest()
-			So(err, ShouldBeNil)
+			artifactDigest1 := artifact1.Digest()
 
 			err = metaDB.SetReferrer("repo", referredDigest, mTypes.ReferrerInfo{
 				Digest:    artifactDigest1.String(),
@@ -2754,8 +2750,7 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 			)
 			So(err, ShouldBeNil)
 
-			artifactDigest2, err := artifact2.Digest()
-			So(err, ShouldBeNil)
+			artifactDigest2 := artifact2.Digest()
 
 			err = metaDB.SetReferrer("repo", referredDigest, mTypes.ReferrerInfo{
 				Digest:    artifactDigest2.String(),
@@ -2874,8 +2869,7 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 		Convey("FilterRepos", func() {
 			img, err := test.GetRandomImage("img1")
 			So(err, ShouldBeNil)
-			imgDigest, err := img.Digest()
-			So(err, ShouldBeNil)
+			imgDigest := img.Digest()
 
 			manifestData, err := NewManifestData(img.Manifest, img.Config)
 			So(err, ShouldBeNil)
@@ -2885,8 +2879,7 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 
 			multiarch, err := test.GetRandomMultiarchImage("multi")
 			So(err, ShouldBeNil)
-			multiarchDigest, err := multiarch.Digest()
-			So(err, ShouldBeNil)
+			multiarchDigest := multiarch.Digest()
 
 			indexData, err := NewIndexData(multiarch.Index)
 			So(err, ShouldBeNil)
@@ -2895,8 +2888,7 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 			So(err, ShouldBeNil)
 
 			for _, img := range multiarch.Images {
-				digest, err := img.Digest()
-				So(err, ShouldBeNil)
+				digest := img.Digest()
 
 				indManData1, err := NewManifestData(multiarch.Images[0].Manifest, multiarch.Images[0].Config)
 				So(err, ShouldBeNil)

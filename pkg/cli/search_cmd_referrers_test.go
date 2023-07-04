@@ -12,7 +12,6 @@ import (
 	"strings"
 	"testing"
 
-	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	. "github.com/smartystreets/goconvey/convey"
 
 	"zotregistry.io/zot/pkg/api"
@@ -205,36 +204,26 @@ func TestReferrerCLI(t *testing.T) {
 		defer cm.StopServer()
 
 		repo := repoName
-		image, err := test.GetRandomImage("tag")
-		So(err, ShouldBeNil)
-		imgDigest, err := image.Digest()
+		image := test.CreateRandomImage()
+
+		err := test.UploadImageWithRef(image, baseURL, repo, "tag")
 		So(err, ShouldBeNil)
 
-		err = test.UploadImage(image, baseURL, repo)
-		So(err, ShouldBeNil)
+		ref1 := test.CreateImageWith().
+			RandomLayers(1, 10).
+			RandomConfig().
+			Subject(image.DescriptorRef()).Build()
 
-		// add referrers
-		ref1, err := test.GetImageWithSubject(imgDigest, ispec.MediaTypeImageManifest)
-		So(err, ShouldBeNil)
-		ref1.Reference = ""
+		ref2 := test.CreateImageWith().
+			RandomLayers(1, 10).
+			ArtifactConfig(customArtTypeV1).
+			Subject(image.DescriptorRef()).Build()
 
-		ref1Digest, err := ref1.Digest()
-		So(err, ShouldBeNil)
-
-		ref2, err := test.GetImageWithSubject(imgDigest, ispec.MediaTypeImageManifest)
-		So(err, ShouldBeNil)
-		ref2.Reference = ""
-		ref2.Manifest.Config.MediaType = customArtTypeV1
-		ref2Digest, err := ref2.Digest()
-		So(err, ShouldBeNil)
-
-		ref3, err := test.GetImageWithSubject(imgDigest, ispec.MediaTypeImageManifest)
-		So(err, ShouldBeNil)
-		ref3.Manifest.ArtifactType = customArtTypeV2
-		ref3.Manifest.Config = ispec.DescriptorEmptyJSON
-		ref3.Reference = ""
-		ref3Digest, err := ref3.Digest()
-		So(err, ShouldBeNil)
+		ref3 := test.CreateImageWith().
+			RandomLayers(1, 10).
+			RandomConfig().
+			ArtifactType(customArtTypeV2).
+			Subject(image.DescriptorRef()).Build()
 
 		err = test.UploadImage(ref1, baseURL, repo)
 		So(err, ShouldBeNil)
@@ -245,7 +234,7 @@ func TestReferrerCLI(t *testing.T) {
 		err = test.UploadImage(ref3, baseURL, repo)
 		So(err, ShouldBeNil)
 
-		args := []string{"reftest", "--subject", repo + "@" + imgDigest.String()}
+		args := []string{"reftest", "--subject", repo + "@" + image.DigestStr()}
 
 		configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"reftest","url":"%s","showspinner":false}]}`,
 			baseURL))
@@ -262,9 +251,9 @@ func TestReferrerCLI(t *testing.T) {
 		space := regexp.MustCompile(`\s+`)
 		str := strings.TrimSpace(space.ReplaceAllString(buff.String(), " "))
 		So(str, ShouldContainSubstring, "ARTIFACT TYPE SIZE DIGEST")
-		So(str, ShouldContainSubstring, "application/vnd.oci.image.config.v1+json 557 B "+ref1Digest.String())
-		So(str, ShouldContainSubstring, "application/custom.art.type.v1 547 B "+ref2Digest.String())
-		So(str, ShouldContainSubstring, "application/custom.art.type.v2 610 B "+ref3Digest.String())
+		So(str, ShouldContainSubstring, "application/vnd.oci.image.config.v1+json 563 B "+ref1.DigestStr())
+		So(str, ShouldContainSubstring, "custom.art.type.v1 551 B "+ref2.DigestStr())
+		So(str, ShouldContainSubstring, "custom.art.type.v2 611 B "+ref3.DigestStr())
 
 		fmt.Println(buff.String())
 
@@ -286,9 +275,9 @@ func TestReferrerCLI(t *testing.T) {
 		So(err, ShouldBeNil)
 		str = strings.TrimSpace(space.ReplaceAllString(buff.String(), " "))
 		So(str, ShouldContainSubstring, "ARTIFACT TYPE SIZE DIGEST")
-		So(str, ShouldContainSubstring, "application/vnd.oci.image.config.v1+json 557 B "+ref1Digest.String())
-		So(str, ShouldContainSubstring, "application/custom.art.type.v1 547 B "+ref2Digest.String())
-		So(str, ShouldContainSubstring, "application/custom.art.type.v2 610 B "+ref3Digest.String())
+		So(str, ShouldContainSubstring, "application/vnd.oci.image.config.v1+json 563 B "+ref1.DigestStr())
+		So(str, ShouldContainSubstring, "custom.art.type.v1 551 B "+ref2.DigestStr())
+		So(str, ShouldContainSubstring, "custom.art.type.v2 611 B "+ref3.DigestStr())
 
 		fmt.Println(buff.String())
 	})
@@ -312,48 +301,38 @@ func TestReferrerCLI(t *testing.T) {
 		defer cm.StopServer()
 
 		repo := repoName
-		image, err := test.GetRandomImage("tag")
-		So(err, ShouldBeNil)
-		imgDigest, err := image.Digest()
+		image := test.CreateRandomImage()
+
+		err := test.UploadImageWithRef(image, baseURL, repo, "tag")
 		So(err, ShouldBeNil)
 
-		err = test.UploadImage(image, baseURL, repo)
-		So(err, ShouldBeNil)
+		ref1 := test.CreateImageWith().
+			RandomLayers(1, 10).
+			RandomConfig().
+			Subject(image.DescriptorRef()).Build()
 
-		// add referrers
-		ref1, err := test.GetImageWithSubject(imgDigest, ispec.MediaTypeImageManifest)
-		So(err, ShouldBeNil)
-		ref1Digest, err := ref1.Digest()
-		So(err, ShouldBeNil)
+		ref2 := test.CreateImageWith().
+			RandomLayers(1, 10).
+			ArtifactConfig(customArtTypeV1).
+			Subject(image.DescriptorRef()).Build()
 
-		ref2, err := test.GetImageWithSubject(imgDigest, ispec.MediaTypeImageManifest)
-		So(err, ShouldBeNil)
-		ref2.Manifest.Config.MediaType = customArtTypeV1
-		ref2Digest, err := ref2.Digest()
-		So(err, ShouldBeNil)
+		ref3 := test.CreateImageWith().
+			RandomLayers(1, 10).
+			RandomConfig().
+			ArtifactType(customArtTypeV2).
+			Subject(image.DescriptorRef()).Build()
 
-		ref3, err := test.GetImageWithSubject(imgDigest, ispec.MediaTypeImageManifest)
-		So(err, ShouldBeNil)
-		ref3.Manifest.ArtifactType = customArtTypeV2
-		ref3.Manifest.Config = ispec.DescriptorEmptyJSON
-
-		ref3Digest, err := ref3.Digest()
-		So(err, ShouldBeNil)
-
-		ref1.Reference = ""
 		err = test.UploadImage(ref1, baseURL, repo)
 		So(err, ShouldBeNil)
 
-		ref2.Reference = ""
 		err = test.UploadImage(ref2, baseURL, repo)
 		So(err, ShouldBeNil)
 
-		ref3.Reference = ""
 		err = test.UploadImage(ref3, baseURL, repo)
 		So(err, ShouldBeNil)
 
 		// get referrers by digest
-		args := []string{"reftest", "--subject", repo + "@" + imgDigest.String()}
+		args := []string{"reftest", "--subject", repo + "@" + image.DigestStr()}
 
 		configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"reftest","url":"%s","showspinner":false}]}`,
 			baseURL))
@@ -369,9 +348,9 @@ func TestReferrerCLI(t *testing.T) {
 		space := regexp.MustCompile(`\s+`)
 		str := strings.TrimSpace(space.ReplaceAllString(buff.String(), " "))
 		So(str, ShouldContainSubstring, "ARTIFACT TYPE SIZE DIGEST")
-		So(str, ShouldContainSubstring, "application/vnd.oci.image.config.v1+json 557 B "+ref1Digest.String())
-		So(str, ShouldContainSubstring, "application/custom.art.type.v1 547 B "+ref2Digest.String())
-		So(str, ShouldContainSubstring, "application/custom.art.type.v2 610 B "+ref3Digest.String())
+		So(str, ShouldContainSubstring, "application/vnd.oci.image.config.v1+json 563 B "+ref1.DigestStr())
+		So(str, ShouldContainSubstring, "custom.art.type.v1 551 B "+ref2.DigestStr())
+		So(str, ShouldContainSubstring, "custom.art.type.v2 611 B "+ref3.DigestStr())
 		fmt.Println(buff.String())
 
 		os.Remove(configPath)
@@ -390,9 +369,9 @@ func TestReferrerCLI(t *testing.T) {
 		So(err, ShouldBeNil)
 		str = strings.TrimSpace(space.ReplaceAllString(buff.String(), " "))
 		So(str, ShouldContainSubstring, "ARTIFACT TYPE SIZE DIGEST")
-		So(str, ShouldContainSubstring, "application/vnd.oci.image.config.v1+json 557 B "+ref1Digest.String())
-		So(str, ShouldContainSubstring, "application/custom.art.type.v1 547 B "+ref2Digest.String())
-		So(str, ShouldContainSubstring, "application/custom.art.type.v2 610 B "+ref3Digest.String())
+		So(str, ShouldContainSubstring, "application/vnd.oci.image.config.v1+json 563 B "+ref1.DigestStr())
+		So(str, ShouldContainSubstring, "custom.art.type.v1 551 B "+ref2.DigestStr())
+		So(str, ShouldContainSubstring, "custom.art.type.v2 611 B "+ref3.DigestStr())
 		fmt.Println(buff.String())
 	})
 }
@@ -417,41 +396,39 @@ func TestFormatsReferrersCLI(t *testing.T) {
 		defer cm.StopServer()
 
 		repo := repoName
-		image, err := test.GetRandomImage("tag")
-		So(err, ShouldBeNil)
-		imgDigest, err := image.Digest()
-		So(err, ShouldBeNil)
+		image := test.CreateRandomImage()
 
-		err = test.UploadImage(image, baseURL, repo)
+		err := test.UploadImageWithRef(image, baseURL, repo, "tag")
 		So(err, ShouldBeNil)
 
 		// add referrers
-		ref1, err := test.GetImageWithSubject(imgDigest, ispec.MediaTypeImageManifest)
-		So(err, ShouldBeNil)
+		ref1 := test.CreateImageWith().
+			RandomLayers(1, 10).
+			RandomConfig().
+			Subject(image.DescriptorRef()).Build()
 
-		ref2, err := test.GetImageWithSubject(imgDigest, ispec.MediaTypeImageManifest)
-		So(err, ShouldBeNil)
-		ref2.Manifest.Config.MediaType = customArtTypeV1
+		ref2 := test.CreateImageWith().
+			RandomLayers(1, 10).
+			ArtifactConfig(customArtTypeV1).
+			Subject(image.DescriptorRef()).Build()
 
-		ref3, err := test.GetImageWithSubject(imgDigest, ispec.MediaTypeImageManifest)
-		So(err, ShouldBeNil)
-		ref3.Manifest.ArtifactType = customArtTypeV2
-		ref3.Manifest.Config = ispec.DescriptorEmptyJSON
+		ref3 := test.CreateImageWith().
+			RandomLayers(1, 10).
+			RandomConfig().
+			ArtifactType(customArtTypeV2).
+			Subject(image.DescriptorRef()).Build()
 
-		ref1.Reference = ""
 		err = test.UploadImage(ref1, baseURL, repo)
 		So(err, ShouldBeNil)
 
-		ref2.Reference = ""
 		err = test.UploadImage(ref2, baseURL, repo)
 		So(err, ShouldBeNil)
 
-		ref3.Reference = ""
 		err = test.UploadImage(ref3, baseURL, repo)
 		So(err, ShouldBeNil)
 
 		Convey("JSON format", func() {
-			args := []string{"reftest", "--output", "json", "--subject", repo + "@" + imgDigest.String()}
+			args := []string{"reftest", "--output", "json", "--subject", repo + "@" + image.DigestStr()}
 
 			configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"reftest","url":"%s","showspinner":false}]}`,
 				baseURL))
@@ -469,7 +446,7 @@ func TestFormatsReferrersCLI(t *testing.T) {
 			fmt.Println(buff.String())
 		})
 		Convey("YAML format", func() {
-			args := []string{"reftest", "--output", "yaml", "--subject", repo + "@" + imgDigest.String()}
+			args := []string{"reftest", "--output", "yaml", "--subject", repo + "@" + image.DigestStr()}
 
 			configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"reftest","url":"%s","showspinner":false}]}`,
 				baseURL))
@@ -487,7 +464,7 @@ func TestFormatsReferrersCLI(t *testing.T) {
 			fmt.Println(buff.String())
 		})
 		Convey("Invalid format", func() {
-			args := []string{"reftest", "--output", "invalid_format", "--subject", repo + "@" + imgDigest.String()}
+			args := []string{"reftest", "--output", "invalid_format", "--subject", repo + "@" + image.DigestStr()}
 
 			configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"reftest","url":"%s","showspinner":false}]}`,
 				baseURL))

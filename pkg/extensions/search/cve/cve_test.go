@@ -1568,8 +1568,7 @@ func TestFixedTagsWithIndex(t *testing.T) {
 			Platform: ispec.Platform{OS: "linux", Architecture: "amd64"},
 		})
 		So(err, ShouldBeNil)
-		vulnDigest, err := vulnManifest.Digest()
-		So(err, ShouldBeNil)
+		vulnDigest := vulnManifest.Digest()
 
 		fixedManifestCreated := time.Date(2010, 1, 1, 1, 1, 1, 1, time.UTC)
 		fixedManifest, err := GetImageWithConfig(ispec.Image{
@@ -1577,14 +1576,12 @@ func TestFixedTagsWithIndex(t *testing.T) {
 			Platform: ispec.Platform{OS: "windows", Architecture: "amd64"},
 		})
 		So(err, ShouldBeNil)
-		fixedDigest, err := fixedManifest.Digest()
-		So(err, ShouldBeNil)
+		fixedDigest := fixedManifest.Digest()
 
-		multiArch := GetMultiarchImageForImages("multi-arch-tag", []Image{fixedManifest, vulnManifest})
-		multiArchDigest, err := multiArch.Digest()
-		So(err, ShouldBeNil)
+		multiArch := GetMultiarchImageForImages([]Image{fixedManifest, vulnManifest})
+		multiArchDigest := multiArch.Digest()
 
-		err = UploadMultiarchImage(multiArch, baseURL, "repo")
+		err = UploadMultiarchImageWithRef(multiArch, baseURL, "repo", "multi-arch-tag")
 		So(err, ShouldBeNil)
 
 		// oldest vulnerability

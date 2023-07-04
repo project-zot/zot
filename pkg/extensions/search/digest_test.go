@@ -111,8 +111,7 @@ func TestDigestSearchHTTP(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		image2.Reference = ver001
-		manifestDigest, err := image2.Digest()
-		So(err, ShouldBeNil)
+		manifestDigest := image2.Digest()
 
 		err = UploadImage(image2, baseURL, "zot-test")
 		So(err, ShouldBeNil)

@@ -529,8 +529,7 @@ func RunParseStorageTests(rootDir string, metaDB mTypes.MetaDB) {
 		signatureTag, err := test.GetCosignSignatureTagForManifest(image.Manifest)
 		So(err, ShouldBeNil)
 
-		missingImageDigest, err := image.Digest()
-		So(err, ShouldBeNil)
+		missingImageDigest := image.Digest()
 
 		// get the body of the signature
 		config, layers, manifest, err = test.GetRandomImageComponents(100)
@@ -576,8 +575,7 @@ func RunParseStorageTests(rootDir string, metaDB mTypes.MetaDB) {
 		image, err := test.GetRandomImage("tag")
 		So(err, ShouldBeNil)
 
-		manifestDigest, err := image.Digest()
-		So(err, ShouldBeNil)
+		manifestDigest := image.Digest()
 
 		err = test.WriteImageToFileSystem(
 			image,
