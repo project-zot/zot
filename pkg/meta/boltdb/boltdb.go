@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -23,9 +24,10 @@ import (
 )
 
 type BoltDB struct {
-	DB      *bbolt.DB
-	Patches []func(DB *bbolt.DB) error
-	Log     log.Logger
+	DB       *bbolt.DB
+	Patches  []func(DB *bbolt.DB) error
+	SigStore *signatures.SigStore
+	Log      log.Logger
 }
 
 func New(boltDB *bbolt.DB, log log.Logger) (*BoltDB, error) {
@@ -71,11 +73,23 @@ func New(boltDB *bbolt.DB, log log.Logger) (*BoltDB, error) {
 		return nil, err
 	}
 
+	dir := filepath.Dir(boltDB.Path())
+
+	sigStore, err := signatures.NewLocalSigStore(dir)
+	if err != nil {
+		return nil, err
+	}
+
 	return &BoltDB{
-		DB:      boltDB,
-		Patches: version.GetBoltDBPatches(),
-		Log:     log,
+		DB:       boltDB,
+		Patches:  version.GetBoltDBPatches(),
+		SigStore: sigStore,
+		Log:      log,
 	}, nil
+}
+
+func (bdw *BoltDB) SignatureStorage() mTypes.SignatureStorage {
+	return bdw.SigStore
 }
 
 func (bdw *BoltDB) SetManifestData(manifestDigest godigest.Digest, manifestData mTypes.ManifestData) error {
@@ -778,7 +792,7 @@ func (bdw *BoltDB) UpdateSignaturesValidity(repo string, manifestDigest godigest
 				layersInfo := []mTypes.LayerInfo{}
 
 				for _, layerInfo := range sigInfo.LayersInfo {
-					author, date, isTrusted, _ := signatures.VerifySignature(sigType, layerInfo.LayerContent, layerInfo.SignatureKey,
+					author, date, isTrusted, _ := bdw.SigStore.VerifySignature(sigType, layerInfo.LayerContent, layerInfo.SignatureKey,
 						manifestDigest, blob, repo)
 
 					if isTrusted {

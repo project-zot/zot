@@ -16,7 +16,7 @@ func IsBuiltWithImageTrustExtension() bool {
 	return false
 }
 
-func SetupImageTrustRoutes(config *config.Config, router *mux.Router, log log.Logger) {
+func SetupImageTrustRoutes(config *config.Config, metaDB mTypes.MetaDB, router *mux.Router, log log.Logger) {
 	log.Warn().Msg("skipping setting up image trust routes because given zot binary doesn't include this feature," +
 		"please build a binary that does so")
 }

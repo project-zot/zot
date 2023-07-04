@@ -36,10 +36,16 @@ type DynamoDB struct {
 	UserDataTablename     string
 	VersionTablename      string
 	Patches               []func(client *dynamodb.Client, tableNames map[string]string) error
+	SigStore              *signatures.SigStore
 	Log                   log.Logger
 }
 
 func New(client *dynamodb.Client, params DBDriverParameters, log log.Logger) (*DynamoDB, error) {
+	sigStore, err := signatures.NewCloudSigStore(params.Region, params.Endpoint)
+	if err != nil {
+		return nil, err
+	}
+
 	dynamoWrapper := DynamoDB{
 		Client:                client,
 		RepoMetaTablename:     params.RepoMetaTablename,
@@ -49,10 +55,11 @@ func New(client *dynamodb.Client, params DBDriverParameters, log log.Logger) (*D
 		UserDataTablename:     params.UserDataTablename,
 		APIKeyTablename:       params.APIKeyTablename,
 		Patches:               version.GetDynamoDBPatches(),
+		SigStore:              sigStore,
 		Log:                   log,
 	}
 
-	err := dynamoWrapper.createVersionTable()
+	err = dynamoWrapper.createVersionTable()
 	if err != nil {
 		return nil, err
 	}
@@ -84,6 +91,10 @@ func New(client *dynamodb.Client, params DBDriverParameters, log log.Logger) (*D
 
 	// Using the Config value, create the DynamoDB client
 	return &dynamoWrapper, nil
+}
+
+func (dwr *DynamoDB) SignatureStorage() mTypes.SignatureStorage {
+	return dwr.SigStore
 }
 
 func (dwr *DynamoDB) SetManifestData(manifestDigest godigest.Digest, manifestData mTypes.ManifestData) error {
@@ -658,7 +669,7 @@ func (dwr *DynamoDB) UpdateSignaturesValidity(repo string, manifestDigest godige
 			layersInfo := []mTypes.LayerInfo{}
 
 			for _, layerInfo := range sigInfo.LayersInfo {
-				author, date, isTrusted, _ := signatures.VerifySignature(sigType, layerInfo.LayerContent, layerInfo.SignatureKey,
+				author, date, isTrusted, _ := dwr.SigStore.VerifySignature(sigType, layerInfo.LayerContent, layerInfo.SignatureKey,
 					manifestDigest, blob, repo)
 
 				if isTrusted {

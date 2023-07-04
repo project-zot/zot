@@ -6,6 +6,7 @@ import (
 	"math/rand"
 	"os"
 	"path"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -59,7 +60,11 @@ func TestBoltDB(t *testing.T) {
 		err = os.Chmod("repo.db", 0o600)
 		So(err, ShouldBeNil)
 
-		defer os.Remove("repo.db")
+		defer func() {
+			os.Remove("repo.db")
+			os.RemoveAll("_cosign")
+			os.RemoveAll("_notation")
+		}()
 	})
 
 	Convey("BoltDB Wrapper", t, func() {
@@ -70,7 +75,13 @@ func TestBoltDB(t *testing.T) {
 		log := log.NewLogger("debug", "")
 
 		boltdbWrapper, err := boltdb.New(boltDriver, log)
-		defer os.Remove("repo.db")
+
+		defer func() {
+			os.Remove("repo.db")
+			os.RemoveAll("_cosign")
+			os.RemoveAll("_notation")
+		}()
+
 		So(boltdbWrapper, ShouldNotBeNil)
 		So(err, ShouldBeNil)
 
@@ -1208,10 +1219,14 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 				})
 				So(err, ShouldBeNil)
 
-				err = signatures.InitNotationDir(tdir)
+				notationDirPath, err := metaDB.(*boltdb.BoltDB).SigStore.
+					NotationStorage.(*signatures.CertificateLocalStorage).GetNotationDirPath()
 				So(err, ShouldBeNil)
 
-				trustpolicyPath := path.Join(tdir, "_notation/trustpolicy.json")
+				notationDir, err := filepath.Abs(notationDirPath)
+				So(err, ShouldBeNil)
+
+				trustpolicyPath := path.Join(notationDir, "trustpolicy.json")
 
 				trustPolicy := `
 					{
@@ -1239,13 +1254,13 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 				_, err = file.WriteString(trustPolicy)
 				So(err, ShouldBeNil)
 
-				truststore := "_notation/truststore/x509/ca/notation-sign-test"
+				truststore := "truststore/x509/ca/notation-sign-test"
 				truststoreSrc := "notation/truststore/x509/ca/notation-sign-test"
-				err = os.MkdirAll(path.Join(tdir, truststore), 0o755)
+				err = os.MkdirAll(path.Join(notationDir, truststore), 0o755)
 				So(err, ShouldBeNil)
 
 				err = test.CopyFile(path.Join(tdir, truststoreSrc, "notation-sign-test.crt"),
-					path.Join(tdir, truststore, "notation-sign-test.crt"))
+					path.Join(notationDir, truststore, "notation-sign-test.crt"))
 				So(err, ShouldBeNil)
 
 				err = metaDB.UpdateSignaturesValidity(repo, manifestDigest) //nolint:contextcheck

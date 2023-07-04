@@ -21,16 +21,11 @@ import (
 	"zotregistry.io/zot/pkg/scheduler"
 )
 
-const (
-	ConfigResource     = "config"
-	SignaturesResource = "signatures"
-)
-
 func IsBuiltWithImageTrustExtension() bool {
 	return true
 }
 
-func SetupImageTrustRoutes(conf *config.Config, router *mux.Router, log log.Logger) {
+func SetupImageTrustRoutes(conf *config.Config, metaDB mTypes.MetaDB, router *mux.Router, log log.Logger) {
 	if !conf.IsImageTrustEnabled() || (!conf.IsCosignEnabled() && !conf.IsNotationEnabled()) {
 		log.Info().Msg("skip enabling the image trust routes as the config prerequisites are not met")
 
@@ -39,7 +34,8 @@ func SetupImageTrustRoutes(conf *config.Config, router *mux.Router, log log.Logg
 
 	log.Info().Msg("setting up image trust routes")
 
-	trust := ImageTrust{Conf: conf, Log: log}
+	sigStore, _ := metaDB.SignatureStorage().(*signatures.SigStore)
+	trust := ImageTrust{Conf: conf, SigStore: sigStore, Log: log}
 	allowedMethods := zcommon.AllowedMethods(http.MethodPost)
 
 	if conf.IsNotationEnabled() {
@@ -70,8 +66,9 @@ func SetupImageTrustRoutes(conf *config.Config, router *mux.Router, log log.Logg
 }
 
 type ImageTrust struct {
-	Conf *config.Config
-	Log  log.Logger
+	Conf     *config.Config
+	SigStore *signatures.SigStore
+	Log      log.Logger
 }
 
 // Cosign handler godoc
@@ -93,7 +90,7 @@ func (trust *ImageTrust) HandleCosignPublicKeyUpload(response http.ResponseWrite
 		return
 	}
 
-	err = signatures.UploadPublicKey(body)
+	err = signatures.UploadPublicKey(trust.SigStore.CosignStorage, body)
 	if err != nil {
 		if errors.Is(err, zerr.ErrInvalidPublicKeyContent) {
 			response.WriteHeader(http.StatusBadRequest)
@@ -151,7 +148,7 @@ func (trust *ImageTrust) HandleNotationCertificateUpload(response http.ResponseW
 		return
 	}
 
-	err = signatures.UploadCertificate(body, truststoreType, truststoreName)
+	err = signatures.UploadCertificate(trust.SigStore.NotationStorage, body, truststoreType, truststoreName)
 	if err != nil {
 		if errors.Is(err, zerr.ErrInvalidTruststoreType) ||
 			errors.Is(err, zerr.ErrInvalidTruststoreName) ||
@@ -178,6 +175,6 @@ func EnableImageTrustVerification(conf *config.Config, taskScheduler *scheduler.
 	generator := signatures.NewTaskGenerator(metaDB, log)
 
 	numberOfHours := 2
-	interval := time.Duration(numberOfHours) * time.Minute
+	interval := time.Duration(numberOfHours) * time.Hour
 	taskScheduler.SubmitGenerator(generator, interval, scheduler.MediumPriority)
 }

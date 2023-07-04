@@ -102,6 +102,16 @@ type MetaDBMock struct {
 	DeleteUserAPIKeyFn func(ctx context.Context, id string) error
 
 	PatchDBFn func() error
+
+	SignatureStorageFn func() mTypes.SignatureStorage
+}
+
+func (sdm MetaDBMock) SignatureStorage() mTypes.SignatureStorage {
+	if sdm.SignatureStorageFn != nil {
+		return sdm.SignatureStorageFn()
+	}
+
+	return nil
 }
 
 func (sdm MetaDBMock) SetRepoDescription(repo, description string) error {

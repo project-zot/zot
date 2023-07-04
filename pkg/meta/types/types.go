@@ -121,6 +121,8 @@ type MetaDB interface { //nolint:interfacebloat
 		[]RepoMetadata, map[string]ManifestMetadata, map[string]IndexData, error)
 
 	PatchDB() error
+
+	SignatureStorage() SignatureStorage
 }
 
 type UserDB interface { //nolint:interfacebloat
@@ -154,6 +156,13 @@ type UserDB interface { //nolint:interfacebloat
 	UpdateUserAPIKeyLastUsed(ctx context.Context, hashedKey string) error
 
 	DeleteUserAPIKey(ctx context.Context, id string) error
+}
+
+type SignatureStorage interface {
+	VerifySignature(
+		signatureType string, rawSignature []byte, sigKey string, manifestDigest godigest.Digest, manifestContent []byte,
+		repo string,
+	) (string, time.Time, bool, error)
 }
 
 type ManifestMetadata struct {

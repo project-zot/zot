@@ -5,6 +5,14 @@ import (
 	"encoding/json"
 	"time"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/service/secretsmanager"
+	aws1 "github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/endpoints"
+	"github.com/aws/aws-sdk-go/aws/session"
+	smanager "github.com/aws/aws-sdk-go/service/secretsmanager"
+	"github.com/aws/aws-secretsmanager-caching-go/secretcache"
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 
@@ -21,18 +29,106 @@ const (
 	defaultFilePerms  = 0o644
 )
 
-func InitCosignAndNotationDirs(rootDir string) error {
-	err := InitCosignDir(rootDir)
-	if err != nil {
-		return err
-	}
-
-	err = InitNotationDir(rootDir)
-
-	return err
+type SigStore struct {
+	CosignStorage   publicKeyStorage
+	NotationStorage certificateStorage
 }
 
-func VerifySignature(
+func NewLocalSigStore(rootDir string) (*SigStore, error) {
+	publicKeyStorage, err := NewPublicKeyLocalStorage(rootDir)
+	if err != nil {
+		return nil, err
+	}
+
+	certStorage, err := NewCertificateLocalStorage(rootDir)
+	if err != nil {
+		return nil, err
+	}
+
+	return &SigStore{
+		CosignStorage:   publicKeyStorage,
+		NotationStorage: certStorage,
+	}, nil
+}
+
+func NewCloudSigStore(region, endpoint string) (*SigStore, error) {
+	secretsManagerClient, err := GetSecretsManagerClient(region, endpoint)
+	if err != nil {
+		return nil, err
+	}
+
+	secretsManagerCache, err := GetSecretsManagerRetrieval(region, endpoint)
+	if err != nil {
+		return nil, err
+	}
+
+	publicKeyStorage := NewPublicKeyCloudStorage(secretsManagerClient, secretsManagerCache)
+
+	certStorage, err := NewCertificateCloudStorage(secretsManagerClient, secretsManagerCache)
+	if err != nil {
+		return nil, err
+	}
+
+	return &SigStore{
+		CosignStorage:   publicKeyStorage,
+		NotationStorage: certStorage,
+	}, nil
+}
+
+func GetSecretsManagerClient(region, endpoint string) (*secretsmanager.Client, error) {
+	customResolver := aws.EndpointResolverWithOptionsFunc(
+		func(service, region string, options ...interface{}) (aws.Endpoint, error) {
+			return aws.Endpoint{
+				PartitionID:   "aws",
+				URL:           endpoint,
+				SigningRegion: region,
+			}, nil
+		})
+
+	// Using the SDK's default configuration, loading additional config
+	// and credentials values from the environment variables, shared
+	// credentials, and shared configuration files
+	cfg, err := config.LoadDefaultConfig(context.Background(), config.WithRegion(region),
+		config.WithEndpointResolverWithOptions(customResolver))
+	if err != nil {
+		return nil, err
+	}
+
+	return secretsmanager.NewFromConfig(cfg), nil
+}
+
+func GetSecretsManagerRetrieval(region, endpoint string) (*secretcache.Cache, error) {
+	endpointFunc := func(service, region string, optFns ...func(*endpoints.Options)) (endpoints.ResolvedEndpoint, error) {
+		return endpoints.ResolvedEndpoint{
+			PartitionID:   "aws",
+			URL:           endpoint,
+			SigningRegion: region,
+		}, nil
+	}
+	customResolver := endpoints.ResolverFunc(endpointFunc)
+
+	cfg := aws1.NewConfig().WithRegion(region).WithEndpointResolver(customResolver)
+
+	newSession := session.Must(session.NewSession())
+
+	client := smanager.New(newSession, cfg)
+	// Create a custom CacheConfig struct
+	config := secretcache.CacheConfig{
+		MaxCacheSize: secretcache.DefaultMaxCacheSize,
+		VersionStage: secretcache.DefaultVersionStage,
+		CacheItemTTL: secretcache.DefaultCacheItemTTL,
+	}
+
+	// Instantiate the cache
+	cache, _ := secretcache.New(
+		func(c *secretcache.Cache) { c.CacheConfig = config },
+		func(c *secretcache.Cache) { c.Client = client },
+	)
+
+	return cache, nil
+}
+
+func (sigStore *SigStore) VerifySignature(
 	signatureType string, rawSignature []byte, sigKey string, manifestDigest godigest.Digest, manifestContent []byte,
 	repo string,
 ) (string, time.Time, bool, error) {
@@ -53,11 +149,11 @@ func VerifySignature(
 
 	switch signatureType {
 	case CosignSignature:
-		author, isValid, err := VerifyCosignSignature(repo, manifestDigest, sigKey, rawSignature)
+		author, isValid, err := VerifyCosignSignature(sigStore.CosignStorage, repo, manifestDigest, sigKey, rawSignature)
 
 		return author, time.Time{}, isValid, err
 	case NotationSignature:
-		return VerifyNotationSignature(desc, manifestDigest.String(), rawSignature, sigKey)
+		return VerifyNotationSignature(sigStore.NotationStorage, desc, manifestDigest.String(), rawSignature, sigKey)
 	default:
 		return "", time.Time{}, false, zerr.ErrInvalidSignatureType
 	}

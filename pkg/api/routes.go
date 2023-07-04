@@ -193,7 +193,7 @@ func (rh *RouteHandler) SetupRoutes() {
 	// Preconditions for enabling the actual extension routes are part of extensions themselves
 	ext.SetupSearchRoutes(rh.c.Config, prefixedRouter, rh.c.StoreController, rh.c.MetaDB, rh.c.CveInfo,
 		rh.c.Log)
-	ext.SetupImageTrustRoutes(rh.c.Config, prefixedRouter, rh.c.Log)
+	ext.SetupImageTrustRoutes(rh.c.Config, rh.c.MetaDB, prefixedRouter, rh.c.Log)
 	ext.SetupMgmtRoutes(rh.c.Config, prefixedRouter, rh.c.Log)
 	ext.SetupUserPreferencesRoutes(rh.c.Config, prefixedRouter, rh.c.MetaDB, rh.c.Log)
 	// last should always be UI because it will setup a http.FileServer and paths will be resolved by this FileServer.

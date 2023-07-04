@@ -9,7 +9,6 @@ import (
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/meta/boltdb"
 	mdynamodb "zotregistry.io/zot/pkg/meta/dynamodb"
-	"zotregistry.io/zot/pkg/meta/signatures"
 	mTypes "zotregistry.io/zot/pkg/meta/types"
 )
 
@@ -29,11 +28,6 @@ func New(storageConfig config.StorageConfig, log log.Logger) (mTypes.MetaDB, err
 	params.RootDir = storageConfig.RootDirectory
 
 	driver, err := boltdb.GetBoltDriver(params)
-	if err != nil {
-		return nil, err
-	}
-
-	err = signatures.InitCosignAndNotationDirs(params.RootDir)
 	if err != nil {
 		return nil, err
 	}
