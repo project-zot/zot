@@ -50,7 +50,7 @@ require (
 
 require (
 	github.com/aquasecurity/trivy v0.42.1
-	github.com/aws/aws-sdk-go-v2/service/dynamodb v1.19.11
+	github.com/aws/aws-sdk-go-v2/service/dynamodb v1.20.0
 	github.com/containers/image/v5 v5.25.0
 	github.com/gobwas/glob v0.2.3
 	github.com/notaryproject/notation-go v1.0.0-rc.6
