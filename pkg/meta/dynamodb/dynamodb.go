@@ -18,7 +18,6 @@ import (
 	zerr "zotregistry.io/zot/errors"
 	"zotregistry.io/zot/pkg/api/constants"
 	zcommon "zotregistry.io/zot/pkg/common"
-	"zotregistry.io/zot/pkg/extensions/imagetrust"
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/meta/common"
 	mTypes "zotregistry.io/zot/pkg/meta/types"
@@ -37,10 +36,13 @@ type DynamoDB struct {
 	UserDataTablename     string
 	VersionTablename      string
 	Patches               []func(client *dynamodb.Client, tableNames map[string]string) error
+	imgTrustStore         mTypes.ImageTrustStore
 	Log                   log.Logger
 }
 
-func New(client *dynamodb.Client, params DBDriverParameters, log log.Logger) (*DynamoDB, error) {
+func New(
+	client *dynamodb.Client, params DBDriverParameters, log log.Logger,
+) (*DynamoDB, error) {
 	dynamoWrapper := DynamoDB{
 		Client:                client,
 		RepoMetaTablename:     params.RepoMetaTablename,
@@ -50,6 +52,7 @@ func New(client *dynamodb.Client, params DBDriverParameters, log log.Logger) (*D
 		UserDataTablename:     params.UserDataTablename,
 		APIKeyTablename:       params.APIKeyTablename,
 		Patches:               version.GetDynamoDBPatches(),
+		imgTrustStore:         nil,
 		Log:                   log,
 	}
 
@@ -85,6 +88,14 @@ func New(client *dynamodb.Client, params DBDriverParameters, log log.Logger) (*D
 
 	// Using the Config value, create the DynamoDB client
 	return &dynamoWrapper, nil
+}
+
+func (dwr *DynamoDB) ImageTrustStore() mTypes.ImageTrustStore {
+	return dwr.imgTrustStore
+}
+
+func (dwr *DynamoDB) SetImageTrustStore(imgTrustStore mTypes.ImageTrustStore) {
+	dwr.imgTrustStore = imgTrustStore
 }
 
 func (dwr *DynamoDB) SetManifestData(manifestDigest godigest.Digest, manifestData mTypes.ManifestData) error {
@@ -625,6 +636,12 @@ func (dwr *DynamoDB) IncrementImageDownloads(repo string, reference string) erro
 }
 
 func (dwr *DynamoDB) UpdateSignaturesValidity(repo string, manifestDigest godigest.Digest) error {
+	imgTrustStore := dwr.ImageTrustStore()
+
+	if imgTrustStore == nil {
+		return nil
+	}
+
 	// get ManifestData of signed manifest
 	var blob []byte
 
@@ -659,7 +676,7 @@ func (dwr *DynamoDB) UpdateSignaturesValidity(repo string, manifestDigest godige
 			layersInfo := []mTypes.LayerInfo{}
 
 			for _, layerInfo := range sigInfo.LayersInfo {
-				author, date, isTrusted, _ := imagetrust.VerifySignature(sigType, layerInfo.LayerContent, layerInfo.SignatureKey,
+				author, date, isTrusted, _ := imgTrustStore.VerifySignature(sigType, layerInfo.LayerContent, layerInfo.SignatureKey,
 					manifestDigest, blob, repo)
 
 				if isTrusted {

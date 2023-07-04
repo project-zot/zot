@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	"path"
 	"testing"
 
 	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
@@ -31,7 +32,7 @@ func TestVersioningBoltDB(t *testing.T) {
 		log := log.NewLogger("debug", "")
 
 		boltdbWrapper, err := boltdb.New(boltDriver, log)
-		defer os.Remove("repo.db")
+		defer os.Remove(path.Join(boltDBParams.RootDir, "repo.db"))
 		So(boltdbWrapper, ShouldNotBeNil)
 		So(err, ShouldBeNil)
 

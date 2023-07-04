@@ -17,6 +17,7 @@ import (
 	"github.com/rs/zerolog"
 	. "github.com/smartystreets/goconvey/convey"
 
+	"zotregistry.io/zot/pkg/extensions/imagetrust"
 	"zotregistry.io/zot/pkg/log"
 	mdynamodb "zotregistry.io/zot/pkg/meta/dynamodb"
 	mTypes "zotregistry.io/zot/pkg/meta/types"
@@ -164,8 +165,13 @@ func TestWrapperErrors(t *testing.T) {
 		client, err := mdynamodb.GetDynamoClient(params) //nolint:contextcheck
 		So(err, ShouldBeNil)
 
+		imgTrustStore, err := imagetrust.NewAWSImageTrustStore(params.Region, params.Endpoint)
+		So(err, ShouldBeNil)
+
 		dynamoWrapper, err := mdynamodb.New(client, params, log) //nolint:contextcheck
 		So(err, ShouldBeNil)
+
+		dynamoWrapper.SetImageTrustStore(imgTrustStore)
 
 		So(dynamoWrapper.ResetManifestDataTable(), ShouldBeNil) //nolint:contextcheck
 		So(dynamoWrapper.ResetRepoMetaTable(), ShouldBeNil)     //nolint:contextcheck
@@ -697,6 +703,9 @@ func TestWrapperErrors(t *testing.T) {
 
 			err = dynamoWrapper.UpdateSignaturesValidity("repo", "dig")
 			So(err, ShouldNotBeNil)
+
+			err = dynamoWrapper.UpdateSignaturesValidity("repo", digest.FromString("dig"))
+			So(err, ShouldBeNil)
 		})
 
 		Convey("UpdateSignaturesValidity GetRepoMeta error", func() {

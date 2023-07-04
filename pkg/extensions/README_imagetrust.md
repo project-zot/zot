@@ -38,24 +38,23 @@ curl --data-binary @file.pub -X POST "http://localhost:8080/v2/_zot/ext/cosign
 ```
 
 As a result of this request, the uploaded file will be stored in `_cosign` directory
-under the rootDir specified in the zot config.
+under the rootDir specified in the zot config or in Secrets Manager.
 
 ### Uploading a Notation certificate
 
 Notation certificates are used to sign images with the `notation` tool.
 The user needs to specify the type of the truststore through the `truststoreType`
-query parameter and its name through the `truststoreName` parameter.
-`truststoreType` defaults to `ca`, while `truststoreName` is a mandatory parameter.
+query parameter.
+`truststoreType` defaults to `ca`.
 
 ***Example of request***
 
 ```bash
-curl --data-binary @certificate.crt -X POST "http://localhost:8080/v2/_zot/ext/notation?truststoreType=ca&truststoreName=upload-cert"
+curl --data-binary @certificate.crt -X POST "http://localhost:8080/v2/_zot/ext/notation?truststoreType=ca"
 ```
 
-As a result of this request, the uploaded file will be stored in `_notation/truststore/x509/{truststoreType}/{truststoreName}`
-directory under the rootDir specified in the zot config.
-The `truststores` field found in `_notation/trustpolicy.json` file will be updated automatically as well.
+As a result of this request, the uploaded file will be stored in `_notation/truststore/x509/{truststoreType}/default`
+directory under the rootDir specified in the zot config or in Secrets Manager.
 
 ## Verification and results
 
@@ -118,7 +117,7 @@ The information above will be included in the ManifestSummary objects returned b
 
 ## Notes
 
-- The files (public keys and certificates) uploaded using the exposed routes will be stored in some specific directories called `_cosign` and `_notation` under `$rootDir`.
+- The files (public keys and certificates) uploaded using the exposed routes will be stored in some specific directories called `_cosign` and `_notation` under `$rootDir` in case of local filesystem or in Secrets Manager in case of cloud.
 
    - `_cosign` directory will contain the uploaded public keys
 
@@ -136,11 +135,11 @@ The information above will be included in the ManifestSummary objects returned b
         └── truststore
             └── x509
                 └── $truststoreType
-                    └── $truststoreName
+                    └── default
                         └── $certificate
         ```
 
-        where `trustpolicy.json` file has this default content which can not be modified by the user and which is updated each time a new certificate is added to a new truststore:
+        where `trustpolicy.json` file has this default content which can not be modified by the user:
 
         ```json
         {
@@ -152,7 +151,7 @@ The information above will be included in the ManifestSummary objects returned b
                     "signatureVerification": {
                         "level" : "strict" 
                     },
-                    "trustStores": [],
+                    "trustStores": ["ca:default","signingAuthority:default"],
                     "trustedIdentities": [
                         "*"
                     ]
