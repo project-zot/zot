@@ -2,15 +2,12 @@ package api
 
 import (
 	"context"
-	"fmt"
 	"net/http"
-	"strings"
 
 	glob "github.com/bmatcuk/doublestar/v4"
 	"github.com/gorilla/mux"
 
 	"zotregistry.io/zot/pkg/api/config"
-	"zotregistry.io/zot/pkg/api/constants"
 	"zotregistry.io/zot/pkg/common"
 	"zotregistry.io/zot/pkg/log"
 	localCtx "zotregistry.io/zot/pkg/requestcontext"
@@ -220,12 +217,13 @@ func (ac *AccessController) isPermitted(userGroups []string, username, action st
 	return result
 }
 
-func AuthzHandler(ctlr *Controller) mux.MiddlewareFunc {
+func BaseAuthzHandler(ctlr *Controller) mux.MiddlewareFunc {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
-			vars := mux.Vars(request)
-			resource := vars["name"]
-			reference, ok := vars["reference"]
+			/* NOTE:
+			since we only do READ actions in extensions, this middleware is enough for them because
+			it populates the context with user relevant data to be processed by each individual extension
+			*/
 
 			if request.Method == http.MethodOptions {
 				next.ServeHTTP(response, request)
@@ -286,16 +284,40 @@ func AuthzHandler(ctlr *Controller) mux.MiddlewareFunc {
 
 			ctx := acCtrlr.getContext(acCtx, request)
 
-			/* Notes:
-			 	- since we only do READ actions in extensions, we can bypass authz for them
-				only need to know the username, whether the user is an admin, or what repos he can read.
-				let each extension to apply	authorization on them using localCtx.AccessControlContext{}
-			*/
-			if isExtensionURI(request.RequestURI) {
-				next.ServeHTTP(response, request.WithContext(ctx)) //nolint:contextcheck
+			next.ServeHTTP(response, request.WithContext(ctx)) //nolint:contextcheck
+		})
+	}
+}
+
+func DistSpecAuthzHandler(ctlr *Controller) mux.MiddlewareFunc {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+			if request.Method == http.MethodOptions {
+				next.ServeHTTP(response, request)
 
 				return
 			}
+
+			vars := mux.Vars(request)
+			resource := vars["name"]
+			reference, ok := vars["reference"]
+
+			acCtrlr := NewAccessController(ctlr.Config)
+
+			var identity string
+
+			var err error
+
+			// get acCtx built in authn and previous authz middlewares
+			acCtx, err := localCtx.GetAccessControlContext(request.Context())
+			if err != nil { // should never happen
+				authFail(response, ctlr.Config.HTTP.Realm, ctlr.Config.HTTP.Auth.FailDelay)
+
+				return
+			}
+
+			// get username from context made in authn.go
+			identity = acCtx.Username
 
 			var action string
 			if request.Method == http.MethodGet || request.Method == http.MethodHead {
@@ -320,17 +342,12 @@ func AuthzHandler(ctlr *Controller) mux.MiddlewareFunc {
 				action = Delete
 			}
 
-			can := acCtrlr.can(ctx, identity, action, resource) //nolint:contextcheck
+			can := acCtrlr.can(request.Context(), identity, action, resource) //nolint:contextcheck
 			if !can {
 				common.AuthzFail(response, ctlr.Config.HTTP.Realm, ctlr.Config.HTTP.Auth.FailDelay)
 			} else {
-				next.ServeHTTP(response, request.WithContext(ctx)) //nolint:contextcheck
+				next.ServeHTTP(response, request) //nolint:contextcheck
 			}
 		})
 	}
-}
-
-func isExtensionURI(requestURI string) bool {
-	return strings.Contains(requestURI, constants.ExtPrefix) ||
-		requestURI == fmt.Sprintf("%s%s", constants.RoutePrefix, constants.ExtCatalogPrefix)
 }
