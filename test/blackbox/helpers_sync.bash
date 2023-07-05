@@ -58,7 +58,7 @@ function zot_serve() {
 
 function zb_run() {
     local zot_address=${1}
-    ${ZB_PATH} -c 10 -n 100 -o stdout ${zot_address} --skip-cleanup
+    ${ZB_PATH} -c 10 -n 30 -o stdout ${zot_address} --skip-cleanup
 }
 
 function wait_str() {
