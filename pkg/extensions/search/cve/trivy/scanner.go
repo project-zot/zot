@@ -4,9 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"path"
 	"sync"
 
+	"github.com/aquasecurity/trivy-db/pkg/metadata"
 	dbTypes "github.com/aquasecurity/trivy-db/pkg/types"
 	"github.com/aquasecurity/trivy/pkg/commands/artifact"
 	"github.com/aquasecurity/trivy/pkg/commands/operation"
@@ -154,6 +156,11 @@ func (scanner Scanner) getTrivyOptions(image string) flag.Options {
 
 func (scanner Scanner) runTrivy(opts flag.Options) (types.Report, error) {
 	ctx := context.Background()
+
+	err := scanner.checkDBPresence()
+	if err != nil {
+		return types.Report{}, err
+	}
 
 	runner, err := artifact.NewRunner(ctx, opts)
 	if err != nil {
@@ -333,7 +340,7 @@ func (scanner Scanner) ScanImage(image string) (map[string]cvemodel.CVE, error) 
 	return cveidMap, nil
 }
 
-// UpdateDb download the Trivy DB / Cache under the store root directory.
+// UpdateDB downloads the Trivy DB / Cache under the store root directory.
 func (scanner Scanner) UpdateDB() error {
 	// We need a lock as using multiple substores each with it's own DB
 	// can result in a DATARACE because some varibles in trivy-db are global
@@ -391,6 +398,34 @@ func (scanner Scanner) updateDB(dbDir string) error {
 	}
 
 	scanner.log.Debug().Str("dbDir", dbDir).Msg("Finished downloading Trivy DB to destination dir")
+
+	return nil
+}
+
+// checkDBPresence errors if the DB metadata files cannot be accessed.
+func (scanner Scanner) checkDBPresence() error {
+	result := true
+
+	if scanner.storeController.DefaultStore != nil {
+		dbDir := path.Join(scanner.storeController.DefaultStore.RootDir(), "_trivy")
+		if _, err := os.Stat(metadata.Path(dbDir)); err != nil {
+			result = false
+		}
+	}
+
+	if scanner.storeController.SubStore != nil {
+		for _, storage := range scanner.storeController.SubStore {
+			dbDir := path.Join(storage.RootDir(), "_trivy")
+
+			if _, err := os.Stat(metadata.Path(dbDir)); err != nil {
+				result = false
+			}
+		}
+	}
+
+	if !result {
+		return zerr.ErrCVEDBNotFound
+	}
 
 	return nil
 }

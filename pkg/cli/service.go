@@ -943,7 +943,7 @@ func isContextDone(ctx context.Context) bool {
 	}
 }
 
-// Query using JQL, the query string is passed as a parameter
+// Query using GQL, the query string is passed as a parameter
 // errors are returned in the stringResult channel, the unmarshalled payload is in resultPtr.
 func (service searchService) makeGraphQLQuery(ctx context.Context,
 	config searchConfig, username, password, query string,
