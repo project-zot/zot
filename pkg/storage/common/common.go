@@ -581,14 +581,14 @@ func GetReferrers(imgStore storageTypes.ImageStore, repo string, gdigest godiges
 
 	result := []ispec.Descriptor{}
 
-	for _, manifest := range index.Manifests {
-		if manifest.Digest == gdigest {
+	for _, descriptor := range index.Manifests {
+		if descriptor.Digest == gdigest {
 			continue
 		}
 
-		buf, err := imgStore.GetBlobContent(repo, manifest.Digest)
+		buf, err := imgStore.GetBlobContent(repo, descriptor.Digest)
 		if err != nil {
-			log.Error().Err(err).Str("blob", imgStore.BlobPath(repo, manifest.Digest)).Msg("failed to read manifest")
+			log.Error().Err(err).Str("blob", imgStore.BlobPath(repo, descriptor.Digest)).Msg("failed to read manifest")
 
 			if errors.Is(err, zerr.ErrBlobNotFound) {
 				return nilIndex, zerr.ErrManifestNotFound
@@ -597,31 +597,59 @@ func GetReferrers(imgStore storageTypes.ImageStore, repo string, gdigest godiges
 			return nilIndex, err
 		}
 
-		if manifest.MediaType == ispec.MediaTypeImageManifest {
-			var mfst ispec.Manifest
-			if err := json.Unmarshal(buf, &mfst); err != nil {
-				log.Error().Err(err).Str("manifest digest", manifest.Digest.String()).Msg("invalid JSON")
+		switch descriptor.MediaType {
+		case ispec.MediaTypeImageManifest:
+			var manifestContent ispec.Manifest
+
+			if err := json.Unmarshal(buf, &manifestContent); err != nil {
+				log.Error().Err(err).Str("manifest digest", descriptor.Digest.String()).Msg("invalid JSON")
 
 				return nilIndex, err
 			}
 
-			if mfst.Subject == nil || mfst.Subject.Digest != gdigest {
+			if manifestContent.Subject == nil || manifestContent.Subject.Digest != gdigest {
 				continue
 			}
 
 			// filter by artifact type
-			manifestArtifactType := zcommon.GetManifestArtifactType(mfst)
+			manifestArtifactType := zcommon.GetManifestArtifactType(manifestContent)
 
 			if len(artifactTypes) > 0 && !zcommon.Contains(artifactTypes, manifestArtifactType) {
 				continue
 			}
 
 			result = append(result, ispec.Descriptor{
-				MediaType:    manifest.MediaType,
+				MediaType:    descriptor.MediaType,
 				ArtifactType: manifestArtifactType,
-				Size:         manifest.Size,
-				Digest:       manifest.Digest,
-				Annotations:  mfst.Annotations,
+				Size:         descriptor.Size,
+				Digest:       descriptor.Digest,
+				Annotations:  manifestContent.Annotations,
+			})
+		case ispec.MediaTypeImageIndex:
+			var indexContent ispec.Index
+
+			if err := json.Unmarshal(buf, &indexContent); err != nil {
+				log.Error().Err(err).Str("manifest digest", descriptor.Digest.String()).Msg("invalid JSON")
+
+				return nilIndex, err
+			}
+
+			if indexContent.Subject == nil || indexContent.Subject.Digest != gdigest {
+				continue
+			}
+
+			indexArtifactType := zcommon.GetIndexArtifactType(indexContent)
+
+			if len(artifactTypes) > 0 && !zcommon.Contains(artifactTypes, indexArtifactType) {
+				continue
+			}
+
+			result = append(result, ispec.Descriptor{
+				MediaType:    descriptor.MediaType,
+				ArtifactType: indexArtifactType,
+				Size:         descriptor.Size,
+				Digest:       descriptor.Digest,
+				Annotations:  indexContent.Annotations,
 			})
 		}
 	}

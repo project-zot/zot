@@ -58,6 +58,10 @@ func GetManifestArtifactType(manifestContent ispec.Manifest) string {
 	return manifestContent.Config.MediaType
 }
 
+func GetIndexArtifactType(indexContent ispec.Index) string {
+	return indexContent.ArtifactType
+}
+
 // GetImageLastUpdated This method will return last updated timestamp.
 // The Created timestamp is used, but if it is missing, look at the
 // history field and, if provided, return the timestamp of last entry in history.
