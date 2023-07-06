@@ -418,6 +418,19 @@ func (is *ObjectStorage) PutImageManifest(repo, reference, mediaType string, //n
 		}
 
 		artifactType = zcommon.GetManifestArtifactType(manifest)
+	} else if mediaType == ispec.MediaTypeImageIndex {
+		var index ispec.Index
+
+		err := json.Unmarshal(body, &index)
+		if err != nil {
+			return "", "", err
+		}
+
+		if index.Subject != nil {
+			subjectDigest = index.Subject.Digest
+		}
+
+		artifactType = zcommon.GetIndexArtifactType(index)
 	}
 
 	updateIndex, oldDgst, err := common.CheckIfIndexNeedsUpdate(&index, &desc, is.log)
