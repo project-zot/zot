@@ -34,8 +34,15 @@ jobs:
           RUNNER_TRACKING_ID="" && ./bin/zot-linux-amd64 serve examples/config-conformance.json &
           IP=`hostname -I | awk '{print $1}'`
           echo "SERVER_URL=http://${IP}:8080" >> $GITHUB_ENV
-    - name: Run OCI Distribution Spec conformance tests
-      uses: opencontainers/distribution-spec@main
+    - name: Checkout OCI distribution-spec at HEAD
+      uses: actions/checkout@v3
+      with:
+        path: distribution-spec
+        # TODO: change to upstream once the foloowing PR is merged:
+        # https://github.com/opencontainers/distribution-spec/pull/436
+        repository: sudo-bmitch/distribution-spec
+        ref: pr-conformance-index-subject
+    - name: Build and run OCI distribution-spec conformance from HEAD
       env:
         OCI_ROOT_URL: ${{ env.SERVER_URL }}
         OCI_NAMESPACE: oci-conformance/distribution-test
@@ -43,8 +50,13 @@ jobs:
         OCI_TEST_PUSH: 1
         OCI_TEST_CONTENT_DISCOVERY: 1
         OCI_TEST_CONTENT_MANAGEMENT: 1
-        OCI_REFERRERS: 1
         OCI_HIDE_SKIPPED_WORKFLOWS: 1
+      run: |
+        set -x
+        (cd distribution-spec/ && make conformance-binary)
+        mv distribution-spec/output/conformance.test .
+        rm -rf distribution-spec/
+        ./conformance.test
     - run: mkdir -p .out/ && mv {report.html,junit.xml} .out/
       if: always()
       #run: docker run --rm -v $(pwd)/results:/results -w /results -e OCI_ROOT_URL=${{ env.OCI_ROOT_URL }} -e OCI_NAMESPACE="anuvu/zot" -e OCI_TEST_PULL=1 -e OCI_TEST_PUSH=1 -e OCI_TEST_CONTENT_DISCOVERY=1 -e OCI_TEST_CONTENT_MANAGEMENT=1 -e OCI_HIDE_SKIPPED_WORKFLOWS=0 -e OCI_DEBUG="true" ghcr.io/opencontainers/distribution-spec/conformance:db4cc68
