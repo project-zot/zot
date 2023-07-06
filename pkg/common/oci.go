@@ -4,6 +4,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 
 	zerr "zotregistry.io/zot/errors"
@@ -101,11 +102,30 @@ func GetRepoRefference(repo string) (string, string, bool, error) {
 		repoName, tag, found := strings.Cut(repo, ":")
 
 		if !found {
-			return "", "", false, zerr.ErrInvalidRepoTagFormat
+			return "", "", false, zerr.ErrInvalidRepoRefFormat
 		}
 
 		return repoName, tag, true, nil
 	}
 
 	return repoName, digest, false, nil
+}
+
+// GetFullImageName returns the formated string for the given repo/tag or repo/digest.
+func GetFullImageName(repo, ref string) string {
+	if IsTag(ref) {
+		return repo + ":" + ref
+	}
+
+	return repo + "@" + ref
+}
+
+func IsDigest(ref string) bool {
+	_, err := digest.Parse(ref)
+
+	return err == nil
+}
+
+func IsTag(ref string) bool {
+	return !IsDigest(ref)
 }

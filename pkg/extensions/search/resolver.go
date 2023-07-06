@@ -125,10 +125,10 @@ func getImageListForDigest(ctx context.Context, digest string, repoDB repodb.Rep
 	}
 
 	pageInput := repodb.PageInput{
-		Limit:  safeDerefferencing(requestedPage.Limit, 0),
-		Offset: safeDerefferencing(requestedPage.Offset, 0),
+		Limit:  safeDereferencing(requestedPage.Limit, 0),
+		Offset: safeDereferencing(requestedPage.Offset, 0),
 		SortBy: repodb.SortCriteria(
-			safeDerefferencing(requestedPage.SortBy, gql_generated.SortCriteriaRelevance),
+			safeDereferencing(requestedPage.SortBy, gql_generated.SortCriteriaRelevance),
 		),
 	}
 
@@ -294,22 +294,18 @@ func getCVEListForImage(
 		requestedPage = &gql_generated.PageInput{}
 	}
 
-	pageInput := cveinfo.PageInput{
-		Limit:  safeDerefferencing(requestedPage.Limit, 0),
-		Offset: safeDerefferencing(requestedPage.Offset, 0),
-		SortBy: cveinfo.SortCriteria(
-			safeDerefferencing(requestedPage.SortBy, gql_generated.SortCriteriaSeverity),
+	pageInput := cvemodel.PageInput{
+		Limit:  safeDereferencing(requestedPage.Limit, 0),
+		Offset: safeDereferencing(requestedPage.Offset, 0),
+		SortBy: cvemodel.SortCriteria(
+			safeDereferencing(requestedPage.SortBy, gql_generated.SortCriteriaSeverity),
 		),
 	}
 
-	repo, ref, isTag := zcommon.GetImageDirAndReference(image)
+	repo, ref, _ := zcommon.GetImageDirAndReference(image)
 
 	if ref == "" {
 		return &gql_generated.CVEResultForImage{}, gqlerror.Errorf("no reference provided")
-	}
-
-	if !isTag {
-		return &gql_generated.CVEResultForImage{}, gqlerror.Errorf("reference by digest not supported")
 	}
 
 	cveList, pageInfo, err := cveInfo.GetCVEListForImage(repo, ref, searchedCVE, pageInput)
@@ -365,8 +361,17 @@ func FilterByTagInfo(tagsInfo []cvemodel.TagInfo) repodb.FilterFunc {
 		manifestDigest := godigest.FromBytes(manifestMeta.ManifestBlob).String()
 
 		for _, tagInfo := range tagsInfo {
-			if tagInfo.Descriptor.Digest.String() == manifestDigest {
-				return true
+			switch tagInfo.Descriptor.MediaType {
+			case ispec.MediaTypeImageManifest:
+				if tagInfo.Descriptor.Digest.String() == manifestDigest {
+					return true
+				}
+			case ispec.MediaTypeImageIndex:
+				for _, manifestDesc := range tagInfo.Manifests {
+					if manifestDesc.Digest.String() == manifestDigest {
+						return true
+					}
+				}
 			}
 		}
 
@@ -423,10 +428,10 @@ func getImageListForCVE(
 
 	// Actual page requested by user
 	pageInput := repodb.PageInput{
-		Limit:  safeDerefferencing(requestedPage.Limit, 0),
-		Offset: safeDerefferencing(requestedPage.Offset, 0),
+		Limit:  safeDereferencing(requestedPage.Limit, 0),
+		Offset: safeDereferencing(requestedPage.Offset, 0),
 		SortBy: repodb.SortCriteria(
-			safeDerefferencing(requestedPage.SortBy, gql_generated.SortCriteriaUpdateTime),
+			safeDereferencing(requestedPage.SortBy, gql_generated.SortCriteriaUpdateTime),
 		),
 	}
 
@@ -485,10 +490,10 @@ func getImageListWithCVEFixed(
 
 	// Actual page requested by user
 	pageInput := repodb.PageInput{
-		Limit:  safeDerefferencing(requestedPage.Limit, 0),
-		Offset: safeDerefferencing(requestedPage.Offset, 0),
+		Limit:  safeDereferencing(requestedPage.Limit, 0),
+		Offset: safeDereferencing(requestedPage.Offset, 0),
 		SortBy: repodb.SortCriteria(
-			safeDerefferencing(requestedPage.SortBy, gql_generated.SortCriteriaUpdateTime),
+			safeDereferencing(requestedPage.SortBy, gql_generated.SortCriteriaUpdateTime),
 		),
 	}
 
@@ -535,10 +540,10 @@ func repoListWithNewestImage(
 	}
 
 	pageInput := repodb.PageInput{
-		Limit:  safeDerefferencing(requestedPage.Limit, 0),
-		Offset: safeDerefferencing(requestedPage.Offset, 0),
+		Limit:  safeDereferencing(requestedPage.Limit, 0),
+		Offset: safeDereferencing(requestedPage.Offset, 0),
 		SortBy: repodb.SortCriteria(
-			safeDerefferencing(requestedPage.SortBy, gql_generated.SortCriteriaUpdateTime),
+			safeDereferencing(requestedPage.SortBy, gql_generated.SortCriteriaUpdateTime),
 		),
 	}
 
@@ -620,10 +625,10 @@ func getFilteredPaginatedRepos(
 	}
 
 	pageInput := repodb.PageInput{
-		Limit:  safeDerefferencing(requestedPage.Limit, 0),
-		Offset: safeDerefferencing(requestedPage.Offset, 0),
+		Limit:  safeDereferencing(requestedPage.Limit, 0),
+		Offset: safeDereferencing(requestedPage.Offset, 0),
 		SortBy: repodb.SortCriteria(
-			safeDerefferencing(requestedPage.SortBy, gql_generated.SortCriteriaUpdateTime),
+			safeDereferencing(requestedPage.SortBy, gql_generated.SortCriteriaUpdateTime),
 		),
 	}
 
@@ -678,10 +683,10 @@ func globalSearch(ctx context.Context, query string, repoDB repodb.RepoDB, filte
 		}
 
 		pageInput := repodb.PageInput{
-			Limit:  safeDerefferencing(requestedPage.Limit, 0),
-			Offset: safeDerefferencing(requestedPage.Offset, 0),
+			Limit:  safeDereferencing(requestedPage.Limit, 0),
+			Offset: safeDereferencing(requestedPage.Offset, 0),
 			SortBy: repodb.SortCriteria(
-				safeDerefferencing(requestedPage.SortBy, gql_generated.SortCriteriaRelevance),
+				safeDereferencing(requestedPage.SortBy, gql_generated.SortCriteriaRelevance),
 			),
 		}
 
@@ -709,10 +714,10 @@ func globalSearch(ctx context.Context, query string, repoDB repodb.RepoDB, filte
 		}
 
 		pageInput := repodb.PageInput{
-			Limit:  safeDerefferencing(requestedPage.Limit, 0),
-			Offset: safeDerefferencing(requestedPage.Offset, 0),
+			Limit:  safeDereferencing(requestedPage.Limit, 0),
+			Offset: safeDereferencing(requestedPage.Offset, 0),
 			SortBy: repodb.SortCriteria(
-				safeDerefferencing(requestedPage.SortBy, gql_generated.SortCriteriaRelevance),
+				safeDereferencing(requestedPage.SortBy, gql_generated.SortCriteriaRelevance),
 			),
 		}
 
@@ -753,10 +758,10 @@ func derivedImageList(ctx context.Context, image string, digest *string, repoDB 
 	}
 
 	pageInput := repodb.PageInput{
-		Limit:  safeDerefferencing(requestedPage.Limit, 0),
-		Offset: safeDerefferencing(requestedPage.Offset, 0),
+		Limit:  safeDereferencing(requestedPage.Limit, 0),
+		Offset: safeDereferencing(requestedPage.Offset, 0),
 		SortBy: repodb.SortCriteria(
-			safeDerefferencing(requestedPage.SortBy, gql_generated.SortCriteriaUpdateTime),
+			safeDereferencing(requestedPage.SortBy, gql_generated.SortCriteriaUpdateTime),
 		),
 	}
 
@@ -866,10 +871,10 @@ func baseImageList(ctx context.Context, image string, digest *string, repoDB rep
 	}
 
 	pageInput := repodb.PageInput{
-		Limit:  safeDerefferencing(requestedPage.Limit, 0),
-		Offset: safeDerefferencing(requestedPage.Offset, 0),
+		Limit:  safeDereferencing(requestedPage.Limit, 0),
+		Offset: safeDereferencing(requestedPage.Offset, 0),
 		SortBy: repodb.SortCriteria(
-			safeDerefferencing(requestedPage.SortBy, gql_generated.SortCriteriaUpdateTime),
+			safeDereferencing(requestedPage.SortBy, gql_generated.SortCriteriaUpdateTime),
 		),
 	}
 
@@ -1117,7 +1122,7 @@ func expandedRepoInfo(ctx context.Context, repo string, repoDB repodb.RepoDB, cv
 				continue
 			}
 
-			manifestMeta, err := repoDB.GetManifestMeta(repo, godigest.Digest(digest))
+			manifestData, err := repoDB.GetManifestData(godigest.Digest(digest))
 			if err != nil {
 				graphql.AddError(ctx, fmt.Errorf("resolver: failed to get manifest meta for image %s:%s with manifest digest %s %w",
 					repo, tag, digest, err))
@@ -1125,7 +1130,10 @@ func expandedRepoInfo(ctx context.Context, repo string, repoDB repodb.RepoDB, cv
 				continue
 			}
 
-			manifestMetaMap[digest] = manifestMeta
+			manifestMetaMap[digest] = repodb.ManifestMetadata{
+				ManifestBlob: manifestData.ManifestBlob,
+				ConfigBlob:   manifestData.ConfigBlob,
+			}
 		case ispec.MediaTypeImageIndex:
 			digest := descriptor.Digest
 
@@ -1154,7 +1162,7 @@ func expandedRepoInfo(ctx context.Context, repo string, repoDB repodb.RepoDB, cv
 			var errorOccured bool
 
 			for _, descriptor := range indexContent.Manifests {
-				manifestMeta, err := repoDB.GetManifestMeta(repo, descriptor.Digest)
+				manifestData, err := repoDB.GetManifestData(descriptor.Digest)
 				if err != nil {
 					graphql.AddError(ctx,
 						fmt.Errorf("resolver: failed to get manifest meta with digest '%s' for multiarch image %s:%s %w",
@@ -1166,7 +1174,10 @@ func expandedRepoInfo(ctx context.Context, repo string, repoDB repodb.RepoDB, cv
 					break
 				}
 
-				manifestMetaMap[descriptor.Digest.String()] = manifestMeta
+				manifestMetaMap[descriptor.Digest.String()] = repodb.ManifestMetadata{
+					ManifestBlob: manifestData.ManifestBlob,
+					ConfigBlob:   manifestData.ConfigBlob,
+				}
 			}
 
 			if errorOccured {
@@ -1210,7 +1221,7 @@ func (p timeSlice) Swap(i, j int) {
 	p[i], p[j] = p[j], p[i]
 }
 
-func safeDerefferencing[T any](pointer *T, defaultVal T) T {
+func safeDereferencing[T any](pointer *T, defaultVal T) T {
 	if pointer != nil {
 		return *pointer
 	}
@@ -1236,10 +1247,10 @@ func getImageList(ctx context.Context, repo string, repoDB repodb.RepoDB, cveInf
 	}
 
 	pageInput := repodb.PageInput{
-		Limit:  safeDerefferencing(requestedPage.Limit, 0),
-		Offset: safeDerefferencing(requestedPage.Offset, 0),
+		Limit:  safeDereferencing(requestedPage.Limit, 0),
+		Offset: safeDereferencing(requestedPage.Offset, 0),
 		SortBy: repodb.SortCriteria(
-			safeDerefferencing(requestedPage.SortBy, gql_generated.SortCriteriaRelevance),
+			safeDereferencing(requestedPage.SortBy, gql_generated.SortCriteriaRelevance),
 		),
 	}
 

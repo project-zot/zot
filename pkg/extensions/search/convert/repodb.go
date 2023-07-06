@@ -103,7 +103,8 @@ func RepoMeta2RepoSummary(ctx context.Context, repoMeta repodb.RepoMetadata,
 	// We only scan the latest image on the repo for performance reasons
 	// Check if vulnerability scanning is disabled
 	if cveInfo != nil && lastUpdatedImageSummary != nil && !skip.Vulnerabilities {
-		imageCveSummary, err := cveInfo.GetCVESummaryForImage(repoMeta.Name, *lastUpdatedImageSummary.Tag)
+		imageCveSummary, err := cveInfo.GetCVESummaryForImageMedia(repoMeta.Name, *lastUpdatedImageSummary.Digest,
+			*lastUpdatedImageSummary.MediaType)
 		if err != nil {
 			// Log the error, but we should still include the image in results
 			graphql.AddError(
@@ -227,10 +228,10 @@ func ImageIndex2ImageSummary(ctx context.Context, repo, tag string, indexDigest 
 		}
 	}
 
-	imageCveSummary := cveinfo.ImageCVESummary{}
+	imageCveSummary := cvemodel.ImageCVESummary{}
 
 	if cveInfo != nil && !skipCVE {
-		imageCveSummary, err = cveInfo.GetCVESummaryForImage(repo, tag)
+		imageCveSummary, err = cveInfo.GetCVESummaryForImageMedia(repo, indexDigestStr, ispec.MediaTypeImageIndex)
 
 		if err != nil {
 			// Log the error, but we should still include the manifest in results
@@ -345,10 +346,10 @@ func ImageManifest2ImageSummary(ctx context.Context, repo, tag string, digest go
 			"manifest digest: %s, error: %s", tag, repo, manifestDigest, err.Error()))
 	}
 
-	imageCveSummary := cveinfo.ImageCVESummary{}
+	imageCveSummary := cvemodel.ImageCVESummary{}
 
 	if cveInfo != nil && !skipCVE {
-		imageCveSummary, err = cveInfo.GetCVESummaryForImage(repo, tag)
+		imageCveSummary, err = cveInfo.GetCVESummaryForImageMedia(repo, manifestDigest, ispec.MediaTypeImageManifest)
 
 		if err != nil {
 			// Log the error, but we should still include the manifest in results
@@ -500,10 +501,10 @@ func ImageManifest2ManifestSummary(ctx context.Context, repo, tag string, descri
 			"manifest digest: %s, error: %s", tag, repo, manifestDigestStr, err.Error()))
 	}
 
-	imageCveSummary := cveinfo.ImageCVESummary{}
+	imageCveSummary := cvemodel.ImageCVESummary{}
 
 	if cveInfo != nil && !skipCVE {
-		imageCveSummary, err = cveInfo.GetCVESummaryForImage(repo, tag)
+		imageCveSummary, err = cveInfo.GetCVESummaryForImageMedia(repo, manifestDigestStr, ispec.MediaTypeImageManifest)
 
 		if err != nil {
 			// Log the error, but we should still include the manifest in results
@@ -662,7 +663,8 @@ func RepoMeta2ExpandedRepoInfo(ctx context.Context, repoMeta repodb.RepoMetadata
 	// We only scan the latest image on the repo for performance reasons
 	// Check if vulnerability scanning is disabled
 	if cveInfo != nil && lastUpdatedImageSummary != nil && !skip.Vulnerabilities {
-		imageCveSummary, err := cveInfo.GetCVESummaryForImage(repoMeta.Name, *lastUpdatedImageSummary.Tag)
+		imageCveSummary, err := cveInfo.GetCVESummaryForImageMedia(repoMeta.Name, *lastUpdatedImageSummary.Digest,
+			*lastUpdatedImageSummary.MediaType)
 		if err != nil {
 			// Log the error, but we should still include the image in results
 			graphql.AddError(

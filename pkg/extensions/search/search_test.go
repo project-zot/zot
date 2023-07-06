@@ -235,7 +235,9 @@ func getMockCveInfo(repoDB repodb.RepoDB, log log.Logger) cveinfo.CveInfo {
 	// Setup test CVE data in mock scanner
 	scanner := mocks.CveScannerMock{
 		ScanImageFn: func(image string) (map[string]cvemodel.CVE, error) {
-			if image == "zot-cve-test:0.0.1" || image == "a/zot-cve-test:0.0.1" {
+			if image == "zot-cve-test:0.0.1" || image == "a/zot-cve-test:0.0.1" ||
+				strings.Contains(image, "zot-cve-test@sha256:40d1f74918aefed733c590f798d7eafde8fc0a7ec63bb8bc52eaae133cf92495") ||
+				strings.Contains(image, "a/zot-cve-test@sha256:40d1f74918aefed733c590f798d7eafde8fc0a7ec63bb8bc52eaae133cf92495") {
 				return map[string]cvemodel.CVE{
 					"CVE1": {
 						ID:          "CVE1",
@@ -258,7 +260,9 @@ func getMockCveInfo(repoDB repodb.RepoDB, log log.Logger) cveinfo.CveInfo {
 				}, nil
 			}
 
-			if image == "zot-test:0.0.1" || image == "a/zot-test:0.0.1" {
+			if image == "zot-test:0.0.1" || image == "a/zot-test:0.0.1" ||
+				strings.Contains(image, "a/zot-test@sha256:40d1f74918aefed733c590f798d7eafde8fc0a7ec63bb8bc52eaae133cf92495") ||
+				strings.Contains(image, "zot-test@sha256:40d1f74918aefed733c590f798d7eafde8fc0a7ec63bb8bc52eaae133cf92495") {
 				return map[string]cvemodel.CVE{
 					"CVE3": {
 						ID:          "CVE3",
@@ -275,7 +279,8 @@ func getMockCveInfo(repoDB repodb.RepoDB, log log.Logger) cveinfo.CveInfo {
 				}, nil
 			}
 
-			if image == "test-repo:latest" {
+			if image == "test-repo:latest" ||
+				image == "test-repo@sha256:9f8e1a125c4fb03a0f157d75999b73284ccc5cba18eb772e4643e3499343607e" {
 				return map[string]cvemodel.CVE{
 					"CVE1": {
 						ID:          "CVE1",
@@ -320,12 +325,20 @@ func getMockCveInfo(repoDB repodb.RepoDB, log log.Logger) cveinfo.CveInfo {
 				return false, err
 			}
 
-			manifestDigestStr, ok := repoMeta.Tags[inputTag]
-			if !ok {
-				return false, zerr.ErrTagMetaNotFound
+			manifestDigestStr := reference
+
+			if zcommon.IsTag(reference) {
+				var ok bool
+
+				descriptor, ok := repoMeta.Tags[inputTag]
+				if !ok {
+					return false, zerr.ErrTagMetaNotFound
+				}
+
+				manifestDigestStr = descriptor.Digest
 			}
 
-			manifestDigest, err := godigest.Parse(manifestDigestStr.Digest)
+			manifestDigest, err := godigest.Parse(manifestDigestStr)
 			if err != nil {
 				return false, err
 			}
@@ -758,6 +771,7 @@ func TestRepoListWithNewestImage(t *testing.T) {
 					Name
 					NewestImage{
 						Tag
+						Digest
 						Vulnerabilities{
 							MaxSeverity
 							Count

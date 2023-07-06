@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -1987,7 +1988,12 @@ func TestCVEResolvers(t *testing.T) { //nolint:gocyclo
 		ScanImageFn: func(image string) (map[string]cvemodel.CVE, error) {
 			digest, ok := tagsMap[image]
 			if !ok {
-				return map[string]cvemodel.CVE{}, nil
+				if !strings.Contains(image, "@") {
+					return map[string]cvemodel.CVE{}, nil
+				}
+
+				_, digestStr := common.GetImageDirAndDigest(image)
+				digest = godigest.Digest(digestStr)
 			}
 
 			if digest.String() == digest1.String() {
@@ -2075,7 +2081,7 @@ func TestCVEResolvers(t *testing.T) { //nolint:gocyclo
 			repoWithDigestRef := fmt.Sprintf("repo@%s", dig)
 
 			_, err := getCVEListForImage(responseContext, repoWithDigestRef, cveInfo, pageInput, "", log)
-			So(err.Error(), ShouldContainSubstring, "reference by digest not supported")
+			So(err, ShouldBeNil)
 
 			cveResult, err := getCVEListForImage(responseContext, "repo1:1.0.0", cveInfo, pageInput, "", log)
 			So(err, ShouldBeNil)
@@ -3304,12 +3310,12 @@ func TestExpandedRepoInfo(t *testing.T) {
 					},
 				}, nil
 			},
-			GetManifestMetaFn: func(repo string, manifestDigest godigest.Digest) (repodb.ManifestMetadata, error) {
+			GetManifestDataFn: func(manifestDigest godigest.Digest) (repodb.ManifestData, error) {
 				switch manifestDigest {
 				case "errorDigest":
-					return repodb.ManifestMetadata{}, ErrTestError
+					return repodb.ManifestData{}, ErrTestError
 				default:
-					return repodb.ManifestMetadata{
+					return repodb.ManifestData{
 						ManifestBlob: []byte("{}"),
 						ConfigBlob:   []byte("{}"),
 					}, nil

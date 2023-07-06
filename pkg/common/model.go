@@ -112,7 +112,7 @@ type Annotation struct {
 	Value string `json:"value"`
 }
 
-type FixedTags struct {
+type ImageListWithCVEFixedResponse struct {
 	Errors                []ErrorGQL `json:"errors"`
 	ImageListWithCVEFixed `json:"data"`
 }

@@ -43,7 +43,7 @@ type SearchService interface { //nolint:interfacebloat
 	getTagsForCVEGQL(ctx context.Context, config searchConfig, username, password, imageName,
 		cveID string) (*common.ImagesForCve, error)
 	getFixedTagsForCVEGQL(ctx context.Context, config searchConfig, username, password, imageName,
-		cveID string) (*common.FixedTags, error)
+		cveID string) (*common.ImageListWithCVEFixedResponse, error)
 	getDerivedImageListGQL(ctx context.Context, config searchConfig, username, password string,
 		derivedImage string) (*common.DerivedImageListResponse, error)
 	getBaseImageListGQL(ctx context.Context, config searchConfig, username, password string,
@@ -377,7 +377,7 @@ func (service searchService) getTagsForCVEGQL(ctx context.Context, config search
 
 func (service searchService) getFixedTagsForCVEGQL(ctx context.Context, config searchConfig,
 	username, password, imageName, cveID string,
-) (*common.FixedTags, error) {
+) (*common.ImageListWithCVEFixedResponse, error) {
 	query := fmt.Sprintf(`
 		{
 			ImageListWithCVEFixed(id: "%s", image: "%s") {
@@ -398,7 +398,7 @@ func (service searchService) getFixedTagsForCVEGQL(ctx context.Context, config s
 		}`,
 		cveID, imageName)
 
-	result := &common.FixedTags{}
+	result := &common.ImageListWithCVEFixedResponse{}
 
 	err := service.makeGraphQLQuery(ctx, config, username, password, query, result)
 
@@ -847,7 +847,7 @@ func (service searchService) getFixedTagsForCVE(ctx context.Context, config sear
 		}
 	}`, cvid, imageName)
 
-	result := &common.FixedTags{}
+	result := &common.ImageListWithCVEFixedResponse{}
 
 	err := service.makeGraphQLQuery(ctx, config, username, password, query, result)
 	if err != nil {

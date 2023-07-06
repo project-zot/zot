@@ -176,7 +176,7 @@ func GetRepoTag(searchText string) (string, string, error) {
 	splitSlice := strings.Split(searchText, ":")
 
 	if len(splitSlice) != repoTagCount {
-		return "", "", zerr.ErrInvalidRepoTagFormat
+		return "", "", zerr.ErrInvalidRepoRefFormat
 	}
 
 	repo := strings.TrimSpace(splitSlice[0])
@@ -329,6 +329,7 @@ func FilterDataByRepo(foundRepos []repodb.RepoMetadata, manifestMetadataMap map[
 
 				foundindexDataMap[descriptor.Digest] = indexData
 			default:
+				continue
 			}
 		}
 	}
