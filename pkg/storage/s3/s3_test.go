@@ -890,6 +890,9 @@ func TestNegativeCasesObjectsStorage(t *testing.T) {
 
 			_, _, err = imgStore.CheckBlob(testImage, digest)
 			So(err, ShouldNotBeNil)
+
+			_, _, err = imgStore.StatBlob(testImage, digest)
+			So(err, ShouldNotBeNil)
 		})
 
 		Convey("Test ValidateRepo", func(c C) {
@@ -1270,7 +1273,13 @@ func TestS3Dedupe(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(blob, ShouldEqual, buflen)
 
-		_, checkBlobSize1, err := imgStore.CheckBlob("dedupe1", digest)
+		ok, checkBlobSize1, err := imgStore.CheckBlob("dedupe1", digest)
+		So(ok, ShouldBeTrue)
+		So(checkBlobSize1, ShouldBeGreaterThan, 0)
+		So(err, ShouldBeNil)
+
+		ok, checkBlobSize1, err = imgStore.StatBlob("dedupe1", digest)
+		So(ok, ShouldBeTrue)
 		So(checkBlobSize1, ShouldBeGreaterThan, 0)
 		So(err, ShouldBeNil)
 
@@ -3745,6 +3754,9 @@ func TestS3DedupeErr(t *testing.T) {
 		_, err = imgStore.GetBlobContent("repo2", digest)
 		So(err, ShouldNotBeNil)
 
+		_, _, err = imgStore.StatBlob("repo2", digest)
+		So(err, ShouldNotBeNil)
+
 		_, _, _, err = imgStore.GetBlobPartial("repo2", digest, "application/vnd.oci.image.layer.v1.tar+gzip", 0, 1)
 		So(err, ShouldNotBeNil)
 	})
@@ -3827,6 +3839,9 @@ func TestS3DedupeErr(t *testing.T) {
 		So(err, ShouldNotBeNil)
 
 		_, err = imgStore.GetBlobContent("repo2", digest)
+		So(err, ShouldNotBeNil)
+
+		_, _, err = imgStore.StatBlob("repo2", digest)
 		So(err, ShouldNotBeNil)
 
 		_, _, _, err = imgStore.GetBlobPartial("repo2", digest, "application/vnd.oci.image.layer.v1.tar+gzip", 0, 1)

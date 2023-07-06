@@ -987,7 +987,11 @@ func (is *ObjectStorage) BlobPath(repo string, digest godigest.Digest) string {
 	return path.Join(is.rootDir, repo, "blobs", digest.Algorithm().String(), digest.Encoded())
 }
 
-// CheckBlob verifies a blob and returns true if the blob is correct.
+/*
+	CheckBlob verifies a blob and returns true if the blob is correct
+
+If the blob is not found but it's found in cache then it will be copied over.
+*/
 func (is *ObjectStorage) CheckBlob(repo string, digest godigest.Digest) (bool, int64, error) {
 	var lockLatency time.Time
 
@@ -1034,6 +1038,47 @@ func (is *ObjectStorage) CheckBlob(repo string, digest godigest.Digest) (bool, i
 	}
 
 	return true, blobSize, nil
+}
+
+// StatBlob verifies if a blob is present inside a repository. The caller function SHOULD lock from outside.
+func (is *ObjectStorage) StatBlob(repo string, digest godigest.Digest) (bool, int64, error) {
+	if err := digest.Validate(); err != nil {
+		return false, -1, err
+	}
+
+	blobPath := is.BlobPath(repo, digest)
+
+	binfo, err := is.store.Stat(context.Background(), blobPath)
+	if err == nil && binfo.Size() > 0 {
+		is.log.Debug().Str("blob path", blobPath).Msg("blob path found")
+
+		return true, binfo.Size(), nil
+	}
+
+	if err != nil {
+		is.log.Error().Err(err).Str("blob", blobPath).Msg("failed to stat blob")
+
+		return false, -1, zerr.ErrBlobNotFound
+	}
+
+	// then it's a 'deduped' blob
+
+	// Check blobs in cache
+	dstRecord, err := is.checkCacheBlob(digest)
+	if err != nil {
+		is.log.Error().Err(err).Str("digest", digest.String()).Msg("cache: not found")
+
+		return false, -1, zerr.ErrBlobNotFound
+	}
+
+	binfo, err = is.store.Stat(context.Background(), dstRecord)
+	if err != nil {
+		is.log.Error().Err(err).Str("blob", blobPath).Msg("failed to stat blob")
+
+		return false, -1, zerr.ErrBlobNotFound
+	}
+
+	return true, binfo.Size(), nil
 }
 
 func (is *ObjectStorage) checkCacheBlob(digest godigest.Digest) (string, error) {
@@ -1256,7 +1301,7 @@ func (is *ObjectStorage) GetBlob(repo string, digest godigest.Digest, mediaType 
 	return blobReadCloser, binfo.Size(), nil
 }
 
-// GetBlobContent returns blob contents, SHOULD lock from outside.
+// GetBlobContent returns blob contents, the caller function SHOULD lock from outside.
 func (is *ObjectStorage) GetBlobContent(repo string, digest godigest.Digest) ([]byte, error) {
 	if err := digest.Validate(); err != nil {
 		return []byte{}, err
@@ -1321,7 +1366,7 @@ func (is *ObjectStorage) GetOrasReferrers(repo string, gdigest godigest.Digest, 
 	return common.GetOrasReferrers(is, repo, gdigest, artifactType, is.log)
 }
 
-// GetIndexContent returns index.json contents, SHOULD lock from outside.
+// GetIndexContent returns index.json contents, the caller function SHOULD lock from outside.
 func (is *ObjectStorage) GetIndexContent(repo string) ([]byte, error) {
 	dir := path.Join(is.rootDir, repo)
 
