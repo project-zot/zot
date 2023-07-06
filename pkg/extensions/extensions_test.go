@@ -9,7 +9,9 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"path"
 	"testing"
+	"time"
 
 	. "github.com/smartystreets/goconvey/convey"
 	"gopkg.in/resty.v1"
@@ -20,6 +22,10 @@ import (
 	"zotregistry.io/zot/pkg/extensions"
 	extconf "zotregistry.io/zot/pkg/extensions/config"
 	syncconf "zotregistry.io/zot/pkg/extensions/config/sync"
+	"zotregistry.io/zot/pkg/extensions/monitoring"
+	"zotregistry.io/zot/pkg/log"
+	"zotregistry.io/zot/pkg/storage"
+	"zotregistry.io/zot/pkg/storage/local"
 	"zotregistry.io/zot/pkg/test"
 )
 
@@ -518,6 +524,158 @@ func TestMgmtExtension(t *testing.T) {
 		data, _ := os.ReadFile(logFile.Name())
 		So(string(data), ShouldContainSubstring, "setting up mgmt routes")
 	})
+
+	Convey("Verify mgmt route enabled for uploading certificates and public keys", t, func() {
+		globalDir := t.TempDir()
+		conf := config.New()
+		port := test.GetFreePort()
+		conf.HTTP.Port = port
+		baseURL := test.GetBaseURL(port)
+
+		logFile, err := os.CreateTemp(globalDir, "zot-log*.txt")
+		So(err, ShouldBeNil)
+		defaultValue := true
+
+		conf.Commit = "v1.0.0"
+
+		imageStore := local.NewImageStore(globalDir, false, 0, false, false,
+			log.NewLogger("debug", logFile.Name()), monitoring.NewMetricsServer(false,
+				log.NewLogger("debug", logFile.Name())), nil, nil)
+
+		storeController := storage.StoreController{
+			DefaultStore: imageStore,
+		}
+
+		config, layers, manifest, err := test.GetRandomImageComponents(10)
+		So(err, ShouldBeNil)
+
+		err = test.WriteImageToFileSystem(
+			test.Image{
+				Manifest:  manifest,
+				Layers:    layers,
+				Config:    config,
+				Reference: "0.0.1",
+			}, "repo", storeController,
+		)
+		So(err, ShouldBeNil)
+
+		sigConfig, sigLayers, sigManifest, err := test.GetRandomImageComponents(10)
+		So(err, ShouldBeNil)
+
+		ref, _ := test.GetCosignSignatureTagForManifest(manifest)
+		err = test.WriteImageToFileSystem(
+			test.Image{
+				Manifest:  sigManifest,
+				Layers:    sigLayers,
+				Config:    sigConfig,
+				Reference: ref,
+			}, "repo", storeController,
+		)
+		So(err, ShouldBeNil)
+
+		conf.Extensions = &extconf.ExtensionConfig{}
+		conf.Extensions.Search = &extconf.SearchConfig{}
+		conf.Extensions.Search.Enable = &defaultValue
+		conf.Extensions.Mgmt = &extconf.MgmtConfig{
+			BaseConfig: extconf.BaseConfig{
+				Enable: &defaultValue,
+			},
+		}
+
+		conf.Log.Output = logFile.Name()
+		defer os.Remove(logFile.Name()) // cleanup
+
+		ctlr := api.NewController(conf)
+
+		ctlr.Config.Storage.RootDirectory = globalDir
+
+		ctlrManager := test.NewControllerManager(ctlr)
+		ctlrManager.StartAndWait(port)
+		defer ctlrManager.StopServer()
+
+		rootDir := t.TempDir()
+
+		test.NotationPathLock.Lock()
+		defer test.NotationPathLock.Unlock()
+
+		test.LoadNotationPath(rootDir)
+
+		// generate a keypair
+		err = test.GenerateNotationCerts(rootDir, "test")
+		So(err, ShouldBeNil)
+
+		certificateContent, err := os.ReadFile(path.Join(rootDir, "notation/localkeys", "test.crt"))
+		So(err, ShouldBeNil)
+		So(certificateContent, ShouldNotBeNil)
+
+		client := resty.New()
+		resp, err := client.R().SetHeader("Content-type", "application/octet-stream").
+			SetQueryParam("resource", "signatures").SetQueryParam("tool", "notation").SetQueryParam("truststoreName", "test").
+			SetBody(certificateContent).Post(baseURL + constants.FullMgmtPrefix)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+		resp, err = client.R().SetHeader("Content-type", "application/octet-stream").
+			SetQueryParam("resource", "signatures").SetQueryParam("tool", "notation").
+			SetBody(certificateContent).Post(baseURL + constants.FullMgmtPrefix)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusBadRequest)
+
+		resp, err = client.R().SetHeader("Content-type", "application/octet-stream").
+			SetQueryParam("resource", "signatures").SetQueryParam("tool", "notation").SetQueryParam("truststoreName", "").
+			SetBody(certificateContent).Post(baseURL + constants.FullMgmtPrefix)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusBadRequest)
+
+		resp, err = client.R().SetHeader("Content-type", "application/octet-stream").
+			SetQueryParam("resource", "signatures").SetQueryParam("tool", "notation").SetQueryParam("truststoreName", "test").
+			SetQueryParam("truststoreType", "signatureAuthority").
+			SetBody([]byte("wrong content")).Post(baseURL + constants.FullMgmtPrefix)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusInternalServerError)
+
+		resp, err = client.R().SetHeader("Content-type", "application/octet-stream").
+			SetQueryParam("resource", "signatures").SetQueryParam("tool", "invalidTool").
+			SetBody(certificateContent).Post(baseURL + constants.FullMgmtPrefix)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusBadRequest)
+
+		resp, err = client.R().SetHeader("Content-type", "application/octet-stream").
+			SetQueryParam("resource", "signatures").SetQueryParam("tool", "cosign").
+			SetBody([]byte("wrong content")).Post(baseURL + constants.FullMgmtPrefix)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusInternalServerError)
+
+		resp, err = client.R().SetQueryParam("resource", "signatures").SetQueryParam("tool", "cosign").
+			Get(baseURL + constants.FullMgmtPrefix)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusBadRequest)
+
+		resp, err = client.R().SetQueryParam("resource", "signatures").Post(baseURL + constants.FullMgmtPrefix)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusBadRequest)
+
+		resp, err = client.R().SetQueryParam("resource", "config").Post(baseURL + constants.FullMgmtPrefix)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusBadRequest)
+
+		resp, err = client.R().SetQueryParam("resource", "invalid").Post(baseURL + constants.FullMgmtPrefix)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusBadRequest)
+
+		found, err := test.ReadLogFileAndSearchString(logFile.Name(), "setting up mgmt routes", time.Second)
+		So(err, ShouldBeNil)
+		So(found, ShouldBeTrue)
+
+		found, err = test.ReadLogFileAndSearchString(logFile.Name(), "updating signatures validity", 10*time.Second)
+		So(err, ShouldBeNil)
+		So(found, ShouldBeTrue)
+
+		found, err = test.ReadLogFileAndSearchString(logFile.Name(), "verifying signatures successfully completed",
+			time.Second)
+		So(err, ShouldBeNil)
+		So(found, ShouldBeTrue)
+	})
 }
 
 func TestMgmtWithBearer(t *testing.T) {
@@ -694,7 +852,7 @@ func TestAllowedMethodsHeaderMgmt(t *testing.T) {
 
 		resp, _ := resty.R().Options(baseURL + constants.FullMgmtPrefix)
 		So(resp, ShouldNotBeNil)
-		So(resp.Header().Get("Access-Control-Allow-Methods"), ShouldResemble, "GET,OPTIONS")
+		So(resp.Header().Get("Access-Control-Allow-Methods"), ShouldResemble, "GET,POST,OPTIONS")
 		So(resp.StatusCode(), ShouldEqual, http.StatusNoContent)
 	})
 }

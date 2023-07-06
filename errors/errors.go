@@ -97,4 +97,7 @@ var (
 	ErrSyncImageNotSigned             = errors.New("sync: image is not signed")
 	ErrSyncImageFilteredOut           = errors.New("sync: image is filtered out by sync config")
 	ErrCallerInfo                     = errors.New("runtime: failed to get info regarding the current runtime")
+	ErrInvalidTruststoreType          = errors.New("signatures: invalid truststore type")
+	ErrInvalidTruststoreName          = errors.New("signatures: invalid truststore name")
+	ErrInvalidCertificateContent      = errors.New("signatures: invalid certificate content")
 )

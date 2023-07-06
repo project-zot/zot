@@ -151,11 +151,96 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "summary": "Get current server configuration",
+                "parameters": [
+                    {
+                        "enum": [
+                            "config"
+                        ],
+                        "type": "string",
+                        "description": "specify resource",
+                        "name": "resource",
+                        "in": "query"
+                    }
+                ],
                 "responses": {
                     "200": {
                         "description": "OK",
                         "schema": {
                             "$ref": "#/definitions/extensions.StrippedConfig"
+                        }
+                    },
+                    "500": {
+                        "description": "internal server error\".",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "description": "Upload certificates and public keys for verifying signatures",
+                "consumes": [
+                    "application/octet-stream"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "summary": "Upload certificates and public keys for verifying signatures",
+                "parameters": [
+                    {
+                        "enum": [
+                            "signatures"
+                        ],
+                        "type": "string",
+                        "description": "specify resource",
+                        "name": "resource",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "enum": [
+                            "cosign",
+                            "notation"
+                        ],
+                        "type": "string",
+                        "description": "specify signing tool",
+                        "name": "tool",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "truststore type",
+                        "name": "truststoreType",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "truststore name",
+                        "name": "truststoreName",
+                        "in": "query"
+                    },
+                    {
+                        "description": "Public key or Certificate content",
+                        "name": "requestBody",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "ok",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "400": {
+                        "description": "bad request\".",
+                        "schema": {
+                            "type": "string"
                         }
                     },
                     "500": {

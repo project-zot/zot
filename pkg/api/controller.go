@@ -361,6 +361,12 @@ func (c *Controller) StartBackgroundTasks(reloadCtx context.Context) {
 
 		c.SyncOnDemand = syncOnDemand
 	}
+
+	if c.Config.Extensions != nil {
+		if c.Config.Extensions.Mgmt != nil && *c.Config.Extensions.Mgmt.Enable {
+			ext.EnablePeriodicSignaturesVerification(c.Config, taskScheduler, c.RepoDB, c.Log) //nolint: contextcheck
+		}
+	}
 }
 
 type SyncOnDemand interface {

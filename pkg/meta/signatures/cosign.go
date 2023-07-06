@@ -12,6 +12,7 @@ import (
 	godigest "github.com/opencontainers/go-digest"
 	"github.com/sigstore/cosign/v2/pkg/cosign/pkcs11key"
 	sigs "github.com/sigstore/cosign/v2/pkg/signature"
+	"github.com/sigstore/sigstore/pkg/cryptoutils"
 	"github.com/sigstore/sigstore/pkg/signature/options"
 
 	zerr "zotregistry.io/zot/errors"
@@ -110,4 +111,33 @@ func VerifyCosignSignature(
 	}
 
 	return "", false, nil
+}
+
+func UploadPublicKey(publicKeyContent []byte) error {
+	// validate public key
+	if ok, err := validatePublicKey(publicKeyContent); !ok {
+		return err
+	}
+
+	// add public key to "{rootDir}/_cosign/{name.pub}"
+	configDir, err := GetCosignDirPath()
+	if err != nil {
+		return err
+	}
+
+	name := godigest.FromBytes(publicKeyContent)
+
+	// store public key
+	publicKeyPath := path.Join(configDir, name.String())
+
+	return os.WriteFile(publicKeyPath, publicKeyContent, defaultFilePerms)
+}
+
+func validatePublicKey(publicKeyContent []byte) (bool, error) {
+	_, err := cryptoutils.UnmarshalPEMToPublicKey(publicKeyContent)
+	if err != nil {
+		return false, err
+	}
+
+	return true, nil
 }

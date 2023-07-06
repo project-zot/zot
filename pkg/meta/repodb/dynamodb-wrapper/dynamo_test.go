@@ -563,6 +563,25 @@ func TestWrapperErrors(t *testing.T) {
 			So(err, ShouldNotBeNil)
 		})
 
+		Convey("UpdateSignaturesValidity GetManifestData error", func() {
+			err := setBadManifestData(dynamoWrapper.Client, manifestDataTablename, "dig")
+			So(err, ShouldBeNil)
+
+			err = dynamoWrapper.UpdateSignaturesValidity("repo", "dig")
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("UpdateSignaturesValidity GetRepoMeta error", func() {
+			err := dynamoWrapper.SetManifestData("dig", repodb.ManifestData{})
+			So(err, ShouldBeNil)
+
+			err = setBadRepoMeta(dynamoWrapper.Client, repoMetaTablename, "repo")
+			So(err, ShouldBeNil)
+
+			err = dynamoWrapper.UpdateSignaturesValidity("repo", "dig")
+			So(err, ShouldNotBeNil)
+		})
+
 		Convey("AddManifestSignature GetRepoMeta error", func() {
 			err := dynamoWrapper.SetRepoReference("repo", "tag", "dig", "")
 			So(err, ShouldBeNil)

@@ -291,6 +291,13 @@ paths:
       consumes:
       - application/json
       description: Get current server configuration
+      parameters:
+      - description: specify resource
+        enum:
+        - config
+        in: query
+        name: resource
+        type: string
       produces:
       - application/json
       responses:
@@ -303,6 +310,56 @@ paths:
           schema:
             type: string
       summary: Get current server configuration
+    post:
+      consumes:
+      - application/octet-stream
+      description: Upload certificates and public keys for verifying signatures
+      parameters:
+      - description: specify resource
+        enum:
+        - signatures
+        in: query
+        name: resource
+        required: true
+        type: string
+      - description: specify signing tool
+        enum:
+        - cosign
+        - notation
+        in: query
+        name: tool
+        required: true
+        type: string
+      - description: truststore type
+        in: query
+        name: truststoreType
+        type: string
+      - description: truststore name
+        in: query
+        name: truststoreName
+        type: string
+      - description: Public key or Certificate content
+        in: body
+        name: requestBody
+        required: true
+        schema:
+          type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: ok
+          schema:
+            type: string
+        "400":
+          description: bad request".
+          schema:
+            type: string
+        "500":
+          description: internal server error".
+          schema:
+            type: string
+      summary: Upload certificates and public keys for verifying signatures
   /v2/_zot/ext/userprefs:
     put:
       consumes:

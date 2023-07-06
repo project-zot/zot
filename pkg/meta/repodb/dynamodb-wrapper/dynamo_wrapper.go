@@ -618,7 +618,67 @@ func (dwr *DBWrapper) IncrementImageDownloads(repo string, reference string) err
 }
 
 func (dwr *DBWrapper) UpdateSignaturesValidity(repo string, manifestDigest godigest.Digest) error {
-	return nil
+	// get ManifestData of signed manifest
+	var blob []byte
+
+	manifestData, err := dwr.GetManifestData(manifestDigest)
+	if err != nil {
+		if errors.Is(err, zerr.ErrManifestDataNotFound) {
+			indexData, err := dwr.GetIndexData(manifestDigest)
+			if err != nil {
+				return nil //nolint: nilerr
+			}
+
+			blob = indexData.IndexBlob
+		} else {
+			return fmt.Errorf("%w for manifest '%s' from repo '%s'", errRepodb, manifestDigest, repo)
+		}
+	} else {
+		blob = manifestData.ManifestBlob
+	}
+
+	// update signatures with details about validity and author
+	repoMeta, err := dwr.GetRepoMeta(repo)
+	if err != nil {
+		return err
+	}
+
+	manifestSignatures := repodb.ManifestSignatures{}
+
+	for sigType, sigs := range repoMeta.Signatures[manifestDigest.String()] {
+		signaturesInfo := []repodb.SignatureInfo{}
+
+		for _, sigInfo := range sigs {
+			layersInfo := []repodb.LayerInfo{}
+
+			for _, layerInfo := range sigInfo.LayersInfo {
+				author, date, isTrusted, _ := signatures.VerifySignature(sigType, layerInfo.LayerContent, layerInfo.SignatureKey,
+					manifestDigest, blob, repo)
+
+				if isTrusted {
+					layerInfo.Signer = author
+				}
+
+				if !date.IsZero() {
+					layerInfo.Signer = author
+					layerInfo.Date = date
+				}
+
+				layersInfo = append(layersInfo, layerInfo)
+			}
+
+			signaturesInfo = append(signaturesInfo, repodb.SignatureInfo{
+				SignatureManifestDigest: sigInfo.SignatureManifestDigest,
+				LayersInfo:              layersInfo,
+			})
+		}
+
+		manifestSignatures[sigType] = signaturesInfo
+	}
+
+	repoMeta.Signatures[manifestDigest.String()] = manifestSignatures
+
+	return dwr.SetRepoMeta(repoMeta.Name, repoMeta)
 }
 
 func (dwr *DBWrapper) AddManifestSignature(repo string, signedManifestDigest godigest.Digest,
