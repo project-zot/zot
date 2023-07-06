@@ -1,0 +1,12 @@
+name: 'Clean runner'
+description: 'Remove unneeded tooling'
+runs:
+  using: "composite"
+  steps:
+    - shell: bash
+      run: |
+        # To free up ~15 GB of disk space
+        sudo rm -rf /opt/ghc
+        sudo rm -rf /usr/local/share/boost
+        sudo rm -rf /usr/local/lib/android
+        sudo rm -rf /usr/share/dotnet
