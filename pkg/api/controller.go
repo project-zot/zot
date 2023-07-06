@@ -300,6 +300,8 @@ func (c *Controller) LoadNewConfig(reloadCtx context.Context, config *config.Con
 		c.Config.Extensions = nil
 	}
 
+	c.InitCVEInfo()
+
 	c.StartBackgroundTasks(reloadCtx)
 
 	c.Log.Info().Interface("reloaded params", c.Config.Sanitize()).
