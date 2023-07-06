@@ -3394,6 +3394,134 @@ func TestS3ManifestImageIndex(t *testing.T) {
 			})
 		})
 	})
+
+	Convey("Test image index as artifact with subject against s3 image store", t, func() {
+		uuid, err := guuid.NewV4()
+		if err != nil {
+			panic(err)
+		}
+
+		testDir := path.Join("/oci-repo-test", uuid.String())
+
+		storeDriver, imgStore, _ := createObjectsStore(testDir, t.TempDir(), true)
+		defer cleanupStorage(storeDriver, testDir)
+
+		// create and upload a blob/layer
+		// create and upload 2 configs
+		// create and upload 2 manifests
+		// index creation/testing is handled in the other conveys
+
+		// layer blob
+		content := []byte("this is a blob1")
+		buf := bytes.NewBuffer(content)
+		buflen := buf.Len()
+		bdigest := godigest.FromBytes(content)
+		bsize := len(content)
+		So(bdigest, ShouldNotBeNil)
+
+		_, clen, err := imgStore.FullBlobUpload("index", buf, bdigest)
+		So(err, ShouldBeNil)
+		So(clen, ShouldEqual, buflen)
+
+		// first config
+		cblob, cdigest := test.GetRandomImageConfig()
+		buf = bytes.NewBuffer(cblob)
+		buflen = buf.Len()
+
+		_, clen, err = imgStore.FullBlobUpload("index", buf, cdigest)
+		So(err, ShouldBeNil)
+		So(clen, ShouldEqual, buflen)
+
+		// first manifest
+		manifest := ispec.Manifest{
+			Config: ispec.Descriptor{
+				MediaType: ispec.MediaTypeImageConfig,
+				Digest:    cdigest,
+				Size:      int64(len(cblob)),
+			},
+			Layers: []ispec.Descriptor{
+				{
+					MediaType: ispec.MediaTypeImageLayer,
+					Digest:    bdigest,
+					Size:      int64(bsize),
+				},
+			},
+		}
+		manifest.SchemaVersion = 2
+		content, err = json.Marshal(manifest)
+		So(err, ShouldBeNil)
+		m1digest := godigest.FromBytes(content)
+		So(m1digest, ShouldNotBeNil)
+		m1size := len(content)
+
+		_, _, err = imgStore.PutImageManifest("index", "test:1.0", ispec.MediaTypeImageManifest, content)
+		So(err, ShouldBeNil)
+
+		// second config
+		cblob, cdigest = test.GetRandomImageConfig()
+		buf = bytes.NewBuffer(cblob)
+		buflen = buf.Len()
+
+		_, clen, err = imgStore.FullBlobUpload("index", buf, cdigest)
+		So(err, ShouldBeNil)
+		So(clen, ShouldEqual, buflen)
+
+		// second manifest
+		manifest = ispec.Manifest{
+			Config: ispec.Descriptor{
+				MediaType: ispec.MediaTypeImageConfig,
+				Digest:    cdigest,
+				Size:      int64(len(cblob)),
+			},
+			Layers: []ispec.Descriptor{
+				{
+					MediaType: ispec.MediaTypeImageLayer,
+					Digest:    bdigest,
+					Size:      int64(bsize),
+				},
+			},
+		}
+		manifest.SchemaVersion = 2
+		content, err = json.Marshal(manifest)
+		So(err, ShouldBeNil)
+		m2digest := godigest.FromBytes(content)
+		So(m2digest, ShouldNotBeNil)
+		m2size := len(content)
+		_, _, err = imgStore.PutImageManifest("index", m2digest.String(), ispec.MediaTypeImageManifest, content)
+		So(err, ShouldBeNil)
+
+		Convey("Put image index with valid subject", func() {
+			// create an image index containing the 2nd manifest, having the 1st manifest as subject
+
+			var index ispec.Index
+			index.SchemaVersion = 2
+			index.Manifests = []ispec.Descriptor{
+				{
+					MediaType: ispec.MediaTypeImageManifest,
+					Digest:    m2digest,
+					Size:      int64(m2size),
+				},
+			}
+			index.Subject = &ispec.Descriptor{
+				MediaType: ispec.MediaTypeImageManifest,
+				Digest:    m1digest,
+				Size:      int64(m1size),
+			}
+
+			content, err := json.Marshal(index)
+			So(err, ShouldBeNil)
+			idigest := godigest.FromBytes(content)
+			So(idigest, ShouldNotBeNil)
+
+			digest1, digest2, err := imgStore.PutImageManifest("index", "test:index1", ispec.MediaTypeImageIndex, content)
+			So(err, ShouldBeNil)
+			So(digest1.String(), ShouldEqual, idigest.String())
+			So(digest2.String(), ShouldEqual, m1digest.String())
+
+			_, _, _, err = imgStore.GetImageManifest("index", "test:index1")
+			So(err, ShouldBeNil)
+		})
+	})
 }
 
 func TestS3DedupeErr(t *testing.T) {
