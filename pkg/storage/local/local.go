@@ -404,15 +404,23 @@ func (is *ImageStoreLocal) GetImageTags(repo string) ([]string, error) {
 
 // GetImageManifest returns the image manifest of an image in the specific repository.
 func (is *ImageStoreLocal) GetImageManifest(repo, reference string) ([]byte, godigest.Digest, string, error) {
-	var lockLatency time.Time
-
 	dir := path.Join(is.rootDir, repo)
 	if !is.DirExists(dir) {
 		return nil, "", "", zerr.ErrRepoNotFound
 	}
 
+	var lockLatency time.Time
+
+	var err error
+
 	is.RLock(&lockLatency)
-	defer is.RUnlock(&lockLatency)
+	defer func() {
+		is.RUnlock(&lockLatency)
+
+		if err == nil {
+			monitoring.IncDownloadCounter(is.metrics, repo)
+		}
+	}()
 
 	index, err := common.GetIndex(is, repo, is.log)
 	if err != nil {
@@ -440,8 +448,6 @@ func (is *ImageStoreLocal) GetImageManifest(repo, reference string) ([]byte, god
 		return nil, "", "", err
 	}
 
-	monitoring.IncDownloadCounter(is.metrics, repo)
-
 	return buf, manifestDesc.Digest, manifestDesc.MediaType, nil
 }
 
@@ -457,8 +463,17 @@ func (is *ImageStoreLocal) PutImageManifest(repo, reference, mediaType string, /
 
 	var lockLatency time.Time
 
+	var err error
+
 	is.Lock(&lockLatency)
-	defer is.Unlock(&lockLatency)
+	defer func() {
+		is.Unlock(&lockLatency)
+
+		if err == nil {
+			monitoring.SetStorageUsage(is.metrics, is.rootDir, repo)
+			monitoring.IncUploadCounter(is.metrics, repo)
+		}
+	}()
 
 	digest, err := common.ValidateManifest(is, repo, reference, mediaType, body, is.log)
 	if err != nil {
@@ -584,23 +599,28 @@ func (is *ImageStoreLocal) PutImageManifest(repo, reference, mediaType string, /
 		}
 	}
 
-	monitoring.SetStorageUsage(is.metrics, is.rootDir, repo)
-	monitoring.IncUploadCounter(is.metrics, repo)
-
 	return desc.Digest, subjectDigest, nil
 }
 
 // DeleteImageManifest deletes the image manifest from the repository.
 func (is *ImageStoreLocal) DeleteImageManifest(repo, reference string, detectCollision bool) error {
-	var lockLatency time.Time
-
 	dir := path.Join(is.rootDir, repo)
 	if !is.DirExists(dir) {
 		return zerr.ErrRepoNotFound
 	}
 
+	var lockLatency time.Time
+
+	var err error
+
 	is.Lock(&lockLatency)
-	defer is.Unlock(&lockLatency)
+	defer func() {
+		is.Unlock(&lockLatency)
+
+		if err == nil {
+			monitoring.SetStorageUsage(is.metrics, is.rootDir, repo)
+		}
+	}()
 
 	index, err := common.GetIndex(is, repo, is.log)
 	if err != nil {
@@ -653,8 +673,6 @@ func (is *ImageStoreLocal) DeleteImageManifest(repo, reference string, detectCol
 
 		_ = os.Remove(p)
 	}
-
-	monitoring.SetStorageUsage(is.metrics, is.rootDir, repo)
 
 	return nil
 }
