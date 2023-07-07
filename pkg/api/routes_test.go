@@ -1,26 +1,36 @@
-//go:build sync && scrub && metrics && search && lint
-// +build sync,scrub,metrics,search,lint
+//go:build sync && scrub && metrics && search && lint && apikey
+// +build sync,scrub,metrics,search,lint,apikey
 
 package api_test
 
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"testing"
 
+	"github.com/google/uuid"
 	"github.com/gorilla/mux"
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
+	"github.com/project-zot/mockoidc"
 	. "github.com/smartystreets/goconvey/convey"
+	"github.com/zitadel/oidc/pkg/client/rp"
+	"github.com/zitadel/oidc/pkg/oidc"
+	"golang.org/x/oauth2"
 
 	zerr "zotregistry.io/zot/errors"
 	"zotregistry.io/zot/pkg/api"
 	"zotregistry.io/zot/pkg/api/config"
 	"zotregistry.io/zot/pkg/api/constants"
+	"zotregistry.io/zot/pkg/extensions"
+	extconf "zotregistry.io/zot/pkg/extensions/config"
+	"zotregistry.io/zot/pkg/meta/repodb"
 	localCtx "zotregistry.io/zot/pkg/requestcontext"
 	storageTypes "zotregistry.io/zot/pkg/storage/types"
 	"zotregistry.io/zot/pkg/test"
@@ -29,12 +39,53 @@ import (
 
 var ErrUnexpectedError = errors.New("error: unexpected error")
 
+const sessionStr = "session"
+
 func TestRoutes(t *testing.T) {
 	Convey("Make a new controller", t, func() {
 		port := test.GetFreePort()
 		baseURL := test.GetBaseURL(port)
 		conf := config.New()
 		conf.HTTP.Port = port
+
+		htpasswdPath := test.MakeHtpasswdFile()
+		defer os.Remove(htpasswdPath)
+		mockOIDCServer, err := mockoidc.Run()
+		if err != nil {
+			panic(err)
+		}
+		defer func() {
+			err := mockOIDCServer.Shutdown()
+			if err != nil {
+				panic(err)
+			}
+		}()
+
+		mockOIDCConfig := mockOIDCServer.Config()
+		conf.HTTP.Auth = &config.AuthConfig{
+			HTPasswd: config.AuthHTPasswd{
+				Path: htpasswdPath,
+			},
+			OpenID: &config.OpenIDConfig{
+				Providers: map[string]config.OpenIDProviderConfig{
+					"dex": {
+						ClientID:     mockOIDCConfig.ClientID,
+						ClientSecret: mockOIDCConfig.ClientSecret,
+						KeyPath:      "",
+						Issuer:       mockOIDCConfig.Issuer,
+						Scopes:       []string{"openid", "email"},
+					},
+				},
+			},
+		}
+
+		defaultVal := true
+		apiKeyConfig := &extconf.APIKeyConfig{
+			BaseConfig: extconf.BaseConfig{Enable: &defaultVal},
+		}
+		conf.Extensions = &extconf.ExtensionConfig{
+			APIKey: apiKeyConfig,
+		}
 
 		ctlr := api.NewController(conf)
 
@@ -49,6 +100,52 @@ func TestRoutes(t *testing.T) {
 
 		// NOTE: the url or method itself doesn't matter below since we are calling the handlers directly,
 		// so path routing is bypassed
+
+		Convey("Test GithubCodeExchangeCallback", func() {
+			callback := rthdlr.GithubCodeExchangeCallback()
+			ctx := context.TODO()
+
+			request, _ := http.NewRequestWithContext(ctx, http.MethodGet, baseURL, nil)
+			response := httptest.NewRecorder()
+
+			tokens := &oidc.Tokens{}
+			relyingParty, err := rp.NewRelyingPartyOAuth(&oauth2.Config{})
+			So(err, ShouldBeNil)
+
+			callback(response, request, tokens, "state", relyingParty)
+
+			resp := response.Result()
+			defer resp.Body.Close()
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode, ShouldEqual, http.StatusUnauthorized)
+		})
+
+		Convey("Test OAuth2Callback errors", func() {
+			ctx := context.TODO()
+
+			request, _ := http.NewRequestWithContext(ctx, http.MethodGet, baseURL, nil)
+			response := httptest.NewRecorder()
+
+			_, err := api.OAuth2Callback(ctlr, response, request, "state", "email", []string{"group"})
+			So(err, ShouldEqual, zerr.ErrInvalidStateCookie)
+
+			session, _ := ctlr.CookieStore.Get(request, "statecookie")
+
+			session.Options.Secure = true
+			session.Options.HttpOnly = true
+			session.Options.SameSite = http.SameSiteDefaultMode
+
+			state := uuid.New().String()
+
+			session.Values["state"] = state
+
+			// let the session set its own id
+			err = session.Save(request, response)
+			So(err, ShouldBeNil)
+
+			_, err = api.OAuth2Callback(ctlr, response, request, "state", "email", []string{"group"})
+			So(err, ShouldEqual, zerr.ErrInvalidStateCookie)
+		})
 
 		Convey("List repositories authz error", func() {
 			var invalid struct{}
@@ -575,7 +672,7 @@ func TestRoutes(t *testing.T) {
 				},
 				&mocks.MockedImageStore{
 					FullBlobUploadFn: func(repo string, body io.Reader, digest godigest.Digest) (string, int64, error) {
-						return "session", 0, zerr.ErrBadBlobDigest
+						return sessionStr, 0, zerr.ErrBadBlobDigest
 					},
 				})
 			So(statusCode, ShouldEqual, http.StatusInternalServerError)
@@ -591,7 +688,7 @@ func TestRoutes(t *testing.T) {
 				},
 				&mocks.MockedImageStore{
 					FullBlobUploadFn: func(repo string, body io.Reader, digest godigest.Digest) (string, int64, error) {
-						return "session", 20, nil
+						return sessionStr, 20, nil
 					},
 				})
 			So(statusCode, ShouldEqual, http.StatusInternalServerError)
@@ -1325,6 +1422,80 @@ func TestRoutes(t *testing.T) {
 			defer resp.Body.Close()
 
 			So(resp.StatusCode, ShouldEqual, http.StatusOK)
+		})
+
+		Convey("Test API keys", func() {
+			var invalid struct{}
+
+			ctx := context.TODO()
+			key := localCtx.GetContextKey()
+			ctx = context.WithValue(ctx, key, invalid)
+
+			request, _ := http.NewRequestWithContext(ctx, http.MethodPost, baseURL, bytes.NewReader([]byte{}))
+			response := httptest.NewRecorder()
+
+			extensions.CreateAPIKey(response, request, ctlr.RepoDB, ctlr.CookieStore, ctlr.Log)
+
+			resp := response.Result()
+			defer resp.Body.Close()
+			So(resp.StatusCode, ShouldEqual, http.StatusInternalServerError)
+
+			acCtx := localCtx.AccessControlContext{
+				Username: username,
+			}
+
+			ctx = context.TODO()
+			key = localCtx.GetContextKey()
+			ctx = context.WithValue(ctx, key, acCtx)
+
+			request, _ = http.NewRequestWithContext(ctx, http.MethodPost, baseURL, bytes.NewReader([]byte{}))
+			response = httptest.NewRecorder()
+
+			extensions.CreateAPIKey(response, request, ctlr.RepoDB, ctlr.CookieStore, ctlr.Log)
+
+			resp = response.Result()
+			defer resp.Body.Close()
+
+			So(resp.StatusCode, ShouldEqual, http.StatusInternalServerError)
+
+			payload := extensions.APIKeyPayload{
+				Label:  "test",
+				Scopes: []string{"test"},
+			}
+			reqBody, err := json.Marshal(payload)
+			So(err, ShouldBeNil)
+
+			request, _ = http.NewRequestWithContext(ctx, http.MethodPost, baseURL, bytes.NewReader(reqBody))
+			response = httptest.NewRecorder()
+
+			extensions.CreateAPIKey(response, request, mocks.RepoDBMock{
+				AddUserAPIKeyFn: func(ctx context.Context, hashedKey string, apiKeyDetails *repodb.APIKeyDetails) error {
+					return ErrUnexpectedError
+				},
+			}, ctlr.CookieStore, ctlr.Log)
+
+			resp = response.Result()
+			defer resp.Body.Close()
+
+			So(resp.StatusCode, ShouldEqual, http.StatusInternalServerError)
+
+			request, _ = http.NewRequestWithContext(ctx, http.MethodDelete, baseURL, bytes.NewReader([]byte{}))
+			response = httptest.NewRecorder()
+
+			q := request.URL.Query()
+			q.Add("id", "apikeyid")
+			request.URL.RawQuery = q.Encode()
+
+			extensions.RevokeAPIKey(response, request, mocks.RepoDBMock{
+				DeleteUserAPIKeyFn: func(ctx context.Context, id string) error {
+					return ErrUnexpectedError
+				},
+			}, ctlr.CookieStore, ctlr.Log)
+
+			resp = response.Result()
+			defer resp.Body.Close()
+
+			So(resp.StatusCode, ShouldEqual, http.StatusInternalServerError)
 		})
 
 		Convey("Helper functions", func() {

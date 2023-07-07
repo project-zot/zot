@@ -16,6 +16,8 @@ import (
 
 	"github.com/gorilla/handlers"
 	"github.com/gorilla/mux"
+	"github.com/gorilla/sessions"
+	"github.com/zitadel/oidc/pkg/client/rp"
 
 	"zotregistry.io/zot/errors"
 	"zotregistry.io/zot/pkg/api/config"
@@ -31,6 +33,7 @@ import (
 const (
 	idleTimeout       = 120 * time.Second
 	readHeaderTimeout = 5 * time.Second
+	cookiesMaxAge     = 86400 // seconds
 )
 
 type Controller struct {
@@ -44,6 +47,8 @@ type Controller struct {
 	Metrics         monitoring.MetricServer
 	CveInfo         ext.CveInfo
 	SyncOnDemand    SyncOnDemand
+	RelyingParties  map[string]rp.RelyingParty
+	CookieStore     sessions.Store
 	// runtime params
 	chosenPort int // kernel-chosen port
 }
@@ -254,7 +259,9 @@ func (c *Controller) InitImageStore() error {
 }
 
 func (c *Controller) InitRepoDB(reloadCtx context.Context) error {
-	if c.Config.Extensions != nil && c.Config.Extensions.Search != nil && *c.Config.Extensions.Search.Enable {
+	// init repoDB if search is enabled or authn enabled (need to store user profiles) or apikey ext is enabled
+	if (c.Config.Extensions != nil && c.Config.Extensions.Search != nil && *c.Config.Extensions.Search.Enable) ||
+		isAuthnEnabled(c.Config) || isOpenIDAuthEnabled(c.Config) || isAPIKeyEnabled(c.Config) {
 		driver, err := repodbfactory.New(c.Config.Storage.StorageConfig, c.Log) //nolint:contextcheck
 		if err != nil {
 			return err

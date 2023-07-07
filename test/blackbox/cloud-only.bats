@@ -39,12 +39,34 @@ function setup() {
             "manifestDataTablename": "ManifestDataTable",
             "indexDataTablename": "IndexDataTable",
             "userDataTablename": "UserDataTable",
+            "apiKeyTablename":"ApiKeyTable",
             "versionTablename": "Version"
         }
 	},
 	"http": {
 		"address": "127.0.0.1",
-		"port": "8080"
+		"port": "8080",
+        "realm": "zot",
+        "auth": {
+            "openid": {
+                "providers": {
+                    "dex": {
+                        "issuer": "http://127.0.0.1:5556/dex",
+                        "clientid": "zot-client",
+                        "clientsecret": "ZXhhbXBsZS1hcHAtc2VjcmV0",
+                        "scopes": ["openid", "email", "groups"]
+                    }
+                }
+            },
+            "failDelay": 5
+        },
+        "accessControl": {
+            "repositories": {
+                "**": {
+                    "anonymousPolicy": ["read", "create"]
+                }
+            }
+        }
 	},
 	"log": {
 		"level": "debug"
@@ -78,6 +100,17 @@ function teardown() {
     rm -rf ${zot_root_dir}
     awslocal s3 rb s3://"zot-storage" --force
     awslocal dynamodb --region "us-east-2" delete-table --table-name "BlobTable"
+}
+
+dex_session () {
+    STATE=$(curl -L -f -s http://localhost:8080/openid/auth/login?provider=dex | grep -m 1 -oP '(?<=state=)[^ ]*"' | cut -d \" -f1)
+    echo $STATE >&3
+    curl -L -f -s "http://127.0.0.1:5556/dex/auth/mock?client_id=zot-client&redirect_uri=http%3A%2F%2F127.0.0.1%3A8080%2Fopenid%2Fauth%2Fcallback%2Fdex&response_type=code&scope=profile+email+groups+openid&state=$STATE"
+}
+
+@test "check dex is working" {
+    run dex_session
+    [ "$status" -eq 0 ]
 }
 
 @test "check for local disk writes" {

@@ -21,6 +21,9 @@ const (
 	Delete = "delete"
 	// behaviour actions.
 	DetectManifestCollision = "detectManifestCollision"
+	BASIC                   = "Basic"
+	BEARER                  = "Bearer"
+	OPENID                  = "OpenID"
 )
 
 // AccessController authorizes users to act on resources.
@@ -29,10 +32,17 @@ type AccessController struct {
 	Log    log.Logger
 }
 
-func NewAccessController(config *config.Config) *AccessController {
+func NewAccessController(conf *config.Config) *AccessController {
+	if conf.HTTP.AccessControl == nil {
+		return &AccessController{
+			Config: &config.AccessControlConfig{},
+			Log:    log.NewLogger(conf.Log.Level, conf.Log.Output),
+		}
+	}
+
 	return &AccessController{
-		Config: config.HTTP.AccessControl,
-		Log:    log.NewLogger(config.Log.Level, config.Log.Output),
+		Config: conf.HTTP.AccessControl,
+		Log:    log.NewLogger(conf.Log.Level, conf.Log.Output),
 	}
 }
 
@@ -171,6 +181,18 @@ func (ac *AccessController) getContext(acCtx *localCtx.AccessControlContext, req
 	return ctx
 }
 
+// getAuthnMiddlewareContext builds ac context(allowed to read repos and if user is admin) and returns it.
+func (ac *AccessController) getAuthnMiddlewareContext(authnType string, request *http.Request) context.Context {
+	amwCtx := localCtx.AuthnMiddlewareContext{
+		AuthnType: authnType,
+	}
+
+	amwCtxKey := localCtx.GetAuthnMiddlewareCtxKey()
+	ctx := context.WithValue(request.Context(), amwCtxKey, amwCtx)
+
+	return ctx
+}
+
 // isPermitted returns true if username can do action on a repository policy.
 func (ac *AccessController) isPermitted(userGroups []string, username, action string,
 	policyGroup config.PolicyGroup,
@@ -231,6 +253,14 @@ func BaseAuthzHandler(ctlr *Controller) mux.MiddlewareFunc {
 				return
 			}
 
+			// request comes from bearer authn, bypass it
+			authnMwCtx, err := localCtx.GetAuthnMiddlewareContext(request.Context())
+			if err != nil || (authnMwCtx != nil && authnMwCtx.AuthnType == BEARER) {
+				next.ServeHTTP(response, request)
+
+				return
+			}
+
 			// bypass authz for /v2/ route
 			if request.RequestURI == "/v2/" {
 				next.ServeHTTP(response, request)
@@ -242,8 +272,6 @@ func BaseAuthzHandler(ctlr *Controller) mux.MiddlewareFunc {
 
 			var identity string
 
-			var err error
-
 			// anonymous context
 			acCtx := &localCtx.AccessControlContext{}
 
@@ -252,7 +280,7 @@ func BaseAuthzHandler(ctlr *Controller) mux.MiddlewareFunc {
 				// get access control context made in authn.go if authn is enabled
 				acCtx, err = localCtx.GetAccessControlContext(request.Context())
 				if err != nil { // should never happen
-					authFail(response, ctlr.Config.HTTP.Realm, ctlr.Config.HTTP.Auth.FailDelay)
+					authFail(response, request, ctlr.Config.HTTP.Realm, ctlr.Config.HTTP.Auth.FailDelay)
 
 					return
 				}
@@ -272,7 +300,7 @@ func BaseAuthzHandler(ctlr *Controller) mux.MiddlewareFunc {
 					// if we still don't have an identity
 					if identity == "" {
 						acCtrlr.Log.Info().Msg("couldn't get identity from TLS certificate")
-						authFail(response, ctlr.Config.HTTP.Realm, ctlr.Config.HTTP.Auth.FailDelay)
+						authFail(response, request, ctlr.Config.HTTP.Realm, ctlr.Config.HTTP.Auth.FailDelay)
 
 						return
 					}
@@ -298,6 +326,14 @@ func DistSpecAuthzHandler(ctlr *Controller) mux.MiddlewareFunc {
 				return
 			}
 
+			// request comes from bearer authn, bypass it
+			authnMwCtx, err := localCtx.GetAuthnMiddlewareContext(request.Context())
+			if err != nil || (authnMwCtx != nil && authnMwCtx.AuthnType == BEARER) {
+				next.ServeHTTP(response, request)
+
+				return
+			}
+
 			vars := mux.Vars(request)
 			resource := vars["name"]
 			reference, ok := vars["reference"]
@@ -306,12 +342,10 @@ func DistSpecAuthzHandler(ctlr *Controller) mux.MiddlewareFunc {
 
 			var identity string
 
-			var err error
-
 			// get acCtx built in authn and previous authz middlewares
 			acCtx, err := localCtx.GetAccessControlContext(request.Context())
 			if err != nil { // should never happen
-				authFail(response, ctlr.Config.HTTP.Realm, ctlr.Config.HTTP.Auth.FailDelay)
+				authFail(response, request, ctlr.Config.HTTP.Realm, ctlr.Config.HTTP.Auth.FailDelay)
 
 				return
 			}
@@ -344,7 +378,7 @@ func DistSpecAuthzHandler(ctlr *Controller) mux.MiddlewareFunc {
 
 			can := acCtrlr.can(request.Context(), identity, action, resource) //nolint:contextcheck
 			if !can {
-				common.AuthzFail(response, ctlr.Config.HTTP.Realm, ctlr.Config.HTTP.Auth.FailDelay)
+				common.AuthzFail(response, request, ctlr.Config.HTTP.Realm, ctlr.Config.HTTP.Auth.FailDelay)
 			} else {
 				next.ServeHTTP(response, request) //nolint:contextcheck
 			}

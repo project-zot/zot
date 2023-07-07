@@ -25,6 +25,7 @@ func TestCreateDynamo(t *testing.T) {
 			ManifestDataTablename: "ManifestDataTable",
 			IndexDataTablename:    "IndexDataTable",
 			UserDataTablename:     "UserDataTable",
+			APIKeyTablename:       "ApiKeyTable",
 			VersionTablename:      "Version",
 			Region:                "us-east-2",
 		}

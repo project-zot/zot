@@ -39,6 +39,7 @@ func SetupUserPreferencesRoutes(config *config.Config, router *mux.Router, store
 		userprefsRouter := router.PathPrefix(constants.ExtUserPreferences).Subrouter()
 		userprefsRouter.Use(zcommon.ACHeadersHandler(allowedMethods...))
 		userprefsRouter.Use(zcommon.AddExtensionSecurityHeaders())
+
 		userprefsRouter.HandleFunc("", HandleUserPrefs(repoDB, log)).Methods(allowedMethods...)
 	}
 }

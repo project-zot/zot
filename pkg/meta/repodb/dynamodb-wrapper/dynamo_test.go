@@ -43,6 +43,7 @@ func TestIterator(t *testing.T) {
 	versionTablename := "Version" + uuid.String()
 	indexDataTablename := "IndexDataTable" + uuid.String()
 	userDataTablename := "UserDataTable" + uuid.String()
+	apiKeyTablename := "ApiKeyTable" + uuid.String()
 
 	log := log.NewLogger("debug", "")
 
@@ -54,6 +55,7 @@ func TestIterator(t *testing.T) {
 			ManifestDataTablename: manifestDataTablename,
 			IndexDataTablename:    indexDataTablename,
 			VersionTablename:      versionTablename,
+			APIKeyTablename:       apiKeyTablename,
 			UserDataTablename:     userDataTablename,
 		}
 		client, err := dynamo.GetDynamoClient(params)
@@ -144,8 +146,8 @@ func TestWrapperErrors(t *testing.T) {
 	versionTablename := "Version" + uuid.String()
 	indexDataTablename := "IndexDataTable" + uuid.String()
 	userDataTablename := "UserDataTable" + uuid.String()
-
-	ctx := context.Background()
+	apiKeyTablename := "ApiKeyTable" + uuid.String()
+	wrongTableName := "WRONG Tables"
 
 	log := log.NewLogger("debug", "")
 
@@ -157,6 +159,7 @@ func TestWrapperErrors(t *testing.T) {
 			ManifestDataTablename: manifestDataTablename,
 			IndexDataTablename:    indexDataTablename,
 			UserDataTablename:     userDataTablename,
+			APIKeyTablename:       apiKeyTablename,
 			VersionTablename:      versionTablename,
 		}
 		client, err := dynamo.GetDynamoClient(params) //nolint:contextcheck
@@ -167,6 +170,61 @@ func TestWrapperErrors(t *testing.T) {
 
 		So(dynamoWrapper.ResetManifestDataTable(), ShouldBeNil) //nolint:contextcheck
 		So(dynamoWrapper.ResetRepoMetaTable(), ShouldBeNil)     //nolint:contextcheck
+
+		authzCtxKey := localCtx.GetContextKey()
+
+		acCtx := localCtx.AccessControlContext{
+			Username: "test",
+		}
+
+		ctx := context.WithValue(context.Background(), authzCtxKey, acCtx)
+
+		Convey("SetUserData", func() {
+			hashKey := "id"
+			apiKeys := make(map[string]repodb.APIKeyDetails)
+			apiKeyDetails := repodb.APIKeyDetails{
+				Label:  "apiKey",
+				Scopes: []string{"repo"},
+				UUID:   hashKey,
+			}
+
+			apiKeys[hashKey] = apiKeyDetails
+
+			userProfileSrc := repodb.UserData{
+				Groups:  []string{"group1", "group2"},
+				APIKeys: apiKeys,
+			}
+
+			err := dynamoWrapper.SetUserData(ctx, userProfileSrc)
+			So(err, ShouldBeNil)
+
+			authzCtxKey := localCtx.GetContextKey()
+
+			acCtx := localCtx.AccessControlContext{
+				Username: "",
+			}
+
+			ctx := context.WithValue(context.Background(), authzCtxKey, acCtx)
+
+			err = dynamoWrapper.SetUserData(ctx, repodb.UserData{}) //nolint: contextcheck
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("DeleteUserData", func() {
+			err := dynamoWrapper.DeleteUserData(ctx)
+			So(err, ShouldBeNil)
+
+			authzCtxKey := localCtx.GetContextKey()
+
+			acCtx := localCtx.AccessControlContext{
+				Username: "",
+			}
+
+			ctx := context.WithValue(context.Background(), authzCtxKey, acCtx)
+
+			err = dynamoWrapper.DeleteUserData(ctx) //nolint: contextcheck
+			So(err, ShouldNotBeNil)
+		})
 
 		Convey("ToggleBookmarkRepo no access", func() {
 			acCtx := localCtx.AccessControlContext{
@@ -290,17 +348,17 @@ func TestWrapperErrors(t *testing.T) {
 			So(err, ShouldNotBeNil)
 		})
 
-		Convey("GetUserMeta bad context", func() {
+		Convey("GetUserData bad context", func() {
 			authzCtxKey := localCtx.GetContextKey()
 			ctx := context.WithValue(context.Background(), authzCtxKey, "bad context")
 
-			userData, err := dynamoWrapper.GetUserMeta(ctx)
+			userData, err := dynamoWrapper.GetUserData(ctx)
 			So(err, ShouldNotBeNil)
 			So(userData.BookmarkedRepos, ShouldBeEmpty)
 			So(userData.StarredRepos, ShouldBeEmpty)
 		})
 
-		Convey("GetUserMeta client error", func() {
+		Convey("GetUserData client error", func() {
 			acCtx := localCtx.AccessControlContext{
 				ReadGlobPatterns: map[string]bool{
 					"repo": true,
@@ -312,7 +370,7 @@ func TestWrapperErrors(t *testing.T) {
 
 			dynamoWrapper.UserDataTablename = badTablename
 
-			_, err := dynamoWrapper.GetUserMeta(ctx)
+			_, err := dynamoWrapper.GetUserData(ctx)
 			So(err, ShouldNotBeNil)
 		})
 
@@ -329,27 +387,155 @@ func TestWrapperErrors(t *testing.T) {
 			err := setBadUserData(dynamoWrapper.Client, userDataTablename, acCtx.Username)
 			So(err, ShouldBeNil)
 
-			_, err = dynamoWrapper.GetUserMeta(ctx)
+			_, err = dynamoWrapper.GetUserData(ctx)
 			So(err, ShouldNotBeNil)
 		})
 
-		Convey("SetUserMeta bad context", func() {
+		Convey("SetUserData bad context", func() {
 			authzCtxKey := localCtx.GetContextKey()
 			ctx := context.WithValue(context.Background(), authzCtxKey, "bad context")
 
-			err := dynamoWrapper.SetUserMeta(ctx, repodb.UserData{})
+			err := dynamoWrapper.SetUserData(ctx, repodb.UserData{})
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("GetUserData bad context errors", func() {
+			authzCtxKey := localCtx.GetContextKey()
+			ctx := context.WithValue(context.Background(), authzCtxKey, "bad context")
+
+			_, err := dynamoWrapper.GetUserData(ctx)
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("SetUserData bad context errors", func() {
+			authzCtxKey := localCtx.GetContextKey()
+			ctx := context.WithValue(context.Background(), authzCtxKey, "bad context")
+
+			err := dynamoWrapper.SetUserData(ctx, repodb.UserData{})
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("AddUserAPIKey bad context errors", func() {
+			authzCtxKey := localCtx.GetContextKey()
+			ctx := context.WithValue(context.Background(), authzCtxKey, "bad context")
+
+			err := dynamoWrapper.AddUserAPIKey(ctx, "", &repodb.APIKeyDetails{})
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("DeleteUserAPIKey bad context errors", func() {
+			authzCtxKey := localCtx.GetContextKey()
+			ctx := context.WithValue(context.Background(), authzCtxKey, "bad context")
+
+			err := dynamoWrapper.DeleteUserAPIKey(ctx, "")
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("UpdateUserAPIKeyLastUsed bad context errors", func() {
+			authzCtxKey := localCtx.GetContextKey()
+			ctx := context.WithValue(context.Background(), authzCtxKey, "bad context")
+
+			err := dynamoWrapper.UpdateUserAPIKeyLastUsed(ctx, "")
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("DeleteUserData bad context errors", func() {
+			authzCtxKey := localCtx.GetContextKey()
+			ctx := context.WithValue(context.Background(), authzCtxKey, "bad context")
+
+			err := dynamoWrapper.DeleteUserData(ctx)
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("DeleteUserAPIKey returns nil", func() {
+			authzCtxKey := localCtx.GetContextKey()
+
+			acCtx := localCtx.AccessControlContext{
+				Username: "email",
+			}
+
+			ctx := context.WithValue(context.Background(), authzCtxKey, acCtx)
+
+			apiKeyDetails := make(map[string]repodb.APIKeyDetails)
+			apiKeyDetails["id"] = repodb.APIKeyDetails{
+				UUID: "id",
+			}
+			err := dynamoWrapper.SetUserData(ctx, repodb.UserData{
+				APIKeys: apiKeyDetails,
+			})
+			So(err, ShouldBeNil)
+
+			dynamoWrapper.APIKeyTablename = wrongTableName
+			err = dynamoWrapper.DeleteUserAPIKey(ctx, "id")
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("AddUserAPIKey", func() {
+			Convey("no userid found", func() {
+				authzCtxKey := localCtx.GetContextKey()
+
+				acCtx := localCtx.AccessControlContext{
+					Username: "",
+				}
+
+				ctx := context.WithValue(context.Background(), authzCtxKey, acCtx)
+
+				err = dynamoWrapper.AddUserAPIKey(ctx, "key", &repodb.APIKeyDetails{})
+				So(err, ShouldNotBeNil)
+			})
+			authzCtxKey := localCtx.GetContextKey()
+
+			acCtx := localCtx.AccessControlContext{
+				Username: "email",
+			}
+
+			ctx := context.WithValue(context.Background(), authzCtxKey, acCtx)
+
+			err := dynamoWrapper.AddUserAPIKey(ctx, "key", &repodb.APIKeyDetails{})
+			So(err, ShouldBeNil)
+
+			dynamoWrapper.APIKeyTablename = wrongTableName
+			err = dynamoWrapper.AddUserAPIKey(ctx, "key", &repodb.APIKeyDetails{})
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("GetUserAPIKeyInfo", func() {
+			dynamoWrapper.APIKeyTablename = wrongTableName
+			_, err := dynamoWrapper.GetUserAPIKeyInfo("key")
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("GetUserData", func() {
+			authzCtxKey := localCtx.GetContextKey()
+
+			acCtx := localCtx.AccessControlContext{
+				Username: "",
+			}
+
+			ctx := context.WithValue(context.Background(), authzCtxKey, acCtx)
+			_, err := dynamoWrapper.GetUserData(ctx)
+			So(err, ShouldNotBeNil)
+
+			acCtx = localCtx.AccessControlContext{
+				Username: "email",
+			}
+
+			ctx = context.WithValue(context.Background(), authzCtxKey, acCtx)
+
+			dynamoWrapper.UserDataTablename = wrongTableName
+			_, err = dynamoWrapper.GetUserData(ctx)
 			So(err, ShouldNotBeNil)
 		})
 
 		Convey("SetManifestData", func() {
-			dynamoWrapper.ManifestDataTablename = "WRONG tables"
+			dynamoWrapper.ManifestDataTablename = wrongTableName
 
 			err := dynamoWrapper.SetManifestData("dig", repodb.ManifestData{})
 			So(err, ShouldNotBeNil)
 		})
 
 		Convey("GetManifestData", func() {
-			dynamoWrapper.ManifestDataTablename = "WRONG table"
+			dynamoWrapper.ManifestDataTablename = wrongTableName
 
 			_, err := dynamoWrapper.GetManifestData("dig")
 			So(err, ShouldNotBeNil)
@@ -364,7 +550,7 @@ func TestWrapperErrors(t *testing.T) {
 		})
 
 		Convey("GetIndexData", func() {
-			dynamoWrapper.IndexDataTablename = "WRONG table"
+			dynamoWrapper.IndexDataTablename = wrongTableName
 
 			_, err := dynamoWrapper.GetIndexData("dig")
 			So(err, ShouldNotBeNil)
@@ -1091,6 +1277,7 @@ func TestWrapperErrors(t *testing.T) {
 			ManifestDataTablename: manifestDataTablename,
 			IndexDataTablename:    indexDataTablename,
 			UserDataTablename:     userDataTablename,
+			APIKeyTablename:       apiKeyTablename,
 			VersionTablename:      versionTablename,
 		}
 		client, err := dynamo.GetDynamoClient(params)
@@ -1106,6 +1293,7 @@ func TestWrapperErrors(t *testing.T) {
 			ManifestDataTablename: "",
 			IndexDataTablename:    indexDataTablename,
 			UserDataTablename:     userDataTablename,
+			APIKeyTablename:       apiKeyTablename,
 			VersionTablename:      versionTablename,
 		}
 		client, err = dynamo.GetDynamoClient(params)
@@ -1121,6 +1309,7 @@ func TestWrapperErrors(t *testing.T) {
 			ManifestDataTablename: manifestDataTablename,
 			IndexDataTablename:    "",
 			UserDataTablename:     userDataTablename,
+			APIKeyTablename:       apiKeyTablename,
 			VersionTablename:      versionTablename,
 		}
 		client, err = dynamo.GetDynamoClient(params)
@@ -1136,6 +1325,7 @@ func TestWrapperErrors(t *testing.T) {
 			ManifestDataTablename: manifestDataTablename,
 			IndexDataTablename:    indexDataTablename,
 			UserDataTablename:     userDataTablename,
+			APIKeyTablename:       apiKeyTablename,
 			VersionTablename:      "",
 		}
 		client, err = dynamo.GetDynamoClient(params)
@@ -1150,8 +1340,41 @@ func TestWrapperErrors(t *testing.T) {
 			RepoMetaTablename:     repoMetaTablename,
 			ManifestDataTablename: manifestDataTablename,
 			IndexDataTablename:    indexDataTablename,
-			UserDataTablename:     "",
 			VersionTablename:      versionTablename,
+			UserDataTablename:     userDataTablename,
+			APIKeyTablename:       apiKeyTablename,
+		}
+		client, err = dynamo.GetDynamoClient(params)
+		So(err, ShouldBeNil)
+
+		_, err = dynamoWrapper.NewDynamoDBWrapper(client, params, log)
+		So(err, ShouldBeNil)
+
+		params = dynamo.DBDriverParameters{ //nolint:contextcheck
+			Endpoint:              endpoint,
+			Region:                region,
+			RepoMetaTablename:     repoMetaTablename,
+			ManifestDataTablename: manifestDataTablename,
+			IndexDataTablename:    indexDataTablename,
+			VersionTablename:      versionTablename,
+			UserDataTablename:     "",
+			APIKeyTablename:       apiKeyTablename,
+		}
+		client, err = dynamo.GetDynamoClient(params)
+		So(err, ShouldBeNil)
+
+		_, err = dynamoWrapper.NewDynamoDBWrapper(client, params, log)
+		So(err, ShouldNotBeNil)
+
+		params = dynamo.DBDriverParameters{ //nolint:contextcheck
+			Endpoint:              endpoint,
+			Region:                region,
+			RepoMetaTablename:     repoMetaTablename,
+			ManifestDataTablename: manifestDataTablename,
+			IndexDataTablename:    indexDataTablename,
+			VersionTablename:      versionTablename,
+			UserDataTablename:     userDataTablename,
+			APIKeyTablename:       "",
 		}
 		client, err = dynamo.GetDynamoClient(params)
 		So(err, ShouldBeNil)
@@ -1250,7 +1473,7 @@ func setBadUserData(client *dynamodb.Client, userDataTablename, userID string) e
 			":UserData": userAttributeValue,
 		},
 		Key: map[string]types.AttributeValue{
-			"UserID": &types.AttributeValueMemberS{
+			"Identity": &types.AttributeValueMemberS{
 				Value: userID,
 			},
 		},

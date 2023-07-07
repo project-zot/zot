@@ -36,12 +36,19 @@ type BearerConfig struct {
 	Service string `json:"service,omitempty"`
 }
 
+type OpenIDProviderConfig struct{}
+
+type OpenIDConfig struct {
+	Providers map[string]OpenIDProviderConfig `json:"providers,omitempty" mapstructure:"providers"`
+}
+
 type Auth struct {
 	HTPasswd *HTPasswd     `json:"htpasswd,omitempty" mapstructure:"htpasswd"`
 	Bearer   *BearerConfig `json:"bearer,omitempty" mapstructure:"bearer"`
 	LDAP     *struct {
 		Address string `json:"address,omitempty" mapstructure:"address"`
 	} `json:"ldap,omitempty" mapstructure:"ldap"`
+	OpenID *OpenIDConfig `json:"openid,omitempty" mapstructure:"openid"`
 }
 
 type StrippedConfig struct {
@@ -60,8 +67,10 @@ func (auth Auth) MarshalJSON() ([]byte, error) {
 	type localAuth Auth
 
 	if auth.Bearer == nil && auth.LDAP == nil &&
-		auth.HTPasswd.Path == "" {
+		auth.HTPasswd.Path == "" &&
+		(auth.OpenID == nil || len(auth.OpenID.Providers) == 0) {
 		auth.HTPasswd = nil
+		auth.OpenID = nil
 
 		return json.Marshal((localAuth)(auth))
 	}
@@ -70,6 +79,10 @@ func (auth Auth) MarshalJSON() ([]byte, error) {
 		auth.HTPasswd = nil
 	} else {
 		auth.HTPasswd.Path = ""
+	}
+
+	if auth.OpenID != nil && len(auth.OpenID.Providers) == 0 {
+		auth.OpenID = nil
 	}
 
 	auth.LDAP = nil

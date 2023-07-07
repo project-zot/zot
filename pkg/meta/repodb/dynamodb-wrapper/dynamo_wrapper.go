@@ -30,6 +30,7 @@ var errRepodb = errors.New("repodb: error while constructing manifest meta")
 
 type DBWrapper struct {
 	Client                *dynamodb.Client
+	APIKeyTablename       string
 	RepoMetaTablename     string
 	IndexDataTablename    string
 	ManifestDataTablename string
@@ -47,6 +48,7 @@ func NewDynamoDBWrapper(client *dynamodb.Client, params dynamo.DBDriverParameter
 		IndexDataTablename:    params.IndexDataTablename,
 		VersionTablename:      params.VersionTablename,
 		UserDataTablename:     params.UserDataTablename,
+		APIKeyTablename:       params.APIKeyTablename,
 		Patches:               version.GetDynamoDBPatches(),
 		Log:                   log,
 	}
@@ -72,6 +74,11 @@ func NewDynamoDBWrapper(client *dynamodb.Client, params dynamo.DBDriverParameter
 	}
 
 	err = dynamoWrapper.createUserDataTable()
+	if err != nil {
+		return nil, err
+	}
+
+	err = dynamoWrapper.createAPIKeyTable()
 	if err != nil {
 		return nil, err
 	}
@@ -580,13 +587,13 @@ func (dwr *DBWrapper) GetUserRepoMeta(ctx context.Context, repo string) (repodb.
 		return repodb.RepoMetadata{}, err
 	}
 
-	userMeta, err := dwr.GetUserMeta(ctx)
+	userData, err := dwr.GetUserData(ctx)
 	if err != nil {
 		return repodb.RepoMetadata{}, err
 	}
 
-	repoMeta.IsBookmarked = zcommon.Contains(userMeta.BookmarkedRepos, repo)
-	repoMeta.IsStarred = zcommon.Contains(userMeta.StarredRepos, repo)
+	repoMeta.IsBookmarked = zcommon.Contains(userData.BookmarkedRepos, repo)
+	repoMeta.IsStarred = zcommon.Contains(userData.StarredRepos, repo)
 
 	return repoMeta, nil
 }
@@ -1802,7 +1809,7 @@ func (dwr *DBWrapper) ToggleBookmarkRepo(ctx context.Context, repo string) (
 		return res, zerr.ErrUserDataNotAllowed
 	}
 
-	userMeta, err := dwr.GetUserMeta(ctx)
+	userData, err := dwr.GetUserData(ctx)
 	if err != nil {
 		if errors.Is(err, zerr.ErrUserDataNotFound) {
 			return repodb.NotChanged, nil
@@ -1811,16 +1818,16 @@ func (dwr *DBWrapper) ToggleBookmarkRepo(ctx context.Context, repo string) (
 		return res, err
 	}
 
-	if !zcommon.Contains(userMeta.BookmarkedRepos, repo) {
-		userMeta.BookmarkedRepos = append(userMeta.BookmarkedRepos, repo)
+	if !zcommon.Contains(userData.BookmarkedRepos, repo) {
+		userData.BookmarkedRepos = append(userData.BookmarkedRepos, repo)
 		res = repodb.Added
 	} else {
-		userMeta.BookmarkedRepos = zcommon.RemoveFrom(userMeta.BookmarkedRepos, repo)
+		userData.BookmarkedRepos = zcommon.RemoveFrom(userData.BookmarkedRepos, repo)
 		res = repodb.Removed
 	}
 
 	if res != repodb.NotChanged {
-		err = dwr.SetUserMeta(ctx, userMeta)
+		err = dwr.SetUserData(ctx, userData)
 	}
 
 	if err != nil {
@@ -1833,9 +1840,9 @@ func (dwr *DBWrapper) ToggleBookmarkRepo(ctx context.Context, repo string) (
 }
 
 func (dwr *DBWrapper) GetBookmarkedRepos(ctx context.Context) ([]string, error) {
-	userMeta, err := dwr.GetUserMeta(ctx)
+	userMeta, err := dwr.GetUserData(ctx)
 
-	if errors.Is(err, zerr.ErrUserDataNotFound) {
+	if errors.Is(err, zerr.ErrUserDataNotFound) || errors.Is(err, zerr.ErrUserDataNotAllowed) {
 		return []string{}, nil
 	}
 
@@ -1863,7 +1870,7 @@ func (dwr *DBWrapper) ToggleStarRepo(ctx context.Context, repo string) (
 		return res, zerr.ErrUserDataNotAllowed
 	}
 
-	userData, err := dwr.GetUserMeta(ctx)
+	userData, err := dwr.GetUserData(ctx)
 	if err != nil && !errors.Is(err, zerr.ErrUserDataNotFound) {
 		return res, err
 	}
@@ -1902,21 +1909,21 @@ func (dwr *DBWrapper) ToggleStarRepo(ctx context.Context, repo string) (
 		_, err = dwr.Client.TransactWriteItems(ctx, &dynamodb.TransactWriteItemsInput{
 			TransactItems: []types.TransactWriteItem{
 				{
-					// Update User Meta
+					// Update User Profile
 					Update: &types.Update{
 						ExpressionAttributeNames: map[string]string{
-							"#UM": "UserData",
+							"#UP": "UserData",
 						},
 						ExpressionAttributeValues: map[string]types.AttributeValue{
 							":UserData": userAttributeValue,
 						},
 						Key: map[string]types.AttributeValue{
-							"UserID": &types.AttributeValueMemberS{
+							"Identity": &types.AttributeValueMemberS{
 								Value: userid,
 							},
 						},
 						TableName:        aws.String(dwr.UserDataTablename),
-						UpdateExpression: aws.String("SET #UM = :UserData"),
+						UpdateExpression: aws.String("SET #UP = :UserData"),
 					},
 				},
 				{
@@ -1948,50 +1955,13 @@ func (dwr *DBWrapper) ToggleStarRepo(ctx context.Context, repo string) (
 }
 
 func (dwr *DBWrapper) GetStarredRepos(ctx context.Context) ([]string, error) {
-	userMeta, err := dwr.GetUserMeta(ctx)
+	userMeta, err := dwr.GetUserData(ctx)
 
-	if errors.Is(err, zerr.ErrUserDataNotFound) {
+	if errors.Is(err, zerr.ErrUserDataNotFound) || errors.Is(err, zerr.ErrUserDataNotAllowed) {
 		return []string{}, nil
 	}
 
 	return userMeta.StarredRepos, err
-}
-
-func (dwr *DBWrapper) GetUserMeta(ctx context.Context) (repodb.UserData, error) {
-	acCtx, err := localCtx.GetAccessControlContext(ctx)
-	if err != nil {
-		return repodb.UserData{}, err
-	}
-
-	userid := localCtx.GetUsernameFromContext(acCtx)
-
-	if userid == "" {
-		// empty user is anonymous, it has no data
-		return repodb.UserData{}, nil
-	}
-
-	resp, err := dwr.Client.GetItem(ctx, &dynamodb.GetItemInput{
-		TableName: aws.String(dwr.UserDataTablename),
-		Key: map[string]types.AttributeValue{
-			"UserID": &types.AttributeValueMemberS{Value: userid},
-		},
-	})
-	if err != nil {
-		return repodb.UserData{}, err
-	}
-
-	if resp.Item == nil {
-		return repodb.UserData{}, zerr.ErrUserDataNotFound
-	}
-
-	var userMeta repodb.UserData
-
-	err = attributevalue.Unmarshal(resp.Item["UserData"], &userMeta)
-	if err != nil {
-		return repodb.UserData{}, err
-	}
-
-	return userMeta, nil
 }
 
 func (dwr *DBWrapper) createUserDataTable() error {
@@ -1999,13 +1969,13 @@ func (dwr *DBWrapper) createUserDataTable() error {
 		TableName: aws.String(dwr.UserDataTablename),
 		AttributeDefinitions: []types.AttributeDefinition{
 			{
-				AttributeName: aws.String("UserID"),
+				AttributeName: aws.String("Identity"),
 				AttributeType: types.ScalarAttributeTypeS,
 			},
 		},
 		KeySchema: []types.KeySchemaElement{
 			{
-				AttributeName: aws.String("UserID"),
+				AttributeName: aws.String("Identity"),
 				KeyType:       types.KeyTypeHash,
 			},
 		},
@@ -2019,38 +1989,279 @@ func (dwr *DBWrapper) createUserDataTable() error {
 	return dwr.waitTableToBeCreated(dwr.UserDataTablename)
 }
 
-func (dwr *DBWrapper) SetUserMeta(ctx context.Context, userMeta repodb.UserData) error {
+func (dwr DBWrapper) createAPIKeyTable() error {
+	_, err := dwr.Client.CreateTable(context.Background(), &dynamodb.CreateTableInput{
+		TableName: aws.String(dwr.APIKeyTablename),
+		AttributeDefinitions: []types.AttributeDefinition{
+			{
+				AttributeName: aws.String("HashedKey"),
+				AttributeType: types.ScalarAttributeTypeS,
+			},
+		},
+		KeySchema: []types.KeySchemaElement{
+			{
+				AttributeName: aws.String("HashedKey"),
+				KeyType:       types.KeyTypeHash,
+			},
+		},
+		BillingMode: types.BillingModePayPerRequest,
+	})
+
+	if err != nil && !strings.Contains(err.Error(), "Table already exists") {
+		return err
+	}
+
+	return dwr.waitTableToBeCreated(dwr.APIKeyTablename)
+}
+
+func (dwr DBWrapper) SetUserGroups(ctx context.Context, groups []string) error {
+	userData, err := dwr.GetUserData(ctx)
+	if err != nil && !errors.Is(err, zerr.ErrUserDataNotFound) {
+		return err
+	}
+
+	userData.Groups = append(userData.Groups, groups...)
+
+	return dwr.SetUserData(ctx, userData)
+}
+
+func (dwr DBWrapper) GetUserGroups(ctx context.Context) ([]string, error) {
+	userData, err := dwr.GetUserData(ctx)
+
+	return userData.Groups, err
+}
+
+func (dwr DBWrapper) UpdateUserAPIKeyLastUsed(ctx context.Context, hashedKey string) error {
+	userData, err := dwr.GetUserData(ctx)
+	if err != nil {
+		return err
+	}
+
+	apiKeyDetails := userData.APIKeys[hashedKey]
+	apiKeyDetails.LastUsed = time.Now()
+
+	userData.APIKeys[hashedKey] = apiKeyDetails
+
+	err = dwr.SetUserData(ctx, userData)
+
+	return err
+}
+
+func (dwr DBWrapper) AddUserAPIKey(ctx context.Context, hashedKey string, apiKeyDetails *repodb.APIKeyDetails) error {
 	acCtx, err := localCtx.GetAccessControlContext(ctx)
 	if err != nil {
 		return err
 	}
 
 	userid := localCtx.GetUsernameFromContext(acCtx)
-
 	if userid == "" {
-		// empty user is anonymous, it has no data
+		// empty user is anonymous
 		return zerr.ErrUserDataNotAllowed
 	}
 
-	userAttributeValue, err := attributevalue.Marshal(userMeta)
+	userData, err := dwr.GetUserData(ctx)
+	if err != nil && !errors.Is(err, zerr.ErrUserDataNotFound) {
+		return fmt.Errorf("repoDB: error while getting userData for identity %s %w", userid, err)
+	}
+
+	if userData.APIKeys == nil {
+		userData.APIKeys = make(map[string]repodb.APIKeyDetails)
+	}
+
+	userData.APIKeys[hashedKey] = *apiKeyDetails
+
+	userAttributeValue, err := attributevalue.Marshal(userData)
+	if err != nil {
+		return err
+	}
+
+	_, err = dwr.Client.TransactWriteItems(ctx, &dynamodb.TransactWriteItemsInput{
+		TransactItems: []types.TransactWriteItem{
+			{
+				// Update UserData
+				Update: &types.Update{
+					ExpressionAttributeNames: map[string]string{
+						"#UP": "UserData",
+					},
+					ExpressionAttributeValues: map[string]types.AttributeValue{
+						":UserData": userAttributeValue,
+					},
+					Key: map[string]types.AttributeValue{
+						"Identity": &types.AttributeValueMemberS{
+							Value: userid,
+						},
+					},
+					TableName:        aws.String(dwr.UserDataTablename),
+					UpdateExpression: aws.String("SET #UP = :UserData"),
+				},
+			},
+			{
+				// Update APIKeyInfo
+				Update: &types.Update{
+					ExpressionAttributeNames: map[string]string{
+						"#EM": "Identity",
+					},
+					ExpressionAttributeValues: map[string]types.AttributeValue{
+						":Identity": &types.AttributeValueMemberS{Value: userid},
+					},
+					Key: map[string]types.AttributeValue{
+						"HashedKey": &types.AttributeValueMemberS{
+							Value: hashedKey,
+						},
+					},
+					TableName:        aws.String(dwr.APIKeyTablename),
+					UpdateExpression: aws.String("SET #EM = :Identity"),
+				},
+			},
+		},
+	})
+
+	return err
+}
+
+func (dwr DBWrapper) DeleteUserAPIKey(ctx context.Context, keyID string) error {
+	userData, err := dwr.GetUserData(ctx)
+	if err != nil {
+		return fmt.Errorf("repoDB: error while getting userData %w", err)
+	}
+
+	for hash, apiKeyDetails := range userData.APIKeys {
+		if apiKeyDetails.UUID == keyID {
+			delete(userData.APIKeys, hash)
+
+			_, err = dwr.Client.DeleteItem(ctx, &dynamodb.DeleteItemInput{
+				TableName: aws.String(dwr.APIKeyTablename),
+				Key: map[string]types.AttributeValue{
+					"HashedKey": &types.AttributeValueMemberS{Value: hash},
+				},
+			})
+			if err != nil {
+				return fmt.Errorf("repoDB: error while deleting userAPIKey entry for hash %s %w", hash, err)
+			}
+
+			err := dwr.SetUserData(ctx, userData)
+
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (dwr DBWrapper) GetUserAPIKeyInfo(hashedKey string) (string, error) {
+	var userid string
+
+	resp, err := dwr.Client.GetItem(context.Background(), &dynamodb.GetItemInput{
+		TableName: aws.String(dwr.APIKeyTablename),
+		Key: map[string]types.AttributeValue{
+			"HashedKey": &types.AttributeValueMemberS{Value: hashedKey},
+		},
+	})
+	if err != nil {
+		return "", err
+	}
+
+	if resp.Item == nil {
+		return "", zerr.ErrUserAPIKeyNotFound
+	}
+
+	err = attributevalue.Unmarshal(resp.Item["Identity"], &userid)
+	if err != nil {
+		return "", err
+	}
+
+	return userid, nil
+}
+
+func (dwr DBWrapper) GetUserData(ctx context.Context) (repodb.UserData, error) {
+	var userData repodb.UserData
+
+	acCtx, err := localCtx.GetAccessControlContext(ctx)
+	if err != nil {
+		return userData, err
+	}
+
+	userid := localCtx.GetUsernameFromContext(acCtx)
+	if userid == "" {
+		// empty user is anonymous
+		return userData, zerr.ErrUserDataNotAllowed
+	}
+
+	resp, err := dwr.Client.GetItem(ctx, &dynamodb.GetItemInput{
+		TableName: aws.String(dwr.UserDataTablename),
+		Key: map[string]types.AttributeValue{
+			"Identity": &types.AttributeValueMemberS{Value: userid},
+		},
+	})
+	if err != nil {
+		return repodb.UserData{}, err
+	}
+
+	if resp.Item == nil {
+		return repodb.UserData{}, zerr.ErrUserDataNotFound
+	}
+
+	err = attributevalue.Unmarshal(resp.Item["UserData"], &userData)
+	if err != nil {
+		return repodb.UserData{}, err
+	}
+
+	return userData, nil
+}
+
+func (dwr DBWrapper) SetUserData(ctx context.Context, userData repodb.UserData) error {
+	acCtx, err := localCtx.GetAccessControlContext(ctx)
+	if err != nil {
+		return err
+	}
+
+	userid := localCtx.GetUsernameFromContext(acCtx)
+	if userid == "" {
+		// empty user is anonymous
+		return zerr.ErrUserDataNotAllowed
+	}
+
+	userAttributeValue, err := attributevalue.Marshal(userData)
 	if err != nil {
 		return err
 	}
 
 	_, err = dwr.Client.UpdateItem(ctx, &dynamodb.UpdateItemInput{
 		ExpressionAttributeNames: map[string]string{
-			"#UM": "UserData",
+			"#UP": "UserData",
 		},
 		ExpressionAttributeValues: map[string]types.AttributeValue{
 			":UserData": userAttributeValue,
 		},
 		Key: map[string]types.AttributeValue{
-			"UserID": &types.AttributeValueMemberS{
+			"Identity": &types.AttributeValueMemberS{
 				Value: userid,
 			},
 		},
 		TableName:        aws.String(dwr.UserDataTablename),
-		UpdateExpression: aws.String("SET #UM = :UserData"),
+		UpdateExpression: aws.String("SET #UP = :UserData"),
+	})
+
+	return err
+}
+
+func (dwr DBWrapper) DeleteUserData(ctx context.Context) error {
+	acCtx, err := localCtx.GetAccessControlContext(ctx)
+	if err != nil {
+		return err
+	}
+
+	userid := localCtx.GetUsernameFromContext(acCtx)
+	if userid == "" {
+		// empty user is anonymous
+		return zerr.ErrUserDataNotAllowed
+	}
+
+	_, err = dwr.Client.DeleteItem(ctx, &dynamodb.DeleteItemInput{
+		TableName: aws.String(dwr.UserDataTablename),
+		Key: map[string]types.AttributeValue{
+			"Identity": &types.AttributeValueMemberS{Value: userid},
+		},
 	})
 
 	return err

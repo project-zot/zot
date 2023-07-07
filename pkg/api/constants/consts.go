@@ -12,4 +12,11 @@ const (
 	DefaultMediaType             = "application/json"
 	BinaryMediaType              = "application/octet-stream"
 	DefaultMetricsExtensionRoute = "/metrics"
+	CallbackBasePath             = "/auth/callback"
+	LoginPath                    = "/auth/login"
+	LogoutPath                   = "/auth/logout"
+	SessionClientHeaderName      = "X-ZOT-API-CLIENT"
+	SessionClientHeaderValue     = "zot-ui"
+	APIKeysPrefix                = "zak_"
+	CallbackUIQueryParam         = "callback_ui"
 )

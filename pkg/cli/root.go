@@ -361,6 +361,10 @@ func validateConfiguration(config *config.Config) error {
 		return err
 	}
 
+	if err := validateOpenIDConfig(config); err != nil {
+		return err
+	}
+
 	if err := validateSync(config); err != nil {
 		return err
 	}
@@ -377,7 +381,7 @@ func validateConfiguration(config *config.Config) error {
 		return err
 	}
 
-	// check authorization config, it should have basic auth enabled or ldap
+	// check authorization config, it should have basic auth enabled or ldap, api keys or OpenID
 	if config.HTTP.AccessControl != nil {
 		// checking for anonymous policy only authorization config: no users, no policies but anonymous policy
 		if err := validateAuthzPolicies(config); err != nil {
@@ -435,11 +439,42 @@ func validateConfiguration(config *config.Config) error {
 	return nil
 }
 
+func validateOpenIDConfig(config *config.Config) error {
+	if config.HTTP.Auth != nil && config.HTTP.Auth.OpenID != nil {
+		for provider, providerConfig := range config.HTTP.Auth.OpenID.Providers {
+			//nolint: gocritic
+			if api.IsOpenIDSupported(provider) {
+				if providerConfig.ClientID == "" || providerConfig.Issuer == "" ||
+					len(providerConfig.Scopes) == 0 {
+					log.Error().Err(errors.ErrBadConfig).
+						Msg("OpenID provider config requires clientid, issuer and scopes parameters")
+
+					return errors.ErrBadConfig
+				}
+			} else if api.IsOauth2Supported(provider) {
+				if providerConfig.ClientID == "" || len(providerConfig.Scopes) == 0 {
+					log.Error().Err(errors.ErrBadConfig).
+						Msg("OAuth2 provider config requires clientid and scopes parameters")
+
+					return errors.ErrBadConfig
+				}
+			} else {
+				log.Error().Err(errors.ErrBadConfig).
+					Msg("unsupported openid/oauth2 provider")
+
+				return errors.ErrBadConfig
+			}
+		}
+	}
+
+	return nil
+}
+
 func validateAuthzPolicies(config *config.Config) error {
-	if (config.HTTP.Auth == nil || (config.HTTP.Auth.HTPasswd.Path == "" && config.HTTP.Auth.LDAP == nil)) &&
-		!authzContainsOnlyAnonymousPolicy(config) {
+	if (config.HTTP.Auth == nil || (config.HTTP.Auth.HTPasswd.Path == "" && config.HTTP.Auth.LDAP == nil &&
+		config.HTTP.Auth.OpenID == nil)) && !authzContainsOnlyAnonymousPolicy(config) {
 		log.Error().Err(errors.ErrBadConfig).
-			Msg("access control config requires httpasswd, ldap authentication " +
+			Msg("access control config requires one of httpasswd, ldap or openid authentication " +
 				"or using only 'anonymousPolicy' policies")
 
 		return errors.ErrBadConfig
@@ -483,6 +518,13 @@ func applyDefaultValues(config *config.Config, viperInstance *viper.Viper) {
 			// we found a config like `"extensions": {"mgmt:": {}}`
 			// Note: In case mgmt is not empty the config.Extensions will not be nil and we will not reach here
 			config.Extensions.Mgmt = &extconf.MgmtConfig{}
+		}
+
+		_, ok = extMap["apikey"]
+		if ok {
+			// we found a config like `"extensions": {"mgmt:": {}}`
+			// Note: In case mgmt is not empty the config.Extensions will not be nil and we will not reach here
+			config.Extensions.APIKey = &extconf.APIKeyConfig{}
 		}
 	}
 
@@ -547,6 +589,12 @@ func applyDefaultValues(config *config.Config, viperInstance *viper.Viper) {
 		if config.Extensions.Mgmt != nil {
 			if config.Extensions.Mgmt.Enable == nil {
 				config.Extensions.Mgmt.Enable = &defaultVal
+			}
+		}
+
+		if config.Extensions.APIKey != nil {
+			if config.Extensions.APIKey.Enable == nil {
+				config.Extensions.APIKey.Enable = &defaultVal
 			}
 		}
 

@@ -390,6 +390,7 @@ func TestParseStorageDynamoWrapper(t *testing.T) {
 			ManifestDataTablename: "ManifestDataTable",
 			IndexDataTablename:    "IndexDataTable",
 			UserDataTablename:     "UserDataTable",
+			APIKeyTablename:       "ApiKeyTable",
 			VersionTablename:      "Version",
 		}
 

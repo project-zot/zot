@@ -1,5 +1,5 @@
-//go:build sync && scrub && metrics && search
-// +build sync,scrub,metrics,search
+//go:build sync && scrub && metrics && search && apikey
+// +build sync,scrub,metrics,search,apikey
 
 package cli_test
 
@@ -854,6 +854,67 @@ func TestServeMgmtExtension(t *testing.T) {
 		So(err, ShouldBeNil)
 		defer os.Remove(logPath) // clean up
 		So(string(data), ShouldContainSubstring, "\"Mgmt\":{\"Enable\":false}")
+	})
+}
+
+func TestServeAPIKeyExtension(t *testing.T) {
+	oldArgs := os.Args
+
+	defer func() { os.Args = oldArgs }()
+
+	Convey("apikey implicitly enabled", t, func(c C) {
+		content := `{
+					"storage": {
+						"rootDirectory": "%s"
+					},
+					"http": {
+						"address": "127.0.0.1",
+						"port": "%s"
+					},
+					"log": {
+						"level": "debug",
+						"output": "%s"
+					},
+					"extensions": {
+						"apikey": {
+						}
+					}
+				}`
+
+		logPath, err := runCLIWithConfig(t.TempDir(), content)
+		So(err, ShouldBeNil)
+		data, err := os.ReadFile(logPath)
+		So(err, ShouldBeNil)
+		defer os.Remove(logPath) // clean up
+		So(string(data), ShouldContainSubstring, "\"APIKey\":{\"Enable\":true}")
+	})
+
+	Convey("apikey disabled", t, func(c C) {
+		content := `{
+					"storage": {
+						"rootDirectory": "%s"
+					},
+					"http": {
+						"address": "127.0.0.1",
+						"port": "%s"
+					},
+					"log": {
+						"level": "debug",
+						"output": "%s"
+					},
+					"extensions": {
+						"apikey": {
+							"enable": "false"
+						}
+					}
+				}`
+
+		logPath, err := runCLIWithConfig(t.TempDir(), content)
+		So(err, ShouldBeNil)
+		data, err := os.ReadFile(logPath)
+		So(err, ShouldBeNil)
+		defer os.Remove(logPath) // clean up
+		So(string(data), ShouldContainSubstring, "\"APIKey\":{\"Enable\":false}")
 	})
 }
 
