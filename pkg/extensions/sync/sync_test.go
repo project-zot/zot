@@ -802,6 +802,14 @@ func TestOnDemand(t *testing.T) {
 			regex := ".*"
 			semver := true
 
+			destPort := test.GetFreePort()
+			destConfig := config.New()
+
+			destBaseURL := test.GetBaseURL(destPort)
+
+			hostname, err := os.Hostname()
+			So(err, ShouldBeNil)
+
 			syncRegistryConfig := syncconf.RegistryConfig{
 				Content: []syncconf.Content{
 					{
@@ -812,7 +820,11 @@ func TestOnDemand(t *testing.T) {
 						},
 					},
 				},
-				URLs:      []string{srcBaseURL},
+				// include self url, should be ignored
+				URLs: []string{
+					fmt.Sprintf("http://%s", hostname), destBaseURL,
+					srcBaseURL, fmt.Sprintf("http://localhost:%s", destPort),
+				},
 				TLSVerify: &tlsVerify,
 				CertDir:   "",
 				OnDemand:  true,
@@ -823,11 +835,6 @@ func TestOnDemand(t *testing.T) {
 				Enable:     &defaultVal,
 				Registries: []syncconf.RegistryConfig{syncRegistryConfig},
 			}
-
-			destPort := test.GetFreePort()
-			destConfig := config.New()
-
-			destBaseURL := test.GetBaseURL(destPort)
 
 			destConfig.HTTP.Port = destPort
 
@@ -3384,7 +3391,7 @@ func TestMultipleURLs(t *testing.T) {
 					},
 				},
 			},
-			URLs:         []string{"badURL", "http://invalid.invalid/invalid/", srcBaseURL},
+			URLs:         []string{"badURL", "@!#!$#@%", "http://invalid.invalid/invalid/", srcBaseURL},
 			PollInterval: updateDuration,
 			TLSVerify:    &tlsVerify,
 			CertDir:      "",
@@ -3435,6 +3442,49 @@ func TestMultipleURLs(t *testing.T) {
 		So(destTagsList, ShouldResemble, srcTagsList)
 
 		waitSyncFinish(dctlr.Config.Log.Output)
+	})
+}
+
+func TestNoURLsLeftInConfig(t *testing.T) {
+	Convey("Verify sync feature", t, func() {
+		updateDuration, _ := time.ParseDuration("30m")
+
+		regex := ".*"
+		semver := true
+		var tlsVerify bool
+
+		syncRegistryConfig := syncconf.RegistryConfig{
+			Content: []syncconf.Content{
+				{
+					Prefix: testImage,
+					Tags: &syncconf.Tags{
+						Regex:  &regex,
+						Semver: &semver,
+					},
+				},
+			},
+			URLs:         []string{"@!#!$#@%", "@!#!$#@%"},
+			PollInterval: updateDuration,
+			TLSVerify:    &tlsVerify,
+			CertDir:      "",
+		}
+
+		defaultVal := true
+		syncConfig := &syncconf.Config{
+			Enable:     &defaultVal,
+			Registries: []syncconf.RegistryConfig{syncRegistryConfig},
+		}
+
+		dctlr, destBaseURL, _, destClient := makeDownstreamServer(t, false, syncConfig)
+
+		dcm := test.NewControllerManager(dctlr)
+		dcm.StartAndWait(dctlr.Config.HTTP.Port)
+		defer dcm.StopServer()
+
+		resp, err := destClient.R().Get(destBaseURL + "/v2/" + testImage + "/tags/list")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
 	})
 }
 

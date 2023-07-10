@@ -386,12 +386,14 @@ test-bats-sync: BUILD_LABELS=sync
 test-bats-sync: binary binary-minimal bench check-skopeo $(BATS) $(NOTATION) $(COSIGN)
 	$(BATS) --trace --print-output-on-failure test/blackbox/sync.bats
 	$(BATS) --trace --print-output-on-failure test/blackbox/sync_docker.bats
+	$(BATS) --trace --print-output-on-failure test/blackbox/sync_replica_cluster.bats
 	
 .PHONY: test-bats-sync-verbose
 test-bats-sync-verbose: BUILD_LABELS=sync
 test-bats-sync-verbose: binary binary-minimal bench check-skopeo $(BATS) $(NOTATION) $(COSIGN)
 	$(BATS) --trace -t -x -p --verbose-run --print-output-on-failure --show-output-of-passing-tests test/blackbox/sync.bats
 	$(BATS) --trace -t -x -p --verbose-run --print-output-on-failure --show-output-of-passing-tests test/blackbox/sync_docker.bats
+	$(BATS) --trace -t -x -p --verbose-run --print-output-on-failure --show-output-of-passing-tests test/blackbox/sync_replica_cluster.bats
 
 .PHONY: test-bats-cve
 test-bats-cve: BUILD_LABELS=search
