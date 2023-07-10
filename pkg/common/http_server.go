@@ -2,6 +2,7 @@ package common
 
 import (
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -80,6 +81,16 @@ func WriteData(w http.ResponseWriter, status int, mediaType string, data []byte)
 	w.Header().Set("Content-Type", mediaType)
 	w.WriteHeader(status)
 	_, _ = w.Write(data)
+}
+
+func QueryHasParams(values url.Values, params []string) bool {
+	for _, param := range params {
+		if !values.Has(param) {
+			return false
+		}
+	}
+
+	return true
 }
 
 /*

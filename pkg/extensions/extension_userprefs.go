@@ -6,7 +6,6 @@ package extensions
 import (
 	"errors"
 	"net/http"
-	"net/url"
 
 	"github.com/gorilla/mux"
 
@@ -59,7 +58,7 @@ func SetupUserPreferencesRoutes(config *config.Config, router *mux.Router, store
 // @Failure 400 {string} 	string 				"bad request".
 func HandleUserPrefs(repoDB repodb.RepoDB, log log.Logger) func(w http.ResponseWriter, r *http.Request) {
 	return func(rsp http.ResponseWriter, req *http.Request) {
-		if !queryHasParams(req.URL.Query(), []string{"action"}) {
+		if !zcommon.QueryHasParams(req.URL.Query(), []string{"action"}) {
 			rsp.WriteHeader(http.StatusBadRequest)
 
 			return
@@ -85,7 +84,7 @@ func HandleUserPrefs(repoDB repodb.RepoDB, log log.Logger) func(w http.ResponseW
 }
 
 func PutStar(rsp http.ResponseWriter, req *http.Request, repoDB repodb.RepoDB, log log.Logger) {
-	if !queryHasParams(req.URL.Query(), []string{"repo"}) {
+	if !zcommon.QueryHasParams(req.URL.Query(), []string{"repo"}) {
 		rsp.WriteHeader(http.StatusBadRequest)
 
 		return
@@ -120,7 +119,7 @@ func PutStar(rsp http.ResponseWriter, req *http.Request, repoDB repodb.RepoDB, l
 }
 
 func PutBookmark(rsp http.ResponseWriter, req *http.Request, repoDB repodb.RepoDB, log log.Logger) {
-	if !queryHasParams(req.URL.Query(), []string{"repo"}) {
+	if !zcommon.QueryHasParams(req.URL.Query(), []string{"repo"}) {
 		rsp.WriteHeader(http.StatusBadRequest)
 
 		return
@@ -152,14 +151,4 @@ func PutBookmark(rsp http.ResponseWriter, req *http.Request, repoDB repodb.RepoD
 	}
 
 	rsp.WriteHeader(http.StatusOK)
-}
-
-func queryHasParams(values url.Values, params []string) bool {
-	for _, param := range params {
-		if !values.Has(param) {
-			return false
-		}
-	}
-
-	return true
 }
