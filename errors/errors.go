@@ -16,6 +16,7 @@ var (
 	ErrBlobNotFound                   = errors.New("blob: not found")
 	ErrBadBlob                        = errors.New("blob: bad blob")
 	ErrBadBlobDigest                  = errors.New("blob: bad blob digest")
+	ErrBlobReferenced                 = errors.New("blob: referenced by manifest")
 	ErrUnknownCode                    = errors.New("error: unknown error code")
 	ErrBadCACert                      = errors.New("tls: invalid ca cert")
 	ErrBadUser                        = errors.New("auth: non-existent user")

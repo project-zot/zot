@@ -1169,25 +1169,25 @@ func TestDedupeLinks(t *testing.T) {
 	metrics := monitoring.NewMetricsServer(false, log)
 
 	for _, testCase := range testCases {
-		dir := t.TempDir()
-
-		cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
-			RootDir:     dir,
-			Name:        "cache",
-			UseRelPaths: true,
-		}, log)
-
-		var imgStore storageTypes.ImageStore
-
-		if testCase.dedupe {
-			imgStore = local.NewImageStore(dir, false, storageConstants.DefaultGCDelay,
-				testCase.dedupe, true, log, metrics, nil, cacheDriver)
-		} else {
-			imgStore = local.NewImageStore(dir, false, storageConstants.DefaultGCDelay,
-				testCase.dedupe, true, log, metrics, nil, nil)
-		}
-
 		Convey(fmt.Sprintf("Dedupe %t", testCase.dedupe), t, func(c C) {
+			dir := t.TempDir()
+
+			cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
+				RootDir:     dir,
+				Name:        "cache",
+				UseRelPaths: true,
+			}, log)
+
+			var imgStore storageTypes.ImageStore
+
+			if testCase.dedupe {
+				imgStore = local.NewImageStore(dir, false, storageConstants.DefaultGCDelay,
+					testCase.dedupe, true, log, metrics, nil, cacheDriver)
+			} else {
+				imgStore = local.NewImageStore(dir, false, storageConstants.DefaultGCDelay,
+					testCase.dedupe, true, log, metrics, nil, nil)
+			}
+
 			// manifest1
 			upload, err := imgStore.NewBlobUpload("dedupe1")
 			So(err, ShouldBeNil)
@@ -1240,12 +1240,12 @@ func TestDedupeLinks(t *testing.T) {
 			manifest.SchemaVersion = 2
 			manifestBuf, err := json.Marshal(manifest)
 			So(err, ShouldBeNil)
-			digest = godigest.FromBytes(manifestBuf)
-			_, _, err = imgStore.PutImageManifest("dedupe1", digest.String(),
+			manifestDigest := godigest.FromBytes(manifestBuf)
+			_, _, err = imgStore.PutImageManifest("dedupe1", manifestDigest.String(),
 				ispec.MediaTypeImageManifest, manifestBuf)
 			So(err, ShouldBeNil)
 
-			_, _, _, err = imgStore.GetImageManifest("dedupe1", digest.String())
+			_, _, _, err = imgStore.GetImageManifest("dedupe1", manifestDigest.String())
 			So(err, ShouldBeNil)
 
 			// manifest2
@@ -1317,6 +1317,13 @@ func TestDedupeLinks(t *testing.T) {
 			if !testCase.dedupe {
 				Convey("delete blobs from storage/cache should work when dedupe is false", func() {
 					So(blobDigest1, ShouldEqual, blobDigest2)
+
+					// to not trigger BlobInUse err, delete manifest first
+					err = imgStore.DeleteImageManifest("dedupe1", manifestDigest.String(), false)
+					So(err, ShouldBeNil)
+
+					err = imgStore.DeleteImageManifest("dedupe2", "1.0", false)
+					So(err, ShouldBeNil)
 
 					err = imgStore.DeleteBlob("dedupe1", godigest.NewDigestFromEncoded(godigest.SHA256, blobDigest1))
 					So(err, ShouldBeNil)
@@ -1465,6 +1472,13 @@ func TestDedupeLinks(t *testing.T) {
 
 			Convey("delete blobs from storage/cache should work when dedupe is true", func() {
 				So(blobDigest1, ShouldEqual, blobDigest2)
+
+				// to not trigger BlobInUse err, delete manifest first
+				err = imgStore.DeleteImageManifest("dedupe1", manifestDigest.String(), false)
+				So(err, ShouldBeNil)
+
+				err = imgStore.DeleteImageManifest("dedupe2", "1.0", false)
+				So(err, ShouldBeNil)
 
 				err = imgStore.DeleteBlob("dedupe1", godigest.NewDigestFromEncoded(godigest.SHA256, blobDigest1))
 				So(err, ShouldBeNil)

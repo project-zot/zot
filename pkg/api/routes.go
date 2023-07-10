@@ -1091,6 +1091,10 @@ func (rh *RouteHandler) DeleteBlob(response http.ResponseWriter, request *http.R
 			zcommon.WriteJSON(response,
 				http.StatusNotFound,
 				apiErr.NewErrorList(apiErr.NewError(apiErr.BLOB_UNKNOWN, map[string]string{".String()": digest.String()})))
+		} else if errors.Is(err, zerr.ErrBlobReferenced) {
+			zcommon.WriteJSON(response,
+				http.StatusMethodNotAllowed,
+				apiErr.NewErrorList(apiErr.NewError(apiErr.DENIED, map[string]string{".String()": digest.String()})))
 		} else {
 			rh.c.Log.Error().Err(err).Msg("unexpected error")
 			response.WriteHeader(http.StatusInternalServerError)
