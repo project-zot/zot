@@ -1142,7 +1142,7 @@ func (dwr *DBWrapper) collectImageIndexFilterInfo(indexDigest string, repoMeta r
 	}, nil
 }
 
-func (dwr *DBWrapper) FilterTags(ctx context.Context, filter repodb.FilterFunc,
+func (dwr *DBWrapper) FilterTags(ctx context.Context, filterFunc repodb.FilterFunc, filter repodb.Filter,
 	requestedPage repodb.PageInput,
 ) ([]repodb.RepoMetadata, map[string]repodb.ManifestMetadata, map[string]repodb.IndexData, zcommon.PageInfo, error) {
 	var (
@@ -1203,7 +1203,20 @@ func (dwr *DBWrapper) FilterTags(ctx context.Context, filter repodb.FilterFunc,
 						fmt.Errorf("repodb: error while unmashaling manifest metadata for digest %s \n%w", manifestDigest, err)
 				}
 
-				if filter(repoMeta, manifestMeta) {
+				imageFilterData, err := collectImageManifestFilterData(manifestDigest, repoMeta, manifestMeta)
+				if err != nil {
+					return []repodb.RepoMetadata{}, map[string]repodb.ManifestMetadata{}, map[string]repodb.IndexData{},
+						pageInfo,
+						fmt.Errorf("repodb: error collecting filter data for manifest with digest %s %w", manifestDigest, err)
+				}
+
+				if !common.AcceptedByFilter(filter, imageFilterData) {
+					delete(matchedTags, tag)
+
+					continue
+				}
+
+				if filterFunc(repoMeta, manifestMeta) {
 					matchedTags[tag] = descriptor
 					manifestMetadataMap[manifestDigest] = manifestMeta
 				}
@@ -1239,7 +1252,18 @@ func (dwr *DBWrapper) FilterTags(ctx context.Context, filter repodb.FilterFunc,
 							fmt.Errorf("%w repodb: error while getting manifest data for digest %s", err, manifestDigest)
 					}
 
-					if filter(repoMeta, manifestMeta) {
+					manifestFilterData, err := collectImageManifestFilterData(manifestDigest, repoMeta, manifestMeta)
+					if err != nil {
+						return []repodb.RepoMetadata{}, map[string]repodb.ManifestMetadata{}, map[string]repodb.IndexData{},
+							pageInfo,
+							fmt.Errorf("repodb: error collecting filter data for manifest with digest %s %w", manifestDigest, err)
+					}
+
+					if !common.AcceptedByFilter(filter, manifestFilterData) {
+						continue
+					}
+
+					if filterFunc(repoMeta, manifestMeta) {
 						matchedManifests = append(matchedManifests, manifest)
 						manifestMetadataMap[manifestDigest] = manifestMeta
 					}

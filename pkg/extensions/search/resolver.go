@@ -133,7 +133,8 @@ func getImageListForDigest(ctx context.Context, digest string, repoDB repodb.Rep
 	}
 
 	// get all repos
-	reposMeta, manifestMetaMap, indexDataMap, pageInfo, err := repoDB.FilterTags(ctx, FilterByDigest(digest), pageInput)
+	reposMeta, manifestMetaMap, indexDataMap, pageInfo, err := repoDB.FilterTags(ctx,
+		FilterByDigest(digest), repodb.Filter{}, pageInput)
 	if err != nil {
 		return &gql_generated.PaginatedImagesResult{}, err
 	}
@@ -383,6 +384,7 @@ func getImageListForCVE(
 	ctx context.Context,
 	cveID string,
 	cveInfo cveinfo.CveInfo,
+	filter *gql_generated.Filter,
 	requestedPage *gql_generated.PageInput,
 	repoDB repodb.RepoDB,
 	log log.Logger,
@@ -426,6 +428,17 @@ func getImageListForCVE(
 		requestedPage = &gql_generated.PageInput{}
 	}
 
+	localFilter := repodb.Filter{}
+	if filter != nil {
+		localFilter = repodb.Filter{
+			Os:            filter.Os,
+			Arch:          filter.Arch,
+			HasToBeSigned: filter.HasToBeSigned,
+			IsBookmarked:  filter.IsBookmarked,
+			IsStarred:     filter.IsStarred,
+		}
+	}
+
 	// Actual page requested by user
 	pageInput := repodb.PageInput{
 		Limit:  safeDereferencing(requestedPage.Limit, 0),
@@ -437,7 +450,7 @@ func getImageListForCVE(
 
 	// get all repos
 	reposMeta, manifestMetaMap, indexDataMap, pageInfo, err := repoDB.FilterTags(ctx,
-		FilterByTagInfo(affectedImages), pageInput)
+		FilterByTagInfo(affectedImages), localFilter, pageInput)
 	if err != nil {
 		return &gql_generated.PaginatedImagesResult{}, err
 	}
@@ -462,6 +475,7 @@ func getImageListWithCVEFixed(
 	cveID string,
 	repo string,
 	cveInfo cveinfo.CveInfo,
+	filter *gql_generated.Filter,
 	requestedPage *gql_generated.PageInput,
 	repoDB repodb.RepoDB,
 	log log.Logger,
@@ -488,6 +502,17 @@ func getImageListWithCVEFixed(
 		requestedPage = &gql_generated.PageInput{}
 	}
 
+	localFilter := repodb.Filter{}
+	if filter != nil {
+		localFilter = repodb.Filter{
+			Os:            filter.Os,
+			Arch:          filter.Arch,
+			HasToBeSigned: filter.HasToBeSigned,
+			IsBookmarked:  filter.IsBookmarked,
+			IsStarred:     filter.IsStarred,
+		}
+	}
+
 	// Actual page requested by user
 	pageInput := repodb.PageInput{
 		Limit:  safeDereferencing(requestedPage.Limit, 0),
@@ -498,7 +523,9 @@ func getImageListWithCVEFixed(
 	}
 
 	// get all repos
-	reposMeta, manifestMetaMap, indexDataMap, pageInfo, err := repoDB.FilterTags(ctx, FilterByTagInfo(tagsInfo), pageInput)
+	reposMeta, manifestMetaMap, indexDataMap, pageInfo, err := repoDB.FilterTags(ctx,
+		FilterByTagInfo(tagsInfo), localFilter, pageInput,
+	)
 	if err != nil {
 		return &gql_generated.PaginatedImagesResult{}, err
 	}
@@ -786,6 +813,7 @@ func derivedImageList(ctx context.Context, image string, digest *string, repoDB 
 	// we need all available tags
 	reposMeta, manifestMetaMap, indexDataMap, pageInfo, err := repoDB.FilterTags(ctx,
 		filterDerivedImages(searchedImage),
+		repodb.Filter{},
 		pageInput)
 	if err != nil {
 		return &gql_generated.PaginatedImagesResult{}, err
@@ -900,6 +928,7 @@ func baseImageList(ctx context.Context, image string, digest *string, repoDB rep
 	// we need all available tags
 	reposMeta, manifestMetaMap, indexDataMap, pageInfo, err := repoDB.FilterTags(ctx,
 		filterBaseImages(searchedImage),
+		repodb.Filter{},
 		pageInput)
 	if err != nil {
 		return &gql_generated.PaginatedImagesResult{}, err
@@ -1259,6 +1288,7 @@ func getImageList(ctx context.Context, repo string, repoDB repodb.RepoDB, cveInf
 		func(repoMeta repodb.RepoMetadata, manifestMeta repodb.ManifestMetadata) bool {
 			return true
 		},
+		repodb.Filter{},
 		pageInput)
 	if err != nil {
 		return &gql_generated.PaginatedImagesResult{}, err

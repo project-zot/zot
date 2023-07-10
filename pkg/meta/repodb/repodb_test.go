@@ -37,6 +37,7 @@ const (
 	LINUX   = "linux"
 	WINDOWS = "windows"
 	AMD     = "amd"
+	ARM     = "arm64"
 )
 
 func TestBoltDBWrapper(t *testing.T) {
@@ -2347,6 +2348,7 @@ func RunRepoDBTests(t *testing.T, repoDB repodb.RepoDB, preparationFuncs ...func
 					func(repoMeta repodb.RepoMetadata, manifestMeta repodb.ManifestMetadata) bool {
 						return true
 					},
+					repodb.Filter{},
 					repodb.PageInput{Limit: 10, Offset: 0, SortBy: repodb.AlphabeticAsc},
 				)
 
@@ -2379,6 +2381,7 @@ func RunRepoDBTests(t *testing.T, repoDB repodb.RepoDB, preparationFuncs ...func
 					func(repoMeta repodb.RepoMetadata, manifestMeta repodb.ManifestMetadata) bool {
 						return repoMeta.Name == repo1
 					},
+					repodb.Filter{},
 					repodb.PageInput{Limit: 10, Offset: 0, SortBy: repodb.AlphabeticAsc},
 				)
 
@@ -2408,6 +2411,7 @@ func RunRepoDBTests(t *testing.T, repoDB repodb.RepoDB, preparationFuncs ...func
 					func(repoMeta repodb.RepoMetadata, manifestMeta repodb.ManifestMetadata) bool {
 						return false
 					},
+					repodb.Filter{},
 					repodb.PageInput{Limit: 10, Offset: 0, SortBy: repodb.AlphabeticAsc},
 				)
 
@@ -2435,6 +2439,7 @@ func RunRepoDBTests(t *testing.T, repoDB repodb.RepoDB, preparationFuncs ...func
 					func(repoMeta repodb.RepoMetadata, manifestMeta repodb.ManifestMetadata) bool {
 						return true
 					},
+					repodb.Filter{},
 					repodb.PageInput{Limit: 10, Offset: 0, SortBy: repodb.AlphabeticAsc},
 				)
 
@@ -2454,11 +2459,226 @@ func RunRepoDBTests(t *testing.T, repoDB repodb.RepoDB, preparationFuncs ...func
 					func(repoMeta repodb.RepoMetadata, manifestMeta repodb.ManifestMetadata) bool {
 						return true
 					},
+					repodb.Filter{},
 					repodb.PageInput{Limit: -1},
 				)
 				So(err, ShouldNotBeNil)
 				So(repos, ShouldBeEmpty)
 			})
+		})
+
+		Convey("Test tags filtering by filter function and OS/Arch Filter", func() {
+			var (
+				repo1           = "repo1"
+				repo2           = "repo2"
+				repo3           = "repo3"
+				repo4           = "repo4"
+				tag1            = "0.0.1"
+				tag2            = "0.0.2"
+				tag3            = "0.0.3"
+				manifestDigest1 = godigest.FromString("fake-manifest1")
+				manifestDigest2 = godigest.FromString("fake-manifest2")
+				manifestDigest3 = godigest.FromString("fake-manifest3")
+
+				indexDigest              = godigest.FromString("index-digest")
+				manifestFromIndexDigest1 = godigest.FromString("fake-manifestFromIndexDigest1")
+				manifestFromIndexDigest2 = godigest.FromString("fake-manifestFromIndexDigest2")
+				manifestFromIndexDigest3 = godigest.FromString("fake-manifestFromIndexDigest3")
+			)
+
+			err := repoDB.SetRepoReference(repo1, tag3, indexDigest, ispec.MediaTypeImageIndex)
+			So(err, ShouldBeNil)
+
+			indexBlob, err := test.GetIndexBlobWithManifests(
+				[]godigest.Digest{
+					manifestFromIndexDigest1,
+					manifestFromIndexDigest2,
+					manifestFromIndexDigest3,
+				},
+			)
+			So(err, ShouldBeNil)
+
+			err = repoDB.SetIndexData(indexDigest, repodb.IndexData{
+				IndexBlob: indexBlob,
+			})
+			So(err, ShouldBeNil)
+
+			err = repoDB.SetRepoReference(repo1, tag1, manifestDigest1, ispec.MediaTypeImageManifest)
+			So(err, ShouldBeNil)
+			err = repoDB.SetRepoReference(repo1, tag2, manifestDigest2, ispec.MediaTypeImageManifest)
+			So(err, ShouldBeNil)
+			err = repoDB.SetRepoReference(repo2, tag1, manifestDigest1, ispec.MediaTypeImageManifest)
+			So(err, ShouldBeNil)
+			err = repoDB.SetRepoReference(repo3, tag1, manifestDigest2, ispec.MediaTypeImageManifest)
+			So(err, ShouldBeNil)
+			err = repoDB.SetRepoReference(repo4, tag1, manifestDigest3, ispec.MediaTypeImageManifest)
+			So(err, ShouldBeNil)
+
+			config1 := ispec.Image{
+				Platform: ispec.Platform{
+					Architecture: AMD,
+					OS:           LINUX,
+				},
+			}
+			configBlob1, err := json.Marshal(config1)
+			So(err, ShouldBeNil)
+
+			config2 := ispec.Image{
+				Platform: ispec.Platform{
+					Architecture: ARM,
+					OS:           LINUX,
+				},
+			}
+			configBlob2, err := json.Marshal(config2)
+			So(err, ShouldBeNil)
+
+			config3 := ispec.Image{
+				Platform: ispec.Platform{
+					Architecture: AMD,
+					OS:           WINDOWS,
+				},
+			}
+			configBlob3, err := json.Marshal(config3)
+			So(err, ShouldBeNil)
+
+			config4 := ispec.Image{}
+			configBlob4, err := json.Marshal(config4)
+			So(err, ShouldBeNil)
+
+			err = repoDB.SetManifestMeta(repo1, manifestDigest1, repodb.ManifestMetadata{ConfigBlob: configBlob1})
+			So(err, ShouldBeNil)
+
+			err = repoDB.SetManifestMeta(repo1, manifestDigest2, repodb.ManifestMetadata{ConfigBlob: configBlob2})
+			So(err, ShouldBeNil)
+
+			err = repoDB.SetManifestMeta(repo2, manifestDigest1, repodb.ManifestMetadata{ConfigBlob: configBlob1})
+			So(err, ShouldBeNil)
+
+			err = repoDB.SetManifestMeta(repo3, manifestDigest2, repodb.ManifestMetadata{ConfigBlob: configBlob2})
+			So(err, ShouldBeNil)
+
+			err = repoDB.SetManifestMeta(repo4, manifestDigest3, repodb.ManifestMetadata{ConfigBlob: configBlob4})
+			So(err, ShouldBeNil)
+
+			err = repoDB.SetManifestMeta(repo1, manifestFromIndexDigest1,
+				repodb.ManifestMetadata{ConfigBlob: configBlob1})
+			So(err, ShouldBeNil)
+
+			err = repoDB.SetManifestMeta(repo1, manifestFromIndexDigest2,
+				repodb.ManifestMetadata{ConfigBlob: configBlob2})
+			So(err, ShouldBeNil)
+
+			err = repoDB.SetManifestMeta(repo1, manifestFromIndexDigest3,
+				repodb.ManifestMetadata{ConfigBlob: configBlob3})
+			So(err, ShouldBeNil)
+
+			opSys := LINUX
+			arch := AMD
+			filter := repodb.Filter{
+				Os:   []*string{&opSys},
+				Arch: []*string{&arch},
+			}
+			repos, _, _, _, err := repoDB.FilterTags(context.TODO(),
+				func(repoMeta repodb.RepoMetadata, manifestMeta repodb.ManifestMetadata) bool {
+					return true
+				},
+				filter,
+				repodb.PageInput{SortBy: repodb.AlphabeticAsc})
+			So(err, ShouldBeNil)
+			So(len(repos), ShouldEqual, 2)
+			So(len(repos[0].Tags), ShouldEqual, 2)
+			So(repos[0].Tags, ShouldContainKey, tag1)
+			So(repos[0].Tags, ShouldContainKey, tag3)
+			So(len(repos[1].Tags), ShouldEqual, 1)
+			So(repos[1].Tags, ShouldContainKey, tag1)
+
+			opSys = LINUX
+			filter = repodb.Filter{
+				Os: []*string{&opSys},
+			}
+			repos, _, _, _, err = repoDB.FilterTags(context.TODO(),
+				func(repoMeta repodb.RepoMetadata, manifestMeta repodb.ManifestMetadata) bool {
+					return true
+				},
+				filter,
+				repodb.PageInput{SortBy: repodb.AlphabeticAsc})
+			So(err, ShouldBeNil)
+			So(len(repos), ShouldEqual, 3)
+			So(len(repos[0].Tags), ShouldEqual, 3)
+			So(repos[0].Tags, ShouldContainKey, tag1)
+			So(repos[0].Tags, ShouldContainKey, tag2)
+			So(repos[0].Tags, ShouldContainKey, tag3)
+			So(len(repos[1].Tags), ShouldEqual, 1)
+			So(repos[1].Tags, ShouldContainKey, tag1)
+			So(len(repos[2].Tags), ShouldEqual, 1)
+			So(repos[1].Tags, ShouldContainKey, tag1)
+
+			opSys = WINDOWS
+			filter = repodb.Filter{
+				Os: []*string{&opSys},
+			}
+			repos, _, _, _, err = repoDB.FilterTags(context.TODO(),
+				func(repoMeta repodb.RepoMetadata, manifestMeta repodb.ManifestMetadata) bool {
+					return true
+				},
+				filter,
+				repodb.PageInput{SortBy: repodb.AlphabeticAsc})
+			So(err, ShouldBeNil)
+			So(len(repos), ShouldEqual, 1)
+			So(len(repos[0].Tags), ShouldEqual, 1)
+			So(repos[0].Tags, ShouldContainKey, tag3)
+
+			arch = AMD
+			filter = repodb.Filter{
+				Arch: []*string{&arch},
+			}
+			repos, _, _, _, err = repoDB.FilterTags(context.TODO(),
+				func(repoMeta repodb.RepoMetadata, manifestMeta repodb.ManifestMetadata) bool {
+					return true
+				},
+				filter,
+				repodb.PageInput{SortBy: repodb.AlphabeticAsc})
+			So(err, ShouldBeNil)
+			So(len(repos), ShouldEqual, 2)
+			So(len(repos[0].Tags), ShouldEqual, 2)
+			So(repos[0].Tags, ShouldContainKey, tag1)
+			So(repos[0].Tags, ShouldContainKey, tag3)
+			So(len(repos[1].Tags), ShouldEqual, 1)
+			So(repos[1].Tags, ShouldContainKey, tag1)
+
+			repos, _, _, _, err = repoDB.FilterTags(context.TODO(),
+				func(repoMeta repodb.RepoMetadata, manifestMeta repodb.ManifestMetadata) bool {
+					return true
+				},
+				repodb.Filter{},
+				repodb.PageInput{SortBy: repodb.AlphabeticAsc})
+			So(err, ShouldBeNil)
+			So(len(repos), ShouldEqual, 4)
+			So(len(repos[0].Tags), ShouldEqual, 3)
+			So(repos[0].Tags, ShouldContainKey, tag1)
+			So(repos[0].Tags, ShouldContainKey, tag2)
+			So(repos[0].Tags, ShouldContainKey, tag3)
+			So(len(repos[1].Tags), ShouldEqual, 1)
+			So(repos[1].Tags, ShouldContainKey, tag1)
+			So(len(repos[2].Tags), ShouldEqual, 1)
+			So(repos[2].Tags, ShouldContainKey, tag1)
+			So(len(repos[3].Tags), ShouldEqual, 1)
+			So(repos[3].Tags, ShouldContainKey, tag1)
+
+			opSys = LINUX
+			arch = "badArch"
+			filter = repodb.Filter{
+				Os:   []*string{&opSys},
+				Arch: []*string{&arch},
+			}
+			repos, _, _, _, err = repoDB.FilterTags(context.TODO(),
+				func(repoMeta repodb.RepoMetadata, manifestMeta repodb.ManifestMetadata) bool {
+					return true
+				},
+				filter,
+				repodb.PageInput{SortBy: repodb.AlphabeticAsc})
+			So(err, ShouldBeNil)
+			So(len(repos), ShouldEqual, 0)
 		})
 
 		Convey("Test index logic", func() {
@@ -2745,6 +2965,7 @@ func RunRepoDBTests(t *testing.T, repoDB repodb.RepoDB, preparationFuncs ...func
 
 			repoMetas, _, _, _, err = repoDB.FilterTags(ctx,
 				func(repoMeta repodb.RepoMetadata, manifestMeta repodb.ManifestMetadata) bool { return true },
+				repodb.Filter{},
 				repodb.PageInput{},
 			)
 			So(err, ShouldBeNil)
@@ -2780,6 +3001,7 @@ func RunRepoDBTests(t *testing.T, repoDB repodb.RepoDB, preparationFuncs ...func
 
 			repoMetas, _, _, _, err = repoDB.FilterTags(ctx,
 				func(repoMeta repodb.RepoMetadata, manifestMeta repodb.ManifestMetadata) bool { return true },
+				repodb.Filter{},
 				repodb.PageInput{},
 			)
 			So(err, ShouldBeNil)

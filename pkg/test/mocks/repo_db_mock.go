@@ -71,7 +71,7 @@ type RepoDBMock struct {
 	FilterReposFn func(ctx context.Context, filter repodb.FilterRepoFunc, requestedPage repodb.PageInput) (
 		[]repodb.RepoMetadata, map[string]repodb.ManifestMetadata, map[string]repodb.IndexData, common.PageInfo, error)
 
-	FilterTagsFn func(ctx context.Context, filter repodb.FilterFunc,
+	FilterTagsFn func(ctx context.Context, filterFunc repodb.FilterFunc, filter repodb.Filter,
 		requestedPage repodb.PageInput,
 	) ([]repodb.RepoMetadata, map[string]repodb.ManifestMetadata, map[string]repodb.IndexData, common.PageInfo, error)
 
@@ -301,11 +301,11 @@ func (sdm RepoDBMock) FilterRepos(ctx context.Context, filter repodb.FilterRepoF
 		map[string]repodb.IndexData{}, common.PageInfo{}, nil
 }
 
-func (sdm RepoDBMock) FilterTags(ctx context.Context, filter repodb.FilterFunc,
+func (sdm RepoDBMock) FilterTags(ctx context.Context, filterFunc repodb.FilterFunc, filter repodb.Filter,
 	requestedPage repodb.PageInput,
 ) ([]repodb.RepoMetadata, map[string]repodb.ManifestMetadata, map[string]repodb.IndexData, common.PageInfo, error) {
 	if sdm.FilterTagsFn != nil {
-		return sdm.FilterTagsFn(ctx, filter, requestedPage)
+		return sdm.FilterTagsFn(ctx, filterFunc, filter, requestedPage)
 	}
 
 	return []repodb.RepoMetadata{}, map[string]repodb.ManifestMetadata{},

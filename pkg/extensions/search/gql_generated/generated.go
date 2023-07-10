@@ -166,9 +166,9 @@ type ComplexityRoot struct {
 		GlobalSearch            func(childComplexity int, query string, filter *Filter, requestedPage *PageInput) int
 		Image                   func(childComplexity int, image string) int
 		ImageList               func(childComplexity int, repo string, requestedPage *PageInput) int
-		ImageListForCve         func(childComplexity int, id string, requestedPage *PageInput) int
+		ImageListForCve         func(childComplexity int, id string, filter *Filter, requestedPage *PageInput) int
 		ImageListForDigest      func(childComplexity int, id string, requestedPage *PageInput) int
-		ImageListWithCVEFixed   func(childComplexity int, id string, image string, requestedPage *PageInput) int
+		ImageListWithCVEFixed   func(childComplexity int, id string, image string, filter *Filter, requestedPage *PageInput) int
 		Referrers               func(childComplexity int, repo string, digest string, typeArg []string) int
 		RepoListWithNewestImage func(childComplexity int, requestedPage *PageInput) int
 		StarredRepos            func(childComplexity int, requestedPage *PageInput) int
@@ -209,8 +209,8 @@ type ComplexityRoot struct {
 
 type QueryResolver interface {
 	CVEListForImage(ctx context.Context, image string, requestedPage *PageInput, searchedCve *string) (*CVEResultForImage, error)
-	ImageListForCve(ctx context.Context, id string, requestedPage *PageInput) (*PaginatedImagesResult, error)
-	ImageListWithCVEFixed(ctx context.Context, id string, image string, requestedPage *PageInput) (*PaginatedImagesResult, error)
+	ImageListForCve(ctx context.Context, id string, filter *Filter, requestedPage *PageInput) (*PaginatedImagesResult, error)
+	ImageListWithCVEFixed(ctx context.Context, id string, image string, filter *Filter, requestedPage *PageInput) (*PaginatedImagesResult, error)
 	ImageListForDigest(ctx context.Context, id string, requestedPage *PageInput) (*PaginatedImagesResult, error)
 	RepoListWithNewestImage(ctx context.Context, requestedPage *PageInput) (*PaginatedReposResult, error)
 	ImageList(ctx context.Context, repo string, requestedPage *PageInput) (*PaginatedImagesResult, error)
@@ -828,7 +828,7 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 			return 0, false
 		}
 
-		return e.complexity.Query.ImageListForCve(childComplexity, args["id"].(string), args["requestedPage"].(*PageInput)), true
+		return e.complexity.Query.ImageListForCve(childComplexity, args["id"].(string), args["filter"].(*Filter), args["requestedPage"].(*PageInput)), true
 
 	case "Query.ImageListForDigest":
 		if e.complexity.Query.ImageListForDigest == nil {
@@ -852,7 +852,7 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 			return 0, false
 		}
 
-		return e.complexity.Query.ImageListWithCVEFixed(childComplexity, args["id"].(string), args["image"].(string), args["requestedPage"].(*PageInput)), true
+		return e.complexity.Query.ImageListWithCVEFixed(childComplexity, args["id"].(string), args["image"].(string), args["filter"].(*Filter), args["requestedPage"].(*PageInput)), true
 
 	case "Query.Referrers":
 		if e.complexity.Query.Referrers == nil {
@@ -1693,6 +1693,8 @@ type Query {
     ImageListForCVE(
         "CVE ID"
         id: String!,
+        "Filter to apply before returning the results"
+        filter: Filter,
         "Sets the parameters of the requested page"
         requestedPage: PageInput
     ): PaginatedImagesResult!
@@ -1706,6 +1708,8 @@ type Query {
         id: String!,
         "Repository name"
         image: String!,
+        "Filter to apply before returning the results"
+        filter: Filter,
         "Sets the parameters of the requested page"
         requestedPage: PageInput
     ): PaginatedImagesResult!
@@ -2004,15 +2008,24 @@ func (ec *executionContext) field_Query_ImageListForCVE_args(ctx context.Context
 		}
 	}
 	args["id"] = arg0
-	var arg1 *PageInput
-	if tmp, ok := rawArgs["requestedPage"]; ok {
-		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("requestedPage"))
-		arg1, err = ec.unmarshalOPageInput2ᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐPageInput(ctx, tmp)
+	var arg1 *Filter
+	if tmp, ok := rawArgs["filter"]; ok {
+		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("filter"))
+		arg1, err = ec.unmarshalOFilter2ᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐFilter(ctx, tmp)
 		if err != nil {
 			return nil, err
 		}
 	}
-	args["requestedPage"] = arg1
+	args["filter"] = arg1
+	var arg2 *PageInput
+	if tmp, ok := rawArgs["requestedPage"]; ok {
+		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("requestedPage"))
+		arg2, err = ec.unmarshalOPageInput2ᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐPageInput(ctx, tmp)
+		if err != nil {
+			return nil, err
+		}
+	}
+	args["requestedPage"] = arg2
 	return args, nil
 }
 
@@ -2061,15 +2074,24 @@ func (ec *executionContext) field_Query_ImageListWithCVEFixed_args(ctx context.C
 		}
 	}
 	args["image"] = arg1
-	var arg2 *PageInput
-	if tmp, ok := rawArgs["requestedPage"]; ok {
-		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("requestedPage"))
-		arg2, err = ec.unmarshalOPageInput2ᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐPageInput(ctx, tmp)
+	var arg2 *Filter
+	if tmp, ok := rawArgs["filter"]; ok {
+		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("filter"))
+		arg2, err = ec.unmarshalOFilter2ᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐFilter(ctx, tmp)
 		if err != nil {
 			return nil, err
 		}
 	}
-	args["requestedPage"] = arg2
+	args["filter"] = arg2
+	var arg3 *PageInput
+	if tmp, ok := rawArgs["requestedPage"]; ok {
+		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("requestedPage"))
+		arg3, err = ec.unmarshalOPageInput2ᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐPageInput(ctx, tmp)
+		if err != nil {
+			return nil, err
+		}
+	}
+	args["requestedPage"] = arg3
 	return args, nil
 }
 
@@ -5440,7 +5462,7 @@ func (ec *executionContext) _Query_ImageListForCVE(ctx context.Context, field gr
 	}()
 	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
 		ctx = rctx // use context from middleware stack in children
-		return ec.resolvers.Query().ImageListForCve(rctx, fc.Args["id"].(string), fc.Args["requestedPage"].(*PageInput))
+		return ec.resolvers.Query().ImageListForCve(rctx, fc.Args["id"].(string), fc.Args["filter"].(*Filter), fc.Args["requestedPage"].(*PageInput))
 	})
 	if err != nil {
 		ec.Error(ctx, err)
@@ -5501,7 +5523,7 @@ func (ec *executionContext) _Query_ImageListWithCVEFixed(ctx context.Context, fi
 	}()
 	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
 		ctx = rctx // use context from middleware stack in children
-		return ec.resolvers.Query().ImageListWithCVEFixed(rctx, fc.Args["id"].(string), fc.Args["image"].(string), fc.Args["requestedPage"].(*PageInput))
+		return ec.resolvers.Query().ImageListWithCVEFixed(rctx, fc.Args["id"].(string), fc.Args["image"].(string), fc.Args["filter"].(*Filter), fc.Args["requestedPage"].(*PageInput))
 	})
 	if err != nil {
 		ec.Error(ctx, err)

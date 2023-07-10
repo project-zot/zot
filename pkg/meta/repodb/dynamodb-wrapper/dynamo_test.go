@@ -879,6 +879,7 @@ func TestWrapperErrors(t *testing.T) {
 			_, _, _, _, err = dynamoWrapper.FilterTags(
 				ctx,
 				func(repoMeta repodb.RepoMetadata, manifestMeta repodb.ManifestMetadata) bool { return true },
+				repodb.Filter{},
 				repodb.PageInput{},
 			)
 			So(err, ShouldBeNil)
@@ -1071,6 +1072,7 @@ func TestWrapperErrors(t *testing.T) {
 				func(repoMeta repodb.RepoMetadata, manifestMeta repodb.ManifestMetadata) bool {
 					return true
 				},
+				repodb.Filter{},
 				repodb.PageInput{},
 			)
 
@@ -1087,6 +1089,7 @@ func TestWrapperErrors(t *testing.T) {
 				func(repoMeta repodb.RepoMetadata, manifestMeta repodb.ManifestMetadata) bool {
 					return true
 				},
+				repodb.Filter{},
 				repodb.PageInput{},
 			)
 
@@ -1105,6 +1108,7 @@ func TestWrapperErrors(t *testing.T) {
 				func(repoMeta repodb.RepoMetadata, manifestMeta repodb.ManifestMetadata) bool {
 					return true
 				},
+				repodb.Filter{},
 				repodb.PageInput{},
 			)
 
@@ -1122,6 +1126,7 @@ func TestWrapperErrors(t *testing.T) {
 
 			_, _, _, _, err = dynamoWrapper.FilterTags(ctx,
 				func(repoMeta repodb.RepoMetadata, manifestMeta repodb.ManifestMetadata) bool { return true },
+				repodb.Filter{},
 				repodb.PageInput{},
 			)
 			So(err, ShouldNotBeNil)
@@ -1140,6 +1145,7 @@ func TestWrapperErrors(t *testing.T) {
 
 			_, _, _, _, err = dynamoWrapper.FilterTags(ctx,
 				func(repoMeta repodb.RepoMetadata, manifestMeta repodb.ManifestMetadata) bool { return true },
+				repodb.Filter{},
 				repodb.PageInput{},
 			)
 			So(err, ShouldNotBeNil)
@@ -1179,9 +1185,74 @@ func TestWrapperErrors(t *testing.T) {
 
 			_, _, _, _, err = dynamoWrapper.FilterTags(ctx,
 				func(repoMeta repodb.RepoMetadata, manifestMeta repodb.ManifestMetadata) bool { return false },
+				repodb.Filter{},
 				repodb.PageInput{},
 			)
 			So(err, ShouldBeNil)
+		})
+
+		Convey("FilterTags bad config blob in image with a single manifest", func() {
+			manifestDigest := digest.FromString("manifestDigestBadConfig")
+
+			err := dynamoWrapper.SetRepoReference( //nolint:contextcheck
+				"repo", "tag1", manifestDigest, ispec.MediaTypeImageManifest,
+			)
+			So(err, ShouldBeNil)
+
+			err = dynamoWrapper.SetManifestData(manifestDigest, repodb.ManifestData{ //nolint:contextcheck
+				ManifestBlob: []byte("{}"),
+				ConfigBlob:   []byte("bad blob"),
+			})
+			So(err, ShouldBeNil)
+
+			_, _, _, _, err = dynamoWrapper.FilterTags(ctx,
+				func(repoMeta repodb.RepoMetadata, manifestMeta repodb.ManifestMetadata) bool { return true },
+				repodb.Filter{},
+				repodb.PageInput{},
+			)
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("FilterTags bad config blob in index", func() {
+			var (
+				indexDigest              = digest.FromString("indexDigest")
+				manifestDigestFromIndex1 = digest.FromString("manifestDigestFromIndexGoodConfig")
+				manifestDigestFromIndex2 = digest.FromString("manifestDigestFromIndexBadConfig")
+			)
+
+			err := dynamoWrapper.SetRepoReference( //nolint:contextcheck
+				"repo", "tag1", indexDigest, ispec.MediaTypeImageIndex,
+			)
+			So(err, ShouldBeNil)
+
+			indexBlob, err := test.GetIndexBlobWithManifests([]digest.Digest{
+				manifestDigestFromIndex1, manifestDigestFromIndex2,
+			})
+			So(err, ShouldBeNil)
+
+			err = dynamoWrapper.SetIndexData(indexDigest, repodb.IndexData{ //nolint:contextcheck
+				IndexBlob: indexBlob,
+			})
+			So(err, ShouldBeNil)
+
+			err = dynamoWrapper.SetManifestData(manifestDigestFromIndex1, repodb.ManifestData{ //nolint:contextcheck
+				ManifestBlob: []byte("{}"),
+				ConfigBlob:   []byte("{}"),
+			})
+			So(err, ShouldBeNil)
+
+			err = dynamoWrapper.SetManifestData(manifestDigestFromIndex2, repodb.ManifestData{ //nolint:contextcheck
+				ManifestBlob: []byte("{}"),
+				ConfigBlob:   []byte("bad blob"),
+			})
+			So(err, ShouldBeNil)
+
+			_, _, _, _, err = dynamoWrapper.FilterTags(ctx,
+				func(repoMeta repodb.RepoMetadata, manifestMeta repodb.ManifestMetadata) bool { return true },
+				repodb.Filter{},
+				repodb.PageInput{},
+			)
+			So(err, ShouldNotBeNil)
 		})
 
 		Convey("PatchDB dwr.getDBVersion errors", func() {
