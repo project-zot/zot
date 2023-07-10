@@ -62,7 +62,7 @@ require (
 	github.com/project-zot/mockoidc v0.0.0-20230307111146-f607b4b5fb97
 	github.com/sigstore/cosign/v2 v2.0.2
 	github.com/swaggo/http-swagger v1.3.4
-	github.com/zitadel/oidc v1.12.0
+	github.com/zitadel/oidc v1.13.4
 	golang.org/x/oauth2 v0.9.0
 	modernc.org/sqlite v1.23.1
 	oras.land/oras-go/v2 v2.2.1
