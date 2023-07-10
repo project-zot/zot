@@ -99,7 +99,7 @@ func (mgmt *mgmt) handler() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var resource string
 
-		if queryHasParams(r.URL.Query(), []string{"resource"}) {
+		if zcommon.QueryHasParams(r.URL.Query(), []string{"resource"}) {
 			resource = r.URL.Query().Get("resource")
 		} else {
 			resource = ConfigResource // default value of "resource" query param
@@ -181,7 +181,7 @@ func (mgmt *mgmt) HandleGetConfig(w http.ResponseWriter, r *http.Request) {
 // @Failure 400 {string} 	string 				"bad request".
 // @Failure 500 {string} 	string 				"internal server error".
 func HandleCertificatesAndPublicKeysUploads(response http.ResponseWriter, request *http.Request) {
-	if !queryHasParams(request.URL.Query(), []string{"tool"}) {
+	if !zcommon.QueryHasParams(request.URL.Query(), []string{"tool"}) {
 		response.WriteHeader(http.StatusBadRequest)
 
 		return
@@ -207,13 +207,13 @@ func HandleCertificatesAndPublicKeysUploads(response http.ResponseWriter, reques
 	case signatures.NotationSignature:
 		var truststoreType string
 
-		if !queryHasParams(request.URL.Query(), []string{"truststoreName"}) {
+		if !zcommon.QueryHasParams(request.URL.Query(), []string{"truststoreName"}) {
 			response.WriteHeader(http.StatusBadRequest)
 
 			return
 		}
 
-		if queryHasParams(request.URL.Query(), []string{"truststoreType"}) {
+		if zcommon.QueryHasParams(request.URL.Query(), []string{"truststoreType"}) {
 			truststoreType = request.URL.Query().Get("truststoreType")
 		} else {
 			truststoreType = "ca" // default value of "truststoreType" query param
