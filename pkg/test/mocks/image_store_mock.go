@@ -35,7 +35,7 @@ type MockedImageStore struct {
 	DeleteBlobUploadFn     func(repo string, uuid string) error
 	BlobPathFn             func(repo string, digest godigest.Digest) string
 	CheckBlobFn            func(repo string, digest godigest.Digest) (bool, int64, error)
-	StatBlobFn             func(repo string, digest godigest.Digest) (bool, int64, error)
+	StatBlobFn             func(repo string, digest godigest.Digest) (bool, int64, time.Time, error)
 	GetBlobPartialFn       func(repo string, digest godigest.Digest, mediaType string, from, to int64,
 	) (io.ReadCloser, int64, int64, error)
 	GetBlobFn          func(repo string, digest godigest.Digest, mediaType string) (io.ReadCloser, int64, error)
@@ -51,6 +51,7 @@ type MockedImageStore struct {
 	RunDedupeBlobsFn             func(interval time.Duration, sch *scheduler.Scheduler)
 	RunDedupeForDigestFn         func(digest godigest.Digest, dedupe bool, duplicateBlobs []string) error
 	GetNextDigestWithBlobPathsFn func(lastDigests []godigest.Digest) (godigest.Digest, []string, error)
+	GetAllBlobsFn                func(repo string) ([]string, error)
 }
 
 func (is MockedImageStore) Lock(t *time.Time) {
@@ -252,12 +253,12 @@ func (is MockedImageStore) CheckBlob(repo string, digest godigest.Digest) (bool,
 	return true, 0, nil
 }
 
-func (is MockedImageStore) StatBlob(repo string, digest godigest.Digest) (bool, int64, error) {
+func (is MockedImageStore) StatBlob(repo string, digest godigest.Digest) (bool, int64, time.Time, error) {
 	if is.StatBlobFn != nil {
 		return is.StatBlobFn(repo, digest)
 	}
 
-	return true, 0, nil
+	return true, 0, time.Time{}, nil
 }
 
 func (is MockedImageStore) GetBlobPartial(repo string, digest godigest.Digest, mediaType string, from, to int64,
@@ -368,4 +369,12 @@ func (is MockedImageStore) GetNextDigestWithBlobPaths(lastDigests []godigest.Dig
 	}
 
 	return "", []string{}, nil
+}
+
+func (is MockedImageStore) GetAllBlobs(repo string) ([]string, error) {
+	if is.GetAllBlobsFn != nil {
+		return is.GetAllBlobsFn(repo)
+	}
+
+	return nil, nil
 }

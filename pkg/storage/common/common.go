@@ -5,6 +5,7 @@ import (
 	"errors"
 	"path"
 	"strings"
+	"time"
 
 	notreg "github.com/notaryproject/notation-go/registry"
 	godigest "github.com/opencontainers/go-digest"
@@ -138,7 +139,7 @@ func validateOCIManifest(imgStore storageTypes.ImageStore, repo, reference strin
 			continue
 		}
 
-		ok, _, err := imgStore.StatBlob(repo, layer.Digest)
+		ok, _, _, err := imgStore.StatBlob(repo, layer.Digest)
 		if err != nil || !ok {
 			return layer.Digest, zerr.ErrBlobNotFound
 		}
@@ -457,7 +458,9 @@ func PruneImageManifestsFromIndex(imgStore storageTypes.ImageStore, repo string,
 	return prunedManifests, nil
 }
 
-func isBlobReferencedInManifest(imgStore storageTypes.ImageStore, repo string,
+/* Is a blob referenced? (e.g., delete only if it isn't) */
+
+func isBlobReferencedInImageManifest(imgStore storageTypes.ImageStore, repo string,
 	bdigest, mdigest godigest.Digest, log zerolog.Logger,
 ) (bool, error) {
 	if bdigest == mdigest {
@@ -505,7 +508,7 @@ func isBlobReferencedInImageIndex(imgStore storageTypes.ImageStore, repo string,
 
 			found, _ = isBlobReferencedInImageIndex(imgStore, repo, digest, indexImage, log)
 		case ispec.MediaTypeImageManifest:
-			found, _ = isBlobReferencedInManifest(imgStore, repo, digest, desc.Digest, log)
+			found, _ = isBlobReferencedInImageManifest(imgStore, repo, digest, desc.Digest, log)
 		}
 
 		if found {
@@ -530,6 +533,176 @@ func IsBlobReferenced(imgStore storageTypes.ImageStore, repo string,
 	}
 
 	return isBlobReferencedInImageIndex(imgStore, repo, digest, index, log)
+}
+
+/* Garbage Collection */
+
+func GetReferencedBlobsInImageManifest(imgStore storageTypes.ImageStore,
+	repo string, mdigest godigest.Digest, refBlobs map[string]bool, log zerolog.Logger,
+) error {
+	manifestContent, err := GetImageManifest(imgStore, repo, mdigest, log)
+	if err != nil {
+		log.Error().Err(err).Str("repository", repo).Str("digest", mdigest.String()).
+			Msg("gc: failed to read manifest image")
+
+		return err
+	}
+
+	refBlobs[manifestContent.Config.Digest.String()] = true
+
+	// if there is a Subject, it may not exist yet and that is ok
+	if manifestContent.Subject != nil {
+		refBlobs[manifestContent.Subject.Digest.String()] = true
+	}
+
+	for _, layer := range manifestContent.Layers {
+		refBlobs[layer.Digest.String()] = true
+	}
+
+	return nil
+}
+
+func GetReferencedBlobsInImageIndex(imgStore storageTypes.ImageStore,
+	repo string, index ispec.Index, refBlobs map[string]bool, log zerolog.Logger,
+) error {
+	for _, desc := range index.Manifests {
+		switch desc.MediaType {
+		case ispec.MediaTypeImageIndex:
+			/* this branch is not needed, because every manifests in index is already checked
+			when this one is hit, all manifests are referenced in index.json */
+			indexImage, err := GetImageIndex(imgStore, repo, desc.Digest, log)
+			if err != nil {
+				log.Error().Err(err).Str("repository", repo).Str("digest", desc.Digest.String()).
+					Msg("failed to read multiarch(index) image")
+
+				return err
+			}
+
+			if _, ok := refBlobs[desc.Digest.String()]; ok {
+				// already visited this descriptor
+				continue
+			}
+
+			refBlobs[desc.Digest.String()] = true
+
+			// if there is a Subject, it may not exist yet and that is ok
+			if indexImage.Subject != nil {
+				refBlobs[indexImage.Subject.Digest.String()] = true
+			}
+
+			if err := GetReferencedBlobsInImageIndex(imgStore, repo, indexImage, refBlobs, log); err != nil {
+				log.Error().Err(err).Str("repository", repo).Str("digest", desc.Digest.String()).
+					Msg("failed to read blobs in multiarch(index) image")
+
+				return err
+			}
+		case ispec.MediaTypeImageManifest:
+			if err := GetReferencedBlobsInImageManifest(imgStore, repo, desc.Digest, refBlobs, log); err != nil {
+				log.Error().Err(err).Str("repository", repo).Str("digest", desc.Digest.String()).
+					Msg("failed to read blobs in image manifiest")
+
+				return err
+			}
+		}
+	}
+
+	return nil
+}
+
+func GetReferencedBlobs(imgStore storageTypes.ImageStore,
+	repo string, refBlobs map[string]bool, log zerolog.Logger,
+) error {
+	dir := path.Join(imgStore.RootDir(), repo)
+	if !imgStore.DirExists(dir) {
+		return zerr.ErrRepoNotFound
+	}
+
+	index, err := GetIndex(imgStore, repo, log)
+	if err != nil {
+		return err
+	}
+
+	return GetReferencedBlobsInImageIndex(imgStore, repo, index, refBlobs, log)
+}
+
+func isBlobOlderThan(imgStore storageTypes.ImageStore, repo string,
+	digest godigest.Digest, delay time.Duration, log zerolog.Logger,
+) (bool, error) {
+	_, _, modtime, err := imgStore.StatBlob(repo, digest)
+	if err != nil {
+		log.Error().Err(err).Str("repository", repo).Str("digest", digest.String()).
+			Msg("gc: failed to stat blob")
+
+		return false, err
+	}
+
+	if modtime.Add(delay).After(time.Now()) {
+		return false, nil
+	}
+
+	log.Info().Str("repository", repo).Str("digest", digest.String()).Msg("perform GC on blob")
+
+	return true, nil
+}
+
+func GarbageCollect(imgStore storageTypes.ImageStore, repo string,
+	delay time.Duration, log zerolog.Logger,
+) error {
+
+	refBlobs := map[string]bool{}
+
+	err := GetReferencedBlobs(imgStore, repo, refBlobs, log)
+	if err != nil {
+		log.Error().Err(err).Str("repository", repo).Msg("unable to get referenced blobs in repo")
+
+		return err
+	}
+
+	allBlobs, err := imgStore.GetAllBlobs(repo)
+	if err != nil {
+		log.Error().Err(err).Str("repository", repo).Msg("unable to get all blobs")
+
+		return err
+	}
+
+	reaped := 0
+
+	for _, blob := range allBlobs {
+		if _, ok := refBlobs[blob]; !ok {
+			var digest godigest.Digest
+
+			if digest, err = godigest.Parse(blob); err != nil {
+				log.Error().Err(err).Str("repository", repo).Str("digest", blob).Msg("unable to parse digest")
+
+				return err
+			}
+
+			ok, err := isBlobOlderThan(imgStore, repo, digest, delay, log)
+			if err != nil {
+				log.Error().Err(err).Str("repository", repo).Str("digest", blob).Msg("unable to determine GC delay")
+
+				return err
+			}
+
+			if !ok {
+				continue
+			}
+
+			if err := imgStore.DeleteBlob(repo, digest); err != nil {
+				log.Error().Err(err).Str("repository", repo).Str("digest", blob).Msg("unable to delete blob")
+
+				return err
+			}
+
+			log.Info().Str("repository", repo).Str("digest", blob).Msg("garbage collected blob")
+
+			reaped++
+		}
+	}
+
+	log.Info().Str("repository", repo).Int("count", reaped).Msg("garbage collected blobs")
+
+	return nil
 }
 
 func ApplyLinter(imgStore storageTypes.ImageStore, linter Lint, repo string, descriptor ispec.Descriptor,
@@ -577,8 +750,8 @@ func IsSignature(descriptor ispec.Descriptor) bool {
 	return false
 }
 
-func GetOrasReferrers(imgStore storageTypes.ImageStore, repo string, gdigest godigest.Digest, artifactType string,
-	log zerolog.Logger,
+func GetOrasReferrers(imgStore storageTypes.ImageStore, repo string,
+	gdigest godigest.Digest, artifactType string, log zerolog.Logger,
 ) ([]oras.Descriptor, error) {
 	if err := gdigest.Validate(); err != nil {
 		return nil, err
@@ -635,8 +808,8 @@ func GetOrasReferrers(imgStore storageTypes.ImageStore, repo string, gdigest god
 	return result, nil
 }
 
-func GetReferrers(imgStore storageTypes.ImageStore, repo string, gdigest godigest.Digest, artifactTypes []string,
-	log zerolog.Logger,
+func GetReferrers(imgStore storageTypes.ImageStore, repo string,
+	gdigest godigest.Digest, artifactTypes []string, log zerolog.Logger,
 ) (ispec.Index, error) {
 	nilIndex := ispec.Index{}
 
@@ -739,7 +912,8 @@ func GetReferrers(imgStore storageTypes.ImageStore, repo string, gdigest godiges
 	return index, nil
 }
 
-func GetOrasManifestByDigest(imgStore storageTypes.ImageStore, repo string, digest godigest.Digest, log zerolog.Logger,
+func GetOrasManifestByDigest(imgStore storageTypes.ImageStore, repo string,
+	digest godigest.Digest, log zerolog.Logger,
 ) (oras.Manifest, error) {
 	var artManifest oras.Manifest
 

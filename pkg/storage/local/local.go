@@ -1125,7 +1125,7 @@ func (is *ImageStoreLocal) CheckBlob(repo string, digest godigest.Digest) (bool,
 		defer is.RUnlock(&lockLatency)
 	}
 
-	if ok, size, err := is.StatBlob(repo, digest); err == nil || ok {
+	if ok, size, _, err := is.StatBlob(repo, digest); err == nil || ok {
 		return true, size, nil
 	}
 
@@ -1155,9 +1155,9 @@ func (is *ImageStoreLocal) CheckBlob(repo string, digest godigest.Digest) (bool,
 }
 
 // StatBlob verifies if a blob is present inside a repository. The caller function SHOULD lock from outside.
-func (is *ImageStoreLocal) StatBlob(repo string, digest godigest.Digest) (bool, int64, error) {
+func (is *ImageStoreLocal) StatBlob(repo string, digest godigest.Digest) (bool, int64, time.Time, error) {
 	if err := digest.Validate(); err != nil {
-		return false, -1, err
+		return false, -1, time.Time{}, err
 	}
 
 	blobPath := is.BlobPath(repo, digest)
@@ -1166,10 +1166,10 @@ func (is *ImageStoreLocal) StatBlob(repo string, digest godigest.Digest) (bool, 
 	if err != nil {
 		is.log.Debug().Str("blob path", blobPath).Msg("failed to find blob")
 
-		return false, -1, zerr.ErrBlobNotFound
+		return false, -1, time.Time{}, zerr.ErrBlobNotFound
 	}
 
-	return true, binfo.Size(), nil
+	return true, binfo.Size(), binfo.ModTime(), nil
 }
 
 func (is *ImageStoreLocal) checkCacheBlob(digest godigest.Digest) (string, error) {
@@ -2025,4 +2025,23 @@ func (is *ImageStoreLocal) RunDedupeBlobs(interval time.Duration, sch *scheduler
 
 		sch.SubmitGenerator(generator, interval, scheduler.MediumPriority)
 	}
+}
+
+func (is *ImageStoreLocal) GetAllBlobs(repo string) ([]string, error) {
+	dir := path.Join(is.rootDir, repo, "blobs", "sha256")
+
+	files, err := os.ReadDir(dir)
+	if err != nil {
+		is.log.Error().Err(err).Str("dir", dir).Msg("unable to read directory")
+
+		return nil, zerr.ErrRepoNotFound
+	}
+
+	ret := []string{}
+
+	for _, file := range files {
+		ret = append(ret, file.Name())
+	}
+
+	return ret, nil
 }

@@ -969,6 +969,12 @@ retry:
 	return nil
 }
 
+func (is *ObjectStorage) GetAllBlobs(repo string) ([]string, error) {
+	dir := path.Join(is.rootDir, repo, "blobs", "sha256")
+
+	return is.store.List(context.Background(), dir)
+}
+
 func (is *ObjectStorage) RunGCRepo(repo string) error {
 	return nil
 }
@@ -1059,9 +1065,9 @@ func (is *ObjectStorage) CheckBlob(repo string, digest godigest.Digest) (bool, i
 }
 
 // StatBlob verifies if a blob is present inside a repository. The caller function SHOULD lock from outside.
-func (is *ObjectStorage) StatBlob(repo string, digest godigest.Digest) (bool, int64, error) {
+func (is *ObjectStorage) StatBlob(repo string, digest godigest.Digest) (bool, int64, time.Time, error) {
 	if err := digest.Validate(); err != nil {
-		return false, -1, err
+		return false, -1, time.Time{}, err
 	}
 
 	blobPath := is.BlobPath(repo, digest)
@@ -1070,13 +1076,13 @@ func (is *ObjectStorage) StatBlob(repo string, digest godigest.Digest) (bool, in
 	if err == nil && binfo.Size() > 0 {
 		is.log.Debug().Str("blob path", blobPath).Msg("blob path found")
 
-		return true, binfo.Size(), nil
+		return true, binfo.Size(), time.Time{}, nil
 	}
 
 	if err != nil {
 		is.log.Error().Err(err).Str("blob", blobPath).Msg("failed to stat blob")
 
-		return false, -1, zerr.ErrBlobNotFound
+		return false, -1, time.Time{}, zerr.ErrBlobNotFound
 	}
 
 	// then it's a 'deduped' blob
@@ -1086,17 +1092,17 @@ func (is *ObjectStorage) StatBlob(repo string, digest godigest.Digest) (bool, in
 	if err != nil {
 		is.log.Error().Err(err).Str("digest", digest.String()).Msg("cache: not found")
 
-		return false, -1, zerr.ErrBlobNotFound
+		return false, -1, time.Time{}, zerr.ErrBlobNotFound
 	}
 
 	binfo, err = is.store.Stat(context.Background(), dstRecord)
 	if err != nil {
 		is.log.Error().Err(err).Str("blob", blobPath).Msg("failed to stat blob")
 
-		return false, -1, zerr.ErrBlobNotFound
+		return false, -1, time.Time{}, zerr.ErrBlobNotFound
 	}
 
-	return true, binfo.Size(), nil
+	return true, binfo.Size(), binfo.ModTime(), nil
 }
 
 func (is *ObjectStorage) checkCacheBlob(digest godigest.Digest) (string, error) {

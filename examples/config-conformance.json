@@ -2,8 +2,8 @@
   "distSpecVersion": "1.1.0-dev",
   "storage": {
     "rootDirectory": "/tmp/zot",
-    "gc": false,
-    "dedupe": false
+    "gc": true,
+    "dedupe": true
   },
   "http": {
     "address": "0.0.0.0",
