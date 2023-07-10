@@ -1,5 +1,5 @@
-//go:build sync && scrub && metrics && search && lint && apikey
-// +build sync,scrub,metrics,search,lint,apikey
+//go:build sync && scrub && metrics && search && lint && apikey && mgmt
+// +build sync,scrub,metrics,search,lint,apikey,mgmt
 
 package api_test
 
