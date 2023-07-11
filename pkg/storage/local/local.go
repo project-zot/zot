@@ -475,11 +475,6 @@ func (is *ImageStoreLocal) PutImageManifest(repo, reference, mediaType string, /
 		}
 	}()
 
-	digest, err := common.ValidateManifest(is, repo, reference, mediaType, body, is.log)
-	if err != nil {
-		return digest, "", err
-	}
-
 	refIsDigest := true
 
 	mDigest, err := common.GetAndValidateRequestDigest(body, reference, is.log)
@@ -489,6 +484,11 @@ func (is *ImageStoreLocal) PutImageManifest(repo, reference, mediaType string, /
 		}
 
 		refIsDigest = false
+	}
+
+	digest, err := common.ValidateManifest(is, repo, reference, mediaType, body, is.log)
+	if err != nil {
+		return digest, "", err
 	}
 
 	index, err := common.GetIndex(is, repo, is.log)

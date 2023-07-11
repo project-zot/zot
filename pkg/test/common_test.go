@@ -16,6 +16,7 @@ import (
 
 	notconfig "github.com/notaryproject/notation-go/config"
 	godigest "github.com/opencontainers/go-digest"
+	"github.com/opencontainers/image-spec/specs-go"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	. "github.com/smartystreets/goconvey/convey"
 	"golang.org/x/crypto/bcrypt"
@@ -377,7 +378,125 @@ func TestUploadBlob(t *testing.T) {
 	})
 }
 
+func TestUploadMultiarchImage(t *testing.T) {
+	Convey("make controller", t, func() {
+		port := test.GetFreePort()
+		baseURL := test.GetBaseURL(port)
+
+		conf := config.New()
+		conf.HTTP.Port = port
+		conf.Storage.RootDirectory = t.TempDir()
+
+		ctlr := api.NewController(conf)
+
+		ctlrManager := test.NewControllerManager(ctlr)
+		ctlrManager.StartAndWait(port)
+		defer ctlrManager.StopServer()
+
+		layerBlob := []byte("test")
+
+		img := test.Image{
+			Layers: [][]byte{
+				layerBlob,
+			},
+			Manifest: ispec.Manifest{
+				Versioned: specs.Versioned{
+					SchemaVersion: 2,
+				},
+				Layers: []ispec.Descriptor{
+					{
+						Digest:    godigest.FromBytes(layerBlob),
+						Size:      int64(len(layerBlob)),
+						MediaType: ispec.MediaTypeImageLayerGzip,
+					},
+				},
+				Config: ispec.DescriptorEmptyJSON,
+			},
+			Config: ispec.Image{},
+		}
+
+		manifestBuf, err := json.Marshal(img.Manifest)
+		So(err, ShouldBeNil)
+
+		Convey("Multiarch image uploaded successfully", func() {
+			err = test.UploadMultiarchImage(test.MultiarchImage{
+				Index: ispec.Index{
+					Versioned: specs.Versioned{
+						SchemaVersion: 2,
+					},
+					MediaType: ispec.MediaTypeImageIndex,
+					Manifests: []ispec.Descriptor{
+						{
+							MediaType: ispec.MediaTypeImageManifest,
+							Digest:    godigest.FromBytes(manifestBuf),
+							Size:      int64(len(manifestBuf)),
+						},
+					},
+				},
+				Images:    []test.Image{img},
+				Reference: "index",
+			}, baseURL, "test")
+			So(err, ShouldBeNil)
+		})
+
+		Convey("Multiarch image without schemaVersion should fail validation", func() {
+			err = test.UploadMultiarchImage(test.MultiarchImage{
+				Index: ispec.Index{
+					MediaType: ispec.MediaTypeImageIndex,
+					Manifests: []ispec.Descriptor{
+						{
+							MediaType: ispec.MediaTypeImageManifest,
+							Digest:    godigest.FromBytes(manifestBuf),
+							Size:      int64(len(manifestBuf)),
+						},
+					},
+				},
+				Images:    []test.Image{img},
+				Reference: "index",
+			}, baseURL, "test")
+			So(err, ShouldNotBeNil)
+		})
+	})
+}
+
 func TestUploadImage(t *testing.T) {
+	Convey("Manifest without schemaVersion should fail validation", t, func() {
+		port := test.GetFreePort()
+		baseURL := test.GetBaseURL(port)
+
+		conf := config.New()
+		conf.HTTP.Port = port
+		conf.Storage.RootDirectory = t.TempDir()
+
+		ctlr := api.NewController(conf)
+
+		ctlrManager := test.NewControllerManager(ctlr)
+		ctlrManager.StartAndWait(port)
+		defer ctlrManager.StopServer()
+
+		layerBlob := []byte("test")
+
+		img := test.Image{
+			Layers: [][]byte{
+				layerBlob,
+			},
+			Manifest: ispec.Manifest{
+				Layers: []ispec.Descriptor{
+					{
+						Digest:    godigest.FromBytes(layerBlob),
+						Size:      int64(len(layerBlob)),
+						MediaType: ispec.MediaTypeImageLayerGzip,
+					},
+				},
+				Config: ispec.DescriptorEmptyJSON,
+			},
+			Config: ispec.Image{},
+		}
+
+		err := test.UploadImage(img, baseURL, "test")
+		So(err, ShouldNotBeNil)
+	})
+
 	Convey("Post request results in an error", t, func() {
 		port := test.GetFreePort()
 		baseURL := test.GetBaseURL(port)
@@ -464,6 +583,19 @@ func TestUploadImage(t *testing.T) {
 		img := test.Image{
 			Layers: [][]byte{
 				layerBlob,
+			},
+			Manifest: ispec.Manifest{
+				Versioned: specs.Versioned{
+					SchemaVersion: 2,
+				},
+				Layers: []ispec.Descriptor{
+					{
+						Digest:    godigest.FromBytes(layerBlob),
+						Size:      int64(len(layerBlob)),
+						MediaType: ispec.MediaTypeImageLayerGzip,
+					},
+				},
+				Config: ispec.DescriptorEmptyJSON,
 			},
 			Config: ispec.Image{},
 		}

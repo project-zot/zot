@@ -23,6 +23,7 @@ import (
 	dockerManifest "github.com/containers/image/v5/manifest"
 	notreg "github.com/notaryproject/notation-go/registry"
 	godigest "github.com/opencontainers/go-digest"
+	"github.com/opencontainers/image-spec/specs-go"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	artifactspec "github.com/oras-project/artifacts-spec/specs-go/v1"
 	"github.com/sigstore/cosign/v2/cmd/cosign/cli/attach"
@@ -409,6 +410,9 @@ func TestORAS(t *testing.T) {
 		_ = pushBlob(srcBaseURL, repoName, ispec.DescriptorEmptyJSON.Data)
 
 		artifactManifest := ispec.Manifest{
+			Versioned: specs.Versioned{
+				SchemaVersion: 2,
+			},
 			MediaType:    artifactspec.MediaTypeArtifactManifest,
 			ArtifactType: "application/vnd.oras.artifact",
 			Layers: []ispec.Descriptor{
@@ -743,6 +747,9 @@ func TestOnDemand(t *testing.T) {
 			_ = pushBlob(srcBaseURL, "remote-repo", ispec.DescriptorEmptyJSON.Data)
 
 			OCIRefManifest := ispec.Manifest{
+				Versioned: specs.Versioned{
+					SchemaVersion: 2,
+				},
 				Subject: &ispec.Descriptor{
 					MediaType: ispec.MediaTypeImageManifest,
 					Digest:    manifestDigest,
@@ -954,6 +961,9 @@ func TestSyncReferenceInLoop(t *testing.T) {
 		_ = pushBlob(srcBaseURL, testImage, ispec.DescriptorEmptyJSON.Data)
 
 		OCIRefManifest := ispec.Manifest{
+			Versioned: specs.Versioned{
+				SchemaVersion: 2,
+			},
 			Subject: &ispec.Descriptor{
 				MediaType: ispec.MediaTypeImageManifest,
 				Digest:    sbomDigest,
@@ -3896,6 +3906,9 @@ func TestSignatures(t *testing.T) {
 		_ = pushBlob(srcBaseURL, repoName, ispec.DescriptorEmptyJSON.Data)
 
 		OCIRefManifest := ispec.Manifest{
+			Versioned: specs.Versioned{
+				SchemaVersion: 2,
+			},
 			Subject: &ispec.Descriptor{
 				MediaType: ispec.MediaTypeImageManifest,
 				Digest:    sbomDigest,
@@ -6357,6 +6370,10 @@ func pushRepo(url, repoName string) godigest.Digest {
 
 	// create a manifest
 	manifest := ispec.Manifest{
+		Versioned: specs.Versioned{
+			SchemaVersion: 2,
+		},
+		MediaType: ispec.MediaTypeImageManifest,
 		Config: ispec.Descriptor{
 			MediaType: "application/vnd.oci.image.config.v1+json",
 			Digest:    cdigest,
@@ -6396,6 +6413,9 @@ func pushRepo(url, repoName string) godigest.Digest {
 
 	// push a referrer artifact
 	manifest = ispec.Manifest{
+		Versioned: specs.Versioned{
+			SchemaVersion: 2,
+		},
 		MediaType: ispec.MediaTypeImageManifest,
 		Config: ispec.Descriptor{
 			MediaType: "application/vnd.cncf.icecream",
@@ -6417,6 +6437,9 @@ func pushRepo(url, repoName string) godigest.Digest {
 	}
 
 	artifactManifest := ispec.Manifest{
+		Versioned: specs.Versioned{
+			SchemaVersion: 2,
+		},
 		MediaType:    ispec.MediaTypeImageManifest,
 		ArtifactType: "application/vnd.cncf.icecream",
 		Config: ispec.Descriptor{

@@ -1503,11 +1503,11 @@ func runDisplayIndexTests(baseURL string) {
 		actual := strings.TrimSpace(str)
 		// Actual cli output should be something similar to (order of images may differ):
 		// REPOSITORY    TAG        OS/ARCH           DIGEST    SIGNED  SIZE
-		// repo          multi-arch *                 59b25ae4  false   1.5kB
+		// repo          multi-arch *                 0f844b3e  false   1.5kB
 		//                          linux/amd64       97b0d65c  false   634B
 		//                          windows/arm64/v6  dcfa3a9c  false   444B
 		So(actual, ShouldContainSubstring, "REPOSITORY TAG OS/ARCH DIGEST SIGNED SIZE")
-		So(actual, ShouldContainSubstring, "repo multi-arch * 59b25ae4 false 1.5kB ")
+		So(actual, ShouldContainSubstring, "repo multi-arch * 0f844b3e false 1.5kB ")
 		So(actual, ShouldContainSubstring, "linux/amd64 2ab1a275 false 634B ")
 		So(actual, ShouldContainSubstring, "windows/arm64/v6 55fdd23a false 501B")
 	})
@@ -1531,14 +1531,14 @@ func runDisplayIndexTests(baseURL string) {
 		actual := strings.TrimSpace(str)
 		// Actual cli output should be something similar to (order of images may differ):
 		// REPOSITORY    TAG        OS/ARCH           DIGEST    CONFIG    SIGNED  LAYERS    SIZE
-		// repo          multi-arch *                 59b25ae4            false             1.5kB
+		// repo          multi-arch *                 0f844b3e            false             1.5kB
 		//                          linux/amd64       2ab1a275  58cc9abe  false             634B
 		//                                                                        cbb5b121  4B
 		//                                                                        a00291e8  4B
 		//                          windows/arm64/v6  55fdd23a  5132a1cd  false             501B
 		//                                                                        7d08ce29  4B
 		So(actual, ShouldContainSubstring, "REPOSITORY TAG OS/ARCH DIGEST CONFIG SIGNED LAYERS SIZE")
-		So(actual, ShouldContainSubstring, "repo multi-arch * 59b25ae4 false 1.5kB")
+		So(actual, ShouldContainSubstring, "repo multi-arch * 0f844b3e false 1.5kB")
 		So(actual, ShouldContainSubstring, "linux/amd64 2ab1a275 58cc9abe false 634B")
 		So(actual, ShouldContainSubstring, "cbb5b121 4B")
 		So(actual, ShouldContainSubstring, "a00291e8 4B")

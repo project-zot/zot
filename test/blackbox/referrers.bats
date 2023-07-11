@@ -60,13 +60,13 @@ EOF
     [ "$status" -eq 0 ]
     [ $(echo "${lines[-1]}" | jq '.repositories[]') = '"golang"' ]
 
-    run oras attach --plain-http --image-spec v1.1-image --artifact-type image.type 127.0.0.1:8080/golang:1.20 ${IMAGE_MANIFEST_REFERRER}
+    run oras attach --plain-http --image-spec v1.1-image --artifact-type image.artifact/type 127.0.0.1:8080/golang:1.20 ${IMAGE_MANIFEST_REFERRER}
     [ "$status" -eq 0 ]
 
     MANIFEST_DIGEST=$(skopeo inspect --tls-verify=false docker://localhost:8080/golang:1.20 | jq -r '.Digest')
     echo ${MANIFEST_DIGEST}
 
-    curl -X GET http://127.0.0.1:8080/v2/golang/referrers/${MANIFEST_DIGEST}?artifactType=image.type
+    curl -X GET http://127.0.0.1:8080/v2/golang/referrers/${MANIFEST_DIGEST}?artifactType=image.artifact/type
 }
 
 function teardown() {
@@ -78,13 +78,13 @@ function teardown() {
 @test "add referrers, one artifact and one image" {
 
     # Check referrers API using the normal REST endpoint
-    run curl -X GET http://127.0.0.1:8080/v2/golang/referrers/${MANIFEST_DIGEST}?artifactType=image.type
+    run curl -X GET http://127.0.0.1:8080/v2/golang/referrers/${MANIFEST_DIGEST}?artifactType=image.artifact/type
     [ "$status" -eq 0 ]
-    [ $(echo "${lines[-1]}" | jq '.manifests[].artifactType') = '"image.type"' ]
+    [ $(echo "${lines[-1]}" | jq '.manifests[].artifactType') = '"image.artifact/type"' ]
 
     # Check referrers API using the GQL endpoint
-    REFERRER_QUERY_DATA="{ \"query\": \"{ Referrers(repo:\\\"golang\\\", digest:\\\"${MANIFEST_DIGEST}\\\", type:[\\\"image.type\\\"]) { MediaType ArtifactType Digest Size} }\"}"
+    REFERRER_QUERY_DATA="{ \"query\": \"{ Referrers(repo:\\\"golang\\\", digest:\\\"${MANIFEST_DIGEST}\\\", type:[\\\"image.artifact/type\\\"]) { MediaType ArtifactType Digest Size} }\"}"
     run curl -X POST -H "Content-Type: application/json" --data "${REFERRER_QUERY_DATA}" http://localhost:8080/v2/_zot/ext/search
     [ "$status" -eq 0 ]
-    [ $(echo "${lines[-1]}" | jq '.data.Referrers[].ArtifactType') = '"image.type"' ]
+    [ $(echo "${lines[-1]}" | jq '.data.Referrers[].ArtifactType') = '"image.artifact/type"' ]
 }

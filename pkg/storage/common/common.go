@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"path"
@@ -8,6 +9,7 @@ import (
 
 	notreg "github.com/notaryproject/notation-go/registry"
 	godigest "github.com/opencontainers/go-digest"
+	"github.com/opencontainers/image-spec/schema"
 	imeta "github.com/opencontainers/image-spec/specs-go"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	oras "github.com/oras-project/artifacts-spec/specs-go/v1"
@@ -20,6 +22,8 @@ import (
 	storageConstants "zotregistry.io/zot/pkg/storage/constants"
 	storageTypes "zotregistry.io/zot/pkg/storage/types"
 )
+
+const manifestWithEmptyLayersErrMsg = "layers: Array must have at least 1 items"
 
 func GetTagsByIndex(index ispec.Index) []string {
 	tags := make([]string, 0)
@@ -71,6 +75,14 @@ func ValidateManifest(imgStore storageTypes.ImageStore, repo, reference, mediaTy
 	switch mediaType {
 	case ispec.MediaTypeImageManifest:
 		var manifest ispec.Manifest
+
+		// validate manifest
+		if err := ValidateManifestSchema(body); err != nil {
+			log.Error().Err(err).Msg("OCIv1 image manifest schema validation failed")
+
+			return "", zerr.ErrBadManifest
+		}
+
 		if err := json.Unmarshal(body, &manifest); err != nil {
 			log.Error().Err(err).Msg("unable to unmarshal JSON")
 
@@ -78,20 +90,21 @@ func ValidateManifest(imgStore storageTypes.ImageStore, repo, reference, mediaTy
 		}
 
 		if manifest.Config.MediaType == ispec.MediaTypeImageConfig {
-			digest, err := validateOCIManifest(imgStore, repo, reference, &manifest, log)
-			if err != nil {
-				log.Error().Err(err).Msg("invalid oci image manifest")
+			// validate layers - a lightweight check if the blob is present
+			for _, layer := range manifest.Layers {
+				if IsNonDistributable(layer.MediaType) {
+					log.Debug().Str("digest", layer.Digest.String()).Str("mediaType", layer.MediaType).
+						Msg("skip checking non-distributable layer exists")
 
-				return digest, err
-			}
-		}
+					continue
+				}
 
-		if manifest.Subject != nil {
-			var m ispec.Descriptor
-			if err := json.Unmarshal(body, &m); err != nil {
-				log.Error().Err(err).Msg("unable to unmarshal JSON")
+				ok, _, err := imgStore.StatBlob(repo, layer.Digest)
+				if !ok || err != nil {
+					log.Error().Err(err).Str("digest", layer.Digest.String()).Msg("missing layer blob")
 
-				return "", zerr.ErrBadManifest
+					return "", zerr.ErrBadManifest
+				}
 			}
 		}
 	case oras.MediaTypeArtifactManifest:
@@ -101,46 +114,27 @@ func ValidateManifest(imgStore storageTypes.ImageStore, repo, reference, mediaTy
 
 			return "", zerr.ErrBadManifest
 		}
-	}
+	case ispec.MediaTypeImageIndex:
+		// validate manifest
+		if err := ValidateImageIndexSchema(body); err != nil {
+			log.Error().Err(err).Msg("OCIv1 image index manifest schema validation failed")
 
-	return "", nil
-}
-
-func validateOCIManifest(imgStore storageTypes.ImageStore, repo, reference string, //nolint:unparam
-	manifest *ispec.Manifest, log zerolog.Logger,
-) (godigest.Digest, error) {
-	if manifest.SchemaVersion != storageConstants.SchemaVersion {
-		log.Error().Int("SchemaVersion", manifest.SchemaVersion).Msg("invalid manifest")
-
-		return "", zerr.ErrBadManifest
-	}
-
-	// validate image config
-	config := manifest.Config
-
-	blobBuf, err := imgStore.GetBlobContent(repo, config.Digest)
-	if err != nil {
-		return config.Digest, zerr.ErrBlobNotFound
-	}
-
-	var cspec ispec.Image
-
-	err = json.Unmarshal(blobBuf, &cspec)
-	if err != nil {
-		return "", zerr.ErrBadManifest
-	}
-
-	// validate the layers
-	for _, layer := range manifest.Layers {
-		if IsNonDistributable(layer.MediaType) {
-			log.Warn().Str("digest", layer.Digest.String()).Str("mediaType", layer.MediaType).Msg("not validating layer exists")
-
-			continue
+			return "", err
 		}
 
-		ok, _, err := imgStore.StatBlob(repo, layer.Digest)
-		if err != nil || !ok {
-			return layer.Digest, zerr.ErrBlobNotFound
+		var indexManifest ispec.Index
+		if err := json.Unmarshal(body, &indexManifest); err != nil {
+			log.Error().Err(err).Msg("unable to unmarshal JSON")
+
+			return "", zerr.ErrBadManifest
+		}
+
+		for _, manifest := range indexManifest.Manifests {
+			if ok, _, err := imgStore.StatBlob(repo, manifest.Digest); !ok || err != nil {
+				log.Error().Err(err).Str("digest", manifest.Digest.String()).Msg("missing manifest blob")
+
+				return "", zerr.ErrBadManifest
+			}
 		}
 	}
 
@@ -775,6 +769,37 @@ func IsNonDistributable(mediaType string) bool {
 	return mediaType == ispec.MediaTypeImageLayerNonDistributable || //nolint:staticcheck
 		mediaType == ispec.MediaTypeImageLayerNonDistributableGzip || //nolint:staticcheck
 		mediaType == ispec.MediaTypeImageLayerNonDistributableZstd //nolint:staticcheck
+}
+
+func ValidateManifestSchema(buf []byte) error {
+	if err := schema.ValidatorMediaTypeManifest.Validate(bytes.NewBuffer(buf)); err != nil {
+		if !IsEmptyLayersError(err) {
+			return zerr.ErrBadManifest
+		}
+	}
+
+	return nil
+}
+
+func ValidateImageIndexSchema(buf []byte) error {
+	if err := schema.ValidatorMediaTypeImageIndex.Validate(bytes.NewBuffer(buf)); err != nil {
+		return zerr.ErrBadManifest
+	}
+
+	return nil
+}
+
+func IsEmptyLayersError(err error) bool {
+	var validationErr schema.ValidationError
+	if errors.As(err, &validationErr) {
+		if len(validationErr.Errs) == 1 && strings.Contains(err.Error(), manifestWithEmptyLayersErrMsg) {
+			return true
+		} else {
+			return false
+		}
+	}
+
+	return false
 }
 
 /*
