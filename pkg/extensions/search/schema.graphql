@@ -606,6 +606,8 @@ type Query {
     ImageListForCVE(
         "CVE ID"
         id: String!,
+        "Filter to apply before returning the results"
+        filter: Filter,
         "Sets the parameters of the requested page"
         requestedPage: PageInput
     ): PaginatedImagesResult!
@@ -619,6 +621,8 @@ type Query {
         id: String!,
         "Repository name"
         image: String!,
+        "Filter to apply before returning the results"
+        filter: Filter,
         "Sets the parameters of the requested page"
         requestedPage: PageInput
     ): PaginatedImagesResult!

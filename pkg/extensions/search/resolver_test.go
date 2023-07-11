@@ -690,7 +690,7 @@ func TestImageListForDigest(t *testing.T) {
 	Convey("getImageList", t, func() {
 		Convey("no page requested, FilterTagsFn returns error", func() {
 			mockSearchDB := mocks.RepoDBMock{
-				FilterTagsFn: func(ctx context.Context, filter repodb.FilterFunc,
+				FilterTagsFn: func(ctx context.Context, filterFunc repodb.FilterFunc, filter repodb.Filter,
 					requestedPage repodb.PageInput,
 				) ([]repodb.RepoMetadata, map[string]repodb.ManifestMetadata, map[string]repodb.IndexData, common.PageInfo,
 					error,
@@ -708,7 +708,7 @@ func TestImageListForDigest(t *testing.T) {
 
 		Convey("invalid manifest blob", func() {
 			mockSearchDB := mocks.RepoDBMock{
-				FilterTagsFn: func(ctx context.Context, filter repodb.FilterFunc,
+				FilterTagsFn: func(ctx context.Context, filterFunc repodb.FilterFunc, filter repodb.Filter,
 					requestedPage repodb.PageInput,
 				) ([]repodb.RepoMetadata, map[string]repodb.ManifestMetadata, map[string]repodb.IndexData, common.PageInfo, error) {
 					repos := []repodb.RepoMetadata{
@@ -756,7 +756,7 @@ func TestImageListForDigest(t *testing.T) {
 			manifestDigest := godigest.FromBytes(manifestBlob).String()
 
 			mockSearchDB := mocks.RepoDBMock{
-				FilterTagsFn: func(ctx context.Context, filter repodb.FilterFunc,
+				FilterTagsFn: func(ctx context.Context, filterFunc repodb.FilterFunc, filter repodb.Filter,
 					requestedPage repodb.PageInput,
 				) ([]repodb.RepoMetadata, map[string]repodb.ManifestMetadata, map[string]repodb.IndexData, common.PageInfo, error) {
 					repos := []repodb.RepoMetadata{
@@ -781,7 +781,7 @@ func TestImageListForDigest(t *testing.T) {
 					}
 					matchedTags := repos[0].Tags
 					for tag, manifestDescriptor := range repos[0].Tags {
-						if !filter(repos[0], manifestMetaDatas[manifestDescriptor.Digest]) {
+						if !filterFunc(repos[0], manifestMetaDatas[manifestDescriptor.Digest]) {
 							delete(matchedTags, tag)
 							delete(manifestMetaDatas, manifestDescriptor.Digest)
 
@@ -829,7 +829,7 @@ func TestImageListForDigest(t *testing.T) {
 			configDigest := godigest.FromBytes(configBlob)
 
 			mockSearchDB := mocks.RepoDBMock{
-				FilterTagsFn: func(ctx context.Context, filter repodb.FilterFunc,
+				FilterTagsFn: func(ctx context.Context, filterFunc repodb.FilterFunc, filter repodb.Filter,
 					requestedPage repodb.PageInput,
 				) ([]repodb.RepoMetadata, map[string]repodb.ManifestMetadata, map[string]repodb.IndexData, common.PageInfo, error) {
 					repos := []repodb.RepoMetadata{
@@ -859,7 +859,7 @@ func TestImageListForDigest(t *testing.T) {
 
 					matchedTags := repos[0].Tags
 					for tag, manifestDescriptor := range repos[0].Tags {
-						if !filter(repos[0], manifestMetaDatas[manifestDescriptor.Digest]) {
+						if !filterFunc(repos[0], manifestMetaDatas[manifestDescriptor.Digest]) {
 							delete(matchedTags, tag)
 							delete(manifestMetaDatas, manifestDescriptor.Digest)
 
@@ -903,7 +903,7 @@ func TestImageListForDigest(t *testing.T) {
 			layerDigest := godigest.Digest("validDigest")
 
 			mockSearchDB := mocks.RepoDBMock{
-				FilterTagsFn: func(ctx context.Context, filter repodb.FilterFunc,
+				FilterTagsFn: func(ctx context.Context, filterFunc repodb.FilterFunc, filter repodb.Filter,
 					requestedPage repodb.PageInput,
 				) ([]repodb.RepoMetadata, map[string]repodb.ManifestMetadata, map[string]repodb.IndexData, common.PageInfo, error) {
 					repos := []repodb.RepoMetadata{
@@ -935,7 +935,7 @@ func TestImageListForDigest(t *testing.T) {
 
 					matchedTags := repos[0].Tags
 					for tag, manifestDescriptor := range repos[0].Tags {
-						if !filter(repos[0], manifestMetaDatas[manifestDescriptor.Digest]) {
+						if !filterFunc(repos[0], manifestMetaDatas[manifestDescriptor.Digest]) {
 							delete(matchedTags, tag)
 							delete(manifestMetaDatas, manifestDescriptor.Digest)
 
@@ -977,7 +977,7 @@ func TestImageListForDigest(t *testing.T) {
 			So(err, ShouldBeNil)
 
 			mockSearchDB := mocks.RepoDBMock{
-				FilterTagsFn: func(ctx context.Context, filter repodb.FilterFunc,
+				FilterTagsFn: func(ctx context.Context, filterFunc repodb.FilterFunc, filter repodb.Filter,
 					requestedPage repodb.PageInput,
 				) ([]repodb.RepoMetadata, map[string]repodb.ManifestMetadata, map[string]repodb.IndexData, common.PageInfo, error) {
 					repos := []repodb.RepoMetadata{
@@ -1003,7 +1003,7 @@ func TestImageListForDigest(t *testing.T) {
 						matchedTags := repo.Tags
 
 						for tag, manifestDescriptor := range repo.Tags {
-							if !filter(repo, manifestMetaDatas[manifestDescriptor.Digest]) {
+							if !filterFunc(repo, manifestMetaDatas[manifestDescriptor.Digest]) {
 								delete(matchedTags, tag)
 								delete(manifestMetaDatas, manifestDescriptor.Digest)
 
@@ -1046,7 +1046,7 @@ func TestImageListForDigest(t *testing.T) {
 			So(err, ShouldBeNil)
 
 			mockSearchDB := mocks.RepoDBMock{
-				FilterTagsFn: func(ctx context.Context, filter repodb.FilterFunc,
+				FilterTagsFn: func(ctx context.Context, filterFunc repodb.FilterFunc, filter repodb.Filter,
 					requestedPage repodb.PageInput,
 				) ([]repodb.RepoMetadata, map[string]repodb.ManifestMetadata, map[string]repodb.IndexData, common.PageInfo,
 					error,
@@ -1081,7 +1081,7 @@ func TestImageListForDigest(t *testing.T) {
 						matchedTags := repo.Tags
 
 						for tag, manifestDescriptor := range repo.Tags {
-							if !filter(repo, manifestMetaDatas[manifestDescriptor.Digest]) {
+							if !filterFunc(repo, manifestMetaDatas[manifestDescriptor.Digest]) {
 								delete(matchedTags, tag)
 								delete(manifestMetaDatas, manifestDescriptor.Digest)
 
@@ -1329,7 +1329,7 @@ func TestImageList(t *testing.T) {
 		testLogger := log.NewLogger("debug", "")
 		Convey("no page requested, SearchRepoFn returns error", func() {
 			mockSearchDB := mocks.RepoDBMock{
-				FilterTagsFn: func(ctx context.Context, filter repodb.FilterFunc,
+				FilterTagsFn: func(ctx context.Context, filterFunc repodb.FilterFunc, filter repodb.Filter,
 					requestedPage repodb.PageInput,
 				) ([]repodb.RepoMetadata, map[string]repodb.ManifestMetadata, map[string]repodb.IndexData, common.PageInfo,
 					error,
@@ -1348,7 +1348,7 @@ func TestImageList(t *testing.T) {
 
 		Convey("valid repoList returned", func() {
 			mockSearchDB := mocks.RepoDBMock{
-				FilterTagsFn: func(ctx context.Context, filter repodb.FilterFunc,
+				FilterTagsFn: func(ctx context.Context, filterFunc repodb.FilterFunc, filter repodb.Filter,
 					requestedPage repodb.PageInput,
 				) ([]repodb.RepoMetadata, map[string]repodb.ManifestMetadata, map[string]repodb.IndexData, common.PageInfo, error) {
 					repos := []repodb.RepoMetadata{
@@ -1546,7 +1546,7 @@ func TestQueryResolverErrors(t *testing.T) {
 				resolverConfig,
 			}
 
-			_, err := qr.ImageListForCve(ctx, "cve1", &gql_generated.PageInput{})
+			_, err := qr.ImageListForCve(ctx, "cve1", &gql_generated.Filter{}, &gql_generated.PageInput{})
 			So(err, ShouldNotBeNil)
 		})
 
@@ -1557,7 +1557,8 @@ func TestQueryResolverErrors(t *testing.T) {
 					DefaultStore: mocks.MockedImageStore{},
 				},
 				mocks.RepoDBMock{
-					FilterTagsFn: func(ctx context.Context, filter repodb.FilterFunc, requestedPage repodb.PageInput,
+					FilterTagsFn: func(ctx context.Context,
+						filterFunc repodb.FilterFunc, filter repodb.Filter, requestedPage repodb.PageInput,
 					) ([]repodb.RepoMetadata, map[string]repodb.ManifestMetadata, map[string]repodb.IndexData,
 						common.PageInfo, error,
 					) {
@@ -1572,7 +1573,7 @@ func TestQueryResolverErrors(t *testing.T) {
 				resolverConfig,
 			}
 
-			_, err := qr.ImageListForCve(ctx, "cve1", &gql_generated.PageInput{})
+			_, err := qr.ImageListForCve(ctx, "cve1", &gql_generated.Filter{}, &gql_generated.PageInput{})
 			So(err, ShouldNotBeNil)
 		})
 
@@ -1583,7 +1584,8 @@ func TestQueryResolverErrors(t *testing.T) {
 					DefaultStore: mocks.MockedImageStore{},
 				},
 				mocks.RepoDBMock{
-					FilterTagsFn: func(ctx context.Context, filter repodb.FilterFunc, requestedPage repodb.PageInput,
+					FilterTagsFn: func(ctx context.Context,
+						filterFunc repodb.FilterFunc, filter repodb.Filter, requestedPage repodb.PageInput,
 					) ([]repodb.RepoMetadata, map[string]repodb.ManifestMetadata, map[string]repodb.IndexData,
 						common.PageInfo, error,
 					) {
@@ -1598,7 +1600,7 @@ func TestQueryResolverErrors(t *testing.T) {
 				resolverConfig,
 			}
 
-			_, err := qr.ImageListWithCVEFixed(ctx, "cve1", "image", &gql_generated.PageInput{})
+			_, err := qr.ImageListWithCVEFixed(ctx, "cve1", "image", &gql_generated.Filter{}, &gql_generated.PageInput{})
 			So(err, ShouldNotBeNil)
 		})
 
@@ -1657,7 +1659,8 @@ func TestQueryResolverErrors(t *testing.T) {
 				log,
 				storage.StoreController{},
 				mocks.RepoDBMock{
-					FilterTagsFn: func(ctx context.Context, filter repodb.FilterFunc, requestedPage repodb.PageInput,
+					FilterTagsFn: func(ctx context.Context,
+						filterFunc repodb.FilterFunc, filter repodb.Filter, requestedPage repodb.PageInput,
 					) ([]repodb.RepoMetadata, map[string]repodb.ManifestMetadata, map[string]repodb.IndexData,
 						common.PageInfo, error,
 					) {
@@ -1753,7 +1756,8 @@ func TestQueryResolverErrors(t *testing.T) {
 				log,
 				storage.StoreController{},
 				mocks.RepoDBMock{
-					FilterTagsFn: func(ctx context.Context, filter repodb.FilterFunc, requestedPage repodb.PageInput,
+					FilterTagsFn: func(ctx context.Context,
+						filterFunc repodb.FilterFunc, filter repodb.Filter, requestedPage repodb.PageInput,
 					) ([]repodb.RepoMetadata, map[string]repodb.ManifestMetadata, map[string]repodb.IndexData,
 						common.PageInfo, error,
 					) {
@@ -1818,6 +1822,10 @@ func TestCVEResolvers(t *testing.T) { //nolint:gocyclo
 		RootDir: t.TempDir(),
 	}
 
+	LINUX := "linux"
+	AMD := "amd"
+	ARM := "arm64"
+
 	boltDriver, err := bolt.GetBoltDriver(params)
 	if err != nil {
 		panic(err)
@@ -1836,6 +1844,10 @@ func TestCVEResolvers(t *testing.T) { //nolint:gocyclo
 
 	configBlob1, err := json.Marshal(ispec.Image{
 		Created: &timeStamp1,
+		Platform: ispec.Platform{
+			Architecture: AMD,
+			OS:           LINUX,
+		},
 	})
 	if err != nil {
 		panic(err)
@@ -1875,6 +1887,10 @@ func TestCVEResolvers(t *testing.T) { //nolint:gocyclo
 
 	configBlob2, err := json.Marshal(ispec.Image{
 		Created: &timeStamp2,
+		Platform: ispec.Platform{
+			Architecture: AMD,
+			OS:           LINUX,
+		},
 	})
 	if err != nil {
 		panic(err)
@@ -1914,6 +1930,10 @@ func TestCVEResolvers(t *testing.T) { //nolint:gocyclo
 
 	configBlob3, err := json.Marshal(ispec.Image{
 		Created: &timeStamp3,
+		Platform: ispec.Platform{
+			Architecture: ARM,
+			OS:           LINUX,
+		},
 	})
 	if err != nil {
 		panic(err)
@@ -2165,7 +2185,7 @@ func TestCVEResolvers(t *testing.T) { //nolint:gocyclo
 			responseContext := graphql.WithResponseContext(context.Background(), graphql.DefaultErrorPresenter,
 				graphql.DefaultRecover)
 
-			images, err := getImageListForCVE(responseContext, "CVE1", cveInfo, nil, repoDB, log)
+			images, err := getImageListForCVE(responseContext, "CVE1", cveInfo, nil, nil, repoDB, log)
 			So(err, ShouldBeNil)
 
 			expectedImages := []string{
@@ -2178,7 +2198,7 @@ func TestCVEResolvers(t *testing.T) { //nolint:gocyclo
 				So(fmt.Sprintf("%s:%s", *image.RepoName, *image.Tag), ShouldBeIn, expectedImages)
 			}
 
-			images, err = getImageListForCVE(responseContext, "CVE2", cveInfo, nil, repoDB, log)
+			images, err = getImageListForCVE(responseContext, "CVE2", cveInfo, nil, nil, repoDB, log)
 			So(err, ShouldBeNil)
 
 			expectedImages = []string{
@@ -2192,7 +2212,7 @@ func TestCVEResolvers(t *testing.T) { //nolint:gocyclo
 				So(fmt.Sprintf("%s:%s", *image.RepoName, *image.Tag), ShouldBeIn, expectedImages)
 			}
 
-			images, err = getImageListForCVE(responseContext, "CVE3", cveInfo, nil, repoDB, log)
+			images, err = getImageListForCVE(responseContext, "CVE3", cveInfo, nil, nil, repoDB, log)
 			So(err, ShouldBeNil)
 
 			expectedImages = []string{
@@ -2214,7 +2234,7 @@ func TestCVEResolvers(t *testing.T) { //nolint:gocyclo
 
 			pageInput := getPageInput(1, 0)
 
-			images, err := getImageListForCVE(responseContext, "CVE1", cveInfo, pageInput, repoDB, log)
+			images, err := getImageListForCVE(responseContext, "CVE1", cveInfo, nil, pageInput, repoDB, log)
 			So(err, ShouldBeNil)
 
 			expectedImages := []string{
@@ -2228,7 +2248,7 @@ func TestCVEResolvers(t *testing.T) { //nolint:gocyclo
 
 			pageInput = getPageInput(1, 1)
 
-			images, err = getImageListForCVE(responseContext, "CVE1", cveInfo, pageInput, repoDB, log)
+			images, err = getImageListForCVE(responseContext, "CVE1", cveInfo, nil, pageInput, repoDB, log)
 			So(err, ShouldBeNil)
 
 			expectedImages = []string{
@@ -2242,19 +2262,19 @@ func TestCVEResolvers(t *testing.T) { //nolint:gocyclo
 
 			pageInput = getPageInput(1, 2)
 
-			images, err = getImageListForCVE(responseContext, "CVE1", cveInfo, pageInput, repoDB, log)
+			images, err = getImageListForCVE(responseContext, "CVE1", cveInfo, nil, pageInput, repoDB, log)
 			So(err, ShouldBeNil)
 			So(len(images.Results), ShouldEqual, 0)
 
 			pageInput = getPageInput(1, 5)
 
-			images, err = getImageListForCVE(responseContext, "CVE1", cveInfo, pageInput, repoDB, log)
+			images, err = getImageListForCVE(responseContext, "CVE1", cveInfo, nil, pageInput, repoDB, log)
 			So(err, ShouldBeNil)
 			So(len(images.Results), ShouldEqual, 0)
 
 			pageInput = getPageInput(2, 0)
 
-			images, err = getImageListForCVE(responseContext, "CVE1", cveInfo, pageInput, repoDB, log)
+			images, err = getImageListForCVE(responseContext, "CVE1", cveInfo, nil, pageInput, repoDB, log)
 			So(err, ShouldBeNil)
 
 			expectedImages = []string{
@@ -2269,7 +2289,7 @@ func TestCVEResolvers(t *testing.T) { //nolint:gocyclo
 
 			pageInput = getPageInput(5, 0)
 
-			images, err = getImageListForCVE(responseContext, "CVE1", cveInfo, pageInput, repoDB, log)
+			images, err = getImageListForCVE(responseContext, "CVE1", cveInfo, nil, pageInput, repoDB, log)
 			So(err, ShouldBeNil)
 
 			expectedImages = []string{
@@ -2284,7 +2304,7 @@ func TestCVEResolvers(t *testing.T) { //nolint:gocyclo
 
 			pageInput = getPageInput(5, 1)
 
-			images, err = getImageListForCVE(responseContext, "CVE1", cveInfo, pageInput, repoDB, log)
+			images, err = getImageListForCVE(responseContext, "CVE1", cveInfo, nil, pageInput, repoDB, log)
 			So(err, ShouldBeNil)
 
 			expectedImages = []string{
@@ -2298,19 +2318,19 @@ func TestCVEResolvers(t *testing.T) { //nolint:gocyclo
 
 			pageInput = getPageInput(5, 2)
 
-			images, err = getImageListForCVE(responseContext, "CVE1", cveInfo, pageInput, repoDB, log)
+			images, err = getImageListForCVE(responseContext, "CVE1", cveInfo, nil, pageInput, repoDB, log)
 			So(err, ShouldBeNil)
 			So(len(images.Results), ShouldEqual, 0)
 
 			pageInput = getPageInput(5, 5)
 
-			images, err = getImageListForCVE(responseContext, "CVE1", cveInfo, pageInput, repoDB, log)
+			images, err = getImageListForCVE(responseContext, "CVE1", cveInfo, nil, pageInput, repoDB, log)
 			So(err, ShouldBeNil)
 			So(len(images.Results), ShouldEqual, 0)
 
 			pageInput = getPageInput(5, 0)
 
-			images, err = getImageListForCVE(responseContext, "CVE2", cveInfo, pageInput, repoDB, log)
+			images, err = getImageListForCVE(responseContext, "CVE2", cveInfo, nil, pageInput, repoDB, log)
 			So(err, ShouldBeNil)
 
 			expectedImages = []string{
@@ -2326,7 +2346,7 @@ func TestCVEResolvers(t *testing.T) { //nolint:gocyclo
 
 			pageInput = getPageInput(5, 3)
 
-			images, err = getImageListForCVE(responseContext, "CVE2", cveInfo, pageInput, repoDB, log)
+			images, err = getImageListForCVE(responseContext, "CVE2", cveInfo, nil, pageInput, repoDB, log)
 			So(err, ShouldBeNil)
 
 			expectedImages = []string{
@@ -2341,7 +2361,7 @@ func TestCVEResolvers(t *testing.T) { //nolint:gocyclo
 
 			pageInput = getPageInput(5, 0)
 
-			images, err = getImageListForCVE(responseContext, "CVE3", cveInfo, pageInput, repoDB, log)
+			images, err = getImageListForCVE(responseContext, "CVE3", cveInfo, nil, pageInput, repoDB, log)
 			So(err, ShouldBeNil)
 
 			expectedImages = []string{
@@ -2356,7 +2376,7 @@ func TestCVEResolvers(t *testing.T) { //nolint:gocyclo
 
 			pageInput = getPageInput(5, 5)
 
-			images, err = getImageListForCVE(responseContext, "CVE3", cveInfo, pageInput, repoDB, log)
+			images, err = getImageListForCVE(responseContext, "CVE3", cveInfo, nil, pageInput, repoDB, log)
 			So(err, ShouldBeNil)
 
 			expectedImages = []string{
@@ -2371,11 +2391,42 @@ func TestCVEResolvers(t *testing.T) { //nolint:gocyclo
 
 			pageInput = getPageInput(5, 10)
 
-			images, err = getImageListForCVE(responseContext, "CVE3", cveInfo, pageInput, repoDB, log)
+			images, err = getImageListForCVE(responseContext, "CVE3", cveInfo, nil, pageInput, repoDB, log)
 			So(err, ShouldBeNil)
 
 			expectedImages = []string{
 				"repo3:latest",
+			}
+			So(len(images.Results), ShouldEqual, len(expectedImages))
+
+			for _, image := range images.Results {
+				So(fmt.Sprintf("%s:%s", *image.RepoName, *image.Tag), ShouldBeIn, expectedImages)
+			}
+
+			amdFilter := &gql_generated.Filter{Arch: []*string{&AMD}}
+			pageInput = getPageInput(5, 0)
+
+			images, err = getImageListForCVE(responseContext, "CVE3", cveInfo, amdFilter, pageInput, repoDB, log)
+			So(err, ShouldBeNil)
+
+			expectedImages = []string{
+				"repo1:1.0.0", "repo1:1.0.1",
+				"repo2:2.0.0", "repo2:2.0.1",
+				"repo3:3.0.1",
+			}
+			So(len(images.Results), ShouldEqual, len(expectedImages))
+
+			for _, image := range images.Results {
+				So(fmt.Sprintf("%s:%s", *image.RepoName, *image.Tag), ShouldBeIn, expectedImages)
+			}
+
+			pageInput = getPageInput(2, 2)
+
+			images, err = getImageListForCVE(responseContext, "CVE3", cveInfo, amdFilter, pageInput, repoDB, log)
+			So(err, ShouldBeNil)
+
+			expectedImages = []string{
+				"repo2:2.0.0", "repo2:2.0.1",
 			}
 			So(len(images.Results), ShouldEqual, len(expectedImages))
 
@@ -2390,7 +2441,7 @@ func TestCVEResolvers(t *testing.T) { //nolint:gocyclo
 			responseContext := graphql.WithResponseContext(context.Background(), graphql.DefaultErrorPresenter,
 				graphql.DefaultRecover)
 
-			images, err := getImageListWithCVEFixed(responseContext, "CVE1", "repo1", cveInfo, nil, repoDB, log)
+			images, err := getImageListWithCVEFixed(responseContext, "CVE1", "repo1", cveInfo, nil, nil, repoDB, log)
 			So(err, ShouldBeNil)
 
 			expectedImages := []string{
@@ -2402,7 +2453,7 @@ func TestCVEResolvers(t *testing.T) { //nolint:gocyclo
 				So(fmt.Sprintf("%s:%s", *image.RepoName, *image.Tag), ShouldBeIn, expectedImages)
 			}
 
-			images, err = getImageListWithCVEFixed(responseContext, "CVE2", "repo1", cveInfo, nil, repoDB, log)
+			images, err = getImageListWithCVEFixed(responseContext, "CVE2", "repo1", cveInfo, nil, nil, repoDB, log)
 			So(err, ShouldBeNil)
 
 			expectedImages = []string{
@@ -2414,7 +2465,7 @@ func TestCVEResolvers(t *testing.T) { //nolint:gocyclo
 				So(fmt.Sprintf("%s:%s", *image.RepoName, *image.Tag), ShouldBeIn, expectedImages)
 			}
 
-			images, err = getImageListWithCVEFixed(responseContext, "CVE3", "repo1", cveInfo, nil, repoDB, log)
+			images, err = getImageListWithCVEFixed(responseContext, "CVE3", "repo1", cveInfo, nil, nil, repoDB, log)
 			So(err, ShouldBeNil)
 			So(len(images.Results), ShouldEqual, 0)
 		})
@@ -2426,7 +2477,7 @@ func TestCVEResolvers(t *testing.T) { //nolint:gocyclo
 
 			pageInput := getPageInput(1, 0)
 
-			images, err := getImageListWithCVEFixed(responseContext, "CVE1", "repo1", cveInfo, pageInput, repoDB, log)
+			images, err := getImageListWithCVEFixed(responseContext, "CVE1", "repo1", cveInfo, nil, pageInput, repoDB, log)
 			So(err, ShouldBeNil)
 
 			expectedImages := []string{
@@ -2440,7 +2491,7 @@ func TestCVEResolvers(t *testing.T) { //nolint:gocyclo
 
 			pageInput = getPageInput(1, 1)
 
-			images, err = getImageListWithCVEFixed(responseContext, "CVE1", "repo1", cveInfo, pageInput, repoDB, log)
+			images, err = getImageListWithCVEFixed(responseContext, "CVE1", "repo1", cveInfo, nil, pageInput, repoDB, log)
 			So(err, ShouldBeNil)
 
 			expectedImages = []string{
@@ -2454,7 +2505,7 @@ func TestCVEResolvers(t *testing.T) { //nolint:gocyclo
 
 			pageInput = getPageInput(1, 2)
 
-			images, err = getImageListWithCVEFixed(responseContext, "CVE1", "repo1", cveInfo, pageInput, repoDB, log)
+			images, err = getImageListWithCVEFixed(responseContext, "CVE1", "repo1", cveInfo, nil, pageInput, repoDB, log)
 			So(err, ShouldBeNil)
 
 			expectedImages = []string{
@@ -2468,19 +2519,19 @@ func TestCVEResolvers(t *testing.T) { //nolint:gocyclo
 
 			pageInput = getPageInput(1, 3)
 
-			images, err = getImageListWithCVEFixed(responseContext, "CVE1", "repo1", cveInfo, pageInput, repoDB, log)
+			images, err = getImageListWithCVEFixed(responseContext, "CVE1", "repo1", cveInfo, nil, pageInput, repoDB, log)
 			So(err, ShouldBeNil)
 			So(len(images.Results), ShouldEqual, 0)
 
 			pageInput = getPageInput(1, 10)
 
-			images, err = getImageListWithCVEFixed(responseContext, "CVE1", "repo1", cveInfo, pageInput, repoDB, log)
+			images, err = getImageListWithCVEFixed(responseContext, "CVE1", "repo1", cveInfo, nil, pageInput, repoDB, log)
 			So(err, ShouldBeNil)
 			So(len(images.Results), ShouldEqual, 0)
 
 			pageInput = getPageInput(2, 0)
 
-			images, err = getImageListWithCVEFixed(responseContext, "CVE1", "repo1", cveInfo, pageInput, repoDB, log)
+			images, err = getImageListWithCVEFixed(responseContext, "CVE1", "repo1", cveInfo, nil, pageInput, repoDB, log)
 			So(err, ShouldBeNil)
 
 			expectedImages = []string{
@@ -2494,7 +2545,7 @@ func TestCVEResolvers(t *testing.T) { //nolint:gocyclo
 
 			pageInput = getPageInput(2, 1)
 
-			images, err = getImageListWithCVEFixed(responseContext, "CVE1", "repo1", cveInfo, pageInput, repoDB, log)
+			images, err = getImageListWithCVEFixed(responseContext, "CVE1", "repo1", cveInfo, nil, pageInput, repoDB, log)
 			So(err, ShouldBeNil)
 
 			expectedImages = []string{
@@ -2508,7 +2559,7 @@ func TestCVEResolvers(t *testing.T) { //nolint:gocyclo
 
 			pageInput = getPageInput(2, 2)
 
-			images, err = getImageListWithCVEFixed(responseContext, "CVE1", "repo1", cveInfo, pageInput, repoDB, log)
+			images, err = getImageListWithCVEFixed(responseContext, "CVE1", "repo1", cveInfo, nil, pageInput, repoDB, log)
 			So(err, ShouldBeNil)
 
 			expectedImages = []string{
@@ -2522,7 +2573,7 @@ func TestCVEResolvers(t *testing.T) { //nolint:gocyclo
 
 			pageInput = getPageInput(5, 0)
 
-			images, err = getImageListWithCVEFixed(responseContext, "CVE1", "repo1", cveInfo, pageInput, repoDB, log)
+			images, err = getImageListWithCVEFixed(responseContext, "CVE1", "repo1", cveInfo, nil, pageInput, repoDB, log)
 			So(err, ShouldBeNil)
 
 			expectedImages = []string{
@@ -2536,7 +2587,7 @@ func TestCVEResolvers(t *testing.T) { //nolint:gocyclo
 
 			pageInput = getPageInput(5, 0)
 
-			images, err = getImageListWithCVEFixed(responseContext, "CVE2", "repo1", cveInfo, pageInput, repoDB, log)
+			images, err = getImageListWithCVEFixed(responseContext, "CVE2", "repo1", cveInfo, nil, pageInput, repoDB, log)
 			So(err, ShouldBeNil)
 
 			expectedImages = []string{
@@ -2550,9 +2601,46 @@ func TestCVEResolvers(t *testing.T) { //nolint:gocyclo
 
 			pageInput = getPageInput(5, 2)
 
-			images, err = getImageListWithCVEFixed(responseContext, "CVE2", "repo1", cveInfo, pageInput, repoDB, log)
+			images, err = getImageListWithCVEFixed(responseContext, "CVE2", "repo1", cveInfo, nil, pageInput, repoDB, log)
 			So(err, ShouldBeNil)
 			So(len(images.Results), ShouldEqual, 0)
+
+			amdFilter := &gql_generated.Filter{Arch: []*string{&AMD}}
+			armFilter := &gql_generated.Filter{Arch: []*string{&ARM}}
+
+			pageInput = getPageInput(3, 0)
+
+			images, err = getImageListWithCVEFixed(responseContext, "CVE1", "repo1", cveInfo, amdFilter, pageInput, repoDB, log)
+			So(err, ShouldBeNil)
+
+			expectedImages = []string{"repo1:1.0.1"}
+			So(len(images.Results), ShouldEqual, len(expectedImages))
+
+			for _, image := range images.Results {
+				So(fmt.Sprintf("%s:%s", *image.RepoName, *image.Tag), ShouldBeIn, expectedImages)
+			}
+
+			images, err = getImageListWithCVEFixed(responseContext, "CVE1", "repo1", cveInfo, armFilter, pageInput, repoDB, log)
+			So(err, ShouldBeNil)
+
+			expectedImages = []string{"repo1:1.1.0", "repo1:latest"}
+			So(len(images.Results), ShouldEqual, len(expectedImages))
+
+			for _, image := range images.Results {
+				So(fmt.Sprintf("%s:%s", *image.RepoName, *image.Tag), ShouldBeIn, expectedImages)
+			}
+
+			pageInput = getPageInput(1, 1)
+
+			images, err = getImageListWithCVEFixed(responseContext, "CVE1", "repo1", cveInfo, armFilter, pageInput, repoDB, log)
+			So(err, ShouldBeNil)
+
+			expectedImages = []string{"repo1:latest"}
+			So(len(images.Results), ShouldEqual, len(expectedImages))
+
+			for _, image := range images.Results {
+				So(fmt.Sprintf("%s:%s", *image.RepoName, *image.Tag), ShouldBeIn, expectedImages)
+			}
 		})
 	})
 
@@ -2565,6 +2653,7 @@ func TestCVEResolvers(t *testing.T) { //nolint:gocyclo
 					return []cvemodel.TagInfo{}, ErrTestError
 				},
 			},
+			nil,
 			nil,
 			mocks.RepoDBMock{
 				GetMultipleRepoMetaFn: func(ctx context.Context, filter func(repoMeta repodb.RepoMetadata) bool,
@@ -2592,7 +2681,8 @@ func getPageInput(limit int, offset int) *gql_generated.PageInput {
 func TestDerivedImageList(t *testing.T) {
 	Convey("RepoDB FilterTags error", t, func() {
 		mockSearchDB := mocks.RepoDBMock{
-			FilterTagsFn: func(ctx context.Context, filter repodb.FilterFunc, requestedPage repodb.PageInput,
+			FilterTagsFn: func(ctx context.Context,
+				filterFunc repodb.FilterFunc, filter repodb.Filter, requestedPage repodb.PageInput,
 			) ([]repodb.RepoMetadata, map[string]repodb.ManifestMetadata, map[string]repodb.IndexData,
 				common.PageInfo, error,
 			) {
@@ -2633,7 +2723,8 @@ func TestDerivedImageList(t *testing.T) {
 		manifestDigest := godigest.FromBytes(manifestBlob)
 
 		mockSearchDB := mocks.RepoDBMock{
-			FilterTagsFn: func(ctx context.Context, filter repodb.FilterFunc, requestedPage repodb.PageInput,
+			FilterTagsFn: func(ctx context.Context,
+				filterFunc repodb.FilterFunc, filter repodb.Filter, requestedPage repodb.PageInput,
 			) ([]repodb.RepoMetadata, map[string]repodb.ManifestMetadata, map[string]repodb.IndexData,
 				common.PageInfo, error,
 			) {
@@ -2783,7 +2874,8 @@ func TestDerivedImageList(t *testing.T) {
 					ConfigBlob:   configBlob,
 				}, nil
 			},
-			FilterTagsFn: func(ctx context.Context, filter repodb.FilterFunc, requestedPage repodb.PageInput,
+			FilterTagsFn: func(ctx context.Context,
+				filterFunc repodb.FilterFunc, filter repodb.Filter, requestedPage repodb.PageInput,
 			) ([]repodb.RepoMetadata, map[string]repodb.ManifestMetadata, map[string]repodb.IndexData,
 				common.PageInfo, error,
 			) {
@@ -2806,7 +2898,7 @@ func TestDerivedImageList(t *testing.T) {
 					matchedTags := repo.Tags
 
 					for tag, descriptor := range repo.Tags {
-						if !filter(repo, manifestMetas[descriptor.Digest]) {
+						if !filterFunc(repo, manifestMetas[descriptor.Digest]) {
 							delete(matchedTags, tag)
 							delete(manifestMetas, descriptor.Digest)
 
@@ -2861,7 +2953,8 @@ func TestDerivedImageList(t *testing.T) {
 func TestBaseImageList(t *testing.T) {
 	Convey("RepoDB FilterTags error", t, func() {
 		mockSearchDB := mocks.RepoDBMock{
-			FilterTagsFn: func(ctx context.Context, filter repodb.FilterFunc, requestedPage repodb.PageInput,
+			FilterTagsFn: func(ctx context.Context,
+				filterFunc repodb.FilterFunc, filter repodb.Filter, requestedPage repodb.PageInput,
 			) ([]repodb.RepoMetadata, map[string]repodb.ManifestMetadata, map[string]repodb.IndexData,
 				common.PageInfo, error,
 			) {
@@ -2902,7 +2995,8 @@ func TestBaseImageList(t *testing.T) {
 		manifestDigest := godigest.FromBytes(manifestBlob)
 
 		mockSearchDB := mocks.RepoDBMock{
-			FilterTagsFn: func(ctx context.Context, filter repodb.FilterFunc, requestedPage repodb.PageInput,
+			FilterTagsFn: func(ctx context.Context,
+				filterFunc repodb.FilterFunc, filter repodb.Filter, requestedPage repodb.PageInput,
 			) ([]repodb.RepoMetadata, map[string]repodb.ManifestMetadata, map[string]repodb.IndexData,
 				common.PageInfo, error,
 			) {
@@ -3046,7 +3140,8 @@ func TestBaseImageList(t *testing.T) {
 					ConfigBlob:   configBlob,
 				}, nil
 			},
-			FilterTagsFn: func(ctx context.Context, filter repodb.FilterFunc, requestedPage repodb.PageInput,
+			FilterTagsFn: func(ctx context.Context,
+				filterFunc repodb.FilterFunc, filter repodb.Filter, requestedPage repodb.PageInput,
 			) ([]repodb.RepoMetadata, map[string]repodb.ManifestMetadata, map[string]repodb.IndexData,
 				common.PageInfo, error,
 			) {
@@ -3069,7 +3164,7 @@ func TestBaseImageList(t *testing.T) {
 					matchedTags := repo.Tags
 
 					for tag, descriptor := range repo.Tags {
-						if !filter(repo, manifestMetas[descriptor.Digest]) {
+						if !filterFunc(repo, manifestMetas[descriptor.Digest]) {
 							delete(matchedTags, tag)
 							delete(manifestMetas, descriptor.Digest)
 
@@ -3221,7 +3316,8 @@ func TestBaseImageList(t *testing.T) {
 					ConfigBlob:   configBlob,
 				}, nil
 			},
-			FilterTagsFn: func(ctx context.Context, filter repodb.FilterFunc, requestedPage repodb.PageInput,
+			FilterTagsFn: func(ctx context.Context,
+				filterFunc repodb.FilterFunc, filter repodb.Filter, requestedPage repodb.PageInput,
 			) ([]repodb.RepoMetadata, map[string]repodb.ManifestMetadata, map[string]repodb.IndexData,
 				common.PageInfo, error,
 			) {
@@ -3243,7 +3339,7 @@ func TestBaseImageList(t *testing.T) {
 					matchedTags := repo.Tags
 
 					for tag, descriptor := range repo.Tags {
-						if !filter(repo, manifestMetas[descriptor.Digest]) {
+						if !filterFunc(repo, manifestMetas[descriptor.Digest]) {
 							delete(matchedTags, tag)
 							delete(manifestMetas, descriptor.Digest)
 

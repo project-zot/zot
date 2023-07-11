@@ -1294,7 +1294,7 @@ func NewManifestMetadata(manifestDigest string, repoMeta repodb.RepoMetadata,
 	return manifestMeta
 }
 
-func (bdw *DBWrapper) FilterTags(ctx context.Context, filter repodb.FilterFunc,
+func (bdw *DBWrapper) FilterTags(ctx context.Context, filterFunc repodb.FilterFunc, filter repodb.Filter,
 	requestedPage repodb.PageInput,
 ) ([]repodb.RepoMetadata, map[string]repodb.ManifestMetadata, map[string]repodb.IndexData,
 	zcommon.PageInfo, error,
@@ -1354,7 +1354,17 @@ func (bdw *DBWrapper) FilterTags(ctx context.Context, filter repodb.FilterFunc,
 						return fmt.Errorf("repodb: error while unmashaling manifest metadata for digest %s %w", manifestDigest, err)
 					}
 
-					if filter(repoMeta, manifestMeta) {
+					imageFilterData, err := collectImageManifestFilterData(manifestDigest, repoMeta, manifestMeta)
+					if err != nil {
+						return fmt.Errorf("repodb: error collecting filter data for manifest with digest %s %w",
+							manifestDigest, err)
+					}
+
+					if !common.AcceptedByFilter(filter, imageFilterData) {
+						continue
+					}
+
+					if filterFunc(repoMeta, manifestMeta) {
 						matchedTags[tag] = descriptor
 						manifestMetadataMap[manifestDigest] = manifestMeta
 					}
@@ -1383,7 +1393,17 @@ func (bdw *DBWrapper) FilterTags(ctx context.Context, filter repodb.FilterFunc,
 							return fmt.Errorf("repodb: error while getting manifest data for digest %s %w", manifestDigest, err)
 						}
 
-						if filter(repoMeta, manifestMeta) {
+						manifestFilterData, err := collectImageManifestFilterData(manifestDigest, repoMeta, manifestMeta)
+						if err != nil {
+							return fmt.Errorf("repodb: error collecting filter data for manifest with digest %s %w",
+								manifestDigest, err)
+						}
+
+						if !common.AcceptedByFilter(filter, manifestFilterData) {
+							continue
+						}
+
+						if filterFunc(repoMeta, manifestMeta) {
 							matchedManifests = append(matchedManifests, manifest)
 							manifestMetadataMap[manifestDigest] = manifestMeta
 						}

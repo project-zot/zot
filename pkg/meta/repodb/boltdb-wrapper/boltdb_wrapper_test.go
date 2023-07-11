@@ -889,6 +889,7 @@ func TestWrapperErrors(t *testing.T) {
 
 				_, _, _, _, err = boltdbWrapper.FilterTags(ctx,
 					func(repoMeta repodb.RepoMetadata, manifestMeta repodb.ManifestMetadata) bool { return true },
+					repodb.Filter{},
 					repodb.PageInput{},
 				)
 				So(err, ShouldNotBeNil)
@@ -907,6 +908,7 @@ func TestWrapperErrors(t *testing.T) {
 
 				_, _, _, _, err = boltdbWrapper.FilterTags(ctx,
 					func(repoMeta repodb.RepoMetadata, manifestMeta repodb.ManifestMetadata) bool { return true },
+					repodb.Filter{},
 					repodb.PageInput{},
 				)
 				So(err, ShouldNotBeNil)
@@ -946,9 +948,74 @@ func TestWrapperErrors(t *testing.T) {
 
 				_, _, _, _, err = boltdbWrapper.FilterTags(ctx,
 					func(repoMeta repodb.RepoMetadata, manifestMeta repodb.ManifestMetadata) bool { return false },
+					repodb.Filter{},
 					repodb.PageInput{},
 				)
 				So(err, ShouldBeNil)
+			})
+
+			Convey("FilterTags bad config blob in image with a single manifest", func() {
+				manifestDigest := digest.FromString("manifestDigestBadConfig")
+
+				err := boltdbWrapper.SetRepoReference("repo", "tag1", //nolint:contextcheck
+					manifestDigest, ispec.MediaTypeImageManifest,
+				)
+				So(err, ShouldBeNil)
+
+				err = boltdbWrapper.SetManifestData(manifestDigest, repodb.ManifestData{
+					ManifestBlob: []byte("{}"),
+					ConfigBlob:   []byte("bad blob"),
+				})
+				So(err, ShouldBeNil)
+
+				_, _, _, _, err = boltdbWrapper.FilterTags(ctx,
+					func(repoMeta repodb.RepoMetadata, manifestMeta repodb.ManifestMetadata) bool { return true },
+					repodb.Filter{},
+					repodb.PageInput{},
+				)
+				So(err, ShouldNotBeNil)
+			})
+
+			Convey("FilterTags bad config blob in index", func() {
+				var (
+					indexDigest              = digest.FromString("indexDigest")
+					manifestDigestFromIndex1 = digest.FromString("manifestDigestFromIndexGoodConfig")
+					manifestDigestFromIndex2 = digest.FromString("manifestDigestFromIndexBadConfig")
+				)
+
+				err := boltdbWrapper.SetRepoReference("repo", "tag1", //nolint:contextcheck
+					indexDigest, ispec.MediaTypeImageIndex,
+				)
+				So(err, ShouldBeNil)
+
+				indexBlob, err := test.GetIndexBlobWithManifests([]digest.Digest{
+					manifestDigestFromIndex1, manifestDigestFromIndex2,
+				})
+				So(err, ShouldBeNil)
+
+				err = boltdbWrapper.SetIndexData(indexDigest, repodb.IndexData{
+					IndexBlob: indexBlob,
+				})
+				So(err, ShouldBeNil)
+
+				err = boltdbWrapper.SetManifestData(manifestDigestFromIndex1, repodb.ManifestData{
+					ManifestBlob: []byte("{}"),
+					ConfigBlob:   []byte("{}"),
+				})
+				So(err, ShouldBeNil)
+
+				err = boltdbWrapper.SetManifestData(manifestDigestFromIndex2, repodb.ManifestData{
+					ManifestBlob: []byte("{}"),
+					ConfigBlob:   []byte("bad blob"),
+				})
+				So(err, ShouldBeNil)
+
+				_, _, _, _, err = boltdbWrapper.FilterTags(ctx,
+					func(repoMeta repodb.RepoMetadata, manifestMeta repodb.ManifestMetadata) bool { return true },
+					repodb.Filter{},
+					repodb.PageInput{},
+				)
+				So(err, ShouldNotBeNil)
 			})
 		})
 
@@ -1104,6 +1171,7 @@ func TestWrapperErrors(t *testing.T) {
 			_, _, _, _, err = boltdbWrapper.FilterTags(
 				ctx,
 				func(repoMeta repodb.RepoMetadata, manifestMeta repodb.ManifestMetadata) bool { return true },
+				repodb.Filter{},
 				repodb.PageInput{},
 			)
 			So(err, ShouldBeNil)

@@ -27,21 +27,25 @@ func (r *queryResolver) CVEListForImage(ctx context.Context, image string, reque
 }
 
 // ImageListForCve is the resolver for the ImageListForCVE field.
-func (r *queryResolver) ImageListForCve(ctx context.Context, id string, requestedPage *gql_generated.PageInput) (*gql_generated.PaginatedImagesResult, error) {
+func (r *queryResolver) ImageListForCve(ctx context.Context, id string, filter *gql_generated.Filter, requestedPage *gql_generated.PageInput) (*gql_generated.PaginatedImagesResult, error) {
 	if r.cveInfo == nil {
 		return &gql_generated.PaginatedImagesResult{}, zerr.ErrCVESearchDisabled
 	}
 
-	return getImageListForCVE(ctx, id, r.cveInfo, requestedPage, r.repoDB, r.log)
+	filter = cleanFilter(filter)
+
+	return getImageListForCVE(ctx, id, r.cveInfo, filter, requestedPage, r.repoDB, r.log)
 }
 
 // ImageListWithCVEFixed is the resolver for the ImageListWithCVEFixed field.
-func (r *queryResolver) ImageListWithCVEFixed(ctx context.Context, id string, image string, requestedPage *gql_generated.PageInput) (*gql_generated.PaginatedImagesResult, error) {
+func (r *queryResolver) ImageListWithCVEFixed(ctx context.Context, id string, image string, filter *gql_generated.Filter, requestedPage *gql_generated.PageInput) (*gql_generated.PaginatedImagesResult, error) {
 	if r.cveInfo == nil {
 		return &gql_generated.PaginatedImagesResult{}, zerr.ErrCVESearchDisabled
 	}
 
-	return getImageListWithCVEFixed(ctx, id, image, r.cveInfo, requestedPage, r.repoDB, r.log)
+	filter = cleanFilter(filter)
+
+	return getImageListWithCVEFixed(ctx, id, image, r.cveInfo, filter, requestedPage, r.repoDB, r.log)
 }
 
 // ImageListForDigest is the resolver for the ImageListForDigest field.
