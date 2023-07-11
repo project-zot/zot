@@ -593,12 +593,6 @@ func (is *ImageStoreLocal) PutImageManifest(repo, reference, mediaType string, /
 		return "", "", err
 	}
 
-	if is.gc {
-		if err := is.garbageCollect(dir, repo); err != nil {
-			return "", "", err
-		}
-	}
-
 	return desc.Digest, subjectDigest, nil
 }
 
@@ -648,12 +642,6 @@ func (is *ImageStoreLocal) DeleteImageManifest(repo, reference string, detectCol
 
 	if err := is.writeFile(file, buf); err != nil {
 		return err
-	}
-
-	if is.gc {
-		if err := is.garbageCollect(dir, repo); err != nil {
-			return err
-		}
 	}
 
 	// Delete blob only when blob digest not present in manifest entry.
@@ -1812,56 +1800,10 @@ func (is *ImageStoreLocal) RunGCRepo(repo string) error {
 }
 
 func (is *ImageStoreLocal) RunGCPeriodically(interval time.Duration, sch *scheduler.Scheduler) {
-	generator := &taskGenerator{
-		imgStore: is,
+	generator := &common.GCTaskGenerator{
+		ImgStore: is,
 	}
 	sch.SubmitGenerator(generator, interval, scheduler.MediumPriority)
-}
-
-type taskGenerator struct {
-	imgStore *ImageStoreLocal
-	lastRepo string
-	done     bool
-}
-
-func (gen *taskGenerator) Next() (scheduler.Task, error) {
-	repo, err := gen.imgStore.GetNextRepository(gen.lastRepo)
-
-	if err != nil && !errors.Is(err, io.EOF) {
-		return nil, err
-	}
-
-	if repo == "" {
-		gen.done = true
-
-		return nil, nil
-	}
-
-	gen.lastRepo = repo
-
-	return newGCTask(gen.imgStore, repo), nil
-}
-
-func (gen *taskGenerator) IsDone() bool {
-	return gen.done
-}
-
-func (gen *taskGenerator) Reset() {
-	gen.lastRepo = ""
-	gen.done = false
-}
-
-type gcTask struct {
-	imgStore *ImageStoreLocal
-	repo     string
-}
-
-func newGCTask(imgStore *ImageStoreLocal, repo string) *gcTask {
-	return &gcTask{imgStore, repo}
-}
-
-func (gcT *gcTask) DoWork() error {
-	return gcT.imgStore.RunGCRepo(gcT.repo)
 }
 
 func (is *ImageStoreLocal) GetNextDigestWithBlobPaths(lastDigests []godigest.Digest,

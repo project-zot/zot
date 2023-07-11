@@ -323,7 +323,7 @@ func (c *Controller) StartBackgroundTasks(reloadCtx context.Context) {
 	taskScheduler.RunScheduler(reloadCtx)
 
 	// Enable running garbage-collect periodically for DefaultStore
-	if c.Config.Storage.GC && c.Config.Storage.GCInterval != 0 {
+	if c.Config.Storage.GC {
 		c.StoreController.DefaultStore.RunGCPeriodically(c.Config.Storage.GCInterval, taskScheduler)
 	}
 
@@ -339,7 +339,7 @@ func (c *Controller) StartBackgroundTasks(reloadCtx context.Context) {
 	if c.Config.Storage.SubPaths != nil {
 		for route, storageConfig := range c.Config.Storage.SubPaths {
 			// Enable running garbage-collect periodically for subImageStore
-			if storageConfig.GC && storageConfig.GCInterval != 0 {
+			if storageConfig.GC {
 				c.StoreController.SubStore[route].RunGCPeriodically(storageConfig.GCInterval, taskScheduler)
 			}
 

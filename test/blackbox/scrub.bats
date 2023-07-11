@@ -61,7 +61,7 @@ function teardown() {
     wait_zot_reachable "http://127.0.0.1:8080/v2/_catalog"
 
     # wait for scrub to be done and logs to get populated
-    run sleep 10s
+    run sleep 15s
     run not_affected
     [ "$status" -eq 0 ]
     [ $(echo "${lines[0]}" ) = 'true' ]
@@ -76,7 +76,7 @@ function teardown() {
     wait_zot_reachable "http://127.0.0.1:8080/v2/_catalog"
 
     # wait for scrub to be done and logs to get populated
-    run sleep 10s
+    run sleep 15s
     run affected
     [ "$status" -eq 0 ]
     [ $(echo "${lines[0]}" ) = 'true' ]
