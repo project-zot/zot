@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -572,7 +573,20 @@ func RepoMeta2ImageSummaries(ctx context.Context, repoMeta repodb.RepoMetadata,
 ) []*gql_generated.ImageSummary {
 	imageSummaries := make([]*gql_generated.ImageSummary, 0, len(repoMeta.Tags))
 
-	for tag, descriptor := range repoMeta.Tags {
+	// Make sure the tags are sorted
+	// We need to implement a proper fix for this taking into account
+	// the sorting criteria used in the requested page
+	tags := make([]string, 0, len(repoMeta.Tags))
+	for tag := range repoMeta.Tags {
+		tags = append(tags, tag)
+	}
+
+	// Sorting ascending by tag name should do for now
+	sort.Strings(tags)
+
+	for _, tag := range tags {
+		descriptor := repoMeta.Tags[tag]
+
 		imageSummary, _, err := Descriptor2ImageSummary(ctx, descriptor, repoMeta.Name, tag, skip.Vulnerabilities,
 			repoMeta, manifestMetaMap, indexDataMap, cveInfo)
 		if err != nil {

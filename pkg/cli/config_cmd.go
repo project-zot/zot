@@ -419,7 +419,8 @@ const (
 Useful variables:
   url		zot server URL
   showspinner	show spinner while loading data [true/false]
-  verify-tls	enable TLS certificate verification of the server [default: true]`
+  verify-tls	enable TLS certificate verification of the server [default: true]
+`
 
 	nameKey = "_name"
 

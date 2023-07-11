@@ -84,7 +84,7 @@ func (service searchService) getDerivedImageListGQL(ctx context.Context, config 
 ) (*common.DerivedImageListResponse, error) {
 	query := fmt.Sprintf(`
 		{
-			DerivedImageList(image:"%s"){
+			DerivedImageList(image:"%s", requestedPage: {sortBy: ALPHABETIC_ASC}){
 				Results{
 					RepoName,
 					Tag,
@@ -189,7 +189,7 @@ func (service searchService) getBaseImageListGQL(ctx context.Context, config sea
 ) (*common.BaseImageListResponse, error) {
 	query := fmt.Sprintf(`
 		{
-			BaseImageList(image:"%s"){
+			BaseImageList(image:"%s", requestedPage: {sortBy: ALPHABETIC_ASC}){
 				Results{
 					RepoName,
 					Tag,
@@ -225,7 +225,7 @@ func (service searchService) getImagesGQL(ctx context.Context, config searchConf
 ) (*common.ImageListResponse, error) {
 	query := fmt.Sprintf(`
 	{
-		ImageList(repo: "%s") {
+		ImageList(repo: "%s", requestedPage: {sortBy: ALPHABETIC_ASC}) {
 			Results {
 				RepoName Tag 
 				Digest
@@ -260,7 +260,7 @@ func (service searchService) getImagesByDigestGQL(ctx context.Context, config se
 ) (*common.ImagesForDigest, error) {
 	query := fmt.Sprintf(`
 	{
-		ImageListForDigest(id: "%s") {
+		ImageListForDigest(id: "%s", requestedPage: {sortBy: ALPHABETIC_ASC}) {
 			Results {
 				RepoName Tag 
 				Digest
@@ -294,7 +294,7 @@ func (service searchService) getImagesByCveIDGQL(ctx context.Context, config sea
 ) (*common.ImagesForCve, error) {
 	query := fmt.Sprintf(`
 	{
-		ImageListForCVE(id: "%s") {
+		ImageListForCVE(id: "%s", requestedPage: {sortBy: ALPHABETIC_ASC}) {
 			Results {
 				RepoName Tag 
 				Digest
@@ -1091,23 +1091,25 @@ func (cve cveResult) stringPlainText() (string, error) {
 }
 
 func (cve cveResult) stringJSON() (string, error) {
+	// Output is in json lines format - do not indent, append new line after json
 	json := jsoniter.ConfigCompatibleWithStandardLibrary
 
-	body, err := json.MarshalIndent(cve.Data.CVEListForImage, "", "  ")
+	body, err := json.Marshal(cve.Data.CVEListForImage)
 	if err != nil {
 		return "", err
 	}
 
-	return string(body), nil
+	return string(body) + "\n", nil
 }
 
 func (cve cveResult) stringYAML() (string, error) {
+	// Output will be a multidoc yaml - use triple-dash to indicate a new document
 	body, err := yaml.Marshal(&cve.Data.CVEListForImage)
 	if err != nil {
 		return "", err
 	}
 
-	return string(body), nil
+	return "---\n" + string(body), nil
 }
 
 type referrersResult []common.Referrer
@@ -1153,23 +1155,25 @@ func (ref referrersResult) stringPlainText(maxArtifactTypeLen int) (string, erro
 }
 
 func (ref referrersResult) stringJSON() (string, error) {
+	// Output is in json lines format - do not indent, append new line after json
 	json := jsoniter.ConfigCompatibleWithStandardLibrary
 
-	body, err := json.MarshalIndent(ref, "", "  ")
+	body, err := json.Marshal(ref)
 	if err != nil {
 		return "", err
 	}
 
-	return string(body), nil
+	return string(body) + "\n", nil
 }
 
 func (ref referrersResult) stringYAML() (string, error) {
+	// Output will be a multidoc yaml - use triple-dash to indicate a new document
 	body, err := yaml.Marshal(ref)
 	if err != nil {
 		return "", err
 	}
 
-	return string(body), nil
+	return "---\n" + string(body), nil
 }
 
 type repoStruct common.RepoSummary
@@ -1243,23 +1247,25 @@ func (repo repoStruct) stringPlainText(repoMaxLen, maxTimeLen int, verbose bool)
 }
 
 func (repo repoStruct) stringJSON() (string, error) {
+	// Output is in json lines format - do not indent, append new line after json
 	json := jsoniter.ConfigCompatibleWithStandardLibrary
 
-	body, err := json.MarshalIndent(repo, "", "  ")
+	body, err := json.Marshal(repo)
 	if err != nil {
 		return "", err
 	}
 
-	return string(body), nil
+	return string(body) + "\n", nil
 }
 
 func (repo repoStruct) stringYAML() (string, error) {
+	// Output will be a multidoc yaml - use triple-dash to indicate a new document
 	body, err := yaml.Marshal(&repo)
 	if err != nil {
 		return "", err
 	}
 
-	return string(body), nil
+	return "---\n" + string(body), nil
 }
 
 type imageStruct common.ImageSummary
@@ -1466,23 +1472,25 @@ func getPlatformStr(platf common.Platform) string {
 }
 
 func (img imageStruct) stringJSON() (string, error) {
+	// Output is in json lines format - do not indent, append new line after json
 	json := jsoniter.ConfigCompatibleWithStandardLibrary
 
-	body, err := json.MarshalIndent(img, "", "  ")
+	body, err := json.Marshal(img)
 	if err != nil {
 		return "", err
 	}
 
-	return string(body), nil
+	return string(body) + "\n", nil
 }
 
 func (img imageStruct) stringYAML() (string, error) {
+	// Output will be a multidoc yaml - use triple-dash to indicate a new document
 	body, err := yaml.Marshal(&img)
 	if err != nil {
 		return "", err
 	}
 
-	return string(body), nil
+	return "---\n" + string(body), nil
 }
 
 type catalogResponse struct {

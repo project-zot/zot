@@ -268,7 +268,7 @@ func printScrubTableHeader(writer io.Writer) {
 
 	row := make([]string, tableCols)
 
-	row[colImageNameIndex] = "IMAGE NAME"
+	row[colImageNameIndex] = "REPOSITORY"
 	row[colTagIndex] = "TAG"
 	row[colStatusIndex] = "STATUS"
 	row[colErrorIndex] = "ERROR"

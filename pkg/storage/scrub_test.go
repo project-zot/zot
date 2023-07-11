@@ -85,7 +85,7 @@ func TestCheckAllBlobsIntegrity(t *testing.T) {
 			space := regexp.MustCompile(`\s+`)
 			str := space.ReplaceAllString(buff.String(), " ")
 			actual := strings.TrimSpace(str)
-			So(actual, ShouldContainSubstring, "IMAGE NAME TAG STATUS ERROR")
+			So(actual, ShouldContainSubstring, "REPOSITORY TAG STATUS ERROR")
 			So(actual, ShouldContainSubstring, "test 1.0 ok")
 		})
 
@@ -109,7 +109,7 @@ func TestCheckAllBlobsIntegrity(t *testing.T) {
 			space := regexp.MustCompile(`\s+`)
 			str := space.ReplaceAllString(buff.String(), " ")
 			actual := strings.TrimSpace(str)
-			So(actual, ShouldContainSubstring, "IMAGE NAME TAG STATUS ERROR")
+			So(actual, ShouldContainSubstring, "REPOSITORY TAG STATUS ERROR")
 			// verify error message
 			So(actual, ShouldContainSubstring, "test 1.0 affected parse application/vnd.oci.image.manifest.v1+json")
 
@@ -149,7 +149,7 @@ func TestCheckAllBlobsIntegrity(t *testing.T) {
 			space := regexp.MustCompile(`\s+`)
 			str := space.ReplaceAllString(buff.String(), " ")
 			actual := strings.TrimSpace(str)
-			So(actual, ShouldContainSubstring, "IMAGE NAME TAG STATUS ERROR")
+			So(actual, ShouldContainSubstring, "REPOSITORY TAG STATUS ERROR")
 			So(actual, ShouldContainSubstring, "test 1.0 affected stat: parse application/vnd.oci.image.config.v1+json")
 
 			// put config content back to file
@@ -177,7 +177,7 @@ func TestCheckAllBlobsIntegrity(t *testing.T) {
 			space := regexp.MustCompile(`\s+`)
 			str := space.ReplaceAllString(buff.String(), " ")
 			actual := strings.TrimSpace(str)
-			So(actual, ShouldContainSubstring, "IMAGE NAME TAG STATUS ERROR")
+			So(actual, ShouldContainSubstring, "REPOSITORY TAG STATUS ERROR")
 			So(actual, ShouldContainSubstring, "test 1.0 affected blob: bad blob digest")
 
 			// put layer content back to file
@@ -218,7 +218,7 @@ func TestCheckAllBlobsIntegrity(t *testing.T) {
 			space := regexp.MustCompile(`\s+`)
 			str := space.ReplaceAllString(buff.String(), " ")
 			actual := strings.TrimSpace(str)
-			So(actual, ShouldContainSubstring, "IMAGE NAME TAG STATUS ERROR")
+			So(actual, ShouldContainSubstring, "REPOSITORY TAG STATUS ERROR")
 			So(actual, ShouldContainSubstring, "test 1.0 affected blob: not found")
 		})
 
@@ -269,7 +269,7 @@ func TestCheckAllBlobsIntegrity(t *testing.T) {
 			space := regexp.MustCompile(`\s+`)
 			str := space.ReplaceAllString(buff.String(), " ")
 			actual := strings.TrimSpace(str)
-			So(actual, ShouldContainSubstring, "IMAGE NAME TAG STATUS ERROR")
+			So(actual, ShouldContainSubstring, "REPOSITORY TAG STATUS ERROR")
 			So(actual, ShouldContainSubstring, "test 1.0 ok")
 			So(actual, ShouldContainSubstring, "test ok")
 
@@ -286,7 +286,7 @@ func TestCheckAllBlobsIntegrity(t *testing.T) {
 
 			str = space.ReplaceAllString(buff.String(), " ")
 			actual = strings.TrimSpace(str)
-			So(actual, ShouldContainSubstring, "IMAGE NAME TAG STATUS ERROR")
+			So(actual, ShouldContainSubstring, "REPOSITORY TAG STATUS ERROR")
 			So(actual, ShouldContainSubstring, "test affected")
 
 			err = os.Chmod(indexFile, 0o600)
@@ -303,7 +303,7 @@ func TestCheckAllBlobsIntegrity(t *testing.T) {
 
 			str = space.ReplaceAllString(buff.String(), " ")
 			actual = strings.TrimSpace(str)
-			So(actual, ShouldContainSubstring, "IMAGE NAME TAG STATUS ERROR")
+			So(actual, ShouldContainSubstring, "REPOSITORY TAG STATUS ERROR")
 			So(actual, ShouldContainSubstring, "test affected")
 		})
 
@@ -323,7 +323,7 @@ func TestCheckAllBlobsIntegrity(t *testing.T) {
 			space := regexp.MustCompile(`\s+`)
 			str := space.ReplaceAllString(buff.String(), " ")
 			actual := strings.TrimSpace(str)
-			So(actual, ShouldContainSubstring, "IMAGE NAME TAG STATUS ERROR")
+			So(actual, ShouldContainSubstring, "REPOSITORY TAG STATUS ERROR")
 			So(actual, ShouldContainSubstring, "test 1.0 affected")
 			So(actual, ShouldContainSubstring, "no such file or directory")
 

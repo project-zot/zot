@@ -192,7 +192,7 @@ func TestSearchCLI(t *testing.T) {
 		err = cmd.Execute()
 		So(err, ShouldBeNil)
 		str = strings.TrimSpace(space.ReplaceAllString(buff.String(), " "))
-		So(str, ShouldContainSubstring, "IMAGE NAME TAG OS/ARCH DIGEST SIGNED SIZE")
+		So(str, ShouldContainSubstring, "REPOSITORY TAG OS/ARCH DIGEST SIGNED SIZE")
 		So(str, ShouldContainSubstring, "repo/alpine repo2tag1 Os/Arch "+formatterDigest1+" false 577B")
 		So(str, ShouldContainSubstring, "repo/alpine repo2tag2 linux/amd64 "+formatterDigest2+" false 524B")
 
