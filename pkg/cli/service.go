@@ -86,21 +86,21 @@ func (service searchService) getDerivedImageListGQL(ctx context.Context, config 
 		{
 			DerivedImageList(image:"%s", requestedPage: {sortBy: ALPHABETIC_ASC}){
 				Results{
-					RepoName,
-					Tag,
-					Digest,
-					MediaType,
+					RepoName Tag
+					Digest
+					MediaType
 					Manifests {
-						Digest,
-						ConfigDigest,
-						Layers {Size Digest},
-						LastUpdated,
-						IsSigned,
+						Digest
+						ConfigDigest
 						Size
-					},
-					LastUpdated,
-					IsSigned,
+						Platform {Os Arch}
+						IsSigned
+						Layers {Size Digest}
+						LastUpdated
+					}
+					LastUpdated
 					Size
+					IsSigned
 				}
 			}
 		}`, derivedImage)
@@ -154,13 +154,16 @@ func (service searchService) globalSearchGQL(ctx context.Context, config searchC
 					MediaType
 					Digest
 					Size
+					IsSigned
+					LastUpdated
 					Manifests {
 						Digest
 						ConfigDigest
 						Platform {Os Arch}
 						Size
 						IsSigned
-						Layers {Digest Size}
+						Layers {Size Digest}
+						LastUpdated
 					}
 				}
 				Repos {
@@ -191,21 +194,21 @@ func (service searchService) getBaseImageListGQL(ctx context.Context, config sea
 		{
 			BaseImageList(image:"%s", requestedPage: {sortBy: ALPHABETIC_ASC}){
 				Results{
-					RepoName,
-					Tag,
-					Digest,
-					MediaType,
+					RepoName Tag
+					Digest
+					MediaType
 					Manifests {
-						Digest,
-						ConfigDigest,
-						Layers {Size Digest},
-						LastUpdated,
-						IsSigned,
+						Digest
+						ConfigDigest
 						Size
-					},
-					LastUpdated,
-					IsSigned,
+						Platform {Os Arch}
+						IsSigned
+						Layers {Size Digest}
+						LastUpdated
+					}
+					LastUpdated
 					Size
+					IsSigned
 				}
 			}
 		}`, baseImage)
@@ -227,18 +230,20 @@ func (service searchService) getImagesGQL(ctx context.Context, config searchConf
 	{
 		ImageList(repo: "%s", requestedPage: {sortBy: ALPHABETIC_ASC}) {
 			Results {
-				RepoName Tag 
+				RepoName Tag
 				Digest
 				MediaType
 				Manifests {
-					Digest 
+					Digest
 					ConfigDigest
 					Size
 					Platform {Os Arch}
 					IsSigned
 					Layers {Size Digest}
-				} 
-				Size 
+					LastUpdated
+				}
+				LastUpdated
+				Size
 				IsSigned
 			}
 		}
@@ -262,17 +267,20 @@ func (service searchService) getImagesByDigestGQL(ctx context.Context, config se
 	{
 		ImageListForDigest(id: "%s", requestedPage: {sortBy: ALPHABETIC_ASC}) {
 			Results {
-				RepoName Tag 
+				RepoName Tag
 				Digest
 				MediaType
 				Manifests {
-					Digest 
+					Digest
 					ConfigDigest
 					Size
+					Platform {Os Arch}
 					IsSigned
 					Layers {Size Digest}
-				} 
-				Size 
+					LastUpdated
+				}
+				LastUpdated
+				Size
 				IsSigned
 			}
 		}
@@ -296,17 +304,20 @@ func (service searchService) getImagesByCveIDGQL(ctx context.Context, config sea
 	{
 		ImageListForCVE(id: "%s", requestedPage: {sortBy: ALPHABETIC_ASC}) {
 			Results {
-				RepoName Tag 
+				RepoName Tag
 				Digest
 				MediaType
 				Manifests {
-					Digest 
+					Digest
 					ConfigDigest
 					Size
+					Platform {Os Arch}
 					IsSigned
 					Layers {Size Digest}
-				} 
-				Size 
+					LastUpdated
+				}
+				LastUpdated
+				Size
 				IsSigned
 			}
 		}
@@ -353,13 +364,17 @@ func (service searchService) getTagsForCVEGQL(ctx context.Context, config search
 					Digest
 					MediaType
 					Manifests {
-						Digest 
+						Digest
 						ConfigDigest
 						Size
+						Platform {Os Arch}
 						IsSigned
 						Layers {Size Digest}
-					} 
+						LastUpdated
+					}
+					LastUpdated
 					Size
+					IsSigned
 				}
 			}
 		}`,
@@ -382,17 +397,21 @@ func (service searchService) getFixedTagsForCVEGQL(ctx context.Context, config s
 		{
 			ImageListWithCVEFixed(id: "%s", image: "%s") {
 				Results {
-					RepoName Tag 
+					RepoName Tag
 					Digest
 					MediaType
 					Manifests {
-						Digest 
+						Digest
 						ConfigDigest
 						Size
+						Platform {Os Arch}
 						IsSigned
 						Layers {Size Digest}
-					} 
-					Size 
+						LastUpdated
+					}
+					LastUpdated
+					Size
+					IsSigned
 				}
 			}
 		}`,
@@ -567,17 +586,21 @@ func (service searchService) getImagesByCveID(ctx context.Context, config search
 		`{
 			ImageListForCVE(id: "%s") {
 				Results {
-					RepoName Tag 
+					RepoName Tag
 					Digest
 					MediaType
 					Manifests {
-						Digest 
+						Digest
 						ConfigDigest
 						Size
+						Platform {Os Arch}
 						IsSigned
 						Layers {Size Digest}
-					} 
-					Size 
+						LastUpdated
+					}
+					LastUpdated
+					Size
+					IsSigned
 				}
 			}
 		}`,
@@ -636,17 +659,21 @@ func (service searchService) getImagesByDigest(ctx context.Context, config searc
 		`{
 			ImageListForDigest(id: "%s") {
 				Results {
-					RepoName Tag 
+					RepoName Tag
 					Digest
 					MediaType
 					Manifests {
-						Digest 
+						Digest
 						ConfigDigest
 						Size
+						Platform {Os Arch}
 						IsSigned
 						Layers {Size Digest}
+						LastUpdated
 					}
-					Size 
+					LastUpdated
+					Size
+					IsSigned
 				}
 			}
 		}`,
@@ -705,17 +732,21 @@ func (service searchService) getImageByNameAndCVEID(ctx context.Context, config 
 		`{
 			ImageListForCVE(id: "%s") {
 				Results {
-					RepoName Tag 
+					RepoName Tag
 					Digest
 					MediaType
 					Manifests {
-						Digest 
+						Digest
 						ConfigDigest
 						Size
+						Platform {Os Arch}
 						IsSigned
 						Layers {Size Digest}
+						LastUpdated
 					}
-					Size 
+					LastUpdated
+					Size
+					IsSigned
 				}
 			}
 		}`,
@@ -832,17 +863,21 @@ func (service searchService) getFixedTagsForCVE(ctx context.Context, config sear
 	{
 		ImageListWithCVEFixed (id: "%s", image: "%s") {
 			Results {
-				RepoName Tag 
+				RepoName Tag
 				Digest
 				MediaType
 				Manifests {
-					Digest 
+					Digest
 					ConfigDigest
 					Size
+					Platform {Os Arch}
 					IsSigned
 					Layers {Size Digest}
-				} 
-				Size 
+					LastUpdated
+				}
+				LastUpdated
+				Size
+				IsSigned
 			}
 		}
 	}`, cvid, imageName)

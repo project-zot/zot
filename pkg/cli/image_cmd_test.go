@@ -473,7 +473,7 @@ func TestDerivedImageList(t *testing.T) {
 			str := space.ReplaceAllString(buff.String(), " ")
 			actual := strings.TrimSpace(str)
 			So(actual, ShouldContainSubstring, "REPOSITORY TAG OS/ARCH DIGEST SIGNED SIZE")
-			So(actual, ShouldContainSubstring, "repo7 test:1.0 2694fdb0 false 824B")
+			So(actual, ShouldContainSubstring, "repo7 test:1.0 linux/amd64 9d9461ed false 860B")
 		})
 
 		Convey("Test derived images list fails", func() {
@@ -546,7 +546,7 @@ func TestBaseImageList(t *testing.T) {
 			str := space.ReplaceAllString(buff.String(), " ")
 			actual := strings.TrimSpace(str)
 			So(actual, ShouldContainSubstring, "REPOSITORY TAG OS/ARCH DIGEST SIGNED SIZE")
-			So(actual, ShouldContainSubstring, "repo7 test:2.0 3fc80493 false 494B")
+			So(actual, ShouldContainSubstring, "repo7 test:2.0 linux/amd64 214e4bed false 530B")
 		})
 
 		Convey("Test base images list fail", func() {
@@ -881,27 +881,27 @@ func TestOutputFormatGQL(t *testing.T) {
 			err := cmd.Execute()
 			So(err, ShouldBeNil)
 			expectedStr := `{"repoName":"repo7","tag":"test:1.0",` +
-				`"digest":"sha256:883fc0c54b8cb0c991399f950dae19bcc3561ba4f6ca4d3fb0ca446f2de03731",` +
+				`"digest":"sha256:51e18f508fd7125b0831ff9a22ba74cd79f0b934e77661ff72cfb54896951a06",` +
 				`"mediaType":"application/vnd.oci.image.manifest.v1+json",` +
-				`"manifests":[{"digest":"sha256:883fc0c54b8cb0c991399f950dae19bcc3561ba4f6ca4d3fb0ca446f2de03731",` +
-				`"configDigest":"sha256:3a1d2d0cc867c06f01285a134f898e2f0b184036de70f331d4dd627f6f887a36",` +
-				`"lastUpdated":"0001-01-01T00:00:00Z","size":"492","platform":{"os":"linux","arch":"amd64",` +
+				`"manifests":[{"digest":"sha256:51e18f508fd7125b0831ff9a22ba74cd79f0b934e77661ff72cfb54896951a06",` +
+				`"configDigest":"sha256:d14faead7d60053bad0d62e5ceb0031df28037d8c636d7911179b2f874ee004e",` +
+				`"lastUpdated":"2023-01-01T12:00:00Z","size":"528","platform":{"os":"linux","arch":"amd64",` +
 				`"variant":""},"isSigned":false,"downloadCount":0,"layers":[{"size":"15","digest":` +
 				`"sha256:b8781e8844f5b7bf6f2f8fa343de18ec471c3b278027355bc34c120585ff04f6","score":0}],` +
 				`"history":null,"vulnerabilities":{"maxSeverity":"","count":0},"referrers":null,"artifactType":""}],` +
-				`"size":"492","downloadCount":0,"lastUpdated":"0001-01-01T00:00:00Z","description":"","isSigned":false,` +
+				`"size":"528","downloadCount":0,"lastUpdated":"2023-01-01T12:00:00Z","description":"","isSigned":false,` +
 				`"licenses":"","labels":"","title":"","source":"","documentation":"","authors":"","vendor":"",` +
 				`"vulnerabilities":{"maxSeverity":"","count":0},"referrers":null}` + "\n" +
 				`{"repoName":"repo7","tag":"test:2.0",` +
-				`"digest":"sha256:883fc0c54b8cb0c991399f950dae19bcc3561ba4f6ca4d3fb0ca446f2de03731",` +
+				`"digest":"sha256:51e18f508fd7125b0831ff9a22ba74cd79f0b934e77661ff72cfb54896951a06",` +
 				`"mediaType":"application/vnd.oci.image.manifest.v1+json",` +
-				`"manifests":[{"digest":"sha256:883fc0c54b8cb0c991399f950dae19bcc3561ba4f6ca4d3fb0ca446f2de03731",` +
-				`"configDigest":"sha256:3a1d2d0cc867c06f01285a134f898e2f0b184036de70f331d4dd627f6f887a36",` +
-				`"lastUpdated":"0001-01-01T00:00:00Z","size":"492","platform":{"os":"linux","arch":"amd64",` +
+				`"manifests":[{"digest":"sha256:51e18f508fd7125b0831ff9a22ba74cd79f0b934e77661ff72cfb54896951a06",` +
+				`"configDigest":"sha256:d14faead7d60053bad0d62e5ceb0031df28037d8c636d7911179b2f874ee004e",` +
+				`"lastUpdated":"2023-01-01T12:00:00Z","size":"528","platform":{"os":"linux","arch":"amd64",` +
 				`"variant":""},"isSigned":false,"downloadCount":0,"layers":[{"size":"15","digest":` +
 				`"sha256:b8781e8844f5b7bf6f2f8fa343de18ec471c3b278027355bc34c120585ff04f6","score":0}],` +
 				`"history":null,"vulnerabilities":{"maxSeverity":"","count":0},"referrers":null,"artifactType":""}],` +
-				`"size":"492","downloadCount":0,"lastUpdated":"0001-01-01T00:00:00Z","description":"","isSigned":false,` +
+				`"size":"528","downloadCount":0,"lastUpdated":"2023-01-01T12:00:00Z","description":"","isSigned":false,` +
 				`"licenses":"","labels":"","title":"","source":"","documentation":"","authors":"","vendor":"",` +
 				`"vulnerabilities":{"maxSeverity":"","count":0},"referrers":null}` + "\n"
 			// Output is supposed to be in json lines format, keep all spaces as is for verification
@@ -923,27 +923,27 @@ func TestOutputFormatGQL(t *testing.T) {
 			space := regexp.MustCompile(`\s+`)
 			str := space.ReplaceAllString(buff.String(), " ")
 			expectedStr := `--- reponame: repo7 tag: test:1.0 ` +
-				`digest: sha256:883fc0c54b8cb0c991399f950dae19bcc3561ba4f6ca4d3fb0ca446f2de03731 ` +
+				`digest: sha256:51e18f508fd7125b0831ff9a22ba74cd79f0b934e77661ff72cfb54896951a06 ` +
 				`mediatype: application/vnd.oci.image.manifest.v1+json manifests: - ` +
-				`digest: sha256:883fc0c54b8cb0c991399f950dae19bcc3561ba4f6ca4d3fb0ca446f2de03731 ` +
-				`configdigest: sha256:3a1d2d0cc867c06f01285a134f898e2f0b184036de70f331d4dd627f6f887a36 ` +
-				`lastupdated: 0001-01-01T00:00:00Z size: "492" platform: os: linux arch: amd64 variant: "" ` +
+				`digest: sha256:51e18f508fd7125b0831ff9a22ba74cd79f0b934e77661ff72cfb54896951a06 ` +
+				`configdigest: sha256:d14faead7d60053bad0d62e5ceb0031df28037d8c636d7911179b2f874ee004e ` +
+				`lastupdated: 2023-01-01T12:00:00Z size: "528" platform: os: linux arch: amd64 variant: "" ` +
 				`issigned: false downloadcount: 0 layers: - size: "15" ` +
 				`digest: sha256:b8781e8844f5b7bf6f2f8fa343de18ec471c3b278027355bc34c120585ff04f6 score: 0 ` +
 				`history: [] vulnerabilities: maxseverity: "" count: 0 referrers: [] artifacttype: "" ` +
-				`size: "492" downloadcount: 0 lastupdated: 0001-01-01T00:00:00Z description: "" ` +
+				`size: "528" downloadcount: 0 lastupdated: 2023-01-01T12:00:00Z description: "" ` +
 				`issigned: false licenses: "" labels: "" title: "" source: "" documentation: "" ` +
 				`authors: "" vendor: "" vulnerabilities: maxseverity: "" count: 0 referrers: [] ` +
 				`--- reponame: repo7 tag: test:2.0 ` +
-				`digest: sha256:883fc0c54b8cb0c991399f950dae19bcc3561ba4f6ca4d3fb0ca446f2de03731 ` +
+				`digest: sha256:51e18f508fd7125b0831ff9a22ba74cd79f0b934e77661ff72cfb54896951a06 ` +
 				`mediatype: application/vnd.oci.image.manifest.v1+json manifests: - ` +
-				`digest: sha256:883fc0c54b8cb0c991399f950dae19bcc3561ba4f6ca4d3fb0ca446f2de03731 ` +
-				`configdigest: sha256:3a1d2d0cc867c06f01285a134f898e2f0b184036de70f331d4dd627f6f887a36 ` +
-				`lastupdated: 0001-01-01T00:00:00Z size: "492" platform: os: linux arch: amd64 variant: "" ` +
+				`digest: sha256:51e18f508fd7125b0831ff9a22ba74cd79f0b934e77661ff72cfb54896951a06 ` +
+				`configdigest: sha256:d14faead7d60053bad0d62e5ceb0031df28037d8c636d7911179b2f874ee004e ` +
+				`lastupdated: 2023-01-01T12:00:00Z size: "528" platform: os: linux arch: amd64 variant: "" ` +
 				`issigned: false downloadcount: 0 layers: - size: "15" ` +
 				`digest: sha256:b8781e8844f5b7bf6f2f8fa343de18ec471c3b278027355bc34c120585ff04f6 score: 0 ` +
 				`history: [] vulnerabilities: maxseverity: "" count: 0 referrers: [] artifacttype: "" ` +
-				`size: "492" downloadcount: 0 lastupdated: 0001-01-01T00:00:00Z description: "" ` +
+				`size: "528" downloadcount: 0 lastupdated: 2023-01-01T12:00:00Z description: "" ` +
 				`issigned: false licenses: "" labels: "" title: "" source: "" documentation: "" ` +
 				`authors: "" vendor: "" vulnerabilities: maxseverity: "" count: 0 referrers: []`
 			So(strings.TrimSpace(str), ShouldEqual, expectedStr)
@@ -964,27 +964,27 @@ func TestOutputFormatGQL(t *testing.T) {
 			space := regexp.MustCompile(`\s+`)
 			str := space.ReplaceAllString(buff.String(), " ")
 			expectedStr := `--- reponame: repo7 tag: test:1.0 ` +
-				`digest: sha256:883fc0c54b8cb0c991399f950dae19bcc3561ba4f6ca4d3fb0ca446f2de03731 ` +
+				`digest: sha256:51e18f508fd7125b0831ff9a22ba74cd79f0b934e77661ff72cfb54896951a06 ` +
 				`mediatype: application/vnd.oci.image.manifest.v1+json manifests: - ` +
-				`digest: sha256:883fc0c54b8cb0c991399f950dae19bcc3561ba4f6ca4d3fb0ca446f2de03731 ` +
-				`configdigest: sha256:3a1d2d0cc867c06f01285a134f898e2f0b184036de70f331d4dd627f6f887a36 ` +
-				`lastupdated: 0001-01-01T00:00:00Z size: "492" platform: os: linux arch: amd64 variant: "" ` +
+				`digest: sha256:51e18f508fd7125b0831ff9a22ba74cd79f0b934e77661ff72cfb54896951a06 ` +
+				`configdigest: sha256:d14faead7d60053bad0d62e5ceb0031df28037d8c636d7911179b2f874ee004e ` +
+				`lastupdated: 2023-01-01T12:00:00Z size: "528" platform: os: linux arch: amd64 variant: "" ` +
 				`issigned: false downloadcount: 0 layers: - size: "15" ` +
 				`digest: sha256:b8781e8844f5b7bf6f2f8fa343de18ec471c3b278027355bc34c120585ff04f6 score: 0 ` +
 				`history: [] vulnerabilities: maxseverity: "" count: 0 referrers: [] artifacttype: "" ` +
-				`size: "492" downloadcount: 0 lastupdated: 0001-01-01T00:00:00Z description: "" ` +
+				`size: "528" downloadcount: 0 lastupdated: 2023-01-01T12:00:00Z description: "" ` +
 				`issigned: false licenses: "" labels: "" title: "" source: "" documentation: "" ` +
 				`authors: "" vendor: "" vulnerabilities: maxseverity: "" count: 0 referrers: [] ` +
 				`--- reponame: repo7 tag: test:2.0 ` +
-				`digest: sha256:883fc0c54b8cb0c991399f950dae19bcc3561ba4f6ca4d3fb0ca446f2de03731 ` +
+				`digest: sha256:51e18f508fd7125b0831ff9a22ba74cd79f0b934e77661ff72cfb54896951a06 ` +
 				`mediatype: application/vnd.oci.image.manifest.v1+json manifests: - ` +
-				`digest: sha256:883fc0c54b8cb0c991399f950dae19bcc3561ba4f6ca4d3fb0ca446f2de03731 ` +
-				`configdigest: sha256:3a1d2d0cc867c06f01285a134f898e2f0b184036de70f331d4dd627f6f887a36 ` +
-				`lastupdated: 0001-01-01T00:00:00Z size: "492" platform: os: linux arch: amd64 variant: "" ` +
+				`digest: sha256:51e18f508fd7125b0831ff9a22ba74cd79f0b934e77661ff72cfb54896951a06 ` +
+				`configdigest: sha256:d14faead7d60053bad0d62e5ceb0031df28037d8c636d7911179b2f874ee004e ` +
+				`lastupdated: 2023-01-01T12:00:00Z size: "528" platform: os: linux arch: amd64 variant: "" ` +
 				`issigned: false downloadcount: 0 layers: - size: "15" ` +
 				`digest: sha256:b8781e8844f5b7bf6f2f8fa343de18ec471c3b278027355bc34c120585ff04f6 score: 0 ` +
 				`history: [] vulnerabilities: maxseverity: "" count: 0 referrers: [] artifacttype: "" ` +
-				`size: "492" downloadcount: 0 lastupdated: 0001-01-01T00:00:00Z description: "" ` +
+				`size: "528" downloadcount: 0 lastupdated: 2023-01-01T12:00:00Z description: "" ` +
 				`issigned: false licenses: "" labels: "" title: "" source: "" documentation: "" ` +
 				`authors: "" vendor: "" vulnerabilities: maxseverity: "" count: 0 referrers: []`
 			So(strings.TrimSpace(str), ShouldEqual, expectedStr)
@@ -1043,8 +1043,8 @@ func TestServerResponseGQL(t *testing.T) {
 			str := space.ReplaceAllString(buff.String(), " ")
 			actual := strings.TrimSpace(str)
 			So(actual, ShouldContainSubstring, "REPOSITORY TAG OS/ARCH DIGEST SIGNED SIZE")
-			So(actual, ShouldContainSubstring, "repo7 test:2.0 linux/amd64 883fc0c5 false 492B")
-			So(actual, ShouldContainSubstring, "repo7 test:1.0 linux/amd64 883fc0c5 false 492B")
+			So(actual, ShouldContainSubstring, "repo7 test:2.0 linux/amd64 51e18f50 false 528B")
+			So(actual, ShouldContainSubstring, "repo7 test:1.0 linux/amd64 51e18f50 false 528B")
 			Convey("Test all images invalid output format", func() {
 				args := []string{"imagetest", "-o", "random"}
 				configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s","showspinner":false}]}`, url))
@@ -1076,13 +1076,13 @@ func TestServerResponseGQL(t *testing.T) {
 			actual := strings.TrimSpace(str)
 			// Actual cli output should be something similar to (order of images may differ):
 			// REPOSITORY    TAG       OS/ARCH     DIGEST    CONFIG    SIGNED  LAYERS    SIZE
-			// repo7         test:2.0  linux/amd64 a0ca253b  b8781e88  false             492B
+			// repo7         test:2.0  linux/amd64 51e18f50  d14faead  false             528B
 			//                                                                 b8781e88  15B
-			// repo7         test:1.0  linux/amd64 a0ca253b  b8781e88  false             492B
+			// repo7         test:1.0  linux/amd64 51e18f50  d14faead  false             528B
 			//                                                                 b8781e88  15B
 			So(actual, ShouldContainSubstring, "REPOSITORY TAG OS/ARCH DIGEST CONFIG SIGNED LAYERS SIZE")
-			So(actual, ShouldContainSubstring, "repo7 test:2.0 linux/amd64 883fc0c5 3a1d2d0c false 492B b8781e88 15B")
-			So(actual, ShouldContainSubstring, "repo7 test:1.0 linux/amd64 883fc0c5 3a1d2d0c false 492B b8781e88 15B")
+			So(actual, ShouldContainSubstring, "repo7 test:2.0 linux/amd64 51e18f50 d14faead false 528B b8781e88 15B")
+			So(actual, ShouldContainSubstring, "repo7 test:1.0 linux/amd64 51e18f50 d14faead false 528B b8781e88 15B")
 		})
 
 		Convey("Test all images with debug flag", func() {
@@ -1101,8 +1101,8 @@ func TestServerResponseGQL(t *testing.T) {
 			actual := strings.TrimSpace(str)
 			So(actual, ShouldContainSubstring, "GET")
 			So(actual, ShouldContainSubstring, "REPOSITORY TAG OS/ARCH DIGEST SIGNED SIZE")
-			So(actual, ShouldContainSubstring, "repo7 test:2.0 linux/amd64 883fc0c5 false 492B")
-			So(actual, ShouldContainSubstring, "repo7 test:1.0 linux/amd64 883fc0c5 false 492B")
+			So(actual, ShouldContainSubstring, "repo7 test:2.0 linux/amd64 51e18f50 false 528B")
+			So(actual, ShouldContainSubstring, "repo7 test:1.0 linux/amd64 51e18f50 false 528B")
 		})
 
 		Convey("Test image by name config url", func() {
@@ -1120,8 +1120,8 @@ func TestServerResponseGQL(t *testing.T) {
 			str := space.ReplaceAllString(buff.String(), " ")
 			actual := strings.TrimSpace(str)
 			So(actual, ShouldContainSubstring, "REPOSITORY TAG OS/ARCH DIGEST SIGNED SIZE")
-			So(actual, ShouldContainSubstring, "repo7 test:2.0 linux/amd64 883fc0c5 false 492B")
-			So(actual, ShouldContainSubstring, "repo7 test:1.0 linux/amd64 883fc0c5 false 492B")
+			So(actual, ShouldContainSubstring, "repo7 test:2.0 linux/amd64 51e18f50 false 528B")
+			So(actual, ShouldContainSubstring, "repo7 test:1.0 linux/amd64 51e18f50 false 528B")
 
 			Convey("with shorthand", func() {
 				args := []string{"imagetest", "-n", "repo7"}
@@ -1138,8 +1138,8 @@ func TestServerResponseGQL(t *testing.T) {
 				str := space.ReplaceAllString(buff.String(), " ")
 				actual := strings.TrimSpace(str)
 				So(actual, ShouldContainSubstring, "REPOSITORY TAG OS/ARCH DIGEST SIGNED SIZE")
-				So(actual, ShouldContainSubstring, "repo7 test:2.0 linux/amd64 883fc0c5 false 492B")
-				So(actual, ShouldContainSubstring, "repo7 test:1.0 linux/amd64 883fc0c5 false 492B")
+				So(actual, ShouldContainSubstring, "repo7 test:2.0 linux/amd64 51e18f50 false 528B")
+				So(actual, ShouldContainSubstring, "repo7 test:1.0 linux/amd64 51e18f50 false 528B")
 			})
 
 			Convey("invalid output format", func() {
@@ -1158,7 +1158,7 @@ func TestServerResponseGQL(t *testing.T) {
 		})
 
 		Convey("Test image by digest", func() {
-			args := []string{"imagetest", "--digest", "883fc0c5"}
+			args := []string{"imagetest", "--digest", "51e18f50"}
 			configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s","showspinner":false}]}`, url))
 			defer os.Remove(configPath)
 			cmd := NewImageCommand(new(searchService))
@@ -1176,11 +1176,11 @@ func TestServerResponseGQL(t *testing.T) {
 			// repo7         test:2.0          a0ca253b  15B
 			// repo7         test:1.0          a0ca253b  15B
 			So(actual, ShouldContainSubstring, "REPOSITORY TAG OS/ARCH DIGEST SIGNED SIZE")
-			So(actual, ShouldContainSubstring, "repo7 test:2.0 883fc0c5 false 492B")
-			So(actual, ShouldContainSubstring, "repo7 test:1.0 883fc0c5 false 492B")
+			So(actual, ShouldContainSubstring, "repo7 test:2.0 linux/amd64 51e18f50 false 528B")
+			So(actual, ShouldContainSubstring, "repo7 test:1.0 linux/amd64 51e18f50 false 528B")
 
 			Convey("with shorthand", func() {
-				args := []string{"imagetest", "-d", "883fc0c5"}
+				args := []string{"imagetest", "-d", "51e18f50"}
 				configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s","showspinner":false}]}`, url))
 				defer os.Remove(configPath)
 				cmd := NewImageCommand(new(searchService))
@@ -1194,8 +1194,8 @@ func TestServerResponseGQL(t *testing.T) {
 				str := space.ReplaceAllString(buff.String(), " ")
 				actual := strings.TrimSpace(str)
 				So(actual, ShouldContainSubstring, "REPOSITORY TAG OS/ARCH DIGEST SIGNED SIZE")
-				So(actual, ShouldContainSubstring, "repo7 test:2.0 883fc0c5 false 492B")
-				So(actual, ShouldContainSubstring, "repo7 test:1.0 883fc0c5 false 492B")
+				So(actual, ShouldContainSubstring, "repo7 test:2.0 linux/amd64 51e18f50 false 528B")
+				So(actual, ShouldContainSubstring, "repo7 test:1.0 linux/amd64 51e18f50 false 528B")
 			})
 
 			Convey("nonexistent digest", func() {
@@ -1213,7 +1213,7 @@ func TestServerResponseGQL(t *testing.T) {
 			})
 
 			Convey("invalid output format", func() {
-				args := []string{"imagetest", "--digest", "883fc0c5", "-o", "random"}
+				args := []string{"imagetest", "--digest", "51e18f50", "-o", "random"}
 				configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s","showspinner":false}]}`, url))
 				defer os.Remove(configPath)
 				cmd := NewImageCommand(new(searchService))
@@ -1304,8 +1304,8 @@ func TestServerResponse(t *testing.T) {
 			str := space.ReplaceAllString(buff.String(), " ")
 			actual := strings.TrimSpace(str)
 			So(actual, ShouldContainSubstring, "REPOSITORY TAG OS/ARCH DIGEST SIGNED SIZE")
-			So(actual, ShouldContainSubstring, "repo7 test:2.0 linux/amd64 883fc0c5 false 492B")
-			So(actual, ShouldContainSubstring, "repo7 test:1.0 linux/amd64 883fc0c5 false 492B")
+			So(actual, ShouldContainSubstring, "repo7 test:2.0 linux/amd64 51e18f50 false 528B")
+			So(actual, ShouldContainSubstring, "repo7 test:1.0 linux/amd64 51e18f50 false 528B")
 		})
 
 		Convey("Test all images verbose", func() {
@@ -1324,13 +1324,13 @@ func TestServerResponse(t *testing.T) {
 			actual := strings.TrimSpace(str)
 			// Actual cli output should be something similar to (order of images may differ):
 			// REPOSITORY    TAG        OS/ARCH     DIGEST    CONFIG     SIGNED  LAYERS    SIZE
-			// repo7         test:2.0   linux/amd64 a0ca253b  b8781e88   false             492B
+			// repo7         test:2.0   linux/amd64 51e18f50  d14faead   false             528B
 			//                                                                    b8781e88  15B
-			// repo7         test:1.0   linux/amd64 a0ca253b  b8781e88   false             492B
+			// repo7         test:1.0   linux/amd64 51e18f50  d14faead   false             528B
 			//                                                                    b8781e88  15B
 			So(actual, ShouldContainSubstring, "REPOSITORY TAG OS/ARCH DIGEST CONFIG SIGNED LAYERS SIZE")
-			So(actual, ShouldContainSubstring, "repo7 test:2.0 linux/amd64 883fc0c5 3a1d2d0c false 492B b8781e88 15B")
-			So(actual, ShouldContainSubstring, "repo7 test:1.0 linux/amd64 883fc0c5 3a1d2d0c false 492B b8781e88 15B")
+			So(actual, ShouldContainSubstring, "repo7 test:2.0 linux/amd64 51e18f50 d14faead false 528B b8781e88 15B")
+			So(actual, ShouldContainSubstring, "repo7 test:1.0 linux/amd64 51e18f50 d14faead false 528B b8781e88 15B")
 		})
 
 		Convey("Test image by name", func() {
@@ -1348,12 +1348,12 @@ func TestServerResponse(t *testing.T) {
 			str := space.ReplaceAllString(buff.String(), " ")
 			actual := strings.TrimSpace(str)
 			So(actual, ShouldContainSubstring, "REPOSITORY TAG OS/ARCH DIGEST SIGNED SIZE")
-			So(actual, ShouldContainSubstring, "repo7 test:2.0 linux/amd64 883fc0c5 false 492B")
-			So(actual, ShouldContainSubstring, "repo7 test:1.0 linux/amd64 883fc0c5 false 492B")
+			So(actual, ShouldContainSubstring, "repo7 test:2.0 linux/amd64 51e18f50 false 528B")
+			So(actual, ShouldContainSubstring, "repo7 test:1.0 linux/amd64 51e18f50 false 528B")
 		})
 
 		Convey("Test image by digest", func() {
-			args := []string{"imagetest", "--digest", "883fc0c5"}
+			args := []string{"imagetest", "--digest", "51e18f50"}
 			configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s","showspinner":false}]}`, url))
 			defer os.Remove(configPath)
 			cmd := MockNewImageCommand(new(searchService))
@@ -1368,11 +1368,11 @@ func TestServerResponse(t *testing.T) {
 			actual := strings.TrimSpace(str)
 			// Actual cli output should be something similar to (order of images may differ):
 			// REPOSITORY    TAG       OS/ARCH      DIGEST     SIZE
-			// repo7         test:2.0  linux/amd64  a0ca253b   492B
-			// repo7         test:1.0  linux/amd64  a0ca253b   492B
+			// repo7         test:2.0  linux/amd64  51e18f50   528B
+			// repo7         test:1.0  linux/amd64  51e18f50   528B
 			So(actual, ShouldContainSubstring, "REPOSITORY TAG OS/ARCH DIGEST SIGNED SIZE")
-			So(actual, ShouldContainSubstring, "repo7 test:2.0 linux/amd64 883fc0c5 false 492B")
-			So(actual, ShouldContainSubstring, "repo7 test:1.0 linux/amd64 883fc0c5 false 492B")
+			So(actual, ShouldContainSubstring, "repo7 test:2.0 linux/amd64 51e18f50 false 528B")
+			So(actual, ShouldContainSubstring, "repo7 test:1.0 linux/amd64 51e18f50 false 528B")
 
 			Convey("nonexistent digest", func() {
 				args := []string{"imagetest", "--digest", "d1g35t"}
@@ -1504,8 +1504,8 @@ func runDisplayIndexTests(baseURL string) {
 		// Actual cli output should be something similar to (order of images may differ):
 		// REPOSITORY    TAG        OS/ARCH           DIGEST    SIGNED  SIZE
 		// repo          multi-arch *                 0f844b3e  false   1.5kB
-		//                          linux/amd64       97b0d65c  false   634B
-		//                          windows/arm64/v6  dcfa3a9c  false   444B
+		//                          linux/amd64       2ab1a275  false   634B
+		//                          windows/arm64/v6  55fdd23a  false   444B
 		So(actual, ShouldContainSubstring, "REPOSITORY TAG OS/ARCH DIGEST SIGNED SIZE")
 		So(actual, ShouldContainSubstring, "repo multi-arch * 0f844b3e false 1.5kB ")
 		So(actual, ShouldContainSubstring, "linux/amd64 2ab1a275 false 634B ")
@@ -1682,7 +1682,7 @@ func MockSearchImage(searchConfig searchConfig) error {
 }
 
 func uploadManifest(url string) error {
-	// create a blob/layer
+	// create and upload a blob/layer
 	resp, _ := resty.R().Post(url + "/v2/repo7/blobs/uploads/")
 	loc := test.Location(url, resp)
 
@@ -1691,10 +1691,32 @@ func uploadManifest(url string) error {
 	_, _ = resty.R().SetQueryParam("digest", digest.String()).
 		SetHeader("Content-Type", "application/octet-stream").SetBody(content).Put(loc)
 
+	// create config
+	createdTime := time.Date(2023, 1, 1, 12, 0, 0, 0, time.UTC)
+
+	config := ispec.Image{
+		Created: &createdTime,
+		Platform: ispec.Platform{
+			Architecture: "amd64",
+			OS:           "linux",
+		},
+		RootFS: ispec.RootFS{
+			Type:    "layers",
+			DiffIDs: []godigest.Digest{},
+		},
+		Author: "some author",
+	}
+
+	cblob, err := json.MarshalIndent(&config, "", "\t")
+	if err != nil {
+		return err
+	}
+
+	cdigest := godigest.FromBytes(cblob)
+
 	// upload image config blob
 	resp, _ = resty.R().Post(url + "/v2/repo7/blobs/uploads/")
 	loc = test.Location(url, resp)
-	cblob, cdigest := test.GetImageConfig()
 
 	_, _ = resty.R().
 		SetContentLength(true).
@@ -1721,7 +1743,7 @@ func uploadManifest(url string) error {
 	}
 	manifest.SchemaVersion = 2
 
-	content, err := json.Marshal(manifest)
+	content, err = json.Marshal(manifest)
 	if err != nil {
 		return err
 	}
@@ -1775,10 +1797,32 @@ func uploadManifestDerivedBase(url string) error {
 	_, _ = resty.R().SetQueryParam("digest", digest3.String()).
 		SetHeader("Content-Type", "application/octet-stream").SetBody(content3).Post(url + "/v2/repo7/blobs/uploads/")
 
+	// create config
+	createdTime := time.Date(2023, 1, 1, 12, 0, 0, 0, time.UTC)
+
+	config := ispec.Image{
+		Created: &createdTime,
+		Platform: ispec.Platform{
+			Architecture: "amd64",
+			OS:           "linux",
+		},
+		RootFS: ispec.RootFS{
+			Type:    "layers",
+			DiffIDs: []godigest.Digest{},
+		},
+		Author: "some author",
+	}
+
+	cblob, err := json.MarshalIndent(&config, "", "\t")
+	if err != nil {
+		return err
+	}
+
+	cdigest := godigest.FromBytes(cblob)
+
 	// upload image config blob
 	resp, _ := resty.R().Post(url + "/v2/repo7/blobs/uploads/")
 	loc := test.Location(url, resp)
-	cblob, cdigest := test.GetImageConfig()
 
 	_, _ = resty.R().
 		SetContentLength(true).
