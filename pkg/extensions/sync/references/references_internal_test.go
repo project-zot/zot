@@ -124,6 +124,30 @@ func TestORAS(t *testing.T) {
 	})
 }
 
+func TestSyncManifest(t *testing.T) {
+	Convey("sync manifest not found err", t, func() {
+		cfg := client.Config{
+			URL:       "url",
+			TLSVerify: false,
+		}
+
+		client, err := client.New(cfg, log.NewLogger("debug", ""))
+		So(err, ShouldBeNil)
+
+		digest := godigest.FromString("test")
+
+		buf, refDigest, err := syncManifest(client, mocks.MockedImageStore{}, "repo", "repo", ispec.Descriptor{
+			Digest:    digest,
+			Size:      10,
+			MediaType: ispec.MediaTypeImageManifest,
+		}, digest.String(), log.Logger{})
+
+		So(buf, ShouldBeEmpty)
+		So(refDigest, ShouldBeEmpty)
+		So(err, ShouldNotBeNil)
+	})
+}
+
 func TestCompareManifest(t *testing.T) {
 	testCases := []struct {
 		manifest1 ispec.Manifest

@@ -19,6 +19,7 @@ import (
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/meta/repodb"
 	"zotregistry.io/zot/pkg/storage"
+	storageTypes "zotregistry.io/zot/pkg/storage/types"
 )
 
 type OciReferences struct {
@@ -120,56 +121,9 @@ func (ref OciReferences) SyncReferences(localRepo, remoteRepo, subjectDigestStr 
 		Msg("syncing oci references for image")
 
 	for _, referrer := range index.Manifests {
-		var artifactManifest ispec.Manifest
-
-		OCIRefBuf, _, statusCode, err := ref.client.MakeGetRequest(&artifactManifest, ispec.MediaTypeImageManifest,
-			"v2", remoteRepo, "manifests", referrer.Digest.String())
+		referenceBuf, referenceDigest, err := syncManifest(ref.client, imageStore, localRepo, remoteRepo,
+			referrer, subjectDigestStr, ref.log)
 		if err != nil {
-			if statusCode == http.StatusNotFound {
-				return refsDigests, zerr.ErrSyncReferrerNotFound
-			}
-
-			ref.log.Error().Str("errorType", common.TypeOf(err)).
-				Str("repository", localRepo).Str("subject", subjectDigestStr).
-				Err(err).Msg("couldn't get oci reference manifest for image")
-
-			return refsDigests, err
-		}
-
-		if referrer.MediaType == ispec.MediaTypeImageManifest {
-			// read manifest
-			var manifest ispec.Manifest
-
-			err = json.Unmarshal(OCIRefBuf, &manifest)
-			if err != nil {
-				ref.log.Error().Str("errorType", common.TypeOf(err)).
-					Str("repository", localRepo).Str("subject", subjectDigestStr).
-					Err(err).Msg("couldn't unmarshal oci reference manifest for image")
-
-				return refsDigests, err
-			}
-
-			for _, layer := range manifest.Layers {
-				if err := syncBlob(ref.client, imageStore, localRepo, remoteRepo, layer.Digest, ref.log); err != nil {
-					return refsDigests, err
-				}
-			}
-
-			// sync config blob
-			if err := syncBlob(ref.client, imageStore, localRepo, remoteRepo, manifest.Config.Digest, ref.log); err != nil {
-				return refsDigests, err
-			}
-		} else {
-			continue
-		}
-
-		referenceDigest, _, err := imageStore.PutImageManifest(localRepo, referrer.Digest.String(),
-			referrer.MediaType, OCIRefBuf)
-		if err != nil {
-			ref.log.Error().Str("errorType", common.TypeOf(err)).
-				Str("repository", localRepo).Str("subject", subjectDigestStr).
-				Err(err).Msg("couldn't upload oci reference for image")
-
 			return refsDigests, err
 		}
 
@@ -179,7 +133,7 @@ func (ref OciReferences) SyncReferences(localRepo, remoteRepo, subjectDigestStr 
 			ref.log.Debug().Str("repository", localRepo).Str("subject", subjectDigestStr).
 				Msg("repoDB: trying to add oci references for image")
 
-			isSig, sigType, signedManifestDig, err := storage.CheckIsImageSignature(localRepo, OCIRefBuf,
+			isSig, sigType, signedManifestDig, err := storage.CheckIsImageSignature(localRepo, referenceBuf,
 				referrer.Digest.String())
 			if err != nil {
 				return refsDigests, fmt.Errorf("failed to check if oci reference '%s@%s' is a signature: %w", localRepo,
@@ -193,7 +147,7 @@ func (ref OciReferences) SyncReferences(localRepo, remoteRepo, subjectDigestStr 
 				})
 			} else {
 				err = repodb.SetImageMetaFromInput(localRepo, referenceDigest.String(), referrer.MediaType,
-					referenceDigest, OCIRefBuf, ref.storeController.GetImageStore(localRepo),
+					referenceDigest, referenceBuf, ref.storeController.GetImageStore(localRepo),
 					ref.repoDB, ref.log)
 			}
 
@@ -234,4 +188,65 @@ func (ref OciReferences) getIndex(repo, subjectDigestStr string) (ispec.Index, e
 	}
 
 	return index, nil
+}
+
+func syncManifest(client *client.Client, imageStore storageTypes.ImageStore, localRepo, remoteRepo string,
+	desc ispec.Descriptor, subjectDigestStr string, log log.Logger,
+) ([]byte, godigest.Digest, error) {
+	var manifest ispec.Manifest
+
+	var refDigest godigest.Digest
+
+	OCIRefBuf, _, statusCode, err := client.MakeGetRequest(&manifest, ispec.MediaTypeImageManifest,
+		"v2", remoteRepo, "manifests", desc.Digest.String())
+	if err != nil {
+		if statusCode == http.StatusNotFound {
+			return []byte{}, refDigest, zerr.ErrSyncReferrerNotFound
+		}
+
+		log.Error().Str("errorType", common.TypeOf(err)).
+			Str("repository", localRepo).Str("subject", subjectDigestStr).
+			Err(err).Msg("couldn't get oci reference manifest for image")
+
+		return []byte{}, refDigest, err
+	}
+
+	if desc.MediaType == ispec.MediaTypeImageManifest {
+		// read manifest
+		var manifest ispec.Manifest
+
+		err = json.Unmarshal(OCIRefBuf, &manifest)
+		if err != nil {
+			log.Error().Str("errorType", common.TypeOf(err)).
+				Str("repository", localRepo).Str("subject", subjectDigestStr).
+				Err(err).Msg("couldn't unmarshal oci reference manifest for image")
+
+			return []byte{}, refDigest, err
+		}
+
+		for _, layer := range manifest.Layers {
+			if err := syncBlob(client, imageStore, localRepo, remoteRepo, layer.Digest, log); err != nil {
+				return []byte{}, refDigest, err
+			}
+		}
+
+		// sync config blob
+		if err := syncBlob(client, imageStore, localRepo, remoteRepo, manifest.Config.Digest, log); err != nil {
+			return []byte{}, refDigest, err
+		}
+	} else {
+		return []byte{}, refDigest, nil
+	}
+
+	refDigest, _, err = imageStore.PutImageManifest(localRepo, desc.Digest.String(),
+		desc.MediaType, OCIRefBuf)
+	if err != nil {
+		log.Error().Str("errorType", common.TypeOf(err)).
+			Str("repository", localRepo).Str("subject", subjectDigestStr).
+			Err(err).Msg("couldn't upload oci reference for image")
+
+		return []byte{}, refDigest, err
+	}
+
+	return OCIRefBuf, refDigest, nil
 }
