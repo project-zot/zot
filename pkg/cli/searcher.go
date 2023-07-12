@@ -921,14 +921,14 @@ func printImageTableHeader(writer io.Writer, verbose bool, maxImageNameLen, maxT
 
 	row := make([]string, 8) //nolint:gomnd
 
-	// adding spaces so that image name and tag columns are aligned
+	// adding spaces so that repository and tag columns are aligned
 	// in case the name/tag are fully shown and too long
 	var offset string
-	if maxImageNameLen > len("IMAGE NAME") {
-		offset = strings.Repeat(" ", maxImageNameLen-len("IMAGE NAME"))
-		row[colImageNameIndex] = "IMAGE NAME" + offset
+	if maxImageNameLen > len("REPOSITORY") {
+		offset = strings.Repeat(" ", maxImageNameLen-len("REPOSITORY"))
+		row[colImageNameIndex] = "REPOSITORY" + offset
 	} else {
-		row[colImageNameIndex] = "IMAGE NAME"
+		row[colImageNameIndex] = "REPOSITORY"
 	}
 
 	if maxTagLen > len("TAG") {
@@ -982,7 +982,7 @@ func printReferrersTableHeader(config searchConfig, writer io.Writer, maxArtifac
 
 	row := make([]string, refRowWidth)
 
-	// adding spaces so that image name and tag columns are aligned
+	// adding spaces so that repository and tag columns are aligned
 	// in case the name/tag are fully shown and too long
 	var offset string
 
@@ -1015,7 +1015,7 @@ func printRepoTableHeader(writer io.Writer, repoMaxLen, maxTimeLen int, verbose 
 
 	row := make([]string, repoRowWidth)
 
-	// adding spaces so that image name and tag columns are aligned
+	// adding spaces so that repository and tag columns are aligned
 	// in case the name/tag are fully shown and too long
 	var offset string
 
@@ -1081,7 +1081,10 @@ func printImageResult(config searchConfig, imageList []imageStruct) error {
 			}
 		}
 
-		printImageTableHeader(&builder, *config.verbose, maxImgNameLen, maxTagLen, maxPlatformLen)
+		if *config.outputFormat == defaultOutoutFormat || *config.outputFormat == "" {
+			printImageTableHeader(&builder, *config.verbose, maxImgNameLen, maxTagLen, maxPlatformLen)
+		}
+
 		fmt.Fprint(config.resultWriter, builder.String())
 	}
 
@@ -1114,7 +1117,7 @@ func printRepoResults(config searchConfig, repoList []repoStruct) error {
 		}
 	}
 
-	if len(repoList) > 0 {
+	if len(repoList) > 0 && (*config.outputFormat == defaultOutoutFormat || *config.outputFormat == "") {
 		printRepoTableHeader(config.resultWriter, maxRepoNameLen, maxTimeLen, *config.verbose)
 	}
 
