@@ -5443,6 +5443,239 @@ func TestImageSignatures(t *testing.T) {
 	})
 }
 
+func TestManifestValidation(t *testing.T) {
+	Convey("Validate manifest", t, func() {
+		// start a new server
+		port := test.GetFreePort()
+		baseURL := test.GetBaseURL(port)
+
+		conf := config.New()
+		conf.HTTP.Port = port
+
+		dir := t.TempDir()
+		ctlr := makeController(conf, dir, "")
+		cm := test.NewControllerManager(ctlr)
+		// this blocks
+		cm.StartServer()
+		time.Sleep(1000 * time.Millisecond)
+		defer cm.StopServer()
+
+		repoName := "validation"
+		blobContent := []byte("this is a blob")
+		blobDigest := godigest.FromBytes(blobContent)
+		So(blobDigest, ShouldNotBeNil)
+
+		cfg, layers, manifest, err := test.GetImageComponents(2)
+		So(err, ShouldBeNil)
+
+		err = test.UploadImage(
+			test.Image{
+				Config:    cfg,
+				Layers:    layers,
+				Manifest:  manifest,
+				Reference: "1.0",
+			}, baseURL, repoName)
+		So(err, ShouldBeNil)
+
+		content, err := json.Marshal(manifest)
+		So(err, ShouldBeNil)
+		digest := godigest.FromBytes(content)
+		So(digest, ShouldNotBeNil)
+
+		configBlob, err := json.Marshal(cfg)
+		So(err, ShouldBeNil)
+
+		configDigest := godigest.FromBytes(configBlob)
+
+		Convey("empty layers should pass validation", func() {
+			// create a manifest
+			manifest := ispec.Manifest{
+				Config: ispec.Descriptor{
+					MediaType: ispec.MediaTypeImageConfig,
+					Size:      int64(len(configBlob)),
+					Digest:    configDigest,
+				},
+				Layers: []ispec.Descriptor{},
+				Annotations: map[string]string{
+					"key": "val",
+				},
+			}
+			manifest.SchemaVersion = 2
+
+			mcontent, err := json.Marshal(manifest)
+			So(err, ShouldBeNil)
+
+			resp, err := resty.R().SetHeader("Content-Type", ispec.MediaTypeImageManifest).
+				SetBody(mcontent).Put(baseURL + fmt.Sprintf("/v2/%s/manifests/1.0", repoName))
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
+		})
+
+		Convey("empty layers and schemaVersion missing should fail validation", func() {
+			// create a manifest
+			manifest := ispec.Manifest{
+				Config: ispec.Descriptor{
+					MediaType: ispec.MediaTypeImageConfig,
+					Size:      int64(len(configBlob)),
+					Digest:    configDigest,
+				},
+				Layers: []ispec.Descriptor{},
+				Annotations: map[string]string{
+					"key": "val",
+				},
+			}
+
+			mcontent, err := json.Marshal(manifest)
+			So(err, ShouldBeNil)
+
+			resp, err := resty.R().SetHeader("Content-Type", ispec.MediaTypeImageManifest).
+				SetBody(mcontent).Put(baseURL + fmt.Sprintf("/v2/%s/manifests/1.0", repoName))
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusBadRequest)
+		})
+
+		Convey("missing layer should fail validation", func() {
+			missingLayer := []byte("missing layer")
+			missingLayerDigest := godigest.FromBytes(missingLayer)
+			// create a manifest
+			manifest := ispec.Manifest{
+				Config: ispec.Descriptor{
+					MediaType: ispec.MediaTypeImageConfig,
+					Size:      int64(len(configBlob)),
+					Digest:    configDigest,
+				},
+				Layers: []ispec.Descriptor{
+					{
+						MediaType: "application/vnd.oci.image.layer.v1.tar",
+						Digest:    digest,
+						Size:      int64(len(content)),
+					},
+					{
+						MediaType: "application/vnd.oci.image.layer.v1.tar",
+						Digest:    missingLayerDigest,
+						Size:      int64(len(missingLayer)),
+					},
+				},
+				Annotations: map[string]string{
+					"key": "val",
+				},
+			}
+			manifest.SchemaVersion = 2
+
+			mcontent, err := json.Marshal(manifest)
+			So(err, ShouldBeNil)
+
+			resp, err := resty.R().SetHeader("Content-Type", ispec.MediaTypeImageManifest).
+				SetBody(mcontent).Put(baseURL + fmt.Sprintf("/v2/%s/manifests/1.0", repoName))
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusBadRequest)
+		})
+
+		Convey("wrong mediatype should fail validation", func() {
+			// create a manifest
+			manifest := ispec.Manifest{
+				MediaType: "bad.mediatype",
+				Config: ispec.Descriptor{
+					MediaType: ispec.MediaTypeImageConfig,
+					Size:      int64(len(configBlob)),
+					Digest:    configDigest,
+				},
+				Layers: []ispec.Descriptor{
+					{
+						MediaType: "application/vnd.oci.image.layer.v1.tar",
+						Digest:    digest,
+						Size:      int64(len(content)),
+					},
+				},
+				Annotations: map[string]string{
+					"key": "val",
+				},
+			}
+			manifest.SchemaVersion = 2
+
+			mcontent, err := json.Marshal(manifest)
+			So(err, ShouldBeNil)
+
+			resp, err := resty.R().SetHeader("Content-Type", ispec.MediaTypeImageManifest).
+				SetBody(mcontent).Put(baseURL + fmt.Sprintf("/v2/%s/manifests/1.0", repoName))
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusBadRequest)
+		})
+
+		Convey("multiarch image should pass validation", func() {
+			index := ispec.Index{
+				MediaType: ispec.MediaTypeImageIndex,
+				Manifests: []ispec.Descriptor{
+					{
+						MediaType: ispec.MediaTypeImageManifest,
+						Digest:    digest,
+						Size:      int64(len((content))),
+					},
+				},
+			}
+
+			index.SchemaVersion = 2
+
+			indexContent, err := json.Marshal(index)
+			So(err, ShouldBeNil)
+
+			resp, err := resty.R().SetHeader("Content-Type", ispec.MediaTypeImageIndex).
+				SetBody(indexContent).Put(baseURL + fmt.Sprintf("/v2/%s/manifests/index", repoName))
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
+		})
+
+		Convey("multiarch image without schemaVersion should fail validation", func() {
+			index := ispec.Index{
+				MediaType: ispec.MediaTypeImageIndex,
+				Manifests: []ispec.Descriptor{
+					{
+						MediaType: ispec.MediaTypeImageManifest,
+						Digest:    digest,
+						Size:      int64(len((content))),
+					},
+				},
+			}
+
+			indexContent, err := json.Marshal(index)
+			So(err, ShouldBeNil)
+
+			resp, err := resty.R().SetHeader("Content-Type", ispec.MediaTypeImageIndex).
+				SetBody(indexContent).Put(baseURL + fmt.Sprintf("/v2/%s/manifests/index", repoName))
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusBadRequest)
+		})
+
+		Convey("multiarch image with missing manifest should fail validation", func() {
+			index := ispec.Index{
+				MediaType: ispec.MediaTypeImageIndex,
+				Manifests: []ispec.Descriptor{
+					{
+						MediaType: ispec.MediaTypeImageManifest,
+						Digest:    digest,
+						Size:      int64(len((content))),
+					},
+					{
+						MediaType: ispec.MediaTypeImageManifest,
+						Digest:    godigest.FromString("missing layer"),
+						Size:      10,
+					},
+				},
+			}
+
+			index.SchemaVersion = 2
+
+			indexContent, err := json.Marshal(index)
+			So(err, ShouldBeNil)
+
+			resp, err := resty.R().SetHeader("Content-Type", ispec.MediaTypeImageIndex).
+				SetBody(indexContent).Put(baseURL + fmt.Sprintf("/v2/%s/manifests/index", repoName))
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusBadRequest)
+		})
+	})
+}
+
 func TestArtifactReferences(t *testing.T) {
 	Convey("Validate Artifact References", t, func() {
 		// start a new server
@@ -5557,7 +5790,113 @@ func TestArtifactReferences(t *testing.T) {
 					Get(baseURL + fmt.Sprintf("/v2/%s/referrers/%s", repoName, digest.String()))
 				So(err, ShouldBeNil)
 				So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+				// create a bad manifest (constructed manually)
+				content := `{"schemaVersion":2,"mediaType":"application/vnd.oci.image.manifest.v1+json","subject":{"mediaType":"application/vnd.oci.image.manifest.v1+json","digest":"sha256:71dbae9d7e6445fb5e0b11328e941b8e8937fdd52465079f536ce44bb78796ed","size":406}}` //nolint: lll
+				resp, err = resty.R().SetHeader("Content-Type", ispec.MediaTypeImageManifest).
+					SetBody(content).Put(baseURL + fmt.Sprintf("/v2/%s/manifests/1.0", repoName))
+				So(err, ShouldBeNil)
+				So(resp.StatusCode(), ShouldEqual, http.StatusBadRequest)
+
+				// missing layers
+				mcontent := []byte("this is a missing blob")
+				digest = godigest.FromBytes(mcontent)
+				So(digest, ShouldNotBeNil)
+
+				manifest.Layers = append(manifest.Layers, ispec.Descriptor{
+					MediaType: "application/vnd.oci.image.layer.v1.tar",
+					Digest:    digest,
+					Size:      int64(len(mcontent)),
+				})
+
+				mcontent, err = json.Marshal(manifest)
+				So(err, ShouldBeNil)
+				resp, err = resty.R().SetHeader("Content-Type", ispec.MediaTypeImageManifest).
+					SetBody(mcontent).Put(baseURL + fmt.Sprintf("/v2/%s/manifests/1.0", repoName))
+				So(err, ShouldBeNil)
+				So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
+
+				// invalid schema version
+				manifest.SchemaVersion = 1
+
+				mcontent, err = json.Marshal(manifest)
+				So(err, ShouldBeNil)
+				resp, err = resty.R().SetHeader("Content-Type", ispec.MediaTypeImageManifest).
+					SetBody(mcontent).Put(baseURL + fmt.Sprintf("/v2/%s/manifests/1.0", repoName))
+				So(err, ShouldBeNil)
+				So(resp.StatusCode(), ShouldEqual, http.StatusBadRequest)
+
+				// upload image config blob
+				resp, err = resty.R().Post(baseURL + fmt.Sprintf("/v2/%s/blobs/uploads/", repoName))
+				So(err, ShouldBeNil)
+				So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
+				loc := test.Location(baseURL, resp)
+				cblob = []byte("{}")
+				cdigest = godigest.FromBytes(cblob)
+				So(cdigest, ShouldNotBeNil)
+
+				resp, err = resty.R().
+					SetContentLength(true).
+					SetHeader("Content-Length", fmt.Sprintf("%d", len(cblob))).
+					SetHeader("Content-Type", "application/octet-stream").
+					SetQueryParam("digest", cdigest.String()).
+					SetBody(cblob).
+					Put(loc)
+				So(err, ShouldBeNil)
+				So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
+
+				manifest := ispec.Manifest{
+					Config: ispec.Descriptor{
+						MediaType: "application/vnd.oci.image.config.v1+json",
+						Digest:    cdigest,
+						Size:      int64(len(cblob)),
+					},
+				}
+
+				manifest.SchemaVersion = 2
+				mcontent, err = json.Marshal(manifest)
+				So(err, ShouldBeNil)
+				digest = godigest.FromBytes(mcontent)
+				So(digest, ShouldNotBeNil)
+
+				resp, err = resty.R().SetHeader("Content-Type", ispec.MediaTypeImageManifest).
+					SetBody(mcontent).Put(baseURL + fmt.Sprintf("/v2/%s/manifests/1.0", repoName))
+				So(err, ShouldBeNil)
+				So(resp.StatusCode(), ShouldEqual, http.StatusBadRequest)
+
+				// missing layers
+				mcontent = []byte("this is a missing blob")
+				digest = godigest.FromBytes(mcontent)
+				So(digest, ShouldNotBeNil)
+
+				manifest.Layers = append(manifest.Layers, ispec.Descriptor{
+					MediaType: "application/vnd.oci.image.layer.v1.tar",
+					Digest:    digest,
+					Size:      int64(len(mcontent)),
+				})
+
+				mcontent, err = json.Marshal(manifest)
+				So(err, ShouldBeNil)
+
+				// should fail because config is of type image and blob is not uploaded
+				resp, err = resty.R().SetHeader("Content-Type", ispec.MediaTypeImageManifest).
+					SetBody(mcontent).Put(baseURL + fmt.Sprintf("/v2/%s/manifests/1.0", repoName))
+				So(err, ShouldBeNil)
+				So(resp.StatusCode(), ShouldEqual, http.StatusBadRequest)
+
+				// no layers at all
+				manifest.Layers = []ispec.Descriptor{}
+
+				mcontent, err = json.Marshal(manifest)
+				So(err, ShouldBeNil)
+
+				// should not fail
+				resp, err = resty.R().SetHeader("Content-Type", ispec.MediaTypeImageManifest).
+					SetBody(mcontent).Put(baseURL + fmt.Sprintf("/v2/%s/manifests/1.0", repoName))
+				So(err, ShouldBeNil)
+				So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
 			})
+
 			Convey("Using valid content", func() {
 				content, err = json.Marshal(manifest)
 				So(err, ShouldBeNil)

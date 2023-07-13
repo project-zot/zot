@@ -876,7 +876,7 @@ func TestGetReferrersGQL(t *testing.T) {
 		artifactContentBlobSize := int64(len(artifactContentBlob))
 		artifactContentType := "application/octet-stream"
 		artifactContentBlobDigest := godigest.FromBytes(artifactContentBlob)
-		artifactType := "com.artifact.test"
+		artifactType := "com.artifact.test/type1"
 
 		artifactImg := Image{
 			Manifest: ispec.Manifest{
@@ -902,6 +902,8 @@ func TestGetReferrersGQL(t *testing.T) {
 			Config: ispec.Image{},
 			Layers: [][]byte{artifactContentBlob},
 		}
+
+		artifactImg.Manifest.SchemaVersion = 2
 
 		artifactManifestBlob, err := json.Marshal(artifactImg.Manifest)
 		So(err, ShouldBeNil)
@@ -1001,7 +1003,7 @@ func TestGetReferrersGQL(t *testing.T) {
 		artifactContentBlobSize := int64(len(artifactContentBlob))
 		artifactContentType := "application/octet-stream"
 		artifactContentBlobDigest := godigest.FromBytes(artifactContentBlob)
-		artifactType := "com.artifact.test"
+		artifactType := "com.artifact.test/type2"
 
 		configBlob, err := json.Marshal(ispec.Image{})
 		So(err, ShouldBeNil)
@@ -1024,6 +1026,8 @@ func TestGetReferrersGQL(t *testing.T) {
 				"com.artifact.format": "test",
 			},
 		}
+
+		artifactManifest.SchemaVersion = 2
 
 		artifactManifestBlob, err := json.Marshal(artifactManifest)
 		So(err, ShouldBeNil)
@@ -1117,7 +1121,7 @@ func TestGetReferrersGQL(t *testing.T) {
 		indexReferrer, err := GetRandomMultiarchImage("ref")
 		So(err, ShouldBeNil)
 
-		artifactType := "art.type"
+		artifactType := "com.artifact.art/type"
 		indexReferrer.Index.ArtifactType = artifactType
 		indexReferrer.Index.Subject = &ispec.Descriptor{
 			MediaType: ispec.MediaTypeImageManifest,
@@ -6202,7 +6206,7 @@ func TestImageSummary(t *testing.T) {
 			Digest:    manifestDigest,
 			MediaType: ispec.MediaTypeImageManifest,
 		}
-		referrerImage.Manifest.Config.MediaType = "test.artifact.type"
+		referrerImage.Manifest.Config.MediaType = "application/test.artifact.type"
 		referrerImage.Manifest.Annotations = map[string]string{"testAnnotationKey": "testAnnotationValue"}
 		referrerManifestDigest, err := referrerImage.Digest()
 		So(err, ShouldBeNil)
@@ -6277,7 +6281,7 @@ func TestImageSummary(t *testing.T) {
 		So(len(imgSummary.Referrers), ShouldEqual, 1)
 		So(imgSummary.Referrers[0], ShouldResemble, zcommon.Referrer{
 			MediaType:    ispec.MediaTypeImageManifest,
-			ArtifactType: "test.artifact.type",
+			ArtifactType: "application/test.artifact.type",
 			Digest:       referrerManifestDigest.String(),
 			Annotations:  []zcommon.Annotation{{Key: "testAnnotationKey", Value: "testAnnotationValue"}},
 		})

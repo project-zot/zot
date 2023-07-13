@@ -51,6 +51,7 @@ import (
 	zerr "zotregistry.io/zot/errors"
 	"zotregistry.io/zot/pkg/meta/repodb"
 	"zotregistry.io/zot/pkg/storage"
+	storageCommon "zotregistry.io/zot/pkg/storage/common"
 	"zotregistry.io/zot/pkg/test/inject"
 )
 
@@ -1020,6 +1021,11 @@ func UploadImage(img Image, baseURL, repo string) error {
 		return err
 	}
 
+	// validate manifest
+	if err := storageCommon.ValidateManifestSchema(manifestBlob); err != nil {
+		return err
+	}
+
 	if img.Reference == "" {
 		img.Reference = godigest.FromBytes(manifestBlob).String()
 	}
@@ -1886,6 +1892,8 @@ func GetRandomMultiarchImage(reference string) (MultiarchImage, error) {
 		return MultiarchImage{}, err
 	}
 
+	index.SchemaVersion = 2
+
 	return MultiarchImage{
 		Index: index, Images: images, Reference: reference,
 	}, err
@@ -1904,6 +1912,8 @@ func GetMultiarchImageForImages(reference string, images []Image) MultiarchImage
 		// update the reference with the digest of the manifest
 		images[i].Reference = getManifestDigest(image.Manifest).String()
 	}
+
+	index.SchemaVersion = 2
 
 	return MultiarchImage{Index: index, Images: images, Reference: reference}
 }
@@ -1937,6 +1947,11 @@ func UploadMultiarchImage(multiImage MultiarchImage, baseURL string, repo string
 	// put manifest
 	indexBlob, err := json.Marshal(multiImage.Index)
 	if err = inject.Error(err); err != nil {
+		return err
+	}
+
+	// validate manifest
+	if err := storageCommon.ValidateImageIndexSchema(indexBlob); err != nil {
 		return err
 	}
 

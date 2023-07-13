@@ -386,11 +386,6 @@ func (is *ObjectStorage) PutImageManifest(repo, reference, mediaType string, //n
 		}
 	}()
 
-	dig, err := common.ValidateManifest(is, repo, reference, mediaType, body, is.log)
-	if err != nil {
-		return dig, "", err
-	}
-
 	refIsDigest := true
 
 	mDigest, err := common.GetAndValidateRequestDigest(body, reference, is.log)
@@ -400,6 +395,11 @@ func (is *ObjectStorage) PutImageManifest(repo, reference, mediaType string, //n
 		}
 
 		refIsDigest = false
+	}
+
+	dig, err := common.ValidateManifest(is, repo, reference, mediaType, body, is.log)
+	if err != nil {
+		return dig, "", err
 	}
 
 	index, err := common.GetIndex(is, repo, is.log)

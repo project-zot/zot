@@ -28,8 +28,8 @@ func ref[T any](input T) *T {
 }
 
 const (
-	customArtTypeV1 = "custom.art.type.v1"
-	customArtTypeV2 = "custom.art.type.v2"
+	customArtTypeV1 = "application/custom.art.type.v1"
+	customArtTypeV2 = "application/custom.art.type.v2"
 	repoName        = "repo"
 )
 
@@ -263,8 +263,8 @@ func TestReferrerCLI(t *testing.T) {
 		str := strings.TrimSpace(space.ReplaceAllString(buff.String(), " "))
 		So(str, ShouldContainSubstring, "ARTIFACT TYPE SIZE DIGEST")
 		So(str, ShouldContainSubstring, "application/vnd.oci.image.config.v1+json 557 B "+ref1Digest.String())
-		So(str, ShouldContainSubstring, "custom.art.type.v1 535 B "+ref2Digest.String())
-		So(str, ShouldContainSubstring, "custom.art.type.v2 598 B "+ref3Digest.String())
+		So(str, ShouldContainSubstring, "application/custom.art.type.v1 547 B "+ref2Digest.String())
+		So(str, ShouldContainSubstring, "application/custom.art.type.v2 610 B "+ref3Digest.String())
 
 		fmt.Println(buff.String())
 
@@ -287,8 +287,8 @@ func TestReferrerCLI(t *testing.T) {
 		str = strings.TrimSpace(space.ReplaceAllString(buff.String(), " "))
 		So(str, ShouldContainSubstring, "ARTIFACT TYPE SIZE DIGEST")
 		So(str, ShouldContainSubstring, "application/vnd.oci.image.config.v1+json 557 B "+ref1Digest.String())
-		So(str, ShouldContainSubstring, "custom.art.type.v1 535 B "+ref2Digest.String())
-		So(str, ShouldContainSubstring, "custom.art.type.v2 598 B "+ref3Digest.String())
+		So(str, ShouldContainSubstring, "application/custom.art.type.v1 547 B "+ref2Digest.String())
+		So(str, ShouldContainSubstring, "application/custom.art.type.v2 610 B "+ref3Digest.String())
 
 		fmt.Println(buff.String())
 	})
@@ -370,8 +370,8 @@ func TestReferrerCLI(t *testing.T) {
 		str := strings.TrimSpace(space.ReplaceAllString(buff.String(), " "))
 		So(str, ShouldContainSubstring, "ARTIFACT TYPE SIZE DIGEST")
 		So(str, ShouldContainSubstring, "application/vnd.oci.image.config.v1+json 557 B "+ref1Digest.String())
-		So(str, ShouldContainSubstring, "custom.art.type.v1 535 B "+ref2Digest.String())
-		So(str, ShouldContainSubstring, "custom.art.type.v2 598 B "+ref3Digest.String())
+		So(str, ShouldContainSubstring, "application/custom.art.type.v1 547 B "+ref2Digest.String())
+		So(str, ShouldContainSubstring, "application/custom.art.type.v2 610 B "+ref3Digest.String())
 		fmt.Println(buff.String())
 
 		os.Remove(configPath)
@@ -391,8 +391,8 @@ func TestReferrerCLI(t *testing.T) {
 		str = strings.TrimSpace(space.ReplaceAllString(buff.String(), " "))
 		So(str, ShouldContainSubstring, "ARTIFACT TYPE SIZE DIGEST")
 		So(str, ShouldContainSubstring, "application/vnd.oci.image.config.v1+json 557 B "+ref1Digest.String())
-		So(str, ShouldContainSubstring, "custom.art.type.v1 535 B "+ref2Digest.String())
-		So(str, ShouldContainSubstring, "custom.art.type.v2 598 B "+ref3Digest.String())
+		So(str, ShouldContainSubstring, "application/custom.art.type.v1 547 B "+ref2Digest.String())
+		So(str, ShouldContainSubstring, "application/custom.art.type.v2 610 B "+ref3Digest.String())
 		fmt.Println(buff.String())
 	})
 }
