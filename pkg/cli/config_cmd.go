@@ -97,16 +97,18 @@ func NewConfigCommand() *cobra.Command {
 	configCmd.Flags().BoolVar(&isReset, "reset", false, "Reset a variable value")
 	configCmd.SetUsageTemplate(configCmd.UsageTemplate() + supportedOptions)
 	configCmd.AddCommand(NewConfigAddCommand())
+	configCmd.AddCommand(NewConfigRemoveCommand())
 
 	return configCmd
 }
 
 func NewConfigAddCommand() *cobra.Command {
 	configAddCmd := &cobra.Command{
-		Use:   "add <config-name> <url>",
-		Short: "Add configuration for a zot registry",
-		Long:  "Add configuration for a zot registry",
-		Args:  cobra.ExactArgs(twoArgs),
+		Use:     "add <config-name> <url>",
+		Example: "  zli config add main https://zot-foo.com:8080",
+		Short:   "Add configuration for a zot registry",
+		Long:    "Add configuration for a zot registry",
+		Args:    cobra.ExactArgs(twoArgs),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			home, err := os.UserHomeDir()
 			if err != nil {
@@ -124,7 +126,40 @@ func NewConfigAddCommand() *cobra.Command {
 		},
 	}
 
+	// Prevent parent template from overwriting default template
+	configAddCmd.SetUsageTemplate(configAddCmd.UsageTemplate())
+
 	return configAddCmd
+}
+
+func NewConfigRemoveCommand() *cobra.Command {
+	configRemoveCmd := &cobra.Command{
+		Use:     "remove <config-name>",
+		Example: "  zli config remove main",
+		Short:   "Remove configuration for a zot registry",
+		Long:    "Remove configuration for a zot registry",
+		Args:    cobra.ExactArgs(oneArg),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			home, err := os.UserHomeDir()
+			if err != nil {
+				panic(err)
+			}
+
+			configPath := path.Join(home + "/.zot")
+			// zot config add <config-name> <url>
+			err = removeConfig(configPath, args[0])
+			if err != nil {
+				return err
+			}
+
+			return nil
+		},
+	}
+
+	// Prevent parent template from overwriting default template
+	configRemoveCmd.SetUsageTemplate(configRemoveCmd.UsageTemplate())
+
+	return configRemoveCmd
 }
 
 func getConfigMapFromFile(filePath string) ([]interface{}, error) {
@@ -164,7 +199,7 @@ func saveConfigMapToFile(filePath string, configMap []interface{}) error {
 	listMap := make(map[string]interface{})
 	listMap["configs"] = configMap
 
-	marshalled, err := json.Marshal(&listMap)
+	marshalled, err := json.MarshalIndent(&listMap, "", "  ")
 	if err != nil {
 		return err
 	}
@@ -233,6 +268,38 @@ func addConfig(configPath, configName, url string) error {
 	}
 
 	return nil
+}
+
+func removeConfig(configPath, configName string) error {
+	configs, err := getConfigMapFromFile(configPath)
+	if err != nil {
+		return err
+	}
+
+	for i, val := range configs {
+		configMap, ok := val.(map[string]interface{})
+		if !ok {
+			return zerr.ErrBadConfig
+		}
+
+		name := configMap[nameKey]
+		if name != configName {
+			continue
+		}
+
+		// Remove config from the config list before saving
+		newConfigs := configs[:i]
+		newConfigs = append(newConfigs, configs[i+1:]...)
+
+		err = saveConfigMapToFile(configPath, newConfigs)
+		if err != nil {
+			return err
+		}
+
+		return nil
+	}
+
+	return zerr.ErrConfigNotFound
 }
 
 func addDefaultConfigs(config map[string]interface{}) {
@@ -411,9 +478,10 @@ func configNameExists(configs []interface{}, configName string) bool {
 
 const (
 	examples = `  zli config add main https://zot-foo.com:8080
+  zli config --list
   zli config main url
   zli config main --list
-  zli config --list`
+  zli config remove main`
 
 	supportedOptions = `
 Useful variables:

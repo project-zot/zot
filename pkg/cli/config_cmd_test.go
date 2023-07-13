@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"log"
 	"os"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -162,6 +163,85 @@ func TestConfigCmdMain(t *testing.T) {
 		So(err, ShouldEqual, zotErrors.ErrInvalidURL)
 	})
 
+	Convey("Test remove config entry successfully", t, func() {
+		args := []string{"remove", "configtest"}
+		configPath := makeConfigFile(`{"configs":[{"_name":"configtest","url":"https://test-url.com","showspinner":false}]}`)
+		defer os.Remove(configPath)
+		cmd := NewConfigCommand()
+		buff := bytes.NewBufferString("")
+		cmd.SetOut(buff)
+		cmd.SetErr(buff)
+		cmd.SetArgs(args)
+		err := cmd.Execute()
+		So(err, ShouldBeNil)
+		actual, err := os.ReadFile(configPath)
+		So(err, ShouldBeNil)
+		space := regexp.MustCompile(`\s+`)
+		actualString := space.ReplaceAllString(string(actual), " ")
+		So(actualString, ShouldEqual, `{ "configs": [] }`)
+	})
+
+	Convey("Test remove missing config entry", t, func() {
+		args := []string{"remove", "configtest"}
+		configPath := makeConfigFile(`{"configs":[]`)
+		defer os.Remove(configPath)
+		cmd := NewConfigCommand()
+		buff := bytes.NewBufferString("")
+		cmd.SetOut(buff)
+		cmd.SetErr(buff)
+		cmd.SetArgs(args)
+		err := cmd.Execute()
+		So(err, ShouldNotBeNil)
+		So(buff.String(), ShouldContainSubstring, "does not exist")
+	})
+
+	Convey("Test remove bad config file content", t, func() {
+		args := []string{"remove", "configtest"}
+		configPath := makeConfigFile(`{"asdf":[]`)
+		defer os.Remove(configPath)
+		cmd := NewConfigCommand()
+		buff := bytes.NewBufferString("")
+		cmd.SetOut(buff)
+		cmd.SetErr(buff)
+		cmd.SetArgs(args)
+		err := cmd.Execute()
+		So(err, ShouldNotBeNil)
+		So(buff.String(), ShouldContainSubstring, "config json is empty")
+	})
+
+	Convey("Test remove bad config file entry", t, func() {
+		args := []string{"remove", "configtest"}
+		configPath := makeConfigFile(`{"configs":[asdad]`)
+		defer os.Remove(configPath)
+		cmd := NewConfigCommand()
+		buff := bytes.NewBufferString("")
+		cmd.SetOut(buff)
+		cmd.SetErr(buff)
+		cmd.SetArgs(args)
+		err := cmd.Execute()
+		So(err, ShouldNotBeNil)
+		So(buff.String(), ShouldContainSubstring, "invalid config")
+	})
+
+	Convey("Test remove config bad permissions", t, func() {
+		args := []string{"remove", "configtest"}
+		configPath := makeConfigFile(`{"configs":[{"_name":"configtest","url":"https://test-url.com","showspinner":false}]}`)
+		defer func() {
+			_ = os.Chmod(configPath, 0o600)
+			os.Remove(configPath)
+		}()
+		err := os.Chmod(configPath, 0o400) // Read-only, so we fail only on updating the file, not reading
+		So(err, ShouldBeNil)
+		cmd := NewConfigCommand()
+		buff := bytes.NewBufferString("")
+		cmd.SetOut(buff)
+		cmd.SetErr(buff)
+		cmd.SetArgs(args)
+		err = cmd.Execute()
+		So(err, ShouldNotBeNil)
+		So(buff.String(), ShouldContainSubstring, "permission denied")
+	})
+
 	Convey("Test fetch all config", t, func() {
 		args := []string{"--list"}
 		configPath := makeConfigFile(`{"configs":[{"_name":"configtest","url":"https://test-url.com","showspinner":false}]}`)
@@ -294,7 +374,7 @@ func TestConfigCmdMain(t *testing.T) {
 		}
 		actualStr := string(actual)
 		So(actualStr, ShouldContainSubstring, "https://test-url.com")
-		So(actualStr, ShouldContainSubstring, `"showspinner":false`)
+		So(actualStr, ShouldContainSubstring, `"showspinner": false`)
 		So(buff.String(), ShouldEqual, "")
 
 		Convey("To an empty file", func() {
@@ -330,7 +410,7 @@ func TestConfigCmdMain(t *testing.T) {
 		}
 		actualStr := string(actual)
 		So(actualStr, ShouldContainSubstring, `https://new-url.com`)
-		So(actualStr, ShouldContainSubstring, `"showspinner":false`)
+		So(actualStr, ShouldContainSubstring, `"showspinner": false`)
 		So(actualStr, ShouldNotContainSubstring, `https://test-url.com`)
 		So(buff.String(), ShouldEqual, "")
 	})
@@ -353,7 +433,7 @@ func TestConfigCmdMain(t *testing.T) {
 		}
 		actualStr := string(actual)
 		So(actualStr, ShouldNotContainSubstring, "showspinner")
-		So(actualStr, ShouldContainSubstring, `"url":"https://test-url.com"`)
+		So(actualStr, ShouldContainSubstring, `"url": "https://test-url.com"`)
 		So(buff.String(), ShouldEqual, "")
 	})
 
