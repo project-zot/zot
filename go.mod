@@ -35,7 +35,7 @@ require (
 	github.com/prometheus/client_golang v1.16.0
 	github.com/prometheus/client_model v0.4.0
 	github.com/rs/zerolog v1.29.1
-	github.com/smartystreets/goconvey v1.8.0
+	github.com/smartystreets/goconvey v1.8.1
 	github.com/spf13/cobra v1.7.0
 	github.com/spf13/viper v1.16.0
 	github.com/stretchr/testify v1.8.4
@@ -173,6 +173,7 @@ require (
 	github.com/sigstore/sigstore/pkg/signature/kms/hashivault v1.6.5 // indirect
 	github.com/sigstore/timestamp-authority v1.0.0 // indirect
 	github.com/skeema/knownhosts v1.1.1 // indirect
+	github.com/smarty/assertions v1.15.0 // indirect
 	github.com/spdx/tools-golang v0.5.0 // indirect
 	github.com/tetratelabs/wazero v1.2.0 // indirect
 	github.com/urfave/cli/v2 v2.25.0 // indirect
@@ -424,7 +425,6 @@ require (
 	github.com/sigstore/sigstore v1.7.0
 	github.com/sirupsen/logrus v1.9.0 // indirect
 	github.com/skratchdot/open-golang v0.0.0-20200116055534-eef842397966 // indirect
-	github.com/smartystreets/assertions v1.13.1 // indirect
 	github.com/spf13/afero v1.9.5 // indirect
 	github.com/spf13/cast v1.5.1 // indirect
 	github.com/spf13/jwalterweatherman v1.1.0 // indirect
