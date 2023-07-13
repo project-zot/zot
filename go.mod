@@ -421,7 +421,7 @@ require (
 	github.com/shibumi/go-pathspec v1.3.0 // indirect
 	github.com/sigstore/fulcio v1.2.0 // indirect
 	github.com/sigstore/rekor v1.2.1 // indirect
-	github.com/sigstore/sigstore v1.7.0
+	github.com/sigstore/sigstore v1.7.1
 	github.com/sirupsen/logrus v1.9.0 // indirect
 	github.com/skratchdot/open-golang v0.0.0-20200116055534-eef842397966 // indirect
 	github.com/smartystreets/assertions v1.13.1 // indirect
