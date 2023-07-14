@@ -1,4 +1,4 @@
-//go:build !mgmt
+//go:build !imagetrust
 
 package extensions_test
 
@@ -14,8 +14,8 @@ import (
 	"zotregistry.io/zot/pkg/test"
 )
 
-func TestMgmtExtension(t *testing.T) {
-	Convey("periodic signature verification is skipped when binary doesn't include mgmt", t, func() {
+func TestImageTrustExtension(t *testing.T) {
+	Convey("periodic signature verification is skipped when binary doesn't include imagetrust", t, func() {
 		conf := config.New()
 		port := test.GetFreePort()
 
@@ -30,11 +30,10 @@ func TestMgmtExtension(t *testing.T) {
 		conf.Storage.RootDirectory = globalDir
 		conf.Storage.Commit = true
 		conf.Extensions = &extconf.ExtensionConfig{}
-		conf.Extensions.Mgmt = &extconf.MgmtConfig{
-			BaseConfig: extconf.BaseConfig{
-				Enable: &defaultValue,
-			},
-		}
+		conf.Extensions.Trust = &extconf.ImageTrustConfig{}
+		conf.Extensions.Trust.Enable = &defaultValue
+		conf.Extensions.Trust.Cosign = defaultValue
+		conf.Extensions.Trust.Notation = defaultValue
 		conf.Log.Level = "warn"
 		conf.Log.Output = logFile.Name()
 

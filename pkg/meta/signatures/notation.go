@@ -302,7 +302,7 @@ func validateCertificate(certificateContent []byte) (bool, error) {
 		// data may be in DER format
 		derCerts, err := x509.ParseCertificates(certificateContent)
 		if err != nil {
-			return false, err
+			return false, fmt.Errorf("%w: %w", zerr.ErrInvalidCertificateContent, err)
 		}
 
 		certs = append(certs, derCerts...)
@@ -311,7 +311,7 @@ func validateCertificate(certificateContent []byte) (bool, error) {
 		for block != nil {
 			cert, err := x509.ParseCertificate(block.Bytes)
 			if err != nil {
-				return false, err
+				return false, fmt.Errorf("%w: %w", zerr.ErrInvalidCertificateContent, err)
 			}
 			certs = append(certs, cert)
 			block, rest = pem.Decode(rest)
@@ -319,7 +319,8 @@ func validateCertificate(certificateContent []byte) (bool, error) {
 	}
 
 	if len(certs) == 0 {
-		return false, zerr.ErrInvalidCertificateContent
+		return false, fmt.Errorf("%w: no valid certificates found in payload",
+			zerr.ErrInvalidCertificateContent)
 	}
 
 	return true, nil

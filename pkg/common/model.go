@@ -52,6 +52,7 @@ type ImageSummary struct {
 	Vendor          string                    `json:"vendor"`
 	Vulnerabilities ImageVulnerabilitySummary `json:"vulnerabilities"`
 	Referrers       []Referrer                `json:"referrers"`
+	SignatureInfo   []SignatureSummary        `json:"signatureInfo"`
 }
 
 type ManifestSummary struct {
@@ -67,6 +68,13 @@ type ManifestSummary struct {
 	Vulnerabilities ImageVulnerabilitySummary `json:"vulnerabilities"`
 	Referrers       []Referrer                `json:"referrers"`
 	ArtifactType    string                    `json:"artifactType"`
+	SignatureInfo   []SignatureSummary        `json:"signatureInfo"`
+}
+
+type SignatureSummary struct {
+	Tool      string `json:"tool"`
+	IsTrusted bool   `json:"isTrusted"`
+	Author    string `json:"author"`
 }
 
 type Platform struct {

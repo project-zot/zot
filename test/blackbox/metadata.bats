@@ -25,6 +25,9 @@ function setup_file() {
     "extensions": {
         "search": {
             "enable": true
+        },
+        "ui": {
+            "enable": true
         }
     },
     "http": {

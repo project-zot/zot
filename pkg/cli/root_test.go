@@ -1083,7 +1083,7 @@ func TestVerify(t *testing.T) {
 }
 
 func TestValidateExtensionsConfig(t *testing.T) {
-	Convey("Test missing extensions for UI to work", t, func(c C) {
+	Convey("Legacy extensions should not error", t, func(c C) {
 		config := config.New()
 		tmpfile, err := os.CreateTemp("", "zot-test*.json")
 		So(err, ShouldBeNil)
@@ -1100,40 +1100,39 @@ func TestValidateExtensionsConfig(t *testing.T) {
 				"level": "debug"
 			},
 			"extensions": {
-				"ui": {
-					"enable": "true"
-				}
-			}
-		}`)
-		err = os.WriteFile(tmpfile.Name(), content, 0o0600)
-		So(err, ShouldBeNil)
-		err = cli.LoadConfiguration(config, tmpfile.Name())
-		So(err, ShouldNotBeNil)
-	})
-
-	Convey("Test missing extensions for UI to work", t, func(c C) {
-		config := config.New()
-		tmpfile, err := os.CreateTemp("", "zot-test*.json")
-		So(err, ShouldBeNil)
-		defer os.Remove(tmpfile.Name())
-
-		content := []byte(`{
-			"storage": {
-				"rootDirectory": "%/tmp/zot"
-			},
-			"http": {
-				"address": "127.0.0.1",
-				"port": "8080"
-			},
-			"log": {
-				"level": "debug"
-			},
-			"extensions": {
-				"ui": {
-					"enable": "true"
-				},
 				"mgmt": {
 					"enable": "true"
+				},
+				"apikey": {
+					"enable": "true"
+				}
+			}
+		}`)
+		err = os.WriteFile(tmpfile.Name(), content, 0o0600)
+		So(err, ShouldBeNil)
+		err = cli.LoadConfiguration(config, tmpfile.Name())
+		So(err, ShouldBeNil)
+	})
+
+	Convey("Test missing extensions for UI to work", t, func(c C) {
+		config := config.New()
+		tmpfile, err := os.CreateTemp("", "zot-test*.json")
+		So(err, ShouldBeNil)
+		defer os.Remove(tmpfile.Name())
+		content := []byte(`{
+			"storage": {
+				"rootDirectory": "%/tmp/zot"
+			},
+			"http": {
+				"address": "127.0.0.1",
+				"port": "8080"
+			},
+			"log": {
+				"level": "debug"
+			},
+			"extensions": {
+				"ui": {
+					"enable": "true"
 				}
 			}
 		}`)
@@ -1143,7 +1142,7 @@ func TestValidateExtensionsConfig(t *testing.T) {
 		So(err, ShouldNotBeNil)
 	})
 
-	Convey("Test missing mgmt extension for UI to work", t, func(c C) {
+	Convey("Test enabling UI extension with all prerequisites", t, func(c C) {
 		config := config.New()
 		tmpfile, err := os.CreateTemp("", "zot-test*.json")
 		So(err, ShouldBeNil)
@@ -1172,7 +1171,165 @@ func TestValidateExtensionsConfig(t *testing.T) {
 		err = os.WriteFile(tmpfile.Name(), content, 0o0600)
 		So(err, ShouldBeNil)
 		err = cli.LoadConfiguration(config, tmpfile.Name())
-		So(err, ShouldNotBeNil)
+		So(err, ShouldBeNil)
+	})
+
+	Convey("Test extension are implicitly enabled", t, func(c C) {
+		config := config.New()
+		tmpfile, err := os.CreateTemp("", "zot-test*.json")
+		So(err, ShouldBeNil)
+		defer os.Remove(tmpfile.Name())
+
+		content := []byte(`{
+			"storage": {
+				"rootDirectory": "%/tmp/zot"
+			},
+			"http": {
+				"address": "127.0.0.1",
+				"port": "8080"
+			},
+			"log": {
+				"level": "debug"
+			},
+			"extensions": {
+				"ui": {},
+				"search": {},
+				"metrics": {},
+				"trust": {},
+				"scrub": {}
+			}
+		}`)
+		err = os.WriteFile(tmpfile.Name(), content, 0o0600)
+		So(err, ShouldBeNil)
+		err = cli.LoadConfiguration(config, tmpfile.Name())
+		So(err, ShouldBeNil)
+		So(config.Extensions.UI, ShouldNotBeNil)
+		So(*config.Extensions.UI.Enable, ShouldBeTrue)
+		So(config.Extensions.Search, ShouldNotBeNil)
+		So(*config.Extensions.Search.Enable, ShouldBeTrue)
+		So(config.Extensions.Trust, ShouldNotBeNil)
+		So(*config.Extensions.Trust.Enable, ShouldBeTrue)
+		So(*config.Extensions.Metrics, ShouldNotBeNil)
+		So(*config.Extensions.Metrics.Enable, ShouldBeTrue)
+		So(config.Extensions.Scrub, ShouldNotBeNil)
+		So(*config.Extensions.Scrub.Enable, ShouldBeTrue)
+	})
+}
+
+func TestApiKeyConfig(t *testing.T) {
+	Convey("Test API Keys are enabled if OpenID is enabled", t, func(c C) {
+		config := config.New()
+		tmpfile, err := os.CreateTemp("", "zot-test*.json")
+		So(err, ShouldBeNil)
+		defer os.Remove(tmpfile.Name())
+
+		content := []byte(`{"distSpecVersion":"1.1.0-dev","storage":{"rootDirectory":"/tmp/zot"},
+							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
+							"auth":{"openid":{"providers":{"dex":{"issuer":"http://127.0.0.1:5556/dex",
+						    "clientid":"client_id","scopes":["openid"]}}}}},
+							"log":{"level":"debug"}}`)
+
+		err = os.WriteFile(tmpfile.Name(), content, 0o0600)
+		So(err, ShouldBeNil)
+		err = cli.LoadConfiguration(config, tmpfile.Name())
+		So(err, ShouldBeNil)
+		So(config.HTTP.Auth, ShouldNotBeNil)
+		So(config.HTTP.Auth.APIKey, ShouldBeTrue)
+	})
+
+	Convey("Test API Keys are not enabled by default", t, func(c C) {
+		config := config.New()
+		tmpfile, err := os.CreateTemp("", "zot-test*.json")
+		So(err, ShouldBeNil)
+		defer os.Remove(tmpfile.Name())
+
+		content := []byte(`{"distSpecVersion":"1.1.0-dev","storage":{"rootDirectory":"/tmp/zot"},
+							"http":{"address":"127.0.0.1","port":"8080","realm":"zot"},
+							"log":{"level":"debug"}}`)
+
+		err = os.WriteFile(tmpfile.Name(), content, 0o0600)
+		So(err, ShouldBeNil)
+		err = cli.LoadConfiguration(config, tmpfile.Name())
+		So(err, ShouldBeNil)
+		So(config.HTTP.Auth, ShouldNotBeNil)
+		So(config.HTTP.Auth.APIKey, ShouldBeFalse)
+	})
+
+	Convey("Test API Keys are not enabled if OpenID is not enabled", t, func(c C) {
+		config := config.New()
+		tmpfile, err := os.CreateTemp("", "zot-test*.json")
+		So(err, ShouldBeNil)
+		defer os.Remove(tmpfile.Name())
+
+		content := []byte(`{"distSpecVersion":"1.1.0-dev","storage":{"rootDirectory":"/tmp/zot"},
+							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
+							"auth":{"htpasswd":{"path":"test/data/htpasswd"}}},
+							"log":{"level":"debug"}}`)
+
+		err = os.WriteFile(tmpfile.Name(), content, 0o0600)
+		So(err, ShouldBeNil)
+		err = cli.LoadConfiguration(config, tmpfile.Name())
+		So(err, ShouldBeNil)
+		So(config.HTTP.Auth, ShouldNotBeNil)
+		So(config.HTTP.Auth.APIKey, ShouldBeFalse)
+	})
+}
+
+func TestServeAPIKey(t *testing.T) {
+	oldArgs := os.Args
+
+	defer func() { os.Args = oldArgs }()
+
+	Convey("apikey implicitly enabled", t, func(c C) {
+		content := `{
+					"storage": {
+						"rootDirectory": "%s"
+					},
+					"http": {
+						"address": "127.0.0.1",
+						"port": "%s",
+						"auth": {
+							"apikey": true
+						}
+					},
+					"log": {
+						"level": "debug",
+						"output": "%s"
+					}
+				}`
+
+		logPath, err := runCLIWithConfig(t.TempDir(), content)
+		So(err, ShouldBeNil)
+		data, err := os.ReadFile(logPath)
+		So(err, ShouldBeNil)
+		defer os.Remove(logPath) // clean up
+		So(string(data), ShouldContainSubstring, "\"APIKey\":true")
+	})
+
+	Convey("apikey disabled", t, func(c C) {
+		content := `{
+					"storage": {
+						"rootDirectory": "%s"
+					},
+					"http": {
+						"address": "127.0.0.1",
+						"port": "%s",
+						"auth": {
+							"apikey": false
+						}
+					},
+					"log": {
+						"level": "debug",
+						"output": "%s"
+					}
+				}`
+
+		logPath, err := runCLIWithConfig(t.TempDir(), content)
+		So(err, ShouldBeNil)
+		data, err := os.ReadFile(logPath)
+		So(err, ShouldBeNil)
+		defer os.Remove(logPath) // clean up
+		So(string(data), ShouldContainSubstring, "\"APIKey\":false")
 	})
 }
 
@@ -1556,4 +1713,45 @@ func TestScrub(t *testing.T) {
 			So(func() { _ = cli.NewServerRootCmd().Execute() }, ShouldPanic)
 		})
 	})
+}
+
+// run cli and return output.
+func runCLIWithConfig(tempDir string, config string) (string, error) {
+	port := GetFreePort()
+	baseURL := GetBaseURL(port)
+
+	logFile, err := os.CreateTemp(tempDir, "zot-log*.txt")
+	if err != nil {
+		return "", err
+	}
+
+	cfgfile, err := os.CreateTemp(tempDir, "zot-test*.json")
+	if err != nil {
+		return "", err
+	}
+
+	config = fmt.Sprintf(config, tempDir, port, logFile.Name())
+
+	_, err = cfgfile.Write([]byte(config))
+	if err != nil {
+		return "", err
+	}
+
+	err = cfgfile.Close()
+	if err != nil {
+		return "", err
+	}
+
+	os.Args = []string{"cli_test", "serve", cfgfile.Name()}
+
+	go func() {
+		err = cli.NewServerRootCmd().Execute()
+		if err != nil {
+			panic(err)
+		}
+	}()
+
+	WaitTillServerReady(baseURL)
+
+	return logFile.Name(), nil
 }

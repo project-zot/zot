@@ -15,6 +15,7 @@ const (
 	CallbackBasePath             = "/auth/callback"
 	LoginPath                    = "/auth/login"
 	LogoutPath                   = "/auth/logout"
+	APIKeyPath                   = "/auth/apikey" //nolint: gosec
 	SessionClientHeaderName      = "X-ZOT-API-CLIENT"
 	SessionClientHeaderValue     = "zot-ui"
 	APIKeysPrefix                = "zak_"

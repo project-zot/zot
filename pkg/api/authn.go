@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/chartmuseum/auth"
+	guuid "github.com/gofrs/uuid"
 	"github.com/google/go-github/v52/github"
 	"github.com/google/uuid"
 	"github.com/gorilla/mux"
@@ -353,7 +354,7 @@ func (amw *AuthnMiddleware) TryAuthnHandlers(ctlr *Controller) mux.MiddlewareFun
 				return
 			}
 
-			isMgmtRequested := request.RequestURI == constants.FullMgmtPrefix
+			isMgmtRequested := request.RequestURI == constants.FullMgmt
 			allowAnonymous := ctlr.Config.HTTP.AccessControl.AnonymousPolicyExists()
 
 			// try basic auth if authorization header is given
@@ -443,7 +444,7 @@ func bearerAuthHandler(ctlr *Controller) mux.MiddlewareFunc {
 			name := vars["name"]
 
 			// we want to bypass auth for mgmt route
-			isMgmtRequested := request.RequestURI == constants.FullMgmtPrefix
+			isMgmtRequested := request.RequestURI == constants.FullMgmt
 
 			header := request.Header.Get("Authorization")
 
@@ -848,4 +849,26 @@ func GetAuthUserFromRequestSession(cookieStore sessions.Store, request *http.Req
 	}
 
 	return identity, true
+}
+
+func GenerateAPIKey(uuidGenerator guuid.Generator, log log.Logger,
+) (string, string, error) {
+	apiKeyBase, err := uuidGenerator.NewV4()
+	if err != nil {
+		log.Error().Err(err).Msg("unable to generate uuid for api key base")
+
+		return "", "", err
+	}
+
+	apiKey := strings.ReplaceAll(apiKeyBase.String(), "-", "")
+
+	// will be used for identifying a specific api key
+	apiKeyID, err := uuidGenerator.NewV4()
+	if err != nil {
+		log.Error().Err(err).Msg("unable to generate uuid for api key id")
+
+		return "", "", err
+	}
+
+	return apiKey, apiKeyID.String(), err
 }

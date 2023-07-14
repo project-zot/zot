@@ -5,6 +5,9 @@ import (
 
 	"zotregistry.io/zot/pkg/api/config"
 	"zotregistry.io/zot/pkg/api/constants"
+	"zotregistry.io/zot/pkg/log"
+	mTypes "zotregistry.io/zot/pkg/meta/types"
+	"zotregistry.io/zot/pkg/scheduler"
 )
 
 func GetExtensions(config *config.Config) distext.ExtensionList {
@@ -13,18 +16,24 @@ func GetExtensions(config *config.Config) distext.ExtensionList {
 	endpoints := []string{}
 	extensions := []distext.Extension{}
 
-	if config.Extensions != nil && config.Extensions.Search != nil {
-		if IsBuiltWithSearchExtension() {
-			endpoints = append(endpoints, constants.FullSearchPrefix)
-		}
-
-		if IsBuiltWithUserPrefsExtension() {
-			endpoints = append(endpoints, constants.FullUserPreferencesPrefix)
-		}
+	if config.IsNotationEnabled() && IsBuiltWithImageTrustExtension() {
+		endpoints = append(endpoints, constants.FullNotation)
 	}
 
-	if IsBuiltWithMGMTExtension() && config.Extensions != nil && config.Extensions.Mgmt != nil {
-		endpoints = append(endpoints, constants.FullMgmtPrefix)
+	if config.IsCosignEnabled() && IsBuiltWithImageTrustExtension() {
+		endpoints = append(endpoints, constants.FullCosign)
+	}
+
+	if config.IsSearchEnabled() && IsBuiltWithSearchExtension() {
+		endpoints = append(endpoints, constants.FullSearchPrefix)
+	}
+
+	if config.AreUserPrefsEnabled() && IsBuiltWithUserPrefsExtension() {
+		endpoints = append(endpoints, constants.FullUserPrefs)
+	}
+
+	if config.IsMgmtEnabled() && IsBuiltWithMGMTExtension() {
+		endpoints = append(endpoints, constants.FullMgmt)
 	}
 
 	if len(endpoints) > 0 {
@@ -39,4 +48,10 @@ func GetExtensions(config *config.Config) distext.ExtensionList {
 	extensionList.Extensions = extensions
 
 	return extensionList
+}
+
+func EnableScheduledTasks(conf *config.Config, taskScheduler *scheduler.Scheduler,
+	metaDB mTypes.MetaDB, log log.Logger,
+) {
+	EnableImageTrustVerification(conf, taskScheduler, metaDB, log)
 }

@@ -6,9 +6,10 @@
 Component | Endpoint | Description
 --- | --- | ---
 [`search`](search/search.md) | `/v2/_zot/ext/search` | efficient and enhanced registry search capabilities using graphQL backend
-[`mgmt`](mgmt.md) | `/v2/_zot/ext/mgmt` | config management
-[`userprefs`](userprefs.md) | `/v2/_zot/ext/userprefs` | change user preferences
-[`apikey`](README_apikey.md) | `/v2/_zot/ext/apikey` | user api keys management
+[`mgmt`](README_mgmt.md) | `/v2/_zot/ext/mgmt` | config management
+[`userprefs`](README_userprefs.md) | `/v2/_zot/ext/userprefs` | change user preferences
+[`imagetrust`](README_imagetrust.md) | `/v2/_zot/ext/cosign` | cosign public key management
+[`imagetrust`](README_imagetrust.md) | `/v2/_zot/ext/notation` | notation certificate management
 
 
 # References

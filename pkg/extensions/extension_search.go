@@ -156,20 +156,27 @@ func (trivyT *trivyTask) DoWork() error {
 	return nil
 }
 
-func SetupSearchRoutes(config *config.Config, router *mux.Router, storeController storage.StoreController,
+func SetupSearchRoutes(conf *config.Config, router *mux.Router, storeController storage.StoreController,
 	metaDB mTypes.MetaDB, cveInfo CveInfo, log log.Logger,
 ) {
+	if !conf.IsSearchEnabled() {
+		log.Info().Msg("skip enabling the search route as the config prerequisites are not met")
+
+		return
+	}
+
 	log.Info().Msg("setting up search routes")
 
-	if config.Extensions.Search != nil && *config.Extensions.Search.Enable {
-		resConfig := search.GetResolverConfig(log, storeController, metaDB, cveInfo)
+	resConfig := search.GetResolverConfig(log, storeController, metaDB, cveInfo)
 
-		allowedMethods := zcommon.AllowedMethods(http.MethodGet, http.MethodPost)
+	allowedMethods := zcommon.AllowedMethods(http.MethodGet, http.MethodPost)
 
-		extRouter := router.PathPrefix(constants.ExtSearch).Subrouter()
-		extRouter.Use(zcommon.ACHeadersHandler(config, allowedMethods...))
-		extRouter.Use(zcommon.AddExtensionSecurityHeaders())
-		extRouter.Methods(allowedMethods...).
-			Handler(gqlHandler.NewDefaultServer(gql_generated.NewExecutableSchema(resConfig)))
-	}
+	extRouter := router.PathPrefix(constants.ExtSearchPrefix).Subrouter()
+	extRouter.Use(zcommon.CORSHeadersMiddleware(conf.HTTP.AllowOrigin))
+	extRouter.Use(zcommon.ACHeadersMiddleware(conf, allowedMethods...))
+	extRouter.Use(zcommon.AddExtensionSecurityHeaders())
+	extRouter.Methods(allowedMethods...).
+		Handler(gqlHandler.NewDefaultServer(gql_generated.NewExecutableSchema(resConfig)))
+
+	log.Info().Msg("finished setting up search routes")
 }

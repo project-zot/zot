@@ -19,7 +19,6 @@ import (
 	"github.com/opencontainers/image-spec/specs-go"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	. "github.com/smartystreets/goconvey/convey"
-	"golang.org/x/crypto/bcrypt"
 
 	"zotregistry.io/zot/pkg/api"
 	"zotregistry.io/zot/pkg/api/config"
@@ -610,7 +609,7 @@ func TestUploadImage(t *testing.T) {
 
 		user1 := "test"
 		password1 := "test"
-		testString1 := getCredString(user1, password1)
+		testString1 := test.GetCredString(user1, password1)
 		htpasswdPath := test.MakeHtpasswdFileFromString(testString1)
 		defer os.Remove(htpasswdPath)
 		conf.HTTP.Auth = &config.AuthConfig{
@@ -768,17 +767,6 @@ func TestUploadImage(t *testing.T) {
 	})
 }
 
-func getCredString(username, password string) string {
-	hash, err := bcrypt.GenerateFromPassword([]byte(password), 10)
-	if err != nil {
-		panic(err)
-	}
-
-	usernameAndHash := fmt.Sprintf("%s:%s", username, string(hash))
-
-	return usernameAndHash
-}
-
 func TestInjectUploadImage(t *testing.T) {
 	Convey("Inject failures for unreachable lines", t, func() {
 		port := test.GetFreePort()
@@ -909,7 +897,7 @@ func TestInjectUploadImageWithBasicAuth(t *testing.T) {
 
 		user := "user"
 		password := "password"
-		testString := getCredString(user, password)
+		testString := test.GetCredString(user, password)
 		htpasswdPath := test.MakeHtpasswdFileFromString(testString)
 		defer os.Remove(htpasswdPath)
 		conf.HTTP.Auth = &config.AuthConfig{

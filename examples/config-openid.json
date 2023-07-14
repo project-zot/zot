@@ -12,6 +12,7 @@
       "htpasswd": {
         "path": "test/data/htpasswd"
       },
+      "apikey": true,
       "openid": {
         "providers": {
           "github": {
@@ -64,12 +65,5 @@
   "log": {
     "level": "debug"
   },
-  "extensions": {
-    "apikey": {
-      "enable": true
-    },
-    "mgmt": {
-      "enable": true
-    }
-  }
+  "extensions": {}
 }

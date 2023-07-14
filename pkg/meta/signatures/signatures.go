@@ -1,6 +1,7 @@
 package signatures
 
 import (
+	"context"
 	"encoding/json"
 	"time"
 
@@ -8,6 +9,9 @@ import (
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 
 	zerr "zotregistry.io/zot/errors"
+	"zotregistry.io/zot/pkg/log"
+	mTypes "zotregistry.io/zot/pkg/meta/types"
+	"zotregistry.io/zot/pkg/scheduler"
 )
 
 const (
@@ -57,4 +61,85 @@ func VerifySignature(
 	default:
 		return "", time.Time{}, false, zerr.ErrInvalidSignatureType
 	}
+}
+
+func NewTaskGenerator(metaDB mTypes.MetaDB, log log.Logger) scheduler.TaskGenerator {
+	return &sigValidityTaskGenerator{
+		repos:     []mTypes.RepoMetadata{},
+		metaDB:    metaDB,
+		repoIndex: -1,
+		log:       log,
+	}
+}
+
+type sigValidityTaskGenerator struct {
+	repos     []mTypes.RepoMetadata
+	metaDB    mTypes.MetaDB
+	repoIndex int
+	done      bool
+	log       log.Logger
+}
+
+func (gen *sigValidityTaskGenerator) Next() (scheduler.Task, error) {
+	if len(gen.repos) == 0 {
+		ctx := context.Background()
+
+		repos, err := gen.metaDB.GetMultipleRepoMeta(ctx, func(repoMeta mTypes.RepoMetadata) bool {
+			return true
+		})
+		if err != nil {
+			return nil, err
+		}
+
+		gen.repos = repos
+	}
+
+	gen.repoIndex++
+
+	if gen.repoIndex >= len(gen.repos) {
+		gen.done = true
+
+		return nil, nil
+	}
+
+	return NewValidityTask(gen.metaDB, gen.repos[gen.repoIndex], gen.log), nil
+}
+
+func (gen *sigValidityTaskGenerator) IsDone() bool {
+	return gen.done
+}
+
+func (gen *sigValidityTaskGenerator) Reset() {
+	gen.done = false
+	gen.repoIndex = -1
+	gen.repos = []mTypes.RepoMetadata{}
+}
+
+type validityTask struct {
+	metaDB mTypes.MetaDB
+	repo   mTypes.RepoMetadata
+	log    log.Logger
+}
+
+func NewValidityTask(metaDB mTypes.MetaDB, repo mTypes.RepoMetadata, log log.Logger) *validityTask {
+	return &validityTask{metaDB, repo, log}
+}
+
+func (validityT *validityTask) DoWork() error {
+	validityT.log.Info().Msg("updating signatures validity")
+
+	for signedManifest, sigs := range validityT.repo.Signatures {
+		if len(sigs[CosignSignature]) != 0 || len(sigs[NotationSignature]) != 0 {
+			err := validityT.metaDB.UpdateSignaturesValidity(validityT.repo.Name, godigest.Digest(signedManifest))
+			if err != nil {
+				validityT.log.Info().Msg("error while verifying signatures")
+
+				return err
+			}
+		}
+	}
+
+	validityT.log.Info().Msg("verifying signatures successfully completed")
+
+	return nil
 }

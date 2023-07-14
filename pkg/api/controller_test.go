@@ -1,5 +1,5 @@
-//go:build sync && scrub && metrics && search && lint && apikey && mgmt
-// +build sync,scrub,metrics,search,lint,apikey,mgmt
+//go:build sync && scrub && metrics && search && lint && userprefs && mgmt && imagetrust && ui
+// +build sync,scrub,metrics,search,lint,userprefs,mgmt,imagetrust,ui
 
 package api_test
 
@@ -2659,12 +2659,18 @@ func TestOpenIDMiddleware(t *testing.T) {
 		},
 	}
 
-	mgmtConfg := &extconf.MgmtConfig{
+	searchConfig := &extconf.SearchConfig{
+		BaseConfig: extconf.BaseConfig{Enable: &defaultVal},
+	}
+
+	// UI is enabled because we also want to test access on the mgmt route
+	uiConfig := &extconf.UIConfig{
 		BaseConfig: extconf.BaseConfig{Enable: &defaultVal},
 	}
 
 	conf.Extensions = &extconf.ExtensionConfig{
-		Mgmt: mgmtConfg,
+		Search: searchConfig,
+		UI:     uiConfig,
 	}
 
 	ctlr := api.NewController(conf)
@@ -2769,7 +2775,7 @@ func TestOpenIDMiddleware(t *testing.T) {
 			resp, err = client.R().SetBasicAuth(htpasswdUsername, passphrase).Get(baseURL)
 			So(err, ShouldBeNil)
 			So(resp, ShouldNotBeNil)
-			So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
 			resp, err = client.R().SetBasicAuth(htpasswdUsername, passphrase).Get(baseURL + "/v2/")
 			So(err, ShouldBeNil)
@@ -2778,7 +2784,7 @@ func TestOpenIDMiddleware(t *testing.T) {
 
 			resp, err = client.R().
 				SetBasicAuth(htpasswdUsername, passphrase).
-				Get(baseURL + constants.FullMgmtPrefix)
+				Get(baseURL + constants.FullMgmt)
 			So(err, ShouldBeNil)
 			So(resp, ShouldNotBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
@@ -2795,7 +2801,7 @@ func TestOpenIDMiddleware(t *testing.T) {
 
 			resp, err = client.R().
 				SetHeader(constants.SessionClientHeaderName, constants.SessionClientHeaderValue).
-				Get(baseURL + constants.FullMgmtPrefix)
+				Get(baseURL + constants.FullMgmt)
 			So(err, ShouldBeNil)
 			So(resp, ShouldNotBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
@@ -2835,7 +2841,7 @@ func TestOpenIDMiddleware(t *testing.T) {
 			resp, err = client.R().SetBasicAuth(username, passphrase).Get(baseURL)
 			So(err, ShouldBeNil)
 			So(resp, ShouldNotBeNil)
-			So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
 			resp, err = client.R().SetBasicAuth(username, passphrase).Get(baseURL + "/v2/")
 			So(err, ShouldBeNil)
@@ -2844,7 +2850,7 @@ func TestOpenIDMiddleware(t *testing.T) {
 
 			resp, err = client.R().
 				SetBasicAuth(username, passphrase).
-				Get(baseURL + constants.FullMgmtPrefix)
+				Get(baseURL + constants.FullMgmt)
 			So(err, ShouldBeNil)
 			So(resp, ShouldNotBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
@@ -2861,7 +2867,7 @@ func TestOpenIDMiddleware(t *testing.T) {
 
 			resp, err = client.R().
 				SetHeader(constants.SessionClientHeaderName, constants.SessionClientHeaderValue).
-				Get(baseURL + constants.FullMgmtPrefix)
+				Get(baseURL + constants.FullMgmt)
 			So(err, ShouldBeNil)
 			So(resp, ShouldNotBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
@@ -2888,7 +2894,7 @@ func TestOpenIDMiddleware(t *testing.T) {
 
 			// mgmt should work both unauthenticated and authenticated
 			resp, err := client.R().
-				Get(baseURL + constants.FullMgmtPrefix)
+				Get(baseURL + constants.FullMgmt)
 			So(err, ShouldBeNil)
 			So(resp, ShouldNotBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
@@ -3063,12 +3069,17 @@ func TestAuthnSessionErrors(t *testing.T) {
 			},
 		}
 
-		mgmtConfg := &extconf.MgmtConfig{
+		uiConfig := &extconf.UIConfig{
+			BaseConfig: extconf.BaseConfig{Enable: &defaultVal},
+		}
+
+		searchConfig := &extconf.SearchConfig{
 			BaseConfig: extconf.BaseConfig{Enable: &defaultVal},
 		}
 
 		conf.Extensions = &extconf.ExtensionConfig{
-			Mgmt: mgmtConfg,
+			UI:     uiConfig,
+			Search: searchConfig,
 		}
 
 		ctlr := api.NewController(conf)
@@ -8391,7 +8402,7 @@ func TestSearchRoutes(t *testing.T) {
 }
 
 func TestDistSpecExtensions(t *testing.T) {
-	Convey("start zot server with search extension", t, func(c C) {
+	Convey("start zot server with search, ui and trust extensions", t, func(c C) {
 		conf := config.New()
 		port := test.GetFreePort()
 		baseURL := test.GetBaseURL(port)
@@ -8400,13 +8411,16 @@ func TestDistSpecExtensions(t *testing.T) {
 
 		defaultVal := true
 
-		searchConfig := &extconf.SearchConfig{
-			BaseConfig: extconf.BaseConfig{Enable: &defaultVal},
-		}
-
-		conf.Extensions = &extconf.ExtensionConfig{
-			Search: searchConfig,
-		}
+		conf.Extensions = &extconf.ExtensionConfig{}
+		conf.Extensions.Search = &extconf.SearchConfig{}
+		conf.Extensions.Search.Enable = &defaultVal
+		conf.Extensions.Search.CVE = nil
+		conf.Extensions.UI = &extconf.UIConfig{}
+		conf.Extensions.UI.Enable = &defaultVal
+		conf.Extensions.Trust = &extconf.ImageTrustConfig{}
+		conf.Extensions.Trust.Enable = &defaultVal
+		conf.Extensions.Trust.Cosign = defaultVal
+		conf.Extensions.Trust.Notation = defaultVal
 
 		logFile, err := os.CreateTemp("", "zot-log*.txt")
 		So(err, ShouldBeNil)
@@ -8427,16 +8441,23 @@ func TestDistSpecExtensions(t *testing.T) {
 		So(resp.StatusCode(), ShouldEqual, 200)
 		err = json.Unmarshal(resp.Body(), &extensionList)
 		So(err, ShouldBeNil)
+		t.Log(extensionList.Extensions)
 		So(len(extensionList.Extensions), ShouldEqual, 1)
-		So(len(extensionList.Extensions[0].Endpoints), ShouldEqual, 2)
+		So(len(extensionList.Extensions[0].Endpoints), ShouldEqual, 5)
 		So(extensionList.Extensions[0].Name, ShouldEqual, "_zot")
 		So(extensionList.Extensions[0].URL, ShouldContainSubstring, "_zot.md")
 		So(extensionList.Extensions[0].Description, ShouldNotBeEmpty)
+		// Verify the endpoints below are enabled by search
 		So(extensionList.Extensions[0].Endpoints, ShouldContain, constants.FullSearchPrefix)
-		So(extensionList.Extensions[0].Endpoints, ShouldContain, constants.FullUserPreferencesPrefix)
+		// Verify the endpoints below are enabled by trust
+		So(extensionList.Extensions[0].Endpoints, ShouldContain, constants.FullCosign)
+		So(extensionList.Extensions[0].Endpoints, ShouldContain, constants.FullNotation)
+		// Verify the endpint below are enabled by having both the UI and the Search enabled
+		So(extensionList.Extensions[0].Endpoints, ShouldContain, constants.FullMgmt)
+		So(extensionList.Extensions[0].Endpoints, ShouldContain, constants.FullUserPrefs)
 	})
 
-	Convey("start zot server with search and mgmt extensions", t, func(c C) {
+	Convey("start zot server with only the search extension enabled", t, func(c C) {
 		conf := config.New()
 		port := test.GetFreePort()
 		baseURL := test.GetBaseURL(port)
@@ -8445,18 +8466,9 @@ func TestDistSpecExtensions(t *testing.T) {
 
 		defaultVal := true
 
-		searchConfig := &extconf.SearchConfig{
-			BaseConfig: extconf.BaseConfig{Enable: &defaultVal},
-		}
-
-		mgmtConfg := &extconf.MgmtConfig{
-			BaseConfig: extconf.BaseConfig{Enable: &defaultVal},
-		}
-
-		conf.Extensions = &extconf.ExtensionConfig{
-			Search: searchConfig,
-			Mgmt:   mgmtConfg,
-		}
+		conf.Extensions = &extconf.ExtensionConfig{}
+		conf.Extensions.Search = &extconf.SearchConfig{}
+		conf.Extensions.Search.Enable = &defaultVal
 
 		logFile, err := os.CreateTemp("", "zot-log*.txt")
 		So(err, ShouldBeNil)
@@ -8477,14 +8489,51 @@ func TestDistSpecExtensions(t *testing.T) {
 		So(resp.StatusCode(), ShouldEqual, 200)
 		err = json.Unmarshal(resp.Body(), &extensionList)
 		So(err, ShouldBeNil)
+		t.Log(extensionList.Extensions)
 		So(len(extensionList.Extensions), ShouldEqual, 1)
-		So(len(extensionList.Extensions[0].Endpoints), ShouldEqual, 3)
+		So(len(extensionList.Extensions[0].Endpoints), ShouldEqual, 1)
 		So(extensionList.Extensions[0].Name, ShouldEqual, "_zot")
 		So(extensionList.Extensions[0].URL, ShouldContainSubstring, "_zot.md")
 		So(extensionList.Extensions[0].Description, ShouldNotBeEmpty)
+		// Verify the endpoints below are enabled by search
 		So(extensionList.Extensions[0].Endpoints, ShouldContain, constants.FullSearchPrefix)
-		So(extensionList.Extensions[0].Endpoints, ShouldContain, constants.FullUserPreferencesPrefix)
-		So(extensionList.Extensions[0].Endpoints, ShouldContain, constants.FullMgmtPrefix)
+		// Verify the endpoints below are not enabled since trust is not enabled
+		So(extensionList.Extensions[0].Endpoints, ShouldNotContain, constants.FullCosign)
+		So(extensionList.Extensions[0].Endpoints, ShouldNotContain, constants.FullNotation)
+		// Verify the endpoints below are not enabled since the UI is not enabled
+		So(extensionList.Extensions[0].Endpoints, ShouldNotContain, constants.FullMgmt)
+		So(extensionList.Extensions[0].Endpoints, ShouldNotContain, constants.FullUserPrefs)
+	})
+
+	Convey("start zot server with no enabled extensions", t, func(c C) {
+		conf := config.New()
+		port := test.GetFreePort()
+		baseURL := test.GetBaseURL(port)
+
+		conf.HTTP.Port = port
+
+		logFile, err := os.CreateTemp("", "zot-log*.txt")
+		So(err, ShouldBeNil)
+		conf.Log.Output = logFile.Name()
+		defer os.Remove(logFile.Name()) // clean up
+
+		ctlr := makeController(conf, t.TempDir(), "")
+
+		cm := test.NewControllerManager(ctlr)
+		cm.StartAndWait(port)
+		defer cm.StopServer()
+
+		var extensionList distext.ExtensionList
+
+		resp, err := resty.R().Get(baseURL + constants.RoutePrefix + constants.ExtOciDiscoverPrefix)
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, 200)
+		err = json.Unmarshal(resp.Body(), &extensionList)
+		So(err, ShouldBeNil)
+		t.Log(extensionList.Extensions)
+		// Verify all endpoints which are disabled (even signing urls depend on search being enabled)
+		So(len(extensionList.Extensions), ShouldEqual, 0)
 	})
 
 	Convey("start minimal zot server", t, func(c C) {

@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto"
 	"encoding/base64"
+	"fmt"
 	"io"
 	"os"
 	"path"
@@ -136,7 +137,7 @@ func UploadPublicKey(publicKeyContent []byte) error {
 func validatePublicKey(publicKeyContent []byte) (bool, error) {
 	_, err := cryptoutils.UnmarshalPEMToPublicKey(publicKeyContent)
 	if err != nil {
-		return false, err
+		return false, fmt.Errorf("%w: %w", zerr.ErrInvalidPublicKeyContent, err)
 	}
 
 	return true, nil
