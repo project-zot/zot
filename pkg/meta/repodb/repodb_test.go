@@ -334,7 +334,7 @@ func RunRepoDBTests(t *testing.T, repoDB repodb.RepoDB, preparationFuncs ...func
 				repoMeta, err := repoDB.GetRepoMeta(repo1)
 				So(err, ShouldBeNil)
 				So(repoMeta.Name, ShouldResemble, repo1)
-				So(repoMeta.Tags[tag1].Digest, ShouldEqual, manifestDigest1)
+				So(repoMeta.Tags[tag1].Digest, ShouldEqual, manifestDigest1.String())
 
 				err = repoDB.SetRepoMeta(repo2, repodb.RepoMetadata{Tags: map[string]repodb.Descriptor{
 					tag2: {
@@ -346,7 +346,7 @@ func RunRepoDBTests(t *testing.T, repoDB repodb.RepoDB, preparationFuncs ...func
 				repoMeta, err = repoDB.GetRepoMeta(repo2)
 				So(err, ShouldBeNil)
 				So(repoMeta.Name, ShouldResemble, repo2)
-				So(repoMeta.Tags[tag2].Digest, ShouldEqual, manifestDigest2)
+				So(repoMeta.Tags[tag2].Digest, ShouldEqual, manifestDigest2.String())
 			})
 
 			Convey("Setting a good repo using a digest", func() {
@@ -371,8 +371,8 @@ func RunRepoDBTests(t *testing.T, repoDB repodb.RepoDB, preparationFuncs ...func
 
 				repoMeta, err := repoDB.GetRepoMeta(repo1)
 				So(err, ShouldBeNil)
-				So(repoMeta.Tags[tag1].Digest, ShouldEqual, manifestDigest1)
-				So(repoMeta.Tags[tag2].Digest, ShouldEqual, manifestDigest2)
+				So(repoMeta.Tags[tag1].Digest, ShouldEqual, manifestDigest1.String())
+				So(repoMeta.Tags[tag2].Digest, ShouldEqual, manifestDigest2.String())
 			})
 
 			Convey("Set multiple repos", func() {

@@ -1478,7 +1478,7 @@ func TestGetReferrers(t *testing.T) {
 			So(*referrers[0].ArtifactType, ShouldEqual, referrerDescriptor.ArtifactType)
 			So(*referrers[0].MediaType, ShouldEqual, referrerDescriptor.MediaType)
 			So(*referrers[0].Size, ShouldEqual, referrerDescriptor.Size)
-			So(*referrers[0].Digest, ShouldEqual, referrerDescriptor.Digest)
+			So(*referrers[0].Digest, ShouldEqual, referrerDescriptor.Digest.String())
 			So(*referrers[0].Annotations[0].Value, ShouldEqual, referrerDescriptor.Annotations["key"])
 		})
 	})

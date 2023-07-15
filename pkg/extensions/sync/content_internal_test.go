@@ -150,7 +150,8 @@ func TestGetContentByLocalRepo(t *testing.T) {
 			cm := NewContentManager(test.content, log.Logger{})
 			actualResult := cm.getContentByLocalRepo(test.repo)
 			if test.expected == -1 {
-				So(actualResult, ShouldEqual, nil)
+				var tnil *syncconf.Content = nil
+				So(actualResult, ShouldEqual, tnil)
 			} else {
 				So(actualResult, ShouldEqual, &test.content[test.expected])
 			}

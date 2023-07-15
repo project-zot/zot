@@ -949,7 +949,7 @@ func TestGetReferrersGQL(t *testing.T) {
 		So(referrersResp.Referrers[0].Annotations[0].Key, ShouldEqual, "com.artifact.format")
 		So(referrersResp.Referrers[0].Annotations[0].Value, ShouldEqual, "test")
 
-		So(referrersResp.Referrers[0].Digest, ShouldEqual, artifactManifestDigest)
+		So(referrersResp.Referrers[0].Digest, ShouldEqual, artifactManifestDigest.String())
 	})
 
 	Convey("referrers for image index", t, func() {
@@ -1080,7 +1080,7 @@ func TestGetReferrersGQL(t *testing.T) {
 		So(referrersResp.Referrers[0].Annotations[0].Key, ShouldEqual, "com.artifact.format")
 		So(referrersResp.Referrers[0].Annotations[0].Value, ShouldEqual, "test")
 
-		So(referrersResp.Referrers[0].Digest, ShouldEqual, artifactManifestDigest)
+		So(referrersResp.Referrers[0].Digest, ShouldEqual, artifactManifestDigest.String())
 	})
 
 	Convey("Get referrers with index as referrer", t, func() {
