@@ -639,10 +639,11 @@ func GetRandomImageComponents(layerSize int) (ispec.Image, [][]byte, ispec.Manif
 	return config, layers, manifest, nil
 }
 
-// These are the 2 vulnerabilities found for the returned image by the GetVulnImage function.
+// These are the 3 vulnerabilities found for the returned image by the GetVulnImage function.
 const (
 	Vulnerability1ID = "CVE-2023-2650"
 	Vulnerability2ID = "CVE-2023-1255"
+	Vulnerability3ID = "CVE-2023-2975"
 )
 
 func GetVulnImage(ref string) (Image, error) {
