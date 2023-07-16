@@ -73,6 +73,7 @@ func TestScanningByDigest(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(cveMap, ShouldContainKey, test.Vulnerability1ID)
 		So(cveMap, ShouldContainKey, test.Vulnerability2ID)
+		So(cveMap, ShouldContainKey, test.Vulnerability3ID)
 
 		cveMap, err = scanner.ScanImage("multi-arch@" + simpleDigest.String())
 		So(err, ShouldBeNil)
@@ -82,11 +83,13 @@ func TestScanningByDigest(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(cveMap, ShouldContainKey, test.Vulnerability1ID)
 		So(cveMap, ShouldContainKey, test.Vulnerability2ID)
+		So(cveMap, ShouldContainKey, test.Vulnerability3ID)
 
 		cveMap, err = scanner.ScanImage("multi-arch:multi-arch-tag")
 		So(err, ShouldBeNil)
 		So(cveMap, ShouldContainKey, test.Vulnerability1ID)
 		So(cveMap, ShouldContainKey, test.Vulnerability2ID)
+		So(cveMap, ShouldContainKey, test.Vulnerability3ID)
 	})
 }
 
@@ -181,6 +184,9 @@ func TestVulnerableLayer(t *testing.T) {
 
 		cveMap, err := scanner.ScanImage("repo@" + imgDigest.String())
 		So(err, ShouldBeNil)
-		So(len(cveMap), ShouldEqual, 2)
+		t.Logf("cveMap: %v", cveMap)
+		// As of July 15 2023 there are 3 CVEs: CVE-2023-1255, CVE-2023-2650, CVE-2023-2975
+		// There may be more discovered in the future
+		So(len(cveMap), ShouldBeGreaterThanOrEqualTo, 3)
 	})
 }
