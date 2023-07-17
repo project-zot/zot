@@ -15,9 +15,9 @@ import (
 	"zotregistry.io/zot/pkg/extensions/monitoring"
 	"zotregistry.io/zot/pkg/extensions/search/cve/trivy"
 	"zotregistry.io/zot/pkg/log"
-	"zotregistry.io/zot/pkg/meta/bolt"
-	"zotregistry.io/zot/pkg/meta/repodb"
-	boltdb_wrapper "zotregistry.io/zot/pkg/meta/repodb/boltdb-wrapper"
+	"zotregistry.io/zot/pkg/meta"
+	"zotregistry.io/zot/pkg/meta/boltdb"
+	mTypes "zotregistry.io/zot/pkg/meta/types"
 	"zotregistry.io/zot/pkg/storage"
 	"zotregistry.io/zot/pkg/storage/local"
 	"zotregistry.io/zot/pkg/test"
@@ -64,7 +64,7 @@ func TestScanningByDigest(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		// scan
-		scanner := trivy.NewScanner(ctlr.StoreController, ctlr.RepoDB, "ghcr.io/project-zot/trivy-db", "", ctlr.Log)
+		scanner := trivy.NewScanner(ctlr.StoreController, ctlr.MetaDB, "ghcr.io/project-zot/trivy-db", "", ctlr.Log)
 
 		err = scanner.UpdateDB()
 		So(err, ShouldBeNil)
@@ -100,17 +100,17 @@ func TestScannerErrors(t *testing.T) {
 		storeController := storage.StoreController{}
 		storeController.DefaultStore = mocks.MockedImageStore{}
 
-		repoDB := mocks.RepoDBMock{}
+		metaDB := mocks.MetaDBMock{}
 		log := log.NewLogger("debug", "")
 
 		Convey("IsImageFormatSanable", func() {
-			repoDB.GetManifestDataFn = func(manifestDigest godigest.Digest) (repodb.ManifestData, error) {
-				return repodb.ManifestData{}, zerr.ErrManifestDataNotFound
+			metaDB.GetManifestDataFn = func(manifestDigest godigest.Digest) (mTypes.ManifestData, error) {
+				return mTypes.ManifestData{}, zerr.ErrManifestDataNotFound
 			}
-			repoDB.GetIndexDataFn = func(indexDigest godigest.Digest) (repodb.IndexData, error) {
-				return repodb.IndexData{}, zerr.ErrManifestDataNotFound
+			metaDB.GetIndexDataFn = func(indexDigest godigest.Digest) (mTypes.IndexData, error) {
+				return mTypes.IndexData{}, zerr.ErrManifestDataNotFound
 			}
-			scanner := trivy.NewScanner(storeController, repoDB, "", "", log)
+			scanner := trivy.NewScanner(storeController, metaDB, "", "", log)
 
 			_, err := scanner.ScanImage("repo@" + digest.String())
 			So(err, ShouldNotBeNil)
@@ -165,19 +165,19 @@ func TestVulnerableLayer(t *testing.T) {
 		err = test.WriteImageToFileSystem(img, "repo", storeController)
 		So(err, ShouldBeNil)
 
-		params := bolt.DBParameters{
+		params := boltdb.DBParameters{
 			RootDir: tempDir,
 		}
-		boltDriver, err := bolt.GetBoltDriver(params)
+		boltDriver, err := boltdb.GetBoltDriver(params)
 		So(err, ShouldBeNil)
 
-		repoDB, err := boltdb_wrapper.NewBoltDBWrapper(boltDriver, log)
+		metaDB, err := boltdb.New(boltDriver, log)
 		So(err, ShouldBeNil)
 
-		err = repodb.ParseStorage(repoDB, storeController, log)
+		err = meta.ParseStorage(metaDB, storeController, log)
 		So(err, ShouldBeNil)
 
-		scanner := trivy.NewScanner(storeController, repoDB, "ghcr.io/project-zot/trivy-db", "", log)
+		scanner := trivy.NewScanner(storeController, metaDB, "ghcr.io/project-zot/trivy-db", "", log)
 
 		err = scanner.UpdateDB()
 		So(err, ShouldBeNil)

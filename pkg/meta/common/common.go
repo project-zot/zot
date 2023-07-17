@@ -10,12 +10,12 @@ import (
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 
 	zerr "zotregistry.io/zot/errors"
-	"zotregistry.io/zot/pkg/meta/repodb"
+	mTypes "zotregistry.io/zot/pkg/meta/types"
 )
 
-func UpdateManifestMeta(repoMeta repodb.RepoMetadata, manifestDigest godigest.Digest,
-	manifestMeta repodb.ManifestMetadata,
-) repodb.RepoMetadata {
+func UpdateManifestMeta(repoMeta mTypes.RepoMetadata, manifestDigest godigest.Digest,
+	manifestMeta mTypes.ManifestMetadata,
+) mTypes.RepoMetadata {
 	updatedRepoMeta := repoMeta
 
 	updatedStatistics := repoMeta.Statistics[manifestDigest.String()]
@@ -23,7 +23,7 @@ func UpdateManifestMeta(repoMeta repodb.RepoMetadata, manifestDigest godigest.Di
 	updatedRepoMeta.Statistics[manifestDigest.String()] = updatedStatistics
 
 	if manifestMeta.Signatures == nil {
-		manifestMeta.Signatures = repodb.ManifestSignatures{}
+		manifestMeta.Signatures = mTypes.ManifestSignatures{}
 	}
 
 	updatedRepoMeta.Signatures[manifestDigest.String()] = manifestMeta.Signatures
@@ -31,7 +31,7 @@ func UpdateManifestMeta(repoMeta repodb.RepoMetadata, manifestDigest godigest.Di
 	return updatedRepoMeta
 }
 
-func SignatureAlreadyExists(signatureSlice []repodb.SignatureInfo, sm repodb.SignatureMetadata) bool {
+func SignatureAlreadyExists(signatureSlice []mTypes.SignatureInfo, sm mTypes.SignatureMetadata) bool {
 	for _, sigInfo := range signatureSlice {
 		if sm.SignatureDigest == sigInfo.SignatureManifestDigest {
 			return true
@@ -160,7 +160,7 @@ func GetImageLastUpdatedTimestamp(configContent ispec.Image) time.Time {
 	return *timeStamp
 }
 
-func CheckIsSigned(signatures repodb.ManifestSignatures) bool {
+func CheckIsSigned(signatures mTypes.ManifestSignatures) bool {
 	for _, signatures := range signatures {
 		if len(signatures) > 0 {
 			return true
@@ -197,7 +197,7 @@ func GetMapKeys[K comparable, V any](genericMap map[K]V) []K {
 
 // acceptedByFilter checks that data contains at least 1 element of each filter
 // criteria(os, arch) present in filter.
-func AcceptedByFilter(filter repodb.Filter, data repodb.FilterData) bool {
+func AcceptedByFilter(filter mTypes.Filter, data mTypes.FilterData) bool {
 	if filter.Arch != nil {
 		foundArch := false
 		for _, arch := range filter.Arch {
@@ -284,7 +284,7 @@ func MatchesArtifactTypes(descriptorMediaType string, artifactTypes []string) bo
 //
 // It returns updated values for: repoLastUpdated, noImageChecked, isSigned.
 func CheckImageLastUpdated(repoLastUpdated time.Time, isSigned bool, noImageChecked bool,
-	manifestFilterData repodb.FilterData,
+	manifestFilterData mTypes.FilterData,
 ) (time.Time, bool, bool) {
 	if noImageChecked || repoLastUpdated.Before(manifestFilterData.LastUpdated) {
 		repoLastUpdated = manifestFilterData.LastUpdated
@@ -296,12 +296,12 @@ func CheckImageLastUpdated(repoLastUpdated time.Time, isSigned bool, noImageChec
 	return repoLastUpdated, noImageChecked, isSigned
 }
 
-func FilterDataByRepo(foundRepos []repodb.RepoMetadata, manifestMetadataMap map[string]repodb.ManifestMetadata,
-	indexDataMap map[string]repodb.IndexData,
-) (map[string]repodb.ManifestMetadata, map[string]repodb.IndexData, error) {
+func FilterDataByRepo(foundRepos []mTypes.RepoMetadata, manifestMetadataMap map[string]mTypes.ManifestMetadata,
+	indexDataMap map[string]mTypes.IndexData,
+) (map[string]mTypes.ManifestMetadata, map[string]mTypes.IndexData, error) {
 	var (
-		foundManifestMetadataMap = make(map[string]repodb.ManifestMetadata)
-		foundindexDataMap        = make(map[string]repodb.IndexData)
+		foundManifestMetadataMap = make(map[string]mTypes.ManifestMetadata)
+		foundindexDataMap        = make(map[string]mTypes.IndexData)
 	)
 
 	// keep just the manifestMeta we need
@@ -317,8 +317,8 @@ func FilterDataByRepo(foundRepos []repodb.RepoMetadata, manifestMetadataMap map[
 
 				err := json.Unmarshal(indexData.IndexBlob, &indexContent)
 				if err != nil {
-					return map[string]repodb.ManifestMetadata{}, map[string]repodb.IndexData{},
-						fmt.Errorf("repodb: error while getting manifest data for digest %s %w", descriptor.Digest, err)
+					return map[string]mTypes.ManifestMetadata{}, map[string]mTypes.IndexData{},
+						fmt.Errorf("metadb: error while getting manifest data for digest %s %w", descriptor.Digest, err)
 				}
 
 				for _, manifestDescriptor := range indexContent.Manifests {
@@ -337,48 +337,48 @@ func FilterDataByRepo(foundRepos []repodb.RepoMetadata, manifestMetadataMap map[
 	return foundManifestMetadataMap, foundindexDataMap, nil
 }
 
-func FetchDataForRepos(repoDB repodb.RepoDB, foundRepos []repodb.RepoMetadata,
-) (map[string]repodb.ManifestMetadata, map[string]repodb.IndexData, error) {
-	foundManifestMetadataMap := map[string]repodb.ManifestMetadata{}
-	foundIndexDataMap := map[string]repodb.IndexData{}
+func FetchDataForRepos(metaDB mTypes.MetaDB, foundRepos []mTypes.RepoMetadata,
+) (map[string]mTypes.ManifestMetadata, map[string]mTypes.IndexData, error) {
+	foundManifestMetadataMap := map[string]mTypes.ManifestMetadata{}
+	foundIndexDataMap := map[string]mTypes.IndexData{}
 
 	for idx := range foundRepos {
 		for _, descriptor := range foundRepos[idx].Tags {
 			switch descriptor.MediaType {
 			case ispec.MediaTypeImageManifest:
-				manifestData, err := repoDB.GetManifestData(godigest.Digest(descriptor.Digest))
+				manifestData, err := metaDB.GetManifestData(godigest.Digest(descriptor.Digest))
 				if err != nil {
-					return map[string]repodb.ManifestMetadata{}, map[string]repodb.IndexData{}, err
+					return map[string]mTypes.ManifestMetadata{}, map[string]mTypes.IndexData{}, err
 				}
 
-				foundManifestMetadataMap[descriptor.Digest] = repodb.ManifestMetadata{
+				foundManifestMetadataMap[descriptor.Digest] = mTypes.ManifestMetadata{
 					ManifestBlob: manifestData.ManifestBlob,
 					ConfigBlob:   manifestData.ConfigBlob,
 				}
 			case ispec.MediaTypeImageIndex:
-				indexData, err := repoDB.GetIndexData(godigest.Digest(descriptor.Digest))
+				indexData, err := metaDB.GetIndexData(godigest.Digest(descriptor.Digest))
 				if err != nil {
-					return map[string]repodb.ManifestMetadata{}, map[string]repodb.IndexData{}, err
+					return map[string]mTypes.ManifestMetadata{}, map[string]mTypes.IndexData{}, err
 				}
 
 				var indexContent ispec.Index
 
 				err = json.Unmarshal(indexData.IndexBlob, &indexContent)
 				if err != nil {
-					return map[string]repodb.ManifestMetadata{},
-						map[string]repodb.IndexData{},
-						fmt.Errorf("repodb: error while getting index data for digest %s %w", descriptor.Digest, err)
+					return map[string]mTypes.ManifestMetadata{},
+						map[string]mTypes.IndexData{},
+						fmt.Errorf("metadb: error while getting index data for digest %s %w", descriptor.Digest, err)
 				}
 
 				for _, manifestDescriptor := range indexContent.Manifests {
 					manifestDigest := manifestDescriptor.Digest.String()
 
-					manifestData, err := repoDB.GetManifestData(manifestDescriptor.Digest)
+					manifestData, err := metaDB.GetManifestData(manifestDescriptor.Digest)
 					if err != nil {
-						return map[string]repodb.ManifestMetadata{}, map[string]repodb.IndexData{}, err
+						return map[string]mTypes.ManifestMetadata{}, map[string]mTypes.IndexData{}, err
 					}
 
-					foundManifestMetadataMap[manifestDigest] = repodb.ManifestMetadata{
+					foundManifestMetadataMap[manifestDigest] = mTypes.ManifestMetadata{
 						ManifestBlob: manifestData.ManifestBlob,
 						ConfigBlob:   manifestData.ConfigBlob,
 					}
@@ -390,4 +390,34 @@ func FetchDataForRepos(repoDB repodb.RepoDB, foundRepos []repodb.RepoMetadata,
 	}
 
 	return foundManifestMetadataMap, foundIndexDataMap, nil
+}
+
+// FindMediaTypeForDigest will look into the buckets for a certain digest. Depending on which bucket that
+// digest is found the corresponding mediatype is returned.
+func FindMediaTypeForDigest(metaDB mTypes.MetaDB, digest godigest.Digest) (bool, string) {
+	_, err := metaDB.GetManifestData(digest)
+	if err == nil {
+		return true, ispec.MediaTypeImageManifest
+	}
+
+	_, err = metaDB.GetIndexData(digest)
+	if err == nil {
+		return true, ispec.MediaTypeImageIndex
+	}
+
+	return false, ""
+}
+
+func GetImageDescriptor(metaDB mTypes.MetaDB, repo, tag string) (mTypes.Descriptor, error) {
+	repoMeta, err := metaDB.GetRepoMeta(repo)
+	if err != nil {
+		return mTypes.Descriptor{}, err
+	}
+
+	imageDescriptor, ok := repoMeta.Tags[tag]
+	if !ok {
+		return mTypes.Descriptor{}, zerr.ErrTagMetaNotFound
+	}
+
+	return imageDescriptor, nil
 }

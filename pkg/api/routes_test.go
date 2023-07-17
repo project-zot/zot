@@ -30,7 +30,7 @@ import (
 	"zotregistry.io/zot/pkg/api/constants"
 	"zotregistry.io/zot/pkg/extensions"
 	extconf "zotregistry.io/zot/pkg/extensions/config"
-	"zotregistry.io/zot/pkg/meta/repodb"
+	mTypes "zotregistry.io/zot/pkg/meta/types"
 	localCtx "zotregistry.io/zot/pkg/requestcontext"
 	storageTypes "zotregistry.io/zot/pkg/storage/types"
 	"zotregistry.io/zot/pkg/test"
@@ -1434,7 +1434,7 @@ func TestRoutes(t *testing.T) {
 			request, _ := http.NewRequestWithContext(ctx, http.MethodPost, baseURL, bytes.NewReader([]byte{}))
 			response := httptest.NewRecorder()
 
-			extensions.CreateAPIKey(response, request, ctlr.RepoDB, ctlr.CookieStore, ctlr.Log)
+			extensions.CreateAPIKey(response, request, ctlr.MetaDB, ctlr.CookieStore, ctlr.Log)
 
 			resp := response.Result()
 			defer resp.Body.Close()
@@ -1451,7 +1451,7 @@ func TestRoutes(t *testing.T) {
 			request, _ = http.NewRequestWithContext(ctx, http.MethodPost, baseURL, bytes.NewReader([]byte{}))
 			response = httptest.NewRecorder()
 
-			extensions.CreateAPIKey(response, request, ctlr.RepoDB, ctlr.CookieStore, ctlr.Log)
+			extensions.CreateAPIKey(response, request, ctlr.MetaDB, ctlr.CookieStore, ctlr.Log)
 
 			resp = response.Result()
 			defer resp.Body.Close()
@@ -1468,8 +1468,8 @@ func TestRoutes(t *testing.T) {
 			request, _ = http.NewRequestWithContext(ctx, http.MethodPost, baseURL, bytes.NewReader(reqBody))
 			response = httptest.NewRecorder()
 
-			extensions.CreateAPIKey(response, request, mocks.RepoDBMock{
-				AddUserAPIKeyFn: func(ctx context.Context, hashedKey string, apiKeyDetails *repodb.APIKeyDetails) error {
+			extensions.CreateAPIKey(response, request, mocks.MetaDBMock{
+				AddUserAPIKeyFn: func(ctx context.Context, hashedKey string, apiKeyDetails *mTypes.APIKeyDetails) error {
 					return ErrUnexpectedError
 				},
 			}, ctlr.CookieStore, ctlr.Log)
@@ -1486,7 +1486,7 @@ func TestRoutes(t *testing.T) {
 			q.Add("id", "apikeyid")
 			request.URL.RawQuery = q.Encode()
 
-			extensions.RevokeAPIKey(response, request, mocks.RepoDBMock{
+			extensions.RevokeAPIKey(response, request, mocks.MetaDBMock{
 				DeleteUserAPIKeyFn: func(ctx context.Context, id string) error {
 					return ErrUnexpectedError
 				},

@@ -17,8 +17,8 @@ import (
 	"zotregistry.io/zot/pkg/api/constants"
 	zcommon "zotregistry.io/zot/pkg/common"
 	"zotregistry.io/zot/pkg/log"
-	"zotregistry.io/zot/pkg/meta/repodb"
 	"zotregistry.io/zot/pkg/meta/signatures"
+	mTypes "zotregistry.io/zot/pkg/meta/types"
 	"zotregistry.io/zot/pkg/scheduler"
 )
 
@@ -243,21 +243,21 @@ func HandleCertificatesAndPublicKeysUploads(response http.ResponseWriter, reques
 }
 
 func EnablePeriodicSignaturesVerification(config *config.Config, taskScheduler *scheduler.Scheduler,
-	repoDB repodb.RepoDB, log log.Logger,
+	metaDB mTypes.MetaDB, log log.Logger,
 ) {
 	if config.Extensions.Search != nil && *config.Extensions.Search.Enable {
 		ctx := context.Background()
 
-		repos, err := repoDB.GetMultipleRepoMeta(ctx, func(repoMeta repodb.RepoMetadata) bool {
+		repos, err := metaDB.GetMultipleRepoMeta(ctx, func(repoMeta mTypes.RepoMetadata) bool {
 			return true
-		}, repodb.PageInput{})
+		}, mTypes.PageInput{})
 		if err != nil {
 			return
 		}
 
 		generator := &taskGeneratorSigValidity{
 			repos:     repos,
-			repoDB:    repoDB,
+			metaDB:    metaDB,
 			repoIndex: -1,
 			log:       log,
 		}
@@ -269,8 +269,8 @@ func EnablePeriodicSignaturesVerification(config *config.Config, taskScheduler *
 }
 
 type taskGeneratorSigValidity struct {
-	repos     []repodb.RepoMetadata
-	repoDB    repodb.RepoDB
+	repos     []mTypes.RepoMetadata
+	metaDB    mTypes.MetaDB
 	repoIndex int
 	done      bool
 	log       log.Logger
@@ -285,7 +285,7 @@ func (gen *taskGeneratorSigValidity) Next() (scheduler.Task, error) {
 		return nil, nil
 	}
 
-	return NewValidityTask(gen.repoDB, gen.repos[gen.repoIndex], gen.log), nil
+	return NewValidityTask(gen.metaDB, gen.repos[gen.repoIndex], gen.log), nil
 }
 
 func (gen *taskGeneratorSigValidity) IsDone() bool {
@@ -297,9 +297,9 @@ func (gen *taskGeneratorSigValidity) Reset() {
 	gen.repoIndex = -1
 	ctx := context.Background()
 
-	repos, err := gen.repoDB.GetMultipleRepoMeta(ctx, func(repoMeta repodb.RepoMetadata) bool {
+	repos, err := gen.metaDB.GetMultipleRepoMeta(ctx, func(repoMeta mTypes.RepoMetadata) bool {
 		return true
-	}, repodb.PageInput{})
+	}, mTypes.PageInput{})
 	if err != nil {
 		return
 	}
@@ -308,13 +308,13 @@ func (gen *taskGeneratorSigValidity) Reset() {
 }
 
 type validityTask struct {
-	repoDB repodb.RepoDB
-	repo   repodb.RepoMetadata
+	metaDB mTypes.MetaDB
+	repo   mTypes.RepoMetadata
 	log    log.Logger
 }
 
-func NewValidityTask(repoDB repodb.RepoDB, repo repodb.RepoMetadata, log log.Logger) *validityTask {
-	return &validityTask{repoDB, repo, log}
+func NewValidityTask(metaDB mTypes.MetaDB, repo mTypes.RepoMetadata, log log.Logger) *validityTask {
+	return &validityTask{metaDB, repo, log}
 }
 
 func (validityT *validityTask) DoWork() error {
@@ -322,7 +322,7 @@ func (validityT *validityTask) DoWork() error {
 
 	for signedManifest, sigs := range validityT.repo.Signatures {
 		if len(sigs[signatures.CosignSignature]) != 0 || len(sigs[signatures.NotationSignature]) != 0 {
-			err := validityT.repoDB.UpdateSignaturesValidity(validityT.repo.Name, digest.Digest(signedManifest))
+			err := validityT.metaDB.UpdateSignaturesValidity(validityT.repo.Name, digest.Digest(signedManifest))
 			if err != nil {
 				validityT.log.Info().Msg("error while verifying signatures")
 

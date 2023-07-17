@@ -20,7 +20,8 @@ import (
 	"zotregistry.io/zot/pkg/common"
 	"zotregistry.io/zot/pkg/extensions/monitoring"
 	"zotregistry.io/zot/pkg/log"
-	"zotregistry.io/zot/pkg/meta/repodb"
+	"zotregistry.io/zot/pkg/meta"
+	mTypes "zotregistry.io/zot/pkg/meta/types"
 	"zotregistry.io/zot/pkg/storage"
 	storageCommon "zotregistry.io/zot/pkg/storage/common"
 	storageConstants "zotregistry.io/zot/pkg/storage/constants"
@@ -31,14 +32,14 @@ import (
 type LocalRegistry struct {
 	storeController storage.StoreController
 	tempStorage     OciLayoutStorage
-	repoDB          repodb.RepoDB
+	metaDB          mTypes.MetaDB
 	log             log.Logger
 }
 
-func NewLocalRegistry(storeController storage.StoreController, repoDB repodb.RepoDB, log log.Logger) Local {
+func NewLocalRegistry(storeController storage.StoreController, metaDB mTypes.MetaDB, log log.Logger) Local {
 	return &LocalRegistry{
 		storeController: storeController,
-		repoDB:          repoDB,
+		metaDB:          metaDB,
 		// first we sync from remote (using containers/image copy from docker:// to oci:) to a temp imageStore
 		// then we copy the image from tempStorage to zot's storage using ImageStore APIs
 		tempStorage: NewOciLayoutStorage(storeController),
@@ -163,14 +164,14 @@ func (registry *LocalRegistry) CommitImage(imageReference types.ImageReference, 
 			return err
 		}
 
-		if registry.repoDB != nil {
-			err = repodb.SetImageMetaFromInput(repo, reference, mediaType,
-				manifestDigest, manifestBlob, imageStore, registry.repoDB, registry.log)
+		if registry.metaDB != nil {
+			err = meta.SetImageMetaFromInput(repo, reference, mediaType,
+				manifestDigest, manifestBlob, imageStore, registry.metaDB, registry.log)
 			if err != nil {
-				return fmt.Errorf("repoDB: failed to set metadata for image '%s %s': %w", repo, reference, err)
+				return fmt.Errorf("metaDB: failed to set metadata for image '%s %s': %w", repo, reference, err)
 			}
 
-			registry.log.Debug().Str("repo", repo).Str("reference", reference).Msg("repoDB: successfully set metadata for image")
+			registry.log.Debug().Str("repo", repo).Str("reference", reference).Msg("metaDB: successfully set metadata for image")
 		}
 	}
 
@@ -221,9 +222,9 @@ func (registry *LocalRegistry) copyManifest(repo string, manifestContent []byte,
 		return err
 	}
 
-	if registry.repoDB != nil {
-		err = repodb.SetImageMetaFromInput(repo, reference, ispec.MediaTypeImageManifest,
-			digest, manifestContent, imageStore, registry.repoDB, registry.log)
+	if registry.metaDB != nil {
+		err = meta.SetImageMetaFromInput(repo, reference, ispec.MediaTypeImageManifest,
+			digest, manifestContent, imageStore, registry.metaDB, registry.log)
 		if err != nil {
 			registry.log.Error().Str("errorType", common.TypeOf(err)).
 				Err(err).Msg("couldn't set metadata from input")

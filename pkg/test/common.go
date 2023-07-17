@@ -49,7 +49,7 @@ import (
 	"oras.land/oras-go/v2/registry/remote/auth"
 
 	zerr "zotregistry.io/zot/errors"
-	"zotregistry.io/zot/pkg/meta/repodb"
+	mTypes "zotregistry.io/zot/pkg/meta/types"
 	"zotregistry.io/zot/pkg/storage"
 	storageCommon "zotregistry.io/zot/pkg/storage/common"
 	"zotregistry.io/zot/pkg/test/inject"
@@ -133,13 +133,13 @@ func (mi *MultiarchImage) Digest() (godigest.Digest, error) {
 	return godigest.FromBytes(indexBlob), nil
 }
 
-func (mi *MultiarchImage) IndexData() (repodb.IndexData, error) {
+func (mi *MultiarchImage) IndexData() (mTypes.IndexData, error) {
 	indexBlob, err := json.Marshal(mi.Index)
 	if err != nil {
-		return repodb.IndexData{}, err
+		return mTypes.IndexData{}, err
 	}
 
-	return repodb.IndexData{IndexBlob: indexBlob}, nil
+	return mTypes.IndexData{IndexBlob: indexBlob}, nil
 }
 
 func GetFreePort() string {

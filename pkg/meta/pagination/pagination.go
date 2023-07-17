@@ -1,4 +1,4 @@
-package repodb
+package pagination
 
 import (
 	"fmt"
@@ -6,13 +6,14 @@ import (
 
 	zerr "zotregistry.io/zot/errors"
 	"zotregistry.io/zot/pkg/common"
+	mTypes "zotregistry.io/zot/pkg/meta/types"
 )
 
 // PageFinder permits keeping a pool of objects using Add
 // and returning a specific page.
 type PageFinder interface {
-	Add(detailedRepoMeta DetailedRepoMeta)
-	Page() ([]RepoMetadata, common.PageInfo)
+	Add(detailedRepoMeta mTypes.DetailedRepoMeta)
+	Page() ([]mTypes.RepoMetadata, common.PageInfo)
 	Reset()
 }
 
@@ -21,13 +22,13 @@ type PageFinder interface {
 type RepoPageFinder struct {
 	limit      int
 	offset     int
-	sortBy     SortCriteria
-	pageBuffer []DetailedRepoMeta
+	sortBy     mTypes.SortCriteria
+	pageBuffer []mTypes.DetailedRepoMeta
 }
 
-func NewBaseRepoPageFinder(limit, offset int, sortBy SortCriteria) (*RepoPageFinder, error) {
+func NewBaseRepoPageFinder(limit, offset int, sortBy mTypes.SortCriteria) (*RepoPageFinder, error) {
 	if sortBy == "" {
-		sortBy = AlphabeticAsc
+		sortBy = mTypes.AlphabeticAsc
 	}
 
 	if limit < 0 {
@@ -38,7 +39,7 @@ func NewBaseRepoPageFinder(limit, offset int, sortBy SortCriteria) (*RepoPageFin
 		return nil, zerr.ErrOffsetIsNegative
 	}
 
-	if _, found := SortFunctions()[sortBy]; !found {
+	if _, found := mTypes.SortFunctions()[sortBy]; !found {
 		return nil, fmt.Errorf("sorting repos by '%s' is not supported %w",
 			sortBy, zerr.ErrSortCriteriaNotSupported)
 	}
@@ -47,26 +48,26 @@ func NewBaseRepoPageFinder(limit, offset int, sortBy SortCriteria) (*RepoPageFin
 		limit:      limit,
 		offset:     offset,
 		sortBy:     sortBy,
-		pageBuffer: make([]DetailedRepoMeta, 0, limit),
+		pageBuffer: make([]mTypes.DetailedRepoMeta, 0, limit),
 	}, nil
 }
 
 func (bpt *RepoPageFinder) Reset() {
-	bpt.pageBuffer = []DetailedRepoMeta{}
+	bpt.pageBuffer = []mTypes.DetailedRepoMeta{}
 }
 
-func (bpt *RepoPageFinder) Add(namedRepoMeta DetailedRepoMeta) {
+func (bpt *RepoPageFinder) Add(namedRepoMeta mTypes.DetailedRepoMeta) {
 	bpt.pageBuffer = append(bpt.pageBuffer, namedRepoMeta)
 }
 
-func (bpt *RepoPageFinder) Page() ([]RepoMetadata, common.PageInfo) {
+func (bpt *RepoPageFinder) Page() ([]mTypes.RepoMetadata, common.PageInfo) {
 	if len(bpt.pageBuffer) == 0 {
-		return []RepoMetadata{}, common.PageInfo{}
+		return []mTypes.RepoMetadata{}, common.PageInfo{}
 	}
 
 	pageInfo := &common.PageInfo{}
 
-	sort.Slice(bpt.pageBuffer, SortFunctions()[bpt.sortBy](bpt.pageBuffer))
+	sort.Slice(bpt.pageBuffer, mTypes.SortFunctions()[bpt.sortBy](bpt.pageBuffer))
 
 	// the offset and limit are calculatd in terms of repos counted
 	start := bpt.offset
@@ -91,7 +92,7 @@ func (bpt *RepoPageFinder) Page() ([]RepoMetadata, common.PageInfo) {
 		pageInfo.ItemCount = len(detailedReposPage)
 	}
 
-	repos := make([]RepoMetadata, 0, len(detailedReposPage))
+	repos := make([]mTypes.RepoMetadata, 0, len(detailedReposPage))
 
 	for _, drm := range detailedReposPage {
 		repos = append(repos, drm.RepoMetadata)
@@ -105,13 +106,13 @@ func (bpt *RepoPageFinder) Page() ([]RepoMetadata, common.PageInfo) {
 type ImagePageFinder struct {
 	limit      int
 	offset     int
-	sortBy     SortCriteria
-	pageBuffer []DetailedRepoMeta
+	sortBy     mTypes.SortCriteria
+	pageBuffer []mTypes.DetailedRepoMeta
 }
 
-func NewBaseImagePageFinder(limit, offset int, sortBy SortCriteria) (*ImagePageFinder, error) {
+func NewBaseImagePageFinder(limit, offset int, sortBy mTypes.SortCriteria) (*ImagePageFinder, error) {
 	if sortBy == "" {
-		sortBy = AlphabeticAsc
+		sortBy = mTypes.AlphabeticAsc
 	}
 
 	if limit < 0 {
@@ -122,7 +123,7 @@ func NewBaseImagePageFinder(limit, offset int, sortBy SortCriteria) (*ImagePageF
 		return nil, zerr.ErrOffsetIsNegative
 	}
 
-	if _, found := SortFunctions()[sortBy]; !found {
+	if _, found := mTypes.SortFunctions()[sortBy]; !found {
 		return nil, fmt.Errorf("sorting repos by '%s' is not supported %w",
 			sortBy, zerr.ErrSortCriteriaNotSupported)
 	}
@@ -131,21 +132,21 @@ func NewBaseImagePageFinder(limit, offset int, sortBy SortCriteria) (*ImagePageF
 		limit:      limit,
 		offset:     offset,
 		sortBy:     sortBy,
-		pageBuffer: make([]DetailedRepoMeta, 0, limit),
+		pageBuffer: make([]mTypes.DetailedRepoMeta, 0, limit),
 	}, nil
 }
 
 func (bpt *ImagePageFinder) Reset() {
-	bpt.pageBuffer = []DetailedRepoMeta{}
+	bpt.pageBuffer = []mTypes.DetailedRepoMeta{}
 }
 
-func (bpt *ImagePageFinder) Add(namedRepoMeta DetailedRepoMeta) {
+func (bpt *ImagePageFinder) Add(namedRepoMeta mTypes.DetailedRepoMeta) {
 	bpt.pageBuffer = append(bpt.pageBuffer, namedRepoMeta)
 }
 
-func (bpt *ImagePageFinder) Page() ([]RepoMetadata, common.PageInfo) {
+func (bpt *ImagePageFinder) Page() ([]mTypes.RepoMetadata, common.PageInfo) {
 	if len(bpt.pageBuffer) == 0 {
-		return []RepoMetadata{}, common.PageInfo{}
+		return []mTypes.RepoMetadata{}, common.PageInfo{}
 	}
 
 	pageInfo := common.PageInfo{}
@@ -155,7 +156,7 @@ func (bpt *ImagePageFinder) Page() ([]RepoMetadata, common.PageInfo) {
 		pageInfo.TotalCount += len(repo.Tags)
 	}
 
-	sort.Slice(bpt.pageBuffer, SortFunctions()[bpt.sortBy](bpt.pageBuffer))
+	sort.Slice(bpt.pageBuffer, mTypes.SortFunctions()[bpt.sortBy](bpt.pageBuffer))
 
 	repoStartIndex := 0
 	tagStartIndex := 0
@@ -164,7 +165,7 @@ func (bpt *ImagePageFinder) Page() ([]RepoMetadata, common.PageInfo) {
 	remainingOffset := bpt.offset
 	remainingLimit := bpt.limit
 
-	repos := make([]RepoMetadata, 0)
+	repos := make([]mTypes.RepoMetadata, 0)
 
 	if remainingOffset == 0 && remainingLimit == 0 {
 		for _, drm := range bpt.pageBuffer {
@@ -191,11 +192,11 @@ func (bpt *ImagePageFinder) Page() ([]RepoMetadata, common.PageInfo) {
 
 	// offset is larger than the number of tags
 	if repoStartIndex >= len(bpt.pageBuffer) {
-		return []RepoMetadata{}, common.PageInfo{}
+		return []mTypes.RepoMetadata{}, common.PageInfo{}
 	}
 
 	// finish counting remaining tags inside the first repo meta
-	partialTags := map[string]Descriptor{}
+	partialTags := map[string]mTypes.Descriptor{}
 	firstRepoMeta := bpt.pageBuffer[repoStartIndex].RepoMetadata
 
 	tags := make([]string, 0, len(firstRepoMeta.Tags))
@@ -230,7 +231,7 @@ func (bpt *ImagePageFinder) Page() ([]RepoMetadata, common.PageInfo) {
 		repoMeta := bpt.pageBuffer[i].RepoMetadata
 
 		if len(repoMeta.Tags) > remainingLimit {
-			partialTags := map[string]Descriptor{}
+			partialTags := map[string]mTypes.Descriptor{}
 
 			tags := make([]string, 0, len(repoMeta.Tags))
 			for k := range repoMeta.Tags {

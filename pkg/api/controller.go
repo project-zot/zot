@@ -24,8 +24,8 @@ import (
 	ext "zotregistry.io/zot/pkg/extensions"
 	"zotregistry.io/zot/pkg/extensions/monitoring"
 	"zotregistry.io/zot/pkg/log"
-	"zotregistry.io/zot/pkg/meta/repodb"
-	"zotregistry.io/zot/pkg/meta/repodb/repodbfactory"
+	"zotregistry.io/zot/pkg/meta"
+	mTypes "zotregistry.io/zot/pkg/meta/types"
 	"zotregistry.io/zot/pkg/scheduler"
 	"zotregistry.io/zot/pkg/storage"
 )
@@ -39,7 +39,7 @@ const (
 type Controller struct {
 	Config          *config.Config
 	Router          *mux.Router
-	RepoDB          repodb.RepoDB
+	MetaDB          mTypes.MetaDB
 	StoreController storage.StoreController
 	Log             log.Logger
 	Audit           *log.Logger
@@ -229,7 +229,7 @@ func (c *Controller) Init(reloadCtx context.Context) error {
 		return err
 	}
 
-	if err := c.InitRepoDB(reloadCtx); err != nil {
+	if err := c.InitMetaDB(reloadCtx); err != nil {
 		return err
 	}
 
@@ -241,7 +241,7 @@ func (c *Controller) Init(reloadCtx context.Context) error {
 func (c *Controller) InitCVEInfo() {
 	// Enable CVE extension if extension config is provided
 	if c.Config != nil && c.Config.Extensions != nil {
-		c.CveInfo = ext.GetCVEInfo(c.Config, c.StoreController, c.RepoDB, c.Log)
+		c.CveInfo = ext.GetCVEInfo(c.Config, c.StoreController, c.MetaDB, c.Log)
 	}
 }
 
@@ -258,11 +258,11 @@ func (c *Controller) InitImageStore() error {
 	return nil
 }
 
-func (c *Controller) InitRepoDB(reloadCtx context.Context) error {
-	// init repoDB if search is enabled or authn enabled (need to store user profiles) or apikey ext is enabled
+func (c *Controller) InitMetaDB(reloadCtx context.Context) error {
+	// init metaDB if search is enabled or authn enabled (need to store user profiles) or apikey ext is enabled
 	if (c.Config.Extensions != nil && c.Config.Extensions.Search != nil && *c.Config.Extensions.Search.Enable) ||
 		isAuthnEnabled(c.Config) || isOpenIDAuthEnabled(c.Config) || isAPIKeyEnabled(c.Config) {
-		driver, err := repodbfactory.New(c.Config.Storage.StorageConfig, c.Log) //nolint:contextcheck
+		driver, err := meta.New(c.Config.Storage.StorageConfig, c.Log) //nolint:contextcheck
 		if err != nil {
 			return err
 		}
@@ -272,12 +272,12 @@ func (c *Controller) InitRepoDB(reloadCtx context.Context) error {
 			return err
 		}
 
-		err = repodb.ParseStorage(driver, c.StoreController, c.Log)
+		err = meta.ParseStorage(driver, c.StoreController, c.Log)
 		if err != nil {
 			return err
 		}
 
-		c.RepoDB = driver
+		c.MetaDB = driver
 	}
 
 	return nil
@@ -335,7 +335,7 @@ func (c *Controller) StartBackgroundTasks(reloadCtx context.Context) {
 	// Enable extensions if extension config is provided for DefaultStore
 	if c.Config != nil && c.Config.Extensions != nil {
 		ext.EnableMetricsExtension(c.Config, c.Log, c.Config.Storage.RootDirectory)
-		ext.EnableSearchExtension(c.Config, c.StoreController, c.RepoDB, taskScheduler, c.CveInfo, c.Log)
+		ext.EnableSearchExtension(c.Config, c.StoreController, c.MetaDB, taskScheduler, c.CveInfo, c.Log)
 	}
 
 	if c.Config.Storage.SubPaths != nil {
@@ -361,7 +361,7 @@ func (c *Controller) StartBackgroundTasks(reloadCtx context.Context) {
 	if c.Config.Extensions != nil {
 		ext.EnableScrubExtension(c.Config, c.Log, c.StoreController, taskScheduler)
 
-		syncOnDemand, err := ext.EnableSyncExtension(c.Config, c.RepoDB, c.StoreController, taskScheduler, c.Log)
+		syncOnDemand, err := ext.EnableSyncExtension(c.Config, c.MetaDB, c.StoreController, taskScheduler, c.Log)
 		if err != nil {
 			c.Log.Error().Err(err).Msg("unable to start sync extension")
 		}
@@ -371,7 +371,7 @@ func (c *Controller) StartBackgroundTasks(reloadCtx context.Context) {
 
 	if c.Config.Extensions != nil {
 		if c.Config.Extensions.Mgmt != nil && *c.Config.Extensions.Mgmt.Enable {
-			ext.EnablePeriodicSignaturesVerification(c.Config, taskScheduler, c.RepoDB, c.Log) //nolint: contextcheck
+			ext.EnablePeriodicSignaturesVerification(c.Config, taskScheduler, c.MetaDB, c.Log) //nolint: contextcheck
 		}
 	}
 }

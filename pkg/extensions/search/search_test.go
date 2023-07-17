@@ -38,7 +38,7 @@ import (
 	cveinfo "zotregistry.io/zot/pkg/extensions/search/cve"
 	cvemodel "zotregistry.io/zot/pkg/extensions/search/cve/model"
 	"zotregistry.io/zot/pkg/log"
-	"zotregistry.io/zot/pkg/meta/repodb"
+	mTypes "zotregistry.io/zot/pkg/meta/types"
 	"zotregistry.io/zot/pkg/storage"
 	storageConstants "zotregistry.io/zot/pkg/storage/constants"
 	"zotregistry.io/zot/pkg/storage/local"
@@ -222,8 +222,8 @@ func uploadNewRepoTag(tag string, repoName string, baseURL string, layers [][]by
 	return err
 }
 
-func getMockCveInfo(repoDB repodb.RepoDB, log log.Logger) cveinfo.CveInfo {
-	// RepoDB loaded with initial data, mock the scanner
+func getMockCveInfo(metaDB mTypes.MetaDB, log log.Logger) cveinfo.CveInfo {
+	// MetaDB loaded with initial data, mock the scanner
 	severities := map[string]int{
 		"UNKNOWN":  0,
 		"LOW":      1,
@@ -320,7 +320,7 @@ func getMockCveInfo(repoDB repodb.RepoDB, log log.Logger) cveinfo.CveInfo {
 			imageDir := repo
 			inputTag := reference
 
-			repoMeta, err := repoDB.GetRepoMeta(imageDir)
+			repoMeta, err := metaDB.GetRepoMeta(imageDir)
 			if err != nil {
 				return false, err
 			}
@@ -343,7 +343,7 @@ func getMockCveInfo(repoDB repodb.RepoDB, log log.Logger) cveinfo.CveInfo {
 				return false, err
 			}
 
-			manifestData, err := repoDB.GetManifestData(manifestDigest)
+			manifestData, err := metaDB.GetManifestData(manifestDigest)
 			if err != nil {
 				return false, err
 			}
@@ -373,7 +373,7 @@ func getMockCveInfo(repoDB repodb.RepoDB, log log.Logger) cveinfo.CveInfo {
 	return &cveinfo.BaseCveInfo{
 		Log:     log,
 		Scanner: scanner,
-		RepoDB:  repoDB,
+		MetaDB:  metaDB,
 	}
 }
 
@@ -715,7 +715,7 @@ func TestRepoListWithNewestImage(t *testing.T) {
 			panic(err)
 		}
 
-		ctlr.CveInfo = getMockCveInfo(ctlr.RepoDB, ctlr.Log)
+		ctlr.CveInfo = getMockCveInfo(ctlr.MetaDB, ctlr.Log)
 
 		go func() {
 			if err := ctlr.Run(ctx); !errors.Is(err, http.ErrServerClosed) {
@@ -3493,7 +3493,7 @@ func TestGlobalSearch(t *testing.T) {
 			panic(err)
 		}
 
-		ctlr.CveInfo = getMockCveInfo(ctlr.RepoDB, ctlr.Log)
+		ctlr.CveInfo = getMockCveInfo(ctlr.MetaDB, ctlr.Log)
 
 		go func() {
 			if err := ctlr.Run(ctx); !errors.Is(err, http.ErrServerClosed) {
@@ -4360,7 +4360,7 @@ func TestGlobalSearchPagination(t *testing.T) {
 	})
 }
 
-func TestRepoDBWhenSigningImages(t *testing.T) {
+func TestMetaDBWhenSigningImages(t *testing.T) {
 	Convey("SigningImages", t, func() {
 		subpath := "/a"
 
@@ -4546,9 +4546,9 @@ func TestRepoDBWhenSigningImages(t *testing.T) {
 			})
 
 			Convey("image is a signature, AddManifestSignature fails", func() {
-				ctlr.RepoDB = mocks.RepoDBMock{
+				ctlr.MetaDB = mocks.MetaDBMock{
 					AddManifestSignatureFn: func(repo string, signedManifestDigest godigest.Digest,
-						sm repodb.SignatureMetadata,
+						sm mTypes.SignatureMetadata,
 					) error {
 						return ErrTestError
 					},
@@ -4613,7 +4613,7 @@ func TestRepoDBWhenSigningImages(t *testing.T) {
 	})
 }
 
-func TestRepoDBWhenPushingImages(t *testing.T) {
+func TestMetaDBWhenPushingImages(t *testing.T) {
 	Convey("Cover errors when pushing", t, func() {
 		dir := t.TempDir()
 
@@ -4634,8 +4634,8 @@ func TestRepoDBWhenPushingImages(t *testing.T) {
 		defer ctlrManager.StopServer()
 
 		Convey("SetManifestMeta fails", func() {
-			ctlr.RepoDB = mocks.RepoDBMock{
-				SetManifestDataFn: func(manifestDigest godigest.Digest, mm repodb.ManifestData) error {
+			ctlr.MetaDB = mocks.MetaDBMock{
+				SetManifestDataFn: func(manifestDigest godigest.Digest, mm mTypes.ManifestData) error {
 					return ErrTestError
 				},
 			}
@@ -4670,7 +4670,7 @@ func TestRepoDBWhenPushingImages(t *testing.T) {
 		})
 
 		Convey("SetManifestMeta succeeds but SetRepoReference fails", func() {
-			ctlr.RepoDB = mocks.RepoDBMock{
+			ctlr.MetaDB = mocks.MetaDBMock{
 				SetRepoReferenceFn: func(repo, reference string, manifestDigest godigest.Digest, mediaType string) error {
 					return ErrTestError
 				},
@@ -4705,7 +4705,7 @@ func TestRepoDBWhenPushingImages(t *testing.T) {
 	})
 }
 
-func TestRepoDBIndexOperations(t *testing.T) {
+func TestMetaDBIndexOperations(t *testing.T) {
 	Convey("Idex Operations BoltDB", t, func() {
 		dir := t.TempDir()
 
@@ -4726,11 +4726,11 @@ func TestRepoDBIndexOperations(t *testing.T) {
 		ctlrManager.StartAndWait(port)
 		defer ctlrManager.StopServer()
 
-		RunRepoDBIndexTests(baseURL, port)
+		RunMetaDBIndexTests(baseURL, port)
 	})
 }
 
-func RunRepoDBIndexTests(baseURL, port string) {
+func RunMetaDBIndexTests(baseURL, port string) {
 	Convey("Push test index", func() {
 		const repo = "repo"
 
@@ -5351,7 +5351,7 @@ func RunRepoDBIndexTests(baseURL, port string) {
 	})
 }
 
-func TestRepoDBWhenReadingImages(t *testing.T) {
+func TestMetaDBWhenReadingImages(t *testing.T) {
 	Convey("Push test image", t, func() {
 		dir := t.TempDir()
 
@@ -5422,7 +5422,7 @@ func TestRepoDBWhenReadingImages(t *testing.T) {
 		})
 
 		Convey("Error when incrementing", func() {
-			ctlr.RepoDB = mocks.RepoDBMock{
+			ctlr.MetaDB = mocks.MetaDBMock{
 				IncrementImageDownloadsFn: func(repo string, tag string) error {
 					return ErrTestError
 				},
@@ -5435,7 +5435,7 @@ func TestRepoDBWhenReadingImages(t *testing.T) {
 	})
 }
 
-func TestRepoDBWhenDeletingImages(t *testing.T) {
+func TestMetaDBWhenDeletingImages(t *testing.T) {
 	Convey("Setting up zot repo with test images", t, func() {
 		dir := t.TempDir()
 		port := GetFreePort()
@@ -5747,7 +5747,7 @@ func TestRepoDBWhenDeletingImages(t *testing.T) {
 			So(err, ShouldNotBeNil)
 			So(statusCode, ShouldEqual, -1)
 
-			// ------- Delete the referrer and see if it disappears from repoDB also
+			// ------- Delete the referrer and see if it disappears from metaDB also
 			statusCode, err = DeleteImage("repo1", referrerImage.Reference, baseURL)
 			So(err, ShouldBeNil)
 			So(statusCode, ShouldEqual, http.StatusAccepted)
@@ -5865,7 +5865,7 @@ func TestRepoDBWhenDeletingImages(t *testing.T) {
 					},
 				}
 
-				ctlr.RepoDB = mocks.RepoDBMock{
+				ctlr.MetaDB = mocks.MetaDBMock{
 					DeleteRepoTagFn: func(repo, tag string) error { return ErrTestError },
 				}
 
@@ -6304,7 +6304,7 @@ func TestImageSummary(t *testing.T) {
 
 		So(len(imgSummaryResponse.Errors), ShouldEqual, 1)
 		So(imgSummaryResponse.Errors[0].Message,
-			ShouldContainSubstring, "repodb: repo metadata not found for given repo name")
+			ShouldContainSubstring, "metadb: repo metadata not found for given repo name")
 
 		t.Log("starting Test retrieve image with bad tag")
 		// gql is parametrized with the repo.
@@ -6395,7 +6395,7 @@ func TestImageSummary(t *testing.T) {
 			panic(err)
 		}
 
-		ctlr.CveInfo = getMockCveInfo(ctlr.RepoDB, ctlr.Log)
+		ctlr.CveInfo = getMockCveInfo(ctlr.MetaDB, ctlr.Log)
 
 		go func() {
 			if err := ctlr.Run(ctx); !errors.Is(err, http.ErrServerClosed) {

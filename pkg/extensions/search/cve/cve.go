@@ -13,7 +13,7 @@ import (
 	cvemodel "zotregistry.io/zot/pkg/extensions/search/cve/model"
 	"zotregistry.io/zot/pkg/extensions/search/cve/trivy"
 	"zotregistry.io/zot/pkg/log"
-	"zotregistry.io/zot/pkg/meta/repodb"
+	mTypes "zotregistry.io/zot/pkg/meta/types"
 	"zotregistry.io/zot/pkg/storage"
 )
 
@@ -39,25 +39,25 @@ type Scanner interface {
 type BaseCveInfo struct {
 	Log     log.Logger
 	Scanner Scanner
-	RepoDB  repodb.RepoDB
+	MetaDB  mTypes.MetaDB
 }
 
-func NewCVEInfo(storeController storage.StoreController, repoDB repodb.RepoDB,
+func NewCVEInfo(storeController storage.StoreController, metaDB mTypes.MetaDB,
 	dbRepository, javaDBRepository string, log log.Logger,
 ) *BaseCveInfo {
-	scanner := trivy.NewScanner(storeController, repoDB, dbRepository, javaDBRepository, log)
+	scanner := trivy.NewScanner(storeController, metaDB, dbRepository, javaDBRepository, log)
 
 	return &BaseCveInfo{
 		Log:     log,
 		Scanner: scanner,
-		RepoDB:  repoDB,
+		MetaDB:  metaDB,
 	}
 }
 
 func (cveinfo BaseCveInfo) GetImageListForCVE(repo, cveID string) ([]cvemodel.TagInfo, error) {
 	imgList := make([]cvemodel.TagInfo, 0)
 
-	repoMeta, err := cveinfo.RepoDB.GetRepoMeta(repo)
+	repoMeta, err := cveinfo.MetaDB.GetRepoMeta(repo)
 	if err != nil {
 		cveinfo.Log.Error().Err(err).Str("repository", repo).Str("cve-id", cveID).
 			Msg("unable to get list of tags from repo")
@@ -104,7 +104,7 @@ func (cveinfo BaseCveInfo) GetImageListForCVE(repo, cveID string) ([]cvemodel.Ta
 }
 
 func (cveinfo BaseCveInfo) GetImageListWithCVEFixed(repo, cveID string) ([]cvemodel.TagInfo, error) {
-	repoMeta, err := cveinfo.RepoDB.GetRepoMeta(repo)
+	repoMeta, err := cveinfo.MetaDB.GetRepoMeta(repo)
 	if err != nil {
 		cveinfo.Log.Error().Err(err).Str("repository", repo).Str("cve-id", cveID).
 			Msg("unable to get list of tags from repo")
@@ -120,7 +120,7 @@ func (cveinfo BaseCveInfo) GetImageListWithCVEFixed(repo, cveID string) ([]cvemo
 		case ispec.MediaTypeImageManifest:
 			manifestDigestStr := descriptor.Digest
 
-			tagInfo, err := getTagInfoForManifest(tag, manifestDigestStr, cveinfo.RepoDB)
+			tagInfo, err := getTagInfoForManifest(tag, manifestDigestStr, cveinfo.MetaDB)
 			if err != nil {
 				cveinfo.Log.Error().Err(err).Str("repository", repo).Str("tag", tag).
 					Str("cve-id", cveID).Msg("unable to retrieve manifest and config")
@@ -136,7 +136,7 @@ func (cveinfo BaseCveInfo) GetImageListWithCVEFixed(repo, cveID string) ([]cvemo
 		case ispec.MediaTypeImageIndex:
 			indexDigestStr := descriptor.Digest
 
-			indexContent, err := getIndexContent(cveinfo.RepoDB, indexDigestStr)
+			indexContent, err := getIndexContent(cveinfo.MetaDB, indexDigestStr)
 			if err != nil {
 				continue
 			}
@@ -145,7 +145,7 @@ func (cveinfo BaseCveInfo) GetImageListWithCVEFixed(repo, cveID string) ([]cvemo
 			allManifests := []cvemodel.DescriptorInfo{}
 
 			for _, manifest := range indexContent.Manifests {
-				tagInfo, err := getTagInfoForManifest(tag, manifest.Digest.String(), cveinfo.RepoDB)
+				tagInfo, err := getTagInfoForManifest(tag, manifest.Digest.String(), cveinfo.MetaDB)
 				if err != nil {
 					cveinfo.Log.Error().Err(err).Str("repository", repo).Str("tag", tag).
 						Str("cve-id", cveID).Msg("unable to retrieve manifest and config")
@@ -226,8 +226,8 @@ func mostRecentUpdate(allManifests []cvemodel.DescriptorInfo) time.Time {
 	return timeStamp
 }
 
-func getTagInfoForManifest(tag, manifestDigestStr string, repoDB repodb.RepoDB) (cvemodel.TagInfo, error) {
-	configContent, manifestDigest, err := getConfigAndDigest(repoDB, manifestDigestStr)
+func getTagInfoForManifest(tag, manifestDigestStr string, metaDB mTypes.MetaDB) (cvemodel.TagInfo, error) {
+	configContent, manifestDigest, err := getConfigAndDigest(metaDB, manifestDigestStr)
 	if err != nil {
 		return cvemodel.TagInfo{}, err
 	}
@@ -279,13 +279,13 @@ func (cveinfo *BaseCveInfo) isManifestVulnerable(repo, tag, manifestDigestStr, c
 	return hasCVE
 }
 
-func getIndexContent(repoDB repodb.RepoDB, indexDigestStr string) (ispec.Index, error) {
+func getIndexContent(metaDB mTypes.MetaDB, indexDigestStr string) (ispec.Index, error) {
 	indexDigest, err := godigest.Parse(indexDigestStr)
 	if err != nil {
 		return ispec.Index{}, err
 	}
 
-	indexData, err := repoDB.GetIndexData(indexDigest)
+	indexData, err := metaDB.GetIndexData(indexDigest)
 	if err != nil {
 		return ispec.Index{}, err
 	}
@@ -300,13 +300,13 @@ func getIndexContent(repoDB repodb.RepoDB, indexDigestStr string) (ispec.Index, 
 	return indexContent, nil
 }
 
-func getConfigAndDigest(repoDB repodb.RepoDB, manifestDigestStr string) (ispec.Image, godigest.Digest, error) {
+func getConfigAndDigest(metaDB mTypes.MetaDB, manifestDigestStr string) (ispec.Image, godigest.Digest, error) {
 	manifestDigest, err := godigest.Parse(manifestDigestStr)
 	if err != nil {
 		return ispec.Image{}, "", err
 	}
 
-	manifestData, err := repoDB.GetManifestData(manifestDigest)
+	manifestData, err := metaDB.GetManifestData(manifestDigest)
 	if err != nil {
 		return ispec.Image{}, "", err
 	}

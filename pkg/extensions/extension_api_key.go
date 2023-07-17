@@ -22,10 +22,10 @@ import (
 	"zotregistry.io/zot/pkg/api/constants"
 	zcommon "zotregistry.io/zot/pkg/common"
 	"zotregistry.io/zot/pkg/log"
-	"zotregistry.io/zot/pkg/meta/repodb"
+	mTypes "zotregistry.io/zot/pkg/meta/types"
 )
 
-func SetupAPIKeyRoutes(config *config.Config, router *mux.Router, repoDB repodb.RepoDB,
+func SetupAPIKeyRoutes(config *config.Config, router *mux.Router, metaDB mTypes.MetaDB,
 	cookieStore sessions.Store, log log.Logger,
 ) {
 	if config.Extensions.APIKey != nil && *config.Extensions.APIKey.Enable {
@@ -36,7 +36,7 @@ func SetupAPIKeyRoutes(config *config.Config, router *mux.Router, repoDB repodb.
 		apiKeyRouter := router.PathPrefix(constants.ExtAPIKey).Subrouter()
 		apiKeyRouter.Use(zcommon.ACHeadersHandler(allowedMethods...))
 		apiKeyRouter.Use(zcommon.AddExtensionSecurityHeaders())
-		apiKeyRouter.Methods(allowedMethods...).Handler(HandleAPIKeyRequest(repoDB, cookieStore, log))
+		apiKeyRouter.Methods(allowedMethods...).Handler(HandleAPIKeyRequest(metaDB, cookieStore, log))
 	}
 }
 
@@ -45,17 +45,17 @@ type APIKeyPayload struct { //nolint:revive
 	Scopes []string `json:"scopes"`
 }
 
-func HandleAPIKeyRequest(repoDB repodb.RepoDB, cookieStore sessions.Store,
+func HandleAPIKeyRequest(metaDB mTypes.MetaDB, cookieStore sessions.Store,
 	log log.Logger,
 ) http.Handler {
 	return http.HandlerFunc(func(resp http.ResponseWriter, req *http.Request) {
 		switch req.Method {
 		case http.MethodPost:
-			CreateAPIKey(resp, req, repoDB, cookieStore, log) //nolint:contextcheck
+			CreateAPIKey(resp, req, metaDB, cookieStore, log) //nolint:contextcheck
 
 			return
 		case http.MethodDelete:
-			RevokeAPIKey(resp, req, repoDB, cookieStore, log) //nolint:contextcheck
+			RevokeAPIKey(resp, req, metaDB, cookieStore, log) //nolint:contextcheck
 
 			return
 		}
@@ -71,7 +71,7 @@ func HandleAPIKeyRequest(repoDB repodb.RepoDB, cookieStore sessions.Store,
 // @Failure 401 {string} string "unauthorized"
 // @Failure 500 {string} string "internal server error"
 // @Router /v2/_zot/ext/apikey  [post].
-func CreateAPIKey(resp http.ResponseWriter, req *http.Request, repoDB repodb.RepoDB,
+func CreateAPIKey(resp http.ResponseWriter, req *http.Request, metaDB mTypes.MetaDB,
 	cookieStore sessions.Store, log log.Logger,
 ) {
 	var payload APIKeyPayload
@@ -113,7 +113,7 @@ func CreateAPIKey(resp http.ResponseWriter, req *http.Request, repoDB repodb.Rep
 		return
 	}
 
-	apiKeyDetails := &repodb.APIKeyDetails{
+	apiKeyDetails := &mTypes.APIKeyDetails{
 		CreatedAt:   time.Now(),
 		LastUsed:    time.Now(),
 		CreatorUA:   req.UserAgent(),
@@ -123,7 +123,7 @@ func CreateAPIKey(resp http.ResponseWriter, req *http.Request, repoDB repodb.Rep
 		UUID:        apiKeyID.String(),
 	}
 
-	err = repoDB.AddUserAPIKey(req.Context(), hashedAPIKey, apiKeyDetails)
+	err = metaDB.AddUserAPIKey(req.Context(), hashedAPIKey, apiKeyDetails)
 	if err != nil {
 		log.Error().Err(err).Msg("error storing API key")
 		resp.WriteHeader(http.StatusInternalServerError)
@@ -132,7 +132,7 @@ func CreateAPIKey(resp http.ResponseWriter, req *http.Request, repoDB repodb.Rep
 	}
 
 	apiKeyResponse := struct {
-		repodb.APIKeyDetails
+		mTypes.APIKeyDetails
 		APIKey string `json:"apiKey"`
 	}{
 		APIKey:        fmt.Sprintf("%s%s", constants.APIKeysPrefix, apiKey),
@@ -166,7 +166,7 @@ func CreateAPIKey(resp http.ResponseWriter, req *http.Request, repoDB repodb.Rep
 // @Failure 401 {string} string "unauthorized"
 // @Failure 400 {string} string "bad request"
 // @Router /v2/_zot/ext/apikey?id=UUID [delete].
-func RevokeAPIKey(resp http.ResponseWriter, req *http.Request, repoDB repodb.RepoDB,
+func RevokeAPIKey(resp http.ResponseWriter, req *http.Request, metaDB mTypes.MetaDB,
 	cookieStore sessions.Store, log log.Logger,
 ) {
 	ids, ok := req.URL.Query()["id"]
@@ -178,7 +178,7 @@ func RevokeAPIKey(resp http.ResponseWriter, req *http.Request, repoDB repodb.Rep
 
 	keyID := ids[0]
 
-	err := repoDB.DeleteUserAPIKey(req.Context(), keyID)
+	err := metaDB.DeleteUserAPIKey(req.Context(), keyID)
 	if err != nil {
 		log.Error().Err(err).Str("keyID", keyID).Msg("error deleting API key")
 		resp.WriteHeader(http.StatusInternalServerError)

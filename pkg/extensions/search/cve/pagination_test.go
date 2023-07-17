@@ -17,24 +17,23 @@ import (
 	cveinfo "zotregistry.io/zot/pkg/extensions/search/cve"
 	cvemodel "zotregistry.io/zot/pkg/extensions/search/cve/model"
 	"zotregistry.io/zot/pkg/log"
-	"zotregistry.io/zot/pkg/meta/bolt"
-	"zotregistry.io/zot/pkg/meta/repodb"
-	boltdb_wrapper "zotregistry.io/zot/pkg/meta/repodb/boltdb-wrapper"
+	"zotregistry.io/zot/pkg/meta/boltdb"
+	mTypes "zotregistry.io/zot/pkg/meta/types"
 	"zotregistry.io/zot/pkg/test/mocks"
 )
 
 func TestCVEPagination(t *testing.T) {
 	Convey("CVE Pagination", t, func() {
-		params := bolt.DBParameters{
+		params := boltdb.DBParameters{
 			RootDir: t.TempDir(),
 		}
-		boltDriver, err := bolt.GetBoltDriver(params)
+		boltDriver, err := boltdb.GetBoltDriver(params)
 		So(err, ShouldBeNil)
 
-		repoDB, err := boltdb_wrapper.NewBoltDBWrapper(boltDriver, log.NewLogger("debug", ""))
+		metaDB, err := boltdb.New(boltDriver, log.NewLogger("debug", ""))
 		So(err, ShouldBeNil)
 
-		// Create repodb data for scannable image with vulnerabilities
+		// Create metadb data for scannable image with vulnerabilities
 		timeStamp11 := time.Date(2008, 1, 1, 12, 0, 0, 0, time.UTC)
 
 		configBlob11, err := json.Marshal(ispec.Image{
@@ -58,15 +57,15 @@ func TestCVEPagination(t *testing.T) {
 		})
 		So(err, ShouldBeNil)
 
-		repoMeta11 := repodb.ManifestMetadata{
+		repoMeta11 := mTypes.ManifestMetadata{
 			ManifestBlob: manifestBlob11,
 			ConfigBlob:   configBlob11,
 		}
 
 		digest11 := godigest.FromBytes(manifestBlob11)
-		err = repoDB.SetManifestMeta("repo1", digest11, repoMeta11)
+		err = metaDB.SetManifestMeta("repo1", digest11, repoMeta11)
 		So(err, ShouldBeNil)
-		err = repoDB.SetRepoReference("repo1", "0.1.0", digest11, ispec.MediaTypeImageManifest)
+		err = metaDB.SetRepoReference("repo1", "0.1.0", digest11, ispec.MediaTypeImageManifest)
 		So(err, ShouldBeNil)
 
 		timeStamp12 := time.Date(2009, 1, 1, 12, 0, 0, 0, time.UTC)
@@ -92,18 +91,18 @@ func TestCVEPagination(t *testing.T) {
 		})
 		So(err, ShouldBeNil)
 
-		repoMeta12 := repodb.ManifestMetadata{
+		repoMeta12 := mTypes.ManifestMetadata{
 			ManifestBlob: manifestBlob12,
 			ConfigBlob:   configBlob12,
 		}
 
 		digest12 := godigest.FromBytes(manifestBlob12)
-		err = repoDB.SetManifestMeta("repo1", digest12, repoMeta12)
+		err = metaDB.SetManifestMeta("repo1", digest12, repoMeta12)
 		So(err, ShouldBeNil)
-		err = repoDB.SetRepoReference("repo1", "1.0.0", digest12, ispec.MediaTypeImageManifest)
+		err = metaDB.SetRepoReference("repo1", "1.0.0", digest12, ispec.MediaTypeImageManifest)
 		So(err, ShouldBeNil)
 
-		// RepoDB loaded with initial data, mock the scanner
+		// MetaDB loaded with initial data, mock the scanner
 		severityToInt := map[string]int{
 			"UNKNOWN":  0,
 			"LOW":      1,
@@ -153,7 +152,7 @@ func TestCVEPagination(t *testing.T) {
 		}
 
 		log := log.NewLogger("debug", "")
-		cveInfo := cveinfo.BaseCveInfo{Log: log, Scanner: scanner, RepoDB: repoDB}
+		cveInfo := cveinfo.BaseCveInfo{Log: log, Scanner: scanner, MetaDB: metaDB}
 
 		Convey("create new paginator errors", func() {
 			paginator, err := cveinfo.NewCvePageFinder(-1, 10, cveinfo.AlphabeticAsc, cveInfo)

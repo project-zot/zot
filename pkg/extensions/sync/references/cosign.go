@@ -18,24 +18,25 @@ import (
 	"zotregistry.io/zot/pkg/extensions/sync/constants"
 	client "zotregistry.io/zot/pkg/extensions/sync/httpclient"
 	"zotregistry.io/zot/pkg/log"
-	"zotregistry.io/zot/pkg/meta/repodb"
+	"zotregistry.io/zot/pkg/meta"
+	mTypes "zotregistry.io/zot/pkg/meta/types"
 	"zotregistry.io/zot/pkg/storage"
 )
 
 type CosignReference struct {
 	client          *client.Client
 	storeController storage.StoreController
-	repoDB          repodb.RepoDB
+	metaDB          mTypes.MetaDB
 	log             log.Logger
 }
 
 func NewCosignReference(httpClient *client.Client, storeController storage.StoreController,
-	repoDB repodb.RepoDB, log log.Logger,
+	metaDB mTypes.MetaDB, log log.Logger,
 ) CosignReference {
 	return CosignReference{
 		client:          httpClient,
 		storeController: storeController,
-		repoDB:          repoDB,
+		metaDB:          metaDB,
 		log:             log,
 	}
 }
@@ -145,9 +146,9 @@ func (ref CosignReference) SyncReferences(localRepo, remoteRepo, subjectDigestSt
 		ref.log.Info().Str("repository", localRepo).Str("subject", subjectDigestStr).
 			Msg("successfully synced cosign reference for image")
 
-		if ref.repoDB != nil {
+		if ref.metaDB != nil {
 			ref.log.Debug().Str("repository", localRepo).Str("subject", subjectDigestStr).
-				Msg("repoDB: trying to sync cosign reference for image")
+				Msg("metaDB: trying to sync cosign reference for image")
 
 			isSig, sigType, signedManifestDig, err := storage.CheckIsImageSignature(localRepo, manifestBuf,
 				cosignTag)
@@ -157,14 +158,14 @@ func (ref CosignReference) SyncReferences(localRepo, remoteRepo, subjectDigestSt
 			}
 
 			if isSig {
-				err = ref.repoDB.AddManifestSignature(localRepo, signedManifestDig, repodb.SignatureMetadata{
+				err = ref.metaDB.AddManifestSignature(localRepo, signedManifestDig, mTypes.SignatureMetadata{
 					SignatureType:   sigType,
 					SignatureDigest: referenceDigest.String(),
 				})
 			} else {
-				err = repodb.SetImageMetaFromInput(localRepo, cosignTag, ispec.MediaTypeImageManifest,
+				err = meta.SetImageMetaFromInput(localRepo, cosignTag, ispec.MediaTypeImageManifest,
 					referenceDigest, manifestBuf, ref.storeController.GetImageStore(localRepo),
-					ref.repoDB, ref.log)
+					ref.metaDB, ref.log)
 			}
 
 			if err != nil {
@@ -173,7 +174,7 @@ func (ref CosignReference) SyncReferences(localRepo, remoteRepo, subjectDigestSt
 			}
 
 			ref.log.Info().Str("repository", localRepo).Str("subject", subjectDigestStr).
-				Msg("repoDB: successfully added cosign reference for image")
+				Msg("metaDB: successfully added cosign reference for image")
 		}
 	}
 

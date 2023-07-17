@@ -42,8 +42,8 @@ import (
 	extconf "zotregistry.io/zot/pkg/extensions/config"
 	syncconf "zotregistry.io/zot/pkg/extensions/config/sync"
 	"zotregistry.io/zot/pkg/extensions/sync"
-	"zotregistry.io/zot/pkg/meta/repodb"
 	"zotregistry.io/zot/pkg/meta/signatures"
+	mTypes "zotregistry.io/zot/pkg/meta/types"
 	storageConstants "zotregistry.io/zot/pkg/storage/constants"
 	"zotregistry.io/zot/pkg/test"
 	"zotregistry.io/zot/pkg/test/mocks"
@@ -857,10 +857,10 @@ func TestOnDemand(t *testing.T) {
 
 			dctlr := api.NewController(destConfig)
 
-			// repodb fails for syncCosignSignature"
-			dctlr.RepoDB = mocks.RepoDBMock{
+			// metadb fails for syncCosignSignature"
+			dctlr.MetaDB = mocks.MetaDBMock{
 				AddManifestSignatureFn: func(repo string, signedManifestDigest godigest.Digest,
-					sm repodb.SignatureMetadata,
+					sm mTypes.SignatureMetadata,
 				) error {
 					if sm.SignatureType == signatures.CosignSignature || sm.SignatureType == signatures.NotationSignature {
 						return sync.ErrTestError
@@ -4422,8 +4422,8 @@ func getPortFromBaseURL(baseURL string) string {
 	return slice[len(slice)-1]
 }
 
-func TestSyncedSignaturesRepoDB(t *testing.T) {
-	Convey("Verify that repodb update correctly when syncing a signature", t, func() {
+func TestSyncedSignaturesMetaDB(t *testing.T) {
+	Convey("Verify that metadb update correctly when syncing a signature", t, func() {
 		repoName := "signed-repo"
 		tag := "random-signed-image"
 		updateDuration := 30 * time.Minute
@@ -4493,7 +4493,7 @@ func TestSyncedSignaturesRepoDB(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
-		repoMeta, err := dctlr.RepoDB.GetRepoMeta(repoName)
+		repoMeta, err := dctlr.MetaDB.GetRepoMeta(repoName)
 		So(err, ShouldBeNil)
 		So(repoMeta.Tags, ShouldContainKey, tag)
 		So(len(repoMeta.Tags), ShouldEqual, 1)

@@ -56,7 +56,7 @@ import (
 	"zotregistry.io/zot/pkg/common"
 	extconf "zotregistry.io/zot/pkg/extensions/config"
 	"zotregistry.io/zot/pkg/log"
-	"zotregistry.io/zot/pkg/meta/repodb/repodbfactory"
+	"zotregistry.io/zot/pkg/meta"
 	"zotregistry.io/zot/pkg/storage"
 	storageConstants "zotregistry.io/zot/pkg/storage/constants"
 	"zotregistry.io/zot/pkg/test"
@@ -203,7 +203,7 @@ func TestCreateCacheDatabaseDriver(t *testing.T) {
 	})
 }
 
-func TestCreateRepoDBDriver(t *testing.T) {
+func TestCreateMetaDBDriver(t *testing.T) {
 	Convey("Test CreateCacheDatabaseDriver dynamo", t, func() {
 		log := log.NewLogger("debug", "")
 		dir := t.TempDir()
@@ -230,7 +230,7 @@ func TestCreateRepoDBDriver(t *testing.T) {
 			"userdatatablename":     "UserDatatable",
 		}
 
-		testFunc := func() { _, _ = repodbfactory.New(conf.Storage.StorageConfig, log) }
+		testFunc := func() { _, _ = meta.New(conf.Storage.StorageConfig, log) }
 		So(testFunc, ShouldPanic)
 
 		conf.Storage.CacheDriver = map[string]interface{}{
@@ -244,7 +244,7 @@ func TestCreateRepoDBDriver(t *testing.T) {
 			"versiontablename":      1,
 		}
 
-		testFunc = func() { _, _ = repodbfactory.New(conf.Storage.StorageConfig, log) }
+		testFunc = func() { _, _ = meta.New(conf.Storage.StorageConfig, log) }
 		So(testFunc, ShouldPanic)
 
 		conf.Storage.CacheDriver = map[string]interface{}{
@@ -260,7 +260,7 @@ func TestCreateRepoDBDriver(t *testing.T) {
 			"versiontablename":      "1",
 		}
 
-		testFunc = func() { _, _ = repodbfactory.New(conf.Storage.StorageConfig, log) }
+		testFunc = func() { _, _ = meta.New(conf.Storage.StorageConfig, log) }
 		So(testFunc, ShouldNotPanic)
 	})
 
@@ -283,7 +283,7 @@ func TestCreateRepoDBDriver(t *testing.T) {
 		err = os.Chmod(path.Join(dir, "repo.db"), 0o200)
 		So(err, ShouldBeNil)
 
-		_, err = repodbfactory.New(conf.Storage.StorageConfig, log)
+		_, err = meta.New(conf.Storage.StorageConfig, log)
 		So(err, ShouldNotBeNil)
 
 		err = os.Chmod(path.Join(dir, "repo.db"), 0o600)
@@ -3103,7 +3103,7 @@ func TestAuthnSessionErrors(t *testing.T) {
 		Convey("trigger basic authn middle(htpasswd) error", func() {
 			client := resty.New()
 
-			ctlr.RepoDB = mocks.RepoDBMock{
+			ctlr.MetaDB = mocks.MetaDBMock{
 				SetUserGroupsFn: func(ctx context.Context, groups []string) error {
 					return ErrUnexpectedError
 				},
@@ -3120,7 +3120,7 @@ func TestAuthnSessionErrors(t *testing.T) {
 		Convey("trigger basic authn middle(ldap) error", func() {
 			client := resty.New()
 
-			ctlr.RepoDB = mocks.RepoDBMock{
+			ctlr.MetaDB = mocks.MetaDBMock{
 				SetUserGroupsFn: func(ctx context.Context, groups []string) error {
 					return ErrUnexpectedError
 				},
@@ -3138,7 +3138,7 @@ func TestAuthnSessionErrors(t *testing.T) {
 			client := resty.New()
 			client.SetRedirectPolicy(test.CustomRedirectPolicy(20))
 
-			ctlr.RepoDB = mocks.RepoDBMock{
+			ctlr.MetaDB = mocks.MetaDBMock{
 				SetUserGroupsFn: func(ctx context.Context, groups []string) error {
 					return ErrUnexpectedError
 				},
@@ -3153,7 +3153,7 @@ func TestAuthnSessionErrors(t *testing.T) {
 			So(resp.StatusCode(), ShouldEqual, http.StatusInternalServerError)
 		})
 
-		Convey("trigger session middle repoDB errors", func() {
+		Convey("trigger session middle metaDB errors", func() {
 			client := resty.New()
 			client.SetRedirectPolicy(test.CustomRedirectPolicy(20))
 
@@ -3162,7 +3162,7 @@ func TestAuthnSessionErrors(t *testing.T) {
 
 			mockOIDCServer.QueueUser(user)
 
-			ctlr.RepoDB = mocks.RepoDBMock{}
+			ctlr.MetaDB = mocks.MetaDBMock{}
 
 			// first login user
 			resp, err := client.R().
@@ -3178,7 +3178,7 @@ func TestAuthnSessionErrors(t *testing.T) {
 
 				client.SetCookies(cookies)
 
-				ctlr.RepoDB = mocks.RepoDBMock{
+				ctlr.MetaDB = mocks.MetaDBMock{
 					GetUserGroupsFn: func(ctx context.Context) ([]string, error) {
 						return []string{}, ErrUnexpectedError
 					},
@@ -3198,7 +3198,7 @@ func TestAuthnSessionErrors(t *testing.T) {
 
 				client.SetCookies(cookies)
 
-				ctlr.RepoDB = mocks.RepoDBMock{
+				ctlr.MetaDB = mocks.MetaDBMock{
 					GetUserGroupsFn: func(ctx context.Context) ([]string, error) {
 						return []string{}, errors.ErrUserDataNotFound
 					},
@@ -3417,7 +3417,7 @@ func TestAuthnSessionErrors(t *testing.T) {
 	})
 }
 
-func TestAuthnRepoDBErrors(t *testing.T) {
+func TestAuthnMetaDBErrors(t *testing.T) {
 	Convey("make controller", t, func() {
 		port := test.GetFreePort()
 		baseURL := test.GetBaseURL(port)
@@ -3472,7 +3472,7 @@ func TestAuthnRepoDBErrors(t *testing.T) {
 		Convey("trigger basic authn middle(htpasswd) error", func() {
 			client := resty.New()
 
-			ctlr.RepoDB = mocks.RepoDBMock{
+			ctlr.MetaDB = mocks.MetaDBMock{
 				SetUserGroupsFn: func(ctx context.Context, groups []string) error {
 					return ErrUnexpectedError
 				},
@@ -3486,7 +3486,7 @@ func TestAuthnRepoDBErrors(t *testing.T) {
 			So(resp.StatusCode(), ShouldEqual, http.StatusInternalServerError)
 		})
 
-		Convey("trigger session middle repoDB errors", func() {
+		Convey("trigger session middle metaDB errors", func() {
 			client := resty.New()
 			client.SetRedirectPolicy(test.CustomRedirectPolicy(20))
 
@@ -3509,7 +3509,7 @@ func TestAuthnRepoDBErrors(t *testing.T) {
 
 				client.SetCookies(cookies)
 
-				ctlr.RepoDB = mocks.RepoDBMock{
+				ctlr.MetaDB = mocks.MetaDBMock{
 					GetUserGroupsFn: func(ctx context.Context) ([]string, error) {
 						return []string{}, ErrUnexpectedError
 					},
@@ -4727,7 +4727,7 @@ func TestCrossRepoMount(t *testing.T) {
 		// in cache, now try mount blob request status and it should be 201 because now blob is present in cache
 		// and it should do hard link.
 
-		// make a new server with dedupe on and same rootDir (can't restart because of repodb - boltdb being open)
+		// make a new server with dedupe on and same rootDir (can't restart because of metadb - boltdb being open)
 		newDir := t.TempDir()
 		err = test.CopyFiles(dir, newDir)
 		So(err, ShouldBeNil)

@@ -17,7 +17,7 @@ import (
 	"zotregistry.io/zot/pkg/common"
 	client "zotregistry.io/zot/pkg/extensions/sync/httpclient"
 	"zotregistry.io/zot/pkg/log"
-	"zotregistry.io/zot/pkg/meta/repodb"
+	mTypes "zotregistry.io/zot/pkg/meta/types"
 	"zotregistry.io/zot/pkg/storage"
 	storageTypes "zotregistry.io/zot/pkg/storage/types"
 )
@@ -37,13 +37,13 @@ type References struct {
 }
 
 func NewReferences(httpClient *client.Client, storeController storage.StoreController,
-	repoDB repodb.RepoDB, log log.Logger,
+	metaDB mTypes.MetaDB, log log.Logger,
 ) References {
 	refs := References{log: log}
 
-	refs.referenceList = append(refs.referenceList, NewCosignReference(httpClient, storeController, repoDB, log))
-	refs.referenceList = append(refs.referenceList, NewOciReferences(httpClient, storeController, repoDB, log))
-	refs.referenceList = append(refs.referenceList, NewORASReferences(httpClient, storeController, repoDB, log))
+	refs.referenceList = append(refs.referenceList, NewCosignReference(httpClient, storeController, metaDB, log))
+	refs.referenceList = append(refs.referenceList, NewOciReferences(httpClient, storeController, metaDB, log))
+	refs.referenceList = append(refs.referenceList, NewORASReferences(httpClient, storeController, metaDB, log))
 
 	return refs
 }

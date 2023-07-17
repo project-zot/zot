@@ -17,7 +17,7 @@ import (
 	. "zotregistry.io/zot/pkg/extensions"
 	cveinfo "zotregistry.io/zot/pkg/extensions/search/cve"
 	"zotregistry.io/zot/pkg/log"
-	"zotregistry.io/zot/pkg/meta/repodb"
+	mTypes "zotregistry.io/zot/pkg/meta/types"
 	"zotregistry.io/zot/pkg/scheduler"
 	"zotregistry.io/zot/pkg/storage"
 	. "zotregistry.io/zot/pkg/test"
@@ -40,10 +40,10 @@ func TestTrivyDBGenerator(t *testing.T) {
 		cfg.Scheduler = &config.SchedulerConfig{NumWorkers: 3}
 		sch := scheduler.NewScheduler(cfg, logger)
 
-		repoDB := &mocks.RepoDBMock{
-			GetRepoMetaFn: func(repo string) (repodb.RepoMetadata, error) {
-				return repodb.RepoMetadata{
-					Tags: map[string]repodb.Descriptor{
+		metaDB := &mocks.MetaDBMock{
+			GetRepoMetaFn: func(repo string) (mTypes.RepoMetadata, error) {
+				return mTypes.RepoMetadata{
+					Tags: map[string]mTypes.Descriptor{
 						"tag": {MediaType: ispec.MediaTypeImageIndex},
 					},
 				}, nil
@@ -57,7 +57,7 @@ func TestTrivyDBGenerator(t *testing.T) {
 			},
 		}
 
-		cveInfo := cveinfo.NewCVEInfo(storeController, repoDB, "ghcr.io/project-zot/trivy-db", "", logger)
+		cveInfo := cveinfo.NewCVEInfo(storeController, metaDB, "ghcr.io/project-zot/trivy-db", "", logger)
 		generator := NewTrivyTaskGenerator(time.Minute, cveInfo, logger)
 
 		sch.SubmitGenerator(generator, 12000*time.Millisecond, scheduler.HighPriority)
