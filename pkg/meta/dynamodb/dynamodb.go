@@ -16,13 +16,14 @@ import (
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 
 	zerr "zotregistry.io/zot/errors"
+	"zotregistry.io/zot/pkg/api/constants"
 	zcommon "zotregistry.io/zot/pkg/common"
 	"zotregistry.io/zot/pkg/extensions/imagetrust"
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/meta/common"
 	mTypes "zotregistry.io/zot/pkg/meta/types"
 	"zotregistry.io/zot/pkg/meta/version"
-	localCtx "zotregistry.io/zot/pkg/requestcontext"
+	reqCtx "zotregistry.io/zot/pkg/requestcontext"
 )
 
 var errMetaDB = errors.New("metadb: error while constructing manifest meta")
@@ -811,7 +812,7 @@ func (dwr *DynamoDB) GetMultipleRepoMeta(ctx context.Context,
 			return []mTypes.RepoMetadata{}, err
 		}
 
-		if ok, err := localCtx.RepoIsUserAvailable(ctx, repoMeta.Name); !ok || err != nil {
+		if ok, err := reqCtx.RepoIsUserAvailable(ctx, repoMeta.Name); !ok || err != nil {
 			continue
 		}
 
@@ -855,7 +856,7 @@ func (dwr *DynamoDB) SearchRepos(ctx context.Context, searchText string,
 				err
 		}
 
-		if ok, err := localCtx.RepoIsUserAvailable(ctx, repoMeta.Name); !ok || err != nil {
+		if ok, err := reqCtx.RepoIsUserAvailable(ctx, repoMeta.Name); !ok || err != nil {
 			continue
 		}
 
@@ -1011,7 +1012,7 @@ func (dwr *DynamoDB) FilterTags(ctx context.Context, filterFunc mTypes.FilterFun
 				err
 		}
 
-		if ok, err := localCtx.RepoIsUserAvailable(ctx, repoMeta.Name); !ok || err != nil {
+		if ok, err := reqCtx.RepoIsUserAvailable(ctx, repoMeta.Name); !ok || err != nil {
 			continue
 		}
 
@@ -1133,7 +1134,7 @@ func (dwr *DynamoDB) FilterRepos(ctx context.Context, filter mTypes.FilterRepoFu
 				err
 		}
 
-		if ok, err := localCtx.RepoIsUserAvailable(ctx, repoMeta.Name); !ok || err != nil {
+		if ok, err := reqCtx.RepoIsUserAvailable(ctx, repoMeta.Name); !ok || err != nil {
 			continue
 		}
 
@@ -1187,7 +1188,7 @@ func (dwr *DynamoDB) SearchTags(ctx context.Context, searchText string,
 			err
 	}
 
-	if ok, err := localCtx.RepoIsUserAvailable(ctx, repoMeta.Name); !ok || err != nil {
+	if ok, err := reqCtx.RepoIsUserAvailable(ctx, repoMeta.Name); !ok || err != nil {
 		return []mTypes.RepoMetadata{}, map[string]mTypes.ManifestMetadata{}, map[string]mTypes.IndexData{},
 			err
 	}
@@ -1555,8 +1556,13 @@ func (dwr *DynamoDB) ToggleBookmarkRepo(ctx context.Context, repo string) (
 ) {
 	res := mTypes.NotChanged
 
-	if ok, err := localCtx.RepoIsUserAvailable(ctx, repo); !ok || err != nil {
-		return res, zerr.ErrUserDataNotAllowed
+	userAc, err := reqCtx.UserAcFromContext(ctx)
+	if err != nil {
+		return mTypes.NotChanged, err
+	}
+
+	if userAc.IsAnonymous() || !userAc.Can(constants.ReadPermission, repo) {
+		return mTypes.NotChanged, zerr.ErrUserDataNotAllowed
 	}
 
 	userData, err := dwr.GetUserData(ctx)
@@ -1604,21 +1610,16 @@ func (dwr *DynamoDB) ToggleStarRepo(ctx context.Context, repo string) (
 ) {
 	res := mTypes.NotChanged
 
-	acCtx, err := localCtx.GetAccessControlContext(ctx)
+	userAc, err := reqCtx.UserAcFromContext(ctx)
 	if err != nil {
-		return res, err
+		return mTypes.NotChanged, err
 	}
 
-	userid := localCtx.GetUsernameFromContext(acCtx)
-
-	if userid == "" {
-		// empty user is anonymous, it has no data
-		return res, zerr.ErrUserDataNotAllowed
+	if userAc.IsAnonymous() || !userAc.Can(constants.ReadPermission, repo) {
+		return mTypes.NotChanged, zerr.ErrUserDataNotAllowed
 	}
 
-	if ok, err := localCtx.RepoIsUserAvailable(ctx, repo); !ok || err != nil {
-		return res, zerr.ErrUserDataNotAllowed
-	}
+	userid := userAc.GetUsername()
 
 	userData, err := dwr.GetUserData(ctx)
 	if err != nil && !errors.Is(err, zerr.ErrUserDataNotFound) {
@@ -1810,6 +1811,15 @@ func (dwr *DynamoDB) IsAPIKeyExpired(ctx context.Context, hashedKey string) (boo
 }
 
 func (dwr DynamoDB) UpdateUserAPIKeyLastUsed(ctx context.Context, hashedKey string) error {
+	userAc, err := reqCtx.UserAcFromContext(ctx)
+	if err != nil {
+		return err
+	}
+
+	if userAc.IsAnonymous() {
+		return zerr.ErrUserDataNotAllowed
+	}
+
 	userData, err := dwr.GetUserData(ctx)
 	if err != nil {
 		return err
@@ -1828,16 +1838,16 @@ func (dwr DynamoDB) UpdateUserAPIKeyLastUsed(ctx context.Context, hashedKey stri
 func (dwr DynamoDB) GetUserAPIKeys(ctx context.Context) ([]mTypes.APIKeyDetails, error) {
 	apiKeys := make([]mTypes.APIKeyDetails, 0)
 
-	acCtx, err := localCtx.GetAccessControlContext(ctx)
+	userAc, err := reqCtx.UserAcFromContext(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	userid := localCtx.GetUsernameFromContext(acCtx)
-	if userid == "" {
-		// empty user is anonymous
+	if userAc.IsAnonymous() {
 		return nil, zerr.ErrUserDataNotAllowed
 	}
+
+	userid := userAc.GetUsername()
 
 	userData, err := dwr.GetUserData(ctx)
 	if err != nil && !errors.Is(err, zerr.ErrUserDataNotFound) {
@@ -1864,16 +1874,16 @@ func (dwr DynamoDB) GetUserAPIKeys(ctx context.Context) ([]mTypes.APIKeyDetails,
 }
 
 func (dwr DynamoDB) AddUserAPIKey(ctx context.Context, hashedKey string, apiKeyDetails *mTypes.APIKeyDetails) error {
-	acCtx, err := localCtx.GetAccessControlContext(ctx)
+	userAc, err := reqCtx.UserAcFromContext(ctx)
 	if err != nil {
 		return err
 	}
 
-	userid := localCtx.GetUsernameFromContext(acCtx)
-	if userid == "" {
-		// empty user is anonymous
+	if userAc.IsAnonymous() {
 		return zerr.ErrUserDataNotAllowed
 	}
+
+	userid := userAc.GetUsername()
 
 	userData, err := dwr.GetUserData(ctx)
 	if err != nil && !errors.Is(err, zerr.ErrUserDataNotFound) {
@@ -1992,16 +2002,16 @@ func (dwr DynamoDB) GetUserAPIKeyInfo(hashedKey string) (string, error) {
 func (dwr DynamoDB) GetUserData(ctx context.Context) (mTypes.UserData, error) {
 	var userData mTypes.UserData
 
-	acCtx, err := localCtx.GetAccessControlContext(ctx)
+	userAc, err := reqCtx.UserAcFromContext(ctx)
 	if err != nil {
 		return userData, err
 	}
 
-	userid := localCtx.GetUsernameFromContext(acCtx)
-	if userid == "" {
-		// empty user is anonymous
+	if userAc.IsAnonymous() {
 		return userData, zerr.ErrUserDataNotAllowed
 	}
+
+	userid := userAc.GetUsername()
 
 	resp, err := dwr.Client.GetItem(ctx, &dynamodb.GetItemInput{
 		TableName: aws.String(dwr.UserDataTablename),
@@ -2026,16 +2036,16 @@ func (dwr DynamoDB) GetUserData(ctx context.Context) (mTypes.UserData, error) {
 }
 
 func (dwr DynamoDB) SetUserData(ctx context.Context, userData mTypes.UserData) error {
-	acCtx, err := localCtx.GetAccessControlContext(ctx)
+	userAc, err := reqCtx.UserAcFromContext(ctx)
 	if err != nil {
 		return err
 	}
 
-	userid := localCtx.GetUsernameFromContext(acCtx)
-	if userid == "" {
-		// empty user is anonymous
+	if userAc.IsAnonymous() {
 		return zerr.ErrUserDataNotAllowed
 	}
+
+	userid := userAc.GetUsername()
 
 	userAttributeValue, err := attributevalue.Marshal(userData)
 	if err != nil {
@@ -2062,16 +2072,16 @@ func (dwr DynamoDB) SetUserData(ctx context.Context, userData mTypes.UserData) e
 }
 
 func (dwr DynamoDB) DeleteUserData(ctx context.Context) error {
-	acCtx, err := localCtx.GetAccessControlContext(ctx)
+	userAc, err := reqCtx.UserAcFromContext(ctx)
 	if err != nil {
 		return err
 	}
 
-	userid := localCtx.GetUsernameFromContext(acCtx)
-	if userid == "" {
-		// empty user is anonymous
+	if userAc.IsAnonymous() {
 		return zerr.ErrUserDataNotAllowed
 	}
+
+	userid := userAc.GetUsername()
 
 	_, err = dwr.Client.DeleteItem(ctx, &dynamodb.DeleteItemInput{
 		TableName: aws.String(dwr.UserDataTablename),

@@ -25,7 +25,7 @@ import (
 	extconf "zotregistry.io/zot/pkg/extensions/config"
 	"zotregistry.io/zot/pkg/log"
 	mTypes "zotregistry.io/zot/pkg/meta/types"
-	localCtx "zotregistry.io/zot/pkg/requestcontext"
+	reqCtx "zotregistry.io/zot/pkg/requestcontext"
 	"zotregistry.io/zot/pkg/test"
 	"zotregistry.io/zot/pkg/test/mocks"
 )
@@ -470,13 +470,9 @@ func TestAPIKeys(t *testing.T) {
 			So(resp, ShouldNotBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
 
-			authzCtxKey := localCtx.GetContextKey()
-
-			acCtx := localCtx.AccessControlContext{
-				Username: email,
-			}
-
-			ctx := context.WithValue(context.Background(), authzCtxKey, acCtx)
+			userAc := reqCtx.NewUserAccessControl()
+			userAc.SetUsername(email)
+			ctx := userAc.DeriveContext(context.Background())
 
 			err = ctlr.MetaDB.DeleteUserData(ctx)
 			So(err, ShouldBeNil)

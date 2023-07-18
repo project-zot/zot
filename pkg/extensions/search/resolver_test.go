@@ -22,7 +22,7 @@ import (
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/meta/boltdb"
 	mTypes "zotregistry.io/zot/pkg/meta/types"
-	localCtx "zotregistry.io/zot/pkg/requestcontext"
+	reqCtx "zotregistry.io/zot/pkg/requestcontext"
 	"zotregistry.io/zot/pkg/storage"
 	"zotregistry.io/zot/pkg/test/mocks"
 )
@@ -3584,15 +3584,13 @@ func TestExpandedRepoInfo(t *testing.T) {
 	})
 
 	Convey("Access error", t, func() {
-		authzCtxKey := localCtx.GetContextKey()
-		acCtxUser := localCtx.AccessControlContext{
-			ReadGlobPatterns: map[string]bool{
-				"repo": false,
-			},
-			Username: "user",
-		}
+		userAc := reqCtx.NewUserAccessControl()
+		userAc.SetUsername("user")
+		userAc.SetGlobPatterns("read", map[string]bool{
+			"repo": false,
+		})
 
-		ctx := context.WithValue(context.Background(), authzCtxKey, acCtxUser)
+		ctx := userAc.DeriveContext(context.Background())
 
 		responseContext := graphql.WithResponseContext(ctx, graphql.DefaultErrorPresenter,
 			graphql.DefaultRecover)

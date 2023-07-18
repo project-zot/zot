@@ -29,7 +29,7 @@ import (
 	"zotregistry.io/zot/pkg/api/constants"
 	"zotregistry.io/zot/pkg/log"
 	mTypes "zotregistry.io/zot/pkg/meta/types"
-	localCtx "zotregistry.io/zot/pkg/requestcontext"
+	reqCtx "zotregistry.io/zot/pkg/requestcontext"
 	storageTypes "zotregistry.io/zot/pkg/storage/types"
 	"zotregistry.io/zot/pkg/test"
 	"zotregistry.io/zot/pkg/test/mocks"
@@ -141,9 +141,8 @@ func TestRoutes(t *testing.T) {
 		Convey("List repositories authz error", func() {
 			var invalid struct{}
 
-			ctx := context.TODO()
-			key := localCtx.GetContextKey()
-			ctx = context.WithValue(ctx, key, invalid)
+			uacKey := reqCtx.GetContextKey()
+			ctx := context.WithValue(context.Background(), uacKey, invalid)
 
 			request, _ := http.NewRequestWithContext(ctx, http.MethodGet, baseURL, nil)
 			request = mux.SetURLVars(request, map[string]string{
@@ -164,9 +163,8 @@ func TestRoutes(t *testing.T) {
 		Convey("Delete manifest authz error", func() {
 			var invalid struct{}
 
-			ctx := context.TODO()
-			key := localCtx.GetContextKey()
-			ctx = context.WithValue(ctx, key, invalid)
+			uacKey := reqCtx.GetContextKey()
+			ctx := context.WithValue(context.Background(), uacKey, invalid)
 
 			request, _ := http.NewRequestWithContext(ctx, http.MethodGet, baseURL, nil)
 			request = mux.SetURLVars(request, map[string]string{
@@ -1419,9 +1417,8 @@ func TestRoutes(t *testing.T) {
 			Convey("CreateAPIKey invalid access control context", func() {
 				var invalid struct{}
 
-				ctx := context.TODO()
-				key := localCtx.GetContextKey()
-				ctx = context.WithValue(ctx, key, invalid)
+				uacKey := reqCtx.GetContextKey()
+				ctx := context.WithValue(context.Background(), uacKey, invalid)
 
 				request, _ := http.NewRequestWithContext(ctx, http.MethodPost, baseURL, bytes.NewReader([]byte{}))
 				response := httptest.NewRecorder()
@@ -1443,13 +1440,9 @@ func TestRoutes(t *testing.T) {
 			})
 
 			Convey("CreateAPIKey bad request body", func() {
-				acCtx := localCtx.AccessControlContext{
-					Username: "test",
-				}
-
-				ctx := context.TODO()
-				key := localCtx.GetContextKey()
-				ctx = context.WithValue(ctx, key, acCtx)
+				userAc := reqCtx.NewUserAccessControl()
+				userAc.SetUsername("test")
+				ctx := userAc.DeriveContext(context.Background())
 
 				request, _ := http.NewRequestWithContext(ctx, http.MethodPost, baseURL, bytes.NewReader([]byte{}))
 				response := httptest.NewRecorder()
@@ -1462,13 +1455,9 @@ func TestRoutes(t *testing.T) {
 			})
 
 			Convey("CreateAPIKey error on AddUserAPIKey", func() {
-				acCtx := localCtx.AccessControlContext{
-					Username: "test",
-				}
-
-				ctx := context.TODO()
-				key := localCtx.GetContextKey()
-				ctx = context.WithValue(ctx, key, acCtx)
+				userAc := reqCtx.NewUserAccessControl()
+				userAc.SetUsername("test")
+				ctx := userAc.DeriveContext(context.Background())
 
 				payload := api.APIKeyPayload{
 					Label:  "test",
@@ -1494,13 +1483,9 @@ func TestRoutes(t *testing.T) {
 			})
 
 			Convey("Revoke error on DeleteUserAPIKeyFn", func() {
-				acCtx := localCtx.AccessControlContext{
-					Username: "test",
-				}
-
-				ctx := context.TODO()
-				key := localCtx.GetContextKey()
-				ctx = context.WithValue(ctx, key, acCtx)
+				userAc := reqCtx.NewUserAccessControl()
+				userAc.SetUsername("test")
+				ctx := userAc.DeriveContext(context.Background())
 
 				request, _ := http.NewRequestWithContext(ctx, http.MethodDelete, baseURL, bytes.NewReader([]byte{}))
 				response := httptest.NewRecorder()

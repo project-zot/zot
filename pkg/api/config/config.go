@@ -246,6 +246,19 @@ func (c *Config) IsLdapAuthEnabled() bool {
 	return false
 }
 
+func (c *Config) IsMTLSAuthEnabled() bool {
+	if c.HTTP.TLS != nil &&
+		c.HTTP.TLS.Key != "" &&
+		c.HTTP.TLS.Cert != "" &&
+		c.HTTP.TLS.CACert != "" &&
+		!c.IsBasicAuthnEnabled() &&
+		!c.HTTP.AccessControl.AnonymousPolicyExists() {
+		return true
+	}
+
+	return false
+}
+
 func (c *Config) IsHtpasswdAuthEnabled() bool {
 	if c.HTTP.Auth != nil && c.HTTP.Auth.HTPasswd.Path != "" {
 		return true

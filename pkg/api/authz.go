@@ -8,22 +8,16 @@ import (
 	"github.com/gorilla/mux"
 
 	"zotregistry.io/zot/pkg/api/config"
+	"zotregistry.io/zot/pkg/api/constants"
 	"zotregistry.io/zot/pkg/common"
 	"zotregistry.io/zot/pkg/log"
-	localCtx "zotregistry.io/zot/pkg/requestcontext"
+	reqCtx "zotregistry.io/zot/pkg/requestcontext"
 )
 
 const (
-	// method actions.
-	Create = "create"
-	Read   = "read"
-	Update = "update"
-	Delete = "delete"
-	// behaviour actions.
-	DetectManifestCollision = "detectManifestCollision"
-	BASIC                   = "Basic"
-	BEARER                  = "Bearer"
-	OPENID                  = "OpenID"
+	BASIC  = "Basic"
+	BEARER = "Bearer"
+	OPENID = "OpenID"
 )
 
 // AccessController authorizes users to act on resources.
@@ -90,7 +84,7 @@ func (ac *AccessController) getGlobPatterns(username string, groups []string, ac
 }
 
 // can verifies if a user can do action on repository.
-func (ac *AccessController) can(ctx context.Context, username, action, repository string) bool {
+func (ac *AccessController) can(userAc *reqCtx.UserAccessControl, action, repository string) bool {
 	can := false
 
 	var longestMatchedPattern string
@@ -104,12 +98,8 @@ func (ac *AccessController) can(ctx context.Context, username, action, repositor
 		}
 	}
 
-	acCtx, err := localCtx.GetAccessControlContext(ctx)
-	if err != nil {
-		return false
-	}
-
-	userGroups := acCtx.Groups
+	userGroups := userAc.GetGroups()
+	username := userAc.GetUsername()
 
 	// check matched repo based policy
 	pg, ok := ac.Config.Repositories[longestMatchedPattern]
@@ -119,11 +109,7 @@ func (ac *AccessController) can(ctx context.Context, username, action, repositor
 
 	// check admins based policy
 	if !can {
-		if ac.isAdmin(username) && common.Contains(ac.Config.AdminPolicy.Actions, action) {
-			can = true
-		}
-
-		if ac.isAnyGroupInAdminPolicy(userGroups) && common.Contains(ac.Config.AdminPolicy.Actions, action) {
+		if ac.isAdmin(username, userGroups) && common.Contains(ac.Config.AdminPolicy.Actions, action) {
 			can = true
 		}
 	}
@@ -132,8 +118,12 @@ func (ac *AccessController) can(ctx context.Context, username, action, repositor
 }
 
 // isAdmin .
-func (ac *AccessController) isAdmin(username string) bool {
-	return common.Contains(ac.Config.AdminPolicy.Users, username)
+func (ac *AccessController) isAdmin(username string, userGroups []string) bool {
+	if common.Contains(ac.Config.AdminPolicy.Users, username) || ac.isAnyGroupInAdminPolicy(userGroups) {
+		return true
+	}
+
+	return false
 }
 
 func (ac *AccessController) isAnyGroupInAdminPolicy(userGroups []string) bool {
@@ -161,33 +151,37 @@ func (ac *AccessController) getUserGroups(username string) []string {
 	return groupNames
 }
 
-// getContext updates an AccessControlContext for a user/anonymous and returns a context.Context containing it.
-func (ac *AccessController) getContext(acCtx *localCtx.AccessControlContext, request *http.Request) context.Context {
-	readGlobPatterns := ac.getGlobPatterns(acCtx.Username, acCtx.Groups, Read)
-	dmcGlobPatterns := ac.getGlobPatterns(acCtx.Username, acCtx.Groups, DetectManifestCollision)
+// getContext updates an UserAccessControl with admin status and specific permissions on repos.
+func (ac *AccessController) updateUserAccessControl(userAc *reqCtx.UserAccessControl) {
+	identity := userAc.GetUsername()
+	groups := userAc.GetGroups()
 
-	acCtx.ReadGlobPatterns = readGlobPatterns
-	acCtx.DmcGlobPatterns = dmcGlobPatterns
+	readGlobPatterns := ac.getGlobPatterns(identity, groups, constants.ReadPermission)
+	createGlobPatterns := ac.getGlobPatterns(identity, groups, constants.CreatePermission)
+	updateGlobPatterns := ac.getGlobPatterns(identity, groups, constants.UpdatePermission)
+	deleteGlobPatterns := ac.getGlobPatterns(identity, groups, constants.DeletePermission)
+	dmcGlobPatterns := ac.getGlobPatterns(identity, groups, constants.DetectManifestCollisionPermission)
 
-	if ac.isAdmin(acCtx.Username) {
-		acCtx.IsAdmin = true
+	userAc.SetGlobPatterns(constants.ReadPermission, readGlobPatterns)
+	userAc.SetGlobPatterns(constants.CreatePermission, createGlobPatterns)
+	userAc.SetGlobPatterns(constants.UpdatePermission, updateGlobPatterns)
+	userAc.SetGlobPatterns(constants.DeletePermission, deleteGlobPatterns)
+	userAc.SetGlobPatterns(constants.DetectManifestCollisionPermission, dmcGlobPatterns)
+
+	if ac.isAdmin(userAc.GetUsername(), userAc.GetGroups()) {
+		userAc.SetIsAdmin(true)
 	} else {
-		acCtx.IsAdmin = false
+		userAc.SetIsAdmin(false)
 	}
-
-	authzCtxKey := localCtx.GetContextKey()
-	ctx := context.WithValue(request.Context(), authzCtxKey, *acCtx)
-
-	return ctx
 }
 
 // getAuthnMiddlewareContext builds ac context(allowed to read repos and if user is admin) and returns it.
 func (ac *AccessController) getAuthnMiddlewareContext(authnType string, request *http.Request) context.Context {
-	amwCtx := localCtx.AuthnMiddlewareContext{
+	amwCtx := reqCtx.AuthnMiddlewareContext{
 		AuthnType: authnType,
 	}
 
-	amwCtxKey := localCtx.GetAuthnMiddlewareCtxKey()
+	amwCtxKey := reqCtx.GetAuthnMiddlewareCtxKey()
 	ctx := context.WithValue(request.Context(), amwCtxKey, amwCtx)
 
 	return ctx
@@ -254,7 +248,7 @@ func BaseAuthzHandler(ctlr *Controller) mux.MiddlewareFunc {
 			}
 
 			// request comes from bearer authn, bypass it
-			authnMwCtx, err := localCtx.GetAuthnMiddlewareContext(request.Context())
+			authnMwCtx, err := reqCtx.GetAuthnMiddlewareContext(request.Context())
 			if err != nil || (authnMwCtx != nil && authnMwCtx.AuthnType == BEARER) {
 				next.ServeHTTP(response, request)
 
@@ -268,51 +262,20 @@ func BaseAuthzHandler(ctlr *Controller) mux.MiddlewareFunc {
 				return
 			}
 
-			acCtrlr := NewAccessController(ctlr.Config)
+			aCtlr := NewAccessController(ctlr.Config)
 
-			var identity string
+			// get access control context made in authn.go
+			userAc, err := reqCtx.UserAcFromContext(request.Context())
+			if err != nil { // should never happen
+				authFail(response, request, ctlr.Config.HTTP.Realm, ctlr.Config.HTTP.Auth.FailDelay)
 
-			// anonymous context
-			acCtx := &localCtx.AccessControlContext{}
-
-			// get username from context made in authn.go
-			if ctlr.Config.IsBasicAuthnEnabled() {
-				// get access control context made in authn.go if authn is enabled
-				acCtx, err = localCtx.GetAccessControlContext(request.Context())
-				if err != nil { // should never happen
-					authFail(response, request, ctlr.Config.HTTP.Realm, ctlr.Config.HTTP.Auth.FailDelay)
-
-					return
-				}
-
-				identity = acCtx.Username
+				return
 			}
 
-			if request.TLS != nil {
-				verifiedChains := request.TLS.VerifiedChains
-				// still no identity, get it from TLS certs
-				if identity == "" && verifiedChains != nil &&
-					len(verifiedChains) > 0 && len(verifiedChains[0]) > 0 {
-					for _, cert := range request.TLS.PeerCertificates {
-						identity = cert.Subject.CommonName
-					}
+			aCtlr.updateUserAccessControl(userAc)
+			userAc.SaveOnRequest(request)
 
-					// if we still don't have an identity
-					if identity == "" {
-						acCtrlr.Log.Info().Msg("couldn't get identity from TLS certificate")
-						authFail(response, request, ctlr.Config.HTTP.Realm, ctlr.Config.HTTP.Auth.FailDelay)
-
-						return
-					}
-
-					// assign identity to authz context, needed for extensions
-					acCtx.Username = identity
-				}
-			}
-
-			ctx := acCtrlr.getContext(acCtx, request)
-
-			next.ServeHTTP(response, request.WithContext(ctx)) //nolint:contextcheck
+			next.ServeHTTP(response, request) //nolint:contextcheck
 		})
 	}
 }
@@ -327,7 +290,7 @@ func DistSpecAuthzHandler(ctlr *Controller) mux.MiddlewareFunc {
 			}
 
 			// request comes from bearer authn, bypass it
-			authnMwCtx, err := localCtx.GetAuthnMiddlewareContext(request.Context())
+			authnMwCtx, err := reqCtx.GetAuthnMiddlewareContext(request.Context())
 			if err != nil || (authnMwCtx != nil && authnMwCtx.AuthnType == BEARER) {
 				next.ServeHTTP(response, request)
 
@@ -340,45 +303,40 @@ func DistSpecAuthzHandler(ctlr *Controller) mux.MiddlewareFunc {
 
 			acCtrlr := NewAccessController(ctlr.Config)
 
-			var identity string
-
-			// get acCtx built in authn and previous authz middlewares
-			acCtx, err := localCtx.GetAccessControlContext(request.Context())
+			// get userAc built in authn and previous authz middlewares
+			userAc, err := reqCtx.UserAcFromContext(request.Context())
 			if err != nil { // should never happen
 				authFail(response, request, ctlr.Config.HTTP.Realm, ctlr.Config.HTTP.Auth.FailDelay)
 
 				return
 			}
 
-			// get username from context made in authn.go
-			identity = acCtx.Username
-
 			var action string
 			if request.Method == http.MethodGet || request.Method == http.MethodHead {
-				action = Read
+				action = constants.ReadPermission
 			}
 
 			if request.Method == http.MethodPut || request.Method == http.MethodPatch || request.Method == http.MethodPost {
 				// assume user wants to create
-				action = Create
+				action = constants.CreatePermission
 				// if we get a reference (tag)
 				if ok {
 					is := ctlr.StoreController.GetImageStore(resource)
 					tags, err := is.GetImageTags(resource)
 					// if repo exists and request's tag exists then action is UPDATE
 					if err == nil && common.Contains(tags, reference) && reference != "latest" {
-						action = Update
+						action = constants.UpdatePermission
 					}
 				}
 			}
 
 			if request.Method == http.MethodDelete {
-				action = Delete
+				action = constants.DeletePermission
 			}
 
-			can := acCtrlr.can(request.Context(), identity, action, resource) //nolint:contextcheck
+			can := acCtrlr.can(userAc, action, resource) //nolint:contextcheck
 			if !can {
-				common.AuthzFail(response, request, ctlr.Config.HTTP.Realm, ctlr.Config.HTTP.Auth.FailDelay)
+				common.AuthzFail(response, request, userAc.GetUsername(), ctlr.Config.HTTP.Realm, ctlr.Config.HTTP.Auth.FailDelay)
 			} else {
 				next.ServeHTTP(response, request) //nolint:contextcheck
 			}

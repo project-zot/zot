@@ -650,6 +650,10 @@ paths:
               type: string
           schema:
             type: string
+        "401":
+          description: unauthorized
+          schema:
+            type: string
         "404":
           description: not found
           schema:

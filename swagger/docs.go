@@ -526,6 +526,12 @@ const docTemplate = `{
                             }
                         }
                     },
+                    "401": {
+                        "description": "unauthorized",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
                     "404": {
                         "description": "not found",
                         "schema": {
