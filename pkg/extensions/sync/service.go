@@ -18,7 +18,7 @@ import (
 	client "zotregistry.io/zot/pkg/extensions/sync/httpclient"
 	"zotregistry.io/zot/pkg/extensions/sync/references"
 	"zotregistry.io/zot/pkg/log"
-	"zotregistry.io/zot/pkg/meta/repodb"
+	mTypes "zotregistry.io/zot/pkg/meta/types"
 	"zotregistry.io/zot/pkg/storage"
 )
 
@@ -30,7 +30,7 @@ type BaseService struct {
 	retryOptions    *retry.RetryOptions
 	contentManager  ContentManager
 	storeController storage.StoreController
-	repoDB          repodb.RepoDB
+	metaDB          mTypes.MetaDB
 	repositories    []string
 	references      references.References
 	client          *client.Client
@@ -38,13 +38,13 @@ type BaseService struct {
 }
 
 func New(opts syncconf.RegistryConfig, credentialsFilepath string,
-	storeController storage.StoreController, repodb repodb.RepoDB, log log.Logger,
+	storeController storage.StoreController, metadb mTypes.MetaDB, log log.Logger,
 ) (Service, error) {
 	service := &BaseService{}
 
 	service.config = opts
 	service.log = log
-	service.repoDB = repodb
+	service.metaDB = metadb
 
 	var err error
 
@@ -60,7 +60,7 @@ func New(opts syncconf.RegistryConfig, credentialsFilepath string,
 	service.credentials = credentialsFile
 
 	service.contentManager = NewContentManager(opts.Content, log)
-	service.local = NewLocalRegistry(storeController, repodb, log)
+	service.local = NewLocalRegistry(storeController, metadb, log)
 
 	retryOptions := &retry.RetryOptions{}
 
@@ -82,7 +82,7 @@ func New(opts syncconf.RegistryConfig, credentialsFilepath string,
 	service.references = references.NewReferences(
 		service.client,
 		service.storeController,
-		service.repoDB,
+		service.metaDB,
 		service.log,
 	)
 

@@ -34,7 +34,7 @@ func (r *queryResolver) ImageListForCve(ctx context.Context, id string, filter *
 
 	filter = cleanFilter(filter)
 
-	return getImageListForCVE(ctx, id, r.cveInfo, filter, requestedPage, r.repoDB, r.log)
+	return getImageListForCVE(ctx, id, r.cveInfo, filter, requestedPage, r.metaDB, r.log)
 }
 
 // ImageListWithCVEFixed is the resolver for the ImageListWithCVEFixed field.
@@ -45,14 +45,14 @@ func (r *queryResolver) ImageListWithCVEFixed(ctx context.Context, id string, im
 
 	filter = cleanFilter(filter)
 
-	return getImageListWithCVEFixed(ctx, id, image, r.cveInfo, filter, requestedPage, r.repoDB, r.log)
+	return getImageListWithCVEFixed(ctx, id, image, r.cveInfo, filter, requestedPage, r.metaDB, r.log)
 }
 
 // ImageListForDigest is the resolver for the ImageListForDigest field.
 func (r *queryResolver) ImageListForDigest(ctx context.Context, id string, requestedPage *gql_generated.PageInput) (*gql_generated.PaginatedImagesResult, error) {
 	r.log.Info().Msg("extracting repositories")
 
-	imgResultForDigest, err := getImageListForDigest(ctx, id, r.repoDB, r.cveInfo, requestedPage)
+	imgResultForDigest, err := getImageListForDigest(ctx, id, r.metaDB, r.cveInfo, requestedPage)
 
 	return imgResultForDigest, err
 }
@@ -61,7 +61,7 @@ func (r *queryResolver) ImageListForDigest(ctx context.Context, id string, reque
 func (r *queryResolver) RepoListWithNewestImage(ctx context.Context, requestedPage *gql_generated.PageInput) (*gql_generated.PaginatedReposResult, error) {
 	r.log.Info().Msg("extension api: finding image list")
 
-	paginatedReposResult, err := repoListWithNewestImage(ctx, r.cveInfo, r.log, requestedPage, r.repoDB)
+	paginatedReposResult, err := repoListWithNewestImage(ctx, r.cveInfo, r.log, requestedPage, r.metaDB)
 	if err != nil {
 		r.log.Error().Err(err).Msg("unable to retrieve repo list")
 
@@ -75,7 +75,7 @@ func (r *queryResolver) RepoListWithNewestImage(ctx context.Context, requestedPa
 func (r *queryResolver) ImageList(ctx context.Context, repo string, requestedPage *gql_generated.PageInput) (*gql_generated.PaginatedImagesResult, error) {
 	r.log.Info().Msg("extension api: getting a list of all images")
 
-	imageList, err := getImageList(ctx, repo, r.repoDB, r.cveInfo, requestedPage, r.log)
+	imageList, err := getImageList(ctx, repo, r.metaDB, r.cveInfo, requestedPage, r.log)
 	if err != nil {
 		r.log.Error().Err(err).Str("repository", repo).Msg("unable to retrieve image list for repo")
 
@@ -87,7 +87,7 @@ func (r *queryResolver) ImageList(ctx context.Context, repo string, requestedPag
 
 // ExpandedRepoInfo is the resolver for the ExpandedRepoInfo field.
 func (r *queryResolver) ExpandedRepoInfo(ctx context.Context, repo string) (*gql_generated.RepoInfo, error) {
-	repoInfo, err := expandedRepoInfo(ctx, repo, r.repoDB, r.cveInfo, r.log)
+	repoInfo, err := expandedRepoInfo(ctx, repo, r.metaDB, r.cveInfo, r.log)
 
 	return repoInfo, err
 }
@@ -101,7 +101,7 @@ func (r *queryResolver) GlobalSearch(ctx context.Context, query string, filter *
 	query = cleanQuery(query)
 	filter = cleanFilter(filter)
 
-	paginatedReposResult, images, layers, err := globalSearch(ctx, query, r.repoDB, filter, requestedPage, r.cveInfo, r.log)
+	paginatedReposResult, images, layers, err := globalSearch(ctx, query, r.metaDB, filter, requestedPage, r.cveInfo, r.log)
 
 	return &gql_generated.GlobalSearchResult{
 		Page:   paginatedReposResult.Page,
@@ -113,14 +113,14 @@ func (r *queryResolver) GlobalSearch(ctx context.Context, query string, filter *
 
 // DependencyListForImage is the resolver for the DependencyListForImage field.
 func (r *queryResolver) DerivedImageList(ctx context.Context, image string, digest *string, requestedPage *gql_generated.PageInput) (*gql_generated.PaginatedImagesResult, error) {
-	derivedList, err := derivedImageList(ctx, image, digest, r.repoDB, requestedPage, r.cveInfo, r.log)
+	derivedList, err := derivedImageList(ctx, image, digest, r.metaDB, requestedPage, r.cveInfo, r.log)
 
 	return derivedList, err
 }
 
 // BaseImageList is the resolver for the BaseImageList field.
 func (r *queryResolver) BaseImageList(ctx context.Context, image string, digest *string, requestedPage *gql_generated.PageInput) (*gql_generated.PaginatedImagesResult, error) {
-	imageList, err := baseImageList(ctx, image, digest, r.repoDB, requestedPage, r.cveInfo, r.log)
+	imageList, err := baseImageList(ctx, image, digest, r.metaDB, requestedPage, r.cveInfo, r.log)
 
 	return imageList, err
 }
@@ -133,12 +133,12 @@ func (r *queryResolver) Image(ctx context.Context, image string) (*gql_generated
 		return &gql_generated.ImageSummary{}, gqlerror.Errorf("no reference provided")
 	}
 
-	return getImageSummary(ctx, repo, tag, nil, r.repoDB, r.cveInfo, r.log)
+	return getImageSummary(ctx, repo, tag, nil, r.metaDB, r.cveInfo, r.log)
 }
 
 // Referrers is the resolver for the Referrers field.
 func (r *queryResolver) Referrers(ctx context.Context, repo string, digest string, typeArg []string) ([]*gql_generated.Referrer, error) {
-	referrers, err := getReferrers(r.repoDB, repo, digest, typeArg, r.log)
+	referrers, err := getReferrers(r.metaDB, repo, digest, typeArg, r.log)
 	if err != nil {
 		r.log.Error().Err(err).Msg("unable to get referrers from default store")
 
@@ -150,12 +150,12 @@ func (r *queryResolver) Referrers(ctx context.Context, repo string, digest strin
 
 // StarredRepos is the resolver for the StarredRepos field.
 func (r *queryResolver) StarredRepos(ctx context.Context, requestedPage *gql_generated.PageInput) (*gql_generated.PaginatedReposResult, error) {
-	return getStarredRepos(ctx, r.cveInfo, r.log, requestedPage, r.repoDB)
+	return getStarredRepos(ctx, r.cveInfo, r.log, requestedPage, r.metaDB)
 }
 
 // BookmarkedRepos is the resolver for the BookmarkedRepos field.
 func (r *queryResolver) BookmarkedRepos(ctx context.Context, requestedPage *gql_generated.PageInput) (*gql_generated.PaginatedReposResult, error) {
-	return getBookmarkedRepos(ctx, r.cveInfo, r.log, requestedPage, r.repoDB)
+	return getBookmarkedRepos(ctx, r.cveInfo, r.log, requestedPage, r.metaDB)
 }
 
 // Query returns gql_generated.QueryResolver implementation.

@@ -17,7 +17,8 @@ import (
 	"zotregistry.io/zot/pkg/extensions/sync/constants"
 	client "zotregistry.io/zot/pkg/extensions/sync/httpclient"
 	"zotregistry.io/zot/pkg/log"
-	"zotregistry.io/zot/pkg/meta/repodb"
+	"zotregistry.io/zot/pkg/meta"
+	mTypes "zotregistry.io/zot/pkg/meta/types"
 	"zotregistry.io/zot/pkg/storage"
 	storageTypes "zotregistry.io/zot/pkg/storage/types"
 )
@@ -25,17 +26,17 @@ import (
 type OciReferences struct {
 	client          *client.Client
 	storeController storage.StoreController
-	repoDB          repodb.RepoDB
+	metaDB          mTypes.MetaDB
 	log             log.Logger
 }
 
 func NewOciReferences(httpClient *client.Client, storeController storage.StoreController,
-	repoDB repodb.RepoDB, log log.Logger,
+	metaDB mTypes.MetaDB, log log.Logger,
 ) OciReferences {
 	return OciReferences{
 		client:          httpClient,
 		storeController: storeController,
-		repoDB:          repoDB,
+		metaDB:          metaDB,
 		log:             log,
 	}
 }
@@ -129,9 +130,9 @@ func (ref OciReferences) SyncReferences(localRepo, remoteRepo, subjectDigestStr 
 
 		refsDigests = append(refsDigests, referenceDigest)
 
-		if ref.repoDB != nil {
+		if ref.metaDB != nil {
 			ref.log.Debug().Str("repository", localRepo).Str("subject", subjectDigestStr).
-				Msg("repoDB: trying to add oci references for image")
+				Msg("metaDB: trying to add oci references for image")
 
 			isSig, sigType, signedManifestDig, err := storage.CheckIsImageSignature(localRepo, referenceBuf,
 				referrer.Digest.String())
@@ -141,14 +142,14 @@ func (ref OciReferences) SyncReferences(localRepo, remoteRepo, subjectDigestStr 
 			}
 
 			if isSig {
-				err = ref.repoDB.AddManifestSignature(localRepo, signedManifestDig, repodb.SignatureMetadata{
+				err = ref.metaDB.AddManifestSignature(localRepo, signedManifestDig, mTypes.SignatureMetadata{
 					SignatureType:   sigType,
 					SignatureDigest: referenceDigest.String(),
 				})
 			} else {
-				err = repodb.SetImageMetaFromInput(localRepo, referenceDigest.String(), referrer.MediaType,
+				err = meta.SetImageMetaFromInput(localRepo, referenceDigest.String(), referrer.MediaType,
 					referenceDigest, referenceBuf, ref.storeController.GetImageStore(localRepo),
-					ref.repoDB, ref.log)
+					ref.metaDB, ref.log)
 			}
 
 			if err != nil {
@@ -157,7 +158,7 @@ func (ref OciReferences) SyncReferences(localRepo, remoteRepo, subjectDigestStr 
 			}
 
 			ref.log.Info().Str("repository", localRepo).Str("subject", subjectDigestStr).
-				Msg("repoDB: successfully added oci references to RepoDB for image")
+				Msg("metaDB: successfully added oci references to MetaDB for image")
 		}
 	}
 

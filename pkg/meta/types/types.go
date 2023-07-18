@@ -1,4 +1,4 @@
-package repodb
+package types
 
 import (
 	"context"
@@ -8,6 +8,16 @@ import (
 
 	"zotregistry.io/zot/pkg/common"
 )
+
+// DetailedRepoMeta is a auxiliary structure used for sorting RepoMeta arrays by information
+// that's not directly available in the RepoMetadata structure (ex. that needs to be calculated
+// by iterating the manifests, etc.)
+type DetailedRepoMeta struct {
+	RepoMetadata
+	Rank       int
+	Downloads  int
+	UpdateTime time.Time
+}
 
 // Used to model changes to an object after a call to the DB.
 type ToggleState int
@@ -23,7 +33,7 @@ type (
 	FilterRepoFunc func(repoMeta RepoMetadata) bool
 )
 
-type RepoDB interface { //nolint:interfacebloat
+type MetaDB interface { //nolint:interfacebloat
 	UserDB
 	// IncrementRepoStars adds 1 to the star count of an image
 	IncrementRepoStars(repo string) error
@@ -217,16 +227,12 @@ type SignatureMetadata struct {
 	LayersInfo      []LayerInfo
 }
 
-type SortCriteria string
-
-const (
-	Relevance     = SortCriteria("RELEVANCE")
-	UpdateTime    = SortCriteria("UPDATE_TIME")
-	AlphabeticAsc = SortCriteria("ALPHABETIC_ASC")
-	AlphabeticDsc = SortCriteria("ALPHABETIC_DSC")
-	Stars         = SortCriteria("STARS")
-	Downloads     = SortCriteria("DOWNLOADS")
-)
+type UserData struct {
+	StarredRepos    []string
+	BookmarkedRepos []string
+	Groups          []string
+	APIKeys         map[string]APIKeyDetails
+}
 
 type PageInput struct {
 	Limit  int
@@ -250,13 +256,6 @@ type FilterData struct {
 	IsSigned      bool
 	IsStarred     bool
 	IsBookmarked  bool
-}
-
-type UserData struct {
-	StarredRepos    []string
-	BookmarkedRepos []string
-	Groups          []string
-	APIKeys         map[string]APIKeyDetails
 }
 
 type APIKeyDetails struct {

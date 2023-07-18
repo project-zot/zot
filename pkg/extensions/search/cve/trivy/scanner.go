@@ -25,7 +25,8 @@ import (
 	zcommon "zotregistry.io/zot/pkg/common"
 	cvemodel "zotregistry.io/zot/pkg/extensions/search/cve/model"
 	"zotregistry.io/zot/pkg/log"
-	"zotregistry.io/zot/pkg/meta/repodb"
+	mcommon "zotregistry.io/zot/pkg/meta/common"
+	mTypes "zotregistry.io/zot/pkg/meta/types"
 	"zotregistry.io/zot/pkg/storage"
 )
 
@@ -70,7 +71,7 @@ type cveTrivyController struct {
 }
 
 type Scanner struct {
-	repoDB           repodb.RepoDB
+	metaDB           mTypes.MetaDB
 	cveController    cveTrivyController
 	storeController  storage.StoreController
 	log              log.Logger
@@ -81,7 +82,7 @@ type Scanner struct {
 }
 
 func NewScanner(storeController storage.StoreController,
-	repoDB repodb.RepoDB, dbRepository, javaDBRepository string, log log.Logger,
+	metaDB mTypes.MetaDB, dbRepository, javaDBRepository string, log log.Logger,
 ) *Scanner {
 	cveController := cveTrivyController{}
 
@@ -113,7 +114,7 @@ func NewScanner(storeController storage.StoreController,
 
 	return &Scanner{
 		log:              log,
-		repoDB:           repoDB,
+		metaDB:           metaDB,
 		cveController:    cveController,
 		storeController:  storeController,
 		dbLock:           &sync.Mutex{},
@@ -189,7 +190,7 @@ func (scanner Scanner) IsImageFormatScannable(repo, ref string) (bool, error) {
 	)
 
 	if zcommon.IsTag(ref) {
-		imgDescriptor, err := repodb.GetImageDescriptor(scanner.repoDB, repo, ref)
+		imgDescriptor, err := mcommon.GetImageDescriptor(scanner.metaDB, repo, ref)
 		if err != nil {
 			return false, err
 		}
@@ -199,7 +200,7 @@ func (scanner Scanner) IsImageFormatScannable(repo, ref string) (bool, error) {
 	} else {
 		var found bool
 
-		found, mediaType = repodb.FindMediaTypeForDigest(scanner.repoDB, godigest.Digest(ref))
+		found, mediaType = mcommon.FindMediaTypeForDigest(scanner.metaDB, godigest.Digest(ref))
 		if !found {
 			return false, zerr.ErrManifestNotFound
 		}
@@ -236,7 +237,7 @@ func (scanner Scanner) isManifestScanable(digestStr string) (bool, error) {
 		return true, nil
 	}
 
-	manifestData, err := scanner.repoDB.GetManifestData(godigest.Digest(digestStr))
+	manifestData, err := scanner.metaDB.GetManifestData(godigest.Digest(digestStr))
 	if err != nil {
 		return false, err
 	}
@@ -270,7 +271,7 @@ func (scanner Scanner) isIndexScanable(digestStr string) (bool, error) {
 		return true, nil
 	}
 
-	indexData, err := scanner.repoDB.GetIndexData(godigest.Digest(digestStr))
+	indexData, err := scanner.metaDB.GetIndexData(godigest.Digest(digestStr))
 	if err != nil {
 		return false, err
 	}
@@ -313,7 +314,7 @@ func (scanner Scanner) ScanImage(image string) (map[string]cvemodel.CVE, error) 
 	digest = ref
 
 	if isTag {
-		imgDescriptor, err := repodb.GetImageDescriptor(scanner.repoDB, repo, ref)
+		imgDescriptor, err := mcommon.GetImageDescriptor(scanner.metaDB, repo, ref)
 		if err != nil {
 			return map[string]cvemodel.CVE{}, err
 		}
@@ -323,7 +324,7 @@ func (scanner Scanner) ScanImage(image string) (map[string]cvemodel.CVE, error) 
 	} else {
 		var found bool
 
-		found, mediaType = repodb.FindMediaTypeForDigest(scanner.repoDB, godigest.Digest(ref))
+		found, mediaType = mcommon.FindMediaTypeForDigest(scanner.metaDB, godigest.Digest(ref))
 		if !found {
 			return map[string]cvemodel.CVE{}, zerr.ErrManifestNotFound
 		}
@@ -427,7 +428,7 @@ func (scanner Scanner) scanManifest(repo, digest string) (map[string]cvemodel.CV
 }
 
 func (scanner Scanner) scanIndex(repo, digest string) (map[string]cvemodel.CVE, error) {
-	indexData, err := scanner.repoDB.GetIndexData(godigest.Digest(digest))
+	indexData, err := scanner.metaDB.GetIndexData(godigest.Digest(digest))
 	if err != nil {
 		return map[string]cvemodel.CVE{}, err
 	}

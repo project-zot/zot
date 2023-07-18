@@ -5,15 +5,15 @@ import (
 
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/meta/common"
-	"zotregistry.io/zot/pkg/meta/repodb"
+	mTypes "zotregistry.io/zot/pkg/meta/types"
 	"zotregistry.io/zot/pkg/storage"
 )
 
-// OnUpdateManifest is called when a new manifest is added. It updates repodb according to the type
+// OnUpdateManifest is called when a new manifest is added. It updates metadb according to the type
 // of image pushed(normal images, signatues, etc.). In care of any errors, it makes sure to keep
-// consistency between repodb and the image store.
+// consistency between metadb and the image store.
 func OnUpdateManifest(repo, reference, mediaType string, digest godigest.Digest, body []byte,
-	storeController storage.StoreController, repoDB repodb.RepoDB, log log.Logger,
+	storeController storage.StoreController, metaDB mTypes.MetaDB, log log.Logger,
 ) error {
 	imgStore := storeController.GetImageStore(repo)
 
@@ -34,32 +34,32 @@ func OnUpdateManifest(repo, reference, mediaType string, digest godigest.Digest,
 	metadataSuccessfullySet := true
 
 	if isSignature {
-		layersInfo, errGetLayers := repodb.GetSignatureLayersInfo(repo, reference, digest.String(), signatureType, body,
+		layersInfo, errGetLayers := GetSignatureLayersInfo(repo, reference, digest.String(), signatureType, body,
 			imgStore, log)
 		if errGetLayers != nil {
 			metadataSuccessfullySet = false
 			err = errGetLayers
 		} else {
-			err = repoDB.AddManifestSignature(repo, signedManifestDigest, repodb.SignatureMetadata{
+			err = metaDB.AddManifestSignature(repo, signedManifestDigest, mTypes.SignatureMetadata{
 				SignatureType:   signatureType,
 				SignatureDigest: digest.String(),
 				LayersInfo:      layersInfo,
 			})
 			if err != nil {
-				log.Error().Err(err).Msg("repodb: error while putting repo meta")
+				log.Error().Err(err).Msg("metadb: error while putting repo meta")
 				metadataSuccessfullySet = false
 			} else {
-				err = repoDB.UpdateSignaturesValidity(repo, signedManifestDigest)
+				err = metaDB.UpdateSignaturesValidity(repo, signedManifestDigest)
 				if err != nil {
 					log.Error().Err(err).Str("repository", repo).Str("reference", reference).Str("digest",
-						signedManifestDigest.String()).Msg("repodb: failed verify signatures validity for signed image")
+						signedManifestDigest.String()).Msg("metadb: failed verify signatures validity for signed image")
 					metadataSuccessfullySet = false
 				}
 			}
 		}
 	} else {
-		err := repodb.SetImageMetaFromInput(repo, reference, mediaType, digest, body,
-			imgStore, repoDB, log)
+		err := SetImageMetaFromInput(repo, reference, mediaType, digest, body,
+			imgStore, metaDB, log)
 		if err != nil {
 			metadataSuccessfullySet = false
 		}
@@ -81,11 +81,11 @@ func OnUpdateManifest(repo, reference, mediaType string, digest godigest.Digest,
 	return nil
 }
 
-// OnDeleteManifest is called when a manifest is deleted. It updates repodb according to the type
+// OnDeleteManifest is called when a manifest is deleted. It updates metadb according to the type
 // of image pushed(normal images, signatues, etc.). In care of any errors, it makes sure to keep
-// consistency between repodb and the image store.
+// consistency between metadb and the image store.
 func OnDeleteManifest(repo, reference, mediaType string, digest godigest.Digest, manifestBlob []byte,
-	storeController storage.StoreController, repoDB repodb.RepoDB, log log.Logger,
+	storeController storage.StoreController, metaDB mTypes.MetaDB, log log.Logger,
 ) error {
 	imgStore := storeController.GetImageStore(repo)
 
@@ -100,32 +100,32 @@ func OnDeleteManifest(repo, reference, mediaType string, digest godigest.Digest,
 	manageRepoMetaSuccessfully := true
 
 	if isSignature {
-		err = repoDB.DeleteSignature(repo, signedManifestDigest, repodb.SignatureMetadata{
+		err = metaDB.DeleteSignature(repo, signedManifestDigest, mTypes.SignatureMetadata{
 			SignatureDigest: digest.String(),
 			SignatureType:   signatureType,
 		})
 		if err != nil {
-			log.Error().Err(err).Msg("repodb: can't check if image is a signature or not")
+			log.Error().Err(err).Msg("metadb: can't check if image is a signature or not")
 			manageRepoMetaSuccessfully = false
 		}
 	} else {
-		err = repoDB.DeleteRepoTag(repo, reference)
+		err = metaDB.DeleteRepoTag(repo, reference)
 		if err != nil {
-			log.Info().Msg("repodb: restoring image store")
+			log.Info().Msg("metadb: restoring image store")
 
 			// restore image store
 			_, _, err := imgStore.PutImageManifest(repo, reference, mediaType, manifestBlob)
 			if err != nil {
-				log.Error().Err(err).Msg("repodb: error while restoring image store, database is not consistent")
+				log.Error().Err(err).Msg("metadb: error while restoring image store, database is not consistent")
 			}
 
 			manageRepoMetaSuccessfully = false
 		}
 
 		if refferredDigest, hasSubject := common.GetReferredSubject(manifestBlob); hasSubject {
-			err := repoDB.DeleteReferrer(repo, refferredDigest, digest)
+			err := metaDB.DeleteReferrer(repo, refferredDigest, digest)
 			if err != nil {
-				log.Error().Err(err).Msg("repodb: error while deleting referrer")
+				log.Error().Err(err).Msg("metadb: error while deleting referrer")
 
 				return err
 			}
@@ -134,7 +134,7 @@ func OnDeleteManifest(repo, reference, mediaType string, digest godigest.Digest,
 
 	if !manageRepoMetaSuccessfully {
 		log.Info().Str("tag", reference).Str("repository", repo).
-			Msg("repodb: deleting image meta was unsuccessful for tag in repo")
+			Msg("metadb: deleting image meta was unsuccessful for tag in repo")
 
 		return err
 	}
@@ -144,7 +144,7 @@ func OnDeleteManifest(repo, reference, mediaType string, digest godigest.Digest,
 
 // OnDeleteManifest is called when a manifest is downloaded. It increments the download couter on that manifest.
 func OnGetManifest(name, reference string, body []byte,
-	storeController storage.StoreController, repoDB repodb.RepoDB, log log.Logger,
+	storeController storage.StoreController, metaDB mTypes.MetaDB, log log.Logger,
 ) error {
 	// check if image is a signature
 	isSignature, _, _, err := storage.CheckIsImageSignature(name, body, reference)
@@ -155,7 +155,7 @@ func OnGetManifest(name, reference string, body []byte,
 	}
 
 	if !isSignature {
-		err := repoDB.IncrementImageDownloads(name, reference)
+		err := metaDB.IncrementImageDownloads(name, reference)
 		if err != nil {
 			log.Error().Err(err).Str("repository", name).Str("reference", reference).
 				Msg("unexpected error for image")

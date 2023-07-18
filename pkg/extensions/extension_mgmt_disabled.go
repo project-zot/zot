@@ -8,7 +8,7 @@ import (
 
 	"zotregistry.io/zot/pkg/api/config"
 	"zotregistry.io/zot/pkg/log"
-	"zotregistry.io/zot/pkg/meta/repodb"
+	mTypes "zotregistry.io/zot/pkg/meta/types"
 	"zotregistry.io/zot/pkg/scheduler"
 )
 
@@ -22,7 +22,7 @@ func SetupMgmtRoutes(config *config.Config, router *mux.Router, log log.Logger) 
 }
 
 func EnablePeriodicSignaturesVerification(config *config.Config, taskScheduler *scheduler.Scheduler,
-	repoDB repodb.RepoDB, log log.Logger,
+	metaDB mTypes.MetaDB, log log.Logger,
 ) {
 	log.Warn().Msg("skipping adding to the scheduler a generator for updating signatures validity because " +
 		"given binary doesn't include this feature, please build a binary that does so")

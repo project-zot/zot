@@ -20,7 +20,7 @@ import (
 	"zotregistry.io/zot/pkg/api/constants"
 	"zotregistry.io/zot/pkg/extensions"
 	extconf "zotregistry.io/zot/pkg/extensions/config"
-	"zotregistry.io/zot/pkg/meta/repodb"
+	mTypes "zotregistry.io/zot/pkg/meta/types"
 	localCtx "zotregistry.io/zot/pkg/requestcontext"
 	"zotregistry.io/zot/pkg/test"
 	"zotregistry.io/zot/pkg/test/mocks"
@@ -28,7 +28,7 @@ import (
 
 type (
 	apiKeyResponse struct {
-		repodb.APIKeyDetails
+		mTypes.APIKeyDetails
 		APIKey string `json:"apiKey"`
 	}
 )
@@ -209,7 +209,7 @@ func TestAPIKeys(t *testing.T) {
 			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
 			// trigger errors
-			ctlr.RepoDB = mocks.RepoDBMock{
+			ctlr.MetaDB = mocks.MetaDBMock{
 				GetUserAPIKeyInfoFn: func(hashedKey string) (string, error) {
 					return "", ErrUnexpectedError
 				},
@@ -222,7 +222,7 @@ func TestAPIKeys(t *testing.T) {
 			So(resp, ShouldNotBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusInternalServerError)
 
-			ctlr.RepoDB = mocks.RepoDBMock{
+			ctlr.MetaDB = mocks.MetaDBMock{
 				GetUserAPIKeyInfoFn: func(hashedKey string) (string, error) {
 					return user.Email, nil
 				},
@@ -238,7 +238,7 @@ func TestAPIKeys(t *testing.T) {
 			So(resp, ShouldNotBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusInternalServerError)
 
-			ctlr.RepoDB = mocks.RepoDBMock{
+			ctlr.MetaDB = mocks.MetaDBMock{
 				GetUserAPIKeyInfoFn: func(hashedKey string) (string, error) {
 					return user.Email, nil
 				},
@@ -361,7 +361,7 @@ func TestAPIKeys(t *testing.T) {
 
 			ctx := context.WithValue(context.Background(), authzCtxKey, acCtx)
 
-			err = ctlr.RepoDB.DeleteUserData(ctx)
+			err = ctlr.MetaDB.DeleteUserData(ctx)
 			So(err, ShouldBeNil)
 
 			resp, err = client.R().

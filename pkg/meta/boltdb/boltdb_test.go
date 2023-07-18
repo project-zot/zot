@@ -1,4 +1,4 @@
-package bolt_test
+package boltdb_test
 
 import (
 	"context"
@@ -15,10 +15,9 @@ import (
 
 	zerr "zotregistry.io/zot/errors"
 	"zotregistry.io/zot/pkg/log"
-	"zotregistry.io/zot/pkg/meta/bolt"
-	"zotregistry.io/zot/pkg/meta/repodb"
-	boltdb_wrapper "zotregistry.io/zot/pkg/meta/repodb/boltdb-wrapper"
+	"zotregistry.io/zot/pkg/meta/boltdb"
 	"zotregistry.io/zot/pkg/meta/signatures"
+	mTypes "zotregistry.io/zot/pkg/meta/types"
 	localCtx "zotregistry.io/zot/pkg/requestcontext"
 	"zotregistry.io/zot/pkg/test"
 )
@@ -26,19 +25,19 @@ import (
 func TestWrapperErrors(t *testing.T) {
 	Convey("Errors", t, func() {
 		tmpDir := t.TempDir()
-		boltDBParams := bolt.DBParameters{RootDir: tmpDir}
-		boltDriver, err := bolt.GetBoltDriver(boltDBParams)
+		boltDBParams := boltdb.DBParameters{RootDir: tmpDir}
+		boltDriver, err := boltdb.GetBoltDriver(boltDBParams)
 		So(err, ShouldBeNil)
 
 		log := log.NewLogger("debug", "")
 
-		boltdbWrapper, err := boltdb_wrapper.NewBoltDBWrapper(boltDriver, log)
+		boltdbWrapper, err := boltdb.New(boltDriver, log)
 		So(boltdbWrapper, ShouldNotBeNil)
 		So(err, ShouldBeNil)
 
-		repoMeta := repodb.RepoMetadata{
-			Tags:       map[string]repodb.Descriptor{},
-			Signatures: map[string]repodb.ManifestSignatures{},
+		repoMeta := mTypes.RepoMetadata{
+			Tags:       map[string]mTypes.Descriptor{},
+			Signatures: map[string]mTypes.ManifestSignatures{},
 		}
 
 		repoMetaBlob, err := json.Marshal(repoMeta)
@@ -59,28 +58,28 @@ func TestWrapperErrors(t *testing.T) {
 				}
 
 				ctx := context.WithValue(context.Background(), authzCtxKey, acCtx)
-				err = boltdbWrapper.AddUserAPIKey(ctx, "", &repodb.APIKeyDetails{})
+				err = boltdbWrapper.AddUserAPIKey(ctx, "", &mTypes.APIKeyDetails{})
 				So(err, ShouldNotBeNil)
 			})
 
-			err = boltdbWrapper.AddUserAPIKey(ctx, "", &repodb.APIKeyDetails{})
+			err = boltdbWrapper.AddUserAPIKey(ctx, "", &mTypes.APIKeyDetails{})
 			So(err, ShouldNotBeNil)
 
 			err = boltdbWrapper.DB.Update(func(tx *bbolt.Tx) error {
-				return tx.DeleteBucket([]byte(bolt.UserDataBucket))
+				return tx.DeleteBucket([]byte(boltdb.UserDataBucket))
 			})
 			So(err, ShouldBeNil)
 
-			err = boltdbWrapper.AddUserAPIKey(ctx, "test", &repodb.APIKeyDetails{})
+			err = boltdbWrapper.AddUserAPIKey(ctx, "test", &mTypes.APIKeyDetails{})
 			So(err, ShouldNotBeNil)
 
 			err = boltdbWrapper.DB.Update(func(tx *bbolt.Tx) error {
-				return tx.DeleteBucket([]byte(bolt.UserAPIKeysBucket))
+				return tx.DeleteBucket([]byte(boltdb.UserAPIKeysBucket))
 			})
 
 			So(err, ShouldBeNil)
 
-			err = boltdbWrapper.AddUserAPIKey(ctx, "", &repodb.APIKeyDetails{})
+			err = boltdbWrapper.AddUserAPIKey(ctx, "", &mTypes.APIKeyDetails{})
 			So(err, ShouldEqual, zerr.ErrBucketDoesNotExist)
 		})
 
@@ -98,15 +97,15 @@ func TestWrapperErrors(t *testing.T) {
 		})
 
 		Convey("DeleteUserAPIKey", func() {
-			err = boltdbWrapper.SetUserData(ctx, repodb.UserData{})
+			err = boltdbWrapper.SetUserData(ctx, mTypes.UserData{})
 			So(err, ShouldBeNil)
 
-			err = boltdbWrapper.AddUserAPIKey(ctx, "hashedKey", &repodb.APIKeyDetails{})
+			err = boltdbWrapper.AddUserAPIKey(ctx, "hashedKey", &mTypes.APIKeyDetails{})
 			So(err, ShouldBeNil)
 
 			Convey("no such bucket", func() {
 				err = boltdbWrapper.DB.Update(func(tx *bbolt.Tx) error {
-					return tx.DeleteBucket([]byte(bolt.UserAPIKeysBucket))
+					return tx.DeleteBucket([]byte(boltdb.UserAPIKeysBucket))
 				})
 				So(err, ShouldBeNil)
 
@@ -148,7 +147,7 @@ func TestWrapperErrors(t *testing.T) {
 			So(err, ShouldNotBeNil)
 
 			err = boltdbWrapper.DB.Update(func(tx *bbolt.Tx) error {
-				return tx.DeleteBucket([]byte(bolt.UserDataBucket))
+				return tx.DeleteBucket([]byte(boltdb.UserDataBucket))
 			})
 			So(err, ShouldBeNil)
 
@@ -158,7 +157,7 @@ func TestWrapperErrors(t *testing.T) {
 
 		Convey("GetUserAPIKeyInfo", func() {
 			err = boltdbWrapper.DB.Update(func(tx *bbolt.Tx) error {
-				return tx.DeleteBucket([]byte(bolt.UserAPIKeysBucket))
+				return tx.DeleteBucket([]byte(boltdb.UserAPIKeysBucket))
 			})
 			So(err, ShouldBeNil)
 
@@ -168,7 +167,7 @@ func TestWrapperErrors(t *testing.T) {
 
 		Convey("GetUserData", func() {
 			err = boltdbWrapper.DB.Update(func(tx *bbolt.Tx) error {
-				buck := tx.Bucket([]byte(bolt.UserDataBucket))
+				buck := tx.Bucket([]byte(boltdb.UserDataBucket))
 				So(buck, ShouldNotBeNil)
 
 				return buck.Put([]byte("test"), []byte("dsa8"))
@@ -180,7 +179,7 @@ func TestWrapperErrors(t *testing.T) {
 			So(err, ShouldNotBeNil)
 
 			err = boltdbWrapper.DB.Update(func(tx *bbolt.Tx) error {
-				return tx.DeleteBucket([]byte(bolt.UserAPIKeysBucket))
+				return tx.DeleteBucket([]byte(boltdb.UserAPIKeysBucket))
 			})
 			So(err, ShouldBeNil)
 
@@ -195,7 +194,7 @@ func TestWrapperErrors(t *testing.T) {
 
 			ctx = context.WithValue(context.Background(), authzCtxKey, acCtx)
 
-			err = boltdbWrapper.SetUserData(ctx, repodb.UserData{})
+			err = boltdbWrapper.SetUserData(ctx, mTypes.UserData{})
 			So(err, ShouldNotBeNil)
 
 			buff := make([]byte, int(math.Ceil(float64(1000000)/float64(1.33333333333))))
@@ -212,11 +211,11 @@ func TestWrapperErrors(t *testing.T) {
 
 			ctx := context.WithValue(context.Background(), authzCtxKey, acCtx)
 
-			err = boltdbWrapper.SetUserData(ctx, repodb.UserData{}) //nolint: contextcheck
+			err = boltdbWrapper.SetUserData(ctx, mTypes.UserData{}) //nolint: contextcheck
 			So(err, ShouldNotBeNil)
 
 			err = boltdbWrapper.DB.Update(func(tx *bbolt.Tx) error {
-				return tx.DeleteBucket([]byte(bolt.UserDataBucket))
+				return tx.DeleteBucket([]byte(boltdb.UserDataBucket))
 			})
 			So(err, ShouldBeNil)
 
@@ -226,7 +225,7 @@ func TestWrapperErrors(t *testing.T) {
 
 			ctx = context.WithValue(context.Background(), authzCtxKey, acCtx)
 
-			err = boltdbWrapper.SetUserData(ctx, repodb.UserData{}) //nolint: contextcheck
+			err = boltdbWrapper.SetUserData(ctx, mTypes.UserData{}) //nolint: contextcheck
 			So(err, ShouldNotBeNil)
 		})
 
@@ -241,7 +240,7 @@ func TestWrapperErrors(t *testing.T) {
 			So(err, ShouldNotBeNil)
 
 			err = boltdbWrapper.DB.Update(func(tx *bbolt.Tx) error {
-				return tx.DeleteBucket([]byte(bolt.UserDataBucket))
+				return tx.DeleteBucket([]byte(boltdb.UserDataBucket))
 			})
 			So(err, ShouldBeNil)
 
@@ -271,7 +270,7 @@ func TestWrapperErrors(t *testing.T) {
 
 		Convey("GetManifestData", func() {
 			err := boltdbWrapper.DB.Update(func(tx *bbolt.Tx) error {
-				dataBuck := tx.Bucket([]byte(bolt.ManifestDataBucket))
+				dataBuck := tx.Bucket([]byte(boltdb.ManifestDataBucket))
 
 				return dataBuck.Put([]byte("digest1"), []byte("wrong json"))
 			})
@@ -286,8 +285,8 @@ func TestWrapperErrors(t *testing.T) {
 
 		Convey("SetManifestMeta", func() {
 			err := boltdbWrapper.DB.Update(func(tx *bbolt.Tx) error {
-				repoBuck := tx.Bucket([]byte(bolt.RepoMetadataBucket))
-				dataBuck := tx.Bucket([]byte(bolt.ManifestDataBucket))
+				repoBuck := tx.Bucket([]byte(boltdb.RepoMetadataBucket))
+				dataBuck := tx.Bucket([]byte(boltdb.ManifestDataBucket))
 
 				err := dataBuck.Put([]byte("digest1"), repoMetaBlob)
 				if err != nil {
@@ -298,7 +297,7 @@ func TestWrapperErrors(t *testing.T) {
 			})
 			So(err, ShouldBeNil)
 
-			err = boltdbWrapper.SetManifestMeta("repo1", "digest1", repodb.ManifestMetadata{})
+			err = boltdbWrapper.SetManifestMeta("repo1", "digest1", mTypes.ManifestMetadata{})
 			So(err, ShouldNotBeNil)
 
 			_, err = boltdbWrapper.GetManifestMeta("repo1", "digest1")
@@ -307,7 +306,7 @@ func TestWrapperErrors(t *testing.T) {
 
 		Convey("FilterRepos", func() {
 			err := boltdbWrapper.DB.Update(func(tx *bbolt.Tx) error {
-				buck := tx.Bucket([]byte(bolt.RepoMetadataBucket))
+				buck := tx.Bucket([]byte(boltdb.RepoMetadataBucket))
 				err := buck.Put([]byte("badRepo"), []byte("bad repo"))
 				So(err, ShouldBeNil)
 
@@ -316,19 +315,19 @@ func TestWrapperErrors(t *testing.T) {
 			So(err, ShouldBeNil)
 
 			_, _, _, _, err = boltdbWrapper.FilterRepos(context.Background(),
-				func(repoMeta repodb.RepoMetadata) bool { return true }, repodb.PageInput{})
+				func(repoMeta mTypes.RepoMetadata) bool { return true }, mTypes.PageInput{})
 			So(err, ShouldNotBeNil)
 		})
 
 		Convey("SetReferrer", func() {
 			err := boltdbWrapper.DB.Update(func(tx *bbolt.Tx) error {
-				repoBuck := tx.Bucket([]byte(bolt.RepoMetadataBucket))
+				repoBuck := tx.Bucket([]byte(boltdb.RepoMetadataBucket))
 
 				return repoBuck.Put([]byte("repo"), []byte("wrong json"))
 			})
 			So(err, ShouldBeNil)
 
-			err = boltdbWrapper.SetReferrer("repo", "ref", repodb.ReferrerInfo{})
+			err = boltdbWrapper.SetReferrer("repo", "ref", mTypes.ReferrerInfo{})
 			So(err, ShouldNotBeNil)
 		})
 
@@ -340,7 +339,7 @@ func TestWrapperErrors(t *testing.T) {
 
 			Convey("bad repo meta blob", func() {
 				err := boltdbWrapper.DB.Update(func(tx *bbolt.Tx) error {
-					repoBuck := tx.Bucket([]byte(bolt.RepoMetadataBucket))
+					repoBuck := tx.Bucket([]byte(boltdb.RepoMetadataBucket))
 
 					return repoBuck.Put([]byte("repo"), []byte("wrong json"))
 				})
@@ -353,7 +352,7 @@ func TestWrapperErrors(t *testing.T) {
 
 		Convey("SetRepoReference", func() {
 			err := boltdbWrapper.DB.Update(func(tx *bbolt.Tx) error {
-				repoBuck := tx.Bucket([]byte(bolt.RepoMetadataBucket))
+				repoBuck := tx.Bucket([]byte(boltdb.RepoMetadataBucket))
 
 				return repoBuck.Put([]byte("repo1"), []byte("wrong json"))
 			})
@@ -365,7 +364,7 @@ func TestWrapperErrors(t *testing.T) {
 
 		Convey("GetRepoMeta", func() {
 			err := boltdbWrapper.DB.Update(func(tx *bbolt.Tx) error {
-				repoBuck := tx.Bucket([]byte(bolt.RepoMetadataBucket))
+				repoBuck := tx.Bucket([]byte(boltdb.RepoMetadataBucket))
 
 				return repoBuck.Put([]byte("repo1"), []byte("wrong json"))
 			})
@@ -377,7 +376,7 @@ func TestWrapperErrors(t *testing.T) {
 
 		Convey("DeleteRepoTag", func() {
 			err := boltdbWrapper.DB.Update(func(tx *bbolt.Tx) error {
-				repoBuck := tx.Bucket([]byte(bolt.RepoMetadataBucket))
+				repoBuck := tx.Bucket([]byte(boltdb.RepoMetadataBucket))
 
 				return repoBuck.Put([]byte("repo1"), []byte("wrong json"))
 			})
@@ -392,7 +391,7 @@ func TestWrapperErrors(t *testing.T) {
 			So(err, ShouldNotBeNil)
 
 			err := boltdbWrapper.DB.Update(func(tx *bbolt.Tx) error {
-				repoBuck := tx.Bucket([]byte(bolt.RepoMetadataBucket))
+				repoBuck := tx.Bucket([]byte(boltdb.RepoMetadataBucket))
 
 				return repoBuck.Put([]byte("repo1"), []byte("wrong json"))
 			})
@@ -404,7 +403,7 @@ func TestWrapperErrors(t *testing.T) {
 
 		Convey("IncrementRepoStars", func() {
 			err := boltdbWrapper.DB.Update(func(tx *bbolt.Tx) error {
-				repoBuck := tx.Bucket([]byte(bolt.RepoMetadataBucket))
+				repoBuck := tx.Bucket([]byte(boltdb.RepoMetadataBucket))
 
 				return repoBuck.Put([]byte("repo1"), []byte("wrong json"))
 			})
@@ -419,7 +418,7 @@ func TestWrapperErrors(t *testing.T) {
 
 		Convey("DecrementRepoStars", func() {
 			err := boltdbWrapper.DB.Update(func(tx *bbolt.Tx) error {
-				repoBuck := tx.Bucket([]byte(bolt.RepoMetadataBucket))
+				repoBuck := tx.Bucket([]byte(boltdb.RepoMetadataBucket))
 
 				return repoBuck.Put([]byte("repo1"), []byte("wrong json"))
 			})
@@ -434,7 +433,7 @@ func TestWrapperErrors(t *testing.T) {
 
 		Convey("GetRepoStars", func() {
 			err := boltdbWrapper.DB.Update(func(tx *bbolt.Tx) error {
-				repoBuck := tx.Bucket([]byte(bolt.RepoMetadataBucket))
+				repoBuck := tx.Bucket([]byte(boltdb.RepoMetadataBucket))
 
 				return repoBuck.Put([]byte("repo1"), []byte("wrong json"))
 			})
@@ -446,21 +445,21 @@ func TestWrapperErrors(t *testing.T) {
 
 		Convey("GetMultipleRepoMeta", func() {
 			err := boltdbWrapper.DB.Update(func(tx *bbolt.Tx) error {
-				repoBuck := tx.Bucket([]byte(bolt.RepoMetadataBucket))
+				repoBuck := tx.Bucket([]byte(boltdb.RepoMetadataBucket))
 
 				return repoBuck.Put([]byte("repo1"), []byte("wrong json"))
 			})
 			So(err, ShouldBeNil)
 
-			_, err = boltdbWrapper.GetMultipleRepoMeta(context.TODO(), func(repoMeta repodb.RepoMetadata) bool {
+			_, err = boltdbWrapper.GetMultipleRepoMeta(context.TODO(), func(repoMeta mTypes.RepoMetadata) bool {
 				return true
-			}, repodb.PageInput{})
+			}, mTypes.PageInput{})
 			So(err, ShouldNotBeNil)
 		})
 
 		Convey("IncrementImageDownloads", func() {
 			err := boltdbWrapper.DB.Update(func(tx *bbolt.Tx) error {
-				repoBuck := tx.Bucket([]byte(bolt.RepoMetadataBucket))
+				repoBuck := tx.Bucket([]byte(boltdb.RepoMetadataBucket))
 
 				return repoBuck.Put([]byte("repo1"), []byte("wrong json"))
 			})
@@ -473,7 +472,7 @@ func TestWrapperErrors(t *testing.T) {
 			So(err, ShouldNotBeNil)
 
 			err = boltdbWrapper.DB.Update(func(tx *bbolt.Tx) error {
-				repoBuck := tx.Bucket([]byte(bolt.RepoMetadataBucket))
+				repoBuck := tx.Bucket([]byte(boltdb.RepoMetadataBucket))
 
 				return repoBuck.Put([]byte("repo1"), repoMetaBlob)
 			})
@@ -485,18 +484,18 @@ func TestWrapperErrors(t *testing.T) {
 
 		Convey("AddManifestSignature", func() {
 			err := boltdbWrapper.DB.Update(func(tx *bbolt.Tx) error {
-				repoBuck := tx.Bucket([]byte(bolt.RepoMetadataBucket))
+				repoBuck := tx.Bucket([]byte(boltdb.RepoMetadataBucket))
 
 				return repoBuck.Put([]byte("repo1"), []byte("wrong json"))
 			})
 			So(err, ShouldBeNil)
 
 			err = boltdbWrapper.AddManifestSignature("repo1", digest.FromString("dig"),
-				repodb.SignatureMetadata{})
+				mTypes.SignatureMetadata{})
 			So(err, ShouldNotBeNil)
 
 			err = boltdbWrapper.DB.Update(func(tx *bbolt.Tx) error {
-				repoBuck := tx.Bucket([]byte(bolt.RepoMetadataBucket))
+				repoBuck := tx.Bucket([]byte(boltdb.RepoMetadataBucket))
 
 				return repoBuck.Put([]byte("repo1"), repoMetaBlob)
 			})
@@ -504,16 +503,16 @@ func TestWrapperErrors(t *testing.T) {
 
 			// signatures not found
 			err = boltdbWrapper.AddManifestSignature("repo1", digest.FromString("dig"),
-				repodb.SignatureMetadata{})
+				mTypes.SignatureMetadata{})
 			So(err, ShouldBeNil)
 
 			//
 			err = boltdbWrapper.DB.Update(func(tx *bbolt.Tx) error {
-				repoBuck := tx.Bucket([]byte(bolt.RepoMetadataBucket))
+				repoBuck := tx.Bucket([]byte(boltdb.RepoMetadataBucket))
 
-				repoMeta := repodb.RepoMetadata{
-					Tags: map[string]repodb.Descriptor{},
-					Signatures: map[string]repodb.ManifestSignatures{
+				repoMeta := mTypes.RepoMetadata{
+					Tags: map[string]mTypes.Descriptor{},
+					Signatures: map[string]mTypes.ManifestSignatures{
 						"digest1": {
 							"cosgin": {{}},
 						},
@@ -531,14 +530,14 @@ func TestWrapperErrors(t *testing.T) {
 			So(err, ShouldBeNil)
 
 			err = boltdbWrapper.AddManifestSignature("repo1", digest.FromString("dig"),
-				repodb.SignatureMetadata{
+				mTypes.SignatureMetadata{
 					SignatureType:   "cosign",
 					SignatureDigest: "digest1",
 				})
 			So(err, ShouldBeNil)
 
 			err = boltdbWrapper.AddManifestSignature("repo1", digest.FromString("dig"),
-				repodb.SignatureMetadata{
+				mTypes.SignatureMetadata{
 					SignatureType:   "cosign",
 					SignatureDigest: "digest2",
 				})
@@ -552,7 +551,7 @@ func TestWrapperErrors(t *testing.T) {
 				ShouldEqual, "digest2")
 
 			err = boltdbWrapper.AddManifestSignature("repo1", digest.FromString("dig"),
-				repodb.SignatureMetadata{
+				mTypes.SignatureMetadata{
 					SignatureType:   "notation",
 					SignatureDigest: "digest2",
 				})
@@ -561,28 +560,28 @@ func TestWrapperErrors(t *testing.T) {
 
 		Convey("DeleteSignature", func() {
 			err := boltdbWrapper.DB.Update(func(tx *bbolt.Tx) error {
-				repoBuck := tx.Bucket([]byte(bolt.RepoMetadataBucket))
+				repoBuck := tx.Bucket([]byte(boltdb.RepoMetadataBucket))
 
 				return repoBuck.Put([]byte("repo1"), []byte("wrong json"))
 			})
 			So(err, ShouldBeNil)
 
 			err = boltdbWrapper.DeleteSignature("repo2", digest.FromString("dig"),
-				repodb.SignatureMetadata{})
+				mTypes.SignatureMetadata{})
 			So(err, ShouldNotBeNil)
 
 			err = boltdbWrapper.DeleteSignature("repo1", digest.FromString("dig"),
-				repodb.SignatureMetadata{})
+				mTypes.SignatureMetadata{})
 			So(err, ShouldNotBeNil)
 
 			err = boltdbWrapper.DB.Update(func(tx *bbolt.Tx) error {
-				repoBuck := tx.Bucket([]byte(bolt.RepoMetadataBucket))
+				repoBuck := tx.Bucket([]byte(boltdb.RepoMetadataBucket))
 
-				repoMeta := repodb.RepoMetadata{
-					Tags: map[string]repodb.Descriptor{},
-					Signatures: map[string]repodb.ManifestSignatures{
+				repoMeta := mTypes.RepoMetadata{
+					Tags: map[string]mTypes.Descriptor{},
+					Signatures: map[string]mTypes.ManifestSignatures{
 						"digest1": {
-							"cosgin": []repodb.SignatureInfo{
+							"cosgin": []mTypes.SignatureInfo{
 								{
 									SignatureManifestDigest: "sigDigest1",
 								},
@@ -605,7 +604,7 @@ func TestWrapperErrors(t *testing.T) {
 			So(err, ShouldBeNil)
 
 			err = boltdbWrapper.DeleteSignature("repo1", "digest1",
-				repodb.SignatureMetadata{
+				mTypes.SignatureMetadata{
 					SignatureType:   "cosgin",
 					SignatureDigest: "sigDigest2",
 				})
@@ -614,30 +613,30 @@ func TestWrapperErrors(t *testing.T) {
 
 		Convey("SearchRepos", func() {
 			err := boltdbWrapper.DB.Update(func(tx *bbolt.Tx) error {
-				repoBuck := tx.Bucket([]byte(bolt.RepoMetadataBucket))
+				repoBuck := tx.Bucket([]byte(boltdb.RepoMetadataBucket))
 
 				return repoBuck.Put([]byte("repo1"), []byte("wrong json"))
 			})
 			So(err, ShouldBeNil)
 
-			_, _, _, _, err = boltdbWrapper.SearchRepos(context.Background(), "", repodb.Filter{}, repodb.PageInput{})
+			_, _, _, _, err = boltdbWrapper.SearchRepos(context.Background(), "", mTypes.Filter{}, mTypes.PageInput{})
 			So(err, ShouldNotBeNil)
 
 			err = boltdbWrapper.DB.Update(func(tx *bbolt.Tx) error {
-				repoBuck := tx.Bucket([]byte(bolt.RepoMetadataBucket))
-				dataBuck := tx.Bucket([]byte(bolt.ManifestDataBucket))
+				repoBuck := tx.Bucket([]byte(boltdb.RepoMetadataBucket))
+				dataBuck := tx.Bucket([]byte(boltdb.ManifestDataBucket))
 
 				err := dataBuck.Put([]byte("dig1"), []byte("wrong json"))
 				if err != nil {
 					return err
 				}
 
-				repoMeta := repodb.RepoMetadata{
+				repoMeta := mTypes.RepoMetadata{
 					Name: "repo1",
-					Tags: map[string]repodb.Descriptor{
+					Tags: map[string]mTypes.Descriptor{
 						"tag1": {Digest: "dig1", MediaType: ispec.MediaTypeImageManifest},
 					},
-					Signatures: map[string]repodb.ManifestSignatures{},
+					Signatures: map[string]mTypes.ManifestSignatures{},
 				}
 				repoMetaBlob, err := json.Marshal(repoMeta)
 				So(err, ShouldBeNil)
@@ -647,12 +646,12 @@ func TestWrapperErrors(t *testing.T) {
 					return err
 				}
 
-				repoMeta = repodb.RepoMetadata{
+				repoMeta = mTypes.RepoMetadata{
 					Name: "repo2",
-					Tags: map[string]repodb.Descriptor{
+					Tags: map[string]mTypes.Descriptor{
 						"tag2": {Digest: "dig2", MediaType: ispec.MediaTypeImageManifest},
 					},
-					Signatures: map[string]repodb.ManifestSignatures{},
+					Signatures: map[string]mTypes.ManifestSignatures{},
 				}
 				repoMetaBlob, err = json.Marshal(repoMeta)
 				So(err, ShouldBeNil)
@@ -661,20 +660,20 @@ func TestWrapperErrors(t *testing.T) {
 			})
 			So(err, ShouldBeNil)
 
-			_, _, _, _, err = boltdbWrapper.SearchRepos(context.Background(), "repo1", repodb.Filter{}, repodb.PageInput{})
+			_, _, _, _, err = boltdbWrapper.SearchRepos(context.Background(), "repo1", mTypes.Filter{}, mTypes.PageInput{})
 			So(err, ShouldNotBeNil)
 
-			_, _, _, _, err = boltdbWrapper.SearchRepos(context.Background(), "repo2", repodb.Filter{}, repodb.PageInput{})
+			_, _, _, _, err = boltdbWrapper.SearchRepos(context.Background(), "repo2", mTypes.Filter{}, mTypes.PageInput{})
 			So(err, ShouldNotBeNil)
 
 			err = boltdbWrapper.DB.Update(func(tx *bbolt.Tx) error {
-				repoBuck := tx.Bucket([]byte(bolt.RepoMetadataBucket))
-				dataBuck := tx.Bucket([]byte(bolt.ManifestDataBucket))
+				repoBuck := tx.Bucket([]byte(boltdb.RepoMetadataBucket))
+				dataBuck := tx.Bucket([]byte(boltdb.ManifestDataBucket))
 
-				manifestMeta := repodb.ManifestMetadata{
+				manifestMeta := mTypes.ManifestMetadata{
 					ManifestBlob: []byte("{}"),
 					ConfigBlob:   []byte("wrong json"),
-					Signatures:   repodb.ManifestSignatures{},
+					Signatures:   mTypes.ManifestSignatures{},
 				}
 
 				manifestMetaBlob, err := json.Marshal(manifestMeta)
@@ -687,12 +686,12 @@ func TestWrapperErrors(t *testing.T) {
 					return err
 				}
 
-				repoMeta = repodb.RepoMetadata{
+				repoMeta = mTypes.RepoMetadata{
 					Name: "repo1",
-					Tags: map[string]repodb.Descriptor{
+					Tags: map[string]mTypes.Descriptor{
 						"tag1": {Digest: "dig1", MediaType: ispec.MediaTypeImageManifest},
 					},
-					Signatures: map[string]repodb.ManifestSignatures{},
+					Signatures: map[string]mTypes.ManifestSignatures{},
 				}
 				repoMetaBlob, err = json.Marshal(repoMeta)
 				So(err, ShouldBeNil)
@@ -701,7 +700,7 @@ func TestWrapperErrors(t *testing.T) {
 			})
 			So(err, ShouldBeNil)
 
-			_, _, _, _, err = boltdbWrapper.SearchRepos(context.Background(), "repo1", repodb.Filter{}, repodb.PageInput{})
+			_, _, _, _, err = boltdbWrapper.SearchRepos(context.Background(), "repo1", mTypes.Filter{}, mTypes.PageInput{})
 			So(err, ShouldNotBeNil)
 		})
 
@@ -715,10 +714,10 @@ func TestWrapperErrors(t *testing.T) {
 				err = setBadIndexData(boltdbWrapper.DB, indexDigest.String())
 				So(err, ShouldBeNil)
 
-				_, _, _, _, err = boltdbWrapper.SearchRepos(ctx, "", repodb.Filter{}, repodb.PageInput{})
+				_, _, _, _, err = boltdbWrapper.SearchRepos(ctx, "", mTypes.Filter{}, mTypes.PageInput{})
 				So(err, ShouldNotBeNil)
 
-				_, _, _, _, err = boltdbWrapper.SearchTags(ctx, "repo:", repodb.Filter{}, repodb.PageInput{})
+				_, _, _, _, err = boltdbWrapper.SearchTags(ctx, "repo:", mTypes.Filter{}, mTypes.PageInput{})
 				So(err, ShouldNotBeNil)
 			})
 
@@ -728,15 +727,15 @@ func TestWrapperErrors(t *testing.T) {
 				err := boltdbWrapper.SetRepoReference("repo", "tag1", indexDigest, ispec.MediaTypeImageIndex) //nolint:contextcheck
 				So(err, ShouldBeNil)
 
-				err = boltdbWrapper.SetIndexData(indexDigest, repodb.IndexData{
+				err = boltdbWrapper.SetIndexData(indexDigest, mTypes.IndexData{
 					IndexBlob: []byte("bad json"),
 				})
 				So(err, ShouldBeNil)
 
-				_, _, _, _, err = boltdbWrapper.SearchRepos(ctx, "", repodb.Filter{}, repodb.PageInput{})
+				_, _, _, _, err = boltdbWrapper.SearchRepos(ctx, "", mTypes.Filter{}, mTypes.PageInput{})
 				So(err, ShouldNotBeNil)
 
-				_, _, _, _, err = boltdbWrapper.SearchTags(ctx, "repo:", repodb.Filter{}, repodb.PageInput{})
+				_, _, _, _, err = boltdbWrapper.SearchTags(ctx, "repo:", mTypes.Filter{}, mTypes.PageInput{})
 				So(err, ShouldNotBeNil)
 			})
 
@@ -755,27 +754,27 @@ func TestWrapperErrors(t *testing.T) {
 				})
 				So(err, ShouldBeNil)
 
-				err = boltdbWrapper.SetIndexData(indexDigest, repodb.IndexData{
+				err = boltdbWrapper.SetIndexData(indexDigest, mTypes.IndexData{
 					IndexBlob: indexBlob,
 				})
 				So(err, ShouldBeNil)
 
-				err = boltdbWrapper.SetManifestData(manifestDigestFromIndex1, repodb.ManifestData{
+				err = boltdbWrapper.SetManifestData(manifestDigestFromIndex1, mTypes.ManifestData{
 					ManifestBlob: []byte("Bad Manifest"),
 					ConfigBlob:   []byte("Bad Manifest"),
 				})
 				So(err, ShouldBeNil)
 
-				err = boltdbWrapper.SetManifestData(manifestDigestFromIndex2, repodb.ManifestData{
+				err = boltdbWrapper.SetManifestData(manifestDigestFromIndex2, mTypes.ManifestData{
 					ManifestBlob: []byte("Bad Manifest"),
 					ConfigBlob:   []byte("Bad Manifest"),
 				})
 				So(err, ShouldBeNil)
 
-				_, _, _, _, err = boltdbWrapper.SearchRepos(ctx, "", repodb.Filter{}, repodb.PageInput{})
+				_, _, _, _, err = boltdbWrapper.SearchRepos(ctx, "", mTypes.Filter{}, mTypes.PageInput{})
 				So(err, ShouldNotBeNil)
 
-				_, _, _, _, err = boltdbWrapper.SearchTags(ctx, "repo:", repodb.Filter{}, repodb.PageInput{})
+				_, _, _, _, err = boltdbWrapper.SearchTags(ctx, "repo:", mTypes.Filter{}, mTypes.PageInput{})
 				So(err, ShouldNotBeNil)
 			})
 		})
@@ -784,26 +783,26 @@ func TestWrapperErrors(t *testing.T) {
 			ctx := context.Background()
 
 			err := boltdbWrapper.DB.Update(func(tx *bbolt.Tx) error {
-				repoBuck := tx.Bucket([]byte(bolt.RepoMetadataBucket))
+				repoBuck := tx.Bucket([]byte(boltdb.RepoMetadataBucket))
 
 				return repoBuck.Put([]byte("repo1"), []byte("wrong json"))
 			})
 			So(err, ShouldBeNil)
 
-			_, _, _, _, err = boltdbWrapper.SearchTags(ctx, "", repodb.Filter{}, repodb.PageInput{})
+			_, _, _, _, err = boltdbWrapper.SearchTags(ctx, "", mTypes.Filter{}, mTypes.PageInput{})
 			So(err, ShouldNotBeNil)
 
-			_, _, _, _, err = boltdbWrapper.SearchTags(ctx, "repo1:", repodb.Filter{}, repodb.PageInput{})
+			_, _, _, _, err = boltdbWrapper.SearchTags(ctx, "repo1:", mTypes.Filter{}, mTypes.PageInput{})
 			So(err, ShouldNotBeNil)
 
 			err = boltdbWrapper.DB.Update(func(tx *bbolt.Tx) error {
-				repoBuck := tx.Bucket([]byte(bolt.RepoMetadataBucket))
-				dataBuck := tx.Bucket([]byte(bolt.ManifestDataBucket))
+				repoBuck := tx.Bucket([]byte(boltdb.RepoMetadataBucket))
+				dataBuck := tx.Bucket([]byte(boltdb.ManifestDataBucket))
 
-				manifestMeta := repodb.ManifestMetadata{
+				manifestMeta := mTypes.ManifestMetadata{
 					ManifestBlob: []byte("{}"),
 					ConfigBlob:   []byte("wrong json"),
-					Signatures:   repodb.ManifestSignatures{},
+					Signatures:   mTypes.ManifestSignatures{},
 				}
 
 				manifestMetaBlob, err := json.Marshal(manifestMeta)
@@ -822,12 +821,12 @@ func TestWrapperErrors(t *testing.T) {
 				}
 
 				// manifest data doesn't exist
-				repoMeta = repodb.RepoMetadata{
+				repoMeta = mTypes.RepoMetadata{
 					Name: "repo1",
-					Tags: map[string]repodb.Descriptor{
+					Tags: map[string]mTypes.Descriptor{
 						"tag2": {Digest: "dig2", MediaType: ispec.MediaTypeImageManifest},
 					},
-					Signatures: map[string]repodb.ManifestSignatures{},
+					Signatures: map[string]mTypes.ManifestSignatures{},
 				}
 				repoMetaBlob, err = json.Marshal(repoMeta)
 				So(err, ShouldBeNil)
@@ -838,12 +837,12 @@ func TestWrapperErrors(t *testing.T) {
 				}
 
 				// manifest data is wrong
-				repoMeta = repodb.RepoMetadata{
+				repoMeta = mTypes.RepoMetadata{
 					Name: "repo2",
-					Tags: map[string]repodb.Descriptor{
+					Tags: map[string]mTypes.Descriptor{
 						"tag2": {Digest: "wrongManifestData", MediaType: ispec.MediaTypeImageManifest},
 					},
-					Signatures: map[string]repodb.ManifestSignatures{},
+					Signatures: map[string]mTypes.ManifestSignatures{},
 				}
 				repoMetaBlob, err = json.Marshal(repoMeta)
 				So(err, ShouldBeNil)
@@ -853,12 +852,12 @@ func TestWrapperErrors(t *testing.T) {
 					return err
 				}
 
-				repoMeta = repodb.RepoMetadata{
+				repoMeta = mTypes.RepoMetadata{
 					Name: "repo3",
-					Tags: map[string]repodb.Descriptor{
+					Tags: map[string]mTypes.Descriptor{
 						"tag1": {Digest: "dig1", MediaType: ispec.MediaTypeImageManifest},
 					},
-					Signatures: map[string]repodb.ManifestSignatures{},
+					Signatures: map[string]mTypes.ManifestSignatures{},
 				}
 				repoMetaBlob, err = json.Marshal(repoMeta)
 				So(err, ShouldBeNil)
@@ -867,13 +866,13 @@ func TestWrapperErrors(t *testing.T) {
 			})
 			So(err, ShouldBeNil)
 
-			_, _, _, _, err = boltdbWrapper.SearchTags(ctx, "repo1:", repodb.Filter{}, repodb.PageInput{})
+			_, _, _, _, err = boltdbWrapper.SearchTags(ctx, "repo1:", mTypes.Filter{}, mTypes.PageInput{})
 			So(err, ShouldNotBeNil)
 
-			_, _, _, _, err = boltdbWrapper.SearchTags(ctx, "repo2:", repodb.Filter{}, repodb.PageInput{})
+			_, _, _, _, err = boltdbWrapper.SearchTags(ctx, "repo2:", mTypes.Filter{}, mTypes.PageInput{})
 			So(err, ShouldNotBeNil)
 
-			_, _, _, _, err = boltdbWrapper.SearchTags(ctx, "repo3:", repodb.Filter{}, repodb.PageInput{})
+			_, _, _, _, err = boltdbWrapper.SearchTags(ctx, "repo3:", mTypes.Filter{}, mTypes.PageInput{})
 			So(err, ShouldNotBeNil)
 		})
 
@@ -888,9 +887,9 @@ func TestWrapperErrors(t *testing.T) {
 				So(err, ShouldBeNil)
 
 				_, _, _, _, err = boltdbWrapper.FilterTags(ctx,
-					func(repoMeta repodb.RepoMetadata, manifestMeta repodb.ManifestMetadata) bool { return true },
-					repodb.Filter{},
-					repodb.PageInput{},
+					func(repoMeta mTypes.RepoMetadata, manifestMeta mTypes.ManifestMetadata) bool { return true },
+					mTypes.Filter{},
+					mTypes.PageInput{},
 				)
 				So(err, ShouldNotBeNil)
 			})
@@ -901,15 +900,15 @@ func TestWrapperErrors(t *testing.T) {
 				err := boltdbWrapper.SetRepoReference("repo", "tag1", indexDigest, ispec.MediaTypeImageIndex) //nolint:contextcheck
 				So(err, ShouldBeNil)
 
-				err = boltdbWrapper.SetIndexData(indexDigest, repodb.IndexData{
+				err = boltdbWrapper.SetIndexData(indexDigest, mTypes.IndexData{
 					IndexBlob: []byte("bad json"),
 				})
 				So(err, ShouldBeNil)
 
 				_, _, _, _, err = boltdbWrapper.FilterTags(ctx,
-					func(repoMeta repodb.RepoMetadata, manifestMeta repodb.ManifestMetadata) bool { return true },
-					repodb.Filter{},
-					repodb.PageInput{},
+					func(repoMeta mTypes.RepoMetadata, manifestMeta mTypes.ManifestMetadata) bool { return true },
+					mTypes.Filter{},
+					mTypes.PageInput{},
 				)
 				So(err, ShouldNotBeNil)
 			})
@@ -929,27 +928,27 @@ func TestWrapperErrors(t *testing.T) {
 				})
 				So(err, ShouldBeNil)
 
-				err = boltdbWrapper.SetIndexData(indexDigest, repodb.IndexData{
+				err = boltdbWrapper.SetIndexData(indexDigest, mTypes.IndexData{
 					IndexBlob: indexBlob,
 				})
 				So(err, ShouldBeNil)
 
-				err = boltdbWrapper.SetManifestData(manifestDigestFromIndex1, repodb.ManifestData{
+				err = boltdbWrapper.SetManifestData(manifestDigestFromIndex1, mTypes.ManifestData{
 					ManifestBlob: []byte("{}"),
 					ConfigBlob:   []byte("{}"),
 				})
 				So(err, ShouldBeNil)
 
-				err = boltdbWrapper.SetManifestData(manifestDigestFromIndex2, repodb.ManifestData{
+				err = boltdbWrapper.SetManifestData(manifestDigestFromIndex2, mTypes.ManifestData{
 					ManifestBlob: []byte("{}"),
 					ConfigBlob:   []byte("{}"),
 				})
 				So(err, ShouldBeNil)
 
 				_, _, _, _, err = boltdbWrapper.FilterTags(ctx,
-					func(repoMeta repodb.RepoMetadata, manifestMeta repodb.ManifestMetadata) bool { return false },
-					repodb.Filter{},
-					repodb.PageInput{},
+					func(repoMeta mTypes.RepoMetadata, manifestMeta mTypes.ManifestMetadata) bool { return false },
+					mTypes.Filter{},
+					mTypes.PageInput{},
 				)
 				So(err, ShouldBeNil)
 			})
@@ -962,16 +961,16 @@ func TestWrapperErrors(t *testing.T) {
 				)
 				So(err, ShouldBeNil)
 
-				err = boltdbWrapper.SetManifestData(manifestDigest, repodb.ManifestData{
+				err = boltdbWrapper.SetManifestData(manifestDigest, mTypes.ManifestData{
 					ManifestBlob: []byte("{}"),
 					ConfigBlob:   []byte("bad blob"),
 				})
 				So(err, ShouldBeNil)
 
 				_, _, _, _, err = boltdbWrapper.FilterTags(ctx,
-					func(repoMeta repodb.RepoMetadata, manifestMeta repodb.ManifestMetadata) bool { return true },
-					repodb.Filter{},
-					repodb.PageInput{},
+					func(repoMeta mTypes.RepoMetadata, manifestMeta mTypes.ManifestMetadata) bool { return true },
+					mTypes.Filter{},
+					mTypes.PageInput{},
 				)
 				So(err, ShouldNotBeNil)
 			})
@@ -993,27 +992,27 @@ func TestWrapperErrors(t *testing.T) {
 				})
 				So(err, ShouldBeNil)
 
-				err = boltdbWrapper.SetIndexData(indexDigest, repodb.IndexData{
+				err = boltdbWrapper.SetIndexData(indexDigest, mTypes.IndexData{
 					IndexBlob: indexBlob,
 				})
 				So(err, ShouldBeNil)
 
-				err = boltdbWrapper.SetManifestData(manifestDigestFromIndex1, repodb.ManifestData{
+				err = boltdbWrapper.SetManifestData(manifestDigestFromIndex1, mTypes.ManifestData{
 					ManifestBlob: []byte("{}"),
 					ConfigBlob:   []byte("{}"),
 				})
 				So(err, ShouldBeNil)
 
-				err = boltdbWrapper.SetManifestData(manifestDigestFromIndex2, repodb.ManifestData{
+				err = boltdbWrapper.SetManifestData(manifestDigestFromIndex2, mTypes.ManifestData{
 					ManifestBlob: []byte("{}"),
 					ConfigBlob:   []byte("bad blob"),
 				})
 				So(err, ShouldBeNil)
 
 				_, _, _, _, err = boltdbWrapper.FilterTags(ctx,
-					func(repoMeta repodb.RepoMetadata, manifestMeta repodb.ManifestMetadata) bool { return true },
-					repodb.Filter{},
-					repodb.PageInput{},
+					func(repoMeta mTypes.RepoMetadata, manifestMeta mTypes.ManifestMetadata) bool { return true },
+					mTypes.Filter{},
+					mTypes.PageInput{},
 				)
 				So(err, ShouldNotBeNil)
 			})
@@ -1038,7 +1037,7 @@ func TestWrapperErrors(t *testing.T) {
 			ctx := context.WithValue(context.Background(), authzCtxKey, acCtx)
 
 			err := boltdbWrapper.DB.Update(func(tx *bbolt.Tx) error {
-				repoBuck := tx.Bucket([]byte(bolt.RepoMetadataBucket))
+				repoBuck := tx.Bucket([]byte(boltdb.RepoMetadataBucket))
 
 				err := repoBuck.Put([]byte("repo"), []byte("bad repo"))
 				So(err, ShouldBeNil)
@@ -1085,7 +1084,7 @@ func TestWrapperErrors(t *testing.T) {
 			authzCtxKey := localCtx.GetContextKey()
 			ctx := context.WithValue(context.Background(), authzCtxKey, "bad context")
 
-			err := boltdbWrapper.SetUserData(ctx, repodb.UserData{})
+			err := boltdbWrapper.SetUserData(ctx, mTypes.UserData{})
 			So(err, ShouldNotBeNil)
 		})
 
@@ -1112,7 +1111,7 @@ func TestWrapperErrors(t *testing.T) {
 			authzCtxKey := localCtx.GetContextKey()
 			ctx := context.WithValue(context.Background(), authzCtxKey, "bad context")
 
-			err := boltdbWrapper.AddUserAPIKey(ctx, "", &repodb.APIKeyDetails{})
+			err := boltdbWrapper.AddUserAPIKey(ctx, "", &mTypes.APIKeyDetails{})
 			So(err, ShouldNotBeNil)
 		})
 
@@ -1162,17 +1161,17 @@ func TestWrapperErrors(t *testing.T) {
 			err := boltdbWrapper.SetRepoReference("repo", "tag1", digest, "invalid type") //nolint:contextcheck
 			So(err, ShouldBeNil)
 
-			_, _, _, _, err = boltdbWrapper.SearchRepos(ctx, "", repodb.Filter{}, repodb.PageInput{})
+			_, _, _, _, err = boltdbWrapper.SearchRepos(ctx, "", mTypes.Filter{}, mTypes.PageInput{})
 			So(err, ShouldBeNil)
 
-			_, _, _, _, err = boltdbWrapper.SearchTags(ctx, "repo:", repodb.Filter{}, repodb.PageInput{})
+			_, _, _, _, err = boltdbWrapper.SearchTags(ctx, "repo:", mTypes.Filter{}, mTypes.PageInput{})
 			So(err, ShouldBeNil)
 
 			_, _, _, _, err = boltdbWrapper.FilterTags(
 				ctx,
-				func(repoMeta repodb.RepoMetadata, manifestMeta repodb.ManifestMetadata) bool { return true },
-				repodb.Filter{},
-				repodb.PageInput{},
+				func(repoMeta mTypes.RepoMetadata, manifestMeta mTypes.ManifestMetadata) bool { return true },
+				mTypes.Filter{},
+				mTypes.PageInput{},
 			)
 			So(err, ShouldBeNil)
 		})
@@ -1188,7 +1187,7 @@ func TestWrapperErrors(t *testing.T) {
 			ctx := context.WithValue(context.Background(), authzCtxKey, acCtx)
 
 			err = boltdbWrapper.DB.Update(func(tx *bbolt.Tx) error {
-				repoBuck := tx.Bucket([]byte(bolt.RepoMetadataBucket))
+				repoBuck := tx.Bucket([]byte(boltdb.RepoMetadataBucket))
 
 				err := repoBuck.Put([]byte("repo"), []byte("bad repo"))
 				So(err, ShouldBeNil)
@@ -1209,7 +1208,7 @@ func TestWrapperErrors(t *testing.T) {
 
 			Convey("repoMeta of signed manifest not found", func() {
 				// repo Meta not found
-				err := boltdbWrapper.SetManifestData(digest.FromString("dig"), repodb.ManifestData{
+				err := boltdbWrapper.SetManifestData(digest.FromString("dig"), mTypes.ManifestData{
 					ManifestBlob: []byte("Bad Manifest"),
 					ConfigBlob:   []byte("Bad Manifest"),
 				})
@@ -1221,7 +1220,7 @@ func TestWrapperErrors(t *testing.T) {
 
 			Convey("manifest - bad content", func() {
 				err := boltdbWrapper.DB.Update(func(tx *bbolt.Tx) error {
-					dataBuck := tx.Bucket([]byte(bolt.ManifestDataBucket))
+					dataBuck := tx.Bucket([]byte(boltdb.ManifestDataBucket))
 
 					return dataBuck.Put([]byte("digest1"), []byte("wrong json"))
 				})
@@ -1233,7 +1232,7 @@ func TestWrapperErrors(t *testing.T) {
 
 			Convey("index - bad content", func() {
 				err := boltdbWrapper.DB.Update(func(tx *bbolt.Tx) error {
-					dataBuck := tx.Bucket([]byte(bolt.IndexDataBucket))
+					dataBuck := tx.Bucket([]byte(boltdb.IndexDataBucket))
 
 					return dataBuck.Put([]byte("digest1"), []byte("wrong json"))
 				})
@@ -1245,14 +1244,14 @@ func TestWrapperErrors(t *testing.T) {
 
 			Convey("repo - bad content", func() {
 				// repo Meta not found
-				err := boltdbWrapper.SetManifestData(digest.FromString("dig"), repodb.ManifestData{
+				err := boltdbWrapper.SetManifestData(digest.FromString("dig"), mTypes.ManifestData{
 					ManifestBlob: []byte("Bad Manifest"),
 					ConfigBlob:   []byte("Bad Manifest"),
 				})
 				So(err, ShouldBeNil)
 
 				err = boltdbWrapper.DB.Update(func(tx *bbolt.Tx) error {
-					repoBuck := tx.Bucket([]byte(bolt.RepoMetadataBucket))
+					repoBuck := tx.Bucket([]byte(boltdb.RepoMetadataBucket))
 
 					return repoBuck.Put([]byte("repo1"), []byte("wrong json"))
 				})
@@ -1267,7 +1266,7 @@ func TestWrapperErrors(t *testing.T) {
 
 func setBadIndexData(dB *bbolt.DB, digest string) error {
 	return dB.Update(func(tx *bbolt.Tx) error {
-		indexDataBuck := tx.Bucket([]byte(bolt.IndexDataBucket))
+		indexDataBuck := tx.Bucket([]byte(boltdb.IndexDataBucket))
 
 		return indexDataBuck.Put([]byte(digest), []byte("bad json"))
 	})

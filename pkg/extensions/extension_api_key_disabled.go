@@ -9,10 +9,10 @@ import (
 
 	"zotregistry.io/zot/pkg/api/config"
 	"zotregistry.io/zot/pkg/log"
-	"zotregistry.io/zot/pkg/meta/repodb"
+	mTypes "zotregistry.io/zot/pkg/meta/types"
 )
 
-func SetupAPIKeyRoutes(config *config.Config, router *mux.Router, repoDB repodb.RepoDB,
+func SetupAPIKeyRoutes(config *config.Config, router *mux.Router, metaDB mTypes.MetaDB,
 	cookieStore sessions.Store, log log.Logger,
 ) {
 	log.Warn().Msg("skipping setting up API key routes because given zot binary doesn't include this feature," +

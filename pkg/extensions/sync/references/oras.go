@@ -17,7 +17,8 @@ import (
 	"zotregistry.io/zot/pkg/extensions/sync/constants"
 	client "zotregistry.io/zot/pkg/extensions/sync/httpclient"
 	"zotregistry.io/zot/pkg/log"
-	"zotregistry.io/zot/pkg/meta/repodb"
+	"zotregistry.io/zot/pkg/meta"
+	mTypes "zotregistry.io/zot/pkg/meta/types"
 	"zotregistry.io/zot/pkg/storage"
 )
 
@@ -28,17 +29,17 @@ type ReferenceList struct {
 type ORASReferences struct {
 	client          *client.Client
 	storeController storage.StoreController
-	repoDB          repodb.RepoDB
+	metaDB          mTypes.MetaDB
 	log             log.Logger
 }
 
 func NewORASReferences(httpClient *client.Client, storeController storage.StoreController,
-	repoDB repodb.RepoDB, log log.Logger,
+	metaDB mTypes.MetaDB, log log.Logger,
 ) ORASReferences {
 	return ORASReferences{
 		client:          httpClient,
 		storeController: storeController,
-		repoDB:          repoDB,
+		metaDB:          metaDB,
 		log:             log,
 	}
 }
@@ -146,20 +147,20 @@ func (ref ORASReferences) SyncReferences(localRepo, remoteRepo, subjectDigestStr
 
 		refsDigests = append(refsDigests, referenceDigest)
 
-		if ref.repoDB != nil {
+		if ref.metaDB != nil {
 			ref.log.Debug().Str("repository", localRepo).Str("subject", subjectDigestStr).
-				Msg("repoDB: trying to sync oras artifact for image")
+				Msg("metaDB: trying to sync oras artifact for image")
 
-			err := repodb.SetImageMetaFromInput(localRepo, referenceDigest.String(), referrer.MediaType,
+			err := meta.SetImageMetaFromInput(localRepo, referenceDigest.String(), referrer.MediaType,
 				referenceDigest, orasBuf, ref.storeController.GetImageStore(localRepo),
-				ref.repoDB, ref.log)
+				ref.metaDB, ref.log)
 			if err != nil {
-				return refsDigests, fmt.Errorf("repoDB: failed to set metadata for oras artifact '%s@%s': %w",
+				return refsDigests, fmt.Errorf("metaDB: failed to set metadata for oras artifact '%s@%s': %w",
 					localRepo, subjectDigestStr, err)
 			}
 
 			ref.log.Info().Str("repository", localRepo).Str("subject", subjectDigestStr).
-				Msg("repoDB: successfully added oras artifacts to RepoDB for image")
+				Msg("metaDB: successfully added oras artifacts to MetaDB for image")
 		}
 	}
 

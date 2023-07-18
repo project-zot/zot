@@ -1,23 +1,15 @@
-package repodb
+package types
 
-import (
-	"time"
+type SortCriteria string
 
-	godigest "github.com/opencontainers/go-digest"
-	ispec "github.com/opencontainers/image-spec/specs-go/v1"
-
-	zerr "zotregistry.io/zot/errors"
+const (
+	Relevance     = SortCriteria("RELEVANCE")
+	UpdateTime    = SortCriteria("UPDATE_TIME")
+	AlphabeticAsc = SortCriteria("ALPHABETIC_ASC")
+	AlphabeticDsc = SortCriteria("ALPHABETIC_DSC")
+	Stars         = SortCriteria("STARS")
+	Downloads     = SortCriteria("DOWNLOADS")
 )
-
-// DetailedRepoMeta is a auxiliary structure used for sorting RepoMeta arrays by information
-// that's not directly available in the RepoMetadata structure (ex. that needs to be calculated
-// by iterating the manifests, etc.)
-type DetailedRepoMeta struct {
-	RepoMetadata
-	Rank       int
-	Downloads  int
-	UpdateTime time.Time
-}
 
 func SortFunctions() map[SortCriteria]func(pageBuffer []DetailedRepoMeta) func(i, j int) bool {
 	return map[SortCriteria]func(pageBuffer []DetailedRepoMeta) func(i, j int) bool{
@@ -59,34 +51,4 @@ func SortByDownloads(pageBuffer []DetailedRepoMeta) func(i, j int) bool {
 	return func(i, j int) bool {
 		return pageBuffer[i].Downloads > pageBuffer[j].Downloads
 	}
-}
-
-// FindMediaTypeForDigest will look into the buckets for a certain digest. Depending on which bucket that
-// digest is found the corresponding mediatype is returned.
-func FindMediaTypeForDigest(repoDB RepoDB, digest godigest.Digest) (bool, string) {
-	_, err := repoDB.GetManifestData(digest)
-	if err == nil {
-		return true, ispec.MediaTypeImageManifest
-	}
-
-	_, err = repoDB.GetIndexData(digest)
-	if err == nil {
-		return true, ispec.MediaTypeImageIndex
-	}
-
-	return false, ""
-}
-
-func GetImageDescriptor(repoDB RepoDB, repo, tag string) (Descriptor, error) {
-	repoMeta, err := repoDB.GetRepoMeta(repo)
-	if err != nil {
-		return Descriptor{}, err
-	}
-
-	imageDescriptor, ok := repoMeta.Tags[tag]
-	if !ok {
-		return Descriptor{}, zerr.ErrTagMetaNotFound
-	}
-
-	return imageDescriptor, nil
 }

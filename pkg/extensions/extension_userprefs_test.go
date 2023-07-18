@@ -22,7 +22,7 @@ import (
 	"zotregistry.io/zot/pkg/extensions"
 	extconf "zotregistry.io/zot/pkg/extensions/config"
 	"zotregistry.io/zot/pkg/log"
-	"zotregistry.io/zot/pkg/meta/repodb"
+	mTypes "zotregistry.io/zot/pkg/meta/types"
 	"zotregistry.io/zot/pkg/test"
 	"zotregistry.io/zot/pkg/test/mocks"
 )
@@ -62,18 +62,18 @@ func TestHandlers(t *testing.T) {
 	const UserprefsBaseURL = "http://127.0.0.1:8080/v2/_zot/ext/userprefs"
 
 	log := log.NewLogger("debug", "")
-	mockrepoDB := mocks.RepoDBMock{}
+	mockmetaDB := mocks.MetaDBMock{}
 
 	Convey("No repo in request", t, func() {
 		request := httptest.NewRequest(http.MethodGet, UserprefsBaseURL+"", strings.NewReader("My string"))
 		response := httptest.NewRecorder()
 
-		extensions.PutStar(response, request, mockrepoDB, log)
+		extensions.PutStar(response, request, mockmetaDB, log)
 		res := response.Result()
 		So(res.StatusCode, ShouldEqual, http.StatusBadRequest)
 		defer res.Body.Close()
 
-		extensions.PutBookmark(response, request, mockrepoDB, log)
+		extensions.PutBookmark(response, request, mockmetaDB, log)
 		res = response.Result()
 		So(res.StatusCode, ShouldEqual, http.StatusBadRequest)
 		defer res.Body.Close()
@@ -83,12 +83,12 @@ func TestHandlers(t *testing.T) {
 		request := httptest.NewRequest(http.MethodGet, UserprefsBaseURL+"?repo=", strings.NewReader("My string"))
 		response := httptest.NewRecorder()
 
-		extensions.PutStar(response, request, mockrepoDB, log)
+		extensions.PutStar(response, request, mockmetaDB, log)
 		res := response.Result()
 		So(res.StatusCode, ShouldEqual, http.StatusNotFound)
 		defer res.Body.Close()
 
-		extensions.PutBookmark(response, request, mockrepoDB, log)
+		extensions.PutBookmark(response, request, mockmetaDB, log)
 		res = response.Result()
 		So(res.StatusCode, ShouldEqual, http.StatusNotFound)
 		defer res.Body.Close()
@@ -99,22 +99,22 @@ func TestHandlers(t *testing.T) {
 			strings.NewReader("My string"))
 
 		Convey("ErrRepoMetaNotFound", func() {
-			mockrepoDB.ToggleStarRepoFn = func(ctx context.Context, repo string) (repodb.ToggleState, error) {
-				return repodb.NotChanged, zerr.ErrRepoMetaNotFound
+			mockmetaDB.ToggleStarRepoFn = func(ctx context.Context, repo string) (mTypes.ToggleState, error) {
+				return mTypes.NotChanged, zerr.ErrRepoMetaNotFound
 			}
 
-			mockrepoDB.ToggleBookmarkRepoFn = func(ctx context.Context, repo string) (repodb.ToggleState, error) {
-				return repodb.NotChanged, zerr.ErrRepoMetaNotFound
+			mockmetaDB.ToggleBookmarkRepoFn = func(ctx context.Context, repo string) (mTypes.ToggleState, error) {
+				return mTypes.NotChanged, zerr.ErrRepoMetaNotFound
 			}
 
 			response := httptest.NewRecorder()
-			extensions.PutBookmark(response, request, mockrepoDB, log)
+			extensions.PutBookmark(response, request, mockmetaDB, log)
 			res := response.Result()
 			So(res.StatusCode, ShouldEqual, http.StatusNotFound)
 			defer res.Body.Close()
 
 			response = httptest.NewRecorder()
-			extensions.PutStar(response, request, mockrepoDB, log)
+			extensions.PutStar(response, request, mockmetaDB, log)
 			res = response.Result()
 			So(res.StatusCode, ShouldEqual, http.StatusNotFound)
 			defer res.Body.Close()
@@ -125,22 +125,22 @@ func TestHandlers(t *testing.T) {
 				"name": "repo",
 			})
 
-			mockrepoDB.ToggleBookmarkRepoFn = func(ctx context.Context, repo string) (repodb.ToggleState, error) {
-				return repodb.NotChanged, zerr.ErrUserDataNotAllowed
+			mockmetaDB.ToggleBookmarkRepoFn = func(ctx context.Context, repo string) (mTypes.ToggleState, error) {
+				return mTypes.NotChanged, zerr.ErrUserDataNotAllowed
 			}
 
-			mockrepoDB.ToggleStarRepoFn = func(ctx context.Context, repo string) (repodb.ToggleState, error) {
-				return repodb.NotChanged, zerr.ErrUserDataNotAllowed
+			mockmetaDB.ToggleStarRepoFn = func(ctx context.Context, repo string) (mTypes.ToggleState, error) {
+				return mTypes.NotChanged, zerr.ErrUserDataNotAllowed
 			}
 
 			response := httptest.NewRecorder()
-			extensions.PutBookmark(response, request, mockrepoDB, log)
+			extensions.PutBookmark(response, request, mockmetaDB, log)
 			res := response.Result()
 			So(res.StatusCode, ShouldEqual, http.StatusForbidden)
 			defer res.Body.Close()
 
 			response = httptest.NewRecorder()
-			extensions.PutStar(response, request, mockrepoDB, log)
+			extensions.PutStar(response, request, mockmetaDB, log)
 			res = response.Result()
 			So(res.StatusCode, ShouldEqual, http.StatusForbidden)
 			defer res.Body.Close()
@@ -151,21 +151,21 @@ func TestHandlers(t *testing.T) {
 				"name": "repo",
 			})
 
-			mockrepoDB.ToggleBookmarkRepoFn = func(ctx context.Context, repo string) (repodb.ToggleState, error) {
-				return repodb.NotChanged, ErrTestError
+			mockmetaDB.ToggleBookmarkRepoFn = func(ctx context.Context, repo string) (mTypes.ToggleState, error) {
+				return mTypes.NotChanged, ErrTestError
 			}
 
-			mockrepoDB.ToggleStarRepoFn = func(ctx context.Context, repo string) (repodb.ToggleState, error) {
-				return repodb.NotChanged, ErrTestError
+			mockmetaDB.ToggleStarRepoFn = func(ctx context.Context, repo string) (mTypes.ToggleState, error) {
+				return mTypes.NotChanged, ErrTestError
 			}
 			response := httptest.NewRecorder()
-			extensions.PutBookmark(response, request, mockrepoDB, log)
+			extensions.PutBookmark(response, request, mockmetaDB, log)
 			res := response.Result()
 			So(res.StatusCode, ShouldEqual, http.StatusInternalServerError)
 			defer res.Body.Close()
 
 			response = httptest.NewRecorder()
-			extensions.PutStar(response, request, mockrepoDB, log)
+			extensions.PutStar(response, request, mockmetaDB, log)
 			res = response.Result()
 			So(res.StatusCode, ShouldEqual, http.StatusInternalServerError)
 			defer res.Body.Close()

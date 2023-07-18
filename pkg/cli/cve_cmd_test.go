@@ -35,7 +35,7 @@ import (
 	cveinfo "zotregistry.io/zot/pkg/extensions/search/cve"
 	cvemodel "zotregistry.io/zot/pkg/extensions/search/cve/model"
 	"zotregistry.io/zot/pkg/log"
-	"zotregistry.io/zot/pkg/meta/repodb"
+	mTypes "zotregistry.io/zot/pkg/meta/types"
 	"zotregistry.io/zot/pkg/storage"
 	"zotregistry.io/zot/pkg/storage/local"
 	"zotregistry.io/zot/pkg/test"
@@ -527,7 +527,7 @@ func TestNegativeServerResponse(t *testing.T) {
 			panic(err)
 		}
 
-		ctlr.CveInfo = getMockCveInfo(ctlr.RepoDB, ctlr.Log)
+		ctlr.CveInfo = getMockCveInfo(ctlr.MetaDB, ctlr.Log)
 
 		go func() {
 			if err := ctlr.Run(ctx); !errors.Is(err, http.ErrServerClosed) {
@@ -602,7 +602,7 @@ func TestServerCVEResponse(t *testing.T) {
 		panic(err)
 	}
 
-	ctlr.CveInfo = getMockCveInfo(ctlr.RepoDB, ctlr.Log)
+	ctlr.CveInfo = getMockCveInfo(ctlr.MetaDB, ctlr.Log)
 
 	go func() {
 		if err := ctlr.Run(ctx); !errors.Is(err, http.ErrServerClosed) {
@@ -1159,8 +1159,8 @@ func MockSearchCve(searchConfig searchConfig) error {
 	return zotErrors.ErrInvalidFlagsCombination
 }
 
-func getMockCveInfo(repoDB repodb.RepoDB, log log.Logger) cveinfo.CveInfo {
-	// RepoDB loaded with initial data, mock the scanner
+func getMockCveInfo(metaDB mTypes.MetaDB, log log.Logger) cveinfo.CveInfo {
+	// MetaDB loaded with initial data, mock the scanner
 	severities := map[string]int{
 		"UNKNOWN":  0,
 		"LOW":      1,
@@ -1219,7 +1219,7 @@ func getMockCveInfo(repoDB repodb.RepoDB, log log.Logger) cveinfo.CveInfo {
 			imageDir := repo
 			inputTag := reference
 
-			repoMeta, err := repoDB.GetRepoMeta(imageDir)
+			repoMeta, err := metaDB.GetRepoMeta(imageDir)
 			if err != nil {
 				return false, err
 			}
@@ -1242,7 +1242,7 @@ func getMockCveInfo(repoDB repodb.RepoDB, log log.Logger) cveinfo.CveInfo {
 				return false, err
 			}
 
-			manifestData, err := repoDB.GetManifestData(manifestDigest)
+			manifestData, err := metaDB.GetManifestData(manifestDigest)
 			if err != nil {
 				return false, err
 			}
@@ -1272,7 +1272,7 @@ func getMockCveInfo(repoDB repodb.RepoDB, log log.Logger) cveinfo.CveInfo {
 	return &cveinfo.BaseCveInfo{
 		Log:     log,
 		Scanner: scanner,
-		RepoDB:  repoDB,
+		MetaDB:  metaDB,
 	}
 }
 

@@ -16,9 +16,8 @@ import (
 	cvemodel "zotregistry.io/zot/pkg/extensions/search/cve/model"
 	"zotregistry.io/zot/pkg/extensions/search/gql_generated"
 	"zotregistry.io/zot/pkg/log"
-	"zotregistry.io/zot/pkg/meta/bolt"
-	"zotregistry.io/zot/pkg/meta/repodb"
-	boltdb_wrapper "zotregistry.io/zot/pkg/meta/repodb/boltdb-wrapper"
+	"zotregistry.io/zot/pkg/meta/boltdb"
+	mTypes "zotregistry.io/zot/pkg/meta/types"
 	"zotregistry.io/zot/pkg/test/mocks"
 )
 
@@ -26,13 +25,13 @@ var ErrTestError = errors.New("TestError")
 
 func TestConvertErrors(t *testing.T) {
 	Convey("Convert Errors", t, func() {
-		params := bolt.DBParameters{
+		params := boltdb.DBParameters{
 			RootDir: t.TempDir(),
 		}
-		boltDB, err := bolt.GetBoltDriver(params)
+		boltDB, err := boltdb.GetBoltDriver(params)
 		So(err, ShouldBeNil)
 
-		repoDB, err := boltdb_wrapper.NewBoltDBWrapper(boltDB, log.NewLogger("debug", ""))
+		metaDB, err := boltdb.New(boltDB, log.NewLogger("debug", ""))
 		So(err, ShouldBeNil)
 
 		configBlob, err := json.Marshal(ispec.Image{})
@@ -49,19 +48,19 @@ func TestConvertErrors(t *testing.T) {
 		})
 		So(err, ShouldBeNil)
 
-		repoMeta11 := repodb.ManifestMetadata{
+		repoMeta11 := mTypes.ManifestMetadata{
 			ManifestBlob: manifestBlob,
 			ConfigBlob:   configBlob,
 		}
 
 		digest11 := godigest.FromString("abc1")
-		err = repoDB.SetManifestMeta("repo1", digest11, repoMeta11)
+		err = metaDB.SetManifestMeta("repo1", digest11, repoMeta11)
 		So(err, ShouldBeNil)
-		err = repoDB.SetRepoReference("repo1", "0.1.0", digest11, ispec.MediaTypeImageManifest)
+		err = metaDB.SetRepoReference("repo1", "0.1.0", digest11, ispec.MediaTypeImageManifest)
 		So(err, ShouldBeNil)
 
-		repoMetas, manifestMetaMap, _, _, err := repoDB.SearchRepos(context.Background(), "", repodb.Filter{},
-			repodb.PageInput{})
+		repoMetas, manifestMetaMap, _, _, err := metaDB.SearchRepos(context.Background(), "", mTypes.Filter{},
+			mTypes.PageInput{})
 		So(err, ShouldBeNil)
 
 		ctx := graphql.WithResponseContext(context.Background(),
@@ -71,7 +70,7 @@ func TestConvertErrors(t *testing.T) {
 			ctx,
 			repoMetas[0],
 			manifestMetaMap,
-			map[string]repodb.IndexData{},
+			map[string]mTypes.IndexData{},
 			convert.SkipQGLField{},
 			mocks.CveInfoMock{
 				GetCVESummaryForImageMediaFn: func(repo string, digest, mediaType string,
@@ -94,11 +93,11 @@ func TestConvertErrors(t *testing.T) {
 			"tag",
 			godigest.FromString("indexDigest"),
 			true,
-			repodb.RepoMetadata{},
-			repodb.IndexData{
+			mTypes.RepoMetadata{},
+			mTypes.IndexData{
 				IndexBlob: []byte("bad json"),
 			},
-			map[string]repodb.ManifestMetadata{},
+			map[string]mTypes.ManifestMetadata{},
 			mocks.CveInfoMock{},
 		)
 		So(err, ShouldNotBeNil)
@@ -114,11 +113,11 @@ func TestConvertErrors(t *testing.T) {
 			"tag",
 			godigest.FromString("indexDigest"),
 			false,
-			repodb.RepoMetadata{},
-			repodb.IndexData{
+			mTypes.RepoMetadata{},
+			mTypes.IndexData{
 				IndexBlob: []byte("{}"),
 			},
-			map[string]repodb.ManifestMetadata{},
+			map[string]mTypes.ManifestMetadata{},
 			mocks.CveInfoMock{
 				GetCVESummaryForImageMediaFn: func(repo, digest, mediaType string) (cvemodel.ImageCVESummary, error) {
 					return cvemodel.ImageCVESummary{}, ErrTestError
@@ -146,8 +145,8 @@ func TestConvertErrors(t *testing.T) {
 			"tag",
 			godigest.FromString("manifestDigest"),
 			false,
-			repodb.RepoMetadata{},
-			repodb.ManifestMetadata{
+			mTypes.RepoMetadata{},
+			mTypes.ManifestMetadata{
 				ManifestBlob: []byte("{}"),
 				ConfigBlob:   configBlob,
 			},
@@ -174,13 +173,13 @@ func TestConvertErrors(t *testing.T) {
 				MediaType: ispec.MediaTypeImageManifest,
 			},
 			false,
-			repodb.RepoMetadata{
-				Tags:       map[string]repodb.Descriptor{},
-				Statistics: map[string]repodb.DescriptorStatistics{},
-				Signatures: map[string]repodb.ManifestSignatures{},
-				Referrers:  map[string][]repodb.ReferrerInfo{},
+			mTypes.RepoMetadata{
+				Tags:       map[string]mTypes.Descriptor{},
+				Statistics: map[string]mTypes.DescriptorStatistics{},
+				Signatures: map[string]mTypes.ManifestSignatures{},
+				Referrers:  map[string][]mTypes.ReferrerInfo{},
 			},
-			repodb.ManifestMetadata{
+			mTypes.ManifestMetadata{
 				ManifestBlob: []byte(`{}`),
 				ConfigBlob:   []byte("bad json"),
 			},
@@ -208,13 +207,13 @@ func TestConvertErrors(t *testing.T) {
 				MediaType: ispec.MediaTypeImageManifest,
 			},
 			false,
-			repodb.RepoMetadata{
-				Tags:       map[string]repodb.Descriptor{},
-				Statistics: map[string]repodb.DescriptorStatistics{},
-				Signatures: map[string]repodb.ManifestSignatures{"dig": {"cosine": []repodb.SignatureInfo{{}}}},
-				Referrers:  map[string][]repodb.ReferrerInfo{},
+			mTypes.RepoMetadata{
+				Tags:       map[string]mTypes.Descriptor{},
+				Statistics: map[string]mTypes.DescriptorStatistics{},
+				Signatures: map[string]mTypes.ManifestSignatures{"dig": {"cosine": []mTypes.SignatureInfo{{}}}},
+				Referrers:  map[string][]mTypes.ReferrerInfo{},
 			},
-			repodb.ManifestMetadata{
+			mTypes.ManifestMetadata{
 				ManifestBlob: []byte("{}"),
 				ConfigBlob:   configBlob,
 			},
@@ -235,18 +234,18 @@ func TestConvertErrors(t *testing.T) {
 		// with bad config json, error while unmarshaling
 		_, imageSummaries := convert.RepoMeta2ExpandedRepoInfo(
 			ctx,
-			repodb.RepoMetadata{
-				Tags: map[string]repodb.Descriptor{
+			mTypes.RepoMetadata{
+				Tags: map[string]mTypes.Descriptor{
 					"tag1": {Digest: "dig", MediaType: ispec.MediaTypeImageManifest},
 				},
 			},
-			map[string]repodb.ManifestMetadata{
+			map[string]mTypes.ManifestMetadata{
 				"dig": {
 					ManifestBlob: []byte("{}"),
 					ConfigBlob:   []byte("bad json"),
 				},
 			},
-			map[string]repodb.IndexData{},
+			map[string]mTypes.IndexData{},
 			convert.SkipQGLField{
 				Vulnerabilities: false,
 			},
@@ -261,18 +260,18 @@ func TestConvertErrors(t *testing.T) {
 		// cveInfo present no error
 		_, imageSummaries = convert.RepoMeta2ExpandedRepoInfo(
 			ctx,
-			repodb.RepoMetadata{
-				Tags: map[string]repodb.Descriptor{
+			mTypes.RepoMetadata{
+				Tags: map[string]mTypes.Descriptor{
 					"tag1": {Digest: "dig", MediaType: ispec.MediaTypeImageManifest},
 				},
 			},
-			map[string]repodb.ManifestMetadata{
+			map[string]mTypes.ManifestMetadata{
 				"dig": {
 					ManifestBlob: []byte("{}"),
 					ConfigBlob:   []byte("{}"),
 				},
 			},
-			map[string]repodb.IndexData{},
+			map[string]mTypes.IndexData{},
 			convert.SkipQGLField{
 				Vulnerabilities: false,
 			},
@@ -379,9 +378,9 @@ func TestLabels(t *testing.T) {
 func TestGetSignaturesInfo(t *testing.T) {
 	Convey("Test get signatures info - cosign", t, func() {
 		indexDigest := godigest.FromString("123")
-		repoMeta := repodb.RepoMetadata{
-			Signatures: map[string]repodb.ManifestSignatures{string(indexDigest): {"cosign": []repodb.SignatureInfo{{
-				LayersInfo: []repodb.LayerInfo{{LayerContent: []byte{}, LayerDigest: "", SignatureKey: "", Signer: "author"}},
+		repoMeta := mTypes.RepoMetadata{
+			Signatures: map[string]mTypes.ManifestSignatures{string(indexDigest): {"cosign": []mTypes.SignatureInfo{{
+				LayersInfo: []mTypes.LayerInfo{{LayerContent: []byte{}, LayerDigest: "", SignatureKey: "", Signer: "author"}},
 			}}}},
 		}
 
@@ -394,9 +393,9 @@ func TestGetSignaturesInfo(t *testing.T) {
 
 	Convey("Test get signatures info - notation", t, func() {
 		indexDigest := godigest.FromString("123")
-		repoMeta := repodb.RepoMetadata{
-			Signatures: map[string]repodb.ManifestSignatures{string(indexDigest): {"notation": []repodb.SignatureInfo{{
-				LayersInfo: []repodb.LayerInfo{
+		repoMeta := mTypes.RepoMetadata{
+			Signatures: map[string]mTypes.ManifestSignatures{string(indexDigest): {"notation": []mTypes.SignatureInfo{{
+				LayersInfo: []mTypes.LayerInfo{
 					{
 						LayerContent: []byte{},
 						LayerDigest:  "",

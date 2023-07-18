@@ -93,7 +93,7 @@ func (amw *AuthnMiddleware) sessionAuthn(ctlr *Controller, next http.Handler, re
 
 	ctx := getReqContextWithAuthorization(identity, []string{}, request)
 
-	groups, err := ctlr.RepoDB.GetUserGroups(ctx)
+	groups, err := ctlr.MetaDB.GetUserGroups(ctx)
 	if err != nil {
 		if errors.Is(err, zerr.ErrUserDataNotFound) {
 			ctlr.Log.Err(err).Str("identity", identity).Msg("can not find user profile in DB")
@@ -168,7 +168,7 @@ func (amw *AuthnMiddleware) basicAuthn(ctlr *Controller, response http.ResponseW
 				return false, response, request, err
 			}
 
-			if err := ctlr.RepoDB.SetUserGroups(ctx, groups); err != nil {
+			if err := ctlr.MetaDB.SetUserGroups(ctx, groups); err != nil {
 				ctlr.Log.Error().Err(err).Str("identity", identity).Msg("couldn't update user profile")
 
 				return false, response, request, err
@@ -200,7 +200,7 @@ func (amw *AuthnMiddleware) basicAuthn(ctlr *Controller, response http.ResponseW
 				return false, response, request, err
 			}
 
-			if err := ctlr.RepoDB.SetUserGroups(ctx, groups); err != nil {
+			if err := ctlr.MetaDB.SetUserGroups(ctx, groups); err != nil {
 				ctlr.Log.Error().Err(err).Str("identity", identity).Msg("couldn't update user profile")
 
 				return false, response, request, err
@@ -224,7 +224,7 @@ func (amw *AuthnMiddleware) basicAuthn(ctlr *Controller, response http.ResponseW
 
 		hashedKey := hashUUID(trimmedAPIKey)
 
-		storedIdentity, err := ctlr.RepoDB.GetUserAPIKeyInfo(hashedKey)
+		storedIdentity, err := ctlr.MetaDB.GetUserAPIKeyInfo(hashedKey)
 		if err != nil {
 			if errors.Is(err, zerr.ErrUserAPIKeyNotFound) {
 				ctlr.Log.Info().Err(err).Msgf("can not find any user info for hashed key %s in DB", hashedKey)
@@ -240,14 +240,14 @@ func (amw *AuthnMiddleware) basicAuthn(ctlr *Controller, response http.ResponseW
 		if storedIdentity == identity {
 			ctx := getReqContextWithAuthorization(identity, []string{}, request)
 
-			err := ctlr.RepoDB.UpdateUserAPIKeyLastUsed(ctx, hashedKey)
+			err := ctlr.MetaDB.UpdateUserAPIKeyLastUsed(ctx, hashedKey)
 			if err != nil {
 				ctlr.Log.Err(err).Str("identity", identity).Msg("can not update user profile in DB")
 
 				return false, nil, nil, err
 			}
 
-			groups, err := ctlr.RepoDB.GetUserGroups(ctx)
+			groups, err := ctlr.MetaDB.GetUserGroups(ctx)
 			if err != nil {
 				ctlr.Log.Err(err).Str("identity", identity).Msg("can not get user's groups in DB")
 
@@ -843,7 +843,7 @@ func OAuth2Callback(ctlr *Controller, w http.ResponseWriter, r *http.Request, st
 		return "", err
 	}
 
-	if err := ctlr.RepoDB.SetUserGroups(ctx, groups); err != nil {
+	if err := ctlr.MetaDB.SetUserGroups(ctx, groups); err != nil {
 		ctlr.Log.Error().Err(err).Str("identity", email).Msg("couldn't update the user profile")
 
 		return "", err

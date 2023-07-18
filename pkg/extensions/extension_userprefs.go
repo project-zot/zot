@@ -14,7 +14,7 @@ import (
 	"zotregistry.io/zot/pkg/api/constants"
 	zcommon "zotregistry.io/zot/pkg/common"
 	"zotregistry.io/zot/pkg/log"
-	"zotregistry.io/zot/pkg/meta/repodb"
+	mTypes "zotregistry.io/zot/pkg/meta/types"
 	"zotregistry.io/zot/pkg/storage"
 )
 
@@ -28,7 +28,7 @@ func IsBuiltWithUserPrefsExtension() bool {
 }
 
 func SetupUserPreferencesRoutes(config *config.Config, router *mux.Router, storeController storage.StoreController,
-	repoDB repodb.RepoDB, cveInfo CveInfo, log log.Logger,
+	metaDB mTypes.MetaDB, cveInfo CveInfo, log log.Logger,
 ) {
 	if config.Extensions.Search != nil && *config.Extensions.Search.Enable {
 		log.Info().Msg("setting up user preferences routes")
@@ -39,7 +39,7 @@ func SetupUserPreferencesRoutes(config *config.Config, router *mux.Router, store
 		userprefsRouter.Use(zcommon.ACHeadersHandler(allowedMethods...))
 		userprefsRouter.Use(zcommon.AddExtensionSecurityHeaders())
 
-		userprefsRouter.HandleFunc("", HandleUserPrefs(repoDB, log)).Methods(allowedMethods...)
+		userprefsRouter.HandleFunc("", HandleUserPrefs(metaDB, log)).Methods(allowedMethods...)
 	}
 }
 
@@ -56,7 +56,7 @@ func SetupUserPreferencesRoutes(config *config.Config, router *mux.Router, store
 // @Failure 403 {string} 	string 				"forbidden"
 // @Failure 500 {string} 	string 				"internal server error"
 // @Failure 400 {string} 	string 				"bad request".
-func HandleUserPrefs(repoDB repodb.RepoDB, log log.Logger) func(w http.ResponseWriter, r *http.Request) {
+func HandleUserPrefs(metaDB mTypes.MetaDB, log log.Logger) func(w http.ResponseWriter, r *http.Request) {
 	return func(rsp http.ResponseWriter, req *http.Request) {
 		if !zcommon.QueryHasParams(req.URL.Query(), []string{"action"}) {
 			rsp.WriteHeader(http.StatusBadRequest)
@@ -68,11 +68,11 @@ func HandleUserPrefs(repoDB repodb.RepoDB, log log.Logger) func(w http.ResponseW
 
 		switch action {
 		case ToggleRepoBookmarkAction:
-			PutBookmark(rsp, req, repoDB, log) //nolint:contextcheck
+			PutBookmark(rsp, req, metaDB, log) //nolint:contextcheck
 
 			return
 		case ToggleRepoStarAction:
-			PutStar(rsp, req, repoDB, log) //nolint:contextcheck
+			PutStar(rsp, req, metaDB, log) //nolint:contextcheck
 
 			return
 		default:
@@ -83,7 +83,7 @@ func HandleUserPrefs(repoDB repodb.RepoDB, log log.Logger) func(w http.ResponseW
 	}
 }
 
-func PutStar(rsp http.ResponseWriter, req *http.Request, repoDB repodb.RepoDB, log log.Logger) {
+func PutStar(rsp http.ResponseWriter, req *http.Request, metaDB mTypes.MetaDB, log log.Logger) {
 	if !zcommon.QueryHasParams(req.URL.Query(), []string{"repo"}) {
 		rsp.WriteHeader(http.StatusBadRequest)
 
@@ -98,7 +98,7 @@ func PutStar(rsp http.ResponseWriter, req *http.Request, repoDB repodb.RepoDB, l
 		return
 	}
 
-	_, err := repoDB.ToggleStarRepo(req.Context(), repo)
+	_, err := metaDB.ToggleStarRepo(req.Context(), repo)
 	if err != nil {
 		if errors.Is(err, zerr.ErrRepoMetaNotFound) {
 			rsp.WriteHeader(http.StatusNotFound)
@@ -118,7 +118,7 @@ func PutStar(rsp http.ResponseWriter, req *http.Request, repoDB repodb.RepoDB, l
 	rsp.WriteHeader(http.StatusOK)
 }
 
-func PutBookmark(rsp http.ResponseWriter, req *http.Request, repoDB repodb.RepoDB, log log.Logger) {
+func PutBookmark(rsp http.ResponseWriter, req *http.Request, metaDB mTypes.MetaDB, log log.Logger) {
 	if !zcommon.QueryHasParams(req.URL.Query(), []string{"repo"}) {
 		rsp.WriteHeader(http.StatusBadRequest)
 
@@ -133,7 +133,7 @@ func PutBookmark(rsp http.ResponseWriter, req *http.Request, repoDB repodb.RepoD
 		return
 	}
 
-	_, err := repoDB.ToggleBookmarkRepo(req.Context(), repo)
+	_, err := metaDB.ToggleBookmarkRepo(req.Context(), repo)
 	if err != nil {
 		if errors.Is(err, zerr.ErrRepoMetaNotFound) {
 			rsp.WriteHeader(http.StatusNotFound)
