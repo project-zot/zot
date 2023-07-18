@@ -439,11 +439,11 @@ func validateConfiguration(config *config.Config) error {
 	return nil
 }
 
-func validateOpenIDConfig(config *config.Config) error {
-	if config.HTTP.Auth != nil && config.HTTP.Auth.OpenID != nil {
-		for provider, providerConfig := range config.HTTP.Auth.OpenID.Providers {
+func validateOpenIDConfig(cfg *config.Config) error {
+	if cfg.HTTP.Auth != nil && cfg.HTTP.Auth.OpenID != nil {
+		for provider, providerConfig := range cfg.HTTP.Auth.OpenID.Providers {
 			//nolint: gocritic
-			if api.IsOpenIDSupported(provider) {
+			if config.IsOpenIDSupported(provider) {
 				if providerConfig.ClientID == "" || providerConfig.Issuer == "" ||
 					len(providerConfig.Scopes) == 0 {
 					log.Error().Err(errors.ErrBadConfig).
@@ -451,7 +451,7 @@ func validateOpenIDConfig(config *config.Config) error {
 
 					return errors.ErrBadConfig
 				}
-			} else if api.IsOauth2Supported(provider) {
+			} else if config.IsOauth2Supported(provider) {
 				if providerConfig.ClientID == "" || len(providerConfig.Scopes) == 0 {
 					log.Error().Err(errors.ErrBadConfig).
 						Msg("OAuth2 provider config requires clientid and scopes parameters")

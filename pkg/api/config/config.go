@@ -16,6 +16,10 @@ var (
 	ReleaseTag string //nolint: gochecknoglobals
 	BinaryType string //nolint: gochecknoglobals
 	GoVersion  string //nolint: gochecknoglobals
+
+	openIDSupportedProviders = [...]string{"google", "gitlab", "dex"} //nolint: gochecknoglobals
+	oauth2SupportedProviders = [...]string{"github"}                  //nolint: gochecknoglobals
+
 )
 
 type StorageConfig struct {
@@ -226,4 +230,100 @@ func (c *Config) Sanitize() *Config {
 	}
 
 	return sanitizedConfig
+}
+
+func (c *Config) IsLdapAuthEnabled() bool {
+	if c.HTTP.Auth != nil && c.HTTP.Auth.LDAP != nil {
+		return true
+	}
+
+	return false
+}
+
+func (c *Config) IsHtpasswdAuthEnabled() bool {
+	if c.HTTP.Auth != nil && c.HTTP.Auth.HTPasswd.Path != "" {
+		return true
+	}
+
+	return false
+}
+
+func (c *Config) IsBearerAuthEnabled() bool {
+	if c.HTTP.Auth != nil &&
+		c.HTTP.Auth.Bearer != nil &&
+		c.HTTP.Auth.Bearer.Cert != "" &&
+		c.HTTP.Auth.Bearer.Realm != "" &&
+		c.HTTP.Auth.Bearer.Service != "" {
+		return true
+	}
+
+	return false
+}
+
+func (c *Config) IsOpenIDAuthEnabled() bool {
+	if c.HTTP.Auth != nil &&
+		c.HTTP.Auth.OpenID != nil {
+		for provider := range c.HTTP.Auth.OpenID.Providers {
+			if isOpenIDAuthProviderEnabled(c, provider) {
+				return true
+			}
+		}
+	}
+
+	return false
+}
+
+func (c *Config) IsAPIKeyEnabled() bool {
+	if c.Extensions != nil && c.Extensions.APIKey != nil &&
+		*c.Extensions.APIKey.Enable {
+		return true
+	}
+
+	return false
+}
+
+func (c *Config) IsBasicAuthnEnabled() bool {
+	if c.IsHtpasswdAuthEnabled() || c.IsLdapAuthEnabled() ||
+		c.IsOpenIDAuthEnabled() || c.IsAPIKeyEnabled() {
+		return true
+	}
+
+	return false
+}
+
+func isOpenIDAuthProviderEnabled(config *Config, provider string) bool {
+	if providerConfig, ok := config.HTTP.Auth.OpenID.Providers[provider]; ok {
+		if IsOpenIDSupported(provider) {
+			if providerConfig.ClientID != "" || providerConfig.Issuer != "" ||
+				len(providerConfig.Scopes) > 0 {
+				return true
+			}
+		} else if IsOauth2Supported(provider) {
+			if providerConfig.ClientID != "" || len(providerConfig.Scopes) > 0 {
+				return true
+			}
+		}
+	}
+
+	return false
+}
+
+func IsOpenIDSupported(provider string) bool {
+	for _, supportedProvider := range openIDSupportedProviders {
+		if supportedProvider == provider {
+			return true
+		}
+	}
+
+	return false
+}
+
+func IsOauth2Supported(provider string) bool {
+	for _, supportedProvider := range oauth2SupportedProviders {
+		if supportedProvider == provider {
+			return true
+		}
+	}
+
+	return false
 }

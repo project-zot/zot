@@ -11,6 +11,7 @@ import (
 	"github.com/gorilla/sessions"
 	jsoniter "github.com/json-iterator/go"
 
+	"zotregistry.io/zot/pkg/api/config"
 	"zotregistry.io/zot/pkg/api/constants"
 	apiErr "zotregistry.io/zot/pkg/api/errors"
 	"zotregistry.io/zot/pkg/log"
@@ -30,14 +31,17 @@ func AddExtensionSecurityHeaders() mux.MiddlewareFunc { //nolint:varnamelen
 	}
 }
 
-func ACHeadersHandler(allowedMethods ...string) mux.MiddlewareFunc {
-	headerValue := strings.Join(allowedMethods, ",")
+func ACHeadersHandler(config *config.Config, allowedMethods ...string) mux.MiddlewareFunc {
+	allowedMethodsValue := strings.Join(allowedMethods, ",")
 
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(resp http.ResponseWriter, req *http.Request) {
-			resp.Header().Set("Access-Control-Allow-Methods", headerValue)
+			resp.Header().Set("Access-Control-Allow-Methods", allowedMethodsValue)
 			resp.Header().Set("Access-Control-Allow-Headers", "Authorization,content-type,"+constants.SessionClientHeaderName)
-			resp.Header().Set("Access-Control-Allow-Credentials", "true")
+
+			if config.IsBasicAuthnEnabled() {
+				resp.Header().Set("Access-Control-Allow-Credentials", "true")
+			}
 
 			if req.Method == http.MethodOptions {
 				return

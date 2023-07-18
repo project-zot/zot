@@ -565,7 +565,7 @@ func TestHtpasswdSingleCred(t *testing.T) {
 				So(resp.StatusCode(), ShouldEqual, http.StatusNoContent)
 				So(len(resp.Header()), ShouldEqual, 5)
 				So(resp.Header()["Access-Control-Allow-Headers"], ShouldResemble, header)
-				So(resp.Header().Get("Access-Control-Allow-Methods"), ShouldResemble, "HEAD,GET,POST,OPTIONS")
+				So(resp.Header().Get("Access-Control-Allow-Methods"), ShouldResemble, "GET,OPTIONS")
 
 				// with invalid creds, it should fail
 				resp, _ = resty.R().SetBasicAuth("chuck", "chuck").Get(baseURL + "/v2/")
@@ -630,32 +630,32 @@ func TestAllowMethodsHeader(t *testing.T) {
 		// /v2
 		resp, err := simpleUserClient.Options(baseURL + "/v2/")
 		So(err, ShouldBeNil)
-		So(resp.Header().Get("Access-Control-Allow-Methods"), ShouldResemble, "HEAD,GET,POST,OPTIONS")
+		So(resp.Header().Get("Access-Control-Allow-Methods"), ShouldResemble, "GET,OPTIONS")
 
 		// /v2/{name}/tags/list
 		resp, err = simpleUserClient.Options(baseURL + "/v2/reponame/tags/list")
 		So(err, ShouldBeNil)
-		So(resp.Header().Get("Access-Control-Allow-Methods"), ShouldResemble, "HEAD,GET,POST,OPTIONS")
+		So(resp.Header().Get("Access-Control-Allow-Methods"), ShouldResemble, "GET,OPTIONS")
 
 		// /v2/{name}/manifests/{reference}
 		resp, err = simpleUserClient.Options(baseURL + "/v2/reponame/manifests/" + digest.String())
 		So(err, ShouldBeNil)
-		So(resp.Header().Get("Access-Control-Allow-Methods"), ShouldResemble, "HEAD,GET,POST,OPTIONS")
+		So(resp.Header().Get("Access-Control-Allow-Methods"), ShouldResemble, "HEAD,GET,OPTIONS")
 
 		// /v2/{name}/referrers/{digest}
 		resp, err = simpleUserClient.Options(baseURL + "/v2/reponame/referrers/" + digest.String())
 		So(err, ShouldBeNil)
-		So(resp.Header().Get("Access-Control-Allow-Methods"), ShouldResemble, "HEAD,GET,POST,OPTIONS")
+		So(resp.Header().Get("Access-Control-Allow-Methods"), ShouldResemble, "GET,OPTIONS")
 
 		// /v2/_catalog
 		resp, err = simpleUserClient.Options(baseURL + "/v2/_catalog")
 		So(err, ShouldBeNil)
-		So(resp.Header().Get("Access-Control-Allow-Methods"), ShouldResemble, "HEAD,GET,POST,OPTIONS")
+		So(resp.Header().Get("Access-Control-Allow-Methods"), ShouldResemble, "GET,OPTIONS")
 
 		// /v2/_oci/ext/discover
 		resp, err = simpleUserClient.Options(baseURL + "/v2/_oci/ext/discover")
 		So(err, ShouldBeNil)
-		So(resp.Header().Get("Access-Control-Allow-Methods"), ShouldResemble, "HEAD,GET,POST,OPTIONS")
+		So(resp.Header().Get("Access-Control-Allow-Methods"), ShouldResemble, "GET,OPTIONS")
 	})
 }
 

@@ -36,7 +36,7 @@ func SetupUserPreferencesRoutes(config *config.Config, router *mux.Router, store
 		allowedMethods := zcommon.AllowedMethods(http.MethodPut)
 
 		userprefsRouter := router.PathPrefix(constants.ExtUserPreferences).Subrouter()
-		userprefsRouter.Use(zcommon.ACHeadersHandler(allowedMethods...))
+		userprefsRouter.Use(zcommon.ACHeadersHandler(config, allowedMethods...))
 		userprefsRouter.Use(zcommon.AddExtensionSecurityHeaders())
 
 		userprefsRouter.HandleFunc("", HandleUserPrefs(metaDB, log)).Methods(allowedMethods...)

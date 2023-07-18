@@ -34,7 +34,7 @@ func SetupAPIKeyRoutes(config *config.Config, router *mux.Router, metaDB mTypes.
 		allowedMethods := zcommon.AllowedMethods(http.MethodPost, http.MethodDelete)
 
 		apiKeyRouter := router.PathPrefix(constants.ExtAPIKey).Subrouter()
-		apiKeyRouter.Use(zcommon.ACHeadersHandler(allowedMethods...))
+		apiKeyRouter.Use(zcommon.ACHeadersHandler(config, allowedMethods...))
 		apiKeyRouter.Use(zcommon.AddExtensionSecurityHeaders())
 		apiKeyRouter.Methods(allowedMethods...).Handler(HandleAPIKeyRequest(metaDB, cookieStore, log))
 	}

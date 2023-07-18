@@ -261,7 +261,7 @@ func (c *Controller) InitImageStore() error {
 func (c *Controller) InitMetaDB(reloadCtx context.Context) error {
 	// init metaDB if search is enabled or authn enabled (need to store user profiles) or apikey ext is enabled
 	if (c.Config.Extensions != nil && c.Config.Extensions.Search != nil && *c.Config.Extensions.Search.Enable) ||
-		isAuthnEnabled(c.Config) || isOpenIDAuthEnabled(c.Config) || isAPIKeyEnabled(c.Config) {
+		c.Config.IsBasicAuthnEnabled() {
 		driver, err := meta.New(c.Config.Storage.StorageConfig, c.Log) //nolint:contextcheck
 		if err != nil {
 			return err

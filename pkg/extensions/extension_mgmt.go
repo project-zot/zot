@@ -139,7 +139,7 @@ func SetupMgmtRoutes(config *config.Config, router *mux.Router, log log.Logger) 
 		allowedMethods := zcommon.AllowedMethods(http.MethodGet, http.MethodPost)
 
 		mgmtRouter := router.PathPrefix(constants.ExtMgmt).Subrouter()
-		mgmtRouter.Use(zcommon.ACHeadersHandler(allowedMethods...))
+		mgmtRouter.Use(zcommon.ACHeadersHandler(config, allowedMethods...))
 		mgmtRouter.Use(zcommon.AddExtensionSecurityHeaders())
 		mgmtRouter.Methods(allowedMethods...).Handler(mgmt.handler())
 	}
