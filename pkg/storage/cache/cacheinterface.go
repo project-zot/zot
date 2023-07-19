@@ -19,4 +19,7 @@ type Cache interface {
 
 	// Delete a blob from the cachedb.
 	DeleteBlob(digest godigest.Digest, path string) error
+
+	// UsesRelativePaths returns if cache is storing blobs relative to cache rootDir
+	UsesRelativePaths() bool
 }

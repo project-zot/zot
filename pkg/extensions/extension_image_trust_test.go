@@ -149,7 +149,7 @@ func TestSignatureUploadAndVerification(t *testing.T) {
 		writers := io.MultiWriter(os.Stdout, logFile)
 		logger.Logger = logger.Output(writers)
 
-		imageStore := local.NewImageStore(globalDir, false, 0, false, false,
+		imageStore := local.NewImageStore(globalDir, false, false, 0, 0, false, false,
 			logger, monitoring.NewMetricsServer(false, logger), nil, nil)
 
 		storeController := storage.StoreController{
@@ -267,7 +267,7 @@ func TestSignatureUploadAndVerification(t *testing.T) {
 		writers := io.MultiWriter(os.Stdout, logFile)
 		logger.Logger = logger.Output(writers)
 
-		imageStore := local.NewImageStore(globalDir, false, 0, false, false,
+		imageStore := local.NewImageStore(globalDir, false, false, 0, 0, false, false,
 			logger, monitoring.NewMetricsServer(false, logger), nil, nil)
 
 		storeController := storage.StoreController{
@@ -385,7 +385,7 @@ func TestSignatureUploadAndVerification(t *testing.T) {
 		writers := io.MultiWriter(os.Stdout, logFile)
 		logger.Logger = logger.Output(writers)
 
-		imageStore := local.NewImageStore(globalDir, false, 0, false, false,
+		imageStore := local.NewImageStore(globalDir, false, false, 0, 0, false, false,
 			logger, monitoring.NewMetricsServer(false, logger), nil, nil)
 
 		storeController := storage.StoreController{
@@ -558,7 +558,7 @@ func TestSignatureUploadAndVerification(t *testing.T) {
 		writers := io.MultiWriter(os.Stdout, logFile)
 		logger.Logger = logger.Output(writers)
 
-		imageStore := local.NewImageStore(globalDir, false, 0, false, false,
+		imageStore := local.NewImageStore(globalDir, false, false, 0, 0, false, false,
 			logger, monitoring.NewMetricsServer(false, logger), nil, nil)
 
 		storeController := storage.StoreController{
@@ -813,7 +813,7 @@ func TestSignatureUploadAndVerification(t *testing.T) {
 		writers := io.MultiWriter(os.Stdout, logFile)
 		logger.Logger = logger.Output(writers)
 
-		imageStore := local.NewImageStore(globalDir, false, 0, false, false,
+		imageStore := local.NewImageStore(globalDir, false, false, 0, 0, false, false,
 			logger, monitoring.NewMetricsServer(false, logger), nil, nil)
 
 		storeController := storage.StoreController{

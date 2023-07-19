@@ -281,8 +281,9 @@ func getImageStoreFromImageReference(imageReference types.ImageReference, repo, 
 
 	metrics := monitoring.NewMetricsServer(false, log.Logger{})
 
-	tempImageStore := local.NewImageStore(tempRootDir, false,
-		storageConstants.DefaultGCDelay, false, false, log.Logger{}, metrics, nil, nil)
+	tempImageStore := local.NewImageStore(tempRootDir, false, false,
+		storageConstants.DefaultGCDelay, storageConstants.DefaultUntaggedImgeRetentionDelay,
+		false, false, log.Logger{}, metrics, nil, nil)
 
 	return tempImageStore
 }

@@ -832,6 +832,11 @@ func (rh *RouteHandler) DeleteManifest(response http.ResponseWriter, request *ht
 			details["reference"] = reference
 			e := apiErr.NewError(apiErr.UNSUPPORTED).AddDetail(details)
 			zcommon.WriteJSON(response, http.StatusBadRequest, apiErr.NewErrorList(e))
+		} else if errors.Is(err, zerr.ErrManifestReferenced) {
+			// manifest is part of an index image, don't allow index manipulations.
+			details["reference"] = reference
+			e := apiErr.NewError(apiErr.DENIED).AddDetail(details)
+			zcommon.WriteJSON(response, http.StatusMethodNotAllowed, apiErr.NewErrorList(e))
 		} else {
 			rh.c.Log.Error().Err(err).Msg("unexpected error")
 			response.WriteHeader(http.StatusInternalServerError)

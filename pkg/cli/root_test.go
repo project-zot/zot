@@ -14,7 +14,6 @@ import (
 	"zotregistry.io/zot/pkg/api/config"
 	"zotregistry.io/zot/pkg/cli"
 	storageConstants "zotregistry.io/zot/pkg/storage/constants"
-	"zotregistry.io/zot/pkg/storage/s3"
 	. "zotregistry.io/zot/pkg/test"
 )
 
@@ -521,7 +520,7 @@ func TestVerify(t *testing.T) {
 
 		// s3 dedup=false, check for previous dedup usage and set to true if cachedb found
 		cacheDir := t.TempDir()
-		existingDBPath := path.Join(cacheDir, s3.CacheDBName+storageConstants.DBExtensionName)
+		existingDBPath := path.Join(cacheDir, storageConstants.BoltdbName+storageConstants.DBExtensionName)
 		_, err = os.Create(existingDBPath)
 		So(err, ShouldBeNil)
 
@@ -537,7 +536,7 @@ func TestVerify(t *testing.T) {
 
 		// subpath s3 dedup=false, check for previous dedup usage and set to true if cachedb found
 		cacheDir = t.TempDir()
-		existingDBPath = path.Join(cacheDir, s3.CacheDBName+storageConstants.DBExtensionName)
+		existingDBPath = path.Join(cacheDir, storageConstants.BoltdbName+storageConstants.DBExtensionName)
 		_, err = os.Create(existingDBPath)
 		So(err, ShouldBeNil)
 

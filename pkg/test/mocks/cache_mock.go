@@ -17,6 +17,16 @@ type CacheMock struct {
 
 	// Delete a blob from the cachedb.
 	DeleteBlobFn func(digest godigest.Digest, path string) error
+
+	UsesRelativePathsFn func() bool
+}
+
+func (cacheMock CacheMock) UsesRelativePaths() bool {
+	if cacheMock.UsesRelativePathsFn != nil {
+		return cacheMock.UsesRelativePaths()
+	}
+
+	return false
 }
 
 func (cacheMock CacheMock) Name() string {

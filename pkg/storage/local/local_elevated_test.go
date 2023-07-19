@@ -36,8 +36,8 @@ func TestElevatedPrivilegesInvalidDedupe(t *testing.T) {
 			Name:        "cache",
 			UseRelPaths: true,
 		}, log)
-		imgStore := local.NewImageStore(dir, true, storageConstants.DefaultGCDelay, true, true, log,
-			metrics, nil, cacheDriver)
+		imgStore := local.NewImageStore(dir, true, true, storageConstants.DefaultGCDelay,
+			storageConstants.DefaultUntaggedImgeRetentionDelay, true, true, log, metrics, nil, cacheDriver)
 
 		upload, err := imgStore.NewBlobUpload("dedupe1")
 		So(err, ShouldBeNil)

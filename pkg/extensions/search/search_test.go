@@ -1193,7 +1193,7 @@ func TestExpandedRepoInfo(t *testing.T) {
 
 		ctlr := api.NewController(conf)
 
-		imageStore := local.NewImageStore(tempDir, false, 0, false, false,
+		imageStore := local.NewImageStore(tempDir, false, false, 0, 0, false, false,
 			log.NewLogger("debug", ""), monitoring.NewMetricsServer(false, log.NewLogger("debug", "")), nil, nil)
 
 		storeController := storage.StoreController{
@@ -1325,8 +1325,8 @@ func TestExpandedRepoInfo(t *testing.T) {
 
 		log := log.NewLogger("debug", "")
 		metrics := monitoring.NewMetricsServer(false, log)
-		testStorage := local.NewImageStore(rootDir, false, storageConstants.DefaultGCDelay,
-			false, false, log, metrics, nil, nil)
+		testStorage := local.NewImageStore(rootDir, false, false, storageConstants.DefaultGCDelay,
+			storageConstants.DefaultUntaggedImgeRetentionDelay, false, false, log, metrics, nil, nil)
 
 		resp, err := resty.R().Get(baseURL + "/v2/")
 		So(resp, ShouldNotBeNil)
@@ -1671,7 +1671,7 @@ func TestExpandedRepoInfo(t *testing.T) {
 		conf.Extensions.Search.CVE = nil
 		ctlr := api.NewController(conf)
 
-		imageStore := local.NewImageStore(conf.Storage.RootDirectory, false, 0, false, false,
+		imageStore := local.NewImageStore(conf.Storage.RootDirectory, false, false, 0, 0, false, false,
 			log.NewLogger("debug", ""), monitoring.NewMetricsServer(false, log.NewLogger("debug", "")), nil, nil)
 
 		storeController := storage.StoreController{
@@ -5420,8 +5420,8 @@ func TestMetaDBWhenDeletingImages(t *testing.T) {
 			// get signatur digest
 			log := log.NewLogger("debug", "")
 			metrics := monitoring.NewMetricsServer(false, log)
-			storage := local.NewImageStore(dir, false, storageConstants.DefaultGCDelay,
-				false, false, log, metrics, nil, nil)
+			storage := local.NewImageStore(dir, false, false, storageConstants.DefaultGCDelay,
+				storageConstants.DefaultUntaggedImgeRetentionDelay, false, false, log, metrics, nil, nil)
 
 			indexBlob, err := storage.GetIndexContent(repo)
 			So(err, ShouldBeNil)
@@ -5497,8 +5497,8 @@ func TestMetaDBWhenDeletingImages(t *testing.T) {
 			// get signatur digest
 			log := log.NewLogger("debug", "")
 			metrics := monitoring.NewMetricsServer(false, log)
-			storage := local.NewImageStore(dir, false, storageConstants.DefaultGCDelay,
-				false, false, log, metrics, nil, nil)
+			storage := local.NewImageStore(dir, false, false, storageConstants.DefaultGCDelay,
+				storageConstants.DefaultUntaggedImgeRetentionDelay, false, false, log, metrics, nil, nil)
 
 			indexBlob, err := storage.GetIndexContent(repo)
 			So(err, ShouldBeNil)

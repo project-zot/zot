@@ -27,7 +27,6 @@ import (
 	"zotregistry.io/zot/pkg/extensions/monitoring"
 	zlog "zotregistry.io/zot/pkg/log"
 	storageConstants "zotregistry.io/zot/pkg/storage/constants"
-	"zotregistry.io/zot/pkg/storage/s3"
 )
 
 // metadataConfig reports metadata after parsing, which we use to track
@@ -631,6 +630,10 @@ func applyDefaultValues(config *config.Config, viperInstance *viper.Viper, log z
 			config.Storage.GCDelay = 0
 		}
 
+		if viperInstance.Get("storage::gcdelay") == nil {
+			config.Storage.UntaggedImageRetentionDelay = 0
+		}
+
 		if viperInstance.Get("storage::gcinterval") == nil {
 			config.Storage.GCInterval = 0
 		}
@@ -649,7 +652,7 @@ func applyDefaultValues(config *config.Config, viperInstance *viper.Viper, log z
 	// s3 dedup=false, check for previous dedup usage and set to true if cachedb found
 	if !config.Storage.Dedupe && config.Storage.StorageDriver != nil {
 		cacheDir, _ := config.Storage.StorageDriver["rootdirectory"].(string)
-		cachePath := path.Join(cacheDir, s3.CacheDBName+storageConstants.DBExtensionName)
+		cachePath := path.Join(cacheDir, storageConstants.BoltdbName+storageConstants.DBExtensionName)
 
 		if _, err := os.Stat(cachePath); err == nil {
 			log.Info().Msg("Config: dedupe set to false for s3 driver but used to be true.")
@@ -667,10 +670,10 @@ func applyDefaultValues(config *config.Config, viperInstance *viper.Viper, log z
 			storageConfig.RemoteCache = true
 		}
 
-		// s3 dedup=false, check for previous dedup usage and set to true if cachedb found
+		// s3 dedup=false, check for previous dedupe usage and set to true if cachedb found
 		if !storageConfig.Dedupe && storageConfig.StorageDriver != nil {
 			subpathCacheDir, _ := storageConfig.StorageDriver["rootdirectory"].(string)
-			subpathCachePath := path.Join(subpathCacheDir, s3.CacheDBName+storageConstants.DBExtensionName)
+			subpathCachePath := path.Join(subpathCacheDir, storageConstants.BoltdbName+storageConstants.DBExtensionName)
 
 			if _, err := os.Stat(subpathCachePath); err == nil {
 				log.Info().Msg("Config: dedupe set to false for s3 driver but used to be true. ")
@@ -682,9 +685,19 @@ func applyDefaultValues(config *config.Config, viperInstance *viper.Viper, log z
 
 		// if gc is enabled
 		if storageConfig.GC {
+			// and gcReferrers is not set, it is set to default value
+			if !viperInstance.IsSet("storage::subpaths::" + name + "::gcreferrers") {
+				storageConfig.GCReferrers = true
+			}
+
 			// and gcDelay is not set, it is set to default value
 			if !viperInstance.IsSet("storage::subpaths::" + name + "::gcdelay") {
 				storageConfig.GCDelay = storageConstants.DefaultGCDelay
+			}
+
+			// and retentionDelay is not set, it is set to default value
+			if !viperInstance.IsSet("storage::subpaths::" + name + "::retentiondelay") {
+				storageConfig.UntaggedImageRetentionDelay = storageConstants.DefaultUntaggedImgeRetentionDelay
 			}
 
 			// and gcInterval is not set, it is set to default value

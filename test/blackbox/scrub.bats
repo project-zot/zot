@@ -65,7 +65,7 @@ function teardown() {
     wait_zot_reachable 8080
 
     # wait for scrub to be done and logs to get populated
-    run sleep 15s
+    run sleep 20s
     run not_affected
     [ "$status" -eq 0 ]
     [ $(echo "${lines[0]}" ) = 'true' ]
@@ -79,7 +79,7 @@ function teardown() {
     wait_zot_reachable 8080
 
     # wait for scrub to be done and logs to get populated
-    run sleep 15s
+    run sleep 20s
     run affected
     [ "$status" -eq 0 ]
     [ $(echo "${lines[0]}" ) = 'true' ]

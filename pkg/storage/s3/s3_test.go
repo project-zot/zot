@@ -77,15 +77,17 @@ func createMockStorage(rootDir string, cacheDir string, dedupe bool, store drive
 	var cacheDriver cache.Cache
 
 	// from pkg/cli/root.go/applyDefaultValues, s3 magic
-	if _, err := os.Stat(path.Join(cacheDir, "s3_cache.db")); dedupe || (!dedupe && err == nil) {
+	if _, err := os.Stat(path.Join(cacheDir,
+		storageConstants.BoltdbName+storageConstants.DBExtensionName)); dedupe || (!dedupe && err == nil) {
 		cacheDriver, _ = storage.Create("boltdb", cache.BoltDBDriverParameters{
 			RootDir:     cacheDir,
-			Name:        "s3_cache",
+			Name:        "cache",
 			UseRelPaths: false,
 		}, log)
 	}
-	il := s3.NewImageStore(rootDir, cacheDir, false, storageConstants.DefaultGCDelay,
-		dedupe, false, log, metrics, nil, store, cacheDriver,
+
+	il := s3.NewImageStore(rootDir, cacheDir, true, true, storageConstants.DefaultGCDelay,
+		storageConstants.DefaultUntaggedImgeRetentionDelay, dedupe, false, log, metrics, nil, store, cacheDriver,
 	)
 
 	return il
@@ -97,8 +99,8 @@ func createMockStorageWithMockCache(rootDir string, dedupe bool, store driver.St
 	log := log.Logger{Logger: zerolog.New(os.Stdout)}
 	metrics := monitoring.NewMetricsServer(false, log)
 
-	il := s3.NewImageStore(rootDir, "", false, storageConstants.DefaultGCDelay,
-		dedupe, false, log, metrics, nil, store, cacheDriver,
+	il := s3.NewImageStore(rootDir, "", true, true, storageConstants.DefaultGCDelay,
+		storageConstants.DefaultUntaggedImgeRetentionDelay, dedupe, false, log, metrics, nil, store, cacheDriver,
 	)
 
 	return il
@@ -150,17 +152,17 @@ func createObjectsStore(rootDir string, cacheDir string, dedupe bool) (
 	var err error
 
 	// from pkg/cli/root.go/applyDefaultValues, s3 magic
-	s3CacheDBPath := path.Join(cacheDir, s3.CacheDBName+storageConstants.DBExtensionName)
+	s3CacheDBPath := path.Join(cacheDir, storageConstants.BoltdbName+storageConstants.DBExtensionName)
 	if _, err = os.Stat(s3CacheDBPath); dedupe || (!dedupe && err == nil) {
 		cacheDriver, _ = storage.Create("boltdb", cache.BoltDBDriverParameters{
 			RootDir:     cacheDir,
-			Name:        "s3_cache",
+			Name:        "cache",
 			UseRelPaths: false,
 		}, log)
 	}
 
-	il := s3.NewImageStore(rootDir, cacheDir, false, storageConstants.DefaultGCDelay,
-		dedupe, false, log, metrics, nil, store, cacheDriver)
+	il := s3.NewImageStore(rootDir, cacheDir, true, true, storageConstants.DefaultGCDelay,
+		storageConstants.DefaultUntaggedImgeRetentionDelay, dedupe, false, log, metrics, nil, store, cacheDriver)
 
 	return store, il, err
 }
@@ -194,8 +196,8 @@ func createObjectsStoreDynamo(rootDir string, cacheDir string, dedupe bool, tabl
 		panic(err)
 	}
 
-	il := s3.NewImageStore(rootDir, cacheDir, false, storageConstants.DefaultGCDelay,
-		dedupe, false, log, metrics, nil, store, cacheDriver)
+	il := s3.NewImageStore(rootDir, cacheDir, true, true, storageConstants.DefaultGCDelay,
+		storageConstants.DefaultUntaggedImgeRetentionDelay, dedupe, false, log, metrics, nil, store, cacheDriver)
 
 	return store, il, err
 }
@@ -893,7 +895,7 @@ func TestNegativeCasesObjectsStorage(t *testing.T) {
 			_, _, err = imgStore.CheckBlob(testImage, digest)
 			So(err, ShouldNotBeNil)
 
-			_, _, err = imgStore.StatBlob(testImage, digest)
+			_, _, _, err = imgStore.StatBlob(testImage, digest)
 			So(err, ShouldNotBeNil)
 		})
 
@@ -1050,7 +1052,7 @@ func TestNegativeCasesObjectsStorage(t *testing.T) {
 				WriterFn: func(ctx context.Context, path string, isAppend bool) (driver.FileWriter, error) {
 					return &FileWriterMock{WriteFn: func(b []byte) (int, error) {
 						return 0, errS3
-					}}, nil
+					}}, errS3
 				},
 			})
 			_, err := imgStore.PutBlobChunkStreamed(testImage, "uuid", io.NopCloser(strings.NewReader("")))
@@ -1091,7 +1093,7 @@ func TestNegativeCasesObjectsStorage(t *testing.T) {
 						WriteFn: func(b []byte) (int, error) {
 							return 0, errS3
 						},
-					}, nil
+					}, errS3
 				},
 			})
 			_, err := imgStore.PutBlobChunk(testImage, "uuid", 12, 100, io.NopCloser(strings.NewReader("")))
@@ -1280,7 +1282,7 @@ func TestS3Dedupe(t *testing.T) {
 		So(checkBlobSize1, ShouldBeGreaterThan, 0)
 		So(err, ShouldBeNil)
 
-		ok, checkBlobSize1, err = imgStore.StatBlob("dedupe1", digest)
+		ok, checkBlobSize1, _, err = imgStore.StatBlob("dedupe1", digest)
 		So(ok, ShouldBeTrue)
 		So(checkBlobSize1, ShouldBeGreaterThan, 0)
 		So(err, ShouldBeNil)
@@ -1466,12 +1468,12 @@ func TestS3Dedupe(t *testing.T) {
 		Convey("Check backward compatibility - switch dedupe to false", func() {
 			/* copy cache to the new storage with dedupe false (doing this because we
 			already have a cache object holding the lock on cache db file) */
-			input, err := os.ReadFile(path.Join(tdir, s3.CacheDBName+storageConstants.DBExtensionName))
+			input, err := os.ReadFile(path.Join(tdir, storageConstants.BoltdbName+storageConstants.DBExtensionName))
 			So(err, ShouldBeNil)
 
 			tdir = t.TempDir()
 
-			err = os.WriteFile(path.Join(tdir, s3.CacheDBName+storageConstants.DBExtensionName), input, 0o600)
+			err = os.WriteFile(path.Join(tdir, storageConstants.BoltdbName+storageConstants.DBExtensionName), input, 0o600)
 			So(err, ShouldBeNil)
 
 			storeDriver, imgStore, _ := createObjectsStore(testDir, tdir, false)
@@ -3306,6 +3308,7 @@ func TestS3ManifestImageIndex(t *testing.T) {
 
 				err = imgStore.DeleteImageManifest("index", "test:index1", false)
 				So(err, ShouldBeNil)
+
 				_, _, _, err = imgStore.GetImageManifest("index", "test:index1")
 				So(err, ShouldNotBeNil)
 
@@ -3599,7 +3602,7 @@ func TestS3DedupeErr(t *testing.T) {
 
 		imgStore = createMockStorage(testDir, tdir, true, &StorageDriverMock{})
 
-		err = os.Remove(path.Join(tdir, s3.CacheDBName+storageConstants.DBExtensionName))
+		err = os.Remove(path.Join(tdir, storageConstants.BoltdbName+storageConstants.DBExtensionName))
 		digest := godigest.NewDigestFromEncoded(godigest.SHA256, "digest")
 
 		// trigger unable to insert blob record
@@ -3640,8 +3643,9 @@ func TestS3DedupeErr(t *testing.T) {
 		err := imgStore.DedupeBlob("", digest, "dst")
 		So(err, ShouldBeNil)
 
+		// error will be triggered in driver.SameFile()
 		err = imgStore.DedupeBlob("", digest, "dst2")
-		So(err, ShouldNotBeNil)
+		So(err, ShouldBeNil)
 	})
 
 	Convey("Test DedupeBlob - error on store.PutContent()", t, func(c C) {
@@ -3776,12 +3780,12 @@ func TestS3DedupeErr(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		// copy cache db to the new imagestore
-		input, err := os.ReadFile(path.Join(tdir, s3.CacheDBName+storageConstants.DBExtensionName))
+		input, err := os.ReadFile(path.Join(tdir, storageConstants.BoltdbName+storageConstants.DBExtensionName))
 		So(err, ShouldBeNil)
 
 		tdir = t.TempDir()
 
-		err = os.WriteFile(path.Join(tdir, s3.CacheDBName+storageConstants.DBExtensionName), input, 0o600)
+		err = os.WriteFile(path.Join(tdir, storageConstants.BoltdbName+storageConstants.DBExtensionName), input, 0o600)
 		So(err, ShouldBeNil)
 
 		imgStore = createMockStorage(testDir, tdir, true, &StorageDriverMock{
@@ -3797,12 +3801,14 @@ func TestS3DedupeErr(t *testing.T) {
 		_, _, err = imgStore.GetBlob("repo2", digest, "application/vnd.oci.image.layer.v1.tar+gzip")
 		So(err, ShouldNotBeNil)
 
+		// now it should move content from /repo1/dst1 to /repo2/dst2
 		_, err = imgStore.GetBlobContent("repo2", digest)
-		So(err, ShouldNotBeNil)
+		So(err, ShouldBeNil)
 
-		_, _, err = imgStore.StatBlob("repo2", digest)
-		So(err, ShouldNotBeNil)
+		_, _, _, err = imgStore.StatBlob("repo2", digest)
+		So(err, ShouldBeNil)
 
+		// it errors out because of bad range, as mock store returns a driver.FileInfo with 0 size
 		_, _, _, err = imgStore.GetBlobPartial("repo2", digest, "application/vnd.oci.image.layer.v1.tar+gzip", 0, 1)
 		So(err, ShouldNotBeNil)
 	})
@@ -3822,12 +3828,12 @@ func TestS3DedupeErr(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		// copy cache db to the new imagestore
-		input, err := os.ReadFile(path.Join(tdir, s3.CacheDBName+storageConstants.DBExtensionName))
+		input, err := os.ReadFile(path.Join(tdir, storageConstants.BoltdbName+storageConstants.DBExtensionName))
 		So(err, ShouldBeNil)
 
 		tdir = t.TempDir()
 
-		err = os.WriteFile(path.Join(tdir, s3.CacheDBName+storageConstants.DBExtensionName), input, 0o600)
+		err = os.WriteFile(path.Join(tdir, storageConstants.BoltdbName+storageConstants.DBExtensionName), input, 0o600)
 		So(err, ShouldBeNil)
 
 		imgStore = createMockStorage(testDir, tdir, true, &StorageDriverMock{
@@ -3887,7 +3893,7 @@ func TestS3DedupeErr(t *testing.T) {
 		_, err = imgStore.GetBlobContent("repo2", digest)
 		So(err, ShouldNotBeNil)
 
-		_, _, err = imgStore.StatBlob("repo2", digest)
+		_, _, _, err = imgStore.StatBlob("repo2", digest)
 		So(err, ShouldNotBeNil)
 
 		_, _, _, err = imgStore.GetBlobPartial("repo2", digest, "application/vnd.oci.image.layer.v1.tar+gzip", 0, 1)

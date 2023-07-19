@@ -23,15 +23,17 @@ var (
 )
 
 type StorageConfig struct {
-	RootDirectory string
-	Dedupe        bool
-	RemoteCache   bool
-	GC            bool
-	Commit        bool
-	GCDelay       time.Duration
-	GCInterval    time.Duration
-	StorageDriver map[string]interface{} `mapstructure:",omitempty"`
-	CacheDriver   map[string]interface{} `mapstructure:",omitempty"`
+	RootDirectory               string
+	Dedupe                      bool
+	RemoteCache                 bool
+	GC                          bool
+	Commit                      bool
+	GCDelay                     time.Duration
+	GCInterval                  time.Duration
+	GCReferrers                 bool
+	UntaggedImageRetentionDelay time.Duration
+	StorageDriver               map[string]interface{} `mapstructure:",omitempty"`
+	CacheDriver                 map[string]interface{} `mapstructure:",omitempty"`
 }
 
 type TLSConfig struct {
@@ -188,8 +190,9 @@ func New() *Config {
 		BinaryType:      BinaryType,
 		Storage: GlobalStorageConfig{
 			StorageConfig: StorageConfig{
-				GC: true, GCDelay: storageConstants.DefaultGCDelay,
-				GCInterval: storageConstants.DefaultGCInterval, Dedupe: true,
+				GC: true, GCReferrers: true, GCDelay: storageConstants.DefaultGCDelay,
+				UntaggedImageRetentionDelay: storageConstants.DefaultUntaggedImgeRetentionDelay,
+				GCInterval:                  storageConstants.DefaultGCInterval, Dedupe: true,
 			},
 		},
 		HTTP: HTTPConfig{Address: "127.0.0.1", Port: "8080", Auth: &AuthConfig{FailDelay: 0}},

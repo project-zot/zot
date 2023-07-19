@@ -12,6 +12,7 @@ import (
 	"github.com/containers/image/v5/types"
 	"github.com/gofrs/uuid"
 
+	"zotregistry.io/zot/pkg/extensions/sync/constants"
 	"zotregistry.io/zot/pkg/storage"
 	storageConstants "zotregistry.io/zot/pkg/storage/constants"
 	"zotregistry.io/zot/pkg/test/inject"
@@ -39,7 +40,7 @@ func (oci OciLayoutStorageImpl) GetContext() *types.SystemContext {
 
 func (oci OciLayoutStorageImpl) GetImageReference(repo string, reference string) (types.ImageReference, error) {
 	localImageStore := oci.storeController.GetImageStore(repo)
-	tempSyncPath := path.Join(localImageStore.RootDir(), repo, SyncBlobUploadDir)
+	tempSyncPath := path.Join(localImageStore.RootDir(), repo, constants.SyncBlobUploadDir)
 
 	// create session folder
 	uuid, err := uuid.NewV4()

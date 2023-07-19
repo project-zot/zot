@@ -4,8 +4,6 @@
 package extensions
 
 import (
-	"errors"
-	"io"
 	"time"
 
 	"zotregistry.io/zot/pkg/api/config"
@@ -30,19 +28,25 @@ func EnableScrubExtension(config *config.Config, log log.Logger, storeController
 			log.Warn().Msg("Scrub interval set to too-short interval < 2h, changing scrub duration to 2 hours and continuing.") //nolint:lll // gofumpt conflicts with lll
 		}
 
-		generator := &taskGenerator{
-			imgStore: storeController.DefaultStore,
-			log:      log,
+		// is local imagestore (because of umoci dependency which works only locally)
+		if config.Storage.StorageDriver == nil {
+			generator := &taskGenerator{
+				imgStore: storeController.DefaultStore,
+				log:      log,
+			}
+			sch.SubmitGenerator(generator, config.Extensions.Scrub.Interval, scheduler.LowPriority)
 		}
-		sch.SubmitGenerator(generator, config.Extensions.Scrub.Interval, scheduler.LowPriority)
 
 		if config.Storage.SubPaths != nil {
 			for route := range config.Storage.SubPaths {
-				generator := &taskGenerator{
-					imgStore: storeController.SubStore[route],
-					log:      log,
+				// is local imagestore (because of umoci dependency which works only locally)
+				if config.Storage.SubPaths[route].StorageDriver == nil {
+					generator := &taskGenerator{
+						imgStore: storeController.SubStore[route],
+						log:      log,
+					}
+					sch.SubmitGenerator(generator, config.Extensions.Scrub.Interval, scheduler.LowPriority)
 				}
-				sch.SubmitGenerator(generator, config.Extensions.Scrub.Interval, scheduler.LowPriority)
 			}
 		}
 	} else {
@@ -59,8 +63,7 @@ type taskGenerator struct {
 
 func (gen *taskGenerator) Next() (scheduler.Task, error) {
 	repo, err := gen.imgStore.GetNextRepository(gen.lastRepo)
-
-	if err != nil && !errors.Is(err, io.EOF) {
+	if err != nil {
 		return nil, err
 	}
 

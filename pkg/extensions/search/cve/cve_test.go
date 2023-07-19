@@ -322,8 +322,8 @@ func TestImageFormat(t *testing.T) {
 		dbDir := t.TempDir()
 
 		metrics := monitoring.NewMetricsServer(false, log)
-		defaultStore := local.NewImageStore(imgDir, false, storageConstants.DefaultGCDelay,
-			false, false, log, metrics, nil, nil)
+		defaultStore := local.NewImageStore(imgDir, false, false, storageConstants.DefaultGCDelay,
+			storageConstants.DefaultUntaggedImgeRetentionDelay, false, false, log, metrics, nil, nil)
 		storeController := storage.StoreController{DefaultStore: defaultStore}
 
 		params := boltdb.DBParameters{

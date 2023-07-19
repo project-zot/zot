@@ -357,6 +357,14 @@ test-push-pull: check-linux binary check-skopeo $(BATS) $(REGCLIENT) $(ORAS) $(H
 test-push-pull-verbose: check-linux binary check-skopeo $(BATS) $(REGCLIENT) $(ORAS) $(HELM) $(CRICTL)
 	$(BATS) --trace --verbose-run --print-output-on-failure --show-output-of-passing-tests test/blackbox/pushpull.bats
 
+.PHONY: test-garbage-collect
+test-garbage-collect: binary check-skopeo $(BATS) $(REGCLIENT) $(ORAS)
+	$(BATS) --trace --print-output-on-failure test/blackbox/garbage_collect.bats
+
+.PHONY: test-garbage-collect-verbose
+test-garbage-collect-verbose: binary check-skopeo $(BATS) $(REGCLIENT) $(ORAS)
+	$(BATS) --trace --verbose-run --print-output-on-failure --show-output-of-passing-tests test/blackbox/garbage_collect.bats
+
 .PHONY: test-push-pull-running-dedupe
 test-push-pull-running-dedupe: check-linux binary check-skopeo $(BATS) $(REGCLIENT) $(ORAS) $(HELM)
 	$(BATS) --trace --print-output-on-failure test/blackbox/pushpull_running_dedupe.bats

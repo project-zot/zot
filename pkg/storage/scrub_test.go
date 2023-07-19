@@ -39,8 +39,8 @@ func TestCheckAllBlobsIntegrity(t *testing.T) {
 		Name:        "cache",
 		UseRelPaths: true,
 	}, log)
-	imgStore := local.NewImageStore(dir, true, storageConstants.DefaultGCDelay,
-		true, true, log, metrics, nil, cacheDriver)
+	imgStore := local.NewImageStore(dir, true, true, storageConstants.DefaultGCDelay,
+		storageConstants.DefaultUntaggedImgeRetentionDelay, true, true, log, metrics, nil, cacheDriver)
 
 	Convey("Scrub only one repo", t, func(c C) {
 		// initialize repo
@@ -113,7 +113,7 @@ func TestCheckAllBlobsIntegrity(t *testing.T) {
 			// verify error message
 			So(actual, ShouldContainSubstring, "test 1.0 affected parse application/vnd.oci.image.manifest.v1+json")
 
-			index, err := common.GetIndex(imgStore, repoName, log.With().Caller().Logger())
+			index, err := common.GetIndex(imgStore, repoName, log)
 			So(err, ShouldBeNil)
 
 			So(len(index.Manifests), ShouldEqual, 1)
@@ -193,7 +193,7 @@ func TestCheckAllBlobsIntegrity(t *testing.T) {
 			err = os.Chmod(layerFile, 0x0200)
 			So(err, ShouldBeNil)
 
-			index, err := common.GetIndex(imgStore, repoName, log.With().Caller().Logger())
+			index, err := common.GetIndex(imgStore, repoName, log)
 			So(err, ShouldBeNil)
 
 			So(len(index.Manifests), ShouldEqual, 1)
@@ -327,7 +327,7 @@ func TestCheckAllBlobsIntegrity(t *testing.T) {
 			So(actual, ShouldContainSubstring, "test 1.0 affected")
 			So(actual, ShouldContainSubstring, "no such file or directory")
 
-			index, err := common.GetIndex(imgStore, repoName, log.With().Caller().Logger())
+			index, err := common.GetIndex(imgStore, repoName, log)
 			So(err, ShouldBeNil)
 
 			So(len(index.Manifests), ShouldEqual, 2)

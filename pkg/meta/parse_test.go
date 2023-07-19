@@ -399,7 +399,7 @@ func TestParseStorageDynamoWrapper(t *testing.T) {
 
 func RunParseStorageTests(rootDir string, metaDB mTypes.MetaDB) {
 	Convey("Test with simple case", func() {
-		imageStore := local.NewImageStore(rootDir, false, 0, false, false,
+		imageStore := local.NewImageStore(rootDir, false, false, 0, 0, false, false,
 			log.NewLogger("debug", ""), monitoring.NewMetricsServer(false, log.NewLogger("debug", "")), nil, nil)
 
 		storeController := storage.StoreController{DefaultStore: imageStore}
@@ -485,7 +485,7 @@ func RunParseStorageTests(rootDir string, metaDB mTypes.MetaDB) {
 	})
 
 	Convey("Accept orphan signatures", func() {
-		imageStore := local.NewImageStore(rootDir, false, 0, false, false,
+		imageStore := local.NewImageStore(rootDir, false, false, 0, 0, false, false,
 			log.NewLogger("debug", ""), monitoring.NewMetricsServer(false, log.NewLogger("debug", "")), nil, nil)
 
 		storeController := storage.StoreController{DefaultStore: imageStore}
@@ -542,7 +542,7 @@ func RunParseStorageTests(rootDir string, metaDB mTypes.MetaDB) {
 	})
 
 	Convey("Check statistics after load", func() {
-		imageStore := local.NewImageStore(rootDir, false, 0, false, false,
+		imageStore := local.NewImageStore(rootDir, false, false, 0, 0, false, false,
 			log.NewLogger("debug", ""), monitoring.NewMetricsServer(false, log.NewLogger("debug", "")), nil, nil)
 
 		storeController := storage.StoreController{DefaultStore: imageStore}

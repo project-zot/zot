@@ -1,0 +1,19 @@
+{
+    "distSpecVersion": "1.1.0-dev",
+    "storage": {
+        "rootDirectory": "/tmp/zot/local",
+        "gc": true,
+        "gcReferrers": false,
+        "gcDelay": "20s",
+        "untaggedImageRetentionDelay": "20s",
+        "gcInterval": "1s"
+    },
+    "http": {
+        "address": "127.0.0.1",
+        "port": "8080"
+    },
+    "log": {
+        "level": "debug",
+        "output": "/dev/null"
+    }
+}

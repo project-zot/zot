@@ -25,6 +25,7 @@ import (
 	mTypes "zotregistry.io/zot/pkg/meta/types"
 	"zotregistry.io/zot/pkg/storage"
 	storageConstants "zotregistry.io/zot/pkg/storage/constants"
+	"zotregistry.io/zot/pkg/storage/imagestore"
 	"zotregistry.io/zot/pkg/storage/local"
 	storageTypes "zotregistry.io/zot/pkg/storage/types"
 	"zotregistry.io/zot/pkg/test"
@@ -73,14 +74,14 @@ func TestMultipleStoragePath(t *testing.T) {
 
 		// Create ImageStore
 
-		firstStore := local.NewImageStore(firstRootDir, false, storageConstants.DefaultGCDelay, false, false, log, metrics,
-			nil, nil)
+		firstStore := local.NewImageStore(firstRootDir, false, false, storageConstants.DefaultGCDelay,
+			storageConstants.DefaultUntaggedImgeRetentionDelay, false, false, log, metrics, nil, nil)
 
-		secondStore := local.NewImageStore(secondRootDir, false, storageConstants.DefaultGCDelay, false, false, log, metrics,
-			nil, nil)
+		secondStore := local.NewImageStore(secondRootDir, false, false, storageConstants.DefaultGCDelay,
+			storageConstants.DefaultUntaggedImgeRetentionDelay, false, false, log, metrics, nil, nil)
 
-		thirdStore := local.NewImageStore(thirdRootDir, false, storageConstants.DefaultGCDelay, false, false, log, metrics,
-			nil, nil)
+		thirdStore := local.NewImageStore(thirdRootDir, false, false, storageConstants.DefaultGCDelay,
+			storageConstants.DefaultUntaggedImgeRetentionDelay, false, false, log, metrics, nil, nil)
 
 		storeController := storage.StoreController{}
 
@@ -188,7 +189,8 @@ func TestTrivyLibraryErrors(t *testing.T) {
 		metrics := monitoring.NewMetricsServer(false, log)
 
 		// Create ImageStore
-		store := local.NewImageStore(rootDir, false, storageConstants.DefaultGCDelay, false, false, log, metrics, nil, nil)
+		store := local.NewImageStore(rootDir, false, false, storageConstants.DefaultGCDelay,
+			storageConstants.DefaultUntaggedImgeRetentionDelay, false, false, log, metrics, nil, nil)
 
 		storeController := storage.StoreController{}
 		storeController.DefaultStore = store
@@ -405,7 +407,8 @@ func TestImageScannable(t *testing.T) {
 	// Continue with initializing the objects the scanner depends on
 	metrics := monitoring.NewMetricsServer(false, log)
 
-	store := local.NewImageStore(rootDir, false, storageConstants.DefaultGCDelay, false, false, log, metrics, nil, nil)
+	store := local.NewImageStore(rootDir, false, false, storageConstants.DefaultGCDelay,
+		storageConstants.DefaultUntaggedImgeRetentionDelay, false, false, log, metrics, nil, nil)
 
 	storeController := storage.StoreController{}
 	storeController.DefaultStore = store
@@ -471,7 +474,8 @@ func TestDefaultTrivyDBUrl(t *testing.T) {
 		metrics := monitoring.NewMetricsServer(false, log)
 
 		// Create ImageStore
-		store := local.NewImageStore(rootDir, false, storageConstants.DefaultGCDelay, false, false, log, metrics, nil, nil)
+		store := local.NewImageStore(rootDir, false, false, storageConstants.DefaultGCDelay,
+			storageConstants.DefaultUntaggedImgeRetentionDelay, false, false, log, metrics, nil, nil)
 
 		storeController := storage.StoreController{}
 		storeController.DefaultStore = store
@@ -515,7 +519,7 @@ func TestDefaultTrivyDBUrl(t *testing.T) {
 func TestIsIndexScanable(t *testing.T) {
 	Convey("IsIndexScanable", t, func() {
 		storeController := storage.StoreController{}
-		storeController.DefaultStore = &local.ImageStoreLocal{}
+		storeController.DefaultStore = &imagestore.ImageStore{}
 
 		metaDB := &boltdb.BoltDB{}
 		log := log.NewLogger("debug", "")
