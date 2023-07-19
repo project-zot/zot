@@ -14,6 +14,10 @@ import (
 	storageConstants "zotregistry.io/zot/pkg/storage/constants"
 )
 
+const (
+	TestFakeSignatureArtType = "application/test.fake.signature"
+)
+
 // LayerBuilder abstracts the first step in creating an OCI image, specifying the layers of the image.
 type LayerBuilder interface {
 	// LayerBlobs sets the image layers from the gives blobs array, adding a default zipped layer media type.
@@ -46,6 +50,8 @@ type ConfigBuilder interface {
 	ArtifactConfig(artifactType string) ManifestBuilder
 	// DefaultConfig sets the default config, platform linux/amd64.
 	DefaultConfig() ManifestBuilder
+	// CustomConfigBlob will set a custom blob as the image config without other checks.
+	CustomConfigBlob(configBlob []byte, mediaType string) ManifestBuilder
 	// RandomConfig sets a randomly generated config.
 	RandomConfig() ManifestBuilder
 }
@@ -161,6 +167,13 @@ func CreateRandomVulnerableImage() Image {
 
 func CreateRandomVulnerableImageWith() ManifestBuilder {
 	return CreateImageWith().VulnerableLayers().RandomVulnConfig()
+}
+
+// CreateFakeTestSignature returns a test signature that is used to mark a image as signed
+// when creating a test Repo. It won't be recognized as a signature if uploaded to the repository directly.
+func CreateFakeTestSignature(subject *ispec.Descriptor) Image {
+	return CreateImageWith().RandomLayers(1, 10).DefaultConfig().
+		ArtifactType(TestFakeSignatureArtType).Subject(subject).Build()
 }
 
 type BaseImageBuilder struct {
@@ -279,6 +292,19 @@ func (ib *BaseImageBuilder) ArtifactConfig(artifactType string) ManifestBuilder 
 	configDescriptor.MediaType = artifactType
 
 	ib.configDescriptor = configDescriptor
+
+	return ib
+}
+
+func (ib *BaseImageBuilder) CustomConfigBlob(configBlob []byte, mediaType string) ManifestBuilder {
+	ib.config = ispec.Image{}
+
+	ib.configDescriptor = ispec.Descriptor{
+		MediaType: mediaType,
+		Size:      int64(len(configBlob)),
+		Data:      configBlob,
+		Digest:    godigest.FromBytes(configBlob),
+	}
 
 	return ib
 }

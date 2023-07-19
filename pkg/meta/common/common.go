@@ -142,34 +142,6 @@ func RankRepoName(searchText string, repoName string) int {
 	return -1
 }
 
-func GetImageLastUpdatedTimestamp(configContent ispec.Image) time.Time {
-	var timeStamp *time.Time
-
-	if configContent.Created != nil && !configContent.Created.IsZero() {
-		return *configContent.Created
-	}
-
-	if len(configContent.History) != 0 {
-		timeStamp = configContent.History[len(configContent.History)-1].Created
-	}
-
-	if timeStamp == nil {
-		timeStamp = &time.Time{}
-	}
-
-	return *timeStamp
-}
-
-func CheckIsSigned(signatures mTypes.ManifestSignatures) bool {
-	for _, signatures := range signatures {
-		if len(signatures) > 0 {
-			return true
-		}
-	}
-
-	return false
-}
-
 func GetRepoTag(searchText string) (string, string, error) {
 	const repoTagCount = 2
 
@@ -183,66 +155,6 @@ func GetRepoTag(searchText string) (string, string, error) {
 	tag := strings.TrimSpace(splitSlice[1])
 
 	return repo, tag, nil
-}
-
-func GetMapKeys[K comparable, V any](genericMap map[K]V) []K {
-	keys := make([]K, 0, len(genericMap))
-
-	for k := range genericMap {
-		keys = append(keys, k)
-	}
-
-	return keys
-}
-
-// acceptedByFilter checks that data contains at least 1 element of each filter
-// criteria(os, arch) present in filter.
-func AcceptedByFilter(filter mTypes.Filter, data mTypes.FilterData) bool {
-	if filter.Arch != nil {
-		foundArch := false
-		for _, arch := range filter.Arch {
-			foundArch = foundArch || containsString(data.ArchList, *arch)
-		}
-
-		if !foundArch {
-			return false
-		}
-	}
-
-	if filter.Os != nil {
-		foundOs := false
-		for _, os := range filter.Os {
-			foundOs = foundOs || containsString(data.OsList, *os)
-		}
-
-		if !foundOs {
-			return false
-		}
-	}
-
-	if filter.HasToBeSigned != nil && *filter.HasToBeSigned != data.IsSigned {
-		return false
-	}
-
-	if filter.IsBookmarked != nil && *filter.IsBookmarked != data.IsBookmarked {
-		return false
-	}
-
-	if filter.IsStarred != nil && *filter.IsStarred != data.IsStarred {
-		return false
-	}
-
-	return true
-}
-
-func containsString(strSlice []string, str string) bool {
-	for _, val := range strSlice {
-		if strings.EqualFold(val, str) {
-			return true
-		}
-	}
-
-	return false
 }
 
 func GetReferredSubject(descriptorBlob []byte) (godigest.Digest, bool) {
@@ -420,4 +332,15 @@ func GetImageDescriptor(metaDB mTypes.MetaDB, repo, tag string) (mTypes.Descript
 	}
 
 	return imageDescriptor, nil
+}
+
+func InitializeImageConfig(blob []byte) ispec.Image {
+	var configContent ispec.Image
+
+	err := json.Unmarshal(blob, &configContent)
+	if err != nil {
+		return ispec.Image{}
+	}
+
+	return configContent
 }

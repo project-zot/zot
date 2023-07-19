@@ -19,7 +19,7 @@ type CVEResultForImage {
     """
     Tag: String
     """
-    List of CVE objects which afect this specific image:tag
+    List of CVE objects which affect this specific image:tag
     """
     CVEList: [CVE]
     """
@@ -230,7 +230,7 @@ type ManifestSummary {
     """
     Platform: Platform
     """
-    Total numer of image manifest downloads from this repository
+    Total number of image manifest downloads from this repository
     """
     DownloadCount: Int
     """
@@ -300,7 +300,7 @@ type RepoSummary {
     """
     NewestImage: ImageSummary
     """
-    Total numer of image manifest downloads from this repository
+    Total number of image manifest downloads from this repository
     """
     DownloadCount: Int
     """
@@ -312,9 +312,13 @@ type RepoSummary {
     """
     IsBookmarked: Boolean
     """
-    True if the repository is stared by the current user, fale otherwise
+    True if the repository is starred by the current user, false otherwise
     """
     IsStarred: Boolean
+    """
+    Rank represents how good the match was between the queried repo name and this repo summary.
+    """
+    Rank: Int
 }
 
 """

@@ -313,12 +313,10 @@ func getConfigAndDigest(metaDB mTypes.MetaDB, manifestDigestStr string) (ispec.I
 
 	var configContent ispec.Image
 
+	// we'll fail the execution if the config is not compatibe with ispec.Image because we can't scan this type of images.
 	err = json.Unmarshal(manifestData.ConfigBlob, &configContent)
-	if err != nil {
-		return ispec.Image{}, "", err
-	}
 
-	return configContent, manifestDigest, nil
+	return configContent, manifestDigest, err
 }
 
 func filterCVEList(cveMap map[string]cvemodel.CVE, searchedCVE string, pageFinder *CvePageFinder) {

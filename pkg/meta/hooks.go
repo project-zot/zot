@@ -58,7 +58,7 @@ func OnUpdateManifest(repo, reference, mediaType string, digest godigest.Digest,
 			}
 		}
 	} else {
-		err := SetImageMetaFromInput(repo, reference, mediaType, digest, body,
+		err = SetImageMetaFromInput(repo, reference, mediaType, digest, body,
 			imgStore, metaDB, log)
 		if err != nil {
 			metadataSuccessfullySet = false
@@ -66,7 +66,7 @@ func OnUpdateManifest(repo, reference, mediaType string, digest godigest.Digest,
 	}
 
 	if !metadataSuccessfullySet {
-		log.Info().Str("tag", reference).Str("repository", repo).Msg("uploding image meta was unsuccessful for tag in repo")
+		log.Info().Str("tag", reference).Str("repository", repo).Msg("uploading image meta was unsuccessful for tag in repo")
 
 		if err := imgStore.DeleteImageManifest(repo, reference, false); err != nil {
 			log.Error().Err(err).Str("reference", reference).Str("repository", repo).
@@ -122,8 +122,8 @@ func OnDeleteManifest(repo, reference, mediaType string, digest godigest.Digest,
 			manageRepoMetaSuccessfully = false
 		}
 
-		if refferredDigest, hasSubject := common.GetReferredSubject(manifestBlob); hasSubject {
-			err := metaDB.DeleteReferrer(repo, refferredDigest, digest)
+		if referredDigest, hasSubject := common.GetReferredSubject(manifestBlob); hasSubject {
+			err := metaDB.DeleteReferrer(repo, referredDigest, digest)
 			if err != nil {
 				log.Error().Err(err).Msg("metadb: error while deleting referrer")
 

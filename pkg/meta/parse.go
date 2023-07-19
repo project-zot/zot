@@ -332,9 +332,11 @@ func NewManifestData(repoName string, manifestBlob []byte, imageStore storageTyp
 		return mTypes.ManifestData{}, err
 	}
 
-	err = json.Unmarshal(configBlob, &configContent)
-	if err != nil {
-		return mTypes.ManifestData{}, err
+	if manifestContent.Config.MediaType == ispec.MediaTypeImageConfig {
+		err = json.Unmarshal(configBlob, &configContent)
+		if err != nil {
+			return mTypes.ManifestData{}, err
+		}
 	}
 
 	manifestData.ManifestBlob = manifestBlob
@@ -381,9 +383,9 @@ func SetImageMetaFromInput(repo, reference, mediaType string, digest godigest.Di
 		}
 	}
 
-	refferredDigest, referrerInfo, hasSubject, err := GetReferredInfo(descriptorBlob, digest.String(), mediaType)
+	referredDigest, referrerInfo, hasSubject, err := GetReferredInfo(descriptorBlob, digest.String(), mediaType)
 	if hasSubject && err == nil {
-		err := metaDB.SetReferrer(repo, refferredDigest, referrerInfo)
+		err := metaDB.SetReferrer(repo, referredDigest, referrerInfo)
 		if err != nil {
 			log.Error().Err(err).Msg("metadb: error while settingg referrer")
 

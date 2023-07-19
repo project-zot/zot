@@ -3,12 +3,9 @@ package meta_test
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"math/rand"
 	"os"
 	"path"
-	"strconv"
-	"strings"
 	"testing"
 	"time"
 
@@ -520,7 +517,7 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 			Convey("Get all Repometa", func() {
 				repoMetaSlice, err := metaDB.GetMultipleRepoMeta(context.TODO(), func(repoMeta mTypes.RepoMetadata) bool {
 					return true
-				}, mTypes.PageInput{})
+				})
 				So(err, ShouldBeNil)
 				So(len(repoMetaSlice), ShouldEqual, 2)
 			})
@@ -534,25 +531,10 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 					}
 
 					return false
-				}, mTypes.PageInput{})
+				})
 				So(err, ShouldBeNil)
 				So(len(repoMetaSlice), ShouldEqual, 1)
 				So(repoMetaSlice[0].Tags[tag1].Digest == manifestDigest1.String(), ShouldBeTrue)
-			})
-
-			Convey("Wrong page input", func() {
-				repoMetaSlice, err := metaDB.GetMultipleRepoMeta(context.TODO(), func(repoMeta mTypes.RepoMetadata) bool {
-					for tag := range repoMeta.Tags {
-						if tag == tag1 {
-							return true
-						}
-					}
-
-					return false
-				}, mTypes.PageInput{Limit: -1, Offset: -1})
-
-				So(err, ShouldNotBeNil)
-				So(len(repoMetaSlice), ShouldEqual, 0)
 			})
 		})
 
@@ -1388,7 +1370,7 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 				err = metaDB.SetManifestMeta(repo1, manifestDigest3, emptyRepoMeta)
 				So(err, ShouldBeNil)
 
-				repos, manifestMetaMap, _, _, err := metaDB.SearchRepos(ctx, "", mTypes.Filter{}, mTypes.PageInput{})
+				repos, manifestMetaMap, _, err := metaDB.SearchRepos(ctx, "")
 				So(err, ShouldBeNil)
 				So(len(repos), ShouldEqual, 2)
 				So(len(manifestMetaMap), ShouldEqual, 3)
@@ -1404,7 +1386,7 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 				err = metaDB.SetManifestMeta(repo1, manifestDigest1, emptyRepoMeta)
 				So(err, ShouldBeNil)
 
-				repos, manifestMetaMap, _, _, err := metaDB.SearchRepos(ctx, repo1, mTypes.Filter{}, mTypes.PageInput{})
+				repos, manifestMetaMap, _, err := metaDB.SearchRepos(ctx, repo1)
 				So(err, ShouldBeNil)
 				So(len(repos), ShouldEqual, 1)
 				So(len(manifestMetaMap), ShouldEqual, 1)
@@ -1418,8 +1400,7 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 				err = metaDB.SetRepoReference(repo1, tag2, manifestDigest2, ispec.MediaTypeImageManifest)
 				So(err, ShouldBeNil)
 
-				repos, manifestMetaMap, _, _, err := metaDB.SearchRepos(ctx, "RepoThatDoesntExist", mTypes.Filter{},
-					mTypes.PageInput{})
+				repos, manifestMetaMap, _, err := metaDB.SearchRepos(ctx, "RepoThatDoesntExist")
 				So(err, ShouldBeNil)
 				So(len(repos), ShouldEqual, 0)
 				So(len(manifestMetaMap), ShouldEqual, 0)
@@ -1440,7 +1421,7 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 				err = metaDB.SetManifestMeta("golang", manifestDigest3, emptyRepoMeta)
 				So(err, ShouldBeNil)
 
-				repos, manifestMetaMap, _, _, err := metaDB.SearchRepos(ctx, "pine", mTypes.Filter{}, mTypes.PageInput{})
+				repos, manifestMetaMap, _, err := metaDB.SearchRepos(ctx, "pine")
 				So(err, ShouldBeNil)
 				So(len(repos), ShouldEqual, 2)
 				So(manifestMetaMap, ShouldContainKey, manifestDigest1.String())
@@ -1463,7 +1444,7 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 				err = metaDB.SetManifestMeta(repo3, manifestDigest1, emptyRepoMeta)
 				So(err, ShouldBeNil)
 
-				repos, manifestMetaMap, _, _, err := metaDB.SearchRepos(ctx, "", mTypes.Filter{}, mTypes.PageInput{})
+				repos, manifestMetaMap, _, err := metaDB.SearchRepos(ctx, "")
 				So(err, ShouldBeNil)
 				So(len(repos), ShouldEqual, 3)
 				So(len(manifestMetaMap), ShouldEqual, 1)
@@ -1494,165 +1475,12 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 				authzCtxKey := localCtx.GetContextKey()
 				ctx := context.WithValue(context.Background(), authzCtxKey, acCtx)
 
-				repos, _, _, _, err := metaDB.SearchRepos(ctx, "repo", mTypes.Filter{}, mTypes.PageInput{})
+				repos, _, _, err := metaDB.SearchRepos(ctx, "repo")
 				So(err, ShouldBeNil)
 				So(len(repos), ShouldEqual, 2)
 				for _, k := range repos {
 					So(k.Name, ShouldBeIn, []string{repo1, repo2})
 				}
-			})
-
-			Convey("Search paginated repos", func() {
-				reposCount := 50
-				repoNameBuilder := strings.Builder{}
-
-				for _, i := range rand.Perm(reposCount) {
-					manifestDigest := godigest.FromString("fakeManifest" + strconv.Itoa(i))
-					timeString := fmt.Sprintf("1%02d0-01-01 04:35", i)
-					createdTime, err := time.Parse("2006-01-02 15:04", timeString)
-					So(err, ShouldBeNil)
-
-					configContent := ispec.Image{
-						History: []ispec.History{
-							{
-								Created: &createdTime,
-							},
-						},
-					}
-
-					configBlob, err := json.Marshal(configContent)
-					So(err, ShouldBeNil)
-
-					manifestMeta := mTypes.ManifestMetadata{
-						ManifestBlob:  emptyManifestBlob,
-						ConfigBlob:    configBlob,
-						DownloadCount: i,
-					}
-					repoName := "repo" + strconv.Itoa(i)
-
-					err = metaDB.SetRepoReference(repoName, tag1, manifestDigest, ispec.MediaTypeImageManifest)
-					So(err, ShouldBeNil)
-
-					err = metaDB.SetManifestMeta(repoName, manifestDigest, manifestMeta)
-					So(err, ShouldBeNil)
-
-					repoNameBuilder.Reset()
-				}
-
-				repos, _, _, _, err := metaDB.SearchRepos(ctx, "repo", mTypes.Filter{}, mTypes.PageInput{})
-				So(err, ShouldBeNil)
-				So(len(repos), ShouldEqual, reposCount)
-
-				repos, _, _, _, err = metaDB.SearchRepos(ctx, "repo", mTypes.Filter{}, mTypes.PageInput{
-					Limit:  20,
-					SortBy: mTypes.AlphabeticAsc,
-				})
-				So(err, ShouldBeNil)
-				So(len(repos), ShouldEqual, 20)
-
-				repos, _, _, _, err = metaDB.SearchRepos(ctx, "repo", mTypes.Filter{}, mTypes.PageInput{
-					Limit:  1,
-					Offset: 0,
-					SortBy: mTypes.AlphabeticAsc,
-				})
-				So(err, ShouldBeNil)
-				So(len(repos), ShouldEqual, 1)
-				So(repos[0].Name, ShouldResemble, "repo0")
-
-				repos, _, _, _, err = metaDB.SearchRepos(ctx, "repo", mTypes.Filter{}, mTypes.PageInput{
-					Limit:  1,
-					Offset: 1,
-					SortBy: mTypes.AlphabeticAsc,
-				})
-				So(err, ShouldBeNil)
-				So(len(repos), ShouldEqual, 1)
-				So(repos[0].Name, ShouldResemble, "repo1")
-
-				repos, _, _, _, err = metaDB.SearchRepos(ctx, "repo", mTypes.Filter{}, mTypes.PageInput{
-					Limit:  1,
-					Offset: 49,
-					SortBy: mTypes.AlphabeticAsc,
-				})
-				So(err, ShouldBeNil)
-				So(len(repos), ShouldEqual, 1)
-				So(repos[0].Name, ShouldResemble, "repo9")
-
-				repos, _, _, _, err = metaDB.SearchRepos(ctx, "repo", mTypes.Filter{}, mTypes.PageInput{
-					Limit:  1,
-					Offset: 49,
-					SortBy: mTypes.AlphabeticDsc,
-				})
-				So(err, ShouldBeNil)
-				So(len(repos), ShouldEqual, 1)
-				So(repos[0].Name, ShouldResemble, "repo0")
-
-				repos, _, _, _, err = metaDB.SearchRepos(ctx, "repo", mTypes.Filter{}, mTypes.PageInput{
-					Limit:  1,
-					Offset: 0,
-					SortBy: mTypes.AlphabeticDsc,
-				})
-				So(err, ShouldBeNil)
-				So(len(repos), ShouldEqual, 1)
-				So(repos[0].Name, ShouldResemble, "repo9")
-
-				// sort by downloads
-				repos, _, _, _, err = metaDB.SearchRepos(ctx, "repo", mTypes.Filter{}, mTypes.PageInput{
-					Limit:  1,
-					Offset: 0,
-					SortBy: mTypes.Downloads,
-				})
-				So(err, ShouldBeNil)
-				So(len(repos), ShouldEqual, 1)
-				So(repos[0].Name, ShouldResemble, "repo49")
-
-				// sort by last update
-				repos, _, _, _, err = metaDB.SearchRepos(ctx, "repo", mTypes.Filter{}, mTypes.PageInput{
-					Limit:  1,
-					Offset: 0,
-					SortBy: mTypes.UpdateTime,
-				})
-				So(err, ShouldBeNil)
-				So(len(repos), ShouldEqual, 1)
-				So(repos[0].Name, ShouldResemble, "repo49")
-
-				repos, _, _, _, err = metaDB.SearchRepos(ctx, "repo", mTypes.Filter{}, mTypes.PageInput{
-					Limit:  1,
-					Offset: 100,
-					SortBy: mTypes.UpdateTime,
-				})
-				So(err, ShouldBeNil)
-				So(len(repos), ShouldEqual, 0)
-				So(repos, ShouldBeEmpty)
-			})
-
-			Convey("Search with wrong pagination input", func() {
-				_, _, _, _, err = metaDB.SearchRepos(ctx, "repo", mTypes.Filter{}, mTypes.PageInput{
-					Limit:  1,
-					Offset: 100,
-					SortBy: mTypes.UpdateTime,
-				})
-				So(err, ShouldBeNil)
-
-				_, _, _, _, err = metaDB.SearchRepos(ctx, "repo", mTypes.Filter{}, mTypes.PageInput{
-					Limit:  -1,
-					Offset: 100,
-					SortBy: mTypes.UpdateTime,
-				})
-				So(err, ShouldNotBeNil)
-
-				_, _, _, _, err = metaDB.SearchRepos(ctx, "repo", mTypes.Filter{}, mTypes.PageInput{
-					Limit:  1,
-					Offset: -1,
-					SortBy: mTypes.UpdateTime,
-				})
-				So(err, ShouldNotBeNil)
-
-				_, _, _, _, err = metaDB.SearchRepos(ctx, "repo", mTypes.Filter{}, mTypes.PageInput{
-					Limit:  1,
-					Offset: 1,
-					SortBy: mTypes.SortCriteria("InvalidSortingCriteria"),
-				})
-				So(err, ShouldNotBeNil)
 			})
 
 			Convey("Search Repos with Indexes", func() {
@@ -1719,7 +1547,7 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 				err = metaDB.SetRepoReference("repo", tag5, manifestDigest3, ispec.MediaTypeImageManifest)
 				So(err, ShouldBeNil)
 
-				repos, manifestMetaMap, indexDataMap, _, err := metaDB.SearchRepos(ctx, "repo", mTypes.Filter{}, mTypes.PageInput{})
+				repos, manifestMetaMap, indexDataMap, err := metaDB.SearchRepos(ctx, "repo")
 				So(err, ShouldBeNil)
 
 				So(len(repos), ShouldEqual, 1)
@@ -1779,8 +1607,7 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 			So(err, ShouldBeNil)
 
 			Convey("With exact match", func() {
-				repos, manifestMetaMap, _, _, err := metaDB.SearchTags(ctx, "repo1:0.0.1", mTypes.Filter{},
-					mTypes.PageInput{})
+				repos, manifestMetaMap, _, err := metaDB.SearchTags(ctx, "repo1:0.0.1")
 				So(err, ShouldBeNil)
 				So(len(repos), ShouldEqual, 1)
 				So(len(repos[0].Tags), ShouldEqual, 1)
@@ -1788,16 +1615,39 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 				So(manifestMetaMap, ShouldContainKey, manifestDigest1.String())
 			})
 
+			Convey("With no match", func() {
+				repos, _, _, err := metaDB.SearchTags(ctx, "repo1:badtag")
+				So(err, ShouldBeNil)
+				So(len(repos), ShouldEqual, 0)
+			})
+
+			Convey("With no permision", func() {
+				acCtx1 := localCtx.AccessControlContext{
+					ReadGlobPatterns: map[string]bool{
+						repo1: false,
+						repo2: false,
+					},
+					Username: "user1",
+				}
+				authzCtxKey := localCtx.GetContextKey()
+
+				// "user1"
+				ctx1 := context.WithValue(context.Background(), authzCtxKey, acCtx1)
+
+				repos, _, _, err := metaDB.SearchTags(ctx1, "repo1:0.0.1")
+				So(err, ShouldBeNil)
+				So(len(repos), ShouldEqual, 0)
+			})
+
 			Convey("With partial repo path", func() {
-				repos, manifestMetaMap, _, _, err := metaDB.SearchTags(ctx, "repo:0.0.1", mTypes.Filter{},
-					mTypes.PageInput{})
+				repos, manifestMetaMap, _, err := metaDB.SearchTags(ctx, "repo:0.0.1")
 				So(err, ShouldBeNil)
 				So(len(repos), ShouldEqual, 0)
 				So(len(manifestMetaMap), ShouldEqual, 0)
 			})
 
 			Convey("With partial tag", func() {
-				repos, manifestMetaMap, _, _, err := metaDB.SearchTags(ctx, "repo1:0.0", mTypes.Filter{}, mTypes.PageInput{})
+				repos, manifestMetaMap, _, err := metaDB.SearchTags(ctx, "repo1:0.0")
 				So(err, ShouldBeNil)
 				So(len(repos), ShouldEqual, 1)
 				So(len(repos[0].Tags), ShouldEqual, 2)
@@ -1806,7 +1656,7 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 				So(manifestMetaMap, ShouldContainKey, manifestDigest1.String())
 				So(manifestMetaMap, ShouldContainKey, manifestDigest3.String())
 
-				repos, manifestMetaMap, _, _, err = metaDB.SearchTags(ctx, "repo1:0.", mTypes.Filter{}, mTypes.PageInput{})
+				repos, manifestMetaMap, _, err = metaDB.SearchTags(ctx, "repo1:0.")
 				So(err, ShouldBeNil)
 				So(len(repos), ShouldEqual, 1)
 				So(len(repos[0].Tags), ShouldEqual, 3)
@@ -1819,7 +1669,7 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 			})
 
 			Convey("With bad query", func() {
-				repos, manifestMetaMap, _, _, err := metaDB.SearchTags(ctx, "repo:0.0.1:test", mTypes.Filter{}, mTypes.PageInput{})
+				repos, manifestMetaMap, _, err := metaDB.SearchTags(ctx, "repo:0.0.1:test")
 				So(err, ShouldNotBeNil)
 				So(len(repos), ShouldEqual, 0)
 				So(len(manifestMetaMap), ShouldEqual, 0)
@@ -1864,21 +1714,13 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 				authzCtxKey := localCtx.GetContextKey()
 				ctx := context.WithValue(context.Background(), authzCtxKey, acCtx)
 
-				repos, _, _, _, err := metaDB.SearchTags(ctx, "repo1:", mTypes.Filter{}, mTypes.PageInput{})
+				repos, _, _, err := metaDB.SearchTags(ctx, "repo1:")
 				So(err, ShouldBeNil)
 				So(len(repos), ShouldEqual, 1)
 				So(repos[0].Name, ShouldResemble, repo1)
 
-				repos, _, _, _, err = metaDB.SearchTags(ctx, "repo2:", mTypes.Filter{}, mTypes.PageInput{})
+				repos, _, _, err = metaDB.SearchTags(ctx, "repo2:")
 				So(err, ShouldBeNil)
-				So(repos, ShouldBeEmpty)
-			})
-
-			Convey("With wrong pagination input", func() {
-				repos, _, _, _, err := metaDB.SearchTags(ctx, "repo2:", mTypes.Filter{}, mTypes.PageInput{
-					Limit: -1,
-				})
-				So(err, ShouldNotBeNil)
 				So(repos, ShouldBeEmpty)
 			})
 
@@ -1951,8 +1793,7 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 				err = metaDB.SetRepoReference("repo", tag6, manifestDigest4, ispec.MediaTypeImageManifest)
 				So(err, ShouldBeNil)
 
-				repos, manifestMetaMap, indexDataMap, _, err := metaDB.SearchTags(ctx, "repo:0.0", mTypes.Filter{},
-					mTypes.PageInput{})
+				repos, manifestMetaMap, indexDataMap, err := metaDB.SearchTags(ctx, "repo:0.0")
 				So(err, ShouldBeNil)
 
 				So(len(repos), ShouldEqual, 1)
@@ -1997,11 +1838,7 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 			err = metaDB.SetManifestMeta(repo1, manifestDigest1, mTypes.ManifestMetadata{ConfigBlob: configBlob})
 			So(err, ShouldBeNil)
 
-			repos, _, _, _, err := metaDB.SearchTags(context.TODO(), "repo1:", mTypes.Filter{}, mTypes.PageInput{
-				Limit:  1,
-				Offset: 0,
-				SortBy: mTypes.AlphabeticAsc,
-			})
+			repos, _, _, err := metaDB.SearchTags(context.TODO(), "repo1:")
 
 			So(err, ShouldBeNil)
 			So(len(repos), ShouldEqual, 1)
@@ -2010,11 +1847,7 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 				keys = append(keys, k)
 			}
 
-			repos, _, _, _, err = metaDB.SearchTags(context.TODO(), "repo1:", mTypes.Filter{}, mTypes.PageInput{
-				Limit:  1,
-				Offset: 1,
-				SortBy: mTypes.AlphabeticAsc,
-			})
+			repos, _, _, err = metaDB.SearchTags(context.TODO(), "repo1:")
 
 			So(err, ShouldBeNil)
 			So(len(repos), ShouldEqual, 1)
@@ -2022,11 +1855,7 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 				keys = append(keys, k)
 			}
 
-			repos, _, _, _, err = metaDB.SearchTags(context.TODO(), "repo1:", mTypes.Filter{}, mTypes.PageInput{
-				Limit:  1,
-				Offset: 2,
-				SortBy: mTypes.AlphabeticAsc,
-			})
+			repos, _, _, err = metaDB.SearchTags(context.TODO(), "repo1:")
 
 			So(err, ShouldBeNil)
 			So(len(repos), ShouldEqual, 1)
@@ -2037,239 +1866,6 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 			So(keys, ShouldContain, tag1)
 			So(keys, ShouldContain, tag2)
 			So(keys, ShouldContain, tag3)
-		})
-
-		Convey("Test repo search with filtering", func() {
-			var (
-				repo1           = "repo1"
-				repo2           = "repo2"
-				repo3           = "repo3"
-				repo4           = "repo4"
-				tag1            = "0.0.1"
-				tag2            = "0.0.2"
-				manifestDigest1 = godigest.FromString("fake-manifest1")
-				manifestDigest2 = godigest.FromString("fake-manifest2")
-				manifestDigest3 = godigest.FromString("fake-manifest3")
-			)
-
-			err := metaDB.SetRepoReference(repo1, tag1, manifestDigest1, ispec.MediaTypeImageManifest)
-			So(err, ShouldBeNil)
-			err = metaDB.SetRepoReference(repo1, tag2, manifestDigest2, ispec.MediaTypeImageManifest)
-			So(err, ShouldBeNil)
-			err = metaDB.SetRepoReference(repo2, tag1, manifestDigest1, ispec.MediaTypeImageManifest)
-			So(err, ShouldBeNil)
-			err = metaDB.SetRepoReference(repo3, tag1, manifestDigest2, ispec.MediaTypeImageManifest)
-			So(err, ShouldBeNil)
-			err = metaDB.SetRepoReference(repo4, tag1, manifestDigest3, ispec.MediaTypeImageManifest)
-			So(err, ShouldBeNil)
-
-			config1 := ispec.Image{
-				Platform: ispec.Platform{
-					Architecture: AMD,
-					OS:           LINUX,
-				},
-			}
-			configBlob1, err := json.Marshal(config1)
-			So(err, ShouldBeNil)
-
-			config2 := ispec.Image{
-				Platform: ispec.Platform{
-					Architecture: "arch",
-					OS:           WINDOWS,
-				},
-			}
-			configBlob2, err := json.Marshal(config2)
-			So(err, ShouldBeNil)
-
-			config3 := ispec.Image{}
-			configBlob3, err := json.Marshal(config3)
-			So(err, ShouldBeNil)
-
-			err = metaDB.SetManifestMeta(repo1, manifestDigest1, mTypes.ManifestMetadata{ConfigBlob: configBlob1})
-			So(err, ShouldBeNil)
-
-			err = metaDB.SetManifestMeta(repo1, manifestDigest2, mTypes.ManifestMetadata{ConfigBlob: configBlob2})
-			So(err, ShouldBeNil)
-
-			err = metaDB.SetManifestMeta(repo2, manifestDigest1, mTypes.ManifestMetadata{ConfigBlob: configBlob1})
-			So(err, ShouldBeNil)
-
-			err = metaDB.SetManifestMeta(repo3, manifestDigest2, mTypes.ManifestMetadata{ConfigBlob: configBlob2})
-			So(err, ShouldBeNil)
-
-			err = metaDB.SetManifestMeta(repo4, manifestDigest3, mTypes.ManifestMetadata{ConfigBlob: configBlob3})
-			So(err, ShouldBeNil)
-
-			opSys := LINUX
-			arch := ""
-			filter := mTypes.Filter{
-				Os: []*string{&opSys},
-			}
-
-			repos, _, _, _, err := metaDB.SearchRepos(context.TODO(), "", filter,
-				mTypes.PageInput{SortBy: mTypes.AlphabeticAsc})
-			So(err, ShouldBeNil)
-			So(len(repos), ShouldEqual, 2)
-			So(repos[0].Name, ShouldResemble, "repo1")
-			So(repos[1].Name, ShouldResemble, "repo2")
-
-			opSys = WINDOWS
-			filter = mTypes.Filter{
-				Os: []*string{&opSys},
-			}
-			repos, _, _, _, err = metaDB.SearchRepos(context.TODO(), "repo", filter,
-				mTypes.PageInput{SortBy: mTypes.AlphabeticAsc})
-			So(err, ShouldBeNil)
-			So(len(repos), ShouldEqual, 2)
-			So(repos[0].Name, ShouldResemble, "repo1")
-			So(repos[1].Name, ShouldResemble, "repo3")
-
-			opSys = "wrong"
-			filter = mTypes.Filter{
-				Os: []*string{&opSys},
-			}
-			repos, _, _, _, err = metaDB.SearchRepos(context.TODO(), "repo", filter,
-				mTypes.PageInput{SortBy: mTypes.AlphabeticAsc})
-			So(err, ShouldBeNil)
-			So(len(repos), ShouldEqual, 0)
-
-			opSys = LINUX
-			arch = AMD
-			filter = mTypes.Filter{
-				Os:   []*string{&opSys},
-				Arch: []*string{&arch},
-			}
-			repos, _, _, _, err = metaDB.SearchRepos(context.TODO(), "repo", filter,
-				mTypes.PageInput{SortBy: mTypes.AlphabeticAsc})
-			So(err, ShouldBeNil)
-			So(len(repos), ShouldEqual, 2)
-			So(repos[0].Name, ShouldResemble, "repo1")
-			So(repos[1].Name, ShouldResemble, "repo2")
-
-			opSys = WINDOWS
-			arch = AMD
-			filter = mTypes.Filter{
-				Os:   []*string{&opSys},
-				Arch: []*string{&arch},
-			}
-			repos, _, _, _, err = metaDB.SearchRepos(context.TODO(), "repo", filter,
-				mTypes.PageInput{SortBy: mTypes.AlphabeticAsc})
-			So(err, ShouldBeNil)
-			So(len(repos), ShouldEqual, 1)
-		})
-
-		Convey("Test tags search with filtering", func() {
-			var (
-				repo1           = "repo1"
-				repo2           = "repo2"
-				repo3           = "repo3"
-				repo4           = "repo4"
-				tag1            = "0.0.1"
-				tag2            = "0.0.2"
-				tag3            = "0.0.3"
-				manifestDigest1 = godigest.FromString("fake-manifest1")
-				manifestDigest2 = godigest.FromString("fake-manifest2")
-				manifestDigest3 = godigest.FromString("fake-manifest3")
-
-				indexDigest              = godigest.FromString("index-digest")
-				manifestFromIndexDigest1 = godigest.FromString("fake-manifestFromIndexDigest1")
-				manifestFromIndexDigest2 = godigest.FromString("fake-manifestFromIndexDigest2")
-			)
-
-			err := metaDB.SetRepoReference(repo1, tag3, indexDigest, ispec.MediaTypeImageIndex)
-			So(err, ShouldBeNil)
-
-			indexBlob, err := test.GetIndexBlobWithManifests(
-				[]godigest.Digest{
-					manifestFromIndexDigest1,
-					manifestFromIndexDigest2,
-				},
-			)
-			So(err, ShouldBeNil)
-
-			err = metaDB.SetIndexData(indexDigest, mTypes.IndexData{
-				IndexBlob: indexBlob,
-			})
-			So(err, ShouldBeNil)
-
-			err = metaDB.SetRepoReference(repo1, tag1, manifestDigest1, ispec.MediaTypeImageManifest)
-			So(err, ShouldBeNil)
-			err = metaDB.SetRepoReference(repo1, tag2, manifestDigest2, ispec.MediaTypeImageManifest)
-			So(err, ShouldBeNil)
-			err = metaDB.SetRepoReference(repo2, tag1, manifestDigest1, ispec.MediaTypeImageManifest)
-			So(err, ShouldBeNil)
-			err = metaDB.SetRepoReference(repo3, tag1, manifestDigest2, ispec.MediaTypeImageManifest)
-			So(err, ShouldBeNil)
-			err = metaDB.SetRepoReference(repo4, tag1, manifestDigest3, ispec.MediaTypeImageManifest)
-			So(err, ShouldBeNil)
-
-			config1 := ispec.Image{
-				Platform: ispec.Platform{
-					Architecture: AMD,
-					OS:           LINUX,
-				},
-			}
-			configBlob1, err := json.Marshal(config1)
-			So(err, ShouldBeNil)
-
-			config2 := ispec.Image{
-				Platform: ispec.Platform{
-					Architecture: "arch",
-					OS:           WINDOWS,
-				},
-			}
-			configBlob2, err := json.Marshal(config2)
-			So(err, ShouldBeNil)
-
-			config3 := ispec.Image{}
-			configBlob3, err := json.Marshal(config3)
-			So(err, ShouldBeNil)
-
-			err = metaDB.SetManifestMeta(repo1, manifestDigest1, mTypes.ManifestMetadata{ConfigBlob: configBlob1})
-			So(err, ShouldBeNil)
-
-			err = metaDB.SetManifestMeta(repo1, manifestDigest2, mTypes.ManifestMetadata{ConfigBlob: configBlob2})
-			So(err, ShouldBeNil)
-
-			err = metaDB.SetManifestMeta(repo2, manifestDigest1, mTypes.ManifestMetadata{ConfigBlob: configBlob1})
-			So(err, ShouldBeNil)
-
-			err = metaDB.SetManifestMeta(repo3, manifestDigest2, mTypes.ManifestMetadata{ConfigBlob: configBlob2})
-			So(err, ShouldBeNil)
-
-			err = metaDB.SetManifestMeta(repo4, manifestDigest3, mTypes.ManifestMetadata{ConfigBlob: configBlob3})
-			So(err, ShouldBeNil)
-
-			err = metaDB.SetManifestMeta(repo1, manifestFromIndexDigest1,
-				mTypes.ManifestMetadata{ConfigBlob: []byte("{}")})
-			So(err, ShouldBeNil)
-
-			err = metaDB.SetManifestMeta(repo1, manifestFromIndexDigest2,
-				mTypes.ManifestMetadata{ConfigBlob: []byte("{}")})
-			So(err, ShouldBeNil)
-
-			opSys := LINUX
-			arch := AMD
-			filter := mTypes.Filter{
-				Os:   []*string{&opSys},
-				Arch: []*string{&arch},
-			}
-			repos, _, _, _, err := metaDB.SearchTags(context.TODO(), "repo1:", filter,
-				mTypes.PageInput{SortBy: mTypes.AlphabeticAsc})
-			So(err, ShouldBeNil)
-			So(len(repos), ShouldEqual, 1)
-			So(repos[0].Tags, ShouldContainKey, tag1)
-
-			opSys = LINUX
-			arch = "badArch"
-			filter = mTypes.Filter{
-				Os:   []*string{&opSys},
-				Arch: []*string{&arch},
-			}
-			repos, _, _, _, err = metaDB.SearchTags(context.TODO(), "repo1:", filter,
-				mTypes.PageInput{SortBy: mTypes.AlphabeticAsc})
-			So(err, ShouldBeNil)
-			So(len(repos), ShouldEqual, 0)
 		})
 
 		Convey("Test FilterTags", func() {
@@ -2346,14 +1942,10 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 			So(err, ShouldBeNil)
 
 			Convey("Return all tags", func() {
-				repos, manifestMetaMap, indexDataMap, pageInfo, err := metaDB.FilterTags(
-					ctx,
+				repos, manifestMetaMap, indexDataMap, err := metaDB.FilterTags(ctx,
 					func(repoMeta mTypes.RepoMetadata, manifestMeta mTypes.ManifestMetadata) bool {
 						return true
-					},
-					mTypes.Filter{},
-					mTypes.PageInput{Limit: 10, Offset: 0, SortBy: mTypes.AlphabeticAsc},
-				)
+					})
 
 				So(err, ShouldBeNil)
 				So(len(repos), ShouldEqual, 2)
@@ -2368,25 +1960,22 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 				So(repos[0].Tags, ShouldContainKey, "1.0.1")
 				So(repos[0].Tags, ShouldContainKey, "2.0.0")
 				So(repos[1].Tags, ShouldContainKey, "0.0.1")
+
 				So(manifestMetaMap, ShouldContainKey, manifestDigest1.String())
 				So(manifestMetaMap, ShouldContainKey, manifestDigest2.String())
 				So(manifestMetaMap, ShouldContainKey, manifestDigest3.String())
+
 				So(indexDataMap, ShouldContainKey, indexDigest.String())
 				So(manifestMetaMap, ShouldContainKey, manifestFromIndexDigest1.String())
 				So(manifestMetaMap, ShouldContainKey, manifestFromIndexDigest2.String())
-				So(pageInfo.ItemCount, ShouldEqual, 7)
-				So(pageInfo.TotalCount, ShouldEqual, 7)
 			})
 
 			Convey("Return all tags in a specific repo", func() {
-				repos, manifestMetaMap, indexDataMap, pageInfo, err := metaDB.FilterTags(
+				repos, manifestMetaMap, indexDataMap, err := metaDB.FilterTags(
 					ctx,
 					func(repoMeta mTypes.RepoMetadata, manifestMeta mTypes.ManifestMetadata) bool {
 						return repoMeta.Name == repo1
-					},
-					mTypes.Filter{},
-					mTypes.PageInput{Limit: 10, Offset: 0, SortBy: mTypes.AlphabeticAsc},
-				)
+					})
 
 				So(err, ShouldBeNil)
 				So(len(repos), ShouldEqual, 1)
@@ -2404,25 +1993,18 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 				So(indexDataMap, ShouldContainKey, indexDigest.String())
 				So(manifestMetaMap, ShouldContainKey, manifestFromIndexDigest1.String())
 				So(manifestMetaMap, ShouldContainKey, manifestFromIndexDigest2.String())
-				So(pageInfo.ItemCount, ShouldEqual, 6)
-				So(pageInfo.TotalCount, ShouldEqual, 6)
 			})
 
 			Convey("Filter everything out", func() {
-				repos, manifestMetaMap, _, pageInfo, err := metaDB.FilterTags(
+				repos, manifestMetaMap, _, err := metaDB.FilterTags(
 					ctx,
 					func(repoMeta mTypes.RepoMetadata, manifestMeta mTypes.ManifestMetadata) bool {
 						return false
-					},
-					mTypes.Filter{},
-					mTypes.PageInput{Limit: 10, Offset: 0, SortBy: mTypes.AlphabeticAsc},
-				)
+					})
 
 				So(err, ShouldBeNil)
 				So(len(repos), ShouldEqual, 0)
 				So(len(manifestMetaMap), ShouldEqual, 0)
-				So(pageInfo.ItemCount, ShouldEqual, 0)
-				So(pageInfo.TotalCount, ShouldEqual, 0)
 			})
 
 			Convey("Search with access control", func() {
@@ -2437,14 +2019,10 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 				authzCtxKey := localCtx.GetContextKey()
 				ctx := context.WithValue(context.Background(), authzCtxKey, acCtx)
 
-				repos, manifestMetaMap, _, pageInfo, err := metaDB.FilterTags(
-					ctx,
+				repos, manifestMetaMap, _, err := metaDB.FilterTags(ctx,
 					func(repoMeta mTypes.RepoMetadata, manifestMeta mTypes.ManifestMetadata) bool {
 						return true
-					},
-					mTypes.Filter{},
-					mTypes.PageInput{Limit: 10, Offset: 0, SortBy: mTypes.AlphabeticAsc},
-				)
+					})
 
 				So(err, ShouldBeNil)
 				So(len(repos), ShouldEqual, 1)
@@ -2452,236 +2030,7 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 				So(len(repos[0].Tags), ShouldEqual, 1)
 				So(repos[0].Tags, ShouldContainKey, "0.0.1")
 				So(manifestMetaMap, ShouldContainKey, manifestDigest3.String())
-				So(pageInfo.ItemCount, ShouldEqual, 1)
-				So(pageInfo.TotalCount, ShouldEqual, 1)
 			})
-
-			Convey("With wrong pagination input", func() {
-				repos, _, _, _, err := metaDB.FilterTags(
-					ctx,
-					func(repoMeta mTypes.RepoMetadata, manifestMeta mTypes.ManifestMetadata) bool {
-						return true
-					},
-					mTypes.Filter{},
-					mTypes.PageInput{Limit: -1},
-				)
-				So(err, ShouldNotBeNil)
-				So(repos, ShouldBeEmpty)
-			})
-		})
-
-		Convey("Test tags filtering by filter function and OS/Arch Filter", func() {
-			var (
-				repo1           = "repo1"
-				repo2           = "repo2"
-				repo3           = "repo3"
-				repo4           = "repo4"
-				tag1            = "0.0.1"
-				tag2            = "0.0.2"
-				tag3            = "0.0.3"
-				manifestDigest1 = godigest.FromString("fake-manifest1")
-				manifestDigest2 = godigest.FromString("fake-manifest2")
-				manifestDigest3 = godigest.FromString("fake-manifest3")
-
-				indexDigest              = godigest.FromString("index-digest")
-				manifestFromIndexDigest1 = godigest.FromString("fake-manifestFromIndexDigest1")
-				manifestFromIndexDigest2 = godigest.FromString("fake-manifestFromIndexDigest2")
-				manifestFromIndexDigest3 = godigest.FromString("fake-manifestFromIndexDigest3")
-			)
-
-			err := metaDB.SetRepoReference(repo1, tag3, indexDigest, ispec.MediaTypeImageIndex)
-			So(err, ShouldBeNil)
-
-			indexBlob, err := test.GetIndexBlobWithManifests(
-				[]godigest.Digest{
-					manifestFromIndexDigest1,
-					manifestFromIndexDigest2,
-					manifestFromIndexDigest3,
-				},
-			)
-			So(err, ShouldBeNil)
-
-			err = metaDB.SetIndexData(indexDigest, mTypes.IndexData{
-				IndexBlob: indexBlob,
-			})
-			So(err, ShouldBeNil)
-
-			err = metaDB.SetRepoReference(repo1, tag1, manifestDigest1, ispec.MediaTypeImageManifest)
-			So(err, ShouldBeNil)
-			err = metaDB.SetRepoReference(repo1, tag2, manifestDigest2, ispec.MediaTypeImageManifest)
-			So(err, ShouldBeNil)
-			err = metaDB.SetRepoReference(repo2, tag1, manifestDigest1, ispec.MediaTypeImageManifest)
-			So(err, ShouldBeNil)
-			err = metaDB.SetRepoReference(repo3, tag1, manifestDigest2, ispec.MediaTypeImageManifest)
-			So(err, ShouldBeNil)
-			err = metaDB.SetRepoReference(repo4, tag1, manifestDigest3, ispec.MediaTypeImageManifest)
-			So(err, ShouldBeNil)
-
-			config1 := ispec.Image{
-				Platform: ispec.Platform{
-					Architecture: AMD,
-					OS:           LINUX,
-				},
-			}
-			configBlob1, err := json.Marshal(config1)
-			So(err, ShouldBeNil)
-
-			config2 := ispec.Image{
-				Platform: ispec.Platform{
-					Architecture: ARM,
-					OS:           LINUX,
-				},
-			}
-			configBlob2, err := json.Marshal(config2)
-			So(err, ShouldBeNil)
-
-			config3 := ispec.Image{
-				Platform: ispec.Platform{
-					Architecture: AMD,
-					OS:           WINDOWS,
-				},
-			}
-			configBlob3, err := json.Marshal(config3)
-			So(err, ShouldBeNil)
-
-			config4 := ispec.Image{}
-			configBlob4, err := json.Marshal(config4)
-			So(err, ShouldBeNil)
-
-			err = metaDB.SetManifestMeta(repo1, manifestDigest1, mTypes.ManifestMetadata{ConfigBlob: configBlob1})
-			So(err, ShouldBeNil)
-
-			err = metaDB.SetManifestMeta(repo1, manifestDigest2, mTypes.ManifestMetadata{ConfigBlob: configBlob2})
-			So(err, ShouldBeNil)
-
-			err = metaDB.SetManifestMeta(repo2, manifestDigest1, mTypes.ManifestMetadata{ConfigBlob: configBlob1})
-			So(err, ShouldBeNil)
-
-			err = metaDB.SetManifestMeta(repo3, manifestDigest2, mTypes.ManifestMetadata{ConfigBlob: configBlob2})
-			So(err, ShouldBeNil)
-
-			err = metaDB.SetManifestMeta(repo4, manifestDigest3, mTypes.ManifestMetadata{ConfigBlob: configBlob4})
-			So(err, ShouldBeNil)
-
-			err = metaDB.SetManifestMeta(repo1, manifestFromIndexDigest1,
-				mTypes.ManifestMetadata{ConfigBlob: configBlob1})
-			So(err, ShouldBeNil)
-
-			err = metaDB.SetManifestMeta(repo1, manifestFromIndexDigest2,
-				mTypes.ManifestMetadata{ConfigBlob: configBlob2})
-			So(err, ShouldBeNil)
-
-			err = metaDB.SetManifestMeta(repo1, manifestFromIndexDigest3,
-				mTypes.ManifestMetadata{ConfigBlob: configBlob3})
-			So(err, ShouldBeNil)
-
-			opSys := LINUX
-			arch := AMD
-			filter := mTypes.Filter{
-				Os:   []*string{&opSys},
-				Arch: []*string{&arch},
-			}
-			repos, _, _, _, err := metaDB.FilterTags(context.TODO(),
-				func(repoMeta mTypes.RepoMetadata, manifestMeta mTypes.ManifestMetadata) bool {
-					return true
-				},
-				filter,
-				mTypes.PageInput{SortBy: mTypes.AlphabeticAsc})
-			So(err, ShouldBeNil)
-			So(len(repos), ShouldEqual, 2)
-			So(len(repos[0].Tags), ShouldEqual, 2)
-			So(repos[0].Tags, ShouldContainKey, tag1)
-			So(repos[0].Tags, ShouldContainKey, tag3)
-			So(len(repos[1].Tags), ShouldEqual, 1)
-			So(repos[1].Tags, ShouldContainKey, tag1)
-
-			opSys = LINUX
-			filter = mTypes.Filter{
-				Os: []*string{&opSys},
-			}
-			repos, _, _, _, err = metaDB.FilterTags(context.TODO(),
-				func(repoMeta mTypes.RepoMetadata, manifestMeta mTypes.ManifestMetadata) bool {
-					return true
-				},
-				filter,
-				mTypes.PageInput{SortBy: mTypes.AlphabeticAsc})
-			So(err, ShouldBeNil)
-			So(len(repos), ShouldEqual, 3)
-			So(len(repos[0].Tags), ShouldEqual, 3)
-			So(repos[0].Tags, ShouldContainKey, tag1)
-			So(repos[0].Tags, ShouldContainKey, tag2)
-			So(repos[0].Tags, ShouldContainKey, tag3)
-			So(len(repos[1].Tags), ShouldEqual, 1)
-			So(repos[1].Tags, ShouldContainKey, tag1)
-			So(len(repos[2].Tags), ShouldEqual, 1)
-			So(repos[1].Tags, ShouldContainKey, tag1)
-
-			opSys = WINDOWS
-			filter = mTypes.Filter{
-				Os: []*string{&opSys},
-			}
-			repos, _, _, _, err = metaDB.FilterTags(context.TODO(),
-				func(repoMeta mTypes.RepoMetadata, manifestMeta mTypes.ManifestMetadata) bool {
-					return true
-				},
-				filter,
-				mTypes.PageInput{SortBy: mTypes.AlphabeticAsc})
-			So(err, ShouldBeNil)
-			So(len(repos), ShouldEqual, 1)
-			So(len(repos[0].Tags), ShouldEqual, 1)
-			So(repos[0].Tags, ShouldContainKey, tag3)
-
-			arch = AMD
-			filter = mTypes.Filter{
-				Arch: []*string{&arch},
-			}
-			repos, _, _, _, err = metaDB.FilterTags(context.TODO(),
-				func(repoMeta mTypes.RepoMetadata, manifestMeta mTypes.ManifestMetadata) bool {
-					return true
-				},
-				filter,
-				mTypes.PageInput{SortBy: mTypes.AlphabeticAsc})
-			So(err, ShouldBeNil)
-			So(len(repos), ShouldEqual, 2)
-			So(len(repos[0].Tags), ShouldEqual, 2)
-			So(repos[0].Tags, ShouldContainKey, tag1)
-			So(repos[0].Tags, ShouldContainKey, tag3)
-			So(len(repos[1].Tags), ShouldEqual, 1)
-			So(repos[1].Tags, ShouldContainKey, tag1)
-
-			repos, _, _, _, err = metaDB.FilterTags(context.TODO(),
-				func(repoMeta mTypes.RepoMetadata, manifestMeta mTypes.ManifestMetadata) bool {
-					return true
-				},
-				mTypes.Filter{},
-				mTypes.PageInput{SortBy: mTypes.AlphabeticAsc})
-			So(err, ShouldBeNil)
-			So(len(repos), ShouldEqual, 4)
-			So(len(repos[0].Tags), ShouldEqual, 3)
-			So(repos[0].Tags, ShouldContainKey, tag1)
-			So(repos[0].Tags, ShouldContainKey, tag2)
-			So(repos[0].Tags, ShouldContainKey, tag3)
-			So(len(repos[1].Tags), ShouldEqual, 1)
-			So(repos[1].Tags, ShouldContainKey, tag1)
-			So(len(repos[2].Tags), ShouldEqual, 1)
-			So(repos[2].Tags, ShouldContainKey, tag1)
-			So(len(repos[3].Tags), ShouldEqual, 1)
-			So(repos[3].Tags, ShouldContainKey, tag1)
-
-			opSys = LINUX
-			arch = "badArch"
-			filter = mTypes.Filter{
-				Os:   []*string{&opSys},
-				Arch: []*string{&arch},
-			}
-			repos, _, _, _, err = metaDB.FilterTags(context.TODO(),
-				func(repoMeta mTypes.RepoMetadata, manifestMeta mTypes.ManifestMetadata) bool {
-					return true
-				},
-				filter,
-				mTypes.PageInput{SortBy: mTypes.AlphabeticAsc})
-			So(err, ShouldBeNil)
-			So(len(repos), ShouldEqual, 0)
 		})
 
 		Convey("Test index logic", func() {
@@ -2903,17 +2252,10 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 			err = metaDB.SetRepoReference("repo", multiarch.DigestStr(), multiarchDigest, ispec.MediaTypeImageIndex)
 			So(err, ShouldBeNil)
 
-			repoMetas, _, _, _, err := metaDB.FilterRepos(context.Background(),
-				func(repoMeta mTypes.RepoMetadata) bool { return true }, mTypes.PageInput{})
+			repoMetas, _, _, err := metaDB.FilterRepos(context.Background(),
+				func(repoMeta mTypes.RepoMetadata) bool { return true })
 			So(err, ShouldBeNil)
 			So(len(repoMetas), ShouldEqual, 1)
-
-			_, _, _, _, err = metaDB.FilterRepos(context.Background(),
-				func(repoMeta mTypes.RepoMetadata) bool { return true }, mTypes.PageInput{
-					Limit:  -1,
-					Offset: -1,
-				})
-			So(err, ShouldNotBeNil)
 		})
 
 		Convey("Test bookmarked/starred field present in returned RepoMeta", func() {
@@ -2938,31 +2280,28 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 			err = metaDB.SetRepoReference(repo99, "tag", manifestDigest, ispec.MediaTypeImageManifest)
 			So(err, ShouldBeNil)
 
-			repoMetas, _, _, _, err := metaDB.SearchRepos(ctx, repo99, mTypes.Filter{}, mTypes.PageInput{})
+			repoMetas, _, _, err := metaDB.SearchRepos(ctx, repo99)
 			So(err, ShouldBeNil)
 			So(len(repoMetas), ShouldEqual, 1)
 			So(repoMetas[0].IsBookmarked, ShouldBeFalse)
 			So(repoMetas[0].IsStarred, ShouldBeFalse)
 
-			repoMetas, _, _, _, err = metaDB.SearchTags(ctx, repo99+":", mTypes.Filter{}, mTypes.PageInput{})
+			repoMetas, _, _, err = metaDB.SearchTags(ctx, repo99+":")
 			So(err, ShouldBeNil)
 			So(len(repoMetas), ShouldEqual, 1)
 			So(repoMetas[0].IsBookmarked, ShouldBeFalse)
 			So(repoMetas[0].IsStarred, ShouldBeFalse)
 
-			repoMetas, _, _, _, err = metaDB.FilterRepos(ctx, func(repoMeta mTypes.RepoMetadata) bool {
+			repoMetas, _, _, err = metaDB.FilterRepos(ctx, func(repoMeta mTypes.RepoMetadata) bool {
 				return true
-			}, mTypes.PageInput{})
+			})
 			So(err, ShouldBeNil)
 			So(len(repoMetas), ShouldEqual, 1)
 			So(repoMetas[0].IsBookmarked, ShouldBeFalse)
 			So(repoMetas[0].IsStarred, ShouldBeFalse)
 
-			repoMetas, _, _, _, err = metaDB.FilterTags(ctx,
-				func(repoMeta mTypes.RepoMetadata, manifestMeta mTypes.ManifestMetadata) bool { return true },
-				mTypes.Filter{},
-				mTypes.PageInput{},
-			)
+			repoMetas, _, _, err = metaDB.FilterTags(ctx,
+				func(repoMeta mTypes.RepoMetadata, manifestMeta mTypes.ManifestMetadata) bool { return true })
 			So(err, ShouldBeNil)
 			So(len(repoMetas), ShouldEqual, 1)
 			So(repoMetas[0].IsBookmarked, ShouldBeFalse)
@@ -2974,31 +2313,28 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 			_, err = metaDB.ToggleStarRepo(ctx, repo99)
 			So(err, ShouldBeNil)
 
-			repoMetas, _, _, _, err = metaDB.SearchRepos(ctx, repo99, mTypes.Filter{}, mTypes.PageInput{})
+			repoMetas, _, _, err = metaDB.SearchRepos(ctx, repo99)
 			So(err, ShouldBeNil)
 			So(len(repoMetas), ShouldEqual, 1)
 			So(repoMetas[0].IsBookmarked, ShouldBeTrue)
 			So(repoMetas[0].IsStarred, ShouldBeTrue)
 
-			repoMetas, _, _, _, err = metaDB.SearchTags(ctx, repo99+":", mTypes.Filter{}, mTypes.PageInput{})
+			repoMetas, _, _, err = metaDB.SearchTags(ctx, repo99+":")
 			So(err, ShouldBeNil)
 			So(len(repoMetas), ShouldEqual, 1)
 			So(repoMetas[0].IsBookmarked, ShouldBeTrue)
 			So(repoMetas[0].IsStarred, ShouldBeTrue)
 
-			repoMetas, _, _, _, err = metaDB.FilterRepos(ctx, func(repoMeta mTypes.RepoMetadata) bool {
+			repoMetas, _, _, err = metaDB.FilterRepos(ctx, func(repoMeta mTypes.RepoMetadata) bool {
 				return true
-			}, mTypes.PageInput{})
+			})
 			So(err, ShouldBeNil)
 			So(len(repoMetas), ShouldEqual, 1)
 			So(repoMetas[0].IsBookmarked, ShouldBeTrue)
 			So(repoMetas[0].IsStarred, ShouldBeTrue)
 
-			repoMetas, _, _, _, err = metaDB.FilterTags(ctx,
-				func(repoMeta mTypes.RepoMetadata, manifestMeta mTypes.ManifestMetadata) bool { return true },
-				mTypes.Filter{},
-				mTypes.PageInput{},
-			)
+			repoMetas, _, _, err = metaDB.FilterTags(ctx,
+				func(repoMeta mTypes.RepoMetadata, manifestMeta mTypes.ManifestMetadata) bool { return true })
 			So(err, ShouldBeNil)
 			So(len(repoMetas), ShouldEqual, 1)
 			So(repoMetas[0].IsBookmarked, ShouldBeTrue)
@@ -3076,85 +2412,6 @@ func TestRelevanceSorting(t *testing.T) {
 		So(common.RankRepoName("debian/base-amd64", "c3/debian/base-amd64"), ShouldEqual, 400)
 		So(common.RankRepoName("debian/base-amd64", "c3/aux/debian/base-amd64"), ShouldEqual, 800)
 		So(common.RankRepoName("aux/debian", "c3/aux/debian/base-amd64"), ShouldEqual, 400)
-
-		Convey("Integration", func() {
-			filePath := path.Join(t.TempDir(), "repo.db")
-			boltDBParams := boltdb.DBParameters{
-				RootDir: t.TempDir(),
-			}
-			boltDriver, err := boltdb.GetBoltDriver(boltDBParams)
-			So(err, ShouldBeNil)
-
-			log := log.NewLogger("debug", "")
-
-			metaDB, err := boltdb.New(boltDriver, log)
-			So(metaDB, ShouldNotBeNil)
-			So(err, ShouldBeNil)
-
-			defer os.Remove(filePath)
-
-			var (
-				repo1           = "alpine"
-				repo2           = "alpine/test"
-				repo3           = "notalpine"
-				repo4           = "unmached/repo"
-				tag1            = "0.0.1"
-				manifestDigest1 = godigest.FromString("fake-manifest1")
-				tag2            = "0.0.2"
-				manifestDigest2 = godigest.FromString("fake-manifest2")
-				tag3            = "0.0.3"
-				manifestDigest3 = godigest.FromString("fake-manifest3")
-				ctx             = context.Background()
-				emptyManifest   ispec.Manifest
-				emptyConfig     ispec.Manifest
-			)
-			emptyManifestBlob, err := json.Marshal(emptyManifest)
-			So(err, ShouldBeNil)
-
-			emptyConfigBlob, err := json.Marshal(emptyConfig)
-			So(err, ShouldBeNil)
-
-			emptyRepoMeta := mTypes.ManifestMetadata{
-				ManifestBlob: emptyManifestBlob,
-				ConfigBlob:   emptyConfigBlob,
-			}
-
-			err = metaDB.SetRepoReference(repo1, tag1, manifestDigest1, ispec.MediaTypeImageManifest)
-			So(err, ShouldBeNil)
-			err = metaDB.SetRepoReference(repo1, tag2, manifestDigest2, ispec.MediaTypeImageManifest)
-			So(err, ShouldBeNil)
-			err = metaDB.SetRepoReference(repo2, tag3, manifestDigest3, ispec.MediaTypeImageManifest)
-			So(err, ShouldBeNil)
-			err = metaDB.SetRepoReference(repo3, tag3, manifestDigest3, ispec.MediaTypeImageManifest)
-			So(err, ShouldBeNil)
-			err = metaDB.SetRepoReference(repo4, tag1, manifestDigest3, ispec.MediaTypeImageManifest)
-			So(err, ShouldBeNil)
-
-			err = metaDB.SetManifestMeta(repo1, manifestDigest1, emptyRepoMeta)
-			So(err, ShouldBeNil)
-
-			err = metaDB.SetManifestMeta(repo1, manifestDigest2, emptyRepoMeta)
-			So(err, ShouldBeNil)
-
-			err = metaDB.SetManifestMeta(repo2, manifestDigest1, emptyRepoMeta)
-			So(err, ShouldBeNil)
-
-			err = metaDB.SetManifestMeta(repo3, manifestDigest2, emptyRepoMeta)
-			So(err, ShouldBeNil)
-
-			err = metaDB.SetManifestMeta(repo4, manifestDigest3, emptyRepoMeta)
-			So(err, ShouldBeNil)
-
-			repos, _, _, _, err := metaDB.SearchRepos(ctx, "pine", mTypes.Filter{},
-				mTypes.PageInput{SortBy: mTypes.Relevance},
-			)
-
-			So(err, ShouldBeNil)
-			So(len(repos), ShouldEqual, 3)
-			So(repos[0].Name, ShouldEqual, repo1)
-			So(repos[1].Name, ShouldEqual, repo3)
-			So(repos[2].Name, ShouldEqual, repo2)
-		})
 	})
 }
 

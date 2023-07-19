@@ -118,6 +118,39 @@ func TestUtils(t *testing.T) {
 	})
 
 	Convey("FilterDataByRepo", t, func() {
+		Convey("Functionality", func() {
+			_, _, err := common.FilterDataByRepo(
+				[]mTypes.RepoMetadata{{
+					Tags: map[string]mTypes.Descriptor{
+						"manifest": {
+							Digest:    "manifestDigest",
+							MediaType: ispec.MediaTypeImageManifest,
+						},
+						"index": {
+							Digest:    "indexDigest",
+							MediaType: ispec.MediaTypeImageIndex,
+						},
+						"rand": {
+							Digest:    "randDigest",
+							MediaType: "rand",
+						},
+					},
+				}},
+				map[string]mTypes.ManifestMetadata{},
+				map[string]mTypes.IndexData{
+					"indexDigest": {
+						IndexBlob: []byte(`{
+							"manifests": [
+								{
+									"digest": "manifestDigest"
+								}
+							]
+						}`),
+					},
+				},
+			)
+			So(err, ShouldBeNil)
+		})
 		Convey("Errors", func() {
 			// Unmarshal index data error
 			_, _, err := common.FilterDataByRepo(

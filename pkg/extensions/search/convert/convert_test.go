@@ -15,9 +15,11 @@ import (
 	"zotregistry.io/zot/pkg/extensions/search/convert"
 	cvemodel "zotregistry.io/zot/pkg/extensions/search/cve/model"
 	"zotregistry.io/zot/pkg/extensions/search/gql_generated"
+	"zotregistry.io/zot/pkg/extensions/search/pagination"
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/meta/boltdb"
 	mTypes "zotregistry.io/zot/pkg/meta/types"
+	"zotregistry.io/zot/pkg/test"
 	"zotregistry.io/zot/pkg/test/mocks"
 )
 
@@ -59,8 +61,7 @@ func TestConvertErrors(t *testing.T) {
 		err = metaDB.SetRepoReference("repo1", "0.1.0", digest11, ispec.MediaTypeImageManifest)
 		So(err, ShouldBeNil)
 
-		repoMetas, manifestMetaMap, _, _, err := metaDB.SearchRepos(context.Background(), "", mTypes.Filter{},
-			mTypes.PageInput{})
+		repoMetas, manifestMetaMap, _, err := metaDB.SearchRepos(context.Background(), "")
 		So(err, ShouldBeNil)
 
 		ctx := graphql.WithResponseContext(context.Background(),
@@ -163,7 +164,7 @@ func TestConvertErrors(t *testing.T) {
 		ctx := graphql.WithResponseContext(context.Background(),
 			graphql.DefaultErrorPresenter, graphql.DefaultRecover)
 
-		// with bad config json, error while unmarshaling
+		// with bad config json, shouldn't error when unmarshaling
 		_, _, err := convert.ImageManifest2ManifestSummary(
 			ctx,
 			"repo",
@@ -186,7 +187,7 @@ func TestConvertErrors(t *testing.T) {
 			nil,
 			mocks.CveInfoMock{},
 		)
-		So(err, ShouldNotBeNil)
+		So(err, ShouldBeNil)
 
 		// CVE scan using platform
 		configBlob, err := json.Marshal(ispec.Image{
@@ -255,7 +256,7 @@ func TestConvertErrors(t *testing.T) {
 				},
 			}, log.NewLogger("debug", ""),
 		)
-		So(len(imageSummaries), ShouldEqual, 0)
+		So(len(imageSummaries), ShouldEqual, 1)
 
 		// cveInfo present no error
 		_, imageSummaries = convert.RepoMeta2ExpandedRepoInfo(
@@ -412,5 +413,360 @@ func TestGetSignaturesInfo(t *testing.T) {
 		So(*signaturesSummary[0].Author, ShouldEqual, "author")
 		So(*signaturesSummary[0].IsTrusted, ShouldEqual, false)
 		So(*signaturesSummary[0].Tool, ShouldEqual, "notation")
+	})
+}
+
+func TestAcceptedByFilter(t *testing.T) {
+	Convey("Images", t, func() {
+		Convey("Os not found", func() {
+			found := convert.ImgSumAcceptedByFilter(
+				&gql_generated.ImageSummary{
+					Manifests: []*gql_generated.ManifestSummary{
+						{Platform: &gql_generated.Platform{Os: ref("os1")}},
+						{Platform: &gql_generated.Platform{Os: ref("os2")}},
+					},
+				},
+				mTypes.Filter{Os: []*string{ref("os3")}},
+			)
+
+			So(found, ShouldBeFalse)
+		})
+
+		Convey("Has to be signed ", func() {
+			found := convert.ImgSumAcceptedByFilter(
+				&gql_generated.ImageSummary{
+					Manifests: []*gql_generated.ManifestSummary{
+						{IsSigned: ref(false)},
+					},
+					IsSigned: ref(false),
+				},
+				mTypes.Filter{HasToBeSigned: ref(true)},
+			)
+
+			So(found, ShouldBeFalse)
+		})
+	})
+
+	Convey("Repos", t, func() {
+		Convey("Os not found", func() {
+			found := convert.RepoSumAcceptedByFilter(
+				&gql_generated.RepoSummary{
+					Platforms: []*gql_generated.Platform{
+						{Os: ref("os1")},
+						{Os: ref("os2")},
+					},
+				},
+				mTypes.Filter{Os: []*string{ref("os3")}},
+			)
+
+			So(found, ShouldBeFalse)
+		})
+
+		Convey("Arch not found", func() {
+			found := convert.RepoSumAcceptedByFilter(
+				&gql_generated.RepoSummary{
+					Platforms: []*gql_generated.Platform{
+						{Arch: ref("Arch")},
+					},
+				},
+				mTypes.Filter{Arch: []*string{ref("arch_not_found")}},
+			)
+
+			So(found, ShouldBeFalse)
+		})
+
+		Convey("Has to be signed ", func() {
+			found := convert.ImgSumAcceptedByFilter(
+				&gql_generated.ImageSummary{
+					Manifests: []*gql_generated.ManifestSummary{
+						{IsSigned: ref(false)},
+					},
+					IsSigned: ref(false),
+				},
+				mTypes.Filter{HasToBeSigned: ref(true)},
+			)
+
+			So(found, ShouldBeFalse)
+		})
+	})
+}
+
+func ref[T any](val T) *T {
+	ref := val
+
+	return &ref
+}
+
+func TestPaginatedConvert(t *testing.T) {
+	ctx := context.Background()
+
+	var (
+		badBothImage = test.CreateImageWith().DefaultLayers().ImageConfig(
+			ispec.Image{Platform: ispec.Platform{OS: "bad-os", Architecture: "bad-arch"}}).Build()
+		badOsImage = test.CreateImageWith().DefaultLayers().ImageConfig(
+			ispec.Image{Platform: ispec.Platform{OS: "bad-os", Architecture: "good-arch"}}).Build()
+		badArchImage = test.CreateImageWith().DefaultLayers().ImageConfig(
+			ispec.Image{Platform: ispec.Platform{OS: "good-os", Architecture: "bad-arch"}}).Build()
+		goodImage = test.CreateImageWith().DefaultLayers().ImageConfig(
+			ispec.Image{Platform: ispec.Platform{OS: "good-os", Architecture: "good-arch"}}).Build()
+
+		randomImage1 = test.CreateRandomImage()
+		randomImage2 = test.CreateRandomImage()
+
+		badMultiArch = test.CreateMultiarchWith().Images(
+			[]test.Image{badBothImage, badOsImage, badArchImage, randomImage1}).Build()
+		goodMultiArch = test.CreateMultiarchWith().Images(
+			[]test.Image{badOsImage, badArchImage, randomImage2, goodImage}).Build()
+	)
+
+	reposMeta, manifestMetaMap, indexDataMap := test.GetMetadataForRepos(
+		test.Repo{
+			Name: "repo1-only-images",
+			Images: []test.RepoImage{
+				{Image: goodImage, Tag: "goodImage"},
+				{Image: badOsImage, Tag: "badOsImage"},
+				{Image: badArchImage, Tag: "badArchImage"},
+				{Image: badBothImage, Tag: "badBothImage"},
+			},
+			IsBookmarked: true,
+			IsStarred:    true,
+		},
+		test.Repo{
+			Name: "repo2-only-bad-images",
+			Images: []test.RepoImage{
+				{Image: randomImage1, Tag: "randomImage1"},
+				{Image: randomImage2, Tag: "randomImage2"},
+				{Image: badBothImage, Tag: "badBothImage"},
+			},
+			IsBookmarked: true,
+			IsStarred:    true,
+		},
+		test.Repo{
+			Name: "repo3-only-multiarch",
+			MultiArchImages: []test.RepoMultiArchImage{
+				{MultiarchImage: badMultiArch, Tag: "badMultiArch"},
+				{MultiarchImage: goodMultiArch, Tag: "goodMultiArch"},
+			},
+			IsBookmarked: true,
+			IsStarred:    true,
+		},
+		test.Repo{
+			Name: "repo4-not-bookmarked-or-starred",
+			Images: []test.RepoImage{
+				{Image: goodImage, Tag: "goodImage"},
+			},
+			MultiArchImages: []test.RepoMultiArchImage{
+				{MultiarchImage: goodMultiArch, Tag: "goodMultiArch"},
+			},
+		},
+		test.Repo{
+			Name: "repo5-signed",
+			Images: []test.RepoImage{
+				{Image: goodImage, Tag: "goodImage"}, // is fake signed by the image below
+				{Image: test.CreateFakeTestSignature(goodImage.DescriptorRef())},
+			},
+		},
+	)
+
+	skipCVE := convert.SkipQGLField{Vulnerabilities: true}
+
+	Convey("PaginatedRepoMeta2RepoSummaries filtering and sorting", t, func() {
+		// Test different combinations of the filter
+
+		reposSum, pageInfo, err := convert.PaginatedRepoMeta2RepoSummaries(
+			ctx, reposMeta, manifestMetaMap, indexDataMap, skipCVE, mocks.CveInfoMock{},
+			mTypes.Filter{
+				Os:           []*string{ref("good-os")},
+				Arch:         []*string{ref("good-arch")},
+				IsBookmarked: ref(true),
+				IsStarred:    ref(true),
+			},
+			pagination.PageInput{SortBy: pagination.AlphabeticAsc},
+		)
+		So(err, ShouldBeNil)
+		So(len(reposSum), ShouldEqual, 2)
+		So(*reposSum[0].Name, ShouldResemble, "repo1-only-images")
+		So(*reposSum[1].Name, ShouldResemble, "repo3-only-multiarch")
+		So(pageInfo.ItemCount, ShouldEqual, 2)
+
+		reposSum, pageInfo, err = convert.PaginatedRepoMeta2RepoSummaries(
+			ctx, reposMeta, manifestMetaMap, indexDataMap, skipCVE, mocks.CveInfoMock{},
+			mTypes.Filter{
+				Os:            []*string{ref("good-os")},
+				Arch:          []*string{ref("good-arch")},
+				IsBookmarked:  ref(true),
+				IsStarred:     ref(true),
+				HasToBeSigned: ref(true),
+			},
+			pagination.PageInput{SortBy: pagination.AlphabeticAsc},
+		)
+		So(err, ShouldBeNil)
+		So(len(reposSum), ShouldEqual, 0)
+		So(pageInfo.ItemCount, ShouldEqual, 0)
+
+		reposSum, pageInfo, err = convert.PaginatedRepoMeta2RepoSummaries(
+			ctx, reposMeta, manifestMetaMap, indexDataMap, skipCVE, mocks.CveInfoMock{},
+			mTypes.Filter{
+				HasToBeSigned: ref(true),
+			},
+			pagination.PageInput{SortBy: pagination.AlphabeticAsc},
+		)
+		So(err, ShouldBeNil)
+		So(len(reposSum), ShouldEqual, 1)
+		So(*reposSum[0].Name, ShouldResemble, "repo5-signed")
+		So(pageInfo.ItemCount, ShouldEqual, 1)
+
+		// no filter
+		reposSum, pageInfo, err = convert.PaginatedRepoMeta2RepoSummaries(
+			ctx, reposMeta, manifestMetaMap, indexDataMap, skipCVE, mocks.CveInfoMock{},
+			mTypes.Filter{}, pagination.PageInput{SortBy: pagination.AlphabeticAsc},
+		)
+		So(err, ShouldBeNil)
+		So(len(reposSum), ShouldEqual, 5)
+		So(*reposSum[0].Name, ShouldResemble, "repo1-only-images")
+		So(*reposSum[1].Name, ShouldResemble, "repo2-only-bad-images")
+		So(*reposSum[2].Name, ShouldResemble, "repo3-only-multiarch")
+		So(*reposSum[3].Name, ShouldResemble, "repo4-not-bookmarked-or-starred")
+		So(*reposSum[4].Name, ShouldResemble, "repo5-signed")
+		So(pageInfo.ItemCount, ShouldEqual, 5)
+
+		// no filter opposite sorting
+		reposSum, pageInfo, err = convert.PaginatedRepoMeta2RepoSummaries(
+			ctx, reposMeta, manifestMetaMap, indexDataMap, skipCVE, mocks.CveInfoMock{},
+			mTypes.Filter{}, pagination.PageInput{SortBy: pagination.AlphabeticDsc},
+		)
+		So(err, ShouldBeNil)
+		So(len(reposSum), ShouldEqual, 5)
+		So(*reposSum[0].Name, ShouldResemble, "repo5-signed")
+		So(*reposSum[1].Name, ShouldResemble, "repo4-not-bookmarked-or-starred")
+		So(*reposSum[2].Name, ShouldResemble, "repo3-only-multiarch")
+		So(*reposSum[3].Name, ShouldResemble, "repo2-only-bad-images")
+		So(*reposSum[4].Name, ShouldResemble, "repo1-only-images")
+		So(pageInfo.ItemCount, ShouldEqual, 5)
+
+		// add pagination
+		reposSum, pageInfo, err = convert.PaginatedRepoMeta2RepoSummaries(
+			ctx, reposMeta, manifestMetaMap, indexDataMap, skipCVE, mocks.CveInfoMock{},
+			mTypes.Filter{
+				Os:           []*string{ref("good-os")},
+				Arch:         []*string{ref("good-arch")},
+				IsBookmarked: ref(true),
+				IsStarred:    ref(true),
+			},
+			pagination.PageInput{Limit: 1, Offset: 0, SortBy: pagination.AlphabeticAsc},
+		)
+		So(err, ShouldBeNil)
+		So(len(reposSum), ShouldEqual, 1)
+		So(*reposSum[0].Name, ShouldResemble, "repo1-only-images")
+		So(pageInfo.ItemCount, ShouldEqual, 1)
+		So(pageInfo.TotalCount, ShouldEqual, 2)
+
+		reposSum, pageInfo, err = convert.PaginatedRepoMeta2RepoSummaries(
+			ctx, reposMeta, manifestMetaMap, indexDataMap, skipCVE, mocks.CveInfoMock{},
+			mTypes.Filter{
+				Os:           []*string{ref("good-os")},
+				Arch:         []*string{ref("good-arch")},
+				IsBookmarked: ref(true),
+				IsStarred:    ref(true),
+			},
+			pagination.PageInput{Limit: 1, Offset: 1, SortBy: pagination.AlphabeticAsc},
+		)
+		So(err, ShouldBeNil)
+		So(len(reposSum), ShouldEqual, 1)
+		So(*reposSum[0].Name, ShouldResemble, "repo3-only-multiarch")
+		So(pageInfo.ItemCount, ShouldEqual, 1)
+		So(pageInfo.TotalCount, ShouldEqual, 2)
+	})
+
+	Convey("PaginatedRepoMeta2ImageSummaries filtering and sorting", t, func() {
+		imgSum, pageInfo, err := convert.PaginatedRepoMeta2ImageSummaries(
+			ctx, reposMeta, manifestMetaMap, indexDataMap, skipCVE, mocks.CveInfoMock{},
+			mTypes.Filter{
+				Os:   []*string{ref("good-os")},
+				Arch: []*string{ref("good-arch")},
+			},
+			pagination.PageInput{SortBy: pagination.AlphabeticAsc},
+		)
+		So(err, ShouldBeNil)
+		So(len(imgSum), ShouldEqual, 5)
+		So(*imgSum[0].RepoName, ShouldResemble, "repo1-only-images")
+		So(*imgSum[0].Tag, ShouldResemble, "goodImage")
+		So(*imgSum[1].RepoName, ShouldResemble, "repo3-only-multiarch")
+		So(*imgSum[1].Tag, ShouldResemble, "goodMultiArch")
+		So(*imgSum[2].RepoName, ShouldResemble, "repo4-not-bookmarked-or-starred")
+		So(*imgSum[2].Tag, ShouldResemble, "goodImage")
+		So(*imgSum[3].RepoName, ShouldResemble, "repo4-not-bookmarked-or-starred")
+		So(*imgSum[3].Tag, ShouldResemble, "goodMultiArch")
+		So(*imgSum[4].RepoName, ShouldResemble, "repo5-signed")
+		So(*imgSum[4].Tag, ShouldResemble, "goodImage")
+		So(pageInfo.ItemCount, ShouldEqual, 5)
+
+		// add page of size 2
+		imgSum, pageInfo, err = convert.PaginatedRepoMeta2ImageSummaries(
+			ctx, reposMeta, manifestMetaMap, indexDataMap, skipCVE, mocks.CveInfoMock{},
+			mTypes.Filter{
+				Os:   []*string{ref("good-os")},
+				Arch: []*string{ref("good-arch")},
+			},
+			pagination.PageInput{Limit: 2, Offset: 0, SortBy: pagination.AlphabeticAsc},
+		)
+		So(err, ShouldBeNil)
+		So(len(imgSum), ShouldEqual, 2)
+		So(*imgSum[0].RepoName, ShouldResemble, "repo1-only-images")
+		So(*imgSum[0].Tag, ShouldResemble, "goodImage")
+		So(*imgSum[1].RepoName, ShouldResemble, "repo3-only-multiarch")
+		So(*imgSum[1].Tag, ShouldResemble, "goodMultiArch")
+		So(pageInfo.ItemCount, ShouldEqual, 2)
+		So(pageInfo.TotalCount, ShouldEqual, 5)
+
+		// next page
+		imgSum, pageInfo, err = convert.PaginatedRepoMeta2ImageSummaries(
+			ctx, reposMeta, manifestMetaMap, indexDataMap, skipCVE, mocks.CveInfoMock{},
+			mTypes.Filter{
+				Os:   []*string{ref("good-os")},
+				Arch: []*string{ref("good-arch")},
+			},
+			pagination.PageInput{Limit: 2, Offset: 2, SortBy: pagination.AlphabeticAsc},
+		)
+		So(err, ShouldBeNil)
+		So(len(imgSum), ShouldEqual, 2)
+		So(*imgSum[0].RepoName, ShouldResemble, "repo4-not-bookmarked-or-starred")
+		So(*imgSum[0].Tag, ShouldResemble, "goodImage")
+		So(*imgSum[1].RepoName, ShouldResemble, "repo4-not-bookmarked-or-starred")
+		So(*imgSum[1].Tag, ShouldResemble, "goodMultiArch")
+		So(pageInfo.ItemCount, ShouldEqual, 2)
+		So(pageInfo.TotalCount, ShouldEqual, 5)
+
+		// last page
+		imgSum, pageInfo, err = convert.PaginatedRepoMeta2ImageSummaries(
+			ctx, reposMeta, manifestMetaMap, indexDataMap, skipCVE, mocks.CveInfoMock{},
+			mTypes.Filter{
+				Os:   []*string{ref("good-os")},
+				Arch: []*string{ref("good-arch")},
+			},
+			pagination.PageInput{Limit: 2, Offset: 4, SortBy: pagination.AlphabeticAsc},
+		)
+		So(err, ShouldBeNil)
+		So(len(imgSum), ShouldEqual, 1)
+		So(*imgSum[0].RepoName, ShouldResemble, "repo5-signed")
+		So(*imgSum[0].Tag, ShouldResemble, "goodImage")
+		So(pageInfo.ItemCount, ShouldEqual, 1)
+		So(pageInfo.TotalCount, ShouldEqual, 5)
+
+		// has to be signed
+		imgSum, pageInfo, err = convert.PaginatedRepoMeta2ImageSummaries(
+			ctx, reposMeta, manifestMetaMap, indexDataMap, skipCVE, mocks.CveInfoMock{},
+			mTypes.Filter{
+				Os:            []*string{ref("good-os")},
+				Arch:          []*string{ref("good-arch")},
+				HasToBeSigned: ref(true),
+			},
+			pagination.PageInput{SortBy: pagination.AlphabeticAsc},
+		)
+		So(err, ShouldBeNil)
+		So(len(imgSum), ShouldEqual, 1)
+		So(*imgSum[0].RepoName, ShouldResemble, "repo5-signed")
+		So(*imgSum[0].Tag, ShouldResemble, "goodImage")
+		So(pageInfo.ItemCount, ShouldEqual, 1)
 	})
 }

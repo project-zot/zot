@@ -19,7 +19,6 @@ import (
 	zcommon "zotregistry.io/zot/pkg/common"
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/meta/common"
-	"zotregistry.io/zot/pkg/meta/pagination"
 	"zotregistry.io/zot/pkg/meta/signatures"
 	mTypes "zotregistry.io/zot/pkg/meta/types"
 	"zotregistry.io/zot/pkg/meta/version"
@@ -328,17 +327,17 @@ func (dwr DynamoDB) SetReferrer(repo string, referredDigest godigest.Digest, ref
 		}
 	}
 
-	refferers := repoMeta.Referrers[referredDigest.String()]
+	referrers := repoMeta.Referrers[referredDigest.String()]
 
-	for i := range refferers {
-		if refferers[i].Digest == referrer.Digest {
+	for i := range referrers {
+		if referrers[i].Digest == referrer.Digest {
 			return nil
 		}
 	}
 
-	refferers = append(refferers, referrer)
+	referrers = append(referrers, referrer)
 
-	repoMeta.Referrers[referredDigest.String()] = refferers
+	repoMeta.Referrers[referredDigest.String()] = referrers
 
 	return dwr.SetRepoMeta(repo, repoMeta)
 }
@@ -787,27 +786,21 @@ func (dwr *DynamoDB) DeleteSignature(repo string, signedManifestDigest godigest.
 }
 
 func (dwr *DynamoDB) GetMultipleRepoMeta(ctx context.Context,
-	filter func(repoMeta mTypes.RepoMetadata) bool, requestedPage mTypes.PageInput,
+	filter func(repoMeta mTypes.RepoMetadata) bool,
 ) ([]mTypes.RepoMetadata, error) {
 	var (
+		foundRepos                = []mTypes.RepoMetadata{}
 		repoMetaAttributeIterator AttributesIterator
-		pageFinder                pagination.PageFinder
 	)
 
 	repoMetaAttributeIterator = NewBaseDynamoAttributesIterator(
 		dwr.Client, dwr.RepoMetaTablename, "RepoMetadata", 0, dwr.Log,
 	)
 
-	pageFinder, err := pagination.NewBaseRepoPageFinder(requestedPage.Limit, requestedPage.Offset, requestedPage.SortBy)
-	if err != nil {
-		return nil, err
-	}
-
 	repoMetaAttribute, err := repoMetaAttributeIterator.First(ctx)
 
 	for ; repoMetaAttribute != nil; repoMetaAttribute, err = repoMetaAttributeIterator.Next(ctx) {
 		if err != nil {
-			// log
 			return []mTypes.RepoMetadata{}, err
 		}
 
@@ -823,26 +816,20 @@ func (dwr *DynamoDB) GetMultipleRepoMeta(ctx context.Context,
 		}
 
 		if filter(repoMeta) {
-			pageFinder.Add(mTypes.DetailedRepoMeta{
-				RepoMetadata: repoMeta,
-			})
+			foundRepos = append(foundRepos, repoMeta)
 		}
 	}
-
-	foundRepos, _ := pageFinder.Page()
 
 	return foundRepos, err
 }
 
-func (dwr *DynamoDB) SearchRepos(ctx context.Context, searchText string, filter mTypes.Filter,
-	requestedPage mTypes.PageInput,
-) ([]mTypes.RepoMetadata, map[string]mTypes.ManifestMetadata, map[string]mTypes.IndexData, zcommon.PageInfo, error) {
+func (dwr *DynamoDB) SearchRepos(ctx context.Context, searchText string,
+) ([]mTypes.RepoMetadata, map[string]mTypes.ManifestMetadata, map[string]mTypes.IndexData, error) {
 	var (
+		repos                     = []mTypes.RepoMetadata{}
 		manifestMetadataMap       = make(map[string]mTypes.ManifestMetadata)
 		indexDataMap              = make(map[string]mTypes.IndexData)
 		repoMetaAttributeIterator AttributesIterator
-		pageFinder                pagination.PageFinder
-		pageInfo                  zcommon.PageInfo
 
 		userBookmarks = getUserBookmarks(ctx, dwr)
 		userStars     = getUserStars(ctx, dwr)
@@ -852,18 +839,12 @@ func (dwr *DynamoDB) SearchRepos(ctx context.Context, searchText string, filter 
 		dwr.Client, dwr.RepoMetaTablename, "RepoMetadata", 0, dwr.Log,
 	)
 
-	pageFinder, err := pagination.NewBaseRepoPageFinder(requestedPage.Limit, requestedPage.Offset, requestedPage.SortBy)
-	if err != nil {
-		return []mTypes.RepoMetadata{}, map[string]mTypes.ManifestMetadata{}, map[string]mTypes.IndexData{},
-			pageInfo, err
-	}
-
 	repoMetaAttribute, err := repoMetaAttributeIterator.First(ctx)
 
 	for ; repoMetaAttribute != nil; repoMetaAttribute, err = repoMetaAttributeIterator.Next(ctx) {
 		if err != nil {
 			return []mTypes.RepoMetadata{}, map[string]mTypes.ManifestMetadata{}, map[string]mTypes.IndexData{},
-				pageInfo, err
+				err
 		}
 
 		var repoMeta mTypes.RepoMetadata
@@ -871,7 +852,7 @@ func (dwr *DynamoDB) SearchRepos(ctx context.Context, searchText string, filter 
 		err := attributevalue.Unmarshal(repoMetaAttribute, &repoMeta)
 		if err != nil {
 			return []mTypes.RepoMetadata{}, map[string]mTypes.ManifestMetadata{}, map[string]mTypes.IndexData{},
-				pageInfo, err
+				err
 		}
 
 		if ok, err := localCtx.RepoIsUserAvailable(ctx, repoMeta.Name); !ok || err != nil {
@@ -885,15 +866,7 @@ func (dwr *DynamoDB) SearchRepos(ctx context.Context, searchText string, filter 
 
 		repoMeta.IsBookmarked = zcommon.Contains(userBookmarks, repoMeta.Name)
 		repoMeta.IsStarred = zcommon.Contains(userStars, repoMeta.Name)
-
-		var (
-			repoDownloads   = 0
-			repoLastUpdated = time.Time{}
-			osSet           = map[string]bool{}
-			archSet         = map[string]bool{}
-			noImageChecked  = true
-			isSigned        = false
-		)
+		repoMeta.Rank = rank
 
 		for _, descriptor := range repoMeta.Tags {
 			switch descriptor.MediaType {
@@ -904,64 +877,37 @@ func (dwr *DynamoDB) SearchRepos(ctx context.Context, searchText string, filter 
 					manifestMetadataMap)
 				if err != nil {
 					return []mTypes.RepoMetadata{}, map[string]mTypes.ManifestMetadata{}, map[string]mTypes.IndexData{},
-						pageInfo,
-						fmt.Errorf("%w", err)
+						err
 				}
-
-				manifestFilterData, err := collectImageManifestFilterData(manifestDigest, repoMeta, manifestMeta)
-				if err != nil {
-					return []mTypes.RepoMetadata{}, map[string]mTypes.ManifestMetadata{}, map[string]mTypes.IndexData{},
-						pageInfo,
-						fmt.Errorf("%w", err)
-				}
-
-				repoDownloads += manifestFilterData.DownloadCount
-
-				for _, os := range manifestFilterData.OsList {
-					osSet[os] = true
-				}
-
-				for _, arch := range manifestFilterData.ArchList {
-					archSet[arch] = true
-				}
-
-				repoLastUpdated, noImageChecked, isSigned = common.CheckImageLastUpdated(repoLastUpdated, isSigned,
-					noImageChecked, manifestFilterData)
 
 				manifestMetadataMap[descriptor.Digest] = manifestMeta
 			case ispec.MediaTypeImageIndex:
-				indexDigest := descriptor.Digest
-
-				indexData, err := dwr.fetchIndexDataWithCheck(indexDigest, indexDataMap) //nolint:contextcheck
+				indexData, err := dwr.fetchIndexDataWithCheck(descriptor.Digest, indexDataMap) //nolint:contextcheck
 				if err != nil {
 					return []mTypes.RepoMetadata{}, map[string]mTypes.ManifestMetadata{}, map[string]mTypes.IndexData{},
-						pageInfo,
-						fmt.Errorf("%w", err)
+						err
 				}
 
-				// this also updates manifestMetadataMap
-				indexFilterData, err := dwr.collectImageIndexFilterInfo(indexDigest, repoMeta, indexData, //nolint:contextcheck
-					manifestMetadataMap)
+				var indexContent ispec.Index
+
+				err = json.Unmarshal(indexData.IndexBlob, &indexContent)
 				if err != nil {
 					return []mTypes.RepoMetadata{}, map[string]mTypes.ManifestMetadata{}, map[string]mTypes.IndexData{},
-						pageInfo,
-						fmt.Errorf("%w", err)
+						fmt.Errorf("metadb: error while unmarshaling index content for digest %s %w", descriptor.Digest, err)
 				}
 
-				for _, arch := range indexFilterData.ArchList {
-					archSet[arch] = true
+				for _, manifest := range indexContent.Manifests {
+					manifestMeta, err := dwr.fetchManifestMetaWithCheck(repoMeta.Name, manifest.Digest.String(), //nolint: contextcheck
+						manifestMetadataMap)
+					if err != nil {
+						return []mTypes.RepoMetadata{}, map[string]mTypes.ManifestMetadata{}, map[string]mTypes.IndexData{},
+							err
+					}
+
+					manifestMetadataMap[manifest.Digest.String()] = manifestMeta
 				}
 
-				for _, os := range indexFilterData.OsList {
-					osSet[os] = true
-				}
-
-				repoDownloads += indexFilterData.DownloadCount
-
-				repoLastUpdated, noImageChecked, isSigned = common.CheckImageLastUpdated(repoLastUpdated, isSigned,
-					noImageChecked, indexFilterData)
-
-				indexDataMap[indexDigest] = indexData
+				indexDataMap[descriptor.Digest] = indexData
 			default:
 				dwr.Log.Error().Str("mediaType", descriptor.MediaType).Msg("Unsupported media type")
 
@@ -969,32 +915,10 @@ func (dwr *DynamoDB) SearchRepos(ctx context.Context, searchText string, filter 
 			}
 		}
 
-		repoFilterData := mTypes.FilterData{
-			OsList:        common.GetMapKeys(osSet),
-			ArchList:      common.GetMapKeys(archSet),
-			LastUpdated:   repoLastUpdated,
-			DownloadCount: repoDownloads,
-			IsSigned:      isSigned,
-		}
-
-		if !common.AcceptedByFilter(filter, repoFilterData) {
-			continue
-		}
-
-		pageFinder.Add(mTypes.DetailedRepoMeta{
-			RepoMetadata: repoMeta,
-			Rank:         rank,
-			Downloads:    repoDownloads,
-			UpdateTime:   repoLastUpdated,
-		})
+		repos = append(repos, repoMeta)
 	}
 
-	foundRepos, pageInfo := pageFinder.Page()
-
-	foundManifestMetadataMap, foundindexDataMap, err := common.FilterDataByRepo(foundRepos, manifestMetadataMap,
-		indexDataMap)
-
-	return foundRepos, foundManifestMetadataMap, foundindexDataMap, pageInfo, err
+	return repos, manifestMetadataMap, indexDataMap, nil
 }
 
 func getUserStars(ctx context.Context, dwr *DynamoDB) []string {
@@ -1035,38 +959,6 @@ func (dwr *DynamoDB) fetchManifestMetaWithCheck(repoName string, manifestDigest 
 	return manifestMeta, nil
 }
 
-func collectImageManifestFilterData(digest string, repoMeta mTypes.RepoMetadata,
-	manifestMeta mTypes.ManifestMetadata,
-) (mTypes.FilterData, error) {
-	// get fields related to filtering
-	var (
-		configContent ispec.Image
-		osList        []string
-		archList      []string
-	)
-
-	err := json.Unmarshal(manifestMeta.ConfigBlob, &configContent)
-	if err != nil {
-		return mTypes.FilterData{}, fmt.Errorf("metadb: error while unmarshaling config content %w", err)
-	}
-
-	if configContent.OS != "" {
-		osList = append(osList, configContent.OS)
-	}
-
-	if configContent.Architecture != "" {
-		archList = append(archList, configContent.Architecture)
-	}
-
-	return mTypes.FilterData{
-		DownloadCount: repoMeta.Statistics[digest].DownloadCount,
-		OsList:        osList,
-		ArchList:      archList,
-		LastUpdated:   common.GetImageLastUpdatedTimestamp(configContent),
-		IsSigned:      common.CheckIsSigned(repoMeta.Signatures[digest]),
-	}, nil
-}
-
 func (dwr *DynamoDB) fetchIndexDataWithCheck(indexDigest string, indexDataMap map[string]mTypes.IndexData,
 ) (mTypes.IndexData, error) {
 	var (
@@ -1087,72 +979,14 @@ func (dwr *DynamoDB) fetchIndexDataWithCheck(indexDigest string, indexDataMap ma
 	return indexData, err
 }
 
-func (dwr *DynamoDB) collectImageIndexFilterInfo(indexDigest string, repoMeta mTypes.RepoMetadata,
-	indexData mTypes.IndexData, manifestMetadataMap map[string]mTypes.ManifestMetadata,
-) (mTypes.FilterData, error) {
-	var indexContent ispec.Index
-
-	err := json.Unmarshal(indexData.IndexBlob, &indexContent)
-	if err != nil {
-		return mTypes.FilterData{},
-			fmt.Errorf("metadb: error while unmarshaling index content for digest %s %w", indexDigest, err)
-	}
-
-	var (
-		indexLastUpdated     time.Time
-		firstManifestChecked = false
-		indexOsList          = []string{}
-		indexArchList        = []string{}
-	)
-
-	for _, manifest := range indexContent.Manifests {
-		manifestDigest := manifest.Digest
-
-		manifestMeta, err := dwr.fetchManifestMetaWithCheck(repoMeta.Name, manifestDigest.String(),
-			manifestMetadataMap)
-		if err != nil {
-			return mTypes.FilterData{},
-				fmt.Errorf("%w", err)
-		}
-
-		manifestFilterData, err := collectImageManifestFilterData(manifestDigest.String(), repoMeta,
-			manifestMeta)
-		if err != nil {
-			return mTypes.FilterData{},
-				fmt.Errorf("%w", err)
-		}
-
-		indexOsList = append(indexOsList, manifestFilterData.OsList...)
-		indexArchList = append(indexArchList, manifestFilterData.ArchList...)
-
-		if !firstManifestChecked || indexLastUpdated.Before(manifestFilterData.LastUpdated) {
-			indexLastUpdated = manifestFilterData.LastUpdated
-			firstManifestChecked = true
-		}
-
-		manifestMetadataMap[manifest.Digest.String()] = manifestMeta
-	}
-
-	return mTypes.FilterData{
-		DownloadCount: repoMeta.Statistics[indexDigest].DownloadCount,
-		LastUpdated:   indexLastUpdated,
-		OsList:        indexOsList,
-		ArchList:      indexArchList,
-		IsSigned:      common.CheckIsSigned(repoMeta.Signatures[indexDigest]),
-	}, nil
-}
-
-func (dwr *DynamoDB) FilterTags(ctx context.Context, filterFunc mTypes.FilterFunc, filter mTypes.Filter,
-	requestedPage mTypes.PageInput,
-) ([]mTypes.RepoMetadata, map[string]mTypes.ManifestMetadata, map[string]mTypes.IndexData,
-	zcommon.PageInfo, error,
+func (dwr *DynamoDB) FilterTags(ctx context.Context, filterFunc mTypes.FilterFunc,
+) ([]mTypes.RepoMetadata, map[string]mTypes.ManifestMetadata, map[string]mTypes.IndexData, error,
 ) {
 	var (
+		foundRepos                = make([]mTypes.RepoMetadata, 0)
 		manifestMetadataMap       = make(map[string]mTypes.ManifestMetadata)
 		indexDataMap              = make(map[string]mTypes.IndexData)
 		repoMetaAttributeIterator AttributesIterator
-		pageFinder                pagination.PageFinder
-		pageInfo                  zcommon.PageInfo
 		userBookmarks             = getUserBookmarks(ctx, dwr)
 		userStars                 = getUserStars(ctx, dwr)
 	)
@@ -1161,18 +995,12 @@ func (dwr *DynamoDB) FilterTags(ctx context.Context, filterFunc mTypes.FilterFun
 		dwr.Client, dwr.RepoMetaTablename, "RepoMetadata", 0, dwr.Log,
 	)
 
-	pageFinder, err := pagination.NewBaseImagePageFinder(requestedPage.Limit, requestedPage.Offset, requestedPage.SortBy)
-	if err != nil {
-		return []mTypes.RepoMetadata{}, map[string]mTypes.ManifestMetadata{}, map[string]mTypes.IndexData{},
-			pageInfo, err
-	}
-
 	repoMetaAttribute, err := repoMetaAttributeIterator.First(ctx)
 
 	for ; repoMetaAttribute != nil; repoMetaAttribute, err = repoMetaAttributeIterator.Next(ctx) {
 		if err != nil {
 			return []mTypes.RepoMetadata{}, map[string]mTypes.ManifestMetadata{}, map[string]mTypes.IndexData{},
-				pageInfo, err
+				err
 		}
 
 		var repoMeta mTypes.RepoMetadata
@@ -1180,7 +1008,7 @@ func (dwr *DynamoDB) FilterTags(ctx context.Context, filterFunc mTypes.FilterFun
 		err := attributevalue.Unmarshal(repoMetaAttribute, &repoMeta)
 		if err != nil {
 			return []mTypes.RepoMetadata{}, map[string]mTypes.ManifestMetadata{}, map[string]mTypes.IndexData{},
-				pageInfo, err
+				err
 		}
 
 		if ok, err := localCtx.RepoIsUserAvailable(ctx, repoMeta.Name); !ok || err != nil {
@@ -1201,21 +1029,7 @@ func (dwr *DynamoDB) FilterTags(ctx context.Context, filterFunc mTypes.FilterFun
 					manifestMetadataMap)
 				if err != nil {
 					return []mTypes.RepoMetadata{}, map[string]mTypes.ManifestMetadata{}, map[string]mTypes.IndexData{},
-						pageInfo,
 						fmt.Errorf("metadb: error while unmashaling manifest metadata for digest %s \n%w", manifestDigest, err)
-				}
-
-				imageFilterData, err := collectImageManifestFilterData(manifestDigest, repoMeta, manifestMeta)
-				if err != nil {
-					return []mTypes.RepoMetadata{}, map[string]mTypes.ManifestMetadata{}, map[string]mTypes.IndexData{},
-						pageInfo,
-						fmt.Errorf("metadb: error collecting filter data for manifest with digest %s %w", manifestDigest, err)
-				}
-
-				if !common.AcceptedByFilter(filter, imageFilterData) {
-					delete(matchedTags, tag)
-
-					continue
 				}
 
 				if filterFunc(repoMeta, manifestMeta) {
@@ -1228,7 +1042,6 @@ func (dwr *DynamoDB) FilterTags(ctx context.Context, filterFunc mTypes.FilterFun
 				indexData, err := dwr.fetchIndexDataWithCheck(indexDigest, indexDataMap) //nolint:contextcheck
 				if err != nil {
 					return []mTypes.RepoMetadata{}, map[string]mTypes.ManifestMetadata{}, map[string]mTypes.IndexData{},
-						pageInfo,
 						fmt.Errorf("metadb: error while getting index data for digest %s %w", indexDigest, err)
 				}
 
@@ -1237,7 +1050,6 @@ func (dwr *DynamoDB) FilterTags(ctx context.Context, filterFunc mTypes.FilterFun
 				err = json.Unmarshal(indexData.IndexBlob, &indexContent)
 				if err != nil {
 					return []mTypes.RepoMetadata{}, map[string]mTypes.ManifestMetadata{}, map[string]mTypes.IndexData{},
-						pageInfo,
 						fmt.Errorf("metadb: error while unmashaling index content for digest %s %w", indexDigest, err)
 				}
 
@@ -1250,19 +1062,7 @@ func (dwr *DynamoDB) FilterTags(ctx context.Context, filterFunc mTypes.FilterFun
 						manifestMetadataMap)
 					if err != nil {
 						return []mTypes.RepoMetadata{}, map[string]mTypes.ManifestMetadata{}, map[string]mTypes.IndexData{},
-							pageInfo,
 							fmt.Errorf("%w metadb: error while getting manifest data for digest %s", err, manifestDigest)
-					}
-
-					manifestFilterData, err := collectImageManifestFilterData(manifestDigest, repoMeta, manifestMeta)
-					if err != nil {
-						return []mTypes.RepoMetadata{}, map[string]mTypes.ManifestMetadata{}, map[string]mTypes.IndexData{},
-							pageInfo,
-							fmt.Errorf("metadb: error collecting filter data for manifest with digest %s %w", manifestDigest, err)
-					}
-
-					if !common.AcceptedByFilter(filter, manifestFilterData) {
-						continue
 					}
 
 					if filterFunc(repoMeta, manifestMeta) {
@@ -1277,7 +1077,7 @@ func (dwr *DynamoDB) FilterTags(ctx context.Context, filterFunc mTypes.FilterFun
 					indexBlob, err := json.Marshal(indexContent)
 					if err != nil {
 						return []mTypes.RepoMetadata{}, map[string]mTypes.ManifestMetadata{}, map[string]mTypes.IndexData{},
-							pageInfo, err
+							err
 					}
 
 					indexData.IndexBlob = indexBlob
@@ -1298,29 +1098,17 @@ func (dwr *DynamoDB) FilterTags(ctx context.Context, filterFunc mTypes.FilterFun
 
 		repoMeta.Tags = matchedTags
 
-		pageFinder.Add(mTypes.DetailedRepoMeta{
-			RepoMetadata: repoMeta,
-		})
+		foundRepos = append(foundRepos, repoMeta)
 	}
 
-	foundRepos, pageInfo := pageFinder.Page()
-
-	foundManifestMetadataMap, foundindexDataMap, err := common.FilterDataByRepo(foundRepos, manifestMetadataMap,
-		indexDataMap)
-
-	return foundRepos, foundManifestMetadataMap, foundindexDataMap, pageInfo, err
+	return foundRepos, manifestMetadataMap, indexDataMap, err
 }
 
-func (dwr *DynamoDB) FilterRepos(ctx context.Context,
-	filter mTypes.FilterRepoFunc,
-	requestedPage mTypes.PageInput,
-) (
-	[]mTypes.RepoMetadata, map[string]mTypes.ManifestMetadata, map[string]mTypes.IndexData,
-	zcommon.PageInfo, error,
-) {
+func (dwr *DynamoDB) FilterRepos(ctx context.Context, filter mTypes.FilterRepoFunc,
+) ([]mTypes.RepoMetadata, map[string]mTypes.ManifestMetadata, map[string]mTypes.IndexData, error) {
 	var (
+		foundRepos                = []mTypes.RepoMetadata{}
 		repoMetaAttributeIterator AttributesIterator
-		pageInfo                  zcommon.PageInfo
 		userBookmarks             = getUserBookmarks(ctx, dwr)
 		userStars                 = getUserStars(ctx, dwr)
 	)
@@ -1329,22 +1117,12 @@ func (dwr *DynamoDB) FilterRepos(ctx context.Context,
 		dwr.Client, dwr.RepoMetaTablename, "RepoMetadata", 0, dwr.Log,
 	)
 
-	pageFinder, err := pagination.NewBaseRepoPageFinder(requestedPage.Limit, requestedPage.Offset, requestedPage.SortBy)
-	if err != nil {
-		return []mTypes.RepoMetadata{}, map[string]mTypes.ManifestMetadata{}, map[string]mTypes.IndexData{},
-			pageInfo, err
-	}
-
 	repoMetaAttribute, err := repoMetaAttributeIterator.First(ctx)
-	if err != nil {
-		return []mTypes.RepoMetadata{}, map[string]mTypes.ManifestMetadata{}, map[string]mTypes.IndexData{},
-			pageInfo, err
-	}
 
 	for ; repoMetaAttribute != nil; repoMetaAttribute, err = repoMetaAttributeIterator.Next(ctx) {
 		if err != nil {
 			return []mTypes.RepoMetadata{}, map[string]mTypes.ManifestMetadata{}, map[string]mTypes.IndexData{},
-				pageInfo, err
+				err
 		}
 
 		var repoMeta mTypes.RepoMetadata
@@ -1352,7 +1130,7 @@ func (dwr *DynamoDB) FilterRepos(ctx context.Context,
 		err := attributevalue.Unmarshal(repoMetaAttribute, &repoMeta)
 		if err != nil {
 			return []mTypes.RepoMetadata{}, map[string]mTypes.ManifestMetadata{}, map[string]mTypes.IndexData{},
-				pageInfo, err
+				err
 		}
 
 		if ok, err := localCtx.RepoIsUserAvailable(ctx, repoMeta.Name); !ok || err != nil {
@@ -1363,39 +1141,27 @@ func (dwr *DynamoDB) FilterRepos(ctx context.Context,
 		repoMeta.IsStarred = zcommon.Contains(userStars, repoMeta.Name)
 
 		if filter(repoMeta) {
-			pageFinder.Add(mTypes.DetailedRepoMeta{
-				RepoMetadata: repoMeta,
-			})
+			foundRepos = append(foundRepos, repoMeta)
 		}
 	}
 
-	foundRepos, pageInfo := pageFinder.Page()
-
 	foundManifestMetadataMap, foundIndexDataMap, err := common.FetchDataForRepos(dwr, foundRepos)
 
-	return foundRepos, foundManifestMetadataMap, foundIndexDataMap, pageInfo, err
+	return foundRepos, foundManifestMetadataMap, foundIndexDataMap, err
 }
 
-func (dwr *DynamoDB) SearchTags(ctx context.Context, searchText string, filter mTypes.Filter,
-	requestedPage mTypes.PageInput,
+func (dwr *DynamoDB) SearchTags(ctx context.Context, searchText string,
 ) ([]mTypes.RepoMetadata, map[string]mTypes.ManifestMetadata, map[string]mTypes.IndexData,
-	zcommon.PageInfo, error,
+	error,
 ) {
 	var (
+		foundRepos                = make([]mTypes.RepoMetadata, 0, 1)
 		manifestMetadataMap       = make(map[string]mTypes.ManifestMetadata)
 		indexDataMap              = make(map[string]mTypes.IndexData)
 		repoMetaAttributeIterator AttributesIterator
-		pageFinder                pagination.PageFinder
-		pageInfo                  zcommon.PageInfo
 		userBookmarks             = getUserBookmarks(ctx, dwr)
 		userStars                 = getUserStars(ctx, dwr)
 	)
-
-	pageFinder, err := pagination.NewBaseImagePageFinder(requestedPage.Limit, requestedPage.Offset, requestedPage.SortBy)
-	if err != nil {
-		return []mTypes.RepoMetadata{}, map[string]mTypes.ManifestMetadata{}, map[string]mTypes.IndexData{},
-			pageInfo, err
-	}
 
 	repoMetaAttributeIterator = NewBaseDynamoAttributesIterator(
 		dwr.Client, dwr.RepoMetaTablename, "RepoMetadata", 0, dwr.Log,
@@ -1404,154 +1170,105 @@ func (dwr *DynamoDB) SearchTags(ctx context.Context, searchText string, filter m
 	searchedRepo, searchedTag, err := common.GetRepoTag(searchText)
 	if err != nil {
 		return []mTypes.RepoMetadata{}, map[string]mTypes.ManifestMetadata{}, map[string]mTypes.IndexData{},
-			pageInfo,
 			fmt.Errorf("metadb: error while parsing search text, invalid format %w", err)
 	}
 
 	repoMetaAttribute, err := repoMetaAttributeIterator.First(ctx)
+	if err != nil {
+		return []mTypes.RepoMetadata{}, map[string]mTypes.ManifestMetadata{}, map[string]mTypes.IndexData{},
+			err
+	}
 
-	for ; repoMetaAttribute != nil; repoMetaAttribute, err = repoMetaAttributeIterator.Next(ctx) {
-		if err != nil {
-			// log
-			return []mTypes.RepoMetadata{}, map[string]mTypes.ManifestMetadata{}, map[string]mTypes.IndexData{},
-				pageInfo, err
-		}
+	var repoMeta mTypes.RepoMetadata
 
-		var repoMeta mTypes.RepoMetadata
+	err = attributevalue.Unmarshal(repoMetaAttribute, &repoMeta)
+	if err != nil {
+		return []mTypes.RepoMetadata{}, map[string]mTypes.ManifestMetadata{}, map[string]mTypes.IndexData{},
+			err
+	}
 
-		err := attributevalue.Unmarshal(repoMetaAttribute, &repoMeta)
-		if err != nil {
-			return []mTypes.RepoMetadata{}, map[string]mTypes.ManifestMetadata{}, map[string]mTypes.IndexData{},
-				pageInfo, err
-		}
+	if ok, err := localCtx.RepoIsUserAvailable(ctx, repoMeta.Name); !ok || err != nil {
+		return []mTypes.RepoMetadata{}, map[string]mTypes.ManifestMetadata{}, map[string]mTypes.IndexData{},
+			err
+	}
 
-		if ok, err := localCtx.RepoIsUserAvailable(ctx, repoMeta.Name); !ok || err != nil {
+	if repoMeta.Name != searchedRepo {
+		return []mTypes.RepoMetadata{}, map[string]mTypes.ManifestMetadata{}, map[string]mTypes.IndexData{},
+			err
+	}
+
+	repoMeta.IsBookmarked = zcommon.Contains(userBookmarks, repoMeta.Name)
+	repoMeta.IsStarred = zcommon.Contains(userStars, repoMeta.Name)
+
+	matchedTags := make(map[string]mTypes.Descriptor)
+
+	for tag, descriptor := range repoMeta.Tags {
+		if !strings.HasPrefix(tag, searchedTag) {
 			continue
 		}
 
-		if repoMeta.Name != searchedRepo {
-			continue
-		}
+		matchedTags[tag] = descriptor
 
-		repoMeta.IsBookmarked = zcommon.Contains(userBookmarks, repoMeta.Name)
-		repoMeta.IsStarred = zcommon.Contains(userStars, repoMeta.Name)
+		switch descriptor.MediaType {
+		case ispec.MediaTypeImageManifest:
+			manifestDigest := descriptor.Digest
 
-		matchedTags := make(map[string]mTypes.Descriptor)
-
-		for tag, descriptor := range repoMeta.Tags {
-			if !strings.HasPrefix(tag, searchedTag) {
-				continue
+			manifestMeta, err := dwr.fetchManifestMetaWithCheck(repoMeta.Name, manifestDigest, //nolint:contextcheck
+				manifestMetadataMap)
+			if err != nil {
+				return []mTypes.RepoMetadata{}, map[string]mTypes.ManifestMetadata{}, map[string]mTypes.IndexData{},
+					fmt.Errorf("metadb: error while unmashaling manifest metadata for digest %s %w", descriptor.Digest, err)
 			}
 
-			matchedTags[tag] = descriptor
+			manifestMetadataMap[descriptor.Digest] = manifestMeta
+		case ispec.MediaTypeImageIndex:
+			indexDigest := descriptor.Digest
 
-			switch descriptor.MediaType {
-			case ispec.MediaTypeImageManifest:
-				manifestDigest := descriptor.Digest
+			indexData, err := dwr.fetchIndexDataWithCheck(indexDigest, indexDataMap) //nolint:contextcheck
+			if err != nil {
+				return []mTypes.RepoMetadata{}, map[string]mTypes.ManifestMetadata{}, map[string]mTypes.IndexData{},
+					fmt.Errorf("%w", err)
+			}
+
+			var indexContent ispec.Index
+
+			err = json.Unmarshal(indexData.IndexBlob, &indexContent)
+			if err != nil {
+				return []mTypes.RepoMetadata{}, map[string]mTypes.ManifestMetadata{}, map[string]mTypes.IndexData{},
+					fmt.Errorf("metadb: error while unmashaling index content for digest %s %w", indexDigest, err)
+			}
+
+			for _, manifest := range indexContent.Manifests {
+				manifestDigest := manifest.Digest.String()
 
 				manifestMeta, err := dwr.fetchManifestMetaWithCheck(repoMeta.Name, manifestDigest, //nolint:contextcheck
 					manifestMetadataMap)
 				if err != nil {
 					return []mTypes.RepoMetadata{}, map[string]mTypes.ManifestMetadata{}, map[string]mTypes.IndexData{},
-						pageInfo,
-						fmt.Errorf("metadb: error while unmashaling manifest metadata for digest %s %w", descriptor.Digest, err)
-				}
-
-				imageFilterData, err := collectImageManifestFilterData(manifestDigest, repoMeta, manifestMeta)
-				if err != nil {
-					return []mTypes.RepoMetadata{}, map[string]mTypes.ManifestMetadata{}, map[string]mTypes.IndexData{},
-						pageInfo,
 						fmt.Errorf("%w", err)
 				}
 
-				if !common.AcceptedByFilter(filter, imageFilterData) {
-					delete(matchedTags, tag)
-
-					continue
-				}
-
-				manifestMetadataMap[descriptor.Digest] = manifestMeta
-			case ispec.MediaTypeImageIndex:
-				indexDigest := descriptor.Digest
-
-				indexData, err := dwr.fetchIndexDataWithCheck(indexDigest, indexDataMap) //nolint:contextcheck
-				if err != nil {
-					return []mTypes.RepoMetadata{}, map[string]mTypes.ManifestMetadata{}, map[string]mTypes.IndexData{},
-						pageInfo,
-						fmt.Errorf("%w", err)
-				}
-
-				var indexContent ispec.Index
-
-				err = json.Unmarshal(indexData.IndexBlob, &indexContent)
-				if err != nil {
-					return []mTypes.RepoMetadata{}, map[string]mTypes.ManifestMetadata{}, map[string]mTypes.IndexData{},
-						pageInfo,
-						fmt.Errorf("metadb: error while unmashaling index content for digest %s %w", indexDigest, err)
-				}
-
-				manifestHasBeenMatched := false
-
-				for _, manifest := range indexContent.Manifests {
-					manifestDigest := manifest.Digest.String()
-
-					manifestMeta, err := dwr.fetchManifestMetaWithCheck(repoMeta.Name, manifestDigest, //nolint:contextcheck
-						manifestMetadataMap)
-					if err != nil {
-						return []mTypes.RepoMetadata{}, map[string]mTypes.ManifestMetadata{}, map[string]mTypes.IndexData{},
-							pageInfo,
-							fmt.Errorf("%w", err)
-					}
-
-					manifestFilterData, err := collectImageManifestFilterData(manifestDigest, repoMeta, manifestMeta)
-					if err != nil {
-						return []mTypes.RepoMetadata{}, map[string]mTypes.ManifestMetadata{}, map[string]mTypes.IndexData{},
-							pageInfo,
-							fmt.Errorf("%w", err)
-					}
-
-					manifestMetadataMap[manifestDigest] = manifestMeta
-
-					if common.AcceptedByFilter(filter, manifestFilterData) {
-						manifestHasBeenMatched = true
-					}
-				}
-
-				if !manifestHasBeenMatched {
-					delete(matchedTags, tag)
-
-					for _, manifest := range indexContent.Manifests {
-						delete(manifestMetadataMap, manifest.Digest.String())
-					}
-
-					continue
-				}
-
-				indexDataMap[indexDigest] = indexData
-			default:
-				dwr.Log.Error().Str("mediaType", descriptor.MediaType).Msg("Unsupported media type")
-
-				continue
+				manifestMetadataMap[manifestDigest] = manifestMeta
 			}
-		}
 
-		if len(matchedTags) == 0 {
+			indexDataMap[indexDigest] = indexData
+		default:
+			dwr.Log.Error().Str("mediaType", descriptor.MediaType).Msg("Unsupported media type")
+
 			continue
 		}
-
-		repoMeta.Tags = matchedTags
-
-		pageFinder.Add(mTypes.DetailedRepoMeta{
-			RepoMetadata: repoMeta,
-		})
 	}
 
-	foundRepos, pageInfo := pageFinder.Page()
+	if len(matchedTags) == 0 {
+		return []mTypes.RepoMetadata{}, map[string]mTypes.ManifestMetadata{}, map[string]mTypes.IndexData{},
+			err
+	}
 
-	foundManifestMetadataMap, foundindexDataMap, err := common.FilterDataByRepo(foundRepos, manifestMetadataMap,
-		indexDataMap)
+	repoMeta.Tags = matchedTags
 
-	return foundRepos, foundManifestMetadataMap, foundindexDataMap, pageInfo, err
+	foundRepos = append(foundRepos, repoMeta)
+
+	return foundRepos, manifestMetadataMap, indexDataMap, err
 }
 
 func (dwr *DynamoDB) PatchDB() error {
