@@ -276,7 +276,7 @@ func BaseAuthzHandler(ctlr *Controller) mux.MiddlewareFunc {
 			acCtx := &localCtx.AccessControlContext{}
 
 			// get username from context made in authn.go
-			if isAuthnEnabled(ctlr.Config) {
+			if ctlr.Config.IsBasicAuthnEnabled() {
 				// get access control context made in authn.go if authn is enabled
 				acCtx, err = localCtx.GetAccessControlContext(request.Context())
 				if err != nil { // should never happen

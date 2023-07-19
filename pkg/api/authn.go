@@ -55,7 +55,7 @@ type AuthnMiddleware struct {
 func AuthHandler(ctlr *Controller) mux.MiddlewareFunc {
 	authnMiddleware := &AuthnMiddleware{}
 
-	if isBearerAuthEnabled(ctlr.Config) {
+	if ctlr.Config.IsBearerAuthEnabled() {
 		return bearerAuthHandler(ctlr)
 	}
 
@@ -276,8 +276,8 @@ func (amw *AuthnMiddleware) TryAuthnHandlers(ctlr *Controller) mux.MiddlewareFun
 	delay := ctlr.Config.HTTP.Auth.FailDelay
 
 	// setup sessions cookie store used to preserve logged in user in web sessions
-	if isAuthnEnabled(ctlr.Config) || isOpenIDAuthEnabled(ctlr.Config) {
-		// To store custom types in our cookies,
+	if ctlr.Config.IsBasicAuthnEnabled() {
+		// To store custom types in our cookies
 		// we must first register them using gob.Register
 		gob.Register(map[string]interface{}{})
 
@@ -375,10 +375,10 @@ func (amw *AuthnMiddleware) TryAuthnHandlers(ctlr *Controller) mux.MiddlewareFun
 		ctlr.RelyingParties = make(map[string]rp.RelyingParty)
 
 		for provider := range ctlr.Config.HTTP.Auth.OpenID.Providers {
-			if IsOpenIDSupported(provider) {
+			if config.IsOpenIDSupported(provider) {
 				rp := NewRelyingPartyOIDC(ctlr.Config, provider)
 				ctlr.RelyingParties[provider] = rp
-			} else if IsOauth2Supported(provider) {
+			} else if config.IsOauth2Supported(provider) {
 				rp := NewRelyingPartyGithub(ctlr.Config, provider)
 				ctlr.RelyingParties[provider] = rp
 			}
@@ -572,31 +572,31 @@ func NewRelyingPartyGithub(config *config.Config, provider string) rp.RelyingPar
 	return relyingParty
 }
 
-func getRelyingPartyArgs(config *config.Config, provider string) (
+func getRelyingPartyArgs(cfg *config.Config, provider string) (
 	string, string, string, string, []string, []rp.Option,
 ) {
-	if _, ok := config.HTTP.Auth.OpenID.Providers[provider]; !ok {
+	if _, ok := cfg.HTTP.Auth.OpenID.Providers[provider]; !ok {
 		panic(zerr.ErrOpenIDProviderDoesNotExist)
 	}
 
 	scheme := "http"
-	if config.HTTP.TLS != nil {
+	if cfg.HTTP.TLS != nil {
 		scheme = "https"
 	}
 
-	clientID := config.HTTP.Auth.OpenID.Providers[provider].ClientID
-	clientSecret := config.HTTP.Auth.OpenID.Providers[provider].ClientSecret
+	clientID := cfg.HTTP.Auth.OpenID.Providers[provider].ClientID
+	clientSecret := cfg.HTTP.Auth.OpenID.Providers[provider].ClientSecret
 
-	scopes := config.HTTP.Auth.OpenID.Providers[provider].Scopes
+	scopes := cfg.HTTP.Auth.OpenID.Providers[provider].Scopes
 	// openid scope must be the first one in list
-	if !common.Contains(scopes, oidc.ScopeOpenID) && IsOpenIDSupported(provider) {
+	if !common.Contains(scopes, oidc.ScopeOpenID) && config.IsOpenIDSupported(provider) {
 		scopes = append([]string{oidc.ScopeOpenID}, scopes...)
 	}
 
-	port := config.HTTP.Port
-	issuer := config.HTTP.Auth.OpenID.Providers[provider].Issuer
-	keyPath := config.HTTP.Auth.OpenID.Providers[provider].KeyPath
-	baseURL := net.JoinHostPort(config.HTTP.Address, port)
+	port := cfg.HTTP.Port
+	issuer := cfg.HTTP.Auth.OpenID.Providers[provider].Issuer
+	keyPath := cfg.HTTP.Auth.OpenID.Providers[provider].KeyPath
+	baseURL := net.JoinHostPort(cfg.HTTP.Address, port)
 	redirectURI := fmt.Sprintf("%s://%s%s", scheme, baseURL, constants.CallbackBasePath+fmt.Sprintf("/%s", provider))
 
 	options := []rp.Option{
@@ -631,40 +631,6 @@ func getReqContextWithAuthorization(username string, groups []string, request *h
 	return ctx
 }
 
-func isAuthnEnabled(config *config.Config) bool {
-	if config.HTTP.Auth != nil &&
-		(config.HTTP.Auth.HTPasswd.Path != "" || config.HTTP.Auth.LDAP != nil) {
-		return true
-	}
-
-	return false
-}
-
-func isBearerAuthEnabled(config *config.Config) bool {
-	if config.HTTP.Auth != nil &&
-		config.HTTP.Auth.Bearer != nil &&
-		config.HTTP.Auth.Bearer.Cert != "" &&
-		config.HTTP.Auth.Bearer.Realm != "" &&
-		config.HTTP.Auth.Bearer.Service != "" {
-		return true
-	}
-
-	return false
-}
-
-func isOpenIDAuthEnabled(config *config.Config) bool {
-	if config.HTTP.Auth != nil &&
-		config.HTTP.Auth.OpenID != nil {
-		for provider := range config.HTTP.Auth.OpenID.Providers {
-			if isOpenIDAuthProviderEnabled(config, provider) {
-				return true
-			}
-		}
-	}
-
-	return false
-}
-
 func isAPIKeyEnabled(config *config.Config) bool {
 	if config.Extensions != nil && config.Extensions.APIKey != nil &&
 		*config.Extensions.APIKey.Enable {
@@ -672,35 +638,6 @@ func isAPIKeyEnabled(config *config.Config) bool {
 	}
 
 	return false
-}
-
-func isOpenIDAuthProviderEnabled(config *config.Config, provider string) bool {
-	if providerConfig, ok := config.HTTP.Auth.OpenID.Providers[provider]; ok {
-		if IsOpenIDSupported(provider) {
-			if providerConfig.ClientID != "" || providerConfig.Issuer != "" ||
-				len(providerConfig.Scopes) > 0 {
-				return true
-			}
-		} else if IsOauth2Supported(provider) {
-			if providerConfig.ClientID != "" || len(providerConfig.Scopes) > 0 {
-				return true
-			}
-		}
-	}
-
-	return false
-}
-
-func IsOpenIDSupported(provider string) bool {
-	supported := []string{"google", "gitlab", "dex"}
-
-	return common.Contains(supported, provider)
-}
-
-func IsOauth2Supported(provider string) bool {
-	supported := []string{"github"}
-
-	return common.Contains(supported, provider)
 }
 
 func authFail(w http.ResponseWriter, r *http.Request, realm string, delay int) {
