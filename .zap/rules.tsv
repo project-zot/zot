@@ -57,6 +57,7 @@
 90001	WARN	(Insecure JSF ViewState)
 90002	WARN	(Java Serialization Object)
 90003	WARN	(Sub Resource Integrity Attribute Missing)
+90005	IGNORE	(Sec-Fetch-Dest Header is Missing)
 90011	WARN	(Charset Mismatch)
 90022	WARN	(Application Error Disclosure)
 90030	WARN	(WSDL File Detection)
