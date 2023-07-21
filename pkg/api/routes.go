@@ -624,7 +624,8 @@ func (rh *RouteHandler) GetReferrers(response http.ResponseWriter, request *http
 	}
 
 	if len(artifactTypes) > 0 {
-		response.Header().Set("OCI-Filters-Applied", strings.Join(artifactTypes, ","))
+		// currently, the only filter supported and on this end-point
+		response.Header().Set("OCI-Filters-Applied", "artifactType")
 	}
 
 	zcommon.WriteData(response, http.StatusOK, ispec.MediaTypeImageIndex, out)

@@ -5924,7 +5924,7 @@ func TestArtifactReferences(t *testing.T) {
 				So(err, ShouldBeNil)
 				So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 				So(resp.Header().Get("Content-Type"), ShouldEqual, ispec.MediaTypeImageIndex)
-				So(resp.Header().Get("OCI-Filters-Applied"), ShouldEqual, artifactType)
+				So(resp.Header().Get("OCI-Filters-Applied"), ShouldEqual, "artifactType")
 
 				resp, err = resty.R().SetQueryParams(map[string]string{"artifactType": artifactType +
 					",otherArtType"}).Get(baseURL + fmt.Sprintf("/v2/%s/referrers/%s", repoName,
@@ -5932,7 +5932,7 @@ func TestArtifactReferences(t *testing.T) {
 				So(err, ShouldBeNil)
 				So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 				So(resp.Header().Get("Content-Type"), ShouldEqual, ispec.MediaTypeImageIndex)
-				So(resp.Header().Get("OCI-Filters-Applied"), ShouldEqual, artifactType+",otherArtType")
+				So(resp.Header().Get("OCI-Filters-Applied"), ShouldEqual, "artifactType")
 			})
 		})
 	})
