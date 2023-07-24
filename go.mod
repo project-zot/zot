@@ -56,7 +56,7 @@ require (
 	github.com/gorilla/handlers v1.5.1
 	github.com/gorilla/securecookie v1.1.1
 	github.com/gorilla/sessions v1.2.1
-	github.com/migueleliasweb/go-github-mock v0.0.18
+	github.com/migueleliasweb/go-github-mock v0.0.19
 	github.com/notaryproject/notation-go v1.0.0-rc.6
 	github.com/opencontainers/distribution-spec/specs-go v0.0.0-20230117141039-067a0f5b0e25
 	github.com/project-zot/mockoidc v0.0.0-20230307111146-f607b4b5fb97
@@ -122,6 +122,7 @@ require (
 	github.com/go-jose/go-jose/v3 v3.0.0 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/google/gnostic v0.5.7-v3refs // indirect
+	github.com/google/go-github/v53 v53.0.0 // indirect
 	github.com/google/licenseclassifier/v2 v2.0.0 // indirect
 	github.com/google/s2a-go v0.1.4 // indirect
 	github.com/google/shlex v0.0.0-20191202100458-e7afc7fbc510 // indirect
