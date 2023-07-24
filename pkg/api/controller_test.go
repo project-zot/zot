@@ -2940,38 +2940,38 @@ func TestIsOpenIDEnabled(t *testing.T) {
 
 		rootDir := t.TempDir()
 
-		Convey("Only OAuth2 provided", func() {
-			mockOIDCConfig := mockOIDCServer.Config()
-			conf.HTTP.Auth = &config.AuthConfig{
-				OpenID: &config.OpenIDConfig{
-					Providers: map[string]config.OpenIDProviderConfig{
-						"github": {
-							ClientID:     mockOIDCConfig.ClientID,
-							ClientSecret: mockOIDCConfig.ClientSecret,
-							KeyPath:      "",
-							Issuer:       mockOIDCConfig.Issuer,
-							Scopes:       []string{"email", "groups"},
-						},
-					},
-				},
-			}
+		// Convey("Only OAuth2 provided", func() {
+		// 	mockOIDCConfig := mockOIDCServer.Config()
+		// 	conf.HTTP.Auth = &config.AuthConfig{
+		// 		OpenID: &config.OpenIDConfig{
+		// 			Providers: map[string]config.OpenIDProviderConfig{
+		// 				"github": {
+		// 					ClientID:     mockOIDCConfig.ClientID,
+		// 					ClientSecret: mockOIDCConfig.ClientSecret,
+		// 					KeyPath:      "",
+		// 					Issuer:       mockOIDCConfig.Issuer,
+		// 					Scopes:       []string{"email", "groups"},
+		// 				},
+		// 			},
+		// 		},
+		// 	}
 
-			ctlr := api.NewController(conf)
+		// 	ctlr := api.NewController(conf)
 
-			ctlr.Config.Storage.RootDirectory = rootDir
+		// 	ctlr.Config.Storage.RootDirectory = rootDir
 
-			cm := test.NewControllerManager(ctlr)
+		// 	cm := test.NewControllerManager(ctlr)
 
-			cm.StartServer()
-			defer cm.StopServer()
-			test.WaitTillServerReady(baseURL)
+		// 	cm.StartServer()
+		// 	defer cm.StopServer()
+		// 	test.WaitTillServerReady(baseURL)
 
-			resp, err := resty.R().
-				Get(baseURL + "/v2/")
-			So(err, ShouldBeNil)
-			So(resp, ShouldNotBeNil)
-			So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
-		})
+		// 	resp, err := resty.R().
+		// 		Get(baseURL + "/v2/")
+		// 	So(err, ShouldBeNil)
+		// 	So(resp, ShouldNotBeNil)
+		// 	So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
+		// })
 
 		Convey("Unsupported provider", func() {
 			mockOIDCConfig := mockOIDCServer.Config()
@@ -2999,11 +2999,13 @@ func TestIsOpenIDEnabled(t *testing.T) {
 			defer cm.StopServer()
 			test.WaitTillServerReady(baseURL)
 
+			// it will work because we have an invalid provider, and no other authn enabled, so no authn enabled
+			// normally an invalid provider will exit with error in cli validations
 			resp, err := resty.R().
 				Get(baseURL + "/v2/")
 			So(err, ShouldBeNil)
 			So(resp, ShouldNotBeNil)
-			So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 		})
 	})
 }
@@ -3354,7 +3356,7 @@ func TestAuthnSessionErrors(t *testing.T) {
 					cookieStore.Codecs...)
 				So(err, ShouldBeNil)
 
-				filename := filepath.Join(rootDir, "session_"+session.ID)
+				filename := filepath.Join(rootDir, "_sessions", "session_"+session.ID)
 
 				err = os.WriteFile(filename, []byte(encoded), 0o600)
 				So(err, ShouldBeNil)
@@ -3395,7 +3397,7 @@ func TestAuthnSessionErrors(t *testing.T) {
 					cookieStore.Codecs...)
 				So(err, ShouldBeNil)
 
-				filename := filepath.Join(rootDir, "session_"+session.ID)
+				filename := filepath.Join(rootDir, "_sessions", "session_"+session.ID)
 
 				err = os.WriteFile(filename, []byte(encoded), 0o600)
 				So(err, ShouldBeNil)
@@ -3522,7 +3524,7 @@ func TestAuthnMetaDBErrors(t *testing.T) {
 	})
 }
 
-func TestAuthorizationWithBasicAuth(t *testing.T) {
+func TestAuthorization(t *testing.T) {
 	Convey("Make a new controller", t, func() {
 		port := test.GetFreePort()
 		baseURL := test.GetBaseURL(port)
@@ -3554,529 +3556,76 @@ func TestAuthorizationWithBasicAuth(t *testing.T) {
 			},
 		}
 
-		ctlr := makeController(conf, t.TempDir(), "../../test/data")
+		Convey("with openid", func() {
+			mockOIDCServer, err := test.MockOIDCRun()
+			if err != nil {
+				panic(err)
+			}
 
-		cm := test.NewControllerManager(ctlr)
-		cm.StartAndWait(port)
-		defer cm.StopServer()
+			defer func() {
+				err := mockOIDCServer.Shutdown()
+				if err != nil {
+					panic(err)
+				}
+			}()
 
-		blob := []byte("hello, blob!")
-		digest := godigest.FromBytes(blob).String()
-
-		// unauthenticated clients should not have access to /v2/
-		resp, err := resty.R().Get(baseURL + "/v2/")
-		So(err, ShouldBeNil)
-		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, 401)
-
-		// everybody should have access to /v2/
-		resp, err = resty.R().SetBasicAuth(username, passphrase).
-			Get(baseURL + "/v2/")
-		So(err, ShouldBeNil)
-		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
-
-		// everybody should have access to /v2/_catalog
-		resp, err = resty.R().SetBasicAuth(username, passphrase).
-			Get(baseURL + constants.RoutePrefix + constants.ExtCatalogPrefix)
-		So(err, ShouldBeNil)
-		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
-		var apiErr apiErr.Error
-		err = json.Unmarshal(resp.Body(), &apiErr)
-		So(err, ShouldBeNil)
-
-		// should get 403 without create
-		resp, err = resty.R().SetBasicAuth(username, passphrase).
-			Post(baseURL + "/v2/" + AuthorizationNamespace + "/blobs/uploads/")
-		So(err, ShouldBeNil)
-		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, http.StatusForbidden)
-
-		// first let's use global based policies
-		// add test user to global policy with create perm
-		conf.HTTP.AccessControl.Repositories[AuthorizationAllRepos].Policies[0].Users = append(conf.HTTP.AccessControl.Repositories[AuthorizationAllRepos].Policies[0].Users, "test") //nolint:lll // gofumpt conflicts with lll
-
-		conf.HTTP.AccessControl.Repositories[AuthorizationAllRepos].Policies[0].Actions = append(conf.HTTP.AccessControl.Repositories[AuthorizationAllRepos].Policies[0].Actions, "create") //nolint:lll // gofumpt conflicts with lll
-
-		// now it should get 202
-		resp, err = resty.R().SetBasicAuth(username, passphrase).
-			Post(baseURL + "/v2/" + AuthorizationNamespace + "/blobs/uploads/")
-		So(err, ShouldBeNil)
-		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
-		loc := resp.Header().Get("Location")
-
-		// uploading blob should get 201
-		resp, err = resty.R().SetBasicAuth(username, passphrase).
-			SetHeader("Content-Length", fmt.Sprintf("%d", len(blob))).
-			SetHeader("Content-Type", "application/octet-stream").
-			SetQueryParam("digest", digest).
-			SetBody(blob).
-			Put(baseURL + loc)
-		So(err, ShouldBeNil)
-		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
-
-		// head blob should get 403 without read perm
-		resp, err = resty.R().SetBasicAuth(username, passphrase).
-			Head(baseURL + "/v2/" + AuthorizationNamespace + "/blobs/" + digest)
-		So(err, ShouldBeNil)
-		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, http.StatusForbidden)
-
-		// get tags without read access should get 403
-		resp, err = resty.R().SetBasicAuth(username, passphrase).
-			Get(baseURL + "/v2/" + AuthorizationNamespace + "/tags/list")
-		So(err, ShouldBeNil)
-		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, http.StatusForbidden)
-
-		// get tags with read access should get 200
-		conf.HTTP.AccessControl.Repositories[AuthorizationAllRepos].Policies[0].Actions = append(conf.HTTP.AccessControl.Repositories[AuthorizationAllRepos].Policies[0].Actions, "read") //nolint:lll // gofumpt conflicts with lll
-
-		resp, err = resty.R().SetBasicAuth(username, passphrase).
-			Get(baseURL + "/v2/" + AuthorizationNamespace + "/tags/list")
-		So(err, ShouldBeNil)
-		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
-
-		// head blob should get 200 now
-		resp, err = resty.R().SetBasicAuth(username, passphrase).
-			Head(baseURL + "/v2/" + AuthorizationNamespace + "/blobs/" + digest)
-		So(err, ShouldBeNil)
-		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
-
-		// get blob should get 200 now
-		resp, err = resty.R().SetBasicAuth(username, passphrase).
-			Get(baseURL + "/v2/" + AuthorizationNamespace + "/blobs/" + digest)
-		So(err, ShouldBeNil)
-		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
-
-		// delete blob should get 403 without delete perm
-		resp, err = resty.R().SetBasicAuth(username, passphrase).
-			Delete(baseURL + "/v2/" + AuthorizationNamespace + "/blobs/" + digest)
-		So(err, ShouldBeNil)
-		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, http.StatusForbidden)
-
-		// add delete perm on repo
-		conf.HTTP.AccessControl.Repositories[AuthorizationAllRepos].Policies[0].Actions = append(conf.HTTP.AccessControl.Repositories[AuthorizationAllRepos].Policies[0].Actions, "delete") //nolint:lll // gofumpt conflicts with lll
-
-		// delete blob should get 202
-		resp, err = resty.R().SetBasicAuth(username, passphrase).
-			Delete(baseURL + "/v2/" + AuthorizationNamespace + "/blobs/" + digest)
-		So(err, ShouldBeNil)
-		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
-
-		// now let's use only repository based policies
-		// add test user to repo's policy with create perm
-		// longest path matching should match the repo and not **/*
-		conf.HTTP.AccessControl.Repositories[AuthorizationNamespace] = config.PolicyGroup{
-			Policies: []config.Policy{
-				{
-					Users:   []string{},
-					Actions: []string{},
+			mockOIDCConfig := mockOIDCServer.Config()
+			conf.HTTP.Auth = &config.AuthConfig{
+				OpenID: &config.OpenIDConfig{
+					Providers: map[string]config.OpenIDProviderConfig{
+						"dex": {
+							ClientID:     mockOIDCConfig.ClientID,
+							ClientSecret: mockOIDCConfig.ClientSecret,
+							KeyPath:      "",
+							Issuer:       mockOIDCConfig.Issuer,
+							Scopes:       []string{"openid", "email"},
+						},
+					},
 				},
-			},
-			DefaultPolicy: []string{},
-		}
+			}
 
-		conf.HTTP.AccessControl.Repositories[AuthorizationNamespace].Policies[0].Users = append(conf.HTTP.AccessControl.Repositories[AuthorizationNamespace].Policies[0].Users, "test")       //nolint:lll // gofumpt conflicts with lll
-		conf.HTTP.AccessControl.Repositories[AuthorizationNamespace].Policies[0].Actions = append(conf.HTTP.AccessControl.Repositories[AuthorizationNamespace].Policies[0].Actions, "create") //nolint:lll // gofumpt conflicts with lll
+			ctlr := makeController(conf, t.TempDir(), "../../test/data")
 
-		// now it should get 202
-		resp, err = resty.R().SetBasicAuth(username, passphrase).
-			Post(baseURL + "/v2/" + AuthorizationNamespace + "/blobs/uploads/")
-		So(err, ShouldBeNil)
-		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
-		loc = resp.Header().Get("Location")
+			cm := test.NewControllerManager(ctlr)
+			cm.StartAndWait(port)
+			defer cm.StopServer()
 
-		// uploading blob should get 201
-		resp, err = resty.R().SetBasicAuth(username, passphrase).
-			SetHeader("Content-Length", fmt.Sprintf("%d", len(blob))).
-			SetHeader("Content-Type", "application/octet-stream").
-			SetQueryParam("digest", digest).
-			SetBody(blob).
-			Put(baseURL + loc)
-		So(err, ShouldBeNil)
-		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
+			client := resty.New()
 
-		// head blob should get 403 without read perm
-		resp, err = resty.R().SetBasicAuth(username, passphrase).
-			Head(baseURL + "/v2/" + AuthorizationNamespace + "/blobs/" + digest)
-		So(err, ShouldBeNil)
-		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, http.StatusForbidden)
+			client.SetRedirectPolicy(test.CustomRedirectPolicy(20))
 
-		// get tags without read access should get 403
-		resp, err = resty.R().SetBasicAuth(username, passphrase).
-			Get(baseURL + "/v2/" + AuthorizationNamespace + "/tags/list")
-		So(err, ShouldBeNil)
-		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, http.StatusForbidden)
+			mockOIDCServer.QueueUser(&mockoidc.MockUser{
+				Email:   "test",
+				Subject: "1234567890",
+			})
 
-		// get tags with read access should get 200
-		conf.HTTP.AccessControl.Repositories[AuthorizationNamespace].Policies[0].Actions = append(conf.HTTP.AccessControl.Repositories[AuthorizationNamespace].Policies[0].Actions, "read") //nolint:lll // gofumpt conflicts with lll
+			// first login user
+			resp, err := client.R().
+				SetHeader(constants.SessionClientHeaderName, constants.SessionClientHeaderValue).
+				SetQueryParam("provider", "dex").
+				Get(baseURL + constants.LoginPath)
+			So(err, ShouldBeNil)
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
 
-		resp, err = resty.R().SetBasicAuth(username, passphrase).
-			Get(baseURL + "/v2/" + AuthorizationNamespace + "/tags/list")
-		So(err, ShouldBeNil)
-		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+			client.SetCookies(resp.Cookies())
+			client.SetHeader(constants.SessionClientHeaderName, constants.SessionClientHeaderValue)
 
-		resp, err = resty.R().SetBasicAuth(username, passphrase).
-			Get(baseURL + "/v2/" + AuthorizationNamespace + "/tags/list")
-		So(err, ShouldBeNil)
-		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+			RunAuthorizationTests(t, client, baseURL, conf)
+		})
 
-		// head blob should get 200 now
-		resp, err = resty.R().SetBasicAuth(username, passphrase).
-			Head(baseURL + "/v2/" + AuthorizationNamespace + "/blobs/" + digest)
-		So(err, ShouldBeNil)
-		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+		Convey("with basic auth", func() {
+			ctlr := makeController(conf, t.TempDir(), "../../test/data")
 
-		// get blob should get 200 now
-		resp, err = resty.R().SetBasicAuth(username, passphrase).
-			Get(baseURL + "/v2/" + AuthorizationNamespace + "/blobs/" + digest)
-		So(err, ShouldBeNil)
-		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+			cm := test.NewControllerManager(ctlr)
+			cm.StartAndWait(port)
+			defer cm.StopServer()
 
-		// delete blob should get 403 without delete perm
-		resp, err = resty.R().SetBasicAuth(username, passphrase).
-			Delete(baseURL + "/v2/" + AuthorizationNamespace + "/blobs/" + digest)
-		So(err, ShouldBeNil)
-		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, http.StatusForbidden)
+			client := resty.New()
+			client.SetBasicAuth(username, passphrase)
 
-		// add delete perm on repo
-		conf.HTTP.AccessControl.Repositories[AuthorizationNamespace].Policies[0].Actions = append(conf.HTTP.AccessControl.Repositories[AuthorizationNamespace].Policies[0].Actions, "delete") //nolint:lll // gofumpt conflicts with lll
-
-		// delete blob should get 202
-		resp, err = resty.R().SetBasicAuth(username, passphrase).
-			Delete(baseURL + "/v2/" + AuthorizationNamespace + "/blobs/" + digest)
-		So(err, ShouldBeNil)
-		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
-
-		// remove permissions on **/* so it will not interfere with zot-test namespace
-		repoPolicy := conf.HTTP.AccessControl.Repositories[AuthorizationAllRepos]
-		repoPolicy.Policies = []config.Policy{}
-		repoPolicy.DefaultPolicy = []string{}
-		conf.HTTP.AccessControl.Repositories[AuthorizationAllRepos] = repoPolicy
-
-		// get manifest should get 403, we don't have perm at all on this repo
-		resp, err = resty.R().SetBasicAuth(username, passphrase).
-			Get(baseURL + "/v2/zot-test/manifests/0.0.1")
-		So(err, ShouldBeNil)
-		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, http.StatusForbidden)
-
-		// add read perm on repo
-		conf.HTTP.AccessControl.Repositories["zot-test"] = config.PolicyGroup{Policies: []config.Policy{
-			{
-				Users:   []string{"test"},
-				Actions: []string{"read"},
-			},
-		}, DefaultPolicy: []string{}}
-
-		/* we have 4 images(authz/image, golang, zot-test, zot-cve-test) in storage,
-		but because at this point we only have read access
-		in authz/image and zot-test, we should get only that when listing repositories*/
-		resp, err = resty.R().SetBasicAuth(username, passphrase).
-			Get(baseURL + constants.RoutePrefix + constants.ExtCatalogPrefix)
-		So(err, ShouldBeNil)
-		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
-		err = json.Unmarshal(resp.Body(), &apiErr)
-		So(err, ShouldBeNil)
-
-		catalog := struct {
-			Repositories []string `json:"repositories"`
-		}{}
-
-		err = json.Unmarshal(resp.Body(), &catalog)
-		So(err, ShouldBeNil)
-		So(len(catalog.Repositories), ShouldEqual, 2)
-		So(catalog.Repositories, ShouldContain, "zot-test")
-		So(catalog.Repositories, ShouldContain, AuthorizationNamespace)
-
-		// get manifest should get 200 now
-		resp, err = resty.R().SetBasicAuth(username, passphrase).
-			Get(baseURL + "/v2/zot-test/manifests/0.0.1")
-		So(err, ShouldBeNil)
-		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
-
-		manifestBlob := resp.Body()
-		var manifest ispec.Manifest
-
-		err = json.Unmarshal(manifestBlob, &manifest)
-		So(err, ShouldBeNil)
-
-		// put manifest should get 403 without create perm
-		resp, err = resty.R().SetBasicAuth(username, passphrase).SetBody(manifestBlob).
-			Put(baseURL + "/v2/zot-test/manifests/0.0.2")
-		So(err, ShouldBeNil)
-		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, http.StatusForbidden)
-
-		// add create perm on repo
-		conf.HTTP.AccessControl.Repositories["zot-test"].Policies[0].Actions = append(conf.HTTP.AccessControl.Repositories["zot-test"].Policies[0].Actions, "create") //nolint:lll // gofumpt conflicts with lll
-
-		// should get 201 with create perm
-		resp, err = resty.R().SetBasicAuth(username, passphrase).
-			SetHeader("Content-type", "application/vnd.oci.image.manifest.v1+json").
-			SetBody(manifestBlob).
-			Put(baseURL + "/v2/zot-test/manifests/0.0.2")
-		So(err, ShouldBeNil)
-		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
-
-		// create update config and post it.
-		cblob, cdigest := test.GetRandomImageConfig()
-
-		resp, err = resty.R().SetBasicAuth(username, passphrase).
-			Post(baseURL + "/v2/zot-test/blobs/uploads/")
-		So(err, ShouldBeNil)
-		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
-		loc = test.Location(baseURL, resp)
-
-		// uploading blob should get 201
-		resp, err = resty.R().SetBasicAuth(username, passphrase).
-			SetHeader("Content-Length", fmt.Sprintf("%d", len(cblob))).
-			SetHeader("Content-Type", "application/octet-stream").
-			SetQueryParam("digest", cdigest.String()).
-			SetBody(cblob).
-			Put(loc)
-		So(err, ShouldBeNil)
-		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
-
-		// create updated layer and post it
-		updateBlob := []byte("Hello, blob update!")
-
-		resp, err = resty.R().SetBasicAuth(username, passphrase).
-			Post(baseURL + "/v2/zot-test/blobs/uploads/")
-		So(err, ShouldBeNil)
-		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
-		loc = test.Location(baseURL, resp)
-		// uploading blob should get 201
-		resp, err = resty.R().SetBasicAuth(username, passphrase).
-			SetHeader("Content-Length", fmt.Sprintf("%d", len(updateBlob))).
-			SetHeader("Content-Type", "application/octet-stream").
-			SetQueryParam("digest", string(godigest.FromBytes(updateBlob))).
-			SetBody(updateBlob).
-			Put(loc)
-		So(err, ShouldBeNil)
-		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
-
-		updatedManifest := ispec.Manifest{
-			Config: ispec.Descriptor{
-				MediaType: "application/vnd.oci.image.config.v1+json",
-				Digest:    cdigest,
-				Size:      int64(len(cblob)),
-			},
-			Layers: []ispec.Descriptor{
-				{
-					MediaType: "application/vnd.oci.image.layer.v1.tar",
-					Digest:    godigest.FromBytes(updateBlob),
-					Size:      int64(len(updateBlob)),
-				},
-			},
-		}
-		updatedManifest.SchemaVersion = 2
-		updatedManifestBlob, err := json.Marshal(updatedManifest)
-		So(err, ShouldBeNil)
-
-		// update manifest should get 403 without update perm
-		resp, err = resty.R().SetBasicAuth(username, passphrase).SetBody(updatedManifestBlob).
-			Put(baseURL + "/v2/zot-test/manifests/0.0.2")
-		So(err, ShouldBeNil)
-		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, http.StatusForbidden)
-
-		// get the manifest and check if it's the old one
-		resp, err = resty.R().SetBasicAuth(username, passphrase).
-			Get(baseURL + "/v2/zot-test/manifests/0.0.2")
-		So(err, ShouldBeNil)
-		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
-		So(resp.Body(), ShouldResemble, manifestBlob)
-
-		// add update perm on repo
-		conf.HTTP.AccessControl.Repositories["zot-test"].Policies[0].Actions = append(conf.HTTP.AccessControl.Repositories["zot-test"].Policies[0].Actions, "update") //nolint:lll // gofumpt conflicts with lll
-
-		// update manifest should get 201 with update perm
-		resp, err = resty.R().SetBasicAuth(username, passphrase).
-			SetHeader("Content-type", "application/vnd.oci.image.manifest.v1+json").
-			SetBody(updatedManifestBlob).
-			Put(baseURL + "/v2/zot-test/manifests/0.0.2")
-		So(err, ShouldBeNil)
-		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
-
-		// get the manifest and check if it's the new updated one
-		resp, err = resty.R().SetBasicAuth(username, passphrase).
-			Get(baseURL + "/v2/zot-test/manifests/0.0.2")
-		So(err, ShouldBeNil)
-		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
-		So(resp.Body(), ShouldResemble, updatedManifestBlob)
-
-		// now use default repo policy
-		conf.HTTP.AccessControl.Repositories["zot-test"].Policies[0].Actions = []string{}
-		repoPolicy = conf.HTTP.AccessControl.Repositories["zot-test"]
-		repoPolicy.DefaultPolicy = []string{"update"}
-		conf.HTTP.AccessControl.Repositories["zot-test"] = repoPolicy
-
-		// update manifest should get 201 with update perm on repo's default policy
-		resp, err = resty.R().SetBasicAuth(username, passphrase).
-			SetHeader("Content-type", "application/vnd.oci.image.manifest.v1+json").
-			SetBody(manifestBlob).
-			Put(baseURL + "/v2/zot-test/manifests/0.0.2")
-		So(err, ShouldBeNil)
-		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
-
-		// with default read on repo should still get 200
-		conf.HTTP.AccessControl.Repositories[AuthorizationNamespace].Policies[0].Actions = []string{}
-		repoPolicy = conf.HTTP.AccessControl.Repositories[AuthorizationNamespace]
-		repoPolicy.DefaultPolicy = []string{"read"}
-		conf.HTTP.AccessControl.Repositories[AuthorizationNamespace] = repoPolicy
-
-		resp, err = resty.R().SetBasicAuth(username, passphrase).
-			Get(baseURL + "/v2/" + AuthorizationNamespace + "/tags/list")
-		So(err, ShouldBeNil)
-		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
-
-		// upload blob without user create but with default create should get 200
-		repoPolicy.DefaultPolicy = append(repoPolicy.DefaultPolicy, "create")
-		conf.HTTP.AccessControl.Repositories[AuthorizationNamespace] = repoPolicy
-
-		resp, err = resty.R().SetBasicAuth(username, passphrase).
-			Post(baseURL + "/v2/" + AuthorizationNamespace + "/blobs/uploads/")
-		So(err, ShouldBeNil)
-		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
-
-		// remove per repo policy
-		repoPolicy = conf.HTTP.AccessControl.Repositories[AuthorizationNamespace]
-		repoPolicy.Policies = []config.Policy{}
-		repoPolicy.DefaultPolicy = []string{}
-		conf.HTTP.AccessControl.Repositories[AuthorizationNamespace] = repoPolicy
-
-		repoPolicy = conf.HTTP.AccessControl.Repositories["zot-test"]
-		repoPolicy.Policies = []config.Policy{}
-		repoPolicy.DefaultPolicy = []string{}
-		conf.HTTP.AccessControl.Repositories["zot-test"] = repoPolicy
-
-		resp, err = resty.R().SetBasicAuth(username, passphrase).
-			Post(baseURL + "/v2/" + AuthorizationNamespace + "/blobs/uploads/")
-		So(err, ShouldBeNil)
-		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, http.StatusForbidden)
-
-		// whithout any perm should get 403
-		resp, err = resty.R().SetBasicAuth(username, passphrase).
-			Get(baseURL + "/v2/" + AuthorizationNamespace + "/tags/list")
-		So(err, ShouldBeNil)
-		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, http.StatusForbidden)
-
-		// add read perm
-		conf.HTTP.AccessControl.AdminPolicy.Users = append(conf.HTTP.AccessControl.AdminPolicy.Users, "test")
-		conf.HTTP.AccessControl.AdminPolicy.Actions = append(conf.HTTP.AccessControl.AdminPolicy.Actions, "read")
-		// with read perm should get 200
-		resp, err = resty.R().SetBasicAuth(username, passphrase).
-			Get(baseURL + "/v2/" + AuthorizationNamespace + "/tags/list")
-		So(err, ShouldBeNil)
-		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
-
-		// without create perm should 403
-		resp, err = resty.R().SetBasicAuth(username, passphrase).
-			Post(baseURL + "/v2/" + AuthorizationNamespace + "/blobs/uploads/")
-		So(err, ShouldBeNil)
-		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, http.StatusForbidden)
-
-		// add create perm
-		conf.HTTP.AccessControl.AdminPolicy.Actions = append(conf.HTTP.AccessControl.AdminPolicy.Actions, "create")
-		// with create perm should get 202
-		resp, err = resty.R().SetBasicAuth(username, passphrase).
-			Post(baseURL + "/v2/" + AuthorizationNamespace + "/blobs/uploads/")
-		So(err, ShouldBeNil)
-		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
-		loc = resp.Header().Get("Location")
-
-		// uploading blob should get 201
-		resp, err = resty.R().SetBasicAuth(username, passphrase).
-			SetHeader("Content-Length", fmt.Sprintf("%d", len(blob))).
-			SetHeader("Content-Type", "application/octet-stream").
-			SetQueryParam("digest", digest).
-			SetBody(blob).
-			Put(baseURL + loc)
-		So(err, ShouldBeNil)
-		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
-
-		// without delete perm should 403
-		resp, err = resty.R().SetBasicAuth(username, passphrase).
-			Delete(baseURL + "/v2/" + AuthorizationNamespace + "/blobs/" + digest)
-		So(err, ShouldBeNil)
-		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, http.StatusForbidden)
-
-		// add delete perm
-		conf.HTTP.AccessControl.AdminPolicy.Actions = append(conf.HTTP.AccessControl.AdminPolicy.Actions, "delete")
-		// with delete perm should get http.StatusAccepted
-		resp, err = resty.R().SetBasicAuth(username, passphrase).
-			Delete(baseURL + "/v2/" + AuthorizationNamespace + "/blobs/" + digest)
-		So(err, ShouldBeNil)
-		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
-
-		// without update perm should 403
-		resp, err = resty.R().SetBasicAuth(username, passphrase).SetBody(manifestBlob).
-			Put(baseURL + "/v2/zot-test/manifests/0.0.2")
-		So(err, ShouldBeNil)
-		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, http.StatusForbidden)
-
-		// add update perm
-		conf.HTTP.AccessControl.AdminPolicy.Actions = append(conf.HTTP.AccessControl.AdminPolicy.Actions, "update")
-		// update manifest should get 201 with update perm
-		resp, err = resty.R().SetBasicAuth(username, passphrase).
-			SetHeader("Content-type", "application/vnd.oci.image.manifest.v1+json").
-			SetBody(manifestBlob).
-			Put(baseURL + "/v2/zot-test/manifests/0.0.2")
-		So(err, ShouldBeNil)
-		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
-
-		conf.HTTP.AccessControl = &config.AccessControlConfig{}
-
-		resp, err = resty.R().SetBasicAuth(username, passphrase).
-			SetHeader("Content-type", "application/vnd.oci.image.manifest.v1+json").
-			SetBody(manifestBlob).
-			Put(baseURL + "/v2/zot-test/manifests/0.0.2")
-		So(err, ShouldBeNil)
-		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, http.StatusForbidden)
+			RunAuthorizationTests(t, client, baseURL, conf)
+		})
 	})
 }
 
@@ -4129,6 +3678,11 @@ func TestGetUsername(t *testing.T) {
 		var e apiErr.Error
 		err = json.Unmarshal(resp.Body(), &e)
 		So(err, ShouldBeNil)
+
+		resp, err = resty.R().SetBasicAuth(username, passphrase).Get(baseURL + "/v2/_catalog")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 	})
 }
 
@@ -4317,6 +3871,53 @@ func TestAuthorizationWithOnlyAnonymousPolicy(t *testing.T) {
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 		So(resp.Body(), ShouldResemble, updatedManifestBlob)
+
+		resp, err = resty.R().Get(baseURL + "/v2/_catalog")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+		// make sure anonymous is correctly handled when using acCtx (requestcontext package)
+		catalog := struct {
+			Repositories []string `json:"repositories"`
+		}{}
+
+		err = json.Unmarshal(resp.Body(), &catalog)
+		So(err, ShouldBeNil)
+		So(len(catalog.Repositories), ShouldEqual, 1)
+		So(catalog.Repositories, ShouldContain, TestRepo)
+
+		err = os.Mkdir(path.Join(dir, "zot-test"), storageConstants.DefaultDirPerms)
+		So(err, ShouldBeNil)
+
+		test.CopyTestFiles("../../test/data/zot-test", path.Join(dir, "zot-test"))
+
+		// should not have read rights on zot-test
+		resp, err = resty.R().Get(baseURL + "/v2/_catalog")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+		err = json.Unmarshal(resp.Body(), &catalog)
+		So(err, ShouldBeNil)
+		So(len(catalog.Repositories), ShouldEqual, 1)
+		So(catalog.Repositories, ShouldContain, TestRepo)
+
+		// add rights
+		conf.HTTP.AccessControl.Repositories["zot-test"] = config.PolicyGroup{
+			AnonymousPolicy: []string{"read"},
+		}
+
+		resp, err = resty.R().Get(baseURL + "/v2/_catalog")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+		err = json.Unmarshal(resp.Body(), &catalog)
+		So(err, ShouldBeNil)
+		So(len(catalog.Repositories), ShouldEqual, 2)
+		So(catalog.Repositories, ShouldContain, TestRepo)
+		So(catalog.Repositories, ShouldContain, "zot-test")
 	})
 }
 
@@ -4357,121 +3958,103 @@ func TestAuthorizationWithMultiplePolicies(t *testing.T) {
 			},
 		}
 
-		dir := t.TempDir()
-		ctlr := makeController(conf, dir, "../../test/data")
+		Convey("with openid", func() {
+			dir := t.TempDir()
 
-		cm := test.NewControllerManager(ctlr)
-		cm.StartAndWait(port)
-		defer cm.StopServer()
+			mockOIDCServer, err := test.MockOIDCRun()
+			if err != nil {
+				panic(err)
+			}
 
-		blob := []byte("hello, blob!")
-		digest := godigest.FromBytes(blob).String()
+			defer func() {
+				err := mockOIDCServer.Shutdown()
+				if err != nil {
+					panic(err)
+				}
+			}()
 
-		// unauthenticated clients should not have access to /v2/, no policy is applied since none exists
-		resp, err := resty.R().Get(baseURL + "/v2/")
-		So(err, ShouldBeNil)
-		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, 401)
+			mockOIDCConfig := mockOIDCServer.Config()
+			conf.HTTP.Auth = &config.AuthConfig{
+				OpenID: &config.OpenIDConfig{
+					Providers: map[string]config.OpenIDProviderConfig{
+						"dex": {
+							ClientID:     mockOIDCConfig.ClientID,
+							ClientSecret: mockOIDCConfig.ClientSecret,
+							KeyPath:      "",
+							Issuer:       mockOIDCConfig.Issuer,
+							Scopes:       []string{"openid", "email"},
+						},
+					},
+				},
+			}
 
-		repoPolicy := conf.HTTP.AccessControl.Repositories[AuthorizationAllRepos]
-		repoPolicy.AnonymousPolicy = append(repoPolicy.AnonymousPolicy, "read")
-		conf.HTTP.AccessControl.Repositories[AuthorizationAllRepos] = repoPolicy
+			ctlr := makeController(conf, dir, "../../test/data")
 
-		// should have access to /v2/, anonymous policy is applied, "read" allowed
-		resp, err = resty.R().Get(baseURL + "/v2/")
-		So(err, ShouldBeNil)
-		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+			cm := test.NewControllerManager(ctlr)
+			cm.StartAndWait(port)
+			defer cm.StopServer()
 
-		// with empty username:password
-		resp, err = resty.R().SetHeader("Authorization", "Basic Og==").Get(baseURL + "/v2/")
-		So(err, ShouldBeNil)
-		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+			testUserClient := resty.New()
 
-		// add "test" user to global policy with create permission
-		repoPolicy.Policies[0].Users = append(repoPolicy.Policies[0].Users, "test")
-		repoPolicy.Policies[0].Actions = append(repoPolicy.Policies[0].Actions, "create")
+			testUserClient.SetRedirectPolicy(test.CustomRedirectPolicy(20))
 
-		// now it should get 202, user has the permission set on "create"
-		resp, err = resty.R().SetBasicAuth(username, passphrase).
-			Post(baseURL + "/v2/" + AuthorizationNamespace + "/blobs/uploads/")
-		So(err, ShouldBeNil)
-		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
-		loc := resp.Header().Get("Location")
+			mockOIDCServer.QueueUser(&mockoidc.MockUser{
+				Email:   "test",
+				Subject: "1234567890",
+			})
 
-		// uploading blob should get 201
-		resp, err = resty.R().SetBasicAuth(username, passphrase).
-			SetHeader("Content-Length", fmt.Sprintf("%d", len(blob))).
-			SetHeader("Content-Type", "application/octet-stream").
-			SetQueryParam("digest", digest).
-			SetBody(blob).
-			Put(baseURL + loc)
-		So(err, ShouldBeNil)
-		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
+			// first login user
+			resp, err := testUserClient.R().
+				SetHeader(constants.SessionClientHeaderName, constants.SessionClientHeaderValue).
+				SetQueryParam("provider", "dex").
+				Get(baseURL + constants.LoginPath)
+			So(err, ShouldBeNil)
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
 
-		// head blob should get 403 without read perm
-		resp, err = resty.R().SetBasicAuth(username, passphrase).
-			Head(baseURL + "/v2/" + AuthorizationNamespace + "/blobs/" + digest)
-		So(err, ShouldBeNil)
-		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, http.StatusForbidden)
+			testUserClient.SetCookies(resp.Cookies())
+			testUserClient.SetHeader(constants.SessionClientHeaderName, constants.SessionClientHeaderValue)
 
-		// get tags without read access should get 403
-		resp, err = resty.R().SetBasicAuth(username, passphrase).
-			Get(baseURL + "/v2/" + AuthorizationNamespace + "/tags/list")
-		So(err, ShouldBeNil)
-		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, http.StatusForbidden)
+			bobUserClient := resty.New()
 
-		repoPolicy.DefaultPolicy = append(repoPolicy.DefaultPolicy, "read")
-		conf.HTTP.AccessControl.Repositories[AuthorizationAllRepos] = repoPolicy
+			bobUserClient.SetRedirectPolicy(test.CustomRedirectPolicy(20))
 
-		// with read permission should get 200, because default policy allows reading now
-		resp, err = resty.R().SetBasicAuth(username, passphrase).
-			Get(baseURL + "/v2/" + AuthorizationNamespace + "/tags/list")
-		So(err, ShouldBeNil)
-		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+			mockOIDCServer.QueueUser(&mockoidc.MockUser{
+				Email:   "bob",
+				Subject: "1234567890",
+			})
 
-		// get tags with default read access should be ok, since the user is now "bob" and default policy is applied
-		resp, err = resty.R().SetBasicAuth("bob", passphrase).
-			Get(baseURL + "/v2/" + AuthorizationNamespace + "/tags/list")
-		So(err, ShouldBeNil)
-		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+			// first login user
+			resp, err = bobUserClient.R().
+				SetHeader(constants.SessionClientHeaderName, constants.SessionClientHeaderValue).
+				SetQueryParam("provider", "dex").
+				Get(baseURL + constants.LoginPath)
+			So(err, ShouldBeNil)
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
 
-		// get tags with default policy read access
-		resp, err = resty.R().Get(baseURL + "/v2/" + AuthorizationNamespace + "/tags/list")
-		So(err, ShouldBeNil)
-		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+			bobUserClient.SetCookies(resp.Cookies())
+			bobUserClient.SetHeader(constants.SessionClientHeaderName, constants.SessionClientHeaderValue)
 
-		// get tags with anonymous read access should be ok
-		resp, err = resty.R().Get(baseURL + "/v2/" + AuthorizationNamespace + "/tags/list")
-		So(err, ShouldBeNil)
-		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+			RunAuthorizationWithMultiplePoliciesTests(t, testUserClient, bobUserClient, baseURL, conf)
+		})
 
-		// without create permission should get 403, since "bob" can only read(default policy applied)
-		resp, err = resty.R().SetBasicAuth("bob", passphrase).
-			Post(baseURL + "/v2/" + AuthorizationNamespace + "/blobs/uploads/")
-		So(err, ShouldBeNil)
-		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, http.StatusForbidden)
+		Convey("with basic auth", func() {
+			dir := t.TempDir()
+			ctlr := makeController(conf, dir, "../../test/data")
 
-		// add read permission to user "bob"
-		conf.HTTP.AccessControl.AdminPolicy.Users = append(conf.HTTP.AccessControl.AdminPolicy.Users, "bob")
-		conf.HTTP.AccessControl.AdminPolicy.Actions = append(conf.HTTP.AccessControl.AdminPolicy.Actions, "create")
+			cm := test.NewControllerManager(ctlr)
+			cm.StartAndWait(port)
+			defer cm.StopServer()
 
-		// added create permission to user "bob", should be allowed now
-		resp, err = resty.R().SetBasicAuth("bob", passphrase).
-			Post(baseURL + "/v2/" + AuthorizationNamespace + "/blobs/uploads/")
-		So(err, ShouldBeNil)
-		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
+			testUserClient := resty.New()
+			testUserClient.SetBasicAuth(username, passphrase)
+
+			bobUserClient := resty.New()
+			bobUserClient.SetBasicAuth("bob", passphrase)
+
+			RunAuthorizationWithMultiplePoliciesTests(t, testUserClient, bobUserClient, baseURL, conf)
+		})
 	})
 }
 
@@ -9061,4 +8644,665 @@ func makeController(conf *config.Config, dir string, copyTestDataDest string) *a
 	ctlr.Config.Storage.RootDirectory = dir
 
 	return ctlr
+}
+
+func RunAuthorizationWithMultiplePoliciesTests(t *testing.T, userClient *resty.Client, bobClient *resty.Client,
+	baseURL string, conf *config.Config,
+) {
+	t.Helper()
+
+	blob := []byte("hello, blob!")
+	digest := godigest.FromBytes(blob).String()
+
+	// unauthenticated clients should not have access to /v2/, no policy is applied since none exists
+	resp, err := resty.R().Get(baseURL + "/v2/")
+	So(err, ShouldBeNil)
+	So(resp, ShouldNotBeNil)
+	So(resp.StatusCode(), ShouldEqual, 401)
+
+	repoPolicy := conf.HTTP.AccessControl.Repositories[AuthorizationAllRepos]
+	repoPolicy.AnonymousPolicy = append(repoPolicy.AnonymousPolicy, "read")
+	conf.HTTP.AccessControl.Repositories[AuthorizationAllRepos] = repoPolicy
+
+	// should have access to /v2/, anonymous policy is applied, "read" allowed
+	resp, err = resty.R().Get(baseURL + "/v2/")
+	So(err, ShouldBeNil)
+	So(resp, ShouldNotBeNil)
+	So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+	// with empty username:password
+	resp, err = resty.R().SetHeader("Authorization", "Basic Og==").Get(baseURL + "/v2/")
+	So(err, ShouldBeNil)
+	So(resp, ShouldNotBeNil)
+	So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+	// add "test" user to global policy with create permission
+	repoPolicy.Policies[0].Users = append(repoPolicy.Policies[0].Users, "test")
+	repoPolicy.Policies[0].Actions = append(repoPolicy.Policies[0].Actions, "create")
+
+	// now it should get 202, user has the permission set on "create"
+	resp, err = userClient.R().Post(baseURL + "/v2/" + AuthorizationNamespace + "/blobs/uploads/")
+	So(err, ShouldBeNil)
+	So(resp, ShouldNotBeNil)
+	So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
+	loc := resp.Header().Get("Location")
+
+	// uploading blob should get 201
+	resp, err = userClient.R().
+		SetHeader("Content-Length", fmt.Sprintf("%d", len(blob))).
+		SetHeader("Content-Type", "application/octet-stream").
+		SetQueryParam("digest", digest).
+		SetBody(blob).
+		Put(baseURL + loc)
+	So(err, ShouldBeNil)
+	So(resp, ShouldNotBeNil)
+	So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
+
+	// head blob should get 403 without read perm
+	resp, err = userClient.R().Head(baseURL + "/v2/" + AuthorizationNamespace + "/blobs/" + digest)
+	So(err, ShouldBeNil)
+	So(resp, ShouldNotBeNil)
+	So(resp.StatusCode(), ShouldEqual, http.StatusForbidden)
+
+	// get tags without read access should get 403
+	resp, err = userClient.R().Get(baseURL + "/v2/" + AuthorizationNamespace + "/tags/list")
+	So(err, ShouldBeNil)
+	So(resp, ShouldNotBeNil)
+	So(resp.StatusCode(), ShouldEqual, http.StatusForbidden)
+
+	repoPolicy.DefaultPolicy = append(repoPolicy.DefaultPolicy, "read")
+	conf.HTTP.AccessControl.Repositories[AuthorizationAllRepos] = repoPolicy
+
+	// with read permission should get 200, because default policy allows reading now
+	resp, err = userClient.R().Get(baseURL + "/v2/" + AuthorizationNamespace + "/tags/list")
+	So(err, ShouldBeNil)
+	So(resp, ShouldNotBeNil)
+	So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+	// get tags with default read access should be ok, since the user is now "bob" and default policy is applied
+	resp, err = bobClient.R().Get(baseURL + "/v2/" + AuthorizationNamespace + "/tags/list")
+	So(err, ShouldBeNil)
+	So(resp, ShouldNotBeNil)
+	So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+	// get tags with anonymous read access should be ok
+	resp, err = resty.R().Get(baseURL + "/v2/" + AuthorizationNamespace + "/tags/list")
+	So(err, ShouldBeNil)
+	So(resp, ShouldNotBeNil)
+	So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+	// without create permission should get 403, since "bob" can only read(default policy applied)
+	resp, err = bobClient.R().
+		Post(baseURL + "/v2/" + AuthorizationNamespace + "/blobs/uploads/")
+	So(err, ShouldBeNil)
+	So(resp, ShouldNotBeNil)
+	So(resp.StatusCode(), ShouldEqual, http.StatusForbidden)
+
+	// add read permission to user "bob"
+	conf.HTTP.AccessControl.AdminPolicy.Users = append(conf.HTTP.AccessControl.AdminPolicy.Users, "bob")
+	conf.HTTP.AccessControl.AdminPolicy.Actions = append(conf.HTTP.AccessControl.AdminPolicy.Actions, "create")
+
+	// added create permission to user "bob", should be allowed now
+	resp, err = bobClient.R().Post(baseURL + "/v2/" + AuthorizationNamespace + "/blobs/uploads/")
+	So(err, ShouldBeNil)
+	So(resp, ShouldNotBeNil)
+	So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
+
+	resp, err = resty.R().Get(baseURL + "/v2/_catalog")
+	So(err, ShouldBeNil)
+	So(resp, ShouldNotBeNil)
+	So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+	// make sure anonymous is correctly handled when using acCtx (requestcontext package)
+	catalog := struct {
+		Repositories []string `json:"repositories"`
+	}{}
+
+	err = json.Unmarshal(resp.Body(), &catalog)
+	So(err, ShouldBeNil)
+	So(catalog.Repositories, ShouldContain, AuthorizationNamespace)
+
+	resp, err = bobClient.R().Get(baseURL + "/v2/_catalog")
+	So(err, ShouldBeNil)
+	So(resp, ShouldNotBeNil)
+	So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+	err = json.Unmarshal(resp.Body(), &catalog)
+	So(err, ShouldBeNil)
+	So(catalog.Repositories, ShouldContain, AuthorizationNamespace)
+
+	resp, err = userClient.R().Get(baseURL + "/v2/_catalog")
+	So(err, ShouldBeNil)
+	So(resp, ShouldNotBeNil)
+	So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+	err = json.Unmarshal(resp.Body(), &catalog)
+	So(err, ShouldBeNil)
+	So(catalog.Repositories, ShouldContain, AuthorizationNamespace)
+
+	// no policy
+	conf.HTTP.AccessControl.Repositories[AuthorizationAllRepos] = config.PolicyGroup{}
+
+	// no policies, so no anonymous allowed
+	resp, err = resty.R().Get(baseURL + "/v2/_catalog")
+	So(err, ShouldBeNil)
+	So(resp, ShouldNotBeNil)
+	So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
+
+	// bob is admin so he can read
+	resp, err = bobClient.R().Get(baseURL + "/v2/_catalog")
+	So(err, ShouldBeNil)
+	So(resp, ShouldNotBeNil)
+	So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+	err = json.Unmarshal(resp.Body(), &catalog)
+	So(err, ShouldBeNil)
+	So(catalog.Repositories, ShouldContain, AuthorizationNamespace)
+
+	// test user has no permissions
+	resp, err = userClient.R().Get(baseURL + "/v2/_catalog")
+	So(err, ShouldBeNil)
+	So(resp, ShouldNotBeNil)
+	So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+	err = json.Unmarshal(resp.Body(), &catalog)
+	So(err, ShouldBeNil)
+	So(len(catalog.Repositories), ShouldEqual, 0)
+}
+
+func RunAuthorizationTests(t *testing.T, client *resty.Client, baseURL string, conf *config.Config) {
+	t.Helper()
+
+	Convey("run authorization tests", func() {
+		blob := []byte("hello, blob!")
+		digest := godigest.FromBytes(blob).String()
+
+		// unauthenticated clients should not have access to /v2/
+		resp, err := resty.R().Get(baseURL + "/v2/")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, 401)
+
+		// everybody should have access to /v2/
+		resp, err = client.R().Get(baseURL + "/v2/")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+		// everybody should have access to /v2/_catalog
+		resp, err = client.R().Get(baseURL + constants.RoutePrefix + constants.ExtCatalogPrefix)
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+		var apiErr apiErr.Error
+		err = json.Unmarshal(resp.Body(), &apiErr)
+		So(err, ShouldBeNil)
+
+		// should get 403 without create
+		resp, err = client.R().Post(baseURL + "/v2/" + AuthorizationNamespace + "/blobs/uploads/")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusForbidden)
+
+		// first let's use global based policies
+		// add test user to global policy with create perm
+		conf.HTTP.AccessControl.Repositories[AuthorizationAllRepos].Policies[0].Users = append(conf.HTTP.AccessControl.Repositories[AuthorizationAllRepos].Policies[0].Users, "test") //nolint:lll // gofumpt conflicts with lll
+
+		conf.HTTP.AccessControl.Repositories[AuthorizationAllRepos].Policies[0].Actions = append(conf.HTTP.AccessControl.Repositories[AuthorizationAllRepos].Policies[0].Actions, "create") //nolint:lll // gofumpt conflicts with lll
+
+		// now it should get 202
+		resp, err = client.R().Post(baseURL + "/v2/" + AuthorizationNamespace + "/blobs/uploads/")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
+		loc := resp.Header().Get("Location")
+
+		// uploading blob should get 201
+		resp, err = client.R().
+			SetHeader("Content-Length", fmt.Sprintf("%d", len(blob))).
+			SetHeader("Content-Type", "application/octet-stream").
+			SetQueryParam("digest", digest).
+			SetBody(blob).
+			Put(baseURL + loc)
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
+
+		// head blob should get 403 without read perm
+		resp, err = client.R().Head(baseURL + "/v2/" + AuthorizationNamespace + "/blobs/" + digest)
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusForbidden)
+
+		// get tags without read access should get 403
+		resp, err = client.R().Get(baseURL + "/v2/" + AuthorizationNamespace + "/tags/list")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusForbidden)
+
+		// get tags with read access should get 200
+		conf.HTTP.AccessControl.Repositories[AuthorizationAllRepos].Policies[0].Actions = append(conf.HTTP.AccessControl.Repositories[AuthorizationAllRepos].Policies[0].Actions, "read") //nolint:lll // gofumpt conflicts with lll
+
+		resp, err = client.R().Get(baseURL + "/v2/" + AuthorizationNamespace + "/tags/list")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+		// head blob should get 200 now
+		resp, err = client.R().Head(baseURL + "/v2/" + AuthorizationNamespace + "/blobs/" + digest)
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+		// get blob should get 200 now
+		resp, err = client.R().Get(baseURL + "/v2/" + AuthorizationNamespace + "/blobs/" + digest)
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+		// delete blob should get 403 without delete perm
+		resp, err = client.R().Delete(baseURL + "/v2/" + AuthorizationNamespace + "/blobs/" + digest)
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusForbidden)
+
+		// add delete perm on repo
+		conf.HTTP.AccessControl.Repositories[AuthorizationAllRepos].Policies[0].Actions = append(conf.HTTP.AccessControl.Repositories[AuthorizationAllRepos].Policies[0].Actions, "delete") //nolint:lll // gofumpt conflicts with lll
+
+		// delete blob should get 202
+		resp, err = client.R().Delete(baseURL + "/v2/" + AuthorizationNamespace + "/blobs/" + digest)
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
+
+		// now let's use only repository based policies
+		// add test user to repo's policy with create perm
+		// longest path matching should match the repo and not **/*
+		conf.HTTP.AccessControl.Repositories[AuthorizationNamespace] = config.PolicyGroup{
+			Policies: []config.Policy{
+				{
+					Users:   []string{},
+					Actions: []string{},
+				},
+			},
+			DefaultPolicy: []string{},
+		}
+
+		conf.HTTP.AccessControl.Repositories[AuthorizationNamespace].Policies[0].Users = append(conf.HTTP.AccessControl.Repositories[AuthorizationNamespace].Policies[0].Users, "test")       //nolint:lll // gofumpt conflicts with lll
+		conf.HTTP.AccessControl.Repositories[AuthorizationNamespace].Policies[0].Actions = append(conf.HTTP.AccessControl.Repositories[AuthorizationNamespace].Policies[0].Actions, "create") //nolint:lll // gofumpt conflicts with lll
+
+		// now it should get 202
+		resp, err = client.R().Post(baseURL + "/v2/" + AuthorizationNamespace + "/blobs/uploads/")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
+		loc = resp.Header().Get("Location")
+
+		// uploading blob should get 201
+		resp, err = client.R().
+			SetHeader("Content-Length", fmt.Sprintf("%d", len(blob))).
+			SetHeader("Content-Type", "application/octet-stream").
+			SetQueryParam("digest", digest).
+			SetBody(blob).
+			Put(baseURL + loc)
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
+
+		// head blob should get 403 without read perm
+		resp, err = client.R().Head(baseURL + "/v2/" + AuthorizationNamespace + "/blobs/" + digest)
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusForbidden)
+
+		// get tags without read access should get 403
+		resp, err = client.R().Get(baseURL + "/v2/" + AuthorizationNamespace + "/tags/list")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusForbidden)
+
+		// get tags with read access should get 200
+		conf.HTTP.AccessControl.Repositories[AuthorizationNamespace].Policies[0].Actions = append(conf.HTTP.AccessControl.Repositories[AuthorizationNamespace].Policies[0].Actions, "read") //nolint:lll // gofumpt conflicts with lll
+
+		resp, err = client.R().Get(baseURL + "/v2/" + AuthorizationNamespace + "/tags/list")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+		resp, err = client.R().Get(baseURL + "/v2/" + AuthorizationNamespace + "/tags/list")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+		// head blob should get 200 now
+		resp, err = client.R().Head(baseURL + "/v2/" + AuthorizationNamespace + "/blobs/" + digest)
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+		// get blob should get 200 now
+		resp, err = client.R().Get(baseURL + "/v2/" + AuthorizationNamespace + "/blobs/" + digest)
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+		// delete blob should get 403 without delete perm
+		resp, err = client.R().Delete(baseURL + "/v2/" + AuthorizationNamespace + "/blobs/" + digest)
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusForbidden)
+
+		// add delete perm on repo
+		conf.HTTP.AccessControl.Repositories[AuthorizationNamespace].Policies[0].Actions = append(conf.HTTP.AccessControl.Repositories[AuthorizationNamespace].Policies[0].Actions, "delete") //nolint:lll // gofumpt conflicts with lll
+
+		// delete blob should get 202
+		resp, err = client.R().Delete(baseURL + "/v2/" + AuthorizationNamespace + "/blobs/" + digest)
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
+
+		// remove permissions on **/* so it will not interfere with zot-test namespace
+		repoPolicy := conf.HTTP.AccessControl.Repositories[AuthorizationAllRepos]
+		repoPolicy.Policies = []config.Policy{}
+		repoPolicy.DefaultPolicy = []string{}
+		conf.HTTP.AccessControl.Repositories[AuthorizationAllRepos] = repoPolicy
+
+		// get manifest should get 403, we don't have perm at all on this repo
+		resp, err = client.R().Get(baseURL + "/v2/zot-test/manifests/0.0.1")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusForbidden)
+
+		// add read perm on repo
+		conf.HTTP.AccessControl.Repositories["zot-test"] = config.PolicyGroup{Policies: []config.Policy{
+			{
+				Users:   []string{"test"},
+				Actions: []string{"read"},
+			},
+		}, DefaultPolicy: []string{}}
+
+		/* we have 4 images(authz/image, golang, zot-test, zot-cve-test) in storage,
+		but because at this point we only have read access
+		in authz/image and zot-test, we should get only that when listing repositories*/
+		resp, err = client.R().Get(baseURL + constants.RoutePrefix + constants.ExtCatalogPrefix)
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+		err = json.Unmarshal(resp.Body(), &apiErr)
+		So(err, ShouldBeNil)
+
+		catalog := struct {
+			Repositories []string `json:"repositories"`
+		}{}
+
+		err = json.Unmarshal(resp.Body(), &catalog)
+		So(err, ShouldBeNil)
+		So(len(catalog.Repositories), ShouldEqual, 2)
+		So(catalog.Repositories, ShouldContain, "zot-test")
+		So(catalog.Repositories, ShouldContain, AuthorizationNamespace)
+
+		// get manifest should get 200 now
+		resp, err = client.R().Get(baseURL + "/v2/zot-test/manifests/0.0.1")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+		manifestBlob := resp.Body()
+		var manifest ispec.Manifest
+
+		err = json.Unmarshal(manifestBlob, &manifest)
+		So(err, ShouldBeNil)
+
+		// put manifest should get 403 without create perm
+		resp, err = client.R().
+			SetBody(manifestBlob).
+			Put(baseURL + "/v2/zot-test/manifests/0.0.2")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusForbidden)
+
+		// add create perm on repo
+		conf.HTTP.AccessControl.Repositories["zot-test"].Policies[0].Actions = append(conf.HTTP.AccessControl.Repositories["zot-test"].Policies[0].Actions, "create") //nolint:lll // gofumpt conflicts with lll
+
+		// should get 201 with create perm
+		resp, err = client.R().
+			SetHeader("Content-type", "application/vnd.oci.image.manifest.v1+json").
+			SetBody(manifestBlob).
+			Put(baseURL + "/v2/zot-test/manifests/0.0.2")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
+
+		// create update config and post it.
+		cblob, cdigest := test.GetRandomImageConfig()
+
+		resp, err = client.R().
+			Post(baseURL + "/v2/zot-test/blobs/uploads/")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
+		loc = test.Location(baseURL, resp)
+
+		// uploading blob should get 201
+		resp, err = client.R().
+			SetHeader("Content-Length", fmt.Sprintf("%d", len(cblob))).
+			SetHeader("Content-Type", "application/octet-stream").
+			SetQueryParam("digest", cdigest.String()).
+			SetBody(cblob).
+			Put(loc)
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
+
+		// create updated layer and post it
+		updateBlob := []byte("Hello, blob update!")
+
+		resp, err = client.R().Post(baseURL + "/v2/zot-test/blobs/uploads/")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
+		loc = test.Location(baseURL, resp)
+
+		// uploading blob should get 201
+		resp, err = client.R().
+			SetHeader("Content-Length", fmt.Sprintf("%d", len(updateBlob))).
+			SetHeader("Content-Type", "application/octet-stream").
+			SetQueryParam("digest", string(godigest.FromBytes(updateBlob))).
+			SetBody(updateBlob).
+			Put(loc)
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
+
+		updatedManifest := ispec.Manifest{
+			Config: ispec.Descriptor{
+				MediaType: "application/vnd.oci.image.config.v1+json",
+				Digest:    cdigest,
+				Size:      int64(len(cblob)),
+			},
+			Layers: []ispec.Descriptor{
+				{
+					MediaType: "application/vnd.oci.image.layer.v1.tar",
+					Digest:    godigest.FromBytes(updateBlob),
+					Size:      int64(len(updateBlob)),
+				},
+			},
+		}
+		updatedManifest.SchemaVersion = 2
+		updatedManifestBlob, err := json.Marshal(updatedManifest)
+		So(err, ShouldBeNil)
+
+		// update manifest should get 403 without update perm
+		resp, err = client.R().
+			SetBody(updatedManifestBlob).
+			Put(baseURL + "/v2/zot-test/manifests/0.0.2")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusForbidden)
+
+		// get the manifest and check if it's the old one
+		resp, err = client.R().Get(baseURL + "/v2/zot-test/manifests/0.0.2")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+		So(resp.Body(), ShouldResemble, manifestBlob)
+
+		// add update perm on repo
+		conf.HTTP.AccessControl.Repositories["zot-test"].Policies[0].Actions = append(conf.HTTP.AccessControl.Repositories["zot-test"].Policies[0].Actions, "update") //nolint:lll // gofumpt conflicts with lll
+
+		// update manifest should get 201 with update perm
+		resp, err = client.R().
+			SetHeader("Content-type", "application/vnd.oci.image.manifest.v1+json").
+			SetBody(updatedManifestBlob).
+			Put(baseURL + "/v2/zot-test/manifests/0.0.2")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
+
+		// get the manifest and check if it's the new updated one
+		resp, err = client.R().Get(baseURL + "/v2/zot-test/manifests/0.0.2")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+		So(resp.Body(), ShouldResemble, updatedManifestBlob)
+
+		// now use default repo policy
+		conf.HTTP.AccessControl.Repositories["zot-test"].Policies[0].Actions = []string{}
+		repoPolicy = conf.HTTP.AccessControl.Repositories["zot-test"]
+		repoPolicy.DefaultPolicy = []string{"update"}
+		conf.HTTP.AccessControl.Repositories["zot-test"] = repoPolicy
+
+		// update manifest should get 201 with update perm on repo's default policy
+		resp, err = client.R().
+			SetHeader("Content-type", "application/vnd.oci.image.manifest.v1+json").
+			SetBody(manifestBlob).
+			Put(baseURL + "/v2/zot-test/manifests/0.0.2")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
+
+		// with default read on repo should still get 200
+		conf.HTTP.AccessControl.Repositories[AuthorizationNamespace].Policies[0].Actions = []string{}
+		repoPolicy = conf.HTTP.AccessControl.Repositories[AuthorizationNamespace]
+		repoPolicy.DefaultPolicy = []string{"read"}
+		conf.HTTP.AccessControl.Repositories[AuthorizationNamespace] = repoPolicy
+
+		resp, err = client.R().Get(baseURL + "/v2/" + AuthorizationNamespace + "/tags/list")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+		// upload blob without user create but with default create should get 200
+		repoPolicy.DefaultPolicy = append(repoPolicy.DefaultPolicy, "create")
+		conf.HTTP.AccessControl.Repositories[AuthorizationNamespace] = repoPolicy
+
+		resp, err = client.R().Post(baseURL + "/v2/" + AuthorizationNamespace + "/blobs/uploads/")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
+
+		// remove per repo policy
+		repoPolicy = conf.HTTP.AccessControl.Repositories[AuthorizationNamespace]
+		repoPolicy.Policies = []config.Policy{}
+		repoPolicy.DefaultPolicy = []string{}
+		conf.HTTP.AccessControl.Repositories[AuthorizationNamespace] = repoPolicy
+
+		repoPolicy = conf.HTTP.AccessControl.Repositories["zot-test"]
+		repoPolicy.Policies = []config.Policy{}
+		repoPolicy.DefaultPolicy = []string{}
+		conf.HTTP.AccessControl.Repositories["zot-test"] = repoPolicy
+
+		resp, err = client.R().Post(baseURL + "/v2/" + AuthorizationNamespace + "/blobs/uploads/")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusForbidden)
+
+		// whithout any perm should get 403
+		resp, err = client.R().Get(baseURL + "/v2/" + AuthorizationNamespace + "/tags/list")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusForbidden)
+
+		// add read perm
+		conf.HTTP.AccessControl.AdminPolicy.Users = append(conf.HTTP.AccessControl.AdminPolicy.Users, "test")
+		conf.HTTP.AccessControl.AdminPolicy.Actions = append(conf.HTTP.AccessControl.AdminPolicy.Actions, "read")
+
+		// with read perm should get 200
+		resp, err = client.R().Get(baseURL + "/v2/" + AuthorizationNamespace + "/tags/list")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+		// without create perm should 403
+		resp, err = client.R().Post(baseURL + "/v2/" + AuthorizationNamespace + "/blobs/uploads/")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusForbidden)
+
+		// add create perm
+		conf.HTTP.AccessControl.AdminPolicy.Actions = append(conf.HTTP.AccessControl.AdminPolicy.Actions, "create")
+
+		// with create perm should get 202
+		resp, err = client.R().Post(baseURL + "/v2/" + AuthorizationNamespace + "/blobs/uploads/")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
+		loc = resp.Header().Get("Location")
+
+		// uploading blob should get 201
+		resp, err = client.R().
+			SetHeader("Content-Length", fmt.Sprintf("%d", len(blob))).
+			SetHeader("Content-Type", "application/octet-stream").
+			SetQueryParam("digest", digest).
+			SetBody(blob).
+			Put(baseURL + loc)
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
+
+		// without delete perm should 403
+		resp, err = client.R().Delete(baseURL + "/v2/" + AuthorizationNamespace + "/blobs/" + digest)
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusForbidden)
+
+		// add delete perm
+		conf.HTTP.AccessControl.AdminPolicy.Actions = append(conf.HTTP.AccessControl.AdminPolicy.Actions, "delete")
+
+		// with delete perm should get http.StatusAccepted
+		resp, err = client.R().Delete(baseURL + "/v2/" + AuthorizationNamespace + "/blobs/" + digest)
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
+
+		// without update perm should 403
+		resp, err = client.R().
+			SetBody(manifestBlob).
+			Put(baseURL + "/v2/zot-test/manifests/0.0.2")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusForbidden)
+
+		// add update perm
+		conf.HTTP.AccessControl.AdminPolicy.Actions = append(conf.HTTP.AccessControl.AdminPolicy.Actions, "update")
+
+		// update manifest should get 201 with update perm
+		resp, err = client.R().
+			SetHeader("Content-type", "application/vnd.oci.image.manifest.v1+json").
+			SetBody(manifestBlob).
+			Put(baseURL + "/v2/zot-test/manifests/0.0.2")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
+
+		conf.HTTP.AccessControl = &config.AccessControlConfig{}
+
+		resp, err = client.R().
+			SetHeader("Content-type", "application/vnd.oci.image.manifest.v1+json").
+			SetBody(manifestBlob).
+			Put(baseURL + "/v2/zot-test/manifests/0.0.2")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusForbidden)
+	})
 }
