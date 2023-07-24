@@ -535,7 +535,7 @@ func TestNegativeServerResponse(t *testing.T) {
 			}
 		}()
 
-		defer ctlr.Shutdown()
+		defer ctlr.Shutdown(context.Background())
 
 		test.WaitTillServerReady(url)
 
@@ -610,7 +610,7 @@ func TestServerCVEResponse(t *testing.T) {
 		}
 	}()
 
-	defer ctlr.Shutdown()
+	defer ctlr.Shutdown(context.Background())
 
 	test.WaitTillServerReady(url)
 

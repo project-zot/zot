@@ -259,7 +259,7 @@ func CopyTestFiles(sourceDir, destDir string) {
 type Controller interface {
 	Init(ctx context.Context) error
 	Run(ctx context.Context) error
-	Shutdown()
+	Shutdown(ctx context.Context)
 	GetPort() int
 }
 
@@ -295,7 +295,7 @@ func (cm *ControllerManager) StopServer() {
 		cm.cancelRoutinesFunc()
 	}
 
-	cm.controller.Shutdown()
+	cm.controller.Shutdown(context.Background())
 }
 
 func (cm *ControllerManager) WaitServerToBeReady(port string) {

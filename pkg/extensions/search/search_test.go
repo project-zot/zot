@@ -723,7 +723,7 @@ func TestRepoListWithNewestImage(t *testing.T) {
 			}
 		}()
 
-		defer ctlr.Shutdown()
+		defer ctlr.Shutdown(context.Background())
 
 		substring := "{\"Search\":{\"Enable\":true,\"CVE\":{\"UpdateInterval\":3600000000000," +
 			"\"Trivy\":{\"DBRepository\":\"ghcr.io/project-zot/trivy-db\",\"JavaDBRepository\":\"\"}}}"
@@ -3501,7 +3501,7 @@ func TestGlobalSearch(t *testing.T) {
 			}
 		}()
 
-		defer ctlr.Shutdown()
+		defer ctlr.Shutdown(context.Background())
 
 		// Wait for trivy db to download
 		substring := "{\"Search\":{\"Enable\":true,\"CVE\":{\"UpdateInterval\":3600000000000," +
@@ -6403,7 +6403,7 @@ func TestImageSummary(t *testing.T) {
 			}
 		}()
 
-		defer ctlr.Shutdown()
+		defer ctlr.Shutdown(context.Background())
 
 		WaitTillServerReady(baseURL)
 

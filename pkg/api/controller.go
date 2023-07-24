@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"os/signal"
 	"runtime"
 	"strconv"
 	"strings"
@@ -51,6 +52,8 @@ type Controller struct {
 	CookieStore     sessions.Store
 	// runtime params
 	chosenPort int // kernel-chosen port
+	// signal handling
+	sigCh chan os.Signal
 }
 
 func NewController(config *config.Config) *Controller {
@@ -93,7 +96,28 @@ func (c *Controller) GetPort() int {
 	return c.chosenPort
 }
 
+func (c *Controller) signalHandler(ctx context.Context) {
+	sig := <-c.sigCh
+
+	c.Log.Info().Interface("signal", sig).Msg("received signal")
+
+	// gracefully shutdown http server
+	c.Shutdown(ctx)
+
+	close(c.sigCh)
+}
+
 func (c *Controller) Run(reloadCtx context.Context) error {
+	c.sigCh = make(chan os.Signal, 1)
+
+	go c.signalHandler(reloadCtx)
+
+	// block all async signals to this server
+	signal.Ignore()
+
+	// handle SIGINT and SIGHUP.
+	signal.Notify(c.sigCh, syscall.SIGINT, syscall.SIGHUP)
+
 	c.StartBackgroundTasks(reloadCtx)
 
 	// setup HTTP API router
@@ -315,9 +339,10 @@ func (c *Controller) LoadNewConfig(reloadCtx context.Context, config *config.Con
 		Msg("loaded new configuration settings")
 }
 
-func (c *Controller) Shutdown() {
-	ctx := context.Background()
-	_ = c.Server.Shutdown(ctx)
+func (c *Controller) Shutdown(ctx context.Context) {
+	if err := c.Server.Shutdown(ctx); err != nil {
+		c.Log.Fatal().Err(err).Msg("unable to shutdown server")
+	}
 }
 
 func (c *Controller) StartBackgroundTasks(reloadCtx context.Context) {
