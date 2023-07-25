@@ -2,6 +2,9 @@ package cli
 
 import (
 	"context"
+	"os"
+	"os/signal"
+	"syscall"
 
 	"github.com/fsnotify/fsnotify"
 	"github.com/rs/zerolog/log"
@@ -32,10 +35,43 @@ func NewHotReloader(ctlr *api.Controller, filePath string) (*HotReloader, error)
 	return hotReloader, nil
 }
 
+func signalHandler(ctlr *api.Controller, sigCh chan os.Signal, ctx context.Context, cancel context.CancelFunc) {
+	select {
+	// if signal then shutdown
+	case sig := <-sigCh:
+		defer cancel()
+
+		ctlr.Log.Info().Interface("signal", sig).Msg("received signal")
+
+		// gracefully shutdown http server
+		ctlr.Shutdown() //nolint: contextcheck
+
+		close(sigCh)
+	// if reload then return
+	case <-ctx.Done():
+		return
+	}
+}
+
+func initShutDownRoutine(ctlr *api.Controller, ctx context.Context, cancel context.CancelFunc) {
+	sigCh := make(chan os.Signal, 1)
+
+	go signalHandler(ctlr, sigCh, ctx, cancel)
+
+	// block all async signals to this server
+	signal.Ignore()
+
+	// handle SIGINT and SIGHUP.
+	signal.Notify(sigCh, syscall.SIGTERM, syscall.SIGINT, syscall.SIGHUP)
+}
+
 func (hr *HotReloader) Start() context.Context {
+	reloadCtx, cancelFunc := context.WithCancel(context.Background())
+
 	done := make(chan bool)
 
-	reloadCtx, cancelOnReloadFunc := context.WithCancel(context.Background())
+	initShutDownRoutine(hr.ctlr, reloadCtx, cancelFunc)
+
 	// run watcher
 	go func() {
 		defer hr.watcher.Close()
@@ -57,10 +93,14 @@ func (hr *HotReloader) Start() context.Context {
 							continue
 						}
 						// if valid config then reload
-						cancelOnReloadFunc()
+						cancelFunc()
 
 						// create new context
-						reloadCtx, cancelOnReloadFunc = context.WithCancel(context.Background())
+						reloadCtx, cancelFunc = context.WithCancel(context.Background())
+
+						// init shutdown routine
+						initShutDownRoutine(hr.ctlr, reloadCtx, cancelFunc)
+
 						hr.ctlr.LoadNewConfig(reloadCtx, newConfig)
 					}
 				// watch for errors
