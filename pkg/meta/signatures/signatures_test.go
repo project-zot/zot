@@ -147,8 +147,7 @@ func TestVerifySignatures(t *testing.T) {
 		manifestContent, err := json.Marshal(image.Manifest)
 		So(err, ShouldBeNil)
 
-		manifestDigest, err := image.Digest()
-		So(err, ShouldBeNil)
+		manifestDigest := image.Digest()
 
 		_, _, _, err = signatures.VerifySignature("wrongType", []byte(""), "", manifestDigest, manifestContent, "repo")
 		So(err, ShouldNotBeNil)
@@ -164,8 +163,7 @@ func TestVerifySignatures(t *testing.T) {
 		manifestContent, err := json.Marshal(image.Manifest)
 		So(err, ShouldBeNil)
 
-		manifestDigest, err := image.Digest()
-		So(err, ShouldBeNil)
+		manifestDigest := image.Digest()
 
 		Convey("cosignDir is not set", func() {
 			_, _, _, err = signatures.VerifySignature("cosign", []byte(""), "", manifestDigest, manifestContent, repo)
@@ -300,8 +298,7 @@ func TestVerifySignatures(t *testing.T) {
 		manifestContent, err := json.Marshal(image.Manifest)
 		So(err, ShouldBeNil)
 
-		manifestDigest, err := image.Digest()
-		So(err, ShouldBeNil)
+		manifestDigest := image.Digest()
 
 		Convey("notationDir is not set", func() {
 			_, _, _, err = signatures.VerifySignature("notation", []byte("signature"), "", manifestDigest, manifestContent, repo)

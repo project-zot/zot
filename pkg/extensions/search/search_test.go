@@ -1112,8 +1112,7 @@ func TestGetReferrersGQL(t *testing.T) {
 
 		targetImg, err := GetRandomImage("")
 		So(err, ShouldBeNil)
-		targetDigest, err := targetImg.Digest()
-		So(err, ShouldBeNil)
+		targetDigest := targetImg.Digest()
 
 		err = UploadImage(targetImg, baseURL, "repo")
 		So(err, ShouldBeNil)
@@ -1128,8 +1127,7 @@ func TestGetReferrersGQL(t *testing.T) {
 			Digest:    targetDigest,
 		}
 
-		indexReferrerDigest, err := indexReferrer.Digest()
-		So(err, ShouldBeNil)
+		indexReferrerDigest := indexReferrer.Digest()
 
 		err = UploadMultiarchImage(indexReferrer, baseURL, "repo")
 		So(err, ShouldBeNil)
@@ -1545,8 +1543,7 @@ func TestExpandedRepoInfo(t *testing.T) {
 
 		image, err := GetRandomImage(test)
 		So(err, ShouldBeNil)
-		manifestDigest, err := image.Digest()
-		So(err, ShouldBeNil)
+		manifestDigest := image.Digest()
 
 		err = UploadImage(image, baseURL, "repo")
 		So(err, ShouldBeNil)
@@ -1713,7 +1710,7 @@ func TestExpandedRepoInfo(t *testing.T) {
 		})
 		So(err, ShouldBeNil)
 
-		multiImage1 := GetMultiarchImageForImages("1.0.0", []Image{indexSubImage11, indexSubImage12})
+		multiImage1 := GetMultiarchImageForImages([]Image{indexSubImage11, indexSubImage12})
 
 		indexSubImage21, err := GetImageWithConfig(ispec.Image{
 			Platform: ispec.Platform{
@@ -1739,15 +1736,13 @@ func TestExpandedRepoInfo(t *testing.T) {
 		})
 		So(err, ShouldBeNil)
 
-		multiImage2 := GetMultiarchImageForImages("2.0.0",
-			[]Image{indexSubImage21, indexSubImage22, indexSubImage23},
-		)
+		multiImage2 := GetMultiarchImageForImages([]Image{indexSubImage21, indexSubImage22, indexSubImage23})
 
 		// ------- Write test Images
-		err = WriteMultiArchImageToFileSystem(multiImage1, "repo", storeController)
+		err = WriteMultiArchImageToFileSystem(multiImage1, "repo", "1.0.0", storeController)
 		So(err, ShouldBeNil)
 
-		err = WriteMultiArchImageToFileSystem(multiImage2, "repo", storeController)
+		err = WriteMultiArchImageToFileSystem(multiImage2, "repo", "2.0.0", storeController)
 		So(err, ShouldBeNil)
 		// ------- Start Server /tmp/TestExpandedRepoInfo4021254039/005
 
@@ -4845,11 +4840,11 @@ func RunMetaDBIndexTests(baseURL, port string) {
 			})
 		So(err, ShouldBeNil)
 
-		multiImage := GetMultiarchImageForImages("latest", []Image{
+		multiImage := GetMultiarchImageForImages([]Image{
 			imageAMD64,
 			imageSomeArch,
 		})
-		err = UploadMultiarchImage(multiImage, baseURL, "test-repo")
+		err = UploadMultiarchImageWithRef(multiImage, baseURL, "test-repo", "latest")
 		So(err, ShouldBeNil)
 		// ---------------- BASE IMAGE -------------------
 
@@ -4868,11 +4863,9 @@ func RunMetaDBIndexTests(baseURL, port string) {
 		)
 		So(err, ShouldBeNil)
 
-		multiImage = GetMultiarchImageForImages("index-one-arch-same-layers", []Image{
-			image1, image2,
-		})
+		multiImage = GetMultiarchImageForImages([]Image{image1, image2})
 
-		err = UploadMultiarchImage(multiImage, baseURL, "index-one-arch-same-layers")
+		err = UploadMultiarchImageWithRef(multiImage, baseURL, "index-one-arch-same-layers", "index-one-arch-same-layers")
 		So(err, ShouldBeNil)
 		//  ---------------- SAME LAYERS -------------------
 
@@ -4891,10 +4884,9 @@ func RunMetaDBIndexTests(baseURL, port string) {
 			[][]byte{imageAMD64.Layers[0]},
 		)
 		So(err, ShouldBeNil)
-		multiImage = GetMultiarchImageForImages("index-one-arch-less-layers", []Image{
-			image1, image2,
-		})
-		err = UploadMultiarchImage(multiImage, baseURL, "index-one-arch-less-layers")
+		multiImage = GetMultiarchImageForImages([]Image{image1, image2})
+
+		err = UploadMultiarchImageWithRef(multiImage, baseURL, "index-one-arch-less-layers", "index-one-arch-less-layers")
 		So(err, ShouldBeNil)
 		//  ---------------- LESS LAYERS -------------------
 
@@ -4915,10 +4907,9 @@ func RunMetaDBIndexTests(baseURL, port string) {
 			[][]byte{auxLayer},
 		)
 		So(err, ShouldBeNil)
-		multiImage = GetMultiarchImageForImages("index-one-arch-less-layers-false", []Image{
-			image1, image2,
-		})
-		err = UploadMultiarchImage(multiImage, baseURL, "index-one-arch-less-layers-false")
+		multiImage = GetMultiarchImageForImages([]Image{image1, image2})
+		err = UploadMultiarchImageWithRef(multiImage, baseURL, "index-one-arch-less-layers-false",
+			"index-one-arch-less-layers-false")
 		So(err, ShouldBeNil)
 		//  ---------------- LESS LAYERS FALSE -------------------
 
@@ -4937,11 +4928,9 @@ func RunMetaDBIndexTests(baseURL, port string) {
 			append(imageAMD64.Layers, []byte{1, 3, 55}),
 		)
 		So(err, ShouldBeNil)
-		multiImage = GetMultiarchImageForImages("index-one-arch-more-layers", []Image{
-			image1, image2,
-		})
+		multiImage = GetMultiarchImageForImages([]Image{image1, image2})
 
-		err = UploadMultiarchImage(multiImage, baseURL, "index-one-arch-more-layers")
+		err = UploadMultiarchImageWithRef(multiImage, baseURL, "index-one-arch-more-layers", "index-one-arch-more-layers")
 		So(err, ShouldBeNil)
 		//  ---------------- MORE LAYERS -------------------
 
@@ -4988,8 +4977,7 @@ func RunMetaDBIndexTests(baseURL, port string) {
 			})
 		So(err, ShouldBeNil)
 
-		baseLinuxAMD64Digest, err := imageAMD64.Digest()
-		So(err, ShouldBeNil)
+		baseLinuxAMD64Digest := imageAMD64.Digest()
 
 		imageSomeArch, err := GetImageWithComponents(
 			ispec.Image{
@@ -5003,14 +4991,10 @@ func RunMetaDBIndexTests(baseURL, port string) {
 			})
 		So(err, ShouldBeNil)
 
-		baseLinuxSomeArchDigest, err := imageSomeArch.Digest()
-		So(err, ShouldBeNil)
+		baseLinuxSomeArchDigest := imageSomeArch.Digest()
 
-		multiImage := GetMultiarchImageForImages("index", []Image{
-			imageAMD64,
-			imageSomeArch,
-		})
-		err = UploadMultiarchImage(multiImage, baseURL, "test-repo")
+		multiImage := GetMultiarchImageForImages([]Image{imageAMD64, imageSomeArch})
+		err = UploadMultiarchImageWithRef(multiImage, baseURL, "test-repo", "index")
 		So(err, ShouldBeNil)
 		// ---------------- BASE IMAGE FOR LINUX AMD64 -------------------
 
@@ -5105,11 +5089,10 @@ func RunMetaDBIndexTests(baseURL, port string) {
 			})
 		So(err, ShouldBeNil)
 
-		multiImage := GetMultiarchImageForImages("latest", []Image{
-			imageAMD64,
-			imageSomeArch,
+		multiImage := GetMultiarchImageForImages([]Image{
+			imageAMD64, imageSomeArch,
 		})
-		err = UploadMultiarchImage(multiImage, baseURL, "test-repo")
+		err = UploadMultiarchImageWithRef(multiImage, baseURL, "test-repo", "latest")
 		So(err, ShouldBeNil)
 		// ---------------- BASE IMAGE -------------------
 
@@ -5127,11 +5110,11 @@ func RunMetaDBIndexTests(baseURL, port string) {
 			imageAMD64.Layers,
 		)
 		So(err, ShouldBeNil)
-		multiImage = GetMultiarchImageForImages("index-one-arch-same-layers", []Image{
+
+		multiImage = GetMultiarchImageForImages([]Image{
 			image1, image2,
 		})
-
-		err = UploadMultiarchImage(multiImage, baseURL, "index-one-arch-same-layers")
+		err = UploadMultiarchImageWithRef(multiImage, baseURL, "index-one-arch-same-layers", "index-one-arch-same-layers")
 		So(err, ShouldBeNil)
 		//  ---------------- SAME LAYERS -------------------
 
@@ -5150,10 +5133,10 @@ func RunMetaDBIndexTests(baseURL, port string) {
 			[][]byte{imageAMD64.Layers[0]},
 		)
 		So(err, ShouldBeNil)
-		multiImage = GetMultiarchImageForImages("index-one-arch-less-layers", []Image{
+		multiImage = GetMultiarchImageForImages([]Image{
 			image1, image2,
 		})
-		err = UploadMultiarchImage(multiImage, baseURL, "index-one-arch-less-layers")
+		err = UploadMultiarchImageWithRef(multiImage, baseURL, "index-one-arch-less-layers", "index-one-arch-less-layers")
 		So(err, ShouldBeNil)
 		//  ---------------- LESS LAYERS -------------------
 
@@ -5172,10 +5155,11 @@ func RunMetaDBIndexTests(baseURL, port string) {
 			[][]byte{{99, 100, 102}},
 		)
 		So(err, ShouldBeNil)
-		multiImage = GetMultiarchImageForImages("index-one-arch-less-layers-false", []Image{
+		multiImage = GetMultiarchImageForImages([]Image{
 			image1, image2,
 		})
-		err = UploadMultiarchImage(multiImage, baseURL, "index-one-arch-less-layers-false")
+		err = UploadMultiarchImageWithRef(multiImage, baseURL, "index-one-arch-less-layers-false",
+			"index-one-arch-less-layers-false")
 		So(err, ShouldBeNil)
 		//  ---------------- LESS LAYERS FALSE -------------------
 
@@ -5198,12 +5182,11 @@ func RunMetaDBIndexTests(baseURL, port string) {
 			},
 		)
 		So(err, ShouldBeNil)
-		multiImage = GetMultiarchImageForImages("index-one-arch-more-layers", []Image{
-			image1,
-			image2,
-		})
 
-		err = UploadMultiarchImage(multiImage, baseURL, "index-one-arch-more-layers")
+		multiImage = GetMultiarchImageForImages([]Image{
+			image1, image2,
+		})
+		err = UploadMultiarchImageWithRef(multiImage, baseURL, "index-one-arch-more-layers", "index-one-arch-more-layers")
 		So(err, ShouldBeNil)
 		//  ---------------- MORE LAYERS -------------------
 
@@ -5250,8 +5233,7 @@ func RunMetaDBIndexTests(baseURL, port string) {
 			})
 		So(err, ShouldBeNil)
 
-		baseLinuxAMD64Digest, err := imageAMD64.Digest()
-		So(err, ShouldBeNil)
+		baseLinuxAMD64Digest := imageAMD64.Digest()
 
 		imageSomeArch, err := GetImageWithComponents(
 			ispec.Image{
@@ -5265,14 +5247,12 @@ func RunMetaDBIndexTests(baseURL, port string) {
 			})
 		So(err, ShouldBeNil)
 
-		baseLinuxSomeArchDigest, err := imageSomeArch.Digest()
-		So(err, ShouldBeNil)
+		baseLinuxSomeArchDigest := imageSomeArch.Digest()
 
-		multiImage := GetMultiarchImageForImages("index", []Image{
-			imageAMD64,
-			imageSomeArch,
+		multiImage := GetMultiarchImageForImages([]Image{
+			imageAMD64, imageSomeArch,
 		})
-		err = UploadMultiarchImage(multiImage, baseURL, "test-repo")
+		err = UploadMultiarchImageWithRef(multiImage, baseURL, "test-repo", "index")
 		So(err, ShouldBeNil)
 		// ---------------- BASE IMAGE FOR LINUX AMD64 -------------------
 
@@ -5707,8 +5687,7 @@ func TestMetaDBWhenDeletingImages(t *testing.T) {
 		})
 
 		Convey("Delete a referrer", func() {
-			referredImageDigest, err := image1.Digest()
-			So(err, ShouldBeNil)
+			referredImageDigest := image1.Digest()
 
 			referrerImage, err := GetImageWithSubject(referredImageDigest, ispec.MediaTypeImageManifest)
 			So(err, ShouldBeNil)
@@ -6192,8 +6171,7 @@ func TestImageSummary(t *testing.T) {
 		So(err, ShouldBeNil)
 		image.Reference = tagTarget
 
-		manifestDigest, err := image.Digest()
-		So(err, ShouldBeNil)
+		manifestDigest := image.Digest()
 
 		err = UploadImage(image, baseURL, repoName)
 		So(err, ShouldBeNil)
@@ -6208,8 +6186,7 @@ func TestImageSummary(t *testing.T) {
 		}
 		referrerImage.Manifest.Config.MediaType = "application/test.artifact.type"
 		referrerImage.Manifest.Annotations = map[string]string{"testAnnotationKey": "testAnnotationValue"}
-		referrerManifestDigest, err := referrerImage.Digest()
-		So(err, ShouldBeNil)
+		referrerManifestDigest := referrerImage.Digest()
 		referrerImage.Reference = referrerManifestDigest.String()
 
 		err = UploadImage(referrerImage, baseURL, repoName)
@@ -6515,8 +6492,7 @@ func TestImageSummary(t *testing.T) {
 		So(err, ShouldBeNil)
 		img1.Manifest.Config = ispec.DescriptorEmptyJSON
 		img1.Manifest.ArtifactType = artType1
-		digest1, err := img1.Digest()
-		So(err, ShouldBeNil)
+		digest1 := img1.Digest()
 
 		err = UploadImage(img1, baseURL, "repo")
 		So(err, ShouldBeNil)
@@ -6524,8 +6500,7 @@ func TestImageSummary(t *testing.T) {
 		img2, err := GetRandomImage("art2")
 		So(err, ShouldBeNil)
 		img2.Manifest.Config.MediaType = artType2
-		digest2, err := img2.Digest()
-		So(err, ShouldBeNil)
+		digest2 := img2.Digest()
 
 		err = UploadImage(img2, baseURL, "repo")
 		So(err, ShouldBeNil)

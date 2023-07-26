@@ -4439,13 +4439,10 @@ func TestSyncedSignaturesMetaDB(t *testing.T) {
 		defer scm.StopServer()
 
 		// Push an image
-		destImage, err := test.GetRandomImage(tag)
+		signedImage, err := test.GetRandomImage(tag)
 		So(err, ShouldBeNil)
 
-		signedImageDigest, err := destImage.Digest()
-		So(err, ShouldBeNil)
-
-		err = test.UploadImage(destImage, srcBaseURL, repoName)
+		err = test.UploadImage(signedImage, srcBaseURL, repoName)
 		So(err, ShouldBeNil)
 
 		err = test.SignImageUsingNotary(repoName+":"+tag, srcPort)
@@ -4497,9 +4494,9 @@ func TestSyncedSignaturesMetaDB(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(repoMeta.Tags, ShouldContainKey, tag)
 		So(len(repoMeta.Tags), ShouldEqual, 1)
-		So(repoMeta.Signatures, ShouldContainKey, signedImageDigest.String())
+		So(repoMeta.Signatures, ShouldContainKey, signedImage.DigestStr())
 
-		imageSignatures := repoMeta.Signatures[signedImageDigest.String()]
+		imageSignatures := repoMeta.Signatures[signedImage.DigestStr()]
 		So(imageSignatures, ShouldContainKey, signatures.CosignSignature)
 		So(len(imageSignatures[signatures.CosignSignature]), ShouldEqual, 1)
 		So(imageSignatures, ShouldContainKey, signatures.NotationSignature)

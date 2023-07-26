@@ -105,26 +105,24 @@ func TestSearchCLI(t *testing.T) {
 			r3tag2 = "repo3tag2"
 		)
 
-		image1, err := test.GetImageWithConfig(ispec.Image{
-			Platform: ispec.Platform{
-				OS:           "Os",
-				Architecture: "Arch",
-			},
-		})
-		So(err, ShouldBeNil)
-		img1Digest, err := image1.Digest()
-		formatterDigest1 := img1Digest.Encoded()[:8]
-		So(err, ShouldBeNil)
+		image1 := test.CreateImageWith().
+			RandomLayers(1, 10).
+			ImageConfig(ispec.Image{
+				Created:  test.DefaultTimeRef(),
+				Platform: ispec.Platform{OS: "Os", Architecture: "Arch"},
+			}).
+			Build()
+		formatterDigest1 := image1.Digest().Encoded()[:8]
 
-		image2, err := test.GetRandomImage("")
-		So(err, ShouldBeNil)
-		img2Digest, err := image2.Digest()
-		formatterDigest2 := img2Digest.Encoded()[:8]
-		So(err, ShouldBeNil)
+		image2 := test.CreateImageWith().
+			RandomLayers(1, 10).
+			DefaultConfig().
+			Build()
+		formatterDigest2 := image2.Digest().Encoded()[:8]
 
 		// repo1
 		image1.Reference = r1tag1
-		err = test.UploadImage(image1, baseURL, repo1)
+		err := test.UploadImage(image1, baseURL, repo1)
 		So(err, ShouldBeNil)
 
 		image2.Reference = r1tag2
@@ -168,7 +166,7 @@ func TestSearchCLI(t *testing.T) {
 		space := regexp.MustCompile(`\s+`)
 		str := strings.TrimSpace(space.ReplaceAllString(buff.String(), " "))
 		So(str, ShouldContainSubstring, "NAME SIZE LAST UPDATED DOWNLOADS STARS PLATFORMS")
-		So(str, ShouldContainSubstring, "repo/test/alpine 1.1kB 0001-01-01 00:00:00 +0000 UTC 0 0")
+		So(str, ShouldContainSubstring, "repo/test/alpine 1.1kB 2010-01-01 01:01:01 +0000 UTC 0 0")
 		So(str, ShouldContainSubstring, "Os/Arch")
 		So(str, ShouldContainSubstring, "linux/amd64")
 
@@ -193,8 +191,8 @@ func TestSearchCLI(t *testing.T) {
 		So(err, ShouldBeNil)
 		str = strings.TrimSpace(space.ReplaceAllString(buff.String(), " "))
 		So(str, ShouldContainSubstring, "REPOSITORY TAG OS/ARCH DIGEST SIGNED SIZE")
-		So(str, ShouldContainSubstring, "repo/alpine repo2tag1 Os/Arch "+formatterDigest1+" false 577B")
-		So(str, ShouldContainSubstring, "repo/alpine repo2tag2 linux/amd64 "+formatterDigest2+" false 524B")
+		So(str, ShouldContainSubstring, "repo/alpine repo2tag1 Os/Arch "+formatterDigest1+" false 525B")
+		So(str, ShouldContainSubstring, "repo/alpine repo2tag2 linux/amd64 "+formatterDigest2+" false 552B")
 
 		fmt.Println("\n", buff.String())
 	})
@@ -233,15 +231,13 @@ func TestFormatsSearchCLI(t *testing.T) {
 			r3tag2 = "repo3tag2"
 		)
 
-		image1, err := test.GetRandomImage("")
-		So(err, ShouldBeNil)
+		image1 := test.CreateImageWith().RandomLayers(1, 10).DefaultConfig().Build()
 
-		image2, err := test.GetRandomImage("")
-		So(err, ShouldBeNil)
+		image2 := test.CreateImageWith().RandomLayers(1, 10).DefaultConfig().Build()
 
 		// repo1
 		image1.Reference = r1tag1
-		err = test.UploadImage(image1, baseURL, repo1)
+		err := test.UploadImage(image1, baseURL, repo1)
 		So(err, ShouldBeNil)
 
 		image2.Reference = r1tag2

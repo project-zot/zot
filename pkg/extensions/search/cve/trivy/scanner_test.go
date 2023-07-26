@@ -46,21 +46,13 @@ func TestScanningByDigest(t *testing.T) {
 		cm.StartAndWait(port)
 		defer cm.StopServer()
 		// push index with 2 manifests: one with vulns and one without
-		vulnImage, err := test.GetVulnImage("")
-		So(err, ShouldBeNil)
-		vulnDigest, err := vulnImage.Digest()
-		So(err, ShouldBeNil)
+		vulnImage := test.CreateVulnerableImage()
 
-		simpleImage, err := test.GetRandomImage("")
-		So(err, ShouldBeNil)
-		simpleDigest, err := simpleImage.Digest()
-		So(err, ShouldBeNil)
+		simpleImage := test.CreateRandomImage()
 
-		multiArch := test.GetMultiarchImageForImages("multi-arch-tag", []test.Image{simpleImage, vulnImage})
-		multiArchDigest, err := multiArch.Digest()
-		So(err, ShouldBeNil)
+		multiArch := test.GetMultiarchImageForImages([]test.Image{simpleImage, vulnImage})
 
-		err = test.UploadMultiarchImage(multiArch, baseURL, "multi-arch")
+		err := test.UploadMultiarchImageWithRef(multiArch, baseURL, "multi-arch", "multi-arch-tag")
 		So(err, ShouldBeNil)
 
 		// scan
@@ -69,17 +61,17 @@ func TestScanningByDigest(t *testing.T) {
 		err = scanner.UpdateDB()
 		So(err, ShouldBeNil)
 
-		cveMap, err := scanner.ScanImage("multi-arch@" + vulnDigest.String())
+		cveMap, err := scanner.ScanImage("multi-arch@" + vulnImage.DigestStr())
 		So(err, ShouldBeNil)
 		So(cveMap, ShouldContainKey, test.Vulnerability1ID)
 		So(cveMap, ShouldContainKey, test.Vulnerability2ID)
 		So(cveMap, ShouldContainKey, test.Vulnerability3ID)
 
-		cveMap, err = scanner.ScanImage("multi-arch@" + simpleDigest.String())
+		cveMap, err = scanner.ScanImage("multi-arch@" + simpleImage.DigestStr())
 		So(err, ShouldBeNil)
 		So(cveMap, ShouldBeEmpty)
 
-		cveMap, err = scanner.ScanImage("multi-arch@" + multiArchDigest.String())
+		cveMap, err = scanner.ScanImage("multi-arch@" + multiArch.DigestStr())
 		So(err, ShouldBeNil)
 		So(cveMap, ShouldContainKey, test.Vulnerability1ID)
 		So(cveMap, ShouldContainKey, test.Vulnerability2ID)
@@ -120,7 +112,7 @@ func TestScannerErrors(t *testing.T) {
 
 func TestVulnerableLayer(t *testing.T) {
 	Convey("Vulnerable layer", t, func() {
-		vulnerableLayer, err := test.GetLayerWithVulnerability(1)
+		vulnerableLayer, err := test.GetLayerWithVulnerability()
 		So(err, ShouldBeNil)
 
 		created, err := time.Parse(time.RFC3339, "2023-03-29T18:19:24Z")
@@ -142,15 +134,10 @@ func TestVulnerableLayer(t *testing.T) {
 			},
 		}
 
-		img, err := test.GetImageWithComponents(
-			config,
-			[][]byte{
-				vulnerableLayer,
-			},
-		)
-		So(err, ShouldBeNil)
-		imgDigest, err := img.Digest()
-		So(err, ShouldBeNil)
+		img := test.CreateImageWith().
+			LayerBlobs([][]byte{vulnerableLayer}).
+			ImageConfig(config).
+			Build()
 
 		tempDir := t.TempDir()
 
@@ -182,7 +169,7 @@ func TestVulnerableLayer(t *testing.T) {
 		err = scanner.UpdateDB()
 		So(err, ShouldBeNil)
 
-		cveMap, err := scanner.ScanImage("repo@" + imgDigest.String())
+		cveMap, err := scanner.ScanImage("repo@" + img.DigestStr())
 		So(err, ShouldBeNil)
 		t.Logf("cveMap: %v", cveMap)
 		// As of July 15 2023 there are 3 CVEs: CVE-2023-1255, CVE-2023-2650, CVE-2023-2975
