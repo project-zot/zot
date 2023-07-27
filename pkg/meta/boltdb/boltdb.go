@@ -216,7 +216,7 @@ func (bdw *BoltDB) GetManifestMeta(repo string, manifestDigest godigest.Digest) 
 }
 
 func (bdw *BoltDB) SetIndexData(indexDigest godigest.Digest, indexMetadata mTypes.IndexData) error {
-	// we make the assumption that the oci layout is consistent and all manifests refferenced inside the
+	// we make the assumption that the oci layout is consistent and all manifests referenced inside the
 	// index are present
 	err := bdw.DB.Update(func(tx *bbolt.Tx) error {
 		buck := tx.Bucket([]byte(IndexDataBucket))
@@ -297,17 +297,17 @@ func (bdw BoltDB) SetReferrer(repo string, referredDigest godigest.Digest, refer
 			return err
 		}
 
-		refferers := repoMeta.Referrers[referredDigest.String()]
+		referrers := repoMeta.Referrers[referredDigest.String()]
 
-		for i := range refferers {
-			if refferers[i].Digest == referrer.Digest {
+		for i := range referrers {
+			if referrers[i].Digest == referrer.Digest {
 				return nil
 			}
 		}
 
-		refferers = append(refferers, referrer)
+		referrers = append(referrers, referrer)
 
-		repoMeta.Referrers[referredDigest.String()] = refferers
+		repoMeta.Referrers[referredDigest.String()] = referrers
 
 		repoMetaBlob, err = json.Marshal(repoMeta)
 		if err != nil {

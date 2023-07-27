@@ -46,7 +46,7 @@ func TestReferrersSearchers(t *testing.T) {
 			So(ok, ShouldBeFalse)
 		})
 
-		Convey("GetRepoRefference fails", func() {
+		Convey("GetRepoReference fails", func() {
 			conf := searchConfig{
 				params: map[string]*string{
 					"subject": ref("bad-subject"),
@@ -119,7 +119,7 @@ func TestReferrersSearchers(t *testing.T) {
 			So(ok, ShouldBeFalse)
 		})
 
-		Convey("GetRepoRefference fails", func() {
+		Convey("GetRepoReference fails", func() {
 			conf := searchConfig{
 				params: map[string]*string{
 					"subject": ref("bad-subject"),

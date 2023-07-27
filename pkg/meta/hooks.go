@@ -123,8 +123,8 @@ func OnDeleteManifest(repo, reference, mediaType string, digest godigest.Digest,
 			manageRepoMetaSuccessfully = false
 		}
 
-		if refferredDigest, hasSubject := common.GetReferredSubject(manifestBlob); hasSubject {
-			err := metaDB.DeleteReferrer(repo, refferredDigest, digest)
+		if referredDigest, hasSubject := common.GetReferredSubject(manifestBlob); hasSubject {
+			err := metaDB.DeleteReferrer(repo, referredDigest, digest)
 			if err != nil {
 				log.Error().Err(err).Msg("metadb: error while deleting referrer")
 

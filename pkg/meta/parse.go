@@ -384,9 +384,9 @@ func SetImageMetaFromInput(repo, reference, mediaType string, digest godigest.Di
 		}
 	}
 
-	refferredDigest, referrerInfo, hasSubject, err := GetReferredInfo(descriptorBlob, digest.String(), mediaType)
+	referredDigest, referrerInfo, hasSubject, err := GetReferredInfo(descriptorBlob, digest.String(), mediaType)
 	if hasSubject && err == nil {
-		err := metaDB.SetReferrer(repo, refferredDigest, referrerInfo)
+		err := metaDB.SetReferrer(repo, referredDigest, referrerInfo)
 		if err != nil {
 			log.Error().Err(err).Msg("metadb: error while settingg referrer")
 

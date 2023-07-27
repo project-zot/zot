@@ -328,17 +328,17 @@ func (dwr DynamoDB) SetReferrer(repo string, referredDigest godigest.Digest, ref
 		}
 	}
 
-	refferers := repoMeta.Referrers[referredDigest.String()]
+	referers := repoMeta.Referrers[referredDigest.String()]
 
-	for i := range refferers {
-		if refferers[i].Digest == referrer.Digest {
+	for i := range referers {
+		if referers[i].Digest == referrer.Digest {
 			return nil
 		}
 	}
 
-	refferers = append(refferers, referrer)
+	referers = append(referers, referrer)
 
-	repoMeta.Referrers[referredDigest.String()] = refferers
+	repoMeta.Referrers[referredDigest.String()] = referers
 
 	return dwr.SetRepoMeta(repo, repoMeta)
 }
