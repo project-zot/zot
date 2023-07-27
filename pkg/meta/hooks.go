@@ -3,6 +3,7 @@ package meta
 import (
 	godigest "github.com/opencontainers/go-digest"
 
+	zerr "zotregistry.io/zot/errors"
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/meta/common"
 	mTypes "zotregistry.io/zot/pkg/meta/types"
@@ -34,11 +35,11 @@ func OnUpdateManifest(repo, reference, mediaType string, digest godigest.Digest,
 	metadataSuccessfullySet := true
 
 	if isSignature {
-		layersInfo, errGetLayers := GetSignatureLayersInfo(repo, reference, digest.String(), signatureType, body,
+		layersInfo, err := GetSignatureLayersInfo(repo, reference, digest.String(), signatureType, body,
 			imgStore, log)
-		if errGetLayers != nil {
+		if err != nil {
+			log.Error().Err(err).Msg("metadb: error getting layers")
 			metadataSuccessfullySet = false
-			err = errGetLayers
 		} else {
 			err = metaDB.AddManifestSignature(repo, signedManifestDigest, mTypes.SignatureMetadata{
 				SignatureType:   signatureType,
@@ -66,7 +67,7 @@ func OnUpdateManifest(repo, reference, mediaType string, digest godigest.Digest,
 	}
 
 	if !metadataSuccessfullySet {
-		log.Info().Str("tag", reference).Str("repository", repo).Msg("uploding image meta was unsuccessful for tag in repo")
+		log.Info().Str("tag", reference).Str("repository", repo).Msg("uploading image meta was unsuccessful for tag in repo")
 
 		if err := imgStore.DeleteImageManifest(repo, reference, false); err != nil {
 			log.Error().Err(err).Str("reference", reference).Str("repository", repo).
@@ -75,7 +76,7 @@ func OnUpdateManifest(repo, reference, mediaType string, digest godigest.Digest,
 			return err
 		}
 
-		return err
+		return zerr.ErrCouldNotPersistData
 	}
 
 	return nil

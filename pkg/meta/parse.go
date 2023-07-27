@@ -332,9 +332,12 @@ func NewManifestData(repoName string, manifestBlob []byte, imageStore storageTyp
 		return mTypes.ManifestData{}, err
 	}
 
-	err = json.Unmarshal(configBlob, &configContent)
-	if err != nil {
-		return mTypes.ManifestData{}, err
+	// with artifacts support, config can be used to store the actual artifact so wont unmarshal
+	if manifestContent.Config.MediaType == ispec.MediaTypeImageConfig {
+		err = json.Unmarshal(configBlob, &configContent)
+		if err != nil {
+			return mTypes.ManifestData{}, err
+		}
 	}
 
 	manifestData.ManifestBlob = manifestBlob
