@@ -8,13 +8,11 @@ import (
 	"time"
 
 	"github.com/gorilla/mux"
-	"github.com/gorilla/sessions"
 	jsoniter "github.com/json-iterator/go"
 
 	"zotregistry.io/zot/pkg/api/config"
 	"zotregistry.io/zot/pkg/api/constants"
 	apiErr "zotregistry.io/zot/pkg/api/errors"
-	"zotregistry.io/zot/pkg/log"
 )
 
 func AllowedMethods(methods ...string) []string {
@@ -95,40 +93,4 @@ func QueryHasParams(values url.Values, params []string) bool {
 	}
 
 	return true
-}
-
-/*
-GetAuthUserFromRequestSession returns identity
-and auth status if on the request's cookie session is a logged in user.
-*/
-func GetAuthUserFromRequestSession(cookieStore sessions.Store, request *http.Request, log log.Logger,
-) (string, bool) {
-	session, err := cookieStore.Get(request, "session")
-	if err != nil {
-		log.Error().Err(err).Msg("can not decode existing session")
-		// expired cookie, no need to return err
-		return "", false
-	}
-
-	// at this point we should have a session set on cookie.
-	// if created in the earlier Get() call then user is not logged in with sessions.
-	if session.IsNew {
-		return "", false
-	}
-
-	authenticated := session.Values["authStatus"]
-	if authenticated != true {
-		log.Error().Msg("can not get `user` session value")
-
-		return "", false
-	}
-
-	identity, ok := session.Values["user"].(string)
-	if !ok {
-		log.Error().Msg("can not get `user` session value")
-
-		return "", false
-	}
-
-	return identity, true
 }

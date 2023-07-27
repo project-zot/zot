@@ -62,17 +62,10 @@ func AuthHandler(ctlr *Controller) mux.MiddlewareFunc {
 	return authnMiddleware.TryAuthnHandlers(ctlr)
 }
 
-func (amw *AuthnMiddleware) sessionAuthn(ctlr *Controller, next http.Handler, response http.ResponseWriter,
-	request *http.Request, delay int,
-) {
-	clientHeader := request.Header.Get(constants.SessionClientHeaderName)
-	if clientHeader != constants.SessionClientHeaderValue {
-		authFail(response, request, ctlr.Config.HTTP.Realm, delay)
-
-		return
-	}
-
-	identity, ok := common.GetAuthUserFromRequestSession(ctlr.CookieStore, request, ctlr.Log)
+func (amw *AuthnMiddleware) sessionAuthn(ctlr *Controller, response http.ResponseWriter,
+	request *http.Request,
+) (bool, error) {
+	identity, ok := GetAuthUserFromRequestSession(ctlr.CookieStore, request, ctlr.Log)
 	if !ok {
 		// let the client know that this session is invalid/expired
 		cookie := &http.Cookie{
@@ -86,67 +79,34 @@ func (amw *AuthnMiddleware) sessionAuthn(ctlr *Controller, next http.Handler, re
 
 		http.SetCookie(response, cookie)
 
-		authFail(response, request, ctlr.Config.HTTP.Realm, delay)
-
-		return
+		return false, nil
 	}
 
 	ctx := getReqContextWithAuthorization(identity, []string{}, request)
 
 	groups, err := ctlr.MetaDB.GetUserGroups(ctx)
 	if err != nil {
-		if errors.Is(err, zerr.ErrUserDataNotFound) {
-			ctlr.Log.Err(err).Str("identity", identity).Msg("can not find user profile in DB")
-
-			authFail(response, request, ctlr.Config.HTTP.Realm, delay)
-
-			return
-		}
-
 		ctlr.Log.Err(err).Str("identity", identity).Msg("can not get user profile in DB")
 
-		response.WriteHeader(http.StatusInternalServerError)
-
-		return
+		return false, err
 	}
 
 	ctx = getReqContextWithAuthorization(identity, groups, request)
+	*request = *request.WithContext(ctx)
 
-	next.ServeHTTP(response, request.WithContext(ctx))
+	return true, nil
 }
 
 func (amw *AuthnMiddleware) basicAuthn(ctlr *Controller, response http.ResponseWriter,
 	request *http.Request,
-) (bool, http.ResponseWriter, *http.Request, error) {
+) (bool, error) {
 	cookieStore := ctlr.CookieStore
-
-	// we want to bypass auth for mgmt route
-	isMgmtRequested := request.RequestURI == constants.FullMgmtPrefix
-
-	if request.Header.Get("Authorization") == "" {
-		if ctlr.Config.HTTP.AccessControl.AnonymousPolicyExists() || isMgmtRequested {
-			ctx := getReqContextWithAuthorization("", []string{}, request)
-			// Process request
-
-			return true, response, request.WithContext(ctx), nil
-		}
-	}
 
 	identity, passphrase, err := getUsernamePasswordBasicAuth(request)
 	if err != nil {
 		ctlr.Log.Error().Err(err).Msg("failed to parse authorization header")
 
-		return false, nil, nil, nil
-	}
-
-	// some client tools might send Authorization: Basic Og== (decoded into ":")
-	// empty username and password
-	if identity == "" && passphrase == "" {
-		if ctlr.Config.HTTP.AccessControl.AnonymousPolicyExists() || isMgmtRequested {
-			ctx := getReqContextWithAuthorization("", []string{}, request)
-
-			return true, response, request.WithContext(ctx), nil
-		}
+		return false, nil
 	}
 
 	passphraseHash, ok := amw.credMap[identity]
@@ -162,21 +122,22 @@ func (amw *AuthnMiddleware) basicAuthn(ctlr *Controller, response http.ResponseW
 			}
 
 			ctx := getReqContextWithAuthorization(identity, groups, request)
+			*request = *request.WithContext(ctx)
 
 			// saved logged session
 			if err := saveUserLoggedSession(cookieStore, response, request, identity, ctlr.Log); err != nil {
-				return false, response, request, err
+				return false, err
 			}
 
 			if err := ctlr.MetaDB.SetUserGroups(ctx, groups); err != nil {
 				ctlr.Log.Error().Err(err).Str("identity", identity).Msg("couldn't update user profile")
 
-				return false, response, request, err
+				return false, err
 			}
 
 			ctlr.Log.Info().Str("identity", identity).Msgf("user profile successfully set")
 
-			return true, response, request.WithContext(ctx), nil
+			return true, nil
 		}
 	}
 
@@ -195,29 +156,30 @@ func (amw *AuthnMiddleware) basicAuthn(ctlr *Controller, response http.ResponseW
 			groups = append(groups, ldapgroups...)
 
 			ctx := getReqContextWithAuthorization(identity, groups, request)
+			*request = *request.WithContext(ctx)
 
 			if err := saveUserLoggedSession(cookieStore, response, request, identity, ctlr.Log); err != nil {
-				return false, response, request, err
+				return false, err
 			}
 
 			if err := ctlr.MetaDB.SetUserGroups(ctx, groups); err != nil {
 				ctlr.Log.Error().Err(err).Str("identity", identity).Msg("couldn't update user profile")
 
-				return false, response, request, err
+				return false, err
 			}
 
-			return true, response, request.WithContext(ctx), nil
+			return true, nil
 		}
 	}
 
 	// last try API keys
-	if isAPIKeyEnabled(ctlr.Config) {
+	if ctlr.Config.IsAPIKeyEnabled() {
 		apiKey := passphrase
 
 		if !strings.HasPrefix(apiKey, constants.APIKeysPrefix) {
 			ctlr.Log.Error().Msg("api token has invalid format")
 
-			return false, nil, nil, nil
+			return false, nil
 		}
 
 		trimmedAPIKey := strings.TrimPrefix(apiKey, constants.APIKeysPrefix)
@@ -229,12 +191,12 @@ func (amw *AuthnMiddleware) basicAuthn(ctlr *Controller, response http.ResponseW
 			if errors.Is(err, zerr.ErrUserAPIKeyNotFound) {
 				ctlr.Log.Info().Err(err).Msgf("can not find any user info for hashed key %s in DB", hashedKey)
 
-				return false, nil, nil, nil
+				return false, nil
 			}
 
 			ctlr.Log.Error().Err(err).Msgf("can not get user info for hashed key %s in DB", hashedKey)
 
-			return false, nil, nil, err
+			return false, err
 		}
 
 		if storedIdentity == identity {
@@ -244,30 +206,29 @@ func (amw *AuthnMiddleware) basicAuthn(ctlr *Controller, response http.ResponseW
 			if err != nil {
 				ctlr.Log.Err(err).Str("identity", identity).Msg("can not update user profile in DB")
 
-				return false, nil, nil, err
+				return false, err
 			}
 
 			groups, err := ctlr.MetaDB.GetUserGroups(ctx)
 			if err != nil {
 				ctlr.Log.Err(err).Str("identity", identity).Msg("can not get user's groups in DB")
 
-				return false, nil, nil, err
+				return false, err
 			}
 
 			ctx = getReqContextWithAuthorization(identity, groups, request)
+			*request = *request.WithContext(ctx)
 
-			return true, response, request.WithContext(ctx), nil
+			return true, nil
 		}
 	}
 
-	return false, nil, nil, nil
+	return false, nil
 }
 
 func (amw *AuthnMiddleware) TryAuthnHandlers(ctlr *Controller) mux.MiddlewareFunc { //nolint: gocyclo
 	// no password based authN, if neither LDAP nor HTTP BASIC is enabled
-	if ctlr.Config.HTTP.Auth == nil ||
-		(ctlr.Config.HTTP.Auth.HTPasswd.Path == "" && ctlr.Config.HTTP.Auth.LDAP == nil &&
-			ctlr.Config.HTTP.Auth.OpenID == nil) {
+	if !ctlr.Config.IsBasicAuthnEnabled() {
 		return noPasswdAuth(ctlr.Config)
 	}
 
@@ -308,70 +269,68 @@ func (amw *AuthnMiddleware) TryAuthnHandlers(ctlr *Controller) mux.MiddlewareFun
 	}
 
 	// ldap and htpasswd based authN
-	if ctlr.Config.HTTP.Auth != nil {
-		if ctlr.Config.HTTP.Auth.LDAP != nil {
-			ldapConfig := ctlr.Config.HTTP.Auth.LDAP
-			amw.ldapClient = &LDAPClient{
-				Host:               ldapConfig.Address,
-				Port:               ldapConfig.Port,
-				UseSSL:             !ldapConfig.Insecure,
-				SkipTLS:            !ldapConfig.StartTLS,
-				Base:               ldapConfig.BaseDN,
-				BindDN:             ldapConfig.BindDN,
-				UserGroupAttribute: ldapConfig.UserGroupAttribute, // from config
-				BindPassword:       ldapConfig.BindPassword,
-				UserFilter:         fmt.Sprintf("(%s=%%s)", ldapConfig.UserAttribute),
-				InsecureSkipVerify: ldapConfig.SkipVerify,
-				ServerName:         ldapConfig.Address,
-				Log:                ctlr.Log,
-				SubtreeSearch:      ldapConfig.SubtreeSearch,
-			}
-
-			if ctlr.Config.HTTP.Auth.LDAP.CACert != "" {
-				caCert, err := os.ReadFile(ctlr.Config.HTTP.Auth.LDAP.CACert)
-				if err != nil {
-					panic(err)
-				}
-
-				caCertPool := x509.NewCertPool()
-
-				if !caCertPool.AppendCertsFromPEM(caCert) {
-					panic(zerr.ErrBadCACert)
-				}
-
-				amw.ldapClient.ClientCAs = caCertPool
-			} else {
-				// default to system cert pool
-				caCertPool, err := x509.SystemCertPool()
-				if err != nil {
-					panic(zerr.ErrBadCACert)
-				}
-
-				amw.ldapClient.ClientCAs = caCertPool
-			}
+	if ctlr.Config.IsLdapAuthEnabled() {
+		ldapConfig := ctlr.Config.HTTP.Auth.LDAP
+		amw.ldapClient = &LDAPClient{
+			Host:               ldapConfig.Address,
+			Port:               ldapConfig.Port,
+			UseSSL:             !ldapConfig.Insecure,
+			SkipTLS:            !ldapConfig.StartTLS,
+			Base:               ldapConfig.BaseDN,
+			BindDN:             ldapConfig.BindDN,
+			UserGroupAttribute: ldapConfig.UserGroupAttribute, // from config
+			BindPassword:       ldapConfig.BindPassword,
+			UserFilter:         fmt.Sprintf("(%s=%%s)", ldapConfig.UserAttribute),
+			InsecureSkipVerify: ldapConfig.SkipVerify,
+			ServerName:         ldapConfig.Address,
+			Log:                ctlr.Log,
+			SubtreeSearch:      ldapConfig.SubtreeSearch,
 		}
 
-		if ctlr.Config.HTTP.Auth.HTPasswd.Path != "" {
-			credsFile, err := os.Open(ctlr.Config.HTTP.Auth.HTPasswd.Path)
+		if ctlr.Config.HTTP.Auth.LDAP.CACert != "" {
+			caCert, err := os.ReadFile(ctlr.Config.HTTP.Auth.LDAP.CACert)
 			if err != nil {
 				panic(err)
 			}
-			defer credsFile.Close()
 
-			scanner := bufio.NewScanner(credsFile)
+			caCertPool := x509.NewCertPool()
 
-			for scanner.Scan() {
-				line := scanner.Text()
-				if strings.Contains(line, ":") {
-					tokens := strings.Split(scanner.Text(), ":")
-					amw.credMap[tokens[0]] = tokens[1]
-				}
+			if !caCertPool.AppendCertsFromPEM(caCert) {
+				panic(zerr.ErrBadCACert)
+			}
+
+			amw.ldapClient.ClientCAs = caCertPool
+		} else {
+			// default to system cert pool
+			caCertPool, err := x509.SystemCertPool()
+			if err != nil {
+				panic(zerr.ErrBadCACert)
+			}
+
+			amw.ldapClient.ClientCAs = caCertPool
+		}
+	}
+
+	if ctlr.Config.IsHtpasswdAuthEnabled() {
+		credsFile, err := os.Open(ctlr.Config.HTTP.Auth.HTPasswd.Path)
+		if err != nil {
+			panic(err)
+		}
+		defer credsFile.Close()
+
+		scanner := bufio.NewScanner(credsFile)
+
+		for scanner.Scan() {
+			line := scanner.Text()
+			if strings.Contains(line, ":") {
+				tokens := strings.Split(scanner.Text(), ":")
+				amw.credMap[tokens[0]] = tokens[1]
 			}
 		}
 	}
 
 	// openid based authN
-	if ctlr.Config.HTTP.Auth.OpenID != nil {
+	if ctlr.Config.IsOpenIDAuthEnabled() {
 		ctlr.RelyingParties = make(map[string]rp.RelyingParty)
 
 		for provider := range ctlr.Config.HTTP.Auth.OpenID.Providers {
@@ -394,22 +353,57 @@ func (amw *AuthnMiddleware) TryAuthnHandlers(ctlr *Controller) mux.MiddlewareFun
 				return
 			}
 
-			//nolint: contextcheck
-			authenticated, cloneResp, cloneReq, err := amw.basicAuthn(ctlr, response, request)
-			if err != nil {
-				response.WriteHeader(http.StatusInternalServerError)
+			// try basic auth if authorization header is given
+			if !isAuthorizationHeaderEmpty(request) { //nolint: gocritic
+				//nolint: contextcheck
+				authenticated, err := amw.basicAuthn(ctlr, response, request)
+				if err != nil {
+					response.WriteHeader(http.StatusInternalServerError)
 
-				return
+					return
+				}
+
+				if authenticated {
+					next.ServeHTTP(response, request)
+
+					return
+				}
+			} else if hasSessionHeader(request) {
+				// try session auth
+				//nolint: contextcheck
+				authenticated, err := amw.sessionAuthn(ctlr, response, request)
+				if err != nil {
+					if errors.Is(err, zerr.ErrUserDataNotFound) {
+						ctlr.Log.Err(err).Msg("can not find user profile in DB")
+
+						authFail(response, request, ctlr.Config.HTTP.Realm, delay)
+					}
+
+					response.WriteHeader(http.StatusInternalServerError)
+
+					return
+				}
+
+				if authenticated {
+					next.ServeHTTP(response, request)
+
+					return
+				}
+			} else {
+				// try anonymous auth only if basic auth/session was not given
+				// we want to bypass auth for mgmt route
+				isMgmtRequested := request.RequestURI == constants.FullMgmtPrefix
+				if ctlr.Config.HTTP.AccessControl.AnonymousPolicyExists() || isMgmtRequested {
+					ctx := getReqContextWithAuthorization("", []string{}, request)
+					*request = *request.WithContext(ctx) //nolint:contextcheck
+
+					next.ServeHTTP(response, request)
+
+					return
+				}
 			}
 
-			if authenticated && cloneResp != nil && cloneReq != nil {
-				next.ServeHTTP(cloneResp, cloneReq)
-
-				return
-			}
-
-			//nolint: contextcheck
-			amw.sessionAuthn(ctlr, next, response, request, delay)
+			authFail(response, request, ctlr.Config.HTTP.Realm, delay)
 		})
 	}
 }
@@ -443,7 +437,7 @@ func bearerAuthHandler(ctlr *Controller) mux.MiddlewareFunc {
 
 			header := request.Header.Get("Authorization")
 
-			if (header == "" || header == "Basic Og==") && isMgmtRequested {
+			if isAuthorizationHeaderEmpty(request) && isMgmtRequested {
 				next.ServeHTTP(response, request)
 
 				return
@@ -490,8 +484,10 @@ func noPasswdAuth(config *config.Config) mux.MiddlewareFunc {
 			}
 
 			ctx := getReqContextWithAuthorization("", []string{}, request)
+			*request = *request.WithContext(ctx) //nolint:contextcheck
+
 			// Process request
-			next.ServeHTTP(response, request.WithContext(ctx)) //nolint:contextcheck
+			next.ServeHTTP(response, request)
 		})
 	}
 }
@@ -631,15 +627,6 @@ func getReqContextWithAuthorization(username string, groups []string, request *h
 	return ctx
 }
 
-func isAPIKeyEnabled(config *config.Config) bool {
-	if config.Extensions != nil && config.Extensions.APIKey != nil &&
-		*config.Extensions.APIKey.Enable {
-		return true
-	}
-
-	return false
-}
-
 func authFail(w http.ResponseWriter, r *http.Request, realm string, delay int) {
 	time.Sleep(time.Duration(delay) * time.Second)
 
@@ -656,6 +643,22 @@ func authFail(w http.ResponseWriter, r *http.Request, realm string, delay int) {
 
 	w.Header().Set("Content-Type", "application/json")
 	common.WriteJSON(w, http.StatusUnauthorized, apiErr.NewErrorList(apiErr.NewError(apiErr.UNAUTHORIZED)))
+}
+
+func isAuthorizationHeaderEmpty(request *http.Request) bool {
+	header := request.Header.Get("Authorization")
+
+	if header == "" || (strings.ToLower(header) == "basic og==") {
+		return true
+	}
+
+	return false
+}
+
+func hasSessionHeader(request *http.Request) bool {
+	clientHeader := request.Header.Get(constants.SessionClientHeaderName)
+
+	return clientHeader == constants.SessionClientHeaderValue
 }
 
 func getUsernamePasswordBasicAuth(request *http.Request) (string, string, error) {
@@ -799,4 +802,40 @@ func hashUUID(uuid string) string {
 	digester.Write([]byte(uuid))
 
 	return godigest.NewDigestFromEncoded(godigest.SHA256, fmt.Sprintf("%x", digester.Sum(nil))).Encoded()
+}
+
+/*
+GetAuthUserFromRequestSession returns identity
+and auth status if on the request's cookie session is a logged in user.
+*/
+func GetAuthUserFromRequestSession(cookieStore sessions.Store, request *http.Request, log log.Logger,
+) (string, bool) {
+	session, err := cookieStore.Get(request, "session")
+	if err != nil {
+		log.Error().Err(err).Msg("can not decode existing session")
+		// expired cookie, no need to return err
+		return "", false
+	}
+
+	// at this point we should have a session set on cookie.
+	// if created in the earlier Get() call then user is not logged in with sessions.
+	if session.IsNew {
+		return "", false
+	}
+
+	authenticated := session.Values["authStatus"]
+	if authenticated != true {
+		log.Error().Msg("can not get `user` session value")
+
+		return "", false
+	}
+
+	identity, ok := session.Values["user"].(string)
+	if !ok {
+		log.Error().Msg("can not get `user` session value")
+
+		return "", false
+	}
+
+	return identity, true
 }
