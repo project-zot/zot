@@ -480,7 +480,7 @@ func TestGetOrasAndOCIReferrers(t *testing.T) {
 	_, imgStore, _ := createObjectsStore(testDir, tdir, true)
 
 	Convey("Upload test image", t, func(c C) {
-		cfg, layers, manifest, err := test.GetImageComponents(100)
+		cfg, layers, manifest, err := test.GetImageComponents(100) //nolint:staticcheck
 		So(err, ShouldBeNil)
 
 		for _, content := range layers {

@@ -34,7 +34,7 @@ import (
 func generateTestImage(storeController storage.StoreController, image string) {
 	repoName, tag := common.GetImageDirAndTag(image)
 
-	config, layers, manifest, err := test.GetImageComponents(10)
+	config, layers, manifest, err := test.GetImageComponents(10) //nolint:staticcheck
 	So(err, ShouldBeNil)
 
 	store := storeController.GetImageStore(repoName)

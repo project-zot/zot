@@ -281,17 +281,16 @@ func TestSignature(t *testing.T) {
 		cm.StartAndWait(conf.HTTP.Port)
 		defer cm.StopServer()
 
-		cfg, layers, manifest, err := test.GetImageComponents(1)
+		cfg, layers, manifest, err := test.GetImageComponents(1) //nolint:staticcheck
 		So(err, ShouldBeNil)
 
 		repoName := "repo7"
 		err = test.UploadImage(
 			test.Image{
-				Config:    cfg,
-				Layers:    layers,
-				Manifest:  manifest,
-				Reference: "test:1.0",
-			}, url, repoName)
+				Config:   cfg,
+				Layers:   layers,
+				Manifest: manifest,
+			}, url, repoName, "test:1.0")
 		So(err, ShouldBeNil)
 
 		content, err := json.Marshal(manifest)
@@ -375,17 +374,16 @@ func TestSignature(t *testing.T) {
 		cm.StartAndWait(conf.HTTP.Port)
 		defer cm.StopServer()
 
-		cfg, layers, manifest, err := test.GetImageComponents(1)
+		cfg, layers, manifest, err := test.GetImageComponents(1) //nolint:staticcheck
 		So(err, ShouldBeNil)
 
 		repoName := "repo7"
 		err = test.UploadImage(
 			test.Image{
-				Config:    cfg,
-				Layers:    layers,
-				Manifest:  manifest,
-				Reference: "0.0.1",
-			}, url, repoName)
+				Config:   cfg,
+				Layers:   layers,
+				Manifest: manifest,
+			}, url, repoName, "0.0.1")
 		So(err, ShouldBeNil)
 
 		content, err := json.Marshal(manifest)
@@ -1578,9 +1576,9 @@ func uploadTestMultiarch(baseURL string) {
 
 	// ------- Upload The multiarch image
 
-	multiarch := test.GetMultiarchImageForImages([]test.Image{image1, image2})
+	multiarch := test.GetMultiarchImageForImages([]test.Image{image1, image2}) //nolint:staticcheck
 
-	err := test.UploadMultiarchImageWithRef(multiarch, baseURL, "repo", "multi-arch")
+	err := test.UploadMultiarchImage(multiarch, baseURL, "repo", "multi-arch")
 	So(err, ShouldBeNil)
 }
 

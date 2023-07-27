@@ -1152,7 +1152,7 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 			})
 
 			Convey("trusted signature", func() {
-				_, _, manifest, _ := test.GetRandomImageComponents(10)
+				_, _, manifest, _ := test.GetRandomImageComponents(10) //nolint:staticcheck
 				manifestContent, _ := json.Marshal(manifest)
 				manifestDigest := godigest.FromBytes(manifestContent)
 				repo := "repo"
@@ -2685,7 +2685,7 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 		})
 
 		Convey("Test index logic", func() {
-			multiArch, err := test.GetRandomMultiarchImage("tag1")
+			multiArch, err := test.GetRandomMultiarchImage("tag1") //nolint:staticcheck
 			So(err, ShouldBeNil)
 
 			indexDigest := multiArch.Digest()
@@ -2704,7 +2704,7 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 		})
 
 		Convey("Test Referrers", func() {
-			image, err := test.GetRandomImage("tag")
+			image, err := test.GetRandomImage() //nolint:staticcheck
 			So(err, ShouldBeNil)
 
 			referredDigest := image.Digest()
@@ -2728,7 +2728,7 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 
 			// ------- Add Artifact 1
 
-			artifact1, err := test.GetImageWithSubject(
+			artifact1, err := test.GetImageWithSubject( //nolint:staticcheck
 				referredDigest,
 				ispec.MediaTypeImageManifest,
 			)
@@ -2744,7 +2744,7 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 
 			// ------- Add Artifact 2
 
-			artifact2, err := test.GetImageWithSubject(
+			artifact2, err := test.GetImageWithSubject( //nolint:staticcheck
 				referredDigest,
 				ispec.MediaTypeImageManifest,
 			)
@@ -2867,7 +2867,7 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 		})
 
 		Convey("FilterRepos", func() {
-			img, err := test.GetRandomImage("img1")
+			img, err := test.GetRandomImage() //nolint:staticcheck
 			So(err, ShouldBeNil)
 			imgDigest := img.Digest()
 
@@ -2877,7 +2877,7 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 			err = metaDB.SetManifestData(imgDigest, manifestData)
 			So(err, ShouldBeNil)
 
-			multiarch, err := test.GetRandomMultiarchImage("multi")
+			multiarch, err := test.GetRandomMultiarchImage("multi") //nolint:staticcheck
 			So(err, ShouldBeNil)
 			multiarchDigest := multiarch.Digest()
 
@@ -2897,10 +2897,10 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 				So(err, ShouldBeNil)
 			}
 
-			err = metaDB.SetRepoReference("repo", img.Reference, imgDigest, img.Manifest.MediaType)
+			err = metaDB.SetRepoReference("repo", img.DigestStr(), imgDigest, img.Manifest.MediaType)
 			So(err, ShouldBeNil)
 
-			err = metaDB.SetRepoReference("repo", multiarch.Reference, multiarchDigest, ispec.MediaTypeImageIndex)
+			err = metaDB.SetRepoReference("repo", multiarch.DigestStr(), multiarchDigest, ispec.MediaTypeImageIndex)
 			So(err, ShouldBeNil)
 
 			repoMetas, _, _, _, err := metaDB.FilterRepos(context.Background(),

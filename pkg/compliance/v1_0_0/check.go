@@ -484,17 +484,16 @@ func CheckWorkflows(t *testing.T, config *compliance.Config) {
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
 
-			cfg, layers, manifest, err := test.GetImageComponents(1)
+			cfg, layers, manifest, err := test.GetImageComponents(1) //nolint:staticcheck
 			So(err, ShouldBeNil)
 
 			repoName := "repo7"
 			err = test.UploadImage(
 				test.Image{
-					Config:    cfg,
-					Layers:    layers,
-					Manifest:  manifest,
-					Reference: "test:1.0",
-				}, baseURL, repoName)
+					Config:   cfg,
+					Layers:   layers,
+					Manifest: manifest,
+				}, baseURL, repoName, "test:1.0")
 			So(err, ShouldBeNil)
 
 			content, err = json.Marshal(manifest)
@@ -504,11 +503,10 @@ func CheckWorkflows(t *testing.T, config *compliance.Config) {
 
 			err = test.UploadImage(
 				test.Image{
-					Config:    cfg,
-					Layers:    layers,
-					Manifest:  manifest,
-					Reference: "test:1.0.1",
-				}, baseURL, repoName)
+					Config:   cfg,
+					Layers:   layers,
+					Manifest: manifest,
+				}, baseURL, repoName, "test:1.0.1")
 			So(err, ShouldBeNil)
 
 			content = []byte("this is a blob5")
@@ -522,11 +520,10 @@ func CheckWorkflows(t *testing.T, config *compliance.Config) {
 
 			err = test.UploadImage(
 				test.Image{
-					Config:    cfg,
-					Layers:    layers,
-					Manifest:  manifest,
-					Reference: "test:2.0",
-				}, baseURL, repoName)
+					Config:   cfg,
+					Layers:   layers,
+					Manifest: manifest,
+				}, baseURL, repoName, "test:2.0")
 			So(err, ShouldBeNil)
 
 			// check/get by tag
@@ -595,17 +592,16 @@ func CheckWorkflows(t *testing.T, config *compliance.Config) {
 			_, _ = Print("\nPagination")
 
 			for index := 0; index <= 4; index++ {
-				cfg, layers, manifest, err := test.GetImageComponents(1)
+				cfg, layers, manifest, err := test.GetImageComponents(1) //nolint:staticcheck
 				So(err, ShouldBeNil)
 
 				repoName := "page0"
 				err = test.UploadImage(
 					test.Image{
-						Config:    cfg,
-						Layers:    layers,
-						Manifest:  manifest,
-						Reference: fmt.Sprintf("test:%d.0", index),
-					}, baseURL, repoName)
+						Config:   cfg,
+						Layers:   layers,
+						Manifest: manifest,
+					}, baseURL, repoName, fmt.Sprintf("test:%d.0", index))
 				So(err, ShouldBeNil)
 
 				content, err := json.Marshal(manifest)
@@ -736,17 +732,16 @@ func CheckWorkflows(t *testing.T, config *compliance.Config) {
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
 
-			cfg, layers, manifest, err := test.GetImageComponents(1)
+			cfg, layers, manifest, err := test.GetImageComponents(1) //nolint:staticcheck
 			So(err, ShouldBeNil)
 
 			// subpath firsttest
 			err = test.UploadImage(
 				test.Image{
-					Config:    cfg,
-					Layers:    layers,
-					Manifest:  manifest,
-					Reference: "test:1.0",
-				}, baseURL, "firsttest/first")
+					Config:   cfg,
+					Layers:   layers,
+					Manifest: manifest,
+				}, baseURL, "firsttest/first", "test:1.0")
 			So(err, ShouldBeNil)
 
 			content, err = json.Marshal(manifest)
@@ -757,11 +752,10 @@ func CheckWorkflows(t *testing.T, config *compliance.Config) {
 			// subpath secondtest
 			err = test.UploadImage(
 				test.Image{
-					Config:    cfg,
-					Layers:    layers,
-					Manifest:  manifest,
-					Reference: "test:1.0",
-				}, baseURL, "secondtest/second")
+					Config:   cfg,
+					Layers:   layers,
+					Manifest: manifest,
+				}, baseURL, "secondtest/second", "test:1.0")
 			So(err, ShouldBeNil)
 
 			content, err = json.Marshal(manifest)
@@ -776,11 +770,10 @@ func CheckWorkflows(t *testing.T, config *compliance.Config) {
 			// subpath firsttest
 			err = test.UploadImage(
 				test.Image{
-					Config:    cfg,
-					Layers:    layers,
-					Manifest:  manifest,
-					Reference: "test:2.0",
-				}, baseURL, "firsttest/first")
+					Config:   cfg,
+					Layers:   layers,
+					Manifest: manifest,
+				}, baseURL, "firsttest/first", "test:2.0")
 			So(err, ShouldBeNil)
 
 			content, err = json.Marshal(manifest)
@@ -791,11 +784,10 @@ func CheckWorkflows(t *testing.T, config *compliance.Config) {
 			// subpath secondtest
 			err = test.UploadImage(
 				test.Image{
-					Config:    cfg,
-					Layers:    layers,
-					Manifest:  manifest,
-					Reference: "test:2.0",
-				}, baseURL, "secondtest/second")
+					Config:   cfg,
+					Layers:   layers,
+					Manifest: manifest,
+				}, baseURL, "secondtest/second", "test:2.0")
 			So(err, ShouldBeNil)
 
 			// check/get by tag

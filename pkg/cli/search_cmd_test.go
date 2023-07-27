@@ -120,31 +120,19 @@ func TestSearchCLI(t *testing.T) {
 			Build()
 		formatterDigest2 := image2.Digest().Encoded()[:8]
 
-		// repo1
-		image1.Reference = r1tag1
-		err := test.UploadImage(image1, baseURL, repo1)
+		err := test.UploadImage(image1, baseURL, repo1, r1tag1)
+		So(err, ShouldBeNil)
+		err = test.UploadImage(image2, baseURL, repo1, r1tag2)
 		So(err, ShouldBeNil)
 
-		image2.Reference = r1tag2
-		err = test.UploadImage(image2, baseURL, repo1)
+		err = test.UploadImage(image1, baseURL, repo2, r2tag1)
+		So(err, ShouldBeNil)
+		err = test.UploadImage(image2, baseURL, repo2, r2tag2)
 		So(err, ShouldBeNil)
 
-		// repo2
-		image1.Reference = r2tag1
-		err = test.UploadImage(image1, baseURL, repo2)
+		err = test.UploadImage(image1, baseURL, repo3, r3tag1)
 		So(err, ShouldBeNil)
-
-		image2.Reference = r2tag2
-		err = test.UploadImage(image2, baseURL, repo2)
-		So(err, ShouldBeNil)
-
-		// repo3
-		image1.Reference = r3tag1
-		err = test.UploadImage(image1, baseURL, repo3)
-		So(err, ShouldBeNil)
-
-		image2.Reference = r3tag2
-		err = test.UploadImage(image2, baseURL, repo3)
+		err = test.UploadImage(image2, baseURL, repo3, r3tag2)
 		So(err, ShouldBeNil)
 
 		// search by repos
@@ -232,34 +220,21 @@ func TestFormatsSearchCLI(t *testing.T) {
 		)
 
 		image1 := test.CreateImageWith().RandomLayers(1, 10).DefaultConfig().Build()
-
 		image2 := test.CreateImageWith().RandomLayers(1, 10).DefaultConfig().Build()
 
-		// repo1
-		image1.Reference = r1tag1
-		err := test.UploadImage(image1, baseURL, repo1)
+		err := test.UploadImage(image1, baseURL, repo1, r1tag1)
+		So(err, ShouldBeNil)
+		err = test.UploadImage(image2, baseURL, repo1, r1tag2)
 		So(err, ShouldBeNil)
 
-		image2.Reference = r1tag2
-		err = test.UploadImage(image2, baseURL, repo1)
+		err = test.UploadImage(image1, baseURL, repo2, r2tag1)
+		So(err, ShouldBeNil)
+		err = test.UploadImage(image2, baseURL, repo2, r2tag2)
 		So(err, ShouldBeNil)
 
-		// repo2
-		image1.Reference = r2tag1
-		err = test.UploadImage(image1, baseURL, repo2)
+		err = test.UploadImage(image1, baseURL, repo3, r3tag1)
 		So(err, ShouldBeNil)
-
-		image2.Reference = r2tag2
-		err = test.UploadImage(image2, baseURL, repo2)
-		So(err, ShouldBeNil)
-
-		// repo3
-		image1.Reference = r3tag1
-		err = test.UploadImage(image1, baseURL, repo3)
-		So(err, ShouldBeNil)
-
-		image2.Reference = r3tag2
-		err = test.UploadImage(image2, baseURL, repo3)
+		err = test.UploadImage(image2, baseURL, repo3, r3tag2)
 		So(err, ShouldBeNil)
 
 		cmd := NewSearchCommand(new(searchService))

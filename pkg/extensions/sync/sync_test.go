@@ -721,7 +721,7 @@ func TestOnDemand(t *testing.T) {
 			cm.StartAndWait(conf.HTTP.Port)
 			defer cm.StopServer()
 
-			imageConfig, layers, manifest, err := test.GetRandomImageComponents(10)
+			imageConfig, layers, manifest, err := test.GetRandomImageComponents(10) //nolint:staticcheck
 			So(err, ShouldBeNil)
 
 			manifestBlob, err := json.Marshal(manifest)
@@ -730,9 +730,8 @@ func TestOnDemand(t *testing.T) {
 			manifestDigest := godigest.FromBytes(manifestBlob)
 
 			err = test.UploadImage(
-				test.Image{Config: imageConfig, Layers: layers, Manifest: manifest, Reference: "test"},
-				srcBaseURL,
-				"remote-repo",
+				test.Image{Config: imageConfig, Layers: layers, Manifest: manifest},
+				srcBaseURL, "remote-repo", "test",
 			)
 			So(err, ShouldBeNil)
 
@@ -1076,7 +1075,7 @@ func TestSyncWithNonDistributableBlob(t *testing.T) {
 
 		dcm := test.NewControllerManager(dctlr)
 
-		imageConfig, layers, manifest, err := test.GetRandomImageComponents(10)
+		imageConfig, layers, manifest, err := test.GetRandomImageComponents(10) //nolint:staticcheck
 		So(err, ShouldBeNil)
 
 		nonDistributableLayer := make([]byte, 10)
@@ -1093,9 +1092,8 @@ func TestSyncWithNonDistributableBlob(t *testing.T) {
 		manifest.Layers = append(manifest.Layers, nonDistributableLayerDesc)
 
 		err = test.UploadImage(
-			test.Image{Config: imageConfig, Layers: layers, Manifest: manifest, Reference: tag},
-			srcBaseURL,
-			repoName,
+			test.Image{Config: imageConfig, Layers: layers, Manifest: manifest},
+			srcBaseURL, repoName, tag,
 		)
 
 		So(err, ShouldBeNil)
@@ -1266,7 +1264,7 @@ func TestDockerImagesAreSkipped(t *testing.T) {
 
 			// upload multiple manifests
 			for i := 0; i < 4; i++ {
-				config, layers, manifest, err := test.GetImageComponents(1000 + i)
+				config, layers, manifest, err := test.GetImageComponents(1000 + i) //nolint:staticcheck
 				So(err, ShouldBeNil)
 
 				manifestContent, err := json.Marshal(manifest)
@@ -1276,13 +1274,10 @@ func TestDockerImagesAreSkipped(t *testing.T) {
 
 				err = test.UploadImage(
 					test.Image{
-						Manifest:  manifest,
-						Config:    config,
-						Layers:    layers,
-						Reference: manifestDigest.String(),
-					},
-					srcBaseURL,
-					"index")
+						Manifest: manifest,
+						Config:   config,
+						Layers:   layers,
+					}, srcBaseURL, "index", manifestDigest.String())
 				So(err, ShouldBeNil)
 
 				index.Manifests = append(index.Manifests, ispec.Descriptor{
@@ -4439,10 +4434,10 @@ func TestSyncedSignaturesMetaDB(t *testing.T) {
 		defer scm.StopServer()
 
 		// Push an image
-		signedImage, err := test.GetRandomImage(tag)
+		signedImage, err := test.GetRandomImage() //nolint:staticcheck
 		So(err, ShouldBeNil)
 
-		err = test.UploadImage(signedImage, srcBaseURL, repoName)
+		err = test.UploadImage(signedImage, srcBaseURL, repoName, tag)
 		So(err, ShouldBeNil)
 
 		err = test.SignImageUsingNotary(repoName+":"+tag, srcPort)
@@ -6104,7 +6099,7 @@ func TestSyncImageIndex(t *testing.T) {
 
 		// upload multiple manifests
 		for i := 0; i < 4; i++ {
-			config, layers, manifest, err := test.GetImageComponents(1000 + i)
+			config, layers, manifest, err := test.GetImageComponents(1000 + i) //nolint:staticcheck
 			So(err, ShouldBeNil)
 
 			manifestContent, err := json.Marshal(manifest)
@@ -6114,13 +6109,10 @@ func TestSyncImageIndex(t *testing.T) {
 
 			err = test.UploadImage(
 				test.Image{
-					Manifest:  manifest,
-					Config:    config,
-					Layers:    layers,
-					Reference: manifestDigest.String(),
-				},
-				srcBaseURL,
-				"index")
+					Manifest: manifest,
+					Config:   config,
+					Layers:   layers,
+				}, srcBaseURL, "index", manifestDigest.String())
 			So(err, ShouldBeNil)
 
 			index.Manifests = append(index.Manifests, ispec.Descriptor{

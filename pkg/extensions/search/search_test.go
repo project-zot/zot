@@ -210,13 +210,10 @@ func uploadNewRepoTag(tag string, repoName string, baseURL string, layers [][]by
 
 	err = UploadImage(
 		Image{
-			Manifest:  manifest,
-			Config:    config,
-			Layers:    layers,
-			Reference: tag,
-		},
-		baseURL,
-		repoName,
+			Manifest: manifest,
+			Config:   config,
+			Layers:   layers,
+		}, baseURL, repoName, tag,
 	)
 
 	return err
@@ -851,13 +848,10 @@ func TestGetReferrersGQL(t *testing.T) {
 
 		err = UploadImage(
 			Image{
-				Manifest:  manifest,
-				Config:    config,
-				Layers:    layers,
-				Reference: "1.0",
-			},
-			baseURL,
-			repo)
+				Manifest: manifest,
+				Config:   config,
+				Layers:   layers,
+			}, baseURL, repo, "1.0")
 
 		So(err, ShouldBeNil)
 
@@ -908,9 +902,8 @@ func TestGetReferrersGQL(t *testing.T) {
 		artifactManifestBlob, err := json.Marshal(artifactImg.Manifest)
 		So(err, ShouldBeNil)
 		artifactManifestDigest := godigest.FromBytes(artifactManifestBlob)
-		artifactImg.Reference = artifactManifestDigest.String()
 
-		err = UploadImage(artifactImg, baseURL, repo)
+		err = UploadImage(artifactImg, baseURL, repo, artifactManifestDigest.String())
 		So(err, ShouldBeNil)
 
 		gqlQuery := `
@@ -985,7 +978,7 @@ func TestGetReferrersGQL(t *testing.T) {
 		So(err, ShouldBeNil)
 		repo := "artifact-ref"
 
-		err = UploadMultiarchImage(multiarch, baseURL, repo)
+		err = UploadMultiarchImage(multiarch, baseURL, repo, "multiarch")
 		So(err, ShouldBeNil)
 
 		indexBlob, err := json.Marshal(multiarch.Index)
@@ -1037,11 +1030,8 @@ func TestGetReferrersGQL(t *testing.T) {
 			Image{
 				Manifest: artifactManifest,
 				Config:   ispec.Image{},
-				Layers: [][]byte{
-					artifactContentBlob,
-				},
-				Reference: artifactManifestDigest.String(),
-			}, baseURL, repo)
+				Layers:   [][]byte{artifactContentBlob},
+			}, baseURL, repo, artifactManifestDigest.String())
 		So(err, ShouldBeNil)
 
 		gqlQuery := `
@@ -1110,11 +1100,11 @@ func TestGetReferrersGQL(t *testing.T) {
 
 		// Upload the index referrer
 
-		targetImg, err := GetRandomImage("")
+		targetImg, err := GetRandomImage()
 		So(err, ShouldBeNil)
 		targetDigest := targetImg.Digest()
 
-		err = UploadImage(targetImg, baseURL, "repo")
+		err = UploadImage(targetImg, baseURL, "repo", targetDigest.String())
 		So(err, ShouldBeNil)
 
 		indexReferrer, err := GetRandomMultiarchImage("ref")
@@ -1129,7 +1119,7 @@ func TestGetReferrersGQL(t *testing.T) {
 
 		indexReferrerDigest := indexReferrer.Digest()
 
-		err = UploadMultiarchImage(indexReferrer, baseURL, "repo")
+		err = UploadMultiarchImage(indexReferrer, baseURL, "repo", "ref")
 		So(err, ShouldBeNil)
 
 		// Call Referrers GQL
@@ -1217,13 +1207,10 @@ func TestExpandedRepoInfo(t *testing.T) {
 
 			err = WriteImageToFileSystem(
 				Image{
-					Manifest:  manifest,
-					Config:    config,
-					Layers:    layers,
-					Reference: fmt.Sprintf("%d.0", i),
-				},
-				repo1,
-				storeController)
+					Manifest: manifest,
+					Config:   config,
+					Layers:   layers,
+				}, repo1, fmt.Sprintf("%d.0", i), storeController)
 			So(err, ShouldBeNil)
 		}
 
@@ -1541,19 +1528,18 @@ func TestExpandedRepoInfo(t *testing.T) {
 		ctlrManager.StartAndWait(port)
 		defer ctlrManager.StopServer()
 
-		image, err := GetRandomImage(test)
+		image, err := GetRandomImage()
 		So(err, ShouldBeNil)
 		manifestDigest := image.Digest()
 
-		err = UploadImage(image, baseURL, "repo")
+		err = UploadImage(image, baseURL, "repo", test)
 		So(err, ShouldBeNil)
 
 		referrer, err := GetImageWithSubject(manifestDigest, ispec.MediaTypeImageManifest)
 		So(err, ShouldBeNil)
 
 		tag := "test-ref-tag"
-		referrer.Reference = tag
-		err = UploadImage(referrer, baseURL, "repo")
+		err = UploadImage(referrer, baseURL, "repo", tag)
 		So(err, ShouldBeNil)
 
 		// ------- Make the call to GQL and see that it doesn't crash
@@ -1876,13 +1862,10 @@ func TestDerivedImageList(t *testing.T) {
 
 		err = UploadImage(
 			Image{
-				Manifest:  manifest,
-				Config:    config,
-				Layers:    layers,
-				Reference: "latest",
-			},
-			baseURL,
-			repoName,
+				Manifest: manifest,
+				Config:   config,
+				Layers:   layers,
+			}, baseURL, repoName, "latest",
 		)
 		So(err, ShouldBeNil)
 
@@ -1919,13 +1902,10 @@ func TestDerivedImageList(t *testing.T) {
 
 		err = UploadImage(
 			Image{
-				Manifest:  manifest,
-				Config:    config,
-				Layers:    layers,
-				Reference: "latest",
-			},
-			baseURL,
-			repoName,
+				Manifest: manifest,
+				Config:   config,
+				Layers:   layers,
+			}, baseURL, repoName, "latest",
 		)
 		So(err, ShouldBeNil)
 
@@ -1962,13 +1942,10 @@ func TestDerivedImageList(t *testing.T) {
 
 		err = UploadImage(
 			Image{
-				Manifest:  manifest,
-				Config:    config,
-				Layers:    layers,
-				Reference: "latest",
-			},
-			baseURL,
-			repoName,
+				Manifest: manifest,
+				Config:   config,
+				Layers:   layers,
+			}, baseURL, repoName, "latest",
 		)
 		So(err, ShouldBeNil)
 
@@ -2024,13 +2001,10 @@ func TestDerivedImageList(t *testing.T) {
 
 		err = UploadImage(
 			Image{
-				Manifest:  manifest,
-				Config:    config,
-				Layers:    layers,
-				Reference: "latest",
-			},
-			baseURL,
-			repoName,
+				Manifest: manifest,
+				Config:   config,
+				Layers:   layers,
+			}, baseURL, repoName, "latest",
 		)
 		So(err, ShouldBeNil)
 
@@ -2081,13 +2055,10 @@ func TestDerivedImageList(t *testing.T) {
 
 		err = UploadImage(
 			Image{
-				Manifest:  manifest,
-				Config:    config,
-				Layers:    layers,
-				Reference: "latest",
-			},
-			baseURL,
-			repoName,
+				Manifest: manifest,
+				Config:   config,
+				Layers:   layers,
+			}, baseURL, repoName, "latest",
 		)
 		So(err, ShouldBeNil)
 
@@ -2369,13 +2340,10 @@ func TestBaseImageList(t *testing.T) {
 
 		err = UploadImage(
 			Image{
-				Manifest:  manifest,
-				Config:    config,
-				Layers:    layers,
-				Reference: "latest",
-			},
-			baseURL,
-			repoName,
+				Manifest: manifest,
+				Config:   config,
+				Layers:   layers,
+			}, baseURL, repoName, "latest",
 		)
 		So(err, ShouldBeNil)
 
@@ -2417,13 +2385,10 @@ func TestBaseImageList(t *testing.T) {
 
 		err = UploadImage(
 			Image{
-				Manifest:  manifest,
-				Config:    config,
-				Layers:    layers,
-				Reference: "latest",
-			},
-			baseURL,
-			repoName,
+				Manifest: manifest,
+				Config:   config,
+				Layers:   layers,
+			}, baseURL, repoName, "latest",
 		)
 		So(err, ShouldBeNil)
 
@@ -2460,13 +2425,10 @@ func TestBaseImageList(t *testing.T) {
 
 		err = UploadImage(
 			Image{
-				Manifest:  manifest,
-				Config:    config,
-				Layers:    layers,
-				Reference: "latest",
-			},
-			baseURL,
-			repoName,
+				Manifest: manifest,
+				Config:   config,
+				Layers:   layers,
+			}, baseURL, repoName, "latest",
 		)
 		So(err, ShouldBeNil)
 
@@ -2495,13 +2457,10 @@ func TestBaseImageList(t *testing.T) {
 
 		err = UploadImage(
 			Image{
-				Manifest:  manifest,
-				Config:    config,
-				Layers:    layers,
-				Reference: "latest",
-			},
-			baseURL,
-			"one-layer",
+				Manifest: manifest,
+				Config:   config,
+				Layers:   layers,
+			}, baseURL, "one-layer", "latest",
 		)
 		So(err, ShouldBeNil)
 
@@ -2530,50 +2489,10 @@ func TestBaseImageList(t *testing.T) {
 
 		err = UploadImage(
 			Image{
-				Manifest:  manifest,
-				Config:    config,
-				Layers:    layers,
-				Reference: "latest",
-			},
-			baseURL,
-			"one-layer",
-		)
-		So(err, ShouldBeNil)
-
-		// create image with one layer, which is also present in the given image
-		layers = [][]byte{
-			{10, 11, 10, 11},
-		}
-
-		manifest = ispec.Manifest{
-			Versioned: specs.Versioned{
-				SchemaVersion: 2,
-			},
-			Config: ispec.Descriptor{
-				MediaType: "application/vnd.oci.image.config.v1+json",
-				Digest:    configDigest,
-				Size:      int64(len(configBlob)),
-			},
-			Layers: []ispec.Descriptor{
-				{
-					MediaType: "application/vnd.oci.image.layer.v1.tar",
-					Digest:    godigest.FromBytes(layers[0]),
-					Size:      int64(len(layers[0])),
-				},
-			},
-		}
-
-		repoName = "one-layer"
-
-		err = UploadImage(
-			Image{
-				Manifest:  manifest,
-				Config:    config,
-				Layers:    layers,
-				Reference: "latest",
-			},
-			baseURL,
-			repoName,
+				Manifest: manifest,
+				Config:   config,
+				Layers:   layers,
+			}, baseURL, "one-layer", "latest",
 		)
 		So(err, ShouldBeNil)
 
@@ -2604,13 +2523,44 @@ func TestBaseImageList(t *testing.T) {
 
 		err = UploadImage(
 			Image{
-				Manifest:  manifest,
-				Config:    config,
-				Layers:    layers,
-				Reference: "latest",
+				Manifest: manifest,
+				Config:   config,
+				Layers:   layers,
+			}, baseURL, repoName, "latest",
+		)
+		So(err, ShouldBeNil)
+
+		// create image with one layer, which is also present in the given image
+		layers = [][]byte{
+			{10, 11, 10, 11},
+		}
+
+		manifest = ispec.Manifest{
+			Versioned: specs.Versioned{
+				SchemaVersion: 2,
 			},
-			baseURL,
-			repoName,
+			Config: ispec.Descriptor{
+				MediaType: "application/vnd.oci.image.config.v1+json",
+				Digest:    configDigest,
+				Size:      int64(len(configBlob)),
+			},
+			Layers: []ispec.Descriptor{
+				{
+					MediaType: "application/vnd.oci.image.layer.v1.tar",
+					Digest:    godigest.FromBytes(layers[0]),
+					Size:      int64(len(layers[0])),
+				},
+			},
+		}
+
+		repoName = "one-layer"
+
+		err = UploadImage(
+			Image{
+				Manifest: manifest,
+				Config:   config,
+				Layers:   layers,
+			}, baseURL, repoName, "latest",
 		)
 		So(err, ShouldBeNil)
 
@@ -2647,13 +2597,10 @@ func TestBaseImageList(t *testing.T) {
 
 		err = UploadImage(
 			Image{
-				Manifest:  manifest,
-				Config:    config,
-				Layers:    layers,
-				Reference: "latest",
-			},
-			baseURL,
-			repoName,
+				Manifest: manifest,
+				Config:   config,
+				Layers:   layers,
+			}, baseURL, repoName, "latest",
 		)
 		So(err, ShouldBeNil)
 
@@ -2708,13 +2655,10 @@ func TestBaseImageList(t *testing.T) {
 
 		err = UploadImage(
 			Image{
-				Manifest:  manifest,
-				Config:    config,
-				Layers:    layers,
-				Reference: "latest",
-			},
-			baseURL,
-			repoName,
+				Manifest: manifest,
+				Config:   config,
+				Layers:   layers,
+			}, baseURL, repoName, "latest",
 		)
 		So(err, ShouldBeNil)
 
@@ -2751,13 +2695,10 @@ func TestBaseImageList(t *testing.T) {
 
 		err = UploadImage(
 			Image{
-				Manifest:  manifest,
-				Config:    config,
-				Layers:    layers,
-				Reference: "latest",
-			},
-			baseURL,
-			repoName,
+				Manifest: manifest,
+				Config:   config,
+				Layers:   layers,
+			}, baseURL, repoName, "latest",
 		)
 		So(err, ShouldBeNil)
 
@@ -2987,11 +2928,10 @@ func TestGlobalSearchImageAuthor(t *testing.T) {
 		manifest.Annotations["org.opencontainers.image.authors"] = "author name"
 		err = UploadImage(
 			Image{
-				Config:    cfg,
-				Layers:    layers,
-				Manifest:  manifest,
-				Reference: "latest",
-			}, baseURL, "repowithauthor")
+				Config:   cfg,
+				Layers:   layers,
+				Manifest: manifest,
+			}, baseURL, "repowithauthor", "latest")
 
 		So(err, ShouldBeNil)
 
@@ -3050,11 +2990,10 @@ func TestGlobalSearchImageAuthor(t *testing.T) {
 
 		err = UploadImage(
 			Image{
-				Config:    cfg,
-				Layers:    layers,
-				Manifest:  manifest,
-				Reference: "latest",
-			}, baseURL, "repowithauthorconfig")
+				Config:   cfg,
+				Layers:   layers,
+				Manifest: manifest,
+			}, baseURL, "repowithauthorconfig", "latest")
 
 		So(err, ShouldBeNil)
 
@@ -3183,13 +3122,10 @@ func TestGlobalSearch(t *testing.T) {
 
 		err = UploadImage(
 			Image{
-				Manifest:  manifest1,
-				Config:    config1,
-				Layers:    layers1,
-				Reference: "1.0.1",
-			},
-			baseURL,
-			"repo1",
+				Manifest: manifest1,
+				Config:   config1,
+				Layers:   layers1,
+			}, baseURL, "repo1", "1.0.1",
 		)
 		So(err, ShouldBeNil)
 
@@ -3225,13 +3161,10 @@ func TestGlobalSearch(t *testing.T) {
 
 		err = UploadImage(
 			Image{
-				Manifest:  manifest2,
-				Config:    config2,
-				Layers:    layers2,
-				Reference: "1.0.2",
-			},
-			baseURL,
-			"repo1",
+				Manifest: manifest2,
+				Config:   config2,
+				Layers:   layers2,
+			}, baseURL, "repo1", "1.0.2",
 		)
 		So(err, ShouldBeNil)
 
@@ -3250,13 +3183,10 @@ func TestGlobalSearch(t *testing.T) {
 
 		err = UploadImage(
 			Image{
-				Manifest:  manifest3,
-				Config:    config3,
-				Layers:    layers3,
-				Reference: "1.0.0",
-			},
-			baseURL,
-			"repo2",
+				Manifest: manifest3,
+				Config:   config3,
+				Layers:   layers3,
+			}, baseURL, "repo2", "1.0.0",
 		)
 		So(err, ShouldBeNil)
 
@@ -3530,13 +3460,10 @@ func TestGlobalSearch(t *testing.T) {
 
 		err = UploadImage(
 			Image{
-				Manifest:  manifest1,
-				Config:    config1,
-				Layers:    layers1,
-				Reference: "1.0.1",
-			},
-			baseURL,
-			"repo1",
+				Manifest: manifest1,
+				Config:   config1,
+				Layers:   layers1,
+			}, baseURL, "repo1", "1.0.1",
 		)
 		So(err, ShouldBeNil)
 
@@ -3555,13 +3482,10 @@ func TestGlobalSearch(t *testing.T) {
 
 		err = UploadImage(
 			Image{
-				Manifest:  manifest2,
-				Config:    config2,
-				Layers:    layers2,
-				Reference: "1.0.2",
-			},
-			baseURL,
-			"repo1",
+				Manifest: manifest2,
+				Config:   config2,
+				Layers:   layers2,
+			}, baseURL, "repo1", "1.0.2",
 		)
 		So(err, ShouldBeNil)
 
@@ -3580,13 +3504,10 @@ func TestGlobalSearch(t *testing.T) {
 
 		err = UploadImage(
 			Image{
-				Manifest:  manifest3,
-				Config:    config3,
-				Layers:    layers3,
-				Reference: "1.0.0",
-			},
-			baseURL,
-			"repo2",
+				Manifest: manifest3,
+				Config:   config3,
+				Layers:   layers3,
+			}, baseURL, "repo2", "1.0.0",
 		)
 		So(err, ShouldBeNil)
 
@@ -3794,11 +3715,7 @@ func TestCleaningFilteringParamsGlobalSearch(t *testing.T) {
 		})
 		So(err, ShouldBeNil)
 
-		err = UploadImage(
-			image,
-			baseURL,
-			"repo1",
-		)
+		err = UploadImage(image, baseURL, "repo1", image.DigestStr())
 		So(err, ShouldBeNil)
 
 		image, err = GetImageWithConfig(ispec.Image{
@@ -3809,11 +3726,7 @@ func TestCleaningFilteringParamsGlobalSearch(t *testing.T) {
 		})
 		So(err, ShouldBeNil)
 
-		err = UploadImage(
-			image,
-			baseURL,
-			"repo2",
-		)
+		err = UploadImage(image, baseURL, "repo2", image.DigestStr())
 		So(err, ShouldBeNil)
 
 		query := `
@@ -3863,13 +3776,10 @@ func TestGlobalSearchFiltering(t *testing.T) {
 
 		err = UploadImage(
 			Image{
-				Config:    config,
-				Layers:    layers,
-				Manifest:  manifest,
-				Reference: "test",
-			},
-			baseURL,
-			"unsigned-repo",
+				Config:   config,
+				Layers:   layers,
+				Manifest: manifest,
+			}, baseURL, "unsigned-repo", "test",
 		)
 		So(err, ShouldBeNil)
 
@@ -3878,13 +3788,10 @@ func TestGlobalSearchFiltering(t *testing.T) {
 
 		err = UploadImage(
 			Image{
-				Config:    config,
-				Layers:    layers,
-				Manifest:  manifest,
-				Reference: "test",
-			},
-			baseURL,
-			"signed-repo",
+				Config:   config,
+				Layers:   layers,
+				Manifest: manifest,
+			}, baseURL, "signed-repo", "test",
 		)
 		So(err, ShouldBeNil)
 
@@ -4189,13 +4096,10 @@ func TestGlobalSearchPagination(t *testing.T) {
 
 			err = UploadImage(
 				Image{
-					Manifest:  manifest,
-					Config:    config,
-					Layers:    layers,
-					Reference: "0.0.1",
-				},
-				baseURL,
-				fmt.Sprintf("repo%d", i),
+					Manifest: manifest,
+					Config:   config,
+					Layers:   layers,
+				}, baseURL, fmt.Sprintf("repo%d", i), "0.0.1",
 			)
 			So(err, ShouldBeNil)
 		}
@@ -4398,25 +4302,19 @@ func TestMetaDBWhenSigningImages(t *testing.T) {
 
 		err = UploadImage(
 			Image{
-				Manifest:  image1.Manifest,
-				Config:    image1.Config,
-				Layers:    image1.Layers,
-				Reference: "1.0.1",
-			},
-			baseURL,
-			"repo1",
+				Manifest: image1.Manifest,
+				Config:   image1.Config,
+				Layers:   image1.Layers,
+			}, baseURL, "repo1", "1.0.1",
 		)
 		So(err, ShouldBeNil)
 
 		err = UploadImage(
 			Image{
-				Manifest:  image1.Manifest,
-				Config:    image1.Config,
-				Layers:    image1.Layers,
-				Reference: "2.0.2",
-			},
-			baseURL,
-			"repo1",
+				Manifest: image1.Manifest,
+				Config:   image1.Config,
+				Layers:   image1.Layers,
+			}, baseURL, "repo1", "2.0.2",
 		)
 		So(err, ShouldBeNil)
 
@@ -4428,11 +4326,7 @@ func TestMetaDBWhenSigningImages(t *testing.T) {
 		multiArch, err := GetRandomMultiarchImage("index")
 		So(err, ShouldBeNil)
 
-		err = UploadMultiarchImage(
-			multiArch,
-			baseURL,
-			"repo1",
-		)
+		err = UploadMultiarchImage(multiArch, baseURL, "repo1", "index")
 		So(err, ShouldBeNil)
 
 		queryImage1 := `
@@ -4653,13 +4547,10 @@ func TestMetaDBWhenPushingImages(t *testing.T) {
 
 			err = UploadImage(
 				Image{
-					Manifest:  manifest1,
-					Config:    config1,
-					Layers:    layers1,
-					Reference: "1.0.1",
-				},
-				baseURL,
-				"repo1",
+					Manifest: manifest1,
+					Config:   config1,
+					Layers:   layers1,
+				}, baseURL, "repo1", "1.0.1",
 			)
 			So(err, ShouldNotBeNil)
 		})
@@ -4687,13 +4578,10 @@ func TestMetaDBWhenPushingImages(t *testing.T) {
 
 			err = UploadImage(
 				Image{
-					Manifest:  manifest1,
-					Config:    config1,
-					Layers:    layers1,
-					Reference: "1.0.1",
-				},
-				baseURL,
-				"repo1",
+					Manifest: manifest1,
+					Config:   config1,
+					Layers:   layers1,
+				}, baseURL, "repo1", "1.0.1",
 			)
 			So(err, ShouldBeNil)
 		})
@@ -4737,7 +4625,7 @@ func RunMetaDBIndexTests(baseURL, port string) {
 
 		indexDigest := godigest.FromBytes(indexBlob)
 
-		err = UploadMultiarchImage(multiarchImage, baseURL, repo)
+		err = UploadMultiarchImage(multiarchImage, baseURL, repo, "tag1")
 		So(err, ShouldBeNil)
 
 		query := `
@@ -4844,7 +4732,7 @@ func RunMetaDBIndexTests(baseURL, port string) {
 			imageAMD64,
 			imageSomeArch,
 		})
-		err = UploadMultiarchImageWithRef(multiImage, baseURL, "test-repo", "latest")
+		err = UploadMultiarchImage(multiImage, baseURL, "test-repo", "latest")
 		So(err, ShouldBeNil)
 		// ---------------- BASE IMAGE -------------------
 
@@ -4865,7 +4753,7 @@ func RunMetaDBIndexTests(baseURL, port string) {
 
 		multiImage = GetMultiarchImageForImages([]Image{image1, image2})
 
-		err = UploadMultiarchImageWithRef(multiImage, baseURL, "index-one-arch-same-layers", "index-one-arch-same-layers")
+		err = UploadMultiarchImage(multiImage, baseURL, "index-one-arch-same-layers", "index-one-arch-same-layers")
 		So(err, ShouldBeNil)
 		//  ---------------- SAME LAYERS -------------------
 
@@ -4886,7 +4774,7 @@ func RunMetaDBIndexTests(baseURL, port string) {
 		So(err, ShouldBeNil)
 		multiImage = GetMultiarchImageForImages([]Image{image1, image2})
 
-		err = UploadMultiarchImageWithRef(multiImage, baseURL, "index-one-arch-less-layers", "index-one-arch-less-layers")
+		err = UploadMultiarchImage(multiImage, baseURL, "index-one-arch-less-layers", "index-one-arch-less-layers")
 		So(err, ShouldBeNil)
 		//  ---------------- LESS LAYERS -------------------
 
@@ -4908,7 +4796,7 @@ func RunMetaDBIndexTests(baseURL, port string) {
 		)
 		So(err, ShouldBeNil)
 		multiImage = GetMultiarchImageForImages([]Image{image1, image2})
-		err = UploadMultiarchImageWithRef(multiImage, baseURL, "index-one-arch-less-layers-false",
+		err = UploadMultiarchImage(multiImage, baseURL, "index-one-arch-less-layers-false",
 			"index-one-arch-less-layers-false")
 		So(err, ShouldBeNil)
 		//  ---------------- LESS LAYERS FALSE -------------------
@@ -4930,7 +4818,7 @@ func RunMetaDBIndexTests(baseURL, port string) {
 		So(err, ShouldBeNil)
 		multiImage = GetMultiarchImageForImages([]Image{image1, image2})
 
-		err = UploadMultiarchImageWithRef(multiImage, baseURL, "index-one-arch-more-layers", "index-one-arch-more-layers")
+		err = UploadMultiarchImage(multiImage, baseURL, "index-one-arch-more-layers", "index-one-arch-more-layers")
 		So(err, ShouldBeNil)
 		//  ---------------- MORE LAYERS -------------------
 
@@ -4994,7 +4882,7 @@ func RunMetaDBIndexTests(baseURL, port string) {
 		baseLinuxSomeArchDigest := imageSomeArch.Digest()
 
 		multiImage := GetMultiarchImageForImages([]Image{imageAMD64, imageSomeArch})
-		err = UploadMultiarchImageWithRef(multiImage, baseURL, "test-repo", "index")
+		err = UploadMultiarchImage(multiImage, baseURL, "test-repo", "index")
 		So(err, ShouldBeNil)
 		// ---------------- BASE IMAGE FOR LINUX AMD64 -------------------
 
@@ -5003,9 +4891,8 @@ func RunMetaDBIndexTests(baseURL, port string) {
 			[][]byte{imageAMD64.Layers[0]},
 		)
 		So(err, ShouldBeNil)
-		image.Reference = "less-layers-linux-amd64"
 
-		err = UploadImage(image, baseURL, "test-repo")
+		err = UploadImage(image, baseURL, "test-repo", "less-layers-linux-amd64")
 		So(err, ShouldBeNil)
 
 		// ---------------- BASE IMAGE FOR LINUX SOMEARCH -------------------
@@ -5015,9 +4902,8 @@ func RunMetaDBIndexTests(baseURL, port string) {
 			[][]byte{imageSomeArch.Layers[0]},
 		)
 		So(err, ShouldBeNil)
-		image.Reference = "less-layers-linux-somearch"
 
-		err = UploadImage(image, baseURL, "test-repo")
+		err = UploadImage(image, baseURL, "test-repo", "less-layers-linux-somearch")
 		So(err, ShouldBeNil)
 
 		// ------- TEST
@@ -5092,7 +4978,7 @@ func RunMetaDBIndexTests(baseURL, port string) {
 		multiImage := GetMultiarchImageForImages([]Image{
 			imageAMD64, imageSomeArch,
 		})
-		err = UploadMultiarchImageWithRef(multiImage, baseURL, "test-repo", "latest")
+		err = UploadMultiarchImage(multiImage, baseURL, "test-repo", "latest")
 		So(err, ShouldBeNil)
 		// ---------------- BASE IMAGE -------------------
 
@@ -5114,7 +5000,7 @@ func RunMetaDBIndexTests(baseURL, port string) {
 		multiImage = GetMultiarchImageForImages([]Image{
 			image1, image2,
 		})
-		err = UploadMultiarchImageWithRef(multiImage, baseURL, "index-one-arch-same-layers", "index-one-arch-same-layers")
+		err = UploadMultiarchImage(multiImage, baseURL, "index-one-arch-same-layers", "index-one-arch-same-layers")
 		So(err, ShouldBeNil)
 		//  ---------------- SAME LAYERS -------------------
 
@@ -5136,7 +5022,7 @@ func RunMetaDBIndexTests(baseURL, port string) {
 		multiImage = GetMultiarchImageForImages([]Image{
 			image1, image2,
 		})
-		err = UploadMultiarchImageWithRef(multiImage, baseURL, "index-one-arch-less-layers", "index-one-arch-less-layers")
+		err = UploadMultiarchImage(multiImage, baseURL, "index-one-arch-less-layers", "index-one-arch-less-layers")
 		So(err, ShouldBeNil)
 		//  ---------------- LESS LAYERS -------------------
 
@@ -5158,7 +5044,7 @@ func RunMetaDBIndexTests(baseURL, port string) {
 		multiImage = GetMultiarchImageForImages([]Image{
 			image1, image2,
 		})
-		err = UploadMultiarchImageWithRef(multiImage, baseURL, "index-one-arch-less-layers-false",
+		err = UploadMultiarchImage(multiImage, baseURL, "index-one-arch-less-layers-false",
 			"index-one-arch-less-layers-false")
 		So(err, ShouldBeNil)
 		//  ---------------- LESS LAYERS FALSE -------------------
@@ -5186,7 +5072,7 @@ func RunMetaDBIndexTests(baseURL, port string) {
 		multiImage = GetMultiarchImageForImages([]Image{
 			image1, image2,
 		})
-		err = UploadMultiarchImageWithRef(multiImage, baseURL, "index-one-arch-more-layers", "index-one-arch-more-layers")
+		err = UploadMultiarchImage(multiImage, baseURL, "index-one-arch-more-layers", "index-one-arch-more-layers")
 		So(err, ShouldBeNil)
 		//  ---------------- MORE LAYERS -------------------
 
@@ -5252,7 +5138,7 @@ func RunMetaDBIndexTests(baseURL, port string) {
 		multiImage := GetMultiarchImageForImages([]Image{
 			imageAMD64, imageSomeArch,
 		})
-		err = UploadMultiarchImageWithRef(multiImage, baseURL, "test-repo", "index")
+		err = UploadMultiarchImage(multiImage, baseURL, "test-repo", "index")
 		So(err, ShouldBeNil)
 		// ---------------- BASE IMAGE FOR LINUX AMD64 -------------------
 
@@ -5266,9 +5152,8 @@ func RunMetaDBIndexTests(baseURL, port string) {
 			},
 		)
 		So(err, ShouldBeNil)
-		image.Reference = "more-layers-linux-amd64"
 
-		err = UploadImage(image, baseURL, "test-repo")
+		err = UploadImage(image, baseURL, "test-repo", "more-layers-linux-amd64")
 		So(err, ShouldBeNil)
 
 		// ---------------- BASE IMAGE FOR LINUX SOMEARCH -------------------
@@ -5283,9 +5168,8 @@ func RunMetaDBIndexTests(baseURL, port string) {
 			},
 		)
 		So(err, ShouldBeNil)
-		image.Reference = "more-layers-linux-somearch"
 
-		err = UploadImage(image, baseURL, "test-repo")
+		err = UploadImage(image, baseURL, "test-repo", "more-layers-linux-somearch")
 		So(err, ShouldBeNil)
 
 		// ------- TEST
@@ -5356,13 +5240,10 @@ func TestMetaDBWhenReadingImages(t *testing.T) {
 
 		err = UploadImage(
 			Image{
-				Manifest:  manifest1,
-				Config:    config1,
-				Layers:    layers1,
-				Reference: "1.0.1",
-			},
-			baseURL,
-			"repo1",
+				Manifest: manifest1,
+				Config:   config1,
+				Layers:   layers1,
+			}, baseURL, "repo1", "1.0.1",
 		)
 		So(err, ShouldBeNil)
 
@@ -5440,14 +5321,10 @@ func TestMetaDBWhenDeletingImages(t *testing.T) {
 		defer ctlrManager.StopServer()
 
 		// push test images to repo 1 image 1
-		image1, err := GetRandomImage("1.0.1")
+		image1, err := GetRandomImage()
 		So(err, ShouldBeNil)
 
-		err = UploadImage(
-			image1,
-			baseURL,
-			"repo1",
-		)
+		err = UploadImage(image1, baseURL, "repo1", "1.0.1")
 		So(err, ShouldBeNil)
 
 		// push test images to repo 1 image 2
@@ -5462,13 +5339,7 @@ func TestMetaDBWhenDeletingImages(t *testing.T) {
 		})
 		So(err, ShouldBeNil)
 
-		image2.Reference = "1.0.2"
-
-		err = UploadImage(
-			image2,
-			baseURL,
-			"repo1",
-		)
+		err = UploadImage(image2, baseURL, "repo1", "1.0.2")
 		So(err, ShouldBeNil)
 
 		query := `
@@ -5692,11 +5563,7 @@ func TestMetaDBWhenDeletingImages(t *testing.T) {
 			referrerImage, err := GetImageWithSubject(referredImageDigest, ispec.MediaTypeImageManifest)
 			So(err, ShouldBeNil)
 
-			err = UploadImage(
-				referrerImage,
-				baseURL,
-				"repo1",
-			)
+			err = UploadImage(referrerImage, baseURL, "repo1", referrerImage.DigestStr())
 			So(err, ShouldBeNil)
 
 			// ------- check referrers for this image
@@ -5720,14 +5587,14 @@ func TestMetaDBWhenDeletingImages(t *testing.T) {
 			So(err, ShouldBeNil)
 
 			So(len(responseStruct.Referrers), ShouldEqual, 1)
-			So(responseStruct.Referrers[0].Digest, ShouldResemble, referrerImage.Reference)
+			So(responseStruct.Referrers[0].Digest, ShouldResemble, referrerImage.DigestStr())
 
-			statusCode, err := DeleteImage("repo1", referrerImage.Reference, "badURL")
+			statusCode, err := DeleteImage("repo1", referrerImage.DigestStr(), "badURL")
 			So(err, ShouldNotBeNil)
 			So(statusCode, ShouldEqual, -1)
 
 			// ------- Delete the referrer and see if it disappears from metaDB also
-			statusCode, err = DeleteImage("repo1", referrerImage.Reference, baseURL)
+			statusCode, err = DeleteImage("repo1", referrerImage.DigestStr(), baseURL)
 			So(err, ShouldBeNil)
 			So(statusCode, ShouldEqual, http.StatusAccepted)
 
@@ -5909,13 +5776,10 @@ func TestSearchSize(t *testing.T) {
 
 		err = UploadImage(
 			Image{
-				Manifest:  manifest,
-				Config:    config,
-				Layers:    layers,
-				Reference: "latest",
-			},
-			baseURL,
-			repoName,
+				Manifest: manifest,
+				Config:   config,
+				Layers:   layers,
+			}, baseURL, repoName, "latest",
 		)
 		So(err, ShouldBeNil)
 
@@ -5994,13 +5858,10 @@ func TestSearchSize(t *testing.T) {
 		// add the same image with different tag
 		err = UploadImage(
 			Image{
-				Manifest:  manifest,
-				Config:    config,
-				Layers:    layers,
-				Reference: "10.2.14",
-			},
-			baseURL,
-			repoName,
+				Manifest: manifest,
+				Config:   config,
+				Layers:   layers,
+			}, baseURL, repoName, "10.2.14",
 		)
 		So(err, ShouldBeNil)
 
@@ -6169,11 +6030,9 @@ func TestImageSummary(t *testing.T) {
 			},
 		)
 		So(err, ShouldBeNil)
-		image.Reference = tagTarget
-
 		manifestDigest := image.Digest()
 
-		err = UploadImage(image, baseURL, repoName)
+		err = UploadImage(image, baseURL, repoName, tagTarget)
 		So(err, ShouldBeNil)
 
 		// ------ Add a referrer
@@ -6187,9 +6046,8 @@ func TestImageSummary(t *testing.T) {
 		referrerImage.Manifest.Config.MediaType = "application/test.artifact.type"
 		referrerImage.Manifest.Annotations = map[string]string{"testAnnotationKey": "testAnnotationValue"}
 		referrerManifestDigest := referrerImage.Digest()
-		referrerImage.Reference = referrerManifestDigest.String()
 
-		err = UploadImage(referrerImage, baseURL, repoName)
+		err = UploadImage(referrerImage, baseURL, repoName, referrerManifestDigest.String())
 		So(err, ShouldBeNil)
 
 		var (
@@ -6393,13 +6251,10 @@ func TestImageSummary(t *testing.T) {
 		tagTarget := "latest"
 		err = UploadImage(
 			Image{
-				Manifest:  manifest,
-				Config:    config,
-				Layers:    layers,
-				Reference: tagTarget,
-			},
-			baseURL,
-			repoName,
+				Manifest: manifest,
+				Config:   config,
+				Layers:   layers,
+			}, baseURL, repoName, tagTarget,
 		)
 		So(err, ShouldBeNil)
 		var (
@@ -6488,21 +6343,21 @@ func TestImageSummary(t *testing.T) {
 		artType1 := "application/test.signature.v1"
 		artType2 := "application/test.signature.v2"
 
-		img1, err := GetRandomImage("art1")
+		img1, err := GetRandomImage()
 		So(err, ShouldBeNil)
 		img1.Manifest.Config = ispec.DescriptorEmptyJSON
 		img1.Manifest.ArtifactType = artType1
 		digest1 := img1.Digest()
 
-		err = UploadImage(img1, baseURL, "repo")
+		err = UploadImage(img1, baseURL, "repo", "art1")
 		So(err, ShouldBeNil)
 
-		img2, err := GetRandomImage("art2")
+		img2, err := GetRandomImage()
 		So(err, ShouldBeNil)
 		img2.Manifest.Config.MediaType = artType2
 		digest2 := img2.Digest()
 
-		err = UploadImage(img2, baseURL, "repo")
+		err = UploadImage(img2, baseURL, "repo", "art2")
 		So(err, ShouldBeNil)
 
 		// GET image 1

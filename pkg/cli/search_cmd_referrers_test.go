@@ -206,7 +206,7 @@ func TestReferrerCLI(t *testing.T) {
 		repo := repoName
 		image := test.CreateRandomImage()
 
-		err := test.UploadImageWithRef(image, baseURL, repo, "tag")
+		err := test.UploadImage(image, baseURL, repo, "tag")
 		So(err, ShouldBeNil)
 
 		ref1 := test.CreateImageWith().
@@ -225,13 +225,13 @@ func TestReferrerCLI(t *testing.T) {
 			ArtifactType(customArtTypeV2).
 			Subject(image.DescriptorRef()).Build()
 
-		err = test.UploadImage(ref1, baseURL, repo)
+		err = test.UploadImage(ref1, baseURL, repo, ref1.DigestStr())
 		So(err, ShouldBeNil)
 
-		err = test.UploadImage(ref2, baseURL, repo)
+		err = test.UploadImage(ref2, baseURL, repo, ref2.DigestStr())
 		So(err, ShouldBeNil)
 
-		err = test.UploadImage(ref3, baseURL, repo)
+		err = test.UploadImage(ref3, baseURL, repo, ref3.DigestStr())
 		So(err, ShouldBeNil)
 
 		args := []string{"reftest", "--subject", repo + "@" + image.DigestStr()}
@@ -303,7 +303,7 @@ func TestReferrerCLI(t *testing.T) {
 		repo := repoName
 		image := test.CreateRandomImage()
 
-		err := test.UploadImageWithRef(image, baseURL, repo, "tag")
+		err := test.UploadImage(image, baseURL, repo, "tag")
 		So(err, ShouldBeNil)
 
 		ref1 := test.CreateImageWith().
@@ -322,13 +322,13 @@ func TestReferrerCLI(t *testing.T) {
 			ArtifactType(customArtTypeV2).
 			Subject(image.DescriptorRef()).Build()
 
-		err = test.UploadImage(ref1, baseURL, repo)
+		err = test.UploadImage(ref1, baseURL, repo, ref1.DigestStr())
 		So(err, ShouldBeNil)
 
-		err = test.UploadImage(ref2, baseURL, repo)
+		err = test.UploadImage(ref2, baseURL, repo, ref2.DigestStr())
 		So(err, ShouldBeNil)
 
-		err = test.UploadImage(ref3, baseURL, repo)
+		err = test.UploadImage(ref3, baseURL, repo, ref3.DigestStr())
 		So(err, ShouldBeNil)
 
 		// get referrers by digest
@@ -398,7 +398,7 @@ func TestFormatsReferrersCLI(t *testing.T) {
 		repo := repoName
 		image := test.CreateRandomImage()
 
-		err := test.UploadImageWithRef(image, baseURL, repo, "tag")
+		err := test.UploadImage(image, baseURL, repo, "tag")
 		So(err, ShouldBeNil)
 
 		// add referrers
@@ -418,13 +418,13 @@ func TestFormatsReferrersCLI(t *testing.T) {
 			ArtifactType(customArtTypeV2).
 			Subject(image.DescriptorRef()).Build()
 
-		err = test.UploadImage(ref1, baseURL, repo)
+		err = test.UploadImage(ref1, baseURL, repo, ref1.DigestStr())
 		So(err, ShouldBeNil)
 
-		err = test.UploadImage(ref2, baseURL, repo)
+		err = test.UploadImage(ref2, baseURL, repo, ref2.DigestStr())
 		So(err, ShouldBeNil)
 
-		err = test.UploadImage(ref3, baseURL, repo)
+		err = test.UploadImage(ref3, baseURL, repo, ref3.DigestStr())
 		So(err, ShouldBeNil)
 
 		Convey("JSON format", func() {

@@ -57,7 +57,7 @@ func TestUIExtension(t *testing.T) {
 		So(found, ShouldBeTrue)
 		So(err, ShouldBeNil)
 
-		cfg, layers, manifest, err := test.GetImageComponents(1)
+		cfg, layers, manifest, err := test.GetImageComponents(1) //nolint:staticcheck
 		So(err, ShouldBeNil)
 
 		repoName := "test-repo"
@@ -66,11 +66,10 @@ func TestUIExtension(t *testing.T) {
 		// Upload a test image
 		err = test.UploadImage(
 			test.Image{
-				Config:    cfg,
-				Layers:    layers,
-				Manifest:  manifest,
-				Reference: tagName,
-			}, baseURL, repoName)
+				Config:   cfg,
+				Layers:   layers,
+				Manifest: manifest,
+			}, baseURL, repoName, tagName)
 		So(err, ShouldBeNil)
 
 		resp, err := resty.R().Get(baseURL + "/home")

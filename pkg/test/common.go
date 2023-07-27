@@ -278,7 +278,7 @@ func NewControllerManager(controller Controller) ControllerManager {
 	return cm
 }
 
-func WriteImageToFileSystem(image Image, repoName string, storeController storage.StoreController) error {
+func WriteImageToFileSystem(image Image, repoName, ref string, storeController storage.StoreController) error {
 	store := storeController.GetImageStore(repoName)
 
 	err := store.InitRepo(repoName)
@@ -314,7 +314,7 @@ func WriteImageToFileSystem(image Image, repoName string, storeController storag
 		return err
 	}
 
-	_, _, err = store.PutImageManifest(repoName, image.Reference, ispec.MediaTypeImageManifest, manifestBlob)
+	_, _, err = store.PutImageManifest(repoName, ref, ispec.MediaTypeImageManifest, manifestBlob)
 	if err != nil {
 		return err
 	}
@@ -333,7 +333,7 @@ func WriteMultiArchImageToFileSystem(multiarchImage MultiarchImage, repoName, re
 	}
 
 	for _, image := range multiarchImage.Images {
-		err := WriteImageToFileSystem(image, repoName, storeController)
+		err := WriteImageToFileSystem(image, repoName, image.DigestStr(), storeController)
 		if err != nil {
 			return err
 		}
@@ -503,6 +503,7 @@ func GetOciLayoutDigests(imagePath string) (godigest.Digest, godigest.Digest, go
 	return manifestDigest, configDigest, layerDigest
 }
 
+// Deprecated: Should use the new functions starting with "Create".
 func GetImageComponents(layerSize int) (ispec.Image, [][]byte, ispec.Manifest, error) {
 	config := ispec.Image{
 		Platform: ispec.Platform{
@@ -551,6 +552,7 @@ func GetImageComponents(layerSize int) (ispec.Image, [][]byte, ispec.Manifest, e
 	return config, layers, manifest, nil
 }
 
+// Deprecated: Should use the new functions starting with "Create".
 func GetRandomImageComponents(layerSize int) (ispec.Image, [][]byte, ispec.Manifest, error) {
 	config := ispec.Image{
 		Platform: ispec.Platform{
@@ -606,7 +608,8 @@ const (
 	Vulnerability3ID = "CVE-2023-2975"
 )
 
-func GetVulnImageWithConfig(ref string, config ispec.Image) (Image, error) {
+// Deprecated: Should use the new functions starting with "Create".
+func GetVulnImageWithConfig(config ispec.Image) (Image, error) {
 	vulnerableLayer, err := GetLayerWithVulnerability()
 	if err != nil {
 		return Image{}, err
@@ -631,8 +634,6 @@ func GetVulnImageWithConfig(ref string, config ispec.Image) (Image, error) {
 	if err != nil {
 		return Image{}, err
 	}
-
-	img.Reference = ref
 
 	return img, err
 }
@@ -693,7 +694,8 @@ func GetRandomLayer(size int) []byte {
 	return layer
 }
 
-func GetRandomImage(reference string) (Image, error) {
+// Deprecated: Should use the new functions starting with "Create".
+func GetRandomImage() (Image, error) {
 	const layerSize = 20
 
 	config, layers, manifest, err := GetRandomImageComponents(layerSize)
@@ -701,23 +703,14 @@ func GetRandomImage(reference string) (Image, error) {
 		return Image{}, err
 	}
 
-	if reference == "" {
-		blob, err := json.Marshal(manifest)
-		if err != nil {
-			return Image{}, err
-		}
-
-		reference = godigest.FromBytes(blob).String()
-	}
-
 	return Image{
-		Manifest:  manifest,
-		Layers:    layers,
-		Config:    config,
-		Reference: reference,
+		Manifest: manifest,
+		Layers:   layers,
+		Config:   config,
 	}, nil
 }
 
+// Deprecated: Should use the new functions starting with "Create".
 func GetImageComponentsWithConfig(conf ispec.Image) (ispec.Image, [][]byte, ispec.Manifest, error) {
 	configBlob, err := json.Marshal(conf)
 	if err = inject.Error(err); err != nil {
@@ -762,25 +755,21 @@ func GetImageComponentsWithConfig(conf ispec.Image) (ispec.Image, [][]byte, ispe
 	return conf, layers, manifest, nil
 }
 
+// Deprecated: Should use the new functions starting with "Create".
 func GetImageWithConfig(conf ispec.Image) (Image, error) {
 	config, layers, manifest, err := GetImageComponentsWithConfig(conf)
 	if err != nil {
 		return Image{}, err
 	}
 
-	blob, err := json.Marshal(manifest)
-	if err != nil {
-		return Image{}, err
-	}
-
 	return Image{
-		Manifest:  manifest,
-		Config:    config,
-		Layers:    layers,
-		Reference: godigest.FromBytes(blob).String(),
+		Manifest: manifest,
+		Config:   config,
+		Layers:   layers,
 	}, nil
 }
 
+// Deprecated: Should use the new functions starting with "Create".
 func GetImageWithComponents(config ispec.Image, layers [][]byte) (Image, error) {
 	configBlob, err := json.Marshal(config)
 	if err != nil {
@@ -812,16 +801,10 @@ func GetImageWithComponents(config ispec.Image, layers [][]byte) (Image, error) 
 		Layers: manifestLayers,
 	}
 
-	manifestBlob, err := json.Marshal(manifest)
-	if err != nil {
-		return Image{}, err
-	}
-
 	return Image{
-		Manifest:  manifest,
-		Config:    config,
-		Layers:    layers,
-		Reference: godigest.FromBytes(manifestBlob).String(),
+		Manifest: manifest,
+		Config:   config,
+		Layers:   layers,
 	}, nil
 }
 
@@ -840,6 +823,7 @@ func GetCosignSignatureTagForDigest(manifestDigest godigest.Digest) string {
 	return manifestDigest.Algorithm().String() + "-" + manifestDigest.Encoded() + ".sig"
 }
 
+// Deprecated: Should use the new functions starting with "Create".
 func GetImageWithSubject(subjectDigest godigest.Digest, mediaType string) (Image, error) {
 	num := 100
 
@@ -853,133 +837,14 @@ func GetImageWithSubject(subjectDigest godigest.Digest, mediaType string) (Image
 		MediaType: mediaType,
 	}
 
-	blob, err := json.Marshal(manifest)
-	if err != nil {
-		return Image{}, err
-	}
-
 	return Image{
-		Manifest:  manifest,
-		Config:    conf,
-		Layers:    layers,
-		Reference: godigest.FromBytes(blob).String(),
+		Manifest: manifest,
+		Config:   conf,
+		Layers:   layers,
 	}, nil
 }
 
-func UploadImage(img Image, baseURL, repo string) error {
-	for _, blob := range img.Layers {
-		resp, err := resty.R().Post(baseURL + "/v2/" + repo + "/blobs/uploads/")
-		if err != nil {
-			return err
-		}
-
-		if resp.StatusCode() != http.StatusAccepted {
-			return ErrPostBlob
-		}
-
-		loc := resp.Header().Get("Location")
-
-		digest := godigest.FromBytes(blob).String()
-
-		resp, err = resty.R().
-			SetHeader("Content-Length", fmt.Sprintf("%d", len(blob))).
-			SetHeader("Content-Type", "application/octet-stream").
-			SetQueryParam("digest", digest).
-			SetBody(blob).
-			Put(baseURL + loc)
-
-		if err != nil {
-			return err
-		}
-
-		if resp.StatusCode() != http.StatusCreated {
-			return ErrPutBlob
-		}
-	}
-
-	var err error
-
-	cblob := img.ConfigDescriptor.Data
-
-	// we'll remove this check once we make the full transition to the new way of generating test images
-	if len(cblob) == 0 {
-		cblob, err = json.Marshal(img.Config)
-		if err = inject.Error(err); err != nil {
-			return err
-		}
-	}
-
-	cdigest := godigest.FromBytes(cblob)
-
-	if img.Manifest.Config.MediaType == ispec.MediaTypeEmptyJSON ||
-		img.Manifest.Config.Digest == ispec.DescriptorEmptyJSON.Digest {
-		cblob = ispec.DescriptorEmptyJSON.Data
-		cdigest = ispec.DescriptorEmptyJSON.Digest
-	}
-
-	resp, err := resty.R().
-		Post(baseURL + "/v2/" + repo + "/blobs/uploads/")
-	if err = inject.Error(err); err != nil {
-		return err
-	}
-
-	if inject.ErrStatusCode(resp.StatusCode()) != http.StatusAccepted || inject.ErrStatusCode(resp.StatusCode()) == -1 {
-		return ErrPostBlob
-	}
-
-	loc := Location(baseURL, resp)
-
-	// uploading blob should get 201
-	resp, err = resty.R().
-		SetHeader("Content-Length", fmt.Sprintf("%d", len(cblob))).
-		SetHeader("Content-Type", "application/octet-stream").
-		SetQueryParam("digest", cdigest.String()).
-		SetBody(cblob).
-		Put(loc)
-	if err = inject.Error(err); err != nil {
-		return err
-	}
-
-	if inject.ErrStatusCode(resp.StatusCode()) != http.StatusCreated || inject.ErrStatusCode(resp.StatusCode()) == -1 {
-		return ErrPostBlob
-	}
-
-	manifestBlob := img.ManifestDescriptor.Data
-
-	// we'll remove this check once we make the full transition to the new way of generating test images
-	if len(manifestBlob) == 0 {
-		manifestBlob, err = json.Marshal(img.Manifest)
-		if err = inject.Error(err); err != nil {
-			return err
-		}
-	}
-
-	// validate manifest
-	if err := storageCommon.ValidateManifestSchema(manifestBlob); err != nil {
-		return err
-	}
-
-	if img.Reference == "" {
-		img.Reference = godigest.FromBytes(manifestBlob).String()
-	}
-
-	resp, err = resty.R().
-		SetHeader("Content-type", ispec.MediaTypeImageManifest).
-		SetBody(manifestBlob).
-		Put(baseURL + "/v2/" + repo + "/manifests/" + img.Reference)
-
-	if inject.ErrStatusCode(resp.StatusCode()) != http.StatusCreated {
-		return ErrPutBlob
-	}
-
-	if inject.ErrStatusCode(resp.StatusCode()) != http.StatusCreated {
-		return ErrPutBlob
-	}
-
-	return err
-}
-
-func UploadImageWithRef(img Image, baseURL, repo, ref string) error {
+func UploadImage(img Image, baseURL, repo, ref string) error {
 	for _, blob := range img.Layers {
 		resp, err := resty.R().Post(baseURL + "/v2/" + repo + "/blobs/uploads/")
 		if err != nil {
@@ -1137,13 +1002,13 @@ func PushTestImage(repoName string, tag string, //nolint:unparam
 ) error {
 	err := UploadImage(
 		Image{
-			Manifest:  manifest,
-			Config:    config,
-			Layers:    layers,
-			Reference: tag,
+			Manifest: manifest,
+			Config:   config,
+			Layers:   layers,
 		},
 		baseURL,
 		repoName,
+		tag,
 	)
 
 	return err
@@ -1662,101 +1527,7 @@ func Contains[E isser](s []E, name string) bool {
 	return Index(s, name) >= 0
 }
 
-func UploadImageWithBasicAuth(img Image, baseURL, repo, user, password string) error {
-	for _, blob := range img.Layers {
-		resp, err := resty.R().
-			SetBasicAuth(user, password).
-			Post(baseURL + "/v2/" + repo + "/blobs/uploads/")
-		if err != nil {
-			return err
-		}
-
-		if resp.StatusCode() != http.StatusAccepted {
-			return ErrPostBlob
-		}
-
-		loc := resp.Header().Get("Location")
-
-		digest := godigest.FromBytes(blob).String()
-
-		resp, err = resty.R().
-			SetBasicAuth(user, password).
-			SetHeader("Content-Length", fmt.Sprintf("%d", len(blob))).
-			SetHeader("Content-Type", "application/octet-stream").
-			SetQueryParam("digest", digest).
-			SetBody(blob).
-			Put(baseURL + loc)
-
-		if err != nil {
-			return err
-		}
-
-		if resp.StatusCode() != http.StatusCreated {
-			return ErrPutBlob
-		}
-	}
-	// upload config
-	cblob, err := json.Marshal(img.Config)
-	if err = inject.Error(err); err != nil {
-		return err
-	}
-
-	cdigest := godigest.FromBytes(cblob)
-
-	if img.Manifest.Config.MediaType == ispec.MediaTypeEmptyJSON {
-		cblob = ispec.DescriptorEmptyJSON.Data
-		cdigest = ispec.DescriptorEmptyJSON.Digest
-	}
-
-	resp, err := resty.R().
-		SetBasicAuth(user, password).
-		Post(baseURL + "/v2/" + repo + "/blobs/uploads/")
-	if err = inject.Error(err); err != nil {
-		return err
-	}
-
-	if inject.ErrStatusCode(resp.StatusCode()) != http.StatusAccepted || inject.ErrStatusCode(resp.StatusCode()) == -1 {
-		return ErrPostBlob
-	}
-
-	loc := Location(baseURL, resp)
-
-	// uploading blob should get 201
-	resp, err = resty.R().
-		SetBasicAuth(user, password).
-		SetHeader("Content-Length", fmt.Sprintf("%d", len(cblob))).
-		SetHeader("Content-Type", "application/octet-stream").
-		SetQueryParam("digest", cdigest.String()).
-		SetBody(cblob).
-		Put(loc)
-	if err = inject.Error(err); err != nil {
-		return err
-	}
-
-	if inject.ErrStatusCode(resp.StatusCode()) != http.StatusCreated || inject.ErrStatusCode(resp.StatusCode()) == -1 {
-		return ErrPostBlob
-	}
-
-	// put manifest
-	manifestBlob, err := json.Marshal(img.Manifest)
-	if err = inject.Error(err); err != nil {
-		return err
-	}
-
-	if img.Reference == "" {
-		img.Reference = godigest.FromBytes(manifestBlob).String()
-	}
-
-	_, err = resty.R().
-		SetBasicAuth(user, password).
-		SetHeader("Content-type", "application/vnd.oci.image.manifest.v1+json").
-		SetBody(manifestBlob).
-		Put(baseURL + "/v2/" + repo + "/manifests/" + img.Reference)
-
-	return err
-}
-
-func UploadImageWithBasicAuthRef(img Image, baseURL, repo, ref, user, password string) error {
+func UploadImageWithBasicAuth(img Image, baseURL, repo, ref, user, password string) error {
 	for _, blob := range img.Layers {
 		resp, err := resty.R().
 			SetBasicAuth(user, password).
@@ -1922,6 +1693,7 @@ func SignImageUsingNotary(repoTag, port string) error {
 	return err
 }
 
+// Deprecated: Should use the new functions starting with "Create".
 func GetRandomMultiarchImageComponents() (ispec.Index, []Image, error) {
 	const layerSize = 100
 
@@ -1946,8 +1718,6 @@ func GetRandomMultiarchImageComponents() (ispec.Index, []Image, error) {
 		return ispec.Index{}, []Image{}, err
 	}
 
-	image1.Reference = getManifestDigest(image1.Manifest).String()
-
 	randomLayer2 := make([]byte, layerSize)
 
 	_, err = rand.Read(randomLayer2)
@@ -1969,8 +1739,6 @@ func GetRandomMultiarchImageComponents() (ispec.Index, []Image, error) {
 		return ispec.Index{}, []Image{}, err
 	}
 
-	image2.Reference = getManifestDigest(image2.Manifest).String()
-
 	randomLayer3 := make([]byte, layerSize)
 
 	_, err = rand.Read(randomLayer3)
@@ -1991,8 +1759,6 @@ func GetRandomMultiarchImageComponents() (ispec.Index, []Image, error) {
 	if err != nil {
 		return ispec.Index{}, []Image{}, err
 	}
-
-	image3.Reference = getManifestDigest(image3.Manifest).String()
 
 	index := ispec.Index{
 		MediaType: ispec.MediaTypeImageIndex,
@@ -2018,6 +1784,7 @@ func GetRandomMultiarchImageComponents() (ispec.Index, []Image, error) {
 	return index, []Image{image1, image2, image3}, nil
 }
 
+// Deprecated: Should use the new functions starting with "Create".
 func GetRandomMultiarchImage(reference string) (MultiarchImage, error) {
 	index, images, err := GetRandomMultiarchImageComponents()
 	if err != nil {
@@ -2031,18 +1798,16 @@ func GetRandomMultiarchImage(reference string) (MultiarchImage, error) {
 	}, err
 }
 
+// Deprecated: Should use the new functions starting with "Create".
 func GetMultiarchImageForImages(images []Image) MultiarchImage {
 	var index ispec.Index
 
-	for i, image := range images {
+	for _, image := range images {
 		index.Manifests = append(index.Manifests, ispec.Descriptor{
 			MediaType: ispec.MediaTypeImageManifest,
 			Digest:    getManifestDigest(image.Manifest),
 			Size:      getManifestSize(image.Manifest),
 		})
-
-		// update the reference with the digest of the manifest
-		images[i].Reference = getManifestDigest(image.Manifest).String()
 	}
 
 	index.SchemaVersion = 2
@@ -2068,40 +1833,9 @@ func getManifestDigest(manifest ispec.Manifest) godigest.Digest {
 	return godigest.FromBytes(manifestBlob)
 }
 
-func UploadMultiarchImage(multiImage MultiarchImage, baseURL string, repo string) error {
+func UploadMultiarchImage(multiImage MultiarchImage, baseURL string, repo, ref string) error {
 	for _, image := range multiImage.Images {
-		err := UploadImage(image, baseURL, repo)
-		if err != nil {
-			return err
-		}
-	}
-
-	// put manifest
-	indexBlob, err := json.Marshal(multiImage.Index)
-	if err = inject.Error(err); err != nil {
-		return err
-	}
-
-	// validate manifest
-	if err := storageCommon.ValidateImageIndexSchema(indexBlob); err != nil {
-		return err
-	}
-
-	resp, err := resty.R().
-		SetHeader("Content-type", ispec.MediaTypeImageIndex).
-		SetBody(indexBlob).
-		Put(baseURL + "/v2/" + repo + "/manifests/" + multiImage.Reference)
-
-	if resp.StatusCode() != http.StatusCreated {
-		return ErrPutIndex
-	}
-
-	return err
-}
-
-func UploadMultiarchImageWithRef(multiImage MultiarchImage, baseURL string, repo, ref string) error {
-	for _, image := range multiImage.Images {
-		err := UploadImageWithRef(image, baseURL, repo, image.DigestStr())
+		err := UploadImage(image, baseURL, repo, image.DigestStr())
 		if err != nil {
 			return err
 		}

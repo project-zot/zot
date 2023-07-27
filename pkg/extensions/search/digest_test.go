@@ -87,12 +87,8 @@ func TestDigestSearchHTTP(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		const ver001 = "0.0.1"
-		image1.Reference = ver001
-		err = UploadImage(
-			image1,
-			baseURL,
-			"zot-cve-test",
-		)
+
+		err = UploadImage(image1, baseURL, "zot-cve-test", ver001)
 		So(err, ShouldBeNil)
 
 		createdTime2 := time.Date(2010, 1, 1, 12, 0, 0, 0, time.UTC)
@@ -110,10 +106,9 @@ func TestDigestSearchHTTP(t *testing.T) {
 		)
 		So(err, ShouldBeNil)
 
-		image2.Reference = ver001
 		manifestDigest := image2.Digest()
 
-		err = UploadImage(image2, baseURL, "zot-test")
+		err = UploadImage(image2, baseURL, "zot-test", ver001)
 		So(err, ShouldBeNil)
 
 		configBlob, err := json.Marshal(image2.Config)

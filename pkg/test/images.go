@@ -77,10 +77,9 @@ type ManifestBuilder interface {
 }
 
 type Image struct {
-	Manifest  ispec.Manifest
-	Config    ispec.Image
-	Layers    [][]byte
-	Reference string
+	Manifest ispec.Manifest
+	Config   ispec.Image
+	Layers   [][]byte
 
 	ConfigDescriptor   ispec.Descriptor
 	ManifestDescriptor ispec.Descriptor
@@ -151,6 +150,7 @@ func CreateRandomImageWith() ManifestBuilder {
 	return CreateImageWith().RandomLayers(layerCount, layerSize).RandomConfig()
 }
 
+// CreateVulnerableImage creates a vulnerable image with the default config.
 func CreateVulnerableImage() Image {
 	return CreateImageWith().VulnerableLayers().DefaultVulnConfig().Build()
 }
@@ -432,8 +432,6 @@ func (ib *BaseImageBuilder) Build() Image {
 		Size:      int64(len(manifestBlob)),
 		Data:      manifestBlob,
 	}
-
-	img.Reference = img.ManifestDescriptor.Digest.String()
 
 	return img
 }
