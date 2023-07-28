@@ -56,7 +56,7 @@ type ConfigBuilder interface {
 	RandomConfig() ManifestBuilder
 }
 
-// VulnerableConfigBuilder abstracts specifying the config of an vulnerage OCI image.
+// VulnerableConfigBuilder abstracts specifying the config of an vulnerable OCI image.
 // Keeping the RootFS field consistent with the vulnerable layers.
 type VulnerableConfigBuilder interface {
 	// VulnerableConfig sets the given config while keeping the correct RootFS values for the

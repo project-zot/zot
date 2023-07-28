@@ -44,7 +44,7 @@ func RepoMeta2RepoSummary(ctx context.Context, repoMeta mTypes.RepoMetadata,
 		repoIsUserStarred        = repoMeta.IsStarred    // value specific to the current user
 		repoIsUserBookMarked     = repoMeta.IsBookmarked // value specific to the current user
 
-		// map used to keep track of all blobs of a repo without dublicates as
+		// map used to keep track of all blobs of a repo without duplicates as
 		// some images may have the same layers
 		repoBlob2Size = make(map[string]int64, 10)
 
@@ -140,7 +140,7 @@ func RepoMeta2RepoSummary(ctx context.Context, repoMeta mTypes.RepoMetadata,
 	}
 }
 
-func PaginatedRepoMeta2RepoSummaries(ctx context.Context, repoMetas []mTypes.RepoMetadata,
+func PaginatedRepoMeta2RepoSummaries(ctx context.Context, reposMeta []mTypes.RepoMetadata,
 	manifestMetaMap map[string]mTypes.ManifestMetadata, indexDataMap map[string]mTypes.IndexData,
 	skip SkipQGLField, cveInfo cveinfo.CveInfo, filter mTypes.Filter, pageInput pagination.PageInput,
 ) ([]*gql_generated.RepoSummary, zcommon.PageInfo, error) {
@@ -149,7 +149,7 @@ func PaginatedRepoMeta2RepoSummaries(ctx context.Context, repoMetas []mTypes.Rep
 		return []*gql_generated.RepoSummary{}, zcommon.PageInfo{}, err
 	}
 
-	for _, repoMeta := range repoMetas {
+	for _, repoMeta := range reposMeta {
 		repoSummary := RepoMeta2RepoSummary(ctx, repoMeta, manifestMetaMap, indexDataMap, skip, cveInfo)
 
 		if RepoSumAcceptedByFilter(repoSummary, filter) {
@@ -679,7 +679,7 @@ func RepoMeta2ExpandedRepoInfo(ctx context.Context, repoMeta mTypes.RepoMetadata
 		isStarred                = repoMeta.IsStarred    // value specific to the current user
 		isBookmarked             = repoMeta.IsBookmarked // value specific to the current user
 
-		// map used to keep track of all blobs of a repo without dublicates as
+		// map used to keep track of all blobs of a repo without duplicates as
 		// some images may have the same layers
 		repoBlob2Size = make(map[string]int64, 10)
 
@@ -694,7 +694,7 @@ func RepoMeta2ExpandedRepoInfo(ctx context.Context, repoMeta mTypes.RepoMetadata
 			skip.Vulnerabilities, repoMeta, manifestMetaMap, indexDataMap, cveInfo)
 		if err != nil {
 			log.Error().Str("repository", repoName).Str("reference", tag).
-				Msg("metadb: erorr while converting descriptor for image")
+				Msg("metadb: error while converting descriptor for image")
 
 			continue
 		}

@@ -717,7 +717,7 @@ func (rh *RouteHandler) UpdateManifest(response http.ResponseWriter, request *ht
 			rh.c.Log.Error().Err(err).Msg("unexpected error: performing cleanup")
 
 			if err = imgStore.DeleteImageManifest(name, reference, false); err != nil {
-				// deletion of image manifest is important, but not critical for image repo consistancy
+				// deletion of image manifest is important, but not critical for image repo consistency
 				// in the worst scenario a partial manifest file written to disk will not affect the repo because
 				// the new manifest was not added to "index.json" file (it is possible that GC will take care of it)
 				rh.c.Log.Error().Err(err).Str("repository", name).Str("reference", reference).

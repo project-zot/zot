@@ -20,12 +20,6 @@ import (
 	"zotregistry.io/zot/pkg/test"
 )
 
-func ref[T any](input T) *T {
-	ref := input
-
-	return &ref
-}
-
 const (
 	customArtTypeV1 = "application/custom.art.type.v1"
 	customArtTypeV2 = "application/custom.art.type.v2"
@@ -428,7 +422,7 @@ func TestFormatsReferrersCLI(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		Convey("JSON format", func() {
-			args := []string{"reftest", "--output", "json", "--subject", repo + "@" + image.DigestStr()}
+			args := []string{"reftest", "--format", "json", "--subject", repo + "@" + image.DigestStr()}
 
 			configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"reftest","url":"%s","showspinner":false}]}`,
 				baseURL))
@@ -446,7 +440,7 @@ func TestFormatsReferrersCLI(t *testing.T) {
 			fmt.Println(buff.String())
 		})
 		Convey("YAML format", func() {
-			args := []string{"reftest", "--output", "yaml", "--subject", repo + "@" + image.DigestStr()}
+			args := []string{"reftest", "--format", "yaml", "--subject", repo + "@" + image.DigestStr()}
 
 			configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"reftest","url":"%s","showspinner":false}]}`,
 				baseURL))
@@ -464,7 +458,7 @@ func TestFormatsReferrersCLI(t *testing.T) {
 			fmt.Println(buff.String())
 		})
 		Convey("Invalid format", func() {
-			args := []string{"reftest", "--output", "invalid_format", "--subject", repo + "@" + image.DigestStr()}
+			args := []string{"reftest", "--format", "invalid_format", "--subject", repo + "@" + image.DigestStr()}
 
 			configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"reftest","url":"%s","showspinner":false}]}`,
 				baseURL))
@@ -488,7 +482,7 @@ func TestReferrersCLIErrors(t *testing.T) {
 		cmd := NewSearchCommand(new(searchService))
 
 		Convey("no url provided", func() {
-			args := []string{"reftest", "--output", "invalid", "--query", "repo/alpine"}
+			args := []string{"reftest", "--format", "invalid", "--query", "repo/alpine"}
 
 			configPath := makeConfigFile(`{"configs":[{"_name":"reftest","showspinner":false}]}`)
 
@@ -593,4 +587,10 @@ func TestReferrersCLIErrors(t *testing.T) {
 			So(err, ShouldNotBeNil)
 		})
 	})
+}
+
+func ref[T any](input T) *T {
+	ref := input
+
+	return &ref
 }

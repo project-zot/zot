@@ -5,6 +5,8 @@ const (
 	ExtCatalogPrefix     = "/_catalog"
 	ExtOciDiscoverPrefix = "/_oci/ext/discover"
 
+	BaseExtension = "_zot"
+
 	// zot specific extensions.
 	BasePrefix = "/_zot"
 	ExtPrefix  = BasePrefix + "/ext"

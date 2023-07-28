@@ -3,7 +3,6 @@ package main
 import (
 	"bytes"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -19,6 +18,7 @@ import (
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"gopkg.in/resty.v1"
 
+	zerr "zotregistry.io/zot/errors"
 	"zotregistry.io/zot/pkg/api"
 	"zotregistry.io/zot/pkg/test"
 )
@@ -32,7 +32,8 @@ func makeHTTPGetRequest(url string, resultPtr interface{}, client *resty.Client)
 	if resp.StatusCode() != http.StatusOK {
 		log.Printf("unable to make GET request on %s, response status code: %d", url, resp.StatusCode())
 
-		return errors.New(string(resp.Body())) //nolint: goerr113
+		return fmt.Errorf("%w: Expected: %d, Got: %d, Body: '%s'", zerr.ErrBadHTTPStatusCode, http.StatusOK,
+			resp.StatusCode(), string(resp.Body()))
 	}
 
 	err = json.Unmarshal(resp.Body(), resultPtr)
@@ -52,7 +53,8 @@ func makeHTTPDeleteRequest(url string, client *resty.Client) error {
 	if resp.StatusCode() != http.StatusAccepted {
 		log.Printf("unable to make DELETE request on %s, response status code: %d", url, resp.StatusCode())
 
-		return errors.New(string(resp.Body())) //nolint: goerr113
+		return fmt.Errorf("%w: Expected: %d, Got: %d, Body: '%s'", zerr.ErrBadHTTPStatusCode, http.StatusAccepted,
+			resp.StatusCode(), string(resp.Body()))
 	}
 
 	return nil
@@ -336,7 +338,8 @@ func pushMonolithImage(workdir, url, trepo string, repos []string, config testCo
 	// request specific check
 	statusCode = resp.StatusCode()
 	if statusCode != http.StatusAccepted {
-		return nil, repos, errors.New(string(resp.Body())) //nolint: goerr113
+		return nil, repos, fmt.Errorf("%w: Expected: %d, Got: %d, Body: '%s'", zerr.ErrBadHTTPStatusCode, http.StatusAccepted,
+			resp.StatusCode(), string(resp.Body())) //nolint: goerr113
 	}
 
 	loc := test.Location(url, resp)
@@ -374,7 +377,8 @@ func pushMonolithImage(workdir, url, trepo string, repos []string, config testCo
 	// request specific check
 	statusCode = resp.StatusCode()
 	if statusCode != http.StatusCreated {
-		return nil, repos, errors.New(string(resp.Body())) //nolint: goerr113
+		return nil, repos, fmt.Errorf("%w: Expected: %d, Got: %d, Body: '%s'", zerr.ErrBadHTTPStatusCode, http.StatusCreated,
+			resp.StatusCode(), string(resp.Body()))
 	}
 
 	// upload image config blob
@@ -388,7 +392,8 @@ func pushMonolithImage(workdir, url, trepo string, repos []string, config testCo
 	// request specific check
 	statusCode = resp.StatusCode()
 	if statusCode != http.StatusAccepted {
-		return nil, repos, errors.New(string(resp.Body())) //nolint: goerr113
+		return nil, repos, fmt.Errorf("%w: Expected: %d, Got: %d, Body: '%s'", zerr.ErrBadHTTPStatusCode, http.StatusAccepted,
+			resp.StatusCode(), string(resp.Body()))
 	}
 
 	loc = test.Location(url, resp)
@@ -408,7 +413,8 @@ func pushMonolithImage(workdir, url, trepo string, repos []string, config testCo
 	// request specific check
 	statusCode = resp.StatusCode()
 	if statusCode != http.StatusCreated {
-		return nil, repos, errors.New(string(resp.Body())) //nolint: goerr113
+		return nil, repos, fmt.Errorf("%w: Expected: %d, Got: %d, Body: '%s'", zerr.ErrBadHTTPStatusCode, http.StatusCreated,
+			resp.StatusCode(), string(resp.Body()))
 	}
 
 	// create a manifest
@@ -451,7 +457,8 @@ func pushMonolithImage(workdir, url, trepo string, repos []string, config testCo
 	// request specific check
 	statusCode = resp.StatusCode()
 	if statusCode != http.StatusCreated {
-		return nil, repos, errors.New(string(resp.Body())) //nolint: goerr113
+		return nil, repos, fmt.Errorf("%w: Expected: %d, Got: %d, Body: '%s'", zerr.ErrBadHTTPStatusCode, http.StatusCreated,
+			resp.StatusCode(), string(resp.Body()))
 	}
 
 	manifestHash[repo] = manifestTag

@@ -12,7 +12,7 @@ import (
 	"github.com/briandowns/spinner"
 	"github.com/spf13/cobra"
 
-	zotErrors "zotregistry.io/zot/errors"
+	zerr "zotregistry.io/zot/errors"
 )
 
 //nolint:dupl
@@ -24,16 +24,16 @@ func NewImageCommand(searchService SearchService) *cobra.Command {
 	var isSpinner, verifyTLS, verbose, debug bool
 
 	imageCmd := &cobra.Command{
-		Use:   "images [config-name]",
-		Short: "List images hosted on the zot registry",
-		Long:  `List images hosted on the zot registry`,
+		Use:   "image [config-name]",
+		Short: "DEPRECATED (see images)",
+		Long:  `DEPRECATED (see images)! List images hosted on the zot registry`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			home, err := os.UserHomeDir()
 			if err != nil {
 				panic(err)
 			}
 
-			configPath := path.Join(home + "/.zot")
+			configPath := path.Join(home, "/.zot")
 			if servURL == "" {
 				if len(args) > 0 {
 					urlFromConfig, err := getConfigValue(configPath, args[0], "url")
@@ -44,12 +44,12 @@ func NewImageCommand(searchService SearchService) *cobra.Command {
 					}
 
 					if urlFromConfig == "" {
-						return zotErrors.ErrNoURLProvided
+						return zerr.ErrNoURLProvided
 					}
 
 					servURL = urlFromConfig
 				} else {
-					return zotErrors.ErrNoURLProvided
+					return zerr.ErrNoURLProvided
 				}
 			}
 
@@ -129,11 +129,12 @@ func setupImageFlags(imageCmd *cobra.Command, searchImageParams map[string]*stri
 	searchImageParams["baseImage"] = imageCmd.Flags().StringP("base-images", "b", "",
 		"List images that are base for the given image")
 
-	imageCmd.Flags().StringVar(servURL, "url", "", "Specify zot server URL if config-name is not mentioned")
-	imageCmd.Flags().StringVarP(user, "user", "u", "", `User Credentials of zot server in "username:password" format`)
-	imageCmd.Flags().StringVarP(outputFormat, "output", "o", "", "Specify output format [text/json/yaml]")
-	imageCmd.Flags().BoolVar(verbose, "verbose", false, "Show verbose output")
-	imageCmd.Flags().BoolVar(debug, "debug", false, "Show debug output")
+	imageCmd.PersistentFlags().StringVar(servURL, "url", "", "Specify zot server URL if config-name is not mentioned")
+	imageCmd.PersistentFlags().StringVarP(user, "user", "u", "",
+		`User Credentials of zot server in "username:password" format`)
+	imageCmd.PersistentFlags().StringVarP(outputFormat, "output", "o", "", "Specify output format [text/json/yaml]")
+	imageCmd.PersistentFlags().BoolVar(verbose, "verbose", false, "Show verbose output")
+	imageCmd.PersistentFlags().BoolVar(debug, "debug", false, "Show debug output")
 }
 
 func searchImage(searchConfig searchConfig) error {
@@ -156,7 +157,7 @@ func searchImage(searchConfig searchConfig) error {
 		}
 	}
 
-	return zotErrors.ErrInvalidFlagsCombination
+	return zerr.ErrInvalidFlagsCombination
 }
 
 const (

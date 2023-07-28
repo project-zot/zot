@@ -20,7 +20,7 @@ import (
 	"github.com/rs/zerolog"
 	. "github.com/smartystreets/goconvey/convey"
 
-	"zotregistry.io/zot/errors"
+	zerr "zotregistry.io/zot/errors"
 	"zotregistry.io/zot/pkg/extensions/config"
 	syncconf "zotregistry.io/zot/pkg/extensions/config/sync"
 	"zotregistry.io/zot/pkg/extensions/lint"
@@ -92,7 +92,7 @@ func TestSyncInternal(t *testing.T) {
 
 		repositoryReference = fmt.Sprintf("%s/%s:tagged", host, testImage)
 		_, err = parseRepositoryReference(repositoryReference)
-		So(err, ShouldEqual, errors.ErrInvalidRepositoryName)
+		So(err, ShouldEqual, zerr.ErrInvalidRepositoryName)
 
 		repositoryReference = fmt.Sprintf("http://%s/%s", host, testImage)
 		_, err = parseRepositoryReference(repositoryReference)
@@ -341,7 +341,7 @@ func TestLocalRegistry(t *testing.T) {
 			registry := NewLocalRegistry(storage.StoreController{DefaultStore: syncImgStore}, mocks.MetaDBMock{
 				SetRepoReferenceFn: func(repo, Reference string, manifestDigest godigest.Digest, mediaType string) error {
 					if Reference == "1.0" {
-						return errors.ErrRepoMetaNotFound
+						return zerr.ErrRepoMetaNotFound
 					}
 
 					return nil
@@ -355,7 +355,7 @@ func TestLocalRegistry(t *testing.T) {
 		Convey("trigger metaDB error on image manifest in CommitImage()", func() {
 			registry := NewLocalRegistry(storage.StoreController{DefaultStore: syncImgStore}, mocks.MetaDBMock{
 				SetRepoReferenceFn: func(repo, Reference string, manifestDigest godigest.Digest, mediaType string) error {
-					return errors.ErrRepoMetaNotFound
+					return zerr.ErrRepoMetaNotFound
 				},
 			}, log)
 

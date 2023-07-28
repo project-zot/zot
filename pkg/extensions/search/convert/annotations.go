@@ -30,7 +30,7 @@ type ImageAnnotations struct {
 /*
 	OCI annotation/label with backwards compatibility
 
-arg can be either lables or annotations
+arg can be either labels or annotations
 https://github.com/opencontainers/image-spec/blob/main/annotations.md.
 */
 func GetAnnotationValue(annotations map[string]string, annotationKey, labelKey string) string {

@@ -20,7 +20,7 @@ import (
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"gopkg.in/yaml.v2"
 
-	zotErrors "zotregistry.io/zot/errors"
+	zerr "zotregistry.io/zot/errors"
 	"zotregistry.io/zot/pkg/api/constants"
 	"zotregistry.io/zot/pkg/common"
 )
@@ -34,13 +34,13 @@ const (
 type SearchService interface { //nolint:interfacebloat
 	getImagesGQL(ctx context.Context, config searchConfig, username, password string,
 		imageName string) (*common.ImageListResponse, error)
-	getImagesByDigestGQL(ctx context.Context, config searchConfig, username, password string,
+	getImagesForDigestGQL(ctx context.Context, config searchConfig, username, password string,
 		digest string) (*common.ImagesForDigest, error)
 	getCveByImageGQL(ctx context.Context, config searchConfig, username, password,
 		imageName string, searchedCVE string) (*cveResult, error)
 	getImagesByCveIDGQL(ctx context.Context, config searchConfig, username, password string,
 		digest string) (*common.ImagesForCve, error)
-	getTagsForCVEGQL(ctx context.Context, config searchConfig, username, password, imageName,
+	getTagsForCVEGQL(ctx context.Context, config searchConfig, username, password, repo,
 		cveID string) (*common.ImagesForCve, error)
 	getFixedTagsForCVEGQL(ctx context.Context, config searchConfig, username, password, imageName,
 		cveID string) (*common.ImageListWithCVEFixedResponse, error)
@@ -260,7 +260,7 @@ func (service searchService) getImagesGQL(ctx context.Context, config searchConf
 	return result, nil
 }
 
-func (service searchService) getImagesByDigestGQL(ctx context.Context, config searchConfig, username, password string,
+func (service searchService) getImagesForDigestGQL(ctx context.Context, config searchConfig, username, password string,
 	digest string,
 ) (*common.ImagesForDigest, error) {
 	query := fmt.Sprintf(`
@@ -354,7 +354,7 @@ func (service searchService) getCveByImageGQL(ctx context.Context, config search
 }
 
 func (service searchService) getTagsForCVEGQL(ctx context.Context, config searchConfig,
-	username, password, imageName, cveID string,
+	username, password, repo, cveID string,
 ) (*common.ImagesForCve, error) {
 	query := fmt.Sprintf(`
 		{
@@ -387,7 +387,19 @@ func (service searchService) getTagsForCVEGQL(ctx context.Context, config search
 		return nil, errResult
 	}
 
-	return result, nil
+	if repo == "" {
+		return result, nil
+	}
+
+	filteredResults := &common.ImagesForCve{}
+
+	for _, image := range result.Results {
+		if image.RepoName == repo {
+			filteredResults.Results = append(filteredResults.Results, image)
+		}
+	}
+
+	return filteredResults, nil
 }
 
 func (service searchService) getFixedTagsForCVEGQL(ctx context.Context, config searchConfig,
@@ -537,7 +549,9 @@ func getImage(ctx context.Context, config searchConfig, username, password, imag
 ) {
 	defer wtgrp.Done()
 
-	tagListEndpoint, err := combineServerAndEndpointURL(*config.servURL, fmt.Sprintf("/v2/%s/tags/list", imageName))
+	repo, imageTag := common.GetImageDirAndTag(imageName)
+
+	tagListEndpoint, err := combineServerAndEndpointURL(*config.servURL, fmt.Sprintf("/v2/%s/tags/list", repo))
 	if err != nil {
 		if isContextDone(ctx) {
 			return
@@ -570,9 +584,17 @@ func getImage(ctx context.Context, config searchConfig, username, password, imag
 			continue
 		}
 
+		shouldMatchTag := imageTag != ""
+		matchesTag := tag == imageTag
+
+		// when the tag is empty we match everything
+		if shouldMatchTag && !matchesTag {
+			continue
+		}
+
 		wtgrp.Add(1)
 
-		go addManifestCallToPool(ctx, config, pool, username, password, imageName, tag, rch, wtgrp)
+		go addManifestCallToPool(ctx, config, pool, username, password, repo, tag, rch, wtgrp)
 	}
 }
 
@@ -787,7 +809,7 @@ func (service searchService) getImageByNameAndCVEID(ctx context.Context, config 
 	go rlim.startRateLimiter(ctx)
 
 	for _, image := range result.Results {
-		if !strings.EqualFold(imageName, image.RepoName) {
+		if imageName != "" && !strings.EqualFold(imageName, image.RepoName) {
 			continue
 		}
 
@@ -1438,7 +1460,7 @@ func addManifestToTable(table *tablewriter.Table, imageName, tagName string, man
 		platform += offset
 	}
 
-	minifestDigestStr := ellipsize(manifestDigest.Encoded(), digestWidth, "")
+	manifestDigestStr := ellipsize(manifestDigest.Encoded(), digestWidth, "")
 	configDigestStr := ellipsize(configDigest.Encoded(), configWidth, "")
 	imgSize, _ := strconv.ParseUint(manifest.Size, 10, 64)
 	size := ellipsize(strings.ReplaceAll(humanize.Bytes(imgSize), " ", ""), sizeWidth, ellipsis)
@@ -1447,7 +1469,7 @@ func addManifestToTable(table *tablewriter.Table, imageName, tagName string, man
 
 	row[colImageNameIndex] = imageName
 	row[colTagIndex] = tagName
-	row[colDigestIndex] = minifestDigestStr
+	row[colDigestIndex] = manifestDigestStr
 	row[colPlatformIndex] = platform
 	row[colSizeIndex] = size
 	row[colIsSignedIndex] = strconv.FormatBool(isSigned)
@@ -1487,23 +1509,23 @@ func addManifestToTable(table *tablewriter.Table, imageName, tagName string, man
 	return nil
 }
 
-func getPlatformStr(platf common.Platform) string {
-	if platf.Arch == "" && platf.Os == "" {
+func getPlatformStr(platform common.Platform) string {
+	if platform.Arch == "" && platform.Os == "" {
 		return ""
 	}
 
-	platform := platf.Os
+	fullPlatform := platform.Os
 
-	if platf.Arch != "" {
-		platform = platform + "/" + platf.Arch
-		platform = strings.Trim(platform, "/")
+	if platform.Arch != "" {
+		fullPlatform = fullPlatform + "/" + platform.Arch
+		fullPlatform = strings.Trim(fullPlatform, "/")
 
-		if platf.Variant != "" {
-			platform = platform + "/" + platf.Variant
+		if platform.Variant != "" {
+			fullPlatform = fullPlatform + "/" + platform.Variant
 		}
 	}
 
-	return platform
+	return fullPlatform
 }
 
 func (img imageStruct) stringJSON() (string, error) {
@@ -1534,12 +1556,12 @@ type catalogResponse struct {
 
 func combineServerAndEndpointURL(serverURL, endPoint string) (string, error) {
 	if !isURL(serverURL) {
-		return "", zotErrors.ErrInvalidURL
+		return "", zerr.ErrInvalidURL
 	}
 
 	newURL, err := url.Parse(serverURL)
 	if err != nil {
-		return "", zotErrors.ErrInvalidURL
+		return "", zerr.ErrInvalidURL
 	}
 
 	newURL, _ = newURL.Parse(endPoint)

@@ -7,7 +7,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -21,7 +20,7 @@ import (
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/sigstore/cosign/v2/pkg/oci/remote"
 
-	zotErrors "zotregistry.io/zot/errors"
+	zerr "zotregistry.io/zot/errors"
 	"zotregistry.io/zot/pkg/common"
 )
 
@@ -124,19 +123,20 @@ func doHTTPRequest(req *http.Request, verifyTLS bool, debug bool,
 
 	if debug {
 		fmt.Fprintln(configWriter, "[debug] ", req.Method, req.URL, "[status] ",
-			resp.StatusCode, " ", "[respoonse header] ", resp.Header)
+			resp.StatusCode, " ", "[response header] ", resp.Header)
 	}
 
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
 		if resp.StatusCode == http.StatusUnauthorized {
-			return nil, zotErrors.ErrUnauthorizedAccess
+			return nil, zerr.ErrUnauthorizedAccess
 		}
 
 		bodyBytes, _ := io.ReadAll(resp.Body)
 
-		return nil, errors.New(string(bodyBytes)) //nolint: goerr113
+		return nil, fmt.Errorf("%w: Expected: %d, Got: %d, Body: '%s'", zerr.ErrBadHTTPStatusCode, http.StatusOK,
+			resp.StatusCode, string(bodyBytes))
 	}
 
 	if resultsPtr == nil {

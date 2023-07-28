@@ -15,7 +15,7 @@ import (
 
 	"github.com/briandowns/spinner"
 
-	zotErrors "zotregistry.io/zot/errors"
+	zerr "zotregistry.io/zot/errors"
 	"zotregistry.io/zot/pkg/api/constants"
 	zcommon "zotregistry.io/zot/pkg/common"
 )
@@ -326,7 +326,7 @@ func (search imagesByDigestSearcherGQL) search(config searchConfig) (bool, error
 
 	defer cancel()
 
-	imageList, err := config.searchService.getImagesByDigestGQL(ctx, config, username, password, *config.params["digest"])
+	imageList, err := config.searchService.getImagesForDigestGQL(ctx, config, username, password, *config.params["digest"])
 	if err != nil {
 		return true, err
 	}
@@ -770,7 +770,7 @@ func (search globalSearcherREST) search(config searchConfig) (bool, error) {
 		return false, nil
 	}
 
-	return true, fmt.Errorf("search extension is not enabled: %w", zotErrors.ErrExtensionNotEnabled)
+	return true, fmt.Errorf("search extension is not enabled: %w", zerr.ErrExtensionNotEnabled)
 }
 
 func collectResults(config searchConfig, wg *sync.WaitGroup, imageErr chan stringResult,
@@ -813,7 +813,7 @@ func collectResults(config searchConfig, wg *sync.WaitGroup, imageErr chan strin
 			config.spinner.stopSpinner()
 			cancel()
 
-			errCh <- zotErrors.ErrCLITimeout
+			errCh <- zerr.ErrCLITimeout
 
 			return
 		}

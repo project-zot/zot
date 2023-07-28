@@ -6242,8 +6242,8 @@ func TestImageSummary(t *testing.T) {
 
 		WaitTillServerReady(baseURL)
 
-		manifestBlob, errMarsal := json.Marshal(manifest)
-		So(errMarsal, ShouldBeNil)
+		manifestBlob, errMarshal := json.Marshal(manifest)
+		So(errMarshal, ShouldBeNil)
 		So(manifestBlob, ShouldNotBeNil)
 		manifestDigest := godigest.FromBytes(manifestBlob)
 		repoName := "test-repo" //nolint:goconst
@@ -6427,7 +6427,7 @@ func TestImageSummary(t *testing.T) {
 	})
 }
 
-func TestUplodingArtifactsWithDifferentMediaType(t *testing.T) {
+func TestUploadingArtifactsWithDifferentMediaType(t *testing.T) {
 	Convey("", t, func() {
 		port := GetFreePort()
 		baseURL := GetBaseURL(port)

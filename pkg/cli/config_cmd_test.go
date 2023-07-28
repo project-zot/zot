@@ -13,7 +13,7 @@ import (
 
 	. "github.com/smartystreets/goconvey/convey"
 
-	zotErrors "zotregistry.io/zot/errors"
+	zerr "zotregistry.io/zot/errors"
 )
 
 func TestConfigCmdBasics(t *testing.T) {
@@ -146,7 +146,7 @@ func TestConfigCmdMain(t *testing.T) {
 		cmd.SetErr(buff)
 		cmd.SetArgs(args)
 		err := cmd.Execute()
-		So(err, ShouldEqual, zotErrors.ErrCliBadConfig)
+		So(err, ShouldEqual, zerr.ErrCliBadConfig)
 	})
 
 	Convey("Test add config with invalid URL", t, func() {
@@ -160,7 +160,7 @@ func TestConfigCmdMain(t *testing.T) {
 		cmd.SetArgs(args)
 		err := cmd.Execute()
 		So(err, ShouldNotBeNil)
-		So(err, ShouldEqual, zotErrors.ErrInvalidURL)
+		So(err, ShouldEqual, zerr.ErrInvalidURL)
 	})
 
 	Convey("Test remove config entry successfully", t, func() {

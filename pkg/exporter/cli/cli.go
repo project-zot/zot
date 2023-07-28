@@ -9,7 +9,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
-	"zotregistry.io/zot/errors"
+	zerr "zotregistry.io/zot/errors"
 	"zotregistry.io/zot/pkg/exporter/api"
 )
 
@@ -66,12 +66,12 @@ func loadConfiguration(config *api.Config, configPath string) {
 
 	metaData := &mapstructure.Metadata{}
 	if err := viper.Unmarshal(&config, metadataConfig(metaData)); err != nil {
-		log.Error().Err(err).Msg("Error while unmarshalling new config")
+		log.Error().Err(err).Msg("Error while unmarshaling new config")
 		panic(err)
 	}
 
 	if len(metaData.Keys) == 0 || len(metaData.Unused) > 0 {
-		log.Error().Err(errors.ErrBadConfig).Msg("Bad configuration, retry writing it")
-		panic(errors.ErrBadConfig)
+		log.Error().Err(zerr.ErrBadConfig).Msg("Bad configuration, retry writing it")
+		panic(zerr.ErrBadConfig)
 	}
 }

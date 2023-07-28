@@ -61,7 +61,7 @@ func TestConvertErrors(t *testing.T) {
 		err = metaDB.SetRepoReference("repo1", "0.1.0", digest11, ispec.MediaTypeImageManifest)
 		So(err, ShouldBeNil)
 
-		repoMetas, manifestMetaMap, _, err := metaDB.SearchRepos(context.Background(), "")
+		reposMeta, manifestMetaMap, _, err := metaDB.SearchRepos(context.Background(), "")
 		So(err, ShouldBeNil)
 
 		ctx := graphql.WithResponseContext(context.Background(),
@@ -69,7 +69,7 @@ func TestConvertErrors(t *testing.T) {
 
 		_ = convert.RepoMeta2RepoSummary(
 			ctx,
-			repoMetas[0],
+			reposMeta[0],
 			manifestMetaMap,
 			map[string]mTypes.IndexData{},
 			convert.SkipQGLField{},
@@ -286,7 +286,7 @@ func TestConvertErrors(t *testing.T) {
 	})
 }
 
-func TestUpdateLastUpdatedTimestam(t *testing.T) {
+func TestUpdateLastUpdatedTimestamp(t *testing.T) {
 	Convey("Image summary is the first image checked for the repo", t, func() {
 		before := time.Time{}
 		after := time.Date(2023, time.April, 1, 11, 0, 0, 0, time.UTC)

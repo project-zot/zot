@@ -17,6 +17,7 @@ import (
 
 	"zotregistry.io/zot/pkg/api"
 	"zotregistry.io/zot/pkg/api/config"
+	"zotregistry.io/zot/pkg/cli/cmdflags"
 	extconf "zotregistry.io/zot/pkg/extensions/config"
 	"zotregistry.io/zot/pkg/test"
 )
@@ -240,7 +241,7 @@ func TestFormatsSearchCLI(t *testing.T) {
 		cmd := NewSearchCommand(new(searchService))
 
 		Convey("JSON format", func() {
-			args := []string{"searchtest", "--output", "json", "--query", "repo/alpine"}
+			args := []string{"searchtest", "--format", "json", "--query", "repo/alpine"}
 
 			configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"searchtest","url":"%s","showspinner":false}]}`,
 				baseURL))
@@ -257,7 +258,7 @@ func TestFormatsSearchCLI(t *testing.T) {
 		})
 
 		Convey("YAML format", func() {
-			args := []string{"searchtest", "--output", "yaml", "--query", "repo/alpine"}
+			args := []string{"searchtest", "--format", "yaml", "--query", "repo/alpine"}
 
 			configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"searchtest","url":"%s","showspinner":false}]}`,
 				baseURL))
@@ -274,7 +275,7 @@ func TestFormatsSearchCLI(t *testing.T) {
 		})
 
 		Convey("Invalid format", func() {
-			args := []string{"searchtest", "--output", "invalid", "--query", "repo/alpine"}
+			args := []string{"searchtest", "--format", "invalid", "--query", "repo/alpine"}
 
 			configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"searchtest","url":"%s","showspinner":false}]}`,
 				baseURL))
@@ -296,7 +297,7 @@ func TestSearchCLIErrors(t *testing.T) {
 		cmd := NewSearchCommand(new(searchService))
 
 		Convey("no url provided", func() {
-			args := []string{"searchtest", "--output", "invalid", "--query", "repo/alpine"}
+			args := []string{"searchtest", "--format", "invalid", "--query", "repo/alpine"}
 
 			configPath := makeConfigFile(`{"configs":[{"_name":"searchtest","showspinner":false}]}`)
 
@@ -311,7 +312,7 @@ func TestSearchCLIErrors(t *testing.T) {
 		})
 
 		Convey("getConfigValue", func() {
-			args := []string{"searchtest", "--output", "invalid", "--query", "repo/alpine"}
+			args := []string{"searchtest", "--format", "invalid", "--query", "repo/alpine"}
 
 			configPath := makeConfigFile(`bad-json`)
 
@@ -358,7 +359,7 @@ func TestSearchCLIErrors(t *testing.T) {
 		})
 
 		Convey("url from config is empty", func() {
-			args := []string{"searchtest", "--output", "invalid", "--query", "repo/alpine"}
+			args := []string{"searchtest", "--format", "invalid", "--query", "repo/alpine"}
 
 			configPath := makeConfigFile(`{"configs":[{"_name":"searchtest", "url":"", "showspinner":false}]}`)
 
@@ -399,6 +400,145 @@ func TestSearchCLIErrors(t *testing.T) {
 				resultWriter: io.Discard,
 			})
 			So(err, ShouldNotBeNil)
+		})
+	})
+}
+
+func TestSearchCommandGQL(t *testing.T) {
+	port := test.GetFreePort()
+	baseURL := test.GetBaseURL(port)
+	conf := config.New()
+	conf.HTTP.Port = port
+
+	defaultVal := true
+	conf.Extensions = &extconf.ExtensionConfig{
+		Search: &extconf.SearchConfig{
+			BaseConfig: extconf.BaseConfig{Enable: &defaultVal},
+		},
+	}
+
+	ctlr := api.NewController(conf)
+	ctlr.Config.Storage.RootDirectory = t.TempDir()
+	cm := test.NewControllerManager(ctlr)
+
+	cm.StartAndWait(conf.HTTP.Port)
+	defer cm.StopServer()
+
+	Convey("commands without gql", t, func() {
+		configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"searchtest","url":"%s","showspinner":false}]}`,
+			baseURL))
+		defer os.Remove(configPath)
+
+		Convey("query", func() {
+			args := []string{"query", "repo/al"}
+			cmd := NewSearchCommand(mockService{})
+			cmd.PersistentFlags().String(cmdflags.ConfigFlag, "searchtest", "")
+			buff := bytes.NewBufferString("")
+			cmd.SetOut(buff)
+			cmd.SetErr(buff)
+			cmd.SetArgs(args)
+			err := cmd.Execute()
+			So(err, ShouldBeNil)
+			space := regexp.MustCompile(`\s+`)
+			str := space.ReplaceAllString(buff.String(), " ")
+			actual := strings.TrimSpace(str)
+			So(actual, ShouldContainSubstring, "repo 8c25cb36 false 100B")
+			So(actual, ShouldContainSubstring, "repo 100B 2010-01-01 01:01:01 +0000 UTC 0 0")
+		})
+
+		Convey("query command errors", func() {
+			// no url
+			args := []string{"repo/al"}
+			cmd := NewSearchQueryCommand(mockService{})
+			buff := bytes.NewBufferString("")
+			cmd.SetOut(buff)
+			cmd.SetErr(buff)
+			cmd.SetArgs(args)
+			err := cmd.Execute()
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("subject", func() {
+			err := test.UploadImage(test.CreateRandomImage(), baseURL, "repo", "tag")
+			So(err, ShouldBeNil)
+
+			args := []string{"subject", "repo:tag"}
+			cmd := NewSearchCommand(mockService{})
+			cmd.PersistentFlags().String(cmdflags.ConfigFlag, "searchtest", "")
+			buff := bytes.NewBufferString("")
+			cmd.SetOut(buff)
+			cmd.SetErr(buff)
+			cmd.SetArgs(args)
+			err = cmd.Execute()
+			So(err, ShouldBeNil)
+			space := regexp.MustCompile(`\s+`)
+			str := space.ReplaceAllString(buff.String(), " ")
+			actual := strings.TrimSpace(str)
+			So(actual, ShouldContainSubstring, "ArtifactType 100 B Digest")
+		})
+
+		Convey("subject command errors", func() {
+			// no url
+			args := []string{"repo:tag"}
+			cmd := NewSearchSubjectCommand(mockService{})
+			buff := bytes.NewBufferString("")
+			cmd.SetOut(buff)
+			cmd.SetErr(buff)
+			cmd.SetArgs(args)
+			err := cmd.Execute()
+			So(err, ShouldNotBeNil)
+		})
+	})
+}
+
+func TestSearchCommandREST(t *testing.T) {
+	port := test.GetFreePort()
+	baseURL := test.GetBaseURL(port)
+	conf := config.New()
+	conf.HTTP.Port = port
+
+	ctlr := api.NewController(conf)
+	ctlr.Config.Storage.RootDirectory = t.TempDir()
+	cm := test.NewControllerManager(ctlr)
+
+	cm.StartAndWait(conf.HTTP.Port)
+	defer cm.StopServer()
+
+	Convey("commands without gql", t, func() {
+		configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"searchtest","url":"%s","showspinner":false}]}`,
+			baseURL))
+		defer os.Remove(configPath)
+
+		Convey("query", func() {
+			args := []string{"query", "repo/al"}
+			cmd := NewSearchCommand(mockService{})
+			cmd.PersistentFlags().String(cmdflags.ConfigFlag, "searchtest", "")
+			buff := bytes.NewBufferString("")
+			cmd.SetOut(buff)
+			cmd.SetErr(buff)
+			cmd.SetArgs(args)
+			err := cmd.Execute()
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("subject", func() {
+			err := test.UploadImage(test.CreateRandomImage(), baseURL, "repo", "tag")
+			So(err, ShouldBeNil)
+
+			args := []string{"subject", "repo:tag"}
+			cmd := NewSearchCommand(mockService{})
+			cmd.PersistentFlags().String(cmdflags.ConfigFlag, "searchtest", "")
+			buff := bytes.NewBufferString("")
+			cmd.SetOut(buff)
+			cmd.SetErr(buff)
+			cmd.SetArgs(args)
+			err = cmd.Execute()
+			So(err, ShouldBeNil)
+			space := regexp.MustCompile(`\s+`)
+			str := space.ReplaceAllString(buff.String(), " ")
+			actual := strings.TrimSpace(str)
+			So(actual, ShouldContainSubstring,
+				"art.type 100 B sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a")
 		})
 	})
 }
