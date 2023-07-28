@@ -75,7 +75,7 @@ func DumpRuntimeParams(log log.Logger) {
 
 	err := syscall.Getrlimit(syscall.RLIMIT_NOFILE, &rLimit)
 	if err == nil {
-		evt = evt.Uint64("max. open files", rLimit.Cur)
+		evt = evt.Uint64("max. open files", uint64(rLimit.Cur)) //nolint: unconvert // required for *BSD
 	}
 
 	if content, err := os.ReadFile("/proc/sys/net/core/somaxconn"); err == nil {
