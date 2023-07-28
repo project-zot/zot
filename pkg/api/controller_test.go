@@ -922,27 +922,13 @@ func TestBlobReferenced(t *testing.T) {
 
 		repoName := "repo"
 
-		cfg, layers, manifest, err := test.GetImageComponents(2)
+		img := test.CreateRandomImage()
+
+		err = test.UploadImage(img, baseURL, repoName, "1.0")
 		So(err, ShouldBeNil)
 
-		err = test.UploadImage(
-			test.Image{
-				Config:    cfg,
-				Layers:    layers,
-				Manifest:  manifest,
-				Reference: "1.0",
-			}, baseURL, repoName)
-		So(err, ShouldBeNil)
-
-		manifestContent, err := json.Marshal(manifest)
-		So(err, ShouldBeNil)
-		manifestDigest := godigest.FromBytes(manifestContent)
-		So(manifestDigest, ShouldNotBeNil)
-
-		configContent, err := json.Marshal(cfg)
-		So(err, ShouldBeNil)
-		configDigest := godigest.FromBytes(configContent)
-		So(configDigest, ShouldNotBeNil)
+		manifestDigest := img.ManifestDescriptor.Digest
+		configDigest := img.ConfigDescriptor.Digest
 
 		// delete manifest blob
 		resp, err = resty.R().Delete(baseURL + "/v2/" + repoName + "/blobs/" + manifestDigest.String())
@@ -2123,10 +2109,9 @@ func TestGroupsPermissionsForLDAP(t *testing.T) {
 
 		img := test.CreateDefaultImage()
 
-		err = test.UploadImageWithBasicAuthRef(
+		err = test.UploadImageWithBasicAuth(
 			img, baseURL, repo, img.DigestStr(),
 			username, passphrase)
-
 		So(err, ShouldBeNil)
 	})
 }
@@ -4795,22 +4780,12 @@ func TestImageSignatures(t *testing.T) {
 		defer cm.StopServer()
 
 		repoName := "signed-repo"
-		cfg, layers, manifest, err := test.GetImageComponents(2)
-		So(err, ShouldBeNil)
+		img := test.CreateRandomImage()
+		content := img.ManifestDescriptor.Data
+		digest := img.ManifestDescriptor.Digest
 
-		err = test.UploadImage(
-			test.Image{
-				Config:    cfg,
-				Layers:    layers,
-				Manifest:  manifest,
-				Reference: "1.0",
-			}, baseURL, repoName)
+		err := test.UploadImage(img, baseURL, repoName, "1.0")
 		So(err, ShouldBeNil)
-
-		content, err := json.Marshal(manifest)
-		So(err, ShouldBeNil)
-		digest := godigest.FromBytes(content)
-		So(digest, ShouldNotBeNil)
 
 		Convey("Validate cosign signatures", func() {
 			cwd, err := os.Getwd()
@@ -5043,27 +5018,14 @@ func TestManifestValidation(t *testing.T) {
 		blobDigest := godigest.FromBytes(blobContent)
 		So(blobDigest, ShouldNotBeNil)
 
-		cfg, layers, manifest, err := test.GetImageComponents(2)
-		So(err, ShouldBeNil)
+		img := test.CreateRandomImage()
+		content := img.ManifestDescriptor.Data
+		digest := img.ManifestDescriptor.Digest
+		configDigest := img.ConfigDescriptor.Digest
+		configBlob := img.ConfigDescriptor.Data
 
-		err = test.UploadImage(
-			test.Image{
-				Config:    cfg,
-				Layers:    layers,
-				Manifest:  manifest,
-				Reference: "1.0",
-			}, baseURL, repoName)
+		err := test.UploadImage(img, baseURL, repoName, "1.0")
 		So(err, ShouldBeNil)
-
-		content, err := json.Marshal(manifest)
-		So(err, ShouldBeNil)
-		digest := godigest.FromBytes(content)
-		So(digest, ShouldNotBeNil)
-
-		configBlob, err := json.Marshal(cfg)
-		So(err, ShouldBeNil)
-
-		configDigest := godigest.FromBytes(configBlob)
 
 		Convey("empty layers should pass validation", func() {
 			// create a manifest
@@ -5276,16 +5238,15 @@ func TestArtifactReferences(t *testing.T) {
 		digest := godigest.FromBytes(content)
 		So(digest, ShouldNotBeNil)
 
-		cfg, layers, manifest, err := test.GetImageComponents(2)
+		cfg, layers, manifest, err := test.GetImageComponents(2) //nolint:staticcheck
 		So(err, ShouldBeNil)
 
 		err = test.UploadImage(
 			test.Image{
-				Config:    cfg,
-				Layers:    layers,
-				Manifest:  manifest,
-				Reference: "1.0",
-			}, baseURL, repoName)
+				Config:   cfg,
+				Layers:   layers,
+				Manifest: manifest,
+			}, baseURL, repoName, "1.0")
 		So(err, ShouldBeNil)
 
 		content, err = json.Marshal(manifest)
@@ -6116,7 +6077,7 @@ func TestStorageCommit(t *testing.T) {
 		Convey("Manifests", func() {
 			_, _ = Print("\nManifests")
 
-			cfg, layers, manifest, err := test.GetImageComponents(2)
+			cfg, layers, manifest, err := test.GetImageComponents(2) //nolint:staticcheck
 			So(err, ShouldBeNil)
 
 			content := []byte("this is a blob5")
@@ -6131,11 +6092,10 @@ func TestStorageCommit(t *testing.T) {
 			repoName := "repo7"
 			err = test.UploadImage(
 				test.Image{
-					Config:    cfg,
-					Layers:    layers,
-					Manifest:  manifest,
-					Reference: "test:1.0",
-				}, baseURL, repoName)
+					Config:   cfg,
+					Layers:   layers,
+					Manifest: manifest,
+				}, baseURL, repoName, "test:1.0")
 			So(err, ShouldBeNil)
 
 			_, err = os.Stat(path.Join(dir, "repo7"))
@@ -6166,23 +6126,21 @@ func TestStorageCommit(t *testing.T) {
 
 			err = test.UploadImage(
 				test.Image{
-					Config:    cfg,
-					Layers:    layers,
-					Manifest:  manifest,
-					Reference: "test:1.0.1",
-				}, baseURL, repoName)
+					Config:   cfg,
+					Layers:   layers,
+					Manifest: manifest,
+				}, baseURL, repoName, "test:1.0.1")
 			So(err, ShouldBeNil)
 
-			cfg, layers, manifest, err = test.GetImageComponents(1)
+			cfg, layers, manifest, err = test.GetImageComponents(1) //nolint:staticcheck
 			So(err, ShouldBeNil)
 
 			err = test.UploadImage(
 				test.Image{
-					Config:    cfg,
-					Layers:    layers,
-					Manifest:  manifest,
-					Reference: "test:2.0",
-				}, baseURL, repoName)
+					Config:   cfg,
+					Layers:   layers,
+					Manifest: manifest,
+				}, baseURL, repoName, "test:2.0")
 			So(err, ShouldBeNil)
 
 			resp, err = resty.R().SetHeader("Content-Type", "application/vnd.oci.image.manifest.v1+json").
@@ -6272,7 +6230,7 @@ func TestManifestImageIndex(t *testing.T) {
 
 		rthdlr := api.NewRouteHandler(ctlr)
 
-		cfg, layers, manifest, err := test.GetImageComponents(2)
+		cfg, layers, manifest, err := test.GetImageComponents(2) //nolint:staticcheck
 		So(err, ShouldBeNil)
 
 		content := []byte("this is a blob1")
@@ -6288,11 +6246,10 @@ func TestManifestImageIndex(t *testing.T) {
 		repoName := "index"
 		err = test.UploadImage(
 			test.Image{
-				Config:    cfg,
-				Layers:    layers,
-				Manifest:  manifest,
-				Reference: "test:1.0",
-			}, baseURL, repoName)
+				Config:   cfg,
+				Layers:   layers,
+				Manifest: manifest,
+			}, baseURL, repoName, "test:1.0")
 		So(err, ShouldBeNil)
 
 		_, err = os.Stat(path.Join(dir, "index"))
@@ -6317,21 +6274,15 @@ func TestManifestImageIndex(t *testing.T) {
 		resp, err = resty.R().Post(baseURL + "/v2/index/blobs/uploads/")
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
-		cfg, layers, manifest, err = test.GetImageComponents(1)
+
+		img := test.CreateRandomImage()
+
+		err = test.UploadImage(img, baseURL, repoName, img.DigestStr())
 		So(err, ShouldBeNil)
 
-		err = test.UploadImage(
-			test.Image{
-				Config:   cfg,
-				Layers:   layers,
-				Manifest: manifest,
-			}, baseURL, repoName)
-		So(err, ShouldBeNil)
+		content = img.ManifestDescriptor.Data
+		digest = img.ManifestDescriptor.Digest
 
-		content, err = json.Marshal(manifest)
-		So(err, ShouldBeNil)
-		digest = godigest.FromBytes(content)
-		So(digest, ShouldNotBeNil)
 		m2dgst := digest
 		m2size := len(content)
 		resp, err = resty.R().SetHeader("Content-Type", ispec.MediaTypeImageManifest).
@@ -6343,20 +6294,14 @@ func TestManifestImageIndex(t *testing.T) {
 		So(digestHdr, ShouldEqual, digest.String())
 
 		Convey("Image index", func() {
-			cfg, layers, manifest, err = test.GetImageComponents(3)
-			So(err, ShouldBeNil)
-			err = test.UploadImage(
-				test.Image{
-					Config:   cfg,
-					Layers:   layers,
-					Manifest: manifest,
-				}, baseURL, repoName)
+			img := test.CreateRandomImage()
+
+			err = test.UploadImage(img, baseURL, repoName, img.DigestStr())
 			So(err, ShouldBeNil)
 
-			content, err = json.Marshal(manifest)
-			So(err, ShouldBeNil)
-			digest = godigest.FromBytes(content)
-			So(digest, ShouldNotBeNil)
+			content := img.ManifestDescriptor.Data
+			digest = img.ManifestDescriptor.Digest
+
 			resp, err = resty.R().SetHeader("Content-Type", ispec.MediaTypeImageManifest).
 				SetBody(content).Put(baseURL + fmt.Sprintf("/v2/index/manifests/%s", digest.String()))
 			So(err, ShouldBeNil)
@@ -6399,19 +6344,14 @@ func TestManifestImageIndex(t *testing.T) {
 			So(resp.Body(), ShouldNotBeEmpty)
 			So(resp.Header().Get("Content-Type"), ShouldNotBeEmpty)
 
-			cfg, layers, manifest, err = test.GetImageComponents(4)
+			img = test.CreateRandomImage()
+
+			err = test.UploadImage(img, baseURL, repoName, img.DigestStr())
 			So(err, ShouldBeNil)
-			err = test.UploadImage(
-				test.Image{
-					Config:   cfg,
-					Layers:   layers,
-					Manifest: manifest,
-				}, baseURL, repoName)
-			So(err, ShouldBeNil)
-			content, err = json.Marshal(manifest)
-			So(err, ShouldBeNil)
-			digest = godigest.FromBytes(content)
-			So(digest, ShouldNotBeNil)
+
+			content = img.ManifestDescriptor.Data
+			digest = img.ManifestDescriptor.Digest
+
 			m4dgst := digest
 			m4size := len(content)
 			resp, err = resty.R().SetHeader("Content-Type", ispec.MediaTypeImageManifest).
@@ -6572,19 +6512,14 @@ func TestManifestImageIndex(t *testing.T) {
 			})
 
 			Convey("Update an index tag with different manifest", func() {
-				cfg, layers, manifest, err = test.GetImageComponents(5)
+				img := test.CreateRandomImage()
+
+				err = test.UploadImage(img, baseURL, repoName, img.DigestStr())
 				So(err, ShouldBeNil)
-				err = test.UploadImage(
-					test.Image{
-						Config:   cfg,
-						Layers:   layers,
-						Manifest: manifest,
-					}, baseURL, repoName)
-				So(err, ShouldBeNil)
-				content, err = json.Marshal(manifest)
-				So(err, ShouldBeNil)
-				digest = godigest.FromBytes(content)
-				So(digest, ShouldNotBeNil)
+
+				content = img.ManifestDescriptor.Data
+				digest = img.ManifestDescriptor.Digest
+
 				resp, err = resty.R().SetHeader("Content-Type", ispec.MediaTypeImageManifest).
 					SetBody(content).Put(baseURL + fmt.Sprintf("/v2/index/manifests/%s", digest))
 				So(err, ShouldBeNil)
@@ -6711,16 +6646,15 @@ func TestManifestCollision(t *testing.T) {
 		cm.StartAndWait(port)
 		defer cm.StopServer()
 
-		cfg, layers, manifest, err := test.GetImageComponents(2)
+		cfg, layers, manifest, err := test.GetImageComponents(2) //nolint:staticcheck
 		So(err, ShouldBeNil)
 
 		err = test.UploadImage(
 			test.Image{
-				Config:    cfg,
-				Layers:    layers,
-				Manifest:  manifest,
-				Reference: "test:1.0",
-			}, baseURL, "index")
+				Config:   cfg,
+				Layers:   layers,
+				Manifest: manifest,
+			}, baseURL, "index", "test:1.0")
 		So(err, ShouldBeNil)
 
 		_, err = os.Stat(path.Join(dir, "index"))
@@ -6743,11 +6677,10 @@ func TestManifestCollision(t *testing.T) {
 
 		err = test.UploadImage(
 			test.Image{
-				Config:    cfg,
-				Layers:    layers,
-				Manifest:  manifest,
-				Reference: "test:2.0",
-			}, baseURL, "index")
+				Config:   cfg,
+				Layers:   layers,
+				Manifest: manifest,
+			}, baseURL, "index", "test:2.0")
 		So(err, ShouldBeNil)
 
 		// Deletion should fail if using digest
@@ -7378,16 +7311,9 @@ func TestGCSignaturesAndUntaggedManifests(t *testing.T) {
 				So(err, ShouldBeNil)
 
 				// trigger gc
-				cfg, layers, manifest, err := test.GetImageComponents(3)
-				So(err, ShouldBeNil)
+				img := test.CreateRandomImage()
 
-				err = test.UploadImage(
-					test.Image{
-						Config:    cfg,
-						Layers:    layers,
-						Manifest:  manifest,
-						Reference: tag,
-					}, baseURL, repoName)
+				err = test.UploadImage(img, baseURL, repoName, img.DigestStr())
 				So(err, ShouldNotBeNil)
 
 				err = os.Chmod(path.Join(dir, repoName, "blobs", "sha256", refs.Manifests[0].Digest.Encoded()), 0o755)
@@ -7398,13 +7324,7 @@ func TestGCSignaturesAndUntaggedManifests(t *testing.T) {
 				err = os.WriteFile(path.Join(dir, repoName, "blobs", "sha256", refs.Manifests[0].Digest.Encoded()), []byte("corrupt"), 0o600) //nolint:lll
 				So(err, ShouldBeNil)
 
-				err = test.UploadImage(
-					test.Image{
-						Config:    cfg,
-						Layers:    layers,
-						Manifest:  manifest,
-						Reference: tag,
-					}, baseURL, repoName)
+				err = test.UploadImage(img, baseURL, repoName, tag)
 				So(err, ShouldNotBeNil)
 
 				err = os.WriteFile(path.Join(dir, repoName, "blobs", "sha256", refs.Manifests[0].Digest.Encoded()), content, 0o600)
@@ -7412,7 +7332,7 @@ func TestGCSignaturesAndUntaggedManifests(t *testing.T) {
 			})
 
 			// push an image without tag
-			cfg, layers, manifest, err := test.GetImageComponents(2)
+			cfg, layers, manifest, err := test.GetImageComponents(2) //nolint:staticcheck
 			So(err, ShouldBeNil)
 
 			manifestBuf, err := json.Marshal(manifest)
@@ -7421,24 +7341,22 @@ func TestGCSignaturesAndUntaggedManifests(t *testing.T) {
 
 			err = test.UploadImage(
 				test.Image{
-					Config:    cfg,
-					Layers:    layers,
-					Manifest:  manifest,
-					Reference: untaggedManifestDigest.String(),
-				}, baseURL, repoName)
+					Config:   cfg,
+					Layers:   layers,
+					Manifest: manifest,
+				}, baseURL, repoName, untaggedManifestDigest.String())
 			So(err, ShouldBeNil)
 
 			// overwrite image so that signatures will get invalidated and gc'ed
-			cfg, layers, manifest, err = test.GetImageComponents(3)
+			cfg, layers, manifest, err = test.GetImageComponents(3) //nolint:staticcheck
 			So(err, ShouldBeNil)
 
 			err = test.UploadImage(
 				test.Image{
-					Config:    cfg,
-					Layers:    layers,
-					Manifest:  manifest,
-					Reference: tag,
-				}, baseURL, repoName)
+					Config:   cfg,
+					Layers:   layers,
+					Manifest: manifest,
+				}, baseURL, repoName, tag)
 			So(err, ShouldBeNil)
 
 			manifestBuf, err = json.Marshal(manifest)
@@ -7500,7 +7418,7 @@ func TestGCSignaturesAndUntaggedManifests(t *testing.T) {
 
 			// upload multiple manifests
 			for i := 0; i < 4; i++ {
-				config, layers, manifest, err := test.GetImageComponents(1000 + i)
+				config, layers, manifest, err := test.GetImageComponents(1000 + i) //nolint:staticcheck
 				So(err, ShouldBeNil)
 
 				manifestContent, err := json.Marshal(manifest)
@@ -7510,13 +7428,10 @@ func TestGCSignaturesAndUntaggedManifests(t *testing.T) {
 
 				err = test.UploadImage(
 					test.Image{
-						Manifest:  manifest,
-						Config:    config,
-						Layers:    layers,
-						Reference: manifestDigest.String(),
-					},
-					baseURL,
-					repoName)
+						Manifest: manifest,
+						Config:   config,
+						Layers:   layers,
+					}, baseURL, repoName, manifestDigest.String())
 				So(err, ShouldBeNil)
 
 				index.Manifests = append(index.Manifests, ispec.Descriptor{
@@ -7690,30 +7605,28 @@ func TestSearchRoutes(t *testing.T) {
 		repoName := "testrepo" //nolint:goconst
 		inaccessibleRepo := "inaccessible"
 
-		cfg, layers, manifest, err := test.GetImageComponents(10000)
+		cfg, layers, manifest, err := test.GetImageComponents(10000) //nolint:staticcheck
 		So(err, ShouldBeNil)
 
 		err = test.UploadImage(
 			test.Image{
-				Config:    cfg,
-				Layers:    layers,
-				Manifest:  manifest,
-				Reference: "latest",
-			}, baseURL, repoName)
+				Config:   cfg,
+				Layers:   layers,
+				Manifest: manifest,
+			}, baseURL, repoName, "latest")
 
 		So(err, ShouldBeNil)
 
 		// data for the inaccessible repo
-		cfg, layers, manifest, err = test.GetImageComponents(10000)
+		cfg, layers, manifest, err = test.GetImageComponents(10000) //nolint:staticcheck
 		So(err, ShouldBeNil)
 
 		err = test.UploadImage(
 			test.Image{
-				Config:    cfg,
-				Layers:    layers,
-				Manifest:  manifest,
-				Reference: "latest",
-			}, baseURL, inaccessibleRepo)
+				Config:   cfg,
+				Layers:   layers,
+				Manifest: manifest,
+			}, baseURL, inaccessibleRepo, "latest")
 
 		So(err, ShouldBeNil)
 
@@ -7778,33 +7691,29 @@ func TestSearchRoutes(t *testing.T) {
 			cm.StartAndWait(port)
 			defer cm.StopServer()
 
-			cfg, layers, manifest, err := test.GetImageComponents(10000)
+			cfg, layers, manifest, err := test.GetImageComponents(10000) //nolint:staticcheck
 			So(err, ShouldBeNil)
 
 			err = test.UploadImageWithBasicAuth(
 				test.Image{
-					Config:    cfg,
-					Layers:    layers,
-					Manifest:  manifest,
-					Reference: "latest",
-				}, baseURL, repoName,
+					Config:   cfg,
+					Layers:   layers,
+					Manifest: manifest,
+				}, baseURL, repoName, "latest",
 				user1, password1)
-
 			So(err, ShouldBeNil)
 
 			// data for the inaccessible repo
-			cfg, layers, manifest, err = test.GetImageComponents(10000)
+			cfg, layers, manifest, err = test.GetImageComponents(10000) //nolint:staticcheck
 			So(err, ShouldBeNil)
 
 			err = test.UploadImageWithBasicAuth(
 				test.Image{
-					Config:    cfg,
-					Layers:    layers,
-					Manifest:  manifest,
-					Reference: "latest",
-				}, baseURL, inaccessibleRepo,
+					Config:   cfg,
+					Layers:   layers,
+					Manifest: manifest,
+				}, baseURL, inaccessibleRepo, "latest",
 				user1, password1)
-
 			So(err, ShouldBeNil)
 
 			query := `
@@ -7927,17 +7836,9 @@ func TestSearchRoutes(t *testing.T) {
 			cm.StartAndWait(port)
 			defer cm.StopServer()
 
-			cfg, layers, manifest, err := test.GetImageComponents(10000)
-			So(err, ShouldBeNil)
+			img := test.CreateRandomImage()
 
-			err = test.UploadImageWithBasicAuth(
-				test.Image{
-					Config:   cfg,
-					Layers:   layers,
-					Manifest: manifest,
-				}, baseURL, repoName,
-				user1, password1)
-
+			err = test.UploadImageWithBasicAuth(img, baseURL, repoName, img.DigestStr(), user1, password1)
 			So(err, ShouldBeNil)
 
 			query := `
@@ -8022,17 +7923,9 @@ func TestSearchRoutes(t *testing.T) {
 			cm.StartAndWait(port)
 			defer cm.StopServer()
 
-			cfg, layers, manifest, err := test.GetImageComponents(10000)
-			So(err, ShouldBeNil)
+			img := test.CreateRandomImage()
 
-			err = test.UploadImageWithBasicAuth(
-				test.Image{
-					Config:   cfg,
-					Layers:   layers,
-					Manifest: manifest,
-				}, baseURL, repoName,
-				user1, password1)
-
+			err = test.UploadImageWithBasicAuth(img, baseURL, repoName, img.DigestStr(), user1, password1)
 			So(err, ShouldNotBeNil)
 		})
 
@@ -8098,17 +7991,9 @@ func TestSearchRoutes(t *testing.T) {
 			cm.StartAndWait(port)
 			defer cm.StopServer()
 
-			cfg, layers, manifest, err := test.GetImageComponents(10000)
-			So(err, ShouldBeNil)
+			img := test.CreateRandomImage()
 
-			err = test.UploadImageWithBasicAuth(
-				test.Image{
-					Config:   cfg,
-					Layers:   layers,
-					Manifest: manifest,
-				}, baseURL, repoName,
-				user1, password1)
-
+			err = test.UploadImageWithBasicAuth(img, baseURL, repoName, img.DigestStr(), user1, password1)
 			So(err, ShouldBeNil)
 		})
 
@@ -8174,17 +8059,9 @@ func TestSearchRoutes(t *testing.T) {
 			cm.StartAndWait(port)
 			defer cm.StopServer()
 
-			cfg, layers, manifest, err := test.GetImageComponents(10000)
-			So(err, ShouldBeNil)
+			img := test.CreateRandomImage()
 
-			err = test.UploadImageWithBasicAuth(
-				test.Image{
-					Config:   cfg,
-					Layers:   layers,
-					Manifest: manifest,
-				}, baseURL, repoName,
-				user1, password1)
-
+			err = test.UploadImageWithBasicAuth(img, baseURL, repoName, img.DigestStr(), user1, password1)
 			So(err, ShouldBeNil)
 		})
 
@@ -8236,17 +8113,9 @@ func TestSearchRoutes(t *testing.T) {
 			cm.StartAndWait(port)
 			defer cm.StopServer()
 
-			cfg, layers, manifest, err := test.GetImageComponents(10000)
-			So(err, ShouldBeNil)
+			img := test.CreateRandomImage()
 
-			err = test.UploadImageWithBasicAuth(
-				test.Image{
-					Config:   cfg,
-					Layers:   layers,
-					Manifest: manifest,
-				}, baseURL, repoName,
-				user1, password1)
-
+			err = test.UploadImageWithBasicAuth(img, baseURL, repoName, img.DigestStr(), user1, password1)
 			So(err, ShouldBeNil)
 		})
 
@@ -8308,17 +8177,9 @@ func TestSearchRoutes(t *testing.T) {
 			cm.StartAndWait(port)
 			defer cm.StopServer()
 
-			cfg, layers, manifest, err := test.GetImageComponents(10000)
-			So(err, ShouldBeNil)
+			img := test.CreateRandomImage()
 
-			err = test.UploadImageWithBasicAuth(
-				test.Image{
-					Config:   cfg,
-					Layers:   layers,
-					Manifest: manifest,
-				}, baseURL, repoName,
-				"", "")
-
+			err = test.UploadImageWithBasicAuth(img, baseURL, repoName, img.DigestStr(), "", "")
 			So(err, ShouldBeNil)
 		})
 	})

@@ -55,7 +55,7 @@ func TestCheckAllBlobsIntegrity(t *testing.T) {
 		storeCtlr := storage.StoreController{}
 		storeCtlr.DefaultStore = imgStore
 
-		config, layers, manifest, err := test.GetImageComponents(1000)
+		config, layers, manifest, err := test.GetImageComponents(1000) //nolint:staticcheck
 		So(err, ShouldBeNil)
 
 		layerReader := bytes.NewReader(layers[0])
@@ -223,7 +223,7 @@ func TestCheckAllBlobsIntegrity(t *testing.T) {
 		})
 
 		Convey("Scrub index", func() {
-			newConfig, newLayers, newManifest, err := test.GetImageComponents(10)
+			newConfig, newLayers, newManifest, err := test.GetImageComponents(10) //nolint:staticcheck
 			So(err, ShouldBeNil)
 
 			newLayerReader := bytes.NewReader(newLayers[0])

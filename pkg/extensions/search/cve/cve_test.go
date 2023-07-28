@@ -1563,7 +1563,7 @@ func TestFixedTagsWithIndex(t *testing.T) {
 		defer cm.StopServer()
 		// push index with 2 manifests: one with vulns and one without
 		vulnManifestCreated := time.Date(2010, 1, 1, 1, 1, 1, 1, time.UTC)
-		vulnManifest, err := GetVulnImageWithConfig("", ispec.Image{
+		vulnManifest, err := GetVulnImageWithConfig(ispec.Image{
 			Created:  &vulnManifestCreated,
 			Platform: ispec.Platform{OS: "linux", Architecture: "amd64"},
 		})
@@ -1581,18 +1581,18 @@ func TestFixedTagsWithIndex(t *testing.T) {
 		multiArch := GetMultiarchImageForImages([]Image{fixedManifest, vulnManifest})
 		multiArchDigest := multiArch.Digest()
 
-		err = UploadMultiarchImageWithRef(multiArch, baseURL, "repo", "multi-arch-tag")
+		err = UploadMultiarchImage(multiArch, baseURL, "repo", "multi-arch-tag")
 		So(err, ShouldBeNil)
 
 		// oldest vulnerability
 		simpleVulnCreated := time.Date(2005, 1, 1, 1, 1, 1, 1, time.UTC)
-		simpleVulnImg, err := GetVulnImageWithConfig("vuln-img", ispec.Image{
+		simpleVulnImg, err := GetVulnImageWithConfig(ispec.Image{
 			Created:  &simpleVulnCreated,
 			Platform: ispec.Platform{OS: "windows", Architecture: "amd64"},
 		})
 		So(err, ShouldBeNil)
 
-		err = UploadImage(simpleVulnImg, baseURL, "repo")
+		err = UploadImage(simpleVulnImg, baseURL, "repo", "vuln-img")
 		So(err, ShouldBeNil)
 
 		scanner := trivy.NewScanner(ctlr.StoreController, ctlr.MetaDB, "ghcr.io/project-zot/trivy-db", "", ctlr.Log)

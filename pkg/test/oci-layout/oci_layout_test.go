@@ -307,7 +307,7 @@ func TestBaseOciLayoutUtils(t *testing.T) {
 		defer ctlrManager.StopServer()
 
 		// push test image to repo
-		config, layers, manifest, err := GetImageComponents(100)
+		config, layers, manifest, err := GetImageComponents(100) //nolint:staticcheck
 		So(err, ShouldBeNil)
 
 		layersSize1 := 0
@@ -319,13 +319,10 @@ func TestBaseOciLayoutUtils(t *testing.T) {
 		tag := "1.0.1"
 		err = UploadImage(
 			Image{
-				Manifest:  manifest,
-				Config:    config,
-				Layers:    layers,
-				Reference: tag,
-			},
-			baseURL,
-			repo,
+				Manifest: manifest,
+				Config:   config,
+				Layers:   layers,
+			}, baseURL, repo, tag,
 		)
 		So(err, ShouldBeNil)
 
@@ -357,16 +354,15 @@ func TestExtractImageDetails(t *testing.T) {
 		}
 
 		num := 10
-		config, layers, manifest, err := GetImageComponents(num)
+		config, layers, manifest, err := GetImageComponents(num) //nolint:staticcheck
 		So(err, ShouldBeNil)
 
 		err = WriteImageToFileSystem(
 			Image{
-				Manifest:  manifest,
-				Layers:    layers,
-				Config:    config,
-				Reference: "latest",
-			}, "zot-test", storeController,
+				Manifest: manifest,
+				Layers:   layers,
+				Config:   config,
+			}, "zot-test", "latest", storeController,
 		)
 		So(err, ShouldBeNil)
 
@@ -414,16 +410,15 @@ func TestExtractImageDetails(t *testing.T) {
 		}
 
 		num := 10
-		config, layers, manifest, err := GetImageComponents(num)
+		config, layers, manifest, err := GetImageComponents(num) //nolint:staticcheck
 		So(err, ShouldBeNil)
 
 		err = WriteImageToFileSystem(
 			Image{
-				Manifest:  manifest,
-				Layers:    layers,
-				Config:    config,
-				Reference: "latest",
-			}, "zot-test", storeController,
+				Manifest: manifest,
+				Layers:   layers,
+				Config:   config,
+			}, "zot-test", "latest", storeController,
 		)
 		So(err, ShouldBeNil)
 

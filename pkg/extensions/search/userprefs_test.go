@@ -98,22 +98,20 @@ func TestUserData(t *testing.T) {
 
 		err = UploadImageWithBasicAuth(
 			Image{
-				Config:    config,
-				Layers:    layers,
-				Manifest:  manifest,
-				Reference: tag,
-			}, baseURL, accessibleRepo,
+				Config:   config,
+				Layers:   layers,
+				Manifest: manifest,
+			}, baseURL, accessibleRepo, tag,
 			adminUser, adminPassword,
 		)
 		So(err, ShouldBeNil)
 
 		err = UploadImageWithBasicAuth(
 			Image{
-				Config:    config,
-				Layers:    layers,
-				Manifest:  manifest,
-				Reference: tag,
-			}, baseURL, forbiddenRepo,
+				Config:   config,
+				Layers:   layers,
+				Manifest: manifest,
+			}, baseURL, forbiddenRepo, tag,
 			adminUser, adminPassword,
 		)
 		So(err, ShouldBeNil)
@@ -533,7 +531,7 @@ func TestChangingRepoState(t *testing.T) {
 
 	ctlr := api.NewController(conf)
 
-	img, err := GetRandomImage("tag")
+	img, err := GetRandomImage()
 	if err != nil {
 		t.FailNow()
 	}
@@ -542,14 +540,14 @@ func TestChangingRepoState(t *testing.T) {
 	defaultStore := local.NewImageStore(conf.Storage.RootDirectory, false, 0, false, false,
 		log.NewLogger("debug", ""), monitoring.NewMetricsServer(false, log.NewLogger("debug", "")), nil, nil)
 
-	err = WriteImageToFileSystem(img, accesibleRepo, storage.StoreController{
+	err = WriteImageToFileSystem(img, accesibleRepo, "tag", storage.StoreController{
 		DefaultStore: defaultStore,
 	})
 	if err != nil {
 		t.FailNow()
 	}
 
-	err = WriteImageToFileSystem(img, forbiddenRepo, storage.StoreController{
+	err = WriteImageToFileSystem(img, forbiddenRepo, "tag", storage.StoreController{
 		DefaultStore: defaultStore,
 	})
 	if err != nil {
@@ -664,16 +662,16 @@ func TestGlobalSearchWithUserPrefFiltering(t *testing.T) {
 
 		// ------ Add simple repo
 		repo := "repo"
-		img, err := GetRandomImage("tag")
+		img, err := GetRandomImage()
 		So(err, ShouldBeNil)
-		err = UploadImageWithBasicAuth(img, baseURL, repo, simpleUser, simpleUserPassword)
+		err = UploadImageWithBasicAuth(img, baseURL, repo, "tag", simpleUser, simpleUserPassword)
 		So(err, ShouldBeNil)
 
 		// ------ Add repo and star it
 		sRepo := "starred-repo"
-		img, err = GetRandomImage("tag")
+		img, err = GetRandomImage()
 		So(err, ShouldBeNil)
-		err = UploadImageWithBasicAuth(img, baseURL, sRepo, simpleUser, simpleUserPassword)
+		err = UploadImageWithBasicAuth(img, baseURL, sRepo, "tag", simpleUser, simpleUserPassword)
 		So(err, ShouldBeNil)
 
 		resp, err := simpleUserClient.Put(preferencesBaseURL + PutRepoStarURL(sRepo))
@@ -682,9 +680,9 @@ func TestGlobalSearchWithUserPrefFiltering(t *testing.T) {
 
 		// ------ Add repo and bookmark it
 		bRepo := "bookmarked-repo"
-		img, err = GetRandomImage("tag")
+		img, err = GetRandomImage()
 		So(err, ShouldBeNil)
-		err = UploadImageWithBasicAuth(img, baseURL, bRepo, simpleUser, simpleUserPassword)
+		err = UploadImageWithBasicAuth(img, baseURL, bRepo, "tag", simpleUser, simpleUserPassword)
 		So(err, ShouldBeNil)
 
 		resp, err = simpleUserClient.Put(preferencesBaseURL + PutRepoBookmarkURL(bRepo))
@@ -693,9 +691,9 @@ func TestGlobalSearchWithUserPrefFiltering(t *testing.T) {
 
 		// ------ Add repo, star and bookmark it
 		sbRepo := "starred-bookmarked-repo"
-		img, err = GetRandomImage("tag")
+		img, err = GetRandomImage()
 		So(err, ShouldBeNil)
-		err = UploadImageWithBasicAuth(img, baseURL, sbRepo, simpleUser, simpleUserPassword)
+		err = UploadImageWithBasicAuth(img, baseURL, sbRepo, "tag", simpleUser, simpleUserPassword)
 		So(err, ShouldBeNil)
 
 		resp, err = simpleUserClient.Put(preferencesBaseURL + PutRepoStarURL(sbRepo))
@@ -857,9 +855,9 @@ func TestExpandedRepoInfoWithUserPrefs(t *testing.T) {
 
 		// ------ Add sbrepo and star/bookmark it
 		sbrepo := "sbrepo"
-		img, err := GetRandomImage("tag")
+		img, err := GetRandomImage()
 		So(err, ShouldBeNil)
-		err = UploadImageWithBasicAuth(img, baseURL, sbrepo, simpleUser, simpleUserPassword)
+		err = UploadImageWithBasicAuth(img, baseURL, sbrepo, "tag", simpleUser, simpleUserPassword)
 		So(err, ShouldBeNil)
 
 		resp, err := simpleUserClient.Put(preferencesBaseURL + PutRepoStarURL(sbrepo))
@@ -897,9 +895,9 @@ func TestExpandedRepoInfoWithUserPrefs(t *testing.T) {
 
 		// ------ Add srepo and star it
 		srepo := "srepo"
-		img, err = GetRandomImage("tag")
+		img, err = GetRandomImage()
 		So(err, ShouldBeNil)
-		err = UploadImageWithBasicAuth(img, baseURL, srepo, simpleUser, simpleUserPassword)
+		err = UploadImageWithBasicAuth(img, baseURL, srepo, "tag", simpleUser, simpleUserPassword)
 		So(err, ShouldBeNil)
 
 		resp, err = simpleUserClient.Put(preferencesBaseURL + PutRepoStarURL(srepo))
@@ -932,9 +930,9 @@ func TestExpandedRepoInfoWithUserPrefs(t *testing.T) {
 
 		// ------ Add brepo and bookmark it
 		brepo := "brepo"
-		img, err = GetRandomImage("tag")
+		img, err = GetRandomImage()
 		So(err, ShouldBeNil)
-		err = UploadImageWithBasicAuth(img, baseURL, brepo, simpleUser, simpleUserPassword)
+		err = UploadImageWithBasicAuth(img, baseURL, brepo, "tag", simpleUser, simpleUserPassword)
 		So(err, ShouldBeNil)
 
 		resp, err = simpleUserClient.Put(preferencesBaseURL + PutRepoBookmarkURL(brepo))
@@ -967,9 +965,9 @@ func TestExpandedRepoInfoWithUserPrefs(t *testing.T) {
 
 		// ------ Add repo without star/bookmark
 		repo := "repo"
-		img, err = GetRandomImage("tag")
+		img, err = GetRandomImage()
 		So(err, ShouldBeNil)
-		err = UploadImageWithBasicAuth(img, baseURL, repo, simpleUser, simpleUserPassword)
+		err = UploadImageWithBasicAuth(img, baseURL, repo, "tag", simpleUser, simpleUserPassword)
 		So(err, ShouldBeNil)
 
 		// ExpandedRepoinfo

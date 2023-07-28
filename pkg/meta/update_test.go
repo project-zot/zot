@@ -44,15 +44,13 @@ func TestOnUpdateManifest(t *testing.T) {
 		metaDB, err := boltdb.New(boltDriver, log)
 		So(err, ShouldBeNil)
 
-		config, layers, manifest, err := test.GetRandomImageComponents(100)
+		config, layers, manifest, err := test.GetRandomImageComponents(100) //nolint:staticcheck
 		So(err, ShouldBeNil)
 
 		err = test.WriteImageToFileSystem(
 			test.Image{
-				Config: config, Manifest: manifest, Layers: layers, Reference: "tag1",
-			},
-			"repo",
-			storeController)
+				Config: config, Manifest: manifest, Layers: layers,
+			}, "repo", "tag1", storeController)
 		So(err, ShouldBeNil)
 
 		manifestBlob, err := json.Marshal(manifest)

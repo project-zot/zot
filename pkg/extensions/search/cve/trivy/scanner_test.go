@@ -50,9 +50,9 @@ func TestScanningByDigest(t *testing.T) {
 
 		simpleImage := test.CreateRandomImage()
 
-		multiArch := test.GetMultiarchImageForImages([]test.Image{simpleImage, vulnImage})
+		multiArch := test.GetMultiarchImageForImages([]test.Image{simpleImage, vulnImage}) //nolint:staticcheck
 
-		err := test.UploadMultiarchImageWithRef(multiArch, baseURL, "multi-arch", "multi-arch-tag")
+		err := test.UploadMultiarchImage(multiArch, baseURL, "multi-arch", "multi-arch-tag")
 		So(err, ShouldBeNil)
 
 		// scan
@@ -149,7 +149,7 @@ func TestVulnerableLayer(t *testing.T) {
 			DefaultStore: imageStore,
 		}
 
-		err = test.WriteImageToFileSystem(img, "repo", storeController)
+		err = test.WriteImageToFileSystem(img, "repo", img.DigestStr(), storeController)
 		So(err, ShouldBeNil)
 
 		params := boltdb.DBParameters{

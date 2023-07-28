@@ -83,7 +83,6 @@ func TestImageBuilder(t *testing.T) {
 			img := configBuilder.EmptyConfig().Build()
 			So(img.Manifest.Config.Size, ShouldEqual, ispec.DescriptorEmptyJSON.Size)
 			So(img.Manifest.Config.Digest, ShouldResemble, ispec.DescriptorEmptyJSON.Digest)
-			So(img.Reference, ShouldResemble, img.Digest().String())
 		})
 	})
 

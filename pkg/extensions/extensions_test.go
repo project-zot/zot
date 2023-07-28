@@ -659,30 +659,28 @@ func TestMgmtExtension(t *testing.T) {
 			DefaultStore: imageStore,
 		}
 
-		config, layers, manifest, err := test.GetRandomImageComponents(10)
+		config, layers, manifest, err := test.GetRandomImageComponents(10) //nolint:staticcheck
 		So(err, ShouldBeNil)
 
 		err = test.WriteImageToFileSystem(
 			test.Image{
-				Manifest:  manifest,
-				Layers:    layers,
-				Config:    config,
-				Reference: "0.0.1",
-			}, "repo", storeController,
+				Manifest: manifest,
+				Layers:   layers,
+				Config:   config,
+			}, "repo", "0.0.1", storeController,
 		)
 		So(err, ShouldBeNil)
 
-		sigConfig, sigLayers, sigManifest, err := test.GetRandomImageComponents(10)
+		sigConfig, sigLayers, sigManifest, err := test.GetRandomImageComponents(10) //nolint:staticcheck
 		So(err, ShouldBeNil)
 
 		ref, _ := test.GetCosignSignatureTagForManifest(manifest)
 		err = test.WriteImageToFileSystem(
 			test.Image{
-				Manifest:  sigManifest,
-				Layers:    sigLayers,
-				Config:    sigConfig,
-				Reference: ref,
-			}, "repo", storeController,
+				Manifest: sigManifest,
+				Layers:   sigLayers,
+				Config:   sigConfig,
+			}, "repo", ref, storeController,
 		)
 		So(err, ShouldBeNil)
 

@@ -433,9 +433,8 @@ func TestUploadMultiarchImage(t *testing.T) {
 						},
 					},
 				},
-				Images:    []test.Image{img},
-				Reference: "index",
-			}, baseURL, "test")
+				Images: []test.Image{img},
+			}, baseURL, "test", "index")
 			So(err, ShouldBeNil)
 		})
 
@@ -451,9 +450,8 @@ func TestUploadMultiarchImage(t *testing.T) {
 						},
 					},
 				},
-				Images:    []test.Image{img},
-				Reference: "index",
-			}, baseURL, "test")
+				Images: []test.Image{img},
+			}, baseURL, "test", "index")
 			So(err, ShouldNotBeNil)
 		})
 	})
@@ -493,7 +491,7 @@ func TestUploadImage(t *testing.T) {
 			Config: ispec.Image{},
 		}
 
-		err := test.UploadImage(img, baseURL, "test")
+		err := test.UploadImage(img, baseURL, "test", img.DigestStr())
 		So(err, ShouldNotBeNil)
 	})
 
@@ -509,7 +507,7 @@ func TestUploadImage(t *testing.T) {
 			Layers: make([][]byte, 10),
 		}
 
-		err := test.UploadImage(img, baseURL, "test")
+		err := test.UploadImage(img, baseURL, "test", "")
 		So(err, ShouldNotBeNil)
 	})
 
@@ -537,7 +535,7 @@ func TestUploadImage(t *testing.T) {
 			Layers: make([][]byte, 10),
 		}
 
-		err = test.UploadImage(img, baseURL, "test")
+		err = test.UploadImage(img, baseURL, "test", "")
 		So(err, ShouldNotBeNil)
 	})
 
@@ -560,7 +558,7 @@ func TestUploadImage(t *testing.T) {
 			Config: ispec.Image{},
 		}
 
-		err := test.UploadImage(img, baseURL, "test")
+		err := test.UploadImage(img, baseURL, "test", "")
 		So(err, ShouldNotBeNil)
 	})
 
@@ -600,7 +598,7 @@ func TestUploadImage(t *testing.T) {
 			Config: ispec.Image{},
 		}
 
-		err := test.UploadImage(img, baseURL, "test")
+		err := test.UploadImage(img, baseURL, "test", img.DigestStr())
 		So(err, ShouldBeNil)
 	})
 
@@ -659,31 +657,19 @@ func TestUploadImage(t *testing.T) {
 		defer ctlrManager.StopServer()
 
 		Convey("Request fail while pushing layer", func() {
-			err := test.UploadImageWithBasicAuth(test.Image{Layers: [][]byte{{1, 2, 3}}}, "badURL", "", "", "")
-			So(err, ShouldNotBeNil)
-
-			err = test.UploadImageWithBasicAuthRef(test.Image{Layers: [][]byte{{1, 2, 3}}}, "badURL", "", "", "", "")
+			err := test.UploadImageWithBasicAuth(test.Image{Layers: [][]byte{{1, 2, 3}}}, "badURL", "", "", "", "")
 			So(err, ShouldNotBeNil)
 		})
 		Convey("Request status is not StatusOk while pushing layer", func() {
-			err := test.UploadImageWithBasicAuth(test.Image{Layers: [][]byte{{1, 2, 3}}}, baseURL, "", "repo", "")
-			So(err, ShouldNotBeNil)
-
-			err = test.UploadImageWithBasicAuthRef(test.Image{Layers: [][]byte{{1, 2, 3}}}, baseURL, "", "repo", "", "")
+			err := test.UploadImageWithBasicAuth(test.Image{Layers: [][]byte{{1, 2, 3}}}, baseURL, "", "repo", "", "")
 			So(err, ShouldNotBeNil)
 		})
 		Convey("Request fail while pushing config", func() {
-			err := test.UploadImageWithBasicAuth(test.Image{}, "badURL", "", "", "")
-			So(err, ShouldNotBeNil)
-
-			err = test.UploadImageWithBasicAuthRef(test.Image{}, "badURL", "", "", "", "")
+			err := test.UploadImageWithBasicAuth(test.Image{}, "badURL", "", "", "", "")
 			So(err, ShouldNotBeNil)
 		})
 		Convey("Request status is not StatusOk while pushing config", func() {
-			err := test.UploadImageWithBasicAuth(test.Image{}, baseURL, "", "repo", "")
-			So(err, ShouldNotBeNil)
-
-			err = test.UploadImageWithBasicAuthRef(test.Image{}, baseURL, "", "repo", "", "")
+			err := test.UploadImageWithBasicAuth(test.Image{}, baseURL, "", "repo", "", "")
 			So(err, ShouldNotBeNil)
 		})
 	})
@@ -737,7 +723,7 @@ func TestUploadImage(t *testing.T) {
 			Config: ispec.Image{},
 		}
 
-		err := test.UploadImage(img, baseURL, "test")
+		err := test.UploadImage(img, baseURL, "test", "")
 		So(err, ShouldNotBeNil)
 	})
 
@@ -768,14 +754,14 @@ func TestUploadImage(t *testing.T) {
 		Convey("CreateBlobUpload", func() {
 			injected := inject.InjectFailure(2)
 			if injected {
-				err := test.UploadImage(img, baseURL, "test")
+				err := test.UploadImage(img, baseURL, "test", img.DigestStr())
 				So(err, ShouldNotBeNil)
 			}
 		})
 		Convey("UpdateBlobUpload", func() {
 			injected := inject.InjectFailure(4)
 			if injected {
-				err := test.UploadImage(img, baseURL, "test")
+				err := test.UploadImage(img, baseURL, "test", img.DigestStr())
 				So(err, ShouldNotBeNil)
 			}
 		})
@@ -829,40 +815,28 @@ func TestInjectUploadImage(t *testing.T) {
 		Convey("first marshal", func() {
 			injected := inject.InjectFailure(0)
 			if injected {
-				err := test.UploadImage(img, baseURL, "test")
-				So(err, ShouldNotBeNil)
-
-				err = test.UploadImageWithRef(img, baseURL, "test", img.DigestStr())
+				err := test.UploadImage(img, baseURL, "test", img.DigestStr())
 				So(err, ShouldNotBeNil)
 			}
 		})
 		Convey("CreateBlobUpload POST call", func() {
 			injected := inject.InjectFailure(1)
 			if injected {
-				err := test.UploadImage(img, baseURL, "test")
-				So(err, ShouldNotBeNil)
-
-				err = test.UploadImageWithRef(img, baseURL, "test", img.DigestStr())
+				err := test.UploadImage(img, baseURL, "test", img.DigestStr())
 				So(err, ShouldNotBeNil)
 			}
 		})
 		Convey("UpdateBlobUpload PUT call", func() {
 			injected := inject.InjectFailure(3)
 			if injected {
-				err := test.UploadImage(img, baseURL, "test")
-				So(err, ShouldNotBeNil)
-
-				err = test.UploadImageWithRef(img, baseURL, "test", img.DigestStr())
+				err := test.UploadImage(img, baseURL, "test", img.DigestStr())
 				So(err, ShouldNotBeNil)
 			}
 		})
 		Convey("second marshal", func() {
 			injected := inject.InjectFailure(5)
 			if injected {
-				err := test.UploadImage(img, baseURL, "test")
-				So(err, ShouldNotBeNil)
-
-				err = test.UploadImageWithRef(img, baseURL, "test", img.DigestStr())
+				err := test.UploadImage(img, baseURL, "test", img.DigestStr())
 				So(err, ShouldNotBeNil)
 			}
 		})
@@ -970,28 +944,28 @@ func TestInjectUploadImageWithBasicAuth(t *testing.T) {
 		Convey("first marshal", func() {
 			injected := inject.InjectFailure(0)
 			if injected {
-				err := test.UploadImageWithBasicAuth(img, baseURL, "test", "user", "password")
+				err := test.UploadImageWithBasicAuth(img, baseURL, "test", img.DigestStr(), "user", "password")
 				So(err, ShouldNotBeNil)
 			}
 		})
 		Convey("CreateBlobUpload POST call", func() {
 			injected := inject.InjectFailure(1)
 			if injected {
-				err := test.UploadImageWithBasicAuth(img, baseURL, "test", "user", "password")
+				err := test.UploadImageWithBasicAuth(img, baseURL, "test", img.DigestStr(), "user", "password")
 				So(err, ShouldNotBeNil)
 			}
 		})
 		Convey("UpdateBlobUpload PUT call", func() {
 			injected := inject.InjectFailure(3)
 			if injected {
-				err := test.UploadImageWithBasicAuth(img, baseURL, "test", "user", "password")
+				err := test.UploadImageWithBasicAuth(img, baseURL, "test", img.DigestStr(), "user", "password")
 				So(err, ShouldNotBeNil)
 			}
 		})
 		Convey("second marshal", func() {
 			injected := inject.InjectFailure(5)
 			if injected {
-				err := test.UploadImageWithBasicAuth(img, baseURL, "test", "user", "password")
+				err := test.UploadImageWithBasicAuth(img, baseURL, "test", img.DigestStr(), "user", "password")
 				So(err, ShouldNotBeNil)
 			}
 		})
@@ -1265,11 +1239,10 @@ func TestVerifyWithNotation(t *testing.T) {
 
 		err = test.UploadImage(
 			test.Image{
-				Config:    cfg,
-				Layers:    layers,
-				Manifest:  manifest,
-				Reference: tag,
-			}, baseURL, repoName)
+				Config:   cfg,
+				Layers:   layers,
+				Manifest: manifest,
+			}, baseURL, repoName, tag)
 		So(err, ShouldBeNil)
 
 		content, err := json.Marshal(manifest)
@@ -1478,7 +1451,7 @@ func TestGenerateNotationCerts(t *testing.T) {
 
 func TestWriteImageToFileSystem(t *testing.T) {
 	Convey("WriteImageToFileSystem errors", t, func() {
-		err := test.WriteImageToFileSystem(test.Image{}, "repo", storage.StoreController{
+		err := test.WriteImageToFileSystem(test.Image{}, "repo", "dig", storage.StoreController{
 			DefaultStore: mocks.MockedImageStore{
 				InitRepoFn: func(name string) error {
 					return ErrTestError
@@ -1490,6 +1463,7 @@ func TestWriteImageToFileSystem(t *testing.T) {
 		err = test.WriteImageToFileSystem(
 			test.Image{Layers: [][]byte{[]byte("testLayer")}},
 			"repo",
+			"tag",
 			storage.StoreController{
 				DefaultStore: mocks.MockedImageStore{
 					FullBlobUploadFn: func(repo string, body io.Reader, digest godigest.Digest,
@@ -1504,6 +1478,7 @@ func TestWriteImageToFileSystem(t *testing.T) {
 		err = test.WriteImageToFileSystem(
 			test.Image{Layers: [][]byte{[]byte("testLayer")}},
 			"repo",
+			"tag",
 			storage.StoreController{
 				DefaultStore: mocks.MockedImageStore{
 					FullBlobUploadFn: func(repo string, body io.Reader, digest godigest.Digest,
@@ -1523,6 +1498,7 @@ func TestWriteImageToFileSystem(t *testing.T) {
 		err = test.WriteImageToFileSystem(
 			test.Image{Layers: [][]byte{[]byte("testLayer")}},
 			"repo",
+			"tag",
 			storage.StoreController{
 				DefaultStore: mocks.MockedImageStore{
 					PutImageManifestFn: func(repo, reference, mediaType string, body []byte,

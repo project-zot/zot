@@ -473,16 +473,15 @@ func TestNegativeServerResponse(t *testing.T) {
 		}
 
 		num := 10
-		config, layers, manifest, err := test.GetRandomImageComponents(num)
+		config, layers, manifest, err := test.GetRandomImageComponents(num) //nolint:staticcheck
 		So(err, ShouldBeNil)
 
 		err = test.WriteImageToFileSystem(
 			test.Image{
-				Manifest:  manifest,
-				Layers:    layers,
-				Config:    config,
-				Reference: "0.0.1",
-			}, "zot-cve-test", storeController,
+				Manifest: manifest,
+				Layers:   layers,
+				Config:   config,
+			}, "zot-cve-test", "0.0.1", storeController,
 		)
 		So(err, ShouldBeNil)
 
@@ -614,7 +613,7 @@ func TestServerCVEResponse(t *testing.T) {
 
 	test.WaitTillServerReady(url)
 
-	config, layers, manifest, err := test.GetImageComponents(100)
+	config, layers, manifest, err := test.GetImageComponents(100) //nolint:staticcheck
 	if err != nil {
 		panic(err)
 	}

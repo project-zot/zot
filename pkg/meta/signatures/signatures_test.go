@@ -129,7 +129,7 @@ func TestVerifySignatures(t *testing.T) {
 	})
 
 	Convey("empty manifest digest", t, func() {
-		image, err := test.GetRandomImage("image")
+		image, err := test.GetRandomImage() //nolint:staticcheck
 		So(err, ShouldBeNil)
 
 		manifestContent, err := json.Marshal(image.Manifest)
@@ -141,7 +141,7 @@ func TestVerifySignatures(t *testing.T) {
 	})
 
 	Convey("wrong signature type", t, func() {
-		image, err := test.GetRandomImage("image")
+		image, err := test.GetRandomImage() //nolint:staticcheck
 		So(err, ShouldBeNil)
 
 		manifestContent, err := json.Marshal(image.Manifest)
@@ -157,7 +157,7 @@ func TestVerifySignatures(t *testing.T) {
 	Convey("verify cosign signature", t, func() {
 		repo := "repo"
 		tag := "test"
-		image, err := test.GetRandomImage(tag)
+		image, err := test.GetRandomImage() //nolint:staticcheck
 		So(err, ShouldBeNil)
 
 		manifestContent, err := json.Marshal(image.Manifest)
@@ -218,7 +218,7 @@ func TestVerifySignatures(t *testing.T) {
 			cm.StartAndWait(conf.HTTP.Port)
 			defer cm.StopServer()
 
-			err := test.UploadImage(image, baseURL, repo)
+			err := test.UploadImage(image, baseURL, repo, tag)
 			So(err, ShouldBeNil)
 
 			err = signatures.InitCosignDir(rootDir)
@@ -292,7 +292,7 @@ func TestVerifySignatures(t *testing.T) {
 	Convey("verify notation signature", t, func() {
 		repo := "repo"
 		tag := "test"
-		image, err := test.GetRandomImage(tag)
+		image, err := test.GetRandomImage() //nolint:staticcheck
 		So(err, ShouldBeNil)
 
 		manifestContent, err := json.Marshal(image.Manifest)
@@ -365,7 +365,7 @@ func TestVerifySignatures(t *testing.T) {
 			cm.StartAndWait(conf.HTTP.Port)
 			defer cm.StopServer()
 
-			err := test.UploadImage(image, baseURL, repo)
+			err := test.UploadImage(image, baseURL, repo, tag)
 			So(err, ShouldBeNil)
 
 			err = signatures.InitNotationDir(rootDir)
