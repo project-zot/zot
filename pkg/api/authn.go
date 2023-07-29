@@ -353,6 +353,9 @@ func (amw *AuthnMiddleware) TryAuthnHandlers(ctlr *Controller) mux.MiddlewareFun
 				return
 			}
 
+			isMgmtRequested := request.RequestURI == constants.FullMgmtPrefix
+			allowAnonymous := ctlr.Config.HTTP.AccessControl.AnonymousPolicyExists()
+
 			// try basic auth if authorization header is given
 			if !isAuthorizationHeaderEmpty(request) { //nolint: gocritic
 				//nolint: contextcheck
@@ -389,11 +392,9 @@ func (amw *AuthnMiddleware) TryAuthnHandlers(ctlr *Controller) mux.MiddlewareFun
 
 					return
 				}
-			} else {
-				// try anonymous auth only if basic auth/session was not given
-				// we want to bypass auth for mgmt route
-				isMgmtRequested := request.RequestURI == constants.FullMgmtPrefix
-				if ctlr.Config.HTTP.AccessControl.AnonymousPolicyExists() || isMgmtRequested {
+
+				// the session header can be present also for anonymous calls
+				if allowAnonymous || isMgmtRequested {
 					ctx := getReqContextWithAuthorization("", []string{}, request)
 					*request = *request.WithContext(ctx) //nolint:contextcheck
 
@@ -401,6 +402,15 @@ func (amw *AuthnMiddleware) TryAuthnHandlers(ctlr *Controller) mux.MiddlewareFun
 
 					return
 				}
+			} else if allowAnonymous || isMgmtRequested {
+				// try anonymous auth only if basic auth/session was not given
+				// we want to bypass auth for mgmt route
+				ctx := getReqContextWithAuthorization("", []string{}, request)
+				*request = *request.WithContext(ctx) //nolint:contextcheck
+
+				next.ServeHTTP(response, request)
+
+				return
 			}
 
 			authFail(response, request, ctlr.Config.HTTP.Realm, delay)

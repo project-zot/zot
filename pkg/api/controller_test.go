@@ -66,6 +66,7 @@ import (
 
 const (
 	username               = "test"
+	htpasswdUsername       = "htpasswduser"
 	passphrase             = "test"
 	group                  = "test"
 	repo                   = "test"
@@ -2595,7 +2596,6 @@ func TestOpenIDMiddleware(t *testing.T) {
 	conf.HTTP.Port = port
 
 	// need a username different than ldap one, to test both logic
-	htpasswdUsername := "htpasswduser"
 	content := fmt.Sprintf("%s:$2y$05$hlbSXDp6hzDLu6VwACS39ORvVRpr3OMR4RlJ31jtlaOEGnPjKZI1m\n", htpasswdUsername)
 	htpasswdPath := test.MakeHtpasswdFileFromString(content)
 
@@ -3006,7 +3006,6 @@ func TestAuthnSessionErrors(t *testing.T) {
 		invalidSessionID := "sessionID"
 
 		// need a username different than ldap one, to test both logic
-		htpasswdUsername := "htpasswduser"
 		content := fmt.Sprintf("%s:$2y$05$hlbSXDp6hzDLu6VwACS39ORvVRpr3OMR4RlJ31jtlaOEGnPjKZI1m\n", htpasswdUsername)
 
 		htpasswdPath := test.MakeHtpasswdFileFromString(content)
@@ -3683,7 +3682,7 @@ func TestAuthorizationWithOnlyAnonymousPolicy(t *testing.T) {
 		conf.HTTP.AccessControl = &config.AccessControlConfig{
 			Repositories: config.Repositories{
 				TestRepo: config.PolicyGroup{
-					AnonymousPolicy: []string{},
+					AnonymousPolicy: []string{"read"},
 				},
 			},
 		}
@@ -3903,6 +3902,212 @@ func TestAuthorizationWithOnlyAnonymousPolicy(t *testing.T) {
 		So(len(catalog.Repositories), ShouldEqual, 2)
 		So(catalog.Repositories, ShouldContain, TestRepo)
 		So(catalog.Repositories, ShouldContain, "zot-test")
+	})
+}
+
+func TestAuthorizationWithAnonymousPolicyBasicAuthAndSessionHeader(t *testing.T) {
+	Convey("Make a new controller", t, func() {
+		const TestRepo = "my-repos/repo"
+		const AllRepos = "**"
+		port := test.GetFreePort()
+		baseURL := test.GetBaseURL(port)
+
+		badpassphrase := "bad"
+		htpasswdContent := fmt.Sprintf("%s:$2y$05$hlbSXDp6hzDLu6VwACS39ORvVRpr3OMR4RlJ31jtlaOEGnPjKZI1m\n",
+			htpasswdUsername)
+
+		htpasswdPath := test.MakeHtpasswdFileFromString(htpasswdContent)
+		defer os.Remove(htpasswdPath)
+
+		img := test.CreateRandomImage()
+		tagAnonymous := "1.0-anon"
+		tagAuth := "1.0-auth"
+		tagUnauth := "1.0-unauth"
+
+		conf := config.New()
+		conf.HTTP.Port = port
+		conf.HTTP.Auth = &config.AuthConfig{
+			HTPasswd: config.AuthHTPasswd{
+				Path: htpasswdPath,
+			},
+		}
+		conf.HTTP.AccessControl = &config.AccessControlConfig{
+			Repositories: config.Repositories{
+				AllRepos: config.PolicyGroup{
+					Policies: []config.Policy{
+						{
+							Users:   []string{htpasswdUsername},
+							Actions: []string{"read"},
+						},
+					},
+					AnonymousPolicy: []string{"read"},
+				},
+			},
+		}
+
+		dir := t.TempDir()
+		ctlr := makeController(conf, dir, "")
+		cm := test.NewControllerManager(ctlr)
+		cm.StartAndWait(port)
+		defer cm.StopServer()
+
+		// /v2 access
+		// Can access /v2 without credentials
+		resp, err := resty.R().Get(baseURL + "/v2/")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+		// Can access /v2 without credentials and with X-Zot-Api-Client=zot-ui
+		resp, err = resty.R().
+			SetHeader(constants.SessionClientHeaderName, constants.SessionClientHeaderValue).
+			Get(baseURL + "/v2/")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+		// Can access /v2 with correct credentials
+		resp, err = resty.R().
+			SetBasicAuth(htpasswdUsername, passphrase).
+			Get(baseURL + "/v2/")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+		// Fail to access /v2 with incorrect credentials
+		resp, err = resty.R().
+			SetBasicAuth(htpasswdUsername, badpassphrase).
+			Get(baseURL + "/v2/")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
+
+		// Catalog access
+		resp, err = resty.R().Get(baseURL + "/v2/_catalog")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+		var apiError apiErr.Error
+		err = json.Unmarshal(resp.Body(), &apiError)
+		So(err, ShouldBeNil)
+
+		resp, err = resty.R().
+			SetHeader(constants.SessionClientHeaderName, constants.SessionClientHeaderValue).
+			Get(baseURL + "/v2/_catalog")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+		apiError = apiErr.Error{}
+		err = json.Unmarshal(resp.Body(), &apiError)
+		So(err, ShouldBeNil)
+
+		resp, err = resty.R().
+			SetBasicAuth(htpasswdUsername, passphrase).
+			Get(baseURL + "/v2/_catalog")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+		apiError = apiErr.Error{}
+		err = json.Unmarshal(resp.Body(), &apiError)
+		So(err, ShouldBeNil)
+
+		resp, err = resty.R().
+			SetBasicAuth(htpasswdUsername, badpassphrase).
+			Get(baseURL + "/v2/_catalog")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
+		apiError = apiErr.Error{}
+		err = json.Unmarshal(resp.Body(), &apiError)
+		So(err, ShouldBeNil)
+
+		// upload capability
+		// should get 403 without create
+		err = test.UploadImage(img, baseURL, TestRepo, tagAnonymous)
+		So(err, ShouldNotBeNil)
+
+		err = test.UploadImageWithBasicAuth(img, baseURL,
+			TestRepo, tagAuth, htpasswdUsername, passphrase)
+		So(err, ShouldNotBeNil)
+
+		err = test.UploadImageWithBasicAuth(img, baseURL,
+			TestRepo, tagUnauth, htpasswdUsername, badpassphrase)
+		So(err, ShouldNotBeNil)
+
+		if entry, ok := conf.HTTP.AccessControl.Repositories[AllRepos]; ok {
+			entry.AnonymousPolicy = []string{"create", "read"}
+			entry.Policies[0] = config.Policy{
+				Users:   []string{htpasswdUsername},
+				Actions: []string{"create", "read"},
+			}
+			conf.HTTP.AccessControl.Repositories[AllRepos] = entry
+		}
+
+		// now it should succeed for valid users
+		err = test.UploadImage(img, baseURL, TestRepo, tagAnonymous)
+		So(err, ShouldBeNil)
+
+		err = test.UploadImageWithBasicAuth(img, baseURL,
+			TestRepo, tagAuth, htpasswdUsername, passphrase)
+		So(err, ShouldBeNil)
+
+		err = test.UploadImageWithBasicAuth(img, baseURL,
+			TestRepo, tagUnauth, htpasswdUsername, badpassphrase)
+		So(err, ShouldNotBeNil)
+
+		// read capability
+		catalog := struct {
+			Repositories []string `json:"repositories"`
+		}{}
+
+		resp, err = resty.R().Get(baseURL + "/v2/_catalog")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+		err = json.Unmarshal(resp.Body(), &catalog)
+		So(err, ShouldBeNil)
+		So(len(catalog.Repositories), ShouldEqual, 1)
+		So(catalog.Repositories, ShouldContain, TestRepo)
+
+		catalog = struct {
+			Repositories []string `json:"repositories"`
+		}{}
+
+		resp, err = resty.R().
+			SetHeader(constants.SessionClientHeaderName, constants.SessionClientHeaderValue).
+			Get(baseURL + "/v2/_catalog")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+		err = json.Unmarshal(resp.Body(), &catalog)
+		So(err, ShouldBeNil)
+		So(len(catalog.Repositories), ShouldEqual, 1)
+		So(catalog.Repositories, ShouldContain, TestRepo)
+
+		catalog = struct {
+			Repositories []string `json:"repositories"`
+		}{}
+
+		resp, err = resty.R().
+			SetBasicAuth(htpasswdUsername, passphrase).
+			Get(baseURL + "/v2/_catalog")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+		err = json.Unmarshal(resp.Body(), &catalog)
+		So(err, ShouldBeNil)
+		So(len(catalog.Repositories), ShouldEqual, 1)
+		So(catalog.Repositories, ShouldContain, TestRepo)
+
+		resp, err = resty.R().
+			SetBasicAuth(htpasswdUsername, badpassphrase).
+			Get(baseURL + "/v2/_catalog")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
 	})
 }
 
