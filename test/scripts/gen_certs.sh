@@ -1,4 +1,6 @@
-#!/bin/bash -xe
+#!/usr/bin/env bash
+
+set -xe
 
 openssl req \
     -newkey rsa:2048 \
