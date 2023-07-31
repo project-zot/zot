@@ -223,15 +223,6 @@ func TestParseStorageErrors(t *testing.T) {
 					err = meta.ParseRepo("repo", metaDB, storeController, log)
 					So(err, ShouldNotBeNil)
 				})
-
-				Convey("json.Unmarshal(configBlob errors", func() {
-					imageStore.GetBlobContentFn = func(repo string, digest godigest.Digest) ([]byte, error) {
-						return []byte("invalid JSON"), nil
-					}
-
-					err = meta.ParseRepo("repo", metaDB, storeController, log)
-					So(err, ShouldNotBeNil)
-				})
 			})
 
 			Convey("CheckIsImageSignature -> is signature", func() {
@@ -474,11 +465,8 @@ func RunParseStorageTests(rootDir string, metaDB mTypes.MetaDB) {
 		err = meta.ParseStorage(metaDB, storeController, log.NewLogger("debug", ""))
 		So(err, ShouldBeNil)
 
-		repos, err := metaDB.GetMultipleRepoMeta(
-			context.Background(),
-			func(repoMeta mTypes.RepoMetadata) bool { return true },
-			mTypes.PageInput{},
-		)
+		repos, err := metaDB.GetMultipleRepoMeta(context.Background(),
+			func(repoMeta mTypes.RepoMetadata) bool { return true })
 		So(err, ShouldBeNil)
 
 		So(len(repos), ShouldEqual, 1)
@@ -540,7 +528,6 @@ func RunParseStorageTests(rootDir string, metaDB mTypes.MetaDB) {
 		repos, err := metaDB.GetMultipleRepoMeta(
 			context.Background(),
 			func(repoMeta mTypes.RepoMetadata) bool { return true },
-			mTypes.PageInput{},
 		)
 		So(err, ShouldBeNil)
 

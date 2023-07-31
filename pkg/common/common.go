@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"strings"
 	"syscall"
 	"time"
 	"unicode/utf8"
@@ -100,4 +101,14 @@ func MarshalThroughStruct(obj interface{}, throughStruct interface{}) ([]byte, e
 	}
 
 	return toJSON, nil
+}
+
+func ContainsStringIgnoreCase(strSlice []string, str string) bool {
+	for _, val := range strSlice {
+		if strings.EqualFold(val, str) {
+			return true
+		}
+	}
+
+	return false
 }

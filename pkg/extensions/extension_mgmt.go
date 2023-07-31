@@ -250,7 +250,7 @@ func EnablePeriodicSignaturesVerification(config *config.Config, taskScheduler *
 
 		repos, err := metaDB.GetMultipleRepoMeta(ctx, func(repoMeta mTypes.RepoMetadata) bool {
 			return true
-		}, mTypes.PageInput{})
+		})
 		if err != nil {
 			return
 		}
@@ -297,9 +297,7 @@ func (gen *taskGeneratorSigValidity) Reset() {
 	gen.repoIndex = -1
 	ctx := context.Background()
 
-	repos, err := gen.metaDB.GetMultipleRepoMeta(ctx, func(repoMeta mTypes.RepoMetadata) bool {
-		return true
-	}, mTypes.PageInput{})
+	repos, err := gen.metaDB.GetMultipleRepoMeta(ctx, func(repoMeta mTypes.RepoMetadata) bool { return true })
 	if err != nil {
 		return
 	}

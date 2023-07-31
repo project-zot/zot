@@ -84,7 +84,7 @@ func GetImageLastUpdated(imageInfo ispec.Image) time.Time {
 	return *timeStamp
 }
 
-// GetRepoRefference returns the components of a repoName:tag or repoName@digest string. If the format is wrong
+// GetRepoReference returns the components of a repoName:tag or repoName@digest string. If the format is wrong
 // an error is returned.
 // The returned values have the following meaning:
 //
@@ -95,7 +95,7 @@ func GetImageLastUpdated(imageInfo ispec.Image) time.Time {
 // - bool: value for the statement: "the reference is a tag"
 //
 // - error: error value.
-func GetRepoRefference(repo string) (string, string, bool, error) {
+func GetRepoReference(repo string) (string, string, bool, error) {
 	repoName, digest, found := strings.Cut(repo, "@")
 
 	if !found {

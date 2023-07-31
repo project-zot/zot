@@ -16,7 +16,6 @@ import (
 	zcommon "zotregistry.io/zot/pkg/common"
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/meta/common"
-	"zotregistry.io/zot/pkg/meta/pagination"
 	"zotregistry.io/zot/pkg/meta/signatures"
 	mTypes "zotregistry.io/zot/pkg/meta/types"
 	"zotregistry.io/zot/pkg/meta/version"
@@ -297,17 +296,17 @@ func (bdw BoltDB) SetReferrer(repo string, referredDigest godigest.Digest, refer
 			return err
 		}
 
-		refferers := repoMeta.Referrers[referredDigest.String()]
+		referrers := repoMeta.Referrers[referredDigest.String()]
 
-		for i := range refferers {
-			if refferers[i].Digest == referrer.Digest {
+		for i := range referrers {
+			if referrers[i].Digest == referrer.Digest {
 				return nil
 			}
 		}
 
-		refferers = append(refferers, referrer)
+		referrers = append(referrers, referrer)
 
-		repoMeta.Referrers[referredDigest.String()] = refferers
+		repoMeta.Referrers[referredDigest.String()] = referrers
 
 		repoMetaBlob, err = json.Marshal(repoMeta)
 		if err != nil {
@@ -645,19 +644,10 @@ func (bdw *BoltDB) GetRepoStars(repo string) (int, error) {
 }
 
 func (bdw *BoltDB) GetMultipleRepoMeta(ctx context.Context, filter func(repoMeta mTypes.RepoMetadata) bool,
-	requestedPage mTypes.PageInput,
 ) ([]mTypes.RepoMetadata, error) {
-	var (
-		foundRepos = make([]mTypes.RepoMetadata, 0)
-		pageFinder pagination.PageFinder
-	)
+	foundRepos := []mTypes.RepoMetadata{}
 
-	pageFinder, err := pagination.NewBaseRepoPageFinder(requestedPage.Limit, requestedPage.Offset, requestedPage.SortBy)
-	if err != nil {
-		return nil, err
-	}
-
-	err = bdw.DB.View(func(tx *bbolt.Tx) error {
+	err := bdw.DB.View(func(tx *bbolt.Tx) error {
 		buck := tx.Bucket([]byte(RepoMetadataBucket))
 
 		cursor := buck.Cursor()
@@ -675,13 +665,9 @@ func (bdw *BoltDB) GetMultipleRepoMeta(ctx context.Context, filter func(repoMeta
 			}
 
 			if filter(repoMeta) {
-				pageFinder.Add(mTypes.DetailedRepoMeta{
-					RepoMetadata: repoMeta,
-				})
+				foundRepos = append(foundRepos, repoMeta)
 			}
 		}
-
-		foundRepos, _ = pageFinder.Page()
 
 		return nil
 	})
@@ -965,34 +951,21 @@ func (bdw *BoltDB) DeleteSignature(repo string, signedManifestDigest godigest.Di
 	return err
 }
 
-func (bdw *BoltDB) SearchRepos(ctx context.Context, searchText string, filter mTypes.Filter,
-	requestedPage mTypes.PageInput,
-) ([]mTypes.RepoMetadata, map[string]mTypes.ManifestMetadata, map[string]mTypes.IndexData, zcommon.PageInfo,
-	error,
-) {
+func (bdw *BoltDB) SearchRepos(ctx context.Context, searchText string,
+) ([]mTypes.RepoMetadata, map[string]mTypes.ManifestMetadata, map[string]mTypes.IndexData, error) {
 	var (
-		foundRepos               = make([]mTypes.RepoMetadata, 0)
-		foundManifestMetadataMap = make(map[string]mTypes.ManifestMetadata)
-		foundindexDataMap        = make(map[string]mTypes.IndexData)
-		pageFinder               pagination.PageFinder
-		pageInfo                 zcommon.PageInfo
+		foundRepos          = make([]mTypes.RepoMetadata, 0)
+		manifestMetadataMap = make(map[string]mTypes.ManifestMetadata)
+		indexDataMap        = make(map[string]mTypes.IndexData)
 	)
 
-	pageFinder, err := pagination.NewBaseRepoPageFinder(requestedPage.Limit, requestedPage.Offset, requestedPage.SortBy)
-	if err != nil {
-		return []mTypes.RepoMetadata{}, map[string]mTypes.ManifestMetadata{}, map[string]mTypes.IndexData{},
-			zcommon.PageInfo{}, err
-	}
-
-	err = bdw.DB.View(func(transaction *bbolt.Tx) error {
+	err := bdw.DB.View(func(transaction *bbolt.Tx) error {
 		var (
-			manifestMetadataMap = make(map[string]mTypes.ManifestMetadata)
-			indexDataMap        = make(map[string]mTypes.IndexData)
-			repoBuck            = transaction.Bucket([]byte(RepoMetadataBucket))
-			indexBuck           = transaction.Bucket([]byte(IndexDataBucket))
-			manifestBuck        = transaction.Bucket([]byte(ManifestDataBucket))
-			userBookmarks       = getUserBookmarks(ctx, transaction)
-			userStars           = getUserStars(ctx, transaction)
+			repoBuck      = transaction.Bucket([]byte(RepoMetadataBucket))
+			indexBuck     = transaction.Bucket([]byte(IndexDataBucket))
+			manifestBuck  = transaction.Bucket([]byte(ManifestDataBucket))
+			userBookmarks = getUserBookmarks(ctx, transaction)
+			userStars     = getUserStars(ctx, transaction)
 		)
 
 		cursor := repoBuck.Cursor()
@@ -1009,22 +982,14 @@ func (bdw *BoltDB) SearchRepos(ctx context.Context, searchText string, filter mT
 				return err
 			}
 
-			repoMeta.IsBookmarked = zcommon.Contains(userBookmarks, repoMeta.Name)
-			repoMeta.IsStarred = zcommon.Contains(userStars, repoMeta.Name)
-
 			rank := common.RankRepoName(searchText, repoMeta.Name)
 			if rank == -1 {
 				continue
 			}
 
-			var (
-				repoDownloads   = 0
-				repoLastUpdated = time.Time{}
-				osSet           = map[string]bool{}
-				archSet         = map[string]bool{}
-				noImageChecked  = true
-				isSigned        = false
-			)
+			repoMeta.IsBookmarked = zcommon.Contains(userBookmarks, repoMeta.Name)
+			repoMeta.IsStarred = zcommon.Contains(userStars, repoMeta.Name)
+			repoMeta.Rank = rank
 
 			for tag, descriptor := range repoMeta.Tags {
 				switch descriptor.MediaType {
@@ -1037,24 +1002,6 @@ func (bdw *BoltDB) SearchRepos(ctx context.Context, searchText string, filter mT
 						return fmt.Errorf("metadb: error fetching manifest meta for manifest with digest %s %w",
 							manifestDigest, err)
 					}
-
-					manifestFilterData, err := collectImageManifestFilterData(manifestDigest, repoMeta, manifestMeta)
-					if err != nil {
-						return fmt.Errorf("metadb: error collecting filter data for manifest with digest %s %w",
-							manifestDigest, err)
-					}
-
-					repoDownloads += manifestFilterData.DownloadCount
-
-					for _, os := range manifestFilterData.OsList {
-						osSet[os] = true
-					}
-					for _, arch := range manifestFilterData.ArchList {
-						archSet[arch] = true
-					}
-
-					repoLastUpdated, noImageChecked, isSigned = common.CheckImageLastUpdated(repoLastUpdated, isSigned,
-						noImageChecked, manifestFilterData)
 
 					manifestMetadataMap[descriptor.Digest] = manifestMeta
 				case ispec.MediaTypeImageIndex:
@@ -1074,26 +1021,17 @@ func (bdw *BoltDB) SearchRepos(ctx context.Context, searchText string, filter mT
 							repoName, tag, err)
 					}
 
-					// this also updates manifestMetadataMap
-					indexFilterData, err := collectImageIndexFilterInfo(indexDigest, repoMeta, indexData, manifestMetadataMap,
-						manifestBuck)
-					if err != nil {
-						return fmt.Errorf("metadb: error collecting filter data for index with digest %s %w",
-							indexDigest, err)
+					for _, manifest := range indexContent.Manifests {
+						manifestDigest := manifest.Digest
+
+						manifestMeta, err := fetchManifestMetaWithCheck(repoMeta, manifestDigest.String(),
+							manifestMetadataMap, manifestBuck)
+						if err != nil {
+							return err
+						}
+
+						manifestMetadataMap[manifest.Digest.String()] = manifestMeta
 					}
-
-					for _, arch := range indexFilterData.ArchList {
-						archSet[arch] = true
-					}
-
-					for _, os := range indexFilterData.OsList {
-						osSet[os] = true
-					}
-
-					repoDownloads += indexFilterData.DownloadCount
-
-					repoLastUpdated, noImageChecked, isSigned = common.CheckImageLastUpdated(repoLastUpdated, isSigned,
-						noImageChecked, indexFilterData)
 
 					indexDataMap[indexDigest] = indexData
 				default:
@@ -1103,37 +1041,13 @@ func (bdw *BoltDB) SearchRepos(ctx context.Context, searchText string, filter mT
 				}
 			}
 
-			repoFilterData := mTypes.FilterData{
-				OsList:        common.GetMapKeys(osSet),
-				ArchList:      common.GetMapKeys(archSet),
-				LastUpdated:   repoLastUpdated,
-				DownloadCount: repoDownloads,
-				IsSigned:      isSigned,
-				IsBookmarked:  repoMeta.IsBookmarked,
-				IsStarred:     repoMeta.IsStarred,
-			}
-
-			if !common.AcceptedByFilter(filter, repoFilterData) {
-				continue
-			}
-
-			pageFinder.Add(mTypes.DetailedRepoMeta{
-				RepoMetadata: repoMeta,
-				Rank:         rank,
-				Downloads:    repoDownloads,
-				UpdateTime:   repoLastUpdated,
-			})
+			foundRepos = append(foundRepos, repoMeta)
 		}
 
-		foundRepos, pageInfo = pageFinder.Page()
-
-		foundManifestMetadataMap, foundindexDataMap, err = common.FilterDataByRepo(foundRepos, manifestMetadataMap,
-			indexDataMap)
-
-		return err
+		return nil
 	})
 
-	return foundRepos, foundManifestMetadataMap, foundindexDataMap, pageInfo, err
+	return foundRepos, manifestMetadataMap, indexDataMap, err
 }
 
 func fetchManifestMetaWithCheck(repoMeta mTypes.RepoMetadata, manifestDigest string,
@@ -1187,95 +1101,6 @@ func fetchIndexDataWithCheck(indexDigest string, indexDataMap map[string]mTypes.
 	return indexData, err
 }
 
-func collectImageManifestFilterData(digest string, repoMeta mTypes.RepoMetadata,
-	manifestMeta mTypes.ManifestMetadata,
-) (mTypes.FilterData, error) {
-	// get fields related to filtering
-	var (
-		configContent ispec.Image
-		osList        []string
-		archList      []string
-	)
-
-	err := json.Unmarshal(manifestMeta.ConfigBlob, &configContent)
-	if err != nil {
-		return mTypes.FilterData{},
-			fmt.Errorf("metadb: error while unmarshaling config content %w", err)
-	}
-
-	if configContent.OS != "" {
-		osList = append(osList, configContent.OS)
-	}
-
-	if configContent.Architecture != "" {
-		archList = append(archList, configContent.Architecture)
-	}
-
-	return mTypes.FilterData{
-		DownloadCount: repoMeta.Statistics[digest].DownloadCount,
-		OsList:        osList,
-		ArchList:      archList,
-		LastUpdated:   common.GetImageLastUpdatedTimestamp(configContent),
-		IsSigned:      common.CheckIsSigned(repoMeta.Signatures[digest]),
-	}, nil
-}
-
-func collectImageIndexFilterInfo(indexDigest string, repoMeta mTypes.RepoMetadata,
-	indexData mTypes.IndexData, manifestMetadataMap map[string]mTypes.ManifestMetadata,
-	manifestBuck *bbolt.Bucket,
-) (mTypes.FilterData, error) {
-	var indexContent ispec.Index
-
-	err := json.Unmarshal(indexData.IndexBlob, &indexContent)
-	if err != nil {
-		return mTypes.FilterData{},
-			fmt.Errorf("metadb: error while unmarshaling index content for digest %s %w", indexDigest, err)
-	}
-
-	var (
-		indexLastUpdated     time.Time
-		firstManifestChecked = false
-		indexOsList          = []string{}
-		indexArchList        = []string{}
-	)
-
-	for _, manifest := range indexContent.Manifests {
-		manifestDigest := manifest.Digest
-
-		manifestMeta, err := fetchManifestMetaWithCheck(repoMeta, manifestDigest.String(),
-			manifestMetadataMap, manifestBuck)
-		if err != nil {
-			return mTypes.FilterData{},
-				fmt.Errorf("%w", err)
-		}
-
-		manifestFilterData, err := collectImageManifestFilterData(manifestDigest.String(), repoMeta,
-			manifestMeta)
-		if err != nil {
-			return mTypes.FilterData{},
-				fmt.Errorf("%w", err)
-		}
-
-		indexOsList = append(indexOsList, manifestFilterData.OsList...)
-		indexArchList = append(indexArchList, manifestFilterData.ArchList...)
-
-		if !firstManifestChecked || indexLastUpdated.Before(manifestFilterData.LastUpdated) {
-			indexLastUpdated = manifestFilterData.LastUpdated
-			firstManifestChecked = true
-		}
-
-		manifestMetadataMap[manifest.Digest.String()] = manifestMeta
-	}
-
-	return mTypes.FilterData{
-		DownloadCount: repoMeta.Statistics[indexDigest].DownloadCount,
-		LastUpdated:   indexLastUpdated,
-		OsList:        indexOsList,
-		ArchList:      indexArchList,
-		IsSigned:      common.CheckIsSigned(repoMeta.Signatures[indexDigest]),
-	}, nil
-}
-
 func NewManifestMetadata(manifestDigest string, repoMeta mTypes.RepoMetadata,
 	manifestData mTypes.ManifestData,
 ) mTypes.ManifestMetadata {
@@ -1294,28 +1119,16 @@ func NewManifestMetadata(manifestDigest string, repoMeta mTypes.RepoMetadata,
 	return manifestMeta
 }
 
-func (bdw *BoltDB) FilterTags(ctx context.Context, filterFunc mTypes.FilterFunc, filter mTypes.Filter,
-	requestedPage mTypes.PageInput,
-) ([]mTypes.RepoMetadata, map[string]mTypes.ManifestMetadata, map[string]mTypes.IndexData,
-	zcommon.PageInfo, error,
+func (bdw *BoltDB) FilterTags(ctx context.Context, filterFunc mTypes.FilterFunc,
+) ([]mTypes.RepoMetadata, map[string]mTypes.ManifestMetadata, map[string]mTypes.IndexData, error,
 ) {
 	var (
-		foundRepos               = make([]mTypes.RepoMetadata, 0)
-		manifestMetadataMap      = make(map[string]mTypes.ManifestMetadata)
-		indexDataMap             = make(map[string]mTypes.IndexData)
-		foundManifestMetadataMap = make(map[string]mTypes.ManifestMetadata)
-		foundindexDataMap        = make(map[string]mTypes.IndexData)
-		pageFinder               pagination.PageFinder
-		pageInfo                 zcommon.PageInfo
+		foundRepos          = make([]mTypes.RepoMetadata, 0)
+		manifestMetadataMap = make(map[string]mTypes.ManifestMetadata)
+		indexDataMap        = make(map[string]mTypes.IndexData)
 	)
 
-	pageFinder, err := pagination.NewBaseImagePageFinder(requestedPage.Limit, requestedPage.Offset, requestedPage.SortBy)
-	if err != nil {
-		return []mTypes.RepoMetadata{}, map[string]mTypes.ManifestMetadata{}, map[string]mTypes.IndexData{},
-			zcommon.PageInfo{}, err
-	}
-
-	err = bdw.DB.View(func(transaction *bbolt.Tx) error {
+	err := bdw.DB.View(func(transaction *bbolt.Tx) error {
 		var (
 			repoBuck      = transaction.Bucket([]byte(RepoMetadataBucket))
 			indexBuck     = transaction.Bucket([]byte(IndexDataBucket))
@@ -1354,16 +1167,6 @@ func (bdw *BoltDB) FilterTags(ctx context.Context, filterFunc mTypes.FilterFunc,
 						return fmt.Errorf("metadb: error while unmashaling manifest metadata for digest %s %w", manifestDigest, err)
 					}
 
-					imageFilterData, err := collectImageManifestFilterData(manifestDigest, repoMeta, manifestMeta)
-					if err != nil {
-						return fmt.Errorf("metadb: error collecting filter data for manifest with digest %s %w",
-							manifestDigest, err)
-					}
-
-					if !common.AcceptedByFilter(filter, imageFilterData) {
-						continue
-					}
-
 					if filterFunc(repoMeta, manifestMeta) {
 						matchedTags[tag] = descriptor
 						manifestMetadataMap[manifestDigest] = manifestMeta
@@ -1391,16 +1194,6 @@ func (bdw *BoltDB) FilterTags(ctx context.Context, filterFunc mTypes.FilterFunc,
 						manifestMeta, err := fetchManifestMetaWithCheck(repoMeta, manifestDigest, manifestMetadataMap, manifestBuck)
 						if err != nil {
 							return fmt.Errorf("metadb: error while getting manifest data for digest %s %w", manifestDigest, err)
-						}
-
-						manifestFilterData, err := collectImageManifestFilterData(manifestDigest, repoMeta, manifestMeta)
-						if err != nil {
-							return fmt.Errorf("metadb: error collecting filter data for manifest with digest %s %w",
-								manifestDigest, err)
-						}
-
-						if !common.AcceptedByFilter(filter, manifestFilterData) {
-							continue
 						}
 
 						if filterFunc(repoMeta, manifestMeta) {
@@ -1435,44 +1228,21 @@ func (bdw *BoltDB) FilterTags(ctx context.Context, filterFunc mTypes.FilterFunc,
 
 			repoMeta.Tags = matchedTags
 
-			pageFinder.Add(mTypes.DetailedRepoMeta{
-				RepoMetadata: repoMeta,
-			})
+			foundRepos = append(foundRepos, repoMeta)
 		}
 
-		foundRepos, pageInfo = pageFinder.Page()
-
-		foundManifestMetadataMap, foundindexDataMap, err = common.FilterDataByRepo(foundRepos, manifestMetadataMap,
-			indexDataMap)
-
-		return err
+		return nil
 	})
 
-	return foundRepos, foundManifestMetadataMap, foundindexDataMap, pageInfo, err
+	return foundRepos, manifestMetadataMap, indexDataMap, err
 }
 
-func (bdw *BoltDB) FilterRepos(ctx context.Context,
-	filter mTypes.FilterRepoFunc,
-	requestedPage mTypes.PageInput,
-) (
-	[]mTypes.RepoMetadata, map[string]mTypes.ManifestMetadata, map[string]mTypes.IndexData, zcommon.PageInfo, error,
+func (bdw *BoltDB) FilterRepos(ctx context.Context, filter mTypes.FilterRepoFunc) (
+	[]mTypes.RepoMetadata, map[string]mTypes.ManifestMetadata, map[string]mTypes.IndexData, error,
 ) {
-	var (
-		foundRepos = make([]mTypes.RepoMetadata, 0)
-		pageFinder pagination.PageFinder
-		pageInfo   zcommon.PageInfo
-	)
+	foundRepos := make([]mTypes.RepoMetadata, 0)
 
-	pageFinder, err := pagination.NewBaseRepoPageFinder(
-		requestedPage.Limit,
-		requestedPage.Offset,
-		requestedPage.SortBy,
-	)
-	if err != nil {
-		return []mTypes.RepoMetadata{}, map[string]mTypes.ManifestMetadata{}, map[string]mTypes.IndexData{}, pageInfo, err
-	}
-
-	err = bdw.DB.View(func(tx *bbolt.Tx) error {
+	err := bdw.DB.View(func(tx *bbolt.Tx) error {
 		var (
 			buck          = tx.Bucket([]byte(RepoMetadataBucket))
 			cursor        = buck.Cursor()
@@ -1496,49 +1266,32 @@ func (bdw *BoltDB) FilterRepos(ctx context.Context,
 			repoMeta.IsStarred = zcommon.Contains(userStars, repoMeta.Name)
 
 			if filter(repoMeta) {
-				pageFinder.Add(mTypes.DetailedRepoMeta{
-					RepoMetadata: repoMeta,
-				})
+				foundRepos = append(foundRepos, repoMeta)
 			}
 		}
-
-		foundRepos, pageInfo = pageFinder.Page()
 
 		return nil
 	})
 	if err != nil {
-		return []mTypes.RepoMetadata{}, map[string]mTypes.ManifestMetadata{}, map[string]mTypes.IndexData{}, pageInfo, err
+		return []mTypes.RepoMetadata{}, map[string]mTypes.ManifestMetadata{}, map[string]mTypes.IndexData{}, err
 	}
 
 	foundManifestMetadataMap, foundIndexDataMap, err := common.FetchDataForRepos(bdw, foundRepos)
 
-	return foundRepos, foundManifestMetadataMap, foundIndexDataMap, pageInfo, err
+	return foundRepos, foundManifestMetadataMap, foundIndexDataMap, err
 }
 
-func (bdw *BoltDB) SearchTags(ctx context.Context, searchText string, filter mTypes.Filter,
-	requestedPage mTypes.PageInput,
-) ([]mTypes.RepoMetadata, map[string]mTypes.ManifestMetadata, map[string]mTypes.IndexData, zcommon.PageInfo, error) {
+func (bdw *BoltDB) SearchTags(ctx context.Context, searchText string,
+) ([]mTypes.RepoMetadata, map[string]mTypes.ManifestMetadata, map[string]mTypes.IndexData, error) {
 	var (
-		foundRepos               = make([]mTypes.RepoMetadata, 0)
-		manifestMetadataMap      = make(map[string]mTypes.ManifestMetadata)
-		indexDataMap             = make(map[string]mTypes.IndexData)
-		foundManifestMetadataMap = make(map[string]mTypes.ManifestMetadata)
-		foundindexDataMap        = make(map[string]mTypes.IndexData)
-		pageInfo                 zcommon.PageInfo
-
-		pageFinder pagination.PageFinder
+		foundRepos          = make([]mTypes.RepoMetadata, 0)
+		manifestMetadataMap = make(map[string]mTypes.ManifestMetadata)
+		indexDataMap        = make(map[string]mTypes.IndexData)
 	)
-
-	pageFinder, err := pagination.NewBaseImagePageFinder(requestedPage.Limit, requestedPage.Offset, requestedPage.SortBy)
-	if err != nil {
-		return []mTypes.RepoMetadata{}, map[string]mTypes.ManifestMetadata{}, map[string]mTypes.IndexData{},
-			zcommon.PageInfo{}, err
-	}
 
 	searchedRepo, searchedTag, err := common.GetRepoTag(searchText)
 	if err != nil {
 		return []mTypes.RepoMetadata{}, map[string]mTypes.ManifestMetadata{}, map[string]mTypes.IndexData{},
-			zcommon.PageInfo{},
 			fmt.Errorf("metadb: error while parsing search text, invalid format %w", err)
 	}
 
@@ -1547,143 +1300,99 @@ func (bdw *BoltDB) SearchTags(ctx context.Context, searchText string, filter mTy
 			repoBuck      = transaction.Bucket([]byte(RepoMetadataBucket))
 			indexBuck     = transaction.Bucket([]byte(IndexDataBucket))
 			manifestBuck  = transaction.Bucket([]byte(ManifestDataBucket))
-			cursor        = repoBuck.Cursor()
 			userBookmarks = getUserBookmarks(ctx, transaction)
 			userStars     = getUserStars(ctx, transaction)
 		)
 
-		repoName, repoMetaBlob := cursor.Seek([]byte(searchedRepo))
+		repoName, repoMetaBlob := repoBuck.Cursor().Seek([]byte(searchedRepo))
 
-		for ; repoName != nil; repoName, repoMetaBlob = cursor.Next() {
-			if ok, err := localCtx.RepoIsUserAvailable(ctx, string(repoName)); !ok || err != nil {
+		if string(repoName) != searchedRepo {
+			return nil
+		}
+
+		if ok, err := localCtx.RepoIsUserAvailable(ctx, string(repoName)); !ok || err != nil {
+			return err
+		}
+
+		repoMeta := mTypes.RepoMetadata{}
+
+		err := json.Unmarshal(repoMetaBlob, &repoMeta)
+		if err != nil {
+			return err
+		}
+
+		repoMeta.IsBookmarked = zcommon.Contains(userBookmarks, repoMeta.Name)
+		repoMeta.IsStarred = zcommon.Contains(userStars, repoMeta.Name)
+
+		matchedTags := make(map[string]mTypes.Descriptor)
+
+		for tag, descriptor := range repoMeta.Tags {
+			if !strings.HasPrefix(tag, searchedTag) {
 				continue
 			}
 
-			repoMeta := mTypes.RepoMetadata{}
+			matchedTags[tag] = descriptor
 
-			err := json.Unmarshal(repoMetaBlob, &repoMeta)
-			if err != nil {
-				return err
-			}
+			switch descriptor.MediaType {
+			case ispec.MediaTypeImageManifest:
+				manifestDigest := descriptor.Digest
 
-			repoMeta.IsBookmarked = zcommon.Contains(userBookmarks, repoMeta.Name)
-			repoMeta.IsStarred = zcommon.Contains(userStars, repoMeta.Name)
-
-			if string(repoName) != searchedRepo {
-				continue
-			}
-
-			matchedTags := make(map[string]mTypes.Descriptor)
-
-			for tag, descriptor := range repoMeta.Tags {
-				if !strings.HasPrefix(tag, searchedTag) {
-					continue
+				manifestMeta, err := fetchManifestMetaWithCheck(repoMeta, manifestDigest, manifestMetadataMap, manifestBuck)
+				if err != nil {
+					return fmt.Errorf("metadb: error fetching manifest meta for manifest with digest %s %w",
+						manifestDigest, err)
 				}
 
-				matchedTags[tag] = descriptor
+				manifestMetadataMap[descriptor.Digest] = manifestMeta
+			case ispec.MediaTypeImageIndex:
+				indexDigest := descriptor.Digest
 
-				switch descriptor.MediaType {
-				case ispec.MediaTypeImageManifest:
-					manifestDigest := descriptor.Digest
+				indexData, err := fetchIndexDataWithCheck(indexDigest, indexDataMap, indexBuck)
+				if err != nil {
+					return fmt.Errorf("metadb: error fetching index data for index with digest %s %w",
+						indexDigest, err)
+				}
+
+				var indexContent ispec.Index
+
+				err = json.Unmarshal(indexData.IndexBlob, &indexContent)
+				if err != nil {
+					return fmt.Errorf("metadb: error collecting filter data for index with digest %s %w",
+						indexDigest, err)
+				}
+
+				for _, manifest := range indexContent.Manifests {
+					manifestDigest := manifest.Digest.String()
 
 					manifestMeta, err := fetchManifestMetaWithCheck(repoMeta, manifestDigest, manifestMetadataMap, manifestBuck)
 					if err != nil {
-						return fmt.Errorf("metadb: error fetching manifest meta for manifest with digest %s %w",
+						return fmt.Errorf("metadb: error fetching from db manifest meta for manifest with digest %s %w",
 							manifestDigest, err)
 					}
 
-					imageFilterData, err := collectImageManifestFilterData(manifestDigest, repoMeta, manifestMeta)
-					if err != nil {
-						return fmt.Errorf("metadb: error collecting filter data for manifest with digest %s %w",
-							manifestDigest, err)
-					}
-
-					if !common.AcceptedByFilter(filter, imageFilterData) {
-						delete(matchedTags, tag)
-
-						continue
-					}
-
-					manifestMetadataMap[descriptor.Digest] = manifestMeta
-				case ispec.MediaTypeImageIndex:
-					indexDigest := descriptor.Digest
-
-					indexData, err := fetchIndexDataWithCheck(indexDigest, indexDataMap, indexBuck)
-					if err != nil {
-						return fmt.Errorf("metadb: error fetching index data for index with digest %s %w",
-							indexDigest, err)
-					}
-
-					var indexContent ispec.Index
-
-					err = json.Unmarshal(indexData.IndexBlob, &indexContent)
-					if err != nil {
-						return fmt.Errorf("metadb: error collecting filter data for index with digest %s %w",
-							indexDigest, err)
-					}
-
-					manifestHasBeenMatched := false
-
-					for _, manifest := range indexContent.Manifests {
-						manifestDigest := manifest.Digest.String()
-
-						manifestMeta, err := fetchManifestMetaWithCheck(repoMeta, manifestDigest, manifestMetadataMap, manifestBuck)
-						if err != nil {
-							return fmt.Errorf("metadb: error fetching from db manifest meta for manifest with digest %s %w",
-								manifestDigest, err)
-						}
-
-						manifestFilterData, err := collectImageManifestFilterData(manifestDigest, repoMeta, manifestMeta)
-						if err != nil {
-							return fmt.Errorf("metadb: error collecting filter data for manifest with digest %s %w",
-								manifestDigest, err)
-						}
-
-						manifestMetadataMap[manifestDigest] = manifestMeta
-
-						if common.AcceptedByFilter(filter, manifestFilterData) {
-							manifestHasBeenMatched = true
-						}
-					}
-
-					if !manifestHasBeenMatched {
-						delete(matchedTags, tag)
-
-						for _, manifest := range indexContent.Manifests {
-							delete(manifestMetadataMap, manifest.Digest.String())
-						}
-
-						continue
-					}
-
-					indexDataMap[indexDigest] = indexData
-				default:
-					bdw.Log.Error().Str("mediaType", descriptor.MediaType).Msg("Unsupported media type")
-
-					continue
+					manifestMetadataMap[manifestDigest] = manifestMeta
 				}
-			}
 
-			if len(matchedTags) == 0 {
+				indexDataMap[indexDigest] = indexData
+			default:
+				bdw.Log.Error().Str("mediaType", descriptor.MediaType).Msg("Unsupported media type")
+
 				continue
 			}
-
-			repoMeta.Tags = matchedTags
-
-			pageFinder.Add(mTypes.DetailedRepoMeta{
-				RepoMetadata: repoMeta,
-			})
 		}
 
-		foundRepos, pageInfo = pageFinder.Page()
+		if len(matchedTags) == 0 {
+			return nil
+		}
 
-		foundManifestMetadataMap, foundindexDataMap, err = common.FilterDataByRepo(foundRepos, manifestMetadataMap,
-			indexDataMap)
+		repoMeta.Tags = matchedTags
+
+		foundRepos = append(foundRepos, repoMeta)
 
 		return nil
 	})
 
-	return foundRepos, foundManifestMetadataMap, foundindexDataMap, pageInfo, err
+	return foundRepos, manifestMetadataMap, indexDataMap, err
 }
 
 func (bdw *BoltDB) ToggleStarRepo(ctx context.Context, repo string) (mTypes.ToggleState, error) {

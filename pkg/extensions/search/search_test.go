@@ -4583,7 +4583,7 @@ func TestMetaDBWhenPushingImages(t *testing.T) {
 					Layers:   layers1,
 				}, baseURL, "repo1", "1.0.1",
 			)
-			So(err, ShouldBeNil)
+			So(err, ShouldNotBeNil)
 		})
 	})
 }
@@ -6424,5 +6424,83 @@ func TestImageSummary(t *testing.T) {
 				So(imgSum.Manifests[0].ArtifactType, ShouldResemble, artType2)
 			}
 		}
+	})
+}
+
+func TestUplodingArtifactsWithDifferentMediaType(t *testing.T) {
+	Convey("", t, func() {
+		port := GetFreePort()
+		baseURL := GetBaseURL(port)
+		conf := config.New()
+		conf.HTTP.Port = port
+		conf.Storage.RootDirectory = t.TempDir()
+		conf.Storage.GC = false
+
+		defaultVal := true
+		conf.Extensions = &extconf.ExtensionConfig{
+			Search: &extconf.SearchConfig{BaseConfig: extconf.BaseConfig{Enable: &defaultVal}, CVE: nil},
+		}
+		conf.Log = &config.LogConfig{Level: "debug", Output: "/dev/null"}
+
+		ctlr := api.NewController(conf)
+
+		ctlrManager := NewControllerManager(ctlr)
+		ctlrManager.StartAndWait(port)
+		defer ctlrManager.StopServer()
+
+		const customMediaType = "application/custom.media.type+json"
+
+		imageWithIncompatibleConfig := CreateImageWith().DefaultLayers().
+			CustomConfigBlob([]byte(`{"author": {"key": "val"}}`), customMediaType).Build()
+
+		defaultImage := CreateDefaultImage()
+
+		var configContent ispec.Image
+		err := json.Unmarshal(imageWithIncompatibleConfig.ConfigDescriptor.Data, &configContent)
+		So(err, ShouldNotBeNil)
+
+		err = UploadImage(imageWithIncompatibleConfig, baseURL, "repo", "incompatible-image")
+		So(err, ShouldBeNil)
+
+		err = UploadImage(defaultImage, baseURL, "repo", "default-image")
+		So(err, ShouldBeNil)
+
+		manifestData, err := ctlr.MetaDB.GetManifestData(imageWithIncompatibleConfig.ManifestDescriptor.Digest)
+		So(err, ShouldBeNil)
+		So(manifestData.ConfigBlob, ShouldEqual, imageWithIncompatibleConfig.ConfigDescriptor.Data)
+		So(manifestData.ManifestBlob, ShouldEqual, imageWithIncompatibleConfig.ManifestDescriptor.Data)
+
+		manifestData, err = ctlr.MetaDB.GetManifestData(defaultImage.ManifestDescriptor.Digest)
+		So(err, ShouldBeNil)
+		So(manifestData.ConfigBlob, ShouldEqual, defaultImage.ConfigDescriptor.Data)
+		So(manifestData.ManifestBlob, ShouldEqual, defaultImage.ManifestDescriptor.Data)
+
+		query := `
+			{
+				GlobalSearch(query:"repo:incompatible-image"){
+					Images {
+						RepoName Tag
+						Manifests {
+							Digest ConfigDigest
+						}
+					}
+				}
+			}`
+
+		resp, err := resty.R().Get(baseURL + graphqlQueryPrefix + "?query=" + url.QueryEscape(query))
+		So(resp, ShouldNotBeNil)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, 200)
+
+		responseStruct := &zcommon.GlobalSearchResultResp{}
+
+		err = json.Unmarshal(resp.Body(), responseStruct)
+		So(err, ShouldBeNil)
+
+		So(len(responseStruct.Images), ShouldEqual, 1)
+		So(responseStruct.Images[0].Manifests[0].Digest, ShouldResemble,
+			imageWithIncompatibleConfig.ManifestDescriptor.Digest.String())
+		So(responseStruct.Images[0].Manifests[0].ConfigDigest, ShouldResemble,
+			imageWithIncompatibleConfig.ConfigDescriptor.Digest.String())
 	})
 }

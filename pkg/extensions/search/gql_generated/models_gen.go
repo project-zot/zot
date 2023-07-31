@@ -37,7 +37,7 @@ type Cve struct {
 type CVEResultForImage struct {
 	// Tag affected by the CVEs
 	Tag *string `json:"Tag,omitempty"`
-	// List of CVE objects which afect this specific image:tag
+	// List of CVE objects which affect this specific image:tag
 	CVEList []*Cve `json:"CVEList,omitempty"`
 	// The CVE pagination information, see PageInfo object for more details
 	Page *PageInfo `json:"Page,omitempty"`
@@ -174,7 +174,7 @@ type ManifestSummary struct {
 	SignatureInfo []*SignatureSummary `json:"SignatureInfo,omitempty"`
 	// OS and architecture supported by this image
 	Platform *Platform `json:"Platform,omitempty"`
-	// Total numer of image manifest downloads from this repository
+	// Total number of image manifest downloads from this repository
 	DownloadCount *int `json:"DownloadCount,omitempty"`
 	// List of layers matching the search criteria
 	// NOTE: the actual search logic for layers is not implemented at the moment
@@ -285,14 +285,16 @@ type RepoSummary struct {
 	// Details of the newest image inside the repository
 	// NOTE: not the image with the `latest` tag, the one with the most recent created timestamp
 	NewestImage *ImageSummary `json:"NewestImage,omitempty"`
-	// Total numer of image manifest downloads from this repository
+	// Total number of image manifest downloads from this repository
 	DownloadCount *int `json:"DownloadCount,omitempty"`
 	// Number of stars attributed to this repository by users
 	StarCount *int `json:"StarCount,omitempty"`
 	// True if the repository is bookmarked by the current user, false otherwise
 	IsBookmarked *bool `json:"IsBookmarked,omitempty"`
-	// True if the repository is stared by the current user, fale otherwise
+	// True if the repository is starred by the current user, false otherwise
 	IsStarred *bool `json:"IsStarred,omitempty"`
+	// Rank represents how good the match was between the queried repo name and this repo summary.
+	Rank *int `json:"Rank,omitempty"`
 }
 
 // Contains details about the signature

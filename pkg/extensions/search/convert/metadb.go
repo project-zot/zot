@@ -15,11 +15,13 @@ import (
 	"github.com/vektah/gqlparser/v2/gqlerror"
 
 	zerr "zotregistry.io/zot/errors"
-	"zotregistry.io/zot/pkg/common"
+	zcommon "zotregistry.io/zot/pkg/common"
 	cveinfo "zotregistry.io/zot/pkg/extensions/search/cve"
 	cvemodel "zotregistry.io/zot/pkg/extensions/search/cve/model"
 	"zotregistry.io/zot/pkg/extensions/search/gql_generated"
+	"zotregistry.io/zot/pkg/extensions/search/pagination"
 	"zotregistry.io/zot/pkg/log"
+	mcommon "zotregistry.io/zot/pkg/meta/common"
 	mTypes "zotregistry.io/zot/pkg/meta/types"
 )
 
@@ -134,7 +136,30 @@ func RepoMeta2RepoSummary(ctx context.Context, repoMeta mTypes.RepoMetadata,
 		StarCount:     &repoStarCount,
 		IsBookmarked:  &repoIsUserBookMarked,
 		IsStarred:     &repoIsUserStarred,
+		Rank:          &repoMeta.Rank,
 	}
+}
+
+func PaginatedRepoMeta2RepoSummaries(ctx context.Context, repoMetas []mTypes.RepoMetadata,
+	manifestMetaMap map[string]mTypes.ManifestMetadata, indexDataMap map[string]mTypes.IndexData,
+	skip SkipQGLField, cveInfo cveinfo.CveInfo, filter mTypes.Filter, pageInput pagination.PageInput,
+) ([]*gql_generated.RepoSummary, zcommon.PageInfo, error) {
+	reposPageFinder, err := pagination.NewRepoSumPageFinder(pageInput.Limit, pageInput.Offset, pageInput.SortBy)
+	if err != nil {
+		return []*gql_generated.RepoSummary{}, zcommon.PageInfo{}, err
+	}
+
+	for _, repoMeta := range repoMetas {
+		repoSummary := RepoMeta2RepoSummary(ctx, repoMeta, manifestMetaMap, indexDataMap, skip, cveInfo)
+
+		if RepoSumAcceptedByFilter(repoSummary, filter) {
+			reposPageFinder.Add(repoSummary)
+		}
+	}
+
+	page, pageInfo := reposPageFinder.Page()
+
+	return page, pageInfo, nil
 }
 
 func UpdateLastUpdatedTimestamp(repoLastUpdatedTimestamp *time.Time,
@@ -265,6 +290,7 @@ func ImageIndex2ImageSummary(ctx context.Context, repo, tag string, indexDigest 
 		Labels:        &annotations.Labels,
 		Source:        &annotations.Source,
 		Vendor:        &annotations.Vendor,
+		Authors:       &annotations.Authors,
 		Vulnerabilities: &gql_generated.ImageVulnerabilitySummary{
 			MaxSeverity: &imageCveSummary.MaxSeverity,
 			Count:       &imageCveSummary.Count,
@@ -292,22 +318,14 @@ func ImageManifest2ImageSummary(ctx context.Context, repo, tag string, digest go
 		return &gql_generated.ImageSummary{}, map[string]int64{}, err
 	}
 
-	var configContent ispec.Image
-
-	err = json.Unmarshal(manifestMeta.ConfigBlob, &configContent)
-	if err != nil {
-		graphql.AddError(ctx, gqlerror.Errorf("can't unmarshal config blob for image: %s:%s, manifest digest: %s, error: %s",
-			repo, tag, manifestDigest, err.Error()))
-
-		return &gql_generated.ImageSummary{}, map[string]int64{}, err
-	}
+	configContent := mcommon.InitializeImageConfig(manifestMeta.ConfigBlob)
 
 	var (
 		repoName         = repo
 		configDigest     = manifestContent.Config.Digest.String()
 		configSize       = manifestContent.Config.Size
-		artifactType     = common.GetManifestArtifactType(manifestContent)
-		imageLastUpdated = common.GetImageLastUpdated(configContent)
+		artifactType     = zcommon.GetManifestArtifactType(manifestContent)
+		imageLastUpdated = zcommon.GetImageLastUpdated(configContent)
 		downloadCount    = repoMeta.Statistics[digest.String()].DownloadCount
 		isSigned         = false
 	)
@@ -460,22 +478,14 @@ func ImageManifest2ManifestSummary(ctx context.Context, repo, tag string, descri
 		return &gql_generated.ManifestSummary{}, map[string]int64{}, err
 	}
 
-	var configContent ispec.Image
-
-	err = json.Unmarshal(manifestMeta.ConfigBlob, &configContent)
-	if err != nil {
-		graphql.AddError(ctx, gqlerror.Errorf("can't unmarshal config blob for image: %s:%s, manifest digest: %s, error: %s",
-			repo, tag, digest, err.Error()))
-
-		return &gql_generated.ManifestSummary{}, map[string]int64{}, err
-	}
+	configContent := mcommon.InitializeImageConfig(manifestMeta.ConfigBlob)
 
 	var (
 		manifestDigestStr = digest.String()
 		configDigest      = manifestContent.Config.Digest.String()
 		configSize        = manifestContent.Config.Size
-		artifactType      = common.GetManifestArtifactType(manifestContent)
-		imageLastUpdated  = common.GetImageLastUpdated(configContent)
+		artifactType      = zcommon.GetManifestArtifactType(manifestContent)
+		imageLastUpdated  = zcommon.GetImageLastUpdated(configContent)
 		downloadCount     = manifestMeta.DownloadCount
 		isSigned          = false
 	)
@@ -597,6 +607,36 @@ func RepoMeta2ImageSummaries(ctx context.Context, repoMeta mTypes.RepoMetadata,
 	}
 
 	return imageSummaries
+}
+
+func PaginatedRepoMeta2ImageSummaries(ctx context.Context, reposMeta []mTypes.RepoMetadata,
+	manifestMetaMap map[string]mTypes.ManifestMetadata, indexDataMap map[string]mTypes.IndexData,
+	skip SkipQGLField, cveInfo cveinfo.CveInfo, filter mTypes.Filter, pageInput pagination.PageInput,
+) ([]*gql_generated.ImageSummary, zcommon.PageInfo, error) {
+	imagePageFinder, err := pagination.NewImgSumPageFinder(pageInput.Limit, pageInput.Offset, pageInput.SortBy)
+	if err != nil {
+		return []*gql_generated.ImageSummary{}, zcommon.PageInfo{}, err
+	}
+
+	for _, repoMeta := range reposMeta {
+		for tag := range repoMeta.Tags {
+			descriptor := repoMeta.Tags[tag]
+
+			imageSummary, _, err := Descriptor2ImageSummary(ctx, descriptor, repoMeta.Name, tag, skip.Vulnerabilities,
+				repoMeta, manifestMetaMap, indexDataMap, cveInfo)
+			if err != nil {
+				continue
+			}
+
+			if ImgSumAcceptedByFilter(imageSummary, filter) {
+				imagePageFinder.Add(imageSummary)
+			}
+		}
+	}
+
+	page, pageInfo := imagePageFinder.Page()
+
+	return page, pageInfo, nil
 }
 
 func RepoMeta2ExpandedRepoInfo(ctx context.Context, repoMeta mTypes.RepoMetadata,

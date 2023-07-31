@@ -636,7 +636,7 @@ func (search referrerSearcherGQL) search(config searchConfig) (bool, error) {
 
 	username, password := getUsernameAndPassword(*config.user)
 
-	repo, ref, refIsTag, err := zcommon.GetRepoRefference(*config.params["subject"])
+	repo, ref, refIsTag, err := zcommon.GetRepoReference(*config.params["subject"])
 	if err != nil {
 		return true, err
 	}
@@ -692,7 +692,7 @@ func (search referrerSearcher) search(config searchConfig) (bool, error) {
 
 	username, password := getUsernameAndPassword(*config.user)
 
-	repo, ref, refIsTag, err := zcommon.GetRepoRefference(*config.params["subject"])
+	repo, ref, refIsTag, err := zcommon.GetRepoReference(*config.params["subject"])
 	if err != nil {
 		return true, err
 	}

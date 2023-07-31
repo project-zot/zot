@@ -54,7 +54,7 @@ func (dii *BaseAttributesIterator) First(ctx context.Context) (types.AttributeVa
 		Limit:     dii.readLimit,
 	})
 	if err != nil {
-		return nil, err
+		return &types.AttributeValueMemberBOOL{}, err
 	}
 
 	if len(scanOutput.Items) == 0 {

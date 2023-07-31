@@ -5,8 +5,6 @@ import (
 	"time"
 
 	godigest "github.com/opencontainers/go-digest"
-
-	"zotregistry.io/zot/pkg/common"
 )
 
 // DetailedRepoMeta is a auxiliary structure used for sorting RepoMeta arrays by information
@@ -62,7 +60,7 @@ type MetaDB interface { //nolint:interfacebloat
 
 	// GetMultipleRepoMeta returns information about all repositories as map[string]RepoMetadata filtered by the filter
 	// function
-	GetMultipleRepoMeta(ctx context.Context, filter func(repoMeta RepoMetadata) bool, requestedPage PageInput) (
+	GetMultipleRepoMeta(ctx context.Context, filter func(repoMeta RepoMetadata) bool) (
 		[]RepoMetadata, error)
 
 	// SetManifestData sets ManifestData for a given manifest in the database
@@ -107,20 +105,20 @@ type MetaDB interface { //nolint:interfacebloat
 	UpdateSignaturesValidity(repo string, manifestDigest godigest.Digest) error
 
 	// SearchRepos searches for repos given a search string
-	SearchRepos(ctx context.Context, searchText string, filter Filter, requestedPage PageInput) (
-		[]RepoMetadata, map[string]ManifestMetadata, map[string]IndexData, common.PageInfo, error)
+	SearchRepos(ctx context.Context, searchText string) (
+		[]RepoMetadata, map[string]ManifestMetadata, map[string]IndexData, error)
 
 	// SearchTags searches for images(repo:tag) given a search string
-	SearchTags(ctx context.Context, searchText string, filter Filter, requestedPage PageInput) (
-		[]RepoMetadata, map[string]ManifestMetadata, map[string]IndexData, common.PageInfo, error)
+	SearchTags(ctx context.Context, searchText string) (
+		[]RepoMetadata, map[string]ManifestMetadata, map[string]IndexData, error)
 
 	// FilterRepos filters for repos given a filter function
-	FilterRepos(ctx context.Context, filter FilterRepoFunc, requestedPage PageInput) (
-		[]RepoMetadata, map[string]ManifestMetadata, map[string]IndexData, common.PageInfo, error)
+	FilterRepos(ctx context.Context, filter FilterRepoFunc) (
+		[]RepoMetadata, map[string]ManifestMetadata, map[string]IndexData, error)
 
 	// FilterTags filters for images given a filter function
-	FilterTags(ctx context.Context, filterFunc FilterFunc, filter Filter,
-		requestedPage PageInput) ([]RepoMetadata, map[string]ManifestMetadata, map[string]IndexData, common.PageInfo, error)
+	FilterTags(ctx context.Context, filterFunc FilterFunc) (
+		[]RepoMetadata, map[string]ManifestMetadata, map[string]IndexData, error)
 
 	PatchDB() error
 }
@@ -204,6 +202,7 @@ type RepoMetadata struct {
 
 	IsStarred    bool
 	IsBookmarked bool
+	Rank         int
 
 	Stars int
 }
@@ -232,12 +231,6 @@ type UserData struct {
 	BookmarkedRepos []string
 	Groups          []string
 	APIKeys         map[string]APIKeyDetails
-}
-
-type PageInput struct {
-	Limit  int
-	Offset int
-	SortBy SortCriteria
 }
 
 type Filter struct {

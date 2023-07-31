@@ -5,7 +5,6 @@ import (
 
 	godigest "github.com/opencontainers/go-digest"
 
-	"zotregistry.io/zot/pkg/common"
 	mTypes "zotregistry.io/zot/pkg/meta/types"
 )
 
@@ -30,8 +29,8 @@ type MetaDBMock struct {
 
 	SetRepoMetaFn func(repo string, repoMeta mTypes.RepoMetadata) error
 
-	GetMultipleRepoMetaFn func(ctx context.Context, filter func(repoMeta mTypes.RepoMetadata) bool,
-		requestedPage mTypes.PageInput) ([]mTypes.RepoMetadata, error)
+	GetMultipleRepoMetaFn func(ctx context.Context, filter func(repoMeta mTypes.RepoMetadata) bool) (
+		[]mTypes.RepoMetadata, error)
 
 	GetManifestDataFn func(manifestDigest godigest.Digest) (mTypes.ManifestData, error)
 
@@ -62,34 +61,19 @@ type MetaDBMock struct {
 
 	DeleteSignatureFn func(repo string, signedManifestDigest godigest.Digest, sm mTypes.SignatureMetadata) error
 
-	SearchReposFn func(ctx context.Context, txt string, filter mTypes.Filter, requestedPage mTypes.PageInput) (
-		[]mTypes.RepoMetadata, map[string]mTypes.ManifestMetadata, map[string]mTypes.IndexData, common.PageInfo,
+	SearchReposFn func(ctx context.Context, txt string) (
+		[]mTypes.RepoMetadata, map[string]mTypes.ManifestMetadata, map[string]mTypes.IndexData,
 		error)
 
-	SearchTagsFn func(ctx context.Context, txt string, filter mTypes.Filter, requestedPage mTypes.PageInput) (
-		[]mTypes.RepoMetadata, map[string]mTypes.ManifestMetadata, map[string]mTypes.IndexData, common.PageInfo,
+	SearchTagsFn func(ctx context.Context, txt string) (
+		[]mTypes.RepoMetadata, map[string]mTypes.ManifestMetadata, map[string]mTypes.IndexData,
 		error)
 
-	FilterReposFn func(ctx context.Context, filter mTypes.FilterRepoFunc, requestedPage mTypes.PageInput) (
-		[]mTypes.RepoMetadata, map[string]mTypes.ManifestMetadata, map[string]mTypes.IndexData, common.PageInfo,
-		error)
+	FilterReposFn func(ctx context.Context, filter mTypes.FilterRepoFunc) (
+		[]mTypes.RepoMetadata, map[string]mTypes.ManifestMetadata, map[string]mTypes.IndexData, error)
 
-	FilterTagsFn func(ctx context.Context, filterFunc mTypes.FilterFunc, filter mTypes.Filter,
-		requestedPage mTypes.PageInput,
-	) ([]mTypes.RepoMetadata, map[string]mTypes.ManifestMetadata, map[string]mTypes.IndexData, common.PageInfo,
-		error)
-
-	SearchDigestsFn func(ctx context.Context, searchText string, requestedPage mTypes.PageInput) (
-		[]mTypes.RepoMetadata, map[string]mTypes.ManifestMetadata, error)
-
-	SearchLayersFn func(ctx context.Context, searchText string, requestedPage mTypes.PageInput) (
-		[]mTypes.RepoMetadata, map[string]mTypes.ManifestMetadata, error)
-
-	SearchForAscendantImagesFn func(ctx context.Context, searchText string, requestedPage mTypes.PageInput) (
-		[]mTypes.RepoMetadata, map[string]mTypes.ManifestMetadata, error)
-
-	SearchForDescendantImagesFn func(ctx context.Context, searchText string, requestedPage mTypes.PageInput) (
-		[]mTypes.RepoMetadata, map[string]mTypes.ManifestMetadata, error)
+	FilterTagsFn func(ctx context.Context, filterFunc mTypes.FilterFunc) (
+		[]mTypes.RepoMetadata, map[string]mTypes.ManifestMetadata, map[string]mTypes.IndexData, error)
 
 	GetStarredReposFn func(ctx context.Context) ([]string, error)
 
@@ -195,10 +179,9 @@ func (sdm MetaDBMock) SetRepoMeta(repo string, repoMeta mTypes.RepoMetadata) err
 }
 
 func (sdm MetaDBMock) GetMultipleRepoMeta(ctx context.Context, filter func(repoMeta mTypes.RepoMetadata) bool,
-	requestedPage mTypes.PageInput,
 ) ([]mTypes.RepoMetadata, error) {
 	if sdm.GetMultipleRepoMetaFn != nil {
-		return sdm.GetMultipleRepoMetaFn(ctx, filter, requestedPage)
+		return sdm.GetMultipleRepoMetaFn(ctx, filter)
 	}
 
 	return []mTypes.RepoMetadata{}, nil
@@ -272,86 +255,44 @@ func (sdm MetaDBMock) DeleteSignature(repo string, signedManifestDigest godigest
 	return nil
 }
 
-func (sdm MetaDBMock) SearchRepos(ctx context.Context, searchText string, filter mTypes.Filter,
-	requestedPage mTypes.PageInput,
-) ([]mTypes.RepoMetadata, map[string]mTypes.ManifestMetadata, map[string]mTypes.IndexData, common.PageInfo, error) {
+func (sdm MetaDBMock) SearchRepos(ctx context.Context, searchText string,
+) ([]mTypes.RepoMetadata, map[string]mTypes.ManifestMetadata, map[string]mTypes.IndexData, error) {
 	if sdm.SearchReposFn != nil {
-		return sdm.SearchReposFn(ctx, searchText, filter, requestedPage)
+		return sdm.SearchReposFn(ctx, searchText)
 	}
 
 	return []mTypes.RepoMetadata{}, map[string]mTypes.ManifestMetadata{},
-		map[string]mTypes.IndexData{}, common.PageInfo{}, nil
+		map[string]mTypes.IndexData{}, nil
 }
 
-func (sdm MetaDBMock) SearchTags(ctx context.Context, searchText string, filter mTypes.Filter,
-	requestedPage mTypes.PageInput,
-) ([]mTypes.RepoMetadata, map[string]mTypes.ManifestMetadata, map[string]mTypes.IndexData, common.PageInfo, error) {
+func (sdm MetaDBMock) SearchTags(ctx context.Context, searchText string,
+) ([]mTypes.RepoMetadata, map[string]mTypes.ManifestMetadata, map[string]mTypes.IndexData, error) {
 	if sdm.SearchTagsFn != nil {
-		return sdm.SearchTagsFn(ctx, searchText, filter, requestedPage)
+		return sdm.SearchTagsFn(ctx, searchText)
 	}
 
 	return []mTypes.RepoMetadata{}, map[string]mTypes.ManifestMetadata{},
-		map[string]mTypes.IndexData{}, common.PageInfo{}, nil
+		map[string]mTypes.IndexData{}, nil
 }
 
 func (sdm MetaDBMock) FilterRepos(ctx context.Context, filter mTypes.FilterRepoFunc,
-	requestedPage mTypes.PageInput,
-) ([]mTypes.RepoMetadata, map[string]mTypes.ManifestMetadata, map[string]mTypes.IndexData, common.PageInfo, error) {
+) ([]mTypes.RepoMetadata, map[string]mTypes.ManifestMetadata, map[string]mTypes.IndexData, error) {
 	if sdm.FilterReposFn != nil {
-		return sdm.FilterReposFn(ctx, filter, requestedPage)
+		return sdm.FilterReposFn(ctx, filter)
 	}
 
 	return []mTypes.RepoMetadata{}, map[string]mTypes.ManifestMetadata{},
-		map[string]mTypes.IndexData{}, common.PageInfo{}, nil
+		map[string]mTypes.IndexData{}, nil
 }
 
-func (sdm MetaDBMock) FilterTags(ctx context.Context, filterFunc mTypes.FilterFunc, filter mTypes.Filter,
-	requestedPage mTypes.PageInput,
-) ([]mTypes.RepoMetadata, map[string]mTypes.ManifestMetadata, map[string]mTypes.IndexData, common.PageInfo, error) {
+func (sdm MetaDBMock) FilterTags(ctx context.Context, filterFunc mTypes.FilterFunc,
+) ([]mTypes.RepoMetadata, map[string]mTypes.ManifestMetadata, map[string]mTypes.IndexData, error) {
 	if sdm.FilterTagsFn != nil {
-		return sdm.FilterTagsFn(ctx, filterFunc, filter, requestedPage)
+		return sdm.FilterTagsFn(ctx, filterFunc)
 	}
 
 	return []mTypes.RepoMetadata{}, map[string]mTypes.ManifestMetadata{},
-		map[string]mTypes.IndexData{}, common.PageInfo{}, nil
-}
-
-func (sdm MetaDBMock) SearchDigests(ctx context.Context, searchText string, requestedPage mTypes.PageInput,
-) ([]mTypes.RepoMetadata, map[string]mTypes.ManifestMetadata, error) {
-	if sdm.SearchDigestsFn != nil {
-		return sdm.SearchDigestsFn(ctx, searchText, requestedPage)
-	}
-
-	return []mTypes.RepoMetadata{}, map[string]mTypes.ManifestMetadata{}, nil
-}
-
-func (sdm MetaDBMock) SearchLayers(ctx context.Context, searchText string, requestedPage mTypes.PageInput,
-) ([]mTypes.RepoMetadata, map[string]mTypes.ManifestMetadata, error) {
-	if sdm.SearchLayersFn != nil {
-		return sdm.SearchLayersFn(ctx, searchText, requestedPage)
-	}
-
-	return []mTypes.RepoMetadata{}, map[string]mTypes.ManifestMetadata{}, nil
-}
-
-func (sdm MetaDBMock) SearchForAscendantImages(ctx context.Context, searchText string,
-	requestedPage mTypes.PageInput,
-) ([]mTypes.RepoMetadata, map[string]mTypes.ManifestMetadata, error) {
-	if sdm.SearchForAscendantImagesFn != nil {
-		return sdm.SearchForAscendantImagesFn(ctx, searchText, requestedPage)
-	}
-
-	return []mTypes.RepoMetadata{}, map[string]mTypes.ManifestMetadata{}, nil
-}
-
-func (sdm MetaDBMock) SearchForDescendantImages(ctx context.Context, searchText string,
-	requestedPage mTypes.PageInput,
-) ([]mTypes.RepoMetadata, map[string]mTypes.ManifestMetadata, error) {
-	if sdm.SearchForDescendantImagesFn != nil {
-		return sdm.SearchForDescendantImagesFn(ctx, searchText, requestedPage)
-	}
-
-	return []mTypes.RepoMetadata{}, map[string]mTypes.ManifestMetadata{}, nil
+		map[string]mTypes.IndexData{}, nil
 }
 
 func (sdm MetaDBMock) SetIndexData(digest godigest.Digest, indexData mTypes.IndexData) error {

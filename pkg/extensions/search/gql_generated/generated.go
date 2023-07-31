@@ -195,6 +195,7 @@ type ComplexityRoot struct {
 		Name          func(childComplexity int) int
 		NewestImage   func(childComplexity int) int
 		Platforms     func(childComplexity int) int
+		Rank          func(childComplexity int) int
 		Size          func(childComplexity int) int
 		StarCount     func(childComplexity int) int
 		Vendors       func(childComplexity int) int
@@ -988,6 +989,13 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 
 		return e.complexity.RepoSummary.Platforms(childComplexity), true
 
+	case "RepoSummary.Rank":
+		if e.complexity.RepoSummary.Rank == nil {
+			break
+		}
+
+		return e.complexity.RepoSummary.Rank(childComplexity), true
+
 	case "RepoSummary.Size":
 		if e.complexity.RepoSummary.Size == nil {
 			break
@@ -1143,7 +1151,7 @@ type CVEResultForImage {
     """
     Tag: String
     """
-    List of CVE objects which afect this specific image:tag
+    List of CVE objects which affect this specific image:tag
     """
     CVEList: [CVE]
     """
@@ -1354,7 +1362,7 @@ type ManifestSummary {
     """
     Platform: Platform
     """
-    Total numer of image manifest downloads from this repository
+    Total number of image manifest downloads from this repository
     """
     DownloadCount: Int
     """
@@ -1424,7 +1432,7 @@ type RepoSummary {
     """
     NewestImage: ImageSummary
     """
-    Total numer of image manifest downloads from this repository
+    Total number of image manifest downloads from this repository
     """
     DownloadCount: Int
     """
@@ -1436,9 +1444,13 @@ type RepoSummary {
     """
     IsBookmarked: Boolean
     """
-    True if the repository is stared by the current user, fale otherwise
+    True if the repository is starred by the current user, false otherwise
     """
     IsStarred: Boolean
+    """
+    Rank represents how good the match was between the queried repo name and this repo summary.
+    """
+    Rank: Int
 }
 
 """
@@ -2909,6 +2921,8 @@ func (ec *executionContext) fieldContext_GlobalSearchResult_Repos(ctx context.Co
 				return ec.fieldContext_RepoSummary_IsBookmarked(ctx, field)
 			case "IsStarred":
 				return ec.fieldContext_RepoSummary_IsStarred(ctx, field)
+			case "Rank":
+				return ec.fieldContext_RepoSummary_Rank(ctx, field)
 			}
 			return nil, fmt.Errorf("no field named %q was found under type RepoSummary", field.Name)
 		},
@@ -5333,6 +5347,8 @@ func (ec *executionContext) fieldContext_PaginatedReposResult_Results(ctx contex
 				return ec.fieldContext_RepoSummary_IsBookmarked(ctx, field)
 			case "IsStarred":
 				return ec.fieldContext_RepoSummary_IsStarred(ctx, field)
+			case "Rank":
+				return ec.fieldContext_RepoSummary_Rank(ctx, field)
 			}
 			return nil, fmt.Errorf("no field named %q was found under type RepoSummary", field.Name)
 		},
@@ -6806,6 +6822,8 @@ func (ec *executionContext) fieldContext_RepoInfo_Summary(ctx context.Context, f
 				return ec.fieldContext_RepoSummary_IsBookmarked(ctx, field)
 			case "IsStarred":
 				return ec.fieldContext_RepoSummary_IsStarred(ctx, field)
+			case "Rank":
+				return ec.fieldContext_RepoSummary_Rank(ctx, field)
 			}
 			return nil, fmt.Errorf("no field named %q was found under type RepoSummary", field.Name)
 		},
@@ -7266,6 +7284,47 @@ func (ec *executionContext) fieldContext_RepoSummary_IsStarred(ctx context.Conte
 		IsResolver: false,
 		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
 			return nil, errors.New("field of type Boolean does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _RepoSummary_Rank(ctx context.Context, field graphql.CollectedField, obj *RepoSummary) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_RepoSummary_Rank(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.Rank, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		return graphql.Null
+	}
+	res := resTmp.(*int)
+	fc.Result = res
+	return ec.marshalOInt2ᚖint(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_RepoSummary_Rank(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "RepoSummary",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Int does not have child fields")
 		},
 	}
 	return fc, nil
@@ -10421,6 +10480,8 @@ func (ec *executionContext) _RepoSummary(ctx context.Context, sel ast.SelectionS
 			out.Values[i] = ec._RepoSummary_IsBookmarked(ctx, field, obj)
 		case "IsStarred":
 			out.Values[i] = ec._RepoSummary_IsStarred(ctx, field, obj)
+		case "Rank":
+			out.Values[i] = ec._RepoSummary_Rank(ctx, field, obj)
 		default:
 			panic("unknown field " + strconv.Quote(field.Name))
 		}
