@@ -1,0 +1,37 @@
+name: "GC stress test"
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches: [main]
+  release:
+    types:
+      - published
+
+permissions: read-all
+
+jobs:
+  client-tools:
+    name: GC with short interval
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: ./.github/actions/clean-runner
+      - uses: actions/setup-go@v4
+        with:
+          cache: false
+          go-version: 1.20.x
+      
+      - name: Run zb
+        run: |
+            make binary
+            make bench
+            ./bin/zot-linux-amd64 serve examples/config-gc-bench.json &
+            sleep 10
+            bin/zb-linux-amd64 -c 10 -n 100 -o ci-cd http://localhost:8080
+
+            killall -r zot-*
+
+            # clean zot storage
+            sudo rm -rf /tmp/zot
