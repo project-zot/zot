@@ -133,3 +133,58 @@ func GetAnnotations(annotations, labels map[string]string) ImageAnnotations {
 		Authors:       authors,
 	}
 }
+
+func GetIndexAnnotations(indexAnnotations, manifestAnnotations, manifestLabels map[string]string) ImageAnnotations {
+	annotationsFromManifest := GetAnnotations(manifestAnnotations, manifestLabels)
+
+	description := GetDescription(indexAnnotations)
+	if description == "" {
+		description = annotationsFromManifest.Description
+	}
+
+	title := GetTitle(indexAnnotations)
+	if title == "" {
+		title = annotationsFromManifest.Title
+	}
+
+	documentation := GetDocumentation(indexAnnotations)
+	if documentation == "" {
+		documentation = annotationsFromManifest.Documentation
+	}
+
+	source := GetSource(indexAnnotations)
+	if source == "" {
+		source = annotationsFromManifest.Source
+	}
+
+	licenses := GetLicenses(indexAnnotations)
+	if licenses == "" {
+		licenses = annotationsFromManifest.Licenses
+	}
+
+	categories := GetCategories(indexAnnotations)
+	if categories == "" {
+		categories = annotationsFromManifest.Labels
+	}
+
+	vendor := GetVendor(indexAnnotations)
+	if vendor == "" {
+		vendor = annotationsFromManifest.Vendor
+	}
+
+	authors := GetAuthors(indexAnnotations)
+	if authors == "" {
+		authors = annotationsFromManifest.Authors
+	}
+
+	return ImageAnnotations{
+		Description:   description,
+		Title:         title,
+		Documentation: documentation,
+		Source:        source,
+		Licenses:      licenses,
+		Labels:        categories,
+		Vendor:        vendor,
+		Authors:       authors,
+	}
+}
