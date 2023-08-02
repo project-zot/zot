@@ -203,7 +203,9 @@ func (service *BaseService) GetNextRepo(lastRepo string) (string, error) {
 }
 
 // SyncReference on demand.
-func (service *BaseService) SyncReference(repo string, subjectDigestStr string, referenceType string) error {
+func (service *BaseService) SyncReference(ctx context.Context, repo string,
+	subjectDigestStr string, referenceType string,
+) error {
 	remoteRepo := repo
 
 	remoteURL := service.client.GetConfig().URL
@@ -221,11 +223,11 @@ func (service *BaseService) SyncReference(repo string, subjectDigestStr string, 
 	service.log.Info().Str("remote", remoteURL).Str("repo", repo).Str("subject", subjectDigestStr).
 		Str("reference type", referenceType).Msg("sync: syncing reference for image")
 
-	return service.references.SyncReference(repo, remoteRepo, subjectDigestStr, referenceType)
+	return service.references.SyncReference(ctx, repo, remoteRepo, subjectDigestStr, referenceType)
 }
 
 // SyncImage on demand.
-func (service *BaseService) SyncImage(repo, reference string) error {
+func (service *BaseService) SyncImage(ctx context.Context, repo, reference string) error {
 	remoteRepo := repo
 
 	remoteURL := service.client.GetConfig().URL
@@ -243,12 +245,12 @@ func (service *BaseService) SyncImage(repo, reference string) error {
 	service.log.Info().Str("remote", remoteURL).Str("repo", repo).Str("reference", reference).
 		Msg("sync: syncing image")
 
-	manifestDigest, err := service.syncTag(repo, remoteRepo, reference)
+	manifestDigest, err := service.syncTag(ctx, repo, remoteRepo, reference)
 	if err != nil {
 		return err
 	}
 
-	err = service.references.SyncAll(repo, remoteRepo, manifestDigest.String())
+	err = service.references.SyncAll(ctx, repo, remoteRepo, manifestDigest.String())
 	if err != nil && !errors.Is(err, zerr.ErrSyncReferrerNotFound) {
 		service.log.Error().Err(err).Str("remote", remoteURL).Str("repo", repo).Str("reference", reference).
 			Msg("error while syncing references for image")
@@ -260,7 +262,7 @@ func (service *BaseService) SyncImage(repo, reference string) error {
 }
 
 // sync repo periodically.
-func (service *BaseService) SyncRepo(repo string) error {
+func (service *BaseService) SyncRepo(ctx context.Context, repo string) error {
 	service.log.Info().Str("repo", repo).Str("registry", service.client.GetConfig().URL).
 		Msg("sync: syncing repo")
 
@@ -268,7 +270,7 @@ func (service *BaseService) SyncRepo(repo string) error {
 
 	var tags []string
 
-	if err = retry.RetryIfNecessary(context.Background(), func() error {
+	if err = retry.RetryIfNecessary(ctx, func() error {
 		tags, err = service.remote.GetRepoTags(repo)
 
 		return err
@@ -291,14 +293,20 @@ func (service *BaseService) SyncRepo(repo string) error {
 	localRepo := service.contentManager.GetRepoDestination(repo)
 
 	for _, tag := range tags {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
+
 		if references.IsCosignTag(tag) {
 			continue
 		}
 
 		var manifestDigest digest.Digest
 
-		if err = retry.RetryIfNecessary(context.Background(), func() error {
-			manifestDigest, err = service.syncTag(localRepo, repo, tag)
+		if err = retry.RetryIfNecessary(ctx, func() error {
+			manifestDigest, err = service.syncTag(ctx, localRepo, repo, tag)
 
 			return err
 		}, service.retryOptions); err != nil {
@@ -314,8 +322,8 @@ func (service *BaseService) SyncRepo(repo string) error {
 		}
 
 		if manifestDigest != "" {
-			if err = retry.RetryIfNecessary(context.Background(), func() error {
-				err = service.references.SyncAll(localRepo, repo, manifestDigest.String())
+			if err = retry.RetryIfNecessary(ctx, func() error {
+				err = service.references.SyncAll(ctx, localRepo, repo, manifestDigest.String())
 				if errors.Is(err, zerr.ErrSyncReferrerNotFound) {
 					return nil
 				}
@@ -335,7 +343,7 @@ func (service *BaseService) SyncRepo(repo string) error {
 	return nil
 }
 
-func (service *BaseService) syncTag(localRepo, remoteRepo, tag string) (digest.Digest, error) {
+func (service *BaseService) syncTag(ctx context.Context, localRepo, remoteRepo, tag string) (digest.Digest, error) {
 	copyOptions := getCopyOptions(service.remote.GetContext(), service.local.GetContext())
 
 	policyContext, err := getPolicyContext(service.log)
@@ -368,7 +376,7 @@ func (service *BaseService) syncTag(localRepo, remoteRepo, tag string) (digest.D
 	}
 
 	if service.config.OnlySigned != nil && *service.config.OnlySigned && !references.IsCosignTag(tag) {
-		signed := service.references.IsSigned(remoteRepo, manifestDigest.String())
+		signed := service.references.IsSigned(ctx, remoteRepo, manifestDigest.String())
 		if !signed {
 			// skip unsigned images
 			service.log.Info().Str("image", remoteImageRef.DockerReference().String()).
@@ -397,7 +405,7 @@ func (service *BaseService) syncTag(localRepo, remoteRepo, tag string) (digest.D
 		service.log.Info().Str("remote image", remoteImageRef.DockerReference().String()).
 			Str("local image", fmt.Sprintf("%s:%s", localRepo, tag)).Msg("syncing image")
 
-		_, err = copy.Image(context.Background(), policyContext, localImageRef, remoteImageRef, &copyOptions)
+		_, err = copy.Image(ctx, policyContext, localImageRef, remoteImageRef, &copyOptions)
 		if err != nil {
 			service.log.Error().Err(err).Str("errortype", common.TypeOf(err)).
 				Str("remote image", remoteImageRef.DockerReference().String()).

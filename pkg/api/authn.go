@@ -548,9 +548,9 @@ func (rh *RouteHandler) AuthURLHandler() http.HandlerFunc {
 
 		client, ok := rh.c.RelyingParties[provider]
 		if !ok {
-			http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
-				response.WriteHeader(http.StatusBadRequest)
-			})(w, r)
+			rh.c.Log.Error().Msg("unrecognized openid provider")
+
+			w.WriteHeader(http.StatusBadRequest)
 
 			return
 		}

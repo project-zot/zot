@@ -4,6 +4,7 @@
 package references
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net/http"
@@ -48,7 +49,7 @@ func (ref ORASReferences) Name() string {
 	return constants.Oras
 }
 
-func (ref ORASReferences) IsSigned(remoteRepo, subjectDigestStr string) bool {
+func (ref ORASReferences) IsSigned(ctx context.Context, remoteRepo, subjectDigestStr string) bool {
 	return false
 }
 
@@ -85,10 +86,12 @@ func (ref ORASReferences) canSkipReferences(localRepo, subjectDigestStr string, 
 	return true, nil
 }
 
-func (ref ORASReferences) SyncReferences(localRepo, remoteRepo, subjectDigestStr string) ([]godigest.Digest, error) {
+func (ref ORASReferences) SyncReferences(ctx context.Context, localRepo, remoteRepo, subjectDigestStr string) (
+	[]godigest.Digest, error,
+) {
 	refsDigests := make([]godigest.Digest, 0, 10)
 
-	referrers, err := ref.getReferenceList(remoteRepo, subjectDigestStr)
+	referrers, err := ref.getReferenceList(ctx, remoteRepo, subjectDigestStr)
 	if err != nil {
 		return refsDigests, err
 	}
@@ -115,7 +118,7 @@ func (ref ORASReferences) SyncReferences(localRepo, remoteRepo, subjectDigestStr
 	for _, referrer := range referrers.References {
 		var artifactManifest oras.Manifest
 
-		orasBuf, _, statusCode, err := ref.client.MakeGetRequest(&artifactManifest, oras.MediaTypeDescriptor,
+		orasBuf, _, statusCode, err := ref.client.MakeGetRequest(ctx, &artifactManifest, oras.MediaTypeDescriptor,
 			"v2", remoteRepo, "manifests", referrer.Digest.String())
 		if err != nil {
 			if statusCode == http.StatusNotFound {
@@ -130,7 +133,7 @@ func (ref ORASReferences) SyncReferences(localRepo, remoteRepo, subjectDigestStr
 		}
 
 		for _, blob := range artifactManifest.Blobs {
-			if err := syncBlob(ref.client, imageStore, localRepo, remoteRepo, blob.Digest, ref.log); err != nil {
+			if err := syncBlob(ctx, ref.client, imageStore, localRepo, remoteRepo, blob.Digest, ref.log); err != nil {
 				return refsDigests, err
 			}
 		}
@@ -170,10 +173,10 @@ func (ref ORASReferences) SyncReferences(localRepo, remoteRepo, subjectDigestStr
 	return refsDigests, nil
 }
 
-func (ref ORASReferences) getReferenceList(repo, subjectDigestStr string) (ReferenceList, error) {
+func (ref ORASReferences) getReferenceList(ctx context.Context, repo, subjectDigestStr string) (ReferenceList, error) {
 	var referrers ReferenceList
 
-	_, _, statusCode, err := ref.client.MakeGetRequest(&referrers, "application/json",
+	_, _, statusCode, err := ref.client.MakeGetRequest(ctx, &referrers, "application/json",
 		apiConstants.ArtifactSpecRoutePrefix, repo, "manifests", subjectDigestStr, "referrers")
 	if err != nil {
 		if statusCode == http.StatusNotFound || statusCode == http.StatusBadRequest {

@@ -124,7 +124,7 @@ func newScrubCmd(conf *config.Config) *cobra.Command {
 					panic(err)
 				}
 
-				result, err := ctlr.StoreController.CheckAllBlobsIntegrity()
+				result, err := ctlr.StoreController.CheckAllBlobsIntegrity(cmd.Context())
 				if err != nil {
 					panic(err)
 				}

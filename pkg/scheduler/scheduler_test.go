@@ -24,7 +24,7 @@ type task struct {
 
 var errInternal = errors.New("task: internal error")
 
-func (t *task) DoWork() error {
+func (t *task) DoWork(ctx context.Context) error {
 	if t.err {
 		return errInternal
 	}

@@ -2,6 +2,7 @@ package storage_test
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"os"
 	"path"
@@ -78,7 +79,7 @@ func TestCheckAllBlobsIntegrity(t *testing.T) {
 		Convey("Blobs integrity not affected", func() {
 			buff := bytes.NewBufferString("")
 
-			res, err := storeCtlr.CheckAllBlobsIntegrity()
+			res, err := storeCtlr.CheckAllBlobsIntegrity(context.Background())
 			res.PrintScrubResults(buff)
 			So(err, ShouldBeNil)
 
@@ -102,7 +103,7 @@ func TestCheckAllBlobsIntegrity(t *testing.T) {
 
 			buff := bytes.NewBufferString("")
 
-			res, err := storeCtlr.CheckAllBlobsIntegrity()
+			res, err := storeCtlr.CheckAllBlobsIntegrity(context.Background())
 			res.PrintScrubResults(buff)
 			So(err, ShouldBeNil)
 
@@ -120,7 +121,7 @@ func TestCheckAllBlobsIntegrity(t *testing.T) {
 			manifestDescriptor := index.Manifests[0]
 
 			repoDir := path.Join(dir, repoName)
-			imageRes := storage.CheckLayers(repoName, tag, repoDir, manifestDescriptor)
+			imageRes := storage.CheckLayers(context.Background(), repoName, tag, repoDir, manifestDescriptor)
 			So(imageRes.Status, ShouldEqual, "affected")
 			So(imageRes.Error, ShouldEqual, "unexpected end of JSON input")
 
@@ -142,7 +143,7 @@ func TestCheckAllBlobsIntegrity(t *testing.T) {
 
 			buff := bytes.NewBufferString("")
 
-			res, err := storeCtlr.CheckAllBlobsIntegrity()
+			res, err := storeCtlr.CheckAllBlobsIntegrity(context.Background())
 			res.PrintScrubResults(buff)
 			So(err, ShouldBeNil)
 
@@ -170,7 +171,7 @@ func TestCheckAllBlobsIntegrity(t *testing.T) {
 
 			buff := bytes.NewBufferString("")
 
-			res, err := storeCtlr.CheckAllBlobsIntegrity()
+			res, err := storeCtlr.CheckAllBlobsIntegrity(context.Background())
 			res.PrintScrubResults(buff)
 			So(err, ShouldBeNil)
 
@@ -199,7 +200,7 @@ func TestCheckAllBlobsIntegrity(t *testing.T) {
 			So(len(index.Manifests), ShouldEqual, 1)
 			manifestDescriptor := index.Manifests[0]
 
-			imageRes := storage.CheckLayers(repoName, tag, repoDir, manifestDescriptor)
+			imageRes := storage.CheckLayers(context.Background(), repoName, tag, repoDir, manifestDescriptor)
 			So(imageRes.Status, ShouldEqual, "affected")
 			So(imageRes.Error, ShouldEqual, "blob: not found")
 			err = os.Chmod(layerFile, 0x0600)
@@ -211,7 +212,7 @@ func TestCheckAllBlobsIntegrity(t *testing.T) {
 
 			buff := bytes.NewBufferString("")
 
-			res, err := storeCtlr.CheckAllBlobsIntegrity()
+			res, err := storeCtlr.CheckAllBlobsIntegrity(context.Background())
 			res.PrintScrubResults(buff)
 			So(err, ShouldBeNil)
 
@@ -262,7 +263,7 @@ func TestCheckAllBlobsIntegrity(t *testing.T) {
 
 			buff := bytes.NewBufferString("")
 
-			res, err := storeCtlr.CheckAllBlobsIntegrity()
+			res, err := storeCtlr.CheckAllBlobsIntegrity(context.Background())
 			res.PrintScrubResults(buff)
 			So(err, ShouldBeNil)
 
@@ -280,7 +281,7 @@ func TestCheckAllBlobsIntegrity(t *testing.T) {
 
 			buff = bytes.NewBufferString("")
 
-			res, err = storeCtlr.CheckAllBlobsIntegrity()
+			res, err = storeCtlr.CheckAllBlobsIntegrity(context.Background())
 			res.PrintScrubResults(buff)
 			So(err, ShouldBeNil)
 
@@ -297,7 +298,7 @@ func TestCheckAllBlobsIntegrity(t *testing.T) {
 
 			buff = bytes.NewBufferString("")
 
-			res, err = storeCtlr.CheckAllBlobsIntegrity()
+			res, err = storeCtlr.CheckAllBlobsIntegrity(context.Background())
 			res.PrintScrubResults(buff)
 			So(err, ShouldBeNil)
 
@@ -316,7 +317,7 @@ func TestCheckAllBlobsIntegrity(t *testing.T) {
 
 			buff := bytes.NewBufferString("")
 
-			res, err := storeCtlr.CheckAllBlobsIntegrity()
+			res, err := storeCtlr.CheckAllBlobsIntegrity(context.Background())
 			res.PrintScrubResults(buff)
 			So(err, ShouldBeNil)
 
@@ -334,7 +335,7 @@ func TestCheckAllBlobsIntegrity(t *testing.T) {
 			manifestDescriptor := index.Manifests[0]
 
 			repoDir := path.Join(dir, repoName)
-			imageRes := storage.CheckLayers(repoName, tag, repoDir, manifestDescriptor)
+			imageRes := storage.CheckLayers(context.Background(), repoName, tag, repoDir, manifestDescriptor)
 			So(imageRes.Status, ShouldEqual, "affected")
 			So(imageRes.Error, ShouldContainSubstring, "no such file or directory")
 		})

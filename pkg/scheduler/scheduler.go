@@ -12,7 +12,7 @@ import (
 )
 
 type Task interface {
-	DoWork() error
+	DoWork(ctx context.Context) error
 }
 
 type generatorsPriorityQueue []*generator
@@ -97,13 +97,13 @@ func NewScheduler(cfg *config.Config, logC log.Logger) *Scheduler {
 	}
 }
 
-func (scheduler *Scheduler) poolWorker(numWorkers int, tasks chan Task) {
+func (scheduler *Scheduler) poolWorker(ctx context.Context, numWorkers int, tasks chan Task) {
 	for i := 0; i < numWorkers; i++ {
 		go func(workerID int) {
 			for task := range tasks {
 				scheduler.log.Debug().Int("worker", workerID).Msg("scheduler: starting task")
 
-				if err := task.DoWork(); err != nil {
+				if err := task.DoWork(ctx); err != nil {
 					scheduler.log.Error().Int("worker", workerID).Err(err).Msg("scheduler: error while executing task")
 				}
 
@@ -120,7 +120,7 @@ func (scheduler *Scheduler) RunScheduler(ctx context.Context) {
 	tasksWorker := make(chan Task, numWorkers)
 
 	// start worker pool
-	go scheduler.poolWorker(numWorkers, tasksWorker)
+	go scheduler.poolWorker(ctx, numWorkers, tasksWorker)
 
 	go func() {
 		for {

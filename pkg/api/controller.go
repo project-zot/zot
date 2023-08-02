@@ -358,7 +358,7 @@ func (c *Controller) StartBackgroundTasks(reloadCtx context.Context) {
 
 	if c.Config.Extensions != nil {
 		ext.EnableScrubExtension(c.Config, c.Log, c.StoreController, taskScheduler)
-
+		//nolint: contextcheck
 		syncOnDemand, err := ext.EnableSyncExtension(c.Config, c.MetaDB, c.StoreController, taskScheduler, c.Log)
 		if err != nil {
 			c.Log.Error().Err(err).Msg("unable to start sync extension")
@@ -372,6 +372,6 @@ func (c *Controller) StartBackgroundTasks(reloadCtx context.Context) {
 }
 
 type SyncOnDemand interface {
-	SyncImage(repo, reference string) error
-	SyncReference(repo string, subjectDigestStr string, referenceType string) error
+	SyncImage(ctx context.Context, repo, reference string) error
+	SyncReference(ctx context.Context, repo string, subjectDigestStr string, referenceType string) error
 }

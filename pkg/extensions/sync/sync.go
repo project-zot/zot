@@ -23,11 +23,12 @@ type Service interface {
 	// Get next repo from remote /v2/_catalog, will return empty string when there is no repo left.
 	GetNextRepo(lastRepo string) (string, error) // used by task scheduler
 	// Sync a repo with all of its tags and references (signatures, artifacts, sboms) into ImageStore.
-	SyncRepo(repo string) error // used by periodically sync
+	SyncRepo(ctx context.Context, repo string) error // used by periodically sync
 	// Sync an image (repo:tag || repo:digest) into ImageStore.
-	SyncImage(repo, reference string) error // used by sync on demand
+	SyncImage(ctx context.Context, repo, reference string) error // used by sync on demand
 	// Sync a single reference for an image.
-	SyncReference(repo string, subjectDigestStr string, referenceType string) error // used by sync on demand
+	SyncReference(ctx context.Context, repo string, subjectDigestStr string,
+		referenceType string) error // used by sync on demand
 	// Remove all internal catalog entries.
 	ResetCatalog() // used by scheduler to empty out the catalog after a sync periodically roundtrip finishes
 	// Sync supports multiple urls per registry, before a sync repo/image/ref 'ping' each url.
@@ -133,6 +134,6 @@ func newSyncRepoTask(repo string, service Service) *syncRepoTask {
 	return &syncRepoTask{repo, service}
 }
 
-func (srt *syncRepoTask) DoWork() error {
-	return srt.service.SyncRepo(srt.repo)
+func (srt *syncRepoTask) DoWork(ctx context.Context) error {
+	return srt.service.SyncRepo(ctx, srt.repo)
 }

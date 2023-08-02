@@ -2,6 +2,7 @@ package storage
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -1026,9 +1027,9 @@ func newDedupeTask(imgStore storageTypes.ImageStore, digest godigest.Digest, ded
 	return &dedupeTask{imgStore, digest, duplicateBlobs, dedupe, log}
 }
 
-func (dt *dedupeTask) DoWork() error {
+func (dt *dedupeTask) DoWork(ctx context.Context) error {
 	// run task
-	err := dt.imgStore.RunDedupeForDigest(dt.digest, dt.dedupe, dt.duplicateBlobs)
+	err := dt.imgStore.RunDedupeForDigest(dt.digest, dt.dedupe, dt.duplicateBlobs) //nolint: contextcheck
 	if err != nil {
 		// log it
 		dt.log.Error().Err(err).Str("digest", dt.digest.String()).Msg("rebuild dedupe: failed to rebuild digest")
@@ -1106,7 +1107,7 @@ func NewGCTask(imgStore storageTypes.ImageStore, repo string,
 	return &gcTask{imgStore, repo}
 }
 
-func (gct *gcTask) DoWork() error {
+func (gct *gcTask) DoWork(ctx context.Context) error {
 	// run task
 	return gct.imgStore.RunGCRepo(gct.repo)
 }

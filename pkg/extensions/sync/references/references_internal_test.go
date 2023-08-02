@@ -4,6 +4,7 @@
 package references
 
 import (
+	"context"
 	"errors"
 	"testing"
 
@@ -75,7 +76,7 @@ func TestOci(t *testing.T) {
 			},
 		}}, nil, log.NewLogger("debug", ""))
 
-		ok := oci.IsSigned("repo", "")
+		ok := oci.IsSigned(context.Background(), "repo", "")
 		So(ok, ShouldBeFalse)
 
 		// trigger GetReferrers err
@@ -136,11 +137,12 @@ func TestSyncManifest(t *testing.T) {
 
 		digest := godigest.FromString("test")
 
-		buf, refDigest, err := syncManifest(client, mocks.MockedImageStore{}, "repo", "repo", ispec.Descriptor{
-			Digest:    digest,
-			Size:      10,
-			MediaType: ispec.MediaTypeImageManifest,
-		}, digest.String(), log.Logger{})
+		buf, refDigest, err := syncManifest(context.Background(), client, mocks.MockedImageStore{},
+			"repo", "repo", ispec.Descriptor{
+				Digest:    digest,
+				Size:      10,
+				MediaType: ispec.MediaTypeImageManifest,
+			}, digest.String(), log.Logger{})
 
 		So(buf, ShouldBeEmpty)
 		So(refDigest, ShouldBeEmpty)
