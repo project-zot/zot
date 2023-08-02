@@ -32,6 +32,7 @@ TESTDATA := $(TOP_LEVEL)/test/data
 OS ?= linux
 ARCH ?= amd64
 BENCH_OUTPUT ?= stdout
+ALL_EXTENSIONS = debug,imagetrust,lint,metrics,mgmt,scrub,search,sync,ui,userprefs
 EXTENSIONS ?= sync,search,scrub,metrics,lint,ui,mgmt,userprefs,imagetrust
 UI_DEPENDENCIES := search,mgmt,userprefs
 # freebsd/arm64 not supported for pie builds
@@ -46,11 +47,11 @@ space := $(null) #
 hyphen:= -
 extended-name:=
 
-define add-extensions =
-	$(shell echo $(shell echo $(subst $(space),$(comma), $(strip $(shell echo $(subst $(comma),$(space), $(if $(findstring ui,$(EXTENSIONS)), "$(EXTENSIONS)$(comma)$(UI_DEPENDENCIES)", $(EXTENSIONS))) | tr ' ' '\n' | sort -u | tr '\n' ' '))) | cut -c2-) | tr -d " \t\n\r")
-endef
-
-BUILD_LABELS = $(strip $(call add-extensions))
+merge-ui-extensions=$(subst $(1),$(2),$(if $(findstring ui,$(3)),$(3)$(1)$(4),$(3)))
+merged-extensions = $(call merge-ui-extensions,$(comma),$(space),$(EXTENSIONS),$(UI_DEPENDENCIES))
+filter-valid = $(foreach ext, $(merged-extensions), $(if $(findstring $(ext),$(ALL_EXTENSIONS)),$(ext),$(error unknown extension: $(ext))))
+add-extensions = $(subst $(1),$(2),$(sort $(filter-valid)))
+BUILD_LABELS = $(call add-extensions,$(space),$(comma))
 
 .PHONY: all
 all: modcheck swagger binary binary-minimal binary-debug cli bench exporter-minimal verify-config test covhtml check check-gh-actions
@@ -171,21 +172,21 @@ $(HELM):
 $(REGCLIENT):
 	mkdir -p $(TOOLSDIR)/bin
 	curl -Lo regctl https://github.com/regclient/regclient/releases/download/$(REGCLIENT_VERSION)/regctl-linux-amd64
-	cp regctl $(TOOLSDIR)/bin/regctl
+	mv regctl $(TOOLSDIR)/bin/regctl
 	chmod +x $(TOOLSDIR)/bin/regctl
 
 $(CRICTL):
 	mkdir -p $(TOOLSDIR)/bin
 	curl -Lo crictl.tar.gz https://github.com/kubernetes-sigs/cri-tools/releases/download/$(CRICTL_VERSION)/crictl-$(CRICTL_VERSION)-linux-amd64.tar.gz
-	tar xvzf crictl.tar.gz
-	cp crictl $(TOOLSDIR)/bin/crictl
+	tar xvzf crictl.tar.gz && rm crictl.tar.gz
+	mv crictl $(TOOLSDIR)/bin/crictl
 	chmod +x $(TOOLSDIR)/bin/crictl
 
 
 $(ACTION_VALIDATOR):
 	mkdir -p $(TOOLSDIR)/bin
 	curl -Lo action-validator https://github.com/mpalmer/action-validator/releases/download/$(ACTION_VALIDATOR_VERSION)/action-validator_linux_amd64
-	cp action-validator $(TOOLSDIR)/bin/action-validator
+	mv action-validator $(TOOLSDIR)/bin/action-validator
 	chmod +x $(TOOLSDIR)/bin/action-validator
 
 .PHONY: check-gh-actions
