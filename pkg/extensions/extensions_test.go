@@ -1,5 +1,5 @@
-//go:build sync || metrics || mgmt || apikey
-// +build sync metrics mgmt apikey
+//go:build sync && metrics && mgmt && userprefs && search
+// +build sync,metrics,mgmt,userprefs,search
 
 package extensions_test
 
@@ -9,7 +9,6 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"path"
 	"testing"
 	"time"
 
@@ -22,10 +21,6 @@ import (
 	"zotregistry.io/zot/pkg/extensions"
 	extconf "zotregistry.io/zot/pkg/extensions/config"
 	syncconf "zotregistry.io/zot/pkg/extensions/config/sync"
-	"zotregistry.io/zot/pkg/extensions/monitoring"
-	"zotregistry.io/zot/pkg/log"
-	"zotregistry.io/zot/pkg/storage"
-	"zotregistry.io/zot/pkg/storage/local"
 	"zotregistry.io/zot/pkg/test"
 )
 
@@ -125,6 +120,7 @@ func TestMgmtExtension(t *testing.T) {
 	if err != nil {
 		panic(err)
 	}
+	mgmtReadyTimeout := 5 * time.Second
 
 	defaultValue := true
 
@@ -142,16 +138,16 @@ func TestMgmtExtension(t *testing.T) {
 
 	mockOIDCConfig := mockOIDCServer.Config()
 
-	Convey("Verify mgmt route enabled with htpasswd", t, func() {
+	Convey("Verify mgmt auth info route enabled with htpasswd", t, func() {
 		htpasswdPath := test.MakeHtpasswdFile()
 		conf.HTTP.Auth.HTPasswd.Path = htpasswdPath
 
 		conf.Extensions = &extconf.ExtensionConfig{}
-		conf.Extensions.Mgmt = &extconf.MgmtConfig{
-			BaseConfig: extconf.BaseConfig{
-				Enable: &defaultValue,
-			},
-		}
+		conf.Extensions.Search = &extconf.SearchConfig{}
+		conf.Extensions.Search.Enable = &defaultValue
+		conf.Extensions.Search.CVE = nil
+		conf.Extensions.UI = &extconf.UIConfig{}
+		conf.Extensions.UI.Enable = &defaultValue
 
 		conf.Log.Output = logFile.Name()
 		defer os.Remove(logFile.Name()) // cleanup
@@ -168,19 +164,31 @@ func TestMgmtExtension(t *testing.T) {
 		ctlrManager.StartAndWait(port)
 		defer ctlrManager.StopServer()
 
-		data, _ := os.ReadFile(logFile.Name())
+		found, err := test.ReadLogFileAndSearchString(logFile.Name(),
+			"setting up mgmt routes", mgmtReadyTimeout)
+		So(err, ShouldBeNil)
+		defer func() {
+			if !found {
+				data, err := os.ReadFile(logFile.Name())
+				So(err, ShouldBeNil)
+				t.Log(string(data))
+			}
+		}()
+		So(found, ShouldBeTrue)
+		So(err, ShouldBeNil)
 
-		So(string(data), ShouldContainSubstring, "setting up mgmt routes")
-
-		Convey("unsupported http method call", func() {
-			// without credentials
-			resp, err := resty.R().Patch(baseURL + constants.FullMgmtPrefix)
-			So(err, ShouldBeNil)
-			So(resp.StatusCode(), ShouldEqual, http.StatusMethodNotAllowed)
-		})
+		found, err = test.ReadLogFileAndSearchString(logFile.Name(),
+			"finished setting up mgmt routes", mgmtReadyTimeout)
+		So(found, ShouldBeTrue)
+		So(err, ShouldBeNil)
 
 		// without credentials
-		resp, err := resty.R().Get(baseURL + constants.FullMgmtPrefix)
+		resp, err := resty.R().Patch(baseURL + constants.FullMgmt)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusMethodNotAllowed)
+
+		// without credentials
+		resp, err = resty.R().Get(baseURL + constants.FullMgmt)
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
@@ -193,7 +201,7 @@ func TestMgmtExtension(t *testing.T) {
 		So(mgmtResp.HTTP.Auth.LDAP, ShouldBeNil)
 
 		// with credentials
-		resp, err = resty.R().SetBasicAuth("test", "test").Get(baseURL + constants.FullMgmtPrefix)
+		resp, err = resty.R().SetBasicAuth("test", "test").Get(baseURL + constants.FullMgmt)
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
@@ -206,12 +214,12 @@ func TestMgmtExtension(t *testing.T) {
 		So(mgmtResp.HTTP.Auth.LDAP, ShouldBeNil)
 
 		// with wrong credentials
-		resp, err = resty.R().SetBasicAuth("test", "wrong").Get(baseURL + constants.FullMgmtPrefix)
+		resp, err = resty.R().SetBasicAuth("test", "wrong").Get(baseURL + constants.FullMgmt)
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
 	})
 
-	Convey("Verify mgmt route enabled with ldap", t, func() {
+	Convey("Verify mgmt auth info route enabled with ldap", t, func() {
 		conf.HTTP.Auth.LDAP = &config.LDAPConfig{
 			BindDN:  "binddn",
 			BaseDN:  "basedn",
@@ -219,11 +227,11 @@ func TestMgmtExtension(t *testing.T) {
 		}
 
 		conf.Extensions = &extconf.ExtensionConfig{}
-		conf.Extensions.Mgmt = &extconf.MgmtConfig{
-			BaseConfig: extconf.BaseConfig{
-				Enable: &defaultValue,
-			},
-		}
+		conf.Extensions.Search = &extconf.SearchConfig{}
+		conf.Extensions.Search.Enable = &defaultValue
+		conf.Extensions.Search.CVE = nil
+		conf.Extensions.UI = &extconf.UIConfig{}
+		conf.Extensions.UI.Enable = &defaultValue
 
 		conf.Log.Output = logFile.Name()
 		defer os.Remove(logFile.Name()) // cleanup
@@ -240,12 +248,25 @@ func TestMgmtExtension(t *testing.T) {
 		ctlrManager.StartAndWait(port)
 		defer ctlrManager.StopServer()
 
-		data, _ := os.ReadFile(logFile.Name())
+		found, err := test.ReadLogFileAndSearchString(logFile.Name(),
+			"setting up mgmt routes", mgmtReadyTimeout)
+		defer func() {
+			if !found {
+				data, err := os.ReadFile(logFile.Name())
+				So(err, ShouldBeNil)
+				t.Log(string(data))
+			}
+		}()
+		So(found, ShouldBeTrue)
+		So(err, ShouldBeNil)
 
-		So(string(data), ShouldContainSubstring, "setting up mgmt routes")
+		found, err = test.ReadLogFileAndSearchString(logFile.Name(),
+			"finished setting up mgmt routes", mgmtReadyTimeout)
+		So(found, ShouldBeTrue)
+		So(err, ShouldBeNil)
 
 		// without credentials
-		resp, err := resty.R().Get(baseURL + constants.FullMgmtPrefix)
+		resp, err := resty.R().Get(baseURL + constants.FullMgmt)
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
@@ -258,7 +279,7 @@ func TestMgmtExtension(t *testing.T) {
 		So(mgmtResp.HTTP.Auth.Bearer, ShouldBeNil)
 	})
 
-	Convey("Verify mgmt route enabled with htpasswd + ldap", t, func() {
+	Convey("Verify mgmt auth info route enabled with htpasswd + ldap", t, func() {
 		htpasswdPath := test.MakeHtpasswdFile()
 		conf.HTTP.Auth.HTPasswd.Path = htpasswdPath
 		conf.HTTP.Auth.LDAP = &config.LDAPConfig{
@@ -268,11 +289,11 @@ func TestMgmtExtension(t *testing.T) {
 		}
 
 		conf.Extensions = &extconf.ExtensionConfig{}
-		conf.Extensions.Mgmt = &extconf.MgmtConfig{
-			BaseConfig: extconf.BaseConfig{
-				Enable: &defaultValue,
-			},
-		}
+		conf.Extensions.Search = &extconf.SearchConfig{}
+		conf.Extensions.Search.Enable = &defaultValue
+		conf.Extensions.Search.CVE = nil
+		conf.Extensions.UI = &extconf.UIConfig{}
+		conf.Extensions.UI.Enable = &defaultValue
 
 		conf.Log.Output = logFile.Name()
 		defer os.Remove(logFile.Name()) // cleanup
@@ -289,12 +310,25 @@ func TestMgmtExtension(t *testing.T) {
 		ctlrManager.StartAndWait(port)
 		defer ctlrManager.StopServer()
 
-		data, _ := os.ReadFile(logFile.Name())
+		found, err := test.ReadLogFileAndSearchString(logFile.Name(),
+			"setting up mgmt routes", mgmtReadyTimeout)
+		defer func() {
+			if !found {
+				data, err := os.ReadFile(logFile.Name())
+				So(err, ShouldBeNil)
+				t.Log(string(data))
+			}
+		}()
+		So(found, ShouldBeTrue)
+		So(err, ShouldBeNil)
 
-		So(string(data), ShouldContainSubstring, "setting up mgmt routes")
+		found, err = test.ReadLogFileAndSearchString(logFile.Name(),
+			"finished setting up mgmt routes", mgmtReadyTimeout)
+		So(found, ShouldBeTrue)
+		So(err, ShouldBeNil)
 
 		// without credentials
-		resp, err := resty.R().Get(baseURL + constants.FullMgmtPrefix)
+		resp, err := resty.R().Get(baseURL + constants.FullMgmt)
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
@@ -307,7 +341,7 @@ func TestMgmtExtension(t *testing.T) {
 		So(mgmtResp.HTTP.Auth.Bearer, ShouldBeNil)
 
 		// with credentials
-		resp, err = resty.R().SetBasicAuth("test", "test").Get(baseURL + constants.FullMgmtPrefix)
+		resp, err = resty.R().SetBasicAuth("test", "test").Get(baseURL + constants.FullMgmt)
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
@@ -320,7 +354,7 @@ func TestMgmtExtension(t *testing.T) {
 		So(mgmtResp.HTTP.Auth.Bearer, ShouldBeNil)
 	})
 
-	Convey("Verify mgmt route enabled with htpasswd + ldap + bearer", t, func() {
+	Convey("Verify mgmt auth info route enabled with htpasswd + ldap + bearer", t, func() {
 		htpasswdPath := test.MakeHtpasswdFile()
 		conf.HTTP.Auth.HTPasswd.Path = htpasswdPath
 		conf.HTTP.Auth.LDAP = &config.LDAPConfig{
@@ -335,11 +369,11 @@ func TestMgmtExtension(t *testing.T) {
 		}
 
 		conf.Extensions = &extconf.ExtensionConfig{}
-		conf.Extensions.Mgmt = &extconf.MgmtConfig{
-			BaseConfig: extconf.BaseConfig{
-				Enable: &defaultValue,
-			},
-		}
+		conf.Extensions.Search = &extconf.SearchConfig{}
+		conf.Extensions.Search.Enable = &defaultValue
+		conf.Extensions.Search.CVE = nil
+		conf.Extensions.UI = &extconf.UIConfig{}
+		conf.Extensions.UI.Enable = &defaultValue
 
 		conf.Log.Output = logFile.Name()
 		defer os.Remove(logFile.Name()) // cleanup
@@ -352,12 +386,25 @@ func TestMgmtExtension(t *testing.T) {
 		ctlrManager.StartAndWait(port)
 		defer ctlrManager.StopServer()
 
-		data, _ := os.ReadFile(logFile.Name())
+		found, err := test.ReadLogFileAndSearchString(logFile.Name(),
+			"setting up mgmt routes", mgmtReadyTimeout)
+		defer func() {
+			if !found {
+				data, err := os.ReadFile(logFile.Name())
+				So(err, ShouldBeNil)
+				t.Log(string(data))
+			}
+		}()
+		So(found, ShouldBeTrue)
+		So(err, ShouldBeNil)
 
-		So(string(data), ShouldContainSubstring, "setting up mgmt routes")
+		found, err = test.ReadLogFileAndSearchString(logFile.Name(),
+			"finished setting up mgmt routes", mgmtReadyTimeout)
+		So(found, ShouldBeTrue)
+		So(err, ShouldBeNil)
 
 		// without credentials
-		resp, err := resty.R().Get(baseURL + constants.FullMgmtPrefix)
+		resp, err := resty.R().Get(baseURL + constants.FullMgmt)
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
@@ -372,7 +419,7 @@ func TestMgmtExtension(t *testing.T) {
 		So(mgmtResp.HTTP.Auth.Bearer.Service, ShouldEqual, "service")
 
 		// with credentials
-		resp, err = resty.R().SetBasicAuth("test", "test").Get(baseURL + constants.FullMgmtPrefix)
+		resp, err = resty.R().SetBasicAuth("test", "test").Get(baseURL + constants.FullMgmt)
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
@@ -387,7 +434,7 @@ func TestMgmtExtension(t *testing.T) {
 		So(mgmtResp.HTTP.Auth.Bearer.Service, ShouldEqual, "service")
 	})
 
-	Convey("Verify mgmt route enabled with ldap + bearer", t, func() {
+	Convey("Verify mgmt auth info route enabled with ldap + bearer", t, func() {
 		conf.HTTP.Auth.HTPasswd.Path = ""
 		conf.HTTP.Auth.LDAP = &config.LDAPConfig{
 			BindDN:  "binddn",
@@ -401,11 +448,11 @@ func TestMgmtExtension(t *testing.T) {
 		}
 
 		conf.Extensions = &extconf.ExtensionConfig{}
-		conf.Extensions.Mgmt = &extconf.MgmtConfig{
-			BaseConfig: extconf.BaseConfig{
-				Enable: &defaultValue,
-			},
-		}
+		conf.Extensions.Search = &extconf.SearchConfig{}
+		conf.Extensions.Search.Enable = &defaultValue
+		conf.Extensions.Search.CVE = nil
+		conf.Extensions.UI = &extconf.UIConfig{}
+		conf.Extensions.UI.Enable = &defaultValue
 
 		conf.Log.Output = logFile.Name()
 		defer os.Remove(logFile.Name()) // cleanup
@@ -422,12 +469,25 @@ func TestMgmtExtension(t *testing.T) {
 		ctlrManager.StartAndWait(port)
 		defer ctlrManager.StopServer()
 
-		data, _ := os.ReadFile(logFile.Name())
+		found, err := test.ReadLogFileAndSearchString(logFile.Name(),
+			"setting up mgmt routes", mgmtReadyTimeout)
+		defer func() {
+			if !found {
+				data, err := os.ReadFile(logFile.Name())
+				So(err, ShouldBeNil)
+				t.Log(string(data))
+			}
+		}()
+		So(found, ShouldBeTrue)
+		So(err, ShouldBeNil)
 
-		So(string(data), ShouldContainSubstring, "setting up mgmt routes")
+		found, err = test.ReadLogFileAndSearchString(logFile.Name(),
+			"finished setting up mgmt routes", mgmtReadyTimeout)
+		So(found, ShouldBeTrue)
+		So(err, ShouldBeNil)
 
 		// without credentials
-		resp, err := resty.R().Get(baseURL + constants.FullMgmtPrefix)
+		resp, err := resty.R().Get(baseURL + constants.FullMgmt)
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
@@ -442,7 +502,7 @@ func TestMgmtExtension(t *testing.T) {
 		So(mgmtResp.HTTP.Auth.Bearer.Service, ShouldEqual, "service")
 	})
 
-	Convey("Verify mgmt route enabled with bearer", t, func() {
+	Convey("Verify mgmt auth info route enabled with bearer", t, func() {
 		conf.HTTP.Auth.HTPasswd.Path = ""
 		conf.HTTP.Auth.LDAP = nil
 		conf.HTTP.Auth.Bearer = &config.BearerConfig{
@@ -451,11 +511,11 @@ func TestMgmtExtension(t *testing.T) {
 		}
 
 		conf.Extensions = &extconf.ExtensionConfig{}
-		conf.Extensions.Mgmt = &extconf.MgmtConfig{
-			BaseConfig: extconf.BaseConfig{
-				Enable: &defaultValue,
-			},
-		}
+		conf.Extensions.Search = &extconf.SearchConfig{}
+		conf.Extensions.Search.Enable = &defaultValue
+		conf.Extensions.Search.CVE = nil
+		conf.Extensions.UI = &extconf.UIConfig{}
+		conf.Extensions.UI.Enable = &defaultValue
 
 		conf.Log.Output = logFile.Name()
 		defer os.Remove(logFile.Name()) // cleanup
@@ -468,12 +528,25 @@ func TestMgmtExtension(t *testing.T) {
 		ctlrManager.StartAndWait(port)
 		defer ctlrManager.StopServer()
 
-		data, _ := os.ReadFile(logFile.Name())
+		found, err := test.ReadLogFileAndSearchString(logFile.Name(),
+			"setting up mgmt routes", mgmtReadyTimeout)
+		defer func() {
+			if !found {
+				data, err := os.ReadFile(logFile.Name())
+				So(err, ShouldBeNil)
+				t.Log(string(data))
+			}
+		}()
+		So(found, ShouldBeTrue)
+		So(err, ShouldBeNil)
 
-		So(string(data), ShouldContainSubstring, "setting up mgmt routes")
+		found, err = test.ReadLogFileAndSearchString(logFile.Name(),
+			"finished setting up mgmt routes", mgmtReadyTimeout)
+		So(found, ShouldBeTrue)
+		So(err, ShouldBeNil)
 
 		// without credentials
-		resp, err := resty.R().Get(baseURL + constants.FullMgmtPrefix)
+		resp, err := resty.R().Get(baseURL + constants.FullMgmt)
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
@@ -487,7 +560,7 @@ func TestMgmtExtension(t *testing.T) {
 		So(mgmtResp.HTTP.Auth.Bearer.Service, ShouldEqual, "service")
 	})
 
-	Convey("Verify mgmt route enabled with openID", t, func() {
+	Convey("Verify mgmt auth info route enabled with openID", t, func() {
 		conf.HTTP.Auth.HTPasswd.Path = ""
 		conf.HTTP.Auth.LDAP = nil
 		conf.HTTP.Auth.Bearer = nil
@@ -504,11 +577,11 @@ func TestMgmtExtension(t *testing.T) {
 		}
 
 		conf.Extensions = &extconf.ExtensionConfig{}
-		conf.Extensions.Mgmt = &extconf.MgmtConfig{
-			BaseConfig: extconf.BaseConfig{
-				Enable: &defaultValue,
-			},
-		}
+		conf.Extensions.Search = &extconf.SearchConfig{}
+		conf.Extensions.Search.Enable = &defaultValue
+		conf.Extensions.Search.CVE = nil
+		conf.Extensions.UI = &extconf.UIConfig{}
+		conf.Extensions.UI.Enable = &defaultValue
 
 		conf.Log.Output = logFile.Name()
 		defer os.Remove(logFile.Name()) // cleanup
@@ -521,12 +594,25 @@ func TestMgmtExtension(t *testing.T) {
 		ctlrManager.StartAndWait(port)
 		defer ctlrManager.StopServer()
 
-		data, _ := os.ReadFile(logFile.Name())
+		found, err := test.ReadLogFileAndSearchString(logFile.Name(),
+			"setting up mgmt routes", mgmtReadyTimeout)
+		defer func() {
+			if !found {
+				data, err := os.ReadFile(logFile.Name())
+				So(err, ShouldBeNil)
+				t.Log(string(data))
+			}
+		}()
+		So(found, ShouldBeTrue)
+		So(err, ShouldBeNil)
 
-		So(string(data), ShouldContainSubstring, "setting up mgmt routes")
+		found, err = test.ReadLogFileAndSearchString(logFile.Name(),
+			"finished setting up mgmt routes", mgmtReadyTimeout)
+		So(found, ShouldBeTrue)
+		So(err, ShouldBeNil)
 
 		// without credentials
-		resp, err := resty.R().Get(baseURL + constants.FullMgmtPrefix)
+		resp, err := resty.R().Get(baseURL + constants.FullMgmt)
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
@@ -541,7 +627,7 @@ func TestMgmtExtension(t *testing.T) {
 		So(mgmtResp.HTTP.Auth.OpenID.Providers, ShouldNotBeEmpty)
 	})
 
-	Convey("Verify mgmt route enabled with empty openID provider list", t, func() {
+	Convey("Verify mgmt auth info route enabled with empty openID provider list", t, func() {
 		htpasswdPath := test.MakeHtpasswdFile()
 
 		conf.HTTP.Auth.HTPasswd.Path = htpasswdPath
@@ -555,11 +641,11 @@ func TestMgmtExtension(t *testing.T) {
 		}
 
 		conf.Extensions = &extconf.ExtensionConfig{}
-		conf.Extensions.Mgmt = &extconf.MgmtConfig{
-			BaseConfig: extconf.BaseConfig{
-				Enable: &defaultValue,
-			},
-		}
+		conf.Extensions.Search = &extconf.SearchConfig{}
+		conf.Extensions.Search.Enable = &defaultValue
+		conf.Extensions.Search.CVE = nil
+		conf.Extensions.UI = &extconf.UIConfig{}
+		conf.Extensions.UI.Enable = &defaultValue
 
 		conf.Log.Output = logFile.Name()
 		defer os.Remove(logFile.Name()) // cleanup
@@ -572,12 +658,25 @@ func TestMgmtExtension(t *testing.T) {
 		ctlrManager.StartAndWait(port)
 		defer ctlrManager.StopServer()
 
-		data, _ := os.ReadFile(logFile.Name())
+		found, err := test.ReadLogFileAndSearchString(logFile.Name(),
+			"setting up mgmt routes", mgmtReadyTimeout)
+		defer func() {
+			if !found {
+				data, err := os.ReadFile(logFile.Name())
+				So(err, ShouldBeNil)
+				t.Log(string(data))
+			}
+		}()
+		So(found, ShouldBeTrue)
+		So(err, ShouldBeNil)
 
-		So(string(data), ShouldContainSubstring, "setting up mgmt routes")
+		found, err = test.ReadLogFileAndSearchString(logFile.Name(),
+			"finished setting up mgmt routes", mgmtReadyTimeout)
+		So(found, ShouldBeTrue)
+		So(err, ShouldBeNil)
 
 		// without credentials
-		resp, err := resty.R().Get(baseURL + constants.FullMgmtPrefix)
+		resp, err := resty.R().Get(baseURL + constants.FullMgmt)
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
@@ -591,7 +690,7 @@ func TestMgmtExtension(t *testing.T) {
 		So(mgmtResp.HTTP.Auth.OpenID, ShouldBeNil)
 	})
 
-	Convey("Verify mgmt route enabled without any auth", t, func() {
+	Convey("Verify mgmt auth info route enabled without any auth", t, func() {
 		globalDir := t.TempDir()
 		conf := config.New()
 		port := test.GetFreePort()
@@ -605,11 +704,11 @@ func TestMgmtExtension(t *testing.T) {
 		conf.Commit = "v1.0.0"
 
 		conf.Extensions = &extconf.ExtensionConfig{}
-		conf.Extensions.Mgmt = &extconf.MgmtConfig{
-			BaseConfig: extconf.BaseConfig{
-				Enable: &defaultValue,
-			},
-		}
+		conf.Extensions.Search = &extconf.SearchConfig{}
+		conf.Extensions.Search.Enable = &defaultValue
+		conf.Extensions.Search.CVE = nil
+		conf.Extensions.UI = &extconf.UIConfig{}
+		conf.Extensions.UI.Enable = &defaultValue
 
 		conf.Log.Output = logFile.Name()
 		defer os.Remove(logFile.Name()) // cleanup
@@ -622,7 +721,7 @@ func TestMgmtExtension(t *testing.T) {
 		ctlrManager.StartAndWait(port)
 		defer ctlrManager.StopServer()
 
-		resp, err := resty.R().Get(baseURL + constants.FullMgmtPrefix)
+		resp, err := resty.R().Get(baseURL + constants.FullMgmt)
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
@@ -634,158 +733,22 @@ func TestMgmtExtension(t *testing.T) {
 		So(mgmtResp.HTTP.Auth.HTPasswd, ShouldBeNil)
 		So(mgmtResp.HTTP.Auth.LDAP, ShouldBeNil)
 
-		data, _ := os.ReadFile(logFile.Name())
-		So(string(data), ShouldContainSubstring, "setting up mgmt routes")
-	})
-
-	Convey("Verify mgmt route enabled for uploading certificates and public keys", t, func() {
-		globalDir := t.TempDir()
-		conf := config.New()
-		port := test.GetFreePort()
-		conf.HTTP.Port = port
-		baseURL := test.GetBaseURL(port)
-
-		logFile, err := os.CreateTemp(globalDir, "zot-log*.txt")
-		So(err, ShouldBeNil)
-		defaultValue := true
-
-		conf.Commit = "v1.0.0"
-
-		imageStore := local.NewImageStore(globalDir, false, 0, false, false,
-			log.NewLogger("debug", logFile.Name()), monitoring.NewMetricsServer(false,
-				log.NewLogger("debug", logFile.Name())), nil, nil)
-
-		storeController := storage.StoreController{
-			DefaultStore: imageStore,
-		}
-
-		config, layers, manifest, err := test.GetRandomImageComponents(10) //nolint:staticcheck
-		So(err, ShouldBeNil)
-
-		err = test.WriteImageToFileSystem(
-			test.Image{
-				Manifest: manifest,
-				Layers:   layers,
-				Config:   config,
-			}, "repo", "0.0.1", storeController,
-		)
-		So(err, ShouldBeNil)
-
-		sigConfig, sigLayers, sigManifest, err := test.GetRandomImageComponents(10) //nolint:staticcheck
-		So(err, ShouldBeNil)
-
-		ref, _ := test.GetCosignSignatureTagForManifest(manifest)
-		err = test.WriteImageToFileSystem(
-			test.Image{
-				Manifest: sigManifest,
-				Layers:   sigLayers,
-				Config:   sigConfig,
-			}, "repo", ref, storeController,
-		)
-		So(err, ShouldBeNil)
-
-		conf.Extensions = &extconf.ExtensionConfig{}
-		conf.Extensions.Search = &extconf.SearchConfig{}
-		conf.Extensions.Search.Enable = &defaultValue
-		conf.Extensions.Mgmt = &extconf.MgmtConfig{
-			BaseConfig: extconf.BaseConfig{
-				Enable: &defaultValue,
-			},
-		}
-
-		conf.Log.Output = logFile.Name()
-		defer os.Remove(logFile.Name()) // cleanup
-
-		ctlr := api.NewController(conf)
-
-		ctlr.Config.Storage.RootDirectory = globalDir
-
-		ctlrManager := test.NewControllerManager(ctlr)
-		ctlrManager.StartAndWait(port)
-		defer ctlrManager.StopServer()
-
-		rootDir := t.TempDir()
-
-		test.NotationPathLock.Lock()
-		defer test.NotationPathLock.Unlock()
-
-		test.LoadNotationPath(rootDir)
-
-		// generate a keypair
-		err = test.GenerateNotationCerts(rootDir, "test")
-		So(err, ShouldBeNil)
-
-		certificateContent, err := os.ReadFile(path.Join(rootDir, "notation/localkeys", "test.crt"))
-		So(err, ShouldBeNil)
-		So(certificateContent, ShouldNotBeNil)
-
-		client := resty.New()
-		resp, err := client.R().SetHeader("Content-type", "application/octet-stream").
-			SetQueryParam("resource", "signatures").SetQueryParam("tool", "notation").SetQueryParam("truststoreName", "test").
-			SetBody(certificateContent).Post(baseURL + constants.FullMgmtPrefix)
-		So(err, ShouldBeNil)
-		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
-
-		resp, err = client.R().SetHeader("Content-type", "application/octet-stream").
-			SetQueryParam("resource", "signatures").SetQueryParam("tool", "notation").
-			SetBody(certificateContent).Post(baseURL + constants.FullMgmtPrefix)
-		So(err, ShouldBeNil)
-		So(resp.StatusCode(), ShouldEqual, http.StatusBadRequest)
-
-		resp, err = client.R().SetHeader("Content-type", "application/octet-stream").
-			SetQueryParam("resource", "signatures").SetQueryParam("tool", "notation").SetQueryParam("truststoreName", "").
-			SetBody(certificateContent).Post(baseURL + constants.FullMgmtPrefix)
-		So(err, ShouldBeNil)
-		So(resp.StatusCode(), ShouldEqual, http.StatusBadRequest)
-
-		resp, err = client.R().SetHeader("Content-type", "application/octet-stream").
-			SetQueryParam("resource", "signatures").SetQueryParam("tool", "notation").SetQueryParam("truststoreName", "test").
-			SetQueryParam("truststoreType", "signatureAuthority").
-			SetBody([]byte("wrong content")).Post(baseURL + constants.FullMgmtPrefix)
-		So(err, ShouldBeNil)
-		So(resp.StatusCode(), ShouldEqual, http.StatusInternalServerError)
-
-		resp, err = client.R().SetHeader("Content-type", "application/octet-stream").
-			SetQueryParam("resource", "signatures").SetQueryParam("tool", "invalidTool").
-			SetBody(certificateContent).Post(baseURL + constants.FullMgmtPrefix)
-		So(err, ShouldBeNil)
-		So(resp.StatusCode(), ShouldEqual, http.StatusBadRequest)
-
-		resp, err = client.R().SetHeader("Content-type", "application/octet-stream").
-			SetQueryParam("resource", "signatures").SetQueryParam("tool", "cosign").
-			SetBody([]byte("wrong content")).Post(baseURL + constants.FullMgmtPrefix)
-		So(err, ShouldBeNil)
-		So(resp.StatusCode(), ShouldEqual, http.StatusInternalServerError)
-
-		resp, err = client.R().SetQueryParam("resource", "signatures").SetQueryParam("tool", "cosign").
-			Get(baseURL + constants.FullMgmtPrefix)
-		So(err, ShouldBeNil)
-		So(resp.StatusCode(), ShouldEqual, http.StatusBadRequest)
-
-		resp, err = client.R().SetQueryParam("resource", "signatures").Post(baseURL + constants.FullMgmtPrefix)
-		So(err, ShouldBeNil)
-		So(resp.StatusCode(), ShouldEqual, http.StatusBadRequest)
-
-		resp, err = client.R().SetQueryParam("resource", "config").Post(baseURL + constants.FullMgmtPrefix)
-		So(err, ShouldBeNil)
-		So(resp.StatusCode(), ShouldEqual, http.StatusBadRequest)
-
-		resp, err = client.R().SetQueryParam("resource", "invalid").Post(baseURL + constants.FullMgmtPrefix)
-		So(err, ShouldBeNil)
-		So(resp.StatusCode(), ShouldEqual, http.StatusBadRequest)
-
-		found, err := test.ReadLogFileAndSearchString(logFile.Name(), "setting up mgmt routes", time.Second)
-		So(err, ShouldBeNil)
+		found, err := test.ReadLogFileAndSearchString(logFile.Name(),
+			"setting up mgmt routes", mgmtReadyTimeout)
+		defer func() {
+			if !found {
+				data, err := os.ReadFile(logFile.Name())
+				So(err, ShouldBeNil)
+				t.Log(string(data))
+			}
+		}()
 		So(found, ShouldBeTrue)
-
-		found, err = test.ReadLogFileAndSearchString(logFile.Name(), "updating signatures validity", 10*time.Second)
 		So(err, ShouldBeNil)
-		So(found, ShouldBeTrue)
 
-		found, err = test.ReadLogFileAndSearchString(logFile.Name(), "verifying signatures successfully completed",
-			time.Second)
-		So(err, ShouldBeNil)
+		found, err = test.ReadLogFileAndSearchString(logFile.Name(),
+			"finished setting up mgmt routes", mgmtReadyTimeout)
 		So(found, ShouldBeTrue)
+		So(err, ShouldBeNil)
 	})
 }
 
@@ -816,11 +779,11 @@ func TestMgmtWithBearer(t *testing.T) {
 		defaultValue := true
 
 		conf.Extensions = &extconf.ExtensionConfig{}
-		conf.Extensions.Mgmt = &extconf.MgmtConfig{
-			BaseConfig: extconf.BaseConfig{
-				Enable: &defaultValue,
-			},
-		}
+		conf.Extensions.Search = &extconf.SearchConfig{}
+		conf.Extensions.Search.Enable = &defaultValue
+		conf.Extensions.Search.CVE = nil
+		conf.Extensions.UI = &extconf.UIConfig{}
+		conf.Extensions.UI.Enable = &defaultValue
 
 		conf.Storage.RootDirectory = t.TempDir()
 
@@ -909,7 +872,7 @@ func TestMgmtWithBearer(t *testing.T) {
 		So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
 
 		// test mgmt route
-		resp, err = resty.R().Get(baseURL + constants.FullMgmtPrefix)
+		resp, err = resty.R().Get(baseURL + constants.FullMgmt)
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
@@ -923,7 +886,7 @@ func TestMgmtWithBearer(t *testing.T) {
 		So(mgmtResp.HTTP.Auth.HTPasswd, ShouldBeNil)
 		So(mgmtResp.HTTP.Auth.LDAP, ShouldBeNil)
 
-		resp, err = resty.R().SetBasicAuth("", "").Get(baseURL + constants.FullMgmtPrefix)
+		resp, err = resty.R().SetBasicAuth("", "").Get(baseURL + constants.FullMgmt)
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
@@ -946,11 +909,13 @@ func TestAllowedMethodsHeaderMgmt(t *testing.T) {
 		conf := config.New()
 		port := test.GetFreePort()
 		conf.HTTP.Port = port
-		conf.Extensions = &extconf.ExtensionConfig{
-			Mgmt: &extconf.MgmtConfig{
-				BaseConfig: extconf.BaseConfig{Enable: &defaultVal},
-			},
-		}
+		conf.Extensions = &extconf.ExtensionConfig{}
+		conf.Extensions.Search = &extconf.SearchConfig{}
+		conf.Extensions.Search.Enable = &defaultVal
+		conf.Extensions.Search.CVE = nil
+		conf.Extensions.UI = &extconf.UIConfig{}
+		conf.Extensions.UI.Enable = &defaultVal
+
 		baseURL := test.GetBaseURL(port)
 
 		ctlr := api.NewController(conf)
@@ -961,38 +926,9 @@ func TestAllowedMethodsHeaderMgmt(t *testing.T) {
 		ctrlManager.StartAndWait(port)
 		defer ctrlManager.StopServer()
 
-		resp, _ := resty.R().Options(baseURL + constants.FullMgmtPrefix)
+		resp, _ := resty.R().Options(baseURL + constants.FullMgmt)
 		So(resp, ShouldNotBeNil)
-		So(resp.Header().Get("Access-Control-Allow-Methods"), ShouldResemble, "GET,POST,OPTIONS")
-		So(resp.StatusCode(), ShouldEqual, http.StatusNoContent)
-	})
-}
-
-func TestAllowedMethodsHeaderAPIKey(t *testing.T) {
-	defaultVal := true
-
-	Convey("Test http options response", t, func() {
-		conf := config.New()
-		port := test.GetFreePort()
-		conf.HTTP.Port = port
-		conf.Extensions = &extconf.ExtensionConfig{
-			APIKey: &extconf.APIKeyConfig{
-				BaseConfig: extconf.BaseConfig{Enable: &defaultVal},
-			},
-		}
-		baseURL := test.GetBaseURL(port)
-
-		ctlr := api.NewController(conf)
-		ctlr.Config.Storage.RootDirectory = t.TempDir()
-
-		ctrlManager := test.NewControllerManager(ctlr)
-
-		ctrlManager.StartAndWait(port)
-		defer ctrlManager.StopServer()
-
-		resp, _ := resty.R().Options(baseURL + constants.FullAPIKeyPrefix)
-		So(resp, ShouldNotBeNil)
-		So(resp.Header().Get("Access-Control-Allow-Methods"), ShouldResemble, "POST,DELETE,OPTIONS")
+		So(resp.Header().Get("Access-Control-Allow-Methods"), ShouldResemble, "GET,OPTIONS")
 		So(resp.StatusCode(), ShouldEqual, http.StatusNoContent)
 	})
 }

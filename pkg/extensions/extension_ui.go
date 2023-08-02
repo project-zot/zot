@@ -12,8 +12,8 @@ import (
 	"github.com/gorilla/mux"
 
 	"zotregistry.io/zot/pkg/api/config"
+	zcommon "zotregistry.io/zot/pkg/common"
 	"zotregistry.io/zot/pkg/log"
-	"zotregistry.io/zot/pkg/storage"
 )
 
 // content is our static web server content.
@@ -57,19 +57,38 @@ func addUISecurityHeaders(h http.Handler) http.HandlerFunc { //nolint:varnamelen
 	}
 }
 
-func SetupUIRoutes(config *config.Config, router *mux.Router, storeController storage.StoreController,
+func SetupUIRoutes(conf *config.Config, router *mux.Router,
 	log log.Logger,
 ) {
-	if config.Extensions.UI != nil {
-		fsub, _ := fs.Sub(content, "build")
-		uih := uiHandler{log: log}
+	if !conf.IsUIEnabled() {
+		log.Info().Msg("skip enabling the ui route as the config prerequisites are not met")
 
-		router.PathPrefix("/login").Handler(addUISecurityHeaders(uih))
-		router.PathPrefix("/home").Handler(addUISecurityHeaders(uih))
-		router.PathPrefix("/explore").Handler(addUISecurityHeaders(uih))
-		router.PathPrefix("/image").Handler(addUISecurityHeaders(uih))
-		router.PathPrefix("/").Handler(addUISecurityHeaders(http.FileServer(http.FS(fsub))))
-
-		log.Info().Msg("setting up ui routes")
+		return
 	}
+
+	log.Info().Msg("setting up ui routes")
+
+	fsub, _ := fs.Sub(content, "build")
+	uih := uiHandler{log: log}
+
+	// See https://go-review.googlesource.com/c/go/+/482635/2/src/net/http/fs.go
+	// See https://github.com/golang/go/issues/59469
+	// In go 1.20.4 they decided to allow any method in the FileServer handler.
+	// In order to be consistent with the status codes returned when the UI is disabled
+	// we need to be explicit about the methods we allow on UI routes.
+	// If we don't add this, all unmatched http methods on any urls would match the UI routes.
+	allowedMethods := zcommon.AllowedMethods(http.MethodGet)
+
+	router.PathPrefix("/login").Methods(allowedMethods...).
+		Handler(addUISecurityHeaders(uih))
+	router.PathPrefix("/home").Methods(allowedMethods...).
+		Handler(addUISecurityHeaders(uih))
+	router.PathPrefix("/explore").Methods(allowedMethods...).
+		Handler(addUISecurityHeaders(uih))
+	router.PathPrefix("/image").Methods(allowedMethods...).
+		Handler(addUISecurityHeaders(uih))
+	router.PathPrefix("/").Methods(allowedMethods...).
+		Handler(addUISecurityHeaders(http.FileServer(http.FS(fsub))))
+
+	log.Info().Msg("finished setting up ui routes")
 }

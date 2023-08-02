@@ -15,7 +15,6 @@ import (
 	zcommon "zotregistry.io/zot/pkg/common"
 	"zotregistry.io/zot/pkg/log"
 	mTypes "zotregistry.io/zot/pkg/meta/types"
-	"zotregistry.io/zot/pkg/storage"
 )
 
 const (
@@ -27,37 +26,43 @@ func IsBuiltWithUserPrefsExtension() bool {
 	return true
 }
 
-func SetupUserPreferencesRoutes(config *config.Config, router *mux.Router, storeController storage.StoreController,
-	metaDB mTypes.MetaDB, cveInfo CveInfo, log log.Logger,
+func SetupUserPreferencesRoutes(conf *config.Config, router *mux.Router,
+	metaDB mTypes.MetaDB, log log.Logger,
 ) {
-	if config.Extensions.Search != nil && *config.Extensions.Search.Enable {
-		log.Info().Msg("setting up user preferences routes")
+	if !conf.AreUserPrefsEnabled() {
+		log.Info().Msg("skip enabling the user preferences route as the config prerequisites are not met")
 
-		allowedMethods := zcommon.AllowedMethods(http.MethodPut)
-
-		userprefsRouter := router.PathPrefix(constants.ExtUserPreferences).Subrouter()
-		userprefsRouter.Use(zcommon.ACHeadersHandler(config, allowedMethods...))
-		userprefsRouter.Use(zcommon.AddExtensionSecurityHeaders())
-
-		userprefsRouter.HandleFunc("", HandleUserPrefs(metaDB, log)).Methods(allowedMethods...)
+		return
 	}
+
+	log.Info().Msg("setting up user preferences routes")
+
+	allowedMethods := zcommon.AllowedMethods(http.MethodPut)
+
+	userPrefsRouter := router.PathPrefix(constants.ExtUserPrefs).Subrouter()
+	userPrefsRouter.Use(zcommon.CORSHeadersMiddleware(conf.HTTP.AllowOrigin))
+	userPrefsRouter.Use(zcommon.AddExtensionSecurityHeaders())
+	userPrefsRouter.Use(zcommon.ACHeadersMiddleware(conf, allowedMethods...))
+	userPrefsRouter.Methods(allowedMethods...).Handler(HandleUserPrefs(metaDB, log))
+
+	log.Info().Msg("finished setting up user preferences routes")
 }
 
-// ListTags godoc
+// Repo preferences godoc
 // @Summary Add bookmarks/stars info
 // @Description Add bookmarks/stars info
-// @Router 	/v2/_zot/ext/userprefs [put]
+// @Router  /v2/_zot/ext/userprefs [put]
 // @Accept  json
 // @Produce json
-// @Param 	action	 	 query 	 string 		true	"specify action" Enums(toggleBookmark, toggleStar)
-// @Param   repo     	 query    string			true	"repository name"
-// @Success 200 {string}	string				"ok"
-// @Failure 404 {string} 	string 				"not found"
-// @Failure 403 {string} 	string 				"forbidden"
-// @Failure 500 {string} 	string 				"internal server error"
-// @Failure 400 {string} 	string 				"bad request".
-func HandleUserPrefs(metaDB mTypes.MetaDB, log log.Logger) func(w http.ResponseWriter, r *http.Request) {
-	return func(rsp http.ResponseWriter, req *http.Request) {
+// @Param   action    query    string     true  "specify action" Enums(toggleBookmark, toggleStar)
+// @Param   repo      query    string     true  "repository name"
+// @Success 200 {string}   string   "ok"
+// @Failure 404 {string}   string   "not found"
+// @Failure 403 {string}   string   "forbidden"
+// @Failure 500 {string}   string   "internal server error"
+// @Failure 400 {string}   string   "bad request".
+func HandleUserPrefs(metaDB mTypes.MetaDB, log log.Logger) http.Handler {
+	return http.HandlerFunc(func(rsp http.ResponseWriter, req *http.Request) {
 		if !zcommon.QueryHasParams(req.URL.Query(), []string{"action"}) {
 			rsp.WriteHeader(http.StatusBadRequest)
 
@@ -80,7 +85,7 @@ func HandleUserPrefs(metaDB mTypes.MetaDB, log log.Logger) func(w http.ResponseW
 
 			return
 		}
-	}
+	})
 }
 
 func PutStar(rsp http.ResponseWriter, req *http.Request, metaDB mTypes.MetaDB, log log.Logger) {

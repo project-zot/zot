@@ -1,16 +1,19 @@
-//go:build apikey
-// +build apikey
+//go:build mgmt
+// +build mgmt
 
-package extensions_test
+package api_test
 
 import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"testing"
 
+	guuid "github.com/gofrs/uuid"
 	"github.com/project-zot/mockoidc"
 	. "github.com/smartystreets/goconvey/convey"
 	"gopkg.in/resty.v1"
@@ -18,13 +21,15 @@ import (
 	"zotregistry.io/zot/pkg/api"
 	"zotregistry.io/zot/pkg/api/config"
 	"zotregistry.io/zot/pkg/api/constants"
-	"zotregistry.io/zot/pkg/extensions"
 	extconf "zotregistry.io/zot/pkg/extensions/config"
+	"zotregistry.io/zot/pkg/log"
 	mTypes "zotregistry.io/zot/pkg/meta/types"
 	localCtx "zotregistry.io/zot/pkg/requestcontext"
 	"zotregistry.io/zot/pkg/test"
 	"zotregistry.io/zot/pkg/test/mocks"
 )
+
+var ErrUnexpectedError = errors.New("error: unexpected error")
 
 type (
 	apiKeyResponse struct {
@@ -33,7 +38,30 @@ type (
 	}
 )
 
-var ErrUnexpectedError = errors.New("unexpected err")
+func TestAllowedMethodsHeaderAPIKey(t *testing.T) {
+	defaultVal := true
+
+	Convey("Test http options response", t, func() {
+		conf := config.New()
+		port := test.GetFreePort()
+		conf.HTTP.Port = port
+		conf.HTTP.Auth.APIKey = defaultVal
+		baseURL := test.GetBaseURL(port)
+
+		ctlr := api.NewController(conf)
+		ctlr.Config.Storage.RootDirectory = t.TempDir()
+
+		ctrlManager := test.NewControllerManager(ctlr)
+
+		ctrlManager.StartAndWait(port)
+		defer ctrlManager.StopServer()
+
+		resp, _ := resty.R().Options(baseURL + constants.APIKeyPath)
+		So(resp, ShouldNotBeNil)
+		So(resp.Header().Get("Access-Control-Allow-Methods"), ShouldResemble, "POST,DELETE,OPTIONS")
+		So(resp.StatusCode(), ShouldEqual, http.StatusNoContent)
+	})
+}
 
 func TestAPIKeys(t *testing.T) {
 	Convey("Make a new controller", t, func() {
@@ -59,6 +87,8 @@ func TestAPIKeys(t *testing.T) {
 		}()
 
 		mockOIDCConfig := mockOIDCServer.Config()
+		defaultVal := true
+
 		conf.HTTP.Auth = &config.AuthConfig{
 			HTPasswd: config.AuthHTPasswd{
 				Path: htpasswdPath,
@@ -74,23 +104,17 @@ func TestAPIKeys(t *testing.T) {
 					},
 				},
 			},
+			APIKey: defaultVal,
 		}
 
 		conf.HTTP.AccessControl = &config.AccessControlConfig{}
 
-		defaultVal := true
-		apiKeyConfig := &extconf.APIKeyConfig{
-			BaseConfig: extconf.BaseConfig{Enable: &defaultVal},
-		}
-
-		mgmtConfg := &extconf.MgmtConfig{
-			BaseConfig: extconf.BaseConfig{Enable: &defaultVal},
-		}
-
-		conf.Extensions = &extconf.ExtensionConfig{
-			APIKey: apiKeyConfig,
-			Mgmt:   mgmtConfg,
-		}
+		conf.Extensions = &extconf.ExtensionConfig{}
+		conf.Extensions.Search = &extconf.SearchConfig{}
+		conf.Extensions.Search.Enable = &defaultVal
+		conf.Extensions.Search.CVE = nil
+		conf.Extensions.UI = &extconf.UIConfig{}
+		conf.Extensions.UI.Enable = &defaultVal
 
 		ctlr := api.NewController(conf)
 		dir := t.TempDir()
@@ -103,7 +127,7 @@ func TestAPIKeys(t *testing.T) {
 		defer cm.StopServer()
 		test.WaitTillServerReady(baseURL)
 
-		payload := extensions.APIKeyPayload{
+		payload := api.APIKeyPayload{
 			Label:  "test",
 			Scopes: []string{"test"},
 		}
@@ -115,7 +139,7 @@ func TestAPIKeys(t *testing.T) {
 			resp, err := resty.R().
 				SetBody(reqBody).
 				SetBasicAuth("test", "test").
-				Post(baseURL + constants.FullAPIKeyPrefix)
+				Post(baseURL + constants.APIKeyPath)
 			So(err, ShouldBeNil)
 			So(resp, ShouldNotBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
@@ -141,7 +165,7 @@ func TestAPIKeys(t *testing.T) {
 			resp, err = resty.R().
 				SetBody(reqBody).
 				SetBasicAuth("test", "test").
-				Post(baseURL + constants.FullAPIKeyPrefix)
+				Post(baseURL + constants.APIKeyPath)
 			So(err, ShouldBeNil)
 			So(resp, ShouldNotBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
@@ -175,7 +199,7 @@ func TestAPIKeys(t *testing.T) {
 			resp, err = client.R().
 				SetBody(reqBody).
 				SetHeader(constants.SessionClientHeaderName, constants.SessionClientHeaderValue).
-				Post(baseURL + constants.FullAPIKeyPrefix)
+				Post(baseURL + constants.APIKeyPath)
 			So(err, ShouldBeNil)
 			So(resp, ShouldNotBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
@@ -186,7 +210,7 @@ func TestAPIKeys(t *testing.T) {
 			resp, err = client.R().
 				SetBody(reqBody).
 				SetHeader(constants.SessionClientHeaderName, constants.SessionClientHeaderValue).
-				Post(baseURL + constants.FullAPIKeyPrefix)
+				Post(baseURL + constants.APIKeyPath)
 			So(err, ShouldBeNil)
 			So(resp, ShouldNotBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
@@ -260,7 +284,7 @@ func TestAPIKeys(t *testing.T) {
 			resp, err = client.R().
 				SetBody(reqBody).
 				SetHeader(constants.SessionClientHeaderName, constants.SessionClientHeaderValue).
-				Post(baseURL + constants.FullAPIKeyPrefix)
+				Post(baseURL + constants.APIKeyPath)
 			So(err, ShouldBeNil)
 			So(resp, ShouldNotBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
@@ -270,8 +294,7 @@ func TestAPIKeys(t *testing.T) {
 			client := resty.New()
 
 			// mgmt should work both unauthenticated and authenticated
-			resp, err := client.R().
-				Get(baseURL + constants.FullMgmtPrefix)
+			resp, err := client.R().Get(baseURL + constants.FullMgmt)
 			So(err, ShouldBeNil)
 			So(resp, ShouldNotBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
@@ -292,7 +315,7 @@ func TestAPIKeys(t *testing.T) {
 			resp, err = client.R().
 				SetBody(reqBody).
 				SetHeader(constants.SessionClientHeaderName, constants.SessionClientHeaderValue).
-				Post(baseURL + constants.FullAPIKeyPrefix)
+				Post(baseURL + constants.APIKeyPath)
 			So(err, ShouldBeNil)
 			So(resp, ShouldNotBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
@@ -326,7 +349,7 @@ func TestAPIKeys(t *testing.T) {
 
 			resp, err = client.R().
 				SetBasicAuth(email, apiKeyResponse.APIKey).
-				Get(baseURL + constants.FullMgmtPrefix)
+				Get(baseURL + constants.FullMgmt)
 			So(err, ShouldBeNil)
 			So(resp, ShouldNotBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
@@ -334,7 +357,7 @@ func TestAPIKeys(t *testing.T) {
 			// invalid api keys
 			resp, err = client.R().
 				SetBasicAuth("invalidEmail", apiKeyResponse.APIKey).
-				Get(baseURL + constants.FullMgmtPrefix)
+				Get(baseURL + constants.FullMgmt)
 			So(err, ShouldBeNil)
 			So(resp, ShouldNotBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
@@ -366,7 +389,7 @@ func TestAPIKeys(t *testing.T) {
 
 			resp, err = client.R().
 				SetBasicAuth(email, apiKeyResponse.APIKey).
-				Get(baseURL + constants.FullMgmtPrefix)
+				Get(baseURL + constants.FullMgmt)
 			So(err, ShouldBeNil)
 			So(resp, ShouldNotBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusInternalServerError)
@@ -375,8 +398,7 @@ func TestAPIKeys(t *testing.T) {
 			client.SetRedirectPolicy(test.CustomRedirectPolicy(20))
 
 			// without creds should work
-			resp, err = client.R().
-				Get(baseURL + constants.FullMgmtPrefix)
+			resp, err = client.R().Get(baseURL + constants.FullMgmt)
 			So(err, ShouldBeNil)
 			So(resp, ShouldNotBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
@@ -395,7 +417,7 @@ func TestAPIKeys(t *testing.T) {
 			resp, err = client.R().
 				SetBody(reqBody).
 				SetHeader(constants.SessionClientHeaderName, constants.SessionClientHeaderValue).
-				Post(baseURL + constants.FullAPIKeyPrefix)
+				Post(baseURL + constants.APIKeyPath)
 			So(err, ShouldBeNil)
 			So(resp, ShouldNotBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
@@ -406,7 +428,7 @@ func TestAPIKeys(t *testing.T) {
 			// should work with session
 			resp, err = client.R().
 				SetHeader(constants.SessionClientHeaderName, constants.SessionClientHeaderValue).
-				Get(baseURL + constants.FullMgmtPrefix)
+				Get(baseURL + constants.FullMgmt)
 			So(err, ShouldBeNil)
 			So(resp, ShouldNotBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
@@ -414,7 +436,7 @@ func TestAPIKeys(t *testing.T) {
 			// should work with api key
 			resp, err = client.R().
 				SetBasicAuth(email, apiKeyResponse.APIKey).
-				Get(baseURL + constants.FullMgmtPrefix)
+				Get(baseURL + constants.FullMgmt)
 			So(err, ShouldBeNil)
 			So(resp, ShouldNotBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
@@ -433,14 +455,14 @@ func TestAPIKeys(t *testing.T) {
 			resp, err = client.R().
 				SetHeader(constants.SessionClientHeaderName, constants.SessionClientHeaderValue).
 				SetQueryParam("id", apiKeyResponse.UUID).
-				Delete(baseURL + constants.FullAPIKeyPrefix)
+				Delete(baseURL + constants.APIKeyPath)
 			So(err, ShouldBeNil)
 			So(resp, ShouldNotBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
 			resp, err = client.R().
 				SetHeader(constants.SessionClientHeaderName, constants.SessionClientHeaderValue).
-				Delete(baseURL + constants.FullAPIKeyPrefix)
+				Delete(baseURL + constants.APIKeyPath)
 			So(err, ShouldBeNil)
 			So(resp, ShouldNotBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusBadRequest)
@@ -455,17 +477,30 @@ func TestAPIKeys(t *testing.T) {
 			resp, err = client.R().
 				SetBasicAuth("test", "test").
 				SetQueryParam("id", apiKeyResponse.UUID).
-				Delete(baseURL + constants.FullAPIKeyPrefix)
+				Delete(baseURL + constants.APIKeyPath)
 			So(err, ShouldBeNil)
 			So(resp, ShouldNotBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
 			// unsupported method
 			resp, err = client.R().
-				Put(baseURL + constants.FullAPIKeyPrefix)
+				Put(baseURL + constants.APIKeyPath)
 			So(err, ShouldBeNil)
 			So(resp, ShouldNotBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusMethodNotAllowed)
+		})
+
+		Convey("Test error handling when API Key handler reads the request body", func() {
+			request, _ := http.NewRequestWithContext(context.TODO(),
+				http.MethodPost, "baseURL", errReader(0))
+			response := httptest.NewRecorder()
+
+			rthdlr := api.NewRouteHandler(ctlr)
+			rthdlr.CreateAPIKey(response, request)
+
+			resp := response.Result()
+			defer resp.Body.Close()
+			So(resp.StatusCode, ShouldEqual, http.StatusInternalServerError)
 		})
 	})
 }
@@ -489,6 +524,8 @@ func TestAPIKeysOpenDBError(t *testing.T) {
 		}()
 
 		mockOIDCConfig := mockOIDCServer.Config()
+		defaultVal := true
+
 		conf.HTTP.Auth = &config.AuthConfig{
 			HTPasswd: config.AuthHTPasswd{
 				Path: htpasswdPath,
@@ -505,14 +542,8 @@ func TestAPIKeysOpenDBError(t *testing.T) {
 					},
 				},
 			},
-		}
 
-		defaultVal := true
-		apiKeyConfig := &extconf.APIKeyConfig{
-			BaseConfig: extconf.BaseConfig{Enable: &defaultVal},
-		}
-		conf.Extensions = &extconf.ExtensionConfig{
-			APIKey: apiKeyConfig,
+			APIKey: defaultVal,
 		}
 
 		ctlr := api.NewController(conf)
@@ -528,4 +559,59 @@ func TestAPIKeysOpenDBError(t *testing.T) {
 			cm.StartServer()
 		}, ShouldPanic)
 	})
+}
+
+func TestAPIKeysGeneratorErrors(t *testing.T) {
+	Convey("Test API keys - unable to generate API keys and API Key IDs", t, func() {
+		log := log.NewLogger("debug", "")
+
+		apiKey, apiKeyID, err := api.GenerateAPIKey(guuid.DefaultGenerator, log)
+		So(err, ShouldBeNil)
+		So(apiKey, ShouldNotEqual, "")
+		So(apiKeyID, ShouldNotEqual, "")
+
+		generator := &mockUUIDGenerator{
+			guuid.DefaultGenerator, 0, 0,
+		}
+
+		apiKey, apiKeyID, err = api.GenerateAPIKey(generator, log)
+		So(err, ShouldNotBeNil)
+		So(apiKey, ShouldEqual, "")
+		So(apiKeyID, ShouldEqual, "")
+
+		generator = &mockUUIDGenerator{
+			guuid.DefaultGenerator, 1, 0,
+		}
+
+		apiKey, apiKeyID, err = api.GenerateAPIKey(generator, log)
+		So(err, ShouldNotBeNil)
+		So(apiKey, ShouldEqual, "")
+		So(apiKeyID, ShouldEqual, "")
+	})
+}
+
+type mockUUIDGenerator struct {
+	guuid.Generator
+	succeedAttempts int
+	attemptCount    int
+}
+
+func (gen *mockUUIDGenerator) NewV4() (
+	guuid.UUID, error,
+) {
+	defer func() {
+		gen.attemptCount += 1
+	}()
+
+	if gen.attemptCount >= gen.succeedAttempts {
+		return guuid.UUID{}, ErrUnexpectedError
+	}
+
+	return guuid.DefaultGenerator.NewV4()
+}
+
+type errReader int
+
+func (errReader) Read(p []byte) (int, error) {
+	return 0, fmt.Errorf("test error") //nolint:goerr113
 }

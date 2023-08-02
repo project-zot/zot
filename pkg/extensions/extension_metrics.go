@@ -9,7 +9,6 @@ import (
 
 	"zotregistry.io/zot/pkg/api/config"
 	"zotregistry.io/zot/pkg/log"
-	"zotregistry.io/zot/pkg/storage"
 )
 
 func EnableMetricsExtension(config *config.Config, log log.Logger, rootDir string) {
@@ -26,7 +25,7 @@ func EnableMetricsExtension(config *config.Config, log log.Logger, rootDir strin
 	}
 }
 
-func SetupMetricsRoutes(config *config.Config, router *mux.Router, storeController storage.StoreController,
+func SetupMetricsRoutes(config *config.Config, router *mux.Router,
 	authFunc mux.MiddlewareFunc, log log.Logger,
 ) {
 	log.Info().Msg("setting up metrics routes")

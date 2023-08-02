@@ -207,12 +207,12 @@ zot can be configured to use the above providers with:
   }
 ```
 
-the login with either provider use http://127.0.0.1:8080/auth/login?provider=\<provider\>&callback_ui=http://127.0.0.1:8080/home
+The login with either provider use http://127.0.0.1:8080/auth/login?provider=\<provider\>&callback_ui=http://127.0.0.1:8080/home
 for example to login with github use http://127.0.0.1:8080/auth/login?provider=github&callback_ui=http://127.0.0.1:8080/home
 
 callback_ui query parameter is used by zot to redirect to UI after a successful openid/oauth2 authentication
 
-the callback url which should be used when making oauth2 provider setup is http://127.0.0.1:8080/auth/callback/\<provider\>
+The callback url which should be used when making oauth2 provider setup is http://127.0.0.1:8080/auth/callback/\<provider\>
 for example github callback url would be http://127.0.0.1:8080/auth/callback/github
 
 If network policy doesn't allow inbound connections, this callback wont work!
@@ -220,7 +220,7 @@ If network policy doesn't allow inbound connections, this callback wont work!
 dex is an identity service that uses OpenID Connect to drive authentication for other apps https://github.com/dexidp/dex
 To setup dex service see https://dexidp.io/docs/getting-started/
 
-to configure zot as a client in dex (assuming zot is hosted at 127.0.0.1:8080), we need to configure dex with:
+To configure zot as a client in dex (assuming zot is hosted at 127.0.0.1:8080), we need to configure dex with:
 
 ```
 staticClients:
@@ -251,7 +251,12 @@ zot can be configured to use dex with:
   }
 ```
 
-to login using openid dex provider use http://127.0.0.1:8080/auth/login?provider=dex
+To login using openid dex provider use http://127.0.0.1:8080/auth/login?provider=dex
+
+NOTE: Social login is not supported by command line tools, or other software responsible for pushing/pulling
+images to/from zot.
+Given this limitation, if openif authentication is enabled in the configuration, API keys are also enabled
+implicitly, as a viable alternative authentication method for pushing and pulling container images.
 
 ### Session based login
 
@@ -261,6 +266,90 @@ Using that cookie on subsequent calls will authenticate them, asumming the cooki
 In case of using filesystem storage sessions are saved in zot's root directory.
 In case of using cloud storage sessions are saved in memory.
 
+#### API keys
+
+zot allows authentication for REST API calls using your API key as an alternative to your password.
+The user can create or revoke his API keys after he has already authenticated using a different authentication mechanism.
+An API key is shown to the user only when it is created. It can not be retrieved from zot with any other call.
+An API key has the same permissions as the user who generated it.
+
+Below are several use cases where API keys offer advantages:
+
+- OpenID/OAuth2 social login is not supported by command-line tools or other such clients. In this case, the user
+can login to zot using OpenID/OAuth2 and generate API keys to use later when pushing and pulling images.
+- In cases where LDAP authentication is used and the user has scripts pushing or pulling images, he will probably not
+want to store his LDAP username and password in a shared environment where there is a chance they are compromised.
+If he generates and uses an API key instead, the security impact of that key being compromised is limited to zot,
+the other services he accesses based on LDAP would not be affected.
+
+To activate API keys use:
+
+```
+  "http": {
+    "auth": {
+      "apikey: true
+```
+
+##### How to create an API Key
+
+Create an API key for the current user using the REST API
+
+**Usage**: POST /auth/apikey
+
+**Produces**: application/json
+
+**Sample input**:
+
+```
+POST /auth/apiKey
+Body: {"label": "git", "scopes": ["repo1", "repo2"]}'
+```
+
+**Example cURL**
+
+```bash
+curl -u user:password -X POST http://localhost:8080/auth/apikey -d '{"label": "myLabel"}'
+```
+
+**Sample output**:
+
+```json
+{
+  "createdAt": "2023-05-05T15:39:28.420926+03:00",
+  "creatorUa": "curl/7.68.0",
+  "generatedBy": "manual",
+  "lastUsed": "2023-05-05T15:39:28.4209282+03:00",
+  "label": "git",
+  "scopes": null,
+  "uuid": "46a45ce7-5d92-498a-a9cb-9654b1da3da1",
+  "apiKey": "zak_e77bcb9e9f634f1581756abbf9ecd269"
+}
+```
+
+##### How to use API Keys
+
+**Using API keys with cURL**
+
+```bash
+curl -u user:zak_e77bcb9e9f634f1581756abbf9ecd269 http://localhost:8080/v2/_catalog
+```
+
+Other command line tools will similarly accept the API key instead of a password.
+
+##### How to revoke an API Key
+
+How to revoke an API key for the current user
+
+**Usage**: DELETE /auth/apiKey?id=$uuid
+
+**Produces**: application/json
+
+**Example cURL**
+
+```bash
+curl -u user:password -X DELETE http://localhost:8080/v2/auth/apikey?id=46a45ce7-5d92-498a-a9cb-9654b1da3da1
+```
+
 #### Authentication Failures
 
 Should authentication fail, to prevent automated attacks, a delayed response can be configured with:
@@ -269,21 +358,6 @@ Should authentication fail, to prevent automated attacks, a delayed response can
   "http": {
     "auth": {
       "failDelay": 5
-```
-
-#### API keys
-
-zot allows authentication for REST API calls using your API key as an alternative to your password.
-for more info see [API keys doc](../pkg/extensions/README_apikey.md)
-
-To activate API keys use:
-
-```
-"extensions": {
-  "apikey": {
-    "enable": true
-  }
-}
 ```
 
 ## Identity-based Authorization

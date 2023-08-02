@@ -1,5 +1,5 @@
-//go:build sync && scrub && metrics && search && lint && apikey && mgmt
-// +build sync,scrub,metrics,search,lint,apikey,mgmt
+//go:build sync && scrub && metrics && search && lint && mgmt
+// +build sync,scrub,metrics,search,lint,mgmt
 
 package api_test
 
@@ -7,7 +7,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -28,16 +27,12 @@ import (
 	"zotregistry.io/zot/pkg/api"
 	"zotregistry.io/zot/pkg/api/config"
 	"zotregistry.io/zot/pkg/api/constants"
-	"zotregistry.io/zot/pkg/extensions"
-	extconf "zotregistry.io/zot/pkg/extensions/config"
 	mTypes "zotregistry.io/zot/pkg/meta/types"
 	localCtx "zotregistry.io/zot/pkg/requestcontext"
 	storageTypes "zotregistry.io/zot/pkg/storage/types"
 	"zotregistry.io/zot/pkg/test"
 	"zotregistry.io/zot/pkg/test/mocks"
 )
-
-var ErrUnexpectedError = errors.New("error: unexpected error")
 
 const sessionStr = "session"
 
@@ -62,6 +57,8 @@ func TestRoutes(t *testing.T) {
 		}()
 
 		mockOIDCConfig := mockOIDCServer.Config()
+		defaultVal := true
+
 		conf.HTTP.Auth = &config.AuthConfig{
 			HTPasswd: config.AuthHTPasswd{
 				Path: htpasswdPath,
@@ -77,14 +74,7 @@ func TestRoutes(t *testing.T) {
 					},
 				},
 			},
-		}
-
-		defaultVal := true
-		apiKeyConfig := &extconf.APIKeyConfig{
-			BaseConfig: extconf.BaseConfig{Enable: &defaultVal},
-		}
-		conf.Extensions = &extconf.ExtensionConfig{
-			APIKey: apiKeyConfig,
+			APIKey: defaultVal,
 		}
 
 		ctlr := api.NewController(conf)
@@ -1434,14 +1424,14 @@ func TestRoutes(t *testing.T) {
 			request, _ := http.NewRequestWithContext(ctx, http.MethodPost, baseURL, bytes.NewReader([]byte{}))
 			response := httptest.NewRecorder()
 
-			extensions.CreateAPIKey(response, request, ctlr.MetaDB, ctlr.CookieStore, ctlr.Log)
+			rthdlr.CreateAPIKey(response, request)
 
 			resp := response.Result()
 			defer resp.Body.Close()
-			So(resp.StatusCode, ShouldEqual, http.StatusInternalServerError)
+			So(resp.StatusCode, ShouldEqual, http.StatusBadRequest)
 
 			acCtx := localCtx.AccessControlContext{
-				Username: username,
+				Username: "test",
 			}
 
 			ctx = context.TODO()
@@ -1451,14 +1441,14 @@ func TestRoutes(t *testing.T) {
 			request, _ = http.NewRequestWithContext(ctx, http.MethodPost, baseURL, bytes.NewReader([]byte{}))
 			response = httptest.NewRecorder()
 
-			extensions.CreateAPIKey(response, request, ctlr.MetaDB, ctlr.CookieStore, ctlr.Log)
+			rthdlr.CreateAPIKey(response, request)
 
 			resp = response.Result()
 			defer resp.Body.Close()
 
-			So(resp.StatusCode, ShouldEqual, http.StatusInternalServerError)
+			So(resp.StatusCode, ShouldEqual, http.StatusBadRequest)
 
-			payload := extensions.APIKeyPayload{
+			payload := api.APIKeyPayload{
 				Label:  "test",
 				Scopes: []string{"test"},
 			}
@@ -1468,11 +1458,12 @@ func TestRoutes(t *testing.T) {
 			request, _ = http.NewRequestWithContext(ctx, http.MethodPost, baseURL, bytes.NewReader(reqBody))
 			response = httptest.NewRecorder()
 
-			extensions.CreateAPIKey(response, request, mocks.MetaDBMock{
+			ctlr.MetaDB = mocks.MetaDBMock{
 				AddUserAPIKeyFn: func(ctx context.Context, hashedKey string, apiKeyDetails *mTypes.APIKeyDetails) error {
 					return ErrUnexpectedError
 				},
-			}, ctlr.CookieStore, ctlr.Log)
+			}
+			rthdlr.CreateAPIKey(response, request)
 
 			resp = response.Result()
 			defer resp.Body.Close()
@@ -1486,11 +1477,12 @@ func TestRoutes(t *testing.T) {
 			q.Add("id", "apikeyid")
 			request.URL.RawQuery = q.Encode()
 
-			extensions.RevokeAPIKey(response, request, mocks.MetaDBMock{
+			ctlr.MetaDB = mocks.MetaDBMock{
 				DeleteUserAPIKeyFn: func(ctx context.Context, id string) error {
 					return ErrUnexpectedError
 				},
-			}, ctlr.CookieStore, ctlr.Log)
+			}
+			rthdlr.RevokeAPIKey(response, request)
 
 			resp = response.Result()
 			defer resp.Body.Close()

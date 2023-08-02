@@ -43,6 +43,7 @@ import (
 	"github.com/sigstore/cosign/v2/cmd/cosign/cli/generate"
 	"github.com/sigstore/cosign/v2/cmd/cosign/cli/options"
 	"github.com/sigstore/cosign/v2/cmd/cosign/cli/sign"
+	"golang.org/x/crypto/bcrypt"
 	"gopkg.in/resty.v1"
 	"oras.land/oras-go/v2/registry"
 	"oras.land/oras-go/v2/registry/remote"
@@ -124,6 +125,17 @@ func MakeHtpasswdFile() string {
 	content := "test:$2y$05$hlbSXDp6hzDLu6VwACS39ORvVRpr3OMR4RlJ31jtlaOEGnPjKZI1m\n"
 
 	return MakeHtpasswdFileFromString(content)
+}
+
+func GetCredString(username, password string) string {
+	hash, err := bcrypt.GenerateFromPassword([]byte(password), 10)
+	if err != nil {
+		panic(err)
+	}
+
+	usernameAndHash := fmt.Sprintf("%s:%s", username, string(hash))
+
+	return usernameAndHash
 }
 
 func MakeHtpasswdFileFromString(fileContent string) string {

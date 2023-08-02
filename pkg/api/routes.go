@@ -19,9 +19,12 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
+	guuid "github.com/gofrs/uuid"
 	"github.com/google/go-github/v52/github"
 	"github.com/gorilla/mux"
+	jsoniter "github.com/json-iterator/go"
 	"github.com/opencontainers/distribution-spec/specs-go/v1/extensions"
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
@@ -40,6 +43,7 @@ import (
 	syncConstants "zotregistry.io/zot/pkg/extensions/sync/constants"
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/meta"
+	mTypes "zotregistry.io/zot/pkg/meta/types"
 	zreg "zotregistry.io/zot/pkg/regexp"
 	localCtx "zotregistry.io/zot/pkg/requestcontext"
 	storageCommon "zotregistry.io/zot/pkg/storage/common"
@@ -78,6 +82,19 @@ func (rh *RouteHandler) SetupRoutes() {
 					rp.CodeExchangeHandler(rp.UserinfoCallback(rh.OpenIDCodeExchangeCallback()), relyingParty))
 			}
 		}
+	}
+
+	if rh.c.Config.IsAPIKeyEnabled() {
+		// enable api key management urls
+		apiKeyRouter := rh.c.Router.PathPrefix(constants.APIKeyPath).Subrouter()
+		apiKeyRouter.Use(authHandler)
+		apiKeyRouter.Use(BaseAuthzHandler(rh.c))
+		apiKeyRouter.Use(zcommon.ACHeadersMiddleware(rh.c.Config,
+			http.MethodPost, http.MethodDelete, http.MethodOptions))
+		apiKeyRouter.Use(zcommon.CORSHeadersMiddleware(rh.c.Config.HTTP.AllowOrigin))
+
+		apiKeyRouter.Methods(http.MethodPost, http.MethodOptions).HandlerFunc(rh.CreateAPIKey)
+		apiKeyRouter.Methods(http.MethodDelete).HandlerFunc(rh.RevokeAPIKey)
 	}
 
 	/* on every route which may be used by UI we set OPTIONS as allowed METHOD
@@ -157,58 +174,39 @@ func (rh *RouteHandler) SetupRoutes() {
 
 	// swagger
 	debug.SetupSwaggerRoutes(rh.c.Config, rh.c.Router, authHandler, rh.c.Log)
+	// gql playground
+	gqlPlayground.SetupGQLPlaygroundRoutes(prefixedRouter, rh.c.StoreController, rh.c.Log)
 
-	// Setup Extensions Routes
+	// setup extension routes
 	if rh.c.Config != nil {
+		// This logic needs to be reviewed, it should depend on build options
+		// not the general presence of the extensions in config
 		if rh.c.Config.Extensions == nil {
 			// minimal build
 			prefixedRouter.HandleFunc("/metrics", rh.GetMetrics).Methods("GET")
 		} else {
 			// extended build
-			prefixedExtensionsRouter := prefixedRouter.PathPrefix(constants.ExtPrefix).Subrouter()
-			prefixedExtensionsRouter.Use(CORSHeadersMiddleware(rh.c.Config.HTTP.AllowOrigin))
-
-			ext.SetupMgmtRoutes(rh.c.Config, prefixedExtensionsRouter, rh.c.Log)
-			ext.SetupSearchRoutes(rh.c.Config, prefixedExtensionsRouter, rh.c.StoreController, rh.c.MetaDB, rh.c.CveInfo,
-				rh.c.Log)
-			ext.SetupUserPreferencesRoutes(rh.c.Config, prefixedExtensionsRouter, rh.c.StoreController, rh.c.MetaDB,
-				rh.c.CveInfo, rh.c.Log)
-			ext.SetupAPIKeyRoutes(rh.c.Config, prefixedExtensionsRouter, rh.c.MetaDB, rh.c.CookieStore, rh.c.Log)
-			ext.SetupMetricsRoutes(rh.c.Config, rh.c.Router, rh.c.StoreController, authHandler, rh.c.Log)
-
-			gqlPlayground.SetupGQLPlaygroundRoutes(rh.c.Config, prefixedRouter, rh.c.StoreController, rh.c.Log)
-
-			// last should always be UI because it will setup a http.FileServer and paths will be resolved by this FileServer.
-			ext.SetupUIRoutes(rh.c.Config, rh.c.Router, rh.c.StoreController, rh.c.Log)
+			ext.SetupMetricsRoutes(rh.c.Config, rh.c.Router, authHandler, rh.c.Log)
 		}
 	}
-}
 
-func CORSHeadersMiddleware(allowOrigin string) mux.MiddlewareFunc {
-	return func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
-			addCORSHeaders(allowOrigin, response)
-
-			next.ServeHTTP(response, request)
-		})
-	}
+	// Preconditions for enabling the actual extension routes are part of extensions themselves
+	ext.SetupSearchRoutes(rh.c.Config, prefixedRouter, rh.c.StoreController, rh.c.MetaDB, rh.c.CveInfo,
+		rh.c.Log)
+	ext.SetupImageTrustRoutes(rh.c.Config, prefixedRouter, rh.c.Log)
+	ext.SetupMgmtRoutes(rh.c.Config, prefixedRouter, rh.c.Log)
+	ext.SetupUserPreferencesRoutes(rh.c.Config, prefixedRouter, rh.c.MetaDB, rh.c.Log)
+	// last should always be UI because it will setup a http.FileServer and paths will be resolved by this FileServer.
+	ext.SetupUIRoutes(rh.c.Config, rh.c.Router, rh.c.Log)
 }
 
 func getCORSHeadersHandler(allowOrigin string) func(http.HandlerFunc) http.HandlerFunc {
 	return func(next http.HandlerFunc) http.HandlerFunc {
 		return http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
-			addCORSHeaders(allowOrigin, response)
+			zcommon.AddCORSHeaders(allowOrigin, response)
 
 			next.ServeHTTP(response, request)
 		})
-	}
-}
-
-func addCORSHeaders(allowOrigin string, response http.ResponseWriter) {
-	if allowOrigin == "" {
-		response.Header().Set("Access-Control-Allow-Origin", "*")
-	} else {
-		response.Header().Set("Access-Control-Allow-Origin", allowOrigin)
 	}
 }
 
@@ -1980,6 +1978,123 @@ func (rh *RouteHandler) GetOrasReferrers(response http.ResponseWriter, request *
 	zcommon.WriteJSON(response, http.StatusOK, rs)
 }
 
+type APIKeyPayload struct { //nolint:revive
+	Label  string   `json:"label"`
+	Scopes []string `json:"scopes"`
+}
+
+// CreateAPIKey godoc
+// @Summary Create an API key for the current user
+// @Description Can create an api key for a logged in user, based on the provided label and scopes.
+// @Accept  json
+// @Produce json
+// @Param   id  body  APIKeyPayload  true  "api token id (UUID)"
+// @Success 201 {string} string "created"
+// @Failure 400 {string} string "bad request"
+// @Failure 401 {string} string "unauthorized"
+// @Failure 500 {string} string "internal server error"
+// @Router /auth/apikey  [post].
+func (rh *RouteHandler) CreateAPIKey(resp http.ResponseWriter, req *http.Request) {
+	var payload APIKeyPayload
+
+	body, err := io.ReadAll(req.Body)
+	if err != nil {
+		rh.c.Log.Error().Msg("unable to read request body")
+		resp.WriteHeader(http.StatusInternalServerError)
+
+		return
+	}
+
+	err = json.Unmarshal(body, &payload)
+	if err != nil {
+		resp.WriteHeader(http.StatusBadRequest)
+
+		return
+	}
+
+	apiKey, apiKeyID, err := GenerateAPIKey(guuid.DefaultGenerator, rh.c.Log)
+	if err != nil {
+		resp.WriteHeader(http.StatusInternalServerError)
+
+		return
+	}
+
+	hashedAPIKey := hashUUID(apiKey)
+
+	apiKeyDetails := &mTypes.APIKeyDetails{
+		CreatedAt:   time.Now(),
+		LastUsed:    time.Now(),
+		CreatorUA:   req.UserAgent(),
+		GeneratedBy: "manual",
+		Label:       payload.Label,
+		Scopes:      payload.Scopes,
+		UUID:        apiKeyID,
+	}
+
+	err = rh.c.MetaDB.AddUserAPIKey(req.Context(), hashedAPIKey, apiKeyDetails)
+	if err != nil {
+		rh.c.Log.Error().Err(err).Msg("error storing API key")
+		resp.WriteHeader(http.StatusInternalServerError)
+
+		return
+	}
+
+	apiKeyResponse := struct {
+		mTypes.APIKeyDetails
+		APIKey string `json:"apiKey"`
+	}{
+		APIKey:        fmt.Sprintf("%s%s", constants.APIKeysPrefix, apiKey),
+		APIKeyDetails: *apiKeyDetails,
+	}
+
+	json := jsoniter.ConfigCompatibleWithStandardLibrary
+
+	data, err := json.Marshal(apiKeyResponse)
+	if err != nil {
+		rh.c.Log.Error().Err(err).Msg("unable to marshal api key response")
+
+		resp.WriteHeader(http.StatusInternalServerError)
+
+		return
+	}
+
+	resp.Header().Set("Content-Type", constants.DefaultMediaType)
+	resp.WriteHeader(http.StatusCreated)
+	_, _ = resp.Write(data)
+}
+
+// RevokeAPIKey godoc
+// @Summary Revokes one current user API key
+// @Description Revokes one current user API key based on given key ID
+// @Accept  json
+// @Produce json
+// @Param   id  query  string   true   "api token id (UUID)"
+// @Success 200 {string} string "ok"
+// @Failure 500 {string} string "internal server error"
+// @Failure 401 {string} string "unauthorized"
+// @Failure 400 {string} string "bad request"
+// @Router /auth/apikey [delete].
+func (rh *RouteHandler) RevokeAPIKey(resp http.ResponseWriter, req *http.Request) {
+	ids, ok := req.URL.Query()["id"]
+	if !ok || len(ids) != 1 {
+		resp.WriteHeader(http.StatusBadRequest)
+
+		return
+	}
+
+	keyID := ids[0]
+
+	err := rh.c.MetaDB.DeleteUserAPIKey(req.Context(), keyID)
+	if err != nil {
+		rh.c.Log.Error().Err(err).Str("keyID", keyID).Msg("error deleting API key")
+		resp.WriteHeader(http.StatusInternalServerError)
+
+		return
+	}
+
+	resp.WriteHeader(http.StatusOK)
+}
+
 // GetBlobUploadSessionLocation returns actual blob location to start/resume uploading blobs.
 // e.g. /v2/<name>/blobs/uploads/<session-id>.
 func getBlobUploadSessionLocation(url *url.URL, sessionID string) string {
@@ -2009,9 +2124,7 @@ func getBlobUploadLocation(url *url.URL, name string, digest godigest.Digest) st
 }
 
 func isSyncOnDemandEnabled(ctlr Controller) bool {
-	if ctlr.Config.Extensions != nil &&
-		ctlr.Config.Extensions.Sync != nil &&
-		*ctlr.Config.Extensions.Sync.Enable &&
+	if ctlr.Config.IsSyncEnabled() &&
 		fmt.Sprintf("%v", ctlr.SyncOnDemand) != fmt.Sprintf("%v", nil) {
 		return true
 	}

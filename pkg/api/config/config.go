@@ -50,6 +50,7 @@ type AuthConfig struct {
 	LDAP      *LDAPConfig
 	Bearer    *BearerConfig
 	OpenID    *OpenIDConfig
+	APIKey    bool
 }
 
 type BearerConfig struct {
@@ -274,8 +275,7 @@ func (c *Config) IsOpenIDAuthEnabled() bool {
 }
 
 func (c *Config) IsAPIKeyEnabled() bool {
-	if c.Extensions != nil && c.Extensions.APIKey != nil &&
-		*c.Extensions.APIKey.Enable {
+	if c.HTTP.Auth != nil && c.HTTP.Auth.APIKey {
 		return true
 	}
 
@@ -306,6 +306,38 @@ func isOpenIDAuthProviderEnabled(config *Config, provider string) bool {
 	}
 
 	return false
+}
+
+func (c *Config) IsSearchEnabled() bool {
+	return c.Extensions != nil && c.Extensions.Search != nil && *c.Extensions.Search.Enable
+}
+
+func (c *Config) IsUIEnabled() bool {
+	return c.Extensions != nil && c.Extensions.UI != nil && *c.Extensions.UI.Enable
+}
+
+func (c *Config) AreUserPrefsEnabled() bool {
+	return c.IsSearchEnabled() && c.IsUIEnabled()
+}
+
+func (c *Config) IsMgmtEnabled() bool {
+	return c.IsSearchEnabled() && c.IsUIEnabled()
+}
+
+func (c *Config) IsImageTrustEnabled() bool {
+	return c.Extensions != nil && c.Extensions.Trust != nil && *c.Extensions.Trust.Enable
+}
+
+func (c *Config) IsCosignEnabled() bool {
+	return c.IsImageTrustEnabled() && c.Extensions.Trust.Cosign
+}
+
+func (c *Config) IsNotationEnabled() bool {
+	return c.IsImageTrustEnabled() && c.Extensions.Trust.Notation
+}
+
+func (c *Config) IsSyncEnabled() bool {
+	return c.Extensions != nil && c.Extensions.Sync != nil && *c.Extensions.Sync.Enable
 }
 
 func IsOpenIDSupported(provider string) bool {

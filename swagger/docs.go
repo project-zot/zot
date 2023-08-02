@@ -20,6 +20,126 @@ const docTemplate = `{
     "host": "{{.Host}}",
     "basePath": "{{.BasePath}}",
     "paths": {
+        "/auth/apikey": {
+            "post": {
+                "description": "Can create an api key for a logged in user, based on the provided label and scopes.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "summary": "Create an API key for the current user",
+                "parameters": [
+                    {
+                        "description": "api token id (UUID)",
+                        "name": "id",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/api.APIKeyPayload"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "created",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "400": {
+                        "description": "bad request",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "401": {
+                        "description": "unauthorized",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "internal server error",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "description": "Revokes one current user API key based on given key ID",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "summary": "Revokes one current user API key",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "api token id (UUID)",
+                        "name": "id",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "ok",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "400": {
+                        "description": "bad request",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "401": {
+                        "description": "unauthorized",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "internal server error",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/auth/logout": {
+            "post": {
+                "description": "Logout by removing current session",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "summary": "Logout by removing current session",
+                "responses": {
+                    "200": {
+                        "description": "ok\".",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "internal server error\".",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
         "/oras/artifacts/v1/{name}/manifests/{digest}/referrers": {
             "get": {
                 "description": "Get references for an image given a digest and artifact type",
@@ -141,6 +261,49 @@ const docTemplate = `{
                 }
             }
         },
+        "/v2/_zot/ext/cosign": {
+            "post": {
+                "description": "Upload cosign public keys for verifying signatures",
+                "consumes": [
+                    "application/octet-stream"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "summary": "Upload cosign public keys for verifying signatures",
+                "parameters": [
+                    {
+                        "description": "Public key content",
+                        "name": "requestBody",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "ok",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "400": {
+                        "description": "bad request\".",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "internal server error\".",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
         "/v2/_zot/ext/mgmt": {
             "get": {
                 "description": "Get current server configuration",
@@ -176,38 +339,19 @@ const docTemplate = `{
                         }
                     }
                 }
-            },
+            }
+        },
+        "/v2/_zot/ext/notation": {
             "post": {
-                "description": "Upload certificates and public keys for verifying signatures",
+                "description": "Upload notation certificates for verifying signatures",
                 "consumes": [
                     "application/octet-stream"
                 ],
                 "produces": [
                     "application/json"
                 ],
-                "summary": "Upload certificates and public keys for verifying signatures",
+                "summary": "Upload notation certificates for verifying signatures",
                 "parameters": [
-                    {
-                        "enum": [
-                            "signatures"
-                        ],
-                        "type": "string",
-                        "description": "specify resource",
-                        "name": "resource",
-                        "in": "query",
-                        "required": true
-                    },
-                    {
-                        "enum": [
-                            "cosign",
-                            "notation"
-                        ],
-                        "type": "string",
-                        "description": "specify signing tool",
-                        "name": "tool",
-                        "in": "query",
-                        "required": true
-                    },
                     {
                         "type": "string",
                         "description": "truststore type",
@@ -221,7 +365,7 @@ const docTemplate = `{
                         "in": "query"
                     },
                     {
-                        "description": "Public key or Certificate content",
+                        "description": "Certificate content",
                         "name": "requestBody",
                         "in": "body",
                         "required": true,
@@ -992,6 +1136,20 @@ const docTemplate = `{
         }
     },
     "definitions": {
+        "api.APIKeyPayload": {
+            "type": "object",
+            "properties": {
+                "label": {
+                    "type": "string"
+                },
+                "scopes": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
         "api.ExtensionList": {
             "type": "object",
             "properties": {
@@ -1013,6 +1171,10 @@ const docTemplate = `{
                         "type": "string"
                     }
                 },
+                "artifactType": {
+                    "description": "ArtifactType specifies the IANA media type of artifact when the manifest is used for an artifact.",
+                    "type": "string"
+                },
                 "manifests": {
                     "description": "Manifests references platform specific manifests.",
                     "type": "array",
@@ -1027,6 +1189,14 @@ const docTemplate = `{
                 "schemaVersion": {
                     "description": "SchemaVersion is the image manifest schema that this image follows",
                     "type": "integer"
+                },
+                "subject": {
+                    "description": "Subject is an optional link from the image manifest to another manifest forming an association between the image manifest and the other manifest.",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/github_com_opencontainers_image-spec_specs-go_v1.Descriptor"
+                        }
+                    ]
                 }
             }
         },
@@ -1118,6 +1288,9 @@ const docTemplate = `{
                             "type": "string"
                         }
                     }
+                },
+                "openid": {
+                    "$ref": "#/definitions/extensions.OpenIDConfig"
                 }
             }
         },
@@ -1159,6 +1332,20 @@ const docTemplate = `{
                     "type": "string"
                 }
             }
+        },
+        "extensions.OpenIDConfig": {
+            "type": "object",
+            "properties": {
+                "providers": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "$ref": "#/definitions/extensions.OpenIDProviderConfig"
+                    }
+                }
+            }
+        },
+        "extensions.OpenIDProviderConfig": {
+            "type": "object"
         },
         "extensions.StrippedConfig": {
             "type": "object",

@@ -36,11 +36,13 @@ func TestAllowedMethodsHeaderUserPrefs(t *testing.T) {
 		conf := config.New()
 		port := test.GetFreePort()
 		conf.HTTP.Port = port
-		conf.Extensions = &extconf.ExtensionConfig{
-			Search: &extconf.SearchConfig{
-				BaseConfig: extconf.BaseConfig{Enable: &defaultVal},
-			},
-		}
+		conf.Extensions = &extconf.ExtensionConfig{}
+		conf.Extensions.Search = &extconf.SearchConfig{}
+		conf.Extensions.Search.Enable = &defaultVal
+		conf.Extensions.Search.CVE = nil
+		conf.Extensions.UI = &extconf.UIConfig{}
+		conf.Extensions.UI.Enable = &defaultVal
+
 		baseURL := test.GetBaseURL(port)
 
 		ctlr := api.NewController(conf)
@@ -51,7 +53,7 @@ func TestAllowedMethodsHeaderUserPrefs(t *testing.T) {
 		ctrlManager.StartAndWait(port)
 		defer ctrlManager.StopServer()
 
-		resp, _ := resty.R().Options(baseURL + constants.FullUserPreferencesPrefix)
+		resp, _ := resty.R().Options(baseURL + constants.FullUserPrefs)
 		So(resp, ShouldNotBeNil)
 		So(resp.Header().Get("Access-Control-Allow-Methods"), ShouldResemble, "PUT,OPTIONS")
 		So(resp.StatusCode(), ShouldEqual, http.StatusNoContent)

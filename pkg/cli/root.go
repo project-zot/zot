@@ -313,13 +313,18 @@ func validateCacheConfig(cfg *config.Config) error {
 }
 
 func validateExtensionsConfig(cfg *config.Config) error {
+	if cfg.Extensions != nil && cfg.Extensions.Mgmt != nil {
+		log.Warn().Msg("The mgmt extensions configuration option has been made redundant and will be ignored.")
+	}
+
+	if cfg.Extensions != nil && cfg.Extensions.APIKey != nil {
+		log.Warn().Msg("The apikey extension configuration will be ignored as API keys " +
+			"are now configurable in the HTTP settings.")
+	}
+
 	if cfg.Extensions != nil && cfg.Extensions.UI != nil && cfg.Extensions.UI.Enable != nil && *cfg.Extensions.UI.Enable {
-		if cfg.Extensions.Mgmt == nil || !*cfg.Extensions.Mgmt.Enable {
-			log.Warn().Err(errors.ErrBadConfig).Msg("UI functionality can't be used without mgmt extension.")
-
-			return errors.ErrBadConfig
-		}
-
+		// it would make sense to also check for mgmt and user prefs to be enabled,
+		// but those are both enabled by having the search and ui extensions enabled
 		if cfg.Extensions.Search == nil || !*cfg.Extensions.Search.Enable {
 			log.Warn().Err(errors.ErrBadConfig).Msg("UI functionality can't be used without search extension.")
 
@@ -513,18 +518,18 @@ func applyDefaultValues(config *config.Config, viperInstance *viper.Viper) {
 			config.Extensions.Scrub = &extconf.ScrubConfig{}
 		}
 
-		_, ok = extMap["mgmt"]
+		_, ok = extMap["trust"]
 		if ok {
-			// we found a config like `"extensions": {"mgmt:": {}}`
-			// Note: In case mgmt is not empty the config.Extensions will not be nil and we will not reach here
-			config.Extensions.Mgmt = &extconf.MgmtConfig{}
+			// we found a config like `"extensions": {"trust:": {}}`
+			// Note: In case trust is not empty the config.Extensions will not be nil and we will not reach here
+			config.Extensions.Trust = &extconf.ImageTrustConfig{}
 		}
 
-		_, ok = extMap["apikey"]
+		_, ok = extMap["ui"]
 		if ok {
-			// we found a config like `"extensions": {"mgmt:": {}}`
-			// Note: In case mgmt is not empty the config.Extensions will not be nil and we will not reach here
-			config.Extensions.APIKey = &extconf.APIKeyConfig{}
+			// we found a config like `"extensions": {"ui:": {}}`
+			// Note: In case UI is not empty the config.Extensions will not be nil and we will not reach here
+			config.Extensions.UI = &extconf.UIConfig{}
 		}
 	}
 
@@ -586,18 +591,6 @@ func applyDefaultValues(config *config.Config, viperInstance *viper.Viper) {
 			}
 		}
 
-		if config.Extensions.Mgmt != nil {
-			if config.Extensions.Mgmt.Enable == nil {
-				config.Extensions.Mgmt.Enable = &defaultVal
-			}
-		}
-
-		if config.Extensions.APIKey != nil {
-			if config.Extensions.APIKey.Enable == nil {
-				config.Extensions.APIKey.Enable = &defaultVal
-			}
-		}
-
 		if config.Extensions.Scrub != nil {
 			if config.Extensions.Scrub.Enable == nil {
 				config.Extensions.Scrub.Enable = &defaultVal
@@ -605,6 +598,18 @@ func applyDefaultValues(config *config.Config, viperInstance *viper.Viper) {
 
 			if config.Extensions.Scrub.Interval == 0 {
 				config.Extensions.Scrub.Interval = 24 * time.Hour //nolint: gomnd
+			}
+		}
+
+		if config.Extensions.UI != nil {
+			if config.Extensions.UI.Enable == nil {
+				config.Extensions.UI.Enable = &defaultVal
+			}
+		}
+
+		if config.Extensions.Trust != nil {
+			if config.Extensions.Trust.Enable == nil {
+				config.Extensions.Trust.Enable = &defaultVal
 			}
 		}
 	}
@@ -662,6 +667,12 @@ func applyDefaultValues(config *config.Config, viperInstance *viper.Viper) {
 			storageConfig.GCDelay = storageConstants.DefaultGCDelay
 			config.Storage.SubPaths[name] = storageConfig
 		}
+	}
+
+	// if OpenID authentication is enabled,
+	// API Keys are also enabled in order to provide data path authentication
+	if config.HTTP.Auth != nil && config.HTTP.Auth.OpenID != nil {
+		config.HTTP.Auth.APIKey = true
 	}
 }
 

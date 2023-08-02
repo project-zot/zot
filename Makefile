@@ -32,8 +32,8 @@ TESTDATA := $(TOP_LEVEL)/test/data
 OS ?= linux
 ARCH ?= amd64
 BENCH_OUTPUT ?= stdout
-EXTENSIONS ?= sync,search,scrub,metrics,lint,ui,mgmt,userprefs,apikey
-UI_DEPENDENCIES := search,mgmt,userprefs,apikey
+EXTENSIONS ?= sync,search,scrub,metrics,lint,ui,mgmt,userprefs,imagetrust
+UI_DEPENDENCIES := search,mgmt,userprefs
 # freebsd/arm64 not supported for pie builds
 BUILDMODE_FLAGS := -buildmode=pie
 ifeq ($(OS),freebsd)

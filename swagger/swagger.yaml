@@ -1,4 +1,13 @@
 definitions:
+  api.APIKeyPayload:
+    properties:
+      label:
+        type: string
+      scopes:
+        items:
+          type: string
+        type: array
+    type: object
   api.ExtensionList:
     properties:
       extensions:
@@ -13,6 +22,10 @@ definitions:
           type: string
         description: Annotations contains arbitrary metadata for the image index.
         type: object
+      artifactType:
+        description: ArtifactType specifies the IANA media type of artifact when the
+          manifest is used for an artifact.
+        type: string
       manifests:
         description: Manifests references platform specific manifests.
         items:
@@ -25,6 +38,12 @@ definitions:
       schemaVersion:
         description: SchemaVersion is the image manifest schema that this image follows
         type: integer
+      subject:
+        allOf:
+        - $ref: '#/definitions/github_com_opencontainers_image-spec_specs-go_v1.Descriptor'
+        description: Subject is an optional link from the image manifest to another
+          manifest forming an association between the image manifest and the other
+          manifest.
     type: object
   api.ImageManifest:
     properties:
@@ -89,6 +108,8 @@ definitions:
           address:
             type: string
         type: object
+      openid:
+        $ref: '#/definitions/extensions.OpenIDConfig'
     type: object
   extensions.BearerConfig:
     properties:
@@ -114,6 +135,15 @@ definitions:
     properties:
       path:
         type: string
+    type: object
+  extensions.OpenIDConfig:
+    properties:
+      providers:
+        additionalProperties:
+          $ref: '#/definitions/extensions.OpenIDProviderConfig'
+        type: object
+    type: object
+  extensions.OpenIDProviderConfig:
     type: object
   extensions.StrippedConfig:
     properties:
@@ -206,6 +236,86 @@ info:
   title: Open Container Initiative Distribution Specification
   version: v1.1.0-dev
 paths:
+  /auth/apikey:
+    delete:
+      consumes:
+      - application/json
+      description: Revokes one current user API key based on given key ID
+      parameters:
+      - description: api token id (UUID)
+        in: query
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: ok
+          schema:
+            type: string
+        "400":
+          description: bad request
+          schema:
+            type: string
+        "401":
+          description: unauthorized
+          schema:
+            type: string
+        "500":
+          description: internal server error
+          schema:
+            type: string
+      summary: Revokes one current user API key
+    post:
+      consumes:
+      - application/json
+      description: Can create an api key for a logged in user, based on the provided
+        label and scopes.
+      parameters:
+      - description: api token id (UUID)
+        in: body
+        name: id
+        required: true
+        schema:
+          $ref: '#/definitions/api.APIKeyPayload'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: created
+          schema:
+            type: string
+        "400":
+          description: bad request
+          schema:
+            type: string
+        "401":
+          description: unauthorized
+          schema:
+            type: string
+        "500":
+          description: internal server error
+          schema:
+            type: string
+      summary: Create an API key for the current user
+  /auth/logout:
+    post:
+      consumes:
+      - application/json
+      description: Logout by removing current session
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: ok".
+          schema:
+            type: string
+        "500":
+          description: internal server error".
+          schema:
+            type: string
+      summary: Logout by removing current session
   /oras/artifacts/v1/{name}/manifests/{digest}/referrers:
     get:
       consumes:
@@ -286,6 +396,34 @@ paths:
           schema:
             $ref: '#/definitions/api.ExtensionList'
       summary: List Registry level extensions
+  /v2/_zot/ext/cosign:
+    post:
+      consumes:
+      - application/octet-stream
+      description: Upload cosign public keys for verifying signatures
+      parameters:
+      - description: Public key content
+        in: body
+        name: requestBody
+        required: true
+        schema:
+          type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: ok
+          schema:
+            type: string
+        "400":
+          description: bad request".
+          schema:
+            type: string
+        "500":
+          description: internal server error".
+          schema:
+            type: string
+      summary: Upload cosign public keys for verifying signatures
   /v2/_zot/ext/mgmt:
     get:
       consumes:
@@ -310,26 +448,12 @@ paths:
           schema:
             type: string
       summary: Get current server configuration
+  /v2/_zot/ext/notation:
     post:
       consumes:
       - application/octet-stream
-      description: Upload certificates and public keys for verifying signatures
+      description: Upload notation certificates for verifying signatures
       parameters:
-      - description: specify resource
-        enum:
-        - signatures
-        in: query
-        name: resource
-        required: true
-        type: string
-      - description: specify signing tool
-        enum:
-        - cosign
-        - notation
-        in: query
-        name: tool
-        required: true
-        type: string
       - description: truststore type
         in: query
         name: truststoreType
@@ -338,7 +462,7 @@ paths:
         in: query
         name: truststoreName
         type: string
-      - description: Public key or Certificate content
+      - description: Certificate content
         in: body
         name: requestBody
         required: true
@@ -359,7 +483,7 @@ paths:
           description: internal server error".
           schema:
             type: string
-      summary: Upload certificates and public keys for verifying signatures
+      summary: Upload notation certificates for verifying signatures
   /v2/_zot/ext/userprefs:
     put:
       consumes:

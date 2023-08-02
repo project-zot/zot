@@ -30,3 +30,4 @@ tags
 vendor/
 .vscode/
 examples/config-sync-localhost.json
+node_modules

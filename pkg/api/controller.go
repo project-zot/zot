@@ -258,9 +258,8 @@ func (c *Controller) InitImageStore() error {
 }
 
 func (c *Controller) InitMetaDB(reloadCtx context.Context) error {
-	// init metaDB if search is enabled or authn enabled (need to store user profiles) or apikey ext is enabled
-	if (c.Config.Extensions != nil && c.Config.Extensions.Search != nil && *c.Config.Extensions.Search.Enable) ||
-		c.Config.IsBasicAuthnEnabled() {
+	// init metaDB if search is enabled or we need to store user profiles, api keys or signatures
+	if c.Config.IsSearchEnabled() || c.Config.IsBasicAuthnEnabled() || c.Config.IsImageTrustEnabled() {
 		driver, err := meta.New(c.Config.Storage.StorageConfig, c.Log) //nolint:contextcheck
 		if err != nil {
 			return err
@@ -368,11 +367,8 @@ func (c *Controller) StartBackgroundTasks(reloadCtx context.Context) {
 		c.SyncOnDemand = syncOnDemand
 	}
 
-	if c.Config.Extensions != nil {
-		if c.Config.Extensions.Mgmt != nil && *c.Config.Extensions.Mgmt.Enable {
-			ext.EnablePeriodicSignaturesVerification(c.Config, taskScheduler, c.MetaDB, c.Log) //nolint: contextcheck
-		}
-	}
+	// we can later move enabling the other scheduled tasks inside the call below
+	ext.EnableScheduledTasks(c.Config, taskScheduler, c.MetaDB, c.Log) //nolint: contextcheck
 }
 
 type SyncOnDemand interface {

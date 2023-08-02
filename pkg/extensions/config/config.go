@@ -20,6 +20,13 @@ type ExtensionConfig struct {
 	UI      *UIConfig
 	Mgmt    *MgmtConfig
 	APIKey  *APIKeyConfig
+	Trust   *ImageTrustConfig
+}
+
+type ImageTrustConfig struct {
+	BaseConfig `mapstructure:",squash"`
+	Cosign     bool
+	Notation   bool
 }
 
 type APIKeyConfig struct {

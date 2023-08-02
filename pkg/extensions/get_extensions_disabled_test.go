@@ -28,18 +28,12 @@ func TestGetExensionsDisabled(t *testing.T) {
 
 		defaultVal := true
 
-		searchConfig := &extconf.SearchConfig{
-			BaseConfig: extconf.BaseConfig{Enable: &defaultVal},
-		}
-
-		mgmtConfg := &extconf.MgmtConfig{
-			BaseConfig: extconf.BaseConfig{Enable: &defaultVal},
-		}
-
-		conf.Extensions = &extconf.ExtensionConfig{
-			Search: searchConfig,
-			Mgmt:   mgmtConfg,
-		}
+		conf.Extensions = &extconf.ExtensionConfig{}
+		conf.Extensions.Search = &extconf.SearchConfig{}
+		conf.Extensions.Search.Enable = &defaultVal
+		conf.Extensions.Search.CVE = nil
+		conf.Extensions.UI = &extconf.UIConfig{}
+		conf.Extensions.UI.Enable = &defaultVal
 
 		logFile, err := os.CreateTemp("", "zot-log*.txt")
 		So(err, ShouldBeNil)

@@ -10,7 +10,6 @@ import (
 
 	"github.com/gorilla/mux"
 
-	"zotregistry.io/zot/pkg/api/config"
 	"zotregistry.io/zot/pkg/api/constants"
 	debugCst "zotregistry.io/zot/pkg/debug/constants"
 	"zotregistry.io/zot/pkg/log"
@@ -21,7 +20,7 @@ import (
 var playgroundHTML embed.FS
 
 // SetupGQLPlaygroundRoutes ...
-func SetupGQLPlaygroundRoutes(conf *config.Config, router *mux.Router,
+func SetupGQLPlaygroundRoutes(router *mux.Router,
 	storeController storage.StoreController, l log.Logger,
 ) {
 	log := log.Logger{Logger: l.With().Caller().Timestamp().Logger()}

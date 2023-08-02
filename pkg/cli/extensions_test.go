@@ -1,14 +1,12 @@
-//go:build sync && scrub && metrics && search && apikey
-// +build sync,scrub,metrics,search,apikey
+//go:build sync && scrub && metrics && search && userprefs && mgmt && imagetrust
+// +build sync,scrub,metrics,search,userprefs,mgmt,imagetrust
 
 package cli_test
 
 import (
-	"context"
 	"fmt"
 	"net/http"
 	"os"
-	"strings"
 	"testing"
 	"time"
 
@@ -640,7 +638,7 @@ func TestServeSearchEnabled(t *testing.T) {
 
 		substring := `"Extensions":{"Search":{"Enable":true,"CVE":null}`
 
-		found, err := readLogFileAndSearchString(logPath, substring, readLogFileTimeout)
+		found, err := ReadLogFileAndSearchString(logPath, substring, readLogFileTimeout)
 
 		if !found {
 			data, err := os.ReadFile(logPath)
@@ -691,7 +689,7 @@ func TestServeSearchEnabledCVE(t *testing.T) {
 		substring := "\"Search\":{\"Enable\":true,\"CVE\":{\"UpdateInterval\":7200000000000,\"Trivy\":" +
 			"{\"DBRepository\":\"ghcr.io/aquasecurity/trivy-db\",\"JavaDBRepository\":\"ghcr.io/aquasecurity/trivy-java-db\"}}}"
 
-		found, err := readLogFileAndSearchString(logPath, substring, readLogFileTimeout)
+		found, err := ReadLogFileAndSearchString(logPath, substring, readLogFileTimeout)
 
 		defer func() {
 			if !found {
@@ -704,7 +702,7 @@ func TestServeSearchEnabledCVE(t *testing.T) {
 		So(found, ShouldBeTrue)
 		So(err, ShouldBeNil)
 
-		found, err = readLogFileAndSearchString(logPath, "updating the CVE database", readLogFileTimeout)
+		found, err = ReadLogFileAndSearchString(logPath, "updating the CVE database", readLogFileTimeout)
 		So(found, ShouldBeTrue)
 		So(err, ShouldBeNil)
 	})
@@ -741,7 +739,7 @@ func TestServeSearchEnabledNoCVE(t *testing.T) {
 		defer os.Remove(logPath) // clean up
 
 		substring := `"Extensions":{"Search":{"Enable":true,"CVE":null}` //nolint:lll // gofumpt conflicts with lll
-		found, err := readLogFileAndSearchString(logPath, substring, readLogFileTimeout)
+		found, err := ReadLogFileAndSearchString(logPath, substring, readLogFileTimeout)
 
 		if !found {
 			data, err := os.ReadFile(logPath)
@@ -815,20 +813,31 @@ func TestServeMgmtExtension(t *testing.T) {
 						"output": "%s"
 					},
 					"extensions": {
-						"Mgmt": {
+						"ui": {
+							"enable": true
+						},
+						"search": {
+							"enable": true
 						}
 					}
 				}`
 
 		logPath, err := runCLIWithConfig(t.TempDir(), content)
 		So(err, ShouldBeNil)
-		data, err := os.ReadFile(logPath)
-		So(err, ShouldBeNil)
 		defer os.Remove(logPath) // clean up
-		So(string(data), ShouldContainSubstring, "\"Mgmt\":{\"Enable\":true}")
+		found, err := ReadLogFileAndSearchString(logPath, "setting up mgmt routes", 10*time.Second)
+
+		if !found {
+			data, err := os.ReadFile(logPath)
+			So(err, ShouldBeNil)
+			t.Log(string(data))
+		}
+
+		So(err, ShouldBeNil)
+		So(found, ShouldBeTrue)
 	})
 
-	Convey("Mgmt disabled", t, func(c C) {
+	Convey("Mgmt disabled - UI unconfigured", t, func(c C) {
 		content := `{
 					"storage": {
 						"rootDirectory": "%s"
@@ -842,27 +851,66 @@ func TestServeMgmtExtension(t *testing.T) {
 						"output": "%s"
 					},
 					"extensions": {
-						"Mgmt": {
-							"enable": "false"
+						"search": {
+							"enable": true
 						}
 					}
 				}`
 
 		logPath, err := runCLIWithConfig(t.TempDir(), content)
 		So(err, ShouldBeNil)
-		data, err := os.ReadFile(logPath)
+		defer os.Remove(logPath) // clean up
+		found, err := ReadLogFileAndSearchString(logPath,
+			"skip enabling the mgmt route as the config prerequisites are not met", 10*time.Second)
+
+		if !found {
+			data, err := os.ReadFile(logPath)
+			So(err, ShouldBeNil)
+			t.Log(string(data))
+		}
+
+		So(err, ShouldBeNil)
+		So(found, ShouldBeTrue)
+	})
+
+	Convey("Mgmt disabled - extensions missing", t, func(c C) {
+		content := `{
+					"storage": {
+						"rootDirectory": "%s"
+					},
+					"http": {
+						"address": "127.0.0.1",
+						"port": "%s"
+					},
+					"log": {
+						"level": "debug",
+						"output": "%s"
+					}
+				}`
+
+		logPath, err := runCLIWithConfig(t.TempDir(), content)
 		So(err, ShouldBeNil)
 		defer os.Remove(logPath) // clean up
-		So(string(data), ShouldContainSubstring, "\"Mgmt\":{\"Enable\":false}")
+		found, err := ReadLogFileAndSearchString(logPath,
+			"skip enabling the mgmt route as the config prerequisites are not met", 10*time.Second)
+
+		if !found {
+			data, err := os.ReadFile(logPath)
+			So(err, ShouldBeNil)
+			t.Log(string(data))
+		}
+
+		So(err, ShouldBeNil)
+		So(found, ShouldBeTrue)
 	})
 }
 
-func TestServeAPIKeyExtension(t *testing.T) {
+func TestServeImageTrustExtension(t *testing.T) {
 	oldArgs := os.Args
 
 	defer func() { os.Args = oldArgs }()
 
-	Convey("apikey implicitly enabled", t, func(c C) {
+	Convey("Trust explicitly disabled", t, func(c C) {
 		content := `{
 					"storage": {
 						"rootDirectory": "%s"
@@ -876,20 +924,29 @@ func TestServeAPIKeyExtension(t *testing.T) {
 						"output": "%s"
 					},
 					"extensions": {
-						"apikey": {
+						"trust": {
+							"enable": false
 						}
 					}
 				}`
 
 		logPath, err := runCLIWithConfig(t.TempDir(), content)
 		So(err, ShouldBeNil)
-		data, err := os.ReadFile(logPath)
-		So(err, ShouldBeNil)
 		defer os.Remove(logPath) // clean up
-		So(string(data), ShouldContainSubstring, "\"APIKey\":{\"Enable\":true}")
+		found, err := ReadLogFileAndSearchString(logPath,
+			"skip enabling the image trust routes as the config prerequisites are not met", 10*time.Second)
+
+		if !found {
+			data, err := os.ReadFile(logPath)
+			So(err, ShouldBeNil)
+			t.Log(string(data))
+		}
+
+		So(err, ShouldBeNil)
+		So(found, ShouldBeTrue)
 	})
 
-	Convey("apikey disabled", t, func(c C) {
+	Convey("Trust explicitly enabled - but cosign and notation disabled", t, func(c C) {
 		content := `{
 					"storage": {
 						"rootDirectory": "%s"
@@ -903,79 +960,75 @@ func TestServeAPIKeyExtension(t *testing.T) {
 						"output": "%s"
 					},
 					"extensions": {
-						"apikey": {
-							"enable": "false"
+						"trust": {
+							"enable": true
 						}
 					}
 				}`
 
 		logPath, err := runCLIWithConfig(t.TempDir(), content)
 		So(err, ShouldBeNil)
-		data, err := os.ReadFile(logPath)
+		defer os.Remove(logPath) // clean up
+		found, err := ReadLogFileAndSearchString(logPath,
+			"skip enabling the image trust routes as the config prerequisites are not met", 10*time.Second)
+
+		if !found {
+			data, err := os.ReadFile(logPath)
+			So(err, ShouldBeNil)
+			t.Log(string(data))
+		}
+
+		So(err, ShouldBeNil)
+		So(found, ShouldBeTrue)
+	})
+
+	Convey("Trust explicitly enabled -  cosign and notation enabled", t, func(c C) {
+		content := `{
+					"storage": {
+						"rootDirectory": "%s"
+					},
+					"http": {
+						"address": "127.0.0.1",
+						"port": "%s"
+					},
+					"log": {
+						"level": "debug",
+						"output": "%s"
+					},
+					"extensions": {
+						"trust": {
+							"enable": true,
+							"cosign": true,
+							"notation": true
+						}
+					}
+				}`
+
+		logPath, err := runCLIWithConfig(t.TempDir(), content)
 		So(err, ShouldBeNil)
 		defer os.Remove(logPath) // clean up
-		So(string(data), ShouldContainSubstring, "\"APIKey\":{\"Enable\":false}")
+		found, err := ReadLogFileAndSearchString(logPath,
+			"setting up image trust routes", 10*time.Second)
+
+		defer func() {
+			if !found {
+				data, err := os.ReadFile(logPath)
+				So(err, ShouldBeNil)
+				t.Log(string(data))
+			}
+		}()
+
+		So(err, ShouldBeNil)
+		So(found, ShouldBeTrue)
+
+		found, err = ReadLogFileAndSearchString(logPath,
+			"setting up notation route", 10*time.Second)
+		So(err, ShouldBeNil)
+		So(found, ShouldBeTrue)
+
+		found, err = ReadLogFileAndSearchString(logPath,
+			"setting up cosign route", 10*time.Second)
+		So(err, ShouldBeNil)
+		So(found, ShouldBeTrue)
 	})
-}
-
-func readLogFileAndSearchString(logPath string, stringToMatch string, timeout time.Duration) (bool, error) { //nolint:unparam,lll
-	ctx, cancelFunc := context.WithTimeout(context.Background(), timeout)
-	defer cancelFunc()
-
-	for {
-		select {
-		case <-ctx.Done():
-			return false, nil
-		default:
-			content, err := os.ReadFile(logPath)
-			if err != nil {
-				return false, err
-			}
-
-			if strings.Contains(string(content), stringToMatch) {
-				return true, nil
-			}
-		}
-	}
-}
-
-// run cli and return output.
-func runCLIWithConfig(tempDir string, config string) (string, error) {
-	port := GetFreePort()
-	baseURL := GetBaseURL(port)
-
-	logFile, err := os.CreateTemp(tempDir, "zot-log*.txt")
-	if err != nil {
-		return "", err
-	}
-
-	cfgfile, err := os.CreateTemp(tempDir, "zot-test*.json")
-	if err != nil {
-		return "", err
-	}
-
-	config = fmt.Sprintf(config, tempDir, port, logFile.Name())
-
-	_, err = cfgfile.Write([]byte(config))
-	if err != nil {
-		return "", err
-	}
-
-	err = cfgfile.Close()
-	if err != nil {
-		return "", err
-	}
-
-	os.Args = []string{"cli_test", "serve", cfgfile.Name()}
-
-	go func() {
-		err = cli.NewServerRootCmd().Execute()
-		if err != nil {
-			panic(err)
-		}
-	}()
-
-	WaitTillServerReady(baseURL)
-
-	return logFile.Name(), nil
 }
