@@ -586,11 +586,6 @@ func getRelyingPartyArgs(cfg *config.Config, provider string) (
 		panic(zerr.ErrOpenIDProviderDoesNotExist)
 	}
 
-	scheme := "http"
-	if cfg.HTTP.TLS != nil {
-		scheme = "https"
-	}
-
 	clientID := cfg.HTTP.Auth.OpenID.Providers[provider].ClientID
 	clientSecret := cfg.HTTP.Auth.OpenID.Providers[provider].ClientSecret
 
@@ -604,7 +599,22 @@ func getRelyingPartyArgs(cfg *config.Config, provider string) (
 	issuer := cfg.HTTP.Auth.OpenID.Providers[provider].Issuer
 	keyPath := cfg.HTTP.Auth.OpenID.Providers[provider].KeyPath
 	baseURL := net.JoinHostPort(cfg.HTTP.Address, port)
-	redirectURI := fmt.Sprintf("%s://%s%s", scheme, baseURL, constants.CallbackBasePath+fmt.Sprintf("/%s", provider))
+
+	callback := constants.CallbackBasePath + fmt.Sprintf("/%s", provider)
+
+	var redirectURI string
+
+	if cfg.HTTP.ExternalURL != "" {
+		externalURL := strings.TrimSuffix(cfg.HTTP.ExternalURL, "/")
+		redirectURI = fmt.Sprintf("%s%s", externalURL, callback)
+	} else {
+		scheme := "http"
+		if cfg.HTTP.TLS != nil {
+			scheme = "https"
+		}
+
+		redirectURI = fmt.Sprintf("%s://%s%s", scheme, baseURL, callback)
+	}
 
 	options := []rp.Option{
 		rp.WithVerifierOpts(rp.WithIssuedAtOffset(issuedAtOffset)),

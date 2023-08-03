@@ -181,6 +181,8 @@ zot can be configured to use the above providers with:
 ```
 {
   "http": {
+    "address": "127.0.0.1",
+    "port": "8080",
     "auth": {
       "openid": {
         "providers": {
@@ -207,7 +209,7 @@ zot can be configured to use the above providers with:
   }
 ```
 
-The login with either provider use http://127.0.0.1:8080/auth/login?provider=\<provider\>&callback_ui=http://127.0.0.1:8080/home
+To login with either provider use http://127.0.0.1:8080/auth/login?provider=\<provider\>&callback_ui=http://127.0.0.1:8080/home
 for example to login with github use http://127.0.0.1:8080/auth/login?provider=github&callback_ui=http://127.0.0.1:8080/home
 
 callback_ui query parameter is used by zot to redirect to UI after a successful openid/oauth2 authentication
@@ -257,6 +259,30 @@ NOTE: Social login is not supported by command line tools, or other software res
 images to/from zot.
 Given this limitation, if openif authentication is enabled in the configuration, API keys are also enabled
 implicitly, as a viable alternative authentication method for pushing and pulling container images.
+
+### OpenID/OAuth2 social login behind a proxy/load balancer
+
+In the case of running zot with openid enabled behind a proxy/load balancer http.externalUrl should be provided.
+
+```
+  "http": {
+    "address": "0.0.0.0",
+    "port": "8080",
+    "externalUrl: "https://zot.example.com",
+    "auth": {
+      "openid": {
+        "providers": {
+          "github": {
+            "clientid": <client_id>,
+            "clientsecret": <client_secret>,
+            "scopes": ["read:org", "user", "repo"]
+          }
+        }
+      }
+    }
+  }
+```
+This config value will be used by oauth2/openid clients to redirect back to zot.
 
 ### Session based login
 
