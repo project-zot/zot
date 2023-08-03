@@ -1,8 +1,26 @@
-load helpers_pushpull
+# Note: Intended to be run as "make test-push-pull" or "test-push-pull-verbose"
+#       Makefile target installs & checks all necessary tooling
+#       Extra tools that are not covered in Makefile target needs to be added in verify_prerequisites()
+
+load helpers_zot
+
+function verify_prerequisites {
+    if [ ! $(command -v curl) ]; then
+        echo "you need to install curl as a prerequisite to running the tests" >&3
+        return 1
+    fi
+
+    if [ ! $(command -v jq) ]; then
+        echo "you need to install jq as a prerequisite to running the tests" >&3
+        return 1
+    fi
+
+    return 0
+}
 
 function setup_file() {
     # Verify prerequisites are available
-    if ! verify_prerequisites; then
+    if ! $(verify_prerequisites); then
         exit 1
     fi
     # Download test data to folder common for the entire suite, not just this file
@@ -15,7 +33,7 @@ function setup_file() {
     mkdir -p ${oci_data_dir}
     cat > ${zot_config_file}<<EOF
 {
-    "distSpecVersion": "1.1.0",
+    "distSpecVersion": "1.1.0-dev",
     "storage": {
         "rootDirectory": "${zot_root_dir}"
     },
@@ -29,16 +47,12 @@ function setup_file() {
 }
 EOF
     git -C ${BATS_FILE_TMPDIR} clone https://github.com/project-zot/helm-charts.git
-    setup_zot_file_level ${zot_config_file}
-    wait_zot_reachable "http://127.0.0.1:8080/v2/_catalog"
+    zot_serve ${ZOT_PATH} ${zot_config_file}
+    wait_zot_reachable 8080
 }
 
 function teardown_file() {
-    local zot_root_dir=${BATS_FILE_TMPDIR}/zot
-    local oci_data_dir=${BATS_FILE_TMPDIR}/oci
-    teardown_zot_file_level
-    rm -rf ${zot_root_dir}
-    rm -rf ${oci_data_dir}
+    zot_stop_all
 }
 
 @test "push image" {
@@ -119,12 +133,12 @@ function teardown_file() {
 
 @test "attach oras artifacts" {
     # attach signature
-    echo "{\"artifact\": \"\", \"signature\": \"pat hancock\"}" > signature.json
-    run oras attach --plain-http 127.0.0.1:8080/golang:1.20 --image-spec v1.1-image --artifact-type 'signature/example' ./signature.json:application/json
+    echo "{\"artifact\": \"\", \"signature\": \"pat hancock\"}" > ${BATS_FILE_TMPDIR}/signature.json
+    run oras attach --plain-http 127.0.0.1:8080/golang:1.20 --image-spec v1.1-image --artifact-type 'signature/example' ${BATS_FILE_TMPDIR}/signature.json:application/json
     [ "$status" -eq 0 ]
     # attach sbom
-    echo "{\"version\": \"0.0.0.0\", \"artifact\": \"'127.0.0.1:8080/golang:1.20'\", \"contents\": \"good\"}" > sbom.json
-    run oras attach --plain-http 127.0.0.1:8080/golang:1.20 --image-spec v1.1-image --artifact-type 'sbom/example' ./sbom.json:application/json
+    echo "{\"version\": \"0.0.0.0\", \"artifact\": \"'127.0.0.1:8080/golang:1.20'\", \"contents\": \"good\"}" > ${BATS_FILE_TMPDIR}/sbom.json
+    run oras attach --plain-http 127.0.0.1:8080/golang:1.20 --image-spec v1.1-image --artifact-type 'sbom/example' ${BATS_FILE_TMPDIR}/sbom.json:application/json
     [ "$status" -eq 0 ]
 }
 
@@ -135,16 +149,16 @@ function teardown_file() {
 }
 
 @test "push helm chart" {
-    run helm package ${BATS_FILE_TMPDIR}/helm-charts/charts/zot
+    run helm package ${BATS_FILE_TMPDIR}/helm-charts/charts/zot -d ${BATS_FILE_TMPDIR}
     [ "$status" -eq 0 ]
     local chart_version=$(awk '/version/{printf $2}' ${BATS_FILE_TMPDIR}/helm-charts/charts/zot/Chart.yaml)
-    run helm push zot-${chart_version}.tgz oci://localhost:8080/zot-chart
+    run helm push ${BATS_FILE_TMPDIR}/zot-${chart_version}.tgz oci://localhost:8080/zot-chart
     [ "$status" -eq 0 ]
 }
 
 @test "pull helm chart" {
     local chart_version=$(awk '/version/{printf $2}' ${BATS_FILE_TMPDIR}/helm-charts/charts/zot/Chart.yaml)
-    run helm pull oci://localhost:8080/zot-chart/zot --version ${chart_version}
+    run helm pull oci://localhost:8080/zot-chart/zot --version ${chart_version} -d ${BATS_FILE_TMPDIR}
     [ "$status" -eq 0 ]
 }
 

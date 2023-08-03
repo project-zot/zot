@@ -1,8 +1,26 @@
-load helpers_referrers
+# Note: Intended to be run as "make test-bats-referrers"
+#       Makefile target installs & checks all necessary tooling
+#       Extra tools that are not covered in Makefile target needs to be added in verify_prerequisites()
+
+load helpers_zot
+
+function verify_prerequisites() {
+    if [ ! $(command -v curl) ]; then
+        echo "you need to install curl as a prerequisite to running the tests" >&3
+        return 1
+    fi
+
+    if [ ! $(command -v jq) ] &>/dev/null; then
+        echo "you need to install jq as a prerequisite to running the tests" >&3
+        return 1
+    fi
+
+    return 0
+}
 
 function setup() {
     # Verify prerequisites are available
-    if ! verify_prerequisites; then
+    if ! $(verify_prerequisites); then
         exit 1
     fi
 
@@ -18,7 +36,7 @@ function setup() {
     touch ${ZOT_LOG_FILE}
     cat >${ZOT_CONFIG_FILE} <<EOF
 {
-    "distSpecVersion": "1.1.0",
+    "distSpecVersion": "1.1.0-dev",
     "storage": {
         "rootDirectory": "${ZOT_ROOT_DIR}"
     },
@@ -49,8 +67,8 @@ EOF
         This artifact is represented as an ispec image manifest, this is the layer inside the manifest.
 EOF
 
-    setup_zot_file_level ${ZOT_CONFIG_FILE}
-    wait_zot_reachable "http://127.0.0.1:8080/v2/_catalog"
+    zot_serve ${ZOT_PATH} ${ZOT_CONFIG_FILE}
+    wait_zot_reachable 8080
 
     run skopeo --insecure-policy copy --dest-tls-verify=false \
         oci:${TEST_DATA_DIR}/golang:1.20 \
@@ -69,10 +87,8 @@ EOF
     curl -X GET http://127.0.0.1:8080/v2/golang/referrers/${MANIFEST_DIGEST}?artifactType=image.artifact/type
 }
 
-function teardown() {
-    local ZOT_ROOT_DIR=${BATS_FILE_TMPDIR}/zot
-    zot_stop ${BATS_FILE_TMPDIR}
-    rm -rf ${ZOT_ROOT_DIR}
+function teardown_file() {
+    zot_stop_all
 }
 
 @test "add referrers, one artifact and one image" {

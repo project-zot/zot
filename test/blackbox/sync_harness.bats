@@ -1,8 +1,17 @@
-load helpers_sync
+# Note: Intended to be run as "make test-sync-harness" or "make test-sync-harness-verbose"
+#       Makefile target installs & checks all necessary tooling
+#       Extra tools that are not covered in Makefile target needs to be added in verify_prerequisites()
+
+load helpers_zot
+load helpers_wait
+
+function verify_prerequisites() {
+    return 0
+}
 
 function setup_file() {
     # Verify prerequisites are available
-    if ! verify_prerequisites; then
+    if ! $(verify_prerequisites); then
         exit 1
     fi
 
@@ -25,7 +34,7 @@ function setup_file() {
 
     cat >${zot_sync_per_config_file} <<EOF
 {
-    "distSpecVersion": "1.1.0",
+    "distSpecVersion": "1.1.0-dev",
     "storage": {
         "rootDirectory": "${zot_sync_per_root_dir}"
     },
@@ -61,7 +70,7 @@ EOF
 
     cat >${zot_minimal_config_file} <<EOF
 {
-    "distSpecVersion": "1.1.0",
+    "distSpecVersion": "1.1.0-dev",
     "storage": {
         "rootDirectory": "${zot_minimal_root_dir}"
     },
@@ -75,18 +84,12 @@ EOF
     }
 }
 EOF
-    setup_zot_minimal_file_level ${zot_minimal_config_file}
-    wait_zot_reachable "http://127.0.0.1:8080/v2/_catalog"
+    zot_serve ${ZOT_MINIMAL_PATH} ${zot_minimal_config_file}
+    wait_zot_reachable 8080
 }
 
 function teardown_file() {
-    local zot_sync_per_root_dir=${BATS_FILE_TMPDIR}/zot-per
-    local oci_data_dir=${BATS_FILE_TMPDIR}/oci
-    local zot_minimal_root_dir=${BATS_FILE_TMPDIR}/zot-minimal
-    teardown_zot_file_level
-    rm -rf ${zot_sync_per_root_dir}
-    rm -rf ${zot_minimal_root_dir}
-    rm -rf ${oci_data_dir}
+    zot_stop_all
 }
 
 # sync zb images
@@ -99,8 +102,8 @@ function teardown_file() {
     zb_run "http://127.0.0.1:8080"
 
     # start zot sync server
-    setup_zot_file_level ${zot_sync_per_config_file}
-    wait_zot_reachable "http://127.0.0.1:8081/v2/_catalog"
+    zot_start ${ZOT_PATH} ${zot_sync_per_config_file}
+    wait_zot_reachable 8081
 
     start=`date +%s`
     echo "waiting for sync to finish" >&3

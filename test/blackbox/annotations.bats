@@ -1,8 +1,32 @@
-load helpers_pushpull
+# Note: Intended to be run as "make test-annotations"
+#       Makefile target installs & checks all necessary tooling
+#       Extra tools that are not covered in Makefile target needs to be added in verify_prerequisites()
+
+load helpers_zot
+
+function verify_prerequisites {
+    if [ ! $(command -v curl) ]; then
+        echo "you need to install curl as a prerequisite to running the tests" >&3
+        return 1
+    fi
+
+    if [ ! $(command -v jq) ]; then
+        echo "you need to install jq as a prerequisite to running the tests" >&3
+        return 1
+    fi
+
+    if [ ! $(command -v podman) ]; then
+        echo "you need to install podman as a prerequisite to running the tests" >&3
+        return 1
+    fi
+
+    return 0
+}
 
 function setup_file() {
+    export COSIGN_PASSWORD=""
     # Verify prerequisites are available
-    if ! verify_prerequisites; then
+    if ! $(verify_prerequisites); then
         exit 1
     fi
     # Download test data to folder common for the entire suite, not just this file
@@ -10,12 +34,10 @@ function setup_file() {
     # Setup zot server
     local zot_root_dir=${BATS_FILE_TMPDIR}/zot
     local zot_config_file=${BATS_FILE_TMPDIR}/zot_config.json
-    local oci_data_dir=${BATS_FILE_TMPDIR}/oci
     mkdir -p ${zot_root_dir}
-    mkdir -p ${oci_data_dir}
     cat > ${zot_config_file}<<EOF
 {
-    "distSpecVersion": "1.1.0",
+    "distSpecVersion": "1.1.0-dev",
     "storage": {
         "rootDirectory": "${zot_root_dir}"
     },
@@ -53,22 +75,14 @@ EOF
 FROM public.ecr.aws/t0x7q1g8/centos:7
 CMD ["/bin/sh", "-c", "echo 'It works!'"]
 EOF
-    setup_zot_file_level ${zot_config_file}
-    wait_zot_reachable "http://127.0.0.1:8080/v2/_catalog"
+    zot_serve ${ZOT_PATH} ${zot_config_file}
+    wait_zot_reachable 8080
 }
 
 function teardown_file() {
     cat ${BATS_FILE_TMPDIR}/zot.log >&3
-    local zot_root_dir=${BATS_FILE_TMPDIR}/zot
-    local oci_data_dir=${BATS_FILE_TMPDIR}/oci
-    local roots_data_dir=${BATS_FILE_TMPDIR}/roots
-    local stacker_data_dir=${BATS_FILE_TMPDIR}/.stacker
-    local stackeroci_data_dir=${BATS_FILE_TMPDIR}/stackeroci
-    teardown_zot_file_level
-    rm -rf ${zot_root_dir}
-    rm -rf ${oci_data_dir}
-    rm -rf ${stackeroci_data_dir}
-    rm -rf ${roots_data_dir}    
+    zot_stop_all
+    run rm -rf ${HOME}/.config/notation
 }
 
 @test "build image with podman and specify annotations" {
@@ -77,9 +91,8 @@ function teardown_file() {
     run podman push 127.0.0.1:8080/annotations:latest --tls-verify=false --format=oci
     [ "$status" -eq 0 ]
     run curl -X POST -H "Content-Type: application/json" --data '{ "query": "{ ImageList(repo: \"annotations\") { Results { RepoName Tag Manifests {Digest ConfigDigest Size Layers { Size Digest }} Vendor Licenses }}}"}' http://localhost:8080/v2/_zot/ext/search
-   
     [ "$status" -eq 0 ]
-    # [ $(echo "${lines[-1]}" | jq '.data.ImageList') ]
+
     [ $(echo "${lines[-1]}" | jq '.data.ImageList.Results[0].RepoName') = '"annotations"' ]
     [ $(echo "${lines[-1]}" | jq '.data.ImageList.Results[0].Vendor') = '"CentOS"' ]
     [ $(echo "${lines[-1]}" | jq '.data.ImageList.Results[0].Licenses') = '"GPLv2"' ]
@@ -103,17 +116,16 @@ function teardown_file() {
     [ "$status" -eq 0 ]
     [ $(echo "${lines[-1]}" | jq '.data.ImageList.Results[0].RepoName') = '"annotations"' ]
     local digest=$(echo "${lines[-1]}" | jq -r '.data.ImageList.Results[0].Manifests[0].Digest')
-    
+
     run cosign initialize
     [ "$status" -eq 0 ]
-    run cosign generate-key-pair --output-key-prefix "cosign-sign-test"
+    run cosign generate-key-pair --output-key-prefix "${BATS_FILE_TMPDIR}/cosign-sign-test"
     [ "$status" -eq 0 ]
-    run cosign sign --key cosign-sign-test.key localhost:8080/annotations:latest --yes
+    run cosign sign --key ${BATS_FILE_TMPDIR}/cosign-sign-test.key localhost:8080/annotations:latest --yes
     [ "$status" -eq 0 ]
-    run cosign verify --key cosign-sign-test.pub localhost:8080/annotations:latest
+    run cosign verify --key ${BATS_FILE_TMPDIR}/cosign-sign-test.pub localhost:8080/annotations:latest
     [ "$status" -eq 0 ]
     local sigName=$(echo "${lines[-1]}" | jq '.[].critical.image."docker-manifest-digest"')
-    [ "$status" -eq 0 ]
     [[ "$sigName" == *"${digest}"* ]]
 }
 
@@ -136,7 +148,7 @@ function teardown_file() {
             "name": "notation-sign-test",
             "registryScopes": [ "*" ],
             "signatureVerification": {
-                "level" : "strict" 
+                "level" : "strict"
             },
             "trustStores": [ "ca:notation-sign-test" ],
             "trustedIdentities": [

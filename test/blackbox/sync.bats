@@ -1,8 +1,30 @@
-load helpers_sync
+# Note: Intended to be run as "make test-bats-sync" or "make test-bats-sync-verbose"
+#       Makefile target installs & checks all necessary tooling
+#       Extra tools that are not covered in Makefile target needs to be added in verify_prerequisites()
+
+load helpers_zot
+load helpers_wait
+
+
+function verify_prerequisites() {
+    if [ ! $(command -v curl) ]; then
+        echo "you need to install curl as a prerequisite to running the tests" >&3
+        return 1
+    fi
+
+    if [ ! $(command -v jq) ]; then
+        echo "you need to install jq as a prerequisite to running the tests" >&3
+        return 1
+    fi
+
+    return 0
+}
 
 function setup_file() {
+    export COSIGN_PASSWORD=""
+
     # Verify prerequisites are available
-    if ! verify_prerequisites; then
+    if ! $(verify_prerequisites); then
         exit 1
     fi
 
@@ -26,7 +48,7 @@ function setup_file() {
 
     cat >${zot_sync_per_config_file} <<EOF
 {
-    "distSpecVersion": "1.1.0",
+    "distSpecVersion": "1.1.0-dev",
     "storage": {
         "rootDirectory": "${zot_sync_per_root_dir}"
     },
@@ -61,7 +83,7 @@ EOF
 
     cat >${zot_sync_ondemand_config_file} <<EOF
 {
-    "distSpecVersion": "1.1.0",
+    "distSpecVersion": "1.1.0-dev",
     "storage": {
         "rootDirectory": "${zot_sync_ondemand_root_dir}"
     },
@@ -94,7 +116,7 @@ EOF
 EOF
     cat >${zot_minimal_config_file} <<EOF
 {
-    "distSpecVersion": "1.1.0",
+    "distSpecVersion": "1.1.0-dev",
     "storage": {
         "rootDirectory": "${zot_minimal_root_dir}"
     },
@@ -109,26 +131,19 @@ EOF
 EOF
     git -C ${BATS_FILE_TMPDIR} clone https://github.com/project-zot/helm-charts.git
 
-    setup_zot_file_level ${zot_sync_per_config_file}
-    wait_zot_reachable "http://127.0.0.1:8081/v2/_catalog"
+    zot_serve ${ZOT_PATH} ${zot_sync_per_config_file}
+    wait_zot_reachable 8081
 
-    setup_zot_file_level ${zot_sync_ondemand_config_file}
-    wait_zot_reachable "http://127.0.0.1:8082/v2/_catalog"
+    zot_serve ${ZOT_PATH} ${zot_sync_ondemand_config_file}
+    wait_zot_reachable 8082
 
-    setup_zot_minimal_file_level ${zot_minimal_config_file}
-    wait_zot_reachable "http://127.0.0.1:9000/v2/_catalog"
+    zot_serve ${ZOT_MINIMAL_PATH} ${zot_minimal_config_file}
+    wait_zot_reachable 9000
 }
 
 function teardown_file() {
-    local zot_sync_per_root_dir=${BATS_FILE_TMPDIR}/zot-per
-    local zot_sync_ondemand_root_dir=${BATS_FILE_TMPDIR}/zot-ondemand
-    local oci_data_dir=${BATS_FILE_TMPDIR}/oci
-    local zot_minimal_root_dir=${BATS_FILE_TMPDIR}/zot-minimal
-    teardown_zot_file_level
-    rm -rf ${zot_sync_per_root_dir}
-    rm -rf ${zot_sync_ondemand_root_dir}
-    rm -rf ${zot_minimal_root_dir}
-    rm -rf ${oci_data_dir}
+    zot_stop_all
+    run rm -rf ${HOME}/.config/notation
 }
 
 # sync image
@@ -144,9 +159,9 @@ function teardown_file() {
     run curl http://127.0.0.1:9000/v2/golang/tags/list
     [ "$status" -eq 0 ]
     [ $(echo "${lines[-1]}" | jq '.tags[]') = '"1.20"' ]
-    
+
     run sleep 20s
-    
+
     run curl http://127.0.0.1:8081/v2/_catalog
     [ "$status" -eq 0 ]
     [ $(echo "${lines[-1]}" | jq '.repositories[]') = '"golang"' ]
@@ -239,11 +254,11 @@ function teardown_file() {
 @test "sign/verify with cosign" {
     run cosign initialize
     [ "$status" -eq 0 ]
-    run cosign generate-key-pair --output-key-prefix "cosign-sign-sync-test"
+    run cosign generate-key-pair --output-key-prefix "${BATS_FILE_TMPDIR}/cosign-sign-sync-test"
     [ "$status" -eq 0 ]
-    run cosign sign --key cosign-sign-sync-test.key localhost:9000/golang:1.20 --yes
+    run cosign sign --key ${BATS_FILE_TMPDIR}/cosign-sign-sync-test.key localhost:9000/golang:1.20 --yes
     [ "$status" -eq 0 ]
-    run cosign verify --key cosign-sign-sync-test.pub localhost:9000/golang:1.20
+    run cosign verify --key ${BATS_FILE_TMPDIR}/cosign-sign-sync-test.pub localhost:9000/golang:1.20
     [ "$status" -eq 0 ]
 }
 
@@ -261,7 +276,7 @@ function teardown_file() {
             "name": "notation-sign-sync-test",
             "registryScopes": [ "*" ],
             "signatureVerification": {
-                "level" : "strict" 
+                "level" : "strict"
             },
             "trustStores": [ "ca:notation-sign-sync-test" ],
             "trustedIdentities": [
@@ -287,7 +302,7 @@ EOF
     run notation verify --plain-http localhost:8081/golang:1.20
     [ "$status" -eq 0 ]
 
-    run cosign verify --key cosign-sign-sync-test.pub localhost:8081/golang:1.20
+    run cosign verify --key ${BATS_FILE_TMPDIR}/cosign-sign-sync-test.pub localhost:8081/golang:1.20
     [ "$status" -eq 0 ]
 }
 
@@ -295,7 +310,7 @@ EOF
     run notation verify --plain-http localhost:8082/golang:1.20
     [ "$status" -eq 0 ]
 
-    run cosign verify --key cosign-sign-sync-test.pub localhost:8082/golang:1.20
+    run cosign verify --key ${BATS_FILE_TMPDIR}/cosign-sign-sync-test.pub localhost:8082/golang:1.20
     [ "$status" -eq 0 ]
 }
 
@@ -328,10 +343,10 @@ EOF
 
 # sync helm chart
 @test "push helm chart" {
-    run helm package ${BATS_FILE_TMPDIR}/helm-charts/charts/zot
+    run helm package ${BATS_FILE_TMPDIR}/helm-charts/charts/zot -d ${BATS_FILE_TMPDIR}
     [ "$status" -eq 0 ]
     local chart_version=$(awk '/version/{printf $2}' ${BATS_FILE_TMPDIR}/helm-charts/charts/zot/Chart.yaml)
-    run helm push zot-${chart_version}.tgz oci://localhost:9000/zot-chart
+    run helm push ${BATS_FILE_TMPDIR}/zot-${chart_version}.tgz oci://localhost:9000/zot-chart
     [ "$status" -eq 0 ]
 }
 
@@ -340,13 +355,13 @@ EOF
     run sleep 15s
 
     local chart_version=$(awk '/version/{printf $2}' ${BATS_FILE_TMPDIR}/helm-charts/charts/zot/Chart.yaml)
-    run helm pull oci://localhost:8081/zot-chart/zot --version ${chart_version}
+    run helm pull oci://localhost:8081/zot-chart/zot --version ${chart_version} -d ${BATS_FILE_TMPDIR}
     [ "$status" -eq 0 ]
 }
 
 @test "sync helm chart on demand" {
     local chart_version=$(awk '/version/{printf $2}' ${BATS_FILE_TMPDIR}/helm-charts/charts/zot/Chart.yaml)
-    run helm pull oci://localhost:8082/zot-chart/zot --version ${chart_version}
+    run helm pull oci://localhost:8082/zot-chart/zot --version ${chart_version} -d ${BATS_FILE_TMPDIR}
     [ "$status" -eq 0 ]
 }
 

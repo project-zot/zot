@@ -350,109 +350,109 @@ $(BATS):
 	rm -rf bats-core
 
 .PHONY: test-push-pull
-test-push-pull: binary check-skopeo $(BATS) $(REGCLIENT) $(ORAS) $(HELM) $(CRICTL)
+test-push-pull: check-linux binary check-skopeo $(BATS) $(REGCLIENT) $(ORAS) $(HELM) $(CRICTL)
 	$(BATS) --trace --print-output-on-failure test/blackbox/pushpull.bats
 
 .PHONY: test-push-pull-verbose
-test-push-pull-verbose: binary check-skopeo $(BATS)
+test-push-pull-verbose: check-linux binary check-skopeo $(BATS) $(REGCLIENT) $(ORAS) $(HELM) $(CRICTL)
 	$(BATS) --trace --verbose-run --print-output-on-failure --show-output-of-passing-tests test/blackbox/pushpull.bats
 
 .PHONY: test-push-pull-running-dedupe
-test-push-pull-running-dedupe: binary check-skopeo $(BATS) $(REGCLIENT) $(ORAS) $(HELM) $(CRICTL)
+test-push-pull-running-dedupe: check-linux binary check-skopeo $(BATS) $(REGCLIENT) $(ORAS) $(HELM)
 	$(BATS) --trace --print-output-on-failure test/blackbox/pushpull_running_dedupe.bats
 
 .PHONY: test-push-pull-running-dedupe-verbose
-test-push-pull-running-dedupe-verbose: binary check-skopeo $(BATS) $(REGCLIENT) $(ORAS) $(HELM) $(CRICTL)
+test-push-pull-running-dedupe-verbose: check-linux binary check-skopeo $(BATS) $(REGCLIENT) $(ORAS) $(HELM)
 	$(BATS) --trace --verbose-run --print-output-on-failure --show-output-of-passing-tests test/blackbox/pushpull_running_dedupe.bats
 
 .PHONY: test-sync-harness
-test-sync-harness: binary binary-minimal bench check-skopeo $(BATS)
+test-sync-harness: check-linux binary binary-minimal bench check-skopeo $(BATS)
 	$(BATS) --trace --print-output-on-failure test/blackbox/sync_harness.bats
 
 .PHONY: test-sync-harness-verbose
-test-sync-harness-verbose: binary binary-minimal bench check-skopeo $(BATS)
+test-sync-harness-verbose: check-linux binary binary-minimal bench check-skopeo $(BATS)
 	$(BATS) --trace --verbose-run --print-output-on-failure --show-output-of-passing-tests test/blackbox/sync_harness.bats
 
 .PHONY: test-restore-s3-blobs
-test-restore-s3-blobs: binary check-skopeo $(BATS) $(REGCLIENT) $(ORAS) $(HELM) $(CRICTL)
+test-restore-s3-blobs: check-linux binary check-skopeo $(BATS) $(REGCLIENT) $(ORAS) $(HELM)
 	$(BATS) --trace --print-output-on-failure test/blackbox/restore_s3_blobs.bats
 
 .PHONY: test-restore-s3-blobs-verbose
-test-restore-s3-blobs-verbose: binary check-skopeo $(BATS) $(REGCLIENT) $(ORAS) $(HELM) $(CRICTL)
+test-restore-s3-blobs-verbose: check-linux binary check-skopeo $(BATS) $(REGCLIENT) $(ORAS) $(HELM)
 	$(BATS) --trace --verbose-run --print-output-on-failure --show-output-of-passing-tests test/blackbox/restore_s3_blobs.bats
 
 .PHONY: test-bats-referrers
 test-bats-referrers: BUILD_LABELS=search
-test-bats-referrers: binary check-skopeo $(BATS) $(ORAS)
+test-bats-referrers: check-linux binary check-skopeo $(BATS) $(ORAS)
 	$(BATS) --trace --print-output-on-failure test/blackbox/referrers.bats
 
 .PHONY: test-bats-metadata
 test-bats-metadata: BUILD_LABELS=search,userprefs
-test-bats-metadata: binary check-skopeo $(BATS)
+test-bats-metadata: check-linux binary check-skopeo $(BATS)
 	$(BATS) --trace --print-output-on-failure test/blackbox/metadata.bats
 
 .PHONY: test-cloud-only
-test-cloud-only: binary check-skopeo $(BATS)
+test-cloud-only: check-linux binary check-skopeo $(BATS)
 	$(BATS) --trace --print-output-on-failure test/blackbox/cloud-only.bats
 
 .PHONY: test-cloud-only-verbose
-test-cloud-only-verbose: binary check-skopeo $(BATS)
+test-cloud-only-verbose: check-linux binary check-skopeo $(BATS)
 	$(BATS) --trace --verbose-run --print-output-on-failure --show-output-of-passing-tests test/blackbox/cloud-only.bats
 
 .PHONY: test-bats-sync
 test-bats-sync: BUILD_LABELS=sync
-test-bats-sync: binary binary-minimal bench check-skopeo $(BATS) $(NOTATION) $(COSIGN)
+test-bats-sync: check-linux binary binary-minimal bench check-skopeo $(BATS) $(NOTATION) $(COSIGN) $(HELM)
 	$(BATS) --trace --print-output-on-failure test/blackbox/sync.bats
 	$(BATS) --trace --print-output-on-failure test/blackbox/sync_docker.bats
 	$(BATS) --trace --print-output-on-failure test/blackbox/sync_replica_cluster.bats
 
 .PHONY: test-bats-sync-verbose
 test-bats-sync-verbose: BUILD_LABELS=sync
-test-bats-sync-verbose: binary binary-minimal bench check-skopeo $(BATS) $(NOTATION) $(COSIGN)
+test-bats-sync-verbose: check-linux binary binary-minimal bench check-skopeo $(BATS) $(NOTATION) $(COSIGN) $(HELM)
 	$(BATS) --trace -t -x -p --verbose-run --print-output-on-failure --show-output-of-passing-tests test/blackbox/sync.bats
 	$(BATS) --trace -t -x -p --verbose-run --print-output-on-failure --show-output-of-passing-tests test/blackbox/sync_docker.bats
 	$(BATS) --trace -t -x -p --verbose-run --print-output-on-failure --show-output-of-passing-tests test/blackbox/sync_replica_cluster.bats
 
 .PHONY: test-bats-cve
 test-bats-cve: BUILD_LABELS=search
-test-bats-cve: binary cli check-skopeo $(BATS)
+test-bats-cve: check-linux binary cli check-skopeo $(BATS)
 	$(BATS) --trace --print-output-on-failure test/blackbox/cve.bats
 
 .PHONY: test-bats-cve-verbose
 test-bats-cve-verbose: BUILD_LABELS=search
-test-bats-cve-verbose: binary cli check-skopeo $(BATS)
+test-bats-cve-verbose: check-linux binary cli check-skopeo $(BATS)
 	$(BATS) --trace -t -x -p --verbose-run --print-output-on-failure --show-output-of-passing-tests test/blackbox/cve.bats
 
 .PHONY: test-bats-scrub
 test-bats-scrub: BUILD_LABELS=scrub
-test-bats-scrub: binary check-skopeo $(BATS)
+test-bats-scrub: check-linux binary check-skopeo $(BATS)
 	$(BATS) --trace --print-output-on-failure test/blackbox/scrub.bats
 
 .PHONY: test-bats-scrub-verbose
 test-bats-scrub-verbose: BUILD_LABELS=scrub
-test-bats-scrub-verbose: binary check-skopeo $(BATS)
+test-bats-scrub-verbose: check-linux binary check-skopeo $(BATS)
 	$(BATS) --trace -p --verbose-run --print-output-on-failure --show-output-of-passing-tests test/blackbox/scrub.bats
 
 .PHONY: test-bats-metrics
 test-bats-metrics: BUILD_LABELS=metrics
-test-bats-metrics: binary check-skopeo $(BATS)
+test-bats-metrics: check-linux binary check-skopeo $(BATS)
 	$(BATS) --trace --print-output-on-failure test/blackbox/metrics.bats
 
 .PHONY: test-bats-metrics-verbose
 test-bats-metrics-verbose: BUILD_LABELS=metrics
-test-bats-metrics-verbose: binary check-skopeo $(BATS)
+test-bats-metrics-verbose: check-linux binary check-skopeo $(BATS)
 	$(BATS) --trace -p --verbose-run --print-output-on-failure --show-output-of-passing-tests test/blackbox/metrics.bats
 
 .PHONY: test-anonymous-push-pull
-test-anonymous-push-pull: binary check-skopeo $(BATS)
+test-anonymous-push-pull: check-linux binary check-skopeo $(BATS)
 	$(BATS) --trace --print-output-on-failure test/blackbox/anonymous_policy.bats
 
 .PHONY: test-annotations
-test-annotations: binary check-skopeo $(BATS) $(STACKER) $(NOTATION) $(COSIGN)
+test-annotations: check-linux binary check-skopeo $(BATS) $(STACKER) $(NOTATION) $(COSIGN)
 	$(BATS) --trace --print-output-on-failure test/blackbox/annotations.bats
 
 .PHONY: test-detect-manifest-collision
-test-detect-manifest-collision: binary check-skopeo $(BATS)
+test-detect-manifest-collision: check-linux binary check-skopeo $(BATS) $(REGCLIENT)
 	$(BATS) --trace --print-output-on-failure test/blackbox/detect_manifest_collision.bats
 
 .PHONY: fuzz-all
@@ -512,3 +512,8 @@ ui:
 		fi;\
 	fi;\
 
+.PHONY: check-linux
+check-linux:
+ifneq ($(shell go env GOOS),linux)
+	$(error makefile target can be run only on linux)
+endif

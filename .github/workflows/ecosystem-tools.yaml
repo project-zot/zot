@@ -92,6 +92,9 @@ jobs:
       - name: Run anonymous-push-pull tests
         run: |
             make test-anonymous-push-pull
+      - name: Run detect-manifest-collision tests
+        run: |
+            make test-detect-manifest-collision
       - name: Run annotations tests
         run: |
             make test-annotations

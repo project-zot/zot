@@ -1,9 +1,21 @@
-load helpers_metrics
+# Note: Intended to be run as "make test-bats-metrics" or "make test-bats-metrics-verbose"
+#       Makefile target installs & checks all necessary tooling
+#       Extra tools that are not covered in Makefile target needs to be added in verify_prerequisites()
+
+load helpers_zot
+
+function verify_prerequisites() {
+    if [ ! $(command -v curl) ]; then
+        echo "you need to install curl as a prerequisite to running the tests" >&3
+        return 1
+    fi
+
+    return 0
+}
 
 function setup_file() {
     # verify prerequisites are available
-    if ! verify_prerequisites; then
-        echo "oh noooooo"
+    if ! $(verify_prerequisites); then
         exit 1
     fi
 
@@ -19,7 +31,7 @@ function setup_file() {
     touch ${zot_log_file}
     cat >${zot_config_file} <<EOF
 {
-    "distSpecVersion": "1.1.0",
+    "distSpecVersion": "1.1.0-dev",
     "storage": {
         "rootDirectory": "${zot_root_dir}"
     },
@@ -42,15 +54,13 @@ function setup_file() {
 }
 EOF
 
-    setup_zot_file_level ${zot_config_file}
-    wait_zot_reachable "http://127.0.0.1:8080/v2/_catalog"
+    zot_serve ${ZOT_PATH} ${zot_config_file}
+    wait_zot_reachable 8080
 
 }
 
 function teardown_file() {
-    local zot_root_dir=${BATS_FILE_TMPDIR}/zot
-    teardown_zot_file_level
-    rm -rf ${zot_root_dir}
+    zot_stop_all
 }
 
 @test "metric enabled" {
