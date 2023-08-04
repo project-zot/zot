@@ -38,8 +38,8 @@ jobs:
       with:
         # TODO: change to upstream once the foloowing PR is merged:
         # https://github.com/opencontainers/distribution-spec/pull/436
-        repository: rchincha/distribution-spec
-        ref: fix-ref
+        repository: opencontainers/distribution-spec
+        ref: main
         path: distribution-spec
     - name: build conformance binary from main
       run: |
