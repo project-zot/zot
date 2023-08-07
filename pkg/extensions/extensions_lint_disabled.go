@@ -10,7 +10,7 @@ import (
 )
 
 func GetLinter(config *config.Config, log log.Logger) *lint.Linter {
-	log.Warn().Msg("lint extension is disabled because given zot binary doesn't" +
+	log.Warn().Msg("lint extension is disabled because given zot binary doesn't " +
 		"include this feature please build a binary that does so")
 
 	return nil

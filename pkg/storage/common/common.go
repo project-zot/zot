@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"math/rand"
 	"path"
@@ -27,8 +28,7 @@ import (
 
 const (
 	manifestWithEmptyLayersErrMsg = "layers: Array must have at least 1 items"
-
-	cosignSignatureTagSuffix = "sig"
+	cosignSignatureTagSuffix      = "sig"
 )
 
 func GetTagsByIndex(index ispec.Index) []string {
@@ -86,7 +86,7 @@ func ValidateManifest(imgStore storageTypes.ImageStore, repo, reference, mediaTy
 		if err := ValidateManifestSchema(body); err != nil {
 			log.Error().Err(err).Msg("OCIv1 image manifest schema validation failed")
 
-			return "", zerr.ErrBadManifest
+			return "", zerr.NewError(zerr.ErrBadManifest).AddDetail("jsonSchemaValidation", err.Error())
 		}
 
 		if err := json.Unmarshal(body, &manifest); err != nil {
@@ -125,7 +125,7 @@ func ValidateManifest(imgStore storageTypes.ImageStore, repo, reference, mediaTy
 		if err := ValidateImageIndexSchema(body); err != nil {
 			log.Error().Err(err).Msg("OCIv1 image index manifest schema validation failed")
 
-			return "", err
+			return "", zerr.NewError(zerr.ErrBadManifest).AddDetail("jsonSchemaValidation", err.Error())
 		}
 
 		var indexManifest ispec.Index
@@ -219,8 +219,10 @@ func CheckIfIndexNeedsUpdate(index *ispec.Index, desc *ispec.Descriptor,
 				log.Error().Err(err).
 					Str("old mediaType", manifest.MediaType).
 					Str("new mediaType", desc.MediaType).Msg("cannot change media-type")
+				reason := fmt.Sprintf("changing manifest media-type from \"%s\" to \"%s\" is disallowed",
+					manifest.MediaType, desc.MediaType)
 
-				return false, "", err
+				return false, "", zerr.NewError(err).AddDetail("reason", reason)
 			}
 
 			oldDesc := *desc
@@ -780,7 +782,7 @@ func IsNonDistributable(mediaType string) bool {
 func ValidateManifestSchema(buf []byte) error {
 	if err := schema.ValidatorMediaTypeManifest.Validate(bytes.NewBuffer(buf)); err != nil {
 		if !IsEmptyLayersError(err) {
-			return zerr.ErrBadManifest
+			return err
 		}
 	}
 
@@ -789,7 +791,7 @@ func ValidateManifestSchema(buf []byte) error {
 
 func ValidateImageIndexSchema(buf []byte) error {
 	if err := schema.ValidatorMediaTypeImageIndex.Validate(bytes.NewBuffer(buf)); err != nil {
-		return zerr.ErrBadManifest
+		return err
 	}
 
 	return nil

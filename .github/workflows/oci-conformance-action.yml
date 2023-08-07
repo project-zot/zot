@@ -36,8 +36,6 @@ jobs:
           echo "SERVER_URL=http://${IP}:8080" >> $GITHUB_ENV
     - uses: actions/checkout@v3
       with:
-        # TODO: change to upstream once the foloowing PR is merged:
-        # https://github.com/opencontainers/distribution-spec/pull/436
         repository: opencontainers/distribution-spec
         ref: main
         path: distribution-spec

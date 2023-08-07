@@ -334,8 +334,8 @@ func (rh *RouteHandler) ListTags(response http.ResponseWriter, request *http.Req
 
 	tags, err := imgStore.GetImageTags(name)
 	if err != nil {
-		zcommon.WriteJSON(response, http.StatusNotFound,
-			apiErr.NewErrorList(apiErr.NewError(apiErr.NAME_UNKNOWN, map[string]string{"name": name})))
+		e := apiErr.NewError(apiErr.NAME_UNKNOWN).AddDetail(map[string]string{"name": name})
+		zcommon.WriteJSON(response, http.StatusNotFound, apiErr.NewErrorList(e))
 
 		return
 	}
@@ -422,25 +422,27 @@ func (rh *RouteHandler) CheckManifest(response http.ResponseWriter, request *htt
 
 	reference, ok := vars["reference"]
 	if !ok || reference == "" {
-		zcommon.WriteJSON(response,
-			http.StatusNotFound,
-			apiErr.NewErrorList(apiErr.NewError(apiErr.MANIFEST_INVALID, map[string]string{"reference": reference})))
+		e := apiErr.NewError(apiErr.MANIFEST_INVALID).AddDetail(map[string]string{"reference": reference})
+		zcommon.WriteJSON(response, http.StatusNotFound, apiErr.NewErrorList(e))
 
 		return
 	}
 
 	content, digest, mediaType, err := getImageManifest(rh, imgStore, name, reference) //nolint:contextcheck
 	if err != nil {
+		details := zerr.GetDetails(err)
+		details["reference"] = reference
+
 		if errors.Is(err, zerr.ErrRepoNotFound) { //nolint:gocritic // errorslint conflicts with gocritic:IfElseChain
-			zcommon.WriteJSON(response, http.StatusNotFound,
-				apiErr.NewErrorList(apiErr.NewError(apiErr.NAME_UNKNOWN, map[string]string{"reference": reference})))
+			e := apiErr.NewError(apiErr.NAME_UNKNOWN).AddDetail(details)
+			zcommon.WriteJSON(response, http.StatusNotFound, apiErr.NewErrorList(e))
 		} else if errors.Is(err, zerr.ErrManifestNotFound) {
-			zcommon.WriteJSON(response, http.StatusNotFound,
-				apiErr.NewErrorList(apiErr.NewError(apiErr.MANIFEST_UNKNOWN, map[string]string{"reference": reference})))
+			e := apiErr.NewError(apiErr.MANIFEST_UNKNOWN).AddDetail(details)
+			zcommon.WriteJSON(response, http.StatusNotFound, apiErr.NewErrorList(e))
 		} else {
 			rh.c.Log.Error().Err(err).Msg("unexpected error")
-			zcommon.WriteJSON(response, http.StatusInternalServerError,
-				apiErr.NewErrorList(apiErr.NewError(apiErr.MANIFEST_INVALID, map[string]string{"reference": reference})))
+			e := apiErr.NewError(apiErr.MANIFEST_INVALID).AddDetail(details)
+			zcommon.WriteJSON(response, http.StatusInternalServerError, apiErr.NewErrorList(e))
 		}
 
 		return
@@ -490,24 +492,27 @@ func (rh *RouteHandler) GetManifest(response http.ResponseWriter, request *http.
 
 	reference, ok := vars["reference"]
 	if !ok || reference == "" {
-		zcommon.WriteJSON(response,
-			http.StatusNotFound,
-			apiErr.NewErrorList(apiErr.NewError(apiErr.MANIFEST_UNKNOWN, map[string]string{"reference": reference})))
+		err := apiErr.NewError(apiErr.MANIFEST_UNKNOWN).AddDetail(map[string]string{"reference": reference})
+		zcommon.WriteJSON(response, http.StatusNotFound, apiErr.NewErrorList(err))
 
 		return
 	}
 
 	content, digest, mediaType, err := getImageManifest(rh, imgStore, name, reference) //nolint: contextcheck
 	if err != nil {
+		details := zerr.GetDetails(err)
 		if errors.Is(err, zerr.ErrRepoNotFound) { //nolint:gocritic // errorslint conflicts with gocritic:IfElseChain
-			zcommon.WriteJSON(response, http.StatusNotFound,
-				apiErr.NewErrorList(apiErr.NewError(apiErr.NAME_UNKNOWN, map[string]string{"name": name})))
+			details["name"] = name
+			e := apiErr.NewError(apiErr.NAME_UNKNOWN).AddDetail(details)
+			zcommon.WriteJSON(response, http.StatusNotFound, apiErr.NewErrorList(e))
 		} else if errors.Is(err, zerr.ErrRepoBadVersion) {
-			zcommon.WriteJSON(response, http.StatusNotFound,
-				apiErr.NewErrorList(apiErr.NewError(apiErr.NAME_UNKNOWN, map[string]string{"name": name})))
+			details["name"] = name
+			e := apiErr.NewError(apiErr.NAME_UNKNOWN).AddDetail(details)
+			zcommon.WriteJSON(response, http.StatusNotFound, apiErr.NewErrorList(e))
 		} else if errors.Is(err, zerr.ErrManifestNotFound) {
-			zcommon.WriteJSON(response, http.StatusNotFound,
-				apiErr.NewErrorList(apiErr.NewError(apiErr.MANIFEST_UNKNOWN, map[string]string{"reference": reference})))
+			details["reference"] = reference
+			e := apiErr.NewError(apiErr.MANIFEST_UNKNOWN).AddDetail(details)
+			zcommon.WriteJSON(response, http.StatusNotFound, apiErr.NewErrorList(e))
 		} else {
 			rh.c.Log.Error().Err(err).Msg("unexpected error")
 			response.WriteHeader(http.StatusInternalServerError)
@@ -655,18 +660,16 @@ func (rh *RouteHandler) UpdateManifest(response http.ResponseWriter, request *ht
 
 	reference, ok := vars["reference"]
 	if !ok || reference == "" {
-		zcommon.WriteJSON(response,
-			http.StatusNotFound,
-			apiErr.NewErrorList(apiErr.NewError(apiErr.MANIFEST_INVALID, map[string]string{"reference": reference})))
+		err := apiErr.NewError(apiErr.MANIFEST_INVALID).AddDetail(map[string]string{"reference": reference})
+		zcommon.WriteJSON(response, http.StatusNotFound, apiErr.NewErrorList(err))
 
 		return
 	}
 
 	mediaType := request.Header.Get("Content-Type")
 	if !storageCommon.IsSupportedMediaType(mediaType) {
-		// response.WriteHeader(http.StatusUnsupportedMediaType)
-		zcommon.WriteJSON(response, http.StatusUnsupportedMediaType,
-			apiErr.NewErrorList(apiErr.NewError(apiErr.MANIFEST_INVALID, map[string]string{"mediaType": mediaType})))
+		err := apiErr.NewError(apiErr.MANIFEST_INVALID).AddDetail(map[string]string{"mediaType": mediaType})
+		zcommon.WriteJSON(response, http.StatusUnsupportedMediaType, apiErr.NewErrorList(err))
 
 		return
 	}
@@ -683,25 +686,31 @@ func (rh *RouteHandler) UpdateManifest(response http.ResponseWriter, request *ht
 
 	digest, subjectDigest, err := imgStore.PutImageManifest(name, reference, mediaType, body)
 	if err != nil {
+		details := zerr.GetDetails(err)
 		if errors.Is(err, zerr.ErrRepoNotFound) { //nolint:gocritic // errorslint conflicts with gocritic:IfElseChain
-			zcommon.WriteJSON(response, http.StatusNotFound,
-				apiErr.NewErrorList(apiErr.NewError(apiErr.NAME_UNKNOWN, map[string]string{"name": name})))
+			details["name"] = name
+			e := apiErr.NewError(apiErr.NAME_UNKNOWN).AddDetail(details)
+			zcommon.WriteJSON(response, http.StatusNotFound, apiErr.NewErrorList(e))
 		} else if errors.Is(err, zerr.ErrManifestNotFound) {
-			zcommon.WriteJSON(response, http.StatusNotFound,
-				apiErr.NewErrorList(apiErr.NewError(apiErr.MANIFEST_UNKNOWN, map[string]string{"reference": reference})))
+			details["reference"] = reference
+			e := apiErr.NewError(apiErr.MANIFEST_UNKNOWN).AddDetail(details)
+			zcommon.WriteJSON(response, http.StatusNotFound, apiErr.NewErrorList(e))
 		} else if errors.Is(err, zerr.ErrBadManifest) {
-			zcommon.WriteJSON(response, http.StatusBadRequest,
-				apiErr.NewErrorList(apiErr.NewError(apiErr.MANIFEST_INVALID, map[string]string{"reference": reference})))
+			details["reference"] = reference
+			e := apiErr.NewError(apiErr.MANIFEST_INVALID).AddDetail(details)
+			zcommon.WriteJSON(response, http.StatusBadRequest, apiErr.NewErrorList(e))
 		} else if errors.Is(err, zerr.ErrBlobNotFound) {
-			zcommon.WriteJSON(response, http.StatusBadRequest,
-				apiErr.NewErrorList(apiErr.NewError(apiErr.BLOB_UNKNOWN, map[string]string{"blob": digest.String()})))
+			details["blob"] = digest.String()
+			e := apiErr.NewError(apiErr.BLOB_UNKNOWN).AddDetail(details)
+			zcommon.WriteJSON(response, http.StatusBadRequest, apiErr.NewErrorList(e))
 		} else if errors.Is(err, zerr.ErrRepoBadVersion) {
-			zcommon.WriteJSON(response, http.StatusInternalServerError,
-				apiErr.NewErrorList(apiErr.NewError(apiErr.INVALID_INDEX, map[string]string{"name": name})))
+			details["name"] = name
+			e := apiErr.NewError(apiErr.INVALID_INDEX).AddDetail(details)
+			zcommon.WriteJSON(response, http.StatusInternalServerError, apiErr.NewErrorList(e))
 		} else if errors.Is(err, zerr.ErrImageLintAnnotations) {
-			zcommon.WriteJSON(response, http.StatusBadRequest,
-				apiErr.NewErrorList(apiErr.NewError(
-					apiErr.MANIFEST_INVALID, map[string]string{"reference": reference}).WithMessage(err.Error())))
+			details["reference"] = reference
+			e := apiErr.NewError(apiErr.MANIFEST_INVALID).AddDetail(details)
+			zcommon.WriteJSON(response, http.StatusBadRequest, apiErr.NewErrorList(e))
 		} else {
 			// could be syscall.EMFILE (Err:0x18 too many opened files), etc
 			rh.c.Log.Error().Err(err).Msg("unexpected error: performing cleanup")
@@ -782,15 +791,19 @@ func (rh *RouteHandler) DeleteManifest(response http.ResponseWriter, request *ht
 
 	manifestBlob, manifestDigest, mediaType, err := imgStore.GetImageManifest(name, reference)
 	if err != nil {
+		details := zerr.GetDetails(err)
 		if errors.Is(err, zerr.ErrRepoNotFound) { //nolint:gocritic // errorslint conflicts with gocritic:IfElseChain
-			zcommon.WriteJSON(response, http.StatusBadRequest,
-				apiErr.NewErrorList(apiErr.NewError(apiErr.NAME_UNKNOWN, map[string]string{"name": name})))
+			details["name"] = name
+			e := apiErr.NewError(apiErr.NAME_UNKNOWN).AddDetail(details)
+			zcommon.WriteJSON(response, http.StatusBadRequest, apiErr.NewErrorList(e))
 		} else if errors.Is(err, zerr.ErrManifestNotFound) {
-			zcommon.WriteJSON(response, http.StatusNotFound,
-				apiErr.NewErrorList(apiErr.NewError(apiErr.MANIFEST_UNKNOWN, map[string]string{"reference": reference})))
+			details["reference"] = reference
+			e := apiErr.NewError(apiErr.MANIFEST_UNKNOWN).AddDetail(details)
+			zcommon.WriteJSON(response, http.StatusNotFound, apiErr.NewErrorList(e))
 		} else if errors.Is(err, zerr.ErrBadManifest) {
-			zcommon.WriteJSON(response, http.StatusBadRequest,
-				apiErr.NewErrorList(apiErr.NewError(apiErr.UNSUPPORTED, map[string]string{"reference": reference})))
+			details["reference"] = reference
+			e := apiErr.NewError(apiErr.UNSUPPORTED).AddDetail(details)
+			zcommon.WriteJSON(response, http.StatusBadRequest, apiErr.NewErrorList(e))
 		} else {
 			rh.c.Log.Error().Err(err).Msg("unexpected error")
 			response.WriteHeader(http.StatusInternalServerError)
@@ -800,19 +813,24 @@ func (rh *RouteHandler) DeleteManifest(response http.ResponseWriter, request *ht
 	}
 
 	err = imgStore.DeleteImageManifest(name, reference, detectCollision)
-	if err != nil {
+	if err != nil { //nolint: dupl
+		details := zerr.GetDetails(err)
 		if errors.Is(err, zerr.ErrRepoNotFound) { //nolint:gocritic // errorslint conflicts with gocritic:IfElseChain
-			zcommon.WriteJSON(response, http.StatusBadRequest,
-				apiErr.NewErrorList(apiErr.NewError(apiErr.NAME_UNKNOWN, map[string]string{"name": name})))
+			details["name"] = name
+			e := apiErr.NewError(apiErr.NAME_UNKNOWN).AddDetail(details)
+			zcommon.WriteJSON(response, http.StatusBadRequest, apiErr.NewErrorList(e))
 		} else if errors.Is(err, zerr.ErrManifestNotFound) {
-			zcommon.WriteJSON(response, http.StatusNotFound,
-				apiErr.NewErrorList(apiErr.NewError(apiErr.MANIFEST_UNKNOWN, map[string]string{"reference": reference})))
+			details["reference"] = reference
+			e := apiErr.NewError(apiErr.MANIFEST_UNKNOWN).AddDetail(details)
+			zcommon.WriteJSON(response, http.StatusNotFound, apiErr.NewErrorList(e))
 		} else if errors.Is(err, zerr.ErrManifestConflict) {
-			zcommon.WriteJSON(response, http.StatusConflict,
-				apiErr.NewErrorList(apiErr.NewError(apiErr.MANIFEST_INVALID, map[string]string{"reference": reference})))
+			details["reference"] = reference
+			e := apiErr.NewError(apiErr.MANIFEST_INVALID).AddDetail(details)
+			zcommon.WriteJSON(response, http.StatusConflict, apiErr.NewErrorList(e))
 		} else if errors.Is(err, zerr.ErrBadManifest) {
-			zcommon.WriteJSON(response, http.StatusBadRequest,
-				apiErr.NewErrorList(apiErr.NewError(apiErr.UNSUPPORTED, map[string]string{"reference": reference})))
+			details["reference"] = reference
+			e := apiErr.NewError(apiErr.UNSUPPORTED).AddDetail(details)
+			zcommon.WriteJSON(response, http.StatusBadRequest, apiErr.NewErrorList(e))
 		} else {
 			rh.c.Log.Error().Err(err).Msg("unexpected error")
 			response.WriteHeader(http.StatusInternalServerError)
@@ -868,17 +886,19 @@ func (rh *RouteHandler) CheckBlob(response http.ResponseWriter, request *http.Re
 
 	ok, blen, err := imgStore.CheckBlob(name, digest)
 	if err != nil {
+		details := zerr.GetDetails(err)
 		if errors.Is(err, zerr.ErrBadBlobDigest) { //nolint:gocritic // errorslint conflicts with gocritic:IfElseChain
-			zcommon.WriteJSON(response,
-				http.StatusBadRequest,
-				apiErr.NewErrorList(apiErr.NewError(apiErr.DIGEST_INVALID, map[string]string{"digest": digest.String()})))
+			details["digest"] = digest.String()
+			e := apiErr.NewError(apiErr.DIGEST_INVALID).AddDetail(details)
+			zcommon.WriteJSON(response, http.StatusBadRequest, apiErr.NewErrorList(e))
 		} else if errors.Is(err, zerr.ErrRepoNotFound) {
-			zcommon.WriteJSON(response, http.StatusNotFound,
-				apiErr.NewErrorList(apiErr.NewError(apiErr.NAME_UNKNOWN, map[string]string{"name": name})))
+			details["name"] = name
+			e := apiErr.NewError(apiErr.NAME_UNKNOWN).AddDetail(details)
+			zcommon.WriteJSON(response, http.StatusNotFound, apiErr.NewErrorList(e))
 		} else if errors.Is(err, zerr.ErrBlobNotFound) {
-			zcommon.WriteJSON(response, http.StatusNotFound,
-				apiErr.NewErrorList(apiErr.NewError(apiErr.BLOB_UNKNOWN,
-					map[string]string{"digest": digest.String()})))
+			details["digest"] = digest.String()
+			e := apiErr.NewError(apiErr.BLOB_UNKNOWN).AddDetail(details)
+			zcommon.WriteJSON(response, http.StatusNotFound, apiErr.NewErrorList(e))
 		} else {
 			rh.c.Log.Error().Err(err).Msg("unexpected error")
 			response.WriteHeader(http.StatusInternalServerError)
@@ -888,8 +908,8 @@ func (rh *RouteHandler) CheckBlob(response http.ResponseWriter, request *http.Re
 	}
 
 	if !ok {
-		zcommon.WriteJSON(response, http.StatusNotFound, apiErr.NewErrorList(apiErr.NewError(apiErr.BLOB_UNKNOWN,
-			map[string]string{"digest": digest.String()})))
+		e := apiErr.NewError(apiErr.BLOB_UNKNOWN).AddDetail(map[string]string{"digest": digest.String()})
+		zcommon.WriteJSON(response, http.StatusNotFound, apiErr.NewErrorList(e))
 
 		return
 	}
@@ -1018,18 +1038,19 @@ func (rh *RouteHandler) GetBlob(response http.ResponseWriter, request *http.Requ
 	}
 
 	if err != nil {
+		details := zerr.GetDetails(err)
 		if errors.Is(err, zerr.ErrBadBlobDigest) { //nolint:gocritic // errorslint conflicts with gocritic:IfElseChain
-			zcommon.WriteJSON(response,
-				http.StatusBadRequest,
-				apiErr.NewErrorList(apiErr.NewError(apiErr.DIGEST_INVALID, map[string]string{"digest": digest.String()})))
+			details["digest"] = digest.String()
+			e := apiErr.NewError(apiErr.DIGEST_INVALID).AddDetail(details)
+			zcommon.WriteJSON(response, http.StatusBadRequest, apiErr.NewErrorList(e))
 		} else if errors.Is(err, zerr.ErrRepoNotFound) {
-			zcommon.WriteJSON(response,
-				http.StatusNotFound,
-				apiErr.NewErrorList(apiErr.NewError(apiErr.NAME_UNKNOWN, map[string]string{"name": name})))
+			details["name"] = name
+			e := apiErr.NewError(apiErr.NAME_UNKNOWN).AddDetail(details)
+			zcommon.WriteJSON(response, http.StatusNotFound, apiErr.NewErrorList(e))
 		} else if errors.Is(err, zerr.ErrBlobNotFound) {
-			zcommon.WriteJSON(response,
-				http.StatusNotFound,
-				apiErr.NewErrorList(apiErr.NewError(apiErr.BLOB_UNKNOWN, map[string]string{"digest": digest.String()})))
+			details["digest"] = digest.String()
+			e := apiErr.NewError(apiErr.BLOB_UNKNOWN).AddDetail(details)
+			zcommon.WriteJSON(response, http.StatusNotFound, apiErr.NewErrorList(e))
 		} else {
 			rh.c.Log.Error().Err(err).Msg("unexpected error")
 			response.WriteHeader(http.StatusInternalServerError)
@@ -1087,22 +1108,23 @@ func (rh *RouteHandler) DeleteBlob(response http.ResponseWriter, request *http.R
 
 	err = imgStore.DeleteBlob(name, digest)
 	if err != nil {
+		details := zerr.GetDetails(err)
 		if errors.Is(err, zerr.ErrBadBlobDigest) { //nolint:gocritic // errorslint conflicts with gocritic:IfElseChain
-			zcommon.WriteJSON(response,
-				http.StatusBadRequest,
-				apiErr.NewErrorList(apiErr.NewError(apiErr.DIGEST_INVALID, map[string]string{"digest": digest.String()})))
+			details["digest"] = digest.String()
+			e := apiErr.NewError(apiErr.DIGEST_INVALID).AddDetail(details)
+			zcommon.WriteJSON(response, http.StatusBadRequest, apiErr.NewErrorList(e))
 		} else if errors.Is(err, zerr.ErrRepoNotFound) {
-			zcommon.WriteJSON(response,
-				http.StatusNotFound,
-				apiErr.NewErrorList(apiErr.NewError(apiErr.NAME_UNKNOWN, map[string]string{"name": name})))
+			details["name"] = name
+			e := apiErr.NewError(apiErr.NAME_UNKNOWN).AddDetail(map[string]string{"name": name})
+			zcommon.WriteJSON(response, http.StatusNotFound, apiErr.NewErrorList(e))
 		} else if errors.Is(err, zerr.ErrBlobNotFound) {
-			zcommon.WriteJSON(response,
-				http.StatusNotFound,
-				apiErr.NewErrorList(apiErr.NewError(apiErr.BLOB_UNKNOWN, map[string]string{".String()": digest.String()})))
+			details["digest"] = digest.String()
+			e := apiErr.NewError(apiErr.BLOB_UNKNOWN).AddDetail(details)
+			zcommon.WriteJSON(response, http.StatusNotFound, apiErr.NewErrorList(e))
 		} else if errors.Is(err, zerr.ErrBlobReferenced) {
-			zcommon.WriteJSON(response,
-				http.StatusMethodNotAllowed,
-				apiErr.NewErrorList(apiErr.NewError(apiErr.DENIED, map[string]string{".String()": digest.String()})))
+			details["digest"] = digest.String()
+			e := apiErr.NewError(apiErr.DENIED).AddDetail(details)
+			zcommon.WriteJSON(response, http.StatusMethodNotAllowed, apiErr.NewErrorList(e))
 		} else {
 			rh.c.Log.Error().Err(err).Msg("unexpected error")
 			response.WriteHeader(http.StatusInternalServerError)
@@ -1154,9 +1176,11 @@ func (rh *RouteHandler) CreateBlobUpload(response http.ResponseWriter, request *
 		if err != nil {
 			upload, err := imgStore.NewBlobUpload(name)
 			if err != nil {
+				details := zerr.GetDetails(err)
 				if errors.Is(err, zerr.ErrRepoNotFound) {
-					zcommon.WriteJSON(response, http.StatusNotFound,
-						apiErr.NewErrorList(apiErr.NewError(apiErr.NAME_UNKNOWN, map[string]string{"name": name})))
+					details["name"] = name
+					e := apiErr.NewError(apiErr.NAME_UNKNOWN).AddDetail(details)
+					zcommon.WriteJSON(response, http.StatusNotFound, apiErr.NewErrorList(e))
 				} else {
 					rh.c.Log.Error().Err(err).Msg("unexpected error")
 					response.WriteHeader(http.StatusInternalServerError)
@@ -1211,8 +1235,15 @@ func (rh *RouteHandler) CreateBlobUpload(response http.ResponseWriter, request *
 		contentLength, err := strconv.ParseInt(request.Header.Get("Content-Length"), 10, 64)
 		if err != nil || contentLength <= 0 {
 			rh.c.Log.Warn().Str("actual", request.Header.Get("Content-Length")).Msg("invalid content length")
-			zcommon.WriteJSON(response, http.StatusBadRequest,
-				apiErr.NewErrorList(apiErr.NewError(apiErr.BLOB_UPLOAD_INVALID, map[string]string{"digest": digest.String()})))
+			details := map[string]string{"digest": digest.String()}
+
+			if err != nil {
+				details["conversion error"] = err.Error()
+			} else {
+				details["Content-Length"] = request.Header.Get("Content-Length")
+			}
+			e := apiErr.NewError(apiErr.BLOB_UPLOAD_INVALID).AddDetail(details)
+			zcommon.WriteJSON(response, http.StatusBadRequest, apiErr.NewErrorList(e))
 
 			return
 		}
@@ -1241,9 +1272,11 @@ func (rh *RouteHandler) CreateBlobUpload(response http.ResponseWriter, request *
 
 	upload, err := imgStore.NewBlobUpload(name)
 	if err != nil {
+		details := zerr.GetDetails(err)
 		if errors.Is(err, zerr.ErrRepoNotFound) {
-			zcommon.WriteJSON(response, http.StatusNotFound,
-				apiErr.NewErrorList(apiErr.NewError(apiErr.NAME_UNKNOWN, map[string]string{"name": name})))
+			details["name"] = name
+			e := apiErr.NewError(apiErr.NAME_UNKNOWN).AddDetail(details)
+			zcommon.WriteJSON(response, http.StatusNotFound, apiErr.NewErrorList(e))
 		} else {
 			rh.c.Log.Error().Err(err).Msg("unexpected error")
 			response.WriteHeader(http.StatusInternalServerError)
@@ -1291,18 +1324,20 @@ func (rh *RouteHandler) GetBlobUpload(response http.ResponseWriter, request *htt
 
 	size, err := imgStore.GetBlobUpload(name, sessionID)
 	if err != nil {
-		if errors.Is(err, zerr.ErrBadUploadRange) { //nolint:gocritic // errorslint conflicts with gocritic:IfElseChain
-			zcommon.WriteJSON(response, http.StatusBadRequest,
-				apiErr.NewErrorList(apiErr.NewError(apiErr.BLOB_UPLOAD_INVALID, map[string]string{"session_id": sessionID})))
-		} else if errors.Is(err, zerr.ErrBadBlobDigest) {
-			zcommon.WriteJSON(response, http.StatusBadRequest,
-				apiErr.NewErrorList(apiErr.NewError(apiErr.BLOB_UPLOAD_INVALID, map[string]string{"session_id": sessionID})))
+		details := zerr.GetDetails(err)
+		//nolint:gocritic // errorslint conflicts with gocritic:IfElseChain
+		if errors.Is(err, zerr.ErrBadUploadRange) || errors.Is(err, zerr.ErrBadBlobDigest) {
+			details["session_id"] = sessionID
+			e := apiErr.NewError(apiErr.BLOB_UPLOAD_INVALID).AddDetail(details)
+			zcommon.WriteJSON(response, http.StatusBadRequest, apiErr.NewErrorList(e))
 		} else if errors.Is(err, zerr.ErrRepoNotFound) {
-			zcommon.WriteJSON(response, http.StatusNotFound,
-				apiErr.NewErrorList(apiErr.NewError(apiErr.NAME_UNKNOWN, map[string]string{"name": name})))
+			details["name"] = name
+			e := apiErr.NewError(apiErr.NAME_UNKNOWN).AddDetail(details)
+			zcommon.WriteJSON(response, http.StatusNotFound, apiErr.NewErrorList(e))
 		} else if errors.Is(err, zerr.ErrUploadNotFound) {
-			zcommon.WriteJSON(response, http.StatusNotFound,
-				apiErr.NewErrorList(apiErr.NewError(apiErr.BLOB_UPLOAD_UNKNOWN, map[string]string{"session_id": sessionID})))
+			details["session_id"] = sessionID
+			e := apiErr.NewError(apiErr.BLOB_UPLOAD_UNKNOWN).AddDetail(details)
+			zcommon.WriteJSON(response, http.StatusNotFound, apiErr.NewErrorList(e))
 		} else {
 			rh.c.Log.Error().Err(err).Msg("unexpected error")
 			response.WriteHeader(http.StatusInternalServerError)
@@ -1380,16 +1415,20 @@ func (rh *RouteHandler) PatchBlobUpload(response http.ResponseWriter, request *h
 		clen, err = imgStore.PutBlobChunk(name, sessionID, from, to, request.Body)
 	}
 
-	if err != nil {
+	if err != nil { //nolint: dupl
+		details := zerr.GetDetails(err)
 		if errors.Is(err, zerr.ErrBadUploadRange) { //nolint:gocritic // errorslint conflicts with gocritic:IfElseChain
-			zcommon.WriteJSON(response, http.StatusRequestedRangeNotSatisfiable,
-				apiErr.NewErrorList(apiErr.NewError(apiErr.BLOB_UPLOAD_INVALID, map[string]string{"session_id": sessionID})))
+			details["session_id"] = sessionID
+			e := apiErr.NewError(apiErr.BLOB_UPLOAD_INVALID).AddDetail(details)
+			zcommon.WriteJSON(response, http.StatusRequestedRangeNotSatisfiable, apiErr.NewErrorList(e))
 		} else if errors.Is(err, zerr.ErrRepoNotFound) {
-			zcommon.WriteJSON(response, http.StatusNotFound,
-				apiErr.NewErrorList(apiErr.NewError(apiErr.NAME_UNKNOWN, map[string]string{"name": name})))
+			details["name"] = name
+			e := apiErr.NewError(apiErr.NAME_UNKNOWN).AddDetail(details)
+			zcommon.WriteJSON(response, http.StatusNotFound, apiErr.NewErrorList(e))
 		} else if errors.Is(err, zerr.ErrUploadNotFound) {
-			zcommon.WriteJSON(response, http.StatusNotFound,
-				apiErr.NewErrorList(apiErr.NewError(apiErr.BLOB_UPLOAD_UNKNOWN, map[string]string{"session_id": sessionID})))
+			details["session_id"] = sessionID
+			e := apiErr.NewError(apiErr.BLOB_UPLOAD_UNKNOWN).AddDetail(details)
+			zcommon.WriteJSON(response, http.StatusNotFound, apiErr.NewErrorList(e))
 		} else {
 			// could be io.ErrUnexpectedEOF, syscall.EMFILE (Err:0x18 too many opened files), etc
 			rh.c.Log.Error().Err(err).Msg("unexpected error: removing .uploads/ files")
@@ -1500,16 +1539,20 @@ func (rh *RouteHandler) UpdateBlobUpload(response http.ResponseWriter, request *
 		}
 
 		_, err = imgStore.PutBlobChunk(name, sessionID, from, to, request.Body)
-		if err != nil {
+		if err != nil { //nolint:dupl
+			details := zerr.GetDetails(err)
 			if errors.Is(err, zerr.ErrBadUploadRange) { //nolint:gocritic // errorslint conflicts with gocritic:IfElseChain
-				zcommon.WriteJSON(response, http.StatusBadRequest,
-					apiErr.NewErrorList(apiErr.NewError(apiErr.BLOB_UPLOAD_INVALID, map[string]string{"session_id": sessionID})))
+				details["session_id"] = sessionID
+				e := apiErr.NewError(apiErr.BLOB_UPLOAD_INVALID).AddDetail(details)
+				zcommon.WriteJSON(response, http.StatusBadRequest, apiErr.NewErrorList(e))
 			} else if errors.Is(err, zerr.ErrRepoNotFound) {
-				zcommon.WriteJSON(response, http.StatusNotFound,
-					apiErr.NewErrorList(apiErr.NewError(apiErr.NAME_UNKNOWN, map[string]string{"name": name})))
+				details["name"] = name
+				e := apiErr.NewError(apiErr.NAME_UNKNOWN).AddDetail(details)
+				zcommon.WriteJSON(response, http.StatusNotFound, apiErr.NewErrorList(e))
 			} else if errors.Is(err, zerr.ErrUploadNotFound) {
-				zcommon.WriteJSON(response, http.StatusNotFound,
-					apiErr.NewErrorList(apiErr.NewError(apiErr.BLOB_UPLOAD_UNKNOWN, map[string]string{"session_id": sessionID})))
+				details["session_id"] = sessionID
+				e := apiErr.NewError(apiErr.BLOB_UPLOAD_UNKNOWN).AddDetail(details)
+				zcommon.WriteJSON(response, http.StatusNotFound, apiErr.NewErrorList(e))
 			} else {
 				// could be io.ErrUnexpectedEOF, syscall.EMFILE (Err:0x18 too many opened files), etc
 				rh.c.Log.Error().Err(err).Msg("unexpected error: removing .uploads/ files")
@@ -1528,18 +1571,23 @@ func (rh *RouteHandler) UpdateBlobUpload(response http.ResponseWriter, request *
 finish:
 	// blob chunks already transferred, just finish
 	if err := imgStore.FinishBlobUpload(name, sessionID, request.Body, digest); err != nil {
+		details := zerr.GetDetails(err)
 		if errors.Is(err, zerr.ErrBadBlobDigest) { //nolint:gocritic // errorslint conflicts with gocritic:IfElseChain
-			zcommon.WriteJSON(response, http.StatusBadRequest,
-				apiErr.NewErrorList(apiErr.NewError(apiErr.DIGEST_INVALID, map[string]string{"digest": digest.String()})))
+			details["digest"] = digest.String()
+			e := apiErr.NewError(apiErr.DIGEST_INVALID).AddDetail(details)
+			zcommon.WriteJSON(response, http.StatusBadRequest, apiErr.NewErrorList(e))
 		} else if errors.Is(err, zerr.ErrBadUploadRange) {
-			zcommon.WriteJSON(response, http.StatusBadRequest,
-				apiErr.NewErrorList(apiErr.NewError(apiErr.BLOB_UPLOAD_INVALID, map[string]string{"session_id": sessionID})))
+			details["session_id"] = sessionID
+			e := apiErr.NewError(apiErr.BLOB_UPLOAD_INVALID).AddDetail(details)
+			zcommon.WriteJSON(response, http.StatusBadRequest, apiErr.NewErrorList(e))
 		} else if errors.Is(err, zerr.ErrRepoNotFound) {
-			zcommon.WriteJSON(response, http.StatusNotFound,
-				apiErr.NewErrorList(apiErr.NewError(apiErr.NAME_UNKNOWN, map[string]string{"name": name})))
+			details["name"] = name
+			e := apiErr.NewError(apiErr.NAME_UNKNOWN).AddDetail(details)
+			zcommon.WriteJSON(response, http.StatusNotFound, apiErr.NewErrorList(e))
 		} else if errors.Is(err, zerr.ErrUploadNotFound) {
-			zcommon.WriteJSON(response, http.StatusNotFound,
-				apiErr.NewErrorList(apiErr.NewError(apiErr.BLOB_UPLOAD_UNKNOWN, map[string]string{"session_id": sessionID})))
+			details["session_id"] = sessionID
+			e := apiErr.NewError(apiErr.BLOB_UPLOAD_UNKNOWN).AddDetail(details)
+			zcommon.WriteJSON(response, http.StatusNotFound, apiErr.NewErrorList(e))
 		} else {
 			// could be io.ErrUnexpectedEOF, syscall.EMFILE (Err:0x18 too many opened files), etc
 			rh.c.Log.Error().Err(err).Msg("unexpected error: removing .uploads/ files")
@@ -1591,12 +1639,15 @@ func (rh *RouteHandler) DeleteBlobUpload(response http.ResponseWriter, request *
 	}
 
 	if err := imgStore.DeleteBlobUpload(name, sessionID); err != nil {
+		details := zerr.GetDetails(err)
 		if errors.Is(err, zerr.ErrRepoNotFound) { //nolint:gocritic // errorslint conflicts with gocritic:IfElseChain
-			zcommon.WriteJSON(response, http.StatusNotFound,
-				apiErr.NewErrorList(apiErr.NewError(apiErr.NAME_UNKNOWN, map[string]string{"name": name})))
+			details["name"] = name
+			e := apiErr.NewError(apiErr.NAME_UNKNOWN).AddDetail(details)
+			zcommon.WriteJSON(response, http.StatusNotFound, apiErr.NewErrorList(e))
 		} else if errors.Is(err, zerr.ErrUploadNotFound) {
-			zcommon.WriteJSON(response, http.StatusNotFound,
-				apiErr.NewErrorList(apiErr.NewError(apiErr.BLOB_UPLOAD_UNKNOWN, map[string]string{"session_id": sessionID})))
+			details["session_id"] = sessionID
+			e := apiErr.NewError(apiErr.BLOB_UPLOAD_UNKNOWN).AddDetail(details)
+			zcommon.WriteJSON(response, http.StatusNotFound, apiErr.NewErrorList(e))
 		} else {
 			rh.c.Log.Error().Err(err).Msg("unexpected error")
 			response.WriteHeader(http.StatusInternalServerError)
