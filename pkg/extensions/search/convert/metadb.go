@@ -268,9 +268,10 @@ func ImageIndex2ImageSummary(ctx context.Context, repo, tag string, indexDigest 
 
 	indexSize = strconv.FormatInt(totalIndexSize, 10)
 
-	annotations := GetAnnotations(indexContent.Annotations, map[string]string{})
-
 	signaturesInfo := GetSignaturesInfo(isSigned, repoMeta, indexDigest)
+
+	manifestAnnotations, configLabels := GetOneManifestAnnotations(indexContent, manifestMetaMap)
+	annotations := GetIndexAnnotations(indexContent.Annotations, manifestAnnotations, configLabels)
 
 	indexSummary := gql_generated.ImageSummary{
 		RepoName:      &repo,
@@ -299,6 +300,30 @@ func ImageIndex2ImageSummary(ctx context.Context, repo, tag string, indexDigest 
 	}
 
 	return &indexSummary, indexBlobs, nil
+}
+
+func GetOneManifestAnnotations(indexContent ispec.Index, manifestMetaMap map[string]mTypes.ManifestMetadata,
+) (map[string]string, map[string]string) {
+	if len(manifestMetaMap) == 0 || len(indexContent.Manifests) == 0 {
+		return map[string]string{}, map[string]string{}
+	}
+
+	manifestMeta := manifestMetaMap[indexContent.Manifests[0].Digest.String()]
+
+	manifestContent := ispec.Manifest{}
+	configContent := ispec.Image{}
+
+	err := json.Unmarshal(manifestMeta.ManifestBlob, &manifestContent)
+	if err != nil {
+		return map[string]string{}, map[string]string{}
+	}
+
+	err = json.Unmarshal(manifestMeta.ConfigBlob, &configContent)
+	if err != nil {
+		return map[string]string{}, map[string]string{}
+	}
+
+	return manifestContent.Annotations, configContent.Config.Labels
 }
 
 func ImageManifest2ImageSummary(ctx context.Context, repo, tag string, digest godigest.Digest, skipCVE bool,

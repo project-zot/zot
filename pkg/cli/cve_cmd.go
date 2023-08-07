@@ -154,7 +154,7 @@ func searchCve(searchConfig searchConfig) error {
 	}
 
 	for _, searcher := range searchers {
-		// there can be CVE DB readyness issues on the server side
+		// there can be CVE DB readiness issues on the server side
 		// we need a retry mechanism for that specific type of errors
 		maxAttempts := 20
 

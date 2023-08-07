@@ -770,3 +770,213 @@ func TestPaginatedConvert(t *testing.T) {
 		So(pageInfo.ItemCount, ShouldEqual, 1)
 	})
 }
+
+func TestGetOneManifestAnnotations(t *testing.T) {
+	Convey("GetOneManifestAnnotations errors", t, func() {
+		manifestAnnotations, configLabels := convert.GetOneManifestAnnotations(
+			ispec.Index{Manifests: []ispec.Descriptor{
+				{Digest: "bad-manifest"}, {Digest: "dig2"},
+			}},
+			map[string]mTypes.ManifestMetadata{
+				"bad-manifest": {
+					ManifestBlob: []byte(`bad`),
+					ConfigBlob:   []byte("{}"),
+				},
+			},
+		)
+		So(manifestAnnotations, ShouldBeEmpty)
+		So(configLabels, ShouldBeEmpty)
+
+		manifestAnnotations, configLabels = convert.GetOneManifestAnnotations(
+			ispec.Index{Manifests: []ispec.Descriptor{
+				{Digest: "bad-config"},
+			}},
+			map[string]mTypes.ManifestMetadata{
+				"bad-config": {
+					ManifestBlob: []byte("{}"),
+					ConfigBlob:   []byte("bad"),
+				},
+			},
+		)
+		So(manifestAnnotations, ShouldBeEmpty)
+		So(configLabels, ShouldBeEmpty)
+	})
+
+	Convey("Test ImageIndex2ImageSummary annotations logic", t, func() {
+		ctx := context.Background()
+
+		configLabels := map[string]string{
+			ispec.AnnotationDescription:   "ConfigDescription",
+			ispec.AnnotationLicenses:      "ConfigLicenses",
+			ispec.AnnotationVendor:        "ConfigVendor",
+			ispec.AnnotationAuthors:       "ConfigAuthors",
+			ispec.AnnotationTitle:         "ConfigTitle",
+			ispec.AnnotationDocumentation: "ConfigDocumentation",
+			ispec.AnnotationSource:        "ConfigSource",
+		}
+
+		manifestAnnotations := map[string]string{
+			ispec.AnnotationDescription:   "ManifestDescription",
+			ispec.AnnotationLicenses:      "ManifestLicenses",
+			ispec.AnnotationVendor:        "ManifestVendor",
+			ispec.AnnotationAuthors:       "ManifestAuthors",
+			ispec.AnnotationTitle:         "ManifestTitle",
+			ispec.AnnotationDocumentation: "ManifestDocumentation",
+			ispec.AnnotationSource:        "ManifestSource",
+		}
+
+		indexAnnotations := map[string]string{
+			ispec.AnnotationDescription:   "IndexDescription",
+			ispec.AnnotationLicenses:      "IndexLicenses",
+			ispec.AnnotationVendor:        "IndexVendor",
+			ispec.AnnotationAuthors:       "IndexAuthors",
+			ispec.AnnotationTitle:         "IndexTitle",
+			ispec.AnnotationDocumentation: "IndexDocumentation",
+			ispec.AnnotationSource:        "IndexSource",
+		}
+
+		imageWithConfigAnnotations := test.CreateImageWith().DefaultLayers().
+			ImageConfig(ispec.Image{
+				Config: ispec.ImageConfig{
+					Labels: configLabels,
+				},
+			}).Build()
+
+		imageWithManifestAndConfigAnnotations := test.CreateImageWith().DefaultLayers().
+			ImageConfig(ispec.Image{
+				Config: ispec.ImageConfig{
+					Labels: configLabels,
+				},
+			}).Annotations(manifestAnnotations).Build()
+
+		// --------------------------------------------------------
+		indexWithAnnotations := test.CreateMultiarchWith().Images(
+			[]test.Image{imageWithManifestAndConfigAnnotations},
+		).Annotations(indexAnnotations).Build()
+
+		repoMeta, manifestMetadata, indexData := test.GetMetadataForRepos(test.Repo{
+			Name: "repo",
+			MultiArchImages: []test.RepoMultiArchImage{
+				{MultiarchImage: indexWithAnnotations, Tag: "tag"},
+			},
+		})
+
+		digest := indexWithAnnotations.Digest()
+
+		imageSummary, _, err := convert.ImageIndex2ImageSummary(ctx, "repo", "tag", digest, true, repoMeta[0],
+			indexData[digest.String()], manifestMetadata, nil)
+		So(err, ShouldBeNil)
+		So(*imageSummary.Description, ShouldResemble, "IndexDescription")
+		So(*imageSummary.Licenses, ShouldResemble, "IndexLicenses")
+		So(*imageSummary.Title, ShouldResemble, "IndexTitle")
+		So(*imageSummary.Source, ShouldResemble, "IndexSource")
+		So(*imageSummary.Documentation, ShouldResemble, "IndexDocumentation")
+		So(*imageSummary.Vendor, ShouldResemble, "IndexVendor")
+		So(*imageSummary.Authors, ShouldResemble, "IndexAuthors")
+
+		// --------------------------------------------------------
+		indexWithManifestAndConfigAnnotations := test.CreateMultiarchWith().Images(
+			[]test.Image{imageWithManifestAndConfigAnnotations, test.CreateRandomImage(), test.CreateRandomImage()},
+		).Build()
+
+		repoMeta, manifestMetadata, indexData = test.GetMetadataForRepos(test.Repo{
+			Name:            "repo",
+			MultiArchImages: []test.RepoMultiArchImage{{MultiarchImage: indexWithManifestAndConfigAnnotations}},
+		})
+		digest = indexWithManifestAndConfigAnnotations.Digest()
+
+		imageSummary, _, err = convert.ImageIndex2ImageSummary(ctx, "repo", "tag", digest,
+			true, repoMeta[0], indexData[digest.String()], manifestMetadata, nil)
+		So(err, ShouldBeNil)
+		So(*imageSummary.Description, ShouldResemble, "ManifestDescription")
+		So(*imageSummary.Licenses, ShouldResemble, "ManifestLicenses")
+		So(*imageSummary.Title, ShouldResemble, "ManifestTitle")
+		So(*imageSummary.Source, ShouldResemble, "ManifestSource")
+		So(*imageSummary.Documentation, ShouldResemble, "ManifestDocumentation")
+		So(*imageSummary.Vendor, ShouldResemble, "ManifestVendor")
+		So(*imageSummary.Authors, ShouldResemble, "ManifestAuthors")
+		// --------------------------------------------------------
+		indexWithConfigAnnotations := test.CreateMultiarchWith().Images(
+			[]test.Image{imageWithConfigAnnotations, test.CreateRandomImage(), test.CreateRandomImage()},
+		).Build()
+
+		repoMeta, manifestMetadata, indexData = test.GetMetadataForRepos(test.Repo{
+			Name:            "repo",
+			MultiArchImages: []test.RepoMultiArchImage{{MultiarchImage: indexWithConfigAnnotations, Tag: "tag"}},
+		})
+		digest = indexWithConfigAnnotations.Digest()
+
+		imageSummary, _, err = convert.ImageIndex2ImageSummary(ctx, "repo", "tag", digest,
+			true, repoMeta[0], indexData[digest.String()], manifestMetadata, nil)
+		So(err, ShouldBeNil)
+		So(*imageSummary.Description, ShouldResemble, "ConfigDescription")
+		So(*imageSummary.Licenses, ShouldResemble, "ConfigLicenses")
+		So(*imageSummary.Title, ShouldResemble, "ConfigTitle")
+		So(*imageSummary.Source, ShouldResemble, "ConfigSource")
+		So(*imageSummary.Documentation, ShouldResemble, "ConfigDocumentation")
+		So(*imageSummary.Vendor, ShouldResemble, "ConfigVendor")
+		So(*imageSummary.Authors, ShouldResemble, "ConfigAuthors")
+		//--------------------------------------------------------
+
+		indexWithMixAnnotations := test.CreateMultiarchWith().Images(
+			[]test.Image{
+				test.CreateImageWith().DefaultLayers().ImageConfig(ispec.Image{
+					Config: ispec.ImageConfig{
+						Labels: map[string]string{
+							ispec.AnnotationDescription: "ConfigDescription",
+							ispec.AnnotationLicenses:    "ConfigLicenses",
+						},
+					},
+				}).Annotations(map[string]string{
+					ispec.AnnotationVendor:  "ManifestVendor",
+					ispec.AnnotationAuthors: "ManifestAuthors",
+				}).Build(),
+				test.CreateRandomImage(),
+				test.CreateRandomImage(),
+			},
+		).Annotations(
+			map[string]string{
+				ispec.AnnotationTitle:         "IndexTitle",
+				ispec.AnnotationDocumentation: "IndexDocumentation",
+				ispec.AnnotationSource:        "IndexSource",
+			},
+		).Build()
+
+		repoMeta, manifestMetadata, indexData = test.GetMetadataForRepos(test.Repo{
+			Name:            "repo",
+			MultiArchImages: []test.RepoMultiArchImage{{MultiarchImage: indexWithMixAnnotations, Tag: "tag"}},
+		})
+		digest = indexWithMixAnnotations.Digest()
+
+		imageSummary, _, err = convert.ImageIndex2ImageSummary(ctx, "repo", "tag", digest,
+			true, repoMeta[0], indexData[digest.String()], manifestMetadata, nil)
+		So(err, ShouldBeNil)
+		So(*imageSummary.Description, ShouldResemble, "ConfigDescription")
+		So(*imageSummary.Licenses, ShouldResemble, "ConfigLicenses")
+		So(*imageSummary.Vendor, ShouldResemble, "ManifestVendor")
+		So(*imageSummary.Authors, ShouldResemble, "ManifestAuthors")
+		So(*imageSummary.Title, ShouldResemble, "IndexTitle")
+		So(*imageSummary.Documentation, ShouldResemble, "IndexDocumentation")
+		So(*imageSummary.Source, ShouldResemble, "IndexSource")
+
+		//--------------------------------------------------------
+		indexWithNoAnnotations := test.CreateRandomMultiarch()
+
+		repoMeta, manifestMetadata, indexData = test.GetMetadataForRepos(test.Repo{
+			Name:            "repo",
+			MultiArchImages: []test.RepoMultiArchImage{{MultiarchImage: indexWithNoAnnotations, Tag: "tag"}},
+		})
+		digest = indexWithNoAnnotations.Digest()
+
+		imageSummary, _, err = convert.ImageIndex2ImageSummary(ctx, "repo", "tag", digest,
+			true, repoMeta[0], indexData[digest.String()], manifestMetadata, nil)
+		So(err, ShouldBeNil)
+		So(*imageSummary.Description, ShouldBeBlank)
+		So(*imageSummary.Licenses, ShouldBeBlank)
+		So(*imageSummary.Vendor, ShouldBeBlank)
+		So(*imageSummary.Authors, ShouldBeBlank)
+		So(*imageSummary.Title, ShouldBeBlank)
+		So(*imageSummary.Documentation, ShouldBeBlank)
+		So(*imageSummary.Source, ShouldBeBlank)
+	})
+}
