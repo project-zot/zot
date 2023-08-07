@@ -4,8 +4,11 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"io"
+	"math/rand"
 	"path"
 	"strings"
+	"time"
 
 	notreg "github.com/notaryproject/notation-go/registry"
 	godigest "github.com/opencontainers/go-digest"
@@ -853,6 +856,10 @@ func (gen *DedupeTaskGenerator) IsDone() bool {
 	return gen.done
 }
 
+func (gen *DedupeTaskGenerator) IsReady() bool {
+	return true
+}
+
 func (gen *DedupeTaskGenerator) Reset() {
 	gen.lastDigests = []godigest.Digest{}
 	gen.duplicateBlobs = []string{}
@@ -885,4 +892,79 @@ func (dt *dedupeTask) DoWork() error {
 	}
 
 	return err
+}
+
+/*
+	GCTaskGenerator takes all repositories found in the storage.imagestore
+
+and it will execute garbage collection for each repository by creating a task
+for each repository and pushing it to the task scheduler.
+*/
+type GCTaskGenerator struct {
+	ImgStore storageTypes.ImageStore
+	lastRepo string
+	nextRun  time.Time
+	done     bool
+	rand     *rand.Rand
+}
+
+func (gen *GCTaskGenerator) getRandomDelay() int {
+	maxDelay := 30
+
+	return gen.rand.Intn(maxDelay)
+}
+
+func (gen *GCTaskGenerator) Next() (scheduler.Task, error) {
+	if gen.lastRepo == "" && gen.nextRun.IsZero() {
+		gen.rand = rand.New(rand.NewSource(time.Now().UTC().UnixNano())) //nolint: gosec
+	}
+
+	delay := gen.getRandomDelay()
+
+	gen.nextRun = time.Now().Add(time.Duration(delay) * time.Second)
+
+	repo, err := gen.ImgStore.GetNextRepository(gen.lastRepo)
+
+	if err != nil && !errors.Is(err, io.EOF) {
+		return nil, err
+	}
+
+	if repo == "" {
+		gen.done = true
+
+		return nil, nil
+	}
+
+	gen.lastRepo = repo
+
+	return NewGCTask(gen.ImgStore, repo), nil
+}
+
+func (gen *GCTaskGenerator) IsDone() bool {
+	return gen.done
+}
+
+func (gen *GCTaskGenerator) IsReady() bool {
+	return time.Now().After(gen.nextRun)
+}
+
+func (gen *GCTaskGenerator) Reset() {
+	gen.lastRepo = ""
+	gen.done = false
+	gen.nextRun = time.Time{}
+}
+
+type gcTask struct {
+	imgStore storageTypes.ImageStore
+	repo     string
+}
+
+func NewGCTask(imgStore storageTypes.ImageStore, repo string,
+) *gcTask {
+	return &gcTask{imgStore, repo}
+}
+
+func (gct *gcTask) DoWork() error {
+	// run task
+	return gct.imgStore.RunGCRepo(gct.repo)
 }

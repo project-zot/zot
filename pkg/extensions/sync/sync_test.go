@@ -131,6 +131,7 @@ func makeUpstreamServer(
 	}
 
 	srcConfig.HTTP.Port = srcPort
+	srcConfig.Storage.GC = false
 
 	srcDir := t.TempDir()
 
@@ -1663,6 +1664,7 @@ func TestPermsDenied(t *testing.T) {
 
 		destDir := t.TempDir()
 
+		destConfig.Storage.GC = false
 		destConfig.Storage.RootDirectory = destDir
 
 		destConfig.Extensions = &extconf.ExtensionConfig{}
@@ -3037,6 +3039,8 @@ func TestSubPaths(t *testing.T) {
 		srcBaseURL := test.GetBaseURL(srcPort)
 
 		srcConfig.HTTP.Port = srcPort
+
+		srcConfig.Storage.GC = false
 
 		srcDir := t.TempDir()
 
@@ -4506,6 +4510,7 @@ func TestOnDemandRetryGoroutine(t *testing.T) {
 		srcBaseURL := test.GetBaseURL(srcPort)
 
 		srcConfig.HTTP.Port = srcPort
+		srcConfig.Storage.GC = false
 
 		srcDir := t.TempDir()
 
@@ -4712,6 +4717,7 @@ func TestOnDemandMultipleImage(t *testing.T) {
 		srcBaseURL := test.GetBaseURL(srcPort)
 
 		srcConfig.HTTP.Port = srcPort
+		srcConfig.Storage.GC = false
 
 		srcDir := t.TempDir()
 

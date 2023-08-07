@@ -185,7 +185,10 @@ func New() *Config {
 		ReleaseTag:      ReleaseTag,
 		BinaryType:      BinaryType,
 		Storage: GlobalStorageConfig{
-			StorageConfig: StorageConfig{GC: true, GCDelay: storageConstants.DefaultGCDelay, Dedupe: true},
+			StorageConfig: StorageConfig{
+				GC: true, GCDelay: storageConstants.DefaultGCDelay,
+				GCInterval: storageConstants.DefaultGCInterval, Dedupe: true,
+			},
 		},
 		HTTP: HTTPConfig{Address: "127.0.0.1", Port: "8080", Auth: &AuthConfig{FailDelay: 0}},
 		Log:  &LogConfig{Level: "debug"},

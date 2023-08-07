@@ -218,6 +218,16 @@ func TestSignatureUploadAndVerification(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(found, ShouldBeTrue)
 
+		found, err = test.ReadLogFileAndSearchString(logFile.Name(),
+			"finished generating tasks for updating signatures validity", 10*time.Second)
+		So(err, ShouldBeNil)
+		So(found, ShouldBeTrue)
+
+		found, err = test.ReadLogFileAndSearchString(logFile.Name(),
+			"finished resetting task generator for updating signatures validity", 10*time.Second)
+		So(err, ShouldBeNil)
+		So(found, ShouldBeTrue)
+
 		resp, err = client.R().SetHeader("Content-type", "application/octet-stream").
 			SetBody([]byte("wrong content")).Post(baseURL + constants.FullCosign)
 		So(err, ShouldBeNil)

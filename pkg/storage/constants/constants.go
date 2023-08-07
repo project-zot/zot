@@ -20,5 +20,6 @@ const (
 	BoltdbName              = "cache"
 	DynamoDBDriverName      = "dynamodb"
 	DefaultGCDelay          = 1 * time.Hour
+	DefaultGCInterval       = 1 * time.Hour
 	S3StorageDriverName     = "s3"
 )

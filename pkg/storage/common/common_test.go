@@ -77,36 +77,6 @@ func TestValidateManifest(t *testing.T) {
 			So(err, ShouldNotBeNil)
 		})
 
-		Convey("bad config blob", func() {
-			manifest := ispec.Manifest{
-				Config: ispec.Descriptor{
-					MediaType: ispec.MediaTypeImageConfig,
-					Digest:    cdigest,
-					Size:      int64(len(cblob)),
-				},
-				Layers: []ispec.Descriptor{
-					{
-						MediaType: ispec.MediaTypeImageLayer,
-						Digest:    digest,
-						Size:      int64(len(content)),
-					},
-				},
-			}
-
-			manifest.SchemaVersion = 2
-
-			configBlobPath := imgStore.BlobPath("test", cdigest)
-
-			err := os.WriteFile(configBlobPath, []byte("bad config blob"), 0o000)
-			So(err, ShouldBeNil)
-
-			body, err := json.Marshal(manifest)
-			So(err, ShouldBeNil)
-
-			_, _, err = imgStore.PutImageManifest("test", "1.0", ispec.MediaTypeImageManifest, body)
-			So(err, ShouldNotBeNil)
-		})
-
 		Convey("manifest with non-distributable layers", func() {
 			content := []byte("this blob doesn't exist")
 			digest := godigest.FromBytes(content)

@@ -1,7 +1,7 @@
 # How to submit a Generator to the scheduler
 
 ## What is a generator and how should it be implemented?
-In order to create a new generator (which will generate new tasks one by one) and add it to the scheduler there are 3 methods which should be implemented:
+In order to create a new generator (which will generate new tasks one by one) and add it to the scheduler there are 4 methods which should be implemented:
 1. ***GenerateTask() (Task, error)***
     ```
     This method should implement the logic for generating a new task. 
@@ -12,7 +12,11 @@ In order to create a new generator (which will generate new tasks one by one) an
     ```
     This method should return true after the generator finished all the work and has no more tasks to generate.
     ```
-3. ***Reset()***
+3. ***IsReady() bool***
+    ```
+    This method should return true if the generator is ready to generate a new task and should be used when it is needed to generate tasks with some delay between.
+    ```
+4. ***Reset()***
     ```
     When this method is called the generator should reset to its initial state.
     After the generator is reset, it will generate new tasks as if it hadn't been used before.

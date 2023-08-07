@@ -79,6 +79,10 @@ func (gen *taskGenerator) IsDone() bool {
 	return gen.done
 }
 
+func (gen *taskGenerator) IsReady() bool {
+	return true
+}
+
 func (gen *taskGenerator) Reset() {
 	gen.lastRepo = ""
 	gen.done = false

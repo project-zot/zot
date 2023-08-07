@@ -4514,6 +4514,7 @@ func TestCrossRepoMount(t *testing.T) {
 		cm.StopServer()
 
 		ctlr.Config.Storage.Dedupe = true
+		ctlr.Config.Storage.GC = false
 		ctlr.Config.Storage.RootDirectory = newDir
 		cm = test.NewControllerManager(ctlr) //nolint: varnamelen
 		cm.StartAndWait(port)
@@ -7363,48 +7364,6 @@ func TestInjectTooManyOpenFiles(t *testing.T) {
 				So(resp.StatusCode, ShouldEqual, http.StatusCreated)
 			}
 		})
-		Convey("code coverage: error inside PutImageManifest method of img store (umoci.OpenLayout error)", func() {
-			injected := inject.InjectFailure(3)
-
-			request, _ := http.NewRequestWithContext(context.TODO(), http.MethodPut, baseURL, bytes.NewReader(content))
-			request = mux.SetURLVars(request, map[string]string{"name": "repotest", "reference": "1.0"})
-			request.Header.Set("Content-Type", "application/vnd.oci.image.manifest.v1+json")
-			response := httptest.NewRecorder()
-
-			rthdlr.UpdateManifest(response, request)
-
-			resp := response.Result()
-			defer resp.Body.Close()
-
-			So(resp, ShouldNotBeNil)
-
-			if injected {
-				So(resp.StatusCode, ShouldEqual, http.StatusInternalServerError)
-			} else {
-				So(resp.StatusCode, ShouldEqual, http.StatusCreated)
-			}
-		})
-		Convey("code coverage: error inside PutImageManifest method of img store (oci.GC)", func() {
-			injected := inject.InjectFailure(4)
-
-			request, _ := http.NewRequestWithContext(context.TODO(), http.MethodPut, baseURL, bytes.NewReader(content))
-			request = mux.SetURLVars(request, map[string]string{"name": "repotest", "reference": "1.0"})
-			request.Header.Set("Content-Type", "application/vnd.oci.image.manifest.v1+json")
-			response := httptest.NewRecorder()
-
-			rthdlr.UpdateManifest(response, request)
-
-			resp := response.Result()
-			defer resp.Body.Close()
-
-			So(resp, ShouldNotBeNil)
-
-			if injected {
-				So(resp.StatusCode, ShouldEqual, http.StatusInternalServerError)
-			} else {
-				So(resp.StatusCode, ShouldEqual, http.StatusCreated)
-			}
-		})
 		Convey("when index.json is not in json format", func() {
 			resp, err = resty.R().SetHeader("Content-Type", "application/vnd.oci.image.manifest.v1+json").
 				SetBody(content).Put(baseURL + "/v2/repotest/manifests/v1.0")
@@ -7446,6 +7405,8 @@ func TestGCSignaturesAndUntaggedManifests(t *testing.T) {
 			ctlr.Config.Storage.RootDirectory = dir
 			ctlr.Config.Storage.GC = true
 			ctlr.Config.Storage.GCDelay = 1 * time.Millisecond
+
+			ctlr.Config.Storage.Dedupe = false
 
 			test.CopyTestFiles("../../test/data/zot-test", path.Join(dir, repoName))
 
@@ -7530,6 +7491,9 @@ func TestGCSignaturesAndUntaggedManifests(t *testing.T) {
 				img := test.CreateRandomImage()
 
 				err = test.UploadImage(img, baseURL, repoName, img.DigestStr())
+				So(err, ShouldBeNil)
+
+				err = ctlr.StoreController.DefaultStore.RunGCRepo(repoName)
 				So(err, ShouldNotBeNil)
 
 				err = os.Chmod(path.Join(dir, repoName, "blobs", "sha256", refs.Manifests[0].Digest.Encoded()), 0o755)
@@ -7541,6 +7505,9 @@ func TestGCSignaturesAndUntaggedManifests(t *testing.T) {
 				So(err, ShouldBeNil)
 
 				err = test.UploadImage(img, baseURL, repoName, tag)
+				So(err, ShouldBeNil)
+
+				err = ctlr.StoreController.DefaultStore.RunGCRepo(repoName)
 				So(err, ShouldNotBeNil)
 
 				err = os.WriteFile(path.Join(dir, repoName, "blobs", "sha256", refs.Manifests[0].Digest.Encoded()), content, 0o600)
@@ -7578,6 +7545,9 @@ func TestGCSignaturesAndUntaggedManifests(t *testing.T) {
 			manifestBuf, err = json.Marshal(manifest)
 			So(err, ShouldBeNil)
 			newManifestDigest := godigest.FromBytes(manifestBuf)
+
+			err = ctlr.StoreController.DefaultStore.RunGCRepo(repoName)
+			So(err, ShouldBeNil)
 
 			// both signatures should be gc'ed
 			resp, err = resty.R().Get(baseURL + fmt.Sprintf("/v2/%s/manifests/%s", repoName, cosignTag))
@@ -7669,6 +7639,9 @@ func TestGCSignaturesAndUntaggedManifests(t *testing.T) {
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
 
+			err = ctlr.StoreController.DefaultStore.RunGCRepo(repoName)
+			So(err, ShouldBeNil)
+
 			resp, err = resty.R().SetHeader("Content-Type", ispec.MediaTypeImageIndex).
 				Get(baseURL + fmt.Sprintf("/v2/%s/manifests/latest", repoName))
 			So(err, ShouldBeNil)
@@ -7752,9 +7725,9 @@ func TestPeriodicGC(t *testing.T) {
 
 		data, err := os.ReadFile(logFile.Name())
 		So(err, ShouldBeNil)
-		// periodic GC is not enabled for default store
+		// periodic GC is enabled by default for default store with a default interval
 		So(string(data), ShouldContainSubstring,
-			"\"GCDelay\":3600000000000,\"GCInterval\":0,\"")
+			"\"GCDelay\":3600000000000,\"GCInterval\":3600000000000,\"")
 		// periodic GC is enabled for sub store
 		So(string(data), ShouldContainSubstring,
 			fmt.Sprintf("\"SubPaths\":{\"/a\":{\"RootDirectory\":\"%s\",\"Dedupe\":false,\"RemoteCache\":false,\"GC\":true,\"Commit\":false,\"GCDelay\":1000000000,\"GCInterval\":86400000000000", subDir)) //nolint:lll // gofumpt conflicts with lll

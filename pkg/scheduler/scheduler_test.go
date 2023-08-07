@@ -56,6 +56,10 @@ func (g *generator) IsDone() bool {
 	return g.done
 }
 
+func (g *generator) IsReady() bool {
+	return true
+}
+
 func (g *generator) Reset() {
 	g.done = false
 	g.step = 0
@@ -77,6 +81,10 @@ func (g *shortGenerator) Next() (scheduler.Task, error) {
 
 func (g *shortGenerator) IsDone() bool {
 	return g.done
+}
+
+func (g *shortGenerator) IsReady() bool {
+	return true
 }
 
 func (g *shortGenerator) Reset() {

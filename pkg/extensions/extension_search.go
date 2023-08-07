@@ -108,6 +108,10 @@ func (gen *TrivyTaskGenerator) IsDone() bool {
 	return status == done
 }
 
+func (gen *TrivyTaskGenerator) IsReady() bool {
+	return true
+}
+
 func (gen *TrivyTaskGenerator) Reset() {
 	gen.lock.Lock()
 	gen.status = pending

@@ -2040,6 +2040,98 @@ func TestInjectWriteFile(t *testing.T) {
 	})
 }
 
+func TestGCInjectFailure(t *testing.T) {
+	Convey("code coverage: error inside garbageCollect method of img store", t, func() {
+		dir := t.TempDir()
+		logFile, _ := os.CreateTemp("", "zot-log*.txt")
+
+		defer os.Remove(logFile.Name()) // clean up
+
+		log := log.NewLogger("debug", logFile.Name())
+		metrics := monitoring.NewMetricsServer(false, log)
+		cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
+			RootDir:     dir,
+			Name:        "cache",
+			UseRelPaths: true,
+		}, log)
+		imgStore := local.NewImageStore(dir, true, storageConstants.DefaultGCDelay,
+			true, true, log, metrics, nil, cacheDriver)
+		repoName := "test-gc"
+
+		upload, err := imgStore.NewBlobUpload(repoName)
+		So(err, ShouldBeNil)
+		So(upload, ShouldNotBeEmpty)
+
+		content := []byte("test-data1")
+		buf := bytes.NewBuffer(content)
+		buflen := buf.Len()
+		bdigest := godigest.FromBytes(content)
+
+		blob, err := imgStore.PutBlobChunk(repoName, upload, 0, int64(buflen), buf)
+		So(err, ShouldBeNil)
+		So(blob, ShouldEqual, buflen)
+
+		err = imgStore.FinishBlobUpload(repoName, upload, buf, bdigest)
+		So(err, ShouldBeNil)
+
+		annotationsMap := make(map[string]string)
+		annotationsMap[ispec.AnnotationRefName] = tag
+
+		cblob, cdigest := test.GetRandomImageConfig()
+		_, clen, err := imgStore.FullBlobUpload(repoName, bytes.NewReader(cblob), cdigest)
+		So(err, ShouldBeNil)
+		So(clen, ShouldEqual, len(cblob))
+		hasBlob, _, err := imgStore.CheckBlob(repoName, cdigest)
+		So(err, ShouldBeNil)
+		So(hasBlob, ShouldEqual, true)
+
+		manifest := ispec.Manifest{
+			Config: ispec.Descriptor{
+				MediaType: "application/vnd.oci.image.config.v1+json",
+				Digest:    cdigest,
+				Size:      int64(len(cblob)),
+			},
+			Layers: []ispec.Descriptor{
+				{
+					MediaType: "application/vnd.oci.image.layer.v1.tar",
+					Digest:    bdigest,
+					Size:      int64(buflen),
+				},
+			},
+			Annotations: annotationsMap,
+		}
+
+		manifest.SchemaVersion = 2
+		manifestBuf, err := json.Marshal(manifest)
+		So(err, ShouldBeNil)
+
+		_, _, err = imgStore.PutImageManifest(repoName, tag, ispec.MediaTypeImageManifest, manifestBuf)
+		So(err, ShouldBeNil)
+
+		// umoci.OpenLayout error
+		injected := inject.InjectFailure(0)
+
+		err = imgStore.RunGCRepo(repoName)
+
+		if injected {
+			So(err, ShouldNotBeNil)
+		} else {
+			So(err, ShouldBeNil)
+		}
+
+		// oci.GC
+		injected = inject.InjectFailure(1)
+
+		err = imgStore.RunGCRepo(repoName)
+
+		if injected {
+			So(err, ShouldNotBeNil)
+		} else {
+			So(err, ShouldBeNil)
+		}
+	})
+}
+
 func TestGarbageCollect(t *testing.T) {
 	Convey("Repo layout", t, func(c C) {
 		dir := t.TempDir()
@@ -2108,11 +2200,17 @@ func TestGarbageCollect(t *testing.T) {
 			_, _, err = imgStore.PutImageManifest(repoName, tag, ispec.MediaTypeImageManifest, manifestBuf)
 			So(err, ShouldBeNil)
 
+			err = imgStore.RunGCRepo(repoName)
+			So(err, ShouldBeNil)
+
 			hasBlob, _, err = imgStore.CheckBlob(repoName, bdigest)
 			So(err, ShouldBeNil)
 			So(hasBlob, ShouldEqual, true)
 
 			err = imgStore.DeleteImageManifest(repoName, digest.String(), false)
+			So(err, ShouldBeNil)
+
+			err = imgStore.RunGCRepo(repoName)
 			So(err, ShouldBeNil)
 
 			hasBlob, _, err = imgStore.CheckBlob(repoName, bdigest)
@@ -2201,6 +2299,9 @@ func TestGarbageCollect(t *testing.T) {
 			_, _, err = imgStore.PutImageManifest(repoName, tag, ispec.MediaTypeImageManifest, manifestBuf)
 			So(err, ShouldBeNil)
 
+			err = imgStore.RunGCRepo(repoName)
+			So(err, ShouldBeNil)
+
 			hasBlob, _, err = imgStore.CheckBlob(repoName, odigest)
 			So(err, ShouldNotBeNil)
 			So(hasBlob, ShouldEqual, false)
@@ -2221,6 +2322,9 @@ func TestGarbageCollect(t *testing.T) {
 			time.Sleep(5 * time.Second)
 
 			err = imgStore.DeleteImageManifest(repoName, digest.String(), false)
+			So(err, ShouldBeNil)
+
+			err = imgStore.RunGCRepo(repoName)
 			So(err, ShouldBeNil)
 
 			hasBlob, _, err = imgStore.CheckBlob(repoName, bdigest)
@@ -2360,7 +2464,7 @@ func TestGarbageCollect(t *testing.T) {
 			So(err, ShouldBeNil)
 			So(hasBlob, ShouldEqual, true)
 
-			// immediately upload any other image to second repo which should invoke GC inline, but expect layers to persist
+			// immediately upload any other image to second repo and run GC, but expect layers to persist
 
 			upload, err = imgStore.NewBlobUpload(repo2Name)
 			So(err, ShouldBeNil)
@@ -2411,6 +2515,9 @@ func TestGarbageCollect(t *testing.T) {
 			digest := godigest.FromBytes(manifestBuf)
 
 			_, _, err = imgStore.PutImageManifest(repo2Name, tag, ispec.MediaTypeImageManifest, manifestBuf)
+			So(err, ShouldBeNil)
+
+			err = imgStore.RunGCRepo(repo2Name)
 			So(err, ShouldBeNil)
 
 			// original blob should exist
@@ -2493,6 +2600,64 @@ func TestGarbageCollectForImageStore(t *testing.T) {
 			So(string(data), ShouldContainSubstring,
 				fmt.Sprintf("error while running GC for %s", path.Join(imgStore.RootDir(), repoName)))
 			So(os.Chmod(path.Join(dir, repoName, "index.json"), 0o755), ShouldBeNil)
+		})
+
+		Convey("Garbage collect - the manifest which the reference points to can be found", func() {
+			logFile, _ := os.CreateTemp("", "zot-log*.txt")
+
+			defer os.Remove(logFile.Name()) // clean up
+
+			log := log.NewLogger("debug", logFile.Name())
+			metrics := monitoring.NewMetricsServer(false, log)
+			cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
+				RootDir:     dir,
+				Name:        "cache",
+				UseRelPaths: true,
+			}, log)
+			imgStore := local.NewImageStore(dir, true, 1*time.Second, true, true, log, metrics, nil, cacheDriver)
+			repoName := "gc-sig"
+
+			storeController := storage.StoreController{DefaultStore: imgStore}
+			img := test.CreateRandomImage()
+
+			err := test.WriteImageToFileSystem(img, repoName, "tag1", storeController)
+			So(err, ShouldBeNil)
+
+			// add fake signature for tag1
+			cosignTag, err := test.GetCosignSignatureTagForManifest(img.Manifest)
+			So(err, ShouldBeNil)
+
+			cosignSig := test.CreateRandomImage()
+			So(err, ShouldBeNil)
+
+			err = test.WriteImageToFileSystem(cosignSig, repoName, cosignTag, storeController)
+			So(err, ShouldBeNil)
+
+			// add sbom
+			manifestBlob, err := json.Marshal(img.Manifest)
+			So(err, ShouldBeNil)
+
+			manifestDigest := godigest.FromBytes(manifestBlob)
+			sbomTag := fmt.Sprintf("sha256-%s.%s", manifestDigest.Encoded(), "sbom")
+			So(err, ShouldBeNil)
+
+			sbomImg := test.CreateRandomImage()
+			So(err, ShouldBeNil)
+
+			err = test.WriteImageToFileSystem(sbomImg, repoName, sbomTag, storeController)
+			So(err, ShouldBeNil)
+
+			// add fake signature for tag1
+			notationSig := test.CreateImageWith().
+				RandomLayers(1, 10).
+				ArtifactConfig("application/vnd.cncf.notary.signature").
+				Subject(img.DescriptorRef()).Build()
+
+			err = test.WriteImageToFileSystem(notationSig, repoName, "notation", storeController)
+			So(err, ShouldBeNil)
+
+			err = imgStore.RunGCRepo(repoName)
+			So(err, ShouldBeNil)
 		})
 	})
 }

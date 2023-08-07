@@ -114,6 +114,10 @@ func (gen *TaskGenerator) IsDone() bool {
 	return gen.done
 }
 
+func (gen *TaskGenerator) IsReady() bool {
+	return true
+}
+
 func (gen *TaskGenerator) Reset() {
 	gen.lastRepo = ""
 	gen.Service.ResetCatalog()

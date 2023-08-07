@@ -284,6 +284,7 @@ const (
 type TaskGenerator interface {
 	Next() (Task, error)
 	IsDone() bool
+	IsReady() bool
 	Reset()
 }
 
@@ -349,6 +350,10 @@ func (gen *generator) getState() state {
 		if gen.done && time.Since(gen.lastRun) < gen.interval && gen.remainingTask == nil {
 			return waiting
 		}
+	}
+
+	if !gen.taskGenerator.IsReady() {
+		return waiting
 	}
 
 	return ready

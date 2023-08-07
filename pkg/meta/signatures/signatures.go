@@ -99,6 +99,8 @@ func (gen *sigValidityTaskGenerator) Next() (scheduler.Task, error) {
 	if gen.repoIndex >= len(gen.repos) {
 		gen.done = true
 
+		gen.log.Info().Msg("finished generating tasks for updating signatures validity")
+
 		return nil, nil
 	}
 
@@ -109,10 +111,16 @@ func (gen *sigValidityTaskGenerator) IsDone() bool {
 	return gen.done
 }
 
+func (gen *sigValidityTaskGenerator) IsReady() bool {
+	return true
+}
+
 func (gen *sigValidityTaskGenerator) Reset() {
 	gen.done = false
 	gen.repoIndex = -1
 	gen.repos = []mTypes.RepoMetadata{}
+
+	gen.log.Info().Msg("finished resetting task generator for updating signatures validity")
 }
 
 type validityTask struct {
