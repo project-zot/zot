@@ -24,7 +24,8 @@ function setup_file() {
         "port": "8080"
     },
     "log": {
-        "level": "debug"
+        "level": "debug",
+        "output": "${BATS_FILE_TMPDIR}/zot.log"
     },
     "extensions":{
         "search": {
@@ -57,6 +58,7 @@ EOF
 }
 
 function teardown_file() {
+    cat ${BATS_FILE_TMPDIR}/zot.log >&3
     local zot_root_dir=${BATS_FILE_TMPDIR}/zot
     local oci_data_dir=${BATS_FILE_TMPDIR}/oci
     local roots_data_dir=${BATS_FILE_TMPDIR}/roots
