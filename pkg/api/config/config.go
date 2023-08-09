@@ -84,6 +84,7 @@ type RatelimitConfig struct {
 //nolint:maligned
 type HTTPConfig struct {
 	Address       string
+	ExternalURL   string `mapstructure:",omitempty"`
 	Port          string
 	AllowOrigin   string // comma separated
 	TLS           *TLSConfig
