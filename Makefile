@@ -321,13 +321,14 @@ run-container:
 		zot-build:latest 
 
 .PHONY: binary-stacker
-binary-stacker:
+binary-stacker: $(STACKER)
 	${STACKER} --debug build \
 		-f build/stacker.yaml \
-		--substitute PWD=$$PWD \
-		--substitute COMMIT=$$COMMIT \
-		--substitute ARCH=$$ARCH \
-		--substitute OS=$$OS
+		--substitute COMMIT=$(COMMIT) \
+		--substitute ARCH=$(ARCH) \
+		--substitute OS=$(OS) \
+		--substitute RELEASE_TAG=$(RELEASE_TAG) \
+		--substitute REPO_NAME=zot-$(OS)-$(ARCH)
 
 .PHONY: image
 image:
