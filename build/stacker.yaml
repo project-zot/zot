@@ -13,7 +13,7 @@ build:
     cd /go/src/github.com/project-zot
     git clone /zotcopy zot
     cd /go/src/github.com/project-zot/zot
-    make COMMIT=${{COMMIT}} OS=${{OS}} ARCH=${{ARCH}} RELEASE_TAG=${{RELEASE_TAG}} clean binary${{EXT:}}
+    make COMMIT=${{COMMIT}} OS=${{OS}} ARCH=${{ARCH}} RELEASE_TAG=${{RELEASE_TAG}} clean binary
     cat > config.json << EOF
     {
       "storage":{
@@ -49,7 +49,7 @@ build:
 
     mkdir -p binary/ cert/ config/
 
-    cp /go/src/github.com/project-zot/zot/bin/zot-${{OS}}-${{ARCH}}${{EXT:}} binary/
+    cp /go/src/github.com/project-zot/zot/bin/zot-${{OS}}-${{ARCH}} binary/
     cp /go/src/github.com/project-zot/zot/config.json config/
     cp /etc/ssl/certs/ca-certificates.crt cert/
   build_only: true
@@ -68,7 +68,7 @@ build:
     - source: ../.build/${{REPO_NAME}}/config
       dest: /etc/zot
   entrypoint:
-    - /usr/local/bin/zot-${{OS}}-${{ARCH}}${{EXT:}}
+    - /usr/local/bin/zot-${{OS}}-${{ARCH}}
   volumes:
     - /var/lib/registry
   cmd:
