@@ -139,6 +139,7 @@ $(TESTDATA): check-skopeo
 	skopeo --insecure-policy copy -q docker://ghcr.io/project-zot/test-images/java:0.0.1 oci:${TESTDATA}/zot-cve-java-test:0.0.1; \
 	skopeo --insecure-policy copy -q docker://ghcr.io/project-zot/test-images/alpine:3.17.3 oci:${TESTDATA}/alpine:3.17.3; \
 	chmod -R a=rwx ${TESTDATA}
+	ls -R -l ${TESTDATA}
 
 .PHONY: run-bench
 run-bench: binary bench

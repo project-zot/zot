@@ -11,6 +11,7 @@ import (
 	"io"
 	"os"
 	"path"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -22,6 +23,7 @@ import (
 
 	"zotregistry.io/zot/pkg/api"
 	"zotregistry.io/zot/pkg/api/config"
+	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/storage"
 	"zotregistry.io/zot/pkg/test"
 	"zotregistry.io/zot/pkg/test/inject"
@@ -131,9 +133,13 @@ func TestGetOciLayoutDigests(t *testing.T) {
 	})
 
 	Convey("no permissions when getting index", t, func() {
-		test.CopyTestFiles("../../test/data/zot-test", path.Join(dir, "test-index"))
+		storageCtlr := test.GetDefaultStoreController(dir, log.NewLogger("debug", ""))
+		image := test.CreateDefaultImage()
 
-		err := os.Chmod(path.Join(dir, "test-index", "index.json"), 0o000)
+		err := test.WriteImageToFileSystem(image, "test-index", "0.0.1", storageCtlr)
+		So(err, ShouldBeNil)
+
+		err = os.Chmod(path.Join(dir, "test-index", "index.json"), 0o000)
 		if err != nil {
 			panic(err)
 		}
@@ -147,7 +153,11 @@ func TestGetOciLayoutDigests(t *testing.T) {
 	})
 
 	Convey("can't access manifest digest", t, func() {
-		test.CopyTestFiles("../../test/data/zot-test", path.Join(dir, "test-manifest"))
+		storageCtlr := test.GetDefaultStoreController(dir, log.NewLogger("debug", ""))
+		image := test.CreateDefaultImage()
+
+		err := test.WriteImageToFileSystem(image, "test-manifest", "0.0.1", storageCtlr)
+		So(err, ShouldBeNil)
 
 		buf, err := os.ReadFile(path.Join(dir, "test-manifest", "index.json"))
 		if err != nil {
@@ -1502,5 +1512,48 @@ func TestWriteImageToFileSystem(t *testing.T) {
 func TestBearerServer(t *testing.T) {
 	Convey("test MakeAuthTestServer() no serve key", t, func() {
 		So(func() { test.MakeAuthTestServer("", "") }, ShouldPanic)
+	})
+}
+
+func TestCopyTestKeysAndCerts(t *testing.T) {
+	Convey("CopyTestKeysAndCerts", t, func() {
+		// ------- Make test files unreadable -------
+		dir := t.TempDir()
+		file := filepath.Join(dir, "ca.crt")
+
+		_, err := os.Create(file)
+		So(err, ShouldBeNil)
+
+		err = os.Chmod(file, 0o000)
+		So(err, ShouldBeNil)
+
+		err = test.CopyTestKeysAndCerts(dir)
+		So(err, ShouldNotBeNil)
+
+		err = os.Chmod(file, 0o777)
+		So(err, ShouldBeNil)
+
+		// ------- Copy fails -------
+
+		err = os.Chmod(dir, 0o000)
+		So(err, ShouldBeNil)
+
+		err = test.CopyTestKeysAndCerts(file)
+		So(err, ShouldNotBeNil)
+
+		err = os.Chmod(dir, 0o777)
+		So(err, ShouldBeNil)
+
+		// ------- Folder creation fails -------
+
+		file = filepath.Join(dir, "a-file.file")
+		_, err = os.Create(file)
+		So(err, ShouldBeNil)
+
+		_, err = os.Stat(file)
+		So(err, ShouldBeNil)
+
+		err = test.CopyTestKeysAndCerts(file)
+		So(err, ShouldNotBeNil)
 	})
 }

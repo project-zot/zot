@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"os"
-	"path"
 	"testing"
 
 	godigest "github.com/opencontainers/go-digest"
@@ -146,7 +145,8 @@ func TestGetReferrersErrors(t *testing.T) {
 			So(err, ShouldNotBeNil)
 		})
 
-		err := test.CopyFiles("../../../test/data/zot-test", path.Join(dir, "zot-test"))
+		storageCtlr := storage.StoreController{DefaultStore: imgStore}
+		err := test.WriteImageToFileSystem(test.CreateDefaultImage(), "zot-test", "0.0.1", storageCtlr)
 		So(err, ShouldBeNil)
 
 		digest := godigest.FromBytes([]byte("{}"))

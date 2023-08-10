@@ -54,8 +54,10 @@ func TestVerifyMandatoryAnnotations(t *testing.T) {
 
 		ctlr := api.NewController(conf)
 		dir := t.TempDir()
+		testStoreCtlr := test.GetDefaultStoreController(dir, ctlr.Log)
 
-		test.CopyTestFiles("../../../test/data", dir)
+		err := test.WriteImageToFileSystem(test.CreateRandomImage(), "zot-test", "0.0.1", testStoreCtlr)
+		So(err, ShouldBeNil)
 
 		ctlr.Config.Storage.RootDirectory = dir
 
@@ -99,8 +101,10 @@ func TestVerifyMandatoryAnnotations(t *testing.T) {
 
 		ctlr := api.NewController(conf)
 		dir := t.TempDir()
+		testStoreCtlr := test.GetDefaultStoreController(dir, ctlr.Log)
 
-		test.CopyTestFiles("../../../test/data", dir)
+		err := test.WriteImageToFileSystem(test.CreateRandomImage(), "zot-test", "0.0.1", testStoreCtlr)
+		So(err, ShouldBeNil)
 
 		ctlr.Config.Storage.RootDirectory = dir
 
@@ -145,7 +149,9 @@ func TestVerifyMandatoryAnnotations(t *testing.T) {
 		ctlr := api.NewController(conf)
 		dir := t.TempDir()
 
-		test.CopyTestFiles("../../../test/data", dir)
+		testStoreCtlr := test.GetDefaultStoreController(dir, ctlr.Log)
+		err := test.WriteImageToFileSystem(test.CreateRandomImage(), "zot-test", "0.0.1", testStoreCtlr)
+		So(err, ShouldBeNil)
 
 		ctlr.Config.Storage.RootDirectory = dir
 
@@ -196,7 +202,9 @@ func TestVerifyMandatoryAnnotations(t *testing.T) {
 		ctlr := api.NewController(conf)
 		dir := t.TempDir()
 
-		test.CopyTestFiles("../../../test/data", dir)
+		testStoreCtlr := test.GetDefaultStoreController(dir, ctlr.Log)
+		err := test.WriteImageToFileSystem(test.CreateRandomImage(), "zot-test", "0.0.1", testStoreCtlr)
+		So(err, ShouldBeNil)
 
 		ctlr.Config.Storage.RootDirectory = dir
 
@@ -282,7 +290,9 @@ func TestVerifyMandatoryAnnotations(t *testing.T) {
 		ctlr := api.NewController(conf)
 		dir := t.TempDir()
 
-		test.CopyTestFiles("../../../test/data", dir)
+		testStoreCtlr := test.GetDefaultStoreController(dir, ctlr.Log)
+		err := test.WriteImageToFileSystem(test.CreateRandomImage(), "zot-test", "0.0.1", testStoreCtlr)
+		So(err, ShouldBeNil)
 
 		ctlr.Config.Storage.RootDirectory = dir
 
@@ -367,7 +377,9 @@ func TestVerifyMandatoryAnnotations(t *testing.T) {
 		ctlr := api.NewController(conf)
 		dir := t.TempDir()
 
-		test.CopyTestFiles("../../../test/data", dir)
+		testStoreCtlr := test.GetDefaultStoreController(dir, ctlr.Log)
+		err := test.WriteImageToFileSystem(test.CreateRandomImage(), "zot-test", "0.0.1", testStoreCtlr)
+		So(err, ShouldBeNil)
 
 		ctlr.Config.Storage.RootDirectory = dir
 
@@ -416,7 +428,9 @@ func TestVerifyMandatoryAnnotations(t *testing.T) {
 		ctlr := api.NewController(conf)
 		dir := t.TempDir()
 
-		test.CopyTestFiles("../../../test/data", dir)
+		testStoreCtlr := test.GetDefaultStoreController(dir, ctlr.Log)
+		err := test.WriteImageToFileSystem(test.CreateRandomImage(), "zot-test", "0.0.1", testStoreCtlr)
+		So(err, ShouldBeNil)
 
 		files, err := os.ReadDir(dir)
 		So(err, ShouldBeNil)
@@ -469,7 +483,9 @@ func TestVerifyMandatoryAnnotationsFunction(t *testing.T) {
 
 		dir := t.TempDir()
 
-		test.CopyTestFiles("../../../test/data", dir)
+		testStoreCtlr := test.GetDefaultStoreController(dir, log.NewLogger("debug", ""))
+		err := test.WriteImageToFileSystem(test.CreateRandomImage(), "zot-test", "0.0.1", testStoreCtlr)
+		So(err, ShouldBeNil)
 
 		var index ispec.Index
 
@@ -499,7 +515,9 @@ func TestVerifyMandatoryAnnotationsFunction(t *testing.T) {
 
 		dir := t.TempDir()
 
-		test.CopyTestFiles("../../../test/data", dir)
+		testStoreCtlr := test.GetDefaultStoreController(dir, log.NewLogger("debug", ""))
+		err := test.WriteImageToFileSystem(test.CreateRandomImage(), "zot-test", "0.0.1", testStoreCtlr)
+		So(err, ShouldBeNil)
 
 		var index ispec.Index
 
@@ -529,7 +547,9 @@ func TestVerifyMandatoryAnnotationsFunction(t *testing.T) {
 
 		dir := t.TempDir()
 
-		test.CopyTestFiles("../../../test/data", dir)
+		testStoreCtlr := test.GetDefaultStoreController(dir, log.NewLogger("debug", ""))
+		err := test.WriteImageToFileSystem(test.CreateRandomImage(), "zot-test", "0.0.1", testStoreCtlr)
+		So(err, ShouldBeNil)
 
 		var index ispec.Index
 		buf, err := os.ReadFile(path.Join(dir, "zot-test", "index.json"))
@@ -590,7 +610,9 @@ func TestVerifyMandatoryAnnotationsFunction(t *testing.T) {
 
 		dir := t.TempDir()
 
-		test.CopyTestFiles("../../../test/data", dir)
+		testStoreCtlr := test.GetDefaultStoreController(dir, log.NewLogger("debug", ""))
+		err := test.WriteImageToFileSystem(test.CreateRandomImage(), "zot-test", "0.0.1", testStoreCtlr)
+		So(err, ShouldBeNil)
 
 		var index ispec.Index
 		buf, err := os.ReadFile(path.Join(dir, "zot-test", "index.json"))
@@ -650,7 +672,9 @@ func TestVerifyMandatoryAnnotationsFunction(t *testing.T) {
 
 		dir := t.TempDir()
 
-		test.CopyTestFiles("../../../test/data", dir)
+		testStoreCtlr := test.GetDefaultStoreController(dir, log.NewLogger("debug", ""))
+		err := test.WriteImageToFileSystem(test.CreateRandomImage(), "zot-test", "0.0.1", testStoreCtlr)
+		So(err, ShouldBeNil)
 
 		var index ispec.Index
 		buf, err := os.ReadFile(path.Join(dir, "zot-test", "index.json"))
@@ -712,7 +736,9 @@ func TestVerifyMandatoryAnnotationsFunction(t *testing.T) {
 
 		dir := t.TempDir()
 
-		test.CopyTestFiles("../../../test/data", dir)
+		testStoreCtlr := test.GetDefaultStoreController(dir, log.NewLogger("debug", ""))
+		err := test.WriteImageToFileSystem(test.CreateRandomImage(), "zot-test", "0.0.1", testStoreCtlr)
+		So(err, ShouldBeNil)
 
 		var index ispec.Index
 		buf, err := os.ReadFile(path.Join(dir, "zot-test", "index.json"))
@@ -783,7 +809,9 @@ func TestVerifyMandatoryAnnotationsFunction(t *testing.T) {
 
 		dir := t.TempDir()
 
-		test.CopyTestFiles("../../../test/data", dir)
+		testStoreCtlr := test.GetDefaultStoreController(dir, log.NewLogger("debug", ""))
+		err := test.WriteImageToFileSystem(test.CreateRandomImage(), "zot-test", "0.0.1", testStoreCtlr)
+		So(err, ShouldBeNil)
 
 		var index ispec.Index
 		buf, err := os.ReadFile(path.Join(dir, "zot-test", "index.json"))
@@ -867,5 +895,9 @@ func TestVerifyMandatoryAnnotationsFunction(t *testing.T) {
 		if err != nil {
 			panic(err)
 		}
+
+		pass, err = linter.CheckMandatoryAnnotations("zot-test", digest, imgStore)
+		So(err, ShouldBeNil)
+		So(pass, ShouldBeTrue)
 	})
 }

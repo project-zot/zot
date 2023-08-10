@@ -156,8 +156,8 @@ func CreateRandomImageWith() ManifestBuilder {
 	return CreateImageWith().RandomLayers(layerCount, layerSize).RandomConfig()
 }
 
-// CreateVulnerableImage creates a vulnerable image with the default config.
-func CreateVulnerableImage() Image {
+// CreateDefaultVulnerableImage creates a vulnerable image with the default config.
+func CreateDefaultVulnerableImage() Image {
 	return CreateImageWith().VulnerableLayers().DefaultVulnConfig().Build()
 }
 

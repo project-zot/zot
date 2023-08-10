@@ -398,7 +398,9 @@ func TestNegativeServerResponse(t *testing.T) {
 
 		dir := t.TempDir()
 
-		test.CopyTestFiles("../../test/data/zot-cve-test", path.Join(dir, "zot-cve-test"))
+		srcStorageCtlr := test.GetDefaultStoreController(dir, log.NewLogger("debug", ""))
+		err := test.WriteImageToFileSystem(test.CreateDefaultVulnerableImage(), "zot-cve-test", "0.0.1", srcStorageCtlr)
+		So(err, ShouldBeNil)
 
 		conf.Storage.RootDirectory = dir
 		trivyConfig := &extconf.TrivyConfig{

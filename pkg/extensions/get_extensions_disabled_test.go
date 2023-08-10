@@ -40,7 +40,7 @@ func TestGetExensionsDisabled(t *testing.T) {
 		conf.Log.Output = logFile.Name()
 		defer os.Remove(logFile.Name()) // clean up
 
-		ctlr := makeController(conf, t.TempDir(), "")
+		ctlr := makeController(conf, t.TempDir())
 
 		cm := test.NewControllerManager(ctlr)
 		cm.StartAndWait(port)
@@ -58,12 +58,8 @@ func TestGetExensionsDisabled(t *testing.T) {
 	})
 }
 
-func makeController(conf *config.Config, dir string, copyTestDataDest string) *api.Controller {
+func makeController(conf *config.Config, dir string) *api.Controller {
 	ctlr := api.NewController(conf)
-
-	if copyTestDataDest != "" {
-		test.CopyTestFiles(copyTestDataDest, dir)
-	}
 	ctlr.Config.Storage.RootDirectory = dir
 
 	return ctlr

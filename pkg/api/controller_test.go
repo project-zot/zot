@@ -300,7 +300,7 @@ func TestRunAlreadyRunningServer(t *testing.T) {
 		conf := config.New()
 		conf.HTTP.Port = port
 
-		ctlr := makeController(conf, t.TempDir(), "")
+		ctlr := makeController(conf, t.TempDir())
 		cm := test.NewControllerManager(ctlr)
 
 		cm.StartAndWait(port)
@@ -324,7 +324,7 @@ func TestAutoPortSelection(t *testing.T) {
 		conf.Log.Output = logFile.Name()
 		defer os.Remove(logFile.Name()) // clean up
 
-		ctlr := makeController(conf, t.TempDir(), "")
+		ctlr := makeController(conf, t.TempDir())
 
 		cm := test.NewControllerManager(ctlr)
 		cm.StartServer()
@@ -377,7 +377,7 @@ func TestObjectStorageController(t *testing.T) {
 			"name":          storageConstants.S3StorageDriverName,
 		}
 		conf.Storage.StorageDriver = storageDriverParams
-		ctlr := makeController(conf, "zot", "")
+		ctlr := makeController(conf, "zot")
 		So(ctlr, ShouldNotBeNil)
 
 		err := ctlr.Init(context.Background())
@@ -402,7 +402,7 @@ func TestObjectStorageController(t *testing.T) {
 		}
 
 		conf.Storage.StorageDriver = storageDriverParams
-		ctlr := makeController(conf, "/", "")
+		ctlr := makeController(conf, "/")
 		So(ctlr, ShouldNotBeNil)
 
 		cm := test.NewControllerManager(ctlr)
@@ -476,7 +476,7 @@ func TestObjectStorageController(t *testing.T) {
 			panic(err)
 		}
 
-		ctlr := makeController(conf, "/", "")
+		ctlr := makeController(conf, "/")
 		So(ctlr, ShouldNotBeNil)
 
 		cm := test.NewControllerManager(ctlr)
@@ -507,7 +507,7 @@ func TestObjectStorageControllerSubPaths(t *testing.T) {
 			"skipverify":     false,
 		}
 		conf.Storage.StorageDriver = storageDriverParams
-		ctlr := makeController(conf, "zot", "")
+		ctlr := makeController(conf, "zot")
 		So(ctlr, ShouldNotBeNil)
 
 		subPathMap := make(map[string]config.StorageConfig)
@@ -548,7 +548,7 @@ func TestHtpasswdSingleCred(t *testing.T) {
 
 				conf.HTTP.AllowOrigin = conf.HTTP.Address
 
-				ctlr := makeController(conf, t.TempDir(), "")
+				ctlr := makeController(conf, t.TempDir())
 
 				cm := test.NewControllerManager(ctlr)
 				cm.StartAndWait(port)
@@ -689,7 +689,7 @@ func TestHtpasswdTwoCreds(t *testing.T) {
 						Path: htpasswdPath,
 					},
 				}
-				ctlr := makeController(conf, t.TempDir(), "")
+				ctlr := makeController(conf, t.TempDir())
 				cm := test.NewControllerManager(ctlr)
 				cm.StartAndWait(port)
 				defer cm.StopServer()
@@ -738,7 +738,7 @@ func TestHtpasswdFiveCreds(t *testing.T) {
 					Path: htpasswdPath,
 				},
 			}
-			ctlr := makeController(conf, t.TempDir(), "")
+			ctlr := makeController(conf, t.TempDir())
 
 			cm := test.NewControllerManager(ctlr)
 			cm.StartAndWait(port)
@@ -770,7 +770,7 @@ func TestRatelimit(t *testing.T) {
 		conf.HTTP.Ratelimit = &config.RatelimitConfig{
 			Rate: &rate,
 		}
-		ctlr := makeController(conf, t.TempDir(), "")
+		ctlr := makeController(conf, t.TempDir())
 		cm := test.NewControllerManager(ctlr)
 
 		cm.StartAndWait(port)
@@ -805,7 +805,7 @@ func TestRatelimit(t *testing.T) {
 				},
 			},
 		}
-		ctlr := makeController(conf, t.TempDir(), "")
+		ctlr := makeController(conf, t.TempDir())
 
 		cm := test.NewControllerManager(ctlr)
 		cm.StartAndWait(port)
@@ -841,7 +841,7 @@ func TestRatelimit(t *testing.T) {
 				},
 			},
 		}
-		ctlr := makeController(conf, t.TempDir(), "")
+		ctlr := makeController(conf, t.TempDir())
 
 		cm := test.NewControllerManager(ctlr)
 		cm.StartAndWait(port)
@@ -876,7 +876,7 @@ func TestBasicAuth(t *testing.T) {
 				Path: htpasswdPath,
 			},
 		}
-		ctlr := makeController(conf, t.TempDir(), "")
+		ctlr := makeController(conf, t.TempDir())
 
 		cm := test.NewControllerManager(ctlr)
 		cm.StartAndWait(port)
@@ -909,7 +909,7 @@ func TestBlobReferenced(t *testing.T) {
 		conf := config.New()
 		conf.HTTP.Port = port
 
-		ctlr := makeController(conf, t.TempDir(), "")
+		ctlr := makeController(conf, t.TempDir())
 
 		cm := test.NewControllerManager(ctlr)
 		cm.StartAndWait(port)
@@ -964,7 +964,7 @@ func TestInterruptedBlobUpload(t *testing.T) {
 		conf := config.New()
 		conf.HTTP.Port = port
 
-		ctlr := makeController(conf, t.TempDir(), "")
+		ctlr := makeController(conf, t.TempDir())
 
 		cm := test.NewControllerManager(ctlr)
 		cm.StartAndWait(port)
@@ -1233,7 +1233,7 @@ func TestMultipleInstance(t *testing.T) {
 		}
 		globalDir := t.TempDir()
 		subDir := t.TempDir()
-		ctlr := makeController(conf, globalDir, "")
+		ctlr := makeController(conf, globalDir)
 		subPathMap := make(map[string]config.StorageConfig)
 		subPathMap["/a"] = config.StorageConfig{RootDirectory: subDir}
 
@@ -1276,7 +1276,7 @@ func TestMultipleInstance(t *testing.T) {
 		globalDir := t.TempDir()
 		subDir := t.TempDir()
 
-		ctlr := makeController(conf, globalDir, "")
+		ctlr := makeController(conf, globalDir)
 		subPathMap := make(map[string]config.StorageConfig)
 		subPathMap["/a"] = config.StorageConfig{RootDirectory: globalDir, Dedupe: true, GC: true}
 		subPathMap["/b"] = config.StorageConfig{RootDirectory: subDir, Dedupe: true, GC: true}
@@ -1351,7 +1351,7 @@ func TestTLSWithBasicAuth(t *testing.T) {
 			},
 		}
 
-		ctlr := makeController(conf, t.TempDir(), "")
+		ctlr := makeController(conf, t.TempDir())
 
 		cm := test.NewControllerManager(ctlr)
 		cm.StartAndWait(port)
@@ -1418,7 +1418,7 @@ func TestTLSWithBasicAuthAllowReadAccess(t *testing.T) {
 			},
 		}
 
-		ctlr := makeController(conf, t.TempDir(), "")
+		ctlr := makeController(conf, t.TempDir())
 
 		cm := test.NewControllerManager(ctlr)
 		cm.StartAndWait(port)
@@ -1488,7 +1488,7 @@ func TestMutualTLSAuthWithUserPermissions(t *testing.T) {
 			},
 		}
 
-		ctlr := makeController(conf, t.TempDir(), "")
+		ctlr := makeController(conf, t.TempDir())
 
 		cm := test.NewControllerManager(ctlr)
 		cm.StartAndWait(port)
@@ -1580,7 +1580,7 @@ func TestMutualTLSAuthWithoutCN(t *testing.T) {
 			},
 		}
 
-		ctlr := makeController(conf, t.TempDir(), "")
+		ctlr := makeController(conf, t.TempDir())
 
 		cm := test.NewControllerManager(ctlr)
 		cm.StartAndWait(port)
@@ -1620,7 +1620,7 @@ func TestTLSMutualAuth(t *testing.T) {
 			CACert: CACert,
 		}
 
-		ctlr := makeController(conf, t.TempDir(), "")
+		ctlr := makeController(conf, t.TempDir())
 
 		cm := test.NewControllerManager(ctlr)
 		cm.StartAndWait(port)
@@ -1694,7 +1694,7 @@ func TestTLSMutualAuthAllowReadAccess(t *testing.T) {
 			},
 		}
 
-		ctlr := makeController(conf, t.TempDir(), "")
+		ctlr := makeController(conf, t.TempDir())
 
 		cm := test.NewControllerManager(ctlr)
 		cm.StartAndWait(port)
@@ -1774,7 +1774,7 @@ func TestTLSMutualAndBasicAuth(t *testing.T) {
 			CACert: CACert,
 		}
 
-		ctlr := makeController(conf, t.TempDir(), "")
+		ctlr := makeController(conf, t.TempDir())
 
 		cm := test.NewControllerManager(ctlr)
 		cm.StartAndWait(port)
@@ -1858,7 +1858,7 @@ func TestTLSMutualAndBasicAuthAllowReadAccess(t *testing.T) {
 			},
 		}
 
-		ctlr := makeController(conf, t.TempDir(), "")
+		ctlr := makeController(conf, t.TempDir())
 
 		cm := test.NewControllerManager(ctlr)
 		cm.StartAndWait(port)
@@ -2020,7 +2020,7 @@ func TestBasicAuthWithLDAP(t *testing.T) {
 				UserAttribute: "uid",
 			},
 		}
-		ctlr := makeController(conf, t.TempDir(), "")
+		ctlr := makeController(conf, t.TempDir())
 
 		cm := test.NewControllerManager(ctlr)
 		cm.StartAndWait(port)
@@ -2102,7 +2102,7 @@ func TestGroupsPermissionsForLDAP(t *testing.T) {
 			},
 		}
 
-		ctlr := makeController(conf, tempDir, "")
+		ctlr := makeController(conf, tempDir)
 
 		cm := test.NewControllerManager(ctlr)
 		cm.StartAndWait(port)
@@ -2174,7 +2174,7 @@ func TestBearerAuth(t *testing.T) {
 				Service: aurl.Host,
 			},
 		}
-		ctlr := makeController(conf, t.TempDir(), "")
+		ctlr := makeController(conf, t.TempDir())
 
 		cm := test.NewControllerManager(ctlr)
 		cm.StartAndWait(port)
@@ -2334,7 +2334,7 @@ func TestBearerAuthWrongAuthorizer(t *testing.T) {
 				Service: "blablabla",
 			},
 		}
-		ctlr := makeController(conf, t.TempDir(), "")
+		ctlr := makeController(conf, t.TempDir())
 		cm := test.NewControllerManager(ctlr)
 
 		So(func() {
@@ -2365,7 +2365,7 @@ func TestBearerAuthWithAllowReadAccess(t *testing.T) {
 				Service: aurl.Host,
 			},
 		}
-		ctlr := makeController(conf, t.TempDir(), "")
+		ctlr := makeController(conf, t.TempDir())
 
 		conf.HTTP.AccessControl = &config.AccessControlConfig{
 			Repositories: config.Repositories{
@@ -2769,7 +2769,7 @@ func TestOpenIDMiddleware(t *testing.T) {
 					So(resp, ShouldNotBeNil)
 					So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
-					// calling endpoint should fail with unathorized access
+					// calling endpoint should fail with unauthorized access
 					resp, err = client.R().
 						SetHeader(constants.SessionClientHeaderName, constants.SessionClientHeaderValue).
 						Get(baseURL + "/v2/_catalog")
@@ -2835,7 +2835,7 @@ func TestOpenIDMiddleware(t *testing.T) {
 					So(resp, ShouldNotBeNil)
 					So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
-					// calling endpoint should fail with unathorized access
+					// calling endpoint should fail with unauthorized access
 					resp, err = client.R().
 						SetHeader(constants.SessionClientHeaderName, constants.SessionClientHeaderValue).
 						Get(baseURL + "/v2/_catalog")
@@ -2901,7 +2901,7 @@ func TestOpenIDMiddleware(t *testing.T) {
 					So(resp, ShouldNotBeNil)
 					So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
-					// calling endpoint should fail with unathorized access
+					// calling endpoint should fail with unauthorized access
 					resp, err = client.R().
 						SetHeader(constants.SessionClientHeaderName, constants.SessionClientHeaderValue).
 						Get(baseURL + "/v2/_catalog")
@@ -3602,7 +3602,12 @@ func TestAuthorization(t *testing.T) {
 				},
 			}
 
-			ctlr := makeController(conf, t.TempDir(), "../../test/data")
+			ctlr := api.NewController(conf)
+			ctlr.Config.Storage.RootDirectory = t.TempDir()
+
+			err = test.WriteImageToFileSystem(test.CreateDefaultImage(), "zot-test", "0.0.1",
+				test.GetDefaultStoreController(ctlr.Config.Storage.RootDirectory, ctlr.Log))
+			So(err, ShouldBeNil)
 
 			cm := test.NewControllerManager(ctlr)
 			cm.StartAndWait(port)
@@ -3633,7 +3638,12 @@ func TestAuthorization(t *testing.T) {
 		})
 
 		Convey("with basic auth", func() {
-			ctlr := makeController(conf, t.TempDir(), "../../test/data")
+			ctlr := api.NewController(conf)
+			ctlr.Config.Storage.RootDirectory = t.TempDir()
+
+			err := test.WriteImageToFileSystem(test.CreateDefaultImage(), "zot-test", "0.0.1",
+				test.GetDefaultStoreController(ctlr.Config.Storage.RootDirectory, ctlr.Log))
+			So(err, ShouldBeNil)
 
 			cm := test.NewControllerManager(ctlr)
 			cm.StartAndWait(port)
@@ -3664,7 +3674,7 @@ func TestGetUsername(t *testing.T) {
 		}
 
 		dir := t.TempDir()
-		ctlr := makeController(conf, dir, "")
+		ctlr := makeController(conf, dir)
 
 		cm := test.NewControllerManager(ctlr)
 		cm.StartAndWait(port)
@@ -3722,7 +3732,7 @@ func TestAuthorizationWithOnlyAnonymousPolicy(t *testing.T) {
 		}
 
 		dir := t.TempDir()
-		ctlr := makeController(conf, dir, "")
+		ctlr := makeController(conf, dir)
 		cm := test.NewControllerManager(ctlr)
 		cm.StartAndWait(port)
 		defer cm.StopServer()
@@ -3908,7 +3918,8 @@ func TestAuthorizationWithOnlyAnonymousPolicy(t *testing.T) {
 		err = os.Mkdir(path.Join(dir, "zot-test"), storageConstants.DefaultDirPerms)
 		So(err, ShouldBeNil)
 
-		test.CopyTestFiles("../../test/data/zot-test", path.Join(dir, "zot-test"))
+		err = test.WriteImageToFileSystem(test.CreateDefaultImage(), "zot-test", "tag", ctlr.StoreController)
+		So(err, ShouldBeNil)
 
 		// should not have read rights on zot-test
 		resp, err = resty.R().Get(baseURL + "/v2/_catalog")
@@ -3980,7 +3991,7 @@ func TestAuthorizationWithAnonymousPolicyBasicAuthAndSessionHeader(t *testing.T)
 		}
 
 		dir := t.TempDir()
-		ctlr := makeController(conf, dir, "")
+		ctlr := makeController(conf, dir)
 		cm := test.NewControllerManager(ctlr)
 		cm.StartAndWait(port)
 		defer cm.StopServer()
@@ -4212,7 +4223,12 @@ func TestAuthorizationWithMultiplePolicies(t *testing.T) {
 				},
 			}
 
-			ctlr := makeController(conf, dir, "../../test/data")
+			ctlr := api.NewController(conf)
+			ctlr.Config.Storage.RootDirectory = dir
+
+			err = test.WriteImageToFileSystem(test.CreateDefaultImage(), "zot-test", "0.0.1",
+				test.GetDefaultStoreController(ctlr.Config.Storage.RootDirectory, ctlr.Log))
+			So(err, ShouldBeNil)
 
 			cm := test.NewControllerManager(ctlr)
 			cm.StartAndWait(port)
@@ -4265,7 +4281,13 @@ func TestAuthorizationWithMultiplePolicies(t *testing.T) {
 
 		Convey("with basic auth", func() {
 			dir := t.TempDir()
-			ctlr := makeController(conf, dir, "../../test/data")
+
+			ctlr := api.NewController(conf)
+			ctlr.Config.Storage.RootDirectory = dir
+
+			err := test.WriteImageToFileSystem(test.CreateDefaultImage(), "zot-test", "0.0.1",
+				test.GetDefaultStoreController(ctlr.Config.Storage.RootDirectory, ctlr.Log))
+			So(err, ShouldBeNil)
 
 			cm := test.NewControllerManager(ctlr)
 			cm.StartAndWait(port)
@@ -4300,7 +4322,7 @@ func TestInvalidCases(t *testing.T) {
 		}
 
 		dir := t.TempDir()
-		ctlr := makeController(conf, dir, "")
+		ctlr := makeController(conf, dir)
 
 		cm := test.NewControllerManager(ctlr)
 		cm.StartAndWait(port)
@@ -4374,7 +4396,7 @@ func TestHTTPReadOnly(t *testing.T) {
 						Path: htpasswdPath,
 					},
 				}
-				ctlr := makeController(conf, t.TempDir(), "")
+				ctlr := makeController(conf, t.TempDir())
 
 				cm := test.NewControllerManager(ctlr)
 				cm.StartAndWait(port)
@@ -4421,11 +4443,14 @@ func TestCrossRepoMount(t *testing.T) {
 		dir := t.TempDir()
 		ctlr := api.NewController(conf)
 
-		test.CopyTestFiles("../../test/data/zot-cve-test", path.Join(dir, "zot-cve-test"))
-
 		ctlr.Config.Storage.RootDirectory = dir
 		ctlr.Config.Storage.RemoteCache = false
 		ctlr.Config.Storage.Dedupe = false
+
+		err := test.WriteImageToFileSystem(test.CreateDefaultImage(), "zot-cve-test", "test", storage.StoreController{
+			DefaultStore: test.GetDefaultImageStore(dir, ctlr.Log),
+		})
+		So(err, ShouldBeNil)
 
 		cm := test.NewControllerManager(ctlr) //nolint: varnamelen
 		cm.StartAndWait(port)
@@ -4627,15 +4652,24 @@ func TestCrossRepoMount(t *testing.T) {
 		}
 
 		dir := t.TempDir()
-		ctlr := makeController(conf, dir, "../../test/data")
+
+		ctlr := api.NewController(conf)
+		ctlr.Config.Storage.RootDirectory = dir
 		ctlr.Config.Storage.Dedupe = false
 		ctlr.Config.Storage.GC = false
+
+		image := test.CreateImageWith().RandomLayers(1, 10).DefaultConfig().Build()
+
+		err := test.WriteImageToFileSystem(image, "zot-cve-test", "0.0.1",
+			test.GetDefaultStoreController(dir, ctlr.Log))
+		So(err, ShouldBeNil)
 
 		cm := test.NewControllerManager(ctlr)
 		cm.StartAndWait(port)
 		defer cm.StopServer()
 
-		digest := test.GetTestBlobDigest("zot-cve-test", "layer").String()
+		// digest := test.GetTestBlobDigest("zot-cve-test", "layer").String()
+		digest := godigest.FromBytes(image.Layers[0])
 		name := "zot-c-test"
 		client := resty.New()
 		headResponse, err := client.R().SetBasicAuth(username, passphrase).
@@ -4765,8 +4799,17 @@ func TestParallelRequests(t *testing.T) {
 	subPaths["/a"] = config.StorageConfig{RootDirectory: firstSubDir}
 	subPaths["/b"] = config.StorageConfig{RootDirectory: secondSubDir}
 
-	ctlr := makeController(conf, dir, "")
+	ctlr := makeController(conf, dir)
 	ctlr.Config.Storage.SubPaths = subPaths
+
+	testImagesDir := t.TempDir()
+	testImagesController := test.GetDefaultStoreController(testImagesDir, ctlr.Log)
+
+	err := test.WriteImageToFileSystem(test.CreateRandomImage(), "zot-test", "0.0.1", testImagesController)
+	assert.Equal(t, err, nil, "Error should be nil")
+
+	err = test.WriteImageToFileSystem(test.CreateRandomImage(), "zot-cve-test", "0.0.1", testImagesController)
+	assert.Equal(t, err, nil, "Error should be nil")
 
 	cm := test.NewControllerManager(ctlr)
 	cm.StartAndWait(port)
@@ -4785,7 +4828,7 @@ func TestParallelRequests(t *testing.T) {
 			assert.Equal(t, err, nil, "Error should be nil")
 			assert.NotEqual(t, tagResponse.StatusCode(), http.StatusBadRequest, "bad request")
 
-			manifestList := getAllManifests(path.Join("../../test/data", testcase.srcImageName))
+			manifestList := getAllManifests(path.Join(testImagesDir, testcase.srcImageName))
 
 			for _, manifest := range manifestList {
 				headResponse, err := client.R().SetBasicAuth(username, passphrase).
@@ -4799,7 +4842,7 @@ func TestParallelRequests(t *testing.T) {
 				assert.Equal(t, getResponse.StatusCode(), http.StatusNotFound, "response status code should return 404")
 			}
 
-			blobList := getAllBlobs(path.Join("../../test/data", testcase.srcImageName))
+			blobList := getAllBlobs(path.Join(testImagesDir, testcase.srcImageName))
 
 			for _, blob := range blobList {
 				// Get request of blob
@@ -4819,7 +4862,7 @@ func TestParallelRequests(t *testing.T) {
 				assert.NotEqual(t, getResponse.StatusCode(), http.StatusInternalServerError,
 					"internal server error should not occurred")
 
-				blobPath := path.Join("../../test/data", testcase.srcImageName, "blobs/sha256", blob)
+				blobPath := path.Join(testImagesDir, testcase.srcImageName, "blobs/sha256", blob)
 
 				buf, err := os.ReadFile(blobPath)
 				if err != nil {
@@ -4979,7 +5022,7 @@ func TestHardLink(t *testing.T) {
 			panic(err)
 		}
 
-		ctlr := makeController(conf, dir, "")
+		ctlr := makeController(conf, dir)
 		subPaths := make(map[string]config.StorageConfig)
 
 		subPaths["/a"] = config.StorageConfig{RootDirectory: subDir, Dedupe: true}
@@ -5013,7 +5056,7 @@ func TestImageSignatures(t *testing.T) {
 		conf.HTTP.Port = port
 
 		dir := t.TempDir()
-		ctlr := makeController(conf, dir, "")
+		ctlr := makeController(conf, dir)
 		cm := test.NewControllerManager(ctlr)
 		// this blocks
 		cm.StartAndWait(port)
@@ -5246,7 +5289,7 @@ func TestManifestValidation(t *testing.T) {
 		conf.HTTP.Port = port
 
 		dir := t.TempDir()
-		ctlr := makeController(conf, dir, "")
+		ctlr := makeController(conf, dir)
 		cm := test.NewControllerManager(ctlr)
 		// this blocks
 		cm.StartServer()
@@ -5466,7 +5509,7 @@ func TestArtifactReferences(t *testing.T) {
 		conf.HTTP.Port = port
 
 		dir := t.TempDir()
-		ctlr := makeController(conf, dir, "")
+		ctlr := makeController(conf, dir)
 		cm := test.NewControllerManager(ctlr)
 		// this blocks
 		cm.StartServer()
@@ -5725,7 +5768,7 @@ func TestRouteFailures(t *testing.T) {
 		conf := config.New()
 		conf.HTTP.Port = port
 
-		ctlr := makeController(conf, t.TempDir(), "")
+		ctlr := makeController(conf, t.TempDir())
 		ctlr.Config.Storage.Commit = true
 
 		cm := test.NewControllerManager(ctlr)
@@ -6307,7 +6350,7 @@ func TestStorageCommit(t *testing.T) {
 		conf.HTTP.Port = port
 
 		dir := t.TempDir()
-		ctlr := makeController(conf, dir, "")
+		ctlr := makeController(conf, dir)
 		ctlr.Config.Storage.Commit = true
 
 		cm := test.NewControllerManager(ctlr)
@@ -6462,7 +6505,7 @@ func TestManifestImageIndex(t *testing.T) {
 		conf.HTTP.Port = port
 
 		dir := t.TempDir()
-		ctlr := makeController(conf, dir, "")
+		ctlr := makeController(conf, dir)
 
 		cm := test.NewControllerManager(ctlr)
 		cm.StartAndWait(port)
@@ -6872,7 +6915,7 @@ func TestManifestCollision(t *testing.T) {
 		conf.HTTP.Port = port
 
 		dir := t.TempDir()
-		ctlr := makeController(conf, dir, "")
+		ctlr := makeController(conf, dir)
 
 		conf.HTTP.AccessControl = &config.AccessControlConfig{
 			Repositories: config.Repositories{
@@ -6955,7 +6998,7 @@ func TestPullRange(t *testing.T) {
 		conf.HTTP.Port = port
 
 		dir := t.TempDir()
-		ctlr := makeController(conf, dir, "")
+		ctlr := makeController(conf, dir)
 
 		cm := test.NewControllerManager(ctlr)
 		cm.StartAndWait(port)
@@ -7115,7 +7158,7 @@ func TestInjectInterruptedImageManifest(t *testing.T) {
 		conf.HTTP.Port = port
 
 		dir := t.TempDir()
-		ctlr := makeController(conf, dir, "")
+		ctlr := makeController(conf, dir)
 
 		cm := test.NewControllerManager(ctlr)
 		cm.StartAndWait(port)
@@ -7224,7 +7267,7 @@ func TestInjectTooManyOpenFiles(t *testing.T) {
 		conf.HTTP.Port = port
 
 		dir := t.TempDir()
-		ctlr := makeController(conf, dir, "")
+		ctlr := makeController(conf, dir)
 		conf.Storage.RemoteCache = false
 
 		cm := test.NewControllerManager(ctlr)
@@ -7421,7 +7464,7 @@ func TestGCSignaturesAndUntaggedManifests(t *testing.T) {
 		conf := config.New()
 		conf.HTTP.Port = port
 
-		ctlr := makeController(conf, t.TempDir(), "")
+		ctlr := makeController(conf, t.TempDir())
 
 		Convey("Garbage collect signatures without subject and manifests without tags", func(c C) {
 			dir := t.TempDir()
@@ -7431,7 +7474,9 @@ func TestGCSignaturesAndUntaggedManifests(t *testing.T) {
 
 			ctlr.Config.Storage.Dedupe = false
 
-			test.CopyTestFiles("../../test/data/zot-test", path.Join(dir, repoName))
+			err := test.WriteImageToFileSystem(test.CreateDefaultImage(), repoName, tag,
+				test.GetDefaultStoreController(dir, ctlr.Log))
+			So(err, ShouldBeNil)
 
 			cm := test.NewControllerManager(ctlr)
 			cm.StartServer()
@@ -7607,7 +7652,9 @@ func TestGCSignaturesAndUntaggedManifests(t *testing.T) {
 			ctlr.Config.Storage.GC = true
 			ctlr.Config.Storage.GCDelay = 500 * time.Millisecond
 
-			test.CopyTestFiles("../../test/data/zot-test", path.Join(dir, repoName))
+			err := test.WriteImageToFileSystem(test.CreateDefaultImage(), repoName, tag,
+				test.GetDefaultStoreController(dir, ctlr.Log))
+			So(err, ShouldBeNil)
 
 			cm := test.NewControllerManager(ctlr)
 			cm.StartAndWait(port)
@@ -7704,7 +7751,9 @@ func TestPeriodicGC(t *testing.T) {
 		ctlr.Config.Storage.GCInterval = 1 * time.Hour
 		ctlr.Config.Storage.GCDelay = 1 * time.Second
 
-		test.CopyTestFiles("../../test/data/zot-test", path.Join(dir, repoName))
+		err = test.WriteImageToFileSystem(test.CreateDefaultImage(), repoName, "0.0.1",
+			test.GetDefaultStoreController(dir, ctlr.Log))
+		So(err, ShouldBeNil)
 
 		cm := test.NewControllerManager(ctlr)
 		cm.StartAndWait(port)
@@ -7733,7 +7782,7 @@ func TestPeriodicGC(t *testing.T) {
 		defer os.Remove(logFile.Name()) // clean up
 
 		dir := t.TempDir()
-		ctlr := makeController(conf, dir, "")
+		ctlr := makeController(conf, dir)
 		subDir := t.TempDir()
 
 		subPaths := make(map[string]config.StorageConfig)
@@ -7778,7 +7827,9 @@ func TestPeriodicGC(t *testing.T) {
 		ctlr.Config.Storage.GCInterval = 1 * time.Hour
 		ctlr.Config.Storage.GCDelay = 1 * time.Second
 
-		test.CopyTestFiles("../../test/data/zot-test", path.Join(dir, repoName))
+		err = test.WriteImageToFileSystem(test.CreateDefaultImage(), repoName, "0.0.1",
+			test.GetDefaultStoreController(dir, ctlr.Log))
+		So(err, ShouldBeNil)
 
 		So(os.Chmod(dir, 0o000), ShouldBeNil)
 
@@ -7808,7 +7859,7 @@ func TestSearchRoutes(t *testing.T) {
 		conf.HTTP.Port = port
 		tempDir := t.TempDir()
 
-		ctlr := makeController(conf, tempDir, "")
+		ctlr := makeController(conf, tempDir)
 		cm := test.NewControllerManager(ctlr)
 
 		cm.StartAndWait(port)
@@ -7897,7 +7948,7 @@ func TestSearchRoutes(t *testing.T) {
 				},
 			}
 
-			ctlr := makeController(conf, tempDir, "")
+			ctlr := makeController(conf, tempDir)
 
 			cm := test.NewControllerManager(ctlr)
 			cm.StartAndWait(port)
@@ -8042,7 +8093,7 @@ func TestSearchRoutes(t *testing.T) {
 				},
 			}
 
-			ctlr := makeController(conf, tempDir, "")
+			ctlr := makeController(conf, tempDir)
 
 			cm := test.NewControllerManager(ctlr)
 			cm.StartAndWait(port)
@@ -8129,7 +8180,7 @@ func TestSearchRoutes(t *testing.T) {
 				},
 			}
 
-			ctlr := makeController(conf, tempDir, "")
+			ctlr := makeController(conf, tempDir)
 
 			cm := test.NewControllerManager(ctlr)
 			cm.StartAndWait(port)
@@ -8197,7 +8248,7 @@ func TestSearchRoutes(t *testing.T) {
 				},
 			}
 
-			ctlr := makeController(conf, tempDir, "")
+			ctlr := makeController(conf, tempDir)
 
 			cm := test.NewControllerManager(ctlr)
 			cm.StartAndWait(port)
@@ -8265,7 +8316,7 @@ func TestSearchRoutes(t *testing.T) {
 				},
 			}
 
-			ctlr := makeController(conf, tempDir, "")
+			ctlr := makeController(conf, tempDir)
 
 			cm := test.NewControllerManager(ctlr)
 			cm.StartAndWait(port)
@@ -8319,7 +8370,7 @@ func TestSearchRoutes(t *testing.T) {
 				},
 			}
 
-			ctlr := makeController(conf, tempDir, "")
+			ctlr := makeController(conf, tempDir)
 
 			cm := test.NewControllerManager(ctlr)
 			cm.StartAndWait(port)
@@ -8383,7 +8434,7 @@ func TestSearchRoutes(t *testing.T) {
 				},
 			}
 
-			ctlr := makeController(conf, tempDir, "")
+			ctlr := makeController(conf, tempDir)
 
 			cm := test.NewControllerManager(ctlr)
 			cm.StartAndWait(port)
@@ -8423,7 +8474,7 @@ func TestDistSpecExtensions(t *testing.T) {
 		conf.Log.Output = logFile.Name()
 		defer os.Remove(logFile.Name()) // clean up
 
-		ctlr := makeController(conf, t.TempDir(), "")
+		ctlr := makeController(conf, t.TempDir())
 
 		cm := test.NewControllerManager(ctlr)
 		cm.StartAndWait(port)
@@ -8471,7 +8522,7 @@ func TestDistSpecExtensions(t *testing.T) {
 		conf.Log.Output = logFile.Name()
 		defer os.Remove(logFile.Name()) // clean up
 
-		ctlr := makeController(conf, t.TempDir(), "")
+		ctlr := makeController(conf, t.TempDir())
 
 		cm := test.NewControllerManager(ctlr)
 		cm.StartAndWait(port)
@@ -8513,7 +8564,7 @@ func TestDistSpecExtensions(t *testing.T) {
 		conf.Log.Output = logFile.Name()
 		defer os.Remove(logFile.Name()) // clean up
 
-		ctlr := makeController(conf, t.TempDir(), "")
+		ctlr := makeController(conf, t.TempDir())
 
 		cm := test.NewControllerManager(ctlr)
 		cm.StartAndWait(port)
@@ -8544,7 +8595,7 @@ func TestDistSpecExtensions(t *testing.T) {
 		conf.Log.Output = logFile.Name()
 		defer os.Remove(logFile.Name()) // clean up
 
-		ctlr := makeController(conf, t.TempDir(), "")
+		ctlr := makeController(conf, t.TempDir())
 
 		cm := test.NewControllerManager(ctlr)
 		cm.StartAndWait(port)
@@ -8746,12 +8797,9 @@ func getAllManifests(imagePath string) []string {
 	return manifestList
 }
 
-func makeController(conf *config.Config, dir string, copyTestDataDest string) *api.Controller {
+func makeController(conf *config.Config, dir string) *api.Controller {
 	ctlr := api.NewController(conf)
 
-	if copyTestDataDest != "" {
-		test.CopyTestFiles(copyTestDataDest, dir)
-	}
 	ctlr.Config.Storage.RootDirectory = dir
 
 	return ctlr

@@ -85,7 +85,9 @@ func TestTLSWithAuth(t *testing.T) {
 
 			home := os.Getenv("HOME")
 			destCertsDir := filepath.Join(home, certsDir1)
-			test.CopyTestFiles(sourceCertsDir, destCertsDir)
+			err := test.CopyTestKeysAndCerts(destCertsDir)
+			So(err, ShouldBeNil)
+
 			defer os.RemoveAll(destCertsDir)
 
 			args := []string{"imagetest", "--name", "dummyImageName", "--url", HOST1}
@@ -94,7 +96,7 @@ func TestTLSWithAuth(t *testing.T) {
 			imageCmd.SetOut(imageBuff)
 			imageCmd.SetErr(imageBuff)
 			imageCmd.SetArgs(args)
-			err := imageCmd.Execute()
+			err = imageCmd.Execute()
 			So(err, ShouldNotBeNil)
 			So(imageBuff.String(), ShouldContainSubstring, "invalid URL format")
 

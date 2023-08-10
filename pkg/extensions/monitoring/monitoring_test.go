@@ -5,7 +5,6 @@ package monitoring_test
 
 import (
 	"net/http"
-	"path"
 	"testing"
 	"time"
 
@@ -55,7 +54,10 @@ func TestExtensionMetrics(t *testing.T) {
 		monitoring.IncDownloadCounter(ctlr.Metrics, "alpine")
 		monitoring.IncUploadCounter(ctlr.Metrics, "alpine")
 
-		test.CopyTestFiles("../../../test/data/zot-test", path.Join(rootDir, "alpine"))
+		srcStorageCtlr := test.GetDefaultStoreController(rootDir, ctlr.Log)
+		err := test.WriteImageToFileSystem(test.CreateDefaultImage(), "alpine", "0.0.1", srcStorageCtlr)
+		So(err, ShouldBeNil)
+
 		monitoring.SetStorageUsage(ctlr.Metrics, rootDir, "alpine")
 
 		monitoring.ObserveStorageLockLatency(ctlr.Metrics, time.Millisecond, rootDir, "RWLock")
