@@ -265,6 +265,11 @@ func (c *Controller) InitMetaDB(reloadCtx context.Context) error {
 			return err
 		}
 
+		err = ext.SetupExtensions(c.Config, driver, c.Log) //nolint:contextcheck
+		if err != nil {
+			return err
+		}
+
 		err = driver.PatchDB()
 		if err != nil {
 			return err

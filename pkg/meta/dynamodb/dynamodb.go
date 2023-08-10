@@ -19,7 +19,6 @@ import (
 	zcommon "zotregistry.io/zot/pkg/common"
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/meta/common"
-	"zotregistry.io/zot/pkg/meta/signatures"
 	mTypes "zotregistry.io/zot/pkg/meta/types"
 	"zotregistry.io/zot/pkg/meta/version"
 	localCtx "zotregistry.io/zot/pkg/requestcontext"
@@ -36,16 +35,13 @@ type DynamoDB struct {
 	UserDataTablename     string
 	VersionTablename      string
 	Patches               []func(client *dynamodb.Client, tableNames map[string]string) error
-	SigStore              *signatures.SigStore
+	imgTrustStore         mTypes.ImageTrustStore
 	Log                   log.Logger
 }
 
-func New(client *dynamodb.Client, params DBDriverParameters, log log.Logger) (*DynamoDB, error) {
-	sigStore, err := signatures.NewCloudSigStore(params.Region, params.Endpoint)
-	if err != nil {
-		return nil, err
-	}
-
+func New(
+	client *dynamodb.Client, params DBDriverParameters, log log.Logger,
+) (*DynamoDB, error) {
 	dynamoWrapper := DynamoDB{
 		Client:                client,
 		RepoMetaTablename:     params.RepoMetaTablename,
@@ -55,11 +51,11 @@ func New(client *dynamodb.Client, params DBDriverParameters, log log.Logger) (*D
 		UserDataTablename:     params.UserDataTablename,
 		APIKeyTablename:       params.APIKeyTablename,
 		Patches:               version.GetDynamoDBPatches(),
-		SigStore:              sigStore,
+		imgTrustStore:         nil,
 		Log:                   log,
 	}
 
-	err = dynamoWrapper.createVersionTable()
+	err := dynamoWrapper.createVersionTable()
 	if err != nil {
 		return nil, err
 	}
@@ -93,8 +89,12 @@ func New(client *dynamodb.Client, params DBDriverParameters, log log.Logger) (*D
 	return &dynamoWrapper, nil
 }
 
-func (dwr *DynamoDB) SignatureStorage() mTypes.SignatureStorage {
-	return dwr.SigStore
+func (dwr *DynamoDB) ImageTrustStore() mTypes.ImageTrustStore {
+	return dwr.imgTrustStore
+}
+
+func (dwr *DynamoDB) SetImageTrustStore(imgTrustStore mTypes.ImageTrustStore) {
+	dwr.imgTrustStore = imgTrustStore
 }
 
 func (dwr *DynamoDB) SetManifestData(manifestDigest godigest.Digest, manifestData mTypes.ManifestData) error {
@@ -635,6 +635,12 @@ func (dwr *DynamoDB) IncrementImageDownloads(repo string, reference string) erro
 }
 
 func (dwr *DynamoDB) UpdateSignaturesValidity(repo string, manifestDigest godigest.Digest) error {
+	imgTrustStore := dwr.ImageTrustStore()
+
+	if imgTrustStore == nil {
+		return nil
+	}
+
 	// get ManifestData of signed manifest
 	var blob []byte
 
@@ -669,7 +675,7 @@ func (dwr *DynamoDB) UpdateSignaturesValidity(repo string, manifestDigest godige
 			layersInfo := []mTypes.LayerInfo{}
 
 			for _, layerInfo := range sigInfo.LayersInfo {
-				author, date, isTrusted, _ := dwr.SigStore.VerifySignature(sigType, layerInfo.LayerContent, layerInfo.SignatureKey,
+				author, date, isTrusted, _ := imgTrustStore.VerifySignature(sigType, layerInfo.LayerContent, layerInfo.SignatureKey,
 					manifestDigest, blob, repo)
 
 				if isTrusted {
@@ -738,12 +744,12 @@ func (dwr *DynamoDB) AddManifestSignature(repo string, signedManifestDigest godi
 
 	signatureSlice := manifestSignatures[sygMeta.SignatureType]
 	if !common.SignatureAlreadyExists(signatureSlice, sygMeta) {
-		if sygMeta.SignatureType == signatures.NotationSignature {
+		if sygMeta.SignatureType == zcommon.NotationSignature {
 			signatureSlice = append(signatureSlice, mTypes.SignatureInfo{
 				SignatureManifestDigest: sygMeta.SignatureDigest,
 				LayersInfo:              sygMeta.LayersInfo,
 			})
-		} else if sygMeta.SignatureType == signatures.CosignSignature {
+		} else if sygMeta.SignatureType == zcommon.CosignSignature {
 			signatureSlice = []mTypes.SignatureInfo{{
 				SignatureManifestDigest: sygMeta.SignatureDigest,
 				LayersInfo:              sygMeta.LayersInfo,

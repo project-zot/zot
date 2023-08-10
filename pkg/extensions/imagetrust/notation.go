@@ -1,4 +1,7 @@
-package signatures
+//go:build imagetrust
+// +build imagetrust
+
+package imagetrust
 
 import (
 	"bytes"
@@ -13,7 +16,7 @@ import (
 	"path"
 	"path/filepath"
 	"regexp"
-	"sync"
+	"strings"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/service/secretsmanager"
@@ -34,13 +37,11 @@ import (
 
 const notationDirRelativePath = "_notation"
 
-var TrustpolicyLock = new(sync.Mutex) //nolint: gochecknoglobals
-
 type CertificateLocalStorage struct {
 	notationDir string
 }
 
-type certificateCloudStorage struct {
+type CertificateCloudStorage struct {
 	secretsManagerClient *secretsmanager.Client
 	secretsManagerCache  *secretcache.Cache
 }
@@ -86,8 +87,8 @@ func NewCertificateLocalStorage(rootDir string) (*CertificateLocalStorage, error
 
 func NewCertificateCloudStorage(
 	secretsManagerClient *secretsmanager.Client, secretsManagerCache *secretcache.Cache,
-) (*certificateCloudStorage, error) {
-	certStorage := &certificateCloudStorage{
+) (*CertificateCloudStorage, error) {
+	certStorage := &CertificateCloudStorage{
 		secretsManagerClient: secretsManagerClient,
 		secretsManagerCache:  secretsManagerCache,
 	}
@@ -130,9 +131,6 @@ func InitTrustpolicyFile(notationStorage certificateStorage) error {
 }
 
 func (local *CertificateLocalStorage) InitTrustpolicy(trustpolicy []byte) error {
-	TrustpolicyLock.Lock()
-	defer TrustpolicyLock.Unlock()
-
 	notationDir, err := local.GetNotationDirPath()
 	if err != nil {
 		return err
@@ -141,7 +139,7 @@ func (local *CertificateLocalStorage) InitTrustpolicy(trustpolicy []byte) error 
 	return os.WriteFile(path.Join(notationDir, dir.PathTrustPolicy), trustpolicy, defaultDirPerms)
 }
 
-func (cloud *certificateCloudStorage) InitTrustpolicy(trustpolicy []byte) error {
+func (cloud *CertificateCloudStorage) InitTrustpolicy(trustpolicy []byte) error {
 	name := "trustpolicy"
 	description := "notation trustpolicy file"
 	secret := base64.StdEncoding.EncodeToString(trustpolicy)
@@ -152,8 +150,11 @@ func (cloud *certificateCloudStorage) InitTrustpolicy(trustpolicy []byte) error 
 	}
 
 	_, err := cloud.secretsManagerClient.CreateSecret(context.Background(), secretInputParam)
+	if err != nil && !strings.Contains(err.Error(), "the secret trustpolicy already exists.") {
+		return err
+	}
 
-	return err
+	return nil
 }
 
 func (local *CertificateLocalStorage) GetNotationDirPath() (string, error) {
@@ -164,7 +165,7 @@ func (local *CertificateLocalStorage) GetNotationDirPath() (string, error) {
 	return "", zerr.ErrSignConfigDirNotSet
 }
 
-func (cloud *certificateCloudStorage) GetCertificates(
+func (cloud *CertificateCloudStorage) GetCertificates(
 	ctx context.Context, storeType truststore.Type, namedStore string,
 ) ([]*x509.Certificate, error) {
 	certificates := []*x509.Certificate{}
@@ -243,7 +244,7 @@ func (local *CertificateLocalStorage) LoadTrustPolicyDocument() (*trustpolicy.Do
 	return policyDocument, nil
 }
 
-func (cloud *certificateCloudStorage) LoadTrustPolicyDocument() (*trustpolicy.Document, error) {
+func (cloud *CertificateCloudStorage) LoadTrustPolicyDocument() (*trustpolicy.Document, error) {
 	policyDocument := &trustpolicy.Document{}
 
 	raw, err := cloud.secretsManagerCache.GetSecretString("trustpolicy")
@@ -276,9 +277,6 @@ func (cloud *certificateCloudStorage) LoadTrustPolicyDocument() (*trustpolicy.Do
 // but using LoadTrustPolicyDocumnt() function instead of trustpolicy.LoadDocument() function.
 func NewFromConfig(notationStorage certificateStorage) (notation.Verifier, error) {
 	// Load trust policy.
-	TrustpolicyLock.Lock()
-	defer TrustpolicyLock.Unlock()
-
 	policyDocument, err := notationStorage.LoadTrustPolicyDocument()
 	if err != nil {
 		return nil, err
@@ -298,7 +296,7 @@ func (local *CertificateLocalStorage) GetVerifier(policyDoc *trustpolicy.Documen
 		plugin.NewCLIManager(dir.NewSysFS(path.Join(notationDir, dir.PathPlugins))))
 }
 
-func (cloud *certificateCloudStorage) GetVerifier(policyDoc *trustpolicy.Document) (notation.Verifier, error) {
+func (cloud *CertificateCloudStorage) GetVerifier(policyDoc *trustpolicy.Document) (notation.Verifier, error) {
 	return verifier.New(policyDoc, cloud,
 		plugin.NewCLIManager(dir.NewSysFS(path.Join(dir.PathPlugins))))
 }
@@ -405,9 +403,6 @@ func UploadCertificate(
 
 	// update "trustpolicy.json" file
 	// add certificate to "trustpolicy.json"
-	TrustpolicyLock.Lock()
-	defer TrustpolicyLock.Unlock()
-
 	trustpolicyDoc, err := notationStorage.LoadTrustPolicyDocument()
 	if err != nil {
 		return err
@@ -461,7 +456,7 @@ func (local *CertificateLocalStorage) UpdateTrustPolicyDocument(content []byte) 
 	return os.WriteFile(path.Join(configDir, dir.PathTrustPolicy), content, defaultFilePerms)
 }
 
-func (cloud *certificateCloudStorage) StoreCertificate(certificateContent []byte,
+func (cloud *CertificateCloudStorage) StoreCertificate(certificateContent []byte,
 	truststoreType, truststoreName string,
 ) error {
 	name := path.Join(truststoreType, truststoreName, godigest.FromBytes(certificateContent).Encoded())
@@ -478,7 +473,7 @@ func (cloud *certificateCloudStorage) StoreCertificate(certificateContent []byte
 	return err
 }
 
-func (cloud *certificateCloudStorage) UpdateTrustPolicyDocument(content []byte) error {
+func (cloud *CertificateCloudStorage) UpdateTrustPolicyDocument(content []byte) error {
 	trustpolicyName := "trustpolicy"
 	trustpolicySecret := base64.StdEncoding.EncodeToString(content)
 	trustpolicySecretInputParam := &secretsmanager.UpdateSecretInput{
@@ -502,6 +497,10 @@ func validateTruststoreType(truststoreType string) bool {
 }
 
 func validateTruststoreName(truststoreName string) bool {
+	if strings.Contains(truststoreName, "..") {
+		return false
+	}
+
 	return regexp.MustCompile(`^[a-zA-Z0-9_.-]+$`).MatchString(truststoreName)
 }
 

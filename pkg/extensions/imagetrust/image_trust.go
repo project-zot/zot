@@ -1,4 +1,7 @@
-package signatures
+//go:build imagetrust
+// +build imagetrust
+
+package imagetrust
 
 import (
 	"context"
@@ -17,24 +20,23 @@ import (
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 
 	zerr "zotregistry.io/zot/errors"
+	zcommon "zotregistry.io/zot/pkg/common"
 	"zotregistry.io/zot/pkg/log"
 	mTypes "zotregistry.io/zot/pkg/meta/types"
 	"zotregistry.io/zot/pkg/scheduler"
 )
 
 const (
-	CosignSignature   = "cosign"
-	NotationSignature = "notation"
-	defaultDirPerms   = 0o700
-	defaultFilePerms  = 0o644
+	defaultDirPerms  = 0o700
+	defaultFilePerms = 0o644
 )
 
-type SigStore struct {
+type ImageTrustStore struct {
 	CosignStorage   publicKeyStorage
 	NotationStorage certificateStorage
 }
 
-func NewLocalSigStore(rootDir string) (*SigStore, error) {
+func NewLocalImageTrustStore(rootDir string) (*ImageTrustStore, error) {
 	publicKeyStorage, err := NewPublicKeyLocalStorage(rootDir)
 	if err != nil {
 		return nil, err
@@ -45,13 +47,13 @@ func NewLocalSigStore(rootDir string) (*SigStore, error) {
 		return nil, err
 	}
 
-	return &SigStore{
+	return &ImageTrustStore{
 		CosignStorage:   publicKeyStorage,
 		NotationStorage: certStorage,
 	}, nil
 }
 
-func NewCloudSigStore(region, endpoint string) (*SigStore, error) {
+func NewCloudImageTrustStore(region, endpoint string) (*ImageTrustStore, error) {
 	secretsManagerClient, err := GetSecretsManagerClient(region, endpoint)
 	if err != nil {
 		return nil, err
@@ -69,7 +71,7 @@ func NewCloudSigStore(region, endpoint string) (*SigStore, error) {
 		return nil, err
 	}
 
-	return &SigStore{
+	return &ImageTrustStore{
 		CosignStorage:   publicKeyStorage,
 		NotationStorage: certStorage,
 	}, nil
@@ -128,7 +130,7 @@ func GetSecretsManagerRetrieval(region, endpoint string) (*secretcache.Cache, er
 	return cache, nil
 }
 
-func (sigStore *SigStore) VerifySignature(
+func (imgTrustStore *ImageTrustStore) VerifySignature(
 	signatureType string, rawSignature []byte, sigKey string, manifestDigest godigest.Digest, manifestContent []byte,
 	repo string,
 ) (string, time.Time, bool, error) {
@@ -148,12 +150,12 @@ func (sigStore *SigStore) VerifySignature(
 	}
 
 	switch signatureType {
-	case CosignSignature:
-		author, isValid, err := VerifyCosignSignature(sigStore.CosignStorage, repo, manifestDigest, sigKey, rawSignature)
+	case zcommon.CosignSignature:
+		author, isValid, err := VerifyCosignSignature(imgTrustStore.CosignStorage, repo, manifestDigest, sigKey, rawSignature)
 
 		return author, time.Time{}, isValid, err
-	case NotationSignature:
-		return VerifyNotationSignature(sigStore.NotationStorage, desc, manifestDigest.String(), rawSignature, sigKey)
+	case zcommon.NotationSignature:
+		return VerifyNotationSignature(imgTrustStore.NotationStorage, desc, manifestDigest.String(), rawSignature, sigKey)
 	default:
 		return "", time.Time{}, false, zerr.ErrInvalidSignatureType
 	}
@@ -233,7 +235,7 @@ func (validityT *validityTask) DoWork() error {
 	validityT.log.Info().Msg("updating signatures validity")
 
 	for signedManifest, sigs := range validityT.repo.Signatures {
-		if len(sigs[CosignSignature]) != 0 || len(sigs[NotationSignature]) != 0 {
+		if len(sigs[zcommon.CosignSignature]) != 0 || len(sigs[zcommon.NotationSignature]) != 0 {
 			err := validityT.metaDB.UpdateSignaturesValidity(validityT.repo.Name, godigest.Digest(signedManifest))
 			if err != nil {
 				validityT.log.Info().Msg("error while verifying signatures")

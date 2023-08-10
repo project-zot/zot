@@ -122,7 +122,9 @@ type MetaDB interface { //nolint:interfacebloat
 
 	PatchDB() error
 
-	SignatureStorage() SignatureStorage
+	ImageTrustStore() ImageTrustStore
+
+	SetImageTrustStore(imgTrustStore ImageTrustStore)
 }
 
 type UserDB interface { //nolint:interfacebloat
@@ -158,7 +160,7 @@ type UserDB interface { //nolint:interfacebloat
 	DeleteUserAPIKey(ctx context.Context, id string) error
 }
 
-type SignatureStorage interface {
+type ImageTrustStore interface {
 	VerifySignature(
 		signatureType string, rawSignature []byte, sigKey string, manifestDigest godigest.Digest, manifestContent []byte,
 		repo string,

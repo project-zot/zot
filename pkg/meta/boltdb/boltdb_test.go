@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"math"
 	"testing"
+	"time"
 
 	"github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
@@ -14,13 +15,22 @@ import (
 	"go.etcd.io/bbolt"
 
 	zerr "zotregistry.io/zot/errors"
+	zcommon "zotregistry.io/zot/pkg/common"
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/meta/boltdb"
-	"zotregistry.io/zot/pkg/meta/signatures"
 	mTypes "zotregistry.io/zot/pkg/meta/types"
 	localCtx "zotregistry.io/zot/pkg/requestcontext"
 	"zotregistry.io/zot/pkg/test"
 )
+
+type imgTrustStore struct{}
+
+func (its imgTrustStore) VerifySignature(
+	signatureType string, rawSignature []byte, sigKey string, manifestDigest digest.Digest, manifestContent []byte,
+	repo string,
+) (string, time.Time, bool, error) {
+	return "", time.Time{}, false, nil
+}
 
 func TestWrapperErrors(t *testing.T) {
 	Convey("Errors", t, func() {
@@ -34,6 +44,8 @@ func TestWrapperErrors(t *testing.T) {
 		boltdbWrapper, err := boltdb.New(boltDriver, log)
 		So(boltdbWrapper, ShouldNotBeNil)
 		So(err, ShouldBeNil)
+
+		boltdbWrapper.SetImageTrustStore(imgTrustStore{})
 
 		repoMeta := mTypes.RepoMetadata{
 			Tags:       map[string]mTypes.Descriptor{},
@@ -545,9 +557,9 @@ func TestWrapperErrors(t *testing.T) {
 
 			repoData, err := boltdbWrapper.GetRepoMeta("repo1")
 			So(err, ShouldBeNil)
-			So(len(repoData.Signatures[string(digest.FromString("dig"))][signatures.CosignSignature]),
+			So(len(repoData.Signatures[string(digest.FromString("dig"))][zcommon.CosignSignature]),
 				ShouldEqual, 1)
-			So(repoData.Signatures[string(digest.FromString("dig"))][signatures.CosignSignature][0].SignatureManifestDigest,
+			So(repoData.Signatures[string(digest.FromString("dig"))][zcommon.CosignSignature][0].SignatureManifestDigest,
 				ShouldEqual, "digest2")
 
 			err = boltdbWrapper.AddManifestSignature("repo1", digest.FromString("dig"),

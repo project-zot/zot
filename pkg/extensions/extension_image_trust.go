@@ -15,8 +15,8 @@ import (
 	"zotregistry.io/zot/pkg/api/config"
 	"zotregistry.io/zot/pkg/api/constants"
 	zcommon "zotregistry.io/zot/pkg/common"
+	"zotregistry.io/zot/pkg/extensions/imagetrust"
 	"zotregistry.io/zot/pkg/log"
-	"zotregistry.io/zot/pkg/meta/signatures"
 	mTypes "zotregistry.io/zot/pkg/meta/types"
 	"zotregistry.io/zot/pkg/scheduler"
 )
@@ -25,7 +25,7 @@ func IsBuiltWithImageTrustExtension() bool {
 	return true
 }
 
-func SetupImageTrustRoutes(conf *config.Config, metaDB mTypes.MetaDB, router *mux.Router, log log.Logger) {
+func SetupImageTrustRoutes(conf *config.Config, router *mux.Router, metaDB mTypes.MetaDB, log log.Logger) {
 	if !conf.IsImageTrustEnabled() || (!conf.IsCosignEnabled() && !conf.IsNotationEnabled()) {
 		log.Info().Msg("skip enabling the image trust routes as the config prerequisites are not met")
 
@@ -34,8 +34,8 @@ func SetupImageTrustRoutes(conf *config.Config, metaDB mTypes.MetaDB, router *mu
 
 	log.Info().Msg("setting up image trust routes")
 
-	sigStore, _ := metaDB.SignatureStorage().(*signatures.SigStore)
-	trust := ImageTrust{Conf: conf, SigStore: sigStore, Log: log}
+	imgTrustStore, _ := metaDB.ImageTrustStore().(*imagetrust.ImageTrustStore)
+	trust := ImageTrust{Conf: conf, ImageTrustStore: imgTrustStore, Log: log}
 	allowedMethods := zcommon.AllowedMethods(http.MethodPost)
 
 	if conf.IsNotationEnabled() {
@@ -66,9 +66,9 @@ func SetupImageTrustRoutes(conf *config.Config, metaDB mTypes.MetaDB, router *mu
 }
 
 type ImageTrust struct {
-	Conf     *config.Config
-	SigStore *signatures.SigStore
-	Log      log.Logger
+	Conf            *config.Config
+	ImageTrustStore *imagetrust.ImageTrustStore
+	Log             log.Logger
 }
 
 // Cosign handler godoc
@@ -90,7 +90,7 @@ func (trust *ImageTrust) HandleCosignPublicKeyUpload(response http.ResponseWrite
 		return
 	}
 
-	err = signatures.UploadPublicKey(trust.SigStore.CosignStorage, body)
+	err = imagetrust.UploadPublicKey(trust.ImageTrustStore.CosignStorage, body)
 	if err != nil {
 		if errors.Is(err, zerr.ErrInvalidPublicKeyContent) {
 			response.WriteHeader(http.StatusBadRequest)
@@ -148,7 +148,7 @@ func (trust *ImageTrust) HandleNotationCertificateUpload(response http.ResponseW
 		return
 	}
 
-	err = signatures.UploadCertificate(trust.SigStore.NotationStorage, body, truststoreType, truststoreName)
+	err = imagetrust.UploadCertificate(trust.ImageTrustStore.NotationStorage, body, truststoreType, truststoreName)
 	if err != nil {
 		if errors.Is(err, zerr.ErrInvalidTruststoreType) ||
 			errors.Is(err, zerr.ErrInvalidTruststoreName) ||
@@ -172,9 +172,38 @@ func EnableImageTrustVerification(conf *config.Config, taskScheduler *scheduler.
 		return
 	}
 
-	generator := signatures.NewTaskGenerator(metaDB, log)
+	generator := imagetrust.NewTaskGenerator(metaDB, log)
 
 	numberOfHours := 2
 	interval := time.Duration(numberOfHours) * time.Hour
 	taskScheduler.SubmitGenerator(generator, interval, scheduler.MediumPriority)
+}
+
+func SetupImageTrustExtension(conf *config.Config, metaDB mTypes.MetaDB, log log.Logger) error {
+	if !conf.IsImageTrustEnabled() {
+		return nil
+	}
+
+	var imgTrustStore mTypes.ImageTrustStore
+
+	var err error
+
+	if conf.Storage.RemoteCache {
+		endpoint, _ := conf.Storage.CacheDriver["endpoint"].(string)
+		region, _ := conf.Storage.CacheDriver["region"].(string)
+		imgTrustStore, err = imagetrust.NewCloudImageTrustStore(region, endpoint)
+
+		if err != nil {
+			return err
+		}
+	} else {
+		imgTrustStore, err = imagetrust.NewLocalImageTrustStore(conf.Storage.RootDirectory)
+		if err != nil {
+			return err
+		}
+	}
+
+	metaDB.SetImageTrustStore(imgTrustStore)
+
+	return nil
 }

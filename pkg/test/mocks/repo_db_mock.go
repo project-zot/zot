@@ -103,15 +103,23 @@ type MetaDBMock struct {
 
 	PatchDBFn func() error
 
-	SignatureStorageFn func() mTypes.SignatureStorage
+	ImageTrustStoreFn func() mTypes.ImageTrustStore
+
+	SetImageTrustStoreFn func(mTypes.ImageTrustStore)
 }
 
-func (sdm MetaDBMock) SignatureStorage() mTypes.SignatureStorage {
-	if sdm.SignatureStorageFn != nil {
-		return sdm.SignatureStorageFn()
+func (sdm MetaDBMock) ImageTrustStore() mTypes.ImageTrustStore {
+	if sdm.ImageTrustStoreFn != nil {
+		return sdm.ImageTrustStoreFn()
 	}
 
 	return nil
+}
+
+func (sdm MetaDBMock) SetImageTrustStore(imgTrustStore mTypes.ImageTrustStore) {
+	if sdm.SetImageTrustStoreFn != nil {
+		sdm.SetImageTrustStoreFn(imgTrustStore)
+	}
 }
 
 func (sdm MetaDBMock) SetRepoDescription(repo, description string) error {

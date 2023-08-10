@@ -17,7 +17,6 @@ import (
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	oras "github.com/oras-project/artifacts-spec/specs-go/v1"
 	"github.com/rs/zerolog"
-	"github.com/sigstore/cosign/v2/pkg/oci/remote"
 
 	zerr "zotregistry.io/zot/errors"
 	zcommon "zotregistry.io/zot/pkg/common"
@@ -26,7 +25,11 @@ import (
 	storageTypes "zotregistry.io/zot/pkg/storage/types"
 )
 
-const manifestWithEmptyLayersErrMsg = "layers: Array must have at least 1 items"
+const (
+	manifestWithEmptyLayersErrMsg = "layers: Array must have at least 1 items"
+
+	cosignSignatureTagSuffix = "sig"
+)
 
 func GetTagsByIndex(index ispec.Index) []string {
 	tags := make([]string, 0)
@@ -559,7 +562,7 @@ func IsSignature(descriptor ispec.Descriptor) bool {
 	switch descriptor.MediaType {
 	case ispec.MediaTypeImageManifest:
 		// is cosgin signature
-		if strings.HasPrefix(tag, "sha256-") && strings.HasSuffix(tag, remote.SignatureTagSuffix) {
+		if strings.HasPrefix(tag, "sha256-") && strings.HasSuffix(tag, cosignSignatureTagSuffix) {
 			return true
 		}
 

@@ -19,6 +19,10 @@ const (
 	clientCertFilename = "client.cert"
 	clientKeyFilename  = "client.key"
 	caCertFilename     = "ca.crt"
+
+	CosignSignature   = "cosign"
+	CosignSigKey      = "dev.cosignproject.cosign/signature"
+	NotationSignature = "notation"
 )
 
 func Contains[T comparable](elems []T, v T) bool {

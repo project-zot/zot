@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -17,17 +16,16 @@ import (
 	zcommon "zotregistry.io/zot/pkg/common"
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/meta/common"
-	"zotregistry.io/zot/pkg/meta/signatures"
 	mTypes "zotregistry.io/zot/pkg/meta/types"
 	"zotregistry.io/zot/pkg/meta/version"
 	localCtx "zotregistry.io/zot/pkg/requestcontext"
 )
 
 type BoltDB struct {
-	DB       *bbolt.DB
-	Patches  []func(DB *bbolt.DB) error
-	SigStore *signatures.SigStore
-	Log      log.Logger
+	DB            *bbolt.DB
+	Patches       []func(DB *bbolt.DB) error
+	imgTrustStore mTypes.ImageTrustStore
+	Log           log.Logger
 }
 
 func New(boltDB *bbolt.DB, log log.Logger) (*BoltDB, error) {
@@ -73,23 +71,20 @@ func New(boltDB *bbolt.DB, log log.Logger) (*BoltDB, error) {
 		return nil, err
 	}
 
-	dir := filepath.Dir(boltDB.Path())
-
-	sigStore, err := signatures.NewLocalSigStore(dir)
-	if err != nil {
-		return nil, err
-	}
-
 	return &BoltDB{
-		DB:       boltDB,
-		Patches:  version.GetBoltDBPatches(),
-		SigStore: sigStore,
-		Log:      log,
+		DB:            boltDB,
+		Patches:       version.GetBoltDBPatches(),
+		imgTrustStore: nil,
+		Log:           log,
 	}, nil
 }
 
-func (bdw *BoltDB) SignatureStorage() mTypes.SignatureStorage {
-	return bdw.SigStore
+func (bdw *BoltDB) ImageTrustStore() mTypes.ImageTrustStore {
+	return bdw.imgTrustStore
+}
+
+func (bdw *BoltDB) SetImageTrustStore(imgTrustStore mTypes.ImageTrustStore) {
+	bdw.imgTrustStore = imgTrustStore
 }
 
 func (bdw *BoltDB) SetManifestData(manifestDigest godigest.Digest, manifestData mTypes.ManifestData) error {
@@ -735,6 +730,12 @@ func (bdw *BoltDB) IncrementImageDownloads(repo string, reference string) error 
 
 func (bdw *BoltDB) UpdateSignaturesValidity(repo string, manifestDigest godigest.Digest) error {
 	err := bdw.DB.Update(func(transaction *bbolt.Tx) error {
+		imgTrustStore := bdw.ImageTrustStore()
+
+		if imgTrustStore == nil {
+			return nil
+		}
+
 		// get ManifestData of signed manifest
 		manifestBuck := transaction.Bucket([]byte(ManifestDataBucket))
 		mdBlob := manifestBuck.Get([]byte(manifestDigest))
@@ -792,8 +793,8 @@ func (bdw *BoltDB) UpdateSignaturesValidity(repo string, manifestDigest godigest
 				layersInfo := []mTypes.LayerInfo{}
 
 				for _, layerInfo := range sigInfo.LayersInfo {
-					author, date, isTrusted, _ := bdw.SigStore.VerifySignature(sigType, layerInfo.LayerContent, layerInfo.SignatureKey,
-						manifestDigest, blob, repo)
+					author, date, isTrusted, _ := imgTrustStore.VerifySignature(sigType, layerInfo.LayerContent,
+						layerInfo.SignatureKey, manifestDigest, blob, repo)
 
 					if isTrusted {
 						layerInfo.Signer = author
@@ -883,12 +884,12 @@ func (bdw *BoltDB) AddManifestSignature(repo string, signedManifestDigest godige
 
 		signatureSlice := manifestSignatures[sygMeta.SignatureType]
 		if !common.SignatureAlreadyExists(signatureSlice, sygMeta) {
-			if sygMeta.SignatureType == signatures.NotationSignature {
+			if sygMeta.SignatureType == zcommon.NotationSignature {
 				signatureSlice = append(signatureSlice, mTypes.SignatureInfo{
 					SignatureManifestDigest: sygMeta.SignatureDigest,
 					LayersInfo:              sygMeta.LayersInfo,
 				})
-			} else if sygMeta.SignatureType == signatures.CosignSignature {
+			} else if sygMeta.SignatureType == zcommon.CosignSignature {
 				signatureSlice = []mTypes.SignatureInfo{{
 					SignatureManifestDigest: sygMeta.SignatureDigest,
 					LayersInfo:              sygMeta.LayersInfo,

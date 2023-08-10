@@ -1,4 +1,7 @@
-package signatures
+//go:build imagetrust
+// +build imagetrust
+
+package imagetrust
 
 import (
 	"bytes"
@@ -23,16 +26,13 @@ import (
 	zerr "zotregistry.io/zot/errors"
 )
 
-const (
-	CosignSigKey          = "dev.cosignproject.cosign/signature"
-	cosignDirRelativePath = "_cosign"
-)
+const cosignDirRelativePath = "_cosign"
 
 type PublicKeyLocalStorage struct {
 	cosignDir string
 }
 
-type publicKeyCloudStorage struct {
+type PublicKeyCloudStorage struct {
 	secretsManagerClient *secretsmanager.Client
 	secretsManagerCache  *secretcache.Cache
 }
@@ -65,8 +65,8 @@ func NewPublicKeyLocalStorage(rootDir string) (*PublicKeyLocalStorage, error) {
 
 func NewPublicKeyCloudStorage(
 	secretsManagerClient *secretsmanager.Client, secretsManagerCache *secretcache.Cache,
-) *publicKeyCloudStorage {
-	return &publicKeyCloudStorage{
+) *PublicKeyCloudStorage {
+	return &PublicKeyCloudStorage{
 		secretsManagerClient: secretsManagerClient,
 		secretsManagerCache:  secretsManagerCache,
 	}
@@ -150,7 +150,7 @@ func (local *PublicKeyLocalStorage) GetPublicKeyVerifier(fileName string) (sigst
 	return pubKey, pubKeyContent, nil
 }
 
-func (cloud *publicKeyCloudStorage) GetPublicKeyVerifier(secretName string) (sigstoreSigs.Verifier, []byte, error) {
+func (cloud *PublicKeyCloudStorage) GetPublicKeyVerifier(secretName string) (sigstoreSigs.Verifier, []byte, error) {
 	hashAlgorithm := crypto.SHA256
 
 	// get key
@@ -197,7 +197,7 @@ func (local *PublicKeyLocalStorage) GetPublicKeys() ([]string, error) {
 	return publicKeys, nil
 }
 
-func (cloud *publicKeyCloudStorage) GetPublicKeys() ([]string, error) {
+func (cloud *PublicKeyCloudStorage) GetPublicKeys() ([]string, error) {
 	ctx := context.Background()
 	listSecretsInput := secretsmanager.ListSecretsInput{
 		Filters: []types.Filter{
@@ -246,7 +246,7 @@ func (local *PublicKeyLocalStorage) StorePublicKey(name godigest.Digest, publicK
 	return os.WriteFile(publicKeyPath, publicKeyContent, defaultFilePerms)
 }
 
-func (cloud *publicKeyCloudStorage) StorePublicKey(name godigest.Digest, publicKeyContent []byte) error {
+func (cloud *PublicKeyCloudStorage) StorePublicKey(name godigest.Digest, publicKeyContent []byte) error {
 	n := name.Encoded()
 	description := "cosign public key"
 	secret := base64.StdEncoding.EncodeToString(publicKeyContent)
