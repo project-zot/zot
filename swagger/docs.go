@@ -21,6 +21,36 @@ const docTemplate = `{
     "basePath": "{{.BasePath}}",
     "paths": {
         "/auth/apikey": {
+            "get": {
+                "description": "Get list of all API keys for a logged in user",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "summary": "Get list of API keys for the current user",
+                "responses": {
+                    "200": {
+                        "description": "ok",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "401": {
+                        "description": "unauthorized",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "internal server error",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            },
             "post": {
                 "description": "Can create an api key for a logged in user, based on the provided label and scopes.",
                 "consumes": [
@@ -1139,6 +1169,9 @@ const docTemplate = `{
         "api.APIKeyPayload": {
             "type": "object",
             "properties": {
+                "expirationDate": {
+                    "type": "string"
+                },
                 "label": {
                     "type": "string"
                 },

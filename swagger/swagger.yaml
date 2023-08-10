@@ -1,6 +1,8 @@
 definitions:
   api.APIKeyPayload:
     properties:
+      expirationDate:
+        type: string
       label:
         type: string
       scopes:
@@ -270,6 +272,26 @@ paths:
           schema:
             type: string
       summary: Revokes one current user API key
+    get:
+      consumes:
+      - application/json
+      description: Get list of all API keys for a logged in user
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: ok
+          schema:
+            type: string
+        "401":
+          description: unauthorized
+          schema:
+            type: string
+        "500":
+          description: internal server error
+          schema:
+            type: string
+      summary: Get list of API keys for the current user
     post:
       consumes:
       - application/json

@@ -1416,79 +1416,112 @@ func TestRoutes(t *testing.T) {
 		})
 
 		Convey("Test API keys", func() {
-			var invalid struct{}
+			Convey("CreateAPIKey invalid access control context", func() {
+				var invalid struct{}
 
-			ctx := context.TODO()
-			key := localCtx.GetContextKey()
-			ctx = context.WithValue(ctx, key, invalid)
+				ctx := context.TODO()
+				key := localCtx.GetContextKey()
+				ctx = context.WithValue(ctx, key, invalid)
 
-			request, _ := http.NewRequestWithContext(ctx, http.MethodPost, baseURL, bytes.NewReader([]byte{}))
-			response := httptest.NewRecorder()
+				request, _ := http.NewRequestWithContext(ctx, http.MethodPost, baseURL, bytes.NewReader([]byte{}))
+				response := httptest.NewRecorder()
 
-			rthdlr.CreateAPIKey(response, request)
+				rthdlr.CreateAPIKey(response, request)
 
-			resp := response.Result()
-			defer resp.Body.Close()
-			So(resp.StatusCode, ShouldEqual, http.StatusBadRequest)
+				resp := response.Result()
+				defer resp.Body.Close()
+				So(resp.StatusCode, ShouldEqual, http.StatusBadRequest)
 
-			acCtx := localCtx.AccessControlContext{
-				Username: "test",
-			}
+				request, _ = http.NewRequestWithContext(ctx, http.MethodGet, baseURL, nil)
+				response = httptest.NewRecorder()
 
-			ctx = context.TODO()
-			key = localCtx.GetContextKey()
-			ctx = context.WithValue(ctx, key, acCtx)
+				rthdlr.GetAPIKeys(response, request)
 
-			request, _ = http.NewRequestWithContext(ctx, http.MethodPost, baseURL, bytes.NewReader([]byte{}))
-			response = httptest.NewRecorder()
+				resp = response.Result()
+				defer resp.Body.Close()
+				So(resp.StatusCode, ShouldEqual, http.StatusInternalServerError)
+			})
 
-			rthdlr.CreateAPIKey(response, request)
+			Convey("CreateAPIKey bad request body", func() {
+				acCtx := localCtx.AccessControlContext{
+					Username: "test",
+				}
 
-			resp = response.Result()
-			defer resp.Body.Close()
+				ctx := context.TODO()
+				key := localCtx.GetContextKey()
+				ctx = context.WithValue(ctx, key, acCtx)
 
-			So(resp.StatusCode, ShouldEqual, http.StatusBadRequest)
+				request, _ := http.NewRequestWithContext(ctx, http.MethodPost, baseURL, bytes.NewReader([]byte{}))
+				response := httptest.NewRecorder()
 
-			payload := api.APIKeyPayload{
-				Label:  "test",
-				Scopes: []string{"test"},
-			}
-			reqBody, err := json.Marshal(payload)
-			So(err, ShouldBeNil)
+				rthdlr.CreateAPIKey(response, request)
 
-			request, _ = http.NewRequestWithContext(ctx, http.MethodPost, baseURL, bytes.NewReader(reqBody))
-			response = httptest.NewRecorder()
+				resp := response.Result()
+				defer resp.Body.Close()
+				So(resp.StatusCode, ShouldEqual, http.StatusBadRequest)
+			})
 
-			ctlr.MetaDB = mocks.MetaDBMock{
-				AddUserAPIKeyFn: func(ctx context.Context, hashedKey string, apiKeyDetails *mTypes.APIKeyDetails) error {
-					return ErrUnexpectedError
-				},
-			}
-			rthdlr.CreateAPIKey(response, request)
+			Convey("CreateAPIKey error on AddUserAPIKey", func() {
+				acCtx := localCtx.AccessControlContext{
+					Username: "test",
+				}
 
-			resp = response.Result()
-			defer resp.Body.Close()
+				ctx := context.TODO()
+				key := localCtx.GetContextKey()
+				ctx = context.WithValue(ctx, key, acCtx)
 
-			So(resp.StatusCode, ShouldEqual, http.StatusInternalServerError)
+				payload := api.APIKeyPayload{
+					Label:  "test",
+					Scopes: []string{"test"},
+				}
+				reqBody, err := json.Marshal(payload)
+				So(err, ShouldBeNil)
 
-			request, _ = http.NewRequestWithContext(ctx, http.MethodDelete, baseURL, bytes.NewReader([]byte{}))
-			response = httptest.NewRecorder()
+				request, _ := http.NewRequestWithContext(ctx, http.MethodPost, baseURL, bytes.NewReader(reqBody))
+				response := httptest.NewRecorder()
 
-			q := request.URL.Query()
-			q.Add("id", "apikeyid")
-			request.URL.RawQuery = q.Encode()
+				ctlr.MetaDB = mocks.MetaDBMock{
+					AddUserAPIKeyFn: func(ctx context.Context, hashedKey string, apiKeyDetails *mTypes.APIKeyDetails) error {
+						return ErrUnexpectedError
+					},
+				}
 
-			ctlr.MetaDB = mocks.MetaDBMock{
-				DeleteUserAPIKeyFn: func(ctx context.Context, id string) error {
-					return ErrUnexpectedError
-				},
-			}
-			rthdlr.RevokeAPIKey(response, request)
+				rthdlr.CreateAPIKey(response, request)
 
-			resp = response.Result()
-			defer resp.Body.Close()
+				resp := response.Result()
+				defer resp.Body.Close()
+				So(resp.StatusCode, ShouldEqual, http.StatusInternalServerError)
+			})
 
-			So(resp.StatusCode, ShouldEqual, http.StatusInternalServerError)
+			Convey("Revoke error on DeleteUserAPIKeyFn", func() {
+				acCtx := localCtx.AccessControlContext{
+					Username: "test",
+				}
+
+				ctx := context.TODO()
+				key := localCtx.GetContextKey()
+				ctx = context.WithValue(ctx, key, acCtx)
+
+				request, _ := http.NewRequestWithContext(ctx, http.MethodDelete, baseURL, bytes.NewReader([]byte{}))
+				response := httptest.NewRecorder()
+
+				q := request.URL.Query()
+				q.Add("id", "apikeyid")
+				request.URL.RawQuery = q.Encode()
+
+				ctlr.MetaDB = mocks.MetaDBMock{
+					DeleteUserAPIKeyFn: func(ctx context.Context, id string) error {
+						return ErrUnexpectedError
+					},
+				}
+
+				rthdlr.RevokeAPIKey(response, request)
+
+				resp := response.Result()
+				defer resp.Body.Close()
+
+				So(resp.StatusCode, ShouldEqual, http.StatusInternalServerError)
+			})
 		})
 
 		Convey("Helper functions", func() {

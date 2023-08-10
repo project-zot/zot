@@ -1,5 +1,7 @@
 package constants
 
+import "time"
+
 const (
 	ArtifactSpecRoutePrefix      = "/oras/artifacts/v1"
 	RoutePrefix                  = "/v2"
@@ -20,4 +22,5 @@ const (
 	SessionClientHeaderValue     = "zot-ui"
 	APIKeysPrefix                = "zak_"
 	CallbackUIQueryParam         = "callback_ui"
+	APIKeyTimeFormat             = time.RFC3339
 )

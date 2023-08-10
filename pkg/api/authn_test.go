@@ -12,6 +12,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"testing"
+	"time"
 
 	guuid "github.com/gofrs/uuid"
 	"github.com/project-zot/mockoidc"
@@ -38,6 +39,12 @@ type (
 	}
 )
 
+type (
+	apiKeyListResponse struct {
+		APIKeys []mTypes.APIKeyDetails `json:"apiKeys"`
+	}
+)
+
 func TestAllowedMethodsHeaderAPIKey(t *testing.T) {
 	defaultVal := true
 
@@ -58,7 +65,7 @@ func TestAllowedMethodsHeaderAPIKey(t *testing.T) {
 
 		resp, _ := resty.R().Options(baseURL + constants.APIKeyPath)
 		So(resp, ShouldNotBeNil)
-		So(resp.Header().Get("Access-Control-Allow-Methods"), ShouldResemble, "POST,DELETE,OPTIONS")
+		So(resp.Header().Get("Access-Control-Allow-Methods"), ShouldResemble, "GET,POST,DELETE,OPTIONS")
 		So(resp.StatusCode(), ShouldEqual, http.StatusNoContent)
 	})
 }
@@ -135,7 +142,6 @@ func TestAPIKeys(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		Convey("API key retrieved with basic auth", func() {
-			// call endpoint with session ( added to client after previous request)
 			resp, err := resty.R().
 				SetBody(reqBody).
 				SetBasicAuth("test", "test").
@@ -161,6 +167,24 @@ func TestAPIKeys(t *testing.T) {
 			So(resp, ShouldNotBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
+			// get API key list with basic auth
+			resp, err = resty.R().
+				SetBasicAuth("test", "test").
+				Get(baseURL + constants.APIKeyPath)
+			So(err, ShouldBeNil)
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+			var apiKeyListResponse apiKeyListResponse
+			err = json.Unmarshal(resp.Body(), &apiKeyListResponse)
+			So(err, ShouldBeNil)
+			So(len(apiKeyListResponse.APIKeys), ShouldEqual, 1)
+			So(apiKeyListResponse.APIKeys[0].CreatedAt, ShouldEqual, apiKeyResponse.APIKeyDetails.CreatedAt)
+			So(apiKeyListResponse.APIKeys[0].CreatorUA, ShouldEqual, apiKeyResponse.APIKeyDetails.CreatorUA)
+			So(apiKeyListResponse.APIKeys[0].Label, ShouldEqual, apiKeyResponse.APIKeyDetails.Label)
+			So(apiKeyListResponse.APIKeys[0].Scopes, ShouldEqual, apiKeyResponse.APIKeyDetails.Scopes)
+			So(apiKeyListResponse.APIKeys[0].UUID, ShouldEqual, apiKeyResponse.APIKeyDetails.UUID)
+
 			// add another one
 			resp, err = resty.R().
 				SetBody(reqBody).
@@ -179,9 +203,21 @@ func TestAPIKeys(t *testing.T) {
 			So(err, ShouldBeNil)
 			So(resp, ShouldNotBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+			// get API key list with api key auth
+			resp, err = resty.R().
+				SetBasicAuth("test", apiKeyResponse.APIKey).
+				Get(baseURL + constants.APIKeyPath)
+			So(err, ShouldBeNil)
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+			err = json.Unmarshal(resp.Body(), &apiKeyListResponse)
+			So(err, ShouldBeNil)
+			So(len(apiKeyListResponse.APIKeys), ShouldEqual, 2)
 		})
 
-		Convey("API key retrieved with openID", func() {
+		Convey("API key retrieved with openID and with no expire", func() {
 			client := resty.New()
 			client.SetRedirectPolicy(test.CustomRedirectPolicy(20))
 
@@ -197,7 +233,6 @@ func TestAPIKeys(t *testing.T) {
 
 			// call endpoint without session
 			resp, err = client.R().
-				SetBody(reqBody).
 				SetHeader(constants.SessionClientHeaderName, constants.SessionClientHeaderValue).
 				Post(baseURL + constants.APIKeyPath)
 			So(err, ShouldBeNil)
@@ -224,6 +259,25 @@ func TestAPIKeys(t *testing.T) {
 
 			email := user.Email
 			So(email, ShouldNotBeEmpty)
+
+			// get API key list
+			resp, err = client.R().
+				SetHeader(constants.SessionClientHeaderName, constants.SessionClientHeaderValue).
+				Get(baseURL + constants.APIKeyPath)
+			So(err, ShouldBeNil)
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+			var apiKeyListResponse apiKeyListResponse
+
+			err = json.Unmarshal(resp.Body(), &apiKeyListResponse)
+			So(err, ShouldBeNil)
+			So(len(apiKeyListResponse.APIKeys), ShouldEqual, 1)
+			So(apiKeyListResponse.APIKeys[0].CreatedAt, ShouldEqual, apiKeyResponse.APIKeyDetails.CreatedAt)
+			So(apiKeyListResponse.APIKeys[0].CreatorUA, ShouldEqual, apiKeyResponse.APIKeyDetails.CreatorUA)
+			So(apiKeyListResponse.APIKeys[0].Label, ShouldEqual, apiKeyResponse.APIKeyDetails.Label)
+			So(apiKeyListResponse.APIKeys[0].Scopes, ShouldEqual, apiKeyResponse.APIKeyDetails.Scopes)
+			So(apiKeyListResponse.APIKeys[0].UUID, ShouldEqual, apiKeyResponse.APIKeyDetails.UUID)
 
 			resp, err = client.R().
 				SetBasicAuth(email, apiKeyResponse.APIKey).
@@ -290,7 +344,16 @@ func TestAPIKeys(t *testing.T) {
 			So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
 		})
 
-		Convey("Login with openid and create API key", func() {
+		Convey("API key retrieved with openID and with long expire", func() {
+			payload := api.APIKeyPayload{
+				Label:          "test",
+				Scopes:         []string{"test"},
+				ExpirationDate: time.Now().Add(time.Hour).Local().Format(constants.APIKeyTimeFormat),
+			}
+
+			reqBody, err := json.Marshal(payload)
+			So(err, ShouldBeNil)
+
 			client := resty.New()
 
 			// mgmt should work both unauthenticated and authenticated
@@ -324,6 +387,25 @@ func TestAPIKeys(t *testing.T) {
 			err = json.Unmarshal(resp.Body(), &apiKeyResponse)
 			So(err, ShouldBeNil)
 
+			// get API key list
+			resp, err = client.R().
+				SetHeader(constants.SessionClientHeaderName, constants.SessionClientHeaderValue).
+				Get(baseURL + constants.APIKeyPath)
+			So(err, ShouldBeNil)
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+			var apiKeyListResponse apiKeyListResponse
+
+			err = json.Unmarshal(resp.Body(), &apiKeyListResponse)
+			So(err, ShouldBeNil)
+			So(len(apiKeyListResponse.APIKeys), ShouldEqual, 1)
+			So(apiKeyListResponse.APIKeys[0].CreatedAt, ShouldEqual, apiKeyResponse.APIKeyDetails.CreatedAt)
+			So(apiKeyListResponse.APIKeys[0].CreatorUA, ShouldEqual, apiKeyResponse.APIKeyDetails.CreatorUA)
+			So(apiKeyListResponse.APIKeys[0].Label, ShouldEqual, apiKeyResponse.APIKeyDetails.Label)
+			So(apiKeyListResponse.APIKeys[0].Scopes, ShouldEqual, apiKeyResponse.APIKeyDetails.Scopes)
+			So(apiKeyListResponse.APIKeys[0].UUID, ShouldEqual, apiKeyResponse.APIKeyDetails.UUID)
+
 			user := mockoidc.DefaultUser()
 			email := user.Email
 			So(email, ShouldNotBeEmpty)
@@ -353,6 +435,18 @@ func TestAPIKeys(t *testing.T) {
 			So(err, ShouldBeNil)
 			So(resp, ShouldNotBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+			// get API key list
+			resp, err = resty.R().
+				SetBasicAuth(email, apiKeyResponse.APIKey).
+				Get(baseURL + constants.APIKeyPath)
+			So(err, ShouldBeNil)
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+			err = json.Unmarshal(resp.Body(), &apiKeyListResponse)
+			So(err, ShouldBeNil)
+			So(len(apiKeyListResponse.APIKeys), ShouldEqual, 1)
 
 			// invalid api keys
 			resp, err = client.R().
@@ -433,6 +527,13 @@ func TestAPIKeys(t *testing.T) {
 			So(resp, ShouldNotBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
+			resp, err = client.R().
+				SetHeader(constants.SessionClientHeaderName, constants.SessionClientHeaderValue).
+				Get(baseURL + "/v2/_catalog")
+			So(err, ShouldBeNil)
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
 			// should work with api key
 			resp, err = client.R().
 				SetBasicAuth(email, apiKeyResponse.APIKey).
@@ -460,6 +561,14 @@ func TestAPIKeys(t *testing.T) {
 			So(resp, ShouldNotBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
+			// apiKey removed, should get 401
+			resp, err = client.R().
+				SetBasicAuth(email, apiKeyResponse.APIKey).
+				Get(baseURL + "/v2/_catalog")
+			So(err, ShouldBeNil)
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
+
 			resp, err = client.R().
 				SetHeader(constants.SessionClientHeaderName, constants.SessionClientHeaderValue).
 				Delete(baseURL + constants.APIKeyPath)
@@ -475,6 +584,25 @@ func TestAPIKeys(t *testing.T) {
 			So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
 
 			resp, err = client.R().
+				SetHeader(constants.SessionClientHeaderName, constants.SessionClientHeaderValue).
+				Get(baseURL + "/v2/_catalog")
+			So(err, ShouldBeNil)
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+			// get API key list
+			resp, err = client.R().
+				SetHeader(constants.SessionClientHeaderName, constants.SessionClientHeaderValue).
+				Get(baseURL + constants.APIKeyPath)
+			So(err, ShouldBeNil)
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+			err = json.Unmarshal(resp.Body(), &apiKeyListResponse)
+			So(err, ShouldBeNil)
+			So(len(apiKeyListResponse.APIKeys), ShouldEqual, 0)
+
+			resp, err = client.R().
 				SetBasicAuth("test", "test").
 				SetQueryParam("id", apiKeyResponse.UUID).
 				Delete(baseURL + constants.APIKeyPath)
@@ -488,6 +616,205 @@ func TestAPIKeys(t *testing.T) {
 			So(err, ShouldBeNil)
 			So(resp, ShouldNotBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusMethodNotAllowed)
+		})
+
+		Convey("API key retrieved with openID and with short expire", func() {
+			expirationDate := time.Now().Add(1 * time.Second).Local().Round(time.Second)
+			payload := api.APIKeyPayload{
+				Label:          "test",
+				Scopes:         []string{"test"},
+				ExpirationDate: expirationDate.Format(constants.APIKeyTimeFormat),
+			}
+
+			reqBody, err := json.Marshal(payload)
+			So(err, ShouldBeNil)
+
+			client := resty.New()
+
+			client.SetRedirectPolicy(test.CustomRedirectPolicy(20))
+			// first login user
+			resp, err := client.R().
+				SetHeader(constants.SessionClientHeaderName, constants.SessionClientHeaderValue).
+				SetQueryParam("provider", "oidc").
+				Get(baseURL + constants.LoginPath)
+			So(err, ShouldBeNil)
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
+
+			client.SetCookies(resp.Cookies())
+
+			// call endpoint with session (added to client after previous request)
+			resp, err = client.R().
+				SetBody(reqBody).
+				SetHeader(constants.SessionClientHeaderName, constants.SessionClientHeaderValue).
+				Post(baseURL + constants.APIKeyPath)
+			So(err, ShouldBeNil)
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
+
+			var apiKeyResponse apiKeyResponse
+			err = json.Unmarshal(resp.Body(), &apiKeyResponse)
+			So(err, ShouldBeNil)
+
+			user := mockoidc.DefaultUser()
+			email := user.Email
+			So(email, ShouldNotBeEmpty)
+
+			// get API key list
+			resp, err = client.R().
+				SetBasicAuth(email, apiKeyResponse.APIKey).
+				Get(baseURL + constants.APIKeyPath)
+			So(err, ShouldBeNil)
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+			var apiKeyListResponse apiKeyListResponse
+
+			err = json.Unmarshal(resp.Body(), &apiKeyListResponse)
+			So(err, ShouldBeNil)
+			So(len(apiKeyListResponse.APIKeys), ShouldEqual, 1)
+			So(apiKeyListResponse.APIKeys[0].CreatedAt, ShouldEqual, apiKeyResponse.APIKeyDetails.CreatedAt)
+			So(apiKeyListResponse.APIKeys[0].CreatorUA, ShouldEqual, apiKeyResponse.APIKeyDetails.CreatorUA)
+			So(apiKeyListResponse.APIKeys[0].Label, ShouldEqual, apiKeyResponse.APIKeyDetails.Label)
+			So(apiKeyListResponse.APIKeys[0].Scopes, ShouldEqual, apiKeyResponse.APIKeyDetails.Scopes)
+			So(apiKeyListResponse.APIKeys[0].UUID, ShouldEqual, apiKeyResponse.APIKeyDetails.UUID)
+			So(apiKeyListResponse.APIKeys[0].IsExpired, ShouldEqual, false)
+			So(apiKeyListResponse.APIKeys[0].ExpirationDate.Equal(expirationDate), ShouldBeTrue)
+
+			resp, err = client.R().
+				SetBasicAuth(email, apiKeyResponse.APIKey).
+				Get(baseURL + "/v2/_catalog")
+			So(err, ShouldBeNil)
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+			// sleep past expire time
+			time.Sleep(1500 * time.Millisecond)
+
+			resp, err = client.R().
+				SetBasicAuth(email, apiKeyResponse.APIKey).
+				Get(baseURL + "/v2/_catalog")
+			So(err, ShouldBeNil)
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
+
+			// again for coverage
+			resp, err = client.R().
+				SetBasicAuth(email, apiKeyResponse.APIKey).
+				Get(baseURL + "/v2/_catalog")
+			So(err, ShouldBeNil)
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
+
+			// get API key list with session authn
+			resp, err = client.R().
+				SetHeader(constants.SessionClientHeaderName, constants.SessionClientHeaderValue).
+				Get(baseURL + constants.APIKeyPath)
+			So(err, ShouldBeNil)
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+			err = json.Unmarshal(resp.Body(), &apiKeyListResponse)
+			So(err, ShouldBeNil)
+			So(len(apiKeyListResponse.APIKeys), ShouldEqual, 1)
+			So(apiKeyListResponse.APIKeys[0].CreatedAt, ShouldEqual, apiKeyResponse.APIKeyDetails.CreatedAt)
+			So(apiKeyListResponse.APIKeys[0].CreatorUA, ShouldEqual, apiKeyResponse.APIKeyDetails.CreatorUA)
+			So(apiKeyListResponse.APIKeys[0].Label, ShouldEqual, apiKeyResponse.APIKeyDetails.Label)
+			So(apiKeyListResponse.APIKeys[0].Scopes, ShouldEqual, apiKeyResponse.APIKeyDetails.Scopes)
+			So(apiKeyListResponse.APIKeys[0].UUID, ShouldEqual, apiKeyResponse.APIKeyDetails.UUID)
+			So(apiKeyListResponse.APIKeys[0].IsExpired, ShouldEqual, true)
+			So(apiKeyListResponse.APIKeys[0].ExpirationDate.Equal(expirationDate), ShouldBeTrue)
+
+			// delete expired api key
+			resp, err = client.R().
+				SetHeader(constants.SessionClientHeaderName, constants.SessionClientHeaderValue).
+				SetQueryParam("id", apiKeyResponse.UUID).
+				Delete(baseURL + constants.APIKeyPath)
+			So(err, ShouldBeNil)
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+			// get API key list with session authn
+			resp, err = client.R().
+				SetHeader(constants.SessionClientHeaderName, constants.SessionClientHeaderValue).
+				Get(baseURL + constants.APIKeyPath)
+			So(err, ShouldBeNil)
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+			err = json.Unmarshal(resp.Body(), &apiKeyListResponse)
+			So(err, ShouldBeNil)
+			So(len(apiKeyListResponse.APIKeys), ShouldEqual, 0)
+		})
+
+		Convey("Create API key with expirationDate before actual date", func() {
+			expirationDate := time.Now().Add(-5 * time.Second).Local().Round(time.Second)
+			payload := api.APIKeyPayload{
+				Label:          "test",
+				Scopes:         []string{"test"},
+				ExpirationDate: expirationDate.Format(constants.APIKeyTimeFormat),
+			}
+
+			reqBody, err := json.Marshal(payload)
+			So(err, ShouldBeNil)
+
+			client := resty.New()
+
+			client.SetRedirectPolicy(test.CustomRedirectPolicy(20))
+			// first login user
+			resp, err := client.R().
+				SetHeader(constants.SessionClientHeaderName, constants.SessionClientHeaderValue).
+				SetQueryParam("provider", "oidc").
+				Get(baseURL + constants.LoginPath)
+			So(err, ShouldBeNil)
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
+
+			client.SetCookies(resp.Cookies())
+
+			// call endpoint with session ( added to client after previous request)
+			resp, err = client.R().
+				SetBody(reqBody).
+				SetHeader(constants.SessionClientHeaderName, constants.SessionClientHeaderValue).
+				Post(baseURL + constants.APIKeyPath)
+			So(err, ShouldBeNil)
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusBadRequest)
+		})
+
+		Convey("Create API key with unparsable expirationDate", func() {
+			expirationDate := time.Now().Add(-5 * time.Second).Local().Round(time.Second)
+			payload := api.APIKeyPayload{
+				Label:          "test",
+				Scopes:         []string{"test"},
+				ExpirationDate: expirationDate.Format(time.RFC1123Z),
+			}
+
+			reqBody, err := json.Marshal(payload)
+			So(err, ShouldBeNil)
+
+			client := resty.New()
+
+			client.SetRedirectPolicy(test.CustomRedirectPolicy(20))
+			// first login user
+			resp, err := client.R().
+				SetHeader(constants.SessionClientHeaderName, constants.SessionClientHeaderValue).
+				SetQueryParam("provider", "oidc").
+				Get(baseURL + constants.LoginPath)
+			So(err, ShouldBeNil)
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
+
+			client.SetCookies(resp.Cookies())
+
+			// call endpoint with session ( added to client after previous request)
+			resp, err = client.R().
+				SetBody(reqBody).
+				SetHeader(constants.SessionClientHeaderName, constants.SessionClientHeaderValue).
+				Post(baseURL + constants.APIKeyPath)
+			So(err, ShouldBeNil)
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusBadRequest)
 		})
 
 		Convey("Test error handling when API Key handler reads the request body", func() {

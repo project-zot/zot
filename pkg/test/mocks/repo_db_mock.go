@@ -95,6 +95,10 @@ type MetaDBMock struct {
 
 	GetUserAPIKeyInfoFn func(hashedKey string) (string, error)
 
+	IsAPIKeyExpiredFn func(ctx context.Context, hashedKey string) (bool, error)
+
+	GetUserAPIKeysFn func(ctx context.Context) ([]mTypes.APIKeyDetails, error)
+
 	AddUserAPIKeyFn func(ctx context.Context, hashedKey string, apiKeyDetails *mTypes.APIKeyDetails) error
 
 	UpdateUserAPIKeyLastUsedFn func(ctx context.Context, hashedKey string) error
@@ -425,6 +429,22 @@ func (sdm MetaDBMock) GetUserAPIKeyInfo(hashedKey string) (string, error) {
 	}
 
 	return "", nil
+}
+
+func (sdm MetaDBMock) IsAPIKeyExpired(ctx context.Context, hashedKey string) (bool, error) {
+	if sdm.IsAPIKeyExpiredFn != nil {
+		return sdm.IsAPIKeyExpiredFn(ctx, hashedKey)
+	}
+
+	return false, nil
+}
+
+func (sdm MetaDBMock) GetUserAPIKeys(ctx context.Context) ([]mTypes.APIKeyDetails, error) {
+	if sdm.GetUserAPIKeysFn != nil {
+		return sdm.GetUserAPIKeysFn(ctx)
+	}
+
+	return nil, nil
 }
 
 func (sdm MetaDBMock) AddUserAPIKey(ctx context.Context, hashedKey string, apiKeyDetails *mTypes.APIKeyDetails) error {

@@ -1696,6 +1696,96 @@ func (bdw *BoltDB) UpdateUserAPIKeyLastUsed(ctx context.Context, hashedKey strin
 	return err
 }
 
+func (bdw *BoltDB) IsAPIKeyExpired(ctx context.Context, hashedKey string) (bool, error) {
+	acCtx, err := localCtx.GetAccessControlContext(ctx)
+	if err != nil {
+		return false, err
+	}
+
+	userid := localCtx.GetUsernameFromContext(acCtx)
+
+	if userid == "" {
+		// empty user is anonymous
+		return false, zerr.ErrUserDataNotAllowed
+	}
+
+	var isExpired bool
+
+	err = bdw.DB.Update(func(tx *bbolt.Tx) error { //nolint:varnamelen
+		var userData mTypes.UserData
+
+		err := bdw.getUserData(userid, tx, &userData)
+		if err != nil {
+			return err
+		}
+
+		apiKeyDetails := userData.APIKeys[hashedKey]
+		if apiKeyDetails.IsExpired {
+			isExpired = true
+
+			return nil
+		}
+
+		// if expiresAt is not nil value
+		if !apiKeyDetails.ExpirationDate.Equal(time.Time{}) && time.Now().After(apiKeyDetails.ExpirationDate) {
+			isExpired = true
+			apiKeyDetails.IsExpired = true
+		}
+
+		userData.APIKeys[hashedKey] = apiKeyDetails
+
+		err = bdw.setUserData(userid, tx, userData)
+
+		return err
+	})
+
+	return isExpired, err
+}
+
+func (bdw *BoltDB) GetUserAPIKeys(ctx context.Context) ([]mTypes.APIKeyDetails, error) {
+	apiKeys := make([]mTypes.APIKeyDetails, 0)
+
+	acCtx, err := localCtx.GetAccessControlContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	userid := localCtx.GetUsernameFromContext(acCtx)
+	if userid == "" {
+		// empty user is anonymous
+		return nil, zerr.ErrUserDataNotAllowed
+	}
+
+	err = bdw.DB.Update(func(transaction *bbolt.Tx) error {
+		var userData mTypes.UserData
+
+		err = bdw.getUserData(userid, transaction, &userData)
+		if err != nil && !errors.Is(err, zerr.ErrUserDataNotFound) {
+			return err
+		}
+
+		for hashedKey, apiKeyDetails := range userData.APIKeys {
+			// if expiresAt is not nil value
+			if !apiKeyDetails.ExpirationDate.Equal(time.Time{}) && time.Now().After(apiKeyDetails.ExpirationDate) {
+				apiKeyDetails.IsExpired = true
+			}
+
+			userData.APIKeys[hashedKey] = apiKeyDetails
+
+			err = bdw.setUserData(userid, transaction, userData)
+			if err != nil {
+				return err
+			}
+
+			apiKeys = append(apiKeys, apiKeyDetails)
+		}
+
+		return nil
+	})
+
+	return apiKeys, err
+}
+
 func (bdw *BoltDB) AddUserAPIKey(ctx context.Context, hashedKey string, apiKeyDetails *mTypes.APIKeyDetails) error {
 	acCtx, err := localCtx.GetAccessControlContext(ctx)
 	if err != nil {
