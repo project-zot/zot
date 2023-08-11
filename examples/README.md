@@ -301,7 +301,7 @@ Create an API key for the current user using the REST API
 **Sample input**:
 
 ```
-POST /auth/apiKey
+POST /auth/apikey
 Body: {"label": "git", "scopes": ["repo1", "repo2"]}'
 ```
 
@@ -340,7 +340,7 @@ Other command line tools will similarly accept the API key instead of a password
 
 How to revoke an API key for the current user
 
-**Usage**: DELETE /auth/apiKey?id=$uuid
+**Usage**: DELETE /auth/apikey?id=$uuid
 
 **Produces**: application/json
 
