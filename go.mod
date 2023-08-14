@@ -57,7 +57,7 @@ require (
 	github.com/gorilla/securecookie v1.1.1
 	github.com/gorilla/sessions v1.2.1
 	github.com/migueleliasweb/go-github-mock v0.0.19
-	github.com/notaryproject/notation-go v1.0.0-rc.6
+	github.com/notaryproject/notation-go v1.0.0
 	github.com/opencontainers/distribution-spec/specs-go v0.0.0-20230117141039-067a0f5b0e25
 	github.com/project-zot/mockoidc v0.0.0-20230307111146-f607b4b5fb97
 	github.com/sigstore/cosign/v2 v2.1.1
@@ -463,7 +463,7 @@ require (
 	go.uber.org/multierr v1.11.0 // indirect
 	go.uber.org/zap v1.24.0 // indirect
 	golang.org/x/exp v0.0.0-20230522175609-2e198f4a06a1 // indirect
-	golang.org/x/mod v0.11.0 // indirect
+	golang.org/x/mod v0.12.0 // indirect
 	golang.org/x/net v0.11.0 // indirect
 	golang.org/x/term v0.10.0 // indirect
 	golang.org/x/time v0.3.0 // indirect
