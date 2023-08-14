@@ -1005,7 +1005,7 @@ const docTemplate = `{
                             "type": "string"
                         },
                         "headers": {
-                            "cosntants.DistContentDigestKey": {
+                            "constants.DistContentDigestKey": {
                                 "type": "object"
                             }
                         }

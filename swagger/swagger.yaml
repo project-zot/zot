@@ -858,7 +858,7 @@ paths:
         "200":
           description: ok
           headers:
-            cosntants.DistContentDigestKey:
+            constants.DistContentDigestKey:
               type: object
           schema:
             type: string
