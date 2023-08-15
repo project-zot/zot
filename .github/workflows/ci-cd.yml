@@ -66,7 +66,7 @@ jobs:
       - name: Install other dependencies
         run: |
           cd $GITHUB_WORKSPACE
-          go install github.com/swaggo/swag/cmd/swag@v1.6.3
+          go install github.com/swaggo/swag/cmd/swag@v1.8.12
           sudo apt-get update
           sudo apt-get install rpm
           sudo apt-get install snapd
@@ -77,7 +77,7 @@ jobs:
             sudo cp bin/skopeo /usr/bin && \
             rm -rf $GITHUB_WORKSPACE/src/github.com/containers/skopeo
           cd $GITHUB_WORKSPACE
-          curl -Lo notation.tar.gz https://github.com/notaryproject/notation/releases/download/v0.7.1-alpha.1/notation_0.7.1-alpha.1_linux_amd64.tar.gz
+          curl -Lo notation.tar.gz https://github.com/notaryproject/notation/releases/download/v1.0.0-rc.4/notation_1.0.0-rc.4_linux_amd64.tar.gz
           sudo tar xvzf notation.tar.gz -C /usr/bin notation
           rm -f notation.tar.gz
           go install github.com/wadey/gocovmerge@latest

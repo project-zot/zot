@@ -216,12 +216,10 @@ check: ./golangcilint.yaml $(GOLINTER)
 	$(GOLINTER) --config ./golangcilint.yaml run --enable-all --out-format=colored-line-number --build-tags stress,$(BUILD_LABELS),containers_image_openpgp ./...
 	rm pkg/extensions/build/.empty
 
-swagger/docs.go: 
+.PHONY: swagger
+swagger:
 	swag -v || go install github.com/swaggo/swag/cmd/swag@$(SWAGGER_VERSION)
 	swag init --parseDependency -o swagger -g pkg/api/routes.go -q
-
-.PHONY: swagger
-swagger: swagger/docs.go pkg/api/routes.go
 
 .PHONY: update-licenses
 update-licenses:
@@ -274,7 +272,7 @@ verify-config: _verify-config verify-config-warnings verify-config-commited
 
 .PHONY: _verify-config
 _verify-config: binary
-	rm -f output.txt	
+	rm -f output.txt
 	$(foreach file, $(wildcard examples/config-*), ./bin/zot-$(OS)-$(ARCH) verify $(file) 2>&1 | tee -a output.txt || exit 1;)
 
 .PHONY: verify-config-warnings
@@ -318,7 +316,7 @@ binary-container:
 .PHONY: run-container
 run-container:
 	${CONTAINER_RUNTIME} run --rm --security-opt label=disable -v $$(pwd):/go/src/github.com/project-zot/zot \
-		zot-build:latest 
+		zot-build:latest
 
 .PHONY: binary-stacker
 binary-stacker: $(STACKER)
@@ -396,7 +394,7 @@ test-bats-sync: binary binary-minimal bench check-skopeo $(BATS) $(NOTATION) $(C
 	$(BATS) --trace --print-output-on-failure test/blackbox/sync.bats
 	$(BATS) --trace --print-output-on-failure test/blackbox/sync_docker.bats
 	$(BATS) --trace --print-output-on-failure test/blackbox/sync_replica_cluster.bats
-	
+
 .PHONY: test-bats-sync-verbose
 test-bats-sync-verbose: BUILD_LABELS=sync
 test-bats-sync-verbose: binary binary-minimal bench check-skopeo $(BATS) $(NOTATION) $(COSIGN)

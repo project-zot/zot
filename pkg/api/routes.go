@@ -401,7 +401,7 @@ func (rh *RouteHandler) ListTags(response http.ResponseWriter, request *http.Req
 // @Param   name     			path    string     true        "repository name"
 // @Param   reference     path    string     true        "image reference or digest"
 // @Success 200 {string} string	"ok"
-// @Header  200 {object} cosntants.DistContentDigestKey
+// @Header  200 {object} constants.DistContentDigestKey
 // @Failure 404 {string} string "not found"
 // @Failure 500 {string} string "internal server error".
 func (rh *RouteHandler) CheckManifest(response http.ResponseWriter, request *http.Request) {
