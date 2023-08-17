@@ -43,8 +43,11 @@ type Auth struct {
 
 type StrippedConfig struct {
 	DistSpecVersion string `json:"distSpecVersion" mapstructure:"distSpecVersion"`
+	Commit          string `json:"commit"          mapstructure:"commit"`
+	ReleaseTag      string `json:"releaseTag"      mapstructure:"releaseTag"`
 	BinaryType      string `json:"binaryType"      mapstructure:"binaryType"`
-	HTTP            struct {
+
+	HTTP struct {
 		Auth *Auth `json:"auth,omitempty" mapstructure:"auth"`
 	} `json:"http" mapstructure:"http"`
 }

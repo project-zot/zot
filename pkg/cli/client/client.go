@@ -119,13 +119,20 @@ func doHTTPRequest(req *http.Request, verifyTLS bool, debug bool,
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		if resp.StatusCode == http.StatusUnauthorized {
-			return nil, zerr.ErrUnauthorizedAccess
+		var err error
+
+		switch resp.StatusCode {
+		case http.StatusNotFound:
+			err = zerr.ErrURLNotFound
+		case http.StatusUnauthorized:
+			err = zerr.ErrUnauthorizedAccess
+		default:
+			err = zerr.ErrBadHTTPStatusCode
 		}
 
 		bodyBytes, _ := io.ReadAll(resp.Body)
 
-		return nil, fmt.Errorf("%w: Expected: %d, Got: %d, Body: '%s'", zerr.ErrBadHTTPStatusCode, http.StatusOK,
+		return nil, fmt.Errorf("%w: Expected: %d, Got: %d, Body: '%s'", err, http.StatusOK,
 			resp.StatusCode, string(bodyBytes))
 	}
 

@@ -154,6 +154,8 @@ definitions:
     properties:
       binaryType:
         type: string
+      commit:
+        type: string
       distSpecVersion:
         type: string
       http:
@@ -161,6 +163,8 @@ definitions:
           auth:
             $ref: '#/definitions/extensions.Auth'
         type: object
+      releaseTag:
+        type: string
     type: object
   github_com_opencontainers_image-spec_specs-go_v1.Descriptor:
     properties:
