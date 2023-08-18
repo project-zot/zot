@@ -57,17 +57,17 @@ type SearchService interface { //nolint:interfacebloat
 		channel chan stringResult, wtgrp *sync.WaitGroup)
 	getCveByImage(ctx context.Context, config searchConfig, username, password, imageName, searchedCVE string,
 		channel chan stringResult, wtgrp *sync.WaitGroup)
-	getImagesByCveID(ctx context.Context, config searchConfig, username, password, cvid string,
+	getImagesByCveID(ctx context.Context, config searchConfig, username, password, cveid string,
 		channel chan stringResult, wtgrp *sync.WaitGroup)
 	getImagesByDigest(ctx context.Context, config searchConfig, username, password, digest string,
 		channel chan stringResult, wtgrp *sync.WaitGroup)
-	getFixedTagsForCVE(ctx context.Context, config searchConfig, username, password, imageName, cvid string,
+	getFixedTagsForCVE(ctx context.Context, config searchConfig, username, password, imageName, cveid string,
 		channel chan stringResult, wtgrp *sync.WaitGroup)
 	getRepos(ctx context.Context, config searchConfig, username, password string,
 		channel chan stringResult, wtgrp *sync.WaitGroup)
 	getImageByName(ctx context.Context, config searchConfig, username, password, imageName string,
 		channel chan stringResult, wtgrp *sync.WaitGroup)
-	getImageByNameAndCVEID(ctx context.Context, config searchConfig, username, password, imageName, cvid string,
+	getImageByNameAndCVEID(ctx context.Context, config searchConfig, username, password, imageName, cveid string,
 		channel chan stringResult, wtgrp *sync.WaitGroup)
 	getReferrers(ctx context.Context, config searchConfig, username, password string, repo, digest string,
 	) (referrersResult, error)
@@ -577,7 +577,7 @@ func getImage(ctx context.Context, config searchConfig, username, password, imag
 }
 
 func (service searchService) getImagesByCveID(ctx context.Context, config searchConfig, username,
-	password, cvid string, rch chan stringResult, wtgrp *sync.WaitGroup,
+	password, cveid string, rch chan stringResult, wtgrp *sync.WaitGroup,
 ) {
 	defer wtgrp.Done()
 	defer close(rch)
@@ -604,7 +604,7 @@ func (service searchService) getImagesByCveID(ctx context.Context, config search
 				}
 			}
 		}`,
-		cvid)
+		cveid)
 
 	result := &common.ImagesForCve{}
 
@@ -723,7 +723,7 @@ func (service searchService) getImagesByDigest(ctx context.Context, config searc
 }
 
 func (service searchService) getImageByNameAndCVEID(ctx context.Context, config searchConfig, username,
-	password, imageName, cvid string, rch chan stringResult, wtgrp *sync.WaitGroup,
+	password, imageName, cveid string, rch chan stringResult, wtgrp *sync.WaitGroup,
 ) {
 	defer wtgrp.Done()
 	defer close(rch)
@@ -750,7 +750,7 @@ func (service searchService) getImageByNameAndCVEID(ctx context.Context, config 
 				}
 			}
 		}`,
-		cvid)
+		cveid)
 
 	result := &common.ImagesForCve{}
 
@@ -854,7 +854,7 @@ func (service searchService) getCveByImage(ctx context.Context, config searchCon
 }
 
 func (service searchService) getFixedTagsForCVE(ctx context.Context, config searchConfig,
-	username, password, imageName, cvid string, rch chan stringResult, wtgrp *sync.WaitGroup,
+	username, password, imageName, cveid string, rch chan stringResult, wtgrp *sync.WaitGroup,
 ) {
 	defer wtgrp.Done()
 	defer close(rch)
@@ -880,7 +880,7 @@ func (service searchService) getFixedTagsForCVE(ctx context.Context, config sear
 				IsSigned
 			}
 		}
-	}`, cvid, imageName)
+	}`, cveid, imageName)
 
 	result := &common.ImageListWithCVEFixedResponse{}
 
@@ -1092,7 +1092,7 @@ type cveData struct {
 
 func (cve cveResult) string(format string) (string, error) {
 	switch strings.ToLower(format) {
-	case "", defaultOutoutFormat:
+	case "", defaultOutputFormat:
 		return cve.stringPlainText()
 	case jsonFormat:
 		return cve.stringJSON()
@@ -1151,7 +1151,7 @@ type referrersResult []common.Referrer
 
 func (ref referrersResult) string(format string, maxArtifactTypeLen int) (string, error) {
 	switch strings.ToLower(format) {
-	case "", defaultOutoutFormat:
+	case "", defaultOutputFormat:
 		return ref.stringPlainText(maxArtifactTypeLen)
 	case jsonFormat:
 		return ref.stringJSON()
@@ -1215,7 +1215,7 @@ type repoStruct common.RepoSummary
 
 func (repo repoStruct) string(format string, maxImgNameLen, maxTimeLen int, verbose bool) (string, error) { //nolint: lll
 	switch strings.ToLower(format) {
-	case "", defaultOutoutFormat:
+	case "", defaultOutputFormat:
 		return repo.stringPlainText(maxImgNameLen, maxTimeLen, verbose)
 	case jsonFormat:
 		return repo.stringJSON()
@@ -1234,7 +1234,7 @@ func (repo repoStruct) stringPlainText(repoMaxLen, maxTimeLen int, verbose bool)
 	table.SetColMinWidth(repoNameIndex, repoMaxLen)
 	table.SetColMinWidth(repoSizeIndex, sizeWidth)
 	table.SetColMinWidth(repoLastUpdatedIndex, maxTimeLen)
-	table.SetColMinWidth(repoDownloadsIndex, dounloadsWidth)
+	table.SetColMinWidth(repoDownloadsIndex, downloadsWidth)
 	table.SetColMinWidth(repoStarsIndex, signedWidth)
 
 	if verbose {
@@ -1307,7 +1307,7 @@ type imageStruct common.ImageSummary
 
 func (img imageStruct) string(format string, maxImgNameLen, maxTagLen, maxPlatformLen int, verbose bool) (string, error) { //nolint: lll
 	switch strings.ToLower(format) {
-	case "", defaultOutoutFormat:
+	case "", defaultOutputFormat:
 		return img.stringPlainText(maxImgNameLen, maxTagLen, maxPlatformLen, verbose)
 	case jsonFormat:
 		return img.stringJSON()
@@ -1677,7 +1677,7 @@ const (
 	platformWidth    = 14
 	sizeWidth        = 10
 	isSignedWidth    = 8
-	dounloadsWidth   = 10
+	downloadsWidth   = 10
 	signedWidth      = 10
 	lastUpdatedWidth = 14
 	configWidth      = 8
@@ -1692,7 +1692,7 @@ const (
 	colCVESeverityIndex = 1
 	colCVETitleIndex    = 2
 
-	defaultOutoutFormat = "text"
+	defaultOutputFormat = "text"
 )
 
 const (

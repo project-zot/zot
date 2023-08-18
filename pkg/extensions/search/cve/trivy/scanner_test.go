@@ -1,6 +1,7 @@
 package trivy_test
 
 import (
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -24,6 +25,45 @@ import (
 	"zotregistry.io/zot/pkg/test/mocks"
 )
 
+func TestScanBigTestFile(t *testing.T) {
+	Convey("Scan zot-test", t, func() {
+		projRootDir, err := test.GetProjectRootDir()
+		So(err, ShouldBeNil)
+
+		testImage := filepath.Join(projRootDir, "test/data/zot-test")
+
+		tempDir := t.TempDir()
+		port := test.GetFreePort()
+		conf := config.New()
+		conf.HTTP.Port = port
+		defaultVal := true
+		conf.Storage.RootDirectory = tempDir
+		conf.Extensions = &extconf.ExtensionConfig{
+			Search: &extconf.SearchConfig{
+				BaseConfig: extconf.BaseConfig{Enable: &defaultVal},
+			},
+		}
+		ctlr := api.NewController(conf)
+		So(ctlr, ShouldNotBeNil)
+
+		err = test.CopyFiles(testImage, filepath.Join(tempDir, "zot-test"))
+		So(err, ShouldBeNil)
+
+		cm := test.NewControllerManager(ctlr)
+		cm.StartAndWait(port)
+		defer cm.StopServer()
+		// scan
+		scanner := trivy.NewScanner(ctlr.StoreController, ctlr.MetaDB, "ghcr.io/project-zot/trivy-db", "", ctlr.Log)
+
+		err = scanner.UpdateDB()
+		So(err, ShouldBeNil)
+
+		cveMap, err := scanner.ScanImage("zot-test:0.0.1")
+		So(err, ShouldBeNil)
+		So(cveMap, ShouldNotBeNil)
+	})
+}
+
 func TestScanningByDigest(t *testing.T) {
 	Convey("Scan the individual manifests inside an index", t, func() {
 		// start server
@@ -46,7 +86,7 @@ func TestScanningByDigest(t *testing.T) {
 		cm.StartAndWait(port)
 		defer cm.StopServer()
 		// push index with 2 manifests: one with vulns and one without
-		vulnImage := test.CreateVulnerableImage()
+		vulnImage := test.CreateDefaultVulnerableImage()
 
 		simpleImage := test.CreateRandomImage()
 

@@ -31,6 +31,7 @@ import (
 	"zotregistry.io/zot/pkg/api/config"
 	"zotregistry.io/zot/pkg/common"
 	extconf "zotregistry.io/zot/pkg/extensions/config"
+	zlog "zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/test"
 )
 
@@ -1419,9 +1420,11 @@ func TestServerResponseGQLWithoutPermissions(t *testing.T) {
 
 		dir := t.TempDir()
 
-		test.CopyTestFiles("../../test/data/zot-test", path.Join(dir, "zot-test"))
+		srcStorageCtlr := test.GetDefaultStoreController(dir, zlog.NewLogger("debug", ""))
+		err := test.WriteImageToFileSystem(test.CreateDefaultImage(), "zot-test", "0.0.1", srcStorageCtlr)
+		So(err, ShouldBeNil)
 
-		err := os.Chmod(path.Join(dir, "zot-test", "blobs"), 0o000)
+		err = os.Chmod(path.Join(dir, "zot-test", "blobs"), 0o000)
 		if err != nil {
 			panic(err)
 		}

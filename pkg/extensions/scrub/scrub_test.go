@@ -10,7 +10,6 @@ import (
 	"testing"
 	"time"
 
-	godigest "github.com/opencontainers/go-digest"
 	. "github.com/smartystreets/goconvey/convey"
 
 	"zotregistry.io/zot/pkg/api"
@@ -62,7 +61,9 @@ func TestScrubExtension(t *testing.T) {
 
 		ctlr := api.NewController(conf)
 
-		test.CopyTestFiles("../../../test/data/zot-test", path.Join(dir, repoName))
+		srcStorageCtlr := test.GetDefaultStoreController(dir, log.NewLogger("debug", ""))
+		err = test.WriteImageToFileSystem(test.CreateDefaultVulnerableImage(), repoName, "0.0.1", srcStorageCtlr)
+		So(err, ShouldBeNil)
 
 		cm := test.NewControllerManager(ctlr)
 		cm.StartAndWait(port)
@@ -104,9 +105,12 @@ func TestScrubExtension(t *testing.T) {
 
 		ctlr := api.NewController(conf)
 
-		test.CopyTestFiles("../../../test/data/zot-test", path.Join(dir, repoName))
-		var manifestDigest godigest.Digest
-		manifestDigest, _, _ = test.GetOciLayoutDigests("../../../test/data/zot-test")
+		srcStorageCtlr := test.GetDefaultStoreController(dir, log.NewLogger("debug", ""))
+		image := test.CreateDefaultVulnerableImage()
+		err = test.WriteImageToFileSystem(image, repoName, "0.0.1", srcStorageCtlr)
+		So(err, ShouldBeNil)
+
+		manifestDigest := image.ManifestDescriptor.Digest
 
 		err = os.Remove(path.Join(dir, repoName, "blobs/sha256", manifestDigest.Encoded()))
 		if err != nil {
@@ -153,7 +157,11 @@ func TestScrubExtension(t *testing.T) {
 
 		ctlr := api.NewController(conf)
 
-		test.CopyTestFiles("../../../test/data/zot-test", path.Join(dir, repoName))
+		srcStorageCtlr := test.GetDefaultStoreController(dir, log.NewLogger("debug", ""))
+		image := test.CreateDefaultVulnerableImage()
+
+		err = test.WriteImageToFileSystem(image, repoName, "0.0.1", srcStorageCtlr)
+		So(err, ShouldBeNil)
 
 		So(os.Chmod(path.Join(dir, repoName), 0o000), ShouldBeNil)
 
@@ -193,7 +201,11 @@ func TestRunScrubRepo(t *testing.T) {
 		imgStore := local.NewImageStore(dir, true, 1*time.Second, true,
 			true, log, metrics, nil, cacheDriver)
 
-		test.CopyTestFiles("../../../test/data/zot-test", path.Join(dir, repoName))
+		srcStorageCtlr := test.GetDefaultStoreController(dir, log)
+		image := test.CreateDefaultVulnerableImage()
+
+		err = test.WriteImageToFileSystem(image, repoName, "0.0.1", srcStorageCtlr)
+		So(err, ShouldBeNil)
 
 		err = scrub.RunScrubRepo(imgStore, repoName, log)
 		So(err, ShouldBeNil)
@@ -225,9 +237,13 @@ func TestRunScrubRepo(t *testing.T) {
 		imgStore := local.NewImageStore(dir, true, 1*time.Second, true,
 			true, log, metrics, nil, cacheDriver)
 
-		test.CopyTestFiles("../../../test/data/zot-test", path.Join(dir, repoName))
-		var manifestDigest godigest.Digest
-		manifestDigest, _, _ = test.GetOciLayoutDigests("../../../test/data/zot-test")
+		srcStorageCtlr := test.GetDefaultStoreController(dir, log)
+		image := test.CreateDefaultVulnerableImage()
+
+		err = test.WriteImageToFileSystem(image, repoName, "0.0.1", srcStorageCtlr)
+		So(err, ShouldBeNil)
+
+		manifestDigest := image.ManifestDescriptor.Digest
 
 		err = os.Remove(path.Join(dir, repoName, "blobs/sha256", manifestDigest.Encoded()))
 		if err != nil {
@@ -264,7 +280,11 @@ func TestRunScrubRepo(t *testing.T) {
 			true, true, log, metrics, nil, cacheDriver,
 		)
 
-		test.CopyTestFiles("../../../test/data/zot-test", path.Join(dir, repoName))
+		srcStorageCtlr := test.GetDefaultStoreController(dir, log)
+		image := test.CreateDefaultVulnerableImage()
+
+		err = test.WriteImageToFileSystem(image, repoName, "0.0.1", srcStorageCtlr)
+		So(err, ShouldBeNil)
 
 		So(os.Chmod(path.Join(dir, repoName), 0o000), ShouldBeNil)
 

@@ -208,8 +208,11 @@ func TestGetOrasReferrers(t *testing.T) {
 	imgStore := local.NewImageStore(dir, true, storageConstants.DefaultGCDelay, true, true, log, metrics, nil, cacheDriver)
 
 	Convey("Get referrers", t, func(c C) {
-		err := test.CopyFiles("../../../test/data/zot-test", path.Join(dir, "zot-test"))
+		err := test.WriteImageToFileSystem(test.CreateDefaultVulnerableImage(), "zot-test", "0.0.1", storage.StoreController{
+			DefaultStore: imgStore,
+		})
 		So(err, ShouldBeNil)
+
 		body := []byte("this is a blob")
 		digest := godigest.FromBytes(body)
 		buf := bytes.NewBuffer(body)
@@ -1083,7 +1086,8 @@ func FuzzGetOrasReferrers(f *testing.F) {
 		imgStore := local.NewImageStore(dir, true, storageConstants.DefaultGCDelay, true, true, *log, metrics, nil,
 			cacheDriver)
 
-		err := test.CopyFiles("../../../test/data/zot-test", path.Join(dir, "zot-test"))
+		storageCtlr := storage.StoreController{DefaultStore: imgStore}
+		err := test.WriteImageToFileSystem(test.CreateDefaultVulnerableImage(), "zot-test", "0.0.1", storageCtlr)
 		if err != nil {
 			t.Error(err)
 		}
@@ -2551,11 +2555,14 @@ func TestGarbageCollectForImageStore(t *testing.T) {
 			imgStore := local.NewImageStore(dir, true, 1*time.Second, true, true, log, metrics, nil, cacheDriver)
 			repoName := "gc-all-repos-short"
 
-			test.CopyTestFiles("../../../test/data/zot-test", path.Join(dir, repoName))
+			image := test.CreateDefaultVulnerableImage()
+			err := test.WriteImageToFileSystem(image, repoName, "0.0.1", storage.StoreController{
+				DefaultStore: imgStore,
+			})
+			So(err, ShouldBeNil)
 
-			var manifestDigest godigest.Digest
-			manifestDigest, _, _ = test.GetOciLayoutDigests("../../../test/data/zot-test")
-			err := os.Remove(path.Join(dir, repoName, "blobs/sha256", manifestDigest.Encoded()))
+			manifestDigest := image.ManifestDescriptor.Digest
+			err = os.Remove(path.Join(dir, repoName, "blobs/sha256", manifestDigest.Encoded()))
 			if err != nil {
 				panic(err)
 			}
@@ -2586,11 +2593,15 @@ func TestGarbageCollectForImageStore(t *testing.T) {
 			imgStore := local.NewImageStore(dir, true, 1*time.Second, true, true, log, metrics, nil, cacheDriver)
 			repoName := "gc-all-repos-short"
 
-			test.CopyTestFiles("../../../test/data/zot-test", path.Join(dir, repoName))
+			image := test.CreateDefaultVulnerableImage()
+			err := test.WriteImageToFileSystem(image, repoName, "0.0.1", storage.StoreController{
+				DefaultStore: imgStore,
+			})
+			So(err, ShouldBeNil)
 
 			So(os.Chmod(path.Join(dir, repoName, "index.json"), 0o000), ShouldBeNil)
 
-			err := imgStore.RunGCRepo(repoName)
+			err = imgStore.RunGCRepo(repoName)
 			So(err, ShouldNotBeNil)
 
 			time.Sleep(500 * time.Millisecond)
@@ -3189,9 +3200,20 @@ func TestGetNextRepository(t *testing.T) {
 	firstRepoName := "repo1"
 	secondRepoName := "repo2"
 
-	test.CopyTestFiles("../../../test/data/zot-test", path.Join(dir, firstRepoName))
+	srcStorageCtlr := storage.StoreController{DefaultStore: imgStore}
+	image := test.CreateDefaultImage()
 
-	test.CopyTestFiles("../../../test/data/zot-test", path.Join(dir, secondRepoName))
+	err := test.WriteImageToFileSystem(image, firstRepoName, "0.0.1", srcStorageCtlr)
+	if err != nil {
+		t.Log(err)
+		t.FailNow()
+	}
+
+	err = test.WriteImageToFileSystem(image, secondRepoName, "0.0.1", srcStorageCtlr)
+	if err != nil {
+		t.Log(err)
+		t.FailNow()
+	}
 
 	Convey("Return first repository", t, func() {
 		firstRepo, err := imgStore.GetNextRepository("")

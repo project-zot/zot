@@ -42,6 +42,7 @@ import (
 	extconf "zotregistry.io/zot/pkg/extensions/config"
 	syncconf "zotregistry.io/zot/pkg/extensions/config/sync"
 	"zotregistry.io/zot/pkg/extensions/sync"
+	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/meta/signatures"
 	mTypes "zotregistry.io/zot/pkg/meta/types"
 	storageConstants "zotregistry.io/zot/pkg/storage/constants"
@@ -134,8 +135,17 @@ func makeUpstreamServer(
 	srcConfig.Storage.GC = false
 
 	srcDir := t.TempDir()
+	srcStorageCtrl := test.GetDefaultStoreController(srcDir, log.NewLogger("debug", ""))
 
-	test.CopyTestFiles("../../../test/data", srcDir)
+	err := test.WriteImageToFileSystem(test.CreateDefaultImage(), "zot-test", "0.0.1", srcStorageCtrl)
+	if err != nil {
+		panic(err)
+	}
+
+	err = test.WriteImageToFileSystem(test.CreateDefaultVulnerableImage(), "zot-cve-test", "0.0.1", srcStorageCtrl)
+	if err != nil {
+		panic(err)
+	}
 
 	srcConfig.Storage.RootDirectory = srcDir
 
@@ -3045,8 +3055,13 @@ func TestSubPaths(t *testing.T) {
 		srcDir := t.TempDir()
 
 		subpath := "/subpath"
+		srcStorageCtlr := test.GetDefaultStoreController(path.Join(srcDir, subpath), log.NewLogger("debug", ""))
 
-		test.CopyTestFiles("../../../test/data", path.Join(srcDir, subpath))
+		err := test.WriteImageToFileSystem(test.CreateDefaultImage(), "zot-test", "0.0.1", srcStorageCtlr)
+		So(err, ShouldBeNil)
+
+		err = test.WriteImageToFileSystem(test.CreateDefaultVulnerableImage(), "zot-cve-test", "0.0.1", srcStorageCtlr)
+		So(err, ShouldBeNil)
 
 		srcConfig.Storage.RootDirectory = srcDir
 
@@ -4514,7 +4529,13 @@ func TestOnDemandRetryGoroutine(t *testing.T) {
 
 		srcDir := t.TempDir()
 
-		test.CopyTestFiles("../../../test/data", srcDir)
+		srcStorageCtlr := test.GetDefaultStoreController(srcDir, log.NewLogger("debug", ""))
+
+		err := test.WriteImageToFileSystem(test.CreateDefaultImage(), "zot-test", "0.0.1", srcStorageCtlr)
+		So(err, ShouldBeNil)
+
+		err = test.WriteImageToFileSystem(test.CreateDefaultVulnerableImage(), "zot-cve-test", "0.0.1", srcStorageCtlr)
+		So(err, ShouldBeNil)
 
 		srcConfig.Storage.RootDirectory = srcDir
 
@@ -4721,7 +4742,13 @@ func TestOnDemandMultipleImage(t *testing.T) {
 
 		srcDir := t.TempDir()
 
-		test.CopyTestFiles("../../../test/data", srcDir)
+		srcStorageCtlr := test.GetDefaultStoreController(srcDir, log.NewLogger("debug", ""))
+
+		err := test.WriteImageToFileSystem(test.CreateDefaultImage(), "zot-test", "0.0.1", srcStorageCtlr)
+		So(err, ShouldBeNil)
+
+		err = test.WriteImageToFileSystem(test.CreateDefaultVulnerableImage(), "zot-cve-test", "0.0.1", srcStorageCtlr)
+		So(err, ShouldBeNil)
 
 		srcConfig.Storage.RootDirectory = srcDir
 
@@ -5363,7 +5390,13 @@ func TestSyncOnlyDiff(t *testing.T) {
 		destDir := t.TempDir()
 
 		// copy images so we have them before syncing, sync should not pull them again
-		test.CopyTestFiles("../../../test/data", destDir)
+		destStorageCtrl := test.GetDefaultStoreController(destDir, log.NewLogger("debug", ""))
+
+		err := test.WriteImageToFileSystem(test.CreateDefaultImage(), "zot-test", "0.0.1", destStorageCtrl)
+		So(err, ShouldBeNil)
+
+		err = test.WriteImageToFileSystem(test.CreateDefaultVulnerableImage(), "zot-cve-test", "0.0.1", destStorageCtrl)
+		So(err, ShouldBeNil)
 
 		destConfig.Storage.RootDirectory = destDir
 		destConfig.Storage.Dedupe = false
@@ -5443,7 +5476,13 @@ func TestSyncWithDiffDigest(t *testing.T) {
 		destDir := t.TempDir()
 
 		// copy images so we have them before syncing, sync should not pull them again
-		test.CopyTestFiles("../../../test/data", destDir)
+		srcStorageCtlr := test.GetDefaultStoreController(destDir, log.NewLogger("debug", ""))
+
+		err := test.WriteImageToFileSystem(test.CreateDefaultImage(), "zot-test", "0.0.1", srcStorageCtlr)
+		So(err, ShouldBeNil)
+
+		err = test.WriteImageToFileSystem(test.CreateDefaultVulnerableImage(), "zot-cve-test", "0.0.1", srcStorageCtlr)
+		So(err, ShouldBeNil)
 
 		destConfig.Storage.RootDirectory = destDir
 		destConfig.Storage.Dedupe = false

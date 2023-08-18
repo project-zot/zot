@@ -88,7 +88,14 @@ func testSetup(t *testing.T) (string, error) {
 		return "", err
 	}
 
-	err = CopyFiles("../../../../test/data", dir)
+	testStorageCtrl := GetDefaultStoreController(dir, log.NewLogger("debug", ""))
+
+	err = WriteImageToFileSystem(CreateRandomVulnerableImage(), "zot-test", "0.0.1", testStorageCtrl)
+	if err != nil {
+		return "", err
+	}
+
+	err = WriteImageToFileSystem(CreateRandomVulnerableImage(), "zot-cve-test", "0.0.1", testStorageCtrl)
 	if err != nil {
 		return "", err
 	}

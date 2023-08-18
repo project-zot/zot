@@ -448,7 +448,10 @@ func TestConvertDockerToOCI(t *testing.T) {
 	Convey("test converting docker to oci functions", t, func() {
 		dir := t.TempDir()
 
-		test.CopyTestFiles("../../../test/data/zot-test", path.Join(dir, "zot-test"))
+		srcStorageCtlr := test.GetDefaultStoreController(dir, log.NewLogger("debug", ""))
+
+		err := test.WriteImageToFileSystem(test.CreateDefaultImage(), "zot-test", "0.0.1", srcStorageCtlr)
+		So(err, ShouldBeNil)
 
 		imageRef, err := layout.NewReference(path.Join(dir, "zot-test"), "0.0.1")
 		So(err, ShouldBeNil)

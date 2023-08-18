@@ -407,7 +407,7 @@ func (search cveByImageSearcherGQL) search(config searchConfig) (bool, error) {
 	}
 
 	if len(cveList.Data.CVEListForImage.CVEList) > 0 &&
-		(*config.outputFormat == defaultOutoutFormat || *config.outputFormat == "") {
+		(*config.outputFormat == defaultOutputFormat || *config.outputFormat == "") {
 		printCVETableHeader(&builder, *config.verbose, 0, 0, 0)
 		fmt.Fprint(config.resultWriter, builder.String())
 	}
@@ -799,7 +799,7 @@ func collectResults(config searchConfig, wg *sync.WaitGroup, imageErr chan strin
 				return
 			}
 
-			if !foundResult && (*config.outputFormat == defaultOutoutFormat || *config.outputFormat == "") {
+			if !foundResult && (*config.outputFormat == defaultOutputFormat || *config.outputFormat == "") {
 				var builder strings.Builder
 
 				printHeader(&builder, *config.verbose, 0, 0, 0)
@@ -970,7 +970,7 @@ func printCVETableHeader(writer io.Writer, verbose bool, maxImgLen, maxTagLen, m
 }
 
 func printReferrersTableHeader(config searchConfig, writer io.Writer, maxArtifactTypeLen int) {
-	if *config.outputFormat != "" && *config.outputFormat != defaultOutoutFormat {
+	if *config.outputFormat != "" && *config.outputFormat != defaultOutputFormat {
 		return
 	}
 
@@ -1081,7 +1081,7 @@ func printImageResult(config searchConfig, imageList []imageStruct) error {
 			}
 		}
 
-		if *config.outputFormat == defaultOutoutFormat || *config.outputFormat == "" {
+		if *config.outputFormat == defaultOutputFormat || *config.outputFormat == "" {
 			printImageTableHeader(&builder, *config.verbose, maxImgNameLen, maxTagLen, maxPlatformLen)
 		}
 
@@ -1117,7 +1117,7 @@ func printRepoResults(config searchConfig, repoList []repoStruct) error {
 		}
 	}
 
-	if len(repoList) > 0 && (*config.outputFormat == defaultOutoutFormat || *config.outputFormat == "") {
+	if len(repoList) > 0 && (*config.outputFormat == defaultOutputFormat || *config.outputFormat == "") {
 		printRepoTableHeader(config.resultWriter, maxRepoNameLen, maxTimeLen, *config.verbose)
 	}
 

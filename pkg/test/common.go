@@ -49,9 +49,14 @@ import (
 	"oras.land/oras-go/v2/registry/remote"
 	"oras.land/oras-go/v2/registry/remote/auth"
 
+	"zotregistry.io/zot/pkg/extensions/monitoring"
+	zLog "zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/storage"
 	storageCommon "zotregistry.io/zot/pkg/storage/common"
+	"zotregistry.io/zot/pkg/storage/local"
+	"zotregistry.io/zot/pkg/storage/types"
 	"zotregistry.io/zot/pkg/test/inject"
+	"zotregistry.io/zot/pkg/test/mocks"
 )
 
 const (
@@ -226,6 +231,38 @@ func CopyTestFiles(sourceDir, destDir string) {
 	if err != nil {
 		panic(err)
 	}
+}
+
+func CopyTestKeysAndCerts(destDir string) error {
+	files := []string{
+		"ca.crt", "ca.key", "client.cert", "client.csr",
+		"client.key", "server.cert", "server.csr", "server.key",
+	}
+
+	rootPath, err := GetProjectRootDir()
+	if err != nil {
+		return err
+	}
+
+	sourceDir := filepath.Join(rootPath, "test/data")
+
+	sourceMeta, err := os.Stat(sourceDir)
+	if err != nil {
+		return fmt.Errorf("CopyFiles os.Stat failed: %w", err)
+	}
+
+	if err := os.MkdirAll(destDir, sourceMeta.Mode()); err != nil {
+		return err
+	}
+
+	for _, file := range files {
+		err = CopyFile(filepath.Join(sourceDir, file), filepath.Join(destDir, file))
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 type Controller interface {
@@ -2027,5 +2064,23 @@ func GetDefaultLayersBlobs() [][]byte {
 		[]byte("abc"),
 		[]byte("123"),
 		[]byte("xyz"),
+	}
+}
+
+func GetDefaultImageStore(rootDir string, log zLog.Logger) types.ImageStore {
+	return local.NewImageStore(rootDir, false, time.Hour, false, false, log,
+		monitoring.NewMetricsServer(false, log),
+		mocks.MockedLint{
+			LintFn: func(repo string, manifestDigest godigest.Digest, imageStore types.ImageStore) (bool, error) {
+				return true, nil
+			},
+		},
+		mocks.CacheMock{},
+	)
+}
+
+func GetDefaultStoreController(rootDir string, log zLog.Logger) storage.StoreController {
+	return storage.StoreController{
+		DefaultStore: GetDefaultImageStore(rootDir, log),
 	}
 }

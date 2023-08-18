@@ -48,7 +48,6 @@ type AuditLog struct {
 func TestAuditLogMessages(t *testing.T) {
 	Convey("Make a new controller", t, func() {
 		dir := t.TempDir()
-		CopyTestFiles("../../test/data", dir)
 
 		port := GetFreePort()
 		baseURL := GetBaseURL(port)

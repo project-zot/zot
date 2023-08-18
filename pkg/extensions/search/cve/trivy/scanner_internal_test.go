@@ -180,7 +180,8 @@ func TestTrivyLibraryErrors(t *testing.T) {
 		// Create temporary directory
 		rootDir := t.TempDir()
 
-		err := test.CopyFiles("../../../../../test/data/zot-test", path.Join(rootDir, "zot-test"))
+		storageCtlr := test.GetDefaultStoreController(rootDir, log.NewLogger("debug", ""))
+		err := test.WriteImageToFileSystem(test.CreateDefaultVulnerableImage(), "zot-test", "0.0.1", storageCtlr)
 		So(err, ShouldBeNil)
 
 		log := log.NewLogger("debug", "")
