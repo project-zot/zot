@@ -29,8 +29,9 @@ SWAGGER_VERSION := v1.8.12
 STACKER := $(TOOLSDIR)/bin/stacker
 BATS := $(TOOLSDIR)/bin/bats
 TESTDATA := $(TOP_LEVEL)/test/data
-OS ?= linux
-ARCH ?= amd64
+OS ?= $(shell go env GOOS)
+ARCH ?= $(shell go env GOARCH)
+
 BENCH_OUTPUT ?= stdout
 ALL_EXTENSIONS = debug,imagetrust,lint,metrics,mgmt,scrub,search,sync,ui,userprefs
 EXTENSIONS ?= sync,search,scrub,metrics,lint,ui,mgmt,userprefs,imagetrust
