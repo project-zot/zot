@@ -39,11 +39,11 @@ import (
 	"zotregistry.io/zot/pkg/api/config"
 	"zotregistry.io/zot/pkg/api/constants"
 	"zotregistry.io/zot/pkg/cli"
+	zcommon "zotregistry.io/zot/pkg/common"
 	extconf "zotregistry.io/zot/pkg/extensions/config"
 	syncconf "zotregistry.io/zot/pkg/extensions/config/sync"
 	"zotregistry.io/zot/pkg/extensions/sync"
 	"zotregistry.io/zot/pkg/log"
-	"zotregistry.io/zot/pkg/meta/signatures"
 	mTypes "zotregistry.io/zot/pkg/meta/types"
 	storageConstants "zotregistry.io/zot/pkg/storage/constants"
 	"zotregistry.io/zot/pkg/test"
@@ -872,7 +872,7 @@ func TestOnDemand(t *testing.T) {
 				AddManifestSignatureFn: func(repo string, signedManifestDigest godigest.Digest,
 					sm mTypes.SignatureMetadata,
 				) error {
-					if sm.SignatureType == signatures.CosignSignature || sm.SignatureType == signatures.NotationSignature {
+					if sm.SignatureType == zcommon.CosignSignature || sm.SignatureType == zcommon.NotationSignature {
 						return sync.ErrTestError
 					}
 
@@ -4511,10 +4511,10 @@ func TestSyncedSignaturesMetaDB(t *testing.T) {
 		So(repoMeta.Signatures, ShouldContainKey, signedImage.DigestStr())
 
 		imageSignatures := repoMeta.Signatures[signedImage.DigestStr()]
-		So(imageSignatures, ShouldContainKey, signatures.CosignSignature)
-		So(len(imageSignatures[signatures.CosignSignature]), ShouldEqual, 1)
-		So(imageSignatures, ShouldContainKey, signatures.NotationSignature)
-		So(len(imageSignatures[signatures.NotationSignature]), ShouldEqual, 1)
+		So(imageSignatures, ShouldContainKey, zcommon.CosignSignature)
+		So(len(imageSignatures[zcommon.CosignSignature]), ShouldEqual, 1)
+		So(imageSignatures, ShouldContainKey, zcommon.NotationSignature)
+		So(len(imageSignatures[zcommon.NotationSignature]), ShouldEqual, 1)
 	})
 }
 

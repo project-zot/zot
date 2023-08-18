@@ -6,10 +6,10 @@ import (
 
 	"zotregistry.io/zot/errors"
 	"zotregistry.io/zot/pkg/api/config"
+	"zotregistry.io/zot/pkg/extensions/imagetrust"
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/meta/boltdb"
 	mdynamodb "zotregistry.io/zot/pkg/meta/dynamodb"
-	"zotregistry.io/zot/pkg/meta/signatures"
 	mTypes "zotregistry.io/zot/pkg/meta/types"
 )
 
@@ -33,7 +33,7 @@ func New(storageConfig config.StorageConfig, log log.Logger) (mTypes.MetaDB, err
 		return nil, err
 	}
 
-	err = signatures.InitCosignAndNotationDirs(params.RootDir)
+	err = imagetrust.InitCosignAndNotationDirs(params.RootDir)
 	if err != nil {
 		return nil, err
 	}

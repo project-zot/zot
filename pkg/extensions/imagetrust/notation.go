@@ -1,4 +1,7 @@
-package signatures
+//go:build imagetrust
+// +build imagetrust
+
+package imagetrust
 
 import (
 	"context"

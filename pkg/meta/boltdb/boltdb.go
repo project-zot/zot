@@ -14,9 +14,9 @@ import (
 
 	zerr "zotregistry.io/zot/errors"
 	zcommon "zotregistry.io/zot/pkg/common"
+	"zotregistry.io/zot/pkg/extensions/imagetrust"
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/meta/common"
-	"zotregistry.io/zot/pkg/meta/signatures"
 	mTypes "zotregistry.io/zot/pkg/meta/types"
 	"zotregistry.io/zot/pkg/meta/version"
 	localCtx "zotregistry.io/zot/pkg/requestcontext"
@@ -778,7 +778,7 @@ func (bdw *BoltDB) UpdateSignaturesValidity(repo string, manifestDigest godigest
 				layersInfo := []mTypes.LayerInfo{}
 
 				for _, layerInfo := range sigInfo.LayersInfo {
-					author, date, isTrusted, _ := signatures.VerifySignature(sigType, layerInfo.LayerContent, layerInfo.SignatureKey,
+					author, date, isTrusted, _ := imagetrust.VerifySignature(sigType, layerInfo.LayerContent, layerInfo.SignatureKey,
 						manifestDigest, blob, repo)
 
 					if isTrusted {
@@ -869,12 +869,12 @@ func (bdw *BoltDB) AddManifestSignature(repo string, signedManifestDigest godige
 
 		signatureSlice := manifestSignatures[sygMeta.SignatureType]
 		if !common.SignatureAlreadyExists(signatureSlice, sygMeta) {
-			if sygMeta.SignatureType == signatures.NotationSignature {
+			if sygMeta.SignatureType == zcommon.NotationSignature {
 				signatureSlice = append(signatureSlice, mTypes.SignatureInfo{
 					SignatureManifestDigest: sygMeta.SignatureDigest,
 					LayersInfo:              sygMeta.LayersInfo,
 				})
-			} else if sygMeta.SignatureType == signatures.CosignSignature {
+			} else if sygMeta.SignatureType == zcommon.CosignSignature {
 				signatureSlice = []mTypes.SignatureInfo{{
 					SignatureManifestDigest: sygMeta.SignatureDigest,
 					LayersInfo:              sygMeta.LayersInfo,

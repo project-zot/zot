@@ -1,4 +1,7 @@
-package signatures
+//go:build imagetrust
+// +build imagetrust
+
+package imagetrust
 
 import (
 	"context"
@@ -9,16 +12,15 @@ import (
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 
 	zerr "zotregistry.io/zot/errors"
+	zcommon "zotregistry.io/zot/pkg/common"
 	"zotregistry.io/zot/pkg/log"
 	mTypes "zotregistry.io/zot/pkg/meta/types"
 	"zotregistry.io/zot/pkg/scheduler"
 )
 
 const (
-	CosignSignature   = "cosign"
-	NotationSignature = "notation"
-	defaultDirPerms   = 0o700
-	defaultFilePerms  = 0o644
+	defaultDirPerms  = 0o700
+	defaultFilePerms = 0o644
 )
 
 func InitCosignAndNotationDirs(rootDir string) error {
@@ -52,11 +54,11 @@ func VerifySignature(
 	}
 
 	switch signatureType {
-	case CosignSignature:
+	case zcommon.CosignSignature:
 		author, isValid, err := VerifyCosignSignature(repo, manifestDigest, sigKey, rawSignature)
 
 		return author, time.Time{}, isValid, err
-	case NotationSignature:
+	case zcommon.NotationSignature:
 		return VerifyNotationSignature(desc, manifestDigest.String(), rawSignature, sigKey)
 	default:
 		return "", time.Time{}, false, zerr.ErrInvalidSignatureType
@@ -137,7 +139,7 @@ func (validityT *validityTask) DoWork() error {
 	validityT.log.Info().Msg("updating signatures validity")
 
 	for signedManifest, sigs := range validityT.repo.Signatures {
-		if len(sigs[CosignSignature]) != 0 || len(sigs[NotationSignature]) != 0 {
+		if len(sigs[zcommon.CosignSignature]) != 0 || len(sigs[zcommon.NotationSignature]) != 0 {
 			err := validityT.metaDB.UpdateSignaturesValidity(validityT.repo.Name, godigest.Digest(signedManifest))
 			if err != nil {
 				validityT.log.Info().Msg("error while verifying signatures")
