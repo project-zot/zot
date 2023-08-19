@@ -26,7 +26,6 @@ import (
 	"github.com/opencontainers/umoci/oci/casext"
 	oras "github.com/oras-project/artifacts-spec/specs-go/v1"
 	"github.com/rs/zerolog"
-	"github.com/sigstore/cosign/v2/pkg/oci/remote"
 
 	zerr "zotregistry.io/zot/errors"
 	zcommon "zotregistry.io/zot/pkg/common"
@@ -39,6 +38,11 @@ import (
 	storageConstants "zotregistry.io/zot/pkg/storage/constants"
 	storageTypes "zotregistry.io/zot/pkg/storage/types"
 	"zotregistry.io/zot/pkg/test/inject"
+)
+
+const (
+	cosignSignatureTagSuffix = "sig"
+	SBOMTagSuffix            = "sbom"
 )
 
 // ImageStoreLocal provides the image storage operations.
@@ -1547,8 +1551,8 @@ func (is *ImageStoreLocal) garbageCollect(dir string, repo string) error {
 			tag, ok := desc.Annotations[ispec.AnnotationRefName]
 			if ok {
 				// gather cosign references
-				if strings.HasPrefix(tag, "sha256-") && (strings.HasSuffix(tag, remote.SignatureTagSuffix) ||
-					strings.HasSuffix(tag, remote.SBOMTagSuffix)) {
+				if strings.HasPrefix(tag, "sha256-") && (strings.HasSuffix(tag, cosignSignatureTagSuffix) ||
+					strings.HasSuffix(tag, SBOMTagSuffix)) {
 					cosignDescriptors = append(cosignDescriptors, desc)
 
 					continue
@@ -1680,13 +1684,13 @@ func gcCosignReferences(imgStore *ImageStoreLocal, oci casext.Engine, index *isp
 		// check if we can find the manifest which the reference points to
 		for _, desc := range index.Manifests {
 			// signature
-			subject := fmt.Sprintf("sha256-%s.%s", desc.Digest.Encoded(), remote.SignatureTagSuffix)
+			subject := fmt.Sprintf("sha256-%s.%s", desc.Digest.Encoded(), cosignSignatureTagSuffix)
 			if subject == cosignDesc.Annotations[ispec.AnnotationRefName] {
 				foundSubject = true
 			}
 
 			// sbom
-			subject = fmt.Sprintf("sha256-%s.%s", desc.Digest.Encoded(), remote.SBOMTagSuffix)
+			subject = fmt.Sprintf("sha256-%s.%s", desc.Digest.Encoded(), SBOMTagSuffix)
 			if subject == cosignDesc.Annotations[ispec.AnnotationRefName] {
 				foundSubject = true
 			}

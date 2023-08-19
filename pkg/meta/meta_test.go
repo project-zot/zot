@@ -1,3 +1,6 @@
+//go:build imagetrust
+// +build imagetrust
+
 package meta_test
 
 import (
@@ -20,12 +23,12 @@ import (
 	. "github.com/smartystreets/goconvey/convey"
 
 	"zotregistry.io/zot/pkg/api/config"
+	"zotregistry.io/zot/pkg/extensions/imagetrust"
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/meta"
 	"zotregistry.io/zot/pkg/meta/boltdb"
 	"zotregistry.io/zot/pkg/meta/common"
 	mdynamodb "zotregistry.io/zot/pkg/meta/dynamodb"
-	"zotregistry.io/zot/pkg/meta/signatures"
 	mTypes "zotregistry.io/zot/pkg/meta/types"
 	localCtx "zotregistry.io/zot/pkg/requestcontext"
 	"zotregistry.io/zot/pkg/test"
@@ -1208,7 +1211,7 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 				})
 				So(err, ShouldBeNil)
 
-				err = signatures.InitNotationDir(tdir)
+				err = imagetrust.InitNotationDir(tdir)
 				So(err, ShouldBeNil)
 
 				trustpolicyPath := path.Join(tdir, "_notation/trustpolicy.json")

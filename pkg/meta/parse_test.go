@@ -14,12 +14,12 @@ import (
 	. "github.com/smartystreets/goconvey/convey"
 
 	zerr "zotregistry.io/zot/errors"
+	zcommon "zotregistry.io/zot/pkg/common"
 	"zotregistry.io/zot/pkg/extensions/monitoring"
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/meta"
 	"zotregistry.io/zot/pkg/meta/boltdb"
 	"zotregistry.io/zot/pkg/meta/dynamodb"
-	"zotregistry.io/zot/pkg/meta/signatures"
 	mTypes "zotregistry.io/zot/pkg/meta/types"
 	"zotregistry.io/zot/pkg/storage"
 	"zotregistry.io/zot/pkg/storage/local"
@@ -611,11 +611,11 @@ func TestGetSignatureLayersInfo(t *testing.T) {
 	})
 
 	Convey("error while unmarshaling manifest content", t, func() {
-		_, err := meta.GetSignatureLayersInfo("repo", "tag", "123", signatures.CosignSignature, []byte("bad manifest"),
+		_, err := meta.GetSignatureLayersInfo("repo", "tag", "123", zcommon.CosignSignature, []byte("bad manifest"),
 			nil, log.NewLogger("debug", ""))
 		So(err, ShouldNotBeNil)
 
-		_, err = meta.GetSignatureLayersInfo("repo", "tag", "123", signatures.NotationSignature, []byte("bad manifest"),
+		_, err = meta.GetSignatureLayersInfo("repo", "tag", "123", zcommon.NotationSignature, []byte("bad manifest"),
 			nil, log.NewLogger("debug", ""))
 		So(err, ShouldNotBeNil)
 	})

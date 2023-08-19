@@ -1,4 +1,7 @@
-package signatures_test
+//go:build imagetrust
+// +build imagetrust
+
+package imagetrust_test
 
 import (
 	"context"
@@ -21,7 +24,8 @@ import (
 	zerr "zotregistry.io/zot/errors"
 	"zotregistry.io/zot/pkg/api"
 	"zotregistry.io/zot/pkg/api/config"
-	"zotregistry.io/zot/pkg/meta/signatures"
+	zcommon "zotregistry.io/zot/pkg/common"
+	"zotregistry.io/zot/pkg/extensions/imagetrust"
 	"zotregistry.io/zot/pkg/test"
 )
 
@@ -33,16 +37,16 @@ func TestInitCosignAndNotationDirs(t *testing.T) {
 		err := os.Chmod(dir, 0o000)
 		So(err, ShouldBeNil)
 
-		err = signatures.InitCosignAndNotationDirs(dir)
+		err = imagetrust.InitCosignAndNotationDirs(dir)
 		So(err, ShouldNotBeNil)
 
 		err = os.Chmod(dir, 0o500)
 		So(err, ShouldBeNil)
 
-		err = signatures.InitCosignAndNotationDirs(dir)
+		err = imagetrust.InitCosignAndNotationDirs(dir)
 		So(err, ShouldNotBeNil)
 
-		cosignDir, err := signatures.GetCosignDirPath()
+		cosignDir, err := imagetrust.GetCosignDirPath()
 		So(cosignDir, ShouldBeEmpty)
 		So(err, ShouldNotBeNil)
 		So(err, ShouldEqual, zerr.ErrSignConfigDirNotSet)
@@ -53,22 +57,22 @@ func TestInitCosignAndNotationDirs(t *testing.T) {
 		err := os.Chmod(dir, 0o000)
 		So(err, ShouldBeNil)
 
-		err = signatures.InitCosignAndNotationDirs(dir)
+		err = imagetrust.InitCosignAndNotationDirs(dir)
 		So(err, ShouldNotBeNil)
 
-		err = signatures.InitNotationDir(dir)
+		err = imagetrust.InitNotationDir(dir)
 		So(err, ShouldNotBeNil)
 
 		err = os.Chmod(dir, 0o500)
 		So(err, ShouldBeNil)
 
-		err = signatures.InitCosignAndNotationDirs(dir)
+		err = imagetrust.InitCosignAndNotationDirs(dir)
 		So(err, ShouldNotBeNil)
 
-		err = signatures.InitNotationDir(dir)
+		err = imagetrust.InitNotationDir(dir)
 		So(err, ShouldNotBeNil)
 
-		notationDir, err := signatures.GetNotationDirPath()
+		notationDir, err := imagetrust.GetNotationDirPath()
 		So(notationDir, ShouldBeEmpty)
 		So(err, ShouldNotBeNil)
 		So(err, ShouldEqual, zerr.ErrSignConfigDirNotSet)
@@ -90,7 +94,7 @@ func TestInitCosignAndNotationDirs(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(certificateContent, ShouldNotBeNil)
 
-		err = signatures.UploadCertificate(certificateContent, "ca", "notation-upload-test")
+		err = imagetrust.UploadCertificate(certificateContent, "ca", "notation-upload-test")
 		So(err, ShouldNotBeNil)
 		So(err, ShouldEqual, zerr.ErrSignConfigDirNotSet)
 	})
@@ -114,7 +118,7 @@ func TestInitCosignAndNotationDirs(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(publicKeyContent, ShouldNotBeNil)
 
-		err = signatures.UploadPublicKey(publicKeyContent)
+		err = imagetrust.UploadPublicKey(publicKeyContent)
 		So(err, ShouldNotBeNil)
 		So(err, ShouldEqual, zerr.ErrSignConfigDirNotSet)
 	})
@@ -124,7 +128,7 @@ func TestVerifySignatures(t *testing.T) {
 	Convey("wrong manifest content", t, func() {
 		manifestContent := []byte("wrong json")
 
-		_, _, _, err := signatures.VerifySignature("", []byte(""), "", "", manifestContent, "repo")
+		_, _, _, err := imagetrust.VerifySignature("", []byte(""), "", "", manifestContent, "repo")
 		So(err, ShouldNotBeNil)
 	})
 
@@ -135,7 +139,7 @@ func TestVerifySignatures(t *testing.T) {
 		manifestContent, err := json.Marshal(image.Manifest)
 		So(err, ShouldBeNil)
 
-		_, _, _, err = signatures.VerifySignature("", []byte(""), "", "", manifestContent, "repo")
+		_, _, _, err = imagetrust.VerifySignature("", []byte(""), "", "", manifestContent, "repo")
 		So(err, ShouldNotBeNil)
 		So(err, ShouldEqual, zerr.ErrBadManifestDigest)
 	})
@@ -149,7 +153,7 @@ func TestVerifySignatures(t *testing.T) {
 
 		manifestDigest := image.Digest()
 
-		_, _, _, err = signatures.VerifySignature("wrongType", []byte(""), "", manifestDigest, manifestContent, "repo")
+		_, _, _, err = imagetrust.VerifySignature("wrongType", []byte(""), "", manifestDigest, manifestContent, "repo")
 		So(err, ShouldNotBeNil)
 		So(err, ShouldEqual, zerr.ErrInvalidSignatureType)
 	})
@@ -166,7 +170,7 @@ func TestVerifySignatures(t *testing.T) {
 		manifestDigest := image.Digest()
 
 		Convey("cosignDir is not set", func() {
-			_, _, _, err = signatures.VerifySignature("cosign", []byte(""), "", manifestDigest, manifestContent, repo)
+			_, _, _, err = imagetrust.VerifySignature("cosign", []byte(""), "", manifestDigest, manifestContent, repo)
 			So(err, ShouldNotBeNil)
 			So(err, ShouldEqual, zerr.ErrSignConfigDirNotSet)
 		})
@@ -174,31 +178,31 @@ func TestVerifySignatures(t *testing.T) {
 		Convey("cosignDir does not have read permissions", func() {
 			dir := t.TempDir()
 
-			err := signatures.InitCosignDir(dir)
+			err := imagetrust.InitCosignDir(dir)
 			So(err, ShouldBeNil)
 
-			cosignDir, err := signatures.GetCosignDirPath()
+			cosignDir, err := imagetrust.GetCosignDirPath()
 			So(err, ShouldBeNil)
 			err = os.Chmod(cosignDir, 0o300)
 			So(err, ShouldBeNil)
 
-			_, _, _, err = signatures.VerifySignature("cosign", []byte(""), "", manifestDigest, manifestContent, repo)
+			_, _, _, err = imagetrust.VerifySignature("cosign", []byte(""), "", manifestDigest, manifestContent, repo)
 			So(err, ShouldNotBeNil)
 		})
 
 		Convey("no valid public key", func() {
 			dir := t.TempDir()
 
-			err := signatures.InitCosignDir(dir)
+			err := imagetrust.InitCosignDir(dir)
 			So(err, ShouldBeNil)
 
-			cosignDir, err := signatures.GetCosignDirPath()
+			cosignDir, err := imagetrust.GetCosignDirPath()
 			So(err, ShouldBeNil)
 
 			err = test.WriteFileWithPermission(path.Join(cosignDir, "file"), []byte("not a public key"), 0o600, false)
 			So(err, ShouldBeNil)
 
-			_, _, isTrusted, err := signatures.VerifySignature("cosign", []byte(""), "", manifestDigest, manifestContent, repo)
+			_, _, isTrusted, err := imagetrust.VerifySignature("cosign", []byte(""), "", manifestDigest, manifestContent, repo)
 			So(err, ShouldBeNil)
 			So(isTrusted, ShouldBeFalse)
 		})
@@ -221,10 +225,10 @@ func TestVerifySignatures(t *testing.T) {
 			err := test.UploadImage(image, baseURL, repo, tag)
 			So(err, ShouldBeNil)
 
-			err = signatures.InitCosignDir(rootDir)
+			err = imagetrust.InitCosignDir(rootDir)
 			So(err, ShouldBeNil)
 
-			cosignDir, err := signatures.GetCosignDirPath()
+			cosignDir, err := imagetrust.GetCosignDirPath()
 			So(err, ShouldBeNil)
 
 			cwd, err := os.Getwd()
@@ -273,7 +277,7 @@ func TestVerifySignatures(t *testing.T) {
 					err = json.Unmarshal(blobContent, &cosignSig)
 					So(err, ShouldBeNil)
 
-					sigKey = cosignSig.Layers[0].Annotations[signatures.CosignSigKey]
+					sigKey = cosignSig.Layers[0].Annotations[zcommon.CosignSigKey]
 
 					rawSignature, err = ctlr.StoreController.DefaultStore.GetBlobContent(repo, cosignSig.Layers[0].Digest)
 					So(err, ShouldBeNil)
@@ -281,7 +285,7 @@ func TestVerifySignatures(t *testing.T) {
 			}
 
 			// signature is trusted
-			author, _, isTrusted, err := signatures.VerifySignature("cosign", rawSignature, sigKey, manifestDigest,
+			author, _, isTrusted, err := imagetrust.VerifySignature("cosign", rawSignature, sigKey, manifestDigest,
 				manifestContent, repo)
 			So(err, ShouldBeNil)
 			So(isTrusted, ShouldBeTrue)
@@ -301,7 +305,7 @@ func TestVerifySignatures(t *testing.T) {
 		manifestDigest := image.Digest()
 
 		Convey("notationDir is not set", func() {
-			_, _, _, err = signatures.VerifySignature("notation", []byte("signature"), "", manifestDigest, manifestContent, repo)
+			_, _, _, err = imagetrust.VerifySignature("notation", []byte("signature"), "", manifestDigest, manifestContent, repo)
 			So(err, ShouldNotBeNil)
 			So(err, ShouldEqual, zerr.ErrSignConfigDirNotSet)
 		})
@@ -309,10 +313,10 @@ func TestVerifySignatures(t *testing.T) {
 		Convey("no signature provided", func() {
 			dir := t.TempDir()
 
-			err := signatures.InitNotationDir(dir)
+			err := imagetrust.InitNotationDir(dir)
 			So(err, ShouldBeNil)
 
-			_, _, isTrusted, err := signatures.VerifySignature("notation", []byte(""), "", manifestDigest, manifestContent, repo)
+			_, _, isTrusted, err := imagetrust.VerifySignature("notation", []byte(""), "", manifestDigest, manifestContent, repo)
 			So(err, ShouldNotBeNil)
 			So(isTrusted, ShouldBeFalse)
 		})
@@ -320,32 +324,32 @@ func TestVerifySignatures(t *testing.T) {
 		Convey("trustpolicy.json does not exist", func() {
 			dir := t.TempDir()
 
-			err := signatures.InitNotationDir(dir)
+			err := imagetrust.InitNotationDir(dir)
 			So(err, ShouldBeNil)
 
-			notationDir, _ := signatures.GetNotationDirPath()
+			notationDir, _ := imagetrust.GetNotationDirPath()
 
 			err = os.Remove(path.Join(notationDir, "trustpolicy.json"))
 			So(err, ShouldBeNil)
 
-			_, _, _, err = signatures.VerifySignature("notation", []byte("signature"), "", manifestDigest, manifestContent, repo)
+			_, _, _, err = imagetrust.VerifySignature("notation", []byte("signature"), "", manifestDigest, manifestContent, repo)
 			So(err, ShouldNotBeNil)
 		})
 
 		Convey("trustpolicy.json has invalid content", func() {
 			dir := t.TempDir()
 
-			err := signatures.InitNotationDir(dir)
+			err := imagetrust.InitNotationDir(dir)
 			So(err, ShouldBeNil)
 
-			notationDir, err := signatures.GetNotationDirPath()
+			notationDir, err := imagetrust.GetNotationDirPath()
 			So(err, ShouldBeNil)
 
 			err = test.WriteFileWithPermission(path.Join(notationDir, "trustpolicy.json"), []byte("invalid content"),
 				0o600, true)
 			So(err, ShouldBeNil)
 
-			_, _, _, err = signatures.VerifySignature("notation", []byte("signature"), "", manifestDigest, manifestContent,
+			_, _, _, err = imagetrust.VerifySignature("notation", []byte("signature"), "", manifestDigest, manifestContent,
 				repo)
 			So(err, ShouldNotBeNil)
 		})
@@ -368,10 +372,10 @@ func TestVerifySignatures(t *testing.T) {
 			err := test.UploadImage(image, baseURL, repo, tag)
 			So(err, ShouldBeNil)
 
-			err = signatures.InitNotationDir(rootDir)
+			err = imagetrust.InitNotationDir(rootDir)
 			So(err, ShouldBeNil)
 
-			notationDir, err := signatures.GetNotationDirPath()
+			notationDir, err := imagetrust.GetNotationDirPath()
 			So(err, ShouldBeNil)
 
 			test.NotationPathLock.Lock()
@@ -444,7 +448,7 @@ func TestVerifySignatures(t *testing.T) {
 			}
 
 			// signature is trusted
-			author, _, isTrusted, err := signatures.VerifySignature("notation", rawSignature, sigKey, manifestDigest,
+			author, _, isTrusted, err := imagetrust.VerifySignature("notation", rawSignature, sigKey, manifestDigest,
 				manifestContent, repo)
 			So(err, ShouldBeNil)
 			So(isTrusted, ShouldBeTrue)
@@ -454,7 +458,7 @@ func TestVerifySignatures(t *testing.T) {
 			So(err, ShouldBeNil)
 
 			// signature is not trusted
-			author, _, isTrusted, err = signatures.VerifySignature("notation", rawSignature, sigKey, manifestDigest,
+			author, _, isTrusted, err = imagetrust.VerifySignature("notation", rawSignature, sigKey, manifestDigest,
 				manifestContent, repo)
 			So(err, ShouldNotBeNil)
 			So(isTrusted, ShouldBeFalse)
@@ -465,23 +469,23 @@ func TestVerifySignatures(t *testing.T) {
 
 func TestCheckExpiryErr(t *testing.T) {
 	Convey("no expiry err", t, func() {
-		isExpiryErr := signatures.CheckExpiryErr([]*notation.ValidationResult{{Error: nil, Type: "wrongtype"}}, time.Now(),
+		isExpiryErr := imagetrust.CheckExpiryErr([]*notation.ValidationResult{{Error: nil, Type: "wrongtype"}}, time.Now(),
 			nil)
 		So(isExpiryErr, ShouldBeFalse)
 
-		isExpiryErr = signatures.CheckExpiryErr([]*notation.ValidationResult{{
+		isExpiryErr = imagetrust.CheckExpiryErr([]*notation.ValidationResult{{
 			Error: nil, Type: trustpolicy.TypeAuthenticTimestamp,
 		}}, time.Now(), errExpiryError)
 		So(isExpiryErr, ShouldBeFalse)
 	})
 
 	Convey("expiry err", t, func() {
-		isExpiryErr := signatures.CheckExpiryErr([]*notation.ValidationResult{
+		isExpiryErr := imagetrust.CheckExpiryErr([]*notation.ValidationResult{
 			{Error: errExpiryError, Type: trustpolicy.TypeExpiry},
 		}, time.Now(), errExpiryError)
 		So(isExpiryErr, ShouldBeTrue)
 
-		isExpiryErr = signatures.CheckExpiryErr([]*notation.ValidationResult{
+		isExpiryErr = imagetrust.CheckExpiryErr([]*notation.ValidationResult{
 			{Error: errExpiryError, Type: trustpolicy.TypeAuthenticTimestamp},
 		}, time.Now().AddDate(0, 0, -1), errExpiryError)
 		So(isExpiryErr, ShouldBeTrue)
@@ -490,7 +494,7 @@ func TestCheckExpiryErr(t *testing.T) {
 
 func TestUploadPublicKey(t *testing.T) {
 	Convey("public key - invalid content", t, func() {
-		err := signatures.UploadPublicKey([]byte("wrong content"))
+		err := imagetrust.UploadPublicKey([]byte("wrong content"))
 		So(err, ShouldNotBeNil)
 	})
 
@@ -513,41 +517,41 @@ func TestUploadPublicKey(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(publicKeyContent, ShouldNotBeNil)
 
-		err = signatures.InitCosignDir(rootDir)
+		err = imagetrust.InitCosignDir(rootDir)
 		So(err, ShouldBeNil)
 
-		err = signatures.UploadPublicKey(publicKeyContent)
+		err = imagetrust.UploadPublicKey(publicKeyContent)
 		So(err, ShouldBeNil)
 	})
 }
 
 func TestUploadCertificate(t *testing.T) {
 	Convey("invalid truststore type", t, func() {
-		err := signatures.UploadCertificate([]byte("certificate content"), "wrongType", "store")
+		err := imagetrust.UploadCertificate([]byte("certificate content"), "wrongType", "store")
 		So(err, ShouldNotBeNil)
 		So(err, ShouldEqual, zerr.ErrInvalidTruststoreType)
 	})
 
 	Convey("invalid truststore name", t, func() {
-		err := signatures.UploadCertificate([]byte("certificate content"), "ca", "*store?")
+		err := imagetrust.UploadCertificate([]byte("certificate content"), "ca", "*store?")
 		So(err, ShouldNotBeNil)
 		So(err, ShouldEqual, zerr.ErrInvalidTruststoreName)
 	})
 
 	Convey("invalid certificate content", t, func() {
-		err := signatures.UploadCertificate([]byte("invalid content"), "ca", "store")
+		err := imagetrust.UploadCertificate([]byte("invalid content"), "ca", "store")
 		So(err, ShouldNotBeNil)
 
 		content := `-----BEGIN CERTIFICATE-----
 -----END CERTIFICATE-----
 		`
 
-		err = signatures.UploadCertificate([]byte(content), "ca", "store")
+		err = imagetrust.UploadCertificate([]byte(content), "ca", "store")
 		So(err, ShouldNotBeNil)
 
 		content = ``
 
-		err = signatures.UploadCertificate([]byte(content), "ca", "store")
+		err = imagetrust.UploadCertificate([]byte(content), "ca", "store")
 		So(err, ShouldNotBeNil)
 	})
 
@@ -567,16 +571,16 @@ func TestUploadCertificate(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(certificateContent, ShouldNotBeNil)
 
-		err = signatures.InitNotationDir(rootDir)
+		err = imagetrust.InitNotationDir(rootDir)
 		So(err, ShouldBeNil)
 
-		notationDir, err := signatures.GetNotationDirPath()
+		notationDir, err := imagetrust.GetNotationDirPath()
 		So(err, ShouldBeNil)
 
 		err = os.Chmod(notationDir, 0o100)
 		So(err, ShouldBeNil)
 
-		err = signatures.UploadCertificate(certificateContent, "ca", "notation-upload-test")
+		err = imagetrust.UploadCertificate(certificateContent, "ca", "notation-upload-test")
 		So(err, ShouldNotBeNil)
 
 		err = os.Chmod(notationDir, 0o777)
@@ -599,10 +603,10 @@ func TestUploadCertificate(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(certificateContent, ShouldNotBeNil)
 
-		err = signatures.InitNotationDir(rootDir)
+		err = imagetrust.InitNotationDir(rootDir)
 		So(err, ShouldBeNil)
 
-		notationDir, err := signatures.GetNotationDirPath()
+		notationDir, err := imagetrust.GetNotationDirPath()
 		So(err, ShouldBeNil)
 
 		err = os.MkdirAll(path.Join(notationDir, "truststore/x509/ca/notation-upload-test"), 0o777)
@@ -611,7 +615,7 @@ func TestUploadCertificate(t *testing.T) {
 		err = os.Chmod(path.Join(notationDir, "truststore/x509/ca/notation-upload-test"), 0o100)
 		So(err, ShouldBeNil)
 
-		err = signatures.UploadCertificate(certificateContent, "ca", "notation-upload-test")
+		err = imagetrust.UploadCertificate(certificateContent, "ca", "notation-upload-test")
 		So(err, ShouldNotBeNil)
 	})
 
@@ -631,17 +635,17 @@ func TestUploadCertificate(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(certificateContent, ShouldNotBeNil)
 
-		err = signatures.InitNotationDir(rootDir)
+		err = imagetrust.InitNotationDir(rootDir)
 		So(err, ShouldBeNil)
 
-		notationDir, err := signatures.GetNotationDirPath()
+		notationDir, err := imagetrust.GetNotationDirPath()
 		So(err, ShouldBeNil)
 
 		err = test.WriteFileWithPermission(path.Join(notationDir, "trustpolicy.json"), []byte("invalid content"),
 			0o600, true)
 		So(err, ShouldBeNil)
 
-		err = signatures.UploadCertificate(certificateContent, "ca", "notation-upload-test")
+		err = imagetrust.UploadCertificate(certificateContent, "ca", "notation-upload-test")
 		So(err, ShouldNotBeNil)
 	})
 
@@ -661,13 +665,13 @@ func TestUploadCertificate(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(certificateContent, ShouldNotBeNil)
 
-		err = signatures.InitNotationDir(rootDir)
+		err = imagetrust.InitNotationDir(rootDir)
 		So(err, ShouldBeNil)
 
-		notationDir, err := signatures.GetNotationDirPath()
+		notationDir, err := imagetrust.GetNotationDirPath()
 		So(err, ShouldBeNil)
 
-		trustpolicyDoc, err := signatures.LoadTrustPolicyDocument(notationDir)
+		trustpolicyDoc, err := imagetrust.LoadTrustPolicyDocument(notationDir)
 		So(err, ShouldBeNil)
 
 		trustpolicyDoc.TrustPolicies[0].TrustStores = append(trustpolicyDoc.TrustPolicies[0].TrustStores,
@@ -679,7 +683,7 @@ func TestUploadCertificate(t *testing.T) {
 		err = os.WriteFile(path.Join(notationDir, "trustpolicy.json"), trustpolicyDocContent, 0o400)
 		So(err, ShouldBeNil)
 
-		err = signatures.UploadCertificate(certificateContent, "ca", "notation-upload-test")
+		err = imagetrust.UploadCertificate(certificateContent, "ca", "notation-upload-test")
 		So(err, ShouldBeNil)
 	})
 
@@ -699,10 +703,10 @@ func TestUploadCertificate(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(certificateContent, ShouldNotBeNil)
 
-		err = signatures.InitNotationDir(rootDir)
+		err = imagetrust.InitNotationDir(rootDir)
 		So(err, ShouldBeNil)
 
-		err = signatures.UploadCertificate(certificateContent, "ca", "notation-upload-test")
+		err = imagetrust.UploadCertificate(certificateContent, "ca", "notation-upload-test")
 		So(err, ShouldBeNil)
 	})
 }

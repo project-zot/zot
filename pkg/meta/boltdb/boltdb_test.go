@@ -14,9 +14,9 @@ import (
 	"go.etcd.io/bbolt"
 
 	zerr "zotregistry.io/zot/errors"
+	zcommon "zotregistry.io/zot/pkg/common"
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/meta/boltdb"
-	"zotregistry.io/zot/pkg/meta/signatures"
 	mTypes "zotregistry.io/zot/pkg/meta/types"
 	localCtx "zotregistry.io/zot/pkg/requestcontext"
 	"zotregistry.io/zot/pkg/test"
@@ -545,9 +545,9 @@ func TestWrapperErrors(t *testing.T) {
 
 			repoData, err := boltdbWrapper.GetRepoMeta("repo1")
 			So(err, ShouldBeNil)
-			So(len(repoData.Signatures[string(digest.FromString("dig"))][signatures.CosignSignature]),
+			So(len(repoData.Signatures[string(digest.FromString("dig"))][zcommon.CosignSignature]),
 				ShouldEqual, 1)
-			So(repoData.Signatures[string(digest.FromString("dig"))][signatures.CosignSignature][0].SignatureManifestDigest,
+			So(repoData.Signatures[string(digest.FromString("dig"))][zcommon.CosignSignature][0].SignatureManifestDigest,
 				ShouldEqual, "digest2")
 
 			err = boltdbWrapper.AddManifestSignature("repo1", digest.FromString("dig"),
