@@ -406,6 +406,10 @@ test-bats-sync: check-linux binary binary-minimal bench check-skopeo $(BATS) $(N
 	$(BATS) --trace --print-output-on-failure test/blackbox/sync_docker.bats
 	$(BATS) --trace --print-output-on-failure test/blackbox/sync_replica_cluster.bats
 
+.PHONY: test-bats-delete-image
+test-bats-delete-image: check-linux binary binary-minimal bench check-skopeo $(BATS)
+	$(BATS) --trace --print-output-on-failure test/blackbox/delete_images.bats
+
 .PHONY: test-bats-sync-verbose
 test-bats-sync-verbose: BUILD_LABELS=sync
 test-bats-sync-verbose: check-linux binary binary-minimal bench check-skopeo $(BATS) $(NOTATION) $(COSIGN) $(HELM)
