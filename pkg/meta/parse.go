@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"time"
 
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
@@ -43,6 +44,11 @@ func ParseStorage(metaDB mTypes.MetaDB, storeController storage.StoreController,
 // ParseRepo reads the contents of a repo and syncs all images and signatures found.
 func ParseRepo(repo string, metaDB mTypes.MetaDB, storeController storage.StoreController, log log.Logger) error {
 	imageStore := storeController.GetImageStore(repo)
+
+	var lockLatency time.Time
+
+	imageStore.RLock(&lockLatency)
+	defer imageStore.RUnlock(&lockLatency)
 
 	indexBlob, err := imageStore.GetIndexContent(repo)
 	if err != nil {
@@ -246,6 +252,11 @@ func getCosignSignatureLayersInfo(
 		return layers, err
 	}
 
+	var lockLatency time.Time
+
+	imageStore.RLock(&lockLatency)
+	defer imageStore.RUnlock(&lockLatency)
+
 	for _, layer := range manifestContent.Layers {
 		layerContent, err := imageStore.GetBlobContent(repo, layer.Digest)
 		if err != nil {
@@ -293,6 +304,11 @@ func getNotationSignatureLayersInfo(
 
 	layer := manifestContent.Layers[0].Digest
 
+	var lockLatency time.Time
+
+	imageStore.RLock(&lockLatency)
+	defer imageStore.RUnlock(&lockLatency)
+
 	layerContent, err := imageStore.GetBlobContent(repo, layer)
 	if err != nil {
 		log.Error().Err(err).Str("repository", repo).Str("reference", manifestDigest).Str("layerDigest", layer.String()).Msg(
@@ -325,6 +341,11 @@ func NewManifestData(repoName string, manifestBlob []byte, imageStore storageTyp
 	if err != nil {
 		return mTypes.ManifestData{}, err
 	}
+
+	var lockLatency time.Time
+
+	imageStore.RLock(&lockLatency)
+	defer imageStore.RUnlock(&lockLatency)
 
 	configBlob, err := imageStore.GetBlobContent(repoName, manifestContent.Config.Digest)
 	if err != nil {
