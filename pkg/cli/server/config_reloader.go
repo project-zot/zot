@@ -105,15 +105,13 @@ func (hr *HotReloader) Start() context.Context {
 					}
 				// watch for errors
 				case err := <-hr.watcher.Errors:
-					log.Error().Err(err).Str("config", hr.filePath).Msg("fsnotfy error while watching config")
-					panic(err)
+					log.Panic().Err(err).Str("config", hr.filePath).Msg("fsnotfy error while watching config")
 				}
 			}
 		}()
 
 		if err := hr.watcher.Add(hr.filePath); err != nil {
-			log.Error().Err(err).Str("config", hr.filePath).Msg("error adding config file to FsNotify watcher")
-			panic(err)
+			log.Panic().Err(err).Str("config", hr.filePath).Msg("error adding config file to FsNotify watcher")
 		}
 
 		<-done

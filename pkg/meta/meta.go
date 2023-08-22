@@ -43,7 +43,10 @@ func Create(dbtype string, dbDriver, parameters interface{}, log log.Logger, //n
 		{
 			properDriver, ok := dbDriver.(*bbolt.DB)
 			if !ok {
-				panic("failed type assertion")
+				log.Error().Err(errors.ErrTypeAssertionFailed).Msgf("expected type '%T' but got '%T'",
+					&bbolt.DB{}, dbDriver)
+
+				return nil, errors.ErrTypeAssertionFailed
 			}
 
 			return boltdb.New(properDriver, log)
@@ -52,12 +55,18 @@ func Create(dbtype string, dbDriver, parameters interface{}, log log.Logger, //n
 		{
 			properDriver, ok := dbDriver.(*dynamodb.Client)
 			if !ok {
-				panic("failed type assertion")
+				log.Error().Err(errors.ErrTypeAssertionFailed).Msgf("expected type '%T' but got '%T'",
+					&dynamodb.Client{}, dbDriver)
+
+				return nil, errors.ErrTypeAssertionFailed
 			}
 
 			properParameters, ok := parameters.(mdynamodb.DBDriverParameters)
 			if !ok {
-				panic("failed type assertion")
+				log.Error().Err(errors.ErrTypeAssertionFailed).Msgf("expected type '%T' but got '%T'",
+					mdynamodb.DBDriverParameters{}, parameters)
+
+				return nil, errors.ErrTypeAssertionFailed
 			}
 
 			return mdynamodb.New(properDriver, properParameters, log)
@@ -97,7 +106,7 @@ func getDynamoParams(cacheDriverConfig map[string]interface{}, log log.Logger) m
 	allParametersOk = allParametersOk && ok
 
 	if !allParametersOk {
-		panic("dynamo parameters are not specified correctly, can't proceede")
+		log.Panic().Msg("dynamo parameters are not specified correctly, can't proceed")
 	}
 
 	return mdynamodb.DBDriverParameters{

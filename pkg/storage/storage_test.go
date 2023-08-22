@@ -121,6 +121,18 @@ var testCases = []struct {
 	},
 }
 
+func TestStorageNew(t *testing.T) {
+	Convey("New fail", t, func() {
+		// store name is wrong
+		conf := config.New()
+		conf.Storage.RootDirectory = "dir"
+		conf.Storage.StorageDriver = map[string]interface{}{}
+
+		_, err := storage.New(conf, nil, nil, zlog.NewLogger("debug", ""))
+		So(err, ShouldNotBeNil)
+	})
+}
+
 func TestStorageAPIs(t *testing.T) {
 	for _, testcase := range testCases {
 		testcase := testcase
@@ -869,6 +881,73 @@ func TestMandatoryAnnotations(t *testing.T) {
 			})
 		})
 	}
+}
+
+func TestStorageSubpaths(t *testing.T) {
+	Convey("Reach for coverage", t, func() {
+		tmpDirSubpath := t.TempDir()
+		config := &config.Config{
+			Storage: config.GlobalStorageConfig{
+				StorageConfig: config.StorageConfig{RootDirectory: t.TempDir()},
+				SubPaths: map[string]config.StorageConfig{
+					"a/":          {RootDirectory: tmpDirSubpath},
+					tmpDirSubpath: {RootDirectory: tmpDirSubpath},
+				},
+			},
+		}
+
+		_, err := storage.New(config, nil, nil, zlog.NewLogger("debug", ""))
+		So(err, ShouldBeNil)
+	})
+
+	Convey("Create unique subpath, error for cache driver", t, func() {
+		tmpDirSubpath := t.TempDir()
+		config := &config.Config{
+			Storage: config.GlobalStorageConfig{
+				StorageConfig: config.StorageConfig{RootDirectory: t.TempDir()},
+				SubPaths: map[string]config.StorageConfig{
+					"a/": {
+						RootDirectory: tmpDirSubpath,
+						RemoteCache:   true,
+						StorageDriver: map[string]interface{}{},
+						Dedupe:        true,
+					},
+				},
+			},
+		}
+
+		// create boltdb file and make it un-openable
+		dbPath := path.Join(tmpDirSubpath, storageConstants.BoltdbName+storageConstants.DBExtensionName)
+		err := os.WriteFile(dbPath, []byte(""), 0o000)
+		So(err, ShouldBeNil)
+
+		_, err = storage.New(config, nil, nil, zlog.NewLogger("debug", ""))
+		So(err, ShouldNotBeNil)
+
+		err = os.Chmod(dbPath, 0o600)
+		So(err, ShouldBeNil)
+	})
+
+	Convey("storeName != constants.S3StorageDriverName", t, func() {
+		tmpDirSubpath := t.TempDir()
+		config := &config.Config{
+			Storage: config.GlobalStorageConfig{
+				StorageConfig: config.StorageConfig{RootDirectory: t.TempDir()},
+				SubPaths: map[string]config.StorageConfig{
+					"a/": {
+						RootDirectory: tmpDirSubpath,
+						RemoteCache:   true,
+						StorageDriver: map[string]interface{}{
+							"name": "bad-name",
+						},
+					},
+				},
+			},
+		}
+
+		_, err := storage.New(config, nil, nil, zlog.NewLogger("debug", ""))
+		So(err, ShouldNotBeNil)
+	})
 }
 
 func TestDeleteBlobsInUse(t *testing.T) {

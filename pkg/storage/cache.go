@@ -1,16 +1,16 @@
 package storage
 
 import (
-	"zotregistry.io/zot/errors"
+	zerr "zotregistry.io/zot/errors"
 	"zotregistry.io/zot/pkg/api/config"
 	zlog "zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/storage/cache"
 	"zotregistry.io/zot/pkg/storage/constants"
 )
 
-func CreateCacheDatabaseDriver(storageConfig config.StorageConfig, log zlog.Logger) cache.Cache {
+func CreateCacheDatabaseDriver(storageConfig config.StorageConfig, log zlog.Logger) (cache.Cache, error) {
 	if !storageConfig.Dedupe && storageConfig.StorageDriver == nil {
-		return nil
+		return nil, nil
 	}
 
 	// local cache
@@ -20,9 +20,7 @@ func CreateCacheDatabaseDriver(storageConfig config.StorageConfig, log zlog.Logg
 		params.Name = constants.BoltdbName
 		params.UseRelPaths = getUseRelPaths(&storageConfig)
 
-		driver, _ := Create("boltdb", params, log)
-
-		return driver
+		return Create("boltdb", params, log)
 	}
 
 	// remote cache
@@ -31,13 +29,13 @@ func CreateCacheDatabaseDriver(storageConfig config.StorageConfig, log zlog.Logg
 		if !ok {
 			log.Warn().Msg("remote cache driver name missing!")
 
-			return nil
+			return nil, nil
 		}
 
 		if name != constants.DynamoDBDriverName {
 			log.Warn().Str("driver", name).Msg("remote cache driver unsupported!")
 
-			return nil
+			return nil, nil
 		}
 
 		// dynamodb
@@ -46,27 +44,25 @@ func CreateCacheDatabaseDriver(storageConfig config.StorageConfig, log zlog.Logg
 		dynamoParams.Region, _ = storageConfig.CacheDriver["region"].(string)
 		dynamoParams.TableName, _ = storageConfig.CacheDriver["cachetablename"].(string)
 
-		driver, _ := Create("dynamodb", dynamoParams, log)
-
-		return driver
+		return Create("dynamodb", dynamoParams, log)
 	}
 
-	return nil
+	return nil, nil
 }
 
 func Create(dbtype string, parameters interface{}, log zlog.Logger) (cache.Cache, error) {
 	switch dbtype {
 	case "boltdb":
 		{
-			return cache.NewBoltDBCache(parameters, log), nil
+			return cache.NewBoltDBCache(parameters, log)
 		}
 	case "dynamodb":
 		{
-			return cache.NewDynamoDBCache(parameters, log), nil
+			return cache.NewDynamoDBCache(parameters, log)
 		}
 	default:
 		{
-			return nil, errors.ErrBadConfig
+			return nil, zerr.ErrBadConfig
 		}
 	}
 }

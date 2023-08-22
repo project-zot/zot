@@ -164,6 +164,8 @@ var (
 	ErrFileAlreadyClosed              = errors.New("storageDriver: file already closed")
 	ErrFileAlreadyCommitted           = errors.New("storageDriver: file already committed")
 	ErrInvalidOutputFormat            = errors.New("cli: invalid output format")
+	ErrServerIsRunning                = errors.New("server is running")
+	ErrDatabaseFileAlreadyInUse       = errors.New("boltdb file is already in use")
 	ErrFlagValueUnsupported           = errors.New("supported values ")
 	ErrUnknownSubcommand              = errors.New("cli: unknown subcommand")
 	ErrMultipleReposSameName          = errors.New("test: can't have multiple repos with the same name")

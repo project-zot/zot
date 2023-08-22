@@ -61,10 +61,13 @@ func (d *DynamoDBDriver) NewTable(tableName string) error {
 	return nil
 }
 
-func NewDynamoDBCache(parameters interface{}, log zlog.Logger) Cache {
+func NewDynamoDBCache(parameters interface{}, log zlog.Logger) (*DynamoDBDriver, error) {
 	properParameters, ok := parameters.(DynamoDBDriverParameters)
 	if !ok {
-		panic("Failed type assertion!")
+		log.Error().Err(zerr.ErrTypeAssertionFailed).Msgf("expected type '%T' but got '%T'",
+			BoltDBDriverParameters{}, parameters)
+
+		return nil, zerr.ErrTypeAssertionFailed
 	}
 
 	// custom endpoint resolver to point to localhost
@@ -85,7 +88,7 @@ func NewDynamoDBCache(parameters interface{}, log zlog.Logger) Cache {
 	if err != nil {
 		log.Error().Err(err).Msg("unable to load AWS SDK config for dynamodb")
 
-		return nil
+		return nil, err
 	}
 
 	driver := &DynamoDBDriver{client: dynamodb.NewFromConfig(cfg), tableName: properParameters.TableName, log: log}
@@ -93,10 +96,16 @@ func NewDynamoDBCache(parameters interface{}, log zlog.Logger) Cache {
 	err = driver.NewTable(driver.tableName)
 	if err != nil {
 		log.Error().Err(err).Str("tableName", driver.tableName).Msg("unable to create table for cache")
+
+		return nil, err
 	}
 
 	// Using the Config value, create the DynamoDB client
-	return driver
+	return driver, nil
+}
+
+func (d *DynamoDBDriver) SetTableName(table string) {
+	d.tableName = table
 }
 
 func (d *DynamoDBDriver) UsesRelativePaths() bool {
@@ -212,7 +221,7 @@ func (d *DynamoDBDriver) DeleteBlob(digest godigest.Digest, path string) error {
 	// if original blob is the one deleted
 	if originBlob == path {
 		// move duplicate blob to original, storage will move content here
-		originBlob, _ = d.getDuplicateBlob(digest)
+		originBlob, _ = d.GetDuplicateBlob(digest)
 		if originBlob != "" {
 			if err := d.putOriginBlob(digest, originBlob); err != nil {
 				return err
@@ -232,7 +241,7 @@ func (d *DynamoDBDriver) DeleteBlob(digest godigest.Digest, path string) error {
 	return nil
 }
 
-func (d *DynamoDBDriver) getDuplicateBlob(digest godigest.Digest) (string, error) {
+func (d *DynamoDBDriver) GetDuplicateBlob(digest godigest.Digest) (string, error) {
 	resp, err := d.client.GetItem(context.TODO(), &dynamodb.GetItemInput{
 		TableName: aws.String(d.tableName),
 		Key: map[string]types.AttributeValue{

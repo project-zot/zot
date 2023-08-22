@@ -44,10 +44,10 @@ func newServeCmd(conf *config.Config) *cobra.Command {
 		Aliases: []string{"serve"},
 		Short:   "`serve` stores and distributes OCI images",
 		Long:    "`serve` stores and distributes OCI images",
-		Run: func(cmd *cobra.Command, args []string) {
+		RunE: func(cmd *cobra.Command, args []string) error {
 			if len(args) > 0 {
 				if err := LoadConfiguration(conf, args[0]); err != nil {
-					panic(err)
+					return err
 				}
 			}
 
@@ -58,7 +58,7 @@ func newServeCmd(conf *config.Config) *cobra.Command {
 			if err != nil {
 				ctlr.Log.Error().Err(err).Msg("failed to create a new hot reloader")
 
-				panic(err)
+				return err
 			}
 
 			/* context used to cancel go routines so that
@@ -68,12 +68,14 @@ func newServeCmd(conf *config.Config) *cobra.Command {
 			if err := ctlr.Init(reloaderCtx); err != nil {
 				ctlr.Log.Error().Err(err).Msg("failed to init controller")
 
-				panic(err)
+				return err
 			}
 
 			if err := ctlr.Run(reloaderCtx); err != nil {
-				ctlr.Log.Fatal().Err(err).Msg("unable to start controller, exiting")
+				log.Error().Err(err).Msg("unable to start controller, exiting")
 			}
+
+			return nil
 		},
 	}
 
@@ -87,17 +89,17 @@ func newScrubCmd(conf *config.Config) *cobra.Command {
 		Aliases: []string{"scrub"},
 		Short:   "`scrub` checks manifest/blob integrity",
 		Long:    "`scrub` checks manifest/blob integrity",
-		Run: func(cmd *cobra.Command, args []string) {
+		RunE: func(cmd *cobra.Command, args []string) error {
 			if len(args) > 0 {
 				if err := LoadConfiguration(conf, args[0]); err != nil {
-					panic(err)
+					return err
 				}
 			} else {
 				if err := cmd.Usage(); err != nil {
-					panic(err)
+					return err
 				}
 
-				return
+				return nil
 			}
 
 			// checking if the server is  already running
@@ -107,30 +109,34 @@ func newScrubCmd(conf *config.Config) *cobra.Command {
 				nil)
 			if err != nil {
 				log.Error().Err(err).Msg("unable to create a new http request")
-				panic(err)
+
+				return err
 			}
 
 			response, err := http.DefaultClient.Do(req)
 			if err == nil {
 				response.Body.Close()
 				log.Warn().Msg("The server is running, in order to perform the scrub command the server should be shut down")
-				panic("Error: server is running")
+
+				return zerr.ErrServerIsRunning
 			} else {
 				// server is down
 				ctlr := api.NewController(conf)
 				ctlr.Metrics = monitoring.NewMetricsServer(false, ctlr.Log)
 
 				if err := ctlr.InitImageStore(); err != nil {
-					panic(err)
+					return err
 				}
 
 				result, err := ctlr.StoreController.CheckAllBlobsIntegrity(cmd.Context())
 				if err != nil {
-					panic(err)
+					return err
 				}
 
 				result.PrintScrubResults(cmd.OutOrStdout())
 			}
+
+			return nil
 		},
 	}
 
@@ -144,15 +150,18 @@ func newVerifyCmd(conf *config.Config) *cobra.Command {
 		Aliases: []string{"verify"},
 		Short:   "`verify` validates a zot config file",
 		Long:    "`verify` validates a zot config file",
-		Run: func(cmd *cobra.Command, args []string) {
+		RunE: func(cmd *cobra.Command, args []string) error {
 			if len(args) > 0 {
 				if err := LoadConfiguration(conf, args[0]); err != nil {
 					log.Error().Str("config", args[0]).Msg("Config file is invalid")
-					panic(err)
+
+					return err
 				}
 
 				log.Info().Str("config", args[0]).Msg("Config file is valid")
 			}
+
+			return nil
 		},
 	}
 
@@ -168,7 +177,7 @@ func NewServerRootCmd() *cobra.Command {
 		Use:   "zot",
 		Short: "`zot`",
 		Long:  "`zot`",
-		Run: func(cmd *cobra.Command, args []string) {
+		RunE: func(cmd *cobra.Command, args []string) error {
 			if showVersion {
 				log.Info().Str("distribution-spec", distspec.Version).Str("commit", config.Commit).
 					Str("binary-type", config.BinaryType).Str("go version", config.GoVersion).Msg("version")
@@ -176,6 +185,8 @@ func NewServerRootCmd() *cobra.Command {
 				_ = cmd.Usage()
 				cmd.SilenceErrors = false
 			}
+
+			return nil
 		},
 	}
 

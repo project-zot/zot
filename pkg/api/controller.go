@@ -192,13 +192,17 @@ func (c *Controller) Run(reloadCtx context.Context) error {
 
 			caCert, err := os.ReadFile(c.Config.HTTP.TLS.CACert)
 			if err != nil {
-				panic(err)
+				c.Log.Error().Err(err).Str("caCert", c.Config.HTTP.TLS.CACert).Msg("failed to read file")
+
+				return err
 			}
 
 			caCertPool := x509.NewCertPool()
 
 			if !caCertPool.AppendCertsFromPEM(caCert) {
-				panic(errors.ErrBadCACert)
+				c.Log.Error().Err(errors.ErrBadCACert).Msg("failed to append certs from pem")
+
+				return errors.ErrBadCACert
 			}
 
 			server.TLSConfig.ClientAuth = clientAuth

@@ -19,7 +19,8 @@ func TestBoltDBCache(t *testing.T) {
 		log := log.NewLogger("debug", "")
 		So(log, ShouldNotBeNil)
 
-		So(func() { _, _ = storage.Create("boltdb", "failTypeAssertion", log) }, ShouldPanic)
+		_, err := storage.Create("boltdb", "failTypeAssertion", log)
+		So(err, ShouldNotBeNil)
 
 		cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{"/deadBEEF", "cache_test", true}, log)
 		So(cacheDriver, ShouldBeNil)

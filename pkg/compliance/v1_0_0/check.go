@@ -30,7 +30,7 @@ func CheckWorkflows(t *testing.T, config *compliance.Config) {
 	t.Helper()
 
 	if config == nil || config.Address == "" || config.Port == "" {
-		panic("insufficient config")
+		t.Fatal("insufficient config")
 	}
 
 	if config.OutputJSON {

@@ -60,18 +60,15 @@ func loadConfiguration(config *api.Config, configPath string) {
 	viper.SetConfigFile(configPath)
 
 	if err := viper.ReadInConfig(); err != nil {
-		log.Error().Err(err).Msg("Error while reading configuration")
-		panic(err)
+		log.Panic().Err(err).Msg("Error while reading configuration")
 	}
 
 	metaData := &mapstructure.Metadata{}
 	if err := viper.Unmarshal(&config, metadataConfig(metaData)); err != nil {
-		log.Error().Err(err).Msg("Error while unmarshaling new config")
-		panic(err)
+		log.Panic().Err(err).Msg("Error while unmarshaling new config")
 	}
 
 	if len(metaData.Keys) == 0 || len(metaData.Unused) > 0 {
-		log.Error().Err(zerr.ErrBadConfig).Msg("Bad configuration, retry writing it")
-		panic(zerr.ErrBadConfig)
+		log.Panic().Err(zerr.ErrBadConfig).Msg("Bad configuration, retry writing it")
 	}
 }

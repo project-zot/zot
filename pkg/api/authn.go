@@ -48,10 +48,11 @@ const (
 type AuthnMiddleware struct {
 	credMap    map[string]string
 	ldapClient *LDAPClient
+	log        log.Logger
 }
 
 func AuthHandler(ctlr *Controller) mux.MiddlewareFunc {
-	authnMiddleware := &AuthnMiddleware{}
+	authnMiddleware := &AuthnMiddleware{log: ctlr.Log}
 
 	if ctlr.Config.IsBearerAuthEnabled() {
 		return bearerAuthHandler(ctlr)
@@ -279,13 +280,15 @@ func (amw *AuthnMiddleware) tryAuthnHandlers(ctlr *Controller) mux.MiddlewareFun
 		if ctlr.Config.HTTP.Auth.LDAP.CACert != "" {
 			caCert, err := os.ReadFile(ctlr.Config.HTTP.Auth.LDAP.CACert)
 			if err != nil {
-				panic(err)
+				amw.log.Panic().Err(err).Str("caCert", ctlr.Config.HTTP.Auth.LDAP.CACert).
+					Msg("failed to read caCert")
 			}
 
 			caCertPool := x509.NewCertPool()
 
 			if !caCertPool.AppendCertsFromPEM(caCert) {
-				panic(zerr.ErrBadCACert)
+				amw.log.Panic().Err(zerr.ErrBadCACert).Str("caCert", ctlr.Config.HTTP.Auth.LDAP.CACert).
+					Msg("failed to read caCert")
 			}
 
 			amw.ldapClient.ClientCAs = caCertPool
@@ -293,7 +296,8 @@ func (amw *AuthnMiddleware) tryAuthnHandlers(ctlr *Controller) mux.MiddlewareFun
 			// default to system cert pool
 			caCertPool, err := x509.SystemCertPool()
 			if err != nil {
-				panic(zerr.ErrBadCACert)
+				amw.log.Panic().Err(zerr.ErrBadCACert).Str("caCert", ctlr.Config.HTTP.Auth.LDAP.CACert).
+					Msg("failed to get system cert pool")
 			}
 
 			amw.ldapClient.ClientCAs = caCertPool
@@ -303,7 +307,8 @@ func (amw *AuthnMiddleware) tryAuthnHandlers(ctlr *Controller) mux.MiddlewareFun
 	if ctlr.Config.IsHtpasswdAuthEnabled() {
 		credsFile, err := os.Open(ctlr.Config.HTTP.Auth.HTPasswd.Path)
 		if err != nil {
-			panic(err)
+			amw.log.Panic().Err(err).Str("credsFile", ctlr.Config.HTTP.Auth.HTPasswd.Path).
+				Msg("failed to open creds-file")
 		}
 		defer credsFile.Close()
 
@@ -324,10 +329,10 @@ func (amw *AuthnMiddleware) tryAuthnHandlers(ctlr *Controller) mux.MiddlewareFun
 
 		for provider := range ctlr.Config.HTTP.Auth.OpenID.Providers {
 			if config.IsOpenIDSupported(provider) {
-				rp := NewRelyingPartyOIDC(ctlr.Config, provider)
+				rp := NewRelyingPartyOIDC(ctlr.Config, provider, ctlr.Log)
 				ctlr.RelyingParties[provider] = rp
 			} else if config.IsOauth2Supported(provider) {
-				rp := NewRelyingPartyGithub(ctlr.Config, provider)
+				rp := NewRelyingPartyGithub(ctlr.Config, provider, ctlr.Log)
 				ctlr.RelyingParties[provider] = rp
 			}
 		}
@@ -557,19 +562,20 @@ func (rh *RouteHandler) AuthURLHandler() http.HandlerFunc {
 	}
 }
 
-func NewRelyingPartyOIDC(config *config.Config, provider string) rp.RelyingParty {
-	issuer, clientID, clientSecret, redirectURI, scopes, options := getRelyingPartyArgs(config, provider)
+func NewRelyingPartyOIDC(config *config.Config, provider string, log log.Logger) rp.RelyingParty {
+	issuer, clientID, clientSecret, redirectURI, scopes, options := getRelyingPartyArgs(config, provider, log)
 
 	relyingParty, err := rp.NewRelyingPartyOIDC(issuer, clientID, clientSecret, redirectURI, scopes, options...)
 	if err != nil {
-		panic(err)
+		log.Panic().Err(err).Str("issuer", issuer).Str("redirectURI", redirectURI).Strs("scopes", scopes).
+			Msg("failed to get new relying party oicd")
 	}
 
 	return relyingParty
 }
 
-func NewRelyingPartyGithub(config *config.Config, provider string) rp.RelyingParty {
-	_, clientID, clientSecret, redirectURI, scopes, options := getRelyingPartyArgs(config, provider)
+func NewRelyingPartyGithub(config *config.Config, provider string, log log.Logger) rp.RelyingParty {
+	_, clientID, clientSecret, redirectURI, scopes, options := getRelyingPartyArgs(config, provider, log)
 
 	rpConfig := &oauth2.Config{
 		ClientID:     clientID,
@@ -581,17 +587,18 @@ func NewRelyingPartyGithub(config *config.Config, provider string) rp.RelyingPar
 
 	relyingParty, err := rp.NewRelyingPartyOAuth(rpConfig, options...)
 	if err != nil {
-		panic(err)
+		log.Panic().Err(err).Str("redirectURI", redirectURI).Strs("scopes", scopes).
+			Msg("failed to get new relying party oauth")
 	}
 
 	return relyingParty
 }
 
-func getRelyingPartyArgs(cfg *config.Config, provider string) (
+func getRelyingPartyArgs(cfg *config.Config, provider string, log log.Logger) (
 	string, string, string, string, []string, []rp.Option,
 ) {
 	if _, ok := cfg.HTTP.Auth.OpenID.Providers[provider]; !ok {
-		panic(zerr.ErrOpenIDProviderDoesNotExist)
+		log.Panic().Err(zerr.ErrOpenIDProviderDoesNotExist).Str("provider", provider).Msg("")
 	}
 
 	clientID := cfg.HTTP.Auth.OpenID.Providers[provider].ClientID
