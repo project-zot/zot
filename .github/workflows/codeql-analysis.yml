@@ -54,7 +54,7 @@ jobs:
     - name: Install dependencies
       run: |
         cd $GITHUB_WORKSPACE
-        go install github.com/swaggo/swag/cmd/swag@latest
+        go install github.com/swaggo/swag/cmd/swag@v1.8.12
         go mod download
         go install github.com/wadey/gocovmerge@latest
         go get -u github.com/swaggo/swag/cmd/swag

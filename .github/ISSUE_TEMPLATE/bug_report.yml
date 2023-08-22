@@ -1,10 +1,10 @@
 name: Bug report
 description: File a bug report
-title: "[Bug]: " 
-labels: bug
+title: "[Bug]: "
+labels: ["bug"]
 body:
   - type: input
-    attributes: 
+    attributes:
       label: "zot version"
       placeholder: "v1.4.3 or commit hash"
     validations:
@@ -23,12 +23,12 @@ body:
         1. Configuration
         2. Client tool used
         3. Seen error
-        
+
   - type: textarea
     attributes:
       label: "Expected behavior"
       description: "A clear and concise description of what you expected to happen."
-      
+
   - type: textarea
     attributes:
       label: "Screenshots"

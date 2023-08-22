@@ -185,7 +185,7 @@ definitions:
         type: string
       platform:
         allOf:
-        - $ref: '#/definitions/github_com_opencontainers_image-spec_specs-go_v1.Platform'
+        - $ref: '#/definitions/v1.Platform'
         description: |-
           Platform describes the platform which the image in the manifest runs on.
 
@@ -199,7 +199,7 @@ definitions:
           type: string
         type: array
     type: object
-  github_com_opencontainers_image-spec_specs-go_v1.Platform:
+  v1.Platform:
     properties:
       architecture:
         description: |-
