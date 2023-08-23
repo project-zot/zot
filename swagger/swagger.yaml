@@ -144,6 +144,9 @@ definitions:
         type: object
     type: object
   extensions.OpenIDProviderConfig:
+    properties:
+      name:
+        type: string
     type: object
   extensions.StrippedConfig:
     properties:

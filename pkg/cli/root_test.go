@@ -958,7 +958,7 @@ func TestVerify(t *testing.T) {
 		defer os.Remove(tmpfile.Name()) // clean up
 		content := []byte(`{"distSpecVersion":"1.1.0-dev","storage":{"rootDirectory":"/tmp/zot"},
 							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
-							"auth":{"openid":{"providers":{"dex":{"issuer":"http://127.0.0.1:5556/dex"}}}}},
+							"auth":{"openid":{"providers":{"oidc":{"issuer":"http://127.0.0.1:5556/dex"}}}}},
 							"log":{"level":"debug"}}`)
 		_, err = tmpfile.Write(content)
 		So(err, ShouldBeNil)
@@ -1006,7 +1006,7 @@ func TestVerify(t *testing.T) {
 		defer os.Remove(tmpfile.Name()) // clean up
 		content := []byte(`{"distSpecVersion":"1.1.0-dev","storage":{"rootDirectory":"/tmp/zot"},
 							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
-							"auth":{"openid":{"providers":{"dex":{"issuer":"http://127.0.0.1:5556/dex",
+							"auth":{"openid":{"providers":{"oidc":{"issuer":"http://127.0.0.1:5556/dex",
 						    "clientid":"client_id","scopes":["openid"]}}}}},
 							"log":{"level":"debug"}}`)
 		_, err = tmpfile.Write(content)
@@ -1225,7 +1225,7 @@ func TestApiKeyConfig(t *testing.T) {
 
 		content := []byte(`{"distSpecVersion":"1.1.0-dev","storage":{"rootDirectory":"/tmp/zot"},
 							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
-							"auth":{"openid":{"providers":{"dex":{"issuer":"http://127.0.0.1:5556/dex",
+							"auth":{"openid":{"providers":{"oidc":{"issuer":"http://127.0.0.1:5556/dex",
 						    "clientid":"client_id","scopes":["openid"]}}}}},
 							"log":{"level":"debug"}}`)
 

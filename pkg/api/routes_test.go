@@ -66,7 +66,7 @@ func TestRoutes(t *testing.T) {
 			},
 			OpenID: &config.OpenIDConfig{
 				Providers: map[string]config.OpenIDProviderConfig{
-					"dex": {
+					"oidc": {
 						ClientID:     mockOIDCConfig.ClientID,
 						ClientSecret: mockOIDCConfig.ClientSecret,
 						KeyPath:      "",

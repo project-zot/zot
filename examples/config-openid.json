@@ -34,7 +34,8 @@
             "clientsecret": "client_secret",
             "scopes": ["openid", "read_api", "read_user", "profile", "email"]
           },
-          "dex": {
+          "oidc": {
+            "name": "Corporate SSO",
             "issuer": "http://127.0.0.1:5556/dex",
             "clientid": "client_id",
             "clientsecret": "client_secret",

@@ -17,8 +17,8 @@ var (
 	BinaryType string //nolint: gochecknoglobals
 	GoVersion  string //nolint: gochecknoglobals
 
-	openIDSupportedProviders = [...]string{"google", "gitlab", "dex"} //nolint: gochecknoglobals
-	oauth2SupportedProviders = [...]string{"github"}                  //nolint: gochecknoglobals
+	openIDSupportedProviders = [...]string{"google", "gitlab", "oidc"} //nolint: gochecknoglobals
+	oauth2SupportedProviders = [...]string{"github"}                   //nolint: gochecknoglobals
 
 )
 
@@ -64,6 +64,7 @@ type OpenIDConfig struct {
 }
 
 type OpenIDProviderConfig struct {
+	Name         string
 	ClientID     string
 	ClientSecret string
 	KeyPath      string

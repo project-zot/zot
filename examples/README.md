@@ -228,7 +228,7 @@ To configure zot as a client in dex (assuming zot is hosted at 127.0.0.1:8080), 
 staticClients:
   - id: zot-client
     redirectURIs:
-      - 'http://127.0.0.1:8080/auth/callback/dex'
+      - 'http://127.0.0.1:8080/auth/callback/oidc'
     name: 'zot'
     secret: ZXhhbXBsZS1hcHAtc2VjcmV0
 ```
@@ -240,7 +240,8 @@ zot can be configured to use dex with:
     "auth": {
       "openid": {
         "providers": {
-          "dex": {
+          "oidc": {
+            "name": "Corporate SSO",
             "clientid": "zot-client",
             "clientsecret": "ZXhhbXBsZS1hcHAtc2VjcmV0",
             "keypath": "",
@@ -253,7 +254,7 @@ zot can be configured to use dex with:
   }
 ```
 
-To login using openid dex provider use http://127.0.0.1:8080/auth/login?provider=dex
+To login using openid dex provider use http://127.0.0.1:8080/auth/login?provider=oidc
 
 NOTE: Social login is not supported by command line tools, or other software responsible for pushing/pulling
 images to/from zot.
@@ -313,7 +314,9 @@ To activate API keys use:
 ```
   "http": {
     "auth": {
-      "apikey: true
+      "apikey": true
+    }
+  }
 ```
 
 ##### How to create an API Key
@@ -384,6 +387,8 @@ Should authentication fail, to prevent automated attacks, a delayed response can
   "http": {
     "auth": {
       "failDelay": 5
+    }
+  }
 ```
 
 ## Identity-based Authorization
@@ -473,7 +478,7 @@ The number of workers for the task scheduler has the default value of runtime.Nu
 ```
  "scheduler": {
         "numWorkers": 3
-    
+ }
 ```
 
 ## Logging

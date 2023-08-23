@@ -459,7 +459,7 @@ func TestObjectStorageController(t *testing.T) {
 		conf.HTTP.Auth = &config.AuthConfig{
 			OpenID: &config.OpenIDConfig{
 				Providers: map[string]config.OpenIDProviderConfig{
-					"dex": {
+					"oidc": {
 						ClientID:     mockOIDCConfig.ClientID,
 						ClientSecret: mockOIDCConfig.ClientSecret,
 						KeyPath:      "",
@@ -2535,7 +2535,7 @@ func TestNewRelyingPartyOIDC(t *testing.T) {
 		conf.HTTP.Auth = &config.AuthConfig{
 			OpenID: &config.OpenIDConfig{
 				Providers: map[string]config.OpenIDProviderConfig{
-					"dex": {
+					"oidc": {
 						ClientID:     mockOIDCConfig.ClientID,
 						ClientSecret: mockOIDCConfig.ClientSecret,
 						KeyPath:      "",
@@ -2551,11 +2551,11 @@ func TestNewRelyingPartyOIDC(t *testing.T) {
 		})
 
 		Convey("key path not found on disk", func() {
-			dexProviderCfg := conf.HTTP.Auth.OpenID.Providers["dex"]
-			dexProviderCfg.KeyPath = "path/to/file"
-			conf.HTTP.Auth.OpenID.Providers["dex"] = dexProviderCfg
+			oidcProviderCfg := conf.HTTP.Auth.OpenID.Providers["oidc"]
+			oidcProviderCfg.KeyPath = "path/to/file"
+			conf.HTTP.Auth.OpenID.Providers["oidc"] = oidcProviderCfg
 
-			So(func() { _ = api.NewRelyingPartyOIDC(conf, "dex") }, ShouldPanic)
+			So(func() { _ = api.NewRelyingPartyOIDC(conf, "oidc") }, ShouldPanic)
 		})
 
 		Convey("https callback", func() {
@@ -2564,25 +2564,25 @@ func TestNewRelyingPartyOIDC(t *testing.T) {
 				Key:  ServerKey,
 			}
 
-			rp := api.NewRelyingPartyOIDC(conf, "dex")
+			rp := api.NewRelyingPartyOIDC(conf, "oidc")
 			So(rp, ShouldNotBeNil)
 		})
 
 		Convey("no client secret in config", func() {
-			dexProvider := conf.HTTP.Auth.OpenID.Providers["dex"]
-			dexProvider.ClientSecret = ""
-			conf.HTTP.Auth.OpenID.Providers["dex"] = dexProvider
+			oidcProvider := conf.HTTP.Auth.OpenID.Providers["oidc"]
+			oidcProvider.ClientSecret = ""
+			conf.HTTP.Auth.OpenID.Providers["oidc"] = oidcProvider
 
-			rp := api.NewRelyingPartyOIDC(conf, "dex")
+			rp := api.NewRelyingPartyOIDC(conf, "oidc")
 			So(rp, ShouldNotBeNil)
 		})
 
 		Convey("provider issuer unreachable", func() {
-			dexProvider := conf.HTTP.Auth.OpenID.Providers["dex"]
-			dexProvider.Issuer = ""
-			conf.HTTP.Auth.OpenID.Providers["dex"] = dexProvider
+			oidcProvider := conf.HTTP.Auth.OpenID.Providers["oidc"]
+			oidcProvider.Issuer = ""
+			conf.HTTP.Auth.OpenID.Providers["oidc"] = oidcProvider
 
-			So(func() { _ = api.NewRelyingPartyOIDC(conf, "dex") }, ShouldPanic)
+			So(func() { _ = api.NewRelyingPartyOIDC(conf, "oidc") }, ShouldPanic)
 		})
 	})
 }
@@ -2657,7 +2657,7 @@ func TestOpenIDMiddleware(t *testing.T) {
 		},
 		OpenID: &config.OpenIDConfig{
 			Providers: map[string]config.OpenIDProviderConfig{
-				"dex": {
+				"oidc": {
 					ClientID:     mockOIDCConfig.ClientID,
 					ClientSecret: mockOIDCConfig.ClientSecret,
 					KeyPath:      "",
@@ -2727,7 +2727,7 @@ func TestOpenIDMiddleware(t *testing.T) {
 						// first login user
 						resp, err := client.R().
 							SetHeader(constants.SessionClientHeaderName, constants.SessionClientHeaderValue).
-							SetQueryParam("provider", "dex").
+							SetQueryParam("provider", "oidc").
 							SetQueryParam("callback_ui", baseURL+"/v2/").
 							Get(baseURL + constants.LoginPath)
 						So(err, ShouldBeNil)
@@ -2738,7 +2738,7 @@ func TestOpenIDMiddleware(t *testing.T) {
 					// first login user
 					resp, err := client.R().
 						SetHeader(constants.SessionClientHeaderName, constants.SessionClientHeaderValue).
-						SetQueryParam("provider", "dex").
+						SetQueryParam("provider", "oidc").
 						Get(baseURL + constants.LoginPath)
 					So(err, ShouldBeNil)
 					So(resp, ShouldNotBeNil)
@@ -3081,7 +3081,7 @@ func TestAuthnSessionErrors(t *testing.T) {
 			},
 			OpenID: &config.OpenIDConfig{
 				Providers: map[string]config.OpenIDProviderConfig{
-					"dex": {
+					"oidc": {
 						ClientID:     mockOIDCConfig.ClientID,
 						ClientSecret: mockOIDCConfig.ClientSecret,
 						KeyPath:      "",
@@ -3161,7 +3161,7 @@ func TestAuthnSessionErrors(t *testing.T) {
 
 			resp, err := client.R().
 				SetHeader(constants.SessionClientHeaderName, constants.SessionClientHeaderValue).
-				SetQueryParam("provider", "dex").
+				SetQueryParam("provider", "oidc").
 				Get(baseURL + constants.LoginPath)
 			So(err, ShouldBeNil)
 			So(resp, ShouldNotBeNil)
@@ -3182,7 +3182,7 @@ func TestAuthnSessionErrors(t *testing.T) {
 			// first login user
 			resp, err := client.R().
 				SetHeader(constants.SessionClientHeaderName, constants.SessionClientHeaderValue).
-				SetQueryParam("provider", "dex").
+				SetQueryParam("provider", "oidc").
 				Get(baseURL + constants.LoginPath)
 			So(err, ShouldBeNil)
 			So(resp, ShouldNotBeNil)
@@ -3242,7 +3242,7 @@ func TestAuthnSessionErrors(t *testing.T) {
 
 			// call endpoint with session (added to client after previous request)
 			resp, err := client.R().
-				SetQueryParam("provider", "dex").
+				SetQueryParam("provider", "oidc").
 				Get(baseURL + constants.LoginPath)
 			So(err, ShouldBeNil)
 			So(resp, ShouldNotBeNil)
@@ -3264,7 +3264,7 @@ func TestAuthnSessionErrors(t *testing.T) {
 			// first login user
 			resp, err := client.R().
 				SetHeader(constants.SessionClientHeaderName, constants.SessionClientHeaderValue).
-				SetQueryParam("provider", "dex").
+				SetQueryParam("provider", "oidc").
 				Get(baseURL + constants.LoginPath)
 			So(err, ShouldBeNil)
 			So(resp, ShouldNotBeNil)
@@ -3311,7 +3311,7 @@ func TestAuthnSessionErrors(t *testing.T) {
 			// first login user
 			resp, err := client.R().
 				SetHeader(constants.SessionClientHeaderName, constants.SessionClientHeaderValue).
-				SetQueryParam("provider", "dex").
+				SetQueryParam("provider", "oidc").
 				Get(baseURL + constants.LoginPath)
 			So(err, ShouldBeNil)
 			So(resp, ShouldNotBeNil)
@@ -3463,7 +3463,7 @@ func TestAuthnMetaDBErrors(t *testing.T) {
 			},
 			OpenID: &config.OpenIDConfig{
 				Providers: map[string]config.OpenIDProviderConfig{
-					"dex": {
+					"oidc": {
 						ClientID:     mockOIDCConfig.ClientID,
 						ClientSecret: mockOIDCConfig.ClientSecret,
 						KeyPath:      "",
@@ -3513,7 +3513,7 @@ func TestAuthnMetaDBErrors(t *testing.T) {
 			// first login user
 			resp, err := client.R().
 				SetHeader(constants.SessionClientHeaderName, constants.SessionClientHeaderValue).
-				SetQueryParam("provider", "dex").
+				SetQueryParam("provider", "oidc").
 				Get(baseURL + constants.LoginPath)
 			So(err, ShouldBeNil)
 			So(resp, ShouldNotBeNil)
@@ -3591,7 +3591,7 @@ func TestAuthorization(t *testing.T) {
 			conf.HTTP.Auth = &config.AuthConfig{
 				OpenID: &config.OpenIDConfig{
 					Providers: map[string]config.OpenIDProviderConfig{
-						"dex": {
+						"oidc": {
 							ClientID:     mockOIDCConfig.ClientID,
 							ClientSecret: mockOIDCConfig.ClientSecret,
 							KeyPath:      "",
@@ -3625,7 +3625,7 @@ func TestAuthorization(t *testing.T) {
 			// first login user
 			resp, err := client.R().
 				SetHeader(constants.SessionClientHeaderName, constants.SessionClientHeaderValue).
-				SetQueryParam("provider", "dex").
+				SetQueryParam("provider", "oidc").
 				Get(baseURL + constants.LoginPath)
 			So(err, ShouldBeNil)
 			So(resp, ShouldNotBeNil)
@@ -4212,7 +4212,7 @@ func TestAuthorizationWithMultiplePolicies(t *testing.T) {
 			conf.HTTP.Auth = &config.AuthConfig{
 				OpenID: &config.OpenIDConfig{
 					Providers: map[string]config.OpenIDProviderConfig{
-						"dex": {
+						"oidc": {
 							ClientID:     mockOIDCConfig.ClientID,
 							ClientSecret: mockOIDCConfig.ClientSecret,
 							KeyPath:      "",
@@ -4246,7 +4246,7 @@ func TestAuthorizationWithMultiplePolicies(t *testing.T) {
 			// first login user
 			resp, err := testUserClient.R().
 				SetHeader(constants.SessionClientHeaderName, constants.SessionClientHeaderValue).
-				SetQueryParam("provider", "dex").
+				SetQueryParam("provider", "oidc").
 				Get(baseURL + constants.LoginPath)
 			So(err, ShouldBeNil)
 			So(resp, ShouldNotBeNil)
@@ -4267,7 +4267,7 @@ func TestAuthorizationWithMultiplePolicies(t *testing.T) {
 			// first login user
 			resp, err = bobUserClient.R().
 				SetHeader(constants.SessionClientHeaderName, constants.SessionClientHeaderValue).
-				SetQueryParam("provider", "dex").
+				SetQueryParam("provider", "oidc").
 				Get(baseURL + constants.LoginPath)
 			So(err, ShouldBeNil)
 			So(resp, ShouldNotBeNil)

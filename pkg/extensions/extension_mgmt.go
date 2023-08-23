@@ -24,7 +24,9 @@ type BearerConfig struct {
 	Service string `json:"service,omitempty"`
 }
 
-type OpenIDProviderConfig struct{}
+type OpenIDProviderConfig struct {
+	Name string `json:"name,omitempty" mapstructure:"name"`
+}
 
 type OpenIDConfig struct {
 	Providers map[string]OpenIDProviderConfig `json:"providers,omitempty" mapstructure:"providers"`
