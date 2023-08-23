@@ -55,7 +55,7 @@ add-extensions = $(subst $(1),$(2),$(sort $(filter-valid)))
 BUILD_LABELS = $(call add-extensions,$(space),$(comma))
 
 .PHONY: all
-all: modcheck swagger binary binary-minimal binary-debug cli bench exporter-minimal verify-config test covhtml check check-gh-actions
+all: modcheck swaggercheck binary binary-minimal binary-debug cli bench exporter-minimal verify-config test covhtml check check-gh-actions
 
 .PHONY: modtidy
 modtidy:
@@ -66,6 +66,15 @@ modcheck: modtidy
 	$(eval UNCOMMITED_FILES = $(shell git status --porcelain | grep -c 'go.mod\|go.sum'))
 	@if [ $(UNCOMMITED_FILES) != 0 ]; then \
 		echo "Updated go.mod and/or go.sum have uncommitted changes, commit the changes accordingly ";\
+		git status;\
+		exit 1;\
+	fi
+
+.PHONY: swaggercheck
+swaggercheck: swagger
+	$(eval UNCOMMITED_FILES = $(shell git status --porcelain | grep -c swagger))
+	@if [ $(UNCOMMITED_FILES) != 0 ]; then \
+		echo "Updated swagger files uncommitted, make sure all swagger files are committed:";\
 		git status;\
 		exit 1;\
 	fi
@@ -95,7 +104,7 @@ binary: modcheck create-name build-metadata
 
 .PHONY: binary-debug
 binary-debug: $(if $(findstring ui,$(BUILD_LABELS)), ui)
-binary-debug: modcheck swagger create-name build-metadata
+binary-debug: modcheck swaggercheck create-name build-metadata
 	env CGO_ENABLED=0 GOOS=$(OS) GOARCH=$(ARCH) go build -o bin/zot-$(OS)-$(ARCH)-debug $(BUILDMODE_FLAGS) -tags $(BUILD_LABELS),debug,containers_image_openpgp -v -gcflags all='-N -l' -ldflags "-X zotregistry.io/zot/pkg/api/config.ReleaseTag=${RELEASE_TAG} -X zotregistry.io/zot/pkg/api/config.Commit=${COMMIT} -X zotregistry.io/zot/pkg/api/config.BinaryType=$(extended-name) -X zotregistry.io/zot/pkg/api/config.GoVersion=${GO_VERSION}" ./cmd/zot
 
 .PHONY: cli

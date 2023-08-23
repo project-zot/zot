@@ -1399,7 +1399,7 @@ const docTemplate = `{
                     "description": "Platform describes the platform which the image in the manifest runs on.\n\nThis should only be used when referring to a manifest.",
                     "allOf": [
                         {
-                            "$ref": "#/definitions/github_com_opencontainers_image-spec_specs-go_v1.Platform"
+                            "$ref": "#/definitions/v1.Platform"
                         }
                     ]
                 },
@@ -1416,7 +1416,7 @@ const docTemplate = `{
                 }
             }
         },
-        "github_com_opencontainers_image-spec_specs-go_v1.Platform": {
+        "v1.Platform": {
             "type": "object",
             "properties": {
                 "architecture": {

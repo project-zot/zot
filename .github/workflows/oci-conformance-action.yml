@@ -6,7 +6,7 @@ name: conformance
 # or API.
 on:
   push:
-    branches: 
+    branches:
       - main
   pull_request:
     branches:
@@ -25,7 +25,7 @@ jobs:
       with:
         cache: false
         go-version: 1.20.x
-    - name: Checkout this PR 
+    - name: Checkout this PR
       uses: actions/checkout@v3
     - name: Start zot server
       run: |
@@ -57,7 +57,7 @@ jobs:
         OCI_REFERRERS: 1
         OCI_CROSSMOUNT_NAMESPACE: oci-conformance/crossmount-test
       run: |
-        ./conformance.test 
+        ./conformance.test
     - run: mkdir -p .out/ && mv {report.html,junit.xml} .out/
       if: always()
     - name: Upload test results zip as build artifact

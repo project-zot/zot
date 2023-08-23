@@ -35,7 +35,7 @@ jobs:
       - name: Install dependencies
         run: |
           cd $GITHUB_WORKSPACE
-          go install github.com/swaggo/swag/cmd/swag
+          go install github.com/swaggo/swag/cmd/swag@v1.8.12
           go mod download
           sudo apt-get update
           sudo apt-get -y install rpm uidmap
@@ -56,7 +56,7 @@ jobs:
                 minio/minio:edge-cicd server /data
       - name: Install py minio
         run: pip3 install minio
-        
+
       - name: Wait for minio to come up
         run: |
           curl --connect-timeout 5 \
@@ -64,7 +64,7 @@ jobs:
             --retry 12 \
             --retry-max-time 120 \
             'http://localhost:9000/minio/health/live'
-          
+
       - name: Create minio bucket
         run: |
             python3 - <<'EOF'
@@ -88,7 +88,7 @@ jobs:
         run: |
             sudo haproxy -d -f examples/cluster/haproxy.cfg -D
             sleep 10
-      
+
       - name: Prepare configuration files
         run: |
             cp test/cluster/config-minio.json test/cluster/config-minio1.json
@@ -96,7 +96,7 @@ jobs:
             cp test/cluster/config-minio.json test/cluster/config-minio2.json
             sed -i 's/8082/8083/g' test/cluster/config-minio.json
             cp test/cluster/config-minio.json test/cluster/config-minio3.json
-            
+
       - name: Run push-pull tests
         run: |
             make binary
@@ -124,7 +124,7 @@ jobs:
         env:
           AWS_ACCESS_KEY_ID: minioadmin
           AWS_SECRET_ACCESS_KEY: minioadmin
-      
+
       - name: Run benchmark with --src-cidr arg
         run: |
             make bench
@@ -142,7 +142,7 @@ jobs:
         env:
           AWS_ACCESS_KEY_ID: minioadmin
           AWS_SECRET_ACCESS_KEY: minioadmin
-      
+
       - name: Run benchmark with --src-ips arg
         run: |
             make bench
@@ -152,12 +152,12 @@ jobs:
             sleep 10
             # run zb with --src-ips
             bin/zb-linux-amd64 -c 10 -n 50 -o ci-cd --src-ips 127.0.0.2,127.0.0.3,127.0.0.4,127.0.0.5,127.0.0.6,127.0.12.5,127.0.12.6 http://localhost:8080
-  
+
             killall -r zot-*
         env:
           AWS_ACCESS_KEY_ID: minioadmin
           AWS_SECRET_ACCESS_KEY: minioadmin
-  
+
       # Download previous benchmark result from cache (if exists)
       - name: Download previous benchmark data
         uses: actions/cache@v3

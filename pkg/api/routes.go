@@ -452,7 +452,6 @@ func (rh *RouteHandler) CheckManifest(response http.ResponseWriter, request *htt
 	response.WriteHeader(http.StatusOK)
 }
 
-// NOTE: https://github.com/swaggo/swag/issues/387.
 type ImageManifest struct {
 	ispec.Manifest
 }
