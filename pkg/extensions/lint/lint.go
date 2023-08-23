@@ -105,7 +105,7 @@ func (linter *Linter) CheckMandatoryAnnotations(repo string, manifestDigest godi
 			string(manifestDigest), string(configDigest), missingAnnotations)
 		linter.log.Error().Msg(msg)
 
-		return false, fmt.Errorf("%s: %w", msg, zerr.ErrImageLintAnnotations)
+		return false, zerr.NewError(zerr.ErrImageLintAnnotations).AddDetail("missingAnnotations", msg)
 	}
 
 	return true, nil

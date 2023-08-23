@@ -10,6 +10,6 @@ import (
 
 func TestUnknownCodeError(t *testing.T) {
 	Convey("Retrieve a new error with unknown code", t, func() {
-		So(func() { _ = apiErr.NewError(123456789, nil) }, ShouldPanic)
+		So(func() { _ = apiErr.NewError(123456789) }, ShouldPanic)
 	})
 }

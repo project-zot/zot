@@ -1,16 +1,57 @@
 package errors
 
-import "errors"
+import (
+	"errors"
+)
+
+type Error struct {
+	err     error
+	details map[string]string
+}
+
+func (e *Error) Error() string {
+	return e.err.Error()
+}
+
+func (e *Error) Is(target error) bool {
+	return errors.Is(e.err, target)
+}
+
+func (e *Error) AddDetail(key, value string) *Error {
+	e.details[key] = value
+
+	return e
+}
+
+func (e *Error) GetDetails() map[string]string {
+	return e.details
+}
+
+func NewError(err error) *Error {
+	return &Error{
+		err:     err,
+		details: GetDetails(err), // preserve details if chained error
+	}
+}
+
+func GetDetails(err error) map[string]string {
+	var internalErr *Error
+	details := make(map[string]string)
+
+	if errors.As(err, &internalErr) {
+		details = internalErr.GetDetails()
+	}
+
+	return details
+}
 
 var (
 	ErrBadConfig                      = errors.New("config: invalid config")
 	ErrCliBadConfig                   = errors.New("cli: bad config")
 	ErrRepoNotFound                   = errors.New("repository: not found")
-	ErrRepoIsNotDir                   = errors.New("repository: not a directory")
 	ErrRepoBadVersion                 = errors.New("repository: unsupported layout version")
 	ErrManifestNotFound               = errors.New("manifest: not found")
 	ErrBadManifest                    = errors.New("manifest: invalid contents")
-	ErrBadIndex                       = errors.New("index: invalid contents")
 	ErrUploadNotFound                 = errors.New("uploads: not found")
 	ErrBadUploadRange                 = errors.New("uploads: bad range")
 	ErrBlobNotFound                   = errors.New("blob: not found")

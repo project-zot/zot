@@ -36,7 +36,7 @@ import (
 	"zotregistry.io/zot/pkg/api/config"
 	"zotregistry.io/zot/pkg/api/constants"
 	apiErr "zotregistry.io/zot/pkg/api/errors"
-	"zotregistry.io/zot/pkg/common"
+	zcommon "zotregistry.io/zot/pkg/common"
 	"zotregistry.io/zot/pkg/log"
 	localCtx "zotregistry.io/zot/pkg/requestcontext"
 	storageConstants "zotregistry.io/zot/pkg/storage/constants"
@@ -463,7 +463,7 @@ func bearerAuthHandler(ctlr *Controller) mux.MiddlewareFunc {
 			if err != nil {
 				ctlr.Log.Error().Err(err).Msg("issue parsing Authorization header")
 				response.Header().Set("Content-Type", "application/json")
-				common.WriteJSON(response, http.StatusInternalServerError, apiErr.NewErrorList(apiErr.NewError(apiErr.UNSUPPORTED)))
+				zcommon.WriteJSON(response, http.StatusInternalServerError, apiErr.NewError(apiErr.UNSUPPORTED))
 
 				return
 			}
@@ -472,8 +472,7 @@ func bearerAuthHandler(ctlr *Controller) mux.MiddlewareFunc {
 				response.Header().Set("Content-Type", "application/json")
 				response.Header().Set("WWW-Authenticate", permissions.WWWAuthenticateHeader)
 
-				common.WriteJSON(response, http.StatusUnauthorized,
-					apiErr.NewErrorList(apiErr.NewError(apiErr.UNAUTHORIZED)))
+				zcommon.WriteJSON(response, http.StatusUnauthorized, apiErr.NewError(apiErr.UNAUTHORIZED))
 
 				return
 			}
@@ -591,7 +590,7 @@ func getRelyingPartyArgs(cfg *config.Config, provider string) (
 
 	scopes := cfg.HTTP.Auth.OpenID.Providers[provider].Scopes
 	// openid scope must be the first one in list
-	if !common.Contains(scopes, oidc.ScopeOpenID) && config.IsOpenIDSupported(provider) {
+	if !zcommon.Contains(scopes, oidc.ScopeOpenID) && config.IsOpenIDSupported(provider) {
 		scopes = append([]string{oidc.ScopeOpenID}, scopes...)
 	}
 
@@ -663,7 +662,7 @@ func authFail(w http.ResponseWriter, r *http.Request, realm string, delay int) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	common.WriteJSON(w, http.StatusUnauthorized, apiErr.NewErrorList(apiErr.NewError(apiErr.UNAUTHORIZED)))
+	zcommon.WriteJSON(w, http.StatusUnauthorized, apiErr.NewError(apiErr.UNAUTHORIZED))
 }
 
 func isAuthorizationHeaderEmpty(request *http.Request) bool {

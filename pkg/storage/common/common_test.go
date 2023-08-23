@@ -3,6 +3,7 @@ package storage_test
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"os"
 	"testing"
 
@@ -12,7 +13,7 @@ import (
 	"github.com/rs/zerolog"
 	. "github.com/smartystreets/goconvey/convey"
 
-	"zotregistry.io/zot/errors"
+	zerr "zotregistry.io/zot/errors"
 	"zotregistry.io/zot/pkg/extensions/monitoring"
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/storage"
@@ -74,6 +75,10 @@ func TestValidateManifest(t *testing.T) {
 
 			_, _, err = imgStore.PutImageManifest("test", "1.0", ispec.MediaTypeImageManifest, body)
 			So(err, ShouldNotBeNil)
+			var internalErr *zerr.Error
+			So(errors.As(err, &internalErr), ShouldBeTrue)
+			So(internalErr.GetDetails(), ShouldContainKey, "jsonSchemaValidation")
+			So(internalErr.GetDetails()["jsonSchemaValidation"], ShouldEqual, "[schemaVersion: Must be less than or equal to 2]")
 		})
 
 		Convey("manifest with non-distributable layers", func() {
@@ -169,7 +174,7 @@ func TestGetReferrersErrors(t *testing.T) {
 					return indexBuf, nil
 				},
 				GetBlobContentFn: func(repo string, digest godigest.Digest) ([]byte, error) {
-					return []byte{}, errors.ErrBlobNotFound
+					return []byte{}, zerr.ErrBlobNotFound
 				},
 			}
 
@@ -188,7 +193,7 @@ func TestGetReferrersErrors(t *testing.T) {
 					return indexBuf, nil
 				},
 				GetBlobContentFn: func(repo string, digest godigest.Digest) ([]byte, error) {
-					return []byte{}, errors.ErrBadBlob
+					return []byte{}, zerr.ErrBadBlob
 				},
 			}
 
@@ -363,7 +368,7 @@ func TestGetImageIndexErrors(t *testing.T) {
 	Convey("Trigger GetBlobContent error", t, func(c C) {
 		imgStore := &mocks.MockedImageStore{
 			GetBlobContentFn: func(repo string, digest godigest.Digest) ([]byte, error) {
-				return []byte{}, errors.ErrBlobNotFound
+				return []byte{}, zerr.ErrBlobNotFound
 			},
 		}
 
