@@ -95,7 +95,7 @@ func TestAPIKeys(t *testing.T) {
 			},
 			OpenID: &config.OpenIDConfig{
 				Providers: map[string]config.OpenIDProviderConfig{
-					"dex": {
+					"oidc": {
 						ClientID:     mockOIDCConfig.ClientID,
 						ClientSecret: mockOIDCConfig.ClientSecret,
 						KeyPath:      "",
@@ -188,7 +188,7 @@ func TestAPIKeys(t *testing.T) {
 			// first login user
 			resp, err := client.R().
 				SetHeader(constants.SessionClientHeaderName, constants.SessionClientHeaderValue).
-				SetQueryParam("provider", "dex").
+				SetQueryParam("provider", "oidc").
 				Get(baseURL + constants.LoginPath)
 			So(err, ShouldBeNil)
 			So(resp, ShouldNotBeNil)
@@ -303,7 +303,7 @@ func TestAPIKeys(t *testing.T) {
 			// first login user
 			resp, err = client.R().
 				SetHeader(constants.SessionClientHeaderName, constants.SessionClientHeaderValue).
-				SetQueryParam("provider", "dex").
+				SetQueryParam("provider", "oidc").
 				Get(baseURL + constants.LoginPath)
 			So(err, ShouldBeNil)
 			So(resp, ShouldNotBeNil)
@@ -406,7 +406,7 @@ func TestAPIKeys(t *testing.T) {
 			// login again
 			resp, err = client.R().
 				SetHeader(constants.SessionClientHeaderName, constants.SessionClientHeaderValue).
-				SetQueryParam("provider", "dex").
+				SetQueryParam("provider", "oidc").
 				Get(baseURL + constants.LoginPath)
 			So(err, ShouldBeNil)
 			So(resp, ShouldNotBeNil)
@@ -533,7 +533,7 @@ func TestAPIKeysOpenDBError(t *testing.T) {
 
 			OpenID: &config.OpenIDConfig{
 				Providers: map[string]config.OpenIDProviderConfig{
-					"dex": {
+					"oidc": {
 						ClientID:     mockOIDCConfig.ClientID,
 						ClientSecret: mockOIDCConfig.ClientSecret,
 						KeyPath:      "",

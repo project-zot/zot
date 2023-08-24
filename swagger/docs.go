@@ -1345,7 +1345,12 @@ const docTemplate = `{
             }
         },
         "extensions.OpenIDProviderConfig": {
-            "type": "object"
+            "type": "object",
+            "properties": {
+                "name": {
+                    "type": "string"
+                }
+            }
         },
         "extensions.StrippedConfig": {
             "type": "object",
