@@ -378,7 +378,7 @@ func DistSpecAuthzHandler(ctlr *Controller) mux.MiddlewareFunc {
 
 			can := acCtrlr.can(request.Context(), identity, action, resource) //nolint:contextcheck
 			if !can {
-				common.AuthzFail(response, request, ctlr.Config.HTTP.Realm, ctlr.Config.HTTP.Auth.FailDelay)
+				common.AuthzFail(response, request, identity, ctlr.Config.HTTP.Realm, ctlr.Config.HTTP.Auth.FailDelay)
 			} else {
 				next.ServeHTTP(response, request) //nolint:contextcheck
 			}

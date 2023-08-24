@@ -1447,7 +1447,7 @@ func TestTLSWithBasicAuthAllowReadAccess(t *testing.T) {
 		// without creds, writes should fail
 		resp, err = resty.R().Post(secureBaseURL + "/v2/repo/blobs/uploads/")
 		So(err, ShouldBeNil)
-		So(resp.StatusCode(), ShouldEqual, http.StatusForbidden)
+		So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
 	})
 }
 
@@ -1719,7 +1719,7 @@ func TestTLSMutualAuthAllowReadAccess(t *testing.T) {
 		// without creds, writes should fail
 		resp, err = resty.R().Post(secureBaseURL + "/v2/repo/blobs/uploads/")
 		So(err, ShouldBeNil)
-		So(resp.StatusCode(), ShouldEqual, http.StatusForbidden)
+		So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
 
 		// setup TLS mutual auth
 		cert, err := tls.LoadX509KeyPair("../../test/data/client.cert", "../../test/data/client.key")
@@ -1897,7 +1897,7 @@ func TestTLSMutualAndBasicAuthAllowReadAccess(t *testing.T) {
 		// with only client certs, writes should fail
 		resp, err = resty.R().Post(secureBaseURL + "/v2/repo/blobs/uploads/")
 		So(err, ShouldBeNil)
-		So(resp.StatusCode(), ShouldEqual, http.StatusForbidden)
+		So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
 
 		// with client certs and creds, should get expected status code
 		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(secureBaseURL)
@@ -3757,7 +3757,7 @@ func TestAuthorizationWithOnlyAnonymousPolicy(t *testing.T) {
 		resp, err = resty.R().Post(baseURL + "/v2/" + TestRepo + "/blobs/uploads/")
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, http.StatusForbidden)
+		So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
 
 		if entry, ok := conf.HTTP.AccessControl.Repositories[TestRepo]; ok {
 			entry.AnonymousPolicy = []string{"create", "read"}
@@ -3867,7 +3867,7 @@ func TestAuthorizationWithOnlyAnonymousPolicy(t *testing.T) {
 			Put(baseURL + "/v2/" + TestRepo + "/manifests/0.0.2")
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, http.StatusForbidden)
+		So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
 
 		// get the manifest and check if it's the old one
 		resp, err = resty.R().
