@@ -326,7 +326,7 @@ func (c *Config) AreUserPrefsEnabled() bool {
 }
 
 func (c *Config) IsMgmtEnabled() bool {
-	return c.IsSearchEnabled() && c.IsUIEnabled()
+	return c.IsSearchEnabled()
 }
 
 func (c *Config) IsImageTrustEnabled() bool {
