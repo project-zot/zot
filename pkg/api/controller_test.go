@@ -8538,17 +8538,17 @@ func TestDistSpecExtensions(t *testing.T) {
 		So(err, ShouldBeNil)
 		t.Log(extensionList.Extensions)
 		So(len(extensionList.Extensions), ShouldEqual, 1)
-		So(len(extensionList.Extensions[0].Endpoints), ShouldEqual, 1)
+		So(len(extensionList.Extensions[0].Endpoints), ShouldEqual, 2)
 		So(extensionList.Extensions[0].Name, ShouldEqual, "_zot")
 		So(extensionList.Extensions[0].URL, ShouldContainSubstring, "_zot.md")
 		So(extensionList.Extensions[0].Description, ShouldNotBeEmpty)
 		// Verify the endpoints below are enabled by search
 		So(extensionList.Extensions[0].Endpoints, ShouldContain, constants.FullSearchPrefix)
+		So(extensionList.Extensions[0].Endpoints, ShouldContain, constants.FullMgmt)
 		// Verify the endpoints below are not enabled since trust is not enabled
 		So(extensionList.Extensions[0].Endpoints, ShouldNotContain, constants.FullCosign)
 		So(extensionList.Extensions[0].Endpoints, ShouldNotContain, constants.FullNotation)
 		// Verify the endpoints below are not enabled since the UI is not enabled
-		So(extensionList.Extensions[0].Endpoints, ShouldNotContain, constants.FullMgmt)
 		So(extensionList.Extensions[0].Endpoints, ShouldNotContain, constants.FullUserPrefs)
 	})
 
