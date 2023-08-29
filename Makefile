@@ -393,11 +393,11 @@ test-bats-metadata: check-linux binary check-skopeo $(BATS)
 
 .PHONY: test-cloud-only
 test-cloud-only: check-linux binary check-skopeo $(BATS)
-	$(BATS) --trace --print-output-on-failure test/blackbox/cloud-only.bats
+	$(BATS) --trace --print-output-on-failure test/blackbox/cloud_only.bats
 
 .PHONY: test-cloud-only-verbose
 test-cloud-only-verbose: check-linux binary check-skopeo $(BATS)
-	$(BATS) --trace --verbose-run --print-output-on-failure --show-output-of-passing-tests test/blackbox/cloud-only.bats
+	$(BATS) --trace --verbose-run --print-output-on-failure --show-output-of-passing-tests test/blackbox/cloud_only.bats
 
 .PHONY: test-bats-sync
 test-bats-sync: BUILD_LABELS=sync
