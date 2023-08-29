@@ -143,10 +143,11 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 
 		Convey("Test CRUD operations on UserData and API keys", func() {
 			hashKey1 := "id"
-			hashKey2 := "key"
+			label1 := "apiKey1"
+
 			apiKeys := make(map[string]mTypes.APIKeyDetails)
 			apiKeyDetails := mTypes.APIKeyDetails{
-				Label:  "apiKey",
+				Label:  label1,
 				Scopes: []string{"repo"},
 				UUID:   hashKey1,
 			}
@@ -158,99 +159,281 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 				APIKeys: apiKeys,
 			}
 
-			authzCtxKey := localCtx.GetContextKey()
+			Convey("Test basic operations on API keys", func() {
+				hashKey2 := "key"
+				label2 := "apiKey2"
 
-			acCtx := localCtx.AccessControlContext{
-				Username: "test",
-			}
+				authzCtxKey := localCtx.GetContextKey()
+				acCtx := localCtx.AccessControlContext{
+					Username: "test",
+				}
+				ctx := context.WithValue(context.Background(), authzCtxKey, acCtx)
 
-			ctx := context.WithValue(context.Background(), authzCtxKey, acCtx)
+				err := metaDB.AddUserAPIKey(ctx, hashKey1, &apiKeyDetails)
+				So(err, ShouldBeNil)
 
-			err := metaDB.AddUserAPIKey(ctx, hashKey1, &apiKeyDetails)
-			So(err, ShouldBeNil)
+				isExpired, err := metaDB.IsAPIKeyExpired(ctx, hashKey1)
+				So(isExpired, ShouldBeFalse)
+				So(err, ShouldBeNil)
 
-			err = metaDB.SetUserData(ctx, userProfileSrc)
-			So(err, ShouldBeNil)
+				storedAPIKeys, err := metaDB.GetUserAPIKeys(ctx)
+				So(err, ShouldBeNil)
+				So(len(storedAPIKeys), ShouldEqual, 1)
+				So(storedAPIKeys[0], ShouldResemble, apiKeyDetails)
 
-			userProfile, err := metaDB.GetUserData(ctx)
-			So(err, ShouldBeNil)
-			So(userProfile.Groups, ShouldResemble, userProfileSrc.Groups)
-			So(userProfile.APIKeys, ShouldContainKey, hashKey1)
-			So(userProfile.APIKeys[hashKey1].Label, ShouldEqual, apiKeyDetails.Label)
-			So(userProfile.APIKeys[hashKey1].Scopes, ShouldResemble, apiKeyDetails.Scopes)
+				userProfile, err := metaDB.GetUserData(ctx)
+				So(err, ShouldBeNil)
+				So(userProfile.APIKeys, ShouldContainKey, hashKey1)
+				So(userProfile.APIKeys[hashKey1].Label, ShouldEqual, apiKeyDetails.Label)
+				So(userProfile.APIKeys[hashKey1].Scopes, ShouldResemble, apiKeyDetails.Scopes)
 
-			lastUsed := userProfile.APIKeys[hashKey1].LastUsed
+				err = metaDB.SetUserData(ctx, userProfileSrc)
+				So(err, ShouldBeNil)
 
-			err = metaDB.UpdateUserAPIKeyLastUsed(ctx, hashKey1)
-			So(err, ShouldBeNil)
+				userProfile, err = metaDB.GetUserData(ctx)
+				So(err, ShouldBeNil)
+				So(userProfile.Groups, ShouldResemble, userProfileSrc.Groups)
+				So(userProfile.APIKeys, ShouldContainKey, hashKey1)
+				So(userProfile.APIKeys[hashKey1].Label, ShouldEqual, apiKeyDetails.Label)
+				So(userProfile.APIKeys[hashKey1].Scopes, ShouldResemble, apiKeyDetails.Scopes)
 
-			userProfile, err = metaDB.GetUserData(ctx)
-			So(err, ShouldBeNil)
-			So(userProfile.APIKeys[hashKey1].LastUsed, ShouldHappenAfter, lastUsed)
+				storedAPIKeys, err = metaDB.GetUserAPIKeys(ctx)
+				So(err, ShouldBeNil)
+				So(len(storedAPIKeys), ShouldEqual, 1)
+				So(storedAPIKeys[0], ShouldResemble, apiKeyDetails)
 
-			userGroups, err := metaDB.GetUserGroups(ctx)
-			So(err, ShouldBeNil)
-			So(userGroups, ShouldResemble, userProfileSrc.Groups)
+				lastUsed := userProfile.APIKeys[hashKey1].LastUsed
 
-			apiKeyDetails.UUID = hashKey2
-			err = metaDB.AddUserAPIKey(ctx, hashKey2, &apiKeyDetails)
-			So(err, ShouldBeNil)
+				err = metaDB.UpdateUserAPIKeyLastUsed(ctx, hashKey1)
+				So(err, ShouldBeNil)
 
-			userProfile, err = metaDB.GetUserData(ctx)
-			So(err, ShouldBeNil)
-			So(userProfile.Groups, ShouldResemble, userProfileSrc.Groups)
-			So(userProfile.APIKeys, ShouldContainKey, hashKey2)
-			So(userProfile.APIKeys[hashKey2].Label, ShouldEqual, apiKeyDetails.Label)
-			So(userProfile.APIKeys[hashKey2].Scopes, ShouldResemble, apiKeyDetails.Scopes)
+				userProfile, err = metaDB.GetUserData(ctx)
+				So(err, ShouldBeNil)
+				So(userProfile.APIKeys[hashKey1].LastUsed, ShouldHappenAfter, lastUsed)
 
-			email, err := metaDB.GetUserAPIKeyInfo(hashKey2)
-			So(err, ShouldBeNil)
-			So(email, ShouldEqual, "test")
+				storedAPIKeys, err = metaDB.GetUserAPIKeys(ctx)
+				So(err, ShouldBeNil)
+				So(len(storedAPIKeys), ShouldEqual, 1)
+				So(storedAPIKeys[0].LastUsed, ShouldHappenAfter, lastUsed)
 
-			err = metaDB.DeleteUserAPIKey(ctx, hashKey1)
-			So(err, ShouldBeNil)
+				userGroups, err := metaDB.GetUserGroups(ctx)
+				So(err, ShouldBeNil)
+				So(userGroups, ShouldResemble, userProfileSrc.Groups)
 
-			userProfile, err = metaDB.GetUserData(ctx)
-			So(err, ShouldBeNil)
-			So(len(userProfile.APIKeys), ShouldEqual, 1)
-			So(userProfile.APIKeys, ShouldNotContainKey, hashKey1)
+				apiKeyDetails.UUID = hashKey2
+				apiKeyDetails.Label = label2
+				err = metaDB.AddUserAPIKey(ctx, hashKey2, &apiKeyDetails)
+				So(err, ShouldBeNil)
 
-			err = metaDB.DeleteUserAPIKey(ctx, hashKey2)
-			So(err, ShouldBeNil)
+				userProfile, err = metaDB.GetUserData(ctx)
+				So(err, ShouldBeNil)
+				So(userProfile.Groups, ShouldResemble, userProfileSrc.Groups)
+				So(userProfile.APIKeys, ShouldContainKey, hashKey2)
+				So(userProfile.APIKeys[hashKey2].Label, ShouldEqual, apiKeyDetails.Label)
+				So(userProfile.APIKeys[hashKey2].Scopes, ShouldResemble, apiKeyDetails.Scopes)
 
-			userProfile, err = metaDB.GetUserData(ctx)
-			So(err, ShouldBeNil)
-			So(len(userProfile.APIKeys), ShouldEqual, 0)
-			So(userProfile.APIKeys, ShouldNotContainKey, hashKey2)
+				storedAPIKeys, err = metaDB.GetUserAPIKeys(ctx)
+				So(err, ShouldBeNil)
+				So(len(storedAPIKeys), ShouldEqual, 2)
+				So(storedAPIKeys[0].Scopes, ShouldResemble, apiKeyDetails.Scopes)
+				So(storedAPIKeys[1].Scopes, ShouldResemble, apiKeyDetails.Scopes)
+				scopes := []string{storedAPIKeys[0].Label, storedAPIKeys[1].Label}
+				// order is not preserved when getting api keys from db
+				So(scopes, ShouldContain, label1)
+				So(scopes, ShouldContain, label2)
 
-			// delete non existent api key
-			err = metaDB.DeleteUserAPIKey(ctx, hashKey2)
-			So(err, ShouldBeNil)
+				email, err := metaDB.GetUserAPIKeyInfo(hashKey2)
+				So(err, ShouldBeNil)
+				So(email, ShouldEqual, "test")
 
-			err = metaDB.DeleteUserData(ctx)
-			So(err, ShouldBeNil)
+				email, err = metaDB.GetUserAPIKeyInfo(hashKey1)
+				So(err, ShouldBeNil)
+				So(email, ShouldEqual, "test")
 
-			email, err = metaDB.GetUserAPIKeyInfo(hashKey2)
-			So(err, ShouldNotBeNil)
-			So(email, ShouldBeEmpty)
+				err = metaDB.DeleteUserAPIKey(ctx, hashKey1)
+				So(err, ShouldBeNil)
 
-			email, err = metaDB.GetUserAPIKeyInfo(hashKey1)
-			So(err, ShouldNotBeNil)
-			So(email, ShouldBeEmpty)
+				storedAPIKeys, err = metaDB.GetUserAPIKeys(ctx)
+				So(err, ShouldBeNil)
+				So(len(storedAPIKeys), ShouldEqual, 1)
+				So(storedAPIKeys[0].Label, ShouldEqual, label2)
 
-			_, err = metaDB.GetUserData(ctx)
-			So(err, ShouldNotBeNil)
+				userProfile, err = metaDB.GetUserData(ctx)
+				So(err, ShouldBeNil)
+				So(len(userProfile.APIKeys), ShouldEqual, 1)
 
-			userGroups, err = metaDB.GetUserGroups(ctx)
-			So(err, ShouldNotBeNil)
-			So(userGroups, ShouldBeEmpty)
+				err = metaDB.DeleteUserAPIKey(ctx, hashKey2)
+				So(err, ShouldBeNil)
 
-			err = metaDB.SetUserGroups(ctx, userProfileSrc.Groups)
-			So(err, ShouldBeNil)
+				storedAPIKeys, err = metaDB.GetUserAPIKeys(ctx)
+				So(err, ShouldBeNil)
+				So(len(storedAPIKeys), ShouldEqual, 0)
 
-			userGroups, err = metaDB.GetUserGroups(ctx)
-			So(err, ShouldBeNil)
-			So(userGroups, ShouldResemble, userProfileSrc.Groups)
+				userProfile, err = metaDB.GetUserData(ctx)
+				So(err, ShouldBeNil)
+				So(len(userProfile.APIKeys), ShouldEqual, 0)
+				So(userProfile.APIKeys, ShouldNotContainKey, hashKey2)
+
+				// delete non existent api key
+				err = metaDB.DeleteUserAPIKey(ctx, hashKey2)
+				So(err, ShouldBeNil)
+
+				storedAPIKeys, err = metaDB.GetUserAPIKeys(ctx)
+				So(err, ShouldBeNil)
+				So(len(storedAPIKeys), ShouldEqual, 0)
+
+				err = metaDB.DeleteUserData(ctx)
+				So(err, ShouldBeNil)
+
+				storedAPIKeys, err = metaDB.GetUserAPIKeys(ctx)
+				So(err, ShouldBeNil)
+				So(len(storedAPIKeys), ShouldEqual, 0)
+
+				email, err = metaDB.GetUserAPIKeyInfo(hashKey2)
+				So(err, ShouldNotBeNil)
+				So(email, ShouldBeEmpty)
+
+				email, err = metaDB.GetUserAPIKeyInfo(hashKey1)
+				So(err, ShouldNotBeNil)
+				So(email, ShouldBeEmpty)
+
+				_, err = metaDB.GetUserData(ctx)
+				So(err, ShouldNotBeNil)
+
+				userGroups, err = metaDB.GetUserGroups(ctx)
+				So(err, ShouldNotBeNil)
+				So(userGroups, ShouldBeEmpty)
+
+				err = metaDB.SetUserGroups(ctx, userProfileSrc.Groups)
+				So(err, ShouldBeNil)
+
+				userGroups, err = metaDB.GetUserGroups(ctx)
+				So(err, ShouldBeNil)
+				So(userGroups, ShouldResemble, userProfileSrc.Groups)
+			})
+
+			Convey("Test API keys operations with invalid access control context", func() {
+				var invalid struct{}
+
+				ctx := context.TODO()
+				key := localCtx.GetContextKey()
+				ctx = context.WithValue(ctx, key, invalid)
+
+				_, err := metaDB.GetUserAPIKeys(ctx)
+				So(err, ShouldNotBeNil)
+
+				err = metaDB.AddUserAPIKey(ctx, hashKey1, &apiKeyDetails)
+				So(err, ShouldNotBeNil)
+
+				isExpired, err := metaDB.IsAPIKeyExpired(ctx, hashKey1)
+				So(isExpired, ShouldBeFalse)
+				So(err, ShouldNotBeNil)
+
+				err = metaDB.DeleteUserAPIKey(ctx, hashKey1)
+				So(err, ShouldNotBeNil)
+
+				_, err = metaDB.GetUserData(ctx)
+				So(err, ShouldNotBeNil)
+
+				_, err = metaDB.GetUserGroups(ctx)
+				So(err, ShouldNotBeNil)
+
+				_, err = metaDB.GetUserAPIKeyInfo(hashKey1)
+				So(err, ShouldNotBeNil)
+
+				err = metaDB.UpdateUserAPIKeyLastUsed(ctx, hashKey1)
+				So(err, ShouldNotBeNil)
+
+				err = metaDB.SetUserData(ctx, userProfileSrc)
+				So(err, ShouldNotBeNil)
+			})
+
+			Convey("Test API keys operations with empty userid", func() {
+				acCtx := localCtx.AccessControlContext{
+					Username: "",
+				}
+
+				ctx := context.TODO()
+				key := localCtx.GetContextKey()
+				ctx = context.WithValue(ctx, key, acCtx)
+
+				_, err := metaDB.GetUserAPIKeys(ctx)
+				So(err, ShouldNotBeNil)
+
+				isExpired, err := metaDB.IsAPIKeyExpired(ctx, hashKey1)
+				So(isExpired, ShouldBeFalse)
+				So(err, ShouldNotBeNil)
+
+				err = metaDB.AddUserAPIKey(ctx, hashKey1, &apiKeyDetails)
+				So(err, ShouldNotBeNil)
+
+				err = metaDB.DeleteUserAPIKey(ctx, hashKey1)
+				So(err, ShouldNotBeNil)
+
+				_, err = metaDB.GetUserData(ctx)
+				So(err, ShouldNotBeNil)
+
+				_, err = metaDB.GetUserGroups(ctx)
+				So(err, ShouldNotBeNil)
+
+				_, err = metaDB.GetUserAPIKeyInfo(hashKey1)
+				So(err, ShouldNotBeNil)
+
+				err = metaDB.UpdateUserAPIKeyLastUsed(ctx, hashKey1)
+				So(err, ShouldNotBeNil)
+
+				err = metaDB.SetUserData(ctx, userProfileSrc)
+				So(err, ShouldNotBeNil)
+			})
+
+			Convey("Test API keys with short expiration date", func() {
+				expirationDate := time.Now().Add(500 * time.Millisecond).Local().Round(time.Millisecond)
+				apiKeyDetails.ExpirationDate = expirationDate
+
+				authzCtxKey := localCtx.GetContextKey()
+				acCtx := localCtx.AccessControlContext{
+					Username: "test",
+				}
+				ctx := context.WithValue(context.Background(), authzCtxKey, acCtx)
+
+				err := metaDB.AddUserAPIKey(ctx, hashKey1, &apiKeyDetails)
+				So(err, ShouldBeNil)
+
+				storedAPIKeys, err := metaDB.GetUserAPIKeys(ctx)
+				So(err, ShouldBeNil)
+				So(len(storedAPIKeys), ShouldEqual, 1)
+				So(storedAPIKeys[0].ExpirationDate, ShouldResemble, expirationDate)
+				So(storedAPIKeys[0].Label, ShouldEqual, apiKeyDetails.Label)
+				So(storedAPIKeys[0].Scopes, ShouldResemble, apiKeyDetails.Scopes)
+
+				isExpired, err := metaDB.IsAPIKeyExpired(ctx, hashKey1)
+				So(isExpired, ShouldBeFalse)
+				So(err, ShouldBeNil)
+
+				time.Sleep(600 * time.Millisecond)
+
+				Convey("GetUserAPIKeys detects api key expired", func() {
+					storedAPIKeys, err = metaDB.GetUserAPIKeys(ctx)
+					So(err, ShouldBeNil)
+					So(len(storedAPIKeys), ShouldEqual, 1)
+					So(storedAPIKeys[0].IsExpired, ShouldBeTrue)
+
+					isExpired, err = metaDB.IsAPIKeyExpired(ctx, hashKey1)
+					So(isExpired, ShouldBeTrue)
+					So(err, ShouldBeNil)
+				})
+
+				Convey("IsAPIKeyExpired detects api key expired", func() {
+					isExpired, err = metaDB.IsAPIKeyExpired(ctx, hashKey1)
+					So(isExpired, ShouldBeTrue)
+					So(err, ShouldBeNil)
+
+					storedAPIKeys, err = metaDB.GetUserAPIKeys(ctx)
+					So(err, ShouldBeNil)
+					So(len(storedAPIKeys), ShouldEqual, 1)
+					So(storedAPIKeys[0].IsExpired, ShouldBeTrue)
+				})
+			})
 		})
 
 		Convey("Test SetManifestData and GetManifestData", func() {

@@ -331,13 +331,15 @@ Create an API key for the current user using the REST API
 
 ```
 POST /auth/apikey
-Body: {"label": "git", "scopes": ["repo1", "repo2"]}'
+Body: {"label": "git", "scopes": ["repo1", "repo2"], "expirationDate": "2023-08-28T17:10:05+03:00"}'
 ```
 
-**Example cURL**
+The time format of expirationDate is RFC1123Z.
+
+**Example cURL without expiration date**
 
 ```bash
-curl -u user:password -X POST http://localhost:8080/auth/apikey -d '{"label": "myLabel"}'
+curl -u user:password -X POST http://localhost:8080/auth/apikey -d '{"label": "git", "scopes": ["repo1", "repo2"]}'
 ```
 
 **Sample output**:
@@ -345,15 +347,92 @@ curl -u user:password -X POST http://localhost:8080/auth/apikey -d '{"label": "m
 ```json
 {
   "createdAt": "2023-05-05T15:39:28.420926+03:00",
+  "expirationDate": "0001-01-01T00:00:00Z",
+  "isExpired": false,
   "creatorUa": "curl/7.68.0",
   "generatedBy": "manual",
-  "lastUsed": "2023-05-05T15:39:28.4209282+03:00",
+  "lastUsed": "0001-01-01T00:00:00Z",
   "label": "git",
-  "scopes": null,
+  "scopes": [
+    "repo1",
+    "repo2"
+  ],
   "uuid": "46a45ce7-5d92-498a-a9cb-9654b1da3da1",
   "apiKey": "zak_e77bcb9e9f634f1581756abbf9ecd269"
 }
 ```
+
+**Example cURL with expiration date**
+
+```bash
+curl -u user:password -X POST http://localhost:8080/auth/apikey -d '{"label": "myAPIKEY", "expirationDate": "2023-08-28T17:10:05+03:00"}'
+```
+
+**Sample output**:
+
+```json
+{
+  "createdAt":"2023-08-28T17:09:59.2603515+03:00",
+  "expirationDate":"2023-08-28T17:10:05+03:00",
+  "isExpired":false,
+  "creatorUa":"curl/7.68.0",
+  "generatedBy":"manual",
+  "lastUsed":"0001-01-01T00:00:00Z",
+  "label":"myAPIKEY",
+  "scopes":null,
+  "uuid":"c931e635-a80d-4b52-b035-6b57be5f6e74",
+  "apiKey":"zak_ac55a8693d6b4370a2003fa9e10b3682"
+}
+```
+
+##### How to get list of API Keys
+
+Get list of API keys for the current user using the REST API
+
+**Usage**: GET /auth/apikey
+
+**Produces**: application/json
+
+**Example cURL**
+
+```bash
+curl -u user:password -X GET http://localhost:8080/auth/apikey 
+```
+
+**Sample output**:
+
+```json
+{
+  "apiKeys": [
+    {
+      "createdAt": "2023-05-05T15:39:28.420926+03:00",
+      "expirationDate": "0001-01-01T00:00:00Z",
+      "isExpired": true,
+      "creatorUa": "curl/7.68.0",
+      "generatedBy": "manual",
+      "lastUsed": "0001-01-01T00:00:00Z",
+      "label": "git",
+      "scopes": [
+        "repo1",
+        "repo2"
+      ],
+      "uuid": "46a45ce7-5d92-498a-a9cb-9654b1da3da1"
+    },
+    {
+      "createdAt": "2023-08-11T14:43:00.6459729+03:00",
+      "expirationDate": "2023-08-17T18:24:05+03:00",
+      "isExpired": false,
+      "creatorUa": "curl/7.68.0",
+      "generatedBy": "manual",
+      "lastUsed": "2023-08-11T14:43:47.5559998+03:00",
+      "label": "myAPIKEY",
+      "scopes": null,
+      "uuid": "294abf69-b62f-4e58-b214-dad2aec0bc52"
+    }
+  ]
+}
+```
+
 
 ##### How to use API Keys
 

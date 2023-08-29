@@ -90,10 +90,11 @@ func (rh *RouteHandler) SetupRoutes() {
 		apiKeyRouter.Use(authHandler)
 		apiKeyRouter.Use(BaseAuthzHandler(rh.c))
 		apiKeyRouter.Use(zcommon.ACHeadersMiddleware(rh.c.Config,
-			http.MethodPost, http.MethodDelete, http.MethodOptions))
+			http.MethodGet, http.MethodPost, http.MethodDelete, http.MethodOptions))
 		apiKeyRouter.Use(zcommon.CORSHeadersMiddleware(rh.c.Config.HTTP.AllowOrigin))
 
 		apiKeyRouter.Methods(http.MethodPost, http.MethodOptions).HandlerFunc(rh.CreateAPIKey)
+		apiKeyRouter.Methods(http.MethodGet).HandlerFunc(rh.GetAPIKeys)
 		apiKeyRouter.Methods(http.MethodDelete).HandlerFunc(rh.RevokeAPIKey)
 	}
 
@@ -2029,8 +2030,49 @@ func (rh *RouteHandler) GetOrasReferrers(response http.ResponseWriter, request *
 }
 
 type APIKeyPayload struct { //nolint:revive
-	Label  string   `json:"label"`
-	Scopes []string `json:"scopes"`
+	Label          string   `json:"label"`
+	Scopes         []string `json:"scopes"`
+	ExpirationDate string   `json:"expirationDate"`
+}
+
+// GetAPIKeys godoc
+// @Summary Get list of API keys for the current user
+// @Description Get list of all API keys for a logged in user
+// @Accept  json
+// @Produce json
+// @Success 200 {string} string "ok"
+// @Failure 401 {string} string "unauthorized"
+// @Failure 500 {string} string "internal server error"
+// @Router /auth/apikey  [get].
+func (rh *RouteHandler) GetAPIKeys(resp http.ResponseWriter, req *http.Request) {
+	apiKeys, err := rh.c.MetaDB.GetUserAPIKeys(req.Context())
+	if err != nil {
+		rh.c.Log.Error().Err(err).Msg("error getting list of API keys for user")
+		resp.WriteHeader(http.StatusInternalServerError)
+
+		return
+	}
+
+	apiKeyResponse := struct {
+		APIKeys []mTypes.APIKeyDetails `json:"apiKeys"`
+	}{
+		APIKeys: apiKeys,
+	}
+
+	json := jsoniter.ConfigCompatibleWithStandardLibrary
+
+	data, err := json.Marshal(apiKeyResponse)
+	if err != nil {
+		rh.c.Log.Error().Err(err).Msg("unable to marshal api key response")
+
+		resp.WriteHeader(http.StatusInternalServerError)
+
+		return
+	}
+
+	resp.Header().Set("Content-Type", constants.DefaultMediaType)
+	resp.WriteHeader(http.StatusOK)
+	_, _ = resp.Write(data)
 }
 
 // CreateAPIKey godoc
@@ -2071,14 +2113,35 @@ func (rh *RouteHandler) CreateAPIKey(resp http.ResponseWriter, req *http.Request
 
 	hashedAPIKey := hashUUID(apiKey)
 
+	createdAt := time.Now()
+
+	// won't expire if no value provided
+	expirationDate := time.Time{}
+
+	if payload.ExpirationDate != "" {
+		expirationDate, err = time.ParseInLocation(constants.APIKeyTimeFormat, payload.ExpirationDate, time.Local)
+		if err != nil {
+			resp.WriteHeader(http.StatusBadRequest)
+
+			return
+		}
+
+		if createdAt.After(expirationDate) {
+			resp.WriteHeader(http.StatusBadRequest)
+
+			return
+		}
+	}
+
 	apiKeyDetails := &mTypes.APIKeyDetails{
-		CreatedAt:   time.Now(),
-		LastUsed:    time.Now(),
-		CreatorUA:   req.UserAgent(),
-		GeneratedBy: "manual",
-		Label:       payload.Label,
-		Scopes:      payload.Scopes,
-		UUID:        apiKeyID,
+		CreatedAt:      createdAt,
+		ExpirationDate: expirationDate,
+		IsExpired:      false,
+		CreatorUA:      req.UserAgent(),
+		GeneratedBy:    "manual",
+		Label:          payload.Label,
+		Scopes:         payload.Scopes,
+		UUID:           apiKeyID,
 	}
 
 	err = rh.c.MetaDB.AddUserAPIKey(req.Context(), hashedAPIKey, apiKeyDetails)

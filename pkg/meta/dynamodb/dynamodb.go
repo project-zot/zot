@@ -1781,6 +1781,34 @@ func (dwr DynamoDB) GetUserGroups(ctx context.Context) ([]string, error) {
 	return userData.Groups, err
 }
 
+func (dwr *DynamoDB) IsAPIKeyExpired(ctx context.Context, hashedKey string) (bool, error) {
+	userData, err := dwr.GetUserData(ctx)
+	if err != nil {
+		return false, err
+	}
+
+	var isExpired bool
+
+	apiKeyDetails := userData.APIKeys[hashedKey]
+	if apiKeyDetails.IsExpired {
+		isExpired = true
+
+		return isExpired, nil
+	}
+
+	// if expiresAt is not nil value
+	if !apiKeyDetails.ExpirationDate.Equal(time.Time{}) && time.Now().After(apiKeyDetails.ExpirationDate) {
+		isExpired = true
+		apiKeyDetails.IsExpired = true
+	}
+
+	userData.APIKeys[hashedKey] = apiKeyDetails
+
+	err = dwr.SetUserData(ctx, userData)
+
+	return isExpired, err
+}
+
 func (dwr DynamoDB) UpdateUserAPIKeyLastUsed(ctx context.Context, hashedKey string) error {
 	userData, err := dwr.GetUserData(ctx)
 	if err != nil {
@@ -1795,6 +1823,44 @@ func (dwr DynamoDB) UpdateUserAPIKeyLastUsed(ctx context.Context, hashedKey stri
 	err = dwr.SetUserData(ctx, userData)
 
 	return err
+}
+
+func (dwr DynamoDB) GetUserAPIKeys(ctx context.Context) ([]mTypes.APIKeyDetails, error) {
+	apiKeys := make([]mTypes.APIKeyDetails, 0)
+
+	acCtx, err := localCtx.GetAccessControlContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	userid := localCtx.GetUsernameFromContext(acCtx)
+	if userid == "" {
+		// empty user is anonymous
+		return nil, zerr.ErrUserDataNotAllowed
+	}
+
+	userData, err := dwr.GetUserData(ctx)
+	if err != nil && !errors.Is(err, zerr.ErrUserDataNotFound) {
+		return nil, fmt.Errorf("metaDB: error while getting userData for identity %s %w", userid, err)
+	}
+
+	for hashedKey, apiKeyDetails := range userData.APIKeys {
+		// if expiresAt is not nil value
+		if !apiKeyDetails.ExpirationDate.Equal(time.Time{}) && time.Now().After(apiKeyDetails.ExpirationDate) {
+			apiKeyDetails.IsExpired = true
+		}
+
+		userData.APIKeys[hashedKey] = apiKeyDetails
+
+		err = dwr.SetUserData(ctx, userData)
+		if err != nil {
+			return nil, err
+		}
+
+		apiKeys = append(apiKeys, apiKeyDetails)
+	}
+
+	return apiKeys, nil
 }
 
 func (dwr DynamoDB) AddUserAPIKey(ctx context.Context, hashedKey string, apiKeyDetails *mTypes.APIKeyDetails) error {

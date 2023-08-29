@@ -203,7 +203,19 @@ func (amw *AuthnMiddleware) basicAuthn(ctlr *Controller, response http.ResponseW
 		if storedIdentity == identity {
 			ctx := getReqContextWithAuthorization(identity, []string{}, request)
 
-			err := ctlr.MetaDB.UpdateUserAPIKeyLastUsed(ctx, hashedKey)
+			// check if api key expired
+			isExpired, err := ctlr.MetaDB.IsAPIKeyExpired(ctx, hashedKey)
+			if err != nil {
+				ctlr.Log.Err(err).Str("identity", identity).Msg("can not verify if api key expired")
+
+				return false, err
+			}
+
+			if isExpired {
+				return false, nil
+			}
+
+			err = ctlr.MetaDB.UpdateUserAPIKeyLastUsed(ctx, hashedKey)
 			if err != nil {
 				ctlr.Log.Err(err).Str("identity", identity).Msg("can not update user profile in DB")
 
@@ -514,6 +526,8 @@ func (rh *RouteHandler) AuthURLHandler() http.HandlerFunc {
 			http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 				response.WriteHeader(http.StatusBadRequest)
 			})(w, r)
+
+			return
 		}
 
 		/* save cookie containing state to later verify it and

@@ -149,7 +149,11 @@ type UserDB interface { //nolint:interfacebloat
 
 	GetUserAPIKeyInfo(hashedKey string) (identity string, err error)
 
+	GetUserAPIKeys(ctx context.Context) ([]APIKeyDetails, error)
+
 	AddUserAPIKey(ctx context.Context, hashedKey string, apiKeyDetails *APIKeyDetails) error
+
+	IsAPIKeyExpired(ctx context.Context, hashedKey string) (bool, error)
 
 	UpdateUserAPIKeyLastUsed(ctx context.Context, hashedKey string) error
 
@@ -252,11 +256,13 @@ type FilterData struct {
 }
 
 type APIKeyDetails struct {
-	CreatedAt   time.Time `json:"createdAt"`
-	CreatorUA   string    `json:"creatorUa"`
-	GeneratedBy string    `json:"generatedBy"`
-	LastUsed    time.Time `json:"lastUsed"`
-	Label       string    `json:"label"`
-	Scopes      []string  `json:"scopes"`
-	UUID        string    `json:"uuid"`
+	CreatedAt      time.Time `json:"createdAt"`
+	ExpirationDate time.Time `json:"expirationDate"`
+	IsExpired      bool      `json:"isExpired"`
+	CreatorUA      string    `json:"creatorUa"`
+	GeneratedBy    string    `json:"generatedBy"`
+	LastUsed       time.Time `json:"lastUsed"`
+	Label          string    `json:"label"`
+	Scopes         []string  `json:"scopes"`
+	UUID           string    `json:"uuid"`
 }
