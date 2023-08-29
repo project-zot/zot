@@ -24,6 +24,7 @@ import (
 	"zotregistry.io/zot/pkg/api/constants"
 	extconf "zotregistry.io/zot/pkg/extensions/config"
 	"zotregistry.io/zot/pkg/extensions/monitoring"
+	zlog "zotregistry.io/zot/pkg/log"
 	storageConstants "zotregistry.io/zot/pkg/storage/constants"
 	"zotregistry.io/zot/pkg/storage/s3"
 )
@@ -55,6 +56,8 @@ func newServeCmd(conf *config.Config) *cobra.Command {
 			// config reloader
 			hotReloader, err := NewHotReloader(ctlr, args[0])
 			if err != nil {
+				ctlr.Log.Error().Err(err).Msg("failed to create a new hot reloader")
+
 				panic(err)
 			}
 
@@ -63,11 +66,13 @@ func newServeCmd(conf *config.Config) *cobra.Command {
 			reloaderCtx := hotReloader.Start()
 
 			if err := ctlr.Init(reloaderCtx); err != nil {
+				ctlr.Log.Error().Err(err).Msg("failed to init controller")
+
 				panic(err)
 			}
 
 			if err := ctlr.Run(reloaderCtx); err != nil {
-				log.Fatal().Err(err).Msg("unable to start controller, exiting")
+				ctlr.Log.Fatal().Err(err).Msg("unable to start controller, exiting")
 			}
 		},
 	}
@@ -213,7 +218,7 @@ func NewCliRootCmd() *cobra.Command {
 	return rootCmd
 }
 
-func validateStorageConfig(cfg *config.Config) error {
+func validateStorageConfig(cfg *config.Config, log zlog.Logger) error {
 	expConfigMap := make(map[string]config.StorageConfig, 0)
 
 	defaultRootDir := cfg.Storage.RootDirectory
@@ -241,7 +246,7 @@ func validateStorageConfig(cfg *config.Config) error {
 	return nil
 }
 
-func validateCacheConfig(cfg *config.Config) error {
+func validateCacheConfig(cfg *config.Config, log zlog.Logger) error {
 	// global
 	// dedupe true, remote storage, remoteCache true, but no cacheDriver (remote)
 	//nolint: lll
@@ -312,7 +317,7 @@ func validateCacheConfig(cfg *config.Config) error {
 	return nil
 }
 
-func validateExtensionsConfig(cfg *config.Config) error {
+func validateExtensionsConfig(cfg *config.Config, log zlog.Logger) error {
 	if cfg.Extensions != nil && cfg.Extensions.Mgmt != nil {
 		log.Warn().Msg("The mgmt extensions configuration option has been made redundant and will be ignored.")
 	}
@@ -353,43 +358,43 @@ func validateExtensionsConfig(cfg *config.Config) error {
 	return nil
 }
 
-func validateConfiguration(config *config.Config) error {
-	if err := validateHTTP(config); err != nil {
+func validateConfiguration(config *config.Config, log zlog.Logger) error {
+	if err := validateHTTP(config, log); err != nil {
 		return err
 	}
 
-	if err := validateGC(config); err != nil {
+	if err := validateGC(config, log); err != nil {
 		return err
 	}
 
-	if err := validateLDAP(config); err != nil {
+	if err := validateLDAP(config, log); err != nil {
 		return err
 	}
 
-	if err := validateOpenIDConfig(config); err != nil {
+	if err := validateOpenIDConfig(config, log); err != nil {
 		return err
 	}
 
-	if err := validateSync(config); err != nil {
+	if err := validateSync(config, log); err != nil {
 		return err
 	}
 
-	if err := validateStorageConfig(config); err != nil {
+	if err := validateStorageConfig(config, log); err != nil {
 		return err
 	}
 
-	if err := validateCacheConfig(config); err != nil {
+	if err := validateCacheConfig(config, log); err != nil {
 		return err
 	}
 
-	if err := validateExtensionsConfig(config); err != nil {
+	if err := validateExtensionsConfig(config, log); err != nil {
 		return err
 	}
 
 	// check authorization config, it should have basic auth enabled or ldap, api keys or OpenID
 	if config.HTTP.AccessControl != nil {
 		// checking for anonymous policy only authorization config: no users, no policies but anonymous policy
-		if err := validateAuthzPolicies(config); err != nil {
+		if err := validateAuthzPolicies(config, log); err != nil {
 			return err
 		}
 	}
@@ -444,7 +449,7 @@ func validateConfiguration(config *config.Config) error {
 	return nil
 }
 
-func validateOpenIDConfig(cfg *config.Config) error {
+func validateOpenIDConfig(cfg *config.Config, log zlog.Logger) error {
 	if cfg.HTTP.Auth != nil && cfg.HTTP.Auth.OpenID != nil {
 		for provider, providerConfig := range cfg.HTTP.Auth.OpenID.Providers {
 			//nolint: gocritic
@@ -475,7 +480,7 @@ func validateOpenIDConfig(cfg *config.Config) error {
 	return nil
 }
 
-func validateAuthzPolicies(config *config.Config) error {
+func validateAuthzPolicies(config *config.Config, log zlog.Logger) error {
 	if (config.HTTP.Auth == nil || (config.HTTP.Auth.HTPasswd.Path == "" && config.HTTP.Auth.LDAP == nil &&
 		config.HTTP.Auth.OpenID == nil)) && !authzContainsOnlyAnonymousPolicy(config) {
 		log.Error().Err(errors.ErrBadConfig).
@@ -489,7 +494,7 @@ func validateAuthzPolicies(config *config.Config) error {
 }
 
 //nolint:gocyclo,cyclop,nestif
-func applyDefaultValues(config *config.Config, viperInstance *viper.Viper) {
+func applyDefaultValues(config *config.Config, viperInstance *viper.Viper, log zlog.Logger) {
 	defaultVal := true
 
 	if config.Extensions == nil && viperInstance.Get("extensions") != nil {
@@ -691,7 +696,7 @@ func applyDefaultValues(config *config.Config, viperInstance *viper.Viper) {
 	}
 }
 
-func updateDistSpecVersion(config *config.Config) {
+func updateDistSpecVersion(config *config.Config, log zlog.Logger) {
 	if config.DistSpecVersion == distspec.Version {
 		return
 	}
@@ -717,10 +722,12 @@ func LoadConfiguration(config *config.Config, configPath string) error {
 
 	metaData := &mapstructure.Metadata{}
 	if err := viperInstance.Unmarshal(&config, metadataConfig(metaData)); err != nil {
-		log.Error().Err(err).Msg("error while unmarshalling new config")
+		log.Error().Err(err).Msg("error while unmarshaling new config")
 
 		return err
 	}
+
+	log := zlog.NewLogger(config.Log.Level, config.Log.Output)
 
 	if len(metaData.Keys) == 0 {
 		log.Error().Err(errors.ErrBadConfig).Msg("config doesn't contain any key:value pair")
@@ -735,15 +742,15 @@ func LoadConfiguration(config *config.Config, configPath string) error {
 	}
 
 	// defaults
-	applyDefaultValues(config, viperInstance)
+	applyDefaultValues(config, viperInstance, log)
 
 	// various config checks
-	if err := validateConfiguration(config); err != nil {
+	if err := validateConfiguration(config, log); err != nil {
 		return err
 	}
 
 	// update distSpecVersion
-	updateDistSpecVersion(config)
+	updateDistSpecVersion(config, log)
 
 	return nil
 }
@@ -788,7 +795,7 @@ func authzContainsOnlyAnonymousPolicy(cfg *config.Config) bool {
 	return anonymousPolicyPresent
 }
 
-func validateLDAP(config *config.Config) error {
+func validateLDAP(config *config.Config, log zlog.Logger) error {
 	// LDAP mandatory configuration
 	if config.HTTP.Auth != nil && config.HTTP.Auth.LDAP != nil {
 		ldap := config.HTTP.Auth.LDAP
@@ -817,7 +824,7 @@ func validateLDAP(config *config.Config) error {
 	return nil
 }
 
-func validateHTTP(config *config.Config) error {
+func validateHTTP(config *config.Config, log zlog.Logger) error {
 	if config.HTTP.Port != "" {
 		port, err := strconv.ParseInt(config.HTTP.Port, 10, 64)
 		if err != nil || (port < 0 || port > 65535) {
@@ -830,7 +837,7 @@ func validateHTTP(config *config.Config) error {
 	return nil
 }
 
-func validateGC(config *config.Config) error {
+func validateGC(config *config.Config, log zlog.Logger) error {
 	// enforce GC params
 	if config.Storage.GCDelay < 0 {
 		log.Error().Err(errors.ErrBadConfig).Dur("delay", config.Storage.GCDelay).
@@ -873,7 +880,7 @@ func validateGC(config *config.Config) error {
 	return nil
 }
 
-func validateSync(config *config.Config) error {
+func validateSync(config *config.Config, log zlog.Logger) error {
 	// check glob patterns in sync config are compilable
 	if config.Extensions != nil && config.Extensions.Sync != nil {
 		for id, regCfg := range config.Extensions.Sync.Registries {
