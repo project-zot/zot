@@ -40,7 +40,7 @@ func NewConfigCommand() *cobra.Command {
 				panic(err)
 			}
 
-			configPath := path.Join(home + "/.zot")
+			configPath := path.Join(home, "/.zot")
 			switch len(args) {
 			case noArgs:
 				if isListing { // zot config -l
@@ -115,7 +115,7 @@ func NewConfigAddCommand() *cobra.Command {
 				panic(err)
 			}
 
-			configPath := path.Join(home + "/.zot")
+			configPath := path.Join(home, "/.zot")
 			// zot config add <config-name> <url>
 			err = addConfig(configPath, args[0], args[1])
 			if err != nil {
@@ -145,7 +145,7 @@ func NewConfigRemoveCommand() *cobra.Command {
 				panic(err)
 			}
 
-			configPath := path.Join(home + "/.zot")
+			configPath := path.Join(home, "/.zot")
 			// zot config add <config-name> <url>
 			err = removeConfig(configPath, args[0])
 			if err != nil {

@@ -10,7 +10,8 @@ import (
 	"github.com/briandowns/spinner"
 	"github.com/spf13/cobra"
 
-	zotErrors "zotregistry.io/zot/errors"
+	zerr "zotregistry.io/zot/errors"
+	"zotregistry.io/zot/pkg/cli/cmdflags"
 )
 
 const prefix = "Searching... "
@@ -24,13 +25,14 @@ func NewRepoCommand(searchService SearchService) *cobra.Command {
 		Use:   "repos [config-name]",
 		Short: "List all repositories",
 		Long:  `List all repositories`,
+		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			home, err := os.UserHomeDir()
 			if err != nil {
 				panic(err)
 			}
 
-			configPath := path.Join(home + "/.zot")
+			configPath := path.Join(home, "/.zot")
 			if servURL == "" {
 				if len(args) > 0 {
 					urlFromConfig, err := getConfigValue(configPath, args[0], "url")
@@ -41,12 +43,12 @@ func NewRepoCommand(searchService SearchService) *cobra.Command {
 					}
 
 					if urlFromConfig == "" {
-						return zotErrors.ErrNoURLProvided
+						return zerr.ErrNoURLProvided
 					}
 
 					servURL = urlFromConfig
 				} else {
-					return zotErrors.ErrNoURLProvided
+					return zerr.ErrNoURLProvided
 				}
 			}
 
@@ -96,9 +98,12 @@ func NewRepoCommand(searchService SearchService) *cobra.Command {
 
 	repoCmd.SetUsageTemplate(repoCmd.UsageTemplate() + usageFooter)
 
-	repoCmd.Flags().StringVar(&servURL, "url", "", "Specify zot server URL if config-name is not mentioned")
-	repoCmd.Flags().StringVarP(&user, "user", "u", "", `User Credentials of zot server in "username:password" format`)
-	repoCmd.Flags().BoolVar(&debug, "debug", false, "Show debug output")
+	repoCmd.AddCommand(NewListReposCommand(searchService))
+
+	repoCmd.Flags().StringVar(&servURL, cmdflags.URLFlag, "", "Specify zot server URL if config-name is not mentioned")
+	repoCmd.Flags().StringVarP(&user, cmdflags.UserFlag, "u", "",
+		`User Credentials of zot server in "username:password" format`)
+	repoCmd.Flags().BoolVar(&debug, cmdflags.DebugFlag, false, "Show debug output")
 
 	return repoCmd
 }

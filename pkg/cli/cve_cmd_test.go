@@ -26,9 +26,10 @@ import (
 	. "github.com/smartystreets/goconvey/convey"
 	"github.com/spf13/cobra"
 
-	zotErrors "zotregistry.io/zot/errors"
+	zerr "zotregistry.io/zot/errors"
 	"zotregistry.io/zot/pkg/api"
 	"zotregistry.io/zot/pkg/api/config"
+	"zotregistry.io/zot/pkg/cli/cmdflags"
 	zcommon "zotregistry.io/zot/pkg/common"
 	extconf "zotregistry.io/zot/pkg/extensions/config"
 	"zotregistry.io/zot/pkg/extensions/monitoring"
@@ -82,7 +83,7 @@ func TestSearchCVECmd(t *testing.T) {
 		cmd.SetArgs(args)
 		err := cmd.Execute()
 		So(err, ShouldNotBeNil)
-		So(err, ShouldEqual, zotErrors.ErrNoURLProvided)
+		So(err, ShouldEqual, zerr.ErrNoURLProvided)
 	})
 
 	Convey("Test CVE no params", t, func() {
@@ -95,7 +96,7 @@ func TestSearchCVECmd(t *testing.T) {
 		cmd.SetErr(buff)
 		cmd.SetArgs(args)
 		err := cmd.Execute()
-		So(err, ShouldEqual, zotErrors.ErrInvalidFlagsCombination)
+		So(err, ShouldEqual, zerr.ErrInvalidFlagsCombination)
 	})
 
 	Convey("Test CVE invalid url", t, func() {
@@ -109,7 +110,7 @@ func TestSearchCVECmd(t *testing.T) {
 		cmd.SetArgs(args)
 		err := cmd.Execute()
 		So(err, ShouldNotBeNil)
-		So(err, ShouldEqual, zotErrors.ErrInvalidURL)
+		So(err, ShouldEqual, zerr.ErrInvalidURL)
 		So(buff.String(), ShouldContainSubstring, "invalid URL format")
 	})
 
@@ -285,7 +286,7 @@ func TestSearchCVECmd(t *testing.T) {
 		err := cveCmd.Execute()
 		space := regexp.MustCompile(`\s+`)
 		str := space.ReplaceAllString(buff.String(), " ")
-		So(strings.TrimSpace(str), ShouldEqual, "REPOSITORY TAG OS/ARCH DIGEST SIGNED SIZE anImage tag os/arch 6e2f80bf false 123kB") //nolint:lll
+		So(strings.TrimSpace(str), ShouldContainSubstring, "REPOSITORY TAG OS/ARCH DIGEST SIGNED SIZE anImage tag os/arch 6e2f80bf false 123kB") //nolint:lll
 		So(err, ShouldBeNil)
 	})
 
@@ -355,7 +356,7 @@ func TestSearchCVECmd(t *testing.T) {
 		cveCmd.SetArgs(args)
 		err := cveCmd.Execute()
 		So(err, ShouldNotBeNil)
-		So(err, ShouldEqual, zotErrors.ErrInvalidURL)
+		So(err, ShouldEqual, zerr.ErrInvalidURL)
 		So(buff.String(), ShouldContainSubstring, "invalid URL format")
 	})
 
@@ -1058,6 +1059,330 @@ func TestServerCVEResponse(t *testing.T) {
 	})
 }
 
+func TestCVECommandGQL(t *testing.T) {
+	port := test.GetFreePort()
+	baseURL := test.GetBaseURL(port)
+	conf := config.New()
+	conf.HTTP.Port = port
+
+	defaultVal := true
+	conf.Extensions = &extconf.ExtensionConfig{
+		Search: &extconf.SearchConfig{
+			BaseConfig: extconf.BaseConfig{Enable: &defaultVal},
+		},
+	}
+
+	ctlr := api.NewController(conf)
+	ctlr.Config.Storage.RootDirectory = t.TempDir()
+	cm := test.NewControllerManager(ctlr)
+
+	cm.StartAndWait(conf.HTTP.Port)
+	defer cm.StopServer()
+
+	Convey("commands without gql", t, func() {
+		configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"cvetest","url":"%s","showspinner":false}]}`, baseURL))
+		defer os.Remove(configPath)
+
+		Convey("cveid", func() {
+			args := []string{"cveid", "CVE-1942"}
+			cmd := NewCVESCommand(mockService{})
+			cmd.PersistentFlags().String(cmdflags.ConfigFlag, "cvetest", "")
+			buff := bytes.NewBufferString("")
+			cmd.SetOut(buff)
+			cmd.SetErr(buff)
+			cmd.SetArgs(args)
+			err := cmd.Execute()
+			So(err, ShouldBeNil)
+			space := regexp.MustCompile(`\s+`)
+			str := space.ReplaceAllString(buff.String(), " ")
+			actual := strings.TrimSpace(str)
+			So(actual, ShouldContainSubstring, "image-name tag 6e2f80bf false 123kB")
+		})
+
+		Convey("cveid db download wait", func() {
+			count := 0
+			configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"cvetest","url":"%s","showspinner":false}]}`,
+				baseURL))
+			args := []string{"cveid", "CVE-12345"}
+			defer os.Remove(configPath)
+			cmd := NewCVESCommand(mockService{
+				getTagsForCVEGQLFn: func(ctx context.Context, config searchConfig, username, password,
+					imageName, cveID string) (*zcommon.ImagesForCve, error,
+				) {
+					if count == 0 {
+						count++
+						fmt.Println("Count:", count)
+
+						return &zcommon.ImagesForCve{}, zerr.ErrCVEDBNotFound
+					}
+
+					return &zcommon.ImagesForCve{}, zerr.ErrInjected
+				},
+			})
+			cmd.PersistentFlags().String(cmdflags.ConfigFlag, "cvetest", "")
+			buff := bytes.NewBufferString("")
+			cmd.SetOut(buff)
+			cmd.SetErr(buff)
+			cmd.SetArgs(args)
+			err := cmd.Execute()
+			So(err, ShouldNotBeNil)
+			space := regexp.MustCompile(`\s+`)
+			str := space.ReplaceAllString(buff.String(), " ")
+			actual := strings.TrimSpace(str)
+			So(actual, ShouldContainSubstring, "[warning] CVE DB is not ready")
+		})
+
+		Convey("fixed", func() {
+			args := []string{"fixed", "image-name", "CVE-123"}
+			cmd := NewCVESCommand(mockService{})
+			cmd.PersistentFlags().String(cmdflags.ConfigFlag, "cvetest", "")
+			buff := bytes.NewBufferString("")
+			cmd.SetOut(buff)
+			cmd.SetErr(buff)
+			cmd.SetArgs(args)
+			err := cmd.Execute()
+			So(err, ShouldBeNil)
+			space := regexp.MustCompile(`\s+`)
+			str := space.ReplaceAllString(buff.String(), " ")
+			actual := strings.TrimSpace(str)
+			So(actual, ShouldContainSubstring, "image-name tag 6e2f80bf false 123kB")
+		})
+
+		Convey("fixed db download wait", func() {
+			count := 0
+			configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"cvetest","url":"%s","showspinner":false}]}`,
+				baseURL))
+			args := []string{"fixed", "repo", "CVE-2222"}
+			defer os.Remove(configPath)
+			cmd := NewCVESCommand(mockService{
+				getFixedTagsForCVEGQLFn: func(ctx context.Context, config searchConfig, username, password,
+					imageName, cveID string) (*zcommon.ImageListWithCVEFixedResponse, error,
+				) {
+					if count == 0 {
+						count++
+						fmt.Println("Count:", count)
+
+						return &zcommon.ImageListWithCVEFixedResponse{}, zerr.ErrCVEDBNotFound
+					}
+
+					return &zcommon.ImageListWithCVEFixedResponse{}, zerr.ErrInjected
+				},
+			})
+			cmd.PersistentFlags().String(cmdflags.ConfigFlag, "cvetest", "")
+			buff := bytes.NewBufferString("")
+			cmd.SetOut(buff)
+			cmd.SetErr(buff)
+			cmd.SetArgs(args)
+			err := cmd.Execute()
+			So(err, ShouldNotBeNil)
+			space := regexp.MustCompile(`\s+`)
+			str := space.ReplaceAllString(buff.String(), " ")
+			actual := strings.TrimSpace(str)
+			So(actual, ShouldContainSubstring, "[warning] CVE DB is not ready")
+		})
+
+		Convey("image", func() {
+			args := []string{"image", "repo:tag"}
+			cmd := NewCVESCommand(mockService{})
+			cmd.PersistentFlags().String(cmdflags.ConfigFlag, "cvetest", "")
+			buff := bytes.NewBufferString("")
+			cmd.SetOut(buff)
+			cmd.SetErr(buff)
+			cmd.SetArgs(args)
+			err := cmd.Execute()
+			So(err, ShouldBeNil)
+			space := regexp.MustCompile(`\s+`)
+			str := space.ReplaceAllString(buff.String(), " ")
+			actual := strings.TrimSpace(str)
+			So(actual, ShouldContainSubstring, "dummyCVEID HIGH Title of that CVE")
+		})
+
+		Convey("image db download wait", func() {
+			count := 0
+			configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"cvetest","url":"%s","showspinner":false}]}`,
+				baseURL))
+			args := []string{"image", "repo:vuln"}
+			defer os.Remove(configPath)
+			cmd := NewCVESCommand(mockService{
+				getCveByImageGQLFn: func(ctx context.Context, config searchConfig, username, password,
+					imageName, searchedCVE string) (*cveResult, error,
+				) {
+					if count == 0 {
+						count++
+						fmt.Println("Count:", count)
+
+						return &cveResult{}, zerr.ErrCVEDBNotFound
+					}
+
+					return &cveResult{}, zerr.ErrInjected
+				},
+			})
+			cmd.PersistentFlags().String(cmdflags.ConfigFlag, "cvetest", "")
+			buff := bytes.NewBufferString("")
+			cmd.SetOut(buff)
+			cmd.SetErr(buff)
+			cmd.SetArgs(args)
+			err := cmd.Execute()
+			So(err, ShouldNotBeNil)
+			space := regexp.MustCompile(`\s+`)
+			str := space.ReplaceAllString(buff.String(), " ")
+			actual := strings.TrimSpace(str)
+			So(actual, ShouldContainSubstring, "[warning] CVE DB is not ready")
+		})
+	})
+}
+
+func TestCVECommandREST(t *testing.T) {
+	port := test.GetFreePort()
+	baseURL := test.GetBaseURL(port)
+	conf := config.New()
+	conf.HTTP.Port = port
+
+	ctlr := api.NewController(conf)
+	ctlr.Config.Storage.RootDirectory = t.TempDir()
+	cm := test.NewControllerManager(ctlr)
+
+	cm.StartAndWait(conf.HTTP.Port)
+	defer cm.StopServer()
+
+	Convey("commands without gql", t, func() {
+		configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"cvetest","url":"%s","showspinner":false}]}`, baseURL))
+		defer os.Remove(configPath)
+
+		Convey("cveid", func() {
+			args := []string{"cveid", "CVE-1942"}
+			cmd := NewCVESCommand(mockService{})
+			cmd.PersistentFlags().String(cmdflags.ConfigFlag, "cvetest", "")
+			buff := bytes.NewBufferString("")
+			cmd.SetOut(buff)
+			cmd.SetErr(buff)
+			cmd.SetArgs(args)
+			err := cmd.Execute()
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("cveid error", func() {
+			// too many args
+			args := []string{"too", "many", "args"}
+			cmd := NewImagesByCVEIDCommand(mockService{})
+			buff := bytes.NewBufferString("")
+			cmd.SetOut(buff)
+			cmd.SetErr(buff)
+			cmd.SetArgs(args)
+			err := cmd.Execute()
+			So(err, ShouldNotBeNil)
+
+			// bad args
+			args = []string{"not-a-cve-id"}
+			cmd = NewImagesByCVEIDCommand(mockService{})
+			buff = bytes.NewBufferString("")
+			cmd.SetOut(buff)
+			cmd.SetErr(buff)
+			cmd.SetArgs(args)
+			err = cmd.Execute()
+			So(err, ShouldNotBeNil)
+
+			// no URL
+			args = []string{"CVE-1942"}
+			cmd = NewImagesByCVEIDCommand(mockService{})
+			buff = bytes.NewBufferString("")
+			cmd.SetOut(buff)
+			cmd.SetErr(buff)
+			cmd.SetArgs(args)
+			err = cmd.Execute()
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("fixed command", func() {
+			args := []string{"fixed", "image-name", "CVE-123"}
+			cmd := NewCVESCommand(mockService{})
+			cmd.PersistentFlags().String(cmdflags.ConfigFlag, "cvetest", "")
+			buff := bytes.NewBufferString("")
+			cmd.SetOut(buff)
+			cmd.SetErr(buff)
+			cmd.SetArgs(args)
+			err := cmd.Execute()
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("fixed command error", func() {
+			// too many args
+			args := []string{"too", "many", "args", "args"}
+			cmd := NewFixedTagsCommand(mockService{})
+			buff := bytes.NewBufferString("")
+			cmd.SetOut(buff)
+			cmd.SetErr(buff)
+			cmd.SetArgs(args)
+			err := cmd.Execute()
+			So(err, ShouldNotBeNil)
+
+			// bad args
+			args = []string{"repo-tag-instead-of-just-repo:fail-here", "CVE-123"}
+			cmd = NewFixedTagsCommand(mockService{})
+			buff = bytes.NewBufferString("")
+			cmd.SetOut(buff)
+			cmd.SetErr(buff)
+			cmd.SetArgs(args)
+			err = cmd.Execute()
+			So(err, ShouldNotBeNil)
+
+			// no URL
+			args = []string{"CVE-1942"}
+			cmd = NewFixedTagsCommand(mockService{})
+			buff = bytes.NewBufferString("")
+			cmd.SetOut(buff)
+			cmd.SetErr(buff)
+			cmd.SetArgs(args)
+			err = cmd.Execute()
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("image", func() {
+			args := []string{"image", "repo:tag"}
+			cmd := NewCVESCommand(mockService{})
+			cmd.PersistentFlags().String(cmdflags.ConfigFlag, "cvetest", "")
+			buff := bytes.NewBufferString("")
+			cmd.SetOut(buff)
+			cmd.SetErr(buff)
+			cmd.SetArgs(args)
+			err := cmd.Execute()
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("image command error", func() {
+			// too many args
+			args := []string{"too", "many", "args", "args"}
+			cmd := NewCveForImageCommand(mockService{})
+			buff := bytes.NewBufferString("")
+			cmd.SetOut(buff)
+			cmd.SetErr(buff)
+			cmd.SetArgs(args)
+			err := cmd.Execute()
+			So(err, ShouldNotBeNil)
+
+			// bad args
+			args = []string{"repo-tag-instead-of-just-repo:fail-here", "CVE-123"}
+			cmd = NewCveForImageCommand(mockService{})
+			buff = bytes.NewBufferString("")
+			cmd.SetOut(buff)
+			cmd.SetErr(buff)
+			cmd.SetArgs(args)
+			err = cmd.Execute()
+			So(err, ShouldNotBeNil)
+
+			// no URL
+			args = []string{"CVE-1942"}
+			cmd = NewCveForImageCommand(mockService{})
+			buff = bytes.NewBufferString("")
+			cmd.SetOut(buff)
+			cmd.SetErr(buff)
+			cmd.SetArgs(args)
+			err = cmd.Execute()
+			So(err, ShouldNotBeNil)
+		})
+	})
+}
+
 func MockNewCveCommand(searchService SearchService) *cobra.Command {
 	searchCveParams := make(map[string]*string)
 
@@ -1072,7 +1397,7 @@ func MockNewCveCommand(searchService SearchService) *cobra.Command {
 				panic(err)
 			}
 
-			configPath := path.Join(home + "/.zot")
+			configPath := path.Join(home, "/.zot")
 			if len(args) > 0 {
 				urlFromConfig, err := getConfigValue(configPath, args[0], "url")
 				if err != nil {
@@ -1082,12 +1407,12 @@ func MockNewCveCommand(searchService SearchService) *cobra.Command {
 				}
 
 				if urlFromConfig == "" {
-					return zotErrors.ErrNoURLProvided
+					return zerr.ErrNoURLProvided
 				}
 
 				servURL = urlFromConfig
 			} else {
-				return zotErrors.ErrNoURLProvided
+				return zerr.ErrNoURLProvided
 			}
 
 			if len(args) > 0 {
@@ -1157,7 +1482,7 @@ func MockSearchCve(searchConfig searchConfig) error {
 		}
 	}
 
-	return zotErrors.ErrInvalidFlagsCombination
+	return zerr.ErrInvalidFlagsCombination
 }
 
 func getMockCveInfo(metaDB mTypes.MetaDB, log log.Logger) cveinfo.CveInfo {
@@ -1232,7 +1557,7 @@ func getMockCveInfo(metaDB mTypes.MetaDB, log log.Logger) cveinfo.CveInfo {
 
 				descriptor, ok := repoMeta.Tags[inputTag]
 				if !ok {
-					return false, zotErrors.ErrTagMetaNotFound
+					return false, zerr.ErrTagMetaNotFound
 				}
 
 				manifestDigestStr = descriptor.Digest
@@ -1252,7 +1577,7 @@ func getMockCveInfo(metaDB mTypes.MetaDB, log log.Logger) cveinfo.CveInfo {
 
 			err = json.Unmarshal(manifestData.ManifestBlob, &manifestContent)
 			if err != nil {
-				return false, zotErrors.ErrScanNotSupported
+				return false, zerr.ErrScanNotSupported
 			}
 
 			for _, imageLayer := range manifestContent.Layers {
@@ -1262,7 +1587,7 @@ func getMockCveInfo(metaDB mTypes.MetaDB, log log.Logger) cveinfo.CveInfo {
 					return true, nil
 				default:
 
-					return false, zotErrors.ErrScanNotSupported
+					return false, zerr.ErrScanNotSupported
 				}
 			}
 
@@ -1284,12 +1609,12 @@ type mockServiceForRetry struct {
 }
 
 func (service *mockServiceForRetry) getImagesByCveID(ctx context.Context, config searchConfig,
-	username, password, cvid string, rch chan stringResult, wtgrp *sync.WaitGroup,
+	username, password, cveid string, rch chan stringResult, wtgrp *sync.WaitGroup,
 ) {
 	service.retryCounter += 1
 
 	if service.retryCounter < service.succeedOn || service.succeedOn < 0 {
-		rch <- stringResult{"", zotErrors.ErrCVEDBNotFound}
+		rch <- stringResult{"", zerr.ErrCVEDBNotFound}
 		close(rch)
 
 		wtgrp.Done()

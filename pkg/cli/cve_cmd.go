@@ -13,7 +13,7 @@ import (
 	"github.com/briandowns/spinner"
 	"github.com/spf13/cobra"
 
-	zotErrors "zotregistry.io/zot/errors"
+	zerr "zotregistry.io/zot/errors"
 )
 
 const (
@@ -29,15 +29,15 @@ func NewCveCommand(searchService SearchService) *cobra.Command {
 
 	cveCmd := &cobra.Command{
 		Use:   "cve [config-name]",
-		Short: "Lookup CVEs in images hosted on the zot registry",
-		Long:  `List CVEs (Common Vulnerabilities and Exposures) of images hosted on the zot registry`,
+		Short: "DEPRECATED (see cves)",
+		Long:  `DEPRECATED (see cves)! List CVEs (Common Vulnerabilities and Exposures) of images hosted on the zot registry`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			home, err := os.UserHomeDir()
 			if err != nil {
 				panic(err)
 			}
 
-			configPath := path.Join(home + "/.zot")
+			configPath := path.Join(home, "/.zot")
 			if servURL == "" {
 				if len(args) > 0 {
 					urlFromConfig, err := getConfigValue(configPath, args[0], "url")
@@ -48,12 +48,12 @@ func NewCveCommand(searchService SearchService) *cobra.Command {
 					}
 
 					if urlFromConfig == "" {
-						return zotErrors.ErrNoURLProvided
+						return zerr.ErrNoURLProvided
 					}
 
 					servURL = urlFromConfig
 				} else {
-					return zotErrors.ErrNoURLProvided
+					return zerr.ErrNoURLProvided
 				}
 			}
 
@@ -177,7 +177,7 @@ func searchCve(searchConfig searchConfig) error {
 				return err
 			}
 
-			if strings.Contains(err.Error(), zotErrors.ErrCVEDBNotFound.Error()) {
+			if strings.Contains(err.Error(), zerr.ErrCVEDBNotFound.Error()) {
 				// searches matches search config but CVE DB is not ready server side
 				// wait and retry a few more times
 				fmt.Fprintln(searchConfig.resultWriter,
@@ -192,5 +192,5 @@ func searchCve(searchConfig searchConfig) error {
 		}
 	}
 
-	return zotErrors.ErrInvalidFlagsCombination
+	return zerr.ErrInvalidFlagsCombination
 }

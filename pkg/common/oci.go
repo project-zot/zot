@@ -111,7 +111,7 @@ func GetRepoReference(repo string) (string, string, bool, error) {
 	return repoName, digest, false, nil
 }
 
-// GetFullImageName returns the formated string for the given repo/tag or repo/digest.
+// GetFullImageName returns the formatted string for the given repo/tag or repo/digest.
 func GetFullImageName(repo, ref string) string {
 	if IsTag(ref) {
 		return repo + ":" + ref
@@ -128,4 +128,8 @@ func IsDigest(ref string) bool {
 
 func IsTag(ref string) bool {
 	return !IsDigest(ref)
+}
+
+func CheckIsCorrectRepoNameFormat(repo string) bool {
+	return !strings.ContainsAny(repo, ":@")
 }

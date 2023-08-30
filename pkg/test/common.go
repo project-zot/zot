@@ -54,7 +54,7 @@ import (
 	"zotregistry.io/zot/pkg/storage"
 	storageCommon "zotregistry.io/zot/pkg/storage/common"
 	"zotregistry.io/zot/pkg/storage/local"
-	"zotregistry.io/zot/pkg/storage/types"
+	stypes "zotregistry.io/zot/pkg/storage/types"
 	"zotregistry.io/zot/pkg/test/inject"
 	"zotregistry.io/zot/pkg/test/mocks"
 )
@@ -1437,12 +1437,12 @@ func ListNotarySignatures(reference string, tdir string) ([]godigest.Digest, err
 
 	sigRepo := notreg.NewRepository(remoteRepo)
 
-	artifectDesc, err := sigRepo.Resolve(ctx, reference)
+	artifactDesc, err := sigRepo.Resolve(ctx, reference)
 	if err != nil {
 		return signatures, err
 	}
 
-	err = sigRepo.ListSignatures(ctx, artifectDesc, func(signatureManifests []ispec.Descriptor) error {
+	err = sigRepo.ListSignatures(ctx, artifactDesc, func(signatureManifests []ispec.Descriptor) error {
 		for _, sigManifestDesc := range signatureManifests {
 			signatures = append(signatures, sigManifestDesc.Digest)
 		}
@@ -2067,11 +2067,11 @@ func GetDefaultLayersBlobs() [][]byte {
 	}
 }
 
-func GetDefaultImageStore(rootDir string, log zLog.Logger) types.ImageStore {
+func GetDefaultImageStore(rootDir string, log zLog.Logger) stypes.ImageStore {
 	return local.NewImageStore(rootDir, false, time.Hour, false, false, log,
 		monitoring.NewMetricsServer(false, log),
 		mocks.MockedLint{
-			LintFn: func(repo string, manifestDigest godigest.Digest, imageStore types.ImageStore) (bool, error) {
+			LintFn: func(repo string, manifestDigest godigest.Digest, imageStore stypes.ImageStore) (bool, error) {
 				return true, nil
 			},
 		},
@@ -2083,4 +2083,21 @@ func GetDefaultStoreController(rootDir string, log zLog.Logger) storage.StoreCon
 	return storage.StoreController{
 		DefaultStore: GetDefaultImageStore(rootDir, log),
 	}
+}
+
+func RemoveLocalStorageContents(imageStore stypes.ImageStore) error {
+	repos, err := imageStore.GetRepositories()
+	if err != nil {
+		return err
+	}
+
+	for _, repo := range repos {
+		// take just the first path
+		err = os.RemoveAll(filepath.Join(imageStore.RootDir(), filepath.SplitList(repo)[0]))
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
 }

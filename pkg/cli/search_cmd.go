@@ -10,7 +10,8 @@ import (
 	"github.com/briandowns/spinner"
 	"github.com/spf13/cobra"
 
-	zotErrors "zotregistry.io/zot/errors"
+	zerr "zotregistry.io/zot/errors"
+	"zotregistry.io/zot/pkg/cli/cmdflags"
 )
 
 //nolint:dupl
@@ -21,7 +22,7 @@ func NewSearchCommand(searchService SearchService) *cobra.Command {
 
 	var isSpinner, verifyTLS, verbose, debug bool
 
-	imageCmd := &cobra.Command{
+	searchCmd := &cobra.Command{
 		Use:   "search [config-name]",
 		Short: "Search images and their tags",
 		Long: `Search repos or images
@@ -36,13 +37,14 @@ Example:
   zli search --subject repo@sha256:f9a0981...
   zli search --subject repo:tag
 		`,
+		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			home, err := os.UserHomeDir()
 			if err != nil {
 				panic(err)
 			}
 
-			configPath := path.Join(home + "/.zot")
+			configPath := path.Join(home, "/.zot")
 			if servURL == "" {
 				if len(args) > 0 {
 					urlFromConfig, err := getConfigValue(configPath, args[0], "url")
@@ -53,12 +55,12 @@ Example:
 					}
 
 					if urlFromConfig == "" {
-						return zotErrors.ErrNoURLProvided
+						return zerr.ErrNoURLProvided
 					}
 
 					servURL = urlFromConfig
 				} else {
-					return zotErrors.ErrNoURLProvided
+					return zerr.ErrNoURLProvided
 				}
 			}
 
@@ -107,27 +109,32 @@ Example:
 		},
 	}
 
-	setupSearchFlags(imageCmd, searchImageParams, &servURL, &user, &outputFormat, &verbose, &debug)
-	imageCmd.SetUsageTemplate(imageCmd.UsageTemplate() + usageFooter)
+	setupSearchFlags(searchCmd, searchImageParams, &servURL, &user, &outputFormat, &verbose, &debug)
+	searchCmd.SetUsageTemplate(searchCmd.UsageTemplate() + usageFooter)
 
-	return imageCmd
+	searchCmd.AddCommand(NewSearchQueryCommand(searchService))
+	searchCmd.AddCommand(NewSearchSubjectCommand(searchService))
+
+	return searchCmd
 }
 
-func setupSearchFlags(imageCmd *cobra.Command, searchImageParams map[string]*string,
+func setupSearchFlags(searchCmd *cobra.Command, searchImageParams map[string]*string,
 	servURL, user, outputFormat *string, verbose *bool, debug *bool,
 ) {
-	searchImageParams["query"] = imageCmd.Flags().StringP("query", "q", "",
+	searchImageParams["query"] = searchCmd.Flags().StringP("query", "q", "",
 		"Specify what repo or image(repo:tag) to be searched")
 
-	searchImageParams["subject"] = imageCmd.Flags().StringP("subject", "s", "",
+	searchImageParams["subject"] = searchCmd.Flags().StringP("subject", "s", "",
 		"List all referrers for this subject. The subject can be specified by tag(repo:tag) or by digest"+
 			"(repo@digest)")
 
-	imageCmd.Flags().StringVar(servURL, "url", "", "Specify zot server URL if config-name is not mentioned")
-	imageCmd.Flags().StringVarP(user, "user", "u", "", `User Credentials of zot server in "username:password" format`)
-	imageCmd.Flags().StringVarP(outputFormat, "output", "o", "", "Specify output format [text/json/yaml]")
-	imageCmd.Flags().BoolVar(verbose, "verbose", false, "Show verbose output")
-	imageCmd.Flags().BoolVar(debug, "debug", false, "Show debug output")
+	searchCmd.Flags().StringVar(servURL, cmdflags.URLFlag, "", "Specify zot server URL if config-name is not mentioned")
+	searchCmd.Flags().StringVarP(user, cmdflags.UserFlag, "u", "",
+		`User Credentials of zot server in "username:password" format`)
+	searchCmd.PersistentFlags().StringVarP(outputFormat, cmdflags.OutputFormatFlag, "f", "",
+		"Specify output format [text/json/yaml]")
+	searchCmd.PersistentFlags().BoolVar(verbose, cmdflags.VerboseFlag, false, "Show verbose output")
+	searchCmd.PersistentFlags().BoolVar(debug, cmdflags.DebugFlag, false, "Show debug output")
 }
 
 func globalSearch(searchConfig searchConfig) error {
@@ -150,5 +157,5 @@ func globalSearch(searchConfig searchConfig) error {
 		}
 	}
 
-	return zotErrors.ErrInvalidFlagsCombination
+	return zerr.ErrInvalidFlagsCombination
 }

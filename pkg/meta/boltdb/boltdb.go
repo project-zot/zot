@@ -1156,7 +1156,7 @@ func (bdw *BoltDB) FilterTags(ctx context.Context, filterFunc mTypes.FilterFunc,
 			repoMeta.IsStarred = zcommon.Contains(userStars, repoMeta.Name)
 
 			matchedTags := make(map[string]mTypes.Descriptor)
-			// take all manifestMetas
+			// take all manifestsMeta
 			for tag, descriptor := range repoMeta.Tags {
 				switch descriptor.MediaType {
 				case ispec.MediaTypeImageManifest:

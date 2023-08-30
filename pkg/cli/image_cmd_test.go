@@ -26,9 +26,10 @@ import (
 	"github.com/spf13/cobra"
 	"gopkg.in/resty.v1"
 
-	zotErrors "zotregistry.io/zot/errors"
+	zerr "zotregistry.io/zot/errors"
 	"zotregistry.io/zot/pkg/api"
 	"zotregistry.io/zot/pkg/api/config"
+	"zotregistry.io/zot/pkg/cli/cmdflags"
 	"zotregistry.io/zot/pkg/common"
 	extconf "zotregistry.io/zot/pkg/extensions/config"
 	zlog "zotregistry.io/zot/pkg/log"
@@ -74,7 +75,7 @@ func TestSearchImageCmd(t *testing.T) {
 		cmd.SetArgs(args)
 		err := cmd.Execute()
 		So(err, ShouldNotBeNil)
-		So(err, ShouldEqual, zotErrors.ErrNoURLProvided)
+		So(err, ShouldEqual, zerr.ErrNoURLProvided)
 	})
 
 	Convey("Test image invalid home directory", t, func() {
@@ -130,7 +131,7 @@ func TestSearchImageCmd(t *testing.T) {
 		cmd.SetArgs(args)
 		err := cmd.Execute()
 		So(err, ShouldNotBeNil)
-		So(err, ShouldEqual, zotErrors.ErrInvalidURL)
+		So(err, ShouldEqual, zerr.ErrInvalidURL)
 		So(buff.String(), ShouldContainSubstring, "invalid URL format")
 	})
 
@@ -253,7 +254,7 @@ func TestSearchImageCmd(t *testing.T) {
 			imageCmd.SetArgs(args)
 			err := imageCmd.Execute()
 			So(err, ShouldNotBeNil)
-			So(err, ShouldEqual, zotErrors.ErrInvalidURL)
+			So(err, ShouldEqual, zerr.ErrInvalidURL)
 			So(buff.String(), ShouldContainSubstring, "invalid URL format")
 		})
 	})
@@ -1555,6 +1556,564 @@ func runDisplayIndexTests(baseURL string) {
 	})
 }
 
+func TestImagesCommandGQL(t *testing.T) {
+	port := test.GetFreePort()
+	baseURL := test.GetBaseURL(port)
+	conf := config.New()
+	conf.HTTP.Port = port
+
+	defaultVal := true
+	conf.Extensions = &extconf.ExtensionConfig{
+		Search: &extconf.SearchConfig{
+			BaseConfig: extconf.BaseConfig{Enable: &defaultVal},
+		},
+	}
+	ctlr := api.NewController(conf)
+	ctlr.Config.Storage.RootDirectory = t.TempDir()
+	cm := test.NewControllerManager(ctlr)
+
+	cm.StartAndWait(conf.HTTP.Port)
+	defer cm.StopServer()
+
+	Convey("commands with gql", t, func() {
+		err := test.RemoveLocalStorageContents(ctlr.StoreController.DefaultStore)
+		So(err, ShouldBeNil)
+
+		Convey("base and derived command", func() {
+			baseImage := test.CreateImageWith().LayerBlobs(
+				[][]byte{{1, 2, 3}, {11, 22, 33}},
+			).DefaultConfig().Build()
+
+			derivedImage := test.CreateImageWith().LayerBlobs(
+				[][]byte{{1, 2, 3}, {11, 22, 33}, {44, 55, 66}},
+			).DefaultConfig().Build()
+
+			err := test.UploadImage(baseImage, baseURL, "repo", "base")
+			So(err, ShouldBeNil)
+
+			err = test.UploadImage(derivedImage, baseURL, "repo", "derived")
+			So(err, ShouldBeNil)
+
+			configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s","showspinner":false}]}`,
+				baseURL))
+			defer os.Remove(configPath)
+
+			args := []string{"base", "repo:derived"}
+			cmd := NewImagesCommand(NewSearchService())
+			cmd.PersistentFlags().String(cmdflags.ConfigFlag, "imagetest", "")
+			buff := bytes.NewBufferString("")
+			cmd.SetOut(buff)
+			cmd.SetErr(buff)
+			cmd.SetArgs(args)
+			err = cmd.Execute()
+			So(err, ShouldBeNil)
+			space := regexp.MustCompile(`\s+`)
+			str := space.ReplaceAllString(buff.String(), " ")
+			actual := strings.TrimSpace(str)
+			So(actual, ShouldContainSubstring, "repo base linux/amd64 df554ddd false 699B")
+
+			args = []string{"derived", "repo:base"}
+			cmd = NewImagesCommand(NewSearchService())
+			cmd.PersistentFlags().String(cmdflags.ConfigFlag, "imagetest", "")
+			buff = bytes.NewBufferString("")
+			cmd.SetOut(buff)
+			cmd.SetErr(buff)
+			cmd.SetArgs(args)
+			err = cmd.Execute()
+			So(err, ShouldBeNil)
+			str = space.ReplaceAllString(buff.String(), " ")
+			actual = strings.TrimSpace(str)
+			So(actual, ShouldContainSubstring, "repo derived linux/amd64 79f4b82e false 854B")
+		})
+
+		Convey("base and derived command errors", func() {
+			// too many parameters
+			buff := bytes.NewBufferString("")
+			args := []string{"too", "many", "args"}
+			cmd := NewImageBaseCommand(NewSearchService())
+			cmd.SetOut(buff)
+			cmd.SetErr(buff)
+			cmd.SetArgs(args)
+			err := cmd.Execute()
+			So(err, ShouldNotBeNil)
+
+			cmd = NewImageDerivedCommand(NewSearchService())
+			cmd.SetOut(buff)
+			cmd.SetErr(buff)
+			cmd.SetArgs(args)
+			err = cmd.Execute()
+			So(err, ShouldNotBeNil)
+
+			// bad input
+			buff = bytes.NewBufferString("")
+			args = []string{"only-repo"}
+			cmd = NewImageBaseCommand(NewSearchService())
+			cmd.SetOut(buff)
+			cmd.SetErr(buff)
+			cmd.SetArgs(args)
+			err = cmd.Execute()
+			So(err, ShouldNotBeNil)
+
+			cmd = NewImageDerivedCommand(NewSearchService())
+			cmd.SetOut(buff)
+			cmd.SetErr(buff)
+			cmd.SetArgs(args)
+			err = cmd.Execute()
+			So(err, ShouldNotBeNil)
+
+			// no url
+			buff = bytes.NewBufferString("")
+			args = []string{"repo:tag"}
+			cmd = NewImageBaseCommand(NewSearchService())
+			cmd.SetOut(buff)
+			cmd.SetErr(buff)
+			cmd.SetArgs(args)
+			err = cmd.Execute()
+			So(err, ShouldNotBeNil)
+
+			cmd = NewImageDerivedCommand(NewSearchService())
+			cmd.SetOut(buff)
+			cmd.SetErr(buff)
+			cmd.SetArgs(args)
+			err = cmd.Execute()
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("digest command", func() {
+			image := test.CreateImageWith().RandomLayers(1, 10).DefaultConfig().Build()
+
+			err := test.UploadImage(image, baseURL, "repo", "img")
+			So(err, ShouldBeNil)
+
+			configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s","showspinner":false}]}`,
+				baseURL))
+			defer os.Remove(configPath)
+
+			args := []string{"digest", image.DigestStr()}
+			cmd := NewImagesCommand(NewSearchService())
+			cmd.PersistentFlags().String(cmdflags.ConfigFlag, "imagetest", "")
+			buff := bytes.NewBufferString("")
+			cmd.SetOut(buff)
+			cmd.SetErr(buff)
+			cmd.SetArgs(args)
+			err = cmd.Execute()
+			So(err, ShouldBeNil)
+			space := regexp.MustCompile(`\s+`)
+			str := space.ReplaceAllString(buff.String(), " ")
+			actual := strings.TrimSpace(str)
+			So(actual, ShouldContainSubstring, fmt.Sprintf("repo img linux/amd64 %s false 552B",
+				image.DigestStr()[7:7+8]))
+		})
+
+		Convey("digest command errors", func() {
+			// too many parameters
+			buff := bytes.NewBufferString("")
+			args := []string{"too", "many", "args"}
+			cmd := NewImageDigestCommand(NewSearchService())
+			cmd.SetOut(buff)
+			cmd.SetErr(buff)
+			cmd.SetArgs(args)
+			err := cmd.Execute()
+			So(err, ShouldNotBeNil)
+
+			// bad input
+			buff = bytes.NewBufferString("")
+			args = []string{"bad-digest"}
+			cmd = NewImageDigestCommand(NewSearchService())
+			cmd.SetOut(buff)
+			cmd.SetErr(buff)
+			cmd.SetArgs(args)
+			err = cmd.Execute()
+			So(err, ShouldNotBeNil)
+
+			// no url
+			buff = bytes.NewBufferString("")
+			args = []string{godigest.FromString("str").String()}
+			cmd = NewImageDigestCommand(NewSearchService())
+			cmd.SetOut(buff)
+			cmd.SetErr(buff)
+			cmd.SetArgs(args)
+			err = cmd.Execute()
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("list command", func() {
+			image := test.CreateImageWith().RandomLayers(1, 10).DefaultConfig().Build()
+
+			err := test.UploadImage(image, baseURL, "repo", "img")
+			So(err, ShouldBeNil)
+
+			configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s","showspinner":false}]}`,
+				baseURL))
+			defer os.Remove(configPath)
+
+			args := []string{"list"}
+			cmd := NewImagesCommand(NewSearchService())
+			cmd.PersistentFlags().String(cmdflags.ConfigFlag, "imagetest", "")
+			buff := bytes.NewBufferString("")
+			cmd.SetOut(buff)
+			cmd.SetErr(buff)
+			cmd.SetArgs(args)
+			err = cmd.Execute()
+			So(err, ShouldBeNil)
+			space := regexp.MustCompile(`\s+`)
+			str := space.ReplaceAllString(buff.String(), " ")
+			actual := strings.TrimSpace(str)
+			fmt.Println(actual)
+			So(actual, ShouldContainSubstring, fmt.Sprintf("repo img linux/amd64 %s false 552B",
+				image.DigestStr()[7:7+8]))
+			fmt.Println(actual)
+		})
+
+		Convey("list command errors", func() {
+			// too many parameters
+			buff := bytes.NewBufferString("")
+			args := []string{"repo:img", "arg"}
+			cmd := NewImageListCommand(NewSearchService())
+			cmd.SetOut(buff)
+			cmd.SetErr(buff)
+			cmd.SetArgs(args)
+			err := cmd.Execute()
+			So(err, ShouldNotBeNil)
+
+			// no url
+			buff = bytes.NewBufferString("")
+			args = []string{}
+			cmd = NewImageListCommand(NewSearchService())
+			cmd.SetOut(buff)
+			cmd.SetErr(buff)
+			cmd.SetArgs(args)
+			err = cmd.Execute()
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("name command", func() {
+			image := test.CreateImageWith().RandomLayers(1, 10).DefaultConfig().Build()
+
+			err := test.UploadImage(image, baseURL, "repo", "img")
+			So(err, ShouldBeNil)
+
+			err = test.UploadImage(test.CreateRandomImage(), baseURL, "repo", "img2")
+			So(err, ShouldBeNil)
+
+			configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s","showspinner":false}]}`,
+				baseURL))
+			defer os.Remove(configPath)
+
+			args := []string{"name", "repo:img"}
+			cmd := NewImagesCommand(NewSearchService())
+			cmd.PersistentFlags().String(cmdflags.ConfigFlag, "imagetest", "")
+			buff := bytes.NewBufferString("")
+			cmd.SetOut(buff)
+			cmd.SetErr(buff)
+			cmd.SetArgs(args)
+			err = cmd.Execute()
+			So(err, ShouldBeNil)
+			space := regexp.MustCompile(`\s+`)
+			str := space.ReplaceAllString(buff.String(), " ")
+			actual := strings.TrimSpace(str)
+			fmt.Println(actual)
+			So(actual, ShouldContainSubstring, fmt.Sprintf("repo img linux/amd64 %s false 552B",
+				image.DigestStr()[7:7+8]))
+			fmt.Println(actual)
+		})
+
+		Convey("name command errors", func() {
+			// too many parameters
+			buff := bytes.NewBufferString("")
+			args := []string{"repo:img", "arg"}
+			cmd := NewImageNameCommand(NewSearchService())
+			cmd.SetOut(buff)
+			cmd.SetErr(buff)
+			cmd.SetArgs(args)
+			err := cmd.Execute()
+			So(err, ShouldNotBeNil)
+
+			// bad input
+			buff = bytes.NewBufferString("")
+			args = []string{":tag"}
+			cmd = NewImageNameCommand(NewSearchService())
+			cmd.SetOut(buff)
+			cmd.SetErr(buff)
+			cmd.SetArgs(args)
+			err = cmd.Execute()
+			So(err, ShouldNotBeNil)
+
+			// no url
+			buff = bytes.NewBufferString("")
+			args = []string{"repo:tag"}
+			cmd = NewImageNameCommand(NewSearchService())
+			cmd.SetOut(buff)
+			cmd.SetErr(buff)
+			cmd.SetArgs(args)
+			err = cmd.Execute()
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("CVE", func() {
+			vulnImage := test.CreateDefaultVulnerableImage()
+			err := test.UploadImage(vulnImage, baseURL, "repo", "vuln")
+			So(err, ShouldBeNil)
+
+			configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s","showspinner":false}]}`,
+				baseURL))
+			args := []string{"cve", "repo:vuln"}
+			defer os.Remove(configPath)
+			cmd := NewImagesCommand(mockService{})
+			cmd.PersistentFlags().String(cmdflags.ConfigFlag, "imagetest", "")
+			buff := bytes.NewBufferString("")
+			cmd.SetOut(buff)
+			cmd.SetErr(buff)
+			cmd.SetArgs(args)
+			err = cmd.Execute()
+			So(err, ShouldBeNil)
+			space := regexp.MustCompile(`\s+`)
+			str := space.ReplaceAllString(buff.String(), " ")
+			actual := strings.TrimSpace(str)
+			So(actual, ShouldContainSubstring, "dummyCVEID HIGH Title of that CVE")
+		})
+
+		Convey("CVE errors", func() {
+			count := 0
+			configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s","showspinner":false}]}`,
+				baseURL))
+			args := []string{"cve", "repo:vuln"}
+			defer os.Remove(configPath)
+			cmd := NewImagesCommand(mockService{
+				getCveByImageGQLFn: func(ctx context.Context, config searchConfig, username, password,
+					imageName, searchedCVE string) (*cveResult, error,
+				) {
+					if count == 0 {
+						count++
+						fmt.Println("Count:", count)
+
+						return &cveResult{}, zerr.ErrCVEDBNotFound
+					}
+
+					return &cveResult{}, zerr.ErrInjected
+				},
+			})
+			cmd.PersistentFlags().String(cmdflags.ConfigFlag, "imagetest", "")
+			buff := bytes.NewBufferString("")
+			cmd.SetOut(buff)
+			cmd.SetErr(buff)
+			cmd.SetArgs(args)
+			err = cmd.Execute()
+			So(err, ShouldNotBeNil)
+			space := regexp.MustCompile(`\s+`)
+			str := space.ReplaceAllString(buff.String(), " ")
+			actual := strings.TrimSpace(str)
+			So(actual, ShouldContainSubstring, "[warning] CVE DB is not ready")
+		})
+	})
+
+	Convey("Config error", t, func() {
+		args := []string{"base", "repo:derived"}
+		cmd := NewImagesCommand(NewSearchService())
+		cmd.PersistentFlags().String(cmdflags.ConfigFlag, "imagetest", "")
+		buff := bytes.NewBufferString("")
+		cmd.SetOut(buff)
+		cmd.SetErr(buff)
+		cmd.SetArgs(args)
+		err := cmd.Execute()
+		So(err, ShouldNotBeNil)
+		So(err, ShouldNotBeNil)
+
+		args = []string{"derived", "repo:base"}
+		cmd = NewImagesCommand(NewSearchService())
+		buff = bytes.NewBufferString("")
+		cmd.SetOut(buff)
+		cmd.SetErr(buff)
+		cmd.SetArgs(args)
+		err = cmd.Execute()
+		So(err, ShouldNotBeNil)
+
+		args = []string{"digest", ispec.DescriptorEmptyJSON.Digest.String()}
+		cmd = NewImagesCommand(NewSearchService())
+		buff = bytes.NewBufferString("")
+		cmd.SetOut(buff)
+		cmd.SetErr(buff)
+		cmd.SetArgs(args)
+		err = cmd.Execute()
+		So(err, ShouldNotBeNil)
+
+		args = []string{"list"}
+		cmd = NewImagesCommand(NewSearchService())
+		buff = bytes.NewBufferString("")
+		cmd.SetOut(buff)
+		cmd.SetErr(buff)
+		cmd.SetArgs(args)
+		err = cmd.Execute()
+		So(err, ShouldNotBeNil)
+
+		args = []string{"name", "repo:img"}
+		cmd = NewImagesCommand(NewSearchService())
+		buff = bytes.NewBufferString("")
+		cmd.SetOut(buff)
+		cmd.SetErr(buff)
+		cmd.SetArgs(args)
+		err = cmd.Execute()
+		So(err, ShouldNotBeNil)
+
+		args = []string{"cve", "repo:vuln"}
+		cmd = NewImagesCommand(mockService{})
+		buff = bytes.NewBufferString("")
+		cmd.SetOut(buff)
+		cmd.SetErr(buff)
+		cmd.SetArgs(args)
+		err = cmd.Execute()
+		So(err, ShouldNotBeNil)
+	})
+}
+
+func TestImageCommandREST(t *testing.T) {
+	port := test.GetFreePort()
+	baseURL := test.GetBaseURL(port)
+	conf := config.New()
+	conf.HTTP.Port = port
+
+	ctlr := api.NewController(conf)
+	ctlr.Config.Storage.RootDirectory = t.TempDir()
+	cm := test.NewControllerManager(ctlr)
+
+	cm.StartAndWait(conf.HTTP.Port)
+	defer cm.StopServer()
+
+	Convey("commands without gql", t, func() {
+		err := test.RemoveLocalStorageContents(ctlr.StoreController.DefaultStore)
+		So(err, ShouldBeNil)
+
+		Convey("base and derived command", func() {
+			baseImage := test.CreateImageWith().LayerBlobs(
+				[][]byte{{1, 2, 3}, {11, 22, 33}},
+			).DefaultConfig().Build()
+
+			derivedImage := test.CreateImageWith().LayerBlobs(
+				[][]byte{{1, 2, 3}, {11, 22, 33}, {44, 55, 66}},
+			).DefaultConfig().Build()
+
+			err := test.UploadImage(baseImage, baseURL, "repo", "base")
+			So(err, ShouldBeNil)
+
+			err = test.UploadImage(derivedImage, baseURL, "repo", "derived")
+			So(err, ShouldBeNil)
+
+			configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s","showspinner":false}]}`,
+				baseURL))
+			defer os.Remove(configPath)
+
+			args := []string{"base", "repo:derived"}
+			cmd := NewImagesCommand(NewSearchService())
+			cmd.PersistentFlags().String(cmdflags.ConfigFlag, "imagetest", "")
+			buff := bytes.NewBufferString("")
+			cmd.SetOut(buff)
+			cmd.SetErr(buff)
+			cmd.SetArgs(args)
+			err = cmd.Execute()
+			So(err, ShouldNotBeNil)
+
+			args = []string{"derived", "repo:base"}
+			cmd = NewImagesCommand(NewSearchService())
+			cmd.PersistentFlags().String(cmdflags.ConfigFlag, "imagetest", "")
+			buff = bytes.NewBufferString("")
+			cmd.SetOut(buff)
+			cmd.SetErr(buff)
+			cmd.SetArgs(args)
+			err = cmd.Execute()
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("digest command", func() {
+			image := test.CreateRandomImage()
+
+			err := test.UploadImage(image, baseURL, "repo", "img")
+			So(err, ShouldBeNil)
+
+			configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s","showspinner":false}]}`,
+				baseURL))
+			defer os.Remove(configPath)
+
+			args := []string{"digest", image.DigestStr()}
+			cmd := NewImagesCommand(NewSearchService())
+			cmd.PersistentFlags().String(cmdflags.ConfigFlag, "imagetest", "")
+			buff := bytes.NewBufferString("")
+			cmd.SetOut(buff)
+			cmd.SetErr(buff)
+			cmd.SetArgs(args)
+			err = cmd.Execute()
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("list command", func() {
+			image := test.CreateRandomImage()
+
+			err := test.UploadImage(image, baseURL, "repo", "img")
+			So(err, ShouldBeNil)
+
+			configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s","showspinner":false}]}`,
+				baseURL))
+			defer os.Remove(configPath)
+
+			args := []string{"list"}
+			cmd := NewImagesCommand(NewSearchService())
+			cmd.PersistentFlags().String(cmdflags.ConfigFlag, "imagetest", "")
+			buff := bytes.NewBufferString("")
+			cmd.SetOut(buff)
+			cmd.SetErr(buff)
+			cmd.SetArgs(args)
+			err = cmd.Execute()
+			So(err, ShouldBeNil)
+			fmt.Println(buff.String())
+			fmt.Println()
+		})
+
+		Convey("name command", func() {
+			image := test.CreateRandomImage()
+
+			err := test.UploadImage(image, baseURL, "repo", "img")
+			So(err, ShouldBeNil)
+
+			err = test.UploadImage(test.CreateRandomImage(), baseURL, "repo", "img2")
+			So(err, ShouldBeNil)
+
+			configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s","showspinner":false}]}`,
+				baseURL))
+			defer os.Remove(configPath)
+
+			args := []string{"name", "repo:img"}
+			cmd := NewImagesCommand(NewSearchService())
+			cmd.PersistentFlags().String(cmdflags.ConfigFlag, "imagetest", "")
+			buff := bytes.NewBufferString("")
+			cmd.SetOut(buff)
+			cmd.SetErr(buff)
+			cmd.SetArgs(args)
+			err = cmd.Execute()
+			So(err, ShouldBeNil)
+			fmt.Println(buff.String())
+			fmt.Println()
+		})
+
+		Convey("CVE", func() {
+			vulnImage := test.CreateDefaultVulnerableImage()
+			err := test.UploadImage(vulnImage, baseURL, "repo", "vuln")
+			So(err, ShouldBeNil)
+
+			configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s","showspinner":false}]}`,
+				baseURL))
+			args := []string{"cve", "repo:vuln"}
+			defer os.Remove(configPath)
+			cmd := NewImagesCommand(mockService{})
+			cmd.PersistentFlags().String(cmdflags.ConfigFlag, "imagetest", "")
+			buff := bytes.NewBufferString("")
+			cmd.SetOut(buff)
+			cmd.SetErr(buff)
+			cmd.SetArgs(args)
+			err = cmd.Execute()
+			So(err, ShouldNotBeNil)
+		})
+	})
+}
+
 func uploadTestMultiarch(baseURL string) {
 	// ------- Define Image1
 	layer11 := []byte{11, 12, 13, 14}
@@ -1606,7 +2165,7 @@ func MockNewImageCommand(searchService SearchService) *cobra.Command {
 				panic(err)
 			}
 
-			configPath := path.Join(home + "/.zot")
+			configPath := path.Join(home, "/.zot")
 			if len(args) > 0 {
 				urlFromConfig, err := getConfigValue(configPath, args[0], "url")
 				if err != nil {
@@ -1616,12 +2175,12 @@ func MockNewImageCommand(searchService SearchService) *cobra.Command {
 				}
 
 				if urlFromConfig == "" {
-					return zotErrors.ErrNoURLProvided
+					return zerr.ErrNoURLProvided
 				}
 
 				servURL = urlFromConfig
 			} else {
-				return zotErrors.ErrNoURLProvided
+				return zerr.ErrNoURLProvided
 			}
 
 			if len(args) > 0 {
@@ -1679,7 +2238,7 @@ func MockSearchImage(searchConfig searchConfig) error {
 		}
 	}
 
-	return zotErrors.ErrInvalidFlagsCombination
+	return zerr.ErrInvalidFlagsCombination
 }
 
 func uploadManifest(url string) error {
@@ -1895,7 +2454,73 @@ func uploadManifestDerivedBase(url string) error {
 	return nil
 }
 
-type mockService struct{}
+type mockService struct {
+	getAllImagesFn func(ctx context.Context, config searchConfig, username, password string,
+		channel chan stringResult, wtgrp *sync.WaitGroup)
+
+	getImagesGQLFn func(ctx context.Context, config searchConfig, username, password string,
+		imageName string) (*common.ImageListResponse, error)
+
+	getImageByNameFn func(ctx context.Context, config searchConfig,
+		username, password, imageName string, channel chan stringResult, wtgrp *sync.WaitGroup,
+	)
+
+	getFixedTagsForCVEFn func(ctx context.Context, config searchConfig,
+		username, password, imageName, cveid string, rch chan stringResult, wtgrp *sync.WaitGroup,
+	)
+
+	getImageByNameAndCVEIDFn func(ctx context.Context, config searchConfig, username,
+		password, imageName, cveid string, rch chan stringResult, wtgrp *sync.WaitGroup,
+	)
+
+	getImagesByCveIDFn func(ctx context.Context, config searchConfig, username, password, cveid string,
+		rch chan stringResult, wtgrp *sync.WaitGroup,
+	)
+
+	getImagesByDigestFn func(ctx context.Context, config searchConfig, username,
+		password, digest string, rch chan stringResult, wtgrp *sync.WaitGroup,
+	)
+
+	getReferrersFn func(ctx context.Context, config searchConfig, username, password string,
+		repo, digest string,
+	) (referrersResult, error)
+
+	globalSearchGQLFn func(ctx context.Context, config searchConfig, username, password string,
+		query string,
+	) (*common.GlobalSearch, error)
+
+	getReferrersGQLFn func(ctx context.Context, config searchConfig, username, password string,
+		repo, digest string,
+	) (*common.ReferrersResp, error)
+
+	getDerivedImageListGQLFn func(ctx context.Context, config searchConfig, username, password string,
+		derivedImage string,
+	) (*common.DerivedImageListResponse, error)
+
+	getBaseImageListGQLFn func(ctx context.Context, config searchConfig, username, password string,
+		derivedImage string,
+	) (*common.BaseImageListResponse, error)
+
+	getImagesForDigestGQLFn func(ctx context.Context, config searchConfig, username, password string,
+		digest string,
+	) (*common.ImagesForDigest, error)
+
+	getCveByImageGQLFn func(ctx context.Context, config searchConfig, username, password,
+		imageName, searchedCVE string,
+	) (*cveResult, error)
+
+	getImagesByCveIDGQLFn func(ctx context.Context, config searchConfig, username, password string,
+		digest string,
+	) (*common.ImagesForCve, error)
+
+	getTagsForCVEGQLFn func(ctx context.Context, config searchConfig, username, password,
+		imageName, cveID string,
+	) (*common.ImagesForCve, error)
+
+	getFixedTagsForCVEGQLFn func(ctx context.Context, config searchConfig, username, password,
+		imageName, cveID string,
+	) (*common.ImageListWithCVEFixedResponse, error)
+}
 
 func (service mockService) getRepos(ctx context.Context, config searchConfig, username,
 	password string, channel chan stringResult, wtgrp *sync.WaitGroup,
@@ -1903,39 +2528,56 @@ func (service mockService) getRepos(ctx context.Context, config searchConfig, us
 	defer wtgrp.Done()
 	defer close(channel)
 
-	var catalog [3]string
-	catalog[0] = "python"
-	catalog[1] = "busybox"
-	catalog[2] = "hello-world"
+	fmt.Fprintln(config.resultWriter, "\n\nREPOSITORY NAME")
 
-	channel <- stringResult{"", nil}
+	fmt.Fprintln(config.resultWriter, "repo1")
+	fmt.Fprintln(config.resultWriter, "repo2")
 }
 
 func (service mockService) getReferrers(ctx context.Context, config searchConfig, username, password string,
 	repo, digest string,
 ) (referrersResult, error) {
-	return referrersResult{}, nil
+	if service.getReferrersFn != nil {
+		return service.getReferrersFn(ctx, config, username, password, repo, digest)
+	}
+
+	return referrersResult{
+		common.Referrer{
+			ArtifactType: "art.type",
+			Digest:       ispec.DescriptorEmptyJSON.Digest.String(),
+			MediaType:    ispec.MediaTypeImageManifest,
+			Size:         100,
+		},
+	}, nil
 }
 
 func (service mockService) globalSearchGQL(ctx context.Context, config searchConfig, username, password string,
 	query string,
 ) (*common.GlobalSearch, error) {
+	if service.globalSearchGQLFn != nil {
+		return service.globalSearchGQLFn(ctx, config, username, password, query)
+	}
+
 	return &common.GlobalSearch{
 		Images: []common.ImageSummary{
 			{
 				RepoName:  "repo",
 				MediaType: ispec.MediaTypeImageManifest,
+				Size:      "100",
 				Manifests: []common.ManifestSummary{
 					{
-						Digest: godigest.FromString("str").String(),
-						Size:   "100",
+						Digest:       godigest.FromString("str").String(),
+						Size:         "100",
+						ConfigDigest: ispec.DescriptorEmptyJSON.Digest.String(),
 					},
 				},
 			},
 		},
 		Repos: []common.RepoSummary{
 			{
-				Name: "repo",
+				Name:        "repo",
+				Size:        "100",
+				LastUpdated: time.Date(2010, 1, 1, 1, 1, 1, 0, time.UTC),
 			},
 		},
 	}, nil
@@ -1944,6 +2586,10 @@ func (service mockService) globalSearchGQL(ctx context.Context, config searchCon
 func (service mockService) getReferrersGQL(ctx context.Context, config searchConfig, username, password string,
 	repo, digest string,
 ) (*common.ReferrersResp, error) {
+	if service.getReferrersGQLFn != nil {
+		return service.getReferrersGQLFn(ctx, config, username, password, repo, digest)
+	}
+
 	return &common.ReferrersResp{
 		ReferrersResult: common.ReferrersResult{
 			Referrers: []common.Referrer{
@@ -1961,6 +2607,10 @@ func (service mockService) getReferrersGQL(ctx context.Context, config searchCon
 func (service mockService) getDerivedImageListGQL(ctx context.Context, config searchConfig, username, password string,
 	derivedImage string,
 ) (*common.DerivedImageListResponse, error) {
+	if service.getDerivedImageListGQLFn != nil {
+		return service.getDerivedImageListGQLFn(ctx, config, username, password, derivedImage)
+	}
+
 	imageListGQLResponse := &common.DerivedImageListResponse{}
 	imageListGQLResponse.DerivedImageList.Results = []common.ImageSummary{
 		{
@@ -1982,8 +2632,12 @@ func (service mockService) getDerivedImageListGQL(ctx context.Context, config se
 }
 
 func (service mockService) getBaseImageListGQL(ctx context.Context, config searchConfig, username, password string,
-	derivedImage string,
+	baseImage string,
 ) (*common.BaseImageListResponse, error) {
+	if service.getBaseImageListGQLFn != nil {
+		return service.getBaseImageListGQLFn(ctx, config, username, password, baseImage)
+	}
+
 	imageListGQLResponse := &common.BaseImageListResponse{}
 	imageListGQLResponse.BaseImageList.Results = []common.ImageSummary{
 		{
@@ -2007,6 +2661,10 @@ func (service mockService) getBaseImageListGQL(ctx context.Context, config searc
 func (service mockService) getImagesGQL(ctx context.Context, config searchConfig, username, password string,
 	imageName string,
 ) (*common.ImageListResponse, error) {
+	if service.getImagesGQLFn != nil {
+		return service.getImagesGQLFn(ctx, config, username, password, imageName)
+	}
+
 	imageListGQLResponse := &common.ImageListResponse{}
 	imageListGQLResponse.PaginatedImagesResult.Results = []common.ImageSummary{
 		{
@@ -2029,9 +2687,13 @@ func (service mockService) getImagesGQL(ctx context.Context, config searchConfig
 	return imageListGQLResponse, nil
 }
 
-func (service mockService) getImagesByDigestGQL(ctx context.Context, config searchConfig, username, password string,
+func (service mockService) getImagesForDigestGQL(ctx context.Context, config searchConfig, username, password string,
 	digest string,
 ) (*common.ImagesForDigest, error) {
+	if service.getImagesForDigestGQLFn != nil {
+		return service.getImagesForDigestGQLFn(ctx, config, username, password, digest)
+	}
+
 	imageListGQLResponse := &common.ImagesForDigest{}
 	imageListGQLResponse.Results = []common.ImageSummary{
 		{
@@ -2057,6 +2719,10 @@ func (service mockService) getImagesByDigestGQL(ctx context.Context, config sear
 func (service mockService) getImagesByCveIDGQL(ctx context.Context, config searchConfig, username, password string,
 	digest string,
 ) (*common.ImagesForCve, error) {
+	if service.getImagesByCveIDGQLFn != nil {
+		return service.getImagesByCveIDGQLFn(ctx, config, username, password, digest)
+	}
+
 	imagesForCve := &common.ImagesForCve{
 		Errors: nil,
 		ImagesForCVEList: struct {
@@ -2075,11 +2741,19 @@ func (service mockService) getImagesByCveIDGQL(ctx context.Context, config searc
 func (service mockService) getTagsForCVEGQL(ctx context.Context, config searchConfig, username, password,
 	imageName, cveID string,
 ) (*common.ImagesForCve, error) {
+	if service.getTagsForCVEGQLFn != nil {
+		return service.getTagsForCVEGQLFn(ctx, config, username, password, imageName, cveID)
+	}
+
 	images := &common.ImagesForCve{
 		Errors: nil,
 		ImagesForCVEList: struct {
 			common.PaginatedImagesResult `json:"ImageListForCVE"` //nolint:tagliatelle // graphQL schema
 		}{},
+	}
+
+	if imageName == "" {
+		imageName = "image-name"
 	}
 
 	images.Errors = nil
@@ -2093,6 +2767,10 @@ func (service mockService) getTagsForCVEGQL(ctx context.Context, config searchCo
 func (service mockService) getFixedTagsForCVEGQL(ctx context.Context, config searchConfig, username, password,
 	imageName, cveID string,
 ) (*common.ImageListWithCVEFixedResponse, error) {
+	if service.getFixedTagsForCVEGQLFn != nil {
+		return service.getFixedTagsForCVEGQLFn(ctx, config, username, password, imageName, cveID)
+	}
+
 	fixedTags := &common.ImageListWithCVEFixedResponse{
 		Errors: nil,
 		ImageListWithCVEFixed: struct {
@@ -2111,6 +2789,9 @@ func (service mockService) getFixedTagsForCVEGQL(ctx context.Context, config sea
 func (service mockService) getCveByImageGQL(ctx context.Context, config searchConfig, username, password,
 	imageName, searchedCVE string,
 ) (*cveResult, error) {
+	if service.getCveByImageGQLFn != nil {
+		return service.getCveByImageGQLFn(ctx, config, username, password, imageName, searchedCVE)
+	}
 	cveRes := &cveResult{}
 	cveRes.Data = cveData{
 		CVEListForImage: cveListForImage{
@@ -2141,6 +2822,7 @@ func (service mockService) getMockedImageByName(imageName string) imageStruct {
 	image := imageStruct{}
 	image.RepoName = imageName
 	image.Tag = "tag"
+	image.MediaType = ispec.MediaTypeImageManifest
 	image.Manifests = []common.ManifestSummary{
 		{
 			Digest:       godigest.FromString("Digest").String(),
@@ -2159,6 +2841,12 @@ func (service mockService) getAllImages(ctx context.Context, config searchConfig
 ) {
 	defer wtgrp.Done()
 	defer close(channel)
+
+	if service.getAllImagesFn != nil {
+		service.getAllImagesFn(ctx, config, username, password, channel, wtgrp)
+
+		return
+	}
 
 	image := &imageStruct{}
 	image.RepoName = "randomimageName"
@@ -2191,6 +2879,12 @@ func (service mockService) getImageByName(ctx context.Context, config searchConf
 ) {
 	defer wtgrp.Done()
 	defer close(channel)
+
+	if service.getImageByNameFn != nil {
+		service.getImageByNameFn(ctx, config, username, password, imageName, channel, wtgrp)
+
+		return
+	}
 
 	image := &imageStruct{}
 	image.RepoName = imageName
@@ -2257,26 +2951,62 @@ func (service mockService) getCveByImage(ctx context.Context, config searchConfi
 }
 
 func (service mockService) getFixedTagsForCVE(ctx context.Context, config searchConfig,
-	username, password, imageName, cvid string, rch chan stringResult, wtgrp *sync.WaitGroup,
+	username, password, imageName, cveid string, rch chan stringResult, wtgrp *sync.WaitGroup,
 ) {
+	if service.getFixedTagsForCVEFn != nil {
+		defer wtgrp.Done()
+		defer close(rch)
+
+		service.getFixedTagsForCVEFn(ctx, config, username, password, imageName, cveid, rch, wtgrp)
+
+		return
+	}
+
 	service.getImageByName(ctx, config, username, password, imageName, rch, wtgrp)
 }
 
 func (service mockService) getImageByNameAndCVEID(ctx context.Context, config searchConfig, username,
-	password, imageName, cvid string, rch chan stringResult, wtgrp *sync.WaitGroup,
+	password, imageName, cveid string, rch chan stringResult, wtgrp *sync.WaitGroup,
 ) {
+	if service.getImageByNameAndCVEIDFn != nil {
+		defer wtgrp.Done()
+		defer close(rch)
+
+		service.getImageByNameAndCVEIDFn(ctx, config, username, password, imageName, cveid, rch, wtgrp)
+
+		return
+	}
+
 	service.getImageByName(ctx, config, username, password, imageName, rch, wtgrp)
 }
 
-func (service mockService) getImagesByCveID(ctx context.Context, config searchConfig, username, password, cvid string,
+func (service mockService) getImagesByCveID(ctx context.Context, config searchConfig, username, password, cveid string,
 	rch chan stringResult, wtgrp *sync.WaitGroup,
 ) {
+	if service.getImagesByCveIDFn != nil {
+		defer wtgrp.Done()
+		defer close(rch)
+
+		service.getImagesByCveIDFn(ctx, config, username, password, cveid, rch, wtgrp)
+
+		return
+	}
+
 	service.getImageByName(ctx, config, username, password, "anImage", rch, wtgrp)
 }
 
 func (service mockService) getImagesByDigest(ctx context.Context, config searchConfig, username,
 	password, digest string, rch chan stringResult, wtgrp *sync.WaitGroup,
 ) {
+	if service.getImagesByDigestFn != nil {
+		defer wtgrp.Done()
+		defer close(rch)
+
+		service.getImagesByDigestFn(ctx, config, username, password, digest, rch, wtgrp)
+
+		return
+	}
+
 	service.getImageByName(ctx, config, username, password, "anImage", rch, wtgrp)
 }
 
@@ -2288,7 +3018,7 @@ func makeConfigFile(content string) string {
 		panic(err)
 	}
 
-	configPath := path.Join(home + "/.zot")
+	configPath := path.Join(home, "/.zot")
 
 	if err := os.WriteFile(configPath, []byte(content), 0o600); err != nil {
 		panic(err)

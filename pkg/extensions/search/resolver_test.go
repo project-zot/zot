@@ -123,7 +123,7 @@ func TestGlobalSearch(t *testing.T) {
 					manifestBlob, err := json.Marshal(ispec.Manifest{})
 					So(err, ShouldBeNil)
 
-					manifestMetas := map[string]mTypes.ManifestMetadata{
+					manifestsMeta := map[string]mTypes.ManifestMetadata{
 						"digestTag1.0.1": {
 							ManifestBlob: manifestBlob,
 							ConfigBlob:   configBlob1,
@@ -134,7 +134,7 @@ func TestGlobalSearch(t *testing.T) {
 						},
 					}
 
-					return repos, manifestMetas, map[string]mTypes.IndexData{}, nil
+					return repos, manifestsMeta, map[string]mTypes.IndexData{}, nil
 				},
 			}
 
@@ -189,14 +189,14 @@ func TestGlobalSearch(t *testing.T) {
 					configBlob, err := json.Marshal(ispec.Image{})
 					So(err, ShouldBeNil)
 
-					manifestMetas := map[string]mTypes.ManifestMetadata{
+					manifestsMeta := map[string]mTypes.ManifestMetadata{
 						"digestTag1.0.1": {
 							ManifestBlob: []byte("bad manifest blob"),
 							ConfigBlob:   configBlob,
 						},
 					}
 
-					return repos, manifestMetas, map[string]mTypes.IndexData{}, nil
+					return repos, manifestsMeta, map[string]mTypes.IndexData{}, nil
 				},
 			}
 
@@ -262,14 +262,14 @@ func TestGlobalSearch(t *testing.T) {
 					manifestBlob, err := json.Marshal(ispec.Manifest{})
 					So(err, ShouldBeNil)
 
-					manifestMetas := map[string]mTypes.ManifestMetadata{
+					manifestsMeta := map[string]mTypes.ManifestMetadata{
 						"digestTag1.0.1": {
 							ManifestBlob: manifestBlob,
 							ConfigBlob:   []byte("bad config blob"),
 						},
 					}
 
-					return repos, manifestMetas, map[string]mTypes.IndexData{}, nil
+					return repos, manifestsMeta, map[string]mTypes.IndexData{}, nil
 				},
 			}
 
@@ -375,7 +375,7 @@ func TestGlobalSearch(t *testing.T) {
 					manifestBlob, err := json.Marshal(ispec.Manifest{})
 					So(err, ShouldBeNil)
 
-					manifestMetas := map[string]mTypes.ManifestMetadata{
+					manifestsMeta := map[string]mTypes.ManifestMetadata{
 						"digestTag1.0.1": {
 							ManifestBlob: manifestBlob,
 							ConfigBlob:   configBlob1,
@@ -386,7 +386,7 @@ func TestGlobalSearch(t *testing.T) {
 						},
 					}
 
-					return repos, manifestMetas, map[string]mTypes.IndexData{}, nil
+					return repos, manifestsMeta, map[string]mTypes.IndexData{}, nil
 				},
 			}
 
@@ -505,7 +505,7 @@ func TestRepoListWithNewestImage(t *testing.T) {
 					})
 					So(err, ShouldBeNil)
 
-					manifestMetas := map[string]mTypes.ManifestMetadata{
+					manifestsMeta := map[string]mTypes.ManifestMetadata{
 						"digestTag1.0.1": {
 							ManifestBlob: []byte("bad manifest blob"),
 							ConfigBlob:   configBlob1,
@@ -516,7 +516,7 @@ func TestRepoListWithNewestImage(t *testing.T) {
 						},
 					}
 
-					return repos, manifestMetas, map[string]mTypes.IndexData{}, nil
+					return repos, manifestsMeta, map[string]mTypes.IndexData{}, nil
 				},
 			}
 
@@ -601,7 +601,7 @@ func TestRepoListWithNewestImage(t *testing.T) {
 					manifestBlob, err := json.Marshal(ispec.Manifest{})
 					So(err, ShouldBeNil)
 
-					manifestMetas := map[string]mTypes.ManifestMetadata{
+					manifestsMeta := map[string]mTypes.ManifestMetadata{
 						"digestTag1.0.1": {
 							ManifestBlob: manifestBlob,
 							ConfigBlob:   configBlob1,
@@ -612,7 +612,7 @@ func TestRepoListWithNewestImage(t *testing.T) {
 						},
 					}
 
-					return repos, manifestMetas, map[string]mTypes.IndexData{}, nil
+					return repos, manifestsMeta, map[string]mTypes.IndexData{}, nil
 				},
 			}
 			Convey("MetaDB missing requestedPage", func() {
@@ -776,7 +776,7 @@ func TestImageListForDigest(t *testing.T) {
 					So(err, ShouldBeNil)
 					manifestBlob := []byte("invalid")
 
-					manifestMetaDatas := map[string]mTypes.ManifestMetadata{
+					manifestsMetaData := map[string]mTypes.ManifestMetadata{
 						"digestTag1.0.1": {
 							ManifestBlob:  manifestBlob,
 							ConfigBlob:    configBlob,
@@ -784,7 +784,7 @@ func TestImageListForDigest(t *testing.T) {
 						},
 					}
 
-					return repos, manifestMetaDatas, map[string]mTypes.IndexData{}, nil
+					return repos, manifestsMetaData, map[string]mTypes.IndexData{}, nil
 				},
 			}
 
@@ -820,7 +820,7 @@ func TestImageListForDigest(t *testing.T) {
 					configBlob, err := json.Marshal(ispec.ImageConfig{})
 					So(err, ShouldBeNil)
 
-					manifestMetaDatas := map[string]mTypes.ManifestMetadata{
+					manifestsMetaData := map[string]mTypes.ManifestMetadata{
 						manifestDigest: {
 							ManifestBlob:  manifestBlob,
 							ConfigBlob:    configBlob,
@@ -829,9 +829,9 @@ func TestImageListForDigest(t *testing.T) {
 					}
 					matchedTags := repos[0].Tags
 					for tag, manifestDescriptor := range repos[0].Tags {
-						if !filterFunc(repos[0], manifestMetaDatas[manifestDescriptor.Digest]) {
+						if !filterFunc(repos[0], manifestsMetaData[manifestDescriptor.Digest]) {
 							delete(matchedTags, tag)
-							delete(manifestMetaDatas, manifestDescriptor.Digest)
+							delete(manifestsMetaData, manifestDescriptor.Digest)
 
 							continue
 						}
@@ -839,7 +839,7 @@ func TestImageListForDigest(t *testing.T) {
 
 					repos[0].Tags = matchedTags
 
-					return repos, manifestMetaDatas, map[string]mTypes.IndexData{}, nil
+					return repos, manifestsMetaData, map[string]mTypes.IndexData{}, nil
 				},
 			}
 
@@ -898,7 +898,7 @@ func TestImageListForDigest(t *testing.T) {
 					})
 					So(err, ShouldBeNil)
 
-					manifestMetaDatas := map[string]mTypes.ManifestMetadata{
+					manifestsMetaData := map[string]mTypes.ManifestMetadata{
 						manifestDigest: {
 							ManifestBlob:  manifestBlob,
 							ConfigBlob:    configBlob,
@@ -908,9 +908,9 @@ func TestImageListForDigest(t *testing.T) {
 
 					matchedTags := repos[0].Tags
 					for tag, manifestDescriptor := range repos[0].Tags {
-						if !filterFunc(repos[0], manifestMetaDatas[manifestDescriptor.Digest]) {
+						if !filterFunc(repos[0], manifestsMetaData[manifestDescriptor.Digest]) {
 							delete(matchedTags, tag)
-							delete(manifestMetaDatas, manifestDescriptor.Digest)
+							delete(manifestsMetaData, manifestDescriptor.Digest)
 
 							continue
 						}
@@ -918,7 +918,7 @@ func TestImageListForDigest(t *testing.T) {
 
 					repos[0].Tags = matchedTags
 
-					return repos, manifestMetaDatas, map[string]mTypes.IndexData{}, nil
+					return repos, manifestsMetaData, map[string]mTypes.IndexData{}, nil
 				},
 			}
 
@@ -975,7 +975,7 @@ func TestImageListForDigest(t *testing.T) {
 					})
 					So(err, ShouldBeNil)
 
-					manifestMetaDatas := map[string]mTypes.ManifestMetadata{
+					manifestsMetaData := map[string]mTypes.ManifestMetadata{
 						manifestDigest: {
 							ManifestBlob:  manifestBlob,
 							ConfigBlob:    configBlob,
@@ -985,9 +985,9 @@ func TestImageListForDigest(t *testing.T) {
 
 					matchedTags := repos[0].Tags
 					for tag, manifestDescriptor := range repos[0].Tags {
-						if !filterFunc(repos[0], manifestMetaDatas[manifestDescriptor.Digest]) {
+						if !filterFunc(repos[0], manifestsMetaData[manifestDescriptor.Digest]) {
 							delete(matchedTags, tag)
-							delete(manifestMetaDatas, manifestDescriptor.Digest)
+							delete(manifestsMetaData, manifestDescriptor.Digest)
 
 							continue
 						}
@@ -995,7 +995,7 @@ func TestImageListForDigest(t *testing.T) {
 
 					repos[0].Tags = matchedTags
 
-					return repos, manifestMetaDatas, map[string]mTypes.IndexData{}, nil
+					return repos, manifestsMetaData, map[string]mTypes.IndexData{}, nil
 				},
 			}
 
@@ -1042,7 +1042,7 @@ func TestImageListForDigest(t *testing.T) {
 						},
 					}
 
-					manifestMetaDatas := map[string]mTypes.ManifestMetadata{
+					manifestsMetaData := map[string]mTypes.ManifestMetadata{
 						manifestDigest: {
 							ManifestBlob:  manifestBlob,
 							ConfigBlob:    configBlob,
@@ -1054,9 +1054,9 @@ func TestImageListForDigest(t *testing.T) {
 						matchedTags := repo.Tags
 
 						for tag, manifestDescriptor := range repo.Tags {
-							if !filterFunc(repo, manifestMetaDatas[manifestDescriptor.Digest]) {
+							if !filterFunc(repo, manifestsMetaData[manifestDescriptor.Digest]) {
 								delete(matchedTags, tag)
-								delete(manifestMetaDatas, manifestDescriptor.Digest)
+								delete(manifestsMetaData, manifestDescriptor.Digest)
 
 								continue
 							}
@@ -1065,7 +1065,7 @@ func TestImageListForDigest(t *testing.T) {
 						repos[i].Tags = matchedTags
 					}
 
-					return repos, manifestMetaDatas, map[string]mTypes.IndexData{}, nil
+					return repos, manifestsMetaData, map[string]mTypes.IndexData{}, nil
 				},
 			}
 
@@ -1111,7 +1111,7 @@ func TestImageListForDigest(t *testing.T) {
 						},
 					}
 
-					manifestMetaDatas := map[string]mTypes.ManifestMetadata{
+					manifestsMetaData := map[string]mTypes.ManifestMetadata{
 						manifestDigest: {
 							ManifestBlob:  manifestBlob,
 							ConfigBlob:    configBlob,
@@ -1123,9 +1123,9 @@ func TestImageListForDigest(t *testing.T) {
 						matchedTags := repo.Tags
 
 						for tag, manifestDescriptor := range repo.Tags {
-							if !filterFunc(repo, manifestMetaDatas[manifestDescriptor.Digest]) {
+							if !filterFunc(repo, manifestsMetaData[manifestDescriptor.Digest]) {
 								delete(matchedTags, tag)
-								delete(manifestMetaDatas, manifestDescriptor.Digest)
+								delete(manifestsMetaData, manifestDescriptor.Digest)
 
 								continue
 							}
@@ -1136,7 +1136,7 @@ func TestImageListForDigest(t *testing.T) {
 						repos = append(repos, repo)
 					}
 
-					return repos, manifestMetaDatas, map[string]mTypes.IndexData{}, nil
+					return repos, manifestsMetaData, map[string]mTypes.IndexData{}, nil
 				},
 			}
 
@@ -1429,7 +1429,7 @@ func TestImageList(t *testing.T) {
 					manifestBlob, err := json.Marshal(ispec.Manifest{})
 					So(err, ShouldBeNil)
 
-					manifestMetaDatas := map[string]mTypes.ManifestMetadata{
+					manifestsMetaData := map[string]mTypes.ManifestMetadata{
 						"digestTag1.0.1": {
 							ManifestBlob:  manifestBlob,
 							ConfigBlob:    configBlob,
@@ -1442,21 +1442,21 @@ func TestImageList(t *testing.T) {
 						},
 					}
 
-					if !filterFunc(repos[0], manifestMetaDatas["digestTag1.0.1"]) {
+					if !filterFunc(repos[0], manifestsMetaData["digestTag1.0.1"]) {
 						return []mTypes.RepoMetadata{}, map[string]mTypes.ManifestMetadata{},
 							map[string]mTypes.IndexData{}, nil
 					}
 
-					return repos, manifestMetaDatas, map[string]mTypes.IndexData{}, nil
+					return repos, manifestsMetaData, map[string]mTypes.IndexData{}, nil
 				},
 			}
 
 			limit := 1
-			ofset := 0
+			offset := 0
 			sortCriteria := gql_generated.SortCriteriaAlphabeticAsc
 			pageInput := gql_generated.PageInput{
 				Limit:  &limit,
-				Offset: &ofset,
+				Offset: &offset,
 				SortBy: &sortCriteria,
 			}
 
@@ -1889,7 +1889,7 @@ func TestCVEResolvers(t *testing.T) { //nolint:gocyclo
 	}
 
 	// Create metadb data for scannable image with vulnerabilities
-	// Create manifets metadata first
+	// Create manifest metadata first
 	timeStamp1 := time.Date(2008, 1, 1, 12, 0, 0, 0, time.UTC)
 
 	configBlob1, err := json.Marshal(ispec.Image{
@@ -2076,7 +2076,7 @@ func TestCVEResolvers(t *testing.T) { //nolint:gocyclo
 					},
 					"CVE2": {
 						ID:          "CVE2",
-						Severity:    "MEDIM",
+						Severity:    "MEDIUM",
 						Title:       "Title CVE2",
 						Description: "Description CVE2",
 					},
@@ -2961,7 +2961,7 @@ func TestDerivedImageList(t *testing.T) {
 		})
 		So(err, ShouldBeNil)
 
-		manifestMetas := map[string]mTypes.ManifestMetadata{
+		manifestsMeta := map[string]mTypes.ManifestMetadata{
 			"digestTag1.0.1": {
 				ManifestBlob:  manifestBlob,
 				ConfigBlob:    configBlob,
@@ -3019,9 +3019,9 @@ func TestDerivedImageList(t *testing.T) {
 					matchedTags := repo.Tags
 
 					for tag, descriptor := range repo.Tags {
-						if !filterFunc(repo, manifestMetas[descriptor.Digest]) {
+						if !filterFunc(repo, manifestsMeta[descriptor.Digest]) {
 							delete(matchedTags, tag)
-							delete(manifestMetas, descriptor.Digest)
+							delete(manifestsMeta, descriptor.Digest)
 
 							continue
 						}
@@ -3030,7 +3030,7 @@ func TestDerivedImageList(t *testing.T) {
 					repos[i].Tags = matchedTags
 				}
 
-				return repos, manifestMetas, map[string]mTypes.IndexData{}, nil
+				return repos, manifestsMeta, map[string]mTypes.IndexData{}, nil
 			},
 		}
 
@@ -3249,7 +3249,7 @@ func TestBaseImageList(t *testing.T) {
 		})
 		So(err, ShouldBeNil)
 
-		manifestMetas := map[string]mTypes.ManifestMetadata{
+		manifestsMeta := map[string]mTypes.ManifestMetadata{
 			"digestTag1.0.1": {
 				ManifestBlob:  manifestBlob,
 				ConfigBlob:    configBlob,
@@ -3301,9 +3301,9 @@ func TestBaseImageList(t *testing.T) {
 					matchedTags := repo.Tags
 
 					for tag, descriptor := range repo.Tags {
-						if !filterFunc(repo, manifestMetas[descriptor.Digest]) {
+						if !filterFunc(repo, manifestsMeta[descriptor.Digest]) {
 							delete(matchedTags, tag)
-							delete(manifestMetas, descriptor.Digest)
+							delete(manifestsMeta, descriptor.Digest)
 
 							continue
 						}
@@ -3312,7 +3312,7 @@ func TestBaseImageList(t *testing.T) {
 					repos[i].Tags = matchedTags
 				}
 
-				return repos, manifestMetas, map[string]mTypes.IndexData{}, nil
+				return repos, manifestsMeta, map[string]mTypes.IndexData{}, nil
 			},
 		}
 		responseContext := graphql.WithResponseContext(context.Background(), graphql.DefaultErrorPresenter,
@@ -3416,7 +3416,7 @@ func TestBaseImageList(t *testing.T) {
 		})
 		So(err, ShouldBeNil)
 
-		manifestMetas := map[string]mTypes.ManifestMetadata{
+		manifestsMeta := map[string]mTypes.ManifestMetadata{
 			"digestTag1.0.1": {
 				ManifestBlob:  manifestBlob,
 				ConfigBlob:    configBlob,
@@ -3467,9 +3467,9 @@ func TestBaseImageList(t *testing.T) {
 					matchedTags := repo.Tags
 
 					for tag, descriptor := range repo.Tags {
-						if !filterFunc(repo, manifestMetas[descriptor.Digest]) {
+						if !filterFunc(repo, manifestsMeta[descriptor.Digest]) {
 							delete(matchedTags, tag)
-							delete(manifestMetas, descriptor.Digest)
+							delete(manifestsMeta, descriptor.Digest)
 
 							continue
 						}
@@ -3478,7 +3478,7 @@ func TestBaseImageList(t *testing.T) {
 					repos[i].Tags = matchedTags
 				}
 
-				return repos, manifestMetas, map[string]mTypes.IndexData{}, nil
+				return repos, manifestsMeta, map[string]mTypes.IndexData{}, nil
 			},
 		}
 		responseContext := graphql.WithResponseContext(context.Background(), graphql.DefaultErrorPresenter,
@@ -3519,12 +3519,12 @@ func TestExpandedRepoInfo(t *testing.T) {
 							Digest:    "goodIndexBadManifests",
 							MediaType: ispec.MediaTypeImageIndex,
 						},
-						"tagGoodIndex1GoodManfest": {
-							Digest:    "goodIndexGoodManfest",
+						"tagGoodIndex1GoodManifest": {
+							Digest:    "goodIndexGoodManifest",
 							MediaType: ispec.MediaTypeImageIndex,
 						},
-						"tagGoodIndex2GoodManfest": {
-							Digest:    "goodIndexGoodManfest",
+						"tagGoodIndex2GoodManifest": {
+							Digest:    "goodIndexGoodManifest",
 							MediaType: ispec.MediaTypeImageIndex,
 						},
 					},
@@ -3569,7 +3569,7 @@ func TestExpandedRepoInfo(t *testing.T) {
 					return mTypes.IndexData{
 						IndexBlob: goodIndexBadManifestsBlob,
 					}, nil
-				case "goodIndexGoodManfest":
+				case "goodIndexGoodManifest":
 					return mTypes.IndexData{
 						IndexBlob: goodIndexGoodManifestBlob,
 					}, nil

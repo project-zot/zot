@@ -91,7 +91,7 @@ func TestServe(t *testing.T) {
 		Convey("config with missing rootDir", func(c C) {
 			rootDir := t.TempDir()
 
-			// missing storag config should result in an error in Controller.Init()
+			// missing storage config should result in an error in Controller.Init()
 			content := []byte(`{
 				"distSpecVersion": "1.1.0-dev",
 				"http": {

@@ -8491,7 +8491,7 @@ func TestDistSpecExtensions(t *testing.T) {
 		t.Log(extensionList.Extensions)
 		So(len(extensionList.Extensions), ShouldEqual, 1)
 		So(len(extensionList.Extensions[0].Endpoints), ShouldEqual, 5)
-		So(extensionList.Extensions[0].Name, ShouldEqual, "_zot")
+		So(extensionList.Extensions[0].Name, ShouldEqual, constants.BaseExtension)
 		So(extensionList.Extensions[0].URL, ShouldContainSubstring, "_zot.md")
 		So(extensionList.Extensions[0].Description, ShouldNotBeEmpty)
 		// Verify the endpoints below are enabled by search
@@ -8539,7 +8539,7 @@ func TestDistSpecExtensions(t *testing.T) {
 		t.Log(extensionList.Extensions)
 		So(len(extensionList.Extensions), ShouldEqual, 1)
 		So(len(extensionList.Extensions[0].Endpoints), ShouldEqual, 2)
-		So(extensionList.Extensions[0].Name, ShouldEqual, "_zot")
+		So(extensionList.Extensions[0].Name, ShouldEqual, constants.BaseExtension)
 		So(extensionList.Extensions[0].URL, ShouldContainSubstring, "_zot.md")
 		So(extensionList.Extensions[0].Description, ShouldNotBeEmpty)
 		// Verify the endpoints below are enabled by search

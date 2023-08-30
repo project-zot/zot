@@ -38,7 +38,7 @@ func GetExtensions(config *config.Config) distext.ExtensionList {
 
 	if len(endpoints) > 0 {
 		extensions = append(extensions, distext.Extension{
-			Name:        "_zot",
+			Name:        constants.BaseExtension,
 			URL:         "https://github.com/project-zot/zot/blob/" + config.ReleaseTag + "/pkg/extensions/_zot.md",
 			Description: "zot registry extensions",
 			Endpoints:   endpoints,

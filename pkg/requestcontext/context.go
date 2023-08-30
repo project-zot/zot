@@ -5,7 +5,7 @@ import (
 
 	glob "github.com/bmatcuk/doublestar/v4" //nolint:gci
 
-	"zotregistry.io/zot/errors"
+	zerr "zotregistry.io/zot/errors"
 )
 
 type Key int
@@ -41,7 +41,7 @@ func GetAccessControlContext(ctx context.Context) (*AccessControlContext, error)
 	if authCtx := ctx.Value(authzCtxKey); authCtx != nil {
 		acCtx, ok := authCtx.(AccessControlContext)
 		if !ok {
-			return nil, errors.ErrBadType
+			return nil, zerr.ErrBadType
 		}
 
 		return &acCtx, nil
@@ -110,7 +110,7 @@ func GetAuthnMiddlewareContext(ctx context.Context) (*AuthnMiddlewareContext, er
 	if authnMiddlewareCtx := ctx.Value(authnMiddlewareCtxKey); authnMiddlewareCtx != nil {
 		amCtx, ok := authnMiddlewareCtx.(AuthnMiddlewareContext)
 		if !ok {
-			return nil, errors.ErrBadType
+			return nil, zerr.ErrBadType
 		}
 
 		return &amCtx, nil
