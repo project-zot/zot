@@ -1,8 +1,31 @@
-load helpers_sync
+# Note: Intended to be run as "make test-bats-sync" or "make test-bats-sync-verbose"
+#       Makefile target installs & checks all necessary tooling
+#       Extra tools that are not covered in Makefile target needs to be added in verify_prerequisites()
+
+load helpers_zot
+
+function verify_prerequisites() {
+    if [ ! $(command -v curl) ]; then
+        echo "you need to install curl as a prerequisite to running the tests" >&3
+        return 1
+    fi
+
+    if [ ! $(command -v jq) ]; then
+        echo "you need to install jq as a prerequisite to running the tests" >&3
+        return 1
+    fi
+
+    if [ ! $(command -v docker) ]; then
+        echo "you need to install docker as a prerequisite to running the tests" >&3
+        return 1
+    fi
+
+    return 0
+}
 
 function setup_file() {
     # Verify prerequisites are available
-    if ! verify_prerequisites; then
+    if ! $(verify_prerequisites); then
         exit 1
     fi
 
@@ -20,7 +43,7 @@ function setup_file() {
 
     cat >${zot_sync_one_config_file} <<EOF
 {
-    "distSpecVersion": "1.1.0",
+    "distSpecVersion": "1.1.0-dev",
     "storage": {
         "rootDirectory": "${zot_sync_one_root_dir}"
     },
@@ -56,7 +79,7 @@ EOF
 
     cat >${zot_sync_two_config_file} <<EOF
 {
-    "distSpecVersion": "1.1.0",
+    "distSpecVersion": "1.1.0-dev",
     "storage": {
         "rootDirectory": "${zot_sync_two_root_dir}"
     },
@@ -92,19 +115,15 @@ EOF
 
     git -C ${BATS_FILE_TMPDIR} clone https://github.com/project-zot/helm-charts.git
 
-    setup_zot_file_level ${zot_sync_one_config_file}
-    wait_zot_reachable "http://127.0.0.1:8081/v2/_catalog"
+    zot_serve ${ZOT_PATH} ${zot_sync_one_config_file}
+    wait_zot_reachable 8081
 
-    setup_zot_file_level ${zot_sync_two_config_file}
-    wait_zot_reachable "http://127.0.0.1:8082/v2/_catalog"
+    zot_serve ${ZOT_PATH} ${zot_sync_two_config_file}
+    wait_zot_reachable 8082
 }
 
 function teardown_file() {
-    local zot_sync_one_root_dir=${BATS_FILE_TMPDIR}/zot-per
-    local zot_sync_two_root_dir=${BATS_FILE_TMPDIR}/zot-ondemand
-    teardown_zot_file_level
-    rm -rf ${zot_sync_one_root_dir}
-    rm -rf ${zot_sync_two_root_dir}
+    zot_stop_all
 }
 
 # sync image
@@ -119,9 +138,9 @@ function teardown_file() {
     run curl http://127.0.0.1:8081/v2/golang/tags/list
     [ "$status" -eq 0 ]
     [ $(echo "${lines[-1]}" | jq '.tags[]') = '"1.20"' ]
-    
+
     run sleep 30s
-    
+
     run curl http://127.0.0.1:8082/v2/_catalog
     [ "$status" -eq 0 ]
     [ $(echo "${lines[-1]}" | jq '.repositories[]') = '"golang"' ]
@@ -142,9 +161,9 @@ function teardown_file() {
     run curl http://127.0.0.1:8082/v2/anothergolang/tags/list
     [ "$status" -eq 0 ]
     [ $(echo "${lines[-1]}" | jq '.tags[]') = '"1.20"' ]
-    
+
     run sleep 30s
-    
+
     run curl http://127.0.0.1:8081/v2/_catalog
     [ "$status" -eq 0 ]
     [ $(echo "${lines[-1]}" | jq '.repositories[0]') = '"anothergolang"' ]

@@ -13,14 +13,6 @@ name: build-test
 permissions: read-all
 
 jobs:
-  build-test:
-    name: Build and test ZOT
-    runs-on: ubuntu-latest
-    steps:
-      - name: Run build and test
-        timeout-minutes: 60
-        run: |
-            echo "job deprecated"
   build-test-arch:
     name: Build and test ZOT
     permissions:

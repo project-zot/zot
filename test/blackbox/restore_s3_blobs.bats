@@ -1,8 +1,9 @@
 load helpers_cloud
+load helpers_wait
 
 function setup_file() {
     # Verify prerequisites are available
-    if ! verify_prerequisites; then
+    if ! $(verify_prerequisites); then
         exit 1
     fi
 
@@ -77,7 +78,7 @@ EOF
     awslocal s3 --region "us-east-2" mb s3://zot-storage
     awslocal dynamodb --region "us-east-2" create-table --table-name "BlobTable" --attribute-definitions AttributeName=Digest,AttributeType=S --key-schema AttributeName=Digest,KeyType=HASH --provisioned-throughput ReadCapacityUnits=10,WriteCapacityUnits=5
     zot_serve ${zot_config_file_dedupe}
-    wait_zot_reachable "http://127.0.0.1:8080/v2/_catalog"
+    wait_zot_reachable 8080
 }
 
 function teardown_file() {
@@ -110,7 +111,7 @@ function teardown_file() {
 
     # start with dedupe disabled
     zot_serve ${zot_config_file_nodedupe}
-    wait_zot_reachable "http://127.0.0.1:8080/v2/"
+    wait_zot_reachable 8080
     start=`date +%s`
     echo "waiting for restoring blobs task to finish" >&3
     run wait_for_string "dedupe rebuild: finished" ${ZOT_LOG_FILE} "10m"

@@ -1,8 +1,16 @@
-load helpers_pushpull
+# Note: Intended to be run as "make test-detect-manifest-collision"
+#       Makefile target installs & checks all necessary tooling
+#       Extra tools that are not covered in Makefile target needs to be added in verify_prerequisites()
+
+load helpers_zot
+
+function verify_prerequisites {
+    return 0
+}
 
 function setup_file() {
     # Verify prerequisites are available
-    if ! verify_prerequisites; then
+    if ! $(verify_prerequisites); then
         exit 1
     fi
 
@@ -18,7 +26,7 @@ function setup_file() {
     echo 'test:$2a$10$EIIoeCnvsIDAJeDL4T1sEOnL2fWOvsq7ACZbs3RT40BBBXg.Ih7V.' >> ${htpasswordFile}
     cat > ${zot_config_file}<<EOF
 {
-    "distSpecVersion": "1.1.0",
+    "distSpecVersion": "1.1.0-dev",
     "storage": {
         "rootDirectory": "${zot_root_dir}"
     },
@@ -33,7 +41,7 @@ function setup_file() {
         "accessControl": {
             "repositories": {
                 "**": {
-                    "anonymousPolicy": [ 
+                    "anonymousPolicy": [
                         "read",
                         "create",
                         "delete",
@@ -60,16 +68,12 @@ function setup_file() {
     }
 }
 EOF
-    setup_zot_file_level ${zot_config_file}
-    wait_zot_reachable "http://127.0.0.1:8080/v2/_catalog"   
+    zot_serve ${ZOT_PATH} ${zot_config_file}
+    wait_zot_reachable 8080
 }
 
 function teardown_file() {
-    local zot_root_dir=${BATS_FILE_TMPDIR}/zot
-    local oci_data_dir=${BATS_FILE_TMPDIR}/oci
-    teardown_zot_file_level
-    rm -rf ${zot_root_dir}
-    rm -rf ${oci_data_dir}
+    zot_stop_all
 }
 
 @test "push 2 images with same manifest with user policy" {
@@ -90,7 +94,7 @@ function teardown_file() {
         docker://127.0.0.1:8080/golang:1.20
     [ "$status" -eq 1 ]
     # conflict status code
-    [[ "$output" == *"409"* ]]
+    [[ "$output" == *"manifest invalid"* ]]
 }
 
 @test "regctl delete image with anonymous policy should fail" {

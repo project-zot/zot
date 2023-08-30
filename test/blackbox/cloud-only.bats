@@ -1,15 +1,16 @@
 load helpers_cloud
+load helpers_wait
 
 function setup() {
     # Verify prerequisites are available
-    if ! verify_prerequisites; then
+    if ! $(verify_prerequisites); then
         exit 1
     fi
 
     # Setup zot server
     local zot_root_dir=${BATS_FILE_TMPDIR}/zot
     local zot_config_file=${BATS_FILE_TMPDIR}/zot_config.json
-    
+
     echo ${zot_root_dir} >&3
 
     mkdir -p ${zot_root_dir}
@@ -91,7 +92,7 @@ EOF
     awslocal s3 --region "us-east-2" mb s3://zot-storage
     awslocal dynamodb --region "us-east-2" create-table --table-name "BlobTable" --attribute-definitions AttributeName=Digest,AttributeType=S --key-schema AttributeName=Digest,KeyType=HASH --provisioned-throughput ReadCapacityUnits=10,WriteCapacityUnits=5
     zot_serve_strace ${zot_config_file}
-    wait_zot_reachable "http://127.0.0.1:8080/v2/_catalog"
+    wait_zot_reachable 8080
 }
 
 function teardown() {
