@@ -266,9 +266,9 @@ func (amw *AuthnMiddleware) tryAuthnHandlers(ctlr *Controller) mux.MiddlewareFun
 			UseSSL:             !ldapConfig.Insecure,
 			SkipTLS:            !ldapConfig.StartTLS,
 			Base:               ldapConfig.BaseDN,
-			BindDN:             ldapConfig.BindDN,
+			BindDN:             ldapConfig.BindDN(),
+			BindPassword:       ldapConfig.BindPassword(),
 			UserGroupAttribute: ldapConfig.UserGroupAttribute, // from config
-			BindPassword:       ldapConfig.BindPassword,
 			UserFilter:         fmt.Sprintf("(%s=%%s)", ldapConfig.UserAttribute),
 			InsecureSkipVerify: ldapConfig.SkipVerify,
 			ServerName:         ldapConfig.Address,

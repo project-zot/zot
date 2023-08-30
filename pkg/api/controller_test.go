@@ -53,6 +53,7 @@ import (
 	"zotregistry.io/zot/pkg/api/config"
 	"zotregistry.io/zot/pkg/api/constants"
 	apiErr "zotregistry.io/zot/pkg/api/errors"
+	"zotregistry.io/zot/pkg/cli/server"
 	"zotregistry.io/zot/pkg/common"
 	extconf "zotregistry.io/zot/pkg/extensions/config"
 	"zotregistry.io/zot/pkg/log"
@@ -1985,8 +1986,13 @@ func (l *testLDAPServer) Stop() {
 }
 
 func (l *testLDAPServer) Bind(bindDN, bindSimplePw string, conn net.Conn) (vldap.LDAPResultCode, error) {
-	if bindDN == "" || bindSimplePw == "" {
-		return vldap.LDAPResultInappropriateAuthentication, errors.ErrRequireCred
+	if bindSimplePw == "" {
+		switch bindDN {
+		case "bad-user", "cn=fail-user-bind,ou=test":
+			return vldap.LDAPResultInvalidCredentials, errors.ErrInvalidCred
+		default:
+			return vldap.LDAPResultSuccess, nil
+		}
 	}
 
 	if (bindDN == LDAPBindDN && bindSimplePw == LDAPBindPassword) ||
@@ -2000,7 +2006,25 @@ func (l *testLDAPServer) Bind(bindDN, bindSimplePw string, conn net.Conn) (vldap
 func (l *testLDAPServer) Search(boundDN string, req vldap.SearchRequest,
 	conn net.Conn,
 ) (vldap.ServerSearchResult, error) {
+	if req.Filter == "(uid=fail-user-bind)" {
+		return vldap.ServerSearchResult{
+			Entries: []*vldap.Entry{
+				{
+					DN: fmt.Sprintf("cn=%s,%s", "fail-user-bind", LDAPBaseDN),
+					Attributes: []*vldap.EntryAttribute{
+						{
+							Name:   "memberOf",
+							Values: []string{group},
+						},
+					},
+				},
+			},
+			ResultCode: vldap.LDAPResultSuccess,
+		}, nil
+	}
+
 	check := fmt.Sprintf("(uid=%s)", username)
+
 	if check == req.Filter {
 		return vldap.ServerSearchResult{
 			Entries: []*vldap.Entry{
@@ -2036,15 +2060,13 @@ func TestBasicAuthWithLDAP(t *testing.T) {
 		conf := config.New()
 		conf.HTTP.Port = port
 		conf.HTTP.Auth = &config.AuthConfig{
-			LDAP: &config.LDAPConfig{
+			LDAP: (&config.LDAPConfig{
 				Insecure:      true,
 				Address:       LDAPAddress,
 				Port:          ldapPort,
-				BindDN:        LDAPBindDN,
-				BindPassword:  LDAPBindPassword,
 				BaseDN:        LDAPBaseDN,
 				UserAttribute: "uid",
-			},
+			}).SetBindDN(LDAPBindDN).SetBindPassword(LDAPBindPassword),
 		}
 		ctlr := makeController(conf, t.TempDir())
 
@@ -2077,6 +2099,293 @@ func TestBasicAuthWithLDAP(t *testing.T) {
 	})
 }
 
+func TestLDAPWithoutCreds(t *testing.T) {
+	Convey("Make a new LDAP server", t, func() {
+		l := newTestLDAPServer()
+		port := test.GetFreePort()
+		ldapPort, err := strconv.Atoi(port)
+		So(err, ShouldBeNil)
+		l.Start(ldapPort)
+		defer l.Stop()
+
+		Convey("Server credentials succed ldap auth", func() {
+			port = test.GetFreePort()
+			baseURL := test.GetBaseURL(port)
+
+			conf := config.New()
+			conf.HTTP.Port = port
+			conf.HTTP.Auth = &config.AuthConfig{
+				LDAP: (&config.LDAPConfig{
+					Insecure:      true,
+					Address:       LDAPAddress,
+					Port:          ldapPort,
+					BaseDN:        LDAPBaseDN,
+					UserAttribute: "uid",
+				}).SetBindDN("anonym"),
+			}
+			ctlr := makeController(conf, t.TempDir())
+
+			cm := test.NewControllerManager(ctlr)
+			cm.StartAndWait(port)
+			defer cm.StopServer()
+
+			// without creds, should get access error
+			resp, err := resty.R().Get(baseURL + "/v2/")
+			So(err, ShouldBeNil)
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
+			var e apiErr.Error
+			err = json.Unmarshal(resp.Body(), &e)
+			So(err, ShouldBeNil)
+
+			resp, _ = resty.R().SetBasicAuth(username, "").Get(baseURL)
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
+
+			resp, _ = resty.R().SetBasicAuth(username, "").Get(baseURL + "/v2/")
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
+
+			resp, _ = resty.R().SetBasicAuth(username, password).Get(baseURL + "/v2/")
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+		})
+
+		Convey("Server credentials fail ldap auth", func() {
+			port = test.GetFreePort()
+			baseURL := test.GetBaseURL(port)
+
+			conf := config.New()
+			conf.HTTP.Port = port
+			conf.HTTP.Auth = &config.AuthConfig{
+				LDAP: (&config.LDAPConfig{
+					Insecure:      true,
+					Address:       LDAPAddress,
+					Port:          ldapPort,
+					BaseDN:        LDAPBaseDN,
+					UserAttribute: "uid",
+				}).SetBindDN("bad-user"),
+			}
+			ctlr := makeController(conf, t.TempDir())
+
+			cm := test.NewControllerManager(ctlr)
+			cm.StartAndWait(port)
+			defer cm.StopServer()
+
+			resp, _ := resty.R().SetBasicAuth(username, password).Get(baseURL + "/v2/")
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
+		})
+	})
+}
+
+func TestBasicAuthWithLDAPFromFile(t *testing.T) {
+	Convey("Make a new controller", t, func() {
+		l := newTestLDAPServer()
+		port := test.GetFreePort()
+		ldapPort, err := strconv.Atoi(port)
+		So(err, ShouldBeNil)
+		l.Start(ldapPort)
+		defer l.Stop()
+
+		port = test.GetFreePort()
+		baseURL := test.GetBaseURL(port)
+		tempDir := t.TempDir()
+
+		ldapConfigContent := fmt.Sprintf(`
+		{
+			"BindDN":             "%v",
+			"BindPassword":       "%v"
+		}`, LDAPBindDN, LDAPBindPassword)
+
+		ldapConfigPath := filepath.Join(tempDir, "ldap.json")
+
+		err = os.WriteFile(ldapConfigPath, []byte(ldapConfigContent), 0o600)
+		So(err, ShouldBeNil)
+
+		configStr := fmt.Sprintf(`
+		{
+			"Storage": {
+				"RootDirectory": "%s"
+			},
+			"HTTP": {
+				"Address": "%s",
+				"Port": "%s",
+				"Auth": {
+					"LDAP": {
+						"CredentialsFile":     "%s",
+						"BaseDN":             "%v",
+						"UserAttribute":      "uid",
+						"UserGroupAttribute": "memberOf",
+						"Insecure":           true,
+						"Address":            "%v",
+						"Port":               %v
+					}
+				}
+			}
+		}`, tempDir, "127.0.0.1", port, ldapConfigPath, LDAPBaseDN, LDAPAddress, ldapPort)
+
+		configPath := filepath.Join(tempDir, "config.json")
+
+		err = os.WriteFile(configPath, []byte(configStr), 0o0600)
+		So(err, ShouldBeNil)
+
+		server := server.NewServerRootCmd()
+		server.SetArgs([]string{"serve", configPath})
+		go func() {
+			err := server.Execute()
+			if err != nil {
+				panic(err)
+			}
+		}()
+
+		test.WaitTillServerReady(baseURL)
+
+		// without creds, should get access error
+		resp, err := resty.R().Get(baseURL + "/v2/")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
+		var e apiErr.Error
+		err = json.Unmarshal(resp.Body(), &e)
+		So(err, ShouldBeNil)
+
+		// with creds, should get expected status code
+		resp, _ = resty.R().SetBasicAuth(username, password).Get(baseURL)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
+
+		resp, _ = resty.R().SetBasicAuth(username, password).Get(baseURL + "/v2/")
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+		// missing password
+		resp, _ = resty.R().SetBasicAuth(username, "").Get(baseURL + "/v2/")
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
+	})
+}
+
+func TestLDAPConfigErrors(t *testing.T) {
+	const configTemplate = `
+	{
+		"Storage": {
+			"RootDirectory": "%s"
+		},
+		"HTTP": {
+			"Address": "%s",
+			"Port": "%s",
+			"Auth": {
+				"LDAP": {
+					"CredentialsFile":    "%s",
+					"BaseDN":             "%v",
+					"UserAttribute":      "%v",
+					"UserGroupAttribute": "memberOf",
+					"Insecure":           true,
+					"Address":            "%v",
+					"Port":               %v
+				}
+			}
+		}
+	}`
+
+	Convey("bad credentials file", t, func() {
+		conf := config.New()
+		tempDir := t.TempDir()
+		ldapPort := 9000
+		userAttribute := ""
+
+		ldapConfigContent := `bad-json`
+		ldapConfigPath := filepath.Join(tempDir, "ldap.json")
+		err := os.WriteFile(ldapConfigPath, []byte(ldapConfigContent), 0o600)
+		So(err, ShouldBeNil)
+
+		configStr := fmt.Sprintf(configTemplate,
+			tempDir, "127.0.0.1", "8000", ldapConfigPath, LDAPBaseDN, userAttribute, LDAPAddress, ldapPort)
+		configPath := filepath.Join(tempDir, "config.json")
+		err = os.WriteFile(configPath, []byte(configStr), 0o0600)
+		So(err, ShouldBeNil)
+
+		err = server.LoadConfiguration(conf, configPath)
+		So(err, ShouldNotBeNil)
+	})
+
+	Convey("UserAttribute  is empty", t, func() {
+		conf := config.New()
+		tempDir := t.TempDir()
+		ldapPort := 9000
+		userAttribute := ""
+
+		ldapConfigContent := fmt.Sprintf(`
+		{
+			"BindDN":             "%v",
+			"BindPassword":       "%v"
+		}`, LDAPBindDN, LDAPBindPassword)
+		ldapConfigPath := filepath.Join(tempDir, "ldap.json")
+		err := os.WriteFile(ldapConfigPath, []byte(ldapConfigContent), 0o600)
+		So(err, ShouldBeNil)
+
+		configStr := fmt.Sprintf(configTemplate,
+			tempDir, "127.0.0.1", "8000", ldapConfigPath, LDAPBaseDN, userAttribute, LDAPAddress, ldapPort)
+		configPath := filepath.Join(tempDir, "config.json")
+		err = os.WriteFile(configPath, []byte(configStr), 0o0600)
+		So(err, ShouldBeNil)
+
+		err = server.LoadConfiguration(conf, configPath)
+		So(err, ShouldNotBeNil)
+	})
+
+	Convey("address is empty", t, func() {
+		conf := config.New()
+		tempDir := t.TempDir()
+		ldapPort := 9000
+		userAttribute := "uid"
+
+		ldapConfigContent := fmt.Sprintf(`
+		{
+			"BindDN":             "%v",
+			"BindPassword":       "%v"
+		}`, LDAPBindDN, LDAPBindPassword)
+		ldapConfigPath := filepath.Join(tempDir, "ldap.json")
+		err := os.WriteFile(ldapConfigPath, []byte(ldapConfigContent), 0o600)
+		So(err, ShouldBeNil)
+
+		configStr := fmt.Sprintf(configTemplate,
+			tempDir, "127.0.0.1", "8000", ldapConfigPath, LDAPBaseDN, userAttribute, "", ldapPort)
+		configPath := filepath.Join(tempDir, "config.json")
+		err = os.WriteFile(configPath, []byte(configStr), 0o0600)
+		So(err, ShouldBeNil)
+
+		err = server.LoadConfiguration(conf, configPath)
+		So(err, ShouldNotBeNil)
+	})
+
+	Convey("BaseDN is empty", t, func() {
+		conf := config.New()
+		tempDir := t.TempDir()
+		ldapPort := 9000
+		userAttribute := "uid"
+
+		ldapConfigContent := fmt.Sprintf(`
+		{
+			"BindDN":             "%v",
+			"BindPassword":       "%v"
+		}`, LDAPBindDN, LDAPBindPassword)
+		ldapConfigPath := filepath.Join(tempDir, "ldap.json")
+		err := os.WriteFile(ldapConfigPath, []byte(ldapConfigContent), 0o600)
+		So(err, ShouldBeNil)
+
+		configStr := fmt.Sprintf(configTemplate,
+			tempDir, "127.0.0.1", "8000", ldapConfigPath, "", userAttribute, LDAPAddress, ldapPort)
+		configPath := filepath.Join(tempDir, "config.json")
+		err = os.WriteFile(configPath, []byte(configStr), 0o0600)
+		So(err, ShouldBeNil)
+
+		err = server.LoadConfiguration(conf, configPath)
+		So(err, ShouldNotBeNil)
+	})
+}
+
 func TestGroupsPermissionsForLDAP(t *testing.T) {
 	Convey("Make a new controller", t, func() {
 		l := newTestLDAPServer()
@@ -2093,16 +2402,14 @@ func TestGroupsPermissionsForLDAP(t *testing.T) {
 		conf := config.New()
 		conf.HTTP.Port = port
 		conf.HTTP.Auth = &config.AuthConfig{
-			LDAP: &config.LDAPConfig{
+			LDAP: (&config.LDAPConfig{
 				Insecure:           true,
 				Address:            LDAPAddress,
 				Port:               ldapPort,
-				BindDN:             LDAPBindDN,
-				BindPassword:       LDAPBindPassword,
 				BaseDN:             LDAPBaseDN,
 				UserAttribute:      "uid",
 				UserGroupAttribute: "memberOf",
-			},
+			}).SetBindDN(LDAPBindDN).SetBindPassword(LDAPBindPassword),
 		}
 
 		repoName, seed := test.GenerateRandomName()
@@ -2145,6 +2452,101 @@ func TestGroupsPermissionsForLDAP(t *testing.T) {
 	})
 }
 
+func TestLDAPConfigFromFile(t *testing.T) {
+	Convey("Make a new controller", t, func() {
+		l := newTestLDAPServer()
+		port := test.GetFreePort()
+		ldapPort, err := strconv.Atoi(port)
+		So(err, ShouldBeNil)
+		l.Start(ldapPort)
+		defer l.Stop()
+
+		port = test.GetFreePort()
+		baseURL := test.GetBaseURL(port)
+		tempDir := t.TempDir()
+
+		ldapConfigContent := fmt.Sprintf(`
+		{
+			"bindDN":             "%v",
+			"bindPassword":       "%v"
+		}`, LDAPBindDN, LDAPBindPassword)
+
+		ldapConfigPath := filepath.Join(tempDir, "ldap.json")
+
+		err = os.WriteFile(ldapConfigPath, []byte(ldapConfigContent), 0o600)
+		So(err, ShouldBeNil)
+
+		configStr := fmt.Sprintf(`
+		{
+			"Storage": {
+				"RootDirectory": "%s"
+			},
+			"HTTP": {
+				"Address": "%s",
+				"Port": "%s",
+				"Auth": {
+					"LDAP": {
+						"CredentialsFile": "%s",
+						"BaseDN":             "%v",
+						"UserAttribute":      "uid",
+						"UserGroupAttribute": "memberOf",
+						"Insecure":           true,
+						"Address":            "%v",
+						"Port":               %v
+					}
+				},
+				"AccessControl": {
+					"repositories": {
+						"test-ldap": {
+							"Policies": [
+								{
+									"Users": null,
+									"Actions": [
+										"read",
+										"create"
+									],
+									"Groups": [
+										"test"
+									]
+								}
+							]
+						}
+					},
+					"Groups": {
+						"test": {
+							"Users": [
+								"test"
+							]
+						}
+					}
+				}
+			}
+		}`, tempDir, "127.0.0.1", port, ldapConfigPath, LDAPBaseDN, LDAPAddress, ldapPort)
+
+		configPath := filepath.Join(tempDir, "config.json")
+
+		err = os.WriteFile(configPath, []byte(configStr), 0o0600)
+		So(err, ShouldBeNil)
+
+		server := server.NewServerRootCmd()
+		server.SetArgs([]string{"serve", configPath})
+		go func() {
+			err := server.Execute()
+			if err != nil {
+				panic(err)
+			}
+		}()
+
+		test.WaitTillServerReady(baseURL)
+
+		repo := "test-ldap"
+		img := CreateDefaultImage()
+
+		err = UploadImageWithBasicAuth(img, baseURL, repo, img.DigestStr(), username, password)
+		So(err, ShouldBeNil)
+	})
+}
+
 func TestLDAPFailures(t *testing.T) {
 	Convey("Make a LDAP conn", t, func() {
 		l := newTestLDAPServer()
@@ -2178,6 +2580,69 @@ func TestLDAPFailures(t *testing.T) {
 			err := lc.Connect()
 			So(err, ShouldNotBeNil)
 		})
+	})
+}
+
+func TestLDAPClient(t *testing.T) {
+	Convey("LDAP Client", t, func() {
+		l := newTestLDAPServer()
+		port := test.GetFreePort()
+		ldapPort, err := strconv.Atoi(port)
+		So(err, ShouldBeNil)
+		l.Start(ldapPort)
+		defer l.Stop()
+
+		// bad server credentials
+		lClient := &api.LDAPClient{
+			Host:         LDAPAddress,
+			Port:         ldapPort,
+			BindDN:       "bad-user",
+			BindPassword: "bad-pass",
+			SkipTLS:      true,
+		}
+
+		_, _, _, err = lClient.Authenticate("bad-user", "bad-pass")
+		So(err, ShouldNotBeNil)
+
+		// bad credentials with anonymous authentication
+		lClient = &api.LDAPClient{
+			Host:         LDAPAddress,
+			Port:         ldapPort,
+			BindDN:       "bad-user",
+			BindPassword: "",
+			SkipTLS:      true,
+		}
+
+		_, _, _, err = lClient.Authenticate("user", "")
+		So(err, ShouldNotBeNil)
+
+		// bad user credentials with anonymous authentication
+		lClient = &api.LDAPClient{
+			Host:         LDAPAddress,
+			Port:         ldapPort,
+			BindDN:       LDAPBindDN,
+			BindPassword: LDAPBindPassword,
+			Base:         LDAPBaseDN,
+			UserFilter:   "(uid=%s)",
+			SkipTLS:      true,
+		}
+
+		_, _, _, err = lClient.Authenticate("fail-user-bind", "")
+		So(err, ShouldNotBeNil)
+
+		// bad user credentials with anonymous authentication
+		lClient = &api.LDAPClient{
+			Host:         LDAPAddress,
+			Port:         ldapPort,
+			BindDN:       LDAPBindDN,
+			BindPassword: LDAPBindPassword,
+			Base:         LDAPBaseDN,
+			UserFilter:   "(uid=%s)",
+			SkipTLS:      true,
+		}
+
+		_, _, _, err = lClient.Authenticate("fail-user-bind", "pass")
+		So(err, ShouldNotBeNil)
 	})
 }
 
@@ -2681,15 +3146,13 @@ func TestOpenIDMiddleware(t *testing.T) {
 		HTPasswd: config.AuthHTPasswd{
 			Path: htpasswdPath,
 		},
-		LDAP: &config.LDAPConfig{
+		LDAP: (&config.LDAPConfig{
 			Insecure:      true,
 			Address:       LDAPAddress,
 			Port:          ldapPort,
-			BindDN:        LDAPBindDN,
-			BindPassword:  LDAPBindPassword,
 			BaseDN:        LDAPBaseDN,
 			UserAttribute: "uid",
-		},
+		}).SetBindDN(LDAPBindDN).SetBindPassword(LDAPBindPassword),
 		OpenID: &config.OpenIDConfig{
 			Providers: map[string]config.OpenIDProviderConfig{
 				"oidc": {
@@ -3162,15 +3625,13 @@ func TestAuthnSessionErrors(t *testing.T) {
 			HTPasswd: config.AuthHTPasswd{
 				Path: htpasswdPath,
 			},
-			LDAP: &config.LDAPConfig{
+			LDAP: (&config.LDAPConfig{
 				Insecure:      true,
 				Address:       LDAPAddress,
 				Port:          ldapPort,
-				BindDN:        LDAPBindDN,
-				BindPassword:  LDAPBindPassword,
 				BaseDN:        LDAPBaseDN,
 				UserAttribute: "uid",
-			},
+			}).SetBindDN(LDAPBindDN).SetBindPassword(LDAPBindPassword),
 			OpenID: &config.OpenIDConfig{
 				Providers: map[string]config.OpenIDProviderConfig{
 					"oidc": {

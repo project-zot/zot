@@ -140,8 +140,18 @@ func (lc *LDAPClient) Authenticate(username, password string) (bool, map[string]
 		}
 
 		// First bind with a read only user
-		if lc.BindDN != "" && lc.BindPassword != "" {
+		if lc.BindPassword != "" {
 			err := lc.Conn.Bind(lc.BindDN, lc.BindPassword)
+			if err != nil {
+				lc.Log.Error().Err(err).Str("bindDN", lc.BindDN).Msg("bind failed")
+				// clean up the cached conn, so we can retry
+				lc.Conn.Close()
+				lc.Conn = nil
+
+				continue
+			}
+		} else {
+			err := lc.Conn.UnauthenticatedBind(lc.BindDN)
 			if err != nil {
 				lc.Log.Error().Err(err).Str("bindDN", lc.BindDN).Msg("bind failed")
 				// clean up the cached conn, so we can retry

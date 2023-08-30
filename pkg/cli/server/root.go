@@ -738,6 +738,10 @@ func LoadConfiguration(config *config.Config, configPath string) error {
 		return zerr.ErrBadConfig
 	}
 
+	if err := updateLDAPConfig(config); err != nil {
+		return err
+	}
+
 	// defaults
 	applyDefaultValues(config, viperInstance, log)
 
@@ -750,6 +754,50 @@ func LoadConfiguration(config *config.Config, configPath string) error {
 	updateDistSpecVersion(config, log)
 
 	return nil
+}
+
+func updateLDAPConfig(conf *config.Config) error {
+	if conf.HTTP.Auth == nil || conf.HTTP.Auth.LDAP == nil {
+		return nil
+	}
+
+	if conf.HTTP.Auth.LDAP.CredentialsFile == "" {
+		conf.HTTP.Auth.LDAP.SetBindDN("anonym-user")
+
+		return nil
+	}
+
+	newLDAPCredentials, err := readLDAPCredentials(conf.HTTP.Auth.LDAP.CredentialsFile)
+	if err != nil {
+		return err
+	}
+
+	conf.HTTP.Auth.LDAP.SetBindDN(newLDAPCredentials.BindDN)
+	conf.HTTP.Auth.LDAP.SetBindPassword(newLDAPCredentials.BindPassword)
+
+	return nil
+}
+
+func readLDAPCredentials(ldapConfigPath string) (config.LDAPCredentials, error) {
+	viperInstance := viper.NewWithOptions(viper.KeyDelimiter("::"))
+
+	viperInstance.SetConfigFile(ldapConfigPath)
+
+	if err := viperInstance.ReadInConfig(); err != nil {
+		log.Error().Err(err).Msg("error while reading configuration")
+
+		return config.LDAPCredentials{}, err
+	}
+
+	var ldapCredentials config.LDAPCredentials
+
+	if err := viperInstance.Unmarshal(&ldapCredentials); err != nil {
+		log.Error().Err(err).Msg("error while unmarshaling new config")
+
+		return config.LDAPCredentials{}, err
+	}
+
+	return ldapCredentials, nil
 }
 
 func authzContainsOnlyAnonymousPolicy(cfg *config.Config) bool {
