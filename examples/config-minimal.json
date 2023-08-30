@@ -5,14 +5,7 @@
     },
     "http": {
         "address": "127.0.0.1",
-        "port": "8080",
-        "auth": {
-            "apikey": true,
-            "htpasswd": {
-              "path": "/home/peusebiu/htpasswd"
-            },
-            "failDelay": 5
-          }
+        "port": "8080"
     },
     "log": {
         "level": "debug"
