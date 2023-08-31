@@ -50,8 +50,7 @@ linters-settings:
         checks: argument,case,condition,operation,return,assign
         ignored-numbers: 10,64
   gomoddirectives:
-    replace-allow-list:
-      - github.com/google/go-containerregistry
+    replace-allow-list: []
 issues:
   exclude-rules:
     - path: pkg/extensions/search/schema.resolvers.go
