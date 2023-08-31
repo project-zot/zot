@@ -93,7 +93,7 @@ func TestElevatedPrivilegesTLSNewControllerPrivilegedCert(t *testing.T) {
 					BaseSecureURL2, constants.RoutePrefix, constants.ExtCatalogPrefix))
 			defer os.Remove(configPath)
 
-			args := []string{"imagetest"}
+			args := []string{"list", "--config", "imagetest"}
 			imageCmd := NewImageCommand(new(searchService))
 			imageBuff := bytes.NewBufferString("")
 			imageCmd.SetOut(imageBuff)

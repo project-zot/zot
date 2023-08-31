@@ -42,16 +42,6 @@ type typeField struct {
 	Name string `json:"name"`
 }
 
-func containsGQLQuery(queryList []field, query string) bool {
-	for _, q := range queryList {
-		if q.Name == query {
-			return true
-		}
-	}
-
-	return false
-}
-
 func containsGQLQueryWithParams(queryList []field, serverGQLTypesList []typeInfo, requiredQueries ...GQLQuery) error {
 	serverGQLTypes := map[string][]typeField{}
 
@@ -100,73 +90,11 @@ func haveSameArgs(query field, reqQuery GQLQuery) bool {
 	return true
 }
 
-func checkExtEndPoint(config searchConfig) bool {
-	username, password := getUsernameAndPassword(*config.user)
-	ctx := context.Background()
-
-	discoverEndPoint, err := combineServerAndEndpointURL(*config.servURL, fmt.Sprintf("%s%s",
-		constants.RoutePrefix, constants.ExtOciDiscoverPrefix))
-	if err != nil {
-		return false
-	}
-
-	discoverResponse := &distext.ExtensionList{}
-
-	_, err = makeGETRequest(ctx, discoverEndPoint, username, password, *config.verifyTLS,
-		*config.debug, &discoverResponse, config.resultWriter)
-	if err != nil {
-		return false
-	}
-
-	searchEnabled := false
-
-	for _, extension := range discoverResponse.Extensions {
-		if extension.Name == constants.BaseExtension {
-			for _, endpoint := range extension.Endpoints {
-				if endpoint == constants.FullSearchPrefix {
-					searchEnabled = true
-				}
-			}
-		}
-	}
-
-	if !searchEnabled {
-		return false
-	}
-
-	searchEndPoint, _ := combineServerAndEndpointURL(*config.servURL, constants.FullSearchPrefix)
-
-	query := `
-        {
-            __schema() {
-                queryType {
-                    fields {
-                        name
-                    }
-                }
-            }
-        }`
-
-	queryResponse := &schemaList{}
-
-	err = makeGraphQLRequest(ctx, searchEndPoint, query, username, password, *config.verifyTLS,
-		*config.debug, queryResponse, config.resultWriter)
-	if err != nil {
-		return false
-	}
-
-	if err = checkResultGraphQLQuery(ctx, err, queryResponse.Errors); err != nil {
-		return false
-	}
-
-	return containsGQLQuery(queryResponse.Data.Schema.QueryType.Fields, "ImageList")
-}
-
 func CheckExtEndPointQuery(config searchConfig, requiredQueries ...GQLQuery) error {
-	username, password := getUsernameAndPassword(*config.user)
+	username, password := getUsernameAndPassword(config.user)
 	ctx := context.Background()
 
-	discoverEndPoint, err := combineServerAndEndpointURL(*config.servURL, fmt.Sprintf("%s%s",
+	discoverEndPoint, err := combineServerAndEndpointURL(config.servURL, fmt.Sprintf("%s%s",
 		constants.RoutePrefix, constants.ExtOciDiscoverPrefix))
 	if err != nil {
 		return err
@@ -174,8 +102,8 @@ func CheckExtEndPointQuery(config searchConfig, requiredQueries ...GQLQuery) err
 
 	discoverResponse := &distext.ExtensionList{}
 
-	_, err = makeGETRequest(ctx, discoverEndPoint, username, password, *config.verifyTLS,
-		*config.debug, &discoverResponse, config.resultWriter)
+	_, err = makeGETRequest(ctx, discoverEndPoint, username, password, config.verifyTLS,
+		config.debug, &discoverResponse, config.resultWriter)
 	if err != nil {
 		return err
 	}
@@ -196,7 +124,7 @@ func CheckExtEndPointQuery(config searchConfig, requiredQueries ...GQLQuery) err
 		return fmt.Errorf("%w: search extension gql endpoints not found", zerr.ErrExtensionNotEnabled)
 	}
 
-	searchEndPoint, _ := combineServerAndEndpointURL(*config.servURL, constants.FullSearchPrefix)
+	searchEndPoint, _ := combineServerAndEndpointURL(config.servURL, constants.FullSearchPrefix)
 
 	schemaQuery := `
 		{
@@ -225,8 +153,8 @@ func CheckExtEndPointQuery(config searchConfig, requiredQueries ...GQLQuery) err
 
 	queryResponse := &schemaList{}
 
-	err = makeGraphQLRequest(ctx, searchEndPoint, schemaQuery, username, password, *config.verifyTLS,
-		*config.debug, queryResponse, config.resultWriter)
+	err = makeGraphQLRequest(ctx, searchEndPoint, schemaQuery, username, password, config.verifyTLS,
+		config.debug, queryResponse, config.resultWriter)
 	if err != nil {
 		return fmt.Errorf("gql query failed: %w", err)
 	}

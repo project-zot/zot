@@ -15,7 +15,6 @@ import (
 
 	"zotregistry.io/zot/pkg/api"
 	"zotregistry.io/zot/pkg/api/config"
-	"zotregistry.io/zot/pkg/cli/cmdflags"
 	"zotregistry.io/zot/pkg/test"
 )
 
@@ -37,9 +36,8 @@ func TestReposCommand(t *testing.T) {
 			baseURL))
 		defer os.Remove(configPath)
 
-		args := []string{"list"}
+		args := []string{"list", "--config", "repostest"}
 		cmd := NewRepoCommand(mockService{})
-		cmd.PersistentFlags().String(cmdflags.ConfigFlag, "repostest", "")
 		buff := bytes.NewBufferString("")
 		cmd.SetOut(buff)
 		cmd.SetErr(buff)

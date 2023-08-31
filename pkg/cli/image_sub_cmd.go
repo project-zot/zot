@@ -4,11 +4,6 @@
 package cli
 
 import (
-	"fmt"
-	"os"
-	"path"
-
-	"github.com/briandowns/spinner"
 	"github.com/spf13/cobra"
 
 	zerr "zotregistry.io/zot/errors"
@@ -41,7 +36,7 @@ func NewImageCVEListCommand(searchService SearchService) *cobra.Command {
 	var searchedCVEID string
 
 	cmd := &cobra.Command{
-		Use:   "cve [repo-name:tag][repo-name@digest]",
+		Use:   "cve [repo]|[repo-name:tag]|[repo-name@digest]",
 		Short: "List all CVE's of the image",
 		Long:  "List all CVE's of the image",
 		Args:  OneImageWithRefArg,
@@ -68,7 +63,7 @@ func NewImageCVEListCommand(searchService SearchService) *cobra.Command {
 
 func NewImageDerivedCommand(searchService SearchService) *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "derived [repo-name:tag][repo-name@digest]",
+		Use:   "derived [repo-name:tag]|[repo-name@digest]",
 		Short: "List images that are derived from given image",
 		Long:  "List images that are derived from given image",
 		Args:  OneImageWithRefArg,
@@ -91,7 +86,7 @@ func NewImageDerivedCommand(searchService SearchService) *cobra.Command {
 
 func NewImageBaseCommand(searchService SearchService) *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "base [repo-name:tag][repo-name@digest]",
+		Use:   "base [repo-name:tag]|[repo-name@digest]",
 		Short: "List images that are base for the given image",
 		Long:  "List images that are base for the given image",
 		Args:  OneImageWithRefArg,
@@ -117,7 +112,9 @@ func NewImageDigestCommand(searchService SearchService) *cobra.Command {
 		Use:   "digest [digest]",
 		Short: "List images that contain a blob(manifest, config or layer) with the given digest",
 		Long:  "List images that contain a blob(manifest, config or layer) with the given digest",
-		Args:  OneDigestArg,
+		Example: `zli image digest 8a1930f0
+zli image digest sha256:8a1930f0...`,
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			searchConfig, err := GetSearchConfigFromFlags(cmd, searchService)
 			if err != nil {
@@ -168,117 +165,4 @@ func NewImageNameCommand(searchService SearchService) *cobra.Command {
 	}
 
 	return cmd
-}
-
-func GetSearchConfigFromFlags(cmd *cobra.Command, searchService SearchService) (searchConfig, error) {
-	serverURL, err := GetServerURLFromFlags(cmd)
-	if err != nil {
-		return searchConfig{}, err
-	}
-
-	isSpinner, verifyTLS := GetCliConfigOptions(cmd)
-
-	flags := cmd.Flags()
-	user := defaultIfError(flags.GetString(cmdflags.UserFlag))
-	fixed := defaultIfError(flags.GetBool(cmdflags.FixedFlag))
-	debug := defaultIfError(flags.GetBool(cmdflags.DebugFlag))
-	verbose := defaultIfError(flags.GetBool(cmdflags.VerboseFlag))
-	outputFormat := defaultIfError(flags.GetString(cmdflags.OutputFormatFlag))
-
-	spin := spinner.New(spinner.CharSets[39], spinnerDuration, spinner.WithWriter(cmd.ErrOrStderr()))
-	spin.Prefix = prefix
-
-	return searchConfig{
-		params:        map[string]*string{},
-		searchService: searchService,
-		servURL:       &serverURL,
-		user:          &user,
-		outputFormat:  &outputFormat,
-		verifyTLS:     &verifyTLS,
-		fixedFlag:     &fixed,
-		verbose:       &verbose,
-		debug:         &debug,
-		spinner:       spinnerState{spin, isSpinner},
-		resultWriter:  cmd.OutOrStdout(),
-	}, nil
-}
-
-func defaultIfError[T any](out T, err error) T {
-	var defaultVal T
-
-	if err != nil {
-		return defaultVal
-	}
-
-	return out
-}
-
-func GetCliConfigOptions(cmd *cobra.Command) (bool, bool) {
-	configName, err := cmd.Flags().GetString(cmdflags.ConfigFlag)
-	if err != nil {
-		return false, false
-	}
-
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return false, false
-	}
-
-	configDir := path.Join(home, "/.zot")
-
-	isSpinner, err := parseBooleanConfig(configDir, configName, showspinnerConfig)
-	if err != nil {
-		return false, false
-	}
-
-	verifyTLS, err := parseBooleanConfig(configDir, configName, verifyTLSConfig)
-	if err != nil {
-		return false, false
-	}
-
-	return isSpinner, verifyTLS
-}
-
-func GetServerURLFromFlags(cmd *cobra.Command) (string, error) {
-	serverURL, err := cmd.Flags().GetString(cmdflags.URLFlag)
-	if err == nil && serverURL != "" {
-		return serverURL, nil
-	}
-
-	configName, err := cmd.Flags().GetString(cmdflags.ConfigFlag)
-	if err != nil {
-		return "", err
-	}
-
-	if configName == "" {
-		return "", fmt.Errorf("%w: specify either '--%s' or '--%s' flags", zerr.ErrNoURLProvided, cmdflags.URLFlag,
-			cmdflags.ConfigFlag)
-	}
-
-	serverURL, err = ReadServerURLFromConfig(configName)
-	if err != nil {
-		return serverURL, fmt.Errorf("reading url from config failed: %w", err)
-	}
-
-	if serverURL == "" {
-		return "", fmt.Errorf("%w: url field from config is empty", zerr.ErrNoURLProvided)
-	}
-
-	return serverURL, nil
-}
-
-func ReadServerURLFromConfig(configName string) (string, error) {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "", err
-	}
-
-	configDir := path.Join(home, "/.zot")
-
-	urlFromConfig, err := getConfigValue(configDir, configName, "url")
-	if err != nil {
-		return "", err
-	}
-
-	return urlFromConfig, nil
 }

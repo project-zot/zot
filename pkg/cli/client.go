@@ -207,8 +207,8 @@ func (p *requestsPool) doJob(ctx context.Context, job *httpJob) {
 	defer p.wtgrp.Done()
 
 	// Check manifest media type
-	header, err := makeHEADRequest(ctx, job.url, job.username, job.password, *job.config.verifyTLS,
-		*job.config.debug)
+	header, err := makeHEADRequest(ctx, job.url, job.username, job.password, job.config.verifyTLS,
+		job.config.debug)
 	if err != nil {
 		if isContextDone(ctx) {
 			return
@@ -216,7 +216,7 @@ func (p *requestsPool) doJob(ctx context.Context, job *httpJob) {
 		p.outputCh <- stringResult{"", err}
 	}
 
-	verbose := *job.config.verbose
+	verbose := job.config.verbose
 
 	switch header.Get("Content-Type") {
 	case ispec.MediaTypeImageManifest:
@@ -231,7 +231,7 @@ func (p *requestsPool) doJob(ctx context.Context, job *httpJob) {
 		}
 		platformStr := getPlatformStr(image.Manifests[0].Platform)
 
-		str, err := image.string(*job.config.outputFormat, len(job.imageName), len(job.tagName), len(platformStr), verbose)
+		str, err := image.string(job.config.outputFormat, len(job.imageName), len(job.tagName), len(platformStr), verbose)
 		if err != nil {
 			if isContextDone(ctx) {
 				return
@@ -259,7 +259,7 @@ func (p *requestsPool) doJob(ctx context.Context, job *httpJob) {
 
 		platformStr := getPlatformStr(image.Manifests[0].Platform)
 
-		str, err := image.string(*job.config.outputFormat, len(job.imageName), len(job.tagName), len(platformStr), verbose)
+		str, err := image.string(job.config.outputFormat, len(job.imageName), len(job.tagName), len(platformStr), verbose)
 		if err != nil {
 			if isContextDone(ctx) {
 				return
@@ -283,7 +283,7 @@ func fetchImageIndexStruct(ctx context.Context, job *httpJob) (*imageStruct, err
 	var indexContent ispec.Index
 
 	header, err := makeGETRequest(ctx, job.url, job.username, job.password,
-		*job.config.verifyTLS, *job.config.debug, &indexContent, job.config.resultWriter)
+		job.config.verifyTLS, job.config.debug, &indexContent, job.config.resultWriter)
 	if err != nil {
 		if isContextDone(ctx) {
 			return nil, context.Canceled
@@ -371,10 +371,10 @@ func fetchManifestStruct(ctx context.Context, repo, manifestReference string, se
 	manifestResp := ispec.Manifest{}
 
 	URL := fmt.Sprintf("%s/v2/%s/manifests/%s",
-		*searchConf.servURL, repo, manifestReference)
+		searchConf.servURL, repo, manifestReference)
 
 	header, err := makeGETRequest(ctx, URL, username, password,
-		*searchConf.verifyTLS, *searchConf.debug, &manifestResp, searchConf.resultWriter)
+		searchConf.verifyTLS, searchConf.debug, &manifestResp, searchConf.resultWriter)
 	if err != nil {
 		if isContextDone(ctx) {
 			return common.ManifestSummary{}, context.Canceled
@@ -460,10 +460,10 @@ func fetchConfig(ctx context.Context, repo, configDigest string, searchConf sear
 	configContent := ispec.Image{}
 
 	URL := fmt.Sprintf("%s/v2/%s/blobs/%s",
-		*searchConf.servURL, repo, configDigest)
+		searchConf.servURL, repo, configDigest)
 
 	_, err := makeGETRequest(ctx, URL, username, password,
-		*searchConf.verifyTLS, *searchConf.debug, &configContent, searchConf.resultWriter)
+		searchConf.verifyTLS, searchConf.debug, &configContent, searchConf.resultWriter)
 	if err != nil {
 		if isContextDone(ctx) {
 			return ispec.Image{}, context.Canceled
@@ -481,10 +481,10 @@ func isNotationSigned(ctx context.Context, repo, digestStr string, searchConf se
 	var referrers ispec.Index
 
 	URL := fmt.Sprintf("%s/v2/%s/referrers/%s?artifactType=%s",
-		*searchConf.servURL, repo, digestStr, common.ArtifactTypeNotation)
+		searchConf.servURL, repo, digestStr, common.ArtifactTypeNotation)
 
 	_, err := makeGETRequest(ctx, URL, username, password,
-		*searchConf.verifyTLS, *searchConf.debug, &referrers, searchConf.resultWriter)
+		searchConf.verifyTLS, searchConf.debug, &referrers, searchConf.resultWriter)
 	if err != nil {
 		return false
 	}
@@ -502,10 +502,10 @@ func isCosignSigned(ctx context.Context, repo, digestStr string, searchConf sear
 	var result interface{}
 	cosignTag := strings.Replace(digestStr, ":", "-", 1) + "." + remote.SignatureTagSuffix
 
-	URL := fmt.Sprintf("%s/v2/%s/manifests/%s", *searchConf.servURL, repo, cosignTag)
+	URL := fmt.Sprintf("%s/v2/%s/manifests/%s", searchConf.servURL, repo, cosignTag)
 
-	_, err := makeGETRequest(ctx, URL, username, password, *searchConf.verifyTLS,
-		*searchConf.debug, &result, searchConf.resultWriter)
+	_, err := makeGETRequest(ctx, URL, username, password, searchConf.verifyTLS,
+		searchConf.debug, &result, searchConf.resultWriter)
 
 	return err == nil
 }

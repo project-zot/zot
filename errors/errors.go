@@ -159,4 +159,5 @@ var (
 	ErrFileAlreadyCancelled           = errors.New("storageDriver: file already cancelled")
 	ErrFileAlreadyClosed              = errors.New("storageDriver: file already closed")
 	ErrFileAlreadyCommitted           = errors.New("storageDriver: file already committed")
+	ErrInvalidOutputFormat            = errors.New("cli: invalid output format")
 )

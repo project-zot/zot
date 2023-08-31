@@ -3,7 +3,9 @@
 
 package cli
 
-import "github.com/spf13/cobra"
+import (
+	"github.com/spf13/cobra"
+)
 
 func NewListReposCommand(searchService SearchService) *cobra.Command {
 	cmd := &cobra.Command{
