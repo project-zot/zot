@@ -182,7 +182,7 @@ func (c *Controller) Run(reloadCtx context.Context) error {
 
 		if c.Config.HTTP.TLS.CACert != "" {
 			clientAuth := tls.VerifyClientCertIfGiven
-			if !c.Config.IsBasicAuthnEnabled() && !c.Config.HTTP.AccessControl.AnonymousPolicyExists() {
+			if c.Config.IsMTLSAuthEnabled() {
 				clientAuth = tls.RequireAndVerifyClientCert
 			}
 

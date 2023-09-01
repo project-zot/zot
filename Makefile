@@ -373,6 +373,10 @@ test-push-pull-running-dedupe: check-linux binary check-skopeo $(BATS) $(REGCLIE
 test-push-pull-running-dedupe-verbose: check-linux binary check-skopeo $(BATS) $(REGCLIENT) $(ORAS) $(HELM)
 	$(BATS) --trace --verbose-run --print-output-on-failure --show-output-of-passing-tests test/blackbox/pushpull_running_dedupe.bats
 
+.PHONY: test-push-pull-authn
+test-push-pull-authn: check-linux binary check-skopeo $(BATS) $(REGCLIENT)
+	$(BATS) --trace --print-output-on-failure test/blackbox/pushpull_authn.bats
+
 .PHONY: test-sync-harness
 test-sync-harness: check-linux binary binary-minimal bench check-skopeo $(BATS)
 	$(BATS) --trace --print-output-on-failure test/blackbox/sync_harness.bats
@@ -401,11 +405,11 @@ test-bats-metadata: check-linux binary check-skopeo $(BATS)
 
 .PHONY: test-cloud-only
 test-cloud-only: check-linux binary check-skopeo $(BATS)
-	$(BATS) --trace --print-output-on-failure test/blackbox/cloud-only.bats
+	$(BATS) --trace --print-output-on-failure test/blackbox/cloud_only.bats
 
 .PHONY: test-cloud-only-verbose
 test-cloud-only-verbose: check-linux binary check-skopeo $(BATS)
-	$(BATS) --trace --verbose-run --print-output-on-failure --show-output-of-passing-tests test/blackbox/cloud-only.bats
+	$(BATS) --trace --verbose-run --print-output-on-failure --show-output-of-passing-tests test/blackbox/cloud_only.bats
 
 .PHONY: test-bats-sync
 test-bats-sync: BUILD_LABELS=sync

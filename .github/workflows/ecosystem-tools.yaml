@@ -78,6 +78,9 @@ jobs:
       - name: Run push-pull tests
         run: |
             make test-push-pull
+      - name: Run push-pull-authn tests
+        run: |
+            make test-push-pull-authn
       - name: Run metrics tests
         run: |
             make test-bats-metrics

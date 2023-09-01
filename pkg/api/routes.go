@@ -45,7 +45,7 @@ import (
 	"zotregistry.io/zot/pkg/meta"
 	mTypes "zotregistry.io/zot/pkg/meta/types"
 	zreg "zotregistry.io/zot/pkg/regexp"
-	localCtx "zotregistry.io/zot/pkg/requestcontext"
+	reqCtx "zotregistry.io/zot/pkg/requestcontext"
 	storageCommon "zotregistry.io/zot/pkg/storage/common"
 	storageTypes "zotregistry.io/zot/pkg/storage/types"
 	"zotregistry.io/zot/pkg/test/inject"
@@ -777,8 +777,8 @@ func (rh *RouteHandler) DeleteManifest(response http.ResponseWriter, request *ht
 		return
 	}
 
-	// authz request context (set in authz middleware)
-	acCtx, err := localCtx.GetAccessControlContext(request.Context())
+	// user authz request context (set in authz middleware)
+	userAc, err := reqCtx.UserAcFromContext(request.Context())
 	if err != nil {
 		response.WriteHeader(http.StatusInternalServerError)
 
@@ -786,8 +786,8 @@ func (rh *RouteHandler) DeleteManifest(response http.ResponseWriter, request *ht
 	}
 
 	var detectCollision bool
-	if acCtx != nil {
-		detectCollision = acCtx.CanDetectManifestCollision(name)
+	if userAc != nil {
+		detectCollision = userAc.Can(constants.DetectManifestCollisionPermission, name)
 	}
 
 	manifestBlob, manifestDigest, mediaType, err := imgStore.GetImageManifest(name, reference)
@@ -1151,6 +1151,7 @@ func (rh *RouteHandler) DeleteBlob(response http.ResponseWriter, request *http.R
 // @Success 202 {string} string	"accepted"
 // @Header  202 {string} Location "/v2/{name}/blobs/uploads/{session_id}"
 // @Header  202 {string} Range "0-0"
+// @Failure 401 {string} string "unauthorized"
 // @Failure 404 {string} string "not found"
 // @Failure 500 {string} string "internal server error"
 // @Router /v2/{name}/blobs/uploads [post].
@@ -1711,16 +1712,16 @@ func (rh *RouteHandler) ListRepositories(response http.ResponseWriter, request *
 
 	repos := make([]string, 0)
 	// authz context
-	acCtx, err := localCtx.GetAccessControlContext(request.Context())
+	userAc, err := reqCtx.UserAcFromContext(request.Context())
 	if err != nil {
 		response.WriteHeader(http.StatusInternalServerError)
 
 		return
 	}
 
-	if acCtx != nil {
+	if userAc != nil {
 		for _, r := range combineRepoList {
-			if acCtx.IsAdmin || acCtx.CanReadRepo(r) {
+			if userAc.Can(constants.ReadPermission, r) {
 				repos = append(repos, r)
 			}
 		}

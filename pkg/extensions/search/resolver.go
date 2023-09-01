@@ -26,7 +26,7 @@ import (
 	"zotregistry.io/zot/pkg/extensions/search/pagination"
 	"zotregistry.io/zot/pkg/log"
 	mTypes "zotregistry.io/zot/pkg/meta/types"
-	localCtx "zotregistry.io/zot/pkg/requestcontext"
+	reqCtx "zotregistry.io/zot/pkg/requestcontext"
 	"zotregistry.io/zot/pkg/storage"
 )
 
@@ -1108,7 +1108,7 @@ func deleteElementAt(slice []*string, i int) []*string {
 
 func expandedRepoInfo(ctx context.Context, repo string, metaDB mTypes.MetaDB, cveInfo cveinfo.CveInfo, log log.Logger,
 ) (*gql_generated.RepoInfo, error) {
-	if ok, err := localCtx.RepoIsUserAvailable(ctx, repo); !ok || err != nil {
+	if ok, err := reqCtx.RepoIsUserAvailable(ctx, repo); !ok || err != nil {
 		log.Info().Err(err).Str("repository", repo).Bool("availability", ok).Msg("resolver: repo user availability")
 
 		return &gql_generated.RepoInfo{}, nil //nolint:nilerr // don't give details to a potential attacker

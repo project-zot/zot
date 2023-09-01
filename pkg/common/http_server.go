@@ -13,7 +13,7 @@ import (
 	"zotregistry.io/zot/pkg/api/config"
 	"zotregistry.io/zot/pkg/api/constants"
 	apiErr "zotregistry.io/zot/pkg/api/errors"
-	localCtx "zotregistry.io/zot/pkg/requestcontext"
+	reqCtx "zotregistry.io/zot/pkg/requestcontext"
 )
 
 func AllowedMethods(methods ...string) []string {
@@ -79,17 +79,17 @@ func AuthzOnlyAdminsMiddleware(conf *config.Config) mux.MiddlewareFunc {
 				return
 			}
 
-			// get acCtx built in previous authn/authz middlewares
-			acCtx, err := localCtx.GetAccessControlContext(request.Context())
+			// get userAccessControl built in previous authn/authz middlewares
+			userAc, err := reqCtx.UserAcFromContext(request.Context())
 			if err != nil { // should not happen as this has been previously checked for errors
-				AuthzFail(response, request, conf.HTTP.Realm, conf.HTTP.Auth.FailDelay)
+				AuthzFail(response, request, userAc.GetUsername(), conf.HTTP.Realm, conf.HTTP.Auth.FailDelay)
 
 				return
 			}
 
 			// reject non-admin access if authentication is enabled
-			if acCtx != nil && !acCtx.IsAdmin {
-				AuthzFail(response, request, conf.HTTP.Realm, conf.HTTP.Auth.FailDelay)
+			if userAc != nil && !userAc.IsAdmin() {
+				AuthzFail(response, request, userAc.GetUsername(), conf.HTTP.Realm, conf.HTTP.Auth.FailDelay)
 
 				return
 			}
@@ -99,7 +99,7 @@ func AuthzOnlyAdminsMiddleware(conf *config.Config) mux.MiddlewareFunc {
 	}
 }
 
-func AuthzFail(w http.ResponseWriter, r *http.Request, realm string, delay int) {
+func AuthzFail(w http.ResponseWriter, r *http.Request, identity, realm string, delay int) {
 	time.Sleep(time.Duration(delay) * time.Second)
 
 	// don't send auth headers if request is coming from UI
@@ -114,7 +114,12 @@ func AuthzFail(w http.ResponseWriter, r *http.Request, realm string, delay int) 
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	WriteJSON(w, http.StatusForbidden, apiErr.NewErrorList(apiErr.NewError(apiErr.DENIED)))
+
+	if identity == "" {
+		WriteJSON(w, http.StatusUnauthorized, apiErr.NewErrorList(apiErr.NewError(apiErr.UNAUTHORIZED)))
+	} else {
+		WriteJSON(w, http.StatusForbidden, apiErr.NewErrorList(apiErr.NewError(apiErr.DENIED)))
+	}
 }
 
 func WriteJSON(response http.ResponseWriter, status int, data interface{}) {

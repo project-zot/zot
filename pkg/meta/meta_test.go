@@ -30,7 +30,7 @@ import (
 	"zotregistry.io/zot/pkg/meta/common"
 	mdynamodb "zotregistry.io/zot/pkg/meta/dynamodb"
 	mTypes "zotregistry.io/zot/pkg/meta/types"
-	localCtx "zotregistry.io/zot/pkg/requestcontext"
+	reqCtx "zotregistry.io/zot/pkg/requestcontext"
 	"zotregistry.io/zot/pkg/test"
 )
 
@@ -163,11 +163,10 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 				hashKey2 := "key"
 				label2 := "apiKey2"
 
-				authzCtxKey := localCtx.GetContextKey()
-				acCtx := localCtx.AccessControlContext{
-					Username: "test",
-				}
-				ctx := context.WithValue(context.Background(), authzCtxKey, acCtx)
+				userAc := reqCtx.NewUserAccessControl()
+				userAc.SetUsername("test")
+
+				ctx := userAc.DeriveContext(context.Background())
 
 				err := metaDB.AddUserAPIKey(ctx, hashKey1, &apiKeyDetails)
 				So(err, ShouldBeNil)
@@ -315,9 +314,8 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 			Convey("Test API keys operations with invalid access control context", func() {
 				var invalid struct{}
 
-				ctx := context.TODO()
-				key := localCtx.GetContextKey()
-				ctx = context.WithValue(ctx, key, invalid)
+				key := reqCtx.GetContextKey()
+				ctx := context.WithValue(context.Background(), key, invalid)
 
 				_, err := metaDB.GetUserAPIKeys(ctx)
 				So(err, ShouldNotBeNil)
@@ -349,13 +347,10 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 			})
 
 			Convey("Test API keys operations with empty userid", func() {
-				acCtx := localCtx.AccessControlContext{
-					Username: "",
-				}
+				userAc := reqCtx.NewUserAccessControl()
+				userAc.SetUsername("")
 
-				ctx := context.TODO()
-				key := localCtx.GetContextKey()
-				ctx = context.WithValue(ctx, key, acCtx)
+				ctx := userAc.DeriveContext(context.Background())
 
 				_, err := metaDB.GetUserAPIKeys(ctx)
 				So(err, ShouldNotBeNil)
@@ -390,11 +385,10 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 				expirationDate := time.Now().Add(500 * time.Millisecond).Local().Round(time.Millisecond)
 				apiKeyDetails.ExpirationDate = expirationDate
 
-				authzCtxKey := localCtx.GetContextKey()
-				acCtx := localCtx.AccessControlContext{
-					Username: "test",
-				}
-				ctx := context.WithValue(context.Background(), authzCtxKey, acCtx)
+				userAc := reqCtx.NewUserAccessControl()
+				userAc.SetUsername("test")
+
+				ctx := userAc.DeriveContext(context.Background())
 
 				err := metaDB.AddUserAPIKey(ctx, hashKey1, &apiKeyDetails)
 				So(err, ShouldBeNil)
@@ -829,40 +823,34 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 				repo2           = "repo2"
 			)
 
-			authzCtxKey := localCtx.GetContextKey()
-
-			acCtx1 := localCtx.AccessControlContext{
-				ReadGlobPatterns: map[string]bool{
-					repo1: true,
-					repo2: true,
-				},
-				Username: "user1",
-			}
+			userAc := reqCtx.NewUserAccessControl()
+			userAc.SetUsername("user1")
+			userAc.SetGlobPatterns("read", map[string]bool{
+				repo1: true,
+				repo2: true,
+			})
 
 			// "user1"
-			ctx1 := context.WithValue(context.Background(), authzCtxKey, acCtx1)
+			ctx1 := userAc.DeriveContext(context.Background())
 
-			acCtx2 := localCtx.AccessControlContext{
-				ReadGlobPatterns: map[string]bool{
-					repo1: true,
-					repo2: true,
-				},
-				Username: "user2",
-			}
+			userAc = reqCtx.NewUserAccessControl()
+			userAc.SetUsername("user2")
+			userAc.SetGlobPatterns("read", map[string]bool{
+				repo1: true,
+				repo2: true,
+			})
 
 			// "user2"
-			ctx2 := context.WithValue(context.Background(), authzCtxKey, acCtx2)
+			ctx2 := userAc.DeriveContext(context.Background())
 
-			acCtx3 := localCtx.AccessControlContext{
-				ReadGlobPatterns: map[string]bool{
-					repo1: true,
-					repo2: true,
-				},
-				Username: "",
-			}
+			userAc = reqCtx.NewUserAccessControl()
+			userAc.SetGlobPatterns("read", map[string]bool{
+				repo1: true,
+				repo2: true,
+			})
 
-			// anonymous
-			ctx3 := context.WithValue(context.Background(), authzCtxKey, acCtx3)
+			// anonymous user
+			ctx3 := userAc.DeriveContext(context.Background())
 
 			err := metaDB.SetRepoReference(repo1, tag1, manifestDigest1, ispec.MediaTypeImageManifest)
 			So(err, ShouldBeNil)
@@ -1072,40 +1060,34 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 				repo2           = "repo2"
 			)
 
-			authzCtxKey := localCtx.GetContextKey()
-
-			acCtx1 := localCtx.AccessControlContext{
-				ReadGlobPatterns: map[string]bool{
-					repo1: true,
-					repo2: true,
-				},
-				Username: "user1",
-			}
+			userAc := reqCtx.NewUserAccessControl()
+			userAc.SetUsername("user1")
+			userAc.SetGlobPatterns("read", map[string]bool{
+				repo1: true,
+				repo2: true,
+			})
 
 			// "user1"
-			ctx1 := context.WithValue(context.Background(), authzCtxKey, acCtx1)
+			ctx1 := userAc.DeriveContext(context.Background())
 
-			acCtx2 := localCtx.AccessControlContext{
-				ReadGlobPatterns: map[string]bool{
-					repo1: true,
-					repo2: true,
-				},
-				Username: "user2",
-			}
+			userAc = reqCtx.NewUserAccessControl()
+			userAc.SetUsername("user2")
+			userAc.SetGlobPatterns("read", map[string]bool{
+				repo1: true,
+				repo2: true,
+			})
 
 			// "user2"
-			ctx2 := context.WithValue(context.Background(), authzCtxKey, acCtx2)
+			ctx2 := userAc.DeriveContext(context.Background())
 
-			acCtx3 := localCtx.AccessControlContext{
-				ReadGlobPatterns: map[string]bool{
-					repo1: true,
-					repo2: true,
-				},
-				Username: "",
-			}
+			userAc = reqCtx.NewUserAccessControl()
+			userAc.SetGlobPatterns("read", map[string]bool{
+				repo1: true,
+				repo2: true,
+			})
 
-			// anonymous
-			ctx3 := context.WithValue(context.Background(), authzCtxKey, acCtx3)
+			// anonymous user
+			ctx3 := userAc.DeriveContext(context.Background())
 
 			err := metaDB.SetRepoReference(repo1, tag1, manifestDigest1, ispec.MediaTypeImageManifest)
 			So(err, ShouldBeNil)
@@ -1651,15 +1633,14 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 				err = metaDB.SetManifestMeta(repo3, manifestDigest1, emptyRepoMeta)
 				So(err, ShouldBeNil)
 
-				acCtx := localCtx.AccessControlContext{
-					ReadGlobPatterns: map[string]bool{
-						repo1: true,
-						repo2: true,
-					},
-					Username: "username",
-				}
-				authzCtxKey := localCtx.GetContextKey()
-				ctx := context.WithValue(context.Background(), authzCtxKey, acCtx)
+				userAc := reqCtx.NewUserAccessControl()
+				userAc.SetUsername("username")
+				userAc.SetGlobPatterns("read", map[string]bool{
+					repo1: true,
+					repo2: true,
+				})
+
+				ctx := userAc.DeriveContext(context.Background())
 
 				repos, _, _, err := metaDB.SearchRepos(ctx, "repo")
 				So(err, ShouldBeNil)
@@ -1808,17 +1789,15 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 			})
 
 			Convey("With no permision", func() {
-				acCtx1 := localCtx.AccessControlContext{
-					ReadGlobPatterns: map[string]bool{
+				userAc := reqCtx.NewUserAccessControl()
+				userAc.SetUsername("user1")
+				userAc.SetGlobPatterns("read",
+					map[string]bool{
 						repo1: false,
 						repo2: false,
 					},
-					Username: "user1",
-				}
-				authzCtxKey := localCtx.GetContextKey()
-
-				// "user1"
-				ctx1 := context.WithValue(context.Background(), authzCtxKey, acCtx1)
+				)
+				ctx1 := userAc.DeriveContext(context.Background())
 
 				repos, _, _, err := metaDB.SearchTags(ctx1, "repo1:0.0.1")
 				So(err, ShouldBeNil)
@@ -1890,15 +1869,14 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 				err = metaDB.SetManifestMeta(repo3, manifestDigest1, mTypes.ManifestMetadata{ConfigBlob: configBlob})
 				So(err, ShouldBeNil)
 
-				acCtx := localCtx.AccessControlContext{
-					ReadGlobPatterns: map[string]bool{
-						repo1: true,
-						repo2: false,
-					},
-					Username: "username",
-				}
-				authzCtxKey := localCtx.GetContextKey()
-				ctx := context.WithValue(context.Background(), authzCtxKey, acCtx)
+				userAc := reqCtx.NewUserAccessControl()
+				userAc.SetUsername("username")
+				userAc.SetGlobPatterns("read", map[string]bool{
+					repo1: true,
+					repo2: false,
+				})
+
+				ctx := userAc.DeriveContext(context.Background())
 
 				repos, _, _, err := metaDB.SearchTags(ctx, "repo1:")
 				So(err, ShouldBeNil)
@@ -2194,16 +2172,14 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 			})
 
 			Convey("Search with access control", func() {
-				acCtx := localCtx.AccessControlContext{
-					ReadGlobPatterns: map[string]bool{
-						repo1: false,
-						repo2: true,
-					},
-					Username: "username",
-				}
+				userAc := reqCtx.NewUserAccessControl()
+				userAc.SetUsername("username")
+				userAc.SetGlobPatterns("read", map[string]bool{
+					repo1: false,
+					repo2: true,
+				})
 
-				authzCtxKey := localCtx.GetContextKey()
-				ctx := context.WithValue(context.Background(), authzCtxKey, acCtx)
+				ctx := userAc.DeriveContext(context.Background())
 
 				repos, manifestMetaMap, _, err := metaDB.FilterTags(ctx,
 					func(repoMeta mTypes.RepoMetadata, manifestMeta mTypes.ManifestMetadata) bool {
@@ -2446,15 +2422,13 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 
 		Convey("Test bookmarked/starred field present in returned RepoMeta", func() {
 			repo99 := "repo99"
-			authzCtxKey := localCtx.GetContextKey()
+			userAc := reqCtx.NewUserAccessControl()
+			userAc.SetUsername("user1")
+			userAc.SetGlobPatterns("read", map[string]bool{
+				repo99: true,
+			})
 
-			acCtx := localCtx.AccessControlContext{
-				ReadGlobPatterns: map[string]bool{
-					repo99: true,
-				},
-				Username: "user1",
-			}
-			ctx := context.WithValue(context.Background(), authzCtxKey, acCtx)
+			ctx := userAc.DeriveContext(context.Background())
 
 			manifestDigest := godigest.FromString("dig")
 			err := metaDB.SetManifestData(manifestDigest, mTypes.ManifestData{
@@ -2528,15 +2502,13 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 		})
 
 		Convey("Test GetUserRepoMeta", func() {
-			authzCtxKey := localCtx.GetContextKey()
+			userAc := reqCtx.NewUserAccessControl()
+			userAc.SetUsername("user1")
+			userAc.SetGlobPatterns("read", map[string]bool{
+				"repo": true,
+			})
 
-			acCtx := localCtx.AccessControlContext{
-				ReadGlobPatterns: map[string]bool{
-					"repo": true,
-				},
-				Username: "user1",
-			}
-			ctx := context.WithValue(context.Background(), authzCtxKey, acCtx)
+			ctx := userAc.DeriveContext(context.Background())
 
 			digest := godigest.FromString("1")
 

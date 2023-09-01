@@ -13,13 +13,14 @@ import (
 	"go.etcd.io/bbolt"
 
 	zerr "zotregistry.io/zot/errors"
+	"zotregistry.io/zot/pkg/api/constants"
 	zcommon "zotregistry.io/zot/pkg/common"
 	"zotregistry.io/zot/pkg/extensions/imagetrust"
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/meta/common"
 	mTypes "zotregistry.io/zot/pkg/meta/types"
 	"zotregistry.io/zot/pkg/meta/version"
-	localCtx "zotregistry.io/zot/pkg/requestcontext"
+	reqCtx "zotregistry.io/zot/pkg/requestcontext"
 )
 
 type BoltDB struct {
@@ -653,7 +654,7 @@ func (bdw *BoltDB) GetMultipleRepoMeta(ctx context.Context, filter func(repoMeta
 		cursor := buck.Cursor()
 
 		for repoName, repoMetaBlob := cursor.First(); repoName != nil; repoName, repoMetaBlob = cursor.Next() {
-			if ok, err := localCtx.RepoIsUserAvailable(ctx, string(repoName)); !ok || err != nil {
+			if ok, err := reqCtx.RepoIsUserAvailable(ctx, string(repoName)); !ok || err != nil {
 				continue
 			}
 
@@ -971,7 +972,7 @@ func (bdw *BoltDB) SearchRepos(ctx context.Context, searchText string,
 		cursor := repoBuck.Cursor()
 
 		for repoName, repoMetaBlob := cursor.First(); repoName != nil; repoName, repoMetaBlob = cursor.Next() {
-			if ok, err := localCtx.RepoIsUserAvailable(ctx, string(repoName)); !ok || err != nil {
+			if ok, err := reqCtx.RepoIsUserAvailable(ctx, string(repoName)); !ok || err != nil {
 				continue
 			}
 
@@ -1141,7 +1142,7 @@ func (bdw *BoltDB) FilterTags(ctx context.Context, filterFunc mTypes.FilterFunc,
 		repoName, repoMetaBlob := cursor.First()
 
 		for ; repoName != nil; repoName, repoMetaBlob = cursor.Next() {
-			if ok, err := localCtx.RepoIsUserAvailable(ctx, string(repoName)); !ok || err != nil {
+			if ok, err := reqCtx.RepoIsUserAvailable(ctx, string(repoName)); !ok || err != nil {
 				continue
 			}
 
@@ -1251,7 +1252,7 @@ func (bdw *BoltDB) FilterRepos(ctx context.Context, filter mTypes.FilterRepoFunc
 		)
 
 		for repoName, repoMetaBlob := cursor.First(); repoName != nil; repoName, repoMetaBlob = cursor.Next() {
-			if ok, err := localCtx.RepoIsUserAvailable(ctx, string(repoName)); !ok || err != nil {
+			if ok, err := reqCtx.RepoIsUserAvailable(ctx, string(repoName)); !ok || err != nil {
 				continue
 			}
 
@@ -1310,7 +1311,7 @@ func (bdw *BoltDB) SearchTags(ctx context.Context, searchText string,
 			return nil
 		}
 
-		if ok, err := localCtx.RepoIsUserAvailable(ctx, string(repoName)); !ok || err != nil {
+		if ok, err := reqCtx.RepoIsUserAvailable(ctx, string(repoName)); !ok || err != nil {
 			return err
 		}
 
@@ -1396,21 +1397,16 @@ func (bdw *BoltDB) SearchTags(ctx context.Context, searchText string,
 }
 
 func (bdw *BoltDB) ToggleStarRepo(ctx context.Context, repo string) (mTypes.ToggleState, error) {
-	acCtx, err := localCtx.GetAccessControlContext(ctx)
+	userAc, err := reqCtx.UserAcFromContext(ctx)
 	if err != nil {
 		return mTypes.NotChanged, err
 	}
 
-	userid := localCtx.GetUsernameFromContext(acCtx)
-
-	if userid == "" {
-		// empty user is anonymous
+	if userAc.IsAnonymous() || !userAc.Can(constants.ReadPermission, repo) {
 		return mTypes.NotChanged, zerr.ErrUserDataNotAllowed
 	}
 
-	if ok, err := localCtx.RepoIsUserAvailable(ctx, repo); !ok || err != nil {
-		return mTypes.NotChanged, zerr.ErrUserDataNotAllowed
-	}
+	userid := userAc.GetUsername()
 
 	var res mTypes.ToggleState
 
@@ -1486,20 +1482,16 @@ func (bdw *BoltDB) GetStarredRepos(ctx context.Context) ([]string, error) {
 }
 
 func (bdw *BoltDB) ToggleBookmarkRepo(ctx context.Context, repo string) (mTypes.ToggleState, error) {
-	acCtx, err := localCtx.GetAccessControlContext(ctx)
+	userAc, err := reqCtx.UserAcFromContext(ctx)
 	if err != nil {
 		return mTypes.NotChanged, err
 	}
 
-	userid := localCtx.GetUsernameFromContext(acCtx)
-	if userid == "" {
-		// empty user is anonymous
+	if userAc.IsAnonymous() || !userAc.Can(constants.ReadPermission, repo) {
 		return mTypes.NotChanged, zerr.ErrUserDataNotAllowed
 	}
 
-	if ok, err := localCtx.RepoIsUserAvailable(ctx, repo); !ok || err != nil {
-		return mTypes.NotChanged, zerr.ErrUserDataNotAllowed
-	}
+	userid := userAc.GetUsername()
 
 	var res mTypes.ToggleState
 
@@ -1570,14 +1562,14 @@ func (bdw *BoltDB) PatchDB() error {
 }
 
 func getUserStars(ctx context.Context, transaction *bbolt.Tx) []string {
-	acCtx, err := localCtx.GetAccessControlContext(ctx)
+	userAc, err := reqCtx.UserAcFromContext(ctx)
 	if err != nil {
 		return []string{}
 	}
 
 	var (
 		userData mTypes.UserData
-		userid   = localCtx.GetUsernameFromContext(acCtx)
+		userid   = userAc.GetUsername()
 		userdb   = transaction.Bucket([]byte(UserDataBucket))
 	)
 
@@ -1598,14 +1590,14 @@ func getUserStars(ctx context.Context, transaction *bbolt.Tx) []string {
 }
 
 func getUserBookmarks(ctx context.Context, transaction *bbolt.Tx) []string {
-	acCtx, err := localCtx.GetAccessControlContext(ctx)
+	userAc, err := reqCtx.UserAcFromContext(ctx)
 	if err != nil {
 		return []string{}
 	}
 
 	var (
 		userData mTypes.UserData
-		userid   = localCtx.GetUsernameFromContext(acCtx)
+		userid   = userAc.GetUsername()
 		userdb   = transaction.Bucket([]byte(UserDataBucket))
 	)
 
@@ -1626,17 +1618,16 @@ func getUserBookmarks(ctx context.Context, transaction *bbolt.Tx) []string {
 }
 
 func (bdw *BoltDB) SetUserGroups(ctx context.Context, groups []string) error {
-	acCtx, err := localCtx.GetAccessControlContext(ctx)
+	userAc, err := reqCtx.UserAcFromContext(ctx)
 	if err != nil {
 		return err
 	}
 
-	userid := localCtx.GetUsernameFromContext(acCtx)
-
-	if userid == "" {
-		// empty user is anonymous
+	if userAc.IsAnonymous() {
 		return zerr.ErrUserDataNotAllowed
 	}
+
+	userid := userAc.GetUsername()
 
 	err = bdw.DB.Update(func(tx *bbolt.Tx) error { //nolint:varnamelen
 		var userData mTypes.UserData
@@ -1663,17 +1654,16 @@ func (bdw *BoltDB) GetUserGroups(ctx context.Context) ([]string, error) {
 }
 
 func (bdw *BoltDB) UpdateUserAPIKeyLastUsed(ctx context.Context, hashedKey string) error {
-	acCtx, err := localCtx.GetAccessControlContext(ctx)
+	userAc, err := reqCtx.UserAcFromContext(ctx)
 	if err != nil {
 		return err
 	}
 
-	userid := localCtx.GetUsernameFromContext(acCtx)
-
-	if userid == "" {
-		// empty user is anonymous
+	if userAc.IsAnonymous() {
 		return zerr.ErrUserDataNotAllowed
 	}
+
+	userid := userAc.GetUsername()
 
 	err = bdw.DB.Update(func(tx *bbolt.Tx) error { //nolint:varnamelen
 		var userData mTypes.UserData
@@ -1697,17 +1687,16 @@ func (bdw *BoltDB) UpdateUserAPIKeyLastUsed(ctx context.Context, hashedKey strin
 }
 
 func (bdw *BoltDB) IsAPIKeyExpired(ctx context.Context, hashedKey string) (bool, error) {
-	acCtx, err := localCtx.GetAccessControlContext(ctx)
+	userAc, err := reqCtx.UserAcFromContext(ctx)
 	if err != nil {
 		return false, err
 	}
 
-	userid := localCtx.GetUsernameFromContext(acCtx)
-
-	if userid == "" {
-		// empty user is anonymous
+	if userAc.IsAnonymous() {
 		return false, zerr.ErrUserDataNotAllowed
 	}
+
+	userid := userAc.GetUsername()
 
 	var isExpired bool
 
@@ -1745,16 +1734,16 @@ func (bdw *BoltDB) IsAPIKeyExpired(ctx context.Context, hashedKey string) (bool,
 func (bdw *BoltDB) GetUserAPIKeys(ctx context.Context) ([]mTypes.APIKeyDetails, error) {
 	apiKeys := make([]mTypes.APIKeyDetails, 0)
 
-	acCtx, err := localCtx.GetAccessControlContext(ctx)
+	userAc, err := reqCtx.UserAcFromContext(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	userid := localCtx.GetUsernameFromContext(acCtx)
-	if userid == "" {
-		// empty user is anonymous
+	if userAc.IsAnonymous() {
 		return nil, zerr.ErrUserDataNotAllowed
 	}
+
+	userid := userAc.GetUsername()
 
 	err = bdw.DB.Update(func(transaction *bbolt.Tx) error {
 		var userData mTypes.UserData
@@ -1787,16 +1776,16 @@ func (bdw *BoltDB) GetUserAPIKeys(ctx context.Context) ([]mTypes.APIKeyDetails, 
 }
 
 func (bdw *BoltDB) AddUserAPIKey(ctx context.Context, hashedKey string, apiKeyDetails *mTypes.APIKeyDetails) error {
-	acCtx, err := localCtx.GetAccessControlContext(ctx)
+	userAc, err := reqCtx.UserAcFromContext(ctx)
 	if err != nil {
 		return err
 	}
 
-	userid := localCtx.GetUsernameFromContext(acCtx)
-	if userid == "" {
-		// empty user is anonymous
+	if userAc.IsAnonymous() {
 		return zerr.ErrUserDataNotAllowed
 	}
+
+	userid := userAc.GetUsername()
 
 	err = bdw.DB.Update(func(transaction *bbolt.Tx) error {
 		var userData mTypes.UserData
@@ -1831,16 +1820,16 @@ func (bdw *BoltDB) AddUserAPIKey(ctx context.Context, hashedKey string, apiKeyDe
 }
 
 func (bdw *BoltDB) DeleteUserAPIKey(ctx context.Context, keyID string) error {
-	acCtx, err := localCtx.GetAccessControlContext(ctx)
+	userAc, err := reqCtx.UserAcFromContext(ctx)
 	if err != nil {
 		return err
 	}
 
-	userid := localCtx.GetUsernameFromContext(acCtx)
-	if userid == "" {
-		// empty user is anonymous
+	if userAc.IsAnonymous() {
 		return zerr.ErrUserDataNotAllowed
 	}
+
+	userid := userAc.GetUsername()
 
 	err = bdw.DB.Update(func(transaction *bbolt.Tx) error {
 		var userData mTypes.UserData
@@ -1896,16 +1885,16 @@ func (bdw *BoltDB) GetUserAPIKeyInfo(hashedKey string) (string, error) {
 func (bdw *BoltDB) GetUserData(ctx context.Context) (mTypes.UserData, error) {
 	var userData mTypes.UserData
 
-	acCtx, err := localCtx.GetAccessControlContext(ctx)
+	userAc, err := reqCtx.UserAcFromContext(ctx)
 	if err != nil {
 		return userData, err
 	}
 
-	userid := localCtx.GetUsernameFromContext(acCtx)
-	if userid == "" {
-		// empty user is anonymous
+	if userAc.IsAnonymous() {
 		return userData, zerr.ErrUserDataNotAllowed
 	}
+
+	userid := userAc.GetUsername()
 
 	err = bdw.DB.View(func(tx *bbolt.Tx) error {
 		return bdw.getUserData(userid, tx, &userData)
@@ -1935,16 +1924,16 @@ func (bdw *BoltDB) getUserData(userid string, transaction *bbolt.Tx, res *mTypes
 }
 
 func (bdw *BoltDB) SetUserData(ctx context.Context, userData mTypes.UserData) error {
-	acCtx, err := localCtx.GetAccessControlContext(ctx)
+	userAc, err := reqCtx.UserAcFromContext(ctx)
 	if err != nil {
 		return err
 	}
 
-	userid := localCtx.GetUsernameFromContext(acCtx)
-	if userid == "" {
-		// empty user is anonymous
+	if userAc.IsAnonymous() {
 		return zerr.ErrUserDataNotAllowed
 	}
+
+	userid := userAc.GetUsername()
 
 	err = bdw.DB.Update(func(tx *bbolt.Tx) error {
 		return bdw.setUserData(userid, tx, userData)
@@ -1973,16 +1962,16 @@ func (bdw *BoltDB) setUserData(userid string, transaction *bbolt.Tx, userData mT
 }
 
 func (bdw *BoltDB) DeleteUserData(ctx context.Context) error {
-	acCtx, err := localCtx.GetAccessControlContext(ctx)
+	userAc, err := reqCtx.UserAcFromContext(ctx)
 	if err != nil {
 		return err
 	}
 
-	userid := localCtx.GetUsernameFromContext(acCtx)
-	if userid == "" {
-		// empty user is anonymous
+	if userAc.IsAnonymous() {
 		return zerr.ErrUserDataNotAllowed
 	}
+
+	userid := userAc.GetUsername()
 
 	err = bdw.DB.Update(func(tx *bbolt.Tx) error {
 		buck := tx.Bucket([]byte(UserDataBucket))

@@ -20,7 +20,7 @@ import (
 	"zotregistry.io/zot/pkg/log"
 	mdynamodb "zotregistry.io/zot/pkg/meta/dynamodb"
 	mTypes "zotregistry.io/zot/pkg/meta/types"
-	localCtx "zotregistry.io/zot/pkg/requestcontext"
+	reqCtx "zotregistry.io/zot/pkg/requestcontext"
 	"zotregistry.io/zot/pkg/test"
 )
 
@@ -170,13 +170,9 @@ func TestWrapperErrors(t *testing.T) {
 		So(dynamoWrapper.ResetManifestDataTable(), ShouldBeNil) //nolint:contextcheck
 		So(dynamoWrapper.ResetRepoMetaTable(), ShouldBeNil)     //nolint:contextcheck
 
-		authzCtxKey := localCtx.GetContextKey()
-
-		acCtx := localCtx.AccessControlContext{
-			Username: "test",
-		}
-
-		ctx := context.WithValue(context.Background(), authzCtxKey, acCtx)
+		userAc := reqCtx.NewUserAccessControl()
+		userAc.SetUsername("test")
+		ctx := userAc.DeriveContext(context.Background())
 
 		Convey("SetUserData", func() {
 			hashKey := "id"
@@ -197,13 +193,8 @@ func TestWrapperErrors(t *testing.T) {
 			err := dynamoWrapper.SetUserData(ctx, userProfileSrc)
 			So(err, ShouldBeNil)
 
-			authzCtxKey := localCtx.GetContextKey()
-
-			acCtx := localCtx.AccessControlContext{
-				Username: "",
-			}
-
-			ctx := context.WithValue(context.Background(), authzCtxKey, acCtx)
+			userAc := reqCtx.NewUserAccessControl()
+			ctx := userAc.DeriveContext(context.Background())
 
 			err = dynamoWrapper.SetUserData(ctx, mTypes.UserData{}) //nolint: contextcheck
 			So(err, ShouldNotBeNil)
@@ -213,43 +204,32 @@ func TestWrapperErrors(t *testing.T) {
 			err := dynamoWrapper.DeleteUserData(ctx)
 			So(err, ShouldBeNil)
 
-			authzCtxKey := localCtx.GetContextKey()
-
-			acCtx := localCtx.AccessControlContext{
-				Username: "",
-			}
-
-			ctx := context.WithValue(context.Background(), authzCtxKey, acCtx)
+			userAc := reqCtx.NewUserAccessControl()
+			ctx := userAc.DeriveContext(context.Background())
 
 			err = dynamoWrapper.DeleteUserData(ctx) //nolint: contextcheck
 			So(err, ShouldNotBeNil)
 		})
 
 		Convey("ToggleBookmarkRepo no access", func() {
-			acCtx := localCtx.AccessControlContext{
-				ReadGlobPatterns: map[string]bool{
-					"repo": false,
-				},
-				Username: "username",
-			}
-
-			authzCtxKey := localCtx.GetContextKey()
-			ctx := context.WithValue(context.Background(), authzCtxKey, acCtx)
+			userAc := reqCtx.NewUserAccessControl()
+			userAc.SetUsername("username")
+			userAc.SetGlobPatterns("read", map[string]bool{
+				"repo": false,
+			})
+			ctx := userAc.DeriveContext(context.Background())
 
 			_, err := dynamoWrapper.ToggleBookmarkRepo(ctx, "unaccesible")
 			So(err, ShouldNotBeNil)
 		})
 
 		Convey("ToggleBookmarkRepo GetUserMeta no user data", func() {
-			acCtx := localCtx.AccessControlContext{
-				ReadGlobPatterns: map[string]bool{
-					"repo": true,
-				},
-				Username: "username",
-			}
-
-			authzCtxKey := localCtx.GetContextKey()
-			ctx := context.WithValue(context.Background(), authzCtxKey, acCtx)
+			userAc := reqCtx.NewUserAccessControl()
+			userAc.SetUsername("username")
+			userAc.SetGlobPatterns("read", map[string]bool{
+				"repo": true,
+			})
+			ctx := userAc.DeriveContext(context.Background())
 
 			status, err := dynamoWrapper.ToggleBookmarkRepo(ctx, "repo")
 			So(err, ShouldBeNil)
@@ -257,15 +237,12 @@ func TestWrapperErrors(t *testing.T) {
 		})
 
 		Convey("ToggleBookmarkRepo GetUserMeta client error", func() {
-			acCtx := localCtx.AccessControlContext{
-				ReadGlobPatterns: map[string]bool{
-					"repo": true,
-				},
-				Username: "username",
-			}
-
-			authzCtxKey := localCtx.GetContextKey()
-			ctx := context.WithValue(context.Background(), authzCtxKey, acCtx)
+			userAc := reqCtx.NewUserAccessControl()
+			userAc.SetUsername("username")
+			userAc.SetGlobPatterns("read", map[string]bool{
+				"repo": false,
+			})
+			ctx := userAc.DeriveContext(context.Background())
 
 			dynamoWrapper.UserDataTablename = badTablename
 
@@ -275,15 +252,12 @@ func TestWrapperErrors(t *testing.T) {
 		})
 
 		Convey("GetBookmarkedRepos", func() {
-			acCtx := localCtx.AccessControlContext{
-				ReadGlobPatterns: map[string]bool{
-					"repo": true,
-				},
-				Username: "username",
-			}
-
-			authzCtxKey := localCtx.GetContextKey()
-			ctx := context.WithValue(context.Background(), authzCtxKey, acCtx)
+			userAc := reqCtx.NewUserAccessControl()
+			userAc.SetUsername("username")
+			userAc.SetGlobPatterns("read", map[string]bool{
+				"repo": false,
+			})
+			ctx := userAc.DeriveContext(context.Background())
 
 			repos, err := dynamoWrapper.GetBookmarkedRepos(ctx)
 			So(err, ShouldBeNil)
@@ -291,38 +265,32 @@ func TestWrapperErrors(t *testing.T) {
 		})
 
 		Convey("ToggleStarRepo GetUserMeta bad context", func() {
-			authzCtxKey := localCtx.GetContextKey()
-			ctx := context.WithValue(context.Background(), authzCtxKey, "some bad context")
+			uacKey := reqCtx.GetContextKey()
+			ctx := context.WithValue(context.Background(), uacKey, "bad context")
 
 			_, err := dynamoWrapper.ToggleStarRepo(ctx, "repo")
 			So(err, ShouldNotBeNil)
 		})
 
 		Convey("ToggleStarRepo GetUserMeta no access", func() {
-			acCtx := localCtx.AccessControlContext{
-				ReadGlobPatterns: map[string]bool{
-					"repo": false,
-				},
-				Username: "username",
-			}
-
-			authzCtxKey := localCtx.GetContextKey()
-			ctx := context.WithValue(context.Background(), authzCtxKey, acCtx)
+			userAc := reqCtx.NewUserAccessControl()
+			userAc.SetUsername("username")
+			userAc.SetGlobPatterns("read", map[string]bool{
+				"repo": false,
+			})
+			ctx := userAc.DeriveContext(context.Background())
 
 			_, err := dynamoWrapper.ToggleStarRepo(ctx, "unaccesible")
 			So(err, ShouldNotBeNil)
 		})
 
 		Convey("ToggleStarRepo GetUserMeta error", func() {
-			acCtx := localCtx.AccessControlContext{
-				ReadGlobPatterns: map[string]bool{
-					"repo": false,
-				},
-				Username: "username",
-			}
-
-			authzCtxKey := localCtx.GetContextKey()
-			ctx := context.WithValue(context.Background(), authzCtxKey, acCtx)
+			userAc := reqCtx.NewUserAccessControl()
+			userAc.SetUsername("username")
+			userAc.SetGlobPatterns("read", map[string]bool{
+				"repo": false,
+			})
+			ctx := userAc.DeriveContext(context.Background())
 
 			dynamoWrapper.UserDataTablename = badTablename
 
@@ -331,15 +299,12 @@ func TestWrapperErrors(t *testing.T) {
 		})
 
 		Convey("ToggleStarRepo GetRepoMeta error", func() {
-			acCtx := localCtx.AccessControlContext{
-				ReadGlobPatterns: map[string]bool{
-					"repo": true,
-				},
-				Username: "username",
-			}
-
-			authzCtxKey := localCtx.GetContextKey()
-			ctx := context.WithValue(context.Background(), authzCtxKey, acCtx)
+			userAc := reqCtx.NewUserAccessControl()
+			userAc.SetUsername("username")
+			userAc.SetGlobPatterns("read", map[string]bool{
+				"repo": true,
+			})
+			ctx := userAc.DeriveContext(context.Background())
 
 			dynamoWrapper.RepoMetaTablename = badTablename
 
@@ -348,8 +313,8 @@ func TestWrapperErrors(t *testing.T) {
 		})
 
 		Convey("GetUserData bad context", func() {
-			authzCtxKey := localCtx.GetContextKey()
-			ctx := context.WithValue(context.Background(), authzCtxKey, "bad context")
+			uacKey := reqCtx.GetContextKey()
+			ctx := context.WithValue(context.Background(), uacKey, "bad context")
 
 			userData, err := dynamoWrapper.GetUserData(ctx)
 			So(err, ShouldNotBeNil)
@@ -358,14 +323,12 @@ func TestWrapperErrors(t *testing.T) {
 		})
 
 		Convey("GetUserData client error", func() {
-			acCtx := localCtx.AccessControlContext{
-				ReadGlobPatterns: map[string]bool{
-					"repo": true,
-				},
-				Username: "username",
-			}
-			authzCtxKey := localCtx.GetContextKey()
-			ctx := context.WithValue(context.Background(), authzCtxKey, acCtx)
+			userAc := reqCtx.NewUserAccessControl()
+			userAc.SetUsername("username")
+			userAc.SetGlobPatterns("read", map[string]bool{
+				"repo": true,
+			})
+			ctx := userAc.DeriveContext(context.Background())
 
 			dynamoWrapper.UserDataTablename = badTablename
 
@@ -374,16 +337,14 @@ func TestWrapperErrors(t *testing.T) {
 		})
 
 		Convey("GetUserMeta unmarshal error, bad user data", func() {
-			acCtx := localCtx.AccessControlContext{
-				ReadGlobPatterns: map[string]bool{
-					"repo": true,
-				},
-				Username: "username",
-			}
-			authzCtxKey := localCtx.GetContextKey()
-			ctx := context.WithValue(context.Background(), authzCtxKey, acCtx)
+			userAc := reqCtx.NewUserAccessControl()
+			userAc.SetUsername("username")
+			userAc.SetGlobPatterns("read", map[string]bool{
+				"repo": true,
+			})
+			ctx := userAc.DeriveContext(context.Background())
 
-			err := setBadUserData(dynamoWrapper.Client, userDataTablename, acCtx.Username)
+			err := setBadUserData(dynamoWrapper.Client, userDataTablename, userAc.GetUsername())
 			So(err, ShouldBeNil)
 
 			_, err = dynamoWrapper.GetUserData(ctx)
@@ -391,69 +352,65 @@ func TestWrapperErrors(t *testing.T) {
 		})
 
 		Convey("SetUserData bad context", func() {
-			authzCtxKey := localCtx.GetContextKey()
-			ctx := context.WithValue(context.Background(), authzCtxKey, "bad context")
+			uacKey := reqCtx.GetContextKey()
+			ctx := context.WithValue(context.Background(), uacKey, "bad context")
 
 			err := dynamoWrapper.SetUserData(ctx, mTypes.UserData{})
 			So(err, ShouldNotBeNil)
 		})
 
 		Convey("GetUserData bad context errors", func() {
-			authzCtxKey := localCtx.GetContextKey()
-			ctx := context.WithValue(context.Background(), authzCtxKey, "bad context")
+			uacKey := reqCtx.GetContextKey()
+			ctx := context.WithValue(context.Background(), uacKey, "bad context")
 
 			_, err := dynamoWrapper.GetUserData(ctx)
 			So(err, ShouldNotBeNil)
 		})
 
 		Convey("SetUserData bad context errors", func() {
-			authzCtxKey := localCtx.GetContextKey()
-			ctx := context.WithValue(context.Background(), authzCtxKey, "bad context")
+			uacKey := reqCtx.GetContextKey()
+			ctx := context.WithValue(context.Background(), uacKey, "bad context")
 
 			err := dynamoWrapper.SetUserData(ctx, mTypes.UserData{})
 			So(err, ShouldNotBeNil)
 		})
 
 		Convey("AddUserAPIKey bad context errors", func() {
-			authzCtxKey := localCtx.GetContextKey()
-			ctx := context.WithValue(context.Background(), authzCtxKey, "bad context")
+			uacKey := reqCtx.GetContextKey()
+			ctx := context.WithValue(context.Background(), uacKey, "bad context")
 
 			err := dynamoWrapper.AddUserAPIKey(ctx, "", &mTypes.APIKeyDetails{})
 			So(err, ShouldNotBeNil)
 		})
 
 		Convey("DeleteUserAPIKey bad context errors", func() {
-			authzCtxKey := localCtx.GetContextKey()
-			ctx := context.WithValue(context.Background(), authzCtxKey, "bad context")
+			uacKey := reqCtx.GetContextKey()
+			ctx := context.WithValue(context.Background(), uacKey, "bad context")
 
 			err := dynamoWrapper.DeleteUserAPIKey(ctx, "")
 			So(err, ShouldNotBeNil)
 		})
 
 		Convey("UpdateUserAPIKeyLastUsed bad context errors", func() {
-			authzCtxKey := localCtx.GetContextKey()
-			ctx := context.WithValue(context.Background(), authzCtxKey, "bad context")
+			uacKey := reqCtx.GetContextKey()
+			ctx := context.WithValue(context.Background(), uacKey, "bad context")
 
 			err := dynamoWrapper.UpdateUserAPIKeyLastUsed(ctx, "")
 			So(err, ShouldNotBeNil)
 		})
 
 		Convey("DeleteUserData bad context errors", func() {
-			authzCtxKey := localCtx.GetContextKey()
-			ctx := context.WithValue(context.Background(), authzCtxKey, "bad context")
+			uacKey := reqCtx.GetContextKey()
+			ctx := context.WithValue(context.Background(), uacKey, "bad context")
 
 			err := dynamoWrapper.DeleteUserData(ctx)
 			So(err, ShouldNotBeNil)
 		})
 
 		Convey("DeleteUserAPIKey returns nil", func() {
-			authzCtxKey := localCtx.GetContextKey()
-
-			acCtx := localCtx.AccessControlContext{
-				Username: "email",
-			}
-
-			ctx := context.WithValue(context.Background(), authzCtxKey, acCtx)
+			userAc := reqCtx.NewUserAccessControl()
+			userAc.SetUsername("email")
+			ctx := userAc.DeriveContext(context.Background())
 
 			apiKeyDetails := make(map[string]mTypes.APIKeyDetails)
 			apiKeyDetails["id"] = mTypes.APIKeyDetails{
@@ -471,24 +428,16 @@ func TestWrapperErrors(t *testing.T) {
 
 		Convey("AddUserAPIKey", func() {
 			Convey("no userid found", func() {
-				authzCtxKey := localCtx.GetContextKey()
-
-				acCtx := localCtx.AccessControlContext{
-					Username: "",
-				}
-
-				ctx := context.WithValue(context.Background(), authzCtxKey, acCtx)
+				userAc := reqCtx.NewUserAccessControl()
+				ctx := userAc.DeriveContext(context.Background())
 
 				err = dynamoWrapper.AddUserAPIKey(ctx, "key", &mTypes.APIKeyDetails{})
 				So(err, ShouldNotBeNil)
 			})
-			authzCtxKey := localCtx.GetContextKey()
 
-			acCtx := localCtx.AccessControlContext{
-				Username: "email",
-			}
-
-			ctx := context.WithValue(context.Background(), authzCtxKey, acCtx)
+			userAc := reqCtx.NewUserAccessControl()
+			userAc.SetUsername("email")
+			ctx := userAc.DeriveContext(context.Background())
 
 			err := dynamoWrapper.AddUserAPIKey(ctx, "key", &mTypes.APIKeyDetails{})
 			So(err, ShouldBeNil)
@@ -505,21 +454,15 @@ func TestWrapperErrors(t *testing.T) {
 		})
 
 		Convey("GetUserData", func() {
-			authzCtxKey := localCtx.GetContextKey()
+			userAc := reqCtx.NewUserAccessControl()
+			ctx := userAc.DeriveContext(context.Background())
 
-			acCtx := localCtx.AccessControlContext{
-				Username: "",
-			}
-
-			ctx := context.WithValue(context.Background(), authzCtxKey, acCtx)
 			_, err := dynamoWrapper.GetUserData(ctx)
 			So(err, ShouldNotBeNil)
 
-			acCtx = localCtx.AccessControlContext{
-				Username: "email",
-			}
-
-			ctx = context.WithValue(context.Background(), authzCtxKey, acCtx)
+			userAc = reqCtx.NewUserAccessControl()
+			userAc.SetUsername("email")
+			ctx = userAc.DeriveContext(context.Background())
 
 			dynamoWrapper.UserDataTablename = wrongTableName
 			_, err = dynamoWrapper.GetUserData(ctx)
@@ -1177,15 +1120,12 @@ func TestWrapperErrors(t *testing.T) {
 			So(err, ShouldBeNil)
 			dynamoWrapper.UserDataTablename = badTablename
 
-			acCtx := localCtx.AccessControlContext{
-				ReadGlobPatterns: map[string]bool{
-					"repo": true,
-				},
-				Username: "username",
-			}
-
-			authzCtxKey := localCtx.GetContextKey()
-			ctx := context.WithValue(context.Background(), authzCtxKey, acCtx)
+			userAc := reqCtx.NewUserAccessControl()
+			userAc.SetUsername("username")
+			userAc.SetGlobPatterns("read", map[string]bool{
+				"repo": true,
+			})
+			ctx := userAc.DeriveContext(context.Background())
 
 			_, err = dynamoWrapper.GetUserRepoMeta(ctx, "repo")
 			So(err, ShouldNotBeNil)
@@ -1195,15 +1135,12 @@ func TestWrapperErrors(t *testing.T) {
 			err := setBadRepoMeta(dynamoWrapper.Client, repoMetaTablename, "repo")
 			So(err, ShouldBeNil)
 
-			acCtx := localCtx.AccessControlContext{
-				ReadGlobPatterns: map[string]bool{
-					"repo": true,
-				},
-				Username: "username",
-			}
-
-			authzCtxKey := localCtx.GetContextKey()
-			ctx := context.WithValue(context.Background(), authzCtxKey, acCtx)
+			userAc := reqCtx.NewUserAccessControl()
+			userAc.SetUsername("username")
+			userAc.SetGlobPatterns("read", map[string]bool{
+				"repo": true,
+			})
+			ctx := userAc.DeriveContext(context.Background())
 
 			_, err = dynamoWrapper.GetUserRepoMeta(ctx, "repo")
 			So(err, ShouldNotBeNil)

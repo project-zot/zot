@@ -38,7 +38,7 @@ import (
 	apiErr "zotregistry.io/zot/pkg/api/errors"
 	zcommon "zotregistry.io/zot/pkg/common"
 	"zotregistry.io/zot/pkg/log"
-	localCtx "zotregistry.io/zot/pkg/requestcontext"
+	reqCtx "zotregistry.io/zot/pkg/requestcontext"
 	storageConstants "zotregistry.io/zot/pkg/storage/constants"
 )
 
@@ -63,8 +63,8 @@ func AuthHandler(ctlr *Controller) mux.MiddlewareFunc {
 	return authnMiddleware.TryAuthnHandlers(ctlr)
 }
 
-func (amw *AuthnMiddleware) sessionAuthn(ctlr *Controller, response http.ResponseWriter,
-	request *http.Request,
+func (amw *AuthnMiddleware) sessionAuthn(ctlr *Controller, userAc *reqCtx.UserAccessControl,
+	response http.ResponseWriter, request *http.Request,
 ) (bool, error) {
 	identity, ok := GetAuthUserFromRequestSession(ctlr.CookieStore, request, ctlr.Log)
 	if !ok {
@@ -83,23 +83,24 @@ func (amw *AuthnMiddleware) sessionAuthn(ctlr *Controller, response http.Respons
 		return false, nil
 	}
 
-	ctx := getReqContextWithAuthorization(identity, []string{}, request)
+	userAc.SetUsername(identity)
+	userAc.SaveOnRequest(request)
 
-	groups, err := ctlr.MetaDB.GetUserGroups(ctx)
+	groups, err := ctlr.MetaDB.GetUserGroups(request.Context())
 	if err != nil {
 		ctlr.Log.Err(err).Str("identity", identity).Msg("can not get user profile in DB")
 
 		return false, err
 	}
 
-	ctx = getReqContextWithAuthorization(identity, groups, request)
-	*request = *request.WithContext(ctx)
+	userAc.AddGroups(groups)
+	userAc.SaveOnRequest(request)
 
 	return true, nil
 }
 
-func (amw *AuthnMiddleware) basicAuthn(ctlr *Controller, response http.ResponseWriter,
-	request *http.Request,
+func (amw *AuthnMiddleware) basicAuthn(ctlr *Controller, userAc *reqCtx.UserAccessControl,
+	response http.ResponseWriter, request *http.Request,
 ) (bool, error) {
 	cookieStore := ctlr.CookieStore
 
@@ -122,15 +123,17 @@ func (amw *AuthnMiddleware) basicAuthn(ctlr *Controller, response http.ResponseW
 				groups = ac.getUserGroups(identity)
 			}
 
-			ctx := getReqContextWithAuthorization(identity, groups, request)
-			*request = *request.WithContext(ctx)
+			userAc.SetUsername(identity)
+			userAc.AddGroups(groups)
+			userAc.SaveOnRequest(request)
 
 			// saved logged session
 			if err := saveUserLoggedSession(cookieStore, response, request, identity, ctlr.Log); err != nil {
 				return false, err
 			}
 
-			if err := ctlr.MetaDB.SetUserGroups(ctx, groups); err != nil {
+			// we have already populated the request context with userAc
+			if err := ctlr.MetaDB.SetUserGroups(request.Context(), groups); err != nil {
 				ctlr.Log.Error().Err(err).Str("identity", identity).Msg("couldn't update user profile")
 
 				return false, err
@@ -156,14 +159,16 @@ func (amw *AuthnMiddleware) basicAuthn(ctlr *Controller, response http.ResponseW
 
 			groups = append(groups, ldapgroups...)
 
-			ctx := getReqContextWithAuthorization(identity, groups, request)
-			*request = *request.WithContext(ctx)
+			userAc.SetUsername(identity)
+			userAc.AddGroups(groups)
+			userAc.SaveOnRequest(request)
 
 			if err := saveUserLoggedSession(cookieStore, response, request, identity, ctlr.Log); err != nil {
 				return false, err
 			}
 
-			if err := ctlr.MetaDB.SetUserGroups(ctx, groups); err != nil {
+			// we have already populated the request context with userAc
+			if err := ctlr.MetaDB.SetUserGroups(request.Context(), groups); err != nil {
 				ctlr.Log.Error().Err(err).Str("identity", identity).Msg("couldn't update user profile")
 
 				return false, err
@@ -201,10 +206,11 @@ func (amw *AuthnMiddleware) basicAuthn(ctlr *Controller, response http.ResponseW
 		}
 
 		if storedIdentity == identity {
-			ctx := getReqContextWithAuthorization(identity, []string{}, request)
+			userAc.SetUsername(identity)
+			userAc.SaveOnRequest(request)
 
 			// check if api key expired
-			isExpired, err := ctlr.MetaDB.IsAPIKeyExpired(ctx, hashedKey)
+			isExpired, err := ctlr.MetaDB.IsAPIKeyExpired(request.Context(), hashedKey)
 			if err != nil {
 				ctlr.Log.Err(err).Str("identity", identity).Msg("can not verify if api key expired")
 
@@ -215,22 +221,22 @@ func (amw *AuthnMiddleware) basicAuthn(ctlr *Controller, response http.ResponseW
 				return false, nil
 			}
 
-			err = ctlr.MetaDB.UpdateUserAPIKeyLastUsed(ctx, hashedKey)
+			err = ctlr.MetaDB.UpdateUserAPIKeyLastUsed(request.Context(), hashedKey)
 			if err != nil {
 				ctlr.Log.Err(err).Str("identity", identity).Msg("can not update user profile in DB")
 
 				return false, err
 			}
 
-			groups, err := ctlr.MetaDB.GetUserGroups(ctx)
+			groups, err := ctlr.MetaDB.GetUserGroups(request.Context())
 			if err != nil {
 				ctlr.Log.Err(err).Str("identity", identity).Msg("can not get user's groups in DB")
 
 				return false, err
 			}
 
-			ctx = getReqContextWithAuthorization(identity, groups, request)
-			*request = *request.WithContext(ctx)
+			userAc.AddGroups(groups)
+			userAc.SaveOnRequest(request)
 
 			return true, nil
 		}
@@ -242,7 +248,7 @@ func (amw *AuthnMiddleware) basicAuthn(ctlr *Controller, response http.ResponseW
 func (amw *AuthnMiddleware) TryAuthnHandlers(ctlr *Controller) mux.MiddlewareFunc { //nolint: gocyclo
 	// no password based authN, if neither LDAP nor HTTP BASIC is enabled
 	if !ctlr.Config.IsBasicAuthnEnabled() {
-		return noPasswdAuth(ctlr.Config)
+		return noPasswdAuth(ctlr)
 	}
 
 	amw.credMap = make(map[string]string)
@@ -369,10 +375,15 @@ func (amw *AuthnMiddleware) TryAuthnHandlers(ctlr *Controller) mux.MiddlewareFun
 			isMgmtRequested := request.RequestURI == constants.FullMgmt
 			allowAnonymous := ctlr.Config.HTTP.AccessControl.AnonymousPolicyExists()
 
+			// build user access control info
+			userAc := reqCtx.NewUserAccessControl()
+			// if it will not be populated by authn handlers, this represents an anonymous user
+			userAc.SaveOnRequest(request)
+
 			// try basic auth if authorization header is given
 			if !isAuthorizationHeaderEmpty(request) { //nolint: gocritic
 				//nolint: contextcheck
-				authenticated, err := amw.basicAuthn(ctlr, response, request)
+				authenticated, err := amw.basicAuthn(ctlr, userAc, response, request)
 				if err != nil {
 					response.WriteHeader(http.StatusInternalServerError)
 
@@ -387,7 +398,7 @@ func (amw *AuthnMiddleware) TryAuthnHandlers(ctlr *Controller) mux.MiddlewareFun
 			} else if hasSessionHeader(request) {
 				// try session auth
 				//nolint: contextcheck
-				authenticated, err := amw.sessionAuthn(ctlr, response, request)
+				authenticated, err := amw.sessionAuthn(ctlr, userAc, response, request)
 				if err != nil {
 					if errors.Is(err, zerr.ErrUserDataNotFound) {
 						ctlr.Log.Err(err).Msg("can not find user profile in DB")
@@ -408,19 +419,12 @@ func (amw *AuthnMiddleware) TryAuthnHandlers(ctlr *Controller) mux.MiddlewareFun
 
 				// the session header can be present also for anonymous calls
 				if allowAnonymous || isMgmtRequested {
-					ctx := getReqContextWithAuthorization("", []string{}, request)
-					*request = *request.WithContext(ctx) //nolint:contextcheck
-
 					next.ServeHTTP(response, request)
 
 					return
 				}
 			} else if allowAnonymous || isMgmtRequested {
 				// try anonymous auth only if basic auth/session was not given
-				// we want to bypass auth for mgmt route
-				ctx := getReqContextWithAuthorization("", []string{}, request)
-				*request = *request.WithContext(ctx) //nolint:contextcheck
-
 				next.ServeHTTP(response, request)
 
 				return
@@ -495,7 +499,7 @@ func bearerAuthHandler(ctlr *Controller) mux.MiddlewareFunc {
 	}
 }
 
-func noPasswdAuth(config *config.Config) mux.MiddlewareFunc {
+func noPasswdAuth(ctlr *Controller) mux.MiddlewareFunc {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 			if request.Method == http.MethodOptions {
@@ -505,8 +509,29 @@ func noPasswdAuth(config *config.Config) mux.MiddlewareFunc {
 				return
 			}
 
-			ctx := getReqContextWithAuthorization("", []string{}, request)
-			*request = *request.WithContext(ctx) //nolint:contextcheck
+			userAc := reqCtx.NewUserAccessControl()
+
+			// if no basic auth enabled then try to get identity from mTLS auth
+			if request.TLS != nil {
+				verifiedChains := request.TLS.VerifiedChains
+				if len(verifiedChains) > 0 && len(verifiedChains[0]) > 0 {
+					for _, cert := range request.TLS.PeerCertificates {
+						identity := cert.Subject.CommonName
+						if identity != "" {
+							// assign identity to authz context, needed for extensions
+							userAc.SetUsername(identity)
+						}
+					}
+				}
+			}
+
+			if ctlr.Config.IsMTLSAuthEnabled() && userAc.IsAnonymous() {
+				authFail(response, request, ctlr.Config.HTTP.Realm, ctlr.Config.HTTP.Auth.FailDelay)
+
+				return
+			}
+
+			userAc.SaveOnRequest(request)
 
 			// Process request
 			next.ServeHTTP(response, request)
@@ -647,18 +672,6 @@ func getRelyingPartyArgs(cfg *config.Config, provider string) (
 	}
 
 	return issuer, clientID, clientSecret, redirectURI, scopes, options
-}
-
-func getReqContextWithAuthorization(username string, groups []string, request *http.Request) context.Context {
-	acCtx := localCtx.AccessControlContext{
-		Username: username,
-		Groups:   groups,
-	}
-
-	authzCtxKey := localCtx.GetContextKey()
-	ctx := context.WithValue(request.Context(), authzCtxKey, acCtx)
-
-	return ctx
 }
 
 func authFail(w http.ResponseWriter, r *http.Request, realm string, delay int) {
@@ -809,7 +822,10 @@ func OAuth2Callback(ctlr *Controller, w http.ResponseWriter, r *http.Request, st
 		return "", zerr.ErrInvalidStateCookie
 	}
 
-	ctx := getReqContextWithAuthorization(email, groups, r)
+	userAc := reqCtx.NewUserAccessControl()
+	userAc.SetUsername(email)
+	userAc.AddGroups(groups)
+	userAc.SaveOnRequest(r)
 
 	// if this line has been reached, then a new session should be created
 	// if the `session` key is already on the cookie, it's not a valid one
@@ -817,7 +833,7 @@ func OAuth2Callback(ctlr *Controller, w http.ResponseWriter, r *http.Request, st
 		return "", err
 	}
 
-	if err := ctlr.MetaDB.SetUserGroups(ctx, groups); err != nil {
+	if err := ctlr.MetaDB.SetUserGroups(r.Context(), groups); err != nil {
 		ctlr.Log.Error().Err(err).Str("identity", email).Msg("couldn't update the user profile")
 
 		return "", err

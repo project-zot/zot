@@ -1449,7 +1449,7 @@ func TestTLSWithBasicAuthAllowReadAccess(t *testing.T) {
 		// without creds, writes should fail
 		resp, err = resty.R().Post(secureBaseURL + "/v2/repo/blobs/uploads/")
 		So(err, ShouldBeNil)
-		So(resp.StatusCode(), ShouldEqual, http.StatusForbidden)
+		So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
 	})
 }
 
@@ -1552,8 +1552,6 @@ func TestMutualTLSAuthWithoutCN(t *testing.T) {
 		So(err, ShouldBeNil)
 		caCertPool := x509.NewCertPool()
 		caCertPool.AppendCertsFromPEM(caCert)
-		htpasswdPath := test.MakeHtpasswdFile()
-		defer os.Remove(htpasswdPath)
 
 		port := test.GetFreePort()
 		secureBaseURL := test.GetSecureBaseURL(port)
@@ -1721,7 +1719,7 @@ func TestTLSMutualAuthAllowReadAccess(t *testing.T) {
 		// without creds, writes should fail
 		resp, err = resty.R().Post(secureBaseURL + "/v2/repo/blobs/uploads/")
 		So(err, ShouldBeNil)
-		So(resp.StatusCode(), ShouldEqual, http.StatusForbidden)
+		So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
 
 		// setup TLS mutual auth
 		cert, err := tls.LoadX509KeyPair("../../test/data/client.cert", "../../test/data/client.key")
@@ -1899,7 +1897,7 @@ func TestTLSMutualAndBasicAuthAllowReadAccess(t *testing.T) {
 		// with only client certs, writes should fail
 		resp, err = resty.R().Post(secureBaseURL + "/v2/repo/blobs/uploads/")
 		So(err, ShouldBeNil)
-		So(resp.StatusCode(), ShouldEqual, http.StatusForbidden)
+		So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
 
 		// with client certs and creds, should get expected status code
 		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(secureBaseURL)
@@ -3755,11 +3753,11 @@ func TestAuthorizationWithOnlyAnonymousPolicy(t *testing.T) {
 		err = json.Unmarshal(resp.Body(), &e)
 		So(err, ShouldBeNil)
 
-		// should get 403 without create
+		// should get 401 without create
 		resp, err = resty.R().Post(baseURL + "/v2/" + TestRepo + "/blobs/uploads/")
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, http.StatusForbidden)
+		So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
 
 		if entry, ok := conf.HTTP.AccessControl.Repositories[TestRepo]; ok {
 			entry.AnonymousPolicy = []string{"create", "read"}
@@ -3864,12 +3862,12 @@ func TestAuthorizationWithOnlyAnonymousPolicy(t *testing.T) {
 		updatedManifestBlob, err := json.Marshal(updatedManifest)
 		So(err, ShouldBeNil)
 
-		// update manifest should get 403 without update perm
+		// update manifest should get 401 without update perm
 		resp, err = resty.R().SetBody(updatedManifestBlob).
 			Put(baseURL + "/v2/" + TestRepo + "/manifests/0.0.2")
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, http.StatusForbidden)
+		So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
 
 		// get the manifest and check if it's the old one
 		resp, err = resty.R().
@@ -6928,7 +6926,12 @@ func TestManifestCollision(t *testing.T) {
 		conf.HTTP.AccessControl = &config.AccessControlConfig{
 			Repositories: config.Repositories{
 				AuthorizationAllRepos: config.PolicyGroup{
-					AnonymousPolicy: []string{api.Read, api.Create, api.Delete, api.DetectManifestCollision},
+					AnonymousPolicy: []string{
+						constants.ReadPermission,
+						constants.CreatePermission,
+						constants.DeletePermission,
+						constants.DetectManifestCollisionPermission,
+					},
 				},
 			},
 		}

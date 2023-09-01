@@ -23,4 +23,12 @@ const (
 	APIKeysPrefix                = "zak_"
 	CallbackUIQueryParam         = "callback_ui"
 	APIKeyTimeFormat             = time.RFC3339
+	// authz permissions.
+	// method actions.
+	CreatePermission = "create"
+	ReadPermission   = "read"
+	UpdatePermission = "update"
+	DeletePermission = "delete"
+	// behaviour actions.
+	DetectManifestCollisionPermission = "detectManifestCollision"
 )
