@@ -102,7 +102,7 @@ function teardown_file() {
     zb_run "http://127.0.0.1:8080"
 
     # start zot sync server
-    zot_start ${ZOT_PATH} ${zot_sync_per_config_file}
+    zot_serve ${ZOT_PATH} ${zot_sync_per_config_file}
     wait_zot_reachable 8081
 
     start=`date +%s`
