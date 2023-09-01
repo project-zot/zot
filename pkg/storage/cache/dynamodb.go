@@ -99,6 +99,10 @@ func NewDynamoDBCache(parameters interface{}, log zlog.Logger) Cache {
 	return driver
 }
 
+func (d *DynamoDBDriver) UsesRelativePaths() bool {
+	return false
+}
+
 func (d *DynamoDBDriver) Name() string {
 	return "dynamodb"
 }

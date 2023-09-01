@@ -43,6 +43,7 @@ import (
 	extconf "zotregistry.io/zot/pkg/extensions/config"
 	syncconf "zotregistry.io/zot/pkg/extensions/config/sync"
 	"zotregistry.io/zot/pkg/extensions/sync"
+	syncConstants "zotregistry.io/zot/pkg/extensions/sync/constants"
 	"zotregistry.io/zot/pkg/log"
 	mTypes "zotregistry.io/zot/pkg/meta/types"
 	storageConstants "zotregistry.io/zot/pkg/storage/constants"
@@ -591,7 +592,7 @@ func TestOnDemand(t *testing.T) {
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
 
-			err = os.MkdirAll(path.Join(destDir, testImage, sync.SyncBlobUploadDir), 0o000)
+			err = os.MkdirAll(path.Join(destDir, testImage, syncConstants.SyncBlobUploadDir), 0o000)
 			if err != nil {
 				panic(err)
 			}
@@ -604,7 +605,7 @@ func TestOnDemand(t *testing.T) {
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
 
-			err = os.Chmod(path.Join(destDir, testImage, sync.SyncBlobUploadDir), 0o755)
+			err = os.Chmod(path.Join(destDir, testImage, syncConstants.SyncBlobUploadDir), 0o755)
 			if err != nil {
 				panic(err)
 			}
@@ -1687,7 +1688,7 @@ func TestPermsDenied(t *testing.T) {
 
 		defer dcm.StopServer()
 
-		syncSubDir := path.Join(destDir, testImage, sync.SyncBlobUploadDir)
+		syncSubDir := path.Join(destDir, testImage, syncConstants.SyncBlobUploadDir)
 
 		err := os.MkdirAll(syncSubDir, 0o755)
 		So(err, ShouldBeNil)
@@ -1698,7 +1699,7 @@ func TestPermsDenied(t *testing.T) {
 		dcm.StartAndWait(destPort)
 
 		found, err := test.ReadLogFileAndSearchString(dctlr.Config.Log.Output,
-			"couldn't get a local image reference", 20*time.Second)
+			"couldn't get a local image reference", 50*time.Second)
 		if err != nil {
 			panic(err)
 		}
@@ -4911,7 +4912,7 @@ func TestOnDemandPullsOnce(t *testing.T) {
 		done := make(chan bool)
 
 		var maxLen int
-		syncBlobUploadDir := path.Join(destDir, testImage, sync.SyncBlobUploadDir)
+		syncBlobUploadDir := path.Join(destDir, testImage, syncConstants.SyncBlobUploadDir)
 
 		go func() {
 			for {
@@ -4994,7 +4995,7 @@ func TestError(t *testing.T) {
 		}()
 
 		found, err := test.ReadLogFileAndSearchString(dctlr.Config.Log.Output,
-			"finished syncing all repos", 15*time.Second)
+			"couldn't commit image to local image store", 30*time.Second)
 		if err != nil {
 			panic(err)
 		}
@@ -6531,7 +6532,7 @@ func pushRepo(url, repoName string) godigest.Digest {
 func waitSync(rootDir, repoName string) {
 	// wait for .sync subdirs to be removed
 	for {
-		dirs, err := os.ReadDir(path.Join(rootDir, repoName, sync.SyncBlobUploadDir))
+		dirs, err := os.ReadDir(path.Join(rootDir, repoName, syncConstants.SyncBlobUploadDir))
 		if err == nil && len(dirs) == 0 {
 			// stop watching /.sync/ subdirs
 			return

@@ -68,8 +68,8 @@ func TestInjectSyncUtils(t *testing.T) {
 
 		log := log.Logger{Logger: zerolog.New(os.Stdout)}
 		metrics := monitoring.NewMetricsServer(false, log)
-		imageStore := local.NewImageStore(t.TempDir(), false, storageConstants.DefaultGCDelay,
-			false, false, log, metrics, nil, nil,
+		imageStore := local.NewImageStore(t.TempDir(), false, false, storageConstants.DefaultGCDelay,
+			storageConstants.DefaultUntaggedImgeRetentionDelay, false, false, log, metrics, nil, nil,
 		)
 		injected = inject.InjectFailure(0)
 
@@ -182,8 +182,8 @@ func TestLocalRegistry(t *testing.T) {
 			UseRelPaths: true,
 		}, log)
 
-		syncImgStore := local.NewImageStore(dir, true, storageConstants.DefaultGCDelay,
-			true, true, log, metrics, nil, cacheDriver)
+		syncImgStore := local.NewImageStore(dir, true, true, storageConstants.DefaultGCDelay,
+			storageConstants.DefaultUntaggedImgeRetentionDelay, true, true, log, metrics, nil, cacheDriver)
 		repoName := "repo"
 
 		registry := NewLocalRegistry(storage.StoreController{DefaultStore: syncImgStore}, nil, log)
@@ -300,8 +300,8 @@ func TestLocalRegistry(t *testing.T) {
 				MandatoryAnnotations: []string{"annot1"},
 			}, log)
 
-			syncImgStore := local.NewImageStore(dir, true, storageConstants.DefaultGCDelay,
-				true, true, log, metrics, linter, cacheDriver)
+			syncImgStore := local.NewImageStore(dir, true, true, storageConstants.DefaultGCDelay,
+				storageConstants.DefaultUntaggedImgeRetentionDelay, true, true, log, metrics, linter, cacheDriver)
 			repoName := "repo"
 
 			registry := NewLocalRegistry(storage.StoreController{DefaultStore: syncImgStore}, nil, log)

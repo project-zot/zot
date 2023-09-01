@@ -17,6 +17,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
+      - uses: ./.github/actions/clean-runner
       - uses: actions/setup-go@v4
         with:
           cache: false
@@ -98,6 +99,9 @@ jobs:
       - name: Run annotations tests
         run: |
             make test-annotations
+      - name: Run garbage collect tests
+        run: |
+            make test-garbage-collect
       - name: Install localstack
         run: |
           pip install --upgrade pyopenssl

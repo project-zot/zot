@@ -35,6 +35,8 @@ func TestCache(t *testing.T) {
 		}, log)
 		So(cacheDriver, ShouldNotBeNil)
 
+		So(cacheDriver.UsesRelativePaths(), ShouldBeTrue)
+
 		name := cacheDriver.Name()
 		So(name, ShouldEqual, "boltdb")
 

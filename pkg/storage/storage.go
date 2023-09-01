@@ -51,8 +51,9 @@ func New(config *config.Config, linter common.Lint, metrics monitoring.MetricSer
 	if config.Storage.StorageDriver == nil {
 		// false positive lint - linter does not implement Lint method
 		//nolint:typecheck,contextcheck
-		defaultStore = local.NewImageStore(config.Storage.RootDirectory,
-			config.Storage.GC, config.Storage.GCDelay,
+		rootDir := config.Storage.RootDirectory
+		defaultStore = local.NewImageStore(rootDir,
+			config.Storage.GC, config.Storage.GCReferrers, config.Storage.GCDelay, config.Storage.UntaggedImageRetentionDelay,
 			config.Storage.Dedupe, config.Storage.Commit, log, metrics, linter,
 			CreateCacheDatabaseDriver(config.Storage.StorageConfig, log),
 		)
@@ -80,7 +81,8 @@ func New(config *config.Config, linter common.Lint, metrics monitoring.MetricSer
 		// false positive lint - linter does not implement Lint method
 		//nolint: typecheck,contextcheck
 		defaultStore = s3.NewImageStore(rootDir, config.Storage.RootDirectory,
-			config.Storage.GC, config.Storage.GCDelay, config.Storage.Dedupe,
+			config.Storage.GC, config.Storage.GCReferrers, config.Storage.GCDelay,
+			config.Storage.UntaggedImageRetentionDelay, config.Storage.Dedupe,
 			config.Storage.Commit, log, metrics, linter, store,
 			CreateCacheDatabaseDriver(config.Storage.StorageConfig, log))
 	}
@@ -152,9 +154,13 @@ func getSubStore(cfg *config.Config, subPaths map[string]config.StorageConfig,
 			// add it to uniqueSubFiles
 			// Create a new image store and assign it to imgStoreMap
 			if isUnique {
-				imgStoreMap[storageConfig.RootDirectory] = local.NewImageStore(storageConfig.RootDirectory,
-					storageConfig.GC, storageConfig.GCDelay, storageConfig.Dedupe,
-					storageConfig.Commit, log, metrics, linter, CreateCacheDatabaseDriver(storageConfig, log))
+				rootDir := storageConfig.RootDirectory
+				imgStoreMap[storageConfig.RootDirectory] = local.NewImageStore(rootDir,
+					storageConfig.GC, storageConfig.GCReferrers, storageConfig.GCDelay,
+					storageConfig.UntaggedImageRetentionDelay, storageConfig.Dedupe,
+					storageConfig.Commit, log, metrics, linter,
+					CreateCacheDatabaseDriver(storageConfig, log),
+				)
 
 				subImageStore[route] = imgStoreMap[storageConfig.RootDirectory]
 			}
@@ -183,8 +189,9 @@ func getSubStore(cfg *config.Config, subPaths map[string]config.StorageConfig,
 			// false positive lint - linter does not implement Lint method
 			//nolint: typecheck
 			subImageStore[route] = s3.NewImageStore(rootDir, storageConfig.RootDirectory,
-				storageConfig.GC, storageConfig.GCDelay,
-				storageConfig.Dedupe, storageConfig.Commit, log, metrics, linter, store,
+				storageConfig.GC, storageConfig.GCReferrers, storageConfig.GCDelay,
+				storageConfig.UntaggedImageRetentionDelay, storageConfig.Dedupe,
+				storageConfig.Commit, log, metrics, linter, store,
 				CreateCacheDatabaseDriver(storageConfig, log),
 			)
 		}

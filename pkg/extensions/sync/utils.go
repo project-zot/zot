@@ -29,10 +29,6 @@ import (
 	"zotregistry.io/zot/pkg/test/inject"
 )
 
-const (
-	SyncBlobUploadDir = ".sync"
-)
-
 // Get sync.FileCredentials from file.
 func getFileCredentials(filepath string) (syncconf.CredentialsFile, error) {
 	credsFile, err := os.ReadFile(filepath)

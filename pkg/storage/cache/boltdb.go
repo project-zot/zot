@@ -77,6 +77,10 @@ func NewBoltDBCache(parameters interface{}, log zlog.Logger) Cache {
 	}
 }
 
+func (d *BoltDBDriver) UsesRelativePaths() bool {
+	return d.useRelPaths
+}
+
 func (d *BoltDBDriver) Name() string {
 	return "boltdb"
 }

@@ -182,7 +182,7 @@ func TestVulnerableLayer(t *testing.T) {
 		tempDir := t.TempDir()
 
 		log := log.NewLogger("debug", "")
-		imageStore := local.NewImageStore(tempDir, false, 0, false, false,
+		imageStore := local.NewImageStore(tempDir, false, false, 0, 0, false, false,
 			log, monitoring.NewMetricsServer(false, log), nil, nil)
 
 		storeController := storage.StoreController{

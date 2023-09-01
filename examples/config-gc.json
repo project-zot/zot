@@ -3,7 +3,10 @@
     "storage": {
         "rootDirectory": "/tmp/zot",
         "gc": true,
-        "gcDelay": "1s"
+        "gcReferrers": true,
+        "gcDelay": "2h",
+        "untaggedImageRetentionDelay": "4h",
+        "gcInterval": "1h"
     },
     "http": {
         "address": "127.0.0.1",

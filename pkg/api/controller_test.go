@@ -971,7 +971,7 @@ func TestInterruptedBlobUpload(t *testing.T) {
 		defer cm.StopServer()
 
 		client := resty.New()
-		blob := make([]byte, 50*1024*1024)
+		blob := make([]byte, 200*1024*1024)
 		digest := godigest.FromBytes(blob).String()
 
 		//nolint: dupl
@@ -1024,6 +1024,7 @@ func TestInterruptedBlobUpload(t *testing.T) {
 			So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
 		})
 
+		//nolint: dupl
 		Convey("Test negative interrupt PATCH blob upload", func() {
 			resp, err := client.R().Post(baseURL + "/v2/" + AuthorizedNamespace + "/blobs/uploads/")
 			So(err, ShouldBeNil)
@@ -1126,6 +1127,7 @@ func TestInterruptedBlobUpload(t *testing.T) {
 			So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
 		})
 
+		//nolint: dupl
 		Convey("Test negative interrupt PUT blob upload", func() {
 			resp, err := client.R().Post(baseURL + "/v2/" + AuthorizedNamespace + "/blobs/uploads/")
 			So(err, ShouldBeNil)
@@ -6746,6 +6748,12 @@ func TestManifestImageIndex(t *testing.T) {
 				So(digestHdr, ShouldEqual, digest.String())
 			})
 
+			Convey("Deleting manifest contained by a multiarch image should not be allowed", func() {
+				resp, err = resty.R().Delete(baseURL + fmt.Sprintf("/v2/index/manifests/%s", m2dgst.String()))
+				So(err, ShouldBeNil)
+				So(resp.StatusCode(), ShouldEqual, http.StatusMethodNotAllowed)
+			})
+
 			Convey("Deleting an image index", func() {
 				// delete manifest by tag should pass
 				resp, err = resty.R().Delete(baseURL + "/v2/index/manifests/test:index3")
@@ -7296,7 +7304,7 @@ func TestInjectTooManyOpenFiles(t *testing.T) {
 		So(digest, ShouldNotBeNil)
 
 		// monolithic blob upload
-		injected := inject.InjectFailure(0)
+		injected := inject.InjectFailure(2)
 		if injected {
 			request, _ := http.NewRequestWithContext(context.TODO(), http.MethodPut, loc, bytes.NewReader(content))
 			tokens := strings.Split(loc, "/")
@@ -7369,7 +7377,7 @@ func TestInjectTooManyOpenFiles(t *testing.T) {
 		// Testing router path:  @Router /v2/{name}/manifests/{reference} [put]
 		//nolint:lll // gofumpt conflicts with lll
 		Convey("Uploading an image manifest blob (when injected simulates that PutImageManifest failed due to 'too many open files' error)", func() {
-			injected := inject.InjectFailure(1)
+			injected := inject.InjectFailure(2)
 
 			request, _ := http.NewRequestWithContext(context.TODO(), http.MethodPut, baseURL, bytes.NewReader(content))
 			request = mux.SetURLVars(request, map[string]string{"name": "repotest", "reference": "1.0"})
@@ -7430,6 +7438,7 @@ func TestInjectTooManyOpenFiles(t *testing.T) {
 				So(resp.StatusCode, ShouldEqual, http.StatusCreated)
 			}
 		})
+
 		Convey("when index.json is not in json format", func() {
 			resp, err = resty.R().SetHeader("Content-Type", "application/vnd.oci.image.manifest.v1+json").
 				SetBody(content).Put(baseURL + "/v2/repotest/manifests/v1.0")
@@ -7456,21 +7465,22 @@ func TestInjectTooManyOpenFiles(t *testing.T) {
 
 func TestGCSignaturesAndUntaggedManifests(t *testing.T) {
 	Convey("Make controller", t, func() {
-		repoName := "testrepo" //nolint:goconst
-		tag := "0.0.1"
-
-		port := test.GetFreePort()
-		baseURL := test.GetBaseURL(port)
-		conf := config.New()
-		conf.HTTP.Port = port
-
-		ctlr := makeController(conf, t.TempDir())
-
 		Convey("Garbage collect signatures without subject and manifests without tags", func(c C) {
+			repoName := "testrepo" //nolint:goconst
+			tag := "0.0.1"
+
+			port := test.GetFreePort()
+			baseURL := test.GetBaseURL(port)
+			conf := config.New()
+			conf.HTTP.Port = port
+
+			ctlr := makeController(conf, t.TempDir())
+
 			dir := t.TempDir()
 			ctlr.Config.Storage.RootDirectory = dir
 			ctlr.Config.Storage.GC = true
 			ctlr.Config.Storage.GCDelay = 1 * time.Millisecond
+			ctlr.Config.Storage.UntaggedImageRetentionDelay = 1 * time.Millisecond
 
 			ctlr.Config.Storage.Dedupe = false
 
@@ -7582,75 +7592,88 @@ func TestGCSignaturesAndUntaggedManifests(t *testing.T) {
 				So(err, ShouldBeNil)
 			})
 
-			// push an image without tag
-			cfg, layers, manifest, err := test.GetImageComponents(2) //nolint:staticcheck
-			So(err, ShouldBeNil)
+			Convey("Overwrite original image, signatures should be garbage-collected", func() {
+				// push an image without tag
+				cfg, layers, manifest, err := test.GetImageComponents(2) //nolint:staticcheck
+				So(err, ShouldBeNil)
 
-			manifestBuf, err := json.Marshal(manifest)
-			So(err, ShouldBeNil)
-			untaggedManifestDigest := godigest.FromBytes(manifestBuf)
+				manifestBuf, err := json.Marshal(manifest)
+				So(err, ShouldBeNil)
+				untaggedManifestDigest := godigest.FromBytes(manifestBuf)
 
-			err = test.UploadImage(
-				test.Image{
-					Config:   cfg,
-					Layers:   layers,
-					Manifest: manifest,
-				}, baseURL, repoName, untaggedManifestDigest.String())
-			So(err, ShouldBeNil)
+				err = test.UploadImage(
+					test.Image{
+						Config:   cfg,
+						Layers:   layers,
+						Manifest: manifest,
+					}, baseURL, repoName, untaggedManifestDigest.String())
+				So(err, ShouldBeNil)
 
-			// overwrite image so that signatures will get invalidated and gc'ed
-			cfg, layers, manifest, err = test.GetImageComponents(3) //nolint:staticcheck
-			So(err, ShouldBeNil)
+				// overwrite image so that signatures will get invalidated and gc'ed
+				cfg, layers, manifest, err = test.GetImageComponents(3) //nolint:staticcheck
+				So(err, ShouldBeNil)
 
-			err = test.UploadImage(
-				test.Image{
-					Config:   cfg,
-					Layers:   layers,
-					Manifest: manifest,
-				}, baseURL, repoName, tag)
-			So(err, ShouldBeNil)
+				err = test.UploadImage(
+					test.Image{
+						Config:   cfg,
+						Layers:   layers,
+						Manifest: manifest,
+					}, baseURL, repoName, tag)
+				So(err, ShouldBeNil)
 
-			manifestBuf, err = json.Marshal(manifest)
-			So(err, ShouldBeNil)
-			newManifestDigest := godigest.FromBytes(manifestBuf)
+				manifestBuf, err = json.Marshal(manifest)
+				So(err, ShouldBeNil)
+				newManifestDigest := godigest.FromBytes(manifestBuf)
 
-			err = ctlr.StoreController.DefaultStore.RunGCRepo(repoName)
-			So(err, ShouldBeNil)
+				err = ctlr.StoreController.DefaultStore.RunGCRepo(repoName)
+				So(err, ShouldBeNil)
 
-			// both signatures should be gc'ed
-			resp, err = resty.R().Get(baseURL + fmt.Sprintf("/v2/%s/manifests/%s", repoName, cosignTag))
-			So(err, ShouldBeNil)
-			So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
+				// both signatures should be gc'ed
+				resp, err = resty.R().Get(baseURL + fmt.Sprintf("/v2/%s/manifests/%s", repoName, cosignTag))
+				So(err, ShouldBeNil)
+				So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
 
-			resp, err = resty.R().SetQueryParam("artifactType", notreg.ArtifactTypeNotation).Get(
-				fmt.Sprintf("%s/v2/%s/referrers/%s", baseURL, repoName, digest.String()))
-			So(err, ShouldBeNil)
-			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+				resp, err = resty.R().SetQueryParam("artifactType", notreg.ArtifactTypeNotation).Get(
+					fmt.Sprintf("%s/v2/%s/referrers/%s", baseURL, repoName, digest.String()))
+				So(err, ShouldBeNil)
+				So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
-			err = json.Unmarshal(resp.Body(), &index)
-			So(err, ShouldBeNil)
-			So(len(index.Manifests), ShouldEqual, 0)
+				err = json.Unmarshal(resp.Body(), &index)
+				So(err, ShouldBeNil)
+				So(len(index.Manifests), ShouldEqual, 0)
 
-			resp, err = resty.R().SetQueryParam("artifactType", notreg.ArtifactTypeNotation).Get(
-				fmt.Sprintf("%s/v2/%s/referrers/%s", baseURL, repoName, newManifestDigest.String()))
-			So(err, ShouldBeNil)
-			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+				resp, err = resty.R().SetQueryParam("artifactType", notreg.ArtifactTypeNotation).Get(
+					fmt.Sprintf("%s/v2/%s/referrers/%s", baseURL, repoName, newManifestDigest.String()))
+				So(err, ShouldBeNil)
+				So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
-			err = json.Unmarshal(resp.Body(), &index)
-			So(err, ShouldBeNil)
-			So(len(index.Manifests), ShouldEqual, 0)
+				err = json.Unmarshal(resp.Body(), &index)
+				So(err, ShouldBeNil)
+				So(len(index.Manifests), ShouldEqual, 0)
 
-			// untagged image should also be gc'ed
-			resp, err = resty.R().Get(baseURL + fmt.Sprintf("/v2/%s/manifests/%s", repoName, untaggedManifestDigest))
-			So(err, ShouldBeNil)
-			So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
+				// untagged image should also be gc'ed
+				resp, err = resty.R().Get(baseURL + fmt.Sprintf("/v2/%s/manifests/%s", repoName, untaggedManifestDigest))
+				So(err, ShouldBeNil)
+				So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
+			})
 		})
 
 		Convey("Do not gc manifests which are part of a multiarch image", func(c C) {
+			repoName := "testrepo" //nolint:goconst
+			tag := "0.0.1"
+
+			port := test.GetFreePort()
+			baseURL := test.GetBaseURL(port)
+			conf := config.New()
+			conf.HTTP.Port = port
+
+			ctlr := makeController(conf, t.TempDir())
+
 			dir := t.TempDir()
 			ctlr.Config.Storage.RootDirectory = dir
 			ctlr.Config.Storage.GC = true
-			ctlr.Config.Storage.GCDelay = 500 * time.Millisecond
+			ctlr.Config.Storage.GCDelay = 1 * time.Second
+			ctlr.Config.Storage.UntaggedImageRetentionDelay = 1 * time.Second
 
 			err := test.WriteImageToFileSystem(test.CreateDefaultImage(), repoName, tag,
 				test.GetDefaultStoreController(dir, ctlr.Log))
@@ -7787,7 +7810,10 @@ func TestPeriodicGC(t *testing.T) {
 
 		subPaths := make(map[string]config.StorageConfig)
 
-		subPaths["/a"] = config.StorageConfig{RootDirectory: subDir, GC: true, GCDelay: 1 * time.Second, GCInterval: 24 * time.Hour, RemoteCache: false, Dedupe: false} //nolint:lll // gofumpt conflicts with lll
+		subPaths["/a"] = config.StorageConfig{
+			RootDirectory: subDir, GC: true, GCDelay: 1 * time.Second,
+			UntaggedImageRetentionDelay: 1 * time.Second, GCInterval: 24 * time.Hour, RemoteCache: false, Dedupe: false,
+		} //nolint:lll // gofumpt conflicts with lll
 		ctlr.Config.Storage.Dedupe = false
 		ctlr.Config.Storage.SubPaths = subPaths
 

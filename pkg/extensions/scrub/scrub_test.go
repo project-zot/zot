@@ -198,7 +198,7 @@ func TestRunScrubRepo(t *testing.T) {
 			Name:        "cache",
 			UseRelPaths: true,
 		}, log)
-		imgStore := local.NewImageStore(dir, true, 1*time.Second, true,
+		imgStore := local.NewImageStore(dir, true, true, 1*time.Second, 1*time.Second, true,
 			true, log, metrics, nil, cacheDriver)
 
 		srcStorageCtlr := test.GetDefaultStoreController(dir, log)
@@ -234,7 +234,7 @@ func TestRunScrubRepo(t *testing.T) {
 			Name:        "cache",
 			UseRelPaths: true,
 		}, log)
-		imgStore := local.NewImageStore(dir, true, 1*time.Second, true,
+		imgStore := local.NewImageStore(dir, true, true, 1*time.Second, 1*time.Second, true,
 			true, log, metrics, nil, cacheDriver)
 
 		srcStorageCtlr := test.GetDefaultStoreController(dir, log)
@@ -276,8 +276,8 @@ func TestRunScrubRepo(t *testing.T) {
 			Name:        "cache",
 			UseRelPaths: true,
 		}, log)
-		imgStore := local.NewImageStore(dir, true, 1*time.Second,
-			true, true, log, metrics, nil, cacheDriver,
+		imgStore := local.NewImageStore(dir, true, true, 1*time.Second,
+			1*time.Second, true, true, log, metrics, nil, cacheDriver,
 		)
 
 		srcStorageCtlr := test.GetDefaultStoreController(dir, log)

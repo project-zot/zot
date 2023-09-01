@@ -4,6 +4,7 @@ import (
 	"io"
 	"time"
 
+	storagedriver "github.com/docker/distribution/registry/storage/driver"
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	artifactspec "github.com/oras-project/artifacts-spec/specs-go/v1"
@@ -38,7 +39,7 @@ type ImageStore interface { //nolint:interfacebloat
 	DeleteBlobUpload(repo, uuid string) error
 	BlobPath(repo string, digest godigest.Digest) string
 	CheckBlob(repo string, digest godigest.Digest) (bool, int64, error)
-	StatBlob(repo string, digest godigest.Digest) (bool, int64, error)
+	StatBlob(repo string, digest godigest.Digest) (bool, int64, time.Time, error)
 	GetBlob(repo string, digest godigest.Digest, mediaType string) (io.ReadCloser, int64, error)
 	GetBlobPartial(repo string, digest godigest.Digest, mediaType string, from, to int64,
 	) (io.ReadCloser, int64, int64, error)
@@ -52,4 +53,22 @@ type ImageStore interface { //nolint:interfacebloat
 	RunDedupeBlobs(interval time.Duration, sch *scheduler.Scheduler)
 	RunDedupeForDigest(digest godigest.Digest, dedupe bool, duplicateBlobs []string) error
 	GetNextDigestWithBlobPaths(lastDigests []godigest.Digest) (godigest.Digest, []string, error)
+	GetAllBlobs(repo string) ([]string, error)
+}
+
+type Driver interface { //nolint:interfacebloat
+	Name() string
+	EnsureDir(path string) error
+	DirExists(path string) bool
+	Reader(path string, offset int64) (io.ReadCloser, error)
+	ReadFile(path string) ([]byte, error)
+	Delete(path string) error
+	Stat(path string) (storagedriver.FileInfo, error)
+	Writer(filepath string, append bool) (storagedriver.FileWriter, error) //nolint: predeclared
+	WriteFile(filepath string, content []byte) (int, error)
+	Walk(path string, f storagedriver.WalkFn) error
+	List(fullpath string) ([]string, error)
+	Move(sourcePath string, destPath string) error
+	SameFile(path1, path2 string) bool
+	Link(src, dest string) error
 }

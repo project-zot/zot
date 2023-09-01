@@ -1,9 +1,11 @@
 {
     "distSpecVersion": "1.1.0-dev",
     "storage": {
-        "rootDirectory": "/tmp/zot",
+        "rootDirectory": "/tmp/zot/local",
         "gc": true,
-        "gcDelay": "10s",
+        "gcReferrers": true,
+        "gcDelay": "20s",
+        "untaggedImageRetentionDelay": "20s",
         "gcInterval": "1s"
     },
     "http": {
