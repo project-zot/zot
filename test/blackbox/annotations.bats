@@ -1,4 +1,4 @@
-# Note: Intended to be run as "make test-annotations"
+# Note: Intended to be run as "make run-blackbox-tests" or "make run-blackbox-ci"
 #       Makefile target installs & checks all necessary tooling
 #       Extra tools that are not covered in Makefile target needs to be added in verify_prerequisites()
 
@@ -79,8 +79,12 @@ EOF
     wait_zot_reachable 8080
 }
 
+function teardown() {
+    # conditionally printing on failure is possible from teardown but not from from teardown_file
+    cat ${BATS_FILE_TMPDIR}/zot.log
+}
+
 function teardown_file() {
-    cat ${BATS_FILE_TMPDIR}/zot.log >&3
     zot_stop_all
     run rm -rf ${HOME}/.config/notation
 }

@@ -1,3 +1,7 @@
+# Note: Intended to be run as "make run-blackbox-tests" or "make run-blackbox-ci"
+#       Makefile target installs & checks all necessary tooling
+#       Extra tools that are not covered in Makefile target needs to be added in verify_prerequisites()
+
 load helpers_zot
 
 function verify_prerequisites {
@@ -14,7 +18,7 @@ function verify_prerequisites {
 
 function setup_file() {
     # Verify prerequisites are available
-    if ! (verify_prerequisites); then
+    if ! verify_prerequisites; then
         exit 1
     fi
 
@@ -22,10 +26,10 @@ function setup_file() {
     skopeo --insecure-policy copy --format=oci docker://ghcr.io/project-zot/test-images/alpine:3.17.3 oci:${TEST_DATA_DIR}/alpine:3.17.3
 
     # Setup zot server
-    ZOT_ROOT_DIR=${BATS_RUN_TMPDIR}/zot
+    ZOT_ROOT_DIR=${BATS_FILE_TMPDIR}/zot
     echo ${ZOT_ROOT_DIR}
-    local zot_log_file=${BATS_RUN_TMPDIR}/zot-log.json
-    local zot_config_file=${BATS_RUN_TMPDIR}/zot_config.json
+    local zot_log_file=${BATS_FILE_TMPDIR}/zot-log.json
+    local zot_config_file=${BATS_FILE_TMPDIR}/zot_config.json
     mkdir -p ${ZOT_ROOT_DIR}
     touch ${zot_log_file}
     cat >${zot_config_file} <<EOF
@@ -63,6 +67,11 @@ EOF
 
     MANIFEST_DIGEST=$(skopeo inspect --tls-verify=false docker://localhost:8080/alpine:3.17.3 | jq -r '.Digest')
     echo ${MANIFEST_DIGEST}
+}
+
+function teardown() {
+    # conditionally printing on failure is possible from teardown but not from from teardown_file
+    cat ${BATS_FILE_TMPDIR}/zot-log.json
 }
 
 function teardown_file() {

@@ -1,4 +1,4 @@
-# Note: Intended to be run as "make test-push-pull" or "test-push-pull-verbose"
+# Note: Intended to be run as "make run-blackbox-tests" or "make run-blackbox-ci"
 #       Makefile target installs & checks all necessary tooling
 #       Extra tools that are not covered in Makefile target needs to be added in verify_prerequisites()
 
@@ -42,13 +42,19 @@ function setup_file() {
         "port": "8080"
     },
     "log": {
-        "level": "debug"
+        "level": "debug",
+        "output": "${BATS_FILE_TMPDIR}/zot.log"
     }
 }
 EOF
     git -C ${BATS_FILE_TMPDIR} clone https://github.com/project-zot/helm-charts.git
     zot_serve ${ZOT_PATH} ${zot_config_file}
     wait_zot_reachable 8080
+}
+
+function teardown() {
+    # conditionally printing on failure is possible from teardown but not from from teardown_file
+    cat ${BATS_FILE_TMPDIR}/zot.log
 }
 
 function teardown_file() {

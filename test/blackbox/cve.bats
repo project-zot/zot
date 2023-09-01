@@ -1,4 +1,4 @@
-# Note: Intended to be run as "make test-bats-cve" or "make test-bats-cve-verbose"
+# Note: Intended to be run as "make run-blackbox-tests" or "make run-blackbox-ci"
 #       Makefile target installs & checks all necessary tooling
 #       Extra tools that are not covered in Makefile target needs to be added in verify_prerequisites()
 
@@ -42,7 +42,8 @@ function setup_file() {
         "port": "8080"
     },
     "log": {
-        "level": "debug"
+        "level": "debug",
+        "output": "${BATS_FILE_TMPDIR}/zot.log"
     },
     "extensions": {
         "search": {
@@ -61,6 +62,11 @@ EOF
     local registry_name=main
     local registry_url="http://127.0.0.1:8080/"
     zli_add_config ${registry_name} ${registry_url}
+}
+
+function teardown() {
+    # conditionally printing on failure is possible from teardown but not from from teardown_file
+    cat ${BATS_FILE_TMPDIR}/zot.log
 }
 
 function teardown_file() {

@@ -1,4 +1,4 @@
-# Note: Intended to be run as "make test-bats-scrub" or "make test-bats-scrub-verbose"
+# Note: Intended to be run as "make run-blackbox-tests" or "make run-blackbox-ci"
 #       Makefile target installs & checks all necessary tooling
 #       Extra tools that are not covered in Makefile target needs to be added in verify_prerequisites()
 
@@ -53,10 +53,9 @@ EOF
 }
 
 function teardown() {
+    cat ${BATS_FILE_TMPDIR}/zot/zot-log.json
     zot_stop_all
 }
-
-
 
 @test "blobs/manifest integrity not affected" {
     add_test_files

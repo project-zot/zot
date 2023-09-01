@@ -44,15 +44,11 @@ jobs:
           echo "Waiting for LocalStack startup..."  # Wait 30 seconds for the LocalStack container
           localstack wait -t 30                     # to become ready before timing out
           echo "Startup complete"
-      - name: Run restore s3 blobs after cache is deleted
+      - name: Run blackbox nightly dedupe tests
         run: |
-            make test-restore-s3-blobs
-        env:
-          AWS_ACCESS_KEY_ID: fake
-          AWS_SECRET_ACCESS_KEY: fake
-      - name: Run dedupe filesystem blobs after switching dedupe to enable.
-        run: |
-            make test-push-pull-running-dedupe
+            # test restoring s3 blobs after cache is deleted
+            # test deduping filesystem blobs after switching dedupe to enable
+            make run-blackbox-dedupe-nightly
         env:
           AWS_ACCESS_KEY_ID: fake
           AWS_SECRET_ACCESS_KEY: fake
@@ -73,7 +69,8 @@ jobs:
           go mod download
       - name: Run sync harness
         run: |
-            make test-sync-harness
+            make run-blackbox-sync-nightly
+
   gc-referrers-stress-s3:
     name: GC(with referrers) on S3 with short interval
     runs-on: ubuntu-latest

@@ -45,12 +45,17 @@ function setup_file() {
     },
     "log": {
         "level": "debug",
-        "output": "/tmp/gc.log"
+        "output": "${BATS_FILE_TMPDIR}/gc.log"
     }
 }
 EOF
     zot_serve ${ZOT_PATH} ${zot_config_file}
     wait_zot_reachable 8080
+}
+
+function teardown() {
+    # conditionally printing on failure is possible from teardown but not from from teardown_file
+    cat ${BATS_FILE_TMPDIR}/gc.log
 }
 
 function teardown_file() {

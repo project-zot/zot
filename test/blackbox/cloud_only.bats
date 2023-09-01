@@ -1,3 +1,7 @@
+# Note: Intended to be run as "make run-blackbox-tests" or "make run-blackbox-cloud-ci"
+#       Makefile target installs & checks all necessary tooling
+#       Extra tools that are not covered in Makefile target needs to be added in verify_prerequisites()
+
 load helpers_cloud
 load helpers_wait
 
@@ -17,8 +21,8 @@ function setup() {
 
     cat > ${zot_config_file}<<EOF
 {
-	"distSpecVersion": "1.1.0-dev",
-	"storage": {
+    "distSpecVersion": "1.1.0-dev",
+    "storage": {
         "rootDirectory": "${zot_root_dir}",
         "dedupe": true,
         "remoteCache": true,
@@ -43,10 +47,10 @@ function setup() {
             "apiKeyTablename":"ApiKeyTable",
             "versionTablename": "Version"
         }
-	},
-	"http": {
-		"address": "127.0.0.1",
-		"port": "8080",
+    },
+    "http": {
+        "address": "127.0.0.1",
+        "port": "8080",
         "realm": "zot",
         "auth": {
             "openid": {
@@ -68,25 +72,25 @@ function setup() {
                 }
             }
         }
-	},
-	"log": {
-		"level": "debug"
-	},
-	"extensions": {
-		"metrics": {
+    },
+    "log": {
+        "level": "debug"
+    },
+    "extensions": {
+        "metrics": {
             "enable": true,
             "prometheus": {
                 "path": "/metrics"
             }
         },
-		"search": {
+        "search": {
             "enable": true
-		},
-		"scrub": {
-			"enable": true,
-			"interval": "24h"
-		}
-	}
+        },
+        "scrub": {
+            "enable": true,
+            "interval": "24h"
+        }
+    }
 }
 EOF
     awslocal s3 --region "us-east-2" mb s3://zot-storage

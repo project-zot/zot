@@ -1,4 +1,4 @@
-# Note: Intended to be run as "make test-bats-sync" or "make test-bats-sync-verbose"
+# Note: Intended to be run as "make run-blackbox-tests" or "make run-blackbox-ci"
 #       Makefile target installs & checks all necessary tooling
 #       Extra tools that are not covered in Makefile target needs to be added in verify_prerequisites()
 
