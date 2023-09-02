@@ -95,7 +95,17 @@ func ValidateManifest(imgStore storageTypes.ImageStore, repo, reference, mediaTy
 			return "", zerr.ErrBadManifest
 		}
 
-		if manifest.Config.MediaType == ispec.MediaTypeImageConfig {
+		// validate blobs only for known media types
+		if manifest.Config.MediaType == ispec.MediaTypeImageConfig ||
+			manifest.Config.MediaType == ispec.MediaTypeEmptyJSON {
+			// validate config blob - a lightweight check if the blob is present
+			ok, _, _, err := imgStore.StatBlob(repo, manifest.Config.Digest)
+			if !ok || err != nil {
+				log.Error().Err(err).Str("digest", manifest.Config.Digest.String()).Msg("missing config blob")
+
+				return "", zerr.ErrBadManifest
+			}
+
 			// validate layers - a lightweight check if the blob is present
 			for _, layer := range manifest.Layers {
 				if IsNonDistributable(layer.MediaType) {
