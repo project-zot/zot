@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/docker/distribution/registry/storage/driver"
-	notreg "github.com/notaryproject/notation-go/registry"
 	godigest "github.com/opencontainers/go-digest"
 	"github.com/opencontainers/image-spec/schema"
 	imeta "github.com/opencontainers/image-spec/specs-go"
@@ -714,7 +713,7 @@ func IsSignature(descriptor ispec.Descriptor) bool {
 		}
 
 		// is notation signature
-		if descriptor.ArtifactType == notreg.ArtifactTypeNotation {
+		if descriptor.ArtifactType == zcommon.ArtifactTypeNotation {
 			return true
 		}
 	default:

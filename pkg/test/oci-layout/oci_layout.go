@@ -13,7 +13,6 @@ import (
 	"strings"
 	"time"
 
-	notreg "github.com/notaryproject/notation-go/registry"
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 
@@ -233,7 +232,7 @@ func (olu BaseOciLayoutUtils) GetImageTagsWithTimestamp(repo string) ([]cvemodel
 // check notary signature corresponding to repo name, manifest digest and mediatype.
 func (olu BaseOciLayoutUtils) checkNotarySignature(name string, digest godigest.Digest) bool {
 	imageStore := olu.StoreController.GetImageStore(name)
-	mediaType := notreg.ArtifactTypeNotation
+	mediaType := common.ArtifactTypeNotation
 
 	referrers, err := imageStore.GetReferrers(name, digest, []string{mediaType})
 	if err != nil {

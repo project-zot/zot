@@ -12,10 +12,6 @@ permissions: read-all
 jobs:
   branch-cov:
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        os: [linux]
-        arch: [amd64]
     name: coverage
     steps:
       - uses: actions/checkout@v4
@@ -42,6 +38,4 @@ jobs:
             gobco -test '-tags=sync,search,scrub,metrics,containers_image_openpgp' $i;
             gobco -test '-tags=minimal,containers_image_openpgp' $i;
           done
-        env:
-          OS: ${{ matrix.os }}
-          ARCH: ${{ matrix.arch }}
+

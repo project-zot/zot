@@ -1,10 +1,10 @@
 package config
 
 import (
+	"encoding/json"
 	"os"
 	"time"
 
-	"github.com/getlantern/deepcopy"
 	distspec "github.com/opencontainers/distribution-spec/specs-go"
 
 	extconf "zotregistry.io/zot/pkg/extensions/config"
@@ -221,17 +221,28 @@ func SameFile(str1, str2 string) (bool, error) {
 	return os.SameFile(sFile, tFile), nil
 }
 
+func DeepCopy(src, dst interface{}) error {
+	bytes, err := json.Marshal(src)
+	if err != nil {
+		return err
+	}
+	err = json.Unmarshal(bytes, dst)
+
+	return err
+}
+
 // Sanitize makes a sanitized copy of the config removing any secrets.
 func (c *Config) Sanitize() *Config {
 	sanitizedConfig := &Config{}
-	if err := deepcopy.Copy(sanitizedConfig, c); err != nil {
+
+	if err := DeepCopy(c, sanitizedConfig); err != nil {
 		panic(err)
 	}
 
 	if c.HTTP.Auth != nil && c.HTTP.Auth.LDAP != nil && c.HTTP.Auth.LDAP.BindPassword != "" {
 		sanitizedConfig.HTTP.Auth.LDAP = &LDAPConfig{}
 
-		if err := deepcopy.Copy(sanitizedConfig.HTTP.Auth.LDAP, c.HTTP.Auth.LDAP); err != nil {
+		if err := DeepCopy(c.HTTP.Auth.LDAP, sanitizedConfig.HTTP.Auth.LDAP); err != nil {
 			panic(err)
 		}
 

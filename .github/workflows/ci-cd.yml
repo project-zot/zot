@@ -113,10 +113,10 @@ jobs:
           echo "Building for $OS:$ARCH"
           cd $GITHUB_WORKSPACE
           if [[ $OS == "linux" && $ARCH == "amd64" ]]; then
-            make OS=$OS ARCH=$ARCH
+            make
             sudo env "PATH=$PATH" make privileged-test
           else
-            make OS=$OS ARCH=$ARCH binary binary-minimal binary-debug cli bench exporter-minimal
+            make binary binary-minimal binary-debug cli bench exporter-minimal
           fi
         env:
           S3MOCK_ENDPOINT: localhost:4566
