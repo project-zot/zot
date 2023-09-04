@@ -19,7 +19,7 @@ require (
 	github.com/go-ldap/ldap/v3 v3.4.5
 	github.com/gofrs/uuid v4.4.0+incompatible
 	github.com/google/go-containerregistry v0.16.1
-	github.com/google/uuid v1.3.0
+	github.com/google/uuid v1.3.1
 	github.com/gorilla/mux v1.8.0
 	github.com/hashicorp/golang-lru/v2 v2.0.5
 	github.com/json-iterator/go v1.1.12
