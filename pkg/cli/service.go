@@ -338,7 +338,7 @@ func (service searchService) getCveByImageGQL(ctx context.Context, config search
 	imageName, searchedCVE string,
 ) (*cveResult, error) {
 	query := fmt.Sprintf(`{ CVEListForImage (image:"%s", searchedCVE:"%s")`+
-		` { Tag CVEList { Id Title Severity Description `+
+		` { Tag CVEList { Id Title Severity SeveritySource Score Status Description `+
 		`PackageList {Name InstalledVersion FixedVersion}} } }`, imageName, searchedCVE)
 	result := &cveResult{}
 
@@ -1094,11 +1094,14 @@ type packageList struct {
 
 //nolint:tagliatelle // graphQL schema
 type cve struct {
-	ID          string        `json:"Id"`
-	Severity    string        `json:"Severity"`
-	Title       string        `json:"Title"`
-	Description string        `json:"Description"`
-	PackageList []packageList `json:"PackageList"`
+	ID             string        `json:"Id"`
+	Severity       string        `json:"Severity"`
+	SeveritySource string        `json:"SeveritySource"`
+	Score          float64       `json:"Score"`
+	Status         string        `json:"Status"`
+	Title          string        `json:"Title"`
+	Description    string        `json:"Description"`
+	PackageList    []packageList `json:"PackageList"`
 }
 
 //nolint:tagliatelle // graphQL schema
@@ -1134,9 +1137,15 @@ func (cve cveResult) stringPlainText() (string, error) {
 		id := ellipsize(c.ID, cveIDWidth, ellipsis)
 		title := ellipsize(c.Title, cveTitleWidth, ellipsis)
 		severity := ellipsize(c.Severity, cveSeverityWidth, ellipsis)
-		row := make([]string, 3) //nolint:gomnd
+		severitySource := ellipsize(c.SeveritySource, cveSeveritySourceWidth, ellipsis)
+		score := ellipsize(fmt.Sprintf("%.1f", c.Score), cveScoreWidth, ellipsis)
+		status := ellipsize(c.Status, cveStatusWidth, ellipsis)
+		row := make([]string, 6) //nolint:gomnd
 		row[colCVEIDIndex] = id
 		row[colCVESeverityIndex] = severity
+		row[colCVEScoreIndex] = score
+		row[colCVESeveritySourceIndex] = severitySource
+		row[colCVEStatusIndex] = status
 		row[colCVETitleIndex] = title
 
 		table.Append(row)
@@ -1614,6 +1623,10 @@ func getCVETableWriter(writer io.Writer) *tablewriter.Table {
 	table.SetNoWhiteSpace(true)
 	table.SetColMinWidth(colCVEIDIndex, cveIDWidth)
 	table.SetColMinWidth(colCVESeverityIndex, cveSeverityWidth)
+	table.SetColMinWidth(colCVESeverityIndex, cveSeverityWidth)
+	table.SetColMinWidth(colCVEScoreIndex, cveScoreWidth)
+	table.SetColMinWidth(colCVESeveritySourceIndex, cveSeveritySourceWidth)
+	table.SetColMinWidth(colCVEStatusIndex, cveStatusWidth)
 	table.SetColMinWidth(colCVETitleIndex, cveTitleWidth)
 
 	return table
@@ -1706,13 +1719,19 @@ const (
 	layersWidth      = 8
 	ellipsis         = "..."
 
-	cveIDWidth       = 16
-	cveSeverityWidth = 8
-	cveTitleWidth    = 48
+	cveIDWidth             = 16
+	cveSeverityWidth       = 8
+	cveTitleWidth          = 48
+	cveScoreWidth          = 5
+	cveStatusWidth         = 12
+	cveSeveritySourceWidth = 12
 
-	colCVEIDIndex       = 0
-	colCVESeverityIndex = 1
-	colCVETitleIndex    = 2
+	colCVEIDIndex             = 0
+	colCVESeverityIndex       = 1
+	colCVEScoreIndex          = 2
+	colCVESeveritySourceIndex = 3
+	colCVEStatusIndex         = 4
+	colCVETitleIndex          = 5
 
 	defaultOutputFormat = "text"
 )

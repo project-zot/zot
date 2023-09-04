@@ -318,6 +318,9 @@ func getCVEListForImage(
 		desc := cveDetail.Description
 		title := cveDetail.Title
 		severity := cveDetail.Severity
+		severitySource := cveDetail.SeveritySource
+		score := cveDetail.Score
+		status := cveDetail.Status
 
 		pkgList := make([]*gql_generated.PackageInfo, 0)
 
@@ -335,11 +338,14 @@ func getCVEListForImage(
 
 		cveids = append(cveids,
 			&gql_generated.Cve{
-				ID:          &vulID,
-				Title:       &title,
-				Description: &desc,
-				Severity:    &severity,
-				PackageList: pkgList,
+				ID:             &vulID,
+				Title:          &title,
+				Description:    &desc,
+				Severity:       &severity,
+				SeveritySource: &severitySource,
+				Score:          &score,
+				Status:         &status,
+				PackageList:    pkgList,
 			},
 		)
 	}

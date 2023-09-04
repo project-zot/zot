@@ -27,8 +27,14 @@ type Cve struct {
 	Title *string `json:"Title,omitempty"`
 	// A detailed description of the CVE
 	Description *string `json:"Description,omitempty"`
-	// The impact the CVE has, one of "UNKNOWN", "LOW", "MEDIUM", "HIGH", "CRITICAL"
+	// The impact the CVE has in CVSS Version 3.x, one of "UNKNOWN", "LOW", "MEDIUM", "HIGH", "CRITICAL"
 	Severity *string `json:"Severity,omitempty"`
+	// The severity data source such as NVD
+	SeveritySource *string `json:"SeveritySource,omitempty"`
+	// The score the CVE has in CVSS Version 3.x for this specific data source
+	Score *float64 `json:"Score,omitempty"`
+	// The the status of the CVE
+	Status *string `json:"Status,omitempty"`
 	// Information on the packages in which the CVE was found
 	PackageList []*PackageInfo `json:"PackageList,omitempty"`
 }

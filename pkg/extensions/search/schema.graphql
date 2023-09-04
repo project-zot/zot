@@ -46,9 +46,21 @@ type CVE {
     """
     Description: String
     """
-    The impact the CVE has, one of "UNKNOWN", "LOW", "MEDIUM", "HIGH", "CRITICAL"
+    The impact the CVE has in CVSS Version 3.x, one of "UNKNOWN", "LOW", "MEDIUM", "HIGH", "CRITICAL"
     """
     Severity: String
+    """
+    The severity data source such as NVD
+    """
+    SeveritySource: String
+    """
+    The score the CVE has in CVSS Version 3.x for this specific data source
+    """
+    Score: Float
+    """
+    The the status of the CVE
+    """
+    Status: String
     """
     Information on the packages in which the CVE was found
     """

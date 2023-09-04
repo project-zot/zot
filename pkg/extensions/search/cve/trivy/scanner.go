@@ -381,7 +381,18 @@ func (scanner Scanner) scanManifest(repo, digest string) (map[string]cvemodel.CV
 				fixedVersion = "Not Specified"
 			}
 
-			_, ok := cveidMap[vulnerability.VulnerabilityID]
+			dataSource := vulnerability.SeveritySource
+			cvss, ok := vulnerability.CVSS[dataSource]
+			severity, ok := vulnerability.VendorSeverity[dataSource]
+			score := cvss.V3Score
+			// if !ok {
+			// 	dataSource = dbTypes.SourceID("nvd")
+			// 	score = vulnerability.CVSS[dataSource].V3Score
+
+			// 	scanner.log.Error().Msgf("bad CVSS for %s: %v", vulnerability.VulnerabilityID, vulnerability.CVSS)
+			// }
+
+			_, ok = cveidMap[vulnerability.VulnerabilityID]
 			if ok {
 				cveDetailStruct := cveidMap[vulnerability.VulnerabilityID]
 
@@ -412,11 +423,14 @@ func (scanner Scanner) scanManifest(repo, digest string) (map[string]cvemodel.CV
 				)
 
 				cveidMap[vulnerability.VulnerabilityID] = cvemodel.CVE{
-					ID:          vulnerability.VulnerabilityID,
-					Title:       vulnerability.Title,
-					Description: vulnerability.Description,
-					Severity:    vulnerability.Severity,
-					PackageList: newPkgList,
+					ID:             vulnerability.VulnerabilityID,
+					Title:          vulnerability.Title,
+					Description:    vulnerability.Description,
+					Score:          score,
+					SeveritySource: string(dataSource),
+					Severity:       severity.String(),
+					Status:         vulnerability.Status.String(),
+					PackageList:    newPkgList,
 				}
 			}
 		}

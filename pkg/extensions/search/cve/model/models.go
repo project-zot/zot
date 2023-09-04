@@ -13,11 +13,14 @@ type ImageCVESummary struct {
 
 //nolint:tagliatelle // graphQL schema
 type CVE struct {
-	ID          string    `json:"Id"`
-	Description string    `json:"Description"`
-	Severity    string    `json:"Severity"`
-	Title       string    `json:"Title"`
-	PackageList []Package `json:"PackageList"`
+	ID             string    `json:"Id"`
+	Description    string    `json:"Description"`
+	Severity       string    `json:"Severity"`
+	SeveritySource string    `json:"SeveritySource"`
+	Score          float64   `json:"Score"`
+	Status         string    `json:"Status"`
+	Title          string    `json:"Title"`
+	PackageList    []Package `json:"PackageList"`
 }
 
 //nolint:tagliatelle // graphQL schema

@@ -960,9 +960,12 @@ func printImageTableHeader(writer io.Writer, verbose bool, maxImageNameLen, maxT
 
 func printCVETableHeader(writer io.Writer, verbose bool, maxImgLen, maxTagLen, maxPlatformLen int) {
 	table := getCVETableWriter(writer)
-	row := make([]string, 3) //nolint:gomnd
+	row := make([]string, 6) //nolint:gomnd
 	row[colCVEIDIndex] = "ID"
 	row[colCVESeverityIndex] = "SEVERITY"
+	row[colCVEScoreIndex] = "SCORE"
+	row[colCVESeveritySourceIndex] = "SOURCE"
+	row[colCVEStatusIndex] = "STATUS"
 	row[colCVETitleIndex] = "TITLE"
 
 	table.Append(row)

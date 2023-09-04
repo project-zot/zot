@@ -78,10 +78,10 @@ function teardown_file() {
     run curl http://127.0.0.1:8080/v2/golang/tags/list
     [ "$status" -eq 0 ]
     [ $(echo "${lines[-1]}" | jq '.tags[]') = '"1.20"' ]
-    run ${ZLI_PATH} cve ${REGISTRY_NAME} -I golang:1.20
+    run ${ZLI_PATH} cve image golang:1.20 --config ${REGISTRY_NAME}
     [ "$status" -eq 0 ]
 
-     found=0
+    found=0
     for i in "${lines[@]}"
     do
 
