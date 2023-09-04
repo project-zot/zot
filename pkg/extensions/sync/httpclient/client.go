@@ -2,6 +2,7 @@ package client
 
 import (
 	"context"
+	"io"
 	"net/http"
 	"net/url"
 	"sync"
@@ -71,13 +72,42 @@ func (httpClient *Client) SetConfig(config Config) error {
 	return nil
 }
 
-func (httpClient *Client) IsAvailable() bool {
-	_, _, statusCode, err := httpClient.MakeGetRequest(context.Background(), nil, "", "/v2/")
-	if err != nil || statusCode != http.StatusOK {
+func (httpClient *Client) Ping() bool {
+	pingURL := *httpClient.url
+
+	pingURL = *pingURL.JoinPath("/v2/")
+
+	req, err := http.NewRequest(http.MethodGet, pingURL.String(), nil) //nolint
+	if err != nil {
 		return false
 	}
 
-	return true
+	resp, err := httpClient.client.Do(req)
+	if err != nil {
+		httpClient.log.Error().Err(err).Str("url", pingURL.String()).
+			Msg("sync: failed to ping registry")
+
+		return false
+	}
+
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusOK || resp.StatusCode == http.StatusUnauthorized {
+		return true
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		httpClient.log.Error().Err(err).Str("url", pingURL.String()).
+			Msg("failed to read body while pinging registry")
+
+		return false
+	}
+
+	httpClient.log.Error().Str("url", pingURL.String()).Str("body", string(body)).Int("statusCode", resp.StatusCode).
+		Msg("sync: failed to ping registry")
+
+	return false
 }
 
 func (httpClient *Client) MakeGetRequest(ctx context.Context, resultPtr interface{}, mediaType string,

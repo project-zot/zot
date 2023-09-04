@@ -198,10 +198,6 @@ func (ref CosignReference) getManifest(ctx context.Context, repo, cosignTag stri
 			return nil, nil, zerr.ErrSyncReferrerNotFound
 		}
 
-		ref.log.Error().Str("errorType", common.TypeOf(err)).
-			Str("repository", repo).Str("tag", cosignTag).Int("statusCode", statusCode).
-			Err(err).Msg("couldn't get cosign manifest for image")
-
 		return nil, nil, err
 	}
 

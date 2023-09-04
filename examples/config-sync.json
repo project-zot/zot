@@ -63,7 +63,7 @@
 				},
 				{
 					"urls": [
-						"https://docker.io/library"
+						"https://index.docker.io"
 					],
 					"onDemand": true,
 					"tlsVerify": true,

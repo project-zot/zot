@@ -186,9 +186,6 @@ func (ref ORASReferences) getReferenceList(ctx context.Context, repo, subjectDig
 			return referrers, zerr.ErrSyncReferrerNotFound
 		}
 
-		ref.log.Error().Err(err).Str("repository", repo).Str("subject", subjectDigestStr).
-			Msg("couldn't get ORAS artifacts for image")
-
 		return referrers, err
 	}
 

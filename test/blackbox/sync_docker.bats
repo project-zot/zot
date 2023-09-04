@@ -54,7 +54,7 @@ function setup_file() {
             "registries": [
                 {
                     "urls": [
-                        "https://docker.io/library"
+                        "https://index.docker.io"
                     ],
                     "content": [
                         {
@@ -330,7 +330,7 @@ function teardown_file() {
     [ $(echo "${lines[-1]}" | jq '.tags[]') = '"v2.0.0-rc5"' ]
 }
 
-@test "run docker with image synced from docker.io/library" {
+@test "run docker with image synced from docker.io" {
     local zot_root_dir=${BATS_FILE_TMPDIR}/zot
     run rm -rf ${zot_root_dir}
     [ "$status" -eq 0 ]

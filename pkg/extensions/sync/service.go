@@ -95,7 +95,7 @@ func New(opts syncconf.RegistryConfig, credentialsFilepath string,
 }
 
 func (service *BaseService) SetNextAvailableClient() error {
-	if service.client != nil && service.client.IsAvailable() {
+	if service.client != nil && service.client.Ping() {
 		return nil
 	}
 
@@ -125,10 +125,12 @@ func (service *BaseService) SetNextAvailableClient() error {
 		}
 
 		if err != nil {
+			service.log.Error().Err(err).Str("url", url).Msg("sync: failed to initialize http client")
+
 			continue
 		}
 
-		if !service.client.IsAvailable() {
+		if !service.client.Ping() {
 			continue
 		}
 	}
@@ -252,9 +254,6 @@ func (service *BaseService) SyncImage(ctx context.Context, repo, reference strin
 
 	err = service.references.SyncAll(ctx, repo, remoteRepo, manifestDigest.String())
 	if err != nil && !errors.Is(err, zerr.ErrSyncReferrerNotFound) {
-		service.log.Error().Err(err).Str("remote", remoteURL).Str("repo", repo).Str("reference", reference).
-			Msg("error while syncing references for image")
-
 		return err
 	}
 

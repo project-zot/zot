@@ -17,7 +17,7 @@
         "registries": [
         {
           "urls": [
-            "https://docker.io/library"
+            "https://index.docker.io"
           ],
           "content": [
           {

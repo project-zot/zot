@@ -6,7 +6,6 @@ import (
 	"crypto/x509"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
 	"net/http"
 	"os"
@@ -138,6 +137,8 @@ func MakeHTTPGetRequest(ctx context.Context, httpClient *http.Client,
 		return nil, "", -1, err
 	}
 
+	defer resp.Body.Close()
+
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		log.Error().Str("errorType", TypeOf(err)).
@@ -146,12 +147,7 @@ func MakeHTTPGetRequest(ctx context.Context, httpClient *http.Client,
 		return nil, "", resp.StatusCode, err
 	}
 
-	defer resp.Body.Close()
-
 	if resp.StatusCode != http.StatusOK {
-		log.Error().Str("status code", fmt.Sprint(resp.StatusCode)).
-			Err(err).Str("blobURL", blobURL).Msg("couldn't get blob")
-
 		return nil, "", resp.StatusCode, errors.New(string(body)) //nolint:goerr113
 	}
 
@@ -159,9 +155,6 @@ func MakeHTTPGetRequest(ctx context.Context, httpClient *http.Client,
 	if len(body) > 0 {
 		err = json.Unmarshal(body, &resultPtr)
 		if err != nil {
-			log.Error().Str("errorType", TypeOf(err)).Str("blobURL", blobURL).
-				Err(err).Msg("couldn't unmarshal remote blob")
-
 			return body, "", resp.StatusCode, err
 		}
 	}
