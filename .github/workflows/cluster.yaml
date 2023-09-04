@@ -27,7 +27,7 @@ jobs:
     #       - /tmp/data:/data
     #     options: --name=minio --health-cmd "curl http://localhost:9000/minio/health/live"
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - uses: actions/setup-go@v4
         with:
           cache: false

@@ -25,7 +25,7 @@ jobs:
         arch: [amd64, arm64]
     steps:
       - name: Check out source code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
       - uses: ./.github/actions/clean-runner
       - name: Install go
         uses: actions/setup-go@v4
@@ -185,7 +185,7 @@ jobs:
         arch: [amd64, arm64]
     steps:
       - name: Check out the repo
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
       - name: Log in to GitHub Docker Registry
         uses: docker/login-action@v2
         with:
@@ -393,13 +393,13 @@ jobs:
       packages: write
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           ref: main
           fetch-depth: '0'
 
       - name: Checkout project-zot/helm-charts
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           repository: project-zot/helm-charts
           ref: main

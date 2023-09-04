@@ -16,7 +16,7 @@ jobs:
     name: Dedupe/restore blobs
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - uses: ./.github/actions/clean-runner
       - uses: actions/setup-go@v3
         with:
@@ -61,7 +61,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check out source code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
       - uses: ./.github/actions/clean-runner
       - uses: actions/setup-go@v3
         with:
@@ -78,7 +78,7 @@ jobs:
     name: GC(with referrers) on S3 with short interval
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - uses: ./.github/actions/clean-runner
       - uses: actions/setup-go@v4
         with:
@@ -119,7 +119,7 @@ jobs:
     name: GC(without referrers) on S3 with short interval
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - uses: ./.github/actions/clean-runner
       - uses: actions/setup-go@v4
         with:

@@ -16,7 +16,7 @@ jobs:
     name: Check client tools
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - uses: ./.github/actions/clean-runner
       - uses: actions/setup-go@v4
         with:
