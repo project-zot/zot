@@ -1485,7 +1485,7 @@ func TestGarbageCollectImageManifest(t *testing.T) {
 					So(err, ShouldBeNil)
 
 					// sleep so orphan blob can be GC'ed
-					time.Sleep(5 * time.Second)
+					time.Sleep(1 * time.Second)
 
 					// upload blob
 					upload, err = imgStore.NewBlobUpload(repoName)
@@ -1657,7 +1657,7 @@ func TestGarbageCollectImageManifest(t *testing.T) {
 					So(hasBlob, ShouldEqual, true)
 
 					// sleep so orphan blob can be GC'ed
-					time.Sleep(5 * time.Second)
+					time.Sleep(1 * time.Second)
 
 					Convey("Garbage collect blobs after manifest is removed", func() {
 						err = imgStore.DeleteImageManifest(repoName, digest.String(), false)
@@ -1735,7 +1735,7 @@ func TestGarbageCollectImageManifest(t *testing.T) {
 					// garbage-collect is repo-local and dedupe is global and they can interact in strange ways
 					var imgStore storageTypes.ImageStore
 
-					gcDelay := 5 * time.Second
+					gcDelay := 3 * time.Second
 
 					if testcase.storageType == storageConstants.S3StorageDriverName {
 						skipIt(t)
@@ -1823,12 +1823,12 @@ func TestGarbageCollectImageManifest(t *testing.T) {
 					_, _, err = imgStore.PutImageManifest(repo1Name, tag, ispec.MediaTypeImageManifest, manifestBuf)
 					So(err, ShouldBeNil)
 
+					// sleep so past GC timeout
+					time.Sleep(3 * time.Second)
+
 					hasBlob, _, err = imgStore.CheckBlob(repo1Name, tdigest)
 					So(err, ShouldBeNil)
 					So(hasBlob, ShouldEqual, true)
-
-					// sleep so past GC timeout
-					time.Sleep(10 * time.Second)
 
 					hasBlob, _, err = imgStore.CheckBlob(repo1Name, tdigest)
 					So(err, ShouldBeNil)
@@ -2092,8 +2092,8 @@ func TestGarbageCollectImageIndex(t *testing.T) {
 				Convey("Garbage collect with short delay", func() {
 					var imgStore storageTypes.ImageStore
 
-					gcDelay := 5 * time.Second
-					imageRetentionDelay := 5 * time.Second
+					gcDelay := 2 * time.Second
+					imageRetentionDelay := 2 * time.Second
 
 					if testcase.storageType == storageConstants.S3StorageDriverName {
 						skipIt(t)
@@ -2278,7 +2278,7 @@ func TestGarbageCollectImageIndex(t *testing.T) {
 					So(err, ShouldBeNil)
 					So(hasBlob, ShouldEqual, true)
 
-					time.Sleep(5 * time.Second)
+					time.Sleep(2 * time.Second)
 
 					Convey("delete inner referenced manifest", func() {
 						err = imgStore.RunGCRepo(repoName)

@@ -2157,6 +2157,179 @@ func TestGarbageCollectForImageStore(t *testing.T) {
 	})
 }
 
+func TestGarbageCollectImageUnknownManifest(t *testing.T) {
+	Convey("Garbage collect with short delay", t, func() {
+		dir := t.TempDir()
+
+		log := log.NewLogger("debug", "")
+		metrics := monitoring.NewMetricsServer(false, log)
+		cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
+			RootDir:     dir,
+			Name:        "cache",
+			UseRelPaths: true,
+		}, log)
+
+		imgStore := local.NewImageStore(dir, true, true, 1*time.Second,
+			storageConstants.DefaultUntaggedImgeRetentionDelay, true, true, log, metrics, nil, cacheDriver)
+
+		storeController := storage.StoreController{
+			DefaultStore: imgStore,
+		}
+
+		unsupportedMediaType := "application/vnd.oci.artifact.manifest.v1+json"
+
+		img := test.CreateRandomImage()
+
+		err := test.WriteImageToFileSystem(img, repoName, "v1", storeController)
+		So(err, ShouldBeNil)
+
+		// add image with unsupported media type
+		artifact := test.CreateRandomImage()
+
+		err = test.WriteImageToFileSystem(artifact, repoName, "artifact", storeController)
+		So(err, ShouldBeNil)
+
+		// add referrer with unsupported media type
+		subjectDesc := img.Descriptor()
+		referrer := test.CreateRandomImageWith().Subject(&subjectDesc).Build()
+
+		err = test.WriteImageToFileSystem(referrer, repoName, referrer.Digest().String(), storeController)
+		So(err, ShouldBeNil)
+
+		// modify artifact media type
+		artifactBuf, err := os.ReadFile(imgStore.BlobPath(repoName, artifact.Digest()))
+		So(err, ShouldBeNil)
+
+		var artifactManifest ispec.Manifest
+		err = json.Unmarshal(artifactBuf, &artifactManifest)
+		So(err, ShouldBeNil)
+
+		artifactManifest.MediaType = unsupportedMediaType
+		artifactBuf, err = json.Marshal(artifactManifest)
+		So(err, ShouldBeNil)
+
+		artifactDigest := godigest.FromBytes(artifactBuf)
+		err = os.WriteFile(path.Join(imgStore.RootDir(), repoName, "blobs", "sha256", artifactDigest.Encoded()),
+			artifactBuf, storageConstants.DefaultFilePerms)
+		So(err, ShouldBeNil)
+
+		// modify referrer media type
+		referrerBuf, err := os.ReadFile(imgStore.BlobPath(repoName, referrer.Digest()))
+		So(err, ShouldBeNil)
+
+		var referrerManifest ispec.Manifest
+		err = json.Unmarshal(referrerBuf, &referrerManifest)
+		So(err, ShouldBeNil)
+
+		referrerManifest.MediaType = unsupportedMediaType
+		referrerBuf, err = json.Marshal(referrerManifest)
+		So(err, ShouldBeNil)
+
+		referrerDigest := godigest.FromBytes(referrerBuf)
+		err = os.WriteFile(path.Join(imgStore.RootDir(), repoName, "blobs", "sha256", referrerDigest.Encoded()),
+			referrerBuf, storageConstants.DefaultFilePerms)
+		So(err, ShouldBeNil)
+
+		indexJSONBuf, err := os.ReadFile(path.Join(imgStore.RootDir(), repoName, "index.json"))
+		So(err, ShouldBeNil)
+
+		var indexJSON ispec.Index
+		err = json.Unmarshal(indexJSONBuf, &indexJSON)
+		So(err, ShouldBeNil)
+
+		for idx, desc := range indexJSON.Manifests {
+			if desc.Digest == artifact.Digest() {
+				indexJSON.Manifests[idx].Digest = artifactDigest
+				indexJSON.Manifests[idx].MediaType = unsupportedMediaType
+			} else if desc.Digest == referrer.Digest() {
+				indexJSON.Manifests[idx].Digest = referrerDigest
+				indexJSON.Manifests[idx].MediaType = unsupportedMediaType
+			}
+		}
+
+		indexJSONBuf, err = json.Marshal(indexJSON)
+		So(err, ShouldBeNil)
+
+		err = os.WriteFile(path.Join(imgStore.RootDir(), repoName, "index.json"),
+			indexJSONBuf, storageConstants.DefaultFilePerms)
+		So(err, ShouldBeNil)
+
+		// sleep so orphan blob can be GC'ed
+		time.Sleep(1 * time.Second)
+
+		Convey("Garbage collect blobs referenced by manifest with unsupported media type", func() {
+			err = imgStore.RunGCRepo(repoName)
+			So(err, ShouldBeNil)
+
+			_, _, _, err = imgStore.GetImageManifest(repoName, img.DigestStr())
+			So(err, ShouldBeNil)
+
+			hasBlob, _, err := imgStore.CheckBlob(repoName, img.ConfigDescriptor.Digest)
+			So(err, ShouldBeNil)
+			So(hasBlob, ShouldEqual, true)
+
+			_, _, _, err = imgStore.GetImageManifest(repoName, artifactDigest.String())
+			So(err, ShouldNotBeNil)
+
+			_, _, _, err = imgStore.GetImageManifest(repoName, referrerDigest.String())
+			So(err, ShouldNotBeNil)
+
+			hasBlob, _, err = imgStore.CheckBlob(repoName, artifactDigest)
+			So(err, ShouldNotBeNil)
+			So(hasBlob, ShouldEqual, false)
+
+			hasBlob, _, err = imgStore.CheckBlob(repoName, referrerDigest)
+			So(err, ShouldNotBeNil)
+			So(hasBlob, ShouldEqual, false)
+
+			hasBlob, _, err = imgStore.CheckBlob(repoName, artifact.ConfigDescriptor.Digest)
+			So(err, ShouldNotBeNil)
+			So(hasBlob, ShouldEqual, false)
+
+			hasBlob, _, err = imgStore.CheckBlob(repoName, referrer.ConfigDescriptor.Digest)
+			So(err, ShouldNotBeNil)
+			So(hasBlob, ShouldEqual, false)
+		})
+
+		Convey("Garbage collect - gc repo after manifest delete", func() {
+			err = imgStore.DeleteImageManifest(repoName, img.DigestStr(), true)
+			So(err, ShouldBeNil)
+
+			err = imgStore.RunGCRepo(repoName)
+			So(err, ShouldBeNil)
+
+			_, _, _, err = imgStore.GetImageManifest(repoName, img.DigestStr())
+			So(err, ShouldNotBeNil)
+
+			hasBlob, _, err := imgStore.CheckBlob(repoName, img.ConfigDescriptor.Digest)
+			So(err, ShouldNotBeNil)
+			So(hasBlob, ShouldEqual, false)
+
+			_, _, _, err = imgStore.GetImageManifest(repoName, artifactDigest.String())
+			So(err, ShouldNotBeNil)
+
+			_, _, _, err = imgStore.GetImageManifest(repoName, referrerDigest.String())
+			So(err, ShouldNotBeNil)
+
+			hasBlob, _, err = imgStore.CheckBlob(repoName, artifactDigest)
+			So(err, ShouldNotBeNil)
+			So(hasBlob, ShouldEqual, false)
+
+			hasBlob, _, err = imgStore.CheckBlob(repoName, referrerDigest)
+			So(err, ShouldNotBeNil)
+			So(hasBlob, ShouldEqual, false)
+
+			hasBlob, _, err = imgStore.CheckBlob(repoName, artifact.ConfigDescriptor.Digest)
+			So(err, ShouldNotBeNil)
+			So(hasBlob, ShouldEqual, false)
+
+			hasBlob, _, err = imgStore.CheckBlob(repoName, referrer.ConfigDescriptor.Digest)
+			So(err, ShouldNotBeNil)
+			So(hasBlob, ShouldEqual, false)
+		})
+	})
+}
+
 func TestGarbageCollectErrors(t *testing.T) {
 	Convey("Make image store", t, func(c C) {
 		dir := t.TempDir()
