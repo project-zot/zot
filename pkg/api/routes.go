@@ -8,6 +8,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -429,7 +430,7 @@ func (rh *RouteHandler) CheckManifest(response http.ResponseWriter, request *htt
 		return
 	}
 
-	content, digest, mediaType, err := getImageManifest(rh, imgStore, name, reference) //nolint:contextcheck
+	content, digest, mediaType, err := getImageManifest(request.Context(), rh, imgStore, name, reference)
 	if err != nil {
 		details := zerr.GetDetails(err)
 		details["reference"] = reference
@@ -499,7 +500,7 @@ func (rh *RouteHandler) GetManifest(response http.ResponseWriter, request *http.
 		return
 	}
 
-	content, digest, mediaType, err := getImageManifest(rh, imgStore, name, reference) //nolint: contextcheck
+	content, digest, mediaType, err := getImageManifest(request.Context(), rh, imgStore, name, reference)
 	if err != nil {
 		details := zerr.GetDetails(err)
 		if errors.Is(err, zerr.ErrRepoNotFound) { //nolint:gocritic // errorslint conflicts with gocritic:IfElseChain
@@ -541,7 +542,7 @@ type ImageIndex struct {
 	ispec.Index
 }
 
-func getReferrers(routeHandler *RouteHandler,
+func getReferrers(ctx context.Context, routeHandler *RouteHandler,
 	imgStore storageTypes.ImageStore, name string, digest godigest.Digest,
 	artifactTypes []string,
 ) (ispec.Index, error) {
@@ -551,7 +552,8 @@ func getReferrers(routeHandler *RouteHandler,
 			routeHandler.c.Log.Info().Str("repository", name).Str("reference", digest.String()).
 				Msg("referrers not found, trying to get reference by syncing on demand")
 
-			if errSync := routeHandler.c.SyncOnDemand.SyncReference(name, digest.String(), syncConstants.OCI); errSync != nil {
+			if errSync := routeHandler.c.SyncOnDemand.SyncReference(ctx, name, digest.String(),
+				syncConstants.OCI); errSync != nil {
 				routeHandler.c.Log.Err(errSync).Str("repository", name).Str("reference", digest.String()).
 					Msg("error encounter while syncing OCI reference for image")
 			}
@@ -605,7 +607,7 @@ func (rh *RouteHandler) GetReferrers(response http.ResponseWriter, request *http
 
 	imgStore := rh.getImageStore(name)
 
-	referrers, err := getReferrers(rh, imgStore, name, digest, artifactTypes)
+	referrers, err := getReferrers(request.Context(), rh, imgStore, name, digest, artifactTypes)
 	if err != nil {
 		if errors.Is(err, zerr.ErrManifestNotFound) || errors.Is(err, zerr.ErrRepoNotFound) {
 			rh.c.Log.Error().Err(err).Str("name", name).Str("digest", digest.String()).Msg("manifest not found")
@@ -1913,7 +1915,7 @@ func (rh *RouteHandler) getImageStore(name string) storageTypes.ImageStore {
 }
 
 // will sync on demand if an image is not found, in case sync extensions is enabled.
-func getImageManifest(routeHandler *RouteHandler, imgStore storageTypes.ImageStore, name,
+func getImageManifest(ctx context.Context, routeHandler *RouteHandler, imgStore storageTypes.ImageStore, name,
 	reference string,
 ) ([]byte, godigest.Digest, string, error) {
 	syncEnabled := isSyncOnDemandEnabled(*routeHandler.c)
@@ -1931,7 +1933,7 @@ func getImageManifest(routeHandler *RouteHandler, imgStore storageTypes.ImageSto
 		routeHandler.c.Log.Info().Str("repository", name).Str("reference", reference).
 			Msg("trying to get updated image by syncing on demand")
 
-		if errSync := routeHandler.c.SyncOnDemand.SyncImage(name, reference); errSync != nil {
+		if errSync := routeHandler.c.SyncOnDemand.SyncImage(ctx, name, reference); errSync != nil {
 			routeHandler.c.Log.Err(errSync).Str("repository", name).Str("reference", reference).
 				Msg("error encounter while syncing image")
 		}
@@ -1941,7 +1943,7 @@ func getImageManifest(routeHandler *RouteHandler, imgStore storageTypes.ImageSto
 }
 
 // will sync referrers on demand if they are not found, in case sync extensions is enabled.
-func getOrasReferrers(routeHandler *RouteHandler,
+func getOrasReferrers(ctx context.Context, routeHandler *RouteHandler,
 	imgStore storageTypes.ImageStore, name string, digest godigest.Digest,
 	artifactType string,
 ) ([]artifactspec.Descriptor, error) {
@@ -1951,7 +1953,8 @@ func getOrasReferrers(routeHandler *RouteHandler,
 			routeHandler.c.Log.Info().Str("repository", name).Str("reference", digest.String()).
 				Msg("artifact not found, trying to get artifact by syncing on demand")
 
-			if errSync := routeHandler.c.SyncOnDemand.SyncReference(name, digest.String(), syncConstants.Oras); errSync != nil {
+			if errSync := routeHandler.c.SyncOnDemand.SyncReference(ctx, name, digest.String(),
+				syncConstants.Oras); errSync != nil {
 				routeHandler.c.Log.Error().Err(err).Str("name", name).Str("digest", digest.String()).
 					Msg("unable to get references")
 			}
@@ -2017,7 +2020,7 @@ func (rh *RouteHandler) GetOrasReferrers(response http.ResponseWriter, request *
 
 	rh.c.Log.Info().Str("digest", digest.String()).Str("artifactType", artifactType).Msg("getting manifest")
 
-	refs, err := getOrasReferrers(rh, imgStore, name, digest, artifactType) //nolint:contextcheck
+	refs, err := getOrasReferrers(request.Context(), rh, imgStore, name, digest, artifactType) //nolint:contextcheck
 	if err != nil {
 		if errors.Is(err, zerr.ErrManifestNotFound) || errors.Is(err, zerr.ErrRepoNotFound) {
 			rh.c.Log.Error().Err(err).Str("name", name).Str("digest", digest.String()).Msg("manifest not found")

@@ -4,6 +4,7 @@
 package references
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -45,9 +46,9 @@ func (ref OciReferences) Name() string {
 	return constants.OCI
 }
 
-func (ref OciReferences) IsSigned(remoteRepo, subjectDigestStr string) bool {
+func (ref OciReferences) IsSigned(ctx context.Context, remoteRepo, subjectDigestStr string) bool {
 	// use artifactTypeFilter
-	index, err := ref.getIndex(remoteRepo, subjectDigestStr)
+	index, err := ref.getIndex(ctx, remoteRepo, subjectDigestStr)
 	if err != nil {
 		return false
 	}
@@ -92,10 +93,12 @@ func (ref OciReferences) canSkipReferences(localRepo, subjectDigestStr string, i
 	return true, nil
 }
 
-func (ref OciReferences) SyncReferences(localRepo, remoteRepo, subjectDigestStr string) ([]godigest.Digest, error) {
+func (ref OciReferences) SyncReferences(ctx context.Context, localRepo, remoteRepo, subjectDigestStr string) (
+	[]godigest.Digest, error,
+) {
 	refsDigests := make([]godigest.Digest, 0, 10)
 
-	index, err := ref.getIndex(remoteRepo, subjectDigestStr)
+	index, err := ref.getIndex(ctx, remoteRepo, subjectDigestStr)
 	if err != nil {
 		return refsDigests, err
 	}
@@ -122,7 +125,7 @@ func (ref OciReferences) SyncReferences(localRepo, remoteRepo, subjectDigestStr 
 		Msg("syncing oci references for image")
 
 	for _, referrer := range index.Manifests {
-		referenceBuf, referenceDigest, err := syncManifest(ref.client, imageStore, localRepo, remoteRepo,
+		referenceBuf, referenceDigest, err := syncManifest(ctx, ref.client, imageStore, localRepo, remoteRepo,
 			referrer, subjectDigestStr, ref.log)
 		if err != nil {
 			return refsDigests, err
@@ -168,10 +171,10 @@ func (ref OciReferences) SyncReferences(localRepo, remoteRepo, subjectDigestStr 
 	return refsDigests, nil
 }
 
-func (ref OciReferences) getIndex(repo, subjectDigestStr string) (ispec.Index, error) {
+func (ref OciReferences) getIndex(ctx context.Context, repo, subjectDigestStr string) (ispec.Index, error) {
 	var index ispec.Index
 
-	_, _, statusCode, err := ref.client.MakeGetRequest(&index, ispec.MediaTypeImageIndex,
+	_, _, statusCode, err := ref.client.MakeGetRequest(ctx, &index, ispec.MediaTypeImageIndex,
 		"v2", repo, "referrers", subjectDigestStr)
 	if err != nil {
 		if statusCode == http.StatusNotFound {
@@ -191,14 +194,14 @@ func (ref OciReferences) getIndex(repo, subjectDigestStr string) (ispec.Index, e
 	return index, nil
 }
 
-func syncManifest(client *client.Client, imageStore storageTypes.ImageStore, localRepo, remoteRepo string,
-	desc ispec.Descriptor, subjectDigestStr string, log log.Logger,
+func syncManifest(ctx context.Context, client *client.Client, imageStore storageTypes.ImageStore, localRepo,
+	remoteRepo string, desc ispec.Descriptor, subjectDigestStr string, log log.Logger,
 ) ([]byte, godigest.Digest, error) {
 	var manifest ispec.Manifest
 
 	var refDigest godigest.Digest
 
-	OCIRefBuf, _, statusCode, err := client.MakeGetRequest(&manifest, ispec.MediaTypeImageManifest,
+	OCIRefBuf, _, statusCode, err := client.MakeGetRequest(ctx, &manifest, ispec.MediaTypeImageManifest,
 		"v2", remoteRepo, "manifests", desc.Digest.String())
 	if err != nil {
 		if statusCode == http.StatusNotFound {
@@ -226,13 +229,13 @@ func syncManifest(client *client.Client, imageStore storageTypes.ImageStore, loc
 		}
 
 		for _, layer := range manifest.Layers {
-			if err := syncBlob(client, imageStore, localRepo, remoteRepo, layer.Digest, log); err != nil {
+			if err := syncBlob(ctx, client, imageStore, localRepo, remoteRepo, layer.Digest, log); err != nil {
 				return []byte{}, refDigest, err
 			}
 		}
 
 		// sync config blob
-		if err := syncBlob(client, imageStore, localRepo, remoteRepo, manifest.Config.Digest, log); err != nil {
+		if err := syncBlob(ctx, client, imageStore, localRepo, remoteRepo, manifest.Config.Digest, log); err != nil {
 			return []byte{}, refDigest, err
 		}
 	} else {

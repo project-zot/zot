@@ -43,7 +43,7 @@ type ScrubResults struct {
 	ScrubResults []ScrubImageResult `json:"scrubResults"`
 }
 
-func (sc StoreController) CheckAllBlobsIntegrity() (ScrubResults, error) {
+func (sc StoreController) CheckAllBlobsIntegrity(ctx context.Context) (ScrubResults, error) {
 	results := ScrubResults{}
 
 	imageStoreList := make(map[string]storageTypes.ImageStore)
@@ -54,7 +54,7 @@ func (sc StoreController) CheckAllBlobsIntegrity() (ScrubResults, error) {
 	imageStoreList[""] = sc.DefaultStore
 
 	for _, imgStore := range imageStoreList {
-		imgStoreResults, err := CheckImageStoreBlobsIntegrity(imgStore)
+		imgStoreResults, err := CheckImageStoreBlobsIntegrity(ctx, imgStore)
 		if err != nil {
 			return results, err
 		}
@@ -65,7 +65,7 @@ func (sc StoreController) CheckAllBlobsIntegrity() (ScrubResults, error) {
 	return results, nil
 }
 
-func CheckImageStoreBlobsIntegrity(imgStore storageTypes.ImageStore) ([]ScrubImageResult, error) {
+func CheckImageStoreBlobsIntegrity(ctx context.Context, imgStore storageTypes.ImageStore) ([]ScrubImageResult, error) {
 	results := []ScrubImageResult{}
 
 	repos, err := imgStore.GetRepositories()
@@ -74,7 +74,7 @@ func CheckImageStoreBlobsIntegrity(imgStore storageTypes.ImageStore) ([]ScrubIma
 	}
 
 	for _, repo := range repos {
-		imageResults, err := CheckRepo(repo, imgStore)
+		imageResults, err := CheckRepo(ctx, repo, imgStore)
 		if err != nil {
 			return results, err
 		}
@@ -85,20 +85,23 @@ func CheckImageStoreBlobsIntegrity(imgStore storageTypes.ImageStore) ([]ScrubIma
 	return results, nil
 }
 
-func CheckRepo(imageName string, imgStore storageTypes.ImageStore) ([]ScrubImageResult, error) {
+func CheckRepo(ctx context.Context, imageName string, imgStore storageTypes.ImageStore) ([]ScrubImageResult, error) {
 	results := []ScrubImageResult{}
+
+	if ctx.Err() != nil {
+		return results, ctx.Err()
+	}
 
 	dir := path.Join(imgStore.RootDir(), imageName)
 	if !imgStore.DirExists(dir) {
 		return results, errors.ErrRepoNotFound
 	}
 
-	ctxUmoci := context.Background()
-
 	oci, err := umoci.OpenLayout(dir)
 	if err != nil {
 		return results, err
 	}
+
 	defer oci.Close()
 
 	var lockLatency time.Time
@@ -146,7 +149,7 @@ func CheckRepo(imageName string, imgStore storageTypes.ImageStore) ([]ScrubImage
 
 	for _, m := range listOfManifests {
 		tag := m.Annotations[ispec.AnnotationRefName]
-		imageResult := CheckIntegrity(ctxUmoci, imageName, tag, oci, m, dir)
+		imageResult := CheckIntegrity(ctx, imageName, tag, oci, m, dir)
 		results = append(results, imageResult)
 	}
 
@@ -160,10 +163,10 @@ func CheckIntegrity(ctx context.Context, imageName, tagName string, oci casext.E
 	}
 
 	// check layers
-	return CheckLayers(imageName, tagName, dir, manifest)
+	return CheckLayers(ctx, imageName, tagName, dir, manifest)
 }
 
-func CheckLayers(imageName, tagName, dir string, manifest ispec.Descriptor) ScrubImageResult {
+func CheckLayers(ctx context.Context, imageName, tagName, dir string, manifest ispec.Descriptor) ScrubImageResult {
 	imageRes := ScrubImageResult{}
 
 	buf, err := os.ReadFile(path.Join(dir, "blobs", manifest.Digest.Algorithm().String(), manifest.Digest.Encoded()))

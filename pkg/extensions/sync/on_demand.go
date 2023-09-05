@@ -45,7 +45,7 @@ func (onDemand *BaseOnDemand) Add(service Service) {
 	onDemand.services = append(onDemand.services, service)
 }
 
-func (onDemand *BaseOnDemand) SyncImage(repo, reference string) error {
+func (onDemand *BaseOnDemand) SyncImage(ctx context.Context, repo, reference string) error {
 	req := request{
 		repo:      repo,
 		reference: reference,
@@ -73,7 +73,7 @@ func (onDemand *BaseOnDemand) SyncImage(repo, reference string) error {
 	defer onDemand.requestStore.Delete(req)
 	defer close(syncResult)
 
-	go onDemand.syncImage(repo, reference, syncResult)
+	go onDemand.syncImage(ctx, repo, reference, syncResult)
 
 	err, ok := <-syncResult
 	if !ok {
@@ -83,7 +83,9 @@ func (onDemand *BaseOnDemand) SyncImage(repo, reference string) error {
 	return err
 }
 
-func (onDemand *BaseOnDemand) SyncReference(repo string, subjectDigestStr string, referenceType string) error {
+func (onDemand *BaseOnDemand) SyncReference(ctx context.Context, repo string,
+	subjectDigestStr string, referenceType string,
+) error {
 	var err error
 
 	for _, service := range onDemand.services {
@@ -92,7 +94,7 @@ func (onDemand *BaseOnDemand) SyncReference(repo string, subjectDigestStr string
 			return err
 		}
 
-		err = service.SyncReference(repo, subjectDigestStr, referenceType)
+		err = service.SyncReference(ctx, repo, subjectDigestStr, referenceType)
 		if err != nil {
 			continue
 		} else {
@@ -103,7 +105,7 @@ func (onDemand *BaseOnDemand) SyncReference(repo string, subjectDigestStr string
 	return err
 }
 
-func (onDemand *BaseOnDemand) syncImage(repo, reference string, syncResult chan error) {
+func (onDemand *BaseOnDemand) syncImage(ctx context.Context, repo, reference string, syncResult chan error) {
 	var err error
 	for serviceID, service := range onDemand.services {
 		err = service.SetNextAvailableURL()
@@ -113,7 +115,7 @@ func (onDemand *BaseOnDemand) syncImage(repo, reference string, syncResult chan 
 			return
 		}
 
-		err = service.SyncImage(repo, reference)
+		err = service.SyncImage(ctx, repo, reference)
 		if err != nil {
 			if errors.Is(err, zerr.ErrManifestNotFound) ||
 				errors.Is(err, zerr.ErrSyncImageFilteredOut) ||
@@ -150,8 +152,9 @@ func (onDemand *BaseOnDemand) syncImage(repo, reference string, syncResult chan 
 
 					time.Sleep(retryOptions.Delay)
 
+					// retrying in background, can't use the same context which should be cancelled by now.
 					if err = retry.RetryIfNecessary(context.Background(), func() error {
-						err := service.SyncImage(repo, reference)
+						err := service.SyncImage(context.Background(), repo, reference)
 
 						return err
 					}, retryOptions); err != nil {

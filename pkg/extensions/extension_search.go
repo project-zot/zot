@@ -4,6 +4,7 @@
 package extensions
 
 import (
+	"context"
 	"net/http"
 	"sync"
 	"time"
@@ -132,7 +133,7 @@ func newTrivyTask(interval time.Duration, cveInfo cveinfo.CveInfo,
 	return &trivyTask{interval, cveInfo, generator, log}
 }
 
-func (trivyT *trivyTask) DoWork() error {
+func (trivyT *trivyTask) DoWork(ctx context.Context) error {
 	trivyT.log.Info().Msg("updating the CVE database")
 
 	err := trivyT.cveInfo.UpdateDB()

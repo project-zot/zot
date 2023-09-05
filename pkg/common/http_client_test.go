@@ -1,6 +1,7 @@
 package common_test
 
 import (
+	"context"
 	"crypto/x509"
 	"os"
 	"path"
@@ -75,7 +76,7 @@ func TestHTTPClient(t *testing.T) {
 		var resultPtr interface{}
 		httpClient, err := common.CreateHTTPClient(true, "localhost", tempDir)
 		So(err, ShouldBeNil)
-		_, _, _, err = common.MakeHTTPGetRequest(httpClient, "", "",
+		_, _, _, err = common.MakeHTTPGetRequest(context.Background(), httpClient, "", "",
 			resultPtr, baseURL+"/v2/", ispec.MediaTypeImageManifest, log.NewLogger("", ""))
 		So(err, ShouldBeNil)
 	})

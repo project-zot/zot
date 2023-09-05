@@ -1,6 +1,7 @@
 package client
 
 import (
+	"context"
 	"net/http"
 	"net/url"
 	"sync"
@@ -71,7 +72,7 @@ func (httpClient *Client) SetConfig(config Config) error {
 }
 
 func (httpClient *Client) IsAvailable() bool {
-	_, _, statusCode, err := httpClient.MakeGetRequest(nil, "", "/v2/")
+	_, _, statusCode, err := httpClient.MakeGetRequest(context.Background(), nil, "", "/v2/")
 	if err != nil || statusCode != http.StatusOK {
 		return false
 	}
@@ -79,7 +80,7 @@ func (httpClient *Client) IsAvailable() bool {
 	return true
 }
 
-func (httpClient *Client) MakeGetRequest(resultPtr interface{}, mediaType string,
+func (httpClient *Client) MakeGetRequest(ctx context.Context, resultPtr interface{}, mediaType string,
 	route ...string,
 ) ([]byte, string, int, error) {
 	httpClient.lock.RLock()
@@ -93,7 +94,7 @@ func (httpClient *Client) MakeGetRequest(resultPtr interface{}, mediaType string
 
 	url.RawQuery = url.Query().Encode()
 
-	body, mediaType, statusCode, err := common.MakeHTTPGetRequest(httpClient.client, httpClient.config.Username,
+	body, mediaType, statusCode, err := common.MakeHTTPGetRequest(ctx, httpClient.client, httpClient.config.Username,
 		httpClient.config.Password, resultPtr,
 		url.String(), mediaType, httpClient.log)
 

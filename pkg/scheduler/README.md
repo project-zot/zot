@@ -6,7 +6,7 @@ In order to create a new generator (which will generate new tasks one by one) an
     ```
     This method should implement the logic for generating a new task. 
     Basically, when this method is called by the scheduler it should return the next task until there are no more tasks to be generated.
-    Also, the Task returned by this method should implement DoWork() method which should contain the logic that should be executed when this task is run by the scheduler.
+    Also, the Task returned by this method should implement DoWork(ctx context.Context) method which should contain the logic that should be executed when this task is run by the scheduler.
     ```
 2. ***IsDone() bool***
     ```
@@ -35,7 +35,7 @@ Notes:
 
 # How to submit a Task to the scheduler
 
-In order to create a new task and add it to the scheduler ***DoWork() error*** is the method that should be implemented. This should contain the logic that should be executed when this task is run by the scheduler.
+In order to create a new task and add it to the scheduler ***DoWork(ctx context.Context) error*** is the method that should be implemented. This should contain the logic that should be executed when this task is run by the scheduler.
 
 To submit a task to the scheduler ***SubmitTask*** should be called with the implemented task and the priority of the task as parameters.
 

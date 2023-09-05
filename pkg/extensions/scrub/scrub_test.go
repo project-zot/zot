@@ -4,6 +4,7 @@
 package scrub_test
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path"
@@ -207,7 +208,7 @@ func TestRunScrubRepo(t *testing.T) {
 		err = test.WriteImageToFileSystem(image, repoName, "0.0.1", srcStorageCtlr)
 		So(err, ShouldBeNil)
 
-		err = scrub.RunScrubRepo(imgStore, repoName, log)
+		err = scrub.RunScrubRepo(context.Background(), imgStore, repoName, log)
 		So(err, ShouldBeNil)
 
 		data, err := os.ReadFile(logFile.Name())
@@ -250,7 +251,7 @@ func TestRunScrubRepo(t *testing.T) {
 			panic(err)
 		}
 
-		err = scrub.RunScrubRepo(imgStore, repoName, log)
+		err = scrub.RunScrubRepo(context.Background(), imgStore, repoName, log)
 		So(err, ShouldBeNil)
 
 		data, err := os.ReadFile(logFile.Name())
@@ -288,7 +289,7 @@ func TestRunScrubRepo(t *testing.T) {
 
 		So(os.Chmod(path.Join(dir, repoName), 0o000), ShouldBeNil)
 
-		err = scrub.RunScrubRepo(imgStore, repoName, log)
+		err = scrub.RunScrubRepo(context.Background(), imgStore, repoName, log)
 		So(err, ShouldNotBeNil)
 
 		data, err := os.ReadFile(logFile.Name())

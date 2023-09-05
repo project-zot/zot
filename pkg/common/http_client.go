@@ -1,6 +1,7 @@
 package common
 
 import (
+	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
@@ -112,10 +113,11 @@ func CreateHTTPClient(verifyTLS bool, host string, certDir string) (*http.Client
 	}, nil
 }
 
-func MakeHTTPGetRequest(httpClient *http.Client, username string, password string, resultPtr interface{},
+func MakeHTTPGetRequest(ctx context.Context, httpClient *http.Client,
+	username string, password string, resultPtr interface{},
 	blobURL string, mediaType string, log log.Logger,
 ) ([]byte, string, int, error) {
-	req, err := http.NewRequest(http.MethodGet, blobURL, nil) //nolint
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, blobURL, nil) //nolint
 	if err != nil {
 		return nil, "", 0, err
 	}

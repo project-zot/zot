@@ -4,6 +4,7 @@
 package references
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net/http"
@@ -45,9 +46,9 @@ func (ref CosignReference) Name() string {
 	return constants.Cosign
 }
 
-func (ref CosignReference) IsSigned(upstreamRepo, subjectDigestStr string) bool {
+func (ref CosignReference) IsSigned(ctx context.Context, upstreamRepo, subjectDigestStr string) bool {
 	cosignSignatureTag := getCosignSignatureTagFromSubjectDigest(subjectDigestStr)
-	_, _, err := ref.getManifest(upstreamRepo, cosignSignatureTag)
+	_, _, err := ref.getManifest(ctx, upstreamRepo, cosignSignatureTag)
 
 	return err == nil
 }
@@ -85,13 +86,15 @@ func (ref CosignReference) canSkipReferences(localRepo, digest string, manifest 
 	return true, nil
 }
 
-func (ref CosignReference) SyncReferences(localRepo, remoteRepo, subjectDigestStr string) ([]godigest.Digest, error) {
+func (ref CosignReference) SyncReferences(ctx context.Context, localRepo, remoteRepo, subjectDigestStr string) (
+	[]godigest.Digest, error,
+) {
 	cosignTags := getCosignTagsFromSubjectDigest(subjectDigestStr)
 
 	refsDigests := make([]godigest.Digest, 0, len(cosignTags))
 
 	for _, cosignTag := range cosignTags {
-		manifest, manifestBuf, err := ref.getManifest(remoteRepo, cosignTag)
+		manifest, manifestBuf, err := ref.getManifest(ctx, remoteRepo, cosignTag)
 		if err != nil {
 			if errors.Is(err, zerr.ErrSyncReferrerNotFound) {
 				continue
@@ -120,13 +123,13 @@ func (ref CosignReference) SyncReferences(localRepo, remoteRepo, subjectDigestSt
 			Msg("syncing cosign reference for image")
 
 		for _, blob := range manifest.Layers {
-			if err := syncBlob(ref.client, imageStore, localRepo, remoteRepo, blob.Digest, ref.log); err != nil {
+			if err := syncBlob(ctx, ref.client, imageStore, localRepo, remoteRepo, blob.Digest, ref.log); err != nil {
 				return refsDigests, err
 			}
 		}
 
 		// sync config blob
-		if err := syncBlob(ref.client, imageStore, localRepo, remoteRepo, manifest.Config.Digest, ref.log); err != nil {
+		if err := syncBlob(ctx, ref.client, imageStore, localRepo, remoteRepo, manifest.Config.Digest, ref.log); err != nil {
 			return refsDigests, err
 		}
 
@@ -181,10 +184,10 @@ func (ref CosignReference) SyncReferences(localRepo, remoteRepo, subjectDigestSt
 	return refsDigests, nil
 }
 
-func (ref CosignReference) getManifest(repo, cosignTag string) (*ispec.Manifest, []byte, error) {
+func (ref CosignReference) getManifest(ctx context.Context, repo, cosignTag string) (*ispec.Manifest, []byte, error) {
 	var cosignManifest ispec.Manifest
 
-	body, _, statusCode, err := ref.client.MakeGetRequest(&cosignManifest, ispec.MediaTypeImageManifest,
+	body, _, statusCode, err := ref.client.MakeGetRequest(ctx, &cosignManifest, ispec.MediaTypeImageManifest,
 		"v2", repo, "manifests", cosignTag)
 	if err != nil {
 		if statusCode == http.StatusNotFound {

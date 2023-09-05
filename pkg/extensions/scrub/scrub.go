@@ -4,6 +4,7 @@
 package scrub
 
 import (
+	"context"
 	"fmt"
 	"path"
 
@@ -13,11 +14,11 @@ import (
 )
 
 // Scrub Extension for repo...
-func RunScrubRepo(imgStore storageTypes.ImageStore, repo string, log log.Logger) error {
+func RunScrubRepo(ctx context.Context, imgStore storageTypes.ImageStore, repo string, log log.Logger) error {
 	execMsg := fmt.Sprintf("executing scrub to check manifest/blob integrity for %s", path.Join(imgStore.RootDir(), repo))
 	log.Info().Msg(execMsg)
 
-	results, err := storage.CheckRepo(repo, imgStore)
+	results, err := storage.CheckRepo(ctx, repo, imgStore)
 	if err != nil {
 		errMessage := fmt.Sprintf("error while running scrub for %s", path.Join(imgStore.RootDir(), repo))
 		log.Error().Err(err).Msg(errMessage)
@@ -58,6 +59,6 @@ func NewTask(imgStore storageTypes.ImageStore, repo string, log log.Logger) *Tas
 	return &Task{imgStore, repo, log}
 }
 
-func (scrubT *Task) DoWork() error {
-	return RunScrubRepo(scrubT.imgStore, scrubT.repo, scrubT.log)
+func (scrubT *Task) DoWork(ctx context.Context) error {
+	return RunScrubRepo(ctx, scrubT.imgStore, scrubT.repo, scrubT.log) //nolint: contextcheck
 }

@@ -49,7 +49,7 @@ func (registry *RemoteRegistry) GetContext() *types.SystemContext {
 func (registry *RemoteRegistry) GetRepositories(ctx context.Context) ([]string, error) {
 	var catalog catalog
 
-	_, _, _, err := registry.client.MakeGetRequest(&catalog, "application/json", //nolint: dogsled
+	_, _, _, err := registry.client.MakeGetRequest(ctx, &catalog, "application/json", //nolint: dogsled
 		constants.RoutePrefix, constants.ExtCatalogPrefix)
 	if err != nil {
 		return []string{}, err
