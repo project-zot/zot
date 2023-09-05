@@ -98,7 +98,7 @@ func TestTLSWithAuth(t *testing.T) {
 			imageCmd.SetArgs(args)
 			err = imageCmd.Execute()
 			So(err, ShouldNotBeNil)
-			So(imageBuff.String(), ShouldContainSubstring, "invalid URL format")
+			So(imageBuff.String(), ShouldContainSubstring, "scheme not provided")
 
 			args = []string{"list", "--config", "imagetest"}
 			configPath = makeConfigFile(

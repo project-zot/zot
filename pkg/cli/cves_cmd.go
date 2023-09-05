@@ -14,6 +14,7 @@ func NewCVECommand(searchService SearchService) *cobra.Command {
 		Use:   "cve [command]",
 		Short: "Lookup CVEs in images hosted on the zot registry",
 		Long:  `List CVEs (Common Vulnerabilities and Exposures) of images hosted on the zot registry`,
+		RunE:  ShowSuggestionsIfUnknownCommand,
 	}
 
 	cvesCmd.SetUsageTemplate(cvesCmd.UsageTemplate() + usageFooter)

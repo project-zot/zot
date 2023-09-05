@@ -19,7 +19,10 @@ const (
 )
 
 func NewCveForImageCommand(searchService SearchService) *cobra.Command {
-	var searchedCVEID string
+	var (
+		searchedCVEID   string
+		cveListSortFlag = cmdflags.CVEListSortFlag(cmdflags.SortBySeverity)
+	)
 
 	cveForImageCmd := &cobra.Command{
 		Use:   "list [repo:tag]|[repo@digest]",
@@ -44,12 +47,17 @@ func NewCveForImageCommand(searchService SearchService) *cobra.Command {
 	}
 
 	cveForImageCmd.Flags().StringVar(&searchedCVEID, cmdflags.SearchedCVEID, "", "Search for a specific CVE by name/id")
+	cveForImageCmd.Flags().Var(&cveListSortFlag, cmdflags.SortByFlag,
+		fmt.Sprintf("Options for sorting the output: [%s]", cmdflags.CVEListSortOptionsStr()))
 
 	return cveForImageCmd
 }
 
 func NewImagesByCVEIDCommand(searchService SearchService) *cobra.Command {
-	var repo string
+	var (
+		repo              string
+		imageListSortFlag = cmdflags.ImageListSortFlag(cmdflags.SortByAlphabeticAsc)
+	)
 
 	imagesByCVEIDCmd := &cobra.Command{
 		Use:   "affected [cveId]",
@@ -84,15 +92,19 @@ func NewImagesByCVEIDCommand(searchService SearchService) *cobra.Command {
 	}
 
 	imagesByCVEIDCmd.Flags().StringVar(&repo, "repo", "", "Search for a specific CVE by name/id")
+	imagesByCVEIDCmd.Flags().Var(&imageListSortFlag, cmdflags.SortByFlag,
+		fmt.Sprintf("Options for sorting the output: [%s]", cmdflags.ImageListSortOptionsStr()))
 
 	return imagesByCVEIDCmd
 }
 
 func NewFixedTagsCommand(searchService SearchService) *cobra.Command {
+	imageListSortFlag := cmdflags.ImageListSortFlag(cmdflags.SortByAlphabeticAsc)
+
 	fixedTagsCmd := &cobra.Command{
 		Use:   "fixed [repo] [cveId]",
-		Short: "List tags where a CVE is fixedRetryWithContext",
-		Long:  `List tags where a CVE is fixedRetryWithContext`,
+		Short: "List tags where a CVE is fixed",
+		Long:  `List tags where a CVE is fixed`,
 		Args: func(cmd *cobra.Command, args []string) error {
 			const argCount = 2
 
@@ -123,6 +135,9 @@ func NewFixedTagsCommand(searchService SearchService) *cobra.Command {
 			return SearchFixedTagsGQL(searchConfig, repo, searchedCVEID)
 		},
 	}
+
+	fixedTagsCmd.Flags().Var(&imageListSortFlag, cmdflags.SortByFlag,
+		fmt.Sprintf("Options for sorting the output: [%s]", cmdflags.ImageListSortOptionsStr()))
 
 	return fixedTagsCmd
 }

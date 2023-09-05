@@ -149,11 +149,22 @@ func doHTTPRequest(req *http.Request, verifyTLS bool, debug bool,
 	return resp.Header, nil
 }
 
-func isURL(str string) bool {
-	u, err := url.Parse(str)
+func validateURL(str string) error {
+	parsedURL, err := url.Parse(str)
+	if err != nil {
+		if strings.Contains(err.Error(), "first path segment in URL cannot contain colon") {
+			return fmt.Errorf("%w: scheme not provided (ex: https://)", zerr.ErrInvalidURL)
+		}
 
-	return err == nil && u.Scheme != "" && u.Host != ""
-} // from https://stackoverflow.com/a/55551215
+		return err
+	}
+
+	if parsedURL.Scheme == "" || parsedURL.Host == "" {
+		return fmt.Errorf("%w: scheme not provided (ex: https://)", zerr.ErrInvalidURL)
+	}
+
+	return nil
+}
 
 type requestsPool struct {
 	jobs     chan *httpJob

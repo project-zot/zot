@@ -910,6 +910,159 @@ func TestServerCVEResponse(t *testing.T) {
 	})
 }
 
+func TestCVESort(t *testing.T) {
+	rootDir := t.TempDir()
+	port := test.GetFreePort()
+	baseURL := test.GetBaseURL(port)
+	conf := config.New()
+	conf.HTTP.Port = port
+
+	defaultVal := true
+	conf.Extensions = &extconf.ExtensionConfig{
+		Search: &extconf.SearchConfig{
+			BaseConfig: extconf.BaseConfig{Enable: &defaultVal},
+			CVE: &extconf.CVEConfig{
+				UpdateInterval: 2,
+				Trivy: &extconf.TrivyConfig{
+					DBRepository: "ghcr.io/project-zot/trivy-db",
+				},
+			},
+		},
+	}
+	ctlr := api.NewController(conf)
+	ctlr.Config.Storage.RootDirectory = rootDir
+
+	image1 := test.CreateRandomImage()
+
+	storeController := test.GetDefaultStoreController(rootDir, ctlr.Log)
+
+	err := test.WriteImageToFileSystem(image1, "repo", "tag", storeController)
+	if err != nil {
+		t.FailNow()
+	}
+
+	ctx := context.Background()
+
+	if err := ctlr.Init(ctx); err != nil {
+		panic(err)
+	}
+
+	severities := map[string]int{
+		"UNKNOWN":  0,
+		"LOW":      1,
+		"MEDIUM":   2,
+		"HIGH":     3,
+		"CRITICAL": 4,
+	}
+
+	ctlr.CveInfo = cveinfo.BaseCveInfo{
+		Log:    ctlr.Log,
+		MetaDB: mocks.MetaDBMock{},
+		Scanner: mocks.CveScannerMock{
+			CompareSeveritiesFn: func(severity1, severity2 string) int {
+				return severities[severity2] - severities[severity1]
+			},
+			ScanImageFn: func(image string) (map[string]cvemodel.CVE, error) {
+				return map[string]cvemodel.CVE{
+					"CVE-2023-1255": {
+						ID:       "CVE-2023-1255",
+						Severity: "LOW",
+						Title:    "Input buffer over-read in AES-XTS implementation and testing",
+					},
+					"CVE-2023-2650": {
+						ID:       "CVE-2023-2650",
+						Severity: "MEDIUM",
+						Title:    "Possible DoS translating ASN.1 object identifier and executer",
+					},
+					"CVE-2023-2975": {
+						ID:       "CVE-2023-2975",
+						Severity: "HIGH",
+						Title:    "AES-SIV cipher implementation contains a bug that can break",
+					},
+					"CVE-2023-3446": {
+						ID:       "CVE-2023-3446",
+						Severity: "CRITICAL",
+						Title:    "Excessive time spent checking DH keys and parenthesis",
+					},
+					"CVE-2023-3817": {
+						ID:       "CVE-2023-3817",
+						Severity: "MEDIUM",
+						Title:    "Excessive time spent checking DH q parameter and arguments",
+					},
+				}, nil
+			},
+		},
+	}
+
+	go func() {
+		if err := ctlr.Run(ctx); !errors.Is(err, http.ErrServerClosed) {
+			panic(err)
+		}
+	}()
+
+	defer ctlr.Shutdown()
+
+	test.WaitTillServerReady(baseURL)
+
+	space := regexp.MustCompile(`\s+`)
+
+	Convey("test sorting", t, func() {
+		args := []string{"list", "repo:tag", "--sort-by", "severity", "--url", baseURL}
+		cmd := NewCVECommand(new(searchService))
+		buff := bytes.NewBufferString("")
+		cmd.SetOut(buff)
+		cmd.SetErr(buff)
+		cmd.SetArgs(args)
+		err := cmd.Execute()
+		So(err, ShouldBeNil)
+		str := space.ReplaceAllString(buff.String(), " ")
+		actual := strings.TrimSpace(str)
+		So(actual, ShouldResemble,
+			"ID SEVERITY TITLE "+
+				"CVE-2023-3446 CRITICAL Excessive time spent checking DH keys and par... "+
+				"CVE-2023-2975 HIGH AES-SIV cipher implementation contains a bug ... "+
+				"CVE-2023-2650 MEDIUM Possible DoS translating ASN.1 object identif... "+
+				"CVE-2023-3817 MEDIUM Excessive time spent checking DH q parameter ... "+
+				"CVE-2023-1255 LOW Input buffer over-read in AES-XTS implementat...")
+
+		args = []string{"list", "repo:tag", "--sort-by", "alpha-asc", "--url", baseURL}
+		cmd = NewCVECommand(new(searchService))
+		buff = bytes.NewBufferString("")
+		cmd.SetOut(buff)
+		cmd.SetErr(buff)
+		cmd.SetArgs(args)
+		err = cmd.Execute()
+		So(err, ShouldBeNil)
+		str = space.ReplaceAllString(buff.String(), " ")
+		actual = strings.TrimSpace(str)
+		So(actual, ShouldResemble,
+			"ID SEVERITY TITLE "+
+				"CVE-2023-1255 LOW Input buffer over-read in AES-XTS implementat... "+
+				"CVE-2023-2650 MEDIUM Possible DoS translating ASN.1 object identif... "+
+				"CVE-2023-2975 HIGH AES-SIV cipher implementation contains a bug ... "+
+				"CVE-2023-3446 CRITICAL Excessive time spent checking DH keys and par... "+
+				"CVE-2023-3817 MEDIUM Excessive time spent checking DH q parameter ...")
+
+		args = []string{"list", "repo:tag", "--sort-by", "alpha-dsc", "--url", baseURL}
+		cmd = NewCVECommand(new(searchService))
+		buff = bytes.NewBufferString("")
+		cmd.SetOut(buff)
+		cmd.SetErr(buff)
+		cmd.SetArgs(args)
+		err = cmd.Execute()
+		So(err, ShouldBeNil)
+		str = space.ReplaceAllString(buff.String(), " ")
+		actual = strings.TrimSpace(str)
+		So(actual, ShouldResemble,
+			"ID SEVERITY TITLE "+
+				"CVE-2023-3817 MEDIUM Excessive time spent checking DH q parameter ... "+
+				"CVE-2023-3446 CRITICAL Excessive time spent checking DH keys and par... "+
+				"CVE-2023-2975 HIGH AES-SIV cipher implementation contains a bug ... "+
+				"CVE-2023-2650 MEDIUM Possible DoS translating ASN.1 object identif... "+
+				"CVE-2023-1255 LOW Input buffer over-read in AES-XTS implementat...")
+	})
+}
+
 func TestCVECommandGQL(t *testing.T) {
 	port := test.GetFreePort()
 	baseURL := test.GetBaseURL(port)

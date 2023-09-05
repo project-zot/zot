@@ -131,7 +131,7 @@ func TestSearchImageCmd(t *testing.T) {
 		cmd.SetArgs(args)
 		err := cmd.Execute()
 		So(err, ShouldNotBeNil)
-		So(err, ShouldEqual, zerr.ErrInvalidURL)
+		So(strings.Contains(err.Error(), zerr.ErrInvalidURL.Error()), ShouldBeTrue)
 		So(buff.String(), ShouldContainSubstring, "invalid URL format")
 	})
 
@@ -1354,6 +1354,80 @@ func runDisplayIndexTests(baseURL string) {
 		So(actual, ShouldContainSubstring, "a00291e8 4B")
 		So(actual, ShouldContainSubstring, "windows/arm64/v6 5e09b7f9 5132a1cd false 506B")
 		So(actual, ShouldContainSubstring, "7d08ce29 4B")
+	})
+}
+
+func TestImagesSortFlag(t *testing.T) {
+	rootDir := t.TempDir()
+	port := test.GetFreePort()
+	baseURL := test.GetBaseURL(port)
+	conf := config.New()
+	conf.HTTP.Port = port
+
+	defaultVal := true
+	conf.Extensions = &extconf.ExtensionConfig{
+		Search: &extconf.SearchConfig{
+			BaseConfig: extconf.BaseConfig{Enable: &defaultVal},
+			CVE:        nil,
+		},
+	}
+	ctlr := api.NewController(conf)
+	ctlr.Config.Storage.RootDirectory = rootDir
+
+	image1 := test.CreateImageWith().DefaultLayers().
+		ImageConfig(ispec.Image{Created: test.DateRef(2010, 1, 1, 1, 1, 1, 0, time.UTC)}).Build()
+
+	image2 := test.CreateImageWith().DefaultLayers().
+		ImageConfig(ispec.Image{Created: test.DateRef(2020, 1, 1, 1, 1, 1, 0, time.UTC)}).Build()
+
+	storeController := test.GetDefaultStoreController(rootDir, ctlr.Log)
+
+	err := test.WriteImageToFileSystem(image1, "a-repo", "tag1", storeController)
+	if err != nil {
+		t.FailNow()
+	}
+
+	err = test.WriteImageToFileSystem(image2, "b-repo", "tag2", storeController)
+	if err != nil {
+		t.FailNow()
+	}
+
+	cm := test.NewControllerManager(ctlr)
+	cm.StartAndWait(conf.HTTP.Port)
+
+	defer cm.StopServer()
+
+	Convey("Sorting", t, func() {
+		args := []string{"list", "--sort-by", "alpha-asc", "--url", baseURL}
+		cmd := NewImageCommand(new(searchService))
+		buff := bytes.NewBufferString("")
+		cmd.SetOut(buff)
+		cmd.SetErr(buff)
+		cmd.SetArgs(args)
+		err := cmd.Execute()
+		So(err, ShouldBeNil)
+		str := buff.String()
+		So(strings.Index(str, "a-repo"), ShouldBeLessThan, strings.Index(str, "b-repo"))
+
+		args = []string{"list", "--sort-by", "alpha-dsc", "--url", baseURL}
+		buff = bytes.NewBufferString("")
+		cmd.SetOut(buff)
+		cmd.SetErr(buff)
+		cmd.SetArgs(args)
+		err = cmd.Execute()
+		So(err, ShouldBeNil)
+		str = buff.String()
+		So(strings.Index(str, "b-repo"), ShouldBeLessThan, strings.Index(str, "a-repo"))
+
+		args = []string{"list", "--sort-by", "update-time", "--url", baseURL}
+		buff = bytes.NewBufferString("")
+		cmd.SetOut(buff)
+		cmd.SetErr(buff)
+		cmd.SetArgs(args)
+		err = cmd.Execute()
+		str = buff.String()
+		So(err, ShouldBeNil)
+		So(strings.Index(str, "b-repo"), ShouldBeLessThan, strings.Index(str, "a-repo"))
 	})
 }
 
@@ -2620,6 +2694,7 @@ func getTestSearchConfig(url string, searchService SearchService) searchConfig {
 
 	return searchConfig{
 		searchService: searchService,
+		sortBy:        "alpha-asc",
 		servURL:       url,
 		user:          user,
 		outputFormat:  outputFormat,

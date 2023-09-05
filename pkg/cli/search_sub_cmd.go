@@ -9,11 +9,14 @@ import (
 	"github.com/spf13/cobra"
 
 	zerr "zotregistry.io/zot/errors"
+	"zotregistry.io/zot/pkg/cli/cmdflags"
 	zcommon "zotregistry.io/zot/pkg/common"
 )
 
 func NewSearchSubjectCommand(searchService SearchService) *cobra.Command {
-	imageCmd := &cobra.Command{
+	imageListSortFlag := cmdflags.ImageListSortFlag(cmdflags.SortByAlphabeticAsc)
+
+	cmd := &cobra.Command{
 		Use:   "subject [repo:tag]|[repo@digest]",
 		Short: "List all referrers for this subject.",
 		Long: `List all referrers for this subject. The subject can be specified by tag(repo:tag) or by digest" +
@@ -36,22 +39,24 @@ func NewSearchSubjectCommand(searchService SearchService) *cobra.Command {
 		},
 	}
 
-	return imageCmd
+	cmd.Flags().Var(&imageListSortFlag, cmdflags.SortByFlag,
+		fmt.Sprintf("Options for sorting the output: [%s]", cmdflags.ImageListSortOptionsStr()))
+
+	return cmd
 }
 
 func NewSearchQueryCommand(searchService SearchService) *cobra.Command {
-	imageCmd := &cobra.Command{
-		Use:   "query",
+	imageSearchSortFlag := cmdflags.ImageSearchSortFlag(cmdflags.SortByRelevance)
+
+	cmd := &cobra.Command{
+		Use:   "query [repo]|[repo:tag]",
 		Short: "Fuzzy search for repos and their tags.",
 		Long:  "Fuzzy search for repos and their tags.",
 		Example: `# For repo search specify a substring of the repo name without the tag
   zli search query "test/repo"
 	  
 # For image search specify the full repo name followed by the tag or a prefix of the tag.
-  zli search query "test/repo:2.1."
-
-# To search all tags in all repos.
-  zli search query ":"`,
+  zli search query "test/repo:2.1."`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			searchConfig, err := GetSearchConfigFromFlags(cmd, searchService)
@@ -70,14 +75,17 @@ func NewSearchQueryCommand(searchService SearchService) *cobra.Command {
 			}
 
 			if err := CheckExtEndPointQuery(searchConfig, GlobalSearchQuery()); err != nil {
-				return fmt.Errorf("%w: '%s'", err, CVEListForImageQuery().Name)
+				return fmt.Errorf("%w: '%s'", err, GlobalSearchQuery().Name)
 			}
 
 			return GlobalSearchGQL(searchConfig, args[0])
 		},
 	}
 
-	return imageCmd
+	cmd.Flags().Var(&imageSearchSortFlag, cmdflags.SortByFlag,
+		fmt.Sprintf("Options for sorting the output: [%s]", cmdflags.ImageSearchSortOptionsStr()))
+
+	return cmd
 }
 
 func OneImageWithRefArg(cmd *cobra.Command, args []string) error {

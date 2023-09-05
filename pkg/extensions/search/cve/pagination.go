@@ -37,6 +37,10 @@ func SortByAlphabeticDsc(pageBuffer []cvemodel.CVE, cveInfo CveInfo) func(i, j i
 
 func SortBySeverity(pageBuffer []cvemodel.CVE, cveInfo CveInfo) func(i, j int) bool {
 	return func(i, j int) bool {
+		if cveInfo.CompareSeverities(pageBuffer[i].Severity, pageBuffer[j].Severity) == 0 {
+			return pageBuffer[i].ID < pageBuffer[j].ID
+		}
+
 		return cveInfo.CompareSeverities(pageBuffer[i].Severity, pageBuffer[j].Severity) < 0
 	}
 }

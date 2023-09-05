@@ -10,6 +10,7 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+	"time"
 
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	. "github.com/smartystreets/goconvey/convey"
@@ -860,5 +861,72 @@ func TestSearchCommandREST(t *testing.T) {
 			So(actual, ShouldContainSubstring,
 				"art.type 100 B sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a")
 		})
+	})
+}
+
+func TestSearchSort(t *testing.T) {
+	rootDir := t.TempDir()
+	port := test.GetFreePort()
+	baseURL := test.GetBaseURL(port)
+	conf := config.New()
+	conf.HTTP.Port = port
+
+	defaultVal := true
+	conf.Extensions = &extconf.ExtensionConfig{
+		Search: &extconf.SearchConfig{
+			BaseConfig: extconf.BaseConfig{Enable: &defaultVal},
+			CVE:        nil,
+		},
+	}
+	ctlr := api.NewController(conf)
+	ctlr.Config.Storage.RootDirectory = rootDir
+
+	image1 := test.CreateImageWith().DefaultLayers().
+		ImageConfig(ispec.Image{Created: test.DateRef(2010, 1, 1, 1, 1, 1, 0, time.UTC)}).
+		Build()
+
+	image2 := test.CreateImageWith().DefaultLayers().
+		ImageConfig(ispec.Image{Created: test.DateRef(2020, 1, 1, 1, 1, 1, 0, time.UTC)}).
+		Build()
+
+	storeController := test.GetDefaultStoreController(rootDir, ctlr.Log)
+
+	err := test.WriteImageToFileSystem(image1, "b-repo", "tag2", storeController)
+	if err != nil {
+		t.FailNow()
+	}
+
+	err = test.WriteImageToFileSystem(image2, "a-test-repo", "tag2", storeController)
+	if err != nil {
+		t.FailNow()
+	}
+
+	cm := test.NewControllerManager(ctlr)
+	cm.StartAndWait(conf.HTTP.Port)
+
+	defer cm.StopServer()
+
+	Convey("test sorting", t, func() {
+		args := []string{"query", "repo", "--sort-by", "relevance", "--url", baseURL}
+		cmd := NewSearchCommand(new(searchService))
+		buff := bytes.NewBufferString("")
+		cmd.SetOut(buff)
+		cmd.SetErr(buff)
+		cmd.SetArgs(args)
+		err := cmd.Execute()
+		So(err, ShouldBeNil)
+		str := buff.String()
+		So(strings.Index(str, "b-repo"), ShouldBeLessThan, strings.Index(str, "a-test-repo"))
+
+		args = []string{"query", "repo", "--sort-by", "alpha-asc", "--url", baseURL}
+		cmd = NewSearchCommand(new(searchService))
+		buff = bytes.NewBufferString("")
+		cmd.SetOut(buff)
+		cmd.SetErr(buff)
+		cmd.SetArgs(args)
+		err = cmd.Execute()
+		So(err, ShouldBeNil)
+		str = buff.String()
+		So(strings.Index(str, "a-test-repo"), ShouldBeLessThan, strings.Index(str, "b-repo"))
 	})
 }

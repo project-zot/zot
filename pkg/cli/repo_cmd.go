@@ -16,6 +16,7 @@ func NewRepoCommand(searchService SearchService) *cobra.Command {
 		Use:   "repo [config-name]",
 		Short: "List all repositories",
 		Long:  `List all repositories`,
+		RunE:  ShowSuggestionsIfUnknownCommand,
 	}
 
 	repoCmd.SetUsageTemplate(repoCmd.UsageTemplate() + usageFooter)
