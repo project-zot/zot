@@ -3,11 +3,10 @@ package storage
 import (
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"strings"
 
 	"github.com/docker/distribution/registry/storage/driver/factory"
-	"github.com/gobwas/glob"
-	notreg "github.com/notaryproject/notation-go/registry"
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 
@@ -232,14 +231,14 @@ func CheckIsImageSignature(repoName string, manifestBlob []byte, reference strin
 	manifestArtifactType := zcommon.GetManifestArtifactType(manifestContent)
 
 	// check notation signature
-	if manifestArtifactType == notreg.ArtifactTypeNotation && manifestContent.Subject != nil {
+	if manifestArtifactType == zcommon.ArtifactTypeNotation && manifestContent.Subject != nil {
 		return true, NotationType, manifestContent.Subject.Digest, nil
 	}
 
 	// check cosign
-	cosignTagRule := glob.MustCompile("sha256-*.sig")
+	cosignTagRule := regexp.MustCompile(`sha256\-.+\.sig`)
 
-	if tag := reference; cosignTagRule.Match(reference) {
+	if tag := reference; cosignTagRule.MatchString(reference) {
 		prefixLen := len("sha256-")
 		digestLen := 64
 		signedImageManifestDigestEncoded := tag[prefixLen : prefixLen+digestLen]

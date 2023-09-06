@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"net/http"
 
-	notreg "github.com/notaryproject/notation-go/registry"
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	artifactspec "github.com/oras-project/artifacts-spec/specs-go/v1"
@@ -209,7 +208,7 @@ func getNotationManifestsFromOCIRefs(ociRefs ispec.Index) []ispec.Descriptor {
 	notaryManifests := []ispec.Descriptor{}
 
 	for _, ref := range ociRefs.Manifests {
-		if ref.ArtifactType == notreg.ArtifactTypeNotation {
+		if ref.ArtifactType == common.ArtifactTypeNotation {
 			notaryManifests = append(notaryManifests, ref)
 		}
 	}

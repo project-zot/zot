@@ -65,4 +65,20 @@ func TestConfig(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(isSame, ShouldBeTrue)
 	})
+	Convey("Test DeepCopy() & Sanitize()", t, func() {
+		conf := config.New()
+		So(conf, ShouldNotBeNil)
+		authConfig := &config.AuthConfig{LDAP: &config.LDAPConfig{BindPassword: "oina"}}
+		conf.HTTP.Auth = authConfig
+		So(func() { conf.Sanitize() }, ShouldNotPanic)
+		conf = conf.Sanitize()
+		So(conf.HTTP.Auth.LDAP.BindPassword, ShouldEqual, "******")
+
+		// negative
+		obj := make(chan int)
+		err := config.DeepCopy(conf, obj)
+		So(err, ShouldNotBeNil)
+		err = config.DeepCopy(obj, conf)
+		So(err, ShouldNotBeNil)
+	})
 }

@@ -16,7 +16,6 @@ import (
 	"sync"
 	"time"
 
-	notreg "github.com/notaryproject/notation-go/registry"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/sigstore/cosign/v2/pkg/oci/remote"
 
@@ -482,7 +481,7 @@ func isNotationSigned(ctx context.Context, repo, digestStr string, searchConf se
 	var referrers ispec.Index
 
 	URL := fmt.Sprintf("%s/v2/%s/referrers/%s?artifactType=%s",
-		*searchConf.servURL, repo, digestStr, notreg.ArtifactTypeNotation)
+		*searchConf.servURL, repo, digestStr, common.ArtifactTypeNotation)
 
 	_, err := makeGETRequest(ctx, URL, username, password,
 		*searchConf.verifyTLS, *searchConf.debug, &referrers, searchConf.resultWriter)

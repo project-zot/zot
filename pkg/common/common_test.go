@@ -5,6 +5,7 @@ import (
 	"path"
 	"testing"
 
+	notreg "github.com/notaryproject/notation-go/registry"
 	. "github.com/smartystreets/goconvey/convey"
 
 	"zotregistry.io/zot/pkg/api/config"
@@ -55,5 +56,9 @@ func TestCommon(t *testing.T) {
 	Convey("Index func", t, func() {
 		So(common.Index([]string{"a", "b"}, "b"), ShouldEqual, 1)
 		So(common.Index([]string{"a", "b"}, "c"), ShouldEqual, -1)
+	})
+
+	Convey("Test ArtifactTypeNotation const has same value as in notaryproject", t, func() {
+		So(common.ArtifactTypeNotation, ShouldEqual, notreg.ArtifactTypeNotation)
 	})
 }

@@ -13,13 +13,13 @@ import (
 	"net/url"
 	"os"
 	"path"
+	"regexp"
 	"strconv"
 	"strings"
 	"testing"
 	"time"
 
 	dbTypes "github.com/aquasecurity/trivy-db/pkg/types"
-	"github.com/gobwas/glob"
 	regTypes "github.com/google/go-containerregistry/pkg/v1/types"
 	notreg "github.com/notaryproject/notation-go/registry"
 	godigest "github.com/opencontainers/go-digest"
@@ -1245,9 +1245,9 @@ func TestExpandedRepoInfo(t *testing.T) {
 				ExpandedRepoInfo(repo:"test1"){
 					Summary {
 						Name LastUpdated Size
-						Platforms {Os Arch} 
+						Platforms {Os Arch}
 						Vendors
-					} 
+					}
 					Images {
 						Tag
 						Manifests {
@@ -1341,7 +1341,7 @@ func TestExpandedRepoInfo(t *testing.T) {
 		query := `{
 			ExpandedRepoInfo(repo:"zot-cve-test"){
 				Summary {
-					Name LastUpdated Size 
+					Name LastUpdated Size
 					}
 				}
 			}`
@@ -1363,7 +1363,7 @@ func TestExpandedRepoInfo(t *testing.T) {
 				Images {
 					Tag
 					Manifests {
-						Digest 
+						Digest
 						Layers {Size Digest}
 					}
 					IsSigned
@@ -1437,7 +1437,7 @@ func TestExpandedRepoInfo(t *testing.T) {
 			ExpandedRepoInfo(repo:"zot-test"){
 				Images {
 					RepoName
-					Tag IsSigned 
+					Tag IsSigned
 					Manifests{
 						Digest
 						Layers {Size Digest}
@@ -1548,10 +1548,10 @@ func TestExpandedRepoInfo(t *testing.T) {
 		{
 			ExpandedRepoInfo(repo:"repo"){
 				Images {
-					RepoName 
-					Tag 
+					RepoName
+					Tag
 					Manifests {
-						Digest 
+						Digest
 						Layers {Size Digest}
 					}
 				}
@@ -1633,10 +1633,10 @@ func TestExpandedRepoInfo(t *testing.T) {
 		{
 			ExpandedRepoInfo(repo:"test-repo"){
 				Images {
-					RepoName 
-					Tag 
+					RepoName
+					Tag
 					Manifests {
-						Digest 
+						Digest
 						Layers {Size Digest}
 					}
 				}
@@ -1743,10 +1743,10 @@ func TestExpandedRepoInfo(t *testing.T) {
 		{
 			ExpandedRepoInfo(repo:"repo"){
 				Images {
-					RepoName 
-					Tag 
+					RepoName
+					Tag
 					Manifests {
-						Digest 
+						Digest
 						Layers {Size Digest}
 					}
 				}
@@ -3306,7 +3306,7 @@ func TestGlobalSearch(t *testing.T) {
 				Images {
 					RepoName Tag LastUpdated Size
 					Manifests {
-						LastUpdated Size 
+						LastUpdated Size
 						Platform { Os Arch }
 						History {
 							Layer { Size Digest }
@@ -3322,7 +3322,7 @@ func TestGlobalSearch(t *testing.T) {
 					NewestImage {
 						RepoName Tag LastUpdated Size
 						Manifests {
-							LastUpdated Size 
+							LastUpdated Size
 							Platform { Os Arch }
 							History {
 								Layer { Size Digest }
@@ -3535,7 +3535,7 @@ func TestGlobalSearch(t *testing.T) {
 					Images {
 						RepoName Tag LastUpdated Size
 						Manifests {
-							LastUpdated Size 
+							LastUpdated Size
 							Platform { Os Arch }
 							History {
 								Layer { Size Digest }
@@ -3551,7 +3551,7 @@ func TestGlobalSearch(t *testing.T) {
 						NewestImage {
 							RepoName Tag LastUpdated Size
 							Manifests {
-								LastUpdated Size 
+								LastUpdated Size
 								Platform { Os Arch }
 								History {
 									Layer { Size Digest }
@@ -3625,7 +3625,7 @@ func TestGlobalSearch(t *testing.T) {
 				Images {
 					RepoName Tag LastUpdated Size
 					Manifests {
-						LastUpdated Size 
+						LastUpdated Size
 						Platform { Os Arch }
 						History {
 							Layer { Size Digest }
@@ -3641,7 +3641,7 @@ func TestGlobalSearch(t *testing.T) {
 					NewestImage {
 						RepoName Tag LastUpdated Size
 						Manifests {
-							LastUpdated Size 
+							LastUpdated Size
 							Platform { Os Arch }
 							History {
 								Layer { Size Digest }
@@ -4335,7 +4335,7 @@ func TestMetaDBWhenSigningImages(t *testing.T) {
 				Images {
 					RepoName Tag LastUpdated Size IsSigned
 					Manifests{
-						LastUpdated Size 
+						LastUpdated Size
 					}
 				}
 			}
@@ -5349,7 +5349,7 @@ func TestMetaDBWhenDeletingImages(t *testing.T) {
 					RepoName Tag LastUpdated Size IsSigned
 					Manifests{
 						Platform { Os Arch }
-						LastUpdated Size 
+						LastUpdated Size
 					}
 				}
 			}
@@ -5399,7 +5399,7 @@ func TestMetaDBWhenDeletingImages(t *testing.T) {
 						RepoName Tag LastUpdated Size IsSigned
 						Manifests{
 							Platform { Os Arch }
-							LastUpdated Size 
+							LastUpdated Size
 						}
 					}
 				}
@@ -5436,9 +5436,9 @@ func TestMetaDBWhenDeletingImages(t *testing.T) {
 			for _, manifest := range indexContent.Manifests {
 				tag := manifest.Annotations[ispec.AnnotationRefName]
 
-				cosignTagRule := glob.MustCompile("sha256-*.sig")
+				cosignTagRule := regexp.MustCompile(`sha256\-.+\.sig`)
 
-				if cosignTagRule.Match(tag) {
+				if cosignTagRule.MatchString(tag) {
 					signatureTag = tag
 				}
 			}
@@ -5472,10 +5472,10 @@ func TestMetaDBWhenDeletingImages(t *testing.T) {
 			{
 				GlobalSearch(query:"repo1:1.0.1"){
 					Images {
-						RepoName Tag LastUpdated Size IsSigned			
+						RepoName Tag LastUpdated Size IsSigned
 						Manifests{
 							Platform { Os Arch }
-							LastUpdated Size 
+							LastUpdated Size
 						}
 					}
 				}
@@ -5786,15 +5786,15 @@ func TestSearchSize(t *testing.T) {
 		query := `
 		{
 			GlobalSearch(query:"testrepo:"){
-				Images { 
+				Images {
 					RepoName Tag LastUpdated Size Vendor
 					Manifests{
 						Platform { Os Arch }
-						LastUpdated Size 
+						LastUpdated Size
 					}
 				}
 				Repos {
-					Name LastUpdated Size 
+					Name LastUpdated Size
 					NewestImage {
 						Manifests{
 							Platform { Os Arch }
@@ -5823,15 +5823,15 @@ func TestSearchSize(t *testing.T) {
 		query = `
 		{
 			GlobalSearch(query:"testrepo"){
-				Images { 
-					RepoName Tag LastUpdated Size 
+				Images {
+					RepoName Tag LastUpdated Size
 					Manifests{
 						Platform { Os Arch }
 						LastUpdated Size
 					}
 				}
 				Repos {
-					Name LastUpdated Size 
+					Name LastUpdated Size
 					NewestImage {
 						Manifests{
 							Platform { Os Arch }
@@ -5869,19 +5869,19 @@ func TestSearchSize(t *testing.T) {
 		query = `
 		{
 			GlobalSearch(query:"testrepo:"){
-				Images { 
-					RepoName Tag LastUpdated Size 
+				Images {
+					RepoName Tag LastUpdated Size
 					Manifests{
 						Platform { Os Arch }
-						LastUpdated Size 
+						LastUpdated Size
 					}
 				}
 				Repos {
-					Name LastUpdated Size 
+					Name LastUpdated Size
 					NewestImage {
 						Manifests{
 							Platform { Os Arch }
-							LastUpdated Size 
+							LastUpdated Size
 						}
 					}
 				}
@@ -5905,14 +5905,14 @@ func TestSearchSize(t *testing.T) {
 		{
 			GlobalSearch(query:"testrepo"){
 				Images {
-					RepoName Tag LastUpdated Size 
+					RepoName Tag LastUpdated Size
 					Manifests{
 						Platform { Os Arch }
 						LastUpdated Size
-					} 
+					}
 				}
 				Repos {
-					Name LastUpdated Size 
+					Name LastUpdated Size
 					NewestImage {
 						Manifests{
 							Platform { Os Arch }

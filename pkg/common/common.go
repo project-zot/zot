@@ -23,6 +23,9 @@ const (
 	CosignSignature   = "cosign"
 	CosignSigKey      = "dev.cosignproject.cosign/signature"
 	NotationSignature = "notation"
+	// same value as github.com/notaryproject/notation-go/registry.ArtifactTypeNotation (assert by internal test).
+	// reason used: to reduce zot minimal binary size (otherwise adds oras.land/oras-go/v2 deps).
+	ArtifactTypeNotation = "application/vnd.cncf.notary.signature"
 )
 
 func Contains[T comparable](elems []T, v T) bool {
