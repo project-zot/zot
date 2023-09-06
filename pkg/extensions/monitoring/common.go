@@ -3,7 +3,10 @@ package monitoring
 import (
 	"os"
 	"path/filepath"
+	"regexp"
 )
+
+var re = regexp.MustCompile(`\/v2\/(.*?)\/(blobs|tags|manifests)\/(.*)$`)
 
 type MetricServer interface {
 	SendMetric(interface{})

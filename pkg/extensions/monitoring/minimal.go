@@ -8,8 +8,8 @@ import (
 	"fmt"
 	"math"
 	"path"
-	"regexp"
 	"strconv"
+	"sync"
 	"time"
 
 	"zotregistry.io/zot/pkg/log"
@@ -42,6 +42,7 @@ type metricServer struct {
 	cacheChan  chan *MetricsInfo
 	bucketsF2S map[float64]string // float64 to string conversion of buckets label
 	log        log.Logger
+	lock       *sync.RWMutex
 }
 
 type MetricsInfo struct {
@@ -98,8 +99,12 @@ func GetStorageLatencyBuckets() []float64 {
 
 // implements the MetricServer interface.
 func (ms *metricServer) SendMetric(metric interface{}) {
+	ms.lock.RLock()
 	if ms.enabled {
+		ms.lock.RUnlock()
 		ms.reqChan <- metric
+	} else {
+		ms.lock.RUnlock()
 	}
 }
 
@@ -108,21 +113,21 @@ func (ms *metricServer) ForceSendMetric(metric interface{}) {
 }
 
 func (ms *metricServer) ReceiveMetrics() interface{} {
+	ms.lock.Lock()
 	if !ms.enabled {
 		ms.enabled = true
 	}
+	ms.lock.Unlock()
 	ms.cacheChan <- &MetricsInfo{}
 
 	return <-ms.cacheChan
 }
 
 func (ms *metricServer) IsEnabled() bool {
-	b := false
+	ms.lock.RLock()
+	defer ms.lock.RUnlock()
 
-	// send a bool value on the request channel to avoid data race
-	ms.reqChan <- b
-
-	return (<-ms.reqChan).(bool)
+	return ms.enabled
 }
 
 func (ms *metricServer) Run() {
@@ -155,20 +160,20 @@ func (ms *metricServer) Run() {
 			case HistogramValue:
 				hv := m.(HistogramValue)
 				ms.HistogramObserve(&hv)
-			case bool:
-				ms.reqChan <- ms.enabled
 			default:
 				ms.log.Error().Str("type", fmt.Sprintf("%T", v)).Msg("unexpected type")
 			}
 		case <-sendAfter:
 			// Check if we didn't receive a metrics scrape in a while and if so,
 			// disable metrics (possible node exporter down/crashed)
+			ms.lock.Lock()
 			if ms.enabled {
 				lastCheckInterval := time.Since(ms.lastCheck)
 				if lastCheckInterval > metricsScrapeTimeout {
 					ms.enabled = false
 				}
 			}
+			ms.lock.Unlock()
 		}
 	}
 }
@@ -199,6 +204,7 @@ func NewMetricsServer(enabled bool, log log.Logger) MetricServer {
 		cache:      mi,
 		bucketsF2S: bucketsFloat2String,
 		log:        log,
+		lock:       &sync.RWMutex{},
 	}
 
 	go ms.Run()
@@ -431,26 +437,22 @@ func IncHTTPConnRequests(ms MetricServer, lvs ...string) {
 }
 
 func ObserveHTTPRepoLatency(ms MetricServer, path string, latency time.Duration) {
-	if ms.(*metricServer).enabled {
-		var lvs []string
+	var lvs []string
+	match := re.FindStringSubmatch(path)
 
-		re := regexp.MustCompile(`\/v2\/(.*?)\/(blobs|tags|manifests)\/(.*)$`)
-		match := re.FindStringSubmatch(path)
-
-		if len(match) > 1 {
-			lvs = []string{match[1]}
-		} else {
-			lvs = []string{"N/A"}
-		}
-
-		sv := SummaryValue{
-			Name:        httpRepoLatencySeconds,
-			Sum:         latency.Seconds(),
-			LabelNames:  []string{"repo"},
-			LabelValues: lvs,
-		}
-		ms.SendMetric(sv)
+	if len(match) > 1 {
+		lvs = []string{match[1]}
+	} else {
+		lvs = []string{"N/A"}
 	}
+
+	sv := SummaryValue{
+		Name:        httpRepoLatencySeconds,
+		Sum:         latency.Seconds(),
+		LabelNames:  []string{"repo"},
+		LabelValues: lvs,
+	}
+	ms.SendMetric(sv)
 }
 
 func ObserveHTTPMethodLatency(ms MetricServer, method string, latency time.Duration) {
