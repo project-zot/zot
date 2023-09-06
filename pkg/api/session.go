@@ -113,7 +113,7 @@ func SessionLogger(ctlr *Controller) mux.MiddlewareFunc {
 				path = path + "?" + raw
 			}
 
-			if path != "/v2/metrics" {
+			if path != "/metrics" {
 				// In order to test metrics feture,the instrumentation related to node exporter
 				// should be handled by node exporter itself (ex: latency)
 				monitoring.IncHTTPConnRequests(ctlr.Metrics, method, strconv.Itoa(statusCode))

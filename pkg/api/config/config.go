@@ -340,6 +340,10 @@ func isOpenIDAuthProviderEnabled(config *Config, provider string) bool {
 	return false
 }
 
+func (c *Config) IsMetricsEnabled() bool {
+	return c.Extensions != nil && c.Extensions.Metrics != nil && *c.Extensions.Metrics.Enable
+}
+
 func (c *Config) IsSearchEnabled() bool {
 	return c.Extensions != nil && c.Extensions.Search != nil && *c.Extensions.Search.Enable
 }

@@ -60,7 +60,7 @@ func NewMetricsClient(config *MetricsConfig, logger log.Logger) *MetricsClient {
 
 func (mc *MetricsClient) GetMetrics() (*MetricsInfo, error) {
 	metrics := &MetricsInfo{}
-	if _, err := mc.makeGETRequest(mc.config.Address+"/v2/metrics", metrics); err != nil {
+	if _, err := mc.makeGETRequest(mc.config.Address+"/metrics", metrics); err != nil {
 		return nil, err
 	}
 

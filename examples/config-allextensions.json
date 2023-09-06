@@ -1,53 +1,53 @@
 {
-	"distSpecVersion": "1.1.0-dev",
-	"storage": {
-		"rootDirectory": "/tmp/zot"
-	},
-	"http": {
-		"address": "127.0.0.1",
-		"port": "8080"
-	},
-	"log": {
-		"level": "debug"
-	},
-	"extensions": {
-		"metrics": {},
-		"sync": {
-			"credentialsFile": "./examples/sync-auth-filepath.json",
-			"registries": [
-				{
-					"urls": [
-						"https://registry1:5000"
-					],
-					"onDemand": false,
-					"pollInterval": "6h",
-					"tlsVerify": true,
-					"certDir": "/home/user/certs",
-					"maxRetries": 3,
-					"retryDelay": "15m",
-					"content": [
-						{
-							"prefix": "/repo1/repo",
-							"tags": {
-								"regex": "4.*",
-								"semver": true
-							}
-						},
-						{
-							"prefix": "/repo2/repo"
-						}
-					]
-				}
-			]
-		},
-		"search": {
-			"cve": {
-				"updateInterval": "2h"
-			}
-		},
-		"scrub": {
-			"enable": true,
-			"interval": "24h"
-		}
-	}
+  "distSpecVersion": "1.1.0-dev",
+  "storage": {
+    "rootDirectory": "/tmp/zot"
+  },
+  "http": {
+    "address": "127.0.0.1",
+    "port": "8080"
+  },
+  "log": {
+    "level": "debug"
+  },
+  "extensions": {
+    "metrics": {},
+    "sync": {
+      "credentialsFile": "./examples/sync-auth-filepath.json",
+      "registries": [
+        {
+          "urls": [
+            "https://registry1:5000"
+          ],
+          "onDemand": false,
+          "pollInterval": "6h",
+          "tlsVerify": true,
+          "certDir": "/home/user/certs",
+          "maxRetries": 3,
+          "retryDelay": "15m",
+          "content": [
+            {
+              "prefix": "/repo1/repo",
+              "tags": {
+                "regex": "4.*",
+                "semver": true
+              }
+            },
+            {
+              "prefix": "/repo2/repo"
+            }
+          ]
+        }
+      ]
+    },
+    "search": {
+      "cve": {
+        "updateInterval": "2h"
+      }
+    },
+    "scrub": {
+      "enable": true,
+      "interval": "24h"
+    }
+  }
 }
