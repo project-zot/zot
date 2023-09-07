@@ -1,3 +1,7 @@
+# Note: Intended to be run as "make run-blackbox-tests" or "make run-blackbox-dedupe-nightly"
+#       Makefile target installs & checks all necessary tooling
+#       Extra tools that are not covered in Makefile target needs to be added in verify_prerequisites()
+
 load helpers_cloud
 load helpers_wait
 
@@ -79,6 +83,11 @@ EOF
     awslocal dynamodb --region "us-east-2" create-table --table-name "BlobTable" --attribute-definitions AttributeName=Digest,AttributeType=S --key-schema AttributeName=Digest,KeyType=HASH --provisioned-throughput ReadCapacityUnits=10,WriteCapacityUnits=5
     zot_serve ${zot_config_file_dedupe}
     wait_zot_reachable 8080
+}
+
+function teardown() {
+    # conditionally printing on failure is possible from teardown but not from from teardown_file
+    cat ${BATS_FILE_TMPDIR}/zot/zot-log.json
 }
 
 function teardown_file() {

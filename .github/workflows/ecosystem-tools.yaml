@@ -69,42 +69,9 @@ jobs:
           sudo du -sh /var/lib/docker/
           du -sh /home/runner/work/
           set +x
-      - name: Run referrers tests
+      - name: Run CI tests
         run: |
-            make test-bats-referrers
-      - name: Run metadata tests
-        run: |
-            make test-bats-metadata
-      - name: Run push-pull tests
-        run: |
-            make test-push-pull
-      - name: Run push-pull-authn tests
-        run: |
-            make test-push-pull-authn
-      - name: Run metrics tests
-        run: |
-            make test-bats-metrics
-      - name: Run cve tests
-        run: |
-            make test-bats-cve
-      - name: Run sync test
-        run: |
-            make test-bats-sync
-      - name: Run scrub tests
-        run: |
-            make test-bats-scrub
-      - name: Run anonymous-push-pull tests
-        run: |
-            make test-anonymous-push-pull
-      - name: Run detect-manifest-collision tests
-        run: |
-            make test-detect-manifest-collision
-      - name: Run annotations tests
-        run: |
-            make test-annotations
-      - name: Run garbage collect tests
-        run: |
-            make test-garbage-collect
+          make run-blackbox-ci
       - name: Install localstack
         run: |
           pip install --upgrade pyopenssl
@@ -117,7 +84,7 @@ jobs:
           echo "Startup complete"
       - name: Run cloud-only tests
         run: |
-            make test-cloud-only
+          make run-blackbox-cloud-ci
         env:
           AWS_ACCESS_KEY_ID: fake
           AWS_SECRET_ACCESS_KEY: fake

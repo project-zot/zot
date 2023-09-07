@@ -1,4 +1,4 @@
-# Note: Intended to be run as "make test-bats-referrers"
+# Note: Intended to be run as "make run-blackbox-ci"
 #       Makefile target installs & checks all necessary tooling
 #       Extra tools that are not covered in Makefile target needs to be added in verify_prerequisites()
 
@@ -85,6 +85,11 @@ EOF
     echo ${MANIFEST_DIGEST}
 
     curl -X GET http://127.0.0.1:8080/v2/golang/referrers/${MANIFEST_DIGEST}?artifactType=image.artifact/type
+}
+
+function teardown() {
+    # conditionally printing on failure is possible from teardown but not from from teardown_file
+    cat ${BATS_FILE_TMPDIR}/zot/zot-log.json
 }
 
 function teardown_file() {

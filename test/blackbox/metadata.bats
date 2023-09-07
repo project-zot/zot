@@ -1,4 +1,4 @@
-# Note: Intended to be run as "make test-bats-metadata"
+# Note: Intended to be run as "make run-blackbox-tests" or "make run-blackbox-ci"
 #       Makefile target installs & checks all necessary tooling
 #       Extra tools that are not covered in Makefile target needs to be added in verify_prerequisites()
 
@@ -77,7 +77,8 @@ function setup_file() {
         }
     },
     "log": {
-        "level": "debug"
+        "level": "debug",
+        "output": "${BATS_FILE_TMPDIR}/zot.log"
     }
 }
 EOF
@@ -86,10 +87,14 @@ EOF
     wait_zot_reachable 8080
 }
 
+function teardown() {
+    # conditionally printing on failure is possible from teardown but not from from teardown_file
+    cat ${BATS_FILE_TMPDIR}/zot.log
+}
+
 function teardown_file() {
     zot_stop_all
 }
-
 
 @test "push image user policy" {
     run skopeo --insecure-policy copy --dest-creds test:test --dest-tls-verify=false \
