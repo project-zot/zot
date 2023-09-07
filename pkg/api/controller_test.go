@@ -20,6 +20,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"testing"
@@ -5820,6 +5821,20 @@ func TestRouteFailures(t *testing.T) {
 			request, _ = http.NewRequestWithContext(context.TODO(), http.MethodGet, baseURL, nil)
 			request = mux.SetURLVars(request, map[string]string{"name": "foo"})
 			qparm = request.URL.Query()
+			qparm.Add("n", "-1")
+			request.URL.RawQuery = qparm.Encode()
+			response = httptest.NewRecorder()
+
+			rthdlr.ListTags(response, request)
+
+			resp = response.Result()
+			defer resp.Body.Close()
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode, ShouldEqual, http.StatusBadRequest)
+
+			request, _ = http.NewRequestWithContext(context.TODO(), http.MethodGet, baseURL, nil)
+			request = mux.SetURLVars(request, map[string]string{"name": "foo"})
+			qparm = request.URL.Query()
 			qparm.Add("n", "abc")
 			request.URL.RawQuery = qparm.Encode()
 			response = httptest.NewRecorder()
@@ -5879,6 +5894,20 @@ func TestRouteFailures(t *testing.T) {
 			request = mux.SetURLVars(request, map[string]string{"name": "foo"})
 			qparm = request.URL.Query()
 			qparm.Add("n", "1")
+			qparm.Add("last", "a")
+			request.URL.RawQuery = qparm.Encode()
+			response = httptest.NewRecorder()
+
+			rthdlr.ListTags(response, request)
+
+			resp = response.Result()
+			defer resp.Body.Close()
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode, ShouldEqual, http.StatusNotFound)
+
+			request, _ = http.NewRequestWithContext(context.TODO(), http.MethodGet, baseURL, nil)
+			request = mux.SetURLVars(request, map[string]string{"name": "foo"})
+			qparm = request.URL.Query()
 			qparm.Add("last", "a")
 			request.URL.RawQuery = qparm.Encode()
 			response = httptest.NewRecorder()
@@ -6340,6 +6369,174 @@ func TestRouteFailures(t *testing.T) {
 			So(resp.StatusCode, ShouldEqual, http.StatusBadRequest)
 		})
 	})
+}
+
+func TestListingTags(t *testing.T) {
+	port := test.GetFreePort()
+	baseURL := test.GetBaseURL(port)
+	conf := config.New()
+	conf.HTTP.Port = port
+
+	ctlr := makeController(conf, t.TempDir())
+	ctlr.Config.Storage.Commit = true
+
+	cm := test.NewControllerManager(ctlr)
+	cm.StartAndWait(port)
+
+	defer cm.StopServer()
+
+	rthdlr := api.NewRouteHandler(ctlr)
+
+	img := test.CreateRandomImage()
+	sigTag := fmt.Sprintf("sha256-%s.sig", img.Digest().Encoded())
+
+	repoName := "test-tags"
+	tagsList := []string{
+		"1", "2", "1.0.0", "new", "2.0.0", sigTag,
+		"2-test", "New", "2.0.0-test", "latest",
+	}
+
+	for _, tag := range tagsList {
+		err := test.UploadImage(img, baseURL, repoName, tag)
+		if err != nil {
+			panic(err)
+		}
+	}
+
+	// Note empty strings signify the query parameter is not set
+	// There are separate tests for passing the empty string as query parameter
+	testCases := []struct {
+		testCaseName string
+		pageSize     string
+		last         string
+		expectedTags []string
+	}{
+		{
+			testCaseName: "Test tag soting order with no parameters",
+			pageSize:     "",
+			last:         "",
+			expectedTags: []string{
+				"1", "1.0.0", "2", "2-test", "2.0.0", "2.0.0-test",
+				"New", "latest", "new", sigTag,
+			},
+		},
+		{
+			testCaseName: "Test with the parameter 'n' lower than total number of results",
+			pageSize:     "5",
+			last:         "",
+			expectedTags: []string{
+				"1", "1.0.0", "2", "2-test", "2.0.0",
+			},
+		},
+		{
+			testCaseName: "Test with the parameter 'n' larger than total number of results",
+			pageSize:     "50",
+			last:         "",
+			expectedTags: []string{
+				"1", "1.0.0", "2", "2-test", "2.0.0", "2.0.0-test",
+				"New", "latest", "new", sigTag,
+			},
+		},
+		{
+			testCaseName: "Test the parameter 'n' is 0",
+			pageSize:     "0",
+			last:         "",
+			expectedTags: []string{},
+		},
+		{
+			testCaseName: "Test the parameters 'n' and 'last'",
+			pageSize:     "5",
+			last:         "2-test",
+			expectedTags: []string{"2.0.0", "2.0.0-test", "New", "latest", "new"},
+		},
+		{
+			testCaseName: "Test the parameters 'n' and 'last' with `n` exceeding total number of results",
+			pageSize:     "5",
+			last:         "latest",
+			expectedTags: []string{"new", sigTag},
+		},
+		{
+			testCaseName: "Test the parameter 'n' and 'last' being second to last tag as value",
+			pageSize:     "2",
+			last:         "new",
+			expectedTags: []string{sigTag},
+		},
+		{
+			testCaseName: "Test the parameter 'last' without parameter 'n'",
+			pageSize:     "",
+			last:         "2",
+			expectedTags: []string{
+				"2-test", "2.0.0", "2.0.0-test",
+				"New", "latest", "new", sigTag,
+			},
+		},
+		{
+			testCaseName: "Test the parameter 'last' with the final tag as value",
+			pageSize:     "",
+			last:         sigTag,
+			expectedTags: []string{},
+		},
+		{
+			testCaseName: "Test the parameter 'last' with the second to last tag as value",
+			pageSize:     "",
+			last:         "new",
+			expectedTags: []string{sigTag},
+		},
+	}
+
+	for _, testCase := range testCases {
+		Convey(testCase.testCaseName, t, func() {
+			t.Log("Running " + testCase.testCaseName)
+
+			request, _ := http.NewRequestWithContext(context.TODO(), http.MethodGet, baseURL, nil)
+			request = mux.SetURLVars(request, map[string]string{"name": repoName})
+
+			if testCase.pageSize != "" || testCase.last != "" {
+				qparm := request.URL.Query()
+
+				if testCase.pageSize != "" {
+					qparm.Add("n", testCase.pageSize)
+				}
+
+				if testCase.last != "" {
+					qparm.Add("last", testCase.last)
+				}
+
+				request.URL.RawQuery = qparm.Encode()
+			}
+
+			response := httptest.NewRecorder()
+
+			rthdlr.ListTags(response, request)
+
+			resp := response.Result()
+			defer resp.Body.Close()
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode, ShouldEqual, http.StatusOK)
+
+			var tags api.ImageTags
+			err := json.NewDecoder(resp.Body).Decode(&tags)
+			So(err, ShouldBeNil)
+			So(tags.Tags, ShouldEqual, testCase.expectedTags)
+
+			alltags := tagsList
+			sort.Strings(alltags)
+
+			actualLinkValue := resp.Header.Get("Link")
+			if testCase.pageSize == "0" || testCase.pageSize == "" { //nolint:gocritic
+				So(actualLinkValue, ShouldEqual, "")
+			} else if testCase.expectedTags[len(testCase.expectedTags)-1] == alltags[len(alltags)-1] {
+				So(actualLinkValue, ShouldEqual, "")
+			} else {
+				expectedLinkValue := fmt.Sprintf("/v2/%s/tags/list?n=%s&last=%s; rel=\"next\"",
+					repoName, testCase.pageSize, tags.Tags[len(tags.Tags)-1],
+				)
+				So(actualLinkValue, ShouldEqual, expectedLinkValue)
+			}
+
+			t.Log("Finished " + testCase.testCaseName)
+		})
+	}
 }
 
 func TestStorageCommit(t *testing.T) {
