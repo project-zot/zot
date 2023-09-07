@@ -3,12 +3,13 @@ package main
 import (
 	"os"
 
-	distspec "github.com/opencontainers/distribution-spec/specs-go"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 
 	"zotregistry.io/zot/pkg/api/config"
 )
+
+const DistSpecVersion = "1.1.0-dev"
 
 // "zb" - performance benchmark and stress.
 func NewPerfRootCmd() *cobra.Command {
@@ -26,7 +27,7 @@ func NewPerfRootCmd() *cobra.Command {
 		Long:  "`zb`",
 		Run: func(cmd *cobra.Command, args []string) {
 			if showVersion {
-				log.Info().Str("distribution-spec", distspec.Version).Str("commit", config.Commit).
+				log.Info().Str("distribution-spec", DistSpecVersion).Str("commit", config.Commit).
 					Str("binary-type", config.BinaryType).Str("go version", config.GoVersion).Msg("version")
 			}
 

@@ -19,9 +19,13 @@ import (
 	"gopkg.in/resty.v1"
 
 	zerr "zotregistry.io/zot/errors"
-	"zotregistry.io/zot/pkg/api"
 	"zotregistry.io/zot/pkg/test"
 )
+
+type ImageTags struct {
+	Name string   `json:"name"`
+	Tags []string `json:"tags"`
+}
 
 func makeHTTPGetRequest(url string, resultPtr interface{}, client *resty.Client) error {
 	resp, err := client.R().Get(url)
@@ -62,7 +66,7 @@ func makeHTTPDeleteRequest(url string, client *resty.Client) error {
 
 func deleteTestRepo(repos []string, url string, client *resty.Client) error {
 	for _, repo := range repos {
-		var tags api.ImageTags
+		var tags ImageTags
 
 		// get tags
 		err := makeHTTPGetRequest(fmt.Sprintf("%s/v2/%s/tags/list", url, repo), &tags, client)

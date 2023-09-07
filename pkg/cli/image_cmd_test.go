@@ -33,6 +33,7 @@ import (
 	extconf "zotregistry.io/zot/pkg/extensions/config"
 	zlog "zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/test"
+	extt "zotregistry.io/zot/pkg/test/extensions"
 )
 
 func TestSearchImageCmd(t *testing.T) {
@@ -329,7 +330,7 @@ func TestSignature(t *testing.T) {
 		err = test.UploadImage(test.CreateDefaultImage(), url, repoName, "0.0.1")
 		So(err, ShouldBeNil)
 
-		err = test.SignImageUsingNotary("repo7:0.0.1", port)
+		err = extt.SignImageUsingNotary("repo7:0.0.1", port)
 		So(err, ShouldBeNil)
 
 		searchConfig := getTestSearchConfig(url, new(searchService))

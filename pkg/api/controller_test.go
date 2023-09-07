@@ -61,6 +61,7 @@ import (
 	"zotregistry.io/zot/pkg/storage"
 	storageConstants "zotregistry.io/zot/pkg/storage/constants"
 	"zotregistry.io/zot/pkg/test"
+	extt "zotregistry.io/zot/pkg/test/extensions"
 	"zotregistry.io/zot/pkg/test/inject"
 	"zotregistry.io/zot/pkg/test/mocks"
 )
@@ -5170,26 +5171,26 @@ func TestImageSignatures(t *testing.T) {
 			tdir := t.TempDir()
 			_ = os.Chdir(tdir)
 
-			test.NotationPathLock.Lock()
-			defer test.NotationPathLock.Unlock()
+			extt.NotationPathLock.Lock()
+			defer extt.NotationPathLock.Unlock()
 
-			test.LoadNotationPath(tdir)
+			extt.LoadNotationPath(tdir)
 
-			err = test.GenerateNotationCerts(tdir, "good")
+			err = extt.GenerateNotationCerts(tdir, "good")
 			So(err, ShouldBeNil)
 
-			err = test.GenerateNotationCerts(tdir, "bad")
+			err = extt.GenerateNotationCerts(tdir, "bad")
 			So(err, ShouldBeNil)
 
 			image := fmt.Sprintf("localhost:%s/%s:%s", port, repoName, "1.0")
-			err = test.SignWithNotation("good", image, tdir)
+			err = extt.SignWithNotation("good", image, tdir)
 			So(err, ShouldBeNil)
 
-			err = test.VerifyWithNotation(image, tdir)
+			err = extt.VerifyWithNotation(image, tdir)
 			So(err, ShouldBeNil)
 
 			// check list
-			sigs, err := test.ListNotarySignatures(image, tdir)
+			sigs, err := extt.ListNotarySignatures(image, tdir)
 			So(len(sigs), ShouldEqual, 1)
 			So(err, ShouldBeNil)
 
@@ -5223,7 +5224,7 @@ func TestImageSignatures(t *testing.T) {
 				So(err, ShouldBeNil)
 				So(resp.StatusCode(), ShouldEqual, http.StatusInternalServerError)
 
-				err = test.VerifyWithNotation(image, tdir)
+				err = extt.VerifyWithNotation(image, tdir)
 				So(err, ShouldNotBeNil)
 			})
 
@@ -5245,7 +5246,7 @@ func TestImageSignatures(t *testing.T) {
 				So(err, ShouldBeNil)
 				So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
 
-				err = test.VerifyWithNotation(image, tdir)
+				err = extt.VerifyWithNotation(image, tdir)
 				So(err, ShouldNotBeNil)
 			})
 		})
@@ -7726,17 +7727,17 @@ func TestGCSignaturesAndUntaggedManifests(t *testing.T) {
 
 			So(err, ShouldBeNil)
 
-			test.NotationPathLock.Lock()
-			defer test.NotationPathLock.Unlock()
+			extt.NotationPathLock.Lock()
+			defer extt.NotationPathLock.Unlock()
 
-			test.LoadNotationPath(tdir)
+			extt.LoadNotationPath(tdir)
 
 			// generate a keypair
-			err = test.GenerateNotationCerts(tdir, "good")
+			err = extt.GenerateNotationCerts(tdir, "good")
 			So(err, ShouldBeNil)
 
 			// sign the image
-			err = test.SignWithNotation("good", image, tdir)
+			err = extt.SignWithNotation("good", image, tdir)
 			So(err, ShouldBeNil)
 
 			// get cosign signature manifest

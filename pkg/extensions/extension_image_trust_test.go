@@ -34,6 +34,7 @@ import (
 	"zotregistry.io/zot/pkg/storage"
 	"zotregistry.io/zot/pkg/storage/local"
 	"zotregistry.io/zot/pkg/test"
+	extt "zotregistry.io/zot/pkg/test/extensions"
 )
 
 type errReader int
@@ -341,13 +342,13 @@ func RunSignatureUploadAndVerificationTests(t *testing.T, cacheDriverParams map[
 
 		rootDir := t.TempDir()
 
-		test.NotationPathLock.Lock()
-		defer test.NotationPathLock.Unlock()
+		extt.NotationPathLock.Lock()
+		defer extt.NotationPathLock.Unlock()
 
-		test.LoadNotationPath(rootDir)
+		extt.LoadNotationPath(rootDir)
 
 		// generate a keypair
-		err = test.GenerateNotationCerts(rootDir, certName)
+		err = extt.GenerateNotationCerts(rootDir, certName)
 		So(err, ShouldBeNil)
 
 		// upload the certificate
@@ -364,7 +365,7 @@ func RunSignatureUploadAndVerificationTests(t *testing.T, cacheDriverParams map[
 		// sign the image
 		imageURL := fmt.Sprintf("localhost:%s/%s", port, fmt.Sprintf("%s:%s", repo, tag))
 
-		err = test.SignWithNotation(certName, imageURL, rootDir)
+		err = extt.SignWithNotation(certName, imageURL, rootDir)
 		So(err, ShouldBeNil)
 
 		found, err = test.ReadLogFileAndSearchString(logFile.Name(), "updating signatures validity", 10*time.Second)
@@ -475,13 +476,13 @@ func RunSignatureUploadAndVerificationTests(t *testing.T, cacheDriverParams map[
 
 		rootDir := t.TempDir()
 
-		test.NotationPathLock.Lock()
-		defer test.NotationPathLock.Unlock()
+		extt.NotationPathLock.Lock()
+		defer extt.NotationPathLock.Unlock()
 
-		test.LoadNotationPath(rootDir)
+		extt.LoadNotationPath(rootDir)
 
 		// generate a keypair
-		err = test.GenerateNotationCerts(rootDir, certName)
+		err = extt.GenerateNotationCerts(rootDir, certName)
 		So(err, ShouldBeNil)
 
 		// upload the certificate
@@ -498,7 +499,7 @@ func RunSignatureUploadAndVerificationTests(t *testing.T, cacheDriverParams map[
 		// sign the image
 		imageURL := fmt.Sprintf("localhost:%s/%s", port, fmt.Sprintf("%s:%s", repo, tag))
 
-		err = test.SignWithNotation(certName, imageURL, rootDir)
+		err = extt.SignWithNotation(certName, imageURL, rootDir)
 		So(err, ShouldBeNil)
 
 		found, err = test.ReadLogFileAndSearchString(logFile.Name(), "updating signatures validity", 10*time.Second)
@@ -953,13 +954,13 @@ func RunSignatureUploadAndVerificationTests(t *testing.T, cacheDriverParams map[
 
 		rootDir := t.TempDir()
 
-		test.NotationPathLock.Lock()
-		defer test.NotationPathLock.Unlock()
+		extt.NotationPathLock.Lock()
+		defer extt.NotationPathLock.Unlock()
 
-		test.LoadNotationPath(rootDir)
+		extt.LoadNotationPath(rootDir)
 
 		// generate Notation cert
-		err := test.GenerateNotationCerts(rootDir, "test")
+		err := extt.GenerateNotationCerts(rootDir, "test")
 		So(err, ShouldBeNil)
 
 		certificateContent, err := os.ReadFile(path.Join(rootDir, "notation/localkeys", "test.crt"))

@@ -32,6 +32,7 @@ import (
 	mTypes "zotregistry.io/zot/pkg/meta/types"
 	reqCtx "zotregistry.io/zot/pkg/requestcontext"
 	"zotregistry.io/zot/pkg/test"
+	extt "zotregistry.io/zot/pkg/test/extensions"
 )
 
 const (
@@ -1349,19 +1350,19 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 
 				keyName := fmt.Sprintf("notation-sign-test-%s", uuid)
 
-				test.NotationPathLock.Lock()
-				defer test.NotationPathLock.Unlock()
+				extt.NotationPathLock.Lock()
+				defer extt.NotationPathLock.Unlock()
 
-				test.LoadNotationPath(tdir)
+				extt.LoadNotationPath(tdir)
 
-				err = test.GenerateNotationCerts(tdir, keyName)
+				err = extt.GenerateNotationCerts(tdir, keyName)
 				So(err, ShouldBeNil)
 
 				// getSigner
 				var newSigner notation.Signer
 
 				// ResolveKey
-				signingKeys, err := test.LoadNotationSigningkeys(tdir)
+				signingKeys, err := extt.LoadNotationSigningkeys(tdir)
 				So(err, ShouldBeNil)
 
 				idx := test.Index(signingKeys.Keys, keyName)

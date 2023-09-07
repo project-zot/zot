@@ -24,7 +24,8 @@ import (
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/storage"
 	"zotregistry.io/zot/pkg/storage/local"
-	. "zotregistry.io/zot/pkg/test"
+	"zotregistry.io/zot/pkg/test"
+	extt "zotregistry.io/zot/pkg/test/extensions"
 	"zotregistry.io/zot/pkg/test/mocks"
 	ocilayout "zotregistry.io/zot/pkg/test/oci-layout"
 )
@@ -32,7 +33,7 @@ import (
 var ErrTestError = fmt.Errorf("testError")
 
 func TestBaseOciLayoutUtils(t *testing.T) {
-	manifestDigest := GetTestBlobDigest("zot-test", "config").String()
+	manifestDigest := test.GetTestBlobDigest("zot-test", "config").String()
 
 	Convey("GetImageManifestSize fail", t, func() {
 		mockStoreController := mocks.MockedImageStore{
@@ -82,7 +83,7 @@ func TestBaseOciLayoutUtils(t *testing.T) {
 					"layers": [
 						{
 							"mediaType": "application/vnd.oci.image.layer.v1.tar+gzip",
-							"digest": "` + GetTestBlobDigest("zot-test", "layer").String() + `",
+							"digest": "` + test.GetTestBlobDigest("zot-test", "layer").String() + `",
 							"size": 76097157
 						}
 					]
@@ -288,8 +289,8 @@ func TestBaseOciLayoutUtils(t *testing.T) {
 		// checkNotarySignature -> true
 		dir := t.TempDir()
 
-		port := GetFreePort()
-		baseURL := GetBaseURL(port)
+		port := test.GetFreePort()
+		baseURL := test.GetBaseURL(port)
 		conf := config.New()
 		conf.HTTP.Port = port
 		conf.Storage.RootDirectory = dir
@@ -302,12 +303,12 @@ func TestBaseOciLayoutUtils(t *testing.T) {
 
 		ctlr := api.NewController(conf)
 
-		ctlrManager := NewControllerManager(ctlr)
+		ctlrManager := test.NewControllerManager(ctlr)
 		ctlrManager.StartAndWait(port)
 		defer ctlrManager.StopServer()
 
 		// push test image to repo
-		config, layers, manifest, err := GetImageComponents(100) //nolint:staticcheck
+		config, layers, manifest, err := test.GetImageComponents(100) //nolint:staticcheck
 		So(err, ShouldBeNil)
 
 		layersSize1 := 0
@@ -317,8 +318,8 @@ func TestBaseOciLayoutUtils(t *testing.T) {
 
 		repo := "repo"
 		tag := "1.0.1"
-		err = UploadImage(
-			Image{
+		err = test.UploadImage(
+			test.Image{
 				Manifest: manifest,
 				Config:   config,
 				Layers:   layers,
@@ -334,7 +335,7 @@ func TestBaseOciLayoutUtils(t *testing.T) {
 		isSigned := olu.CheckManifestSignature(repo, manifestList[0].Digest)
 		So(isSigned, ShouldBeFalse)
 
-		err = SignImageUsingNotary(fmt.Sprintf("%s:%s", repo, tag), port)
+		err = extt.SignImageUsingNotary(fmt.Sprintf("%s:%s", repo, tag), port)
 		So(err, ShouldBeNil)
 
 		isSigned = olu.CheckManifestSignature(repo, manifestList[0].Digest)
@@ -354,11 +355,11 @@ func TestExtractImageDetails(t *testing.T) {
 		}
 
 		num := 10
-		config, layers, manifest, err := GetImageComponents(num) //nolint:staticcheck
+		config, layers, manifest, err := test.GetImageComponents(num) //nolint:staticcheck
 		So(err, ShouldBeNil)
 
-		err = WriteImageToFileSystem(
-			Image{
+		err = test.WriteImageToFileSystem(
+			test.Image{
 				Manifest: manifest,
 				Layers:   layers,
 				Config:   config,
@@ -410,11 +411,11 @@ func TestExtractImageDetails(t *testing.T) {
 		}
 
 		num := 10
-		config, layers, manifest, err := GetImageComponents(num) //nolint:staticcheck
+		config, layers, manifest, err := test.GetImageComponents(num) //nolint:staticcheck
 		So(err, ShouldBeNil)
 
-		err = WriteImageToFileSystem(
-			Image{
+		err = test.WriteImageToFileSystem(
+			test.Image{
 				Manifest: manifest,
 				Layers:   layers,
 				Config:   config,

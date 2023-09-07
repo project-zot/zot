@@ -48,6 +48,7 @@ import (
 	mTypes "zotregistry.io/zot/pkg/meta/types"
 	storageConstants "zotregistry.io/zot/pkg/storage/constants"
 	"zotregistry.io/zot/pkg/test"
+	extt "zotregistry.io/zot/pkg/test/extensions"
 	"zotregistry.io/zot/pkg/test/mocks"
 )
 
@@ -748,7 +749,7 @@ func TestOnDemand(t *testing.T) {
 			So(err, ShouldBeNil)
 
 			// sign using cosign
-			err = test.SignImageUsingCosign(fmt.Sprintf("remote-repo@%s", manifestDigest.String()), port)
+			err = extt.SignImageUsingCosign(fmt.Sprintf("remote-repo@%s", manifestDigest.String()), port)
 			So(err, ShouldBeNil)
 
 			// add cosign sbom
@@ -4051,9 +4052,9 @@ func TestSignatures(t *testing.T) {
 			IgnoreTlog:      true,
 		}
 
-		test.LoadNotationPath(tdir)
+		extt.LoadNotationPath(tdir)
 		// notation verify signed image
-		err = test.VerifyWithNotation(image, tdir)
+		err = extt.VerifyWithNotation(image, tdir)
 		So(err, ShouldBeNil)
 
 		// cosign verify signed image
@@ -4086,9 +4087,9 @@ func TestSignatures(t *testing.T) {
 		// verify sbom signature
 		sbom := fmt.Sprintf("localhost:%s/%s@%s", destPort, repoName, sbomDigest)
 
-		test.LoadNotationPath(tdir)
+		extt.LoadNotationPath(tdir)
 		// notation verify signed sbom
-		err = test.VerifyWithNotation(sbom, tdir)
+		err = extt.VerifyWithNotation(sbom, tdir)
 		So(err, ShouldBeNil)
 
 		vrfy = verify.VerifyCommand{
@@ -4460,10 +4461,10 @@ func TestSyncedSignaturesMetaDB(t *testing.T) {
 		err = test.UploadImage(signedImage, srcBaseURL, repoName, tag)
 		So(err, ShouldBeNil)
 
-		err = test.SignImageUsingNotary(repoName+":"+tag, srcPort)
+		err = extt.SignImageUsingNotary(repoName+":"+tag, srcPort)
 		So(err, ShouldBeNil)
 
-		err = test.SignImageUsingCosign(repoName+":"+tag, srcPort)
+		err = extt.SignImageUsingCosign(repoName+":"+tag, srcPort)
 		So(err, ShouldBeNil)
 
 		// Create destination registry
@@ -5069,7 +5070,7 @@ func TestSignaturesOnDemand(t *testing.T) {
 
 		// notation verify the synced image
 		image := fmt.Sprintf("localhost:%s/%s:%s", destPort, repoName, testImageTag)
-		err = test.VerifyWithNotation(image, tdir)
+		err = extt.VerifyWithNotation(image, tdir)
 		So(err, ShouldBeNil)
 
 		// cosign verify the synced image
@@ -5306,7 +5307,7 @@ func TestOnlySignaturesOnDemand(t *testing.T) {
 
 		// sync signature on demand when upstream doesn't have the signature
 		image := fmt.Sprintf("localhost:%s/%s:%s", destPort, repoName, testImageTag)
-		err = test.VerifyWithNotation(image, tdir)
+		err = extt.VerifyWithNotation(image, tdir)
 		So(err, ShouldNotBeNil)
 
 		// cosign verify the synced image
@@ -5325,7 +5326,7 @@ func TestOnlySignaturesOnDemand(t *testing.T) {
 
 		// now it should sync signatures on demand, even if we already have the image
 		image = fmt.Sprintf("localhost:%s/%s:%s", destPort, repoName, testImageTag)
-		err = test.VerifyWithNotation(image, tdir)
+		err = extt.VerifyWithNotation(image, tdir)
 		So(err, ShouldBeNil)
 
 		// cosign verify the synced image
@@ -5678,7 +5679,7 @@ func TestSyncSignaturesDiff(t *testing.T) {
 
 		// notation verify the image
 		image := fmt.Sprintf("localhost:%s/%s:%s", destPort, repoName, testImageTag)
-		err = test.VerifyWithNotation(image, tdir)
+		err = extt.VerifyWithNotation(image, tdir)
 		So(err, ShouldBeNil)
 
 		// cosign verify the image
@@ -5704,7 +5705,7 @@ func TestSyncSignaturesDiff(t *testing.T) {
 
 		// notation verify the image
 		image = fmt.Sprintf("localhost:%s/%s:%s", destPort, repoName, testImageTag)
-		err = test.VerifyWithNotation(image, tdir)
+		err = extt.VerifyWithNotation(image, tdir)
 		So(err, ShouldBeNil)
 
 		// cosign verify the image
@@ -6034,7 +6035,7 @@ func TestSyncWithDestination(t *testing.T) {
 
 				// notation verify the synced image
 				image := fmt.Sprintf("localhost:%s/%s:%s", destPort, testCase.expected, testImageTag)
-				err = test.VerifyWithNotation(image, tdir)
+				err = extt.VerifyWithNotation(image, tdir)
 				So(err, ShouldBeNil)
 
 				// cosign verify the synced image
@@ -6084,7 +6085,7 @@ func TestSyncWithDestination(t *testing.T) {
 
 				// notation verify the synced image
 				image := fmt.Sprintf("localhost:%s/%s:%s", destPort, testCase.expected, testImageTag)
-				err = test.VerifyWithNotation(image, tdir)
+				err = extt.VerifyWithNotation(image, tdir)
 				So(err, ShouldBeNil)
 
 				// cosign verify the synced image
@@ -6249,12 +6250,12 @@ func generateKeyPairs(tdir string) {
 		}
 	}
 
-	test.NotationPathLock.Lock()
-	defer test.NotationPathLock.Unlock()
+	extt.NotationPathLock.Lock()
+	defer extt.NotationPathLock.Unlock()
 
-	test.LoadNotationPath(tdir)
+	extt.LoadNotationPath(tdir)
 
-	err := test.GenerateNotationCerts(tdir, "good")
+	err := extt.GenerateNotationCerts(tdir, "good")
 	if err != nil {
 		panic(err)
 	}
@@ -6303,20 +6304,20 @@ func signImage(tdir, port, repoName string, digest godigest.Digest) {
 		panic(err)
 	}
 
-	test.NotationPathLock.Lock()
-	defer test.NotationPathLock.Unlock()
+	extt.NotationPathLock.Lock()
+	defer extt.NotationPathLock.Unlock()
 
-	test.LoadNotationPath(tdir)
+	extt.LoadNotationPath(tdir)
 
 	// sign the image
 	image := fmt.Sprintf("localhost:%s/%s@%s", port, repoName, digest.String())
 
-	err = test.SignWithNotation("good", image, tdir)
+	err = extt.SignWithNotation("good", image, tdir)
 	if err != nil {
 		panic(err)
 	}
 
-	err = test.VerifyWithNotation(image, tdir)
+	err = extt.VerifyWithNotation(image, tdir)
 	if err != nil {
 		panic(err)
 	}

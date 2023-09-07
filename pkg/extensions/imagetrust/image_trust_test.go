@@ -36,6 +36,7 @@ import (
 	extconf "zotregistry.io/zot/pkg/extensions/config"
 	"zotregistry.io/zot/pkg/extensions/imagetrust"
 	"zotregistry.io/zot/pkg/test"
+	extt "zotregistry.io/zot/pkg/test/extensions"
 )
 
 var errExpiryError = errors.New("expiry err")
@@ -92,13 +93,13 @@ func TestInitCosignAndNotationDirs(t *testing.T) {
 	Convey("UploadCertificate - notationDir is not set", t, func() {
 		rootDir := t.TempDir()
 
-		test.NotationPathLock.Lock()
-		defer test.NotationPathLock.Unlock()
+		extt.NotationPathLock.Lock()
+		defer extt.NotationPathLock.Unlock()
 
-		test.LoadNotationPath(rootDir)
+		extt.LoadNotationPath(rootDir)
 
 		// generate a keypair
-		err := test.GenerateNotationCerts(rootDir, "notation-upload-test")
+		err := extt.GenerateNotationCerts(rootDir, "notation-upload-test")
 		So(err, ShouldBeNil)
 
 		certificateContent, err := os.ReadFile(path.Join(rootDir, "notation/localkeys", "notation-upload-test.crt"))
@@ -223,7 +224,7 @@ func TestVerifySignatures(t *testing.T) {
 			cosignDir, err := pubKeyStorage.GetCosignDirPath()
 			So(err, ShouldBeNil)
 
-			err = test.WriteFileWithPermission(path.Join(cosignDir, "file"), []byte("not a public key"), 0o600, false)
+			err = extt.WriteFileWithPermission(path.Join(cosignDir, "file"), []byte("not a public key"), 0o600, false)
 			So(err, ShouldBeNil)
 
 			imgTrustStore := &imagetrust.ImageTrustStore{
@@ -393,7 +394,7 @@ func TestVerifySignatures(t *testing.T) {
 			notationDir, err := certStorage.GetNotationDirPath()
 			So(err, ShouldBeNil)
 
-			err = test.WriteFileWithPermission(path.Join(notationDir, "trustpolicy.json"), []byte("invalid content"),
+			err = extt.WriteFileWithPermission(path.Join(notationDir, "trustpolicy.json"), []byte("invalid content"),
 				0o600, true)
 			So(err, ShouldBeNil)
 
@@ -430,19 +431,19 @@ func TestVerifySignatures(t *testing.T) {
 			notationDir, err := certStorage.GetNotationDirPath()
 			So(err, ShouldBeNil)
 
-			test.NotationPathLock.Lock()
-			defer test.NotationPathLock.Unlock()
+			extt.NotationPathLock.Lock()
+			defer extt.NotationPathLock.Unlock()
 
-			test.LoadNotationPath(notationDir)
+			extt.LoadNotationPath(notationDir)
 
 			// generate a keypair
-			err = test.GenerateNotationCerts(notationDir, "notation-sign-test")
+			err = extt.GenerateNotationCerts(notationDir, "notation-sign-test")
 			So(err, ShouldBeNil)
 
 			// sign the image
 			image := fmt.Sprintf("localhost:%s/%s", port, fmt.Sprintf("%s:%s", repo, tag))
 
-			err = test.SignWithNotation("notation-sign-test", image, notationDir)
+			err = extt.SignWithNotation("notation-sign-test", image, notationDir)
 			So(err, ShouldBeNil)
 
 			err = test.CopyFiles(path.Join(notationDir, "notation", "truststore"), path.Join(notationDir, "truststore"))
@@ -469,7 +470,7 @@ func TestVerifySignatures(t *testing.T) {
 				]
 			}`
 
-			err = test.WriteFileWithPermission(path.Join(notationDir, "trustpolicy.json"), []byte(trustPolicy), 0o600, true)
+			err = extt.WriteFileWithPermission(path.Join(notationDir, "trustpolicy.json"), []byte(trustPolicy), 0o600, true)
 			So(err, ShouldBeNil)
 
 			indexContent, err := ctlr.StoreController.DefaultStore.GetIndexContent(repo)
@@ -552,13 +553,13 @@ func TestLocalTrustStoreUploadErr(t *testing.T) {
 	Convey("certificate can't be stored", t, func() {
 		rootDir := t.TempDir()
 
-		test.NotationPathLock.Lock()
-		defer test.NotationPathLock.Unlock()
+		extt.NotationPathLock.Lock()
+		defer extt.NotationPathLock.Unlock()
 
-		test.LoadNotationPath(rootDir)
+		extt.LoadNotationPath(rootDir)
 
 		// generate a keypair
-		err := test.GenerateNotationCerts(rootDir, "notation-upload-test")
+		err := extt.GenerateNotationCerts(rootDir, "notation-upload-test")
 		So(err, ShouldBeNil)
 
 		certificateContent, err := os.ReadFile(path.Join(rootDir, "notation/localkeys", "notation-upload-test.crt"))
@@ -1014,13 +1015,13 @@ func RunUploadTests(t *testing.T, imageTrustStore imagetrust.ImageTrustStore) { 
 	Convey("upload certificate successfully", func() {
 		certDir := t.TempDir()
 
-		test.NotationPathLock.Lock()
-		defer test.NotationPathLock.Unlock()
+		extt.NotationPathLock.Lock()
+		defer extt.NotationPathLock.Unlock()
 
-		test.LoadNotationPath(certDir)
+		extt.LoadNotationPath(certDir)
 
 		// generate a keypair
-		err := test.GenerateNotationCerts(certDir, "notation-upload-test")
+		err := extt.GenerateNotationCerts(certDir, "notation-upload-test")
 		So(err, ShouldBeNil)
 
 		certificateContent, err := os.ReadFile(path.Join(certDir, "notation/localkeys", "notation-upload-test.crt"))
@@ -1172,7 +1173,7 @@ func RunVerificationTests(t *testing.T, dbDriverParams map[string]interface{}) {
 			test.NotationPathLock.Lock()
 			defer test.NotationPathLock.Unlock()
 
-			test.LoadNotationPath(notationDir)
+			extt.LoadNotationPath(notationDir)
 
 			uuid, err := guuid.NewV4()
 			So(err, ShouldBeNil)
@@ -1180,13 +1181,13 @@ func RunVerificationTests(t *testing.T, dbDriverParams map[string]interface{}) {
 			certName := fmt.Sprintf("notation-sign-test-%s", uuid)
 
 			// generate a keypair
-			err = test.GenerateNotationCerts(notationDir, certName)
+			err = extt.GenerateNotationCerts(notationDir, certName)
 			So(err, ShouldBeNil)
 
 			// sign the image
 			imageURL := fmt.Sprintf("localhost:%s/%s", port, fmt.Sprintf("%s:%s", repo, tag))
 
-			err = test.SignWithNotation(certName, imageURL, notationDir)
+			err = extt.SignWithNotation(certName, imageURL, notationDir)
 			So(err, ShouldBeNil)
 
 			indexContent, err := ctlr.StoreController.DefaultStore.GetIndexContent(repo)

@@ -1,8 +1,10 @@
 package main //nolint:testpackage // separate binary
 
 import (
+	"reflect"
 	"testing"
 
+	distspec "github.com/opencontainers/distribution-spec/specs-go"
 	. "github.com/smartystreets/goconvey/convey"
 
 	"zotregistry.io/zot/pkg/api"
@@ -19,5 +21,12 @@ func TestIntegration(t *testing.T) {
 		So(cl, ShouldNotBeNil)
 
 		So(cl.Execute(), ShouldBeNil)
+	})
+	Convey("Check DistSpecVersion const has same value in distribution-spec", t, func() {
+		So(DistSpecVersion, ShouldEqual, distspec.Version)
+	})
+	Convey("Check ImageTags definition is the same as zotregistry.io/zot/pkg/api.ImageTags", t, func() {
+		So(reflect.VisibleFields(reflect.TypeOf(ImageTags{})), ShouldResemble,
+			reflect.VisibleFields(reflect.TypeOf(api.ImageTags{})))
 	})
 }
