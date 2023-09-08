@@ -611,14 +611,14 @@ func TestSearchRepos(t *testing.T) {
 func getMockSearchConfig(buff *bytes.Buffer, mockService mockService) searchConfig {
 	return searchConfig{
 		resultWriter:  buff,
-		user:          ref(""),
+		user:          "",
 		searchService: mockService,
-		servURL:       ref("http://127.0.0.1:8000"),
-		outputFormat:  ref(""),
-		verifyTLS:     ref(false),
-		fixedFlag:     ref(false),
-		verbose:       ref(false),
-		debug:         ref(false),
+		servURL:       "http://127.0.0.1:8000",
+		outputFormat:  "",
+		verifyTLS:     false,
+		fixedFlag:     false,
+		verbose:       false,
+		debug:         false,
 	}
 }
 
@@ -685,7 +685,8 @@ func TestUtils(t *testing.T) {
 	Convey("GetConfigOptions", t, func() {
 		// no flags
 		cmd := &cobra.Command{}
-		isSpinner, verifyTLS := GetCliConfigOptions(cmd)
+		isSpinner, verifyTLS, err := GetCliConfigOptions(cmd)
+		So(err, ShouldNotBeNil)
 		So(isSpinner, ShouldBeFalse)
 		So(verifyTLS, ShouldBeFalse)
 
@@ -693,7 +694,8 @@ func TestUtils(t *testing.T) {
 		configPath := makeConfigFile(`{"configs":[{"_name":"imagetest","showspinner":"bad", "verify-tls": false}]}`)
 		cmd = &cobra.Command{}
 		cmd.Flags().String(cmdflags.ConfigFlag, "imagetest", "")
-		isSpinner, verifyTLS = GetCliConfigOptions(cmd)
+		isSpinner, verifyTLS, err = GetCliConfigOptions(cmd)
+		So(err, ShouldNotBeNil)
 		So(isSpinner, ShouldBeFalse)
 		So(verifyTLS, ShouldBeFalse)
 		os.Remove(configPath)
@@ -702,7 +704,8 @@ func TestUtils(t *testing.T) {
 		configPath = makeConfigFile(`{"configs":[{"_name":"imagetest","showspinner":false, "verify-tls": "bad"}]}`)
 		cmd = &cobra.Command{}
 		cmd.Flags().String(cmdflags.ConfigFlag, "imagetest", "")
-		isSpinner, verifyTLS = GetCliConfigOptions(cmd)
+		isSpinner, verifyTLS, err = GetCliConfigOptions(cmd)
+		So(err, ShouldNotBeNil)
 		So(isSpinner, ShouldBeFalse)
 		So(verifyTLS, ShouldBeFalse)
 		os.Remove(configPath)
@@ -743,17 +746,17 @@ func TestUtils(t *testing.T) {
 	Convey("CheckExtEndPointQuery", t, func() {
 		// invalid url
 		err := CheckExtEndPointQuery(searchConfig{
-			user:    ref(""),
-			servURL: ref("bad-url"),
+			user:    "",
+			servURL: "bad-url",
 		})
 		So(err, ShouldNotBeNil)
 
 		// good url but no connection
 		err = CheckExtEndPointQuery(searchConfig{
-			user:         ref(""),
-			servURL:      ref("http://127.0.0.1:5000"),
-			verifyTLS:    ref(false),
-			debug:        ref(false),
+			user:         "",
+			servURL:      "http://127.0.0.1:5000",
+			verifyTLS:    false,
+			debug:        false,
 			resultWriter: io.Discard,
 		})
 		So(err, ShouldNotBeNil)

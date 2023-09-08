@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -23,13 +24,11 @@ import (
 	"github.com/sigstore/cosign/v2/cmd/cosign/cli/options"
 	"github.com/sigstore/cosign/v2/cmd/cosign/cli/sign"
 	. "github.com/smartystreets/goconvey/convey"
-	"github.com/spf13/cobra"
 	"gopkg.in/resty.v1"
 
 	zerr "zotregistry.io/zot/errors"
 	"zotregistry.io/zot/pkg/api"
 	"zotregistry.io/zot/pkg/api/config"
-	"zotregistry.io/zot/pkg/cli/cmdflags"
 	"zotregistry.io/zot/pkg/common"
 	extconf "zotregistry.io/zot/pkg/extensions/config"
 	zlog "zotregistry.io/zot/pkg/log"
@@ -65,7 +64,7 @@ func TestSearchImageCmd(t *testing.T) {
 	})
 
 	Convey("Test image no url", t, func() {
-		args := []string{"imagetest", "--name", "dummyIdRandom"}
+		args := []string{"name", "dummyIdRandom", "--config", "imagetest"}
 		configPath := makeConfigFile(`{"configs":[{"_name":"imagetest","showspinner":false}]}`)
 		defer os.Remove(configPath)
 		cmd := NewImageCommand(new(mockService))
@@ -75,11 +74,11 @@ func TestSearchImageCmd(t *testing.T) {
 		cmd.SetArgs(args)
 		err := cmd.Execute()
 		So(err, ShouldNotBeNil)
-		So(err, ShouldEqual, zerr.ErrNoURLProvided)
+		So(errors.Is(err, zerr.ErrNoURLProvided), ShouldBeTrue)
 	})
 
 	Convey("Test image invalid home directory", t, func() {
-		args := []string{"imagetest", "--name", "dummyImageName"}
+		args := []string{"name", "dummyImageName", "--config", "imagetest"}
 
 		configPath := makeConfigFile(`{"configs":[{"_name":"imagetest","url":"https://test-url.com","showspinner":false}]}`)
 		defer os.Remove(configPath)
@@ -108,7 +107,7 @@ func TestSearchImageCmd(t *testing.T) {
 	})
 
 	Convey("Test image no params", t, func() {
-		args := []string{"imagetest", "--url", "someUrl"}
+		args := []string{"--url", "someUrl"}
 		configPath := makeConfigFile(`{"configs":[{"_name":"imagetest","showspinner":false}]}`)
 		defer os.Remove(configPath)
 		cmd := NewImageCommand(new(mockService))
@@ -121,7 +120,7 @@ func TestSearchImageCmd(t *testing.T) {
 	})
 
 	Convey("Test image invalid url", t, func() {
-		args := []string{"imagetest", "--name", "dummyImageName", "--url", "invalidUrl"}
+		args := []string{"name", "dummyImageName", "--url", "invalidUrl"}
 		configPath := makeConfigFile(`{"configs":[{"_name":"imagetest","showspinner":false}]}`)
 		defer os.Remove(configPath)
 		cmd := NewImageCommand(new(searchService))
@@ -136,7 +135,7 @@ func TestSearchImageCmd(t *testing.T) {
 	})
 
 	Convey("Test image invalid url port", t, func() {
-		args := []string{"imagetest", "--name", "dummyImageName", "--url", "http://localhost:99999"}
+		args := []string{"name", "dummyImageName", "--url", "http://localhost:99999"}
 		configPath := makeConfigFile(`{"configs":[{"_name":"imagetest","showspinner":false}]}`)
 		defer os.Remove(configPath)
 		cmd := NewImageCommand(new(searchService))
@@ -149,7 +148,7 @@ func TestSearchImageCmd(t *testing.T) {
 		So(buff.String(), ShouldContainSubstring, "invalid port")
 
 		Convey("without flags", func() {
-			args := []string{"imagetest", "--url", "http://localhost:99999"}
+			args := []string{"list", "--url", "http://localhost:99999"}
 			configPath := makeConfigFile(`{"configs":[{"_name":"imagetest","showspinner":false}]}`)
 			defer os.Remove(configPath)
 			cmd := NewImageCommand(new(searchService))
@@ -164,7 +163,7 @@ func TestSearchImageCmd(t *testing.T) {
 	})
 
 	Convey("Test image unreachable", t, func() {
-		args := []string{"imagetest", "--name", "dummyImageName", "--url", "http://localhost:9999"}
+		args := []string{"name", "dummyImageName", "--url", "http://localhost:9999"}
 		configPath := makeConfigFile(`{"configs":[{"_name":"imagetest","showspinner":false}]}`)
 		defer os.Remove(configPath)
 		cmd := NewImageCommand(new(searchService))
@@ -177,7 +176,7 @@ func TestSearchImageCmd(t *testing.T) {
 	})
 
 	Convey("Test image url from config", t, func() {
-		args := []string{"imagetest", "--name", "dummyImageName"}
+		args := []string{"name", "dummyImageName", "--config", "imagetest"}
 		configPath := makeConfigFile(`{"configs":[{"_name":"imagetest","url":"https://test-url.com","showspinner":false}]}`)
 		defer os.Remove(configPath)
 		cmd := NewImageCommand(new(mockService))
@@ -194,11 +193,11 @@ func TestSearchImageCmd(t *testing.T) {
 	})
 
 	Convey("Test image by name", t, func() {
-		args := []string{"imagetest", "--name", "dummyImageName", "--url", "someUrlImage"}
+		args := []string{"name", "dummyImageName", "--url", "http://127.0.0.1:8080"}
 		configPath := makeConfigFile(`{"configs":[{"_name":"imagetest","showspinner":false}]}`)
 		defer os.Remove(configPath)
 		imageCmd := NewImageCommand(new(mockService))
-		buff := bytes.NewBufferString("")
+		buff := &bytes.Buffer{}
 		imageCmd.SetOut(buff)
 		imageCmd.SetErr(buff)
 		imageCmd.SetArgs(args)
@@ -208,59 +207,26 @@ func TestSearchImageCmd(t *testing.T) {
 		So(strings.TrimSpace(str), ShouldEqual,
 			"REPOSITORY TAG OS/ARCH DIGEST SIGNED SIZE dummyImageName tag os/arch 6e2f80bf false 123kB")
 		So(err, ShouldBeNil)
-		Convey("using shorthand", func() {
-			args := []string{"imagetest", "-n", "dummyImageName", "--url", "someUrlImage"}
-			buff := bytes.NewBufferString("")
-			configPath := makeConfigFile(`{"configs":[{"_name":"imagetest","showspinner":false}]}`)
-			defer os.Remove(configPath)
-			imageCmd := NewImageCommand(new(mockService))
-			imageCmd.SetOut(buff)
-			imageCmd.SetErr(buff)
-			imageCmd.SetArgs(args)
-			err := imageCmd.Execute()
-
-			space := regexp.MustCompile(`\s+`)
-			str := space.ReplaceAllString(buff.String(), " ")
-			So(strings.TrimSpace(str), ShouldEqual,
-				"REPOSITORY TAG OS/ARCH DIGEST SIGNED SIZE dummyImageName tag os/arch 6e2f80bf false 123kB")
-			So(err, ShouldBeNil)
-		})
 	})
 
 	Convey("Test image by digest", t, func() {
-		args := []string{"imagetest", "--digest", "6e2f80bf", "--url", "someUrlImage"}
-		configPath := makeConfigFile(`{"configs":[{"_name":"imagetest","showspinner":false}]}`)
-		defer os.Remove(configPath)
-		imageCmd := NewImageCommand(new(mockService))
-		buff := bytes.NewBufferString("")
-		imageCmd.SetOut(buff)
-		imageCmd.SetErr(buff)
-		imageCmd.SetArgs(args)
-		err := imageCmd.Execute()
+		searchConfig := getTestSearchConfig("http://127.0.0.1:8080", new(mockService))
+		buff := &bytes.Buffer{}
+		searchConfig.resultWriter = buff
+		err := SearchImagesByDigest(searchConfig, "6e2f80bf")
+		So(err, ShouldBeNil)
+
 		space := regexp.MustCompile(`\s+`)
 		str := space.ReplaceAllString(buff.String(), " ")
 		So(strings.TrimSpace(str), ShouldEqual,
 			"REPOSITORY TAG OS/ARCH DIGEST SIGNED SIZE anImage tag os/arch 6e2f80bf false 123kB")
 		So(err, ShouldBeNil)
-
-		Convey("invalid URL format", func() {
-			args := []string{"imagetest", "--digest", "digest", "--url", "invalidURL"}
-			configPath := makeConfigFile(`{"configs":[{"_name":"imagetest","showspinner":false}]}`)
-			defer os.Remove(configPath)
-			imageCmd := NewImageCommand(NewSearchService())
-			buff := bytes.NewBufferString("")
-			imageCmd.SetOut(buff)
-			imageCmd.SetErr(buff)
-			imageCmd.SetArgs(args)
-			err := imageCmd.Execute()
-			So(err, ShouldNotBeNil)
-			So(err, ShouldEqual, zerr.ErrInvalidURL)
-			So(buff.String(), ShouldContainSubstring, "invalid URL format")
-		})
 	})
 }
 
 func TestSignature(t *testing.T) {
+	space := regexp.MustCompile(`\s+`)
+
 	Convey("Test from real server", t, func() {
 		currentWorkingDir, err := os.Getwd()
 		So(err, ShouldBeNil)
@@ -283,21 +249,10 @@ func TestSignature(t *testing.T) {
 		cm.StartAndWait(conf.HTTP.Port)
 		defer cm.StopServer()
 
-		cfg, layers, manifest, err := test.GetImageComponents(1) //nolint:staticcheck
-		So(err, ShouldBeNil)
-
 		repoName := "repo7"
-		err = test.UploadImage(
-			test.Image{
-				Config:   cfg,
-				Layers:   layers,
-				Manifest: manifest,
-			}, url, repoName, "test:1.0")
+		image := test.CreateDefaultImage()
+		err = test.UploadImage(image, url, repoName, "1.0")
 		So(err, ShouldBeNil)
-
-		content, err := json.Marshal(manifest)
-		So(err, ShouldBeNil)
-		digest := godigest.FromBytes(content)
 
 		// generate a keypair
 		if _, err := os.Stat(path.Join(currentDir, "cosign.key")); err != nil {
@@ -317,38 +272,32 @@ func TestSignature(t *testing.T) {
 				AnnotationOptions: options.AnnotationOptions{Annotations: []string{"tag=test:1.0"}},
 				Upload:            true,
 			},
-			[]string{fmt.Sprintf("localhost:%s/%s@%s", port, "repo7", digest.String())})
+			[]string{fmt.Sprintf("localhost:%s/%s@%s", port, "repo7", image.DigestStr())})
 		So(err, ShouldBeNil)
+
+		searchConfig := getTestSearchConfig(url, new(searchService))
 
 		t.Logf("%s", ctlr.Config.Storage.RootDirectory)
-		args := []string{"imagetest"}
-		configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s","showspinner":false}]}`, url))
-		defer os.Remove(configPath)
-		cmd := NewImageCommand(new(searchService))
+
 		buff := &bytes.Buffer{}
-		cmd.SetOut(buff)
-		cmd.SetErr(buff)
-		cmd.SetArgs(args)
-		err = cmd.Execute()
+		searchConfig.resultWriter = buff
+		err = SearchAllImagesGQL(searchConfig)
 		So(err, ShouldBeNil)
-		space := regexp.MustCompile(`\s+`)
-		str := space.ReplaceAllString(buff.String(), " ")
-		actual := strings.TrimSpace(str)
+
+		actual := strings.TrimSpace(space.ReplaceAllString(buff.String(), " "))
 		So(actual, ShouldContainSubstring, "REPOSITORY TAG OS/ARCH DIGEST SIGNED SIZE")
-		So(actual, ShouldContainSubstring, "repo7 test:1.0 linux/amd64 8e59ed3b true 504B")
+		So(actual, ShouldContainSubstring, "repo7 1.0 linux/amd64 db573b01 true 854B")
 
 		t.Log("Test getting all images using rest calls to get catalog and individual manifests")
-		cmd = MockNewImageCommand(new(searchService))
+
 		buff = &bytes.Buffer{}
-		cmd.SetOut(buff)
-		cmd.SetErr(buff)
-		cmd.SetArgs(args)
-		err = cmd.Execute()
+		searchConfig.resultWriter = buff
+		err = SearchAllImages(searchConfig)
 		So(err, ShouldBeNil)
-		str = space.ReplaceAllString(buff.String(), " ")
-		actual = strings.TrimSpace(str)
+
+		actual = strings.TrimSpace(space.ReplaceAllString(buff.String(), " "))
 		So(actual, ShouldContainSubstring, "REPOSITORY TAG OS/ARCH DIGEST SIGNED SIZE")
-		So(actual, ShouldContainSubstring, "repo7 test:1.0 linux/amd64 8e59ed3b true 504B")
+		So(actual, ShouldContainSubstring, "repo7 1.0 linux/amd64 db573b01 true 854B")
 
 		err = os.Chdir(currentWorkingDir)
 		So(err, ShouldBeNil)
@@ -376,55 +325,35 @@ func TestSignature(t *testing.T) {
 		cm.StartAndWait(conf.HTTP.Port)
 		defer cm.StopServer()
 
-		cfg, layers, manifest, err := test.GetImageComponents(1) //nolint:staticcheck
-		So(err, ShouldBeNil)
-
 		repoName := "repo7"
-		err = test.UploadImage(
-			test.Image{
-				Config:   cfg,
-				Layers:   layers,
-				Manifest: manifest,
-			}, url, repoName, "0.0.1")
+		err = test.UploadImage(test.CreateDefaultImage(), url, repoName, "0.0.1")
 		So(err, ShouldBeNil)
-
-		content, err := json.Marshal(manifest)
-		So(err, ShouldBeNil)
-		digest := godigest.FromBytes(content)
-		So(digest, ShouldNotBeNil)
 
 		err = test.SignImageUsingNotary("repo7:0.0.1", port)
 		So(err, ShouldBeNil)
 
+		searchConfig := getTestSearchConfig(url, new(searchService))
+
 		t.Logf("%s", ctlr.Config.Storage.RootDirectory)
-		args := []string{"imagetest"}
-		configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s","showspinner":false}]}`, url))
-		defer os.Remove(configPath)
-		cmd := NewImageCommand(new(searchService))
+
 		buff := &bytes.Buffer{}
-		cmd.SetOut(buff)
-		cmd.SetErr(buff)
-		cmd.SetArgs(args)
-		err = cmd.Execute()
+		searchConfig.resultWriter = buff
+		err = SearchAllImagesGQL(searchConfig)
 		So(err, ShouldBeNil)
-		space := regexp.MustCompile(`\s+`)
-		str := space.ReplaceAllString(buff.String(), " ")
-		actual := strings.TrimSpace(str)
+
+		actual := strings.TrimSpace(space.ReplaceAllString(buff.String(), " "))
 		So(actual, ShouldContainSubstring, "REPOSITORY TAG OS/ARCH DIGEST SIGNED SIZE")
-		So(actual, ShouldContainSubstring, "repo7 0.0.1 linux/amd64 8e59ed3b true 504B")
+		So(actual, ShouldContainSubstring, "repo7 0.0.1 linux/amd64 db573b01 true 854B")
 
 		t.Log("Test getting all images using rest calls to get catalog and individual manifests")
-		cmd = MockNewImageCommand(new(searchService))
 		buff = &bytes.Buffer{}
-		cmd.SetOut(buff)
-		cmd.SetErr(buff)
-		cmd.SetArgs(args)
-		err = cmd.Execute()
+		searchConfig.resultWriter = buff
+		err = SearchAllImages(searchConfig)
 		So(err, ShouldBeNil)
-		str = space.ReplaceAllString(buff.String(), " ")
-		actual = strings.TrimSpace(str)
+
+		actual = strings.TrimSpace(space.ReplaceAllString(buff.String(), " "))
 		So(actual, ShouldContainSubstring, "REPOSITORY TAG OS/ARCH DIGEST SIGNED SIZE")
-		So(actual, ShouldContainSubstring, "repo7 0.0.1 linux/amd64 8e59ed3b true 504B")
+		So(actual, ShouldContainSubstring, "repo7 0.0.1 linux/amd64 db573b01 true 854B")
 
 		err = os.Chdir(currentWorkingDir)
 		So(err, ShouldBeNil)
@@ -454,52 +383,37 @@ func TestDerivedImageList(t *testing.T) {
 		panic(err)
 	}
 
+	space := regexp.MustCompile(`\s+`)
+	searchConfig := getTestSearchConfig(url, new(searchService))
+
 	t.Logf("rootDir: %s", ctlr.Config.Storage.RootDirectory)
 
 	Convey("Test from real server", t, func() {
 		Convey("Test derived images list working", func() {
 			t.Logf("%s", ctlr.Config.Storage.RootDirectory)
-			args := []string{"imagetest", "--derived-images", "repo7:test:2.0"}
-			configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s","showspinner":false}]}`, url))
-			defer os.Remove(configPath)
-			cmd := NewImageCommand(new(searchService))
+
 			buff := &bytes.Buffer{}
-			cmd.SetOut(buff)
-			cmd.SetErr(buff)
-			cmd.SetArgs(args)
-			err := cmd.Execute()
+			searchConfig.resultWriter = buff
+			err := SearchDerivedImageListGQL(searchConfig, "repo7:test:2.0")
+			actual := strings.TrimSpace(space.ReplaceAllString(buff.String(), " "))
 			So(err, ShouldBeNil)
-			space := regexp.MustCompile(`\s+`)
-			str := space.ReplaceAllString(buff.String(), " ")
-			actual := strings.TrimSpace(str)
+
 			So(actual, ShouldContainSubstring, "REPOSITORY TAG OS/ARCH DIGEST SIGNED SIZE")
 			So(actual, ShouldContainSubstring, "repo7 test:1.0 linux/amd64 9d9461ed false 860B")
 		})
 
 		Convey("Test derived images list fails", func() {
-			args := []string{"imagetest", "--derived-images", "repo7:test:missing"}
-			configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s","showspinner":false}]}`, url))
-			defer os.Remove(configPath)
-			cmd := NewImageCommand(new(searchService))
 			buff := &bytes.Buffer{}
-			cmd.SetOut(buff)
-			cmd.SetErr(buff)
-			cmd.SetArgs(args)
-			err = cmd.Execute()
+			searchConfig.resultWriter = buff
+			err := SearchDerivedImageListGQL(searchConfig, "repo7:test:missing")
 			So(err, ShouldNotBeNil)
 		})
 
 		Convey("Test derived images list cannot print", func() {
-			t.Logf("%s", ctlr.Config.Storage.RootDirectory)
-			args := []string{"imagetest", "--derived-images", "repo7:test:2.0", "-o", "random"}
-			configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s","showspinner":false}]}`, url))
-			defer os.Remove(configPath)
-			cmd := NewImageCommand(new(searchService))
 			buff := &bytes.Buffer{}
-			cmd.SetOut(buff)
-			cmd.SetErr(buff)
-			cmd.SetArgs(args)
-			err := cmd.Execute()
+			searchConfig.resultWriter = buff
+			searchConfig.outputFormat = "random"
+			err := SearchDerivedImageListGQL(searchConfig, "repo7:test:2.0")
 			So(err, ShouldNotBeNil)
 		})
 	})
@@ -527,73 +441,54 @@ func TestBaseImageList(t *testing.T) {
 		panic(err)
 	}
 
+	space := regexp.MustCompile(`\s+`)
+	searchConfig := getTestSearchConfig(url, new(searchService))
+
 	t.Logf("rootDir: %s", ctlr.Config.Storage.RootDirectory)
 
 	Convey("Test from real server", t, func() {
 		Convey("Test base images list working", func() {
 			t.Logf("%s", ctlr.Config.Storage.RootDirectory)
-			args := []string{"imagetest", "--base-images", "repo7:test:1.0"}
-			configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s","showspinner":false}]}`, url))
-			defer os.Remove(configPath)
-			cmd := NewImageCommand(new(searchService))
+
 			buff := &bytes.Buffer{}
-			cmd.SetOut(buff)
-			cmd.SetErr(buff)
-			cmd.SetArgs(args)
-			err := cmd.Execute()
+			searchConfig.resultWriter = buff
+			err := SearchBaseImageListGQL(searchConfig, "repo7:test:1.0")
 			So(err, ShouldBeNil)
-			space := regexp.MustCompile(`\s+`)
-			str := space.ReplaceAllString(buff.String(), " ")
-			actual := strings.TrimSpace(str)
+			actual := strings.TrimSpace(space.ReplaceAllString(buff.String(), " "))
 			So(actual, ShouldContainSubstring, "REPOSITORY TAG OS/ARCH DIGEST SIGNED SIZE")
 			So(actual, ShouldContainSubstring, "repo7 test:2.0 linux/amd64 214e4bed false 530B")
 		})
 
 		Convey("Test base images list fail", func() {
-			args := []string{"imagetest", "--base-images", "repo7:test:missing"}
-			configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s","showspinner":false}]}`, url))
-			defer os.Remove(configPath)
-			cmd := NewImageCommand(new(searchService))
 			buff := &bytes.Buffer{}
-			cmd.SetOut(buff)
-			cmd.SetErr(buff)
-			cmd.SetArgs(args)
-			err = cmd.Execute()
+			searchConfig.resultWriter = buff
+			err := SearchBaseImageListGQL(searchConfig, "repo7:test:missing")
 			So(err, ShouldNotBeNil)
 		})
 
 		Convey("Test base images list cannot print", func() {
 			t.Logf("%s", ctlr.Config.Storage.RootDirectory)
-			args := []string{"imagetest", "--base-images", "repo7:test:1.0", "-o", "random"}
-			configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s","showspinner":false}]}`, url))
-			defer os.Remove(configPath)
-			cmd := NewImageCommand(new(searchService))
 			buff := &bytes.Buffer{}
-			cmd.SetOut(buff)
-			cmd.SetErr(buff)
-			cmd.SetArgs(args)
-			err := cmd.Execute()
+			searchConfig.outputFormat = "random"
+			searchConfig.resultWriter = buff
+			err := SearchBaseImageListGQL(searchConfig, "repo7:test:missing")
 			So(err, ShouldNotBeNil)
 		})
 	})
 }
 
 func TestListRepos(t *testing.T) {
+	searchConfig := getTestSearchConfig("https://test-url.com", new(mockService))
+
 	Convey("Test listing repositories", t, func() {
-		args := []string{"config-test"}
-		configPath := makeConfigFile(`{"configs":[{"_name":"config-test","url":"https://test-url.com","showspinner":false}]}`)
-		defer os.Remove(configPath)
-		cmd := NewRepoCommand(new(mockService))
-		buff := bytes.NewBufferString("")
-		cmd.SetOut(buff)
-		cmd.SetErr(buff)
-		cmd.SetArgs(args)
-		err := cmd.Execute()
+		buff := &bytes.Buffer{}
+		searchConfig.resultWriter = buff
+		err := SearchRepos(searchConfig)
 		So(err, ShouldBeNil)
 	})
 
 	Convey("Test listing repositories with debug flag", t, func() {
-		args := []string{"config-test", "--debug"}
+		args := []string{"list", "--config", "config-test", "--debug"}
 		configPath := makeConfigFile(`{"configs":[{"_name":"config-test","url":"https://test-url.com","showspinner":false}]}`)
 		defer os.Remove(configPath)
 		cmd := NewRepoCommand(new(searchService))
@@ -611,7 +506,7 @@ func TestListRepos(t *testing.T) {
 	})
 
 	Convey("Test error on home directory", t, func() {
-		args := []string{"config-test"}
+		args := []string{"list", "--config", "config-test"}
 
 		configPath := makeConfigFile(`{"configs":[{"_name":"config-test","url":"https://test-url.com","showspinner":false}]}`)
 		defer os.Remove(configPath)
@@ -640,7 +535,7 @@ func TestListRepos(t *testing.T) {
 	})
 
 	Convey("Test listing repositories error", t, func() {
-		args := []string{"config-test"}
+		args := []string{"list", "--config", "config-test"}
 		configPath := makeConfigFile(`{"configs":[{"_name":"config-test",
         	"url":"https://invalid.invalid","showspinner":false}]}`)
 		defer os.Remove(configPath)
@@ -654,7 +549,7 @@ func TestListRepos(t *testing.T) {
 	})
 
 	Convey("Test unable to get config value", t, func() {
-		args := []string{"config-test-nonexistent"}
+		args := []string{"list", "--config", "config-test-nonexistent"}
 		configPath := makeConfigFile(`{"configs":[{"_name":"config-test","url":"https://test-url.com","showspinner":false}]}`)
 		defer os.Remove(configPath)
 		cmd := NewRepoCommand(new(mockService))
@@ -667,20 +562,7 @@ func TestListRepos(t *testing.T) {
 	})
 
 	Convey("Test error - no url provided", t, func() {
-		args := []string{"config-test"}
-		configPath := makeConfigFile(`{"configs":[{"_name":"config-test","url":"","showspinner":false}]}`)
-		defer os.Remove(configPath)
-		cmd := NewRepoCommand(new(mockService))
-		buff := bytes.NewBufferString("")
-		cmd.SetOut(buff)
-		cmd.SetErr(buff)
-		cmd.SetArgs(args)
-		err := cmd.Execute()
-		So(err, ShouldNotBeNil)
-	})
-
-	Convey("Test error - no args provided", t, func() {
-		var args []string
+		args := []string{"list", "--config", "config-test"}
 		configPath := makeConfigFile(`{"configs":[{"_name":"config-test","url":"","showspinner":false}]}`)
 		defer os.Remove(configPath)
 		cmd := NewRepoCommand(new(mockService))
@@ -693,7 +575,7 @@ func TestListRepos(t *testing.T) {
 	})
 
 	Convey("Test error - spinner config invalid", t, func() {
-		args := []string{"config-test"}
+		args := []string{"list", "--config", "config-test"}
 		configPath := makeConfigFile(`{"configs":[{"_name":"config-test",
        		"url":"https://test-url.com","showspinner":invalid}]}`)
 		defer os.Remove(configPath)
@@ -707,7 +589,7 @@ func TestListRepos(t *testing.T) {
 	})
 
 	Convey("Test error - verifyTLSConfig fails", t, func() {
-		args := []string{"config-test"}
+		args := []string{"list", "--config", "config-test"}
 		configPath := makeConfigFile(`{"configs":[{"_name":"config-test",
         	"verify-tls":"invalid", "url":"https://test-url.com","showspinner":false}]}`)
 		defer os.Remove(configPath)
@@ -723,7 +605,7 @@ func TestListRepos(t *testing.T) {
 
 func TestOutputFormat(t *testing.T) {
 	Convey("Test text", t, func() {
-		args := []string{"imagetest", "--name", "dummyImageName", "-o", "text"}
+		args := []string{"name", "dummyImageName", "--config", "imagetest", "-f", "text"}
 		configPath := makeConfigFile(`{"configs":[{"_name":"imagetest","url":"https://test-url.com","showspinner":false}]}`)
 		defer os.Remove(configPath)
 		cmd := NewImageCommand(new(mockService))
@@ -740,7 +622,7 @@ func TestOutputFormat(t *testing.T) {
 	})
 
 	Convey("Test json", t, func() {
-		args := []string{"imagetest", "--name", "dummyImageName", "-o", "json"}
+		args := []string{"name", "dummyImageName", "--config", "imagetest", "-f", "json"}
 		configPath := makeConfigFile(`{"configs":[{"_name":"imagetest","url":"https://test-url.com","showspinner":false}]}`)
 		defer os.Remove(configPath)
 		cmd := NewImageCommand(new(mockService))
@@ -767,7 +649,7 @@ func TestOutputFormat(t *testing.T) {
 	})
 
 	Convey("Test yaml", t, func() {
-		args := []string{"imagetest", "--name", "dummyImageName", "-o", "yaml"}
+		args := []string{"name", "dummyImageName", "--config", "imagetest", "-f", "yaml"}
 		configPath := makeConfigFile(`{"configs":[{"_name":"imagetest","url":"https://test-url.com","showspinner":false}]}`)
 		defer os.Remove(configPath)
 		cmd := NewImageCommand(new(mockService))
@@ -798,7 +680,7 @@ func TestOutputFormat(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		Convey("Test yml", func() {
-			args := []string{"imagetest", "--name", "dummyImageName", "-o", "yml"}
+			args := []string{"name", "dummyImageName", "--config", "imagetest", "-f", "yml"}
 			configPath := makeConfigFile(
 				`{"configs":[{"_name":"imagetest",` +
 					`"url":"https://test-url.com","showspinner":false}]}`,
@@ -834,7 +716,7 @@ func TestOutputFormat(t *testing.T) {
 	})
 
 	Convey("Test invalid", t, func() {
-		args := []string{"imagetest", "--name", "dummyImageName", "-o", "random"}
+		args := []string{"name", "dummyImageName", "--config", "imagetest", "-f", "random"}
 		configPath := makeConfigFile(`{"configs":[{"_name":"imagetest","url":"https://test-url.com","showspinner":false}]}`)
 		defer os.Remove(configPath)
 		cmd := NewImageCommand(new(mockService))
@@ -870,7 +752,7 @@ func TestOutputFormatGQL(t *testing.T) {
 
 		Convey("Test json", func() {
 			t.Logf("%s", ctlr.Config.Storage.RootDirectory)
-			args := []string{"imagetest", "--name", "repo7", "-o", "json"}
+			args := []string{"name", "repo7", "--config", "imagetest", "-f", "json"}
 			configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s","showspinner":false}]}`, url))
 			defer os.Remove(configPath)
 			cmd := NewImageCommand(new(searchService))
@@ -912,7 +794,7 @@ func TestOutputFormatGQL(t *testing.T) {
 		})
 
 		Convey("Test yaml", func() {
-			args := []string{"imagetest", "--name", "repo7", "-o", "yaml"}
+			args := []string{"name", "repo7", "--config", "imagetest", "-f", "yaml"}
 			configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s","showspinner":false}]}`, url))
 			defer os.Remove(configPath)
 			cmd := NewImageCommand(new(searchService))
@@ -955,7 +837,7 @@ func TestOutputFormatGQL(t *testing.T) {
 		})
 
 		Convey("Test yml", func() {
-			args := []string{"imagetest", "--name", "repo7", "-o", "yml"}
+			args := []string{"name", "repo7", "--config", "imagetest", "-f", "yml"}
 			configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s","showspinner":false}]}`, url))
 			defer os.Remove(configPath)
 			cmd := NewImageCommand(new(searchService))
@@ -999,7 +881,7 @@ func TestOutputFormatGQL(t *testing.T) {
 		})
 
 		Convey("Test invalid", func() {
-			args := []string{"imagetest", "--name", "repo7", "-o", "random"}
+			args := []string{"name", "repo7", "--config", "imagetest", "-f", "random"}
 			configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s","showspinner":false}]}`, url))
 			defer os.Remove(configPath)
 			cmd := NewImageCommand(new(searchService))
@@ -1036,7 +918,7 @@ func TestServerResponseGQL(t *testing.T) {
 
 		Convey("Test all images config url", func() {
 			t.Logf("%s", ctlr.Config.Storage.RootDirectory)
-			args := []string{"imagetest"}
+			args := []string{"list", "--config", "imagetest"}
 			configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s","showspinner":false}]}`, url))
 			defer os.Remove(configPath)
 			cmd := NewImageCommand(new(searchService))
@@ -1053,7 +935,7 @@ func TestServerResponseGQL(t *testing.T) {
 			So(actual, ShouldContainSubstring, "repo7 test:2.0 linux/amd64 51e18f50 false 528B")
 			So(actual, ShouldContainSubstring, "repo7 test:1.0 linux/amd64 51e18f50 false 528B")
 			Convey("Test all images invalid output format", func() {
-				args := []string{"imagetest", "-o", "random"}
+				args := []string{"list", "--config", "imagetest", "-f", "random"}
 				configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s","showspinner":false}]}`, url))
 				defer os.Remove(configPath)
 				cmd := NewImageCommand(new(searchService))
@@ -1068,7 +950,7 @@ func TestServerResponseGQL(t *testing.T) {
 		})
 
 		Convey("Test all images verbose", func() {
-			args := []string{"imagetest", "--verbose"}
+			args := []string{"list", "--config", "imagetest", "--verbose"}
 			configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s","showspinner":false}]}`, url))
 			defer os.Remove(configPath)
 			cmd := NewImageCommand(new(searchService))
@@ -1093,7 +975,7 @@ func TestServerResponseGQL(t *testing.T) {
 		})
 
 		Convey("Test all images with debug flag", func() {
-			args := []string{"imagetest", "--debug"}
+			args := []string{"list", "--config", "imagetest", "--debug"}
 			configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s","showspinner":false}]}`, url))
 			defer os.Remove(configPath)
 			cmd := NewImageCommand(new(searchService))
@@ -1113,7 +995,7 @@ func TestServerResponseGQL(t *testing.T) {
 		})
 
 		Convey("Test image by name config url", func() {
-			args := []string{"imagetest", "--name", "repo7"}
+			args := []string{"name", "repo7", "--config", "imagetest"}
 			configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s","showspinner":false}]}`, url))
 			defer os.Remove(configPath)
 			cmd := NewImageCommand(new(searchService))
@@ -1130,27 +1012,8 @@ func TestServerResponseGQL(t *testing.T) {
 			So(actual, ShouldContainSubstring, "repo7 test:2.0 linux/amd64 51e18f50 false 528B")
 			So(actual, ShouldContainSubstring, "repo7 test:1.0 linux/amd64 51e18f50 false 528B")
 
-			Convey("with shorthand", func() {
-				args := []string{"imagetest", "-n", "repo7"}
-				configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s","showspinner":false}]}`, url))
-				defer os.Remove(configPath)
-				cmd := NewImageCommand(new(searchService))
-				buff := bytes.NewBufferString("")
-				cmd.SetOut(buff)
-				cmd.SetErr(buff)
-				cmd.SetArgs(args)
-				err = cmd.Execute()
-				So(err, ShouldBeNil)
-				space := regexp.MustCompile(`\s+`)
-				str := space.ReplaceAllString(buff.String(), " ")
-				actual := strings.TrimSpace(str)
-				So(actual, ShouldContainSubstring, "REPOSITORY TAG OS/ARCH DIGEST SIGNED SIZE")
-				So(actual, ShouldContainSubstring, "repo7 test:2.0 linux/amd64 51e18f50 false 528B")
-				So(actual, ShouldContainSubstring, "repo7 test:1.0 linux/amd64 51e18f50 false 528B")
-			})
-
 			Convey("invalid output format", func() {
-				args := []string{"imagetest", "--name", "repo7", "-o", "random"}
+				args := []string{"name", "repo7", "--config", "imagetest", "-f", "random"}
 				configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s","showspinner":false}]}`, url))
 				defer os.Remove(configPath)
 				cmd := NewImageCommand(new(searchService))
@@ -1165,7 +1028,7 @@ func TestServerResponseGQL(t *testing.T) {
 		})
 
 		Convey("Test image by digest", func() {
-			args := []string{"imagetest", "--digest", "51e18f50"}
+			args := []string{"digest", "51e18f50", "--config", "imagetest"}
 			configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s","showspinner":false}]}`, url))
 			defer os.Remove(configPath)
 			cmd := NewImageCommand(new(searchService))
@@ -1186,27 +1049,8 @@ func TestServerResponseGQL(t *testing.T) {
 			So(actual, ShouldContainSubstring, "repo7 test:2.0 linux/amd64 51e18f50 false 528B")
 			So(actual, ShouldContainSubstring, "repo7 test:1.0 linux/amd64 51e18f50 false 528B")
 
-			Convey("with shorthand", func() {
-				args := []string{"imagetest", "-d", "51e18f50"}
-				configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s","showspinner":false}]}`, url))
-				defer os.Remove(configPath)
-				cmd := NewImageCommand(new(searchService))
-				buff := bytes.NewBufferString("")
-				cmd.SetOut(buff)
-				cmd.SetErr(buff)
-				cmd.SetArgs(args)
-				err = cmd.Execute()
-				So(err, ShouldBeNil)
-				space := regexp.MustCompile(`\s+`)
-				str := space.ReplaceAllString(buff.String(), " ")
-				actual := strings.TrimSpace(str)
-				So(actual, ShouldContainSubstring, "REPOSITORY TAG OS/ARCH DIGEST SIGNED SIZE")
-				So(actual, ShouldContainSubstring, "repo7 test:2.0 linux/amd64 51e18f50 false 528B")
-				So(actual, ShouldContainSubstring, "repo7 test:1.0 linux/amd64 51e18f50 false 528B")
-			})
-
 			Convey("nonexistent digest", func() {
-				args := []string{"imagetest", "--digest", "d1g35t"}
+				args := []string{"digest", "d1g35t", "--config", "imagetest"}
 				configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s","showspinner":false}]}`, url))
 				defer os.Remove(configPath)
 				cmd := NewImageCommand(new(searchService))
@@ -1220,7 +1064,7 @@ func TestServerResponseGQL(t *testing.T) {
 			})
 
 			Convey("invalid output format", func() {
-				args := []string{"imagetest", "--digest", "51e18f50", "-o", "random"}
+				args := []string{"digest", "51e18f50", "--config", "imagetest", "-f", "random"}
 				configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s","showspinner":false}]}`, url))
 				defer os.Remove(configPath)
 				cmd := NewImageCommand(new(searchService))
@@ -1235,7 +1079,7 @@ func TestServerResponseGQL(t *testing.T) {
 		})
 
 		Convey("Test image by name nonexistent name", func() {
-			args := []string{"imagetest", "--name", "repo777"}
+			args := []string{"name", "repo777", "--config", "imagetest"}
 			configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s","showspinner":false}]}`, url))
 			defer os.Remove(configPath)
 			cmd := NewImageCommand(new(searchService))
@@ -1249,7 +1093,7 @@ func TestServerResponseGQL(t *testing.T) {
 		})
 
 		Convey("Test list repos error", func() {
-			args := []string{"config-test"}
+			args := []string{"list", "--config", "config-test"}
 
 			configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"config-test",
             "url":"%s","showspinner":false}]}`, url))
@@ -1292,22 +1136,17 @@ func TestServerResponse(t *testing.T) {
 		panic(err)
 	}
 
-	t.Logf("%s", ctlr.Config.Storage.RootDirectory)
+	space := regexp.MustCompile(`\s+`)
 
 	Convey("Test from real server", t, func() {
+		searchConfig := getTestSearchConfig(url, new(searchService))
+
 		Convey("Test all images", func() {
-			t.Logf("%s", ctlr.Config.Storage.RootDirectory)
-			args := []string{"imagetest"}
-			configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s","showspinner":false}]}`, url))
-			defer os.Remove(configPath)
-			cmd := MockNewImageCommand(new(searchService))
 			buff := &bytes.Buffer{}
-			cmd.SetOut(buff)
-			cmd.SetErr(buff)
-			cmd.SetArgs(args)
-			err := cmd.Execute()
+			searchConfig.resultWriter = buff
+			err := SearchAllImages(searchConfig)
 			So(err, ShouldBeNil)
-			space := regexp.MustCompile(`\s+`)
+
 			str := space.ReplaceAllString(buff.String(), " ")
 			actual := strings.TrimSpace(str)
 			So(actual, ShouldContainSubstring, "REPOSITORY TAG OS/ARCH DIGEST SIGNED SIZE")
@@ -1316,17 +1155,13 @@ func TestServerResponse(t *testing.T) {
 		})
 
 		Convey("Test all images verbose", func() {
-			args := []string{"imagetest", "--verbose"}
-			configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s","showspinner":false}]}`, url))
-			defer os.Remove(configPath)
-			cmd := MockNewImageCommand(new(searchService))
-			buff := bytes.NewBufferString("")
-			cmd.SetOut(buff)
-			cmd.SetErr(buff)
-			cmd.SetArgs(args)
-			err := cmd.Execute()
+			buff := &bytes.Buffer{}
+			searchConfig.resultWriter = buff
+			searchConfig.verbose = true
+			defer func() { searchConfig.verbose = false }()
+			err := SearchAllImages(searchConfig)
 			So(err, ShouldBeNil)
-			space := regexp.MustCompile(`\s+`)
+
 			str := space.ReplaceAllString(buff.String(), " ")
 			actual := strings.TrimSpace(str)
 			// Actual cli output should be something similar to (order of images may differ):
@@ -1341,17 +1176,11 @@ func TestServerResponse(t *testing.T) {
 		})
 
 		Convey("Test image by name", func() {
-			args := []string{"imagetest", "--name", "repo7"}
-			configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s","showspinner":false}]}`, url))
-			defer os.Remove(configPath)
-			cmd := MockNewImageCommand(new(searchService))
-			buff := bytes.NewBufferString("")
-			cmd.SetOut(buff)
-			cmd.SetErr(buff)
-			cmd.SetArgs(args)
-			err := cmd.Execute()
+			buff := &bytes.Buffer{}
+			searchConfig.resultWriter = buff
+			err := SearchImageByName(searchConfig, "repo7")
 			So(err, ShouldBeNil)
-			space := regexp.MustCompile(`\s+`)
+
 			str := space.ReplaceAllString(buff.String(), " ")
 			actual := strings.TrimSpace(str)
 			So(actual, ShouldContainSubstring, "REPOSITORY TAG OS/ARCH DIGEST SIGNED SIZE")
@@ -1360,17 +1189,11 @@ func TestServerResponse(t *testing.T) {
 		})
 
 		Convey("Test image by digest", func() {
-			args := []string{"imagetest", "--digest", "51e18f50"}
-			configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s","showspinner":false}]}`, url))
-			defer os.Remove(configPath)
-			cmd := MockNewImageCommand(new(searchService))
-			buff := bytes.NewBufferString("")
-			cmd.SetOut(buff)
-			cmd.SetErr(buff)
-			cmd.SetArgs(args)
-			err := cmd.Execute()
+			buff := &bytes.Buffer{}
+			searchConfig.resultWriter = buff
+			err := SearchImagesByDigest(searchConfig, "51e18f50")
 			So(err, ShouldBeNil)
-			space := regexp.MustCompile(`\s+`)
+
 			str := space.ReplaceAllString(buff.String(), " ")
 			actual := strings.TrimSpace(str)
 			// Actual cli output should be something similar to (order of images may differ):
@@ -1382,33 +1205,20 @@ func TestServerResponse(t *testing.T) {
 			So(actual, ShouldContainSubstring, "repo7 test:1.0 linux/amd64 51e18f50 false 528B")
 
 			Convey("nonexistent digest", func() {
-				args := []string{"imagetest", "--digest", "d1g35t"}
-				configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s","showspinner":false}]}`, url))
-				defer os.Remove(configPath)
-				cmd := MockNewImageCommand(new(searchService))
-				buff := bytes.NewBufferString("")
-				cmd.SetOut(buff)
-				cmd.SetErr(buff)
-				cmd.SetArgs(args)
-				err := cmd.Execute()
+				buff := &bytes.Buffer{}
+				searchConfig.resultWriter = buff
+				err := SearchImagesByDigest(searchConfig, "d1g35t")
 				So(err, ShouldBeNil)
+
 				So(len(buff.String()), ShouldEqual, 0)
 			})
 		})
 
 		Convey("Test image by name nonexistent name", func() {
-			args := []string{"imagetest", "--name", "repo777"}
-			configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s","showspinner":false}]}`, url))
-			defer os.Remove(configPath)
-			cmd := MockNewImageCommand(new(searchService))
-			buff := bytes.NewBufferString("")
-			cmd.SetOut(buff)
-			cmd.SetErr(buff)
-			cmd.SetArgs(args)
-			err := cmd.Execute()
+			err := SearchImageByName(searchConfig, "repo777")
 			So(err, ShouldNotBeNil)
-			actual := buff.String()
-			So(actual, ShouldContainSubstring, "unknown")
+
+			So(err.Error(), ShouldContainSubstring, "no repository found")
 		})
 	})
 }
@@ -1493,21 +1303,17 @@ func TestDisplayIndex(t *testing.T) {
 }
 
 func runDisplayIndexTests(baseURL string) {
+	space := regexp.MustCompile(`\s+`)
+	searchConfig := getTestSearchConfig(baseURL, new(searchService))
+
 	Convey("Test Image Index", func() {
 		uploadTestMultiarch(baseURL)
 
-		args := []string{"imagetest"}
-		configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s","showspinner":false}]}`,
-			baseURL))
-		defer os.Remove(configPath)
-		cmd := MockNewImageCommand(new(searchService))
-		buff := bytes.NewBufferString("")
-		cmd.SetOut(buff)
-		cmd.SetErr(buff)
-		cmd.SetArgs(args)
-		err := cmd.Execute()
+		buff := &bytes.Buffer{}
+		searchConfig.resultWriter = buff
+		err := SearchAllImages(searchConfig)
 		So(err, ShouldBeNil)
-		space := regexp.MustCompile(`\s+`)
+
 		str := space.ReplaceAllString(buff.String(), " ")
 		actual := strings.TrimSpace(str)
 		// Actual cli output should be something similar to (order of images may differ):
@@ -1524,18 +1330,12 @@ func runDisplayIndexTests(baseURL string) {
 	Convey("Test Image Index Verbose", func() {
 		uploadTestMultiarch(baseURL)
 
-		args := []string{"imagetest", "--verbose"}
-		configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s","showspinner":false}]}`,
-			baseURL))
-		defer os.Remove(configPath)
-		cmd := MockNewImageCommand(new(searchService))
-		buff := bytes.NewBufferString("")
-		cmd.SetOut(buff)
-		cmd.SetErr(buff)
-		cmd.SetArgs(args)
-		err := cmd.Execute()
+		buff := &bytes.Buffer{}
+		searchConfig.resultWriter = buff
+		searchConfig.verbose = true
+		err := SearchAllImages(searchConfig)
 		So(err, ShouldBeNil)
-		space := regexp.MustCompile(`\s+`)
+
 		str := space.ReplaceAllString(buff.String(), " ")
 		actual := strings.TrimSpace(str)
 		// Actual cli output should be something similar to (order of images may differ):
@@ -1597,10 +1397,9 @@ func TestImagesCommandGQL(t *testing.T) {
 			configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s","showspinner":false}]}`,
 				baseURL))
 			defer os.Remove(configPath)
+			args := []string{"base", "repo:derived", "--config", "imagetest"}
 
-			args := []string{"base", "repo:derived"}
-			cmd := NewImagesCommand(NewSearchService())
-			cmd.PersistentFlags().String(cmdflags.ConfigFlag, "imagetest", "")
+			cmd := NewImageCommand(NewSearchService())
 			buff := bytes.NewBufferString("")
 			cmd.SetOut(buff)
 			cmd.SetErr(buff)
@@ -1611,10 +1410,9 @@ func TestImagesCommandGQL(t *testing.T) {
 			str := space.ReplaceAllString(buff.String(), " ")
 			actual := strings.TrimSpace(str)
 			So(actual, ShouldContainSubstring, "repo base linux/amd64 df554ddd false 699B")
+			args = []string{"derived", "repo:base", "--config", "imagetest"}
 
-			args = []string{"derived", "repo:base"}
-			cmd = NewImagesCommand(NewSearchService())
-			cmd.PersistentFlags().String(cmdflags.ConfigFlag, "imagetest", "")
+			cmd = NewImageCommand(NewSearchService())
 			buff = bytes.NewBufferString("")
 			cmd.SetOut(buff)
 			cmd.SetErr(buff)
@@ -1629,7 +1427,7 @@ func TestImagesCommandGQL(t *testing.T) {
 		Convey("base and derived command errors", func() {
 			// too many parameters
 			buff := bytes.NewBufferString("")
-			args := []string{"too", "many", "args"}
+			args := []string{"too", "many", "args", "--config", "imagetest"}
 			cmd := NewImageBaseCommand(NewSearchService())
 			cmd.SetOut(buff)
 			cmd.SetErr(buff)
@@ -1688,10 +1486,9 @@ func TestImagesCommandGQL(t *testing.T) {
 			configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s","showspinner":false}]}`,
 				baseURL))
 			defer os.Remove(configPath)
+			args := []string{"digest", image.DigestStr(), "--config", "imagetest"}
 
-			args := []string{"digest", image.DigestStr()}
-			cmd := NewImagesCommand(NewSearchService())
-			cmd.PersistentFlags().String(cmdflags.ConfigFlag, "imagetest", "")
+			cmd := NewImageCommand(NewSearchService())
 			buff := bytes.NewBufferString("")
 			cmd.SetOut(buff)
 			cmd.SetErr(buff)
@@ -1708,7 +1505,7 @@ func TestImagesCommandGQL(t *testing.T) {
 		Convey("digest command errors", func() {
 			// too many parameters
 			buff := bytes.NewBufferString("")
-			args := []string{"too", "many", "args"}
+			args := []string{"too", "many", "args", "--config", "imagetest"}
 			cmd := NewImageDigestCommand(NewSearchService())
 			cmd.SetOut(buff)
 			cmd.SetErr(buff)
@@ -1746,10 +1543,9 @@ func TestImagesCommandGQL(t *testing.T) {
 			configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s","showspinner":false}]}`,
 				baseURL))
 			defer os.Remove(configPath)
+			args := []string{"list", "--config", "imagetest"}
 
-			args := []string{"list"}
-			cmd := NewImagesCommand(NewSearchService())
-			cmd.PersistentFlags().String(cmdflags.ConfigFlag, "imagetest", "")
+			cmd := NewImageCommand(NewSearchService())
 			buff := bytes.NewBufferString("")
 			cmd.SetOut(buff)
 			cmd.SetErr(buff)
@@ -1768,7 +1564,7 @@ func TestImagesCommandGQL(t *testing.T) {
 		Convey("list command errors", func() {
 			// too many parameters
 			buff := bytes.NewBufferString("")
-			args := []string{"repo:img", "arg"}
+			args := []string{"repo:img", "arg", "--config", "imagetest"}
 			cmd := NewImageListCommand(NewSearchService())
 			cmd.SetOut(buff)
 			cmd.SetErr(buff)
@@ -1799,10 +1595,9 @@ func TestImagesCommandGQL(t *testing.T) {
 			configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s","showspinner":false}]}`,
 				baseURL))
 			defer os.Remove(configPath)
+			args := []string{"name", "repo:img", "--config", "imagetest"}
 
-			args := []string{"name", "repo:img"}
-			cmd := NewImagesCommand(NewSearchService())
-			cmd.PersistentFlags().String(cmdflags.ConfigFlag, "imagetest", "")
+			cmd := NewImageCommand(NewSearchService())
 			buff := bytes.NewBufferString("")
 			cmd.SetOut(buff)
 			cmd.SetErr(buff)
@@ -1821,7 +1616,7 @@ func TestImagesCommandGQL(t *testing.T) {
 		Convey("name command errors", func() {
 			// too many parameters
 			buff := bytes.NewBufferString("")
-			args := []string{"repo:img", "arg"}
+			args := []string{"repo:img", "arg", "--config", "imagetest"}
 			cmd := NewImageNameCommand(NewSearchService())
 			cmd.SetOut(buff)
 			cmd.SetErr(buff)
@@ -1857,10 +1652,10 @@ func TestImagesCommandGQL(t *testing.T) {
 
 			configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s","showspinner":false}]}`,
 				baseURL))
-			args := []string{"cve", "repo:vuln"}
 			defer os.Remove(configPath)
-			cmd := NewImagesCommand(mockService{})
-			cmd.PersistentFlags().String(cmdflags.ConfigFlag, "imagetest", "")
+
+			args := []string{"cve", "repo:vuln", "--config", "imagetest"}
+			cmd := NewImageCommand(mockService{})
 			buff := bytes.NewBufferString("")
 			cmd.SetOut(buff)
 			cmd.SetErr(buff)
@@ -1877,9 +1672,9 @@ func TestImagesCommandGQL(t *testing.T) {
 			count := 0
 			configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s","showspinner":false}]}`,
 				baseURL))
-			args := []string{"cve", "repo:vuln"}
 			defer os.Remove(configPath)
-			cmd := NewImagesCommand(mockService{
+			args := []string{"cve", "repo:vuln", "--config", "imagetest"}
+			cmd := NewImageCommand(mockService{
 				getCveByImageGQLFn: func(ctx context.Context, config searchConfig, username, password,
 					imageName, searchedCVE string) (*cveResult, error,
 				) {
@@ -1893,7 +1688,6 @@ func TestImagesCommandGQL(t *testing.T) {
 					return &cveResult{}, zerr.ErrInjected
 				},
 			})
-			cmd.PersistentFlags().String(cmdflags.ConfigFlag, "imagetest", "")
 			buff := bytes.NewBufferString("")
 			cmd.SetOut(buff)
 			cmd.SetErr(buff)
@@ -1908,9 +1702,8 @@ func TestImagesCommandGQL(t *testing.T) {
 	})
 
 	Convey("Config error", t, func() {
-		args := []string{"base", "repo:derived"}
-		cmd := NewImagesCommand(NewSearchService())
-		cmd.PersistentFlags().String(cmdflags.ConfigFlag, "imagetest", "")
+		args := []string{"base", "repo:derived", "--config", "imagetest"}
+		cmd := NewImageCommand(NewSearchService())
 		buff := bytes.NewBufferString("")
 		cmd.SetOut(buff)
 		cmd.SetErr(buff)
@@ -1920,7 +1713,7 @@ func TestImagesCommandGQL(t *testing.T) {
 		So(err, ShouldNotBeNil)
 
 		args = []string{"derived", "repo:base"}
-		cmd = NewImagesCommand(NewSearchService())
+		cmd = NewImageCommand(NewSearchService())
 		buff = bytes.NewBufferString("")
 		cmd.SetOut(buff)
 		cmd.SetErr(buff)
@@ -1929,7 +1722,7 @@ func TestImagesCommandGQL(t *testing.T) {
 		So(err, ShouldNotBeNil)
 
 		args = []string{"digest", ispec.DescriptorEmptyJSON.Digest.String()}
-		cmd = NewImagesCommand(NewSearchService())
+		cmd = NewImageCommand(NewSearchService())
 		buff = bytes.NewBufferString("")
 		cmd.SetOut(buff)
 		cmd.SetErr(buff)
@@ -1938,7 +1731,7 @@ func TestImagesCommandGQL(t *testing.T) {
 		So(err, ShouldNotBeNil)
 
 		args = []string{"list"}
-		cmd = NewImagesCommand(NewSearchService())
+		cmd = NewImageCommand(NewSearchService())
 		buff = bytes.NewBufferString("")
 		cmd.SetOut(buff)
 		cmd.SetErr(buff)
@@ -1947,7 +1740,7 @@ func TestImagesCommandGQL(t *testing.T) {
 		So(err, ShouldNotBeNil)
 
 		args = []string{"name", "repo:img"}
-		cmd = NewImagesCommand(NewSearchService())
+		cmd = NewImageCommand(NewSearchService())
 		buff = bytes.NewBufferString("")
 		cmd.SetOut(buff)
 		cmd.SetErr(buff)
@@ -1956,7 +1749,7 @@ func TestImagesCommandGQL(t *testing.T) {
 		So(err, ShouldNotBeNil)
 
 		args = []string{"cve", "repo:vuln"}
-		cmd = NewImagesCommand(mockService{})
+		cmd = NewImageCommand(mockService{})
 		buff = bytes.NewBufferString("")
 		cmd.SetOut(buff)
 		cmd.SetErr(buff)
@@ -2002,9 +1795,8 @@ func TestImageCommandREST(t *testing.T) {
 				baseURL))
 			defer os.Remove(configPath)
 
-			args := []string{"base", "repo:derived"}
-			cmd := NewImagesCommand(NewSearchService())
-			cmd.PersistentFlags().String(cmdflags.ConfigFlag, "imagetest", "")
+			args := []string{"base", "repo:derived", "--config", "imagetest"}
+			cmd := NewImageCommand(NewSearchService())
 			buff := bytes.NewBufferString("")
 			cmd.SetOut(buff)
 			cmd.SetErr(buff)
@@ -2013,8 +1805,7 @@ func TestImageCommandREST(t *testing.T) {
 			So(err, ShouldNotBeNil)
 
 			args = []string{"derived", "repo:base"}
-			cmd = NewImagesCommand(NewSearchService())
-			cmd.PersistentFlags().String(cmdflags.ConfigFlag, "imagetest", "")
+			cmd = NewImageCommand(NewSearchService())
 			buff = bytes.NewBufferString("")
 			cmd.SetOut(buff)
 			cmd.SetErr(buff)
@@ -2033,9 +1824,8 @@ func TestImageCommandREST(t *testing.T) {
 				baseURL))
 			defer os.Remove(configPath)
 
-			args := []string{"digest", image.DigestStr()}
-			cmd := NewImagesCommand(NewSearchService())
-			cmd.PersistentFlags().String(cmdflags.ConfigFlag, "imagetest", "")
+			args := []string{"digest", image.DigestStr(), "--config", "imagetest"}
+			cmd := NewImageCommand(NewSearchService())
 			buff := bytes.NewBufferString("")
 			cmd.SetOut(buff)
 			cmd.SetErr(buff)
@@ -2054,9 +1844,8 @@ func TestImageCommandREST(t *testing.T) {
 				baseURL))
 			defer os.Remove(configPath)
 
-			args := []string{"list"}
-			cmd := NewImagesCommand(NewSearchService())
-			cmd.PersistentFlags().String(cmdflags.ConfigFlag, "imagetest", "")
+			args := []string{"list", "--config", "imagetest"}
+			cmd := NewImageCommand(NewSearchService())
 			buff := bytes.NewBufferString("")
 			cmd.SetOut(buff)
 			cmd.SetErr(buff)
@@ -2080,9 +1869,8 @@ func TestImageCommandREST(t *testing.T) {
 				baseURL))
 			defer os.Remove(configPath)
 
-			args := []string{"name", "repo:img"}
-			cmd := NewImagesCommand(NewSearchService())
-			cmd.PersistentFlags().String(cmdflags.ConfigFlag, "imagetest", "")
+			args := []string{"name", "repo:img", "--config", "imagetest"}
+			cmd := NewImageCommand(NewSearchService())
 			buff := bytes.NewBufferString("")
 			cmd.SetOut(buff)
 			cmd.SetErr(buff)
@@ -2100,10 +1888,9 @@ func TestImageCommandREST(t *testing.T) {
 
 			configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s","showspinner":false}]}`,
 				baseURL))
-			args := []string{"cve", "repo:vuln"}
+			args := []string{"cve", "repo:vuln", "--config", "imagetest"}
 			defer os.Remove(configPath)
-			cmd := NewImagesCommand(mockService{})
-			cmd.PersistentFlags().String(cmdflags.ConfigFlag, "imagetest", "")
+			cmd := NewImageCommand(mockService{})
 			buff := bytes.NewBufferString("")
 			cmd.SetOut(buff)
 			cmd.SetErr(buff)
@@ -2149,96 +1936,6 @@ func uploadTestMultiarch(baseURL string) {
 
 	err := test.UploadMultiarchImage(multiarch, baseURL, "repo", "multi-arch")
 	So(err, ShouldBeNil)
-}
-
-func MockNewImageCommand(searchService SearchService) *cobra.Command {
-	searchImageParams := make(map[string]*string)
-
-	var servURL, user, outputFormat string
-
-	var verifyTLS, verbose, debug bool
-
-	imageCmd := &cobra.Command{
-		RunE: func(cmd *cobra.Command, args []string) error {
-			home, err := os.UserHomeDir()
-			if err != nil {
-				panic(err)
-			}
-
-			configPath := path.Join(home, "/.zot")
-			if len(args) > 0 {
-				urlFromConfig, err := getConfigValue(configPath, args[0], "url")
-				if err != nil {
-					cmd.SilenceUsage = true
-
-					return err
-				}
-
-				if urlFromConfig == "" {
-					return zerr.ErrNoURLProvided
-				}
-
-				servURL = urlFromConfig
-			} else {
-				return zerr.ErrNoURLProvided
-			}
-
-			if len(args) > 0 {
-				var err error
-
-				verifyTLS, err = parseBooleanConfig(configPath, args[0], verifyTLSConfig)
-				if err != nil {
-					cmd.SilenceUsage = true
-
-					return err
-				}
-			}
-
-			searchConfig := searchConfig{
-				params:        searchImageParams,
-				searchService: searchService,
-				servURL:       &servURL,
-				user:          &user,
-				outputFormat:  &outputFormat,
-				verbose:       &verbose,
-				debug:         &debug,
-				verifyTLS:     &verifyTLS,
-				resultWriter:  cmd.OutOrStdout(),
-			}
-
-			err = MockSearchImage(searchConfig)
-
-			if err != nil {
-				cmd.SilenceUsage = true
-
-				return err
-			}
-
-			return nil
-		},
-	}
-
-	setupImageFlags(imageCmd, searchImageParams, &servURL, &user, &outputFormat, &verbose, &debug)
-	imageCmd.SetUsageTemplate(imageCmd.UsageTemplate() + usageFooter)
-
-	return imageCmd
-}
-
-func MockSearchImage(searchConfig searchConfig) error {
-	searchers := getImageSearchers()
-
-	for _, searcher := range searchers {
-		found, err := searcher.search(searchConfig)
-		if found {
-			if err != nil {
-				return err
-			}
-
-			return nil
-		}
-	}
-
-	return zerr.ErrInvalidFlagsCombination
 }
 
 func uploadManifest(url string) error {
@@ -2465,18 +2162,6 @@ type mockService struct {
 		username, password, imageName string, channel chan stringResult, wtgrp *sync.WaitGroup,
 	)
 
-	getFixedTagsForCVEFn func(ctx context.Context, config searchConfig,
-		username, password, imageName, cveid string, rch chan stringResult, wtgrp *sync.WaitGroup,
-	)
-
-	getImageByNameAndCVEIDFn func(ctx context.Context, config searchConfig, username,
-		password, imageName, cveid string, rch chan stringResult, wtgrp *sync.WaitGroup,
-	)
-
-	getImagesByCveIDFn func(ctx context.Context, config searchConfig, username, password, cveid string,
-		rch chan stringResult, wtgrp *sync.WaitGroup,
-	)
-
 	getImagesByDigestFn func(ctx context.Context, config searchConfig, username,
 		password, digest string, rch chan stringResult, wtgrp *sync.WaitGroup,
 	)
@@ -2508,10 +2193,6 @@ type mockService struct {
 	getCveByImageGQLFn func(ctx context.Context, config searchConfig, username, password,
 		imageName, searchedCVE string,
 	) (*cveResult, error)
-
-	getImagesByCveIDGQLFn func(ctx context.Context, config searchConfig, username, password string,
-		digest string,
-	) (*common.ImagesForCve, error)
 
 	getTagsForCVEGQLFn func(ctx context.Context, config searchConfig, username, password,
 		imageName, cveID string,
@@ -2622,6 +2303,7 @@ func (service mockService) getDerivedImageListGQL(ctx context.Context, config se
 					ConfigDigest: godigest.FromString("ConfigDigest").String(),
 					Size:         "123445",
 					Layers:       []common.LayerSummary{{Digest: godigest.FromString("LayerDigest").String()}},
+					Platform:     common.Platform{Os: "os", Arch: "arch"},
 				},
 			},
 			Size: "123445",
@@ -2649,6 +2331,7 @@ func (service mockService) getBaseImageListGQL(ctx context.Context, config searc
 					ConfigDigest: godigest.FromString("ConfigDigest").String(),
 					Size:         "123445",
 					Layers:       []common.LayerSummary{{Digest: godigest.FromString("LayerDigest").String()}},
+					Platform:     common.Platform{Os: "os", Arch: "arch"},
 				},
 			},
 			Size: "123445",
@@ -2678,6 +2361,7 @@ func (service mockService) getImagesGQL(ctx context.Context, config searchConfig
 					ConfigDigest: godigest.FromString("ConfigDigest").String(),
 					Size:         "123445",
 					Layers:       []common.LayerSummary{{Digest: godigest.FromString("LayerDigest").String()}},
+					Platform:     common.Platform{Os: "os", Arch: "arch"},
 				},
 			},
 			Size: "123445",
@@ -2707,6 +2391,7 @@ func (service mockService) getImagesForDigestGQL(ctx context.Context, config sea
 					ConfigDigest: godigest.FromString("ConfigDigest").String(),
 					Layers:       []common.LayerSummary{{Digest: godigest.FromString("LayerDigest").String()}},
 					Size:         "123445",
+					Platform:     common.Platform{Os: "os", Arch: "arch"},
 				},
 			},
 			Size: "123445",
@@ -2714,28 +2399,6 @@ func (service mockService) getImagesForDigestGQL(ctx context.Context, config sea
 	}
 
 	return imageListGQLResponse, nil
-}
-
-func (service mockService) getImagesByCveIDGQL(ctx context.Context, config searchConfig, username, password string,
-	digest string,
-) (*common.ImagesForCve, error) {
-	if service.getImagesByCveIDGQLFn != nil {
-		return service.getImagesByCveIDGQLFn(ctx, config, username, password, digest)
-	}
-
-	imagesForCve := &common.ImagesForCve{
-		Errors: nil,
-		ImagesForCVEList: struct {
-			common.PaginatedImagesResult `json:"ImageListForCVE"` //nolint:tagliatelle
-		}{},
-	}
-
-	imagesForCve.Errors = nil
-
-	mockedImage := service.getMockedImageByName("anImage")
-	imagesForCve.Results = []common.ImageSummary{common.ImageSummary(mockedImage)}
-
-	return imagesForCve, nil
 }
 
 func (service mockService) getTagsForCVEGQL(ctx context.Context, config searchConfig, username, password,
@@ -2829,6 +2492,7 @@ func (service mockService) getMockedImageByName(imageName string) imageStruct {
 			ConfigDigest: godigest.FromString("ConfigDigest").String(),
 			Layers:       []common.LayerSummary{{Digest: godigest.FromString("LayerDigest").String()}},
 			Size:         "123445",
+			Platform:     common.Platform{Os: "os", Arch: "arch"},
 		},
 	}
 	image.Size = "123445"
@@ -2864,7 +2528,7 @@ func (service mockService) getAllImages(ctx context.Context, config searchConfig
 	}
 	image.Size = "123445"
 
-	str, err := image.string(*config.outputFormat, len(image.RepoName), len(image.Tag), len("os/Arch"), *config.verbose)
+	str, err := image.string(config.outputFormat, len(image.RepoName), len(image.Tag), len("os/Arch"), config.verbose)
 	if err != nil {
 		channel <- stringResult{"", err}
 
@@ -2902,7 +2566,7 @@ func (service mockService) getImageByName(ctx context.Context, config searchConf
 	}
 	image.Size = "123445"
 
-	str, err := image.string(*config.outputFormat, len(image.RepoName), len(image.Tag), len("os/Arch"), *config.verbose)
+	str, err := image.string(config.outputFormat, len(image.RepoName), len(image.Tag), len("os/Arch"), config.verbose)
 	if err != nil {
 		channel <- stringResult{"", err}
 
@@ -2910,89 +2574,6 @@ func (service mockService) getImageByName(ctx context.Context, config searchConf
 	}
 
 	channel <- stringResult{str, nil}
-}
-
-func (service mockService) getCveByImage(ctx context.Context, config searchConfig, username, password,
-	imageName, searchedCVE string, rch chan stringResult, wtgrp *sync.WaitGroup,
-) {
-	defer wtgrp.Done()
-	defer close(rch)
-
-	cveRes := &cveResult{}
-	cveRes.Data = cveData{
-		CVEListForImage: cveListForImage{
-			Tag: imageName,
-			CVEList: []cve{
-				{
-					ID:          "dummyCVEID",
-					Description: "Description of the CVE",
-					Title:       "Title of that CVE",
-					Severity:    "HIGH",
-					PackageList: []packageList{
-						{
-							Name:             "packagename",
-							FixedVersion:     "fixedver",
-							InstalledVersion: "installedver",
-						},
-					},
-				},
-			},
-		},
-	}
-
-	str, err := cveRes.string(*config.outputFormat)
-	if err != nil {
-		rch <- stringResult{"", err}
-
-		return
-	}
-
-	rch <- stringResult{str, nil}
-}
-
-func (service mockService) getFixedTagsForCVE(ctx context.Context, config searchConfig,
-	username, password, imageName, cveid string, rch chan stringResult, wtgrp *sync.WaitGroup,
-) {
-	if service.getFixedTagsForCVEFn != nil {
-		defer wtgrp.Done()
-		defer close(rch)
-
-		service.getFixedTagsForCVEFn(ctx, config, username, password, imageName, cveid, rch, wtgrp)
-
-		return
-	}
-
-	service.getImageByName(ctx, config, username, password, imageName, rch, wtgrp)
-}
-
-func (service mockService) getImageByNameAndCVEID(ctx context.Context, config searchConfig, username,
-	password, imageName, cveid string, rch chan stringResult, wtgrp *sync.WaitGroup,
-) {
-	if service.getImageByNameAndCVEIDFn != nil {
-		defer wtgrp.Done()
-		defer close(rch)
-
-		service.getImageByNameAndCVEIDFn(ctx, config, username, password, imageName, cveid, rch, wtgrp)
-
-		return
-	}
-
-	service.getImageByName(ctx, config, username, password, imageName, rch, wtgrp)
-}
-
-func (service mockService) getImagesByCveID(ctx context.Context, config searchConfig, username, password, cveid string,
-	rch chan stringResult, wtgrp *sync.WaitGroup,
-) {
-	if service.getImagesByCveIDFn != nil {
-		defer wtgrp.Done()
-		defer close(rch)
-
-		service.getImagesByCveIDFn(ctx, config, username, password, cveid, rch, wtgrp)
-
-		return
-	}
-
-	service.getImageByName(ctx, config, username, password, "anImage", rch, wtgrp)
 }
 
 func (service mockService) getImagesByDigest(ctx context.Context, config searchConfig, username,
@@ -3025,4 +2606,25 @@ func makeConfigFile(content string) string {
 	}
 
 	return configPath
+}
+
+func getTestSearchConfig(url string, searchService SearchService) searchConfig {
+	var (
+		user         string = ""
+		outputFormat string = ""
+		verbose      bool   = false
+		debug        bool   = false
+		verifyTLS    bool   = false
+	)
+
+	return searchConfig{
+		searchService: searchService,
+		servURL:       url,
+		user:          user,
+		outputFormat:  outputFormat,
+		verbose:       verbose,
+		debug:         debug,
+		verifyTLS:     verifyTLS,
+		resultWriter:  nil,
+	}
 }

@@ -6,7 +6,6 @@ package cli //nolint:testpackage
 import (
 	"bytes"
 	"fmt"
-	"io"
 	"os"
 	"regexp"
 	"strings"
@@ -17,58 +16,408 @@ import (
 
 	"zotregistry.io/zot/pkg/api"
 	"zotregistry.io/zot/pkg/api/config"
-	"zotregistry.io/zot/pkg/cli/cmdflags"
 	extconf "zotregistry.io/zot/pkg/extensions/config"
 	"zotregistry.io/zot/pkg/test"
 )
 
-func TestGlobalSearchers(t *testing.T) {
-	globalSearcher := globalSearcherGQL{}
+const (
+	customArtTypeV1 = "application/custom.art.type.v1"
+	customArtTypeV2 = "application/custom.art.type.v2"
+	repoName        = "repo"
+)
 
-	Convey("GQL Searcher", t, func() {
-		Convey("Bad parameters", func() {
-			ok, err := globalSearcher.search(searchConfig{params: map[string]*string{
-				"badParam": ref("badParam"),
-			}})
+func TestReferrerCLI(t *testing.T) {
+	Convey("Test GQL", t, func() {
+		rootDir := t.TempDir()
 
+		port := test.GetFreePort()
+		baseURL := test.GetBaseURL(port)
+		conf := config.New()
+		conf.HTTP.Port = port
+		conf.Storage.GC = false
+		defaultVal := true
+		conf.Extensions = &extconf.ExtensionConfig{
+			Search: &extconf.SearchConfig{BaseConfig: extconf.BaseConfig{Enable: &defaultVal}},
+		}
+		ctlr := api.NewController(conf)
+		ctlr.Config.Storage.RootDirectory = rootDir
+		cm := test.NewControllerManager(ctlr)
+		cm.StartAndWait(conf.HTTP.Port)
+		defer cm.StopServer()
+
+		repo := repoName
+		image := test.CreateRandomImage()
+
+		err := test.UploadImage(image, baseURL, repo, "tag")
+		So(err, ShouldBeNil)
+
+		ref1 := test.CreateImageWith().
+			RandomLayers(1, 10).
+			RandomConfig().
+			Subject(image.DescriptorRef()).Build()
+
+		ref2 := test.CreateImageWith().
+			RandomLayers(1, 10).
+			ArtifactConfig(customArtTypeV1).
+			Subject(image.DescriptorRef()).Build()
+
+		ref3 := test.CreateImageWith().
+			RandomLayers(1, 10).
+			RandomConfig().
+			ArtifactType(customArtTypeV2).
+			Subject(image.DescriptorRef()).Build()
+
+		err = test.UploadImage(ref1, baseURL, repo, ref1.DigestStr())
+		So(err, ShouldBeNil)
+
+		err = test.UploadImage(ref2, baseURL, repo, ref2.DigestStr())
+		So(err, ShouldBeNil)
+
+		err = test.UploadImage(ref3, baseURL, repo, ref3.DigestStr())
+		So(err, ShouldBeNil)
+
+		args := []string{"subject", repo + "@" + image.DigestStr(), "--config", "reftest"}
+
+		configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"reftest","url":"%s","showspinner":false}]}`,
+			baseURL))
+		defer os.Remove(configPath)
+
+		cmd := NewSearchCommand(new(searchService))
+
+		buff := &bytes.Buffer{}
+		cmd.SetOut(buff)
+		cmd.SetErr(buff)
+		cmd.SetArgs(args)
+		err = cmd.Execute()
+		So(err, ShouldBeNil)
+		space := regexp.MustCompile(`\s+`)
+		str := strings.TrimSpace(space.ReplaceAllString(buff.String(), " "))
+		So(str, ShouldContainSubstring, "ARTIFACT TYPE SIZE DIGEST")
+		So(str, ShouldContainSubstring, "application/vnd.oci.image.config.v1+json 563 B "+ref1.DigestStr())
+		So(str, ShouldContainSubstring, "custom.art.type.v1 551 B "+ref2.DigestStr())
+		So(str, ShouldContainSubstring, "custom.art.type.v2 611 B "+ref3.DigestStr())
+
+		fmt.Println(buff.String())
+
+		os.Remove(configPath)
+
+		args = []string{"subject", repo + ":" + "tag", "--config", "reftest"}
+
+		configPath = makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"reftest","url":"%s","showspinner":false}]}`,
+			baseURL))
+		defer os.Remove(configPath)
+
+		cmd = NewSearchCommand(new(searchService))
+
+		buff = &bytes.Buffer{}
+		cmd.SetOut(buff)
+		cmd.SetErr(buff)
+		cmd.SetArgs(args)
+		err = cmd.Execute()
+		So(err, ShouldBeNil)
+		str = strings.TrimSpace(space.ReplaceAllString(buff.String(), " "))
+		So(str, ShouldContainSubstring, "ARTIFACT TYPE SIZE DIGEST")
+		So(str, ShouldContainSubstring, "application/vnd.oci.image.config.v1+json 563 B "+ref1.DigestStr())
+		So(str, ShouldContainSubstring, "custom.art.type.v1 551 B "+ref2.DigestStr())
+		So(str, ShouldContainSubstring, "custom.art.type.v2 611 B "+ref3.DigestStr())
+
+		fmt.Println(buff.String())
+	})
+
+	Convey("Test REST", t, func() {
+		rootDir := t.TempDir()
+
+		port := test.GetFreePort()
+		baseURL := test.GetBaseURL(port)
+		conf := config.New()
+		conf.HTTP.Port = port
+		conf.Storage.GC = false
+		defaultVal := false
+		conf.Extensions = &extconf.ExtensionConfig{
+			Search: &extconf.SearchConfig{BaseConfig: extconf.BaseConfig{Enable: &defaultVal}},
+		}
+		ctlr := api.NewController(conf)
+		ctlr.Config.Storage.RootDirectory = rootDir
+		cm := test.NewControllerManager(ctlr)
+		cm.StartAndWait(conf.HTTP.Port)
+		defer cm.StopServer()
+
+		repo := repoName
+		image := test.CreateRandomImage()
+
+		err := test.UploadImage(image, baseURL, repo, "tag")
+		So(err, ShouldBeNil)
+
+		ref1 := test.CreateImageWith().
+			RandomLayers(1, 10).
+			RandomConfig().
+			Subject(image.DescriptorRef()).Build()
+
+		ref2 := test.CreateImageWith().
+			RandomLayers(1, 10).
+			ArtifactConfig(customArtTypeV1).
+			Subject(image.DescriptorRef()).Build()
+
+		ref3 := test.CreateImageWith().
+			RandomLayers(1, 10).
+			RandomConfig().
+			ArtifactType(customArtTypeV2).
+			Subject(image.DescriptorRef()).Build()
+
+		err = test.UploadImage(ref1, baseURL, repo, ref1.DigestStr())
+		So(err, ShouldBeNil)
+
+		err = test.UploadImage(ref2, baseURL, repo, ref2.DigestStr())
+		So(err, ShouldBeNil)
+
+		err = test.UploadImage(ref3, baseURL, repo, ref3.DigestStr())
+		So(err, ShouldBeNil)
+
+		// get referrers by digest
+		args := []string{"subject", repo + "@" + image.DigestStr(), "--config", "reftest"}
+
+		configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"reftest","url":"%s","showspinner":false}]}`,
+			baseURL))
+
+		cmd := NewSearchCommand(new(searchService))
+
+		buff := &bytes.Buffer{}
+		cmd.SetOut(buff)
+		cmd.SetErr(buff)
+		cmd.SetArgs(args)
+		err = cmd.Execute()
+		So(err, ShouldBeNil)
+		space := regexp.MustCompile(`\s+`)
+		str := strings.TrimSpace(space.ReplaceAllString(buff.String(), " "))
+		So(str, ShouldContainSubstring, "ARTIFACT TYPE SIZE DIGEST")
+		So(str, ShouldContainSubstring, "application/vnd.oci.image.config.v1+json 563 B "+ref1.DigestStr())
+		So(str, ShouldContainSubstring, "custom.art.type.v1 551 B "+ref2.DigestStr())
+		So(str, ShouldContainSubstring, "custom.art.type.v2 611 B "+ref3.DigestStr())
+		fmt.Println(buff.String())
+
+		os.Remove(configPath)
+
+		args = []string{"subject", repo + ":" + "tag", "--config", "reftest"}
+
+		configPath = makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"reftest","url":"%s","showspinner":false}]}`,
+			baseURL))
+		defer os.Remove(configPath)
+
+		buff = &bytes.Buffer{}
+		cmd.SetOut(buff)
+		cmd.SetErr(buff)
+		cmd.SetArgs(args)
+		err = cmd.Execute()
+		So(err, ShouldBeNil)
+		str = strings.TrimSpace(space.ReplaceAllString(buff.String(), " "))
+		So(str, ShouldContainSubstring, "ARTIFACT TYPE SIZE DIGEST")
+		So(str, ShouldContainSubstring, "application/vnd.oci.image.config.v1+json 563 B "+ref1.DigestStr())
+		So(str, ShouldContainSubstring, "custom.art.type.v1 551 B "+ref2.DigestStr())
+		So(str, ShouldContainSubstring, "custom.art.type.v2 611 B "+ref3.DigestStr())
+		fmt.Println(buff.String())
+	})
+}
+
+func TestFormatsReferrersCLI(t *testing.T) {
+	Convey("Create server", t, func() {
+		rootDir := t.TempDir()
+
+		port := test.GetFreePort()
+		baseURL := test.GetBaseURL(port)
+		conf := config.New()
+		conf.HTTP.Port = port
+		conf.Storage.GC = false
+		defaultVal := false
+		conf.Extensions = &extconf.ExtensionConfig{
+			Search: &extconf.SearchConfig{BaseConfig: extconf.BaseConfig{Enable: &defaultVal}},
+		}
+		ctlr := api.NewController(conf)
+		ctlr.Config.Storage.RootDirectory = rootDir
+		cm := test.NewControllerManager(ctlr)
+		cm.StartAndWait(conf.HTTP.Port)
+		defer cm.StopServer()
+
+		repo := repoName
+		image := test.CreateRandomImage()
+
+		err := test.UploadImage(image, baseURL, repo, "tag")
+		So(err, ShouldBeNil)
+
+		// add referrers
+		ref1 := test.CreateImageWith().
+			RandomLayers(1, 10).
+			RandomConfig().
+			Subject(image.DescriptorRef()).Build()
+
+		ref2 := test.CreateImageWith().
+			RandomLayers(1, 10).
+			ArtifactConfig(customArtTypeV1).
+			Subject(image.DescriptorRef()).Build()
+
+		ref3 := test.CreateImageWith().
+			RandomLayers(1, 10).
+			RandomConfig().
+			ArtifactType(customArtTypeV2).
+			Subject(image.DescriptorRef()).Build()
+
+		err = test.UploadImage(ref1, baseURL, repo, ref1.DigestStr())
+		So(err, ShouldBeNil)
+
+		err = test.UploadImage(ref2, baseURL, repo, ref2.DigestStr())
+		So(err, ShouldBeNil)
+
+		err = test.UploadImage(ref3, baseURL, repo, ref3.DigestStr())
+		So(err, ShouldBeNil)
+
+		Convey("JSON format", func() {
+			args := []string{"subject", repo + "@" + image.DigestStr(), "--format", "json", "--config", "reftest"}
+
+			configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"reftest","url":"%s","showspinner":false}]}`,
+				baseURL))
+
+			defer os.Remove(configPath)
+
+			cmd := NewSearchCommand(new(searchService))
+
+			buff := &bytes.Buffer{}
+			cmd.SetOut(buff)
+			cmd.SetErr(buff)
+			cmd.SetArgs(args)
+			err = cmd.Execute()
 			So(err, ShouldBeNil)
-			So(ok, ShouldBeFalse)
+			fmt.Println(buff.String())
+		})
+		Convey("YAML format", func() {
+			args := []string{"subject", repo + "@" + image.DigestStr(), "--format", "yaml", "--config", "reftest"}
+
+			configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"reftest","url":"%s","showspinner":false}]}`,
+				baseURL))
+
+			defer os.Remove(configPath)
+
+			cmd := NewSearchCommand(new(searchService))
+
+			buff := &bytes.Buffer{}
+			cmd.SetOut(buff)
+			cmd.SetErr(buff)
+			cmd.SetArgs(args)
+			err = cmd.Execute()
+			So(err, ShouldBeNil)
+			fmt.Println(buff.String())
+		})
+		Convey("Invalid format", func() {
+			args := []string{"subject", repo + "@" + image.DigestStr(), "--format", "invalid_format", "--config", "reftest"}
+
+			configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"reftest","url":"%s","showspinner":false}]}`,
+				baseURL))
+
+			defer os.Remove(configPath)
+
+			cmd := NewSearchCommand(new(searchService))
+
+			buff := &bytes.Buffer{}
+			cmd.SetOut(buff)
+			cmd.SetErr(buff)
+			cmd.SetArgs(args)
+			err = cmd.Execute()
+			So(err, ShouldNotBeNil)
+		})
+	})
+}
+
+func TestReferrersCLIErrors(t *testing.T) {
+	Convey("Errors", t, func() {
+		cmd := NewSearchCommand(new(searchService))
+
+		Convey("no url provided", func() {
+			args := []string{"query", "repo/alpine", "--format", "invalid", "--config", "reftest"}
+
+			configPath := makeConfigFile(`{"configs":[{"_name":"reftest","showspinner":false}]}`)
+
+			defer os.Remove(configPath)
+
+			buff := &bytes.Buffer{}
+			cmd.SetOut(buff)
+			cmd.SetErr(buff)
+			cmd.SetArgs(args)
+			err := cmd.Execute()
+			So(err, ShouldNotBeNil)
 		})
 
-		Convey("global searcher service fail", func() {
-			conf := searchConfig{
-				params: map[string]*string{
-					"query": ref("repo"),
-				},
-				searchService: NewSearchService(),
-				user:          ref("test:pass"),
-				servURL:       ref("127.0.0.1:8080"),
-				verifyTLS:     ref(false),
-				debug:         ref(false),
-				verbose:       ref(false),
-				fixedFlag:     ref(false),
-			}
-			ok, err := globalSearcher.search(conf)
+		Convey("getConfigValue", func() {
+			args := []string{"subject", "repo/alpine", "--config", "reftest"}
 
+			configPath := makeConfigFile(`bad-json`)
+
+			defer os.Remove(configPath)
+
+			buff := &bytes.Buffer{}
+			cmd.SetOut(buff)
+			cmd.SetErr(buff)
+			cmd.SetArgs(args)
+			err := cmd.Execute()
 			So(err, ShouldNotBeNil)
-			So(ok, ShouldBeTrue)
 		})
 
-		Convey("print images fail", func() {
-			conf := searchConfig{
-				params: map[string]*string{
-					"query": ref("repo"),
-				},
-				user:          ref("user:pass"),
-				outputFormat:  ref("bad-format"),
-				searchService: mockService{},
-				resultWriter:  io.Discard,
-				verbose:       ref(false),
-			}
-			ok, err := globalSearcher.search(conf)
+		Convey("bad showspinnerConfig ", func() {
+			args := []string{"query", "repo", "--config", "reftest"}
 
+			configPath := makeConfigFile(`{"configs":[{"_name":"reftest", "url":"http://127.0.0.1:8080", "showspinner":"bad"}]}`)
+
+			defer os.Remove(configPath)
+
+			buff := &bytes.Buffer{}
+			cmd.SetOut(buff)
+			cmd.SetErr(buff)
+			cmd.SetArgs(args)
+			err := cmd.Execute()
 			So(err, ShouldNotBeNil)
-			So(ok, ShouldBeTrue)
+		})
+
+		Convey("bad verifyTLSConfig ", func() {
+			args := []string{"query", "repo", "reftest"}
+
+			configPath := makeConfigFile(
+				`{"configs":[{"_name":"reftest", "url":"http://127.0.0.1:8080", "showspinner":false, "verify-tls": "bad"}]}`)
+
+			defer os.Remove(configPath)
+
+			buff := &bytes.Buffer{}
+			cmd.SetOut(buff)
+			cmd.SetErr(buff)
+			cmd.SetArgs(args)
+			err := cmd.Execute()
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("url from config is empty", func() {
+			args := []string{"subject", "repo/alpine", "--config", "reftest"}
+
+			configPath := makeConfigFile(`{"configs":[{"_name":"reftest", "url":"", "showspinner":false}]}`)
+
+			defer os.Remove(configPath)
+
+			buff := &bytes.Buffer{}
+			cmd.SetOut(buff)
+			cmd.SetErr(buff)
+			cmd.SetArgs(args)
+			err := cmd.Execute()
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("bad params combination", func() {
+			args := []string{"query", "repo", "reftest"}
+
+			configPath := makeConfigFile(`{"configs":[{"_name":"reftest", "url":"http://127.0.0.1:8080", "showspinner":false}]}`)
+
+			defer os.Remove(configPath)
+
+			buff := &bytes.Buffer{}
+			cmd.SetOut(buff)
+			cmd.SetErr(buff)
+			cmd.SetArgs(args)
+			err := cmd.Execute()
+			So(err, ShouldNotBeNil)
 		})
 	})
 }
@@ -138,7 +487,7 @@ func TestSearchCLI(t *testing.T) {
 
 		// search by repos
 
-		args := []string{"searchtest", "--query", "test/alpin", "--verbose"}
+		args := []string{"query", "test/alpin", "--verbose", "--config", "searchtest"}
 
 		configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"searchtest","url":"%s","showspinner":false}]}`,
 			baseURL))
@@ -165,7 +514,7 @@ func TestSearchCLI(t *testing.T) {
 
 		cmd = NewSearchCommand(new(searchService))
 
-		args = []string{"searchtest", "--query", "repo/alpine:"}
+		args = []string{"query", "repo/alpine:", "--config", "searchtest"}
 
 		configPath = makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"searchtest","url":"%s","showspinner":false}]}`,
 			baseURL))
@@ -241,7 +590,7 @@ func TestFormatsSearchCLI(t *testing.T) {
 		cmd := NewSearchCommand(new(searchService))
 
 		Convey("JSON format", func() {
-			args := []string{"searchtest", "--format", "json", "--query", "repo/alpine"}
+			args := []string{"query", "repo/alpine", "--format", "json", "--config", "searchtest"}
 
 			configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"searchtest","url":"%s","showspinner":false}]}`,
 				baseURL))
@@ -258,7 +607,7 @@ func TestFormatsSearchCLI(t *testing.T) {
 		})
 
 		Convey("YAML format", func() {
-			args := []string{"searchtest", "--format", "yaml", "--query", "repo/alpine"}
+			args := []string{"query", "repo/alpine", "--format", "yaml", "--config", "searchtest"}
 
 			configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"searchtest","url":"%s","showspinner":false}]}`,
 				baseURL))
@@ -275,7 +624,7 @@ func TestFormatsSearchCLI(t *testing.T) {
 		})
 
 		Convey("Invalid format", func() {
-			args := []string{"searchtest", "--format", "invalid", "--query", "repo/alpine"}
+			args := []string{"query", "repo/alpine", "--format", "invalid", "--config", "searchtest"}
 
 			configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"searchtest","url":"%s","showspinner":false}]}`,
 				baseURL))
@@ -297,7 +646,7 @@ func TestSearchCLIErrors(t *testing.T) {
 		cmd := NewSearchCommand(new(searchService))
 
 		Convey("no url provided", func() {
-			args := []string{"searchtest", "--format", "invalid", "--query", "repo/alpine"}
+			args := []string{"query", "repo/alpine", "--format", "invalid", "--config", "searchtest"}
 
 			configPath := makeConfigFile(`{"configs":[{"_name":"searchtest","showspinner":false}]}`)
 
@@ -312,7 +661,7 @@ func TestSearchCLIErrors(t *testing.T) {
 		})
 
 		Convey("getConfigValue", func() {
-			args := []string{"searchtest", "--format", "invalid", "--query", "repo/alpine"}
+			args := []string{"query", "repo/alpine", "--format", "invalid", "--config", "searchtest"}
 
 			configPath := makeConfigFile(`bad-json`)
 
@@ -327,7 +676,7 @@ func TestSearchCLIErrors(t *testing.T) {
 		})
 
 		Convey("bad showspinnerConfig ", func() {
-			args := []string{"searchtest"}
+			args := []string{"query", "repo/alpine", "--config", "searchtest"}
 
 			configPath := makeConfigFile(
 				`{"configs":[{"_name":"searchtest", "url":"http://127.0.0.1:8080", "showspinner":"bad"}]}`)
@@ -343,7 +692,7 @@ func TestSearchCLIErrors(t *testing.T) {
 		})
 
 		Convey("bad verifyTLSConfig ", func() {
-			args := []string{"searchtest"}
+			args := []string{"query", "repo/alpine", "--config", "searchtest"}
 
 			configPath := makeConfigFile(
 				`{"configs":[{"_name":"searchtest", "url":"http://127.0.0.1:8080", "showspinner":false, "verify-tls": "bad"}]}`)
@@ -359,7 +708,7 @@ func TestSearchCLIErrors(t *testing.T) {
 		})
 
 		Convey("url from config is empty", func() {
-			args := []string{"searchtest", "--format", "invalid", "--query", "repo/alpine"}
+			args := []string{"query", "repo/alpine", "--format", "invalid", "--config", "searchtest"}
 
 			configPath := makeConfigFile(`{"configs":[{"_name":"searchtest", "url":"", "showspinner":false}]}`)
 
@@ -370,35 +719,6 @@ func TestSearchCLIErrors(t *testing.T) {
 			cmd.SetErr(buff)
 			cmd.SetArgs(args)
 			err := cmd.Execute()
-			So(err, ShouldNotBeNil)
-		})
-
-		Convey("no url provided error", func() {
-			args := []string{}
-
-			configPath := makeConfigFile(`bad-json`)
-
-			defer os.Remove(configPath)
-
-			buff := &bytes.Buffer{}
-			cmd.SetOut(buff)
-			cmd.SetErr(buff)
-			cmd.SetArgs(args)
-			err := cmd.Execute()
-			So(err, ShouldNotBeNil)
-		})
-
-		Convey("globalSearch without gql active", func() {
-			err := globalSearch(searchConfig{
-				user:      ref("t"),
-				servURL:   ref("t"),
-				verifyTLS: ref(false),
-				debug:     ref(false),
-				params: map[string]*string{
-					"query": ref("t"),
-				},
-				resultWriter: io.Discard,
-			})
 			So(err, ShouldNotBeNil)
 		})
 	})
@@ -430,9 +750,9 @@ func TestSearchCommandGQL(t *testing.T) {
 		defer os.Remove(configPath)
 
 		Convey("query", func() {
-			args := []string{"query", "repo/al"}
+			args := []string{"query", "repo/al", "--config", "searchtest"}
 			cmd := NewSearchCommand(mockService{})
-			cmd.PersistentFlags().String(cmdflags.ConfigFlag, "searchtest", "")
+
 			buff := bytes.NewBufferString("")
 			cmd.SetOut(buff)
 			cmd.SetErr(buff)
@@ -448,7 +768,7 @@ func TestSearchCommandGQL(t *testing.T) {
 
 		Convey("query command errors", func() {
 			// no url
-			args := []string{"repo/al"}
+			args := []string{"repo/al", "--config", "searchtest"}
 			cmd := NewSearchQueryCommand(mockService{})
 			buff := bytes.NewBufferString("")
 			cmd.SetOut(buff)
@@ -462,9 +782,9 @@ func TestSearchCommandGQL(t *testing.T) {
 			err := test.UploadImage(test.CreateRandomImage(), baseURL, "repo", "tag")
 			So(err, ShouldBeNil)
 
-			args := []string{"subject", "repo:tag"}
+			args := []string{"subject", "repo:tag", "--config", "searchtest"}
 			cmd := NewSearchCommand(mockService{})
-			cmd.PersistentFlags().String(cmdflags.ConfigFlag, "searchtest", "")
+
 			buff := bytes.NewBufferString("")
 			cmd.SetOut(buff)
 			cmd.SetErr(buff)
@@ -479,7 +799,7 @@ func TestSearchCommandGQL(t *testing.T) {
 
 		Convey("subject command errors", func() {
 			// no url
-			args := []string{"repo:tag"}
+			args := []string{"repo:tag", "--config", "searchtest"}
 			cmd := NewSearchSubjectCommand(mockService{})
 			buff := bytes.NewBufferString("")
 			cmd.SetOut(buff)
@@ -510,9 +830,9 @@ func TestSearchCommandREST(t *testing.T) {
 		defer os.Remove(configPath)
 
 		Convey("query", func() {
-			args := []string{"query", "repo/al"}
+			args := []string{"query", "repo/al", "--config", "searchtest"}
 			cmd := NewSearchCommand(mockService{})
-			cmd.PersistentFlags().String(cmdflags.ConfigFlag, "searchtest", "")
+
 			buff := bytes.NewBufferString("")
 			cmd.SetOut(buff)
 			cmd.SetErr(buff)
@@ -525,9 +845,9 @@ func TestSearchCommandREST(t *testing.T) {
 			err := test.UploadImage(test.CreateRandomImage(), baseURL, "repo", "tag")
 			So(err, ShouldBeNil)
 
-			args := []string{"subject", "repo:tag"}
+			args := []string{"subject", "repo:tag", "--config", "searchtest"}
 			cmd := NewSearchCommand(mockService{})
-			cmd.PersistentFlags().String(cmdflags.ConfigFlag, "searchtest", "")
+
 			buff := bytes.NewBufferString("")
 			cmd.SetOut(buff)
 			cmd.SetErr(buff)

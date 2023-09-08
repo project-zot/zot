@@ -22,7 +22,7 @@ func NewCveForImageCommand(searchService SearchService) *cobra.Command {
 	var searchedCVEID string
 
 	cveForImageCmd := &cobra.Command{
-		Use:   "image [repo:tag]|[repo@digest]",
+		Use:   "list [repo:tag]|[repo@digest]",
 		Short: "List CVEs by REPO:TAG or REPO@DIGEST",
 		Long:  `List CVEs by REPO:TAG or REPO@DIGEST`,
 		Args:  OneImageWithRefArg,
@@ -52,7 +52,7 @@ func NewImagesByCVEIDCommand(searchService SearchService) *cobra.Command {
 	var repo string
 
 	imagesByCVEIDCmd := &cobra.Command{
-		Use:   "cveid [cveId]",
+		Use:   "affected [cveId]",
 		Short: "List images affected by a CVE",
 		Long:  `List images affected by a CVE`,
 		Args: func(cmd *cobra.Command, args []string) error {

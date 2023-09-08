@@ -6,7 +6,6 @@ package cli
 import (
 	"fmt"
 
-	godigest "github.com/opencontainers/go-digest"
 	"github.com/spf13/cobra"
 
 	zerr "zotregistry.io/zot/errors"
@@ -90,19 +89,6 @@ func OneImageWithRefArg(cmd *cobra.Command, args []string) error {
 
 	if dir, ref, _ := zcommon.GetImageDirAndReference(image); dir == "" || ref == "" {
 		return zerr.ErrInvalidRepoRefFormat
-	}
-
-	return nil
-}
-
-func OneDigestArg(cmd *cobra.Command, args []string) error {
-	if err := cobra.ExactArgs(1)(cmd, args); err != nil {
-		return err
-	}
-
-	digest := args[0]
-	if _, err := godigest.Parse(digest); err != nil {
-		return err
 	}
 
 	return nil

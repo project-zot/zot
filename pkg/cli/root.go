@@ -210,16 +210,12 @@ func NewCliRootCmd() *cobra.Command {
 		},
 	}
 
+	rootCmd.SilenceUsage = true
+
 	// additional cmds
 	enableCli(rootCmd)
 	// "version"
 	rootCmd.Flags().BoolVarP(&showVersion, cmdflags.VersionFlag, "v", false, "show the version and exit")
-	rootCmd.PersistentFlags().String(cmdflags.URLFlag, "",
-		"Specify zot server URL if config-name is not mentioned")
-	rootCmd.PersistentFlags().String(cmdflags.ConfigFlag, "",
-		"Specify the repository where to connect")
-	rootCmd.PersistentFlags().StringP(cmdflags.UserFlag, "u", "",
-		`User Credentials of zot server in "username:password" format`)
 
 	return rootCmd
 }

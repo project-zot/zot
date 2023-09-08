@@ -90,7 +90,7 @@ func TestTLSWithAuth(t *testing.T) {
 
 			defer os.RemoveAll(destCertsDir)
 
-			args := []string{"imagetest", "--name", "dummyImageName", "--url", HOST1}
+			args := []string{"name", "dummyImageName", "--url", HOST1}
 			imageCmd := NewImageCommand(new(searchService))
 			imageBuff := bytes.NewBufferString("")
 			imageCmd.SetOut(imageBuff)
@@ -100,7 +100,7 @@ func TestTLSWithAuth(t *testing.T) {
 			So(err, ShouldNotBeNil)
 			So(imageBuff.String(), ShouldContainSubstring, "invalid URL format")
 
-			args = []string{"imagetest"}
+			args = []string{"list", "--config", "imagetest"}
 			configPath = makeConfigFile(
 				fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s%s%s","showspinner":false}]}`,
 					BaseSecureURL1, constants.RoutePrefix, constants.ExtCatalogPrefix))
@@ -115,7 +115,7 @@ func TestTLSWithAuth(t *testing.T) {
 			So(imageBuff.String(), ShouldContainSubstring, "check credentials")
 
 			user := fmt.Sprintf("%s:%s", username, passphrase)
-			args = []string{"imagetest", "-u", user}
+			args = []string{"-u", user, "--config", "imagetest"}
 			configPath = makeConfigFile(
 				fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s%s%s","showspinner":false}]}`,
 					BaseSecureURL1, constants.RoutePrefix, constants.ExtCatalogPrefix))
@@ -170,7 +170,7 @@ func TestTLSWithoutAuth(t *testing.T) {
 			test.CopyTestFiles(sourceCertsDir, destCertsDir)
 			defer os.RemoveAll(destCertsDir)
 
-			args := []string{"imagetest"}
+			args := []string{"list", "--config", "imagetest"}
 			imageCmd := NewImageCommand(new(searchService))
 			imageBuff := bytes.NewBufferString("")
 			imageCmd.SetOut(imageBuff)
@@ -211,7 +211,7 @@ func TestTLSBadCerts(t *testing.T) {
 					BaseSecureURL3, constants.RoutePrefix, constants.ExtCatalogPrefix))
 			defer os.Remove(configPath)
 
-			args := []string{"imagetest"}
+			args := []string{"list", "--config", "imagetest"}
 			imageCmd := NewImageCommand(new(searchService))
 			imageBuff := bytes.NewBufferString("")
 			imageCmd.SetOut(imageBuff)

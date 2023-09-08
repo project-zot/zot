@@ -37,10 +37,10 @@ func TestGQLQueries(t *testing.T) {
 	defer cm.StopServer()
 
 	searchConfig := searchConfig{
-		servURL:      &baseURL,
-		user:         ref(""),
-		verifyTLS:    ref(false),
-		debug:        ref(false),
+		servURL:      baseURL,
+		user:         "",
+		verifyTLS:    false,
+		debug:        false,
 		resultWriter: io.Discard,
 	}
 

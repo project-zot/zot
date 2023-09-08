@@ -26,12 +26,12 @@ func getDefaultSearchConf(baseURL string) searchConfig {
 	outputFormat := "text"
 
 	return searchConfig{
-		servURL:      &baseURL,
+		servURL:      baseURL,
 		resultWriter: io.Discard,
-		verifyTLS:    &verifyTLS,
-		debug:        &debug,
-		verbose:      &verbose,
-		outputFormat: &outputFormat,
+		verifyTLS:    verifyTLS,
+		debug:        debug,
+		verbose:      verbose,
+		outputFormat: outputFormat,
 	}
 }
 
