@@ -293,8 +293,6 @@ func (rh *RouteHandler) ListTags(response http.ResponseWriter, request *http.Req
 		return
 	}
 
-	imgStore := rh.getImageStore(name)
-
 	paginate := false
 	numTags := -1
 
@@ -319,6 +317,12 @@ func (rh *RouteHandler) ListTags(response http.ResponseWriter, request *http.Req
 
 		numTags = int(nQuery1)
 		paginate = true
+
+		if numTags < 0 {
+			response.WriteHeader(http.StatusBadRequest)
+
+			return
+		}
 	}
 
 	last := ""
@@ -334,6 +338,8 @@ func (rh *RouteHandler) ListTags(response http.ResponseWriter, request *http.Req
 		last = lastQuery[0]
 	}
 
+	imgStore := rh.getImageStore(name)
+
 	tags, err := imgStore.GetImageTags(name)
 	if err != nil {
 		e := apiErr.NewError(apiErr.NAME_UNKNOWN).AddDetail(map[string]string{"name": name})
@@ -342,56 +348,56 @@ func (rh *RouteHandler) ListTags(response http.ResponseWriter, request *http.Req
 		return
 	}
 
-	if paginate && (numTags < len(tags)) {
-		sort.Strings(tags)
+	// Tags need to be sorted regardless of pagination parameters
+	sort.Strings(tags)
 
-		pTags := ImageTags{Name: name}
+	// Determine index of first tag returned
+	startIndex := 0
 
-		if last == "" {
-			// first
-			pTags.Tags = tags[:numTags]
-		} else {
-			// next
-			var i int
-			found := false
-			for idx, tag := range tags {
-				if tag == last {
-					found = true
-					i = idx
+	if last != "" {
+		found := false
 
-					break
-				}
+		for i, tag := range tags {
+			if tag == last {
+				found = true
+				startIndex = i + 1
+
+				break
 			}
-
-			if !found {
-				response.WriteHeader(http.StatusNotFound)
-
-				return
-			}
-
-			if numTags >= len(tags)-i {
-				pTags.Tags = tags[i+1:]
-				zcommon.WriteJSON(response, http.StatusOK, pTags)
-
-				return
-			}
-
-			pTags.Tags = tags[i+1 : i+1+numTags]
 		}
 
-		if len(pTags.Tags) == 0 {
-			last = ""
-		} else {
-			last = pTags.Tags[len(pTags.Tags)-1]
-		}
+		if !found {
+			response.WriteHeader(http.StatusNotFound)
 
-		response.Header().Set("Link", fmt.Sprintf("/v2/%s/tags/list?n=%d&last=%s; rel=\"next\"", name, numTags, last))
+			return
+		}
+	}
+
+	pTags := ImageTags{Name: name}
+
+	if paginate && numTags == 0 {
+		pTags.Tags = []string{}
 		zcommon.WriteJSON(response, http.StatusOK, pTags)
 
 		return
 	}
 
-	zcommon.WriteJSON(response, http.StatusOK, ImageTags{Name: name, Tags: tags})
+	stopIndex := len(tags) - 1
+	if paginate && (startIndex+numTags < len(tags)) {
+		stopIndex = startIndex + numTags - 1
+		response.Header().Set(
+			"Link",
+			fmt.Sprintf("/v2/%s/tags/list?n=%d&last=%s; rel=\"next\"",
+				name,
+				numTags,
+				tags[stopIndex],
+			),
+		)
+	}
+
+	pTags.Tags = tags[startIndex : stopIndex+1]
+
+	zcommon.WriteJSON(response, http.StatusOK, pTags)
 }
 
 // CheckManifest godoc

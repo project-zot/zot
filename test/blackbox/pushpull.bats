@@ -154,6 +154,45 @@ function teardown_file() {
     [ $(echo "$output" | jq -r ".manifests | length") -eq 2 ]
 }
 
+@test "add and list tags using oras" {
+    run skopeo --insecure-policy copy --dest-tls-verify=false \
+        oci:${TEST_DATA_DIR}/golang:1.20 \
+        docker://127.0.0.1:8080/oras-tags:1.20
+    [ "$status" -eq 0 ]
+    run oras tag --plain-http 127.0.0.1:8080/oras-tags:1.20 1 new latest
+    [ "$status" -eq 0 ]
+    run oras repo tags --plain-http 127.0.0.1:8080/oras-tags
+    [ "$status" -eq 0 ]
+    echo "$output"
+    [ $(echo "$output" | wc -l) -eq 4 ]
+    [ "${lines[-1]}" == "new" ]
+    [ "${lines[-2]}" == "latest" ]
+    [ "${lines[-3]}" == "1.20" ]
+    [ "${lines[-4]}" == "1" ]
+    run oras repo tags --plain-http --last new 127.0.0.1:8080/oras-tags
+    [ "$status" -eq 0 ]
+    echo "$output"
+    [ -z $output ]
+    run oras repo tags --plain-http --last latest 127.0.0.1:8080/oras-tags
+    [ "$status" -eq 0 ]
+    echo "$output"
+    [ $(echo "$output" | wc -l) -eq 1 ]
+    [ "${lines[-1]}" == "new" ]
+    run oras repo tags --plain-http --last "1.20" 127.0.0.1:8080/oras-tags
+    [ "$status" -eq 0 ]
+    echo "$output"
+    [ $(echo "$output" | wc -l) -eq 2 ]
+    [ "${lines[-2]}" == "latest" ]
+    [ "${lines[-1]}" == "new" ]
+    run oras repo tags --plain-http --last "1" 127.0.0.1:8080/oras-tags
+    [ "$status" -eq 0 ]
+    echo "$output"
+    [ $(echo "$output" | wc -l) -eq 3 ]
+    [ "${lines[-3]}" == "1.20" ]
+    [ "${lines[-2]}" == "latest" ]
+    [ "${lines[-1]}" == "new" ]
+}
+
 @test "push helm chart" {
     run helm package ${BATS_FILE_TMPDIR}/helm-charts/charts/zot -d ${BATS_FILE_TMPDIR}
     [ "$status" -eq 0 ]
