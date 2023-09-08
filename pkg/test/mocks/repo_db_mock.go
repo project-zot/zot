@@ -106,6 +106,24 @@ type MetaDBMock struct {
 	DeleteUserAPIKeyFn func(ctx context.Context, id string) error
 
 	PatchDBFn func() error
+
+	ImageTrustStoreFn func() mTypes.ImageTrustStore
+
+	SetImageTrustStoreFn func(mTypes.ImageTrustStore)
+}
+
+func (sdm MetaDBMock) ImageTrustStore() mTypes.ImageTrustStore {
+	if sdm.ImageTrustStoreFn != nil {
+		return sdm.ImageTrustStoreFn()
+	}
+
+	return nil
+}
+
+func (sdm MetaDBMock) SetImageTrustStore(imgTrustStore mTypes.ImageTrustStore) {
+	if sdm.SetImageTrustStoreFn != nil {
+		sdm.SetImageTrustStoreFn(imgTrustStore)
+	}
 }
 
 func (sdm MetaDBMock) SetRepoDescription(repo, description string) error {

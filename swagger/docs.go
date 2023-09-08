@@ -389,12 +389,6 @@ const docTemplate = `{
                         "in": "query"
                     },
                     {
-                        "type": "string",
-                        "description": "truststore name",
-                        "name": "truststoreName",
-                        "in": "query"
-                    },
-                    {
                         "description": "Certificate content",
                         "name": "requestBody",
                         "in": "body",

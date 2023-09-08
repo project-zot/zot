@@ -483,10 +483,6 @@ paths:
         in: query
         name: truststoreType
         type: string
-      - description: truststore name
-        in: query
-        name: truststoreName
-        type: string
       - description: Certificate content
         in: body
         name: requestBody
