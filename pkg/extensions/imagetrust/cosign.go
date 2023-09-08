@@ -15,7 +15,6 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/service/secretsmanager"
 	"github.com/aws/aws-sdk-go-v2/service/secretsmanager/types"
-	"github.com/aws/aws-secretsmanager-caching-go/secretcache"
 	godigest "github.com/opencontainers/go-digest"
 	"github.com/sigstore/cosign/v2/pkg/cosign/pkcs11key"
 	sigs "github.com/sigstore/cosign/v2/pkg/signature"
@@ -33,8 +32,8 @@ type PublicKeyLocalStorage struct {
 }
 
 type PublicKeyAWSStorage struct {
-	secretsManagerClient *secretsmanager.Client
-	secretsManagerCache  *secretcache.Cache
+	secretsManagerClient SecretsManagerClient
+	secretsManagerCache  SecretsManagerCache
 }
 
 type publicKeyStorage interface {
@@ -64,7 +63,7 @@ func NewPublicKeyLocalStorage(rootDir string) (*PublicKeyLocalStorage, error) {
 }
 
 func NewPublicKeyAWSStorage(
-	secretsManagerClient *secretsmanager.Client, secretsManagerCache *secretcache.Cache,
+	secretsManagerClient SecretsManagerClient, secretsManagerCache SecretsManagerCache,
 ) *PublicKeyAWSStorage {
 	return &PublicKeyAWSStorage{
 		secretsManagerClient: secretsManagerClient,
