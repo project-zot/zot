@@ -5,7 +5,6 @@ package monitoring
 
 import (
 	"path"
-	"regexp"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -147,7 +146,6 @@ func IncHTTPConnRequests(ms MetricServer, lvalues ...string) {
 
 func ObserveHTTPRepoLatency(ms MetricServer, path string, latency time.Duration) {
 	ms.SendMetric(func() {
-		re := regexp.MustCompile(`\/v2\/(.*?)\/(blobs|tags|manifests)\/(.*)$`)
 		match := re.FindStringSubmatch(path)
 
 		if len(match) > 1 {
