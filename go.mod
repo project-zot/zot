@@ -62,7 +62,7 @@ require (
 	github.com/sigstore/cosign/v2 v2.1.1
 	github.com/swaggo/http-swagger v1.3.4
 	github.com/zitadel/oidc v1.13.4
-	golang.org/x/oauth2 v0.10.0
+	golang.org/x/oauth2 v0.11.0
 	modernc.org/sqlite v1.23.1
 	oras.land/oras-go/v2 v2.3.0
 )
@@ -420,7 +420,7 @@ require (
 	github.com/shibumi/go-pathspec v1.3.0 // indirect
 	github.com/sigstore/fulcio v1.3.1 // indirect
 	github.com/sigstore/rekor v1.2.2-0.20230601122533-4c81ff246d12 // indirect
-	github.com/sigstore/sigstore v1.7.2
+	github.com/sigstore/sigstore v1.7.3
 	github.com/sirupsen/logrus v1.9.3 // indirect
 	github.com/skratchdot/open-golang v0.0.0-20200116055534-eef842397966 // indirect
 	github.com/spf13/afero v1.9.5 // indirect
@@ -463,7 +463,7 @@ require (
 	go.uber.org/zap v1.24.0 // indirect
 	golang.org/x/exp v0.0.0-20230522175609-2e198f4a06a1 // indirect
 	golang.org/x/mod v0.12.0 // indirect
-	golang.org/x/net v0.12.0 // indirect
+	golang.org/x/net v0.14.0 // indirect
 	golang.org/x/term v0.11.0 // indirect
 	golang.org/x/time v0.3.0 // indirect
 	golang.org/x/tools v0.10.0 // indirect
