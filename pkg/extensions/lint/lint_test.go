@@ -24,6 +24,7 @@ import (
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/storage/local"
 	"zotregistry.io/zot/pkg/test"
+	testc "zotregistry.io/zot/pkg/test/common"
 )
 
 const (
@@ -257,7 +258,7 @@ func TestVerifyMandatoryAnnotations(t *testing.T) {
 		resp, err = resty.R().
 			Post(fmt.Sprintf("%s/v2/zot-test/blobs/uploads/", baseURL))
 		So(err, ShouldBeNil)
-		loc := test.Location(baseURL, resp)
+		loc := testc.Location(baseURL, resp)
 
 		_, err = resty.R().
 			SetContentLength(true).
@@ -344,7 +345,7 @@ func TestVerifyMandatoryAnnotations(t *testing.T) {
 		_, err = resty.R().
 			Post(fmt.Sprintf("%s/v2/zot-test/blobs/uploads/", baseURL))
 		So(err, ShouldBeNil)
-		loc := test.Location(baseURL, resp)
+		loc := testc.Location(baseURL, resp)
 
 		_, err = resty.R().
 			SetContentLength(true).

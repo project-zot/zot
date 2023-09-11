@@ -33,6 +33,7 @@ import (
 	extconf "zotregistry.io/zot/pkg/extensions/config"
 	zlog "zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/test"
+	testc "zotregistry.io/zot/pkg/test/common"
 )
 
 func TestSearchImageCmd(t *testing.T) {
@@ -1941,7 +1942,7 @@ func uploadTestMultiarch(baseURL string) {
 func uploadManifest(url string) error {
 	// create and upload a blob/layer
 	resp, _ := resty.R().Post(url + "/v2/repo7/blobs/uploads/")
-	loc := test.Location(url, resp)
+	loc := testc.Location(url, resp)
 
 	content := []byte("this is a blob5")
 	digest := godigest.FromBytes(content)
@@ -1973,7 +1974,7 @@ func uploadManifest(url string) error {
 
 	// upload image config blob
 	resp, _ = resty.R().Post(url + "/v2/repo7/blobs/uploads/")
-	loc = test.Location(url, resp)
+	loc = testc.Location(url, resp)
 
 	_, _ = resty.R().
 		SetContentLength(true).
@@ -2079,7 +2080,7 @@ func uploadManifestDerivedBase(url string) error {
 
 	// upload image config blob
 	resp, _ := resty.R().Post(url + "/v2/repo7/blobs/uploads/")
-	loc := test.Location(url, resp)
+	loc := testc.Location(url, resp)
 
 	_, _ = resty.R().
 		SetContentLength(true).

@@ -261,11 +261,6 @@ func (rh *RouteHandler) CheckVersionSupport(response http.ResponseWriter, reques
 	zcommon.WriteData(response, http.StatusOK, "application/json", []byte{})
 }
 
-type ImageTags struct {
-	Name string   `json:"name"`
-	Tags []string `json:"tags"`
-}
-
 // ListTags godoc
 // @Summary List image tags
 // @Description List all image tags in a repository
@@ -275,7 +270,7 @@ type ImageTags struct {
 // @Param   name     path    string     true        "test"
 // @Param 	n	 			 query 	 integer 		true				"limit entries for pagination"
 // @Param 	last	 	 query 	 string 		true				"last tag value for pagination"
-// @Success 200 {object} 	api.ImageTags
+// @Success 200 {object} 	common.ImageTags
 // @Failure 404 {string} 	string 				"not found"
 // @Failure 400 {string} 	string 				"bad request".
 func (rh *RouteHandler) ListTags(response http.ResponseWriter, request *http.Request) {
@@ -373,7 +368,7 @@ func (rh *RouteHandler) ListTags(response http.ResponseWriter, request *http.Req
 		}
 	}
 
-	pTags := ImageTags{Name: name}
+	pTags := zcommon.ImageTags{Name: name}
 
 	if paginate && numTags == 0 {
 		pTags.Tags = []string{}

@@ -25,6 +25,7 @@ import (
 	"zotregistry.io/zot/pkg/api/constants"
 	"zotregistry.io/zot/pkg/log"
 	. "zotregistry.io/zot/pkg/test"
+	testc "zotregistry.io/zot/pkg/test/common"
 )
 
 const (
@@ -127,7 +128,7 @@ func TestAuditLogMessages(t *testing.T) {
 				resp, err := resty.R().SetBasicAuth(username, passphrase).Post(baseURL + path)
 				So(err, ShouldBeNil)
 				So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
-				loc := Location(baseURL, resp)
+				loc := testc.Location(baseURL, resp)
 				So(loc, ShouldNotBeEmpty)
 				location := resp.Header().Get("Location")
 				So(location, ShouldNotBeEmpty)
@@ -163,7 +164,7 @@ func TestAuditLogMessages(t *testing.T) {
 					SetHeader("Content-Type", "application/octet-stream").SetBody(content).Put(loc)
 				So(err, ShouldBeNil)
 				So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
-				blobLoc := Location(baseURL, resp)
+				blobLoc := testc.Location(baseURL, resp)
 				So(blobLoc, ShouldNotBeEmpty)
 				So(resp.Header().Get(constants.DistContentDigestKey), ShouldNotBeEmpty)
 
@@ -223,7 +224,7 @@ func TestAuditLogMessages(t *testing.T) {
 				resp, err := resty.R().SetBasicAuth(username, passphrase).Post(baseURL + path)
 				So(err, ShouldBeNil)
 				So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
-				loc := Location(baseURL, resp)
+				loc := testc.Location(baseURL, resp)
 				So(loc, ShouldNotBeEmpty)
 				location := resp.Header().Get("Location")
 				So(location, ShouldNotBeEmpty)

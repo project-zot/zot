@@ -83,18 +83,18 @@ definitions:
           manifest forming an association between the image manifest and the other
           manifest.
     type: object
-  api.ImageTags:
+  api.RepositoryList:
     properties:
-      name:
-        type: string
-      tags:
+      repositories:
         items:
           type: string
         type: array
     type: object
-  api.RepositoryList:
+  common.ImageTags:
     properties:
-      repositories:
+      name:
+        type: string
+      tags:
         items:
           type: string
         type: array
@@ -994,7 +994,7 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/api.ImageTags'
+            $ref: '#/definitions/common.ImageTags'
         "400":
           description: bad request".
           schema:
