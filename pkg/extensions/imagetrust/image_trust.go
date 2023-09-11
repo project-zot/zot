@@ -36,6 +36,19 @@ type ImageTrustStore struct {
 	NotationStorage certificateStorage
 }
 
+type SecretsManagerClient interface {
+	CreateSecret(ctx context.Context, params *secretsmanager.CreateSecretInput,
+		optFns ...func(*secretsmanager.Options)) (*secretsmanager.CreateSecretOutput, error)
+	DeleteSecret(ctx context.Context, params *secretsmanager.DeleteSecretInput,
+		optFns ...func(*secretsmanager.Options)) (*secretsmanager.DeleteSecretOutput, error)
+	ListSecrets(ctx context.Context, params *secretsmanager.ListSecretsInput,
+		optFns ...func(*secretsmanager.Options)) (*secretsmanager.ListSecretsOutput, error)
+}
+
+type SecretsManagerCache interface {
+	GetSecretString(secretID string) (string, error)
+}
+
 func NewLocalImageTrustStore(rootDir string) (*ImageTrustStore, error) {
 	publicKeyStorage, err := NewPublicKeyLocalStorage(rootDir)
 	if err != nil {

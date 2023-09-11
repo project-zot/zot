@@ -21,7 +21,6 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/service/secretsmanager"
 	"github.com/aws/aws-sdk-go-v2/service/secretsmanager/types"
-	"github.com/aws/aws-secretsmanager-caching-go/secretcache"
 	_ "github.com/notaryproject/notation-core-go/signature/jws"
 	"github.com/notaryproject/notation-go"
 	"github.com/notaryproject/notation-go/dir"
@@ -45,8 +44,8 @@ type CertificateLocalStorage struct {
 }
 
 type CertificateAWSStorage struct {
-	secretsManagerClient *secretsmanager.Client
-	secretsManagerCache  *secretcache.Cache
+	secretsManagerClient SecretsManagerClient
+	secretsManagerCache  SecretsManagerCache
 }
 
 type certificateStorage interface {
@@ -99,7 +98,7 @@ func NewCertificateLocalStorage(rootDir string) (*CertificateLocalStorage, error
 }
 
 func NewCertificateAWSStorage(
-	secretsManagerClient *secretsmanager.Client, secretsManagerCache *secretcache.Cache,
+	secretsManagerClient SecretsManagerClient, secretsManagerCache SecretsManagerCache,
 ) (*CertificateAWSStorage, error) {
 	certStorage := &CertificateAWSStorage{
 		secretsManagerClient: secretsManagerClient,
@@ -185,9 +184,28 @@ func (cloud *CertificateAWSStorage) InitTrustpolicy(trustpolicy []byte) error {
 			return err
 		}
 
-		_, err = cloud.secretsManagerClient.CreateSecret(context.Background(), secretInputParam)
+		err = cloud.recreateSecret(secretInputParam)
 
 		return err
+	}
+
+	return err
+}
+
+func (cloud *CertificateAWSStorage) recreateSecret(secretInputParam *secretsmanager.CreateSecretInput) error {
+	maxAttempts := 5
+	retrySec := 2
+
+	var err error
+
+	for i := 0; i < maxAttempts; i++ {
+		_, err = cloud.secretsManagerClient.CreateSecret(context.Background(), secretInputParam)
+
+		if err == nil {
+			return nil
+		}
+
+		time.Sleep(time.Duration(retrySec) * time.Second)
 	}
 
 	return err
