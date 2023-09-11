@@ -40,7 +40,7 @@ require (
 	github.com/swaggo/swag v1.16.1
 	github.com/vektah/gqlparser/v2 v2.5.8
 	go.etcd.io/bbolt v1.3.7
-	golang.org/x/crypto v0.12.0
+	golang.org/x/crypto v0.13.0
 	gopkg.in/resty.v1 v1.12.0
 	gopkg.in/yaml.v2 v2.4.0
 )
@@ -62,7 +62,7 @@ require (
 	github.com/sigstore/cosign/v2 v2.1.1
 	github.com/swaggo/http-swagger v1.3.4
 	github.com/zitadel/oidc v1.13.4
-	golang.org/x/oauth2 v0.10.0
+	golang.org/x/oauth2 v0.12.0
 	modernc.org/sqlite v1.23.1
 	oras.land/oras-go/v2 v2.3.0
 )
@@ -70,8 +70,8 @@ require (
 require (
 	github.com/google/go-github/v50 v50.2.0 // indirect
 	golang.org/x/sync v0.3.0 // indirect
-	golang.org/x/sys v0.11.0 // indirect
-	golang.org/x/text v0.12.0 // indirect
+	golang.org/x/sys v0.12.0 // indirect
+	golang.org/x/text v0.13.0 // indirect
 )
 
 require (
@@ -182,8 +182,6 @@ require (
 	go.opentelemetry.io/otel/metric v1.16.0 // indirect
 	go.starlark.net v0.0.0-20200306205701-8dd3e2ee1dd5 // indirect
 	go.step.sm/crypto v0.32.1 // indirect
-	google.golang.org/genproto/googleapis/api v0.0.0-20230530153820-e85fd2cbaebc // indirect
-	google.golang.org/genproto/googleapis/rpc v0.0.0-20230530153820-e85fd2cbaebc // indirect
 	gopkg.in/go-jose/go-jose.v2 v2.6.1 // indirect
 	helm.sh/helm/v3 v3.12.1 // indirect
 	k8s.io/apiextensions-apiserver v0.27.2 // indirect
@@ -463,14 +461,13 @@ require (
 	go.uber.org/zap v1.24.0 // indirect
 	golang.org/x/exp v0.0.0-20230522175609-2e198f4a06a1 // indirect
 	golang.org/x/mod v0.12.0 // indirect
-	golang.org/x/net v0.12.0 // indirect
-	golang.org/x/term v0.11.0 // indirect
+	golang.org/x/net v0.15.0 // indirect
+	golang.org/x/term v0.12.0 // indirect
 	golang.org/x/time v0.3.0 // indirect
 	golang.org/x/tools v0.10.0 // indirect
 	golang.org/x/xerrors v0.0.0-20220907171357-04be3eba64a2 // indirect
 	google.golang.org/api v0.128.0 // indirect
 	google.golang.org/appengine v1.6.7 // indirect
-	google.golang.org/genproto v0.0.0-20230530153820-e85fd2cbaebc // indirect
 	google.golang.org/grpc v1.56.0 // indirect
 	google.golang.org/protobuf v1.31.0 // indirect
 	gopkg.in/cheggaaa/pb.v1 v1.0.28 // indirect
