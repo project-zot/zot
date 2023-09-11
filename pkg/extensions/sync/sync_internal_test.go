@@ -32,6 +32,7 @@ import (
 	storageConstants "zotregistry.io/zot/pkg/storage/constants"
 	"zotregistry.io/zot/pkg/storage/local"
 	"zotregistry.io/zot/pkg/test"
+	. "zotregistry.io/zot/pkg/test/image-utils"
 	"zotregistry.io/zot/pkg/test/inject"
 	"zotregistry.io/zot/pkg/test/mocks"
 )
@@ -450,7 +451,7 @@ func TestConvertDockerToOCI(t *testing.T) {
 
 		srcStorageCtlr := test.GetDefaultStoreController(dir, log.NewLogger("debug", ""))
 
-		err := test.WriteImageToFileSystem(test.CreateDefaultImage(), "zot-test", "0.0.1", srcStorageCtlr)
+		err := test.WriteImageToFileSystem(CreateDefaultImage(), "zot-test", "0.0.1", srcStorageCtlr)
 		So(err, ShouldBeNil)
 
 		imageRef, err := layout.NewReference(path.Join(dir, "zot-test"), "0.0.1")

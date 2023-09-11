@@ -22,12 +22,14 @@ import (
 	"zotregistry.io/zot/pkg/storage"
 	"zotregistry.io/zot/pkg/storage/local"
 	"zotregistry.io/zot/pkg/test"
+	testc "zotregistry.io/zot/pkg/test/common"
+	. "zotregistry.io/zot/pkg/test/image-utils"
 	"zotregistry.io/zot/pkg/test/mocks"
 )
 
 func TestScanBigTestFile(t *testing.T) {
 	Convey("Scan zot-test", t, func() {
-		projRootDir, err := test.GetProjectRootDir()
+		projRootDir, err := testc.GetProjectRootDir()
 		So(err, ShouldBeNil)
 
 		testImage := filepath.Join(projRootDir, "test/data/zot-test")
@@ -86,13 +88,13 @@ func TestScanningByDigest(t *testing.T) {
 		cm.StartAndWait(port)
 		defer cm.StopServer()
 		// push index with 2 manifests: one with vulns and one without
-		vulnImage := test.CreateDefaultVulnerableImage()
+		vulnImage := CreateDefaultVulnerableImage()
 
-		simpleImage := test.CreateRandomImage()
+		simpleImage := CreateRandomImage()
 
-		multiArch := test.GetMultiarchImageForImages([]test.Image{simpleImage, vulnImage}) //nolint:staticcheck
+		multiArch := test.GetMultiarchImageForImages([]Image{simpleImage, vulnImage}) //nolint:staticcheck
 
-		err := test.UploadMultiarchImage(multiArch, baseURL, "multi-arch", "multi-arch-tag")
+		err := UploadMultiarchImage(multiArch, baseURL, "multi-arch", "multi-arch-tag")
 		So(err, ShouldBeNil)
 
 		// scan
@@ -103,9 +105,9 @@ func TestScanningByDigest(t *testing.T) {
 
 		cveMap, err := scanner.ScanImage("multi-arch@" + vulnImage.DigestStr())
 		So(err, ShouldBeNil)
-		So(cveMap, ShouldContainKey, test.Vulnerability1ID)
-		So(cveMap, ShouldContainKey, test.Vulnerability2ID)
-		So(cveMap, ShouldContainKey, test.Vulnerability3ID)
+		So(cveMap, ShouldContainKey, Vulnerability1ID)
+		So(cveMap, ShouldContainKey, Vulnerability2ID)
+		So(cveMap, ShouldContainKey, Vulnerability3ID)
 
 		cveMap, err = scanner.ScanImage("multi-arch@" + simpleImage.DigestStr())
 		So(err, ShouldBeNil)
@@ -113,15 +115,15 @@ func TestScanningByDigest(t *testing.T) {
 
 		cveMap, err = scanner.ScanImage("multi-arch@" + multiArch.DigestStr())
 		So(err, ShouldBeNil)
-		So(cveMap, ShouldContainKey, test.Vulnerability1ID)
-		So(cveMap, ShouldContainKey, test.Vulnerability2ID)
-		So(cveMap, ShouldContainKey, test.Vulnerability3ID)
+		So(cveMap, ShouldContainKey, Vulnerability1ID)
+		So(cveMap, ShouldContainKey, Vulnerability2ID)
+		So(cveMap, ShouldContainKey, Vulnerability3ID)
 
 		cveMap, err = scanner.ScanImage("multi-arch:multi-arch-tag")
 		So(err, ShouldBeNil)
-		So(cveMap, ShouldContainKey, test.Vulnerability1ID)
-		So(cveMap, ShouldContainKey, test.Vulnerability2ID)
-		So(cveMap, ShouldContainKey, test.Vulnerability3ID)
+		So(cveMap, ShouldContainKey, Vulnerability1ID)
+		So(cveMap, ShouldContainKey, Vulnerability2ID)
+		So(cveMap, ShouldContainKey, Vulnerability3ID)
 	})
 }
 
@@ -152,7 +154,7 @@ func TestScannerErrors(t *testing.T) {
 
 func TestVulnerableLayer(t *testing.T) {
 	Convey("Vulnerable layer", t, func() {
-		vulnerableLayer, err := test.GetLayerWithVulnerability()
+		vulnerableLayer, err := GetLayerWithVulnerability()
 		So(err, ShouldBeNil)
 
 		created, err := time.Parse(time.RFC3339, "2023-03-29T18:19:24Z")
@@ -174,7 +176,7 @@ func TestVulnerableLayer(t *testing.T) {
 			},
 		}
 
-		img := test.CreateImageWith().
+		img := CreateImageWith().
 			LayerBlobs([][]byte{vulnerableLayer}).
 			ImageConfig(config).
 			Build()

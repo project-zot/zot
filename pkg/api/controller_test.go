@@ -62,6 +62,7 @@ import (
 	storageConstants "zotregistry.io/zot/pkg/storage/constants"
 	"zotregistry.io/zot/pkg/test"
 	testc "zotregistry.io/zot/pkg/test/common"
+	. "zotregistry.io/zot/pkg/test/image-utils"
 	"zotregistry.io/zot/pkg/test/inject"
 	"zotregistry.io/zot/pkg/test/mocks"
 )
@@ -925,9 +926,9 @@ func TestBlobReferenced(t *testing.T) {
 
 		repoName := "repo"
 
-		img := test.CreateRandomImage()
+		img := CreateRandomImage()
 
-		err = test.UploadImage(img, baseURL, repoName, "1.0")
+		err = UploadImage(img, baseURL, repoName, "1.0")
 		So(err, ShouldBeNil)
 
 		manifestDigest := img.ManifestDescriptor.Digest
@@ -2110,9 +2111,9 @@ func TestGroupsPermissionsForLDAP(t *testing.T) {
 		cm.StartAndWait(port)
 		defer cm.StopServer()
 
-		img := test.CreateDefaultImage()
+		img := CreateDefaultImage()
 
-		err = test.UploadImageWithBasicAuth(
+		err = UploadImageWithBasicAuth(
 			img, baseURL, repo, img.DigestStr(),
 			username, passphrase)
 		So(err, ShouldBeNil)
@@ -3607,7 +3608,7 @@ func TestAuthorization(t *testing.T) {
 			ctlr := api.NewController(conf)
 			ctlr.Config.Storage.RootDirectory = t.TempDir()
 
-			err = test.WriteImageToFileSystem(test.CreateDefaultImage(), "zot-test", "0.0.1",
+			err = test.WriteImageToFileSystem(CreateDefaultImage(), "zot-test", "0.0.1",
 				test.GetDefaultStoreController(ctlr.Config.Storage.RootDirectory, ctlr.Log))
 			So(err, ShouldBeNil)
 
@@ -3643,7 +3644,7 @@ func TestAuthorization(t *testing.T) {
 			ctlr := api.NewController(conf)
 			ctlr.Config.Storage.RootDirectory = t.TempDir()
 
-			err := test.WriteImageToFileSystem(test.CreateDefaultImage(), "zot-test", "0.0.1",
+			err := test.WriteImageToFileSystem(CreateDefaultImage(), "zot-test", "0.0.1",
 				test.GetDefaultStoreController(ctlr.Config.Storage.RootDirectory, ctlr.Log))
 			So(err, ShouldBeNil)
 
@@ -3920,7 +3921,7 @@ func TestAuthorizationWithOnlyAnonymousPolicy(t *testing.T) {
 		err = os.Mkdir(path.Join(dir, "zot-test"), storageConstants.DefaultDirPerms)
 		So(err, ShouldBeNil)
 
-		err = test.WriteImageToFileSystem(test.CreateDefaultImage(), "zot-test", "tag", ctlr.StoreController)
+		err = test.WriteImageToFileSystem(CreateDefaultImage(), "zot-test", "tag", ctlr.StoreController)
 		So(err, ShouldBeNil)
 
 		// should not have read rights on zot-test
@@ -3966,7 +3967,7 @@ func TestAuthorizationWithAnonymousPolicyBasicAuthAndSessionHeader(t *testing.T)
 		htpasswdPath := test.MakeHtpasswdFileFromString(htpasswdContent)
 		defer os.Remove(htpasswdPath)
 
-		img := test.CreateRandomImage()
+		img := CreateRandomImage()
 		tagAnonymous := "1.0-anon"
 		tagAuth := "1.0-auth"
 		tagUnauth := "1.0-unauth"
@@ -4070,14 +4071,14 @@ func TestAuthorizationWithAnonymousPolicyBasicAuthAndSessionHeader(t *testing.T)
 
 		// upload capability
 		// should get 403 without create
-		err = test.UploadImage(img, baseURL, TestRepo, tagAnonymous)
+		err = UploadImage(img, baseURL, TestRepo, tagAnonymous)
 		So(err, ShouldNotBeNil)
 
-		err = test.UploadImageWithBasicAuth(img, baseURL,
+		err = UploadImageWithBasicAuth(img, baseURL,
 			TestRepo, tagAuth, htpasswdUsername, passphrase)
 		So(err, ShouldNotBeNil)
 
-		err = test.UploadImageWithBasicAuth(img, baseURL,
+		err = UploadImageWithBasicAuth(img, baseURL,
 			TestRepo, tagUnauth, htpasswdUsername, badpassphrase)
 		So(err, ShouldNotBeNil)
 
@@ -4091,14 +4092,14 @@ func TestAuthorizationWithAnonymousPolicyBasicAuthAndSessionHeader(t *testing.T)
 		}
 
 		// now it should succeed for valid users
-		err = test.UploadImage(img, baseURL, TestRepo, tagAnonymous)
+		err = UploadImage(img, baseURL, TestRepo, tagAnonymous)
 		So(err, ShouldBeNil)
 
-		err = test.UploadImageWithBasicAuth(img, baseURL,
+		err = UploadImageWithBasicAuth(img, baseURL,
 			TestRepo, tagAuth, htpasswdUsername, passphrase)
 		So(err, ShouldBeNil)
 
-		err = test.UploadImageWithBasicAuth(img, baseURL,
+		err = UploadImageWithBasicAuth(img, baseURL,
 			TestRepo, tagUnauth, htpasswdUsername, badpassphrase)
 		So(err, ShouldNotBeNil)
 
@@ -4228,7 +4229,7 @@ func TestAuthorizationWithMultiplePolicies(t *testing.T) {
 			ctlr := api.NewController(conf)
 			ctlr.Config.Storage.RootDirectory = dir
 
-			err = test.WriteImageToFileSystem(test.CreateDefaultImage(), "zot-test", "0.0.1",
+			err = test.WriteImageToFileSystem(CreateDefaultImage(), "zot-test", "0.0.1",
 				test.GetDefaultStoreController(ctlr.Config.Storage.RootDirectory, ctlr.Log))
 			So(err, ShouldBeNil)
 
@@ -4287,7 +4288,7 @@ func TestAuthorizationWithMultiplePolicies(t *testing.T) {
 			ctlr := api.NewController(conf)
 			ctlr.Config.Storage.RootDirectory = dir
 
-			err := test.WriteImageToFileSystem(test.CreateDefaultImage(), "zot-test", "0.0.1",
+			err := test.WriteImageToFileSystem(CreateDefaultImage(), "zot-test", "0.0.1",
 				test.GetDefaultStoreController(ctlr.Config.Storage.RootDirectory, ctlr.Log))
 			So(err, ShouldBeNil)
 
@@ -4449,7 +4450,7 @@ func TestCrossRepoMount(t *testing.T) {
 		ctlr.Config.Storage.RemoteCache = false
 		ctlr.Config.Storage.Dedupe = false
 
-		err := test.WriteImageToFileSystem(test.CreateDefaultImage(), "zot-cve-test", "test", storage.StoreController{
+		err := test.WriteImageToFileSystem(CreateDefaultImage(), "zot-cve-test", "test", storage.StoreController{
 			DefaultStore: test.GetDefaultImageStore(dir, ctlr.Log),
 		})
 		So(err, ShouldBeNil)
@@ -4660,7 +4661,7 @@ func TestCrossRepoMount(t *testing.T) {
 		ctlr.Config.Storage.Dedupe = false
 		ctlr.Config.Storage.GC = false
 
-		image := test.CreateImageWith().RandomLayers(1, 10).DefaultConfig().Build()
+		image := CreateImageWith().RandomLayers(1, 10).DefaultConfig().Build()
 
 		err := test.WriteImageToFileSystem(image, "zot-cve-test", "0.0.1",
 			test.GetDefaultStoreController(dir, ctlr.Log))
@@ -4807,10 +4808,10 @@ func TestParallelRequests(t *testing.T) {
 	testImagesDir := t.TempDir()
 	testImagesController := test.GetDefaultStoreController(testImagesDir, ctlr.Log)
 
-	err := test.WriteImageToFileSystem(test.CreateRandomImage(), "zot-test", "0.0.1", testImagesController)
+	err := test.WriteImageToFileSystem(CreateRandomImage(), "zot-test", "0.0.1", testImagesController)
 	assert.Equal(t, err, nil, "Error should be nil")
 
-	err = test.WriteImageToFileSystem(test.CreateRandomImage(), "zot-cve-test", "0.0.1", testImagesController)
+	err = test.WriteImageToFileSystem(CreateRandomImage(), "zot-cve-test", "0.0.1", testImagesController)
 	assert.Equal(t, err, nil, "Error should be nil")
 
 	cm := test.NewControllerManager(ctlr)
@@ -5065,11 +5066,11 @@ func TestImageSignatures(t *testing.T) {
 		defer cm.StopServer()
 
 		repoName := "signed-repo"
-		img := test.CreateRandomImage()
+		img := CreateRandomImage()
 		content := img.ManifestDescriptor.Data
 		digest := img.ManifestDescriptor.Digest
 
-		err := test.UploadImage(img, baseURL, repoName, "1.0")
+		err := UploadImage(img, baseURL, repoName, "1.0")
 		So(err, ShouldBeNil)
 
 		Convey("Validate cosign signatures", func() {
@@ -5303,13 +5304,13 @@ func TestManifestValidation(t *testing.T) {
 		blobDigest := godigest.FromBytes(blobContent)
 		So(blobDigest, ShouldNotBeNil)
 
-		img := test.CreateRandomImage()
+		img := CreateRandomImage()
 		content := img.ManifestDescriptor.Data
 		digest := img.ManifestDescriptor.Digest
 		configDigest := img.ConfigDescriptor.Digest
 		configBlob := img.ConfigDescriptor.Data
 
-		err := test.UploadImage(img, baseURL, repoName, "1.0")
+		err := UploadImage(img, baseURL, repoName, "1.0")
 		So(err, ShouldBeNil)
 
 		Convey("empty layers should pass validation", func() {
@@ -5526,8 +5527,8 @@ func TestArtifactReferences(t *testing.T) {
 		cfg, layers, manifest, err := test.GetImageComponents(2) //nolint:staticcheck
 		So(err, ShouldBeNil)
 
-		err = test.UploadImage(
-			test.Image{
+		err = UploadImage(
+			Image{
 				Config:   cfg,
 				Layers:   layers,
 				Manifest: manifest,
@@ -5558,7 +5559,7 @@ func TestArtifactReferences(t *testing.T) {
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
 			loc := testc.Location(baseURL, resp)
-			cblob, cdigest := test.GetEmptyImageConfig()
+			cblob, cdigest := getEmptyImageConfig()
 
 			resp, err = resty.R().
 				SetContentLength(true).
@@ -6388,7 +6389,7 @@ func TestListingTags(t *testing.T) {
 
 	rthdlr := api.NewRouteHandler(ctlr)
 
-	img := test.CreateRandomImage()
+	img := CreateRandomImage()
 	sigTag := fmt.Sprintf("sha256-%s.sig", img.Digest().Encoded())
 
 	repoName := "test-tags"
@@ -6398,7 +6399,7 @@ func TestListingTags(t *testing.T) {
 	}
 
 	for _, tag := range tagsList {
-		err := test.UploadImage(img, baseURL, repoName, tag)
+		err := UploadImage(img, baseURL, repoName, tag)
 		if err != nil {
 			panic(err)
 		}
@@ -6571,8 +6572,8 @@ func TestStorageCommit(t *testing.T) {
 			So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
 
 			repoName := "repo7"
-			err = test.UploadImage(
-				test.Image{
+			err = UploadImage(
+				Image{
 					Config:   cfg,
 					Layers:   layers,
 					Manifest: manifest,
@@ -6605,8 +6606,8 @@ func TestStorageCommit(t *testing.T) {
 			content, err = json.Marshal(manifest)
 			So(err, ShouldBeNil)
 
-			err = test.UploadImage(
-				test.Image{
+			err = UploadImage(
+				Image{
 					Config:   cfg,
 					Layers:   layers,
 					Manifest: manifest,
@@ -6616,8 +6617,8 @@ func TestStorageCommit(t *testing.T) {
 			cfg, layers, manifest, err = test.GetImageComponents(1) //nolint:staticcheck
 			So(err, ShouldBeNil)
 
-			err = test.UploadImage(
-				test.Image{
+			err = UploadImage(
+				Image{
 					Config:   cfg,
 					Layers:   layers,
 					Manifest: manifest,
@@ -6725,8 +6726,8 @@ func TestManifestImageIndex(t *testing.T) {
 		So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
 
 		repoName := "index"
-		err = test.UploadImage(
-			test.Image{
+		err = UploadImage(
+			Image{
 				Config:   cfg,
 				Layers:   layers,
 				Manifest: manifest,
@@ -6756,9 +6757,9 @@ func TestManifestImageIndex(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
 
-		img := test.CreateRandomImage()
+		img := CreateRandomImage()
 
-		err = test.UploadImage(img, baseURL, repoName, img.DigestStr())
+		err = UploadImage(img, baseURL, repoName, img.DigestStr())
 		So(err, ShouldBeNil)
 
 		content = img.ManifestDescriptor.Data
@@ -6775,9 +6776,9 @@ func TestManifestImageIndex(t *testing.T) {
 		So(digestHdr, ShouldEqual, digest.String())
 
 		Convey("Image index", func() {
-			img := test.CreateRandomImage()
+			img := CreateRandomImage()
 
-			err = test.UploadImage(img, baseURL, repoName, img.DigestStr())
+			err = UploadImage(img, baseURL, repoName, img.DigestStr())
 			So(err, ShouldBeNil)
 
 			content := img.ManifestDescriptor.Data
@@ -6825,9 +6826,9 @@ func TestManifestImageIndex(t *testing.T) {
 			So(resp.Body(), ShouldNotBeEmpty)
 			So(resp.Header().Get("Content-Type"), ShouldNotBeEmpty)
 
-			img = test.CreateRandomImage()
+			img = CreateRandomImage()
 
-			err = test.UploadImage(img, baseURL, repoName, img.DigestStr())
+			err = UploadImage(img, baseURL, repoName, img.DigestStr())
 			So(err, ShouldBeNil)
 
 			content = img.ManifestDescriptor.Data
@@ -6999,9 +7000,9 @@ func TestManifestImageIndex(t *testing.T) {
 			})
 
 			Convey("Update an index tag with different manifest", func() {
-				img := test.CreateRandomImage()
+				img := CreateRandomImage()
 
-				err = test.UploadImage(img, baseURL, repoName, img.DigestStr())
+				err = UploadImage(img, baseURL, repoName, img.DigestStr())
 				So(err, ShouldBeNil)
 
 				content = img.ManifestDescriptor.Data
@@ -7141,8 +7142,8 @@ func TestManifestCollision(t *testing.T) {
 		cfg, layers, manifest, err := test.GetImageComponents(2) //nolint:staticcheck
 		So(err, ShouldBeNil)
 
-		err = test.UploadImage(
-			test.Image{
+		err = UploadImage(
+			Image{
 				Config:   cfg,
 				Layers:   layers,
 				Manifest: manifest,
@@ -7167,8 +7168,8 @@ func TestManifestCollision(t *testing.T) {
 		digest = godigest.FromBytes(content)
 		So(digest, ShouldNotBeNil)
 
-		err = test.UploadImage(
-			test.Image{
+		err = UploadImage(
+			Image{
 				Config:   cfg,
 				Layers:   layers,
 				Manifest: manifest,
@@ -7685,7 +7686,7 @@ func TestGCSignaturesAndUntaggedManifests(t *testing.T) {
 
 			ctlr.Config.Storage.Dedupe = false
 
-			err := test.WriteImageToFileSystem(test.CreateDefaultImage(), repoName, tag,
+			err := test.WriteImageToFileSystem(CreateDefaultImage(), repoName, tag,
 				test.GetDefaultStoreController(dir, ctlr.Log))
 			So(err, ShouldBeNil)
 
@@ -7767,9 +7768,9 @@ func TestGCSignaturesAndUntaggedManifests(t *testing.T) {
 				So(err, ShouldBeNil)
 
 				// trigger gc
-				img := test.CreateRandomImage()
+				img := CreateRandomImage()
 
-				err = test.UploadImage(img, baseURL, repoName, img.DigestStr())
+				err = UploadImage(img, baseURL, repoName, img.DigestStr())
 				So(err, ShouldBeNil)
 
 				err = ctlr.StoreController.DefaultStore.RunGCRepo(repoName)
@@ -7783,7 +7784,7 @@ func TestGCSignaturesAndUntaggedManifests(t *testing.T) {
 				err = os.WriteFile(path.Join(dir, repoName, "blobs", "sha256", refs.Manifests[0].Digest.Encoded()), []byte("corrupt"), 0o600) //nolint:lll
 				So(err, ShouldBeNil)
 
-				err = test.UploadImage(img, baseURL, repoName, tag)
+				err = UploadImage(img, baseURL, repoName, tag)
 				So(err, ShouldBeNil)
 
 				err = ctlr.StoreController.DefaultStore.RunGCRepo(repoName)
@@ -7802,8 +7803,8 @@ func TestGCSignaturesAndUntaggedManifests(t *testing.T) {
 				So(err, ShouldBeNil)
 				untaggedManifestDigest := godigest.FromBytes(manifestBuf)
 
-				err = test.UploadImage(
-					test.Image{
+				err = UploadImage(
+					Image{
 						Config:   cfg,
 						Layers:   layers,
 						Manifest: manifest,
@@ -7814,8 +7815,8 @@ func TestGCSignaturesAndUntaggedManifests(t *testing.T) {
 				cfg, layers, manifest, err = test.GetImageComponents(3) //nolint:staticcheck
 				So(err, ShouldBeNil)
 
-				err = test.UploadImage(
-					test.Image{
+				err = UploadImage(
+					Image{
 						Config:   cfg,
 						Layers:   layers,
 						Manifest: manifest,
@@ -7876,7 +7877,7 @@ func TestGCSignaturesAndUntaggedManifests(t *testing.T) {
 			ctlr.Config.Storage.GCDelay = 1 * time.Second
 			ctlr.Config.Storage.UntaggedImageRetentionDelay = 1 * time.Second
 
-			err := test.WriteImageToFileSystem(test.CreateDefaultImage(), repoName, tag,
+			err := test.WriteImageToFileSystem(CreateDefaultImage(), repoName, tag,
 				test.GetDefaultStoreController(dir, ctlr.Log))
 			So(err, ShouldBeNil)
 
@@ -7906,8 +7907,8 @@ func TestGCSignaturesAndUntaggedManifests(t *testing.T) {
 
 				manifestDigest := godigest.FromBytes(manifestContent)
 
-				err = test.UploadImage(
-					test.Image{
+				err = UploadImage(
+					Image{
 						Manifest: manifest,
 						Config:   config,
 						Layers:   layers,
@@ -7975,7 +7976,7 @@ func TestPeriodicGC(t *testing.T) {
 		ctlr.Config.Storage.GCInterval = 1 * time.Hour
 		ctlr.Config.Storage.GCDelay = 1 * time.Second
 
-		err = test.WriteImageToFileSystem(test.CreateDefaultImage(), repoName, "0.0.1",
+		err = test.WriteImageToFileSystem(CreateDefaultImage(), repoName, "0.0.1",
 			test.GetDefaultStoreController(dir, ctlr.Log))
 		So(err, ShouldBeNil)
 
@@ -8054,7 +8055,7 @@ func TestPeriodicGC(t *testing.T) {
 		ctlr.Config.Storage.GCInterval = 1 * time.Hour
 		ctlr.Config.Storage.GCDelay = 1 * time.Second
 
-		err = test.WriteImageToFileSystem(test.CreateDefaultImage(), repoName, "0.0.1",
+		err = test.WriteImageToFileSystem(CreateDefaultImage(), repoName, "0.0.1",
 			test.GetDefaultStoreController(dir, ctlr.Log))
 		So(err, ShouldBeNil)
 
@@ -8098,8 +8099,8 @@ func TestSearchRoutes(t *testing.T) {
 		cfg, layers, manifest, err := test.GetImageComponents(10000) //nolint:staticcheck
 		So(err, ShouldBeNil)
 
-		err = test.UploadImage(
-			test.Image{
+		err = UploadImage(
+			Image{
 				Config:   cfg,
 				Layers:   layers,
 				Manifest: manifest,
@@ -8111,8 +8112,8 @@ func TestSearchRoutes(t *testing.T) {
 		cfg, layers, manifest, err = test.GetImageComponents(10000) //nolint:staticcheck
 		So(err, ShouldBeNil)
 
-		err = test.UploadImage(
-			test.Image{
+		err = UploadImage(
+			Image{
 				Config:   cfg,
 				Layers:   layers,
 				Manifest: manifest,
@@ -8184,8 +8185,8 @@ func TestSearchRoutes(t *testing.T) {
 			cfg, layers, manifest, err := test.GetImageComponents(10000) //nolint:staticcheck
 			So(err, ShouldBeNil)
 
-			err = test.UploadImageWithBasicAuth(
-				test.Image{
+			err = UploadImageWithBasicAuth(
+				Image{
 					Config:   cfg,
 					Layers:   layers,
 					Manifest: manifest,
@@ -8197,8 +8198,8 @@ func TestSearchRoutes(t *testing.T) {
 			cfg, layers, manifest, err = test.GetImageComponents(10000) //nolint:staticcheck
 			So(err, ShouldBeNil)
 
-			err = test.UploadImageWithBasicAuth(
-				test.Image{
+			err = UploadImageWithBasicAuth(
+				Image{
 					Config:   cfg,
 					Layers:   layers,
 					Manifest: manifest,
@@ -8326,9 +8327,9 @@ func TestSearchRoutes(t *testing.T) {
 			cm.StartAndWait(port)
 			defer cm.StopServer()
 
-			img := test.CreateRandomImage()
+			img := CreateRandomImage()
 
-			err = test.UploadImageWithBasicAuth(img, baseURL, repoName, img.DigestStr(), user1, password1)
+			err = UploadImageWithBasicAuth(img, baseURL, repoName, img.DigestStr(), user1, password1)
 			So(err, ShouldBeNil)
 
 			query := `
@@ -8413,9 +8414,9 @@ func TestSearchRoutes(t *testing.T) {
 			cm.StartAndWait(port)
 			defer cm.StopServer()
 
-			img := test.CreateRandomImage()
+			img := CreateRandomImage()
 
-			err = test.UploadImageWithBasicAuth(img, baseURL, repoName, img.DigestStr(), user1, password1)
+			err = UploadImageWithBasicAuth(img, baseURL, repoName, img.DigestStr(), user1, password1)
 			So(err, ShouldNotBeNil)
 		})
 
@@ -8481,9 +8482,9 @@ func TestSearchRoutes(t *testing.T) {
 			cm.StartAndWait(port)
 			defer cm.StopServer()
 
-			img := test.CreateRandomImage()
+			img := CreateRandomImage()
 
-			err = test.UploadImageWithBasicAuth(img, baseURL, repoName, img.DigestStr(), user1, password1)
+			err = UploadImageWithBasicAuth(img, baseURL, repoName, img.DigestStr(), user1, password1)
 			So(err, ShouldBeNil)
 		})
 
@@ -8549,9 +8550,9 @@ func TestSearchRoutes(t *testing.T) {
 			cm.StartAndWait(port)
 			defer cm.StopServer()
 
-			img := test.CreateRandomImage()
+			img := CreateRandomImage()
 
-			err = test.UploadImageWithBasicAuth(img, baseURL, repoName, img.DigestStr(), user1, password1)
+			err = UploadImageWithBasicAuth(img, baseURL, repoName, img.DigestStr(), user1, password1)
 			So(err, ShouldBeNil)
 		})
 
@@ -8603,9 +8604,9 @@ func TestSearchRoutes(t *testing.T) {
 			cm.StartAndWait(port)
 			defer cm.StopServer()
 
-			img := test.CreateRandomImage()
+			img := CreateRandomImage()
 
-			err = test.UploadImageWithBasicAuth(img, baseURL, repoName, img.DigestStr(), user1, password1)
+			err = UploadImageWithBasicAuth(img, baseURL, repoName, img.DigestStr(), user1, password1)
 			So(err, ShouldBeNil)
 		})
 
@@ -8667,9 +8668,9 @@ func TestSearchRoutes(t *testing.T) {
 			cm.StartAndWait(port)
 			defer cm.StopServer()
 
-			img := test.CreateRandomImage()
+			img := CreateRandomImage()
 
-			err = test.UploadImageWithBasicAuth(img, baseURL, repoName, img.DigestStr(), "", "")
+			err = UploadImageWithBasicAuth(img, baseURL, repoName, img.DigestStr(), "", "")
 			So(err, ShouldBeNil)
 		})
 	})
@@ -9691,4 +9692,17 @@ func RunAuthorizationTests(t *testing.T, client *resty.Client, baseURL string, c
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusForbidden)
 	})
+}
+
+func getEmptyImageConfig() ([]byte, godigest.Digest) {
+	config := ispec.Image{}
+
+	configBlobContent, err := json.MarshalIndent(&config, "", "\t")
+	if err != nil {
+		return nil, ""
+	}
+
+	configBlobDigestRaw := godigest.FromBytes(configBlobContent)
+
+	return configBlobContent, configBlobDigestRaw
 }

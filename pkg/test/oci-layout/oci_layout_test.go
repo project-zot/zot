@@ -25,6 +25,7 @@ import (
 	"zotregistry.io/zot/pkg/storage"
 	"zotregistry.io/zot/pkg/storage/local"
 	. "zotregistry.io/zot/pkg/test"
+	. "zotregistry.io/zot/pkg/test/image-utils"
 	"zotregistry.io/zot/pkg/test/mocks"
 	ocilayout "zotregistry.io/zot/pkg/test/oci-layout"
 )

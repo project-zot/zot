@@ -17,7 +17,6 @@ import (
 
 	notconfig "github.com/notaryproject/notation-go/config"
 	godigest "github.com/opencontainers/go-digest"
-	"github.com/opencontainers/image-spec/specs-go"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	. "github.com/smartystreets/goconvey/convey"
 
@@ -26,6 +25,7 @@ import (
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/storage"
 	"zotregistry.io/zot/pkg/test"
+	. "zotregistry.io/zot/pkg/test/image-utils"
 	"zotregistry.io/zot/pkg/test/inject"
 	"zotregistry.io/zot/pkg/test/mocks"
 )
@@ -134,7 +134,7 @@ func TestGetOciLayoutDigests(t *testing.T) {
 
 	Convey("no permissions when getting index", t, func() {
 		storageCtlr := test.GetDefaultStoreController(dir, log.NewLogger("debug", ""))
-		image := test.CreateDefaultImage()
+		image := CreateDefaultImage()
 
 		err := test.WriteImageToFileSystem(image, "test-index", "0.0.1", storageCtlr)
 		So(err, ShouldBeNil)
@@ -154,7 +154,7 @@ func TestGetOciLayoutDigests(t *testing.T) {
 
 	Convey("can't access manifest digest", t, func() {
 		storageCtlr := test.GetDefaultStoreController(dir, log.NewLogger("debug", ""))
-		image := test.CreateDefaultImage()
+		image := CreateDefaultImage()
 
 		err := test.WriteImageToFileSystem(image, "test-manifest", "0.0.1", storageCtlr)
 		So(err, ShouldBeNil)
@@ -265,582 +265,6 @@ func TestControllerManager(t *testing.T) {
 	})
 }
 
-func TestUploadBlob(t *testing.T) {
-	Convey("Post request results in an error", t, func() {
-		port := test.GetFreePort()
-		baseURL := test.GetBaseURL(port)
-
-		err := test.UploadBlob(baseURL, "test", []byte("test"), "zot.com.test")
-		So(err, ShouldNotBeNil)
-	})
-
-	Convey("Post request status differs from accepted", t, func() {
-		port := test.GetFreePort()
-		baseURL := test.GetBaseURL(port)
-
-		tempDir := t.TempDir()
-		conf := config.New()
-		conf.HTTP.Port = port
-		conf.Storage.RootDirectory = tempDir
-
-		err := os.Chmod(tempDir, 0o400)
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		ctlr := api.NewController(conf)
-
-		ctlrManager := test.NewControllerManager(ctlr)
-		ctlrManager.StartAndWait(port)
-		defer ctlrManager.StopServer()
-
-		err = test.UploadBlob(baseURL, "test", []byte("test"), "zot.com.test")
-		So(err, ShouldEqual, test.ErrPostBlob)
-	})
-
-	Convey("Put request results in an error", t, func() {
-		port := test.GetFreePort()
-		baseURL := test.GetBaseURL(port)
-
-		tempDir := t.TempDir()
-		conf := config.New()
-		conf.HTTP.Port = port
-		conf.Storage.RootDirectory = tempDir
-
-		ctlr := api.NewController(conf)
-		ctlrManager := test.NewControllerManager(ctlr)
-		ctlrManager.StartAndWait(port)
-		defer ctlrManager.StopServer()
-
-		blob := new([]byte)
-
-		err := test.UploadBlob(baseURL, "test", *blob, "zot.com.test")
-		So(err, ShouldNotBeNil)
-	})
-
-	Convey("Put request status differs from accepted", t, func() {
-		port := test.GetFreePort()
-		baseURL := test.GetBaseURL(port)
-
-		tempDir := t.TempDir()
-		conf := config.New()
-		conf.HTTP.Port = port
-		conf.Storage.RootDirectory = tempDir
-
-		ctlr := api.NewController(conf)
-		ctlrManager := test.NewControllerManager(ctlr)
-		ctlrManager.StartAndWait(port)
-		defer ctlrManager.StopServer()
-
-		blob := []byte("test")
-		blobDigest := godigest.FromBytes(blob)
-		layerPath := path.Join(tempDir, "test", "blobs", "sha256")
-		blobPath := path.Join(layerPath, blobDigest.String())
-		if _, err := os.Stat(layerPath); os.IsNotExist(err) {
-			err = os.MkdirAll(layerPath, 0o700)
-			if err != nil {
-				t.Fatal(err)
-			}
-
-			file, err := os.Create(blobPath)
-			if err != nil {
-				t.Fatal(err)
-			}
-
-			err = os.Chmod(layerPath, 0o000)
-			if err != nil {
-				t.Fatal(err)
-			}
-			defer func() {
-				err = os.Chmod(layerPath, 0o700)
-				if err != nil {
-					t.Fatal(err)
-				}
-
-				os.RemoveAll(file.Name())
-			}()
-		}
-
-		err := test.UploadBlob(baseURL, "test", blob, "zot.com.test")
-		So(err, ShouldEqual, test.ErrPutBlob)
-	})
-
-	Convey("Put request successful", t, func() {
-		port := test.GetFreePort()
-		baseURL := test.GetBaseURL(port)
-
-		tempDir := t.TempDir()
-		conf := config.New()
-		conf.HTTP.Port = port
-		conf.Storage.RootDirectory = tempDir
-
-		ctlr := api.NewController(conf)
-
-		ctlrManager := test.NewControllerManager(ctlr)
-		ctlrManager.StartAndWait(port)
-		defer ctlrManager.StopServer()
-
-		blob := []byte("test")
-
-		err := test.UploadBlob(baseURL, "test", blob, "zot.com.test")
-		So(err, ShouldEqual, nil)
-	})
-}
-
-func TestUploadMultiarchImage(t *testing.T) {
-	Convey("make controller", t, func() {
-		port := test.GetFreePort()
-		baseURL := test.GetBaseURL(port)
-
-		conf := config.New()
-		conf.HTTP.Port = port
-		conf.Storage.RootDirectory = t.TempDir()
-
-		ctlr := api.NewController(conf)
-
-		ctlrManager := test.NewControllerManager(ctlr)
-		ctlrManager.StartAndWait(port)
-		defer ctlrManager.StopServer()
-
-		layerBlob := []byte("test")
-
-		img := test.Image{
-			Layers: [][]byte{
-				layerBlob,
-			},
-			Manifest: ispec.Manifest{
-				Versioned: specs.Versioned{
-					SchemaVersion: 2,
-				},
-				Layers: []ispec.Descriptor{
-					{
-						Digest:    godigest.FromBytes(layerBlob),
-						Size:      int64(len(layerBlob)),
-						MediaType: ispec.MediaTypeImageLayerGzip,
-					},
-				},
-				Config: ispec.DescriptorEmptyJSON,
-			},
-			Config: ispec.Image{},
-		}
-
-		manifestBuf, err := json.Marshal(img.Manifest)
-		So(err, ShouldBeNil)
-
-		Convey("Multiarch image uploaded successfully", func() {
-			err = test.UploadMultiarchImage(test.MultiarchImage{
-				Index: ispec.Index{
-					Versioned: specs.Versioned{
-						SchemaVersion: 2,
-					},
-					MediaType: ispec.MediaTypeImageIndex,
-					Manifests: []ispec.Descriptor{
-						{
-							MediaType: ispec.MediaTypeImageManifest,
-							Digest:    godigest.FromBytes(manifestBuf),
-							Size:      int64(len(manifestBuf)),
-						},
-					},
-				},
-				Images: []test.Image{img},
-			}, baseURL, "test", "index")
-			So(err, ShouldBeNil)
-		})
-
-		Convey("Multiarch image without schemaVersion should fail validation", func() {
-			err = test.UploadMultiarchImage(test.MultiarchImage{
-				Index: ispec.Index{
-					MediaType: ispec.MediaTypeImageIndex,
-					Manifests: []ispec.Descriptor{
-						{
-							MediaType: ispec.MediaTypeImageManifest,
-							Digest:    godigest.FromBytes(manifestBuf),
-							Size:      int64(len(manifestBuf)),
-						},
-					},
-				},
-				Images: []test.Image{img},
-			}, baseURL, "test", "index")
-			So(err, ShouldNotBeNil)
-		})
-	})
-}
-
-func TestUploadImage(t *testing.T) {
-	Convey("Manifest without schemaVersion should fail validation", t, func() {
-		port := test.GetFreePort()
-		baseURL := test.GetBaseURL(port)
-
-		conf := config.New()
-		conf.HTTP.Port = port
-		conf.Storage.RootDirectory = t.TempDir()
-
-		ctlr := api.NewController(conf)
-
-		ctlrManager := test.NewControllerManager(ctlr)
-		ctlrManager.StartAndWait(port)
-		defer ctlrManager.StopServer()
-
-		layerBlob := []byte("test")
-
-		img := test.Image{
-			Layers: [][]byte{
-				layerBlob,
-			},
-			Manifest: ispec.Manifest{
-				Layers: []ispec.Descriptor{
-					{
-						Digest:    godigest.FromBytes(layerBlob),
-						Size:      int64(len(layerBlob)),
-						MediaType: ispec.MediaTypeImageLayerGzip,
-					},
-				},
-				Config: ispec.DescriptorEmptyJSON,
-			},
-			Config: ispec.Image{},
-		}
-
-		err := test.UploadImage(img, baseURL, "test", img.DigestStr())
-		So(err, ShouldNotBeNil)
-	})
-
-	Convey("Post request results in an error", t, func() {
-		port := test.GetFreePort()
-		baseURL := test.GetBaseURL(port)
-
-		conf := config.New()
-		conf.HTTP.Port = port
-		conf.Storage.RootDirectory = t.TempDir()
-
-		img := test.Image{
-			Layers: make([][]byte, 10),
-		}
-
-		err := test.UploadImage(img, baseURL, "test", "")
-		So(err, ShouldNotBeNil)
-	})
-
-	Convey("Post request status differs from accepted", t, func() {
-		port := test.GetFreePort()
-		baseURL := test.GetBaseURL(port)
-
-		tempDir := t.TempDir()
-		conf := config.New()
-		conf.HTTP.Port = port
-		conf.Storage.RootDirectory = tempDir
-
-		err := os.Chmod(tempDir, 0o400)
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		ctlr := api.NewController(conf)
-
-		ctlrManager := test.NewControllerManager(ctlr)
-		ctlrManager.StartAndWait(port)
-		defer ctlrManager.StopServer()
-
-		img := test.Image{
-			Layers: make([][]byte, 10),
-		}
-
-		err = test.UploadImage(img, baseURL, "test", "")
-		So(err, ShouldNotBeNil)
-	})
-
-	Convey("Put request results in an error", t, func() {
-		port := test.GetFreePort()
-		baseURL := test.GetBaseURL(port)
-
-		conf := config.New()
-		conf.HTTP.Port = port
-		conf.Storage.RootDirectory = t.TempDir()
-
-		ctlr := api.NewController(conf)
-
-		ctlrManager := test.NewControllerManager(ctlr)
-		ctlrManager.StartAndWait(port)
-		defer ctlrManager.StopServer()
-
-		img := test.Image{
-			Layers: make([][]byte, 10), // invalid format that will result in an error
-			Config: ispec.Image{},
-		}
-
-		err := test.UploadImage(img, baseURL, "test", "")
-		So(err, ShouldNotBeNil)
-	})
-
-	Convey("Image uploaded successfully", t, func() {
-		port := test.GetFreePort()
-		baseURL := test.GetBaseURL(port)
-
-		conf := config.New()
-		conf.HTTP.Port = port
-		conf.Storage.RootDirectory = t.TempDir()
-
-		ctlr := api.NewController(conf)
-
-		ctlrManager := test.NewControllerManager(ctlr)
-		ctlrManager.StartAndWait(port)
-		defer ctlrManager.StopServer()
-
-		layerBlob := []byte("test")
-
-		img := test.Image{
-			Layers: [][]byte{
-				layerBlob,
-			},
-			Manifest: ispec.Manifest{
-				Versioned: specs.Versioned{
-					SchemaVersion: 2,
-				},
-				Layers: []ispec.Descriptor{
-					{
-						Digest:    godigest.FromBytes(layerBlob),
-						Size:      int64(len(layerBlob)),
-						MediaType: ispec.MediaTypeImageLayerGzip,
-					},
-				},
-				Config: ispec.DescriptorEmptyJSON,
-			},
-			Config: ispec.Image{},
-		}
-
-		err := test.UploadImage(img, baseURL, "test", img.DigestStr())
-		So(err, ShouldBeNil)
-	})
-
-	Convey("Upload image with authentification", t, func() {
-		tempDir := t.TempDir()
-		conf := config.New()
-		port := test.GetFreePort()
-		baseURL := test.GetBaseURL(port)
-
-		user1 := "test"
-		password1 := "test"
-		testString1 := test.GetCredString(user1, password1)
-		htpasswdPath := test.MakeHtpasswdFileFromString(testString1)
-		defer os.Remove(htpasswdPath)
-		conf.HTTP.Auth = &config.AuthConfig{
-			HTPasswd: config.AuthHTPasswd{
-				Path: htpasswdPath,
-			},
-		}
-
-		conf.HTTP.Port = port
-
-		conf.HTTP.AccessControl = &config.AccessControlConfig{
-			Repositories: config.Repositories{
-				"repo": config.PolicyGroup{
-					Policies: []config.Policy{
-						{
-							Users:   []string{user1},
-							Actions: []string{"read", "create"},
-						},
-					},
-					DefaultPolicy: []string{},
-				},
-				"inaccessibleRepo": config.PolicyGroup{
-					Policies: []config.Policy{
-						{
-							Users:   []string{user1},
-							Actions: []string{"create"},
-						},
-					},
-					DefaultPolicy: []string{},
-				},
-			},
-			AdminPolicy: config.Policy{
-				Users:   []string{},
-				Actions: []string{},
-			},
-		}
-
-		ctlr := api.NewController(conf)
-
-		ctlr.Config.Storage.RootDirectory = tempDir
-
-		ctlrManager := test.NewControllerManager(ctlr)
-		ctlrManager.StartAndWait(port)
-		defer ctlrManager.StopServer()
-
-		Convey("Request fail while pushing layer", func() {
-			err := test.UploadImageWithBasicAuth(test.Image{Layers: [][]byte{{1, 2, 3}}}, "badURL", "", "", "", "")
-			So(err, ShouldNotBeNil)
-		})
-		Convey("Request status is not StatusOk while pushing layer", func() {
-			err := test.UploadImageWithBasicAuth(test.Image{Layers: [][]byte{{1, 2, 3}}}, baseURL, "", "repo", "", "")
-			So(err, ShouldNotBeNil)
-		})
-		Convey("Request fail while pushing config", func() {
-			err := test.UploadImageWithBasicAuth(test.Image{}, "badURL", "", "", "", "")
-			So(err, ShouldNotBeNil)
-		})
-		Convey("Request status is not StatusOk while pushing config", func() {
-			err := test.UploadImageWithBasicAuth(test.Image{}, baseURL, "", "repo", "", "")
-			So(err, ShouldNotBeNil)
-		})
-	})
-
-	Convey("Blob upload wrong response status code", t, func() {
-		port := test.GetFreePort()
-		baseURL := test.GetBaseURL(port)
-
-		tempDir := t.TempDir()
-		conf := config.New()
-		conf.HTTP.Port = port
-		conf.Storage.RootDirectory = tempDir
-
-		ctlr := api.NewController(conf)
-
-		ctlrManager := test.NewControllerManager(ctlr)
-		ctlrManager.StartAndWait(port)
-		defer ctlrManager.StopServer()
-
-		layerBlob := []byte("test")
-		layerBlobDigest := godigest.FromBytes(layerBlob)
-		layerPath := path.Join(tempDir, "test", "blobs", "sha256")
-
-		if _, err := os.Stat(layerPath); os.IsNotExist(err) {
-			err = os.MkdirAll(layerPath, 0o700)
-			if err != nil {
-				t.Fatal(err)
-			}
-			file, err := os.Create(path.Join(layerPath, layerBlobDigest.Encoded()))
-			if err != nil {
-				t.Fatal(err)
-			}
-
-			err = os.Chmod(layerPath, 0o000)
-			if err != nil {
-				t.Fatal(err)
-			}
-			defer func() {
-				err = os.Chmod(layerPath, 0o700)
-				if err != nil {
-					t.Fatal(err)
-				}
-				os.RemoveAll(file.Name())
-			}()
-		}
-
-		img := test.Image{
-			Layers: [][]byte{
-				layerBlob,
-			}, // invalid format that will result in an error
-			Config: ispec.Image{},
-		}
-
-		err := test.UploadImage(img, baseURL, "test", "")
-		So(err, ShouldNotBeNil)
-	})
-
-	Convey("CreateBlobUpload wrong response status code", t, func() {
-		port := test.GetFreePort()
-		baseURL := test.GetBaseURL(port)
-
-		tempDir := t.TempDir()
-		conf := config.New()
-		conf.HTTP.Port = port
-		conf.Storage.RootDirectory = tempDir
-
-		ctlr := api.NewController(conf)
-
-		ctlrManager := test.NewControllerManager(ctlr)
-		ctlrManager.StartAndWait(port)
-		defer ctlrManager.StopServer()
-
-		layerBlob := []byte("test")
-
-		img := test.Image{
-			Layers: [][]byte{
-				layerBlob,
-			}, // invalid format that will result in an error
-			Config: ispec.Image{},
-		}
-
-		Convey("CreateBlobUpload", func() {
-			injected := inject.InjectFailure(2)
-			if injected {
-				err := test.UploadImage(img, baseURL, "test", img.DigestStr())
-				So(err, ShouldNotBeNil)
-			}
-		})
-		Convey("UpdateBlobUpload", func() {
-			injected := inject.InjectFailure(4)
-			if injected {
-				err := test.UploadImage(img, baseURL, "test", img.DigestStr())
-				So(err, ShouldNotBeNil)
-			}
-		})
-	})
-}
-
-func TestInjectUploadImage(t *testing.T) {
-	Convey("Inject failures for unreachable lines", t, func() {
-		port := test.GetFreePort()
-		baseURL := test.GetBaseURL(port)
-
-		tempDir := t.TempDir()
-		conf := config.New()
-		conf.HTTP.Port = port
-		conf.Storage.RootDirectory = tempDir
-
-		ctlr := api.NewController(conf)
-
-		ctlrManager := test.NewControllerManager(ctlr)
-		ctlrManager.StartAndWait(port)
-		defer ctlrManager.StopServer()
-
-		layerBlob := []byte("test")
-		layerPath := path.Join(tempDir, "test", ".uploads")
-
-		if _, err := os.Stat(layerPath); os.IsNotExist(err) {
-			err = os.MkdirAll(layerPath, 0o700)
-			if err != nil {
-				t.Fatal(err)
-			}
-		}
-
-		img := test.Image{
-			Layers: [][]byte{
-				layerBlob,
-			}, // invalid format that will result in an error
-			Config: ispec.Image{},
-		}
-
-		Convey("first marshal", func() {
-			injected := inject.InjectFailure(0)
-			if injected {
-				err := test.UploadImage(img, baseURL, "test", img.DigestStr())
-				So(err, ShouldNotBeNil)
-			}
-		})
-		Convey("CreateBlobUpload POST call", func() {
-			injected := inject.InjectFailure(1)
-			if injected {
-				err := test.UploadImage(img, baseURL, "test", img.DigestStr())
-				So(err, ShouldNotBeNil)
-			}
-		})
-		Convey("UpdateBlobUpload PUT call", func() {
-			injected := inject.InjectFailure(3)
-			if injected {
-				err := test.UploadImage(img, baseURL, "test", img.DigestStr())
-				So(err, ShouldNotBeNil)
-			}
-		})
-		Convey("second marshal", func() {
-			injected := inject.InjectFailure(5)
-			if injected {
-				err := test.UploadImage(img, baseURL, "test", img.DigestStr())
-				So(err, ShouldNotBeNil)
-			}
-		})
-	})
-}
-
 func TestReadLogFileAndSearchString(t *testing.T) {
 	logFile, err := os.CreateTemp(t.TempDir(), "zot-log*.txt")
 	if err != nil {
@@ -892,81 +316,6 @@ func TestReadLogFileAndCountStringOccurence(t *testing.T) {
 		ok, err := test.ReadLogFileAndCountStringOccurence(logPath, "line1", 90*time.Second, 3)
 		So(err, ShouldBeNil)
 		So(ok, ShouldBeTrue)
-	})
-}
-
-func TestInjectUploadImageWithBasicAuth(t *testing.T) {
-	Convey("Inject failures for unreachable lines", t, func() {
-		port := test.GetFreePort()
-		baseURL := test.GetBaseURL(port)
-
-		tempDir := t.TempDir()
-		conf := config.New()
-		conf.HTTP.Port = port
-		conf.Storage.RootDirectory = tempDir
-
-		user := "user"
-		password := "password"
-		testString := test.GetCredString(user, password)
-		htpasswdPath := test.MakeHtpasswdFileFromString(testString)
-		defer os.Remove(htpasswdPath)
-		conf.HTTP.Auth = &config.AuthConfig{
-			HTPasswd: config.AuthHTPasswd{
-				Path: htpasswdPath,
-			},
-		}
-
-		ctlr := api.NewController(conf)
-
-		ctlrManager := test.NewControllerManager(ctlr)
-		ctlrManager.StartAndWait(port)
-		defer ctlrManager.StopServer()
-
-		layerBlob := []byte("test")
-		layerPath := path.Join(tempDir, "test", ".uploads")
-
-		if _, err := os.Stat(layerPath); os.IsNotExist(err) {
-			err = os.MkdirAll(layerPath, 0o700)
-			if err != nil {
-				t.Fatal(err)
-			}
-		}
-
-		img := test.Image{
-			Layers: [][]byte{
-				layerBlob,
-			}, // invalid format that will result in an error
-			Config: ispec.Image{},
-		}
-
-		Convey("first marshal", func() {
-			injected := inject.InjectFailure(0)
-			if injected {
-				err := test.UploadImageWithBasicAuth(img, baseURL, "test", img.DigestStr(), "user", "password")
-				So(err, ShouldNotBeNil)
-			}
-		})
-		Convey("CreateBlobUpload POST call", func() {
-			injected := inject.InjectFailure(1)
-			if injected {
-				err := test.UploadImageWithBasicAuth(img, baseURL, "test", img.DigestStr(), "user", "password")
-				So(err, ShouldNotBeNil)
-			}
-		})
-		Convey("UpdateBlobUpload PUT call", func() {
-			injected := inject.InjectFailure(3)
-			if injected {
-				err := test.UploadImageWithBasicAuth(img, baseURL, "test", img.DigestStr(), "user", "password")
-				So(err, ShouldNotBeNil)
-			}
-		})
-		Convey("second marshal", func() {
-			injected := inject.InjectFailure(5)
-			if injected {
-				err := test.UploadImageWithBasicAuth(img, baseURL, "test", img.DigestStr(), "user", "password")
-				So(err, ShouldNotBeNil)
-			}
-		})
 	})
 }
 
@@ -1235,8 +584,8 @@ func TestVerifyWithNotation(t *testing.T) {
 		cfg, layers, manifest, err := test.GetImageComponents(2)
 		So(err, ShouldBeNil)
 
-		err = test.UploadImage(
-			test.Image{
+		err = UploadImage(
+			Image{
 				Config:   cfg,
 				Layers:   layers,
 				Manifest: manifest,
@@ -1449,7 +798,7 @@ func TestGenerateNotationCerts(t *testing.T) {
 
 func TestWriteImageToFileSystem(t *testing.T) {
 	Convey("WriteImageToFileSystem errors", t, func() {
-		err := test.WriteImageToFileSystem(test.Image{}, "repo", "dig", storage.StoreController{
+		err := test.WriteImageToFileSystem(Image{}, "repo", "dig", storage.StoreController{
 			DefaultStore: mocks.MockedImageStore{
 				InitRepoFn: func(name string) error {
 					return ErrTestError
@@ -1459,7 +808,7 @@ func TestWriteImageToFileSystem(t *testing.T) {
 		So(err, ShouldNotBeNil)
 
 		err = test.WriteImageToFileSystem(
-			test.Image{Layers: [][]byte{[]byte("testLayer")}},
+			Image{Layers: [][]byte{[]byte("testLayer")}},
 			"repo",
 			"tag",
 			storage.StoreController{
@@ -1474,7 +823,7 @@ func TestWriteImageToFileSystem(t *testing.T) {
 
 		count := 0
 		err = test.WriteImageToFileSystem(
-			test.Image{Layers: [][]byte{[]byte("testLayer")}},
+			Image{Layers: [][]byte{[]byte("testLayer")}},
 			"repo",
 			"tag",
 			storage.StoreController{
@@ -1494,7 +843,7 @@ func TestWriteImageToFileSystem(t *testing.T) {
 		So(err, ShouldNotBeNil)
 
 		err = test.WriteImageToFileSystem(
-			test.Image{Layers: [][]byte{[]byte("testLayer")}},
+			Image{Layers: [][]byte{[]byte("testLayer")}},
 			"repo",
 			"tag",
 			storage.StoreController{

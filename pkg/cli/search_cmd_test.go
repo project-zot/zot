@@ -19,6 +19,7 @@ import (
 	"zotregistry.io/zot/pkg/api/config"
 	extconf "zotregistry.io/zot/pkg/extensions/config"
 	"zotregistry.io/zot/pkg/test"
+	. "zotregistry.io/zot/pkg/test/image-utils"
 )
 
 const (
@@ -47,34 +48,34 @@ func TestReferrerCLI(t *testing.T) {
 		defer cm.StopServer()
 
 		repo := repoName
-		image := test.CreateRandomImage()
+		image := CreateRandomImage()
 
-		err := test.UploadImage(image, baseURL, repo, "tag")
+		err := UploadImage(image, baseURL, repo, "tag")
 		So(err, ShouldBeNil)
 
-		ref1 := test.CreateImageWith().
+		ref1 := CreateImageWith().
 			RandomLayers(1, 10).
 			RandomConfig().
 			Subject(image.DescriptorRef()).Build()
 
-		ref2 := test.CreateImageWith().
+		ref2 := CreateImageWith().
 			RandomLayers(1, 10).
 			ArtifactConfig(customArtTypeV1).
 			Subject(image.DescriptorRef()).Build()
 
-		ref3 := test.CreateImageWith().
+		ref3 := CreateImageWith().
 			RandomLayers(1, 10).
 			RandomConfig().
 			ArtifactType(customArtTypeV2).
 			Subject(image.DescriptorRef()).Build()
 
-		err = test.UploadImage(ref1, baseURL, repo, ref1.DigestStr())
+		err = UploadImage(ref1, baseURL, repo, ref1.DigestStr())
 		So(err, ShouldBeNil)
 
-		err = test.UploadImage(ref2, baseURL, repo, ref2.DigestStr())
+		err = UploadImage(ref2, baseURL, repo, ref2.DigestStr())
 		So(err, ShouldBeNil)
 
-		err = test.UploadImage(ref3, baseURL, repo, ref3.DigestStr())
+		err = UploadImage(ref3, baseURL, repo, ref3.DigestStr())
 		So(err, ShouldBeNil)
 
 		args := []string{"subject", repo + "@" + image.DigestStr(), "--config", "reftest"}
@@ -144,34 +145,34 @@ func TestReferrerCLI(t *testing.T) {
 		defer cm.StopServer()
 
 		repo := repoName
-		image := test.CreateRandomImage()
+		image := CreateRandomImage()
 
-		err := test.UploadImage(image, baseURL, repo, "tag")
+		err := UploadImage(image, baseURL, repo, "tag")
 		So(err, ShouldBeNil)
 
-		ref1 := test.CreateImageWith().
+		ref1 := CreateImageWith().
 			RandomLayers(1, 10).
 			RandomConfig().
 			Subject(image.DescriptorRef()).Build()
 
-		ref2 := test.CreateImageWith().
+		ref2 := CreateImageWith().
 			RandomLayers(1, 10).
 			ArtifactConfig(customArtTypeV1).
 			Subject(image.DescriptorRef()).Build()
 
-		ref3 := test.CreateImageWith().
+		ref3 := CreateImageWith().
 			RandomLayers(1, 10).
 			RandomConfig().
 			ArtifactType(customArtTypeV2).
 			Subject(image.DescriptorRef()).Build()
 
-		err = test.UploadImage(ref1, baseURL, repo, ref1.DigestStr())
+		err = UploadImage(ref1, baseURL, repo, ref1.DigestStr())
 		So(err, ShouldBeNil)
 
-		err = test.UploadImage(ref2, baseURL, repo, ref2.DigestStr())
+		err = UploadImage(ref2, baseURL, repo, ref2.DigestStr())
 		So(err, ShouldBeNil)
 
-		err = test.UploadImage(ref3, baseURL, repo, ref3.DigestStr())
+		err = UploadImage(ref3, baseURL, repo, ref3.DigestStr())
 		So(err, ShouldBeNil)
 
 		// get referrers by digest
@@ -239,35 +240,35 @@ func TestFormatsReferrersCLI(t *testing.T) {
 		defer cm.StopServer()
 
 		repo := repoName
-		image := test.CreateRandomImage()
+		image := CreateRandomImage()
 
-		err := test.UploadImage(image, baseURL, repo, "tag")
+		err := UploadImage(image, baseURL, repo, "tag")
 		So(err, ShouldBeNil)
 
 		// add referrers
-		ref1 := test.CreateImageWith().
+		ref1 := CreateImageWith().
 			RandomLayers(1, 10).
 			RandomConfig().
 			Subject(image.DescriptorRef()).Build()
 
-		ref2 := test.CreateImageWith().
+		ref2 := CreateImageWith().
 			RandomLayers(1, 10).
 			ArtifactConfig(customArtTypeV1).
 			Subject(image.DescriptorRef()).Build()
 
-		ref3 := test.CreateImageWith().
+		ref3 := CreateImageWith().
 			RandomLayers(1, 10).
 			RandomConfig().
 			ArtifactType(customArtTypeV2).
 			Subject(image.DescriptorRef()).Build()
 
-		err = test.UploadImage(ref1, baseURL, repo, ref1.DigestStr())
+		err = UploadImage(ref1, baseURL, repo, ref1.DigestStr())
 		So(err, ShouldBeNil)
 
-		err = test.UploadImage(ref2, baseURL, repo, ref2.DigestStr())
+		err = UploadImage(ref2, baseURL, repo, ref2.DigestStr())
 		So(err, ShouldBeNil)
 
-		err = test.UploadImage(ref3, baseURL, repo, ref3.DigestStr())
+		err = UploadImage(ref3, baseURL, repo, ref3.DigestStr())
 		So(err, ShouldBeNil)
 
 		Convey("JSON format", func() {
@@ -456,34 +457,34 @@ func TestSearchCLI(t *testing.T) {
 			r3tag2 = "repo3tag2"
 		)
 
-		image1 := test.CreateImageWith().
+		image1 := CreateImageWith().
 			RandomLayers(1, 10).
 			ImageConfig(ispec.Image{
-				Created:  test.DefaultTimeRef(),
+				Created:  DefaultTimeRef(),
 				Platform: ispec.Platform{OS: "Os", Architecture: "Arch"},
 			}).
 			Build()
 		formatterDigest1 := image1.Digest().Encoded()[:8]
 
-		image2 := test.CreateImageWith().
+		image2 := CreateImageWith().
 			RandomLayers(1, 10).
 			DefaultConfig().
 			Build()
 		formatterDigest2 := image2.Digest().Encoded()[:8]
 
-		err := test.UploadImage(image1, baseURL, repo1, r1tag1)
+		err := UploadImage(image1, baseURL, repo1, r1tag1)
 		So(err, ShouldBeNil)
-		err = test.UploadImage(image2, baseURL, repo1, r1tag2)
-		So(err, ShouldBeNil)
-
-		err = test.UploadImage(image1, baseURL, repo2, r2tag1)
-		So(err, ShouldBeNil)
-		err = test.UploadImage(image2, baseURL, repo2, r2tag2)
+		err = UploadImage(image2, baseURL, repo1, r1tag2)
 		So(err, ShouldBeNil)
 
-		err = test.UploadImage(image1, baseURL, repo3, r3tag1)
+		err = UploadImage(image1, baseURL, repo2, r2tag1)
 		So(err, ShouldBeNil)
-		err = test.UploadImage(image2, baseURL, repo3, r3tag2)
+		err = UploadImage(image2, baseURL, repo2, r2tag2)
+		So(err, ShouldBeNil)
+
+		err = UploadImage(image1, baseURL, repo3, r3tag1)
+		So(err, ShouldBeNil)
+		err = UploadImage(image2, baseURL, repo3, r3tag2)
 		So(err, ShouldBeNil)
 
 		// search by repos
@@ -570,22 +571,22 @@ func TestFormatsSearchCLI(t *testing.T) {
 			r3tag2 = "repo3tag2"
 		)
 
-		image1 := test.CreateImageWith().RandomLayers(1, 10).DefaultConfig().Build()
-		image2 := test.CreateImageWith().RandomLayers(1, 10).DefaultConfig().Build()
+		image1 := CreateImageWith().RandomLayers(1, 10).DefaultConfig().Build()
+		image2 := CreateImageWith().RandomLayers(1, 10).DefaultConfig().Build()
 
-		err := test.UploadImage(image1, baseURL, repo1, r1tag1)
+		err := UploadImage(image1, baseURL, repo1, r1tag1)
 		So(err, ShouldBeNil)
-		err = test.UploadImage(image2, baseURL, repo1, r1tag2)
-		So(err, ShouldBeNil)
-
-		err = test.UploadImage(image1, baseURL, repo2, r2tag1)
-		So(err, ShouldBeNil)
-		err = test.UploadImage(image2, baseURL, repo2, r2tag2)
+		err = UploadImage(image2, baseURL, repo1, r1tag2)
 		So(err, ShouldBeNil)
 
-		err = test.UploadImage(image1, baseURL, repo3, r3tag1)
+		err = UploadImage(image1, baseURL, repo2, r2tag1)
 		So(err, ShouldBeNil)
-		err = test.UploadImage(image2, baseURL, repo3, r3tag2)
+		err = UploadImage(image2, baseURL, repo2, r2tag2)
+		So(err, ShouldBeNil)
+
+		err = UploadImage(image1, baseURL, repo3, r3tag1)
+		So(err, ShouldBeNil)
+		err = UploadImage(image2, baseURL, repo3, r3tag2)
 		So(err, ShouldBeNil)
 
 		cmd := NewSearchCommand(new(searchService))
@@ -780,7 +781,7 @@ func TestSearchCommandGQL(t *testing.T) {
 		})
 
 		Convey("subject", func() {
-			err := test.UploadImage(test.CreateRandomImage(), baseURL, "repo", "tag")
+			err := UploadImage(CreateRandomImage(), baseURL, "repo", "tag")
 			So(err, ShouldBeNil)
 
 			args := []string{"subject", "repo:tag", "--config", "searchtest"}
@@ -843,7 +844,7 @@ func TestSearchCommandREST(t *testing.T) {
 		})
 
 		Convey("subject", func() {
-			err := test.UploadImage(test.CreateRandomImage(), baseURL, "repo", "tag")
+			err := UploadImage(CreateRandomImage(), baseURL, "repo", "tag")
 			So(err, ShouldBeNil)
 
 			args := []string{"subject", "repo:tag", "--config", "searchtest"}
@@ -881,12 +882,12 @@ func TestSearchSort(t *testing.T) {
 	ctlr := api.NewController(conf)
 	ctlr.Config.Storage.RootDirectory = rootDir
 
-	image1 := test.CreateImageWith().DefaultLayers().
-		ImageConfig(ispec.Image{Created: test.DateRef(2010, 1, 1, 1, 1, 1, 0, time.UTC)}).
+	image1 := CreateImageWith().DefaultLayers().
+		ImageConfig(ispec.Image{Created: DateRef(2010, 1, 1, 1, 1, 1, 0, time.UTC)}).
 		Build()
 
-	image2 := test.CreateImageWith().DefaultLayers().
-		ImageConfig(ispec.Image{Created: test.DateRef(2020, 1, 1, 1, 1, 1, 0, time.UTC)}).
+	image2 := CreateImageWith().DefaultLayers().
+		ImageConfig(ispec.Image{Created: DateRef(2020, 1, 1, 1, 1, 1, 0, time.UTC)}).
 		Build()
 
 	storeController := test.GetDefaultStoreController(rootDir, ctlr.Log)

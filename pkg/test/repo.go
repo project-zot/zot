@@ -4,16 +4,17 @@ import (
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 
 	mTypes "zotregistry.io/zot/pkg/meta/types"
+	imageUtil "zotregistry.io/zot/pkg/test/image-utils"
 )
 
 type RepoImage struct {
-	Image
+	imageUtil.Image
 	Tag        string
 	Statistics mTypes.DescriptorStatistics
 }
 
 type RepoMultiArchImage struct {
-	MultiarchImage
+	imageUtil.MultiarchImage
 	ImageStatistics map[string]mTypes.DescriptorStatistics
 	Tag             string
 }
@@ -68,8 +69,8 @@ func GetMetadataForRepos(repos ...Repo) ([]mTypes.RepoMetadata, map[string]mType
 				}, repoMeta, manifestMetadataMap)
 			}
 
-			indexDataMap[multiArch.indexDescriptor.Digest.String()] = mTypes.IndexData{
-				IndexBlob: multiArch.indexDescriptor.Data,
+			indexDataMap[multiArch.IndexDescriptor.Digest.String()] = mTypes.IndexData{
+				IndexBlob: multiArch.IndexDescriptor.Data,
 			}
 		}
 
@@ -92,7 +93,7 @@ func addImageMetaToMetaDB(image RepoImage, repoMeta mTypes.RepoMetadata,
 	// I need just the tags for now and the fake signature.
 
 	// This is done just to mark a manifest as signed in the resulted RepoMeta
-	if image.Manifest.ArtifactType == TestFakeSignatureArtType && image.Manifest.Subject != nil {
+	if image.Manifest.ArtifactType == imageUtil.TestFakeSignatureArtType && image.Manifest.Subject != nil {
 		signedManifestDig := image.Manifest.Subject.Digest.String()
 		repoMeta.Signatures[signedManifestDig] = mTypes.ManifestSignatures{
 			"fakeSignature": []mTypes.SignatureInfo{{SignatureManifestDigest: image.ManifestDescriptor.Digest.String()}},

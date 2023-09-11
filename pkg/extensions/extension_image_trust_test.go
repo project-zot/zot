@@ -34,6 +34,7 @@ import (
 	"zotregistry.io/zot/pkg/storage"
 	"zotregistry.io/zot/pkg/storage/local"
 	"zotregistry.io/zot/pkg/test"
+	. "zotregistry.io/zot/pkg/test/image-utils"
 )
 
 type errReader int
@@ -201,7 +202,7 @@ func RunSignatureUploadAndVerificationTests(t *testing.T, cacheDriverParams map[
 			DefaultStore: imageStore,
 		}
 
-		image := test.CreateRandomImage()
+		image := CreateRandomImage()
 		err = test.WriteImageToFileSystem(image, repo, tag, storeController)
 		So(err, ShouldBeNil)
 
@@ -321,7 +322,7 @@ func RunSignatureUploadAndVerificationTests(t *testing.T, cacheDriverParams map[
 			DefaultStore: imageStore,
 		}
 
-		image := test.CreateRandomImage()
+		image := CreateRandomImage()
 		err = test.WriteImageToFileSystem(image, repo, tag, storeController)
 		So(err, ShouldBeNil)
 
@@ -428,7 +429,7 @@ func RunSignatureUploadAndVerificationTests(t *testing.T, cacheDriverParams map[
 			DefaultStore: imageStore,
 		}
 
-		image := test.CreateRandomImage()
+		image := CreateRandomImage()
 		err = test.WriteImageToFileSystem(image, repo, tag, storeController)
 		So(err, ShouldBeNil)
 
@@ -590,7 +591,7 @@ func RunSignatureUploadAndVerificationTests(t *testing.T, cacheDriverParams map[
 			DefaultStore: imageStore,
 		}
 
-		image := test.CreateRandomImage()
+		image := CreateRandomImage()
 		err = test.WriteImageToFileSystem(image, repo, tag, storeController)
 		So(err, ShouldBeNil)
 
@@ -851,12 +852,12 @@ func RunSignatureUploadAndVerificationTests(t *testing.T, cacheDriverParams map[
 		}
 
 		// Write image
-		image := test.CreateRandomImage()
+		image := CreateRandomImage()
 		err = test.WriteImageToFileSystem(image, repo, tag, storeController)
 		So(err, ShouldBeNil)
 
 		// Write signature
-		signature := test.CreateImageWith().RandomLayers(1, 2).RandomConfig().Build()
+		signature := CreateImageWith().RandomLayers(1, 2).RandomConfig().Build()
 		So(err, ShouldBeNil)
 		ref, err := test.GetCosignSignatureTagForManifest(image.Manifest)
 		So(err, ShouldBeNil)

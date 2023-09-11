@@ -49,6 +49,7 @@ import (
 	storageConstants "zotregistry.io/zot/pkg/storage/constants"
 	"zotregistry.io/zot/pkg/test"
 	testc "zotregistry.io/zot/pkg/test/common"
+	. "zotregistry.io/zot/pkg/test/image-utils"
 	"zotregistry.io/zot/pkg/test/mocks"
 )
 
@@ -139,12 +140,12 @@ func makeUpstreamServer(
 	srcDir := t.TempDir()
 	srcStorageCtrl := test.GetDefaultStoreController(srcDir, log.NewLogger("debug", ""))
 
-	err := test.WriteImageToFileSystem(test.CreateDefaultImage(), "zot-test", "0.0.1", srcStorageCtrl)
+	err := test.WriteImageToFileSystem(CreateDefaultImage(), "zot-test", "0.0.1", srcStorageCtrl)
 	if err != nil {
 		panic(err)
 	}
 
-	err = test.WriteImageToFileSystem(test.CreateDefaultVulnerableImage(), "zot-cve-test", "0.0.1", srcStorageCtrl)
+	err = test.WriteImageToFileSystem(CreateDefaultVulnerableImage(), "zot-cve-test", "0.0.1", srcStorageCtrl)
 	if err != nil {
 		panic(err)
 	}
@@ -742,8 +743,8 @@ func TestOnDemand(t *testing.T) {
 
 			manifestDigest := godigest.FromBytes(manifestBlob)
 
-			err = test.UploadImage(
-				test.Image{Config: imageConfig, Layers: layers, Manifest: manifest},
+			err = UploadImage(
+				Image{Config: imageConfig, Layers: layers, Manifest: manifest},
 				srcBaseURL, "remote-repo", "test",
 			)
 			So(err, ShouldBeNil)
@@ -1104,8 +1105,8 @@ func TestSyncWithNonDistributableBlob(t *testing.T) {
 
 		manifest.Layers = append(manifest.Layers, nonDistributableLayerDesc)
 
-		err = test.UploadImage(
-			test.Image{Config: imageConfig, Layers: layers, Manifest: manifest},
+		err = UploadImage(
+			Image{Config: imageConfig, Layers: layers, Manifest: manifest},
 			srcBaseURL, repoName, tag,
 		)
 
@@ -1285,8 +1286,8 @@ func TestDockerImagesAreSkipped(t *testing.T) {
 
 				manifestDigest := godigest.FromBytes(manifestContent)
 
-				err = test.UploadImage(
-					test.Image{
+				err = UploadImage(
+					Image{
 						Manifest: manifest,
 						Config:   config,
 						Layers:   layers,
@@ -3114,10 +3115,10 @@ func TestSubPaths(t *testing.T) {
 		subpath := "/subpath"
 		srcStorageCtlr := test.GetDefaultStoreController(path.Join(srcDir, subpath), log.NewLogger("debug", ""))
 
-		err := test.WriteImageToFileSystem(test.CreateDefaultImage(), "zot-test", "0.0.1", srcStorageCtlr)
+		err := test.WriteImageToFileSystem(CreateDefaultImage(), "zot-test", "0.0.1", srcStorageCtlr)
 		So(err, ShouldBeNil)
 
-		err = test.WriteImageToFileSystem(test.CreateDefaultVulnerableImage(), "zot-cve-test", "0.0.1", srcStorageCtlr)
+		err = test.WriteImageToFileSystem(CreateDefaultVulnerableImage(), "zot-cve-test", "0.0.1", srcStorageCtlr)
 		So(err, ShouldBeNil)
 
 		srcConfig.Storage.RootDirectory = srcDir
@@ -4513,7 +4514,7 @@ func TestSyncedSignaturesMetaDB(t *testing.T) {
 		signedImage, err := test.GetRandomImage() //nolint:staticcheck
 		So(err, ShouldBeNil)
 
-		err = test.UploadImage(signedImage, srcBaseURL, repoName, tag)
+		err = UploadImage(signedImage, srcBaseURL, repoName, tag)
 		So(err, ShouldBeNil)
 
 		err = test.SignImageUsingNotary(repoName+":"+tag, srcPort)
@@ -4588,10 +4589,10 @@ func TestOnDemandRetryGoroutine(t *testing.T) {
 
 		srcStorageCtlr := test.GetDefaultStoreController(srcDir, log.NewLogger("debug", ""))
 
-		err := test.WriteImageToFileSystem(test.CreateDefaultImage(), "zot-test", "0.0.1", srcStorageCtlr)
+		err := test.WriteImageToFileSystem(CreateDefaultImage(), "zot-test", "0.0.1", srcStorageCtlr)
 		So(err, ShouldBeNil)
 
-		err = test.WriteImageToFileSystem(test.CreateDefaultVulnerableImage(), "zot-cve-test", "0.0.1", srcStorageCtlr)
+		err = test.WriteImageToFileSystem(CreateDefaultVulnerableImage(), "zot-cve-test", "0.0.1", srcStorageCtlr)
 		So(err, ShouldBeNil)
 
 		srcConfig.Storage.RootDirectory = srcDir
@@ -4801,10 +4802,10 @@ func TestOnDemandMultipleImage(t *testing.T) {
 
 		srcStorageCtlr := test.GetDefaultStoreController(srcDir, log.NewLogger("debug", ""))
 
-		err := test.WriteImageToFileSystem(test.CreateDefaultImage(), "zot-test", "0.0.1", srcStorageCtlr)
+		err := test.WriteImageToFileSystem(CreateDefaultImage(), "zot-test", "0.0.1", srcStorageCtlr)
 		So(err, ShouldBeNil)
 
-		err = test.WriteImageToFileSystem(test.CreateDefaultVulnerableImage(), "zot-cve-test", "0.0.1", srcStorageCtlr)
+		err = test.WriteImageToFileSystem(CreateDefaultVulnerableImage(), "zot-cve-test", "0.0.1", srcStorageCtlr)
 		So(err, ShouldBeNil)
 
 		srcConfig.Storage.RootDirectory = srcDir
@@ -5449,10 +5450,10 @@ func TestSyncOnlyDiff(t *testing.T) {
 		// copy images so we have them before syncing, sync should not pull them again
 		destStorageCtrl := test.GetDefaultStoreController(destDir, log.NewLogger("debug", ""))
 
-		err := test.WriteImageToFileSystem(test.CreateDefaultImage(), "zot-test", "0.0.1", destStorageCtrl)
+		err := test.WriteImageToFileSystem(CreateDefaultImage(), "zot-test", "0.0.1", destStorageCtrl)
 		So(err, ShouldBeNil)
 
-		err = test.WriteImageToFileSystem(test.CreateDefaultVulnerableImage(), "zot-cve-test", "0.0.1", destStorageCtrl)
+		err = test.WriteImageToFileSystem(CreateDefaultVulnerableImage(), "zot-cve-test", "0.0.1", destStorageCtrl)
 		So(err, ShouldBeNil)
 
 		destConfig.Storage.RootDirectory = destDir
@@ -5535,10 +5536,10 @@ func TestSyncWithDiffDigest(t *testing.T) {
 		// copy images so we have them before syncing, sync should not pull them again
 		srcStorageCtlr := test.GetDefaultStoreController(destDir, log.NewLogger("debug", ""))
 
-		err := test.WriteImageToFileSystem(test.CreateDefaultImage(), "zot-test", "0.0.1", srcStorageCtlr)
+		err := test.WriteImageToFileSystem(CreateDefaultImage(), "zot-test", "0.0.1", srcStorageCtlr)
 		So(err, ShouldBeNil)
 
-		err = test.WriteImageToFileSystem(test.CreateDefaultVulnerableImage(), "zot-cve-test", "0.0.1", srcStorageCtlr)
+		err = test.WriteImageToFileSystem(CreateDefaultVulnerableImage(), "zot-cve-test", "0.0.1", srcStorageCtlr)
 		So(err, ShouldBeNil)
 
 		destConfig.Storage.RootDirectory = destDir
@@ -6209,8 +6210,8 @@ func TestSyncImageIndex(t *testing.T) {
 
 			manifestDigest := godigest.FromBytes(manifestContent)
 
-			err = test.UploadImage(
-				test.Image{
+			err = UploadImage(
+				Image{
 					Manifest: manifest,
 					Config:   config,
 					Layers:   layers,

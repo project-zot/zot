@@ -37,6 +37,7 @@ import (
 	"zotregistry.io/zot/pkg/storage"
 	"zotregistry.io/zot/pkg/storage/local"
 	"zotregistry.io/zot/pkg/test"
+	. "zotregistry.io/zot/pkg/test/image-utils"
 	"zotregistry.io/zot/pkg/test/mocks"
 )
 
@@ -404,7 +405,7 @@ func TestNegativeServerResponse(t *testing.T) {
 		dir := t.TempDir()
 
 		srcStorageCtlr := test.GetDefaultStoreController(dir, log.NewLogger("debug", ""))
-		err := test.WriteImageToFileSystem(test.CreateDefaultVulnerableImage(), "zot-cve-test", "0.0.1", srcStorageCtlr)
+		err := test.WriteImageToFileSystem(CreateDefaultVulnerableImage(), "zot-cve-test", "0.0.1", srcStorageCtlr)
 		So(err, ShouldBeNil)
 
 		conf.Storage.RootDirectory = dir
@@ -481,7 +482,7 @@ func TestNegativeServerResponse(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		err = test.WriteImageToFileSystem(
-			test.Image{
+			Image{
 				Manifest: manifest,
 				Layers:   layers,
 				Config:   config,
@@ -622,8 +623,7 @@ func TestServerCVEResponse(t *testing.T) {
 		panic(err)
 	}
 
-	err = test.PushTestImage("zot-cve-test", "0.0.1", url,
-		manifest, config, layers)
+	err = UploadImage(Image{Manifest: manifest, Config: config, Layers: layers}, url, "zot-cve-test", "0.0.1")
 	if err != nil {
 		panic(err)
 	}
@@ -932,7 +932,7 @@ func TestCVESort(t *testing.T) {
 	ctlr := api.NewController(conf)
 	ctlr.Config.Storage.RootDirectory = rootDir
 
-	image1 := test.CreateRandomImage()
+	image1 := CreateRandomImage()
 
 	storeController := test.GetDefaultStoreController(rootDir, ctlr.Log)
 

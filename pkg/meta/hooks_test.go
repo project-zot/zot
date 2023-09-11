@@ -20,6 +20,7 @@ import (
 	"zotregistry.io/zot/pkg/storage"
 	"zotregistry.io/zot/pkg/storage/local"
 	"zotregistry.io/zot/pkg/test"
+	. "zotregistry.io/zot/pkg/test/image-utils"
 	"zotregistry.io/zot/pkg/test/mocks"
 )
 
@@ -48,7 +49,7 @@ func TestOnUpdateManifest(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		err = test.WriteImageToFileSystem(
-			test.Image{
+			Image{
 				Config: config, Manifest: manifest, Layers: layers,
 			}, "repo", "tag1", storeController)
 		So(err, ShouldBeNil)

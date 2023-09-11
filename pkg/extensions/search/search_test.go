@@ -44,6 +44,7 @@ import (
 	"zotregistry.io/zot/pkg/storage/local"
 	storageTypes "zotregistry.io/zot/pkg/storage/types"
 	. "zotregistry.io/zot/pkg/test"
+	. "zotregistry.io/zot/pkg/test/image-utils"
 	"zotregistry.io/zot/pkg/test/mocks"
 	ocilayout "zotregistry.io/zot/pkg/test/oci-layout"
 )
@@ -402,20 +403,16 @@ func TestRepoListWithNewestImage(t *testing.T) {
 		config, layers, manifest, err := GetImageComponents(100)
 		So(err, ShouldBeNil)
 
-		err = PushTestImage("zot-cve-test", "0.0.1", baseURL,
-			manifest, config, layers)
+		err = UploadImage(Image{Manifest: manifest, Config: config, Layers: layers}, baseURL, "zot-cve-test", "0.0.1")
 		So(err, ShouldBeNil)
 
-		err = PushTestImage("a/zot-cve-test", "0.0.1", baseURL,
-			manifest, config, layers)
+		err = UploadImage(Image{Manifest: manifest, Config: config, Layers: layers}, baseURL, "a/zot-cve-test", "0.0.1")
 		So(err, ShouldBeNil)
 
-		err = PushTestImage("zot-test", "0.0.1", baseURL,
-			manifest, config, layers)
+		err = UploadImage(Image{Manifest: manifest, Config: config, Layers: layers}, baseURL, "zot-test", "0.0.1")
 		So(err, ShouldBeNil)
 
-		err = PushTestImage("a/zot-test", "0.0.1", baseURL,
-			manifest, config, layers)
+		err = UploadImage(Image{Manifest: manifest, Config: config, Layers: layers}, baseURL, "a/zot-test", "0.0.1")
 		So(err, ShouldBeNil)
 
 		resp, err := resty.R().Get(baseURL + "/v2/")
@@ -746,20 +743,16 @@ func TestRepoListWithNewestImage(t *testing.T) {
 		config, layers, manifest, err := GetImageComponents(100)
 		So(err, ShouldBeNil)
 
-		err = PushTestImage("zot-cve-test", "0.0.1", baseURL,
-			manifest, config, layers)
+		err = UploadImage(Image{Manifest: manifest, Config: config, Layers: layers}, baseURL, "zot-cve-test", "0.0.1")
 		So(err, ShouldBeNil)
 
-		err = PushTestImage("a/zot-cve-test", "0.0.1", baseURL,
-			manifest, config, layers)
+		err = UploadImage(Image{Manifest: manifest, Config: config, Layers: layers}, baseURL, "a/zot-cve-test", "0.0.1")
 		So(err, ShouldBeNil)
 
-		err = PushTestImage("zot-test", "0.0.1", baseURL,
-			manifest, config, layers)
+		err = UploadImage(Image{Manifest: manifest, Config: config, Layers: layers}, baseURL, "zot-test", "0.0.1")
 		So(err, ShouldBeNil)
 
-		err = PushTestImage("a/zot-test", "0.0.1", baseURL,
-			manifest, config, layers)
+		err = UploadImage(Image{Manifest: manifest, Config: config, Layers: layers}, baseURL, "a/zot-test", "0.0.1")
 		So(err, ShouldBeNil)
 
 		query := `{
@@ -1307,20 +1300,16 @@ func TestExpandedRepoInfo(t *testing.T) {
 		manifest.Annotations = make(map[string]string)
 		manifest.Annotations["org.opencontainers.image.vendor"] = "zot"
 
-		err = PushTestImage("zot-cve-test", "0.0.1", baseURL,
-			manifest, config, layers)
+		err = UploadImage(Image{Manifest: manifest, Config: config, Layers: layers}, baseURL, "zot-cve-test", "0.0.1")
 		So(err, ShouldBeNil)
 
-		err = PushTestImage("a/zot-cve-test", "0.0.1", baseURL,
-			manifest, config, layers)
+		err = UploadImage(Image{Manifest: manifest, Config: config, Layers: layers}, baseURL, "a/zot-cve-test", "0.0.1")
 		So(err, ShouldBeNil)
 
-		err = PushTestImage("zot-test", "0.0.1", baseURL,
-			manifest, config, layers)
+		err = UploadImage(Image{Manifest: manifest, Config: config, Layers: layers}, baseURL, "zot-test", "0.0.1")
 		So(err, ShouldBeNil)
 
-		err = PushTestImage("a/zot-test", "0.0.1", baseURL,
-			manifest, config, layers)
+		err = UploadImage(Image{Manifest: manifest, Config: config, Layers: layers}, baseURL, "a/zot-test", "0.0.1")
 		So(err, ShouldBeNil)
 
 		log := log.NewLogger("debug", "")
@@ -3960,20 +3949,16 @@ func TestImageList(t *testing.T) {
 		manifest, err = updateManifestConfig(manifest, config)
 		So(err, ShouldBeNil)
 
-		err = PushTestImage("zot-cve-test", "0.0.1", baseURL,
-			manifest, config, layers)
+		err = UploadImage(Image{Manifest: manifest, Config: config, Layers: layers}, baseURL, "zot-cve-test", "0.0.1")
 		So(err, ShouldBeNil)
 
-		err = PushTestImage("a/zot-cve-test", "0.0.1", baseURL,
-			manifest, config, layers)
+		err = UploadImage(Image{Manifest: manifest, Config: config, Layers: layers}, baseURL, "a/zot-cve-test", "0.0.1")
 		So(err, ShouldBeNil)
 
-		err = PushTestImage("zot-test", "0.0.1", baseURL,
-			manifest, config, layers)
+		err = UploadImage(Image{Manifest: manifest, Config: config, Layers: layers}, baseURL, "zot-test", "0.0.1")
 		So(err, ShouldBeNil)
 
-		err = PushTestImage("a/zot-test", "0.0.1", baseURL,
-			manifest, config, layers)
+		err = UploadImage(Image{Manifest: manifest, Config: config, Layers: layers}, baseURL, "a/zot-test", "0.0.1")
 		So(err, ShouldBeNil)
 
 		imageStore := ctlr.StoreController.DefaultStore

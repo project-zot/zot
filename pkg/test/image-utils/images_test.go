@@ -1,4 +1,4 @@
-package test_test
+package image_test
 
 import (
 	"encoding/json"
@@ -8,17 +8,17 @@ import (
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	. "github.com/smartystreets/goconvey/convey"
 
-	"zotregistry.io/zot/pkg/test"
+	. "zotregistry.io/zot/pkg/test/image-utils"
 )
 
 func TestImageBuilder(t *testing.T) {
-	vulnLayer, err := test.GetLayerWithVulnerability()
+	vulnLayer, err := GetLayerWithVulnerability()
 	if err != nil {
 		t.FailNow()
 	}
 
 	Convey("Test Layer Builders", t, func() {
-		layerBuilder := test.CreateImageWith()
+		layerBuilder := CreateImageWith()
 
 		Convey("LayerBlobs", func() {
 			layerBlobs := [][]byte{{11, 11, 11}, {22, 22, 22}}
@@ -29,7 +29,7 @@ func TestImageBuilder(t *testing.T) {
 				Build()
 
 			So(image.Layers, ShouldResemble, layerBlobs)
-			So(image.Config, ShouldResemble, test.GetDefaultConfig())
+			So(image.Config, ShouldResemble, GetDefaultConfig())
 		})
 
 		Convey("DefaultLayers", func() {
@@ -38,14 +38,14 @@ func TestImageBuilder(t *testing.T) {
 				DefaultConfig().
 				Build()
 
-			So(image.Layers, ShouldResemble, test.GetDefaultLayersBlobs())
-			So(image.Config, ShouldResemble, test.GetDefaultConfig())
+			So(image.Layers, ShouldResemble, GetDefaultLayersBlobs())
+			So(image.Config, ShouldResemble, GetDefaultConfig())
 		})
 
 		Convey("Layers", func() {
 			blob1, blob2 := []byte{10, 10, 10}, []byte{20, 20, 20}
 
-			layers := []test.Layer{
+			layers := []Layer{
 				{
 					Blob:      blob1,
 					MediaType: ispec.MediaTypeImageLayerGzip,
@@ -63,7 +63,7 @@ func TestImageBuilder(t *testing.T) {
 				Build()
 
 			So(image.Layers, ShouldResemble, [][]byte{blob1, blob2})
-			So(image.Config, ShouldResemble, test.GetDefaultConfig())
+			So(image.Config, ShouldResemble, GetDefaultConfig())
 		})
 
 		Convey("Empty Layer", func() {
@@ -77,7 +77,7 @@ func TestImageBuilder(t *testing.T) {
 	})
 
 	Convey("Config builder", t, func() {
-		configBuilder := test.CreateImageWith().DefaultLayers()
+		configBuilder := CreateImageWith().DefaultLayers()
 
 		Convey("Empty Config", func() {
 			img := configBuilder.EmptyConfig().Build()
@@ -87,7 +87,7 @@ func TestImageBuilder(t *testing.T) {
 	})
 
 	Convey("Vulnerable config builder", t, func() {
-		configBuilder := test.CreateImageWith().VulnerableLayers()
+		configBuilder := CreateImageWith().VulnerableLayers()
 
 		Convey("VulnerableConfig", func() {
 			platform := ispec.Platform{OS: "os", Architecture: "arch"}
@@ -107,8 +107,8 @@ func TestImageBuilder(t *testing.T) {
 		})
 	})
 
-	Convey("Manifes builder", t, func() {
-		manifestBuilder := test.CreateImageWith().DefaultLayers().DefaultConfig()
+	Convey("Manifest builder", t, func() {
+		manifestBuilder := CreateImageWith().DefaultLayers().DefaultConfig()
 
 		subject := ispec.Descriptor{
 			Digest:    godigest.FromString("digest"),
@@ -121,8 +121,8 @@ func TestImageBuilder(t *testing.T) {
 			Annotations(map[string]string{"key": "val"}).
 			Build()
 
-		So(image.Layers, ShouldResemble, test.GetDefaultLayersBlobs())
-		So(image.Config, ShouldResemble, test.GetDefaultConfig())
+		So(image.Layers, ShouldResemble, GetDefaultLayersBlobs())
+		So(image.Config, ShouldResemble, GetDefaultConfig())
 		So(image.Manifest.Subject, ShouldResemble, &subject)
 		So(image.Manifest.ArtifactType, ShouldResemble, "art.type")
 		So(image.Manifest.Annotations, ShouldResemble, map[string]string{"key": "val"})
@@ -131,10 +131,10 @@ func TestImageBuilder(t *testing.T) {
 
 func TestMultiarchImageBuilder(t *testing.T) {
 	Convey("Multiarch", t, func() {
-		multiArch := test.CreateMultiarchWith().
-			Images([]test.Image{
-				test.CreateRandomImage(),
-				test.CreateRandomImage(),
+		multiArch := CreateMultiarchWith().
+			Images([]Image{
+				CreateRandomImage(),
+				CreateRandomImage(),
 			}).
 			Annotations(map[string]string{"a": "b"}).
 			ArtifactType("art.type").
@@ -151,35 +151,35 @@ func TestMultiarchImageBuilder(t *testing.T) {
 
 func TestPredefinedImages(t *testing.T) {
 	Convey("Predefined Images", t, func() {
-		img := test.CreateDefaultImage()
-		So(img.Layers, ShouldResemble, test.GetDefaultLayersBlobs())
+		img := CreateDefaultImage()
+		So(img.Layers, ShouldResemble, GetDefaultLayersBlobs())
 
-		img = test.CreateDefaultImageWith().ArtifactType("art.type").Build()
+		img = CreateDefaultImageWith().ArtifactType("art.type").Build()
 		So(img.Manifest.ArtifactType, ShouldEqual, "art.type")
 
-		img = test.CreateRandomImageWith().ArtifactType("art.type").Build()
+		img = CreateRandomImageWith().ArtifactType("art.type").Build()
 		So(img.Manifest.ArtifactType, ShouldEqual, "art.type")
 
-		img = test.CreateRandomVulnerableImage()
-		So(img.Layers, ShouldNotResemble, test.GetDefaultLayersBlobs())
+		img = CreateRandomVulnerableImage()
+		So(img.Layers, ShouldNotResemble, GetDefaultLayersBlobs())
 
-		img = test.CreateRandomVulnerableImageWith().ArtifactType("art.type").Build()
+		img = CreateRandomVulnerableImageWith().ArtifactType("art.type").Build()
 		So(img.Manifest.ArtifactType, ShouldEqual, "art.type")
 	})
 
 	Convey("Predefined Multiarch-Images", t, func() {
-		multiArch := test.CreateRandomMultiarch()
+		multiArch := CreateRandomMultiarch()
 		So(len(multiArch.Images), ShouldEqual, 3)
 		So(multiArch.Reference, ShouldResemble, multiArch.Digest().String())
 
-		multiArch = test.CreateVulnerableMultiarch()
+		multiArch = CreateVulnerableMultiarch()
 		So(len(multiArch.Images), ShouldEqual, 3)
 		So(multiArch.Reference, ShouldResemble, multiArch.Digest().String())
 	})
 }
 
 func TestImageMethods(t *testing.T) {
-	img := test.CreateDefaultImage()
+	img := CreateDefaultImage()
 
 	Convey("Image", t, func() {
 		manifestBlob, err := json.Marshal(img.Manifest)
