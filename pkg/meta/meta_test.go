@@ -96,9 +96,12 @@ func TestBoltDB(t *testing.T) {
 func TestDynamoDBWrapper(t *testing.T) {
 	skipIt(t)
 
+	endpoint := os.Getenv("DYNAMODBMOCK_ENDPOINT")
+	region := "us-east-2"
+
 	uuid, err := guuid.NewV4()
 	if err != nil {
-		panic(err)
+		t.Fatal(err)
 	}
 
 	repoMetaTablename := "RepoMetadataTable" + uuid.String()
@@ -108,16 +111,21 @@ func TestDynamoDBWrapper(t *testing.T) {
 	userDataTablename := "UserDataTable" + uuid.String()
 	apiKeyTablename := "ApiKeyTable" + uuid.String()
 
+	imgTrustStore, err := imagetrust.NewAWSImageTrustStore(region, endpoint)
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	Convey("DynamoDB Wrapper", t, func() {
 		dynamoDBDriverParams := mdynamodb.DBDriverParameters{
-			Endpoint:              os.Getenv("DYNAMODBMOCK_ENDPOINT"),
+			Endpoint:              endpoint,
 			RepoMetaTablename:     repoMetaTablename,
 			ManifestDataTablename: manifestDataTablename,
 			IndexDataTablename:    indexDataTablename,
 			VersionTablename:      versionTablename,
 			UserDataTablename:     userDataTablename,
 			APIKeyTablename:       apiKeyTablename,
-			Region:                "us-east-2",
+			Region:                region,
 		}
 
 		t.Logf("using dynamo driver options: %v", dynamoDBDriverParams)
@@ -129,9 +137,6 @@ func TestDynamoDBWrapper(t *testing.T) {
 
 		dynamoDriver, err := mdynamodb.New(dynamoClient, dynamoDBDriverParams, log)
 		So(dynamoDriver, ShouldNotBeNil)
-		So(err, ShouldBeNil)
-
-		imgTrustStore, err := imagetrust.NewAWSImageTrustStore(dynamoDBDriverParams.Region, dynamoDBDriverParams.Endpoint)
 		So(err, ShouldBeNil)
 
 		dynamoDriver.SetImageTrustStore(imgTrustStore)

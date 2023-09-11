@@ -138,7 +138,7 @@ func TestWrapperErrors(t *testing.T) {
 
 	uuid, err := guuid.NewV4()
 	if err != nil {
-		panic(err)
+		t.Fatal(err)
 	}
 
 	repoMetaTablename := "RepoMetadataTable" + uuid.String()
@@ -150,6 +150,11 @@ func TestWrapperErrors(t *testing.T) {
 	wrongTableName := "WRONG Tables"
 
 	log := log.NewLogger("debug", "")
+
+	imgTrustStore, err := imagetrust.NewAWSImageTrustStore(region, endpoint)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	Convey("Errors", t, func() {
 		params := mdynamodb.DBDriverParameters{ //nolint:contextcheck
@@ -164,10 +169,6 @@ func TestWrapperErrors(t *testing.T) {
 		}
 		client, err := mdynamodb.GetDynamoClient(params) //nolint:contextcheck
 		So(err, ShouldBeNil)
-
-		imgTrustStore, err := imagetrust.NewAWSImageTrustStore(params.Region, params.Endpoint)
-		So(err, ShouldBeNil)
-
 		dynamoWrapper, err := mdynamodb.New(client, params, log) //nolint:contextcheck
 		So(err, ShouldBeNil)
 
