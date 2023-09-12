@@ -46,13 +46,13 @@ endif
 comma:= ,
 space := $(null) #
 hyphen:= -
-extended-name:=
 
 merge-ui-extensions=$(subst $(1),$(2),$(if $(findstring ui,$(3)),$(3)$(1)$(4),$(3)))
 merged-extensions = $(call merge-ui-extensions,$(comma),$(space),$(EXTENSIONS),$(UI_DEPENDENCIES))
 filter-valid = $(foreach ext, $(merged-extensions), $(if $(findstring $(ext),$(ALL_EXTENSIONS)),$(ext),$(error unknown extension: $(ext))))
 add-extensions = $(subst $(1),$(2),$(sort $(filter-valid)))
 BUILD_LABELS = $(call add-extensions,$(space),$(comma))
+extended-name = -$(subst $(comma),$(hyphen),$(BUILD_LABELS))
 
 BATS_TEST_FILE_PATH ?= replace_me
 ifeq ($(BATS_VERBOSITY),2)
@@ -88,44 +88,40 @@ swaggercheck: swagger
 		exit 1;\
 	fi
 
-.PHONY: create-name
-create-name:
-ifdef BUILD_LABELS
-	$(eval extended-name=-$(subst $(comma),$(hyphen),$(BUILD_LABELS)))
-endif
-
 .PHONY: build-metadata
 build-metadata: $(if $(findstring ui,$(BUILD_LABELS)), ui)
+	# do not allow empty $(BUILD_TAGS) (at least add containers_image_openpgp that doesn't affect package import & files listing)
+	$(eval BUILD_TAGS=$(if $(BUILD_LABELS),$(BUILD_LABELS),containers_image_openpgp))
 	echo "Imports: \n"
-	go list -tags $(BUILD_LABELS) -f '{{ join .Imports "\n" }}' ./... | sort -u
+	go list -tags $(BUILD_TAGS) -f '{{ join .Imports "\n" }}' ./... | sort -u
 	echo "\n Files: \n"
-	go list -tags $(BUILD_LABELS) -f '{{ join .GoFiles "\n" }}' ./... | sort -u
+	go list -tags $(BUILD_TAGS) -f '{{ join .GoFiles "\n" }}' ./... | sort -u
 
 .PHONY: binary-minimal
-binary-minimal: BUILD_LABELS=minimal # tag doesn't exist, but we need it to overwrite default value and indicate that we have no extension in build-metadata
+binary-minimal: EXTENSIONS=
 binary-minimal: modcheck build-metadata
 	env CGO_ENABLED=0 GOOS=$(OS) GOARCH=$(ARCH) go build -o bin/zot-$(OS)-$(ARCH)-minimal $(BUILDMODE_FLAGS) -tags containers_image_openpgp -v -trimpath -ldflags "-X zotregistry.io/zot/pkg/api/config.ReleaseTag=${RELEASE_TAG} -X zotregistry.io/zot/pkg/api/config.Commit=${COMMIT} -X zotregistry.io/zot/pkg/api/config.BinaryType=minimal -X zotregistry.io/zot/pkg/api/config.GoVersion=${GO_VERSION} -s -w" ./cmd/zot
 
 .PHONY: binary
 binary: $(if $(findstring ui,$(BUILD_LABELS)), ui)
-binary: modcheck create-name build-metadata
+binary: modcheck build-metadata
 	env CGO_ENABLED=0 GOOS=$(OS) GOARCH=$(ARCH) go build -o bin/zot-$(OS)-$(ARCH) $(BUILDMODE_FLAGS) -tags $(BUILD_LABELS),containers_image_openpgp -v -trimpath -ldflags "-X zotregistry.io/zot/pkg/api/config.ReleaseTag=${RELEASE_TAG} -X zotregistry.io/zot/pkg/api/config.Commit=${COMMIT} -X zotregistry.io/zot/pkg/api/config.BinaryType=$(extended-name) -X zotregistry.io/zot/pkg/api/config.GoVersion=${GO_VERSION} -s -w" ./cmd/zot
 
 .PHONY: binary-debug
 binary-debug: $(if $(findstring ui,$(BUILD_LABELS)), ui)
-binary-debug: modcheck swaggercheck create-name build-metadata
+binary-debug: modcheck swaggercheck build-metadata
 	env CGO_ENABLED=0 GOOS=$(OS) GOARCH=$(ARCH) go build -o bin/zot-$(OS)-$(ARCH)-debug $(BUILDMODE_FLAGS) -tags $(BUILD_LABELS),debug,containers_image_openpgp -v -gcflags all='-N -l' -ldflags "-X zotregistry.io/zot/pkg/api/config.ReleaseTag=${RELEASE_TAG} -X zotregistry.io/zot/pkg/api/config.Commit=${COMMIT} -X zotregistry.io/zot/pkg/api/config.BinaryType=$(extended-name) -X zotregistry.io/zot/pkg/api/config.GoVersion=${GO_VERSION}" ./cmd/zot
 
 .PHONY: cli
-cli: modcheck create-name build-metadata
+cli: modcheck build-metadata
 	env CGO_ENABLED=0 GOOS=$(OS) GOARCH=$(ARCH) go build -o bin/zli-$(OS)-$(ARCH) $(BUILDMODE_FLAGS) -tags $(BUILD_LABELS),search,containers_image_openpgp -v -trimpath -ldflags "-X zotregistry.io/zot/pkg/api/config.Commit=${COMMIT} -X zotregistry.io/zot/pkg/api/config.BinaryType=$(extended-name) -X zotregistry.io/zot/pkg/api/config.GoVersion=${GO_VERSION} -s -w" ./cmd/zli
 
 .PHONY: bench
-bench: modcheck create-name build-metadata
+bench: modcheck build-metadata
 	env CGO_ENABLED=0 GOOS=$(OS) GOARCH=$(ARCH) go build -o bin/zb-$(OS)-$(ARCH) $(BUILDMODE_FLAGS) -tags $(BUILD_LABELS),containers_image_openpgp -v -trimpath -ldflags "-X zotregistry.io/zot/pkg/api/config.Commit=${COMMIT} -X zotregistry.io/zot/pkg/api/config.BinaryType=$(extended-name) -X zotregistry.io/zot/pkg/api/config.GoVersion=${GO_VERSION} -s -w" ./cmd/zb
 
 .PHONY: exporter-minimal
-exporter-minimal: BUILD_LABELS=minimal # tag doesn't exist, but we need it to overwrite default value and indicate that we have no extension in build-metadata
+exporter-minimal: EXTENSIONS=
 exporter-minimal: modcheck build-metadata
 	env CGO_ENABLED=0 GOOS=$(OS) GOARCH=$(ARCH) go build -o bin/zxp-$(OS)-$(ARCH) $(BUILDMODE_FLAGS) -tags containers_image_openpgp -v -trimpath ./cmd/zxp
 
