@@ -1835,9 +1835,6 @@ func TestConfigReloader(t *testing.T) {
 			_, err = cfgfile.WriteString(" ")
 			So(err, ShouldBeNil)
 
-			err = cfgfile.Close()
-			So(err, ShouldBeNil)
-
 			time.Sleep(2 * time.Second)
 
 			data, err := os.ReadFile(logFile.Name())
@@ -1846,6 +1843,64 @@ func TestConfigReloader(t *testing.T) {
 			So(string(data), ShouldContainSubstring, "reloaded params")
 			So(string(data), ShouldContainSubstring, "new configuration settings")
 			So(string(data), ShouldContainSubstring, "\"Extensions\":null")
+
+			// reload config from extensions nil to sync
+			content = fmt.Sprintf(`{
+				"distSpecVersion": "1.1.0-dev",
+				"storage": {
+					"rootDirectory": "%s"
+				},
+				"http": {
+					"address": "127.0.0.1",
+					"port": "%s"
+				},
+				"log": {
+					"level": "debug",
+					"output": "%s"
+				},
+				"extensions": {
+					"sync": {
+						"registries": [{
+							"urls": ["https://localhost:9999"],
+							"tlsVerify": true,
+							"onDemand": true,
+							"content":[
+								{
+									"prefix": "zot-test",
+									"tags": {
+										"regex": ".*",
+										"semver": true
+									}
+								}
+							]
+						}]
+					}
+				}
+			}`, destDir, destPort, logFile.Name())
+
+			err = cfgfile.Truncate(0)
+			So(err, ShouldBeNil)
+
+			_, err = cfgfile.Seek(0, 0)
+			So(err, ShouldBeNil)
+
+			time.Sleep(2 * time.Second)
+
+			_, err = cfgfile.WriteString(content)
+			So(err, ShouldBeNil)
+
+			err = cfgfile.Close()
+			So(err, ShouldBeNil)
+
+			time.Sleep(2 * time.Second)
+
+			data, err = os.ReadFile(logFile.Name())
+			t.Logf("downstream log: %s", string(data))
+			So(err, ShouldBeNil)
+			So(string(data), ShouldContainSubstring, "reloaded params")
+			So(string(data), ShouldContainSubstring, "new configuration settings")
+			So(string(data), ShouldContainSubstring, "\"TLSVerify\":true")
+			So(string(data), ShouldContainSubstring, "\"OnDemand\":true")
 		})
 
 		//nolint: dupl
