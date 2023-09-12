@@ -1,0 +1,36 @@
+{
+    "distSpecVersion": "1.1.0-dev",
+    "storage": {
+        "rootDirectory": "/tmp/zot/s3",
+        "gc": true,
+        "gcReferrers": false,
+        "gcDelay": "3m",
+        "untaggedImageRetentionDelay": "3m",
+        "gcInterval": "1s",
+        "storageDriver": {
+            "name": "s3",
+            "rootdirectory": "/zot",
+            "region": "us-east-2",
+            "bucket": "zot-storage",
+            "accesskey": "minioadmin",
+            "secretkey": "minioadmin",
+            "regionendpoint": "http://localhost:9000",
+            "secure": false,
+            "skipverify": false
+        },
+        "cacheDriver": {
+            "name": "dynamodb",
+            "endpoint": "http://localhost:4566",
+            "region": "us-east-2",
+            "cacheTablename": "BlobTable"
+        }
+    },
+    "http": {
+        "address": "127.0.0.1",
+        "port": "8080"
+    },
+    "log": {
+        "level": "debug",
+        "output": "/tmp/gc-bench-s3.log"
+    }
+}

@@ -72,7 +72,7 @@ jobs:
             make run-blackbox-sync-nightly
 
   gc-referrers-stress-s3:
-    name: GC(with referrers) on S3 with short interval
+    name: GC(with referrers) on S3(localstack) with short interval
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -96,11 +96,13 @@ jobs:
         env:
           AWS_ACCESS_KEY_ID: fake
           AWS_SECRET_ACCESS_KEY: fake
+
       - name: Run zb
+        id: bench
         run: |
             make binary
             make bench
-            ./bin/zot-linux-amd64 serve test/gc-stress/config-gc-referrers-bench-s3.json &
+            ./bin/zot-linux-amd64 serve test/gc-stress/config-gc-referrers-bench-s3-localstack.json &
             sleep 10
             bin/zb-linux-amd64 -c 10 -n 100 -o ci-cd http://localhost:8080
 
@@ -111,9 +113,16 @@ jobs:
         env:
           AWS_ACCESS_KEY_ID: fake
           AWS_SECRET_ACCESS_KEY: fake
+        continue-on-error: true
+
+      - name: Check on failures
+        if: steps.bench.outcome != 'success'
+        run: |
+          cat /tmp/gc-referrers-bench-s3.log
+          exit 1
 
   gc-stress-s3:
-    name: GC(without referrers) on S3 with short interval
+    name: GC(without referrers) on S3(localstack) with short interval
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -137,11 +146,13 @@ jobs:
         env:
           AWS_ACCESS_KEY_ID: fake
           AWS_SECRET_ACCESS_KEY: fake
+
       - name: Run zb
+        id: bench
         run: |
             make binary
             make bench
-            ./bin/zot-linux-amd64 serve test/gc-stress/config-gc-bench-s3.json &
+            ./bin/zot-linux-amd64 serve test/gc-stress/config-gc-bench-s3-localstack.json &
             sleep 10
             bin/zb-linux-amd64 -c 10 -n 100 -o ci-cd http://localhost:8080
 
@@ -152,3 +163,10 @@ jobs:
         env:
           AWS_ACCESS_KEY_ID: fake
           AWS_SECRET_ACCESS_KEY: fake
+        continue-on-error: true
+
+      - name: Check on failures
+        if: steps.bench.outcome != 'success'
+        run: |
+          cat /tmp/gc-bench-s3.log
+          exit 1

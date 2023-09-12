@@ -17,13 +17,15 @@ function setup_file() {
     local zot_root_dir=${BATS_FILE_TMPDIR}/zot
     local zot_config_file_dedupe=${BATS_FILE_TMPDIR}/zot_config_dedupe.json
     local zot_config_file_nodedupe=${BATS_FILE_TMPDIR}/zot_config_nodedupe.json
-    local ZOT_LOG_FILE=${zot_root_dir}/zot-log.json
+    local ZOT_LOG_FILE_DEDUPE=${BATS_FILE_TMPDIR}/zot-log-dedupe.json
+    local ZOT_LOG_FILE_NODEDUPE=${BATS_FILE_TMPDIR}/zot-log-nodedupe.json
+
     mkdir -p ${zot_root_dir}
 
     cat > ${zot_config_file_dedupe}<<EOF
 {
-	"distSpecVersion": "1.1.0-dev",
-	"storage": {
+    "distSpecVersion": "1.1.0-dev",
+    "storage": {
         "rootDirectory": "${zot_root_dir}",
         "dedupe": true,
         "remoteCache": true,
@@ -42,21 +44,22 @@ function setup_file() {
             "region": "us-east-2",
             "cacheTablename": "BlobTable"
         }
-	},
-	"http": {
-		"address": "127.0.0.1",
-		"port": "8080"
-	},
-	"log": {
-		"level": "debug"
-	}
+    },
+    "http": {
+        "address": "127.0.0.1",
+        "port": "8080"
+    },
+    "log": {
+        "level": "debug",
+        "output": "${ZOT_LOG_FILE_DEDUPE}"
+    }
 }
 EOF
 
     cat > ${zot_config_file_nodedupe}<<EOF
 {
-	"distSpecVersion": "1.1.0-dev",
-	"storage": {
+    "distSpecVersion": "1.1.0-dev",
+    "storage": {
         "rootDirectory": "${zot_root_dir}",
         "dedupe": false,
         "storageDriver": {
@@ -68,15 +71,15 @@ EOF
             "secure": false,
             "skipverify": false
         }
-	},
-	"http": {
-		"address": "127.0.0.1",
-		"port": "8080"
-	},
-	"log": {
-		"level": "debug",
-        "output": "${ZOT_LOG_FILE}"
-	}
+    },
+    "http": {
+        "address": "127.0.0.1",
+        "port": "8080"
+    },
+    "log": {
+        "level": "debug",
+        "output": "${ZOT_LOG_FILE_NODEDUPE}"
+    }
 }
 EOF
     awslocal s3 --region "us-east-2" mb s3://zot-storage
@@ -87,7 +90,8 @@ EOF
 
 function teardown() {
     # conditionally printing on failure is possible from teardown but not from from teardown_file
-    cat ${BATS_FILE_TMPDIR}/zot/zot-log.json
+    cat ${BATS_FILE_TMPDIR}/zot-log-dedupe.json
+    cat ${BATS_FILE_TMPDIR}/zot-log-nodedupe.json || true
 }
 
 function teardown_file() {
@@ -111,7 +115,7 @@ function teardown_file() {
 @test "restart zot with dedupe false and wait for restore blobs task to finish" {
     local zot_config_file_nodedupe=${BATS_FILE_TMPDIR}/zot_config_nodedupe.json
     local zot_root_dir=${BATS_FILE_TMPDIR}/zot
-    local ZOT_LOG_FILE=${zot_root_dir}/zot-log.json
+    local ZOT_LOG_FILE=${BATS_FILE_TMPDIR}/zot-log-nodedupe.json
 
     # stop server
     zot_stop

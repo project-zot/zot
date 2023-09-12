@@ -672,7 +672,7 @@ func (is *ImageStore) deleteImageManifest(repo, reference string, detectCollisio
 	}
 
 	if _, err := is.storeDriver.WriteFile(file, buf); err != nil {
-		is.log.Debug().Str("deleting reference", reference).Msg("")
+		is.log.Debug().Str("reference", reference).Str("repo", repo).Msg("error while updating index.json")
 
 		return err
 	}
@@ -1660,7 +1660,6 @@ func (is *ImageStore) garbageCollectIndexReferrers(repo string, rootIndex ispec.
 			if gced {
 				count++
 			}
-
 		case ispec.MediaTypeImageManifest, artifactspec.MediaTypeArtifactManifest:
 			image, err := common.GetImageManifest(is, repo, desc.Digest, is.log)
 			if err != nil {
@@ -1890,8 +1889,13 @@ func (is *ImageStore) garbageCollectBlobs(imgStore *ImageStore, repo string,
 		}
 	}
 
+	blobUploads, err := is.storeDriver.List(path.Join(is.RootDir(), repo, storageConstants.BlobUploadDir))
+	if err != nil {
+		is.log.Debug().Str("repository", repo).Msg("unable to list .uploads/ dir")
+	}
+
 	// if we cleaned all blobs let's also remove the repo so that it won't be returned by catalog
-	if reaped == len(allBlobs) {
+	if len(allBlobs) > 0 && reaped == len(allBlobs) && len(blobUploads) == 0 {
 		log.Info().Str("repository", repo).Msg("garbage collected all blobs, cleaning repo...")
 
 		if err := is.storeDriver.Delete(path.Join(is.rootDir, repo)); err != nil {
