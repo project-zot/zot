@@ -171,6 +171,16 @@ func (cloud *CertificateAWSStorage) InitTrustpolicy(trustpolicy []byte) error {
 
 	_, err := cloud.secretsManagerClient.CreateSecret(context.Background(), secretInputParam)
 	if err != nil && strings.Contains(err.Error(), "the secret trustpolicy already exists.") {
+		trustpolicyContent, err := cloud.secretsManagerCache.GetSecretString(name)
+		if err != nil {
+			return err
+		}
+
+		existingTrustpolicy, err := base64.StdEncoding.DecodeString(trustpolicyContent)
+		if err == nil && bytes.Equal(trustpolicy, existingTrustpolicy) {
+			return nil
+		}
+
 		force := true
 
 		deleteSecretParam := &secretsmanager.DeleteSecretInput{

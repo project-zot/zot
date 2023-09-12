@@ -709,6 +709,15 @@ func TestAWSTrustStore(t *testing.T) {
 			},
 		}
 
+		secretsManagerCacheMock := mocks.SecretsManagerCacheMock{
+			GetSecretStringFn: func(secretID string) (string, error) {
+				return "", errUnexpectedError
+			},
+		}
+
+		_, err = imagetrust.NewCertificateAWSStorage(secretsManagerMock, secretsManagerCacheMock)
+		So(err, ShouldNotBeNil)
+
 		_, err = imagetrust.NewCertificateAWSStorage(secretsManagerMock, smCache)
 		So(err, ShouldNotBeNil)
 
@@ -913,21 +922,21 @@ func TestAWSTrustStore(t *testing.T) {
 
 		manifestDigest := image.Digest()
 
-		smanager, err := imagetrust.GetSecretsManagerClient("us-east-2", os.Getenv("DYNAMODBMOCK_ENDPOINT"))
-		So(err, ShouldBeNil)
+		secretsManagerMock := mocks.SecretsManagerMock{
+			CreateSecretFn: func(ctx context.Context, params *secretsmanager.CreateSecretInput,
+				optFns ...func(*secretsmanager.Options),
+			) (*secretsmanager.CreateSecretOutput, error) {
+				return &secretsmanager.CreateSecretOutput{}, nil
+			},
+		}
 
-		smCache := imagetrust.GetSecretsManagerRetrieval("us-east-2", os.Getenv("DYNAMODBMOCK_ENDPOINT"))
+		secretsManagerCacheMock := mocks.SecretsManagerCacheMock{
+			GetSecretStringFn: func(secretID string) (string, error) {
+				return "", errUnexpectedError
+			},
+		}
 
-		notationStorage, err := imagetrust.NewCertificateAWSStorage(smanager, smCache)
-		So(err, ShouldBeNil)
-
-		force := true
-
-		_, err = smanager.DeleteSecret(context.Background(),
-			&secretsmanager.DeleteSecretInput{
-				SecretId:                   &trustpolicy,
-				ForceDeleteWithoutRecovery: &force,
-			})
+		notationStorage, err := imagetrust.NewCertificateAWSStorage(secretsManagerMock, secretsManagerCacheMock)
 		So(err, ShouldBeNil)
 
 		imgTrustStore := &imagetrust.ImageTrustStore{
@@ -948,103 +957,60 @@ func TestAWSTrustStore(t *testing.T) {
 
 		manifestDigest := image.Digest()
 
-		smanager, err := imagetrust.GetSecretsManagerClient("us-east-2", os.Getenv("DYNAMODBMOCK_ENDPOINT"))
-		So(err, ShouldBeNil)
+		secretsManagerMock := mocks.SecretsManagerMock{
+			CreateSecretFn: func(ctx context.Context, params *secretsmanager.CreateSecretInput,
+				optFns ...func(*secretsmanager.Options),
+			) (*secretsmanager.CreateSecretOutput, error) {
+				return &secretsmanager.CreateSecretOutput{}, nil
+			},
+		}
 
-		smCache := imagetrust.GetSecretsManagerRetrieval("us-east-2", os.Getenv("DYNAMODBMOCK_ENDPOINT"))
+		secretsManagerCacheMock := mocks.SecretsManagerCacheMock{
+			GetSecretStringFn: func(secretID string) (string, error) {
+				return "invalid content", nil
+			},
+		}
 
-		notationStorage, err := imagetrust.NewCertificateAWSStorage(smanager, smCache)
+		notationStorage, err := imagetrust.NewCertificateAWSStorage(secretsManagerMock, secretsManagerCacheMock)
 		So(err, ShouldBeNil)
 
 		imgTrustStore := &imagetrust.ImageTrustStore{
 			NotationStorage: notationStorage,
 		}
 
-		force := true
-
-		_, err = smanager.DeleteSecret(context.Background(),
-			&secretsmanager.DeleteSecretInput{
-				SecretId:                   &trustpolicy,
-				ForceDeleteWithoutRecovery: &force,
-			})
-		So(err, ShouldBeNil)
-
-		description := "notation trustpolicy file"
-		secret := "invalid content"
-
-		_, err = smanager.CreateSecret(context.Background(),
-			&secretsmanager.CreateSecretInput{
-				Name:         &trustpolicy,
-				Description:  &description,
-				SecretString: &secret,
-			})
-		So(err, ShouldBeNil)
-
 		_, _, _, err = imgTrustStore.VerifySignature("notation", []byte("signature"), "", manifestDigest,
 			manifestContent, repo)
 		So(err, ShouldNotBeNil)
 
-		smanager, err = imagetrust.GetSecretsManagerClient("us-east-2", os.Getenv("DYNAMODBMOCK_ENDPOINT"))
-		So(err, ShouldBeNil)
+		secretsManagerCacheMock = mocks.SecretsManagerCacheMock{
+			GetSecretStringFn: func(secretID string) (string, error) {
+				return base64.StdEncoding.EncodeToString([]byte("invalid content")), nil
+			},
+		}
 
-		smCache = imagetrust.GetSecretsManagerRetrieval("us-east-2", os.Getenv("DYNAMODBMOCK_ENDPOINT"))
-
-		notationStorage, err = imagetrust.NewCertificateAWSStorage(smanager, smCache)
+		notationStorage, err = imagetrust.NewCertificateAWSStorage(secretsManagerMock, secretsManagerCacheMock)
 		So(err, ShouldBeNil)
 
 		imgTrustStore = &imagetrust.ImageTrustStore{
 			NotationStorage: notationStorage,
 		}
 
-		_, err = smanager.DeleteSecret(context.Background(),
-			&secretsmanager.DeleteSecretInput{
-				SecretId:                   &trustpolicy,
-				ForceDeleteWithoutRecovery: &force,
-			})
-		So(err, ShouldBeNil)
-
-		newSecret := base64.StdEncoding.EncodeToString([]byte(secret))
-
-		_, err = smanager.CreateSecret(context.Background(),
-			&secretsmanager.CreateSecretInput{
-				Name:         &trustpolicy,
-				Description:  &description,
-				SecretString: &newSecret,
-			})
-		So(err, ShouldBeNil)
-
 		_, _, _, err = imgTrustStore.VerifySignature("notation", []byte("signature"), "", manifestDigest,
 			manifestContent, repo)
 		So(err, ShouldNotBeNil)
 
-		smanager, err = imagetrust.GetSecretsManagerClient("us-east-2", os.Getenv("DYNAMODBMOCK_ENDPOINT"))
-		So(err, ShouldBeNil)
+		secretsManagerCacheMock = mocks.SecretsManagerCacheMock{
+			GetSecretStringFn: func(secretID string) (string, error) {
+				return base64.StdEncoding.EncodeToString([]byte(`{"Version": {"bad": "input"}}`)), nil
+			},
+		}
 
-		smCache = imagetrust.GetSecretsManagerRetrieval("us-east-2", os.Getenv("DYNAMODBMOCK_ENDPOINT"))
-
-		notationStorage, err = imagetrust.NewCertificateAWSStorage(smanager, smCache)
+		notationStorage, err = imagetrust.NewCertificateAWSStorage(secretsManagerMock, secretsManagerCacheMock)
 		So(err, ShouldBeNil)
 
 		imgTrustStore = &imagetrust.ImageTrustStore{
 			NotationStorage: notationStorage,
 		}
-
-		_, err = smanager.DeleteSecret(context.Background(),
-			&secretsmanager.DeleteSecretInput{
-				SecretId:                   &trustpolicy,
-				ForceDeleteWithoutRecovery: &force,
-			})
-		So(err, ShouldBeNil)
-
-		newSecret = base64.StdEncoding.EncodeToString([]byte(`{"Version": {"bad": "input"}}`))
-
-		_, err = smanager.CreateSecret(context.Background(),
-			&secretsmanager.CreateSecretInput{
-				Name:         &trustpolicy,
-				Description:  &description,
-				SecretString: &newSecret,
-			})
-		So(err, ShouldBeNil)
 
 		_, _, _, err = imgTrustStore.VerifySignature("notation", []byte("signature"), "", manifestDigest,
 			manifestContent, repo)
