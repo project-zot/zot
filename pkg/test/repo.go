@@ -8,12 +8,14 @@ import (
 
 type RepoImage struct {
 	Image
-	Tag string
+	Tag        string
+	Statistics mTypes.DescriptorStatistics
 }
 
 type RepoMultiArchImage struct {
 	MultiarchImage
-	Tag string
+	ImageStatistics map[string]mTypes.DescriptorStatistics
+	Tag             string
 }
 
 type Repo struct {
@@ -38,45 +40,32 @@ func GetMetadataForRepos(repos ...Repo) ([]mTypes.RepoMetadata, map[string]mType
 			Name:         repo.Name,
 			Tags:         map[string]mTypes.Descriptor{},
 			Signatures:   map[string]mTypes.ManifestSignatures{},
+			Statistics:   map[string]mTypes.DescriptorStatistics{},
 			IsStarred:    repo.IsStarred,
 			IsBookmarked: repo.IsBookmarked,
 		}
 
 		for _, image := range repo.Images {
-			if image.Tag != "" {
-				repoMeta.Tags[image.Tag] = mTypes.Descriptor{
-					MediaType: ispec.MediaTypeImageManifest,
-					Digest:    image.DigestStr(),
-				}
-			}
-			// here we can do many more checks about the images like check for referrers, signatures but it's not needed yet
-			// I need just the tags for now and the fake signature.
-
-			// This is done just to mark a manifest as signed in the resulted RepoMeta
-			if image.Manifest.ArtifactType == TestFakeSignatureArtType && image.Manifest.Subject != nil {
-				signedManifestDig := image.Manifest.Subject.Digest.String()
-				repoMeta.Signatures[signedManifestDig] = mTypes.ManifestSignatures{
-					"fakeSignature": []mTypes.SignatureInfo{{SignatureManifestDigest: image.ManifestDescriptor.Digest.String()}},
-				}
-			}
-
-			manifestMetadataMap[image.ManifestDescriptor.Digest.String()] = mTypes.ManifestMetadata{
-				ManifestBlob: image.ManifestDescriptor.Data,
-				ConfigBlob:   image.ConfigDescriptor.Data,
-			}
+			addImageMetaToMetaDB(image, repoMeta, manifestMetadataMap)
 		}
 
 		for _, multiArch := range repo.MultiArchImages {
+			if multiArch.ImageStatistics == nil {
+				multiArch.ImageStatistics = map[string]mTypes.DescriptorStatistics{}
+			}
+
 			repoMeta.Tags[multiArch.Tag] = mTypes.Descriptor{
 				MediaType: ispec.MediaTypeImageIndex,
 				Digest:    multiArch.DigestStr(),
 			}
 
+			repoMeta.Statistics[multiArch.DigestStr()] = multiArch.ImageStatistics[multiArch.DigestStr()]
+
 			for _, image := range multiArch.Images {
-				manifestMetadataMap[image.ManifestDescriptor.Digest.String()] = mTypes.ManifestMetadata{
-					ManifestBlob: image.ManifestDescriptor.Data,
-					ConfigBlob:   image.ConfigDescriptor.Data,
-				}
+				addImageMetaToMetaDB(RepoImage{
+					Image:      image,
+					Statistics: multiArch.ImageStatistics[image.DigestStr()],
+				}, repoMeta, manifestMetadataMap)
 			}
 
 			indexDataMap[multiArch.indexDescriptor.Digest.String()] = mTypes.IndexData{
@@ -88,4 +77,33 @@ func GetMetadataForRepos(repos ...Repo) ([]mTypes.RepoMetadata, map[string]mType
 	}
 
 	return reposMetadata, manifestMetadataMap, indexDataMap
+}
+
+func addImageMetaToMetaDB(image RepoImage, repoMeta mTypes.RepoMetadata,
+	manifestMetadataMap map[string]mTypes.ManifestMetadata,
+) {
+	if image.Tag != "" {
+		repoMeta.Tags[image.Tag] = mTypes.Descriptor{
+			MediaType: ispec.MediaTypeImageManifest,
+			Digest:    image.DigestStr(),
+		}
+	}
+	// here we can do many more checks about the images like check for referrers, signatures but it's not needed yet
+	// I need just the tags for now and the fake signature.
+
+	// This is done just to mark a manifest as signed in the resulted RepoMeta
+	if image.Manifest.ArtifactType == TestFakeSignatureArtType && image.Manifest.Subject != nil {
+		signedManifestDig := image.Manifest.Subject.Digest.String()
+		repoMeta.Signatures[signedManifestDig] = mTypes.ManifestSignatures{
+			"fakeSignature": []mTypes.SignatureInfo{{SignatureManifestDigest: image.ManifestDescriptor.Digest.String()}},
+		}
+	}
+
+	repoMeta.Statistics[image.DigestStr()] = image.Statistics
+
+	manifestMetadataMap[image.DigestStr()] = mTypes.ManifestMetadata{
+		ManifestBlob:  image.ManifestDescriptor.Data,
+		ConfigBlob:    image.ConfigDescriptor.Data,
+		DownloadCount: image.Statistics.DownloadCount,
+	}
 }
