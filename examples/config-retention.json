@@ -1,0 +1,17 @@
+{
+    "distSpecVersion": "1.1.0-dev",
+    "storage": {
+        "rootDirectory": "/tmp/zot",
+        "retentionPolicy": {
+          "deleteIfOlderThan": "720h",
+          "deleteTagged": true
+        }
+    },
+    "http": {
+        "address": "127.0.0.1",
+        "port": "8080"
+    },
+    "log": {
+        "level": "debug"
+    }
+}

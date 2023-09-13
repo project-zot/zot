@@ -36,6 +36,11 @@ type StorageConfig struct {
 	CacheDriver                 map[string]interface{} `mapstructure:",omitempty"`
 }
 
+type StorageRetentionPolicy struct {
+	DeleteIfOlderThan time.Duration
+	DeleteTagged      bool
+}
+
 type TLSConfig struct {
 	Cert   string
 	Key    string
@@ -123,8 +128,9 @@ type LogConfig struct {
 }
 
 type GlobalStorageConfig struct {
-	StorageConfig `mapstructure:",squash"`
-	SubPaths      map[string]StorageConfig
+	StorageConfig   `mapstructure:",squash"`
+	SubPaths        map[string]StorageConfig
+	RetentionPolicy StorageRetentionPolicy
 }
 
 type AccessControlConfig struct {
