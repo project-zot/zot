@@ -137,12 +137,12 @@ test: check-skopeo $(TESTDATA) $(ORAS)
 	rm -rf /tmp/getter*; rm -rf /tmp/trivy*
 	go test -failfast -tags dev,containers_image_openpgp -v -trimpath -race -cover -coverpkg ./... -coverprofile=coverage-dev-minimal.txt -covermode=atomic ./pkg/test/... ./pkg/storage/... ./pkg/extensions/sync/... -run ^TestInject
 	rm -rf /tmp/getter*; rm -rf /tmp/trivy*
-	go test -failfast -tags stress,$(BUILD_LABELS),containers_image_openpgp -v -trimpath -race -timeout 15m ./pkg/cli/stress_test.go
+	go test -failfast -tags stress,$(BUILD_LABELS),containers_image_openpgp -v -trimpath -race -timeout 15m ./pkg/cli/server/stress_test.go
 
 .PHONY: privileged-test
 privileged-test: $(if $(findstring ui,$(BUILD_LABELS)), ui)
 privileged-test: check-skopeo $(TESTDATA)
-	go test -failfast -tags needprivileges,$(BUILD_LABELS),containers_image_openpgp -v -trimpath -race -timeout 15m -cover -coverpkg ./... -coverprofile=coverage-dev-needprivileges.txt -covermode=atomic ./pkg/storage/... ./pkg/cli/... -run ^TestElevatedPrivileges
+	go test -failfast -tags needprivileges,$(BUILD_LABELS),containers_image_openpgp -v -trimpath -race -timeout 15m -cover -coverpkg ./... -coverprofile=coverage-dev-needprivileges.txt -covermode=atomic ./pkg/storage/local/... ./pkg/cli/client/... -run ^TestElevatedPrivileges
 
 $(TESTDATA): check-skopeo
 	mkdir -p ${TESTDATA}; \

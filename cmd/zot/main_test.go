@@ -7,7 +7,7 @@ import (
 
 	"zotregistry.io/zot/pkg/api"
 	"zotregistry.io/zot/pkg/api/config"
-	"zotregistry.io/zot/pkg/cli"
+	cli "zotregistry.io/zot/pkg/cli/server"
 )
 
 func TestIntegration(t *testing.T) {

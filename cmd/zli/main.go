@@ -1,9 +1,12 @@
+//go:build search
+// +build search
+
 package main
 
 import (
 	"os"
 
-	"zotregistry.io/zot/pkg/cli"
+	cli "zotregistry.io/zot/pkg/cli/client"
 )
 
 func main() {

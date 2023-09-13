@@ -33,7 +33,7 @@ jobs:
 
           echo "PR binary size: $BINSIZE Bytes"
           echo "main branch binary size: $BINSIZE_MAIN Bytes"
-          [[ $BINSIZE -eq $BINSIZE_MAIN ]] &&  echo "zot-minimal binary size is not affected by PR" && exit 0
+          [[ $BINSIZE -eq $BINSIZE_MAIN ]] && echo "zot-minimal binary size is not affected by PR" && exit 0
 
           if [[ $BINSIZE -gt $BINSIZE_MAIN ]]; then \
             PERCENTAGE=$(echo "scale=2; (($BINSIZE-$BINSIZE_MAIN)*100)/$BINSIZE_MAIN" | bc); \
@@ -58,7 +58,7 @@ jobs:
 
           echo "PR binary size: $BINSIZE Bytes"
           echo "main branch binary size: $BINSIZE_MAIN Bytes"
-          [[ $BINSIZE -eq $BINSIZE_MAIN ]] &&  echo "zb binary size is not affected by PR" && exit 0
+          [[ $BINSIZE -eq $BINSIZE_MAIN ]] && echo "zb binary size is not affected by PR" && exit 0
 
           if [[ $BINSIZE -gt $BINSIZE_MAIN ]]; then \
             PERCENTAGE=$(echo "scale=2; (($BINSIZE-$BINSIZE_MAIN)*100)/$BINSIZE_MAIN" | bc); \
@@ -68,6 +68,28 @@ jobs:
             PERCENTAGE=$(echo "scale=2; (($BINSIZE_MAIN-$BINSIZE)*100)/$BINSIZE_MAIN" | bc); \
             echo "zb binary decreased by $PERCENTAGE% comparing with main"; \
           fi
+      - if: always()
+        name: Check if zli binary increased with more than 1%
+        run: |
+          echo "Building zli and check size"
+          cd $GITHUB_WORKSPACE
+          make cli
+          BINSIZE=$(stat -c%s "bin/zli-linux-amd64")
 
+          echo "Building zli on main branch and check size"
+          cd zot_main
+          make cli
+          BINSIZE_MAIN=$(stat -c%s "bin/zli-linux-amd64")
 
+          echo "PR binary size: $BINSIZE Bytes"
+          echo "main branch binary size: $BINSIZE_MAIN Bytes"
+          [[ $BINSIZE -eq $BINSIZE_MAIN ]] && echo "zli binary size is not affected by PR" && exit 0
 
+          if [[ $BINSIZE -gt $BINSIZE_MAIN ]]; then \
+            PERCENTAGE=$(echo "scale=2; (($BINSIZE-$BINSIZE_MAIN)*100)/$BINSIZE_MAIN" | bc); \
+            echo "zli binary increased by $PERCENTAGE% comparing with main"; \
+            if ((`bc <<< "$PERCENTAGE>=1.0"`)); then exit 1; fi; \
+          else \
+            PERCENTAGE=$(echo "scale=2; (($BINSIZE_MAIN-$BINSIZE)*100)/$BINSIZE_MAIN" | bc); \
+            echo "zli binary decreased by $PERCENTAGE% comparing with main"; \
+          fi

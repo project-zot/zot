@@ -76,7 +76,7 @@ func createMockStorage(rootDir string, cacheDir string, dedupe bool, store drive
 
 	var cacheDriver cache.Cache
 
-	// from pkg/cli/root.go/applyDefaultValues, s3 magic
+	// from pkg/cli/server/root.go/applyDefaultValues, s3 magic
 	if _, err := os.Stat(path.Join(cacheDir,
 		storageConstants.BoltdbName+storageConstants.DBExtensionName)); dedupe || (!dedupe && err == nil) {
 		cacheDriver, _ = storage.Create("boltdb", cache.BoltDBDriverParameters{
@@ -151,7 +151,7 @@ func createObjectsStore(rootDir string, cacheDir string, dedupe bool) (
 
 	var err error
 
-	// from pkg/cli/root.go/applyDefaultValues, s3 magic
+	// from pkg/cli/server/root.go/applyDefaultValues, s3 magic
 	s3CacheDBPath := path.Join(cacheDir, storageConstants.BoltdbName+storageConstants.DBExtensionName)
 	if _, err = os.Stat(s3CacheDBPath); dedupe || (!dedupe && err == nil) {
 		cacheDriver, _ = storage.Create("boltdb", cache.BoltDBDriverParameters{
@@ -179,7 +179,7 @@ func createObjectsStoreDynamo(rootDir string, cacheDir string, dedupe bool, tabl
 
 	var cacheDriver cache.Cache
 
-	// from pkg/cli/root.go/applyDefaultValues, s3 magic
+	// from pkg/cli/server/root.go/applyDefaultValues, s3 magic
 	tableName = strings.ReplaceAll(tableName, "/", "")
 
 	cacheDriver, _ = storage.Create("dynamodb", cache.DynamoDBDriverParameters{
