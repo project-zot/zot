@@ -1146,7 +1146,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/api.ImageTags"
+                            "$ref": "#/definitions/common.ImageTags"
                         }
                     },
                     "400": {
@@ -1280,13 +1280,10 @@ const docTemplate = `{
                 }
             }
         },
-        "api.ImageTags": {
+        "api.RepositoryList": {
             "type": "object",
             "properties": {
-                "name": {
-                    "type": "string"
-                },
-                "tags": {
+                "repositories": {
                     "type": "array",
                     "items": {
                         "type": "string"
@@ -1294,10 +1291,13 @@ const docTemplate = `{
                 }
             }
         },
-        "api.RepositoryList": {
+        "common.ImageTags": {
             "type": "object",
             "properties": {
-                "repositories": {
+                "name": {
+                    "type": "string"
+                },
+                "tags": {
                     "type": "array",
                     "items": {
                         "type": "string"

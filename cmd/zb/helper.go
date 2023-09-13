@@ -2,10 +2,12 @@ package main
 
 import (
 	"bytes"
+	crand "crypto/rand"
 	"encoding/json"
 	"fmt"
 	"io"
 	"log"
+	"math/big"
 	"math/rand"
 	"net/http"
 	"os"
@@ -14,13 +16,14 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	godigest "github.com/opencontainers/go-digest"
 	imeta "github.com/opencontainers/image-spec/specs-go"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"gopkg.in/resty.v1"
 
 	zerr "zotregistry.io/zot/errors"
-	"zotregistry.io/zot/pkg/api"
-	"zotregistry.io/zot/pkg/test"
+	"zotregistry.io/zot/pkg/common"
+	testc "zotregistry.io/zot/pkg/test/common"
 )
 
 func makeHTTPGetRequest(url string, resultPtr interface{}, client *resty.Client) error {
@@ -62,7 +65,7 @@ func makeHTTPDeleteRequest(url string, client *resty.Client) error {
 
 func deleteTestRepo(repos []string, url string, client *resty.Client) error {
 	for _, repo := range repos {
-		var tags api.ImageTags
+		var tags common.ImageTags
 
 		// get tags
 		err := makeHTTPGetRequest(fmt.Sprintf("%s/v2/%s/tags/list", url, repo), &tags, client)
@@ -342,7 +345,7 @@ func pushMonolithImage(workdir, url, trepo string, repos []string, config testCo
 			resp.StatusCode(), string(resp.Body())) //nolint: goerr113
 	}
 
-	loc := test.Location(url, resp)
+	loc := testc.Location(url, resp)
 
 	var size int
 
@@ -396,8 +399,8 @@ func pushMonolithImage(workdir, url, trepo string, repos []string, config testCo
 			resp.StatusCode(), string(resp.Body()))
 	}
 
-	loc = test.Location(url, resp)
-	cblob, cdigest := test.GetRandomImageConfig()
+	loc = testc.Location(url, resp)
+	cblob, cdigest := getRandomImageConfig()
 	resp, err = client.R().
 		SetContentLength(true).
 		SetHeader("Content-Length", fmt.Sprintf("%d", len(cblob))).
@@ -524,7 +527,7 @@ func pushMonolithAndCollect(workdir, url, trepo string, count int,
 			return
 		}
 
-		loc := test.Location(url, resp)
+		loc := testc.Location(url, resp)
 
 		var size int
 
@@ -592,8 +595,8 @@ func pushMonolithAndCollect(workdir, url, trepo string, count int,
 			return
 		}
 
-		loc = test.Location(url, resp)
-		cblob, cdigest := test.GetRandomImageConfig()
+		loc = testc.Location(url, resp)
+		cblob, cdigest := getRandomImageConfig()
 		resp, err = client.R().
 			SetContentLength(true).
 			SetHeader("Content-Length", fmt.Sprintf("%d", len(cblob))).
@@ -728,7 +731,7 @@ func pushChunkAndCollect(workdir, url, trepo string, count int,
 			return
 		}
 
-		loc := test.Location(url, resp)
+		loc := testc.Location(url, resp)
 
 		var size int
 
@@ -766,7 +769,7 @@ func pushChunkAndCollect(workdir, url, trepo string, count int,
 			return
 		}
 
-		loc = test.Location(url, resp)
+		loc = testc.Location(url, resp)
 
 		// request specific check
 		statusCode = resp.StatusCode()
@@ -820,8 +823,8 @@ func pushChunkAndCollect(workdir, url, trepo string, count int,
 			return
 		}
 
-		loc = test.Location(url, resp)
-		cblob, cdigest := test.GetRandomImageConfig()
+		loc = testc.Location(url, resp)
+		cblob, cdigest := getRandomImageConfig()
 		resp, err = client.R().
 			SetContentLength(true).
 			SetHeader("Content-Type", "application/octet-stream").
@@ -857,7 +860,7 @@ func pushChunkAndCollect(workdir, url, trepo string, count int,
 			return
 		}
 
-		loc = test.Location(url, resp)
+		loc = testc.Location(url, resp)
 
 		// request specific check
 		statusCode = resp.StatusCode()
@@ -1016,4 +1019,49 @@ func loadOrStore(statusRequests *sync.Map, key string, value int) int { //nolint
 	}
 
 	return intValue
+}
+
+// TO DO: replace with pkg/test/images when available.
+func getRandomImageConfig() ([]byte, godigest.Digest) {
+	const maxLen = 16
+
+	randomAuthor := randomString(maxLen)
+
+	config := ispec.Image{
+		Platform: ispec.Platform{
+			Architecture: "amd64",
+			OS:           "linux",
+		},
+		RootFS: ispec.RootFS{
+			Type:    "layers",
+			DiffIDs: []godigest.Digest{},
+		},
+		Author: randomAuthor,
+	}
+
+	configBlobContent, err := json.MarshalIndent(&config, "", "\t")
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	configBlobDigestRaw := godigest.FromBytes(configBlobContent)
+
+	return configBlobContent, configBlobDigestRaw
+}
+
+func randomString(n int) string {
+	const letters = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz-"
+
+	ret := make([]byte, n)
+
+	for count := 0; count < n; count++ {
+		num, err := crand.Int(crand.Reader, big.NewInt(int64(len(letters))))
+		if err != nil {
+			panic(err)
+		}
+
+		ret[count] = letters[num.Int64()]
+	}
+
+	return string(ret)
 }

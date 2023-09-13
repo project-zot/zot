@@ -18,7 +18,6 @@ import (
 	mathRand "math/rand"
 	"net"
 	"net/http"
-	"net/url"
 	"os"
 	"path"
 	"path/filepath"
@@ -55,6 +54,7 @@ import (
 	storageCommon "zotregistry.io/zot/pkg/storage/common"
 	"zotregistry.io/zot/pkg/storage/local"
 	stypes "zotregistry.io/zot/pkg/storage/types"
+	testc "zotregistry.io/zot/pkg/test/common"
 	"zotregistry.io/zot/pkg/test/inject"
 	"zotregistry.io/zot/pkg/test/mocks"
 )
@@ -156,24 +156,6 @@ func MakeHtpasswdFileFromString(fileContent string) string {
 	}
 
 	return htpasswdFile.Name()
-}
-
-func Location(baseURL string, resp *resty.Response) string {
-	// For some API responses, the Location header is set and is supposed to
-	// indicate an opaque value. However, it is not clear if this value is an
-	// absolute URL (https://server:port/v2/...) or just a path (/v2/...)
-	// zot implements the latter as per the spec, but some registries appear to
-	// return the former - this needs to be clarified
-	loc := resp.Header().Get("Location")
-
-	uloc, err := url.Parse(loc)
-	if err != nil {
-		return ""
-	}
-
-	path := uloc.Path
-
-	return baseURL + path
 }
 
 func CopyFiles(sourceDir, destDir string) error {
@@ -954,7 +936,7 @@ func UploadImage(img Image, baseURL, repo, ref string) error {
 		return ErrPostBlob
 	}
 
-	loc := Location(baseURL, resp)
+	loc := testc.Location(baseURL, resp)
 
 	// uploading blob should get 201
 	resp, err = resty.R().
@@ -1633,7 +1615,7 @@ func UploadImageWithBasicAuth(img Image, baseURL, repo, ref, user, password stri
 		return ErrPostBlob
 	}
 
-	loc := Location(baseURL, resp)
+	loc := testc.Location(baseURL, resp)
 
 	// uploading blob should get 201
 	resp, err = resty.R().

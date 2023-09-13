@@ -61,6 +61,7 @@ import (
 	"zotregistry.io/zot/pkg/storage"
 	storageConstants "zotregistry.io/zot/pkg/storage/constants"
 	"zotregistry.io/zot/pkg/test"
+	testc "zotregistry.io/zot/pkg/test/common"
 	"zotregistry.io/zot/pkg/test/inject"
 	"zotregistry.io/zot/pkg/test/mocks"
 )
@@ -3788,7 +3789,7 @@ func TestAuthorizationWithOnlyAnonymousPolicy(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
-		loc = test.Location(baseURL, resp)
+		loc = testc.Location(baseURL, resp)
 
 		// uploading blob should get 201
 		resp, err = resty.R().SetHeader("Content-Length", fmt.Sprintf("%d", len(cblob))).
@@ -3833,7 +3834,7 @@ func TestAuthorizationWithOnlyAnonymousPolicy(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
-		loc = test.Location(baseURL, resp)
+		loc = testc.Location(baseURL, resp)
 		// uploading blob should get 201
 		resp, err = resty.R().
 			SetHeader("Content-Length", fmt.Sprintf("%d", len(updateBlob))).
@@ -4494,7 +4495,7 @@ func TestCrossRepoMount(t *testing.T) {
 			Post(baseURL + "/v2/zot-y-test/blobs/uploads/")
 		So(err, ShouldBeNil)
 		So(postResponse.StatusCode(), ShouldEqual, http.StatusAccepted)
-		So(test.Location(baseURL, postResponse), ShouldStartWith, fmt.Sprintf("%s%s/zot-y-test/%s/%s",
+		So(testc.Location(baseURL, postResponse), ShouldStartWith, fmt.Sprintf("%s%s/zot-y-test/%s/%s",
 			baseURL, constants.RoutePrefix, constants.Blobs, constants.Uploads))
 
 		// Use correct request
@@ -4505,7 +4506,7 @@ func TestCrossRepoMount(t *testing.T) {
 			Post(baseURL + "/v2/zot-c-test/blobs/uploads/")
 		So(err, ShouldBeNil)
 		So(postResponse.StatusCode(), ShouldEqual, http.StatusAccepted)
-		So(test.Location(baseURL, postResponse), ShouldStartWith, fmt.Sprintf("%s%s/zot-c-test/%s/%s",
+		So(testc.Location(baseURL, postResponse), ShouldStartWith, fmt.Sprintf("%s%s/zot-c-test/%s/%s",
 			baseURL, constants.RoutePrefix, constants.Blobs, constants.Uploads))
 
 		// Send same request again
@@ -4578,7 +4579,7 @@ func TestCrossRepoMount(t *testing.T) {
 			Post(baseURL + "/v2/zot-mount-test/blobs/uploads/")
 		So(err, ShouldBeNil)
 		So(postResponse.StatusCode(), ShouldEqual, http.StatusCreated)
-		So(test.Location(baseURL, postResponse), ShouldEqual, fmt.Sprintf("%s%s/zot-mount-test/%s/%s:%s",
+		So(testc.Location(baseURL, postResponse), ShouldEqual, fmt.Sprintf("%s%s/zot-mount-test/%s/%s:%s",
 			baseURL, constants.RoutePrefix, constants.Blobs, godigest.SHA256, blob))
 
 		// Check os.SameFile here
@@ -4603,7 +4604,7 @@ func TestCrossRepoMount(t *testing.T) {
 			Post(baseURL + "/v2/zot-mount1-test/blobs/uploads/")
 		So(err, ShouldBeNil)
 		So(postResponse.StatusCode(), ShouldEqual, http.StatusCreated)
-		So(test.Location(baseURL, postResponse), ShouldEqual, fmt.Sprintf("%s%s/zot-mount1-test/%s/%s:%s",
+		So(testc.Location(baseURL, postResponse), ShouldEqual, fmt.Sprintf("%s%s/zot-mount1-test/%s/%s:%s",
 			baseURL, constants.RoutePrefix, constants.Blobs, godigest.SHA256, blob))
 
 		linkPath = path.Join(ctlr.Config.Storage.RootDirectory, "zot-mount1-test", "blobs/sha256", dgst.Encoded())
@@ -5556,7 +5557,7 @@ func TestArtifactReferences(t *testing.T) {
 			resp, err = resty.R().Post(baseURL + fmt.Sprintf("/v2/%s/blobs/uploads/", repoName))
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
-			loc := test.Location(baseURL, resp)
+			loc := testc.Location(baseURL, resp)
 			cblob, cdigest := test.GetEmptyImageConfig()
 
 			resp, err = resty.R().
@@ -5653,7 +5654,7 @@ func TestArtifactReferences(t *testing.T) {
 				resp, err = resty.R().Post(baseURL + fmt.Sprintf("/v2/%s/blobs/uploads/", repoName))
 				So(err, ShouldBeNil)
 				So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
-				loc := test.Location(baseURL, resp)
+				loc := testc.Location(baseURL, resp)
 				cblob = []byte("{}")
 				cdigest = godigest.FromBytes(cblob)
 				So(cdigest, ShouldNotBeNil)
@@ -6514,7 +6515,7 @@ func TestListingTags(t *testing.T) {
 			So(resp, ShouldNotBeNil)
 			So(resp.StatusCode, ShouldEqual, http.StatusOK)
 
-			var tags api.ImageTags
+			var tags common.ImageTags
 			err := json.NewDecoder(resp.Body).Decode(&tags)
 			So(err, ShouldBeNil)
 			So(tags.Tags, ShouldEqual, testCase.expectedTags)
@@ -6886,7 +6887,7 @@ func TestManifestImageIndex(t *testing.T) {
 				So(resp, ShouldNotBeNil)
 				So(resp.StatusCode, ShouldEqual, http.StatusOK)
 
-				var tags api.ImageTags
+				var tags common.ImageTags
 				err = json.NewDecoder(resp.Body).Decode(&tags)
 				So(err, ShouldBeNil)
 				So(len(tags.Tags), ShouldEqual, 3)
@@ -7216,7 +7217,7 @@ func TestPullRange(t *testing.T) {
 		resp, err := resty.R().Post(baseURL + "/v2/index/blobs/uploads/")
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
-		loc := test.Location(baseURL, resp)
+		loc := testc.Location(baseURL, resp)
 		So(loc, ShouldNotBeEmpty)
 
 		// since we are not specifying any prefix i.e provided in config while starting server,
@@ -7379,7 +7380,7 @@ func TestInjectInterruptedImageManifest(t *testing.T) {
 			resp, err := resty.R().Post(baseURL + "/v2/repotest/blobs/uploads/")
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
-			loc := test.Location(baseURL, resp)
+			loc := testc.Location(baseURL, resp)
 			So(loc, ShouldNotBeEmpty)
 
 			// since we are not specifying any prefix i.e provided in config while starting server,
@@ -7407,7 +7408,7 @@ func TestInjectInterruptedImageManifest(t *testing.T) {
 			resp, err = resty.R().Post(baseURL + "/v2/repotest/blobs/uploads/")
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
-			loc = test.Location(baseURL, resp)
+			loc = testc.Location(baseURL, resp)
 			cblob, cdigest := test.GetRandomImageConfig()
 
 			resp, err = resty.R().
@@ -7488,7 +7489,7 @@ func TestInjectTooManyOpenFiles(t *testing.T) {
 		resp, err := resty.R().Post(baseURL + "/v2/repotest/blobs/uploads/")
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
-		loc := test.Location(baseURL, resp)
+		loc := testc.Location(baseURL, resp)
 		So(loc, ShouldNotBeEmpty)
 
 		// since we are not specifying any prefix i.e provided in config while starting server,
@@ -7540,7 +7541,7 @@ func TestInjectTooManyOpenFiles(t *testing.T) {
 		resp, err = resty.R().Post(baseURL + "/v2/repotest/blobs/uploads/")
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
-		loc = test.Location(baseURL, resp)
+		loc = testc.Location(baseURL, resp)
 		cblob, cdigest := test.GetRandomImageConfig()
 
 		resp, err = resty.R().
@@ -9466,7 +9467,7 @@ func RunAuthorizationTests(t *testing.T, client *resty.Client, baseURL string, c
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
-		loc = test.Location(baseURL, resp)
+		loc = testc.Location(baseURL, resp)
 
 		// uploading blob should get 201
 		resp, err = client.R().
@@ -9486,7 +9487,7 @@ func RunAuthorizationTests(t *testing.T, client *resty.Client, baseURL string, c
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
-		loc = test.Location(baseURL, resp)
+		loc = testc.Location(baseURL, resp)
 
 		// uploading blob should get 201
 		resp, err = client.R().

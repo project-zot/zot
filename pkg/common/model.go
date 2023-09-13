@@ -254,3 +254,8 @@ type BookmarkedReposResponse struct {
 	BookmarkedRepos `json:"data"`
 	Errors          []ErrorGQL `json:"errors"`
 }
+
+type ImageTags struct {
+	Name string   `json:"name"`
+	Tags []string `json:"tags"`
+}

@@ -48,6 +48,7 @@ import (
 	mTypes "zotregistry.io/zot/pkg/meta/types"
 	storageConstants "zotregistry.io/zot/pkg/storage/constants"
 	"zotregistry.io/zot/pkg/test"
+	testc "zotregistry.io/zot/pkg/test/common"
 	"zotregistry.io/zot/pkg/test/mocks"
 )
 
@@ -6329,7 +6330,7 @@ func pushRepo(url, repoName string) godigest.Digest {
 		panic(err)
 	}
 
-	loc := test.Location(url, resp)
+	loc := testc.Location(url, resp)
 
 	_, err = resty.R().Get(loc)
 	if err != nil {
@@ -6356,7 +6357,7 @@ func pushRepo(url, repoName string) godigest.Digest {
 		panic(fmt.Errorf("invalid status code: %d %w", resp.StatusCode(), errBadStatus))
 	}
 
-	loc = test.Location(url, resp)
+	loc = testc.Location(url, resp)
 	cblob, cdigest := ispec.DescriptorEmptyJSON.Data, ispec.DescriptorEmptyJSON.Digest
 
 	resp, err = resty.R().
@@ -6385,7 +6386,7 @@ func pushRepo(url, repoName string) godigest.Digest {
 		panic(fmt.Errorf("invalid status code: %d %w", resp.StatusCode(), errBadStatus))
 	}
 
-	loc = test.Location(url, resp)
+	loc = testc.Location(url, resp)
 	cblob, cdigest = test.GetRandomImageConfig()
 
 	resp, err = resty.R().
@@ -6553,7 +6554,7 @@ func pushBlob(url string, repoName string, buf []byte) godigest.Digest {
 		panic(fmt.Errorf("invalid status code: %d %w", resp.StatusCode(), errBadStatus))
 	}
 
-	loc := test.Location(url, resp)
+	loc := testc.Location(url, resp)
 
 	digest := godigest.FromBytes(buf)
 	resp, err = resty.R().

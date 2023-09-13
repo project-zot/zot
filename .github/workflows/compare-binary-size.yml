@@ -1,0 +1,73 @@
+name: "Check binary size increase"
+on:
+  pull_request:
+    branches: [main]
+
+permissions: read-all
+
+jobs:
+  compare-binary-sizes:
+    runs-on: ubuntu-latest
+    name: compare-with-main
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-go@v4
+        with:
+          cache: false
+          go-version: 1.20.x
+      - name: Checkout zot (main branch)
+        run: |
+          mkdir -p $GITHUB_WORKSPACE/zot_main
+          git clone https://github.com/project-zot/zot zot_main/
+      - name: Check if zot-minimal binary increased with more than 1%
+        run: |
+          echo "Building zot-minimal and check size"
+          cd $GITHUB_WORKSPACE
+          make binary-minimal
+          BINSIZE=$(stat -c%s "bin/zot-linux-amd64-minimal")
+
+          echo "Building zot-minimal on main branch and check size"
+          cd zot_main
+          make binary-minimal
+          BINSIZE_MAIN=$(stat -c%s "bin/zot-linux-amd64-minimal")
+
+          echo "PR binary size: $BINSIZE Bytes"
+          echo "main branch binary size: $BINSIZE_MAIN Bytes"
+          [[ $BINSIZE -eq $BINSIZE_MAIN ]] &&  echo "zot-minimal binary size is not affected by PR" && exit 0
+
+          if [[ $BINSIZE -gt $BINSIZE_MAIN ]]; then \
+            PERCENTAGE=$(echo "scale=2; (($BINSIZE-$BINSIZE_MAIN)*100)/$BINSIZE_MAIN" | bc); \
+            echo "zot minimal binary increased by $PERCENTAGE% comparing with main"; \
+            if ((`bc <<< "$PERCENTAGE>=1.0"`)); then exit 1; fi; \
+          else \
+            PERCENTAGE=$(echo "scale=2; (($BINSIZE_MAIN-$BINSIZE)*100)/$BINSIZE_MAIN" | bc); \
+            echo "zot minimal binary decreased by $PERCENTAGE% comparing with main"; \
+          fi
+      - if: always()
+        name: Check if zb binary increased with more than 1%
+        run: |
+          echo "Building zb and check size"
+          cd $GITHUB_WORKSPACE
+          make bench
+          BINSIZE=$(stat -c%s "bin/zb-linux-amd64")
+
+          echo "Building zb on main branch and check size"
+          cd zot_main
+          make bench
+          BINSIZE_MAIN=$(stat -c%s "bin/zb-linux-amd64")
+
+          echo "PR binary size: $BINSIZE Bytes"
+          echo "main branch binary size: $BINSIZE_MAIN Bytes"
+          [[ $BINSIZE -eq $BINSIZE_MAIN ]] &&  echo "zb binary size is not affected by PR" && exit 0
+
+          if [[ $BINSIZE -gt $BINSIZE_MAIN ]]; then \
+            PERCENTAGE=$(echo "scale=2; (($BINSIZE-$BINSIZE_MAIN)*100)/$BINSIZE_MAIN" | bc); \
+            echo "zb binary increased by $PERCENTAGE% comparing with main"; \
+            if ((`bc <<< "$PERCENTAGE>=1.0"`)); then exit 1; fi; \
+          else \
+            PERCENTAGE=$(echo "scale=2; (($BINSIZE_MAIN-$BINSIZE)*100)/$BINSIZE_MAIN" | bc); \
+            echo "zb binary decreased by $PERCENTAGE% comparing with main"; \
+          fi
+
+
+
