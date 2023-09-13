@@ -184,10 +184,6 @@ func (ref OciReferences) getIndex(ctx context.Context, repo, subjectDigestStr st
 			return index, zerr.ErrSyncReferrerNotFound
 		}
 
-		ref.log.Error().Str("errorType", common.TypeOf(err)).
-			Err(err).Str("repository", repo).Str("subject", subjectDigestStr).Int("statusCode", statusCode).
-			Msg("couldn't get oci reference for image")
-
 		return index, err
 	}
 

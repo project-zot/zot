@@ -79,7 +79,7 @@ func (refs References) syncAll(ctx context.Context, localRepo, upstreamRepo,
 	for _, ref := range refs.referenceList {
 		syncedRefsDigests, err = ref.SyncReferences(ctx, localRepo, upstreamRepo, subjectDigestStr)
 		if err != nil {
-			refs.log.Debug().Err(err).
+			refs.log.Error().Err(err).
 				Str("reference type", ref.Name()).
 				Str("image", fmt.Sprintf("%s:%s", upstreamRepo, subjectDigestStr)).
 				Msg("couldn't sync image referrer")
