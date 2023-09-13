@@ -254,12 +254,11 @@ func RunSignatureUploadAndVerificationTests(t *testing.T, cacheDriverParams map[
 			[]string{fmt.Sprintf("localhost:%s/%s@%s", port, repo, image.DigestStr())})
 		So(err, ShouldBeNil)
 
-		found, err = test.ReadLogFileAndSearchString(logFile.Name(), "updating signatures validity", 10*time.Second)
+		found, err = test.ReadLogFileAndSearchString(logFile.Name(), "update signatures validity", 10*time.Second)
 		So(err, ShouldBeNil)
 		So(found, ShouldBeTrue)
 
-		found, err = test.ReadLogFileAndSearchString(logFile.Name(), "verifying signatures successfully completed",
-			time.Second)
+		found, err = test.ReadLogFileAndSearchString(logFile.Name(), "update signatures validity completed", time.Second)
 		So(err, ShouldBeNil)
 		So(found, ShouldBeTrue)
 
@@ -367,12 +366,11 @@ func RunSignatureUploadAndVerificationTests(t *testing.T, cacheDriverParams map[
 		err = test.SignWithNotation(certName, imageURL, rootDir)
 		So(err, ShouldBeNil)
 
-		found, err = test.ReadLogFileAndSearchString(logFile.Name(), "updating signatures validity", 10*time.Second)
+		found, err = test.ReadLogFileAndSearchString(logFile.Name(), "update signatures validity", 10*time.Second)
 		So(err, ShouldBeNil)
 		So(found, ShouldBeTrue)
 
-		found, err = test.ReadLogFileAndSearchString(logFile.Name(), "verifying signatures successfully completed",
-			time.Second)
+		found, err = test.ReadLogFileAndSearchString(logFile.Name(), "update signatures validity completed", time.Second)
 		So(err, ShouldBeNil)
 		So(found, ShouldBeTrue)
 
@@ -501,12 +499,11 @@ func RunSignatureUploadAndVerificationTests(t *testing.T, cacheDriverParams map[
 		err = test.SignWithNotation(certName, imageURL, rootDir)
 		So(err, ShouldBeNil)
 
-		found, err = test.ReadLogFileAndSearchString(logFile.Name(), "updating signatures validity", 10*time.Second)
+		found, err = test.ReadLogFileAndSearchString(logFile.Name(), "update signatures validity", 10*time.Second)
 		So(err, ShouldBeNil)
 		So(found, ShouldBeTrue)
 
-		found, err = test.ReadLogFileAndSearchString(logFile.Name(), "verifying signatures successfully completed",
-			time.Second)
+		found, err = test.ReadLogFileAndSearchString(logFile.Name(), "update signatures validity completed", time.Second)
 		So(err, ShouldBeNil)
 		So(found, ShouldBeTrue)
 
@@ -672,12 +669,11 @@ func RunSignatureUploadAndVerificationTests(t *testing.T, cacheDriverParams map[
 			[]string{fmt.Sprintf("localhost:%s/%s@%s", port, repo, image.DigestStr())})
 		So(err, ShouldBeNil)
 
-		found, err = test.ReadLogFileAndSearchString(logFile.Name(), "updating signatures validity", 10*time.Second)
+		found, err = test.ReadLogFileAndSearchString(logFile.Name(), "update signatures validity", 10*time.Second)
 		So(err, ShouldBeNil)
 		So(found, ShouldBeTrue)
 
-		found, err = test.ReadLogFileAndSearchString(logFile.Name(), "verifying signatures successfully completed",
-			time.Second)
+		found, err = test.ReadLogFileAndSearchString(logFile.Name(), "update signatures validity completed", time.Second)
 		So(err, ShouldBeNil)
 		So(found, ShouldBeTrue)
 
@@ -883,12 +879,11 @@ func RunSignatureUploadAndVerificationTests(t *testing.T, cacheDriverParams map[
 		So(err, ShouldBeNil)
 		So(found, ShouldBeTrue)
 
-		found, err = test.ReadLogFileAndSearchString(logFile.Name(), "updating signatures validity", 10*time.Second)
+		found, err = test.ReadLogFileAndSearchString(logFile.Name(), "update signatures validity", 10*time.Second)
 		So(err, ShouldBeNil)
 		So(found, ShouldBeTrue)
 
-		found, err = test.ReadLogFileAndSearchString(logFile.Name(), "verifying signatures successfully completed",
-			time.Second)
+		found, err = test.ReadLogFileAndSearchString(logFile.Name(), "update signatures validity completed", time.Second)
 		So(err, ShouldBeNil)
 		So(found, ShouldBeTrue)
 
