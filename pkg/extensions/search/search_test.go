@@ -381,19 +381,21 @@ func TestRepoListWithNewestImage(t *testing.T) {
 		ctlrManager.StartAndWait(port)
 		defer ctlrManager.StopServer()
 
-		config, layers, manifest, err := GetImageComponents(100)
+		config, layers, _, err := GetImageComponents(100)
 		So(err, ShouldBeNil)
 
-		err = UploadImage(Image{Manifest: manifest, Config: config, Layers: layers}, baseURL, "zot-cve-test", "0.0.1")
+		uploadedImage := CreateImageWith().LayerBlobs(layers).ImageConfig(config).Build()
+
+		err = UploadImage(uploadedImage, baseURL, "zot-cve-test", "0.0.1")
 		So(err, ShouldBeNil)
 
-		err = UploadImage(Image{Manifest: manifest, Config: config, Layers: layers}, baseURL, "a/zot-cve-test", "0.0.1")
+		err = UploadImage(uploadedImage, baseURL, "a/zot-cve-test", "0.0.1")
 		So(err, ShouldBeNil)
 
-		err = UploadImage(Image{Manifest: manifest, Config: config, Layers: layers}, baseURL, "zot-test", "0.0.1")
+		err = UploadImage(uploadedImage, baseURL, "zot-test", "0.0.1")
 		So(err, ShouldBeNil)
 
-		err = UploadImage(Image{Manifest: manifest, Config: config, Layers: layers}, baseURL, "a/zot-test", "0.0.1")
+		err = UploadImage(uploadedImage, baseURL, "a/zot-test", "0.0.1")
 		So(err, ShouldBeNil)
 
 		resp, err := resty.R().Get(baseURL + "/v2/")
@@ -590,9 +592,8 @@ func TestRepoListWithNewestImage(t *testing.T) {
 				panic(err)
 			}
 
-			var manifestDigest godigest.Digest
-			var configDigest godigest.Digest
-			manifestDigest, configDigest, _ = GetOciLayoutDigests(path.Join(subRootDir, "a/zot-test"))
+			manifestDigest := uploadedImage.ManifestDescriptor.Digest
+			configDigest := uploadedImage.ConfigDescriptor.Digest
 
 			// Delete config blob and try.
 			err = os.Remove(path.Join(subRootDir, "a/zot-test/blobs/sha256", configDigest.Encoded()))
@@ -1269,22 +1270,25 @@ func TestExpandedRepoInfo(t *testing.T) {
 		ctlrManager.StartAndWait(port)
 		defer ctlrManager.StopServer()
 
-		config, layers, manifest, err := GetImageComponents(100)
+		config, layers, _, err := GetImageComponents(100)
 		So(err, ShouldBeNil)
 
-		manifest.Annotations = make(map[string]string)
-		manifest.Annotations["org.opencontainers.image.vendor"] = "zot"
+		annotations := make(map[string]string)
+		annotations["org.opencontainers.image.vendor"] = "zot"
 
-		err = UploadImage(Image{Manifest: manifest, Config: config, Layers: layers}, baseURL, "zot-cve-test", "0.0.1")
+		uploadedImage := CreateImageWith().LayerBlobs(layers).ImageConfig(config).
+			Annotations(annotations).Build()
+
+		err = UploadImage(uploadedImage, baseURL, "zot-cve-test", "0.0.1")
 		So(err, ShouldBeNil)
 
-		err = UploadImage(Image{Manifest: manifest, Config: config, Layers: layers}, baseURL, "a/zot-cve-test", "0.0.1")
+		err = UploadImage(uploadedImage, baseURL, "a/zot-cve-test", "0.0.1")
 		So(err, ShouldBeNil)
 
-		err = UploadImage(Image{Manifest: manifest, Config: config, Layers: layers}, baseURL, "zot-test", "0.0.1")
+		err = UploadImage(uploadedImage, baseURL, "zot-test", "0.0.1")
 		So(err, ShouldBeNil)
 
-		err = UploadImage(Image{Manifest: manifest, Config: config, Layers: layers}, baseURL, "a/zot-test", "0.0.1")
+		err = UploadImage(uploadedImage, baseURL, "a/zot-test", "0.0.1")
 		So(err, ShouldBeNil)
 
 		log := log.NewLogger("debug", "")
@@ -1455,8 +1459,7 @@ func TestExpandedRepoInfo(t *testing.T) {
 		}
 		So(found, ShouldEqual, true)
 
-		var manifestDigest godigest.Digest
-		manifestDigest, _, _ = GetOciLayoutDigests(path.Join(rootDir, "zot-test"))
+		manifestDigest := uploadedImage.ManifestDescriptor.Digest
 
 		err = os.Remove(path.Join(rootDir, "zot-test/blobs/sha256", manifestDigest.Encoded()))
 		So(err, ShouldBeNil)

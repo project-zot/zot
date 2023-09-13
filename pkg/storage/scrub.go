@@ -5,16 +5,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"os"
-	"path"
 	"strings"
 	"time"
 
 	"github.com/olekukonko/tablewriter"
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
-	"github.com/opencontainers/umoci"
-	"github.com/opencontainers/umoci/oci/casext"
 
 	"zotregistry.io/zot/errors"
 	storageTypes "zotregistry.io/zot/pkg/storage/types"
@@ -24,19 +20,22 @@ const (
 	colImageNameIndex = iota
 	colTagIndex
 	colStatusIndex
+	colAffectedBlobIndex
 	colErrorIndex
 
-	imageNameWidth = 32
-	tagWidth       = 24
-	statusWidth    = 8
-	errorWidth     = 8
+	imageNameWidth    = 32
+	tagWidth          = 24
+	statusWidth       = 8
+	affectedBlobWidth = 24
+	errorWidth        = 8
 )
 
 type ScrubImageResult struct {
-	ImageName string `json:"imageName"`
-	Tag       string `json:"tag"`
-	Status    string `json:"status"`
-	Error     string `json:"error"`
+	ImageName    string `json:"imageName"`
+	Tag          string `json:"tag"`
+	Status       string `json:"status"`
+	AffectedBlob string `json:"affectedBlob"`
+	Error        string `json:"error"`
 }
 
 type ScrubResults struct {
@@ -92,153 +91,228 @@ func CheckRepo(ctx context.Context, imageName string, imgStore storageTypes.Imag
 		return results, ctx.Err()
 	}
 
-	dir := path.Join(imgStore.RootDir(), imageName)
-	if !imgStore.DirExists(dir) {
-		return results, errors.ErrRepoNotFound
-	}
-
-	oci, err := umoci.OpenLayout(dir)
-	if err != nil {
-		return results, err
-	}
-
-	defer oci.Close()
-
 	var lockLatency time.Time
 
 	imgStore.RLock(&lockLatency)
 	defer imgStore.RUnlock(&lockLatency)
 
-	buf, err := os.ReadFile(path.Join(dir, "index.json"))
+	// check image structure / layout
+	ok, err := imgStore.ValidateRepo(imageName)
+	if err != nil {
+		return results, err
+	}
+
+	if !ok {
+		return results, errors.ErrRepoBadLayout
+	}
+
+	// check "index.json" content
+	indexContent, err := imgStore.GetIndexContent(imageName)
 	if err != nil {
 		return results, err
 	}
 
 	var index ispec.Index
-	if err := json.Unmarshal(buf, &index); err != nil {
+	if err := json.Unmarshal(indexContent, &index); err != nil {
 		return results, errors.ErrRepoNotFound
 	}
 
-	listOfManifests := []ispec.Descriptor{}
+	scrubbedManifests := make(map[godigest.Digest]ScrubImageResult)
 
 	for _, manifest := range index.Manifests {
-		if manifest.MediaType == ispec.MediaTypeImageIndex {
-			buf, err := os.ReadFile(path.Join(dir, "blobs", manifest.Digest.Algorithm().String(), manifest.Digest.Encoded()))
-			if err != nil {
-				tagName := manifest.Annotations[ispec.AnnotationRefName]
-				imgRes := getResult(imageName, tagName, errors.ErrBadBlobDigest)
-				results = append(results, imgRes)
-
-				continue
-			}
-
-			var idx ispec.Index
-			if err := json.Unmarshal(buf, &idx); err != nil {
-				tagName := manifest.Annotations[ispec.AnnotationRefName]
-				imgRes := getResult(imageName, tagName, errors.ErrBadBlobDigest)
-				results = append(results, imgRes)
-
-				continue
-			}
-
-			listOfManifests = append(listOfManifests, idx.Manifests...)
-		} else if manifest.MediaType == ispec.MediaTypeImageManifest {
-			listOfManifests = append(listOfManifests, manifest)
-		}
-	}
-
-	for _, m := range listOfManifests {
-		tag := m.Annotations[ispec.AnnotationRefName]
-		imageResult := CheckIntegrity(ctx, imageName, tag, oci, m, dir)
-		results = append(results, imageResult)
+		tag := manifest.Annotations[ispec.AnnotationRefName]
+		scrubManifest(ctx, manifest, imgStore, imageName, tag, scrubbedManifests)
+		results = append(results, scrubbedManifests[manifest.Digest])
 	}
 
 	return results, nil
 }
 
-func CheckIntegrity(ctx context.Context, imageName, tagName string, oci casext.Engine, manifest ispec.Descriptor, dir string) ScrubImageResult { //nolint: lll
+func scrubManifest(
+	ctx context.Context, manifest ispec.Descriptor, imgStore storageTypes.ImageStore, imageName, tag string,
+	scrubbedManifests map[godigest.Digest]ScrubImageResult,
+) {
+	res, ok := scrubbedManifests[manifest.Digest]
+	if ok {
+		scrubbedManifests[manifest.Digest] = newScrubImageResult(imageName, tag, res.Status,
+			res.AffectedBlob, res.Error)
+
+		return
+	}
+
+	switch manifest.MediaType {
+	case ispec.MediaTypeImageIndex:
+		buf, err := imgStore.GetBlobContent(imageName, manifest.Digest)
+		if err != nil {
+			imgRes := getResult(imageName, tag, manifest.Digest, errors.ErrBadBlobDigest)
+			scrubbedManifests[manifest.Digest] = imgRes
+
+			return
+		}
+
+		var idx ispec.Index
+		if err := json.Unmarshal(buf, &idx); err != nil {
+			imgRes := getResult(imageName, tag, manifest.Digest, errors.ErrBadBlobDigest)
+			scrubbedManifests[manifest.Digest] = imgRes
+
+			return
+		}
+
+		// check all manifests
+		for _, m := range idx.Manifests {
+			scrubManifest(ctx, m, imgStore, imageName, tag, scrubbedManifests)
+
+			// if the manifest is affected then this index is also affected
+			if scrubbedManifests[m.Digest].Error != "" {
+				mRes := scrubbedManifests[m.Digest]
+
+				scrubbedManifests[manifest.Digest] = newScrubImageResult(imageName, tag, mRes.Status,
+					mRes.AffectedBlob, mRes.Error)
+
+				return
+			}
+		}
+
+		// at this point, before starting to check de subject we can consider the index is ok
+		scrubbedManifests[manifest.Digest] = getResult(imageName, tag, "", nil)
+
+		// check subject if exists
+		if idx.Subject != nil {
+			scrubManifest(ctx, *idx.Subject, imgStore, imageName, tag, scrubbedManifests)
+
+			subjectRes := scrubbedManifests[idx.Subject.Digest]
+
+			scrubbedManifests[manifest.Digest] = newScrubImageResult(imageName, tag, subjectRes.Status,
+				subjectRes.AffectedBlob, subjectRes.Error)
+		}
+	case ispec.MediaTypeImageManifest:
+		imgRes := CheckIntegrity(ctx, imageName, tag, manifest, imgStore)
+		scrubbedManifests[manifest.Digest] = imgRes
+
+		// if integrity ok then check subject if exists
+		if imgRes.Error == "" {
+			manifestContent, _ := imgStore.GetBlobContent(imageName, manifest.Digest)
+
+			var man ispec.Manifest
+
+			_ = json.Unmarshal(manifestContent, &man)
+
+			if man.Subject != nil {
+				scrubManifest(ctx, *man.Subject, imgStore, imageName, tag, scrubbedManifests)
+
+				subjectRes := scrubbedManifests[man.Subject.Digest]
+
+				scrubbedManifests[manifest.Digest] = newScrubImageResult(imageName, tag, subjectRes.Status,
+					subjectRes.AffectedBlob, subjectRes.Error)
+			}
+		}
+	default:
+		scrubbedManifests[manifest.Digest] = getResult(imageName, tag, manifest.Digest, errors.ErrBadManifest)
+	}
+}
+
+func CheckIntegrity(
+	ctx context.Context, imageName, tagName string, manifest ispec.Descriptor, imgStore storageTypes.ImageStore,
+) ScrubImageResult {
 	// check manifest and config
-	if _, err := umoci.Stat(ctx, oci, manifest); err != nil {
-		return getResult(imageName, tagName, err)
+	if affectedBlob, err := CheckManifestAndConfig(imageName, manifest, imgStore); err != nil {
+		return getResult(imageName, tagName, affectedBlob, err)
 	}
 
 	// check layers
-	return CheckLayers(ctx, imageName, tagName, dir, manifest)
+	return CheckLayers(ctx, imageName, tagName, manifest, imgStore)
 }
 
-func CheckLayers(ctx context.Context, imageName, tagName, dir string, manifest ispec.Descriptor) ScrubImageResult {
+func CheckManifestAndConfig(
+	imageName string, manifestDesc ispec.Descriptor, imgStore storageTypes.ImageStore,
+) (godigest.Digest, error) {
+	if manifestDesc.MediaType != ispec.MediaTypeImageManifest {
+		return manifestDesc.Digest, errors.ErrBadManifest
+	}
+
+	manifestContent, err := imgStore.GetBlobContent(imageName, manifestDesc.Digest)
+	if err != nil {
+		return manifestDesc.Digest, err
+	}
+
+	var manifest ispec.Manifest
+
+	err = json.Unmarshal(manifestContent, &manifest)
+	if err != nil {
+		return manifestDesc.Digest, errors.ErrBadManifest
+	}
+
+	configContent, err := imgStore.GetBlobContent(imageName, manifest.Config.Digest)
+	if err != nil {
+		return manifest.Config.Digest, err
+	}
+
+	var config ispec.Image
+
+	err = json.Unmarshal(configContent, &config)
+	if err != nil {
+		return manifest.Config.Digest, errors.ErrBadConfig
+	}
+
+	return "", nil
+}
+
+func CheckLayers(
+	ctx context.Context, imageName, tagName string, manifest ispec.Descriptor, imgStore storageTypes.ImageStore,
+) ScrubImageResult {
 	imageRes := ScrubImageResult{}
 
-	buf, err := os.ReadFile(path.Join(dir, "blobs", manifest.Digest.Algorithm().String(), manifest.Digest.Encoded()))
+	buf, err := imgStore.GetBlobContent(imageName, manifest.Digest)
 	if err != nil {
-		imageRes = getResult(imageName, tagName, err)
+		imageRes = getResult(imageName, tagName, manifest.Digest, err)
 
 		return imageRes
 	}
 
 	var man ispec.Manifest
 	if err := json.Unmarshal(buf, &man); err != nil {
-		imageRes = getResult(imageName, tagName, err)
+		imageRes = getResult(imageName, tagName, manifest.Digest, errors.ErrBadManifest)
 
 		return imageRes
 	}
 
 	for _, layer := range man.Layers {
-		layerPath := path.Join(dir, "blobs", layer.Digest.Algorithm().String(), layer.Digest.Encoded())
-
-		_, err = os.Stat(layerPath)
+		layerContent, err := imgStore.GetBlobContent(imageName, layer.Digest)
 		if err != nil {
-			imageRes = getResult(imageName, tagName, errors.ErrBlobNotFound)
+			imageRes = getResult(imageName, tagName, layer.Digest, err)
 
 			break
 		}
 
-		layerFh, err := os.Open(layerPath)
-		if err != nil {
-			imageRes = getResult(imageName, tagName, errors.ErrBlobNotFound)
-
-			break
-		}
-
-		computedDigest, err := godigest.FromReader(layerFh)
-		layerFh.Close()
-
-		if err != nil {
-			imageRes = getResult(imageName, tagName, errors.ErrBadBlobDigest)
-
-			break
-		}
+		computedDigest := godigest.FromBytes(layerContent)
 
 		if computedDigest != layer.Digest {
-			imageRes = getResult(imageName, tagName, errors.ErrBadBlobDigest)
+			imageRes = getResult(imageName, tagName, layer.Digest, errors.ErrBadBlobDigest)
 
 			break
 		}
 
-		imageRes = getResult(imageName, tagName, nil)
+		imageRes = getResult(imageName, tagName, "", nil)
 	}
 
 	return imageRes
 }
 
-func getResult(imageName, tag string, err error) ScrubImageResult {
-	var status string
-
-	var errField string
-
+func getResult(imageName, tag string, affectedBlobDigest godigest.Digest, err error) ScrubImageResult {
 	if err != nil {
-		status = "affected"
-		errField = err.Error()
-	} else {
-		status = "ok"
-		errField = ""
+		return newScrubImageResult(imageName, tag, "affected", affectedBlobDigest.Encoded(), err.Error())
 	}
 
+	return newScrubImageResult(imageName, tag, "ok", "", "")
+}
+
+func newScrubImageResult(imageName, tag, status, affectedBlob, err string) ScrubImageResult {
 	return ScrubImageResult{
-		ImageName: imageName,
-		Tag:       tag,
-		Status:    status,
-		Error:     errField,
+		ImageName:    imageName,
+		Tag:          tag,
+		Status:       status,
+		AffectedBlob: affectedBlob,
+		Error:        err,
 	}
 }
 
@@ -259,12 +333,13 @@ func getScrubTableWriter(writer io.Writer) *tablewriter.Table {
 	table.SetColMinWidth(colImageNameIndex, imageNameWidth)
 	table.SetColMinWidth(colTagIndex, tagWidth)
 	table.SetColMinWidth(colStatusIndex, statusWidth)
+	table.SetColMinWidth(colErrorIndex, affectedBlobWidth)
 	table.SetColMinWidth(colErrorIndex, errorWidth)
 
 	return table
 }
 
-const tableCols = 4
+const tableCols = 5
 
 func printScrubTableHeader(writer io.Writer) {
 	table := getScrubTableWriter(writer)
@@ -274,6 +349,7 @@ func printScrubTableHeader(writer io.Writer) {
 	row[colImageNameIndex] = "REPOSITORY"
 	row[colTagIndex] = "TAG"
 	row[colStatusIndex] = "STATUS"
+	row[colAffectedBlobIndex] = "AFFECTED BLOB"
 	row[colErrorIndex] = "ERROR"
 
 	table.Append(row)
@@ -287,6 +363,7 @@ func printImageResult(imageResult ScrubImageResult) string {
 	table.SetColMinWidth(colImageNameIndex, imageNameWidth)
 	table.SetColMinWidth(colTagIndex, tagWidth)
 	table.SetColMinWidth(colStatusIndex, statusWidth)
+	table.SetColMinWidth(colAffectedBlobIndex, affectedBlobWidth)
 	table.SetColMinWidth(colErrorIndex, errorWidth)
 
 	row := make([]string, tableCols)
@@ -294,6 +371,7 @@ func printImageResult(imageResult ScrubImageResult) string {
 	row[colImageNameIndex] = imageResult.ImageName
 	row[colTagIndex] = imageResult.Tag
 	row[colStatusIndex] = imageResult.Status
+	row[colAffectedBlobIndex] = imageResult.AffectedBlob
 	row[colErrorIndex] = imageResult.Error
 
 	table.Append(row)

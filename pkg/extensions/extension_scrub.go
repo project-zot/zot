@@ -28,25 +28,19 @@ func EnableScrubExtension(config *config.Config, log log.Logger, storeController
 			log.Warn().Msg("Scrub interval set to too-short interval < 2h, changing scrub duration to 2 hours and continuing.") //nolint:lll // gofumpt conflicts with lll
 		}
 
-		// is local imagestore (because of umoci dependency which works only locally)
-		if config.Storage.StorageDriver == nil {
-			generator := &taskGenerator{
-				imgStore: storeController.DefaultStore,
-				log:      log,
-			}
-			sch.SubmitGenerator(generator, config.Extensions.Scrub.Interval, scheduler.LowPriority)
+		generator := &taskGenerator{
+			imgStore: storeController.DefaultStore,
+			log:      log,
 		}
+		sch.SubmitGenerator(generator, config.Extensions.Scrub.Interval, scheduler.LowPriority)
 
 		if config.Storage.SubPaths != nil {
 			for route := range config.Storage.SubPaths {
-				// is local imagestore (because of umoci dependency which works only locally)
-				if config.Storage.SubPaths[route].StorageDriver == nil {
-					generator := &taskGenerator{
-						imgStore: storeController.SubStore[route],
-						log:      log,
-					}
-					sch.SubmitGenerator(generator, config.Extensions.Scrub.Interval, scheduler.LowPriority)
+				generator := &taskGenerator{
+					imgStore: storeController.SubStore[route],
+					log:      log,
 				}
+				sch.SubmitGenerator(generator, config.Extensions.Scrub.Interval, scheduler.LowPriority)
 			}
 		}
 	} else {

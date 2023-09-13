@@ -39,6 +39,7 @@ func RunScrubRepo(ctx context.Context, imgStore storageTypes.ImageStore, repo st
 				Str("image", result.ImageName).
 				Str("tag", result.Tag).
 				Str("status", result.Status).
+				Str("affected blob", result.AffectedBlob).
 				Str("error", result.Error).
 				Msg("scrub: blobs/manifest affected")
 		}
