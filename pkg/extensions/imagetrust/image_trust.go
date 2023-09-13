@@ -242,7 +242,7 @@ func NewValidityTask(metaDB mTypes.MetaDB, repo mTypes.RepoMetadata, log log.Log
 }
 
 func (validityT *validityTask) DoWork(ctx context.Context) error {
-	validityT.log.Info().Msg("updating signatures validity")
+	validityT.log.Info().Msg("update signatures validity")
 
 	for signedManifest, sigs := range validityT.repo.Signatures {
 		if len(sigs[zcommon.CosignSignature]) != 0 || len(sigs[zcommon.NotationSignature]) != 0 {
@@ -255,7 +255,7 @@ func (validityT *validityTask) DoWork(ctx context.Context) error {
 		}
 	}
 
-	validityT.log.Info().Msg("verifying signatures successfully completed")
+	validityT.log.Info().Msg("update signatures validity completed")
 
 	return nil
 }
