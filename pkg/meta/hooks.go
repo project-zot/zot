@@ -109,7 +109,7 @@ func OnDeleteManifest(repo, reference, mediaType string, digest godigest.Digest,
 			manageRepoMetaSuccessfully = false
 		}
 	} else {
-		err = metaDB.DeleteRepoTag(repo, reference)
+		err = metaDB.RemoveRepoReference(repo, reference, digest)
 		if err != nil {
 			log.Info().Msg("metadb: restoring image store")
 

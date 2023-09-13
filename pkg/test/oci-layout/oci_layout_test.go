@@ -347,7 +347,7 @@ func TestExtractImageDetails(t *testing.T) {
 	Convey("extractImageDetails good workflow", t, func() {
 		dir := t.TempDir()
 		testLogger := log.NewLogger("debug", "")
-		imageStore := local.NewImageStore(dir, false, false, 0, 0, false, false,
+		imageStore := local.NewImageStore(dir, false, false,
 			testLogger, monitoring.NewMetricsServer(false, testLogger), nil, nil)
 
 		storeController := storage.StoreController{
@@ -383,7 +383,7 @@ func TestExtractImageDetails(t *testing.T) {
 	Convey("extractImageDetails bad ispec.ImageManifest", t, func() {
 		dir := t.TempDir()
 		testLogger := log.NewLogger("debug", "")
-		imageStore := local.NewImageStore(dir, false, false, 0, 0, false, false,
+		imageStore := local.NewImageStore(dir, false, false,
 			testLogger, monitoring.NewMetricsServer(false, testLogger), nil, nil)
 
 		storeController := storage.StoreController{
@@ -403,7 +403,7 @@ func TestExtractImageDetails(t *testing.T) {
 	Convey("extractImageDetails bad imageConfig", t, func() {
 		dir := t.TempDir()
 		testLogger := log.NewLogger("debug", "")
-		imageStore := local.NewImageStore(dir, false, false, 0, 0, false, false,
+		imageStore := local.NewImageStore(dir, false, false,
 			testLogger, monitoring.NewMetricsServer(false, testLogger), nil, nil)
 
 		storeController := storage.StoreController{

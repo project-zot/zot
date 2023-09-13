@@ -6,10 +6,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"math/rand"
 	"path"
 	"strings"
-	"time"
 
 	"github.com/docker/distribution/registry/storage/driver"
 	godigest "github.com/opencontainers/go-digest"
@@ -501,6 +499,30 @@ func isBlobReferencedInImageManifest(imgStore storageTypes.ImageStore, repo stri
 	return false, nil
 }
 
+func isBlobReferencedInORASManifest(imgStore storageTypes.ImageStore, repo string,
+	bdigest, mdigest godigest.Digest, log zlog.Logger,
+) (bool, error) {
+	if bdigest == mdigest {
+		return true, nil
+	}
+
+	manifestContent, err := GetOrasManifestByDigest(imgStore, repo, mdigest, log)
+	if err != nil {
+		log.Error().Err(err).Str("repo", repo).Str("digest", mdigest.String()).
+			Msg("gc: failed to read manifest image")
+
+		return false, err
+	}
+
+	for _, blob := range manifestContent.Blobs {
+		if bdigest == blob.Digest {
+			return true, nil
+		}
+	}
+
+	return false, nil
+}
+
 func IsBlobReferencedInImageIndex(imgStore storageTypes.ImageStore, repo string,
 	digest godigest.Digest, index ispec.Index, log zlog.Logger,
 ) (bool, error) {
@@ -520,6 +542,8 @@ func IsBlobReferencedInImageIndex(imgStore storageTypes.ImageStore, repo string,
 			found, _ = IsBlobReferencedInImageIndex(imgStore, repo, digest, indexImage, log)
 		case ispec.MediaTypeImageManifest:
 			found, _ = isBlobReferencedInImageManifest(imgStore, repo, digest, desc.Digest, log)
+		case oras.MediaTypeArtifactManifest:
+			found, _ = isBlobReferencedInORASManifest(imgStore, repo, digest, desc.Digest, log)
 		default:
 			log.Warn().Str("mediatype", desc.MediaType).Msg("unknown media-type")
 			// should return true for digests found in index.json even if we don't know it's mediatype
@@ -550,132 +574,6 @@ func IsBlobReferenced(imgStore storageTypes.ImageStore, repo string,
 	}
 
 	return IsBlobReferencedInImageIndex(imgStore, repo, digest, index, log)
-}
-
-/* Garbage Collection */
-
-func AddImageManifestBlobsToReferences(imgStore storageTypes.ImageStore,
-	repo string, mdigest godigest.Digest, refBlobs map[string]bool, log zlog.Logger,
-) error {
-	manifestContent, err := GetImageManifest(imgStore, repo, mdigest, log)
-	if err != nil {
-		log.Error().Err(err).Str("repository", repo).Str("digest", mdigest.String()).
-			Msg("gc: failed to read manifest image")
-
-		return err
-	}
-
-	refBlobs[mdigest.String()] = true
-	refBlobs[manifestContent.Config.Digest.String()] = true
-
-	// if there is a Subject, it may not exist yet and that is ok
-	if manifestContent.Subject != nil {
-		refBlobs[manifestContent.Subject.Digest.String()] = true
-	}
-
-	for _, layer := range manifestContent.Layers {
-		refBlobs[layer.Digest.String()] = true
-	}
-
-	return nil
-}
-
-func AddORASImageManifestBlobsToReferences(imgStore storageTypes.ImageStore,
-	repo string, mdigest godigest.Digest, refBlobs map[string]bool, log zlog.Logger,
-) error {
-	manifestContent, err := GetOrasManifestByDigest(imgStore, repo, mdigest, log)
-	if err != nil {
-		log.Error().Err(err).Str("repository", repo).Str("digest", mdigest.String()).
-			Msg("gc: failed to read manifest image")
-
-		return err
-	}
-
-	refBlobs[mdigest.String()] = true
-
-	// if there is a Subject, it may not exist yet and that is ok
-	if manifestContent.Subject != nil {
-		refBlobs[manifestContent.Subject.Digest.String()] = true
-	}
-
-	for _, blob := range manifestContent.Blobs {
-		refBlobs[blob.Digest.String()] = true
-	}
-
-	return nil
-}
-
-func AddImageIndexBlobsToReferences(imgStore storageTypes.ImageStore,
-	repo string, mdigest godigest.Digest, refBlobs map[string]bool, log zlog.Logger,
-) error {
-	index, err := GetImageIndex(imgStore, repo, mdigest, log)
-	if err != nil {
-		log.Error().Err(err).Str("repository", repo).Str("digest", mdigest.String()).
-			Msg("gc: failed to read manifest image")
-
-		return err
-	}
-
-	refBlobs[mdigest.String()] = true
-
-	// if there is a Subject, it may not exist yet and that is ok
-	if index.Subject != nil {
-		refBlobs[index.Subject.Digest.String()] = true
-	}
-
-	for _, manifest := range index.Manifests {
-		refBlobs[manifest.Digest.String()] = true
-	}
-
-	return nil
-}
-
-func AddIndexBlobToReferences(imgStore storageTypes.ImageStore,
-	repo string, index ispec.Index, refBlobs map[string]bool, log zlog.Logger,
-) error {
-	for _, desc := range index.Manifests {
-		switch desc.MediaType {
-		case ispec.MediaTypeImageIndex:
-			if err := AddImageIndexBlobsToReferences(imgStore, repo, desc.Digest, refBlobs, log); err != nil {
-				log.Error().Err(err).Str("repository", repo).Str("digest", desc.Digest.String()).
-					Msg("failed to read blobs in multiarch(index) image")
-
-				return err
-			}
-		case ispec.MediaTypeImageManifest:
-			if err := AddImageManifestBlobsToReferences(imgStore, repo, desc.Digest, refBlobs, log); err != nil {
-				log.Error().Err(err).Str("repository", repo).Str("digest", desc.Digest.String()).
-					Msg("failed to read blobs in image manifest")
-
-				return err
-			}
-		case oras.MediaTypeArtifactManifest:
-			if err := AddORASImageManifestBlobsToReferences(imgStore, repo, desc.Digest, refBlobs, log); err != nil {
-				log.Error().Err(err).Str("repository", repo).Str("digest", desc.Digest.String()).
-					Msg("failed to read blobs in image manifest")
-
-				return err
-			}
-		}
-	}
-
-	return nil
-}
-
-func AddRepoBlobsToReferences(imgStore storageTypes.ImageStore,
-	repo string, refBlobs map[string]bool, log zlog.Logger,
-) error {
-	dir := path.Join(imgStore.RootDir(), repo)
-	if !imgStore.DirExists(dir) {
-		return zerr.ErrRepoNotFound
-	}
-
-	index, err := GetIndex(imgStore, repo, log)
-	if err != nil {
-		return err
-	}
-
-	return AddIndexBlobToReferences(imgStore, repo, index, refBlobs, log)
 }
 
 func ApplyLinter(imgStore storageTypes.ImageStore, linter Lint, repo string, descriptor ispec.Descriptor,
@@ -1041,78 +939,4 @@ func (dt *dedupeTask) DoWork(ctx context.Context) error {
 	}
 
 	return err
-}
-
-/*
-	GCTaskGenerator takes all repositories found in the storage.imagestore
-
-and it will execute garbage collection for each repository by creating a task
-for each repository and pushing it to the task scheduler.
-*/
-type GCTaskGenerator struct {
-	ImgStore storageTypes.ImageStore
-	lastRepo string
-	nextRun  time.Time
-	done     bool
-	rand     *rand.Rand
-}
-
-func (gen *GCTaskGenerator) getRandomDelay() int {
-	maxDelay := 30
-
-	return gen.rand.Intn(maxDelay)
-}
-
-func (gen *GCTaskGenerator) Next() (scheduler.Task, error) {
-	if gen.lastRepo == "" && gen.nextRun.IsZero() {
-		gen.rand = rand.New(rand.NewSource(time.Now().UTC().UnixNano())) //nolint: gosec
-	}
-
-	delay := gen.getRandomDelay()
-
-	gen.nextRun = time.Now().Add(time.Duration(delay) * time.Second)
-
-	repo, err := gen.ImgStore.GetNextRepository(gen.lastRepo)
-	if err != nil {
-		return nil, err
-	}
-
-	if repo == "" {
-		gen.done = true
-
-		return nil, nil
-	}
-
-	gen.lastRepo = repo
-
-	return NewGCTask(gen.ImgStore, repo), nil
-}
-
-func (gen *GCTaskGenerator) IsDone() bool {
-	return gen.done
-}
-
-func (gen *GCTaskGenerator) IsReady() bool {
-	return time.Now().After(gen.nextRun)
-}
-
-func (gen *GCTaskGenerator) Reset() {
-	gen.lastRepo = ""
-	gen.done = false
-	gen.nextRun = time.Time{}
-}
-
-type gcTask struct {
-	imgStore storageTypes.ImageStore
-	repo     string
-}
-
-func NewGCTask(imgStore storageTypes.ImageStore, repo string,
-) *gcTask {
-	return &gcTask{imgStore, repo}
-}
-
-func (gct *gcTask) DoWork(ctx context.Context) error {
-	// run task
-	return gct.imgStore.RunGCRepo(gct.repo)
 }

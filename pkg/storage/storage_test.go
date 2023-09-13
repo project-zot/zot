@@ -34,6 +34,7 @@ import (
 	"zotregistry.io/zot/pkg/storage/cache"
 	storageCommon "zotregistry.io/zot/pkg/storage/common"
 	storageConstants "zotregistry.io/zot/pkg/storage/constants"
+	"zotregistry.io/zot/pkg/storage/gc"
 	"zotregistry.io/zot/pkg/storage/imagestore"
 	"zotregistry.io/zot/pkg/storage/local"
 	"zotregistry.io/zot/pkg/storage/s3"
@@ -54,7 +55,7 @@ func skipIt(t *testing.T) {
 	}
 }
 
-func createObjectsStore(rootDir string, cacheDir string, gcDelay time.Duration, imageRetention time.Duration) (
+func createObjectsStore(rootDir string, cacheDir string) (
 	driver.StorageDriver, storageTypes.ImageStore, error,
 ) {
 	bucket := "zot-storage-test"
@@ -93,9 +94,7 @@ func createObjectsStore(rootDir string, cacheDir string, gcDelay time.Duration, 
 		UseRelPaths: false,
 	}, log)
 
-	il := s3.NewImageStore(rootDir, cacheDir, true, true, gcDelay, imageRetention,
-		true, false, log, metrics, nil, store, cacheDriver,
-	)
+	il := s3.NewImageStore(rootDir, cacheDir, true, false, log, metrics, nil, store, cacheDriver)
 
 	return store, il, err
 }
@@ -132,8 +131,7 @@ func TestStorageAPIs(t *testing.T) {
 				tdir := t.TempDir()
 
 				var store driver.StorageDriver
-				store, imgStore, _ = createObjectsStore(testDir, tdir, storageConstants.DefaultGCDelay,
-					storageConstants.DefaultUntaggedImgeRetentionDelay)
+				store, imgStore, _ = createObjectsStore(testDir, tdir)
 				defer cleanupStorage(store, testDir)
 			} else {
 				dir := t.TempDir()
@@ -148,8 +146,7 @@ func TestStorageAPIs(t *testing.T) {
 
 				driver := local.New(true)
 
-				imgStore = imagestore.NewImageStore(dir, dir, true, true, storageConstants.DefaultGCDelay,
-					storageConstants.DefaultUntaggedImgeRetentionDelay, true, true, log, metrics, nil, driver, cacheDriver)
+				imgStore = imagestore.NewImageStore(dir, dir, true, true, log, metrics, nil, driver, cacheDriver)
 			}
 
 			Convey("Repo layout", t, func(c C) {
@@ -765,11 +762,9 @@ func TestMandatoryAnnotations(t *testing.T) {
 				testDir = path.Join("/oci-repo-test", uuid.String())
 				tdir = t.TempDir()
 
-				store, _, _ = createObjectsStore(testDir, tdir, storageConstants.DefaultGCDelay,
-					storageConstants.DefaultUntaggedImgeRetentionDelay)
+				store, _, _ = createObjectsStore(testDir, tdir)
 				driver := s3.New(store)
-				imgStore = imagestore.NewImageStore(testDir, tdir, true, true, storageConstants.DefaultGCDelay,
-					storageConstants.DefaultUntaggedImgeRetentionDelay, false, false, log, metrics,
+				imgStore = imagestore.NewImageStore(testDir, tdir, false, false, log, metrics,
 					&mocks.MockedLint{
 						LintFn: func(repo string, manifestDigest godigest.Digest, imageStore storageTypes.ImageStore) (bool, error) {
 							return false, nil
@@ -785,8 +780,7 @@ func TestMandatoryAnnotations(t *testing.T) {
 					UseRelPaths: true,
 				}, log)
 				driver := local.New(true)
-				imgStore = imagestore.NewImageStore(tdir, tdir, true, true, storageConstants.DefaultGCDelay,
-					storageConstants.DefaultUntaggedImgeRetentionDelay, true,
+				imgStore = imagestore.NewImageStore(tdir, tdir, true,
 					true, log, metrics, &mocks.MockedLint{
 						LintFn: func(repo string, manifestDigest godigest.Digest, imageStore storageTypes.ImageStore) (bool, error) {
 							return false, nil
@@ -839,8 +833,7 @@ func TestMandatoryAnnotations(t *testing.T) {
 				Convey("Error on mandatory annotations", func() {
 					if testcase.storageType == storageConstants.S3StorageDriverName {
 						driver := s3.New(store)
-						imgStore = imagestore.NewImageStore(testDir, tdir, true, true, storageConstants.DefaultGCDelay,
-							storageConstants.DefaultUntaggedImgeRetentionDelay, false, false, log, metrics,
+						imgStore = imagestore.NewImageStore(testDir, tdir, false, false, log, metrics,
 							&mocks.MockedLint{
 								LintFn: func(repo string, manifestDigest godigest.Digest, imageStore storageTypes.ImageStore) (bool, error) {
 									//nolint: goerr113
@@ -854,8 +847,7 @@ func TestMandatoryAnnotations(t *testing.T) {
 							UseRelPaths: true,
 						}, log)
 						driver := local.New(true)
-						imgStore = imagestore.NewImageStore(tdir, tdir, true, true, storageConstants.DefaultGCDelay,
-							storageConstants.DefaultUntaggedImgeRetentionDelay, true,
+						imgStore = imagestore.NewImageStore(tdir, tdir, true,
 							true, log, metrics, &mocks.MockedLint{
 								LintFn: func(repo string, manifestDigest godigest.Digest, imageStore storageTypes.ImageStore) (bool, error) {
 									//nolint: goerr113
@@ -894,8 +886,7 @@ func TestDeleteBlobsInUse(t *testing.T) {
 				testDir = path.Join("/oci-repo-test", uuid.String())
 				tdir = t.TempDir()
 
-				store, imgStore, _ = createObjectsStore(testDir, tdir, storageConstants.DefaultGCDelay,
-					storageConstants.DefaultUntaggedImgeRetentionDelay)
+				store, imgStore, _ = createObjectsStore(testDir, tdir)
 
 				defer cleanupStorage(store, testDir)
 			} else {
@@ -906,8 +897,7 @@ func TestDeleteBlobsInUse(t *testing.T) {
 					UseRelPaths: true,
 				}, log)
 				driver := local.New(true)
-				imgStore = imagestore.NewImageStore(tdir, tdir, true, true, storageConstants.DefaultGCDelay,
-					storageConstants.DefaultUntaggedImgeRetentionDelay, true,
+				imgStore = imagestore.NewImageStore(tdir, tdir, true,
 					true, log, metrics, nil, driver, cacheDriver)
 			}
 
@@ -1191,18 +1181,15 @@ func TestStorageHandler(t *testing.T) {
 				var thirdStorageDriver driver.StorageDriver
 
 				firstRootDir = "/util_test1"
-				firstStorageDriver, firstStore, _ = createObjectsStore(firstRootDir, t.TempDir(),
-					storageConstants.DefaultGCDelay, storageConstants.DefaultUntaggedImgeRetentionDelay)
+				firstStorageDriver, firstStore, _ = createObjectsStore(firstRootDir, t.TempDir())
 				defer cleanupStorage(firstStorageDriver, firstRootDir)
 
 				secondRootDir = "/util_test2"
-				secondStorageDriver, secondStore, _ = createObjectsStore(secondRootDir, t.TempDir(),
-					storageConstants.DefaultGCDelay, storageConstants.DefaultUntaggedImgeRetentionDelay)
+				secondStorageDriver, secondStore, _ = createObjectsStore(secondRootDir, t.TempDir())
 				defer cleanupStorage(secondStorageDriver, secondRootDir)
 
 				thirdRootDir = "/util_test3"
-				thirdStorageDriver, thirdStore, _ = createObjectsStore(thirdRootDir, t.TempDir(),
-					storageConstants.DefaultGCDelay, storageConstants.DefaultUntaggedImgeRetentionDelay)
+				thirdStorageDriver, thirdStore, _ = createObjectsStore(thirdRootDir, t.TempDir())
 				defer cleanupStorage(thirdStorageDriver, thirdRootDir)
 			} else {
 				// Create temporary directory
@@ -1217,14 +1204,11 @@ func TestStorageHandler(t *testing.T) {
 				driver := local.New(true)
 
 				// Create ImageStore
-				firstStore = imagestore.NewImageStore(firstRootDir, firstRootDir, false, false, storageConstants.DefaultGCDelay,
-					storageConstants.DefaultUntaggedImgeRetentionDelay, false, false, log, metrics, nil, driver, nil)
+				firstStore = imagestore.NewImageStore(firstRootDir, firstRootDir, false, false, log, metrics, nil, driver, nil)
 
-				secondStore = imagestore.NewImageStore(secondRootDir, secondRootDir, false, false, storageConstants.DefaultGCDelay,
-					storageConstants.DefaultUntaggedImgeRetentionDelay, false, false, log, metrics, nil, driver, nil)
+				secondStore = imagestore.NewImageStore(secondRootDir, secondRootDir, false, false, log, metrics, nil, driver, nil)
 
-				thirdStore = imagestore.NewImageStore(thirdRootDir, thirdRootDir, false, false, storageConstants.DefaultGCDelay,
-					storageConstants.DefaultUntaggedImgeRetentionDelay, false, false, log, metrics, nil, driver, nil)
+				thirdStore = imagestore.NewImageStore(thirdRootDir, thirdRootDir, false, false, log, metrics, nil, driver, nil)
 			}
 
 			Convey("Test storage handler", t, func() {
@@ -1290,8 +1274,7 @@ func TestGarbageCollectImageManifest(t *testing.T) {
 						tdir := t.TempDir()
 
 						var store driver.StorageDriver
-						store, imgStore, _ = createObjectsStore(testDir, tdir, storageConstants.DefaultGCDelay,
-							storageConstants.DefaultUntaggedImgeRetentionDelay)
+						store, imgStore, _ = createObjectsStore(testDir, tdir)
 						defer cleanupStorage(store, testDir)
 					} else {
 						dir := t.TempDir()
@@ -1304,9 +1287,14 @@ func TestGarbageCollectImageManifest(t *testing.T) {
 
 						driver := local.New(true)
 
-						imgStore = imagestore.NewImageStore(dir, dir, true, true, storageConstants.DefaultGCDelay,
-							storageConstants.DefaultUntaggedImgeRetentionDelay, true, true, log, metrics, nil, driver, cacheDriver)
+						imgStore = imagestore.NewImageStore(dir, dir, true, true, log, metrics, nil, driver, cacheDriver)
 					}
+
+					gc := gc.NewGarbageCollect(imgStore, mocks.MetaDBMock{}, gc.Options{
+						Referrers:      true,
+						Delay:          storageConstants.DefaultGCDelay,
+						RetentionDelay: storageConstants.DefaultUntaggedImgeRetentionDelay,
+					}, log)
 
 					repoName := "gc-long"
 
@@ -1361,7 +1349,7 @@ func TestGarbageCollectImageManifest(t *testing.T) {
 					_, _, err = imgStore.PutImageManifest(repoName, tag, ispec.MediaTypeImageManifest, manifestBuf)
 					So(err, ShouldBeNil)
 
-					err = imgStore.RunGCRepo(repoName)
+					err = gc.CleanRepo(repoName)
 					So(err, ShouldBeNil)
 
 					// put artifact referencing above image
@@ -1405,7 +1393,7 @@ func TestGarbageCollectImageManifest(t *testing.T) {
 						ispec.MediaTypeImageManifest, artifactManifestBuf)
 					So(err, ShouldBeNil)
 
-					err = imgStore.RunGCRepo(repoName)
+					err = gc.CleanRepo(repoName)
 					So(err, ShouldBeNil)
 
 					hasBlob, _, err = imgStore.CheckBlob(repoName, bdigest)
@@ -1419,7 +1407,7 @@ func TestGarbageCollectImageManifest(t *testing.T) {
 					err = imgStore.DeleteImageManifest(repoName, digest.String(), false)
 					So(err, ShouldBeNil)
 
-					err = imgStore.RunGCRepo(repoName)
+					err = gc.CleanRepo(repoName)
 					So(err, ShouldBeNil)
 
 					hasBlob, _, err = imgStore.CheckBlob(repoName, bdigest)
@@ -1448,8 +1436,7 @@ func TestGarbageCollectImageManifest(t *testing.T) {
 						tdir := t.TempDir()
 
 						var store driver.StorageDriver
-						store, imgStore, _ = createObjectsStore(testDir, tdir, gcDelay,
-							storageConstants.DefaultUntaggedImgeRetentionDelay)
+						store, imgStore, _ = createObjectsStore(testDir, tdir)
 						defer cleanupStorage(store, testDir)
 					} else {
 						dir := t.TempDir()
@@ -1462,10 +1449,15 @@ func TestGarbageCollectImageManifest(t *testing.T) {
 
 						driver := local.New(true)
 
-						imgStore = imagestore.NewImageStore(dir, dir, true, true, gcDelay,
-							storageConstants.DefaultUntaggedImgeRetentionDelay, true,
+						imgStore = imagestore.NewImageStore(dir, dir, true,
 							true, log, metrics, nil, driver, cacheDriver)
 					}
+
+					gc := gc.NewGarbageCollect(imgStore, mocks.MetaDBMock{}, gc.Options{
+						Referrers:      true,
+						Delay:          gcDelay,
+						RetentionDelay: storageConstants.DefaultUntaggedImgeRetentionDelay,
+					}, log)
 
 					// upload orphan blob
 					upload, err := imgStore.NewBlobUpload(repoName)
@@ -1622,7 +1614,13 @@ func TestGarbageCollectImageManifest(t *testing.T) {
 						Digest:    digest,
 						Size:      int64(len(manifestBuf)),
 					}
-					orasArtifactManifest.Blobs = []artifactspec.Descriptor{}
+					orasArtifactManifest.Blobs = []artifactspec.Descriptor{
+						{
+							Digest:    artifactBlobDigest,
+							MediaType: "application/vnd.oci.image.layer.v1.tar",
+							Size:      int64(len(artifactBlob)),
+						},
+					}
 
 					orasArtifactManifestBuf, err := json.Marshal(orasArtifactManifest)
 					So(err, ShouldBeNil)
@@ -1637,7 +1635,7 @@ func TestGarbageCollectImageManifest(t *testing.T) {
 					_, _, _, err = imgStore.GetImageManifest(repoName, orasDigest.String())
 					So(err, ShouldBeNil)
 
-					err = imgStore.RunGCRepo(repoName)
+					err = gc.CleanRepo(repoName)
 					So(err, ShouldBeNil)
 
 					hasBlob, _, err = imgStore.CheckBlob(repoName, odigest)
@@ -1663,7 +1661,7 @@ func TestGarbageCollectImageManifest(t *testing.T) {
 						err = imgStore.DeleteImageManifest(repoName, digest.String(), false)
 						So(err, ShouldBeNil)
 
-						err = imgStore.RunGCRepo(repoName)
+						err = gc.CleanRepo(repoName)
 						So(err, ShouldBeNil)
 
 						hasBlob, _, err = imgStore.CheckBlob(repoName, bdigest)
@@ -1700,7 +1698,7 @@ func TestGarbageCollectImageManifest(t *testing.T) {
 						err = imgStore.DeleteImageManifest(repoName, tag, false)
 						So(err, ShouldBeNil)
 
-						err = imgStore.RunGCRepo(repoName)
+						err = gc.CleanRepo(repoName)
 						So(err, ShouldBeNil)
 
 						hasBlob, _, err = imgStore.CheckBlob(repoName, bdigest)
@@ -1749,8 +1747,7 @@ func TestGarbageCollectImageManifest(t *testing.T) {
 						tdir := t.TempDir()
 
 						var store driver.StorageDriver
-						store, imgStore, _ = createObjectsStore(testDir, tdir, gcDelay,
-							storageConstants.DefaultUntaggedImgeRetentionDelay)
+						store, imgStore, _ = createObjectsStore(testDir, tdir)
 						defer cleanupStorage(store, testDir)
 					} else {
 						dir := t.TempDir()
@@ -1763,9 +1760,14 @@ func TestGarbageCollectImageManifest(t *testing.T) {
 
 						driver := local.New(true)
 
-						imgStore = imagestore.NewImageStore(dir, dir, true, true, gcDelay,
-							storageConstants.DefaultUntaggedImgeRetentionDelay, true, true, log, metrics, nil, driver, cacheDriver)
+						imgStore = imagestore.NewImageStore(dir, dir, true, true, log, metrics, nil, driver, cacheDriver)
 					}
+
+					gc := gc.NewGarbageCollect(imgStore, mocks.MetaDBMock{}, gc.Options{
+						Referrers:      true,
+						Delay:          gcDelay,
+						RetentionDelay: storageConstants.DefaultUntaggedImgeRetentionDelay,
+					}, log)
 
 					// first upload an image to the first repo and wait for GC timeout
 
@@ -1943,7 +1945,7 @@ func TestGarbageCollectImageManifest(t *testing.T) {
 					_, _, err = imgStore.PutImageManifest(repo2Name, tag, ispec.MediaTypeImageManifest, manifestBuf)
 					So(err, ShouldBeNil)
 
-					err = imgStore.RunGCRepo(repo2Name)
+					err = gc.CleanRepo(repo2Name)
 					So(err, ShouldBeNil)
 
 					// original blob should exist
@@ -1981,8 +1983,7 @@ func TestGarbageCollectImageIndex(t *testing.T) {
 						tdir := t.TempDir()
 
 						var store driver.StorageDriver
-						store, imgStore, _ = createObjectsStore(testDir, tdir, storageConstants.DefaultGCDelay,
-							storageConstants.DefaultUntaggedImgeRetentionDelay)
+						store, imgStore, _ = createObjectsStore(testDir, tdir)
 						defer cleanupStorage(store, testDir)
 					} else {
 						dir := t.TempDir()
@@ -1995,9 +1996,14 @@ func TestGarbageCollectImageIndex(t *testing.T) {
 
 						driver := local.New(true)
 
-						imgStore = imagestore.NewImageStore(dir, dir, true, true, storageConstants.DefaultGCDelay,
-							storageConstants.DefaultUntaggedImgeRetentionDelay, true, true, log, metrics, nil, driver, cacheDriver)
+						imgStore = imagestore.NewImageStore(dir, dir, true, true, log, metrics, nil, driver, cacheDriver)
 					}
+
+					gc := gc.NewGarbageCollect(imgStore, mocks.MetaDBMock{}, gc.Options{
+						Referrers:      true,
+						Delay:          storageConstants.DefaultGCDelay,
+						RetentionDelay: storageConstants.DefaultUntaggedImgeRetentionDelay,
+					}, log)
 
 					repoName := "gc-long"
 
@@ -2060,7 +2066,7 @@ func TestGarbageCollectImageIndex(t *testing.T) {
 						ispec.MediaTypeImageManifest, artifactManifestBuf)
 					So(err, ShouldBeNil)
 
-					err = imgStore.RunGCRepo(repoName)
+					err = gc.CleanRepo(repoName)
 					So(err, ShouldBeNil)
 
 					hasBlob, _, err := imgStore.CheckBlob(repoName, bdgst)
@@ -2071,7 +2077,7 @@ func TestGarbageCollectImageIndex(t *testing.T) {
 						err = imgStore.DeleteImageManifest(repoName, indexDigest.String(), false)
 						So(err, ShouldBeNil)
 
-						err = imgStore.RunGCRepo(repoName)
+						err = gc.CleanRepo(repoName)
 						So(err, ShouldBeNil)
 
 						hasBlob, _, err = imgStore.CheckBlob(repoName, bdgst)
@@ -2107,7 +2113,7 @@ func TestGarbageCollectImageIndex(t *testing.T) {
 						tdir := t.TempDir()
 
 						var store driver.StorageDriver
-						store, imgStore, _ = createObjectsStore(testDir, tdir, gcDelay, imageRetentionDelay)
+						store, imgStore, _ = createObjectsStore(testDir, tdir)
 						defer cleanupStorage(store, testDir)
 					} else {
 						dir := t.TempDir()
@@ -2120,9 +2126,14 @@ func TestGarbageCollectImageIndex(t *testing.T) {
 
 						driver := local.New(true)
 
-						imgStore = imagestore.NewImageStore(dir, dir, true, true, gcDelay,
-							imageRetentionDelay, true, true, log, metrics, nil, driver, cacheDriver)
+						imgStore = imagestore.NewImageStore(dir, dir, true, true, log, metrics, nil, driver, cacheDriver)
 					}
+
+					gc := gc.NewGarbageCollect(imgStore, mocks.MetaDBMock{}, gc.Options{
+						Referrers:      true,
+						Delay:          gcDelay,
+						RetentionDelay: imageRetentionDelay,
+					}, log)
 
 					// upload orphan blob
 					upload, err := imgStore.NewBlobUpload(repoName)
@@ -2260,7 +2271,7 @@ func TestGarbageCollectImageIndex(t *testing.T) {
 					_, _, _, err = imgStore.GetImageManifest(repoName, orasDigest.String())
 					So(err, ShouldBeNil)
 
-					err = imgStore.RunGCRepo(repoName)
+					err = gc.CleanRepo(repoName)
 					So(err, ShouldBeNil)
 
 					_, _, _, err = imgStore.GetImageManifest(repoName, orasDigest.String())
@@ -2281,7 +2292,7 @@ func TestGarbageCollectImageIndex(t *testing.T) {
 					time.Sleep(2 * time.Second)
 
 					Convey("delete inner referenced manifest", func() {
-						err = imgStore.RunGCRepo(repoName)
+						err = gc.CleanRepo(repoName)
 						So(err, ShouldBeNil)
 
 						// check orphan artifact is gc'ed
@@ -2300,7 +2311,7 @@ func TestGarbageCollectImageIndex(t *testing.T) {
 						err = imgStore.DeleteImageManifest(repoName, artifactDigest.String(), false)
 						So(err, ShouldBeNil)
 
-						err = imgStore.RunGCRepo(repoName)
+						err = gc.CleanRepo(repoName)
 						So(err, ShouldBeNil)
 
 						_, _, _, err = imgStore.GetImageManifest(repoName, artifactOfArtifactManifestDigest.String())
@@ -2314,7 +2325,7 @@ func TestGarbageCollectImageIndex(t *testing.T) {
 					})
 
 					Convey("delete index manifest, references should not be persisted", func() {
-						err = imgStore.RunGCRepo(repoName)
+						err = gc.CleanRepo(repoName)
 						So(err, ShouldBeNil)
 
 						// check orphan artifact is gc'ed
@@ -2333,7 +2344,7 @@ func TestGarbageCollectImageIndex(t *testing.T) {
 						err = imgStore.DeleteImageManifest(repoName, indexDigest.String(), false)
 						So(err, ShouldBeNil)
 
-						err = imgStore.RunGCRepo(repoName)
+						err = gc.CleanRepo(repoName)
 						So(err, ShouldBeNil)
 
 						_, _, _, err = imgStore.GetImageManifest(repoName, artifactDigest.String())
@@ -2345,10 +2356,8 @@ func TestGarbageCollectImageIndex(t *testing.T) {
 						_, _, _, err = imgStore.GetImageManifest(repoName, artifactOfArtifactManifestDigest.String())
 						So(err, ShouldNotBeNil)
 
-						// isn't yet gced because manifests part of index are removed after gcReferrers,
-						// so the artifacts pointing to manifest which are part of index are not removed after a first gcRepo
 						_, _, _, err = imgStore.GetImageManifest(repoName, artifactManifestIndexDigest.String())
-						So(err, ShouldBeNil)
+						So(err, ShouldNotBeNil)
 
 						// orphan blob
 						hasBlob, _, err = imgStore.CheckBlob(repoName, odigest)
@@ -2371,10 +2380,6 @@ func TestGarbageCollectImageIndex(t *testing.T) {
 						// check referrer is gc'ed
 						_, _, _, err := imgStore.GetImageManifest(repoName, artifactDigest.String())
 						So(err, ShouldNotBeNil)
-
-						// this will remove refferers of manifests part of image index
-						err = imgStore.RunGCRepo(repoName)
-						So(err, ShouldBeNil)
 
 						_, _, _, err = imgStore.GetImageManifest(repoName, artifactManifestIndexDigest.String())
 						So(err, ShouldNotBeNil)
@@ -2418,7 +2423,7 @@ func TestGarbageCollectChainedImageIndexes(t *testing.T) {
 					tdir := t.TempDir()
 
 					var store driver.StorageDriver
-					store, imgStore, _ = createObjectsStore(testDir, tdir, gcDelay, imageRetentionDelay)
+					store, imgStore, _ = createObjectsStore(testDir, tdir)
 					defer cleanupStorage(store, testDir)
 				} else {
 					dir := t.TempDir()
@@ -2431,9 +2436,14 @@ func TestGarbageCollectChainedImageIndexes(t *testing.T) {
 
 					driver := local.New(true)
 
-					imgStore = imagestore.NewImageStore(dir, dir, true, true, gcDelay,
-						imageRetentionDelay, true, true, log, metrics, nil, driver, cacheDriver)
+					imgStore = imagestore.NewImageStore(dir, dir, true, true, log, metrics, nil, driver, cacheDriver)
 				}
+
+				gc := gc.NewGarbageCollect(imgStore, mocks.MetaDBMock{}, gc.Options{
+					Referrers:      true,
+					Delay:          gcDelay,
+					RetentionDelay: imageRetentionDelay,
+				}, log)
 
 				// upload orphan blob
 				upload, err := imgStore.NewBlobUpload(repoName)
@@ -2754,7 +2764,7 @@ func TestGarbageCollectChainedImageIndexes(t *testing.T) {
 				_, _, _, err = imgStore.GetImageManifest(repoName, orasDigest.String())
 				So(err, ShouldBeNil)
 
-				err = imgStore.RunGCRepo(repoName)
+				err = gc.CleanRepo(repoName)
 				So(err, ShouldBeNil)
 
 				_, _, _, err = imgStore.GetImageManifest(repoName, orasDigest.String())
@@ -2775,7 +2785,7 @@ func TestGarbageCollectChainedImageIndexes(t *testing.T) {
 				time.Sleep(5 * time.Second)
 
 				Convey("delete inner referenced manifest", func() {
-					err = imgStore.RunGCRepo(repoName)
+					err = gc.CleanRepo(repoName)
 					So(err, ShouldBeNil)
 
 					// check orphan artifact is gc'ed
@@ -2794,7 +2804,7 @@ func TestGarbageCollectChainedImageIndexes(t *testing.T) {
 					err = imgStore.DeleteImageManifest(repoName, artifactDigest.String(), false)
 					So(err, ShouldBeNil)
 
-					err = imgStore.RunGCRepo(repoName)
+					err = gc.CleanRepo(repoName)
 					So(err, ShouldBeNil)
 
 					_, _, _, err = imgStore.GetImageManifest(repoName, artifactOfArtifactManifestDigest.String())
@@ -2808,7 +2818,7 @@ func TestGarbageCollectChainedImageIndexes(t *testing.T) {
 				})
 
 				Convey("delete index manifest, references should not be persisted", func() {
-					err = imgStore.RunGCRepo(repoName)
+					err = gc.CleanRepo(repoName)
 					So(err, ShouldBeNil)
 
 					// check orphan artifact is gc'ed
@@ -2827,9 +2837,7 @@ func TestGarbageCollectChainedImageIndexes(t *testing.T) {
 					err = imgStore.DeleteImageManifest(repoName, indexDigest.String(), false)
 					So(err, ShouldBeNil)
 
-					// this will remove artifacts pointing to root index which was remove
-					// it will also remove inner index because now although its referenced in index.json it has no tag
-					err = imgStore.RunGCRepo(repoName)
+					err = gc.CleanRepo(repoName)
 					So(err, ShouldBeNil)
 
 					_, _, _, err = imgStore.GetImageManifest(repoName, artifactDigest.String())
@@ -2840,11 +2848,6 @@ func TestGarbageCollectChainedImageIndexes(t *testing.T) {
 
 					_, _, _, err = imgStore.GetImageManifest(repoName, artifactOfArtifactManifestDigest.String())
 					So(err, ShouldNotBeNil)
-
-					// isn't yet gced because manifests part of index are removed after gcReferrers,
-					// so the artifacts pointing to manifest which are part of index are not removed after a single gcRepo
-					_, _, _, err = imgStore.GetImageManifest(repoName, artifactManifestIndexDigest.String())
-					So(err, ShouldBeNil)
 
 					// orphan blob
 					hasBlob, _, err = imgStore.CheckBlob(repoName, odigest)
@@ -2859,19 +2862,9 @@ func TestGarbageCollectChainedImageIndexes(t *testing.T) {
 					_, _, _, err := imgStore.GetImageManifest(repoName, artifactDigest.String())
 					So(err, ShouldNotBeNil)
 
-					// this will remove manifests referenced in inner index because even if they are referenced in index.json
-					// they do not have tags
-					// it will also remove referrers pointing to inner manifest
-					err = imgStore.RunGCRepo(repoName)
-					So(err, ShouldBeNil)
-
 					// check inner index artifact is gc'ed
 					_, _, _, err = imgStore.GetImageManifest(repoName, artifactManifestInnerIndexDigest.String())
 					So(err, ShouldNotBeNil)
-
-					// this will remove referrers pointing to manifests referenced in inner index
-					err = imgStore.RunGCRepo(repoName)
-					So(err, ShouldBeNil)
 
 					// check last manifest from index image
 					hasBlob, _, err = imgStore.CheckBlob(repoName, digest)

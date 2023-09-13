@@ -44,12 +44,12 @@ type ImageStore interface { //nolint:interfacebloat
 	GetBlobPartial(repo string, digest godigest.Digest, mediaType string, from, to int64,
 	) (io.ReadCloser, int64, int64, error)
 	DeleteBlob(repo string, digest godigest.Digest) error
+	CleanupRepo(repo string, blobs []godigest.Digest, removeRepo bool) (int, error)
 	GetIndexContent(repo string) ([]byte, error)
+	PutIndexContent(repo string, index ispec.Index) error
 	GetBlobContent(repo string, digest godigest.Digest) ([]byte, error)
 	GetReferrers(repo string, digest godigest.Digest, artifactTypes []string) (ispec.Index, error)
 	GetOrasReferrers(repo string, digest godigest.Digest, artifactType string) ([]artifactspec.Descriptor, error)
-	RunGCRepo(repo string) error
-	RunGCPeriodically(interval time.Duration, sch *scheduler.Scheduler)
 	RunDedupeBlobs(interval time.Duration, sch *scheduler.Scheduler)
 	RunDedupeForDigest(digest godigest.Digest, dedupe bool, duplicateBlobs []string) error
 	GetNextDigestWithBlobPaths(lastDigests []godigest.Digest) (godigest.Digest, []string, error)

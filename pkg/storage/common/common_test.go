@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
-	"path"
 	"testing"
 
 	godigest "github.com/opencontainers/go-digest"
@@ -20,7 +19,6 @@ import (
 	"zotregistry.io/zot/pkg/storage"
 	"zotregistry.io/zot/pkg/storage/cache"
 	common "zotregistry.io/zot/pkg/storage/common"
-	storageConstants "zotregistry.io/zot/pkg/storage/constants"
 	"zotregistry.io/zot/pkg/storage/local"
 	"zotregistry.io/zot/pkg/test"
 	. "zotregistry.io/zot/pkg/test/image-utils"
@@ -38,8 +36,7 @@ func TestValidateManifest(t *testing.T) {
 			Name:        "cache",
 			UseRelPaths: true,
 		}, log)
-		imgStore := local.NewImageStore(dir, true, true, storageConstants.DefaultGCDelay,
-			storageConstants.DefaultUntaggedImgeRetentionDelay, true, true, log, metrics, nil, cacheDriver)
+		imgStore := local.NewImageStore(dir, true, true, log, metrics, nil, cacheDriver)
 
 		content := []byte("this is a blob")
 		digest := godigest.FromBytes(content)
@@ -157,8 +154,7 @@ func TestGetReferrersErrors(t *testing.T) {
 			UseRelPaths: true,
 		}, log)
 
-		imgStore := local.NewImageStore(dir, true, true, storageConstants.DefaultGCDelay,
-			storageConstants.DefaultUntaggedImgeRetentionDelay, false, true, log, metrics, nil, cacheDriver)
+		imgStore := local.NewImageStore(dir, false, true, log, metrics, nil, cacheDriver)
 
 		artifactType := "application/vnd.example.icecream.v1"
 		validDigest := godigest.FromBytes([]byte("blob"))
@@ -431,195 +427,5 @@ func TestIsSignature(t *testing.T) {
 			MediaType: "unknown media type",
 		})
 		So(isSingature, ShouldBeFalse)
-	})
-}
-
-func TestGarbageCollectManifestErrors(t *testing.T) {
-	Convey("Make imagestore and upload manifest", t, func(c C) {
-		dir := t.TempDir()
-
-		repoName := "test"
-
-		log := log.Logger{Logger: zerolog.New(os.Stdout)}
-		metrics := monitoring.NewMetricsServer(false, log)
-		cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
-			RootDir:     dir,
-			Name:        "cache",
-			UseRelPaths: true,
-		}, log)
-		imgStore := local.NewImageStore(dir, true, true, storageConstants.DefaultGCDelay,
-			storageConstants.DefaultUntaggedImgeRetentionDelay, true, true, log, metrics, nil, cacheDriver)
-
-		Convey("trigger repo not found in GetReferencedBlobs()", func() {
-			err := common.AddRepoBlobsToReferences(imgStore, repoName, map[string]bool{}, log)
-			So(err, ShouldNotBeNil)
-		})
-
-		content := []byte("this is a blob")
-		digest := godigest.FromBytes(content)
-		So(digest, ShouldNotBeNil)
-
-		_, blen, err := imgStore.FullBlobUpload(repoName, bytes.NewReader(content), digest)
-		So(err, ShouldBeNil)
-		So(blen, ShouldEqual, len(content))
-
-		cblob, cdigest := test.GetRandomImageConfig()
-		_, clen, err := imgStore.FullBlobUpload(repoName, bytes.NewReader(cblob), cdigest)
-		So(err, ShouldBeNil)
-		So(clen, ShouldEqual, len(cblob))
-
-		manifest := ispec.Manifest{
-			Config: ispec.Descriptor{
-				MediaType: ispec.MediaTypeImageConfig,
-				Digest:    cdigest,
-				Size:      int64(len(cblob)),
-			},
-			Layers: []ispec.Descriptor{
-				{
-					MediaType: ispec.MediaTypeImageLayer,
-					Digest:    digest,
-					Size:      int64(len(content)),
-				},
-			},
-		}
-
-		manifest.SchemaVersion = 2
-
-		body, err := json.Marshal(manifest)
-		So(err, ShouldBeNil)
-
-		manifestDigest := godigest.FromBytes(body)
-
-		_, _, err = imgStore.PutImageManifest(repoName, "1.0", ispec.MediaTypeImageManifest, body)
-		So(err, ShouldBeNil)
-
-		Convey("trigger GetIndex error in GetReferencedBlobs", func() {
-			err := os.Chmod(path.Join(imgStore.RootDir(), repoName), 0o000)
-			So(err, ShouldBeNil)
-
-			defer func() {
-				err := os.Chmod(path.Join(imgStore.RootDir(), repoName), 0o755)
-				So(err, ShouldBeNil)
-			}()
-
-			err = common.AddRepoBlobsToReferences(imgStore, repoName, map[string]bool{}, log)
-			So(err, ShouldNotBeNil)
-		})
-
-		Convey("trigger GetImageManifest error in GetReferencedBlobsInImageManifest", func() {
-			err := os.Chmod(path.Join(imgStore.RootDir(), repoName, "blobs", "sha256", manifestDigest.Encoded()), 0o000)
-			So(err, ShouldBeNil)
-
-			defer func() {
-				err := os.Chmod(path.Join(imgStore.RootDir(), repoName, "blobs", "sha256", manifestDigest.Encoded()), 0o755)
-				So(err, ShouldBeNil)
-			}()
-
-			err = common.AddRepoBlobsToReferences(imgStore, repoName, map[string]bool{}, log)
-			So(err, ShouldNotBeNil)
-		})
-	})
-}
-
-func TestGarbageCollectIndexErrors(t *testing.T) {
-	Convey("Make imagestore and upload manifest", t, func(c C) {
-		dir := t.TempDir()
-
-		repoName := "test"
-
-		log := log.Logger{Logger: zerolog.New(os.Stdout)}
-		metrics := monitoring.NewMetricsServer(false, log)
-		cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
-			RootDir:     dir,
-			Name:        "cache",
-			UseRelPaths: true,
-		}, log)
-		imgStore := local.NewImageStore(dir, true, true, storageConstants.DefaultGCDelay,
-			storageConstants.DefaultUntaggedImgeRetentionDelay, true, true, log, metrics, nil, cacheDriver)
-
-		content := []byte("this is a blob")
-		bdgst := godigest.FromBytes(content)
-		So(bdgst, ShouldNotBeNil)
-
-		_, bsize, err := imgStore.FullBlobUpload(repoName, bytes.NewReader(content), bdgst)
-		So(err, ShouldBeNil)
-		So(bsize, ShouldEqual, len(content))
-
-		var index ispec.Index
-		index.SchemaVersion = 2
-		index.MediaType = ispec.MediaTypeImageIndex
-
-		var digest godigest.Digest
-		for i := 0; i < 4; i++ {
-			// upload image config blob
-			upload, err := imgStore.NewBlobUpload(repoName)
-			So(err, ShouldBeNil)
-			So(upload, ShouldNotBeEmpty)
-
-			cblob, cdigest := test.GetRandomImageConfig()
-			buf := bytes.NewBuffer(cblob)
-			buflen := buf.Len()
-			blob, err := imgStore.PutBlobChunkStreamed(repoName, upload, buf)
-			So(err, ShouldBeNil)
-			So(blob, ShouldEqual, buflen)
-
-			err = imgStore.FinishBlobUpload(repoName, upload, buf, cdigest)
-			So(err, ShouldBeNil)
-			So(blob, ShouldEqual, buflen)
-
-			// create a manifest
-			manifest := ispec.Manifest{
-				Config: ispec.Descriptor{
-					MediaType: ispec.MediaTypeImageConfig,
-					Digest:    cdigest,
-					Size:      int64(len(cblob)),
-				},
-				Layers: []ispec.Descriptor{
-					{
-						MediaType: ispec.MediaTypeImageLayer,
-						Digest:    bdgst,
-						Size:      bsize,
-					},
-				},
-			}
-			manifest.SchemaVersion = 2
-			content, err = json.Marshal(manifest)
-			So(err, ShouldBeNil)
-			digest = godigest.FromBytes(content)
-			So(digest, ShouldNotBeNil)
-			_, _, err = imgStore.PutImageManifest(repoName, digest.String(), ispec.MediaTypeImageManifest, content)
-			So(err, ShouldBeNil)
-
-			index.Manifests = append(index.Manifests, ispec.Descriptor{
-				Digest:    digest,
-				MediaType: ispec.MediaTypeImageManifest,
-				Size:      int64(len(content)),
-			})
-		}
-
-		// upload index image
-		indexContent, err := json.Marshal(index)
-		So(err, ShouldBeNil)
-		indexDigest := godigest.FromBytes(indexContent)
-		So(indexDigest, ShouldNotBeNil)
-
-		_, _, err = imgStore.PutImageManifest(repoName, "1.0", ispec.MediaTypeImageIndex, indexContent)
-		So(err, ShouldBeNil)
-
-		err = common.AddRepoBlobsToReferences(imgStore, repoName, map[string]bool{}, log)
-		So(err, ShouldBeNil)
-
-		Convey("trigger GetImageIndex error in GetReferencedBlobsInImageIndex", func() {
-			err := os.Chmod(path.Join(imgStore.RootDir(), repoName, "blobs", "sha256", indexDigest.Encoded()), 0o000)
-			So(err, ShouldBeNil)
-
-			defer func() {
-				err := os.Chmod(path.Join(imgStore.RootDir(), repoName, "blobs", "sha256", indexDigest.Encoded()), 0o755)
-				So(err, ShouldBeNil)
-			}()
-
-			err = common.AddRepoBlobsToReferences(imgStore, repoName, map[string]bool{}, log)
-			So(err, ShouldNotBeNil)
-		})
 	})
 }

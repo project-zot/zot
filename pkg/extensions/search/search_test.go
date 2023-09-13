@@ -40,7 +40,6 @@ import (
 	"zotregistry.io/zot/pkg/log"
 	mTypes "zotregistry.io/zot/pkg/meta/types"
 	"zotregistry.io/zot/pkg/storage"
-	storageConstants "zotregistry.io/zot/pkg/storage/constants"
 	"zotregistry.io/zot/pkg/storage/local"
 	storageTypes "zotregistry.io/zot/pkg/storage/types"
 	. "zotregistry.io/zot/pkg/test"
@@ -1175,7 +1174,7 @@ func TestExpandedRepoInfo(t *testing.T) {
 
 		ctlr := api.NewController(conf)
 
-		imageStore := local.NewImageStore(tempDir, false, false, 0, 0, false, false,
+		imageStore := local.NewImageStore(tempDir, false, false,
 			log.NewLogger("debug", ""), monitoring.NewMetricsServer(false, log.NewLogger("debug", "")), nil, nil)
 
 		storeController := storage.StoreController{
@@ -1303,8 +1302,7 @@ func TestExpandedRepoInfo(t *testing.T) {
 
 		log := log.NewLogger("debug", "")
 		metrics := monitoring.NewMetricsServer(false, log)
-		testStorage := local.NewImageStore(rootDir, false, false, storageConstants.DefaultGCDelay,
-			storageConstants.DefaultUntaggedImgeRetentionDelay, false, false, log, metrics, nil, nil)
+		testStorage := local.NewImageStore(rootDir, false, false, log, metrics, nil, nil)
 
 		resp, err := resty.R().Get(baseURL + "/v2/")
 		So(resp, ShouldNotBeNil)
@@ -1649,7 +1647,7 @@ func TestExpandedRepoInfo(t *testing.T) {
 		conf.Extensions.Search.CVE = nil
 		ctlr := api.NewController(conf)
 
-		imageStore := local.NewImageStore(conf.Storage.RootDirectory, false, false, 0, 0, false, false,
+		imageStore := local.NewImageStore(conf.Storage.RootDirectory, false, false,
 			log.NewLogger("debug", ""), monitoring.NewMetricsServer(false, log.NewLogger("debug", "")), nil, nil)
 
 		storeController := storage.StoreController{
@@ -5394,8 +5392,7 @@ func TestMetaDBWhenDeletingImages(t *testing.T) {
 			// get signatur digest
 			log := log.NewLogger("debug", "")
 			metrics := monitoring.NewMetricsServer(false, log)
-			storage := local.NewImageStore(dir, false, false, storageConstants.DefaultGCDelay,
-				storageConstants.DefaultUntaggedImgeRetentionDelay, false, false, log, metrics, nil, nil)
+			storage := local.NewImageStore(dir, false, false, log, metrics, nil, nil)
 
 			indexBlob, err := storage.GetIndexContent(repo)
 			So(err, ShouldBeNil)
@@ -5471,8 +5468,7 @@ func TestMetaDBWhenDeletingImages(t *testing.T) {
 			// get signatur digest
 			log := log.NewLogger("debug", "")
 			metrics := monitoring.NewMetricsServer(false, log)
-			storage := local.NewImageStore(dir, false, false, storageConstants.DefaultGCDelay,
-				storageConstants.DefaultUntaggedImgeRetentionDelay, false, false, log, metrics, nil, nil)
+			storage := local.NewImageStore(dir, false, false, log, metrics, nil, nil)
 
 			indexBlob, err := storage.GetIndexContent(repo)
 			So(err, ShouldBeNil)
@@ -5686,7 +5682,7 @@ func TestMetaDBWhenDeletingImages(t *testing.T) {
 				}
 
 				ctlr.MetaDB = mocks.MetaDBMock{
-					DeleteRepoTagFn: func(repo, tag string) error { return ErrTestError },
+					RemoveRepoReferenceFn: func(repo, reference string, manifestDigest godigest.Digest) error { return ErrTestError },
 				}
 
 				resp, err = resty.R().Delete(baseURL + "/v2/" + "repo1" + "/manifests/" +

@@ -1574,7 +1574,7 @@ func CustomRedirectPolicy(noOfRedirect int) resty.RedirectPolicy {
 }
 
 func GetDefaultImageStore(rootDir string, log zLog.Logger) stypes.ImageStore {
-	return local.NewImageStore(rootDir, false, false, time.Hour, time.Hour, false, false, log,
+	return local.NewImageStore(rootDir, false, false, log,
 		monitoring.NewMetricsServer(false, log),
 		mocks.MockedLint{
 			LintFn: func(repo string, manifestDigest godigest.Digest, imageStore stypes.ImageStore) (bool, error) {

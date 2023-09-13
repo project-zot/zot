@@ -52,6 +52,8 @@ type MockedImageStore struct {
 	RunDedupeForDigestFn         func(digest godigest.Digest, dedupe bool, duplicateBlobs []string) error
 	GetNextDigestWithBlobPathsFn func(lastDigests []godigest.Digest) (godigest.Digest, []string, error)
 	GetAllBlobsFn                func(repo string) ([]string, error)
+	CleanupRepoFn                func(repo string, blobs []godigest.Digest, removeRepo bool) (int, error)
+	PutIndexContentFn            func(repo string, index ispec.Index) error
 }
 
 func (is MockedImageStore) Lock(t *time.Time) {
@@ -377,4 +379,20 @@ func (is MockedImageStore) GetNextDigestWithBlobPaths(lastDigests []godigest.Dig
 	}
 
 	return "", []string{}, nil
+}
+
+func (is MockedImageStore) CleanupRepo(repo string, blobs []godigest.Digest, removeRepo bool) (int, error) {
+	if is.CleanupRepoFn != nil {
+		return is.CleanupRepoFn(repo, blobs, removeRepo)
+	}
+
+	return 0, nil
+}
+
+func (is MockedImageStore) PutIndexContent(repo string, index ispec.Index) error {
+	if is.PutIndexContentFn != nil {
+		return is.PutIndexContentFn(repo, index)
+	}
+
+	return nil
 }

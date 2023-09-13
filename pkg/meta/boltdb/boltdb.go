@@ -404,6 +404,73 @@ func (bdw BoltDB) GetReferrersInfo(repo string, referredDigest godigest.Digest, 
 	return referrersInfoResult, err
 }
 
+/*
+	RemoveRepoReference removes the tag from RepoMetadata if the reference is a tag,
+
+it also removes its corresponding digest from Statistics, Signatures and Referrers if there are no tags
+pointing to it.
+If the reference is a digest then it will remove the digest from Statistics, Signatures and Referrers only
+if there are no tags pointing to the digest, otherwise it's noop.
+*/
+func (bdw *BoltDB) RemoveRepoReference(repo, reference string, manifestDigest godigest.Digest) error {
+	err := bdw.DB.Update(func(tx *bbolt.Tx) error {
+		buck := tx.Bucket([]byte(RepoMetadataBucket))
+
+		repoMetaBlob := buck.Get([]byte(repo))
+
+		repoMeta := mTypes.RepoMetadata{
+			Name:       repo,
+			Tags:       map[string]mTypes.Descriptor{},
+			Statistics: map[string]mTypes.DescriptorStatistics{},
+			Signatures: map[string]mTypes.ManifestSignatures{},
+			Referrers:  map[string][]mTypes.ReferrerInfo{},
+		}
+
+		// object not found
+		if len(repoMetaBlob) > 0 {
+			err := json.Unmarshal(repoMetaBlob, &repoMeta)
+			if err != nil {
+				return err
+			}
+		}
+
+		if !common.ReferenceIsDigest(reference) {
+			delete(repoMeta.Tags, reference)
+		} else {
+			// remove all tags pointing to this digest
+			for tag, desc := range repoMeta.Tags {
+				if desc.Digest == reference {
+					delete(repoMeta.Tags, tag)
+				}
+			}
+		}
+
+		/* try to find at least one tag pointing to manifestDigest
+		if not found then we can also remove everything related to this digest */
+		var foundTag bool
+		for _, desc := range repoMeta.Tags {
+			if desc.Digest == manifestDigest.String() {
+				foundTag = true
+			}
+		}
+
+		if !foundTag {
+			delete(repoMeta.Statistics, manifestDigest.String())
+			delete(repoMeta.Signatures, manifestDigest.String())
+			delete(repoMeta.Referrers, manifestDigest.String())
+		}
+
+		repoMetaBlob, err := json.Marshal(repoMeta)
+		if err != nil {
+			return err
+		}
+
+		return buck.Put([]byte(repo), repoMetaBlob)
+	})
+
+	return err
+}
+
 func (bdw *BoltDB) SetRepoReference(repo string, reference string, manifestDigest godigest.Digest,
 	mediaType string,
 ) error {

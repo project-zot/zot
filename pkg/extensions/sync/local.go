@@ -24,7 +24,6 @@ import (
 	mTypes "zotregistry.io/zot/pkg/meta/types"
 	"zotregistry.io/zot/pkg/storage"
 	storageCommon "zotregistry.io/zot/pkg/storage/common"
-	storageConstants "zotregistry.io/zot/pkg/storage/constants"
 	"zotregistry.io/zot/pkg/storage/local"
 	storageTypes "zotregistry.io/zot/pkg/storage/types"
 )
@@ -281,9 +280,7 @@ func getImageStoreFromImageReference(imageReference types.ImageReference, repo, 
 
 	metrics := monitoring.NewMetricsServer(false, log.Logger{})
 
-	tempImageStore := local.NewImageStore(tempRootDir, false, false,
-		storageConstants.DefaultGCDelay, storageConstants.DefaultUntaggedImgeRetentionDelay,
-		false, false, log.Logger{}, metrics, nil, nil)
+	tempImageStore := local.NewImageStore(tempRootDir, false, false, log.Logger{}, metrics, nil, nil)
 
 	return tempImageStore
 }
