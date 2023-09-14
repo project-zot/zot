@@ -134,9 +134,10 @@ func GetAnnotations(annotations, labels map[string]string) ImageAnnotations {
 	}
 }
 
-func GetIndexAnnotations(indexAnnotations, manifestAnnotations, manifestLabels map[string]string) ImageAnnotations {
-	annotationsFromManifest := GetAnnotations(manifestAnnotations, manifestLabels)
-
+func GetIndexAnnotations(
+	indexAnnotations map[string]string,
+	annotationsFromManifest *ImageAnnotations,
+) ImageAnnotations {
 	description := GetDescription(indexAnnotations)
 	if description == "" {
 		description = annotationsFromManifest.Description

@@ -1,3 +1,5 @@
+//go:build search
+
 package cveinfo
 
 import (

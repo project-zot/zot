@@ -222,14 +222,6 @@ func uploadNewRepoTag(tag string, repoName string, baseURL string, layers [][]by
 
 func getMockCveInfo(metaDB mTypes.MetaDB, log log.Logger) cveinfo.CveInfo {
 	// MetaDB loaded with initial data, mock the scanner
-	severities := map[string]int{
-		"UNKNOWN":  0,
-		"LOW":      1,
-		"MEDIUM":   2,
-		"HIGH":     3,
-		"CRITICAL": 4,
-	}
-
 	// Setup test CVE data in mock scanner
 	scanner := mocks.CveScannerMock{
 		ScanImageFn: func(image string) (map[string]cvemodel.CVE, error) {
@@ -309,9 +301,6 @@ func getMockCveInfo(metaDB mTypes.MetaDB, log log.Logger) cveinfo.CveInfo {
 
 			// By default the image has no vulnerabilities
 			return map[string]cvemodel.CVE{}, nil
-		},
-		CompareSeveritiesFn: func(severity1, severity2 string) int {
-			return severities[severity2] - severities[severity1]
 		},
 		IsImageFormatScannableFn: func(repo string, reference string) (bool, error) {
 			// Almost same logic compared to actual Trivy specific implementation

@@ -20,6 +20,8 @@ import (
 // ParseStorage will sync all repos found in the rootdirectory of the oci layout that zot was deployed on with the
 // ParseStorage database.
 func ParseStorage(metaDB mTypes.MetaDB, storeController storage.StoreController, log log.Logger) error {
+	log.Info().Msg("Started parsing storage and updating MetaDB")
+
 	allRepos, err := getAllRepos(storeController)
 	if err != nil {
 		rootDir := storeController.DefaultStore.RootDir()
@@ -37,6 +39,8 @@ func ParseStorage(metaDB mTypes.MetaDB, storeController storage.StoreController,
 			return err
 		}
 	}
+
+	log.Info().Msg("Done parsing storage and updating MetaDB")
 
 	return nil
 }

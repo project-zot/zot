@@ -146,30 +146,27 @@ func TestCVEPagination(t *testing.T) {
 				// By default the image has no vulnerabilities
 				return cveMap, nil
 			},
-			CompareSeveritiesFn: func(severity1, severity2 string) int {
-				return severityToInt[severity2] - severityToInt[severity1]
-			},
 		}
 
 		log := log.NewLogger("debug", "")
 		cveInfo := cveinfo.BaseCveInfo{Log: log, Scanner: scanner, MetaDB: metaDB}
 
 		Convey("create new paginator errors", func() {
-			paginator, err := cveinfo.NewCvePageFinder(-1, 10, cveinfo.AlphabeticAsc, cveInfo)
+			paginator, err := cveinfo.NewCvePageFinder(-1, 10, cveinfo.AlphabeticAsc)
 			So(paginator, ShouldBeNil)
 			So(err, ShouldNotBeNil)
 
-			paginator, err = cveinfo.NewCvePageFinder(2, -1, cveinfo.AlphabeticAsc, cveInfo)
+			paginator, err = cveinfo.NewCvePageFinder(2, -1, cveinfo.AlphabeticAsc)
 			So(paginator, ShouldBeNil)
 			So(err, ShouldNotBeNil)
 
-			paginator, err = cveinfo.NewCvePageFinder(2, 1, "wrong sorting criteria", cveInfo)
+			paginator, err = cveinfo.NewCvePageFinder(2, 1, "wrong sorting criteria")
 			So(paginator, ShouldBeNil)
 			So(err, ShouldNotBeNil)
 		})
 
 		Convey("Reset", func() {
-			paginator, err := cveinfo.NewCvePageFinder(1, 0, cveinfo.AlphabeticAsc, cveInfo)
+			paginator, err := cveinfo.NewCvePageFinder(1, 0, cveinfo.AlphabeticAsc)
 			So(err, ShouldBeNil)
 			So(paginator, ShouldNotBeNil)
 

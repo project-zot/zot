@@ -1,3 +1,5 @@
+//go:build search
+
 package convert_test
 
 import (
@@ -17,7 +19,6 @@ import (
 	"zotregistry.io/zot/pkg/extensions/search/gql_generated"
 	"zotregistry.io/zot/pkg/extensions/search/pagination"
 	"zotregistry.io/zot/pkg/log"
-	"zotregistry.io/zot/pkg/meta/boltdb"
 	mTypes "zotregistry.io/zot/pkg/meta/types"
 	"zotregistry.io/zot/pkg/test"
 	. "zotregistry.io/zot/pkg/test/image-utils"
@@ -27,64 +28,6 @@ import (
 var ErrTestError = errors.New("TestError")
 
 func TestConvertErrors(t *testing.T) {
-	Convey("Convert Errors", t, func() {
-		params := boltdb.DBParameters{
-			RootDir: t.TempDir(),
-		}
-		boltDB, err := boltdb.GetBoltDriver(params)
-		So(err, ShouldBeNil)
-
-		metaDB, err := boltdb.New(boltDB, log.NewLogger("debug", ""))
-		So(err, ShouldBeNil)
-
-		configBlob, err := json.Marshal(ispec.Image{})
-		So(err, ShouldBeNil)
-
-		manifestBlob, err := json.Marshal(ispec.Manifest{
-			Layers: []ispec.Descriptor{
-				{
-					MediaType: ispec.MediaTypeImageLayerGzip,
-					Size:      0,
-					Digest:    godigest.NewDigestFromEncoded(godigest.SHA256, "digest"),
-				},
-			},
-		})
-		So(err, ShouldBeNil)
-
-		repoMeta11 := mTypes.ManifestMetadata{
-			ManifestBlob: manifestBlob,
-			ConfigBlob:   configBlob,
-		}
-
-		digest11 := godigest.FromString("abc1")
-		err = metaDB.SetManifestMeta("repo1", digest11, repoMeta11)
-		So(err, ShouldBeNil)
-		err = metaDB.SetRepoReference("repo1", "0.1.0", digest11, ispec.MediaTypeImageManifest)
-		So(err, ShouldBeNil)
-
-		reposMeta, manifestMetaMap, _, err := metaDB.SearchRepos(context.Background(), "")
-		So(err, ShouldBeNil)
-
-		ctx := graphql.WithResponseContext(context.Background(),
-			graphql.DefaultErrorPresenter, graphql.DefaultRecover)
-
-		_ = convert.RepoMeta2RepoSummary(
-			ctx,
-			reposMeta[0],
-			manifestMetaMap,
-			map[string]mTypes.IndexData{},
-			convert.SkipQGLField{},
-			mocks.CveInfoMock{
-				GetCVESummaryForImageMediaFn: func(repo string, digest, mediaType string,
-				) (cvemodel.ImageCVESummary, error) {
-					return cvemodel.ImageCVESummary{}, ErrTestError
-				},
-			},
-		)
-
-		So(graphql.GetErrors(ctx).Error(), ShouldContainSubstring, "unable to run vulnerability scan on tag")
-	})
-
 	Convey("ImageIndex2ImageSummary errors", t, func() {
 		ctx := graphql.WithResponseContext(context.Background(),
 			graphql.DefaultErrorPresenter, graphql.DefaultRecover)
@@ -94,13 +37,11 @@ func TestConvertErrors(t *testing.T) {
 			"repo",
 			"tag",
 			godigest.FromString("indexDigest"),
-			true,
 			mTypes.RepoMetadata{},
 			mTypes.IndexData{
 				IndexBlob: []byte("bad json"),
 			},
 			map[string]mTypes.ManifestMetadata{},
-			mocks.CveInfoMock{},
 		)
 		So(err, ShouldNotBeNil)
 	})
@@ -114,17 +55,11 @@ func TestConvertErrors(t *testing.T) {
 			"repo",
 			"tag",
 			godigest.FromString("indexDigest"),
-			false,
 			mTypes.RepoMetadata{},
 			mTypes.IndexData{
 				IndexBlob: []byte("{}"),
 			},
 			map[string]mTypes.ManifestMetadata{},
-			mocks.CveInfoMock{
-				GetCVESummaryForImageMediaFn: func(repo, digest, mediaType string) (cvemodel.ImageCVESummary, error) {
-					return cvemodel.ImageCVESummary{}, ErrTestError
-				},
-			},
 		)
 		So(err, ShouldBeNil)
 	})
@@ -146,16 +81,10 @@ func TestConvertErrors(t *testing.T) {
 			"repo",
 			"tag",
 			godigest.FromString("manifestDigest"),
-			false,
 			mTypes.RepoMetadata{},
 			mTypes.ManifestMetadata{
 				ManifestBlob: []byte("{}"),
 				ConfigBlob:   configBlob,
-			},
-			mocks.CveInfoMock{
-				GetCVESummaryForImageMediaFn: func(repo, digest, mediaType string) (cvemodel.ImageCVESummary, error) {
-					return cvemodel.ImageCVESummary{}, ErrTestError
-				},
 			},
 		)
 		So(err, ShouldBeNil)
@@ -166,7 +95,7 @@ func TestConvertErrors(t *testing.T) {
 			graphql.DefaultErrorPresenter, graphql.DefaultRecover)
 
 		// with bad config json, shouldn't error when unmarshaling
-		_, _, err := convert.ImageManifest2ManifestSummary(
+		_, _, _, err := convert.ImageManifest2ManifestSummary(
 			ctx,
 			"repo",
 			"tag",
@@ -174,7 +103,6 @@ func TestConvertErrors(t *testing.T) {
 				Digest:    "dig",
 				MediaType: ispec.MediaTypeImageManifest,
 			},
-			false,
 			mTypes.RepoMetadata{
 				Tags:       map[string]mTypes.Descriptor{},
 				Statistics: map[string]mTypes.DescriptorStatistics{},
@@ -186,7 +114,6 @@ func TestConvertErrors(t *testing.T) {
 				ConfigBlob:   []byte("bad json"),
 			},
 			nil,
-			mocks.CveInfoMock{},
 		)
 		So(err, ShouldBeNil)
 
@@ -200,7 +127,7 @@ func TestConvertErrors(t *testing.T) {
 		})
 		So(err, ShouldBeNil)
 
-		_, _, err = convert.ImageManifest2ManifestSummary(
+		_, _, _, err = convert.ImageManifest2ManifestSummary(
 			ctx,
 			"repo",
 			"tag",
@@ -208,7 +135,6 @@ func TestConvertErrors(t *testing.T) {
 				Digest:    "dig",
 				MediaType: ispec.MediaTypeImageManifest,
 			},
-			false,
 			mTypes.RepoMetadata{
 				Tags:       map[string]mTypes.Descriptor{},
 				Statistics: map[string]mTypes.DescriptorStatistics{},
@@ -220,11 +146,6 @@ func TestConvertErrors(t *testing.T) {
 				ConfigBlob:   configBlob,
 			},
 			nil,
-			mocks.CveInfoMock{
-				GetCVESummaryForImageMediaFn: func(repo, digest, mediaType string) (cvemodel.ImageCVESummary, error) {
-					return cvemodel.ImageCVESummary{}, ErrTestError
-				},
-			},
 		)
 		So(err, ShouldBeNil)
 	})
@@ -772,37 +693,7 @@ func TestPaginatedConvert(t *testing.T) {
 	})
 }
 
-func TestGetOneManifestAnnotations(t *testing.T) {
-	Convey("GetOneManifestAnnotations errors", t, func() {
-		manifestAnnotations, configLabels := convert.GetOneManifestAnnotations(
-			ispec.Index{Manifests: []ispec.Descriptor{
-				{Digest: "bad-manifest"}, {Digest: "dig2"},
-			}},
-			map[string]mTypes.ManifestMetadata{
-				"bad-manifest": {
-					ManifestBlob: []byte(`bad`),
-					ConfigBlob:   []byte("{}"),
-				},
-			},
-		)
-		So(manifestAnnotations, ShouldBeEmpty)
-		So(configLabels, ShouldBeEmpty)
-
-		manifestAnnotations, configLabels = convert.GetOneManifestAnnotations(
-			ispec.Index{Manifests: []ispec.Descriptor{
-				{Digest: "bad-config"},
-			}},
-			map[string]mTypes.ManifestMetadata{
-				"bad-config": {
-					ManifestBlob: []byte("{}"),
-					ConfigBlob:   []byte("bad"),
-				},
-			},
-		)
-		So(manifestAnnotations, ShouldBeEmpty)
-		So(configLabels, ShouldBeEmpty)
-	})
-
+func TestIndexAnnotations(t *testing.T) {
 	Convey("Test ImageIndex2ImageSummary annotations logic", t, func() {
 		ctx := context.Background()
 
@@ -864,8 +755,8 @@ func TestGetOneManifestAnnotations(t *testing.T) {
 
 		digest := indexWithAnnotations.Digest()
 
-		imageSummary, _, err := convert.ImageIndex2ImageSummary(ctx, "repo", "tag", digest, true, repoMeta[0],
-			indexData[digest.String()], manifestMetadata, nil)
+		imageSummary, _, err := convert.ImageIndex2ImageSummary(ctx, "repo", "tag", digest, repoMeta[0],
+			indexData[digest.String()], manifestMetadata)
 		So(err, ShouldBeNil)
 		So(*imageSummary.Description, ShouldResemble, "IndexDescription")
 		So(*imageSummary.Licenses, ShouldResemble, "IndexLicenses")
@@ -887,7 +778,7 @@ func TestGetOneManifestAnnotations(t *testing.T) {
 		digest = indexWithManifestAndConfigAnnotations.Digest()
 
 		imageSummary, _, err = convert.ImageIndex2ImageSummary(ctx, "repo", "tag", digest,
-			true, repoMeta[0], indexData[digest.String()], manifestMetadata, nil)
+			repoMeta[0], indexData[digest.String()], manifestMetadata)
 		So(err, ShouldBeNil)
 		So(*imageSummary.Description, ShouldResemble, "ManifestDescription")
 		So(*imageSummary.Licenses, ShouldResemble, "ManifestLicenses")
@@ -908,7 +799,7 @@ func TestGetOneManifestAnnotations(t *testing.T) {
 		digest = indexWithConfigAnnotations.Digest()
 
 		imageSummary, _, err = convert.ImageIndex2ImageSummary(ctx, "repo", "tag", digest,
-			true, repoMeta[0], indexData[digest.String()], manifestMetadata, nil)
+			repoMeta[0], indexData[digest.String()], manifestMetadata)
 		So(err, ShouldBeNil)
 		So(*imageSummary.Description, ShouldResemble, "ConfigDescription")
 		So(*imageSummary.Licenses, ShouldResemble, "ConfigLicenses")
@@ -950,7 +841,7 @@ func TestGetOneManifestAnnotations(t *testing.T) {
 		digest = indexWithMixAnnotations.Digest()
 
 		imageSummary, _, err = convert.ImageIndex2ImageSummary(ctx, "repo", "tag", digest,
-			true, repoMeta[0], indexData[digest.String()], manifestMetadata, nil)
+			repoMeta[0], indexData[digest.String()], manifestMetadata)
 		So(err, ShouldBeNil)
 		So(*imageSummary.Description, ShouldResemble, "ConfigDescription")
 		So(*imageSummary.Licenses, ShouldResemble, "ConfigLicenses")
@@ -970,7 +861,7 @@ func TestGetOneManifestAnnotations(t *testing.T) {
 		digest = indexWithNoAnnotations.Digest()
 
 		imageSummary, _, err = convert.ImageIndex2ImageSummary(ctx, "repo", "tag", digest,
-			true, repoMeta[0], indexData[digest.String()], manifestMetadata, nil)
+			repoMeta[0], indexData[digest.String()], manifestMetadata)
 		So(err, ShouldBeNil)
 		So(*imageSummary.Description, ShouldBeBlank)
 		So(*imageSummary.Licenses, ShouldBeBlank)
@@ -999,8 +890,7 @@ func TestDownloadCount(t *testing.T) {
 			},
 		)
 
-		repoSummary := convert.RepoMeta2RepoSummary(context.Background(), repoMeta[0], manifestMetaMap, indexDataMap,
-			convert.SkipQGLField{}, nil)
+		repoSummary := convert.RepoMeta2RepoSummary(context.Background(), repoMeta[0], manifestMetaMap, indexDataMap)
 		So(*repoSummary.DownloadCount, ShouldEqual, 10)
 		So(*repoSummary.NewestImage.DownloadCount, ShouldEqual, 10)
 	})
@@ -1027,8 +917,7 @@ func TestDownloadCount(t *testing.T) {
 			},
 		)
 
-		repoSummary := convert.RepoMeta2RepoSummary(context.Background(), repoMeta[0], manifestMetaMap, indexDataMap,
-			convert.SkipQGLField{}, nil)
+		repoSummary := convert.RepoMeta2RepoSummary(context.Background(), repoMeta[0], manifestMetaMap, indexDataMap)
 		So(*repoSummary.DownloadCount, ShouldEqual, 100)
 		So(*repoSummary.NewestImage.DownloadCount, ShouldEqual, 100)
 	})
@@ -1067,8 +956,7 @@ func TestDownloadCount(t *testing.T) {
 			},
 		)
 
-		repoSummary := convert.RepoMeta2RepoSummary(context.Background(), repoMeta[0], manifestMetaMap, indexDataMap,
-			convert.SkipQGLField{}, nil)
+		repoSummary := convert.RepoMeta2RepoSummary(context.Background(), repoMeta[0], manifestMetaMap, indexDataMap)
 		So(*repoSummary.DownloadCount, ShouldEqual, 105)
 		So(*repoSummary.NewestImage.DownloadCount, ShouldEqual, 100)
 	})

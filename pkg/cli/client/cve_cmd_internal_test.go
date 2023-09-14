@@ -59,7 +59,7 @@ func TestSearchCVECmd(t *testing.T) {
 	ctlr := api.NewController(conf)
 	cm := test.NewControllerManager(ctlr)
 
-	cm.StartServer()
+	cm.StartAndWait(port)
 	defer cm.StopServer()
 
 	Convey("Test CVE help", t, func() {
@@ -947,21 +947,10 @@ func TestCVESort(t *testing.T) {
 		panic(err)
 	}
 
-	severities := map[string]int{
-		"UNKNOWN":  0,
-		"LOW":      1,
-		"MEDIUM":   2,
-		"HIGH":     3,
-		"CRITICAL": 4,
-	}
-
 	ctlr.CveInfo = cveinfo.BaseCveInfo{
 		Log:    ctlr.Log,
 		MetaDB: mocks.MetaDBMock{},
 		Scanner: mocks.CveScannerMock{
-			CompareSeveritiesFn: func(severity1, severity2 string) int {
-				return severities[severity2] - severities[severity1]
-			},
 			ScanImageFn: func(image string) (map[string]cvemodel.CVE, error) {
 				return map[string]cvemodel.CVE{
 					"CVE-2023-1255": {
@@ -1385,15 +1374,7 @@ func TestCVECommandErrors(t *testing.T) {
 }
 
 func getMockCveInfo(metaDB mTypes.MetaDB, log log.Logger) cveinfo.CveInfo {
-	// MetaDB loaded with initial data, mock the scanner
-	severities := map[string]int{
-		"UNKNOWN":  0,
-		"LOW":      1,
-		"MEDIUM":   2,
-		"HIGH":     3,
-		"CRITICAL": 4,
-	}
-
+	// MetaDB loaded with initial data now mock the scanner
 	// Setup test CVE data in mock scanner
 	scanner := mocks.CveScannerMock{
 		ScanImageFn: func(image string) (map[string]cvemodel.CVE, error) {
@@ -1435,9 +1416,6 @@ func getMockCveInfo(metaDB mTypes.MetaDB, log log.Logger) cveinfo.CveInfo {
 
 			// By default the image has no vulnerabilities
 			return map[string]cvemodel.CVE{}, nil
-		},
-		CompareSeveritiesFn: func(severity1, severity2 string) int {
-			return severities[severity2] - severities[severity1]
 		},
 		IsImageFormatScannableFn: func(repo string, reference string) (bool, error) {
 			// Almost same logic compared to actual Trivy specific implementation

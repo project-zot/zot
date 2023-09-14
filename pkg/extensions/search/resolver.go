@@ -152,8 +152,8 @@ func getImageListForDigest(ctx context.Context, digest string, metaDB mTypes.Met
 	}, nil
 }
 
-func getImageSummary(ctx context.Context, repo, tag string, digest *string, metaDB mTypes.MetaDB,
-	cveInfo cveinfo.CveInfo, log log.Logger, //nolint:unparam
+func getImageSummary(ctx context.Context, repo, tag string, digest *string, skipCVE convert.SkipQGLField,
+	metaDB mTypes.MetaDB, cveInfo cveinfo.CveInfo, log log.Logger, //nolint:unparam
 ) (
 	*gql_generated.ImageSummary, error,
 ) {
@@ -268,10 +268,7 @@ func getImageSummary(ctx context.Context, repo, tag string, digest *string, meta
 		log.Error().Str("mediaType", manifestDescriptor.MediaType).Msg("resolver: media type not supported")
 	}
 
-	skip := convert.SkipQGLField{
-		Vulnerabilities: canSkipField(convert.GetPreloads(ctx), "Vulnerabilities"),
-	}
-	imageSummaries := convert.RepoMeta2ImageSummaries(ctx, repoMeta, manifestMetaMap, indexDataMap, skip, cveInfo)
+	imageSummaries := convert.RepoMeta2ImageSummaries(ctx, repoMeta, manifestMetaMap, indexDataMap, skipCVE, cveInfo)
 
 	if len(imageSummaries) == 0 {
 		return &gql_generated.ImageSummary{}, nil
@@ -809,7 +806,11 @@ func derivedImageList(ctx context.Context, image string, digest *string, metaDB 
 		return &gql_generated.PaginatedImagesResult{}, gqlerror.Errorf("no reference provided")
 	}
 
-	searchedImage, err := getImageSummary(ctx, imageRepo, imageTag, digest, metaDB, cveInfo, log)
+	skipReferenceImage := convert.SkipQGLField{
+		Vulnerabilities: true,
+	}
+
+	searchedImage, err := getImageSummary(ctx, imageRepo, imageTag, digest, skipReferenceImage, metaDB, cveInfo, log)
 	if err != nil {
 		if errors.Is(err, zerr.ErrRepoMetaNotFound) {
 			return &gql_generated.PaginatedImagesResult{}, gqlerror.Errorf("repository: not found")
@@ -911,7 +912,11 @@ func baseImageList(ctx context.Context, image string, digest *string, metaDB mTy
 		return &gql_generated.PaginatedImagesResult{}, gqlerror.Errorf("no reference provided")
 	}
 
-	searchedImage, err := getImageSummary(ctx, imageRepo, imageTag, digest, metaDB, cveInfo, log)
+	skipReferenceImage := convert.SkipQGLField{
+		Vulnerabilities: true,
+	}
+
+	searchedImage, err := getImageSummary(ctx, imageRepo, imageTag, digest, skipReferenceImage, metaDB, cveInfo, log)
 	if err != nil {
 		if errors.Is(err, zerr.ErrRepoMetaNotFound) {
 			return &gql_generated.PaginatedImagesResult{}, gqlerror.Errorf("repository: not found")

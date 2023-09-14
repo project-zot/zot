@@ -15,33 +15,33 @@ const (
 	SeverityDsc   = cvemodel.SortCriteria("SEVERITY")
 )
 
-func SortFunctions() map[cvemodel.SortCriteria]func(pageBuffer []cvemodel.CVE, cveInfo CveInfo) func(i, j int) bool {
-	return map[cvemodel.SortCriteria]func(pageBuffer []cvemodel.CVE, cveInfo CveInfo) func(i, j int) bool{
+func SortFunctions() map[cvemodel.SortCriteria]func(pageBuffer []cvemodel.CVE) func(i, j int) bool {
+	return map[cvemodel.SortCriteria]func(pageBuffer []cvemodel.CVE) func(i, j int) bool{
 		AlphabeticAsc: SortByAlphabeticAsc,
 		AlphabeticDsc: SortByAlphabeticDsc,
 		SeverityDsc:   SortBySeverity,
 	}
 }
 
-func SortByAlphabeticAsc(pageBuffer []cvemodel.CVE, cveInfo CveInfo) func(i, j int) bool {
+func SortByAlphabeticAsc(pageBuffer []cvemodel.CVE) func(i, j int) bool {
 	return func(i, j int) bool {
 		return pageBuffer[i].ID < pageBuffer[j].ID
 	}
 }
 
-func SortByAlphabeticDsc(pageBuffer []cvemodel.CVE, cveInfo CveInfo) func(i, j int) bool {
+func SortByAlphabeticDsc(pageBuffer []cvemodel.CVE) func(i, j int) bool {
 	return func(i, j int) bool {
 		return pageBuffer[i].ID > pageBuffer[j].ID
 	}
 }
 
-func SortBySeverity(pageBuffer []cvemodel.CVE, cveInfo CveInfo) func(i, j int) bool {
+func SortBySeverity(pageBuffer []cvemodel.CVE) func(i, j int) bool {
 	return func(i, j int) bool {
-		if cveInfo.CompareSeverities(pageBuffer[i].Severity, pageBuffer[j].Severity) == 0 {
+		if cvemodel.CompareSeverities(pageBuffer[i].Severity, pageBuffer[j].Severity) == 0 {
 			return pageBuffer[i].ID < pageBuffer[j].ID
 		}
 
-		return cveInfo.CompareSeverities(pageBuffer[i].Severity, pageBuffer[j].Severity) < 0
+		return cvemodel.CompareSeverities(pageBuffer[i].Severity, pageBuffer[j].Severity) < 0
 	}
 }
 
@@ -60,10 +60,9 @@ type CvePageFinder struct {
 	offset     int
 	sortBy     cvemodel.SortCriteria
 	pageBuffer []cvemodel.CVE
-	cveInfo    CveInfo
 }
 
-func NewCvePageFinder(limit, offset int, sortBy cvemodel.SortCriteria, cveInfo CveInfo) (*CvePageFinder, error) {
+func NewCvePageFinder(limit, offset int, sortBy cvemodel.SortCriteria) (*CvePageFinder, error) {
 	if sortBy == "" {
 		sortBy = SeverityDsc
 	}
@@ -85,7 +84,6 @@ func NewCvePageFinder(limit, offset int, sortBy cvemodel.SortCriteria, cveInfo C
 		offset:     offset,
 		sortBy:     sortBy,
 		pageBuffer: make([]cvemodel.CVE, 0, limit),
-		cveInfo:    cveInfo,
 	}, nil
 }
 
@@ -104,7 +102,7 @@ func (bpt *CvePageFinder) Page() ([]cvemodel.CVE, common.PageInfo) {
 
 	pageInfo := &common.PageInfo{}
 
-	sort.Slice(bpt.pageBuffer, SortFunctions()[bpt.sortBy](bpt.pageBuffer, bpt.cveInfo))
+	sort.Slice(bpt.pageBuffer, SortFunctions()[bpt.sortBy](bpt.pageBuffer))
 
 	// the offset and limit are calculated in terms of CVEs counted
 	start := bpt.offset

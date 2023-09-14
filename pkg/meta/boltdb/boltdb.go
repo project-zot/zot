@@ -465,7 +465,7 @@ func (bdw *BoltDB) SetRepoReference(repo string, reference string, manifestDiges
 func (bdw *BoltDB) GetRepoMeta(repo string) (mTypes.RepoMetadata, error) {
 	var repoMeta mTypes.RepoMetadata
 
-	err := bdw.DB.Update(func(tx *bbolt.Tx) error {
+	err := bdw.DB.View(func(tx *bbolt.Tx) error {
 		buck := tx.Bucket([]byte(RepoMetadataBucket))
 
 		repoMetaBlob := buck.Get([]byte(repo))
@@ -490,7 +490,7 @@ func (bdw *BoltDB) GetRepoMeta(repo string) (mTypes.RepoMetadata, error) {
 func (bdw *BoltDB) GetUserRepoMeta(ctx context.Context, repo string) (mTypes.RepoMetadata, error) {
 	var repoMeta mTypes.RepoMetadata
 
-	err := bdw.DB.Update(func(tx *bbolt.Tx) error {
+	err := bdw.DB.View(func(tx *bbolt.Tx) error {
 		buck := tx.Bucket([]byte(RepoMetadataBucket))
 		userBookmarks := getUserBookmarks(ctx, tx)
 		userStars := getUserStars(ctx, tx)

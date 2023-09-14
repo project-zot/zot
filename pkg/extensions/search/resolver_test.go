@@ -1,3 +1,5 @@
+//go:build search
+
 package search //nolint
 
 import (
@@ -16,6 +18,7 @@ import (
 	. "github.com/smartystreets/goconvey/convey"
 
 	"zotregistry.io/zot/pkg/common"
+	"zotregistry.io/zot/pkg/extensions/search/convert"
 	cveinfo "zotregistry.io/zot/pkg/extensions/search/cve"
 	cvemodel "zotregistry.io/zot/pkg/extensions/search/cve/model"
 	"zotregistry.io/zot/pkg/extensions/search/gql_generated"
@@ -1182,9 +1185,13 @@ func TestGetImageSummary(t *testing.T) {
 					}
 
 					log = log.NewLogger("debug", "")
+
+					skip = convert.SkipQGLField{
+						Vulnerabilities: true,
+					}
 				)
 
-				_, err := getImageSummary(responseContext, "repo", "tag", nil, metaDB, mocks.CveInfoMock{}, log)
+				_, err := getImageSummary(responseContext, "repo", "tag", nil, skip, metaDB, mocks.CveInfoMock{}, log)
 				So(err, ShouldNotBeNil)
 			})
 
@@ -1201,9 +1208,13 @@ func TestGetImageSummary(t *testing.T) {
 					}
 
 					log = log.NewLogger("debug", "")
+
+					skip = convert.SkipQGLField{
+						Vulnerabilities: true,
+					}
 				)
 
-				_, err := getImageSummary(responseContext, "repo", "tag", nil, metaDB, mocks.CveInfoMock{}, log)
+				_, err := getImageSummary(responseContext, "repo", "tag", nil, skip, metaDB, mocks.CveInfoMock{}, log)
 				So(err, ShouldBeNil)
 			})
 
@@ -1225,9 +1236,13 @@ func TestGetImageSummary(t *testing.T) {
 					log = log.NewLogger("debug", "")
 
 					digest = "wrongDigest"
+
+					skip = convert.SkipQGLField{
+						Vulnerabilities: true,
+					}
 				)
 
-				_, err := getImageSummary(responseContext, "repo", "tag", &digest, metaDB, mocks.CveInfoMock{}, log)
+				_, err := getImageSummary(responseContext, "repo", "tag", &digest, skip, metaDB, mocks.CveInfoMock{}, log)
 				So(err, ShouldNotBeNil)
 			})
 		})
@@ -1249,9 +1264,13 @@ func TestGetImageSummary(t *testing.T) {
 					}
 
 					log = log.NewLogger("debug", "")
+
+					skip = convert.SkipQGLField{
+						Vulnerabilities: true,
+					}
 				)
 
-				_, err := getImageSummary(responseContext, "repo", "tag", nil, metaDB, mocks.CveInfoMock{}, log)
+				_, err := getImageSummary(responseContext, "repo", "tag", nil, skip, metaDB, mocks.CveInfoMock{}, log)
 				So(err, ShouldNotBeNil)
 			})
 
@@ -1273,9 +1292,13 @@ func TestGetImageSummary(t *testing.T) {
 					}
 
 					log = log.NewLogger("debug", "")
+
+					skip = convert.SkipQGLField{
+						Vulnerabilities: true,
+					}
 				)
 
-				_, err := getImageSummary(responseContext, "repo", "tag", nil, metaDB, mocks.CveInfoMock{}, log)
+				_, err := getImageSummary(responseContext, "repo", "tag", nil, skip, metaDB, mocks.CveInfoMock{}, log)
 				So(err, ShouldNotBeNil)
 			})
 
@@ -1313,7 +1336,12 @@ func TestGetImageSummary(t *testing.T) {
 
 				Convey("digest not found", func() {
 					wrongDigest := "wrongDigest"
-					_, err = getImageSummary(responseContext, "repo", "tag", &wrongDigest, metaDB, mocks.CveInfoMock{}, log)
+
+					skip := convert.SkipQGLField{
+						Vulnerabilities: true,
+					}
+
+					_, err = getImageSummary(responseContext, "repo", "tag", &wrongDigest, skip, metaDB, mocks.CveInfoMock{}, log)
 					So(err, ShouldNotBeNil)
 				})
 
@@ -1322,7 +1350,11 @@ func TestGetImageSummary(t *testing.T) {
 						return mTypes.ManifestData{}, ErrTestError
 					}
 
-					_, err = getImageSummary(responseContext, "repo", "tag", &goodDigest, metaDB, mocks.CveInfoMock{}, log)
+					skip := convert.SkipQGLField{
+						Vulnerabilities: true,
+					}
+
+					_, err = getImageSummary(responseContext, "repo", "tag", &goodDigest, skip, metaDB, mocks.CveInfoMock{}, log)
 					So(err, ShouldNotBeNil)
 				})
 			})
@@ -1341,9 +1373,13 @@ func TestGetImageSummary(t *testing.T) {
 				}
 
 				log = log.NewLogger("debug", "")
+
+				skip = convert.SkipQGLField{
+					Vulnerabilities: true,
+				}
 			)
 
-			_, err := getImageSummary(responseContext, "repo", "tag", nil, metaDB, mocks.CveInfoMock{}, log)
+			_, err := getImageSummary(responseContext, "repo", "tag", nil, skip, metaDB, mocks.CveInfoMock{}, log)
 			So(err, ShouldBeNil)
 		})
 	})
@@ -2042,17 +2078,7 @@ func TestCVEResolvers(t *testing.T) { //nolint:gocyclo
 		}
 	}
 
-	// Create the repo metadata using previously defined manifests
-
-	// MetaDB loaded with initial data, mock the scanner
-	severities := map[string]int{
-		"UNKNOWN":  0,
-		"LOW":      1,
-		"MEDIUM":   2,
-		"HIGH":     3,
-		"CRITICAL": 4,
-	}
-
+	// MetaDB loaded with initial data, now mock the scanner
 	// Setup test CVE data in mock scanner
 	scanner := mocks.CveScannerMock{
 		ScanImageFn: func(image string) (map[string]cvemodel.CVE, error) {
@@ -2125,9 +2151,6 @@ func TestCVEResolvers(t *testing.T) { //nolint:gocyclo
 
 			// By default the image has no vulnerabilities
 			return map[string]cvemodel.CVE{}, nil
-		},
-		CompareSeveritiesFn: func(severity1, severity2 string) int {
-			return severities[severity2] - severities[severity1]
 		},
 	}
 

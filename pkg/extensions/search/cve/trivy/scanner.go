@@ -30,6 +30,8 @@ import (
 	"zotregistry.io/zot/pkg/storage"
 )
 
+const cacheSize = 1000000
+
 // getNewScanOptions sets trivy configuration values for our scans and returns them as
 // a trivy Options structure.
 func getNewScanOptions(dir, dbRepository, javaDBRepository string) *flag.Options {
@@ -118,7 +120,7 @@ func NewScanner(storeController storage.StoreController,
 		cveController:    cveController,
 		storeController:  storeController,
 		dbLock:           &sync.Mutex{},
-		cache:            NewCveCache(10000, log), //nolint:gomnd
+		cache:            NewCveCache(cacheSize, log),
 		dbRepository:     dbRepository,
 		javaDBRepository: javaDBRepository,
 	}
@@ -415,7 +417,7 @@ func (scanner Scanner) scanManifest(repo, digest string) (map[string]cvemodel.CV
 					ID:          vulnerability.VulnerabilityID,
 					Title:       vulnerability.Title,
 					Description: vulnerability.Description,
-					Severity:    vulnerability.Severity,
+					Severity:    convertSeverity(vulnerability.Severity),
 					PackageList: newPkgList,
 				}
 			}
@@ -552,6 +554,16 @@ func (scanner Scanner) checkDBPresence() error {
 	return nil
 }
 
-func (scanner Scanner) CompareSeverities(severity1, severity2 string) int {
-	return dbTypes.CompareSeverityString(severity1, severity2)
+func convertSeverity(detectedSeverity string) string {
+	trivySeverity, _ := dbTypes.NewSeverity(detectedSeverity)
+
+	sevMap := map[dbTypes.Severity]string{
+		dbTypes.SeverityUnknown:  cvemodel.SeverityUnknown,
+		dbTypes.SeverityLow:      cvemodel.SeverityLow,
+		dbTypes.SeverityMedium:   cvemodel.SeverityMedium,
+		dbTypes.SeverityHigh:     cvemodel.SeverityHigh,
+		dbTypes.SeverityCritical: cvemodel.SeverityCritical,
+	}
+
+	return sevMap[trivySeverity]
 }
