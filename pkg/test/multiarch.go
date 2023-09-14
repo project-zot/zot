@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 
 	godigest "github.com/opencontainers/go-digest"
+	"github.com/opencontainers/image-spec/specs-go"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 
 	mTypes "zotregistry.io/zot/pkg/meta/types"
@@ -115,7 +116,10 @@ func (mb *BaseMultiarchBuilder) Build() MultiarchImage {
 		}
 	}
 
+	version := 2
+
 	index := ispec.Index{
+		Versioned:    specs.Versioned{SchemaVersion: version},
 		MediaType:    ispec.MediaTypeImageIndex,
 		Manifests:    manifests,
 		Annotations:  mb.annotations,

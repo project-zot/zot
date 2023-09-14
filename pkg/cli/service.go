@@ -22,6 +22,7 @@ import (
 
 	zerr "zotregistry.io/zot/errors"
 	"zotregistry.io/zot/pkg/api/constants"
+	"zotregistry.io/zot/pkg/cli/cmdflags"
 	"zotregistry.io/zot/pkg/common"
 )
 
@@ -68,6 +69,7 @@ type searchConfig struct {
 	servURL       string
 	user          string
 	outputFormat  string
+	sortBy        string
 	verifyTLS     bool
 	fixedFlag     bool
 	verbose       bool
@@ -87,7 +89,7 @@ func (service searchService) getDerivedImageListGQL(ctx context.Context, config 
 ) (*common.DerivedImageListResponse, error) {
 	query := fmt.Sprintf(`
 		{
-			DerivedImageList(image:"%s", requestedPage: {sortBy: ALPHABETIC_ASC}){
+			DerivedImageList(image:"%s", requestedPage: {sortBy: %s}){
 				Results{
 					RepoName Tag
 					Digest
@@ -106,7 +108,7 @@ func (service searchService) getDerivedImageListGQL(ctx context.Context, config 
 					IsSigned
 				}
 			}
-		}`, derivedImage)
+		}`, derivedImage, cmdflags.Flag2SortCriteria(config.sortBy))
 
 	result := &common.DerivedImageListResponse{}
 	err := service.makeGraphQLQuery(ctx, config, username, password, query, result)
@@ -150,7 +152,7 @@ func (service searchService) globalSearchGQL(ctx context.Context, config searchC
 ) (*common.GlobalSearch, error) {
 	GQLQuery := fmt.Sprintf(`
 		{
-			GlobalSearch(query:"%s"){
+			GlobalSearch(query:"%s", requestedPage: {sortBy: %s}){
 				Images {
 					RepoName
 					Tag
@@ -178,7 +180,7 @@ func (service searchService) globalSearchGQL(ctx context.Context, config searchC
 					StarCount
 				}
 			}
-		}`, query)
+		}`, query, cmdflags.Flag2SortCriteria(config.sortBy))
 
 	result := &common.GlobalSearchResultResp{}
 
@@ -195,7 +197,7 @@ func (service searchService) getBaseImageListGQL(ctx context.Context, config sea
 ) (*common.BaseImageListResponse, error) {
 	query := fmt.Sprintf(`
 		{
-			BaseImageList(image:"%s", requestedPage: {sortBy: ALPHABETIC_ASC}){
+			BaseImageList(image:"%s", requestedPage: {sortBy: %s}){
 				Results{
 					RepoName Tag
 					Digest
@@ -214,7 +216,7 @@ func (service searchService) getBaseImageListGQL(ctx context.Context, config sea
 					IsSigned
 				}
 			}
-		}`, baseImage)
+		}`, baseImage, cmdflags.Flag2SortCriteria(config.sortBy))
 
 	result := &common.BaseImageListResponse{}
 	err := service.makeGraphQLQuery(ctx, config, username, password, query, result)
@@ -231,7 +233,7 @@ func (service searchService) getImagesGQL(ctx context.Context, config searchConf
 ) (*common.ImageListResponse, error) {
 	query := fmt.Sprintf(`
 	{
-		ImageList(repo: "%s", requestedPage: {sortBy: ALPHABETIC_ASC}) {
+		ImageList(repo: "%s", requestedPage: {sortBy: %s}) {
 			Results {
 				RepoName Tag
 				Digest
@@ -250,8 +252,7 @@ func (service searchService) getImagesGQL(ctx context.Context, config searchConf
 				IsSigned
 			}
 		}
-	}`,
-		imageName)
+	}`, imageName, cmdflags.Flag2SortCriteria(config.sortBy))
 	result := &common.ImageListResponse{}
 
 	err := service.makeGraphQLQuery(ctx, config, username, password, query, result)
@@ -268,7 +269,7 @@ func (service searchService) getImagesForDigestGQL(ctx context.Context, config s
 ) (*common.ImagesForDigest, error) {
 	query := fmt.Sprintf(`
 	{
-		ImageListForDigest(id: "%s", requestedPage: {sortBy: ALPHABETIC_ASC}) {
+		ImageListForDigest(id: "%s", requestedPage: {sortBy: %s}) {
 			Results {
 				RepoName Tag
 				Digest
@@ -287,8 +288,7 @@ func (service searchService) getImagesForDigestGQL(ctx context.Context, config s
 				IsSigned
 			}
 		}
-	}`,
-		digest)
+	}`, digest, cmdflags.Flag2SortCriteria(config.sortBy))
 	result := &common.ImagesForDigest{}
 
 	err := service.makeGraphQLQuery(ctx, config, username, password, query, result)
@@ -303,9 +303,15 @@ func (service searchService) getImagesForDigestGQL(ctx context.Context, config s
 func (service searchService) getCveByImageGQL(ctx context.Context, config searchConfig, username, password,
 	imageName, searchedCVE string,
 ) (*cveResult, error) {
-	query := fmt.Sprintf(`{ CVEListForImage (image:"%s", searchedCVE:"%s")`+
-		` { Tag CVEList { Id Title Severity Description `+
-		`PackageList {Name InstalledVersion FixedVersion}} } }`, imageName, searchedCVE)
+	query := fmt.Sprintf(`
+	{ 
+		CVEListForImage (image:"%s", searchedCVE:"%s", requestedPage: {sortBy: %s}) { 
+			Tag CVEList { 
+				Id Title Severity Description 
+				PackageList {Name InstalledVersion FixedVersion}
+			}
+		}
+	}`, imageName, searchedCVE, cmdflags.Flag2SortCriteria(config.sortBy))
 	result := &cveResult{}
 
 	err := service.makeGraphQLQuery(ctx, config, username, password, query, result)
@@ -313,8 +319,6 @@ func (service searchService) getCveByImageGQL(ctx context.Context, config search
 	if errResult := checkResultGraphQLQuery(ctx, err, result.Errors); errResult != nil {
 		return nil, errResult
 	}
-
-	result.Data.CVEListForImage.CVEList = groupCVEsBySeverity(result.Data.CVEListForImage.CVEList)
 
 	return result, nil
 }
@@ -324,7 +328,7 @@ func (service searchService) getTagsForCVEGQL(ctx context.Context, config search
 ) (*common.ImagesForCve, error) {
 	query := fmt.Sprintf(`
 		{
-			ImageListForCVE(id: "%s") {
+			ImageListForCVE(id: "%s", requestedPage: {sortBy: %s}) {
 				Results {
 					RepoName Tag
 					Digest
@@ -344,7 +348,7 @@ func (service searchService) getTagsForCVEGQL(ctx context.Context, config search
 				}
 			}
 		}`,
-		cveID)
+		cveID, cmdflags.Flag2SortCriteria(config.sortBy))
 	result := &common.ImagesForCve{}
 
 	err := service.makeGraphQLQuery(ctx, config, username, password, query, result)
@@ -635,50 +639,6 @@ func (service searchService) getImagesByDigest(ctx context.Context, config searc
 	}
 
 	localWg.Wait()
-}
-
-func groupCVEsBySeverity(cveList []cve) []cve {
-	var (
-		unknown  = make([]cve, 0)
-		none     = make([]cve, 0)
-		high     = make([]cve, 0)
-		med      = make([]cve, 0)
-		low      = make([]cve, 0)
-		critical = make([]cve, 0)
-	)
-
-	for _, cve := range cveList {
-		switch cve.Severity {
-		case "NONE":
-			none = append(none, cve)
-
-		case "LOW":
-			low = append(low, cve)
-
-		case "MEDIUM":
-			med = append(med, cve)
-
-		case "HIGH":
-			high = append(high, cve)
-
-		case "CRITICAL":
-			critical = append(critical, cve)
-
-		default:
-			unknown = append(unknown, cve)
-		}
-	}
-	vulnsCount := len(unknown) + len(none) + len(high) + len(med) + len(low) + len(critical)
-	vulns := make([]cve, 0, vulnsCount)
-
-	vulns = append(vulns, critical...)
-	vulns = append(vulns, high...)
-	vulns = append(vulns, med...)
-	vulns = append(vulns, low...)
-	vulns = append(vulns, none...)
-	vulns = append(vulns, unknown...)
-
-	return vulns
 }
 
 func isContextDone(ctx context.Context) bool {
@@ -1245,8 +1205,8 @@ type catalogResponse struct {
 }
 
 func combineServerAndEndpointURL(serverURL, endPoint string) (string, error) {
-	if !isURL(serverURL) {
-		return "", zerr.ErrInvalidURL
+	if err := validateURL(serverURL); err != nil {
+		return "", err
 	}
 
 	newURL, err := url.Parse(serverURL)
@@ -1375,10 +1335,16 @@ func (service searchService) getRepos(ctx context.Context, config searchConfig, 
 		return
 	}
 
-	fmt.Fprintln(config.resultWriter, "\n\nREPOSITORY NAME")
+	fmt.Fprintln(config.resultWriter, "\nREPOSITORY NAME")
 
-	for _, repo := range catalog.Repositories {
-		fmt.Fprintln(config.resultWriter, repo)
+	if config.sortBy == cmdflags.SortByAlphabeticAsc {
+		for i := 0; i < len(catalog.Repositories); i++ {
+			fmt.Fprintln(config.resultWriter, catalog.Repositories[i])
+		}
+	} else {
+		for i := len(catalog.Repositories) - 1; i >= 0; i-- {
+			fmt.Fprintln(config.resultWriter, catalog.Repositories[i])
+		}
 	}
 }
 

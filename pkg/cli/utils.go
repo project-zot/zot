@@ -7,7 +7,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"net/url"
 	"os"
 	"path"
 	"strings"
@@ -376,6 +375,7 @@ func GetSearchConfigFromFlags(cmd *cobra.Command, searchService SearchService) (
 	debug := defaultIfError(flags.GetBool(cmdflags.DebugFlag))
 	verbose := defaultIfError(flags.GetBool(cmdflags.VerboseFlag))
 	outputFormat := defaultIfError(flags.GetString(cmdflags.OutputFormatFlag))
+	sortBy := defaultIfError(flags.GetString(cmdflags.SortByFlag))
 
 	spin := spinner.New(spinner.CharSets[39], spinnerDuration, spinner.WithWriter(cmd.ErrOrStderr()))
 	spin.Prefix = prefix
@@ -389,6 +389,7 @@ func GetSearchConfigFromFlags(cmd *cobra.Command, searchService SearchService) (
 		fixedFlag:     fixed,
 		verbose:       verbose,
 		debug:         debug,
+		sortBy:        sortBy,
 		spinner:       spinnerState{spin, isSpinner},
 		resultWriter:  cmd.OutOrStdout(),
 	}, nil
@@ -459,9 +460,11 @@ func GetServerURLFromFlags(cmd *cobra.Command) (string, error) {
 		return "", fmt.Errorf("%w: url field from config is empty", zerr.ErrNoURLProvided)
 	}
 
-	_, err = url.Parse(serverURL)
+	if err := validateURL(serverURL); err != nil {
+		return "", err
+	}
 
-	return serverURL, err
+	return serverURL, nil
 }
 
 func ReadServerURLFromConfig(configName string) (string, error) {
@@ -478,4 +481,23 @@ func ReadServerURLFromConfig(configName string) (string, error) {
 	}
 
 	return urlFromConfig, nil
+}
+
+func GetSuggestionsString(suggestions []string) string {
+	if len(suggestions) > 0 {
+		return "\n\nDid you mean this?\n" + "\t" + strings.Join(suggestions, "\n\t")
+	}
+
+	return ""
+}
+
+func ShowSuggestionsIfUnknownCommand(cmd *cobra.Command, args []string) error {
+	if len(args) == 0 {
+		return cmd.Help()
+	}
+
+	cmd.SuggestionsMinimumDistance = 2
+	suggestions := GetSuggestionsString(cmd.SuggestionsFor(args[0]))
+
+	return fmt.Errorf("%w '%s' for '%s'%s", zerr.ErrUnknownSubcommand, args[0], cmd.Name(), suggestions)
 }

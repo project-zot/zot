@@ -11,9 +11,10 @@ import (
 
 func NewSearchCommand(searchService SearchService) *cobra.Command {
 	searchCmd := &cobra.Command{
-		Use:   "search [config-name]",
+		Use:   "search [command]",
 		Short: "Search images and their tags",
 		Long:  `Search repos or images`,
+		RunE:  ShowSuggestionsIfUnknownCommand,
 	}
 
 	searchCmd.SetUsageTemplate(searchCmd.UsageTemplate() + usageFooter)

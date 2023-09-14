@@ -160,7 +160,7 @@ func TestConfigCmdMain(t *testing.T) {
 		cmd.SetArgs(args)
 		err := cmd.Execute()
 		So(err, ShouldNotBeNil)
-		So(err, ShouldEqual, zerr.ErrInvalidURL)
+		So(strings.Contains(err.Error(), zerr.ErrInvalidURL.Error()), ShouldBeTrue)
 	})
 
 	Convey("Test remove config entry successfully", t, func() {

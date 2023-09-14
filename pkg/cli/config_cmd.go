@@ -248,8 +248,8 @@ func addConfig(configPath, configName, url string) error {
 		return err
 	}
 
-	if !isURL(url) {
-		return zerr.ErrInvalidURL
+	if err := validateURL(url); err != nil {
+		return err
 	}
 
 	if configNameExists(configs, configName) {

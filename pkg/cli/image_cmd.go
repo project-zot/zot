@@ -24,6 +24,7 @@ func NewImageCommand(searchService SearchService) *cobra.Command {
 		Use:   "image [command]",
 		Short: "List images hosted on the zot registry",
 		Long:  `List images hosted on the zot registry`,
+		RunE:  ShowSuggestionsIfUnknownCommand,
 	}
 
 	imageCmd.SetUsageTemplate(imageCmd.UsageTemplate() + usageFooter)
