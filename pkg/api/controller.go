@@ -22,6 +22,7 @@ import (
 	"zotregistry.io/zot/errors"
 	"zotregistry.io/zot/pkg/api/config"
 	ext "zotregistry.io/zot/pkg/extensions"
+	extconf "zotregistry.io/zot/pkg/extensions/config"
 	"zotregistry.io/zot/pkg/extensions/monitoring"
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/meta"
@@ -286,26 +287,34 @@ func (c *Controller) InitMetaDB(reloadCtx context.Context) error {
 	return nil
 }
 
-func (c *Controller) LoadNewConfig(reloadCtx context.Context, config *config.Config) {
+func (c *Controller) LoadNewConfig(reloadCtx context.Context, newConfig *config.Config) {
 	// reload access control config
-	c.Config.HTTP.AccessControl = config.HTTP.AccessControl
+	c.Config.HTTP.AccessControl = newConfig.HTTP.AccessControl
 
-	// reload periodical gc interval
-	c.Config.Storage.GCInterval = config.Storage.GCInterval
+	// reload periodical gc config
+	c.Config.Storage.GCInterval = newConfig.Storage.GCInterval
+	c.Config.Storage.GC = newConfig.Storage.GC
+	c.Config.Storage.GCDelay = newConfig.Storage.GCDelay
+	c.Config.Storage.GCReferrers = newConfig.Storage.GCReferrers
 
 	// reload background tasks
-	if config.Extensions != nil {
+	if newConfig.Extensions != nil {
+		if c.Config.Extensions == nil {
+			c.Config.Extensions = &extconf.ExtensionConfig{}
+		}
+
 		// reload sync extension
-		c.Config.Extensions.Sync = config.Extensions.Sync
-		// reload search cve extension
-		if c.Config.Extensions.Search != nil {
-			// reload only if search is enabled and reloaded config has search extension
-			if *c.Config.Extensions.Search.Enable && config.Extensions.Search != nil {
-				c.Config.Extensions.Search.CVE = config.Extensions.Search.CVE
+		c.Config.Extensions.Sync = newConfig.Extensions.Sync
+
+		// reload only if search is enabled and reloaded config has search extension (can't setup routes at this stage)
+		if c.Config.Extensions.Search != nil && *c.Config.Extensions.Search.Enable {
+			if newConfig.Extensions.Search != nil {
+				c.Config.Extensions.Search.CVE = newConfig.Extensions.Search.CVE
 			}
 		}
+
 		// reload scrub extension
-		c.Config.Extensions.Scrub = config.Extensions.Scrub
+		c.Config.Extensions.Scrub = newConfig.Extensions.Scrub
 	} else {
 		c.Config.Extensions = nil
 	}

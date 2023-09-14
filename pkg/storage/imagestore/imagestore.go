@@ -2040,7 +2040,7 @@ func (is *ImageStore) getOriginalBlob(digest godigest.Digest, duplicateBlobs []s
 
 	// if we still don't have, search it
 	if originalBlob == "" {
-		is.log.Warn().Msg("rebuild dedupe: failed to find blob in cache, searching it in s3...")
+		is.log.Warn().Msg("rebuild dedupe: failed to find blob in cache, searching it in storage...")
 		// a rebuild dedupe was attempted in the past
 		// get original blob, should be found otherwise exit with error
 
