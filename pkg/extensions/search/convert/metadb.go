@@ -70,17 +70,15 @@ func RepoMeta2RepoSummary(ctx context.Context, repoMeta mTypes.RepoMetadata,
 				platformString := strings.TrimSpace(fmt.Sprintf("%s %s", opSys, arch))
 				repoPlatformsSet[platformString] = &gql_generated.Platform{Os: &opSys, Arch: &arch}
 			}
-
-			repoDownloadCount += manifestMetaMap[*manifestSummary.Digest].DownloadCount
 		}
+
+		repoDownloadCount += *imageSummary.DownloadCount
 
 		if *imageSummary.Vendor != "" {
 			repoVendorsSet[*imageSummary.Vendor] = true
 		}
 
 		lastUpdatedImageSummary = UpdateLastUpdatedTimestamp(&repoLastUpdatedTimestamp, lastUpdatedImageSummary, imageSummary)
-
-		repoDownloadCount += repoMeta.Statistics[descriptor.Digest].DownloadCount
 	}
 
 	// calculate repo size = sum all manifest, config and layer blobs sizes
@@ -247,6 +245,8 @@ func ImageIndex2ImageSummary(ctx context.Context, repo, tag string, indexDigest 
 
 		manifestSummaries = append(manifestSummaries, manifestSummary)
 	}
+
+	totalDownloadCount += repoMeta.Statistics[indexDigestStr].DownloadCount
 
 	for _, signatures := range repoMeta.Signatures[indexDigest.String()] {
 		if len(signatures) > 0 {
@@ -511,7 +511,7 @@ func ImageManifest2ManifestSummary(ctx context.Context, repo, tag string, descri
 		configSize        = manifestContent.Config.Size
 		artifactType      = zcommon.GetManifestArtifactType(manifestContent)
 		imageLastUpdated  = zcommon.GetImageLastUpdated(configContent)
-		downloadCount     = manifestMeta.DownloadCount
+		downloadCount     = repoMeta.Statistics[digest.String()].DownloadCount
 		isSigned          = false
 	)
 

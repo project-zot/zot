@@ -980,3 +980,95 @@ func TestGetOneManifestAnnotations(t *testing.T) {
 		So(*imageSummary.Source, ShouldBeBlank)
 	})
 }
+
+func TestDownloadCount(t *testing.T) {
+	Convey("manifest", t, func() {
+		repoMeta, manifestMetaMap, indexDataMap := test.GetMetadataForRepos(
+			test.Repo{
+				Name: "repo",
+				Images: []test.RepoImage{
+					{
+						Image: test.CreateRandomImage(),
+						Tag:   "10-downloads",
+						Statistics: mTypes.DescriptorStatistics{
+							DownloadCount: 10,
+						},
+					},
+				},
+			},
+		)
+
+		repoSummary := convert.RepoMeta2RepoSummary(context.Background(), repoMeta[0], manifestMetaMap, indexDataMap,
+			convert.SkipQGLField{}, nil)
+		So(*repoSummary.DownloadCount, ShouldEqual, 10)
+		So(*repoSummary.NewestImage.DownloadCount, ShouldEqual, 10)
+	})
+
+	Convey("index", t, func() {
+		img1, img2, img3 := test.CreateRandomImage(), test.CreateRandomImage(), test.CreateRandomImage()
+		multiArch := test.CreateMultiarchWith().Images([]test.Image{img1, img2, img3}).Build()
+
+		repoMeta, manifestMetaMap, indexDataMap := test.GetMetadataForRepos(
+			test.Repo{
+				Name: "repo",
+				MultiArchImages: []test.RepoMultiArchImage{
+					{
+						MultiarchImage: multiArch,
+						Tag:            "160-multiarch",
+						ImageStatistics: map[string]mTypes.DescriptorStatistics{
+							img1.DigestStr():      {DownloadCount: 10},
+							img2.DigestStr():      {DownloadCount: 20},
+							img3.DigestStr():      {DownloadCount: 30},
+							multiArch.DigestStr(): {DownloadCount: 100},
+						},
+					},
+				},
+			},
+		)
+
+		repoSummary := convert.RepoMeta2RepoSummary(context.Background(), repoMeta[0], manifestMetaMap, indexDataMap,
+			convert.SkipQGLField{}, nil)
+		So(*repoSummary.DownloadCount, ShouldEqual, 100)
+		So(*repoSummary.NewestImage.DownloadCount, ShouldEqual, 100)
+	})
+
+	Convey("index + manifest mixed", t, func() {
+		img1 := test.CreateRandomImage()
+		img2 := test.CreateRandomImage()
+		img3 := test.CreateImageWith().DefaultLayers().ImageConfig(
+			ispec.Image{Created: test.DateRef(2020, 1, 1, 1, 1, 1, 0, time.UTC)},
+		).Build()
+
+		multiArch := test.CreateMultiarchWith().Images([]test.Image{img1, img2, img3}).Build()
+
+		repoMeta, manifestMetaMap, indexDataMap := test.GetMetadataForRepos(
+			test.Repo{
+				Name: "repo",
+				Images: []test.RepoImage{
+					{
+						Image:      test.CreateRandomImage(),
+						Tag:        "5-downloads",
+						Statistics: mTypes.DescriptorStatistics{DownloadCount: 5},
+					},
+				},
+				MultiArchImages: []test.RepoMultiArchImage{
+					{
+						MultiarchImage: multiArch,
+						Tag:            "160-multiarch",
+						ImageStatistics: map[string]mTypes.DescriptorStatistics{
+							img1.DigestStr():      {DownloadCount: 10},
+							img2.DigestStr():      {DownloadCount: 20},
+							img3.DigestStr():      {DownloadCount: 30},
+							multiArch.DigestStr(): {DownloadCount: 100},
+						},
+					},
+				},
+			},
+		)
+
+		repoSummary := convert.RepoMeta2RepoSummary(context.Background(), repoMeta[0], manifestMetaMap, indexDataMap,
+			convert.SkipQGLField{}, nil)
+		So(*repoSummary.DownloadCount, ShouldEqual, 105)
+		So(*repoSummary.NewestImage.DownloadCount, ShouldEqual, 100)
+	})
+}
