@@ -2,12 +2,10 @@ package main
 
 import (
 	"bytes"
-	crand "crypto/rand"
 	"encoding/json"
 	"fmt"
 	"io"
 	"log"
-	"math/big"
 	"math/rand"
 	"net/http"
 	"os"
@@ -24,6 +22,7 @@ import (
 	zerr "zotregistry.io/zot/errors"
 	"zotregistry.io/zot/pkg/common"
 	testc "zotregistry.io/zot/pkg/test/common"
+	"zotregistry.io/zot/pkg/test/image-utils"
 )
 
 func makeHTTPGetRequest(url string, resultPtr interface{}, client *resty.Client) error {
@@ -1023,21 +1022,7 @@ func loadOrStore(statusRequests *sync.Map, key string, value int) int { //nolint
 
 // TO DO: replace with pkg/test/images when available.
 func getRandomImageConfig() ([]byte, godigest.Digest) {
-	const maxLen = 16
-
-	randomAuthor := randomString(maxLen)
-
-	config := ispec.Image{
-		Platform: ispec.Platform{
-			Architecture: "amd64",
-			OS:           "linux",
-		},
-		RootFS: ispec.RootFS{
-			Type:    "layers",
-			DiffIDs: []godigest.Digest{},
-		},
-		Author: randomAuthor,
-	}
+	config := image.GetDefaultConfig()
 
 	configBlobContent, err := json.MarshalIndent(&config, "", "\t")
 	if err != nil {
@@ -1047,21 +1032,4 @@ func getRandomImageConfig() ([]byte, godigest.Digest) {
 	configBlobDigestRaw := godigest.FromBytes(configBlobContent)
 
 	return configBlobContent, configBlobDigestRaw
-}
-
-func randomString(n int) string {
-	const letters = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz-"
-
-	ret := make([]byte, n)
-
-	for count := 0; count < n; count++ {
-		num, err := crand.Int(crand.Reader, big.NewInt(int64(len(letters))))
-		if err != nil {
-			panic(err)
-		}
-
-		ret[count] = letters[num.Int64()]
-	}
-
-	return string(ret)
 }

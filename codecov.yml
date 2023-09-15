@@ -2,7 +2,6 @@ ignore:
     - "*_gen.go"
     - "./pkg/extensions/search/gql_generated"
     - "./pkg/extensions/minimal.go"
-    - "./pkg/cli/minimal.go"
     - "./cmd/zb/*.go"
     - "./pkg/test/mocks/*.go"
     - "./swagger/*.go"
