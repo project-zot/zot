@@ -4,9 +4,7 @@
 package extensions
 
 import (
-	"context"
 	"net/http"
-	"sync"
 	"time"
 
 	gqlHandler "github.com/99designs/gqlgen/graphql/handler"
@@ -24,145 +22,58 @@ import (
 	"zotregistry.io/zot/pkg/storage"
 )
 
-type (
-	CveInfo cveinfo.CveInfo
-	state   int
-)
+const scanInterval = 15 * time.Minute
 
-const (
-	pending state = iota
-	running
-	done
-)
+type CveScanner cveinfo.Scanner
 
 func IsBuiltWithSearchExtension() bool {
 	return true
 }
 
-func GetCVEInfo(config *config.Config, storeController storage.StoreController,
+func GetCveScanner(conf *config.Config, storeController storage.StoreController,
 	metaDB mTypes.MetaDB, log log.Logger,
-) CveInfo {
-	if config.Extensions.Search == nil || !*config.Extensions.Search.Enable || config.Extensions.Search.CVE == nil {
+) CveScanner {
+	if !conf.IsCveScanningEnabled() {
 		return nil
 	}
 
-	dbRepository := config.Extensions.Search.CVE.Trivy.DBRepository
-	javaDBRepository := config.Extensions.Search.CVE.Trivy.JavaDBRepository
+	dbRepository := conf.Extensions.Search.CVE.Trivy.DBRepository
+	javaDBRepository := conf.Extensions.Search.CVE.Trivy.JavaDBRepository
 
-	return cveinfo.NewCVEInfo(storeController, metaDB, dbRepository, javaDBRepository, log)
+	return cveinfo.NewScanner(storeController, metaDB, dbRepository, javaDBRepository, log)
 }
 
-func EnableSearchExtension(config *config.Config, storeController storage.StoreController,
-	metaDB mTypes.MetaDB, taskScheduler *scheduler.Scheduler, cveInfo CveInfo, log log.Logger,
+func EnableSearchExtension(conf *config.Config, storeController storage.StoreController,
+	metaDB mTypes.MetaDB, taskScheduler *scheduler.Scheduler, cveScanner CveScanner, log log.Logger,
 ) {
-	if config.Extensions.Search != nil && *config.Extensions.Search.Enable && config.Extensions.Search.CVE != nil {
-		updateInterval := config.Extensions.Search.CVE.UpdateInterval
+	if conf.IsCveScanningEnabled() {
+		updateInterval := conf.Extensions.Search.CVE.UpdateInterval
 
-		downloadTrivyDB(updateInterval, taskScheduler, cveInfo, log)
+		downloadTrivyDB(updateInterval, taskScheduler, cveScanner, log)
+		startScanner(scanInterval, metaDB, taskScheduler, cveScanner, log)
 	} else {
 		log.Info().Msg("CVE config not provided, skipping CVE update")
 	}
 }
 
-func downloadTrivyDB(interval time.Duration, sch *scheduler.Scheduler, cveInfo CveInfo, log log.Logger) {
-	generator := NewTrivyTaskGenerator(interval, cveInfo, log)
+func downloadTrivyDB(interval time.Duration, sch *scheduler.Scheduler, cveScanner CveScanner, log log.Logger) {
+	generator := cveinfo.NewDBUpdateTaskGenerator(interval, cveScanner, log)
 
 	log.Info().Msg("Submitting CVE DB update scheduler")
 	sch.SubmitGenerator(generator, interval, scheduler.HighPriority)
 }
 
-func NewTrivyTaskGenerator(interval time.Duration, cveInfo CveInfo, log log.Logger) *TrivyTaskGenerator {
-	generator := &TrivyTaskGenerator{interval, cveInfo, log, pending, 0, time.Now(), &sync.Mutex{}}
+func startScanner(interval time.Duration, metaDB mTypes.MetaDB, sch *scheduler.Scheduler,
+	cveScanner CveScanner, log log.Logger,
+) {
+	generator := cveinfo.NewScanTaskGenerator(metaDB, cveScanner, log)
 
-	return generator
-}
-
-type TrivyTaskGenerator struct {
-	interval     time.Duration
-	cveInfo      CveInfo
-	log          log.Logger
-	status       state
-	waitTime     time.Duration
-	lastTaskTime time.Time
-	lock         *sync.Mutex
-}
-
-func (gen *TrivyTaskGenerator) Next() (scheduler.Task, error) {
-	var newTask scheduler.Task
-
-	gen.lock.Lock()
-
-	if gen.status == pending && time.Since(gen.lastTaskTime) >= gen.waitTime {
-		newTask = newTrivyTask(gen.interval, gen.cveInfo, gen, gen.log)
-		gen.status = running
-	}
-	gen.lock.Unlock()
-
-	return newTask, nil
-}
-
-func (gen *TrivyTaskGenerator) IsDone() bool {
-	gen.lock.Lock()
-	status := gen.status
-	gen.lock.Unlock()
-
-	return status == done
-}
-
-func (gen *TrivyTaskGenerator) IsReady() bool {
-	return true
-}
-
-func (gen *TrivyTaskGenerator) Reset() {
-	gen.lock.Lock()
-	gen.status = pending
-	gen.waitTime = 0
-	gen.lock.Unlock()
-}
-
-type trivyTask struct {
-	interval  time.Duration
-	cveInfo   cveinfo.CveInfo
-	generator *TrivyTaskGenerator
-	log       log.Logger
-}
-
-func newTrivyTask(interval time.Duration, cveInfo cveinfo.CveInfo,
-	generator *TrivyTaskGenerator, log log.Logger,
-) *trivyTask {
-	return &trivyTask{interval, cveInfo, generator, log}
-}
-
-func (trivyT *trivyTask) DoWork(ctx context.Context) error {
-	trivyT.log.Info().Msg("updating the CVE database")
-
-	err := trivyT.cveInfo.UpdateDB()
-	if err != nil {
-		trivyT.generator.lock.Lock()
-		trivyT.generator.status = pending
-
-		if trivyT.generator.waitTime == 0 {
-			trivyT.generator.waitTime = time.Second
-		}
-
-		trivyT.generator.waitTime *= 2
-		trivyT.generator.lastTaskTime = time.Now()
-		trivyT.generator.lock.Unlock()
-
-		return err
-	}
-
-	trivyT.generator.lock.Lock()
-	trivyT.generator.lastTaskTime = time.Now()
-	trivyT.generator.status = done
-	trivyT.generator.lock.Unlock()
-	trivyT.log.Info().Str("DB update completed, next update scheduled after", trivyT.interval.String()).Msg("")
-
-	return nil
+	log.Info().Msg("Submitting CVE scan scheduler")
+	sch.SubmitGenerator(generator, interval, scheduler.MediumPriority)
 }
 
 func SetupSearchRoutes(conf *config.Config, router *mux.Router, storeController storage.StoreController,
-	metaDB mTypes.MetaDB, cveInfo CveInfo, log log.Logger,
+	metaDB mTypes.MetaDB, cveScanner CveScanner, log log.Logger,
 ) {
 	if !conf.IsSearchEnabled() {
 		log.Info().Msg("skip enabling the search route as the config prerequisites are not met")
@@ -171,6 +82,13 @@ func SetupSearchRoutes(conf *config.Config, router *mux.Router, storeController 
 	}
 
 	log.Info().Msg("setting up search routes")
+
+	var cveInfo cveinfo.CveInfo
+	if conf.IsCveScanningEnabled() {
+		cveInfo = cveinfo.NewCVEInfo(cveScanner, metaDB, log)
+	} else {
+		cveInfo = nil
+	}
 
 	resConfig := search.GetResolverConfig(log, storeController, metaDB, cveInfo)
 

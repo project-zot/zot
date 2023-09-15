@@ -10,11 +10,8 @@ type CveInfoMock struct {
 	GetImageListWithCVEFixedFn func(repo, cveID string) ([]cvemodel.TagInfo, error)
 	GetCVEListForImageFn       func(repo string, reference string, searchedCVE string, pageInput cvemodel.PageInput,
 	) ([]cvemodel.CVE, common.PageInfo, error)
-	GetCVESummaryForImageFn func(repo string, reference string,
-	) (cvemodel.ImageCVESummary, error)
 	GetCVESummaryForImageMediaFn func(repo string, digest, mediaType string,
 	) (cvemodel.ImageCVESummary, error)
-	UpdateDBFn func() error
 }
 
 func (cveInfo CveInfoMock) GetImageListForCVE(repo, cveID string) ([]cvemodel.TagInfo, error) {
@@ -47,15 +44,6 @@ func (cveInfo CveInfoMock) GetCVEListForImage(repo string, reference string,
 	return []cvemodel.CVE{}, common.PageInfo{}, nil
 }
 
-func (cveInfo CveInfoMock) GetCVESummaryForImage(repo string, reference string,
-) (cvemodel.ImageCVESummary, error) {
-	if cveInfo.GetCVESummaryForImageFn != nil {
-		return cveInfo.GetCVESummaryForImageFn(repo, reference)
-	}
-
-	return cvemodel.ImageCVESummary{}, nil
-}
-
 func (cveInfo CveInfoMock) GetCVESummaryForImageMedia(repo, digest, mediaType string,
 ) (cvemodel.ImageCVESummary, error) {
 	if cveInfo.GetCVESummaryForImageMediaFn != nil {
@@ -65,17 +53,11 @@ func (cveInfo CveInfoMock) GetCVESummaryForImageMedia(repo, digest, mediaType st
 	return cvemodel.ImageCVESummary{}, nil
 }
 
-func (cveInfo CveInfoMock) UpdateDB() error {
-	if cveInfo.UpdateDBFn != nil {
-		return cveInfo.UpdateDBFn()
-	}
-
-	return nil
-}
-
 type CveScannerMock struct {
 	IsImageFormatScannableFn func(repo string, reference string) (bool, error)
 	IsImageMediaScannableFn  func(repo string, digest, mediaType string) (bool, error)
+	IsResultCachedFn         func(digest string) bool
+	GetCachedResultFn        func(digest string) map[string]cvemodel.CVE
 	ScanImageFn              func(image string) (map[string]cvemodel.CVE, error)
 	UpdateDBFn               func() error
 }
@@ -94,6 +76,22 @@ func (scanner CveScannerMock) IsImageMediaScannable(repo string, digest, mediaTy
 	}
 
 	return true, nil
+}
+
+func (scanner CveScannerMock) IsResultCached(digest string) bool {
+	if scanner.IsResultCachedFn != nil {
+		return scanner.IsResultCachedFn(digest)
+	}
+
+	return false
+}
+
+func (scanner CveScannerMock) GetCachedResult(digest string) map[string]cvemodel.CVE {
+	if scanner.GetCachedResultFn != nil {
+		return scanner.GetCachedResultFn(digest)
+	}
+
+	return map[string]cvemodel.CVE{}
 }
 
 func (scanner CveScannerMock) ScanImage(image string) (map[string]cvemodel.CVE, error) {

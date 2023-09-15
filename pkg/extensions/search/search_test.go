@@ -220,87 +220,84 @@ func uploadNewRepoTag(tag string, repoName string, baseURL string, layers [][]by
 	return err
 }
 
-func getMockCveInfo(metaDB mTypes.MetaDB, log log.Logger) cveinfo.CveInfo {
+func getMockCveScanner(metaDB mTypes.MetaDB) cveinfo.Scanner {
 	// MetaDB loaded with initial data, mock the scanner
 	// Setup test CVE data in mock scanner
+	getCveResults := func(image string) map[string]cvemodel.CVE {
+		if image == "zot-cve-test:0.0.1" || image == "a/zot-cve-test:0.0.1" ||
+			image == "zot-test:0.0.1" || image == "a/zot-test:0.0.1" ||
+			strings.Contains(image, "sha256:40d1f74918aefed733c590f798d7eafde8fc0a7ec63bb8bc52eaae133cf92495") {
+			return map[string]cvemodel.CVE{
+				"CVE1": {
+					ID:          "CVE1",
+					Severity:    "MEDIUM",
+					Title:       "Title CVE1",
+					Description: "Description CVE1",
+				},
+				"CVE2": {
+					ID:          "CVE2",
+					Severity:    "HIGH",
+					Title:       "Title CVE2",
+					Description: "Description CVE2",
+				},
+				"CVE3": {
+					ID:          "CVE3",
+					Severity:    "LOW",
+					Title:       "Title CVE3",
+					Description: "Description CVE3",
+				},
+				"CVE4": {
+					ID:          "CVE4",
+					Severity:    "CRITICAL",
+					Title:       "Title CVE4",
+					Description: "Description CVE4",
+				},
+			}
+		}
+
+		if image == "test-repo:latest" ||
+			strings.Contains(image, "sha256:9f8e1a125c4fb03a0f157d75999b73284ccc5cba18eb772e4643e3499343607e") {
+			return map[string]cvemodel.CVE{
+				"CVE1": {
+					ID:          "CVE1",
+					Severity:    "MEDIUM",
+					Title:       "Title CVE1",
+					Description: "Description CVE1",
+				},
+				"CVE2": {
+					ID:          "CVE2",
+					Severity:    "HIGH",
+					Title:       "Title CVE2",
+					Description: "Description CVE2",
+				},
+				"CVE3": {
+					ID:          "CVE3",
+					Severity:    "LOW",
+					Title:       "Title CVE3",
+					Description: "Description CVE3",
+				},
+				"CVE4": {
+					ID:          "CVE4",
+					Severity:    "CRITICAL",
+					Title:       "Title CVE4",
+					Description: "Description CVE4",
+				},
+			}
+		}
+
+		// By default the image has no vulnerabilities
+		return map[string]cvemodel.CVE{}
+	}
+
 	scanner := mocks.CveScannerMock{
 		ScanImageFn: func(image string) (map[string]cvemodel.CVE, error) {
-			if image == "zot-cve-test:0.0.1" || image == "a/zot-cve-test:0.0.1" ||
-				strings.Contains(image, "zot-cve-test@sha256:40d1f74918aefed733c590f798d7eafde8fc0a7ec63bb8bc52eaae133cf92495") ||
-				strings.Contains(image, "a/zot-cve-test@sha256:40d1f74918aefed733c590f798d7eafde8fc0a7ec63bb8bc52eaae133cf92495") {
-				return map[string]cvemodel.CVE{
-					"CVE1": {
-						ID:          "CVE1",
-						Severity:    "MEDIUM",
-						Title:       "Title CVE1",
-						Description: "Description CVE1",
-					},
-					"CVE2": {
-						ID:          "CVE2",
-						Severity:    "HIGH",
-						Title:       "Title CVE2",
-						Description: "Description CVE2",
-					},
-					"CVE3": {
-						ID:          "CVE3",
-						Severity:    "LOW",
-						Title:       "Title CVE3",
-						Description: "Description CVE3",
-					},
-				}, nil
-			}
-
-			if image == "zot-test:0.0.1" || image == "a/zot-test:0.0.1" ||
-				strings.Contains(image, "a/zot-test@sha256:40d1f74918aefed733c590f798d7eafde8fc0a7ec63bb8bc52eaae133cf92495") ||
-				strings.Contains(image, "zot-test@sha256:40d1f74918aefed733c590f798d7eafde8fc0a7ec63bb8bc52eaae133cf92495") {
-				return map[string]cvemodel.CVE{
-					"CVE3": {
-						ID:          "CVE3",
-						Severity:    "LOW",
-						Title:       "Title CVE3",
-						Description: "Description CVE3",
-					},
-					"CVE4": {
-						ID:          "CVE4",
-						Severity:    "CRITICAL",
-						Title:       "Title CVE4",
-						Description: "Description CVE4",
-					},
-				}, nil
-			}
-
-			if image == "test-repo:latest" ||
-				image == "test-repo@sha256:9f8e1a125c4fb03a0f157d75999b73284ccc5cba18eb772e4643e3499343607e" {
-				return map[string]cvemodel.CVE{
-					"CVE1": {
-						ID:          "CVE1",
-						Severity:    "MEDIUM",
-						Title:       "Title CVE1",
-						Description: "Description CVE1",
-					},
-					"CVE2": {
-						ID:          "CVE2",
-						Severity:    "HIGH",
-						Title:       "Title CVE2",
-						Description: "Description CVE2",
-					},
-					"CVE3": {
-						ID:          "CVE3",
-						Severity:    "LOW",
-						Title:       "Title CVE3",
-						Description: "Description CVE3",
-					},
-					"CVE4": {
-						ID:          "CVE4",
-						Severity:    "CRITICAL",
-						Title:       "Title CVE4",
-						Description: "Description CVE4",
-					},
-				}, nil
-			}
-
-			// By default the image has no vulnerabilities
-			return map[string]cvemodel.CVE{}, nil
+			return getCveResults(image), nil
+		},
+		GetCachedResultFn: func(digestStr string) map[string]cvemodel.CVE {
+			return getCveResults(digestStr)
+		},
+		IsResultCachedFn: func(digestStr string) bool {
+			return true
 		},
 		IsImageFormatScannableFn: func(repo string, reference string) (bool, error) {
 			// Almost same logic compared to actual Trivy specific implementation
@@ -357,11 +354,7 @@ func getMockCveInfo(metaDB mTypes.MetaDB, log log.Logger) cveinfo.CveInfo {
 		},
 	}
 
-	return &cveinfo.BaseCveInfo{
-		Log:     log,
-		Scanner: scanner,
-		MetaDB:  metaDB,
-	}
+	return &scanner
 }
 
 func TestRepoListWithNewestImage(t *testing.T) {
@@ -698,7 +691,7 @@ func TestRepoListWithNewestImage(t *testing.T) {
 			panic(err)
 		}
 
-		ctlr.CveInfo = getMockCveInfo(ctlr.MetaDB, ctlr.Log)
+		ctlr.CveScanner = getMockCveScanner(ctlr.MetaDB)
 
 		go func() {
 			if err := ctlr.Run(ctx); !errors.Is(err, http.ErrServerClosed) {
@@ -783,13 +776,7 @@ func TestRepoListWithNewestImage(t *testing.T) {
 				ShouldBeGreaterThan,
 				0,
 			)
-			if repo.Name == "zot-cve-test" {
-				// This really depends on the test data, but with the current test image it's HIGH
-				So(vulnerabilities.MaxSeverity, ShouldEqual, "HIGH")
-			} else if repo.Name == "zot-test" {
-				// This really depends on the test data, but with the current test image it's CRITICAL
-				So(vulnerabilities.MaxSeverity, ShouldEqual, "CRITICAL")
-			}
+			So(vulnerabilities.MaxSeverity, ShouldEqual, "CRITICAL")
 		}
 	})
 }
@@ -3396,7 +3383,7 @@ func TestGlobalSearch(t *testing.T) {
 			panic(err)
 		}
 
-		ctlr.CveInfo = getMockCveInfo(ctlr.MetaDB, ctlr.Log)
+		ctlr.CveScanner = getMockCveScanner(ctlr.MetaDB)
 
 		go func() {
 			if err := ctlr.Run(ctx); !errors.Is(err, http.ErrServerClosed) {
@@ -3592,9 +3579,15 @@ func TestGlobalSearch(t *testing.T) {
 
 			// RepoInfo object does not provide vulnerability information so we need to check differently
 			t.Logf("Found vulnerability summary %v", repoSummary.NewestImage.Vulnerabilities)
-			So(repoSummary.NewestImage.Vulnerabilities.Count, ShouldEqual, 0)
-			// There are 0 vulnerabilities this data used in tests
-			So(repoSummary.NewestImage.Vulnerabilities.MaxSeverity, ShouldEqual, "NONE")
+			if repoName == "repo1" { //nolint:goconst
+				So(repoSummary.NewestImage.Vulnerabilities.Count, ShouldEqual, 4)
+				// There are 4 vulnerabilities in the data used in tests
+				So(repoSummary.NewestImage.Vulnerabilities.MaxSeverity, ShouldEqual, "CRITICAL")
+			} else {
+				So(repoSummary.NewestImage.Vulnerabilities.Count, ShouldEqual, 0)
+				// There are 0 vulnerabilities this data used in tests
+				So(repoSummary.NewestImage.Vulnerabilities.MaxSeverity, ShouldEqual, "NONE")
+			}
 		}
 
 		query = `
@@ -3659,9 +3652,9 @@ func TestGlobalSearch(t *testing.T) {
 
 		// RepoInfo object does not provide vulnerability information so we need to check differently
 		t.Logf("Found vulnerability summary %v", actualImageSummary.Vulnerabilities)
-		// There are 0 vulnerabilities this data used in tests
-		So(actualImageSummary.Vulnerabilities.Count, ShouldEqual, 0)
-		So(actualImageSummary.Vulnerabilities.MaxSeverity, ShouldEqual, "NONE")
+		// There are 4 vulnerabilities in the data used in tests
+		So(actualImageSummary.Vulnerabilities.Count, ShouldEqual, 4)
+		So(actualImageSummary.Vulnerabilities.MaxSeverity, ShouldEqual, "CRITICAL")
 	})
 }
 
@@ -6204,7 +6197,7 @@ func TestImageSummary(t *testing.T) {
 			panic(err)
 		}
 
-		ctlr.CveInfo = getMockCveInfo(ctlr.MetaDB, ctlr.Log)
+		ctlr.CveScanner = getMockCveScanner(ctlr.MetaDB)
 
 		go func() {
 			if err := ctlr.Run(ctx); !errors.Is(err, http.ErrServerClosed) {

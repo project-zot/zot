@@ -1007,6 +1007,7 @@ func (dwr *DynamoDB) FilterTags(ctx context.Context, filterFunc mTypes.FilterFun
 		repoMetaAttributeIterator AttributesIterator
 		userBookmarks             = getUserBookmarks(ctx, dwr)
 		userStars                 = getUserStars(ctx, dwr)
+		aggregateError            error
 	)
 
 	repoMetaAttributeIterator = NewBaseDynamoAttributesIterator(
@@ -1014,19 +1015,24 @@ func (dwr *DynamoDB) FilterTags(ctx context.Context, filterFunc mTypes.FilterFun
 	)
 
 	repoMetaAttribute, err := repoMetaAttributeIterator.First(ctx)
+	if err != nil {
+		return foundRepos, manifestMetadataMap, indexDataMap, err
+	}
 
 	for ; repoMetaAttribute != nil; repoMetaAttribute, err = repoMetaAttributeIterator.Next(ctx) {
 		if err != nil {
-			return []mTypes.RepoMetadata{}, map[string]mTypes.ManifestMetadata{}, map[string]mTypes.IndexData{},
-				err
+			aggregateError = errors.Join(aggregateError, err)
+
+			continue
 		}
 
 		var repoMeta mTypes.RepoMetadata
 
 		err := attributevalue.Unmarshal(repoMetaAttribute, &repoMeta)
 		if err != nil {
-			return []mTypes.RepoMetadata{}, map[string]mTypes.ManifestMetadata{}, map[string]mTypes.IndexData{},
-				err
+			aggregateError = errors.Join(aggregateError, err)
+
+			continue
 		}
 
 		if ok, err := reqCtx.RepoIsUserAvailable(ctx, repoMeta.Name); !ok || err != nil {
@@ -1046,8 +1052,10 @@ func (dwr *DynamoDB) FilterTags(ctx context.Context, filterFunc mTypes.FilterFun
 				manifestMeta, err := dwr.fetchManifestMetaWithCheck(repoMeta.Name, manifestDigest, //nolint:contextcheck
 					manifestMetadataMap)
 				if err != nil {
-					return []mTypes.RepoMetadata{}, map[string]mTypes.ManifestMetadata{}, map[string]mTypes.IndexData{},
-						fmt.Errorf("metadb: error while unmashaling manifest metadata for digest %s \n%w", manifestDigest, err)
+					err = fmt.Errorf("metadb: error while unmashaling manifest metadata for digest %s \n%w", manifestDigest, err)
+					aggregateError = errors.Join(aggregateError, err)
+
+					continue
 				}
 
 				if filterFunc(repoMeta, manifestMeta) {
@@ -1059,16 +1067,20 @@ func (dwr *DynamoDB) FilterTags(ctx context.Context, filterFunc mTypes.FilterFun
 
 				indexData, err := dwr.fetchIndexDataWithCheck(indexDigest, indexDataMap) //nolint:contextcheck
 				if err != nil {
-					return []mTypes.RepoMetadata{}, map[string]mTypes.ManifestMetadata{}, map[string]mTypes.IndexData{},
-						fmt.Errorf("metadb: error while getting index data for digest %s %w", indexDigest, err)
+					err = fmt.Errorf("metadb: error while getting index data for digest %s %w", indexDigest, err)
+					aggregateError = errors.Join(aggregateError, err)
+
+					continue
 				}
 
 				var indexContent ispec.Index
 
 				err = json.Unmarshal(indexData.IndexBlob, &indexContent)
 				if err != nil {
-					return []mTypes.RepoMetadata{}, map[string]mTypes.ManifestMetadata{}, map[string]mTypes.IndexData{},
-						fmt.Errorf("metadb: error while unmashaling index content for digest %s %w", indexDigest, err)
+					err = fmt.Errorf("metadb: error while unmashaling index content for digest %s %w", indexDigest, err)
+					aggregateError = errors.Join(aggregateError, err)
+
+					continue
 				}
 
 				matchedManifests := []ispec.Descriptor{}
@@ -1079,8 +1091,10 @@ func (dwr *DynamoDB) FilterTags(ctx context.Context, filterFunc mTypes.FilterFun
 					manifestMeta, err := dwr.fetchManifestMetaWithCheck(repoMeta.Name, manifestDigest, //nolint:contextcheck
 						manifestMetadataMap)
 					if err != nil {
-						return []mTypes.RepoMetadata{}, map[string]mTypes.ManifestMetadata{}, map[string]mTypes.IndexData{},
-							fmt.Errorf("%w metadb: error while getting manifest data for digest %s", err, manifestDigest)
+						err = fmt.Errorf("%w metadb: error while getting manifest data for digest %s", err, manifestDigest)
+						aggregateError = errors.Join(aggregateError, err)
+
+						continue
 					}
 
 					if filterFunc(repoMeta, manifestMeta) {
@@ -1094,8 +1108,9 @@ func (dwr *DynamoDB) FilterTags(ctx context.Context, filterFunc mTypes.FilterFun
 
 					indexBlob, err := json.Marshal(indexContent)
 					if err != nil {
-						return []mTypes.RepoMetadata{}, map[string]mTypes.ManifestMetadata{}, map[string]mTypes.IndexData{},
-							err
+						aggregateError = errors.Join(aggregateError, err)
+
+						continue
 					}
 
 					indexData.IndexBlob = indexBlob
@@ -1119,7 +1134,7 @@ func (dwr *DynamoDB) FilterTags(ctx context.Context, filterFunc mTypes.FilterFun
 		foundRepos = append(foundRepos, repoMeta)
 	}
 
-	return foundRepos, manifestMetadataMap, indexDataMap, err
+	return foundRepos, manifestMetadataMap, indexDataMap, aggregateError
 }
 
 func (dwr *DynamoDB) FilterRepos(ctx context.Context, filter mTypes.FilterRepoFunc,

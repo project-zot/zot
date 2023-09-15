@@ -216,8 +216,14 @@ func TestVulnerableLayer(t *testing.T) {
 		cveMap, err := scanner.ScanImage("repo@" + img.DigestStr())
 		So(err, ShouldBeNil)
 		t.Logf("cveMap: %v", cveMap)
-		// As of July 15 2023 there are 3 CVEs: CVE-2023-1255, CVE-2023-2650, CVE-2023-2975
+		// As of September 17 2023 there are 5 CVEs:
+		// CVE-2023-1255, CVE-2023-2650, CVE-2023-2975, CVE-2023-3817, CVE-2023-3446
 		// There may be more discovered in the future
-		So(len(cveMap), ShouldBeGreaterThanOrEqualTo, 3)
+		So(len(cveMap), ShouldBeGreaterThanOrEqualTo, 5)
+		So(cveMap, ShouldContainKey, "CVE-2023-1255")
+		So(cveMap, ShouldContainKey, "CVE-2023-2650")
+		So(cveMap, ShouldContainKey, "CVE-2023-2975")
+		So(cveMap, ShouldContainKey, "CVE-2023-3817")
+		So(cveMap, ShouldContainKey, "CVE-2023-3446")
 	})
 }

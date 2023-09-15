@@ -23,6 +23,7 @@ import (
 
 	zerr "zotregistry.io/zot/errors"
 	zcommon "zotregistry.io/zot/pkg/common"
+	cvecache "zotregistry.io/zot/pkg/extensions/search/cve/cache"
 	cvemodel "zotregistry.io/zot/pkg/extensions/search/cve/model"
 	"zotregistry.io/zot/pkg/log"
 	mcommon "zotregistry.io/zot/pkg/meta/common"
@@ -78,7 +79,7 @@ type Scanner struct {
 	storeController  storage.StoreController
 	log              log.Logger
 	dbLock           *sync.Mutex
-	cache            *CveCache
+	cache            *cvecache.CveCache
 	dbRepository     string
 	javaDBRepository string
 }
@@ -120,7 +121,7 @@ func NewScanner(storeController storage.StoreController,
 		cveController:    cveController,
 		storeController:  storeController,
 		dbLock:           &sync.Mutex{},
-		cache:            NewCveCache(cacheSize, log),
+		cache:            cvecache.NewCveCache(cacheSize, log),
 		dbRepository:     dbRepository,
 		javaDBRepository: javaDBRepository,
 	}
@@ -258,9 +259,6 @@ func (scanner Scanner) isManifestScanable(digestStr string) (bool, error) {
 		case ispec.MediaTypeImageLayerGzip, ispec.MediaTypeImageLayer, string(regTypes.DockerLayer):
 			continue
 		default:
-			scanner.log.Debug().Str("mediaType", imageLayer.MediaType).
-				Msg("image media type not supported for scanning")
-
 			return false, zerr.ErrScanNotSupported
 		}
 	}
@@ -302,6 +300,15 @@ func (scanner Scanner) isIndexScanable(digestStr string) (bool, error) {
 	}
 
 	return false, nil
+}
+
+func (scanner Scanner) IsResultCached(digest string) bool {
+	// Check if the entry exists in cache without updating the recent-ness
+	return scanner.cache.Contains(digest)
+}
+
+func (scanner Scanner) GetCachedResult(digest string) map[string]cvemodel.CVE {
+	return scanner.cache.Get(digest)
 }
 
 func (scanner Scanner) ScanImage(image string) (map[string]cvemodel.CVE, error) {
@@ -430,6 +437,10 @@ func (scanner Scanner) scanManifest(repo, digest string) (map[string]cvemodel.CV
 }
 
 func (scanner Scanner) scanIndex(repo, digest string) (map[string]cvemodel.CVE, error) {
+	if cachedMap := scanner.cache.Get(digest); cachedMap != nil {
+		return cachedMap, nil
+	}
+
 	indexData, err := scanner.metaDB.GetIndexData(godigest.Digest(digest))
 	if err != nil {
 		return map[string]cvemodel.CVE{}, err
@@ -457,12 +468,14 @@ func (scanner Scanner) scanIndex(repo, digest string) (map[string]cvemodel.CVE, 
 		}
 	}
 
+	scanner.cache.Add(digest, indexCveIDMap)
+
 	return indexCveIDMap, nil
 }
 
 // UpdateDB downloads the Trivy DB / Cache under the store root directory.
 func (scanner Scanner) UpdateDB() error {
-	// We need a lock as using multiple substores each with it's own DB
+	// We need a lock as using multiple substores each with its own DB
 	// can result in a DATARACE because some varibles in trivy-db are global
 	// https://github.com/project-zot/trivy-db/blob/main/pkg/db/db.go#L23
 	scanner.dbLock.Lock()

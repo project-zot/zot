@@ -22,15 +22,15 @@ type CveInfo interface {
 	GetImageListWithCVEFixed(repo, cveID string) ([]cvemodel.TagInfo, error)
 	GetCVEListForImage(repo, tag string, searchedCVE string, pageinput cvemodel.PageInput,
 	) ([]cvemodel.CVE, zcommon.PageInfo, error)
-	GetCVESummaryForImage(repo, ref string) (cvemodel.ImageCVESummary, error)
 	GetCVESummaryForImageMedia(repo, digest, mediaType string) (cvemodel.ImageCVESummary, error)
-	UpdateDB() error
 }
 
 type Scanner interface {
 	ScanImage(image string) (map[string]cvemodel.CVE, error)
 	IsImageFormatScannable(repo, ref string) (bool, error)
 	IsImageMediaScannable(repo, digestStr, mediaType string) (bool, error)
+	IsResultCached(digestStr string) bool
+	GetCachedResult(digestStr string) map[string]cvemodel.CVE
 	UpdateDB() error
 }
 
@@ -40,11 +40,13 @@ type BaseCveInfo struct {
 	MetaDB  mTypes.MetaDB
 }
 
-func NewCVEInfo(storeController storage.StoreController, metaDB mTypes.MetaDB,
+func NewScanner(storeController storage.StoreController, metaDB mTypes.MetaDB,
 	dbRepository, javaDBRepository string, log log.Logger,
-) *BaseCveInfo {
-	scanner := trivy.NewScanner(storeController, metaDB, dbRepository, javaDBRepository, log)
+) Scanner {
+	return trivy.NewScanner(storeController, metaDB, dbRepository, javaDBRepository, log)
+}
 
+func NewCVEInfo(scanner Scanner, metaDB mTypes.MetaDB, log log.Logger) *BaseCveInfo {
 	return &BaseCveInfo{
 		Log:     log,
 		Scanner: scanner,
@@ -72,7 +74,7 @@ func (cveinfo BaseCveInfo) GetImageListForCVE(repo, cveID string) ([]cvemodel.Ta
 
 			isScanableImage, err := cveinfo.Scanner.IsImageFormatScannable(repo, manifestDigestStr)
 			if !isScanableImage || err != nil {
-				cveinfo.Log.Info().Str("image", repo+":"+tag).Err(err).Msg("image is not scanable")
+				cveinfo.Log.Debug().Str("image", repo+":"+tag).Err(err).Msg("image is not scanable")
 
 				continue
 			}
@@ -94,7 +96,8 @@ func (cveinfo BaseCveInfo) GetImageListForCVE(repo, cveID string) ([]cvemodel.Ta
 				})
 			}
 		default:
-			cveinfo.Log.Error().Str("mediaType", descriptor.MediaType).Msg("media type not supported for scanning")
+			cveinfo.Log.Debug().Str("image", repo+":"+tag).Str("mediaType", descriptor.MediaType).
+				Msg("image media type not supported for scanning")
 		}
 	}
 
@@ -187,7 +190,8 @@ func (cveinfo BaseCveInfo) GetImageListWithCVEFixed(repo, cveID string) ([]cvemo
 				})
 			}
 		default:
-			cveinfo.Log.Error().Str("mediaType", descriptor.MediaType).Msg("media type not supported")
+			cveinfo.Log.Debug().Str("mediaType", descriptor.MediaType).
+				Msg("image media type not supported for scanning")
 		}
 	}
 
@@ -250,7 +254,7 @@ func (cveinfo *BaseCveInfo) isManifestVulnerable(repo, tag, manifestDigestStr, c
 
 	isValidImage, err := cveinfo.Scanner.IsImageMediaScannable(repo, manifestDigestStr, ispec.MediaTypeImageManifest)
 	if !isValidImage || err != nil {
-		cveinfo.Log.Debug().Str("image", image).Str("cve-id", cveID).
+		cveinfo.Log.Debug().Str("image", image).Str("cve-id", cveID).Err(err).
 			Msg("image media type not supported for scanning, adding as a vulnerable image")
 
 		return true
@@ -335,6 +339,8 @@ func (cveinfo BaseCveInfo) GetCVEListForImage(repo, ref string, searchedCVE stri
 ) {
 	isValidImage, err := cveinfo.Scanner.IsImageFormatScannable(repo, ref)
 	if !isValidImage {
+		cveinfo.Log.Debug().Str("image", repo+":"+ref).Err(err).Msg("image is not scanable")
+
 		return []cvemodel.CVE{}, zcommon.PageInfo{}, err
 	}
 
@@ -357,50 +363,11 @@ func (cveinfo BaseCveInfo) GetCVEListForImage(repo, ref string, searchedCVE stri
 	return cveList, pageInfo, nil
 }
 
-func (cveinfo BaseCveInfo) GetCVESummaryForImage(repo, ref string) (cvemodel.ImageCVESummary, error) {
-	// There are several cases, expected returned values below:
-	// not scannable / error during scan   - max severity ""            - cve count 0   - Errors
-	// scannable no issues found           - max severity "NONE"        - cve count 0   - no Errors
-	// scannable issues found              - max severity from Scanner  - cve count >0  - no Errors
-	imageCVESummary := cvemodel.ImageCVESummary{
-		Count:       0,
-		MaxSeverity: cvemodel.SeverityNotScanned,
-	}
-
-	isValidImage, err := cveinfo.Scanner.IsImageFormatScannable(repo, ref)
-	if !isValidImage {
-		return imageCVESummary, err
-	}
-
-	image := zcommon.GetFullImageName(repo, ref)
-
-	cveMap, err := cveinfo.Scanner.ScanImage(image)
-	if err != nil {
-		return imageCVESummary, err
-	}
-
-	imageCVESummary.Count = len(cveMap)
-
-	if imageCVESummary.Count == 0 {
-		imageCVESummary.MaxSeverity = cvemodel.SeverityNone
-
-		return imageCVESummary, nil
-	}
-
-	imageCVESummary.MaxSeverity = cvemodel.SeverityUnknown
-	for _, cve := range cveMap {
-		if cvemodel.CompareSeverities(imageCVESummary.MaxSeverity, cve.Severity) > 0 {
-			imageCVESummary.MaxSeverity = cve.Severity
-		}
-	}
-
-	return imageCVESummary, nil
-}
-
 func (cveinfo BaseCveInfo) GetCVESummaryForImageMedia(repo, digest, mediaType string,
 ) (cvemodel.ImageCVESummary, error) {
 	// There are several cases, expected returned values below:
-	// not scannable / error during scan   - max severity ""            - cve count 0   - Errors
+	// not scanned yet                     - max severity ""            - cve count 0   - no Errors
+	// not scannable                       - max severity ""            - cve count 0   - has Errors
 	// scannable no issues found           - max severity "NONE"        - cve count 0   - no Errors
 	// scannable issues found              - max severity from Scanner  - cve count >0  - no Errors
 	imageCVESummary := cvemodel.ImageCVESummary{
@@ -408,20 +375,21 @@ func (cveinfo BaseCveInfo) GetCVESummaryForImageMedia(repo, digest, mediaType st
 		MaxSeverity: cvemodel.SeverityNotScanned,
 	}
 
-	isValidImage, err := cveinfo.Scanner.IsImageMediaScannable(repo, digest, mediaType)
-	if !isValidImage {
+	// For this call we only look at the scanner cache, we skip the actual scanning to save time
+	if !cveinfo.Scanner.IsResultCached(digest) {
+		isValidImage, err := cveinfo.Scanner.IsImageMediaScannable(repo, digest, mediaType)
+		if !isValidImage {
+			cveinfo.Log.Debug().Str("digest", digest).Str("mediaType", mediaType).
+				Err(err).Msg("image is not scannable")
+		}
+
 		return imageCVESummary, err
 	}
 
-	image := repo + "@" + digest
-
-	cveMap, err := cveinfo.Scanner.ScanImage(image)
-	if err != nil {
-		return imageCVESummary, err
-	}
+	// We will make due with cached results
+	cveMap := cveinfo.Scanner.GetCachedResult(digest)
 
 	imageCVESummary.Count = len(cveMap)
-
 	if imageCVESummary.Count == 0 {
 		imageCVESummary.MaxSeverity = cvemodel.SeverityNone
 
@@ -436,10 +404,6 @@ func (cveinfo BaseCveInfo) GetCVESummaryForImageMedia(repo, digest, mediaType st
 	}
 
 	return imageCVESummary, nil
-}
-
-func (cveinfo BaseCveInfo) UpdateDB() error {
-	return cveinfo.Scanner.UpdateDB()
 }
 
 func GetFixedTags(allTags, vulnerableTags []cvemodel.TagInfo) []cvemodel.TagInfo {

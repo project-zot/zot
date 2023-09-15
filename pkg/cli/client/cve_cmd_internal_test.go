@@ -531,7 +531,7 @@ func TestNegativeServerResponse(t *testing.T) {
 			panic(err)
 		}
 
-		ctlr.CveInfo = getMockCveInfo(ctlr.MetaDB, ctlr.Log)
+		ctlr.CveScanner = getMockCveScanner(ctlr.MetaDB)
 
 		go func() {
 			if err := ctlr.Run(ctx); !errors.Is(err, http.ErrServerClosed) {
@@ -606,7 +606,7 @@ func TestServerCVEResponse(t *testing.T) {
 		panic(err)
 	}
 
-	ctlr.CveInfo = getMockCveInfo(ctlr.MetaDB, ctlr.Log)
+	ctlr.CveScanner = getMockCveScanner(ctlr.MetaDB)
 
 	go func() {
 		if err := ctlr.Run(ctx); !errors.Is(err, http.ErrServerClosed) {
@@ -947,39 +947,35 @@ func TestCVESort(t *testing.T) {
 		panic(err)
 	}
 
-	ctlr.CveInfo = cveinfo.BaseCveInfo{
-		Log:    ctlr.Log,
-		MetaDB: mocks.MetaDBMock{},
-		Scanner: mocks.CveScannerMock{
-			ScanImageFn: func(image string) (map[string]cvemodel.CVE, error) {
-				return map[string]cvemodel.CVE{
-					"CVE-2023-1255": {
-						ID:       "CVE-2023-1255",
-						Severity: "LOW",
-						Title:    "Input buffer over-read in AES-XTS implementation and testing",
-					},
-					"CVE-2023-2650": {
-						ID:       "CVE-2023-2650",
-						Severity: "MEDIUM",
-						Title:    "Possible DoS translating ASN.1 object identifier and executer",
-					},
-					"CVE-2023-2975": {
-						ID:       "CVE-2023-2975",
-						Severity: "HIGH",
-						Title:    "AES-SIV cipher implementation contains a bug that can break",
-					},
-					"CVE-2023-3446": {
-						ID:       "CVE-2023-3446",
-						Severity: "CRITICAL",
-						Title:    "Excessive time spent checking DH keys and parenthesis",
-					},
-					"CVE-2023-3817": {
-						ID:       "CVE-2023-3817",
-						Severity: "MEDIUM",
-						Title:    "Excessive time spent checking DH q parameter and arguments",
-					},
-				}, nil
-			},
+	ctlr.CveScanner = mocks.CveScannerMock{
+		ScanImageFn: func(image string) (map[string]cvemodel.CVE, error) {
+			return map[string]cvemodel.CVE{
+				"CVE-2023-1255": {
+					ID:       "CVE-2023-1255",
+					Severity: "LOW",
+					Title:    "Input buffer over-read in AES-XTS implementation and testing",
+				},
+				"CVE-2023-2650": {
+					ID:       "CVE-2023-2650",
+					Severity: "MEDIUM",
+					Title:    "Possible DoS translating ASN.1 object identifier and executer",
+				},
+				"CVE-2023-2975": {
+					ID:       "CVE-2023-2975",
+					Severity: "HIGH",
+					Title:    "AES-SIV cipher implementation contains a bug that can break",
+				},
+				"CVE-2023-3446": {
+					ID:       "CVE-2023-3446",
+					Severity: "CRITICAL",
+					Title:    "Excessive time spent checking DH keys and parenthesis",
+				},
+				"CVE-2023-3817": {
+					ID:       "CVE-2023-3817",
+					Severity: "MEDIUM",
+					Title:    "Excessive time spent checking DH q parameter and arguments",
+				},
+			}, nil
 		},
 	}
 
@@ -1373,7 +1369,7 @@ func TestCVECommandErrors(t *testing.T) {
 	})
 }
 
-func getMockCveInfo(metaDB mTypes.MetaDB, log log.Logger) cveinfo.CveInfo {
+func getMockCveScanner(metaDB mTypes.MetaDB) cveinfo.Scanner {
 	// MetaDB loaded with initial data now mock the scanner
 	// Setup test CVE data in mock scanner
 	scanner := mocks.CveScannerMock{
@@ -1472,11 +1468,7 @@ func getMockCveInfo(metaDB mTypes.MetaDB, log log.Logger) cveinfo.CveInfo {
 		},
 	}
 
-	return &cveinfo.BaseCveInfo{
-		Log:     log,
-		Scanner: scanner,
-		MetaDB:  metaDB,
-	}
+	return &scanner
 }
 
 type mockServiceForRetry struct {

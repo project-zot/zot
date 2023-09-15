@@ -46,7 +46,7 @@ type Controller struct {
 	Audit           *log.Logger
 	Server          *http.Server
 	Metrics         monitoring.MetricServer
-	CveInfo         ext.CveInfo
+	CveScanner      ext.CveScanner
 	SyncOnDemand    SyncOnDemand
 	RelyingParties  map[string]rp.RelyingParty
 	CookieStore     sessions.Store
@@ -241,7 +241,7 @@ func (c *Controller) Init(reloadCtx context.Context) error {
 func (c *Controller) InitCVEInfo() {
 	// Enable CVE extension if extension config is provided
 	if c.Config != nil && c.Config.Extensions != nil {
-		c.CveInfo = ext.GetCVEInfo(c.Config, c.StoreController, c.MetaDB, c.Log)
+		c.CveScanner = ext.GetCveScanner(c.Config, c.StoreController, c.MetaDB, c.Log)
 	}
 }
 
@@ -347,7 +347,7 @@ func (c *Controller) StartBackgroundTasks(reloadCtx context.Context) {
 	// Enable extensions if extension config is provided for DefaultStore
 	if c.Config != nil && c.Config.Extensions != nil {
 		ext.EnableMetricsExtension(c.Config, c.Log, c.Config.Storage.RootDirectory)
-		ext.EnableSearchExtension(c.Config, c.StoreController, c.MetaDB, taskScheduler, c.CveInfo, c.Log)
+		ext.EnableSearchExtension(c.Config, c.StoreController, c.MetaDB, taskScheduler, c.CveScanner, c.Log)
 	}
 
 	if c.Config.Storage.SubPaths != nil {

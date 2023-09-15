@@ -1,4 +1,4 @@
-package trivy
+package cache
 
 import (
 	lru "github.com/hashicorp/golang-lru/v2"
@@ -20,6 +20,10 @@ func NewCveCache(size int, log log.Logger) *CveCache {
 
 func (cveCache *CveCache) Add(image string, cveMap map[string]cvemodel.CVE) {
 	cveCache.cache.Add(image, cveMap)
+}
+
+func (cveCache *CveCache) Contains(image string) bool {
+	return cveCache.cache.Contains(image)
 }
 
 func (cveCache *CveCache) Get(image string) map[string]cvemodel.CVE {
