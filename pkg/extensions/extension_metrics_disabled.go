@@ -4,9 +4,13 @@
 package extensions
 
 import (
+	"net/http"
+
 	"github.com/gorilla/mux"
 
 	"zotregistry.io/zot/pkg/api/config"
+	zcommon "zotregistry.io/zot/pkg/common"
+	"zotregistry.io/zot/pkg/extensions/monitoring"
 	"zotregistry.io/zot/pkg/log"
 )
 
@@ -18,8 +22,12 @@ func EnableMetricsExtension(config *config.Config, log log.Logger, rootDir strin
 
 // SetupMetricsRoutes ...
 func SetupMetricsRoutes(conf *config.Config, router *mux.Router,
-	authFunc mux.MiddlewareFunc, log log.Logger,
+	authFunc mux.MiddlewareFunc, log log.Logger, metrics monitoring.MetricServer,
 ) {
-	log.Warn().Msg("skipping setting up metrics routes because given zot binary doesn't include this feature," +
-		"please build a binary that does so")
+	getMetrics := func(w http.ResponseWriter, r *http.Request) {
+		m := metrics.ReceiveMetrics()
+		zcommon.WriteJSON(w, http.StatusOK, m)
+	}
+
+	router.HandleFunc("/metrics", getMetrics).Methods("GET")
 }

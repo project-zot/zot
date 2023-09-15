@@ -121,6 +121,7 @@ func TestNewExporter(t *testing.T) {
 				So(servercConfig, ShouldNotBeNil)
 				baseURL := fmt.Sprintf(BaseURL, serverPort)
 				servercConfig.HTTP.Port = serverPort
+				servercConfig.BinaryType = "minimal"
 				serverController := zotapi.NewController(servercConfig)
 				So(serverController, ShouldNotBeNil)
 
@@ -149,7 +150,7 @@ func TestNewExporter(t *testing.T) {
 				}
 
 				// Side effect of calling this endpoint is that it will enable metrics
-				resp, err := resty.R().Get(baseURL + "/v2/metrics")
+				resp, err := resty.R().Get(baseURL + "/metrics")
 				So(resp, ShouldNotBeNil)
 				So(err, ShouldBeNil)
 				So(resp.StatusCode(), ShouldEqual, 200)

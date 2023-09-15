@@ -8,12 +8,12 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	"zotregistry.io/zot/pkg/api/config"
+	"zotregistry.io/zot/pkg/extensions/monitoring"
 	"zotregistry.io/zot/pkg/log"
 )
 
 func EnableMetricsExtension(config *config.Config, log log.Logger, rootDir string) {
-	if config.Extensions.Metrics != nil &&
-		*config.Extensions.Metrics.Enable &&
+	if config.IsMetricsEnabled() &&
 		config.Extensions.Metrics.Prometheus != nil {
 		if config.Extensions.Metrics.Prometheus.Path == "" {
 			config.Extensions.Metrics.Prometheus.Path = "/metrics"
@@ -26,11 +26,11 @@ func EnableMetricsExtension(config *config.Config, log log.Logger, rootDir strin
 }
 
 func SetupMetricsRoutes(config *config.Config, router *mux.Router,
-	authFunc mux.MiddlewareFunc, log log.Logger,
+	authFunc mux.MiddlewareFunc, log log.Logger, metrics monitoring.MetricServer,
 ) {
 	log.Info().Msg("setting up metrics routes")
 
-	if config.Extensions.Metrics != nil && *config.Extensions.Metrics.Enable {
+	if config.IsMetricsEnabled() {
 		extRouter := router.PathPrefix(config.Extensions.Metrics.Prometheus.Path).Subrouter()
 		extRouter.Use(authFunc)
 		extRouter.Methods("GET").Handler(promhttp.Handler())

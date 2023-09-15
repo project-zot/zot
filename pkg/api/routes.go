@@ -179,20 +179,8 @@ func (rh *RouteHandler) SetupRoutes() {
 	// gql playground
 	gqlPlayground.SetupGQLPlaygroundRoutes(prefixedRouter, rh.c.StoreController, rh.c.Log)
 
-	// setup extension routes
-	if rh.c.Config != nil {
-		// This logic needs to be reviewed, it should depend on build options
-		// not the general presence of the extensions in config
-		if rh.c.Config.Extensions == nil {
-			// minimal build
-			prefixedRouter.HandleFunc("/metrics", rh.GetMetrics).Methods("GET")
-		} else {
-			// extended build
-			ext.SetupMetricsRoutes(rh.c.Config, rh.c.Router, authHandler, rh.c.Log)
-		}
-	}
-
 	// Preconditions for enabling the actual extension routes are part of extensions themselves
+	ext.SetupMetricsRoutes(rh.c.Config, rh.c.Router, authHandler, rh.c.Log, rh.c.Metrics)
 	ext.SetupSearchRoutes(rh.c.Config, prefixedRouter, rh.c.StoreController, rh.c.MetaDB, rh.c.CveInfo,
 		rh.c.Log)
 	ext.SetupImageTrustRoutes(rh.c.Config, prefixedRouter, rh.c.MetaDB, rh.c.Log)
@@ -1858,11 +1846,6 @@ func (rh *RouteHandler) OpenIDCodeExchangeCallback() rp.CodeExchangeUserinfoCall
 
 		w.WriteHeader(http.StatusCreated)
 	}
-}
-
-func (rh *RouteHandler) GetMetrics(w http.ResponseWriter, r *http.Request) {
-	m := rh.c.Metrics.ReceiveMetrics()
-	zcommon.WriteJSON(w, http.StatusOK, m)
 }
 
 // helper routines
