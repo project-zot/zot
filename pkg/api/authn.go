@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"os"
 	"path"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -469,19 +470,53 @@ func bearerAuthHandler(ctlr *Controller) mux.MiddlewareFunc {
 
 				return
 			}
-
+			
 			action := auth.PullAction
 			if m := request.Method; m != http.MethodGet && m != http.MethodHead {
 				action = auth.PushAction
 			}
+			
+			var permissions *auth.Permission
 
-			permissions, err := authorizer.Authorize(header, action, name)
-			if err != nil {
-				ctlr.Log.Error().Err(err).Msg("issue parsing Authorization header")
-				response.Header().Set("Content-Type", "application/json")
-				zcommon.WriteJSON(response, http.StatusInternalServerError, apiErr.NewError(apiErr.UNSUPPORTED))
+			// Empty scope should be allowed according to the distribution auth spec
+			// This is only necessary for the bearer auth type
+			if request.RequestURI == "/v2/" && authorizer.Type == auth.BearerAuthAuthorizerType {
+				if header == "" {
+					permissions = &auth.Permission{
+						WWWAuthenticateHeader: fmt.Sprintf("Bearer realm=\"%s\",service=\"%s\",scope=\"\"", authorizer.Realm, authorizer.Service),
+					}
+				} else {
+					bearerTokenMatch := regexp.MustCompile("(?i)bearer (.*)")
 
-				return
+					signedString := bearerTokenMatch.ReplaceAllString(header, "$1")
+
+					// If the token is valid, our job is done
+					// Since this is the /v2 base path and we didn't pass a scope to the auth header in the previous step
+					// there is no access check to enforce
+					_, err := authorizer.TokenDecoder.DecodeToken(signedString)
+					if err != nil {
+						ctlr.Log.Error().Err(err).Msg("issue parsing Authorization header")
+						response.Header().Set("Content-Type", "application/json")
+						zcommon.WriteJSON(response, http.StatusInternalServerError, apiErr.NewError(apiErr.UNSUPPORTED))
+
+						return
+					}
+
+					permissions = &auth.Permission{
+						Allowed: true,
+					}
+				}
+			} else {
+				var err error
+
+				permissions, err = authorizer.Authorize(header, action, name)
+				if err != nil {
+					ctlr.Log.Error().Err(err).Msg("issue parsing Authorization header")
+					response.Header().Set("Content-Type", "application/json")
+					zcommon.WriteJSON(response, http.StatusInternalServerError, apiErr.NewError(apiErr.UNSUPPORTED))
+
+					return
+				}
 			}
 
 			if !permissions.Allowed {
