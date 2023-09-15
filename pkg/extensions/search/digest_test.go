@@ -21,6 +21,7 @@ import (
 	"zotregistry.io/zot/pkg/common"
 	extconf "zotregistry.io/zot/pkg/extensions/config"
 	. "zotregistry.io/zot/pkg/test"
+	. "zotregistry.io/zot/pkg/test/image-utils"
 )
 
 type ImgResponseForDigest struct {
@@ -294,12 +295,10 @@ func TestDigestSearchHTTPSubPaths(t *testing.T) {
 		config, layers, manifest, err := GetImageComponents(100)
 		So(err, ShouldBeNil)
 
-		err = PushTestImage("a/zot-cve-test", "0.0.1", baseURL,
-			manifest, config, layers)
+		err = UploadImage(Image{Manifest: manifest, Config: config, Layers: layers}, baseURL, "a/zot-cve-test", "0.0.1")
 		So(err, ShouldBeNil)
 
-		err = PushTestImage("a/zot-test", "0.0.1", baseURL,
-			manifest, config, layers)
+		err = UploadImage(Image{Manifest: manifest, Config: config, Layers: layers}, baseURL, "a/zot-test", "0.0.1")
 		So(err, ShouldBeNil)
 
 		resp, err := resty.R().Get(baseURL + "/v2/")

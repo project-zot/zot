@@ -38,6 +38,7 @@ import (
 	extconf "zotregistry.io/zot/pkg/extensions/config"
 	"zotregistry.io/zot/pkg/extensions/imagetrust"
 	"zotregistry.io/zot/pkg/test"
+	. "zotregistry.io/zot/pkg/test/image-utils"
 	"zotregistry.io/zot/pkg/test/mocks"
 )
 
@@ -257,7 +258,7 @@ func TestVerifySignatures(t *testing.T) {
 			cm.StartAndWait(conf.HTTP.Port)
 			defer cm.StopServer()
 
-			err := test.UploadImage(image, baseURL, repo, tag)
+			err := UploadImage(image, baseURL, repo, tag)
 			So(err, ShouldBeNil)
 
 			pubKeyStorage, err := imagetrust.NewPublicKeyLocalStorage(rootDir)
@@ -427,7 +428,7 @@ func TestVerifySignatures(t *testing.T) {
 			cm.StartAndWait(conf.HTTP.Port)
 			defer cm.StopServer()
 
-			err := test.UploadImage(image, baseURL, repo, tag)
+			err := UploadImage(image, baseURL, repo, tag)
 			So(err, ShouldBeNil)
 
 			certStorage, err := imagetrust.NewCertificateLocalStorage(rootDir)
@@ -915,7 +916,7 @@ func TestAWSTrustStore(t *testing.T) {
 
 	Convey("VerifySignature - trustpolicy.json does not exist", t, func() {
 		repo := "repo"
-		image := test.CreateRandomImage()
+		image := CreateRandomImage()
 
 		manifestContent, err := json.Marshal(image.Manifest)
 		So(err, ShouldBeNil)
@@ -950,7 +951,7 @@ func TestAWSTrustStore(t *testing.T) {
 
 	Convey("VerifySignature - trustpolicy.json has invalid content", t, func() {
 		repo := "repo"
-		image := test.CreateRandomImage()
+		image := CreateRandomImage()
 
 		manifestContent, err := json.Marshal(image.Manifest)
 		So(err, ShouldBeNil)
@@ -1188,7 +1189,7 @@ func RunVerificationTests(t *testing.T, dbDriverParams map[string]interface{}) {
 
 			manifestDigest := image.Digest()
 
-			err = test.UploadImage(image, baseURL, repo, tag)
+			err = UploadImage(image, baseURL, repo, tag)
 			So(err, ShouldBeNil)
 
 			cwd, err := os.Getwd()
@@ -1272,7 +1273,7 @@ func RunVerificationTests(t *testing.T, dbDriverParams map[string]interface{}) {
 
 			manifestDigest := image.Digest()
 
-			err = test.UploadImage(image, baseURL, repo, tag)
+			err = UploadImage(image, baseURL, repo, tag)
 			So(err, ShouldBeNil)
 
 			notationDir := t.TempDir()

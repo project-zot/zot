@@ -34,6 +34,7 @@ import (
 	zlog "zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/test"
 	testc "zotregistry.io/zot/pkg/test/common"
+	. "zotregistry.io/zot/pkg/test/image-utils"
 )
 
 func TestSearchImageCmd(t *testing.T) {
@@ -251,8 +252,8 @@ func TestSignature(t *testing.T) {
 		defer cm.StopServer()
 
 		repoName := "repo7"
-		image := test.CreateDefaultImage()
-		err = test.UploadImage(image, url, repoName, "1.0")
+		image := CreateDefaultImage()
+		err = UploadImage(image, url, repoName, "1.0")
 		So(err, ShouldBeNil)
 
 		// generate a keypair
@@ -327,7 +328,7 @@ func TestSignature(t *testing.T) {
 		defer cm.StopServer()
 
 		repoName := "repo7"
-		err = test.UploadImage(test.CreateDefaultImage(), url, repoName, "0.0.1")
+		err = UploadImage(CreateDefaultImage(), url, repoName, "0.0.1")
 		So(err, ShouldBeNil)
 
 		err = test.SignImageUsingNotary("repo7:0.0.1", port)
@@ -1233,7 +1234,7 @@ func TestServerResponseGQLWithoutPermissions(t *testing.T) {
 		dir := t.TempDir()
 
 		srcStorageCtlr := test.GetDefaultStoreController(dir, zlog.NewLogger("debug", ""))
-		err := test.WriteImageToFileSystem(test.CreateDefaultImage(), "zot-test", "0.0.1", srcStorageCtlr)
+		err := test.WriteImageToFileSystem(CreateDefaultImage(), "zot-test", "0.0.1", srcStorageCtlr)
 		So(err, ShouldBeNil)
 
 		err = os.Chmod(path.Join(dir, "zot-test", "blobs"), 0o000)
@@ -1374,11 +1375,11 @@ func TestImagesSortFlag(t *testing.T) {
 	ctlr := api.NewController(conf)
 	ctlr.Config.Storage.RootDirectory = rootDir
 
-	image1 := test.CreateImageWith().DefaultLayers().
-		ImageConfig(ispec.Image{Created: test.DateRef(2010, 1, 1, 1, 1, 1, 0, time.UTC)}).Build()
+	image1 := CreateImageWith().DefaultLayers().
+		ImageConfig(ispec.Image{Created: DateRef(2010, 1, 1, 1, 1, 1, 0, time.UTC)}).Build()
 
-	image2 := test.CreateImageWith().DefaultLayers().
-		ImageConfig(ispec.Image{Created: test.DateRef(2020, 1, 1, 1, 1, 1, 0, time.UTC)}).Build()
+	image2 := CreateImageWith().DefaultLayers().
+		ImageConfig(ispec.Image{Created: DateRef(2020, 1, 1, 1, 1, 1, 0, time.UTC)}).Build()
 
 	storeController := test.GetDefaultStoreController(rootDir, ctlr.Log)
 
@@ -1455,18 +1456,18 @@ func TestImagesCommandGQL(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		Convey("base and derived command", func() {
-			baseImage := test.CreateImageWith().LayerBlobs(
+			baseImage := CreateImageWith().LayerBlobs(
 				[][]byte{{1, 2, 3}, {11, 22, 33}},
 			).DefaultConfig().Build()
 
-			derivedImage := test.CreateImageWith().LayerBlobs(
+			derivedImage := CreateImageWith().LayerBlobs(
 				[][]byte{{1, 2, 3}, {11, 22, 33}, {44, 55, 66}},
 			).DefaultConfig().Build()
 
-			err := test.UploadImage(baseImage, baseURL, "repo", "base")
+			err := UploadImage(baseImage, baseURL, "repo", "base")
 			So(err, ShouldBeNil)
 
-			err = test.UploadImage(derivedImage, baseURL, "repo", "derived")
+			err = UploadImage(derivedImage, baseURL, "repo", "derived")
 			So(err, ShouldBeNil)
 
 			configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s","showspinner":false}]}`,
@@ -1553,9 +1554,9 @@ func TestImagesCommandGQL(t *testing.T) {
 		})
 
 		Convey("digest command", func() {
-			image := test.CreateImageWith().RandomLayers(1, 10).DefaultConfig().Build()
+			image := CreateImageWith().RandomLayers(1, 10).DefaultConfig().Build()
 
-			err := test.UploadImage(image, baseURL, "repo", "img")
+			err := UploadImage(image, baseURL, "repo", "img")
 			So(err, ShouldBeNil)
 
 			configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s","showspinner":false}]}`,
@@ -1610,9 +1611,9 @@ func TestImagesCommandGQL(t *testing.T) {
 		})
 
 		Convey("list command", func() {
-			image := test.CreateImageWith().RandomLayers(1, 10).DefaultConfig().Build()
+			image := CreateImageWith().RandomLayers(1, 10).DefaultConfig().Build()
 
-			err := test.UploadImage(image, baseURL, "repo", "img")
+			err := UploadImage(image, baseURL, "repo", "img")
 			So(err, ShouldBeNil)
 
 			configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s","showspinner":false}]}`,
@@ -1659,12 +1660,12 @@ func TestImagesCommandGQL(t *testing.T) {
 		})
 
 		Convey("name command", func() {
-			image := test.CreateImageWith().RandomLayers(1, 10).DefaultConfig().Build()
+			image := CreateImageWith().RandomLayers(1, 10).DefaultConfig().Build()
 
-			err := test.UploadImage(image, baseURL, "repo", "img")
+			err := UploadImage(image, baseURL, "repo", "img")
 			So(err, ShouldBeNil)
 
-			err = test.UploadImage(test.CreateRandomImage(), baseURL, "repo", "img2")
+			err = UploadImage(CreateRandomImage(), baseURL, "repo", "img2")
 			So(err, ShouldBeNil)
 
 			configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s","showspinner":false}]}`,
@@ -1721,8 +1722,8 @@ func TestImagesCommandGQL(t *testing.T) {
 		})
 
 		Convey("CVE", func() {
-			vulnImage := test.CreateDefaultVulnerableImage()
-			err := test.UploadImage(vulnImage, baseURL, "repo", "vuln")
+			vulnImage := CreateDefaultVulnerableImage()
+			err := UploadImage(vulnImage, baseURL, "repo", "vuln")
 			So(err, ShouldBeNil)
 
 			configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s","showspinner":false}]}`,
@@ -1852,18 +1853,18 @@ func TestImageCommandREST(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		Convey("base and derived command", func() {
-			baseImage := test.CreateImageWith().LayerBlobs(
+			baseImage := CreateImageWith().LayerBlobs(
 				[][]byte{{1, 2, 3}, {11, 22, 33}},
 			).DefaultConfig().Build()
 
-			derivedImage := test.CreateImageWith().LayerBlobs(
+			derivedImage := CreateImageWith().LayerBlobs(
 				[][]byte{{1, 2, 3}, {11, 22, 33}, {44, 55, 66}},
 			).DefaultConfig().Build()
 
-			err := test.UploadImage(baseImage, baseURL, "repo", "base")
+			err := UploadImage(baseImage, baseURL, "repo", "base")
 			So(err, ShouldBeNil)
 
-			err = test.UploadImage(derivedImage, baseURL, "repo", "derived")
+			err = UploadImage(derivedImage, baseURL, "repo", "derived")
 			So(err, ShouldBeNil)
 
 			configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s","showspinner":false}]}`,
@@ -1890,9 +1891,9 @@ func TestImageCommandREST(t *testing.T) {
 		})
 
 		Convey("digest command", func() {
-			image := test.CreateRandomImage()
+			image := CreateRandomImage()
 
-			err := test.UploadImage(image, baseURL, "repo", "img")
+			err := UploadImage(image, baseURL, "repo", "img")
 			So(err, ShouldBeNil)
 
 			configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s","showspinner":false}]}`,
@@ -1910,9 +1911,9 @@ func TestImageCommandREST(t *testing.T) {
 		})
 
 		Convey("list command", func() {
-			image := test.CreateRandomImage()
+			image := CreateRandomImage()
 
-			err := test.UploadImage(image, baseURL, "repo", "img")
+			err := UploadImage(image, baseURL, "repo", "img")
 			So(err, ShouldBeNil)
 
 			configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s","showspinner":false}]}`,
@@ -1932,12 +1933,12 @@ func TestImageCommandREST(t *testing.T) {
 		})
 
 		Convey("name command", func() {
-			image := test.CreateRandomImage()
+			image := CreateRandomImage()
 
-			err := test.UploadImage(image, baseURL, "repo", "img")
+			err := UploadImage(image, baseURL, "repo", "img")
 			So(err, ShouldBeNil)
 
-			err = test.UploadImage(test.CreateRandomImage(), baseURL, "repo", "img2")
+			err = UploadImage(CreateRandomImage(), baseURL, "repo", "img2")
 			So(err, ShouldBeNil)
 
 			configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s","showspinner":false}]}`,
@@ -1957,8 +1958,8 @@ func TestImageCommandREST(t *testing.T) {
 		})
 
 		Convey("CVE", func() {
-			vulnImage := test.CreateDefaultVulnerableImage()
-			err := test.UploadImage(vulnImage, baseURL, "repo", "vuln")
+			vulnImage := CreateDefaultVulnerableImage()
+			err := UploadImage(vulnImage, baseURL, "repo", "vuln")
 			So(err, ShouldBeNil)
 
 			configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s","showspinner":false}]}`,
@@ -1981,7 +1982,7 @@ func uploadTestMultiarch(baseURL string) {
 	layer11 := []byte{11, 12, 13, 14}
 	layer12 := []byte{16, 17, 18, 19}
 
-	image1 := test.CreateImageWith().
+	image1 := CreateImageWith().
 		LayerBlobs([][]byte{
 			layer11,
 			layer12,
@@ -1995,7 +1996,7 @@ func uploadTestMultiarch(baseURL string) {
 	// ------ Define Image2
 	layer21 := []byte{21, 22, 23, 24}
 
-	image2 := test.CreateImageWith().
+	image2 := CreateImageWith().
 		LayerBlobs([][]byte{
 			layer21,
 		}).
@@ -2007,9 +2008,9 @@ func uploadTestMultiarch(baseURL string) {
 
 	// ------- Upload The multiarch image
 
-	multiarch := test.GetMultiarchImageForImages([]test.Image{image1, image2}) //nolint:staticcheck
+	multiarch := test.GetMultiarchImageForImages([]Image{image1, image2}) //nolint:staticcheck
 
-	err := test.UploadMultiarchImage(multiarch, baseURL, "repo", "multi-arch")
+	err := UploadMultiarchImage(multiarch, baseURL, "repo", "multi-arch")
 	So(err, ShouldBeNil)
 }
 

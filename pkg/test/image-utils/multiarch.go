@@ -1,4 +1,4 @@
-package test
+package image
 
 import (
 	"encoding/json"
@@ -15,7 +15,7 @@ type MultiarchImage struct {
 	Images    []Image
 	Reference string
 
-	indexDescriptor ispec.Descriptor
+	IndexDescriptor ispec.Descriptor
 }
 
 func (mi *MultiarchImage) Digest() godigest.Digest {
@@ -141,7 +141,7 @@ func (mb *BaseMultiarchBuilder) Build() MultiarchImage {
 		Images:    mb.images,
 		Reference: ref,
 
-		indexDescriptor: ispec.Descriptor{
+		IndexDescriptor: ispec.Descriptor{
 			MediaType: ispec.MediaTypeImageIndex,
 			Size:      int64(len(indexBlob)),
 			Digest:    indexDigest,

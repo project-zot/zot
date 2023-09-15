@@ -15,7 +15,6 @@ import (
 	"log"
 	"math"
 	"math/big"
-	mathRand "math/rand"
 	"net"
 	"net/http"
 	"os"
@@ -51,10 +50,10 @@ import (
 	"zotregistry.io/zot/pkg/extensions/monitoring"
 	zLog "zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/storage"
-	storageCommon "zotregistry.io/zot/pkg/storage/common"
 	"zotregistry.io/zot/pkg/storage/local"
 	stypes "zotregistry.io/zot/pkg/storage/types"
 	testc "zotregistry.io/zot/pkg/test/common"
+	"zotregistry.io/zot/pkg/test/image-utils"
 	"zotregistry.io/zot/pkg/test/inject"
 	"zotregistry.io/zot/pkg/test/mocks"
 )
@@ -65,9 +64,11 @@ const (
 	SleepTime     = 100 * time.Millisecond
 )
 
-var ErrNoGoModFileFound = errors.New("test: no go.mod file found in parent directories")
-
-var vulnerableLayer []byte //nolint: gochecknoglobals
+var (
+	ErrSignatureVerification = errors.New("signature verification failed")
+	ErrAlreadyExists         = errors.New("already exists")
+	ErrKeyNotFound           = errors.New("key not found")
+)
 
 var NotationPathLock = new(sync.Mutex) //nolint: gochecknoglobals
 
@@ -92,20 +93,6 @@ func GetTestBlobDigest(image, which string) godigest.Digest {
 	}
 
 	return ""
-}
-
-var (
-	ErrPostBlob              = errors.New("can't post blob")
-	ErrPutBlob               = errors.New("can't put blob")
-	ErrAlreadyExists         = errors.New("already exists")
-	ErrKeyNotFound           = errors.New("key not found")
-	ErrSignatureVerification = errors.New("signature verification failed")
-	ErrPutIndex              = errors.New("can't put index")
-)
-
-type ArtifactBlobs struct {
-	Blob      []byte
-	MediaType string
 }
 
 func GetFreePort() string {
@@ -221,7 +208,7 @@ func CopyTestKeysAndCerts(destDir string) error {
 		"client.key", "server.cert", "server.csr", "server.key",
 	}
 
-	rootPath, err := GetProjectRootDir()
+	rootPath, err := testc.GetProjectRootDir()
 	if err != nil {
 		return err
 	}
@@ -309,7 +296,7 @@ func NewControllerManager(controller Controller) ControllerManager {
 	return cm
 }
 
-func WriteImageToFileSystem(image Image, repoName, ref string, storeController storage.StoreController) error {
+func WriteImageToFileSystem(image image.Image, repoName, ref string, storeController storage.StoreController) error {
 	store := storeController.GetImageStore(repoName)
 
 	err := store.InitRepo(repoName)
@@ -353,7 +340,7 @@ func WriteImageToFileSystem(image Image, repoName, ref string, storeController s
 	return nil
 }
 
-func WriteMultiArchImageToFileSystem(multiarchImage MultiarchImage, repoName, ref string,
+func WriteMultiArchImageToFileSystem(multiarchImage image.MultiarchImage, repoName, ref string,
 	storeController storage.StoreController,
 ) error {
 	store := storeController.GetImageStore(repoName)
@@ -435,42 +422,6 @@ func GetRandomImageConfig() ([]byte, godigest.Digest) {
 			DiffIDs: []godigest.Digest{},
 		},
 		Author: randomAuthor,
-	}
-
-	configBlobContent, err := json.MarshalIndent(&config, "", "\t")
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	configBlobDigestRaw := godigest.FromBytes(configBlobContent)
-
-	return configBlobContent, configBlobDigestRaw
-}
-
-func GetEmptyImageConfig() ([]byte, godigest.Digest) {
-	config := ispec.Image{}
-
-	configBlobContent, err := json.MarshalIndent(&config, "", "\t")
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	configBlobDigestRaw := godigest.FromBytes(configBlobContent)
-
-	return configBlobContent, configBlobDigestRaw
-}
-
-func GetImageConfig() ([]byte, godigest.Digest) {
-	config := ispec.Image{
-		Platform: ispec.Platform{
-			Architecture: "amd64",
-			OS:           "linux",
-		},
-		RootFS: ispec.RootFS{
-			Type:    "layers",
-			DiffIDs: []godigest.Digest{},
-		},
-		Author: "some author",
 	}
 
 	configBlobContent, err := json.MarshalIndent(&config, "", "\t")
@@ -632,18 +583,11 @@ func GetRandomImageComponents(layerSize int) (ispec.Image, [][]byte, ispec.Manif
 	return config, layers, manifest, nil
 }
 
-// These are the 3 vulnerabilities found for the returned image by the GetVulnImage function.
-const (
-	Vulnerability1ID = "CVE-2023-2650"
-	Vulnerability2ID = "CVE-2023-1255"
-	Vulnerability3ID = "CVE-2023-2975"
-)
-
 // Deprecated: Should use the new functions starting with "Create".
-func GetVulnImageWithConfig(config ispec.Image) (Image, error) {
-	vulnerableLayer, err := GetLayerWithVulnerability()
+func GetVulnImageWithConfig(config ispec.Image) (image.Image, error) {
+	vulnerableLayer, err := image.GetLayerWithVulnerability()
 	if err != nil {
-		return Image{}, err
+		return image.Image{}, err
 	}
 
 	vulnerableConfig := ispec.Image{
@@ -663,55 +607,10 @@ func GetVulnImageWithConfig(config ispec.Image) (Image, error) {
 			vulnerableLayer,
 		})
 	if err != nil {
-		return Image{}, err
+		return image.Image{}, err
 	}
 
 	return img, err
-}
-
-func GetLayerWithVulnerability() ([]byte, error) {
-	if vulnerableLayer != nil {
-		return vulnerableLayer, nil
-	}
-
-	projectRootDir, err := GetProjectRootDir()
-	if err != nil {
-		return nil, err
-	}
-
-	// this is the path of the blob relative to the root of the zot folder
-	vulnBlobPath := "test/data/alpine/blobs/sha256/f56be85fc22e46face30e2c3de3f7fe7c15f8fd7c4e5add29d7f64b87abdaa09"
-
-	absoluteVulnBlobPath, _ := filepath.Abs(filepath.Join(projectRootDir, vulnBlobPath))
-
-	vulnerableLayer, err := os.ReadFile(absoluteVulnBlobPath) //nolint: lll
-	if err != nil {
-		return nil, err
-	}
-
-	return vulnerableLayer, nil
-}
-
-func GetProjectRootDir() (string, error) {
-	workDir, err := os.Getwd()
-	if err != nil {
-		return "", err
-	}
-
-	for {
-		goModPath := filepath.Join(workDir, "go.mod")
-
-		_, err := os.Stat(goModPath)
-		if err == nil {
-			return workDir, nil
-		}
-
-		if workDir == filepath.Dir(workDir) {
-			return "", ErrNoGoModFileFound
-		}
-
-		workDir = filepath.Dir(workDir)
-	}
 }
 
 func GetRandomLayer(size int) []byte {
@@ -726,15 +625,15 @@ func GetRandomLayer(size int) []byte {
 }
 
 // Deprecated: Should use the new functions starting with "Create".
-func GetRandomImage() (Image, error) {
+func GetRandomImage() (image.Image, error) {
 	const layerSize = 20
 
 	config, layers, manifest, err := GetRandomImageComponents(layerSize)
 	if err != nil {
-		return Image{}, err
+		return image.Image{}, err
 	}
 
-	return Image{
+	return image.Image{
 		Manifest: manifest,
 		Layers:   layers,
 		Config:   config,
@@ -787,13 +686,13 @@ func GetImageComponentsWithConfig(conf ispec.Image) (ispec.Image, [][]byte, ispe
 }
 
 // Deprecated: Should use the new functions starting with "Create".
-func GetImageWithConfig(conf ispec.Image) (Image, error) {
+func GetImageWithConfig(conf ispec.Image) (image.Image, error) {
 	config, layers, manifest, err := GetImageComponentsWithConfig(conf)
 	if err != nil {
-		return Image{}, err
+		return image.Image{}, err
 	}
 
-	return Image{
+	return image.Image{
 		Manifest: manifest,
 		Config:   config,
 		Layers:   layers,
@@ -801,10 +700,10 @@ func GetImageWithConfig(conf ispec.Image) (Image, error) {
 }
 
 // Deprecated: Should use the new functions starting with "Create".
-func GetImageWithComponents(config ispec.Image, layers [][]byte) (Image, error) {
+func GetImageWithComponents(config ispec.Image, layers [][]byte) (image.Image, error) {
 	configBlob, err := json.Marshal(config)
 	if err != nil {
-		return Image{}, err
+		return image.Image{}, err
 	}
 
 	manifestLayers := make([]ispec.Descriptor, 0, len(layers))
@@ -832,7 +731,7 @@ func GetImageWithComponents(config ispec.Image, layers [][]byte) (Image, error) 
 		Layers: manifestLayers,
 	}
 
-	return Image{
+	return image.Image{
 		Manifest: manifest,
 		Config:   config,
 		Layers:   layers,
@@ -855,12 +754,12 @@ func GetCosignSignatureTagForDigest(manifestDigest godigest.Digest) string {
 }
 
 // Deprecated: Should use the new functions starting with "Create".
-func GetImageWithSubject(subjectDigest godigest.Digest, mediaType string) (Image, error) {
+func GetImageWithSubject(subjectDigest godigest.Digest, mediaType string) (image.Image, error) {
 	num := 100
 
 	conf, layers, manifest, err := GetRandomImageComponents(num)
 	if err != nil {
-		return Image{}, err
+		return image.Image{}, err
 	}
 
 	manifest.Subject = &ispec.Descriptor{
@@ -868,181 +767,11 @@ func GetImageWithSubject(subjectDigest godigest.Digest, mediaType string) (Image
 		MediaType: mediaType,
 	}
 
-	return Image{
+	return image.Image{
 		Manifest: manifest,
 		Config:   conf,
 		Layers:   layers,
 	}, nil
-}
-
-func UploadImage(img Image, baseURL, repo, ref string) error {
-	for _, blob := range img.Layers {
-		resp, err := resty.R().Post(baseURL + "/v2/" + repo + "/blobs/uploads/")
-		if err != nil {
-			return err
-		}
-
-		if resp.StatusCode() != http.StatusAccepted {
-			return ErrPostBlob
-		}
-
-		loc := resp.Header().Get("Location")
-
-		digest := godigest.FromBytes(blob).String()
-
-		resp, err = resty.R().
-			SetHeader("Content-Length", fmt.Sprintf("%d", len(blob))).
-			SetHeader("Content-Type", "application/octet-stream").
-			SetQueryParam("digest", digest).
-			SetBody(blob).
-			Put(baseURL + loc)
-
-		if err != nil {
-			return err
-		}
-
-		if resp.StatusCode() != http.StatusCreated {
-			return ErrPutBlob
-		}
-	}
-
-	var err error
-
-	cblob := img.ConfigDescriptor.Data
-
-	// we'll remove this check once we make the full transition to the new way of generating test images
-	if len(cblob) == 0 {
-		cblob, err = json.Marshal(img.Config)
-		if err = inject.Error(err); err != nil {
-			return err
-		}
-	}
-
-	cdigest := godigest.FromBytes(cblob)
-
-	if img.Manifest.Config.MediaType == ispec.MediaTypeEmptyJSON ||
-		img.Manifest.Config.Digest == ispec.DescriptorEmptyJSON.Digest {
-		cblob = ispec.DescriptorEmptyJSON.Data
-		cdigest = ispec.DescriptorEmptyJSON.Digest
-	}
-
-	resp, err := resty.R().
-		Post(baseURL + "/v2/" + repo + "/blobs/uploads/")
-	if err = inject.Error(err); err != nil {
-		return err
-	}
-
-	if inject.ErrStatusCode(resp.StatusCode()) != http.StatusAccepted || inject.ErrStatusCode(resp.StatusCode()) == -1 {
-		return ErrPostBlob
-	}
-
-	loc := testc.Location(baseURL, resp)
-
-	// uploading blob should get 201
-	resp, err = resty.R().
-		SetHeader("Content-Length", fmt.Sprintf("%d", len(cblob))).
-		SetHeader("Content-Type", "application/octet-stream").
-		SetQueryParam("digest", cdigest.String()).
-		SetBody(cblob).
-		Put(loc)
-	if err = inject.Error(err); err != nil {
-		return err
-	}
-
-	if inject.ErrStatusCode(resp.StatusCode()) != http.StatusCreated || inject.ErrStatusCode(resp.StatusCode()) == -1 {
-		return ErrPostBlob
-	}
-
-	manifestBlob := img.ManifestDescriptor.Data
-
-	// we'll remove this check once we make the full transition to the new way of generating test images
-	if len(manifestBlob) == 0 {
-		manifestBlob, err = json.Marshal(img.Manifest)
-		if err = inject.Error(err); err != nil {
-			return err
-		}
-	}
-
-	// validate manifest
-	if err := storageCommon.ValidateManifestSchema(manifestBlob); err != nil {
-		return err
-	}
-
-	resp, err = resty.R().
-		SetHeader("Content-type", ispec.MediaTypeImageManifest).
-		SetBody(manifestBlob).
-		Put(baseURL + "/v2/" + repo + "/manifests/" + ref)
-
-	if inject.ErrStatusCode(resp.StatusCode()) != http.StatusCreated {
-		return ErrPutBlob
-	}
-
-	if inject.ErrStatusCode(resp.StatusCode()) != http.StatusCreated {
-		return ErrPutBlob
-	}
-
-	return err
-}
-
-func DeleteImage(repo, reference, baseURL string) (int, error) {
-	resp, err := resty.R().Delete(
-		fmt.Sprintf(baseURL+"/v2/%s/manifests/%s", repo, reference),
-	)
-	if err != nil {
-		return -1, err
-	}
-
-	return resp.StatusCode(), err
-}
-
-func UploadBlob(baseURL, repo string, blob []byte, artifactBlobMediaType string) error {
-	resp, err := resty.R().Post(baseURL + "/v2/" + repo + "/blobs/uploads/")
-	if err != nil {
-		return err
-	}
-
-	if resp.StatusCode() != http.StatusAccepted {
-		return ErrPostBlob
-	}
-
-	loc := resp.Header().Get("Location")
-
-	blobDigest := godigest.FromBytes(blob).String()
-
-	resp, err = resty.R().
-		SetHeader("Content-Length", fmt.Sprintf("%d", len(blob))).
-		SetHeader("Content-Type", artifactBlobMediaType).
-		SetQueryParam("digest", blobDigest).
-		SetBody(blob).
-		Put(baseURL + loc)
-
-	if err != nil {
-		return err
-	}
-
-	if resp.StatusCode() != http.StatusCreated {
-		return ErrPutBlob
-	}
-
-	return nil
-}
-
-func PushTestImage(repoName string, tag string, //nolint:unparam
-	baseURL string, manifest ispec.Manifest,
-	config ispec.Image, layers [][]byte,
-) error {
-	err := UploadImage(
-		Image{
-			Manifest: manifest,
-			Config:   config,
-			Layers:   layers,
-		},
-		baseURL,
-		repoName,
-		tag,
-	)
-
-	return err
 }
 
 func ReadLogFileAndSearchString(logPath string, stringToMatch string, timeout time.Duration) (bool, error) {
@@ -1558,96 +1287,6 @@ func Contains[E isser](s []E, name string) bool {
 	return Index(s, name) >= 0
 }
 
-func UploadImageWithBasicAuth(img Image, baseURL, repo, ref, user, password string) error {
-	for _, blob := range img.Layers {
-		resp, err := resty.R().
-			SetBasicAuth(user, password).
-			Post(baseURL + "/v2/" + repo + "/blobs/uploads/")
-		if err != nil {
-			return err
-		}
-
-		if resp.StatusCode() != http.StatusAccepted {
-			return ErrPostBlob
-		}
-
-		loc := resp.Header().Get("Location")
-
-		digest := godigest.FromBytes(blob).String()
-
-		resp, err = resty.R().
-			SetBasicAuth(user, password).
-			SetHeader("Content-Length", fmt.Sprintf("%d", len(blob))).
-			SetHeader("Content-Type", "application/octet-stream").
-			SetQueryParam("digest", digest).
-			SetBody(blob).
-			Put(baseURL + loc)
-
-		if err != nil {
-			return err
-		}
-
-		if resp.StatusCode() != http.StatusCreated {
-			return ErrPutBlob
-		}
-	}
-	// upload config
-	cblob, err := json.Marshal(img.Config)
-	if err = inject.Error(err); err != nil {
-		return err
-	}
-
-	cdigest := godigest.FromBytes(cblob)
-
-	if img.Manifest.Config.MediaType == ispec.MediaTypeEmptyJSON {
-		cblob = ispec.DescriptorEmptyJSON.Data
-		cdigest = ispec.DescriptorEmptyJSON.Digest
-	}
-
-	resp, err := resty.R().
-		SetBasicAuth(user, password).
-		Post(baseURL + "/v2/" + repo + "/blobs/uploads/")
-	if err = inject.Error(err); err != nil {
-		return err
-	}
-
-	if inject.ErrStatusCode(resp.StatusCode()) != http.StatusAccepted || inject.ErrStatusCode(resp.StatusCode()) == -1 {
-		return ErrPostBlob
-	}
-
-	loc := testc.Location(baseURL, resp)
-
-	// uploading blob should get 201
-	resp, err = resty.R().
-		SetBasicAuth(user, password).
-		SetHeader("Content-Length", fmt.Sprintf("%d", len(cblob))).
-		SetHeader("Content-Type", "application/octet-stream").
-		SetQueryParam("digest", cdigest.String()).
-		SetBody(cblob).
-		Put(loc)
-	if err = inject.Error(err); err != nil {
-		return err
-	}
-
-	if inject.ErrStatusCode(resp.StatusCode()) != http.StatusCreated || inject.ErrStatusCode(resp.StatusCode()) == -1 {
-		return ErrPostBlob
-	}
-
-	// put manifest
-	manifestBlob, err := json.Marshal(img.Manifest)
-	if err = inject.Error(err); err != nil {
-		return err
-	}
-
-	_, err = resty.R().
-		SetBasicAuth(user, password).
-		SetHeader("Content-type", "application/vnd.oci.image.manifest.v1+json").
-		SetBody(manifestBlob).
-		Put(baseURL + "/v2/" + repo + "/manifests/" + ref)
-
-	return err
-}
-
 func SignImageUsingCosign(repoTag, port string) error {
 	cwd, err := os.Getwd()
 	if err != nil {
@@ -1725,14 +1364,14 @@ func SignImageUsingNotary(repoTag, port string) error {
 }
 
 // Deprecated: Should use the new functions starting with "Create".
-func GetRandomMultiarchImageComponents() (ispec.Index, []Image, error) {
+func GetRandomMultiarchImageComponents() (ispec.Index, []image.Image, error) {
 	const layerSize = 100
 
 	randomLayer1 := make([]byte, layerSize)
 
 	_, err := rand.Read(randomLayer1)
 	if err != nil {
-		return ispec.Index{}, []Image{}, err
+		return ispec.Index{}, []image.Image{}, err
 	}
 
 	image1, err := GetImageWithComponents(
@@ -1746,14 +1385,14 @@ func GetRandomMultiarchImageComponents() (ispec.Index, []Image, error) {
 			randomLayer1,
 		})
 	if err != nil {
-		return ispec.Index{}, []Image{}, err
+		return ispec.Index{}, []image.Image{}, err
 	}
 
 	randomLayer2 := make([]byte, layerSize)
 
 	_, err = rand.Read(randomLayer2)
 	if err != nil {
-		return ispec.Index{}, []Image{}, err
+		return ispec.Index{}, []image.Image{}, err
 	}
 
 	image2, err := GetImageWithComponents(
@@ -1767,14 +1406,14 @@ func GetRandomMultiarchImageComponents() (ispec.Index, []Image, error) {
 			randomLayer2,
 		})
 	if err != nil {
-		return ispec.Index{}, []Image{}, err
+		return ispec.Index{}, []image.Image{}, err
 	}
 
 	randomLayer3 := make([]byte, layerSize)
 
 	_, err = rand.Read(randomLayer3)
 	if err != nil {
-		return ispec.Index{}, []Image{}, err
+		return ispec.Index{}, []image.Image{}, err
 	}
 
 	image3, err := GetImageWithComponents(
@@ -1788,7 +1427,7 @@ func GetRandomMultiarchImageComponents() (ispec.Index, []Image, error) {
 			randomLayer3,
 		})
 	if err != nil {
-		return ispec.Index{}, []Image{}, err
+		return ispec.Index{}, []image.Image{}, err
 	}
 
 	index := ispec.Index{
@@ -1812,25 +1451,25 @@ func GetRandomMultiarchImageComponents() (ispec.Index, []Image, error) {
 		},
 	}
 
-	return index, []Image{image1, image2, image3}, nil
+	return index, []image.Image{image1, image2, image3}, nil
 }
 
 // Deprecated: Should use the new functions starting with "Create".
-func GetRandomMultiarchImage(reference string) (MultiarchImage, error) {
+func GetRandomMultiarchImage(reference string) (image.MultiarchImage, error) {
 	index, images, err := GetRandomMultiarchImageComponents()
 	if err != nil {
-		return MultiarchImage{}, err
+		return image.MultiarchImage{}, err
 	}
 
 	index.SchemaVersion = 2
 
-	return MultiarchImage{
+	return image.MultiarchImage{
 		Index: index, Images: images, Reference: reference,
 	}, err
 }
 
 // Deprecated: Should use the new functions starting with "Create".
-func GetMultiarchImageForImages(images []Image) MultiarchImage {
+func GetMultiarchImageForImages(images []image.Image) image.MultiarchImage {
 	var index ispec.Index
 
 	for _, image := range images {
@@ -1843,7 +1482,7 @@ func GetMultiarchImageForImages(images []Image) MultiarchImage {
 
 	index.SchemaVersion = 2
 
-	return MultiarchImage{Index: index, Images: images}
+	return image.MultiarchImage{Index: index, Images: images}
 }
 
 func getManifestSize(manifest ispec.Manifest) int64 {
@@ -1862,37 +1501,6 @@ func getManifestDigest(manifest ispec.Manifest) godigest.Digest {
 	}
 
 	return godigest.FromBytes(manifestBlob)
-}
-
-func UploadMultiarchImage(multiImage MultiarchImage, baseURL string, repo, ref string) error {
-	for _, image := range multiImage.Images {
-		err := UploadImage(image, baseURL, repo, image.DigestStr())
-		if err != nil {
-			return err
-		}
-	}
-
-	// put manifest
-	indexBlob, err := json.Marshal(multiImage.Index)
-	if err = inject.Error(err); err != nil {
-		return err
-	}
-
-	// validate manifest
-	if err := storageCommon.ValidateImageIndexSchema(indexBlob); err != nil {
-		return err
-	}
-
-	resp, err := resty.R().
-		SetHeader("Content-type", ispec.MediaTypeImageIndex).
-		SetBody(indexBlob).
-		Put(baseURL + "/v2/" + repo + "/manifests/" + ref)
-
-	if resp.StatusCode() != http.StatusCreated {
-		return ErrPutIndex
-	}
-
-	return err
 }
 
 func GetIndexBlobWithManifests(manifestDigests []godigest.Digest) ([]byte, error) {
@@ -1963,90 +1571,6 @@ func CustomRedirectPolicy(noOfRedirect int) resty.RedirectPolicy {
 
 		return nil
 	})
-}
-
-func DateRef(year int, month time.Month, day, hour, min, sec, nsec int, loc *time.Location) *time.Time {
-	date := time.Date(year, month, day, hour, min, sec, nsec, loc)
-
-	return &date
-}
-
-func RandomDateRef(loc *time.Location) *time.Time {
-	var (
-		year  = 1990 + mathRand.Intn(30)          //nolint: gosec,gomnd
-		month = time.Month(1 + mathRand.Intn(10)) //nolint: gosec,gomnd
-		day   = 1 + mathRand.Intn(5)              //nolint: gosec,gomnd
-		hour  = 1 + mathRand.Intn(22)             //nolint: gosec,gomnd
-		min   = 1 + mathRand.Intn(58)             //nolint: gosec,gomnd
-		sec   = 1 + mathRand.Intn(58)             //nolint: gosec,gomnd
-		nsec  = 1
-	)
-
-	return DateRef(year, month, day, hour, min, sec, nsec, time.UTC)
-}
-
-func GetDefaultConfig() ispec.Image {
-	return ispec.Image{
-		Created: DefaultTimeRef(),
-		Author:  "ZotUser",
-		Platform: ispec.Platform{
-			OS:           "linux",
-			Architecture: "amd64",
-		},
-		RootFS: ispec.RootFS{
-			Type:    "layers",
-			DiffIDs: []godigest.Digest{},
-		},
-	}
-}
-
-func GetDefaultVulnConfig() ispec.Image {
-	return ispec.Image{
-		Created: DefaultTimeRef(),
-		Author:  "ZotUser",
-		Platform: ispec.Platform{
-			Architecture: "amd64",
-			OS:           "linux",
-		},
-		Config: ispec.ImageConfig{
-			Env: []string{"PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"},
-			Cmd: []string{"/bin/sh"},
-		},
-		RootFS: ispec.RootFS{
-			Type:    "layers",
-			DiffIDs: []godigest.Digest{"sha256:f1417ff83b319fbdae6dd9cd6d8c9c88002dcd75ecf6ec201c8c6894681cf2b5"},
-		},
-	}
-}
-
-func DefaultTimeRef() *time.Time {
-	var (
-		year  = 2010
-		month = time.Month(1)
-		day   = 1
-		hour  = 1
-		min   = 1
-		sec   = 1
-		nsec  = 0
-	)
-
-	return DateRef(year, month, day, hour, min, sec, nsec, time.UTC)
-}
-
-func GetDefaultLayers() []Layer {
-	return []Layer{
-		{Blob: []byte("abc"), Digest: godigest.FromBytes([]byte("abc")), MediaType: ispec.MediaTypeImageLayerGzip},
-		{Blob: []byte("123"), Digest: godigest.FromBytes([]byte("123")), MediaType: ispec.MediaTypeImageLayerGzip},
-		{Blob: []byte("xyz"), Digest: godigest.FromBytes([]byte("xyz")), MediaType: ispec.MediaTypeImageLayerGzip},
-	}
-}
-
-func GetDefaultLayersBlobs() [][]byte {
-	return [][]byte{
-		[]byte("abc"),
-		[]byte("123"),
-		[]byte("xyz"),
-	}
 }
 
 func GetDefaultImageStore(rootDir string, log zLog.Logger) stypes.ImageStore {

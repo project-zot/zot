@@ -25,6 +25,7 @@ import (
 	"zotregistry.io/zot/pkg/storage/local"
 	storageTypes "zotregistry.io/zot/pkg/storage/types"
 	"zotregistry.io/zot/pkg/test"
+	. "zotregistry.io/zot/pkg/test/image-utils"
 	"zotregistry.io/zot/pkg/test/mocks"
 )
 
@@ -411,7 +412,7 @@ func RunParseStorageTests(rootDir string, metaDB mTypes.MetaDB) {
 			manifests = append(manifests, manifest)
 
 			err = test.WriteImageToFileSystem(
-				test.Image{
+				Image{
 					Config:   config,
 					Layers:   layers,
 					Manifest: manifest,
@@ -432,7 +433,7 @@ func RunParseStorageTests(rootDir string, metaDB mTypes.MetaDB) {
 		So(err, ShouldBeNil)
 
 		err = test.WriteImageToFileSystem(
-			test.Image{
+			Image{
 				Config:   config,
 				Layers:   layers,
 				Manifest: manifest,
@@ -494,7 +495,7 @@ func RunParseStorageTests(rootDir string, metaDB mTypes.MetaDB) {
 		So(err, ShouldBeNil)
 
 		err = test.WriteImageToFileSystem(
-			test.Image{
+			Image{
 				Config:   config,
 				Layers:   layers,
 				Manifest: manifest,
@@ -515,7 +516,7 @@ func RunParseStorageTests(rootDir string, metaDB mTypes.MetaDB) {
 		So(err, ShouldBeNil)
 
 		err = test.WriteImageToFileSystem(
-			test.Image{
+			Image{
 				Config:   config,
 				Layers:   layers,
 				Manifest: manifest,

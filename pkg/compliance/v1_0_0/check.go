@@ -24,6 +24,7 @@ import (
 	"zotregistry.io/zot/pkg/compliance"
 	"zotregistry.io/zot/pkg/test"
 	testc "zotregistry.io/zot/pkg/test/common"
+	"zotregistry.io/zot/pkg/test/image-utils"
 )
 
 func CheckWorkflows(t *testing.T, config *compliance.Config) {
@@ -489,8 +490,8 @@ func CheckWorkflows(t *testing.T, config *compliance.Config) {
 			So(err, ShouldBeNil)
 
 			repoName := "repo7"
-			err = test.UploadImage(
-				test.Image{
+			err = image.UploadImage(
+				image.Image{
 					Config:   cfg,
 					Layers:   layers,
 					Manifest: manifest,
@@ -502,8 +503,8 @@ func CheckWorkflows(t *testing.T, config *compliance.Config) {
 			digest = godigest.FromBytes(content)
 			So(digest, ShouldNotBeNil)
 
-			err = test.UploadImage(
-				test.Image{
+			err = image.UploadImage(
+				image.Image{
 					Config:   cfg,
 					Layers:   layers,
 					Manifest: manifest,
@@ -519,8 +520,8 @@ func CheckWorkflows(t *testing.T, config *compliance.Config) {
 			digest = godigest.FromBytes(content)
 			So(digest, ShouldNotBeNil)
 
-			err = test.UploadImage(
-				test.Image{
+			err = image.UploadImage(
+				image.Image{
 					Config:   cfg,
 					Layers:   layers,
 					Manifest: manifest,
@@ -597,8 +598,8 @@ func CheckWorkflows(t *testing.T, config *compliance.Config) {
 				So(err, ShouldBeNil)
 
 				repoName := "page0"
-				err = test.UploadImage(
-					test.Image{
+				err = image.UploadImage(
+					image.Image{
 						Config:   cfg,
 						Layers:   layers,
 						Manifest: manifest,
@@ -737,8 +738,8 @@ func CheckWorkflows(t *testing.T, config *compliance.Config) {
 			So(err, ShouldBeNil)
 
 			// subpath firsttest
-			err = test.UploadImage(
-				test.Image{
+			err = image.UploadImage(
+				image.Image{
 					Config:   cfg,
 					Layers:   layers,
 					Manifest: manifest,
@@ -751,8 +752,8 @@ func CheckWorkflows(t *testing.T, config *compliance.Config) {
 			So(digest, ShouldNotBeNil)
 
 			// subpath secondtest
-			err = test.UploadImage(
-				test.Image{
+			err = image.UploadImage(
+				image.Image{
 					Config:   cfg,
 					Layers:   layers,
 					Manifest: manifest,
@@ -769,8 +770,8 @@ func CheckWorkflows(t *testing.T, config *compliance.Config) {
 			So(digest, ShouldNotBeNil)
 
 			// subpath firsttest
-			err = test.UploadImage(
-				test.Image{
+			err = image.UploadImage(
+				image.Image{
 					Config:   cfg,
 					Layers:   layers,
 					Manifest: manifest,
@@ -783,8 +784,8 @@ func CheckWorkflows(t *testing.T, config *compliance.Config) {
 			So(digest, ShouldNotBeNil)
 
 			// subpath secondtest
-			err = test.UploadImage(
-				test.Image{
+			err = image.UploadImage(
+				image.Image{
 					Config:   cfg,
 					Layers:   layers,
 					Manifest: manifest,

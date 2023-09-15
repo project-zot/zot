@@ -17,6 +17,7 @@ import (
 	"zotregistry.io/zot/pkg/api/config"
 	extconf "zotregistry.io/zot/pkg/extensions/config"
 	"zotregistry.io/zot/pkg/test"
+	. "zotregistry.io/zot/pkg/test/image-utils"
 )
 
 func TestUIExtension(t *testing.T) {
@@ -64,8 +65,8 @@ func TestUIExtension(t *testing.T) {
 		tagName := "test-tag"
 
 		// Upload a test image
-		err = test.UploadImage(
-			test.Image{
+		err = UploadImage(
+			Image{
 				Config:   cfg,
 				Layers:   layers,
 				Manifest: manifest,

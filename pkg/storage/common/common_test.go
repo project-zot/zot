@@ -23,6 +23,7 @@ import (
 	storageConstants "zotregistry.io/zot/pkg/storage/constants"
 	"zotregistry.io/zot/pkg/storage/local"
 	"zotregistry.io/zot/pkg/test"
+	. "zotregistry.io/zot/pkg/test/image-utils"
 	"zotregistry.io/zot/pkg/test/mocks"
 )
 
@@ -183,7 +184,7 @@ func TestGetReferrersErrors(t *testing.T) {
 		})
 
 		storageCtlr := storage.StoreController{DefaultStore: imgStore}
-		err := test.WriteImageToFileSystem(test.CreateDefaultImage(), "zot-test", "0.0.1", storageCtlr)
+		err := test.WriteImageToFileSystem(CreateDefaultImage(), "zot-test", "0.0.1", storageCtlr)
 		So(err, ShouldBeNil)
 
 		digest := godigest.FromBytes([]byte("{}"))

@@ -16,6 +16,7 @@ import (
 	extconf "zotregistry.io/zot/pkg/extensions/config"
 	"zotregistry.io/zot/pkg/extensions/monitoring"
 	"zotregistry.io/zot/pkg/test"
+	. "zotregistry.io/zot/pkg/test/image-utils"
 )
 
 func TestExtensionMetrics(t *testing.T) {
@@ -55,7 +56,7 @@ func TestExtensionMetrics(t *testing.T) {
 		monitoring.IncUploadCounter(ctlr.Metrics, "alpine")
 
 		srcStorageCtlr := test.GetDefaultStoreController(rootDir, ctlr.Log)
-		err := test.WriteImageToFileSystem(test.CreateDefaultImage(), "alpine", "0.0.1", srcStorageCtlr)
+		err := test.WriteImageToFileSystem(CreateDefaultImage(), "alpine", "0.0.1", srcStorageCtlr)
 		So(err, ShouldBeNil)
 
 		monitoring.SetStorageUsage(ctlr.Metrics, rootDir, "alpine")

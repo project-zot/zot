@@ -1,4 +1,4 @@
-package test
+package image
 
 import (
 	"crypto/rand"

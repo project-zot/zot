@@ -23,6 +23,7 @@ import (
 	"zotregistry.io/zot/pkg/storage/cache"
 	"zotregistry.io/zot/pkg/storage/local"
 	"zotregistry.io/zot/pkg/test"
+	. "zotregistry.io/zot/pkg/test/image-utils"
 )
 
 const (
@@ -63,7 +64,7 @@ func TestScrubExtension(t *testing.T) {
 		ctlr := api.NewController(conf)
 
 		srcStorageCtlr := test.GetDefaultStoreController(dir, log.NewLogger("debug", ""))
-		err = test.WriteImageToFileSystem(test.CreateDefaultVulnerableImage(), repoName, "0.0.1", srcStorageCtlr)
+		err = test.WriteImageToFileSystem(CreateDefaultVulnerableImage(), repoName, "0.0.1", srcStorageCtlr)
 		So(err, ShouldBeNil)
 
 		cm := test.NewControllerManager(ctlr)
@@ -107,7 +108,7 @@ func TestScrubExtension(t *testing.T) {
 		ctlr := api.NewController(conf)
 
 		srcStorageCtlr := test.GetDefaultStoreController(dir, log.NewLogger("debug", ""))
-		image := test.CreateDefaultVulnerableImage()
+		image := CreateDefaultVulnerableImage()
 		err = test.WriteImageToFileSystem(image, repoName, "0.0.1", srcStorageCtlr)
 		So(err, ShouldBeNil)
 
@@ -159,7 +160,7 @@ func TestScrubExtension(t *testing.T) {
 		ctlr := api.NewController(conf)
 
 		srcStorageCtlr := test.GetDefaultStoreController(dir, log.NewLogger("debug", ""))
-		image := test.CreateDefaultVulnerableImage()
+		image := CreateDefaultVulnerableImage()
 
 		err = test.WriteImageToFileSystem(image, repoName, "0.0.1", srcStorageCtlr)
 		So(err, ShouldBeNil)
@@ -203,7 +204,7 @@ func TestRunScrubRepo(t *testing.T) {
 			true, log, metrics, nil, cacheDriver)
 
 		srcStorageCtlr := test.GetDefaultStoreController(dir, log)
-		image := test.CreateDefaultVulnerableImage()
+		image := CreateDefaultVulnerableImage()
 
 		err = test.WriteImageToFileSystem(image, repoName, "0.0.1", srcStorageCtlr)
 		So(err, ShouldBeNil)
@@ -239,7 +240,7 @@ func TestRunScrubRepo(t *testing.T) {
 			true, log, metrics, nil, cacheDriver)
 
 		srcStorageCtlr := test.GetDefaultStoreController(dir, log)
-		image := test.CreateDefaultVulnerableImage()
+		image := CreateDefaultVulnerableImage()
 
 		err = test.WriteImageToFileSystem(image, repoName, "0.0.1", srcStorageCtlr)
 		So(err, ShouldBeNil)
@@ -282,7 +283,7 @@ func TestRunScrubRepo(t *testing.T) {
 		)
 
 		srcStorageCtlr := test.GetDefaultStoreController(dir, log)
-		image := test.CreateDefaultVulnerableImage()
+		image := CreateDefaultVulnerableImage()
 
 		err = test.WriteImageToFileSystem(image, repoName, "0.0.1", srcStorageCtlr)
 		So(err, ShouldBeNil)

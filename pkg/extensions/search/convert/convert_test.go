@@ -20,6 +20,7 @@ import (
 	"zotregistry.io/zot/pkg/meta/boltdb"
 	mTypes "zotregistry.io/zot/pkg/meta/types"
 	"zotregistry.io/zot/pkg/test"
+	. "zotregistry.io/zot/pkg/test/image-utils"
 	"zotregistry.io/zot/pkg/test/mocks"
 )
 
@@ -501,22 +502,22 @@ func TestPaginatedConvert(t *testing.T) {
 	ctx := context.Background()
 
 	var (
-		badBothImage = test.CreateImageWith().DefaultLayers().ImageConfig(
+		badBothImage = CreateImageWith().DefaultLayers().ImageConfig(
 			ispec.Image{Platform: ispec.Platform{OS: "bad-os", Architecture: "bad-arch"}}).Build()
-		badOsImage = test.CreateImageWith().DefaultLayers().ImageConfig(
+		badOsImage = CreateImageWith().DefaultLayers().ImageConfig(
 			ispec.Image{Platform: ispec.Platform{OS: "bad-os", Architecture: "good-arch"}}).Build()
-		badArchImage = test.CreateImageWith().DefaultLayers().ImageConfig(
+		badArchImage = CreateImageWith().DefaultLayers().ImageConfig(
 			ispec.Image{Platform: ispec.Platform{OS: "good-os", Architecture: "bad-arch"}}).Build()
-		goodImage = test.CreateImageWith().DefaultLayers().ImageConfig(
+		goodImage = CreateImageWith().DefaultLayers().ImageConfig(
 			ispec.Image{Platform: ispec.Platform{OS: "good-os", Architecture: "good-arch"}}).Build()
 
-		randomImage1 = test.CreateRandomImage()
-		randomImage2 = test.CreateRandomImage()
+		randomImage1 = CreateRandomImage()
+		randomImage2 = CreateRandomImage()
 
-		badMultiArch = test.CreateMultiarchWith().Images(
-			[]test.Image{badBothImage, badOsImage, badArchImage, randomImage1}).Build()
-		goodMultiArch = test.CreateMultiarchWith().Images(
-			[]test.Image{badOsImage, badArchImage, randomImage2, goodImage}).Build()
+		badMultiArch = CreateMultiarchWith().Images(
+			[]Image{badBothImage, badOsImage, badArchImage, randomImage1}).Build()
+		goodMultiArch = CreateMultiarchWith().Images(
+			[]Image{badOsImage, badArchImage, randomImage2, goodImage}).Build()
 	)
 
 	reposMeta, manifestMetaMap, indexDataMap := test.GetMetadataForRepos(
@@ -563,7 +564,7 @@ func TestPaginatedConvert(t *testing.T) {
 			Name: "repo5-signed",
 			Images: []test.RepoImage{
 				{Image: goodImage, Tag: "goodImage"}, // is fake signed by the image below
-				{Image: test.CreateFakeTestSignature(goodImage.DescriptorRef())},
+				{Image: CreateFakeTestSignature(goodImage.DescriptorRef())},
 			},
 		},
 	)
@@ -835,14 +836,14 @@ func TestGetOneManifestAnnotations(t *testing.T) {
 			ispec.AnnotationSource:        "IndexSource",
 		}
 
-		imageWithConfigAnnotations := test.CreateImageWith().DefaultLayers().
+		imageWithConfigAnnotations := CreateImageWith().DefaultLayers().
 			ImageConfig(ispec.Image{
 				Config: ispec.ImageConfig{
 					Labels: configLabels,
 				},
 			}).Build()
 
-		imageWithManifestAndConfigAnnotations := test.CreateImageWith().DefaultLayers().
+		imageWithManifestAndConfigAnnotations := CreateImageWith().DefaultLayers().
 			ImageConfig(ispec.Image{
 				Config: ispec.ImageConfig{
 					Labels: configLabels,
@@ -850,8 +851,8 @@ func TestGetOneManifestAnnotations(t *testing.T) {
 			}).Annotations(manifestAnnotations).Build()
 
 		// --------------------------------------------------------
-		indexWithAnnotations := test.CreateMultiarchWith().Images(
-			[]test.Image{imageWithManifestAndConfigAnnotations},
+		indexWithAnnotations := CreateMultiarchWith().Images(
+			[]Image{imageWithManifestAndConfigAnnotations},
 		).Annotations(indexAnnotations).Build()
 
 		repoMeta, manifestMetadata, indexData := test.GetMetadataForRepos(test.Repo{
@@ -875,8 +876,8 @@ func TestGetOneManifestAnnotations(t *testing.T) {
 		So(*imageSummary.Authors, ShouldResemble, "IndexAuthors")
 
 		// --------------------------------------------------------
-		indexWithManifestAndConfigAnnotations := test.CreateMultiarchWith().Images(
-			[]test.Image{imageWithManifestAndConfigAnnotations, test.CreateRandomImage(), test.CreateRandomImage()},
+		indexWithManifestAndConfigAnnotations := CreateMultiarchWith().Images(
+			[]Image{imageWithManifestAndConfigAnnotations, CreateRandomImage(), CreateRandomImage()},
 		).Build()
 
 		repoMeta, manifestMetadata, indexData = test.GetMetadataForRepos(test.Repo{
@@ -896,8 +897,8 @@ func TestGetOneManifestAnnotations(t *testing.T) {
 		So(*imageSummary.Vendor, ShouldResemble, "ManifestVendor")
 		So(*imageSummary.Authors, ShouldResemble, "ManifestAuthors")
 		// --------------------------------------------------------
-		indexWithConfigAnnotations := test.CreateMultiarchWith().Images(
-			[]test.Image{imageWithConfigAnnotations, test.CreateRandomImage(), test.CreateRandomImage()},
+		indexWithConfigAnnotations := CreateMultiarchWith().Images(
+			[]Image{imageWithConfigAnnotations, CreateRandomImage(), CreateRandomImage()},
 		).Build()
 
 		repoMeta, manifestMetadata, indexData = test.GetMetadataForRepos(test.Repo{
@@ -918,9 +919,9 @@ func TestGetOneManifestAnnotations(t *testing.T) {
 		So(*imageSummary.Authors, ShouldResemble, "ConfigAuthors")
 		//--------------------------------------------------------
 
-		indexWithMixAnnotations := test.CreateMultiarchWith().Images(
-			[]test.Image{
-				test.CreateImageWith().DefaultLayers().ImageConfig(ispec.Image{
+		indexWithMixAnnotations := CreateMultiarchWith().Images(
+			[]Image{
+				CreateImageWith().DefaultLayers().ImageConfig(ispec.Image{
 					Config: ispec.ImageConfig{
 						Labels: map[string]string{
 							ispec.AnnotationDescription: "ConfigDescription",
@@ -931,8 +932,8 @@ func TestGetOneManifestAnnotations(t *testing.T) {
 					ispec.AnnotationVendor:  "ManifestVendor",
 					ispec.AnnotationAuthors: "ManifestAuthors",
 				}).Build(),
-				test.CreateRandomImage(),
-				test.CreateRandomImage(),
+				CreateRandomImage(),
+				CreateRandomImage(),
 			},
 		).Annotations(
 			map[string]string{
@@ -960,7 +961,7 @@ func TestGetOneManifestAnnotations(t *testing.T) {
 		So(*imageSummary.Source, ShouldResemble, "IndexSource")
 
 		//--------------------------------------------------------
-		indexWithNoAnnotations := test.CreateRandomMultiarch()
+		indexWithNoAnnotations := CreateRandomMultiarch()
 
 		repoMeta, manifestMetadata, indexData = test.GetMetadataForRepos(test.Repo{
 			Name:            "repo",
@@ -988,7 +989,7 @@ func TestDownloadCount(t *testing.T) {
 				Name: "repo",
 				Images: []test.RepoImage{
 					{
-						Image: test.CreateRandomImage(),
+						Image: CreateRandomImage(),
 						Tag:   "10-downloads",
 						Statistics: mTypes.DescriptorStatistics{
 							DownloadCount: 10,
@@ -1005,8 +1006,8 @@ func TestDownloadCount(t *testing.T) {
 	})
 
 	Convey("index", t, func() {
-		img1, img2, img3 := test.CreateRandomImage(), test.CreateRandomImage(), test.CreateRandomImage()
-		multiArch := test.CreateMultiarchWith().Images([]test.Image{img1, img2, img3}).Build()
+		img1, img2, img3 := CreateRandomImage(), CreateRandomImage(), CreateRandomImage()
+		multiArch := CreateMultiarchWith().Images([]Image{img1, img2, img3}).Build()
 
 		repoMeta, manifestMetaMap, indexDataMap := test.GetMetadataForRepos(
 			test.Repo{
@@ -1033,20 +1034,20 @@ func TestDownloadCount(t *testing.T) {
 	})
 
 	Convey("index + manifest mixed", t, func() {
-		img1 := test.CreateRandomImage()
-		img2 := test.CreateRandomImage()
-		img3 := test.CreateImageWith().DefaultLayers().ImageConfig(
-			ispec.Image{Created: test.DateRef(2020, 1, 1, 1, 1, 1, 0, time.UTC)},
+		img1 := CreateRandomImage()
+		img2 := CreateRandomImage()
+		img3 := CreateImageWith().DefaultLayers().ImageConfig(
+			ispec.Image{Created: DateRef(2020, 1, 1, 1, 1, 1, 0, time.UTC)},
 		).Build()
 
-		multiArch := test.CreateMultiarchWith().Images([]test.Image{img1, img2, img3}).Build()
+		multiArch := CreateMultiarchWith().Images([]Image{img1, img2, img3}).Build()
 
 		repoMeta, manifestMetaMap, indexDataMap := test.GetMetadataForRepos(
 			test.Repo{
 				Name: "repo",
 				Images: []test.RepoImage{
 					{
-						Image:      test.CreateRandomImage(),
+						Image:      CreateRandomImage(),
 						Tag:        "5-downloads",
 						Statistics: mTypes.DescriptorStatistics{DownloadCount: 5},
 					},

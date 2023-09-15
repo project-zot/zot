@@ -16,6 +16,7 @@ import (
 	"zotregistry.io/zot/pkg/api"
 	"zotregistry.io/zot/pkg/api/config"
 	"zotregistry.io/zot/pkg/test"
+	. "zotregistry.io/zot/pkg/test/image-utils"
 )
 
 func TestReposCommand(t *testing.T) {
@@ -32,9 +33,9 @@ func TestReposCommand(t *testing.T) {
 		cm.StartAndWait(conf.HTTP.Port)
 		defer cm.StopServer()
 
-		err := test.UploadImage(test.CreateRandomImage(), baseURL, "repo1", "tag1")
+		err := UploadImage(CreateRandomImage(), baseURL, "repo1", "tag1")
 		So(err, ShouldBeNil)
-		err = test.UploadImage(test.CreateRandomImage(), baseURL, "repo2", "tag2")
+		err = UploadImage(CreateRandomImage(), baseURL, "repo2", "tag2")
 		So(err, ShouldBeNil)
 
 		configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"repostest","url":"%s","showspinner":false}]}`,

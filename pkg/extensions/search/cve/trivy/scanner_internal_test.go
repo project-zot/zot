@@ -29,6 +29,7 @@ import (
 	"zotregistry.io/zot/pkg/storage/local"
 	storageTypes "zotregistry.io/zot/pkg/storage/types"
 	"zotregistry.io/zot/pkg/test"
+	. "zotregistry.io/zot/pkg/test/image-utils"
 	"zotregistry.io/zot/pkg/test/mocks"
 )
 
@@ -182,7 +183,7 @@ func TestTrivyLibraryErrors(t *testing.T) {
 		rootDir := t.TempDir()
 
 		storageCtlr := test.GetDefaultStoreController(rootDir, log.NewLogger("debug", ""))
-		err := test.WriteImageToFileSystem(test.CreateDefaultVulnerableImage(), "zot-test", "0.0.1", storageCtlr)
+		err := test.WriteImageToFileSystem(CreateDefaultVulnerableImage(), "zot-test", "0.0.1", storageCtlr)
 		So(err, ShouldBeNil)
 
 		log := log.NewLogger("debug", "")

@@ -25,6 +25,7 @@ import (
 	"zotregistry.io/zot/pkg/storage/local"
 	"zotregistry.io/zot/pkg/test"
 	testc "zotregistry.io/zot/pkg/test/common"
+	. "zotregistry.io/zot/pkg/test/image-utils"
 )
 
 const (
@@ -57,7 +58,7 @@ func TestVerifyMandatoryAnnotations(t *testing.T) {
 		dir := t.TempDir()
 		testStoreCtlr := test.GetDefaultStoreController(dir, ctlr.Log)
 
-		err := test.WriteImageToFileSystem(test.CreateRandomImage(), "zot-test", "0.0.1", testStoreCtlr)
+		err := test.WriteImageToFileSystem(CreateRandomImage(), "zot-test", "0.0.1", testStoreCtlr)
 		So(err, ShouldBeNil)
 
 		ctlr.Config.Storage.RootDirectory = dir
@@ -104,7 +105,7 @@ func TestVerifyMandatoryAnnotations(t *testing.T) {
 		dir := t.TempDir()
 		testStoreCtlr := test.GetDefaultStoreController(dir, ctlr.Log)
 
-		err := test.WriteImageToFileSystem(test.CreateRandomImage(), "zot-test", "0.0.1", testStoreCtlr)
+		err := test.WriteImageToFileSystem(CreateRandomImage(), "zot-test", "0.0.1", testStoreCtlr)
 		So(err, ShouldBeNil)
 
 		ctlr.Config.Storage.RootDirectory = dir
@@ -151,7 +152,7 @@ func TestVerifyMandatoryAnnotations(t *testing.T) {
 		dir := t.TempDir()
 
 		testStoreCtlr := test.GetDefaultStoreController(dir, ctlr.Log)
-		err := test.WriteImageToFileSystem(test.CreateRandomImage(), "zot-test", "0.0.1", testStoreCtlr)
+		err := test.WriteImageToFileSystem(CreateRandomImage(), "zot-test", "0.0.1", testStoreCtlr)
 		So(err, ShouldBeNil)
 
 		ctlr.Config.Storage.RootDirectory = dir
@@ -204,7 +205,7 @@ func TestVerifyMandatoryAnnotations(t *testing.T) {
 		dir := t.TempDir()
 
 		testStoreCtlr := test.GetDefaultStoreController(dir, ctlr.Log)
-		err := test.WriteImageToFileSystem(test.CreateRandomImage(), "zot-test", "0.0.1", testStoreCtlr)
+		err := test.WriteImageToFileSystem(CreateRandomImage(), "zot-test", "0.0.1", testStoreCtlr)
 		So(err, ShouldBeNil)
 
 		ctlr.Config.Storage.RootDirectory = dir
@@ -292,7 +293,7 @@ func TestVerifyMandatoryAnnotations(t *testing.T) {
 		dir := t.TempDir()
 
 		testStoreCtlr := test.GetDefaultStoreController(dir, ctlr.Log)
-		err := test.WriteImageToFileSystem(test.CreateRandomImage(), "zot-test", "0.0.1", testStoreCtlr)
+		err := test.WriteImageToFileSystem(CreateRandomImage(), "zot-test", "0.0.1", testStoreCtlr)
 		So(err, ShouldBeNil)
 
 		ctlr.Config.Storage.RootDirectory = dir
@@ -379,7 +380,7 @@ func TestVerifyMandatoryAnnotations(t *testing.T) {
 		dir := t.TempDir()
 
 		testStoreCtlr := test.GetDefaultStoreController(dir, ctlr.Log)
-		err := test.WriteImageToFileSystem(test.CreateRandomImage(), "zot-test", "0.0.1", testStoreCtlr)
+		err := test.WriteImageToFileSystem(CreateRandomImage(), "zot-test", "0.0.1", testStoreCtlr)
 		So(err, ShouldBeNil)
 
 		ctlr.Config.Storage.RootDirectory = dir
@@ -430,7 +431,7 @@ func TestVerifyMandatoryAnnotations(t *testing.T) {
 		dir := t.TempDir()
 
 		testStoreCtlr := test.GetDefaultStoreController(dir, ctlr.Log)
-		err := test.WriteImageToFileSystem(test.CreateRandomImage(), "zot-test", "0.0.1", testStoreCtlr)
+		err := test.WriteImageToFileSystem(CreateRandomImage(), "zot-test", "0.0.1", testStoreCtlr)
 		So(err, ShouldBeNil)
 
 		files, err := os.ReadDir(dir)
@@ -485,7 +486,7 @@ func TestVerifyMandatoryAnnotationsFunction(t *testing.T) {
 		dir := t.TempDir()
 
 		testStoreCtlr := test.GetDefaultStoreController(dir, log.NewLogger("debug", ""))
-		err := test.WriteImageToFileSystem(test.CreateRandomImage(), "zot-test", "0.0.1", testStoreCtlr)
+		err := test.WriteImageToFileSystem(CreateRandomImage(), "zot-test", "0.0.1", testStoreCtlr)
 		So(err, ShouldBeNil)
 
 		var index ispec.Index
@@ -517,7 +518,7 @@ func TestVerifyMandatoryAnnotationsFunction(t *testing.T) {
 		dir := t.TempDir()
 
 		testStoreCtlr := test.GetDefaultStoreController(dir, log.NewLogger("debug", ""))
-		err := test.WriteImageToFileSystem(test.CreateRandomImage(), "zot-test", "0.0.1", testStoreCtlr)
+		err := test.WriteImageToFileSystem(CreateRandomImage(), "zot-test", "0.0.1", testStoreCtlr)
 		So(err, ShouldBeNil)
 
 		var index ispec.Index
@@ -549,7 +550,7 @@ func TestVerifyMandatoryAnnotationsFunction(t *testing.T) {
 		dir := t.TempDir()
 
 		testStoreCtlr := test.GetDefaultStoreController(dir, log.NewLogger("debug", ""))
-		err := test.WriteImageToFileSystem(test.CreateRandomImage(), "zot-test", "0.0.1", testStoreCtlr)
+		err := test.WriteImageToFileSystem(CreateRandomImage(), "zot-test", "0.0.1", testStoreCtlr)
 		So(err, ShouldBeNil)
 
 		var index ispec.Index
@@ -612,7 +613,7 @@ func TestVerifyMandatoryAnnotationsFunction(t *testing.T) {
 		dir := t.TempDir()
 
 		testStoreCtlr := test.GetDefaultStoreController(dir, log.NewLogger("debug", ""))
-		err := test.WriteImageToFileSystem(test.CreateRandomImage(), "zot-test", "0.0.1", testStoreCtlr)
+		err := test.WriteImageToFileSystem(CreateRandomImage(), "zot-test", "0.0.1", testStoreCtlr)
 		So(err, ShouldBeNil)
 
 		var index ispec.Index
@@ -674,7 +675,7 @@ func TestVerifyMandatoryAnnotationsFunction(t *testing.T) {
 		dir := t.TempDir()
 
 		testStoreCtlr := test.GetDefaultStoreController(dir, log.NewLogger("debug", ""))
-		err := test.WriteImageToFileSystem(test.CreateRandomImage(), "zot-test", "0.0.1", testStoreCtlr)
+		err := test.WriteImageToFileSystem(CreateRandomImage(), "zot-test", "0.0.1", testStoreCtlr)
 		So(err, ShouldBeNil)
 
 		var index ispec.Index
@@ -738,7 +739,7 @@ func TestVerifyMandatoryAnnotationsFunction(t *testing.T) {
 		dir := t.TempDir()
 
 		testStoreCtlr := test.GetDefaultStoreController(dir, log.NewLogger("debug", ""))
-		err := test.WriteImageToFileSystem(test.CreateRandomImage(), "zot-test", "0.0.1", testStoreCtlr)
+		err := test.WriteImageToFileSystem(CreateRandomImage(), "zot-test", "0.0.1", testStoreCtlr)
 		So(err, ShouldBeNil)
 
 		var index ispec.Index
@@ -811,7 +812,7 @@ func TestVerifyMandatoryAnnotationsFunction(t *testing.T) {
 		dir := t.TempDir()
 
 		testStoreCtlr := test.GetDefaultStoreController(dir, log.NewLogger("debug", ""))
-		err := test.WriteImageToFileSystem(test.CreateRandomImage(), "zot-test", "0.0.1", testStoreCtlr)
+		err := test.WriteImageToFileSystem(CreateRandomImage(), "zot-test", "0.0.1", testStoreCtlr)
 		So(err, ShouldBeNil)
 
 		var index ispec.Index
