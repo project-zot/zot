@@ -24,7 +24,6 @@ type CveInfo interface {
 	) ([]cvemodel.CVE, zcommon.PageInfo, error)
 	GetCVESummaryForImage(repo, ref string) (cvemodel.ImageCVESummary, error)
 	GetCVESummaryForImageMedia(repo, digest, mediaType string) (cvemodel.ImageCVESummary, error)
-	CompareSeverities(severity1, severity2 string) int
 	UpdateDB() error
 }
 
@@ -32,7 +31,6 @@ type Scanner interface {
 	ScanImage(image string) (map[string]cvemodel.CVE, error)
 	IsImageFormatScannable(repo, ref string) (bool, error)
 	IsImageMediaScannable(repo, digestStr, mediaType string) (bool, error)
-	CompareSeverities(severity1, severity2 string) int
 	UpdateDB() error
 }
 
@@ -347,7 +345,7 @@ func (cveinfo BaseCveInfo) GetCVEListForImage(repo, ref string, searchedCVE stri
 		return []cvemodel.CVE{}, zcommon.PageInfo{}, err
 	}
 
-	pageFinder, err := NewCvePageFinder(pageInput.Limit, pageInput.Offset, pageInput.SortBy, cveinfo)
+	pageFinder, err := NewCvePageFinder(pageInput.Limit, pageInput.Offset, pageInput.SortBy)
 	if err != nil {
 		return []cvemodel.CVE{}, zcommon.PageInfo{}, err
 	}
@@ -366,7 +364,7 @@ func (cveinfo BaseCveInfo) GetCVESummaryForImage(repo, ref string) (cvemodel.Ima
 	// scannable issues found              - max severity from Scanner  - cve count >0  - no Errors
 	imageCVESummary := cvemodel.ImageCVESummary{
 		Count:       0,
-		MaxSeverity: "",
+		MaxSeverity: cvemodel.SeverityNotScanned,
 	}
 
 	isValidImage, err := cveinfo.Scanner.IsImageFormatScannable(repo, ref)
@@ -384,14 +382,14 @@ func (cveinfo BaseCveInfo) GetCVESummaryForImage(repo, ref string) (cvemodel.Ima
 	imageCVESummary.Count = len(cveMap)
 
 	if imageCVESummary.Count == 0 {
-		imageCVESummary.MaxSeverity = "NONE"
+		imageCVESummary.MaxSeverity = cvemodel.SeverityNone
 
 		return imageCVESummary, nil
 	}
 
-	imageCVESummary.MaxSeverity = "UNKNOWN"
+	imageCVESummary.MaxSeverity = cvemodel.SeverityUnknown
 	for _, cve := range cveMap {
-		if cveinfo.Scanner.CompareSeverities(imageCVESummary.MaxSeverity, cve.Severity) > 0 {
+		if cvemodel.CompareSeverities(imageCVESummary.MaxSeverity, cve.Severity) > 0 {
 			imageCVESummary.MaxSeverity = cve.Severity
 		}
 	}
@@ -401,9 +399,13 @@ func (cveinfo BaseCveInfo) GetCVESummaryForImage(repo, ref string) (cvemodel.Ima
 
 func (cveinfo BaseCveInfo) GetCVESummaryForImageMedia(repo, digest, mediaType string,
 ) (cvemodel.ImageCVESummary, error) {
+	// There are several cases, expected returned values below:
+	// not scannable / error during scan   - max severity ""            - cve count 0   - Errors
+	// scannable no issues found           - max severity "NONE"        - cve count 0   - no Errors
+	// scannable issues found              - max severity from Scanner  - cve count >0  - no Errors
 	imageCVESummary := cvemodel.ImageCVESummary{
 		Count:       0,
-		MaxSeverity: "",
+		MaxSeverity: cvemodel.SeverityNotScanned,
 	}
 
 	isValidImage, err := cveinfo.Scanner.IsImageMediaScannable(repo, digest, mediaType)
@@ -421,14 +423,14 @@ func (cveinfo BaseCveInfo) GetCVESummaryForImageMedia(repo, digest, mediaType st
 	imageCVESummary.Count = len(cveMap)
 
 	if imageCVESummary.Count == 0 {
-		imageCVESummary.MaxSeverity = "NONE"
+		imageCVESummary.MaxSeverity = cvemodel.SeverityNone
 
 		return imageCVESummary, nil
 	}
 
-	imageCVESummary.MaxSeverity = "UNKNOWN"
+	imageCVESummary.MaxSeverity = cvemodel.SeverityUnknown
 	for _, cve := range cveMap {
-		if cveinfo.Scanner.CompareSeverities(imageCVESummary.MaxSeverity, cve.Severity) > 0 {
+		if cvemodel.CompareSeverities(imageCVESummary.MaxSeverity, cve.Severity) > 0 {
 			imageCVESummary.MaxSeverity = cve.Severity
 		}
 	}
@@ -438,10 +440,6 @@ func (cveinfo BaseCveInfo) GetCVESummaryForImageMedia(repo, digest, mediaType st
 
 func (cveinfo BaseCveInfo) UpdateDB() error {
 	return cveinfo.Scanner.UpdateDB()
-}
-
-func (cveinfo BaseCveInfo) CompareSeverities(severity1, severity2 string) int {
-	return cveinfo.Scanner.CompareSeverities(severity1, severity2)
 }
 
 func GetFixedTags(allTags, vulnerableTags []cvemodel.TagInfo) []cvemodel.TagInfo {

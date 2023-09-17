@@ -28,23 +28,50 @@ type Package struct {
 }
 
 const (
-	None = iota
-	Low
-	Medium
-	High
-	Critical
+	unScanned = iota
+	none
+	unknown
+	low
+	medium
+	high
+	critical
 )
 
-func SeverityValue(severity string) int {
+// Values from https://www.first.org/cvss/v3.0/specification-document
+const (
+	SeverityNotScanned = ""         // scanning was not done or was not complete
+	SeverityNone       = "NONE"     // no vulnerabilities were detected at all
+	SeverityUnknown    = "UNKNOWN"  // coresponds to CVSS 3 score NONE
+	SeverityLow        = "LOW"      // coresponds to CVSS 3 score LOW
+	SeverityMedium     = "MEDIUM"   // coresponds to CVSS 3 score MEDIUM
+	SeverityHigh       = "HIGH"     // coresponds to CVSS 3 score HIGH
+	SeverityCritical   = "CRITICAL" // coresponds to CVSS 3 score CRITICAL
+)
+
+func severityInt(severity string) int {
 	sevMap := map[string]int{
-		"NONE":     None,
-		"LOW":      Low,
-		"MEDIUM":   Medium,
-		"HIGH":     High,
-		"CRITICAL": Critical,
+		SeverityNotScanned: unScanned,
+		SeverityNone:       none,
+		SeverityUnknown:    unknown,
+		SeverityLow:        low,
+		SeverityMedium:     medium,
+		SeverityHigh:       high,
+		SeverityCritical:   critical,
 	}
 
-	return sevMap[severity]
+	severityInt, ok := sevMap[severity]
+
+	if !ok {
+		// In the unlikely case the key is not in the map we
+		// return the unknown severity level
+		return unknown
+	}
+
+	return severityInt
+}
+
+func CompareSeverities(sev1, sev2 string) int {
+	return severityInt(sev2) - severityInt(sev1)
 }
 
 type Descriptor struct {

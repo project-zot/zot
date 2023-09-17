@@ -70,7 +70,7 @@ func TestTrivyDBGenerator(t *testing.T) {
 
 		// Wait for trivy db to download
 		found, err := ReadLogFileAndCountStringOccurence(logPath,
-			"DB update completed, next update scheduled", 120*time.Second, 2)
+			"DB update completed, next update scheduled", 140*time.Second, 2)
 		So(err, ShouldBeNil)
 		So(found, ShouldBeTrue)
 	})

@@ -10,6 +10,7 @@ import (
 	"github.com/vektah/gqlparser/v2/gqlerror"
 	zerr "zotregistry.io/zot/errors"
 	"zotregistry.io/zot/pkg/common"
+	"zotregistry.io/zot/pkg/extensions/search/convert"
 	"zotregistry.io/zot/pkg/extensions/search/gql_generated"
 )
 
@@ -133,7 +134,11 @@ func (r *queryResolver) Image(ctx context.Context, image string) (*gql_generated
 		return &gql_generated.ImageSummary{}, gqlerror.Errorf("no reference provided")
 	}
 
-	return getImageSummary(ctx, repo, tag, nil, r.metaDB, r.cveInfo, r.log)
+	skip := convert.SkipQGLField{
+		Vulnerabilities: canSkipField(convert.GetPreloads(ctx), "Vulnerabilities"),
+	}
+
+	return getImageSummary(ctx, repo, tag, nil, skip, r.metaDB, r.cveInfo, r.log)
 }
 
 // Referrers is the resolver for the Referrers field.
