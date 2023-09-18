@@ -1,0 +1,23 @@
+syntax = "proto3";
+package v1;
+
+// https://github.com/opencontainers/image-spec/blob/main/specs-go/v1/descriptor.go
+
+message Descriptor {
+  string mediaType = 1;
+  string digest = 2;
+  int64 size = 3;
+  repeated string urls = 4;
+  map <string,string> annotations = 5;
+  repeated bytes data = 6;
+  optional Platform platform = 7;
+  optional string artifactType = 8;
+}
+
+message Platform {
+  string architecture = 1;
+  string os = 2;
+  optional string osversion  = 3;
+  repeated string osfeatures = 4;
+  optional string variant = 5;
+}

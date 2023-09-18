@@ -28,6 +28,8 @@ ZUI_VERSION := commit-b787273
 SWAGGER_VERSION := v1.8.12
 STACKER := $(TOOLSDIR)/bin/stacker
 BATS := $(TOOLSDIR)/bin/bats
+PROTOC_VERSION := 3.15.8
+PROTOC := $(TOOLSDIR)/bin/protoc
 TESTDATA := $(TOP_LEVEL)/test/data
 OS ?= $(shell go env GOOS)
 ARCH ?= $(shell go env GOARCH)
@@ -71,7 +73,7 @@ modtidy:
 	go mod tidy
 
 .PHONY: modcheck
-modcheck: modtidy
+modcheck: gen-protobuf modtidy
 	$(eval UNCOMMITED_FILES = $(shell git status --porcelain | grep -c 'go.mod\|go.sum'))
 	@if [ $(UNCOMMITED_FILES) != 0 ]; then \
 		echo "Updated go.mod and/or go.sum have uncommitted changes, commit the changes accordingly ";\
@@ -96,6 +98,39 @@ build-metadata: $(if $(findstring ui,$(BUILD_LABELS)), ui)
 	go list -tags $(BUILD_TAGS) -f '{{ join .Imports "\n" }}' ./... | sort -u
 	echo "\n Files: \n"
 	go list -tags $(BUILD_TAGS) -f '{{ join .GoFiles "\n" }}' ./... | sort -u
+
+.PHONY: gen-protobuf
+gen-protobuf: $(PROTOC)
+	$(PROTOC) --experimental_allow_proto3_optional \
+		--proto_path=$(TOP_LEVEL)/pkg/meta/proto \
+		--go_out=$(TOP_LEVEL)/pkg/meta/ \
+		--go_opt='Mdescriptor.proto=./proto_go' \
+		$(TOP_LEVEL)/pkg/meta/proto/descriptor.proto
+	$(PROTOC) --experimental_allow_proto3_optional \
+		--proto_path=$(TOP_LEVEL)/pkg/meta/proto \
+		--go_out=$(TOP_LEVEL)/pkg/meta/ \
+		--go_opt='Mconfig.proto=./proto_go' \
+		--go_opt='Mdescriptor.proto=./proto_go' \
+		$(TOP_LEVEL)/pkg/meta/proto/config.proto
+	$(PROTOC) --experimental_allow_proto3_optional \
+		--proto_path=$(TOP_LEVEL)/pkg/meta/proto \
+		--go_out=$(TOP_LEVEL)/pkg/meta/ \
+		--go_opt='Mversioned.proto=./proto_go' \
+		$(TOP_LEVEL)/pkg/meta/proto/versioned.proto
+	$(PROTOC) --experimental_allow_proto3_optional \
+		--proto_path=$(TOP_LEVEL)/pkg/meta/proto \
+		--go_out=$(TOP_LEVEL)/pkg/meta/ \
+		--go_opt='Mmanifest.proto=./proto_go' \
+		--go_opt='Mdescriptor.proto=./proto_go' \
+		--go_opt='Mversioned.proto=./proto_go' \
+		$(TOP_LEVEL)/pkg/meta/proto/manifest.proto
+	$(PROTOC) --experimental_allow_proto3_optional \
+		--proto_path=$(TOP_LEVEL)/pkg/meta/proto \
+		--go_out=$(TOP_LEVEL)/pkg/meta/ \
+		--go_opt='Mindex.proto=./proto_go' \
+		--go_opt='Mdescriptor.proto=./proto_go' \
+		--go_opt='Mversioned.proto=./proto_go' \
+		$(TOP_LEVEL)/pkg/meta/proto/index.proto
 
 .PHONY: binary-minimal
 binary-minimal: EXTENSIONS=
@@ -202,6 +237,12 @@ $(CRICTL):
 	mv crictl $(TOOLSDIR)/bin/crictl
 	chmod +x $(TOOLSDIR)/bin/crictl
 
+$(PROTOC):
+	mkdir -p $(TOOLSDIR)/bin
+	curl -Lo protoc.zip https://github.com/protocolbuffers/protobuf/releases/download/v$(PROTOC_VERSION)/protoc-$(PROTOC_VERSION)-linux-x86_64.zip
+	unzip -d $(TOOLSDIR) protoc.zip bin/protoc
+	chmod +x $(PROTOC)
+	go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
 
 $(ACTION_VALIDATOR):
 	mkdir -p $(TOOLSDIR)/bin
@@ -226,7 +267,7 @@ $(GOLINTER):
 
 .PHONY: check
 check: $(if $(findstring ui,$(BUILD_LABELS)), ui)
-check: ./golangcilint.yaml $(GOLINTER)
+check: ./golangcilint.yaml modcheck $(GOLINTER)
 	mkdir -p pkg/extensions/build; touch pkg/extensions/build/.empty
 	$(GOLINTER) --config ./golangcilint.yaml run --enable-all --out-format=colored-line-number --build-tags containers_image_openpgp ./...
 	$(GOLINTER) --config ./golangcilint.yaml run --enable-all --out-format=colored-line-number --build-tags $(BUILD_LABELS),containers_image_openpgp ./...
@@ -315,7 +356,7 @@ verify-config-commited: _verify-config
 	fi; \
 
 .PHONY: gqlgen
-gqlgen:
+gqlgen: gen-protobuf
 	cd pkg/extensions/search;\
 	go run github.com/99designs/gqlgen version;\
 	go run github.com/99designs/gqlgen generate

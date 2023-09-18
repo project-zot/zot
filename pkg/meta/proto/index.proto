@@ -1,0 +1,16 @@
+syntax = "proto3";
+package v1;
+
+import "descriptor.proto";
+import "versioned.proto";
+
+// https://github.com/opencontainers/image-spec/blob/main/specs-go/v1/index.go
+
+message Index {
+  Versioned versioned = 1;
+  optional string mediatype = 2;
+  optional string artifacttype = 3;
+  repeated Descriptor manifests = 4;
+  optional Descriptor subject = 5;
+  map<string,string> annotations = 6;
+}

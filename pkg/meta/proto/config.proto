@@ -1,0 +1,44 @@
+syntax = "proto3";
+package v1;
+
+import "timestamp.proto";
+import "descriptor.proto";
+
+// https://github.com/opencontainers/image-spec/blob/main/specs-go/v1/config.go
+
+message ImageConfig {
+  string user = 1;
+  map <string,EmptyMessage> exposedports = 2;
+  repeated string env = 3;
+  repeated string entrypoint = 4;
+  repeated string cmd = 5;
+  map <string,EmptyMessage> volumes = 6;
+  optional string workingdir = 7;
+  map <string,string> labels = 8;
+  optional string stopsignal = 9;
+  bool argsescaped = 10;
+}
+
+message RootFS {
+  string type = 1;
+  repeated string diffids = 2;
+}
+
+message History {
+ optional google.protobuf.Timestamp created = 1;
+  optional string createdby = 2;
+  optional string author = 3;
+  optional string comment = 4;
+  optional bool emptylayer = 5;
+}
+
+message Image {
+ optional google.protobuf.Timestamp created = 1;
+  optional string author = 2;
+  Platform platform = 3;
+  optional ImageConfig config = 4;
+  optional RootFS rootfs = 5;
+  repeated History history = 6;
+}
+
+message EmptyMessage{}
