@@ -39,6 +39,7 @@ import (
 	apiErr "zotregistry.io/zot/pkg/api/errors"
 	zcommon "zotregistry.io/zot/pkg/common"
 	gqlPlayground "zotregistry.io/zot/pkg/debug/gqlplayground"
+	pprof "zotregistry.io/zot/pkg/debug/pprof"
 	debug "zotregistry.io/zot/pkg/debug/swagger"
 	ext "zotregistry.io/zot/pkg/extensions"
 	syncConstants "zotregistry.io/zot/pkg/extensions/sync/constants"
@@ -178,6 +179,8 @@ func (rh *RouteHandler) SetupRoutes() {
 	debug.SetupSwaggerRoutes(rh.c.Config, rh.c.Router, authHandler, rh.c.Log)
 	// gql playground
 	gqlPlayground.SetupGQLPlaygroundRoutes(prefixedRouter, rh.c.StoreController, rh.c.Log)
+	// pprof
+	pprof.SetupPprofRoutes(rh.c.Config, prefixedRouter, authHandler, rh.c.Log)
 
 	// Preconditions for enabling the actual extension routes are part of extensions themselves
 	ext.SetupMetricsRoutes(rh.c.Config, rh.c.Router, authHandler, rh.c.Log, rh.c.Metrics)
