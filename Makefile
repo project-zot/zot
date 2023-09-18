@@ -31,6 +31,7 @@ BATS := $(TOOLSDIR)/bin/bats
 TESTDATA := $(TOP_LEVEL)/test/data
 OS ?= $(shell go env GOOS)
 ARCH ?= $(shell go env GOARCH)
+BUILD_ARGS ?= --build-arg OS=$(OS) --build-arg ARCH=$(ARCH)
 
 BENCH_OUTPUT ?= stdout
 ALL_EXTENSIONS = debug,imagetrust,lint,metrics,mgmt,scrub,search,sync,ui,userprefs
@@ -338,8 +339,8 @@ run-container:
 	${CONTAINER_RUNTIME} run --rm --security-opt label=disable -v $$(pwd):/go/src/github.com/project-zot/zot \
 		zot-build:latest
 
-.PHONY: binary-stacker
-binary-stacker: $(STACKER)
+.PHONY: oci-image
+oci-image: $(STACKER)
 	${STACKER} --debug build \
 		-f build/stacker.yaml \
 		--substitute COMMIT=$(COMMIT) \
@@ -348,8 +349,8 @@ binary-stacker: $(STACKER)
 		--substitute RELEASE_TAG=$(RELEASE_TAG) \
 		--substitute REPO_NAME=zot-$(OS)-$(ARCH)
 
-.PHONY: image
-image:
+.PHONY: docker-image
+docker-image:
 	${CONTAINER_RUNTIME} build ${BUILD_ARGS} -f build/Dockerfile -t zot:latest .
 
 $(BATS):
