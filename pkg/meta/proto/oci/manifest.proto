@@ -1,0 +1,17 @@
+syntax = "proto3";
+package oci_v1;
+
+import "oci/descriptor.proto";
+import "oci/versioned.proto";
+
+// https://github.com/opencontainers/image-spec/blob/main/specs-go/v1/manifest.go
+
+message Manifest {
+  Versioned           Versioned    = 1;
+  optional string     MediaType    = 2;
+  optional string     ArtifactType = 3;
+  Descriptor          Config       = 4;
+  repeated Descriptor Layers       = 5;
+  optional Descriptor Subject      = 6;
+  map<string,string>  Annotations  = 7;
+}

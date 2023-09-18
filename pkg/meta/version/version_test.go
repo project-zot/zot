@@ -124,14 +124,14 @@ func TestVersioningDynamoDB(t *testing.T) {
 
 	Convey("Tests", t, func() {
 		params := mdynamodb.DBDriverParameters{
-			Endpoint:              os.Getenv("DYNAMODBMOCK_ENDPOINT"),
-			Region:                "us-east-2",
-			RepoMetaTablename:     "RepoMetadataTable" + uuid.String(),
-			ManifestDataTablename: "ManifestDataTable" + uuid.String(),
-			IndexDataTablename:    "IndexDataTable" + uuid.String(),
-			UserDataTablename:     "UserDataTable" + uuid.String(),
-			APIKeyTablename:       "ApiKeyTable" + uuid.String(),
-			VersionTablename:      "Version" + uuid.String(),
+			Endpoint:               os.Getenv("DYNAMODBMOCK_ENDPOINT"),
+			Region:                 "us-east-2",
+			RepoMetaTablename:      "RepoMetadataTable" + uuid.String(),
+			RepoBlobsInfoTablename: "RepoBlobsInfoTablename" + uuid.String(),
+			ImageMetaTablename:     "ImageMetaTablename" + uuid.String(),
+			UserDataTablename:      "UserDataTable" + uuid.String(),
+			APIKeyTablename:        "ApiKeyTable" + uuid.String(),
+			VersionTablename:       "Version" + uuid.String(),
 		}
 
 		dynamoClient, err := mdynamodb.GetDynamoClient(params)
@@ -142,8 +142,7 @@ func TestVersioningDynamoDB(t *testing.T) {
 		dynamoWrapper, err := mdynamodb.New(dynamoClient, params, log)
 		So(err, ShouldBeNil)
 
-		So(dynamoWrapper.ResetManifestDataTable(), ShouldBeNil)
-		So(dynamoWrapper.ResetRepoMetaTable(), ShouldBeNil)
+		So(dynamoWrapper.ResetTable(dynamoWrapper.RepoMetaTablename), ShouldBeNil)
 
 		Convey("dbVersion is empty", func() {
 			err := setDynamoDBVersion(dynamoWrapper.Client, params.VersionTablename, "")
@@ -201,7 +200,7 @@ func setDynamoDBVersion(client *dynamodb.Client, versTable, vers string) error {
 			":Version": mdAttributeValue,
 		},
 		Key: map[string]types.AttributeValue{
-			"VersionKey": &types.AttributeValueMemberS{
+			"Key": &types.AttributeValueMemberS{
 				Value: version.DBVersionKey,
 			},
 		},

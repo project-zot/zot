@@ -18,6 +18,7 @@ pkg/extensions/build/
 hack/
 .stacker/
 oci/
+!pkg/meta/proto/oci
 roots/
 bin/
 bazel-*

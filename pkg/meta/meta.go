@@ -81,10 +81,10 @@ func getDynamoParams(cacheDriverConfig map[string]interface{}, log log.Logger) m
 	repoMetaTablename, ok := toStringIfOk(cacheDriverConfig, "repometatablename", log)
 	allParametersOk = allParametersOk && ok
 
-	manifestDataTablename, ok := toStringIfOk(cacheDriverConfig, "manifestdatatablename", log)
+	repoBlobsInfoTablename, ok := toStringIfOk(cacheDriverConfig, "repoblobsinfotablename", log)
 	allParametersOk = allParametersOk && ok
 
-	indexDataTablename, ok := toStringIfOk(cacheDriverConfig, "indexdatatablename", log)
+	imageMetaTablename, ok := toStringIfOk(cacheDriverConfig, "imagemetatablename", log)
 	allParametersOk = allParametersOk && ok
 
 	apiKeyTablename, ok := toStringIfOk(cacheDriverConfig, "apikeytablename", log)
@@ -101,14 +101,14 @@ func getDynamoParams(cacheDriverConfig map[string]interface{}, log log.Logger) m
 	}
 
 	return mdynamodb.DBDriverParameters{
-		Endpoint:              endpoint,
-		Region:                region,
-		RepoMetaTablename:     repoMetaTablename,
-		ManifestDataTablename: manifestDataTablename,
-		IndexDataTablename:    indexDataTablename,
-		UserDataTablename:     userDataTablename,
-		APIKeyTablename:       apiKeyTablename,
-		VersionTablename:      versionTablename,
+		Endpoint:               endpoint,
+		Region:                 region,
+		RepoMetaTablename:      repoMetaTablename,
+		RepoBlobsInfoTablename: repoBlobsInfoTablename,
+		ImageMetaTablename:     imageMetaTablename,
+		UserDataTablename:      userDataTablename,
+		APIKeyTablename:        apiKeyTablename,
+		VersionTablename:       versionTablename,
 	}
 }
 

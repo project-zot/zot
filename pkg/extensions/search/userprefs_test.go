@@ -18,13 +18,11 @@ import (
 	"zotregistry.io/zot/pkg/api/constants"
 	"zotregistry.io/zot/pkg/common"
 	extconf "zotregistry.io/zot/pkg/extensions/config"
-	"zotregistry.io/zot/pkg/extensions/monitoring"
 	"zotregistry.io/zot/pkg/log"
-	"zotregistry.io/zot/pkg/storage"
-	"zotregistry.io/zot/pkg/storage/local"
 	test "zotregistry.io/zot/pkg/test/common"
 	"zotregistry.io/zot/pkg/test/deprecated"
 	. "zotregistry.io/zot/pkg/test/image-utils"
+	. "zotregistry.io/zot/pkg/test/oci-utils"
 )
 
 //nolint:dupl
@@ -535,25 +533,15 @@ func TestChangingRepoState(t *testing.T) {
 
 	ctlr := api.NewController(conf)
 
-	img, err := deprecated.GetRandomImage() //nolint:staticcheck
+	img := CreateRandomImage()
+	storeCtlr := GetDefaultStoreController(conf.Storage.RootDirectory, log.NewLogger("debug", ""))
+
+	err := WriteImageToFileSystem(img, accesibleRepo, "tag", storeCtlr)
 	if err != nil {
 		t.FailNow()
 	}
 
-	// ------ Create the test repos
-	defaultStore := local.NewImageStore(conf.Storage.RootDirectory, false, false,
-		log.NewLogger("debug", ""), monitoring.NewMetricsServer(false, log.NewLogger("debug", "")), nil, nil)
-
-	err = WriteImageToFileSystem(img, accesibleRepo, "tag", storage.StoreController{
-		DefaultStore: defaultStore,
-	})
-	if err != nil {
-		t.FailNow()
-	}
-
-	err = WriteImageToFileSystem(img, forbiddenRepo, "tag", storage.StoreController{
-		DefaultStore: defaultStore,
-	})
+	err = WriteImageToFileSystem(img, forbiddenRepo, "tag", storeCtlr)
 	if err != nil {
 		t.FailNow()
 	}

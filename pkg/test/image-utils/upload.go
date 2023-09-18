@@ -223,9 +223,15 @@ func UploadMultiarchImage(multiImage MultiarchImage, baseURL string, repo, ref s
 	}
 
 	// put manifest
-	indexBlob, err := json.Marshal(multiImage.Index)
-	if err = inject.Error(err); err != nil {
-		return err
+	indexBlob := multiImage.IndexDescriptor.Data
+
+	if len(indexBlob) == 0 {
+		var err error
+
+		indexBlob, err = json.Marshal(multiImage.Index)
+		if err = inject.Error(err); err != nil {
+			return err
+		}
 	}
 
 	resp, err := resty.R().

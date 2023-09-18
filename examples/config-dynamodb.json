@@ -19,7 +19,8 @@
             "region": "us-east-2",
             "cacheTablename": "ZotBlobTable",
             "repoMetaTablename": "ZotRepoMetadataTable",
-            "manifestDataTablename": "ZotManifestDataTable",
+            "imageMetaTablename": "ZotImageMetaTable",
+            "repoBlobsInfoTablename": "ZotRepoBlobsInfoTable",
             "userDataTablename": "ZotUserDataTable",
             "versionTablename": "ZotVersion"
         }

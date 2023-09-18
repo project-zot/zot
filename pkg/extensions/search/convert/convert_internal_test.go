@@ -4,12 +4,10 @@ package convert
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"testing"
 
 	"github.com/99designs/gqlgen/graphql"
-	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	. "github.com/smartystreets/goconvey/convey"
 
@@ -17,7 +15,7 @@ import (
 	"zotregistry.io/zot/pkg/extensions/search/gql_generated"
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/meta/boltdb"
-	mTypes "zotregistry.io/zot/pkg/meta/types"
+	. "zotregistry.io/zot/pkg/test/image-utils"
 	"zotregistry.io/zot/pkg/test/mocks"
 )
 
@@ -34,33 +32,20 @@ func TestCVEConvert(t *testing.T) {
 		metaDB, err := boltdb.New(boltDB, log.NewLogger("debug", ""))
 		So(err, ShouldBeNil)
 
-		configBlob, err := json.Marshal(ispec.Image{})
+		image := CreateImageWith().
+			Layers([]Layer{{
+				MediaType: ispec.MediaTypeImageLayerGzip,
+				Digest:    ispec.MediaTypeEmptyJSON,
+				Blob:      ispec.DescriptorEmptyJSON.Data,
+			}}).DefaultConfig().Build()
+
+		err = metaDB.SetRepoReference("repo1", "0.1.0", image.AsImageMeta())
 		So(err, ShouldBeNil)
 
-		manifestBlob, err := json.Marshal(ispec.Manifest{
-			Layers: []ispec.Descriptor{
-				{
-					MediaType: ispec.MediaTypeImageLayerGzip,
-					Size:      0,
-					Digest:    godigest.NewDigestFromEncoded(godigest.SHA256, "digest"),
-				},
-			},
-		})
+		repoMetaList, err := metaDB.SearchRepos(context.Background(), "")
 		So(err, ShouldBeNil)
 
-		repoMeta11 := mTypes.ManifestMetadata{
-			ManifestBlob: manifestBlob,
-			ConfigBlob:   configBlob,
-		}
-
-		digest11 := godigest.FromString("abc1")
-		err = metaDB.SetManifestMeta("repo1", digest11, repoMeta11)
-		So(err, ShouldBeNil)
-		err = metaDB.SetRepoReference("repo1", "0.1.0", digest11, ispec.MediaTypeImageManifest)
-		So(err, ShouldBeNil)
-
-		reposMeta, manifestMetaMap, _, err := metaDB.SearchRepos(context.Background(), "")
-		So(err, ShouldBeNil)
+		imageMeta, err := metaDB.FilterImageMeta(context.Background(), []string{image.DigestStr()})
 
 		ctx := graphql.WithResponseContext(context.Background(),
 			graphql.DefaultErrorPresenter, graphql.DefaultRecover)
@@ -86,8 +71,8 @@ func TestCVEConvert(t *testing.T) {
 			So(imageSummary, ShouldBeNil)
 			So(graphql.GetErrors(ctx), ShouldBeNil)
 
-			imageSummary, _, err = ImageManifest2ImageSummary(ctx, "repo1", "0.1.0", digest11, reposMeta[0],
-				manifestMetaMap[digest11.String()])
+			imageSummary, _, err = ImageManifest2ImageSummary(ctx, GetFullImageMeta("0.1.0", repoMetaList[0],
+				imageMeta[image.DigestStr()]))
 			So(err, ShouldBeNil)
 
 			So(imageSummary, ShouldNotBeNil)
@@ -177,8 +162,8 @@ func TestCVEConvert(t *testing.T) {
 			So(repoSummary, ShouldBeNil)
 			So(graphql.GetErrors(ctx), ShouldBeNil)
 
-			imageSummary, _, err := ImageManifest2ImageSummary(ctx, "repo1", "0.1.0", digest11, reposMeta[0],
-				manifestMetaMap[digest11.String()])
+			imageSummary, _, err := ImageManifest2ImageSummary(ctx, GetFullImageMeta("0.1.0", repoMetaList[0],
+				imageMeta[image.DigestStr()]))
 			So(err, ShouldBeNil)
 
 			So(imageSummary, ShouldNotBeNil)
@@ -235,8 +220,8 @@ func TestCVEConvert(t *testing.T) {
 			So(manifestSummary, ShouldBeNil)
 			So(graphql.GetErrors(ctx), ShouldBeNil)
 
-			imageSummary, _, err := ImageManifest2ImageSummary(ctx, "repo1", "0.1.0", digest11, reposMeta[0],
-				manifestMetaMap[digest11.String()])
+			imageSummary, _, err := ImageManifest2ImageSummary(ctx, GetFullImageMeta("0.1.0", repoMetaList[0],
+				imageMeta[image.DigestStr()]))
 			So(err, ShouldBeNil)
 			manifestSummary = imageSummary.Manifests[0]
 

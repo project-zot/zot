@@ -22,7 +22,7 @@ import (
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/meta"
 	"zotregistry.io/zot/pkg/meta/boltdb"
-	mTypes "zotregistry.io/zot/pkg/meta/types"
+	"zotregistry.io/zot/pkg/meta/types"
 	"zotregistry.io/zot/pkg/storage"
 	"zotregistry.io/zot/pkg/storage/imagestore"
 	"zotregistry.io/zot/pkg/storage/local"
@@ -288,114 +288,31 @@ func TestImageScannable(t *testing.T) {
 	// Create metadb data for scannable image
 	timeStamp := time.Date(2008, 1, 1, 12, 0, 0, 0, time.UTC)
 
-	validConfigBlob, err := json.Marshal(ispec.Image{
+	validConfig := ispec.Image{
 		Created: &timeStamp,
-	})
-	if err != nil {
-		panic(err)
 	}
 
-	validManifestBlob, err := json.Marshal(ispec.Manifest{
-		Config: ispec.Descriptor{
-			MediaType: ispec.MediaTypeImageConfig,
-			Size:      0,
-			Digest:    godigest.FromBytes(validConfigBlob),
-		},
-		Layers: []ispec.Descriptor{
-			{
-				MediaType: ispec.MediaTypeImageLayerGzip,
-				Size:      0,
-				Digest:    godigest.NewDigestFromEncoded(godigest.SHA256, "digest"),
-			},
-		},
-	})
-	if err != nil {
-		panic(err)
-	}
+	validImage := CreateImageWith().
+		Layers([]Layer{{
+			MediaType: ispec.MediaTypeImageLayerGzip,
+			Digest:    ispec.DescriptorEmptyJSON.Digest,
+			Blob:      ispec.DescriptorEmptyJSON.Data,
+		}}).ImageConfig(validConfig).Build()
 
-	validRepoMeta := mTypes.ManifestData{
-		ManifestBlob: validManifestBlob,
-		ConfigBlob:   validConfigBlob,
-	}
-
-	digestValidManifest := godigest.FromBytes(validManifestBlob)
-
-	err = metaDB.SetManifestData(digestValidManifest, validRepoMeta)
-	if err != nil {
-		panic(err)
-	}
-
-	err = metaDB.SetRepoReference("repo1", "valid", digestValidManifest, ispec.MediaTypeImageManifest)
+	err = metaDB.SetRepoReference("repo1", "valid", validImage.AsImageMeta())
 	if err != nil {
 		panic(err)
 	}
 
 	// Create MetaDB data for manifest with unscannable layers
-	manifestBlobUnscannableLayer, err := json.Marshal(ispec.Manifest{
-		Config: ispec.Descriptor{
-			MediaType: ispec.MediaTypeImageConfig,
-			Size:      0,
-			Digest:    godigest.FromBytes(validConfigBlob),
-		},
-		Layers: []ispec.Descriptor{
-			{
-				MediaType: "unscannable_media_type",
-				Size:      0,
-				Digest:    godigest.NewDigestFromEncoded(godigest.SHA256, "digest"),
-			},
-		},
-	})
-	if err != nil {
-		panic(err)
-	}
+	imageWithUnscannableLayer := CreateImageWith().
+		Layers([]Layer{{
+			MediaType: "unscannable_media_type",
+			Digest:    ispec.DescriptorEmptyJSON.Digest,
+			Blob:      ispec.DescriptorEmptyJSON.Data,
+		}}).ImageConfig(validConfig).Build()
 
-	repoMetaUnscannableLayer := mTypes.ManifestData{
-		ManifestBlob: manifestBlobUnscannableLayer,
-		ConfigBlob:   validConfigBlob,
-	}
-
-	digestManifestUnscannableLayer := godigest.FromBytes(manifestBlobUnscannableLayer)
-
-	err = metaDB.SetManifestData(digestManifestUnscannableLayer, repoMetaUnscannableLayer)
-	if err != nil {
-		panic(err)
-	}
-
-	err = metaDB.SetRepoReference("repo1", "unscannable-layer", digestManifestUnscannableLayer,
-		ispec.MediaTypeImageManifest)
-	if err != nil {
-		panic(err)
-	}
-
-	// Create MetaDB data for unmarshable manifest
-	unmarshableManifestBlob := []byte("Some string")
-	repoMetaUnmarshable := mTypes.ManifestData{
-		ManifestBlob: unmarshableManifestBlob,
-		ConfigBlob:   validConfigBlob,
-	}
-
-	digestUnmarshableManifest := godigest.FromBytes(unmarshableManifestBlob)
-
-	err = metaDB.SetManifestData(digestUnmarshableManifest, repoMetaUnmarshable)
-	if err != nil {
-		panic(err)
-	}
-
-	err = metaDB.SetRepoReference("repo1", "unmarshable", digestUnmarshableManifest, ispec.MediaTypeImageManifest)
-	if err != nil {
-		panic(err)
-	}
-
-	// Manifest meta cannot be found
-	digestMissingManifest := godigest.FromBytes([]byte("Some other string"))
-
-	err = metaDB.SetRepoReference("repo1", "missing", digestMissingManifest, ispec.MediaTypeImageManifest)
-	if err != nil {
-		panic(err)
-	}
-
-	// RepoMeta contains invalid digest
-	err = metaDB.SetRepoReference("repo1", "invalid-digest", "invalid", ispec.MediaTypeImageManifest)
+	err = metaDB.SetRepoReference("repo1", "unscannable-layer", imageWithUnscannableLayer.AsImageMeta())
 	if err != nil {
 		panic(err)
 	}
@@ -419,18 +336,6 @@ func TestImageScannable(t *testing.T) {
 
 	Convey("Image with layers of unsupported types should be unscannable", t, func() {
 		result, err := scanner.IsImageFormatScannable("repo1", "unscannable-layer")
-		So(err, ShouldNotBeNil)
-		So(result, ShouldBeFalse)
-	})
-
-	Convey("Image with unmarshable manifests should be unscannable", t, func() {
-		result, err := scanner.IsImageFormatScannable("repo1", "unmarshable")
-		So(err, ShouldNotBeNil)
-		So(result, ShouldBeFalse)
-	})
-
-	Convey("Image with missing manifest meta should be unscannable", t, func() {
-		result, err := scanner.IsImageFormatScannable("repo1", "missing")
 		So(err, ShouldNotBeNil)
 		So(result, ShouldBeFalse)
 	})
@@ -523,14 +428,14 @@ func TestIsIndexScanable(t *testing.T) {
 
 			scanner.cache.Add("digest", make(map[string]model.CVE))
 
-			found, err := scanner.isIndexScanable("digest")
+			found, err := scanner.isIndexScannable("digest")
 			So(err, ShouldBeNil)
 			So(found, ShouldBeTrue)
 		})
 	})
 }
 
-func TestScanIndexErrors(t *testing.T) {
+func TestIsIndexScannableErrors(t *testing.T) {
 	Convey("Errors", t, func() {
 		storeController := storage.StoreController{}
 		storeController.DefaultStore = mocks.MockedImageStore{}
@@ -538,107 +443,22 @@ func TestScanIndexErrors(t *testing.T) {
 		metaDB := mocks.MetaDBMock{}
 		log := log.NewLogger("debug", "")
 
-		Convey("GetIndexData fails", func() {
-			metaDB.GetIndexDataFn = func(indexDigest godigest.Digest) (mTypes.IndexData, error) {
-				return mTypes.IndexData{}, godigest.ErrDigestUnsupported
+		Convey("all manifests of a index are not scannable", func() {
+			unscannableLayer := []Layer{{MediaType: "unscannable-layer-type", Digest: godigest.FromString("123")}}
+			img1 := CreateImageWith().Layers(unscannableLayer).RandomConfig().Build()
+			img2 := CreateImageWith().Layers(unscannableLayer).RandomConfig().Build()
+			multiarch := CreateMultiarchWith().Images([]Image{img1, img2}).Build()
+
+			metaDB.GetImageMetaFn = func(digest godigest.Digest) (types.ImageMeta, error) {
+				return map[string]types.ImageMeta{
+					img1.DigestStr():      img1.AsImageMeta(),
+					img2.DigestStr():      img2.AsImageMeta(),
+					multiarch.DigestStr(): multiarch.AsImageMeta(),
+				}[digest.String()], nil
 			}
 
 			scanner := NewScanner(storeController, metaDB, "", "", log)
-
-			_, err := scanner.scanIndex("repo", "digest")
-			So(err, ShouldNotBeNil)
-		})
-
-		Convey("Bad Index Blob, Unamrshal fails", func() {
-			metaDB.GetIndexDataFn = func(indexDigest godigest.Digest) (mTypes.IndexData, error) {
-				return mTypes.IndexData{
-					IndexBlob: []byte(`bad-blob`),
-				}, nil
-			}
-
-			scanner := NewScanner(storeController, metaDB, "", "", log)
-
-			_, err := scanner.scanIndex("repo", "digest")
-			So(err, ShouldNotBeNil)
-		})
-	})
-}
-
-func TestIsIndexScanableErrors(t *testing.T) {
-	Convey("Errors", t, func() {
-		storeController := storage.StoreController{}
-		storeController.DefaultStore = mocks.MockedImageStore{}
-
-		metaDB := mocks.MetaDBMock{}
-		log := log.NewLogger("debug", "")
-
-		Convey("GetIndexData errors", func() {
-			metaDB.GetIndexDataFn = func(indexDigest godigest.Digest) (mTypes.IndexData, error) {
-				return mTypes.IndexData{}, zerr.ErrManifestDataNotFound
-			}
-			scanner := NewScanner(storeController, metaDB, "", "", log)
-
-			_, err := scanner.isIndexScanable("digest")
-			So(err, ShouldNotBeNil)
-		})
-
-		Convey("bad index data, can't unmarshal", func() {
-			metaDB.GetIndexDataFn = func(indexDigest godigest.Digest) (mTypes.IndexData, error) {
-				return mTypes.IndexData{IndexBlob: []byte(`bad`)}, nil
-			}
-			scanner := NewScanner(storeController, metaDB, "", "", log)
-
-			ok, err := scanner.isIndexScanable("digest")
-			So(err, ShouldNotBeNil)
-			So(ok, ShouldBeFalse)
-		})
-
-		Convey("is Manifest Scanable errors", func() {
-			metaDB.GetIndexDataFn = func(indexDigest godigest.Digest) (mTypes.IndexData, error) {
-				return mTypes.IndexData{IndexBlob: []byte(`{
-					"manifests": [{
-						"digest": "digest2"
-						},
-						{
-							"digest": "digest1"
-						}
-					]
-				}`)}, nil
-			}
-			metaDB.GetManifestDataFn = func(manifestDigest godigest.Digest) (mTypes.ManifestData, error) {
-				switch manifestDigest {
-				case "digest1":
-					return mTypes.ManifestData{
-						ManifestBlob: []byte("{}"),
-					}, nil
-				case "digest2":
-					return mTypes.ManifestData{}, zerr.ErrBadBlob
-				}
-
-				return mTypes.ManifestData{}, nil
-			}
-			scanner := NewScanner(storeController, metaDB, "", "", log)
-
-			ok, err := scanner.isIndexScanable("digest")
-			So(err, ShouldBeNil)
-			So(ok, ShouldBeTrue)
-		})
-
-		Convey("is Manifest Scanable returns false because no manifest is scanable", func() {
-			metaDB.GetIndexDataFn = func(indexDigest godigest.Digest) (mTypes.IndexData, error) {
-				return mTypes.IndexData{IndexBlob: []byte(`{
-					"manifests": [{
-						"digest": "digest2"
-						}
-					]
-				}`)}, nil
-			}
-			metaDB.GetManifestDataFn = func(manifestDigest godigest.Digest) (mTypes.ManifestData, error) {
-				return mTypes.ManifestData{}, zerr.ErrBadBlob
-			}
-			scanner := NewScanner(storeController, metaDB, "", "", log)
-
-			ok, err := scanner.isIndexScanable("digest")
+			ok, err := scanner.isIndexScannable(multiarch.DigestStr())
 			So(err, ShouldBeNil)
 			So(ok, ShouldBeFalse)
 		})

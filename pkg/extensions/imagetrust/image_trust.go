@@ -5,7 +5,6 @@ package imagetrust
 
 import (
 	"context"
-	"encoding/json"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -158,18 +157,13 @@ func IsResourceExistsException(err error) bool {
 }
 
 func (imgTrustStore *ImageTrustStore) VerifySignature(
-	signatureType string, rawSignature []byte, sigKey string, manifestDigest godigest.Digest, manifestContent []byte,
+	signatureType string, rawSignature []byte, sigKey string, manifestDigest godigest.Digest, imageMeta mTypes.ImageMeta,
 	repo string,
 ) (string, time.Time, bool, error) {
-	var manifest ispec.Manifest
-	if err := json.Unmarshal(manifestContent, &manifest); err != nil {
-		return "", time.Time{}, false, err
-	}
-
 	desc := ispec.Descriptor{
-		MediaType: manifest.MediaType,
-		Digest:    manifestDigest,
-		Size:      int64(len(manifestContent)),
+		MediaType: imageMeta.MediaType,
+		Digest:    imageMeta.Digest,
+		Size:      imageMeta.Size,
 	}
 
 	if manifestDigest.String() == "" {
@@ -190,7 +184,7 @@ func (imgTrustStore *ImageTrustStore) VerifySignature(
 
 func NewTaskGenerator(metaDB mTypes.MetaDB, log log.Logger) scheduler.TaskGenerator {
 	return &sigValidityTaskGenerator{
-		repos:     []mTypes.RepoMetadata{},
+		repos:     []mTypes.RepoMeta{},
 		metaDB:    metaDB,
 		repoIndex: -1,
 		log:       log,
@@ -198,7 +192,7 @@ func NewTaskGenerator(metaDB mTypes.MetaDB, log log.Logger) scheduler.TaskGenera
 }
 
 type sigValidityTaskGenerator struct {
-	repos     []mTypes.RepoMetadata
+	repos     []mTypes.RepoMeta
 	metaDB    mTypes.MetaDB
 	repoIndex int
 	done      bool
@@ -209,7 +203,7 @@ func (gen *sigValidityTaskGenerator) Next() (scheduler.Task, error) {
 	if len(gen.repos) == 0 {
 		ctx := context.Background()
 
-		repos, err := gen.metaDB.GetMultipleRepoMeta(ctx, func(repoMeta mTypes.RepoMetadata) bool {
+		repos, err := gen.metaDB.GetMultipleRepoMeta(ctx, func(repoMeta mTypes.RepoMeta) bool {
 			return true
 		})
 		if err != nil {
@@ -243,18 +237,18 @@ func (gen *sigValidityTaskGenerator) IsReady() bool {
 func (gen *sigValidityTaskGenerator) Reset() {
 	gen.done = false
 	gen.repoIndex = -1
-	gen.repos = []mTypes.RepoMetadata{}
+	gen.repos = []mTypes.RepoMeta{}
 
 	gen.log.Info().Msg("finished resetting task generator for updating signatures validity")
 }
 
 type validityTask struct {
 	metaDB mTypes.MetaDB
-	repo   mTypes.RepoMetadata
+	repo   mTypes.RepoMeta
 	log    log.Logger
 }
 
-func NewValidityTask(metaDB mTypes.MetaDB, repo mTypes.RepoMetadata, log log.Logger) *validityTask {
+func NewValidityTask(metaDB mTypes.MetaDB, repo mTypes.RepoMeta, log log.Logger) *validityTask {
 	return &validityTask{metaDB, repo, log}
 }
 

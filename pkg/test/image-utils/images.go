@@ -11,6 +11,7 @@ import (
 	"github.com/opencontainers/image-spec/specs-go"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 
+	mTypes "zotregistry.io/zot/pkg/meta/types"
 	storageConstants "zotregistry.io/zot/pkg/storage/constants"
 )
 
@@ -48,6 +49,9 @@ type ConfigBuilder interface {
 	// an OCI artifact.
 	// (see: https://github.com/opencontainers/image-spec/blob/main/manifest.md#guidelines-for-artifact-usage)
 	ArtifactConfig(artifactType string) ManifestBuilder
+	// PlatformConfig is used when we're interesting in specifying only the platform of a manifest.
+	// Other fields of the config are random.
+	PlatformConfig(architecture, os string) ManifestBuilder
 	// DefaultConfig sets the default config, platform linux/amd64.
 	DefaultConfig() ManifestBuilder
 	// CustomConfigBlob will set a custom blob as the image config without other checks.
@@ -92,18 +96,32 @@ type Image struct {
 }
 
 func (img *Image) Digest() godigest.Digest {
+	if img.ManifestDescriptor.Digest != "" {
+		return img.ManifestDescriptor.Digest
+	}
+
+	// when we'll migrate all code to the new format of creating images we can replace this with
+	// the value from manifestDescriptor
 	blob, err := json.Marshal(img.Manifest)
 	if err != nil {
 		panic("unreachable: ispec.Manifest should always be marshable")
 	}
 
-	// when we'll migrate all code to the new format of creating images we can replace this with
-	// the value from manifestDescriptor
 	return godigest.FromBytes(blob)
 }
 
 func (img *Image) DigestStr() string {
 	return img.Digest().String()
+}
+
+func (img *Image) Size() int {
+	size := img.ConfigDescriptor.Size + img.ManifestDescriptor.Size
+
+	for _, layer := range img.Manifest.Layers {
+		size += layer.Size
+	}
+
+	return int(size)
 }
 
 func (img Image) Descriptor() ispec.Descriptor {
@@ -119,6 +137,22 @@ func (img Image) DescriptorRef() *ispec.Descriptor {
 		MediaType: img.ManifestDescriptor.MediaType,
 		Digest:    img.ManifestDescriptor.Digest,
 		Size:      img.ManifestDescriptor.Size,
+	}
+}
+
+func (img Image) AsImageMeta() mTypes.ImageMeta {
+	return mTypes.ImageMeta{
+		MediaType: img.Manifest.MediaType,
+		Digest:    img.ManifestDescriptor.Digest,
+		Size:      img.ManifestDescriptor.Size,
+		Manifests: []mTypes.ManifestData{
+			{
+				Size:     img.ManifestDescriptor.Size,
+				Digest:   img.ManifestDescriptor.Digest,
+				Manifest: img.Manifest,
+				Config:   img.Config,
+			},
+		},
 	}
 }
 
@@ -279,6 +313,16 @@ func (ib *BaseImageBuilder) ImageConfig(config ispec.Image) ManifestBuilder {
 
 func (ib *BaseImageBuilder) DefaultConfig() ManifestBuilder {
 	return ib.ImageConfig(GetDefaultConfig())
+}
+
+func (ib *BaseImageBuilder) PlatformConfig(arch, os string) ManifestBuilder {
+	conf := GetDefaultConfig()
+
+	conf.Created = RandomDateRef(time.UTC)
+	conf.Author = getRandomAuthor()
+	conf.Platform = ispec.Platform{Architecture: arch, OS: os}
+
+	return ib.ImageConfig(conf)
 }
 
 func (ib *BaseImageBuilder) EmptyConfig() ManifestBuilder {

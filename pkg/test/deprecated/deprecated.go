@@ -387,7 +387,7 @@ func GetRandomMultiarchImage(reference string) (image.MultiarchImage, error) {
 	index.SchemaVersion = 2
 
 	return image.MultiarchImage{
-		Index: index, Images: images, Reference: reference,
+		Index: index, Images: images,
 	}, err
 }
 

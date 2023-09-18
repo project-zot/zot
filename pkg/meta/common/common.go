@@ -1,8 +1,6 @@
 package common
 
 import (
-	"encoding/json"
-	"fmt"
 	"strings"
 	"time"
 
@@ -10,28 +8,23 @@ import (
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 
 	zerr "zotregistry.io/zot/errors"
+	zcommon "zotregistry.io/zot/pkg/common"
+	mConvert "zotregistry.io/zot/pkg/meta/convert"
+	proto_go "zotregistry.io/zot/pkg/meta/proto/gen"
 	mTypes "zotregistry.io/zot/pkg/meta/types"
 )
 
-func UpdateManifestMeta(repoMeta mTypes.RepoMetadata, manifestDigest godigest.Digest,
-	manifestMeta mTypes.ManifestMetadata,
-) mTypes.RepoMetadata {
-	updatedRepoMeta := repoMeta
-
-	updatedStatistics := repoMeta.Statistics[manifestDigest.String()]
-	updatedStatistics.DownloadCount = manifestMeta.DownloadCount
-	updatedRepoMeta.Statistics[manifestDigest.String()] = updatedStatistics
-
-	if manifestMeta.Signatures == nil {
-		manifestMeta.Signatures = mTypes.ManifestSignatures{}
+func SignatureAlreadyExists(signatureSlice []mTypes.SignatureInfo, sm mTypes.SignatureMetadata) bool {
+	for _, sigInfo := range signatureSlice {
+		if sm.SignatureDigest == sigInfo.SignatureManifestDigest {
+			return true
+		}
 	}
 
-	updatedRepoMeta.Signatures[manifestDigest.String()] = manifestMeta.Signatures
-
-	return updatedRepoMeta
+	return false
 }
 
-func SignatureAlreadyExists(signatureSlice []mTypes.SignatureInfo, sm mTypes.SignatureMetadata) bool {
+func ProtoSignatureAlreadyExists(signatureSlice []*proto_go.SignatureInfo, sm mTypes.SignatureMetadata) bool {
 	for _, sigInfo := range signatureSlice {
 		if sm.SignatureDigest == sigInfo.SignatureManifestDigest {
 			return true
@@ -74,7 +67,7 @@ const (
 )
 
 // RankRepoName associates a rank to a given repoName given a searchText.
-// The imporance of the value grows inversly proportional to the int value it has.
+// The importance of the value grows inversely proportional to the int value it has.
 // For example: rank(1) > rank(10) > rank(100)...
 func RankRepoName(searchText string, repoName string) int {
 	searchText = strings.Trim(searchText, "/")
@@ -89,7 +82,7 @@ func RankRepoName(searchText string, repoName string) int {
 		return perfectMatchPriority
 	}
 
-	// searchText containst just 1 diretory name
+	// searchText contains just 1 directory name
 	if len(searchTextSlice) == 1 {
 		lastNameInRepoPath := repoNameSlice[len(repoNameSlice)-1]
 
@@ -157,21 +150,6 @@ func GetRepoTag(searchText string) (string, string, error) {
 	return repo, tag, nil
 }
 
-func GetReferredSubject(descriptorBlob []byte) (godigest.Digest, bool) {
-	var manifest ispec.Manifest
-
-	err := json.Unmarshal(descriptorBlob, &manifest)
-	if err != nil {
-		return "", false
-	}
-
-	if manifest.Subject == nil || manifest.Subject.Digest.String() == "" {
-		return "", false
-	}
-
-	return manifest.Subject.Digest, true
-}
-
 func MatchesArtifactTypes(descriptorMediaType string, artifactTypes []string) bool {
 	if len(artifactTypes) == 0 {
 		return true
@@ -208,139 +186,199 @@ func CheckImageLastUpdated(repoLastUpdated time.Time, isSigned bool, noImageChec
 	return repoLastUpdated, noImageChecked, isSigned
 }
 
-func FilterDataByRepo(foundRepos []mTypes.RepoMetadata, manifestMetadataMap map[string]mTypes.ManifestMetadata,
-	indexDataMap map[string]mTypes.IndexData,
-) (map[string]mTypes.ManifestMetadata, map[string]mTypes.IndexData, error) {
-	var (
-		foundManifestMetadataMap = make(map[string]mTypes.ManifestMetadata)
-		foundindexDataMap        = make(map[string]mTypes.IndexData)
-	)
+func AddImageMetaToRepoMeta(repoMeta *proto_go.RepoMeta, repoBlobs *proto_go.RepoBlobs, reference string,
+	imageMeta mTypes.ImageMeta,
+) (*proto_go.RepoMeta, *proto_go.RepoBlobs, error) {
+	switch imageMeta.MediaType {
+	case ispec.MediaTypeImageManifest:
+		manifestData := imageMeta.Manifests[0]
 
-	// keep just the manifestMeta we need
-	for _, repoMeta := range foundRepos {
-		for _, descriptor := range repoMeta.Tags {
-			switch descriptor.MediaType {
-			case ispec.MediaTypeImageManifest:
-				foundManifestMetadataMap[descriptor.Digest] = manifestMetadataMap[descriptor.Digest]
-			case ispec.MediaTypeImageIndex:
-				indexData := indexDataMap[descriptor.Digest]
+		vendor := GetVendor(manifestData.Manifest.Annotations)
+		if vendor == "" {
+			vendor = GetVendor(manifestData.Manifest.Annotations)
+		}
 
-				var indexContent ispec.Index
+		vendors := []string{}
+		if vendor != "" {
+			vendors = append(vendors, vendor)
+		}
 
-				err := json.Unmarshal(indexData.IndexBlob, &indexContent)
-				if err != nil {
-					return map[string]mTypes.ManifestMetadata{}, map[string]mTypes.IndexData{},
-						fmt.Errorf("metadb: error while getting manifest data for digest %s %w", descriptor.Digest, err)
-				}
+		platforms := []*proto_go.Platform{getProtoPlatform(&manifestData.Config.Platform)}
+		if platforms[0].OS == "" && platforms[0].Architecture == "" {
+			platforms = []*proto_go.Platform{}
+		}
 
-				for _, manifestDescriptor := range indexContent.Manifests {
-					manifestDigest := manifestDescriptor.Digest.String()
+		subBlobs := []string{manifestData.Manifest.Config.Digest.String()}
+		repoBlobs.Blobs[manifestData.Manifest.Config.Digest.String()] = &proto_go.BlobInfo{
+			Size: manifestData.Manifest.Config.Size,
+		}
 
-					foundManifestMetadataMap[manifestDigest] = manifestMetadataMap[manifestDigest]
-				}
+		for _, layer := range manifestData.Manifest.Layers {
+			subBlobs = append(subBlobs, layer.Digest.String())
+			repoBlobs.Blobs[layer.Digest.String()] = &proto_go.BlobInfo{Size: layer.Size}
+		}
 
-				foundindexDataMap[descriptor.Digest] = indexData
-			default:
-				continue
+		lastUpdated := zcommon.GetImageLastUpdated(manifestData.Config)
+
+		repoBlobs.Blobs[imageMeta.Digest.String()] = &proto_go.BlobInfo{
+			Size:        imageMeta.Size,
+			Vendors:     vendors,
+			Platforms:   platforms,
+			SubBlobs:    subBlobs,
+			LastUpdated: mConvert.GetProtoTime(&lastUpdated),
+		}
+	case ispec.MediaTypeImageIndex:
+		subBlobs := []string{}
+		for _, manifest := range imageMeta.Index.Manifests {
+			subBlobs = append(subBlobs, manifest.Digest.String())
+		}
+
+		repoBlobs.Blobs[imageMeta.Digest.String()] = &proto_go.BlobInfo{
+			Size:     imageMeta.Size,
+			SubBlobs: subBlobs,
+		}
+	}
+
+	// update info only when a tag is added
+	if zcommon.IsDigest(reference) {
+		return repoMeta, repoBlobs, nil
+	}
+
+	size, platforms, vendors := recalculateAggregateFields(repoMeta, repoBlobs)
+	repoMeta.Vendors = vendors
+	repoMeta.Platforms = platforms
+	repoMeta.Size = int32(size)
+
+	imageBlobInfo := repoBlobs.Blobs[imageMeta.Digest.String()]
+	repoMeta.LastUpdatedImage = mConvert.GetProtoEarlierUpdatedImage(repoMeta.LastUpdatedImage,
+		&proto_go.RepoLastUpdatedImage{
+			LastUpdated: imageBlobInfo.LastUpdated,
+			MediaType:   imageMeta.MediaType,
+			Digest:      imageMeta.Digest.String(),
+			Tag:         reference,
+		})
+
+	return repoMeta, repoBlobs, nil
+}
+
+func RemoveImageFromRepoMeta(repoMeta *proto_go.RepoMeta, repoBlobs *proto_go.RepoBlobs, ref string,
+) (*proto_go.RepoMeta, *proto_go.RepoBlobs, error) {
+	var updatedLastImage *proto_go.RepoLastUpdatedImage
+
+	updatedBlobs := map[string]*proto_go.BlobInfo{}
+	updatedSize := int64(0)
+	updatedVendors := []string{}
+	updatedPlatforms := []*proto_go.Platform{}
+
+	for tag, descriptor := range repoMeta.Tags {
+		if descriptor.Digest == "" {
+			continue
+		}
+
+		queue := []string{descriptor.Digest}
+
+		mConvert.GetProtoEarlierUpdatedImage(updatedLastImage, &proto_go.RepoLastUpdatedImage{
+			LastUpdated: repoBlobs.Blobs[descriptor.Digest].LastUpdated,
+			MediaType:   descriptor.MediaType,
+			Digest:      descriptor.Digest,
+			Tag:         tag,
+		})
+
+		for len(queue) > 0 {
+			currentBlob := queue[0]
+			queue = queue[1:]
+
+			if _, found := updatedBlobs[currentBlob]; !found {
+				blobInfo := repoBlobs.Blobs[currentBlob]
+
+				updatedBlobs[currentBlob] = blobInfo
+				updatedSize += blobInfo.Size
+				updatedVendors = mConvert.AddVendors(updatedVendors, blobInfo.Vendors)
+				updatedPlatforms = mConvert.AddProtoPlatforms(updatedPlatforms, blobInfo.Platforms)
+
+				queue = append(queue, blobInfo.SubBlobs...)
 			}
 		}
 	}
 
-	return foundManifestMetadataMap, foundindexDataMap, nil
+	repoMeta.Size = int32(updatedSize)
+	repoMeta.Vendors = updatedVendors
+	repoMeta.Platforms = updatedPlatforms
+	repoMeta.LastUpdatedImage = updatedLastImage
+
+	repoBlobs.Blobs = updatedBlobs
+
+	return repoMeta, repoBlobs, nil
 }
 
-func FetchDataForRepos(metaDB mTypes.MetaDB, foundRepos []mTypes.RepoMetadata,
-) (map[string]mTypes.ManifestMetadata, map[string]mTypes.IndexData, error) {
-	foundManifestMetadataMap := map[string]mTypes.ManifestMetadata{}
-	foundIndexDataMap := map[string]mTypes.IndexData{}
+func recalculateAggregateFields(repoMeta *proto_go.RepoMeta, repoBlobs *proto_go.RepoBlobs,
+) (int64, []*proto_go.Platform, []string) {
+	size := int64(0)
+	platforms := []*proto_go.Platform{}
+	vendors := []string{}
+	blobsMap := map[string]struct{}{}
 
-	for idx := range foundRepos {
-		for _, descriptor := range foundRepos[idx].Tags {
-			switch descriptor.MediaType {
-			case ispec.MediaTypeImageManifest:
-				manifestData, err := metaDB.GetManifestData(godigest.Digest(descriptor.Digest))
-				if err != nil {
-					return map[string]mTypes.ManifestMetadata{}, map[string]mTypes.IndexData{}, err
+	for _, descriptor := range repoMeta.Tags {
+		if descriptor.Digest == "" {
+			continue
+		}
+
+		queue := []string{descriptor.Digest}
+
+		for len(queue) > 0 {
+			currentBlob := queue[0]
+			queue = queue[1:]
+
+			if _, found := blobsMap[currentBlob]; !found {
+				blobInfo := repoBlobs.Blobs[currentBlob]
+				if blobInfo == nil {
+					continue
 				}
 
-				foundManifestMetadataMap[descriptor.Digest] = mTypes.ManifestMetadata{
-					ManifestBlob: manifestData.ManifestBlob,
-					ConfigBlob:   manifestData.ConfigBlob,
-				}
-			case ispec.MediaTypeImageIndex:
-				indexData, err := metaDB.GetIndexData(godigest.Digest(descriptor.Digest))
-				if err != nil {
-					return map[string]mTypes.ManifestMetadata{}, map[string]mTypes.IndexData{}, err
-				}
+				blobsMap[currentBlob] = struct{}{}
+				size += blobInfo.Size
+				vendors = mConvert.AddVendors(vendors, blobInfo.Vendors)
+				platforms = mConvert.AddProtoPlatforms(platforms, blobInfo.Platforms)
 
-				var indexContent ispec.Index
-
-				err = json.Unmarshal(indexData.IndexBlob, &indexContent)
-				if err != nil {
-					return map[string]mTypes.ManifestMetadata{},
-						map[string]mTypes.IndexData{},
-						fmt.Errorf("metadb: error while getting index data for digest %s %w", descriptor.Digest, err)
-				}
-
-				for _, manifestDescriptor := range indexContent.Manifests {
-					manifestDigest := manifestDescriptor.Digest.String()
-
-					manifestData, err := metaDB.GetManifestData(manifestDescriptor.Digest)
-					if err != nil {
-						return map[string]mTypes.ManifestMetadata{}, map[string]mTypes.IndexData{}, err
-					}
-
-					foundManifestMetadataMap[manifestDigest] = mTypes.ManifestMetadata{
-						ManifestBlob: manifestData.ManifestBlob,
-						ConfigBlob:   manifestData.ConfigBlob,
-					}
-				}
-
-				foundIndexDataMap[descriptor.Digest] = indexData
+				queue = append(queue, blobInfo.SubBlobs...)
 			}
 		}
 	}
 
-	return foundManifestMetadataMap, foundIndexDataMap, nil
+	return size, platforms, vendors
 }
 
-// FindMediaTypeForDigest will look into the buckets for a certain digest. Depending on which bucket that
-// digest is found the corresponding mediatype is returned.
-func FindMediaTypeForDigest(metaDB mTypes.MetaDB, digest godigest.Digest) (bool, string) {
-	_, err := metaDB.GetManifestData(digest)
-	if err == nil {
-		return true, ispec.MediaTypeImageManifest
+func getProtoPlatform(platform *ispec.Platform) *proto_go.Platform {
+	if platform == nil {
+		return nil
 	}
 
-	_, err = metaDB.GetIndexData(digest)
-	if err == nil {
-		return true, ispec.MediaTypeImageIndex
+	return &proto_go.Platform{
+		Architecture: getArch(platform.Architecture, platform.Variant),
+		OS:           platform.OS,
 	}
-
-	return false, ""
 }
 
-func GetImageDescriptor(metaDB mTypes.MetaDB, repo, tag string) (mTypes.Descriptor, error) {
-	repoMeta, err := metaDB.GetRepoMeta(repo)
-	if err != nil {
-		return mTypes.Descriptor{}, err
+func getArch(arch string, variant string) string {
+	if variant != "" {
+		arch = arch + "/" + variant
 	}
 
-	imageDescriptor, ok := repoMeta.Tags[tag]
-	if !ok {
-		return mTypes.Descriptor{}, zerr.ErrTagMetaNotFound
-	}
-
-	return imageDescriptor, nil
+	return arch
 }
 
-func InitializeImageConfig(blob []byte) ispec.Image {
-	var configContent ispec.Image
+func GetVendor(annotations map[string]string) string {
+	return GetAnnotationValue(annotations, ispec.AnnotationVendor, "org.label-schema.vendor")
+}
 
-	err := json.Unmarshal(blob, &configContent)
-	if err != nil {
-		return ispec.Image{}
+func GetAnnotationValue(annotations map[string]string, annotationKey, labelKey string) string {
+	value, ok := annotations[annotationKey]
+	if !ok || value == "" {
+		value, ok = annotations[labelKey]
+		if !ok {
+			value = ""
+		}
 	}
 
-	return configContent
+	return value
 }

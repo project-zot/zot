@@ -3,7 +3,6 @@ package storage
 import (
 	"encoding/json"
 	"fmt"
-	"regexp"
 	"strings"
 
 	"github.com/docker/distribution/registry/storage/driver/factory"
@@ -228,10 +227,7 @@ func CheckIsImageSignature(repoName string, manifestBlob []byte, reference strin
 		return true, NotationType, manifestContent.Subject.Digest, nil
 	}
 
-	// check cosign
-	cosignTagRule := regexp.MustCompile(`sha256\-.+\.sig`)
-
-	if tag := reference; cosignTagRule.MatchString(reference) {
+	if tag := reference; zcommon.IsCosignTag(reference) {
 		prefixLen := len("sha256-")
 		digestLen := 64
 		signedImageManifestDigestEncoded := tag[prefixLen : prefixLen+digestLen]

@@ -13,7 +13,6 @@ import (
 	"net/url"
 	"os"
 	"path"
-	"regexp"
 	"strconv"
 	"strings"
 	"testing"
@@ -305,7 +304,7 @@ func getMockCveScanner(metaDB mTypes.MetaDB) cveinfo.Scanner {
 			imageDir := repo
 			inputTag := reference
 
-			repoMeta, err := metaDB.GetRepoMeta(imageDir)
+			repoMeta, err := metaDB.GetRepoMeta(context.Background(), imageDir)
 			if err != nil {
 				return false, err
 			}
@@ -328,19 +327,12 @@ func getMockCveScanner(metaDB mTypes.MetaDB) cveinfo.Scanner {
 				return false, err
 			}
 
-			manifestData, err := metaDB.GetManifestData(manifestDigest)
+			manifestData, err := metaDB.GetImageMeta(manifestDigest)
 			if err != nil {
 				return false, err
 			}
 
-			var manifestContent ispec.Manifest
-
-			err = json.Unmarshal(manifestData.ManifestBlob, &manifestContent)
-			if err != nil {
-				return false, zerr.ErrScanNotSupported
-			}
-
-			for _, imageLayer := range manifestContent.Layers {
+			for _, imageLayer := range manifestData.Manifests[0].Manifest.Layers {
 				switch imageLayer.MediaType {
 				case ispec.MediaTypeImageLayerGzip, ispec.MediaTypeImageLayer, string(regTypes.DockerLayer):
 
@@ -1070,24 +1062,17 @@ func TestGetReferrersGQL(t *testing.T) {
 		defer ctlrManager.StopServer()
 
 		// Upload the index referrer
-
-		targetImg, err := deprecated.GetRandomImage() //nolint:staticcheck
-		So(err, ShouldBeNil)
+		targetImg := CreateRandomImage()
 		targetDigest := targetImg.Digest()
 
-		err = UploadImage(targetImg, baseURL, "repo", targetDigest.String())
-		So(err, ShouldBeNil)
-
-		indexReferrer, err := deprecated.GetRandomMultiarchImage("ref") //nolint:staticcheck
+		err := UploadImage(targetImg, baseURL, "repo", targetImg.DigestStr())
 		So(err, ShouldBeNil)
 
 		artifactType := "com.artifact.art/type"
-		indexReferrer.Index.ArtifactType = artifactType
-		indexReferrer.Index.Subject = &ispec.Descriptor{
-			MediaType: ispec.MediaTypeImageManifest,
-			Digest:    targetDigest,
-		}
-
+		indexReferrer := CreateMultiarchWith().RandomImages(2).
+			ArtifactType(artifactType).
+			Subject(targetImg.DescriptorRef()).
+			Build()
 		indexReferrerDigest := indexReferrer.Digest()
 
 		err = UploadMultiarchImage(indexReferrer, baseURL, "repo", "ref")
@@ -3203,7 +3188,9 @@ func TestGlobalSearch(t *testing.T) {
 						Vendors
 						NewestImage {
 							RepoName Tag LastUpdated Size
+							Digest
 							Manifests{
+								Digest ConfigDigest
 								LastUpdated Size
 								Platform { Os Arch }
 								History {
@@ -4495,67 +4482,24 @@ func TestMetaDBWhenPushingImages(t *testing.T) {
 		ctlrManager.StartAndWait(port)
 		defer ctlrManager.StopServer()
 
-		Convey("SetManifestMeta fails", func() {
-			ctlr.MetaDB = mocks.MetaDBMock{
-				SetManifestDataFn: func(manifestDigest godigest.Digest, mm mTypes.ManifestData) error {
-					return ErrTestError
-				},
-			}
-			config1, layers1, manifest1, err := deprecated.GetImageComponents(100) //nolint:staticcheck
-			So(err, ShouldBeNil)
-
-			configBlob, err := json.Marshal(config1)
-			So(err, ShouldBeNil)
-
-			ctlr.StoreController.DefaultStore = mocks.MockedImageStore{
-				NewBlobUploadFn: ctlr.StoreController.DefaultStore.NewBlobUpload,
-				PutBlobChunkFn:  ctlr.StoreController.DefaultStore.PutBlobChunk,
-				GetBlobContentFn: func(repo string, digest godigest.Digest) ([]byte, error) {
-					return configBlob, nil
-				},
-				DeleteImageManifestFn: func(repo, reference string, dc bool) error {
-					return ErrTestError
-				},
-			}
-
-			err = UploadImage(
-				Image{
-					Manifest: manifest1,
-					Config:   config1,
-					Layers:   layers1,
-				}, baseURL, "repo1", "1.0.1",
-			)
-			So(err, ShouldNotBeNil)
-		})
-
 		Convey("SetManifestMeta succeeds but SetRepoReference fails", func() {
 			ctlr.MetaDB = mocks.MetaDBMock{
-				SetRepoReferenceFn: func(repo, reference string, manifestDigest godigest.Digest, mediaType string) error {
+				SetRepoReferenceFn: func(repo, reference string, imageMeta mTypes.ImageMeta) error {
 					return ErrTestError
 				},
 			}
 
-			config1, layers1, manifest1, err := deprecated.GetImageComponents(100) //nolint:staticcheck
-			So(err, ShouldBeNil)
-
-			configBlob, err := json.Marshal(config1)
-			So(err, ShouldBeNil)
+			image := CreateRandomImage()
 
 			ctlr.StoreController.DefaultStore = mocks.MockedImageStore{
 				NewBlobUploadFn: ctlr.StoreController.DefaultStore.NewBlobUpload,
 				PutBlobChunkFn:  ctlr.StoreController.DefaultStore.PutBlobChunk,
 				GetBlobContentFn: func(repo string, digest godigest.Digest) ([]byte, error) {
-					return configBlob, nil
+					return image.ConfigDescriptor.Data, nil
 				},
 			}
 
-			err = UploadImage(
-				Image{
-					Manifest: manifest1,
-					Config:   config1,
-					Layers:   layers1,
-				}, baseURL, "repo1", "1.0.1",
-			)
+			err := UploadImage(image, baseURL, "repo1", "1.0.1")
 			So(err, ShouldNotBeNil)
 		})
 	})
@@ -4590,15 +4534,9 @@ func RunMetaDBIndexTests(baseURL, port string) {
 	Convey("Push test index", func() {
 		const repo = "repo"
 
-		multiarchImage, err := deprecated.GetRandomMultiarchImage("tag1") //nolint:staticcheck
-		So(err, ShouldBeNil)
+		multiarchImage := CreateRandomMultiarch()
 
-		indexBlob, err := json.Marshal(multiarchImage.Index)
-		So(err, ShouldBeNil)
-
-		indexDigest := godigest.FromBytes(indexBlob)
-
-		err = UploadMultiarchImage(multiarchImage, baseURL, repo, "tag1")
+		err := UploadMultiarchImage(multiarchImage, baseURL, repo, "tag1")
 		So(err, ShouldBeNil)
 
 		query := `
@@ -4634,7 +4572,7 @@ func RunMetaDBIndexTests(baseURL, port string) {
 		responseImage := responseImages[0]
 		So(len(responseImage.Manifests), ShouldEqual, 3)
 
-		err = signature.SignImageUsingCosign(fmt.Sprintf("repo@%s", indexDigest), port)
+		err = signature.SignImageUsingCosign(fmt.Sprintf("repo@%s", multiarchImage.DigestStr()), port)
 		So(err, ShouldBeNil)
 
 		resp, err = resty.R().Get(baseURL + graphqlQueryPrefix + "?query=" + url.QueryEscape(query))
@@ -4654,7 +4592,7 @@ func RunMetaDBIndexTests(baseURL, port string) {
 		So(responseImage.IsSigned, ShouldBeTrue)
 
 		// remove signature
-		cosignTag := "sha256-" + indexDigest.Encoded() + ".sig"
+		cosignTag := "sha256-" + multiarchImage.Digest().Encoded() + ".sig"
 		_, err = resty.R().Delete(baseURL + "/v2/" + "repo" + "/manifests/" + cosignTag)
 		So(err, ShouldBeNil)
 
@@ -5409,9 +5347,7 @@ func TestMetaDBWhenDeletingImages(t *testing.T) {
 			for _, manifest := range indexContent.Manifests {
 				tag := manifest.Annotations[ispec.AnnotationRefName]
 
-				cosignTagRule := regexp.MustCompile(`sha256\-.+\.sig`)
-
-				if cosignTagRule.MatchString(tag) {
+				if zcommon.IsCosignTag(tag) {
 					signatureTag = tag
 				}
 			}
@@ -5685,7 +5621,10 @@ func TestMetaDBWhenDeletingImages(t *testing.T) {
 				}
 
 				ctlr.MetaDB = mocks.MetaDBMock{
-					RemoveRepoReferenceFn: func(repo, reference string, manifestDigest godigest.Digest) error { return ErrTestError },
+					RemoveRepoReferenceFn: func(repo, reference string, manifestDigest godigest.Digest,
+					) error {
+						return ErrTestError
+					},
 				}
 
 				resp, err = resty.R().Delete(baseURL + "/v2/" + "repo1" + "/manifests/" +
@@ -6437,16 +6376,6 @@ func TestUploadingArtifactsWithDifferentMediaType(t *testing.T) {
 
 		err = UploadImage(defaultImage, baseURL, "repo", "default-image")
 		So(err, ShouldBeNil)
-
-		manifestData, err := ctlr.MetaDB.GetManifestData(imageWithIncompatibleConfig.ManifestDescriptor.Digest)
-		So(err, ShouldBeNil)
-		So(manifestData.ConfigBlob, ShouldEqual, imageWithIncompatibleConfig.ConfigDescriptor.Data)
-		So(manifestData.ManifestBlob, ShouldEqual, imageWithIncompatibleConfig.ManifestDescriptor.Data)
-
-		manifestData, err = ctlr.MetaDB.GetManifestData(defaultImage.ManifestDescriptor.Digest)
-		So(err, ShouldBeNil)
-		So(manifestData.ConfigBlob, ShouldEqual, defaultImage.ConfigDescriptor.Data)
-		So(manifestData.ManifestBlob, ShouldEqual, defaultImage.ManifestDescriptor.Data)
 
 		query := `
 			{

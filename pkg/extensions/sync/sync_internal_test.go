@@ -27,6 +27,7 @@ import (
 	"zotregistry.io/zot/pkg/extensions/monitoring"
 	client "zotregistry.io/zot/pkg/extensions/sync/httpclient"
 	"zotregistry.io/zot/pkg/log"
+	mTypes "zotregistry.io/zot/pkg/meta/types"
 	"zotregistry.io/zot/pkg/storage"
 	"zotregistry.io/zot/pkg/storage/cache"
 	storageConstants "zotregistry.io/zot/pkg/storage/constants"
@@ -336,8 +337,8 @@ func TestLocalRegistry(t *testing.T) {
 
 		Convey("trigger metaDB error on index manifest in CommitImage()", func() {
 			registry := NewLocalRegistry(storage.StoreController{DefaultStore: syncImgStore}, mocks.MetaDBMock{
-				SetRepoReferenceFn: func(repo, Reference string, manifestDigest godigest.Digest, mediaType string) error {
-					if Reference == "1.0" {
+				SetRepoReferenceFn: func(repo string, reference string, imageMeta mTypes.ImageMeta) error {
+					if reference == "1.0" {
 						return zerr.ErrRepoMetaNotFound
 					}
 
@@ -351,7 +352,7 @@ func TestLocalRegistry(t *testing.T) {
 
 		Convey("trigger metaDB error on image manifest in CommitImage()", func() {
 			registry := NewLocalRegistry(storage.StoreController{DefaultStore: syncImgStore}, mocks.MetaDBMock{
-				SetRepoReferenceFn: func(repo, Reference string, manifestDigest godigest.Digest, mediaType string) error {
+				SetRepoReferenceFn: func(repo, reference string, imageMeta mTypes.ImageMeta) error {
 					return zerr.ErrRepoMetaNotFound
 				},
 			}, log)

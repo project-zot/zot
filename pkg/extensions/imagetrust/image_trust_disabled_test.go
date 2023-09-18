@@ -27,15 +27,13 @@ func TestImageTrust(t *testing.T) {
 
 		repo := "repo"
 
-		image := CreateRandomImage() //nolint:staticcheck
-		manifestContent := image.ManifestDescriptor.Data
-		manifestDigest := image.ManifestDescriptor.Digest
+		image := CreateRandomImage()
 
 		localImgTrustStore, err := imagetrust.NewLocalImageTrustStore(rootDir)
 		So(err, ShouldBeNil)
 
 		author, expTime, ok, err := localImgTrustStore.VerifySignature("cosign",
-			[]byte(""), "", manifestDigest, manifestContent, repo,
+			[]byte(""), "", image.Digest(), image.AsImageMeta(), repo,
 		)
 		So(author, ShouldBeEmpty)
 		So(expTime, ShouldBeZeroValue)
@@ -54,7 +52,7 @@ func TestImageTrust(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		author, expTime, ok, err = cloudImgTrustStore.VerifySignature("cosign",
-			[]byte(""), "", manifestDigest, manifestContent, repo,
+			[]byte(""), "", image.Digest(), image.AsImageMeta(), repo,
 		)
 		So(author, ShouldBeEmpty)
 		So(expTime, ShouldBeZeroValue)

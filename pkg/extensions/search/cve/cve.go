@@ -1,7 +1,7 @@
 package cveinfo
 
 import (
-	"encoding/json"
+	"context"
 	"sort"
 	"strings"
 	"time"
@@ -9,6 +9,7 @@ import (
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 
+	zerr "zotregistry.io/zot/errors"
 	zcommon "zotregistry.io/zot/pkg/common"
 	cvemodel "zotregistry.io/zot/pkg/extensions/search/cve/model"
 	"zotregistry.io/zot/pkg/extensions/search/cve/trivy"
@@ -57,7 +58,7 @@ func NewCVEInfo(scanner Scanner, metaDB mTypes.MetaDB, log log.Logger) *BaseCveI
 func (cveinfo BaseCveInfo) GetImageListForCVE(repo, cveID string) ([]cvemodel.TagInfo, error) {
 	imgList := make([]cvemodel.TagInfo, 0)
 
-	repoMeta, err := cveinfo.MetaDB.GetRepoMeta(repo)
+	repoMeta, err := cveinfo.MetaDB.GetRepoMeta(context.Background(), repo)
 	if err != nil {
 		cveinfo.Log.Error().Err(err).Str("repository", repo).Str("cve-id", cveID).
 			Msg("unable to get list of tags from repo")
@@ -105,7 +106,7 @@ func (cveinfo BaseCveInfo) GetImageListForCVE(repo, cveID string) ([]cvemodel.Ta
 }
 
 func (cveinfo BaseCveInfo) GetImageListWithCVEFixed(repo, cveID string) ([]cvemodel.TagInfo, error) {
-	repoMeta, err := cveinfo.MetaDB.GetRepoMeta(repo)
+	repoMeta, err := cveinfo.MetaDB.GetRepoMeta(context.Background(), repo)
 	if err != nil {
 		cveinfo.Log.Error().Err(err).Str("repository", repo).Str("cve-id", cveID).
 			Msg("unable to get list of tags from repo")
@@ -287,19 +288,16 @@ func getIndexContent(metaDB mTypes.MetaDB, indexDigestStr string) (ispec.Index, 
 		return ispec.Index{}, err
 	}
 
-	indexData, err := metaDB.GetIndexData(indexDigest)
+	indexData, err := metaDB.GetImageMeta(indexDigest)
 	if err != nil {
 		return ispec.Index{}, err
 	}
 
-	var indexContent ispec.Index
-
-	err = json.Unmarshal(indexData.IndexBlob, &indexContent)
-	if err != nil {
-		return ispec.Index{}, err
+	if indexData.Index == nil {
+		return ispec.Index{}, zerr.ErrUnexpectedMediaType
 	}
 
-	return indexContent, nil
+	return *indexData.Index, nil
 }
 
 func getConfigAndDigest(metaDB mTypes.MetaDB, manifestDigestStr string) (ispec.Image, godigest.Digest, error) {
@@ -308,17 +306,17 @@ func getConfigAndDigest(metaDB mTypes.MetaDB, manifestDigestStr string) (ispec.I
 		return ispec.Image{}, "", err
 	}
 
-	manifestData, err := metaDB.GetManifestData(manifestDigest)
+	manifestData, err := metaDB.GetImageMeta(manifestDigest)
 	if err != nil {
 		return ispec.Image{}, "", err
 	}
 
-	var configContent ispec.Image
+	// we'll fail the execution if the config is not compatible with ispec.Image because we can't scan this type of images.
+	if manifestData.Manifests[0].Manifest.Config.MediaType != ispec.MediaTypeImageConfig {
+		return ispec.Image{}, "", zerr.ErrUnexpectedMediaType
+	}
 
-	// we'll fail the execution if the config is not compatibe with ispec.Image because we can't scan this type of images.
-	err = json.Unmarshal(manifestData.ConfigBlob, &configContent)
-
-	return configContent, manifestDigest, err
+	return manifestData.Manifests[0].Config, manifestDigest, err
 }
 
 func filterCVEList(cveMap map[string]cvemodel.CVE, searchedCVE string, pageFinder *CvePageFinder) {

@@ -3,7 +3,6 @@ package meta
 import (
 	"encoding/json"
 	"errors"
-	"fmt"
 	"time"
 
 	godigest "github.com/opencontainers/go-digest"
@@ -12,9 +11,15 @@ import (
 	zerr "zotregistry.io/zot/errors"
 	zcommon "zotregistry.io/zot/pkg/common"
 	"zotregistry.io/zot/pkg/log"
+	"zotregistry.io/zot/pkg/meta/convert"
 	mTypes "zotregistry.io/zot/pkg/meta/types"
 	"zotregistry.io/zot/pkg/storage"
 	storageTypes "zotregistry.io/zot/pkg/storage/types"
+)
+
+const (
+	CosignType   = "cosign"
+	NotationType = "notation"
 )
 
 // ParseStorage will sync all repos found in the rootdirectory of the oci layout that zot was deployed on with the
@@ -31,7 +36,10 @@ func ParseStorage(metaDB mTypes.MetaDB, storeController storage.StoreController,
 		return err
 	}
 
-	for _, repo := range allRepos {
+	for i, repo := range allRepos {
+		log.Info().Int("total", len(allRepos)).Int("progress", i).Str("current-repo", repo).
+			Msgf("parsing next repo '%s'", repo)
+
 		err := ParseRepo(repo, metaDB, storeController, log)
 		if err != nil {
 			log.Error().Err(err).Str("repository", repo).Msg("load-local-layout: failed to sync repo")
@@ -70,75 +78,35 @@ func ParseRepo(repo string, metaDB mTypes.MetaDB, storeController storage.StoreC
 		return err
 	}
 
-	err = resetRepoMeta(repo, metaDB, log)
+	err = metaDB.ResetRepoReferences(repo)
 	if err != nil && !errors.Is(err, zerr.ErrRepoMetaNotFound) {
 		log.Error().Err(err).Str("repository", repo).Msg("load-repo: failed to reset tag field in RepoMetadata for repo")
 
 		return err
 	}
 
-	for _, descriptor := range indexContent.Manifests {
-		tag := descriptor.Annotations[ispec.AnnotationRefName]
+	for _, manifest := range indexContent.Manifests {
+		tag := manifest.Annotations[ispec.AnnotationRefName]
 
 		if zcommon.IsReferrersTag(tag) {
 			continue
 		}
 
-		descriptorBlob, err := getCachedBlob(repo, descriptor, metaDB, imageStore, log)
+		manifestBlob, _, _, err := imageStore.GetImageManifest(repo, manifest.Digest.String())
 		if err != nil {
-			log.Error().Err(err).Msg("load-repo: error checking manifestMeta in MetaDB")
+			log.Error().Err(err).Str("repository", repo).Str("digest", manifest.Digest.String()).
+				Msg("load-repo: failed to get blob for image")
 
 			return err
-		}
-
-		isSignature, signatureType, signedManifestDigest, err := storage.CheckIsImageSignature(repo,
-			descriptorBlob, tag)
-		if err != nil {
-			log.Error().Err(err).Str("repository", repo).Str("tag", tag).
-				Msg("load-repo: failed checking if image is signature for specified image")
-
-			return err
-		}
-
-		if isSignature {
-			layers, err := GetSignatureLayersInfo(repo, tag, descriptor.Digest.String(), signatureType,
-				descriptorBlob, imageStore, log)
-			if err != nil {
-				return err
-			}
-
-			err = metaDB.AddManifestSignature(repo, signedManifestDigest,
-				mTypes.SignatureMetadata{
-					SignatureType:   signatureType,
-					SignatureDigest: descriptor.Digest.String(),
-					LayersInfo:      layers,
-				})
-			if err != nil {
-				log.Error().Err(err).Str("repository", repo).Str("tag", tag).
-					Str("manifestDigest", signedManifestDigest.String()).
-					Msg("load-repo: failed set signature meta for signed image")
-
-				return err
-			}
-
-			err = metaDB.UpdateSignaturesValidity(repo, signedManifestDigest)
-			if err != nil {
-				log.Error().Err(err).Str("repository", repo).Str("reference", tag).Str("digest", signedManifestDigest.String()).Msg(
-					"load-repo: failed verify signatures validity for signed image")
-
-				return err
-			}
-
-			continue
 		}
 
 		reference := tag
 
 		if tag == "" {
-			reference = descriptor.Digest.String()
+			reference = manifest.Digest.String()
 		}
 
-		err = SetImageMetaFromInput(repo, reference, descriptor.MediaType, descriptor.Digest, descriptorBlob,
+		err = SetImageMetaFromInput(repo, reference, manifest.MediaType, manifest.Digest, manifestBlob,
 			imageStore, metaDB, log)
 		if err != nil {
 			log.Error().Err(err).Str("repository", repo).Str("tag", tag).
@@ -149,32 +117,6 @@ func ParseRepo(repo string, metaDB mTypes.MetaDB, storeController storage.StoreC
 	}
 
 	return nil
-}
-
-// resetRepoMeta will delete all tags and non-user related information from a RepoMetadata.
-// It is used to recalculate and keep MetaDB consistent with the layout in case of unexpected changes.
-func resetRepoMeta(repo string, metaDB mTypes.MetaDB, log log.Logger) error {
-	repoMeta, err := metaDB.GetRepoMeta(repo)
-	if err != nil && !errors.Is(err, zerr.ErrRepoMetaNotFound) {
-		log.Error().Err(err).Str("repository", repo).Msg("load-repo: failed to get RepoMeta for repo")
-
-		return err
-	}
-
-	if errors.Is(err, zerr.ErrRepoMetaNotFound) {
-		log.Info().Str("repository", repo).Msg("load-repo: RepoMeta not found for repo, new RepoMeta will be created")
-
-		return nil
-	}
-
-	return metaDB.SetRepoMeta(repo, mTypes.RepoMetadata{
-		Name:       repoMeta.Name,
-		Tags:       map[string]mTypes.Descriptor{},
-		Statistics: repoMeta.Statistics,
-		Signatures: map[string]mTypes.ManifestSignatures{},
-		Referrers:  map[string][]mTypes.ReferrerInfo{},
-		Stars:      repoMeta.Stars,
-	})
 }
 
 func getAllRepos(storeController storage.StoreController) ([]string, error) {
@@ -195,43 +137,6 @@ func getAllRepos(storeController storage.StoreController) ([]string, error) {
 	}
 
 	return allRepos, nil
-}
-
-func getCachedBlob(repo string, descriptor ispec.Descriptor, metaDB mTypes.MetaDB,
-	imageStore storageTypes.ImageStore, log log.Logger,
-) ([]byte, error) {
-	digest := descriptor.Digest
-
-	descriptorBlob, err := getCachedBlobFromMetaDB(descriptor, metaDB)
-
-	if err != nil || len(descriptorBlob) == 0 {
-		descriptorBlob, _, _, err = imageStore.GetImageManifest(repo, digest.String())
-		if err != nil {
-			log.Error().Err(err).Str("repository", repo).Str("digest", digest.String()).
-				Msg("load-repo: failed to get blob for image")
-
-			return nil, err
-		}
-
-		return descriptorBlob, nil
-	}
-
-	return descriptorBlob, nil
-}
-
-func getCachedBlobFromMetaDB(descriptor ispec.Descriptor, metaDB mTypes.MetaDB) ([]byte, error) {
-	switch descriptor.MediaType {
-	case ispec.MediaTypeImageManifest:
-		manifestData, err := metaDB.GetManifestData(descriptor.Digest)
-
-		return manifestData.ManifestBlob, err
-	case ispec.MediaTypeImageIndex:
-		indexData, err := metaDB.GetIndexData(descriptor.Digest)
-
-		return indexData.IndexBlob, err
-	}
-
-	return nil, nil
 }
 
 func GetSignatureLayersInfo(repo, tag, manifestDigest, signatureType string, manifestBlob []byte,
@@ -341,92 +246,82 @@ func getNotationSignatureLayersInfo(
 	return layers, nil
 }
 
-// NewManifestMeta takes raw data about an image and createa a new ManifestMetadate object.
-func NewManifestData(repoName string, manifestBlob []byte, imageStore storageTypes.ImageStore,
-) (mTypes.ManifestData, error) {
-	var (
-		manifestContent ispec.Manifest
-		configContent   ispec.Image
-		manifestData    mTypes.ManifestData
-	)
-
-	err := json.Unmarshal(manifestBlob, &manifestContent)
-	if err != nil {
-		return mTypes.ManifestData{}, err
-	}
-
-	var lockLatency time.Time
-
-	imageStore.RLock(&lockLatency)
-	defer imageStore.RUnlock(&lockLatency)
-
-	configBlob, err := imageStore.GetBlobContent(repoName, manifestContent.Config.Digest)
-	if err != nil {
-		return mTypes.ManifestData{}, err
-	}
-
-	if manifestContent.Config.MediaType == ispec.MediaTypeImageConfig {
-		err = json.Unmarshal(configBlob, &configContent)
-		if err != nil {
-			return mTypes.ManifestData{}, err
-		}
-	}
-
-	manifestData.ManifestBlob = manifestBlob
-	manifestData.ConfigBlob = configBlob
-
-	return manifestData, nil
-}
-
-func NewIndexData(repoName string, indexBlob []byte, imageStore storageTypes.ImageStore,
-) mTypes.IndexData {
-	indexData := mTypes.IndexData{}
-
-	indexData.IndexBlob = indexBlob
-
-	return indexData
-}
-
 // SetMetadataFromInput tries to set manifest metadata and update repo metadata by adding the current tag
 // (in case the reference is a tag). The function expects image manifests and indexes (multi arch images).
-func SetImageMetaFromInput(repo, reference, mediaType string, digest godigest.Digest, descriptorBlob []byte,
+func SetImageMetaFromInput(repo, reference, mediaType string, digest godigest.Digest, blob []byte,
 	imageStore storageTypes.ImageStore, metaDB mTypes.MetaDB, log log.Logger,
 ) error {
+	var imageMeta mTypes.ImageMeta
+
 	switch mediaType {
 	case ispec.MediaTypeImageManifest:
-		imageData, err := NewManifestData(repo, descriptorBlob, imageStore)
+		manifestContent := ispec.Manifest{}
+		configContent := ispec.Image{}
+
+		err := json.Unmarshal(blob, &manifestContent)
 		if err != nil {
 			return err
 		}
 
-		err = metaDB.SetManifestData(digest, imageData)
-		if err != nil {
-			log.Error().Err(err).Msg("metadb: error while putting manifest meta")
+		if manifestContent.Config.MediaType == ispec.MediaTypeImageConfig {
+			configBlob, err := imageStore.GetBlobContent(repo, manifestContent.Config.Digest)
+			if err != nil {
+				return err
+			}
 
-			return err
+			err = json.Unmarshal(configBlob, &configContent)
+			if err != nil {
+				return err
+			}
 		}
+
+		if isSig, sigType, signedManifestDigest := isSignature(reference, manifestContent); isSig {
+			layers, err := GetSignatureLayersInfo(repo, reference, digest.String(), sigType,
+				blob, imageStore, log)
+			if err != nil {
+				return err
+			}
+
+			err = metaDB.AddManifestSignature(repo, signedManifestDigest,
+				mTypes.SignatureMetadata{
+					SignatureType:   sigType,
+					SignatureDigest: digest.String(),
+					LayersInfo:      layers,
+				})
+			if err != nil {
+				log.Error().Err(err).Str("repository", repo).Str("tag", reference).
+					Str("manifestDigest", signedManifestDigest.String()).
+					Msg("load-repo: failed set signature meta for signed image")
+
+				return err
+			}
+
+			err = metaDB.UpdateSignaturesValidity(repo, signedManifestDigest)
+			if err != nil {
+				log.Error().Err(err).Str("repository", repo).Str("reference", reference).Str("digest",
+					signedManifestDigest.String()).Msg("load-repo: failed verify signatures validity for signed image")
+
+				return err
+			}
+
+			return nil
+		}
+
+		imageMeta = convert.GetImageManifestMeta(manifestContent, configContent, int64(len(blob)), digest)
 	case ispec.MediaTypeImageIndex:
-		indexData := NewIndexData(repo, descriptorBlob, imageStore)
+		indexContent := ispec.Index{}
 
-		err := metaDB.SetIndexData(digest, indexData)
+		err := json.Unmarshal(blob, &indexContent)
 		if err != nil {
-			log.Error().Err(err).Msg("metadb: error while putting index data")
-
 			return err
 		}
+
+		imageMeta = convert.GetImageIndexMeta(indexContent, int64(len(blob)), digest)
+	default:
+		return nil
 	}
 
-	referredDigest, referrerInfo, hasSubject, err := GetReferredInfo(descriptorBlob, digest.String(), mediaType)
-	if hasSubject && err == nil {
-		err := metaDB.SetReferrer(repo, referredDigest, referrerInfo)
-		if err != nil {
-			log.Error().Err(err).Msg("metadb: error while settingg referrer")
-
-			return err
-		}
-	}
-
-	err = metaDB.SetRepoReference(repo, reference, digest, mediaType)
+	err := metaDB.SetRepoReference(repo, reference, imageMeta)
 	if err != nil {
 		log.Error().Err(err).Msg("metadb: error while putting repo meta")
 
@@ -436,55 +331,24 @@ func SetImageMetaFromInput(repo, reference, mediaType string, digest godigest.Di
 	return nil
 }
 
-func GetReferredInfo(descriptorBlob []byte, referrerDigest, mediaType string,
-) (godigest.Digest, mTypes.ReferrerInfo, bool, error) {
-	var (
-		referrerInfo    mTypes.ReferrerInfo
-		referrerSubject *ispec.Descriptor
-	)
+func isSignature(reference string, manifestContent ispec.Manifest) (bool, string, godigest.Digest) {
+	manifestArtifactType := zcommon.GetManifestArtifactType(manifestContent)
 
-	switch mediaType {
-	case ispec.MediaTypeImageManifest:
-		var manifestContent ispec.Manifest
-
-		err := json.Unmarshal(descriptorBlob, &manifestContent)
-		if err != nil {
-			return "", referrerInfo, false,
-				fmt.Errorf("metadb: can't unmarshal manifest for digest %s: %w", referrerDigest, err)
-		}
-
-		referrerSubject = manifestContent.Subject
-
-		referrerInfo = mTypes.ReferrerInfo{
-			Digest:       referrerDigest,
-			MediaType:    mediaType,
-			ArtifactType: zcommon.GetManifestArtifactType(manifestContent),
-			Size:         len(descriptorBlob),
-			Annotations:  manifestContent.Annotations,
-		}
-	case ispec.MediaTypeImageIndex:
-		var indexContent ispec.Index
-
-		err := json.Unmarshal(descriptorBlob, &indexContent)
-		if err != nil {
-			return "", referrerInfo, false,
-				fmt.Errorf("metadb: can't unmarshal manifest for digest %s: %w", referrerDigest, err)
-		}
-
-		referrerSubject = indexContent.Subject
-
-		referrerInfo = mTypes.ReferrerInfo{
-			Digest:       referrerDigest,
-			MediaType:    mediaType,
-			ArtifactType: zcommon.GetIndexArtifactType(indexContent),
-			Size:         len(descriptorBlob),
-			Annotations:  indexContent.Annotations,
-		}
+	// check notation signature
+	if manifestArtifactType == zcommon.ArtifactTypeNotation && manifestContent.Subject != nil {
+		return true, NotationType, manifestContent.Subject.Digest
 	}
 
-	if referrerSubject == nil || referrerSubject.Digest.String() == "" {
-		return "", mTypes.ReferrerInfo{}, false, nil
+	if tag := reference; zcommon.IsCosignTag(reference) {
+		prefixLen := len("sha256-")
+		digestLen := 64
+		signedImageManifestDigestEncoded := tag[prefixLen : prefixLen+digestLen]
+
+		signedImageManifestDigest := godigest.NewDigestFromEncoded(godigest.SHA256,
+			signedImageManifestDigestEncoded)
+
+		return true, CosignType, signedImageManifestDigest
 	}
 
-	return referrerSubject.Digest, referrerInfo, true, nil
+	return false, "", ""
 }

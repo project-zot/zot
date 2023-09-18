@@ -1,0 +1,45 @@
+syntax = "proto3";
+package oci_v1;
+
+import "oci/timestamp.proto";
+import "oci/descriptor.proto";
+
+// https://github.com/opencontainers/image-spec/blob/main/specs-go/v1/config.go
+
+message Image {
+ optional google.protobuf.Timestamp Created = 1;
+  optional string Author = 2;
+  Platform Platform = 3;
+  optional ImageConfig Config = 4;
+  optional RootFS RootFS = 5;
+  repeated History History = 6;
+}
+
+message ImageConfig {
+  map <string,EmptyMessage> ExposedPorts = 1;
+  map <string,EmptyMessage> Volumes      = 2;
+  map <string,string>       Labels       = 3;
+  string          User        = 4;
+  repeated string Env         = 5;
+  repeated string Entrypoint  = 6;
+  repeated string Cmd         = 7;
+  optional string WorkingDir  = 8;
+  optional string StopSignal  = 9;
+  bool            ArgsEscaped = 10;
+}
+
+message RootFS {
+  string          Type    = 1;
+  repeated string DiffIDs = 2;
+}
+
+message History {
+  optional google.protobuf.Timestamp Created = 1;
+
+  optional string CreatedBy  = 2;
+  optional string Author     = 3;
+  optional string Comment    = 4;
+  optional bool   EmptyLayer = 5;
+}
+
+message EmptyMessage{}
