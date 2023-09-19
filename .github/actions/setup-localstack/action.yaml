@@ -1,0 +1,19 @@
+name: 'Setup localstack service'
+description: 'Download & run localstack container'
+runs:
+  using: "composite"
+  steps:
+    - shell: bash
+      run: |
+            pip install localstack                    # Install LocalStack cli
+            docker pull localstack/localstack:2.2     # Make sure to pull the latest version of the image
+            localstack start -d                       # Start LocalStack in the background
+
+            echo "Waiting for LocalStack startup..."  # Wait 30 seconds for the LocalStack container
+            localstack wait -t 30                     # to become ready before timing out
+            echo "Startup complete"
+
+            aws dynamodb --endpoint-url http://localhost:4566 --region "us-east-2" create-table --table-name BlobTable --attribute-definitions AttributeName=Digest,AttributeType=S --key-schema AttributeName=Digest,KeyType=HASH --provisioned-throughput ReadCapacityUnits=10,WriteCapacityUnits=5
+      env:
+        AWS_ACCESS_KEY_ID: fake
+        AWS_SECRET_ACCESS_KEY: fake

@@ -36,11 +36,11 @@ jobs:
           [[ $BINSIZE -eq $BINSIZE_MAIN ]] && echo "zot-minimal binary size is not affected by PR" && exit 0
 
           if [[ $BINSIZE -gt $BINSIZE_MAIN ]]; then \
-            PERCENTAGE=$(echo "scale=2; (($BINSIZE-$BINSIZE_MAIN)*100)/$BINSIZE_MAIN" | bc); \
+            PERCENTAGE=$(printf '%.*f\n' 2 $(echo "scale=2; (($BINSIZE-$BINSIZE_MAIN)*100)/$BINSIZE_MAIN" | bc)); \
             echo "zot minimal binary increased by $PERCENTAGE% comparing with main"; \
             if ((`bc <<< "$PERCENTAGE>=1.0"`)); then exit 1; fi; \
           else \
-            PERCENTAGE=$(echo "scale=2; (($BINSIZE_MAIN-$BINSIZE)*100)/$BINSIZE_MAIN" | bc); \
+            PERCENTAGE=$(printf '%.*f\n' 2 $(echo "scale=2; (($BINSIZE_MAIN-$BINSIZE)*100)/$BINSIZE_MAIN" | bc)); \
             echo "zot minimal binary decreased by $PERCENTAGE% comparing with main"; \
           fi
       - if: always()
@@ -61,11 +61,11 @@ jobs:
           [[ $BINSIZE -eq $BINSIZE_MAIN ]] && echo "zb binary size is not affected by PR" && exit 0
 
           if [[ $BINSIZE -gt $BINSIZE_MAIN ]]; then \
-            PERCENTAGE=$(echo "scale=2; (($BINSIZE-$BINSIZE_MAIN)*100)/$BINSIZE_MAIN" | bc); \
+            PERCENTAGE=$(printf '%.*f\n' 2 $(echo "scale=2; (($BINSIZE-$BINSIZE_MAIN)*100)/$BINSIZE_MAIN" | bc)); \
             echo "zb binary increased by $PERCENTAGE% comparing with main"; \
             if ((`bc <<< "$PERCENTAGE>=1.0"`)); then exit 1; fi; \
           else \
-            PERCENTAGE=$(echo "scale=2; (($BINSIZE_MAIN-$BINSIZE)*100)/$BINSIZE_MAIN" | bc); \
+            PERCENTAGE=$(printf '%.*f\n' 2 $(echo "scale=2; (($BINSIZE_MAIN-$BINSIZE)*100)/$BINSIZE_MAIN" | bc)); \
             echo "zb binary decreased by $PERCENTAGE% comparing with main"; \
           fi
       - if: always()
@@ -86,10 +86,10 @@ jobs:
           [[ $BINSIZE -eq $BINSIZE_MAIN ]] && echo "zli binary size is not affected by PR" && exit 0
 
           if [[ $BINSIZE -gt $BINSIZE_MAIN ]]; then \
-            PERCENTAGE=$(echo "scale=2; (($BINSIZE-$BINSIZE_MAIN)*100)/$BINSIZE_MAIN" | bc); \
+            PERCENTAGE=$(printf '%.*f\n' 2 $(echo "scale=2; (($BINSIZE-$BINSIZE_MAIN)*100)/$BINSIZE_MAIN" | bc)); \
             echo "zli binary increased by $PERCENTAGE% comparing with main"; \
             if ((`bc <<< "$PERCENTAGE>=1.0"`)); then exit 1; fi; \
           else \
-            PERCENTAGE=$(echo "scale=2; (($BINSIZE_MAIN-$BINSIZE)*100)/$BINSIZE_MAIN" | bc); \
+            PERCENTAGE=$(printf '%.*f\n' 2 $(echo "scale=2; (($BINSIZE_MAIN-$BINSIZE)*100)/$BINSIZE_MAIN" | bc)); \
             echo "zli binary decreased by $PERCENTAGE% comparing with main"; \
           fi

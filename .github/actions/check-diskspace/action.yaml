@@ -1,0 +1,21 @@
+name: 'Check disk space'
+description: 'Show available disk space'
+runs:
+  using: "composite"
+  steps:
+    - shell: bash
+      if: always()
+      run: |
+        cd $GITHUB_WORKSPACE
+        set -x
+        df -h
+        sudo ls -lRh /tmp/* || true
+        sudo du -sh /tmp || true
+        sudo du -sh /tmp/* || true
+        sudo find /tmp/ -size +5M | sudo xargs ls -lh
+        du -sh ./* || true
+        find ./ -size +5M   | xargs ls -lh
+        sudo du -sh /var/
+        sudo du -sh /var/lib/docker/
+        du -sh /home/runner/work/
+        set +x
