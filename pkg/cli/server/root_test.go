@@ -1376,7 +1376,7 @@ func runCLIWithConfig(tempDir string, config string) (string, error) {
 
 	config = fmt.Sprintf(config, tempDir, port, logFile.Name())
 
-	_, err = cfgfile.Write([]byte(config))
+	_, err = cfgfile.WriteString(config)
 	if err != nil {
 		return "", err
 	}

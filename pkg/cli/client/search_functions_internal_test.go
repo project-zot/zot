@@ -654,7 +654,7 @@ func getMockImageSummary() common.ImageSummary {
 func TestUtils(t *testing.T) {
 	Convey("Utils", t, func() {
 		ok := haveSameArgs(field{"query", []struct {
-			Name string "json:\"name\""
+			Name string `json:"name"`
 		}{
 			{Name: "arg1"}, {Name: "arg2"},
 		}}, GQLQuery{
@@ -663,7 +663,7 @@ func TestUtils(t *testing.T) {
 		So(ok, ShouldBeFalse)
 
 		ok = haveSameArgs(field{"query", []struct {
-			Name string "json:\"name\""
+			Name string `json:"name"`
 		}{
 			{Name: "arg1"}, {Name: "arg2"},
 		}}, GQLQuery{

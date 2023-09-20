@@ -27,7 +27,7 @@ func SetupGQLPlaygroundRoutes(router *mux.Router,
 
 	templ, err := template.ParseFS(playgroundHTML, "index.html.tmpl")
 	if err != nil {
-		log.Fatal().Err(err)
+		log.Fatal().Err(err).Msg("")
 	}
 
 	//nolint:lll

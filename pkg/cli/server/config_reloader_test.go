@@ -88,7 +88,7 @@ func TestConfigReloader(t *testing.T) {
 
 		defer os.Remove(cfgfile.Name()) // clean up
 
-		_, err = cfgfile.Write([]byte(content))
+		_, err = cfgfile.WriteString(content)
 		So(err, ShouldBeNil)
 
 		// err = cfgfile.Close()
@@ -216,7 +216,7 @@ func TestConfigReloader(t *testing.T) {
 
 		defer os.Remove(cfgfile.Name()) // clean up
 
-		_, err = cfgfile.Write([]byte(content))
+		_, err = cfgfile.WriteString(content)
 		So(err, ShouldBeNil)
 
 		// err = cfgfile.Close()
@@ -341,7 +341,7 @@ func TestConfigReloader(t *testing.T) {
 
 		defer os.Remove(cfgfile.Name()) // clean up
 
-		_, err = cfgfile.Write([]byte(content))
+		_, err = cfgfile.WriteString(content)
 		So(err, ShouldBeNil)
 
 		os.Args = []string{"cli_test", "serve", cfgfile.Name()}
@@ -463,7 +463,7 @@ func TestConfigReloader(t *testing.T) {
 
 		defer os.Remove(cfgfile.Name()) // clean up
 
-		_, err = cfgfile.Write([]byte(content))
+		_, err = cfgfile.WriteString(content)
 		So(err, ShouldBeNil)
 
 		// err = cfgfile.Close()

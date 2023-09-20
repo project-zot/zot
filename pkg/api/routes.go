@@ -2111,6 +2111,7 @@ func (rh *RouteHandler) CreateAPIKey(resp http.ResponseWriter, req *http.Request
 	expirationDate := time.Time{}
 
 	if payload.ExpirationDate != "" {
+		//nolint: gosmopolitan
 		expirationDate, err = time.ParseInLocation(constants.APIKeyTimeFormat, payload.ExpirationDate, time.Local)
 		if err != nil {
 			resp.WriteHeader(http.StatusBadRequest)

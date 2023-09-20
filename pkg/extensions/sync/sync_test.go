@@ -1898,7 +1898,7 @@ func TestConfigReloader(t *testing.T) {
 
 			defer os.Remove(cfgfile.Name()) // clean up
 
-			_, err = cfgfile.Write([]byte(content))
+			_, err = cfgfile.WriteString(content)
 			So(err, ShouldBeNil)
 
 			hotReloader, err := cli.NewHotReloader(dctlr, cfgfile.Name())
@@ -2046,7 +2046,7 @@ func TestConfigReloader(t *testing.T) {
 
 			defer os.Remove(cfgfile.Name()) // clean up
 
-			_, err = cfgfile.Write([]byte(content))
+			_, err = cfgfile.WriteString(content)
 			So(err, ShouldBeNil)
 
 			hotReloader, err := cli.NewHotReloader(dctlr, cfgfile.Name())

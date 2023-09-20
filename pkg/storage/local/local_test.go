@@ -303,7 +303,7 @@ func FuzzPutBlobChunk(f *testing.F) {
 			t.Error(err)
 		}
 
-		buf := bytes.NewBuffer([]byte(data))
+		buf := bytes.NewBufferString(data)
 		buflen := buf.Len()
 		_, err = imgStore.PutBlobChunk(repoName, uuid, 0, int64(buflen), buf)
 		if err != nil {
@@ -337,7 +337,7 @@ func FuzzPutBlobChunkStreamed(f *testing.F) {
 			t.Error(err)
 		}
 
-		buf := bytes.NewBuffer([]byte(data))
+		buf := bytes.NewBufferString(data)
 		_, err = imgStore.PutBlobChunkStreamed(repoName, uuid, buf)
 		if err != nil {
 			t.Error(err)
@@ -1073,7 +1073,7 @@ func FuzzGetOrasReferrers(f *testing.F) {
 			t.Error(err)
 		}
 		digest := godigest.FromBytes([]byte(data))
-		buf := bytes.NewBuffer([]byte(data))
+		buf := bytes.NewBufferString(data)
 		buflen := buf.Len()
 		err = os.WriteFile(path.Join(imgStore.RootDir(), //nolint: gosec
 			"zot-test", "blobs", digest.Algorithm().String(), digest.Encoded()),

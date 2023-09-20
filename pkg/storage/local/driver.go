@@ -293,7 +293,7 @@ func (driver *Driver) Link(src, dest string) error {
 
 	/* also update the modtime, so that gc won't remove recently linked blobs
 	otherwise ifBlobOlderThan(gcDelay) will return the modtime of the inode */
-	currentTime := time.Now().Local()
+	currentTime := time.Now().Local() //nolint: gosmopolitan
 	if err := os.Chtimes(dest, currentTime, currentTime); err != nil {
 		return driver.formatErr(err)
 	}

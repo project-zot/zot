@@ -870,7 +870,7 @@ func TestNegativeCasesObjectsStorage(t *testing.T) {
 			_, _, err = imgStore.PutImageManifest(testImage, "1.0", "application/json", []byte{})
 			So(err, ShouldNotBeNil)
 
-			_, err = imgStore.PutBlobChunkStreamed(testImage, upload, bytes.NewBuffer([]byte(testImage)))
+			_, err = imgStore.PutBlobChunkStreamed(testImage, upload, bytes.NewBufferString(testImage))
 			So(err, ShouldNotBeNil)
 
 			_, _, err = imgStore.FullBlobUpload(testImage, bytes.NewBuffer([]byte{}), "inexistent")
@@ -3848,7 +3848,7 @@ func TestS3DedupeErr(t *testing.T) {
 
 	Convey("Test DeleteBlob() - error on store.Move()", t, func(c C) {
 		tdir := t.TempDir()
-		hash := "7173b809ca12ec5dee4506cd86be934c4596dd234ee82c0662eac04a8c2c71dc"
+		hash := "7173b809ca12ec5dee4506cd86be934c4596dd234ee82c0662eac04a8c2c71dc" // #nosec G101
 
 		digest := godigest.NewDigestFromEncoded(godigest.SHA256, hash)
 
