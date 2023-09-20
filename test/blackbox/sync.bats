@@ -22,6 +22,8 @@ function verify_prerequisites() {
 
 function setup_file() {
     export COSIGN_PASSWORD=""
+    export COSIGN_OCI_EXPERIMENTAL=1
+    export COSIGN_EXPERIMENTAL=1
 
     # Verify prerequisites are available
     if ! $(verify_prerequisites); then
@@ -257,6 +259,8 @@ function teardown_file() {
     run cosign generate-key-pair --output-key-prefix "${BATS_FILE_TMPDIR}/cosign-sign-sync-test"
     [ "$status" -eq 0 ]
     run cosign sign --key ${BATS_FILE_TMPDIR}/cosign-sign-sync-test.key localhost:9000/golang:1.20 --yes
+    [ "$status" -eq 0 ]
+    run cosign sign --registry-referrers-mode=oci-1-1 --key ${BATS_FILE_TMPDIR}/cosign-sign-sync-test.key localhost:9000/golang:1.20 --yes
     [ "$status" -eq 0 ]
     run cosign verify --key ${BATS_FILE_TMPDIR}/cosign-sign-sync-test.pub localhost:9000/golang:1.20
     [ "$status" -eq 0 ]
