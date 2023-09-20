@@ -3,16 +3,18 @@
     "storage": {
         "rootDirectory": "/tmp/zot/s3",
         "gc": true,
-        "gcReferrers": false,
-        "gcDelay": "40m",
-        "untaggedImageRetentionDelay": "40m",
-        "gcInterval": "2m",
+        "gcReferrers": true,
+        "gcDelay": "3m",
+        "untaggedImageRetentionDelay": "3m",
+        "gcInterval": "1s",
         "storageDriver": {
             "name": "s3",
             "rootdirectory": "/zot",
             "region": "us-east-2",
             "bucket": "zot-storage",
-            "regionendpoint": "http://localhost:4566",
+            "accesskey": "minioadmin",
+            "secretkey": "minioadmin",
+            "regionendpoint": "http://localhost:9000",
             "secure": false,
             "skipverify": false
         },
@@ -29,6 +31,6 @@
     },
     "log": {
         "level": "debug",
-        "output": "/dev/null"
+        "output": "/tmp/gc-referrers-bench-s3.log"
     }
 }

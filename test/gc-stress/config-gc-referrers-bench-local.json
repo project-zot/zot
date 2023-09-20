@@ -14,6 +14,6 @@
     },
     "log": {
         "level": "debug",
-        "output": "/dev/null"
+        "output": "/tmp/gc-referrers-bench-local.log"
     }
 }

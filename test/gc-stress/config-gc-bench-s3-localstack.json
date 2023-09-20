@@ -3,9 +3,9 @@
     "storage": {
         "rootDirectory": "/tmp/zot/s3",
         "gc": true,
-        "gcReferrers": true,
-        "gcDelay": "40m",
-        "untaggedImageRetentionDelay": "40m",
+        "gcReferrers": false,
+        "gcDelay": "50m",
+        "untaggedImageRetentionDelay": "50m",
         "gcInterval": "2m",
         "storageDriver": {
             "name": "s3",
@@ -29,6 +29,6 @@
     },
     "log": {
         "level": "debug",
-        "output": "/dev/null"
+        "output": "/tmp/gc-bench-s3.log"
     }
 }

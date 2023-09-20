@@ -24,6 +24,7 @@ jobs:
           go-version: 1.20.x
 
       - name: Run zb
+        id: bench
         run: |
             make binary
             make bench
@@ -35,6 +36,13 @@ jobs:
 
             # clean zot storage
             sudo rm -rf /tmp/zot
+        continue-on-error: true
+
+      - name: Check on failures
+        if: steps.bench.outcome != 'success'
+        run: |
+          cat /tmp/gc-referrers-bench-local.log
+          exit 1
 
   gc-stress-local:
     name: GC(without referrers) on filesystem with short interval
@@ -48,6 +56,7 @@ jobs:
           go-version: 1.20.x
 
       - name: Run zb
+        id: bench
         run: |
             make binary
             make bench
@@ -59,3 +68,188 @@ jobs:
 
             # clean zot storage
             sudo rm -rf /tmp/zot
+        continue-on-error: true
+
+      - name: Check on failures
+        if: steps.bench.outcome != 'success'
+        run: |
+          cat /tmp/gc-bench-local.log
+          exit 1
+          
+  gc-referrers-stress-s3:
+    name: GC(with referrers) on S3(minio) with short interval
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/clean-runner
+      - uses: actions/setup-go@v4
+        with:
+          cache: false
+          go-version: 1.20.x
+      - name: Setup localstack service
+        run: |
+            pip install localstack                    # Install LocalStack cli
+            docker pull localstack/localstack:1.3     # Make sure to pull the latest version of the image
+            localstack start -d                       # Start LocalStack in the background
+            
+            echo "Waiting for LocalStack startup..."  # Wait 30 seconds for the LocalStack container
+            localstack wait -t 30                     # to become ready before timing out 
+            echo "Startup complete"
+            
+            # aws --endpoint-url=http://localhost:4566 s3api create-bucket --bucket zot-storage --region us-east-2 --create-bucket-configuration="{\"LocationConstraint\": \"us-east-2\"}"
+            aws dynamodb --endpoint-url http://localhost:4566 --region "us-east-2" create-table --table-name BlobTable --attribute-definitions AttributeName=Digest,AttributeType=S --key-schema AttributeName=Digest,KeyType=HASH --provisioned-throughput ReadCapacityUnits=10,WriteCapacityUnits=5
+        env:
+          AWS_ACCESS_KEY_ID: fake
+          AWS_SECRET_ACCESS_KEY: fake
+      - name: Setup minio service
+        run: |
+            docker run -d -p 9000:9000 --name minio \
+                -e "MINIO_ACCESS_KEY=minioadmin" \
+                -e "MINIO_SECRET_KEY=minioadmin" \
+                -v /tmp/data:/data \
+                -v /tmp/config:/root/.minio \
+                --health-cmd "curl http://localhost:9000/minio/health/live" \
+                minio/minio:edge-cicd server /data
+      - name: Install py minio
+        run: pip3 install minio
+
+      - name: Wait for minio to come up
+        run: |
+          sleep 10
+          curl --connect-timeout 5 \
+            --max-time 120 \
+            --retry 12 \
+            --retry-max-time 120 \
+            'http://localhost:9000/minio/health/live'
+
+      - name: Create minio bucket
+        run: |
+            python3 - <<'EOF'
+            from minio import Minio
+
+            try:
+                minio = Minio(
+                    'localhost:9000',
+                    access_key='minioadmin',
+                    secret_key='minioadmin',
+                    secure=False
+                )
+            except Exception as ex:
+                raise
+
+            minio.make_bucket('zot-storage')
+            print(f'{minio.list_buckets()}')
+            EOF
+
+      - name: Run zb
+        id: bench
+        run: |
+            make binary
+            make bench
+            ./bin/zot-linux-amd64 serve test/gc-stress/config-gc-referrers-bench-s3-minio.json &
+            sleep 10
+            bin/zb-linux-amd64 -c 10 -n 100 -o ci-cd http://localhost:8080
+
+            killall -r zot-*
+
+            # clean zot storage
+            sudo rm -rf /tmp/zot
+        env:
+          AWS_ACCESS_KEY_ID: fake
+          AWS_SECRET_ACCESS_KEY: fake
+        continue-on-error: true
+
+      - name: Check on failures
+        if: steps.bench.outcome != 'success'
+        run: |
+          cat /tmp/gc-referrers-bench-s3.log
+          exit 1
+
+  gc-stress-s3:
+    name: GC(without referrers) on S3(minio) with short interval
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/clean-runner
+      - uses: actions/setup-go@v4
+        with:
+          cache: false
+          go-version: 1.20.x
+      - name: Setup localstack service
+        run: |
+            pip install localstack                    # Install LocalStack cli
+            docker pull localstack/localstack:1.3     # Make sure to pull the latest version of the image
+            localstack start -d                       # Start LocalStack in the background
+            
+            echo "Waiting for LocalStack startup..."  # Wait 30 seconds for the LocalStack container
+            localstack wait -t 30                     # to become ready before timing out 
+            echo "Startup complete"
+            
+            # aws --endpoint-url=http://localhost:4566 s3api create-bucket --bucket zot-storage --region us-east-2 --create-bucket-configuration="{\"LocationConstraint\": \"us-east-2\"}"
+            aws dynamodb --endpoint-url http://localhost:4566 --region "us-east-2" create-table --table-name BlobTable --attribute-definitions AttributeName=Digest,AttributeType=S --key-schema AttributeName=Digest,KeyType=HASH --provisioned-throughput ReadCapacityUnits=10,WriteCapacityUnits=5
+        env:
+          AWS_ACCESS_KEY_ID: fake
+          AWS_SECRET_ACCESS_KEY: fake
+      - name: Setup minio service
+        run: |
+            docker run -d -p 9000:9000 --name minio \
+                -e "MINIO_ACCESS_KEY=minioadmin" \
+                -e "MINIO_SECRET_KEY=minioadmin" \
+                -v /tmp/data:/data \
+                -v /tmp/config:/root/.minio \
+                --health-cmd "curl http://localhost:9000/minio/health/live" \
+                minio/minio:edge-cicd server /data
+      - name: Install py minio
+        run: pip3 install minio
+
+      - name: Wait for minio to come up
+        run: |
+          sleep 10
+          curl --connect-timeout 5 \
+            --max-time 120 \
+            --retry 12 \
+            --retry-max-time 120 \
+            'http://localhost:9000/minio/health/live'
+
+      - name: Create minio bucket
+        run: |
+            python3 - <<'EOF'
+            from minio import Minio
+
+            try:
+                minio = Minio(
+                    'localhost:9000',
+                    access_key='minioadmin',
+                    secret_key='minioadmin',
+                    secure=False
+                )
+            except Exception as ex:
+                raise
+
+            minio.make_bucket('zot-storage')
+            print(f'{minio.list_buckets()}')
+            EOF
+
+      - name: Run zb
+        id: bench
+        run: |
+            make binary
+            make bench
+            ./bin/zot-linux-amd64 serve test/gc-stress/config-gc-bench-s3-minio.json &
+            sleep 10
+            bin/zb-linux-amd64 -c 10 -n 100 -o ci-cd http://localhost:8080
+
+            killall -r zot-*
+
+            # clean zot storage
+            sudo rm -rf /tmp/zot
+        env:
+          AWS_ACCESS_KEY_ID: fake
+          AWS_SECRET_ACCESS_KEY: fake
+        continue-on-error: true
+
+      - name: Check on failures
+        if: steps.bench.outcome != 'success'
+        run: |
+          cat /tmp/gc-bench-s3.log
+          exit 1
