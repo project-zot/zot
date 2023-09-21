@@ -50,7 +50,7 @@ type MockedImageStore struct {
 	RunGCPeriodicallyFn          func(interval time.Duration, sch *scheduler.Scheduler)
 	RunDedupeBlobsFn             func(interval time.Duration, sch *scheduler.Scheduler)
 	RunDedupeForDigestFn         func(digest godigest.Digest, dedupe bool, duplicateBlobs []string) error
-	GetNextDigestWithBlobPathsFn func(lastDigests []godigest.Digest) (godigest.Digest, []string, error)
+	GetNextDigestWithBlobPathsFn func(repos []string, lastDigests []godigest.Digest) (godigest.Digest, []string, error)
 	GetAllBlobsFn                func(repo string) ([]string, error)
 	CleanupRepoFn                func(repo string, blobs []godigest.Digest, removeRepo bool) (int, error)
 	PutIndexContentFn            func(repo string, index ispec.Index) error
@@ -372,10 +372,10 @@ func (is MockedImageStore) RunDedupeForDigest(digest godigest.Digest, dedupe boo
 	return nil
 }
 
-func (is MockedImageStore) GetNextDigestWithBlobPaths(lastDigests []godigest.Digest,
+func (is MockedImageStore) GetNextDigestWithBlobPaths(repos []string, lastDigests []godigest.Digest,
 ) (godigest.Digest, []string, error) {
 	if is.GetNextDigestWithBlobPathsFn != nil {
-		return is.GetNextDigestWithBlobPathsFn(lastDigests)
+		return is.GetNextDigestWithBlobPathsFn(repos, lastDigests)
 	}
 
 	return "", []string{}, nil

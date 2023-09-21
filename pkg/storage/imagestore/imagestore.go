@@ -299,6 +299,12 @@ func (is *ImageStore) GetRepositories() ([]string, error) {
 			return nil
 		}
 
+		// skip .sync and .uploads dirs no need to try to validate them
+		if strings.HasSuffix(fileInfo.Path(), syncConstants.SyncBlobUploadDir) ||
+			strings.HasSuffix(fileInfo.Path(), storageConstants.BlobUploadDir) {
+			return driver.ErrSkipDir
+		}
+
 		rel, err := filepath.Rel(is.rootDir, fileInfo.Path())
 		if err != nil {
 			return nil //nolint:nilerr // ignore paths that are not under root dir
@@ -1647,7 +1653,8 @@ func (is *ImageStore) GetAllBlobs(repo string) ([]string, error) {
 	return ret, nil
 }
 
-func (is *ImageStore) GetNextDigestWithBlobPaths(lastDigests []godigest.Digest) (godigest.Digest, []string, error) {
+func (is *ImageStore) GetNextDigestWithBlobPaths(repos []string, lastDigests []godigest.Digest,
+) (godigest.Digest, []string, error) {
 	var lockLatency time.Time
 
 	dir := is.rootDir
@@ -1660,13 +1667,19 @@ func (is *ImageStore) GetNextDigestWithBlobPaths(lastDigests []godigest.Digest) 
 	var digest godigest.Digest
 
 	err := is.storeDriver.Walk(dir, func(fileInfo driver.FileInfo) error {
-		// skip blobs under .sync
-		if strings.HasSuffix(fileInfo.Path(), syncConstants.SyncBlobUploadDir) {
+		// skip blobs under .sync and .uploads
+		if strings.HasSuffix(fileInfo.Path(), syncConstants.SyncBlobUploadDir) ||
+			strings.HasSuffix(fileInfo.Path(), storageConstants.BlobUploadDir) {
 			return driver.ErrSkipDir
 		}
 
 		if fileInfo.IsDir() {
-			return nil
+			// skip repositories not found in repos
+			repo := path.Base(fileInfo.Path())
+
+			if !zcommon.Contains(repos, repo) && repo != "blobs" && repo != "sha256" {
+				return driver.ErrSkipDir
+			}
 		}
 
 		blobDigest := godigest.NewDigestFromEncoded("sha256", path.Base(fileInfo.Path()))

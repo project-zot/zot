@@ -259,7 +259,7 @@ func (gc GarbageCollect) cleanReferrer(repo string, index *ispec.Index, manifest
 		}
 
 		if !referenced {
-			gced, err = gc.gcManifest(repo, index, manifestDesc, signatureType, subject.Digest)
+			gced, err = gc.gcManifest(repo, index, manifestDesc, signatureType, subject.Digest, gc.opts.Delay)
 			if err != nil {
 				return false, err
 			}
@@ -275,7 +275,7 @@ func (gc GarbageCollect) cleanReferrer(repo string, index *ispec.Index, manifest
 			referenced := isManifestReferencedInIndex(index, subjectDigest)
 
 			if !referenced {
-				gced, err = gc.gcManifest(repo, index, manifestDesc, storage.CosignType, subjectDigest)
+				gced, err = gc.gcManifest(repo, index, manifestDesc, storage.CosignType, subjectDigest, gc.opts.Delay)
 				if err != nil {
 					return false, err
 				}
@@ -288,11 +288,11 @@ func (gc GarbageCollect) cleanReferrer(repo string, index *ispec.Index, manifest
 
 // gcManifest removes a manifest entry from an index and syncs metaDB accordingly if the blob is older than gc.Delay.
 func (gc GarbageCollect) gcManifest(repo string, index *ispec.Index, desc ispec.Descriptor,
-	signatureType string, subjectDigest godigest.Digest,
+	signatureType string, subjectDigest godigest.Digest, delay time.Duration,
 ) (bool, error) {
 	var gced bool
 
-	canGC, err := isBlobOlderThan(gc.imgStore, repo, desc.Digest, gc.opts.Delay, gc.log)
+	canGC, err := isBlobOlderThan(gc.imgStore, repo, desc.Digest, delay, gc.log)
 	if err != nil {
 		gc.log.Error().Err(err).Str("repository", repo).Str("digest", desc.Digest.String()).
 			Str("delay", gc.opts.Delay.String()).Msg("gc: failed to check if blob is older than delay")
@@ -370,7 +370,7 @@ func (gc GarbageCollect) cleanUntaggedManifests(repo string, index *ispec.Index,
 		if desc.MediaType == ispec.MediaTypeImageManifest || desc.MediaType == ispec.MediaTypeImageIndex {
 			_, ok := desc.Annotations[ispec.AnnotationRefName]
 			if !ok {
-				gced, err = gc.gcManifest(repo, index, desc, "", "")
+				gced, err = gc.gcManifest(repo, index, desc, "", "", gc.opts.RetentionDelay)
 				if err != nil {
 					return false, err
 				}
