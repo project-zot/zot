@@ -9,12 +9,11 @@ import (
 	"github.com/spf13/cobra"
 
 	zerr "zotregistry.io/zot/errors"
-	"zotregistry.io/zot/pkg/cli/cmdflags"
 	zcommon "zotregistry.io/zot/pkg/common"
 )
 
 func NewImageListCommand(searchService SearchService) *cobra.Command {
-	imageListSortFlag := cmdflags.ImageListSortFlag(cmdflags.SortByAlphabeticAsc)
+	imageListSortFlag := ImageListSortFlag(SortByAlphabeticAsc)
 
 	cmd := &cobra.Command{
 		Use:   "list",
@@ -35,8 +34,8 @@ func NewImageListCommand(searchService SearchService) *cobra.Command {
 		},
 	}
 
-	cmd.Flags().Var(&imageListSortFlag, cmdflags.SortByFlag,
-		fmt.Sprintf("Options for sorting the output: [%s]", cmdflags.ImageListSortOptionsStr()))
+	cmd.Flags().Var(&imageListSortFlag, SortByFlag,
+		fmt.Sprintf("Options for sorting the output: [%s]", ImageListSortOptionsStr()))
 
 	return cmd
 }
@@ -44,7 +43,7 @@ func NewImageListCommand(searchService SearchService) *cobra.Command {
 func NewImageCVEListCommand(searchService SearchService) *cobra.Command {
 	var (
 		searchedCVEID   string
-		cveListSortFlag = cmdflags.CVEListSortFlag(cmdflags.SortBySeverity)
+		cveListSortFlag = CVEListSortFlag(SortBySeverity)
 	)
 
 	cmd := &cobra.Command{
@@ -68,15 +67,15 @@ func NewImageCVEListCommand(searchService SearchService) *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringVar(&searchedCVEID, cmdflags.SearchedCVEID, "", "Search for a specific CVE by name/id")
-	cmd.Flags().Var(&cveListSortFlag, cmdflags.SortByFlag,
-		fmt.Sprintf("Options for sorting the output: [%s]", cmdflags.CVEListSortOptionsStr()))
+	cmd.Flags().StringVar(&searchedCVEID, SearchedCVEID, "", "Search for a specific CVE by name/id")
+	cmd.Flags().Var(&cveListSortFlag, SortByFlag,
+		fmt.Sprintf("Options for sorting the output: [%s]", CVEListSortOptionsStr()))
 
 	return cmd
 }
 
 func NewImageDerivedCommand(searchService SearchService) *cobra.Command {
-	imageListSortFlag := cmdflags.ImageListSortFlag(cmdflags.SortByAlphabeticAsc)
+	imageListSortFlag := ImageListSortFlag(SortByAlphabeticAsc)
 
 	cmd := &cobra.Command{
 		Use:   "derived [repo-name:tag]|[repo-name@digest]",
@@ -97,14 +96,14 @@ func NewImageDerivedCommand(searchService SearchService) *cobra.Command {
 		},
 	}
 
-	cmd.Flags().Var(&imageListSortFlag, cmdflags.SortByFlag,
-		fmt.Sprintf("Options for sorting the output: [%s]", cmdflags.ImageListSortOptionsStr()))
+	cmd.Flags().Var(&imageListSortFlag, SortByFlag,
+		fmt.Sprintf("Options for sorting the output: [%s]", ImageListSortOptionsStr()))
 
 	return cmd
 }
 
 func NewImageBaseCommand(searchService SearchService) *cobra.Command {
-	imageListSortFlag := cmdflags.ImageListSortFlag(cmdflags.SortByAlphabeticAsc)
+	imageListSortFlag := ImageListSortFlag(SortByAlphabeticAsc)
 
 	cmd := &cobra.Command{
 		Use:   "base [repo-name:tag]|[repo-name@digest]",
@@ -125,14 +124,14 @@ func NewImageBaseCommand(searchService SearchService) *cobra.Command {
 		},
 	}
 
-	cmd.Flags().Var(&imageListSortFlag, cmdflags.SortByFlag,
-		fmt.Sprintf("Options for sorting the output: [%s]", cmdflags.ImageListSortOptionsStr()))
+	cmd.Flags().Var(&imageListSortFlag, SortByFlag,
+		fmt.Sprintf("Options for sorting the output: [%s]", ImageListSortOptionsStr()))
 
 	return cmd
 }
 
 func NewImageDigestCommand(searchService SearchService) *cobra.Command {
-	imageListSortFlag := cmdflags.ImageListSortFlag(cmdflags.SortByAlphabeticAsc)
+	imageListSortFlag := ImageListSortFlag(SortByAlphabeticAsc)
 
 	cmd := &cobra.Command{
 		Use:   "digest [digest]",
@@ -155,14 +154,14 @@ zli image digest sha256:8a1930f0...`,
 		},
 	}
 
-	cmd.Flags().Var(&imageListSortFlag, cmdflags.SortByFlag,
-		fmt.Sprintf("Options for sorting the output: [%s]", cmdflags.ImageListSortOptionsStr()))
+	cmd.Flags().Var(&imageListSortFlag, SortByFlag,
+		fmt.Sprintf("Options for sorting the output: [%s]", ImageListSortOptionsStr()))
 
 	return cmd
 }
 
 func NewImageNameCommand(searchService SearchService) *cobra.Command {
-	imageListSortFlag := cmdflags.ImageListSortFlag(cmdflags.SortByAlphabeticAsc)
+	imageListSortFlag := ImageListSortFlag(SortByAlphabeticAsc)
 
 	cmd := &cobra.Command{
 		Use:   "name [repo:tag]",
@@ -195,8 +194,8 @@ func NewImageNameCommand(searchService SearchService) *cobra.Command {
 		},
 	}
 
-	cmd.Flags().Var(&imageListSortFlag, cmdflags.SortByFlag,
-		fmt.Sprintf("Options for sorting the output: [%s]", cmdflags.ImageListSortOptionsStr()))
+	cmd.Flags().Var(&imageListSortFlag, SortByFlag,
+		fmt.Sprintf("Options for sorting the output: [%s]", ImageListSortOptionsStr()))
 
 	return cmd
 }

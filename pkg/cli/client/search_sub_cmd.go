@@ -9,12 +9,11 @@ import (
 	"github.com/spf13/cobra"
 
 	zerr "zotregistry.io/zot/errors"
-	"zotregistry.io/zot/pkg/cli/cmdflags"
 	zcommon "zotregistry.io/zot/pkg/common"
 )
 
 func NewSearchSubjectCommand(searchService SearchService) *cobra.Command {
-	imageListSortFlag := cmdflags.ImageListSortFlag(cmdflags.SortByAlphabeticAsc)
+	imageListSortFlag := ImageListSortFlag(SortByAlphabeticAsc)
 
 	cmd := &cobra.Command{
 		Use:   "subject [repo:tag]|[repo@digest]",
@@ -39,14 +38,14 @@ func NewSearchSubjectCommand(searchService SearchService) *cobra.Command {
 		},
 	}
 
-	cmd.Flags().Var(&imageListSortFlag, cmdflags.SortByFlag,
-		fmt.Sprintf("Options for sorting the output: [%s]", cmdflags.ImageListSortOptionsStr()))
+	cmd.Flags().Var(&imageListSortFlag, SortByFlag,
+		fmt.Sprintf("Options for sorting the output: [%s]", ImageListSortOptionsStr()))
 
 	return cmd
 }
 
 func NewSearchQueryCommand(searchService SearchService) *cobra.Command {
-	imageSearchSortFlag := cmdflags.ImageSearchSortFlag(cmdflags.SortByRelevance)
+	imageSearchSortFlag := ImageSearchSortFlag(SortByRelevance)
 
 	cmd := &cobra.Command{
 		Use:   "query [repo]|[repo:tag]",
@@ -54,7 +53,7 @@ func NewSearchQueryCommand(searchService SearchService) *cobra.Command {
 		Long:  "Fuzzy search for repos and their tags.",
 		Example: `# For repo search specify a substring of the repo name without the tag
   zli search query "test/repo"
-	  
+
 # For image search specify the full repo name followed by the tag or a prefix of the tag.
   zli search query "test/repo:2.1."`,
 		Args: cobra.ExactArgs(1),
@@ -82,8 +81,8 @@ func NewSearchQueryCommand(searchService SearchService) *cobra.Command {
 		},
 	}
 
-	cmd.Flags().Var(&imageSearchSortFlag, cmdflags.SortByFlag,
-		fmt.Sprintf("Options for sorting the output: [%s]", cmdflags.ImageSearchSortOptionsStr()))
+	cmd.Flags().Var(&imageSearchSortFlag, SortByFlag,
+		fmt.Sprintf("Options for sorting the output: [%s]", ImageSearchSortOptionsStr()))
 
 	return cmd
 }

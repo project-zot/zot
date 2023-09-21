@@ -22,7 +22,6 @@ import (
 	"github.com/spf13/cobra"
 
 	zerr "zotregistry.io/zot/errors"
-	"zotregistry.io/zot/pkg/cli/cmdflags"
 	"zotregistry.io/zot/pkg/common"
 )
 
@@ -693,7 +692,7 @@ func TestUtils(t *testing.T) {
 		// bad showspinner
 		configPath := makeConfigFile(`{"configs":[{"_name":"imagetest","showspinner":"bad", "verify-tls": false}]}`)
 		cmd = &cobra.Command{}
-		cmd.Flags().String(cmdflags.ConfigFlag, "imagetest", "")
+		cmd.Flags().String(ConfigFlag, "imagetest", "")
 		isSpinner, verifyTLS, err = GetCliConfigOptions(cmd)
 		So(err, ShouldNotBeNil)
 		So(isSpinner, ShouldBeFalse)
@@ -703,7 +702,7 @@ func TestUtils(t *testing.T) {
 		// bad verify-tls
 		configPath = makeConfigFile(`{"configs":[{"_name":"imagetest","showspinner":false, "verify-tls": "bad"}]}`)
 		cmd = &cobra.Command{}
-		cmd.Flags().String(cmdflags.ConfigFlag, "imagetest", "")
+		cmd.Flags().String(ConfigFlag, "imagetest", "")
 		isSpinner, verifyTLS, err = GetCliConfigOptions(cmd)
 		So(err, ShouldNotBeNil)
 		So(isSpinner, ShouldBeFalse)
@@ -713,7 +712,7 @@ func TestUtils(t *testing.T) {
 
 	Convey("GetServerURLFromFlags", t, func() {
 		cmd := &cobra.Command{}
-		cmd.Flags().String(cmdflags.URLFlag, "url", "")
+		cmd.Flags().String(URLFlag, "url", "")
 		url, err := GetServerURLFromFlags(cmd)
 		So(url, ShouldResemble, "url")
 		So(err, ShouldBeNil)
@@ -727,7 +726,7 @@ func TestUtils(t *testing.T) {
 		// err ulr from config is empty
 		configPath := makeConfigFile(`{"configs":[{"_name":"imagetest"}]}`)
 		cmd = &cobra.Command{}
-		cmd.Flags().String(cmdflags.ConfigFlag, "imagetest", "")
+		cmd.Flags().String(ConfigFlag, "imagetest", "")
 		url, err = GetServerURLFromFlags(cmd)
 		So(url, ShouldResemble, "")
 		So(err, ShouldNotBeNil)
@@ -736,7 +735,7 @@ func TestUtils(t *testing.T) {
 		// err reading the server url from config
 		configPath = makeConfigFile("{}")
 		cmd = &cobra.Command{}
-		cmd.Flags().String(cmdflags.ConfigFlag, "imagetest", "")
+		cmd.Flags().String(ConfigFlag, "imagetest", "")
 		url, err = GetServerURLFromFlags(cmd)
 		So(url, ShouldResemble, "")
 		So(err, ShouldNotBeNil)

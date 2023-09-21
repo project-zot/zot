@@ -303,7 +303,7 @@ func validateExtensionsConfig(cfg *config.Config, log zlog.Logger) error {
 		// it would make sense to also check for mgmt and user prefs to be enabled,
 		// but those are both enabled by having the search and ui extensions enabled
 		if cfg.Extensions.Search == nil || !*cfg.Extensions.Search.Enable {
-			log.Warn().Err(zerr.ErrBadConfig).Msg("UI functionality can't be used without search extension.")
+			log.Error().Err(zerr.ErrBadConfig).Msg("UI functionality can't be used without search extension.")
 
 			return zerr.ErrBadConfig
 		}
@@ -312,7 +312,7 @@ func validateExtensionsConfig(cfg *config.Config, log zlog.Logger) error {
 	//nolint:lll
 	if cfg.Storage.StorageDriver != nil && cfg.Extensions != nil && cfg.Extensions.Search != nil &&
 		cfg.Extensions.Search.Enable != nil && *cfg.Extensions.Search.Enable && cfg.Extensions.Search.CVE != nil {
-		log.Warn().Err(zerr.ErrBadConfig).Msg("CVE functionality can't be used with remote storage. Please disable CVE")
+		log.Error().Err(zerr.ErrBadConfig).Msg("CVE functionality can't be used with remote storage. Please disable CVE")
 
 		return zerr.ErrBadConfig
 	}
@@ -321,7 +321,7 @@ func validateExtensionsConfig(cfg *config.Config, log zlog.Logger) error {
 		//nolint:lll
 		if subPath.StorageDriver != nil && cfg.Extensions != nil && cfg.Extensions.Search != nil &&
 			cfg.Extensions.Search.Enable != nil && *cfg.Extensions.Search.Enable && cfg.Extensions.Search.CVE != nil {
-			log.Warn().Err(zerr.ErrBadConfig).Msg("CVE functionality can't be used with remote storage. Please disable CVE")
+			log.Error().Err(zerr.ErrBadConfig).Msg("CVE functionality can't be used with remote storage. Please disable CVE")
 
 			return zerr.ErrBadConfig
 		}

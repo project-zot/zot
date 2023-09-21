@@ -18,7 +18,6 @@ import (
 
 	zerr "zotregistry.io/zot/errors"
 	"zotregistry.io/zot/pkg/api/constants"
-	"zotregistry.io/zot/pkg/cli/cmdflags"
 )
 
 const (
@@ -370,12 +369,12 @@ func GetSearchConfigFromFlags(cmd *cobra.Command, searchService SearchService) (
 	}
 
 	flags := cmd.Flags()
-	user := defaultIfError(flags.GetString(cmdflags.UserFlag))
-	fixed := defaultIfError(flags.GetBool(cmdflags.FixedFlag))
-	debug := defaultIfError(flags.GetBool(cmdflags.DebugFlag))
-	verbose := defaultIfError(flags.GetBool(cmdflags.VerboseFlag))
-	outputFormat := defaultIfError(flags.GetString(cmdflags.OutputFormatFlag))
-	sortBy := defaultIfError(flags.GetString(cmdflags.SortByFlag))
+	user := defaultIfError(flags.GetString(UserFlag))
+	fixed := defaultIfError(flags.GetBool(FixedFlag))
+	debug := defaultIfError(flags.GetBool(DebugFlag))
+	verbose := defaultIfError(flags.GetBool(VerboseFlag))
+	outputFormat := defaultIfError(flags.GetString(OutputFormatFlag))
+	sortBy := defaultIfError(flags.GetString(SortByFlag))
 
 	spin := spinner.New(spinner.CharSets[39], spinnerDuration, spinner.WithWriter(cmd.ErrOrStderr()))
 	spin.Prefix = prefix
@@ -406,7 +405,7 @@ func defaultIfError[T any](out T, err error) T {
 }
 
 func GetCliConfigOptions(cmd *cobra.Command) (bool, bool, error) {
-	configName, err := cmd.Flags().GetString(cmdflags.ConfigFlag)
+	configName, err := cmd.Flags().GetString(ConfigFlag)
 	if err != nil {
 		return false, false, err
 	}
@@ -436,19 +435,18 @@ func GetCliConfigOptions(cmd *cobra.Command) (bool, bool, error) {
 }
 
 func GetServerURLFromFlags(cmd *cobra.Command) (string, error) {
-	serverURL, err := cmd.Flags().GetString(cmdflags.URLFlag)
+	serverURL, err := cmd.Flags().GetString(URLFlag)
 	if err == nil && serverURL != "" {
 		return serverURL, nil
 	}
 
-	configName, err := cmd.Flags().GetString(cmdflags.ConfigFlag)
+	configName, err := cmd.Flags().GetString(ConfigFlag)
 	if err != nil {
 		return "", err
 	}
 
 	if configName == "" {
-		return "", fmt.Errorf("%w: specify either '--%s' or '--%s' flags", zerr.ErrNoURLProvided, cmdflags.URLFlag,
-			cmdflags.ConfigFlag)
+		return "", fmt.Errorf("%w: specify either '--%s' or '--%s' flags", zerr.ErrNoURLProvided, URLFlag, ConfigFlag)
 	}
 
 	serverURL, err = ReadServerURLFromConfig(configName)
