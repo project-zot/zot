@@ -641,7 +641,7 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 			})
 		})
 
-		Convey("Test DeleteRepoTag", func() {
+		Convey("Test RemoveRepoReference and DeleteRepoTag", func() {
 			var (
 				repo            = "repo1"
 				tag1            = "0.0.1"
@@ -655,6 +655,62 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 
 			err = metaDB.SetRepoReference(repo, tag2, manifestDigest2, ispec.MediaTypeImageManifest)
 			So(err, ShouldBeNil)
+
+			Convey("Delete reference from repo", func() {
+				_, err := metaDB.GetRepoMeta(repo)
+				So(err, ShouldBeNil)
+
+				err = metaDB.RemoveRepoReference(repo, tag1, manifestDigest1)
+				So(err, ShouldBeNil)
+
+				repoMeta, err := metaDB.GetRepoMeta(repo)
+				So(err, ShouldBeNil)
+
+				_, ok := repoMeta.Tags[tag1]
+				So(ok, ShouldBeFalse)
+				So(repoMeta.Tags[tag2].Digest, ShouldResemble, manifestDigest2.String())
+			})
+
+			Convey("Delete a reference from repo", func() {
+				_, err := metaDB.GetRepoMeta(repo)
+				So(err, ShouldBeNil)
+
+				// shouldn't do anything because there is tag1 pointing to it
+				err = metaDB.RemoveRepoReference(repo, manifestDigest1.String(), manifestDigest1)
+				So(err, ShouldBeNil)
+
+				repoMeta, err := metaDB.GetRepoMeta(repo)
+				So(err, ShouldBeNil)
+
+				_, ok := repoMeta.Tags[tag1]
+				So(ok, ShouldBeFalse)
+				So(repoMeta.Tags[tag2].Digest, ShouldResemble, manifestDigest2.String())
+			})
+
+			Convey("Delete inexistent reference from repo", func() {
+				inexistentDigest := godigest.FromBytes([]byte("inexistent"))
+				err := metaDB.RemoveRepoReference(repo, inexistentDigest.String(), inexistentDigest)
+				So(err, ShouldBeNil)
+
+				repoMeta, err := metaDB.GetRepoMeta(repo)
+				So(err, ShouldBeNil)
+
+				So(repoMeta.Tags[tag1].Digest, ShouldResemble, manifestDigest1.String())
+				So(repoMeta.Tags[tag2].Digest, ShouldResemble, manifestDigest2.String())
+			})
+
+			Convey("Delete reference from inexistent repo", func() {
+				inexistentDigest := godigest.FromBytes([]byte("inexistent"))
+
+				err := metaDB.RemoveRepoReference("InexistentRepo", inexistentDigest.String(), inexistentDigest)
+				So(err, ShouldBeNil)
+
+				repoMeta, err := metaDB.GetRepoMeta(repo)
+				So(err, ShouldBeNil)
+
+				So(repoMeta.Tags[tag1].Digest, ShouldResemble, manifestDigest1.String())
+				So(repoMeta.Tags[tag2].Digest, ShouldResemble, manifestDigest2.String())
+			})
 
 			Convey("Delete from repo a tag", func() {
 				_, err := metaDB.GetRepoMeta(repo)
@@ -682,7 +738,7 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 				So(repoMeta.Tags[tag2].Digest, ShouldResemble, manifestDigest2.String())
 			})
 
-			Convey("Delete from inexistent repo", func() {
+			Convey("Delete tag from inexistent repo", func() {
 				err := metaDB.DeleteRepoTag("InexistentRepo", "InexistentTag")
 				So(err, ShouldBeNil)
 

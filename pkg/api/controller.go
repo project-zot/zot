@@ -29,6 +29,7 @@ import (
 	mTypes "zotregistry.io/zot/pkg/meta/types"
 	"zotregistry.io/zot/pkg/scheduler"
 	"zotregistry.io/zot/pkg/storage"
+	"zotregistry.io/zot/pkg/storage/gc"
 )
 
 const (
@@ -338,7 +339,13 @@ func (c *Controller) StartBackgroundTasks(reloadCtx context.Context) {
 
 	// Enable running garbage-collect periodically for DefaultStore
 	if c.Config.Storage.GC {
-		c.StoreController.DefaultStore.RunGCPeriodically(c.Config.Storage.GCInterval, taskScheduler)
+		gc := gc.NewGarbageCollect(c.StoreController.DefaultStore, c.MetaDB, gc.Options{
+			Referrers:      c.Config.Storage.GCReferrers,
+			Delay:          c.Config.Storage.GCDelay,
+			RetentionDelay: c.Config.Storage.UntaggedImageRetentionDelay,
+		}, c.Log)
+
+		gc.CleanImageStorePeriodically(c.Config.Storage.GCInterval, taskScheduler)
 	}
 
 	// Enable running dedupe blobs both ways (dedupe or restore deduped blobs)
@@ -354,7 +361,14 @@ func (c *Controller) StartBackgroundTasks(reloadCtx context.Context) {
 		for route, storageConfig := range c.Config.Storage.SubPaths {
 			// Enable running garbage-collect periodically for subImageStore
 			if storageConfig.GC {
-				c.StoreController.SubStore[route].RunGCPeriodically(storageConfig.GCInterval, taskScheduler)
+				gc := gc.NewGarbageCollect(c.StoreController.SubStore[route], c.MetaDB,
+					gc.Options{
+						Referrers:      storageConfig.GCReferrers,
+						Delay:          storageConfig.GCDelay,
+						RetentionDelay: storageConfig.UntaggedImageRetentionDelay,
+					}, c.Log)
+
+				gc.CleanImageStorePeriodically(storageConfig.GCInterval, taskScheduler)
 			}
 
 			// Enable extensions if extension config is provided for subImageStore

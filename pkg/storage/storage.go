@@ -52,7 +52,6 @@ func New(config *config.Config, linter common.Lint, metrics monitoring.MetricSer
 		//nolint:typecheck,contextcheck
 		rootDir := config.Storage.RootDirectory
 		defaultStore = local.NewImageStore(rootDir,
-			config.Storage.GC, config.Storage.GCReferrers, config.Storage.GCDelay, config.Storage.UntaggedImageRetentionDelay,
 			config.Storage.Dedupe, config.Storage.Commit, log, metrics, linter,
 			CreateCacheDatabaseDriver(config.Storage.StorageConfig, log),
 		)
@@ -80,9 +79,7 @@ func New(config *config.Config, linter common.Lint, metrics monitoring.MetricSer
 		// false positive lint - linter does not implement Lint method
 		//nolint: typecheck,contextcheck
 		defaultStore = s3.NewImageStore(rootDir, config.Storage.RootDirectory,
-			config.Storage.GC, config.Storage.GCReferrers, config.Storage.GCDelay,
-			config.Storage.UntaggedImageRetentionDelay, config.Storage.Dedupe,
-			config.Storage.Commit, log, metrics, linter, store,
+			config.Storage.Dedupe, config.Storage.Commit, log, metrics, linter, store,
 			CreateCacheDatabaseDriver(config.Storage.StorageConfig, log))
 	}
 
@@ -155,9 +152,7 @@ func getSubStore(cfg *config.Config, subPaths map[string]config.StorageConfig,
 			if isUnique {
 				rootDir := storageConfig.RootDirectory
 				imgStoreMap[storageConfig.RootDirectory] = local.NewImageStore(rootDir,
-					storageConfig.GC, storageConfig.GCReferrers, storageConfig.GCDelay,
-					storageConfig.UntaggedImageRetentionDelay, storageConfig.Dedupe,
-					storageConfig.Commit, log, metrics, linter,
+					storageConfig.Dedupe, storageConfig.Commit, log, metrics, linter,
 					CreateCacheDatabaseDriver(storageConfig, log),
 				)
 
@@ -188,9 +183,7 @@ func getSubStore(cfg *config.Config, subPaths map[string]config.StorageConfig,
 			// false positive lint - linter does not implement Lint method
 			//nolint: typecheck
 			subImageStore[route] = s3.NewImageStore(rootDir, storageConfig.RootDirectory,
-				storageConfig.GC, storageConfig.GCReferrers, storageConfig.GCDelay,
-				storageConfig.UntaggedImageRetentionDelay, storageConfig.Dedupe,
-				storageConfig.Commit, log, metrics, linter, store,
+				storageConfig.Dedupe, storageConfig.Commit, log, metrics, linter, store,
 				CreateCacheDatabaseDriver(storageConfig, log),
 			)
 		}

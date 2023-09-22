@@ -544,7 +544,7 @@ func TestChangingRepoState(t *testing.T) {
 	}
 
 	// ------ Create the test repos
-	defaultStore := local.NewImageStore(conf.Storage.RootDirectory, false, false, 0, 0, false, false,
+	defaultStore := local.NewImageStore(conf.Storage.RootDirectory, false, false,
 		log.NewLogger("debug", ""), monitoring.NewMetricsServer(false, log.NewLogger("debug", "")), nil, nil)
 
 	err = WriteImageToFileSystem(img, accesibleRepo, "tag", storage.StoreController{

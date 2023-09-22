@@ -287,7 +287,18 @@ func (driver *Driver) Link(src, dest string) error {
 		return err
 	}
 
-	return driver.formatErr(os.Link(src, dest))
+	if err := os.Link(src, dest); err != nil {
+		return driver.formatErr(err)
+	}
+
+	/* also update the modtime, so that gc won't remove recently linked blobs
+	otherwise ifBlobOlderThan(gcDelay) will return the modtime of the inode */
+	currentTime := time.Now().Local()
+	if err := os.Chtimes(dest, currentTime, currentTime); err != nil {
+		return driver.formatErr(err)
+	}
+
+	return nil
 }
 
 func (driver *Driver) formatErr(err error) error {

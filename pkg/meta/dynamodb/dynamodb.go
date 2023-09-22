@@ -447,6 +447,79 @@ func (dwr DynamoDB) GetReferrersInfo(repo string, referredDigest godigest.Digest
 	return filteredResults, nil
 }
 
+/*
+	RemoveRepoReference removes the tag from RepoMetadata if the reference is a tag,
+
+it also removes its corresponding digest from Statistics, Signatures and Referrers if there are no tags
+pointing to it.
+If the reference is a digest then it will remove the digest from Statistics, Signatures and Referrers only
+if there are no tags pointing to the digest, otherwise it's noop.
+*/
+func (dwr *DynamoDB) RemoveRepoReference(repo, reference string, manifestDigest godigest.Digest,
+) error {
+	resp, err := dwr.Client.GetItem(context.TODO(), &dynamodb.GetItemInput{
+		TableName: aws.String(dwr.RepoMetaTablename),
+		Key: map[string]types.AttributeValue{
+			"RepoName": &types.AttributeValueMemberS{Value: repo},
+		},
+	})
+	if err != nil {
+		return err
+	}
+
+	repoMeta := mTypes.RepoMetadata{
+		Name:       repo,
+		Tags:       map[string]mTypes.Descriptor{},
+		Statistics: map[string]mTypes.DescriptorStatistics{},
+		Signatures: map[string]mTypes.ManifestSignatures{},
+		Referrers:  map[string][]mTypes.ReferrerInfo{},
+	}
+
+	if resp.Item != nil {
+		err := attributevalue.Unmarshal(resp.Item["RepoMetadata"], &repoMeta)
+		if err != nil {
+			return err
+		}
+	}
+
+	if !common.ReferenceIsDigest(reference) {
+		delete(repoMeta.Tags, reference)
+	} else {
+		// find all tags pointing to this digest
+		tags := []string{}
+		for tag, desc := range repoMeta.Tags {
+			if desc.Digest == reference {
+				tags = append(tags, tag)
+			}
+		}
+
+		// remove all tags
+		for _, tag := range tags {
+			delete(repoMeta.Tags, tag)
+		}
+	}
+
+	/* try to find at least one tag pointing to manifestDigest
+	if not found then we can also remove everything related to this digest */
+	var foundTag bool
+
+	for _, desc := range repoMeta.Tags {
+		if desc.Digest == manifestDigest.String() {
+			foundTag = true
+		}
+	}
+
+	if !foundTag {
+		delete(repoMeta.Statistics, manifestDigest.String())
+		delete(repoMeta.Signatures, manifestDigest.String())
+		delete(repoMeta.Referrers, manifestDigest.String())
+	}
+
+	err = dwr.SetRepoMeta(repo, repoMeta)
+
+	return err
+}
+
 func (dwr *DynamoDB) SetRepoReference(repo string, reference string, manifestDigest godigest.Digest,
 	mediaType string,
 ) error {

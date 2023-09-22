@@ -21,6 +21,8 @@ type MetaDBMock struct {
 
 	SetRepoReferenceFn func(repo string, Reference string, manifestDigest godigest.Digest, mediaType string) error
 
+	RemoveRepoReferenceFn func(repo, reference string, manifestDigest godigest.Digest) error
+
 	DeleteRepoTagFn func(repo string, tag string) error
 
 	GetRepoMetaFn func(repo string) (mTypes.RepoMetadata, error)
@@ -163,6 +165,14 @@ func (sdm MetaDBMock) SetRepoReference(repo string, reference string, manifestDi
 ) error {
 	if sdm.SetRepoReferenceFn != nil {
 		return sdm.SetRepoReferenceFn(repo, reference, manifestDigest, mediaType)
+	}
+
+	return nil
+}
+
+func (sdm MetaDBMock) RemoveRepoReference(repo, reference string, manifestDigest godigest.Digest) error {
+	if sdm.RemoveRepoReferenceFn != nil {
+		return sdm.RemoveRepoReferenceFn(repo, reference, manifestDigest)
 	}
 
 	return nil

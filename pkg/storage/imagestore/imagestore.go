@@ -41,19 +41,15 @@ const (
 
 // ImageStore provides the image storage operations.
 type ImageStore struct {
-	rootDir        string
-	storeDriver    storageTypes.Driver
-	lock           *sync.RWMutex
-	log            zlog.Logger
-	metrics        monitoring.MetricServer
-	cache          cache.Cache
-	dedupe         bool
-	linter         common.Lint
-	commit         bool
-	gc             bool
-	gcReferrers    bool
-	gcDelay        time.Duration
-	retentionDelay time.Duration
+	rootDir     string
+	storeDriver storageTypes.Driver
+	lock        *sync.RWMutex
+	log         zlog.Logger
+	metrics     monitoring.MetricServer
+	cache       cache.Cache
+	dedupe      bool
+	linter      common.Lint
+	commit      bool
 }
 
 func (is *ImageStore) RootDir() string {
@@ -67,9 +63,8 @@ func (is *ImageStore) DirExists(d string) bool {
 // NewImageStore returns a new image store backed by cloud storages.
 // see https://github.com/docker/docker.github.io/tree/master/registry/storage-drivers
 // Use the last argument to properly set a cache database, or it will default to boltDB local storage.
-func NewImageStore(rootDir string, cacheDir string, gc bool, gcReferrers bool, gcDelay time.Duration,
-	untaggedImageRetentionDelay time.Duration, dedupe, commit bool, log zlog.Logger, metrics monitoring.MetricServer,
-	linter common.Lint, storeDriver storageTypes.Driver, cacheDriver cache.Cache,
+func NewImageStore(rootDir string, cacheDir string, dedupe, commit bool, log zlog.Logger,
+	metrics monitoring.MetricServer, linter common.Lint, storeDriver storageTypes.Driver, cacheDriver cache.Cache,
 ) storageTypes.ImageStore {
 	if err := storeDriver.EnsureDir(rootDir); err != nil {
 		log.Error().Err(err).Str("rootDir", rootDir).Msg("unable to create root dir")
@@ -78,19 +73,15 @@ func NewImageStore(rootDir string, cacheDir string, gc bool, gcReferrers bool, g
 	}
 
 	imgStore := &ImageStore{
-		rootDir:        rootDir,
-		storeDriver:    storeDriver,
-		lock:           &sync.RWMutex{},
-		log:            log,
-		metrics:        metrics,
-		dedupe:         dedupe,
-		linter:         linter,
-		commit:         commit,
-		gc:             gc,
-		gcReferrers:    gcReferrers,
-		gcDelay:        gcDelay,
-		retentionDelay: untaggedImageRetentionDelay,
-		cache:          cacheDriver,
+		rootDir:     rootDir,
+		storeDriver: storeDriver,
+		lock:        &sync.RWMutex{},
+		log:         log,
+		metrics:     metrics,
+		dedupe:      dedupe,
+		linter:      linter,
+		commit:      commit,
+		cache:       cacheDriver,
 	}
 
 	return imgStore
@@ -342,6 +333,12 @@ func (is *ImageStore) GetNextRepository(repo string) (string, error) {
 
 	_, err := is.storeDriver.List(dir)
 	if err != nil {
+		if errors.As(err, &driver.PathNotFoundError{}) {
+			is.log.Debug().Msg("empty rootDir")
+
+			return "", nil
+		}
+
 		is.log.Error().Err(err).Msg("failure walking storage root-dir")
 
 		return "", err
@@ -574,15 +571,6 @@ func (is *ImageStore) PutImageManifest(repo, reference, mediaType string, //noli
 
 	// now update "index.json"
 	index.Manifests = append(index.Manifests, desc)
-	dir = path.Join(is.rootDir, repo)
-	indexPath := path.Join(dir, "index.json")
-
-	buf, err := json.Marshal(index)
-	if err != nil {
-		is.log.Error().Err(err).Str("file", indexPath).Msg("unable to marshal JSON")
-
-		return "", "", err
-	}
 
 	// update the descriptors artifact type in order to check for signatures when applying the linter
 	desc.ArtifactType = artifactType
@@ -595,9 +583,7 @@ func (is *ImageStore) PutImageManifest(repo, reference, mediaType string, //noli
 		return "", "", err
 	}
 
-	if _, err = is.storeDriver.WriteFile(indexPath, buf); err != nil {
-		is.log.Error().Err(err).Str("file", manifestPath).Msg("unable to write")
-
+	if err := is.PutIndexContent(repo, index); err != nil {
 		return "", "", err
 	}
 
@@ -613,18 +599,10 @@ func (is *ImageStore) DeleteImageManifest(repo, reference string, detectCollisio
 
 	var lockLatency time.Time
 
-	var err error
-
 	is.Lock(&lockLatency)
-	defer func() {
-		is.Unlock(&lockLatency)
+	defer is.Unlock(&lockLatency)
 
-		if err == nil {
-			monitoring.SetStorageUsage(is.metrics, is.rootDir, repo)
-		}
-	}()
-
-	err = is.deleteImageManifest(repo, reference, detectCollisions)
+	err := is.deleteImageManifest(repo, reference, detectCollisions)
 	if err != nil {
 		return err
 	}
@@ -633,6 +611,8 @@ func (is *ImageStore) DeleteImageManifest(repo, reference string, detectCollisio
 }
 
 func (is *ImageStore) deleteImageManifest(repo, reference string, detectCollisions bool) error {
+	defer monitoring.SetStorageUsage(is.metrics, is.rootDir, repo)
+
 	index, err := common.GetIndex(is, repo, is.log)
 	if err != nil {
 		return err
@@ -1173,7 +1153,7 @@ func (is *ImageStore) CheckBlob(repo string, digest godigest.Digest) (bool, int6
 	return true, blobSize, nil
 }
 
-// StatBlob verifies if a blob is present inside a repository. The caller function SHOULD lock from outside.
+// StatBlob verifies if a blob is present inside a repository. The caller function MUST lock from outside.
 func (is *ImageStore) StatBlob(repo string, digest godigest.Digest) (bool, int64, time.Time, error) {
 	if err := digest.Validate(); err != nil {
 		return false, -1, time.Time{}, err
@@ -1398,7 +1378,7 @@ func (is *ImageStore) GetBlob(repo string, digest godigest.Digest, mediaType str
 	return blobReadCloser, binfo.Size(), nil
 }
 
-// GetBlobContent returns blob contents, the caller function SHOULD lock from outside.
+// GetBlobContent returns blob contents, the caller function MUST lock from outside.
 func (is *ImageStore) GetBlobContent(repo string, digest godigest.Digest) ([]byte, error) {
 	if err := digest.Validate(); err != nil {
 		return []byte{}, err
@@ -1463,7 +1443,7 @@ func (is *ImageStore) GetOrasReferrers(repo string, gdigest godigest.Digest, art
 	return common.GetOrasReferrers(is, repo, gdigest, artifactType, is.log)
 }
 
-// GetIndexContent returns index.json contents, the caller function SHOULD lock from outside.
+// GetIndexContent returns index.json contents, the caller function MUST lock from outside.
 func (is *ImageStore) GetIndexContent(repo string) ([]byte, error) {
 	dir := path.Join(is.rootDir, repo)
 
@@ -1483,6 +1463,27 @@ func (is *ImageStore) GetIndexContent(repo string) ([]byte, error) {
 	return buf, nil
 }
 
+func (is *ImageStore) PutIndexContent(repo string, index ispec.Index) error {
+	dir := path.Join(is.rootDir, repo)
+
+	indexPath := path.Join(dir, "index.json")
+
+	buf, err := json.Marshal(index)
+	if err != nil {
+		is.log.Error().Err(err).Str("file", indexPath).Msg("unable to marshal JSON")
+
+		return err
+	}
+
+	if _, err = is.storeDriver.WriteFile(indexPath, buf); err != nil {
+		is.log.Error().Err(err).Str("file", indexPath).Msg("unable to write")
+
+		return err
+	}
+
+	return nil
+}
+
 // DeleteBlob removes the blob from the repository.
 func (is *ImageStore) DeleteBlob(repo string, digest godigest.Digest) error {
 	var lockLatency time.Time
@@ -1495,6 +1496,56 @@ func (is *ImageStore) DeleteBlob(repo string, digest godigest.Digest) error {
 	defer is.Unlock(&lockLatency)
 
 	return is.deleteBlob(repo, digest)
+}
+
+/*
+CleanupRepo removes blobs from the repository and removes repo if flag is true and all blobs were removed
+the caller function MUST lock from outside.
+*/
+func (is *ImageStore) CleanupRepo(repo string, blobs []godigest.Digest, removeRepo bool) (int, error) {
+	count := 0
+
+	for _, digest := range blobs {
+		is.log.Debug().Str("repository", repo).Str("digest", digest.String()).Msg("perform GC on blob")
+
+		if err := is.deleteBlob(repo, digest); err != nil {
+			if errors.Is(err, zerr.ErrBlobReferenced) {
+				if err := is.deleteImageManifest(repo, digest.String(), true); err != nil {
+					if errors.Is(err, zerr.ErrManifestConflict) || errors.Is(err, zerr.ErrManifestReferenced) {
+						continue
+					}
+
+					is.log.Error().Err(err).Str("repository", repo).Str("digest", digest.String()).Msg("unable to delete manifest")
+
+					return count, err
+				}
+
+				count++
+			} else {
+				is.log.Error().Err(err).Str("repository", repo).Str("digest", digest.String()).Msg("unable to delete blob")
+
+				return count, err
+			}
+		} else {
+			count++
+		}
+	}
+
+	blobUploads, err := is.storeDriver.List(path.Join(is.RootDir(), repo, storageConstants.BlobUploadDir))
+	if err != nil {
+		is.log.Debug().Str("repository", repo).Msg("unable to list .uploads/ dir")
+	}
+
+	// if removeRepo flag is true and we cleanup all blobs and there are no blobs currently being uploaded.
+	if removeRepo && count == len(blobs) && count > 0 && len(blobUploads) == 0 {
+		if err := is.storeDriver.Delete(path.Join(is.rootDir, repo)); err != nil {
+			is.log.Error().Err(err).Str("repository", repo).Msg("unable to remove repo")
+
+			return count, err
+		}
+	}
+
+	return count, nil
 }
 
 func (is *ImageStore) deleteBlob(repo string, digest godigest.Digest) error {
@@ -1573,362 +1624,17 @@ func (is *ImageStore) deleteBlob(repo string, digest godigest.Digest) error {
 	return nil
 }
 
-func (is *ImageStore) garbageCollect(repo string) error {
-	if is.gcReferrers {
-		is.log.Info().Msg("gc: manifests with missing referrers")
-
-		// gc all manifests that have a missing subject, stop when no gc happened in a full loop over index.json.
-		stop := false
-		for !stop {
-			// because we gc manifests in the loop, need to get latest index.json content
-			index, err := common.GetIndex(is, repo, is.log)
-			if err != nil {
-				return err
-			}
-
-			gced, err := is.garbageCollectIndexReferrers(repo, index, index)
-			if err != nil {
-				return err
-			}
-
-			/* if we delete any manifest then loop again and gc manifests with
-			a subject pointing to the last ones which were gc'ed. */
-			stop = !gced
-		}
-	}
-
-	index, err := common.GetIndex(is, repo, is.log)
-	if err != nil {
-		return err
-	}
-
-	is.log.Info().Msg("gc: manifests without tags")
-
-	// apply image retention policy
-	if err := is.garbageCollectUntaggedManifests(index, repo); err != nil {
-		return err
-	}
-
-	is.log.Info().Msg("gc: blobs")
-
-	if err := is.garbageCollectBlobs(is, repo, is.gcDelay, is.log); err != nil {
-		return err
-	}
-
-	return nil
-}
-
-/*
-garbageCollectIndexReferrers will gc all referrers with a missing subject recursively
-
-rootIndex is indexJson, need to pass it down to garbageCollectReferrer()
-rootIndex is the place we look for referrers.
-*/
-func (is *ImageStore) garbageCollectIndexReferrers(repo string, rootIndex ispec.Index, index ispec.Index,
-) (bool, error) {
-	var count int
-
-	var err error
-
-	for _, desc := range index.Manifests {
-		switch desc.MediaType {
-		case ispec.MediaTypeImageIndex:
-			indexImage, err := common.GetImageIndex(is, repo, desc.Digest, is.log)
-			if err != nil {
-				is.log.Error().Err(err).Str("repository", repo).Str("digest", desc.Digest.String()).
-					Msg("gc: failed to read multiarch(index) image")
-
-				return false, err
-			}
-
-			gced, err := is.garbageCollectReferrer(repo, rootIndex, desc, indexImage.Subject)
-			if err != nil {
-				return false, err
-			}
-
-			/* if we gc index then no need to continue searching for referrers inside it.
-			they will be gced when the next garbage collect is executed(if they are older than retentionDelay),
-			 because manifests part of indexes will still be referenced in index.json */
-			if gced {
-				return true, nil
-			}
-
-			if gced, err = is.garbageCollectIndexReferrers(repo, rootIndex, indexImage); err != nil {
-				return false, err
-			}
-
-			if gced {
-				count++
-			}
-		case ispec.MediaTypeImageManifest, artifactspec.MediaTypeArtifactManifest:
-			image, err := common.GetImageManifest(is, repo, desc.Digest, is.log)
-			if err != nil {
-				is.log.Error().Err(err).Str("repo", repo).Str("digest", desc.Digest.String()).
-					Msg("gc: failed to read manifest image")
-
-				return false, err
-			}
-
-			gced, err := is.garbageCollectReferrer(repo, rootIndex, desc, image.Subject)
-			if err != nil {
-				return false, err
-			}
-
-			if gced {
-				count++
-			}
-		}
-	}
-
-	return count > 0, err
-}
-
-func (is *ImageStore) garbageCollectReferrer(repo string, index ispec.Index, manifestDesc ispec.Descriptor,
-	subject *ispec.Descriptor,
-) (bool, error) {
-	var gced bool
-
-	var err error
-
-	if subject != nil {
-		// try to find subject in index.json
-		if ok := isManifestReferencedInIndex(index, subject.Digest); !ok {
-			gced, err = garbageCollectManifest(is, repo, manifestDesc.Digest, is.gcDelay)
-			if err != nil {
-				return false, err
-			}
-		}
-	}
-
-	tag, ok := manifestDesc.Annotations[ispec.AnnotationRefName]
-	if ok {
-		if strings.HasPrefix(tag, "sha256-") && (strings.HasSuffix(tag, cosignSignatureTagSuffix) ||
-			strings.HasSuffix(tag, SBOMTagSuffix)) {
-			if ok := isManifestReferencedInIndex(index, getSubjectFromCosignTag(tag)); !ok {
-				gced, err = garbageCollectManifest(is, repo, manifestDesc.Digest, is.gcDelay)
-				if err != nil {
-					return false, err
-				}
-			}
-		}
-	}
-
-	return gced, err
-}
-
-func (is *ImageStore) garbageCollectUntaggedManifests(index ispec.Index, repo string) error {
-	referencedByImageIndex := make([]string, 0)
-
-	if err := identifyManifestsReferencedInIndex(is, index, repo, &referencedByImageIndex); err != nil {
-		return err
-	}
-
-	// first gather manifests part of image indexes and referrers, we want to skip checking them
-	for _, desc := range index.Manifests {
-		// skip manifests referenced in image indexes
-		if zcommon.Contains(referencedByImageIndex, desc.Digest.String()) {
-			continue
-		}
-
-		// remove untagged images
-		if desc.MediaType == ispec.MediaTypeImageManifest || desc.MediaType == ispec.MediaTypeImageIndex {
-			_, ok := desc.Annotations[ispec.AnnotationRefName]
-			if !ok {
-				_, err := garbageCollectManifest(is, repo, desc.Digest, is.retentionDelay)
-				if err != nil {
-					return err
-				}
-			}
-		}
-	}
-
-	return nil
-}
-
-// Adds both referenced manifests and referrers from an index.
-func identifyManifestsReferencedInIndex(imgStore *ImageStore, index ispec.Index, repo string, referenced *[]string,
-) error {
-	for _, desc := range index.Manifests {
-		switch desc.MediaType {
-		case ispec.MediaTypeImageIndex:
-			indexImage, err := common.GetImageIndex(imgStore, repo, desc.Digest, imgStore.log)
-			if err != nil {
-				imgStore.log.Error().Err(err).Str("repository", repo).Str("digest", desc.Digest.String()).
-					Msg("gc: failed to read multiarch(index) image")
-
-				return err
-			}
-
-			if indexImage.Subject != nil {
-				*referenced = append(*referenced, desc.Digest.String())
-			}
-
-			for _, indexDesc := range indexImage.Manifests {
-				*referenced = append(*referenced, indexDesc.Digest.String())
-			}
-
-			if err := identifyManifestsReferencedInIndex(imgStore, indexImage, repo, referenced); err != nil {
-				return err
-			}
-		case ispec.MediaTypeImageManifest, artifactspec.MediaTypeArtifactManifest:
-			image, err := common.GetImageManifest(imgStore, repo, desc.Digest, imgStore.log)
-			if err != nil {
-				imgStore.log.Error().Err(err).Str("repo", repo).Str("digest", desc.Digest.String()).
-					Msg("gc: failed to read manifest image")
-
-				return err
-			}
-
-			if image.Subject != nil {
-				*referenced = append(*referenced, desc.Digest.String())
-			}
-		}
-	}
-
-	return nil
-}
-
-func garbageCollectManifest(imgStore *ImageStore, repo string, digest godigest.Digest, delay time.Duration,
-) (bool, error) {
-	canGC, err := isBlobOlderThan(imgStore, repo, digest, delay, imgStore.log)
-	if err != nil {
-		imgStore.log.Error().Err(err).Str("repository", repo).Str("digest", digest.String()).
-			Str("delay", imgStore.gcDelay.String()).Msg("gc: failed to check if blob is older than delay")
-
-		return false, err
-	}
-
-	if canGC {
-		imgStore.log.Info().Str("repository", repo).Str("digest", digest.String()).
-			Msg("gc: removing unreferenced manifest")
-
-		if err := imgStore.deleteImageManifest(repo, digest.String(), true); err != nil {
-			if errors.Is(err, zerr.ErrManifestConflict) {
-				imgStore.log.Info().Str("repository", repo).Str("digest", digest.String()).
-					Msg("gc: skipping removing manifest due to conflict")
-
-				return false, nil
-			}
-
-			return false, err
-		}
-
-		return true, nil
-	}
-
-	return false, nil
-}
-
-func (is *ImageStore) garbageCollectBlobs(imgStore *ImageStore, repo string,
-	delay time.Duration, log zlog.Logger,
-) error {
-	refBlobs := map[string]bool{}
-
-	err := common.AddRepoBlobsToReferences(imgStore, repo, refBlobs, log)
-	if err != nil {
-		log.Error().Err(err).Str("repository", repo).Msg("unable to get referenced blobs in repo")
-
-		return err
-	}
-
-	allBlobs, err := imgStore.GetAllBlobs(repo)
-	if err != nil {
-		// /blobs/sha256/ may be empty in the case of s3, no need to return err, we want to skip
-		if errors.As(err, &driver.PathNotFoundError{}) {
-			return nil
-		}
-
-		log.Error().Err(err).Str("repository", repo).Msg("unable to get all blobs")
-
-		return err
-	}
-
-	reaped := 0
-
-	for _, blob := range allBlobs {
-		digest := godigest.NewDigestFromEncoded(godigest.SHA256, blob)
-		if err = digest.Validate(); err != nil {
-			log.Error().Err(err).Str("repository", repo).Str("digest", blob).Msg("unable to parse digest")
-
-			return err
-		}
-
-		if _, ok := refBlobs[digest.String()]; !ok {
-			ok, err := isBlobOlderThan(imgStore, repo, digest, delay, log)
-			if err != nil {
-				log.Error().Err(err).Str("repository", repo).Str("digest", blob).Msg("unable to determine GC delay")
-
-				return err
-			}
-
-			if !ok {
-				continue
-			}
-
-			if err := imgStore.deleteBlob(repo, digest); err != nil {
-				if errors.Is(err, zerr.ErrBlobReferenced) {
-					if err := imgStore.deleteImageManifest(repo, digest.String(), true); err != nil {
-						if errors.Is(err, zerr.ErrManifestConflict) {
-							continue
-						}
-
-						log.Error().Err(err).Str("repository", repo).Str("digest", blob).Msg("unable to delete blob")
-
-						return err
-					}
-				} else {
-					log.Error().Err(err).Str("repository", repo).Str("digest", blob).Msg("unable to delete blob")
-
-					return err
-				}
-			}
-
-			log.Info().Str("repository", repo).Str("digest", blob).Msg("garbage collected blob")
-
-			reaped++
-		}
-	}
-
-	blobUploads, err := is.storeDriver.List(path.Join(is.RootDir(), repo, storageConstants.BlobUploadDir))
-	if err != nil {
-		is.log.Debug().Str("repository", repo).Msg("unable to list .uploads/ dir")
-	}
-
-	// if we cleaned all blobs let's also remove the repo so that it won't be returned by catalog
-	if len(allBlobs) > 0 && reaped == len(allBlobs) && len(blobUploads) == 0 {
-		log.Info().Str("repository", repo).Msg("garbage collected all blobs, cleaning repo...")
-
-		if err := is.storeDriver.Delete(path.Join(is.rootDir, repo)); err != nil {
-			log.Error().Err(err).Str("repository", repo).Msg("unable to delete repo")
-
-			return err
-		}
-	}
-
-	log.Info().Str("repository", repo).Int("count", reaped).Msg("garbage collected blobs")
-
-	return nil
-}
-
-func (is *ImageStore) gcRepo(repo string) error {
-	var lockLatency time.Time
-
-	is.Lock(&lockLatency)
-	err := is.garbageCollect(repo)
-	is.Unlock(&lockLatency)
-
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
 func (is *ImageStore) GetAllBlobs(repo string) ([]string, error) {
 	dir := path.Join(is.rootDir, repo, "blobs", "sha256")
 
 	files, err := is.storeDriver.List(dir)
 	if err != nil {
+		if errors.As(err, &driver.PathNotFoundError{}) {
+			is.log.Debug().Msg("empty rootDir")
+
+			return []string{}, nil
+		}
+
 		return []string{}, err
 	}
 
@@ -1939,30 +1645,6 @@ func (is *ImageStore) GetAllBlobs(repo string) ([]string, error) {
 	}
 
 	return ret, nil
-}
-
-func (is *ImageStore) RunGCRepo(repo string) error {
-	is.log.Info().Msg(fmt.Sprintf("executing GC of orphaned blobs for %s", path.Join(is.RootDir(), repo)))
-
-	if err := is.gcRepo(repo); err != nil {
-		errMessage := fmt.Sprintf("error while running GC for %s", path.Join(is.RootDir(), repo))
-		is.log.Error().Err(err).Msg(errMessage)
-		is.log.Info().Msg(fmt.Sprintf("GC unsuccessfully completed for %s", path.Join(is.RootDir(), repo)))
-
-		return err
-	}
-
-	is.log.Info().Msg(fmt.Sprintf("GC successfully completed for %s", path.Join(is.RootDir(), repo)))
-
-	return nil
-}
-
-func (is *ImageStore) RunGCPeriodically(interval time.Duration, sch *scheduler.Scheduler) {
-	generator := &common.GCTaskGenerator{
-		ImgStore: is,
-	}
-
-	sch.SubmitGenerator(generator, interval, scheduler.MediumPriority)
 }
 
 func (is *ImageStore) GetNextDigestWithBlobPaths(lastDigests []godigest.Digest) (godigest.Digest, []string, error) {
@@ -2216,41 +1898,4 @@ func (bs *blobStream) Read(buf []byte) (int, error) {
 
 func (bs *blobStream) Close() error {
 	return bs.closer.Close()
-}
-
-func isBlobOlderThan(imgStore storageTypes.ImageStore, repo string,
-	digest godigest.Digest, delay time.Duration, log zlog.Logger,
-) (bool, error) {
-	_, _, modtime, err := imgStore.StatBlob(repo, digest)
-	if err != nil {
-		log.Error().Err(err).Str("repository", repo).Str("digest", digest.String()).
-			Msg("gc: failed to stat blob")
-
-		return false, err
-	}
-
-	if modtime.Add(delay).After(time.Now()) {
-		return false, nil
-	}
-
-	log.Info().Str("repository", repo).Str("digest", digest.String()).Msg("perform GC on blob")
-
-	return true, nil
-}
-
-func getSubjectFromCosignTag(tag string) godigest.Digest {
-	alg := strings.Split(tag, "-")[0]
-	encoded := strings.Split(strings.Split(tag, "-")[1], ".sig")[0]
-
-	return godigest.NewDigestFromEncoded(godigest.Algorithm(alg), encoded)
-}
-
-func isManifestReferencedInIndex(index ispec.Index, digest godigest.Digest) bool {
-	for _, manifest := range index.Manifests {
-		if manifest.Digest == digest {
-			return true
-		}
-	}
-
-	return false
 }

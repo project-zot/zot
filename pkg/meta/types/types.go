@@ -45,6 +45,16 @@ type MetaDB interface { //nolint:interfacebloat
 	// SetRepoReference sets the reference of a manifest in the tag list of a repo
 	SetRepoReference(repo string, reference string, manifestDigest godigest.Digest, mediaType string) error
 
+	/*
+	   	RemoveRepoReference removes the tag from RepoMetadata if the reference is a tag,
+
+	   it also removes its corresponding digest from Statistics, Signatures and Referrers if there are no tags
+	   pointing to it.
+	   If the reference is a digest then it will remove the digest from Statistics, Signatures and Referrers only
+	   if there are no tags pointing to the digest, otherwise it's noop
+	*/
+	RemoveRepoReference(repo, reference string, manifestDigest godigest.Digest) error
+
 	// DeleteRepoTag delets the tag from the tag list of a repo
 	DeleteRepoTag(repo string, tag string) error
 

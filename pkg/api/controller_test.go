@@ -60,6 +60,7 @@ import (
 	"zotregistry.io/zot/pkg/meta"
 	"zotregistry.io/zot/pkg/storage"
 	storageConstants "zotregistry.io/zot/pkg/storage/constants"
+	"zotregistry.io/zot/pkg/storage/gc"
 	"zotregistry.io/zot/pkg/test"
 	testc "zotregistry.io/zot/pkg/test/common"
 	. "zotregistry.io/zot/pkg/test/image-utils"
@@ -2338,11 +2339,9 @@ func TestBearerAuthWrongAuthorizer(t *testing.T) {
 			},
 		}
 		ctlr := makeController(conf, t.TempDir())
-		cm := test.NewControllerManager(ctlr)
 
 		So(func() {
-			ctx := context.Background()
-			cm.RunServer(ctx)
+			api.AuthHandler(ctlr)
 		}, ShouldPanic)
 	})
 }
@@ -7665,7 +7664,7 @@ func TestInjectTooManyOpenFiles(t *testing.T) {
 	})
 }
 
-func TestGCSignaturesAndUntaggedManifests(t *testing.T) {
+func TestGCSignaturesAndUntaggedManifestsWithMetaDB(t *testing.T) {
 	Convey("Make controller", t, func() {
 		Convey("Garbage collect signatures without subject and manifests without tags", func(c C) {
 			repoName := "testrepo" //nolint:goconst
@@ -7675,6 +7674,16 @@ func TestGCSignaturesAndUntaggedManifests(t *testing.T) {
 			baseURL := test.GetBaseURL(port)
 			conf := config.New()
 			conf.HTTP.Port = port
+
+			value := true
+			searchConfig := &extconf.SearchConfig{
+				BaseConfig: extconf.BaseConfig{Enable: &value},
+			}
+
+			// added search extensions so that metaDB is initialized and its tested in GC logic
+			conf.Extensions = &extconf.ExtensionConfig{
+				Search: searchConfig,
+			}
 
 			ctlr := makeController(conf, t.TempDir())
 
@@ -7686,14 +7695,23 @@ func TestGCSignaturesAndUntaggedManifests(t *testing.T) {
 
 			ctlr.Config.Storage.Dedupe = false
 
-			err := test.WriteImageToFileSystem(CreateDefaultImage(), repoName, tag,
-				test.GetDefaultStoreController(dir, ctlr.Log))
-			So(err, ShouldBeNil)
-
 			cm := test.NewControllerManager(ctlr)
 			cm.StartServer()
 			cm.WaitServerToBeReady(port)
 			defer cm.StopServer()
+
+			img := CreateDefaultImage()
+
+			err := UploadImage(img, baseURL, repoName, tag)
+			So(err, ShouldBeNil)
+
+			gc := gc.NewGarbageCollect(ctlr.StoreController.DefaultStore, ctlr.MetaDB,
+				gc.Options{
+					Referrers:      ctlr.Config.Storage.GCReferrers,
+					Delay:          ctlr.Config.Storage.GCDelay,
+					RetentionDelay: ctlr.Config.Storage.UntaggedImageRetentionDelay,
+				},
+				ctlr.Log)
 
 			resp, err := resty.R().Get(baseURL + fmt.Sprintf("/v2/%s/manifests/%s", repoName, tag))
 			So(err, ShouldBeNil)
@@ -7748,6 +7766,9 @@ func TestGCSignaturesAndUntaggedManifests(t *testing.T) {
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
+			cosignDigest := resp.Header().Get(constants.DistContentDigestKey)
+			So(cosignDigest, ShouldNotBeEmpty)
+
 			// get notation signature manifest
 			resp, err = resty.R().SetQueryParam("artifactType", notreg.ArtifactTypeNotation).Get(
 				fmt.Sprintf("%s/v2/%s/referrers/%s", baseURL, repoName, digest.String()))
@@ -7759,6 +7780,20 @@ func TestGCSignaturesAndUntaggedManifests(t *testing.T) {
 			err = json.Unmarshal(resp.Body(), &index)
 			So(err, ShouldBeNil)
 			So(len(index.Manifests), ShouldEqual, 1)
+
+			// shouldn't do anything
+			err = gc.CleanRepo(repoName)
+			So(err, ShouldBeNil)
+
+			// make sure both signatures are stored in repodb
+			repoMeta, err := ctlr.MetaDB.GetRepoMeta(repoName)
+			So(err, ShouldBeNil)
+
+			sigMeta := repoMeta.Signatures[digest.String()]
+			So(len(sigMeta[storage.CosignType]), ShouldEqual, 1)
+			So(len(sigMeta[storage.NotationType]), ShouldEqual, 1)
+			So(sigMeta[storage.CosignType][0].SignatureManifestDigest, ShouldEqual, cosignDigest)
+			So(sigMeta[storage.NotationType][0].SignatureManifestDigest, ShouldEqual, index.Manifests[0].Digest.String())
 
 			Convey("Trigger gcNotationSignatures() error", func() {
 				var refs ispec.Index
@@ -7773,7 +7808,7 @@ func TestGCSignaturesAndUntaggedManifests(t *testing.T) {
 				err = UploadImage(img, baseURL, repoName, img.DigestStr())
 				So(err, ShouldBeNil)
 
-				err = ctlr.StoreController.DefaultStore.RunGCRepo(repoName)
+				err = gc.CleanRepo(repoName)
 				So(err, ShouldNotBeNil)
 
 				err = os.Chmod(path.Join(dir, repoName, "blobs", "sha256", refs.Manifests[0].Digest.Encoded()), 0o755)
@@ -7787,7 +7822,7 @@ func TestGCSignaturesAndUntaggedManifests(t *testing.T) {
 				err = UploadImage(img, baseURL, repoName, tag)
 				So(err, ShouldBeNil)
 
-				err = ctlr.StoreController.DefaultStore.RunGCRepo(repoName)
+				err = gc.CleanRepo(repoName)
 				So(err, ShouldNotBeNil)
 
 				err = os.WriteFile(path.Join(dir, repoName, "blobs", "sha256", refs.Manifests[0].Digest.Encoded()), content, 0o600)
@@ -7811,6 +7846,17 @@ func TestGCSignaturesAndUntaggedManifests(t *testing.T) {
 					}, baseURL, repoName, untaggedManifestDigest.String())
 				So(err, ShouldBeNil)
 
+				// make sure repoDB reference was added
+				repoMeta, err := ctlr.MetaDB.GetRepoMeta(repoName)
+				So(err, ShouldBeNil)
+
+				_, ok := repoMeta.Referrers[untaggedManifestDigest.String()]
+				So(ok, ShouldBeTrue)
+				_, ok = repoMeta.Signatures[untaggedManifestDigest.String()]
+				So(ok, ShouldBeTrue)
+				_, ok = repoMeta.Statistics[untaggedManifestDigest.String()]
+				So(ok, ShouldBeTrue)
+
 				// overwrite image so that signatures will get invalidated and gc'ed
 				cfg, layers, manifest, err = test.GetImageComponents(3) //nolint:staticcheck
 				So(err, ShouldBeNil)
@@ -7827,8 +7873,23 @@ func TestGCSignaturesAndUntaggedManifests(t *testing.T) {
 				So(err, ShouldBeNil)
 				newManifestDigest := godigest.FromBytes(manifestBuf)
 
-				err = ctlr.StoreController.DefaultStore.RunGCRepo(repoName)
+				err = gc.CleanRepo(repoName)
 				So(err, ShouldBeNil)
+
+				// make sure both signatures are removed from repodb and repo reference for untagged is removed
+				repoMeta, err = ctlr.MetaDB.GetRepoMeta(repoName)
+				So(err, ShouldBeNil)
+
+				sigMeta := repoMeta.Signatures[digest.String()]
+				So(len(sigMeta[storage.CosignType]), ShouldEqual, 0)
+				So(len(sigMeta[storage.NotationType]), ShouldEqual, 0)
+
+				_, ok = repoMeta.Referrers[untaggedManifestDigest.String()]
+				So(ok, ShouldBeFalse)
+				_, ok = repoMeta.Signatures[untaggedManifestDigest.String()]
+				So(ok, ShouldBeFalse)
+				_, ok = repoMeta.Statistics[untaggedManifestDigest.String()]
+				So(ok, ShouldBeFalse)
 
 				// both signatures should be gc'ed
 				resp, err = resty.R().Get(baseURL + fmt.Sprintf("/v2/%s/manifests/%s", repoName, cosignTag))
@@ -7885,6 +7946,13 @@ func TestGCSignaturesAndUntaggedManifests(t *testing.T) {
 			cm.StartAndWait(port)
 			defer cm.StopServer()
 
+			gc := gc.NewGarbageCollect(ctlr.StoreController.DefaultStore, ctlr.MetaDB,
+				gc.Options{
+					Referrers:      ctlr.Config.Storage.GCReferrers,
+					Delay:          ctlr.Config.Storage.GCDelay,
+					RetentionDelay: ctlr.Config.Storage.UntaggedImageRetentionDelay,
+				}, ctlr.Log)
+
 			resp, err := resty.R().Get(baseURL + fmt.Sprintf("/v2/%s/manifests/%s", repoName, tag))
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
@@ -7934,7 +8002,7 @@ func TestGCSignaturesAndUntaggedManifests(t *testing.T) {
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
 
-			err = ctlr.StoreController.DefaultStore.RunGCRepo(repoName)
+			err = gc.CleanRepo(repoName)
 			So(err, ShouldBeNil)
 
 			resp, err = resty.R().SetHeader("Content-Type", ispec.MediaTypeImageIndex).

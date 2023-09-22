@@ -19,7 +19,6 @@ import (
 	"zotregistry.io/zot/pkg/storage"
 	"zotregistry.io/zot/pkg/storage/cache"
 	common "zotregistry.io/zot/pkg/storage/common"
-	storageConstants "zotregistry.io/zot/pkg/storage/constants"
 	"zotregistry.io/zot/pkg/storage/local"
 	"zotregistry.io/zot/pkg/test"
 )
@@ -40,8 +39,7 @@ func TestCheckAllBlobsIntegrity(t *testing.T) {
 		Name:        "cache",
 		UseRelPaths: true,
 	}, log)
-	imgStore := local.NewImageStore(dir, true, true, storageConstants.DefaultGCDelay,
-		storageConstants.DefaultUntaggedImgeRetentionDelay, true, true, log, metrics, nil, cacheDriver)
+	imgStore := local.NewImageStore(dir, true, true, log, metrics, nil, cacheDriver)
 
 	Convey("Scrub only one repo", t, func(c C) {
 		// initialize repo

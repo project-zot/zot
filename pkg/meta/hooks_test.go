@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"errors"
 	"testing"
-	"time"
 
 	notreg "github.com/notaryproject/notation-go/registry"
 	godigest "github.com/opencontainers/go-digest"
@@ -32,9 +31,7 @@ func TestOnUpdateManifest(t *testing.T) {
 		storeController := storage.StoreController{}
 		log := log.NewLogger("debug", "")
 		metrics := monitoring.NewMetricsServer(false, log)
-		storeController.DefaultStore = local.NewImageStore(rootDir, true, true, 1*time.Second,
-			1*time.Second, true, true, log, metrics, nil, nil,
-		)
+		storeController.DefaultStore = local.NewImageStore(rootDir, true, true, log, metrics, nil, nil)
 
 		params := boltdb.DBParameters{
 			RootDir: rootDir,
@@ -73,9 +70,7 @@ func TestOnUpdateManifest(t *testing.T) {
 		storeController := storage.StoreController{}
 		log := log.NewLogger("debug", "")
 		metrics := monitoring.NewMetricsServer(false, log)
-		storeController.DefaultStore = local.NewImageStore(rootDir, true, true, 1*time.Second,
-			1*time.Second, true, true, log, metrics, nil, nil,
-		)
+		storeController.DefaultStore = local.NewImageStore(rootDir, true, true, log, metrics, nil, nil)
 
 		metaDB := mocks.MetaDBMock{
 			SetManifestDataFn: func(manifestDigest godigest.Digest, mm mTypes.ManifestData) error {

@@ -37,7 +37,6 @@ import (
 	"zotregistry.io/zot/pkg/meta/boltdb"
 	mTypes "zotregistry.io/zot/pkg/meta/types"
 	"zotregistry.io/zot/pkg/storage"
-	storageConstants "zotregistry.io/zot/pkg/storage/constants"
 	"zotregistry.io/zot/pkg/storage/local"
 	. "zotregistry.io/zot/pkg/test"
 	. "zotregistry.io/zot/pkg/test/image-utils"
@@ -323,8 +322,7 @@ func TestImageFormat(t *testing.T) {
 		dbDir := t.TempDir()
 
 		metrics := monitoring.NewMetricsServer(false, log)
-		defaultStore := local.NewImageStore(imgDir, false, false, storageConstants.DefaultGCDelay,
-			storageConstants.DefaultUntaggedImgeRetentionDelay, false, false, log, metrics, nil, nil)
+		defaultStore := local.NewImageStore(imgDir, false, false, log, metrics, nil, nil)
 		storeController := storage.StoreController{DefaultStore: defaultStore}
 
 		params := boltdb.DBParameters{
