@@ -1,6 +1,8 @@
 package meta
 
 import (
+	"context"
+
 	godigest "github.com/opencontainers/go-digest"
 	v1 "github.com/opencontainers/image-spec/specs-go/v1"
 
@@ -13,7 +15,7 @@ import (
 // OnUpdateManifest is called when a new manifest is added. It updates metadb according to the type
 // of image pushed(normal images, signatues, etc.). In care of any errors, it makes sure to keep
 // consistency between metadb and the image store.
-func OnUpdateManifest(repo, reference, mediaType string, digest godigest.Digest, body []byte,
+func OnUpdateManifest(ctx context.Context, repo, reference, mediaType string, digest godigest.Digest, body []byte,
 	storeController storage.StoreController, metaDB mTypes.MetaDB, log log.Logger,
 ) error {
 	if zcommon.IsReferrersTag(reference) {
@@ -22,7 +24,7 @@ func OnUpdateManifest(repo, reference, mediaType string, digest godigest.Digest,
 
 	imgStore := storeController.GetImageStore(repo)
 
-	err := SetImageMetaFromInput(repo, reference, mediaType, digest, body,
+	err := SetImageMetaFromInput(ctx, repo, reference, mediaType, digest, body,
 		imgStore, metaDB, log)
 	if err != nil {
 		log.Info().Str("tag", reference).Str("repository", repo).Msg("uploading image meta was unsuccessful for tag in repo")
@@ -116,7 +118,7 @@ func OnGetManifest(name, reference, mediaType string, body []byte,
 		return nil
 	}
 
-	err = metaDB.IncrementImageDownloads(name, reference)
+	err = metaDB.UpdateStatsOnDownload(name, reference)
 	if err != nil {
 		log.Error().Err(err).Str("repository", name).Str("reference", reference).
 			Msg("unexpected error for image")

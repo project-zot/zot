@@ -34,10 +34,18 @@ function setup_file() {
     "storage": {
         "rootDirectory": "${zot_root_dir}",
         "gc": true,
-        "gcReferrers": true,
         "gcDelay": "30s",
-        "untaggedImageRetentionDelay": "40s",
-        "gcInterval": "1s"
+        "gcInterval": "1s",
+        "retention": {
+            "delay": "40s",
+            "policies": [
+                {
+                    "repositories": ["**"],
+                    "deleteReferrers": true,
+                    "deleteUntagged": true
+                }
+            ]
+        }
     },
     "http": {
         "address": "0.0.0.0",

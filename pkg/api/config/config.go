@@ -23,17 +23,37 @@ var (
 )
 
 type StorageConfig struct {
-	RootDirectory               string
-	Dedupe                      bool
-	RemoteCache                 bool
-	GC                          bool
-	Commit                      bool
-	GCDelay                     time.Duration
-	GCInterval                  time.Duration
-	GCReferrers                 bool
-	UntaggedImageRetentionDelay time.Duration
-	StorageDriver               map[string]interface{} `mapstructure:",omitempty"`
-	CacheDriver                 map[string]interface{} `mapstructure:",omitempty"`
+	RootDirectory string
+	Dedupe        bool
+	RemoteCache   bool
+	GC            bool
+	Commit        bool
+	GCDelay       time.Duration // applied for blobs
+	GCInterval    time.Duration
+	Retention     ImageRetention
+	StorageDriver map[string]interface{} `mapstructure:",omitempty"`
+	CacheDriver   map[string]interface{} `mapstructure:",omitempty"`
+}
+
+type ImageRetention struct {
+	DryRun   bool
+	Delay    time.Duration // applied for referrers and untagged
+	Policies []RetentionPolicy
+}
+
+type RetentionPolicy struct {
+	Repositories    []string
+	DeleteReferrers bool
+	DeleteUntagged  *bool
+	KeepTags        []KeepTagsPolicy
+}
+
+type KeepTagsPolicy struct {
+	Patterns                []string
+	PulledWithin            *time.Duration
+	PushedWithin            *time.Duration
+	MostRecentlyPushedCount int
+	MostRecentlyPulledCount int
 }
 
 type TLSConfig struct {
@@ -195,9 +215,11 @@ func New() *Config {
 		BinaryType:      BinaryType,
 		Storage: GlobalStorageConfig{
 			StorageConfig: StorageConfig{
-				GC: true, GCReferrers: true, GCDelay: storageConstants.DefaultGCDelay,
-				UntaggedImageRetentionDelay: storageConstants.DefaultUntaggedImgeRetentionDelay,
-				GCInterval:                  storageConstants.DefaultGCInterval, Dedupe: true,
+				Dedupe:     true,
+				GC:         true,
+				GCDelay:    storageConstants.DefaultGCDelay,
+				GCInterval: storageConstants.DefaultGCInterval,
+				Retention:  ImageRetention{},
 			},
 		},
 		HTTP: HTTPConfig{Address: "127.0.0.1", Port: "8080", Auth: &AuthConfig{FailDelay: 0}},
@@ -371,6 +393,42 @@ func (c *Config) IsMgmtEnabled() bool {
 
 func (c *Config) IsImageTrustEnabled() bool {
 	return c.Extensions != nil && c.Extensions.Trust != nil && *c.Extensions.Trust.Enable
+}
+
+// check if tags retention is enabled.
+func (c *Config) IsRetentionEnabled() bool {
+	var needsMetaDB bool
+
+	for _, retentionPolicy := range c.Storage.Retention.Policies {
+		for _, tagRetentionPolicy := range retentionPolicy.KeepTags {
+			if c.isTagsRetentionEnabled(tagRetentionPolicy) {
+				needsMetaDB = true
+			}
+		}
+	}
+
+	for _, subpath := range c.Storage.SubPaths {
+		for _, retentionPolicy := range subpath.Retention.Policies {
+			for _, tagRetentionPolicy := range retentionPolicy.KeepTags {
+				if c.isTagsRetentionEnabled(tagRetentionPolicy) {
+					needsMetaDB = true
+				}
+			}
+		}
+	}
+
+	return needsMetaDB
+}
+
+func (c *Config) isTagsRetentionEnabled(tagRetentionPolicy KeepTagsPolicy) bool {
+	if tagRetentionPolicy.MostRecentlyPulledCount != 0 ||
+		tagRetentionPolicy.MostRecentlyPushedCount != 0 ||
+		tagRetentionPolicy.PulledWithin != nil ||
+		tagRetentionPolicy.PushedWithin != nil {
+		return true
+	}
+
+	return false
 }
 
 func (c *Config) IsCosignEnabled() bool {

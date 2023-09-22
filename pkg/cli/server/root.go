@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"path"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -596,12 +597,19 @@ func applyDefaultValues(config *config.Config, viperInstance *viper.Viper, log z
 			config.Storage.GCDelay = 0
 		}
 
-		if viperInstance.Get("storage::gcdelay") == nil {
-			config.Storage.UntaggedImageRetentionDelay = 0
+		if viperInstance.Get("storage::retention::delay") == nil {
+			config.Storage.Retention.Delay = 0
 		}
 
 		if viperInstance.Get("storage::gcinterval") == nil {
 			config.Storage.GCInterval = 0
+		}
+	}
+
+	// apply deleteUntagged default
+	for idx := range config.Storage.Retention.Policies {
+		if !viperInstance.IsSet("storage::retention::policies::" + fmt.Sprint(idx) + "::deleteUntagged") {
+			config.Storage.Retention.Policies[idx].DeleteUntagged = &defaultVal
 		}
 	}
 
@@ -615,7 +623,7 @@ func applyDefaultValues(config *config.Config, viperInstance *viper.Viper, log z
 		config.Storage.RemoteCache = true
 	}
 
-	// s3 dedup=false, check for previous dedup usage and set to true if cachedb found
+	// s3 dedup=false, check for previous dedupe usage and set to true if cachedb found
 	if !config.Storage.Dedupe && config.Storage.StorageDriver != nil {
 		cacheDir, _ := config.Storage.StorageDriver["rootdirectory"].(string)
 		cachePath := path.Join(cacheDir, storageConstants.BoltdbName+storageConstants.DBExtensionName)
@@ -651,28 +659,31 @@ func applyDefaultValues(config *config.Config, viperInstance *viper.Viper, log z
 
 		// if gc is enabled
 		if storageConfig.GC {
-			// and gcReferrers is not set, it is set to default value
-			if !viperInstance.IsSet("storage::subpaths::" + name + "::gcreferrers") {
-				storageConfig.GCReferrers = true
-			}
-
 			// and gcDelay is not set, it is set to default value
 			if !viperInstance.IsSet("storage::subpaths::" + name + "::gcdelay") {
 				storageConfig.GCDelay = storageConstants.DefaultGCDelay
 			}
 
 			// and retentionDelay is not set, it is set to default value
-			if !viperInstance.IsSet("storage::subpaths::" + name + "::retentiondelay") {
-				storageConfig.UntaggedImageRetentionDelay = storageConstants.DefaultUntaggedImgeRetentionDelay
+			if !viperInstance.IsSet("storage::subpaths::" + name + "::retention::delay") {
+				storageConfig.Retention.Delay = storageConstants.DefaultRetentionDelay
 			}
 
 			// and gcInterval is not set, it is set to default value
 			if !viperInstance.IsSet("storage::subpaths::" + name + "::gcinterval") {
 				storageConfig.GCInterval = storageConstants.DefaultGCInterval
 			}
-
-			config.Storage.SubPaths[name] = storageConfig
 		}
+
+		// apply deleteUntagged default
+		for idx := range storageConfig.Retention.Policies {
+			deleteUntaggedKey := "storage::subpaths::" + name + "::retention::policies::" + fmt.Sprint(idx) + "::deleteUntagged"
+			if !viperInstance.IsSet(deleteUntaggedKey) {
+				storageConfig.Retention.Policies[idx].DeleteUntagged = &defaultVal
+			}
+		}
+
+		config.Storage.SubPaths[name] = storageConfig
 	}
 
 	// if OpenID authentication is enabled,
@@ -851,6 +862,10 @@ func validateGC(config *config.Config, log zlog.Logger) error {
 		}
 	}
 
+	if err := validateGCRules(config.Storage.Retention, log); err != nil {
+		return err
+	}
+
 	// subpaths
 	for name, subPath := range config.Storage.SubPaths {
 		if subPath.GC && subPath.GCDelay <= 0 {
@@ -860,6 +875,37 @@ func validateGC(config *config.Config, log zlog.Logger) error {
 				Msg("invalid GC delay configuration - cannot be negative or zero")
 
 			return zerr.ErrBadConfig
+		}
+
+		if err := validateGCRules(subPath.Retention, log); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func validateGCRules(retention config.ImageRetention, log zlog.Logger) error {
+	for _, policy := range retention.Policies {
+		for _, pattern := range policy.Repositories {
+			if ok := glob.ValidatePattern(pattern); !ok {
+				log.Error().Err(glob.ErrBadPattern).Str("pattern", pattern).
+					Msg("retention repo glob pattern could not be compiled")
+
+				return zerr.ErrBadConfig
+			}
+		}
+
+		for _, tagRule := range policy.KeepTags {
+			for _, regex := range tagRule.Patterns {
+				_, err := regexp.Compile(regex)
+				if err != nil {
+					log.Error().Err(glob.ErrBadPattern).Str("regex", regex).
+						Msg("retention tag regex could not be compiled")
+
+					return zerr.ErrBadConfig
+				}
+			}
 		}
 	}
 
@@ -882,9 +928,20 @@ func validateSync(config *config.Config, log zlog.Logger) error {
 				for _, content := range regCfg.Content {
 					ok := glob.ValidatePattern(content.Prefix)
 					if !ok {
-						log.Error().Err(glob.ErrBadPattern).Str("prefix", content.Prefix).Msg("sync prefix could not be compiled")
+						log.Error().Err(glob.ErrBadPattern).Str("prefix", content.Prefix).
+							Msg("sync prefix could not be compiled")
 
-						return glob.ErrBadPattern
+						return zerr.ErrBadConfig
+					}
+
+					if content.Tags != nil && content.Tags.Regex != nil {
+						_, err := regexp.Compile(*content.Tags.Regex)
+						if err != nil {
+							log.Error().Err(glob.ErrBadPattern).Str("regex", *content.Tags.Regex).
+								Msg("sync content regex could not be compiled")
+
+							return zerr.ErrBadConfig
+						}
 					}
 
 					if content.StripPrefix && !strings.Contains(content.Prefix, "/*") && content.Destination == "/" {
@@ -894,6 +951,9 @@ func validateSync(config *config.Config, log zlog.Logger) error {
 
 						return zerr.ErrBadConfig
 					}
+
+					// check sync config doesn't overlap with retention config
+					validateRetentionSyncOverlaps(config, content, regCfg.URLs, log)
 				}
 			}
 		}

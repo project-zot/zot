@@ -30,9 +30,9 @@ func TestVerifyExtensionsConfig(t *testing.T) {
 		So(err, ShouldBeNil)
 		defer os.Remove(tmpfile.Name()) // clean up
 
-		content := []byte(`{
+		content := fmt.Sprintf(`{
 			"storage":{
-				"rootDirectory":"/tmp/zot",
+				"rootDirectory":"%s",
 				"dedupe":true,
 				"remoteCache":false,
 				"storageDriver":{
@@ -56,21 +56,22 @@ func TestVerifyExtensionsConfig(t *testing.T) {
 					}
 				}
 			}
-		}`)
-		err = os.WriteFile(tmpfile.Name(), content, 0o0600)
+		}`, t.TempDir())
+
+		err = os.WriteFile(tmpfile.Name(), []byte(content), 0o0600)
 		So(err, ShouldBeNil)
 
 		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
 		So(func() { _ = cli.NewServerRootCmd().Execute() }, ShouldPanic)
 
-		content = []byte(`{
+		content = fmt.Sprintf(`{
 			"storage":{
-				"rootDirectory":"/tmp/zot",
+				"rootDirectory":"%s",
 				"dedupe":true,
 				"remoteCache":false,
 				"subPaths":{
 					"/a": {
-						"rootDirectory": "/tmp/zot1",
+						"rootDirectory": "%s",
 						"dedupe": false,
 						"storageDriver":{
 							"name":"s3",
@@ -95,8 +96,8 @@ func TestVerifyExtensionsConfig(t *testing.T) {
 					}
 				}
 			}
-		}`)
-		err = os.WriteFile(tmpfile.Name(), content, 0o0600)
+		}`, t.TempDir(), t.TempDir())
+		err = os.WriteFile(tmpfile.Name(), []byte(content), 0o0600)
 		So(err, ShouldBeNil)
 
 		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
@@ -107,12 +108,12 @@ func TestVerifyExtensionsConfig(t *testing.T) {
 		tmpfile, err := os.CreateTemp("", "zot-test*.json")
 		So(err, ShouldBeNil)
 		defer os.Remove(tmpfile.Name()) // clean up
-		content := []byte(`{"storage":{"rootDirectory":"/tmp/zot", "storageDriver": {"name": "s3"}},
+		content := fmt.Sprintf(`{"storage":{"rootDirectory":"%s", "storageDriver": {"name": "s3"}},
 							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
 							"auth":{"htpasswd":{"path":"test/data/htpasswd"},"failDelay":1}},
 							"extensions":{"sync": {"registries": [{"urls":["localhost:9999"],
-							"maxRetries": 1, "retryDelay": "10s"}]}}}`)
-		_, err = tmpfile.Write(content)
+							"maxRetries": 1, "retryDelay": "10s"}]}}}`, t.TempDir())
+		_, err = tmpfile.WriteString(content)
 		So(err, ShouldBeNil)
 		err = tmpfile.Close()
 		So(err, ShouldBeNil)
@@ -124,12 +125,12 @@ func TestVerifyExtensionsConfig(t *testing.T) {
 		tmpfile, err := os.CreateTemp("", "zot-test*.json")
 		So(err, ShouldBeNil)
 		defer os.Remove(tmpfile.Name()) // clean up
-		content := []byte(`{"storage":{"rootDirectory":"/tmp/zot"},
+		content := fmt.Sprintf(`{"storage":{"rootDirectory":"%s"},
 							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
 							"auth":{"htpasswd":{"path":"test/data/htpasswd"},"failDelay":1}},
 							"extensions":{"sync": {"registries": [{"urls":["localhost:9999"],
-							"maxRetries": 1, "retryDelay": "10s"}]}}}`)
-		_, err = tmpfile.Write(content)
+							"maxRetries": 1, "retryDelay": "10s"}]}}}`, t.TempDir())
+		_, err = tmpfile.WriteString(content)
 		So(err, ShouldBeNil)
 		err = tmpfile.Close()
 		So(err, ShouldBeNil)
@@ -141,13 +142,13 @@ func TestVerifyExtensionsConfig(t *testing.T) {
 		tmpfile, err := os.CreateTemp("", "zot-test*.json")
 		So(err, ShouldBeNil)
 		defer os.Remove(tmpfile.Name()) // clean up
-		content := []byte(`{"storage":{"rootDirectory":"/tmp/zot"},
+		content := fmt.Sprintf(`{"storage":{"rootDirectory":"%s"},
 							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
 							"auth":{"htpasswd":{"path":"test/data/htpasswd"},"failDelay":1}},
 							"extensions":{"sync": {"registries": [{"urls":["localhost:9999"],
 							"maxRetries": 1, "retryDelay": "10s",
-							"content": [{"prefix":"[repo%^&"}]}]}}}`)
-		_, err = tmpfile.Write(content)
+							"content": [{"prefix":"[repo^&["}]}]}}}`, t.TempDir())
+		_, err = tmpfile.WriteString(content)
 		So(err, ShouldBeNil)
 		err = tmpfile.Close()
 		So(err, ShouldBeNil)
@@ -159,13 +160,13 @@ func TestVerifyExtensionsConfig(t *testing.T) {
 		tmpfile, err := os.CreateTemp("", "zot-test*.json")
 		So(err, ShouldBeNil)
 		defer os.Remove(tmpfile.Name()) // clean up
-		content := []byte(`{"storage":{"rootDirectory":"/tmp/zot"},
+		content := fmt.Sprintf(`{"storage":{"rootDirectory":"%s"},
 							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
 							"auth":{"htpasswd":{"path":"test/data/htpasswd"},"failDelay":1}},
 							"extensions":{"sync": {"registries": [{"urls":["localhost:9999"],
 							"maxRetries": 1, "retryDelay": "10s",
-							"content": [{"prefix":"zot-repo","stripPrefix":true,"destination":"/"}]}]}}}`)
-		_, err = tmpfile.Write(content)
+							"content": [{"prefix":"zot-repo","stripPrefix":true,"destination":"/"}]}]}}}`, t.TempDir())
+		_, err = tmpfile.WriteString(content)
 		So(err, ShouldBeNil)
 		err = tmpfile.Close()
 		So(err, ShouldBeNil)
@@ -177,13 +178,13 @@ func TestVerifyExtensionsConfig(t *testing.T) {
 		tmpfile, err := os.CreateTemp("", "zot-test*.json")
 		So(err, ShouldBeNil)
 		defer os.Remove(tmpfile.Name()) // clean up
-		content := []byte(`{"storage":{"rootDirectory":"/tmp/zot"},
+		content := fmt.Sprintf(`{"storage":{"rootDirectory":"%s"},
 							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
 							"auth":{"htpasswd":{"path":"test/data/htpasswd"},"failDelay":1}},
 							"extensions":{"sync": {"registries": [{"urls":["localhost:9999"],
 							"maxRetries": 1, "retryDelay": "10s",
-							"content": [{"prefix":"zot-repo/*","stripPrefix":true,"destination":"/"}]}]}}}`)
-		_, err = tmpfile.Write(content)
+							"content": [{"prefix":"zot-repo/*","stripPrefix":true,"destination":"/"}]}]}}}`, t.TempDir())
+		_, err = tmpfile.WriteString(content)
 		So(err, ShouldBeNil)
 		err = tmpfile.Close()
 		So(err, ShouldBeNil)
@@ -196,13 +197,13 @@ func TestVerifyExtensionsConfig(t *testing.T) {
 		tmpfile, err := os.CreateTemp("", "zot-test*.json")
 		So(err, ShouldBeNil)
 		defer os.Remove(tmpfile.Name()) // clean up
-		content := []byte(`{"storage":{"rootDirectory":"/tmp/zot"},
+		content := fmt.Sprintf(`{"storage":{"rootDirectory":"%s"},
 							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
 							"auth":{"htpasswd":{"path":"test/data/htpasswd"},"failDelay":1}},
 							"extensions":{"sync": {"registries": [{"urls":["localhost:9999"],
 							"maxRetries": 1, "retryDelay": "10s",
-							"content": [{"prefix":"repo**"}]}]}}}`)
-		_, err = tmpfile.Write(content)
+							"content": [{"prefix":"repo**"}]}]}}}`, t.TempDir())
+		_, err = tmpfile.WriteString(content)
 		So(err, ShouldBeNil)
 		err = tmpfile.Close()
 		So(err, ShouldBeNil)
@@ -215,12 +216,12 @@ func TestVerifyExtensionsConfig(t *testing.T) {
 		tmpfile, err := os.CreateTemp("", "zot-test*.json")
 		So(err, ShouldBeNil)
 		defer os.Remove(tmpfile.Name()) // clean up
-		content := []byte(`{"storage":{"rootDirectory":"/tmp/zot"},
+		content := fmt.Sprintf(`{"storage":{"rootDirectory":"%s"},
 							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
 							"auth":{"htpasswd":{"path":"test/data/htpasswd"},"failDelay":1}},
 							"extensions":{"sync": {"registries": [{"urls":["localhost:9999"],
-							"maxRetries": 10, "content": [{"prefix":"repo**"}]}]}}}`)
-		_, err = tmpfile.Write(content)
+							"maxRetries": 10, "content": [{"prefix":"repo**"}]}]}}}`, t.TempDir())
+		_, err = tmpfile.WriteString(content)
 		So(err, ShouldBeNil)
 		err = tmpfile.Close()
 		So(err, ShouldBeNil)
@@ -377,7 +378,7 @@ func TestServeExtensions(t *testing.T) {
 
 		content := fmt.Sprintf(`{
 			"storage": {
-				"rootDirectory": "/tmp/zot"
+				"rootDirectory": "%s"
 			},
 			"http": {
 				"address": "127.0.0.1",
@@ -387,7 +388,7 @@ func TestServeExtensions(t *testing.T) {
 				"level": "debug",
 				"output": "%s"
 			}
-		}`, port, logFile.Name())
+		}`, t.TempDir(), port, logFile.Name())
 
 		cfgfile, err := os.CreateTemp("", "zot-test*.json")
 		So(err, ShouldBeNil)
@@ -418,7 +419,7 @@ func TestServeExtensions(t *testing.T) {
 
 		content := fmt.Sprintf(`{
 			"storage": {
-				"rootDirectory": "/tmp/zot"
+				"rootDirectory": "%s"
 			},
 			"http": {
 				"address": "127.0.0.1",
@@ -430,7 +431,7 @@ func TestServeExtensions(t *testing.T) {
 			},
 			"extensions": {
 			}
-		}`, port, logFile.Name())
+		}`, t.TempDir(), port, logFile.Name())
 
 		cfgfile, err := os.CreateTemp("", "zot-test*.json")
 		So(err, ShouldBeNil)
@@ -454,7 +455,7 @@ func TestServeExtensions(t *testing.T) {
 	})
 }
 
-func testWithMetricsEnabled(cfgContentFormat string) {
+func testWithMetricsEnabled(rootDir string, cfgContentFormat string) {
 	port := GetFreePort()
 	baseURL := GetBaseURL(port)
 	logFile, err := os.CreateTemp("", "zot-log*.txt")
@@ -462,7 +463,7 @@ func testWithMetricsEnabled(cfgContentFormat string) {
 
 	defer os.Remove(logFile.Name()) // clean up
 
-	content := fmt.Sprintf(cfgContentFormat, port, logFile.Name())
+	content := fmt.Sprintf(cfgContentFormat, rootDir, port, logFile.Name())
 	cfgfile, err := os.CreateTemp("", "zot-test*.json")
 	So(err, ShouldBeNil)
 
@@ -502,7 +503,7 @@ func TestServeMetricsExtension(t *testing.T) {
 	Convey("no explicit enable", t, func(c C) {
 		content := `{
 			"storage": {
-				"rootDirectory": "/tmp/zot"
+				"rootDirectory": "%s"
 			},
 			"http": {
 				"address": "127.0.0.1",
@@ -517,13 +518,13 @@ func TestServeMetricsExtension(t *testing.T) {
 				}
 			}
 		}`
-		testWithMetricsEnabled(content)
+		testWithMetricsEnabled(t.TempDir(), content)
 	})
 
 	Convey("no explicit enable but with prometheus parameter", t, func(c C) {
 		content := `{
 			"storage": {
-				"rootDirectory": "/tmp/zot"
+				"rootDirectory": "%s"
 			},
 			"http": {
 				"address": "127.0.0.1",
@@ -541,13 +542,13 @@ func TestServeMetricsExtension(t *testing.T) {
 				}
 			}
 		}`
-		testWithMetricsEnabled(content)
+		testWithMetricsEnabled(t.TempDir(), content)
 	})
 
 	Convey("with explicit enable, but without prometheus parameter", t, func(c C) {
 		content := `{
 			"storage": {
-				"rootDirectory": "/tmp/zot"
+				"rootDirectory": "%s"
 			},
 			"http": {
 				"address": "127.0.0.1",
@@ -563,7 +564,7 @@ func TestServeMetricsExtension(t *testing.T) {
 				}
 			}
 		}`
-		testWithMetricsEnabled(content)
+		testWithMetricsEnabled(t.TempDir(), content)
 	})
 
 	Convey("with explicit disable", t, func(c C) {
@@ -575,7 +576,7 @@ func TestServeMetricsExtension(t *testing.T) {
 
 		content := fmt.Sprintf(`{
 					"storage": {
-						"rootDirectory": "/tmp/zot"
+						"rootDirectory": "%s"
 					},
 					"http": {
 						"address": "127.0.0.1",
@@ -590,7 +591,7 @@ func TestServeMetricsExtension(t *testing.T) {
 							"enable": false
 						}
 					}
-				}`, port, logFile.Name())
+				}`, t.TempDir(), port, logFile.Name())
 
 		cfgfile, err := os.CreateTemp("", "zot-test*.json")
 		So(err, ShouldBeNil)
@@ -1371,5 +1372,268 @@ func TestServeImageTrustExtension(t *testing.T) {
 			"setting up cosign route", 10*time.Second)
 		So(err, ShouldBeNil)
 		So(found, ShouldBeTrue)
+	})
+}
+
+func TestOverlappingSyncRetentionConfig(t *testing.T) {
+	oldArgs := os.Args
+
+	defer func() { os.Args = oldArgs }()
+
+	Convey("Test verify without overlapping sync and retention", t, func(c C) {
+		tmpfile, err := os.CreateTemp("", "zot-test*.json")
+		So(err, ShouldBeNil)
+		defer os.Remove(tmpfile.Name()) // clean up
+		content := `{
+			"distSpecVersion": "1.1.0-dev",
+			"storage": {
+				"rootDirectory": "%s",
+				"gc": true,
+				"gcDelay": "2h",
+				"gcInterval": "1h",
+				"retention": {
+					"policies": [
+						{
+							"repositories": ["infra/*", "prod/*"],
+							"deleteReferrers": false,
+							"keepTags": [{
+								"patterns": ["v4.*", ".*-prod"]
+							},
+							{
+								"patterns": ["v3.*", ".*-prod"],
+								"pulledWithin": "168h"
+							}]
+						}
+					]
+				}
+			},
+			"http": {
+				"address": "127.0.0.1",
+				"port": "%s"
+			},
+			"log": {
+				"level": "debug",
+				"output": "%s"
+			},
+			"extensions": {
+				"sync": {
+					"enable": true,
+					"registries": [
+						{
+							"urls": [
+								"https://registry1:5000"
+							],
+							"content": [
+								{
+									"prefix": "infra/*",
+									"tags": {
+										"regex": "v4.*",
+										"semver": true
+									}
+								}
+							]
+						}
+					]
+				}
+			}
+		}`
+
+		logPath, err := runCLIWithConfig(t.TempDir(), content)
+		So(err, ShouldBeNil)
+		data, err := os.ReadFile(logPath)
+		So(err, ShouldBeNil)
+		defer os.Remove(logPath) // clean up
+		So(string(data), ShouldNotContainSubstring, "overlapping sync content")
+	})
+
+	Convey("Test verify with overlapping sync and retention - retention would remove v4 tags", t, func(c C) {
+		tmpfile, err := os.CreateTemp("", "zot-test*.json")
+		So(err, ShouldBeNil)
+		defer os.Remove(tmpfile.Name()) // clean up
+		content := `{
+			"distSpecVersion": "1.1.0-dev",
+			"storage": {
+				"rootDirectory": "%s",
+				"gc": true,
+				"gcDelay": "2h",
+				"gcInterval": "1h",
+				"retention": {
+					"policies": [
+						{
+							"repositories": ["infra/*", "prod/*"],
+							"keepTags": [{
+								"patterns": ["v2.*", ".*-prod"]
+							},
+							{
+								"patterns": ["v3.*", ".*-prod"]
+							}]
+						}
+					]
+				}
+			},
+			"http": {
+				"address": "127.0.0.1",
+				"port": "%s"
+			},
+			"log": {
+				"level": "debug",
+				"output": "%s"
+			},
+			"extensions": {
+				"sync": {
+					"enable": true,
+					"registries": [
+						{
+							"urls": [
+								"https://registry1:5000"
+							],
+							"content": [
+								{
+									"prefix": "infra/*",
+									"tags": {
+										"regex": "4.*",
+										"semver": true
+									}
+								}
+							]
+						}
+					]
+				}
+			}
+		}`
+
+		logPath, err := runCLIWithConfig(t.TempDir(), content)
+		So(err, ShouldBeNil)
+		data, err := os.ReadFile(logPath)
+		So(err, ShouldBeNil)
+		defer os.Remove(logPath) // clean up
+		So(string(data), ShouldContainSubstring, "overlapping sync content\":{\"Prefix\":\"infra/*")
+	})
+
+	Convey("Test verify with overlapping sync and retention - retention would remove tags from repo", t, func(c C) {
+		tmpfile, err := os.CreateTemp("", "zot-test*.json")
+		So(err, ShouldBeNil)
+		defer os.Remove(tmpfile.Name()) // clean up
+		content := `{
+			"distSpecVersion": "1.1.0-dev",
+			"storage": {
+				"rootDirectory": "%s",
+				"gc": true,
+				"gcDelay": "2h",
+				"gcInterval": "1h",
+				"retention": {
+					"dryRun": false,
+					"delay": "24h",
+					"policies": [
+						{
+							"repositories": ["tmp/**"],
+							"keepTags": [{
+								"patterns": ["v1.*"]
+							}]
+						}
+					]
+				}
+			},
+			"http": {
+				"address": "127.0.0.1",
+				"port": "%s"
+			},
+			"log": {
+				"level": "debug",
+				"output": "%s"
+			},
+			"extensions": {
+				"sync": {
+					"enable": true,
+					"registries": [
+						{
+							"urls": [
+								"https://registry1:5000"
+							],
+							"content": [
+								{
+									"prefix": "**",
+									"destination": "/tmp",
+									"stripPrefix": true
+								}
+							]
+						}
+					]
+				}
+			}
+		}
+		`
+
+		logPath, err := runCLIWithConfig(t.TempDir(), content)
+		So(err, ShouldBeNil)
+		data, err := os.ReadFile(logPath)
+		So(err, ShouldBeNil)
+		defer os.Remove(logPath) // clean up
+		So(string(data), ShouldContainSubstring, "overlapping sync content\":{\"Prefix\":\"**")
+	})
+
+	Convey("Test verify with overlapping sync and retention - retention would remove tags from subpath", t, func(c C) {
+		tmpfile, err := os.CreateTemp("", "zot-test*.json")
+		So(err, ShouldBeNil)
+		defer os.Remove(tmpfile.Name()) // clean up
+		content := `{
+			"distSpecVersion": "1.1.0-dev",
+			"storage": {
+				"rootDirectory": "%s",
+				"gc": true,
+				"gcDelay": "2h",
+				"gcInterval": "1h",
+				"subPaths": {
+					"/synced": {
+						"rootDirectory": "/tmp/zot2",
+						"dedupe": true,
+						"retention": {
+							"policies": [
+								{
+									"repositories": ["infra/*", "prod/*"],
+									"deleteReferrers": false,
+									"keepTags": [{
+									}]
+								}
+							]
+						}
+					}
+				}
+			},
+			"http": {
+				"address": "127.0.0.1",
+				"port": "%s"
+			},
+			"log": {
+				"level": "debug",
+				"output": "%s"
+			},
+			"extensions": {
+				"sync": {
+					"enable": true,
+					"registries": [
+						{
+							"urls": [
+								"https://registry1:5000"
+							],
+							"content": [
+								{
+									"prefix": "prod/*",
+									"destination": "/synced"
+								}
+							]
+						}
+					]
+				}
+			}
+		}
+		`
+
+		logPath, err := runCLIWithConfig(t.TempDir(), content)
+		So(err, ShouldBeNil)
+		data, err := os.ReadFile(logPath)
+		So(err, ShouldBeNil)
+		defer os.Remove(logPath) // clean up
+		So(string(data), ShouldContainSubstring, "overlapping sync content\":{\"Prefix\":\"prod/*")
 	})
 }

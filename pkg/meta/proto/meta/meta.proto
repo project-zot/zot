@@ -76,6 +76,9 @@ message BlobInfo {
 
 message DescriptorStatistics {
     int32 DownloadCount = 1;
+    google.protobuf.Timestamp LastPullTimestamp = 2;
+	google.protobuf.Timestamp PushTimestamp = 3;
+	string PushedBy = 4;
 }
 
 message ReferrersInfo {

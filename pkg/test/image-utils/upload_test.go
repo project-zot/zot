@@ -81,16 +81,23 @@ func TestUploadImage(t *testing.T) {
 		conf.HTTP.Port = port
 		conf.Storage.RootDirectory = tempDir
 
-		err := os.Chmod(tempDir, 0o400)
-		if err != nil {
-			t.Fatal(err)
-		}
-
 		ctlr := api.NewController(conf)
 
 		ctlrManager := tcommon.NewControllerManager(ctlr)
 		ctlrManager.StartAndWait(port)
 		defer ctlrManager.StopServer()
+
+		err := os.Chmod(tempDir, 0o400)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		defer func() {
+			err := os.Chmod(tempDir, 0o700)
+			if err != nil {
+				t.Fatal(err)
+			}
+		}()
 
 		img := Image{
 			Layers: make([][]byte, 10),

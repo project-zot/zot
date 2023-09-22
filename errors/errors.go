@@ -164,4 +164,5 @@ var (
 	ErrFlagValueUnsupported           = errors.New("supported values ")
 	ErrUnknownSubcommand              = errors.New("cli: unknown subcommand")
 	ErrMultipleReposSameName          = errors.New("test: can't have multiple repos with the same name")
+	ErrRetentionPolicyNotFound        = errors.New("retention: repo or tag policy not found")
 )

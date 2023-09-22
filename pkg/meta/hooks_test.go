@@ -42,7 +42,7 @@ func TestOnUpdateManifest(t *testing.T) {
 		err = WriteImageToFileSystem(CreateDefaultImage(), "repo", "tag1", storeController)
 		So(err, ShouldBeNil)
 
-		err = meta.OnUpdateManifest("repo", "tag1", ispec.MediaTypeImageManifest, image.Digest(),
+		err = meta.OnUpdateManifest(context.Background(), "repo", "tag1", ispec.MediaTypeImageManifest, image.Digest(),
 			image.ManifestDescriptor.Data, storeController, metaDB, log)
 		So(err, ShouldBeNil)
 
@@ -61,7 +61,7 @@ func TestUpdateErrors(t *testing.T) {
 		log := log.NewLogger("debug", "")
 
 		Convey("IsReferrersTag true update", func() {
-			err := meta.OnUpdateManifest("repo", "sha256-123", "digest", "media", []byte("bad"),
+			err := meta.OnUpdateManifest(context.Background(), "repo", "sha256-123", "digest", "media", []byte("bad"),
 				storeController, metaDB, log)
 			So(err, ShouldBeNil)
 		})

@@ -5,6 +5,7 @@ package trivy
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"os"
 	"path"
@@ -299,7 +300,7 @@ func TestImageScannable(t *testing.T) {
 			Blob:      ispec.DescriptorEmptyJSON.Data,
 		}}).ImageConfig(validConfig).Build()
 
-	err = metaDB.SetRepoReference("repo1", "valid", validImage.AsImageMeta())
+	err = metaDB.SetRepoReference(context.Background(), "repo1", "valid", validImage.AsImageMeta())
 	if err != nil {
 		panic(err)
 	}
@@ -312,7 +313,8 @@ func TestImageScannable(t *testing.T) {
 			Blob:      ispec.DescriptorEmptyJSON.Data,
 		}}).ImageConfig(validConfig).Build()
 
-	err = metaDB.SetRepoReference("repo1", "unscannable-layer", imageWithUnscannableLayer.AsImageMeta())
+	err = metaDB.SetRepoReference(context.Background(), "repo1",
+		"unscannable-layer", imageWithUnscannableLayer.AsImageMeta())
 	if err != nil {
 		panic(err)
 	}

@@ -65,13 +65,13 @@ func TestIterator(t *testing.T) {
 		So(dynamoWrapper.ResetTable(dynamoWrapper.ImageMetaTablename), ShouldBeNil)
 		So(dynamoWrapper.ResetTable(dynamoWrapper.RepoMetaTablename), ShouldBeNil)
 
-		err = dynamoWrapper.SetRepoReference("repo1", "tag1", CreateRandomImage().AsImageMeta())
+		err = dynamoWrapper.SetRepoReference(context.Background(), "repo1", "tag1", CreateRandomImage().AsImageMeta())
 		So(err, ShouldBeNil)
 
-		err = dynamoWrapper.SetRepoReference("repo2", "tag2", CreateRandomImage().AsImageMeta())
+		err = dynamoWrapper.SetRepoReference(context.Background(), "repo2", "tag2", CreateRandomImage().AsImageMeta())
 		So(err, ShouldBeNil)
 
-		err = dynamoWrapper.SetRepoReference("repo3", "tag3", CreateRandomImage().AsImageMeta())
+		err = dynamoWrapper.SetRepoReference(context.Background(), "repo3", "tag3", CreateRandomImage().AsImageMeta())
 		So(err, ShouldBeNil)
 
 		repoMetaAttributeIterator := mdynamodb.NewBaseDynamoAttributesIterator(

@@ -52,7 +52,7 @@ func NewLogger(level, output string) Logger {
 	return Logger{Logger: log.Hook(goroutineHook{}).With().Caller().Timestamp().Logger()}
 }
 
-func NewAuditLogger(level, audit string) *Logger {
+func NewAuditLogger(level, output string) *Logger {
 	loggerSetTimeFormat.Do(func() {
 		zerolog.TimeFieldFormat = time.RFC3339Nano
 	})
@@ -66,12 +66,16 @@ func NewAuditLogger(level, audit string) *Logger {
 
 	var auditLog zerolog.Logger
 
-	auditFile, err := os.OpenFile(audit, os.O_APPEND|os.O_WRONLY|os.O_CREATE, defaultPerms)
-	if err != nil {
-		panic(err)
-	}
+	if output == "" {
+		auditLog = zerolog.New(os.Stdout)
+	} else {
+		auditFile, err := os.OpenFile(output, os.O_APPEND|os.O_WRONLY|os.O_CREATE, defaultPerms)
+		if err != nil {
+			panic(err)
+		}
 
-	auditLog = zerolog.New(auditFile)
+		auditLog = zerolog.New(auditFile)
+	}
 
 	return &Logger{Logger: auditLog.With().Timestamp().Logger()}
 }

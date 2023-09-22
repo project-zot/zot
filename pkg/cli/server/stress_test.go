@@ -25,7 +25,7 @@ const (
 	WorkerRunningTime  = 60 * time.Second
 )
 
-func TestSressTooManyOpenFiles(t *testing.T) {
+func TestStressTooManyOpenFiles(t *testing.T) {
 	oldArgs := os.Args
 
 	defer func() { os.Args = oldArgs }()

@@ -3,9 +3,7 @@
     "storage": {
         "rootDirectory": "/tmp/zot/s3",
         "gc": true,
-        "gcReferrers": false,
         "gcDelay": "50m",
-        "untaggedImageRetentionDelay": "50m",
         "gcInterval": "2m",
         "storageDriver": {
             "name": "s3",
@@ -20,7 +18,13 @@
             "name": "dynamodb",
             "endpoint": "http://localhost:4566",
             "region": "us-east-2",
-            "cacheTablename": "BlobTable"
+            "cacheTablename": "BlobTable",
+            "repoMetaTablename": "RepoMetadataTable",
+            "indexDataTablename": "IndexDataTable",
+            "manifestDataTablename": "ManifestDataTable",
+            "apikeytablename": "ApiKeyDataTable",
+            "userdatatablename": "UserDataTable",
+            "versionTablename": "VersionTable"
         }
     },
     "http": {

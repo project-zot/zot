@@ -153,7 +153,7 @@ func (ref CosignReference) SyncReferences(ctx context.Context, localRepo, remote
 			ref.log.Debug().Str("repository", localRepo).Str("subject", subjectDigestStr).
 				Msg("metaDB: trying to sync cosign reference for image")
 
-			err = meta.SetImageMetaFromInput(localRepo, cosignTag, ispec.MediaTypeImageManifest,
+			err = meta.SetImageMetaFromInput(ctx, localRepo, cosignTag, ispec.MediaTypeImageManifest,
 				referenceDigest, manifestBuf, ref.storeController.GetImageStore(localRepo),
 				ref.metaDB, ref.log)
 

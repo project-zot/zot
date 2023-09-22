@@ -297,7 +297,10 @@ func GetStatisticsMap(stats map[string]*proto_go.DescriptorStatistics) map[strin
 
 	for digest, stat := range stats {
 		results[digest] = mTypes.DescriptorStatistics{
-			DownloadCount: int(stat.DownloadCount),
+			DownloadCount:     int(stat.DownloadCount),
+			LastPullTimestamp: stat.LastPullTimestamp.AsTime(),
+			PushTimestamp:     stat.PushTimestamp.AsTime(),
+			PushedBy:          stat.PushedBy,
 		}
 	}
 
@@ -310,7 +313,10 @@ func GetImageStatistics(stats *proto_go.DescriptorStatistics) mTypes.DescriptorS
 	}
 
 	return mTypes.DescriptorStatistics{
-		DownloadCount: int(stats.DownloadCount),
+		DownloadCount:     int(stats.DownloadCount),
+		LastPullTimestamp: stats.LastPullTimestamp.AsTime(),
+		PushTimestamp:     stats.PushTimestamp.AsTime(),
+		PushedBy:          stats.PushedBy,
 	}
 }
 

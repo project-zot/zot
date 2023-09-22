@@ -1,6 +1,7 @@
 package meta
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"time"
@@ -106,7 +107,7 @@ func ParseRepo(repo string, metaDB mTypes.MetaDB, storeController storage.StoreC
 			reference = manifest.Digest.String()
 		}
 
-		err = SetImageMetaFromInput(repo, reference, manifest.MediaType, manifest.Digest, manifestBlob,
+		err = SetImageMetaFromInput(context.Background(), repo, reference, manifest.MediaType, manifest.Digest, manifestBlob,
 			imageStore, metaDB, log)
 		if err != nil {
 			log.Error().Err(err).Str("repository", repo).Str("tag", tag).
@@ -248,7 +249,7 @@ func getNotationSignatureLayersInfo(
 
 // SetMetadataFromInput tries to set manifest metadata and update repo metadata by adding the current tag
 // (in case the reference is a tag). The function expects image manifests and indexes (multi arch images).
-func SetImageMetaFromInput(repo, reference, mediaType string, digest godigest.Digest, blob []byte,
+func SetImageMetaFromInput(ctx context.Context, repo, reference, mediaType string, digest godigest.Digest, blob []byte,
 	imageStore storageTypes.ImageStore, metaDB mTypes.MetaDB, log log.Logger,
 ) error {
 	var imageMeta mTypes.ImageMeta
@@ -260,6 +261,8 @@ func SetImageMetaFromInput(repo, reference, mediaType string, digest godigest.Di
 
 		err := json.Unmarshal(blob, &manifestContent)
 		if err != nil {
+			log.Error().Err(err).Msg("metadb: error while getting image data")
+
 			return err
 		}
 
@@ -321,9 +324,9 @@ func SetImageMetaFromInput(repo, reference, mediaType string, digest godigest.Di
 		return nil
 	}
 
-	err := metaDB.SetRepoReference(repo, reference, imageMeta)
+	err := metaDB.SetRepoReference(ctx, repo, reference, imageMeta)
 	if err != nil {
-		log.Error().Err(err).Msg("metadb: error while putting repo meta")
+		log.Error().Err(err).Msg("metadb: error while setting repo meta")
 
 		return err
 	}

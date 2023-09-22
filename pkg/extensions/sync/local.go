@@ -4,6 +4,7 @@
 package sync
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -164,7 +165,7 @@ func (registry *LocalRegistry) CommitImage(imageReference types.ImageReference, 
 		}
 
 		if registry.metaDB != nil {
-			err = meta.SetImageMetaFromInput(repo, reference, mediaType,
+			err = meta.SetImageMetaFromInput(context.Background(), repo, reference, mediaType,
 				manifestDigest, manifestBlob, imageStore, registry.metaDB, registry.log)
 			if err != nil {
 				return fmt.Errorf("metaDB: failed to set metadata for image '%s %s': %w", repo, reference, err)
@@ -222,7 +223,7 @@ func (registry *LocalRegistry) copyManifest(repo string, manifestContent []byte,
 	}
 
 	if registry.metaDB != nil {
-		err = meta.SetImageMetaFromInput(repo, reference, ispec.MediaTypeImageManifest,
+		err = meta.SetImageMetaFromInput(context.Background(), repo, reference, ispec.MediaTypeImageManifest,
 			digest, manifestContent, imageStore, registry.metaDB, registry.log)
 		if err != nil {
 			registry.log.Error().Str("errorType", common.TypeOf(err)).

@@ -28,8 +28,9 @@ import (
 	"gopkg.in/resty.v1"
 
 	zerr "zotregistry.io/zot/errors"
+	"zotregistry.io/zot/pkg/api/config"
 	"zotregistry.io/zot/pkg/extensions/monitoring"
-	"zotregistry.io/zot/pkg/log"
+	zlog "zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/storage"
 	"zotregistry.io/zot/pkg/storage/cache"
 	storageCommon "zotregistry.io/zot/pkg/storage/common"
@@ -43,6 +44,19 @@ import (
 	"zotregistry.io/zot/pkg/test/mocks"
 	tskip "zotregistry.io/zot/pkg/test/skip"
 )
+
+var trueVal bool = true //nolint: gochecknoglobals
+
+var DeleteReferrers = config.ImageRetention{ //nolint: gochecknoglobals
+	Delay: storageConstants.DefaultRetentionDelay,
+	Policies: []config.RetentionPolicy{
+		{
+			Repositories:    []string{"**"},
+			DeleteReferrers: true,
+			DeleteUntagged:  &trueVal,
+		},
+	},
+}
 
 func cleanupStorage(store driver.StorageDriver, name string) {
 	_ = store.Delete(context.Background(), name)
@@ -78,7 +92,7 @@ func createObjectsStore(rootDir string, cacheDir string) (
 		panic(err)
 	}
 
-	log := log.Logger{Logger: zerolog.New(os.Stdout)}
+	log := zlog.Logger{Logger: zerolog.New(os.Stdout)}
 	metrics := monitoring.NewMetricsServer(false, log)
 
 	cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
@@ -129,7 +143,7 @@ func TestStorageAPIs(t *testing.T) {
 			} else {
 				dir := t.TempDir()
 
-				log := log.Logger{Logger: zerolog.New(os.Stdout)}
+				log := zlog.Logger{Logger: zerolog.New(os.Stdout)}
 				metrics := monitoring.NewMetricsServer(false, log)
 				cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
 					RootDir:     dir,
@@ -741,7 +755,7 @@ func TestMandatoryAnnotations(t *testing.T) {
 			var testDir, tdir string
 			var store driver.StorageDriver
 
-			log := log.Logger{Logger: zerolog.New(os.Stdout)}
+			log := zlog.Logger{Logger: zerolog.New(os.Stdout)}
 			metrics := monitoring.NewMetricsServer(false, log)
 
 			if testcase.storageType == storageConstants.S3StorageDriverName {
@@ -865,7 +879,7 @@ func TestDeleteBlobsInUse(t *testing.T) {
 			var testDir, tdir string
 			var store driver.StorageDriver
 
-			log := log.Logger{Logger: zerolog.New(os.Stdout)}
+			log := zlog.Logger{Logger: zerolog.New(os.Stdout)}
 			metrics := monitoring.NewMetricsServer(false, log)
 
 			if testcase.storageType == storageConstants.S3StorageDriverName {
@@ -1165,7 +1179,7 @@ func TestReuploadCorruptedBlob(t *testing.T) {
 			var store driver.StorageDriver
 			var driver storageTypes.Driver
 
-			log := log.Logger{Logger: zerolog.New(os.Stdout)}
+			log := zlog.Logger{Logger: zerolog.New(os.Stdout)}
 			metrics := monitoring.NewMetricsServer(false, log)
 
 			if testcase.storageType == storageConstants.S3StorageDriverName {
@@ -1403,7 +1417,7 @@ func TestStorageHandler(t *testing.T) {
 				secondRootDir = t.TempDir()
 				thirdRootDir = t.TempDir()
 
-				log := log.NewLogger("debug", "")
+				log := zlog.NewLogger("debug", "")
 
 				metrics := monitoring.NewMetricsServer(false, log)
 
@@ -1462,7 +1476,9 @@ func TestGarbageCollectImageManifest(t *testing.T) {
 	for _, testcase := range testCases {
 		testcase := testcase
 		t.Run(testcase.testCaseName, func(t *testing.T) {
-			log := log.Logger{Logger: zerolog.New(os.Stdout)}
+			log := zlog.NewLogger("debug", "")
+			audit := zlog.NewAuditLogger("debug", "")
+
 			metrics := monitoring.NewMetricsServer(false, log)
 
 			Convey("Repo layout", t, func(c C) {
@@ -1497,10 +1513,17 @@ func TestGarbageCollectImageManifest(t *testing.T) {
 					}
 
 					gc := gc.NewGarbageCollect(imgStore, mocks.MetaDBMock{}, gc.Options{
-						Referrers:      true,
-						Delay:          storageConstants.DefaultGCDelay,
-						RetentionDelay: storageConstants.DefaultUntaggedImgeRetentionDelay,
-					}, log)
+						Delay: storageConstants.DefaultGCDelay,
+						ImageRetention: config.ImageRetention{
+							Delay: storageConstants.DefaultRetentionDelay,
+							Policies: []config.RetentionPolicy{
+								{
+									Repositories:    []string{"**"},
+									DeleteReferrers: true,
+								},
+							},
+						},
+					}, audit, log)
 
 					repoName := "gc-long"
 
@@ -1660,10 +1683,18 @@ func TestGarbageCollectImageManifest(t *testing.T) {
 					}
 
 					gc := gc.NewGarbageCollect(imgStore, mocks.MetaDBMock{}, gc.Options{
-						Referrers:      true,
-						Delay:          gcDelay,
-						RetentionDelay: storageConstants.DefaultUntaggedImgeRetentionDelay,
-					}, log)
+						Delay: gcDelay,
+						ImageRetention: config.ImageRetention{ //nolint: gochecknoglobals
+							Delay: gcDelay,
+							Policies: []config.RetentionPolicy{
+								{
+									Repositories:    []string{"**"},
+									DeleteReferrers: true,
+									DeleteUntagged:  &trueVal,
+								},
+							},
+						},
+					}, audit, log)
 
 					// upload orphan blob
 					upload, err := imgStore.NewBlobUpload(repoName)
@@ -1970,10 +2001,9 @@ func TestGarbageCollectImageManifest(t *testing.T) {
 					}
 
 					gc := gc.NewGarbageCollect(imgStore, mocks.MetaDBMock{}, gc.Options{
-						Referrers:      true,
 						Delay:          gcDelay,
-						RetentionDelay: storageConstants.DefaultUntaggedImgeRetentionDelay,
-					}, log)
+						ImageRetention: DeleteReferrers,
+					}, audit, log)
 
 					// first upload an image to the first repo and wait for GC timeout
 
@@ -2171,7 +2201,9 @@ func TestGarbageCollectImageIndex(t *testing.T) {
 	for _, testcase := range testCases {
 		testcase := testcase
 		t.Run(testcase.testCaseName, func(t *testing.T) {
-			log := log.Logger{Logger: zerolog.New(os.Stdout)}
+			log := zlog.NewLogger("debug", "")
+			audit := zlog.NewAuditLogger("debug", "")
+
 			metrics := monitoring.NewMetricsServer(false, log)
 
 			Convey("Repo layout", t, func(c C) {
@@ -2206,10 +2238,9 @@ func TestGarbageCollectImageIndex(t *testing.T) {
 					}
 
 					gc := gc.NewGarbageCollect(imgStore, mocks.MetaDBMock{}, gc.Options{
-						Referrers:      true,
 						Delay:          storageConstants.DefaultGCDelay,
-						RetentionDelay: storageConstants.DefaultUntaggedImgeRetentionDelay,
-					}, log)
+						ImageRetention: DeleteReferrers,
+					}, audit, log)
 
 					repoName := "gc-long"
 
@@ -2336,10 +2367,18 @@ func TestGarbageCollectImageIndex(t *testing.T) {
 					}
 
 					gc := gc.NewGarbageCollect(imgStore, mocks.MetaDBMock{}, gc.Options{
-						Referrers:      true,
-						Delay:          gcDelay,
-						RetentionDelay: imageRetentionDelay,
-					}, log)
+						Delay: gcDelay,
+						ImageRetention: config.ImageRetention{ //nolint: gochecknoglobals
+							Delay: imageRetentionDelay,
+							Policies: []config.RetentionPolicy{
+								{
+									Repositories:    []string{"**"},
+									DeleteReferrers: true,
+									DeleteUntagged:  &trueVal,
+								},
+							},
+						},
+					}, audit, log)
 
 					// upload orphan blob
 					upload, err := imgStore.NewBlobUpload(repoName)
@@ -2608,7 +2647,9 @@ func TestGarbageCollectChainedImageIndexes(t *testing.T) {
 	for _, testcase := range testCases {
 		testcase := testcase
 		t.Run(testcase.testCaseName, func(t *testing.T) {
-			log := log.Logger{Logger: zerolog.New(os.Stdout)}
+			log := zlog.NewLogger("debug", "")
+			audit := zlog.NewAuditLogger("debug", "")
+
 			metrics := monitoring.NewMetricsServer(false, log)
 
 			Convey("Garbage collect with short delay", t, func() {
@@ -2646,10 +2687,18 @@ func TestGarbageCollectChainedImageIndexes(t *testing.T) {
 				}
 
 				gc := gc.NewGarbageCollect(imgStore, mocks.MetaDBMock{}, gc.Options{
-					Referrers:      true,
-					Delay:          gcDelay,
-					RetentionDelay: imageRetentionDelay,
-				}, log)
+					Delay: gcDelay,
+					ImageRetention: config.ImageRetention{ //nolint: gochecknoglobals
+						Delay: imageRetentionDelay,
+						Policies: []config.RetentionPolicy{
+							{
+								Repositories:    []string{"**"},
+								DeleteReferrers: true,
+								DeleteUntagged:  &trueVal,
+							},
+						},
+					},
+				}, audit, log)
 
 				// upload orphan blob
 				upload, err := imgStore.NewBlobUpload(repoName)

@@ -3,10 +3,17 @@
     "storage": {
         "rootDirectory": "/tmp/zot/local",
         "gc": true,
-        "gcReferrers": true,
         "gcDelay": "20s",
-        "untaggedImageRetentionDelay": "20s",
-        "gcInterval": "1s"
+        "gcInterval": "1s",
+        "retention": {
+            "delay": "20s",
+            "policies": [
+                {
+                    "repositories": ["**"],
+                    "deleteReferrers": true
+                }
+            ]
+        }
     },
     "http": {
         "address": "127.0.0.1",

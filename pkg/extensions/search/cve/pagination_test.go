@@ -4,6 +4,7 @@
 package cveinfo_test
 
 import (
+	"context"
 	"fmt"
 	"sort"
 	"testing"
@@ -41,7 +42,7 @@ func TestCVEPagination(t *testing.T) {
 				Blob:      ispec.DescriptorEmptyJSON.Data,
 			}}).ImageConfig(ispec.Image{Created: &timeStamp11}).Build()
 
-		err = metaDB.SetRepoReference("repo1", "0.1.0", image.AsImageMeta())
+		err = metaDB.SetRepoReference(context.Background(), "repo1", "0.1.0", image.AsImageMeta())
 		So(err, ShouldBeNil)
 
 		timeStamp12 := time.Date(2009, 1, 1, 12, 0, 0, 0, time.UTC)
@@ -53,7 +54,7 @@ func TestCVEPagination(t *testing.T) {
 				Blob:      ispec.DescriptorEmptyJSON.Data,
 			}}).ImageConfig(ispec.Image{Created: &timeStamp12}).Build()
 
-		err = metaDB.SetRepoReference("repo1", "1.0.0", image2.AsImageMeta())
+		err = metaDB.SetRepoReference(context.Background(), "repo1", "1.0.0", image2.AsImageMeta())
 		So(err, ShouldBeNil)
 
 		// MetaDB loaded with initial data, mock the scanner

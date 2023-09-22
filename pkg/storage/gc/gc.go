@@ -15,9 +15,12 @@ import (
 	oras "github.com/oras-project/artifacts-spec/specs-go/v1"
 
 	zerr "zotregistry.io/zot/errors"
+	"zotregistry.io/zot/pkg/api/config"
 	zcommon "zotregistry.io/zot/pkg/common"
 	zlog "zotregistry.io/zot/pkg/log"
 	mTypes "zotregistry.io/zot/pkg/meta/types"
+	"zotregistry.io/zot/pkg/retention"
+	rTypes "zotregistry.io/zot/pkg/retention/types"
 	"zotregistry.io/zot/pkg/scheduler"
 	"zotregistry.io/zot/pkg/storage"
 	common "zotregistry.io/zot/pkg/storage/common"
@@ -30,28 +33,31 @@ const (
 )
 
 type Options struct {
-	// will garbage collect referrers with missing subject older than Delay
-	Referrers bool
 	// will garbage collect blobs older than Delay
 	Delay time.Duration
-	// will garbage collect untagged manifests older than RetentionDelay
-	RetentionDelay time.Duration
+
+	ImageRetention config.ImageRetention
 }
 
 type GarbageCollect struct {
-	imgStore types.ImageStore
-	opts     Options
-	metaDB   mTypes.MetaDB
-	log      zlog.Logger
+	imgStore  types.ImageStore
+	opts      Options
+	metaDB    mTypes.MetaDB
+	policyMgr rTypes.PolicyManager
+	auditLog  *zlog.Logger
+	log       zlog.Logger
 }
 
-func NewGarbageCollect(imgStore types.ImageStore, metaDB mTypes.MetaDB, opts Options, log zlog.Logger,
+func NewGarbageCollect(imgStore types.ImageStore, metaDB mTypes.MetaDB, opts Options,
+	auditLog *zlog.Logger, log zlog.Logger,
 ) GarbageCollect {
 	return GarbageCollect{
-		imgStore: imgStore,
-		metaDB:   metaDB,
-		opts:     opts,
-		log:      log,
+		imgStore:  imgStore,
+		metaDB:    metaDB,
+		opts:      opts,
+		policyMgr: retention.NewPolicyManager(opts.ImageRetention, log, auditLog),
+		auditLog:  auditLog,
+		log:       log,
 	}
 }
 
@@ -75,17 +81,20 @@ It also gc referrers with missing subject if the Referrer Option is enabled
 It also gc untagged manifests.
 */
 func (gc GarbageCollect) CleanRepo(repo string) error {
-	gc.log.Info().Msg(fmt.Sprintf("executing GC of orphaned blobs for %s", path.Join(gc.imgStore.RootDir(), repo)))
+	gc.log.Info().Str("module", "gc").
+		Msg(fmt.Sprintf("executing GC of orphaned blobs for %s", path.Join(gc.imgStore.RootDir(), repo)))
 
 	if err := gc.cleanRepo(repo); err != nil {
 		errMessage := fmt.Sprintf("error while running GC for %s", path.Join(gc.imgStore.RootDir(), repo))
-		gc.log.Error().Err(err).Msg(errMessage)
-		gc.log.Info().Msg(fmt.Sprintf("GC unsuccessfully completed for %s", path.Join(gc.imgStore.RootDir(), repo)))
+		gc.log.Error().Err(err).Str("module", "gc").Msg(errMessage)
+		gc.log.Info().Str("module", "gc").
+			Msg(fmt.Sprintf("GC unsuccessfully completed for %s", path.Join(gc.imgStore.RootDir(), repo)))
 
 		return err
 	}
 
-	gc.log.Info().Msg(fmt.Sprintf("GC successfully completed for %s", path.Join(gc.imgStore.RootDir(), repo)))
+	gc.log.Info().Str("module", "gc").
+		Msg(fmt.Sprintf("GC successfully completed for %s", path.Join(gc.imgStore.RootDir(), repo)))
 
 	return nil
 }
@@ -112,28 +121,39 @@ func (gc GarbageCollect) cleanRepo(repo string) error {
 	*/
 	index, err := common.GetIndex(gc.imgStore, repo, gc.log)
 	if err != nil {
+		gc.log.Error().Err(err).Str("module", "gc").Str("repository", repo).Msg("unable to read index.json in repo")
+
+		return err
+	}
+
+	// apply tags retention
+	if err := gc.removeTagsPerRetentionPolicy(repo, &index); err != nil {
 		return err
 	}
 
 	// gc referrers manifests with missing subject and untagged manifests
-	if err := gc.cleanManifests(repo, &index); err != nil {
+	if err := gc.removeManifestsPerRepoPolicy(repo, &index); err != nil {
 		return err
 	}
 
 	// update repos's index.json in storage
-	if err := gc.imgStore.PutIndexContent(repo, index); err != nil {
-		return err
+	if !gc.opts.ImageRetention.DryRun {
+		/* this will update the index.json with manifests deleted above
+		and the manifests blobs will be removed by gc.removeUnreferencedBlobs()*/
+		if err := gc.imgStore.PutIndexContent(repo, index); err != nil {
+			return err
+		}
 	}
 
 	// gc unreferenced blobs
-	if err := gc.cleanBlobs(repo, index, gc.opts.Delay, gc.log); err != nil {
+	if err := gc.removeUnreferencedBlobs(repo, gc.opts.Delay, gc.log); err != nil {
 		return err
 	}
 
 	return nil
 }
 
-func (gc GarbageCollect) cleanManifests(repo string, index *ispec.Index) error {
+func (gc GarbageCollect) removeManifestsPerRepoPolicy(repo string, index *ispec.Index) error {
 	var err error
 
 	/* gc all manifests that have a missing subject, stop when neither gc(referrer and untagged)
@@ -142,32 +162,36 @@ func (gc GarbageCollect) cleanManifests(repo string, index *ispec.Index) error {
 	for !stop {
 		var gcedReferrer bool
 
-		if gc.opts.Referrers {
-			gc.log.Debug().Str("repository", repo).Msg("gc: manifests with missing referrers")
+		var gcedUntagged bool
 
-			gcedReferrer, err = gc.cleanIndexReferrers(repo, index, *index)
+		if gc.policyMgr.HasDeleteReferrer(repo) {
+			gc.log.Debug().Str("module", "gc").Str("repository", repo).Msg("manifests with missing referrers")
+
+			gcedReferrer, err = gc.removeIndexReferrers(repo, index, *index)
 			if err != nil {
 				return err
 			}
 		}
 
-		referenced := make(map[godigest.Digest]bool, 0)
+		if gc.policyMgr.HasDeleteUntagged(repo) {
+			referenced := make(map[godigest.Digest]bool, 0)
 
-		/* gather all manifests referenced in multiarch images/by other manifests
-		so that we can skip them in cleanUntaggedManifests		*/
-		if err := gc.identifyManifestsReferencedInIndex(*index, repo, referenced); err != nil {
-			return err
-		}
+			/* gather all manifests referenced in multiarch images/by other manifests
+			so that we can skip them in cleanUntaggedManifests */
+			if err := gc.identifyManifestsReferencedInIndex(*index, repo, referenced); err != nil {
+				return err
+			}
 
-		// apply image retention policy
-		gcedManifest, err := gc.cleanUntaggedManifests(repo, index, referenced)
-		if err != nil {
-			return err
+			// apply image retention policy
+			gcedUntagged, err = gc.removeUntaggedManifests(repo, index, referenced)
+			if err != nil {
+				return err
+			}
 		}
 
 		/* if we gced any manifest then loop again and gc manifests with
 		a subject pointing to the last ones which were gced. */
-		stop = !gcedReferrer && !gcedManifest
+		stop = !gcedReferrer && !gcedUntagged
 	}
 
 	return nil
@@ -179,7 +203,7 @@ garbageCollectIndexReferrers will gc all referrers with a missing subject recurs
 rootIndex is indexJson, need to pass it down to garbageCollectReferrer()
 rootIndex is the place we look for referrers.
 */
-func (gc GarbageCollect) cleanIndexReferrers(repo string, rootIndex *ispec.Index, index ispec.Index,
+func (gc GarbageCollect) removeIndexReferrers(repo string, rootIndex *ispec.Index, index ispec.Index,
 ) (bool, error) {
 	var count int
 
@@ -190,13 +214,13 @@ func (gc GarbageCollect) cleanIndexReferrers(repo string, rootIndex *ispec.Index
 		case ispec.MediaTypeImageIndex:
 			indexImage, err := common.GetImageIndex(gc.imgStore, repo, desc.Digest, gc.log)
 			if err != nil {
-				gc.log.Error().Err(err).Str("repository", repo).Str("digest", desc.Digest.String()).
-					Msg("gc: failed to read multiarch(index) image")
+				gc.log.Error().Err(err).Str("module", "gc").Str("repository", repo).Str("digest", desc.Digest.String()).
+					Msg("failed to read multiarch(index) image")
 
 				return false, err
 			}
 
-			gced, err := gc.cleanReferrer(repo, rootIndex, desc, indexImage.Subject, indexImage.ArtifactType)
+			gced, err := gc.removeReferrer(repo, rootIndex, desc, indexImage.Subject, indexImage.ArtifactType)
 			if err != nil {
 				return false, err
 			}
@@ -208,7 +232,7 @@ func (gc GarbageCollect) cleanIndexReferrers(repo string, rootIndex *ispec.Index
 				return true, nil
 			}
 
-			gced, err = gc.cleanIndexReferrers(repo, rootIndex, indexImage)
+			gced, err = gc.removeIndexReferrers(repo, rootIndex, indexImage)
 			if err != nil {
 				return false, err
 			}
@@ -219,15 +243,15 @@ func (gc GarbageCollect) cleanIndexReferrers(repo string, rootIndex *ispec.Index
 		case ispec.MediaTypeImageManifest, oras.MediaTypeArtifactManifest:
 			image, err := common.GetImageManifest(gc.imgStore, repo, desc.Digest, gc.log)
 			if err != nil {
-				gc.log.Error().Err(err).Str("repo", repo).Str("digest", desc.Digest.String()).
-					Msg("gc: failed to read manifest image")
+				gc.log.Error().Err(err).Str("module", "gc").Str("repo", repo).Str("digest", desc.Digest.String()).
+					Msg("failed to read manifest image")
 
 				return false, err
 			}
 
 			artifactType := zcommon.GetManifestArtifactType(image)
 
-			gced, err := gc.cleanReferrer(repo, rootIndex, desc, image.Subject, artifactType)
+			gced, err := gc.removeReferrer(repo, rootIndex, desc, image.Subject, artifactType)
 			if err != nil {
 				return false, err
 			}
@@ -241,7 +265,7 @@ func (gc GarbageCollect) cleanIndexReferrers(repo string, rootIndex *ispec.Index
 	return count > 0, err
 }
 
-func (gc GarbageCollect) cleanReferrer(repo string, index *ispec.Index, manifestDesc ispec.Descriptor,
+func (gc GarbageCollect) removeReferrer(repo string, index *ispec.Index, manifestDesc ispec.Descriptor,
 	subject *ispec.Descriptor, artifactType string,
 ) (bool, error) {
 	var gced bool
@@ -259,18 +283,35 @@ func (gc GarbageCollect) cleanReferrer(repo string, index *ispec.Index, manifest
 		}
 
 		if !referenced {
-			gced, err = gc.gcManifest(repo, index, manifestDesc, signatureType, subject.Digest, gc.opts.Delay)
+			gced, err = gc.gcManifest(repo, index, manifestDesc, signatureType, subject.Digest, gc.opts.ImageRetention.Delay)
 			if err != nil {
 				return false, err
+			}
+
+			if gced {
+				gc.log.Info().Str("module", "gc").
+					Str("repository", repo).
+					Str("reference", manifestDesc.Digest.String()).
+					Str("subject", subject.Digest.String()).
+					Str("decision", "delete").
+					Str("reason", "deleteReferrers").Msg("removed manifest without reference")
+
+				if gc.auditLog != nil {
+					gc.auditLog.Info().Str("module", "gc").
+						Str("repository", repo).
+						Str("reference", manifestDesc.Digest.String()).
+						Str("subject", subject.Digest.String()).
+						Str("decision", "delete").
+						Str("reason", "deleteReferrers").Msg("removed manifest without reference")
+				}
 			}
 		}
 	}
 
 	// cosign
-	tag, ok := manifestDesc.Annotations[ispec.AnnotationRefName]
+	tag, ok := getDescriptorTag(manifestDesc)
 	if ok {
-		if strings.HasPrefix(tag, "sha256-") && (strings.HasSuffix(tag, cosignSignatureTagSuffix) ||
-			strings.HasSuffix(tag, SBOMTagSuffix)) {
+		if isCosignTag(tag) {
 			subjectDigest := getSubjectFromCosignTag(tag)
 			referenced := isManifestReferencedInIndex(index, subjectDigest)
 
@@ -279,11 +320,61 @@ func (gc GarbageCollect) cleanReferrer(repo string, index *ispec.Index, manifest
 				if err != nil {
 					return false, err
 				}
+
+				if gced {
+					gc.log.Info().Str("module", "gc").
+						Bool("dry-run", gc.opts.ImageRetention.DryRun).
+						Str("repository", repo).
+						Str("reference", tag).
+						Str("subject", subjectDigest.String()).
+						Str("decision", "delete").
+						Str("reason", "deleteReferrers").Msg("removed cosign manifest without reference")
+
+					if gc.auditLog != nil {
+						gc.auditLog.Info().Str("module", "gc").
+							Bool("dry-run", gc.opts.ImageRetention.DryRun).
+							Str("repository", repo).
+							Str("reference", tag).
+							Str("subject", subjectDigest.String()).
+							Str("decision", "delete").
+							Str("reason", "deleteReferrers").Msg("removed cosign manifest without reference")
+					}
+				}
 			}
 		}
 	}
 
 	return gced, nil
+}
+
+func (gc GarbageCollect) removeTagsPerRetentionPolicy(repo string, index *ispec.Index) error {
+	if !gc.policyMgr.HasTagRetention(repo) {
+		return nil
+	}
+
+	repoMeta, err := gc.metaDB.GetRepoMeta(context.Background(), repo)
+	if err != nil {
+		gc.log.Error().Err(err).Str("module", "gc").Str("repository", repo).Msg("can't retrieve repoMeta for repo")
+
+		return err
+	}
+
+	retainTags := gc.policyMgr.GetRetainedTags(repoMeta, *index)
+
+	// remove
+	for _, desc := range index.Manifests {
+		// check tag
+		tag, ok := getDescriptorTag(desc)
+		if ok && !zcommon.Contains(retainTags, tag) {
+			// remove tags which should not be retained
+			_, err := gc.removeManifest(repo, index, desc, tag, "", "")
+			if err != nil && !errors.Is(err, zerr.ErrManifestNotFound) {
+				return err
+			}
+		}
+	}
+
+	return nil
 }
 
 // gcManifest removes a manifest entry from an index and syncs metaDB accordingly if the blob is older than gc.Delay.
@@ -294,14 +385,14 @@ func (gc GarbageCollect) gcManifest(repo string, index *ispec.Index, desc ispec.
 
 	canGC, err := isBlobOlderThan(gc.imgStore, repo, desc.Digest, delay, gc.log)
 	if err != nil {
-		gc.log.Error().Err(err).Str("repository", repo).Str("digest", desc.Digest.String()).
-			Str("delay", gc.opts.Delay.String()).Msg("gc: failed to check if blob is older than delay")
+		gc.log.Error().Err(err).Str("module", "gc").Str("repository", repo).Str("digest", desc.Digest.String()).
+			Str("delay", delay.String()).Msg("failed to check if blob is older than delay")
 
 		return false, err
 	}
 
 	if canGC {
-		if gced, err = gc.removeManifest(repo, index, desc, signatureType, subjectDigest); err != nil {
+		if gced, err = gc.removeManifest(repo, index, desc, desc.Digest.String(), signatureType, subjectDigest); err != nil {
 			return false, err
 		}
 	}
@@ -311,18 +402,19 @@ func (gc GarbageCollect) gcManifest(repo string, index *ispec.Index, desc ispec.
 
 // removeManifest removes a manifest entry from an index and syncs metaDB accordingly.
 func (gc GarbageCollect) removeManifest(repo string, index *ispec.Index,
-	desc ispec.Descriptor, signatureType string, subjectDigest godigest.Digest,
+	desc ispec.Descriptor, reference string, signatureType string, subjectDigest godigest.Digest,
 ) (bool, error) {
-	gc.log.Debug().Str("repository", repo).Str("digest", desc.Digest.String()).Msg("gc: removing manifest")
-
-	// remove from index
-	_, err := common.RemoveManifestDescByReference(index, desc.Digest.String(), true)
+	_, err := common.RemoveManifestDescByReference(index, reference, true)
 	if err != nil {
 		if errors.Is(err, zerr.ErrManifestConflict) {
 			return false, nil
 		}
 
 		return false, err
+	}
+
+	if gc.opts.ImageRetention.DryRun {
+		return true, nil
 	}
 
 	// sync metaDB
@@ -333,14 +425,14 @@ func (gc GarbageCollect) removeManifest(repo string, index *ispec.Index,
 				SignatureType:   signatureType,
 			})
 			if err != nil {
-				gc.log.Error().Err(err).Msg("gc,metadb: unable to remove signature in metaDB")
+				gc.log.Error().Err(err).Str("module", "gc").Msg("metadb: unable to remove signature in metaDB")
 
 				return false, err
 			}
 		} else {
-			err := gc.metaDB.RemoveRepoReference(repo, desc.Digest.String(), desc.Digest)
+			err := gc.metaDB.RemoveRepoReference(repo, reference, desc.Digest)
 			if err != nil {
-				gc.log.Error().Err(err).Msg("gc, metadb: unable to remove repo reference in metaDB")
+				gc.log.Error().Err(err).Str("module", "gc").Msg("metadb: unable to remove repo reference in metaDB")
 
 				return false, err
 			}
@@ -350,16 +442,15 @@ func (gc GarbageCollect) removeManifest(repo string, index *ispec.Index,
 	return true, nil
 }
 
-func (gc GarbageCollect) cleanUntaggedManifests(repo string, index *ispec.Index,
+func (gc GarbageCollect) removeUntaggedManifests(repo string, index *ispec.Index,
 	referenced map[godigest.Digest]bool,
 ) (bool, error) {
 	var gced bool
 
 	var err error
 
-	gc.log.Debug().Str("repository", repo).Msg("gc: manifests without tags")
+	gc.log.Debug().Str("module", "gc").Str("repository", repo).Msg("manifests without tags")
 
-	// first gather manifests part of image indexes and referrers, we want to skip checking them
 	for _, desc := range index.Manifests {
 		// skip manifests referenced in image indexes
 		if _, referenced := referenced[desc.Digest]; referenced {
@@ -368,11 +459,29 @@ func (gc GarbageCollect) cleanUntaggedManifests(repo string, index *ispec.Index,
 
 		// remove untagged images
 		if desc.MediaType == ispec.MediaTypeImageManifest || desc.MediaType == ispec.MediaTypeImageIndex {
-			_, ok := desc.Annotations[ispec.AnnotationRefName]
+			_, ok := getDescriptorTag(desc)
 			if !ok {
-				gced, err = gc.gcManifest(repo, index, desc, "", "", gc.opts.RetentionDelay)
+				gced, err = gc.gcManifest(repo, index, desc, "", "", gc.opts.ImageRetention.Delay)
 				if err != nil {
 					return false, err
+				}
+
+				if gced {
+					gc.log.Info().Str("module", "gc").
+						Bool("dry-run", gc.opts.ImageRetention.DryRun).
+						Str("repository", repo).
+						Str("reference", desc.Digest.String()).
+						Str("decision", "delete").
+						Str("reason", "deleteUntagged").Msg("removed untagged manifest")
+
+					if gc.auditLog != nil {
+						gc.auditLog.Info().Str("module", "gc").
+							Bool("dry-run", gc.opts.ImageRetention.DryRun).
+							Str("repository", repo).
+							Str("reference", desc.Digest.String()).
+							Str("decision", "delete").
+							Str("reason", "deleteUntagged").Msg("removed untagged manifest")
+					}
 				}
 			}
 		}
@@ -390,8 +499,8 @@ func (gc GarbageCollect) identifyManifestsReferencedInIndex(index ispec.Index, r
 		case ispec.MediaTypeImageIndex:
 			indexImage, err := common.GetImageIndex(gc.imgStore, repo, desc.Digest, gc.log)
 			if err != nil {
-				gc.log.Error().Err(err).Str("repository", repo).Str("digest", desc.Digest.String()).
-					Msg("gc: failed to read multiarch(index) image")
+				gc.log.Error().Err(err).Str("module", "gc").Str("repository", repo).
+					Str("digest", desc.Digest.String()).Msg("failed to read multiarch(index) image")
 
 				return err
 			}
@@ -410,8 +519,8 @@ func (gc GarbageCollect) identifyManifestsReferencedInIndex(index ispec.Index, r
 		case ispec.MediaTypeImageManifest, oras.MediaTypeArtifactManifest:
 			image, err := common.GetImageManifest(gc.imgStore, repo, desc.Digest, gc.log)
 			if err != nil {
-				gc.log.Error().Err(err).Str("repo", repo).Str("digest", desc.Digest.String()).
-					Msg("gc: failed to read manifest image")
+				gc.log.Error().Err(err).Str("module", "gc").Str("repo", repo).
+					Str("digest", desc.Digest.String()).Msg("failed to read manifest image")
 
 				return err
 			}
@@ -425,17 +534,23 @@ func (gc GarbageCollect) identifyManifestsReferencedInIndex(index ispec.Index, r
 	return nil
 }
 
-// cleanBlobs gc all blobs which are not referenced by any manifest found in repo's index.json.
-func (gc GarbageCollect) cleanBlobs(repo string, index ispec.Index,
-	delay time.Duration, log zlog.Logger,
+// removeUnreferencedBlobs gc all blobs which are not referenced by any manifest found in repo's index.json.
+func (gc GarbageCollect) removeUnreferencedBlobs(repo string, delay time.Duration, log zlog.Logger,
 ) error {
-	gc.log.Debug().Str("repository", repo).Msg("gc: blobs")
+	gc.log.Debug().Str("module", "gc").Str("repository", repo).Msg("cleaning orphan blobs")
 
 	refBlobs := map[string]bool{}
 
-	err := gc.addIndexBlobsToReferences(repo, index, refBlobs)
+	index, err := common.GetIndex(gc.imgStore, repo, gc.log)
 	if err != nil {
-		log.Error().Err(err).Str("repository", repo).Msg("gc: unable to get referenced blobs in repo")
+		log.Error().Err(err).Str("module", "gc").Str("repository", repo).Msg("unable to read index.json in repo")
+
+		return err
+	}
+
+	err = gc.addIndexBlobsToReferences(repo, index, refBlobs)
+	if err != nil {
+		log.Error().Err(err).Str("module", "gc").Str("repository", repo).Msg("unable to get referenced blobs in repo")
 
 		return err
 	}
@@ -447,7 +562,7 @@ func (gc GarbageCollect) cleanBlobs(repo string, index ispec.Index,
 			return nil
 		}
 
-		log.Error().Err(err).Str("repository", repo).Msg("gc: unable to get all blobs")
+		log.Error().Err(err).Str("module", "gc").Str("repository", repo).Msg("unable to get all blobs")
 
 		return err
 	}
@@ -457,7 +572,8 @@ func (gc GarbageCollect) cleanBlobs(repo string, index ispec.Index,
 	for _, blob := range allBlobs {
 		digest := godigest.NewDigestFromEncoded(godigest.SHA256, blob)
 		if err = digest.Validate(); err != nil {
-			log.Error().Err(err).Str("repository", repo).Str("digest", blob).Msg("gc: unable to parse digest")
+			log.Error().Err(err).Str("module", "gc").Str("repository", repo).Str("digest", blob).
+				Msg("unable to parse digest")
 
 			return err
 		}
@@ -465,7 +581,8 @@ func (gc GarbageCollect) cleanBlobs(repo string, index ispec.Index,
 		if _, ok := refBlobs[digest.String()]; !ok {
 			canGC, err := isBlobOlderThan(gc.imgStore, repo, digest, delay, log)
 			if err != nil {
-				log.Error().Err(err).Str("repository", repo).Str("digest", blob).Msg("gc: unable to determine GC delay")
+				log.Error().Err(err).Str("module", "gc").Str("repository", repo).Str("digest", blob).
+					Msg("unable to determine GC delay")
 
 				return err
 			}
@@ -484,11 +601,13 @@ func (gc GarbageCollect) cleanBlobs(repo string, index ispec.Index,
 		return err
 	}
 
-	log.Info().Str("repository", repo).Int("count", reaped).Msg("gc: garbage collected blobs")
+	log.Info().Str("module", "gc").Str("repository", repo).Int("count", reaped).
+		Msg("garbage collected blobs")
 
 	return nil
 }
 
+// used by removeUnreferencedBlobs()
 // addIndexBlobsToReferences adds referenced blobs found in referenced manifests (index.json) in refblobs map.
 func (gc GarbageCollect) addIndexBlobsToReferences(repo string, index ispec.Index, refBlobs map[string]bool,
 ) error {
@@ -496,22 +615,22 @@ func (gc GarbageCollect) addIndexBlobsToReferences(repo string, index ispec.Inde
 		switch desc.MediaType {
 		case ispec.MediaTypeImageIndex:
 			if err := gc.addImageIndexBlobsToReferences(repo, desc.Digest, refBlobs); err != nil {
-				gc.log.Error().Err(err).Str("repository", repo).Str("digest", desc.Digest.String()).
-					Msg("gc: failed to read blobs in multiarch(index) image")
+				gc.log.Error().Err(err).Str("module", "gc").Str("repository", repo).
+					Str("digest", desc.Digest.String()).Msg("failed to read blobs in multiarch(index) image")
 
 				return err
 			}
 		case ispec.MediaTypeImageManifest:
 			if err := gc.addImageManifestBlobsToReferences(repo, desc.Digest, refBlobs); err != nil {
-				gc.log.Error().Err(err).Str("repository", repo).Str("digest", desc.Digest.String()).
-					Msg("gc: failed to read blobs in image manifest")
+				gc.log.Error().Err(err).Str("module", "gc").Str("repository", repo).
+					Str("digest", desc.Digest.String()).Msg("failed to read blobs in image manifest")
 
 				return err
 			}
 		case oras.MediaTypeArtifactManifest:
 			if err := gc.addORASImageManifestBlobsToReferences(repo, desc.Digest, refBlobs); err != nil {
-				gc.log.Error().Err(err).Str("repository", repo).Str("digest", desc.Digest.String()).
-					Msg("gc: failed to read blobs in ORAS image manifest")
+				gc.log.Error().Err(err).Str("module", "gc").Str("repository", repo).
+					Str("digest", desc.Digest.String()).Msg("failed to read blobs in ORAS image manifest")
 
 				return err
 			}
@@ -525,8 +644,8 @@ func (gc GarbageCollect) addImageIndexBlobsToReferences(repo string, mdigest god
 ) error {
 	index, err := common.GetImageIndex(gc.imgStore, repo, mdigest, gc.log)
 	if err != nil {
-		gc.log.Error().Err(err).Str("repository", repo).Str("digest", mdigest.String()).
-			Msg("gc: failed to read manifest image")
+		gc.log.Error().Err(err).Str("module", "gc").Str("repository", repo).Str("digest", mdigest.String()).
+			Msg("failed to read manifest image")
 
 		return err
 	}
@@ -550,8 +669,8 @@ func (gc GarbageCollect) addImageManifestBlobsToReferences(repo string, mdigest 
 ) error {
 	manifestContent, err := common.GetImageManifest(gc.imgStore, repo, mdigest, gc.log)
 	if err != nil {
-		gc.log.Error().Err(err).Str("repository", repo).Str("digest", mdigest.String()).
-			Msg("gc: failed to read manifest image")
+		gc.log.Error().Err(err).Str("module", "gc").Str("repository", repo).
+			Str("digest", mdigest.String()).Msg("failed to read manifest image")
 
 		return err
 	}
@@ -576,8 +695,8 @@ func (gc GarbageCollect) addORASImageManifestBlobsToReferences(repo string, mdig
 ) error {
 	manifestContent, err := common.GetOrasManifestByDigest(gc.imgStore, repo, mdigest, gc.log)
 	if err != nil {
-		gc.log.Error().Err(err).Str("repository", repo).Str("digest", mdigest.String()).
-			Msg("gc: failed to read manifest image")
+		gc.log.Error().Err(err).Str("module", "gc").Str("repository", repo).
+			Str("digest", mdigest.String()).Msg("failed to read manifest image")
 
 		return err
 	}
@@ -611,8 +730,8 @@ func isBlobOlderThan(imgStore types.ImageStore, repo string,
 ) (bool, error) {
 	_, _, modtime, err := imgStore.StatBlob(repo, digest)
 	if err != nil {
-		log.Error().Err(err).Str("repository", repo).Str("digest", digest.String()).
-			Msg("gc: failed to stat blob")
+		log.Error().Err(err).Str("module", "gc").Str("repository", repo).Str("digest", digest.String()).
+			Msg("failed to stat blob")
 
 		return false, err
 	}
@@ -629,6 +748,22 @@ func getSubjectFromCosignTag(tag string) godigest.Digest {
 	encoded := strings.Split(strings.Split(tag, "-")[1], ".sig")[0]
 
 	return godigest.NewDigestFromEncoded(godigest.Algorithm(alg), encoded)
+}
+
+func getDescriptorTag(desc ispec.Descriptor) (string, bool) {
+	tag, ok := desc.Annotations[ispec.AnnotationRefName]
+
+	return tag, ok
+}
+
+// this function will check if tag is a cosign tag (signature or sbom).
+func isCosignTag(tag string) bool {
+	if strings.HasPrefix(tag, "sha256-") &&
+		(strings.HasSuffix(tag, cosignSignatureTagSuffix) || strings.HasSuffix(tag, SBOMTagSuffix)) {
+		return true
+	}
+
+	return false
 }
 
 /*
@@ -704,5 +839,5 @@ func NewGCTask(imgStore types.ImageStore, gc GarbageCollect, repo string,
 
 func (gct *gcTask) DoWork(ctx context.Context) error {
 	// run task
-	return gct.gc.CleanRepo(gct.repo)
+	return gct.gc.CleanRepo(gct.repo) //nolint: contextcheck
 }

@@ -45,7 +45,7 @@ type MetaDBMock struct {
 
 	SetImageTrustStoreFn func(mTypes.ImageTrustStore)
 
-	SetRepoReferenceFn func(repo string, reference string, imageMeta mTypes.ImageMeta) error
+	SetRepoReferenceFn func(ctx context.Context, repo string, reference string, imageMeta mTypes.ImageMeta) error
 
 	SearchReposFn func(ctx context.Context, searchText string,
 	) ([]mTypes.RepoMeta, error)
@@ -74,7 +74,7 @@ type MetaDBMock struct {
 	GetReferrersInfoFn func(repo string, referredDigest godigest.Digest, artifactTypes []string,
 	) ([]mTypes.ReferrerInfo, error)
 
-	IncrementImageDownloadsFn func(repo string, reference string) error
+	UpdateStatsOnDownloadFn func(repo string, reference string) error
 
 	UpdateSignaturesValidityFn func(repo string, manifestDigest godigest.Digest) error
 
@@ -259,9 +259,11 @@ func (sdm MetaDBMock) SetImageMeta(digest godigest.Digest, imageMeta mTypes.Imag
 	return nil
 }
 
-func (sdm MetaDBMock) SetRepoReference(repo string, reference string, imageMeta mTypes.ImageMeta) error {
+func (sdm MetaDBMock) SetRepoReference(ctx context.Context, repo string, reference string,
+	imageMeta mTypes.ImageMeta,
+) error {
 	if sdm.SetRepoReferenceFn != nil {
-		return sdm.SetRepoReferenceFn(repo, reference, imageMeta)
+		return sdm.SetRepoReferenceFn(ctx, repo, reference, imageMeta)
 	}
 
 	return nil
@@ -362,9 +364,9 @@ func (sdm MetaDBMock) GetReferrersInfo(repo string, referredDigest godigest.Dige
 	return []mTypes.ReferrerInfo{}, nil
 }
 
-func (sdm MetaDBMock) IncrementImageDownloads(repo string, reference string) error {
-	if sdm.IncrementImageDownloadsFn != nil {
-		return sdm.IncrementImageDownloadsFn(repo, reference)
+func (sdm MetaDBMock) UpdateStatsOnDownload(repo string, reference string) error {
+	if sdm.UpdateStatsOnDownloadFn != nil {
+		return sdm.UpdateStatsOnDownloadFn(repo, reference)
 	}
 
 	return nil

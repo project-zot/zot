@@ -877,7 +877,7 @@ func TestOnDemand(t *testing.T) {
 
 					return nil
 				},
-				SetRepoReferenceFn: func(repo, reference string, imageMeta mTypes.ImageMeta) error {
+				SetRepoReferenceFn: func(ctx context.Context, repo, reference string, imageMeta mTypes.ImageMeta) error {
 					if strings.HasPrefix(reference, "sha256-") &&
 						(strings.HasSuffix(reference, remote.SignatureTagSuffix) ||
 							strings.HasSuffix(reference, remote.SBOMTagSuffix)) ||
@@ -1017,7 +1017,7 @@ func TestOnDemand(t *testing.T) {
 
 			// metadb fails for syncReferrersTag"
 			dctlr.MetaDB = mocks.MetaDBMock{
-				SetRepoReferenceFn: func(repo, reference string, imageMeta mTypes.ImageMeta) error {
+				SetRepoReferenceFn: func(ctx context.Context, repo, reference string, imageMeta mTypes.ImageMeta) error {
 					if imageMeta.Digest.String() == ociRefImage.ManifestDescriptor.Digest.String() {
 						return sync.ErrTestError
 					}

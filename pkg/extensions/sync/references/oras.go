@@ -154,7 +154,8 @@ func (ref ORASReferences) SyncReferences(ctx context.Context, localRepo, remoteR
 			ref.log.Debug().Str("repository", localRepo).Str("subject", subjectDigestStr).
 				Msg("metaDB: trying to sync oras artifact for image")
 
-			err := meta.SetImageMetaFromInput(localRepo, referenceDigest.String(), referrer.MediaType,
+			err := meta.SetImageMetaFromInput(context.Background(), localRepo, //nolint:contextcheck
+				referenceDigest.String(), referrer.MediaType,
 				referenceDigest, orasBuf, ref.storeController.GetImageStore(localRepo),
 				ref.metaDB, ref.log)
 			if err != nil {
