@@ -5,8 +5,6 @@ package client
 
 import (
 	"github.com/spf13/cobra"
-
-	"zotregistry.io/zot/pkg/cli/cmdflags"
 )
 
 func NewCVECommand(searchService SearchService) *cobra.Command {
@@ -19,15 +17,15 @@ func NewCVECommand(searchService SearchService) *cobra.Command {
 
 	cvesCmd.SetUsageTemplate(cvesCmd.UsageTemplate() + usageFooter)
 
-	cvesCmd.PersistentFlags().String(cmdflags.URLFlag, "",
+	cvesCmd.PersistentFlags().String(URLFlag, "",
 		"Specify zot server URL if config-name is not mentioned")
-	cvesCmd.PersistentFlags().String(cmdflags.ConfigFlag, "",
+	cvesCmd.PersistentFlags().String(ConfigFlag, "",
 		"Specify the registry configuration to use for connection")
-	cvesCmd.PersistentFlags().StringP(cmdflags.UserFlag, "u", "",
+	cvesCmd.PersistentFlags().StringP(UserFlag, "u", "",
 		`User Credentials of zot server in "username:password" format`)
-	cvesCmd.PersistentFlags().StringP(cmdflags.OutputFormatFlag, "f", "", "Specify output format [text/json/yaml]")
-	cvesCmd.PersistentFlags().Bool(cmdflags.VerboseFlag, false, "Show verbose output")
-	cvesCmd.PersistentFlags().Bool(cmdflags.DebugFlag, false, "Show debug output")
+	cvesCmd.PersistentFlags().StringP(OutputFormatFlag, "f", "", "Specify output format [text/json/yaml]")
+	cvesCmd.PersistentFlags().Bool(VerboseFlag, false, "Show verbose output")
+	cvesCmd.PersistentFlags().Bool(DebugFlag, false, "Show debug output")
 
 	cvesCmd.AddCommand(NewCveForImageCommand(searchService))
 	cvesCmd.AddCommand(NewImagesByCVEIDCommand(searchService))

@@ -1,4 +1,7 @@
-package cmdflags
+//go:build search
+// +build search
+
+package client
 
 import (
 	"fmt"

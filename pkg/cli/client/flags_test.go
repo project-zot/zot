@@ -1,11 +1,14 @@
-package cmdflags_test
+//go:build search
+// +build search
+
+package client_test
 
 import (
 	"testing"
 
 	. "github.com/smartystreets/goconvey/convey"
 
-	. "zotregistry.io/zot/pkg/cli/cmdflags"
+	. "zotregistry.io/zot/pkg/cli/client"
 	gql_gen "zotregistry.io/zot/pkg/extensions/search/gql_generated"
 )
 

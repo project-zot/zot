@@ -245,6 +245,7 @@ func TestScheduler(t *testing.T) {
 func TestGetNumWorkers(t *testing.T) {
 	Convey("Test setting the number of workers - default value", t, func() {
 		sch := scheduler.NewScheduler(config.New(), log.NewLogger("debug", "logFile"))
+		defer os.Remove("logFile")
 		So(sch.NumWorkers, ShouldEqual, runtime.NumCPU()*4)
 	})
 
@@ -252,6 +253,7 @@ func TestGetNumWorkers(t *testing.T) {
 		cfg := config.New()
 		cfg.Scheduler = &config.SchedulerConfig{NumWorkers: 3}
 		sch := scheduler.NewScheduler(cfg, log.NewLogger("debug", "logFile"))
+		defer os.Remove("logFile")
 		So(sch.NumWorkers, ShouldEqual, 3)
 	})
 }

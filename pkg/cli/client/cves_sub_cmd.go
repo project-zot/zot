@@ -10,7 +10,6 @@ import (
 	"github.com/spf13/cobra"
 
 	zerr "zotregistry.io/zot/errors"
-	"zotregistry.io/zot/pkg/cli/cmdflags"
 	zcommon "zotregistry.io/zot/pkg/common"
 )
 
@@ -21,7 +20,7 @@ const (
 func NewCveForImageCommand(searchService SearchService) *cobra.Command {
 	var (
 		searchedCVEID   string
-		cveListSortFlag = cmdflags.CVEListSortFlag(cmdflags.SortBySeverity)
+		cveListSortFlag = CVEListSortFlag(SortBySeverity)
 	)
 
 	cveForImageCmd := &cobra.Command{
@@ -46,9 +45,9 @@ func NewCveForImageCommand(searchService SearchService) *cobra.Command {
 		},
 	}
 
-	cveForImageCmd.Flags().StringVar(&searchedCVEID, cmdflags.SearchedCVEID, "", "Search for a specific CVE by name/id")
-	cveForImageCmd.Flags().Var(&cveListSortFlag, cmdflags.SortByFlag,
-		fmt.Sprintf("Options for sorting the output: [%s]", cmdflags.CVEListSortOptionsStr()))
+	cveForImageCmd.Flags().StringVar(&searchedCVEID, SearchedCVEID, "", "Search for a specific CVE by name/id")
+	cveForImageCmd.Flags().Var(&cveListSortFlag, SortByFlag,
+		fmt.Sprintf("Options for sorting the output: [%s]", CVEListSortOptionsStr()))
 
 	return cveForImageCmd
 }
@@ -56,7 +55,7 @@ func NewCveForImageCommand(searchService SearchService) *cobra.Command {
 func NewImagesByCVEIDCommand(searchService SearchService) *cobra.Command {
 	var (
 		repo              string
-		imageListSortFlag = cmdflags.ImageListSortFlag(cmdflags.SortByAlphabeticAsc)
+		imageListSortFlag = ImageListSortFlag(SortByAlphabeticAsc)
 	)
 
 	imagesByCVEIDCmd := &cobra.Command{
@@ -92,14 +91,14 @@ func NewImagesByCVEIDCommand(searchService SearchService) *cobra.Command {
 	}
 
 	imagesByCVEIDCmd.Flags().StringVar(&repo, "repo", "", "Search for a specific CVE by name/id")
-	imagesByCVEIDCmd.Flags().Var(&imageListSortFlag, cmdflags.SortByFlag,
-		fmt.Sprintf("Options for sorting the output: [%s]", cmdflags.ImageListSortOptionsStr()))
+	imagesByCVEIDCmd.Flags().Var(&imageListSortFlag, SortByFlag,
+		fmt.Sprintf("Options for sorting the output: [%s]", ImageListSortOptionsStr()))
 
 	return imagesByCVEIDCmd
 }
 
 func NewFixedTagsCommand(searchService SearchService) *cobra.Command {
-	imageListSortFlag := cmdflags.ImageListSortFlag(cmdflags.SortByAlphabeticAsc)
+	imageListSortFlag := ImageListSortFlag(SortByAlphabeticAsc)
 
 	fixedTagsCmd := &cobra.Command{
 		Use:   "fixed [repo] [cveId]",
@@ -136,8 +135,8 @@ func NewFixedTagsCommand(searchService SearchService) *cobra.Command {
 		},
 	}
 
-	fixedTagsCmd.Flags().Var(&imageListSortFlag, cmdflags.SortByFlag,
-		fmt.Sprintf("Options for sorting the output: [%s]", cmdflags.ImageListSortOptionsStr()))
+	fixedTagsCmd.Flags().Var(&imageListSortFlag, SortByFlag,
+		fmt.Sprintf("Options for sorting the output: [%s]", ImageListSortOptionsStr()))
 
 	return fixedTagsCmd
 }

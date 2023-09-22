@@ -9,7 +9,6 @@ import (
 	"github.com/spf13/cobra"
 
 	"zotregistry.io/zot/pkg/api/config"
-	"zotregistry.io/zot/pkg/cli/cmdflags"
 )
 
 // "zli" - client-side cli.
@@ -36,7 +35,7 @@ func NewCliRootCmd() *cobra.Command {
 	// additional cmds
 	enableCli(rootCmd)
 	// "version"
-	rootCmd.Flags().BoolVarP(&showVersion, cmdflags.VersionFlag, "v", false, "show the version and exit")
+	rootCmd.Flags().BoolVarP(&showVersion, VersionFlag, "v", false, "show the version and exit")
 
 	return rootCmd
 }

@@ -5,8 +5,6 @@ package client
 
 import (
 	"github.com/spf13/cobra"
-
-	"zotregistry.io/zot/pkg/cli/cmdflags"
 )
 
 func NewSearchCommand(searchService SearchService) *cobra.Command {
@@ -19,15 +17,15 @@ func NewSearchCommand(searchService SearchService) *cobra.Command {
 
 	searchCmd.SetUsageTemplate(searchCmd.UsageTemplate() + usageFooter)
 
-	searchCmd.PersistentFlags().String(cmdflags.URLFlag, "",
+	searchCmd.PersistentFlags().String(URLFlag, "",
 		"Specify zot server URL if config-name is not mentioned")
-	searchCmd.PersistentFlags().String(cmdflags.ConfigFlag, "",
+	searchCmd.PersistentFlags().String(ConfigFlag, "",
 		"Specify the registry configuration to use for connection")
-	searchCmd.PersistentFlags().StringP(cmdflags.UserFlag, "u", "",
+	searchCmd.PersistentFlags().StringP(UserFlag, "u", "",
 		`User Credentials of zot server in "username:password" format`)
-	searchCmd.PersistentFlags().StringP(cmdflags.OutputFormatFlag, "f", "", "Specify output format [text/json/yaml]")
-	searchCmd.PersistentFlags().Bool(cmdflags.VerboseFlag, false, "Show verbose output")
-	searchCmd.PersistentFlags().Bool(cmdflags.DebugFlag, false, "Show debug output")
+	searchCmd.PersistentFlags().StringP(OutputFormatFlag, "f", "", "Specify output format [text/json/yaml]")
+	searchCmd.PersistentFlags().Bool(VerboseFlag, false, "Show verbose output")
+	searchCmd.PersistentFlags().Bool(DebugFlag, false, "Show debug output")
 
 	searchCmd.AddCommand(NewSearchQueryCommand(searchService))
 	searchCmd.AddCommand(NewSearchSubjectCommand(searchService))
