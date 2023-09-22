@@ -348,6 +348,10 @@ func (c *Config) IsSearchEnabled() bool {
 	return c.Extensions != nil && c.Extensions.Search != nil && *c.Extensions.Search.Enable
 }
 
+func (c *Config) IsCveScanningEnabled() bool {
+	return c.IsSearchEnabled() && c.Extensions.Search.CVE != nil
+}
+
 func (c *Config) IsUIEnabled() bool {
 	return c.Extensions != nil && c.Extensions.UI != nil && *c.Extensions.UI.Enable
 }

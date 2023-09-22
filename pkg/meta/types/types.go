@@ -66,7 +66,7 @@ type MetaDB interface { //nolint:interfacebloat
 	// SetManifestData sets ManifestData for a given manifest in the database
 	SetManifestData(manifestDigest godigest.Digest, md ManifestData) error
 
-	// GetManifestData return the manifest and it's related config
+	// GetManifestData return the manifest and its related config
 	GetManifestData(manifestDigest godigest.Digest) (ManifestData, error)
 
 	// GetManifestMeta returns ManifestMetadata for a given manifest from the database

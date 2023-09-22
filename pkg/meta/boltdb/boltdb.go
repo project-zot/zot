@@ -1152,6 +1152,7 @@ func (bdw *BoltDB) FilterTags(ctx context.Context, filterFunc mTypes.FilterFunc,
 			cursor        = repoBuck.Cursor()
 			userBookmarks = getUserBookmarks(ctx, transaction)
 			userStars     = getUserStars(ctx, transaction)
+			viewError     error
 		)
 
 		repoName, repoMetaBlob := cursor.First()
@@ -1163,9 +1164,10 @@ func (bdw *BoltDB) FilterTags(ctx context.Context, filterFunc mTypes.FilterFunc,
 
 			repoMeta := mTypes.RepoMetadata{}
 
-			err := json.Unmarshal(repoMetaBlob, &repoMeta)
-			if err != nil {
-				return err
+			if err := json.Unmarshal(repoMetaBlob, &repoMeta); err != nil {
+				viewError = errors.Join(viewError, err)
+
+				continue
 			}
 
 			repoMeta.IsBookmarked = zcommon.Contains(userBookmarks, repoMeta.Name)
@@ -1180,7 +1182,10 @@ func (bdw *BoltDB) FilterTags(ctx context.Context, filterFunc mTypes.FilterFunc,
 
 					manifestMeta, err := fetchManifestMetaWithCheck(repoMeta, manifestDigest, manifestMetadataMap, manifestBuck)
 					if err != nil {
-						return fmt.Errorf("metadb: error while unmashaling manifest metadata for digest %s %w", manifestDigest, err)
+						err = fmt.Errorf("metadb: error while unmashaling manifest metadata for digest %s %w", manifestDigest, err)
+						viewError = errors.Join(viewError, err)
+
+						continue
 					}
 
 					if filterFunc(repoMeta, manifestMeta) {
@@ -1192,14 +1197,20 @@ func (bdw *BoltDB) FilterTags(ctx context.Context, filterFunc mTypes.FilterFunc,
 
 					indexData, err := fetchIndexDataWithCheck(indexDigest, indexDataMap, indexBuck)
 					if err != nil {
-						return fmt.Errorf("metadb: error while getting index data for digest %s %w", indexDigest, err)
+						err = fmt.Errorf("metadb: error while getting index data for digest %s %w", indexDigest, err)
+						viewError = errors.Join(viewError, err)
+
+						continue
 					}
 
 					var indexContent ispec.Index
 
 					err = json.Unmarshal(indexData.IndexBlob, &indexContent)
 					if err != nil {
-						return fmt.Errorf("metadb: error while unmashaling index content for digest %s %w", indexDigest, err)
+						err = fmt.Errorf("metadb: error while unmashaling index content for digest %s %w", indexDigest, err)
+						viewError = errors.Join(viewError, err)
+
+						continue
 					}
 
 					matchedManifests := []ispec.Descriptor{}
@@ -1209,7 +1220,10 @@ func (bdw *BoltDB) FilterTags(ctx context.Context, filterFunc mTypes.FilterFunc,
 
 						manifestMeta, err := fetchManifestMetaWithCheck(repoMeta, manifestDigest, manifestMetadataMap, manifestBuck)
 						if err != nil {
-							return fmt.Errorf("metadb: error while getting manifest data for digest %s %w", manifestDigest, err)
+							err = fmt.Errorf("metadb: error while getting manifest data for digest %s %w", manifestDigest, err)
+							viewError = errors.Join(viewError, err)
+
+							continue
 						}
 
 						if filterFunc(repoMeta, manifestMeta) {
@@ -1223,7 +1237,9 @@ func (bdw *BoltDB) FilterTags(ctx context.Context, filterFunc mTypes.FilterFunc,
 
 						indexBlob, err := json.Marshal(indexContent)
 						if err != nil {
-							return err
+							viewError = errors.Join(viewError, err)
+
+							continue
 						}
 
 						indexData.IndexBlob = indexBlob
@@ -1247,7 +1263,7 @@ func (bdw *BoltDB) FilterTags(ctx context.Context, filterFunc mTypes.FilterFunc,
 			foundRepos = append(foundRepos, repoMeta)
 		}
 
-		return nil
+		return viewError
 	})
 
 	return foundRepos, manifestMetadataMap, indexDataMap, err

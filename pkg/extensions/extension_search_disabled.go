@@ -13,11 +13,11 @@ import (
 	"zotregistry.io/zot/pkg/storage"
 )
 
-type CveInfo interface{}
+type CveScanner interface{}
 
-func GetCVEInfo(config *config.Config, storeController storage.StoreController,
+func GetCveScanner(config *config.Config, storeController storage.StoreController,
 	metaDB mTypes.MetaDB, log log.Logger,
-) CveInfo {
+) CveScanner {
 	return nil
 }
 
@@ -27,7 +27,7 @@ func IsBuiltWithSearchExtension() bool {
 
 // EnableSearchExtension ...
 func EnableSearchExtension(config *config.Config, storeController storage.StoreController,
-	metaDB mTypes.MetaDB, scheduler *scheduler.Scheduler, cveInfo CveInfo, log log.Logger,
+	metaDB mTypes.MetaDB, scheduler *scheduler.Scheduler, cveScanner CveScanner, log log.Logger,
 ) {
 	log.Warn().Msg("skipping enabling search extension because given zot binary doesn't include this feature," +
 		"please build a binary that does so")
@@ -35,7 +35,7 @@ func EnableSearchExtension(config *config.Config, storeController storage.StoreC
 
 // SetupSearchRoutes ...
 func SetupSearchRoutes(config *config.Config, router *mux.Router, storeController storage.StoreController,
-	metaDB mTypes.MetaDB, cveInfo CveInfo, log log.Logger,
+	metaDB mTypes.MetaDB, cveScanner CveScanner, log log.Logger,
 ) {
 	log.Warn().Msg("skipping setting up search routes because given zot binary doesn't include this feature," +
 		"please build a binary that does so")

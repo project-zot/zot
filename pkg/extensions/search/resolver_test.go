@@ -2078,6 +2078,68 @@ func TestCVEResolvers(t *testing.T) { //nolint:gocyclo
 		}
 	}
 
+	getCveResults := func(digestStr string) map[string]cvemodel.CVE {
+		if digestStr == digest1.String() {
+			return map[string]cvemodel.CVE{
+				"CVE1": {
+					ID:          "CVE1",
+					Severity:    "HIGH",
+					Title:       "Title CVE1",
+					Description: "Description CVE1",
+				},
+				"CVE2": {
+					ID:          "CVE2",
+					Severity:    "MEDIUM",
+					Title:       "Title CVE2",
+					Description: "Description CVE2",
+				},
+				"CVE3": {
+					ID:          "CVE3",
+					Severity:    "LOW",
+					Title:       "Title CVE3",
+					Description: "Description CVE3",
+				},
+				"CVE34": {
+					ID:          "CVE34",
+					Severity:    "LOW",
+					Title:       "Title for CVE34",
+					Description: "Description CVE34",
+				},
+			}
+		}
+
+		if digestStr == digest2.String() {
+			return map[string]cvemodel.CVE{
+				"CVE2": {
+					ID:          "CVE2",
+					Severity:    "MEDIUM",
+					Title:       "Title CVE2",
+					Description: "Description CVE2",
+				},
+				"CVE3": {
+					ID:          "CVE3",
+					Severity:    "LOW",
+					Title:       "Title CVE3",
+					Description: "Description CVE3",
+				},
+			}
+		}
+
+		if digestStr == digest3.String() {
+			return map[string]cvemodel.CVE{
+				"CVE3": {
+					ID:          "CVE3",
+					Severity:    "LOW",
+					Title:       "Title CVE3",
+					Description: "Description CVE3",
+				},
+			}
+		}
+
+		// By default the image has no vulnerabilities
+		return map[string]cvemodel.CVE{}
+	}
+
 	// MetaDB loaded with initial data, now mock the scanner
 	// Setup test CVE data in mock scanner
 	scanner := mocks.CveScannerMock{
@@ -2092,65 +2154,13 @@ func TestCVEResolvers(t *testing.T) { //nolint:gocyclo
 				digest = godigest.Digest(digestStr)
 			}
 
-			if digest.String() == digest1.String() {
-				return map[string]cvemodel.CVE{
-					"CVE1": {
-						ID:          "CVE1",
-						Severity:    "HIGH",
-						Title:       "Title CVE1",
-						Description: "Description CVE1",
-					},
-					"CVE2": {
-						ID:          "CVE2",
-						Severity:    "MEDIUM",
-						Title:       "Title CVE2",
-						Description: "Description CVE2",
-					},
-					"CVE3": {
-						ID:          "CVE3",
-						Severity:    "LOW",
-						Title:       "Title CVE3",
-						Description: "Description CVE3",
-					},
-					"CVE34": {
-						ID:          "CVE34",
-						Severity:    "LOW",
-						Title:       "Title for CVE34",
-						Description: "Description CVE34",
-					},
-				}, nil
-			}
-
-			if digest.String() == digest2.String() {
-				return map[string]cvemodel.CVE{
-					"CVE2": {
-						ID:          "CVE2",
-						Severity:    "MEDIUM",
-						Title:       "Title CVE2",
-						Description: "Description CVE2",
-					},
-					"CVE3": {
-						ID:          "CVE3",
-						Severity:    "LOW",
-						Title:       "Title CVE3",
-						Description: "Description CVE3",
-					},
-				}, nil
-			}
-
-			if digest.String() == digest3.String() {
-				return map[string]cvemodel.CVE{
-					"CVE3": {
-						ID:          "CVE3",
-						Severity:    "LOW",
-						Title:       "Title CVE3",
-						Description: "Description CVE3",
-					},
-				}, nil
-			}
-
-			// By default the image has no vulnerabilities
-			return map[string]cvemodel.CVE{}, nil
+			return getCveResults(digest.String()), nil
+		},
+		GetCachedResultFn: func(digestStr string) map[string]cvemodel.CVE {
+			return getCveResults(digestStr)
+		},
+		IsResultCachedFn: func(digestStr string) bool {
+			return true
 		},
 	}
 
