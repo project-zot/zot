@@ -595,7 +595,7 @@ func TestScanGeneratorWithRealData(t *testing.T) {
 		metaDB, err := boltdb.New(boltDriver, logger)
 		So(err, ShouldBeNil)
 
-		imageStore := local.NewImageStore(rootDir, false, false, 0, 0, false, false,
+		imageStore := local.NewImageStore(rootDir, false, false,
 			logger, monitoring.NewMetricsServer(false, logger), nil, nil)
 		storeController := storage.StoreController{DefaultStore: imageStore}
 
