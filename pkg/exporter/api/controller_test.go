@@ -25,7 +25,7 @@ import (
 	zotcfg "zotregistry.io/zot/pkg/api/config"
 	"zotregistry.io/zot/pkg/exporter/api"
 	"zotregistry.io/zot/pkg/extensions/monitoring"
-	. "zotregistry.io/zot/pkg/test"
+	. "zotregistry.io/zot/pkg/test/common"
 )
 
 func getRandomLatencyN(max int64) time.Duration {

@@ -18,7 +18,7 @@ import (
 	mTypes "zotregistry.io/zot/pkg/meta/types"
 	"zotregistry.io/zot/pkg/storage"
 	"zotregistry.io/zot/pkg/storage/local"
-	"zotregistry.io/zot/pkg/test"
+	"zotregistry.io/zot/pkg/test/deprecated"
 	. "zotregistry.io/zot/pkg/test/image-utils"
 	"zotregistry.io/zot/pkg/test/mocks"
 )
@@ -42,10 +42,10 @@ func TestOnUpdateManifest(t *testing.T) {
 		metaDB, err := boltdb.New(boltDriver, log)
 		So(err, ShouldBeNil)
 
-		config, layers, manifest, err := test.GetRandomImageComponents(100) //nolint:staticcheck
+		config, layers, manifest, err := deprecated.GetRandomImageComponents(100) //nolint:staticcheck
 		So(err, ShouldBeNil)
 
-		err = test.WriteImageToFileSystem(
+		err = WriteImageToFileSystem(
 			Image{
 				Config: config, Manifest: manifest, Layers: layers,
 			}, "repo", "tag1", storeController)

@@ -24,9 +24,10 @@ import (
 	"zotregistry.io/zot/pkg/storage"
 	"zotregistry.io/zot/pkg/storage/local"
 	storageTypes "zotregistry.io/zot/pkg/storage/types"
-	"zotregistry.io/zot/pkg/test"
+	"zotregistry.io/zot/pkg/test/deprecated"
 	. "zotregistry.io/zot/pkg/test/image-utils"
 	"zotregistry.io/zot/pkg/test/mocks"
+	"zotregistry.io/zot/pkg/test/signature"
 )
 
 const repo = "repo"
@@ -309,9 +310,9 @@ func TestParseStorageErrors(t *testing.T) {
 				err = meta.ParseRepo("repo", metaDB, storeController, log)
 				So(err, ShouldNotBeNil)
 
-				_, _, cosignManifestContent, _ := test.GetRandomImageComponents(10) //nolint:staticcheck
-				_, _, signedManifest, _ := test.GetRandomImageComponents(10)        //nolint:staticcheck
-				signatureTag, err := test.GetCosignSignatureTagForManifest(signedManifest)
+				_, _, cosignManifestContent, _ := deprecated.GetRandomImageComponents(10) //nolint:staticcheck
+				_, _, signedManifest, _ := deprecated.GetRandomImageComponents(10)        //nolint:staticcheck
+				signatureTag, err := signature.GetCosignSignatureTagForManifest(signedManifest)
 				So(err, ShouldBeNil)
 
 				cosignManifestContent.Annotations = map[string]string{ispec.AnnotationRefName: signatureTag}
@@ -406,12 +407,12 @@ func RunParseStorageTests(rootDir string, metaDB mTypes.MetaDB) {
 		storeController := storage.StoreController{DefaultStore: imageStore}
 		manifests := []ispec.Manifest{}
 		for i := 0; i < 3; i++ {
-			config, layers, manifest, err := test.GetRandomImageComponents(100) //nolint:staticcheck
+			config, layers, manifest, err := deprecated.GetRandomImageComponents(100) //nolint:staticcheck
 			So(err, ShouldBeNil)
 
 			manifests = append(manifests, manifest)
 
-			err = test.WriteImageToFileSystem(
+			err = WriteImageToFileSystem(
 				Image{
 					Config:   config,
 					Layers:   layers,
@@ -421,7 +422,7 @@ func RunParseStorageTests(rootDir string, metaDB mTypes.MetaDB) {
 		}
 
 		// add fake signature for tag1
-		signatureTag, err := test.GetCosignSignatureTagForManifest(manifests[1])
+		signatureTag, err := signature.GetCosignSignatureTagForManifest(manifests[1])
 		So(err, ShouldBeNil)
 
 		manifestBlob, err := json.Marshal(manifests[1])
@@ -429,10 +430,10 @@ func RunParseStorageTests(rootDir string, metaDB mTypes.MetaDB) {
 
 		signedManifestDigest := godigest.FromBytes(manifestBlob)
 
-		config, layers, manifest, err := test.GetRandomImageComponents(100) //nolint:staticcheck
+		config, layers, manifest, err := deprecated.GetRandomImageComponents(100) //nolint:staticcheck
 		So(err, ShouldBeNil)
 
-		err = test.WriteImageToFileSystem(
+		err = WriteImageToFileSystem(
 			Image{
 				Config:   config,
 				Layers:   layers,
@@ -491,10 +492,10 @@ func RunParseStorageTests(rootDir string, metaDB mTypes.MetaDB) {
 
 		storeController := storage.StoreController{DefaultStore: imageStore}
 		// add an image
-		config, layers, manifest, err := test.GetRandomImageComponents(100) //nolint:staticcheck
+		config, layers, manifest, err := deprecated.GetRandomImageComponents(100) //nolint:staticcheck
 		So(err, ShouldBeNil)
 
-		err = test.WriteImageToFileSystem(
+		err = WriteImageToFileSystem(
 			Image{
 				Config:   config,
 				Layers:   layers,
@@ -503,19 +504,19 @@ func RunParseStorageTests(rootDir string, metaDB mTypes.MetaDB) {
 		So(err, ShouldBeNil)
 
 		// add mock cosign signature without pushing the signed image
-		image, err := test.GetRandomImage() //nolint:staticcheck
+		image, err := deprecated.GetRandomImage() //nolint:staticcheck
 		So(err, ShouldBeNil)
 
-		signatureTag, err := test.GetCosignSignatureTagForManifest(image.Manifest)
+		signatureTag, err := signature.GetCosignSignatureTagForManifest(image.Manifest)
 		So(err, ShouldBeNil)
 
 		missingImageDigest := image.Digest()
 
 		// get the body of the signature
-		config, layers, manifest, err = test.GetRandomImageComponents(100) //nolint:staticcheck
+		config, layers, manifest, err = deprecated.GetRandomImageComponents(100) //nolint:staticcheck
 		So(err, ShouldBeNil)
 
-		err = test.WriteImageToFileSystem(
+		err = WriteImageToFileSystem(
 			Image{
 				Config:   config,
 				Layers:   layers,
@@ -548,12 +549,12 @@ func RunParseStorageTests(rootDir string, metaDB mTypes.MetaDB) {
 
 		storeController := storage.StoreController{DefaultStore: imageStore}
 		// add an image
-		image, err := test.GetRandomImage() //nolint:staticcheck
+		image, err := deprecated.GetRandomImage() //nolint:staticcheck
 		So(err, ShouldBeNil)
 
 		manifestDigest := image.Digest()
 
-		err = test.WriteImageToFileSystem(image, repo, "tag", storeController)
+		err = WriteImageToFileSystem(image, repo, "tag", storeController)
 		So(err, ShouldBeNil)
 
 		err = metaDB.SetRepoReference(repo, "tag", manifestDigest, ispec.MediaTypeImageManifest)

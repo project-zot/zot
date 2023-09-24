@@ -27,7 +27,8 @@ import (
 	"zotregistry.io/zot/pkg/storage/imagestore"
 	"zotregistry.io/zot/pkg/storage/local"
 	storageTypes "zotregistry.io/zot/pkg/storage/types"
-	"zotregistry.io/zot/pkg/test"
+	test "zotregistry.io/zot/pkg/test/common"
+	"zotregistry.io/zot/pkg/test/deprecated"
 	. "zotregistry.io/zot/pkg/test/image-utils"
 	"zotregistry.io/zot/pkg/test/mocks"
 )
@@ -35,7 +36,7 @@ import (
 func generateTestImage(storeController storage.StoreController, image string) {
 	repoName, tag := common.GetImageDirAndTag(image)
 
-	config, layers, manifest, err := test.GetImageComponents(10) //nolint:staticcheck
+	config, layers, manifest, err := deprecated.GetImageComponents(10) //nolint:staticcheck
 	So(err, ShouldBeNil)
 
 	store := storeController.GetImageStore(repoName)
@@ -178,10 +179,6 @@ func TestTrivyLibraryErrors(t *testing.T) {
 		// Create temporary directory
 		rootDir := t.TempDir()
 
-		storageCtlr := test.GetDefaultStoreController(rootDir, log.NewLogger("debug", ""))
-		err := test.WriteImageToFileSystem(CreateDefaultVulnerableImage(), "zot-test", "0.0.1", storageCtlr)
-		So(err, ShouldBeNil)
-
 		log := log.NewLogger("debug", "")
 		metrics := monitoring.NewMetricsServer(false, log)
 
@@ -190,6 +187,9 @@ func TestTrivyLibraryErrors(t *testing.T) {
 
 		storeController := storage.StoreController{}
 		storeController.DefaultStore = store
+
+		err := WriteImageToFileSystem(CreateDefaultVulnerableImage(), "zot-test", "0.0.1", storeController)
+		So(err, ShouldBeNil)
 
 		params := boltdb.DBParameters{
 			RootDir: rootDir,

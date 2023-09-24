@@ -21,7 +21,8 @@ import (
 	"zotregistry.io/zot/pkg/extensions"
 	extconf "zotregistry.io/zot/pkg/extensions/config"
 	syncconf "zotregistry.io/zot/pkg/extensions/config/sync"
-	"zotregistry.io/zot/pkg/test"
+	authutils "zotregistry.io/zot/pkg/test/auth"
+	test "zotregistry.io/zot/pkg/test/common"
 )
 
 const (
@@ -124,7 +125,7 @@ func TestMgmtExtension(t *testing.T) {
 
 	defaultValue := true
 
-	mockOIDCServer, err := test.MockOIDCRun()
+	mockOIDCServer, err := authutils.MockOIDCRun()
 	if err != nil {
 		panic(err)
 	}
@@ -756,7 +757,7 @@ func TestMgmtWithBearer(t *testing.T) {
 	Convey("Make a new controller", t, func() {
 		authorizedNamespace := "allowedrepo"
 		unauthorizedNamespace := "notallowedrepo"
-		authTestServer := test.MakeAuthTestServer(ServerKey, unauthorizedNamespace)
+		authTestServer := authutils.MakeAuthTestServer(ServerKey, unauthorizedNamespace)
 		defer authTestServer.Close()
 
 		port := test.GetFreePort()
@@ -798,7 +799,7 @@ func TestMgmtWithBearer(t *testing.T) {
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
 
-		authorizationHeader := test.ParseBearerAuthHeader(resp.Header().Get("Www-Authenticate"))
+		authorizationHeader := authutils.ParseBearerAuthHeader(resp.Header().Get("Www-Authenticate"))
 		resp, err = resty.R().
 			SetQueryParam("service", authorizationHeader.Service).
 			SetQueryParam("scope", authorizationHeader.Scope).
@@ -806,7 +807,7 @@ func TestMgmtWithBearer(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
-		var goodToken test.AccessTokenResponse
+		var goodToken authutils.AccessTokenResponse
 		err = json.Unmarshal(resp.Body(), &goodToken)
 		So(err, ShouldBeNil)
 
@@ -828,7 +829,7 @@ func TestMgmtWithBearer(t *testing.T) {
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
 
-		authorizationHeader = test.ParseBearerAuthHeader(resp.Header().Get("Www-Authenticate"))
+		authorizationHeader = authutils.ParseBearerAuthHeader(resp.Header().Get("Www-Authenticate"))
 		resp, err = resty.R().
 			SetQueryParam("service", authorizationHeader.Service).
 			SetQueryParam("scope", authorizationHeader.Scope).
@@ -852,7 +853,7 @@ func TestMgmtWithBearer(t *testing.T) {
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
 
-		authorizationHeader = test.ParseBearerAuthHeader(resp.Header().Get("Www-Authenticate"))
+		authorizationHeader = authutils.ParseBearerAuthHeader(resp.Header().Get("Www-Authenticate"))
 		resp, err = resty.R().
 			SetQueryParam("service", authorizationHeader.Service).
 			SetQueryParam("scope", authorizationHeader.Scope).
@@ -860,7 +861,7 @@ func TestMgmtWithBearer(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
-		var badToken test.AccessTokenResponse
+		var badToken authutils.AccessTokenResponse
 		err = json.Unmarshal(resp.Body(), &badToken)
 		So(err, ShouldBeNil)
 

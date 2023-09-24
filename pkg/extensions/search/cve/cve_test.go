@@ -38,9 +38,11 @@ import (
 	mTypes "zotregistry.io/zot/pkg/meta/types"
 	"zotregistry.io/zot/pkg/storage"
 	"zotregistry.io/zot/pkg/storage/local"
-	. "zotregistry.io/zot/pkg/test"
+	. "zotregistry.io/zot/pkg/test/common"
+	"zotregistry.io/zot/pkg/test/deprecated"
 	. "zotregistry.io/zot/pkg/test/image-utils"
 	"zotregistry.io/zot/pkg/test/mocks"
+	ociutils "zotregistry.io/zot/pkg/test/oci-utils"
 )
 
 const (
@@ -88,7 +90,7 @@ func testSetup(t *testing.T) (string, error) {
 		return "", err
 	}
 
-	testStorageCtrl := GetDefaultStoreController(dir, log.NewLogger("debug", ""))
+	testStorageCtrl := ociutils.GetDefaultStoreController(dir, log.NewLogger("debug", ""))
 
 	err = WriteImageToFileSystem(CreateRandomVulnerableImage(), "zot-test", "0.0.1", testStorageCtrl)
 	if err != nil {
@@ -1647,28 +1649,29 @@ func TestFixedTagsWithIndex(t *testing.T) {
 		defer cm.StopServer()
 		// push index with 2 manifests: one with vulns and one without
 		vulnManifestCreated := time.Date(2010, 1, 1, 1, 1, 1, 1, time.UTC)
-		vulnManifest, err := GetVulnImageWithConfig(ispec.Image{
+		vulnManifest, err := deprecated.GetVulnImageWithConfig(ispec.Image{ //nolint:staticcheck
 			Created:  &vulnManifestCreated,
 			Platform: ispec.Platform{OS: "linux", Architecture: "amd64"},
 		})
 		So(err, ShouldBeNil)
 
 		fixedManifestCreated := time.Date(2010, 1, 1, 1, 1, 1, 1, time.UTC)
-		fixedManifest, err := GetImageWithConfig(ispec.Image{
+		fixedManifest, err := deprecated.GetImageWithConfig(ispec.Image{ //nolint:staticcheck
 			Created:  &fixedManifestCreated,
 			Platform: ispec.Platform{OS: "windows", Architecture: "amd64"},
 		})
 		So(err, ShouldBeNil)
 		fixedDigest := fixedManifest.Digest()
 
-		multiArch := GetMultiarchImageForImages([]Image{fixedManifest, vulnManifest})
+		multiArch := deprecated.GetMultiarchImageForImages([]Image{fixedManifest, //nolint:staticcheck
+			vulnManifest})
 
 		err = UploadMultiarchImage(multiArch, baseURL, "repo", "multi-arch-tag")
 		So(err, ShouldBeNil)
 
 		// oldest vulnerability
 		simpleVulnCreated := time.Date(2005, 1, 1, 1, 1, 1, 1, time.UTC)
-		simpleVulnImg, err := GetVulnImageWithConfig(ispec.Image{
+		simpleVulnImg, err := deprecated.GetVulnImageWithConfig(ispec.Image{ //nolint:staticcheck
 			Created:  &simpleVulnCreated,
 			Platform: ispec.Platform{OS: "windows", Architecture: "amd64"},
 		})

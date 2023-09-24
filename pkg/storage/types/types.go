@@ -12,6 +12,12 @@ import (
 	"zotregistry.io/zot/pkg/scheduler"
 )
 
+type StoreController interface {
+	GetImageStore(name string) ImageStore
+	GetDefaultImageStore() ImageStore
+	GetImageSubStores() map[string]ImageStore
+}
+
 type ImageStore interface { //nolint:interfacebloat
 	DirExists(d string) bool
 	RootDir() string

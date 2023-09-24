@@ -37,9 +37,9 @@ import (
 	"zotregistry.io/zot/pkg/storage/gc"
 	"zotregistry.io/zot/pkg/storage/local"
 	storageTypes "zotregistry.io/zot/pkg/storage/types"
-	"zotregistry.io/zot/pkg/test"
 	. "zotregistry.io/zot/pkg/test/image-utils"
 	"zotregistry.io/zot/pkg/test/mocks"
+	"zotregistry.io/zot/pkg/test/signature"
 )
 
 const (
@@ -93,7 +93,7 @@ func TestStorageFSAPIs(t *testing.T) {
 			annotationsMap := make(map[string]string)
 			annotationsMap[ispec.AnnotationRefName] = tag
 
-			cblob, cdigest := test.GetRandomImageConfig()
+			cblob, cdigest := GetRandomImageConfig()
 			_, clen, err := imgStore.FullBlobUpload(repoName, bytes.NewReader(cblob), cdigest)
 			So(err, ShouldBeNil)
 			So(clen, ShouldEqual, len(cblob))
@@ -210,7 +210,7 @@ func TestGetOrasReferrers(t *testing.T) {
 	imgStore := local.NewImageStore(dir, true, true, log, metrics, nil, cacheDriver)
 
 	Convey("Get referrers", t, func(c C) {
-		err := test.WriteImageToFileSystem(CreateDefaultVulnerableImage(), "zot-test", "0.0.1", storage.StoreController{
+		err := WriteImageToFileSystem(CreateDefaultVulnerableImage(), "zot-test", "0.0.1", storage.StoreController{
 			DefaultStore: imgStore,
 		})
 		So(err, ShouldBeNil)
@@ -384,7 +384,7 @@ func FuzzTestPutGetImageManifest(f *testing.F) {
 		}, *log)
 		imgStore := local.NewImageStore(dir, true, true, *log, metrics, nil, cacheDriver)
 
-		cblob, cdigest := test.GetRandomImageConfig()
+		cblob, cdigest := GetRandomImageConfig()
 
 		ldigest, lblob, err := newRandomBlobForFuzz(data)
 		if err != nil {
@@ -435,7 +435,7 @@ func FuzzTestPutDeleteImageManifest(f *testing.F) {
 		}, *log)
 		imgStore := local.NewImageStore(dir, true, true, *log, metrics, nil, cacheDriver)
 
-		cblob, cdigest := test.GetRandomImageConfig()
+		cblob, cdigest := GetRandomImageConfig()
 
 		ldigest, lblob, err := newRandomBlobForFuzz(data)
 		if err != nil {
@@ -753,7 +753,7 @@ func TestStorageCacheErrors(t *testing.T) {
 		originRepo := "dedupe1"
 		dedupedRepo := "dedupe2"
 
-		cblob, cdigest := test.GetRandomImageConfig()
+		cblob, cdigest := GetRandomImageConfig()
 
 		getBlobPath := ""
 
@@ -1068,7 +1068,7 @@ func FuzzGetOrasReferrers(f *testing.F) {
 		imgStore := local.NewImageStore(dir, true, true, *log, metrics, nil, cacheDriver)
 
 		storageCtlr := storage.StoreController{DefaultStore: imgStore}
-		err := test.WriteImageToFileSystem(CreateDefaultVulnerableImage(), "zot-test", "0.0.1", storageCtlr)
+		err := WriteImageToFileSystem(CreateDefaultVulnerableImage(), "zot-test", "0.0.1", storageCtlr)
 		if err != nil {
 			t.Error(err)
 		}
@@ -1203,7 +1203,7 @@ func TestDedupeLinks(t *testing.T) {
 			err = blobrc.Close()
 			So(err, ShouldBeNil)
 
-			cblob, cdigest := test.GetRandomImageConfig()
+			cblob, cdigest := GetRandomImageConfig()
 			_, clen, err := imgStore.FullBlobUpload("dedupe1", bytes.NewReader(cblob), cdigest)
 			So(err, ShouldBeNil)
 			So(clen, ShouldEqual, len(cblob))
@@ -1263,7 +1263,7 @@ func TestDedupeLinks(t *testing.T) {
 			err = blobrc.Close()
 			So(err, ShouldBeNil)
 
-			cblob, cdigest = test.GetRandomImageConfig()
+			cblob, cdigest = GetRandomImageConfig()
 			_, clen, err = imgStore.FullBlobUpload("dedupe2", bytes.NewReader(cblob), cdigest)
 			So(err, ShouldBeNil)
 			So(clen, ShouldEqual, len(cblob))
@@ -2001,8 +2001,7 @@ func TestGarbageCollectForImageStore(t *testing.T) {
 			}, log)
 
 			image := CreateDefaultVulnerableImage()
-
-			err := test.WriteImageToFileSystem(image, repoName, "0.0.1", storage.StoreController{
+			err := WriteImageToFileSystem(image, repoName, "0.0.1", storage.StoreController{
 				DefaultStore: imgStore,
 			})
 			So(err, ShouldBeNil)
@@ -2047,8 +2046,7 @@ func TestGarbageCollectForImageStore(t *testing.T) {
 			}, log)
 
 			image := CreateDefaultVulnerableImage()
-
-			err := test.WriteImageToFileSystem(image, repoName, "0.0.1", storage.StoreController{
+			err := WriteImageToFileSystem(image, repoName, "0.0.1", storage.StoreController{
 				DefaultStore: imgStore,
 			})
 			So(err, ShouldBeNil)
@@ -2091,17 +2089,17 @@ func TestGarbageCollectForImageStore(t *testing.T) {
 			storeController := storage.StoreController{DefaultStore: imgStore}
 			img := CreateRandomImage()
 
-			err := test.WriteImageToFileSystem(img, repoName, "tag1", storeController)
+			err := WriteImageToFileSystem(img, repoName, "tag1", storeController)
 			So(err, ShouldBeNil)
 
 			// add fake signature for tag1
-			cosignTag, err := test.GetCosignSignatureTagForManifest(img.Manifest)
+			cosignTag, err := signature.GetCosignSignatureTagForManifest(img.Manifest)
 			So(err, ShouldBeNil)
 
 			cosignSig := CreateRandomImage()
 			So(err, ShouldBeNil)
 
-			err = test.WriteImageToFileSystem(cosignSig, repoName, cosignTag, storeController)
+			err = WriteImageToFileSystem(cosignSig, repoName, cosignTag, storeController)
 			So(err, ShouldBeNil)
 
 			// add sbom
@@ -2115,7 +2113,7 @@ func TestGarbageCollectForImageStore(t *testing.T) {
 			sbomImg := CreateRandomImage()
 			So(err, ShouldBeNil)
 
-			err = test.WriteImageToFileSystem(sbomImg, repoName, sbomTag, storeController)
+			err = WriteImageToFileSystem(sbomImg, repoName, sbomTag, storeController)
 			So(err, ShouldBeNil)
 
 			// add fake signature for tag1
@@ -2124,7 +2122,7 @@ func TestGarbageCollectForImageStore(t *testing.T) {
 				ArtifactConfig("application/vnd.cncf.notary.signature").
 				Subject(img.DescriptorRef()).Build()
 
-			err = test.WriteImageToFileSystem(notationSig, repoName, "notation", storeController)
+			err = WriteImageToFileSystem(notationSig, repoName, "notation", storeController)
 			So(err, ShouldBeNil)
 
 			err = gc.CleanRepo(repoName)
@@ -2161,20 +2159,20 @@ func TestGarbageCollectImageUnknownManifest(t *testing.T) {
 
 		img := CreateRandomImage()
 
-		err := test.WriteImageToFileSystem(img, repoName, "v1", storeController)
+		err := WriteImageToFileSystem(img, repoName, "v1", storeController)
 		So(err, ShouldBeNil)
 
 		// add image with unsupported media type
 		artifact := CreateRandomImage()
 
-		err = test.WriteImageToFileSystem(artifact, repoName, "artifact", storeController)
+		err = WriteImageToFileSystem(artifact, repoName, "artifact", storeController)
 		So(err, ShouldBeNil)
 
 		// add referrer with unsupported media type
 		subjectDesc := img.Descriptor()
 		referrer := CreateRandomImageWith().Subject(&subjectDesc).Build()
 
-		err = test.WriteImageToFileSystem(referrer, repoName, referrer.Digest().String(), storeController)
+		err = WriteImageToFileSystem(referrer, repoName, referrer.Digest().String(), storeController)
 		So(err, ShouldBeNil)
 
 		// modify artifact media type
@@ -2363,7 +2361,7 @@ func TestGarbageCollectErrors(t *testing.T) {
 				So(err, ShouldBeNil)
 				So(upload, ShouldNotBeEmpty)
 
-				cblob, cdigest := test.GetRandomImageConfig()
+				cblob, cdigest := GetRandomImageConfig()
 				buf = bytes.NewBuffer(cblob)
 				buflen = buf.Len()
 				blob, err = imgStore.PutBlobChunkStreamed(repoName, upload, buf)
@@ -2428,7 +2426,7 @@ func TestGarbageCollectErrors(t *testing.T) {
 			So(err, ShouldBeNil)
 			So(upload, ShouldNotBeEmpty)
 
-			cblob, cdigest := test.GetRandomImageConfig()
+			cblob, cdigest := GetRandomImageConfig()
 			buf = bytes.NewBuffer(cblob)
 			buflen = buf.Len()
 			blob, err = imgStore.PutBlobChunkStreamed(repoName, upload, buf)
@@ -2486,7 +2484,7 @@ func TestGarbageCollectErrors(t *testing.T) {
 			So(err, ShouldBeNil)
 			So(upload, ShouldNotBeEmpty)
 
-			cblob, cdigest := test.GetRandomImageConfig()
+			cblob, cdigest := GetRandomImageConfig()
 			buf = bytes.NewBuffer(cblob)
 			buflen = buf.Len()
 			blob, err = imgStore.PutBlobChunkStreamed(repoName, upload, buf)
@@ -2844,13 +2842,13 @@ func TestGetNextRepository(t *testing.T) {
 	srcStorageCtlr := storage.StoreController{DefaultStore: imgStore}
 	image := CreateDefaultImage()
 
-	err := test.WriteImageToFileSystem(image, firstRepoName, "0.0.1", srcStorageCtlr)
+	err := WriteImageToFileSystem(image, firstRepoName, "0.0.1", srcStorageCtlr)
 	if err != nil {
 		t.Log(err)
 		t.FailNow()
 	}
 
-	err = test.WriteImageToFileSystem(image, secondRepoName, "0.0.1", srcStorageCtlr)
+	err = WriteImageToFileSystem(image, secondRepoName, "0.0.1", srcStorageCtlr)
 	if err != nil {
 		t.Log(err)
 		t.FailNow()

@@ -12,6 +12,7 @@ import (
 	"log"
 	"os"
 	"path"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"sync"
@@ -32,9 +33,12 @@ import (
 	"zotregistry.io/zot/pkg/common"
 	extconf "zotregistry.io/zot/pkg/extensions/config"
 	zlog "zotregistry.io/zot/pkg/log"
-	"zotregistry.io/zot/pkg/test"
-	testc "zotregistry.io/zot/pkg/test/common"
+	stypes "zotregistry.io/zot/pkg/storage/types"
+	test "zotregistry.io/zot/pkg/test/common"
+	"zotregistry.io/zot/pkg/test/deprecated"
 	. "zotregistry.io/zot/pkg/test/image-utils"
+	ociutils "zotregistry.io/zot/pkg/test/oci-utils"
+	"zotregistry.io/zot/pkg/test/signature"
 )
 
 func TestSearchImageCmd(t *testing.T) {
@@ -331,7 +335,7 @@ func TestSignature(t *testing.T) {
 		err = UploadImage(CreateDefaultImage(), url, repoName, "0.0.1")
 		So(err, ShouldBeNil)
 
-		err = test.SignImageUsingNotary("repo7:0.0.1", port)
+		err = signature.SignImageUsingNotary("repo7:0.0.1", port)
 		So(err, ShouldBeNil)
 
 		searchConfig := getTestSearchConfig(url, new(searchService))
@@ -1233,8 +1237,8 @@ func TestServerResponseGQLWithoutPermissions(t *testing.T) {
 
 		dir := t.TempDir()
 
-		srcStorageCtlr := test.GetDefaultStoreController(dir, zlog.NewLogger("debug", ""))
-		err := test.WriteImageToFileSystem(CreateDefaultImage(), "zot-test", "0.0.1", srcStorageCtlr)
+		srcStorageCtlr := ociutils.GetDefaultStoreController(dir, zlog.NewLogger("debug", ""))
+		err := WriteImageToFileSystem(CreateDefaultImage(), "zot-test", "0.0.1", srcStorageCtlr)
 		So(err, ShouldBeNil)
 
 		err = os.Chmod(path.Join(dir, "zot-test", "blobs"), 0o000)
@@ -1381,14 +1385,14 @@ func TestImagesSortFlag(t *testing.T) {
 	image2 := CreateImageWith().DefaultLayers().
 		ImageConfig(ispec.Image{Created: DateRef(2020, 1, 1, 1, 1, 1, 0, time.UTC)}).Build()
 
-	storeController := test.GetDefaultStoreController(rootDir, ctlr.Log)
+	storeController := ociutils.GetDefaultStoreController(rootDir, ctlr.Log)
 
-	err := test.WriteImageToFileSystem(image1, "a-repo", "tag1", storeController)
+	err := WriteImageToFileSystem(image1, "a-repo", "tag1", storeController)
 	if err != nil {
 		t.FailNow()
 	}
 
-	err = test.WriteImageToFileSystem(image2, "b-repo", "tag2", storeController)
+	err = WriteImageToFileSystem(image2, "b-repo", "tag2", storeController)
 	if err != nil {
 		t.FailNow()
 	}
@@ -1452,7 +1456,7 @@ func TestImagesCommandGQL(t *testing.T) {
 	defer cm.StopServer()
 
 	Convey("commands with gql", t, func() {
-		err := test.RemoveLocalStorageContents(ctlr.StoreController.DefaultStore)
+		err := removeLocalStorageContents(ctlr.StoreController.DefaultStore)
 		So(err, ShouldBeNil)
 
 		Convey("base and derived command", func() {
@@ -1849,7 +1853,7 @@ func TestImageCommandREST(t *testing.T) {
 	defer cm.StopServer()
 
 	Convey("commands without gql", t, func() {
-		err := test.RemoveLocalStorageContents(ctlr.StoreController.DefaultStore)
+		err := removeLocalStorageContents(ctlr.StoreController.DefaultStore)
 		So(err, ShouldBeNil)
 
 		Convey("base and derived command", func() {
@@ -2008,7 +2012,7 @@ func uploadTestMultiarch(baseURL string) {
 
 	// ------- Upload The multiarch image
 
-	multiarch := test.GetMultiarchImageForImages([]Image{image1, image2}) //nolint:staticcheck
+	multiarch := deprecated.GetMultiarchImageForImages([]Image{image1, image2}) //nolint:staticcheck
 
 	err := UploadMultiarchImage(multiarch, baseURL, "repo", "multi-arch")
 	So(err, ShouldBeNil)
@@ -2017,7 +2021,7 @@ func uploadTestMultiarch(baseURL string) {
 func uploadManifest(url string) error {
 	// create and upload a blob/layer
 	resp, _ := resty.R().Post(url + "/v2/repo7/blobs/uploads/")
-	loc := testc.Location(url, resp)
+	loc := test.Location(url, resp)
 
 	content := []byte("this is a blob5")
 	digest := godigest.FromBytes(content)
@@ -2049,7 +2053,7 @@ func uploadManifest(url string) error {
 
 	// upload image config blob
 	resp, _ = resty.R().Post(url + "/v2/repo7/blobs/uploads/")
-	loc = testc.Location(url, resp)
+	loc = test.Location(url, resp)
 
 	_, _ = resty.R().
 		SetContentLength(true).
@@ -2155,7 +2159,7 @@ func uploadManifestDerivedBase(url string) error {
 
 	// upload image config blob
 	resp, _ := resty.R().Post(url + "/v2/repo7/blobs/uploads/")
-	loc := testc.Location(url, resp)
+	loc := test.Location(url, resp)
 
 	_, _ = resty.R().
 		SetContentLength(true).
@@ -2704,4 +2708,21 @@ func getTestSearchConfig(url string, searchService SearchService) searchConfig {
 		verifyTLS:     verifyTLS,
 		resultWriter:  nil,
 	}
+}
+
+func removeLocalStorageContents(imageStore stypes.ImageStore) error {
+	repos, err := imageStore.GetRepositories()
+	if err != nil {
+		return err
+	}
+
+	for _, repo := range repos {
+		// take just the first path
+		err = os.RemoveAll(filepath.Join(imageStore.RootDir(), filepath.SplitList(repo)[0]))
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
 }

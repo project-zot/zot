@@ -24,7 +24,7 @@ import (
 	common "zotregistry.io/zot/pkg/storage/common"
 	storageConstants "zotregistry.io/zot/pkg/storage/constants"
 	"zotregistry.io/zot/pkg/storage/local"
-	"zotregistry.io/zot/pkg/test"
+	. "zotregistry.io/zot/pkg/test/image-utils"
 	"zotregistry.io/zot/pkg/test/mocks"
 )
 
@@ -96,7 +96,7 @@ func TestGarbageCollectManifestErrors(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(blen, ShouldEqual, len(content))
 
-		cblob, cdigest := test.GetRandomImageConfig()
+		cblob, cdigest := GetRandomImageConfig()
 		_, clen, err := imgStore.FullBlobUpload(repoName, bytes.NewReader(cblob), cdigest)
 		So(err, ShouldBeNil)
 		So(clen, ShouldEqual, len(cblob))
@@ -198,7 +198,7 @@ func TestGarbageCollectIndexErrors(t *testing.T) {
 			So(err, ShouldBeNil)
 			So(upload, ShouldNotBeEmpty)
 
-			cblob, cdigest := test.GetRandomImageConfig()
+			cblob, cdigest := GetRandomImageConfig()
 			buf := bytes.NewBuffer(cblob)
 			buflen := buf.Len()
 			blob, err := imgStore.PutBlobChunkStreamed(repoName, upload, buf)

@@ -10,7 +10,7 @@ import (
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"gopkg.in/resty.v1"
 
-	testc "zotregistry.io/zot/pkg/test/common"
+	tcommon "zotregistry.io/zot/pkg/test/common"
 	"zotregistry.io/zot/pkg/test/inject"
 )
 
@@ -81,7 +81,7 @@ func UploadImage(img Image, baseURL, repo, ref string) error {
 		return ErrPostBlob
 	}
 
-	loc := testc.Location(baseURL, resp)
+	loc := tcommon.Location(baseURL, resp)
 
 	// uploading blob should get 201
 	resp, err = resty.R().
@@ -181,7 +181,7 @@ func UploadImageWithBasicAuth(img Image, baseURL, repo, ref, user, password stri
 		return ErrPostBlob
 	}
 
-	loc := testc.Location(baseURL, resp)
+	loc := tcommon.Location(baseURL, resp)
 
 	// uploading blob should get 201
 	resp, err = resty.R().

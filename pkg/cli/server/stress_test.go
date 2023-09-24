@@ -17,7 +17,7 @@ import (
 	"zotregistry.io/zot/pkg/api"
 	"zotregistry.io/zot/pkg/api/config"
 	cli "zotregistry.io/zot/pkg/cli/server"
-	"zotregistry.io/zot/pkg/test"
+	test "zotregistry.io/zot/pkg/test/common"
 )
 
 const (

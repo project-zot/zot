@@ -20,7 +20,8 @@ import (
 	"zotregistry.io/zot/pkg/api/constants"
 	"zotregistry.io/zot/pkg/common"
 	extconf "zotregistry.io/zot/pkg/extensions/config"
-	. "zotregistry.io/zot/pkg/test"
+	. "zotregistry.io/zot/pkg/test/common"
+	"zotregistry.io/zot/pkg/test/deprecated"
 	. "zotregistry.io/zot/pkg/test/image-utils"
 )
 
@@ -74,7 +75,7 @@ func TestDigestSearchHTTP(t *testing.T) {
 		layers1 := [][]byte{
 			{3, 2, 2},
 		}
-		image1, err := GetImageWithComponents(
+		image1, err := deprecated.GetImageWithComponents( //nolint: staticcheck
 			ispec.Image{
 				Created: &createdTime1,
 				History: []ispec.History{
@@ -93,7 +94,7 @@ func TestDigestSearchHTTP(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		createdTime2 := time.Date(2010, 1, 1, 12, 0, 0, 0, time.UTC)
-		image2, err := GetImageWithComponents(
+		image2, err := deprecated.GetImageWithComponents( //nolint: staticcheck
 			ispec.Image{
 				History: []ispec.History{{Created: &createdTime2}},
 				Platform: ispec.Platform{
@@ -292,7 +293,7 @@ func TestDigestSearchHTTPSubPaths(t *testing.T) {
 		// shut down server
 		defer ctrlManager.StopServer()
 
-		config, layers, manifest, err := GetImageComponents(100)
+		config, layers, manifest, err := deprecated.GetImageComponents(100) //nolint: staticcheck
 		So(err, ShouldBeNil)
 
 		err = UploadImage(Image{Manifest: manifest, Config: config, Layers: layers}, baseURL, "a/zot-cve-test", "0.0.1")

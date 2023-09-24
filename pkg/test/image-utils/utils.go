@@ -1,6 +1,10 @@
 package image
 
 import (
+	"crypto/rand"
+	"encoding/json"
+	"log"
+	"math/big"
 	mathRand "math/rand"
 	"os"
 	"path/filepath"
@@ -9,7 +13,7 @@ import (
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 
-	testc "zotregistry.io/zot/pkg/test/common"
+	tcommon "zotregistry.io/zot/pkg/test/common"
 )
 
 var vulnerableLayer []byte //nolint: gochecknoglobals
@@ -26,7 +30,7 @@ func GetLayerWithVulnerability() ([]byte, error) {
 		return vulnerableLayer, nil
 	}
 
-	projectRootDir, err := testc.GetProjectRootDir()
+	projectRootDir, err := tcommon.GetProjectRootDir()
 	if err != nil {
 		return nil, err
 	}
@@ -126,4 +130,67 @@ func GetDefaultVulnConfig() ispec.Image {
 			DiffIDs: []godigest.Digest{"sha256:f1417ff83b319fbdae6dd9cd6d8c9c88002dcd75ecf6ec201c8c6894681cf2b5"},
 		},
 	}
+}
+
+// Adapted from https://gist.github.com/dopey/c69559607800d2f2f90b1b1ed4e550fb
+func RandomString(n int) string {
+	const letters = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz-"
+
+	ret := make([]byte, n)
+
+	for count := 0; count < n; count++ {
+		num, err := rand.Int(rand.Reader, big.NewInt(int64(len(letters))))
+		if err != nil {
+			panic(err)
+		}
+
+		ret[count] = letters[num.Int64()]
+	}
+
+	return string(ret)
+}
+
+func GetRandomImageConfig() ([]byte, godigest.Digest) {
+	const maxLen = 16
+
+	randomAuthor := RandomString(maxLen)
+
+	config := ispec.Image{
+		Platform: ispec.Platform{
+			Architecture: "amd64",
+			OS:           "linux",
+		},
+		RootFS: ispec.RootFS{
+			Type:    "layers",
+			DiffIDs: []godigest.Digest{},
+		},
+		Author: randomAuthor,
+	}
+
+	configBlobContent, err := json.MarshalIndent(&config, "", "\t")
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	configBlobDigestRaw := godigest.FromBytes(configBlobContent)
+
+	return configBlobContent, configBlobDigestRaw
+}
+
+func GetIndexBlobWithManifests(manifestDigests []godigest.Digest) ([]byte, error) {
+	manifests := make([]ispec.Descriptor, 0, len(manifestDigests))
+
+	for _, manifestDigest := range manifestDigests {
+		manifests = append(manifests, ispec.Descriptor{
+			Digest:    manifestDigest,
+			MediaType: ispec.MediaTypeImageManifest,
+		})
+	}
+
+	indexContent := ispec.Index{
+		MediaType: ispec.MediaTypeImageIndex,
+		Manifests: manifests,
+	}
+
+	return json.Marshal(indexContent)
 }

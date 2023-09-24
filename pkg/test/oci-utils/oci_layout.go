@@ -1,7 +1,7 @@
 //go:build sync && scrub && metrics && search
 // +build sync,scrub,metrics,search
 
-package ocilayout
+package ociutils
 
 import (
 	"encoding/json"
@@ -21,7 +21,7 @@ import (
 	"zotregistry.io/zot/pkg/extensions/search/convert"
 	cvemodel "zotregistry.io/zot/pkg/extensions/search/cve/model"
 	"zotregistry.io/zot/pkg/log"
-	"zotregistry.io/zot/pkg/storage"
+	stypes "zotregistry.io/zot/pkg/storage/types"
 )
 
 type OciUtils interface { //nolint: interfacebloat
@@ -44,11 +44,11 @@ type OciUtils interface { //nolint: interfacebloat
 // OciLayoutInfo ...
 type BaseOciLayoutUtils struct {
 	Log             log.Logger
-	StoreController storage.StoreController
+	StoreController stypes.StoreController
 }
 
 // NewBaseOciLayoutUtils initializes a new OciLayoutUtils object.
-func NewBaseOciLayoutUtils(storeController storage.StoreController, log log.Logger) *BaseOciLayoutUtils {
+func NewBaseOciLayoutUtils(storeController stypes.StoreController, log log.Logger) *BaseOciLayoutUtils {
 	return &BaseOciLayoutUtils{Log: log, StoreController: storeController}
 }
 
@@ -76,8 +76,8 @@ func (olu BaseOciLayoutUtils) GetImageManifest(repo string, reference string) (i
 
 // Provide a list of repositories from all the available image stores.
 func (olu BaseOciLayoutUtils) GetRepositories() ([]string, error) {
-	defaultStore := olu.StoreController.DefaultStore
-	substores := olu.StoreController.SubStore
+	defaultStore := olu.StoreController.GetDefaultImageStore()
+	substores := olu.StoreController.GetImageSubStores()
 
 	repoList, err := defaultStore.GetRepositories()
 	if err != nil {

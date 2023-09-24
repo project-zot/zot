@@ -19,7 +19,7 @@ import (
 	"zotregistry.io/zot/pkg/api"
 	"zotregistry.io/zot/pkg/api/config"
 	"zotregistry.io/zot/pkg/api/constants"
-	"zotregistry.io/zot/pkg/test"
+	test "zotregistry.io/zot/pkg/test/common"
 )
 
 func TestElevatedPrivilegesTLSNewControllerPrivilegedCert(t *testing.T) {

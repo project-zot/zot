@@ -14,7 +14,7 @@ import (
 	"golang.org/x/crypto/bcrypt"
 
 	cli "zotregistry.io/zot/pkg/cli/server"
-	"zotregistry.io/zot/pkg/test"
+	test "zotregistry.io/zot/pkg/test/common"
 )
 
 func TestConfigReloader(t *testing.T) {

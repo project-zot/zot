@@ -23,9 +23,9 @@ import (
 	"zotregistry.io/zot/pkg/extensions/monitoring"
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/storage/local"
-	"zotregistry.io/zot/pkg/test"
-	testc "zotregistry.io/zot/pkg/test/common"
+	test "zotregistry.io/zot/pkg/test/common"
 	. "zotregistry.io/zot/pkg/test/image-utils"
+	ociutils "zotregistry.io/zot/pkg/test/oci-utils"
 )
 
 const (
@@ -56,9 +56,9 @@ func TestVerifyMandatoryAnnotations(t *testing.T) {
 
 		ctlr := api.NewController(conf)
 		dir := t.TempDir()
-		testStoreCtlr := test.GetDefaultStoreController(dir, ctlr.Log)
+		testStoreCtlr := ociutils.GetDefaultStoreController(dir, ctlr.Log)
 
-		err := test.WriteImageToFileSystem(CreateRandomImage(), "zot-test", "0.0.1", testStoreCtlr)
+		err := WriteImageToFileSystem(CreateRandomImage(), "zot-test", "0.0.1", testStoreCtlr)
 		So(err, ShouldBeNil)
 
 		ctlr.Config.Storage.RootDirectory = dir
@@ -103,9 +103,9 @@ func TestVerifyMandatoryAnnotations(t *testing.T) {
 
 		ctlr := api.NewController(conf)
 		dir := t.TempDir()
-		testStoreCtlr := test.GetDefaultStoreController(dir, ctlr.Log)
+		testStoreCtlr := ociutils.GetDefaultStoreController(dir, ctlr.Log)
 
-		err := test.WriteImageToFileSystem(CreateRandomImage(), "zot-test", "0.0.1", testStoreCtlr)
+		err := WriteImageToFileSystem(CreateRandomImage(), "zot-test", "0.0.1", testStoreCtlr)
 		So(err, ShouldBeNil)
 
 		ctlr.Config.Storage.RootDirectory = dir
@@ -151,8 +151,8 @@ func TestVerifyMandatoryAnnotations(t *testing.T) {
 		ctlr := api.NewController(conf)
 		dir := t.TempDir()
 
-		testStoreCtlr := test.GetDefaultStoreController(dir, ctlr.Log)
-		err := test.WriteImageToFileSystem(CreateRandomImage(), "zot-test", "0.0.1", testStoreCtlr)
+		testStoreCtlr := ociutils.GetDefaultStoreController(dir, ctlr.Log)
+		err := WriteImageToFileSystem(CreateRandomImage(), "zot-test", "0.0.1", testStoreCtlr)
 		So(err, ShouldBeNil)
 
 		ctlr.Config.Storage.RootDirectory = dir
@@ -204,8 +204,8 @@ func TestVerifyMandatoryAnnotations(t *testing.T) {
 		ctlr := api.NewController(conf)
 		dir := t.TempDir()
 
-		testStoreCtlr := test.GetDefaultStoreController(dir, ctlr.Log)
-		err := test.WriteImageToFileSystem(CreateRandomImage(), "zot-test", "0.0.1", testStoreCtlr)
+		testStoreCtlr := ociutils.GetDefaultStoreController(dir, ctlr.Log)
+		err := WriteImageToFileSystem(CreateRandomImage(), "zot-test", "0.0.1", testStoreCtlr)
 		So(err, ShouldBeNil)
 
 		ctlr.Config.Storage.RootDirectory = dir
@@ -259,7 +259,7 @@ func TestVerifyMandatoryAnnotations(t *testing.T) {
 		resp, err = resty.R().
 			Post(fmt.Sprintf("%s/v2/zot-test/blobs/uploads/", baseURL))
 		So(err, ShouldBeNil)
-		loc := testc.Location(baseURL, resp)
+		loc := test.Location(baseURL, resp)
 
 		_, err = resty.R().
 			SetContentLength(true).
@@ -292,8 +292,8 @@ func TestVerifyMandatoryAnnotations(t *testing.T) {
 		ctlr := api.NewController(conf)
 		dir := t.TempDir()
 
-		testStoreCtlr := test.GetDefaultStoreController(dir, ctlr.Log)
-		err := test.WriteImageToFileSystem(CreateRandomImage(), "zot-test", "0.0.1", testStoreCtlr)
+		testStoreCtlr := ociutils.GetDefaultStoreController(dir, ctlr.Log)
+		err := WriteImageToFileSystem(CreateRandomImage(), "zot-test", "0.0.1", testStoreCtlr)
 		So(err, ShouldBeNil)
 
 		ctlr.Config.Storage.RootDirectory = dir
@@ -346,7 +346,7 @@ func TestVerifyMandatoryAnnotations(t *testing.T) {
 		_, err = resty.R().
 			Post(fmt.Sprintf("%s/v2/zot-test/blobs/uploads/", baseURL))
 		So(err, ShouldBeNil)
-		loc := testc.Location(baseURL, resp)
+		loc := test.Location(baseURL, resp)
 
 		_, err = resty.R().
 			SetContentLength(true).
@@ -379,8 +379,8 @@ func TestVerifyMandatoryAnnotations(t *testing.T) {
 		ctlr := api.NewController(conf)
 		dir := t.TempDir()
 
-		testStoreCtlr := test.GetDefaultStoreController(dir, ctlr.Log)
-		err := test.WriteImageToFileSystem(CreateRandomImage(), "zot-test", "0.0.1", testStoreCtlr)
+		testStoreCtlr := ociutils.GetDefaultStoreController(dir, ctlr.Log)
+		err := WriteImageToFileSystem(CreateRandomImage(), "zot-test", "0.0.1", testStoreCtlr)
 		So(err, ShouldBeNil)
 
 		ctlr.Config.Storage.RootDirectory = dir
@@ -430,8 +430,8 @@ func TestVerifyMandatoryAnnotations(t *testing.T) {
 		ctlr := api.NewController(conf)
 		dir := t.TempDir()
 
-		testStoreCtlr := test.GetDefaultStoreController(dir, ctlr.Log)
-		err := test.WriteImageToFileSystem(CreateRandomImage(), "zot-test", "0.0.1", testStoreCtlr)
+		testStoreCtlr := ociutils.GetDefaultStoreController(dir, ctlr.Log)
+		err := WriteImageToFileSystem(CreateRandomImage(), "zot-test", "0.0.1", testStoreCtlr)
 		So(err, ShouldBeNil)
 
 		files, err := os.ReadDir(dir)
@@ -485,8 +485,8 @@ func TestVerifyMandatoryAnnotationsFunction(t *testing.T) {
 
 		dir := t.TempDir()
 
-		testStoreCtlr := test.GetDefaultStoreController(dir, log.NewLogger("debug", ""))
-		err := test.WriteImageToFileSystem(CreateRandomImage(), "zot-test", "0.0.1", testStoreCtlr)
+		testStoreCtlr := ociutils.GetDefaultStoreController(dir, log.NewLogger("debug", ""))
+		err := WriteImageToFileSystem(CreateRandomImage(), "zot-test", "0.0.1", testStoreCtlr)
 		So(err, ShouldBeNil)
 
 		var index ispec.Index
@@ -517,8 +517,8 @@ func TestVerifyMandatoryAnnotationsFunction(t *testing.T) {
 
 		dir := t.TempDir()
 
-		testStoreCtlr := test.GetDefaultStoreController(dir, log.NewLogger("debug", ""))
-		err := test.WriteImageToFileSystem(CreateRandomImage(), "zot-test", "0.0.1", testStoreCtlr)
+		testStoreCtlr := ociutils.GetDefaultStoreController(dir, log.NewLogger("debug", ""))
+		err := WriteImageToFileSystem(CreateRandomImage(), "zot-test", "0.0.1", testStoreCtlr)
 		So(err, ShouldBeNil)
 
 		var index ispec.Index
@@ -549,8 +549,8 @@ func TestVerifyMandatoryAnnotationsFunction(t *testing.T) {
 
 		dir := t.TempDir()
 
-		testStoreCtlr := test.GetDefaultStoreController(dir, log.NewLogger("debug", ""))
-		err := test.WriteImageToFileSystem(CreateRandomImage(), "zot-test", "0.0.1", testStoreCtlr)
+		testStoreCtlr := ociutils.GetDefaultStoreController(dir, log.NewLogger("debug", ""))
+		err := WriteImageToFileSystem(CreateRandomImage(), "zot-test", "0.0.1", testStoreCtlr)
 		So(err, ShouldBeNil)
 
 		var index ispec.Index
@@ -612,8 +612,8 @@ func TestVerifyMandatoryAnnotationsFunction(t *testing.T) {
 
 		dir := t.TempDir()
 
-		testStoreCtlr := test.GetDefaultStoreController(dir, log.NewLogger("debug", ""))
-		err := test.WriteImageToFileSystem(CreateRandomImage(), "zot-test", "0.0.1", testStoreCtlr)
+		testStoreCtlr := ociutils.GetDefaultStoreController(dir, log.NewLogger("debug", ""))
+		err := WriteImageToFileSystem(CreateRandomImage(), "zot-test", "0.0.1", testStoreCtlr)
 		So(err, ShouldBeNil)
 
 		var index ispec.Index
@@ -674,8 +674,8 @@ func TestVerifyMandatoryAnnotationsFunction(t *testing.T) {
 
 		dir := t.TempDir()
 
-		testStoreCtlr := test.GetDefaultStoreController(dir, log.NewLogger("debug", ""))
-		err := test.WriteImageToFileSystem(CreateRandomImage(), "zot-test", "0.0.1", testStoreCtlr)
+		testStoreCtlr := ociutils.GetDefaultStoreController(dir, log.NewLogger("debug", ""))
+		err := WriteImageToFileSystem(CreateRandomImage(), "zot-test", "0.0.1", testStoreCtlr)
 		So(err, ShouldBeNil)
 
 		var index ispec.Index
@@ -738,8 +738,8 @@ func TestVerifyMandatoryAnnotationsFunction(t *testing.T) {
 
 		dir := t.TempDir()
 
-		testStoreCtlr := test.GetDefaultStoreController(dir, log.NewLogger("debug", ""))
-		err := test.WriteImageToFileSystem(CreateRandomImage(), "zot-test", "0.0.1", testStoreCtlr)
+		testStoreCtlr := ociutils.GetDefaultStoreController(dir, log.NewLogger("debug", ""))
+		err := WriteImageToFileSystem(CreateRandomImage(), "zot-test", "0.0.1", testStoreCtlr)
 		So(err, ShouldBeNil)
 
 		var index ispec.Index
@@ -811,8 +811,8 @@ func TestVerifyMandatoryAnnotationsFunction(t *testing.T) {
 
 		dir := t.TempDir()
 
-		testStoreCtlr := test.GetDefaultStoreController(dir, log.NewLogger("debug", ""))
-		err := test.WriteImageToFileSystem(CreateRandomImage(), "zot-test", "0.0.1", testStoreCtlr)
+		testStoreCtlr := ociutils.GetDefaultStoreController(dir, log.NewLogger("debug", ""))
+		err := WriteImageToFileSystem(CreateRandomImage(), "zot-test", "0.0.1", testStoreCtlr)
 		So(err, ShouldBeNil)
 
 		var index ispec.Index

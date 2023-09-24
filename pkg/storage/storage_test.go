@@ -39,7 +39,7 @@ import (
 	"zotregistry.io/zot/pkg/storage/local"
 	"zotregistry.io/zot/pkg/storage/s3"
 	storageTypes "zotregistry.io/zot/pkg/storage/types"
-	"zotregistry.io/zot/pkg/test"
+	. "zotregistry.io/zot/pkg/test/image-utils"
 	"zotregistry.io/zot/pkg/test/mocks"
 )
 
@@ -317,7 +317,7 @@ func TestStorageAPIs(t *testing.T) {
 						})
 
 						Convey("Good image manifest", func() {
-							cblob, cdigest := test.GetRandomImageConfig()
+							cblob, cdigest := GetRandomImageConfig()
 							_, clen, err := imgStore.FullBlobUpload("test", bytes.NewReader(cblob), cdigest)
 							So(err, ShouldBeNil)
 							So(clen, ShouldEqual, len(cblob))
@@ -534,7 +534,7 @@ func TestStorageAPIs(t *testing.T) {
 						})
 
 						Convey("Good image manifest", func() {
-							cblob, cdigest := test.GetRandomImageConfig()
+							cblob, cdigest := GetRandomImageConfig()
 							_, clen, err := imgStore.FullBlobUpload("test", bytes.NewReader(cblob), cdigest)
 							So(err, ShouldBeNil)
 							So(clen, ShouldEqual, len(cblob))
@@ -631,7 +631,7 @@ func TestStorageAPIs(t *testing.T) {
 					So(err, ShouldBeNil)
 					So(blob, ShouldEqual, buflen)
 
-					cblob, cdigest := test.GetRandomImageConfig()
+					cblob, cdigest := GetRandomImageConfig()
 					_, clen, err := imgStore.FullBlobUpload("replace", bytes.NewReader(cblob), cdigest)
 					So(err, ShouldBeNil)
 					So(clen, ShouldEqual, len(cblob))
@@ -683,7 +683,7 @@ func TestStorageAPIs(t *testing.T) {
 					So(err, ShouldBeNil)
 					So(blob, ShouldEqual, buflen)
 
-					cblob, cdigest = test.GetRandomImageConfig()
+					cblob, cdigest = GetRandomImageConfig()
 					_, clen, err = imgStore.FullBlobUpload("replace", bytes.NewReader(cblob), cdigest)
 					So(err, ShouldBeNil)
 					So(clen, ShouldEqual, len(cblob))
@@ -797,7 +797,7 @@ func TestMandatoryAnnotations(t *testing.T) {
 				_, _, err := imgStore.FullBlobUpload("test", bytes.NewReader(buf.Bytes()), digest)
 				So(err, ShouldBeNil)
 
-				cblob, cdigest := test.GetRandomImageConfig()
+				cblob, cdigest := GetRandomImageConfig()
 				_, clen, err := imgStore.FullBlobUpload("test", bytes.NewReader(cblob), cdigest)
 				So(err, ShouldBeNil)
 				So(clen, ShouldEqual, len(cblob))
@@ -918,7 +918,7 @@ func TestDeleteBlobsInUse(t *testing.T) {
 				_, _, err = imgStore.FullBlobUpload("repo", bytes.NewReader(buf.Bytes()), digest)
 				So(err, ShouldBeNil)
 
-				cblob, cdigest := test.GetRandomImageConfig()
+				cblob, cdigest := GetRandomImageConfig()
 				_, clen, err := imgStore.FullBlobUpload("repo", bytes.NewReader(cblob), cdigest)
 				So(err, ShouldBeNil)
 				So(clen, ShouldEqual, len(cblob))
@@ -1037,7 +1037,7 @@ func TestDeleteBlobsInUse(t *testing.T) {
 					So(err, ShouldBeNil)
 					So(upload, ShouldNotBeEmpty)
 
-					cblob, cdigest = test.GetRandomImageConfig()
+					cblob, cdigest = GetRandomImageConfig()
 					buf = bytes.NewBuffer(cblob)
 					buflen = buf.Len()
 					blob, err = imgStore.PutBlobChunkStreamed(repoName, upload, buf)
@@ -1317,7 +1317,7 @@ func TestGarbageCollectImageManifest(t *testing.T) {
 					annotationsMap := make(map[string]string)
 					annotationsMap[ispec.AnnotationRefName] = tag
 
-					cblob, cdigest := test.GetRandomImageConfig()
+					cblob, cdigest := GetRandomImageConfig()
 					_, clen, err := imgStore.FullBlobUpload(repoName, bytes.NewReader(cblob), cdigest)
 					So(err, ShouldBeNil)
 					So(clen, ShouldEqual, len(cblob))
@@ -1499,7 +1499,7 @@ func TestGarbageCollectImageManifest(t *testing.T) {
 					annotationsMap := make(map[string]string)
 					annotationsMap[ispec.AnnotationRefName] = tag
 
-					cblob, cdigest := test.GetRandomImageConfig()
+					cblob, cdigest := GetRandomImageConfig()
 					_, clen, err := imgStore.FullBlobUpload(repoName, bytes.NewReader(cblob), cdigest)
 					So(err, ShouldBeNil)
 					So(clen, ShouldEqual, len(cblob))
@@ -1794,7 +1794,7 @@ func TestGarbageCollectImageManifest(t *testing.T) {
 					annotationsMap := make(map[string]string)
 					annotationsMap[ispec.AnnotationRefName] = tag
 
-					cblob, cdigest := test.GetRandomImageConfig()
+					cblob, cdigest := GetRandomImageConfig()
 					_, clen, err := imgStore.FullBlobUpload(repo1Name, bytes.NewReader(cblob), cdigest)
 					So(err, ShouldBeNil)
 					So(clen, ShouldEqual, len(cblob))
@@ -1857,7 +1857,7 @@ func TestGarbageCollectImageManifest(t *testing.T) {
 					annotationsMap = make(map[string]string)
 					annotationsMap[ispec.AnnotationRefName] = tag
 
-					cblob, cdigest = test.GetRandomImageConfig()
+					cblob, cdigest = GetRandomImageConfig()
 					_, clen, err = imgStore.FullBlobUpload(repo2Name, bytes.NewReader(cblob), cdigest)
 					So(err, ShouldBeNil)
 					So(clen, ShouldEqual, len(cblob))
@@ -1913,7 +1913,7 @@ func TestGarbageCollectImageManifest(t *testing.T) {
 					annotationsMap = make(map[string]string)
 					annotationsMap[ispec.AnnotationRefName] = tag
 
-					cblob, cdigest = test.GetRandomImageConfig()
+					cblob, cdigest = GetRandomImageConfig()
 					_, clen, err = imgStore.FullBlobUpload(repo2Name, bytes.NewReader(cblob), cdigest)
 					So(err, ShouldBeNil)
 					So(clen, ShouldEqual, len(cblob))
@@ -2493,7 +2493,7 @@ func TestGarbageCollectChainedImageIndexes(t *testing.T) {
 					So(err, ShouldBeNil)
 					So(upload, ShouldNotBeEmpty)
 
-					cblob, cdigest := test.GetRandomImageConfig()
+					cblob, cdigest := GetRandomImageConfig()
 					buf := bytes.NewBuffer(cblob)
 					buflen := buf.Len()
 					blob, err := imgStore.PutBlobChunkStreamed(repoName, upload, buf)
@@ -2575,7 +2575,7 @@ func TestGarbageCollectChainedImageIndexes(t *testing.T) {
 					So(err, ShouldBeNil)
 					So(upload, ShouldNotBeEmpty)
 
-					cblob, cdigest := test.GetRandomImageConfig()
+					cblob, cdigest := GetRandomImageConfig()
 					buf := bytes.NewBuffer(cblob)
 					buflen := buf.Len()
 					blob, err := imgStore.PutBlobChunkStreamed(repoName, upload, buf)
@@ -2913,7 +2913,7 @@ func pushRandomImageIndex(imgStore storageTypes.ImageStore, repoName string,
 		So(err, ShouldBeNil)
 		So(upload, ShouldNotBeEmpty)
 
-		cblob, cdigest := test.GetRandomImageConfig()
+		cblob, cdigest := GetRandomImageConfig()
 		buf := bytes.NewBuffer(cblob)
 		buflen := buf.Len()
 		blob, err := imgStore.PutBlobChunkStreamed(repoName, upload, buf)

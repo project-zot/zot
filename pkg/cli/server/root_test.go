@@ -14,7 +14,7 @@ import (
 	"zotregistry.io/zot/pkg/api/config"
 	cli "zotregistry.io/zot/pkg/cli/server"
 	storageConstants "zotregistry.io/zot/pkg/storage/constants"
-	. "zotregistry.io/zot/pkg/test"
+	. "zotregistry.io/zot/pkg/test/common"
 )
 
 func TestServerUsage(t *testing.T) {

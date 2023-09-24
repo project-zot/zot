@@ -1,4 +1,4 @@
-package test
+package ociutils
 
 import (
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"

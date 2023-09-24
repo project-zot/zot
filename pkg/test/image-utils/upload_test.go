@@ -13,15 +13,15 @@ import (
 
 	"zotregistry.io/zot/pkg/api"
 	"zotregistry.io/zot/pkg/api/config"
-	. "zotregistry.io/zot/pkg/test"
+	tcommon "zotregistry.io/zot/pkg/test/common"
 	. "zotregistry.io/zot/pkg/test/image-utils"
 	"zotregistry.io/zot/pkg/test/inject"
 )
 
 func TestUploadImage(t *testing.T) {
 	Convey("Manifest without schemaVersion should fail validation", t, func() {
-		port := GetFreePort()
-		baseURL := GetBaseURL(port)
+		port := tcommon.GetFreePort()
+		baseURL := tcommon.GetBaseURL(port)
 
 		conf := config.New()
 		conf.HTTP.Port = port
@@ -29,7 +29,7 @@ func TestUploadImage(t *testing.T) {
 
 		ctlr := api.NewController(conf)
 
-		ctlrManager := NewControllerManager(ctlr)
+		ctlrManager := tcommon.NewControllerManager(ctlr)
 		ctlrManager.StartAndWait(port)
 		defer ctlrManager.StopServer()
 
@@ -57,8 +57,8 @@ func TestUploadImage(t *testing.T) {
 	})
 
 	Convey("Post request results in an error", t, func() {
-		port := GetFreePort()
-		baseURL := GetBaseURL(port)
+		port := tcommon.GetFreePort()
+		baseURL := tcommon.GetBaseURL(port)
 
 		conf := config.New()
 		conf.HTTP.Port = port
@@ -73,8 +73,8 @@ func TestUploadImage(t *testing.T) {
 	})
 
 	Convey("Post request status differs from accepted", t, func() {
-		port := GetFreePort()
-		baseURL := GetBaseURL(port)
+		port := tcommon.GetFreePort()
+		baseURL := tcommon.GetBaseURL(port)
 
 		tempDir := t.TempDir()
 		conf := config.New()
@@ -88,7 +88,7 @@ func TestUploadImage(t *testing.T) {
 
 		ctlr := api.NewController(conf)
 
-		ctlrManager := NewControllerManager(ctlr)
+		ctlrManager := tcommon.NewControllerManager(ctlr)
 		ctlrManager.StartAndWait(port)
 		defer ctlrManager.StopServer()
 
@@ -101,8 +101,8 @@ func TestUploadImage(t *testing.T) {
 	})
 
 	Convey("Put request results in an error", t, func() {
-		port := GetFreePort()
-		baseURL := GetBaseURL(port)
+		port := tcommon.GetFreePort()
+		baseURL := tcommon.GetBaseURL(port)
 
 		conf := config.New()
 		conf.HTTP.Port = port
@@ -110,7 +110,7 @@ func TestUploadImage(t *testing.T) {
 
 		ctlr := api.NewController(conf)
 
-		ctlrManager := NewControllerManager(ctlr)
+		ctlrManager := tcommon.NewControllerManager(ctlr)
 		ctlrManager.StartAndWait(port)
 		defer ctlrManager.StopServer()
 
@@ -124,8 +124,8 @@ func TestUploadImage(t *testing.T) {
 	})
 
 	Convey("Image uploaded successfully", t, func() {
-		port := GetFreePort()
-		baseURL := GetBaseURL(port)
+		port := tcommon.GetFreePort()
+		baseURL := tcommon.GetBaseURL(port)
 
 		conf := config.New()
 		conf.HTTP.Port = port
@@ -133,7 +133,7 @@ func TestUploadImage(t *testing.T) {
 
 		ctlr := api.NewController(conf)
 
-		ctlrManager := NewControllerManager(ctlr)
+		ctlrManager := tcommon.NewControllerManager(ctlr)
 		ctlrManager.StartAndWait(port)
 		defer ctlrManager.StopServer()
 
@@ -166,13 +166,13 @@ func TestUploadImage(t *testing.T) {
 	Convey("Upload image with authentification", t, func() {
 		tempDir := t.TempDir()
 		conf := config.New()
-		port := GetFreePort()
-		baseURL := GetBaseURL(port)
+		port := tcommon.GetFreePort()
+		baseURL := tcommon.GetBaseURL(port)
 
 		user1 := "test"
 		password1 := "test"
-		testString1 := GetCredString(user1, password1)
-		htpasswdPath := MakeHtpasswdFileFromString(testString1)
+		testString1 := tcommon.GetCredString(user1, password1)
+		htpasswdPath := tcommon.MakeHtpasswdFileFromString(testString1)
 		defer os.Remove(htpasswdPath)
 		conf.HTTP.Auth = &config.AuthConfig{
 			HTPasswd: config.AuthHTPasswd{
@@ -213,7 +213,7 @@ func TestUploadImage(t *testing.T) {
 
 		ctlr.Config.Storage.RootDirectory = tempDir
 
-		ctlrManager := NewControllerManager(ctlr)
+		ctlrManager := tcommon.NewControllerManager(ctlr)
 		ctlrManager.StartAndWait(port)
 		defer ctlrManager.StopServer()
 
@@ -236,8 +236,8 @@ func TestUploadImage(t *testing.T) {
 	})
 
 	Convey("Blob upload wrong response status code", t, func() {
-		port := GetFreePort()
-		baseURL := GetBaseURL(port)
+		port := tcommon.GetFreePort()
+		baseURL := tcommon.GetBaseURL(port)
 
 		tempDir := t.TempDir()
 		conf := config.New()
@@ -246,7 +246,7 @@ func TestUploadImage(t *testing.T) {
 
 		ctlr := api.NewController(conf)
 
-		ctlrManager := NewControllerManager(ctlr)
+		ctlrManager := tcommon.NewControllerManager(ctlr)
 		ctlrManager.StartAndWait(port)
 		defer ctlrManager.StopServer()
 
@@ -289,8 +289,8 @@ func TestUploadImage(t *testing.T) {
 	})
 
 	Convey("CreateBlobUpload wrong response status code", t, func() {
-		port := GetFreePort()
-		baseURL := GetBaseURL(port)
+		port := tcommon.GetFreePort()
+		baseURL := tcommon.GetBaseURL(port)
 
 		tempDir := t.TempDir()
 		conf := config.New()
@@ -299,7 +299,7 @@ func TestUploadImage(t *testing.T) {
 
 		ctlr := api.NewController(conf)
 
-		ctlrManager := NewControllerManager(ctlr)
+		ctlrManager := tcommon.NewControllerManager(ctlr)
 		ctlrManager.StartAndWait(port)
 		defer ctlrManager.StopServer()
 
@@ -331,8 +331,8 @@ func TestUploadImage(t *testing.T) {
 
 func TestInjectUploadImage(t *testing.T) {
 	Convey("Inject failures for unreachable lines", t, func() {
-		port := GetFreePort()
-		baseURL := GetBaseURL(port)
+		port := tcommon.GetFreePort()
+		baseURL := tcommon.GetBaseURL(port)
 
 		tempDir := t.TempDir()
 		conf := config.New()
@@ -341,7 +341,7 @@ func TestInjectUploadImage(t *testing.T) {
 
 		ctlr := api.NewController(conf)
 
-		ctlrManager := NewControllerManager(ctlr)
+		ctlrManager := tcommon.NewControllerManager(ctlr)
 		ctlrManager.StartAndWait(port)
 		defer ctlrManager.StopServer()
 
@@ -395,8 +395,8 @@ func TestInjectUploadImage(t *testing.T) {
 
 func TestUploadMultiarchImage(t *testing.T) {
 	Convey("make controller", t, func() {
-		port := GetFreePort()
-		baseURL := GetBaseURL(port)
+		port := tcommon.GetFreePort()
+		baseURL := tcommon.GetBaseURL(port)
 
 		conf := config.New()
 		conf.HTTP.Port = port
@@ -404,7 +404,7 @@ func TestUploadMultiarchImage(t *testing.T) {
 
 		ctlr := api.NewController(conf)
 
-		ctlrManager := NewControllerManager(ctlr)
+		ctlrManager := tcommon.NewControllerManager(ctlr)
 		ctlrManager.StartAndWait(port)
 		defer ctlrManager.StopServer()
 
@@ -474,8 +474,8 @@ func TestUploadMultiarchImage(t *testing.T) {
 
 func TestInjectUploadImageWithBasicAuth(t *testing.T) {
 	Convey("Inject failures for unreachable lines", t, func() {
-		port := GetFreePort()
-		baseURL := GetBaseURL(port)
+		port := tcommon.GetFreePort()
+		baseURL := tcommon.GetBaseURL(port)
 
 		tempDir := t.TempDir()
 		conf := config.New()
@@ -484,8 +484,8 @@ func TestInjectUploadImageWithBasicAuth(t *testing.T) {
 
 		user := "user"
 		password := "password"
-		testString := GetCredString(user, password)
-		htpasswdPath := MakeHtpasswdFileFromString(testString)
+		testString := tcommon.GetCredString(user, password)
+		htpasswdPath := tcommon.MakeHtpasswdFileFromString(testString)
 		defer os.Remove(htpasswdPath)
 		conf.HTTP.Auth = &config.AuthConfig{
 			HTPasswd: config.AuthHTPasswd{
@@ -495,7 +495,7 @@ func TestInjectUploadImageWithBasicAuth(t *testing.T) {
 
 		ctlr := api.NewController(conf)
 
-		ctlrManager := NewControllerManager(ctlr)
+		ctlrManager := tcommon.NewControllerManager(ctlr)
 		ctlrManager.StartAndWait(port)
 		defer ctlrManager.StopServer()
 

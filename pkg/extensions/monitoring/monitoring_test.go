@@ -15,8 +15,9 @@ import (
 	"zotregistry.io/zot/pkg/api/config"
 	extconf "zotregistry.io/zot/pkg/extensions/config"
 	"zotregistry.io/zot/pkg/extensions/monitoring"
-	"zotregistry.io/zot/pkg/test"
+	test "zotregistry.io/zot/pkg/test/common"
 	. "zotregistry.io/zot/pkg/test/image-utils"
+	ociutils "zotregistry.io/zot/pkg/test/oci-utils"
 )
 
 func TestExtensionMetrics(t *testing.T) {
@@ -55,8 +56,8 @@ func TestExtensionMetrics(t *testing.T) {
 		monitoring.IncDownloadCounter(ctlr.Metrics, "alpine")
 		monitoring.IncUploadCounter(ctlr.Metrics, "alpine")
 
-		srcStorageCtlr := test.GetDefaultStoreController(rootDir, ctlr.Log)
-		err := test.WriteImageToFileSystem(CreateDefaultImage(), "alpine", "0.0.1", srcStorageCtlr)
+		srcStorageCtlr := ociutils.GetDefaultStoreController(rootDir, ctlr.Log)
+		err := WriteImageToFileSystem(CreateDefaultImage(), "alpine", "0.0.1", srcStorageCtlr)
 		So(err, ShouldBeNil)
 
 		monitoring.SetStorageUsage(ctlr.Metrics, rootDir, "alpine")
