@@ -3,7 +3,7 @@ module zotregistry.io/zot
 go 1.20
 
 require (
-	github.com/99designs/gqlgen v0.17.37
+	github.com/99designs/gqlgen v0.17.38
 	github.com/Masterminds/semver v1.5.0
 	github.com/apex/log v1.9.0 // indirect
 	github.com/aquasecurity/trivy-db v0.0.0-20230831170347-f732860d4917
@@ -38,7 +38,7 @@ require (
 	github.com/spf13/viper v1.16.0
 	github.com/stretchr/testify v1.8.4
 	github.com/swaggo/swag v1.16.2
-	github.com/vektah/gqlparser/v2 v2.5.9
+	github.com/vektah/gqlparser/v2 v2.5.10
 	go.etcd.io/bbolt v1.3.7
 	golang.org/x/crypto v0.13.0
 	gopkg.in/resty.v1 v1.12.0
