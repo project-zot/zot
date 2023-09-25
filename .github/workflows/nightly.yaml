@@ -152,3 +152,15 @@ jobs:
           cat /tmp/gc-bench-s3.log
           exit 1
       - uses: ./.github/actions/teardown-localstack
+
+  docker-image:
+    name: Build docker image (for users still using Docker environments)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/clean-runner
+      - name: Check out source code
+        uses: actions/checkout@v4
+      - name: Build image
+        run: |
+          make docker-image

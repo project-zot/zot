@@ -62,13 +62,13 @@ make exporter-minimal
 ## Using container builds (stacker)
 
 ```
-make binary-stacker
+make oci-image
 ```
 
 ## Using container builds (docker)
 
 ```
-make binary-container
+make docker-image
 ```
 
 # Project Structure
