@@ -4350,7 +4350,7 @@ func TestInvalidCases(t *testing.T) {
 			panic(err)
 		}
 
-		digest := test.GetTestBlobDigest("zot-cve-test", "config").String()
+		digest := godigest.FromString("dummy").String()
 		name := "zot-c-test"
 
 		client := resty.New()
@@ -4449,7 +4449,8 @@ func TestCrossRepoMount(t *testing.T) {
 		ctlr.Config.Storage.RemoteCache = false
 		ctlr.Config.Storage.Dedupe = false
 
-		err := test.WriteImageToFileSystem(CreateDefaultImage(), "zot-cve-test", "test", storage.StoreController{
+		image := CreateDefaultImage()
+		err := test.WriteImageToFileSystem(image, "zot-cve-test", "test", storage.StoreController{
 			DefaultStore: test.GetDefaultImageStore(dir, ctlr.Log),
 		})
 		So(err, ShouldBeNil)
@@ -4459,8 +4460,7 @@ func TestCrossRepoMount(t *testing.T) {
 
 		params := make(map[string]string)
 
-		var manifestDigest godigest.Digest
-		manifestDigest, _, _ = test.GetOciLayoutDigests(path.Join(dir, "zot-cve-test"))
+		manifestDigest := image.ManifestDescriptor.Digest
 
 		dgst := manifestDigest
 		name := "zot-cve-test"
@@ -4487,7 +4487,7 @@ func TestCrossRepoMount(t *testing.T) {
 			baseURL, constants.RoutePrefix, constants.Blobs, constants.Uploads))
 
 		incorrectParams := make(map[string]string)
-		incorrectParams["mount"] = test.GetTestBlobDigest("zot-cve-test", "manifest").String()
+		incorrectParams["mount"] = godigest.FromString("dummy").String()
 		incorrectParams["from"] = "zot-x-test"
 
 		postResponse, err = client.R().

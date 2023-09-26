@@ -50,6 +50,7 @@ var (
 	ErrCliBadConfig                   = errors.New("cli: bad config")
 	ErrRepoNotFound                   = errors.New("repository: not found")
 	ErrRepoBadVersion                 = errors.New("repository: unsupported layout version")
+	ErrRepoBadLayout                  = errors.New("repository: invalid layout")
 	ErrManifestNotFound               = errors.New("manifest: not found")
 	ErrBadManifest                    = errors.New("manifest: invalid contents")
 	ErrUploadNotFound                 = errors.New("uploads: not found")

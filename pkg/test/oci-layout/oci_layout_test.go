@@ -33,8 +33,6 @@ import (
 var ErrTestError = fmt.Errorf("testError")
 
 func TestBaseOciLayoutUtils(t *testing.T) {
-	manifestDigest := GetTestBlobDigest("zot-test", "config").String()
-
 	Convey("GetImageManifestSize fail", t, func() {
 		mockStoreController := mocks.MockedImageStore{
 			GetBlobContentFn: func(repo string, digest godigest.Digest) ([]byte, error) {
@@ -64,6 +62,9 @@ func TestBaseOciLayoutUtils(t *testing.T) {
 	})
 
 	Convey("GetImageConfigSize: config GetBlobContent fail", t, func() {
+		image := CreateRandomImage()
+		manifestDigest := image.ConfigDescriptor.Digest.String()
+
 		mockStoreController := mocks.MockedImageStore{
 			GetBlobContentFn: func(repo string, digest godigest.Digest) ([]byte, error) {
 				if digest.String() == manifestDigest {
@@ -83,7 +84,7 @@ func TestBaseOciLayoutUtils(t *testing.T) {
 					"layers": [
 						{
 							"mediaType": "application/vnd.oci.image.layer.v1.tar+gzip",
-							"digest": "` + GetTestBlobDigest("zot-test", "layer").String() + `",
+							"digest": "` + image.Manifest.Layers[0].Digest.String() + `",
 							"size": 76097157
 						}
 					]

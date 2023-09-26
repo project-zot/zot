@@ -35,7 +35,6 @@ import (
 	godigest "github.com/opencontainers/go-digest"
 	"github.com/opencontainers/image-spec/specs-go"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
-	"github.com/opencontainers/umoci"
 	"github.com/phayes/freeport"
 	"github.com/project-zot/mockoidc"
 	"github.com/sigstore/cosign/v2/cmd/cosign/cli/generate"
@@ -71,29 +70,6 @@ var (
 )
 
 var NotationPathLock = new(sync.Mutex) //nolint: gochecknoglobals
-
-// which: manifest, config, layer
-func GetTestBlobDigest(image, which string) godigest.Digest {
-	prePath := "../test/data"
-
-	for _, err := os.Stat(prePath); err != nil; _, err = os.Stat(prePath) {
-		prePath = "../" + prePath
-	}
-
-	imgPath := path.Join(prePath, image)
-	manifest, config, layer := GetOciLayoutDigests(imgPath)
-
-	switch which {
-	case "manifest":
-		return manifest
-	case "config":
-		return config
-	case "layer":
-		return layer
-	}
-
-	return ""
-}
 
 func GetFreePort() string {
 	port, err := freeport.GetFreePort()
@@ -432,57 +408,6 @@ func GetRandomImageConfig() ([]byte, godigest.Digest) {
 	configBlobDigestRaw := godigest.FromBytes(configBlobContent)
 
 	return configBlobContent, configBlobDigestRaw
-}
-
-func GetOciLayoutDigests(imagePath string) (godigest.Digest, godigest.Digest, godigest.Digest) {
-	var (
-		manifestDigest godigest.Digest
-		configDigest   godigest.Digest
-		layerDigest    godigest.Digest
-	)
-
-	oci, err := umoci.OpenLayout(imagePath)
-	if err != nil {
-		panic(fmt.Errorf("error opening layout at '%s' : %w", imagePath, err))
-	}
-
-	defer oci.Close()
-
-	ctxUmoci := context.Background()
-
-	index, err := oci.GetIndex(ctxUmoci)
-	if err != nil {
-		panic(err)
-	}
-
-	for _, manifest := range index.Manifests {
-		manifestDigest = manifest.Digest
-
-		manifestBlob, err := oci.GetBlob(ctxUmoci, manifest.Digest)
-		if err != nil {
-			panic(err)
-		}
-
-		manifestBuf, err := io.ReadAll(manifestBlob)
-		if err != nil {
-			panic(err)
-		}
-
-		var manifest ispec.Manifest
-
-		err = json.Unmarshal(manifestBuf, &manifest)
-		if err != nil {
-			panic(err)
-		}
-
-		configDigest = manifest.Config.Digest
-
-		for _, layer := range manifest.Layers {
-			layerDigest = layer.Digest
-		}
-	}
-
-	return manifestDigest, configDigest, layerDigest
 }
 
 // Deprecated: Should use the new functions starting with "Create".
