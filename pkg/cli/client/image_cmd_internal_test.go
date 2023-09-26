@@ -35,7 +35,6 @@ import (
 	zlog "zotregistry.io/zot/pkg/log"
 	stypes "zotregistry.io/zot/pkg/storage/types"
 	test "zotregistry.io/zot/pkg/test/common"
-	"zotregistry.io/zot/pkg/test/deprecated"
 	. "zotregistry.io/zot/pkg/test/image-utils"
 	ociutils "zotregistry.io/zot/pkg/test/oci-utils"
 	"zotregistry.io/zot/pkg/test/signature"
@@ -1324,11 +1323,11 @@ func runDisplayIndexTests(baseURL string) {
 		actual := strings.TrimSpace(str)
 		// Actual cli output should be something similar to (order of images may differ):
 		// REPOSITORY    TAG        OS/ARCH           DIGEST    SIGNED  SIZE
-		// repo          multi-arch *                 28665f71  false   1.5kB
+		// repo          multi-arch *                 4780eafe  false   1.5kB
 		//                          linux/amd64       02e0ac42  false   644B
 		//                          windows/arm64/v6  5e09b7f9  false   444B
 		So(actual, ShouldContainSubstring, "REPOSITORY TAG OS/ARCH DIGEST SIGNED SIZE")
-		So(actual, ShouldContainSubstring, "repo multi-arch * 28665f71 false 1.5kB ")
+		So(actual, ShouldContainSubstring, "repo multi-arch * 4780eafe false 1.5kB ")
 		So(actual, ShouldContainSubstring, "linux/amd64 02e0ac42 false 644B ")
 		So(actual, ShouldContainSubstring, "windows/arm64/v6 5e09b7f9 false 506B")
 	})
@@ -1346,14 +1345,14 @@ func runDisplayIndexTests(baseURL string) {
 		actual := strings.TrimSpace(str)
 		// Actual cli output should be something similar to (order of images may differ):
 		// REPOSITORY    TAG        OS/ARCH           DIGEST    CONFIG    SIGNED  LAYERS    SIZE
-		// repo          multi-arch *                 28665f71            false             1.5kB
+		// repo          multi-arch *                 4780eafe            false             1.5kB
 		//                          linux/amd64       02e0ac42  58cc9abe  false             644B
 		//                                                                        cbb5b121  4B
 		//                                                                        a00291e8  4B
 		//                          windows/arm64/v6  5e09b7f9  5132a1cd  false             506B
 		//                                                                        7d08ce29  4B
 		So(actual, ShouldContainSubstring, "REPOSITORY TAG OS/ARCH DIGEST CONFIG SIGNED LAYERS SIZE")
-		So(actual, ShouldContainSubstring, "repo multi-arch * 28665f71 false 1.5kB")
+		So(actual, ShouldContainSubstring, "repo multi-arch * 4780eafe false 1.5kB")
 		So(actual, ShouldContainSubstring, "linux/amd64 02e0ac42 58cc9abe false 644B")
 		So(actual, ShouldContainSubstring, "cbb5b121 4B")
 		So(actual, ShouldContainSubstring, "a00291e8 4B")
@@ -2012,7 +2011,7 @@ func uploadTestMultiarch(baseURL string) {
 
 	// ------- Upload The multiarch image
 
-	multiarch := deprecated.GetMultiarchImageForImages([]Image{image1, image2}) //nolint:staticcheck
+	multiarch := CreateMultiarchWith().Images([]Image{image1, image2}).Build()
 
 	err := UploadMultiarchImage(multiarch, baseURL, "repo", "multi-arch")
 	So(err, ShouldBeNil)

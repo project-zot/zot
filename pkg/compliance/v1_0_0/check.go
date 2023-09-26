@@ -23,7 +23,6 @@ import (
 	"zotregistry.io/zot/pkg/api/constants"
 	"zotregistry.io/zot/pkg/compliance"
 	test "zotregistry.io/zot/pkg/test/common"
-	"zotregistry.io/zot/pkg/test/deprecated"
 	"zotregistry.io/zot/pkg/test/image-utils"
 )
 
@@ -486,46 +485,17 @@ func CheckWorkflows(t *testing.T, config *compliance.Config) {
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
 
-			cfg, layers, manifest, err := deprecated.GetImageComponents(1) //nolint:staticcheck
-			So(err, ShouldBeNil)
+			img := image.CreateDefaultImage()
+			digest = img.ManifestDescriptor.Digest
 
 			repoName := "repo7"
-			err = image.UploadImage(
-				image.Image{
-					Config:   cfg,
-					Layers:   layers,
-					Manifest: manifest,
-				}, baseURL, repoName, "test:1.0")
+			err = image.UploadImage(img, baseURL, repoName, "test:1.0")
 			So(err, ShouldBeNil)
 
-			content, err = json.Marshal(manifest)
-			So(err, ShouldBeNil)
-			digest = godigest.FromBytes(content)
-			So(digest, ShouldNotBeNil)
-
-			err = image.UploadImage(
-				image.Image{
-					Config:   cfg,
-					Layers:   layers,
-					Manifest: manifest,
-				}, baseURL, repoName, "test:1.0.1")
+			err = image.UploadImage(img, baseURL, repoName, "test:1.0.1")
 			So(err, ShouldBeNil)
 
-			content = []byte("this is a blob5")
-			digest = godigest.FromBytes(content)
-			So(digest, ShouldNotBeNil)
-
-			content, err = json.Marshal(manifest)
-			So(err, ShouldBeNil)
-			digest = godigest.FromBytes(content)
-			So(digest, ShouldNotBeNil)
-
-			err = image.UploadImage(
-				image.Image{
-					Config:   cfg,
-					Layers:   layers,
-					Manifest: manifest,
-				}, baseURL, repoName, "test:2.0")
+			err = image.UploadImage(img, baseURL, repoName, "test:2.0")
 			So(err, ShouldBeNil)
 
 			// check/get by tag
@@ -593,23 +563,13 @@ func CheckWorkflows(t *testing.T, config *compliance.Config) {
 		Convey("Pagination", func() {
 			_, _ = Print("\nPagination")
 
+			img := image.CreateDefaultImage()
+
 			for index := 0; index <= 4; index++ {
-				cfg, layers, manifest, err := deprecated.GetImageComponents(1) //nolint:staticcheck
-				So(err, ShouldBeNil)
-
 				repoName := "page0"
-				err = image.UploadImage(
-					image.Image{
-						Config:   cfg,
-						Layers:   layers,
-						Manifest: manifest,
-					}, baseURL, repoName, fmt.Sprintf("test:%d.0", index))
+				err := image.UploadImage(
+					img, baseURL, repoName, fmt.Sprintf("test:%d.0", index))
 				So(err, ShouldBeNil)
-
-				content, err := json.Marshal(manifest)
-				So(err, ShouldBeNil)
-				digest := godigest.FromBytes(content)
-				So(digest, ShouldNotBeNil)
 			}
 
 			resp, err := resty.R().Get(baseURL + "/v2/page0/tags/list")
@@ -734,62 +694,23 @@ func CheckWorkflows(t *testing.T, config *compliance.Config) {
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
 
-			cfg, layers, manifest, err := deprecated.GetImageComponents(1) //nolint:staticcheck
+			img := image.CreateDefaultImage()
+			digest = img.ManifestDescriptor.Digest
+
+			// subpath firsttest
+			err = image.UploadImage(img, baseURL, "firsttest/first", "test:1.0")
+			So(err, ShouldBeNil)
+
+			// subpath secondtest
+			err = image.UploadImage(img, baseURL, "secondtest/second", "test:1.0")
 			So(err, ShouldBeNil)
 
 			// subpath firsttest
-			err = image.UploadImage(
-				image.Image{
-					Config:   cfg,
-					Layers:   layers,
-					Manifest: manifest,
-				}, baseURL, "firsttest/first", "test:1.0")
+			err = image.UploadImage(img, baseURL, "firsttest/first", "test:2.0")
 			So(err, ShouldBeNil)
-
-			content, err = json.Marshal(manifest)
-			So(err, ShouldBeNil)
-			digest = godigest.FromBytes(content)
-			So(digest, ShouldNotBeNil)
 
 			// subpath secondtest
-			err = image.UploadImage(
-				image.Image{
-					Config:   cfg,
-					Layers:   layers,
-					Manifest: manifest,
-				}, baseURL, "secondtest/second", "test:1.0")
-			So(err, ShouldBeNil)
-
-			content, err = json.Marshal(manifest)
-			So(err, ShouldBeNil)
-			digest = godigest.FromBytes(content)
-			So(digest, ShouldNotBeNil)
-
-			content = []byte("this is a blob5")
-			digest = godigest.FromBytes(content)
-			So(digest, ShouldNotBeNil)
-
-			// subpath firsttest
-			err = image.UploadImage(
-				image.Image{
-					Config:   cfg,
-					Layers:   layers,
-					Manifest: manifest,
-				}, baseURL, "firsttest/first", "test:2.0")
-			So(err, ShouldBeNil)
-
-			content, err = json.Marshal(manifest)
-			So(err, ShouldBeNil)
-			digest = godigest.FromBytes(content)
-			So(digest, ShouldNotBeNil)
-
-			// subpath secondtest
-			err = image.UploadImage(
-				image.Image{
-					Config:   cfg,
-					Layers:   layers,
-					Manifest: manifest,
-				}, baseURL, "secondtest/second", "test:2.0")
+			err = image.UploadImage(img, baseURL, "secondtest/second", "test:2.0")
 			So(err, ShouldBeNil)
 
 			// check/get by tag
