@@ -2289,14 +2289,11 @@ func TestRebuildDedupeMockStoreDriver(t *testing.T) {
 			},
 		})
 
-		taskScheduler, cancel := runAndGetScheduler()
-		defer cancel()
+		digest, duplicateBlobs, err := imgStore.GetNextDigestWithBlobPaths([]string{"path/to"}, []godigest.Digest{})
+		So(err, ShouldBeNil)
 
-		// rebuild with dedupe false, should have all blobs with content
-		imgStore.RunDedupeBlobs(time.Duration(0), taskScheduler)
-
-		// wait until rebuild finishes
-		time.Sleep(200 * time.Millisecond)
+		err = imgStore.RunDedupeForDigest(digest, false, duplicateBlobs)
+		So(err, ShouldNotBeNil)
 	})
 
 	Convey("Trigger GetContent error in restoreDedupedBlobs()", t, func() {
@@ -2341,14 +2338,11 @@ func TestRebuildDedupeMockStoreDriver(t *testing.T) {
 			},
 		})
 
-		taskScheduler, cancel := runAndGetScheduler()
-		defer cancel()
+		digest, duplicateBlobs, err := imgStore.GetNextDigestWithBlobPaths([]string{"path/to"}, []godigest.Digest{})
+		So(err, ShouldBeNil)
 
-		// rebuild with dedupe false, should have all blobs with content
-		imgStore.RunDedupeBlobs(time.Duration(0), taskScheduler)
-
-		// wait until rebuild finishes
-		time.Sleep(200 * time.Millisecond)
+		err = imgStore.RunDedupeForDigest(digest, false, duplicateBlobs)
+		So(err, ShouldNotBeNil)
 	})
 
 	Convey("Trigger GetContent error in restoreDedupedBlobs()", t, func() {
@@ -2393,14 +2387,11 @@ func TestRebuildDedupeMockStoreDriver(t *testing.T) {
 			},
 		})
 
-		taskScheduler, cancel := runAndGetScheduler()
-		defer cancel()
+		digest, duplicateBlobs, err := imgStore.GetNextDigestWithBlobPaths([]string{"path/to"}, []godigest.Digest{})
+		So(err, ShouldBeNil)
 
-		// rebuild with dedupe false, should have all blobs with content
-		imgStore.RunDedupeBlobs(time.Duration(0), taskScheduler)
-
-		// wait until rebuild finishes
-		time.Sleep(200 * time.Millisecond)
+		err = imgStore.RunDedupeForDigest(digest, false, duplicateBlobs)
+		So(err, ShouldNotBeNil)
 	})
 
 	Convey("Trigger Stat() error in restoreDedupedBlobs()", t, func() {
@@ -2442,19 +2433,13 @@ func TestRebuildDedupeMockStoreDriver(t *testing.T) {
 			},
 		})
 
-		taskScheduler, cancel := runAndGetScheduler()
-		defer cancel()
+		digest, duplicateBlobs, err := imgStore.GetNextDigestWithBlobPaths([]string{"path/to"}, []godigest.Digest{})
+		So(err, ShouldBeNil)
 
-		// rebuild with dedupe false, should have all blobs with content
-		imgStore.RunDedupeBlobs(time.Duration(0), taskScheduler)
-
-		// wait until rebuild finishes
-		time.Sleep(200 * time.Millisecond)
+		err = imgStore.RunDedupeForDigest(digest, false, duplicateBlobs)
+		So(err, ShouldNotBeNil)
 
 		Convey("Trigger Stat() error in dedupeBlobs()", func() {
-			taskScheduler, cancel := runAndGetScheduler()
-			defer cancel()
-
 			imgStore := createMockStorage(testDir, t.TempDir(), true, &StorageDriverMock{
 				StatFn: func(ctx context.Context, path string) (driver.FileInfo, error) {
 					if path == fmt.Sprintf("path/to/%s", validDigest.Encoded()) {
@@ -2493,11 +2478,11 @@ func TestRebuildDedupeMockStoreDriver(t *testing.T) {
 				},
 			})
 
-			// rebuild with dedupe false, should have all blobs with content
-			imgStore.RunDedupeBlobs(time.Duration(0), taskScheduler)
+			digest, duplicateBlobs, err := imgStore.GetNextDigestWithBlobPaths([]string{"path/to"}, []godigest.Digest{})
+			So(err, ShouldBeNil)
 
-			// wait until rebuild finishes
-			time.Sleep(500 * time.Millisecond)
+			err = imgStore.RunDedupeForDigest(digest, false, duplicateBlobs)
+			So(err, ShouldNotBeNil)
 		})
 	})
 
@@ -2544,14 +2529,11 @@ func TestRebuildDedupeMockStoreDriver(t *testing.T) {
 			},
 		})
 
-		taskScheduler, cancel := runAndGetScheduler()
-		defer cancel()
+		digest, duplicateBlobs, err := imgStore.GetNextDigestWithBlobPaths([]string{"path/to"}, []godigest.Digest{})
+		So(err, ShouldBeNil)
 
-		// rebuild with dedupe false, should have all blobs with content
-		imgStore.RunDedupeBlobs(time.Duration(0), taskScheduler)
-
-		// wait until rebuild finishes
-		time.Sleep(200 * time.Millisecond)
+		err = imgStore.RunDedupeForDigest(digest, true, duplicateBlobs)
+		So(err, ShouldNotBeNil)
 	})
 
 	//nolint: dupl
@@ -2595,14 +2577,11 @@ func TestRebuildDedupeMockStoreDriver(t *testing.T) {
 			},
 		})
 
-		taskScheduler, cancel := runAndGetScheduler()
-		defer cancel()
+		digest, duplicateBlobs, err := imgStore.GetNextDigestWithBlobPaths([]string{"path/to"}, []godigest.Digest{})
+		So(err, ShouldBeNil)
 
-		// rebuild with dedupe false, should have all blobs with content
-		imgStore.RunDedupeBlobs(time.Duration(0), taskScheduler)
-
-		// wait until rebuild finishes
-		time.Sleep(200 * time.Millisecond)
+		err = imgStore.RunDedupeForDigest(digest, true, duplicateBlobs)
+		So(err, ShouldNotBeNil)
 	})
 
 	//nolint: dupl
@@ -2646,14 +2625,11 @@ func TestRebuildDedupeMockStoreDriver(t *testing.T) {
 			},
 		})
 
-		taskScheduler, cancel := runAndGetScheduler()
-		defer cancel()
+		digest, duplicateBlobs, err := imgStore.GetNextDigestWithBlobPaths([]string{"path/to"}, []godigest.Digest{})
+		So(err, ShouldBeNil)
 
-		// rebuild with dedupe false, should have all blobs with content
-		imgStore.RunDedupeBlobs(time.Duration(0), taskScheduler)
-
-		// wait until rebuild finishes
-		time.Sleep(200 * time.Millisecond)
+		err = imgStore.RunDedupeForDigest(digest, true, duplicateBlobs)
+		So(err, ShouldNotBeNil)
 	})
 
 	Convey("Trigger getNextDigestWithBlobPaths err", t, func() {
@@ -2664,14 +2640,8 @@ func TestRebuildDedupeMockStoreDriver(t *testing.T) {
 			},
 		})
 
-		taskScheduler, cancel := runAndGetScheduler()
-		defer cancel()
-
-		// rebuild with dedupe false, should have all blobs with content
-		imgStore.RunDedupeBlobs(time.Duration(0), taskScheduler)
-
-		// wait until rebuild finishes
-		time.Sleep(200 * time.Millisecond)
+		_, _, err := imgStore.GetNextDigestWithBlobPaths([]string{"path/to"}, []godigest.Digest{})
+		So(err, ShouldNotBeNil)
 	})
 
 	Convey("Trigger cache errors", t, func() {
@@ -2762,14 +2732,11 @@ func TestRebuildDedupeMockStoreDriver(t *testing.T) {
 					},
 				})
 
-			taskScheduler, cancel := runAndGetScheduler()
-			defer cancel()
+			digest, duplicateBlobs, err := imgStore.GetNextDigestWithBlobPaths([]string{"path/to"}, []godigest.Digest{})
+			So(err, ShouldBeNil)
 
-			// rebuild with dedupe false, should have all blobs with content
-			imgStore.RunDedupeBlobs(time.Duration(0), taskScheduler)
-
-			// wait until rebuild finishes
-			time.Sleep(200 * time.Millisecond)
+			err = imgStore.RunDedupeForDigest(digest, true, duplicateBlobs)
+			So(err, ShouldNotBeNil)
 		})
 
 		Convey("on dedupe blob", func() {
@@ -2787,14 +2754,11 @@ func TestRebuildDedupeMockStoreDriver(t *testing.T) {
 					},
 				})
 
-			taskScheduler, cancel := runAndGetScheduler()
-			defer cancel()
+			digest, duplicateBlobs, err := imgStore.GetNextDigestWithBlobPaths([]string{"path/to"}, []godigest.Digest{})
+			So(err, ShouldBeNil)
 
-			// rebuild with dedupe false, should have all blobs with content
-			imgStore.RunDedupeBlobs(time.Duration(0), taskScheduler)
-
-			// wait until rebuild finishes
-			time.Sleep(200 * time.Millisecond)
+			err = imgStore.RunDedupeForDigest(digest, true, duplicateBlobs)
+			So(err, ShouldNotBeNil)
 		})
 
 		Convey("on else branch", func() {
@@ -2808,14 +2772,11 @@ func TestRebuildDedupeMockStoreDriver(t *testing.T) {
 					},
 				})
 
-			taskScheduler, cancel := runAndGetScheduler()
-			defer cancel()
+			digest, duplicateBlobs, err := imgStore.GetNextDigestWithBlobPaths([]string{"path/to"}, []godigest.Digest{})
+			So(err, ShouldBeNil)
 
-			// rebuild with dedupe false, should have all blobs with content
-			imgStore.RunDedupeBlobs(time.Duration(0), taskScheduler)
-
-			// wait until rebuild finishes
-			time.Sleep(200 * time.Millisecond)
+			err = imgStore.RunDedupeForDigest(digest, true, duplicateBlobs)
+			So(err, ShouldNotBeNil)
 		})
 	})
 }

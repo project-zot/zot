@@ -52,7 +52,7 @@ type ImageStore interface { //nolint:interfacebloat
 	GetOrasReferrers(repo string, digest godigest.Digest, artifactType string) ([]artifactspec.Descriptor, error)
 	RunDedupeBlobs(interval time.Duration, sch *scheduler.Scheduler)
 	RunDedupeForDigest(digest godigest.Digest, dedupe bool, duplicateBlobs []string) error
-	GetNextDigestWithBlobPaths(lastDigests []godigest.Digest) (godigest.Digest, []string, error)
+	GetNextDigestWithBlobPaths(repos []string, lastDigests []godigest.Digest) (godigest.Digest, []string, error)
 	GetAllBlobs(repo string) ([]string, error)
 }
 

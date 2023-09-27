@@ -1176,6 +1176,17 @@ func TestDedupeLinks(t *testing.T) {
 				imgStore = local.NewImageStore(dir, testCase.dedupe, true, log, metrics, nil, nil)
 			}
 
+			// run on empty image store
+			// switch dedupe to true from false
+			taskScheduler, cancel := runAndGetScheduler()
+
+			// rebuild with dedupe true
+			imgStore.RunDedupeBlobs(time.Duration(0), taskScheduler)
+			// wait until rebuild finishes
+			time.Sleep(1 * time.Second)
+
+			cancel()
+
 			// manifest1
 			upload, err := imgStore.NewBlobUpload("dedupe1")
 			So(err, ShouldBeNil)

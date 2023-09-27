@@ -869,14 +869,37 @@ type DedupeTaskGenerator struct {
 	and generating a task for each unprocessed one*/
 	lastDigests []godigest.Digest
 	done        bool
+	repos       []string // list of repos on which we run dedupe
 	Log         zlog.Logger
 }
 
 func (gen *DedupeTaskGenerator) Next() (scheduler.Task, error) {
 	var err error
 
+	/* at first run get from storage currently found repositories so that we skip the ones that gets synced/uploaded
+	while this generator runs, there are deduped/restored inline, no need to run dedupe/restore again */
+	if len(gen.repos) == 0 {
+		gen.repos, err = gen.ImgStore.GetRepositories()
+		if err != nil {
+			//nolint: dupword
+			gen.Log.Error().Err(err).Msg("dedupe rebuild: unable to to get list of repositories")
+
+			return nil, err
+		}
+
+		// if still no repos
+		if len(gen.repos) == 0 {
+			gen.Log.Info().Msg("dedupe rebuild: no repositories found in storage, finished.")
+
+			// no repositories in storage, no need to continue
+			gen.done = true
+
+			return nil, nil
+		}
+	}
+
 	// get all blobs from storage.imageStore and group them by digest
-	gen.digest, gen.duplicateBlobs, err = gen.ImgStore.GetNextDigestWithBlobPaths(gen.lastDigests)
+	gen.digest, gen.duplicateBlobs, err = gen.ImgStore.GetNextDigestWithBlobPaths(gen.repos, gen.lastDigests)
 	if err != nil {
 		gen.Log.Error().Err(err).Msg("dedupe rebuild: failed to get next digest")
 
@@ -910,6 +933,7 @@ func (gen *DedupeTaskGenerator) IsReady() bool {
 func (gen *DedupeTaskGenerator) Reset() {
 	gen.lastDigests = []godigest.Digest{}
 	gen.duplicateBlobs = []string{}
+	gen.repos = []string{}
 	gen.digest = ""
 	gen.done = false
 }
