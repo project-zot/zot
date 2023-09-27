@@ -2195,7 +2195,7 @@ func TestBearerAuth(t *testing.T) {
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
 
-		authorizationHeader := authutils.ParseBearerAuthHeader(resp.Header().Get("Www-Authenticate"))
+		authorizationHeader := authutils.ParseBearerAuthHeader(resp.Header().Get("WWW-Authenticate"))
 		resp, err = resty.R().
 			SetQueryParam("service", authorizationHeader.Service).
 			SetQueryParam("scope", authorizationHeader.Scope).
@@ -2225,7 +2225,7 @@ func TestBearerAuth(t *testing.T) {
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
 
-		authorizationHeader = authutils.ParseBearerAuthHeader(resp.Header().Get("Www-Authenticate"))
+		authorizationHeader = authutils.ParseBearerAuthHeader(resp.Header().Get("WWW-Authenticate"))
 		resp, err = resty.R().
 			SetQueryParam("service", authorizationHeader.Service).
 			SetQueryParam("scope", authorizationHeader.Scope).
@@ -2254,7 +2254,7 @@ func TestBearerAuth(t *testing.T) {
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
 
-		authorizationHeader = authutils.ParseBearerAuthHeader(resp.Header().Get("Www-Authenticate"))
+		authorizationHeader = authutils.ParseBearerAuthHeader(resp.Header().Get("WWW-Authenticate"))
 		resp, err = resty.R().
 			SetQueryParam("service", authorizationHeader.Service).
 			SetQueryParam("scope", authorizationHeader.Scope).
@@ -2283,7 +2283,7 @@ func TestBearerAuth(t *testing.T) {
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
 
-		authorizationHeader = authutils.ParseBearerAuthHeader(resp.Header().Get("Www-Authenticate"))
+		authorizationHeader = authutils.ParseBearerAuthHeader(resp.Header().Get("WWW-Authenticate"))
 		resp, err = resty.R().
 			SetQueryParam("service", authorizationHeader.Service).
 			SetQueryParam("scope", authorizationHeader.Scope).
@@ -2307,7 +2307,7 @@ func TestBearerAuth(t *testing.T) {
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
 
-		authorizationHeader = authutils.ParseBearerAuthHeader(resp.Header().Get("Www-Authenticate"))
+		authorizationHeader = authutils.ParseBearerAuthHeader(resp.Header().Get("WWW-Authenticate"))
 		resp, err = resty.R().
 			SetQueryParam("service", authorizationHeader.Service).
 			SetQueryParam("scope", authorizationHeader.Scope).
@@ -2392,7 +2392,7 @@ func TestBearerAuthWithAllowReadAccess(t *testing.T) {
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
 
-		authorizationHeader := authutils.ParseBearerAuthHeader(resp.Header().Get("Www-Authenticate"))
+		authorizationHeader := authutils.ParseBearerAuthHeader(resp.Header().Get("WWW-Authenticate"))
 		resp, err = resty.R().
 			SetQueryParam("service", authorizationHeader.Service).
 			SetQueryParam("scope", authorizationHeader.Scope).
@@ -2416,7 +2416,7 @@ func TestBearerAuthWithAllowReadAccess(t *testing.T) {
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
 
-		authorizationHeader = authutils.ParseBearerAuthHeader(resp.Header().Get("Www-Authenticate"))
+		authorizationHeader = authutils.ParseBearerAuthHeader(resp.Header().Get("WWW-Authenticate"))
 		resp, err = resty.R().
 			SetQueryParam("service", authorizationHeader.Service).
 			SetQueryParam("scope", authorizationHeader.Scope).
@@ -2445,7 +2445,7 @@ func TestBearerAuthWithAllowReadAccess(t *testing.T) {
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
 
-		authorizationHeader = authutils.ParseBearerAuthHeader(resp.Header().Get("Www-Authenticate"))
+		authorizationHeader = authutils.ParseBearerAuthHeader(resp.Header().Get("WWW-Authenticate"))
 		resp, err = resty.R().
 			SetQueryParam("service", authorizationHeader.Service).
 			SetQueryParam("scope", authorizationHeader.Scope).
@@ -2474,7 +2474,7 @@ func TestBearerAuthWithAllowReadAccess(t *testing.T) {
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
 
-		authorizationHeader = authutils.ParseBearerAuthHeader(resp.Header().Get("Www-Authenticate"))
+		authorizationHeader = authutils.ParseBearerAuthHeader(resp.Header().Get("WWW-Authenticate"))
 		resp, err = resty.R().
 			SetQueryParam("service", authorizationHeader.Service).
 			SetQueryParam("scope", authorizationHeader.Scope).
@@ -2498,7 +2498,7 @@ func TestBearerAuthWithAllowReadAccess(t *testing.T) {
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
 
-		authorizationHeader = authutils.ParseBearerAuthHeader(resp.Header().Get("Www-Authenticate"))
+		authorizationHeader = authutils.ParseBearerAuthHeader(resp.Header().Get("WWW-Authenticate"))
 		resp, err = resty.R().
 			SetQueryParam("service", authorizationHeader.Service).
 			SetQueryParam("scope", authorizationHeader.Scope).

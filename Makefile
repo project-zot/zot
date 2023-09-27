@@ -408,7 +408,8 @@ run-blackbox-ci: check-blackbox-prerequisites binary binary-minimal cli
 	$(BATS) $(BATS_FLAGS) test/blackbox/sync_replica_cluster.bats && \
 	$(BATS) $(BATS_FLAGS) test/blackbox/scrub.bats && \
 	$(BATS) $(BATS_FLAGS) test/blackbox/garbage_collect.bats && \
-	$(BATS) $(BATS_FLAGS) test/blackbox/metrics.bats
+	$(BATS) $(BATS_FLAGS) test/blackbox/metrics.bats && \
+	$(BATS) $(BATS_FLAGS) test/blackbox/metrics_minimal.bats
 
 .PHONY: run-blackbox-cloud-ci
 run-blackbox-cloud-ci: check-blackbox-prerequisites check-awslocal binary $(BATS)

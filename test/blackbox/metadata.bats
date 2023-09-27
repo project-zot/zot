@@ -15,6 +15,11 @@ function verify_prerequisites {
         return 1
     fi
 
+    if [ ! $(command -v htpasswd) ]; then
+        echo "you need to install htpasswd as a prerequisite to running the tests" >&3
+        return 1
+    fi
+
     return 0
 }
 
@@ -25,15 +30,16 @@ function setup_file() {
     fi
 
     # Download test data to folder common for the entire suite, not just this file
-    skopeo --insecure-policy copy --format=oci docker://ghcr.io/project-zot/golang:1.18 oci:${TEST_DATA_DIR}/golang:1.18
+    skopeo --insecure-policy copy --format=oci docker://ghcr.io/project-zot/test-images/busybox:1.36 oci:${TEST_DATA_DIR}/busybox:1.36
+
     # Setup zot server
     local zot_root_dir=${BATS_FILE_TMPDIR}/zot
     local zot_config_file=${BATS_FILE_TMPDIR}/zot_config.json
     local oci_data_dir=${BATS_FILE_TMPDIR}/oci
-    local htpasswordFile=${BATS_FILE_TMPDIR}/htpasswd
+    local zot_htpasswd_file=${BATS_FILE_TMPDIR}/htpasswd
     mkdir -p ${zot_root_dir}
     mkdir -p ${oci_data_dir}
-    echo 'test:$2a$10$EIIoeCnvsIDAJeDL4T1sEOnL2fWOvsq7ACZbs3RT40BBBXg.Ih7V.' >> ${htpasswordFile}
+    htpasswd -Bbn ${AUTH_USER} ${AUTH_PASS} >> ${zot_htpasswd_file}
     cat > ${zot_config_file}<<EOF
 {
     "distSpecVersion": "1.1.0-dev",
@@ -53,7 +59,7 @@ function setup_file() {
         "port": "8080",
         "auth": {
             "htpasswd": {
-                "path": "${htpasswordFile}"
+                "path": "${zot_htpasswd_file}"
             }
         },
         "accessControl": {
@@ -63,7 +69,7 @@ function setup_file() {
                     "policies": [
                         {
                             "users": [
-                                "test"
+                                "${AUTH_USER}"
                             ],
                             "actions": [
                                 "read",
@@ -97,64 +103,64 @@ function teardown_file() {
 }
 
 @test "push image user policy" {
-    run skopeo --insecure-policy copy --dest-creds test:test --dest-tls-verify=false \
-        oci:${TEST_DATA_DIR}/golang:1.18 \
-        docker://127.0.0.1:8080/golang:1.18
+    run skopeo --insecure-policy copy --dest-creds ${AUTH_USER}:${AUTH_PASS} --dest-tls-verify=false \
+        oci:${TEST_DATA_DIR}/busybox:1.36 \
+        docker://127.0.0.1:8080/busybox:1.36
     [ "$status" -eq 0 ]
 }
 
 @test "User metadata starredRepos" {
-    run skopeo --insecure-policy copy --dest-creds test:test --dest-tls-verify=false \
-        oci:${TEST_DATA_DIR}/golang:1.18 \
-        docker://127.0.0.1:8080/golang:1.18
+    run skopeo --insecure-policy copy --dest-creds ${AUTH_USER}:${AUTH_PASS} --dest-tls-verify=false \
+        oci:${TEST_DATA_DIR}/busybox:1.36 \
+        docker://127.0.0.1:8080/busybox:1.36
     [ "$status" -eq 0 ]
 
     USER_STAR_REPOS_QUERY='{ "query": "{ StarredRepos { Results { Name } } }"}'
 
-    run curl --user "test:test" -X POST -H "Content-Type: application/json" --data "${USER_STAR_REPOS_QUERY}" http://localhost:8080/v2/_zot/ext/search
+    run curl --user ${AUTH_USER}:${AUTH_PASS} -X POST -H "Content-Type: application/json" --data "${USER_STAR_REPOS_QUERY}" http://localhost:8080/v2/_zot/ext/search
     [ "$status" -eq 0 ]
     [ $(echo "${lines[-1]}" | jq '.data.StarredRepos.Results') = '[]' ]
 
-    run curl --user "test:test" -X PUT "http://127.0.0.1:8080/v2/_zot/ext/userprefs?repo=golang&action=toggleStar"
+    run curl --user ${AUTH_USER}:${AUTH_PASS} -X PUT "http://127.0.0.1:8080/v2/_zot/ext/userprefs?repo=busybox&action=toggleStar"
     [ "$status" -eq 0 ]
 
-    run curl --user "test:test" -X POST -H "Content-Type: application/json" --data "${USER_STAR_REPOS_QUERY}" http://localhost:8080/v2/_zot/ext/search
+    run curl --user ${AUTH_USER}:${AUTH_PASS} -X POST -H "Content-Type: application/json" --data "${USER_STAR_REPOS_QUERY}" http://localhost:8080/v2/_zot/ext/search
     [ "$status" -eq 0 ]
     echo  $(echo "${lines[-1]}" | jq '.data.StarredRepos.Results[0].Name')
-    [ $(echo "${lines[-1]}" | jq -r '.data.StarredRepos.Results[0].Name') = 'golang' ]
+    [ $(echo "${lines[-1]}" | jq -r '.data.StarredRepos.Results[0].Name') = 'busybox' ]
 
-    run curl --user "test:test" -X PUT "http://127.0.0.1:8080/v2/_zot/ext/userprefs?repo=golang&action=toggleStar"
+    run curl --user ${AUTH_USER}:${AUTH_PASS} -X PUT "http://127.0.0.1:8080/v2/_zot/ext/userprefs?repo=busybox&action=toggleStar"
     [ "$status" -eq 0 ]
 
-        run curl --user "test:test" -X POST -H "Content-Type: application/json" --data "${USER_STAR_REPOS_QUERY}" http://localhost:8080/v2/_zot/ext/search
+        run curl --user ${AUTH_USER}:${AUTH_PASS} -X POST -H "Content-Type: application/json" --data "${USER_STAR_REPOS_QUERY}" http://localhost:8080/v2/_zot/ext/search
     [ "$status" -eq 0 ]
     echo  $(echo "${lines[-1]}" | jq '.data.StarredRepos.Results')
     [ $(echo "${lines[-1]}" | jq -r '.data.StarredRepos.Results') = '[]' ]
 }
 
 @test "User metadata bookmarkedRepos" {
-    run skopeo --insecure-policy copy --dest-creds test:test --dest-tls-verify=false \
-        oci:${TEST_DATA_DIR}/golang:1.18 \
-        docker://127.0.0.1:8080/golang:1.18
+    run skopeo --insecure-policy copy --dest-creds ${AUTH_USER}:${AUTH_PASS} --dest-tls-verify=false \
+        oci:${TEST_DATA_DIR}/busybox:1.36 \
+        docker://127.0.0.1:8080/busybox:1.36
     [ "$status" -eq 0 ]
 
     USER_BOOKMARK_REPOS_QUERY='{ "query": "{ BookmarkedRepos { Results { Name } } }"}'
 
-     run curl --user "test:test" -X POST -H "Content-Type: application/json" --data "${USER_BOOKMARK_REPOS_QUERY}" http://localhost:8080/v2/_zot/ext/search
+     run curl --user ${AUTH_USER}:${AUTH_PASS} -X POST -H "Content-Type: application/json" --data "${USER_BOOKMARK_REPOS_QUERY}" http://localhost:8080/v2/_zot/ext/search
     [ "$status" -eq 0 ]
     [ $(echo "${lines[-1]}" | jq '.data.BookmarkedRepos.Results') = '[]' ]
 
-    run curl --user "test:test" -X PUT "http://127.0.0.1:8080/v2/_zot/ext/userprefs?repo=golang&action=toggleBookmark"
+    run curl --user ${AUTH_USER}:${AUTH_PASS} -X PUT "http://127.0.0.1:8080/v2/_zot/ext/userprefs?repo=busybox&action=toggleBookmark"
     [ "$status" -eq 0 ]
 
-    run curl --user "test:test" -X POST -H "Content-Type: application/json" --data "${USER_BOOKMARK_REPOS_QUERY}" http://localhost:8080/v2/_zot/ext/search
+    run curl --user ${AUTH_USER}:${AUTH_PASS} -X POST -H "Content-Type: application/json" --data "${USER_BOOKMARK_REPOS_QUERY}" http://localhost:8080/v2/_zot/ext/search
     [ "$status" -eq 0 ]
-    [ $(echo "${lines[-1]}" | jq -r '.data.BookmarkedRepos.Results[0].Name') = 'golang' ]
+    [ $(echo "${lines[-1]}" | jq -r '.data.BookmarkedRepos.Results[0].Name') = 'busybox' ]
 
-    run curl --user "test:test" -X PUT "http://127.0.0.1:8080/v2/_zot/ext/userprefs?repo=golang&action=toggleBookmark"
+    run curl --user ${AUTH_USER}:${AUTH_PASS} -X PUT "http://127.0.0.1:8080/v2/_zot/ext/userprefs?repo=busybox&action=toggleBookmark"
     [ "$status" -eq 0 ]
 
-        run curl --user "test:test" -X POST -H "Content-Type: application/json" --data "${USER_BOOKMARK_REPOS_QUERY}" http://localhost:8080/v2/_zot/ext/search
+        run curl --user ${AUTH_USER}:${AUTH_PASS} -X POST -H "Content-Type: application/json" --data "${USER_BOOKMARK_REPOS_QUERY}" http://localhost:8080/v2/_zot/ext/search
     [ "$status" -eq 0 ]
     [ $(echo "${lines[-1]}" | jq -r '.data.BookmarkedRepos.Results') = '[]' ]
 }
