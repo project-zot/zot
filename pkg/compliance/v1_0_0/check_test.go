@@ -13,7 +13,7 @@ import (
 	"zotregistry.io/zot/pkg/api/config"
 	"zotregistry.io/zot/pkg/compliance"
 	"zotregistry.io/zot/pkg/compliance/v1_0_0"
-	. "zotregistry.io/zot/pkg/test"
+	. "zotregistry.io/zot/pkg/test/common"
 )
 
 //nolint:gochecknoglobals

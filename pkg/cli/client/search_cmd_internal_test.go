@@ -18,8 +18,9 @@ import (
 	"zotregistry.io/zot/pkg/api"
 	"zotregistry.io/zot/pkg/api/config"
 	extconf "zotregistry.io/zot/pkg/extensions/config"
-	"zotregistry.io/zot/pkg/test"
+	test "zotregistry.io/zot/pkg/test/common"
 	. "zotregistry.io/zot/pkg/test/image-utils"
+	ociutils "zotregistry.io/zot/pkg/test/oci-utils"
 )
 
 const (
@@ -890,14 +891,14 @@ func TestSearchSort(t *testing.T) {
 		ImageConfig(ispec.Image{Created: DateRef(2020, 1, 1, 1, 1, 1, 0, time.UTC)}).
 		Build()
 
-	storeController := test.GetDefaultStoreController(rootDir, ctlr.Log)
+	storeController := ociutils.GetDefaultStoreController(rootDir, ctlr.Log)
 
-	err := test.WriteImageToFileSystem(image1, "b-repo", "tag2", storeController)
+	err := WriteImageToFileSystem(image1, "b-repo", "tag2", storeController)
 	if err != nil {
 		t.FailNow()
 	}
 
-	err = test.WriteImageToFileSystem(image2, "a-test-repo", "tag2", storeController)
+	err = WriteImageToFileSystem(image2, "a-test-repo", "tag2", storeController)
 	if err != nil {
 		t.FailNow()
 	}

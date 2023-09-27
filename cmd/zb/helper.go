@@ -8,6 +8,7 @@ import (
 	"log"
 	"math/rand"
 	"net/http"
+	"net/url"
 	"os"
 	"path"
 	"sync"
@@ -21,8 +22,6 @@ import (
 
 	zerr "zotregistry.io/zot/errors"
 	"zotregistry.io/zot/pkg/common"
-	testc "zotregistry.io/zot/pkg/test/common"
-	"zotregistry.io/zot/pkg/test/image-utils"
 )
 
 func makeHTTPGetRequest(url string, resultPtr interface{}, client *resty.Client) error {
@@ -344,7 +343,7 @@ func pushMonolithImage(workdir, url, trepo string, repos []string, config testCo
 			resp.StatusCode(), string(resp.Body())) //nolint: goerr113
 	}
 
-	loc := testc.Location(url, resp)
+	loc := getLocation(url, resp)
 
 	var size int
 
@@ -398,8 +397,8 @@ func pushMonolithImage(workdir, url, trepo string, repos []string, config testCo
 			resp.StatusCode(), string(resp.Body()))
 	}
 
-	loc = testc.Location(url, resp)
-	cblob, cdigest := getRandomImageConfig()
+	loc = getLocation(url, resp)
+	cblob, cdigest := getImageConfig()
 	resp, err = client.R().
 		SetContentLength(true).
 		SetHeader("Content-Length", fmt.Sprintf("%d", len(cblob))).
@@ -526,7 +525,7 @@ func pushMonolithAndCollect(workdir, url, trepo string, count int,
 			return
 		}
 
-		loc := testc.Location(url, resp)
+		loc := getLocation(url, resp)
 
 		var size int
 
@@ -594,8 +593,8 @@ func pushMonolithAndCollect(workdir, url, trepo string, count int,
 			return
 		}
 
-		loc = testc.Location(url, resp)
-		cblob, cdigest := getRandomImageConfig()
+		loc = getLocation(url, resp)
+		cblob, cdigest := getImageConfig()
 		resp, err = client.R().
 			SetContentLength(true).
 			SetHeader("Content-Length", fmt.Sprintf("%d", len(cblob))).
@@ -730,7 +729,7 @@ func pushChunkAndCollect(workdir, url, trepo string, count int,
 			return
 		}
 
-		loc := testc.Location(url, resp)
+		loc := getLocation(url, resp)
 
 		var size int
 
@@ -768,7 +767,7 @@ func pushChunkAndCollect(workdir, url, trepo string, count int,
 			return
 		}
 
-		loc = testc.Location(url, resp)
+		loc = getLocation(url, resp)
 
 		// request specific check
 		statusCode = resp.StatusCode()
@@ -822,8 +821,8 @@ func pushChunkAndCollect(workdir, url, trepo string, count int,
 			return
 		}
 
-		loc = testc.Location(url, resp)
-		cblob, cdigest := getRandomImageConfig()
+		loc = getLocation(url, resp)
+		cblob, cdigest := getImageConfig()
 		resp, err = client.R().
 			SetContentLength(true).
 			SetHeader("Content-Type", "application/octet-stream").
@@ -859,7 +858,7 @@ func pushChunkAndCollect(workdir, url, trepo string, count int,
 			return
 		}
 
-		loc = testc.Location(url, resp)
+		loc = getLocation(url, resp)
 
 		// request specific check
 		statusCode = resp.StatusCode()
@@ -1020,9 +1019,21 @@ func loadOrStore(statusRequests *sync.Map, key string, value int) int { //nolint
 	return intValue
 }
 
-// TO DO: replace with pkg/test/images when available.
-func getRandomImageConfig() ([]byte, godigest.Digest) {
-	config := image.GetDefaultConfig()
+func getImageConfig() ([]byte, godigest.Digest) {
+	createdTime := time.Date(2011, time.Month(1), 1, 1, 1, 1, 0, time.UTC)
+
+	config := ispec.Image{
+		Created: &createdTime,
+		Author:  "ZotUser",
+		Platform: ispec.Platform{
+			OS:           "linux",
+			Architecture: "amd64",
+		},
+		RootFS: ispec.RootFS{
+			Type:    "layers",
+			DiffIDs: []godigest.Digest{},
+		},
+	}
 
 	configBlobContent, err := json.MarshalIndent(&config, "", "\t")
 	if err != nil {
@@ -1032,4 +1043,22 @@ func getRandomImageConfig() ([]byte, godigest.Digest) {
 	configBlobDigestRaw := godigest.FromBytes(configBlobContent)
 
 	return configBlobContent, configBlobDigestRaw
+}
+
+func getLocation(baseURL string, resp *resty.Response) string {
+	// For some API responses, the Location header is set and is supposed to
+	// indicate an opaque value. However, it is not clear if this value is an
+	// absolute URL (https://server:port/v2/...) or just a path (/v2/...)
+	// zot implements the latter as per the spec, but some registries appear to
+	// return the former - this needs to be clarified
+	loc := resp.Header().Get("Location")
+
+	uloc, err := url.Parse(loc)
+	if err != nil {
+		return ""
+	}
+
+	path := uloc.Path
+
+	return baseURL + path
 }

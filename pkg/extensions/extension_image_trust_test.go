@@ -33,8 +33,9 @@ import (
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/storage"
 	"zotregistry.io/zot/pkg/storage/local"
-	"zotregistry.io/zot/pkg/test"
+	test "zotregistry.io/zot/pkg/test/common"
 	. "zotregistry.io/zot/pkg/test/image-utils"
+	"zotregistry.io/zot/pkg/test/signature"
 )
 
 type errReader int
@@ -203,7 +204,7 @@ func RunSignatureUploadAndVerificationTests(t *testing.T, cacheDriverParams map[
 		}
 
 		image := CreateRandomImage()
-		err = test.WriteImageToFileSystem(image, repo, tag, storeController)
+		err = WriteImageToFileSystem(image, repo, tag, storeController)
 		So(err, ShouldBeNil)
 
 		ctlr := api.NewController(conf)
@@ -323,7 +324,7 @@ func RunSignatureUploadAndVerificationTests(t *testing.T, cacheDriverParams map[
 		}
 
 		image := CreateRandomImage()
-		err = test.WriteImageToFileSystem(image, repo, tag, storeController)
+		err = WriteImageToFileSystem(image, repo, tag, storeController)
 		So(err, ShouldBeNil)
 
 		ctlr := api.NewController(conf)
@@ -341,13 +342,13 @@ func RunSignatureUploadAndVerificationTests(t *testing.T, cacheDriverParams map[
 
 		rootDir := t.TempDir()
 
-		test.NotationPathLock.Lock()
-		defer test.NotationPathLock.Unlock()
+		signature.NotationPathLock.Lock()
+		defer signature.NotationPathLock.Unlock()
 
-		test.LoadNotationPath(rootDir)
+		signature.LoadNotationPath(rootDir)
 
 		// generate a keypair
-		err = test.GenerateNotationCerts(rootDir, certName)
+		err = signature.GenerateNotationCerts(rootDir, certName)
 		So(err, ShouldBeNil)
 
 		// upload the certificate
@@ -364,7 +365,7 @@ func RunSignatureUploadAndVerificationTests(t *testing.T, cacheDriverParams map[
 		// sign the image
 		imageURL := fmt.Sprintf("localhost:%s/%s", port, fmt.Sprintf("%s:%s", repo, tag))
 
-		err = test.SignWithNotation(certName, imageURL, rootDir)
+		err = signature.SignWithNotation(certName, imageURL, rootDir)
 		So(err, ShouldBeNil)
 
 		found, err = test.ReadLogFileAndSearchString(logFile.Name(), "update signatures validity", 10*time.Second)
@@ -430,7 +431,7 @@ func RunSignatureUploadAndVerificationTests(t *testing.T, cacheDriverParams map[
 		}
 
 		image := CreateRandomImage()
-		err = test.WriteImageToFileSystem(image, repo, tag, storeController)
+		err = WriteImageToFileSystem(image, repo, tag, storeController)
 		So(err, ShouldBeNil)
 
 		ctlr := api.NewController(conf)
@@ -474,13 +475,13 @@ func RunSignatureUploadAndVerificationTests(t *testing.T, cacheDriverParams map[
 
 		rootDir := t.TempDir()
 
-		test.NotationPathLock.Lock()
-		defer test.NotationPathLock.Unlock()
+		signature.NotationPathLock.Lock()
+		defer signature.NotationPathLock.Unlock()
 
-		test.LoadNotationPath(rootDir)
+		signature.LoadNotationPath(rootDir)
 
 		// generate a keypair
-		err = test.GenerateNotationCerts(rootDir, certName)
+		err = signature.GenerateNotationCerts(rootDir, certName)
 		So(err, ShouldBeNil)
 
 		// upload the certificate
@@ -497,7 +498,7 @@ func RunSignatureUploadAndVerificationTests(t *testing.T, cacheDriverParams map[
 		// sign the image
 		imageURL := fmt.Sprintf("localhost:%s/%s", port, fmt.Sprintf("%s:%s", repo, tag))
 
-		err = test.SignWithNotation(certName, imageURL, rootDir)
+		err = signature.SignWithNotation(certName, imageURL, rootDir)
 		So(err, ShouldBeNil)
 
 		found, err = test.ReadLogFileAndSearchString(logFile.Name(), "update signatures validity", 10*time.Second)
@@ -592,7 +593,7 @@ func RunSignatureUploadAndVerificationTests(t *testing.T, cacheDriverParams map[
 		}
 
 		image := CreateRandomImage()
-		err = test.WriteImageToFileSystem(image, repo, tag, storeController)
+		err = WriteImageToFileSystem(image, repo, tag, storeController)
 		So(err, ShouldBeNil)
 
 		ctlr := api.NewController(conf)
@@ -854,15 +855,15 @@ func RunSignatureUploadAndVerificationTests(t *testing.T, cacheDriverParams map[
 
 		// Write image
 		image := CreateRandomImage()
-		err = test.WriteImageToFileSystem(image, repo, tag, storeController)
+		err = WriteImageToFileSystem(image, repo, tag, storeController)
 		So(err, ShouldBeNil)
 
 		// Write signature
-		signature := CreateImageWith().RandomLayers(1, 2).RandomConfig().Build()
+		sig := CreateImageWith().RandomLayers(1, 2).RandomConfig().Build()
 		So(err, ShouldBeNil)
-		ref, err := test.GetCosignSignatureTagForManifest(image.Manifest)
+		ref, err := signature.GetCosignSignatureTagForManifest(image.Manifest)
 		So(err, ShouldBeNil)
-		err = test.WriteImageToFileSystem(signature, repo, ref, storeController)
+		err = WriteImageToFileSystem(sig, repo, ref, storeController)
 		So(err, ShouldBeNil)
 
 		ctlr := api.NewController(conf)
@@ -950,13 +951,13 @@ func RunSignatureUploadAndVerificationTests(t *testing.T, cacheDriverParams map[
 
 		rootDir := t.TempDir()
 
-		test.NotationPathLock.Lock()
-		defer test.NotationPathLock.Unlock()
+		signature.NotationPathLock.Lock()
+		defer signature.NotationPathLock.Unlock()
 
-		test.LoadNotationPath(rootDir)
+		signature.LoadNotationPath(rootDir)
 
 		// generate Notation cert
-		err := test.GenerateNotationCerts(rootDir, "test")
+		err := signature.GenerateNotationCerts(rootDir, "test")
 		So(err, ShouldBeNil)
 
 		certificateContent, err := os.ReadFile(path.Join(rootDir, "notation/localkeys", "test.crt"))

@@ -1,7 +1,7 @@
 //go:build sync && scrub && metrics && search
 // +build sync,scrub,metrics,search
 
-package ocilayout_test
+package ociutils_test
 
 import (
 	"encoding/json"
@@ -24,10 +24,11 @@ import (
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/storage"
 	"zotregistry.io/zot/pkg/storage/local"
-	. "zotregistry.io/zot/pkg/test"
+	tcommon "zotregistry.io/zot/pkg/test/common"
 	. "zotregistry.io/zot/pkg/test/image-utils"
 	"zotregistry.io/zot/pkg/test/mocks"
-	ocilayout "zotregistry.io/zot/pkg/test/oci-layout"
+	ociutils "zotregistry.io/zot/pkg/test/oci-utils"
+	signature "zotregistry.io/zot/pkg/test/signature"
 )
 
 var ErrTestError = fmt.Errorf("testError")
@@ -41,7 +42,7 @@ func TestBaseOciLayoutUtils(t *testing.T) {
 		}
 
 		storeController := storage.StoreController{DefaultStore: mockStoreController}
-		olu := ocilayout.NewBaseOciLayoutUtils(storeController, log.NewLogger("debug", ""))
+		olu := ociutils.NewBaseOciLayoutUtils(storeController, log.NewLogger("debug", ""))
 
 		size := olu.GetImageManifestSize("", "")
 		So(size, ShouldBeZeroValue)
@@ -55,7 +56,7 @@ func TestBaseOciLayoutUtils(t *testing.T) {
 		}
 
 		storeController := storage.StoreController{DefaultStore: mockStoreController}
-		olu := ocilayout.NewBaseOciLayoutUtils(storeController, log.NewLogger("debug", ""))
+		olu := ociutils.NewBaseOciLayoutUtils(storeController, log.NewLogger("debug", ""))
 
 		size := olu.GetImageConfigSize("", "")
 		So(size, ShouldBeZeroValue)
@@ -93,7 +94,7 @@ func TestBaseOciLayoutUtils(t *testing.T) {
 		}
 
 		storeController := storage.StoreController{DefaultStore: mockStoreController}
-		olu := ocilayout.NewBaseOciLayoutUtils(storeController, log.NewLogger("debug", ""))
+		olu := ociutils.NewBaseOciLayoutUtils(storeController, log.NewLogger("debug", ""))
 
 		size := olu.GetImageConfigSize("", "")
 		So(size, ShouldBeZeroValue)
@@ -107,7 +108,7 @@ func TestBaseOciLayoutUtils(t *testing.T) {
 		}
 
 		storeController := storage.StoreController{DefaultStore: mockStoreController}
-		olu := ocilayout.NewBaseOciLayoutUtils(storeController, log.NewLogger("debug", ""))
+		olu := ociutils.NewBaseOciLayoutUtils(storeController, log.NewLogger("debug", ""))
 
 		_, err := olu.GetRepoLastUpdated("")
 		So(err, ShouldNotBeNil)
@@ -133,7 +134,7 @@ func TestBaseOciLayoutUtils(t *testing.T) {
 		}
 
 		storeController := storage.StoreController{DefaultStore: mockStoreController}
-		olu := ocilayout.NewBaseOciLayoutUtils(storeController, log.NewLogger("debug", ""))
+		olu := ociutils.NewBaseOciLayoutUtils(storeController, log.NewLogger("debug", ""))
 
 		_, err = olu.GetImageTagsWithTimestamp("rep")
 		So(err, ShouldNotBeNil)
@@ -177,7 +178,7 @@ func TestBaseOciLayoutUtils(t *testing.T) {
 		}
 
 		storeController := storage.StoreController{DefaultStore: mockStoreController}
-		olu := ocilayout.NewBaseOciLayoutUtils(storeController, log.NewLogger("debug", ""))
+		olu := ociutils.NewBaseOciLayoutUtils(storeController, log.NewLogger("debug", ""))
 
 		_, err = olu.GetImageTagsWithTimestamp("repo")
 		So(err, ShouldNotBeNil)
@@ -220,7 +221,7 @@ func TestBaseOciLayoutUtils(t *testing.T) {
 		}
 
 		storeController := storage.StoreController{DefaultStore: mockStoreController}
-		olu := ocilayout.NewBaseOciLayoutUtils(storeController, log.NewLogger("debug", ""))
+		olu := ociutils.NewBaseOciLayoutUtils(storeController, log.NewLogger("debug", ""))
 
 		_, err = olu.GetExpandedRepoInfo("rep")
 		So(err, ShouldNotBeNil)
@@ -233,7 +234,7 @@ func TestBaseOciLayoutUtils(t *testing.T) {
 		}
 
 		storeController = storage.StoreController{DefaultStore: mockStoreController}
-		olu = ocilayout.NewBaseOciLayoutUtils(storeController, log.NewLogger("debug", ""))
+		olu = ociutils.NewBaseOciLayoutUtils(storeController, log.NewLogger("debug", ""))
 
 		_, err = olu.GetExpandedRepoInfo("rep")
 		So(err, ShouldNotBeNil)
@@ -250,7 +251,7 @@ func TestBaseOciLayoutUtils(t *testing.T) {
 		}
 
 		storeController = storage.StoreController{DefaultStore: mockStoreController}
-		olu = ocilayout.NewBaseOciLayoutUtils(storeController, log.NewLogger("debug", ""))
+		olu = ociutils.NewBaseOciLayoutUtils(storeController, log.NewLogger("debug", ""))
 
 		_, err = olu.GetExpandedRepoInfo("rep")
 		So(err, ShouldBeNil)
@@ -264,7 +265,7 @@ func TestBaseOciLayoutUtils(t *testing.T) {
 		}
 
 		storeController := storage.StoreController{DefaultStore: mockStoreController}
-		olu := ocilayout.NewBaseOciLayoutUtils(storeController, log.NewLogger("debug", ""))
+		olu := ociutils.NewBaseOciLayoutUtils(storeController, log.NewLogger("debug", ""))
 
 		_, err := olu.GetImageInfo("", "")
 		So(err, ShouldNotBeNil)
@@ -282,7 +283,7 @@ func TestBaseOciLayoutUtils(t *testing.T) {
 		}
 
 		storeController := storage.StoreController{DefaultStore: mockStoreController}
-		olu := ocilayout.NewBaseOciLayoutUtils(storeController, log.NewLogger("debug", ""))
+		olu := ociutils.NewBaseOciLayoutUtils(storeController, log.NewLogger("debug", ""))
 
 		check := olu.CheckManifestSignature("rep", godigest.FromString(""))
 		So(check, ShouldBeFalse)
@@ -290,8 +291,8 @@ func TestBaseOciLayoutUtils(t *testing.T) {
 		// checkNotarySignature -> true
 		dir := t.TempDir()
 
-		port := GetFreePort()
-		baseURL := GetBaseURL(port)
+		port := tcommon.GetFreePort()
+		baseURL := tcommon.GetBaseURL(port)
 		conf := config.New()
 		conf.HTTP.Port = port
 		conf.Storage.RootDirectory = dir
@@ -304,31 +305,19 @@ func TestBaseOciLayoutUtils(t *testing.T) {
 
 		ctlr := api.NewController(conf)
 
-		ctlrManager := NewControllerManager(ctlr)
+		ctlrManager := tcommon.NewControllerManager(ctlr)
 		ctlrManager.StartAndWait(port)
 		defer ctlrManager.StopServer()
 
 		// push test image to repo
-		config, layers, manifest, err := GetImageComponents(100) //nolint:staticcheck
-		So(err, ShouldBeNil)
-
-		layersSize1 := 0
-		for _, l := range layers {
-			layersSize1 += len(l)
-		}
+		image := CreateRandomImage()
 
 		repo := "repo"
 		tag := "1.0.1"
-		err = UploadImage(
-			Image{
-				Manifest: manifest,
-				Config:   config,
-				Layers:   layers,
-			}, baseURL, repo, tag,
-		)
+		err := UploadImage(image, baseURL, repo, tag)
 		So(err, ShouldBeNil)
 
-		olu = ocilayout.NewBaseOciLayoutUtils(ctlr.StoreController, log.NewLogger("debug", ""))
+		olu = ociutils.NewBaseOciLayoutUtils(ctlr.StoreController, log.NewLogger("debug", ""))
 		manifestList, err := olu.GetImageManifests(repo)
 		So(err, ShouldBeNil)
 		So(len(manifestList), ShouldEqual, 1)
@@ -336,7 +325,7 @@ func TestBaseOciLayoutUtils(t *testing.T) {
 		isSigned := olu.CheckManifestSignature(repo, manifestList[0].Digest)
 		So(isSigned, ShouldBeFalse)
 
-		err = SignImageUsingNotary(fmt.Sprintf("%s:%s", repo, tag), port)
+		err = signature.SignImageUsingNotary(fmt.Sprintf("%s:%s", repo, tag), port)
 		So(err, ShouldBeNil)
 
 		isSigned = olu.CheckManifestSignature(repo, manifestList[0].Digest)
@@ -355,27 +344,15 @@ func TestExtractImageDetails(t *testing.T) {
 			DefaultStore: imageStore,
 		}
 
-		num := 10
-		config, layers, manifest, err := GetImageComponents(num) //nolint:staticcheck
+		image := CreateRandomImage()
+
+		err := WriteImageToFileSystem(image, "zot-test", "latest", storeController)
 		So(err, ShouldBeNil)
 
-		err = WriteImageToFileSystem(
-			Image{
-				Manifest: manifest,
-				Layers:   layers,
-				Config:   config,
-			}, "zot-test", "latest", storeController,
-		)
-		So(err, ShouldBeNil)
-
-		configBlob, err := json.Marshal(config)
-		So(err, ShouldBeNil)
-		configDigest := godigest.FromBytes(configBlob)
-
-		olu := ocilayout.NewBaseOciLayoutUtils(storeController, testLogger)
+		olu := ociutils.NewBaseOciLayoutUtils(storeController, testLogger)
 		resDigest, resManifest, resIspecImage, resErr := olu.ExtractImageDetails("zot-test", "latest", testLogger)
-		So(string(resDigest), ShouldContainSubstring, "sha256:8492645f16")
-		So(resManifest.Config.Digest.String(), ShouldContainSubstring, configDigest.Encoded())
+		So(string(resDigest), ShouldEqual, image.ManifestDescriptor.Digest.String())
+		So(resManifest.Config.Digest.String(), ShouldEqual, image.ConfigDescriptor.Digest.String())
 
 		So(resIspecImage.Architecture, ShouldContainSubstring, "amd64")
 		So(resErr, ShouldBeNil)
@@ -391,7 +368,7 @@ func TestExtractImageDetails(t *testing.T) {
 			DefaultStore: imageStore,
 		}
 
-		olu := ocilayout.NewBaseOciLayoutUtils(storeController, testLogger)
+		olu := ociutils.NewBaseOciLayoutUtils(storeController, testLogger)
 		resDigest, resManifest, resIspecImage, resErr := olu.ExtractImageDetails("zot-test",
 			"latest", testLogger)
 		So(resErr, ShouldEqual, zerr.ErrRepoNotFound)
@@ -411,29 +388,17 @@ func TestExtractImageDetails(t *testing.T) {
 			DefaultStore: imageStore,
 		}
 
-		num := 10
-		config, layers, manifest, err := GetImageComponents(num) //nolint:staticcheck
+		image := CreateRandomImage()
+
+		err := WriteImageToFileSystem(image, "zot-test", "latest", storeController)
 		So(err, ShouldBeNil)
 
-		err = WriteImageToFileSystem(
-			Image{
-				Manifest: manifest,
-				Layers:   layers,
-				Config:   config,
-			}, "zot-test", "latest", storeController,
-		)
-		So(err, ShouldBeNil)
-
-		configBlob, err := json.Marshal(config)
-		So(err, ShouldBeNil)
-		configDigest := godigest.FromBytes(configBlob)
-
-		err = os.Remove(path.Join(dir, "zot-test/blobs/sha256", configDigest.Encoded()))
+		err = os.Remove(path.Join(dir, "zot-test/blobs/sha256", image.ConfigDescriptor.Digest.Encoded()))
 		if err != nil {
 			panic(err)
 		}
 
-		olu := ocilayout.NewBaseOciLayoutUtils(storeController, testLogger)
+		olu := ociutils.NewBaseOciLayoutUtils(storeController, testLogger)
 		resDigest, resManifest, resIspecImage, resErr := olu.ExtractImageDetails("zot-test", "latest", testLogger)
 		So(resErr, ShouldEqual, zerr.ErrBlobNotFound)
 		So(string(resDigest), ShouldEqual, "")
@@ -481,7 +446,7 @@ func TestTagsInfo(t *testing.T) {
 
 		allTags = append(allTags, firstTag, secondTag, thirdTag, fourthTag)
 
-		latestTag := ocilayout.GetLatestTag(allTags)
+		latestTag := ociutils.GetLatestTag(allTags)
 		So(latestTag.Tag, ShouldEqual, "1.0.3")
 	})
 }

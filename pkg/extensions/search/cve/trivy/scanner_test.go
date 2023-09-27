@@ -23,21 +23,21 @@ import (
 	mTypes "zotregistry.io/zot/pkg/meta/types"
 	"zotregistry.io/zot/pkg/storage"
 	"zotregistry.io/zot/pkg/storage/local"
-	"zotregistry.io/zot/pkg/test"
-	testc "zotregistry.io/zot/pkg/test/common"
+	. "zotregistry.io/zot/pkg/test/common"
+	"zotregistry.io/zot/pkg/test/deprecated"
 	. "zotregistry.io/zot/pkg/test/image-utils"
 	"zotregistry.io/zot/pkg/test/mocks"
 )
 
 func TestScanBigTestFile(t *testing.T) {
 	Convey("Scan zot-test", t, func() {
-		projRootDir, err := testc.GetProjectRootDir()
+		projRootDir, err := GetProjectRootDir()
 		So(err, ShouldBeNil)
 
 		testImage := filepath.Join(projRootDir, "test/data/zot-test")
 
 		tempDir := t.TempDir()
-		port := test.GetFreePort()
+		port := GetFreePort()
 		conf := config.New()
 		conf.HTTP.Port = port
 		defaultVal := true
@@ -50,10 +50,10 @@ func TestScanBigTestFile(t *testing.T) {
 		ctlr := api.NewController(conf)
 		So(ctlr, ShouldNotBeNil)
 
-		err = test.CopyFiles(testImage, filepath.Join(tempDir, "zot-test"))
+		err = CopyFiles(testImage, filepath.Join(tempDir, "zot-test"))
 		So(err, ShouldBeNil)
 
-		cm := test.NewControllerManager(ctlr)
+		cm := NewControllerManager(ctlr)
 		cm.StartAndWait(port)
 		defer cm.StopServer()
 		// scan
@@ -72,8 +72,8 @@ func TestScanningByDigest(t *testing.T) {
 	Convey("Scan the individual manifests inside an index", t, func() {
 		// start server
 		tempDir := t.TempDir()
-		port := test.GetFreePort()
-		baseURL := test.GetBaseURL(port)
+		port := GetFreePort()
+		baseURL := GetBaseURL(port)
 		conf := config.New()
 		conf.HTTP.Port = port
 		defaultVal := true
@@ -86,7 +86,7 @@ func TestScanningByDigest(t *testing.T) {
 		ctlr := api.NewController(conf)
 		So(ctlr, ShouldNotBeNil)
 
-		cm := test.NewControllerManager(ctlr)
+		cm := NewControllerManager(ctlr)
 		cm.StartAndWait(port)
 		defer cm.StopServer()
 		// push index with 2 manifests: one with vulns and one without
@@ -94,7 +94,8 @@ func TestScanningByDigest(t *testing.T) {
 
 		simpleImage := CreateRandomImage()
 
-		multiArch := test.GetMultiarchImageForImages([]Image{simpleImage, vulnImage}) //nolint:staticcheck
+		multiArch := deprecated.GetMultiarchImageForImages([]Image{simpleImage, //nolint:staticcheck
+			vulnImage})
 
 		err := UploadMultiarchImage(multiArch, baseURL, "multi-arch", "multi-arch-tag")
 		So(err, ShouldBeNil)
@@ -193,7 +194,7 @@ func TestVulnerableLayer(t *testing.T) {
 			DefaultStore: imageStore,
 		}
 
-		err = test.WriteImageToFileSystem(img, "repo", img.DigestStr(), storeController)
+		err = WriteImageToFileSystem(img, "repo", img.DigestStr(), storeController)
 		So(err, ShouldBeNil)
 
 		params := boltdb.DBParameters{

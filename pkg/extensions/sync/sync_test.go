@@ -47,10 +47,12 @@ import (
 	"zotregistry.io/zot/pkg/log"
 	mTypes "zotregistry.io/zot/pkg/meta/types"
 	storageConstants "zotregistry.io/zot/pkg/storage/constants"
-	"zotregistry.io/zot/pkg/test"
-	testc "zotregistry.io/zot/pkg/test/common"
+	test "zotregistry.io/zot/pkg/test/common"
+	"zotregistry.io/zot/pkg/test/deprecated"
 	. "zotregistry.io/zot/pkg/test/image-utils"
 	"zotregistry.io/zot/pkg/test/mocks"
+	ociutils "zotregistry.io/zot/pkg/test/oci-utils"
+	"zotregistry.io/zot/pkg/test/signature"
 )
 
 const (
@@ -138,14 +140,14 @@ func makeUpstreamServer(
 	srcConfig.Storage.GC = false
 
 	srcDir := t.TempDir()
-	srcStorageCtrl := test.GetDefaultStoreController(srcDir, log.NewLogger("debug", ""))
+	srcStorageCtrl := ociutils.GetDefaultStoreController(srcDir, log.NewLogger("debug", ""))
 
-	err := test.WriteImageToFileSystem(CreateDefaultImage(), "zot-test", "0.0.1", srcStorageCtrl)
+	err := WriteImageToFileSystem(CreateDefaultImage(), "zot-test", "0.0.1", srcStorageCtrl)
 	if err != nil {
 		panic(err)
 	}
 
-	err = test.WriteImageToFileSystem(CreateDefaultVulnerableImage(), "zot-cve-test", "0.0.1", srcStorageCtrl)
+	err = WriteImageToFileSystem(CreateDefaultVulnerableImage(), "zot-cve-test", "0.0.1", srcStorageCtrl)
 	if err != nil {
 		panic(err)
 	}
@@ -735,7 +737,7 @@ func TestOnDemand(t *testing.T) {
 			cm.StartAndWait(conf.HTTP.Port)
 			defer cm.StopServer()
 
-			imageConfig, layers, manifest, err := test.GetRandomImageComponents(10) //nolint:staticcheck
+			imageConfig, layers, manifest, err := deprecated.GetRandomImageComponents(10) //nolint:staticcheck
 			So(err, ShouldBeNil)
 
 			manifestBlob, err := json.Marshal(manifest)
@@ -750,7 +752,7 @@ func TestOnDemand(t *testing.T) {
 			So(err, ShouldBeNil)
 
 			// sign using cosign
-			err = test.SignImageUsingCosign(fmt.Sprintf("remote-repo@%s", manifestDigest.String()), port)
+			err = signature.SignImageUsingCosign(fmt.Sprintf("remote-repo@%s", manifestDigest.String()), port)
 			So(err, ShouldBeNil)
 
 			// add cosign sbom
@@ -1089,7 +1091,7 @@ func TestSyncWithNonDistributableBlob(t *testing.T) {
 
 		dcm := test.NewControllerManager(dctlr)
 
-		imageConfig, layers, manifest, err := test.GetRandomImageComponents(10) //nolint:staticcheck
+		imageConfig, layers, manifest, err := deprecated.GetRandomImageComponents(10) //nolint:staticcheck
 		So(err, ShouldBeNil)
 
 		nonDistributableLayer := make([]byte, 10)
@@ -1278,7 +1280,7 @@ func TestDockerImagesAreSkipped(t *testing.T) {
 
 			// upload multiple manifests
 			for i := 0; i < 4; i++ {
-				config, layers, manifest, err := test.GetImageComponents(1000 + i) //nolint:staticcheck
+				config, layers, manifest, err := deprecated.GetImageComponents(1000 + i) //nolint:staticcheck
 				So(err, ShouldBeNil)
 
 				manifestContent, err := json.Marshal(manifest)
@@ -3113,12 +3115,12 @@ func TestSubPaths(t *testing.T) {
 		srcDir := t.TempDir()
 
 		subpath := "/subpath"
-		srcStorageCtlr := test.GetDefaultStoreController(path.Join(srcDir, subpath), log.NewLogger("debug", ""))
+		srcStorageCtlr := ociutils.GetDefaultStoreController(path.Join(srcDir, subpath), log.NewLogger("debug", ""))
 
-		err := test.WriteImageToFileSystem(CreateDefaultImage(), "zot-test", "0.0.1", srcStorageCtlr)
+		err := WriteImageToFileSystem(CreateDefaultImage(), "zot-test", "0.0.1", srcStorageCtlr)
 		So(err, ShouldBeNil)
 
-		err = test.WriteImageToFileSystem(CreateDefaultVulnerableImage(), "zot-cve-test", "0.0.1", srcStorageCtlr)
+		err = WriteImageToFileSystem(CreateDefaultVulnerableImage(), "zot-cve-test", "0.0.1", srcStorageCtlr)
 		So(err, ShouldBeNil)
 
 		srcConfig.Storage.RootDirectory = srcDir
@@ -4108,9 +4110,9 @@ func TestSignatures(t *testing.T) {
 			IgnoreTlog:      true,
 		}
 
-		test.LoadNotationPath(tdir)
+		signature.LoadNotationPath(tdir)
 		// notation verify signed image
-		err = test.VerifyWithNotation(image, tdir)
+		err = signature.VerifyWithNotation(image, tdir)
 		So(err, ShouldBeNil)
 
 		// cosign verify signed image
@@ -4143,9 +4145,9 @@ func TestSignatures(t *testing.T) {
 		// verify sbom signature
 		sbom := fmt.Sprintf("localhost:%s/%s@%s", destPort, repoName, sbomDigest)
 
-		test.LoadNotationPath(tdir)
+		signature.LoadNotationPath(tdir)
 		// notation verify signed sbom
-		err = test.VerifyWithNotation(sbom, tdir)
+		err = signature.VerifyWithNotation(sbom, tdir)
 		So(err, ShouldBeNil)
 
 		vrfy = verify.VerifyCommand{
@@ -4511,16 +4513,16 @@ func TestSyncedSignaturesMetaDB(t *testing.T) {
 		defer scm.StopServer()
 
 		// Push an image
-		signedImage, err := test.GetRandomImage() //nolint:staticcheck
+		signedImage, err := deprecated.GetRandomImage() //nolint:staticcheck
 		So(err, ShouldBeNil)
 
 		err = UploadImage(signedImage, srcBaseURL, repoName, tag)
 		So(err, ShouldBeNil)
 
-		err = test.SignImageUsingNotary(repoName+":"+tag, srcPort)
+		err = signature.SignImageUsingNotary(repoName+":"+tag, srcPort)
 		So(err, ShouldBeNil)
 
-		err = test.SignImageUsingCosign(repoName+":"+tag, srcPort)
+		err = signature.SignImageUsingCosign(repoName+":"+tag, srcPort)
 		So(err, ShouldBeNil)
 
 		// Create destination registry
@@ -4587,12 +4589,12 @@ func TestOnDemandRetryGoroutine(t *testing.T) {
 
 		srcDir := t.TempDir()
 
-		srcStorageCtlr := test.GetDefaultStoreController(srcDir, log.NewLogger("debug", ""))
+		srcStorageCtlr := ociutils.GetDefaultStoreController(srcDir, log.NewLogger("debug", ""))
 
-		err := test.WriteImageToFileSystem(CreateDefaultImage(), "zot-test", "0.0.1", srcStorageCtlr)
+		err := WriteImageToFileSystem(CreateDefaultImage(), "zot-test", "0.0.1", srcStorageCtlr)
 		So(err, ShouldBeNil)
 
-		err = test.WriteImageToFileSystem(CreateDefaultVulnerableImage(), "zot-cve-test", "0.0.1", srcStorageCtlr)
+		err = WriteImageToFileSystem(CreateDefaultVulnerableImage(), "zot-cve-test", "0.0.1", srcStorageCtlr)
 		So(err, ShouldBeNil)
 
 		srcConfig.Storage.RootDirectory = srcDir
@@ -4800,12 +4802,12 @@ func TestOnDemandMultipleImage(t *testing.T) {
 
 		srcDir := t.TempDir()
 
-		srcStorageCtlr := test.GetDefaultStoreController(srcDir, log.NewLogger("debug", ""))
+		srcStorageCtlr := ociutils.GetDefaultStoreController(srcDir, log.NewLogger("debug", ""))
 
-		err := test.WriteImageToFileSystem(CreateDefaultImage(), "zot-test", "0.0.1", srcStorageCtlr)
+		err := WriteImageToFileSystem(CreateDefaultImage(), "zot-test", "0.0.1", srcStorageCtlr)
 		So(err, ShouldBeNil)
 
-		err = test.WriteImageToFileSystem(CreateDefaultVulnerableImage(), "zot-cve-test", "0.0.1", srcStorageCtlr)
+		err = WriteImageToFileSystem(CreateDefaultVulnerableImage(), "zot-cve-test", "0.0.1", srcStorageCtlr)
 		So(err, ShouldBeNil)
 
 		srcConfig.Storage.RootDirectory = srcDir
@@ -5126,7 +5128,7 @@ func TestSignaturesOnDemand(t *testing.T) {
 
 		// notation verify the synced image
 		image := fmt.Sprintf("localhost:%s/%s:%s", destPort, repoName, testImageTag)
-		err = test.VerifyWithNotation(image, tdir)
+		err = signature.VerifyWithNotation(image, tdir)
 		So(err, ShouldBeNil)
 
 		// cosign verify the synced image
@@ -5363,7 +5365,7 @@ func TestOnlySignaturesOnDemand(t *testing.T) {
 
 		// sync signature on demand when upstream doesn't have the signature
 		image := fmt.Sprintf("localhost:%s/%s:%s", destPort, repoName, testImageTag)
-		err = test.VerifyWithNotation(image, tdir)
+		err = signature.VerifyWithNotation(image, tdir)
 		So(err, ShouldNotBeNil)
 
 		// cosign verify the synced image
@@ -5382,7 +5384,7 @@ func TestOnlySignaturesOnDemand(t *testing.T) {
 
 		// now it should sync signatures on demand, even if we already have the image
 		image = fmt.Sprintf("localhost:%s/%s:%s", destPort, repoName, testImageTag)
-		err = test.VerifyWithNotation(image, tdir)
+		err = signature.VerifyWithNotation(image, tdir)
 		So(err, ShouldBeNil)
 
 		// cosign verify the synced image
@@ -5448,12 +5450,12 @@ func TestSyncOnlyDiff(t *testing.T) {
 		destDir := t.TempDir()
 
 		// copy images so we have them before syncing, sync should not pull them again
-		destStorageCtrl := test.GetDefaultStoreController(destDir, log.NewLogger("debug", ""))
+		destStorageCtrl := ociutils.GetDefaultStoreController(destDir, log.NewLogger("debug", ""))
 
-		err := test.WriteImageToFileSystem(CreateDefaultImage(), "zot-test", "0.0.1", destStorageCtrl)
+		err := WriteImageToFileSystem(CreateDefaultImage(), "zot-test", "0.0.1", destStorageCtrl)
 		So(err, ShouldBeNil)
 
-		err = test.WriteImageToFileSystem(CreateDefaultVulnerableImage(), "zot-cve-test", "0.0.1", destStorageCtrl)
+		err = WriteImageToFileSystem(CreateDefaultVulnerableImage(), "zot-cve-test", "0.0.1", destStorageCtrl)
 		So(err, ShouldBeNil)
 
 		destConfig.Storage.RootDirectory = destDir
@@ -5534,12 +5536,12 @@ func TestSyncWithDiffDigest(t *testing.T) {
 		destDir := t.TempDir()
 
 		// copy images so we have them before syncing, sync should not pull them again
-		srcStorageCtlr := test.GetDefaultStoreController(destDir, log.NewLogger("debug", ""))
+		srcStorageCtlr := ociutils.GetDefaultStoreController(destDir, log.NewLogger("debug", ""))
 
-		err := test.WriteImageToFileSystem(CreateDefaultImage(), "zot-test", "0.0.1", srcStorageCtlr)
+		err := WriteImageToFileSystem(CreateDefaultImage(), "zot-test", "0.0.1", srcStorageCtlr)
 		So(err, ShouldBeNil)
 
-		err = test.WriteImageToFileSystem(CreateDefaultVulnerableImage(), "zot-cve-test", "0.0.1", srcStorageCtlr)
+		err = WriteImageToFileSystem(CreateDefaultVulnerableImage(), "zot-cve-test", "0.0.1", srcStorageCtlr)
 		So(err, ShouldBeNil)
 
 		destConfig.Storage.RootDirectory = destDir
@@ -5735,7 +5737,7 @@ func TestSyncSignaturesDiff(t *testing.T) {
 
 		// notation verify the image
 		image := fmt.Sprintf("localhost:%s/%s:%s", destPort, repoName, testImageTag)
-		err = test.VerifyWithNotation(image, tdir)
+		err = signature.VerifyWithNotation(image, tdir)
 		So(err, ShouldBeNil)
 
 		// cosign verify the image
@@ -5761,7 +5763,7 @@ func TestSyncSignaturesDiff(t *testing.T) {
 
 		// notation verify the image
 		image = fmt.Sprintf("localhost:%s/%s:%s", destPort, repoName, testImageTag)
-		err = test.VerifyWithNotation(image, tdir)
+		err = signature.VerifyWithNotation(image, tdir)
 		So(err, ShouldBeNil)
 
 		// cosign verify the image
@@ -6091,7 +6093,7 @@ func TestSyncWithDestination(t *testing.T) {
 
 				// notation verify the synced image
 				image := fmt.Sprintf("localhost:%s/%s:%s", destPort, testCase.expected, testImageTag)
-				err = test.VerifyWithNotation(image, tdir)
+				err = signature.VerifyWithNotation(image, tdir)
 				So(err, ShouldBeNil)
 
 				// cosign verify the synced image
@@ -6141,7 +6143,7 @@ func TestSyncWithDestination(t *testing.T) {
 
 				// notation verify the synced image
 				image := fmt.Sprintf("localhost:%s/%s:%s", destPort, testCase.expected, testImageTag)
-				err = test.VerifyWithNotation(image, tdir)
+				err = signature.VerifyWithNotation(image, tdir)
 				So(err, ShouldBeNil)
 
 				// cosign verify the synced image
@@ -6202,7 +6204,7 @@ func TestSyncImageIndex(t *testing.T) {
 
 		// upload multiple manifests
 		for i := 0; i < 4; i++ {
-			config, layers, manifest, err := test.GetImageComponents(1000 + i) //nolint:staticcheck
+			config, layers, manifest, err := deprecated.GetImageComponents(1000 + i) //nolint:staticcheck
 			So(err, ShouldBeNil)
 
 			manifestContent, err := json.Marshal(manifest)
@@ -6306,12 +6308,12 @@ func generateKeyPairs(tdir string) {
 		}
 	}
 
-	test.NotationPathLock.Lock()
-	defer test.NotationPathLock.Unlock()
+	signature.NotationPathLock.Lock()
+	defer signature.NotationPathLock.Unlock()
 
-	test.LoadNotationPath(tdir)
+	signature.LoadNotationPath(tdir)
 
-	err := test.GenerateNotationCerts(tdir, "good")
+	err := signature.GenerateNotationCerts(tdir, "good")
 	if err != nil {
 		panic(err)
 	}
@@ -6360,20 +6362,20 @@ func signImage(tdir, port, repoName string, digest godigest.Digest) {
 		panic(err)
 	}
 
-	test.NotationPathLock.Lock()
-	defer test.NotationPathLock.Unlock()
+	signature.NotationPathLock.Lock()
+	defer signature.NotationPathLock.Unlock()
 
-	test.LoadNotationPath(tdir)
+	signature.LoadNotationPath(tdir)
 
 	// sign the image
 	image := fmt.Sprintf("localhost:%s/%s@%s", port, repoName, digest.String())
 
-	err = test.SignWithNotation("good", image, tdir)
+	err = signature.SignWithNotation("good", image, tdir)
 	if err != nil {
 		panic(err)
 	}
 
-	err = test.VerifyWithNotation(image, tdir)
+	err = signature.VerifyWithNotation(image, tdir)
 	if err != nil {
 		panic(err)
 	}
@@ -6386,7 +6388,7 @@ func pushRepo(url, repoName string) godigest.Digest {
 		panic(err)
 	}
 
-	loc := testc.Location(url, resp)
+	loc := test.Location(url, resp)
 
 	_, err = resty.R().Get(loc)
 	if err != nil {
@@ -6413,7 +6415,7 @@ func pushRepo(url, repoName string) godigest.Digest {
 		panic(fmt.Errorf("invalid status code: %d %w", resp.StatusCode(), errBadStatus))
 	}
 
-	loc = testc.Location(url, resp)
+	loc = test.Location(url, resp)
 	cblob, cdigest := ispec.DescriptorEmptyJSON.Data, ispec.DescriptorEmptyJSON.Digest
 
 	resp, err = resty.R().
@@ -6442,8 +6444,8 @@ func pushRepo(url, repoName string) godigest.Digest {
 		panic(fmt.Errorf("invalid status code: %d %w", resp.StatusCode(), errBadStatus))
 	}
 
-	loc = testc.Location(url, resp)
-	cblob, cdigest = test.GetRandomImageConfig()
+	loc = test.Location(url, resp)
+	cblob, cdigest = GetRandomImageConfig()
 
 	resp, err = resty.R().
 		SetContentLength(true).
@@ -6610,7 +6612,7 @@ func pushBlob(url string, repoName string, buf []byte) godigest.Digest {
 		panic(fmt.Errorf("invalid status code: %d %w", resp.StatusCode(), errBadStatus))
 	}
 
-	loc := testc.Location(url, resp)
+	loc := test.Location(url, resp)
 
 	digest := godigest.FromBytes(buf)
 	resp, err = resty.R().

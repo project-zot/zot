@@ -36,7 +36,8 @@ import (
 	storageConstants "zotregistry.io/zot/pkg/storage/constants"
 	"zotregistry.io/zot/pkg/storage/s3"
 	storageTypes "zotregistry.io/zot/pkg/storage/types"
-	"zotregistry.io/zot/pkg/test"
+	"zotregistry.io/zot/pkg/test/deprecated"
+	. "zotregistry.io/zot/pkg/test/image-utils"
 	"zotregistry.io/zot/pkg/test/inject"
 	"zotregistry.io/zot/pkg/test/mocks"
 )
@@ -476,7 +477,7 @@ func TestGetOrasAndOCIReferrers(t *testing.T) {
 	_, imgStore, _ := createObjectsStore(testDir, tdir, true)
 
 	Convey("Upload test image", t, func(c C) {
-		cfg, layers, manifest, err := test.GetImageComponents(100) //nolint:staticcheck
+		cfg, layers, manifest, err := deprecated.GetImageComponents(100) //nolint:staticcheck
 		So(err, ShouldBeNil)
 
 		for _, content := range layers {
@@ -1288,7 +1289,7 @@ func TestS3Dedupe(t *testing.T) {
 		err = blobReadCloser.Close()
 		So(err, ShouldBeNil)
 
-		cblob, cdigest := test.GetRandomImageConfig()
+		cblob, cdigest := GetRandomImageConfig()
 		_, clen, err := imgStore.FullBlobUpload("dedupe1", bytes.NewReader(cblob), cdigest)
 		So(err, ShouldBeNil)
 		So(clen, ShouldEqual, len(cblob))
@@ -1363,7 +1364,7 @@ func TestS3Dedupe(t *testing.T) {
 		err = blobReadCloser.Close()
 		So(err, ShouldBeNil)
 
-		cblob, cdigest = test.GetRandomImageConfig()
+		cblob, cdigest = GetRandomImageConfig()
 		_, clen, err = imgStore.FullBlobUpload("dedupe2", bytes.NewReader(cblob), cdigest)
 		So(err, ShouldBeNil)
 		So(clen, ShouldEqual, len(cblob))
@@ -1522,7 +1523,7 @@ func TestS3Dedupe(t *testing.T) {
 			So(checkBlobSize3, ShouldBeGreaterThan, 0)
 			So(checkBlobSize3, ShouldEqual, getBlobSize3)
 
-			cblob, cdigest = test.GetRandomImageConfig()
+			cblob, cdigest = GetRandomImageConfig()
 			_, clen, err = imgStore.FullBlobUpload("dedupe3", bytes.NewReader(cblob), cdigest)
 			So(err, ShouldBeNil)
 			So(clen, ShouldEqual, len(cblob))
@@ -1691,7 +1692,7 @@ func TestS3Dedupe(t *testing.T) {
 		err = blobReadCloser.Close()
 		So(err, ShouldBeNil)
 
-		cblob, cdigest := test.GetRandomImageConfig()
+		cblob, cdigest := GetRandomImageConfig()
 		_, clen, err := imgStore.FullBlobUpload("dedupe1", bytes.NewReader(cblob), cdigest)
 		So(err, ShouldBeNil)
 		So(clen, ShouldEqual, len(cblob))
@@ -1758,7 +1759,7 @@ func TestS3Dedupe(t *testing.T) {
 		err = blobReadCloser.Close()
 		So(err, ShouldBeNil)
 
-		cblob, cdigest = test.GetRandomImageConfig()
+		cblob, cdigest = GetRandomImageConfig()
 		_, clen, err = imgStore.FullBlobUpload("dedupe2", bytes.NewReader(cblob), cdigest)
 		So(err, ShouldBeNil)
 		So(clen, ShouldEqual, len(cblob))
@@ -1959,7 +1960,7 @@ func TestRebuildDedupeIndex(t *testing.T) {
 		So(hasBlob, ShouldEqual, true)
 		So(err, ShouldBeNil)
 
-		cblob, cdigest := test.GetRandomImageConfig()
+		cblob, cdigest := GetRandomImageConfig()
 		_, clen, err := imgStore.FullBlobUpload("dedupe1", bytes.NewReader(cblob), cdigest)
 		So(err, ShouldBeNil)
 		So(clen, ShouldEqual, len(cblob))
@@ -2996,7 +2997,7 @@ func TestS3ManifestImageIndex(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(upload, ShouldNotBeEmpty)
 
-		cblob, cdigest := test.GetRandomImageConfig()
+		cblob, cdigest := GetRandomImageConfig()
 		buf = bytes.NewBuffer(cblob)
 		buflen = buf.Len()
 		blob, err = imgStore.PutBlobChunkStreamed("index", upload, buf)
@@ -3038,7 +3039,7 @@ func TestS3ManifestImageIndex(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(upload, ShouldNotBeEmpty)
 
-		cblob, cdigest = test.GetRandomImageConfig()
+		cblob, cdigest = GetRandomImageConfig()
 		buf = bytes.NewBuffer(cblob)
 		buflen = buf.Len()
 		blob, err = imgStore.PutBlobChunkStreamed("index", upload, buf)
@@ -3080,7 +3081,7 @@ func TestS3ManifestImageIndex(t *testing.T) {
 			So(err, ShouldBeNil)
 			So(upload, ShouldNotBeEmpty)
 
-			cblob, cdigest = test.GetRandomImageConfig()
+			cblob, cdigest = GetRandomImageConfig()
 			buf = bytes.NewBuffer(cblob)
 			buflen = buf.Len()
 			blob, err = imgStore.PutBlobChunkStreamed("index", upload, buf)
@@ -3144,7 +3145,7 @@ func TestS3ManifestImageIndex(t *testing.T) {
 			So(err, ShouldBeNil)
 			So(upload, ShouldNotBeEmpty)
 
-			cblob, cdigest = test.GetRandomImageConfig()
+			cblob, cdigest = GetRandomImageConfig()
 			buf = bytes.NewBuffer(cblob)
 			buflen = buf.Len()
 			blob, err = imgStore.PutBlobChunkStreamed("index", upload, buf)
@@ -3437,7 +3438,7 @@ func TestS3ManifestImageIndex(t *testing.T) {
 		So(clen, ShouldEqual, buflen)
 
 		// first config
-		cblob, cdigest := test.GetRandomImageConfig()
+		cblob, cdigest := GetRandomImageConfig()
 		buf = bytes.NewBuffer(cblob)
 		buflen = buf.Len()
 
@@ -3471,7 +3472,7 @@ func TestS3ManifestImageIndex(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		// second config
-		cblob, cdigest = test.GetRandomImageConfig()
+		cblob, cdigest = GetRandomImageConfig()
 		buf = bytes.NewBuffer(cblob)
 		buflen = buf.Len()
 

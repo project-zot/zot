@@ -45,3 +45,11 @@ func (sc StoreController) GetImageStore(name string) storageTypes.ImageStore {
 
 	return sc.DefaultStore
 }
+
+func (sc StoreController) GetDefaultImageStore() storageTypes.ImageStore {
+	return sc.DefaultStore
+}
+
+func (sc StoreController) GetImageSubStores() map[string]storageTypes.ImageStore {
+	return sc.SubStore
+}

@@ -31,7 +31,7 @@ import (
 	"zotregistry.io/zot/pkg/scheduler"
 	"zotregistry.io/zot/pkg/storage"
 	"zotregistry.io/zot/pkg/storage/local"
-	. "zotregistry.io/zot/pkg/test"
+	test "zotregistry.io/zot/pkg/test/common"
 	. "zotregistry.io/zot/pkg/test/image-utils"
 	"zotregistry.io/zot/pkg/test/mocks"
 )
@@ -530,7 +530,7 @@ func TestScanGeneratorWithMockedData(t *testing.T) { //nolint: gocyclo
 		defer cancel()
 
 		// Make sure the scanner generator has completed despite errors
-		found, err := ReadLogFileAndSearchString(logPath,
+		found, err := test.ReadLogFileAndSearchString(logPath,
 			"Scheduled CVE scan: finished for available images", 20*time.Second)
 		So(err, ShouldBeNil)
 		So(found, ShouldBeTrue)
@@ -553,19 +553,19 @@ func TestScanGeneratorWithMockedData(t *testing.T) { //nolint: gocyclo
 		}
 
 		// Make sure the scanner generator is catching the metadb error for repo5:nonexitent-manifest
-		found, err = ReadLogFileAndSearchString(logPath,
+		found, err = test.ReadLogFileAndSearchString(logPath,
 			"Scheduled CVE scan: error while obtaining repo metadata", 20*time.Second)
 		So(err, ShouldBeNil)
 		So(found, ShouldBeTrue)
 
 		// Make sure the scanner generator is catching the scanning error for repo7
-		found, err = ReadLogFileAndSearchString(logPath,
+		found, err = test.ReadLogFileAndSearchString(logPath,
 			"Scheduled CVE scan errored for image", 20*time.Second)
 		So(err, ShouldBeNil)
 		So(found, ShouldBeTrue)
 
 		// Make sure the scanner generator is triggered at least twice
-		found, err = ReadLogFileAndCountStringOccurence(logPath,
+		found, err = test.ReadLogFileAndCountStringOccurence(logPath,
 			"Scheduled CVE scan: finished for available images", 30*time.Second, 2)
 		So(err, ShouldBeNil)
 		So(found, ShouldBeTrue)
@@ -627,17 +627,17 @@ func TestScanGeneratorWithRealData(t *testing.T) {
 		defer cancel()
 
 		// Make sure the scanner generator has completed
-		found, err := ReadLogFileAndSearchString(logPath,
+		found, err := test.ReadLogFileAndSearchString(logPath,
 			"Scheduled CVE scan: finished for available images", 120*time.Second)
 		So(err, ShouldBeNil)
 		So(found, ShouldBeTrue)
 
-		found, err = ReadLogFileAndSearchString(logPath,
+		found, err = test.ReadLogFileAndSearchString(logPath,
 			image.ManifestDescriptor.Digest.String(), 120*time.Second)
 		So(err, ShouldBeNil)
 		So(found, ShouldBeTrue)
 
-		found, err = ReadLogFileAndSearchString(logPath,
+		found, err = test.ReadLogFileAndSearchString(logPath,
 			"Scheduled CVE scan completed successfully for image", 120*time.Second)
 		So(err, ShouldBeNil)
 		So(found, ShouldBeTrue)

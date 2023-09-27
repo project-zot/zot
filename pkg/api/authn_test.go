@@ -26,7 +26,8 @@ import (
 	"zotregistry.io/zot/pkg/log"
 	mTypes "zotregistry.io/zot/pkg/meta/types"
 	reqCtx "zotregistry.io/zot/pkg/requestcontext"
-	"zotregistry.io/zot/pkg/test"
+	authutils "zotregistry.io/zot/pkg/test/auth"
+	test "zotregistry.io/zot/pkg/test/common"
 	"zotregistry.io/zot/pkg/test/mocks"
 )
 
@@ -81,7 +82,7 @@ func TestAPIKeys(t *testing.T) {
 		htpasswdPath := test.MakeHtpasswdFile()
 		defer os.Remove(htpasswdPath)
 
-		mockOIDCServer, err := test.MockOIDCRun()
+		mockOIDCServer, err := authutils.MockOIDCRun()
 		if err != nil {
 			panic(err)
 		}
@@ -834,7 +835,7 @@ func TestAPIKeysOpenDBError(t *testing.T) {
 		htpasswdPath := test.MakeHtpasswdFile()
 		defer os.Remove(htpasswdPath)
 
-		mockOIDCServer, err := test.MockOIDCRun()
+		mockOIDCServer, err := authutils.MockOIDCRun()
 		if err != nil {
 			panic(err)
 		}

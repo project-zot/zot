@@ -16,7 +16,8 @@ import (
 	"zotregistry.io/zot/pkg/api"
 	"zotregistry.io/zot/pkg/api/config"
 	extconf "zotregistry.io/zot/pkg/extensions/config"
-	"zotregistry.io/zot/pkg/test"
+	test "zotregistry.io/zot/pkg/test/common"
+	"zotregistry.io/zot/pkg/test/deprecated"
 	. "zotregistry.io/zot/pkg/test/image-utils"
 )
 
@@ -58,7 +59,7 @@ func TestUIExtension(t *testing.T) {
 		So(found, ShouldBeTrue)
 		So(err, ShouldBeNil)
 
-		cfg, layers, manifest, err := test.GetImageComponents(1) //nolint:staticcheck
+		cfg, layers, manifest, err := deprecated.GetImageComponents(1) //nolint:staticcheck
 		So(err, ShouldBeNil)
 
 		repoName := "test-repo"

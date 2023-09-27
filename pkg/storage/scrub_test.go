@@ -26,7 +26,7 @@ import (
 	"zotregistry.io/zot/pkg/storage/local"
 	"zotregistry.io/zot/pkg/storage/s3"
 	storageTypes "zotregistry.io/zot/pkg/storage/types"
-	"zotregistry.io/zot/pkg/test"
+	"zotregistry.io/zot/pkg/test/deprecated"
 	. "zotregistry.io/zot/pkg/test/image-utils"
 	"zotregistry.io/zot/pkg/test/mocks"
 )
@@ -91,7 +91,7 @@ func RunCheckAllBlobsIntegrityTests( //nolint: thelper
 		storeCtlr.DefaultStore = imgStore
 		So(storeCtlr.GetImageStore(repoName), ShouldResemble, imgStore)
 
-		config, layers, manifest, err := test.GetImageComponents(1000) //nolint:staticcheck
+		config, layers, manifest, err := deprecated.GetImageComponents(1000) //nolint:staticcheck
 		So(err, ShouldBeNil)
 
 		layerReader := bytes.NewReader(layers[0])
@@ -306,7 +306,7 @@ func RunCheckAllBlobsIntegrityTests( //nolint: thelper
 		})
 
 		Convey("Scrub index", func() {
-			newConfig, newLayers, newManifest, err := test.GetImageComponents(10) //nolint:staticcheck
+			newConfig, newLayers, newManifest, err := deprecated.GetImageComponents(10) //nolint:staticcheck
 			So(err, ShouldBeNil)
 
 			newLayerReader := bytes.NewReader(newLayers[0])
@@ -474,7 +474,7 @@ func RunCheckAllBlobsIntegrityTests( //nolint: thelper
 			manifestDescriptor, ok := common.GetManifestDescByReference(index, manifestDigest.String())
 			So(ok, ShouldBeTrue)
 
-			err = test.WriteImageToFileSystem(CreateDefaultImageWith().Subject(&manifestDescriptor).Build(),
+			err = WriteImageToFileSystem(CreateDefaultImageWith().Subject(&manifestDescriptor).Build(),
 				repoName, "0.0.1", storeCtlr)
 			So(err, ShouldBeNil)
 

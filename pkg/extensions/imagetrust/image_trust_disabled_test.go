@@ -11,7 +11,7 @@ import (
 	. "github.com/smartystreets/goconvey/convey"
 
 	"zotregistry.io/zot/pkg/extensions/imagetrust"
-	"zotregistry.io/zot/pkg/test"
+	"zotregistry.io/zot/pkg/test/deprecated"
 )
 
 func TestImageTrust(t *testing.T) {
@@ -28,7 +28,7 @@ func TestImageTrust(t *testing.T) {
 
 		repo := "repo"
 
-		image, err := test.GetRandomImage() //nolint:staticcheck
+		image, err := deprecated.GetRandomImage() //nolint:staticcheck
 		So(err, ShouldBeNil)
 
 		manifestContent, err := json.Marshal(image.Manifest)

@@ -15,7 +15,7 @@ import (
 	"zotregistry.io/zot/pkg/api/config"
 	"zotregistry.io/zot/pkg/api/constants"
 	debugConstants "zotregistry.io/zot/pkg/debug/constants"
-	"zotregistry.io/zot/pkg/test"
+	test "zotregistry.io/zot/pkg/test/common"
 )
 
 func TestProfilingAuthz(t *testing.T) {

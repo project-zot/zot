@@ -15,7 +15,7 @@ import (
 
 	"zotregistry.io/zot/pkg/api/config"
 	cli "zotregistry.io/zot/pkg/cli/server"
-	. "zotregistry.io/zot/pkg/test"
+	. "zotregistry.io/zot/pkg/test/common"
 )
 
 const readLogFileTimeout = 5 * time.Second

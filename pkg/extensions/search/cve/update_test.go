@@ -19,7 +19,7 @@ import (
 	mTypes "zotregistry.io/zot/pkg/meta/types"
 	"zotregistry.io/zot/pkg/scheduler"
 	"zotregistry.io/zot/pkg/storage"
-	. "zotregistry.io/zot/pkg/test"
+	test "zotregistry.io/zot/pkg/test/common"
 	"zotregistry.io/zot/pkg/test/mocks"
 )
 
@@ -68,7 +68,7 @@ func TestCVEDBGenerator(t *testing.T) {
 		defer cancel()
 
 		// Wait for trivy db to download
-		found, err := ReadLogFileAndCountStringOccurence(logPath,
+		found, err := test.ReadLogFileAndCountStringOccurence(logPath,
 			"DB update completed, next update scheduled", 140*time.Second, 2)
 		So(err, ShouldBeNil)
 		So(found, ShouldBeTrue)

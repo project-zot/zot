@@ -61,11 +61,14 @@ import (
 	"zotregistry.io/zot/pkg/storage"
 	storageConstants "zotregistry.io/zot/pkg/storage/constants"
 	"zotregistry.io/zot/pkg/storage/gc"
-	"zotregistry.io/zot/pkg/test"
-	testc "zotregistry.io/zot/pkg/test/common"
+	authutils "zotregistry.io/zot/pkg/test/auth"
+	test "zotregistry.io/zot/pkg/test/common"
+	"zotregistry.io/zot/pkg/test/deprecated"
 	. "zotregistry.io/zot/pkg/test/image-utils"
 	"zotregistry.io/zot/pkg/test/inject"
 	"zotregistry.io/zot/pkg/test/mocks"
+	ociutils "zotregistry.io/zot/pkg/test/oci-utils"
+	"zotregistry.io/zot/pkg/test/signature"
 )
 
 const (
@@ -446,7 +449,7 @@ func TestObjectStorageController(t *testing.T) {
 			"versiontablename":      "Version",
 		}
 
-		mockOIDCServer, err := test.MockOIDCRun()
+		mockOIDCServer, err := authutils.MockOIDCRun()
 		if err != nil {
 			panic(err)
 		}
@@ -2159,7 +2162,7 @@ func TestLDAPFailures(t *testing.T) {
 
 func TestBearerAuth(t *testing.T) {
 	Convey("Make a new controller", t, func() {
-		authTestServer := test.MakeAuthTestServer(ServerKey, UnauthorizedNamespace)
+		authTestServer := authutils.MakeAuthTestServer(ServerKey, UnauthorizedNamespace)
 		defer authTestServer.Close()
 
 		port := test.GetFreePort()
@@ -2192,7 +2195,7 @@ func TestBearerAuth(t *testing.T) {
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
 
-		authorizationHeader := test.ParseBearerAuthHeader(resp.Header().Get("Www-Authenticate"))
+		authorizationHeader := authutils.ParseBearerAuthHeader(resp.Header().Get("Www-Authenticate"))
 		resp, err = resty.R().
 			SetQueryParam("service", authorizationHeader.Service).
 			SetQueryParam("scope", authorizationHeader.Scope).
@@ -2200,7 +2203,7 @@ func TestBearerAuth(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
-		var goodToken test.AccessTokenResponse
+		var goodToken authutils.AccessTokenResponse
 		err = json.Unmarshal(resp.Body(), &goodToken)
 		So(err, ShouldBeNil)
 
@@ -2222,7 +2225,7 @@ func TestBearerAuth(t *testing.T) {
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
 
-		authorizationHeader = test.ParseBearerAuthHeader(resp.Header().Get("Www-Authenticate"))
+		authorizationHeader = authutils.ParseBearerAuthHeader(resp.Header().Get("Www-Authenticate"))
 		resp, err = resty.R().
 			SetQueryParam("service", authorizationHeader.Service).
 			SetQueryParam("scope", authorizationHeader.Scope).
@@ -2251,7 +2254,7 @@ func TestBearerAuth(t *testing.T) {
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
 
-		authorizationHeader = test.ParseBearerAuthHeader(resp.Header().Get("Www-Authenticate"))
+		authorizationHeader = authutils.ParseBearerAuthHeader(resp.Header().Get("Www-Authenticate"))
 		resp, err = resty.R().
 			SetQueryParam("service", authorizationHeader.Service).
 			SetQueryParam("scope", authorizationHeader.Scope).
@@ -2280,7 +2283,7 @@ func TestBearerAuth(t *testing.T) {
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
 
-		authorizationHeader = test.ParseBearerAuthHeader(resp.Header().Get("Www-Authenticate"))
+		authorizationHeader = authutils.ParseBearerAuthHeader(resp.Header().Get("Www-Authenticate"))
 		resp, err = resty.R().
 			SetQueryParam("service", authorizationHeader.Service).
 			SetQueryParam("scope", authorizationHeader.Scope).
@@ -2304,7 +2307,7 @@ func TestBearerAuth(t *testing.T) {
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
 
-		authorizationHeader = test.ParseBearerAuthHeader(resp.Header().Get("Www-Authenticate"))
+		authorizationHeader = authutils.ParseBearerAuthHeader(resp.Header().Get("Www-Authenticate"))
 		resp, err = resty.R().
 			SetQueryParam("service", authorizationHeader.Service).
 			SetQueryParam("scope", authorizationHeader.Scope).
@@ -2312,7 +2315,7 @@ func TestBearerAuth(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
-		var badToken test.AccessTokenResponse
+		var badToken authutils.AccessTokenResponse
 		err = json.Unmarshal(resp.Body(), &badToken)
 		So(err, ShouldBeNil)
 
@@ -2348,7 +2351,7 @@ func TestBearerAuthWrongAuthorizer(t *testing.T) {
 
 func TestBearerAuthWithAllowReadAccess(t *testing.T) {
 	Convey("Make a new controller", t, func() {
-		authTestServer := test.MakeAuthTestServer(ServerKey, UnauthorizedNamespace)
+		authTestServer := authutils.MakeAuthTestServer(ServerKey, UnauthorizedNamespace)
 		defer authTestServer.Close()
 
 		port := test.GetFreePort()
@@ -2389,7 +2392,7 @@ func TestBearerAuthWithAllowReadAccess(t *testing.T) {
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
 
-		authorizationHeader := test.ParseBearerAuthHeader(resp.Header().Get("Www-Authenticate"))
+		authorizationHeader := authutils.ParseBearerAuthHeader(resp.Header().Get("Www-Authenticate"))
 		resp, err = resty.R().
 			SetQueryParam("service", authorizationHeader.Service).
 			SetQueryParam("scope", authorizationHeader.Scope).
@@ -2397,7 +2400,7 @@ func TestBearerAuthWithAllowReadAccess(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
-		var goodToken test.AccessTokenResponse
+		var goodToken authutils.AccessTokenResponse
 		err = json.Unmarshal(resp.Body(), &goodToken)
 		So(err, ShouldBeNil)
 
@@ -2413,7 +2416,7 @@ func TestBearerAuthWithAllowReadAccess(t *testing.T) {
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
 
-		authorizationHeader = test.ParseBearerAuthHeader(resp.Header().Get("Www-Authenticate"))
+		authorizationHeader = authutils.ParseBearerAuthHeader(resp.Header().Get("Www-Authenticate"))
 		resp, err = resty.R().
 			SetQueryParam("service", authorizationHeader.Service).
 			SetQueryParam("scope", authorizationHeader.Scope).
@@ -2442,7 +2445,7 @@ func TestBearerAuthWithAllowReadAccess(t *testing.T) {
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
 
-		authorizationHeader = test.ParseBearerAuthHeader(resp.Header().Get("Www-Authenticate"))
+		authorizationHeader = authutils.ParseBearerAuthHeader(resp.Header().Get("Www-Authenticate"))
 		resp, err = resty.R().
 			SetQueryParam("service", authorizationHeader.Service).
 			SetQueryParam("scope", authorizationHeader.Scope).
@@ -2471,7 +2474,7 @@ func TestBearerAuthWithAllowReadAccess(t *testing.T) {
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
 
-		authorizationHeader = test.ParseBearerAuthHeader(resp.Header().Get("Www-Authenticate"))
+		authorizationHeader = authutils.ParseBearerAuthHeader(resp.Header().Get("Www-Authenticate"))
 		resp, err = resty.R().
 			SetQueryParam("service", authorizationHeader.Service).
 			SetQueryParam("scope", authorizationHeader.Scope).
@@ -2495,7 +2498,7 @@ func TestBearerAuthWithAllowReadAccess(t *testing.T) {
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
 
-		authorizationHeader = test.ParseBearerAuthHeader(resp.Header().Get("Www-Authenticate"))
+		authorizationHeader = authutils.ParseBearerAuthHeader(resp.Header().Get("Www-Authenticate"))
 		resp, err = resty.R().
 			SetQueryParam("service", authorizationHeader.Service).
 			SetQueryParam("scope", authorizationHeader.Scope).
@@ -2503,7 +2506,7 @@ func TestBearerAuthWithAllowReadAccess(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
-		var badToken test.AccessTokenResponse
+		var badToken authutils.AccessTokenResponse
 		err = json.Unmarshal(resp.Body(), &badToken)
 		So(err, ShouldBeNil)
 
@@ -2520,7 +2523,7 @@ func TestNewRelyingPartyOIDC(t *testing.T) {
 	Convey("Test NewRelyingPartyOIDC", t, func() {
 		conf := config.New()
 
-		mockOIDCServer, err := test.MockOIDCRun()
+		mockOIDCServer, err := authutils.MockOIDCRun()
 		if err != nil {
 			panic(err)
 		}
@@ -2631,7 +2634,7 @@ func TestOpenIDMiddleware(t *testing.T) {
 	ldapServer.Start(ldapPort)
 	defer ldapServer.Stop()
 
-	mockOIDCServer, err := test.MockOIDCRun()
+	mockOIDCServer, err := authutils.MockOIDCRun()
 	if err != nil {
 		panic(err)
 	}
@@ -2942,7 +2945,7 @@ func TestIsOpenIDEnabled(t *testing.T) {
 		conf := config.New()
 		conf.HTTP.Port = port
 
-		mockOIDCServer, err := test.MockOIDCRun()
+		mockOIDCServer, err := authutils.MockOIDCRun()
 		if err != nil {
 			panic(err)
 		}
@@ -3053,7 +3056,7 @@ func TestAuthnSessionErrors(t *testing.T) {
 		ldapServer.Start(ldapPort)
 		defer ldapServer.Stop()
 
-		mockOIDCServer, err := test.MockOIDCRun()
+		mockOIDCServer, err := authutils.MockOIDCRun()
 		if err != nil {
 			panic(err)
 		}
@@ -3444,7 +3447,7 @@ func TestAuthnMetaDBErrors(t *testing.T) {
 		htpasswdPath := test.MakeHtpasswdFile()
 		defer os.Remove(htpasswdPath)
 
-		mockOIDCServer, err := test.MockOIDCRun()
+		mockOIDCServer, err := authutils.MockOIDCRun()
 		if err != nil {
 			panic(err)
 		}
@@ -3577,7 +3580,7 @@ func TestAuthorization(t *testing.T) {
 		}
 
 		Convey("with openid", func() {
-			mockOIDCServer, err := test.MockOIDCRun()
+			mockOIDCServer, err := authutils.MockOIDCRun()
 			if err != nil {
 				panic(err)
 			}
@@ -3607,8 +3610,8 @@ func TestAuthorization(t *testing.T) {
 			ctlr := api.NewController(conf)
 			ctlr.Config.Storage.RootDirectory = t.TempDir()
 
-			err = test.WriteImageToFileSystem(CreateDefaultImage(), "zot-test", "0.0.1",
-				test.GetDefaultStoreController(ctlr.Config.Storage.RootDirectory, ctlr.Log))
+			err = WriteImageToFileSystem(CreateDefaultImage(), "zot-test", "0.0.1",
+				ociutils.GetDefaultStoreController(ctlr.Config.Storage.RootDirectory, ctlr.Log))
 			So(err, ShouldBeNil)
 
 			cm := test.NewControllerManager(ctlr)
@@ -3643,8 +3646,8 @@ func TestAuthorization(t *testing.T) {
 			ctlr := api.NewController(conf)
 			ctlr.Config.Storage.RootDirectory = t.TempDir()
 
-			err := test.WriteImageToFileSystem(CreateDefaultImage(), "zot-test", "0.0.1",
-				test.GetDefaultStoreController(ctlr.Config.Storage.RootDirectory, ctlr.Log))
+			err := WriteImageToFileSystem(CreateDefaultImage(), "zot-test", "0.0.1",
+				ociutils.GetDefaultStoreController(ctlr.Config.Storage.RootDirectory, ctlr.Log))
 			So(err, ShouldBeNil)
 
 			cm := test.NewControllerManager(ctlr)
@@ -3783,13 +3786,13 @@ func TestAuthorizationWithOnlyAnonymousPolicy(t *testing.T) {
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
 
-		cblob, cdigest := test.GetRandomImageConfig()
+		cblob, cdigest := GetRandomImageConfig()
 
 		resp, err = resty.R().Post(baseURL + "/v2/" + TestRepo + "/blobs/uploads/")
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
-		loc = testc.Location(baseURL, resp)
+		loc = test.Location(baseURL, resp)
 
 		// uploading blob should get 201
 		resp, err = resty.R().SetHeader("Content-Length", fmt.Sprintf("%d", len(cblob))).
@@ -3834,7 +3837,7 @@ func TestAuthorizationWithOnlyAnonymousPolicy(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
-		loc = testc.Location(baseURL, resp)
+		loc = test.Location(baseURL, resp)
 		// uploading blob should get 201
 		resp, err = resty.R().
 			SetHeader("Content-Length", fmt.Sprintf("%d", len(updateBlob))).
@@ -3920,7 +3923,7 @@ func TestAuthorizationWithOnlyAnonymousPolicy(t *testing.T) {
 		err = os.Mkdir(path.Join(dir, "zot-test"), storageConstants.DefaultDirPerms)
 		So(err, ShouldBeNil)
 
-		err = test.WriteImageToFileSystem(CreateDefaultImage(), "zot-test", "tag", ctlr.StoreController)
+		err = WriteImageToFileSystem(CreateDefaultImage(), "zot-test", "tag", ctlr.StoreController)
 		So(err, ShouldBeNil)
 
 		// should not have read rights on zot-test
@@ -4198,7 +4201,7 @@ func TestAuthorizationWithMultiplePolicies(t *testing.T) {
 		Convey("with openid", func() {
 			dir := t.TempDir()
 
-			mockOIDCServer, err := test.MockOIDCRun()
+			mockOIDCServer, err := authutils.MockOIDCRun()
 			if err != nil {
 				panic(err)
 			}
@@ -4228,8 +4231,8 @@ func TestAuthorizationWithMultiplePolicies(t *testing.T) {
 			ctlr := api.NewController(conf)
 			ctlr.Config.Storage.RootDirectory = dir
 
-			err = test.WriteImageToFileSystem(CreateDefaultImage(), "zot-test", "0.0.1",
-				test.GetDefaultStoreController(ctlr.Config.Storage.RootDirectory, ctlr.Log))
+			err = WriteImageToFileSystem(CreateDefaultImage(), "zot-test", "0.0.1",
+				ociutils.GetDefaultStoreController(ctlr.Config.Storage.RootDirectory, ctlr.Log))
 			So(err, ShouldBeNil)
 
 			cm := test.NewControllerManager(ctlr)
@@ -4287,8 +4290,8 @@ func TestAuthorizationWithMultiplePolicies(t *testing.T) {
 			ctlr := api.NewController(conf)
 			ctlr.Config.Storage.RootDirectory = dir
 
-			err := test.WriteImageToFileSystem(CreateDefaultImage(), "zot-test", "0.0.1",
-				test.GetDefaultStoreController(ctlr.Config.Storage.RootDirectory, ctlr.Log))
+			err := WriteImageToFileSystem(CreateDefaultImage(), "zot-test", "0.0.1",
+				ociutils.GetDefaultStoreController(ctlr.Config.Storage.RootDirectory, ctlr.Log))
 			So(err, ShouldBeNil)
 
 			cm := test.NewControllerManager(ctlr)
@@ -4450,8 +4453,8 @@ func TestCrossRepoMount(t *testing.T) {
 		ctlr.Config.Storage.Dedupe = false
 
 		image := CreateDefaultImage()
-		err := test.WriteImageToFileSystem(image, "zot-cve-test", "test", storage.StoreController{
-			DefaultStore: test.GetDefaultImageStore(dir, ctlr.Log),
+		err := WriteImageToFileSystem(image, "zot-cve-test", "test", storage.StoreController{
+			DefaultStore: ociutils.GetDefaultImageStore(dir, ctlr.Log),
 		})
 		So(err, ShouldBeNil)
 
@@ -4495,7 +4498,7 @@ func TestCrossRepoMount(t *testing.T) {
 			Post(baseURL + "/v2/zot-y-test/blobs/uploads/")
 		So(err, ShouldBeNil)
 		So(postResponse.StatusCode(), ShouldEqual, http.StatusAccepted)
-		So(testc.Location(baseURL, postResponse), ShouldStartWith, fmt.Sprintf("%s%s/zot-y-test/%s/%s",
+		So(test.Location(baseURL, postResponse), ShouldStartWith, fmt.Sprintf("%s%s/zot-y-test/%s/%s",
 			baseURL, constants.RoutePrefix, constants.Blobs, constants.Uploads))
 
 		// Use correct request
@@ -4506,7 +4509,7 @@ func TestCrossRepoMount(t *testing.T) {
 			Post(baseURL + "/v2/zot-c-test/blobs/uploads/")
 		So(err, ShouldBeNil)
 		So(postResponse.StatusCode(), ShouldEqual, http.StatusAccepted)
-		So(testc.Location(baseURL, postResponse), ShouldStartWith, fmt.Sprintf("%s%s/zot-c-test/%s/%s",
+		So(test.Location(baseURL, postResponse), ShouldStartWith, fmt.Sprintf("%s%s/zot-c-test/%s/%s",
 			baseURL, constants.RoutePrefix, constants.Blobs, constants.Uploads))
 
 		// Send same request again
@@ -4579,7 +4582,7 @@ func TestCrossRepoMount(t *testing.T) {
 			Post(baseURL + "/v2/zot-mount-test/blobs/uploads/")
 		So(err, ShouldBeNil)
 		So(postResponse.StatusCode(), ShouldEqual, http.StatusCreated)
-		So(testc.Location(baseURL, postResponse), ShouldEqual, fmt.Sprintf("%s%s/zot-mount-test/%s/%s:%s",
+		So(test.Location(baseURL, postResponse), ShouldEqual, fmt.Sprintf("%s%s/zot-mount-test/%s/%s:%s",
 			baseURL, constants.RoutePrefix, constants.Blobs, godigest.SHA256, blob))
 
 		// Check os.SameFile here
@@ -4604,7 +4607,7 @@ func TestCrossRepoMount(t *testing.T) {
 			Post(baseURL + "/v2/zot-mount1-test/blobs/uploads/")
 		So(err, ShouldBeNil)
 		So(postResponse.StatusCode(), ShouldEqual, http.StatusCreated)
-		So(testc.Location(baseURL, postResponse), ShouldEqual, fmt.Sprintf("%s%s/zot-mount1-test/%s/%s:%s",
+		So(test.Location(baseURL, postResponse), ShouldEqual, fmt.Sprintf("%s%s/zot-mount1-test/%s/%s:%s",
 			baseURL, constants.RoutePrefix, constants.Blobs, godigest.SHA256, blob))
 
 		linkPath = path.Join(ctlr.Config.Storage.RootDirectory, "zot-mount1-test", "blobs/sha256", dgst.Encoded())
@@ -4662,8 +4665,8 @@ func TestCrossRepoMount(t *testing.T) {
 
 		image := CreateImageWith().RandomLayers(1, 10).DefaultConfig().Build()
 
-		err := test.WriteImageToFileSystem(image, "zot-cve-test", "0.0.1",
-			test.GetDefaultStoreController(dir, ctlr.Log))
+		err := WriteImageToFileSystem(image, "zot-cve-test", "0.0.1",
+			ociutils.GetDefaultStoreController(dir, ctlr.Log))
 		So(err, ShouldBeNil)
 
 		cm := test.NewControllerManager(ctlr)
@@ -4805,12 +4808,12 @@ func TestParallelRequests(t *testing.T) {
 	ctlr.Config.Storage.SubPaths = subPaths
 
 	testImagesDir := t.TempDir()
-	testImagesController := test.GetDefaultStoreController(testImagesDir, ctlr.Log)
+	testImagesController := ociutils.GetDefaultStoreController(testImagesDir, ctlr.Log)
 
-	err := test.WriteImageToFileSystem(CreateRandomImage(), "zot-test", "0.0.1", testImagesController)
+	err := WriteImageToFileSystem(CreateRandomImage(), "zot-test", "0.0.1", testImagesController)
 	assert.Equal(t, err, nil, "Error should be nil")
 
-	err = test.WriteImageToFileSystem(CreateRandomImage(), "zot-cve-test", "0.0.1", testImagesController)
+	err = WriteImageToFileSystem(CreateRandomImage(), "zot-cve-test", "0.0.1", testImagesController)
 	assert.Equal(t, err, nil, "Error should be nil")
 
 	cm := test.NewControllerManager(ctlr)
@@ -5171,26 +5174,26 @@ func TestImageSignatures(t *testing.T) {
 			tdir := t.TempDir()
 			_ = os.Chdir(tdir)
 
-			test.NotationPathLock.Lock()
-			defer test.NotationPathLock.Unlock()
+			signature.NotationPathLock.Lock()
+			defer signature.NotationPathLock.Unlock()
 
-			test.LoadNotationPath(tdir)
+			signature.LoadNotationPath(tdir)
 
-			err = test.GenerateNotationCerts(tdir, "good")
+			err = signature.GenerateNotationCerts(tdir, "good")
 			So(err, ShouldBeNil)
 
-			err = test.GenerateNotationCerts(tdir, "bad")
+			err = signature.GenerateNotationCerts(tdir, "bad")
 			So(err, ShouldBeNil)
 
 			image := fmt.Sprintf("localhost:%s/%s:%s", port, repoName, "1.0")
-			err = test.SignWithNotation("good", image, tdir)
+			err = signature.SignWithNotation("good", image, tdir)
 			So(err, ShouldBeNil)
 
-			err = test.VerifyWithNotation(image, tdir)
+			err = signature.VerifyWithNotation(image, tdir)
 			So(err, ShouldBeNil)
 
 			// check list
-			sigs, err := test.ListNotarySignatures(image, tdir)
+			sigs, err := signature.ListNotarySignatures(image, tdir)
 			So(len(sigs), ShouldEqual, 1)
 			So(err, ShouldBeNil)
 
@@ -5224,7 +5227,7 @@ func TestImageSignatures(t *testing.T) {
 				So(err, ShouldBeNil)
 				So(resp.StatusCode(), ShouldEqual, http.StatusInternalServerError)
 
-				err = test.VerifyWithNotation(image, tdir)
+				err = signature.VerifyWithNotation(image, tdir)
 				So(err, ShouldNotBeNil)
 			})
 
@@ -5246,7 +5249,7 @@ func TestImageSignatures(t *testing.T) {
 				So(err, ShouldBeNil)
 				So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
 
-				err = test.VerifyWithNotation(image, tdir)
+				err = signature.VerifyWithNotation(image, tdir)
 				So(err, ShouldNotBeNil)
 			})
 		})
@@ -5523,7 +5526,7 @@ func TestArtifactReferences(t *testing.T) {
 		digest := godigest.FromBytes(content)
 		So(digest, ShouldNotBeNil)
 
-		cfg, layers, manifest, err := test.GetImageComponents(2) //nolint:staticcheck
+		cfg, layers, manifest, err := deprecated.GetImageComponents(2) //nolint:staticcheck
 		So(err, ShouldBeNil)
 
 		err = UploadImage(
@@ -5557,7 +5560,7 @@ func TestArtifactReferences(t *testing.T) {
 			resp, err = resty.R().Post(baseURL + fmt.Sprintf("/v2/%s/blobs/uploads/", repoName))
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
-			loc := testc.Location(baseURL, resp)
+			loc := test.Location(baseURL, resp)
 			cblob, cdigest := getEmptyImageConfig()
 
 			resp, err = resty.R().
@@ -5654,7 +5657,7 @@ func TestArtifactReferences(t *testing.T) {
 				resp, err = resty.R().Post(baseURL + fmt.Sprintf("/v2/%s/blobs/uploads/", repoName))
 				So(err, ShouldBeNil)
 				So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
-				loc := testc.Location(baseURL, resp)
+				loc := test.Location(baseURL, resp)
 				cblob = []byte("{}")
 				cdigest = godigest.FromBytes(cblob)
 				So(cdigest, ShouldNotBeNil)
@@ -6558,7 +6561,7 @@ func TestStorageCommit(t *testing.T) {
 		Convey("Manifests", func() {
 			_, _ = Print("\nManifests")
 
-			cfg, layers, manifest, err := test.GetImageComponents(2) //nolint:staticcheck
+			cfg, layers, manifest, err := deprecated.GetImageComponents(2) //nolint:staticcheck
 			So(err, ShouldBeNil)
 
 			content := []byte("this is a blob5")
@@ -6613,7 +6616,7 @@ func TestStorageCommit(t *testing.T) {
 				}, baseURL, repoName, "test:1.0.1")
 			So(err, ShouldBeNil)
 
-			cfg, layers, manifest, err = test.GetImageComponents(1) //nolint:staticcheck
+			cfg, layers, manifest, err = deprecated.GetImageComponents(1) //nolint:staticcheck
 			So(err, ShouldBeNil)
 
 			err = UploadImage(
@@ -6711,7 +6714,7 @@ func TestManifestImageIndex(t *testing.T) {
 
 		rthdlr := api.NewRouteHandler(ctlr)
 
-		cfg, layers, manifest, err := test.GetImageComponents(2) //nolint:staticcheck
+		cfg, layers, manifest, err := deprecated.GetImageComponents(2) //nolint:staticcheck
 		So(err, ShouldBeNil)
 
 		content := []byte("this is a blob1")
@@ -7138,7 +7141,7 @@ func TestManifestCollision(t *testing.T) {
 		cm.StartAndWait(port)
 		defer cm.StopServer()
 
-		cfg, layers, manifest, err := test.GetImageComponents(2) //nolint:staticcheck
+		cfg, layers, manifest, err := deprecated.GetImageComponents(2) //nolint:staticcheck
 		So(err, ShouldBeNil)
 
 		err = UploadImage(
@@ -7217,7 +7220,7 @@ func TestPullRange(t *testing.T) {
 		resp, err := resty.R().Post(baseURL + "/v2/index/blobs/uploads/")
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
-		loc := testc.Location(baseURL, resp)
+		loc := test.Location(baseURL, resp)
 		So(loc, ShouldNotBeEmpty)
 
 		// since we are not specifying any prefix i.e provided in config while starting server,
@@ -7380,7 +7383,7 @@ func TestInjectInterruptedImageManifest(t *testing.T) {
 			resp, err := resty.R().Post(baseURL + "/v2/repotest/blobs/uploads/")
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
-			loc := testc.Location(baseURL, resp)
+			loc := test.Location(baseURL, resp)
 			So(loc, ShouldNotBeEmpty)
 
 			// since we are not specifying any prefix i.e provided in config while starting server,
@@ -7408,8 +7411,8 @@ func TestInjectInterruptedImageManifest(t *testing.T) {
 			resp, err = resty.R().Post(baseURL + "/v2/repotest/blobs/uploads/")
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
-			loc = testc.Location(baseURL, resp)
-			cblob, cdigest := test.GetRandomImageConfig()
+			loc = test.Location(baseURL, resp)
+			cblob, cdigest := GetRandomImageConfig()
 
 			resp, err = resty.R().
 				SetContentLength(true).
@@ -7489,7 +7492,7 @@ func TestInjectTooManyOpenFiles(t *testing.T) {
 		resp, err := resty.R().Post(baseURL + "/v2/repotest/blobs/uploads/")
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
-		loc := testc.Location(baseURL, resp)
+		loc := test.Location(baseURL, resp)
 		So(loc, ShouldNotBeEmpty)
 
 		// since we are not specifying any prefix i.e provided in config while starting server,
@@ -7541,8 +7544,8 @@ func TestInjectTooManyOpenFiles(t *testing.T) {
 		resp, err = resty.R().Post(baseURL + "/v2/repotest/blobs/uploads/")
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
-		loc = testc.Location(baseURL, resp)
-		cblob, cdigest := test.GetRandomImageConfig()
+		loc = test.Location(baseURL, resp)
+		cblob, cdigest := GetRandomImageConfig()
 
 		resp, err = resty.R().
 			SetContentLength(true).
@@ -7746,17 +7749,17 @@ func TestGCSignaturesAndUntaggedManifestsWithMetaDB(t *testing.T) {
 
 			So(err, ShouldBeNil)
 
-			test.NotationPathLock.Lock()
-			defer test.NotationPathLock.Unlock()
+			signature.NotationPathLock.Lock()
+			defer signature.NotationPathLock.Unlock()
 
-			test.LoadNotationPath(tdir)
+			signature.LoadNotationPath(tdir)
 
 			// generate a keypair
-			err = test.GenerateNotationCerts(tdir, "good")
+			err = signature.GenerateNotationCerts(tdir, "good")
 			So(err, ShouldBeNil)
 
 			// sign the image
-			err = test.SignWithNotation("good", image, tdir)
+			err = signature.SignWithNotation("good", image, tdir)
 			So(err, ShouldBeNil)
 
 			// get cosign signature manifest
@@ -7831,7 +7834,7 @@ func TestGCSignaturesAndUntaggedManifestsWithMetaDB(t *testing.T) {
 
 			Convey("Overwrite original image, signatures should be garbage-collected", func() {
 				// push an image without tag
-				cfg, layers, manifest, err := test.GetImageComponents(2) //nolint:staticcheck
+				cfg, layers, manifest, err := deprecated.GetImageComponents(2) //nolint:staticcheck
 				So(err, ShouldBeNil)
 
 				manifestBuf, err := json.Marshal(manifest)
@@ -7858,7 +7861,7 @@ func TestGCSignaturesAndUntaggedManifestsWithMetaDB(t *testing.T) {
 				So(ok, ShouldBeTrue)
 
 				// overwrite image so that signatures will get invalidated and gc'ed
-				cfg, layers, manifest, err = test.GetImageComponents(3) //nolint:staticcheck
+				cfg, layers, manifest, err = deprecated.GetImageComponents(3) //nolint:staticcheck
 				So(err, ShouldBeNil)
 
 				err = UploadImage(
@@ -7938,8 +7941,8 @@ func TestGCSignaturesAndUntaggedManifestsWithMetaDB(t *testing.T) {
 			ctlr.Config.Storage.GCDelay = 1 * time.Second
 			ctlr.Config.Storage.UntaggedImageRetentionDelay = 1 * time.Second
 
-			err := test.WriteImageToFileSystem(CreateDefaultImage(), repoName, tag,
-				test.GetDefaultStoreController(dir, ctlr.Log))
+			err := WriteImageToFileSystem(CreateDefaultImage(), repoName, tag,
+				ociutils.GetDefaultStoreController(dir, ctlr.Log))
 			So(err, ShouldBeNil)
 
 			cm := test.NewControllerManager(ctlr)
@@ -7967,7 +7970,7 @@ func TestGCSignaturesAndUntaggedManifestsWithMetaDB(t *testing.T) {
 
 			// upload multiple manifests
 			for i := 0; i < 4; i++ {
-				config, layers, manifest, err := test.GetImageComponents(1000 + i) //nolint:staticcheck
+				config, layers, manifest, err := deprecated.GetImageComponents(1000 + i) //nolint:staticcheck
 				So(err, ShouldBeNil)
 
 				manifestContent, err := json.Marshal(manifest)
@@ -8044,8 +8047,8 @@ func TestPeriodicGC(t *testing.T) {
 		ctlr.Config.Storage.GCInterval = 1 * time.Hour
 		ctlr.Config.Storage.GCDelay = 1 * time.Second
 
-		err = test.WriteImageToFileSystem(CreateDefaultImage(), repoName, "0.0.1",
-			test.GetDefaultStoreController(dir, ctlr.Log))
+		err = WriteImageToFileSystem(CreateDefaultImage(), repoName, "0.0.1",
+			ociutils.GetDefaultStoreController(dir, ctlr.Log))
 		So(err, ShouldBeNil)
 
 		cm := test.NewControllerManager(ctlr)
@@ -8123,8 +8126,8 @@ func TestPeriodicGC(t *testing.T) {
 		ctlr.Config.Storage.GCInterval = 1 * time.Hour
 		ctlr.Config.Storage.GCDelay = 1 * time.Second
 
-		err = test.WriteImageToFileSystem(CreateDefaultImage(), repoName, "0.0.1",
-			test.GetDefaultStoreController(dir, ctlr.Log))
+		err = WriteImageToFileSystem(CreateDefaultImage(), repoName, "0.0.1",
+			ociutils.GetDefaultStoreController(dir, ctlr.Log))
 		So(err, ShouldBeNil)
 
 		So(os.Chmod(dir, 0o000), ShouldBeNil)
@@ -8164,7 +8167,7 @@ func TestSearchRoutes(t *testing.T) {
 		repoName := "testrepo" //nolint:goconst
 		inaccessibleRepo := "inaccessible"
 
-		cfg, layers, manifest, err := test.GetImageComponents(10000) //nolint:staticcheck
+		cfg, layers, manifest, err := deprecated.GetImageComponents(10000) //nolint:staticcheck
 		So(err, ShouldBeNil)
 
 		err = UploadImage(
@@ -8177,7 +8180,7 @@ func TestSearchRoutes(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		// data for the inaccessible repo
-		cfg, layers, manifest, err = test.GetImageComponents(10000) //nolint:staticcheck
+		cfg, layers, manifest, err = deprecated.GetImageComponents(10000) //nolint:staticcheck
 		So(err, ShouldBeNil)
 
 		err = UploadImage(
@@ -8250,7 +8253,7 @@ func TestSearchRoutes(t *testing.T) {
 			cm.StartAndWait(port)
 			defer cm.StopServer()
 
-			cfg, layers, manifest, err := test.GetImageComponents(10000) //nolint:staticcheck
+			cfg, layers, manifest, err := deprecated.GetImageComponents(10000) //nolint:staticcheck
 			So(err, ShouldBeNil)
 
 			err = UploadImageWithBasicAuth(
@@ -8263,7 +8266,7 @@ func TestSearchRoutes(t *testing.T) {
 			So(err, ShouldBeNil)
 
 			// data for the inaccessible repo
-			cfg, layers, manifest, err = test.GetImageComponents(10000) //nolint:staticcheck
+			cfg, layers, manifest, err = deprecated.GetImageComponents(10000) //nolint:staticcheck
 			So(err, ShouldBeNil)
 
 			err = UploadImageWithBasicAuth(
@@ -9529,14 +9532,14 @@ func RunAuthorizationTests(t *testing.T, client *resty.Client, baseURL string, c
 		So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
 
 		// create update config and post it.
-		cblob, cdigest := test.GetRandomImageConfig()
+		cblob, cdigest := GetRandomImageConfig()
 
 		resp, err = client.R().
 			Post(baseURL + "/v2/zot-test/blobs/uploads/")
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
-		loc = testc.Location(baseURL, resp)
+		loc = test.Location(baseURL, resp)
 
 		// uploading blob should get 201
 		resp, err = client.R().
@@ -9556,7 +9559,7 @@ func RunAuthorizationTests(t *testing.T, client *resty.Client, baseURL string, c
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
-		loc = testc.Location(baseURL, resp)
+		loc = test.Location(baseURL, resp)
 
 		// uploading blob should get 201
 		resp, err = client.R().

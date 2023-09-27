@@ -19,7 +19,7 @@ import (
 	"zotregistry.io/zot/pkg/api/config"
 	"zotregistry.io/zot/pkg/api/constants"
 	extConf "zotregistry.io/zot/pkg/extensions/config"
-	"zotregistry.io/zot/pkg/test"
+	test "zotregistry.io/zot/pkg/test/common"
 )
 
 const (
@@ -167,7 +167,10 @@ func TestTLSWithoutAuth(t *testing.T) {
 
 			home := os.Getenv("HOME")
 			destCertsDir := filepath.Join(home, certsDir1)
-			test.CopyTestFiles(sourceCertsDir, destCertsDir)
+
+			err := test.CopyFiles(sourceCertsDir, destCertsDir)
+			So(err, ShouldBeNil)
+
 			defer os.RemoveAll(destCertsDir)
 
 			args := []string{"list", "--config", "imagetest"}
@@ -176,7 +179,7 @@ func TestTLSWithoutAuth(t *testing.T) {
 			imageCmd.SetOut(imageBuff)
 			imageCmd.SetErr(imageBuff)
 			imageCmd.SetArgs(args)
-			err := imageCmd.Execute()
+			err = imageCmd.Execute()
 			So(err, ShouldBeNil)
 		})
 	})

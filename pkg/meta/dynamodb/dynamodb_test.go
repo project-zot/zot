@@ -22,7 +22,7 @@ import (
 	mdynamodb "zotregistry.io/zot/pkg/meta/dynamodb"
 	mTypes "zotregistry.io/zot/pkg/meta/types"
 	reqCtx "zotregistry.io/zot/pkg/requestcontext"
-	"zotregistry.io/zot/pkg/test"
+	. "zotregistry.io/zot/pkg/test/image-utils"
 )
 
 const badTablename = "bad tablename"
@@ -1050,7 +1050,7 @@ func TestWrapperErrors(t *testing.T) {
 			err := dynamoWrapper.SetRepoReference("repo", "tag1", indexDigest, ispec.MediaTypeImageIndex) //nolint:contextcheck
 			So(err, ShouldBeNil)
 
-			indexBlob, err := test.GetIndexBlobWithManifests([]digest.Digest{
+			indexBlob, err := GetIndexBlobWithManifests([]digest.Digest{
 				manifestDigestFromIndex1, manifestDigestFromIndex2,
 			})
 			So(err, ShouldBeNil)

@@ -31,7 +31,10 @@ import (
 	mdynamodb "zotregistry.io/zot/pkg/meta/dynamodb"
 	mTypes "zotregistry.io/zot/pkg/meta/types"
 	reqCtx "zotregistry.io/zot/pkg/requestcontext"
-	"zotregistry.io/zot/pkg/test"
+	test "zotregistry.io/zot/pkg/test/common"
+	"zotregistry.io/zot/pkg/test/deprecated"
+	. "zotregistry.io/zot/pkg/test/image-utils"
+	signature "zotregistry.io/zot/pkg/test/signature"
 )
 
 const (
@@ -1376,7 +1379,7 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 					ShouldBeZeroValue)
 			})
 			Convey("trusted signature", func() {
-				_, _, manifest, _ := test.GetRandomImageComponents(10) //nolint:staticcheck
+				_, _, manifest, _ := deprecated.GetRandomImageComponents(10) //nolint:staticcheck
 				manifestContent, _ := json.Marshal(manifest)
 				manifestDigest := godigest.FromBytes(manifestContent)
 				repo := "repo"
@@ -1405,19 +1408,19 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 
 				keyName := fmt.Sprintf("notation-sign-test-%s", uuid)
 
-				test.NotationPathLock.Lock()
-				defer test.NotationPathLock.Unlock()
+				signature.NotationPathLock.Lock()
+				defer signature.NotationPathLock.Unlock()
 
-				test.LoadNotationPath(tdir)
+				signature.LoadNotationPath(tdir)
 
-				err = test.GenerateNotationCerts(tdir, keyName)
+				err = signature.GenerateNotationCerts(tdir, keyName)
 				So(err, ShouldBeNil)
 
 				// getSigner
 				var newSigner notation.Signer
 
 				// ResolveKey
-				signingKeys, err := test.LoadNotationSigningkeys(tdir)
+				signingKeys, err := signature.LoadNotationSigningkeys(tdir)
 				So(err, ShouldBeNil)
 
 				idx := test.Index(signingKeys.Keys, keyName)
@@ -1987,7 +1990,7 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 				})
 				So(err, ShouldBeNil)
 
-				indexBlob, err := test.GetIndexBlobWithManifests(
+				indexBlob, err := GetIndexBlobWithManifests(
 					[]godigest.Digest{
 						manifestDigest1,
 						manifestDigest2,
@@ -2119,7 +2122,7 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 			err = metaDB.SetRepoReference(repo1, "2.0.0", indexDigest, ispec.MediaTypeImageIndex)
 			So(err, ShouldBeNil)
 
-			indexBlob, err := test.GetIndexBlobWithManifests([]godigest.Digest{
+			indexBlob, err := GetIndexBlobWithManifests([]godigest.Digest{
 				manifestFromIndexDigest1,
 				manifestFromIndexDigest2,
 			})
@@ -2248,7 +2251,7 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 		})
 
 		Convey("Test index logic", func() {
-			multiArch, err := test.GetRandomMultiarchImage("tag1") //nolint:staticcheck
+			multiArch, err := deprecated.GetRandomMultiarchImage("tag1") //nolint:staticcheck
 			So(err, ShouldBeNil)
 
 			indexDigest := multiArch.Digest()
@@ -2267,7 +2270,7 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 		})
 
 		Convey("Test Referrers", func() {
-			image, err := test.GetRandomImage() //nolint:staticcheck
+			image, err := deprecated.GetRandomImage() //nolint:staticcheck
 			So(err, ShouldBeNil)
 
 			referredDigest := image.Digest()
@@ -2291,7 +2294,7 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 
 			// ------- Add Artifact 1
 
-			artifact1, err := test.GetImageWithSubject( //nolint:staticcheck
+			artifact1, err := deprecated.GetImageWithSubject( //nolint:staticcheck
 				referredDigest,
 				ispec.MediaTypeImageManifest,
 			)
@@ -2307,7 +2310,7 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 
 			// ------- Add Artifact 2
 
-			artifact2, err := test.GetImageWithSubject( //nolint:staticcheck
+			artifact2, err := deprecated.GetImageWithSubject( //nolint:staticcheck
 				referredDigest,
 				ispec.MediaTypeImageManifest,
 			)
@@ -2430,7 +2433,7 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 		})
 
 		Convey("FilterRepos", func() {
-			img, err := test.GetRandomImage() //nolint:staticcheck
+			img, err := deprecated.GetRandomImage() //nolint:staticcheck
 			So(err, ShouldBeNil)
 			imgDigest := img.Digest()
 
@@ -2440,7 +2443,7 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 			err = metaDB.SetManifestData(imgDigest, manifestData)
 			So(err, ShouldBeNil)
 
-			multiarch, err := test.GetRandomMultiarchImage("multi") //nolint:staticcheck
+			multiarch, err := deprecated.GetRandomMultiarchImage("multi") //nolint:staticcheck
 			So(err, ShouldBeNil)
 			multiarchDigest := multiarch.Digest()
 

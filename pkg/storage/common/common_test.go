@@ -20,7 +20,6 @@ import (
 	"zotregistry.io/zot/pkg/storage/cache"
 	common "zotregistry.io/zot/pkg/storage/common"
 	"zotregistry.io/zot/pkg/storage/local"
-	"zotregistry.io/zot/pkg/test"
 	. "zotregistry.io/zot/pkg/test/image-utils"
 	"zotregistry.io/zot/pkg/test/mocks"
 )
@@ -46,7 +45,7 @@ func TestValidateManifest(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(blen, ShouldEqual, len(content))
 
-		cblob, cdigest := test.GetRandomImageConfig()
+		cblob, cdigest := GetRandomImageConfig()
 		_, clen, err := imgStore.FullBlobUpload("test", bytes.NewReader(cblob), cdigest)
 		So(err, ShouldBeNil)
 		So(clen, ShouldEqual, len(cblob))
@@ -180,7 +179,7 @@ func TestGetReferrersErrors(t *testing.T) {
 		})
 
 		storageCtlr := storage.StoreController{DefaultStore: imgStore}
-		err := test.WriteImageToFileSystem(CreateDefaultImage(), "zot-test", "0.0.1", storageCtlr)
+		err := WriteImageToFileSystem(CreateDefaultImage(), "zot-test", "0.0.1", storageCtlr)
 		So(err, ShouldBeNil)
 
 		digest := godigest.FromBytes([]byte("{}"))
