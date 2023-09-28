@@ -12,6 +12,7 @@ import (
 	dbTypes "github.com/aquasecurity/trivy-db/pkg/types"
 	"github.com/aquasecurity/trivy/pkg/commands/artifact"
 	"github.com/aquasecurity/trivy/pkg/commands/operation"
+	"github.com/aquasecurity/trivy/pkg/fanal/analyzer"
 	fanalTypes "github.com/aquasecurity/trivy/pkg/fanal/types"
 	"github.com/aquasecurity/trivy/pkg/flag"
 	"github.com/aquasecurity/trivy/pkg/javadb"
@@ -36,10 +37,18 @@ const cacheSize = 1000000
 // getNewScanOptions sets trivy configuration values for our scans and returns them as
 // a trivy Options structure.
 func getNewScanOptions(dir, dbRepository, javaDBRepository string) *flag.Options {
+	disabledAnalizers := []analyzer.Type{}
+	if javaDBRepository == "" {
+		disabledAnalizers = append(disabledAnalizers, analyzer.TypeJar)
+		disabledAnalizers = append(disabledAnalizers, analyzer.TypePom)
+		disabledAnalizers = append(disabledAnalizers, analyzer.TypeGradleLock)
+	}
+
 	scanOptions := flag.Options{
 		GlobalOptions: flag.GlobalOptions{
 			CacheDir: dir,
 		},
+		DisabledAnalyzers: disabledAnalizers,
 		ScanOptions: flag.ScanOptions{
 			Scanners:    types.Scanners{types.VulnerabilityScanner},
 			OfflineScan: true,
