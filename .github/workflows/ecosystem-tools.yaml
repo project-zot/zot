@@ -57,11 +57,17 @@ jobs:
       - name: Run CI tests
         run: |
           make run-blackbox-ci
+      - name: Log in to GitHub Docker Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
       - name: Install localstack
         run: |
           pip install --upgrade pyopenssl
-          pip install localstack awscli-local[ver1] # install LocalStack cli and awslocal
-          docker pull localstack/localstack:2.2     # Make sure to pull the latest version of the image
+          pip install localstack==2.2.0 awscli-local[ver1] # install LocalStack cli and awslocal
+          docker pull ghcr.io/project-zot/ci-images/localstack:2.2  # Make sure to pull a working version of the image
           localstack start -d                       # Start LocalStack in the background
 
           echo "Waiting for LocalStack startup..."  # Wait 30 seconds for the LocalStack container
