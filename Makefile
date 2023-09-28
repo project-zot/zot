@@ -23,7 +23,7 @@ REGCLIENT_VERSION := v0.4.5
 CRICTL := $(TOOLSDIR)/bin/crictl
 CRICTL_VERSION := v1.26.1
 ACTION_VALIDATOR := $(TOOLSDIR)/bin/action-validator
-ACTION_VALIDATOR_VERSION := v0.2.1
+ACTION_VALIDATOR_VERSION := v0.5.3
 ZUI_VERSION := commit-b787273
 SWAGGER_VERSION := v1.8.12
 STACKER := $(TOOLSDIR)/bin/stacker
@@ -125,24 +125,37 @@ exporter-minimal: EXTENSIONS=
 exporter-minimal: modcheck build-metadata
 	env CGO_ENABLED=0 GOOS=$(OS) GOARCH=$(ARCH) go build -o bin/zxp-$(OS)-$(ARCH) $(BUILDMODE_FLAGS) -tags containers_image_openpgp -v -trimpath ./cmd/zxp
 
+.PHONY: test-prereq
+test-prereq: check-skopeo $(TESTDATA) $(ORAS)
+
+.PHONY: test-extended
+test-extended: $(if $(findstring ui,$(BUILD_LABELS)), ui)
+test-extended: test-prereq
+	go test -failfast -tags $(BUILD_LABELS),containers_image_openpgp -trimpath -race -timeout 15m -cover -coverpkg ./... -coverprofile=coverage-extended.txt -covermode=atomic ./...
+	rm -rf /tmp/getter*; rm -rf /tmp/trivy*
+
+.PHONY: test-minimal
+test-minimal: test-prereq
+	go test -failfast -tags containers_image_openpgp -trimpath -race -cover -coverpkg ./... -coverprofile=coverage-minimal.txt -covermode=atomic ./...
+	rm -rf /tmp/getter*; rm -rf /tmp/trivy*
+
+.PHONY: test-devmode
+test-devmode: $(if $(findstring ui,$(BUILD_LABELS)), ui)
+test-devmode: test-prereq
+	go test -failfast -tags dev,$(BUILD_LABELS),containers_image_openpgp -trimpath -race -timeout 15m -cover -coverpkg ./... -coverprofile=coverage-dev-extended.txt -covermode=atomic ./pkg/test/... ./pkg/api/... ./pkg/storage/... ./pkg/extensions/sync/... -run ^TestInject
+	rm -rf /tmp/getter*; rm -rf /tmp/trivy*
+	go test -failfast -tags dev,containers_image_openpgp -trimpath -race -cover -coverpkg ./... -coverprofile=coverage-dev-minimal.txt -covermode=atomic ./pkg/test/... ./pkg/storage/... ./pkg/extensions/sync/... -run ^TestInject
+	rm -rf /tmp/getter*; rm -rf /tmp/trivy*
+	go test -failfast -tags stress,$(BUILD_LABELS),containers_image_openpgp -trimpath -race -timeout 15m ./pkg/cli/server/stress_test.go
+
 .PHONY: test
 test: $(if $(findstring ui,$(BUILD_LABELS)), ui)
-test: check-skopeo $(TESTDATA) $(ORAS)
-	go test -failfast -tags $(BUILD_LABELS),containers_image_openpgp -v -trimpath -race -timeout 15m -cover -coverpkg ./... -coverprofile=coverage-extended.txt -covermode=atomic ./...
-	rm -rf /tmp/getter*; rm -rf /tmp/trivy*
-	go test -failfast -tags containers_image_openpgp -v -trimpath -race -cover -coverpkg ./... -coverprofile=coverage-minimal.txt -covermode=atomic ./...
-	rm -rf /tmp/getter*; rm -rf /tmp/trivy*
-	# development-mode unit tests possibly using failure injection
-	go test -failfast -tags dev,$(BUILD_LABELS),containers_image_openpgp -v -trimpath -race -timeout 15m -cover -coverpkg ./... -coverprofile=coverage-dev-extended.txt -covermode=atomic ./pkg/test/... ./pkg/api/... ./pkg/storage/... ./pkg/extensions/sync/... -run ^TestInject
-	rm -rf /tmp/getter*; rm -rf /tmp/trivy*
-	go test -failfast -tags dev,containers_image_openpgp -v -trimpath -race -cover -coverpkg ./... -coverprofile=coverage-dev-minimal.txt -covermode=atomic ./pkg/test/... ./pkg/storage/... ./pkg/extensions/sync/... -run ^TestInject
-	rm -rf /tmp/getter*; rm -rf /tmp/trivy*
-	go test -failfast -tags stress,$(BUILD_LABELS),containers_image_openpgp -v -trimpath -race -timeout 15m ./pkg/cli/server/stress_test.go
+test: test-extended test-minimal test-devmode
 
 .PHONY: privileged-test
 privileged-test: $(if $(findstring ui,$(BUILD_LABELS)), ui)
 privileged-test: check-skopeo $(TESTDATA)
-	go test -failfast -tags needprivileges,$(BUILD_LABELS),containers_image_openpgp -v -trimpath -race -timeout 15m -cover -coverpkg ./... -coverprofile=coverage-dev-needprivileges.txt -covermode=atomic ./pkg/storage/local/... ./pkg/cli/client/... -run ^TestElevatedPrivileges
+	go test -failfast -tags needprivileges,$(BUILD_LABELS),containers_image_openpgp -trimpath -race -timeout 15m -cover -coverpkg ./... -coverprofile=coverage-dev-needprivileges.txt -covermode=atomic ./pkg/storage/local/... ./pkg/cli/client/... -run ^TestElevatedPrivileges
 
 $(TESTDATA): check-skopeo
 	mkdir -p ${TESTDATA}; \
@@ -158,10 +171,13 @@ $(TESTDATA): check-skopeo
 
 .PHONY: run-bench
 run-bench: binary bench
-	bin/zot-$(OS)-$(ARCH) serve examples/config-bench.json &
+	bin/zot-$(OS)-$(ARCH) serve examples/config-bench.json & echo $$! > zot.PID
 	sleep 5
 	bin/zb-$(OS)-$(ARCH) -c 10 -n 100 -o $(BENCH_OUTPUT) http://localhost:8080
-	killall -r zot-*
+	@if [ -e zot.PID ]; then \
+		kill -TERM $$(cat zot.PID) || true; \
+	fi; \
+	rm zot.PID
 
 .PHONY: check-skopeo
 check-skopeo:
@@ -205,12 +221,12 @@ $(CRICTL):
 
 $(ACTION_VALIDATOR):
 	mkdir -p $(TOOLSDIR)/bin
-	curl -Lo action-validator https://github.com/mpalmer/action-validator/releases/download/$(ACTION_VALIDATOR_VERSION)/action-validator_linux_amd64
+	curl -Lo action-validator https://github.com/mpalmer/action-validator/releases/download/$(ACTION_VALIDATOR_VERSION)/action-validator_$(OS)_$(ARCH)
 	mv action-validator $(TOOLSDIR)/bin/action-validator
 	chmod +x $(TOOLSDIR)/bin/action-validator
 
 .PHONY: check-gh-actions
-check-gh-actions: $(ACTION_VALIDATOR)
+check-gh-actions: check-compatibility $(ACTION_VALIDATOR)
 	for i in $$(ls  .github/workflows/*); do $(ACTION_VALIDATOR) $$i; done
 
 .PHONY: covhtml
@@ -229,11 +245,10 @@ check: $(if $(findstring ui,$(BUILD_LABELS)), ui)
 check: ./golangcilint.yaml $(GOLINTER)
 	mkdir -p pkg/extensions/build; touch pkg/extensions/build/.empty
 	$(GOLINTER) --config ./golangcilint.yaml run --enable-all --out-format=colored-line-number --build-tags containers_image_openpgp ./...
-	$(GOLINTER) --config ./golangcilint.yaml run --enable-all --out-format=colored-line-number --build-tags $(BUILD_LABELS),containers_image_openpgp ./...
-	$(GOLINTER) --config ./golangcilint.yaml run --enable-all --out-format=colored-line-number --build-tags $(BUILD_LABELS),containers_image_openpgp,debug ./...
-	$(GOLINTER) --config ./golangcilint.yaml run --enable-all --out-format=colored-line-number --build-tags dev,containers_image_openpgp ./...
-	$(GOLINTER) --config ./golangcilint.yaml run --enable-all --out-format=colored-line-number --build-tags dev,$(BUILD_LABELS),containers_image_openpgp ./...
-	$(GOLINTER) --config ./golangcilint.yaml run --enable-all --out-format=colored-line-number --build-tags stress,$(BUILD_LABELS),containers_image_openpgp ./...
+	$(GOLINTER) --config ./golangcilint.yaml run --enable-all --out-format=colored-line-number --build-tags $(BUILD_LABELS),containers_image_openpgp  ./...
+	$(GOLINTER) --config ./golangcilint.yaml run --enable-all --out-format=colored-line-number --build-tags debug  ./pkg/debug/swagger/ ./pkg/debug/gqlplayground
+	$(GOLINTER) --config ./golangcilint.yaml run --enable-all --out-format=colored-line-number --build-tags dev ./pkg/test/inject/
+	$(GOLINTER) --config ./golangcilint.yaml run --enable-all --out-format=colored-line-number --build-tags stress ./pkg/cli/server/
 	rm pkg/extensions/build/.empty
 
 .PHONY: swagger
@@ -249,12 +264,13 @@ update-licenses:
 
 .PHONY: check-licenses
 check-licenses:
+# note: "printf" works for darwin instead of "echo -n"
 	go install github.com/google/go-licenses@latest
-	@for tag in "$(BUILD_LABELS),containers_image_openpgp" "$(BUILD_LABELS),containers_image_openpgp"; do \
+	@for tag in "$(BUILD_LABELS),containers_image_openpgp" "containers_image_openpgp"; do \
 		echo Evaluating tag: $$tag;\
 		for mod in $$(go list -m -f '{{if not (or .Indirect .Main)}}{{.Path}}{{end}}' all); do \
 			while [ x$$mod != x ]; do \
-				echo -n "Checking $$mod ... "; \
+				printf "Checking $$mod ... "; \
 				result=$$(GOFLAGS="-tags=$${tag}" go-licenses check $$mod 2>&1); \
 				if [ $$? -eq 0 ]; then \
 					echo OK; \
@@ -471,4 +487,16 @@ ui:
 check-linux:
 ifneq ($(shell go env GOOS),linux)
 	$(error makefile target can be run only on linux)
+endif
+
+.PHONY: check-compatibility
+check-compatibility:
+ifeq ($(OS),freebsd)
+	$(error makefile target can't be run on freebsd)
+endif
+ifneq ($(OS),$(shell go env GOOS))
+	$(error target can't be run on $(shell go env GOOS) as binary is compiled for $(OS))
+endif
+ifneq ($(ARCH),$(shell go env GOARCH))
+	$(error target can't be run on $(shell go env GOARCH) (binary is for $(ARCH)))
 endif

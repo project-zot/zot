@@ -1,0 +1,8 @@
+name: 'Stop localstack'
+description: 'Stop localstack container'
+runs:
+  using: "composite"
+  steps:
+    - shell: bash
+      if: always()
+      run: localstack stop

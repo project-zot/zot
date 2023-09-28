@@ -22,7 +22,6 @@ jobs:
         with:
           cache: false
           go-version: 1.20.x
-      - uses: ./.github/actions/clean-runner
       - name: Install dependencies
         run: |
           cd $GITHUB_WORKSPACE
@@ -54,21 +53,7 @@ jobs:
           make bin/dex
           ./bin/dex serve $GITHUB_WORKSPACE/test/dex/config-dev.yaml &
           cd $GITHUB_WORKSPACE
-      - name: Check disk space before build
-        run: |
-          cd $GITHUB_WORKSPACE
-          set -x
-          df -h
-          sudo ls -lRh /tmp/* || true
-          sudo du -sh /tmp || true
-          sudo du -sh /tmp/* || true
-          sudo find /tmp/ -size +5M | sudo xargs ls -lh
-          du -sh ./* || true
-          find ./ -size +5M   | xargs ls -lh
-          sudo du -sh /var/
-          sudo du -sh /var/lib/docker/
-          du -sh /home/runner/work/
-          set +x
+      - uses: ./.github/actions/check-diskspace
       - name: Run CI tests
         run: |
           make run-blackbox-ci
@@ -76,7 +61,7 @@ jobs:
         run: |
           pip install --upgrade pyopenssl
           pip install localstack awscli-local[ver1] # install LocalStack cli and awslocal
-          docker pull localstack/localstack         # Make sure to pull the latest version of the image
+          docker pull localstack/localstack:2.2     # Make sure to pull the latest version of the image
           localstack start -d                       # Start LocalStack in the background
 
           echo "Waiting for LocalStack startup..."  # Wait 30 seconds for the LocalStack container
@@ -88,19 +73,5 @@ jobs:
         env:
           AWS_ACCESS_KEY_ID: fake
           AWS_SECRET_ACCESS_KEY: fake
-      - name: Check disk space after build
-        if: always()
-        run: |
-          cd $GITHUB_WORKSPACE
-          set -x
-          df -h
-          sudo ls -lRh /tmp/* || true
-          sudo du -sh /tmp || true
-          sudo du -sh /tmp/* || true
-          sudo find /tmp/ -size +5M | sudo xargs ls -lh
-          du -sh ./* || true
-          find ./ -size +5M   | xargs ls -lh
-          sudo du -sh /var/
-          sudo du -sh /var/lib/docker/
-          du -sh /home/runner/work/
-          set +x
+      - uses: ./.github/actions/check-diskspace
+      - uses: ./.github/actions/teardown-localstack

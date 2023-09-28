@@ -51,15 +51,6 @@ jobs:
         cache: false
         go-version: 1.20.x
 
-    - name: Install dependencies
-      run: |
-        cd $GITHUB_WORKSPACE
-        go install github.com/swaggo/swag/cmd/swag@v1.8.12
-        go mod download
-        go install github.com/wadey/gocovmerge@latest
-        go get -u github.com/swaggo/swag/cmd/swag
-        go mod download
-
     # Initializes the CodeQL tools for scanning.
     - name: Initialize CodeQL
       uses: github/codeql-action/init@v2.21.8

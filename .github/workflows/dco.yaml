@@ -1,4 +1,3 @@
-# .github/workflows/dco.yml
 name: DCO
 on:
   pull_request:

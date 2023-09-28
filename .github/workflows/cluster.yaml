@@ -14,7 +14,7 @@ permissions: read-all
 jobs:
   client-tools:
     name: Stateless zot with shared reliable storage
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
     # services:
     #   minio:
     #     image: minio/minio:edge-cicd

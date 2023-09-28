@@ -23,7 +23,6 @@ jobs:
         run: |
           cd $GITHUB_WORKSPACE
           sudo apt-get update
-          sudo apt-get install -y libgpgme-dev libassuan-dev libbtrfs-dev libdevmapper-dev pkg-config
           mkdir -p test/data
           cd test/data
           ../scripts/gen_certs.sh
@@ -36,6 +35,6 @@ jobs:
           for i in $(find . -type f \( -name "*.go" -not -name "*_test.go" -not -name "generated.go" \)); do
             echo $i;
             gobco -test '-tags=sync,search,scrub,metrics,containers_image_openpgp' $i;
-            gobco -test '-tags=minimal,containers_image_openpgp' $i;
+            gobco -test '-tags=containers_image_openpgp' $i;
           done
 

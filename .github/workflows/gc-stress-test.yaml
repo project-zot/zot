@@ -75,7 +75,7 @@ jobs:
         run: |
           cat /tmp/gc-bench-local.log
           exit 1
-          
+
   gc-referrers-stress-s3:
     name: GC(with referrers) on S3(minio) with short interval
     runs-on: ubuntu-latest
@@ -86,21 +86,7 @@ jobs:
         with:
           cache: false
           go-version: 1.20.x
-      - name: Setup localstack service
-        run: |
-            pip install localstack                    # Install LocalStack cli
-            docker pull localstack/localstack:1.3     # Make sure to pull the latest version of the image
-            localstack start -d                       # Start LocalStack in the background
-            
-            echo "Waiting for LocalStack startup..."  # Wait 30 seconds for the LocalStack container
-            localstack wait -t 30                     # to become ready before timing out 
-            echo "Startup complete"
-            
-            # aws --endpoint-url=http://localhost:4566 s3api create-bucket --bucket zot-storage --region us-east-2 --create-bucket-configuration="{\"LocationConstraint\": \"us-east-2\"}"
-            aws dynamodb --endpoint-url http://localhost:4566 --region "us-east-2" create-table --table-name BlobTable --attribute-definitions AttributeName=Digest,AttributeType=S --key-schema AttributeName=Digest,KeyType=HASH --provisioned-throughput ReadCapacityUnits=10,WriteCapacityUnits=5
-        env:
-          AWS_ACCESS_KEY_ID: fake
-          AWS_SECRET_ACCESS_KEY: fake
+      - uses: ./.github/actions/setup-localstack
       - name: Setup minio service
         run: |
             docker run -d -p 9000:9000 --name minio \
@@ -164,6 +150,7 @@ jobs:
         run: |
           cat /tmp/gc-referrers-bench-s3.log
           exit 1
+      - uses: ./.github/actions/teardown-localstack
 
   gc-stress-s3:
     name: GC(without referrers) on S3(minio) with short interval
@@ -175,21 +162,7 @@ jobs:
         with:
           cache: false
           go-version: 1.20.x
-      - name: Setup localstack service
-        run: |
-            pip install localstack                    # Install LocalStack cli
-            docker pull localstack/localstack:1.3     # Make sure to pull the latest version of the image
-            localstack start -d                       # Start LocalStack in the background
-            
-            echo "Waiting for LocalStack startup..."  # Wait 30 seconds for the LocalStack container
-            localstack wait -t 30                     # to become ready before timing out 
-            echo "Startup complete"
-            
-            # aws --endpoint-url=http://localhost:4566 s3api create-bucket --bucket zot-storage --region us-east-2 --create-bucket-configuration="{\"LocationConstraint\": \"us-east-2\"}"
-            aws dynamodb --endpoint-url http://localhost:4566 --region "us-east-2" create-table --table-name BlobTable --attribute-definitions AttributeName=Digest,AttributeType=S --key-schema AttributeName=Digest,KeyType=HASH --provisioned-throughput ReadCapacityUnits=10,WriteCapacityUnits=5
-        env:
-          AWS_ACCESS_KEY_ID: fake
-          AWS_SECRET_ACCESS_KEY: fake
+      - uses: ./.github/actions/setup-localstack
       - name: Setup minio service
         run: |
             docker run -d -p 9000:9000 --name minio \
@@ -253,3 +226,4 @@ jobs:
         run: |
           cat /tmp/gc-bench-s3.log
           exit 1
+      - uses: ./.github/actions/teardown-localstack

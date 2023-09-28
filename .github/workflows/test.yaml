@@ -1,0 +1,159 @@
+name: "Running tests"
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches: [main]
+  release:
+    types:
+      - published
+
+permissions: read-all
+
+jobs:
+  test-run-minimal:
+    name: Running zot without extensions tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/clean-runner
+      - name: Install go
+        uses: actions/setup-go@v4
+        with:
+          cache: false
+          go-version: 1.20.x
+      - name: Cache go dependencies
+        id: cache-go-dependencies
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-mod-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-mod-
+      - name: Install go dependencies
+        if: steps.cache-go-dependencies.outputs.cache-hit != 'true'
+        run: |
+          cd $GITHUB_WORKSPACE
+          go mod download
+      - uses: ./.github/actions/setup-localstack
+      - uses: ./.github/actions/check-diskspace
+      - name: run zot minimal tests
+        run: |
+          cd $GITHUB_WORKSPACE
+          make test-minimal
+        env:
+          S3MOCK_ENDPOINT: localhost:4566
+          DYNAMODBMOCK_ENDPOINT: http://localhost:4566
+          AWS_ACCESS_KEY_ID: fake
+          AWS_SECRET_ACCESS_KEY: fake
+      - name: upload coverage
+        uses: actions/upload-artifact@v3
+        with:
+          name: coverage-minimal
+          path: coverage-minimal.txt
+      - uses: ./.github/actions/check-diskspace
+      - uses: ./.github/actions/teardown-localstack
+  test-run-extensions:
+    name: Run zot with extensions tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/clean-runner
+      - uses: actions/setup-go@v4
+        with:
+          cache: false
+          go-version: 1.20.x
+      - name: Cache go dependencies
+        id: cache-go-dependencies
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-mod-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-mod-
+      - name: Install go dependencies
+        if: steps.cache-go-dependencies.outputs.cache-hit != 'true'
+        run: |
+          cd $GITHUB_WORKSPACE
+          go mod download
+      - uses: ./.github/actions/setup-localstack
+      - uses: ./.github/actions/check-diskspace
+      - name: run zot extended tests
+        run: |
+          cd $GITHUB_WORKSPACE
+          make test-extended
+        env:
+          S3MOCK_ENDPOINT: localhost:4566
+          DYNAMODBMOCK_ENDPOINT: http://localhost:4566
+          AWS_ACCESS_KEY_ID: fake
+          AWS_SECRET_ACCESS_KEY: fake
+      - name: upload coverage
+        uses: actions/upload-artifact@v3
+        with:
+          name: coverage-extended
+          path: coverage-extended.txt
+      - uses: ./.github/actions/check-diskspace
+      - uses: ./.github/actions/teardown-localstack
+  test-run-devmode:
+    name: Running privileged tests on Linux
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/clean-runner
+      - uses: actions/setup-go@v4
+        with:
+          cache: false
+          go-version: 1.20.x
+      - name: Cache go dependencies
+        id: cache-go-dependencies
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-mod-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-mod-
+      - name: Install go dependencies
+        if: steps.cache-go-dependencies.outputs.cache-hit != 'true'
+        run: |
+            cd $GITHUB_WORKSPACE
+            go mod download
+      - uses: ./.github/actions/check-diskspace
+      - name: run zot development-mode unit tests (possibly using failure injection)
+        run: make test-devmode
+      - name: run zot privileged tests
+        run: sudo env "PATH=$PATH" make privileged-test
+      - name: upload coverage
+        uses: actions/upload-artifact@v3
+        with:
+          name: coverage-devmode
+          path: coverage-dev-*.txt
+      - uses: ./.github/actions/check-diskspace
+  test-coverage:
+    name: Collect all test coverage
+    runs-on: ubuntu-latest
+    if: always()
+    needs: [test-run-minimal,test-run-extensions,test-run-devmode]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v4
+        with:
+          cache: false
+          go-version: 1.20.x
+      - name: download all workflow coverage files
+        uses: actions/download-artifact@v3
+      - name: merge code coverage
+        run: |
+          cd $GITHUB_WORKSPACE
+          cp coverage-minimal/* .
+          cp coverage-extended/* .
+          cp coverage-devmode/* .
+          make covhtml
+      - name: upload code coverage
+        uses: codecov/codecov-action@v3
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+
