@@ -26,15 +26,13 @@ const (
 	MANIFEST_BLOB_UNKNOWN
 	MANIFEST_INVALID
 	MANIFEST_UNKNOWN
-	MANIFEST_UNVERIFIED
 	NAME_INVALID
 	NAME_UNKNOWN
 	SIZE_INVALID
-	TAG_INVALID
 	UNAUTHORIZED
 	DENIED
 	UNSUPPORTED
-	INVALID_INDEX
+	TOOMANYREQUESTS
 )
 
 func (e ErrorCode) String() string {
@@ -46,15 +44,13 @@ func (e ErrorCode) String() string {
 		MANIFEST_BLOB_UNKNOWN: "MANIFEST_BLOB_UNKNOWN",
 		MANIFEST_INVALID:      "MANIFEST_INVALID",
 		MANIFEST_UNKNOWN:      "MANIFEST_UNKNOWN",
-		MANIFEST_UNVERIFIED:   "MANIFEST_UNVERIFIED",
 		NAME_INVALID:          "NAME_INVALID",
 		NAME_UNKNOWN:          "NAME_UNKNOWN",
 		SIZE_INVALID:          "SIZE_INVALID",
-		TAG_INVALID:           "TAG_INVALID",
 		UNAUTHORIZED:          "UNAUTHORIZED",
 		DENIED:                "DENIED",
 		UNSUPPORTED:           "UNSUPPORTED",
-		INVALID_INDEX:         "INVALID_INDEX",
+		TOOMANYREQUESTS:       "TOOMANYREQUESTS",
 	}
 
 	return errMap[e]
@@ -105,12 +101,6 @@ func NewError(code ErrorCode) *Error {
 				"and tag is unknown to the repository.",
 		},
 
-		MANIFEST_UNVERIFIED: {
-			Message: "manifest failed signature verification",
-			Description: "During manifest upload, if the manifest fails signature " +
-				"verification, this error will be returned.",
-		},
-
 		NAME_INVALID: {
 			Message: "invalid repository name",
 			Description: "Invalid repository name encountered either during manifest " +
@@ -128,12 +118,6 @@ func NewError(code ErrorCode) *Error {
 				"the uploaded content. If they do not match, this error will be returned.",
 		},
 
-		TAG_INVALID: {
-			Message: "manifest tag did not match URI",
-			Description: "During a manifest upload, if the tag in the manifest does " +
-				"not match the uri tag, this error will be returned.",
-		},
-
 		UNAUTHORIZED: {
 			Message: "authentication required",
 			Description: "The access controller was unable to authenticate the client." +
@@ -147,14 +131,14 @@ func NewError(code ErrorCode) *Error {
 		},
 
 		UNSUPPORTED: {
-			Message: "The operation is unsupported.",
+			Message: "the operation is unsupported",
 			Description: "The operation was unsupported due to a missing " +
 				"implementation or invalid set of parameters.",
 		},
 
-		INVALID_INDEX: {
-			Message:     "Invalid format of index.json file of the repo",
-			Description: "index.json file does not contain data in json format",
+		TOOMANYREQUESTS: {
+			Message:     "too many requests",
+			Description: "When a user or users has sent too many requests to the server within a given amount of time.",
 		},
 	}
 
