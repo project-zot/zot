@@ -698,10 +698,6 @@ func (rh *RouteHandler) UpdateManifest(response http.ResponseWriter, request *ht
 			details["blob"] = digest.String()
 			e := apiErr.NewError(apiErr.BLOB_UNKNOWN).AddDetail(details)
 			zcommon.WriteJSON(response, http.StatusBadRequest, apiErr.NewErrorList(e))
-		} else if errors.Is(err, zerr.ErrRepoBadVersion) {
-			details["name"] = name
-			e := apiErr.NewError(apiErr.INVALID_INDEX).AddDetail(details)
-			zcommon.WriteJSON(response, http.StatusInternalServerError, apiErr.NewErrorList(e))
 		} else if errors.Is(err, zerr.ErrImageLintAnnotations) {
 			details["reference"] = reference
 			e := apiErr.NewError(apiErr.MANIFEST_INVALID).AddDetail(details)
