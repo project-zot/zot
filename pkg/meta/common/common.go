@@ -1,17 +1,19 @@
 package common
 
 import (
-	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
 
+	jsoniter "github.com/json-iterator/go"
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 
 	zerr "zotregistry.io/zot/errors"
 	mTypes "zotregistry.io/zot/pkg/meta/types"
 )
+
+var json = jsoniter.ConfigCompatibleWithStandardLibrary //nolint: gochecknoglobals // to replace standard lib
 
 func UpdateManifestMeta(repoMeta mTypes.RepoMetadata, manifestDigest godigest.Digest,
 	manifestMeta mTypes.ManifestMetadata,

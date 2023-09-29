@@ -1,12 +1,12 @@
 package storage
 
 import (
-	"encoding/json"
 	"fmt"
 	"regexp"
 	"strings"
 
 	"github.com/docker/distribution/registry/storage/driver/factory"
+	jsoniter "github.com/json-iterator/go"
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 
@@ -21,6 +21,8 @@ import (
 	"zotregistry.io/zot/pkg/storage/s3"
 	storageTypes "zotregistry.io/zot/pkg/storage/types"
 )
+
+var json = jsoniter.ConfigCompatibleWithStandardLibrary //nolint: gochecknoglobals // to replace standard lib
 
 func New(config *config.Config, linter common.Lint, metrics monitoring.MetricServer,
 	log log.Logger,

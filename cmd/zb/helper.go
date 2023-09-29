@@ -2,7 +2,6 @@ package main
 
 import (
 	"bytes"
-	"encoding/json"
 	"fmt"
 	"io"
 	"log"
@@ -15,6 +14,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	jsoniter "github.com/json-iterator/go"
 	godigest "github.com/opencontainers/go-digest"
 	imeta "github.com/opencontainers/image-spec/specs-go"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
@@ -23,6 +23,8 @@ import (
 	zerr "zotregistry.io/zot/errors"
 	"zotregistry.io/zot/pkg/common"
 )
+
+var json = jsoniter.ConfigCompatibleWithStandardLibrary //nolint: gochecknoglobals // to replace standard lib
 
 func makeHTTPGetRequest(url string, resultPtr interface{}, client *resty.Client) error {
 	resp, err := client.R().Get(url)

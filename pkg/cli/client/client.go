@@ -6,7 +6,6 @@ package client
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -16,12 +15,15 @@ import (
 	"sync"
 	"time"
 
+	jsoniter "github.com/json-iterator/go"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/sigstore/cosign/v2/pkg/oci/remote"
 
 	zerr "zotregistry.io/zot/errors"
 	"zotregistry.io/zot/pkg/common"
 )
+
+var json = jsoniter.ConfigCompatibleWithStandardLibrary //nolint: gochecknoglobals // to replace standard lib
 
 var (
 	httpClientsMap = make(map[string]*http.Client) //nolint: gochecknoglobals

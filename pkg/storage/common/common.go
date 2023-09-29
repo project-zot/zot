@@ -3,13 +3,13 @@ package storage
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"path"
 	"strings"
 
 	"github.com/docker/distribution/registry/storage/driver"
+	jsoniter "github.com/json-iterator/go"
 	godigest "github.com/opencontainers/go-digest"
 	"github.com/opencontainers/image-spec/schema"
 	imeta "github.com/opencontainers/image-spec/specs-go"
@@ -23,6 +23,8 @@ import (
 	storageConstants "zotregistry.io/zot/pkg/storage/constants"
 	storageTypes "zotregistry.io/zot/pkg/storage/types"
 )
+
+var json = jsoniter.ConfigCompatibleWithStandardLibrary //nolint: gochecknoglobals // to replace standard lib
 
 const (
 	manifestWithEmptyLayersErrMsg = "layers: Array must have at least 1 items"

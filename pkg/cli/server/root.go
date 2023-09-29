@@ -551,9 +551,10 @@ func applyDefaultValues(config *config.Config, viperInstance *viper.Viper, log z
 
 				if config.Extensions.Search.CVE.Trivy.JavaDBRepository == "" {
 					defaultJavaDBDownloadURL := "ghcr.io/aquasecurity/trivy-java-db"
-					log.Info().Str("trivyJavaDownloadURL", defaultJavaDBDownloadURL).
-						Msg("Config: using default Trivy Java DB download URL.")
-					config.Extensions.Search.CVE.Trivy.JavaDBRepository = defaultJavaDBDownloadURL
+					log.Info().Str("trivyJavaDownloadURL", "").
+						Str("suggestedTrivyJavaDownloadURL", defaultJavaDBDownloadURL).
+						Msg("Config: Trivy DB javaDBRepository configuration key was not provided, " +
+							"will skip scanning java packages")
 				}
 			}
 		}

@@ -2,12 +2,12 @@ package boltdb
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
 	"time"
 
+	jsoniter "github.com/json-iterator/go"
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"go.etcd.io/bbolt"
@@ -21,6 +21,8 @@ import (
 	"zotregistry.io/zot/pkg/meta/version"
 	reqCtx "zotregistry.io/zot/pkg/requestcontext"
 )
+
+var json = jsoniter.ConfigCompatibleWithStandardLibrary //nolint: gochecknoglobals // to replace standard lib
 
 type BoltDB struct {
 	DB            *bbolt.DB

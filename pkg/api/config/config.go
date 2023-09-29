@@ -1,15 +1,17 @@
 package config
 
 import (
-	"encoding/json"
 	"os"
 	"time"
 
+	jsoniter "github.com/json-iterator/go"
 	distspec "github.com/opencontainers/distribution-spec/specs-go"
 
 	extconf "zotregistry.io/zot/pkg/extensions/config"
 	storageConstants "zotregistry.io/zot/pkg/storage/constants"
 )
+
+var json = jsoniter.ConfigCompatibleWithStandardLibrary //nolint: gochecknoglobals // to replace standard lib
 
 var (
 	Commit     string //nolint: gochecknoglobals

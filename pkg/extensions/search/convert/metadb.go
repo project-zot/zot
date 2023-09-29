@@ -2,7 +2,6 @@ package convert
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"sort"
 	"strconv"
@@ -10,6 +9,7 @@ import (
 	"time"
 
 	"github.com/99designs/gqlgen/graphql"
+	jsoniter "github.com/json-iterator/go"
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/vektah/gqlparser/v2/gqlerror"
@@ -23,6 +23,8 @@ import (
 	mcommon "zotregistry.io/zot/pkg/meta/common"
 	mTypes "zotregistry.io/zot/pkg/meta/types"
 )
+
+var json = jsoniter.ConfigCompatibleWithStandardLibrary //nolint: gochecknoglobals // to replace standard lib
 
 type SkipQGLField struct {
 	Vulnerabilities bool

@@ -1,11 +1,11 @@
 package cveinfo
 
 import (
-	"encoding/json"
 	"sort"
 	"strings"
 	"time"
 
+	jsoniter "github.com/json-iterator/go"
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 
@@ -16,6 +16,8 @@ import (
 	mTypes "zotregistry.io/zot/pkg/meta/types"
 	"zotregistry.io/zot/pkg/storage"
 )
+
+var json = jsoniter.ConfigCompatibleWithStandardLibrary //nolint: gochecknoglobals // to replace standard lib
 
 type CveInfo interface {
 	GetImageListForCVE(repo, cveID string) ([]cvemodel.TagInfo, error)

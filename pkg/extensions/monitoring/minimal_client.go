@@ -6,13 +6,16 @@ package monitoring
 import (
 	"context"
 	"crypto/tls"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"time"
 
+	jsoniter "github.com/json-iterator/go"
+
 	"zotregistry.io/zot/pkg/log"
 )
+
+var json = jsoniter.ConfigCompatibleWithStandardLibrary //nolint: gochecknoglobals // to replace standard lib
 
 const (
 	httpTimeout = 1 * time.Minute
