@@ -17,8 +17,8 @@ import (
 
 const CveDBRetryInterval = 3
 
-func SearchAllImages(config searchConfig) error {
-	username, password := getUsernameAndPassword(config.user)
+func SearchAllImages(config SearchConfig) error {
+	username, password := getUsernameAndPassword(config.User)
 	imageErr := make(chan stringResult)
 	ctx, cancel := context.WithCancel(context.Background())
 
@@ -26,7 +26,7 @@ func SearchAllImages(config searchConfig) error {
 
 	wg.Add(1)
 
-	go config.searchService.getAllImages(ctx, config, username, password, imageErr, &wg)
+	go config.SearchService.getAllImages(ctx, config, username, password, imageErr, &wg)
 	wg.Add(1)
 
 	errCh := make(chan error, 1)
@@ -41,13 +41,13 @@ func SearchAllImages(config searchConfig) error {
 	}
 }
 
-func SearchAllImagesGQL(config searchConfig) error {
-	username, password := getUsernameAndPassword(config.user)
+func SearchAllImagesGQL(config SearchConfig) error {
+	username, password := getUsernameAndPassword(config.User)
 	ctx, cancel := context.WithCancel(context.Background())
 
 	defer cancel()
 
-	imageList, err := config.searchService.getImagesGQL(ctx, config, username, password, "")
+	imageList, err := config.SearchService.getImagesGQL(ctx, config, username, password, "")
 	if err != nil {
 		return err
 	}
@@ -61,8 +61,8 @@ func SearchAllImagesGQL(config searchConfig) error {
 	return printImageResult(config, imageListData)
 }
 
-func SearchImageByName(config searchConfig, image string) error {
-	username, password := getUsernameAndPassword(config.user)
+func SearchImageByName(config SearchConfig, image string) error {
+	username, password := getUsernameAndPassword(config.User)
 	imageErr := make(chan stringResult)
 	ctx, cancel := context.WithCancel(context.Background())
 
@@ -70,7 +70,7 @@ func SearchImageByName(config searchConfig, image string) error {
 
 	wg.Add(1)
 
-	go config.searchService.getImageByName(ctx, config, username, password,
+	go config.SearchService.getImageByName(ctx, config, username, password,
 		image, imageErr, &wg)
 	wg.Add(1)
 
@@ -91,15 +91,15 @@ func SearchImageByName(config searchConfig, image string) error {
 	}
 }
 
-func SearchImageByNameGQL(config searchConfig, imageName string) error {
-	username, password := getUsernameAndPassword(config.user)
+func SearchImageByNameGQL(config SearchConfig, imageName string) error {
+	username, password := getUsernameAndPassword(config.User)
 	ctx, cancel := context.WithCancel(context.Background())
 
 	defer cancel()
 
 	repo, tag := zcommon.GetImageDirAndTag(imageName)
 
-	imageList, err := config.searchService.getImagesGQL(ctx, config, username, password, repo)
+	imageList, err := config.SearchService.getImagesGQL(ctx, config, username, password, repo)
 	if err != nil {
 		return err
 	}
@@ -115,8 +115,8 @@ func SearchImageByNameGQL(config searchConfig, imageName string) error {
 	return printImageResult(config, imageListData)
 }
 
-func SearchImagesByDigest(config searchConfig, digest string) error {
-	username, password := getUsernameAndPassword(config.user)
+func SearchImagesByDigest(config SearchConfig, digest string) error {
+	username, password := getUsernameAndPassword(config.User)
 	imageErr := make(chan stringResult)
 	ctx, cancel := context.WithCancel(context.Background())
 
@@ -124,7 +124,7 @@ func SearchImagesByDigest(config searchConfig, digest string) error {
 
 	wg.Add(1)
 
-	go config.searchService.getImagesByDigest(ctx, config, username, password,
+	go config.SearchService.getImagesByDigest(ctx, config, username, password,
 		digest, imageErr, &wg)
 	wg.Add(1)
 
@@ -141,13 +141,13 @@ func SearchImagesByDigest(config searchConfig, digest string) error {
 	}
 }
 
-func SearchDerivedImageListGQL(config searchConfig, derivedImage string) error {
-	username, password := getUsernameAndPassword(config.user)
+func SearchDerivedImageListGQL(config SearchConfig, derivedImage string) error {
+	username, password := getUsernameAndPassword(config.User)
 	ctx, cancel := context.WithCancel(context.Background())
 
 	defer cancel()
 
-	imageList, err := config.searchService.getDerivedImageListGQL(ctx, config, username,
+	imageList, err := config.SearchService.getDerivedImageListGQL(ctx, config, username,
 		password, derivedImage)
 	if err != nil {
 		return err
@@ -162,13 +162,13 @@ func SearchDerivedImageListGQL(config searchConfig, derivedImage string) error {
 	return printImageResult(config, imageListData)
 }
 
-func SearchBaseImageListGQL(config searchConfig, baseImage string) error {
-	username, password := getUsernameAndPassword(config.user)
+func SearchBaseImageListGQL(config SearchConfig, baseImage string) error {
+	username, password := getUsernameAndPassword(config.User)
 	ctx, cancel := context.WithCancel(context.Background())
 
 	defer cancel()
 
-	imageList, err := config.searchService.getBaseImageListGQL(ctx, config, username,
+	imageList, err := config.SearchService.getBaseImageListGQL(ctx, config, username,
 		password, baseImage)
 	if err != nil {
 		return err
@@ -183,13 +183,13 @@ func SearchBaseImageListGQL(config searchConfig, baseImage string) error {
 	return printImageResult(config, imageListData)
 }
 
-func SearchImagesForDigestGQL(config searchConfig, digest string) error {
-	username, password := getUsernameAndPassword(config.user)
+func SearchImagesForDigestGQL(config SearchConfig, digest string) error {
+	username, password := getUsernameAndPassword(config.User)
 	ctx, cancel := context.WithCancel(context.Background())
 
 	defer cancel()
 
-	imageList, err := config.searchService.getImagesForDigestGQL(ctx, config, username, password, digest)
+	imageList, err := config.SearchService.getImagesForDigestGQL(ctx, config, username, password, digest)
 	if err != nil {
 		return err
 	}
@@ -207,8 +207,8 @@ func SearchImagesForDigestGQL(config searchConfig, digest string) error {
 	return nil
 }
 
-func SearchCVEForImageGQL(config searchConfig, image, searchedCveID string) error {
-	username, password := getUsernameAndPassword(config.user)
+func SearchCVEForImageGQL(config SearchConfig, image, searchedCveID string) error {
+	username, password := getUsernameAndPassword(config.User)
 	ctx, cancel := context.WithCancel(context.Background())
 
 	defer cancel()
@@ -218,7 +218,7 @@ func SearchCVEForImageGQL(config searchConfig, image, searchedCveID string) erro
 	err := zcommon.RetryWithContext(ctx, func(attempt int, retryIn time.Duration) error {
 		var err error
 
-		cveList, err = config.searchService.getCveByImageGQL(ctx, config, username, password, image, searchedCveID)
+		cveList, err = config.SearchService.getCveByImageGQL(ctx, config, username, password, image, searchedCveID)
 		if err != nil {
 			if !strings.Contains(err.Error(), zerr.ErrCVEDBNotFound.Error()) {
 				cancel()
@@ -226,7 +226,7 @@ func SearchCVEForImageGQL(config searchConfig, image, searchedCveID string) erro
 				return err
 			}
 
-			fmt.Fprintf(config.resultWriter,
+			fmt.Fprintf(config.ResultWriter,
 				"[warning] CVE DB is not ready [%d] - retry in %d seconds\n", attempt, int(retryIn.Seconds()))
 		}
 
@@ -237,30 +237,30 @@ func SearchCVEForImageGQL(config searchConfig, image, searchedCveID string) erro
 	}
 
 	if len(cveList.Data.CVEListForImage.CVEList) == 0 {
-		fmt.Fprint(config.resultWriter, "No CVEs found for image\n")
+		fmt.Fprint(config.ResultWriter, "No CVEs found for image\n")
 
 		return nil
 	}
 
 	var builder strings.Builder
 
-	if config.outputFormat == defaultOutputFormat || config.outputFormat == "" {
+	if config.OutputFormat == defaultOutputFormat || config.OutputFormat == "" {
 		printCVETableHeader(&builder)
-		fmt.Fprint(config.resultWriter, builder.String())
+		fmt.Fprint(config.ResultWriter, builder.String())
 	}
 
-	out, err := cveList.string(config.outputFormat)
+	out, err := cveList.string(config.OutputFormat)
 	if err != nil {
 		return err
 	}
 
-	fmt.Fprint(config.resultWriter, out)
+	fmt.Fprint(config.ResultWriter, out)
 
 	return nil
 }
 
-func SearchImagesByCVEIDGQL(config searchConfig, repo, cveid string) error {
-	username, password := getUsernameAndPassword(config.user)
+func SearchImagesByCVEIDGQL(config SearchConfig, repo, cveid string) error {
+	username, password := getUsernameAndPassword(config.User)
 	ctx, cancel := context.WithCancel(context.Background())
 
 	defer cancel()
@@ -270,7 +270,7 @@ func SearchImagesByCVEIDGQL(config searchConfig, repo, cveid string) error {
 	err := zcommon.RetryWithContext(ctx, func(attempt int, retryIn time.Duration) error {
 		var err error
 
-		imageList, err = config.searchService.getTagsForCVEGQL(ctx, config, username, password,
+		imageList, err = config.SearchService.getTagsForCVEGQL(ctx, config, username, password,
 			repo, cveid)
 		if err != nil {
 			if !strings.Contains(err.Error(), zerr.ErrCVEDBNotFound.Error()) {
@@ -279,7 +279,7 @@ func SearchImagesByCVEIDGQL(config searchConfig, repo, cveid string) error {
 				return err
 			}
 
-			fmt.Fprintf(config.resultWriter,
+			fmt.Fprintf(config.ResultWriter,
 				"[warning] CVE DB is not ready [%d] - retry in %d seconds\n", attempt, int(retryIn.Seconds()))
 		}
 
@@ -298,8 +298,8 @@ func SearchImagesByCVEIDGQL(config searchConfig, repo, cveid string) error {
 	return printImageResult(config, imageListData)
 }
 
-func SearchFixedTagsGQL(config searchConfig, repo, cveid string) error {
-	username, password := getUsernameAndPassword(config.user)
+func SearchFixedTagsGQL(config SearchConfig, repo, cveid string) error {
+	username, password := getUsernameAndPassword(config.User)
 	ctx, cancel := context.WithCancel(context.Background())
 
 	defer cancel()
@@ -309,7 +309,7 @@ func SearchFixedTagsGQL(config searchConfig, repo, cveid string) error {
 	err := zcommon.RetryWithContext(ctx, func(attempt int, retryIn time.Duration) error {
 		var err error
 
-		fixedTags, err = config.searchService.getFixedTagsForCVEGQL(ctx, config, username, password,
+		fixedTags, err = config.SearchService.getFixedTagsForCVEGQL(ctx, config, username, password,
 			repo, cveid)
 		if err != nil {
 			if !strings.Contains(err.Error(), zerr.ErrCVEDBNotFound.Error()) {
@@ -318,7 +318,7 @@ func SearchFixedTagsGQL(config searchConfig, repo, cveid string) error {
 				return err
 			}
 
-			fmt.Fprintf(config.resultWriter,
+			fmt.Fprintf(config.ResultWriter,
 				"[warning] CVE DB is not ready [%d] - retry in %d seconds\n", attempt, int(retryIn.Seconds()))
 		}
 
@@ -337,13 +337,13 @@ func SearchFixedTagsGQL(config searchConfig, repo, cveid string) error {
 	return printImageResult(config, imageList)
 }
 
-func GlobalSearchGQL(config searchConfig, query string) error {
-	username, password := getUsernameAndPassword(config.user)
+func GlobalSearchGQL(config SearchConfig, query string) error {
+	username, password := getUsernameAndPassword(config.User)
 	ctx, cancel := context.WithCancel(context.Background())
 
 	defer cancel()
 
-	globalSearchResult, err := config.searchService.globalSearchGQL(ctx, config, username, password, query)
+	globalSearchResult, err := config.SearchService.globalSearchGQL(ctx, config, username, password, query)
 	if err != nil {
 		return err
 	}
@@ -367,8 +367,8 @@ func GlobalSearchGQL(config searchConfig, query string) error {
 	return printRepoResults(config, reposList)
 }
 
-func SearchReferrersGQL(config searchConfig, subject string) error {
-	username, password := getUsernameAndPassword(config.user)
+func SearchReferrersGQL(config SearchConfig, subject string) error {
+	username, password := getUsernameAndPassword(config.User)
 
 	repo, ref, refIsTag, err := zcommon.GetRepoReference(subject)
 	if err != nil {
@@ -384,7 +384,7 @@ func SearchReferrersGQL(config searchConfig, subject string) error {
 		}
 	}
 
-	response, err := config.searchService.getReferrersGQL(context.Background(), config, username, password, repo, digest)
+	response, err := config.SearchService.getReferrersGQL(context.Background(), config, username, password, repo, digest)
 	if err != nil {
 		return err
 	}
@@ -399,13 +399,13 @@ func SearchReferrersGQL(config searchConfig, subject string) error {
 		}
 	}
 
-	printReferrersTableHeader(config, config.resultWriter, maxArtifactTypeLen)
+	printReferrersTableHeader(config, config.ResultWriter, maxArtifactTypeLen)
 
 	return printReferrersResult(config, referrersList, maxArtifactTypeLen)
 }
 
-func SearchReferrers(config searchConfig, subject string) error {
-	username, password := getUsernameAndPassword(config.user)
+func SearchReferrers(config SearchConfig, subject string) error {
+	username, password := getUsernameAndPassword(config.User)
 
 	repo, ref, refIsTag, err := zcommon.GetRepoReference(subject)
 	if err != nil {
@@ -421,7 +421,7 @@ func SearchReferrers(config searchConfig, subject string) error {
 		}
 	}
 
-	referrersList, err := config.searchService.getReferrers(context.Background(), config, username, password,
+	referrersList, err := config.SearchService.getReferrers(context.Background(), config, username, password,
 		repo, digest)
 	if err != nil {
 		return err
@@ -435,13 +435,13 @@ func SearchReferrers(config searchConfig, subject string) error {
 		}
 	}
 
-	printReferrersTableHeader(config, config.resultWriter, maxArtifactTypeLen)
+	printReferrersTableHeader(config, config.ResultWriter, maxArtifactTypeLen)
 
 	return printReferrersResult(config, referrersList, maxArtifactTypeLen)
 }
 
-func SearchRepos(config searchConfig) error {
-	username, password := getUsernameAndPassword(config.user)
+func SearchRepos(config SearchConfig) error {
+	username, password := getUsernameAndPassword(config.User)
 	repoErr := make(chan stringResult)
 	ctx, cancel := context.WithCancel(context.Background())
 
@@ -449,7 +449,7 @@ func SearchRepos(config searchConfig) error {
 
 	wg.Add(1)
 
-	go config.searchService.getRepos(ctx, config, username, password, repoErr, &wg)
+	go config.SearchService.getRepos(ctx, config, username, password, repoErr, &wg)
 	wg.Add(1)
 
 	errCh := make(chan error, 1)

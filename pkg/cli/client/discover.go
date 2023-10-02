@@ -90,11 +90,11 @@ func haveSameArgs(query field, reqQuery GQLQuery) bool {
 	return true
 }
 
-func CheckExtEndPointQuery(config searchConfig, requiredQueries ...GQLQuery) error {
-	username, password := getUsernameAndPassword(config.user)
+func CheckExtEndPointQuery(config SearchConfig, requiredQueries ...GQLQuery) error {
+	username, password := getUsernameAndPassword(config.User)
 	ctx := context.Background()
 
-	discoverEndPoint, err := combineServerAndEndpointURL(config.servURL, fmt.Sprintf("%s%s",
+	discoverEndPoint, err := combineServerAndEndpointURL(config.ServURL, fmt.Sprintf("%s%s",
 		constants.RoutePrefix, constants.ExtOciDiscoverPrefix))
 	if err != nil {
 		return err
@@ -102,8 +102,8 @@ func CheckExtEndPointQuery(config searchConfig, requiredQueries ...GQLQuery) err
 
 	discoverResponse := &distext.ExtensionList{}
 
-	_, err = makeGETRequest(ctx, discoverEndPoint, username, password, config.verifyTLS,
-		config.debug, &discoverResponse, config.resultWriter)
+	_, err = makeGETRequest(ctx, discoverEndPoint, username, password, config.VerifyTLS,
+		config.Debug, &discoverResponse, config.ResultWriter)
 	if err != nil {
 		return err
 	}
@@ -124,7 +124,7 @@ func CheckExtEndPointQuery(config searchConfig, requiredQueries ...GQLQuery) err
 		return fmt.Errorf("%w: search extension gql endpoints not found", zerr.ErrExtensionNotEnabled)
 	}
 
-	searchEndPoint, _ := combineServerAndEndpointURL(config.servURL, constants.FullSearchPrefix)
+	searchEndPoint, _ := combineServerAndEndpointURL(config.ServURL, constants.FullSearchPrefix)
 
 	schemaQuery := `
 		{
@@ -153,8 +153,8 @@ func CheckExtEndPointQuery(config searchConfig, requiredQueries ...GQLQuery) err
 
 	queryResponse := &schemaList{}
 
-	err = makeGraphQLRequest(ctx, searchEndPoint, schemaQuery, username, password, config.verifyTLS,
-		config.debug, queryResponse, config.resultWriter)
+	err = makeGraphQLRequest(ctx, searchEndPoint, schemaQuery, username, password, config.VerifyTLS,
+		config.Debug, queryResponse, config.ResultWriter)
 	if err != nil {
 		return fmt.Errorf("gql query failed: %w", err)
 	}

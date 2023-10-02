@@ -1,7 +1,7 @@
 //go:build search
 // +build search
 
-package client
+package client_test
 
 import (
 	"bytes"
@@ -15,6 +15,7 @@ import (
 
 	"zotregistry.io/zot/pkg/api"
 	"zotregistry.io/zot/pkg/api/config"
+	"zotregistry.io/zot/pkg/cli/client"
 	test "zotregistry.io/zot/pkg/test/common"
 	. "zotregistry.io/zot/pkg/test/image-utils"
 )
@@ -43,7 +44,7 @@ func TestReposCommand(t *testing.T) {
 		defer os.Remove(configPath)
 
 		args := []string{"list", "--config", "repostest"}
-		cmd := NewRepoCommand(mockService{})
+		cmd := client.NewRepoCommand(client.NewSearchService())
 		buff := bytes.NewBufferString("")
 		cmd.SetOut(buff)
 		cmd.SetErr(buff)
@@ -57,7 +58,7 @@ func TestReposCommand(t *testing.T) {
 		So(actual, ShouldContainSubstring, "repo2")
 
 		args = []string{"list", "--sort-by", "alpha-dsc", "--config", "repostest"}
-		cmd = NewRepoCommand(new(searchService))
+		cmd = client.NewRepoCommand(client.NewSearchService())
 		buff = bytes.NewBufferString("")
 		cmd.SetOut(buff)
 		cmd.SetErr(buff)
@@ -72,7 +73,7 @@ func TestReposCommand(t *testing.T) {
 		So(strings.Index(actual, "repo2"), ShouldBeLessThan, strings.Index(actual, "repo1"))
 
 		args = []string{"list", "--sort-by", "alpha-asc", "--config", "repostest"}
-		cmd = NewRepoCommand(new(searchService))
+		cmd = client.NewRepoCommand(client.NewSearchService())
 		buff = bytes.NewBufferString("")
 		cmd.SetOut(buff)
 		cmd.SetErr(buff)
@@ -91,11 +92,13 @@ func TestReposCommand(t *testing.T) {
 func TestSuggestions(t *testing.T) {
 	Convey("Suggestions", t, func() {
 		space := regexp.MustCompile(`\s+`)
-		suggestion := ShowSuggestionsIfUnknownCommand(NewRepoCommand(mockService{}), []string{"bad-command"})
+		suggestion := client.ShowSuggestionsIfUnknownCommand(
+			client.NewRepoCommand(client.NewSearchService()), []string{"bad-command"})
 		str := space.ReplaceAllString(suggestion.Error(), " ")
 		So(str, ShouldContainSubstring, "unknown subcommand")
 
-		suggestion = ShowSuggestionsIfUnknownCommand(NewRepoCommand(mockService{}), []string{"listt"})
+		suggestion = client.ShowSuggestionsIfUnknownCommand(
+			client.NewRepoCommand(client.NewSearchService()), []string{"listt"})
 		str = space.ReplaceAllString(suggestion.Error(), " ")
 		So(str, ShouldContainSubstring, "Did you mean this? list")
 	})

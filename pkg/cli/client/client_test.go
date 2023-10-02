@@ -1,7 +1,7 @@
 //go:build search
 // +build search
 
-package client
+package client_test
 
 import (
 	"bytes"
@@ -9,6 +9,7 @@ import (
 	"crypto/x509"
 	"fmt"
 	"os"
+	"path"
 	"path/filepath"
 	"testing"
 
@@ -18,6 +19,7 @@ import (
 	"zotregistry.io/zot/pkg/api"
 	"zotregistry.io/zot/pkg/api/config"
 	"zotregistry.io/zot/pkg/api/constants"
+	"zotregistry.io/zot/pkg/cli/client"
 	extConf "zotregistry.io/zot/pkg/extensions/config"
 	test "zotregistry.io/zot/pkg/test/common"
 )
@@ -91,7 +93,7 @@ func TestTLSWithAuth(t *testing.T) {
 			defer os.RemoveAll(destCertsDir)
 
 			args := []string{"name", "dummyImageName", "--url", HOST1}
-			imageCmd := NewImageCommand(new(searchService))
+			imageCmd := client.NewImageCommand(client.NewSearchService())
 			imageBuff := bytes.NewBufferString("")
 			imageCmd.SetOut(imageBuff)
 			imageCmd.SetErr(imageBuff)
@@ -105,7 +107,7 @@ func TestTLSWithAuth(t *testing.T) {
 				fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s%s%s","showspinner":false}]}`,
 					BaseSecureURL1, constants.RoutePrefix, constants.ExtCatalogPrefix))
 			defer os.Remove(configPath)
-			imageCmd = NewImageCommand(new(searchService))
+			imageCmd = client.NewImageCommand(client.NewSearchService())
 			imageBuff = bytes.NewBufferString("")
 			imageCmd.SetOut(imageBuff)
 			imageCmd.SetErr(imageBuff)
@@ -120,7 +122,7 @@ func TestTLSWithAuth(t *testing.T) {
 				fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s%s%s","showspinner":false}]}`,
 					BaseSecureURL1, constants.RoutePrefix, constants.ExtCatalogPrefix))
 			defer os.Remove(configPath)
-			imageCmd = NewImageCommand(new(searchService))
+			imageCmd = client.NewImageCommand(client.NewSearchService())
 			imageBuff = bytes.NewBufferString("")
 			imageCmd.SetOut(imageBuff)
 			imageCmd.SetErr(imageBuff)
@@ -174,7 +176,7 @@ func TestTLSWithoutAuth(t *testing.T) {
 			defer os.RemoveAll(destCertsDir)
 
 			args := []string{"list", "--config", "imagetest"}
-			imageCmd := NewImageCommand(new(searchService))
+			imageCmd := client.NewImageCommand(client.NewSearchService())
 			imageBuff := bytes.NewBufferString("")
 			imageCmd.SetOut(imageBuff)
 			imageCmd.SetErr(imageBuff)
@@ -215,7 +217,7 @@ func TestTLSBadCerts(t *testing.T) {
 			defer os.Remove(configPath)
 
 			args := []string{"list", "--config", "imagetest"}
-			imageCmd := NewImageCommand(new(searchService))
+			imageCmd := client.NewImageCommand(client.NewSearchService())
 			imageBuff := bytes.NewBufferString("")
 			imageCmd.SetOut(imageBuff)
 			imageCmd.SetErr(imageBuff)
@@ -225,4 +227,21 @@ func TestTLSBadCerts(t *testing.T) {
 			So(imageBuff.String(), ShouldContainSubstring, "certificate signed by unknown authority")
 		})
 	})
+}
+
+func makeConfigFile(content string) string {
+	os.Setenv("HOME", os.TempDir())
+
+	home, err := os.UserHomeDir()
+	if err != nil {
+		panic(err)
+	}
+
+	configPath := path.Join(home, "/.zot")
+
+	if err := os.WriteFile(configPath, []byte(content), 0o600); err != nil {
+		panic(err)
+	}
+
+	return configPath
 }

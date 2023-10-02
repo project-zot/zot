@@ -1,7 +1,7 @@
 //go:build search
 // +build search
 
-package client
+package client_test
 
 import (
 	"io"
@@ -11,6 +11,7 @@ import (
 
 	"zotregistry.io/zot/pkg/api"
 	"zotregistry.io/zot/pkg/api/config"
+	"zotregistry.io/zot/pkg/cli/client"
 	extconf "zotregistry.io/zot/pkg/extensions/config"
 	test "zotregistry.io/zot/pkg/test/common"
 )
@@ -36,57 +37,57 @@ func TestGQLQueries(t *testing.T) {
 
 	defer cm.StopServer()
 
-	searchConfig := searchConfig{
-		servURL:      baseURL,
-		user:         "",
-		verifyTLS:    false,
-		debug:        false,
-		resultWriter: io.Discard,
+	searchConfig := client.SearchConfig{
+		ServURL:      baseURL,
+		User:         "",
+		VerifyTLS:    false,
+		Debug:        false,
+		ResultWriter: io.Discard,
 	}
 
 	Convey("Make sure the current CLI used the right queries in case they change", t, func() {
 		Convey("ImageList", func() {
-			err := CheckExtEndPointQuery(searchConfig, ImageListQuery())
+			err := client.CheckExtEndPointQuery(searchConfig, client.ImageListQuery())
 			So(err, ShouldBeNil)
 		})
 
 		Convey("ImageListForDigest", func() {
-			err := CheckExtEndPointQuery(searchConfig, ImageListForDigestQuery())
+			err := client.CheckExtEndPointQuery(searchConfig, client.ImageListForDigestQuery())
 			So(err, ShouldBeNil)
 		})
 
 		Convey("BaseImageList", func() {
-			err := CheckExtEndPointQuery(searchConfig, BaseImageListQuery())
+			err := client.CheckExtEndPointQuery(searchConfig, client.BaseImageListQuery())
 			So(err, ShouldBeNil)
 		})
 
 		Convey("DerivedImageList", func() {
-			err := CheckExtEndPointQuery(searchConfig, DerivedImageListQuery())
+			err := client.CheckExtEndPointQuery(searchConfig, client.DerivedImageListQuery())
 			So(err, ShouldBeNil)
 		})
 
 		Convey("CVEListForImage", func() {
-			err := CheckExtEndPointQuery(searchConfig, CVEListForImageQuery())
+			err := client.CheckExtEndPointQuery(searchConfig, client.CVEListForImageQuery())
 			So(err, ShouldBeNil)
 		})
 
 		Convey("ImageListForCVE", func() {
-			err := CheckExtEndPointQuery(searchConfig, ImageListForCVEQuery())
+			err := client.CheckExtEndPointQuery(searchConfig, client.ImageListForCVEQuery())
 			So(err, ShouldBeNil)
 		})
 
 		Convey("ImageListWithCVEFixed", func() {
-			err := CheckExtEndPointQuery(searchConfig, ImageListWithCVEFixedQuery())
+			err := client.CheckExtEndPointQuery(searchConfig, client.ImageListWithCVEFixedQuery())
 			So(err, ShouldBeNil)
 		})
 
 		Convey("Referrers", func() {
-			err := CheckExtEndPointQuery(searchConfig, ReferrersQuery())
+			err := client.CheckExtEndPointQuery(searchConfig, client.ReferrersQuery())
 			So(err, ShouldBeNil)
 		})
 
 		Convey("GlobalSearch", func() {
-			err := CheckExtEndPointQuery(searchConfig, GlobalSearchQuery())
+			err := client.CheckExtEndPointQuery(searchConfig, client.GlobalSearchQuery())
 			So(err, ShouldBeNil)
 		})
 	})

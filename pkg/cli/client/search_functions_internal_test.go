@@ -29,7 +29,7 @@ func TestSearchAllImages(t *testing.T) {
 	Convey("SearchAllImages", t, func() {
 		buff := bytes.NewBufferString("")
 		searchConfig := getMockSearchConfig(buff, mockService{
-			getAllImagesFn: func(ctx context.Context, config searchConfig, username, password string,
+			getAllImagesFn: func(ctx context.Context, config SearchConfig, username, password string,
 				channel chan stringResult, wtgrp *sync.WaitGroup,
 			) {
 				str, err := getMockImageStruct().stringPlainText(10, 10, 10, false)
@@ -51,7 +51,7 @@ func TestSearchAllImagesGQL(t *testing.T) {
 	Convey("SearchAllImagesGQL", t, func() {
 		buff := bytes.NewBufferString("")
 		searchConfig := getMockSearchConfig(buff, mockService{
-			getImagesGQLFn: func(ctx context.Context, config searchConfig, username, password, imageName string,
+			getImagesGQLFn: func(ctx context.Context, config SearchConfig, username, password, imageName string,
 			) (*common.ImageListResponse, error) {
 				return &common.ImageListResponse{ImageList: common.ImageList{
 					PaginatedImagesResult: common.PaginatedImagesResult{
@@ -72,7 +72,7 @@ func TestSearchAllImagesGQL(t *testing.T) {
 	Convey("SearchAllImagesGQL error", t, func() {
 		buff := bytes.NewBufferString("")
 		searchConfig := getMockSearchConfig(buff, mockService{
-			getImagesGQLFn: func(ctx context.Context, config searchConfig, username, password, imageName string,
+			getImagesGQLFn: func(ctx context.Context, config SearchConfig, username, password, imageName string,
 			) (*common.ImageListResponse, error) {
 				return &common.ImageListResponse{ImageList: common.ImageList{
 					PaginatedImagesResult: common.PaginatedImagesResult{
@@ -91,7 +91,7 @@ func TestSearchImageByName(t *testing.T) {
 	Convey("SearchImageByName", t, func() {
 		buff := bytes.NewBufferString("")
 		searchConfig := getMockSearchConfig(buff, mockService{
-			getImageByNameFn: func(ctx context.Context, config searchConfig, username string, password string, imageName string,
+			getImageByNameFn: func(ctx context.Context, config SearchConfig, username string, password string, imageName string,
 				channel chan stringResult, wtgrp *sync.WaitGroup,
 			) {
 				str, err := getMockImageStruct().stringPlainText(10, 10, 10, false)
@@ -111,7 +111,7 @@ func TestSearchImageByName(t *testing.T) {
 	Convey("SearchImageByName error", t, func() {
 		buff := bytes.NewBufferString("")
 		searchConfig := getMockSearchConfig(buff, mockService{
-			getImageByNameFn: func(ctx context.Context, config searchConfig, username string, password string, imageName string,
+			getImageByNameFn: func(ctx context.Context, config SearchConfig, username string, password string, imageName string,
 				channel chan stringResult, wtgrp *sync.WaitGroup,
 			) {
 				channel <- stringResult{StrValue: "", Err: zerr.ErrInjected}
@@ -127,7 +127,7 @@ func TestSearchImageByNameGQL(t *testing.T) {
 	Convey("SearchImageByNameGQL", t, func() {
 		buff := bytes.NewBufferString("")
 		searchConfig := getMockSearchConfig(buff, mockService{
-			getImagesGQLFn: func(ctx context.Context, config searchConfig, username, password, imageName string,
+			getImagesGQLFn: func(ctx context.Context, config SearchConfig, username, password, imageName string,
 			) (*common.ImageListResponse, error) {
 				return &common.ImageListResponse{ImageList: common.ImageList{
 					PaginatedImagesResult: common.PaginatedImagesResult{
@@ -148,7 +148,7 @@ func TestSearchImageByNameGQL(t *testing.T) {
 	Convey("SearchImageByNameGQL error", t, func() {
 		buff := bytes.NewBufferString("")
 		searchConfig := getMockSearchConfig(buff, mockService{
-			getImagesGQLFn: func(ctx context.Context, config searchConfig, username, password, imageName string,
+			getImagesGQLFn: func(ctx context.Context, config SearchConfig, username, password, imageName string,
 			) (*common.ImageListResponse, error) {
 				return &common.ImageListResponse{ImageList: common.ImageList{
 					PaginatedImagesResult: common.PaginatedImagesResult{
@@ -167,7 +167,7 @@ func TestSearchImagesByDigest(t *testing.T) {
 	Convey("SearchImagesByDigest", t, func() {
 		buff := bytes.NewBufferString("")
 		searchConfig := getMockSearchConfig(buff, mockService{
-			getImagesByDigestFn: func(ctx context.Context, config searchConfig, username string, password string, digest string,
+			getImagesByDigestFn: func(ctx context.Context, config SearchConfig, username string, password string, digest string,
 				rch chan stringResult, wtgrp *sync.WaitGroup,
 			) {
 				str, err := getMockImageStruct().stringPlainText(10, 10, 10, false)
@@ -187,7 +187,7 @@ func TestSearchImagesByDigest(t *testing.T) {
 	Convey("SearchImagesByDigest error", t, func() {
 		buff := bytes.NewBufferString("")
 		searchConfig := getMockSearchConfig(buff, mockService{
-			getImagesByDigestFn: func(ctx context.Context, config searchConfig, username string, password string, digest string,
+			getImagesByDigestFn: func(ctx context.Context, config SearchConfig, username string, password string, digest string,
 				rch chan stringResult, wtgrp *sync.WaitGroup,
 			) {
 				rch <- stringResult{StrValue: "", Err: zerr.ErrInjected}
@@ -203,7 +203,7 @@ func TestSearchDerivedImageListGQL(t *testing.T) {
 	Convey("SearchDerivedImageListGQL", t, func() {
 		buff := bytes.NewBufferString("")
 		searchConfig := getMockSearchConfig(buff, mockService{
-			getDerivedImageListGQLFn: func(ctx context.Context, config searchConfig, username string, password string,
+			getDerivedImageListGQLFn: func(ctx context.Context, config SearchConfig, username string, password string,
 				derivedImage string) (*common.DerivedImageListResponse, error,
 			) {
 				return &common.DerivedImageListResponse{DerivedImageList: common.DerivedImageList{
@@ -227,7 +227,7 @@ func TestSearchDerivedImageListGQL(t *testing.T) {
 	Convey("SearchDerivedImageListGQL error", t, func() {
 		buff := bytes.NewBufferString("")
 		searchConfig := getMockSearchConfig(buff, mockService{
-			getDerivedImageListGQLFn: func(ctx context.Context, config searchConfig, username string, password string,
+			getDerivedImageListGQLFn: func(ctx context.Context, config SearchConfig, username string, password string,
 				derivedImage string) (*common.DerivedImageListResponse, error,
 			) {
 				return &common.DerivedImageListResponse{DerivedImageList: common.DerivedImageList{
@@ -245,7 +245,7 @@ func TestSearchBaseImageListGQL(t *testing.T) {
 	Convey("SearchBaseImageListGQL", t, func() {
 		buff := bytes.NewBufferString("")
 		searchConfig := getMockSearchConfig(buff, mockService{
-			getBaseImageListGQLFn: func(ctx context.Context, config searchConfig, username string, password string,
+			getBaseImageListGQLFn: func(ctx context.Context, config SearchConfig, username string, password string,
 				derivedImage string) (*common.BaseImageListResponse, error,
 			) {
 				return &common.BaseImageListResponse{BaseImageList: common.BaseImageList{
@@ -267,7 +267,7 @@ func TestSearchBaseImageListGQL(t *testing.T) {
 	Convey("SearchBaseImageListGQL error", t, func() {
 		buff := bytes.NewBufferString("")
 		searchConfig := getMockSearchConfig(buff, mockService{
-			getBaseImageListGQLFn: func(ctx context.Context, config searchConfig, username string, password string,
+			getBaseImageListGQLFn: func(ctx context.Context, config SearchConfig, username string, password string,
 				derivedImage string) (*common.BaseImageListResponse, error,
 			) {
 				return &common.BaseImageListResponse{BaseImageList: common.BaseImageList{
@@ -285,7 +285,7 @@ func TestSearchImagesForDigestGQL(t *testing.T) {
 	Convey("SearchImagesForDigestGQL", t, func() {
 		buff := bytes.NewBufferString("")
 		searchConfig := getMockSearchConfig(buff, mockService{
-			getImagesForDigestGQLFn: func(ctx context.Context, config searchConfig, username string,
+			getImagesForDigestGQLFn: func(ctx context.Context, config SearchConfig, username string,
 				password string, digest string) (*common.ImagesForDigest, error,
 			) {
 				return &common.ImagesForDigest{ImagesForDigestList: common.ImagesForDigestList{
@@ -307,7 +307,7 @@ func TestSearchImagesForDigestGQL(t *testing.T) {
 	Convey("SearchImagesForDigestGQL error", t, func() {
 		buff := bytes.NewBufferString("")
 		searchConfig := getMockSearchConfig(buff, mockService{
-			getImagesForDigestGQLFn: func(ctx context.Context, config searchConfig, username string,
+			getImagesForDigestGQLFn: func(ctx context.Context, config SearchConfig, username string,
 				password string, digest string) (*common.ImagesForDigest, error,
 			) {
 				return &common.ImagesForDigest{ImagesForDigestList: common.ImagesForDigestList{
@@ -325,7 +325,7 @@ func TestSearchCVEForImageGQL(t *testing.T) {
 	Convey("SearchCVEForImageGQL", t, func() {
 		buff := bytes.NewBufferString("")
 		searchConfig := getMockSearchConfig(buff, mockService{
-			getCveByImageGQLFn: func(ctx context.Context, config searchConfig, username string, password string,
+			getCveByImageGQLFn: func(ctx context.Context, config SearchConfig, username string, password string,
 				imageName string, searchedCVE string) (*cveResult, error,
 			) {
 				return &cveResult{
@@ -363,7 +363,7 @@ func TestSearchCVEForImageGQL(t *testing.T) {
 	Convey("SearchCVEForImageGQL", t, func() {
 		buff := bytes.NewBufferString("")
 		searchConfig := getMockSearchConfig(buff, mockService{
-			getCveByImageGQLFn: func(ctx context.Context, config searchConfig, username string, password string,
+			getCveByImageGQLFn: func(ctx context.Context, config SearchConfig, username string, password string,
 				imageName string, searchedCVE string) (*cveResult, error,
 			) {
 				return &cveResult{}, zerr.ErrInjected
@@ -379,7 +379,7 @@ func TestSearchImagesByCVEIDGQL(t *testing.T) {
 	Convey("SearchImagesByCVEIDGQL", t, func() {
 		buff := bytes.NewBufferString("")
 		searchConfig := getMockSearchConfig(buff, mockService{
-			getTagsForCVEGQLFn: func(ctx context.Context, config searchConfig, username, password,
+			getTagsForCVEGQLFn: func(ctx context.Context, config SearchConfig, username, password,
 				imageName, cveID string) (*common.ImagesForCve, error,
 			) {
 				return &common.ImagesForCve{
@@ -405,7 +405,7 @@ func TestSearchImagesByCVEIDGQL(t *testing.T) {
 	Convey("SearchImagesByCVEIDGQL error", t, func() {
 		buff := bytes.NewBufferString("")
 		searchConfig := getMockSearchConfig(buff, mockService{
-			getTagsForCVEGQLFn: func(ctx context.Context, config searchConfig, username, password,
+			getTagsForCVEGQLFn: func(ctx context.Context, config SearchConfig, username, password,
 				imageName, cveID string) (*common.ImagesForCve, error,
 			) {
 				return &common.ImagesForCve{
@@ -425,7 +425,7 @@ func TestSearchFixedTagsGQL(t *testing.T) {
 	Convey("SearchFixedTagsGQL", t, func() {
 		buff := bytes.NewBufferString("")
 		searchConfig := getMockSearchConfig(buff, mockService{
-			getFixedTagsForCVEGQLFn: func(ctx context.Context, config searchConfig, username, password,
+			getFixedTagsForCVEGQLFn: func(ctx context.Context, config SearchConfig, username, password,
 				imageName, cveID string) (*common.ImageListWithCVEFixedResponse, error,
 			) {
 				return &common.ImageListWithCVEFixedResponse{
@@ -449,7 +449,7 @@ func TestSearchFixedTagsGQL(t *testing.T) {
 	Convey("SearchFixedTagsGQL error", t, func() {
 		buff := bytes.NewBufferString("")
 		searchConfig := getMockSearchConfig(buff, mockService{
-			getFixedTagsForCVEGQLFn: func(ctx context.Context, config searchConfig, username, password,
+			getFixedTagsForCVEGQLFn: func(ctx context.Context, config SearchConfig, username, password,
 				imageName, cveID string) (*common.ImageListWithCVEFixedResponse, error,
 			) {
 				return &common.ImageListWithCVEFixedResponse{
@@ -469,7 +469,7 @@ func TestSearchReferrersGQL(t *testing.T) {
 	Convey("SearchReferrersGQL", t, func() {
 		buff := bytes.NewBufferString("")
 		searchConfig := getMockSearchConfig(buff, mockService{
-			getReferrersGQLFn: func(ctx context.Context, config searchConfig, username, password,
+			getReferrersGQLFn: func(ctx context.Context, config SearchConfig, username, password,
 				repo, digest string) (*common.ReferrersResp, error,
 			) {
 				return &common.ReferrersResp{
@@ -497,7 +497,7 @@ func TestSearchReferrersGQL(t *testing.T) {
 	Convey("SearchReferrersGQL error", t, func() {
 		buff := bytes.NewBufferString("")
 		searchConfig := getMockSearchConfig(buff, mockService{
-			getReferrersGQLFn: func(ctx context.Context, config searchConfig, username, password,
+			getReferrersGQLFn: func(ctx context.Context, config SearchConfig, username, password,
 				repo, digest string) (*common.ReferrersResp, error,
 			) {
 				return &common.ReferrersResp{}, zerr.ErrInjected
@@ -513,7 +513,7 @@ func TestGlobalSearchGQL(t *testing.T) {
 	Convey("GlobalSearchGQL", t, func() {
 		buff := bytes.NewBufferString("")
 		searchConfig := getMockSearchConfig(buff, mockService{
-			globalSearchGQLFn: func(ctx context.Context, config searchConfig, username, password,
+			globalSearchGQLFn: func(ctx context.Context, config SearchConfig, username, password,
 				query string) (*common.GlobalSearch, error,
 			) {
 				return &common.GlobalSearch{
@@ -538,7 +538,7 @@ func TestGlobalSearchGQL(t *testing.T) {
 	Convey("GlobalSearchGQL error", t, func() {
 		buff := bytes.NewBufferString("")
 		searchConfig := getMockSearchConfig(buff, mockService{
-			globalSearchGQLFn: func(ctx context.Context, config searchConfig, username, password,
+			globalSearchGQLFn: func(ctx context.Context, config SearchConfig, username, password,
 				query string) (*common.GlobalSearch, error,
 			) {
 				return &common.GlobalSearch{}, zerr.ErrInjected
@@ -554,7 +554,7 @@ func TestSearchReferrers(t *testing.T) {
 	Convey("SearchReferrers", t, func() {
 		buff := bytes.NewBufferString("")
 		searchConfig := getMockSearchConfig(buff, mockService{
-			getReferrersFn: func(ctx context.Context, config searchConfig, username string, password string,
+			getReferrersFn: func(ctx context.Context, config SearchConfig, username string, password string,
 				repo string, digest string) (referrersResult, error,
 			) {
 				return referrersResult([]common.Referrer{
@@ -580,7 +580,7 @@ func TestSearchReferrers(t *testing.T) {
 	Convey("SearchReferrers error", t, func() {
 		buff := bytes.NewBufferString("")
 		searchConfig := getMockSearchConfig(buff, mockService{
-			getReferrersFn: func(ctx context.Context, config searchConfig, username string, password string,
+			getReferrersFn: func(ctx context.Context, config SearchConfig, username string, password string,
 				repo string, digest string) (referrersResult, error,
 			) {
 				return referrersResult{}, zerr.ErrInjected
@@ -607,17 +607,17 @@ func TestSearchRepos(t *testing.T) {
 	})
 }
 
-func getMockSearchConfig(buff *bytes.Buffer, mockService mockService) searchConfig {
-	return searchConfig{
-		resultWriter:  buff,
-		user:          "",
-		searchService: mockService,
-		servURL:       "http://127.0.0.1:8000",
-		outputFormat:  "",
-		verifyTLS:     false,
-		fixedFlag:     false,
-		verbose:       false,
-		debug:         false,
+func getMockSearchConfig(buff *bytes.Buffer, mockService mockService) SearchConfig {
+	return SearchConfig{
+		ResultWriter:  buff,
+		User:          "",
+		SearchService: mockService,
+		ServURL:       "http://127.0.0.1:8000",
+		OutputFormat:  "",
+		VerifyTLS:     false,
+		FixedFlag:     false,
+		Verbose:       false,
+		Debug:         false,
 	}
 }
 
@@ -744,19 +744,19 @@ func TestUtils(t *testing.T) {
 
 	Convey("CheckExtEndPointQuery", t, func() {
 		// invalid url
-		err := CheckExtEndPointQuery(searchConfig{
-			user:    "",
-			servURL: "bad-url",
+		err := CheckExtEndPointQuery(SearchConfig{
+			User:    "",
+			ServURL: "bad-url",
 		})
 		So(err, ShouldNotBeNil)
 
 		// good url but no connection
-		err = CheckExtEndPointQuery(searchConfig{
-			user:         "",
-			servURL:      "http://127.0.0.1:5000",
-			verifyTLS:    false,
-			debug:        false,
-			resultWriter: io.Discard,
+		err = CheckExtEndPointQuery(SearchConfig{
+			User:         "",
+			ServURL:      "http://127.0.0.1:5000",
+			VerifyTLS:    false,
+			Debug:        false,
+			ResultWriter: io.Discard,
 		})
 		So(err, ShouldNotBeNil)
 	})

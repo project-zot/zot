@@ -32,49 +32,49 @@ const (
 )
 
 type SearchService interface { //nolint:interfacebloat
-	getImagesGQL(ctx context.Context, config searchConfig, username, password string,
+	getImagesGQL(ctx context.Context, config SearchConfig, username, password string,
 		imageName string) (*common.ImageListResponse, error)
-	getImagesForDigestGQL(ctx context.Context, config searchConfig, username, password string,
+	getImagesForDigestGQL(ctx context.Context, config SearchConfig, username, password string,
 		digest string) (*common.ImagesForDigest, error)
-	getCveByImageGQL(ctx context.Context, config searchConfig, username, password,
+	getCveByImageGQL(ctx context.Context, config SearchConfig, username, password,
 		imageName string, searchedCVE string) (*cveResult, error)
-	getTagsForCVEGQL(ctx context.Context, config searchConfig, username, password, repo,
+	getTagsForCVEGQL(ctx context.Context, config SearchConfig, username, password, repo,
 		cveID string) (*common.ImagesForCve, error)
-	getFixedTagsForCVEGQL(ctx context.Context, config searchConfig, username, password, imageName,
+	getFixedTagsForCVEGQL(ctx context.Context, config SearchConfig, username, password, imageName,
 		cveID string) (*common.ImageListWithCVEFixedResponse, error)
-	getDerivedImageListGQL(ctx context.Context, config searchConfig, username, password string,
+	getDerivedImageListGQL(ctx context.Context, config SearchConfig, username, password string,
 		derivedImage string) (*common.DerivedImageListResponse, error)
-	getBaseImageListGQL(ctx context.Context, config searchConfig, username, password string,
+	getBaseImageListGQL(ctx context.Context, config SearchConfig, username, password string,
 		baseImage string) (*common.BaseImageListResponse, error)
-	getReferrersGQL(ctx context.Context, config searchConfig, username, password string,
+	getReferrersGQL(ctx context.Context, config SearchConfig, username, password string,
 		repo, digest string) (*common.ReferrersResp, error)
-	globalSearchGQL(ctx context.Context, config searchConfig, username, password string,
+	globalSearchGQL(ctx context.Context, config SearchConfig, username, password string,
 		query string) (*common.GlobalSearch, error)
 
-	getAllImages(ctx context.Context, config searchConfig, username, password string,
+	getAllImages(ctx context.Context, config SearchConfig, username, password string,
 		channel chan stringResult, wtgrp *sync.WaitGroup)
-	getImagesByDigest(ctx context.Context, config searchConfig, username, password, digest string,
+	getImagesByDigest(ctx context.Context, config SearchConfig, username, password, digest string,
 		channel chan stringResult, wtgrp *sync.WaitGroup)
-	getRepos(ctx context.Context, config searchConfig, username, password string,
+	getRepos(ctx context.Context, config SearchConfig, username, password string,
 		channel chan stringResult, wtgrp *sync.WaitGroup)
-	getImageByName(ctx context.Context, config searchConfig, username, password, imageName string,
+	getImageByName(ctx context.Context, config SearchConfig, username, password, imageName string,
 		channel chan stringResult, wtgrp *sync.WaitGroup)
-	getReferrers(ctx context.Context, config searchConfig, username, password string, repo, digest string,
+	getReferrers(ctx context.Context, config SearchConfig, username, password string, repo, digest string,
 	) (referrersResult, error)
 }
 
-type searchConfig struct {
-	searchService SearchService
-	servURL       string
-	user          string
-	outputFormat  string
-	sortBy        string
-	verifyTLS     bool
-	fixedFlag     bool
-	verbose       bool
-	debug         bool
-	resultWriter  io.Writer
-	spinner       spinnerState
+type SearchConfig struct {
+	SearchService SearchService
+	ServURL       string
+	User          string
+	OutputFormat  string
+	SortBy        string
+	VerifyTLS     bool
+	FixedFlag     bool
+	Verbose       bool
+	Debug         bool
+	ResultWriter  io.Writer
+	Spinner       spinnerState
 }
 
 type searchService struct{}
@@ -83,7 +83,7 @@ func NewSearchService() SearchService {
 	return searchService{}
 }
 
-func (service searchService) getDerivedImageListGQL(ctx context.Context, config searchConfig, username, password string,
+func (service searchService) getDerivedImageListGQL(ctx context.Context, config SearchConfig, username, password string,
 	derivedImage string,
 ) (*common.DerivedImageListResponse, error) {
 	query := fmt.Sprintf(`
@@ -107,7 +107,7 @@ func (service searchService) getDerivedImageListGQL(ctx context.Context, config 
 					IsSigned
 				}
 			}
-		}`, derivedImage, Flag2SortCriteria(config.sortBy))
+		}`, derivedImage, Flag2SortCriteria(config.SortBy))
 
 	result := &common.DerivedImageListResponse{}
 	err := service.makeGraphQLQuery(ctx, config, username, password, query, result)
@@ -119,7 +119,7 @@ func (service searchService) getDerivedImageListGQL(ctx context.Context, config 
 	return result, nil
 }
 
-func (service searchService) getReferrersGQL(ctx context.Context, config searchConfig, username, password string,
+func (service searchService) getReferrersGQL(ctx context.Context, config SearchConfig, username, password string,
 	repo, digest string,
 ) (*common.ReferrersResp, error) {
 	query := fmt.Sprintf(`
@@ -146,7 +146,7 @@ func (service searchService) getReferrersGQL(ctx context.Context, config searchC
 	return result, nil
 }
 
-func (service searchService) globalSearchGQL(ctx context.Context, config searchConfig, username, password string,
+func (service searchService) globalSearchGQL(ctx context.Context, config SearchConfig, username, password string,
 	query string,
 ) (*common.GlobalSearch, error) {
 	GQLQuery := fmt.Sprintf(`
@@ -179,7 +179,7 @@ func (service searchService) globalSearchGQL(ctx context.Context, config searchC
 					StarCount
 				}
 			}
-		}`, query, Flag2SortCriteria(config.sortBy))
+		}`, query, Flag2SortCriteria(config.SortBy))
 
 	result := &common.GlobalSearchResultResp{}
 
@@ -191,7 +191,7 @@ func (service searchService) globalSearchGQL(ctx context.Context, config searchC
 	return &result.GlobalSearch, nil
 }
 
-func (service searchService) getBaseImageListGQL(ctx context.Context, config searchConfig, username, password string,
+func (service searchService) getBaseImageListGQL(ctx context.Context, config SearchConfig, username, password string,
 	baseImage string,
 ) (*common.BaseImageListResponse, error) {
 	query := fmt.Sprintf(`
@@ -215,7 +215,7 @@ func (service searchService) getBaseImageListGQL(ctx context.Context, config sea
 					IsSigned
 				}
 			}
-		}`, baseImage, Flag2SortCriteria(config.sortBy))
+		}`, baseImage, Flag2SortCriteria(config.SortBy))
 
 	result := &common.BaseImageListResponse{}
 	err := service.makeGraphQLQuery(ctx, config, username, password, query, result)
@@ -227,7 +227,7 @@ func (service searchService) getBaseImageListGQL(ctx context.Context, config sea
 	return result, nil
 }
 
-func (service searchService) getImagesGQL(ctx context.Context, config searchConfig, username, password string,
+func (service searchService) getImagesGQL(ctx context.Context, config SearchConfig, username, password string,
 	imageName string,
 ) (*common.ImageListResponse, error) {
 	query := fmt.Sprintf(`
@@ -251,7 +251,7 @@ func (service searchService) getImagesGQL(ctx context.Context, config searchConf
 				IsSigned
 			}
 		}
-	}`, imageName, Flag2SortCriteria(config.sortBy))
+	}`, imageName, Flag2SortCriteria(config.SortBy))
 	result := &common.ImageListResponse{}
 
 	err := service.makeGraphQLQuery(ctx, config, username, password, query, result)
@@ -263,7 +263,7 @@ func (service searchService) getImagesGQL(ctx context.Context, config searchConf
 	return result, nil
 }
 
-func (service searchService) getImagesForDigestGQL(ctx context.Context, config searchConfig, username, password string,
+func (service searchService) getImagesForDigestGQL(ctx context.Context, config SearchConfig, username, password string,
 	digest string,
 ) (*common.ImagesForDigest, error) {
 	query := fmt.Sprintf(`
@@ -287,7 +287,7 @@ func (service searchService) getImagesForDigestGQL(ctx context.Context, config s
 				IsSigned
 			}
 		}
-	}`, digest, Flag2SortCriteria(config.sortBy))
+	}`, digest, Flag2SortCriteria(config.SortBy))
 	result := &common.ImagesForDigest{}
 
 	err := service.makeGraphQLQuery(ctx, config, username, password, query, result)
@@ -299,7 +299,7 @@ func (service searchService) getImagesForDigestGQL(ctx context.Context, config s
 	return result, nil
 }
 
-func (service searchService) getCveByImageGQL(ctx context.Context, config searchConfig, username, password,
+func (service searchService) getCveByImageGQL(ctx context.Context, config SearchConfig, username, password,
 	imageName, searchedCVE string,
 ) (*cveResult, error) {
 	query := fmt.Sprintf(`
@@ -310,7 +310,7 @@ func (service searchService) getCveByImageGQL(ctx context.Context, config search
 				PackageList {Name InstalledVersion FixedVersion}
 			}
 		}
-	}`, imageName, searchedCVE, Flag2SortCriteria(config.sortBy))
+	}`, imageName, searchedCVE, Flag2SortCriteria(config.SortBy))
 	result := &cveResult{}
 
 	err := service.makeGraphQLQuery(ctx, config, username, password, query, result)
@@ -322,7 +322,7 @@ func (service searchService) getCveByImageGQL(ctx context.Context, config search
 	return result, nil
 }
 
-func (service searchService) getTagsForCVEGQL(ctx context.Context, config searchConfig,
+func (service searchService) getTagsForCVEGQL(ctx context.Context, config SearchConfig,
 	username, password, repo, cveID string,
 ) (*common.ImagesForCve, error) {
 	query := fmt.Sprintf(`
@@ -347,7 +347,7 @@ func (service searchService) getTagsForCVEGQL(ctx context.Context, config search
 				}
 			}
 		}`,
-		cveID, Flag2SortCriteria(config.sortBy))
+		cveID, Flag2SortCriteria(config.SortBy))
 	result := &common.ImagesForCve{}
 
 	err := service.makeGraphQLQuery(ctx, config, username, password, query, result)
@@ -371,7 +371,7 @@ func (service searchService) getTagsForCVEGQL(ctx context.Context, config search
 	return filteredResults, nil
 }
 
-func (service searchService) getFixedTagsForCVEGQL(ctx context.Context, config searchConfig,
+func (service searchService) getFixedTagsForCVEGQL(ctx context.Context, config SearchConfig,
 	username, password, imageName, cveID string,
 ) (*common.ImageListWithCVEFixedResponse, error) {
 	query := fmt.Sprintf(`
@@ -409,10 +409,10 @@ func (service searchService) getFixedTagsForCVEGQL(ctx context.Context, config s
 	return result, nil
 }
 
-func (service searchService) getReferrers(ctx context.Context, config searchConfig, username, password string,
+func (service searchService) getReferrers(ctx context.Context, config SearchConfig, username, password string,
 	repo, digest string,
 ) (referrersResult, error) {
-	referrersEndpoint, err := combineServerAndEndpointURL(config.servURL,
+	referrersEndpoint, err := combineServerAndEndpointURL(config.ServURL,
 		fmt.Sprintf("/v2/%s/referrers/%s", repo, digest))
 	if err != nil {
 		if isContextDone(ctx) {
@@ -423,8 +423,8 @@ func (service searchService) getReferrers(ctx context.Context, config searchConf
 	}
 
 	referrerResp := &ispec.Index{}
-	_, err = makeGETRequest(ctx, referrersEndpoint, username, password, config.verifyTLS,
-		config.debug, &referrerResp, config.resultWriter)
+	_, err = makeGETRequest(ctx, referrersEndpoint, username, password, config.VerifyTLS,
+		config.Debug, &referrerResp, config.ResultWriter)
 
 	if err != nil {
 		if isContextDone(ctx) {
@@ -447,7 +447,7 @@ func (service searchService) getReferrers(ctx context.Context, config searchConf
 	return referrersList, nil
 }
 
-func (service searchService) getImageByName(ctx context.Context, config searchConfig,
+func (service searchService) getImageByName(ctx context.Context, config SearchConfig,
 	username, password, imageName string, rch chan stringResult, wtgrp *sync.WaitGroup,
 ) {
 	defer wtgrp.Done()
@@ -466,7 +466,7 @@ func (service searchService) getImageByName(ctx context.Context, config searchCo
 	localWg.Wait()
 }
 
-func (service searchService) getAllImages(ctx context.Context, config searchConfig, username, password string,
+func (service searchService) getAllImages(ctx context.Context, config SearchConfig, username, password string,
 	rch chan stringResult, wtgrp *sync.WaitGroup,
 ) {
 	defer wtgrp.Done()
@@ -474,7 +474,7 @@ func (service searchService) getAllImages(ctx context.Context, config searchConf
 
 	catalog := &catalogResponse{}
 
-	catalogEndPoint, err := combineServerAndEndpointURL(config.servURL, fmt.Sprintf("%s%s",
+	catalogEndPoint, err := combineServerAndEndpointURL(config.ServURL, fmt.Sprintf("%s%s",
 		constants.RoutePrefix, constants.ExtCatalogPrefix))
 	if err != nil {
 		if isContextDone(ctx) {
@@ -485,8 +485,8 @@ func (service searchService) getAllImages(ctx context.Context, config searchConf
 		return
 	}
 
-	_, err = makeGETRequest(ctx, catalogEndPoint, username, password, config.verifyTLS,
-		config.debug, catalog, config.resultWriter)
+	_, err = makeGETRequest(ctx, catalogEndPoint, username, password, config.VerifyTLS,
+		config.Debug, catalog, config.ResultWriter)
 	if err != nil {
 		if isContextDone(ctx) {
 			return
@@ -513,14 +513,14 @@ func (service searchService) getAllImages(ctx context.Context, config searchConf
 	localWg.Wait()
 }
 
-func getImage(ctx context.Context, config searchConfig, username, password, imageName string,
+func getImage(ctx context.Context, config SearchConfig, username, password, imageName string,
 	rch chan stringResult, wtgrp *sync.WaitGroup, pool *requestsPool,
 ) {
 	defer wtgrp.Done()
 
 	repo, imageTag := common.GetImageDirAndTag(imageName)
 
-	tagListEndpoint, err := combineServerAndEndpointURL(config.servURL, fmt.Sprintf("/v2/%s/tags/list", repo))
+	tagListEndpoint, err := combineServerAndEndpointURL(config.ServURL, fmt.Sprintf("/v2/%s/tags/list", repo))
 	if err != nil {
 		if isContextDone(ctx) {
 			return
@@ -531,8 +531,8 @@ func getImage(ctx context.Context, config searchConfig, username, password, imag
 	}
 
 	tagList := &tagListResp{}
-	_, err = makeGETRequest(ctx, tagListEndpoint, username, password, config.verifyTLS,
-		config.debug, &tagList, config.resultWriter)
+	_, err = makeGETRequest(ctx, tagListEndpoint, username, password, config.VerifyTLS,
+		config.Debug, &tagList, config.ResultWriter)
 
 	if err != nil {
 		if isContextDone(ctx) {
@@ -567,7 +567,7 @@ func getImage(ctx context.Context, config searchConfig, username, password, imag
 	}
 }
 
-func (service searchService) getImagesByDigest(ctx context.Context, config searchConfig, username,
+func (service searchService) getImagesByDigest(ctx context.Context, config SearchConfig, username,
 	password string, digest string, rch chan stringResult, wtgrp *sync.WaitGroup,
 ) {
 	defer wtgrp.Done()
@@ -652,16 +652,16 @@ func isContextDone(ctx context.Context) bool {
 // Query using GQL, the query string is passed as a parameter
 // errors are returned in the stringResult channel, the unmarshalled payload is in resultPtr.
 func (service searchService) makeGraphQLQuery(ctx context.Context,
-	config searchConfig, username, password, query string,
+	config SearchConfig, username, password, query string,
 	resultPtr interface{},
 ) error {
-	endPoint, err := combineServerAndEndpointURL(config.servURL, constants.FullSearchPrefix)
+	endPoint, err := combineServerAndEndpointURL(config.ServURL, constants.FullSearchPrefix)
 	if err != nil {
 		return err
 	}
 
-	err = makeGraphQLRequest(ctx, endPoint, query, username, password, config.verifyTLS,
-		config.debug, resultPtr, config.resultWriter)
+	err = makeGraphQLRequest(ctx, endPoint, query, username, password, config.VerifyTLS,
+		config.Debug, resultPtr, config.ResultWriter)
 	if err != nil {
 		return err
 	}
@@ -697,12 +697,12 @@ func checkResultGraphQLQuery(ctx context.Context, err error, resultErrors []comm
 	return nil
 }
 
-func addManifestCallToPool(ctx context.Context, config searchConfig, pool *requestsPool,
+func addManifestCallToPool(ctx context.Context, config SearchConfig, pool *requestsPool,
 	username, password, imageName, tagName string, rch chan stringResult, wtgrp *sync.WaitGroup,
 ) {
 	defer wtgrp.Done()
 
-	manifestEndpoint, err := combineServerAndEndpointURL(config.servURL,
+	manifestEndpoint, err := combineServerAndEndpointURL(config.ServURL,
 		fmt.Sprintf("/v2/%s/manifests/%s", imageName, tagName))
 	if err != nil {
 		if isContextDone(ctx) {
@@ -1304,7 +1304,7 @@ func getRepoTableWriter(writer io.Writer) *tablewriter.Table {
 	return table
 }
 
-func (service searchService) getRepos(ctx context.Context, config searchConfig, username, password string,
+func (service searchService) getRepos(ctx context.Context, config SearchConfig, username, password string,
 	rch chan stringResult, wtgrp *sync.WaitGroup,
 ) {
 	defer wtgrp.Done()
@@ -1312,7 +1312,7 @@ func (service searchService) getRepos(ctx context.Context, config searchConfig, 
 
 	catalog := &catalogResponse{}
 
-	catalogEndPoint, err := combineServerAndEndpointURL(config.servURL, fmt.Sprintf("%s%s",
+	catalogEndPoint, err := combineServerAndEndpointURL(config.ServURL, fmt.Sprintf("%s%s",
 		constants.RoutePrefix, constants.ExtCatalogPrefix))
 	if err != nil {
 		if isContextDone(ctx) {
@@ -1323,8 +1323,8 @@ func (service searchService) getRepos(ctx context.Context, config searchConfig, 
 		return
 	}
 
-	_, err = makeGETRequest(ctx, catalogEndPoint, username, password, config.verifyTLS,
-		config.debug, catalog, config.resultWriter)
+	_, err = makeGETRequest(ctx, catalogEndPoint, username, password, config.VerifyTLS,
+		config.Debug, catalog, config.ResultWriter)
 	if err != nil {
 		if isContextDone(ctx) {
 			return
@@ -1334,15 +1334,15 @@ func (service searchService) getRepos(ctx context.Context, config searchConfig, 
 		return
 	}
 
-	fmt.Fprintln(config.resultWriter, "\nREPOSITORY NAME")
+	fmt.Fprintln(config.ResultWriter, "\nREPOSITORY NAME")
 
-	if config.sortBy == SortByAlphabeticAsc {
+	if config.SortBy == SortByAlphabeticAsc {
 		for i := 0; i < len(catalog.Repositories); i++ {
-			fmt.Fprintln(config.resultWriter, catalog.Repositories[i])
+			fmt.Fprintln(config.ResultWriter, catalog.Repositories[i])
 		}
 	} else {
 		for i := len(catalog.Repositories) - 1; i >= 0; i-- {
-			fmt.Fprintln(config.resultWriter, catalog.Repositories[i])
+			fmt.Fprintln(config.ResultWriter, catalog.Repositories[i])
 		}
 	}
 }
