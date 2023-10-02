@@ -112,6 +112,7 @@ func (mb *BaseMultiarchBuilder) Build() MultiarchImage {
 	for i := range manifests {
 		manifests[i] = ispec.Descriptor{
 			Digest:    mb.images[i].ManifestDescriptor.Digest,
+			Size:      mb.images[i].ManifestDescriptor.Size,
 			MediaType: ispec.MediaTypeImageManifest,
 		}
 	}

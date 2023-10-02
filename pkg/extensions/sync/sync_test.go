@@ -48,7 +48,6 @@ import (
 	mTypes "zotregistry.io/zot/pkg/meta/types"
 	storageConstants "zotregistry.io/zot/pkg/storage/constants"
 	test "zotregistry.io/zot/pkg/test/common"
-	"zotregistry.io/zot/pkg/test/deprecated"
 	. "zotregistry.io/zot/pkg/test/image-utils"
 	"zotregistry.io/zot/pkg/test/mocks"
 	ociutils "zotregistry.io/zot/pkg/test/oci-utils"
@@ -737,18 +736,11 @@ func TestOnDemand(t *testing.T) {
 			cm.StartAndWait(conf.HTTP.Port)
 			defer cm.StopServer()
 
-			imageConfig, layers, manifest, err := deprecated.GetRandomImageComponents(10) //nolint:staticcheck
-			So(err, ShouldBeNil)
+			image := CreateRandomImage()
+			manifestBlob := image.ManifestDescriptor.Data
+			manifestDigest := image.ManifestDescriptor.Digest
 
-			manifestBlob, err := json.Marshal(manifest)
-			So(err, ShouldBeNil)
-
-			manifestDigest := godigest.FromBytes(manifestBlob)
-
-			err = UploadImage(
-				Image{Config: imageConfig, Layers: layers, Manifest: manifest},
-				srcBaseURL, "remote-repo", "test",
-			)
+			err := UploadImage(image, srcBaseURL, "remote-repo", "test")
 			So(err, ShouldBeNil)
 
 			// sign using cosign
@@ -1091,31 +1083,22 @@ func TestSyncWithNonDistributableBlob(t *testing.T) {
 
 		dcm := test.NewControllerManager(dctlr)
 
-		imageConfig, layers, manifest, err := deprecated.GetRandomImageComponents(10) //nolint:staticcheck
-		So(err, ShouldBeNil)
-
-		nonDistributableLayer := make([]byte, 10)
-		nonDistributableDigest := godigest.FromBytes(nonDistributableLayer)
-		nonDistributableLayerDesc := ispec.Descriptor{
-			MediaType: ispec.MediaTypeImageLayerNonDistributableGzip, //nolint:staticcheck
+		nonDistributableLayerData := make([]byte, 10)
+		nonDistributableDigest := godigest.FromBytes(nonDistributableLayerData)
+		nonDistributableLayer := Layer{
+			Blob:      nonDistributableLayerData,
 			Digest:    nonDistributableDigest,
-			Size:      int64(len(nonDistributableLayer)),
-			URLs: []string{
-				path.Join(srcBaseURL, "v2", repoName, "blobs", nonDistributableDigest.String()),
-			},
+			MediaType: ispec.MediaTypeImageLayerNonDistributableGzip, //nolint:staticcheck
 		}
 
-		manifest.Layers = append(manifest.Layers, nonDistributableLayerDesc)
+		layers := append(GetDefaultLayers(), nonDistributableLayer)
+		image := CreateImageWith().Layers(layers).DefaultConfig().Build()
 
-		err = UploadImage(
-			Image{Config: imageConfig, Layers: layers, Manifest: manifest},
-			srcBaseURL, repoName, tag,
-		)
-
+		err := UploadImage(image, srcBaseURL, repoName, tag)
 		So(err, ShouldBeNil)
 
 		err = os.WriteFile(path.Join(srcDir, repoName, "blobs/sha256", nonDistributableDigest.Encoded()),
-			nonDistributableLayer, 0o600)
+			nonDistributableLayerData, 0o600)
 		So(err, ShouldBeNil)
 
 		dcm.StartAndWait(dctlr.Config.HTTP.Port)
@@ -1274,47 +1257,20 @@ func TestDockerImagesAreSkipped(t *testing.T) {
 
 		Convey("skipping already synced multiarch docker image", func() {
 			// create an image index on upstream
-			var index ispec.Index
-			index.SchemaVersion = 2
-			index.MediaType = ispec.MediaTypeImageIndex
+			multiarchImage := CreateMultiarchWith().Images(
+				[]Image{
+					CreateRandomImage(),
+					CreateRandomImage(),
+					CreateRandomImage(),
+					CreateRandomImage(),
+				},
+			).Build()
 
-			// upload multiple manifests
-			for i := 0; i < 4; i++ {
-				config, layers, manifest, err := deprecated.GetImageComponents(1000 + i) //nolint:staticcheck
-				So(err, ShouldBeNil)
-
-				manifestContent, err := json.Marshal(manifest)
-				So(err, ShouldBeNil)
-
-				manifestDigest := godigest.FromBytes(manifestContent)
-
-				err = UploadImage(
-					Image{
-						Manifest: manifest,
-						Config:   config,
-						Layers:   layers,
-					}, srcBaseURL, "index", manifestDigest.String())
-				So(err, ShouldBeNil)
-
-				index.Manifests = append(index.Manifests, ispec.Descriptor{
-					Digest:    manifestDigest,
-					MediaType: ispec.MediaTypeImageManifest,
-					Size:      int64(len(manifestContent)),
-				})
-			}
-
-			content, err := json.Marshal(index)
+			// upload the previously defined images
+			err := UploadMultiarchImage(multiarchImage, srcBaseURL, indexRepoName, "latest")
 			So(err, ShouldBeNil)
-
-			digest := godigest.FromBytes(content)
-			So(digest, ShouldNotBeNil)
 
 			resp, err := resty.R().SetHeader("Content-Type", ispec.MediaTypeImageIndex).
-				SetBody(content).Put(srcBaseURL + "/v2/index/manifests/latest")
-			So(err, ShouldBeNil)
-			So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
-
-			resp, err = resty.R().SetHeader("Content-Type", ispec.MediaTypeImageIndex).
 				Get(srcBaseURL + "/v2/index/manifests/latest")
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
@@ -4513,10 +4469,9 @@ func TestSyncedSignaturesMetaDB(t *testing.T) {
 		defer scm.StopServer()
 
 		// Push an image
-		signedImage, err := deprecated.GetRandomImage() //nolint:staticcheck
-		So(err, ShouldBeNil)
+		signedImage := CreateRandomImage()
 
-		err = UploadImage(signedImage, srcBaseURL, repoName, tag)
+		err := UploadImage(signedImage, srcBaseURL, repoName, tag)
 		So(err, ShouldBeNil)
 
 		err = signature.SignImageUsingNotary(repoName+":"+tag, srcPort)
@@ -6197,45 +6152,20 @@ func TestSyncImageIndex(t *testing.T) {
 			Registries: []syncconf.RegistryConfig{syncRegistryConfig},
 		}
 
-		// create an image index on upstream
-		var index ispec.Index
-		index.SchemaVersion = 2
-		index.MediaType = ispec.MediaTypeImageIndex
+		multiarchImage := CreateMultiarchWith().Images(
+			[]Image{
+				CreateRandomImage(),
+				CreateRandomImage(),
+				CreateRandomImage(),
+				CreateRandomImage(),
+			},
+		).Build()
 
-		// upload multiple manifests
-		for i := 0; i < 4; i++ {
-			config, layers, manifest, err := deprecated.GetImageComponents(1000 + i) //nolint:staticcheck
-			So(err, ShouldBeNil)
-
-			manifestContent, err := json.Marshal(manifest)
-			So(err, ShouldBeNil)
-
-			manifestDigest := godigest.FromBytes(manifestContent)
-
-			err = UploadImage(
-				Image{
-					Manifest: manifest,
-					Config:   config,
-					Layers:   layers,
-				}, srcBaseURL, "index", manifestDigest.String())
-			So(err, ShouldBeNil)
-
-			index.Manifests = append(index.Manifests, ispec.Descriptor{
-				Digest:    manifestDigest,
-				MediaType: ispec.MediaTypeImageManifest,
-				Size:      int64(len(manifestContent)),
-			})
-		}
-
-		content, err := json.Marshal(index)
+		// upload the previously defined images
+		err := UploadMultiarchImage(multiarchImage, srcBaseURL, "index", "latest")
 		So(err, ShouldBeNil)
-		digest := godigest.FromBytes(content)
-		So(digest, ShouldNotBeNil)
+
 		resp, err := resty.R().SetHeader("Content-Type", ispec.MediaTypeImageIndex).
-			SetBody(content).Put(srcBaseURL + "/v2/index/manifests/latest")
-		So(err, ShouldBeNil)
-		So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
-		resp, err = resty.R().SetHeader("Content-Type", ispec.MediaTypeImageIndex).
 			Get(srcBaseURL + "/v2/index/manifests/latest")
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
@@ -6265,7 +6195,7 @@ func TestSyncImageIndex(t *testing.T) {
 			err := json.Unmarshal(resp.Body(), &syncedIndex)
 			So(err, ShouldBeNil)
 
-			So(reflect.DeepEqual(syncedIndex, index), ShouldEqual, true)
+			So(reflect.DeepEqual(syncedIndex, multiarchImage.Index), ShouldEqual, true)
 
 			waitSyncFinish(dctlr.Config.Log.Output)
 		})
@@ -6292,7 +6222,7 @@ func TestSyncImageIndex(t *testing.T) {
 			err := json.Unmarshal(resp.Body(), &syncedIndex)
 			So(err, ShouldBeNil)
 
-			So(reflect.DeepEqual(syncedIndex, index), ShouldEqual, true)
+			So(reflect.DeepEqual(syncedIndex, multiarchImage.Index), ShouldEqual, true)
 		})
 	})
 }

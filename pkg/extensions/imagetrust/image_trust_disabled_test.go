@@ -3,7 +3,6 @@
 package imagetrust_test
 
 import (
-	"encoding/json"
 	"os"
 	"path"
 	"testing"
@@ -11,7 +10,7 @@ import (
 	. "github.com/smartystreets/goconvey/convey"
 
 	"zotregistry.io/zot/pkg/extensions/imagetrust"
-	"zotregistry.io/zot/pkg/test/deprecated"
+	. "zotregistry.io/zot/pkg/test/image-utils"
 )
 
 func TestImageTrust(t *testing.T) {
@@ -28,13 +27,9 @@ func TestImageTrust(t *testing.T) {
 
 		repo := "repo"
 
-		image, err := deprecated.GetRandomImage() //nolint:staticcheck
-		So(err, ShouldBeNil)
-
-		manifestContent, err := json.Marshal(image.Manifest)
-		So(err, ShouldBeNil)
-
-		manifestDigest := image.Digest()
+		image := CreateRandomImage() //nolint:staticcheck
+		manifestContent := image.ManifestDescriptor.Data
+		manifestDigest := image.ManifestDescriptor.Digest
 
 		localImgTrustStore, err := imagetrust.NewLocalImageTrustStore(rootDir)
 		So(err, ShouldBeNil)

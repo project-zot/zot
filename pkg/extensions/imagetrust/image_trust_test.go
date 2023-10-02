@@ -38,7 +38,6 @@ import (
 	extconf "zotregistry.io/zot/pkg/extensions/config"
 	"zotregistry.io/zot/pkg/extensions/imagetrust"
 	test "zotregistry.io/zot/pkg/test/common"
-	"zotregistry.io/zot/pkg/test/deprecated"
 	. "zotregistry.io/zot/pkg/test/image-utils"
 	"zotregistry.io/zot/pkg/test/mocks"
 	"zotregistry.io/zot/pkg/test/signature"
@@ -156,50 +155,40 @@ func TestVerifySignatures(t *testing.T) {
 	})
 
 	Convey("empty manifest digest", t, func() {
-		image, err := deprecated.GetRandomImage() //nolint:staticcheck
-		So(err, ShouldBeNil)
-
-		manifestContent, err := json.Marshal(image.Manifest)
-		So(err, ShouldBeNil)
+		image := CreateRandomImage()
+		manifestContent := image.ManifestDescriptor.Data
 
 		imgTrustStore := &imagetrust.ImageTrustStore{}
-		_, _, _, err = imgTrustStore.VerifySignature("", []byte(""), "", "", manifestContent, "repo")
+		_, _, _, err := imgTrustStore.VerifySignature("", []byte(""), "", "", manifestContent, "repo")
 		So(err, ShouldNotBeNil)
 		So(err, ShouldEqual, zerr.ErrBadManifestDigest)
 	})
 
 	Convey("wrong signature type", t, func() {
-		image, err := deprecated.GetRandomImage() //nolint:staticcheck
-		So(err, ShouldBeNil)
-
-		manifestContent, err := json.Marshal(image.Manifest)
-		So(err, ShouldBeNil)
-
-		manifestDigest := image.Digest()
+		image := CreateRandomImage()
+		manifestContent := image.ManifestDescriptor.Data
+		manifestDigest := image.ManifestDescriptor.Digest
 
 		imgTrustStore := &imagetrust.ImageTrustStore{}
-		_, _, _, err = imgTrustStore.VerifySignature("wrongType", []byte(""), "", manifestDigest, manifestContent, "repo")
+		_, _, _, err := imgTrustStore.VerifySignature("wrongType", []byte(""), "", manifestDigest, manifestContent, "repo")
 		So(err, ShouldNotBeNil)
 		So(err, ShouldEqual, zerr.ErrInvalidSignatureType)
 	})
 
 	Convey("verify cosign signature", t, func() {
-		repo := "repo"                            //nolint:goconst
-		tag := "test"                             //nolint:goconst
-		image, err := deprecated.GetRandomImage() //nolint:staticcheck
-		So(err, ShouldBeNil)
+		repo := "repo" //nolint:goconst
+		tag := "test"  //nolint:goconst
 
-		manifestContent, err := json.Marshal(image.Manifest)
-		So(err, ShouldBeNil)
-
-		manifestDigest := image.Digest()
+		image := CreateRandomImage()
+		manifestContent := image.ManifestDescriptor.Data
+		manifestDigest := image.ManifestDescriptor.Digest
 
 		Convey("cosignDir is not set", func() {
 			imgTrustStore := &imagetrust.ImageTrustStore{
 				CosignStorage: &imagetrust.PublicKeyLocalStorage{},
 			}
 
-			_, _, _, err = imgTrustStore.VerifySignature("cosign", []byte(""), "", manifestDigest, manifestContent, repo)
+			_, _, _, err := imgTrustStore.VerifySignature("cosign", []byte(""), "", manifestDigest, manifestContent, repo)
 			So(err, ShouldNotBeNil)
 			So(err, ShouldEqual, zerr.ErrSignConfigDirNotSet)
 		})
@@ -336,22 +325,18 @@ func TestVerifySignatures(t *testing.T) {
 	})
 
 	Convey("verify notation signature", t, func() {
-		repo := "repo"                            //nolint:goconst
-		tag := "test"                             //nolint:goconst
-		image, err := deprecated.GetRandomImage() //nolint:staticcheck
-		So(err, ShouldBeNil)
-
-		manifestContent, err := json.Marshal(image.Manifest)
-		So(err, ShouldBeNil)
-
-		manifestDigest := image.Digest()
+		repo := "repo" //nolint:goconst
+		tag := "test"  //nolint:goconst
+		image := CreateRandomImage()
+		manifestContent := image.ManifestDescriptor.Data
+		manifestDigest := image.ManifestDescriptor.Digest
 
 		Convey("notationDir is not set", func() {
 			imgTrustStore := &imagetrust.ImageTrustStore{
 				NotationStorage: &imagetrust.CertificateLocalStorage{},
 			}
 
-			_, _, _, err = imgTrustStore.VerifySignature("notation", []byte("signature"), "", manifestDigest,
+			_, _, _, err := imgTrustStore.VerifySignature("notation", []byte("signature"), "", manifestDigest,
 				manifestContent, repo)
 			So(err, ShouldNotBeNil)
 			So(err, ShouldEqual, zerr.ErrSignConfigDirNotSet)
@@ -920,10 +905,8 @@ func TestAWSTrustStore(t *testing.T) {
 		repo := "repo"
 		image := CreateRandomImage()
 
-		manifestContent, err := json.Marshal(image.Manifest)
-		So(err, ShouldBeNil)
-
-		manifestDigest := image.Digest()
+		manifestContent := image.ManifestDescriptor.Data
+		manifestDigest := image.ManifestDescriptor.Digest
 
 		secretsManagerMock := mocks.SecretsManagerMock{
 			CreateSecretFn: func(ctx context.Context, params *secretsmanager.CreateSecretInput,
@@ -955,10 +938,8 @@ func TestAWSTrustStore(t *testing.T) {
 		repo := "repo"
 		image := CreateRandomImage()
 
-		manifestContent, err := json.Marshal(image.Manifest)
-		So(err, ShouldBeNil)
-
-		manifestDigest := image.Digest()
+		manifestContent := image.ManifestDescriptor.Data
+		manifestDigest := image.ManifestDescriptor.Digest
 
 		secretsManagerMock := mocks.SecretsManagerMock{
 			CreateSecretFn: func(ctx context.Context, params *secretsmanager.CreateSecretInput,
@@ -1183,13 +1164,9 @@ func RunVerificationTests(t *testing.T, dbDriverParams map[string]interface{}) {
 		tag := "test"  //nolint:goconst
 
 		Convey("verify cosign signature is trusted", func() {
-			image, err := deprecated.GetRandomImage() //nolint:staticcheck
-			So(err, ShouldBeNil)
-
-			manifestContent, err := json.Marshal(image.Manifest)
-			So(err, ShouldBeNil)
-
-			manifestDigest := image.Digest()
+			image := CreateRandomImage()
+			manifestContent := image.ManifestDescriptor.Data
+			manifestDigest := image.ManifestDescriptor.Digest
 
 			err = UploadImage(image, baseURL, repo, tag)
 			So(err, ShouldBeNil)
@@ -1267,13 +1244,9 @@ func RunVerificationTests(t *testing.T, dbDriverParams map[string]interface{}) {
 		})
 
 		Convey("verify notation signature is trusted", func() {
-			image, err := deprecated.GetRandomImage() //nolint:staticcheck
-			So(err, ShouldBeNil)
-
-			manifestContent, err := json.Marshal(image.Manifest)
-			So(err, ShouldBeNil)
-
-			manifestDigest := image.Digest()
+			image := CreateRandomImage()
+			manifestContent := image.ManifestDescriptor.Data
+			manifestDigest := image.ManifestDescriptor.Digest
 
 			err = UploadImage(image, baseURL, repo, tag)
 			So(err, ShouldBeNil)
