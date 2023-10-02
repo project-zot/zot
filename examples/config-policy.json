@@ -60,7 +60,7 @@
             }
           ],
           "defaultPolicy": ["read"]
-        }  
+        }
       },
       "adminPolicy": {
         "users": ["admin"],

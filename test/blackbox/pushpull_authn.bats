@@ -25,12 +25,15 @@ function setup_file() {
         exit 1
     fi
 
+    # Download test data to folder common for the entire suite, not just this file
+    skopeo --insecure-policy copy --format=oci docker://ghcr.io/project-zot/test-images/busybox:1.36 oci:${TEST_DATA_DIR}/busybox:1.36
+
     # Setup zot server
     local zot_root_dir=${BATS_FILE_TMPDIR}/zot
     local zot_config_file=${BATS_FILE_TMPDIR}/zot_config.json
     local zot_htpasswd_file=${BATS_FILE_TMPDIR}/zot_htpasswd
-    htpasswd -Bbn test test123 >> ${zot_htpasswd_file}
-    
+    htpasswd -Bbn ${AUTH_USER} ${AUTH_PASS} >> ${zot_htpasswd_file}
+
     echo ${zot_root_dir} >&3
 
     mkdir -p ${zot_root_dir}
@@ -89,14 +92,14 @@ function teardown_file() {
 
 @test "push image with regclient" {
     run regctl registry set localhost:8080 --tls disabled
-    run regctl registry login localhost:8080 -u test -p test123
+    run regctl registry login localhost:8080 -u ${AUTH_USER} -p ${AUTH_PASS}
     [ "$status" -eq 0 ]
-    run regctl image copy ocidir://${TEST_DATA_DIR}/golang:1.20 localhost:8080/test-regclient
+    run regctl image copy ocidir://${TEST_DATA_DIR}/busybox:1.36 localhost:8080/test-regclient
     [ "$status" -eq 0 ]
 }
 
 @test "pull image with regclient" {
-    run regctl image copy localhost:8080/test-regclient ocidir://${TEST_DATA_DIR}/golang:1.20
+    run regctl image copy localhost:8080/test-regclient ocidir://${TEST_DATA_DIR}/busybox:latest
     [ "$status" -eq 0 ]
 }
 

@@ -5,6 +5,11 @@
 load helpers_zot
 
 function verify_prerequisites {
+    if [ ! $(command -v htpasswd) ]; then
+        echo "you need to install htpasswd as a prerequisite to running the tests" >&3
+        return 1
+    fi
+
     return 0
 }
 
@@ -15,15 +20,16 @@ function setup_file() {
     fi
 
     # Download test data to folder common for the entire suite, not just this file
-    skopeo --insecure-policy copy --format=oci docker://ghcr.io/project-zot/golang:1.20 oci:${TEST_DATA_DIR}/golang:1.20
+    skopeo --insecure-policy copy --format=oci docker://ghcr.io/project-zot/test-images/busybox:1.36 oci:${TEST_DATA_DIR}/busybox:1.36
+
     # Setup zot server
     local zot_root_dir=${BATS_FILE_TMPDIR}/zot
     local zot_config_file=${BATS_FILE_TMPDIR}/zot_config.json
     local oci_data_dir=${BATS_FILE_TMPDIR}/oci
-    local htpasswordFile=${BATS_FILE_TMPDIR}/htpasswd
+    local zot_htpasswd_file=${BATS_FILE_TMPDIR}/htpasswd
     mkdir -p ${zot_root_dir}
     mkdir -p ${oci_data_dir}
-    echo 'test:$2a$10$EIIoeCnvsIDAJeDL4T1sEOnL2fWOvsq7ACZbs3RT40BBBXg.Ih7V.' >> ${htpasswordFile}
+    htpasswd -Bbn ${AUTH_USER} ${AUTH_PASS} >> ${zot_htpasswd_file}
     cat > ${zot_config_file}<<EOF
 {
     "distSpecVersion": "1.1.0-dev",
@@ -35,7 +41,7 @@ function setup_file() {
         "port": "8080",
         "auth": {
             "htpasswd": {
-                "path": "${htpasswordFile}"
+                "path": "${zot_htpasswd_file}"
             }
         },
         "accessControl": {
@@ -50,7 +56,7 @@ function setup_file() {
                     "policies": [
                         {
                             "users": [
-                                "test"
+                                "${AUTH_USER}"
                             ],
                             "actions": [
                                 "read",
@@ -83,21 +89,21 @@ function teardown_file() {
 }
 
 @test "push 2 images with same manifest with user policy" {
-    run skopeo --insecure-policy copy --dest-creds test:test --dest-tls-verify=false \
-        oci:${TEST_DATA_DIR}/golang:1.20 \
-        docker://127.0.0.1:8080/golang:1.20
+    run skopeo --insecure-policy copy --dest-creds ${AUTH_USER}:${AUTH_PASS} --dest-tls-verify=false \
+        oci:${TEST_DATA_DIR}/busybox:1.36 \
+        docker://127.0.0.1:8080/busybox:1.36
     [ "$status" -eq 0 ]
 
-    run skopeo --insecure-policy copy --dest-creds test:test --dest-tls-verify=false \
-        oci:${TEST_DATA_DIR}/golang:1.20 \
-        docker://127.0.0.1:8080/golang:latest
+    run skopeo --insecure-policy copy --dest-creds ${AUTH_USER}:${AUTH_PASS} --dest-tls-verify=false \
+        oci:${TEST_DATA_DIR}/busybox:1.36 \
+        docker://127.0.0.1:8080/busybox:latest
     [ "$status" -eq 0 ]
 }
 
 @test "skopeo delete image with anonymous policy should fail" {
     # skopeo deletes by digest, so it should fail with detectManifestCollision policy
     run skopeo --insecure-policy delete --tls-verify=false \
-        docker://127.0.0.1:8080/golang:1.20
+        docker://127.0.0.1:8080/busybox:1.36
     [ "$status" -eq 1 ]
     # conflict status code
     [[ "$output" == *"manifest invalid"* ]]
@@ -107,7 +113,7 @@ function teardown_file() {
     run regctl registry set localhost:8080 --tls disabled
     [ "$status" -eq 0 ]
 
-    run regctl image delete localhost:8080/golang:1.20 --force-tag-dereference
+    run regctl image delete localhost:8080/busybox:1.36 --force-tag-dereference
     [ "$status" -eq 1 ]
     # conflict status code
     [[ "$output" == *"409"* ]]
@@ -115,7 +121,7 @@ function teardown_file() {
 
 @test "delete image with user policy should work" {
     # should work without detectManifestCollision policy
-    run skopeo --insecure-policy delete --creds test:test --tls-verify=false \
-        docker://127.0.0.1:8080/golang:1.20
+    run skopeo --insecure-policy delete --creds ${AUTH_USER}:${AUTH_PASS} --tls-verify=false \
+        docker://127.0.0.1:8080/busybox:1.36
     [ "$status" -eq 0 ]
 }

@@ -6,6 +6,8 @@ ZOT_PATH=${ROOT_DIR}/bin/zot-${OS}-${ARCH}
 ZLI_PATH=${ROOT_DIR}/bin/zli-${OS}-${ARCH}
 ZOT_MINIMAL_PATH=${ROOT_DIR}/bin/zot-${OS}-${ARCH}-minimal
 ZB_PATH=${ROOT_DIR}/bin/zb-${OS}-${ARCH}
+AUTH_USER=poweruser
+AUTH_PASS=sup*rSecr9T
 
 mkdir -p ${TEST_DATA_DIR}
 

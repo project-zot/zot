@@ -29,5 +29,6 @@ func SetupMetricsRoutes(conf *config.Config, router *mux.Router,
 		zcommon.WriteJSON(w, http.StatusOK, m)
 	}
 
+	router.Use(authFunc)
 	router.HandleFunc("/metrics", getMetrics).Methods("GET")
 }

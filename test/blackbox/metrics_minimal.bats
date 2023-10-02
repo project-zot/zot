@@ -53,19 +53,11 @@ function setup_file() {
     "log": {
         "level": "debug",
         "output": "${zot_log_file}"
-    },
-    "extensions": {
-        "metrics": {
-            "enable": true,
-            "prometheus": {
-                "path": "/metrics"
-            }
-        }
     }
 }
 EOF
 
-    zot_serve ${ZOT_PATH} ${zot_config_file}
+    zot_serve ${ZOT_MINIMAL_PATH} ${zot_config_file}
     wait_zot_reachable 8080
 
 }
@@ -82,7 +74,7 @@ function teardown_file() {
 @test "unauthorized request to metrics" {
     run metrics_route_check 8080 "" 401
     [ "$status" -eq 0 ]
-    run metrics_route_check 8080 "-u unlucky:wrongpass" 401
+    run metrics_route_check 8080 "-u test:wrongpass" 401
     [ "$status" -eq 0 ]
 }
 
@@ -90,4 +82,3 @@ function teardown_file() {
     run metrics_route_check 8080 "-u ${AUTH_USER}:${AUTH_PASS}" 200
     [ "$status" -eq 0 ]
 }
-

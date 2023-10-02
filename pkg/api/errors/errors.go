@@ -120,8 +120,8 @@ func NewError(code ErrorCode) *Error {
 
 		UNAUTHORIZED: {
 			Message: "authentication required",
-			Description: "The access controller was unable to authenticate the client." +
-				"Often this will be accompanied by a Www-Authenticate HTTP response header " +
+			Description: "The access controller was unable to authenticate the client. " +
+				"Often this will be accompanied by a WWW-Authenticate HTTP response header " +
 				"indicating how to authenticate.",
 		},
 
