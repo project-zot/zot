@@ -30,31 +30,31 @@ func ref[T any](input T) *T {
 	return &ref
 }
 
-func fetchImageDigest(repo, ref, username, password string, config searchConfig) (string, error) {
-	url, err := combineServerAndEndpointURL(config.servURL, fmt.Sprintf("/v2/%s/manifests/%s", repo, ref))
+func fetchImageDigest(repo, ref, username, password string, config SearchConfig) (string, error) {
+	url, err := combineServerAndEndpointURL(config.ServURL, fmt.Sprintf("/v2/%s/manifests/%s", repo, ref))
 	if err != nil {
 		return "", err
 	}
 
-	res, err := makeHEADRequest(context.Background(), url, username, password, config.verifyTLS, false)
+	res, err := makeHEADRequest(context.Background(), url, username, password, config.VerifyTLS, false)
 
 	digestStr := res.Get(constants.DistContentDigestKey)
 
 	return digestStr, err
 }
 
-func collectResults(config searchConfig, wg *sync.WaitGroup, imageErr chan stringResult,
+func collectResults(config SearchConfig, wg *sync.WaitGroup, imageErr chan stringResult,
 	cancel context.CancelFunc, printHeader printHeader, errCh chan error,
 ) {
 	var foundResult bool
 
 	defer wg.Done()
-	config.spinner.startSpinner()
+	config.Spinner.startSpinner()
 
 	for {
 		select {
 		case result, ok := <-imageErr:
-			config.spinner.stopSpinner()
+			config.Spinner.stopSpinner()
 
 			if !ok {
 				cancel()
@@ -69,18 +69,18 @@ func collectResults(config searchConfig, wg *sync.WaitGroup, imageErr chan strin
 				return
 			}
 
-			if !foundResult && (config.outputFormat == defaultOutputFormat || config.outputFormat == "") {
+			if !foundResult && (config.OutputFormat == defaultOutputFormat || config.OutputFormat == "") {
 				var builder strings.Builder
 
-				printHeader(&builder, config.verbose, 0, 0, 0)
-				fmt.Fprint(config.resultWriter, builder.String())
+				printHeader(&builder, config.Verbose, 0, 0, 0)
+				fmt.Fprint(config.ResultWriter, builder.String())
 			}
 
 			foundResult = true
 
-			fmt.Fprint(config.resultWriter, result.StrValue)
+			fmt.Fprint(config.ResultWriter, result.StrValue)
 		case <-time.After(waitTimeout):
-			config.spinner.stopSpinner()
+			config.Spinner.stopSpinner()
 			cancel()
 
 			errCh <- zerr.ErrCLITimeout
@@ -193,8 +193,8 @@ func printCVETableHeader(writer io.Writer) {
 	table.Render()
 }
 
-func printReferrersTableHeader(config searchConfig, writer io.Writer, maxArtifactTypeLen int) {
-	if config.outputFormat != "" && config.outputFormat != defaultOutputFormat {
+func printReferrersTableHeader(config SearchConfig, writer io.Writer, maxArtifactTypeLen int) {
+	if config.OutputFormat != "" && config.OutputFormat != defaultOutputFormat {
 		return
 	}
 
@@ -269,18 +269,18 @@ func printRepoTableHeader(writer io.Writer, repoMaxLen, maxTimeLen int, verbose 
 	table.Render()
 }
 
-func printReferrersResult(config searchConfig, referrersList referrersResult, maxArtifactTypeLen int) error {
-	out, err := referrersList.string(config.outputFormat, maxArtifactTypeLen)
+func printReferrersResult(config SearchConfig, referrersList referrersResult, maxArtifactTypeLen int) error {
+	out, err := referrersList.string(config.OutputFormat, maxArtifactTypeLen)
 	if err != nil {
 		return err
 	}
 
-	fmt.Fprint(config.resultWriter, out)
+	fmt.Fprint(config.ResultWriter, out)
 
 	return nil
 }
 
-func printImageResult(config searchConfig, imageList []imageStruct) error {
+func printImageResult(config SearchConfig, imageList []imageStruct) error {
 	var builder strings.Builder
 	maxImgNameLen := 0
 	maxTagLen := 0
@@ -305,29 +305,29 @@ func printImageResult(config searchConfig, imageList []imageStruct) error {
 			}
 		}
 
-		if config.outputFormat == defaultOutputFormat || config.outputFormat == "" {
-			printImageTableHeader(&builder, config.verbose, maxImgNameLen, maxTagLen, maxPlatformLen)
+		if config.OutputFormat == defaultOutputFormat || config.OutputFormat == "" {
+			printImageTableHeader(&builder, config.Verbose, maxImgNameLen, maxTagLen, maxPlatformLen)
 		}
 
-		fmt.Fprint(config.resultWriter, builder.String())
+		fmt.Fprint(config.ResultWriter, builder.String())
 	}
 
 	for i := range imageList {
 		img := imageList[i]
-		verbose := config.verbose
+		verbose := config.Verbose
 
-		out, err := img.string(config.outputFormat, maxImgNameLen, maxTagLen, maxPlatformLen, verbose)
+		out, err := img.string(config.OutputFormat, maxImgNameLen, maxTagLen, maxPlatformLen, verbose)
 		if err != nil {
 			return err
 		}
 
-		fmt.Fprint(config.resultWriter, out)
+		fmt.Fprint(config.ResultWriter, out)
 	}
 
 	return nil
 }
 
-func printRepoResults(config searchConfig, repoList []repoStruct) error {
+func printRepoResults(config SearchConfig, repoList []repoStruct) error {
 	maxRepoNameLen := 0
 	maxTimeLen := 0
 
@@ -341,31 +341,31 @@ func printRepoResults(config searchConfig, repoList []repoStruct) error {
 		}
 	}
 
-	if len(repoList) > 0 && (config.outputFormat == defaultOutputFormat || config.outputFormat == "") {
-		printRepoTableHeader(config.resultWriter, maxRepoNameLen, maxTimeLen, config.verbose)
+	if len(repoList) > 0 && (config.OutputFormat == defaultOutputFormat || config.OutputFormat == "") {
+		printRepoTableHeader(config.ResultWriter, maxRepoNameLen, maxTimeLen, config.Verbose)
 	}
 
 	for _, repo := range repoList {
-		out, err := repo.string(config.outputFormat, maxRepoNameLen, maxTimeLen, config.verbose)
+		out, err := repo.string(config.OutputFormat, maxRepoNameLen, maxTimeLen, config.Verbose)
 		if err != nil {
 			return err
 		}
 
-		fmt.Fprint(config.resultWriter, out)
+		fmt.Fprint(config.ResultWriter, out)
 	}
 
 	return nil
 }
 
-func GetSearchConfigFromFlags(cmd *cobra.Command, searchService SearchService) (searchConfig, error) {
+func GetSearchConfigFromFlags(cmd *cobra.Command, searchService SearchService) (SearchConfig, error) {
 	serverURL, err := GetServerURLFromFlags(cmd)
 	if err != nil {
-		return searchConfig{}, err
+		return SearchConfig{}, err
 	}
 
 	isSpinner, verifyTLS, err := GetCliConfigOptions(cmd)
 	if err != nil {
-		return searchConfig{}, err
+		return SearchConfig{}, err
 	}
 
 	flags := cmd.Flags()
@@ -379,18 +379,18 @@ func GetSearchConfigFromFlags(cmd *cobra.Command, searchService SearchService) (
 	spin := spinner.New(spinner.CharSets[39], spinnerDuration, spinner.WithWriter(cmd.ErrOrStderr()))
 	spin.Prefix = prefix
 
-	return searchConfig{
-		searchService: searchService,
-		servURL:       serverURL,
-		user:          user,
-		outputFormat:  outputFormat,
-		verifyTLS:     verifyTLS,
-		fixedFlag:     fixed,
-		verbose:       verbose,
-		debug:         debug,
-		sortBy:        sortBy,
-		spinner:       spinnerState{spin, isSpinner},
-		resultWriter:  cmd.OutOrStdout(),
+	return SearchConfig{
+		SearchService: searchService,
+		ServURL:       serverURL,
+		User:          user,
+		OutputFormat:  outputFormat,
+		VerifyTLS:     verifyTLS,
+		FixedFlag:     fixed,
+		Verbose:       verbose,
+		Debug:         debug,
+		SortBy:        sortBy,
+		Spinner:       spinnerState{spin, isSpinner},
+		ResultWriter:  cmd.OutOrStdout(),
 	}, nil
 }
 

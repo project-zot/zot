@@ -1,7 +1,7 @@
 //go:build search && needprivileges
 // +build search,needprivileges
 
-package client
+package client_test
 
 import (
 	"bytes"
@@ -19,6 +19,7 @@ import (
 	"zotregistry.io/zot/pkg/api"
 	"zotregistry.io/zot/pkg/api/config"
 	"zotregistry.io/zot/pkg/api/constants"
+	"zotregistry.io/zot/pkg/cli/client"
 	test "zotregistry.io/zot/pkg/test/common"
 )
 
@@ -94,7 +95,7 @@ func TestElevatedPrivilegesTLSNewControllerPrivilegedCert(t *testing.T) {
 			defer os.Remove(configPath)
 
 			args := []string{"list", "--config", "imagetest"}
-			imageCmd := NewImageCommand(new(searchService))
+			imageCmd := client.NewImageCommand(client.NewSearchService())
 			imageBuff := bytes.NewBufferString("")
 			imageCmd.SetOut(imageBuff)
 			imageCmd.SetErr(imageBuff)

@@ -20,19 +20,19 @@ import (
 	test "zotregistry.io/zot/pkg/test/common"
 )
 
-func getDefaultSearchConf(baseURL string) searchConfig {
+func getDefaultSearchConf(baseURL string) SearchConfig {
 	verifyTLS := false
 	debug := false
 	verbose := true
 	outputFormat := "text"
 
-	return searchConfig{
-		servURL:      baseURL,
-		resultWriter: io.Discard,
-		verifyTLS:    verifyTLS,
-		debug:        debug,
-		verbose:      verbose,
-		outputFormat: outputFormat,
+	return SearchConfig{
+		ServURL:      baseURL,
+		ResultWriter: io.Discard,
+		VerifyTLS:    verifyTLS,
+		Debug:        debug,
+		Verbose:      verbose,
+		OutputFormat: outputFormat,
 	}
 }
 

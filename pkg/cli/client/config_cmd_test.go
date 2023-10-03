@@ -1,7 +1,7 @@
 //go:build search
 // +build search
 
-package client
+package client_test
 
 import (
 	"bytes"
@@ -14,6 +14,7 @@ import (
 	. "github.com/smartystreets/goconvey/convey"
 
 	zerr "zotregistry.io/zot/errors"
+	"zotregistry.io/zot/pkg/cli/client"
 )
 
 func TestConfigCmdBasics(t *testing.T) {
@@ -21,7 +22,7 @@ func TestConfigCmdBasics(t *testing.T) {
 		args := []string{"--help"}
 		configPath := makeConfigFile("showspinner = false")
 		defer os.Remove(configPath)
-		cmd := NewConfigCommand()
+		cmd := client.NewConfigCommand()
 		buff := bytes.NewBufferString("")
 		cmd.SetOut(buff)
 		cmd.SetErr(buff)
@@ -33,7 +34,7 @@ func TestConfigCmdBasics(t *testing.T) {
 			args[0] = "-h"
 			configPath := makeConfigFile("showspinner = false")
 			defer os.Remove(configPath)
-			cmd := NewConfigCommand()
+			cmd := client.NewConfigCommand()
 			buff := bytes.NewBufferString("")
 			cmd.SetOut(buff)
 			cmd.SetErr(buff)
@@ -48,7 +49,7 @@ func TestConfigCmdBasics(t *testing.T) {
 		args := []string{}
 		configPath := makeConfigFile("showspinner = false")
 		defer os.Remove(configPath)
-		cmd := NewConfigCommand()
+		cmd := client.NewConfigCommand()
 		buff := bytes.NewBufferString("")
 		cmd.SetOut(buff)
 		cmd.SetErr(buff)
@@ -64,7 +65,7 @@ func TestConfigCmdMain(t *testing.T) {
 		args := []string{"add", "configtest1", "https://test-url.com"}
 		file := makeConfigFile("")
 		defer os.Remove(file)
-		cmd := NewConfigCommand()
+		cmd := client.NewConfigCommand()
 		buff := bytes.NewBufferString("")
 		cmd.SetOut(buff)
 		cmd.SetErr(buff)
@@ -90,7 +91,7 @@ func TestConfigCmdMain(t *testing.T) {
 			panic(err)
 		}
 
-		cmd := NewConfigCommand()
+		cmd := client.NewConfigCommand()
 		buff := bytes.NewBufferString("")
 		cmd.SetOut(buff)
 		cmd.SetErr(buff)
@@ -118,7 +119,7 @@ func TestConfigCmdMain(t *testing.T) {
 			panic(err)
 		}
 
-		cmd := NewConfigAddCommand()
+		cmd := client.NewConfigAddCommand()
 		buff := bytes.NewBufferString("")
 		cmd.SetOut(buff)
 		cmd.SetErr(buff)
@@ -140,7 +141,7 @@ func TestConfigCmdMain(t *testing.T) {
 		args := []string{"--list"}
 		configPath := makeConfigFile(`{"configs":{"_name":"configtest","url":"https://test-url.com","showspinner":false}}`)
 		defer os.Remove(configPath)
-		cmd := NewConfigCommand()
+		cmd := client.NewConfigCommand()
 		buff := bytes.NewBufferString("")
 		cmd.SetOut(buff)
 		cmd.SetErr(buff)
@@ -153,7 +154,7 @@ func TestConfigCmdMain(t *testing.T) {
 		args := []string{"add", "configtest1", "test..com"}
 		file := makeConfigFile("")
 		defer os.Remove(file)
-		cmd := NewConfigCommand()
+		cmd := client.NewConfigCommand()
 		buff := bytes.NewBufferString("")
 		cmd.SetOut(buff)
 		cmd.SetErr(buff)
@@ -167,7 +168,7 @@ func TestConfigCmdMain(t *testing.T) {
 		args := []string{"remove", "configtest"}
 		configPath := makeConfigFile(`{"configs":[{"_name":"configtest","url":"https://test-url.com","showspinner":false}]}`)
 		defer os.Remove(configPath)
-		cmd := NewConfigCommand()
+		cmd := client.NewConfigCommand()
 		buff := bytes.NewBufferString("")
 		cmd.SetOut(buff)
 		cmd.SetErr(buff)
@@ -185,7 +186,7 @@ func TestConfigCmdMain(t *testing.T) {
 		args := []string{"remove", "configtest"}
 		configPath := makeConfigFile(`{"configs":[]`)
 		defer os.Remove(configPath)
-		cmd := NewConfigCommand()
+		cmd := client.NewConfigCommand()
 		buff := bytes.NewBufferString("")
 		cmd.SetOut(buff)
 		cmd.SetErr(buff)
@@ -199,7 +200,7 @@ func TestConfigCmdMain(t *testing.T) {
 		args := []string{"remove", "configtest"}
 		configPath := makeConfigFile(`{"asdf":[]`)
 		defer os.Remove(configPath)
-		cmd := NewConfigCommand()
+		cmd := client.NewConfigCommand()
 		buff := bytes.NewBufferString("")
 		cmd.SetOut(buff)
 		cmd.SetErr(buff)
@@ -213,7 +214,7 @@ func TestConfigCmdMain(t *testing.T) {
 		args := []string{"remove", "configtest"}
 		configPath := makeConfigFile(`{"configs":[asdad]`)
 		defer os.Remove(configPath)
-		cmd := NewConfigCommand()
+		cmd := client.NewConfigCommand()
 		buff := bytes.NewBufferString("")
 		cmd.SetOut(buff)
 		cmd.SetErr(buff)
@@ -232,7 +233,7 @@ func TestConfigCmdMain(t *testing.T) {
 		}()
 		err := os.Chmod(configPath, 0o400) // Read-only, so we fail only on updating the file, not reading
 		So(err, ShouldBeNil)
-		cmd := NewConfigCommand()
+		cmd := client.NewConfigCommand()
 		buff := bytes.NewBufferString("")
 		cmd.SetOut(buff)
 		cmd.SetErr(buff)
@@ -246,7 +247,7 @@ func TestConfigCmdMain(t *testing.T) {
 		args := []string{"--list"}
 		configPath := makeConfigFile(`{"configs":[{"_name":"configtest","url":"https://test-url.com","showspinner":false}]}`)
 		defer os.Remove(configPath)
-		cmd := NewConfigCommand()
+		cmd := client.NewConfigCommand()
 		buff := bytes.NewBufferString("")
 		cmd.SetOut(buff)
 		cmd.SetErr(buff)
@@ -259,7 +260,7 @@ func TestConfigCmdMain(t *testing.T) {
 			args := []string{"-l"}
 			configPath := makeConfigFile(`{"configs":[{"_name":"configtest","url":"https://test-url.com","showspinner":false}]}`)
 			defer os.Remove(configPath)
-			cmd := NewConfigCommand()
+			cmd := client.NewConfigCommand()
 			buff := bytes.NewBufferString("")
 			cmd.SetOut(buff)
 			cmd.SetErr(buff)
@@ -273,7 +274,7 @@ func TestConfigCmdMain(t *testing.T) {
 			args := []string{"-l"}
 			configPath := makeConfigFile(``)
 			defer os.Remove(configPath)
-			cmd := NewConfigCommand()
+			cmd := client.NewConfigCommand()
 			buff := bytes.NewBufferString("")
 			cmd.SetOut(buff)
 			cmd.SetErr(buff)
@@ -288,7 +289,7 @@ func TestConfigCmdMain(t *testing.T) {
 		args := []string{"configtest", "--list"}
 		configPath := makeConfigFile(`{"configs":[{"_name":"configtest","url":"https://test-url.com","showspinner":false}]}`)
 		defer os.Remove(configPath)
-		cmd := NewConfigCommand()
+		cmd := client.NewConfigCommand()
 		buff := bytes.NewBufferString("")
 		cmd.SetOut(buff)
 		cmd.SetErr(buff)
@@ -302,7 +303,7 @@ func TestConfigCmdMain(t *testing.T) {
 			args := []string{"configtest", "-l"}
 			configPath := makeConfigFile(`{"configs":[{"_name":"configtest","url":"https://test-url.com","showspinner":false}]}`)
 			defer os.Remove(configPath)
-			cmd := NewConfigCommand()
+			cmd := client.NewConfigCommand()
 			buff := bytes.NewBufferString("")
 			cmd.SetOut(buff)
 			cmd.SetErr(buff)
@@ -317,7 +318,7 @@ func TestConfigCmdMain(t *testing.T) {
 			args := []string{"configtest", "-l"}
 			configPath := makeConfigFile(``)
 			defer os.Remove(configPath)
-			cmd := NewConfigCommand()
+			cmd := client.NewConfigCommand()
 			buff := bytes.NewBufferString("")
 			cmd.SetOut(buff)
 			cmd.SetErr(buff)
@@ -332,7 +333,7 @@ func TestConfigCmdMain(t *testing.T) {
 		args := []string{"configtest", "url"}
 		configPath := makeConfigFile(`{"configs":[{"_name":"configtest","url":"https://test-url.com","showspinner":false}]}`)
 		defer os.Remove(configPath)
-		cmd := NewConfigCommand()
+		cmd := client.NewConfigCommand()
 		buff := bytes.NewBufferString("")
 		cmd.SetOut(buff)
 		cmd.SetErr(buff)
@@ -345,7 +346,7 @@ func TestConfigCmdMain(t *testing.T) {
 			args := []string{"configtest", "url"}
 			configPath := makeConfigFile(``)
 			defer os.Remove(configPath)
-			cmd := NewConfigCommand()
+			cmd := client.NewConfigCommand()
 			buff := bytes.NewBufferString("")
 			cmd.SetOut(buff)
 			cmd.SetErr(buff)
@@ -360,7 +361,7 @@ func TestConfigCmdMain(t *testing.T) {
 		args := []string{"configtest", "showspinner", "false"}
 		configPath := makeConfigFile(`{"configs":[{"_name":"configtest","url":"https://test-url.com"}]}`)
 		defer os.Remove(configPath)
-		cmd := NewConfigCommand()
+		cmd := client.NewConfigCommand()
 		buff := bytes.NewBufferString("")
 		cmd.SetOut(buff)
 		cmd.SetErr(buff)
@@ -381,7 +382,7 @@ func TestConfigCmdMain(t *testing.T) {
 			args := []string{"configtest", "showspinner", "false"}
 			configPath := makeConfigFile(``)
 			defer os.Remove(configPath)
-			cmd := NewConfigCommand()
+			cmd := client.NewConfigCommand()
 			buff := bytes.NewBufferString("")
 			cmd.SetOut(buff)
 			cmd.SetErr(buff)
@@ -396,7 +397,7 @@ func TestConfigCmdMain(t *testing.T) {
 		args := []string{"configtest", "url", "https://new-url.com"}
 		configPath := makeConfigFile(`{"configs":[{"_name":"configtest","url":"https://test-url.com","showspinner":false}]}`)
 		defer os.Remove(configPath)
-		cmd := NewConfigCommand()
+		cmd := client.NewConfigCommand()
 		buff := bytes.NewBufferString("")
 		cmd.SetOut(buff)
 		cmd.SetErr(buff)
@@ -419,7 +420,7 @@ func TestConfigCmdMain(t *testing.T) {
 		args := []string{"configtest", "showspinner", "--reset"}
 		configPath := makeConfigFile(`{"configs":[{"_name":"configtest","url":"https://test-url.com","showspinner":false}]}`)
 		defer os.Remove(configPath)
-		cmd := NewConfigCommand()
+		cmd := client.NewConfigCommand()
 		buff := bytes.NewBufferString("")
 		cmd.SetOut(buff)
 		cmd.SetErr(buff)
@@ -441,7 +442,7 @@ func TestConfigCmdMain(t *testing.T) {
 		args := []string{"configtest", "url", "--reset"}
 		configPath := makeConfigFile(`{"configs":[{"_name":"configtest","url":"https://test-url.com","showspinner":false}]}`)
 		defer os.Remove(configPath)
-		cmd := NewConfigCommand()
+		cmd := client.NewConfigCommand()
 		buff := bytes.NewBufferString("")
 		cmd.SetOut(buff)
 		cmd.SetErr(buff)
@@ -455,7 +456,7 @@ func TestConfigCmdMain(t *testing.T) {
 		args := []string{"add", "configtest", "https://test-url.com/new"}
 		configPath := makeConfigFile(`{"configs":[{"_name":"configtest","url":"https://test-url.com","showspinner":false}]}`)
 		defer os.Remove(configPath)
-		cmd := NewConfigCommand()
+		cmd := client.NewConfigCommand()
 		buff := bytes.NewBufferString("")
 		cmd.SetOut(buff)
 		cmd.SetErr(buff)
