@@ -41,18 +41,11 @@ import (
 	storageTypes "zotregistry.io/zot/pkg/storage/types"
 	. "zotregistry.io/zot/pkg/test/image-utils"
 	"zotregistry.io/zot/pkg/test/mocks"
+	tskip "zotregistry.io/zot/pkg/test/skip"
 )
 
 func cleanupStorage(store driver.StorageDriver, name string) {
 	_ = store.Delete(context.Background(), name)
-}
-
-func skipIt(t *testing.T) {
-	t.Helper()
-
-	if os.Getenv("S3MOCK_ENDPOINT") == "" {
-		t.Skip("Skipping testing without AWS S3 mock server")
-	}
 }
 
 func createObjectsStore(rootDir string, cacheDir string) (
@@ -120,7 +113,7 @@ func TestStorageAPIs(t *testing.T) {
 		t.Run(testcase.testCaseName, func(t *testing.T) {
 			var imgStore storageTypes.ImageStore
 			if testcase.storageType == storageConstants.S3StorageDriverName {
-				skipIt(t)
+				tskip.SkipS3(t)
 
 				uuid, err := guuid.NewV4()
 				if err != nil {
@@ -752,7 +745,7 @@ func TestMandatoryAnnotations(t *testing.T) {
 			metrics := monitoring.NewMetricsServer(false, log)
 
 			if testcase.storageType == storageConstants.S3StorageDriverName {
-				skipIt(t)
+				tskip.SkipS3(t)
 
 				uuid, err := guuid.NewV4()
 				if err != nil {
@@ -876,7 +869,7 @@ func TestDeleteBlobsInUse(t *testing.T) {
 			metrics := monitoring.NewMetricsServer(false, log)
 
 			if testcase.storageType == storageConstants.S3StorageDriverName {
-				skipIt(t)
+				tskip.SkipS3(t)
 
 				uuid, err := guuid.NewV4()
 				if err != nil {
@@ -1175,7 +1168,7 @@ func TestStorageHandler(t *testing.T) {
 			var thirdRootDir string
 
 			if testcase.storageType == storageConstants.S3StorageDriverName {
-				skipIt(t)
+				tskip.SkipS3(t)
 				var firstStorageDriver driver.StorageDriver
 				var secondStorageDriver driver.StorageDriver
 				var thirdStorageDriver driver.StorageDriver
@@ -1263,7 +1256,7 @@ func TestGarbageCollectImageManifest(t *testing.T) {
 				Convey("Garbage collect with default/long delay", func() {
 					var imgStore storageTypes.ImageStore
 					if testcase.storageType == storageConstants.S3StorageDriverName {
-						skipIt(t)
+						tskip.SkipS3(t)
 
 						uuid, err := guuid.NewV4()
 						if err != nil {
@@ -1425,7 +1418,7 @@ func TestGarbageCollectImageManifest(t *testing.T) {
 					gcDelay := 1 * time.Second
 
 					if testcase.storageType == storageConstants.S3StorageDriverName {
-						skipIt(t)
+						tskip.SkipS3(t)
 
 						uuid, err := guuid.NewV4()
 						if err != nil {
@@ -1736,7 +1729,7 @@ func TestGarbageCollectImageManifest(t *testing.T) {
 					gcDelay := 3 * time.Second
 
 					if testcase.storageType == storageConstants.S3StorageDriverName {
-						skipIt(t)
+						tskip.SkipS3(t)
 
 						uuid, err := guuid.NewV4()
 						if err != nil {
@@ -1972,7 +1965,7 @@ func TestGarbageCollectImageIndex(t *testing.T) {
 				Convey("Garbage collect with default/long delay", func() {
 					var imgStore storageTypes.ImageStore
 					if testcase.storageType == storageConstants.S3StorageDriverName {
-						skipIt(t)
+						tskip.SkipS3(t)
 
 						uuid, err := guuid.NewV4()
 						if err != nil {
@@ -2102,7 +2095,7 @@ func TestGarbageCollectImageIndex(t *testing.T) {
 					imageRetentionDelay := 2 * time.Second
 
 					if testcase.storageType == storageConstants.S3StorageDriverName {
-						skipIt(t)
+						tskip.SkipS3(t)
 
 						uuid, err := guuid.NewV4()
 						if err != nil {
@@ -2412,7 +2405,7 @@ func TestGarbageCollectChainedImageIndexes(t *testing.T) {
 				imageRetentionDelay := 5 * time.Second
 
 				if testcase.storageType == storageConstants.S3StorageDriverName {
-					skipIt(t)
+					tskip.SkipS3(t)
 
 					uuid, err := guuid.NewV4()
 					if err != nil {

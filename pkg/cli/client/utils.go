@@ -118,7 +118,7 @@ func (spinner *spinnerState) stopSpinner() {
 }
 
 const (
-	waitTimeout = httpTimeout + 5*time.Second
+	waitTimeout = 5 * time.Minute
 )
 
 type stringResult struct {

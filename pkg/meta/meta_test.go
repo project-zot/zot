@@ -35,6 +35,7 @@ import (
 	"zotregistry.io/zot/pkg/test/deprecated"
 	. "zotregistry.io/zot/pkg/test/image-utils"
 	signature "zotregistry.io/zot/pkg/test/signature"
+	tskip "zotregistry.io/zot/pkg/test/skip"
 )
 
 const (
@@ -97,7 +98,7 @@ func TestBoltDB(t *testing.T) {
 }
 
 func TestDynamoDBWrapper(t *testing.T) {
-	skipIt(t)
+	tskip.SkipDynamo(t)
 
 	uuid, err := guuid.NewV4()
 	if err != nil {
@@ -2688,7 +2689,7 @@ func generateTestImage() ([]byte, []byte, error) {
 }
 
 func TestCreateDynamo(t *testing.T) {
-	skipDynamo(t)
+	tskip.SkipDynamo(t)
 
 	Convey("Create", t, func() {
 		dynamoDBDriverParams := mdynamodb.DBDriverParameters{
@@ -2746,12 +2747,4 @@ func TestCreateBoltDB(t *testing.T) {
 
 		So(func() { _, _ = meta.Create("boltdb", nil, mdynamodb.DBDriverParameters{}, log) }, ShouldPanic)
 	})
-}
-
-func skipDynamo(t *testing.T) {
-	t.Helper()
-
-	if os.Getenv("DYNAMODBMOCK_ENDPOINT") == "" {
-		t.Skip("Skipping testing without AWS DynamoDB mock server")
-	}
 }

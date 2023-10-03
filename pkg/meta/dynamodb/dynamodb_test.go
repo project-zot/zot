@@ -23,15 +23,16 @@ import (
 	mTypes "zotregistry.io/zot/pkg/meta/types"
 	reqCtx "zotregistry.io/zot/pkg/requestcontext"
 	. "zotregistry.io/zot/pkg/test/image-utils"
+	tskip "zotregistry.io/zot/pkg/test/skip"
 )
 
 const badTablename = "bad tablename"
 
 func TestIterator(t *testing.T) {
-	const (
-		endpoint = "http://localhost:4566"
-		region   = "us-east-2"
-	)
+	tskip.SkipDynamo(t)
+
+	const region = "us-east-2"
+	endpoint := os.Getenv("DYNAMODBMOCK_ENDPOINT")
 
 	uuid, err := guuid.NewV4()
 	if err != nil {
@@ -131,10 +132,10 @@ func TestIteratorErrors(t *testing.T) {
 }
 
 func TestWrapperErrors(t *testing.T) {
-	const (
-		endpoint = "http://localhost:4566"
-		region   = "us-east-2"
-	)
+	tskip.SkipDynamo(t)
+
+	const region = "us-east-2"
+	endpoint := os.Getenv("DYNAMODBMOCK_ENDPOINT")
 
 	uuid, err := guuid.NewV4()
 	if err != nil {

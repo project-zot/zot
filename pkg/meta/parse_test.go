@@ -28,6 +28,7 @@ import (
 	. "zotregistry.io/zot/pkg/test/image-utils"
 	"zotregistry.io/zot/pkg/test/mocks"
 	"zotregistry.io/zot/pkg/test/signature"
+	tskip "zotregistry.io/zot/pkg/test/skip"
 )
 
 const repo = "repo"
@@ -367,7 +368,7 @@ func TestParseStorageWithBoltDB(t *testing.T) {
 }
 
 func TestParseStorageDynamoWrapper(t *testing.T) {
-	skipIt(t)
+	tskip.SkipDynamo(t)
 
 	Convey("Dynamodb", t, func() {
 		rootDir := t.TempDir()
@@ -594,14 +595,6 @@ func TestGetReferredInfo(t *testing.T) {
 		_, _, _, err = meta.GetReferredInfo([]byte("bad json"), "digest", ispec.MediaTypeImageIndex)
 		So(err, ShouldNotBeNil)
 	})
-}
-
-func skipIt(t *testing.T) {
-	t.Helper()
-
-	if os.Getenv("S3MOCK_ENDPOINT") == "" {
-		t.Skip("Skipping testing without AWS S3 mock server")
-	}
 }
 
 func TestGetSignatureLayersInfo(t *testing.T) {
