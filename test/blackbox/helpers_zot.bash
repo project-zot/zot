@@ -31,7 +31,7 @@ function wait_zot_reachable() {
         --max-time 3 \
         --retry 10 \
         --retry-delay 0 \
-        --retry-max-time 60 \
+        --retry-max-time 120 \
         --retry-connrefused \
         ${zot_url}
 }
