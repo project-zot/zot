@@ -354,8 +354,8 @@ run-container:
 	${CONTAINER_RUNTIME} run --rm --security-opt label=disable -v $$(pwd):/go/src/github.com/project-zot/zot \
 		zot-build:latest
 
-.PHONY: binary-stacker
-binary-stacker: $(STACKER)
+.PHONY: oci-image
+oci-image: $(STACKER)
 	${STACKER} --debug build \
 		-f build/stacker.yaml \
 		--substitute COMMIT=$(COMMIT) \
@@ -364,9 +364,9 @@ binary-stacker: $(STACKER)
 		--substitute RELEASE_TAG=$(RELEASE_TAG) \
 		--substitute REPO_NAME=zot-$(OS)-$(ARCH)
 
-.PHONY: image
-image:
-	${CONTAINER_RUNTIME} build ${BUILD_ARGS} -f build/Dockerfile -t zot:latest .
+.PHONY: docker-image
+docker-image:
+	${CONTAINER_RUNTIME} buildx build --platform $(OS)/$(ARCH) -f build/Dockerfile .
 
 $(BATS):
 	rm -rf bats-core; \
@@ -438,7 +438,7 @@ fuzz-all:
 	bash test/scripts/fuzzAll.sh ${fuzztime}; \
 	rm -rf pkg/storage/testdata; \
 
-$(STACKER):
+$(STACKER): check-linux
 	mkdir -p $(TOOLSDIR)/bin; \
 	curl -fsSL https://github.com/project-stacker/stacker/releases/latest/download/stacker -o $@; \
 	chmod +x $@
