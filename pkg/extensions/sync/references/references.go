@@ -17,6 +17,7 @@ import (
 	"zotregistry.io/zot/pkg/common"
 	client "zotregistry.io/zot/pkg/extensions/sync/httpclient"
 	"zotregistry.io/zot/pkg/log"
+	"zotregistry.io/zot/pkg/meta"
 	mTypes "zotregistry.io/zot/pkg/meta/types"
 	"zotregistry.io/zot/pkg/storage"
 	storageTypes "zotregistry.io/zot/pkg/storage/types"
@@ -42,6 +43,7 @@ func NewReferences(httpClient *client.Client, storeController storage.StoreContr
 	refs := References{log: log}
 
 	refs.referenceList = append(refs.referenceList, NewCosignReference(httpClient, storeController, metaDB, log))
+	refs.referenceList = append(refs.referenceList, NewTagReferences(httpClient, storeController, metaDB, log))
 	refs.referenceList = append(refs.referenceList, NewOciReferences(httpClient, storeController, metaDB, log))
 	refs.referenceList = append(refs.referenceList, NewORASReferences(httpClient, storeController, metaDB, log))
 
@@ -214,4 +216,22 @@ func getNotationManifestsFromOCIRefs(ociRefs ispec.Index) []ispec.Descriptor {
 	}
 
 	return notaryManifests
+}
+
+func addSigToMeta(
+	metaDB mTypes.MetaDB, repo, sigType, tag string, signedManifestDig, referenceDigest godigest.Digest,
+	referenceBuf []byte, imageStore storageTypes.ImageStore, log log.Logger,
+) error {
+	layersInfo, errGetLayers := meta.GetSignatureLayersInfo(repo, tag, referenceDigest.String(),
+		sigType, referenceBuf, imageStore, log)
+
+	if errGetLayers != nil {
+		return errGetLayers
+	}
+
+	return metaDB.AddManifestSignature(repo, signedManifestDig, mTypes.SignatureMetadata{
+		SignatureType:   sigType,
+		SignatureDigest: referenceDigest.String(),
+		LayersInfo:      layersInfo,
+	})
 }

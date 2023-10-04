@@ -437,7 +437,7 @@ func TestVerifySignatures(t *testing.T) {
 			// sign the image
 			image := fmt.Sprintf("localhost:%s/%s", port, fmt.Sprintf("%s:%s", repo, tag))
 
-			err = signature.SignWithNotation("notation-sign-test", image, notationDir)
+			err = signature.SignWithNotation("notation-sign-test", image, notationDir, true)
 			So(err, ShouldBeNil)
 
 			err = test.CopyFiles(path.Join(notationDir, "notation", "truststore"), path.Join(notationDir, "truststore"))
@@ -1271,7 +1271,7 @@ func RunVerificationTests(t *testing.T, dbDriverParams map[string]interface{}) {
 			// sign the image
 			imageURL := fmt.Sprintf("localhost:%s/%s", port, fmt.Sprintf("%s:%s", repo, tag))
 
-			err = signature.SignWithNotation(certName, imageURL, notationDir)
+			err = signature.SignWithNotation(certName, imageURL, notationDir, false)
 			So(err, ShouldBeNil)
 
 			indexContent, err := ctlr.StoreController.DefaultStore.GetIndexContent(repo)

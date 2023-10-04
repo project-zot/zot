@@ -139,7 +139,7 @@ func TestSignature(t *testing.T) {
 		err = UploadImage(CreateDefaultImage(), url, repoName, "0.0.1")
 		So(err, ShouldBeNil)
 
-		err = signature.SignImageUsingNotary("repo7:0.0.1", port)
+		err = signature.SignImageUsingNotary("repo7:0.0.1", port, true)
 		So(err, ShouldBeNil)
 
 		searchConfig := getTestSearchConfig(url, client.NewSearchService())

@@ -80,6 +80,10 @@ func ParseRepo(repo string, metaDB mTypes.MetaDB, storeController storage.StoreC
 	for _, descriptor := range indexContent.Manifests {
 		tag := descriptor.Annotations[ispec.AnnotationRefName]
 
+		if zcommon.IsReferrersTag(tag) {
+			continue
+		}
+
 		descriptorBlob, err := getCachedBlob(repo, descriptor, metaDB, imageStore, log)
 		if err != nil {
 			log.Error().Err(err).Msg("load-repo: error checking manifestMeta in MetaDB")
@@ -297,6 +301,11 @@ func getNotationSignatureLayersInfo(
 			"load-repo: unable to marshal blob index")
 
 		return layers, err
+	}
+
+	// skip if is a notation index
+	if manifestContent.MediaType == ispec.MediaTypeImageIndex {
+		return []mTypes.LayerInfo{}, nil
 	}
 
 	if len(manifestContent.Layers) != 1 {

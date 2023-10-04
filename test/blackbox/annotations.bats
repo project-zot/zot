@@ -163,10 +163,50 @@ function teardown_file() {
 }
 EOF
 
-    run notation sign --key "notation-sign-test" --plain-http localhost:8080/annotations:latest
+    run notation sign --key "notation-sign-test" --insecure-registry localhost:8080/annotations:latest
     [ "$status" -eq 0 ]
-    run notation verify --plain-http localhost:8080/annotations:latest
+    run notation verify --insecure-registry localhost:8080/annotations:latest
     [ "$status" -eq 0 ]
-    run notation list --plain-http localhost:8080/annotations:latest
+    run notation list --insecure-registry localhost:8080/annotations:latest
     [ "$status" -eq 0 ]
+}
+
+@test "sign/verify with notation( NOTATION_EXPERIMENTAL=1 and --allow-referrers-api )" {
+    run curl -X POST -H "Content-Type: application/json" --data '{ "query": "{ ImageList(repo: \"annotations\") { Results { RepoName Tag Manifests {Digest ConfigDigest Size Layers { Size Digest }} Vendor Licenses }}}"}' http://localhost:8080/v2/_zot/ext/search
+    [ "$status" -eq 0 ]
+    [ $(echo "${lines[-1]}" | jq '.data.ImageList.Results[0].RepoName') = '"annotations"' ]
+    [ "$status" -eq 0 ]
+
+    run notation cert generate-test "notation-sign-test-experimental"
+    [ "$status" -eq 0 ]
+
+    local trust_policy_file=${HOME}/.config/notation/trustpolicy.json
+
+    cat >${trust_policy_file} <<EOF
+{
+    "version": "1.0",
+    "trustPolicies": [
+        {
+            "name": "notation-sign-test-experimental",
+            "registryScopes": [ "*" ],
+            "signatureVerification": {
+                "level" : "strict"
+            },
+            "trustStores": [ "ca:notation-sign-test-experimental" ],
+            "trustedIdentities": [
+                "*"
+            ]
+        }
+    ]
+}
+EOF
+
+    export NOTATION_EXPERIMENTAL=1
+    run notation sign --allow-referrers-api --key "notation-sign-test-experimental" --insecure-registry localhost:8080/annotations:latest
+    [ "$status" -eq 0 ]
+    run notation verify --allow-referrers-api --insecure-registry localhost:8080/annotations:latest
+    [ "$status" -eq 0 ]
+    run notation list --allow-referrers-api --insecure-registry localhost:8080/annotations:latest
+    [ "$status" -eq 0 ]
+    unset NOTATION_EXPERIMENTAL
 }

@@ -3,6 +3,7 @@ package meta
 import (
 	godigest "github.com/opencontainers/go-digest"
 
+	zcommon "zotregistry.io/zot/pkg/common"
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/meta/common"
 	mTypes "zotregistry.io/zot/pkg/meta/types"
@@ -15,6 +16,10 @@ import (
 func OnUpdateManifest(repo, reference, mediaType string, digest godigest.Digest, body []byte,
 	storeController storage.StoreController, metaDB mTypes.MetaDB, log log.Logger,
 ) error {
+	if zcommon.IsReferrersTag(reference) {
+		return nil
+	}
+
 	imgStore := storeController.GetImageStore(repo)
 
 	// check if image is a signature
@@ -87,6 +92,10 @@ func OnUpdateManifest(repo, reference, mediaType string, digest godigest.Digest,
 func OnDeleteManifest(repo, reference, mediaType string, digest godigest.Digest, manifestBlob []byte,
 	storeController storage.StoreController, metaDB mTypes.MetaDB, log log.Logger,
 ) error {
+	if zcommon.IsReferrersTag(reference) {
+		return nil
+	}
+
 	imgStore := storeController.GetImageStore(repo)
 
 	isSignature, signatureType, signedManifestDigest, err := storage.CheckIsImageSignature(repo, manifestBlob,
@@ -154,7 +163,7 @@ func OnGetManifest(name, reference string, body []byte,
 		return err
 	}
 
-	if !isSignature {
+	if !isSignature && !zcommon.IsReferrersTag(reference) {
 		err := metaDB.IncrementImageDownloads(name, reference)
 		if err != nil {
 			log.Error().Err(err).Str("repository", name).Str("reference", reference).

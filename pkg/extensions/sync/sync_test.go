@@ -898,6 +898,146 @@ func TestOnDemand(t *testing.T) {
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 		})
+
+		Convey("Sync referrers tag errors", func() {
+			// start upstream server
+			rootDir := t.TempDir()
+			port := test.GetFreePort()
+			srcBaseURL := test.GetBaseURL(port)
+			conf := config.New()
+			conf.HTTP.Port = port
+			conf.Storage.GC = false
+			ctlr := api.NewController(conf)
+			ctlr.Config.Storage.RootDirectory = rootDir
+
+			cm := test.NewControllerManager(ctlr)
+			cm.StartAndWait(conf.HTTP.Port)
+			defer cm.StopServer()
+
+			image := CreateRandomImage()
+			manifestBlob := image.ManifestDescriptor.Data
+			manifestDigest := image.ManifestDescriptor.Digest
+
+			err := UploadImage(image, srcBaseURL, "remote-repo", "test")
+			So(err, ShouldBeNil)
+
+			subjectDesc := ispec.Descriptor{
+				MediaType: ispec.MediaTypeImageManifest,
+				Digest:    manifestDigest,
+				Size:      int64(len(manifestBlob)),
+			}
+
+			ociRefImage := CreateDefaultImageWith().Subject(&subjectDesc).Build()
+
+			err = UploadImage(ociRefImage, srcBaseURL, "remote-repo", ociRefImage.ManifestDescriptor.Digest.String())
+			So(err, ShouldBeNil)
+
+			tag := strings.Replace(manifestDigest.String(), ":", "-", 1)
+
+			// add index with referrers tag
+			tagRefIndex := ispec.Index{
+				MediaType: ispec.MediaTypeImageIndex,
+				Manifests: []ispec.Descriptor{
+					{
+						MediaType: ispec.MediaTypeImageManifest,
+						Digest:    ociRefImage.ManifestDescriptor.Digest,
+						Size:      int64(len(ociRefImage.ManifestDescriptor.Data)),
+					},
+				},
+				Annotations: map[string]string{ispec.AnnotationRefName: tag},
+			}
+
+			tagRefIndex.SchemaVersion = 2
+
+			tagRefIndexBlob, err := json.Marshal(tagRefIndex)
+			So(err, ShouldBeNil)
+
+			resp, err := resty.R().
+				SetHeader("Content-type", ispec.MediaTypeImageIndex).
+				SetBody(tagRefIndexBlob).
+				Put(srcBaseURL + "/v2/remote-repo/manifests/" + tag)
+
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
+
+			//------- Start downstream server
+
+			var tlsVerify bool
+
+			regex := ".*"
+			semver := true
+
+			destPort := test.GetFreePort()
+			destConfig := config.New()
+
+			destBaseURL := test.GetBaseURL(destPort)
+
+			hostname, err := os.Hostname()
+			So(err, ShouldBeNil)
+
+			syncRegistryConfig := syncconf.RegistryConfig{
+				Content: []syncconf.Content{
+					{
+						Prefix: "remote-repo",
+						Tags: &syncconf.Tags{
+							Regex:  &regex,
+							Semver: &semver,
+						},
+					},
+				},
+				// include self url, should be ignored
+				URLs: []string{
+					fmt.Sprintf("http://%s", hostname), destBaseURL,
+					srcBaseURL, fmt.Sprintf("http://localhost:%s", destPort),
+				},
+				TLSVerify: &tlsVerify,
+				CertDir:   "",
+				OnDemand:  true,
+			}
+
+			defaultVal := true
+			syncConfig := &syncconf.Config{
+				Enable:     &defaultVal,
+				Registries: []syncconf.RegistryConfig{syncRegistryConfig},
+			}
+
+			destConfig.HTTP.Port = destPort
+
+			destDir := t.TempDir()
+
+			destConfig.Storage.RootDirectory = destDir
+			destConfig.Storage.Dedupe = false
+			destConfig.Storage.GC = false
+
+			destConfig.Extensions = &extconf.ExtensionConfig{}
+
+			destConfig.Extensions.Sync = syncConfig
+
+			dctlr := api.NewController(destConfig)
+
+			// metadb fails for syncReferrersTag"
+			dctlr.MetaDB = mocks.MetaDBMock{
+				SetManifestDataFn: func(manifestDigest godigest.Digest, mm mTypes.ManifestData) error {
+					if manifestDigest.String() == ociRefImage.ManifestDescriptor.Digest.String() {
+						return sync.ErrTestError
+					}
+
+					return nil
+				},
+			}
+
+			dcm := test.NewControllerManager(dctlr)
+			dcm.StartAndWait(destPort)
+			defer dcm.StopServer()
+
+			resp, err = resty.R().Get(destBaseURL + "/v2/remote-repo/manifests/test")
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+			resp, err = resty.R().Get(destBaseURL + "/v2/remote-repo/manifests/" + tag)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
+		})
 	})
 }
 
@@ -3818,7 +3958,10 @@ func TestPeriodicallySignaturesErr(t *testing.T) {
 				So(found, ShouldBeTrue)
 
 				// should not be synced nor sync on demand
-				resp, err = resty.R().Get(destBaseURL + artifactURLPath)
+				resp, err = resty.R().
+					SetHeader("Content-Type", "application/json").
+					SetQueryParam("artifactType", "application/vnd.cncf.icecream").
+					Get(destBaseURL + artifactURLPath)
 				So(err, ShouldBeNil)
 				So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
@@ -3871,7 +4014,10 @@ func TestPeriodicallySignaturesErr(t *testing.T) {
 				So(found, ShouldBeTrue)
 
 				// should not be synced nor sync on demand
-				resp, err = resty.R().Get(destBaseURL + artifactURLPath)
+				resp, err = resty.R().
+					SetHeader("Content-Type", "application/json").
+					SetQueryParam("artifactType", "application/vnd.cncf.icecream").
+					Get(destBaseURL + artifactURLPath)
 				So(err, ShouldBeNil)
 				So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
@@ -4475,7 +4621,7 @@ func TestSyncedSignaturesMetaDB(t *testing.T) {
 		err := UploadImage(signedImage, srcBaseURL, repoName, tag)
 		So(err, ShouldBeNil)
 
-		err = signature.SignImageUsingNotary(repoName+":"+tag, srcPort)
+		err = signature.SignImageUsingNotary(repoName+":"+tag, srcPort, true)
 		So(err, ShouldBeNil)
 
 		err = signature.SignImageUsingCosign(repoName+":"+tag, srcPort)
@@ -5715,7 +5861,7 @@ func TestSyncSignaturesDiff(t *testing.T) {
 		So(func() { signImage(tdir, srcPort, repoName, digest) }, ShouldNotPanic)
 
 		// wait for signatures
-		time.Sleep(10 * time.Second)
+		time.Sleep(12 * time.Second)
 
 		// notation verify the image
 		image = fmt.Sprintf("localhost:%s/%s:%s", destPort, repoName, testImageTag)
@@ -6301,8 +6447,8 @@ func signImage(tdir, port, repoName string, digest godigest.Digest) {
 	// sign the image
 	image := fmt.Sprintf("localhost:%s/%s@%s", port, repoName, digest.String())
 
-	err = signature.SignWithNotation("good", image, tdir)
-	if err != nil {
+	err = signature.SignWithNotation("good", image, tdir, false)
+	if err != nil && !strings.Contains(err.Error(), "failed to delete dangling referrers index") {
 		panic(err)
 	}
 

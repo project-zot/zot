@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"regexp"
 	"strings"
 	"syscall"
 	"time"
@@ -118,4 +119,12 @@ func ContainsStringIgnoreCase(strSlice []string, str string) bool {
 	}
 
 	return false
+}
+
+// this function will check if tag is a referrers tag
+// (https://github.com/opencontainers/distribution-spec/blob/main/spec.md#referrers-tag-schema).
+func IsReferrersTag(tag string) bool {
+	referrersTagRule := regexp.MustCompile(`sha256\-[A-Za-z0-9]*$`)
+
+	return referrersTagRule.MatchString(tag)
 }

@@ -114,7 +114,7 @@ func TestLoadNotationConfig(t *testing.T) {
 
 func TestSignWithNotation(t *testing.T) {
 	Convey("notation directory doesn't exist", t, func() {
-		err := signature.SignWithNotation("key", "reference", t.TempDir())
+		err := signature.SignWithNotation("key", "reference", t.TempDir(), true)
 		So(err, ShouldNotBeNil)
 	})
 
@@ -128,7 +128,7 @@ func TestSignWithNotation(t *testing.T) {
 		err = os.WriteFile(filePath, []byte("{}"), 0o666) //nolint: gosec
 		So(err, ShouldBeNil)
 
-		err = signature.SignWithNotation("key", "reference", tempDir)
+		err = signature.SignWithNotation("key", "reference", tempDir, true)
 		So(err, ShouldEqual, signature.ErrKeyNotFound)
 	})
 
@@ -150,7 +150,7 @@ func TestSignWithNotation(t *testing.T) {
 		err = os.Chmod(path.Join(tdir, "notation", "localkeys"), 0o000)
 		So(err, ShouldBeNil)
 
-		err = signature.SignWithNotation("key", "reference", tdir)
+		err = signature.SignWithNotation("key", "reference", tdir, true)
 		So(err, ShouldNotBeNil)
 
 		err = os.Chmod(path.Join(tdir, "notation", "localkeys"), 0o755)
@@ -172,7 +172,7 @@ func TestSignWithNotation(t *testing.T) {
 		err = signature.GenerateNotationCerts(tdir, "key")
 		So(err, ShouldBeNil)
 
-		err = signature.SignWithNotation("key", "invalidReference", tdir)
+		err = signature.SignWithNotation("key", "invalidReference", tdir, true)
 		So(err, ShouldNotBeNil)
 	})
 
@@ -191,7 +191,7 @@ func TestSignWithNotation(t *testing.T) {
 		err = signature.GenerateNotationCerts(tdir, "key")
 		So(err, ShouldBeNil)
 
-		err = signature.SignWithNotation("key", "localhost:8080/invalidreference:1.0", tdir)
+		err = signature.SignWithNotation("key", "localhost:8080/invalidreference:1.0", tdir, true)
 		So(err, ShouldNotBeNil)
 	})
 }

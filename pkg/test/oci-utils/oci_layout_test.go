@@ -325,7 +325,7 @@ func TestBaseOciLayoutUtils(t *testing.T) {
 		isSigned := olu.CheckManifestSignature(repo, manifestList[0].Digest)
 		So(isSigned, ShouldBeFalse)
 
-		err = signature.SignImageUsingNotary(fmt.Sprintf("%s:%s", repo, tag), port)
+		err = signature.SignImageUsingNotary(fmt.Sprintf("%s:%s", repo, tag), port, true)
 		So(err, ShouldBeNil)
 
 		isSigned = olu.CheckManifestSignature(repo, manifestList[0].Digest)

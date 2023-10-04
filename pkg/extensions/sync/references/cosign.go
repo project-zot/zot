@@ -161,10 +161,8 @@ func (ref CosignReference) SyncReferences(ctx context.Context, localRepo, remote
 			}
 
 			if isSig {
-				err = ref.metaDB.AddManifestSignature(localRepo, signedManifestDig, mTypes.SignatureMetadata{
-					SignatureType:   sigType,
-					SignatureDigest: referenceDigest.String(),
-				})
+				err = addSigToMeta(ref.metaDB, localRepo, sigType, cosignTag, signedManifestDig, referenceDigest,
+					manifestBuf, imageStore, ref.log)
 			} else {
 				err = meta.SetImageMetaFromInput(localRepo, cosignTag, ispec.MediaTypeImageManifest,
 					referenceDigest, manifestBuf, ref.storeController.GetImageStore(localRepo),

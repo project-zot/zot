@@ -145,10 +145,8 @@ func (ref OciReferences) SyncReferences(ctx context.Context, localRepo, remoteRe
 			}
 
 			if isSig {
-				err = ref.metaDB.AddManifestSignature(localRepo, signedManifestDig, mTypes.SignatureMetadata{
-					SignatureType:   sigType,
-					SignatureDigest: referenceDigest.String(),
-				})
+				err = addSigToMeta(ref.metaDB, localRepo, sigType, referrer.Digest.String(), signedManifestDig, referenceDigest,
+					referenceBuf, imageStore, ref.log)
 			} else {
 				err = meta.SetImageMetaFromInput(localRepo, referenceDigest.String(), referrer.MediaType,
 					referenceDigest, referenceBuf, ref.storeController.GetImageStore(localRepo),
