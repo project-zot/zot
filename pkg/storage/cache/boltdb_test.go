@@ -60,5 +60,65 @@ func TestBoltDBCache(t *testing.T) {
 		err = cacheDriver.PutBlob("key", "")
 		So(err, ShouldNotBeNil)
 		So(err, ShouldEqual, errors.ErrEmptyValue)
+
+		cacheDriver, _ = storage.Create("boltdb", cache.BoltDBDriverParameters{t.TempDir(), "cache_test", false}, log)
+		So(cacheDriver, ShouldNotBeNil)
+
+		err = cacheDriver.PutBlob("key1", "originalBlobPath")
+		So(err, ShouldBeNil)
+
+		err = cacheDriver.PutBlob("key1", "duplicateBlobPath")
+		So(err, ShouldBeNil)
+
+		val, err = cacheDriver.GetBlob("key1")
+		So(val, ShouldEqual, "originalBlobPath")
+		So(err, ShouldBeNil)
+
+		err = cacheDriver.DeleteBlob("key1", "duplicateBlobPath")
+		So(err, ShouldBeNil)
+
+		val, err = cacheDriver.GetBlob("key1")
+		So(val, ShouldEqual, "originalBlobPath")
+		So(err, ShouldBeNil)
+
+		err = cacheDriver.PutBlob("key1", "duplicateBlobPath")
+		So(err, ShouldBeNil)
+
+		err = cacheDriver.DeleteBlob("key1", "originalBlobPath")
+		So(err, ShouldBeNil)
+
+		val, err = cacheDriver.GetBlob("key1")
+		So(val, ShouldEqual, "duplicateBlobPath")
+		So(err, ShouldBeNil)
+
+		err = cacheDriver.DeleteBlob("key1", "duplicateBlobPath")
+		So(err, ShouldBeNil)
+
+		// should be empty
+		val, err = cacheDriver.GetBlob("key1")
+		So(err, ShouldNotBeNil)
+		So(val, ShouldBeEmpty)
+
+		// try to add three same values
+		err = cacheDriver.PutBlob("key2", "duplicate")
+		So(err, ShouldBeNil)
+
+		err = cacheDriver.PutBlob("key2", "duplicate")
+		So(err, ShouldBeNil)
+
+		err = cacheDriver.PutBlob("key2", "duplicate")
+		So(err, ShouldBeNil)
+
+		val, err = cacheDriver.GetBlob("key2")
+		So(val, ShouldEqual, "duplicate")
+		So(err, ShouldBeNil)
+
+		err = cacheDriver.DeleteBlob("key2", "duplicate")
+		So(err, ShouldBeNil)
+
+		// should be empty
+		val, err = cacheDriver.GetBlob("key2")
+		So(err, ShouldNotBeNil)
+		So(val, ShouldBeEmpty)
 	})
 }
