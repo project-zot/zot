@@ -183,7 +183,7 @@ func (rh *RouteHandler) SetupRoutes() {
 	pprof.SetupPprofRoutes(rh.c.Config, prefixedRouter, authHandler, rh.c.Log)
 
 	// Preconditions for enabling the actual extension routes are part of extensions themselves
-	ext.SetupMetricsRoutes(rh.c.Config, rh.c.Router, authHandler, rh.c.Log, rh.c.Metrics)
+	ext.SetupMetricsRoutes(rh.c.Config, rh.c.Router, authHandler, MetricsAuthzHandler(rh.c), rh.c.Log, rh.c.Metrics)
 	ext.SetupSearchRoutes(rh.c.Config, prefixedRouter, rh.c.StoreController, rh.c.MetaDB, rh.c.CveScanner,
 		rh.c.Log)
 	ext.SetupImageTrustRoutes(rh.c.Config, prefixedRouter, rh.c.MetaDB, rh.c.Log)

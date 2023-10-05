@@ -131,6 +131,7 @@ type AccessControlConfig struct {
 	Repositories Repositories `json:"repositories" mapstructure:"repositories"`
 	AdminPolicy  Policy
 	Groups       Groups
+	Metrics      Metrics
 }
 
 func (config *AccessControlConfig) AnonymousPolicyExists() bool {
@@ -166,6 +167,10 @@ type Policy struct {
 	Users   []string
 	Actions []string
 	Groups  []string
+}
+
+type Metrics struct {
+	Users []string
 }
 
 type Config struct {

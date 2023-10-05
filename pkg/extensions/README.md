@@ -30,9 +30,9 @@ package extensions
     IsAdmin         bool
     Username        string
     Groups          []string
-    } 
+    }
     ```
-  This data can then be accessed from the request context so that <b>every extension can apply its own authorization logic, if needed </b>. 
+  This data can then be accessed from the request context so that <b>every extension can apply its own authorization logic, if needed </b>.
 
 - when a new extension comes out, the developer should also write some blackbox tests, where a binary that contains the new extension should be tested in a real usage scenario. See [test/blackbox](test/blackbox/sync.bats) folder for multiple extensions examples.
 
@@ -40,6 +40,6 @@ package extensions
 
 - with every new extension, you should modify the EXTENSIONS variable in Makefile by adding the new extension. The EXTENSIONS variable represents all extensions and is used in Make targets that require them all (e.g make test).
 
-- the available extensions that can be used at the moment are: <b>sync, scrub, metrics, search </b>.
+- the available extensions that can be used at the moment are: <b>sync, search, scrub, metrics, lint, ui, mgmt, userprefs, imagetrust </b>.
 NOTE: When multiple extensions are used, they should be listed in the above presented order.
 
