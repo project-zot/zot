@@ -2012,6 +2012,7 @@ func TestMandatoryAnnotations(t *testing.T) {
 
 		logFile, err := os.CreateTemp("", "zot-log*.txt")
 		So(err, ShouldBeNil)
+		defer os.Remove(logFile.Name())
 
 		destConfig.Log.Output = logFile.Name()
 

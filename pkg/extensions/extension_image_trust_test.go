@@ -36,6 +36,7 @@ import (
 	test "zotregistry.io/zot/pkg/test/common"
 	. "zotregistry.io/zot/pkg/test/image-utils"
 	"zotregistry.io/zot/pkg/test/signature"
+	tskip "zotregistry.io/zot/pkg/test/skip"
 )
 
 type errReader int
@@ -122,7 +123,7 @@ func TestSignatureUploadAndVerificationLocal(t *testing.T) {
 }
 
 func TestSignatureUploadAndVerificationAWS(t *testing.T) {
-	skipIt(t)
+	tskip.SkipDynamo(t)
 
 	Convey("test with AWS", t, func() {
 		uuid, err := guuid.NewV4()
@@ -999,12 +1000,4 @@ func RunSignatureUploadAndVerificationTests(t *testing.T, cacheDriverParams map[
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusInternalServerError)
 	})
-}
-
-func skipIt(t *testing.T) {
-	t.Helper()
-
-	if os.Getenv("DYNAMODBMOCK_ENDPOINT") == "" {
-		t.Skip("Skipping testing without AWS mock server")
-	}
 }

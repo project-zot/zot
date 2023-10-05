@@ -18,6 +18,7 @@ import (
 	"zotregistry.io/zot/pkg/meta/boltdb"
 	mdynamodb "zotregistry.io/zot/pkg/meta/dynamodb"
 	"zotregistry.io/zot/pkg/meta/version"
+	tskip "zotregistry.io/zot/pkg/test/skip"
 )
 
 var ErrTestError = errors.New("test error")
@@ -113,15 +114,12 @@ func setBoltDBVersion(db *bbolt.DB, vers string) error {
 }
 
 func TestVersioningDynamoDB(t *testing.T) {
-	const (
-		endpoint = "http://localhost:4566"
-		region   = "us-east-2"
-	)
+	tskip.SkipDynamo(t)
 
 	Convey("Tests", t, func() {
 		params := mdynamodb.DBDriverParameters{
-			Endpoint:              endpoint,
-			Region:                region,
+			Endpoint:              os.Getenv("DYNAMODBMOCK_ENDPOINT"),
+			Region:                "us-east-2",
 			RepoMetaTablename:     "RepoMetadataTable",
 			ManifestDataTablename: "ManifestDataTable",
 			IndexDataTablename:    "IndexDataTable",

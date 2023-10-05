@@ -14,13 +14,14 @@ import (
 
 	"zotregistry.io/zot/pkg/log" //nolint:go-staticcheck
 	"zotregistry.io/zot/pkg/meta/version"
+	tskip "zotregistry.io/zot/pkg/test/skip"
 )
 
 func TestWrapperErrors(t *testing.T) {
-	const (
-		endpoint = "http://localhost:4566"
-		region   = "us-east-2"
-	)
+	tskip.SkipDynamo(t)
+
+	const region = "us-east-2"
+	endpoint := os.Getenv("DYNAMODBMOCK_ENDPOINT")
 
 	uuid, err := guuid.NewV4()
 	if err != nil {

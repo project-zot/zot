@@ -69,6 +69,7 @@ import (
 	"zotregistry.io/zot/pkg/test/mocks"
 	ociutils "zotregistry.io/zot/pkg/test/oci-utils"
 	"zotregistry.io/zot/pkg/test/signature"
+	tskip "zotregistry.io/zot/pkg/test/skip"
 )
 
 const (
@@ -96,22 +97,6 @@ func getCredString(username, password string) string {
 	usernameAndHash := fmt.Sprintf("%s:%s", username, string(hash))
 
 	return usernameAndHash
-}
-
-func skipIt(t *testing.T) {
-	t.Helper()
-
-	if os.Getenv("S3MOCK_ENDPOINT") == "" {
-		t.Skip("Skipping testing without AWS S3 mock server")
-	}
-}
-
-func skipDynamo(t *testing.T) {
-	t.Helper()
-
-	if os.Getenv("DYNAMODBMOCK_ENDPOINT") == "" {
-		t.Skip("Skipping testing without AWS DynamoDB mock server")
-	}
 }
 
 func TestNew(t *testing.T) {
@@ -147,8 +132,8 @@ func TestCreateCacheDatabaseDriver(t *testing.T) {
 		driver = storage.CreateCacheDatabaseDriver(conf.Storage.StorageConfig, log)
 		So(driver, ShouldBeNil)
 	})
-	skipDynamo(t)
-	skipIt(t)
+	tskip.SkipDynamo(t)
+	tskip.SkipS3(t)
 	Convey("Test CreateCacheDatabaseDriver dynamodb", t, func() {
 		log := log.NewLogger("debug", "")
 		dir := t.TempDir()
@@ -166,9 +151,10 @@ func TestCreateCacheDatabaseDriver(t *testing.T) {
 			"skipverify":    false,
 		}
 
+		endpoint := os.Getenv("DYNAMODBMOCK_ENDPOINT")
 		conf.Storage.CacheDriver = map[string]interface{}{
 			"name":                  "dynamodb",
-			"endpoint":              "http://localhost:4566",
+			"endpoint":              endpoint,
 			"region":                "us-east-2",
 			"cacheTablename":        "BlobTable",
 			"repoMetaTablename":     "RepoMetadataTable",
@@ -183,7 +169,7 @@ func TestCreateCacheDatabaseDriver(t *testing.T) {
 		// negative test cases
 
 		conf.Storage.CacheDriver = map[string]interface{}{
-			"endpoint":              "http://localhost:4566",
+			"endpoint":              endpoint,
 			"region":                "us-east-2",
 			"cacheTablename":        "BlobTable",
 			"repoMetaTablename":     "RepoMetadataTable",
@@ -197,7 +183,7 @@ func TestCreateCacheDatabaseDriver(t *testing.T) {
 
 		conf.Storage.CacheDriver = map[string]interface{}{
 			"name":                  "dummy",
-			"endpoint":              "http://localhost:4566",
+			"endpoint":              endpoint,
 			"region":                "us-east-2",
 			"cacheTablename":        "BlobTable",
 			"repoMetaTablename":     "RepoMetadataTable",
@@ -371,7 +357,8 @@ func TestAutoPortSelection(t *testing.T) {
 }
 
 func TestObjectStorageController(t *testing.T) {
-	skipIt(t)
+	tskip.SkipS3(t)
+	tskip.SkipDynamo(t)
 
 	bucket := "zot-storage-test"
 
@@ -438,7 +425,7 @@ func TestObjectStorageController(t *testing.T) {
 
 		conf.Storage.CacheDriver = map[string]interface{}{
 			"name":                  "dynamodb",
-			"endpoint":              "http://localhost:4566",
+			"endpoint":              os.Getenv("DYNAMODBMOCK_ENDPOINT"),
 			"region":                "us-east-2",
 			"cachetablename":        "test",
 			"repometatablename":     "RepoMetadataTable",
@@ -493,7 +480,7 @@ func TestObjectStorageController(t *testing.T) {
 }
 
 func TestObjectStorageControllerSubPaths(t *testing.T) {
-	skipIt(t)
+	tskip.SkipS3(t)
 
 	bucket := "zot-storage-test"
 

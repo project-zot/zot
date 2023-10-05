@@ -29,6 +29,7 @@ import (
 	"zotregistry.io/zot/pkg/test/deprecated"
 	. "zotregistry.io/zot/pkg/test/image-utils"
 	"zotregistry.io/zot/pkg/test/mocks"
+	tskip "zotregistry.io/zot/pkg/test/skip"
 )
 
 const (
@@ -56,7 +57,7 @@ func TestLocalCheckAllBlobsIntegrity(t *testing.T) {
 }
 
 func TestS3CheckAllBlobsIntegrity(t *testing.T) {
-	skipIt(t)
+	tskip.SkipS3(t)
 
 	Convey("test with S3 storage", t, func() {
 		uuid, err := guuid.NewV4()

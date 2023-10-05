@@ -41,6 +41,7 @@ import (
 	. "zotregistry.io/zot/pkg/test/image-utils"
 	"zotregistry.io/zot/pkg/test/mocks"
 	"zotregistry.io/zot/pkg/test/signature"
+	tskip "zotregistry.io/zot/pkg/test/skip"
 )
 
 var (
@@ -658,7 +659,7 @@ func TestLocalTrustStore(t *testing.T) {
 }
 
 func TestAWSTrustStore(t *testing.T) {
-	skipIt(t)
+	tskip.SkipDynamo(t)
 
 	trustpolicy := "trustpolicy"
 
@@ -1335,12 +1336,4 @@ func RunVerificationTests(t *testing.T, dbDriverParams map[string]interface{}) {
 			So(author, ShouldEqual, "CN=cert,O=Notary,L=Seattle,ST=WA,C=US")
 		})
 	})
-}
-
-func skipIt(t *testing.T) {
-	t.Helper()
-
-	if os.Getenv("DYNAMODBMOCK_ENDPOINT") == "" {
-		t.Skip("Skipping testing without AWS mock server")
-	}
 }

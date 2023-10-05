@@ -28,15 +28,6 @@ var (
 	httpClientLock sync.Mutex                      //nolint: gochecknoglobals
 )
 
-const (
-	httpTimeout        = 5 * time.Minute
-	certsPath          = "/etc/containers/certs.d"
-	homeCertsDir       = ".config/containers/certs.d"
-	clientCertFilename = "client.cert"
-	clientKeyFilename  = "client.key"
-	caCertFilename     = "ca.crt"
-)
-
 func makeGETRequest(ctx context.Context, url, username, password string,
 	verifyTLS bool, debug bool, resultsPtr interface{}, configWriter io.Writer,
 ) (http.Header, error) {

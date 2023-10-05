@@ -40,6 +40,7 @@ import (
 	. "zotregistry.io/zot/pkg/test/image-utils"
 	"zotregistry.io/zot/pkg/test/inject"
 	"zotregistry.io/zot/pkg/test/mocks"
+	tskip "zotregistry.io/zot/pkg/test/skip"
 )
 
 //nolint:gochecknoglobals
@@ -56,18 +57,6 @@ var (
 
 func cleanupStorage(store driver.StorageDriver, name string) {
 	_ = store.Delete(context.Background(), name)
-}
-
-func skipIt(t *testing.T) {
-	t.Helper()
-
-	if os.Getenv("S3MOCK_ENDPOINT") == "" {
-		t.Skip("Skipping testing without AWS S3 mock server")
-	}
-
-	if os.Getenv("DYNAMODBMOCK_ENDPOINT") == "" {
-		t.Skip("Skipping testing without AWS DynamoDB mock server")
-	}
 }
 
 func createMockStorage(rootDir string, cacheDir string, dedupe bool, store driver.StorageDriver,
@@ -382,7 +371,7 @@ func (s *StorageDriverMock) Walk(ctx context.Context, path string, f driver.Walk
 }
 
 func TestStorageDriverStatFunction(t *testing.T) {
-	skipIt(t)
+	tskip.SkipS3(t)
 
 	uuid, err := guuid.NewV4()
 	if err != nil {
@@ -462,7 +451,7 @@ func TestStorageDriverStatFunction(t *testing.T) {
 }
 
 func TestGetOrasAndOCIReferrers(t *testing.T) {
-	skipIt(t)
+	tskip.SkipS3(t)
 
 	repo := "zot-test"
 
@@ -623,7 +612,7 @@ func TestGetOrasAndOCIReferrers(t *testing.T) {
 }
 
 func TestNegativeCasesObjectsStorage(t *testing.T) {
-	skipIt(t)
+	tskip.SkipS3(t)
 
 	uuid, err := guuid.NewV4()
 	if err != nil {
@@ -1239,7 +1228,8 @@ func TestNegativeCasesObjectsStorage(t *testing.T) {
 }
 
 func TestS3Dedupe(t *testing.T) {
-	skipIt(t)
+	tskip.SkipS3(t)
+	tskip.SkipDynamo(t)
 	Convey("Dedupe", t, func(c C) {
 		uuid, err := guuid.NewV4()
 		if err != nil {
@@ -1928,7 +1918,7 @@ func TestS3Dedupe(t *testing.T) {
 }
 
 func TestRebuildDedupeIndex(t *testing.T) {
-	skipIt(t)
+	tskip.SkipS3(t)
 
 	Convey("Push images with dedupe true", t, func() {
 		uuid, err := guuid.NewV4()
@@ -2260,7 +2250,7 @@ func TestRebuildDedupeIndex(t *testing.T) {
 }
 
 func TestRebuildDedupeMockStoreDriver(t *testing.T) {
-	skipIt(t)
+	tskip.SkipS3(t)
 
 	uuid, err := guuid.NewV4()
 	if err != nil {
@@ -2783,7 +2773,7 @@ func TestRebuildDedupeMockStoreDriver(t *testing.T) {
 }
 
 func TestS3PullRange(t *testing.T) {
-	skipIt(t)
+	tskip.SkipS3(t)
 
 	Convey("Test against s3 image store", t, func() {
 		uuid, err := guuid.NewV4()
@@ -2959,7 +2949,7 @@ func TestS3PullRange(t *testing.T) {
 }
 
 func TestS3ManifestImageIndex(t *testing.T) {
-	skipIt(t)
+	tskip.SkipS3(t)
 
 	Convey("Test against s3 image store", t, func() {
 		uuid, err := guuid.NewV4()
@@ -3539,7 +3529,7 @@ func TestS3ManifestImageIndex(t *testing.T) {
 }
 
 func TestS3DedupeErr(t *testing.T) {
-	skipIt(t)
+	tskip.SkipS3(t)
 
 	uuid, err := guuid.NewV4()
 	if err != nil {

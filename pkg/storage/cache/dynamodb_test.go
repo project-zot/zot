@@ -11,18 +11,11 @@ import (
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/storage"
 	"zotregistry.io/zot/pkg/storage/cache"
+	tskip "zotregistry.io/zot/pkg/test/skip"
 )
 
-func skipIt(t *testing.T) {
-	t.Helper()
-
-	if os.Getenv("DYNAMODBMOCK_ENDPOINT") == "" {
-		t.Skip("Skipping testing without AWS DynamoDB mock server")
-	}
-}
-
 func TestDynamoDB(t *testing.T) {
-	skipIt(t)
+	tskip.SkipDynamo(t)
 	Convey("Test dynamoDB", t, func(c C) {
 		log := log.NewLogger("debug", "")
 		dir := t.TempDir()
