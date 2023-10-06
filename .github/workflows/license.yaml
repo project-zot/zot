@@ -27,3 +27,5 @@ jobs:
         run: go install github.com/google/go-licenses@latest
       - name: Check for forbidden licenses
         run: make check-licenses
+      - name: Check if licenses file is updated
+        run: make update-licenses
