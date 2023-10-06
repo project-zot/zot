@@ -709,11 +709,12 @@ func TestRepoListWithNewestImage(t *testing.T) {
 		So(found, ShouldBeTrue)
 		So(err, ShouldBeNil)
 
-		found, err = readFileAndSearchString(logPath, "updating the CVE database", 2*time.Minute)
+		found, err = readFileAndSearchString(logPath, "updating cve-db", 2*time.Minute)
 		So(found, ShouldBeTrue)
 		So(err, ShouldBeNil)
 
-		found, err = readFileAndSearchString(logPath, "DB update completed, next update scheduled", 4*time.Minute)
+		found, err = readFileAndSearchString(logPath,
+			"cve-db update completed, next update scheduled after interval", 4*time.Minute)
 		So(found, ShouldBeTrue)
 		So(err, ShouldBeNil)
 
@@ -3406,11 +3407,11 @@ func TestGlobalSearch(t *testing.T) {
 		So(found, ShouldBeTrue)
 		So(err, ShouldBeNil)
 
-		found, err = readFileAndSearchString(logPath, "updating the CVE database", 2*time.Minute)
+		found, err = readFileAndSearchString(logPath, "updating cve-db", 2*time.Minute)
 		So(found, ShouldBeTrue)
 		So(err, ShouldBeNil)
 
-		found, err = readFileAndSearchString(logPath, "DB update completed, next update scheduled", 4*time.Minute)
+		found, err = readFileAndSearchString(logPath, "cve-db update completed, next update scheduled after interval", 4*time.Minute)
 		So(found, ShouldBeTrue)
 		So(err, ShouldBeNil)
 

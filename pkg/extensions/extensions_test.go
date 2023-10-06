@@ -65,7 +65,7 @@ func TestEnableExtension(t *testing.T) {
 		data, err := os.ReadFile(logFile.Name())
 		So(err, ShouldBeNil)
 		So(string(data), ShouldContainSubstring,
-			"Sync registries config not provided or disabled, skipping sync")
+			"sync config not provided or disabled, so not enabling sync")
 	})
 }
 
@@ -106,7 +106,7 @@ func TestMetricsExtension(t *testing.T) {
 		data, _ := os.ReadFile(logFile.Name())
 
 		So(string(data), ShouldContainSubstring,
-			"Prometheus instrumentation Path not set, changing to '/metrics'.")
+			"prometheus instrumentation path not set, changing to '/metrics'.")
 	})
 }
 

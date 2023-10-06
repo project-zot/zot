@@ -566,7 +566,7 @@ func (olu BaseOciLayoutUtils) ExtractImageDetails(
 ) {
 	manifest, dig, err := olu.GetImageManifest(repo, tag)
 	if err != nil {
-		log.Error().Err(err).Msg("Could not retrieve image ispec manifest")
+		log.Error().Err(err).Msg("failed to retrieve image manifest")
 
 		return "", nil, nil, err
 	}
@@ -575,7 +575,7 @@ func (olu BaseOciLayoutUtils) ExtractImageDetails(
 
 	imageConfig, err := olu.GetImageConfigInfo(repo, digest)
 	if err != nil {
-		log.Error().Err(err).Msg("Could not retrieve image config")
+		log.Error().Err(err).Msg("failed to retrieve image config")
 
 		return "", nil, nil, err
 	}

@@ -20,13 +20,13 @@ import (
 // ParseStorage will sync all repos found in the rootdirectory of the oci layout that zot was deployed on with the
 // ParseStorage database.
 func ParseStorage(metaDB mTypes.MetaDB, storeController storage.StoreController, log log.Logger) error {
-	log.Info().Msg("Started parsing storage and updating MetaDB")
+	log.Info().Str("component", "metadb").Msg("parsing storage and initializing")
 
 	allRepos, err := getAllRepos(storeController)
 	if err != nil {
 		rootDir := storeController.DefaultStore.RootDir()
-		log.Error().Err(err).Str("rootDir", rootDir).
-			Msg("load-local-layout: failed to get all repo names present under rootDir")
+		log.Error().Err(err).Str("component", "metadb").Str("rootDir", rootDir).
+			Msg("failed to get all repo names present under rootDir")
 
 		return err
 	}
@@ -34,13 +34,13 @@ func ParseStorage(metaDB mTypes.MetaDB, storeController storage.StoreController,
 	for _, repo := range allRepos {
 		err := ParseRepo(repo, metaDB, storeController, log)
 		if err != nil {
-			log.Error().Err(err).Str("repository", repo).Msg("load-local-layout: failed to sync repo")
+			log.Error().Err(err).Str("component", "metadb").Str("repository", repo).Msg("failed to parse repo")
 
 			return err
 		}
 	}
 
-	log.Info().Msg("Done parsing storage and updating MetaDB")
+	log.Info().Str("component", "metadb").Msg("successfully initialized")
 
 	return nil
 }
@@ -56,7 +56,7 @@ func ParseRepo(repo string, metaDB mTypes.MetaDB, storeController storage.StoreC
 
 	indexBlob, err := imageStore.GetIndexContent(repo)
 	if err != nil {
-		log.Error().Err(err).Str("repository", repo).Msg("load-repo: failed to read index.json for repo")
+		log.Error().Err(err).Str("repository", repo).Msg("failed to read index.json for repo")
 
 		return err
 	}
@@ -65,14 +65,14 @@ func ParseRepo(repo string, metaDB mTypes.MetaDB, storeController storage.StoreC
 
 	err = json.Unmarshal(indexBlob, &indexContent)
 	if err != nil {
-		log.Error().Err(err).Str("repository", repo).Msg("load-repo: failed to unmarshal index.json for repo")
+		log.Error().Err(err).Str("repository", repo).Msg("failed to unmarshal index.json for repo")
 
 		return err
 	}
 
 	err = resetRepoMeta(repo, metaDB, log)
 	if err != nil && !errors.Is(err, zerr.ErrRepoMetaNotFound) {
-		log.Error().Err(err).Str("repository", repo).Msg("load-repo: failed to reset tag field in RepoMetadata for repo")
+		log.Error().Err(err).Str("repository", repo).Msg("failed to reset tag field in RepoMetadata for repo")
 
 		return err
 	}
@@ -86,7 +86,7 @@ func ParseRepo(repo string, metaDB mTypes.MetaDB, storeController storage.StoreC
 
 		descriptorBlob, err := getCachedBlob(repo, descriptor, metaDB, imageStore, log)
 		if err != nil {
-			log.Error().Err(err).Msg("load-repo: error checking manifestMeta in MetaDB")
+			log.Error().Err(err).Msg("failed to check manifestMeta in metadb")
 
 			return err
 		}
@@ -95,7 +95,7 @@ func ParseRepo(repo string, metaDB mTypes.MetaDB, storeController storage.StoreC
 			descriptorBlob, tag)
 		if err != nil {
 			log.Error().Err(err).Str("repository", repo).Str("tag", tag).
-				Msg("load-repo: failed checking if image is signature for specified image")
+				Msg("failed to check if image is signature for specified image")
 
 			return err
 		}
@@ -116,7 +116,7 @@ func ParseRepo(repo string, metaDB mTypes.MetaDB, storeController storage.StoreC
 			if err != nil {
 				log.Error().Err(err).Str("repository", repo).Str("tag", tag).
 					Str("manifestDigest", signedManifestDigest.String()).
-					Msg("load-repo: failed set signature meta for signed image")
+					Msg("failed to set signature meta for signed image")
 
 				return err
 			}
@@ -124,7 +124,7 @@ func ParseRepo(repo string, metaDB mTypes.MetaDB, storeController storage.StoreC
 			err = metaDB.UpdateSignaturesValidity(repo, signedManifestDigest)
 			if err != nil {
 				log.Error().Err(err).Str("repository", repo).Str("reference", tag).Str("digest", signedManifestDigest.String()).Msg(
-					"load-repo: failed verify signatures validity for signed image")
+					"failed to verify signatures validity for signed image")
 
 				return err
 			}
@@ -142,7 +142,7 @@ func ParseRepo(repo string, metaDB mTypes.MetaDB, storeController storage.StoreC
 			imageStore, metaDB, log)
 		if err != nil {
 			log.Error().Err(err).Str("repository", repo).Str("tag", tag).
-				Msg("load-repo: failed to set metadata for image")
+				Msg("failed to set metadata for image")
 
 			return err
 		}
@@ -156,13 +156,13 @@ func ParseRepo(repo string, metaDB mTypes.MetaDB, storeController storage.StoreC
 func resetRepoMeta(repo string, metaDB mTypes.MetaDB, log log.Logger) error {
 	repoMeta, err := metaDB.GetRepoMeta(repo)
 	if err != nil && !errors.Is(err, zerr.ErrRepoMetaNotFound) {
-		log.Error().Err(err).Str("repository", repo).Msg("load-repo: failed to get RepoMeta for repo")
+		log.Error().Err(err).Str("repository", repo).Msg("failed to get RepoMeta for repo")
 
 		return err
 	}
 
 	if errors.Is(err, zerr.ErrRepoMetaNotFound) {
-		log.Info().Str("repository", repo).Msg("load-repo: RepoMeta not found for repo, new RepoMeta will be created")
+		log.Info().Str("repository", repo).Msg("metadata not found for repo, new metadata will be created")
 
 		return nil
 	}
@@ -208,7 +208,7 @@ func getCachedBlob(repo string, descriptor ispec.Descriptor, metaDB mTypes.MetaD
 		descriptorBlob, _, _, err = imageStore.GetImageManifest(repo, digest.String())
 		if err != nil {
 			log.Error().Err(err).Str("repository", repo).Str("digest", digest.String()).
-				Msg("load-repo: failed to get blob for image")
+				Msg("failed to get blob for image")
 
 			return nil, err
 		}
@@ -255,7 +255,7 @@ func getCosignSignatureLayersInfo(
 	var manifestContent ispec.Manifest
 	if err := json.Unmarshal(manifestBlob, &manifestContent); err != nil {
 		log.Error().Err(err).Str("repository", repo).Str("reference", tag).Str("digest", manifestDigest).Msg(
-			"load-repo: unable to marshal blob index")
+			"failed to marshal blob index")
 
 		return layers, err
 	}
@@ -269,7 +269,7 @@ func getCosignSignatureLayersInfo(
 		layerContent, err := imageStore.GetBlobContent(repo, layer.Digest)
 		if err != nil {
 			log.Error().Err(err).Str("repository", repo).Str("reference", tag).Str("layerDigest", layer.Digest.String()).Msg(
-				"load-repo: unable to get cosign signature layer content")
+				"failed to get cosign signature layer content")
 
 			return layers, err
 		}
@@ -277,7 +277,7 @@ func getCosignSignatureLayersInfo(
 		layerSigKey, ok := layer.Annotations[zcommon.CosignSigKey]
 		if !ok {
 			log.Error().Err(err).Str("repository", repo).Str("reference", tag).Str("layerDigest", layer.Digest.String()).Msg(
-				"load-repo: unable to get specific annotation of cosign signature")
+				"failed to get specific annotation of cosign signature")
 		}
 
 		layers = append(layers, mTypes.LayerInfo{
@@ -298,7 +298,7 @@ func getNotationSignatureLayersInfo(
 	var manifestContent ispec.Manifest
 	if err := json.Unmarshal(manifestBlob, &manifestContent); err != nil {
 		log.Error().Err(err).Str("repository", repo).Str("reference", manifestDigest).Msg(
-			"load-repo: unable to marshal blob index")
+			"failed to marshal blob index")
 
 		return layers, err
 	}
@@ -310,7 +310,7 @@ func getNotationSignatureLayersInfo(
 
 	if len(manifestContent.Layers) != 1 {
 		log.Error().Err(zerr.ErrBadManifest).Str("repository", repo).Str("reference", manifestDigest).
-			Msg("load-repo: notation signature manifest requires exactly one layer but it does not")
+			Msg("notation signature manifest requires exactly one layer but it does not")
 
 		return layers, zerr.ErrBadManifest
 	}
@@ -325,7 +325,7 @@ func getNotationSignatureLayersInfo(
 	layerContent, err := imageStore.GetBlobContent(repo, layer)
 	if err != nil {
 		log.Error().Err(err).Str("repository", repo).Str("reference", manifestDigest).Str("layerDigest", layer.String()).Msg(
-			"load-repo: unable to get notation signature blob content")
+			"failed to get notation signature blob content")
 
 		return layers, err
 	}

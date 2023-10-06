@@ -71,7 +71,7 @@ func newServeCmd(conf *config.Config) *cobra.Command {
 			}
 
 			if err := ctlr.Run(reloaderCtx); err != nil {
-				ctlr.Log.Fatal().Err(err).Msg("unable to start controller, exiting")
+				ctlr.Log.Fatal().Err(err).Msg("failed to start controller, exiting")
 			}
 		},
 	}
@@ -105,15 +105,15 @@ func newScrubCmd(conf *config.Config) *cobra.Command {
 				fmt.Sprintf("http://%s/v2", net.JoinHostPort(conf.HTTP.Address, conf.HTTP.Port)),
 				nil)
 			if err != nil {
-				log.Error().Err(err).Msg("unable to create a new http request")
+				log.Error().Err(err).Msg("failed to create a new http request")
 				panic(err)
 			}
 
 			response, err := http.DefaultClient.Do(req)
 			if err == nil {
 				response.Body.Close()
-				log.Warn().Msg("The server is running, in order to perform the scrub command the server should be shut down")
-				panic("Error: server is running")
+				log.Warn().Msg("server is running, in order to perform the scrub command the server should be shut down")
+				panic("server is running")
 			} else {
 				// server is down
 				ctlr := api.NewController(conf)
@@ -146,11 +146,11 @@ func newVerifyCmd(conf *config.Config) *cobra.Command {
 		Run: func(cmd *cobra.Command, args []string) {
 			if len(args) > 0 {
 				if err := LoadConfiguration(conf, args[0]); err != nil {
-					log.Error().Str("config", args[0]).Msg("Config file is invalid")
+					log.Error().Str("config", args[0]).Msg("config file is invalid")
 					panic(err)
 				}
 
-				log.Info().Str("config", args[0]).Msg("Config file is valid")
+				log.Info().Str("config", args[0]).Msg("config file is valid")
 			}
 		},
 	}
@@ -291,11 +291,11 @@ func validateCacheConfig(cfg *config.Config, log zlog.Logger) error {
 
 func validateExtensionsConfig(cfg *config.Config, log zlog.Logger) error {
 	if cfg.Extensions != nil && cfg.Extensions.Mgmt != nil {
-		log.Warn().Msg("The mgmt extensions configuration option has been made redundant and will be ignored.")
+		log.Warn().Msg("mgmt extensions configuration option has been made redundant and will be ignored.")
 	}
 
 	if cfg.Extensions != nil && cfg.Extensions.APIKey != nil {
-		log.Warn().Msg("The apikey extension configuration will be ignored as API keys " +
+		log.Warn().Msg("apikey extension configuration will be ignored as API keys " +
 			"are now configurable in the HTTP settings.")
 	}
 
@@ -303,7 +303,7 @@ func validateExtensionsConfig(cfg *config.Config, log zlog.Logger) error {
 		// it would make sense to also check for mgmt and user prefs to be enabled,
 		// but those are both enabled by having the search and ui extensions enabled
 		if cfg.Extensions.Search == nil || !*cfg.Extensions.Search.Enable {
-			log.Error().Err(zerr.ErrBadConfig).Msg("UI functionality can't be used without search extension.")
+			log.Error().Err(zerr.ErrBadConfig).Msg("ui functionality can't be used without search extension.")
 
 			return zerr.ErrBadConfig
 		}
@@ -312,7 +312,7 @@ func validateExtensionsConfig(cfg *config.Config, log zlog.Logger) error {
 	//nolint:lll
 	if cfg.Storage.StorageDriver != nil && cfg.Extensions != nil && cfg.Extensions.Search != nil &&
 		cfg.Extensions.Search.Enable != nil && *cfg.Extensions.Search.Enable && cfg.Extensions.Search.CVE != nil {
-		log.Error().Err(zerr.ErrBadConfig).Msg("CVE functionality can't be used with remote storage. Please disable CVE")
+		log.Error().Err(zerr.ErrBadConfig).Msg("cve functionality can't be used with remote storage - please disable cve")
 
 		return zerr.ErrBadConfig
 	}
@@ -321,7 +321,7 @@ func validateExtensionsConfig(cfg *config.Config, log zlog.Logger) error {
 		//nolint:lll
 		if subPath.StorageDriver != nil && cfg.Extensions != nil && cfg.Extensions.Search != nil &&
 			cfg.Extensions.Search.Enable != nil && *cfg.Extensions.Search.Enable && cfg.Extensions.Search.CVE != nil {
-			log.Error().Err(zerr.ErrBadConfig).Msg("CVE functionality can't be used with remote storage. Please disable CVE")
+			log.Error().Err(zerr.ErrBadConfig).Msg("cve functionality can't be used with remote storage - please disable cve")
 
 			return zerr.ErrBadConfig
 		}
@@ -534,7 +534,7 @@ func applyDefaultValues(config *config.Config, viperInstance *viper.Viper, log z
 				if config.Extensions.Search.CVE.UpdateInterval < defaultUpdateInterval {
 					config.Extensions.Search.CVE.UpdateInterval = defaultUpdateInterval
 
-					log.Warn().Msg("CVE update interval set to too-short interval < 2h, " +
+					log.Warn().Msg("cve update interval set to too-short interval < 2h, " +
 						"changing update duration to 2 hours and continuing.")
 				}
 
@@ -544,15 +544,15 @@ func applyDefaultValues(config *config.Config, viperInstance *viper.Viper, log z
 
 				if config.Extensions.Search.CVE.Trivy.DBRepository == "" {
 					defaultDBDownloadURL := "ghcr.io/aquasecurity/trivy-db"
-					log.Info().Str("trivyDownloadURL", defaultDBDownloadURL).
-						Msg("Config: using default Trivy DB download URL.")
+					log.Info().Str("url", defaultDBDownloadURL).
+						Msg("config: using default trivy-db download URL.")
 					config.Extensions.Search.CVE.Trivy.DBRepository = defaultDBDownloadURL
 				}
 
 				if config.Extensions.Search.CVE.Trivy.JavaDBRepository == "" {
 					defaultJavaDBDownloadURL := "ghcr.io/aquasecurity/trivy-java-db"
-					log.Info().Str("trivyJavaDownloadURL", defaultJavaDBDownloadURL).
-						Msg("Config: using default Trivy Java DB download URL.")
+					log.Info().Str("url", defaultJavaDBDownloadURL).
+						Msg("config: using default trivy-java-db download URL.")
 					config.Extensions.Search.CVE.Trivy.JavaDBRepository = defaultJavaDBDownloadURL
 				}
 			}
@@ -621,7 +621,7 @@ func applyDefaultValues(config *config.Config, viperInstance *viper.Viper, log z
 		cachePath := path.Join(cacheDir, storageConstants.BoltdbName+storageConstants.DBExtensionName)
 
 		if _, err := os.Stat(cachePath); err == nil {
-			log.Info().Msg("Config: dedupe set to false for s3 driver but used to be true.")
+			log.Info().Msg("config: dedupe set to false for s3 driver but used to be true.")
 			log.Info().Str("cache path", cachePath).Msg("found cache database")
 
 			config.Storage.RemoteCache = false
@@ -642,7 +642,7 @@ func applyDefaultValues(config *config.Config, viperInstance *viper.Viper, log z
 			subpathCachePath := path.Join(subpathCacheDir, storageConstants.BoltdbName+storageConstants.DBExtensionName)
 
 			if _, err := os.Stat(subpathCachePath); err == nil {
-				log.Info().Msg("Config: dedupe set to false for s3 driver but used to be true. ")
+				log.Info().Msg("config: dedupe set to false for s3 driver but used to be true. ")
 				log.Info().Str("cache path", subpathCachePath).Msg("found cache database")
 
 				storageConfig.RemoteCache = false
@@ -701,14 +701,14 @@ func LoadConfiguration(config *config.Config, configPath string) error {
 	viperInstance.SetConfigFile(configPath)
 
 	if err := viperInstance.ReadInConfig(); err != nil {
-		log.Error().Err(err).Msg("error while reading configuration")
+		log.Error().Err(err).Msg("failed to read configuration")
 
 		return err
 	}
 
 	metaData := &mapstructure.Metadata{}
 	if err := viperInstance.Unmarshal(&config, metadataConfig(metaData)); err != nil {
-		log.Error().Err(err).Msg("error while unmarshaling new config")
+		log.Error().Err(err).Msg("failed to unmarshaling new config")
 
 		return err
 	}

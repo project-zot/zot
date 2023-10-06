@@ -15,10 +15,12 @@ import (
 func NewScanTaskGenerator(
 	metaDB mTypes.MetaDB,
 	scanner Scanner,
-	log log.Logger,
+	logC log.Logger,
 ) scheduler.TaskGenerator {
+	sublogger := logC.With().Str("component", "cve").Logger()
+
 	return &scanTaskGenerator{
-		log:        log,
+		log:        log.Logger{Logger: sublogger},
 		metaDB:     metaDB,
 		scanner:    scanner,
 		lock:       &sync.Mutex{},
@@ -127,13 +129,13 @@ func (gen *scanTaskGenerator) Next() (scheduler.Task, error) {
 	if err != nil {
 		// Do not crash the generator for potential repodb inconistencies
 		// as there may be scannable images not yet scanned
-		gen.log.Warn().Err(err).Msg("Scheduled CVE scan: error while obtaining repo metadata")
+		gen.log.Warn().Err(err).Msg("failed to obtain repo metadata during scheduled cve scan")
 	}
 
 	// no reposMeta are returned, all results are in already in cache
 	// or manifests cannot be scanned
 	if len(reposMeta) == 0 {
-		gen.log.Info().Msg("Scheduled CVE scan: finished for available images")
+		gen.log.Info().Msg("finished scanning available images during scheduled cve scan")
 
 		gen.done = true
 
@@ -195,13 +197,13 @@ func (st *scanTask) DoWork(ctx context.Context) error {
 	// We cache the results internally in the scanner
 	// so we can discard the actual results for now
 	if _, err := st.generator.scanner.ScanImage(image); err != nil {
-		st.generator.log.Error().Err(err).Str("image", image).Msg("Scheduled CVE scan errored for image")
+		st.generator.log.Error().Err(err).Str("image", image).Msg("scheduled cve scan failed for image")
 		st.generator.addError(st.digest, err)
 
 		return err
 	}
 
-	st.generator.log.Debug().Str("image", image).Msg("Scheduled CVE scan completed successfully for image")
+	st.generator.log.Debug().Str("image", image).Msg("scheduled cve scan completed successfully for image")
 
 	return nil
 }

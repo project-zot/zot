@@ -199,10 +199,10 @@ func (cveinfo BaseCveInfo) GetImageListWithCVEFixed(repo, cveID string) ([]cvemo
 
 	if len(vulnerableTags) != 0 {
 		cveinfo.Log.Info().Str("repository", repo).Str("cve-id", cveID).
-			Interface("vulnerableTags", vulnerableTags).Msg("Vulnerable tags")
+			Interface("tags", vulnerableTags).Msg("vulnerable tags")
 		fixedTags = GetFixedTags(allTags, vulnerableTags)
 		cveinfo.Log.Info().Str("repository", repo).Str("cve-id", cveID).
-			Interface("fixedTags", fixedTags).Msg("Fixed tags")
+			Interface("tags", fixedTags).Msg("fixed tags")
 	} else {
 		cveinfo.Log.Info().Str("repository", repo).Str("cve-id", cveID).
 			Msg("image does not contain any tag that have given cve")

@@ -64,7 +64,7 @@ func New(config *config.Config, linter common.Lint, metrics monitoring.MetricSer
 		// Init a Storager from connection string.
 		store, err := factory.Create(storeName, config.Storage.StorageDriver)
 		if err != nil {
-			log.Error().Err(err).Str("rootDir", config.Storage.RootDirectory).Msg("unable to create s3 service")
+			log.Error().Err(err).Str("rootDir", config.Storage.RootDirectory).Msg("failed to create s3 service")
 
 			return storeController, err
 		}
@@ -168,7 +168,7 @@ func getSubStore(cfg *config.Config, subPaths map[string]config.StorageConfig,
 			// Init a Storager from connection string.
 			store, err := factory.Create(storeName, storageConfig.StorageDriver)
 			if err != nil {
-				log.Error().Err(err).Str("rootDir", storageConfig.RootDirectory).Msg("Unable to create s3 service")
+				log.Error().Err(err).Str("rootDir", storageConfig.RootDirectory).Msg("failed to create s3 service")
 
 				return nil, err
 			}

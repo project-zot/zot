@@ -424,12 +424,12 @@ func getImageListForCVE(
 	for _, repoMeta := range reposMeta {
 		repo := repoMeta.Name
 
-		log.Info().Str("repository", repo).Str("CVE", cveID).Msg("extracting list of tags affected by CVE")
+		log.Info().Str("repository", repo).Str("CVE", cveID).Msg("extracting list of tags affected by this cve")
 
 		tagsInfo, err := cveInfo.GetImageListForCVE(repo, cveID)
 		if err != nil {
 			log.Error().Str("repository", repo).Str("CVE", cveID).Err(err).
-				Msg("error getting image list for CVE from repo")
+				Msg("failed to get image list for this cve from repository")
 
 			return &gql_generated.PaginatedImagesResult{}, err
 		}
@@ -497,12 +497,12 @@ func getImageListWithCVEFixed(
 ) (*gql_generated.PaginatedImagesResult, error) {
 	imageList := make([]*gql_generated.ImageSummary, 0)
 
-	log.Info().Str("repository", repo).Str("CVE", cveID).Msg("extracting list of tags where CVE is fixed")
+	log.Info().Str("repository", repo).Str("CVE", cveID).Msg("extracting list of tags where this cve is fixed")
 
 	tagsInfo, err := cveInfo.GetImageListWithCVEFixed(repo, cveID)
 	if err != nil {
 		log.Error().Str("repository", repo).Str("CVE", cveID).Err(err).
-			Msg("error getting image list with CVE fixed from repo")
+			Msg("failed to get image list with this cve fixed from repository")
 
 		return &gql_generated.PaginatedImagesResult{
 			Page:    &gql_generated.PageInfo{},
@@ -1121,7 +1121,7 @@ func expandedRepoInfo(ctx context.Context, repo string, metaDB mTypes.MetaDB, cv
 
 	repoMeta, err := metaDB.GetUserRepoMeta(ctx, repo)
 	if err != nil {
-		log.Error().Err(err).Str("repository", repo).Msg("resolver: can't retrieve repoMeta for repo")
+		log.Error().Err(err).Str("repository", repo).Msg("resolver: can't retrieve repoMeta for repository")
 
 		return &gql_generated.RepoInfo{}, err
 	}

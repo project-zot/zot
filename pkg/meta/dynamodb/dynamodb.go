@@ -1000,7 +1000,7 @@ func (dwr *DynamoDB) SearchRepos(ctx context.Context, searchText string,
 
 				indexDataMap[descriptor.Digest] = indexData
 			default:
-				dwr.Log.Error().Str("mediaType", descriptor.MediaType).Msg("Unsupported media type")
+				dwr.Log.Error().Str("mediaType", descriptor.MediaType).Msg("unsupported media type")
 
 				continue
 			}
@@ -1192,7 +1192,7 @@ func (dwr *DynamoDB) FilterTags(ctx context.Context, filterFunc mTypes.FilterFun
 					matchedTags[tag] = descriptor
 				}
 			default:
-				dwr.Log.Error().Str("mediaType", descriptor.MediaType).Msg("Unsupported media type")
+				dwr.Log.Error().Str("mediaType", descriptor.MediaType).Msg("unsupported media type")
 
 				continue
 			}
@@ -1341,7 +1341,7 @@ func (dwr *DynamoDB) SearchTags(ctx context.Context, searchText string,
 			err = json.Unmarshal(indexData.IndexBlob, &indexContent)
 			if err != nil {
 				return []mTypes.RepoMetadata{}, map[string]mTypes.ManifestMetadata{}, map[string]mTypes.IndexData{},
-					fmt.Errorf("metadb: error while unmashaling index content for digest %s %w", indexDigest, err)
+					fmt.Errorf("metadb: error while unmarshaling index content for digest %s %w", indexDigest, err)
 			}
 
 			for _, manifest := range indexContent.Manifests {
@@ -1359,7 +1359,7 @@ func (dwr *DynamoDB) SearchTags(ctx context.Context, searchText string,
 
 			indexDataMap[indexDigest] = indexData
 		default:
-			dwr.Log.Error().Str("mediaType", descriptor.MediaType).Msg("Unsupported media type")
+			dwr.Log.Error().Str("mediaType", descriptor.MediaType).Msg("unsupported media type")
 
 			continue
 		}

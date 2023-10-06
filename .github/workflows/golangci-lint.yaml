@@ -44,3 +44,13 @@ jobs:
       - name: Run linter from make target
         run: |
           make check
+      - name: Run log linter
+        run: |
+          set +e
+
+          # log messages should never start upper-cased
+          find . -name '*.go' | grep -v '_test.go' | xargs grep -n "Msg(\"[A-Z]" | grep -v -E "Msg\(\"HTTP|OpenID|OAuth|TLS"
+          if [ $? -eq 0 ]; then
+            exit 1
+          fi
+          exit 0

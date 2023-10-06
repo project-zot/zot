@@ -449,7 +449,7 @@ func bearerAuthHandler(ctlr *Controller) mux.MiddlewareFunc {
 		EmptyDefaultNamespace: true,
 	})
 	if err != nil {
-		ctlr.Log.Panic().Err(err).Msg("error creating bearer authorizer")
+		ctlr.Log.Panic().Err(err).Msg("failed to create bearer authorizer")
 	}
 
 	return func(next http.Handler) http.Handler {

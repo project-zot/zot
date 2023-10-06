@@ -112,7 +112,7 @@ func (hr *HotReloader) Start() context.Context {
 		}()
 
 		if err := hr.watcher.Add(hr.filePath); err != nil {
-			log.Error().Err(err).Str("config", hr.filePath).Msg("error adding config file to FsNotify watcher")
+			log.Error().Err(err).Str("config", hr.filePath).Msg("failed to add config file to fsnotity watcher")
 			panic(err)
 		}
 

@@ -176,7 +176,7 @@ func TestScrubExtension(t *testing.T) {
 
 		data, err := os.ReadFile(logFile.Name())
 		So(err, ShouldBeNil)
-		So(string(data), ShouldContainSubstring, "error while executing generator")
+		So(string(data), ShouldContainSubstring, "failed to execute generator")
 
 		So(os.Chmod(path.Join(dir, repoName), 0o755), ShouldBeNil)
 	})

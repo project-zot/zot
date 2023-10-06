@@ -150,7 +150,7 @@ func TestScheduler(t *testing.T) {
 		So(string(data), ShouldContainSubstring, "executing high priority task; index: 1")
 		So(string(data), ShouldContainSubstring, "executing high priority task; index: 2")
 		So(string(data), ShouldNotContainSubstring, "executing medium priority task; index: 1")
-		So(string(data), ShouldNotContainSubstring, "error while executing task")
+		So(string(data), ShouldNotContainSubstring, "failed to execute task")
 	})
 
 	Convey("Test task returning an error", t, func() {
@@ -173,8 +173,8 @@ func TestScheduler(t *testing.T) {
 
 		data, err := os.ReadFile(logFile.Name())
 		So(err, ShouldBeNil)
-		So(string(data), ShouldContainSubstring, "scheduler: adding a new task")
-		So(string(data), ShouldContainSubstring, "error while executing task")
+		So(string(data), ShouldContainSubstring, "adding a new task")
+		So(string(data), ShouldContainSubstring, "failed to execute task")
 	})
 
 	Convey("Test resubmit generator", t, func() {
@@ -215,7 +215,7 @@ func TestScheduler(t *testing.T) {
 
 		data, err := os.ReadFile(logFile.Name())
 		So(err, ShouldBeNil)
-		So(string(data), ShouldNotContainSubstring, "scheduler: adding a new task")
+		So(string(data), ShouldNotContainSubstring, "adding a new task")
 	})
 
 	Convey("Test adding a new task when context is done", t, func() {
@@ -238,7 +238,7 @@ func TestScheduler(t *testing.T) {
 
 		data, err := os.ReadFile(logFile.Name())
 		So(err, ShouldBeNil)
-		So(string(data), ShouldNotContainSubstring, "scheduler: adding a new task")
+		So(string(data), ShouldNotContainSubstring, "adding a new task")
 	})
 }
 

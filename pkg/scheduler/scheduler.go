@@ -101,13 +101,13 @@ func (scheduler *Scheduler) poolWorker(ctx context.Context, numWorkers int, task
 	for i := 0; i < numWorkers; i++ {
 		go func(workerID int) {
 			for task := range tasks {
-				scheduler.log.Debug().Int("worker", workerID).Msg("scheduler: starting task")
+				scheduler.log.Debug().Int("worker", workerID).Msg("starting task")
 
 				if err := task.DoWork(ctx); err != nil {
-					scheduler.log.Error().Int("worker", workerID).Err(err).Msg("scheduler: error while executing task")
+					scheduler.log.Error().Int("worker", workerID).Err(err).Msg("failed to execute task")
 				}
 
-				scheduler.log.Debug().Int("worker", workerID).Msg("scheduler: finished task")
+				scheduler.log.Debug().Int("worker", workerID).Msg("finished task")
 			}
 		}(i + 1)
 	}
@@ -129,7 +129,7 @@ func (scheduler *Scheduler) RunScheduler(ctx context.Context) {
 				close(tasksWorker)
 				close(scheduler.stopCh)
 
-				scheduler.log.Debug().Msg("scheduler: received stop signal, exiting...")
+				scheduler.log.Debug().Msg("received stop signal, exiting...")
 
 				return
 			default:
@@ -138,7 +138,7 @@ func (scheduler *Scheduler) RunScheduler(ctx context.Context) {
 					task := scheduler.getTask()
 					if task != nil {
 						// push tasks into worker pool
-						scheduler.log.Debug().Msg("scheduler: pushing task into worker pool")
+						scheduler.log.Debug().Msg("pushing task into worker pool")
 						tasksWorker <- task
 					}
 					i++
@@ -162,7 +162,7 @@ func (scheduler *Scheduler) pushReadyGenerators() {
 				scheduler.waitingGenerators = append(scheduler.waitingGenerators[:i], scheduler.waitingGenerators[i+1:]...)
 				modified = true
 
-				scheduler.log.Debug().Msg("scheduler: waiting generator is ready, pushing to ready generators")
+				scheduler.log.Debug().Msg("waiting generator is ready, pushing to ready generators")
 
 				break
 			}
@@ -261,7 +261,7 @@ func (scheduler *Scheduler) SubmitTask(task Task, priority Priority) {
 	case <-scheduler.stopCh:
 		return
 	case tasksQ <- task:
-		scheduler.log.Info().Msg("scheduler: adding a new task")
+		scheduler.log.Info().Msg("adding a new task")
 	}
 }
 
@@ -308,7 +308,7 @@ func (gen *generator) generate(sch *Scheduler) {
 	if gen.remainingTask == nil {
 		nextTask, err := gen.taskGenerator.Next()
 		if err != nil {
-			sch.log.Error().Err(err).Msg("scheduler: error while executing generator")
+			sch.log.Error().Err(err).Msg("failed to execute generator")
 
 			return
 		}

@@ -25,7 +25,7 @@ func EnableScrubExtension(config *config.Config, log log.Logger, storeController
 		if config.Extensions.Scrub.Interval < minScrubInterval {
 			config.Extensions.Scrub.Interval = minScrubInterval
 
-			log.Warn().Msg("Scrub interval set to too-short interval < 2h, changing scrub duration to 2 hours and continuing.") //nolint:lll // gofumpt conflicts with lll
+			log.Warn().Msg("scrub interval set to too-short interval < 2h, changing scrub duration to 2 hours and continuing.") //nolint:lll // gofumpt conflicts with lll
 		}
 
 		generator := &taskGenerator{
@@ -44,7 +44,7 @@ func EnableScrubExtension(config *config.Config, log log.Logger, storeController
 			}
 		}
 	} else {
-		log.Info().Msg("Scrub config not provided, skipping scrub")
+		log.Info().Msg("scrub config not provided, skipping scrub")
 	}
 }
 

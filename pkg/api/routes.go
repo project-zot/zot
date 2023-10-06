@@ -547,7 +547,7 @@ func getReferrers(ctx context.Context, routeHandler *RouteHandler,
 			if errSync := routeHandler.c.SyncOnDemand.SyncReference(ctx, name, digest.String(),
 				syncConstants.OCI); errSync != nil {
 				routeHandler.c.Log.Err(errSync).Str("repository", name).Str("reference", digest.String()).
-					Msg("error encounter while syncing OCI reference for image")
+					Msg("failed to sync OCI reference for image")
 			}
 
 			refs, err = imgStore.GetReferrers(name, digest, artifactTypes)
@@ -605,7 +605,7 @@ func (rh *RouteHandler) GetReferrers(response http.ResponseWriter, request *http
 			rh.c.Log.Error().Err(err).Str("name", name).Str("digest", digest.String()).Msg("manifest not found")
 			response.WriteHeader(http.StatusNotFound)
 		} else {
-			rh.c.Log.Error().Err(err).Str("name", name).Str("digest", digest.String()).Msg("unable to get references")
+			rh.c.Log.Error().Err(err).Str("name", name).Str("digest", digest.String()).Msg("failed to get references")
 			response.WriteHeader(http.StatusInternalServerError)
 		}
 
@@ -614,7 +614,7 @@ func (rh *RouteHandler) GetReferrers(response http.ResponseWriter, request *http
 
 	out, err := json.Marshal(referrers)
 	if err != nil {
-		rh.c.Log.Error().Err(err).Str("name", name).Str("digest", digest.String()).Msg("unable to marshal json")
+		rh.c.Log.Error().Err(err).Str("name", name).Str("digest", digest.String()).Msg("failed to marshal json")
 		response.WriteHeader(http.StatusInternalServerError)
 
 		return
@@ -1221,8 +1221,6 @@ func (rh *RouteHandler) CreateBlobUpload(response http.ResponseWriter, request *
 			return
 		}
 
-		rh.c.Log.Info().Int64("r.ContentLength", request.ContentLength).Msg("DEBUG")
-
 		digestStr := digests[0]
 
 		digest := godigest.Digest(digestStr)
@@ -1493,8 +1491,6 @@ func (rh *RouteHandler) UpdateBlobUpload(response http.ResponseWriter, request *
 
 		return
 	}
-
-	rh.c.Log.Info().Int64("r.ContentLength", request.ContentLength).Msg("DEBUG")
 
 	contentPresent := true
 
@@ -1918,7 +1914,7 @@ func getImageManifest(ctx context.Context, routeHandler *RouteHandler, imgStore 
 
 		if errSync := routeHandler.c.SyncOnDemand.SyncImage(ctx, name, reference); errSync != nil {
 			routeHandler.c.Log.Err(errSync).Str("repository", name).Str("reference", reference).
-				Msg("error encounter while syncing image")
+				Msg("failed to sync image")
 		}
 	}
 
@@ -1939,7 +1935,7 @@ func getOrasReferrers(ctx context.Context, routeHandler *RouteHandler,
 			if errSync := routeHandler.c.SyncOnDemand.SyncReference(ctx, name, digest.String(),
 				syncConstants.Oras); errSync != nil {
 				routeHandler.c.Log.Error().Err(err).Str("name", name).Str("digest", digest.String()).
-					Msg("unable to get references")
+					Msg("failed to get references")
 			}
 
 			refs, err = imgStore.GetOrasReferrers(name, digest, artifactType)
@@ -2009,7 +2005,7 @@ func (rh *RouteHandler) GetOrasReferrers(response http.ResponseWriter, request *
 			rh.c.Log.Error().Err(err).Str("name", name).Str("digest", digest.String()).Msg("manifest not found")
 			response.WriteHeader(http.StatusNotFound)
 		} else {
-			rh.c.Log.Error().Err(err).Str("name", name).Str("digest", digest.String()).Msg("unable to get references")
+			rh.c.Log.Error().Err(err).Str("name", name).Str("digest", digest.String()).Msg("failed to get references")
 			response.WriteHeader(http.StatusInternalServerError)
 		}
 
@@ -2039,7 +2035,7 @@ type APIKeyPayload struct { //nolint:revive
 func (rh *RouteHandler) GetAPIKeys(resp http.ResponseWriter, req *http.Request) {
 	apiKeys, err := rh.c.MetaDB.GetUserAPIKeys(req.Context())
 	if err != nil {
-		rh.c.Log.Error().Err(err).Msg("error getting list of API keys for user")
+		rh.c.Log.Error().Err(err).Msg("failed to get list of api keys for user")
 		resp.WriteHeader(http.StatusInternalServerError)
 
 		return
@@ -2055,7 +2051,7 @@ func (rh *RouteHandler) GetAPIKeys(resp http.ResponseWriter, req *http.Request) 
 
 	data, err := json.Marshal(apiKeyResponse)
 	if err != nil {
-		rh.c.Log.Error().Err(err).Msg("unable to marshal api key response")
+		rh.c.Log.Error().Err(err).Msg("failed to marshal api key response")
 
 		resp.WriteHeader(http.StatusInternalServerError)
 
@@ -2083,7 +2079,7 @@ func (rh *RouteHandler) CreateAPIKey(resp http.ResponseWriter, req *http.Request
 
 	body, err := io.ReadAll(req.Body)
 	if err != nil {
-		rh.c.Log.Error().Msg("unable to read request body")
+		rh.c.Log.Error().Msg("failed to read request body")
 		resp.WriteHeader(http.StatusInternalServerError)
 
 		return
@@ -2138,7 +2134,7 @@ func (rh *RouteHandler) CreateAPIKey(resp http.ResponseWriter, req *http.Request
 
 	err = rh.c.MetaDB.AddUserAPIKey(req.Context(), hashedAPIKey, apiKeyDetails)
 	if err != nil {
-		rh.c.Log.Error().Err(err).Msg("error storing API key")
+		rh.c.Log.Error().Err(err).Msg("failed to store api key")
 		resp.WriteHeader(http.StatusInternalServerError)
 
 		return
@@ -2156,7 +2152,7 @@ func (rh *RouteHandler) CreateAPIKey(resp http.ResponseWriter, req *http.Request
 
 	data, err := json.Marshal(apiKeyResponse)
 	if err != nil {
-		rh.c.Log.Error().Err(err).Msg("unable to marshal api key response")
+		rh.c.Log.Error().Err(err).Msg("failed to marshal api key response")
 
 		resp.WriteHeader(http.StatusInternalServerError)
 
@@ -2191,7 +2187,7 @@ func (rh *RouteHandler) RevokeAPIKey(resp http.ResponseWriter, req *http.Request
 
 	err := rh.c.MetaDB.DeleteUserAPIKey(req.Context(), keyID)
 	if err != nil {
-		rh.c.Log.Error().Err(err).Str("keyID", keyID).Msg("error deleting API key")
+		rh.c.Log.Error().Err(err).Str("keyID", keyID).Msg("failed to delete api key")
 		resp.WriteHeader(http.StatusInternalServerError)
 
 		return

@@ -82,7 +82,7 @@ func ValidateManifest(imgStore storageTypes.ImageStore, repo, reference, mediaTy
 
 		// validate manifest
 		if err := ValidateManifestSchema(body); err != nil {
-			log.Error().Err(err).Msg("OCIv1 image manifest schema validation failed")
+			log.Error().Err(err).Msg("failed to validate OCIv1 image manifest schema")
 
 			return "", zerr.NewError(zerr.ErrBadManifest).AddDetail("jsonSchemaValidation", err.Error())
 		}
@@ -131,7 +131,7 @@ func ValidateManifest(imgStore storageTypes.ImageStore, repo, reference, mediaTy
 	case ispec.MediaTypeImageIndex:
 		// validate manifest
 		if err := ValidateImageIndexSchema(body); err != nil {
-			log.Error().Err(err).Msg("OCIv1 image index manifest schema validation failed")
+			log.Error().Err(err).Msg("failed to validate OCIv1 image index manifest schema")
 
 			return "", zerr.NewError(zerr.ErrBadManifest).AddDetail("jsonSchemaValidation", err.Error())
 		}

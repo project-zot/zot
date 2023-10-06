@@ -64,7 +64,7 @@ func EnableSyncExtension(config *config.Config, metaDB mTypes.MetaDB,
 		return onDemand, nil
 	}
 
-	log.Info().Msg("Sync registries config not provided or disabled, skipping sync")
+	log.Info().Msg("sync config not provided or disabled, so not enabling sync")
 
 	return nil, nil //nolint: nilnil
 }

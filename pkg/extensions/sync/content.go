@@ -113,7 +113,7 @@ func (cm ContentManager) getContentByUpstreamRepo(repo string) *syncconf.Content
 		if err != nil {
 			cm.log.Error().Str("errorType", common.TypeOf(err)).
 				Err(err).Str("pattern",
-				prefix).Msg("error while parsing glob pattern, skipping it...")
+				prefix).Msg("failed to parse glob pattern, skipping it")
 
 			continue
 		}

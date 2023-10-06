@@ -67,7 +67,7 @@ func NewImageStore(rootDir string, cacheDir string, dedupe, commit bool, log zlo
 	metrics monitoring.MetricServer, linter common.Lint, storeDriver storageTypes.Driver, cacheDriver cache.Cache,
 ) storageTypes.ImageStore {
 	if err := storeDriver.EnsureDir(rootDir); err != nil {
-		log.Error().Err(err).Str("rootDir", rootDir).Msg("unable to create root dir")
+		log.Error().Err(err).Str("rootDir", rootDir).Msg("failed to create root dir")
 
 		return nil
 	}
@@ -139,14 +139,14 @@ func (is *ImageStore) initRepo(name string) error {
 	// create "blobs" subdir
 	err := is.storeDriver.EnsureDir(path.Join(repoDir, "blobs"))
 	if err != nil {
-		is.log.Error().Err(err).Msg("error creating blobs subdir")
+		is.log.Error().Err(err).Str("repository", repoDir).Msg("failed to create blobs subdir")
 
 		return err
 	}
 	// create BlobUploadDir subdir
 	err = is.storeDriver.EnsureDir(path.Join(repoDir, storageConstants.BlobUploadDir))
 	if err != nil {
-		is.log.Error().Err(err).Msg("error creating blob upload subdir")
+		is.log.Error().Err(err).Msg("failed to create blob upload subdir")
 
 		return err
 	}
@@ -158,13 +158,13 @@ func (is *ImageStore) initRepo(name string) error {
 
 		buf, err := json.Marshal(il)
 		if err != nil {
-			is.log.Error().Err(err).Msg("unable to marshal JSON")
+			is.log.Error().Err(err).Msg("failed to marshal JSON")
 
 			return err
 		}
 
 		if _, err := is.storeDriver.WriteFile(ilPath, buf); err != nil {
-			is.log.Error().Err(err).Str("file", ilPath).Msg("unable to write file")
+			is.log.Error().Err(err).Str("file", ilPath).Msg("failed to write file")
 
 			return err
 		}
@@ -178,13 +178,13 @@ func (is *ImageStore) initRepo(name string) error {
 
 		buf, err := json.Marshal(index)
 		if err != nil {
-			is.log.Error().Err(err).Msg("unable to marshal JSON")
+			is.log.Error().Err(err).Msg("failed to marshal JSON")
 
 			return err
 		}
 
 		if _, err := is.storeDriver.WriteFile(indexPath, buf); err != nil {
-			is.log.Error().Err(err).Str("file", ilPath).Msg("unable to write file")
+			is.log.Error().Err(err).Str("file", ilPath).Msg("failed to write file")
 
 			return err
 		}
@@ -220,7 +220,7 @@ func (is *ImageStore) ValidateRepo(name string) (bool, error) {
 
 	files, err := is.storeDriver.List(dir)
 	if err != nil {
-		is.log.Error().Err(err).Str("dir", dir).Msg("unable to read directory")
+		is.log.Error().Err(err).Str("dir", dir).Msg("failed to read directory")
 
 		return false, zerr.ErrRepoNotFound
 	}
@@ -565,7 +565,7 @@ func (is *ImageStore) PutImageManifest(repo, reference, mediaType string, //noli
 	manifestPath := path.Join(dir, mDigest.Encoded())
 
 	if _, err = is.storeDriver.WriteFile(manifestPath, body); err != nil {
-		is.log.Error().Err(err).Str("file", manifestPath).Msg("unable to write")
+		is.log.Error().Err(err).Str("file", manifestPath).Msg("failed to write")
 
 		return "", "", err
 	}
@@ -658,7 +658,7 @@ func (is *ImageStore) deleteImageManifest(repo, reference string, detectCollisio
 	}
 
 	if _, err := is.storeDriver.WriteFile(file, buf); err != nil {
-		is.log.Debug().Str("reference", reference).Str("repo", repo).Msg("error while updating index.json")
+		is.log.Debug().Str("reference", reference).Str("repository", repo).Msg("failed to update index.json")
 
 		return err
 	}
@@ -698,7 +698,7 @@ func (is *ImageStore) BlobUploadPath(repo, uuid string) string {
 // NewBlobUpload returns the unique ID for an upload in progress.
 func (is *ImageStore) NewBlobUpload(repo string) (string, error) {
 	if err := is.InitRepo(repo); err != nil {
-		is.log.Error().Err(err).Msg("error initializing repo")
+		is.log.Error().Err(err).Msg("failed to initialize repo")
 
 		return "", err
 	}
@@ -889,7 +889,7 @@ func (is *ImageStore) FinishBlobUpload(repo, uuid string, body io.Reader, dstDig
 
 	err = is.storeDriver.EnsureDir(dir)
 	if err != nil {
-		is.log.Error().Err(err).Msg("error creating blobs/sha256 dir")
+		is.log.Error().Err(err).Str("dir", dir).Msg("failed to create dir")
 
 		return err
 	}
@@ -905,14 +905,14 @@ func (is *ImageStore) FinishBlobUpload(repo, uuid string, body io.Reader, dstDig
 		err = is.DedupeBlob(src, dstDigest, dst)
 		if err := inject.Error(err); err != nil {
 			is.log.Error().Err(err).Str("src", src).Str("dstDigest", dstDigest.String()).
-				Str("dst", dst).Msg("unable to dedupe blob")
+				Str("dst", dst).Msg("failed to dedupe blob")
 
 			return err
 		}
 	} else {
 		if err := is.storeDriver.Move(src, dst); err != nil {
 			is.log.Error().Err(err).Str("src", src).Str("dstDigest", dstDigest.String()).
-				Str("dst", dst).Msg("unable to finish blob")
+				Str("dst", dst).Msg("failed to finish blob")
 
 			return err
 		}
@@ -983,14 +983,14 @@ func (is *ImageStore) FullBlobUpload(repo string, body io.Reader, dstDigest godi
 	if is.dedupe && fmt.Sprintf("%v", is.cache) != fmt.Sprintf("%v", nil) {
 		if err := is.DedupeBlob(src, dstDigest, dst); err != nil {
 			is.log.Error().Err(err).Str("src", src).Str("dstDigest", dstDigest.String()).
-				Str("dst", dst).Msg("unable to dedupe blob")
+				Str("dst", dst).Msg("failed to dedupe blob")
 
 			return "", -1, err
 		}
 	} else {
 		if err := is.storeDriver.Move(src, dst); err != nil {
 			is.log.Error().Err(err).Str("src", src).Str("dstDigest", dstDigest.String()).
-				Str("dst", dst).Msg("unable to finish blob")
+				Str("dst", dst).Msg("failed to finish blob")
 
 			return "", -1, err
 		}
@@ -1005,7 +1005,7 @@ retry:
 
 	dstRecord, err := is.cache.GetBlob(dstDigest)
 	if err := inject.Error(err); err != nil && !errors.Is(err, zerr.ErrCacheMiss) {
-		is.log.Error().Err(err).Str("blobPath", dst).Msg("dedupe: unable to lookup blob record")
+		is.log.Error().Err(err).Str("blobPath", dst).Msg("dedupe: failed to lookup blob record")
 
 		return err
 	}
@@ -1013,14 +1013,14 @@ retry:
 	if dstRecord == "" {
 		// cache record doesn't exist, so first disk and cache entry for this digest
 		if err := is.cache.PutBlob(dstDigest, dst); err != nil {
-			is.log.Error().Err(err).Str("blobPath", dst).Msg("dedupe: unable to insert blob record")
+			is.log.Error().Err(err).Str("blobPath", dst).Msg("dedupe: failed to insert blob record")
 
 			return err
 		}
 
 		// move the blob from uploads to final dest
 		if err := is.storeDriver.Move(src, dst); err != nil {
-			is.log.Error().Err(err).Str("src", src).Str("dst", dst).Msg("dedupe: unable to rename blob")
+			is.log.Error().Err(err).Str("src", src).Str("dst", dst).Msg("dedupe: failed to rename blob")
 
 			return err
 		}
@@ -1036,12 +1036,12 @@ retry:
 
 		_, err := is.storeDriver.Stat(dstRecord)
 		if err != nil {
-			is.log.Error().Err(err).Str("blobPath", dstRecord).Msg("dedupe: unable to stat")
+			is.log.Error().Err(err).Str("blobPath", dstRecord).Msg("dedupe: failed to stat")
 			// the actual blob on disk may have been removed by GC, so sync the cache
 			err := is.cache.DeleteBlob(dstDigest, dstRecord)
 			if err = inject.Error(err); err != nil {
 				//nolint:lll
-				is.log.Error().Err(err).Str("dstDigest", dstDigest.String()).Str("dst", dst).Msg("dedupe: unable to delete blob record")
+				is.log.Error().Err(err).Str("dstDigest", dstDigest.String()).Str("dst", dst).Msg("dedupe: failed to delete blob record")
 
 				return err
 			}
@@ -1052,13 +1052,13 @@ retry:
 		// prevent overwrite original blob
 		if !is.storeDriver.SameFile(dst, dstRecord) {
 			if err := is.storeDriver.Link(dstRecord, dst); err != nil {
-				is.log.Error().Err(err).Str("blobPath", dstRecord).Msg("dedupe: unable to link blobs")
+				is.log.Error().Err(err).Str("blobPath", dstRecord).Msg("dedupe: failed to link blobs")
 
 				return err
 			}
 
 			if err := is.cache.PutBlob(dstDigest, dst); err != nil {
-				is.log.Error().Err(err).Str("blobPath", dst).Msg("dedupe: unable to insert blob record")
+				is.log.Error().Err(err).Str("blobPath", dst).Msg("dedupe: failed to insert blob record")
 
 				return err
 			}
@@ -1066,7 +1066,7 @@ retry:
 
 		// remove temp blobupload
 		if err := is.storeDriver.Delete(src); err != nil {
-			is.log.Error().Err(err).Str("src", src).Msg("dedupe: unable to remove blob")
+			is.log.Error().Err(err).Str("src", src).Msg("dedupe: failed to remove blob")
 
 			return err
 		}
@@ -1093,7 +1093,7 @@ func (is *ImageStore) DeleteBlobUpload(repo, uuid string) error {
 	defer writer.Close()
 
 	if err := writer.Cancel(); err != nil {
-		is.log.Error().Err(err).Str("blobUploadPath", blobUploadPath).Msg("error deleting blob upload")
+		is.log.Error().Err(err).Str("blobUploadPath", blobUploadPath).Msg("failed deleting blob upload")
 
 		return err
 	}
@@ -1139,7 +1139,7 @@ func (is *ImageStore) CheckBlob(repo string, digest godigest.Digest) (bool, int6
 	// Check blobs in cache
 	dstRecord, err := is.checkCacheBlob(digest)
 	if err != nil {
-		is.log.Error().Err(err).Str("digest", digest.String()).Msg("cache: not found")
+		is.log.Warn().Err(err).Str("digest", digest.String()).Msg("not found in cache")
 
 		return false, -1, zerr.ErrBlobNotFound
 	}
@@ -1151,7 +1151,7 @@ func (is *ImageStore) CheckBlob(repo string, digest godigest.Digest) (bool, int6
 
 	// put deduped blob in cache
 	if err := is.cache.PutBlob(digest, blobPath); err != nil {
-		is.log.Error().Err(err).Str("blobPath", blobPath).Msg("dedupe: unable to insert blob record")
+		is.log.Error().Err(err).Str("blobPath", blobPath).Msg("dedupe: failed to insert blob record")
 
 		return false, -1, err
 	}
@@ -1185,7 +1185,7 @@ func (is *ImageStore) StatBlob(repo string, digest godigest.Digest) (bool, int64
 	// Check blobs in cache
 	dstRecord, err := is.checkCacheBlob(digest)
 	if err != nil {
-		is.log.Error().Err(err).Str("digest", digest.String()).Msg("cache: not found")
+		is.log.Warn().Err(err).Str("digest", digest.String()).Msg("not found in cache")
 
 		return false, -1, time.Time{}, zerr.ErrBlobNotFound
 	}
@@ -1224,7 +1224,7 @@ func (is *ImageStore) checkCacheBlob(digest godigest.Digest) (string, error) {
 		// the actual blob on disk may have been removed by GC, so sync the cache
 		if err := is.cache.DeleteBlob(digest, dstRecord); err != nil {
 			is.log.Error().Err(err).Str("digest", digest.String()).Str("blobPath", dstRecord).
-				Msg("unable to remove blob path from cache")
+				Msg("failed to remove blob path from cache")
 
 			return "", err
 		}
@@ -1239,7 +1239,7 @@ func (is *ImageStore) checkCacheBlob(digest godigest.Digest) (string, error) {
 
 func (is *ImageStore) copyBlob(repo string, blobPath, dstRecord string) (int64, error) {
 	if err := is.initRepo(repo); err != nil {
-		is.log.Error().Err(err).Str("repository", repo).Msg("unable to initialize an empty repo")
+		is.log.Error().Err(err).Str("repository", repo).Msg("failed to initialize an empty repo")
 
 		return -1, err
 	}
@@ -1247,7 +1247,7 @@ func (is *ImageStore) copyBlob(repo string, blobPath, dstRecord string) (int64, 
 	_ = is.storeDriver.EnsureDir(filepath.Dir(blobPath))
 
 	if err := is.storeDriver.Link(dstRecord, blobPath); err != nil {
-		is.log.Error().Err(err).Str("blobPath", blobPath).Str("link", dstRecord).Msg("dedupe: unable to hard link")
+		is.log.Error().Err(err).Str("blobPath", blobPath).Str("link", dstRecord).Msg("dedupe: failed to hard link")
 
 		return -1, zerr.ErrBlobNotFound
 	}
@@ -1288,7 +1288,7 @@ func (is *ImageStore) GetBlobPartial(repo string, digest godigest.Digest, mediaT
 		// Check blobs in cache
 		blobPath, err = is.checkCacheBlob(digest)
 		if err != nil {
-			is.log.Error().Err(err).Str("digest", digest.String()).Msg("cache: not found")
+			is.log.Warn().Err(err).Str("digest", digest.String()).Msg("not found in cache")
 
 			return nil, -1, -1, zerr.ErrBlobNotFound
 		}
@@ -1358,7 +1358,7 @@ func (is *ImageStore) GetBlob(repo string, digest godigest.Digest, mediaType str
 		// Check blobs in cache
 		dstRecord, err := is.checkCacheBlob(digest)
 		if err != nil {
-			is.log.Error().Err(err).Str("digest", digest.String()).Msg("cache: not found")
+			is.log.Warn().Err(err).Str("digest", digest.String()).Msg("not found in cache")
 
 			return nil, -1, zerr.ErrBlobNotFound
 		}
@@ -1411,7 +1411,7 @@ func (is *ImageStore) GetBlobContent(repo string, digest godigest.Digest) ([]byt
 		// Check blobs in cache
 		dstRecord, err := is.checkCacheBlob(digest)
 		if err != nil {
-			is.log.Error().Err(err).Str("digest", digest.String()).Msg("cache: not found")
+			is.log.Warn().Err(err).Str("digest", digest.String()).Msg("not found in cache")
 
 			return nil, zerr.ErrBlobNotFound
 		}
@@ -1476,13 +1476,13 @@ func (is *ImageStore) PutIndexContent(repo string, index ispec.Index) error {
 
 	buf, err := json.Marshal(index)
 	if err != nil {
-		is.log.Error().Err(err).Str("file", indexPath).Msg("unable to marshal JSON")
+		is.log.Error().Err(err).Str("file", indexPath).Msg("failed to marshal JSON")
 
 		return err
 	}
 
 	if _, err = is.storeDriver.WriteFile(indexPath, buf); err != nil {
-		is.log.Error().Err(err).Str("file", indexPath).Msg("unable to write")
+		is.log.Error().Err(err).Str("file", indexPath).Msg("failed to write")
 
 		return err
 	}
@@ -1521,14 +1521,14 @@ func (is *ImageStore) CleanupRepo(repo string, blobs []godigest.Digest, removeRe
 						continue
 					}
 
-					is.log.Error().Err(err).Str("repository", repo).Str("digest", digest.String()).Msg("unable to delete manifest")
+					is.log.Error().Err(err).Str("repository", repo).Str("digest", digest.String()).Msg("failed to delete manifest")
 
 					return count, err
 				}
 
 				count++
 			} else {
-				is.log.Error().Err(err).Str("repository", repo).Str("digest", digest.String()).Msg("unable to delete blob")
+				is.log.Error().Err(err).Str("repository", repo).Str("digest", digest.String()).Msg("failed to delete blob")
 
 				return count, err
 			}
@@ -1539,13 +1539,13 @@ func (is *ImageStore) CleanupRepo(repo string, blobs []godigest.Digest, removeRe
 
 	blobUploads, err := is.storeDriver.List(path.Join(is.RootDir(), repo, storageConstants.BlobUploadDir))
 	if err != nil {
-		is.log.Debug().Str("repository", repo).Msg("unable to list .uploads/ dir")
+		is.log.Debug().Str("repository", repo).Msg("failed to list .uploads/ dir")
 	}
 
 	// if removeRepo flag is true and we cleanup all blobs and there are no blobs currently being uploaded.
 	if removeRepo && count == len(blobs) && count > 0 && len(blobUploads) == 0 {
 		if err := is.storeDriver.Delete(path.Join(is.rootDir, repo)); err != nil {
-			is.log.Error().Err(err).Str("repository", repo).Msg("unable to remove repo")
+			is.log.Error().Err(err).Str("repository", repo).Msg("failed to remove repo")
 
 			return count, err
 		}
@@ -1572,7 +1572,7 @@ func (is *ImageStore) deleteBlob(repo string, digest godigest.Digest) error {
 	if fmt.Sprintf("%v", is.cache) != fmt.Sprintf("%v", nil) {
 		dstRecord, err := is.cache.GetBlob(digest)
 		if err != nil && !errors.Is(err, zerr.ErrCacheMiss) {
-			is.log.Error().Err(err).Str("blobPath", dstRecord).Msg("dedupe: unable to lookup blob record")
+			is.log.Error().Err(err).Str("blobPath", dstRecord).Msg("dedupe: failed to lookup blob record")
 
 			return err
 		}
@@ -1581,7 +1581,7 @@ func (is *ImageStore) deleteBlob(repo string, digest godigest.Digest) error {
 		if ok := is.cache.HasBlob(digest, blobPath); ok {
 			if err := is.cache.DeleteBlob(digest, blobPath); err != nil {
 				is.log.Error().Err(err).Str("digest", digest.String()).Str("blobPath", blobPath).
-					Msg("unable to remove blob path from cache")
+					Msg("failed to remove blob path from cache")
 
 				return err
 			}
@@ -1592,7 +1592,7 @@ func (is *ImageStore) deleteBlob(repo string, digest godigest.Digest) error {
 			// get next candidate
 			dstRecord, err := is.cache.GetBlob(digest)
 			if err != nil && !errors.Is(err, zerr.ErrCacheMiss) {
-				is.log.Error().Err(err).Str("blobPath", dstRecord).Msg("dedupe: unable to lookup blob record")
+				is.log.Error().Err(err).Str("blobPath", dstRecord).Msg("dedupe: failed to lookup blob record")
 
 				return err
 			}
@@ -1610,7 +1610,7 @@ func (is *ImageStore) deleteBlob(repo string, digest godigest.Digest) error {
 
 				if binfo.Size() == 0 {
 					if err := is.storeDriver.Move(blobPath, dstRecord); err != nil {
-						is.log.Error().Err(err).Str("blobPath", blobPath).Msg("unable to remove blob path")
+						is.log.Error().Err(err).Str("blobPath", blobPath).Msg("failed to remove blob path")
 
 						return err
 					}
@@ -1622,7 +1622,7 @@ func (is *ImageStore) deleteBlob(repo string, digest godigest.Digest) error {
 	}
 
 	if err := is.storeDriver.Delete(blobPath); err != nil {
-		is.log.Error().Err(err).Str("blobPath", blobPath).Msg("unable to remove blob path")
+		is.log.Error().Err(err).Str("blobPath", blobPath).Msg("failed to remove blob path")
 
 		return err
 	}
@@ -1732,7 +1732,7 @@ func (is *ImageStore) getOriginalBlob(digest godigest.Digest, duplicateBlobs []s
 
 	originalBlob, err = is.checkCacheBlob(digest)
 	if err != nil && !errors.Is(err, zerr.ErrBlobNotFound) && !errors.Is(err, zerr.ErrCacheMiss) {
-		is.log.Error().Err(err).Msg("rebuild dedupe: unable to find blob in cache")
+		is.log.Error().Err(err).Msg("rebuild dedupe: failed to find blob in cache")
 
 		return originalBlob, err
 	}
@@ -1781,7 +1781,7 @@ func (is *ImageStore) dedupeBlobs(digest godigest.Digest, duplicateBlobs []strin
 			if originalBlob == "" {
 				originalBlob, err = is.getOriginalBlob(digest, duplicateBlobs)
 				if err != nil {
-					is.log.Error().Err(err).Msg("rebuild dedupe: unable to find original blob")
+					is.log.Error().Err(err).Msg("rebuild dedupe: failed to find original blob")
 
 					return zerr.ErrDedupeRebuild
 				}
@@ -1804,7 +1804,7 @@ func (is *ImageStore) dedupeBlobs(digest godigest.Digest, duplicateBlobs []strin
 			// if we have an original blob cached then we can safely dedupe the rest of them
 			if originalBlob != "" {
 				if err := is.storeDriver.Link(originalBlob, blobPath); err != nil {
-					is.log.Error().Err(err).Str("path", blobPath).Msg("rebuild dedupe: unable to dedupe blob")
+					is.log.Error().Err(err).Str("path", blobPath).Msg("rebuild dedupe: failed to dedupe blob")
 
 					return err
 				}
@@ -1833,7 +1833,7 @@ func (is *ImageStore) restoreDedupedBlobs(digest godigest.Digest, duplicateBlobs
 	// first we need to find the original blob, either in cache or by checking each blob size
 	originalBlob, err := is.getOriginalBlob(digest, duplicateBlobs)
 	if err != nil {
-		is.log.Error().Err(err).Msg("rebuild dedupe: unable to find original blob")
+		is.log.Error().Err(err).Msg("rebuild dedupe: failed to find original blob")
 
 		return zerr.ErrDedupeRebuild
 	}

@@ -1118,7 +1118,7 @@ func (bdw *BoltDB) SearchRepos(ctx context.Context, searchText string,
 
 					indexDataMap[indexDigest] = indexData
 				default:
-					bdw.Log.Error().Str("mediaType", descriptor.MediaType).Msg("Unsupported media type")
+					bdw.Log.Error().Str("mediaType", descriptor.MediaType).Msg("unsupported media type")
 
 					continue
 				}
@@ -1315,7 +1315,7 @@ func (bdw *BoltDB) FilterTags(ctx context.Context, filterFunc mTypes.FilterFunc,
 						matchedTags[tag] = descriptor
 					}
 				default:
-					bdw.Log.Error().Str("mediaType", descriptor.MediaType).Msg("Unsupported media type")
+					bdw.Log.Error().Str("mediaType", descriptor.MediaType).Msg("unsupported media type")
 
 					continue
 				}
@@ -1474,7 +1474,7 @@ func (bdw *BoltDB) SearchTags(ctx context.Context, searchText string,
 
 				indexDataMap[indexDigest] = indexData
 			default:
-				bdw.Log.Error().Str("mediaType", descriptor.MediaType).Msg("Unsupported media type")
+				bdw.Log.Error().Str("mediaType", descriptor.MediaType).Msg("unsupported media type")
 
 				continue
 			}
