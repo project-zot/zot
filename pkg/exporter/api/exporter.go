@@ -101,7 +101,7 @@ func (zc Collector) Collect(ch chan<- prometheus.Metric) {
 
 func panicOnDuplicateMetricName(m map[string]*prometheus.Desc, name string, log log.Logger) {
 	if _, present := m[name]; present {
-		log.Fatal().Msg("Duplicate keys: metric " + name + " already present")
+		log.Fatal().Str("metric", name).Msg("duplicate key found")
 	}
 }
 
@@ -180,16 +180,16 @@ func runExporter(c *Controller) {
 
 	err := prometheus.Register(GetCollector(c))
 	if err != nil {
-		c.Log.Error().Err(err).Msg("Expected error in testing")
+		c.Log.Debug().Err(err).Msg("ignoring error")
 	}
 
 	http.Handle(c.Config.Exporter.Metrics.Path, promhttp.Handler())
-	c.Log.Info().Str("exporter addr", exporterAddr).
-		Str("exporter metrics path", c.Config.Exporter.Metrics.Path).
-		Msg("Exporter is listening on exporter addr & exposes metrics on exporter metrics path")
+	c.Log.Info().Str("addr", exporterAddr).
+		Str("path", c.Config.Exporter.Metrics.Path).
+		Msg("exporter listening")
 
 	serverAddr := fmt.Sprintf("%s://%s:%s", c.Config.Server.Protocol,
 		c.Config.Server.Host, c.Config.Server.Port)
-	c.Log.Info().Str("serverAddr", serverAddr).Msg("Scraping metrics")
-	c.Log.Fatal().Err(server.ListenAndServe()).Msg("Exporter stopped")
+	c.Log.Info().Str("serverAddr", serverAddr).Msg("scraping metrics")
+	c.Log.Fatal().Err(server.ListenAndServe()).Msg("exporter stopped")
 }

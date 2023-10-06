@@ -592,7 +592,7 @@ func (dwr *DynamoDB) SearchTags(ctx context.Context, searchText string) ([]mType
 	searchedRepo, searchedTag, err := common.GetRepoTag(searchText)
 	if err != nil {
 		return []mTypes.FullImageMeta{},
-			fmt.Errorf("metadb: error while parsing search text, invalid format %w", err)
+			fmt.Errorf("failed to parse search text, invalid format %w", err)
 	}
 
 	if ok, err := reqCtx.RepoIsUserAvailable(ctx, searchedRepo); !ok || err != nil {
@@ -627,7 +627,7 @@ func (dwr *DynamoDB) SearchTags(ctx context.Context, searchText string) ([]mType
 			imageManifestData, err := dwr.GetProtoImageMeta(ctx, godigest.Digest(manifestDigest))
 			if err != nil {
 				return []mTypes.FullImageMeta{},
-					fmt.Errorf("metadb: error fetching manifest meta for manifest with digest %s %w", manifestDigest, err)
+					fmt.Errorf("error fetching manifest meta for manifest with digest %s %w", manifestDigest, err)
 			}
 
 			protoImageMeta = imageManifestData
@@ -637,7 +637,7 @@ func (dwr *DynamoDB) SearchTags(ctx context.Context, searchText string) ([]mType
 			imageIndexData, err := dwr.GetProtoImageMeta(ctx, indexDigest)
 			if err != nil {
 				return []mTypes.FullImageMeta{},
-					fmt.Errorf("metadb: error fetching manifest meta for manifest with digest %s %w", indexDigest, err)
+					fmt.Errorf("error fetching manifest meta for manifest with digest %s %w", indexDigest, err)
 			}
 
 			manifestDataList := make([]*proto_go.ManifestMeta, 0, len(imageIndexData.Index.Index.Manifests))
@@ -657,7 +657,7 @@ func (dwr *DynamoDB) SearchTags(ctx context.Context, searchText string) ([]mType
 
 			protoImageMeta = imageIndexData
 		default:
-			dwr.Log.Error().Str("mediaType", descriptor.MediaType).Msg("Unsupported media type")
+			dwr.Log.Error().Str("mediaType", descriptor.MediaType).Msg("unsupported media type")
 
 			continue
 		}
@@ -763,7 +763,7 @@ func (dwr *DynamoDB) FilterTags(ctx context.Context, filterRepoTag mTypes.Filter
 					images = append(images, mConvert.GetFullImageMetaFromProto(tag, protoRepoMeta, protoImageIndexMeta))
 				}
 			default:
-				dwr.Log.Error().Str("mediaType", descriptor.MediaType).Msg("Unsupported media type")
+				dwr.Log.Error().Str("mediaType", descriptor.MediaType).Msg("unsupported media type")
 
 				continue
 			}
@@ -1112,7 +1112,7 @@ func (dwr *DynamoDB) UpdateStatsOnDownload(repo string, reference string) error 
 		descriptor, found := repoMeta.Tags[reference]
 
 		if !found {
-			return zerr.ErrManifestMetaNotFound
+			return zerr.ErrImageMetaNotFound
 		}
 
 		descriptorDigest = descriptor.Digest
@@ -1120,7 +1120,7 @@ func (dwr *DynamoDB) UpdateStatsOnDownload(repo string, reference string) error 
 
 	manifestStatistics, ok := repoMeta.Statistics[descriptorDigest]
 	if !ok {
-		return zerr.ErrManifestMetaNotFound
+		return zerr.ErrImageMetaNotFound
 	}
 
 	manifestStatistics.DownloadCount++
@@ -1294,7 +1294,7 @@ func (dwr *DynamoDB) DeleteSignature(repo string, signedManifestDigest godigest.
 	)
 
 	if manifestSignatures, found = protoRepoMeta.Signatures[signedManifestDigest.String()]; !found {
-		return zerr.ErrManifestMetaNotFound
+		return zerr.ErrImageMetaNotFound
 	}
 
 	signatureSlice := manifestSignatures.Map[sigType]
@@ -1728,7 +1728,7 @@ func (dwr DynamoDB) GetUserAPIKeys(ctx context.Context) ([]mTypes.APIKeyDetails,
 
 	userData, err := dwr.GetUserData(ctx)
 	if err != nil && !errors.Is(err, zerr.ErrUserDataNotFound) {
-		return nil, fmt.Errorf("metaDB: error while getting userData for identity %s %w", userid, err)
+		return nil, fmt.Errorf("failed to get userData for identity %s %w", userid, err)
 	}
 
 	for hashedKey, apiKeyDetails := range userData.APIKeys {
@@ -1764,7 +1764,7 @@ func (dwr DynamoDB) AddUserAPIKey(ctx context.Context, hashedKey string, apiKeyD
 
 	userData, err := dwr.GetUserData(ctx)
 	if err != nil && !errors.Is(err, zerr.ErrUserDataNotFound) {
-		return fmt.Errorf("metaDB: error while getting userData for identity %s %w", userid, err)
+		return fmt.Errorf("failed to get userData for identity %s %w", userid, err)
 	}
 
 	if userData.APIKeys == nil {
@@ -1825,7 +1825,7 @@ func (dwr DynamoDB) AddUserAPIKey(ctx context.Context, hashedKey string, apiKeyD
 func (dwr DynamoDB) DeleteUserAPIKey(ctx context.Context, keyID string) error {
 	userData, err := dwr.GetUserData(ctx)
 	if err != nil {
-		return fmt.Errorf("metaDB: error while getting userData %w", err)
+		return fmt.Errorf("failed to get userData %w", err)
 	}
 
 	for hash, apiKeyDetails := range userData.APIKeys {
@@ -1839,7 +1839,7 @@ func (dwr DynamoDB) DeleteUserAPIKey(ctx context.Context, keyID string) error {
 				},
 			})
 			if err != nil {
-				return fmt.Errorf("metaDB: error while deleting userAPIKey entry for hash %s %w", hash, err)
+				return fmt.Errorf("failed to delete userAPIKey entry for hash %s %w", hash, err)
 			}
 
 			err := dwr.SetUserData(ctx, userData)

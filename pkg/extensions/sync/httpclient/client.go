@@ -87,8 +87,8 @@ func (httpClient *Client) Ping() bool {
 
 	resp, err := httpClient.client.Do(req)
 	if err != nil {
-		httpClient.log.Error().Err(err).Str("url", pingURL.String()).
-			Msg("sync: failed to ping registry")
+		httpClient.log.Error().Err(err).Str("url", pingURL.String()).Str("component", "sync").
+			Msg("failed to ping registry")
 
 		return false
 	}
@@ -108,7 +108,7 @@ func (httpClient *Client) Ping() bool {
 	}
 
 	httpClient.log.Error().Str("url", pingURL.String()).Str("body", string(body)).Int("statusCode", resp.StatusCode).
-		Msg("sync: failed to ping registry")
+		Str("component", "sync").Msg("failed to ping registry")
 
 	return false
 }

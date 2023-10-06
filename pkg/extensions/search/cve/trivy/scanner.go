@@ -356,7 +356,7 @@ func (scanner Scanner) ScanImage(ctx context.Context, image string) (map[string]
 	}
 
 	if err != nil {
-		scanner.log.Error().Err(err).Str("image", originalImageInput).Msg("unable to scan image")
+		scanner.log.Error().Err(err).Str("image", originalImageInput).Msg("failed to scan image")
 
 		return map[string]cvemodel.CVE{}, err
 	}
@@ -537,16 +537,16 @@ func (scanner Scanner) UpdateDB(ctx context.Context) error {
 }
 
 func (scanner Scanner) updateDB(ctx context.Context, dbDir string) error {
-	scanner.log.Debug().Str("dbDir", dbDir).Msg("Download Trivy DB to destination dir")
+	scanner.log.Debug().Str("dbDir", dbDir).Msg("download Trivy DB to destination dir")
 
 	registryOpts := fanalTypes.RegistryOptions{Insecure: false}
 
-	scanner.log.Debug().Str("dbDir", dbDir).Msg("Started downloading Trivy DB to destination dir")
+	scanner.log.Debug().Str("dbDir", dbDir).Msg("started downloading trivy-db to destination dir")
 
 	err := operation.DownloadDB(ctx, "dev", dbDir, scanner.dbRepository, false, false, registryOpts)
 	if err != nil {
 		scanner.log.Error().Err(err).Str("dbDir", dbDir).
-			Str("dbRepository", scanner.dbRepository).Msg("Error downloading Trivy DB to destination dir")
+			Str("dbRepository", scanner.dbRepository).Msg("failed to download trivy-db to destination dir")
 
 		return err
 	}
@@ -556,13 +556,13 @@ func (scanner Scanner) updateDB(ctx context.Context, dbDir string) error {
 
 		if err := javadb.Update(); err != nil {
 			scanner.log.Error().Err(err).Str("dbDir", dbDir).
-				Str("javaDBRepository", scanner.javaDBRepository).Msg("Error downloading Trivy Java DB to destination dir")
+				Str("javaDBRepository", scanner.javaDBRepository).Msg("failed to download trivy-java-db to destination dir")
 
 			return err
 		}
 	}
 
-	scanner.log.Debug().Str("dbDir", dbDir).Msg("Finished downloading Trivy DB to destination dir")
+	scanner.log.Debug().Str("dbDir", dbDir).Msg("finished downloading trivy-db to destination dir")
 
 	return nil
 }

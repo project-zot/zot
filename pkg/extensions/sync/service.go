@@ -144,7 +144,7 @@ func (service *BaseService) SetNextAvailableClient() error {
 		}
 
 		if err != nil {
-			service.log.Error().Err(err).Str("url", url).Msg("sync: failed to initialize http client")
+			service.log.Error().Err(err).Str("url", url).Msg("failed to initialize http client")
 
 			return err
 		}
@@ -203,7 +203,7 @@ func (service *BaseService) GetNextRepo(lastRepo string) (string, error) {
 			return err
 		}, service.retryOptions); err != nil {
 			service.log.Error().Str("errorType", common.TypeOf(err)).Str("remote registry", service.client.GetConfig().URL).
-				Err(err).Msg("error while getting repositories from remote registry")
+				Err(err).Msg("failed to get repository list from remote registry")
 
 			return "", err
 		}
@@ -234,15 +234,15 @@ func (service *BaseService) SyncReference(ctx context.Context, repo string,
 	if len(service.config.Content) > 0 {
 		remoteRepo = service.contentManager.GetRepoSource(repo)
 		if remoteRepo == "" {
-			service.log.Info().Str("remote", remoteURL).Str("repo", repo).Str("subject", subjectDigestStr).
+			service.log.Info().Str("remote", remoteURL).Str("repository", repo).Str("subject", subjectDigestStr).
 				Str("reference type", referenceType).Msg("will not sync reference for image, filtered out by content")
 
 			return zerr.ErrSyncImageFilteredOut
 		}
 	}
 
-	service.log.Info().Str("remote", remoteURL).Str("repo", repo).Str("subject", subjectDigestStr).
-		Str("reference type", referenceType).Msg("sync: syncing reference for image")
+	service.log.Info().Str("remote", remoteURL).Str("repository", repo).Str("subject", subjectDigestStr).
+		Str("reference type", referenceType).Msg("syncing reference for image")
 
 	return service.references.SyncReference(ctx, repo, remoteRepo, subjectDigestStr, referenceType)
 }
@@ -256,15 +256,15 @@ func (service *BaseService) SyncImage(ctx context.Context, repo, reference strin
 	if len(service.config.Content) > 0 {
 		remoteRepo = service.contentManager.GetRepoSource(repo)
 		if remoteRepo == "" {
-			service.log.Info().Str("remote", remoteURL).Str("repo", repo).Str("reference", reference).
+			service.log.Info().Str("remote", remoteURL).Str("repository", repo).Str("reference", reference).
 				Msg("will not sync image, filtered out by content")
 
 			return zerr.ErrSyncImageFilteredOut
 		}
 	}
 
-	service.log.Info().Str("remote", remoteURL).Str("repo", repo).Str("reference", reference).
-		Msg("sync: syncing image")
+	service.log.Info().Str("remote", remoteURL).Str("repository", repo).Str("reference", reference).
+		Msg("syncing image")
 
 	manifestDigest, err := service.syncTag(ctx, repo, remoteRepo, reference)
 	if err != nil {
@@ -281,8 +281,8 @@ func (service *BaseService) SyncImage(ctx context.Context, repo, reference strin
 
 // sync repo periodically.
 func (service *BaseService) SyncRepo(ctx context.Context, repo string) error {
-	service.log.Info().Str("repo", repo).Str("registry", service.client.GetConfig().URL).
-		Msg("sync: syncing repo")
+	service.log.Info().Str("repository", repo).Str("registry", service.client.GetConfig().URL).
+		Msg("syncing repo")
 
 	var err error
 
@@ -293,8 +293,8 @@ func (service *BaseService) SyncRepo(ctx context.Context, repo string) error {
 
 		return err
 	}, service.retryOptions); err != nil {
-		service.log.Error().Str("errorType", common.TypeOf(err)).Str("repo", repo).
-			Err(err).Msg("error while getting tags for repo")
+		service.log.Error().Str("errorType", common.TypeOf(err)).Str("repository", repo).
+			Err(err).Msg("failed to get tags for repository")
 
 		return err
 	}
@@ -305,7 +305,7 @@ func (service *BaseService) SyncRepo(ctx context.Context, repo string) error {
 		return err
 	}
 
-	service.log.Info().Str("repo", repo).Msgf("sync: syncing tags %v", tags)
+	service.log.Info().Str("repository", repo).Msgf("syncing tags %v", tags)
 
 	// apply content.destination rule
 	destinationRepo := service.contentManager.GetRepoDestination(repo)
@@ -331,8 +331,8 @@ func (service *BaseService) SyncRepo(ctx context.Context, repo string) error {
 				continue
 			}
 
-			service.log.Error().Str("errorType", common.TypeOf(err)).Str("repo", repo).
-				Err(err).Msg("error while syncing tags for repo")
+			service.log.Error().Str("errorType", common.TypeOf(err)).Str("repository", repo).
+				Err(err).Msg("failed to sync tags for repository")
 
 			return err
 		}
@@ -346,15 +346,15 @@ func (service *BaseService) SyncRepo(ctx context.Context, repo string) error {
 
 				return err
 			}, service.retryOptions); err != nil {
-				service.log.Error().Str("errorType", common.TypeOf(err)).Str("repo", repo).
-					Err(err).Msg("error while syncing tags for repo")
+				service.log.Error().Str("errorType", common.TypeOf(err)).Str("repository", repo).
+					Err(err).Msg("failed to sync tags for repository")
 
 				return err
 			}
 		}
 	}
 
-	service.log.Info().Str("repo", repo).Msg("sync: finished syncing repo")
+	service.log.Info().Str("component", "sync").Str("repository", repo).Msg("finished syncing repository")
 
 	return nil
 }
@@ -375,14 +375,14 @@ func (service *BaseService) syncTag(ctx context.Context, destinationRepo, remote
 	remoteImageRef, err := service.remote.GetImageReference(remoteRepo, tag)
 	if err != nil {
 		service.log.Error().Err(err).Str("errortype", common.TypeOf(err)).
-			Str("repo", remoteRepo).Str("reference", tag).Msg("couldn't get a remote image reference")
+			Str("repository", remoteRepo).Str("reference", tag).Msg("couldn't get a remote image reference")
 
 		return "", err
 	}
 
 	_, mediaType, manifestDigest, err := service.remote.GetManifestContent(remoteImageRef)
 	if err != nil {
-		service.log.Error().Err(err).Str("repo", remoteRepo).Str("reference", tag).
+		service.log.Error().Err(err).Str("repository", remoteRepo).Str("reference", tag).
 			Msg("couldn't get upstream image manifest details")
 
 		return "", err
@@ -407,7 +407,7 @@ func (service *BaseService) syncTag(ctx context.Context, destinationRepo, remote
 	skipImage, err := service.destination.CanSkipImage(destinationRepo, tag, manifestDigest)
 	if err != nil {
 		service.log.Error().Err(err).Str("errortype", common.TypeOf(err)).
-			Str("repo", destinationRepo).Str("reference", tag).
+			Str("repository", destinationRepo).Str("reference", tag).
 			Msg("couldn't check if the local image can be skipped")
 	}
 
@@ -415,7 +415,7 @@ func (service *BaseService) syncTag(ctx context.Context, destinationRepo, remote
 		localImageRef, err := service.destination.GetImageReference(destinationRepo, tag)
 		if err != nil {
 			service.log.Error().Err(err).Str("errortype", common.TypeOf(err)).
-				Str("repo", destinationRepo).Str("reference", tag).Msg("couldn't get a local image reference")
+				Str("repository", destinationRepo).Str("reference", tag).Msg("couldn't get a local image reference")
 
 			return "", err
 		}
@@ -435,7 +435,7 @@ func (service *BaseService) syncTag(ctx context.Context, destinationRepo, remote
 		err = service.destination.CommitImage(localImageRef, destinationRepo, tag)
 		if err != nil {
 			service.log.Error().Err(err).Str("errortype", common.TypeOf(err)).
-				Str("repo", destinationRepo).Str("reference", tag).Msg("couldn't commit image to local image store")
+				Str("repository", destinationRepo).Str("reference", tag).Msg("couldn't commit image to local image store")
 
 			return "", err
 		}
@@ -444,7 +444,8 @@ func (service *BaseService) syncTag(ctx context.Context, destinationRepo, remote
 			Msg("skipping image because it's already synced")
 	}
 
-	service.log.Info().Str("image", remoteImageRef.DockerReference().String()).Msg("sync: finished syncing image")
+	service.log.Info().Str("component", "sync").
+		Str("image", remoteImageRef.DockerReference().String()).Msg("finished syncing image")
 
 	return manifestDigest, nil
 }

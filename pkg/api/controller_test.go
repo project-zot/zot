@@ -8950,7 +8950,7 @@ func TestPeriodicGC(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(string(data), ShouldContainSubstring,
 			"\"GC\":true,\"Commit\":false,\"GCDelay\":1000000000,\"GCInterval\":3600000000000")
-		So(string(data), ShouldContainSubstring, "failure walking storage root-dir") //nolint:lll
+		So(string(data), ShouldContainSubstring, "failed to walk storage root-dir") //nolint:lll
 	})
 }
 

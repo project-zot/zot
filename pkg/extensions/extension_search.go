@@ -52,14 +52,14 @@ func EnableSearchExtension(conf *config.Config, storeController storage.StoreCon
 		downloadTrivyDB(updateInterval, taskScheduler, cveScanner, log)
 		startScanner(scanInterval, metaDB, taskScheduler, cveScanner, log)
 	} else {
-		log.Info().Msg("CVE config not provided, skipping CVE update")
+		log.Info().Msg("cve config not provided, skipping cve-db update")
 	}
 }
 
 func downloadTrivyDB(interval time.Duration, sch *scheduler.Scheduler, cveScanner CveScanner, log log.Logger) {
 	generator := cveinfo.NewDBUpdateTaskGenerator(interval, cveScanner, log)
 
-	log.Info().Msg("Submitting CVE DB update scheduler")
+	log.Info().Msg("submitting cve-db update generator to scheduler")
 	sch.SubmitGenerator(generator, interval, scheduler.HighPriority)
 }
 
@@ -68,7 +68,7 @@ func startScanner(interval time.Duration, metaDB mTypes.MetaDB, sch *scheduler.S
 ) {
 	generator := cveinfo.NewScanTaskGenerator(metaDB, cveScanner, log)
 
-	log.Info().Msg("Submitting CVE scan scheduler")
+	log.Info().Msg("submitting cve-scan generator to scheduler")
 	sch.SubmitGenerator(generator, interval, scheduler.MediumPriority)
 }
 

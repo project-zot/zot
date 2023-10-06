@@ -2091,7 +2091,7 @@ func TestConfigReloader(t *testing.T) {
 			data, err := os.ReadFile(logFile.Name())
 			t.Logf("downstream log: %s", string(data))
 			So(err, ShouldBeNil)
-			So(string(data), ShouldContainSubstring, "unable to start sync extension")
+			So(string(data), ShouldContainSubstring, "failed to start sync extension")
 			So(string(data), ShouldContainSubstring, "\"TLSVerify\":false")
 			So(string(data), ShouldContainSubstring, "\"OnDemand\":false")
 		})
@@ -2852,7 +2852,7 @@ func TestInvalidRegex(t *testing.T) {
 		defer dcm.StopServer()
 
 		found, err := test.ReadLogFileAndSearchString(dctlr.Config.Log.Output,
-			"couldn't compile regex", 15*time.Second)
+			"failed to compile regex", 15*time.Second)
 		if err != nil {
 			panic(err)
 		}
@@ -4974,7 +4974,7 @@ func TestOnDemandRetryGoroutineErr(t *testing.T) {
 		So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
 
 		found, err := test.ReadLogFileAndSearchString(dctlr.Config.Log.Output,
-			"sync routine: error while copying image", 15*time.Second)
+			"failed to copy image", 15*time.Second)
 		if err != nil {
 			panic(err)
 		}

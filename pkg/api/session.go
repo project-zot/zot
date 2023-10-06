@@ -121,7 +121,8 @@ func SessionLogger(ctlr *Controller) mux.MiddlewareFunc {
 				monitoring.ObserveHTTPMethodLatency(ctlr.Metrics, method, latency) // histogram
 			}
 
-			log.Str("clientIP", clientIP).
+			log.Str("component", "session").
+				Str("clientIP", clientIP).
 				Str("method", method).
 				Str("path", path).
 				Int("statusCode", statusCode).
@@ -172,6 +173,7 @@ func SessionAuditLogger(audit *log.Logger) mux.MiddlewareFunc {
 				method == http.MethodPatch || method == http.MethodDelete) &&
 				(statusCode == http.StatusOK || statusCode == http.StatusCreated || statusCode == http.StatusAccepted) {
 				audit.Info().
+					Str("component", "session").
 					Str("clientIP", clientIP).
 					Str("subject", username).
 					Str("action", method).

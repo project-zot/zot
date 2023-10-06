@@ -156,7 +156,7 @@ func TestVerifySignatures(t *testing.T) {
 		imgTrustStore := &imagetrust.ImageTrustStore{}
 		_, _, _, err := imgTrustStore.VerifySignature("", []byte(""), "", "", image.AsImageMeta(), "repo")
 		So(err, ShouldNotBeNil)
-		So(err, ShouldEqual, zerr.ErrBadManifestDigest)
+		So(err, ShouldEqual, zerr.ErrBadSignatureManifestDigest)
 	})
 
 	Convey("wrong signature type", t, func() {

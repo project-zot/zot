@@ -354,7 +354,7 @@ func (ms *metricServer) CounterInc(cv *CounterValue) {
 	if err != nil {
 		// The last thing we want is to panic/stop the server due to instrumentation
 		// thus log a message (should be detected during development of new metrics)
-		ms.log.Error().Err(err).Msg("Instrumentation error")
+		ms.log.Error().Err(err).Msg("failed due to instrumentation error")
 
 		return
 	}
@@ -374,7 +374,7 @@ func (ms *metricServer) GaugeSet(gv *GaugeValue) {
 
 	err := sanityChecks(gv.Name, labels, ok, gv.LabelNames, gv.LabelValues)
 	if err != nil {
-		ms.log.Error().Err(err).Msg("Instrumentation error")
+		ms.log.Error().Err(err).Msg("failed due to instrumentation error")
 
 		return
 	}
@@ -393,7 +393,7 @@ func (ms *metricServer) SummaryObserve(sv *SummaryValue) {
 
 	err := sanityChecks(sv.Name, labels, ok, sv.LabelNames, sv.LabelValues)
 	if err != nil {
-		ms.log.Error().Err(err).Msg("Instrumentation error")
+		ms.log.Error().Err(err).Msg("failed due to instrumentation error")
 
 		return
 	}
@@ -414,7 +414,7 @@ func (ms *metricServer) HistogramObserve(hv *HistogramValue) {
 
 	err := sanityChecks(hv.Name, labels, ok, hv.LabelNames, hv.LabelValues)
 	if err != nil {
-		ms.log.Error().Err(err).Msg("Instrumentation error")
+		ms.log.Error().Err(err).Msg("failed due to instrumentation error")
 
 		return
 	}

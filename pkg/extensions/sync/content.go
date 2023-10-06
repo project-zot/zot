@@ -113,7 +113,7 @@ func (cm ContentManager) getContentByUpstreamRepo(repo string) *syncconf.Content
 		if err != nil {
 			cm.log.Error().Str("errorType", common.TypeOf(err)).
 				Err(err).Str("pattern",
-				prefix).Msg("error while parsing glob pattern, skipping it...")
+				prefix).Msg("failed to parse glob pattern, skipping it")
 
 			continue
 		}
@@ -226,7 +226,7 @@ func filterTagsByRegex(tags []string, regex string, log log.Logger) ([]string, e
 
 	tagReg, err := regexp.Compile(regex)
 	if err != nil {
-		log.Error().Err(err).Str("regex", regex).Msg("couldn't compile regex")
+		log.Error().Err(err).Str("regex", regex).Msg("failed to compile regex")
 
 		return filteredTags, err
 	}

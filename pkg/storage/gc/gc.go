@@ -85,7 +85,7 @@ func (gc GarbageCollect) CleanRepo(ctx context.Context, repo string) error {
 		Msg(fmt.Sprintf("executing GC of orphaned blobs for %s", path.Join(gc.imgStore.RootDir(), repo)))
 
 	if err := gc.cleanRepo(ctx, repo); err != nil {
-		errMessage := fmt.Sprintf("error while running GC for %s", path.Join(gc.imgStore.RootDir(), repo))
+		errMessage := fmt.Sprintf("failed to run GC for %s", path.Join(gc.imgStore.RootDir(), repo))
 		gc.log.Error().Err(err).Str("module", "gc").Msg(errMessage)
 		gc.log.Info().Str("module", "gc").
 			Msg(fmt.Sprintf("GC unsuccessfully completed for %s", path.Join(gc.imgStore.RootDir(), repo)))
@@ -121,7 +121,7 @@ func (gc GarbageCollect) cleanRepo(ctx context.Context, repo string) error {
 	*/
 	index, err := common.GetIndex(gc.imgStore, repo, gc.log)
 	if err != nil {
-		gc.log.Error().Err(err).Str("module", "gc").Str("repository", repo).Msg("unable to read index.json in repo")
+		gc.log.Error().Err(err).Str("module", "gc").Str("repository", repo).Msg("failed to read index.json in repo")
 
 		return err
 	}
@@ -360,7 +360,8 @@ func (gc GarbageCollect) removeTagsPerRetentionPolicy(ctx context.Context, repo 
 
 	repoMeta, err := gc.metaDB.GetRepoMeta(ctx, repo)
 	if err != nil {
-		gc.log.Error().Err(err).Str("module", "gc").Str("repository", repo).Msg("can't retrieve repoMeta for repo")
+		gc.log.Error().Err(err).Str("module", "gc").Str("repository", repo).
+			Msg("failed to get repoMeta")
 
 		return err
 	}
@@ -435,14 +436,16 @@ func (gc GarbageCollect) removeManifest(repo string, index *ispec.Index,
 				SignatureType:   signatureType,
 			})
 			if err != nil {
-				gc.log.Error().Err(err).Str("module", "gc").Msg("metadb: unable to remove signature in metaDB")
+				gc.log.Error().Err(err).Str("module", "gc").Str("component", "metadb").
+					Msg("failed to remove signature in metaDB")
 
 				return false, err
 			}
 		} else {
 			err := gc.metaDB.RemoveRepoReference(repo, reference, desc.Digest)
 			if err != nil {
-				gc.log.Error().Err(err).Str("module", "gc").Msg("metadb: unable to remove repo reference in metaDB")
+				gc.log.Error().Err(err).Str("module", "gc").Str("component", "metadb").
+					Msg("failed to remove repo reference in metaDB")
 
 				return false, err
 			}
@@ -553,14 +556,14 @@ func (gc GarbageCollect) removeUnreferencedBlobs(repo string, delay time.Duratio
 
 	index, err := common.GetIndex(gc.imgStore, repo, gc.log)
 	if err != nil {
-		log.Error().Err(err).Str("module", "gc").Str("repository", repo).Msg("unable to read index.json in repo")
+		log.Error().Err(err).Str("module", "gc").Str("repository", repo).Msg("failed to read index.json in repo")
 
 		return err
 	}
 
 	err = gc.addIndexBlobsToReferences(repo, index, refBlobs)
 	if err != nil {
-		log.Error().Err(err).Str("module", "gc").Str("repository", repo).Msg("unable to get referenced blobs in repo")
+		log.Error().Err(err).Str("module", "gc").Str("repository", repo).Msg("failed to get referenced blobs in repo")
 
 		return err
 	}
@@ -572,7 +575,7 @@ func (gc GarbageCollect) removeUnreferencedBlobs(repo string, delay time.Duratio
 			return nil
 		}
 
-		log.Error().Err(err).Str("module", "gc").Str("repository", repo).Msg("unable to get all blobs")
+		log.Error().Err(err).Str("module", "gc").Str("repository", repo).Msg("failed to get all blobs")
 
 		return err
 	}
@@ -583,7 +586,7 @@ func (gc GarbageCollect) removeUnreferencedBlobs(repo string, delay time.Duratio
 		digest := godigest.NewDigestFromEncoded(godigest.SHA256, blob)
 		if err = digest.Validate(); err != nil {
 			log.Error().Err(err).Str("module", "gc").Str("repository", repo).Str("digest", blob).
-				Msg("unable to parse digest")
+				Msg("failed to parse digest")
 
 			return err
 		}
@@ -592,7 +595,7 @@ func (gc GarbageCollect) removeUnreferencedBlobs(repo string, delay time.Duratio
 			canGC, err := isBlobOlderThan(gc.imgStore, repo, digest, delay, log)
 			if err != nil {
 				log.Error().Err(err).Str("module", "gc").Str("repository", repo).Str("digest", blob).
-					Msg("unable to determine GC delay")
+					Msg("failed to determine GC delay")
 
 				return err
 			}

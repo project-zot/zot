@@ -28,7 +28,8 @@ func New(config *config.Config, linter common.Lint, metrics monitoring.MetricSer
 
 	if config.Storage.RootDirectory == "" {
 		// we can't proceed without global storage
-		log.Error().Err(zerr.ErrImgStoreNotFound).Msg("controller: no storage config provided")
+		log.Error().Err(zerr.ErrImgStoreNotFound).Str("component", "controller").
+			Msg("no storage config provided")
 
 		return storeController, zerr.ErrImgStoreNotFound
 	}
@@ -69,7 +70,7 @@ func New(config *config.Config, linter common.Lint, metrics monitoring.MetricSer
 		// Init a Storager from connection string.
 		store, err := factory.Create(storeName, config.Storage.StorageDriver)
 		if err != nil {
-			log.Error().Err(err).Str("rootDir", config.Storage.RootDirectory).Msg("unable to create s3 service")
+			log.Error().Err(err).Str("rootDir", config.Storage.RootDirectory).Msg("failed to create s3 service")
 
 			return storeController, err
 		}
@@ -101,7 +102,7 @@ func New(config *config.Config, linter common.Lint, metrics monitoring.MetricSer
 			//nolint: contextcheck
 			subImageStore, err := getSubStore(config, subPaths, linter, metrics, log)
 			if err != nil {
-				log.Error().Err(err).Msg("controller: error getting sub image store")
+				log.Error().Err(err).Str("component", "controller").Msg("failed to get sub image store")
 
 				return storeController, err
 			}
@@ -138,7 +139,8 @@ func getSubStore(cfg *config.Config, subPaths map[string]config.StorageConfig,
 			isSame, _ := config.SameFile(cfg.Storage.RootDirectory, storageConfig.RootDirectory)
 
 			if isSame {
-				log.Error().Err(zerr.ErrBadConfig).Msg("sub path storage directory is same as root directory")
+				log.Error().Err(zerr.ErrBadConfig).
+					Msg("invalid sub path storage directory, it must be different to the root directory")
 
 				return nil, zerr.ErrBadConfig
 			}
@@ -183,7 +185,7 @@ func getSubStore(cfg *config.Config, subPaths map[string]config.StorageConfig,
 			// Init a Storager from connection string.
 			store, err := factory.Create(storeName, storageConfig.StorageDriver)
 			if err != nil {
-				log.Error().Err(err).Str("rootDir", storageConfig.RootDirectory).Msg("Unable to create s3 service")
+				log.Error().Err(err).Str("rootDir", storageConfig.RootDirectory).Msg("failed to create s3 service")
 
 				return nil, err
 			}
@@ -198,7 +200,7 @@ func getSubStore(cfg *config.Config, subPaths map[string]config.StorageConfig,
 			cacheDriver, err := CreateCacheDatabaseDriver(storageConfig, log)
 			if err != nil {
 				log.Error().Err(err).Any("config", storageConfig).
-					Msg("failed creating storage driver")
+					Msg("failed to create storage driver")
 
 				return nil, err
 			}

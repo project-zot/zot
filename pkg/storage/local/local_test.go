@@ -2052,7 +2052,7 @@ func TestGarbageCollectForImageStore(t *testing.T) {
 			data, err := os.ReadFile(logFile.Name())
 			So(err, ShouldBeNil)
 			So(string(data), ShouldContainSubstring,
-				fmt.Sprintf("error while running GC for %s", path.Join(imgStore.RootDir(), repoName)))
+				fmt.Sprintf("failed to run GC for %s", path.Join(imgStore.RootDir(), repoName)))
 		})
 
 		Convey("Garbage collect error - not enough permissions to access index.json", func() {
@@ -2094,7 +2094,7 @@ func TestGarbageCollectForImageStore(t *testing.T) {
 			data, err := os.ReadFile(logFile.Name())
 			So(err, ShouldBeNil)
 			So(string(data), ShouldContainSubstring,
-				fmt.Sprintf("error while running GC for %s", path.Join(imgStore.RootDir(), repoName)))
+				fmt.Sprintf("failed to run GC for %s", path.Join(imgStore.RootDir(), repoName)))
 			So(os.Chmod(path.Join(dir, repoName, "index.json"), 0o755), ShouldBeNil)
 		})
 

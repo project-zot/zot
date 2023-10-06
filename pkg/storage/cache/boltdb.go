@@ -31,7 +31,7 @@ type BoltDBDriverParameters struct {
 func NewBoltDBCache(parameters interface{}, log zlog.Logger) (*BoltDBDriver, error) {
 	properParameters, ok := parameters.(BoltDBDriverParameters)
 	if !ok {
-		log.Error().Err(zerr.ErrTypeAssertionFailed).Msgf("expected type '%T' but got '%T'",
+		log.Error().Err(zerr.ErrTypeAssertionFailed).Msgf("failed to cast type, expected type '%T' but got '%T'",
 			BoltDBDriverParameters{}, parameters)
 
 		return nil, zerr.ErrTypeAssertionFailed
@@ -39,7 +39,7 @@ func NewBoltDBCache(parameters interface{}, log zlog.Logger) (*BoltDBDriver, err
 
 	err := os.MkdirAll(properParameters.RootDir, constants.DefaultDirPerms)
 	if err != nil {
-		log.Error().Err(err).Str("directory", properParameters.RootDir).Msg("unable to create directory for cache db")
+		log.Error().Err(err).Str("directory", properParameters.RootDir).Msg("failed to create directory for cache db")
 
 		return nil, err
 	}
@@ -55,12 +55,12 @@ func NewBoltDBCache(parameters interface{}, log zlog.Logger) (*BoltDBDriver, err
 		if strings.Contains(err.Error(), "timeout") {
 			err := fmt.Errorf("%w: %w, path '%s'", zerr.ErrTimeout, zerr.ErrDatabaseFileAlreadyInUse, dbPath)
 
-			log.Error().Err(err).Str("dbPath", dbPath).Msg("unable to create cache db")
+			log.Error().Err(err).Str("dbPath", dbPath).Msg("failed to create cache db")
 
 			return nil, err
 		}
 
-		log.Error().Err(err).Str("dbPath", dbPath).Msg("unable to create cache db")
+		log.Error().Err(err).Str("dbPath", dbPath).Msg("failed to create cache db")
 
 		return nil, err
 	}
@@ -68,7 +68,7 @@ func NewBoltDBCache(parameters interface{}, log zlog.Logger) (*BoltDBDriver, err
 	if err := cacheDB.Update(func(tx *bbolt.Tx) error {
 		if _, err := tx.CreateBucketIfNotExists([]byte(constants.BlobsCache)); err != nil {
 			// this is a serious failure
-			log.Error().Err(err).Str("dbPath", dbPath).Msg("unable to create a root bucket")
+			log.Error().Err(err).Str("dbPath", dbPath).Msg("failed to create a root bucket")
 
 			return err
 		}
@@ -76,7 +76,7 @@ func NewBoltDBCache(parameters interface{}, log zlog.Logger) (*BoltDBDriver, err
 		return nil
 	}); err != nil {
 		// something went wrong
-		log.Error().Err(err).Msg("unable to create a cache")
+		log.Error().Err(err).Msg("failed to create a cache")
 
 		return nil, err
 	}
@@ -99,7 +99,8 @@ func (d *BoltDBDriver) Name() string {
 
 func (d *BoltDBDriver) PutBlob(digest godigest.Digest, path string) error {
 	if path == "" {
-		d.log.Error().Err(zerr.ErrEmptyValue).Str("digest", digest.String()).Msg("empty path provided")
+		d.log.Error().Err(zerr.ErrEmptyValue).Str("digest", digest.String()).
+			Msg("failed to put blob due to empty path being provided")
 
 		return zerr.ErrEmptyValue
 	}
@@ -109,7 +110,7 @@ func (d *BoltDBDriver) PutBlob(digest godigest.Digest, path string) error {
 	if d.useRelPaths {
 		path, err = filepath.Rel(d.rootDir, path)
 		if err != nil {
-			d.log.Error().Err(err).Str("path", path).Msg("unable to get relative path")
+			d.log.Error().Err(err).Str("path", path).Msg("failed to get relative path")
 		}
 	}
 
@@ -118,7 +119,7 @@ func (d *BoltDBDriver) PutBlob(digest godigest.Digest, path string) error {
 		if root == nil {
 			// this is a serious failure
 			err := zerr.ErrCacheRootBucket
-			d.log.Error().Err(err).Msg("unable to access root bucket")
+			d.log.Error().Err(err).Msg("failed to access root bucket")
 
 			return err
 		}
@@ -126,7 +127,7 @@ func (d *BoltDBDriver) PutBlob(digest godigest.Digest, path string) error {
 		bucket, err := root.CreateBucketIfNotExists([]byte(digest.String()))
 		if err != nil {
 			// this is a serious failure
-			d.log.Error().Err(err).Str("bucket", digest.String()).Msg("unable to create a bucket")
+			d.log.Error().Err(err).Str("bucket", digest.String()).Msg("failed to create a bucket")
 
 			return err
 		}
@@ -135,13 +136,13 @@ func (d *BoltDBDriver) PutBlob(digest godigest.Digest, path string) error {
 		deduped, err := bucket.CreateBucketIfNotExists([]byte(constants.DuplicatesBucket))
 		if err != nil {
 			// this is a serious failure
-			d.log.Error().Err(err).Str("bucket", constants.DuplicatesBucket).Msg("unable to create a bucket")
+			d.log.Error().Err(err).Str("bucket", constants.DuplicatesBucket).Msg("failed to create a bucket")
 
 			return err
 		}
 
 		if err := deduped.Put([]byte(path), nil); err != nil {
-			d.log.Error().Err(err).Str("bucket", constants.DuplicatesBucket).Str("value", path).Msg("unable to put record")
+			d.log.Error().Err(err).Str("bucket", constants.DuplicatesBucket).Str("value", path).Msg("failed to put record")
 
 			return err
 		}
@@ -153,13 +154,13 @@ func (d *BoltDBDriver) PutBlob(digest godigest.Digest, path string) error {
 			origin, err := bucket.CreateBucket([]byte(constants.OriginalBucket))
 			if err != nil {
 				// this is a serious failure
-				d.log.Error().Err(err).Str("bucket", constants.OriginalBucket).Msg("unable to create a bucket")
+				d.log.Error().Err(err).Str("bucket", constants.OriginalBucket).Msg("failed to create a bucket")
 
 				return err
 			}
 
 			if err := origin.Put([]byte(path), nil); err != nil {
-				d.log.Error().Err(err).Str("bucket", constants.OriginalBucket).Str("value", path).Msg("unable to put record")
+				d.log.Error().Err(err).Str("bucket", constants.OriginalBucket).Str("value", path).Msg("failed to put record")
 
 				return err
 			}
@@ -181,7 +182,7 @@ func (d *BoltDBDriver) GetBlob(digest godigest.Digest) (string, error) {
 		if root == nil {
 			// this is a serious failure
 			err := zerr.ErrCacheRootBucket
-			d.log.Error().Err(err).Msg("unable to access root bucket")
+			d.log.Error().Err(err).Msg("failed to access root bucket")
 
 			return err
 		}
@@ -208,7 +209,7 @@ func (d *BoltDBDriver) HasBlob(digest godigest.Digest, blob string) bool {
 		if root == nil {
 			// this is a serious failure
 			err := zerr.ErrCacheRootBucket
-			d.log.Error().Err(err).Msg("unable to access root bucket")
+			d.log.Error().Err(err).Msg("failed to access root bucket")
 
 			return err
 		}
@@ -259,7 +260,7 @@ func (d *BoltDBDriver) DeleteBlob(digest godigest.Digest, path string) error {
 	if d.useRelPaths {
 		path, err = filepath.Rel(d.rootDir, path)
 		if err != nil {
-			d.log.Error().Err(err).Str("path", path).Msg("unable to get relative path")
+			d.log.Error().Err(err).Str("path", path).Msg("failed to get relative path")
 		}
 	}
 
@@ -268,7 +269,7 @@ func (d *BoltDBDriver) DeleteBlob(digest godigest.Digest, path string) error {
 		if root == nil {
 			// this is a serious failure
 			err := zerr.ErrCacheRootBucket
-			d.log.Error().Err(err).Msg("unable to access root bucket")
+			d.log.Error().Err(err).Msg("failed to access root bucket")
 
 			return err
 		}
@@ -285,7 +286,7 @@ func (d *BoltDBDriver) DeleteBlob(digest godigest.Digest, path string) error {
 
 		if err := deduped.Delete([]byte(path)); err != nil {
 			d.log.Error().Err(err).Str("digest", digest.String()).Str("bucket", constants.DuplicatesBucket).
-				Str("path", path).Msg("unable to delete")
+				Str("path", path).Msg("failed to delete")
 
 			return err
 		}
@@ -296,7 +297,7 @@ func (d *BoltDBDriver) DeleteBlob(digest godigest.Digest, path string) error {
 			if originBlob != nil {
 				if err := origin.Delete([]byte(path)); err != nil {
 					d.log.Error().Err(err).Str("digest", digest.String()).Str("bucket", constants.OriginalBucket).
-						Str("path", path).Msg("unable to delete")
+						Str("path", path).Msg("failed to delete")
 
 					return err
 				}
@@ -306,7 +307,7 @@ func (d *BoltDBDriver) DeleteBlob(digest godigest.Digest, path string) error {
 				if dedupedBlob != nil {
 					if err := origin.Put(dedupedBlob, nil); err != nil {
 						d.log.Error().Err(err).Str("digest", digest.String()).Str("bucket", constants.OriginalBucket).Str("path", path).
-							Msg("unable to put")
+							Msg("failed to put")
 
 						return err
 					}
@@ -320,7 +321,7 @@ func (d *BoltDBDriver) DeleteBlob(digest godigest.Digest, path string) error {
 			d.log.Debug().Str("digest", digest.String()).Str("path", path).Msg("deleting empty bucket")
 			if err := root.DeleteBucket([]byte(digest)); err != nil {
 				d.log.Error().Err(err).Str("digest", digest.String()).Str("bucket", digest.String()).Str("path", path).
-					Msg("unable to delete")
+					Msg("failed to delete")
 
 				return err
 			}

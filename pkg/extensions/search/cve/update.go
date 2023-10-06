@@ -93,7 +93,7 @@ func newDBUpdadeTask(interval time.Duration, scanner Scanner,
 }
 
 func (dbt *dbUpdateTask) DoWork(ctx context.Context) error {
-	dbt.log.Info().Msg("updating the CVE database")
+	dbt.log.Info().Msg("updating cve-db")
 
 	err := dbt.scanner.UpdateDB(ctx)
 	if err != nil {
@@ -115,7 +115,8 @@ func (dbt *dbUpdateTask) DoWork(ctx context.Context) error {
 	dbt.generator.lastTaskTime = time.Now()
 	dbt.generator.status = done
 	dbt.generator.lock.Unlock()
-	dbt.log.Info().Str("DB update completed, next update scheduled after", dbt.interval.String()).Msg("")
+
+	dbt.log.Info().Interface("interval", dbt.interval).Msg("cve-db update completed, next update scheduled after interval")
 
 	return nil
 }

@@ -181,7 +181,8 @@ func TestNegativeServerResponse(t *testing.T) {
 
 		test.WaitTillServerReady(url)
 
-		_, err = test.ReadLogFileAndSearchString(logPath, "DB update completed, next update scheduled", 90*time.Second)
+		_, err = test.ReadLogFileAndSearchString(logPath, "cve-db update completed, next update scheduled after interval",
+			90*time.Second)
 		if err != nil {
 			panic(err)
 		}
@@ -263,7 +264,8 @@ func TestServerCVEResponse(t *testing.T) {
 		panic(err)
 	}
 
-	_, err = test.ReadLogFileAndSearchString(logPath, "DB update completed, next update scheduled", 90*time.Second)
+	_, err = test.ReadLogFileAndSearchString(logPath, "cve-db update completed, next update scheduled after interval",
+		90*time.Second)
 	if err != nil {
 		panic(err)
 	}
@@ -367,7 +369,7 @@ func TestServerCVEResponse(t *testing.T) {
 		So(err, ShouldNotBeNil)
 	})
 
-	Convey("Test CVE by image name - GQL - invalid output format", t, func() {
+	Convey("Test CVE by image name - GQL - invalid cli output format", t, func() {
 		args := []string{"list", "zot-cve-test:0.0.1", "-f", "random", "--config", "cvetest"}
 		configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"cvetest","url":"%s","showspinner":false}]}`, url))
 		defer os.Remove(configPath)
@@ -378,7 +380,7 @@ func TestServerCVEResponse(t *testing.T) {
 		cveCmd.SetArgs(args)
 		err = cveCmd.Execute()
 		So(err, ShouldNotBeNil)
-		So(buff.String(), ShouldContainSubstring, "invalid output format")
+		So(buff.String(), ShouldContainSubstring, "invalid cli output format")
 	})
 
 	Convey("Test images by CVE ID - GQL - positive", t, func() {
@@ -415,7 +417,7 @@ func TestServerCVEResponse(t *testing.T) {
 		So(str, ShouldNotContainSubstring, "REPOSITORY TAG OS/ARCH DIGEST SIGNED SIZE")
 	})
 
-	Convey("Test images by CVE ID - GQL - invalid output format", t, func() {
+	Convey("Test images by CVE ID - GQL - invalid cli output format", t, func() {
 		args := []string{"affected", "CVE-2019-9923", "-f", "random", "--config", "cvetest"}
 		configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"cvetest","url":"%s","showspinner":false}]}`, url))
 		defer os.Remove(configPath)
@@ -426,7 +428,7 @@ func TestServerCVEResponse(t *testing.T) {
 		cveCmd.SetArgs(args)
 		err = cveCmd.Execute()
 		So(err, ShouldNotBeNil)
-		So(buff.String(), ShouldContainSubstring, "invalid output format")
+		So(buff.String(), ShouldContainSubstring, "invalid cli output format")
 	})
 
 	Convey("Test fixed tags by image name and CVE ID - GQL - positive", t, func() {
@@ -530,7 +532,7 @@ func TestServerCVEResponse(t *testing.T) {
 		So(strings.TrimSpace(str), ShouldNotContainSubstring, "REPOSITORY TAG OS/ARCH SIGNED SIZE")
 	})
 
-	Convey("Test CVE by name and CVE ID - GQL - invalid output format", t, func() {
+	Convey("Test CVE by name and CVE ID - GQL - invalid cli output format", t, func() {
 		args := []string{"affected", "CVE-2019-9923", "--repo", "zot-cve-test", "-f", "random", "--config", "cvetest"}
 		configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"cvetest","url":"%s","showspinner":false}]}`, url))
 		defer os.Remove(configPath)
@@ -541,7 +543,7 @@ func TestServerCVEResponse(t *testing.T) {
 		cveCmd.SetArgs(args)
 		err = cveCmd.Execute()
 		So(err, ShouldNotBeNil)
-		So(buff.String(), ShouldContainSubstring, "invalid output format")
+		So(buff.String(), ShouldContainSubstring, "invalid cli output format")
 	})
 }
 

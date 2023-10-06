@@ -477,11 +477,11 @@ func TestPopulateStorageMetrics(t *testing.T) {
 
 		// Wait for storage metrics to update
 		found, err := test.ReadLogFileAndSearchString(logPath,
-			"monitoring: computed storage usage for repo alpine", time.Minute)
+			"computed storage usage for repo alpine", time.Minute)
 		So(err, ShouldBeNil)
 		So(found, ShouldBeTrue)
 		found, err = test.ReadLogFileAndSearchString(logPath,
-			"monitoring: computed storage usage for repo busybox", time.Minute)
+			"computed storage usage for repo busybox", time.Minute)
 		So(err, ShouldBeNil)
 		So(found, ShouldBeTrue)
 

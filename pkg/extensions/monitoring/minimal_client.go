@@ -70,12 +70,12 @@ func (mc *MetricsClient) GetMetrics() (*MetricsInfo, error) {
 func (mc *MetricsClient) makeGETRequest(url string, resultsPtr interface{}) (http.Header, error) {
 	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, url, nil)
 	if err != nil {
-		return nil, fmt.Errorf("metric scraping: %w", err)
+		return nil, fmt.Errorf("metric scraping failed: %w", err)
 	}
 
 	resp, err := mc.config.HTTPClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("metric scraping error: %w", err)
+		return nil, fmt.Errorf("metric scraping failed: %w", err)
 	}
 
 	defer resp.Body.Close()

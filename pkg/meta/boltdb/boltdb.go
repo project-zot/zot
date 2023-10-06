@@ -154,12 +154,12 @@ func (bdw *BoltDB) SetImageMeta(digest godigest.Digest, imageMeta mTypes.ImageMe
 
 		pImageMetaBlob, err := proto.Marshal(protoImageMeta)
 		if err != nil {
-			return fmt.Errorf("metadb: error while calculating blob for manifest with digest %s %w", digest, err)
+			return fmt.Errorf("failed to calculate blob for manifest with digest %s %w", digest, err)
 		}
 
 		err = buck.Put([]byte(digest), pImageMetaBlob)
 		if err != nil {
-			return fmt.Errorf("metadb: error while setting manifest data with for digest %s %w", digest, err)
+			return fmt.Errorf("failed to set manifest data with for digest %s %w", digest, err)
 		}
 
 		return nil
@@ -494,7 +494,7 @@ func (bdw *BoltDB) SearchTags(ctx context.Context, searchText string,
 	searchedRepo, searchedTag, err := common.GetRepoTag(searchText)
 	if err != nil {
 		return []mTypes.FullImageMeta{},
-			fmt.Errorf("metadb: error while parsing search text, invalid format %w", err)
+			fmt.Errorf("failed to parse search text, invalid format %w", err)
 	}
 
 	err = bdw.DB.View(func(transaction *bbolt.Tx) error {
@@ -538,7 +538,7 @@ func (bdw *BoltDB) SearchTags(ctx context.Context, searchText string,
 
 				imageManifestData, err := getProtoImageMeta(imageBuck, manifestDigest)
 				if err != nil {
-					return fmt.Errorf("metadb: error fetching manifest meta for manifest with digest %s %w",
+					return fmt.Errorf("failed to fetch manifest meta for manifest with digest %s %w",
 						manifestDigest, err)
 				}
 
@@ -548,7 +548,7 @@ func (bdw *BoltDB) SearchTags(ctx context.Context, searchText string,
 
 				imageIndexData, err := getProtoImageMeta(imageBuck, indexDigest)
 				if err != nil {
-					return fmt.Errorf("metadb: error fetching manifest meta for manifest with digest %s %w",
+					return fmt.Errorf("failed to fetch manifest meta for manifest with digest %s %w",
 						indexDigest, err)
 				}
 
@@ -567,7 +567,7 @@ func (bdw *BoltDB) SearchTags(ctx context.Context, searchText string,
 
 				protoImageMeta = imageIndexData
 			default:
-				bdw.Log.Error().Str("mediaType", descriptor.MediaType).Msg("Unsupported media type")
+				bdw.Log.Error().Str("mediaType", descriptor.MediaType).Msg("unsupported media type")
 
 				continue
 			}
@@ -673,7 +673,7 @@ func (bdw *BoltDB) FilterTags(ctx context.Context, filterRepoTag mTypes.FilterRe
 						images = append(images, mConvert.GetFullImageMetaFromProto(tag, protoRepoMeta, protoImageIndexMeta))
 					}
 				default:
-					bdw.Log.Error().Str("mediaType", descriptor.MediaType).Msg("Unsupported media type")
+					bdw.Log.Error().Str("mediaType", descriptor.MediaType).Msg("unsupported media type")
 
 					continue
 				}
@@ -997,7 +997,7 @@ func (bdw *BoltDB) DeleteSignature(repo string, signedManifestDigest godigest.Di
 
 		repoMetaBlob := repoMetaBuck.Get([]byte(repo))
 		if len(repoMetaBlob) == 0 {
-			return zerr.ErrManifestMetaNotFound
+			return zerr.ErrImageMetaNotFound
 		}
 
 		protoRepoMeta, err := unmarshalProtoRepoMeta(repo, repoMetaBlob)
@@ -1007,7 +1007,7 @@ func (bdw *BoltDB) DeleteSignature(repo string, signedManifestDigest godigest.Di
 
 		manifestSignatures, found := protoRepoMeta.Signatures[signedManifestDigest.String()]
 		if !found {
-			return zerr.ErrManifestMetaNotFound
+			return zerr.ErrImageMetaNotFound
 		}
 
 		signatureSlice := manifestSignatures.Map[sigMeta.SignatureType]
@@ -1209,7 +1209,7 @@ func (bdw *BoltDB) UpdateStatsOnDownload(repo string, reference string) error {
 			descriptor, found := protoRepoMeta.Tags[reference]
 
 			if !found {
-				return zerr.ErrManifestMetaNotFound
+				return zerr.ErrImageMetaNotFound
 			}
 
 			manifestDigest = descriptor.Digest
@@ -1217,7 +1217,7 @@ func (bdw *BoltDB) UpdateStatsOnDownload(repo string, reference string) error {
 
 		manifestStatistics, ok := protoRepoMeta.Statistics[manifestDigest]
 		if !ok {
-			return zerr.ErrManifestMetaNotFound
+			return zerr.ErrImageMetaNotFound
 		}
 
 		manifestStatistics.DownloadCount++
@@ -1817,7 +1817,7 @@ func (bdw *BoltDB) AddUserAPIKey(ctx context.Context, hashedKey string, apiKeyDe
 
 		err := apiKeysbuck.Put([]byte(hashedKey), []byte(userid))
 		if err != nil {
-			return fmt.Errorf("metaDB: error while setting userData for identity %s %w", userid, err)
+			return fmt.Errorf("failed to set userData for identity %s %w", userid, err)
 		}
 
 		err = bdw.getUserData(userid, transaction, &userData)
@@ -1870,7 +1870,7 @@ func (bdw *BoltDB) DeleteUserAPIKey(ctx context.Context, keyID string) error {
 
 				err := apiKeysbuck.Delete([]byte(hash))
 				if err != nil {
-					return fmt.Errorf("userDB: error while deleting userAPIKey entry for hash %s %w", hash, err)
+					return fmt.Errorf("failed to delete userAPIKey entry for hash %s %w", hash, err)
 				}
 			}
 		}
@@ -1975,7 +1975,7 @@ func (bdw *BoltDB) setUserData(userid string, transaction *bbolt.Tx, userData mT
 
 	err = buck.Put([]byte(userid), upBlob)
 	if err != nil {
-		return fmt.Errorf("metaDB: error while setting userData for identity %s %w", userid, err)
+		return fmt.Errorf("failed to set userData for identity %s %w", userid, err)
 	}
 
 	return nil
@@ -2001,7 +2001,7 @@ func (bdw *BoltDB) DeleteUserData(ctx context.Context) error {
 
 		err := buck.Delete([]byte(userid))
 		if err != nil {
-			return fmt.Errorf("metaDB: error while deleting userData for identity %s %w", userid, err)
+			return fmt.Errorf("failed to delete userData for identity %s %w", userid, err)
 		}
 
 		return nil

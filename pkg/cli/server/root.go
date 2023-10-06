@@ -72,7 +72,9 @@ func newServeCmd(conf *config.Config) *cobra.Command {
 			}
 
 			if err := ctlr.Run(reloaderCtx); err != nil {
-				log.Error().Err(err).Msg("unable to start controller, exiting")
+				log.Error().Err(err).Msg("failed to start controller, exiting")
+
+				return err
 			}
 
 			return nil
@@ -108,7 +110,7 @@ func newScrubCmd(conf *config.Config) *cobra.Command {
 				fmt.Sprintf("http://%s/v2", net.JoinHostPort(conf.HTTP.Address, conf.HTTP.Port)),
 				nil)
 			if err != nil {
-				log.Error().Err(err).Msg("unable to create a new http request")
+				log.Error().Err(err).Msg("failed to create a new http request")
 
 				return err
 			}
@@ -116,7 +118,8 @@ func newScrubCmd(conf *config.Config) *cobra.Command {
 			response, err := http.DefaultClient.Do(req)
 			if err == nil {
 				response.Body.Close()
-				log.Warn().Msg("The server is running, in order to perform the scrub command the server should be shut down")
+				log.Warn().Err(zerr.ErrServerIsRunning).
+					Msg("server is running, in order to perform the scrub command the server should be shut down")
 
 				return zerr.ErrServerIsRunning
 			} else {
@@ -153,12 +156,12 @@ func newVerifyCmd(conf *config.Config) *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if len(args) > 0 {
 				if err := LoadConfiguration(conf, args[0]); err != nil {
-					log.Error().Str("config", args[0]).Msg("Config file is invalid")
+					log.Error().Str("config", args[0]).Msg("invalid config file")
 
 					return err
 				}
 
-				log.Info().Str("config", args[0]).Msg("Config file is valid")
+				log.Info().Str("config", args[0]).Msg("config file is valid")
 			}
 
 			return nil
@@ -209,7 +212,8 @@ func validateStorageConfig(cfg *config.Config, log zlog.Logger) error {
 
 	for _, storageConfig := range cfg.Storage.SubPaths {
 		if strings.EqualFold(defaultRootDir, storageConfig.RootDirectory) {
-			log.Error().Err(zerr.ErrBadConfig).Msg("storage subpaths cannot use default storage root directory")
+			log.Error().Err(zerr.ErrBadConfig).
+				Msg("invalid storage config, storage subpaths cannot use default storage root directory")
 
 			return zerr.ErrBadConfig
 		}
@@ -218,7 +222,8 @@ func validateStorageConfig(cfg *config.Config, log zlog.Logger) error {
 		if ok {
 			equal := expConfig.ParamsEqual(storageConfig)
 			if !equal {
-				log.Error().Err(zerr.ErrBadConfig).Msg("storage config with same root directory should have same parameters")
+				log.Error().Err(zerr.ErrBadConfig).
+					Msg("invalid storage config, storage config with same root directory should have same parameters")
 
 				return zerr.ErrBadConfig
 			}
@@ -236,7 +241,7 @@ func validateCacheConfig(cfg *config.Config, log zlog.Logger) error {
 	//nolint: lll
 	if cfg.Storage.Dedupe && cfg.Storage.StorageDriver != nil && cfg.Storage.RemoteCache && cfg.Storage.CacheDriver == nil {
 		log.Error().Err(zerr.ErrBadConfig).Msg(
-			"dedupe set to true with remote storage and caching, but no remote cache configured!")
+			"invalid cache config, dedupe set to true with remote storage and caching, but no remote cache configured")
 
 		return zerr.ErrBadConfig
 	}
@@ -244,7 +249,7 @@ func validateCacheConfig(cfg *config.Config, log zlog.Logger) error {
 	if cfg.Storage.CacheDriver != nil && cfg.Storage.RemoteCache {
 		// local storage with remote caching
 		if cfg.Storage.StorageDriver == nil {
-			log.Error().Err(zerr.ErrBadConfig).Msg("cannot have local storage driver with remote caching!")
+			log.Error().Err(zerr.ErrBadConfig).Msg("invalid cache config, cannot have local storage driver with remote caching!")
 
 			return zerr.ErrBadConfig
 		}
@@ -252,7 +257,7 @@ func validateCacheConfig(cfg *config.Config, log zlog.Logger) error {
 		// unsupported cache driver
 		if cfg.Storage.CacheDriver["name"] != storageConstants.DynamoDBDriverName {
 			log.Error().Err(zerr.ErrBadConfig).
-				Interface("cacheDriver", cfg.Storage.CacheDriver["name"]).Msg("unsupported cache driver")
+				Interface("cacheDriver", cfg.Storage.CacheDriver["name"]).Msg("invalid cache config, unsupported cache driver")
 
 			return zerr.ErrBadConfig
 		}
@@ -260,7 +265,7 @@ func validateCacheConfig(cfg *config.Config, log zlog.Logger) error {
 
 	if !cfg.Storage.RemoteCache && cfg.Storage.CacheDriver != nil {
 		log.Warn().Err(zerr.ErrBadConfig).Str("directory", cfg.Storage.RootDirectory).
-			Msg("remoteCache set to false but cacheDriver config (remote caching) provided for directory" +
+			Msg("invalid cache config, remoteCache set to false but cacheDriver config (remote caching) provided for directory" +
 				"will ignore and use local caching")
 	}
 
@@ -269,7 +274,8 @@ func validateCacheConfig(cfg *config.Config, log zlog.Logger) error {
 		// dedupe true, remote storage, remoteCache true, but no cacheDriver (remote)
 		//nolint: lll
 		if subPath.Dedupe && subPath.StorageDriver != nil && subPath.RemoteCache && subPath.CacheDriver == nil {
-			log.Error().Err(zerr.ErrBadConfig).Msg("dedupe set to true with remote storage and caching, but no remote cache configured!")
+			log.Error().Err(zerr.ErrBadConfig).
+				Msg("invalid cache config, dedupe set to true with remote storage and caching, but no remote cache configured!")
 
 			return zerr.ErrBadConfig
 		}
@@ -277,7 +283,8 @@ func validateCacheConfig(cfg *config.Config, log zlog.Logger) error {
 		if subPath.CacheDriver != nil && subPath.RemoteCache {
 			// local storage with remote caching
 			if subPath.StorageDriver == nil {
-				log.Error().Err(zerr.ErrBadConfig).Msg("cannot have local storage driver with remote caching!")
+				log.Error().Err(zerr.ErrBadConfig).
+					Msg("invalid cache config, cannot have local storage driver with remote caching!")
 
 				return zerr.ErrBadConfig
 			}
@@ -285,7 +292,7 @@ func validateCacheConfig(cfg *config.Config, log zlog.Logger) error {
 			// unsupported cache driver
 			if subPath.CacheDriver["name"] != storageConstants.DynamoDBDriverName {
 				log.Error().Err(zerr.ErrBadConfig).Interface("cacheDriver", cfg.Storage.CacheDriver["name"]).
-					Msg("unsupported cache driver")
+					Msg("invalid cache config, unsupported cache driver")
 
 				return zerr.ErrBadConfig
 			}
@@ -293,8 +300,8 @@ func validateCacheConfig(cfg *config.Config, log zlog.Logger) error {
 
 		if !subPath.RemoteCache && subPath.CacheDriver != nil {
 			log.Warn().Err(zerr.ErrBadConfig).Str("directory", cfg.Storage.RootDirectory).
-				Msg("remoteCache set to false but cacheDriver config (remote caching) provided for directory," +
-					"will ignore and use local caching")
+				Msg("invalid cache config, remoteCache set to false but cacheDriver config (remote caching)" +
+					"provided for directory, will ignore and use local caching")
 		}
 	}
 
@@ -303,11 +310,11 @@ func validateCacheConfig(cfg *config.Config, log zlog.Logger) error {
 
 func validateExtensionsConfig(cfg *config.Config, log zlog.Logger) error {
 	if cfg.Extensions != nil && cfg.Extensions.Mgmt != nil {
-		log.Warn().Msg("The mgmt extensions configuration option has been made redundant and will be ignored.")
+		log.Warn().Msg("mgmt extensions configuration option has been made redundant and will be ignored.")
 	}
 
 	if cfg.Extensions != nil && cfg.Extensions.APIKey != nil {
-		log.Warn().Msg("The apikey extension configuration will be ignored as API keys " +
+		log.Warn().Msg("apikey extension configuration will be ignored as API keys " +
 			"are now configurable in the HTTP settings.")
 	}
 
@@ -315,7 +322,8 @@ func validateExtensionsConfig(cfg *config.Config, log zlog.Logger) error {
 		// it would make sense to also check for mgmt and user prefs to be enabled,
 		// but those are both enabled by having the search and ui extensions enabled
 		if cfg.Extensions.Search == nil || !*cfg.Extensions.Search.Enable {
-			log.Error().Err(zerr.ErrBadConfig).Msg("UI functionality can't be used without search extension.")
+			log.Error().Err(zerr.ErrBadConfig).
+				Msg("failed to enable ui, search extension must be enabled")
 
 			return zerr.ErrBadConfig
 		}
@@ -324,7 +332,8 @@ func validateExtensionsConfig(cfg *config.Config, log zlog.Logger) error {
 	//nolint:lll
 	if cfg.Storage.StorageDriver != nil && cfg.Extensions != nil && cfg.Extensions.Search != nil &&
 		cfg.Extensions.Search.Enable != nil && *cfg.Extensions.Search.Enable && cfg.Extensions.Search.CVE != nil {
-		log.Error().Err(zerr.ErrBadConfig).Msg("CVE functionality can't be used with remote storage. Please disable CVE")
+		log.Error().Err(zerr.ErrBadConfig).
+			Msg("failed to enable cve scanning due to incompatibility with remote storage, please disable cve")
 
 		return zerr.ErrBadConfig
 	}
@@ -333,7 +342,8 @@ func validateExtensionsConfig(cfg *config.Config, log zlog.Logger) error {
 		//nolint:lll
 		if subPath.StorageDriver != nil && cfg.Extensions != nil && cfg.Extensions.Search != nil &&
 			cfg.Extensions.Search.Enable != nil && *cfg.Extensions.Search.Enable && cfg.Extensions.Search.CVE != nil {
-			log.Error().Err(zerr.ErrBadConfig).Msg("CVE functionality can't be used with remote storage. Please disable CVE")
+			log.Error().Err(zerr.ErrBadConfig).
+				Msg("failed to enable cve scanning due to incompatibility with remote storage, please disable cve")
 
 			return zerr.ErrBadConfig
 		}
@@ -432,7 +442,8 @@ func validateConfiguration(config *config.Config, log zlog.Logger) error {
 		for pattern := range config.HTTP.AccessControl.Repositories {
 			ok := glob.ValidatePattern(pattern)
 			if !ok {
-				log.Error().Err(glob.ErrBadPattern).Str("pattern", pattern).Msg("authorization pattern could not be compiled")
+				log.Error().Err(glob.ErrBadPattern).Str("pattern", pattern).
+					Msg("failed to compile authorization pattern")
 
 				return glob.ErrBadPattern
 			}
@@ -555,7 +566,7 @@ func applyDefaultValues(config *config.Config, viperInstance *viper.Viper, log z
 				if config.Extensions.Search.CVE.UpdateInterval < defaultUpdateInterval {
 					config.Extensions.Search.CVE.UpdateInterval = defaultUpdateInterval
 
-					log.Warn().Msg("CVE update interval set to too-short interval < 2h, " +
+					log.Warn().Msg("cve update interval set to too-short interval < 2h, " +
 						"changing update duration to 2 hours and continuing.")
 				}
 
@@ -565,15 +576,15 @@ func applyDefaultValues(config *config.Config, viperInstance *viper.Viper, log z
 
 				if config.Extensions.Search.CVE.Trivy.DBRepository == "" {
 					defaultDBDownloadURL := "ghcr.io/aquasecurity/trivy-db"
-					log.Info().Str("trivyDownloadURL", defaultDBDownloadURL).
-						Msg("Config: using default Trivy DB download URL.")
+					log.Info().Str("url", defaultDBDownloadURL).Str("component", "config").
+						Msg("using default trivy-db download URL.")
 					config.Extensions.Search.CVE.Trivy.DBRepository = defaultDBDownloadURL
 				}
 
 				if config.Extensions.Search.CVE.Trivy.JavaDBRepository == "" {
 					defaultJavaDBDownloadURL := "ghcr.io/aquasecurity/trivy-java-db"
-					log.Info().Str("trivyJavaDownloadURL", defaultJavaDBDownloadURL).
-						Msg("Config: using default Trivy Java DB download URL.")
+					log.Info().Str("url", defaultJavaDBDownloadURL).Str("component", "config").
+						Msg("using default trivy-java-db download URL.")
 					config.Extensions.Search.CVE.Trivy.JavaDBRepository = defaultJavaDBDownloadURL
 				}
 			}
@@ -649,7 +660,7 @@ func applyDefaultValues(config *config.Config, viperInstance *viper.Viper, log z
 		cachePath := path.Join(cacheDir, storageConstants.BoltdbName+storageConstants.DBExtensionName)
 
 		if _, err := os.Stat(cachePath); err == nil {
-			log.Info().Msg("Config: dedupe set to false for s3 driver but used to be true.")
+			log.Info().Str("component", "config").Msg("dedupe set to false for s3 driver but used to be true.")
 			log.Info().Str("cache path", cachePath).Msg("found cache database")
 
 			config.Storage.RemoteCache = false
@@ -670,7 +681,7 @@ func applyDefaultValues(config *config.Config, viperInstance *viper.Viper, log z
 			subpathCachePath := path.Join(subpathCacheDir, storageConstants.BoltdbName+storageConstants.DBExtensionName)
 
 			if _, err := os.Stat(subpathCachePath); err == nil {
-				log.Info().Msg("Config: dedupe set to false for s3 driver but used to be true. ")
+				log.Info().Str("component", "config").Msg("dedupe set to false for s3 driver but used to be true. ")
 				log.Info().Str("cache path", subpathCachePath).Msg("found cache database")
 
 				storageConfig.RemoteCache = false
@@ -732,14 +743,14 @@ func LoadConfiguration(config *config.Config, configPath string) error {
 	viperInstance.SetConfigFile(configPath)
 
 	if err := viperInstance.ReadInConfig(); err != nil {
-		log.Error().Err(err).Msg("error while reading configuration")
+		log.Error().Err(err).Msg("failed to read configuration")
 
 		return err
 	}
 
 	metaData := &mapstructure.Metadata{}
 	if err := viperInstance.UnmarshalExact(&config, metadataConfig(metaData)); err != nil {
-		log.Error().Err(err).Msg("error while unmarshaling new config")
+		log.Error().Err(err).Msg("failed to unmarshaling new config")
 
 		return err
 	}
@@ -747,13 +758,15 @@ func LoadConfiguration(config *config.Config, configPath string) error {
 	log := zlog.NewLogger(config.Log.Level, config.Log.Output)
 
 	if len(metaData.Keys) == 0 {
-		log.Error().Err(zerr.ErrBadConfig).Msg("config doesn't contain any key:value pair")
+		log.Error().Err(zerr.ErrBadConfig).
+			Msg("failed to load config due to the absence of any key:value pair")
 
 		return zerr.ErrBadConfig
 	}
 
 	if len(metaData.Unused) > 0 {
-		log.Error().Err(zerr.ErrBadConfig).Strs("keys", metaData.Unused).Msg("unknown keys")
+		log.Error().Err(zerr.ErrBadConfig).Strs("keys", metaData.Unused).
+			Msg("failed to load config due to unknown keys")
 
 		return zerr.ErrBadConfig
 	}
@@ -804,7 +817,7 @@ func readLDAPCredentials(ldapConfigPath string) (config.LDAPCredentials, error) 
 	viperInstance.SetConfigFile(ldapConfigPath)
 
 	if err := viperInstance.ReadInConfig(); err != nil {
-		log.Error().Err(err).Msg("error while reading configuration")
+		log.Error().Err(err).Msg("failed to read configuration")
 
 		return config.LDAPCredentials{}, err
 	}
@@ -812,7 +825,7 @@ func readLDAPCredentials(ldapConfigPath string) (config.LDAPCredentials, error) 
 	var ldapCredentials config.LDAPCredentials
 
 	if err := viperInstance.Unmarshal(&ldapCredentials); err != nil {
-		log.Error().Err(err).Msg("error while unmarshaling new config")
+		log.Error().Err(err).Msg("failed to unmarshal new config")
 
 		return config.LDAPCredentials{}, err
 	}
@@ -1014,8 +1027,8 @@ func validateSync(config *config.Config, log zlog.Logger) error {
 
 					if content.StripPrefix && !strings.Contains(content.Prefix, "/*") && content.Destination == "/" {
 						log.Error().Err(zerr.ErrBadConfig).
-							Interface("sync content", content).
-							Msg("sync config: can not use stripPrefix true and destination '/' without using glob patterns in prefix")
+							Interface("sync content", content).Str("component", "sync").
+							Msg("can not use stripPrefix true and destination '/' without using glob patterns in prefix")
 
 						return zerr.ErrBadConfig
 					}

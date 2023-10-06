@@ -805,7 +805,7 @@ func TestServeScrubExtension(t *testing.T) {
 		So(dataStr, ShouldContainSubstring,
 			"\"Extensions\":{\"Search\":null,\"Sync\":null,\"Metrics\":null,\"Scrub\":{\"Enable\":true,\"Interval\":86400000000000},\"Lint\":null") //nolint:lll // gofumpt conflicts with lll
 		So(dataStr, ShouldNotContainSubstring,
-			"Scrub interval set to too-short interval < 2h, changing scrub duration to 2 hours and continuing.")
+			"scrub interval set to too-short interval < 2h, changing scrub duration to 2 hours and continuing.")
 	})
 
 	Convey("scrub implicitly enabled, but with scrub interval param set", t, func(c C) {
@@ -837,7 +837,7 @@ func TestServeScrubExtension(t *testing.T) {
 		dataStr := string(data)
 		So(dataStr, ShouldContainSubstring, "\"Scrub\":{\"Enable\":true,\"Interval\":3600000000000}")
 		So(dataStr, ShouldContainSubstring,
-			"Scrub interval set to too-short interval < 2h, changing scrub duration to 2 hours and continuing.")
+			"scrub interval set to too-short interval < 2h, changing scrub duration to 2 hours and continuing.")
 	})
 
 	Convey("scrub explicitly enabled, but without scrub interval param set", t, func(c C) {
@@ -869,7 +869,7 @@ func TestServeScrubExtension(t *testing.T) {
 		So(dataStr, ShouldContainSubstring,
 			"\"Extensions\":{\"Search\":null,\"Sync\":null,\"Metrics\":null,\"Scrub\":{\"Enable\":true,\"Interval\":86400000000000},\"Lint\":null") //nolint:lll // gofumpt conflicts with lll
 		So(dataStr, ShouldNotContainSubstring,
-			"Scrub interval set to too-short interval < 2h, changing scrub duration to 2 hours and continuing.")
+			"scrub interval set to too-short interval < 2h, changing scrub duration to 2 hours and continuing.")
 	})
 
 	Convey("scrub explicitly disabled", t, func(c C) {
@@ -899,9 +899,9 @@ func TestServeScrubExtension(t *testing.T) {
 		defer os.Remove(logPath) // clean up
 		dataStr := string(data)
 		So(dataStr, ShouldContainSubstring, "\"Scrub\":{\"Enable\":false,\"Interval\":86400000000000}")
-		So(dataStr, ShouldContainSubstring, "Scrub config not provided, skipping scrub")
+		So(dataStr, ShouldContainSubstring, "scrub config not provided, skipping scrub")
 		So(dataStr, ShouldNotContainSubstring,
-			"Scrub interval set to too-short interval < 2h, changing scrub duration to 2 hours and continuing.")
+			"scrub interval set to too-short interval < 2h, changing scrub duration to 2 hours and continuing.")
 	})
 }
 
@@ -1066,7 +1066,7 @@ func TestServeSearchEnabledCVE(t *testing.T) {
 		So(found, ShouldBeTrue)
 		So(err, ShouldBeNil)
 
-		found, err = ReadLogFileAndSearchString(logPath, "updating the CVE database", readLogFileTimeout)
+		found, err = ReadLogFileAndSearchString(logPath, "updating cve-db", readLogFileTimeout)
 		So(found, ShouldBeTrue)
 		So(err, ShouldBeNil)
 	})
@@ -1151,8 +1151,8 @@ func TestServeSearchDisabled(t *testing.T) {
 		defer os.Remove(logPath) // clean up
 		dataStr := string(data)
 		So(dataStr, ShouldContainSubstring,
-			"\"Search\":{\"Enable\":false,\"CVE\":{\"UpdateInterval\":10800000000000,\"Trivy\":null}")
-		So(dataStr, ShouldContainSubstring, "CVE config not provided, skipping CVE update")
+			`"Search":{"Enable":false,"CVE":{"UpdateInterval":10800000000000,"Trivy":null}`)
+		So(dataStr, ShouldContainSubstring, "cve config not provided, skipping cve-db update")
 		So(dataStr, ShouldNotContainSubstring,
 			"CVE update interval set to too-short interval < 2h, changing update duration to 2 hours and continuing.")
 	})

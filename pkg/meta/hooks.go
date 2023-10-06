@@ -31,7 +31,7 @@ func OnUpdateManifest(ctx context.Context, repo, reference, mediaType string, di
 
 		if err := imgStore.DeleteImageManifest(repo, reference, false); err != nil {
 			log.Error().Err(err).Str("reference", reference).Str("repository", repo).
-				Msg("couldn't remove image manifest in repo")
+				Msg("failed to remove image manifest in repo")
 
 			return err
 		}
@@ -57,7 +57,7 @@ func OnDeleteManifest(repo, reference, mediaType string, digest godigest.Digest,
 	isSignature, signatureType, signedManifestDigest, err := storage.CheckIsImageSignature(repo, manifestBlob,
 		reference)
 	if err != nil {
-		log.Error().Err(err).Msg("can't check if image is a signature or not")
+		log.Error().Err(err).Msg("failed to check if image is a signature or not")
 
 		return err
 	}
@@ -70,18 +70,20 @@ func OnDeleteManifest(repo, reference, mediaType string, digest godigest.Digest,
 			SignatureType:   signatureType,
 		})
 		if err != nil {
-			log.Error().Err(err).Msg("metadb: can't check if image is a signature or not")
+			log.Error().Err(err).Str("component", "metadb").
+				Msg("failed to check if image is a signature or not")
 			manageRepoMetaSuccessfully = false
 		}
 	} else {
 		err = metaDB.RemoveRepoReference(repo, reference, digest)
 		if err != nil {
-			log.Info().Msg("metadb: restoring image store")
+			log.Info().Str("component", "metadb").Msg("restoring image store")
 
 			// restore image store
 			_, _, err := imgStore.PutImageManifest(repo, reference, mediaType, manifestBlob)
 			if err != nil {
-				log.Error().Err(err).Msg("metadb: error while restoring image store, database is not consistent")
+				log.Error().Err(err).Str("component", "metadb").
+					Msg("failed to restore manifest to image store, database is not consistent")
 			}
 
 			manageRepoMetaSuccessfully = false
@@ -89,8 +91,8 @@ func OnDeleteManifest(repo, reference, mediaType string, digest godigest.Digest,
 	}
 
 	if !manageRepoMetaSuccessfully {
-		log.Info().Str("tag", reference).Str("repository", repo).
-			Msg("metadb: deleting image meta was unsuccessful for tag in repo")
+		log.Info().Str("tag", reference).Str("repository", repo).Str("component", "metadb").
+			Msg("failed to delete image meta was unsuccessful for tag in repo")
 
 		return err
 	}
@@ -105,7 +107,7 @@ func OnGetManifest(name, reference, mediaType string, body []byte,
 	// check if image is a signature
 	isSignature, _, _, err := storage.CheckIsImageSignature(name, body, reference)
 	if err != nil {
-		log.Error().Err(err).Msg("can't check if manifest is a signature or not")
+		log.Error().Err(err).Msg("failed to check if manifest is a signature or not")
 
 		return err
 	}
@@ -121,7 +123,7 @@ func OnGetManifest(name, reference, mediaType string, body []byte,
 	err = metaDB.UpdateStatsOnDownload(name, reference)
 	if err != nil {
 		log.Error().Err(err).Str("repository", name).Str("reference", reference).
-			Msg("unexpected error for image")
+			Msg("failed to update stats on download image")
 
 		return err
 	}

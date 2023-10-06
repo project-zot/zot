@@ -15,7 +15,7 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-var ErrNoGoModFileFound = errors.New("test: no go.mod file found in parent directories")
+var ErrNoGoModFileFound = errors.New("no go.mod file found in parent directories")
 
 func GetProjectRootDir() (string, error) {
 	workDir, err := os.Getwd()

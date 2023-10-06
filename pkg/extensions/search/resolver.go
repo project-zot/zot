@@ -339,12 +339,12 @@ func getImageListForCVE(
 	for _, repoMeta := range reposMeta {
 		repo := repoMeta.Name
 
-		log.Info().Str("repository", repo).Str("CVE", cveID).Msg("extracting list of tags affected by CVE")
+		log.Info().Str("repository", repo).Str("CVE", cveID).Msg("extracting list of tags affected by this cve")
 
 		tagsInfo, err := cveInfo.GetImageListForCVE(ctx, repo, cveID)
 		if err != nil {
 			log.Error().Str("repository", repo).Str("CVE", cveID).Err(err).
-				Msg("error getting image list for CVE from repo")
+				Msg("failed to get image list for this cve from repository")
 
 			return &gql_generated.PaginatedImagesResult{}, err
 		}
@@ -412,12 +412,12 @@ func getImageListWithCVEFixed(
 ) (*gql_generated.PaginatedImagesResult, error) {
 	imageList := make([]*gql_generated.ImageSummary, 0)
 
-	log.Info().Str("repository", repo).Str("CVE", cveID).Msg("extracting list of tags where CVE is fixed")
+	log.Info().Str("repository", repo).Str("CVE", cveID).Msg("extracting list of tags where this cve is fixed")
 
 	tagsInfo, err := cveInfo.GetImageListWithCVEFixed(ctx, repo, cveID)
 	if err != nil {
 		log.Error().Str("repository", repo).Str("CVE", cveID).Err(err).
-			Msg("error getting image list with CVE fixed from repo")
+			Msg("failed to get image list with this cve fixed from repository")
 
 		return &gql_generated.PaginatedImagesResult{
 			Page:    &gql_generated.PageInfo{},
@@ -790,7 +790,7 @@ func derivedImageList(ctx context.Context, image string, digest *string, metaDB 
 	searchedImage, err := getImageSummary(ctx, imageRepo, imageTag, digest, skipReferenceImage, metaDB, cveInfo, log)
 	if err != nil {
 		if errors.Is(err, zerr.ErrRepoMetaNotFound) {
-			return &gql_generated.PaginatedImagesResult{}, gqlerror.Errorf("repository: not found")
+			return &gql_generated.PaginatedImagesResult{}, gqlerror.Errorf("repository not found")
 		}
 
 		return &gql_generated.PaginatedImagesResult{}, err
@@ -891,7 +891,7 @@ func baseImageList(ctx context.Context, image string, digest *string, metaDB mTy
 	searchedImage, err := getImageSummary(ctx, imageRepo, imageTag, digest, skipReferenceImage, metaDB, cveInfo, log)
 	if err != nil {
 		if errors.Is(err, zerr.ErrRepoMetaNotFound) {
-			return &gql_generated.PaginatedImagesResult{}, gqlerror.Errorf("repository: not found")
+			return &gql_generated.PaginatedImagesResult{}, gqlerror.Errorf("repository not found")
 		}
 
 		return &gql_generated.PaginatedImagesResult{}, err
@@ -963,7 +963,7 @@ func validateGlobalSearchInput(query string, filter *gql_generated.Filter,
 	requestedPage *gql_generated.PageInput,
 ) error {
 	if len(query) > querySizeLimit {
-		return fmt.Errorf("global-search: max string size limit exceeded for query parameter. max=%d current=%d %w",
+		return fmt.Errorf("max string size limit exceeded for query parameter. max=%d current=%d %w",
 			querySizeLimit, len(query), zerr.ErrInvalidRequestParams)
 	}
 
@@ -987,14 +987,14 @@ func checkFilter(filter *gql_generated.Filter) error {
 
 	for _, arch := range filter.Arch {
 		if len(*arch) > querySizeLimit {
-			return fmt.Errorf("global-search: max string size limit exceeded for arch parameter. max=%d current=%d %w",
+			return fmt.Errorf("max string size limit exceeded for arch parameter. max=%d current=%d %w",
 				querySizeLimit, len(*arch), zerr.ErrInvalidRequestParams)
 		}
 	}
 
 	for _, osSys := range filter.Os {
 		if len(*osSys) > querySizeLimit {
-			return fmt.Errorf("global-search: max string size limit exceeded for os parameter. max=%d current=%d %w",
+			return fmt.Errorf("max string size limit exceeded for os parameter. max=%d current=%d %w",
 				querySizeLimit, len(*osSys), zerr.ErrInvalidRequestParams)
 		}
 	}
@@ -1008,12 +1008,12 @@ func checkRequestedPage(requestedPage *gql_generated.PageInput) error {
 	}
 
 	if requestedPage.Limit != nil && *requestedPage.Limit < 0 {
-		return fmt.Errorf("global-search: requested page limit parameter can't be negative %w",
+		return fmt.Errorf("requested page limit parameter can't be negative %w",
 			zerr.ErrInvalidRequestParams)
 	}
 
 	if requestedPage.Offset != nil && *requestedPage.Offset < 0 {
-		return fmt.Errorf("global-search: requested page offset parameter can't be negative %w",
+		return fmt.Errorf("requested page offset parameter can't be negative %w",
 			zerr.ErrInvalidRequestParams)
 	}
 
@@ -1081,14 +1081,16 @@ func deleteElementAt(slice []*string, i int) []*string {
 func expandedRepoInfo(ctx context.Context, repo string, metaDB mTypes.MetaDB, cveInfo cveinfo.CveInfo, log log.Logger,
 ) (*gql_generated.RepoInfo, error) {
 	if ok, err := reqCtx.RepoIsUserAvailable(ctx, repo); !ok || err != nil {
-		log.Info().Err(err).Str("repository", repo).Bool("availability", ok).Msg("resolver: repo user availability")
+		log.Info().Err(err).Str("repository", repo).Bool("availability", ok).Str("component", "graphql").
+			Msg("repo user availability")
 
 		return &gql_generated.RepoInfo{}, nil //nolint:nilerr // don't give details to a potential attacker
 	}
 
 	repoMeta, err := metaDB.GetRepoMeta(ctx, repo)
 	if err != nil {
-		log.Error().Err(err).Str("repository", repo).Msg("resolver: can't retrieve repoMeta for repo")
+		log.Error().Err(err).Str("repository", repo).Str("component", "graphql").
+			Msg("can't retrieve repoMeta for repository")
 
 		return &gql_generated.RepoInfo{}, err
 	}
@@ -1105,7 +1107,8 @@ func expandedRepoInfo(ctx context.Context, repo string, metaDB mTypes.MetaDB, cv
 
 	imageMetaMap, err := metaDB.FilterImageMeta(ctx, tagsDigests)
 	if err != nil {
-		log.Error().Err(err).Str("repository", repo).Msg("resolver: can't retrieve imageMeta for repo")
+		log.Error().Err(err).Str("repository", repo).Str("component", "graphql").
+			Msg("can't retrieve imageMeta for repo")
 
 		return &gql_generated.RepoInfo{}, err
 	}
@@ -1202,9 +1205,10 @@ func getReferrers(metaDB mTypes.MetaDB, repo string, referredDigest string, arti
 ) ([]*gql_generated.Referrer, error) {
 	refDigest := godigest.Digest(referredDigest)
 	if err := refDigest.Validate(); err != nil {
-		log.Error().Err(err).Str("digest", referredDigest).Msg("graphql: bad referenced digest string from request")
+		log.Error().Err(err).Str("digest", referredDigest).Str("component", "graphql").
+			Msg("bad referenced digest string from request")
 
-		return []*gql_generated.Referrer{}, fmt.Errorf("graphql: bad digest string from request '%s' %w",
+		return []*gql_generated.Referrer{}, fmt.Errorf("bad digest string from request '%s' %w",
 			referredDigest, err)
 	}
 

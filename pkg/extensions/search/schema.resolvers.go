@@ -56,11 +56,11 @@ func (r *queryResolver) ImageListForDigest(ctx context.Context, id string, reque
 
 // RepoListWithNewestImage is the resolver for the RepoListWithNewestImage field.
 func (r *queryResolver) RepoListWithNewestImage(ctx context.Context, requestedPage *gql_generated.PageInput) (*gql_generated.PaginatedReposResult, error) {
-	r.log.Info().Msg("extension api: finding image list")
+	r.log.Info().Str("component", "graphql").Msg("finding image list")
 
 	paginatedReposResult, err := repoListWithNewestImage(ctx, r.cveInfo, r.log, requestedPage, r.metaDB)
 	if err != nil {
-		r.log.Error().Err(err).Msg("unable to retrieve repo list")
+		r.log.Error().Err(err).Msg("failed to retrieve repo list")
 
 		return paginatedReposResult, err
 	}
@@ -70,11 +70,11 @@ func (r *queryResolver) RepoListWithNewestImage(ctx context.Context, requestedPa
 
 // ImageList is the resolver for the ImageList field.
 func (r *queryResolver) ImageList(ctx context.Context, repo string, requestedPage *gql_generated.PageInput) (*gql_generated.PaginatedImagesResult, error) {
-	r.log.Info().Msg("extension api: getting a list of all images")
+	r.log.Info().Str("component", "graphql").Msg("getting a list of all images")
 
 	imageList, err := getImageList(ctx, repo, r.metaDB, r.cveInfo, requestedPage, r.log)
 	if err != nil {
-		r.log.Error().Err(err).Str("repository", repo).Msg("unable to retrieve image list for repo")
+		r.log.Error().Err(err).Str("repository", repo).Msg("failed to retrieve image list for repo")
 
 		return imageList, err
 	}
@@ -141,7 +141,7 @@ func (r *queryResolver) Image(ctx context.Context, image string) (*gql_generated
 func (r *queryResolver) Referrers(ctx context.Context, repo string, digest string, typeArg []string) ([]*gql_generated.Referrer, error) {
 	referrers, err := getReferrers(r.metaDB, repo, digest, typeArg, r.log)
 	if err != nil {
-		r.log.Error().Err(err).Msg("unable to get referrers from default store")
+		r.log.Error().Err(err).Msg("failed to get referrers from default store")
 
 		return []*gql_generated.Referrer{}, err
 	}

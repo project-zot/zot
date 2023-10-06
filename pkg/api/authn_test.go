@@ -129,7 +129,7 @@ func TestAPIKeys(t *testing.T) {
 		conf.Extensions.UI.Enable = &defaultVal
 
 		ctlr := api.NewController(conf)
-		ctlr.Log.Info().Int64("seedUser", seedUser).Int64("seedPass", seedPass).Msg("random seed for username & password")
+		ctlr.Log.Info().Int64("seedUser", seedUser).Int64("seedPass", seedPass).Msg("Random seed for username & password")
 		dir := t.TempDir()
 
 		ctlr.Config.Storage.RootDirectory = dir

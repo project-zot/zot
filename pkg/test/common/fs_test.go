@@ -132,7 +132,7 @@ func TestReadLogFileAndSearchString(t *testing.T) {
 
 	Convey("Invalid path", t, func() {
 		_, err = tcommon.ReadLogFileAndSearchString("invalidPath",
-			"DB update completed, next update scheduled", 1*time.Second)
+			"cve-db update completed, next update scheduled after interval", 1*time.Second)
 		So(err, ShouldNotBeNil)
 	})
 
@@ -159,7 +159,7 @@ func TestReadLogFileAndCountStringOccurence(t *testing.T) {
 
 	Convey("Invalid path", t, func() {
 		_, err = tcommon.ReadLogFileAndCountStringOccurence("invalidPath",
-			"DB update completed, next update scheduled", 1*time.Second, 1)
+			"cve-db update completed, next update scheduled after interval", 1*time.Second, 1)
 		So(err, ShouldNotBeNil)
 	})
 

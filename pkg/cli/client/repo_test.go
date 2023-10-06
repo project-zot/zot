@@ -95,7 +95,7 @@ func TestSuggestions(t *testing.T) {
 		suggestion := client.ShowSuggestionsIfUnknownCommand(
 			client.NewRepoCommand(client.NewSearchService()), []string{"bad-command"})
 		str := space.ReplaceAllString(suggestion.Error(), " ")
-		So(str, ShouldContainSubstring, "unknown subcommand")
+		So(str, ShouldContainSubstring, "unknown cli subcommand")
 
 		suggestion = client.ShowSuggestionsIfUnknownCommand(
 			client.NewRepoCommand(client.NewSearchService()), []string{"listt"})

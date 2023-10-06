@@ -85,13 +85,13 @@ func ValidateManifest(imgStore storageTypes.ImageStore, repo, reference, mediaTy
 
 		// validate manifest
 		if err := ValidateManifestSchema(body); err != nil {
-			log.Error().Err(err).Msg("OCIv1 image manifest schema validation failed")
+			log.Error().Err(err).Msg("failed to validate OCIv1 image manifest schema")
 
 			return "", zerr.NewError(zerr.ErrBadManifest).AddDetail("jsonSchemaValidation", err.Error())
 		}
 
 		if err := json.Unmarshal(body, &manifest); err != nil {
-			log.Error().Err(err).Msg("unable to unmarshal JSON")
+			log.Error().Err(err).Msg("failed to unmarshal JSON")
 
 			return "", zerr.ErrBadManifest
 		}
@@ -102,7 +102,8 @@ func ValidateManifest(imgStore storageTypes.ImageStore, repo, reference, mediaTy
 			// validate config blob - a lightweight check if the blob is present
 			ok, _, _, err := imgStore.StatBlob(repo, manifest.Config.Digest)
 			if !ok || err != nil {
-				log.Error().Err(err).Str("digest", manifest.Config.Digest.String()).Msg("missing config blob")
+				log.Error().Err(err).Str("digest", manifest.Config.Digest.String()).
+					Msg("failed to stat blob due to missing config blob")
 
 				return "", zerr.ErrBadManifest
 			}
@@ -118,7 +119,8 @@ func ValidateManifest(imgStore storageTypes.ImageStore, repo, reference, mediaTy
 
 				ok, _, _, err := imgStore.StatBlob(repo, layer.Digest)
 				if !ok || err != nil {
-					log.Error().Err(err).Str("digest", layer.Digest.String()).Msg("missing layer blob")
+					log.Error().Err(err).Str("digest", layer.Digest.String()).
+						Msg("failed to validate manifest due to missing layer blob")
 
 					return "", zerr.ErrBadManifest
 				}
@@ -127,28 +129,29 @@ func ValidateManifest(imgStore storageTypes.ImageStore, repo, reference, mediaTy
 	case oras.MediaTypeArtifactManifest:
 		var m oras.Descriptor
 		if err := json.Unmarshal(body, &m); err != nil {
-			log.Error().Err(err).Msg("unable to unmarshal JSON")
+			log.Error().Err(err).Msg("failed to unmarshal JSON")
 
 			return "", zerr.ErrBadManifest
 		}
 	case ispec.MediaTypeImageIndex:
 		// validate manifest
 		if err := ValidateImageIndexSchema(body); err != nil {
-			log.Error().Err(err).Msg("OCIv1 image index manifest schema validation failed")
+			log.Error().Err(err).Msg("failed to validate OCIv1 image index manifest schema")
 
 			return "", zerr.NewError(zerr.ErrBadManifest).AddDetail("jsonSchemaValidation", err.Error())
 		}
 
 		var indexManifest ispec.Index
 		if err := json.Unmarshal(body, &indexManifest); err != nil {
-			log.Error().Err(err).Msg("unable to unmarshal JSON")
+			log.Error().Err(err).Msg("failed to unmarshal JSON")
 
 			return "", zerr.ErrBadManifest
 		}
 
 		for _, manifest := range indexManifest.Manifests {
 			if ok, _, _, err := imgStore.StatBlob(repo, manifest.Digest); !ok || err != nil {
-				log.Error().Err(err).Str("digest", manifest.Digest.String()).Msg("missing manifest blob")
+				log.Error().Err(err).Str("digest", manifest.Digest.String()).
+					Msg("failed to stat manifest due to missing manifest blob")
 
 				return "", zerr.ErrBadManifest
 			}
@@ -165,7 +168,7 @@ func GetAndValidateRequestDigest(body []byte, digestStr string, log zlog.Logger)
 	if err == nil {
 		if d.String() != bodyDigest.String() {
 			log.Error().Str("actual", bodyDigest.String()).Str("expected", d.String()).
-				Msg("manifest digest is not valid")
+				Msg("failed to validate manifest digest")
 
 			return "", zerr.ErrBadManifest
 		}
@@ -483,8 +486,8 @@ func isBlobReferencedInImageManifest(imgStore storageTypes.ImageStore, repo stri
 
 	manifestContent, err := GetImageManifest(imgStore, repo, mdigest, log)
 	if err != nil {
-		log.Error().Err(err).Str("repo", repo).Str("digest", mdigest.String()).
-			Msg("gc: failed to read manifest image")
+		log.Error().Err(err).Str("repo", repo).Str("digest", mdigest.String()).Str("component", "gc").
+			Msg("failed to read manifest image")
 
 		return false, err
 	}
@@ -511,8 +514,8 @@ func isBlobReferencedInORASManifest(imgStore storageTypes.ImageStore, repo strin
 
 	manifestContent, err := GetOrasManifestByDigest(imgStore, repo, mdigest, log)
 	if err != nil {
-		log.Error().Err(err).Str("repo", repo).Str("digest", mdigest.String()).
-			Msg("gc: failed to read manifest image")
+		log.Error().Err(err).Str("repo", repo).Str("digest", mdigest.String()).Str("component", "gc").
+			Msg("failed to read manifest image")
 
 		return false, err
 	}
@@ -978,14 +981,14 @@ func (gen *DedupeTaskGenerator) Next() (scheduler.Task, error) {
 		gen.repos, err = gen.ImgStore.GetRepositories()
 		if err != nil {
 			//nolint: dupword
-			gen.Log.Error().Err(err).Msg("dedupe rebuild: unable to to get list of repositories")
+			gen.Log.Error().Err(err).Str("component", "dedupe").Msg("failed to get list of repositories")
 
 			return nil, err
 		}
 
 		// if still no repos
 		if len(gen.repos) == 0 {
-			gen.Log.Info().Msg("dedupe rebuild: no repositories found in storage, finished.")
+			gen.Log.Info().Str("component", "dedupe").Msg("no repositories found in storage, finished.")
 
 			// no repositories in storage, no need to continue
 			gen.done = true
@@ -997,14 +1000,14 @@ func (gen *DedupeTaskGenerator) Next() (scheduler.Task, error) {
 	// get all blobs from storage.imageStore and group them by digest
 	gen.digest, gen.duplicateBlobs, err = gen.ImgStore.GetNextDigestWithBlobPaths(gen.repos, gen.lastDigests)
 	if err != nil {
-		gen.Log.Error().Err(err).Msg("dedupe rebuild: failed to get next digest")
+		gen.Log.Error().Err(err).Str("component", "dedupe").Msg("failed to get next digest")
 
 		return nil, err
 	}
 
 	// if no digests left, then mark the task generator as done
 	if gen.digest == "" {
-		gen.Log.Info().Msg("dedupe rebuild: finished")
+		gen.Log.Info().Str("component", "dedupe").Msg("finished")
 
 		gen.done = true
 
@@ -1055,7 +1058,8 @@ func (dt *dedupeTask) DoWork(ctx context.Context) error {
 	err := dt.imgStore.RunDedupeForDigest(ctx, dt.digest, dt.dedupe, dt.duplicateBlobs) //nolint: contextcheck
 	if err != nil {
 		// log it
-		dt.log.Error().Err(err).Str("digest", dt.digest.String()).Msg("rebuild dedupe: failed to rebuild digest")
+		dt.log.Error().Err(err).Str("digest", dt.digest.String()).Str("component", "dedupe").
+			Msg("failed to rebuild digest")
 	}
 
 	return err
@@ -1095,7 +1099,7 @@ func (gen *StorageMetricsInitGenerator) Next() (scheduler.Task, error) {
 		return nil, err
 	}
 
-	gen.Log.Debug().Str("repo", repo).Int("randomDelay", delay).Msg("StorageMetricsInitGenerator")
+	gen.Log.Debug().Str("repo", repo).Int("randomDelay", delay).Msg("generate task for storage metrics")
 
 	if repo == "" {
 		gen.done = true
@@ -1137,7 +1141,7 @@ func NewStorageMetricsTask(imgStore storageTypes.ImageStore, metrics monitoring.
 func (smt *smTask) DoWork(ctx context.Context) error {
 	// run task
 	monitoring.SetStorageUsage(smt.metrics, smt.imgStore.RootDir(), smt.repo)
-	smt.log.Debug().Msg("monitoring: computed storage usage for repo " + smt.repo)
+	smt.log.Debug().Str("component", "monitoring").Msg("computed storage usage for repo " + smt.repo)
 
 	return nil
 }

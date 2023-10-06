@@ -151,20 +151,20 @@ func (ref ORASReferences) SyncReferences(ctx context.Context, localRepo, remoteR
 		refsDigests = append(refsDigests, referenceDigest)
 
 		if ref.metaDB != nil {
-			ref.log.Debug().Str("repository", localRepo).Str("subject", subjectDigestStr).
-				Msg("metaDB: trying to sync oras artifact for image")
+			ref.log.Debug().Str("repository", localRepo).Str("subject", subjectDigestStr).Str("component", "metadb").
+				Msg("trying to sync oras artifact for image")
 
 			err := meta.SetImageMetaFromInput(context.Background(), localRepo, //nolint:contextcheck
 				referenceDigest.String(), referrer.MediaType,
 				referenceDigest, orasBuf, ref.storeController.GetImageStore(localRepo),
 				ref.metaDB, ref.log)
 			if err != nil {
-				return refsDigests, fmt.Errorf("metaDB: failed to set metadata for oras artifact '%s@%s': %w",
+				return refsDigests, fmt.Errorf("failed to set metadata in db for oras artifact '%s@%s': %w",
 					localRepo, subjectDigestStr, err)
 			}
 
-			ref.log.Info().Str("repository", localRepo).Str("subject", subjectDigestStr).
-				Msg("metaDB: successfully added oras artifacts to MetaDB for image")
+			ref.log.Info().Str("repository", localRepo).Str("subject", subjectDigestStr).Str("component", "metadb").
+				Msg("successfully added oras artifacts to MetaDB for image")
 		}
 	}
 

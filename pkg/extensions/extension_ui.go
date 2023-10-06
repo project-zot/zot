@@ -30,7 +30,7 @@ func (uih uiHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	_, err := w.Write(buf)
 	if err != nil {
-		uih.log.Error().Err(err).Msg("unable to serve index.html")
+		uih.log.Error().Err(err).Msg("failed to serve index.html")
 	}
 }
 
