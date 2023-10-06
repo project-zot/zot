@@ -18,7 +18,76 @@ spec:
       - name: zot-extended
         image: zot-build:latest
         imagePullPolicy: IfNotPresent
+        command: ["/usr/bin/zot"]
+        args: ["serve", "/zot-config/config.json"]
         ports:
         - name: zot-extended
           containerPort: 5000
-
+          protocol: TCP
+        volumeMounts:
+          - name: zot-config
+            mountPath: /zot-config
+            readOnly: false
+      volumes:
+        - name: zot-config
+          configMap:
+            name: zot-config
+            items:
+            - key: zot_config.json
+              path: config.json
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: zot-config
+data:
+  zot_config.json: |
+    {
+      "distSpecVersion":"1.0.1",
+      "storage": {
+          "rootDirectory": "/var/lib/registry"
+      },
+      "http": {
+          "address": "0.0.0.0",
+          "port": "5000"
+      },
+      "log": {
+          "level": "debug"
+      },
+      "extensions": {
+          "metrics": {
+              "enable": true,
+              "prometheus": {
+                  "path": "/metrics"
+              }
+          }
+      }
+    }
+  zot_minimal.json: |
+    {
+      "distSpecVersion":"1.0.1",
+      "storage": {
+          "rootDirectory": "/var/lib/registry"
+      },
+      "http": {
+          "address": "0.0.0.0",
+          "port": "5050"
+      },
+      "log": {
+          "level": "debug"
+      }
+    }
+  zxp.json: |
+    {
+      "Server": {
+        "protocol": "http",
+        "host": "127.0.0.1",
+        "port": "5050"
+      },
+      "Exporter": {
+        "port": "5051",
+        "log": {
+            "level": "debug"
+        }
+      }
+    }
