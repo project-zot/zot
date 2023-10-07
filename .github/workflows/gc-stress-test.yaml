@@ -18,6 +18,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/clean-runner
+      - name: Benchmark runner
+        run: |
+          sudo apt-get install -y fio
+          sudo mkdir -p /test
+          sudo chmod -R a+rw /test
+          fio --name=fiotest --filename=/test/test1 --size=16Gb --rw=read --bs=1M --direct=1 --numjobs=8 --ioengine=libaio --iodepth=8 --group_reporting --runtime=60 --startdelay=60
       - uses: actions/setup-go@v4
         with:
           cache: false
