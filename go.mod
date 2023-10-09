@@ -3,7 +3,7 @@ module zotregistry.io/zot
 go 1.20
 
 require (
-	github.com/99designs/gqlgen v0.17.38
+	github.com/99designs/gqlgen v0.17.39
 	github.com/Masterminds/semver v1.5.0
 	github.com/aquasecurity/trivy-db v0.0.0-20230831170347-f732860d4917
 	github.com/bmatcuk/doublestar/v4 v4.6.0
@@ -197,6 +197,7 @@ require (
 	github.com/sigstore/timestamp-authority v1.1.2 // indirect
 	github.com/skeema/knownhosts v1.1.1 // indirect
 	github.com/smarty/assertions v1.15.0 // indirect
+	github.com/sosodev/duration v1.1.0 // indirect
 	github.com/spdx/tools-golang v0.5.0 // indirect
 	github.com/tetratelabs/wazero v1.2.1 // indirect
 	github.com/tinylib/msgp v1.1.8 // indirect
