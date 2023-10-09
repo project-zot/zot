@@ -524,7 +524,7 @@ func (scanner Scanner) updateDB(dbDir string) error {
 	}
 
 	if scanner.javaDBRepository != "" {
-		javadb.Init(dbDir, scanner.javaDBRepository, false, false, registryOpts.Insecure)
+		javadb.Init(dbDir, scanner.javaDBRepository, false, false, registryOpts)
 
 		if err := javadb.Update(); err != nil {
 			scanner.log.Error().Err(err).Str("dbDir", dbDir).
