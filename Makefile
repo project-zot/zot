@@ -257,10 +257,18 @@ swagger:
 	swag init --parseDependency -o swagger -g pkg/api/routes.go -q
 
 .PHONY: update-licenses
+# note: for predictable output of below sort command we use locale LC_ALL=C
+update-licenses: LC_ALL=C
 update-licenses:
 	@echo "Detecting and updating licenses ... please be patient!"
 	go install github.com/google/go-licenses@latest
 	$(shell echo "Module | License URL | License" > THIRD-PARTY-LICENSES.md; echo "---|---|---" >> THIRD-PARTY-LICENSES.md; for i in $$(go list -m all  | awk '{print $$1}'); do l=$$(go-licenses csv $$i 2>/dev/null); if [ $$? -ne 0 ]; then continue; fi; echo $$l | tr \, \| | tr ' ' '\n'; done | sort -u >> THIRD-PARTY-LICENSES.md)
+	$(eval UNCOMMITED_FILES = $(shell git status --porcelain | grep -c THIRD-PARTY-LICENSES.md))
+	@if [ $(UNCOMMITED_FILES) != 0 ]; then \
+		echo "THIRD-PARTY-LICENSES.md file needs to be updated";\
+		git status;\
+		exit 1;\
+	fi
 
 .PHONY: check-licenses
 check-licenses:
