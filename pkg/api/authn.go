@@ -675,7 +675,9 @@ func getRelyingPartyArgs(cfg *config.Config, provider string) (
 }
 
 func authFail(w http.ResponseWriter, r *http.Request, realm string, delay int) {
-	time.Sleep(time.Duration(delay) * time.Second)
+	if !isAuthorizationHeaderEmpty(r) || hasSessionHeader(r) {
+		time.Sleep(time.Duration(delay) * time.Second)
+	}
 
 	// don't send auth headers if request is coming from UI
 	if r.Header.Get(constants.SessionClientHeaderName) != constants.SessionClientHeaderValue {
