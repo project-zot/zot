@@ -127,9 +127,11 @@ func (amw *AuthnMiddleware) basicAuthn(ctlr *Controller, userAc *reqCtx.UserAcce
 			userAc.AddGroups(groups)
 			userAc.SaveOnRequest(request)
 
-			// saved logged session
-			if err := saveUserLoggedSession(cookieStore, response, request, identity, ctlr.Log); err != nil {
-				return false, err
+			// saved logged session only if the request comes from web (has UI session header value)
+			if hasSessionHeader(request) {
+				if err := saveUserLoggedSession(cookieStore, response, request, identity, ctlr.Log); err != nil {
+					return false, err
+				}
 			}
 
 			// we have already populated the request context with userAc
@@ -163,8 +165,11 @@ func (amw *AuthnMiddleware) basicAuthn(ctlr *Controller, userAc *reqCtx.UserAcce
 			userAc.AddGroups(groups)
 			userAc.SaveOnRequest(request)
 
-			if err := saveUserLoggedSession(cookieStore, response, request, identity, ctlr.Log); err != nil {
-				return false, err
+			// saved logged session only if the request comes from web (has UI session header value)
+			if hasSessionHeader(request) {
+				if err := saveUserLoggedSession(cookieStore, response, request, identity, ctlr.Log); err != nil {
+					return false, err
+				}
 			}
 
 			// we have already populated the request context with userAc

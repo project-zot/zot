@@ -2686,238 +2686,297 @@ func TestOpenIDMiddleware(t *testing.T) {
 
 	for _, testcase := range testCases {
 		t.Run(testcase.testCaseName, func(t *testing.T) {
-			dir := t.TempDir()
+			Convey("make controller", t, func() {
+				dir := t.TempDir()
 
-			ctlr.Config.Storage.RootDirectory = dir
-			ctlr.Config.HTTP.ExternalURL = testcase.externalURL
-			ctlr.Config.HTTP.Address = testcase.address
-			cm := test.NewControllerManager(ctlr)
+				ctlr.Config.Storage.RootDirectory = dir
+				ctlr.Config.HTTP.ExternalURL = testcase.externalURL
+				ctlr.Config.HTTP.Address = testcase.address
+				cm := test.NewControllerManager(ctlr)
 
-			cm.StartServer()
-			defer cm.StopServer()
-			test.WaitTillServerReady(baseURL)
+				cm.StartServer()
+				defer cm.StopServer()
+				test.WaitTillServerReady(baseURL)
 
-			Convey("browser client requests", t, func() {
-				Convey("login with no provider supplied", func() {
-					client := resty.New()
-					client.SetRedirectPolicy(test.CustomRedirectPolicy(20))
-					// first login user
-					resp, err := client.R().
-						SetHeader(constants.SessionClientHeaderName, constants.SessionClientHeaderValue).
-						SetQueryParam("provider", "unknown").
-						Get(baseURL + constants.LoginPath)
-					So(err, ShouldBeNil)
-					So(resp, ShouldNotBeNil)
-					So(resp.StatusCode(), ShouldEqual, http.StatusBadRequest)
-				})
-
-				Convey("login with openid and get catalog with session", func() {
-					client := resty.New()
-					client.SetRedirectPolicy(test.CustomRedirectPolicy(20))
-
-					Convey("with callback_ui value provided", func() {
+				Convey("browser client requests", func() {
+					Convey("login with no provider supplied", func() {
+						client := resty.New()
+						client.SetRedirectPolicy(test.CustomRedirectPolicy(20))
 						// first login user
 						resp, err := client.R().
 							SetHeader(constants.SessionClientHeaderName, constants.SessionClientHeaderValue).
-							SetQueryParam("provider", "oidc").
-							SetQueryParam("callback_ui", baseURL+"/v2/").
+							SetQueryParam("provider", "unknown").
 							Get(baseURL + constants.LoginPath)
 						So(err, ShouldBeNil)
 						So(resp, ShouldNotBeNil)
-						So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+						So(resp.StatusCode(), ShouldEqual, http.StatusBadRequest)
 					})
 
-					// first login user
-					resp, err := client.R().
-						SetHeader(constants.SessionClientHeaderName, constants.SessionClientHeaderValue).
-						SetQueryParam("provider", "oidc").
-						Get(baseURL + constants.LoginPath)
-					So(err, ShouldBeNil)
-					So(resp, ShouldNotBeNil)
-					So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
+					//nolint: dupl
+					Convey("make sure sessions are not used without UI header value", func() {
+						sessionsNo, err := getNumberOfSessions(conf.Storage.RootDirectory)
+						So(err, ShouldBeNil)
+						So(sessionsNo, ShouldEqual, 0)
 
-					client.SetCookies(resp.Cookies())
+						client := resty.New()
 
-					// call endpoint with session (added to client after previous request)
-					resp, err = client.R().
-						SetHeader(constants.SessionClientHeaderName, constants.SessionClientHeaderValue).
-						Get(baseURL + "/v2/_catalog")
-					So(err, ShouldBeNil)
-					So(resp, ShouldNotBeNil)
-					So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+						// without header should not create session
+						resp, err := client.R().SetBasicAuth(htpasswdUsername, passphrase).Get(baseURL + "/v2/")
+						So(err, ShouldBeNil)
+						So(resp, ShouldNotBeNil)
+						So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
-					// logout with options method for coverage
-					resp, err = client.R().
-						SetHeader(constants.SessionClientHeaderName, constants.SessionClientHeaderValue).
-						Options(baseURL + constants.LogoutPath)
-					So(err, ShouldBeNil)
-					So(resp, ShouldNotBeNil)
+						sessionsNo, err = getNumberOfSessions(conf.Storage.RootDirectory)
+						So(err, ShouldBeNil)
+						So(sessionsNo, ShouldEqual, 0)
 
-					// logout user
-					resp, err = client.R().
-						SetHeader(constants.SessionClientHeaderName, constants.SessionClientHeaderValue).
-						Post(baseURL + constants.LogoutPath)
-					So(err, ShouldBeNil)
-					So(resp, ShouldNotBeNil)
-					So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+						client.SetHeader(constants.SessionClientHeaderName, constants.SessionClientHeaderValue)
 
-					// calling endpoint should fail with unauthorized access
-					resp, err = client.R().
-						SetHeader(constants.SessionClientHeaderName, constants.SessionClientHeaderValue).
-						Get(baseURL + "/v2/_catalog")
-					So(err, ShouldBeNil)
-					So(resp, ShouldNotBeNil)
-					So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
-				})
+						resp, err = client.R().SetBasicAuth(htpasswdUsername, passphrase).Get(baseURL + "/v2/")
+						So(err, ShouldBeNil)
+						So(resp, ShouldNotBeNil)
+						So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
-				//nolint: dupl
-				Convey("login with basic auth(htpasswd) and get catalog with session", func() {
-					client := resty.New()
+						sessionsNo, err = getNumberOfSessions(conf.Storage.RootDirectory)
+						So(err, ShouldBeNil)
+						So(sessionsNo, ShouldEqual, 1)
 
-					// without creds, should get access error
-					resp, err := client.R().Get(baseURL + "/v2/")
-					So(err, ShouldBeNil)
-					So(resp, ShouldNotBeNil)
-					So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
-					var e apiErr.Error
-					err = json.Unmarshal(resp.Body(), &e)
-					So(err, ShouldBeNil)
+						// set cookies
+						client.SetCookies(resp.Cookies())
 
-					// first login user
-					// with creds, should get expected status code
-					resp, err = client.R().SetBasicAuth(htpasswdUsername, passphrase).Get(baseURL)
-					So(err, ShouldBeNil)
-					So(resp, ShouldNotBeNil)
-					So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+						// should get same cookie
+						resp, err = client.R().SetBasicAuth(htpasswdUsername, passphrase).Get(baseURL + "/v2/")
+						So(err, ShouldBeNil)
+						So(resp, ShouldNotBeNil)
+						So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
-					resp, err = client.R().SetBasicAuth(htpasswdUsername, passphrase).Get(baseURL + "/v2/")
-					So(err, ShouldBeNil)
-					So(resp, ShouldNotBeNil)
-					So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+						sessionsNo, err = getNumberOfSessions(conf.Storage.RootDirectory)
+						So(err, ShouldBeNil)
+						So(sessionsNo, ShouldEqual, 1)
 
-					resp, err = client.R().
-						SetBasicAuth(htpasswdUsername, passphrase).
-						Get(baseURL + constants.FullMgmt)
-					So(err, ShouldBeNil)
-					So(resp, ShouldNotBeNil)
-					So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+						resp, err = client.R().
+							SetBasicAuth(htpasswdUsername, passphrase).
+							Get(baseURL + constants.FullMgmt)
+						So(err, ShouldBeNil)
+						So(resp, ShouldNotBeNil)
+						So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
-					client.SetCookies(resp.Cookies())
+						client.SetCookies(resp.Cookies())
 
-					// call endpoint with session, without credentials, (added to client after previous request)
-					resp, err = client.R().
-						SetHeader(constants.SessionClientHeaderName, constants.SessionClientHeaderValue).
-						Get(baseURL + "/v2/_catalog")
-					So(err, ShouldBeNil)
-					So(resp, ShouldNotBeNil)
-					So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+						// call endpoint with session, without credentials, (added to client after previous request)
+						resp, err = client.R().
+							Get(baseURL + "/v2/_catalog")
+						So(err, ShouldBeNil)
+						So(resp, ShouldNotBeNil)
+						So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
-					resp, err = client.R().
-						SetHeader(constants.SessionClientHeaderName, constants.SessionClientHeaderValue).
-						Get(baseURL + constants.FullMgmt)
-					So(err, ShouldBeNil)
-					So(resp, ShouldNotBeNil)
-					So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+						resp, err = client.R().SetBasicAuth(htpasswdUsername, passphrase).Get(baseURL + "/v2/")
+						So(err, ShouldBeNil)
+						So(resp, ShouldNotBeNil)
+						So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
-					// logout user
-					resp, err = client.R().
-						SetHeader(constants.SessionClientHeaderName, constants.SessionClientHeaderValue).
-						Post(baseURL + constants.LogoutPath)
-					So(err, ShouldBeNil)
-					So(resp, ShouldNotBeNil)
-					So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+						sessionsNo, err = getNumberOfSessions(conf.Storage.RootDirectory)
+						So(err, ShouldBeNil)
+						So(sessionsNo, ShouldEqual, 1)
+					})
 
-					// calling endpoint should fail with unauthorized access
-					resp, err = client.R().
-						SetHeader(constants.SessionClientHeaderName, constants.SessionClientHeaderValue).
-						Get(baseURL + "/v2/_catalog")
-					So(err, ShouldBeNil)
-					So(resp, ShouldNotBeNil)
-					So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
-				})
+					Convey("login with openid and get catalog with session", func() {
+						client := resty.New()
+						client.SetRedirectPolicy(test.CustomRedirectPolicy(20))
+						client.SetHeader(constants.SessionClientHeaderName, constants.SessionClientHeaderValue)
 
-				//nolint: dupl
-				Convey("login with ldap and get catalog", func() {
-					client := resty.New()
+						Convey("with callback_ui value provided", func() {
+							// first login user
+							resp, err := client.R().
+								SetQueryParam("provider", "oidc").
+								SetQueryParam("callback_ui", baseURL+"/v2/").
+								Get(baseURL + constants.LoginPath)
+							So(err, ShouldBeNil)
+							So(resp, ShouldNotBeNil)
+							So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+						})
 
-					// without creds, should get access error
-					resp, err := client.R().Get(baseURL + "/v2/")
-					So(err, ShouldBeNil)
-					So(resp, ShouldNotBeNil)
-					So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
-					var e apiErr.Error
-					err = json.Unmarshal(resp.Body(), &e)
-					So(err, ShouldBeNil)
+						// first login user
+						resp, err := client.R().
+							SetQueryParam("provider", "oidc").
+							Get(baseURL + constants.LoginPath)
+						So(err, ShouldBeNil)
+						So(resp, ShouldNotBeNil)
+						So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
 
-					// first login user
-					// with creds, should get expected status code
-					resp, err = client.R().SetBasicAuth(username, passphrase).Get(baseURL)
-					So(err, ShouldBeNil)
-					So(resp, ShouldNotBeNil)
-					So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+						client.SetCookies(resp.Cookies())
 
-					resp, err = client.R().SetBasicAuth(username, passphrase).Get(baseURL + "/v2/")
-					So(err, ShouldBeNil)
-					So(resp, ShouldNotBeNil)
-					So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+						// call endpoint with session (added to client after previous request)
+						resp, err = client.R().
+							Get(baseURL + "/v2/_catalog")
+						So(err, ShouldBeNil)
+						So(resp, ShouldNotBeNil)
+						So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
-					resp, err = client.R().
-						SetBasicAuth(username, passphrase).
-						Get(baseURL + constants.FullMgmt)
-					So(err, ShouldBeNil)
-					So(resp, ShouldNotBeNil)
-					So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+						// logout with options method for coverage
+						resp, err = client.R().
+							Options(baseURL + constants.LogoutPath)
+						So(err, ShouldBeNil)
+						So(resp, ShouldNotBeNil)
 
-					client.SetCookies(resp.Cookies())
+						// logout user
+						resp, err = client.R().
+							Post(baseURL + constants.LogoutPath)
+						So(err, ShouldBeNil)
+						So(resp, ShouldNotBeNil)
+						So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
-					// call endpoint with session, without credentials, (added to client after previous request)
-					resp, err = client.R().
-						SetHeader(constants.SessionClientHeaderName, constants.SessionClientHeaderValue).
-						Get(baseURL + "/v2/_catalog")
-					So(err, ShouldBeNil)
-					So(resp, ShouldNotBeNil)
-					So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+						// calling endpoint should fail with unauthorized access
+						resp, err = client.R().
+							Get(baseURL + "/v2/_catalog")
+						So(err, ShouldBeNil)
+						So(resp, ShouldNotBeNil)
+						So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
+					})
 
-					resp, err = client.R().
-						SetHeader(constants.SessionClientHeaderName, constants.SessionClientHeaderValue).
-						Get(baseURL + constants.FullMgmt)
-					So(err, ShouldBeNil)
-					So(resp, ShouldNotBeNil)
-					So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+					//nolint: dupl
+					Convey("login with basic auth(htpasswd) and get catalog with session", func() {
+						client := resty.New()
+						client.SetHeader(constants.SessionClientHeaderName, constants.SessionClientHeaderValue)
 
-					// logout user
-					resp, err = client.R().
-						SetHeader(constants.SessionClientHeaderName, constants.SessionClientHeaderValue).
-						Post(baseURL + constants.LogoutPath)
-					So(err, ShouldBeNil)
-					So(resp, ShouldNotBeNil)
-					So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+						// without creds, should get access error
+						resp, err := client.R().Get(baseURL + "/v2/")
+						So(err, ShouldBeNil)
+						So(resp, ShouldNotBeNil)
+						So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
+						var e apiErr.Error
+						err = json.Unmarshal(resp.Body(), &e)
+						So(err, ShouldBeNil)
 
-					// calling endpoint should fail with unauthorized access
-					resp, err = client.R().
-						SetHeader(constants.SessionClientHeaderName, constants.SessionClientHeaderValue).
-						Get(baseURL + "/v2/_catalog")
-					So(err, ShouldBeNil)
-					So(resp, ShouldNotBeNil)
-					So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
-				})
+						// first login user
+						// with creds, should get expected status code
+						resp, err = client.R().SetBasicAuth(htpasswdUsername, passphrase).Get(baseURL)
+						So(err, ShouldBeNil)
+						So(resp, ShouldNotBeNil)
+						So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
-				Convey("unauthenticated catalog request", func() {
-					client := resty.New()
+						resp, err = client.R().SetBasicAuth(htpasswdUsername, passphrase).Get(baseURL + "/v2/")
+						So(err, ShouldBeNil)
+						So(resp, ShouldNotBeNil)
+						So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
-					// mgmt should work both unauthenticated and authenticated
-					resp, err := client.R().
-						Get(baseURL + constants.FullMgmt)
-					So(err, ShouldBeNil)
-					So(resp, ShouldNotBeNil)
-					So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+						resp, err = client.R().
+							SetBasicAuth(htpasswdUsername, passphrase).
+							Get(baseURL + constants.FullMgmt)
+						So(err, ShouldBeNil)
+						So(resp, ShouldNotBeNil)
+						So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
-					// call endpoint without session
-					resp, err = client.R().
-						Get(baseURL + "/v2/_catalog")
-					So(err, ShouldBeNil)
-					So(resp, ShouldNotBeNil)
-					So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
+						client.SetCookies(resp.Cookies())
+
+						// call endpoint with session, without credentials, (added to client after previous request)
+						resp, err = client.R().
+							Get(baseURL + "/v2/_catalog")
+						So(err, ShouldBeNil)
+						So(resp, ShouldNotBeNil)
+						So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+						resp, err = client.R().
+							Get(baseURL + constants.FullMgmt)
+						So(err, ShouldBeNil)
+						So(resp, ShouldNotBeNil)
+						So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+						// logout user
+						resp, err = client.R().
+							Post(baseURL + constants.LogoutPath)
+						So(err, ShouldBeNil)
+						So(resp, ShouldNotBeNil)
+						So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+						// calling endpoint should fail with unauthorized access
+						resp, err = client.R().
+							Get(baseURL + "/v2/_catalog")
+						So(err, ShouldBeNil)
+						So(resp, ShouldNotBeNil)
+						So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
+					})
+
+					//nolint: dupl
+					Convey("login with ldap and get catalog", func() {
+						client := resty.New()
+						client.SetHeader(constants.SessionClientHeaderName, constants.SessionClientHeaderValue)
+
+						// without creds, should get access error
+						resp, err := client.R().Get(baseURL + "/v2/")
+						So(err, ShouldBeNil)
+						So(resp, ShouldNotBeNil)
+						So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
+						var e apiErr.Error
+						err = json.Unmarshal(resp.Body(), &e)
+						So(err, ShouldBeNil)
+
+						// first login user
+						// with creds, should get expected status code
+						resp, err = client.R().SetBasicAuth(username, passphrase).Get(baseURL)
+						So(err, ShouldBeNil)
+						So(resp, ShouldNotBeNil)
+						So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+						resp, err = client.R().SetBasicAuth(username, passphrase).Get(baseURL + "/v2/")
+						So(err, ShouldBeNil)
+						So(resp, ShouldNotBeNil)
+						So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+						resp, err = client.R().
+							SetBasicAuth(username, passphrase).
+							Get(baseURL + constants.FullMgmt)
+						So(err, ShouldBeNil)
+						So(resp, ShouldNotBeNil)
+						So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+						client.SetCookies(resp.Cookies())
+
+						// call endpoint with session, without credentials, (added to client after previous request)
+						resp, err = client.R().
+							Get(baseURL + "/v2/_catalog")
+						So(err, ShouldBeNil)
+						So(resp, ShouldNotBeNil)
+						So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+						resp, err = client.R().
+							Get(baseURL + constants.FullMgmt)
+						So(err, ShouldBeNil)
+						So(resp, ShouldNotBeNil)
+						So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+						// logout user
+						resp, err = client.R().
+							Post(baseURL + constants.LogoutPath)
+						So(err, ShouldBeNil)
+						So(resp, ShouldNotBeNil)
+						So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+						// calling endpoint should fail with unauthorized access
+						resp, err = client.R().
+							Get(baseURL + "/v2/_catalog")
+						So(err, ShouldBeNil)
+						So(resp, ShouldNotBeNil)
+						So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
+					})
+
+					Convey("unauthenticated catalog request", func() {
+						client := resty.New()
+
+						// mgmt should work both unauthenticated and authenticated
+						resp, err := client.R().
+							Get(baseURL + constants.FullMgmt)
+						So(err, ShouldBeNil)
+						So(resp, ShouldNotBeNil)
+						So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+						// call endpoint without session
+						resp, err = client.R().
+							Get(baseURL + "/v2/_catalog")
+						So(err, ShouldBeNil)
+						So(resp, ShouldNotBeNil)
+						So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
+					})
 				})
 			})
 		})
@@ -3273,6 +3332,7 @@ func TestAuthnSessionErrors(t *testing.T) {
 			}()
 
 			client := resty.New()
+			client.SetHeader(constants.SessionClientHeaderName, constants.SessionClientHeaderValue)
 
 			// first htpasswd saveSessionLoggedUser() error
 			resp, err := client.R().
@@ -9763,4 +9823,21 @@ func getEmptyImageConfig() ([]byte, godigest.Digest) {
 	configBlobDigestRaw := godigest.FromBytes(configBlobContent)
 
 	return configBlobContent, configBlobDigestRaw
+}
+
+func getNumberOfSessions(rootDir string) (int, error) {
+	rootDirContents, err := os.ReadDir(path.Join(rootDir, "_sessions"))
+	if err != nil {
+		return -1, err
+	}
+
+	sessionsNo := 0
+
+	for _, file := range rootDirContents {
+		if !file.IsDir() && strings.HasPrefix(file.Name(), "session_") {
+			sessionsNo += 1
+		}
+	}
+
+	return sessionsNo, nil
 }
