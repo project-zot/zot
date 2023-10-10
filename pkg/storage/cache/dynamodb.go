@@ -26,11 +26,11 @@ type DynamoDBDriverParameters struct {
 }
 
 type Blob struct {
-	Digest   string   `dynamodbav:"Digest,string"`
-	BlobPath []string `dynamodbav:"BlobPath,stringset"`
+	Digest            string   `dynamodbav:"Digest,string"`
+	DuplicateBlobPath []string `dynamodbav:"DuplicateBlobPath,stringset"`
+	OriginalBlobPath  string   `dynamodbav:"OriginalBlobPath,string"`
 }
 
-// Use ONLY for tests.
 func (d *DynamoDBDriver) NewTable(tableName string) error {
 	//nolint:gomnd
 	_, err := d.client.CreateTable(context.TODO(), &dynamodb.CreateTableInput{
@@ -107,7 +107,7 @@ func (d *DynamoDBDriver) Name() string {
 	return "dynamodb"
 }
 
-// Returns the first path of the blob if it exists.
+// Returns the original blob.
 func (d *DynamoDBDriver) GetBlob(digest godigest.Digest) (string, error) {
 	resp, err := d.client.GetItem(context.TODO(), &dynamodb.GetItemInput{
 		TableName: aws.String(d.tableName),
@@ -129,11 +129,7 @@ func (d *DynamoDBDriver) GetBlob(digest godigest.Digest) (string, error) {
 
 	_ = attributevalue.UnmarshalMap(resp.Item, &out)
 
-	if len(out.BlobPath) == 0 {
-		return "", nil
-	}
-
-	return out.BlobPath[0], nil
+	return out.OriginalBlobPath, nil
 }
 
 func (d *DynamoDBDriver) PutBlob(digest godigest.Digest, path string) error {
@@ -143,17 +139,18 @@ func (d *DynamoDBDriver) PutBlob(digest godigest.Digest, path string) error {
 		return zerr.ErrEmptyValue
 	}
 
-	marshaledKey, _ := attributevalue.MarshalMap(map[string]interface{}{"Digest": digest.String()})
-	expression := "ADD BlobPath :i"
+	if originBlob, _ := d.GetBlob(digest); originBlob == "" {
+		// first entry, so add original blob
+		if err := d.putOriginBlob(digest, path); err != nil {
+			return err
+		}
+	}
+
+	expression := "ADD DuplicateBlobPath :i"
 	attrPath := types.AttributeValueMemberSS{Value: []string{path}}
 
-	if _, err := d.client.UpdateItem(context.TODO(), &dynamodb.UpdateItemInput{
-		Key:                       marshaledKey,
-		TableName:                 &d.tableName,
-		UpdateExpression:          &expression,
-		ExpressionAttributeValues: map[string]types.AttributeValue{":i": &attrPath},
-	}); err != nil {
-		d.log.Error().Err(err)
+	if err := d.updateItem(digest, expression, map[string]types.AttributeValue{":i": &attrPath}); err != nil {
+		d.log.Error().Err(err).Str("digest", digest.String()).Str("path", path).Msg("unable to put blob")
 
 		return err
 	}
@@ -184,7 +181,11 @@ func (d *DynamoDBDriver) HasBlob(digest godigest.Digest, path string) bool {
 
 	_ = attributevalue.UnmarshalMap(resp.Item, &out)
 
-	for _, item := range out.BlobPath {
+	if out.OriginalBlobPath == path {
+		return true
+	}
+
+	for _, item := range out.DuplicateBlobPath {
 		if item == path {
 			return true
 		}
@@ -198,24 +199,28 @@ func (d *DynamoDBDriver) HasBlob(digest godigest.Digest, path string) bool {
 func (d *DynamoDBDriver) DeleteBlob(digest godigest.Digest, path string) error {
 	marshaledKey, _ := attributevalue.MarshalMap(map[string]interface{}{"Digest": digest.String()})
 
-	expression := "DELETE BlobPath :i"
+	expression := "DELETE DuplicateBlobPath :i"
 	attrPath := types.AttributeValueMemberSS{Value: []string{path}}
 
-	_, err := d.client.UpdateItem(context.TODO(), &dynamodb.UpdateItemInput{
-		Key:                       marshaledKey,
-		TableName:                 &d.tableName,
-		UpdateExpression:          &expression,
-		ExpressionAttributeValues: map[string]types.AttributeValue{":i": &attrPath},
-	})
-	if err != nil {
+	if err := d.updateItem(digest, expression, map[string]types.AttributeValue{":i": &attrPath}); err != nil {
 		d.log.Error().Err(err).Str("digest", digest.String()).Str("path", path).Msg("unable to delete")
 
 		return err
 	}
 
-	result, _ := d.GetBlob(digest)
+	originBlob, _ := d.GetBlob(digest)
+	// if original blob is the one deleted
+	if originBlob == path {
+		// move duplicate blob to original, storage will move content here
+		originBlob, _ = d.getDuplicateBlob(digest)
+		if originBlob != "" {
+			if err := d.putOriginBlob(digest, originBlob); err != nil {
+				return err
+			}
+		}
+	}
 
-	if result == "" {
+	if originBlob == "" {
 		d.log.Debug().Str("digest", digest.String()).Str("path", path).Msg("deleting empty bucket")
 
 		_, _ = d.client.DeleteItem(context.TODO(), &dynamodb.DeleteItemInput{
@@ -225,4 +230,60 @@ func (d *DynamoDBDriver) DeleteBlob(digest godigest.Digest, path string) error {
 	}
 
 	return nil
+}
+
+func (d *DynamoDBDriver) getDuplicateBlob(digest godigest.Digest) (string, error) {
+	resp, err := d.client.GetItem(context.TODO(), &dynamodb.GetItemInput{
+		TableName: aws.String(d.tableName),
+		Key: map[string]types.AttributeValue{
+			"Digest": &types.AttributeValueMemberS{Value: digest.String()},
+		},
+	})
+	if err != nil {
+		d.log.Error().Err(err).Str("tableName", d.tableName).Msg("failed to get blob")
+
+		return "", err
+	}
+
+	out := Blob{}
+
+	if resp.Item == nil {
+		return "", zerr.ErrCacheMiss
+	}
+
+	_ = attributevalue.UnmarshalMap(resp.Item, &out)
+
+	if len(out.DuplicateBlobPath) == 0 {
+		return "", nil
+	}
+
+	return out.DuplicateBlobPath[0], nil
+}
+
+func (d *DynamoDBDriver) putOriginBlob(digest godigest.Digest, path string) error {
+	expression := "SET OriginalBlobPath = :s"
+	attrPath := types.AttributeValueMemberS{Value: path}
+
+	if err := d.updateItem(digest, expression, map[string]types.AttributeValue{":s": &attrPath}); err != nil {
+		d.log.Error().Err(err).Str("digest", digest.String()).Str("path", path).Msg("unable to put original blob")
+
+		return err
+	}
+
+	return nil
+}
+
+func (d *DynamoDBDriver) updateItem(digest godigest.Digest, expression string,
+	expressionAttVals map[string]types.AttributeValue,
+) error {
+	marshaledKey, _ := attributevalue.MarshalMap(map[string]interface{}{"Digest": digest.String()})
+
+	_, err := d.client.UpdateItem(context.TODO(), &dynamodb.UpdateItemInput{
+		Key:                       marshaledKey,
+		TableName:                 &d.tableName,
+		UpdateExpression:          &expression,
+		ExpressionAttributeValues: expressionAttVals,
+	})
+
+	return err
 }
