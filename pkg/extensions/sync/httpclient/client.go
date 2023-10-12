@@ -73,6 +73,9 @@ func (httpClient *Client) SetConfig(config Config) error {
 }
 
 func (httpClient *Client) Ping() bool {
+	httpClient.lock.RLock()
+	defer httpClient.lock.RUnlock()
+
 	pingURL := *httpClient.url
 
 	pingURL = *pingURL.JoinPath("/v2/")
