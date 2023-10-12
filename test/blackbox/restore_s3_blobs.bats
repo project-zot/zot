@@ -12,7 +12,7 @@ function setup_file() {
     fi
 
     # Download test data to folder common for the entire suite, not just this file
-    skopeo --insecure-policy copy --format=oci docker://ghcr.io/project-zot/golang:1.20 oci:${TEST_DATA_DIR}/golang:1.20
+    skopeo --insecure-policy copy --format=oci docker://ghcr.io/project-zot/test-images/alpine:3.17.3 oci:${TEST_DATA_DIR}/alpine:1
     # Setup zot server
     local zot_root_dir=${BATS_FILE_TMPDIR}/zot
     local zot_config_file_dedupe=${BATS_FILE_TMPDIR}/zot_config_dedupe.json
@@ -20,6 +20,7 @@ function setup_file() {
     local ZOT_LOG_FILE_DEDUPE=${BATS_FILE_TMPDIR}/zot-log-dedupe.json
     local ZOT_LOG_FILE_NODEDUPE=${BATS_FILE_TMPDIR}/zot-log-nodedupe.json
 
+    touch ${ZOT_LOG_FILE_NODEDUPE}
     mkdir -p ${zot_root_dir}
 
     cat > ${zot_config_file_dedupe}<<EOF
@@ -62,6 +63,7 @@ EOF
     "storage": {
         "rootDirectory": "${zot_root_dir}",
         "dedupe": false,
+        "gc": false,
         "storageDriver": {
             "name": "s3",
             "rootdirectory": "/zot",
@@ -106,8 +108,8 @@ function teardown_file() {
     for i in {1..50}
     do
         run skopeo --insecure-policy copy --dest-tls-verify=false \
-            oci:${TEST_DATA_DIR}/golang:1.20 \
-            docker://127.0.0.1:8080/golang${i}:1.20
+            oci:${TEST_DATA_DIR}/alpine:1 \
+            docker://127.0.0.1:8080/alpine${i}:1
         [ "$status" -eq 0 ]
     done
 }
@@ -124,10 +126,12 @@ function teardown_file() {
 
     # start with dedupe disabled
     zot_serve ${zot_config_file_nodedupe}
-    wait_zot_reachable 8080
+
+    sleep 1 # if we wait for zot to be reachable we may not catch the log message
+
     start=`date +%s`
     echo "waiting for restoring blobs task to finish" >&3
-    run wait_for_string "dedupe rebuild: finished" ${ZOT_LOG_FILE} "10m"
+    run wait_for_string "dedupe rebuild: finished" ${ZOT_LOG_FILE} "5m"
     [ "$status" -eq 0 ]
 
     end=`date +%s`
@@ -138,18 +142,20 @@ function teardown_file() {
 }
 
 @test "pulling a previous deduped image should work" {
-    # golang1 should have original blobs already
+    wait_zot_reachable 8080
+
+    # alpine1 should have original blobs already
     echo "pulling first image" >&3
     run skopeo --insecure-policy copy --src-tls-verify=false \
-        docker://127.0.0.1:8080/golang1:1.20 \
-        oci:${TEST_DATA_DIR}/golang1:1.20
+        docker://127.0.0.1:8080/alpine1:1 \
+        oci:${TEST_DATA_DIR}/alpine1:1
     [ "$status" -eq 0 ]
 
     echo "pulling second image" >&3
-    # golang2 should have original blobs after restoring blobs
+    # alpine2 should have original blobs after restoring blobs
     run skopeo --insecure-policy copy --src-tls-verify=false \
-        docker://127.0.0.1:8080/golang2:1.20 \
-        oci:${TEST_DATA_DIR}/golang2:1.20
+        docker://127.0.0.1:8080/alpine2:1 \
+        oci:${TEST_DATA_DIR}/alpine2:1
     [ "$status" -eq 0 ]
 }
 

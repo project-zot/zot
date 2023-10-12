@@ -24,7 +24,7 @@ function setup_file() {
         exit 1
     fi
     # Download test data to folder common for the entire suite, not just this file
-    skopeo --insecure-policy copy --format=oci docker://ghcr.io/project-zot/golang:1.20 oci:${TEST_DATA_DIR}/golang:1.20
+    skopeo --insecure-policy copy --format=oci docker://ghcr.io/project-zot/test-images/alpine:3.17.3 oci:${TEST_DATA_DIR}/alpine:1
     # Setup zot server
     local zot_root_dir=${BATS_FILE_TMPDIR}/zot
     local zot_config_file=${BATS_FILE_TMPDIR}/zot_config.json
@@ -67,8 +67,8 @@ function teardown_file() {
 @test "push image - dedupe not running" {
     start=`date +%s`
     run skopeo --insecure-policy copy --dest-tls-verify=false \
-        oci:${TEST_DATA_DIR}/golang:1.20 \
-        docker://127.0.0.1:8080/golang:1.20
+        oci:${TEST_DATA_DIR}/alpine:1 \
+        docker://127.0.0.1:8080/alpine:1
     [ "$status" -eq 0 ]
     end=`date +%s`
 
@@ -77,34 +77,34 @@ function teardown_file() {
 
     run curl http://127.0.0.1:8080/v2/_catalog
     [ "$status" -eq 0 ]
-    [ $(echo "${lines[-1]}" | jq '.repositories[]') = '"golang"' ]
-    run curl http://127.0.0.1:8080/v2/golang/tags/list
+    [ $(echo "${lines[-1]}" | jq '.repositories[]') = '"alpine"' ]
+    run curl http://127.0.0.1:8080/v2/alpine/tags/list
     [ "$status" -eq 0 ]
-    [ $(echo "${lines[-1]}" | jq '.tags[]') = '"1.20"' ]
+    [ $(echo "${lines[-1]}" | jq '.tags[]') = '"1"' ]
 }
 
 @test "pull image - dedupe not running" {
     local oci_data_dir=${BATS_FILE_TMPDIR}/oci
     start=`date +%s`
     run skopeo --insecure-policy copy --src-tls-verify=false \
-        docker://127.0.0.1:8080/golang:1.20 \
-        oci:${oci_data_dir}/golang:1.20
+        docker://127.0.0.1:8080/alpine:1 \
+        oci:${oci_data_dir}/alpine:1
     [ "$status" -eq 0 ]
     end=`date +%s`
 
     runtime=$((end-start))
     echo "pull image exec time: $runtime sec" >&3
-    run cat ${BATS_FILE_TMPDIR}/oci/golang/index.json
+    run cat ${BATS_FILE_TMPDIR}/oci/alpine/index.json
     [ "$status" -eq 0 ]
-    [ $(echo "${lines[-1]}" | jq '.manifests[].annotations."org.opencontainers.image.ref.name"') = '"1.20"' ]
+    [ $(echo "${lines[-1]}" | jq '.manifests[].annotations."org.opencontainers.image.ref.name"') = '"1"' ]
 }
 
 @test "push 50 images with dedupe disabled" {
     for i in {1..50}
     do
         run skopeo --insecure-policy copy --dest-tls-verify=false \
-            oci:${TEST_DATA_DIR}/golang:1.20 \
-            docker://127.0.0.1:8080/golang${i}:1.20
+            oci:${TEST_DATA_DIR}/alpine:1 \
+            docker://127.0.0.1:8080/alpine${i}:1
         [ "$status" -eq 0 ]
     done
 }
@@ -119,6 +119,7 @@ function teardown_file() {
     sed -i 's/false/true/g' ${zot_config_file}
 
     zot_serve ${ZOT_PATH} ${zot_config_file}
+
     wait_zot_reachable 8080
     # deduping will now run in background (task scheduler) while we push images, shouldn't interfere
 }
@@ -126,8 +127,8 @@ function teardown_file() {
 @test "push image - dedupe running" {
     start=`date +%s`
     run skopeo --insecure-policy copy --dest-tls-verify=false \
-        oci:${TEST_DATA_DIR}/golang:1.20 \
-        docker://127.0.0.1:8080/dedupe/golang:1.20
+        oci:${TEST_DATA_DIR}/alpine:1 \
+        docker://127.0.0.1:8080/dedupe/alpine:1
     [ "$status" -eq 0 ]
     end=`date +%s`
 
@@ -142,8 +143,8 @@ function teardown_file() {
 
     start=`date +%s`
     run skopeo --insecure-policy copy --src-tls-verify=false \
-        docker://127.0.0.1:8080/dedupe/golang:1.20 \
-        oci:${oci_data_dir}/dedupe/golang:1.20
+        docker://127.0.0.1:8080/dedupe/alpine:1 \
+        oci:${oci_data_dir}/dedupe/alpine:1
     [ "$status" -eq 0 ]
     end=`date +%s`
     runtime=$((end-start))
@@ -158,8 +159,8 @@ function teardown_file() {
 
     start=`date +%s`
     run skopeo --insecure-policy copy --src-tls-verify=false \
-        docker://127.0.0.1:8080/golang2:1.20 \
-        oci:${oci_data_dir}/dedupe/golang2:1.20
+        docker://127.0.0.1:8080/alpine2:1 \
+        oci:${oci_data_dir}/dedupe/alpine2:1
     [ "$status" -eq 0 ]
     end=`date +%s`
     runtime=$((end-start))
@@ -179,9 +180,6 @@ function teardown_file() {
     runtime=$((end-start))
 
     echo "push image index exec time: $runtime sec" >&3
-    run curl http://127.0.0.1:8080/v2/_catalog
-    [ "$status" -eq 0 ]
-    [ $(echo "${lines[-1]}" | jq '.repositories[0]') = '"busybox"' ]
     run curl http://127.0.0.1:8080/v2/busybox/tags/list
     [ "$status" -eq 0 ]
     [ $(echo "${lines[-1]}" | jq '.tags[]') = '"latest"' ]
@@ -243,16 +241,16 @@ function teardown_file() {
     # attach signature
     echo "{\"artifact\": \"\", \"signature\": \"pat hancock\"}" > ${BATS_FILE_TMPDIR}/signature.json
     start=`date +%s`
-    run oras attach --plain-http 127.0.0.1:8080/golang:1.20 --image-spec v1.1-image --artifact-type 'signature/example' ${BATS_FILE_TMPDIR}/signature.json:application/json
+    run oras attach --plain-http 127.0.0.1:8080/alpine:1 --image-spec v1.1-image --artifact-type 'signature/example' ${BATS_FILE_TMPDIR}/signature.json:application/json
     [ "$status" -eq 0 ]
     end=`date +%s`
     runtime=$((end-start))
 
     echo "attach signature exec time: $runtime sec" >&3
     # attach sbom
-    echo "{\"version\": \"0.0.0.0\", \"artifact\": \"'127.0.0.1:8080/golang:1.20'\", \"contents\": \"good\"}" > ${BATS_FILE_TMPDIR}/sbom.json
+    echo "{\"version\": \"0.0.0.0\", \"artifact\": \"'127.0.0.1:8080/alpine:1'\", \"contents\": \"good\"}" > ${BATS_FILE_TMPDIR}/sbom.json
     start=`date +%s`
-    run oras attach --plain-http 127.0.0.1:8080/golang:1.20 --image-spec v1.1-image --artifact-type 'sbom/example' ${BATS_FILE_TMPDIR}/sbom.json:application/json
+    run oras attach --plain-http 127.0.0.1:8080/alpine:1 --image-spec v1.1-image --artifact-type 'sbom/example' ${BATS_FILE_TMPDIR}/sbom.json:application/json
     [ "$status" -eq 0 ]
     end=`date +%s`
     runtime=$((end-start))
@@ -262,7 +260,7 @@ function teardown_file() {
 
 @test "discover oras artifacts - dedupe running" {
     start=`date +%s`
-    run oras discover --plain-http -o json 127.0.0.1:8080/golang:1.20
+    run oras discover --plain-http -o json 127.0.0.1:8080/alpine:1
     [ "$status" -eq 0 ]
     end=`date +%s`
     runtime=$((end-start))
@@ -299,7 +297,7 @@ function teardown_file() {
     run regctl registry set localhost:8080 --tls disabled
     [ "$status" -eq 0 ]
     start=`date +%s`
-    run regctl image copy ocidir://${TEST_DATA_DIR}/golang:1.20 localhost:8080/test-regclient
+    run regctl image copy ocidir://${TEST_DATA_DIR}/alpine:1 localhost:8080/test-regclient
     [ "$status" -eq 0 ]
     end=`date +%s`
     runtime=$((end-start))
