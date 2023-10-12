@@ -1156,6 +1156,219 @@ func TestDeleteBlobsInUse(t *testing.T) {
 	}
 }
 
+func TestReuploadCorruptedBlob(t *testing.T) {
+	for _, testcase := range testCases {
+		testcase := testcase
+		t.Run(testcase.testCaseName, func(t *testing.T) {
+			var imgStore storageTypes.ImageStore
+			var testDir, tdir string
+			var store driver.StorageDriver
+			var driver storageTypes.Driver
+
+			log := log.Logger{Logger: zerolog.New(os.Stdout)}
+			metrics := monitoring.NewMetricsServer(false, log)
+
+			if testcase.storageType == storageConstants.S3StorageDriverName {
+				tskip.SkipS3(t)
+
+				uuid, err := guuid.NewV4()
+				if err != nil {
+					panic(err)
+				}
+
+				testDir = path.Join("/oci-repo-test", uuid.String())
+				tdir = t.TempDir()
+
+				store, imgStore, _ = createObjectsStore(testDir, tdir)
+				driver = s3.New(store)
+				defer cleanupStorage(store, testDir)
+			} else {
+				tdir = t.TempDir()
+				cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
+					RootDir:     tdir,
+					Name:        "cache",
+					UseRelPaths: true,
+				}, log)
+				driver = local.New(true)
+				imgStore = imagestore.NewImageStore(tdir, tdir, true,
+					true, log, metrics, nil, driver, cacheDriver)
+			}
+
+			Convey("Test errors paths", t, func() {
+				storeController := storage.StoreController{DefaultStore: imgStore}
+
+				image := CreateRandomImage()
+
+				err := WriteImageToFileSystem(image, repoName, tag, storeController)
+				So(err, ShouldBeNil)
+			})
+
+			Convey("Test reupload repair corrupted image", t, func() {
+				storeController := storage.StoreController{DefaultStore: imgStore}
+
+				image := CreateRandomImage()
+
+				err := WriteImageToFileSystem(image, repoName, tag, storeController)
+				So(err, ShouldBeNil)
+
+				blob := image.Layers[0]
+				blobDigest := godigest.FromBytes(blob)
+				blobSize := len(blob)
+				blobPath := imgStore.BlobPath(repoName, blobDigest)
+
+				ok, size, err := imgStore.CheckBlob(repoName, blobDigest)
+				So(ok, ShouldBeTrue)
+				So(size, ShouldEqual, blobSize)
+				So(err, ShouldBeNil)
+
+				_, err = driver.WriteFile(blobPath, []byte("corrupted"))
+				So(err, ShouldBeNil)
+
+				ok, size, err = imgStore.CheckBlob(repoName, blobDigest)
+				So(ok, ShouldBeFalse)
+				So(size, ShouldNotEqual, blobSize)
+				So(err, ShouldEqual, zerr.ErrBlobNotFound)
+
+				err = WriteImageToFileSystem(image, repoName, tag, storeController)
+				So(err, ShouldBeNil)
+
+				ok, size, _, err = imgStore.StatBlob(repoName, blobDigest)
+				So(ok, ShouldBeTrue)
+				So(blobSize, ShouldEqual, size)
+				So(err, ShouldBeNil)
+
+				ok, size, err = imgStore.CheckBlob(repoName, blobDigest)
+				So(ok, ShouldBeTrue)
+				So(size, ShouldEqual, blobSize)
+				So(err, ShouldBeNil)
+			})
+
+			Convey("Test reupload repair corrupted image index", t, func() {
+				storeController := storage.StoreController{DefaultStore: imgStore}
+
+				image := CreateRandomMultiarch()
+
+				tag := "index"
+
+				err := WriteMultiArchImageToFileSystem(image, repoName, tag, storeController)
+				So(err, ShouldBeNil)
+
+				blob := image.Images[0].Layers[0]
+				blobDigest := godigest.FromBytes(blob)
+				blobSize := len(blob)
+				blobPath := imgStore.BlobPath(repoName, blobDigest)
+
+				ok, size, err := imgStore.CheckBlob(repoName, blobDigest)
+				So(ok, ShouldBeTrue)
+				So(size, ShouldEqual, blobSize)
+				So(err, ShouldBeNil)
+
+				_, err = driver.WriteFile(blobPath, []byte("corrupted"))
+				So(err, ShouldBeNil)
+
+				ok, size, err = imgStore.CheckBlob(repoName, blobDigest)
+				So(ok, ShouldBeFalse)
+				So(size, ShouldNotEqual, blobSize)
+				So(err, ShouldEqual, zerr.ErrBlobNotFound)
+
+				err = WriteMultiArchImageToFileSystem(image, repoName, tag, storeController)
+				So(err, ShouldBeNil)
+
+				ok, size, _, err = imgStore.StatBlob(repoName, blobDigest)
+				So(ok, ShouldBeTrue)
+				So(blobSize, ShouldEqual, size)
+				So(err, ShouldBeNil)
+
+				ok, size, err = imgStore.CheckBlob(repoName, blobDigest)
+				So(ok, ShouldBeTrue)
+				So(size, ShouldEqual, blobSize)
+				So(err, ShouldBeNil)
+			})
+
+			Convey("Test reupload repair corrupted oras artifact", t, func() {
+				storeController := storage.StoreController{DefaultStore: imgStore}
+
+				image := CreateRandomImage()
+
+				tag := "oras-artifact"
+				err := WriteImageToFileSystem(image, repoName, tag, storeController)
+				So(err, ShouldBeNil)
+
+				body := []byte("this is a blob")
+				blobDigest := godigest.FromBytes(body)
+				blobPath := imgStore.BlobPath(repoName, blobDigest)
+				buf := bytes.NewBuffer(body)
+				blobSize := int64(buf.Len())
+
+				_, size, err := imgStore.FullBlobUpload(repoName, buf, blobDigest)
+				So(err, ShouldBeNil)
+				So(size, ShouldEqual, blobSize)
+
+				artifactManifest := artifactspec.Manifest{}
+				artifactType := "signature"
+				artifactManifest.ArtifactType = artifactType
+				artifactManifest.Subject = &artifactspec.Descriptor{
+					MediaType: ispec.MediaTypeImageManifest,
+					Digest:    image.Digest(),
+					Size:      image.ManifestDescriptor.Size,
+				}
+
+				artifactManifest.Blobs = []artifactspec.Descriptor{
+					{
+						Digest: blobDigest,
+						Size:   blobSize,
+					},
+				}
+
+				manBuf, err := json.Marshal(artifactManifest)
+				So(err, ShouldBeNil)
+
+				manBufLen := len(manBuf)
+				manDigest := godigest.FromBytes(manBuf)
+
+				_, _, err = imgStore.PutImageManifest(repoName, manDigest.String(), artifactspec.MediaTypeArtifactManifest, manBuf)
+				So(err, ShouldBeNil)
+
+				descriptors, err := imgStore.GetOrasReferrers(repoName, image.Digest(), artifactType)
+				So(err, ShouldBeNil)
+				So(descriptors, ShouldNotBeEmpty)
+				So(descriptors[0].ArtifactType, ShouldEqual, artifactType)
+				So(descriptors[0].MediaType, ShouldEqual, artifactspec.MediaTypeArtifactManifest)
+				So(descriptors[0].Size, ShouldEqual, manBufLen)
+				So(descriptors[0].Digest, ShouldEqual, manDigest)
+
+				ok, size, err := imgStore.CheckBlob(repoName, blobDigest)
+				So(ok, ShouldBeTrue)
+				So(size, ShouldEqual, blobSize)
+				So(err, ShouldBeNil)
+
+				_, err = driver.WriteFile(blobPath, []byte("corrupted"))
+				So(err, ShouldBeNil)
+
+				ok, size, err = imgStore.CheckBlob(repoName, blobDigest)
+				So(ok, ShouldBeFalse)
+				So(size, ShouldNotEqual, blobSize)
+				So(err, ShouldEqual, zerr.ErrBlobNotFound)
+
+				buf = bytes.NewBuffer(body)
+				_, size, err = imgStore.FullBlobUpload(repoName, buf, blobDigest)
+				So(err, ShouldBeNil)
+				So(size, ShouldEqual, blobSize)
+
+				ok, size, _, err = imgStore.StatBlob(repoName, blobDigest)
+				So(ok, ShouldBeTrue)
+				So(blobSize, ShouldEqual, size)
+				So(err, ShouldBeNil)
+
+				ok, size, err = imgStore.CheckBlob(repoName, blobDigest)
+				So(ok, ShouldBeTrue)
+				So(size, ShouldEqual, blobSize)
+				So(err, ShouldBeNil)
+			})
+		})
+	}
+}
+
 func TestStorageHandler(t *testing.T) {
 	for _, testcase := range testCases {
 		testcase := testcase

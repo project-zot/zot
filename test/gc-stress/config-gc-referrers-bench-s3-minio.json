@@ -4,8 +4,8 @@
         "rootDirectory": "/tmp/zot/s3",
         "gc": true,
         "gcReferrers": true,
-        "gcDelay": "3m",
-        "untaggedImageRetentionDelay": "3m",
+        "gcDelay": "4m",
+        "untaggedImageRetentionDelay": "4m",
         "gcInterval": "1s",
         "storageDriver": {
             "name": "s3",

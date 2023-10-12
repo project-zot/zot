@@ -818,7 +818,7 @@ func FuzzDedupeBlob(f *testing.F) {
 			t.Error(err)
 		}
 
-		err = imgStore.DedupeBlob(src, blobDigest, dst)
+		err = imgStore.DedupeBlob(src, blobDigest, "repoName", dst)
 		if err != nil {
 			t.Error(err)
 		}
@@ -1514,7 +1514,7 @@ func TestDedupe(t *testing.T) {
 	Convey("Dedupe", t, func(c C) {
 		Convey("Nil ImageStore", func() {
 			var is storageTypes.ImageStore
-			So(func() { _ = is.DedupeBlob("", "", "") }, ShouldPanic)
+			So(func() { _ = is.DedupeBlob("", "", "", "") }, ShouldPanic)
 		})
 
 		Convey("Valid ImageStore", func() {
@@ -1530,7 +1530,7 @@ func TestDedupe(t *testing.T) {
 
 			il := local.NewImageStore(dir, true, true, log, metrics, nil, cacheDriver)
 
-			So(il.DedupeBlob("", "", ""), ShouldNotBeNil)
+			So(il.DedupeBlob("", "", "", ""), ShouldNotBeNil)
 		})
 	})
 }

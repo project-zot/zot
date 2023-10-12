@@ -19,6 +19,7 @@ import (
 	"zotregistry.io/zot/pkg/storage"
 	"zotregistry.io/zot/pkg/storage/cache"
 	common "zotregistry.io/zot/pkg/storage/common"
+	"zotregistry.io/zot/pkg/storage/imagestore"
 	"zotregistry.io/zot/pkg/storage/local"
 	. "zotregistry.io/zot/pkg/test/image-utils"
 	"zotregistry.io/zot/pkg/test/mocks"
@@ -417,6 +418,87 @@ func TestGetImageIndexErrors(t *testing.T) {
 
 		_, err := common.GetImageIndex(imgStore, "zot-test", validDigest, log)
 		So(err, ShouldNotBeNil)
+	})
+}
+
+func TestGetBlobDescriptorFromRepo(t *testing.T) {
+	log := log.Logger{Logger: zerolog.New(os.Stdout)}
+	metrics := monitoring.NewMetricsServer(false, log)
+
+	tdir := t.TempDir()
+	cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
+		RootDir:     tdir,
+		Name:        "cache",
+		UseRelPaths: true,
+	}, log)
+
+	driver := local.New(true)
+	imgStore := imagestore.NewImageStore(tdir, tdir, true,
+		true, log, metrics, nil, driver, cacheDriver)
+
+	repoName := "zot-test"
+
+	Convey("Test error paths", t, func() {
+		storeController := storage.StoreController{DefaultStore: imgStore}
+
+		image := CreateRandomMultiarch()
+
+		tag := "index"
+
+		err := WriteMultiArchImageToFileSystem(image, repoName, tag, storeController)
+		So(err, ShouldBeNil)
+
+		blob := image.Images[0].Layers[0]
+		blobDigest := godigest.FromBytes(blob)
+		blobSize := len(blob)
+
+		desc, err := common.GetBlobDescriptorFromIndex(imgStore, ispec.Index{Manifests: []ispec.Descriptor{
+			{
+				Digest:    image.Digest(),
+				MediaType: ispec.MediaTypeImageIndex,
+			},
+		}}, repoName, blobDigest, log)
+		So(err, ShouldBeNil)
+		So(desc.Digest, ShouldEqual, blobDigest)
+		So(desc.Size, ShouldEqual, blobSize)
+
+		desc, err = common.GetBlobDescriptorFromRepo(imgStore, repoName, blobDigest, log)
+		So(err, ShouldBeNil)
+		So(desc.Digest, ShouldEqual, blobDigest)
+		So(desc.Size, ShouldEqual, blobSize)
+
+		indexBlobPath := imgStore.BlobPath(repoName, image.Digest())
+		err = os.Chmod(indexBlobPath, 0o000)
+		So(err, ShouldBeNil)
+
+		defer func() {
+			err = os.Chmod(indexBlobPath, 0o644)
+			So(err, ShouldBeNil)
+		}()
+
+		_, err = common.GetBlobDescriptorFromIndex(imgStore, ispec.Index{Manifests: []ispec.Descriptor{
+			{
+				Digest:    image.Digest(),
+				MediaType: ispec.MediaTypeImageIndex,
+			},
+		}}, repoName, blobDigest, log)
+		So(err, ShouldNotBeNil)
+
+		manifestDigest := image.Images[0].Digest()
+		manifestBlobPath := imgStore.BlobPath(repoName, manifestDigest)
+		err = os.Chmod(manifestBlobPath, 0o000)
+		So(err, ShouldBeNil)
+
+		defer func() {
+			err = os.Chmod(manifestBlobPath, 0o644)
+			So(err, ShouldBeNil)
+		}()
+
+		_, err = common.GetBlobDescriptorFromRepo(imgStore, repoName, blobDigest, log)
+		So(err, ShouldNotBeNil)
+
+		_, err = common.GetBlobDescriptorFromRepo(imgStore, repoName, manifestDigest, log)
+		So(err, ShouldBeNil)
 	})
 }
 

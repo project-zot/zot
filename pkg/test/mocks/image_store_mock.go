@@ -32,7 +32,7 @@ type MockedImageStore struct {
 	PutBlobChunkFn         func(repo string, uuid string, from int64, to int64, body io.Reader) (int64, error)
 	FinishBlobUploadFn     func(repo string, uuid string, body io.Reader, digest godigest.Digest) error
 	FullBlobUploadFn       func(repo string, body io.Reader, digest godigest.Digest) (string, int64, error)
-	DedupeBlobFn           func(src string, dstDigest godigest.Digest, dst string) error
+	DedupeBlobFn           func(src string, dstDigest godigest.Digest, dstRepo, dst string) error
 	DeleteBlobUploadFn     func(repo string, uuid string) error
 	BlobPathFn             func(repo string, digest godigest.Digest) string
 	CheckBlobFn            func(repo string, digest godigest.Digest) (bool, int64, error)
@@ -240,9 +240,9 @@ func (is MockedImageStore) FullBlobUpload(repo string, body io.Reader, digest go
 	return "", 0, nil
 }
 
-func (is MockedImageStore) DedupeBlob(src string, dstDigest godigest.Digest, dst string) error {
+func (is MockedImageStore) DedupeBlob(src string, dstDigest godigest.Digest, dstRepo, dst string) error {
 	if is.DedupeBlobFn != nil {
-		return is.DedupeBlobFn(src, dstDigest, dst)
+		return is.DedupeBlobFn(src, dstDigest, dstRepo, dst)
 	}
 
 	return nil

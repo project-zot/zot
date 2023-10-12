@@ -809,6 +809,94 @@ func GetOrasManifestByDigest(imgStore storageTypes.ImageStore, repo string, dige
 	return artManifest, nil
 }
 
+// Get blob descriptor from it's manifest contents, if blob can not be found it will return error.
+func GetBlobDescriptorFromRepo(imgStore storageTypes.ImageStore, repo string, blobDigest godigest.Digest,
+	log zlog.Logger,
+) (ispec.Descriptor, error) {
+	index, err := GetIndex(imgStore, repo, log)
+	if err != nil {
+		return ispec.Descriptor{}, err
+	}
+
+	return GetBlobDescriptorFromIndex(imgStore, index, repo, blobDigest, log)
+}
+
+func GetBlobDescriptorFromIndex(imgStore storageTypes.ImageStore, index ispec.Index, repo string,
+	blobDigest godigest.Digest, log zlog.Logger,
+) (ispec.Descriptor, error) {
+	for _, desc := range index.Manifests {
+		if desc.Digest == blobDigest {
+			return desc, nil
+		}
+
+		switch desc.MediaType {
+		case ispec.MediaTypeImageManifest:
+			if foundDescriptor, err := getBlobDescriptorFromManifest(imgStore, repo, blobDigest, desc, log); err == nil {
+				return foundDescriptor, nil
+			}
+		case ispec.MediaTypeImageIndex:
+			indexImage, err := GetImageIndex(imgStore, repo, desc.Digest, log)
+			if err != nil {
+				return ispec.Descriptor{}, err
+			}
+
+			if foundDescriptor, err := GetBlobDescriptorFromIndex(imgStore, indexImage, repo, blobDigest, log); err == nil {
+				return foundDescriptor, nil
+			}
+		case oras.MediaTypeArtifactManifest:
+			if foundDescriptor, err := getBlobDescriptorFromORASManifest(imgStore, repo, blobDigest, desc, log); err == nil {
+				return foundDescriptor, nil
+			}
+		}
+	}
+
+	return ispec.Descriptor{}, zerr.ErrBlobNotFound
+}
+
+func getBlobDescriptorFromManifest(imgStore storageTypes.ImageStore, repo string, blobDigest godigest.Digest,
+	desc ispec.Descriptor, log zlog.Logger,
+) (ispec.Descriptor, error) {
+	manifest, err := GetImageManifest(imgStore, repo, desc.Digest, log)
+	if err != nil {
+		return ispec.Descriptor{}, err
+	}
+
+	if manifest.Config.Digest == blobDigest {
+		return manifest.Config, nil
+	}
+
+	for _, layer := range manifest.Layers {
+		if layer.Digest == blobDigest {
+			return layer, nil
+		}
+	}
+
+	return ispec.Descriptor{}, zerr.ErrBlobNotFound
+}
+
+func getBlobDescriptorFromORASManifest(imgStore storageTypes.ImageStore, repo string, blobDigest godigest.Digest,
+	desc ispec.Descriptor, log zlog.Logger,
+) (ispec.Descriptor, error) {
+	manifest, err := GetOrasManifestByDigest(imgStore, repo, desc.Digest, log)
+	if err != nil {
+		return ispec.Descriptor{}, err
+	}
+
+	for _, layer := range manifest.Blobs {
+		if layer.Digest == blobDigest {
+			return ispec.Descriptor{
+				MediaType:    layer.MediaType,
+				Size:         layer.Size,
+				Digest:       layer.Digest,
+				ArtifactType: layer.ArtifactType,
+				Annotations:  layer.Annotations,
+			}, nil
+		}
+	}
+
+	return ispec.Descriptor{}, zerr.ErrBlobNotFound
+}
+
 func IsSupportedMediaType(mediaType string) bool {
 	return mediaType == ispec.MediaTypeImageIndex ||
 		mediaType == ispec.MediaTypeImageManifest ||

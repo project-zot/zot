@@ -3552,7 +3552,7 @@ func TestS3DedupeErr(t *testing.T) {
 		digest := godigest.NewDigestFromEncoded(godigest.SHA256, "digest")
 
 		// trigger unable to insert blob record
-		err := imgStore.DedupeBlob("", digest, "")
+		err := imgStore.DedupeBlob("", digest, "", "")
 		So(err, ShouldNotBeNil)
 
 		imgStore = createMockStorage(testDir, tdir, true, &StorageDriverMock{
@@ -3565,11 +3565,11 @@ func TestS3DedupeErr(t *testing.T) {
 		})
 
 		// trigger unable to rename blob
-		err = imgStore.DedupeBlob("", digest, "dst")
+		err = imgStore.DedupeBlob("", digest, "", "dst")
 		So(err, ShouldNotBeNil)
 
 		// trigger retry
-		err = imgStore.DedupeBlob("", digest, "dst")
+		err = imgStore.DedupeBlob("", digest, "", "dst")
 		So(err, ShouldNotBeNil)
 	})
 
@@ -3586,11 +3586,11 @@ func TestS3DedupeErr(t *testing.T) {
 		})
 
 		digest := godigest.NewDigestFromEncoded(godigest.SHA256, "digest")
-		err := imgStore.DedupeBlob("", digest, "dst")
+		err := imgStore.DedupeBlob("", digest, "", "dst")
 		So(err, ShouldBeNil)
 
 		// error will be triggered in driver.SameFile()
-		err = imgStore.DedupeBlob("", digest, "dst2")
+		err = imgStore.DedupeBlob("", digest, "", "dst2")
 		So(err, ShouldBeNil)
 	})
 
@@ -3606,10 +3606,10 @@ func TestS3DedupeErr(t *testing.T) {
 		})
 
 		digest := godigest.NewDigestFromEncoded(godigest.SHA256, "digest")
-		err := imgStore.DedupeBlob("", digest, "dst")
+		err := imgStore.DedupeBlob("", digest, "", "dst")
 		So(err, ShouldBeNil)
 
-		err = imgStore.DedupeBlob("", digest, "dst2")
+		err = imgStore.DedupeBlob("", digest, "", "dst2")
 		So(err, ShouldNotBeNil)
 	})
 
@@ -3622,10 +3622,10 @@ func TestS3DedupeErr(t *testing.T) {
 		})
 
 		digest := godigest.NewDigestFromEncoded(godigest.SHA256, "digest")
-		err := imgStore.DedupeBlob("", digest, "dst")
+		err := imgStore.DedupeBlob("", digest, "", "dst")
 		So(err, ShouldBeNil)
 
-		err = imgStore.DedupeBlob("", digest, "")
+		err = imgStore.DedupeBlob("", digest, "", "")
 		So(err, ShouldNotBeNil)
 	})
 
@@ -3641,10 +3641,10 @@ func TestS3DedupeErr(t *testing.T) {
 		})
 
 		digest := godigest.NewDigestFromEncoded(godigest.SHA256, "digest")
-		err := imgStore.DedupeBlob("", digest, "dst")
+		err := imgStore.DedupeBlob("", digest, "", "dst")
 		So(err, ShouldBeNil)
 
-		err = imgStore.DedupeBlob("", digest, "dst")
+		err = imgStore.DedupeBlob("", digest, "", "dst")
 		So(err, ShouldNotBeNil)
 	})
 
@@ -3665,7 +3665,7 @@ func TestS3DedupeErr(t *testing.T) {
 		digest := godigest.NewDigestFromEncoded(godigest.SHA256,
 			"7173b809ca12ec5dee4506cd86be934c4596dd234ee82c0662eac04a8c2c71dc")
 
-		err := imgStore.DedupeBlob("repo", digest, "dst")
+		err := imgStore.DedupeBlob("repo", digest, "", "dst")
 		So(err, ShouldBeNil)
 
 		_, _, err = imgStore.CheckBlob("repo", digest)
@@ -3686,7 +3686,7 @@ func TestS3DedupeErr(t *testing.T) {
 		digest := godigest.NewDigestFromEncoded(godigest.SHA256,
 			"7173b809ca12ec5dee4506cd86be934c4596dd234ee82c0662eac04a8c2c71dc")
 
-		err := imgStore.DedupeBlob("repo", digest, "dst")
+		err := imgStore.DedupeBlob("repo", digest, "", "dst")
 		So(err, ShouldBeNil)
 
 		_, _, err = imgStore.CheckBlob("repo", digest)
@@ -3704,7 +3704,7 @@ func TestS3DedupeErr(t *testing.T) {
 		digest := godigest.NewDigestFromEncoded(godigest.SHA256,
 			"7173b809ca12ec5dee4506cd86be934c4596dd234ee82c0662eac04a8c2c71dc")
 
-		err := imgStore.DedupeBlob("repo", digest, "dst")
+		err := imgStore.DedupeBlob("repo", digest, "", "dst")
 		So(err, ShouldBeNil)
 
 		_, _, err = imgStore.CheckBlob("repo", digest)
@@ -3719,10 +3719,10 @@ func TestS3DedupeErr(t *testing.T) {
 		digest := godigest.NewDigestFromEncoded(godigest.SHA256,
 			"7173b809ca12ec5dee4506cd86be934c4596dd234ee82c0662eac04a8c2c71dc")
 
-		err := imgStore.DedupeBlob("/src/dst", digest, "/repo1/dst1")
+		err := imgStore.DedupeBlob("/src/dst", digest, "", "/repo1/dst1")
 		So(err, ShouldBeNil)
 
-		err = imgStore.DedupeBlob("/src/dst", digest, "/repo2/dst2")
+		err = imgStore.DedupeBlob("/src/dst", digest, "", "/repo2/dst2")
 		So(err, ShouldBeNil)
 
 		// copy cache db to the new imagestore
@@ -3767,10 +3767,10 @@ func TestS3DedupeErr(t *testing.T) {
 		digest := godigest.NewDigestFromEncoded(godigest.SHA256,
 			"7173b809ca12ec5dee4506cd86be934c4596dd234ee82c0662eac04a8c2c71dc")
 
-		err := imgStore.DedupeBlob("/src/dst", digest, "/repo1/dst1")
+		err := imgStore.DedupeBlob("/src/dst", digest, "", "/repo1/dst1")
 		So(err, ShouldBeNil)
 
-		err = imgStore.DedupeBlob("/src/dst", digest, "/repo2/dst2")
+		err = imgStore.DedupeBlob("/src/dst", digest, "", "/repo2/dst2")
 		So(err, ShouldBeNil)
 
 		// copy cache db to the new imagestore
@@ -3871,7 +3871,7 @@ func TestS3DedupeErr(t *testing.T) {
 			},
 		})
 
-		err := imgStore.DedupeBlob("repo", digest, blobPath)
+		err := imgStore.DedupeBlob("repo", digest, "", blobPath)
 		So(err, ShouldBeNil)
 
 		_, _, err = imgStore.CheckBlob("repo2", digest)
@@ -3922,11 +3922,11 @@ func TestInjectDedupe(t *testing.T) {
 				return &FileInfoMock{}, errS3
 			},
 		})
-		err := imgStore.DedupeBlob("blob", "digest", "newblob")
+		err := imgStore.DedupeBlob("blob", "digest", "", "newblob")
 		So(err, ShouldBeNil)
 
 		injected := inject.InjectFailure(0)
-		err = imgStore.DedupeBlob("blob", "digest", "newblob")
+		err = imgStore.DedupeBlob("blob", "digest", "", "newblob")
 		if injected {
 			So(err, ShouldNotBeNil)
 		} else {
@@ -3934,7 +3934,7 @@ func TestInjectDedupe(t *testing.T) {
 		}
 
 		injected = inject.InjectFailure(1)
-		err = imgStore.DedupeBlob("blob", "digest", "newblob")
+		err = imgStore.DedupeBlob("blob", "digest", "", "newblob")
 		if injected {
 			So(err, ShouldNotBeNil)
 		} else {
