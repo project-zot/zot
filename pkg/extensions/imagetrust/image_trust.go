@@ -9,13 +9,16 @@ import (
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/aws/transport/http"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/secretsmanager"
+	"github.com/aws/aws-sdk-go-v2/service/secretsmanager/types"
 	aws1 "github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/endpoints"
 	"github.com/aws/aws-sdk-go/aws/session"
 	smanager "github.com/aws/aws-sdk-go/service/secretsmanager"
 	"github.com/aws/aws-secretsmanager-caching-go/secretcache"
+	smithy "github.com/aws/smithy-go"
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 
@@ -138,6 +141,20 @@ func GetSecretsManagerRetrieval(region, endpoint string) *secretcache.Cache {
 	)
 
 	return cache
+}
+
+func IsResourceExistsException(err error) bool {
+	if opErr, ok := err.(*smithy.OperationError); ok { //nolint: errorlint
+		if resErr, ok := opErr.Err.(*http.ResponseError); ok { //nolint: errorlint
+			if _, ok := resErr.Err.(*types.ResourceExistsException); ok { //nolint: errorlint
+				return true
+			}
+		}
+
+		return false
+	}
+
+	return false
 }
 
 func (imgTrustStore *ImageTrustStore) VerifySignature(
