@@ -291,11 +291,11 @@ function teardown_file() {
 }
 EOF
 
-    run notation sign --key "notation-sign-sync-test" --plain-http localhost:9000/golang:1.20
+    run notation sign --key "notation-sign-sync-test" --insecure-registry localhost:9000/golang:1.20
     [ "$status" -eq 0 ]
-    run notation verify --plain-http localhost:9000/golang:1.20
+    run notation verify --insecure-registry localhost:9000/golang:1.20
     [ "$status" -eq 0 ]
-    run notation list --plain-http localhost:9000/golang:1.20
+    run notation list --insecure-registry localhost:9000/golang:1.20
     [ "$status" -eq 0 ]
 }
 
@@ -303,7 +303,7 @@ EOF
     # wait for signatures to be copied
     run sleep 15s
 
-    run notation verify --plain-http localhost:8081/golang:1.20
+    run notation verify --insecure-registry localhost:8081/golang:1.20
     [ "$status" -eq 0 ]
 
     run cosign verify --key ${BATS_FILE_TMPDIR}/cosign-sign-sync-test.pub localhost:8081/golang:1.20
@@ -311,7 +311,7 @@ EOF
 }
 
 @test "sync signatures ondemand" {
-    run notation verify --plain-http localhost:8082/golang:1.20
+    run notation verify --insecure-registry localhost:8082/golang:1.20
     [ "$status" -eq 0 ]
 
     run cosign verify --key ${BATS_FILE_TMPDIR}/cosign-sign-sync-test.pub localhost:8082/golang:1.20

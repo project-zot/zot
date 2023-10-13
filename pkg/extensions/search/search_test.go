@@ -4422,7 +4422,7 @@ func TestMetaDBWhenSigningImages(t *testing.T) {
 		})
 
 		Convey("Sign with notation", func() {
-			err = signature.SignImageUsingNotary("repo1:1.0.1", port)
+			err = signature.SignImageUsingNotary("repo1:1.0.1", port, true)
 			So(err, ShouldBeNil)
 
 			resp, err := resty.R().Get(baseURL + graphqlQueryPrefix + "?query=" + url.QueryEscape(queryImage1))
@@ -4439,7 +4439,7 @@ func TestMetaDBWhenSigningImages(t *testing.T) {
 		})
 
 		Convey("Sign with notation index", func() {
-			err = signature.SignImageUsingNotary("repo1:index", port)
+			err = signature.SignImageUsingNotary("repo1:index", port, false)
 			So(err, ShouldBeNil)
 
 			resp, err := resty.R().Get(baseURL + graphqlQueryPrefix + "?query=" + url.QueryEscape(queryIndex))
@@ -5438,7 +5438,7 @@ func TestMetaDBWhenDeletingImages(t *testing.T) {
 
 		Convey("Delete a notary signature", func() {
 			repo := "repo1"
-			err := signature.SignImageUsingNotary("repo1:1.0.1", port)
+			err := signature.SignImageUsingNotary("repo1:1.0.1", port, true)
 			So(err, ShouldBeNil)
 
 			query := `

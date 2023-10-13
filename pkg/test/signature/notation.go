@@ -139,7 +139,7 @@ func GenerateNotationCerts(tdir string, certName string) error {
 	return nil
 }
 
-func SignWithNotation(keyName string, reference string, tdir string) error {
+func SignWithNotation(keyName, reference, tdir string, referrersCapability bool) error {
 	ctx := context.TODO()
 
 	// getSigner
@@ -191,6 +191,10 @@ func SignWithNotation(keyName string, reference string, tdir string) error {
 		Client:    authClient,
 		Reference: ref,
 		PlainHTTP: plainHTTP,
+	}
+
+	if !referrersCapability {
+		_ = remoteRepo.SetReferrersCapability(false)
 	}
 
 	repositoryOpts := notreg.RepositoryOptions{}
@@ -432,7 +436,7 @@ func LoadNotationConfig(tdir string) (*notconfig.Config, error) {
 	return configInfo, nil
 }
 
-func SignImageUsingNotary(repoTag, port string) error {
+func SignImageUsingNotary(repoTag, port string, referrersCapability bool) error {
 	cwd, err := os.Getwd()
 	if err != nil {
 		return err
@@ -463,7 +467,7 @@ func SignImageUsingNotary(repoTag, port string) error {
 	// sign the image
 	image := fmt.Sprintf("localhost:%s/%s", port, repoTag)
 
-	err = SignWithNotation("notation-sign-test", image, tdir)
+	err = SignWithNotation("notation-sign-test", image, tdir, referrersCapability)
 
 	return err
 }

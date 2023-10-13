@@ -347,6 +347,33 @@ func TestParseStorageErrors(t *testing.T) {
 				err = meta.ParseRepo("repo", metaDB, storeController, log)
 				So(err, ShouldNotBeNil)
 			})
+
+			Convey("IsReferrersTag -> true", func() {
+				indexContent := ispec.Index{
+					Manifests: []ispec.Descriptor{
+						{
+							Digest:    godigest.FromString("indx1"),
+							MediaType: ispec.MediaTypeImageIndex,
+							Annotations: map[string]string{
+								ispec.AnnotationRefName: "sha256-123",
+							},
+						},
+					},
+				}
+				indexBlob, err := json.Marshal(indexContent)
+				So(err, ShouldBeNil)
+
+				imageStore.GetIndexContentFn = func(repo string) ([]byte, error) {
+					return indexBlob, nil
+				}
+
+				metaDB.SetIndexDataFn = func(digest godigest.Digest, indexData mTypes.IndexData) error {
+					return ErrTestError
+				}
+
+				err = meta.ParseRepo("repo", metaDB, storeController, log)
+				So(err, ShouldBeNil)
+			})
 		})
 	})
 }
@@ -600,6 +627,19 @@ func TestGetReferredInfo(t *testing.T) {
 func TestGetSignatureLayersInfo(t *testing.T) {
 	Convey("wrong signature type", t, func() {
 		layers, err := meta.GetSignatureLayersInfo("repo", "tag", "123", "wrong signature type", []byte{},
+			nil, log.NewLogger("debug", ""))
+		So(err, ShouldBeNil)
+		So(layers, ShouldBeEmpty)
+	})
+
+	Convey("notation index", t, func() {
+		notationIndex := ispec.Index{
+			MediaType: ispec.MediaTypeImageIndex,
+		}
+
+		notationIndexBlob, err := json.Marshal(notationIndex)
+		So(err, ShouldBeNil)
+		layers, err := meta.GetSignatureLayersInfo("repo", "tag", "123", zcommon.NotationSignature, notationIndexBlob,
 			nil, log.NewLogger("debug", ""))
 		So(err, ShouldBeNil)
 		So(layers, ShouldBeEmpty)

@@ -86,6 +86,54 @@ func TestOci(t *testing.T) {
 	})
 }
 
+func TestReferrersTag(t *testing.T) {
+	Convey("trigger errors", t, func() {
+		cfg := client.Config{
+			URL:       "url",
+			TLSVerify: false,
+		}
+
+		client, err := client.New(cfg, log.NewLogger("debug", ""))
+		So(err, ShouldBeNil)
+
+		referrersTag := NewTagReferences(client, storage.StoreController{DefaultStore: mocks.MockedImageStore{
+			GetImageManifestFn: func(repo, reference string) ([]byte, godigest.Digest, string, error) {
+				return []byte{}, "", "", errRef
+			},
+		}}, nil, log.NewLogger("debug", ""))
+
+		ok := referrersTag.IsSigned(context.Background(), "repo", "")
+		So(ok, ShouldBeFalse)
+
+		// trigger GetImageManifest err
+		ok, err = referrersTag.canSkipReferences("repo", "subjectdigest", "digest")
+		So(err, ShouldNotBeNil)
+		So(ok, ShouldBeFalse)
+
+		referrersTag = NewTagReferences(client, storage.StoreController{DefaultStore: mocks.MockedImageStore{
+			GetImageManifestFn: func(repo, reference string) ([]byte, godigest.Digest, string, error) {
+				return []byte{}, "", "", zerr.ErrManifestNotFound
+			},
+		}}, nil, log.NewLogger("debug", ""))
+
+		// trigger GetImageManifest err
+		ok, err = referrersTag.canSkipReferences("repo", "subjectdigest", "digest")
+		So(err, ShouldBeNil)
+		So(ok, ShouldBeFalse)
+
+		referrersTag = NewTagReferences(client, storage.StoreController{DefaultStore: mocks.MockedImageStore{
+			GetImageManifestFn: func(repo, reference string) ([]byte, godigest.Digest, string, error) {
+				return []byte{}, "digest", "", nil
+			},
+		}}, nil, log.NewLogger("debug", ""))
+
+		// different digest
+		ok, err = referrersTag.canSkipReferences("repo", "subjectdigest", "newdigest")
+		So(err, ShouldBeNil)
+		So(ok, ShouldBeFalse)
+	})
+}
+
 func TestORAS(t *testing.T) {
 	Convey("trigger errors", t, func() {
 		cfg := client.Config{
@@ -390,5 +438,16 @@ func TestCompareArtifactRefs(t *testing.T) {
 			actualResult := artifactDescriptorsEqual(test.refs1, test.refs2)
 			So(actualResult, ShouldEqual, test.expected)
 		}
+	})
+}
+
+func TestAddSigToMeta(t *testing.T) {
+	Convey("Test addSigToMeta", t, func() {
+		imageStore := mocks.MockedImageStore{}
+		metaDB := mocks.MetaDBMock{}
+
+		err := addSigToMeta(metaDB, "repo", "cosign", "tag", godigest.FromString("signedmanifest"),
+			godigest.FromString("reference"), []byte("bad"), imageStore, log.Logger{})
+		So(err, ShouldNotBeNil)
 	})
 }

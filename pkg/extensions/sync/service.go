@@ -298,7 +298,7 @@ func (service *BaseService) SyncRepo(ctx context.Context, repo string) error {
 		default:
 		}
 
-		if references.IsCosignTag(tag) {
+		if references.IsCosignTag(tag) || common.IsReferrersTag(tag) {
 			continue
 		}
 
@@ -374,7 +374,8 @@ func (service *BaseService) syncTag(ctx context.Context, localRepo, remoteRepo, 
 		return "", zerr.ErrMediaTypeNotSupported
 	}
 
-	if service.config.OnlySigned != nil && *service.config.OnlySigned && !references.IsCosignTag(tag) {
+	if service.config.OnlySigned != nil && *service.config.OnlySigned &&
+		!references.IsCosignTag(tag) && !common.IsReferrersTag(tag) {
 		signed := service.references.IsSigned(ctx, remoteRepo, manifestDigest.String())
 		if !signed {
 			// skip unsigned images

@@ -5233,7 +5233,7 @@ func TestImageSignatures(t *testing.T) {
 			So(err, ShouldBeNil)
 
 			image := fmt.Sprintf("localhost:%s/%s:%s", port, repoName, "1.0")
-			err = signature.SignWithNotation("good", image, tdir)
+			err = signature.SignWithNotation("good", image, tdir, true)
 			So(err, ShouldBeNil)
 
 			err = signature.VerifyWithNotation(image, tdir)
@@ -7806,7 +7806,7 @@ func TestGCSignaturesAndUntaggedManifestsWithMetaDB(t *testing.T) {
 			So(err, ShouldBeNil)
 
 			// sign the image
-			err = signature.SignWithNotation("good", image, tdir)
+			err = signature.SignWithNotation("good", image, tdir, true)
 			So(err, ShouldBeNil)
 
 			// get cosign signature manifest

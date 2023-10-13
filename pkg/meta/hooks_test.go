@@ -108,6 +108,12 @@ func TestUpdateErrors(t *testing.T) {
 				So(err, ShouldNotBeNil)
 			})
 
+			Convey("IsReferrersTag true", func() {
+				err := meta.OnUpdateManifest("repo", "sha256-123", "digest", "media", []byte("bad"),
+					storeController, metaDB, log)
+				So(err, ShouldBeNil)
+			})
+
 			Convey("GetSignatureLayersInfo errors", func() {
 				// get notation signature layers info
 				badNotationManifestContent := ispec.Manifest{
@@ -178,6 +184,12 @@ func TestUpdateErrors(t *testing.T) {
 				err := meta.OnDeleteManifest("repo", "tag1", "digest", "media", badManifestBlob,
 					storeController, metaDB, log)
 				So(err, ShouldNotBeNil)
+			})
+
+			Convey("IsReferrersTag true", func() {
+				err := meta.OnDeleteManifest("repo", "sha256-123", "digest", "media", []byte("bad"),
+					storeController, metaDB, log)
+				So(err, ShouldBeNil)
 			})
 
 			Convey("DeleteReferrers errors", func() {

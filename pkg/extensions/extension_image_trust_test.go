@@ -366,7 +366,7 @@ func RunSignatureUploadAndVerificationTests(t *testing.T, cacheDriverParams map[
 		// sign the image
 		imageURL := fmt.Sprintf("localhost:%s/%s", port, fmt.Sprintf("%s:%s", repo, tag))
 
-		err = signature.SignWithNotation(certName, imageURL, rootDir)
+		err = signature.SignWithNotation(certName, imageURL, rootDir, true)
 		So(err, ShouldBeNil)
 
 		found, err = test.ReadLogFileAndSearchString(logFile.Name(), "update signatures validity", 10*time.Second)
@@ -499,7 +499,7 @@ func RunSignatureUploadAndVerificationTests(t *testing.T, cacheDriverParams map[
 		// sign the image
 		imageURL := fmt.Sprintf("localhost:%s/%s", port, fmt.Sprintf("%s:%s", repo, tag))
 
-		err = signature.SignWithNotation(certName, imageURL, rootDir)
+		err = signature.SignWithNotation(certName, imageURL, rootDir, false)
 		So(err, ShouldBeNil)
 
 		found, err = test.ReadLogFileAndSearchString(logFile.Name(), "update signatures validity", 10*time.Second)
