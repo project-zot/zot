@@ -52,6 +52,10 @@ type ImageStore struct {
 	commit      bool
 }
 
+func (is *ImageStore) Name() string {
+	return is.storeDriver.Name()
+}
+
 func (is *ImageStore) RootDir() string {
 	return is.rootDir
 }

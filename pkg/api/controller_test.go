@@ -3409,7 +3409,7 @@ func TestAuthnSessionErrors(t *testing.T) {
 				session.IsNew = false
 				session.Values["authStatus"] = true
 
-				cookieStore, ok := ctlr.CookieStore.(*sessions.FilesystemStore)
+				cookieStore, ok := ctlr.CookieStore.Store.(*sessions.FilesystemStore)
 				So(ok, ShouldBeTrue)
 
 				// first encode sessionID
@@ -3450,7 +3450,7 @@ func TestAuthnSessionErrors(t *testing.T) {
 				session.Values["authStatus"] = false
 				session.Values["username"] = username
 
-				cookieStore, ok := ctlr.CookieStore.(*sessions.FilesystemStore)
+				cookieStore, ok := ctlr.CookieStore.Store.(*sessions.FilesystemStore)
 				So(ok, ShouldBeTrue)
 
 				// first encode sessionID

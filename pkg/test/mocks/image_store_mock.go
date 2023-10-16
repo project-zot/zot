@@ -12,6 +12,7 @@ import (
 )
 
 type MockedImageStore struct {
+	NameFn              func() string
 	DirExistsFn         func(d string) bool
 	RootDirFn           func() string
 	InitRepoFn          func(name string) error
@@ -66,6 +67,14 @@ func (is MockedImageStore) RUnlock(t *time.Time) {
 }
 
 func (is MockedImageStore) RLock(t *time.Time) {
+}
+
+func (is MockedImageStore) Name() string {
+	if is.NameFn != nil {
+		return is.NameFn()
+	}
+
+	return ""
 }
 
 func (is MockedImageStore) DirExists(d string) bool {

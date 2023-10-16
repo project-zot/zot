@@ -16,7 +16,6 @@ import (
 
 	"github.com/gorilla/handlers"
 	"github.com/gorilla/mux"
-	"github.com/gorilla/sessions"
 	"github.com/zitadel/oidc/pkg/client/rp"
 
 	"zotregistry.io/zot/errors"
@@ -35,7 +34,6 @@ import (
 const (
 	idleTimeout       = 120 * time.Second
 	readHeaderTimeout = 5 * time.Second
-	cookiesMaxAge     = 86400 // seconds
 )
 
 type Controller struct {
@@ -50,7 +48,7 @@ type Controller struct {
 	CveScanner      ext.CveScanner
 	SyncOnDemand    SyncOnDemand
 	RelyingParties  map[string]rp.RelyingParty
-	CookieStore     sessions.Store
+	CookieStore     *CookieStore
 	// runtime params
 	chosenPort int // kernel-chosen port
 }
@@ -96,6 +94,10 @@ func (c *Controller) GetPort() int {
 }
 
 func (c *Controller) Run(reloadCtx context.Context) error {
+	if err := c.initCookieStore(); err != nil {
+		return err
+	}
+
 	c.StartBackgroundTasks(reloadCtx)
 
 	// setup HTTP API router
@@ -259,6 +261,20 @@ func (c *Controller) InitImageStore() error {
 	return nil
 }
 
+func (c *Controller) initCookieStore() error {
+	// setup sessions cookie store used to preserve logged in user in web sessions
+	if c.Config.IsBasicAuthnEnabled() {
+		cookieStore, err := NewCookieStore(c.StoreController)
+		if err != nil {
+			return err
+		}
+
+		c.CookieStore = cookieStore
+	}
+
+	return nil
+}
+
 func (c *Controller) InitMetaDB(reloadCtx context.Context) error {
 	// init metaDB if search is enabled or we need to store user profiles, api keys or signatures
 	if c.Config.IsSearchEnabled() || c.Config.IsBasicAuthnEnabled() || c.Config.IsImageTrustEnabled() {
@@ -393,6 +409,10 @@ func (c *Controller) StartBackgroundTasks(reloadCtx context.Context) {
 		}
 
 		c.SyncOnDemand = syncOnDemand
+	}
+
+	if c.CookieStore != nil {
+		c.CookieStore.RunSessionCleaner(taskScheduler)
 	}
 
 	// we can later move enabling the other scheduled tasks inside the call below
