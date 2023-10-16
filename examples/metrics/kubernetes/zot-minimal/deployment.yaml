@@ -18,13 +18,36 @@ spec:
       - name: zot-minimal
         image: zot-minimal:latest
         imagePullPolicy: IfNotPresent
+        command: ["/usr/bin/zot"]
+        args: ["serve", "/zot-config/config.json"]
         ports:
         - name: zot-minimal
           containerPort: 5050
+          protocol: TCP
+        volumeMounts:
+          - name: zot-config
+            mountPath: /zot-config
+            readOnly: false
       - name: zot-exporter
         image: zxp:latest
         imagePullPolicy: IfNotPresent
+        command: ["/zxp"]
+        args: ["config", "/zot-config/zxp-config.json"]
         ports:
         - name: zot-exporter
           containerPort: 5051
+          protocol: TCP
+        volumeMounts:
+          - name: zot-config
+            mountPath: /zot-config
+            readOnly: false
+      volumes:
+        - name: zot-config
+          configMap:
+            name: zot-config
+            items:
+            - key: zot_minimal.json
+              path: config.json
+            - key: zxp.json
+              path: zxp-config.json
 

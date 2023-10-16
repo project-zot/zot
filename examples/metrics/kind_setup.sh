@@ -6,8 +6,8 @@ set -e
 CLUSTER_NAME=zot
 
 # Script tested with below kubectl & kind versions
-KUBECTL_VERSION=v1.17.5
-KIND_VERSION=v0.7.0
+KUBECTL_VERSION=v1.27.3
+KIND_VERSION=v0.20.0
 
 function install_bin() {
     if [ "$EUID" -ne 0 ]
@@ -41,9 +41,9 @@ kind load docker-image quay.io/prometheus-operator/prometheus-config-reloader:v0
 kind load docker-image quay.io/prometheus/prometheus:v2.22.1 --name ${CLUSTER_NAME}
 
 ## Build zot & zxp images
-make binary-container
-make binary-minimal-container
-make binary-exporter-container
+make -C ../../ binary-container
+make -C ../../ binary-minimal-container
+make -C ../../ binary-exporter-container
 
 kind load docker-image zot-build:latest --name ${CLUSTER_NAME}
 kind load docker-image zot-minimal:latest --name ${CLUSTER_NAME}
