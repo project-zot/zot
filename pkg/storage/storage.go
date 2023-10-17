@@ -227,6 +227,11 @@ func CheckIsImageSignature(repoName string, manifestBlob []byte, reference strin
 		return true, NotationType, manifestContent.Subject.Digest, nil
 	}
 
+	// check cosign signature (OCI 1.1 support)
+	if manifestArtifactType == zcommon.ArtifactTypeCosign && manifestContent.Subject != nil {
+		return true, CosignType, manifestContent.Subject.Digest, nil
+	}
+
 	if tag := reference; zcommon.IsCosignTag(reference) {
 		prefixLen := len("sha256-")
 		digestLen := 64

@@ -277,9 +277,11 @@ func (gc GarbageCollect) removeReferrer(repo string, index *ispec.Index, manifes
 		referenced := isManifestReferencedInIndex(index, subject.Digest)
 
 		var signatureType string
-		// check if its notation signature
+		// check if its notation or cosign signature
 		if artifactType == zcommon.ArtifactTypeNotation {
 			signatureType = storage.NotationType
+		} else if artifactType == zcommon.ArtifactTypeCosign {
+			signatureType = storage.CosignType
 		}
 
 		if !referenced {

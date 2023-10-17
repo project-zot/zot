@@ -2154,6 +2154,15 @@ func TestGarbageCollectForImageStore(t *testing.T) {
 			err = WriteImageToFileSystem(notationSig, repoName, "notation", storeController)
 			So(err, ShouldBeNil)
 
+			// add fake signature for tag1
+			cosignWithReferrersSig := CreateImageWith().
+				RandomLayers(1, 10).
+				ArtifactConfig(common.ArtifactTypeCosign).
+				Subject(img.DescriptorRef()).Build()
+
+			err = WriteImageToFileSystem(cosignWithReferrersSig, repoName, "cosign", storeController)
+			So(err, ShouldBeNil)
+
 			err = gc.CleanRepo(repoName)
 			So(err, ShouldBeNil)
 		})

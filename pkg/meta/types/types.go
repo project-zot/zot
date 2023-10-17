@@ -298,6 +298,7 @@ type SignatureInfo struct {
 type SignatureMetadata struct {
 	SignatureType   string
 	SignatureDigest string
+	SignatureTag    string
 	LayersInfo      []LayerInfo
 }
 

@@ -440,14 +440,3 @@ func TestCompareArtifactRefs(t *testing.T) {
 		}
 	})
 }
-
-func TestAddSigToMeta(t *testing.T) {
-	Convey("Test addSigToMeta", t, func() {
-		imageStore := mocks.MockedImageStore{}
-		metaDB := mocks.MetaDBMock{}
-
-		err := addSigToMeta(metaDB, "repo", "cosign", "tag", godigest.FromString("signedmanifest"),
-			godigest.FromString("reference"), []byte("bad"), imageStore, log.Logger{})
-		So(err, ShouldNotBeNil)
-	})
-}

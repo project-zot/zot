@@ -746,7 +746,7 @@ func TestOnDemand(t *testing.T) {
 			So(err, ShouldBeNil)
 
 			// sign using cosign
-			err = signature.SignImageUsingCosign(fmt.Sprintf("remote-repo@%s", manifestDigest.String()), port)
+			err = signature.SignImageUsingCosign(fmt.Sprintf("remote-repo@%s", manifestDigest.String()), port, false)
 			So(err, ShouldBeNil)
 
 			// add cosign sbom
@@ -4593,6 +4593,100 @@ func TestSignatures(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 	})
+
+	Convey("Verify sync oci1.1 cosign signatures", t, func() {
+		updateDuration, _ := time.ParseDuration("30m")
+
+		sctlr, srcBaseURL, _, _, _ := makeUpstreamServer(t, false, false)
+
+		scm := test.NewControllerManager(sctlr)
+		scm.StartAndWait(sctlr.Config.HTTP.Port)
+		defer scm.StopServer()
+
+		// create repo, push and sign it
+		repoName := testSignedImage
+		var digest godigest.Digest
+		So(func() { digest = pushRepo(srcBaseURL, repoName) }, ShouldNotPanic)
+
+		splittedURL := strings.SplitAfter(srcBaseURL, ":")
+		srcPort := splittedURL[len(splittedURL)-1]
+		t.Logf(srcPort)
+
+		err := signature.SignImageUsingCosign(fmt.Sprintf("%s@%s", repoName, digest.String()), srcPort, true)
+		So(err, ShouldBeNil)
+
+		regex := ".*"
+		var semver bool
+		var tlsVerify bool
+		onlySigned := true
+
+		syncRegistryConfig := syncconf.RegistryConfig{
+			Content: []syncconf.Content{
+				{
+					Prefix: "**",
+					Tags: &syncconf.Tags{
+						Regex:  &regex,
+						Semver: &semver,
+					},
+				},
+			},
+			URLs:         []string{srcBaseURL},
+			PollInterval: updateDuration,
+			TLSVerify:    &tlsVerify,
+			CertDir:      "",
+			OnlySigned:   &onlySigned,
+			OnDemand:     true,
+		}
+
+		defaultVal := true
+		syncConfig := &syncconf.Config{
+			Enable:     &defaultVal,
+			Registries: []syncconf.RegistryConfig{syncRegistryConfig},
+		}
+
+		dctlr, destBaseURL, _, destClient := makeDownstreamServer(t, false, syncConfig)
+
+		dcm := test.NewControllerManager(dctlr)
+		dcm.StartAndWait(dctlr.Config.HTTP.Port)
+		defer dcm.StopServer()
+
+		// wait for sync
+		var destTagsList TagsList
+
+		for {
+			resp, err := destClient.R().Get(destBaseURL + "/v2/" + repoName + "/tags/list")
+			if err != nil {
+				panic(err)
+			}
+
+			err = json.Unmarshal(resp.Body(), &destTagsList)
+			if err != nil {
+				panic(err)
+			}
+
+			if len(destTagsList.Tags) > 0 {
+				break
+			}
+
+			time.Sleep(500 * time.Millisecond)
+		}
+
+		time.Sleep(1 * time.Second)
+
+		// get oci references from downstream, should be synced
+		getOCIReferrersURL := destBaseURL + path.Join("/v2", repoName, "referrers", digest.String())
+		resp, err := resty.R().Get(getOCIReferrersURL)
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeEmpty)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+		var index ispec.Index
+
+		err = json.Unmarshal(resp.Body(), &index)
+		So(err, ShouldBeNil)
+
+		So(len(index.Manifests), ShouldEqual, 3)
+	})
 }
 
 func getPortFromBaseURL(baseURL string) string {
@@ -4626,7 +4720,10 @@ func TestSyncedSignaturesMetaDB(t *testing.T) {
 		err = signature.SignImageUsingNotary(repoName+":"+tag, srcPort, true)
 		So(err, ShouldBeNil)
 
-		err = signature.SignImageUsingCosign(repoName+":"+tag, srcPort)
+		err = signature.SignImageUsingCosign(repoName+":"+tag, srcPort, true)
+		So(err, ShouldBeNil)
+
+		err = signature.SignImageUsingCosign(repoName+":"+tag, srcPort, false)
 		So(err, ShouldBeNil)
 
 		// Create destination registry
@@ -4676,7 +4773,7 @@ func TestSyncedSignaturesMetaDB(t *testing.T) {
 
 		imageSignatures := repoMeta.Signatures[signedImage.DigestStr()]
 		So(imageSignatures, ShouldContainKey, zcommon.CosignSignature)
-		So(len(imageSignatures[zcommon.CosignSignature]), ShouldEqual, 1)
+		So(len(imageSignatures[zcommon.CosignSignature]), ShouldEqual, 2)
 		So(imageSignatures, ShouldContainKey, zcommon.NotationSignature)
 		So(len(imageSignatures[zcommon.NotationSignature]), ShouldEqual, 1)
 	})

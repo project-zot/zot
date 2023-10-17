@@ -115,7 +115,7 @@ function teardown_file() {
     [ $(echo "${lines[-1]}" | jq '.data.ImageList.Results[0].Licenses') = '"GPLv2"' ]
 }
 
-@test "sign/verify with cosign" {
+@test "sign/verify with cosign (only tag-based signatures)" {
     run curl -X POST -H "Content-Type: application/json" --data '{ "query": "{ ImageList(repo: \"annotations\") { Results { RepoName Tag Manifests {Digest ConfigDigest Size Layers { Size Digest }} Vendor Licenses }}}"}' http://localhost:8080/v2/_zot/ext/search
     [ "$status" -eq 0 ]
     [ $(echo "${lines[-1]}" | jq '.data.ImageList.Results[0].RepoName') = '"annotations"' ]
@@ -131,6 +131,80 @@ function teardown_file() {
     [ "$status" -eq 0 ]
     local sigName=$(echo "${lines[-1]}" | jq '.[].critical.image."docker-manifest-digest"')
     [[ "$sigName" == *"${digest}"* ]]
+}
+
+@test "sign/verify with cosign (only referrers)" {
+    run curl -X POST -H "Content-Type: application/json" --data '{ "query": "{ ImageList(repo: \"annotations\") { Results { RepoName Tag Manifests {Digest ConfigDigest Size Layers { Size Digest }} Vendor Licenses }}}"}' http://localhost:8080/v2/_zot/ext/search
+    [ "$status" -eq 0 ]
+    [ $(echo "${lines[-1]}" | jq '.data.ImageList.Results[0].RepoName') = '"annotations"' ]
+    local digest=$(echo "${lines[-1]}" | jq -r '.data.ImageList.Results[0].Manifests[0].Digest')
+
+    export COSIGN_OCI_EXPERIMENTAL=1
+    export COSIGN_EXPERIMENTAL=1
+    run cosign initialize
+    [ "$status" -eq 0 ]
+    run cosign generate-key-pair --output-key-prefix "${BATS_FILE_TMPDIR}/cosign-sign-test-experimental"
+    [ "$status" -eq 0 ]
+    run cosign sign --registry-referrers-mode=oci-1-1 --key ${BATS_FILE_TMPDIR}/cosign-sign-test-experimental.key localhost:8080/annotations:latest --yes
+    [ "$status" -eq 0 ]
+    run cosign verify --key ${BATS_FILE_TMPDIR}/cosign-sign-test-experimental.pub localhost:8080/annotations:latest
+    [ "$status" -eq 0 ]
+    local sigName=$(echo "${lines[-1]}" | jq '.[].critical.image."docker-manifest-digest"')
+    [[ "$sigName" == *"${digest}"* ]]
+    unset COSIGN_OCI_EXPERIMENTAL
+    unset COSIGN_EXPERIMENTAL
+}
+
+@test "sign/verify with cosign (tag and referrers)" {
+    run curl -X POST -H "Content-Type: application/json" --data '{ "query": "{ ImageList(repo: \"annotations\") { Results { RepoName Tag Manifests {Digest ConfigDigest Size Layers { Size Digest }} Vendor Licenses }}}"}' http://localhost:8080/v2/_zot/ext/search
+    [ "$status" -eq 0 ]
+    [ $(echo "${lines[-1]}" | jq '.data.ImageList.Results[0].RepoName') = '"annotations"' ]
+    local digest=$(echo "${lines[-1]}" | jq -r '.data.ImageList.Results[0].Manifests[0].Digest')
+
+    export COSIGN_OCI_EXPERIMENTAL=1
+    export COSIGN_EXPERIMENTAL=1
+    run cosign initialize
+    [ "$status" -eq 0 ]
+
+    run cosign generate-key-pair --output-key-prefix "${BATS_FILE_TMPDIR}/cosign-sign-test-tag-1"
+    [ "$status" -eq 0 ]
+    run cosign sign --key ${BATS_FILE_TMPDIR}/cosign-sign-test-tag-1.key localhost:8080/annotations:latest --yes
+    [ "$status" -eq 0 ]
+
+    run cosign generate-key-pair --output-key-prefix "${BATS_FILE_TMPDIR}/cosign-sign-test-referrers-1"
+    [ "$status" -eq 0 ]
+    run cosign sign --registry-referrers-mode=oci-1-1 --key ${BATS_FILE_TMPDIR}/cosign-sign-test-referrers-1.key localhost:8080/annotations:latest --yes
+    [ "$status" -eq 0 ]
+
+    run cosign generate-key-pair --output-key-prefix "${BATS_FILE_TMPDIR}/cosign-sign-test-tag-2"
+    [ "$status" -eq 0 ]
+    run cosign sign --key ${BATS_FILE_TMPDIR}/cosign-sign-test-tag-2.key localhost:8080/annotations:latest --yes
+    [ "$status" -eq 0 ]
+
+    run cosign verify --key ${BATS_FILE_TMPDIR}/cosign-sign-test-tag-1.pub localhost:8080/annotations:latest
+    [ "$status" -eq 0 ]
+    local sigName=$(echo "${lines[-1]}" | jq '.[].critical.image."docker-manifest-digest"')
+    [[ "$sigName" == *"${digest}"* ]]
+    run cosign verify --key ${BATS_FILE_TMPDIR}/cosign-sign-test-tag-2.pub localhost:8080/annotations:latest
+    [ "$status" -eq 0 ]
+    local sigName=$(echo "${lines[-1]}" | jq '.[].critical.image."docker-manifest-digest"')
+    [[ "$sigName" == *"${digest}"* ]]
+    run cosign verify --key ${BATS_FILE_TMPDIR}/cosign-sign-test-referrers-1.pub localhost:8080/annotations:latest
+    [ "$status" -eq 0 ]
+    local sigName=$(echo "${lines[-1]}" | jq '.[].critical.image."docker-manifest-digest"')
+    [[ "$sigName" == *"${digest}"* ]]
+
+    run cosign generate-key-pair --output-key-prefix "${BATS_FILE_TMPDIR}/cosign-sign-test-referrers-2"
+    [ "$status" -eq 0 ]
+    run cosign sign --registry-referrers-mode=oci-1-1 --key ${BATS_FILE_TMPDIR}/cosign-sign-test-referrers-2.key localhost:8080/annotations:latest --yes
+    [ "$status" -eq 0 ]
+    run cosign verify --key ${BATS_FILE_TMPDIR}/cosign-sign-test-referrers-2.pub localhost:8080/annotations:latest
+    [ "$status" -eq 0 ]
+    local sigName=$(echo "${lines[-1]}" | jq '.[].critical.image."docker-manifest-digest"')
+    [[ "$sigName" == *"${digest}"* ]]
+
+    unset COSIGN_OCI_EXPERIMENTAL
+    unset COSIGN_EXPERIMENTAL
 }
 
 @test "sign/verify with notation" {

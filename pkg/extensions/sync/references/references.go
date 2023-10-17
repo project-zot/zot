@@ -17,7 +17,6 @@ import (
 	"zotregistry.io/zot/pkg/common"
 	client "zotregistry.io/zot/pkg/extensions/sync/httpclient"
 	"zotregistry.io/zot/pkg/log"
-	"zotregistry.io/zot/pkg/meta"
 	mTypes "zotregistry.io/zot/pkg/meta/types"
 	"zotregistry.io/zot/pkg/storage"
 	storageTypes "zotregistry.io/zot/pkg/storage/types"
@@ -218,20 +217,14 @@ func getNotationManifestsFromOCIRefs(ociRefs ispec.Index) []ispec.Descriptor {
 	return notaryManifests
 }
 
-func addSigToMeta(
-	metaDB mTypes.MetaDB, repo, sigType, tag string, signedManifestDig, referenceDigest godigest.Digest,
-	referenceBuf []byte, imageStore storageTypes.ImageStore, log log.Logger,
-) error {
-	layersInfo, errGetLayers := meta.GetSignatureLayersInfo(repo, tag, referenceDigest.String(),
-		sigType, referenceBuf, imageStore, log)
+func getCosignManifestsFromOCIRefs(ociRefs ispec.Index) []ispec.Descriptor {
+	cosignManifests := []ispec.Descriptor{}
 
-	if errGetLayers != nil {
-		return errGetLayers
+	for _, ref := range ociRefs.Manifests {
+		if ref.ArtifactType == common.ArtifactTypeCosign {
+			cosignManifests = append(cosignManifests, ref)
+		}
 	}
 
-	return metaDB.AddManifestSignature(repo, signedManifestDig, mTypes.SignatureMetadata{
-		SignatureType:   sigType,
-		SignatureDigest: referenceDigest.String(),
-		LayersInfo:      layersInfo,
-	})
+	return cosignManifests
 }

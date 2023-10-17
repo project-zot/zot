@@ -813,7 +813,7 @@ func (bdw *BoltDB) GetMultipleRepoMeta(ctx context.Context, filter func(repoMeta
 }
 
 func (bdw *BoltDB) AddManifestSignature(repo string, signedManifestDigest godigest.Digest,
-	sygMeta mTypes.SignatureMetadata,
+	sigMeta mTypes.SignatureMetadata,
 ) error {
 	err := bdw.DB.Update(func(tx *bbolt.Tx) error {
 		repoMetaBuck := tx.Bucket([]byte(RepoMetaBuck))
@@ -829,11 +829,11 @@ func (bdw *BoltDB) AddManifestSignature(repo string, signedManifestDigest godige
 				Signatures: map[string]*proto_go.ManifestSignatures{
 					signedManifestDigest.String(): {
 						Map: map[string]*proto_go.SignaturesInfo{
-							sygMeta.SignatureType: {
+							sigMeta.SignatureType: {
 								List: []*proto_go.SignatureInfo{
 									{
-										SignatureManifestDigest: sygMeta.SignatureDigest,
-										LayersInfo:              mConvert.GetProtoLayersInfo(sygMeta.LayersInfo),
+										SignatureManifestDigest: sigMeta.SignatureDigest,
+										LayersInfo:              mConvert.GetProtoLayersInfo(sigMeta.LayersInfo),
 									},
 								},
 							},
@@ -867,26 +867,46 @@ func (bdw *BoltDB) AddManifestSignature(repo string, signedManifestDigest godige
 		}
 
 		signatureSlice := &proto_go.SignaturesInfo{List: []*proto_go.SignatureInfo{}}
-		if sigSlice, found := manifestSignatures.Map[sygMeta.SignatureType]; found {
+		if sigSlice, found := manifestSignatures.Map[sigMeta.SignatureType]; found {
 			signatureSlice = sigSlice
 		}
 
-		if !common.ProtoSignatureAlreadyExists(signatureSlice.List, sygMeta) {
-			switch sygMeta.SignatureType {
+		if !common.ProtoSignatureAlreadyExists(signatureSlice.List, sigMeta) {
+			switch sigMeta.SignatureType {
 			case zcommon.NotationSignature:
 				signatureSlice.List = append(signatureSlice.List, &proto_go.SignatureInfo{
-					SignatureManifestDigest: sygMeta.SignatureDigest,
-					LayersInfo:              mConvert.GetProtoLayersInfo(sygMeta.LayersInfo),
+					SignatureManifestDigest: sigMeta.SignatureDigest,
+					LayersInfo:              mConvert.GetProtoLayersInfo(sigMeta.LayersInfo),
 				})
 			case zcommon.CosignSignature:
-				signatureSlice.List = []*proto_go.SignatureInfo{{
-					SignatureManifestDigest: sygMeta.SignatureDigest,
-					LayersInfo:              mConvert.GetProtoLayersInfo(sygMeta.LayersInfo),
-				}}
+				newCosignSig := &proto_go.SignatureInfo{
+					SignatureManifestDigest: sigMeta.SignatureDigest,
+					LayersInfo:              mConvert.GetProtoLayersInfo(sigMeta.LayersInfo),
+				}
+
+				if zcommon.IsCosignTag(sigMeta.SignatureTag) {
+					// the entry for "sha256-{digest}.sig" signatures should be overwritten if
+					// it exists or added on the first position if it doesn't exist
+					if len(signatureSlice.GetList()) == 0 {
+						signatureSlice.List = []*proto_go.SignatureInfo{newCosignSig}
+					} else {
+						signatureSlice.List[0] = newCosignSig
+					}
+				} else {
+					// the first position should be reserved for "sha256-{digest}.sig" signatures
+					if len(signatureSlice.GetList()) == 0 {
+						signatureSlice.List = []*proto_go.SignatureInfo{{
+							SignatureManifestDigest: "",
+							LayersInfo:              []*proto_go.LayersInfo{},
+						}}
+					}
+
+					signatureSlice.List = append(signatureSlice.List, newCosignSig)
+				}
 			}
 		}
 
-		manifestSignatures.Map[sygMeta.SignatureType] = signatureSlice
+		manifestSignatures.Map[sigMeta.SignatureType] = signatureSlice
 		protoRepoMeta.Signatures[signedManifestDigest.String()] = manifestSignatures
 
 		return setProtoRepoMeta(protoRepoMeta, repoMetaBuck)

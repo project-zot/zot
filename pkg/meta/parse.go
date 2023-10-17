@@ -289,6 +289,7 @@ func SetImageMetaFromInput(ctx context.Context, repo, reference, mediaType strin
 				mTypes.SignatureMetadata{
 					SignatureType:   sigType,
 					SignatureDigest: digest.String(),
+					SignatureTag:    reference,
 					LayersInfo:      layers,
 				})
 			if err != nil {
@@ -340,6 +341,11 @@ func isSignature(reference string, manifestContent ispec.Manifest) (bool, string
 	// check notation signature
 	if manifestArtifactType == zcommon.ArtifactTypeNotation && manifestContent.Subject != nil {
 		return true, NotationType, manifestContent.Subject.Digest
+	}
+
+	// check cosign signature
+	if manifestArtifactType == zcommon.ArtifactTypeCosign && manifestContent.Subject != nil {
+		return true, CosignType, manifestContent.Subject.Digest
 	}
 
 	if tag := reference; zcommon.IsCosignTag(reference) {
