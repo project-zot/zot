@@ -19,6 +19,7 @@ type StoreController interface {
 }
 
 type ImageStore interface { //nolint:interfacebloat
+	Name() string
 	DirExists(d string) bool
 	RootDir() string
 	RLock(*time.Time)

@@ -6,13 +6,11 @@ import (
 	"crypto/sha256"
 	"crypto/x509"
 	"encoding/base64"
-	"encoding/gob"
 	"errors"
 	"fmt"
 	"net"
 	"net/http"
 	"os"
-	"path"
 	"strconv"
 	"strings"
 	"time"
@@ -39,7 +37,6 @@ import (
 	zcommon "zotregistry.io/zot/pkg/common"
 	"zotregistry.io/zot/pkg/log"
 	reqCtx "zotregistry.io/zot/pkg/requestcontext"
-	storageConstants "zotregistry.io/zot/pkg/storage/constants"
 )
 
 const (
@@ -259,38 +256,6 @@ func (amw *AuthnMiddleware) TryAuthnHandlers(ctlr *Controller) mux.MiddlewareFun
 	amw.credMap = make(map[string]string)
 
 	delay := ctlr.Config.HTTP.Auth.FailDelay
-
-	// setup sessions cookie store used to preserve logged in user in web sessions
-	if ctlr.Config.IsBasicAuthnEnabled() {
-		// To store custom types in our cookies
-		// we must first register them using gob.Register
-		gob.Register(map[string]interface{}{})
-
-		cookieStoreHashKey := securecookie.GenerateRandomKey(64)
-		if cookieStoreHashKey == nil {
-			panic(zerr.ErrHashKeyNotCreated)
-		}
-
-		// if storage is filesystem then use zot's rootDir to store sessions
-		if ctlr.Config.Storage.StorageDriver == nil {
-			sessionsDir := path.Join(ctlr.Config.Storage.RootDirectory, "_sessions")
-			if err := os.MkdirAll(sessionsDir, storageConstants.DefaultDirPerms); err != nil {
-				panic(err)
-			}
-
-			cookieStore := sessions.NewFilesystemStore(sessionsDir, cookieStoreHashKey)
-
-			cookieStore.MaxAge(cookiesMaxAge)
-
-			ctlr.CookieStore = cookieStore
-		} else {
-			cookieStore := sessions.NewCookieStore(cookieStoreHashKey)
-
-			cookieStore.MaxAge(cookiesMaxAge)
-
-			ctlr.CookieStore = cookieStore
-		}
-	}
 
 	// ldap and htpasswd based authN
 	if ctlr.Config.IsLdapAuthEnabled() {
