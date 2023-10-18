@@ -256,11 +256,11 @@ func (cloud *PublicKeyAWSStorage) StorePublicKey(name godigest.Digest, publicKey
 	}
 
 	_, err := cloud.secretsManagerClient.CreateSecret(context.Background(), secretInputParam)
-	if err != nil {
-		return err
+	if err != nil && IsResourceExistsException(err) {
+		return nil
 	}
 
-	return nil
+	return err
 }
 
 func validatePublicKey(publicKeyContent []byte) (bool, error) {

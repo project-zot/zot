@@ -16,8 +16,11 @@ import (
 	"testing"
 	"time"
 
+	awshttp "github.com/aws/aws-sdk-go-v2/aws/transport/http"
 	"github.com/aws/aws-sdk-go-v2/service/secretsmanager"
 	"github.com/aws/aws-sdk-go-v2/service/secretsmanager/types"
+	smithy "github.com/aws/smithy-go"
+	smithyhttp "github.com/aws/smithy-go/transport/http"
 	guuid "github.com/gofrs/uuid"
 	"github.com/notaryproject/notation-go"
 	notreg "github.com/notaryproject/notation-go/registry"
@@ -661,7 +664,7 @@ func TestLocalTrustStore(t *testing.T) {
 func TestAWSTrustStore(t *testing.T) {
 	tskip.SkipDynamo(t)
 
-	trustpolicy := "trustpolicy"
+	trustpolicyDoc := "trustpolicy"
 
 	Convey("NewAWSImageTrustStore error", t, func() {
 		_, err := imagetrust.NewAWSImageTrustStore("us-east-2", "wrong;endpoint")
@@ -669,22 +672,7 @@ func TestAWSTrustStore(t *testing.T) {
 	})
 
 	Convey("InitTrustpolicy retry", t, func() {
-		smanager, err := imagetrust.GetSecretsManagerClient("us-east-2", os.Getenv("DYNAMODBMOCK_ENDPOINT"))
-		So(err, ShouldBeNil)
-
-		smCache := imagetrust.GetSecretsManagerRetrieval("us-east-2", os.Getenv("DYNAMODBMOCK_ENDPOINT"))
-
-		description := "notation trustpolicy file"
 		content := "trustpolicy content"
-
-		_, err = smanager.CreateSecret(context.Background(),
-			&secretsmanager.CreateSecretInput{
-				Name:         &trustpolicy,
-				Description:  &description,
-				SecretString: &content,
-			})
-		So(err, ShouldBeNil)
-
 		secretsManagerMock := mocks.SecretsManagerMock{
 			DeleteSecretFn: func(ctx context.Context, params *secretsmanager.DeleteSecretInput,
 				optFns ...func(*secretsmanager.Options),
@@ -694,20 +682,25 @@ func TestAWSTrustStore(t *testing.T) {
 			CreateSecretFn: func(ctx context.Context, params *secretsmanager.CreateSecretInput,
 				optFns ...func(*secretsmanager.Options),
 			) (*secretsmanager.CreateSecretOutput, error) {
-				return smanager.CreateSecret(ctx, params, optFns...)
+				return &secretsmanager.CreateSecretOutput{}, getResourceExistsException()
 			},
 		}
-
 		secretsManagerCacheMock := mocks.SecretsManagerCacheMock{
 			GetSecretStringFn: func(secretID string) (string, error) {
 				return "", errUnexpectedError
 			},
 		}
 
-		_, err = imagetrust.NewCertificateAWSStorage(secretsManagerMock, secretsManagerCacheMock)
+		_, err := imagetrust.NewCertificateAWSStorage(secretsManagerMock, secretsManagerCacheMock)
 		So(err, ShouldNotBeNil)
 
-		_, err = imagetrust.NewCertificateAWSStorage(secretsManagerMock, smCache)
+		secretsManagerCacheMock = mocks.SecretsManagerCacheMock{
+			GetSecretStringFn: func(secretID string) (string, error) {
+				return content, nil
+			},
+		}
+
+		_, err = imagetrust.NewCertificateAWSStorage(secretsManagerMock, secretsManagerCacheMock)
 		So(err, ShouldNotBeNil)
 
 		secretsManagerMock = mocks.SecretsManagerMock{
@@ -719,12 +712,14 @@ func TestAWSTrustStore(t *testing.T) {
 			CreateSecretFn: func(ctx context.Context, params *secretsmanager.CreateSecretInput,
 				optFns ...func(*secretsmanager.Options),
 			) (*secretsmanager.CreateSecretOutput, error) {
-				return smanager.CreateSecret(ctx, params, optFns...)
+				return &secretsmanager.CreateSecretOutput{}, getResourceExistsException()
 			},
 		}
 
-		_, err = imagetrust.NewCertificateAWSStorage(secretsManagerMock, smCache)
+		_, err = imagetrust.NewCertificateAWSStorage(secretsManagerMock, secretsManagerCacheMock)
 		So(err, ShouldNotBeNil)
+
+		errVal := make(chan bool)
 
 		secretsManagerMock = mocks.SecretsManagerMock{
 			DeleteSecretFn: func(ctx context.Context, params *secretsmanager.DeleteSecretInput,
@@ -733,7 +728,7 @@ func TestAWSTrustStore(t *testing.T) {
 				go func() {
 					time.Sleep(3 * time.Second)
 
-					smanager.DeleteSecret(ctx, params, optFns...) //nolint:errcheck
+					errVal <- true
 				}()
 
 				return &secretsmanager.DeleteSecretOutput{}, nil
@@ -741,21 +736,53 @@ func TestAWSTrustStore(t *testing.T) {
 			CreateSecretFn: func(ctx context.Context, params *secretsmanager.CreateSecretInput,
 				optFns ...func(*secretsmanager.Options),
 			) (*secretsmanager.CreateSecretOutput, error) {
-				return smanager.CreateSecret(ctx, params, optFns...)
+				select {
+				case <-errVal:
+					return &secretsmanager.CreateSecretOutput{}, nil
+				default:
+					return &secretsmanager.CreateSecretOutput{}, getResourceExistsException()
+				}
 			},
 		}
 
-		_, err = imagetrust.NewCertificateAWSStorage(secretsManagerMock, smCache)
+		_, err = imagetrust.NewCertificateAWSStorage(secretsManagerMock, secretsManagerCacheMock)
 		So(err, ShouldBeNil)
 	})
 
 	Convey("GetCertificates errors", t, func() {
-		smanager, err := imagetrust.GetSecretsManagerClient("us-east-2", os.Getenv("DYNAMODBMOCK_ENDPOINT"))
-		So(err, ShouldBeNil)
+		name := "ca/test/digest"
+		content := "invalid certificate content"
 
-		smCache := imagetrust.GetSecretsManagerRetrieval("us-east-2", os.Getenv("DYNAMODBMOCK_ENDPOINT"))
+		secretsManagerMock := mocks.SecretsManagerMock{
+			DeleteSecretFn: func(ctx context.Context, params *secretsmanager.DeleteSecretInput,
+				optFns ...func(*secretsmanager.Options),
+			) (*secretsmanager.DeleteSecretOutput, error) {
+				return &secretsmanager.DeleteSecretOutput{}, nil
+			},
+			CreateSecretFn: func(ctx context.Context, params *secretsmanager.CreateSecretInput,
+				optFns ...func(*secretsmanager.Options),
+			) (*secretsmanager.CreateSecretOutput, error) {
+				if *params.Name == trustpolicyDoc {
+					return &secretsmanager.CreateSecretOutput{}, nil
+				}
 
-		notationStorage, err := imagetrust.NewCertificateAWSStorage(smanager, smCache)
+				return &secretsmanager.CreateSecretOutput{}, errUnexpectedError
+			},
+			ListSecretsFn: func(ctx context.Context, params *secretsmanager.ListSecretsInput,
+				optFns ...func(*secretsmanager.Options),
+			) (*secretsmanager.ListSecretsOutput, error) {
+				return &secretsmanager.ListSecretsOutput{
+					SecretList: []types.SecretListEntry{{Name: &name}},
+				}, nil
+			},
+		}
+		secretsManagerCacheMock := mocks.SecretsManagerCacheMock{
+			GetSecretStringFn: func(secretID string) (string, error) {
+				return content, nil
+			},
+		}
+
+		notationStorage, err := imagetrust.NewCertificateAWSStorage(secretsManagerMock, secretsManagerCacheMock)
 		So(err, ShouldBeNil)
 
 		_, err = notationStorage.GetCertificates(context.Background(), "wrongType", "")
@@ -766,36 +793,48 @@ func TestAWSTrustStore(t *testing.T) {
 		So(err, ShouldNotBeNil)
 		So(err, ShouldEqual, zerr.ErrInvalidTruststoreName)
 
-		name := "ca/test/digest"
-		description := "notation certificate"
-		content := "invalid certificate content"
-
-		_, err = smanager.CreateSecret(context.Background(),
-			&secretsmanager.CreateSecretInput{
-				Name:         &name,
-				Description:  &description,
-				SecretString: &content,
-			})
-		So(err, ShouldBeNil)
-
 		_, err = notationStorage.GetCertificates(context.Background(), "ca", "test")
 		So(err, ShouldNotBeNil)
 
 		newName := "ca/newtest/digest"
 		newSecret := base64.StdEncoding.EncodeToString([]byte(content))
 
-		_, err = smanager.CreateSecret(context.Background(),
-			&secretsmanager.CreateSecretInput{
-				Name:         &newName,
-				Description:  &description,
-				SecretString: &newSecret,
-			})
+		secretsManagerMock = mocks.SecretsManagerMock{
+			DeleteSecretFn: func(ctx context.Context, params *secretsmanager.DeleteSecretInput,
+				optFns ...func(*secretsmanager.Options),
+			) (*secretsmanager.DeleteSecretOutput, error) {
+				return &secretsmanager.DeleteSecretOutput{}, nil
+			},
+			CreateSecretFn: func(ctx context.Context, params *secretsmanager.CreateSecretInput,
+				optFns ...func(*secretsmanager.Options),
+			) (*secretsmanager.CreateSecretOutput, error) {
+				if *params.Name == trustpolicyDoc {
+					return &secretsmanager.CreateSecretOutput{}, nil
+				}
+
+				return &secretsmanager.CreateSecretOutput{}, errUnexpectedError
+			},
+			ListSecretsFn: func(ctx context.Context, params *secretsmanager.ListSecretsInput,
+				optFns ...func(*secretsmanager.Options),
+			) (*secretsmanager.ListSecretsOutput, error) {
+				return &secretsmanager.ListSecretsOutput{
+					SecretList: []types.SecretListEntry{{Name: &newName}},
+				}, nil
+			},
+		}
+		secretsManagerCacheMock = mocks.SecretsManagerCacheMock{
+			GetSecretStringFn: func(secretID string) (string, error) {
+				return newSecret, nil
+			},
+		}
+
+		notationStorage, err = imagetrust.NewCertificateAWSStorage(secretsManagerMock, secretsManagerCacheMock)
 		So(err, ShouldBeNil)
 
 		_, err = notationStorage.GetCertificates(context.Background(), "ca", "newtest")
 		So(err, ShouldNotBeNil)
 
-		secretsManagerMock := mocks.SecretsManagerMock{
+		secretsManagerMock = mocks.SecretsManagerMock{
 			ListSecretsFn: func(ctx context.Context, params *secretsmanager.ListSecretsInput,
 				optFns ...func(*secretsmanager.Options),
 			) (*secretsmanager.ListSecretsOutput, error) {
@@ -803,7 +842,7 @@ func TestAWSTrustStore(t *testing.T) {
 			},
 		}
 
-		notationStorage, err = imagetrust.NewCertificateAWSStorage(secretsManagerMock, smCache)
+		notationStorage, err = imagetrust.NewCertificateAWSStorage(secretsManagerMock, secretsManagerCacheMock)
 		So(err, ShouldBeNil)
 
 		_, err = notationStorage.GetCertificates(context.Background(), "ca", "newtest")
@@ -817,7 +856,7 @@ func TestAWSTrustStore(t *testing.T) {
 			},
 		}
 
-		secretsManagerCacheMock := mocks.SecretsManagerCacheMock{
+		secretsManagerCacheMock = mocks.SecretsManagerCacheMock{
 			GetSecretStringFn: func(secretID string) (string, error) {
 				return "", errUnexpectedError
 			},
@@ -831,42 +870,41 @@ func TestAWSTrustStore(t *testing.T) {
 	})
 
 	Convey("GetPublicKeyVerifier errors", t, func() {
-		smanager, err := imagetrust.GetSecretsManagerClient("us-east-2", os.Getenv("DYNAMODBMOCK_ENDPOINT"))
-		So(err, ShouldBeNil)
+		secretsManagerMock := mocks.SecretsManagerMock{}
+		secretsManagerCacheMock := mocks.SecretsManagerCacheMock{
+			GetSecretStringFn: func(secretID string) (string, error) {
+				return "", errUnexpectedError
+			},
+		}
 
-		smCache := imagetrust.GetSecretsManagerRetrieval("us-east-2", os.Getenv("DYNAMODBMOCK_ENDPOINT"))
+		cosignStorage := imagetrust.NewPublicKeyAWSStorage(secretsManagerMock, secretsManagerCacheMock)
 
-		cosignStorage := imagetrust.NewPublicKeyAWSStorage(smanager, smCache)
-
-		_, _, err = cosignStorage.GetPublicKeyVerifier("badsecret")
+		_, _, err := cosignStorage.GetPublicKeyVerifier("badsecret")
 		So(err, ShouldNotBeNil)
 
 		secretName := "digest"
-		description := "cosign public key"
 		secret := "invalid public key content"
 
-		_, err = smanager.CreateSecret(context.Background(),
-			&secretsmanager.CreateSecretInput{
-				Name:         &secretName,
-				Description:  &description,
-				SecretString: &secret,
-			})
-		So(err, ShouldBeNil)
+		secretsManagerCacheMock = mocks.SecretsManagerCacheMock{
+			GetSecretStringFn: func(secretID string) (string, error) {
+				return secret, nil
+			},
+		}
+
+		cosignStorage = imagetrust.NewPublicKeyAWSStorage(secretsManagerMock, secretsManagerCacheMock)
 
 		_, _, err = cosignStorage.GetPublicKeyVerifier(secretName)
 		So(err, ShouldNotBeNil)
 
-		secretName = "newdigest"
-
 		newSecret := base64.StdEncoding.EncodeToString([]byte(secret))
 
-		_, err = smanager.CreateSecret(context.Background(),
-			&secretsmanager.CreateSecretInput{
-				Name:         &secretName,
-				Description:  &description,
-				SecretString: &newSecret,
-			})
-		So(err, ShouldBeNil)
+		secretsManagerCacheMock = mocks.SecretsManagerCacheMock{
+			GetSecretStringFn: func(secretID string) (string, error) {
+				return newSecret, nil
+			},
+		}
+
+		cosignStorage = imagetrust.NewPublicKeyAWSStorage(secretsManagerMock, secretsManagerCacheMock)
 
 		_, _, err = cosignStorage.GetPublicKeyVerifier(secretName)
 		So(err, ShouldNotBeNil)
@@ -900,6 +938,39 @@ func TestAWSTrustStore(t *testing.T) {
 
 		err := cosignStorage.StorePublicKey(digest.FromString("dig"), []byte("content"))
 		So(err, ShouldNotBeNil)
+
+		secretsManagerMock = mocks.SecretsManagerMock{
+			CreateSecretFn: func(ctx context.Context, params *secretsmanager.CreateSecretInput,
+				optFns ...func(*secretsmanager.Options),
+			) (*secretsmanager.CreateSecretOutput, error) {
+				return &secretsmanager.CreateSecretOutput{}, getResourceExistsException()
+			},
+		}
+
+		cosignStorage = imagetrust.NewPublicKeyAWSStorage(secretsManagerMock, nil)
+
+		err = cosignStorage.StorePublicKey(digest.FromString("dig"), []byte("content"))
+		So(err, ShouldBeNil)
+	})
+
+	Convey("StoreCertificate error", t, func() {
+		secretsManagerMock := mocks.SecretsManagerMock{
+			CreateSecretFn: func(ctx context.Context, params *secretsmanager.CreateSecretInput,
+				optFns ...func(*secretsmanager.Options),
+			) (*secretsmanager.CreateSecretOutput, error) {
+				if *params.Name != trustpolicyDoc {
+					return &secretsmanager.CreateSecretOutput{}, getResourceExistsException()
+				}
+
+				return &secretsmanager.CreateSecretOutput{}, nil
+			},
+		}
+
+		notationStorage, err := imagetrust.NewCertificateAWSStorage(secretsManagerMock, nil)
+		So(err, ShouldBeNil)
+
+		err = notationStorage.StoreCertificate([]byte("content"), "ca")
+		So(err, ShouldBeNil)
 	})
 
 	Convey("VerifySignature - trustpolicy.json does not exist", t, func() {
@@ -1336,4 +1407,18 @@ func RunVerificationTests(t *testing.T, dbDriverParams map[string]interface{}) {
 			So(author, ShouldEqual, "CN=cert,O=Notary,L=Seattle,ST=WA,C=US")
 		})
 	})
+}
+
+func getResourceExistsException() error {
+	errAlreadyExists := "the secret already exists"
+
+	return &smithy.OperationError{
+		Err: &awshttp.ResponseError{
+			ResponseError: &smithyhttp.ResponseError{
+				Err: &types.ResourceExistsException{
+					Message: &errAlreadyExists,
+				},
+			},
+		},
+	}
 }

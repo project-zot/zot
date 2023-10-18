@@ -170,7 +170,7 @@ func (cloud *CertificateAWSStorage) InitTrustpolicy(trustpolicy []byte) error {
 	}
 
 	_, err := cloud.secretsManagerClient.CreateSecret(context.Background(), secretInputParam)
-	if err != nil && strings.Contains(err.Error(), "the secret trustpolicy already exists.") {
+	if err != nil && IsResourceExistsException(err) {
 		trustpolicyContent, err := cloud.secretsManagerCache.GetSecretString(name)
 		if err != nil {
 			return err
@@ -494,6 +494,10 @@ func (cloud *CertificateAWSStorage) StoreCertificate(
 	}
 
 	_, err := cloud.secretsManagerClient.CreateSecret(context.Background(), secretInputParam)
+
+	if err != nil && IsResourceExistsException(err) {
+		return nil
+	}
 
 	return err
 }
