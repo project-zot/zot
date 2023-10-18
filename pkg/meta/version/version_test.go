@@ -11,6 +11,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 	"github.com/aws/aws-sdk-go/aws"
+	guuid "github.com/gofrs/uuid"
 	. "github.com/smartystreets/goconvey/convey"
 	"go.etcd.io/bbolt"
 
@@ -116,16 +117,21 @@ func setBoltDBVersion(db *bbolt.DB, vers string) error {
 func TestVersioningDynamoDB(t *testing.T) {
 	tskip.SkipDynamo(t)
 
+	uuid, err := guuid.NewV4()
+	if err != nil {
+		panic(err)
+	}
+
 	Convey("Tests", t, func() {
 		params := mdynamodb.DBDriverParameters{
 			Endpoint:              os.Getenv("DYNAMODBMOCK_ENDPOINT"),
 			Region:                "us-east-2",
-			RepoMetaTablename:     "RepoMetadataTable",
-			ManifestDataTablename: "ManifestDataTable",
-			IndexDataTablename:    "IndexDataTable",
-			UserDataTablename:     "UserDataTable",
-			APIKeyTablename:       "ApiKeyTable",
-			VersionTablename:      "Version",
+			RepoMetaTablename:     "RepoMetadataTable" + uuid.String(),
+			ManifestDataTablename: "ManifestDataTable" + uuid.String(),
+			IndexDataTablename:    "IndexDataTable" + uuid.String(),
+			UserDataTablename:     "UserDataTable" + uuid.String(),
+			APIKeyTablename:       "ApiKeyTable" + uuid.String(),
+			VersionTablename:      "Version" + uuid.String(),
 		}
 
 		dynamoClient, err := mdynamodb.GetDynamoClient(params)
@@ -140,7 +146,7 @@ func TestVersioningDynamoDB(t *testing.T) {
 		So(dynamoWrapper.ResetRepoMetaTable(), ShouldBeNil)
 
 		Convey("dbVersion is empty", func() {
-			err := setDynamoDBVersion(dynamoWrapper.Client, "")
+			err := setDynamoDBVersion(dynamoWrapper.Client, params.VersionTablename, "")
 			So(err, ShouldBeNil)
 
 			err = dynamoWrapper.PatchDB()
@@ -160,7 +166,7 @@ func TestVersioningDynamoDB(t *testing.T) {
 				},
 			}
 
-			err := setDynamoDBVersion(dynamoWrapper.Client, version.Version1)
+			err := setDynamoDBVersion(dynamoWrapper.Client, params.VersionTablename, version.Version1)
 			So(err, ShouldBeNil)
 			// we should skip the first patch
 
@@ -181,7 +187,7 @@ func TestVersioningDynamoDB(t *testing.T) {
 	})
 }
 
-func setDynamoDBVersion(client *dynamodb.Client, vers string) error {
+func setDynamoDBVersion(client *dynamodb.Client, versTable, vers string) error {
 	mdAttributeValue, err := attributevalue.Marshal(vers)
 	if err != nil {
 		return err
@@ -199,7 +205,7 @@ func setDynamoDBVersion(client *dynamodb.Client, vers string) error {
 				Value: version.DBVersionKey,
 			},
 		},
-		TableName:        aws.String("Version"),
+		TableName:        aws.String(versTable),
 		UpdateExpression: aws.String("SET #V = :Version"),
 	})
 

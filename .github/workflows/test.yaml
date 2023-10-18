@@ -14,7 +14,7 @@ permissions: read-all
 jobs:
   test-run-minimal:
     name: Running zot without extensions tests
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-latest-16-cores
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/clean-runner
@@ -57,7 +57,7 @@ jobs:
       - uses: ./.github/actions/teardown-localstack
   test-run-extensions:
     name: Run zot with extensions tests
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-latest-16-cores
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/clean-runner
@@ -80,7 +80,6 @@ jobs:
           cd $GITHUB_WORKSPACE
           go mod download
       - uses: ./.github/actions/setup-localstack
-      - uses: ./.github/actions/check-diskspace
       - name: run zot extended tests
         run: |
           cd $GITHUB_WORKSPACE
@@ -99,7 +98,7 @@ jobs:
       - uses: ./.github/actions/teardown-localstack
   test-run-devmode:
     name: Running privileged tests on Linux
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-latest-16-cores
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/clean-runner
