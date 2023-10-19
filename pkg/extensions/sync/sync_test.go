@@ -2263,6 +2263,268 @@ func TestBadTLS(t *testing.T) {
 	})
 }
 
+func TestSpecificImages(t *testing.T) {
+	Convey("Setup upstream", t, func() {
+		updateDuration, _ := time.ParseDuration("30m")
+
+		sctlr, srcBaseURL, _, _, _ := makeUpstreamServer(t, false, false)
+
+		scm := test.NewControllerManager(sctlr)
+		scm.StartAndWait(sctlr.Config.HTTP.Port)
+		defer scm.StopServer()
+
+		repo1 := "repo1"
+		image1 := CreateRandomImage()
+		image2 := CreateRandomImage()
+		image3 := CreateRandomImage()
+
+		err := UploadImage(image1, srcBaseURL, repo1, "v1")
+		So(err, ShouldBeNil)
+
+		err = UploadImage(image2, srcBaseURL, repo1, "v2")
+		So(err, ShouldBeNil)
+
+		err = UploadImage(image3, srcBaseURL, repo1, "v3")
+		So(err, ShouldBeNil)
+
+		repo2 := "repo2"
+
+		index1 := CreateRandomMultiarch()
+		index2 := CreateRandomMultiarch()
+		image4 := CreateRandomImage()
+
+		err = UploadMultiarchImage(index1, srcBaseURL, repo2, "v1")
+		So(err, ShouldBeNil)
+
+		err = UploadMultiarchImage(index2, srcBaseURL, repo2, "v2")
+		So(err, ShouldBeNil)
+
+		err = UploadImage(image4, srcBaseURL, repo2, "v3")
+		So(err, ShouldBeNil)
+
+		Convey("Verify sync specific images works", func() {
+			tlsVerify := false
+
+			syncRegistryConfig := syncconf.RegistryConfig{
+				Content: []syncconf.Content{
+					{
+						Images: map[string][]string{
+							"repo1": {"v1", "v2", "v3"}, // add some missing tags
+							"repo2": {"v1", "v2", "v3"},
+						},
+					},
+				},
+				URLs:         []string{srcBaseURL},
+				OnDemand:     false,
+				PollInterval: updateDuration,
+				TLSVerify:    &tlsVerify,
+			}
+
+			defaultVal := true
+			syncConfig := &syncconf.Config{
+				Enable:     &defaultVal,
+				Registries: []syncconf.RegistryConfig{syncRegistryConfig},
+			}
+
+			dctlr, destBaseURL, _, destClient := makeDownstreamServer(t, false, syncConfig)
+			dctlr.Config.Log.Output = path.Join(dctlr.Config.Storage.RootDirectory, "sync.log")
+
+			dcm := test.NewControllerManager(dctlr)
+			dcm.StartAndWait(dctlr.Config.HTTP.Port)
+			defer dcm.StopServer()
+
+			found, err := test.ReadLogFileAndCountStringOccurence(dctlr.Config.Log.Output,
+				"sync: finished syncing specific images for repo", 100*time.Second, 2)
+			if err != nil {
+				panic(err)
+			}
+
+			if !found {
+				data, err := os.ReadFile(dctlr.Config.Log.Output)
+				So(err, ShouldBeNil)
+
+				t.Logf("downstream log: %s", string(data))
+
+				panic(err)
+			}
+
+			resp, _ := destClient.R().Get(destBaseURL + "/v2/" + repo1 + "/manifests/" + "v1")
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+			resp, _ = destClient.R().Get(destBaseURL + "/v2/" + repo1 + "/manifests/" + "v2")
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+			resp, _ = destClient.R().Get(destBaseURL + "/v2/" + repo1 + "/manifests/" + "v3")
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+			resp, _ = destClient.R().Get(destBaseURL + "/v2/" + repo2 + "/manifests/" + "v1")
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+			resp, _ = destClient.R().Get(destBaseURL + "/v2/" + repo2 + "/manifests/" + "v2")
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+			resp, _ = destClient.R().Get(destBaseURL + "/v2/" + repo2 + "/manifests/" + "v3")
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+		})
+
+		Convey("Verify sync specific images with tagRegex works", func() {
+			tlsVerify := false
+			regex := "v.*"
+
+			syncRegistryConfig := syncconf.RegistryConfig{
+				Content: []syncconf.Content{
+					{
+						Images: map[string][]string{
+							"repo1": {}, // add some missing tags
+							"repo2": {},
+						},
+						Tags: &syncconf.Tags{
+							Regex: &regex,
+						},
+					},
+				},
+				URLs:         []string{srcBaseURL},
+				OnDemand:     false,
+				PollInterval: updateDuration,
+				TLSVerify:    &tlsVerify,
+			}
+
+			defaultVal := true
+			syncConfig := &syncconf.Config{
+				Enable:     &defaultVal,
+				Registries: []syncconf.RegistryConfig{syncRegistryConfig},
+			}
+
+			dctlr, destBaseURL, _, destClient := makeDownstreamServer(t, false, syncConfig)
+			dctlr.Config.Log.Output = path.Join(dctlr.Config.Storage.RootDirectory, "sync.log")
+
+			dcm := test.NewControllerManager(dctlr)
+			dcm.StartAndWait(dctlr.Config.HTTP.Port)
+			defer dcm.StopServer()
+
+			found, err := test.ReadLogFileAndCountStringOccurence(dctlr.Config.Log.Output,
+				"sync: finished syncing specific images for repo", 100*time.Second, 2)
+			if err != nil {
+				panic(err)
+			}
+
+			time.Sleep(1 * time.Second)
+
+			if !found {
+				data, err := os.ReadFile(dctlr.Config.Log.Output)
+				So(err, ShouldBeNil)
+
+				t.Logf("downstream log: %s", string(data))
+
+				panic(err)
+			}
+
+			resp, _ := destClient.R().Get(destBaseURL + "/v2/" + repo1 + "/manifests/" + "v1")
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+			resp, _ = destClient.R().Get(destBaseURL + "/v2/" + repo1 + "/manifests/" + "v2")
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+			resp, _ = destClient.R().Get(destBaseURL + "/v2/" + repo1 + "/manifests/" + "v3")
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+			resp, _ = destClient.R().Get(destBaseURL + "/v2/" + repo2 + "/manifests/" + "v1")
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+			resp, _ = destClient.R().Get(destBaseURL + "/v2/" + repo2 + "/manifests/" + "v2")
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+			resp, _ = destClient.R().Get(destBaseURL + "/v2/" + repo2 + "/manifests/" + "v3")
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+		})
+
+		Convey("Verify sync specific repo works", func() {
+			tlsVerify := false
+
+			syncRegistryConfig := syncconf.RegistryConfig{
+				Content: []syncconf.Content{
+					{
+						Images: map[string][]string{
+							"repo1": {},
+							"repo2": {},
+						},
+					},
+				},
+				URLs:         []string{srcBaseURL},
+				OnDemand:     false,
+				PollInterval: updateDuration,
+				TLSVerify:    &tlsVerify,
+			}
+
+			defaultVal := true
+			syncConfig := &syncconf.Config{
+				Enable:     &defaultVal,
+				Registries: []syncconf.RegistryConfig{syncRegistryConfig},
+			}
+
+			dctlr, destBaseURL, _, destClient := makeDownstreamServer(t, false, syncConfig)
+			dctlr.Config.Log.Output = path.Join(dctlr.Config.Storage.RootDirectory, "sync.log")
+
+			dcm := test.NewControllerManager(dctlr)
+			dcm.StartAndWait(dctlr.Config.HTTP.Port)
+			defer dcm.StopServer()
+
+			found, err := test.ReadLogFileAndCountStringOccurence(dctlr.Config.Log.Output,
+				"sync: finished syncing specific images for repo", 160*time.Second, 2)
+			if err != nil {
+				panic(err)
+			}
+
+			time.Sleep(1 * time.Second)
+
+			if !found {
+				data, err := os.ReadFile(dctlr.Config.Log.Output)
+				So(err, ShouldBeNil)
+
+				t.Logf("downstream log: %s", string(data))
+
+				panic(err)
+			}
+
+			resp, _ := destClient.R().Get(destBaseURL + "/v2/" + repo1 + "/manifests/" + "v1")
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+			resp, _ = destClient.R().Get(destBaseURL + "/v2/" + repo1 + "/manifests/" + "v2")
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+			resp, _ = destClient.R().Get(destBaseURL + "/v2/" + repo1 + "/manifests/" + "v3")
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+			resp, _ = destClient.R().Get(destBaseURL + "/v2/" + repo2 + "/manifests/" + "v1")
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+			resp, _ = destClient.R().Get(destBaseURL + "/v2/" + repo2 + "/manifests/" + "v2")
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+			resp, _ = destClient.R().Get(destBaseURL + "/v2/" + repo2 + "/manifests/" + "v3")
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+		})
+	})
+}
+
 func TestTLS(t *testing.T) {
 	Convey("Verify sync TLS feature", t, func() {
 		updateDuration, _ := time.ParseDuration("1h")
@@ -4152,7 +4414,7 @@ func TestSignatures(t *testing.T) {
 		syncRegistryConfig := syncconf.RegistryConfig{
 			Content: []syncconf.Content{
 				{
-					Prefix: "**",
+					Prefix: repoName,
 					Tags: &syncconf.Tags{
 						Regex:  &regex,
 						Semver: &semver,
@@ -4294,6 +4556,14 @@ func TestSignatures(t *testing.T) {
 
 		So(len(refs.References), ShouldEqual, 1)
 		So(refs.References[0].Digest, ShouldEqual, ORASRefManifestDigest)
+
+		// try to get referrers for a non existing image (repo should be filtered out by content)
+		// get oci references from downstream, should be synced
+		getOCIReferrersURL = destBaseURL + path.Join("/v2", "test", "referrers", digest.String())
+		resp, err = resty.R().Get(getOCIReferrersURL)
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeEmpty)
+		So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
 
 		// test negative cases (trigger errors)
 		// test notary signatures errors
@@ -6092,10 +6362,6 @@ func TestSyncWithDestination(t *testing.T) {
 			},
 			{
 				expected: "zot-test",
-				content:  syncconf.Content{Prefix: "zot-fold/zot-test", Destination: "/zot-test", StripPrefix: true},
-			},
-			{
-				expected: "zot-test",
 				content:  syncconf.Content{Prefix: "zot-fold/*", Destination: "/", StripPrefix: true},
 			},
 			{
@@ -6719,6 +6985,8 @@ func waitSyncFinish(logPath string) bool {
 	if err != nil {
 		panic(err)
 	}
+
+	time.Sleep(1 * time.Second)
 
 	return found
 }

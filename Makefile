@@ -498,6 +498,7 @@ run-blackbox-ci: check-blackbox-prerequisites binary binary-minimal cli
 	$(BATS) $(BATS_FLAGS) test/blackbox/cve.bats && \
 	$(BATS) $(BATS_FLAGS) test/blackbox/sync.bats && \
 	$(BATS) $(BATS_FLAGS) test/blackbox/sync_docker.bats && \
+	$(BATS) $(BATS_FLAGS) test/blackbox/sync_specific_images.bats && \
 	$(BATS) $(BATS_FLAGS) test/blackbox/sync_replica_cluster.bats && \
 	$(BATS) $(BATS_FLAGS) test/blackbox/scrub.bats && \
 	$(BATS) $(BATS_FLAGS) test/blackbox/garbage_collect.bats && \

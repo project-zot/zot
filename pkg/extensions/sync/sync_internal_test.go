@@ -165,7 +165,7 @@ func TestService(t *testing.T) {
 		service, err := New(conf, "", storage.StoreController{}, mocks.MetaDBMock{}, log.Logger{})
 		So(err, ShouldBeNil)
 
-		err = service.SyncRepo(context.Background(), "repo")
+		err = service.SyncRepo(context.Background(), "repo", "repo")
 		So(err, ShouldNotBeNil)
 	})
 }
