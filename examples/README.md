@@ -209,13 +209,13 @@ zot can be configured to use the above providers with:
   }
 ```
 
-To login with either provider use http://127.0.0.1:8080/auth/login?provider=\<provider\>&callback_ui=http://127.0.0.1:8080/home
-for example to login with github use http://127.0.0.1:8080/auth/login?provider=github&callback_ui=http://127.0.0.1:8080/home
+To login with either provider use http://127.0.0.1:8080/zot/auth/login?provider=\<provider\>&callback_ui=http://127.0.0.1:8080/home
+for example to login with github use http://127.0.0.1:8080/zot/auth/login?provider=github&callback_ui=http://127.0.0.1:8080/home
 
 callback_ui query parameter is used by zot to redirect to UI after a successful openid/oauth2 authentication
 
-The callback url which should be used when making oauth2 provider setup is http://127.0.0.1:8080/auth/callback/\<provider\>
-for example github callback url would be http://127.0.0.1:8080/auth/callback/github
+The callback url which should be used when making oauth2 provider setup is http://127.0.0.1:8080/zot/auth/callback/\<provider\>
+for example github callback url would be http://127.0.0.1:8080/zot/auth/callback/github
 
 If network policy doesn't allow inbound connections, this callback wont work!
 
@@ -228,7 +228,7 @@ To configure zot as a client in dex (assuming zot is hosted at 127.0.0.1:8080), 
 staticClients:
   - id: zot-client
     redirectURIs:
-      - 'http://127.0.0.1:8080/auth/callback/oidc'
+      - 'http://127.0.0.1:8080/zot/auth/callback/oidc'
     name: 'zot'
     secret: ZXhhbXBsZS1hcHAtc2VjcmV0
 ```
@@ -254,7 +254,7 @@ zot can be configured to use dex with:
   }
 ```
 
-To login using openid dex provider use http://127.0.0.1:8080/auth/login?provider=oidc
+To login using openid dex provider use http://127.0.0.1:8080/zot/auth/login?provider=oidc
 
 NOTE: Social login is not supported by command line tools, or other software responsible for pushing/pulling
 images to/from zot.
@@ -323,14 +323,14 @@ To activate API keys use:
 
 Create an API key for the current user using the REST API
 
-**Usage**: POST /auth/apikey
+**Usage**: POST /zot/auth/apikey
 
 **Produces**: application/json
 
 **Sample input**:
 
 ```
-POST /auth/apikey
+POST /zot/auth/apikey
 Body: {"label": "git", "scopes": ["repo1", "repo2"], "expirationDate": "2023-08-28T17:10:05+03:00"}'
 ```
 
@@ -339,7 +339,7 @@ The time format of expirationDate is RFC1123Z.
 **Example cURL without expiration date**
 
 ```bash
-curl -u user:password -X POST http://localhost:8080/auth/apikey -d '{"label": "git", "scopes": ["repo1", "repo2"]}'
+curl -u user:password -X POST http://localhost:8080/zot/auth/apikey -d '{"label": "git", "scopes": ["repo1", "repo2"]}'
 ```
 
 **Sample output**:
@@ -365,7 +365,7 @@ curl -u user:password -X POST http://localhost:8080/auth/apikey -d '{"label": "g
 **Example cURL with expiration date**
 
 ```bash
-curl -u user:password -X POST http://localhost:8080/auth/apikey -d '{"label": "myAPIKEY", "expirationDate": "2023-08-28T17:10:05+03:00"}'
+curl -u user:password -X POST http://localhost:8080/zot/auth/apikey -d '{"label": "myAPIKEY", "expirationDate": "2023-08-28T17:10:05+03:00"}'
 ```
 
 **Sample output**:
@@ -389,7 +389,7 @@ curl -u user:password -X POST http://localhost:8080/auth/apikey -d '{"label": "m
 
 Get list of API keys for the current user using the REST API
 
-**Usage**: GET /auth/apikey
+**Usage**: GET /zot/auth/apikey
 
 **Produces**: application/json
 
@@ -448,14 +448,14 @@ Other command line tools will similarly accept the API key instead of a password
 
 How to revoke an API key for the current user
 
-**Usage**: DELETE /auth/apikey?id=$uuid
+**Usage**: DELETE /zot/auth/apikey?id=$uuid
 
 **Produces**: application/json
 
 **Example cURL**
 
 ```bash
-curl -u user:password -X DELETE http://localhost:8080/v2/auth/apikey?id=46a45ce7-5d92-498a-a9cb-9654b1da3da1
+curl -u user:password -X DELETE http://localhost:8080/zot/auth/apikey?id=46a45ce7-5d92-498a-a9cb-9654b1da3da1
 ```
 
 #### Authentication Failures

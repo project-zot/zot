@@ -108,9 +108,9 @@ function teardown() {
 }
 
 dex_session () {
-    STATE=$(curl -L -f -s http://localhost:8080/openid/auth/login?provider=oidc | grep -m 1 -oP '(?<=state=)[^ ]*"' | cut -d \" -f1)
+    STATE=$(curl -L -f -s http://localhost:8080/zot/auth/login?provider=oidc | grep -m 1 -oP '(?<=state=)[^ ]*"' | cut -d \" -f1)
     echo $STATE >&3
-    curl -L -f -s "http://127.0.0.1:5556/dex/auth/mock?client_id=zot-client&redirect_uri=http%3A%2F%2F127.0.0.1%3A8080%2Fopenid%2Fauth%2Fcallback%2Foidc&response_type=code&scope=profile+email+groups+openid&state=$STATE"
+    curl -L -f -s "http://127.0.0.1:5556/dex/auth/mock?client_id=zot-client&redirect_uri=http%3A%2F%2F127.0.0.1%3A8080%2Fzot%2Fauth%2Fcallback%2Foidc&response_type=code&scope=profile+email+groups+openid&state=$STATE"
 }
 
 @test "check dex is working" {
