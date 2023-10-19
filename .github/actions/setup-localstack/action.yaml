@@ -20,10 +20,10 @@ runs:
         password: ${{ inputs.password }}
     - shell: bash
       run: |
-            pip install localstack==2.3.1                                # Install LocalStack cli
+            pip install localstack==2.3.2                                # Install LocalStack cli
             # Below image was copied manually from localstack/localstack:2.2 and uploaded to ghcr
-            docker pull ghcr.io/project-zot/ci-images/localstack:2.3.1     # Make sure to pull a working version of the image
-            localstack start -d                                          # Start LocalStack in the background
+            docker pull localstack/localstack@sha256:1a1089d01cb8a16e72dd9f30a29a65d5310805b54b40ecf26cf3803a7690053d     # Make sure to pull a working version of the image
+            PROVIDER_OVERRIDE_S3=v3 localstack start -d                                          # Start LocalStack in the background
 
             echo "Waiting for LocalStack startup..."                     # Wait 30 seconds for the LocalStack container
             localstack wait -t 30                                        # to become ready before timing out
@@ -33,3 +33,5 @@ runs:
       env:
         AWS_ACCESS_KEY_ID: fake
         AWS_SECRET_ACCESS_KEY: fake
+        
+
