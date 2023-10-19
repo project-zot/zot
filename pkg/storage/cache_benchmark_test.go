@@ -11,6 +11,7 @@ import (
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/storage"
 	"zotregistry.io/zot/pkg/storage/cache"
+	test "zotregistry.io/zot/pkg/test/common"
 )
 
 const (
@@ -20,32 +21,20 @@ const (
 	datasetSize   int    = 5000
 )
 
-func generateRandomString() string {
-	//nolint: gosec
-	seededRand := rand.New(rand.NewSource(time.Now().UnixNano()))
-	charset := "abcdefghijklmnopqrstuvwxyz" + "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
-
-	randomBytes := make([]byte, 10)
-	for i := range randomBytes {
-		randomBytes[i] = charset[seededRand.Intn(len(charset))]
-	}
-
-	return string(randomBytes)
-}
-
 func generateData() map[godigest.Digest]string {
 	dataMap := make(map[godigest.Digest]string, datasetSize)
 	//nolint: gosec
 	seededRand := rand.New(rand.NewSource(time.Now().UnixNano()))
 
 	for i := 0; i < datasetSize; i++ {
-		randomString := generateRandomString()
+		randomString, _ := test.GenerateRandomString()
 		counter := 0
 
 		for seededRand.Float32() < 0.5 && counter < 5 {
 			counter++
 			randomString += "/"
-			randomString += generateRandomString()
+			rs, _ := test.GenerateRandomString()
+			randomString += rs
 		}
 		digest := godigest.FromString(randomString)
 		dataMap[digest] = randomString
@@ -209,7 +198,8 @@ func BenchmarkMixLocal(b *testing.B) {
 
 func BenchmarkPutLocalstack(b *testing.B) {
 	log := log.NewLogger("error", "")
-	tableName := generateRandomString()
+	tableName, seed := test.GenerateRandomString()
+	log.Info().Int64("seed", seed).Msg("random seed for tableName")
 
 	// Create Table
 	_, err := exec.Command("aws", "dynamodb", "--region", region, "--endpoint-url", localEndpoint, "create-table",
@@ -234,7 +224,8 @@ func BenchmarkPutLocalstack(b *testing.B) {
 
 func BenchmarkDeleteLocalstack(b *testing.B) {
 	log := log.NewLogger("error", "")
-	tableName := generateRandomString()
+	tableName, seed := test.GenerateRandomString()
+	log.Info().Int64("seed", seed).Msg("random seed for tableName")
 
 	// Create Table
 	_, err := exec.Command("aws", "dynamodb", "--region", region, "--endpoint-url", localEndpoint, "create-table",
@@ -263,7 +254,8 @@ func BenchmarkDeleteLocalstack(b *testing.B) {
 
 func BenchmarkHasLocalstack(b *testing.B) {
 	log := log.NewLogger("error", "")
-	tableName := generateRandomString()
+	tableName, seed := test.GenerateRandomString()
+	log.Info().Int64("seed", seed).Msg("random seed for tableName")
 
 	// Create Table
 	_, err := exec.Command("aws", "dynamodb", "--region", region, "--endpoint-url", localEndpoint, "create-table",
@@ -292,7 +284,8 @@ func BenchmarkHasLocalstack(b *testing.B) {
 
 func BenchmarkGetLocalstack(b *testing.B) {
 	log := log.NewLogger("error", "")
-	tableName := generateRandomString()
+	tableName, seed := test.GenerateRandomString()
+	log.Info().Int64("seed", seed).Msg("random seed for tableName")
 
 	// Create Table
 	_, err := exec.Command("aws", "dynamodb", "--region", region, "--endpoint-url", localEndpoint, "create-table",
@@ -331,7 +324,8 @@ func BenchmarkGetLocalstack(b *testing.B) {
 
 func BenchmarkMixLocalstack(b *testing.B) {
 	log := log.NewLogger("error", "")
-	tableName := generateRandomString()
+	tableName, seed := test.GenerateRandomString()
+	log.Info().Int64("seed", seed).Msg("random seed for tableName")
 
 	// Create Table
 	_, err := exec.Command("aws", "dynamodb", "--region", region, "--endpoint-url", localEndpoint, "create-table",
@@ -367,7 +361,8 @@ func BenchmarkMixLocalstack(b *testing.B) {
 
 func BenchmarkPutAWS(b *testing.B) {
 	log := log.NewLogger("error", "")
-	tableName := generateRandomString()
+	tableName, seed := test.GenerateRandomString()
+	log.Info().Int64("seed", seed).Msg("random seed for tableName")
 
 	// Create Table
 	_, err := exec.Command("aws", "dynamodb", "--region", region, "--endpoint-url", awsEndpoint, "create-table",
@@ -392,7 +387,8 @@ func BenchmarkPutAWS(b *testing.B) {
 
 func BenchmarkDeleteAWS(b *testing.B) {
 	log := log.NewLogger("error", "")
-	tableName := generateRandomString()
+	tableName, seed := test.GenerateRandomString()
+	log.Info().Int64("seed", seed).Msg("random seed for tableName")
 
 	// Create Table
 	_, err := exec.Command("aws", "dynamodb", "--region", region, "--endpoint-url", awsEndpoint, "create-table",
@@ -421,7 +417,8 @@ func BenchmarkDeleteAWS(b *testing.B) {
 
 func BenchmarkHasAWS(b *testing.B) {
 	log := log.NewLogger("error", "")
-	tableName := generateRandomString()
+	tableName, seed := test.GenerateRandomString()
+	log.Info().Int64("seed", seed).Msg("random seed for tableName")
 
 	// Create Table
 	_, err := exec.Command("aws", "dynamodb", "--region", region, "--endpoint-url", awsEndpoint, "create-table",
@@ -450,7 +447,8 @@ func BenchmarkHasAWS(b *testing.B) {
 
 func BenchmarkGetAWS(b *testing.B) {
 	log := log.NewLogger("error", "")
-	tableName := generateRandomString()
+	tableName, seed := test.GenerateRandomString()
+	log.Info().Int64("seed", seed).Msg("random seed for tableName")
 
 	// Create Table
 	_, err := exec.Command("aws", "dynamodb", "--region", region, "--endpoint-url", awsEndpoint, "create-table",
@@ -489,7 +487,8 @@ func BenchmarkGetAWS(b *testing.B) {
 
 func BenchmarkMixAWS(b *testing.B) {
 	log := log.NewLogger("error", "")
-	tableName := generateRandomString()
+	tableName, seed := test.GenerateRandomString()
+	log.Info().Int64("seed", seed).Msg("random seed for tableName")
 
 	// Create Table
 	_, err := exec.Command("aws", "dynamodb", "--region", region, "--endpoint-url", awsEndpoint, "create-table",

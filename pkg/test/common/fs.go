@@ -212,20 +212,13 @@ func ReadLogFileAndCountStringOccurence(logPath string, stringToMatch string,
 	}
 }
 
-func MakeHtpasswdFile() string {
-	// bcrypt(username="test", passwd="test")
-	content := "test:$2y$05$hlbSXDp6hzDLu6VwACS39ORvVRpr3OMR4RlJ31jtlaOEGnPjKZI1m\n"
-
-	return MakeHtpasswdFileFromString(content)
-}
-
 func GetCredString(username, password string) string {
 	hash, err := bcrypt.GenerateFromPassword([]byte(password), 10)
 	if err != nil {
 		panic(err)
 	}
 
-	usernameAndHash := fmt.Sprintf("%s:%s", username, string(hash))
+	usernameAndHash := fmt.Sprintf("%s:%s\n", username, string(hash))
 
 	return usernameAndHash
 }
@@ -236,7 +229,6 @@ func MakeHtpasswdFileFromString(fileContent string) string {
 		panic(err)
 	}
 
-	// bcrypt(username="test", passwd="test")
 	content := []byte(fileContent)
 	if err := os.WriteFile(htpasswdFile.Name(), content, 0o600); err != nil { //nolint:gomnd
 		panic(err)

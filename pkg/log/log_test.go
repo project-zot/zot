@@ -24,14 +24,7 @@ import (
 	"zotregistry.io/zot/pkg/api/config"
 	"zotregistry.io/zot/pkg/api/constants"
 	"zotregistry.io/zot/pkg/log"
-	. "zotregistry.io/zot/pkg/test/common"
-)
-
-const (
-	username              = "test"
-	passphrase            = "test"
-	AuthorizedNamespace   = "everyone/isallowed"
-	UnauthorizedNamespace = "fortknox/notallowed"
+	test "zotregistry.io/zot/pkg/test/common"
 )
 
 type AuditLog struct {
@@ -49,8 +42,8 @@ func TestAuditLogMessages(t *testing.T) {
 	Convey("Make a new controller", t, func() {
 		dir := t.TempDir()
 
-		port := GetFreePort()
-		baseURL := GetBaseURL(port)
+		port := test.GetFreePort()
+		baseURL := test.GetBaseURL(port)
 		conf := config.New()
 
 		outputPath := dir + "/zot.log"
@@ -59,7 +52,9 @@ func TestAuditLogMessages(t *testing.T) {
 
 		conf.HTTP.Port = port
 
-		htpasswdPath := MakeHtpasswdFile()
+		username, seedUser := test.GenerateRandomString()
+		password, seedPass := test.GenerateRandomString()
+		htpasswdPath := test.MakeHtpasswdFileFromString(test.GetCredString(username, password))
 		defer os.Remove(htpasswdPath)
 		conf.HTTP.Auth = &config.AuthConfig{
 			HTPasswd: config.AuthHTPasswd{
@@ -68,9 +63,10 @@ func TestAuditLogMessages(t *testing.T) {
 		}
 
 		ctlr := api.NewController(conf)
+		ctlr.Log.Info().Int64("seedUser", seedUser).Int64("seedPass", seedPass).Msg("random seed for username & password")
 		ctlr.Config.Storage.RootDirectory = dir
 
-		ctlrManager := NewControllerManager(ctlr)
+		ctlrManager := test.NewControllerManager(ctlr)
 		ctlrManager.StartAndWait(port)
 		defer ctlrManager.StopServer()
 
@@ -83,7 +79,7 @@ func TestAuditLogMessages(t *testing.T) {
 			defer auditFile.Close()
 
 			Convey("Test GET request", func() {
-				resp, err := resty.R().SetBasicAuth(username, passphrase).Get(baseURL + "/v2/")
+				resp, err := resty.R().SetBasicAuth(username, password).Get(baseURL + "/v2/")
 				So(err, ShouldBeNil)
 				So(resp, ShouldNotBeNil)
 				So(resp.StatusCode(), ShouldEqual, http.StatusOK)
@@ -93,8 +89,9 @@ func TestAuditLogMessages(t *testing.T) {
 			})
 
 			Convey("Test POST request", func() {
-				path := "/v2/" + AuthorizedNamespace + "/blobs/uploads/"
-				resp, err := resty.R().SetBasicAuth(username, passphrase).Post(baseURL + path)
+				repoName := "everyone/isallowed"
+				path := "/v2/" + repoName + "/blobs/uploads/"
+				resp, err := resty.R().SetBasicAuth(username, password).Post(baseURL + path)
 				So(err, ShouldBeNil)
 				So(resp, ShouldNotBeNil)
 				So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
@@ -124,10 +121,10 @@ func TestAuditLogMessages(t *testing.T) {
 			Convey("Test PUT and DELETE request", func() {
 				// create upload
 				path := "/v2/repo/blobs/uploads/"
-				resp, err := resty.R().SetBasicAuth(username, passphrase).Post(baseURL + path)
+				resp, err := resty.R().SetBasicAuth(username, password).Post(baseURL + path)
 				So(err, ShouldBeNil)
 				So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
-				loc := Location(baseURL, resp)
+				loc := test.Location(baseURL, resp)
 				So(loc, ShouldNotBeEmpty)
 				location := resp.Header().Get("Location")
 				So(location, ShouldNotBeEmpty)
@@ -159,11 +156,11 @@ func TestAuditLogMessages(t *testing.T) {
 
 				// blob upload
 				resp, err = resty.R().SetQueryParam("digest", digest.String()).
-					SetBasicAuth(username, passphrase).
+					SetBasicAuth(username, password).
 					SetHeader("Content-Type", "application/octet-stream").SetBody(content).Put(loc)
 				So(err, ShouldBeNil)
 				So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
-				blobLoc := Location(baseURL, resp)
+				blobLoc := test.Location(baseURL, resp)
 				So(blobLoc, ShouldNotBeEmpty)
 				So(resp.Header().Get(constants.DistContentDigestKey), ShouldNotBeEmpty)
 
@@ -190,7 +187,7 @@ func TestAuditLogMessages(t *testing.T) {
 				So(auditLog.Object, ShouldEqual, putPath)
 
 				// delete this blob
-				resp, err = resty.R().SetBasicAuth(username, passphrase).Delete(blobLoc)
+				resp, err = resty.R().SetBasicAuth(username, password).Delete(blobLoc)
 				So(err, ShouldBeNil)
 				So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
 				So(resp.Header().Get("Content-Length"), ShouldEqual, "0")
@@ -220,10 +217,10 @@ func TestAuditLogMessages(t *testing.T) {
 
 			Convey("Test PATCH request", func() {
 				path := "/v2/repo/blobs/uploads/"
-				resp, err := resty.R().SetBasicAuth(username, passphrase).Post(baseURL + path)
+				resp, err := resty.R().SetBasicAuth(username, password).Post(baseURL + path)
 				So(err, ShouldBeNil)
 				So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
-				loc := Location(baseURL, resp)
+				loc := test.Location(baseURL, resp)
 				So(loc, ShouldNotBeEmpty)
 				location := resp.Header().Get("Location")
 				So(location, ShouldNotBeEmpty)
@@ -257,7 +254,7 @@ func TestAuditLogMessages(t *testing.T) {
 
 				// write a chunk
 				contentRange := fmt.Sprintf("%d-%d", 0, len(chunk)-1)
-				resp, err = resty.R().SetBasicAuth(username, passphrase).
+				resp, err = resty.R().SetBasicAuth(username, password).
 					SetHeader("Content-Type", "application/octet-stream").
 					SetHeader("Content-Range", contentRange).SetBody(chunk).Patch(loc)
 				So(err, ShouldBeNil)

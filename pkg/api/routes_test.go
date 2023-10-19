@@ -44,8 +44,11 @@ func TestRoutes(t *testing.T) {
 		conf := config.New()
 		conf.HTTP.Port = port
 
-		htpasswdPath := test.MakeHtpasswdFile()
+		username, seedUser := test.GenerateRandomString()
+		password, seedPass := test.GenerateRandomString()
+		htpasswdPath := test.MakeHtpasswdFileFromString(test.GetCredString(username, password))
 		defer os.Remove(htpasswdPath)
+
 		mockOIDCServer, err := mockoidc.Run()
 		if err != nil {
 			panic(err)
@@ -79,6 +82,7 @@ func TestRoutes(t *testing.T) {
 		}
 
 		ctlr := api.NewController(conf)
+		ctlr.Log.Info().Int64("seedUser", seedUser).Int64("seedPass", seedPass).Msg("random seed for username & password")
 
 		ctlr.Config.Storage.RootDirectory = t.TempDir()
 		ctlr.Config.Storage.Commit = true

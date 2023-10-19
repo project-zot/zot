@@ -11,7 +11,6 @@ import (
 	"testing"
 
 	. "github.com/smartystreets/goconvey/convey"
-	"golang.org/x/crypto/bcrypt"
 	"gopkg.in/resty.v1"
 
 	"zotregistry.io/zot/pkg/api"
@@ -23,7 +22,7 @@ import (
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/storage"
 	"zotregistry.io/zot/pkg/storage/local"
-	. "zotregistry.io/zot/pkg/test/common"
+	test "zotregistry.io/zot/pkg/test/common"
 	"zotregistry.io/zot/pkg/test/deprecated"
 	. "zotregistry.io/zot/pkg/test/image-utils"
 )
@@ -31,8 +30,8 @@ import (
 //nolint:dupl
 func TestUserData(t *testing.T) {
 	Convey("Test user stars and bookmarks", t, func(c C) {
-		port := GetFreePort()
-		baseURL := GetBaseURL(port)
+		port := test.GetFreePort()
+		baseURL := test.GetBaseURL(port)
 		defaultVal := true
 
 		accessibleRepo := "accessible-repo"
@@ -44,10 +43,9 @@ func TestUserData(t *testing.T) {
 		simpleUser := "test"
 		simpleUserPassword := "test123"
 
-		twoCredTests := fmt.Sprintf("%s\n%s\n\n", getCredString(adminUser, adminPassword),
-			getCredString(simpleUser, simpleUserPassword))
-
-		htpasswdPath := MakeHtpasswdFileFromString(twoCredTests)
+		content := test.GetCredString(adminUser, adminPassword) +
+			test.GetCredString(simpleUser, simpleUserPassword)
+		htpasswdPath := test.MakeHtpasswdFileFromString(content)
 		defer os.Remove(htpasswdPath)
 
 		conf := config.New()
@@ -94,7 +92,7 @@ func TestUserData(t *testing.T) {
 
 		ctlr := api.NewController(conf)
 
-		ctlrManager := NewControllerManager(ctlr)
+		ctlrManager := test.NewControllerManager(ctlr)
 		ctlrManager.StartAndWait(port)
 		defer ctlrManager.StopServer()
 
@@ -458,8 +456,8 @@ func TestUserData(t *testing.T) {
 }
 
 func TestChangingRepoState(t *testing.T) {
-	port := GetFreePort()
-	baseURL := GetBaseURL(port)
+	port := test.GetFreePort()
+	baseURL := test.GetBaseURL(port)
 	defaultVal := true
 
 	simpleUser := "test"
@@ -468,9 +466,7 @@ func TestChangingRepoState(t *testing.T) {
 	forbiddenRepo := "forbidden"
 	accesibleRepo := "accesible"
 
-	credTests := fmt.Sprintf("%s\n\n", getCredString(simpleUser, simpleUserPassword))
-
-	htpasswdPath := MakeHtpasswdFileFromString(credTests)
+	htpasswdPath := test.MakeHtpasswdFileFromString(test.GetCredString(simpleUser, simpleUserPassword))
 	defer os.Remove(htpasswdPath)
 
 	conf := config.New()
@@ -562,7 +558,7 @@ func TestChangingRepoState(t *testing.T) {
 		t.FailNow()
 	}
 
-	ctlrManager := NewControllerManager(ctlr)
+	ctlrManager := test.NewControllerManager(ctlr)
 
 	ctlrManager.StartAndWait(port)
 
@@ -622,17 +618,15 @@ func TestChangingRepoState(t *testing.T) {
 func TestGlobalSearchWithUserPrefFiltering(t *testing.T) {
 	Convey("Bookmarks and Stars filtering", t, func() {
 		dir := t.TempDir()
-		port := GetFreePort()
-		baseURL := GetBaseURL(port)
+		port := test.GetFreePort()
+		baseURL := test.GetBaseURL(port)
 		conf := config.New()
 		conf.HTTP.Port = port
 		conf.Storage.RootDirectory = dir
 
 		simpleUser := "simpleUser"
 		simpleUserPassword := "simpleUserPass"
-		credTests := fmt.Sprintf("%s\n\n", getCredString(simpleUser, simpleUserPassword))
-
-		htpasswdPath := MakeHtpasswdFileFromString(credTests)
+		htpasswdPath := test.MakeHtpasswdFileFromString(test.GetCredString(simpleUser, simpleUserPassword))
 		defer os.Remove(htpasswdPath)
 
 		conf.HTTP.Auth = &config.AuthConfig{
@@ -664,7 +658,7 @@ func TestGlobalSearchWithUserPrefFiltering(t *testing.T) {
 
 		ctlr := api.NewController(conf)
 
-		ctlrManager := NewControllerManager(ctlr)
+		ctlrManager := test.NewControllerManager(ctlr)
 		ctlrManager.StartAndWait(port)
 		defer ctlrManager.StopServer()
 
@@ -750,8 +744,8 @@ func TestGlobalSearchWithUserPrefFiltering(t *testing.T) {
 		So(foundRepos, ShouldContain, common.RepoSummary{Name: sbRepo, IsStarred: true, IsBookmarked: true})
 
 		// Filter by IsStarred = true && IsBookmarked = false
-		query = `{ 
-			GlobalSearch(query:"repo", filter:{ IsStarred:true, IsBookmarked:false }) { 
+		query = `{
+			GlobalSearch(query:"repo", filter:{ IsStarred:true, IsBookmarked:false }) {
 				Repos { Name IsStarred IsBookmarked }
 			}
 		}`
@@ -771,8 +765,8 @@ func TestGlobalSearchWithUserPrefFiltering(t *testing.T) {
 		So(foundRepos, ShouldContain, common.RepoSummary{Name: sRepo, IsStarred: true, IsBookmarked: false})
 
 		// Filter by IsBookmarked = true
-		query = `{ 
-			GlobalSearch(query:"repo", filter:{ IsBookmarked:true }) { 
+		query = `{
+			GlobalSearch(query:"repo", filter:{ IsBookmarked:true }) {
 				Repos { Name IsStarred IsBookmarked }
 			}
 		}`
@@ -793,8 +787,8 @@ func TestGlobalSearchWithUserPrefFiltering(t *testing.T) {
 		So(foundRepos, ShouldContain, common.RepoSummary{Name: sbRepo, IsStarred: true, IsBookmarked: true})
 
 		// Filter by IsBookmarked = true && IsStarred = false
-		query = `{ 
-			GlobalSearch(query:"repo", filter:{ IsBookmarked:true, IsStarred:false }) { 
+		query = `{
+			GlobalSearch(query:"repo", filter:{ IsBookmarked:true, IsStarred:false }) {
 				Repos { Name IsStarred IsBookmarked }
 			}
 		}`
@@ -818,17 +812,15 @@ func TestGlobalSearchWithUserPrefFiltering(t *testing.T) {
 func TestExpandedRepoInfoWithUserPrefs(t *testing.T) {
 	Convey("ExpandedRepoInfo with User Prefs", t, func() {
 		dir := t.TempDir()
-		port := GetFreePort()
-		baseURL := GetBaseURL(port)
+		port := test.GetFreePort()
+		baseURL := test.GetBaseURL(port)
 		conf := config.New()
 		conf.HTTP.Port = port
 		conf.Storage.RootDirectory = dir
 
 		simpleUser := "simpleUser"
 		simpleUserPassword := "simpleUserPass"
-		credTests := fmt.Sprintf("%s\n\n", getCredString(simpleUser, simpleUserPassword))
-
-		htpasswdPath := MakeHtpasswdFileFromString(credTests)
+		htpasswdPath := test.MakeHtpasswdFileFromString(test.GetCredString(simpleUser, simpleUserPassword))
 		defer os.Remove(htpasswdPath)
 
 		conf.HTTP.Auth = &config.AuthConfig{
@@ -860,7 +852,7 @@ func TestExpandedRepoInfoWithUserPrefs(t *testing.T) {
 
 		ctlr := api.NewController(conf)
 
-		ctlrManager := NewControllerManager(ctlr)
+		ctlrManager := test.NewControllerManager(ctlr)
 		ctlrManager.StartAndWait(port)
 		defer ctlrManager.StopServer()
 
@@ -888,7 +880,7 @@ func TestExpandedRepoInfoWithUserPrefs(t *testing.T) {
 		{
 			ExpandedRepoInfo(repo:"sbrepo"){
 				Summary {
-					Name IsStarred IsBookmarked 
+					Name IsStarred IsBookmarked
 				}
 			}
 		}`
@@ -923,7 +915,7 @@ func TestExpandedRepoInfoWithUserPrefs(t *testing.T) {
 		{
 			ExpandedRepoInfo(repo:"srepo"){
 				Summary {
-					Name IsStarred IsBookmarked 
+					Name IsStarred IsBookmarked
 				}
 			}
 		}`
@@ -958,7 +950,7 @@ func TestExpandedRepoInfoWithUserPrefs(t *testing.T) {
 		{
 			ExpandedRepoInfo(repo:"brepo"){
 				Summary {
-					Name IsStarred IsBookmarked 
+					Name IsStarred IsBookmarked
 				}
 			}
 		}`
@@ -989,7 +981,7 @@ func TestExpandedRepoInfoWithUserPrefs(t *testing.T) {
 		{
 			ExpandedRepoInfo(repo:"repo"){
 				Summary {
-					Name IsStarred IsBookmarked 
+					Name IsStarred IsBookmarked
 				}
 			}
 		}`
@@ -1016,15 +1008,4 @@ func PutRepoStarURL(repo string) string {
 
 func PutRepoBookmarkURL(repo string) string {
 	return fmt.Sprintf("?repo=%s&action=toggleBookmark", repo)
-}
-
-func getCredString(username, password string) string {
-	hash, err := bcrypt.GenerateFromPassword([]byte(password), 10)
-	if err != nil {
-		panic(err)
-	}
-
-	usernameAndHash := fmt.Sprintf("%s:%s", username, string(hash))
-
-	return usernameAndHash
 }

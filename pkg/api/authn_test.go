@@ -79,7 +79,9 @@ func TestAPIKeys(t *testing.T) {
 		conf := config.New()
 		conf.HTTP.Port = port
 
-		htpasswdPath := test.MakeHtpasswdFile()
+		username, seedUser := test.GenerateRandomString()
+		password, seedPass := test.GenerateRandomString()
+		htpasswdPath := test.MakeHtpasswdFileFromString(test.GetCredString(username, password))
 		defer os.Remove(htpasswdPath)
 
 		mockOIDCServer, err := authutils.MockOIDCRun()
@@ -125,6 +127,7 @@ func TestAPIKeys(t *testing.T) {
 		conf.Extensions.UI.Enable = &defaultVal
 
 		ctlr := api.NewController(conf)
+		ctlr.Log.Info().Int64("seedUser", seedUser).Int64("seedPass", seedPass).Msg("random seed for username & password")
 		dir := t.TempDir()
 
 		ctlr.Config.Storage.RootDirectory = dir
@@ -145,7 +148,7 @@ func TestAPIKeys(t *testing.T) {
 		Convey("API key retrieved with basic auth", func() {
 			resp, err := resty.R().
 				SetBody(reqBody).
-				SetBasicAuth("test", "test").
+				SetBasicAuth(username, password).
 				Post(baseURL + constants.APIKeyPath)
 			So(err, ShouldBeNil)
 			So(resp, ShouldNotBeNil)
@@ -162,7 +165,7 @@ func TestAPIKeys(t *testing.T) {
 			So(email, ShouldNotBeEmpty)
 
 			resp, err = resty.R().
-				SetBasicAuth("test", apiKeyResponse.APIKey).
+				SetBasicAuth(username, apiKeyResponse.APIKey).
 				Get(baseURL + "/v2/_catalog")
 			So(err, ShouldBeNil)
 			So(resp, ShouldNotBeNil)
@@ -170,7 +173,7 @@ func TestAPIKeys(t *testing.T) {
 
 			// get API key list with basic auth
 			resp, err = resty.R().
-				SetBasicAuth("test", "test").
+				SetBasicAuth(username, password).
 				Get(baseURL + constants.APIKeyPath)
 			So(err, ShouldBeNil)
 			So(resp, ShouldNotBeNil)
@@ -189,7 +192,7 @@ func TestAPIKeys(t *testing.T) {
 			// add another one
 			resp, err = resty.R().
 				SetBody(reqBody).
-				SetBasicAuth("test", "test").
+				SetBasicAuth(username, password).
 				Post(baseURL + constants.APIKeyPath)
 			So(err, ShouldBeNil)
 			So(resp, ShouldNotBeNil)
@@ -199,7 +202,7 @@ func TestAPIKeys(t *testing.T) {
 			So(err, ShouldBeNil)
 
 			resp, err = resty.R().
-				SetBasicAuth("test", apiKeyResponse.APIKey).
+				SetBasicAuth(username, apiKeyResponse.APIKey).
 				Get(baseURL + "/v2/_catalog")
 			So(err, ShouldBeNil)
 			So(resp, ShouldNotBeNil)
@@ -207,7 +210,7 @@ func TestAPIKeys(t *testing.T) {
 
 			// get API key list with api key auth
 			resp, err = resty.R().
-				SetBasicAuth("test", apiKeyResponse.APIKey).
+				SetBasicAuth(username, apiKeyResponse.APIKey).
 				Get(baseURL + constants.APIKeyPath)
 			So(err, ShouldBeNil)
 			So(resp, ShouldNotBeNil)
@@ -600,7 +603,7 @@ func TestAPIKeys(t *testing.T) {
 			So(len(apiKeyListResponse.APIKeys), ShouldEqual, 0)
 
 			resp, err = client.R().
-				SetBasicAuth("test", "test").
+				SetBasicAuth(username, password).
 				SetQueryParam("id", apiKeyResponse.UUID).
 				Delete(baseURL + constants.APIKeyPath)
 			So(err, ShouldBeNil)
@@ -832,7 +835,9 @@ func TestAPIKeys(t *testing.T) {
 func TestAPIKeysOpenDBError(t *testing.T) {
 	Convey("Test API keys - unable to create database", t, func() {
 		conf := config.New()
-		htpasswdPath := test.MakeHtpasswdFile()
+		username, seedUser := test.GenerateRandomString()
+		password, seedPass := test.GenerateRandomString()
+		htpasswdPath := test.MakeHtpasswdFileFromString(test.GetCredString(username, password))
 		defer os.Remove(htpasswdPath)
 
 		mockOIDCServer, err := authutils.MockOIDCRun()
@@ -871,6 +876,7 @@ func TestAPIKeysOpenDBError(t *testing.T) {
 		}
 
 		ctlr := api.NewController(conf)
+		ctlr.Log.Info().Int64("seedUser", seedUser).Int64("seedPass", seedPass).Msg("random seed for username & password")
 		dir := t.TempDir()
 
 		err = os.Chmod(dir, 0o000)

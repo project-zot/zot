@@ -11,6 +11,7 @@ import (
 
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	. "github.com/smartystreets/goconvey/convey"
+	"golang.org/x/crypto/bcrypt"
 
 	tcommon "zotregistry.io/zot/pkg/test/common"
 )
@@ -215,5 +216,61 @@ func TestCopyTestKeysAndCerts(t *testing.T) {
 
 		err = tcommon.CopyTestKeysAndCerts(file)
 		So(err, ShouldNotBeNil)
+
+		// ----- /test/data doesn't exist ------
+		workDir, err := os.Getwd()
+		So(err, ShouldBeNil)
+		defer func() { _ = os.Chdir(workDir) }()
+
+		dir = t.TempDir()
+		file = filepath.Join(dir, "go.mod")
+		_, err = os.Create(file)
+		So(err, ShouldBeNil)
+		_, err = os.Stat(file)
+		So(err, ShouldBeNil)
+		err = os.Chdir(dir)
+		So(err, ShouldBeNil)
+		err = tcommon.CopyTestKeysAndCerts(dir)
+		So(err, ShouldNotBeNil)
+		So(err.Error(), ShouldContainSubstring, "CopyFiles os.Stat failed")
+
+		// --- GetProjectRootDir call fails -----
+		err = os.Chdir(os.TempDir())
+		So(err, ShouldBeNil)
+		err = tcommon.CopyTestKeysAndCerts(os.TempDir())
+		So(err, ShouldNotBeNil)
+		So(err, ShouldEqual, tcommon.ErrNoGoModFileFound)
+	})
+}
+
+func TestGetProjectRootDir(t *testing.T) {
+	Convey("GetProjectRootDir", t, func() {
+		path, err := tcommon.GetProjectRootDir()
+		So(err, ShouldBeNil)
+		So(len(path), ShouldBeGreaterThan, 0)
+	})
+	Convey("GetProjectRootDir negative testing", t, func() {
+		workDir, err := os.Getwd()
+		So(err, ShouldBeNil)
+		defer func() { _ = os.Chdir(workDir) }()
+
+		err = os.Chdir(os.TempDir())
+		So(err, ShouldBeNil)
+		path, err := tcommon.GetProjectRootDir()
+		So(err, ShouldNotBeNil)
+		So(err, ShouldEqual, tcommon.ErrNoGoModFileFound)
+		So(path, ShouldBeZeroValue)
+	})
+}
+
+func TestGetCredString(t *testing.T) {
+	Convey("GetCredString panics", t, func() {
+		passwordSize := 100
+		pass := make([]byte, passwordSize)
+		for i := 0; i < passwordSize; i++ {
+			pass[i] = 'Y'
+		}
+		f := func() { tcommon.GetCredString("testUser", string(pass)) }
+		So(f, ShouldPanicWith, bcrypt.ErrPasswordTooLong)
 	})
 }

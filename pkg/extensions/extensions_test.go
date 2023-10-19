@@ -140,7 +140,9 @@ func TestMgmtExtension(t *testing.T) {
 	mockOIDCConfig := mockOIDCServer.Config()
 
 	Convey("Verify mgmt auth info route enabled with htpasswd", t, func() {
-		htpasswdPath := test.MakeHtpasswdFile()
+		username, seedUser := test.GenerateRandomString()
+		password, seedPass := test.GenerateRandomString()
+		htpasswdPath := test.MakeHtpasswdFileFromString(test.GetCredString(username, password))
 		conf.HTTP.Auth.HTPasswd.Path = htpasswdPath
 
 		conf.Extensions = &extconf.ExtensionConfig{}
@@ -154,6 +156,7 @@ func TestMgmtExtension(t *testing.T) {
 		defer os.Remove(logFile.Name()) // cleanup
 
 		ctlr := api.NewController(conf)
+		ctlr.Log.Info().Int64("seedUser", seedUser).Int64("seedPass", seedPass).Msg("random seed for username & password")
 
 		subPaths := make(map[string]config.StorageConfig)
 		subPaths["/a"] = config.StorageConfig{RootDirectory: t.TempDir()}
@@ -202,7 +205,7 @@ func TestMgmtExtension(t *testing.T) {
 		So(mgmtResp.HTTP.Auth.LDAP, ShouldBeNil)
 
 		// with credentials
-		resp, err = resty.R().SetBasicAuth("test", "test").Get(baseURL + constants.FullMgmt)
+		resp, err = resty.R().SetBasicAuth(username, password).Get(baseURL + constants.FullMgmt)
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
@@ -215,12 +218,13 @@ func TestMgmtExtension(t *testing.T) {
 		So(mgmtResp.HTTP.Auth.LDAP, ShouldBeNil)
 
 		// with wrong credentials
-		resp, err = resty.R().SetBasicAuth("test", "wrong").Get(baseURL + constants.FullMgmt)
+		resp, err = resty.R().SetBasicAuth(username, "wrong").Get(baseURL + constants.FullMgmt)
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
 	})
 
 	Convey("Verify mgmt auth info route enabled with ldap", t, func() {
+		defer os.Remove(conf.HTTP.Auth.HTPasswd.Path) // cleanup of a file created in previous Convey
 		conf.HTTP.Auth.LDAP = &config.LDAPConfig{
 			BindDN:  "binddn",
 			BaseDN:  "basedn",
@@ -281,7 +285,10 @@ func TestMgmtExtension(t *testing.T) {
 	})
 
 	Convey("Verify mgmt auth info route enabled with htpasswd + ldap", t, func() {
-		htpasswdPath := test.MakeHtpasswdFile()
+		username, seedUser := test.GenerateRandomString()
+		password, seedPass := test.GenerateRandomString()
+		htpasswdPath := test.MakeHtpasswdFileFromString(test.GetCredString(username, password))
+		defer os.Remove(htpasswdPath)
 		conf.HTTP.Auth.HTPasswd.Path = htpasswdPath
 		conf.HTTP.Auth.LDAP = &config.LDAPConfig{
 			BindDN:  "binddn",
@@ -300,6 +307,7 @@ func TestMgmtExtension(t *testing.T) {
 		defer os.Remove(logFile.Name()) // cleanup
 
 		ctlr := api.NewController(conf)
+		ctlr.Log.Info().Int64("seedUser", seedUser).Int64("seedPass", seedPass).Msg("random seed for username & password")
 
 		subPaths := make(map[string]config.StorageConfig)
 		subPaths["/a"] = config.StorageConfig{RootDirectory: t.TempDir()}
@@ -342,7 +350,7 @@ func TestMgmtExtension(t *testing.T) {
 		So(mgmtResp.HTTP.Auth.Bearer, ShouldBeNil)
 
 		// with credentials
-		resp, err = resty.R().SetBasicAuth("test", "test").Get(baseURL + constants.FullMgmt)
+		resp, err = resty.R().SetBasicAuth(username, password).Get(baseURL + constants.FullMgmt)
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
@@ -356,7 +364,10 @@ func TestMgmtExtension(t *testing.T) {
 	})
 
 	Convey("Verify mgmt auth info route enabled with htpasswd + ldap + bearer", t, func() {
-		htpasswdPath := test.MakeHtpasswdFile()
+		username, seedUser := test.GenerateRandomString()
+		password, seedPass := test.GenerateRandomString()
+		htpasswdPath := test.MakeHtpasswdFileFromString(test.GetCredString(username, password))
+		defer os.Remove(htpasswdPath)
 		conf.HTTP.Auth.HTPasswd.Path = htpasswdPath
 		conf.HTTP.Auth.LDAP = &config.LDAPConfig{
 			BindDN:  "binddn",
@@ -380,6 +391,7 @@ func TestMgmtExtension(t *testing.T) {
 		defer os.Remove(logFile.Name()) // cleanup
 
 		ctlr := api.NewController(conf)
+		ctlr.Log.Info().Int64("seedUser", seedUser).Int64("seedPass", seedPass).Msg("random seed for username & password")
 
 		ctlr.Config.Storage.RootDirectory = t.TempDir()
 
@@ -420,7 +432,7 @@ func TestMgmtExtension(t *testing.T) {
 		So(mgmtResp.HTTP.Auth.Bearer.Service, ShouldEqual, "service")
 
 		// with credentials
-		resp, err = resty.R().SetBasicAuth("test", "test").Get(baseURL + constants.FullMgmt)
+		resp, err = resty.R().SetBasicAuth(username, password).Get(baseURL + constants.FullMgmt)
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
@@ -629,7 +641,10 @@ func TestMgmtExtension(t *testing.T) {
 	})
 
 	Convey("Verify mgmt auth info route enabled with empty openID provider list", t, func() {
-		htpasswdPath := test.MakeHtpasswdFile()
+		username, seedUser := test.GenerateRandomString()
+		password, seedPass := test.GenerateRandomString()
+		htpasswdPath := test.MakeHtpasswdFileFromString(test.GetCredString(username, password))
+		defer os.Remove(htpasswdPath)
 
 		conf.HTTP.Auth.HTPasswd.Path = htpasswdPath
 		conf.HTTP.Auth.LDAP = nil
@@ -652,6 +667,7 @@ func TestMgmtExtension(t *testing.T) {
 		defer os.Remove(logFile.Name()) // cleanup
 
 		ctlr := api.NewController(conf)
+		ctlr.Log.Info().Int64("seedUser", seedUser).Int64("seedPass", seedPass).Msg("random seed for username & password")
 
 		ctlr.Config.Storage.RootDirectory = t.TempDir()
 

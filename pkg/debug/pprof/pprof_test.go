@@ -22,14 +22,14 @@ func TestProfilingAuthz(t *testing.T) {
 	Convey("Make a new controller", t, func() {
 		port := test.GetFreePort()
 		baseURL := test.GetBaseURL(port)
-		adminUsername := "admin"
-		adminPassword := "admin"
-		username := "test"
-		password := "test"
-		authorizationAllRepos := "**"
+		adminUsername, seedAdminUser := test.GenerateRandomString()
+		adminPassword, seedAdminPass := test.GenerateRandomString()
+		username, seedUser := test.GenerateRandomString()
+		password, seedPass := test.GenerateRandomString()
+		authorizationAllRepos := test.AuthorizationAllRepos
 
 		testCreds := test.GetCredString(adminUsername, adminPassword) +
-			"\n" + test.GetCredString(username, password)
+			test.GetCredString(username, password)
 		htpasswdPath := test.MakeHtpasswdFileFromString(testCreds)
 		defer os.Remove(htpasswdPath)
 
@@ -98,6 +98,9 @@ func TestProfilingAuthz(t *testing.T) {
 			}
 
 			ctlr := api.NewController(conf)
+			ctlr.Log.Info().Int64("seedAdminUser", seedAdminUser).Int64("seedAdminPass", seedAdminPass).
+				Msg("random seed for admin username & password")
+			ctlr.Log.Info().Int64("seedUser", seedUser).Int64("seedPass", seedPass).Msg("random seed for username & password")
 			cm := test.NewControllerManager(ctlr)
 			cm.StartAndWait(port)
 			defer cm.StopServer()

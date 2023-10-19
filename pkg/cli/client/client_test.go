@@ -25,18 +25,13 @@ import (
 )
 
 const (
-	BaseURL1       = "http://127.0.0.1:8088"
 	BaseSecureURL1 = "https://127.0.0.1:8088"
 	HOST1          = "127.0.0.1:8088"
 	SecurePort1    = "8088"
-	BaseURL2       = "http://127.0.0.1:8089"
 	BaseSecureURL2 = "https://127.0.0.1:8089"
 	SecurePort2    = "8089"
-	BaseURL3       = "http://127.0.0.1:8090"
 	BaseSecureURL3 = "https://127.0.0.1:8090"
 	SecurePort3    = "8090"
-	username       = "test"
-	passphrase     = "test"
 	ServerCert     = "../../../test/data/server.cert"
 	ServerKey      = "../../../test/data/server.key"
 	CACert         = "../../../test/data/ca.crt"
@@ -55,7 +50,9 @@ func TestTLSWithAuth(t *testing.T) {
 		defer func() { resty.SetTLSClientConfig(nil) }()
 		conf := config.New()
 		conf.HTTP.Port = SecurePort1
-		htpasswdPath := test.MakeHtpasswdFile()
+		username, seedUser := test.GenerateRandomString()
+		password, seedPass := test.GenerateRandomString()
+		htpasswdPath := test.MakeHtpasswdFileFromString(test.GetCredString(username, password))
 		defer os.Remove(htpasswdPath)
 
 		conf.HTTP.Auth = &config.AuthConfig{
@@ -76,6 +73,7 @@ func TestTLSWithAuth(t *testing.T) {
 		}
 
 		ctlr := api.NewController(conf)
+		ctlr.Log.Info().Int64("seedUser", seedUser).Int64("seedPass", seedPass).Msg("random seed for username & password")
 		ctlr.Config.Storage.RootDirectory = t.TempDir()
 		cm := test.NewControllerManager(ctlr)
 		cm.StartAndWait(conf.HTTP.Port)
@@ -116,7 +114,7 @@ func TestTLSWithAuth(t *testing.T) {
 			So(err, ShouldNotBeNil)
 			So(imageBuff.String(), ShouldContainSubstring, "check credentials")
 
-			user := fmt.Sprintf("%s:%s", username, passphrase)
+			user := fmt.Sprintf("%s:%s", username, password)
 			args = []string{"-u", user, "--config", "imagetest"}
 			configPath = makeConfigFile(
 				fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s%s%s","showspinner":false}]}`,
