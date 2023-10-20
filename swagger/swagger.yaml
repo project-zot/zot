@@ -241,106 +241,6 @@ info:
   title: Open Container Initiative Distribution Specification
   version: v1.1.0-dev
 paths:
-  /auth/apikey:
-    delete:
-      consumes:
-      - application/json
-      description: Revokes one current user API key based on given key ID
-      parameters:
-      - description: api token id (UUID)
-        in: query
-        name: id
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: ok
-          schema:
-            type: string
-        "400":
-          description: bad request
-          schema:
-            type: string
-        "401":
-          description: unauthorized
-          schema:
-            type: string
-        "500":
-          description: internal server error
-          schema:
-            type: string
-      summary: Revokes one current user API key
-    get:
-      consumes:
-      - application/json
-      description: Get list of all API keys for a logged in user
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: ok
-          schema:
-            type: string
-        "401":
-          description: unauthorized
-          schema:
-            type: string
-        "500":
-          description: internal server error
-          schema:
-            type: string
-      summary: Get list of API keys for the current user
-    post:
-      consumes:
-      - application/json
-      description: Can create an api key for a logged in user, based on the provided
-        label and scopes.
-      parameters:
-      - description: api token id (UUID)
-        in: body
-        name: id
-        required: true
-        schema:
-          $ref: '#/definitions/api.APIKeyPayload'
-      produces:
-      - application/json
-      responses:
-        "201":
-          description: created
-          schema:
-            type: string
-        "400":
-          description: bad request
-          schema:
-            type: string
-        "401":
-          description: unauthorized
-          schema:
-            type: string
-        "500":
-          description: internal server error
-          schema:
-            type: string
-      summary: Create an API key for the current user
-  /auth/logout:
-    post:
-      consumes:
-      - application/json
-      description: Logout by removing current session
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: ok".
-          schema:
-            type: string
-        "500":
-          description: internal server error".
-          schema:
-            type: string
-      summary: Logout by removing current session
   /oras/artifacts/v1/{name}/manifests/{digest}/referrers:
     get:
       consumes:
@@ -973,7 +873,7 @@ paths:
       - application/json
       description: List all image tags in a repository
       parameters:
-      - description: test
+      - description: repository name
         in: path
         name: name
         required: true
@@ -1004,4 +904,104 @@ paths:
           schema:
             type: string
       summary: List image tags
+  /zot/auth/apikey:
+    delete:
+      consumes:
+      - application/json
+      description: Revokes one current user API key based on given key ID
+      parameters:
+      - description: api token id (UUID)
+        in: query
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: ok
+          schema:
+            type: string
+        "400":
+          description: bad request
+          schema:
+            type: string
+        "401":
+          description: unauthorized
+          schema:
+            type: string
+        "500":
+          description: internal server error
+          schema:
+            type: string
+      summary: Revokes one current user API key
+    get:
+      consumes:
+      - application/json
+      description: Get list of all API keys for a logged in user
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: ok
+          schema:
+            type: string
+        "401":
+          description: unauthorized
+          schema:
+            type: string
+        "500":
+          description: internal server error
+          schema:
+            type: string
+      summary: Get list of API keys for the current user
+    post:
+      consumes:
+      - application/json
+      description: Can create an api key for a logged in user, based on the provided
+        label and scopes.
+      parameters:
+      - description: api token id (UUID)
+        in: body
+        name: id
+        required: true
+        schema:
+          $ref: '#/definitions/api.APIKeyPayload'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: created
+          schema:
+            type: string
+        "400":
+          description: bad request
+          schema:
+            type: string
+        "401":
+          description: unauthorized
+          schema:
+            type: string
+        "500":
+          description: internal server error
+          schema:
+            type: string
+      summary: Create an API key for the current user
+  /zot/auth/logout:
+    post:
+      consumes:
+      - application/json
+      description: Logout by removing current session
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: ok".
+          schema:
+            type: string
+        "500":
+          description: internal server error".
+          schema:
+            type: string
+      summary: Logout by removing current session
 swagger: "2.0"

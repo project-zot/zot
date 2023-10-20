@@ -226,10 +226,10 @@ func getUIHeadersHandler(config *config.Config, allowedMethods ...string) func(h
 // CheckVersionSupport godoc
 // @Summary Check API support
 // @Description Check if this API version is supported
-// @Router 	/v2/ [get]
+// @Router  /v2/ [get]
 // @Accept  json
 // @Produce json
-// @Success 200 {string} string	"ok".
+// @Success 200 {string} string "ok".
 func (rh *RouteHandler) CheckVersionSupport(response http.ResponseWriter, request *http.Request) {
 	if request.Method == http.MethodOptions {
 		return
@@ -255,15 +255,15 @@ func (rh *RouteHandler) CheckVersionSupport(response http.ResponseWriter, reques
 // ListTags godoc
 // @Summary List image tags
 // @Description List all image tags in a repository
-// @Router 	/v2/{name}/tags/list [get]
+// @Router  /v2/{name}/tags/list [get]
 // @Accept  json
 // @Produce json
-// @Param   name     path    string     true        "test"
-// @Param 	n	 			 query 	 integer 		true				"limit entries for pagination"
-// @Param 	last	 	 query 	 string 		true				"last tag value for pagination"
-// @Success 200 {object} 	common.ImageTags
-// @Failure 404 {string} 	string 				"not found"
-// @Failure 400 {string} 	string 				"bad request".
+// @Param   name  path   string   true   "repository name"
+// @Param   n     query  integer  true   "limit entries for pagination"
+// @Param   last  query  string   true   "last tag value for pagination"
+// @Success 200 {object}     common.ImageTags
+// @Failure 404 {string}     string                 "not found"
+// @Failure 400 {string}     string                 "bad request".
 func (rh *RouteHandler) ListTags(response http.ResponseWriter, request *http.Request) {
 	if request.Method == http.MethodOptions {
 		return
@@ -389,12 +389,12 @@ func (rh *RouteHandler) ListTags(response http.ResponseWriter, request *http.Req
 // CheckManifest godoc
 // @Summary Check image manifest
 // @Description Check an image's manifest given a reference or a digest
-// @Router 	/v2/{name}/manifests/{reference} [head]
+// @Router  /v2/{name}/manifests/{reference} [head]
 // @Accept  json
 // @Produce json
-// @Param   name     			path    string     true        "repository name"
+// @Param   name          path    string     true        "repository name"
 // @Param   reference     path    string     true        "image reference or digest"
-// @Success 200 {string} string	"ok"
+// @Success 200 {string} string "ok"
 // @Header  200 {object} constants.DistContentDigestKey
 // @Failure 404 {string} string "not found"
 // @Failure 500 {string} string "internal server error".
@@ -461,9 +461,9 @@ type ExtensionList struct {
 // @Description Get an image's manifest given a reference or a digest
 // @Accept  json
 // @Produce application/vnd.oci.image.manifest.v1+json
-// @Param   name     			path    string     true        "repository name"
-// @Param   reference     path    string     true        "image reference or digest"
-// @Success 200 {object} 	api.ImageManifest
+// @Param   name         path    string     true        "repository name"
+// @Param   reference    path    string     true        "image reference or digest"
+// @Success 200 {object} api.ImageManifest
 // @Header  200 {object} constants.DistContentDigestKey
 // @Failure 404 {string} string "not found"
 // @Failure 500 {string} string "internal server error"
@@ -562,10 +562,10 @@ func getReferrers(ctx context.Context, routeHandler *RouteHandler,
 // @Description Get referrers given a digest
 // @Accept  json
 // @Produce application/vnd.oci.image.index.v1+json
-// @Param   name     			path    string     true        "repository name"
+// @Param   name       path    string     true        "repository name"
 // @Param   digest     path    string     true        "digest"
 // @Param artifactType query string false "artifact type"
-// @Success 200 {object} 	api.ImageIndex
+// @Success 200 {object} api.ImageIndex
 // @Failure 404 {string} string "not found"
 // @Failure 500 {string} string "internal server error"
 // @Router /v2/{name}/referrers/{digest} [get].
@@ -633,10 +633,10 @@ func (rh *RouteHandler) GetReferrers(response http.ResponseWriter, request *http
 // @Description Update an image's manifest given a reference or a digest
 // @Accept  json
 // @Produce json
-// @Param   name     			path    string     true        "repository name"
-// @Param   reference     path    string     true        "image reference or digest"
+// @Param   name         path    string     true        "repository name"
+// @Param   reference    path    string     true        "image reference or digest"
 // @Header  201 {object} constants.DistContentDigestKey
-// @Success 201 {string} string	"created"
+// @Success 201 {string} string "created"
 // @Failure 400 {string} string "bad request"
 // @Failure 404 {string} string "not found"
 // @Failure 500 {string} string "internal server error"
@@ -744,9 +744,9 @@ func (rh *RouteHandler) UpdateManifest(response http.ResponseWriter, request *ht
 // @Description Delete an image's manifest given a reference or a digest
 // @Accept  json
 // @Produce json
-// @Param   name     			path    string     true        "repository name"
+// @Param   name          path    string     true        "repository name"
 // @Param   reference     path    string     true        "image reference or digest"
-// @Success 200 {string} string	"ok"
+// @Success 200 {string} string "ok"
 // @Router /v2/{name}/manifests/{reference} [delete].
 func (rh *RouteHandler) DeleteManifest(response http.ResponseWriter, request *http.Request) {
 	vars := mux.Vars(request)
@@ -853,8 +853,8 @@ func (rh *RouteHandler) DeleteManifest(response http.ResponseWriter, request *ht
 // @Description Check an image's blob/layer given a digest
 // @Accept  json
 // @Produce json
-// @Param   name				path    string     true        "repository name"
-// @Param   digest     	path    string     true        "blob/layer digest"
+// @Param   name     path    string     true        "repository name"
+// @Param   digest   path    string     true        "blob/layer digest"
 // @Success 200 {object} api.ImageManifest
 // @Header  200 {object} constants.DistContentDigestKey
 // @Router /v2/{name}/blobs/{digest} [head].
@@ -967,8 +967,8 @@ func parseRangeHeader(contentRange string) (int64, int64, error) {
 // @Description Get an image's blob/layer given a digest
 // @Accept  json
 // @Produce application/vnd.oci.image.layer.v1.tar+gzip
-// @Param   name				path    string     true        "repository name"
-// @Param   digest     	path    string     true        "blob/layer digest"
+// @Param   name     path    string     true        "repository name"
+// @Param   digest   path    string     true        "blob/layer digest"
 // @Header  200 {object} constants.DistContentDigestKey
 // @Success 200 {object} api.ImageManifest
 // @Router /v2/{name}/blobs/{digest} [get].
@@ -1077,8 +1077,8 @@ func (rh *RouteHandler) GetBlob(response http.ResponseWriter, request *http.Requ
 // @Description Delete an image's blob/layer given a digest
 // @Accept  json
 // @Produce json
-// @Param   name				path    string     true        "repository name"
-// @Param   digest     	path    string     true        "blob/layer digest"
+// @Param   name      path    string     true        "repository name"
+// @Param   digest    path    string     true        "blob/layer digest"
 // @Success 202 {string} string "accepted"
 // @Router /v2/{name}/blobs/{digest} [delete].
 func (rh *RouteHandler) DeleteBlob(response http.ResponseWriter, request *http.Request) {
@@ -1137,8 +1137,8 @@ func (rh *RouteHandler) DeleteBlob(response http.ResponseWriter, request *http.R
 // @Description Create a new image blob/layer upload
 // @Accept  json
 // @Produce json
-// @Param   name				path    string     true        "repository name"
-// @Success 202 {string} string	"accepted"
+// @Param   name    path    string     true        "repository name"
+// @Success 202 {string} string "accepted"
 // @Header  202 {string} Location "/v2/{name}/blobs/uploads/{session_id}"
 // @Header  202 {string} Range "0-0"
 // @Failure 401 {string} string "unauthorized"
@@ -1292,8 +1292,8 @@ func (rh *RouteHandler) CreateBlobUpload(response http.ResponseWriter, request *
 // @Description Get an image's blob/layer upload given a session_id
 // @Accept  json
 // @Produce json
-// @Param   name     path    string     true        "repository name"
-// @Param   session_id     path    string     true        "upload session_id"
+// @Param   name          path    string     true        "repository name"
+// @Param   session_id    path    string     true        "upload session_id"
 // @Success 204 {string} string "no content"
 // @Header  202 {string} Location "/v2/{name}/blobs/uploads/{session_id}"
 // @Header  202 {string} Range "0-128"
@@ -1353,9 +1353,9 @@ func (rh *RouteHandler) GetBlobUpload(response http.ResponseWriter, request *htt
 // @Description Resume an image's blob/layer upload given an session_id
 // @Accept  json
 // @Produce json
-// @Param   name     path    string     true        "repository name"
-// @Param   session_id     path    string     true        "upload session_id"
-// @Success 202 {string} string	"accepted"
+// @Param   name         path    string     true        "repository name"
+// @Param   session_id   path    string     true        "upload session_id"
+// @Success 202 {string} string "accepted"
 // @Header  202 {string} Location "/v2/{name}/blobs/uploads/{session_id}"
 // @Header  202 {string} Range "0-128"
 // @Header  200 {object} api.BlobUploadUUID
@@ -1452,10 +1452,10 @@ func (rh *RouteHandler) PatchBlobUpload(response http.ResponseWriter, request *h
 // @Description Update and finish an image's blob/layer upload given a digest
 // @Accept  json
 // @Produce json
-// @Param   name     path    string     true        "repository name"
-// @Param   session_id     path    string     true        "upload session_id"
-// @Param 	digest	 query 	 string 		true				"blob/layer digest"
-// @Success 201 {string} string	"created"
+// @Param   name         path    string     true        "repository name"
+// @Param   session_id   path    string     true        "upload session_id"
+// @Param   digest       query   string     true        "blob/layer digest"
+// @Success 201 {string} string "created"
 // @Header  202 {string} Location "/v2/{name}/blobs/uploads/{digest}"
 // @Header  200 {object} constants.DistContentDigestKey
 // @Failure 404 {string} string "not found"
@@ -1610,8 +1610,8 @@ finish:
 // @Description Delete an image's blob/layer given a digest
 // @Accept  json
 // @Produce json
-// @Param   name     path    string     true        "repository name"
-// @Param   session_id     path    string     true        "upload session_id"
+// @Param   name         path    string     true        "repository name"
+// @Param   session_id   path    string     true        "upload session_id"
 // @Success 200 {string} string "ok"
 // @Failure 404 {string} string "not found"
 // @Failure 500 {string} string "internal server error"
@@ -1665,7 +1665,7 @@ type RepositoryList struct {
 // @Description List all image repositories
 // @Accept  json
 // @Produce json
-// @Success 200 {object} 	api.RepositoryList
+// @Success 200 {object} api.RepositoryList
 // @Failure 500 {string} string "internal server error"
 // @Router /v2/_catalog [get].
 func (rh *RouteHandler) ListRepositories(response http.ResponseWriter, request *http.Request) {
@@ -1729,7 +1729,7 @@ func (rh *RouteHandler) ListRepositories(response http.ResponseWriter, request *
 // @Description List all extensions present on registry
 // @Accept  json
 // @Produce json
-// @Success 200 {object} 	api.ExtensionList
+// @Success 200 {object}   api.ExtensionList
 // @Router /v2/_oci/ext/discover [get].
 func (rh *RouteHandler) ListExtensions(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodOptions {
@@ -1746,10 +1746,10 @@ func (rh *RouteHandler) ListExtensions(w http.ResponseWriter, r *http.Request) {
 // Logout godoc
 // @Summary Logout by removing current session
 // @Description Logout by removing current session
-// @Router 	/auth/logout [post]
+// @Router  /zot/auth/logout [post]
 // @Accept  json
 // @Produce json
-// @Success 200 {string} string	"ok".
+// @Success 200 {string} string "ok".
 // @Failure 500 {string} string "internal server error".
 func (rh *RouteHandler) Logout(response http.ResponseWriter, request *http.Request) {
 	if request.Method == http.MethodOptions {
@@ -1958,9 +1958,9 @@ type ReferenceList struct {
 // @Description Get references for an image given a digest and artifact type
 // @Accept  json
 // @Produce json
-// @Param   name     path    string     true        "repository name"
-// @Param   digest   path    string     true        "image digest"
-// @Param 	artifactType	 query 	 string 	true	    "artifact type"
+// @Param   name            path    string     true        "repository name"
+// @Param   digest          path    string     true        "image digest"
+// @Param   artifactType    query   string     true        "artifact type"
 // @Success 200 {string} string "ok"
 // @Failure 404 {string} string "not found"
 // @Failure 500 {string} string "internal server error"
@@ -2035,7 +2035,7 @@ type APIKeyPayload struct { //nolint:revive
 // @Success 200 {string} string "ok"
 // @Failure 401 {string} string "unauthorized"
 // @Failure 500 {string} string "internal server error"
-// @Router /auth/apikey  [get].
+// @Router  /zot/auth/apikey  [get].
 func (rh *RouteHandler) GetAPIKeys(resp http.ResponseWriter, req *http.Request) {
 	apiKeys, err := rh.c.MetaDB.GetUserAPIKeys(req.Context())
 	if err != nil {
@@ -2077,7 +2077,7 @@ func (rh *RouteHandler) GetAPIKeys(resp http.ResponseWriter, req *http.Request) 
 // @Failure 400 {string} string "bad request"
 // @Failure 401 {string} string "unauthorized"
 // @Failure 500 {string} string "internal server error"
-// @Router /auth/apikey  [post].
+// @Router  /zot/auth/apikey  [post].
 func (rh *RouteHandler) CreateAPIKey(resp http.ResponseWriter, req *http.Request) {
 	var payload APIKeyPayload
 
@@ -2178,7 +2178,7 @@ func (rh *RouteHandler) CreateAPIKey(resp http.ResponseWriter, req *http.Request
 // @Failure 500 {string} string "internal server error"
 // @Failure 401 {string} string "unauthorized"
 // @Failure 400 {string} string "bad request"
-// @Router /auth/apikey [delete].
+// @Router  /zot/auth/apikey [delete].
 func (rh *RouteHandler) RevokeAPIKey(resp http.ResponseWriter, req *http.Request) {
 	ids, ok := req.URL.Query()["id"]
 	if !ok || len(ids) != 1 {
