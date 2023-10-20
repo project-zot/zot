@@ -866,20 +866,11 @@ func (is *ImageStore) FinishBlobUpload(repo, uuid string, body io.Reader, dstDig
 		return err
 	}
 
-	fileReader, err := is.storeDriver.Reader(src, 0)
-	if err != nil {
-		is.log.Error().Err(err).Str("blob", src).Msg("failed to open file")
-
-		return zerr.ErrUploadNotFound
-	}
-
-	defer fileReader.Close()
-
-	srcDigest, err := godigest.FromReader(fileReader)
+	srcDigest, err := getBlobDigest(is, src)
 	if err != nil {
 		is.log.Error().Err(err).Str("blob", src).Msg("failed to open blob")
 
-		return zerr.ErrBadBlobDigest
+		return err
 	}
 
 	if srcDigest != dstDigest {
@@ -906,7 +897,7 @@ func (is *ImageStore) FinishBlobUpload(repo, uuid string, body io.Reader, dstDig
 	defer is.Unlock(&lockLatency)
 
 	if is.dedupe && fmt.Sprintf("%v", is.cache) != fmt.Sprintf("%v", nil) {
-		err = is.DedupeBlob(src, dstDigest, dst)
+		err = is.DedupeBlob(src, dstDigest, repo, dst)
 		if err := inject.Error(err); err != nil {
 			is.log.Error().Err(err).Str("src", src).Str("dstDigest", dstDigest.String()).
 				Str("dst", dst).Msg("unable to dedupe blob")
@@ -985,7 +976,7 @@ func (is *ImageStore) FullBlobUpload(repo string, body io.Reader, dstDigest godi
 	dst := is.BlobPath(repo, dstDigest)
 
 	if is.dedupe && fmt.Sprintf("%v", is.cache) != fmt.Sprintf("%v", nil) {
-		if err := is.DedupeBlob(src, dstDigest, dst); err != nil {
+		if err := is.DedupeBlob(src, dstDigest, repo, dst); err != nil {
 			is.log.Error().Err(err).Str("src", src).Str("dstDigest", dstDigest.String()).
 				Str("dst", dst).Msg("unable to dedupe blob")
 
@@ -1003,7 +994,7 @@ func (is *ImageStore) FullBlobUpload(repo string, body io.Reader, dstDigest godi
 	return uuid, int64(nbytes), nil
 }
 
-func (is *ImageStore) DedupeBlob(src string, dstDigest godigest.Digest, dst string) error {
+func (is *ImageStore) DedupeBlob(src string, dstDigest godigest.Digest, dstRepo string, dst string) error {
 retry:
 	is.log.Debug().Str("src", src).Str("dstDigest", dstDigest.String()).Str("dst", dst).Msg("dedupe: enter")
 
@@ -1033,12 +1024,11 @@ retry:
 	} else {
 		// cache record exists, but due to GC and upgrades from older versions,
 		// disk content and cache records may go out of sync
-
 		if is.cache.UsesRelativePaths() {
 			dstRecord = path.Join(is.rootDir, dstRecord)
 		}
 
-		_, err := is.storeDriver.Stat(dstRecord)
+		blobInfo, err := is.storeDriver.Stat(dstRecord)
 		if err != nil {
 			is.log.Error().Err(err).Str("blobPath", dstRecord).Msg("dedupe: unable to stat")
 			// the actual blob on disk may have been removed by GC, so sync the cache
@@ -1065,6 +1055,22 @@ retry:
 				is.log.Error().Err(err).Str("blobPath", dst).Msg("dedupe: unable to insert blob record")
 
 				return err
+			}
+		} else {
+			// if it's same file then it was already uploaded, check if blob is corrupted
+			if desc, err := common.GetBlobDescriptorFromRepo(is, dstRepo, dstDigest, is.log); err == nil {
+				// blob corrupted, replace content
+				if desc.Size != blobInfo.Size() {
+					if err := is.storeDriver.Move(src, dst); err != nil {
+						is.log.Error().Err(err).Str("src", src).Str("dst", dst).Msg("dedupe: unable to rename blob")
+
+						return err
+					}
+
+					is.log.Debug().Str("src", src).Msg("dedupe: remove")
+
+					return nil
+				}
 			}
 		}
 
@@ -1134,9 +1140,20 @@ func (is *ImageStore) CheckBlob(repo string, digest godigest.Digest) (bool, int6
 
 	binfo, err := is.storeDriver.Stat(blobPath)
 	if err == nil && binfo.Size() > 0 {
-		is.log.Debug().Str("blob path", blobPath).Msg("blob path found")
+		// try to find blob size in blob descriptors, if blob can not be found
+		desc, err := common.GetBlobDescriptorFromRepo(is, repo, digest, is.log)
+		if err != nil || desc.Size == binfo.Size() {
+			// blob not found in descriptors, can not compare, just return
+			is.log.Debug().Str("blob path", blobPath).Msg("blob path found")
 
-		return true, binfo.Size(), nil
+			return true, binfo.Size(), nil //nolint: nilerr
+		}
+
+		if desc.Size != binfo.Size() {
+			is.log.Debug().Str("blob path", blobPath).Msg("blob path found, but it's corrupted")
+
+			return false, -1, zerr.ErrBlobNotFound
+		}
 	}
 	// otherwise is a 'deduped' blob (empty file)
 
@@ -1632,6 +1649,22 @@ func (is *ImageStore) deleteBlob(repo string, digest godigest.Digest) error {
 	}
 
 	return nil
+}
+
+func getBlobDigest(imgStore *ImageStore, path string) (godigest.Digest, error) {
+	fileReader, err := imgStore.storeDriver.Reader(path, 0)
+	if err != nil {
+		return "", zerr.ErrUploadNotFound
+	}
+
+	defer fileReader.Close()
+
+	digest, err := godigest.FromReader(fileReader)
+	if err != nil {
+		return "", zerr.ErrBadBlobDigest
+	}
+
+	return digest, nil
 }
 
 func (is *ImageStore) GetAllBlobs(repo string) ([]string, error) {
