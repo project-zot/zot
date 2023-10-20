@@ -392,7 +392,7 @@ func TestServeExtensions(t *testing.T) {
 		cfgfile, err := os.CreateTemp("", "zot-test*.json")
 		So(err, ShouldBeNil)
 		defer os.Remove(cfgfile.Name()) // clean up
-		_, err = cfgfile.Write([]byte(content))
+		_, err = cfgfile.WriteString(content)
 		So(err, ShouldBeNil)
 		err = cfgfile.Close()
 		So(err, ShouldBeNil)
@@ -435,7 +435,7 @@ func TestServeExtensions(t *testing.T) {
 		cfgfile, err := os.CreateTemp("", "zot-test*.json")
 		So(err, ShouldBeNil)
 		defer os.Remove(cfgfile.Name()) // clean up
-		_, err = cfgfile.Write([]byte(content))
+		_, err = cfgfile.WriteString(content)
 		So(err, ShouldBeNil)
 		err = cfgfile.Close()
 		So(err, ShouldBeNil)
@@ -467,7 +467,7 @@ func testWithMetricsEnabled(cfgContentFormat string) {
 	So(err, ShouldBeNil)
 
 	defer os.Remove(cfgfile.Name()) // clean up
-	_, err = cfgfile.Write([]byte(content))
+	_, err = cfgfile.WriteString(content)
 	So(err, ShouldBeNil)
 	err = cfgfile.Close()
 	So(err, ShouldBeNil)
@@ -595,7 +595,7 @@ func TestServeMetricsExtension(t *testing.T) {
 		cfgfile, err := os.CreateTemp("", "zot-test*.json")
 		So(err, ShouldBeNil)
 		defer os.Remove(cfgfile.Name()) // clean up
-		_, err = cfgfile.Write([]byte(content))
+		_, err = cfgfile.WriteString(content)
 		So(err, ShouldBeNil)
 		err = cfgfile.Close()
 		So(err, ShouldBeNil)

@@ -148,7 +148,7 @@ func TestReadLogFileAndCountStringOccurence(t *testing.T) {
 		panic(err)
 	}
 
-	_, err = logFile.Write([]byte("line1\n line2\n line3 line1 line2\n line1"))
+	_, err = logFile.WriteString("line1\n line2\n line3 line1 line2\n line1")
 	if err != nil {
 		panic(err)
 	}

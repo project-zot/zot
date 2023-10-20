@@ -177,7 +177,7 @@ func (d *BoltDBDriver) GetBlob(digest godigest.Digest) (string, error) {
 		bucket := root.Bucket([]byte(digest.String()))
 		if bucket != nil {
 			origin := bucket.Bucket([]byte(constants.OriginalBucket))
-			blobPath.WriteString(string(d.getOne(origin)))
+			blobPath.Write(d.getOne(origin))
 
 			return nil
 		}

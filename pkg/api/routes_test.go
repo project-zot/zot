@@ -546,7 +546,7 @@ func TestRoutes(t *testing.T) {
 				},
 				&mocks.MockedImageStore{
 					GetBlobFn: func(repo string, digest godigest.Digest, mediaType string) (io.ReadCloser, int64, error) {
-						return io.NopCloser(bytes.NewBuffer([]byte(""))), 0, zerr.ErrRepoNotFound
+						return io.NopCloser(bytes.NewBufferString("")), 0, zerr.ErrRepoNotFound
 					},
 				})
 			So(statusCode, ShouldEqual, http.StatusNotFound)
@@ -559,7 +559,7 @@ func TestRoutes(t *testing.T) {
 				},
 				&mocks.MockedImageStore{
 					GetBlobFn: func(repo string, digest godigest.Digest, mediaType string) (io.ReadCloser, int64, error) {
-						return io.NopCloser(bytes.NewBuffer([]byte(""))), 0, zerr.ErrBadBlobDigest
+						return io.NopCloser(bytes.NewBufferString("")), 0, zerr.ErrBadBlobDigest
 					},
 				})
 			So(statusCode, ShouldEqual, http.StatusBadRequest)

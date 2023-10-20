@@ -34,16 +34,16 @@ type OpenIDConfig struct {
 
 type Auth struct {
 	HTPasswd *HTPasswd     `json:"htpasswd,omitempty" mapstructure:"htpasswd"`
-	Bearer   *BearerConfig `json:"bearer,omitempty" mapstructure:"bearer"`
+	Bearer   *BearerConfig `json:"bearer,omitempty"   mapstructure:"bearer"`
 	LDAP     *struct {
 		Address string `json:"address,omitempty" mapstructure:"address"`
-	} `json:"ldap,omitempty" mapstructure:"ldap"`
+	} `json:"ldap,omitempty"   mapstructure:"ldap"`
 	OpenID *OpenIDConfig `json:"openid,omitempty" mapstructure:"openid"`
 }
 
 type StrippedConfig struct {
 	DistSpecVersion string `json:"distSpecVersion" mapstructure:"distSpecVersion"`
-	BinaryType      string `json:"binaryType" mapstructure:"binaryType"`
+	BinaryType      string `json:"binaryType"      mapstructure:"binaryType"`
 	HTTP            struct {
 		Auth *Auth `json:"auth,omitempty" mapstructure:"auth"`
 	} `json:"http" mapstructure:"http"`

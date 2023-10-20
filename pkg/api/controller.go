@@ -71,7 +71,7 @@ func NewController(config *config.Config) *Controller {
 func DumpRuntimeParams(log log.Logger) {
 	var rLimit syscall.Rlimit
 
-	evt := log.Info().Int("cpus", runtime.NumCPU())
+	evt := log.Info().Int("cpus", runtime.NumCPU()) //nolint: zerologlint
 
 	err := syscall.Getrlimit(syscall.RLIMIT_NOFILE, &rLimit)
 	if err == nil {
