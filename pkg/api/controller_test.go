@@ -8378,7 +8378,7 @@ func TestGCSignaturesAndUntaggedManifestsWithMetaDB(t *testing.T) {
 			So(len(index.Manifests), ShouldEqual, 1)
 
 			// shouldn't do anything
-			err = gc.CleanRepo(repoName) //nolint: contextcheck
+			err = gc.CleanRepo(ctx, repoName) //nolint: contextcheck
 			So(err, ShouldBeNil)
 
 			// make sure both signatures are stored in repodb
@@ -8404,7 +8404,7 @@ func TestGCSignaturesAndUntaggedManifestsWithMetaDB(t *testing.T) {
 				err = UploadImage(img, baseURL, repoName, img.DigestStr())
 				So(err, ShouldBeNil)
 
-				err = gc.CleanRepo(repoName)
+				err = gc.CleanRepo(ctx, repoName)
 				So(err, ShouldNotBeNil)
 
 				err = os.Chmod(path.Join(dir, repoName, "blobs", "sha256", refs.Manifests[0].Digest.Encoded()), 0o755)
@@ -8418,7 +8418,7 @@ func TestGCSignaturesAndUntaggedManifestsWithMetaDB(t *testing.T) {
 				err = UploadImage(img, baseURL, repoName, tag)
 				So(err, ShouldBeNil)
 
-				err = gc.CleanRepo(repoName)
+				err = gc.CleanRepo(ctx, repoName)
 				So(err, ShouldNotBeNil)
 
 				err = os.WriteFile(path.Join(dir, repoName, "blobs", "sha256", refs.Manifests[0].Digest.Encoded()), content, 0o600)
@@ -8469,7 +8469,7 @@ func TestGCSignaturesAndUntaggedManifestsWithMetaDB(t *testing.T) {
 				So(err, ShouldBeNil)
 				newManifestDigest := godigest.FromBytes(manifestBuf)
 
-				err = gc.CleanRepo(repoName) //nolint: contextcheck
+				err = gc.CleanRepo(ctx, repoName) //nolint: contextcheck
 				So(err, ShouldBeNil)
 
 				// make sure both signatures are removed from metaDB and repo reference for untagged is removed
@@ -8548,7 +8548,7 @@ func TestGCSignaturesAndUntaggedManifestsWithMetaDB(t *testing.T) {
 			So(err, ShouldBeNil)
 
 			cm := test.NewControllerManager(ctlr)
-			cm.StartAndWait(port)
+			cm.StartAndWait(port) //nolint: contextcheck
 			defer cm.StopServer()
 
 			gc := gc.NewGarbageCollect(ctlr.StoreController.DefaultStore, ctlr.MetaDB,
@@ -8606,7 +8606,7 @@ func TestGCSignaturesAndUntaggedManifestsWithMetaDB(t *testing.T) {
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
 
-			err = gc.CleanRepo(repoName)
+			err = gc.CleanRepo(ctx, repoName)
 			So(err, ShouldBeNil)
 
 			resp, err = resty.R().SetHeader("Content-Type", ispec.MediaTypeImageIndex).

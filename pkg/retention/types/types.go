@@ -1,6 +1,7 @@
 package types
 
 import (
+	"context"
 	"time"
 
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
@@ -21,7 +22,7 @@ type PolicyManager interface {
 	HasDeleteReferrer(repo string) bool
 	HasDeleteUntagged(repo string) bool
 	HasTagRetention(repo string) bool
-	GetRetainedTags(repoMeta mTypes.RepoMeta, index ispec.Index) []string
+	GetRetainedTags(ctx context.Context, repoMeta mTypes.RepoMeta, index ispec.Index) []string
 }
 
 type Rule interface {

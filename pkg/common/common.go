@@ -1,6 +1,7 @@
 package common
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -134,4 +135,13 @@ func IsReferrersTag(tag string) bool {
 	referrersTagRule := regexp.MustCompile(`sha256\-[A-Za-z0-9]*$`)
 
 	return referrersTagRule.MatchString(tag)
+}
+
+func IsContextDone(ctx context.Context) bool {
+	select {
+	case <-ctx.Done():
+		return true
+	default:
+		return false
+	}
 }

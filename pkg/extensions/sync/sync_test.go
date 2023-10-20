@@ -1883,9 +1883,6 @@ func TestConfigReloader(t *testing.T) {
 		destConfig.Log.Output = logFile.Name()
 
 		dctlr := api.NewController(destConfig)
-		dcm := test.NewControllerManager(dctlr)
-
-		defer dcm.StopServer()
 
 		//nolint: dupl
 		Convey("Reload config without sync", func() {
@@ -1926,6 +1923,8 @@ func TestConfigReloader(t *testing.T) {
 
 				time.Sleep(100 * time.Millisecond)
 			}
+
+			defer dctlr.Shutdown()
 
 			// let it sync
 			time.Sleep(3 * time.Second)
@@ -2074,6 +2073,8 @@ func TestConfigReloader(t *testing.T) {
 
 				time.Sleep(100 * time.Millisecond)
 			}
+
+			defer dctlr.Shutdown()
 
 			// let it sync
 			time.Sleep(3 * time.Second)

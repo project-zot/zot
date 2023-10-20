@@ -583,7 +583,7 @@ func TestCVESort(t *testing.T) {
 	}
 
 	ctlr.CveScanner = mocks.CveScannerMock{
-		ScanImageFn: func(image string) (map[string]cvemodel.CVE, error) {
+		ScanImageFn: func(ctx context.Context, image string) (map[string]cvemodel.CVE, error) {
 			return map[string]cvemodel.CVE{
 				"CVE-2023-1255": {
 					ID:       "CVE-2023-1255",
@@ -687,7 +687,7 @@ func getMockCveScanner(metaDB mTypes.MetaDB) cveinfo.Scanner {
 	// MetaDB loaded with initial data now mock the scanner
 	// Setup test CVE data in mock scanner
 	scanner := mocks.CveScannerMock{
-		ScanImageFn: func(image string) (map[string]cvemodel.CVE, error) {
+		ScanImageFn: func(ctx context.Context, image string) (map[string]cvemodel.CVE, error) {
 			if strings.Contains(image, "zot-cve-test@sha256:db573b01") ||
 				image == "zot-cve-test:0.0.1" {
 				return map[string]cvemodel.CVE{

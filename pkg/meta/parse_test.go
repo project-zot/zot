@@ -254,7 +254,9 @@ func TestParseStorageErrors(t *testing.T) {
 					So(err, ShouldNotBeNil)
 				})
 				Convey("UpdateSignaturesValidity errors", func() {
-					mockedMetaDB.UpdateSignaturesValidityFn = func(repo string, manifestDigest godigest.Digest) error {
+					mockedMetaDB.UpdateSignaturesValidityFn = func(ctx context.Context, repo string,
+						manifestDigest godigest.Digest,
+					) error {
 						return ErrTestError
 					}
 					err := meta.SetImageMetaFromInput(ctx, "repo", "tag", mediaType, goodNotationSignature.Digest(),

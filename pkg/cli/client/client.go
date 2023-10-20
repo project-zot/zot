@@ -219,7 +219,7 @@ func (p *requestsPool) doJob(ctx context.Context, job *httpJob) {
 	header, err := makeHEADRequest(ctx, job.url, job.username, job.password, job.config.VerifyTLS,
 		job.config.Debug)
 	if err != nil {
-		if isContextDone(ctx) {
+		if common.IsContextDone(ctx) {
 			return
 		}
 		p.outputCh <- stringResult{"", err}
@@ -231,7 +231,7 @@ func (p *requestsPool) doJob(ctx context.Context, job *httpJob) {
 	case ispec.MediaTypeImageManifest:
 		image, err := fetchImageManifestStruct(ctx, job)
 		if err != nil {
-			if isContextDone(ctx) {
+			if common.IsContextDone(ctx) {
 				return
 			}
 			p.outputCh <- stringResult{"", err}
@@ -242,7 +242,7 @@ func (p *requestsPool) doJob(ctx context.Context, job *httpJob) {
 
 		str, err := image.string(job.config.OutputFormat, len(job.imageName), len(job.tagName), len(platformStr), verbose)
 		if err != nil {
-			if isContextDone(ctx) {
+			if common.IsContextDone(ctx) {
 				return
 			}
 			p.outputCh <- stringResult{"", err}
@@ -250,7 +250,7 @@ func (p *requestsPool) doJob(ctx context.Context, job *httpJob) {
 			return
 		}
 
-		if isContextDone(ctx) {
+		if common.IsContextDone(ctx) {
 			return
 		}
 
@@ -258,7 +258,7 @@ func (p *requestsPool) doJob(ctx context.Context, job *httpJob) {
 	case ispec.MediaTypeImageIndex:
 		image, err := fetchImageIndexStruct(ctx, job)
 		if err != nil {
-			if isContextDone(ctx) {
+			if common.IsContextDone(ctx) {
 				return
 			}
 			p.outputCh <- stringResult{"", err}
@@ -270,7 +270,7 @@ func (p *requestsPool) doJob(ctx context.Context, job *httpJob) {
 
 		str, err := image.string(job.config.OutputFormat, len(job.imageName), len(job.tagName), len(platformStr), verbose)
 		if err != nil {
-			if isContextDone(ctx) {
+			if common.IsContextDone(ctx) {
 				return
 			}
 			p.outputCh <- stringResult{"", err}
@@ -278,7 +278,7 @@ func (p *requestsPool) doJob(ctx context.Context, job *httpJob) {
 			return
 		}
 
-		if isContextDone(ctx) {
+		if common.IsContextDone(ctx) {
 			return
 		}
 
@@ -294,7 +294,7 @@ func fetchImageIndexStruct(ctx context.Context, job *httpJob) (*imageStruct, err
 	header, err := makeGETRequest(ctx, job.url, job.username, job.password,
 		job.config.VerifyTLS, job.config.Debug, &indexContent, job.config.ResultWriter)
 	if err != nil {
-		if isContextDone(ctx) {
+		if common.IsContextDone(ctx) {
 			return nil, context.Canceled
 		}
 
@@ -385,7 +385,7 @@ func fetchManifestStruct(ctx context.Context, repo, manifestReference string, se
 	header, err := makeGETRequest(ctx, URL, username, password,
 		searchConf.VerifyTLS, searchConf.Debug, &manifestResp, searchConf.ResultWriter)
 	if err != nil {
-		if isContextDone(ctx) {
+		if common.IsContextDone(ctx) {
 			return common.ManifestSummary{}, context.Canceled
 		}
 
@@ -397,7 +397,7 @@ func fetchManifestStruct(ctx context.Context, repo, manifestReference string, se
 
 	configContent, err := fetchConfig(ctx, repo, configDigest, searchConf, username, password)
 	if err != nil {
-		if isContextDone(ctx) {
+		if common.IsContextDone(ctx) {
 			return common.ManifestSummary{}, context.Canceled
 		}
 
@@ -474,7 +474,7 @@ func fetchConfig(ctx context.Context, repo, configDigest string, searchConf Sear
 	_, err := makeGETRequest(ctx, URL, username, password,
 		searchConf.VerifyTLS, searchConf.Debug, &configContent, searchConf.ResultWriter)
 	if err != nil {
-		if isContextDone(ctx) {
+		if common.IsContextDone(ctx) {
 			return ispec.Image{}, context.Canceled
 		}
 

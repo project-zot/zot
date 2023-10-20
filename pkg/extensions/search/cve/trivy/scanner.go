@@ -157,9 +157,7 @@ func (scanner Scanner) getTrivyOptions(image string) flag.Options {
 	return opts
 }
 
-func (scanner Scanner) runTrivy(opts flag.Options) (types.Report, error) {
-	ctx := context.Background()
-
+func (scanner Scanner) runTrivy(ctx context.Context, opts flag.Options) (types.Report, error) {
 	err := scanner.checkDBPresence()
 	if err != nil {
 		return types.Report{}, err
@@ -191,7 +189,7 @@ func (scanner Scanner) IsImageFormatScannable(repo, ref string) (bool, error) {
 	)
 
 	if zcommon.IsTag(ref) {
-		imgDescriptor, err := getImageDescriptor(scanner.metaDB, repo, ref)
+		imgDescriptor, err := getImageDescriptor(context.Background(), scanner.metaDB, repo, ref)
 		if err != nil {
 			return false, err
 		}
@@ -316,7 +314,7 @@ func (scanner Scanner) GetCachedResult(digest string) map[string]cvemodel.CVE {
 	return scanner.cache.Get(digest)
 }
 
-func (scanner Scanner) ScanImage(image string) (map[string]cvemodel.CVE, error) {
+func (scanner Scanner) ScanImage(ctx context.Context, image string) (map[string]cvemodel.CVE, error) {
 	var (
 		originalImageInput = image
 		digest             string
@@ -328,7 +326,7 @@ func (scanner Scanner) ScanImage(image string) (map[string]cvemodel.CVE, error) 
 	digest = ref
 
 	if isTag {
-		imgDescriptor, err := getImageDescriptor(scanner.metaDB, repo, ref)
+		imgDescriptor, err := getImageDescriptor(ctx, scanner.metaDB, repo, ref)
 		if err != nil {
 			return map[string]cvemodel.CVE{}, err
 		}
@@ -351,9 +349,9 @@ func (scanner Scanner) ScanImage(image string) (map[string]cvemodel.CVE, error) 
 
 	switch mediaType {
 	case ispec.MediaTypeImageIndex:
-		cveIDMap, err = scanner.scanIndex(repo, digest)
+		cveIDMap, err = scanner.scanIndex(ctx, repo, digest)
 	default:
-		cveIDMap, err = scanner.scanManifest(repo, digest)
+		cveIDMap, err = scanner.scanManifest(ctx, repo, digest)
 	}
 
 	if err != nil {
@@ -365,7 +363,7 @@ func (scanner Scanner) ScanImage(image string) (map[string]cvemodel.CVE, error) 
 	return cveIDMap, nil
 }
 
-func (scanner Scanner) scanManifest(repo, digest string) (map[string]cvemodel.CVE, error) {
+func (scanner Scanner) scanManifest(ctx context.Context, repo, digest string) (map[string]cvemodel.CVE, error) {
 	if cachedMap := scanner.cache.Get(digest); cachedMap != nil {
 		return cachedMap, nil
 	}
@@ -375,7 +373,7 @@ func (scanner Scanner) scanManifest(repo, digest string) (map[string]cvemodel.CV
 
 	scanner.dbLock.Lock()
 	opts := scanner.getTrivyOptions(image)
-	report, err := scanner.runTrivy(opts)
+	report, err := scanner.runTrivy(ctx, opts)
 	scanner.dbLock.Unlock()
 
 	if err != nil { //nolint: wsl
@@ -441,7 +439,7 @@ func (scanner Scanner) scanManifest(repo, digest string) (map[string]cvemodel.CV
 	return cveidMap, nil
 }
 
-func (scanner Scanner) scanIndex(repo, digest string) (map[string]cvemodel.CVE, error) {
+func (scanner Scanner) scanIndex(ctx context.Context, repo, digest string) (map[string]cvemodel.CVE, error) {
 	if cachedMap := scanner.cache.Get(digest); cachedMap != nil {
 		return cachedMap, nil
 	}
@@ -459,7 +457,7 @@ func (scanner Scanner) scanIndex(repo, digest string) (map[string]cvemodel.CVE, 
 
 	for _, manifest := range indexData.Index.Manifests {
 		if isScannable, err := scanner.isManifestScanable(manifest.Digest.String()); isScannable && err == nil {
-			manifestCveIDMap, err := scanner.scanManifest(repo, manifest.Digest.String())
+			manifestCveIDMap, err := scanner.scanManifest(ctx, repo, manifest.Digest.String())
 			if err != nil {
 				return nil, err
 			}
@@ -476,7 +474,7 @@ func (scanner Scanner) scanIndex(repo, digest string) (map[string]cvemodel.CVE, 
 }
 
 // UpdateDB downloads the Trivy DB / Cache under the store root directory.
-func (scanner Scanner) UpdateDB() error {
+func (scanner Scanner) UpdateDB(ctx context.Context) error {
 	// We need a lock as using multiple substores each with its own DB
 	// can result in a DATARACE because some varibles in trivy-db are global
 	// https://github.com/project-zot/trivy-db/blob/main/pkg/db/db.go#L23
@@ -486,7 +484,7 @@ func (scanner Scanner) UpdateDB() error {
 	if scanner.storeController.DefaultStore != nil {
 		dbDir := path.Join(scanner.storeController.DefaultStore.RootDir(), "_trivy")
 
-		err := scanner.updateDB(dbDir)
+		err := scanner.updateDB(ctx, dbDir)
 		if err != nil {
 			return err
 		}
@@ -496,7 +494,7 @@ func (scanner Scanner) UpdateDB() error {
 		for _, storage := range scanner.storeController.SubStore {
 			dbDir := path.Join(storage.RootDir(), "_trivy")
 
-			err := scanner.updateDB(dbDir)
+			err := scanner.updateDB(ctx, dbDir)
 			if err != nil {
 				return err
 			}
@@ -508,10 +506,8 @@ func (scanner Scanner) UpdateDB() error {
 	return nil
 }
 
-func (scanner Scanner) updateDB(dbDir string) error {
+func (scanner Scanner) updateDB(ctx context.Context, dbDir string) error {
 	scanner.log.Debug().Str("dbDir", dbDir).Msg("Download Trivy DB to destination dir")
-
-	ctx := context.Background()
 
 	registryOpts := fanalTypes.RegistryOptions{Insecure: false}
 
@@ -569,8 +565,8 @@ func (scanner Scanner) checkDBPresence() error {
 	return nil
 }
 
-func getImageDescriptor(metaDB mTypes.MetaDB, repo, tag string) (mTypes.Descriptor, error) {
-	repoMeta, err := metaDB.GetRepoMeta(context.Background(), repo)
+func getImageDescriptor(ctx context.Context, metaDB mTypes.MetaDB, repo, tag string) (mTypes.Descriptor, error) {
+	repoMeta, err := metaDB.GetRepoMeta(ctx, repo)
 	if err != nil {
 		return mTypes.Descriptor{}, err
 	}

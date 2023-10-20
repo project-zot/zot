@@ -107,8 +107,10 @@ func TestWrapperErrors(t *testing.T) {
 			boltdbWrapper.SetImageTrustStore(imgTrustStore{})
 			digest := image.Digest()
 
+			ctx := context.Background()
+
 			Convey("image meta blob not found", func() {
-				err := boltdbWrapper.UpdateSignaturesValidity("repo", digest)
+				err := boltdbWrapper.UpdateSignaturesValidity(ctx, "repo", digest)
 				So(err, ShouldBeNil)
 			})
 
@@ -116,7 +118,7 @@ func TestWrapperErrors(t *testing.T) {
 				err := setImageMeta(digest, badProtoBlob, boltdbWrapper.DB)
 				So(err, ShouldBeNil)
 
-				err = boltdbWrapper.UpdateSignaturesValidity("repo", digest)
+				err = boltdbWrapper.UpdateSignaturesValidity(ctx, "repo", digest)
 				So(err, ShouldNotBeNil)
 			})
 
@@ -124,7 +126,7 @@ func TestWrapperErrors(t *testing.T) {
 				err := boltdbWrapper.SetImageMeta(digest, imageMeta)
 				So(err, ShouldBeNil)
 
-				err = boltdbWrapper.UpdateSignaturesValidity("repo", digest)
+				err = boltdbWrapper.UpdateSignaturesValidity(ctx, "repo", digest)
 				So(err, ShouldNotBeNil)
 			})
 
@@ -135,7 +137,7 @@ func TestWrapperErrors(t *testing.T) {
 				err = setRepoMeta("repo", badProtoBlob, boltdbWrapper.DB)
 				So(err, ShouldBeNil)
 
-				err = boltdbWrapper.UpdateSignaturesValidity("repo", digest)
+				err = boltdbWrapper.UpdateSignaturesValidity(ctx, "repo", digest)
 				So(err, ShouldNotBeNil)
 			})
 		})

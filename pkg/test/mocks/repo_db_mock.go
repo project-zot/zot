@@ -81,7 +81,7 @@ type MetaDBMock struct {
 
 	UpdateStatsOnDownloadFn func(repo string, reference string) error
 
-	UpdateSignaturesValidityFn func(repo string, manifestDigest godigest.Digest) error
+	UpdateSignaturesValidityFn func(ctx context.Context, crepo string, manifestDigest godigest.Digest) error
 
 	AddManifestSignatureFn func(repo string, signedManifestDigest godigest.Digest, sygMeta mTypes.SignatureMetadata,
 	) error
@@ -403,9 +403,9 @@ func (sdm MetaDBMock) UpdateStatsOnDownload(repo string, reference string) error
 	return nil
 }
 
-func (sdm MetaDBMock) UpdateSignaturesValidity(repo string, manifestDigest godigest.Digest) error {
+func (sdm MetaDBMock) UpdateSignaturesValidity(ctx context.Context, repo string, manifestDigest godigest.Digest) error {
 	if sdm.UpdateSignaturesValidityFn != nil {
-		return sdm.UpdateSignaturesValidityFn(repo, manifestDigest)
+		return sdm.UpdateSignaturesValidityFn(ctx, repo, manifestDigest)
 	}
 
 	return nil

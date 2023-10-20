@@ -61,7 +61,7 @@ func TestCVEConvert(t *testing.T) {
 					Vulnerabilities: false,
 				},
 				mocks.CveInfoMock{
-					GetCVESummaryForImageMediaFn: func(repo string, digest, mediaType string,
+					GetCVESummaryForImageMediaFn: func(ctx context.Context, repo string, digest, mediaType string,
 					) (cvemodel.ImageCVESummary, error) {
 						return cvemodel.ImageCVESummary{}, ErrTestError
 					},
@@ -99,7 +99,7 @@ func TestCVEConvert(t *testing.T) {
 					Vulnerabilities: false,
 				},
 				mocks.CveInfoMock{
-					GetCVESummaryForImageMediaFn: func(repo string, digest, mediaType string,
+					GetCVESummaryForImageMediaFn: func(ctx context.Context, repo string, digest, mediaType string,
 					) (cvemodel.ImageCVESummary, error) {
 						return cvemodel.ImageCVESummary{
 							Count:       1,
@@ -126,7 +126,7 @@ func TestCVEConvert(t *testing.T) {
 					Vulnerabilities: false,
 				},
 				mocks.CveInfoMock{
-					GetCVESummaryForImageMediaFn: func(repo string, digest, mediaType string,
+					GetCVESummaryForImageMediaFn: func(ctx context.Context, repo string, digest, mediaType string,
 					) (cvemodel.ImageCVESummary, error) {
 						return cvemodel.ImageCVESummary{}, ErrTestError
 					},
@@ -149,7 +149,7 @@ func TestCVEConvert(t *testing.T) {
 					Vulnerabilities: false,
 				},
 				mocks.CveInfoMock{
-					GetCVESummaryForImageMediaFn: func(repo string, digest, mediaType string,
+					GetCVESummaryForImageMediaFn: func(ctx context.Context, repo string, digest, mediaType string,
 					) (cvemodel.ImageCVESummary, error) {
 						return cvemodel.ImageCVESummary{
 							Count:       1,
@@ -179,7 +179,7 @@ func TestCVEConvert(t *testing.T) {
 					Vulnerabilities: false,
 				},
 				mocks.CveInfoMock{
-					GetCVESummaryForImageMediaFn: func(repo string, digest, mediaType string,
+					GetCVESummaryForImageMediaFn: func(ctx context.Context, repo string, digest, mediaType string,
 					) (cvemodel.ImageCVESummary, error) {
 						return cvemodel.ImageCVESummary{
 							Count:       1,
@@ -207,7 +207,7 @@ func TestCVEConvert(t *testing.T) {
 					Vulnerabilities: false,
 				},
 				mocks.CveInfoMock{
-					GetCVESummaryForImageMediaFn: func(repo string, digest, mediaType string,
+					GetCVESummaryForImageMediaFn: func(ctx context.Context, repo string, digest, mediaType string,
 					) (cvemodel.ImageCVESummary, error) {
 						return cvemodel.ImageCVESummary{
 							Count:       1,
@@ -248,7 +248,7 @@ func TestCVEConvert(t *testing.T) {
 					Vulnerabilities: false,
 				},
 				mocks.CveInfoMock{
-					GetCVESummaryForImageMediaFn: func(repo string, digest, mediaType string,
+					GetCVESummaryForImageMediaFn: func(ctx context.Context, repo string, digest, mediaType string,
 					) (cvemodel.ImageCVESummary, error) {
 						return cvemodel.ImageCVESummary{
 							Count:       1,
@@ -271,7 +271,7 @@ func TestCVEConvert(t *testing.T) {
 					Vulnerabilities: false,
 				},
 				mocks.CveInfoMock{
-					GetCVESummaryForImageMediaFn: func(repo string, digest, mediaType string,
+					GetCVESummaryForImageMediaFn: func(ctx context.Context, repo string, digest, mediaType string,
 					) (cvemodel.ImageCVESummary, error) {
 						return cvemodel.ImageCVESummary{}, ErrTestError
 					},

@@ -292,6 +292,8 @@ func TestGarbageCollectIndexErrors(t *testing.T) {
 func TestGarbageCollectWithMockedImageStore(t *testing.T) {
 	trueVal := true
 
+	ctx := context.Background()
+
 	Convey("Cover gc error paths", t, func(c C) {
 		log := zlog.NewLogger("debug", "")
 		audit := zlog.NewAuditLogger("debug", "")
@@ -316,7 +318,7 @@ func TestGarbageCollectWithMockedImageStore(t *testing.T) {
 				},
 			}, gcOptions, audit, log)
 
-			err := gc.cleanRepo(repoName)
+			err := gc.cleanRepo(ctx, repoName)
 			So(err, ShouldNotBeNil)
 		})
 
@@ -366,7 +368,41 @@ func TestGarbageCollectWithMockedImageStore(t *testing.T) {
 				},
 			}, gcOptions, audit, log)
 
-			err := gc.removeTagsPerRetentionPolicy("name", &ispec.Index{})
+			err := gc.removeTagsPerRetentionPolicy(ctx, "name", &ispec.Index{})
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("Error on context done in removeTags...", func() {
+			gcOptions := Options{
+				Delay: storageConstants.DefaultGCDelay,
+				ImageRetention: config.ImageRetention{
+					Delay: storageConstants.DefaultRetentionDelay,
+					Policies: []config.RetentionPolicy{
+						{
+							Repositories: []string{"**"},
+							KeepTags: []config.KeepTagsPolicy{
+								{
+									Patterns: []string{".*"},
+								},
+							},
+						},
+					},
+				},
+			}
+
+			gc := NewGarbageCollect(mocks.MockedImageStore{}, mocks.MetaDBMock{}, gcOptions, audit, log)
+
+			ctx, cancel := context.WithCancel(ctx)
+			cancel()
+
+			err := gc.removeTagsPerRetentionPolicy(ctx, "name", &ispec.Index{
+				Manifests: []ispec.Descriptor{
+					{
+						MediaType: ispec.MediaTypeImageManifest,
+						Digest:    godigest.FromBytes([]byte("digest")),
+					},
+				},
+			})
 			So(err, ShouldNotBeNil)
 		})
 
@@ -387,7 +423,7 @@ func TestGarbageCollectWithMockedImageStore(t *testing.T) {
 
 			gc := NewGarbageCollect(imgStore, mocks.MetaDBMock{}, gcOptions, audit, log)
 
-			err = gc.cleanRepo(repoName)
+			err = gc.cleanRepo(ctx, repoName)
 			So(err, ShouldNotBeNil)
 		})
 
@@ -411,7 +447,7 @@ func TestGarbageCollectWithMockedImageStore(t *testing.T) {
 
 			gc := NewGarbageCollect(imgStore, mocks.MetaDBMock{}, gcOptions, audit, log)
 
-			err = gc.cleanRepo(repoName)
+			err = gc.cleanRepo(ctx, repoName)
 			So(err, ShouldNotBeNil)
 		})
 
@@ -424,7 +460,7 @@ func TestGarbageCollectWithMockedImageStore(t *testing.T) {
 
 			gc := NewGarbageCollect(imgStore, mocks.MetaDBMock{}, gcOptions, audit, log)
 
-			err := gc.cleanRepo(repoName)
+			err := gc.cleanRepo(ctx, repoName)
 			So(err, ShouldNotBeNil)
 		})
 
@@ -464,7 +500,7 @@ func TestGarbageCollectWithMockedImageStore(t *testing.T) {
 			}
 			gc := NewGarbageCollect(imgStore, mocks.MetaDBMock{}, gcOptions, audit, log)
 
-			err = gc.removeManifestsPerRepoPolicy(repoName, &ispec.Index{
+			err = gc.removeManifestsPerRepoPolicy(ctx, repoName, &ispec.Index{
 				Manifests: []ispec.Descriptor{
 					{
 						MediaType: ispec.MediaTypeImageIndex,
@@ -493,7 +529,35 @@ func TestGarbageCollectWithMockedImageStore(t *testing.T) {
 
 			gc := NewGarbageCollect(imgStore, mocks.MetaDBMock{}, gcOptions, audit, log)
 
-			err := gc.removeManifestsPerRepoPolicy(repoName, &ispec.Index{
+			err := gc.removeManifestsPerRepoPolicy(ctx, repoName, &ispec.Index{
+				Manifests: []ispec.Descriptor{
+					{
+						MediaType: ispec.MediaTypeImageManifest,
+						Digest:    godigest.FromBytes([]byte("digest")),
+					},
+				},
+			})
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("Error on context done in removeManifests...", func() {
+			imgStore := mocks.MockedImageStore{}
+
+			gcOptions.ImageRetention = config.ImageRetention{
+				Policies: []config.RetentionPolicy{
+					{
+						Repositories:   []string{"**"},
+						DeleteUntagged: &trueVal,
+					},
+				},
+			}
+
+			gc := NewGarbageCollect(imgStore, mocks.MetaDBMock{}, gcOptions, audit, log)
+
+			ctx, cancel := context.WithCancel(ctx)
+			cancel()
+
+			err := gc.removeManifestsPerRepoPolicy(ctx, repoName, &ispec.Index{
 				Manifests: []ispec.Descriptor{
 					{
 						MediaType: ispec.MediaTypeImageManifest,
@@ -534,7 +598,7 @@ func TestGarbageCollectWithMockedImageStore(t *testing.T) {
 			}
 			gc := NewGarbageCollect(imgStore, metaDB, gcOptions, audit, log)
 
-			err = gc.removeManifestsPerRepoPolicy(repoName, &ispec.Index{
+			err = gc.removeManifestsPerRepoPolicy(ctx, repoName, &ispec.Index{
 				Manifests: []ispec.Descriptor{
 					{
 						MediaType: ispec.MediaTypeImageManifest,
@@ -612,7 +676,7 @@ func TestGarbageCollectWithMockedImageStore(t *testing.T) {
 
 			gc := NewGarbageCollect(imgStore, mocks.MetaDBMock{}, gcOptions, audit, log)
 
-			err = gc.removeManifestsPerRepoPolicy(repoName, &returnedIndexImage)
+			err = gc.removeManifestsPerRepoPolicy(ctx, repoName, &returnedIndexImage)
 			So(err, ShouldNotBeNil)
 		})
 
@@ -643,7 +707,7 @@ func TestGarbageCollectWithMockedImageStore(t *testing.T) {
 
 			gc := NewGarbageCollect(imgStore, mocks.MetaDBMock{}, gcOptions, audit, log)
 
-			err = gc.removeManifestsPerRepoPolicy(repoName, &ispec.Index{
+			err = gc.removeManifestsPerRepoPolicy(ctx, repoName, &ispec.Index{
 				Manifests: []ispec.Descriptor{
 					manifestDesc,
 				},

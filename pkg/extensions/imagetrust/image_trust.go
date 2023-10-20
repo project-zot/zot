@@ -256,8 +256,12 @@ func (validityT *validityTask) DoWork(ctx context.Context) error {
 	validityT.log.Info().Msg("update signatures validity")
 
 	for signedManifest, sigs := range validityT.repo.Signatures {
+		if zcommon.IsContextDone(ctx) {
+			return ctx.Err()
+		}
+
 		if len(sigs[zcommon.CosignSignature]) != 0 || len(sigs[zcommon.NotationSignature]) != 0 {
-			err := validityT.metaDB.UpdateSignaturesValidity(validityT.repo.Name, godigest.Digest(signedManifest))
+			err := validityT.metaDB.UpdateSignaturesValidity(ctx, validityT.repo.Name, godigest.Digest(signedManifest))
 			if err != nil {
 				validityT.log.Info().Msg("error while verifying signatures")
 

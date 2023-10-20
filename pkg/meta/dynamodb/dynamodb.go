@@ -1128,20 +1128,20 @@ func (dwr *DynamoDB) UpdateStatsOnDownload(repo string, reference string) error 
 	return dwr.setProtoRepoMeta(repo, repoMeta)
 }
 
-func (dwr *DynamoDB) UpdateSignaturesValidity(repo string, manifestDigest godigest.Digest) error {
+func (dwr *DynamoDB) UpdateSignaturesValidity(ctx context.Context, repo string, manifestDigest godigest.Digest) error {
 	imgTrustStore := dwr.ImageTrustStore()
 
 	if imgTrustStore == nil {
 		return nil
 	}
 
-	protoImageMeta, err := dwr.GetProtoImageMeta(context.Background(), manifestDigest)
+	protoImageMeta, err := dwr.GetProtoImageMeta(ctx, manifestDigest)
 	if err != nil {
 		return err
 	}
 
 	// update signatures with details about validity and author
-	protoRepoMeta, err := dwr.getProtoRepoMeta(context.Background(), repo)
+	protoRepoMeta, err := dwr.getProtoRepoMeta(ctx, repo)
 	if err != nil {
 		return err
 	}
@@ -1149,6 +1149,10 @@ func (dwr *DynamoDB) UpdateSignaturesValidity(repo string, manifestDigest godige
 	manifestSignatures := proto_go.ManifestSignatures{Map: map[string]*proto_go.SignaturesInfo{"": {}}}
 
 	for sigType, sigs := range protoRepoMeta.Signatures[manifestDigest.String()].Map {
+		if zcommon.IsContextDone(ctx) {
+			return ctx.Err()
+		}
+
 		signaturesInfo := []*proto_go.SignatureInfo{}
 
 		for _, sigInfo := range sigs.List {
@@ -1181,7 +1185,7 @@ func (dwr *DynamoDB) UpdateSignaturesValidity(repo string, manifestDigest godige
 
 	protoRepoMeta.Signatures[manifestDigest.String()] = &manifestSignatures
 
-	return dwr.setProtoRepoMeta(protoRepoMeta.Name, protoRepoMeta)
+	return dwr.setProtoRepoMeta(protoRepoMeta.Name, protoRepoMeta) //nolint: contextcheck
 }
 
 func (dwr *DynamoDB) AddManifestSignature(repo string, signedManifestDigest godigest.Digest,

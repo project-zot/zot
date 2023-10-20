@@ -1,6 +1,7 @@
 package retention
 
 import (
+	"context"
 	"fmt"
 
 	glob "github.com/bmatcuk/doublestar/v4"
@@ -97,7 +98,7 @@ func (p policyManager) getRules(tagPolicy config.KeepTagsPolicy) []types.Rule {
 	return rules
 }
 
-func (p policyManager) GetRetainedTags(repoMeta mTypes.RepoMeta, index ispec.Index) []string {
+func (p policyManager) GetRetainedTags(ctx context.Context, repoMeta mTypes.RepoMeta, index ispec.Index) []string {
 	repo := repoMeta.Name
 
 	matchedByName := make([]string, 0)
@@ -134,6 +135,10 @@ func (p policyManager) GetRetainedTags(repoMeta mTypes.RepoMeta, index ispec.Ind
 	grouped := p.groupCandidatesByTagPolicy(repo, candidates)
 
 	for _, candidates := range grouped {
+		if zcommon.IsContextDone(ctx) {
+			return nil
+		}
+
 		retainCandidates := candidates.candidates // copy
 		// tag rules
 		rules := candidates.rules

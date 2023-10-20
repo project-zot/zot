@@ -3,6 +3,7 @@
 package trivy_test
 
 import (
+	"context"
 	"errors"
 	"path/filepath"
 	"testing"
@@ -61,10 +62,10 @@ func TestScanBigTestFile(t *testing.T) {
 		// scan
 		scanner := trivy.NewScanner(ctlr.StoreController, ctlr.MetaDB, "ghcr.io/project-zot/trivy-db", "", ctlr.Log)
 
-		err = scanner.UpdateDB()
+		err = scanner.UpdateDB(context.Background())
 		So(err, ShouldBeNil)
 
-		cveMap, err := scanner.ScanImage("zot-test:0.0.1")
+		cveMap, err := scanner.ScanImage(context.Background(), "zot-test:0.0.1")
 		So(err, ShouldBeNil)
 		So(cveMap, ShouldNotBeNil)
 	})
@@ -105,26 +106,28 @@ func TestScanningByDigest(t *testing.T) {
 		// scan
 		scanner := trivy.NewScanner(ctlr.StoreController, ctlr.MetaDB, "ghcr.io/project-zot/trivy-db", "", ctlr.Log)
 
-		err = scanner.UpdateDB()
+		ctx := context.Background()
+
+		err = scanner.UpdateDB(ctx)
 		So(err, ShouldBeNil)
 
-		cveMap, err := scanner.ScanImage("multi-arch@" + vulnImage.DigestStr())
+		cveMap, err := scanner.ScanImage(ctx, "multi-arch@"+vulnImage.DigestStr())
 		So(err, ShouldBeNil)
 		So(cveMap, ShouldContainKey, Vulnerability1ID)
 		So(cveMap, ShouldContainKey, Vulnerability2ID)
 		So(cveMap, ShouldContainKey, Vulnerability3ID)
 
-		cveMap, err = scanner.ScanImage("multi-arch@" + simpleImage.DigestStr())
+		cveMap, err = scanner.ScanImage(ctx, "multi-arch@"+simpleImage.DigestStr())
 		So(err, ShouldBeNil)
 		So(cveMap, ShouldBeEmpty)
 
-		cveMap, err = scanner.ScanImage("multi-arch@" + multiArch.DigestStr())
+		cveMap, err = scanner.ScanImage(ctx, "multi-arch@"+multiArch.DigestStr())
 		So(err, ShouldBeNil)
 		So(cveMap, ShouldContainKey, Vulnerability1ID)
 		So(cveMap, ShouldContainKey, Vulnerability2ID)
 		So(cveMap, ShouldContainKey, Vulnerability3ID)
 
-		cveMap, err = scanner.ScanImage("multi-arch:multi-arch-tag")
+		cveMap, err = scanner.ScanImage(ctx, "multi-arch:multi-arch-tag")
 		So(err, ShouldBeNil)
 		So(cveMap, ShouldContainKey, Vulnerability1ID)
 		So(cveMap, ShouldContainKey, Vulnerability2ID)
@@ -188,10 +191,10 @@ func TestVulnerableLayer(t *testing.T) {
 
 		scanner := trivy.NewScanner(storeController, metaDB, "ghcr.io/project-zot/trivy-db", "", log)
 
-		err = scanner.UpdateDB()
+		err = scanner.UpdateDB(context.Background())
 		So(err, ShouldBeNil)
 
-		cveMap, err := scanner.ScanImage("repo@" + img.DigestStr())
+		cveMap, err := scanner.ScanImage(context.Background(), "repo@"+img.DigestStr())
 		So(err, ShouldBeNil)
 		t.Logf("cveMap: %v", cveMap)
 		// As of September 17 2023 there are 5 CVEs:
@@ -271,7 +274,7 @@ func TestScannerErrors(t *testing.T) {
 
 			scanner := trivy.NewScanner(storeController, metaDB, "ghcr.io/project-zot/trivy-db", "", log)
 
-			_, err := scanner.ScanImage("image@" + godigest.FromString("digest").String())
+			_, err := scanner.ScanImage(context.Background(), "image@"+godigest.FromString("digest").String())
 			So(err, ShouldNotBeNil)
 		})
 	})

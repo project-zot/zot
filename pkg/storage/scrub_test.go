@@ -126,6 +126,22 @@ func RunCheckAllBlobsIntegrityTests( //nolint: thelper
 			So(actual, ShouldContainSubstring, "test 1.0 ok")
 		})
 
+		Convey("Blobs integrity with context done", func() {
+			buff := bytes.NewBufferString("")
+			ctx, cancel := context.WithCancel(context.Background())
+			cancel()
+
+			res, err := storeCtlr.CheckAllBlobsIntegrity(ctx)
+			res.PrintScrubResults(buff)
+			So(err, ShouldNotBeNil)
+
+			space := regexp.MustCompile(`\s+`)
+			str := space.ReplaceAllString(buff.String(), " ")
+			actual := strings.TrimSpace(str)
+			So(actual, ShouldContainSubstring, "REPOSITORY TAG STATUS AFFECTED BLOB ERROR")
+			So(actual, ShouldNotContainSubstring, "test 1.0 ok")
+		})
+
 		Convey("Manifest integrity affected", func() {
 			// get content of manifest file
 			content, _, _, err := imgStore.GetImageManifest(repoName, manifestDigest.String())
@@ -363,6 +379,22 @@ func RunCheckAllBlobsIntegrityTests( //nolint: thelper
 			So(actual, ShouldContainSubstring, "REPOSITORY TAG STATUS AFFECTED BLOB ERROR")
 			So(actual, ShouldContainSubstring, "test 1.0 ok")
 			So(actual, ShouldContainSubstring, "test ok")
+
+			// test scrub context done
+			buff = bytes.NewBufferString("")
+
+			ctx, cancel := context.WithCancel(context.Background())
+			cancel()
+
+			res, err = storeCtlr.CheckAllBlobsIntegrity(ctx)
+			res.PrintScrubResults(buff)
+			So(err, ShouldNotBeNil)
+
+			str = space.ReplaceAllString(buff.String(), " ")
+			actual = strings.TrimSpace(str)
+			So(actual, ShouldContainSubstring, "REPOSITORY TAG STATUS AFFECTED BLOB ERROR")
+			So(actual, ShouldNotContainSubstring, "test 1.0 ok")
+			So(actual, ShouldNotContainSubstring, "test ok")
 
 			// test scrub index - errors
 			// delete content of manifest file

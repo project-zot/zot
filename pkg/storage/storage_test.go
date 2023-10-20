@@ -1481,6 +1481,9 @@ func TestGarbageCollectImageManifest(t *testing.T) {
 
 			metrics := monitoring.NewMetricsServer(false, log)
 
+			ctx := context.Background()
+
+			//nolint: contextcheck
 			Convey("Repo layout", t, func(c C) {
 				Convey("Garbage collect with default/long delay", func() {
 					var imgStore storageTypes.ImageStore
@@ -1578,7 +1581,7 @@ func TestGarbageCollectImageManifest(t *testing.T) {
 					_, _, err = imgStore.PutImageManifest(repoName, tag, ispec.MediaTypeImageManifest, manifestBuf)
 					So(err, ShouldBeNil)
 
-					err = gc.CleanRepo(repoName)
+					err = gc.CleanRepo(ctx, repoName)
 					So(err, ShouldBeNil)
 
 					// put artifact referencing above image
@@ -1622,7 +1625,7 @@ func TestGarbageCollectImageManifest(t *testing.T) {
 						ispec.MediaTypeImageManifest, artifactManifestBuf)
 					So(err, ShouldBeNil)
 
-					err = gc.CleanRepo(repoName)
+					err = gc.CleanRepo(ctx, repoName)
 					So(err, ShouldBeNil)
 
 					hasBlob, _, err = imgStore.CheckBlob(repoName, bdigest)
@@ -1636,7 +1639,7 @@ func TestGarbageCollectImageManifest(t *testing.T) {
 					err = imgStore.DeleteImageManifest(repoName, digest.String(), false)
 					So(err, ShouldBeNil)
 
-					err = gc.CleanRepo(repoName)
+					err = gc.CleanRepo(ctx, repoName)
 					So(err, ShouldBeNil)
 
 					hasBlob, _, err = imgStore.CheckBlob(repoName, bdigest)
@@ -1872,7 +1875,7 @@ func TestGarbageCollectImageManifest(t *testing.T) {
 					_, _, _, err = imgStore.GetImageManifest(repoName, orasDigest.String())
 					So(err, ShouldBeNil)
 
-					err = gc.CleanRepo(repoName)
+					err = gc.CleanRepo(ctx, repoName)
 					So(err, ShouldBeNil)
 
 					hasBlob, _, err = imgStore.CheckBlob(repoName, odigest)
@@ -1898,7 +1901,7 @@ func TestGarbageCollectImageManifest(t *testing.T) {
 						err = imgStore.DeleteImageManifest(repoName, digest.String(), false)
 						So(err, ShouldBeNil)
 
-						err = gc.CleanRepo(repoName)
+						err = gc.CleanRepo(ctx, repoName)
 						So(err, ShouldBeNil)
 
 						hasBlob, _, err = imgStore.CheckBlob(repoName, bdigest)
@@ -1935,7 +1938,7 @@ func TestGarbageCollectImageManifest(t *testing.T) {
 						err = imgStore.DeleteImageManifest(repoName, tag, false)
 						So(err, ShouldBeNil)
 
-						err = gc.CleanRepo(repoName)
+						err = gc.CleanRepo(ctx, repoName)
 						So(err, ShouldBeNil)
 
 						hasBlob, _, err = imgStore.CheckBlob(repoName, bdigest)
@@ -2181,7 +2184,7 @@ func TestGarbageCollectImageManifest(t *testing.T) {
 					_, _, err = imgStore.PutImageManifest(repo2Name, tag, ispec.MediaTypeImageManifest, manifestBuf)
 					So(err, ShouldBeNil)
 
-					err = gc.CleanRepo(repo2Name)
+					err = gc.CleanRepo(ctx, repo2Name)
 					So(err, ShouldBeNil)
 
 					// original blob should exist
@@ -2206,6 +2209,9 @@ func TestGarbageCollectImageIndex(t *testing.T) {
 
 			metrics := monitoring.NewMetricsServer(false, log)
 
+			ctx := context.Background()
+
+			//nolint: contextcheck
 			Convey("Repo layout", t, func(c C) {
 				Convey("Garbage collect with default/long delay", func() {
 					var imgStore storageTypes.ImageStore
@@ -2303,7 +2309,7 @@ func TestGarbageCollectImageIndex(t *testing.T) {
 						ispec.MediaTypeImageManifest, artifactManifestBuf)
 					So(err, ShouldBeNil)
 
-					err = gc.CleanRepo(repoName)
+					err = gc.CleanRepo(ctx, repoName)
 					So(err, ShouldBeNil)
 
 					hasBlob, _, err := imgStore.CheckBlob(repoName, bdgst)
@@ -2314,7 +2320,7 @@ func TestGarbageCollectImageIndex(t *testing.T) {
 						err = imgStore.DeleteImageManifest(repoName, indexDigest.String(), false)
 						So(err, ShouldBeNil)
 
-						err = gc.CleanRepo(repoName)
+						err = gc.CleanRepo(ctx, repoName)
 						So(err, ShouldBeNil)
 
 						hasBlob, _, err = imgStore.CheckBlob(repoName, bdgst)
@@ -2516,7 +2522,7 @@ func TestGarbageCollectImageIndex(t *testing.T) {
 					_, _, _, err = imgStore.GetImageManifest(repoName, orasDigest.String())
 					So(err, ShouldBeNil)
 
-					err = gc.CleanRepo(repoName)
+					err = gc.CleanRepo(ctx, repoName)
 					So(err, ShouldBeNil)
 
 					_, _, _, err = imgStore.GetImageManifest(repoName, orasDigest.String())
@@ -2537,7 +2543,7 @@ func TestGarbageCollectImageIndex(t *testing.T) {
 					time.Sleep(2 * time.Second)
 
 					Convey("delete inner referenced manifest", func() {
-						err = gc.CleanRepo(repoName)
+						err = gc.CleanRepo(ctx, repoName)
 						So(err, ShouldBeNil)
 
 						// check orphan artifact is gc'ed
@@ -2556,7 +2562,7 @@ func TestGarbageCollectImageIndex(t *testing.T) {
 						err = imgStore.DeleteImageManifest(repoName, artifactDigest.String(), false)
 						So(err, ShouldBeNil)
 
-						err = gc.CleanRepo(repoName)
+						err = gc.CleanRepo(ctx, repoName)
 						So(err, ShouldBeNil)
 
 						_, _, _, err = imgStore.GetImageManifest(repoName, artifactOfArtifactManifestDigest.String())
@@ -2570,7 +2576,7 @@ func TestGarbageCollectImageIndex(t *testing.T) {
 					})
 
 					Convey("delete index manifest, references should not be persisted", func() {
-						err = gc.CleanRepo(repoName)
+						err = gc.CleanRepo(ctx, repoName)
 						So(err, ShouldBeNil)
 
 						// check orphan artifact is gc'ed
@@ -2589,7 +2595,7 @@ func TestGarbageCollectImageIndex(t *testing.T) {
 						err = imgStore.DeleteImageManifest(repoName, indexDigest.String(), false)
 						So(err, ShouldBeNil)
 
-						err = gc.CleanRepo(repoName)
+						err = gc.CleanRepo(ctx, repoName)
 						So(err, ShouldBeNil)
 
 						_, _, _, err = imgStore.GetImageManifest(repoName, artifactDigest.String())
@@ -2652,6 +2658,9 @@ func TestGarbageCollectChainedImageIndexes(t *testing.T) {
 
 			metrics := monitoring.NewMetricsServer(false, log)
 
+			ctx := context.Background()
+
+			//nolint: contextcheck
 			Convey("Garbage collect with short delay", t, func() {
 				var imgStore storageTypes.ImageStore
 
@@ -3019,7 +3028,7 @@ func TestGarbageCollectChainedImageIndexes(t *testing.T) {
 				_, _, _, err = imgStore.GetImageManifest(repoName, orasDigest.String())
 				So(err, ShouldBeNil)
 
-				err = gc.CleanRepo(repoName)
+				err = gc.CleanRepo(ctx, repoName)
 				So(err, ShouldBeNil)
 
 				_, _, _, err = imgStore.GetImageManifest(repoName, orasDigest.String())
@@ -3040,7 +3049,7 @@ func TestGarbageCollectChainedImageIndexes(t *testing.T) {
 				time.Sleep(5 * time.Second)
 
 				Convey("delete inner referenced manifest", func() {
-					err = gc.CleanRepo(repoName)
+					err = gc.CleanRepo(ctx, repoName)
 					So(err, ShouldBeNil)
 
 					// check orphan artifact is gc'ed
@@ -3059,7 +3068,7 @@ func TestGarbageCollectChainedImageIndexes(t *testing.T) {
 					err = imgStore.DeleteImageManifest(repoName, artifactDigest.String(), false)
 					So(err, ShouldBeNil)
 
-					err = gc.CleanRepo(repoName)
+					err = gc.CleanRepo(ctx, repoName)
 					So(err, ShouldBeNil)
 
 					_, _, _, err = imgStore.GetImageManifest(repoName, artifactOfArtifactManifestDigest.String())
@@ -3073,7 +3082,7 @@ func TestGarbageCollectChainedImageIndexes(t *testing.T) {
 				})
 
 				Convey("delete index manifest, references should not be persisted", func() {
-					err = gc.CleanRepo(repoName)
+					err = gc.CleanRepo(ctx, repoName)
 					So(err, ShouldBeNil)
 
 					// check orphan artifact is gc'ed
@@ -3092,7 +3101,7 @@ func TestGarbageCollectChainedImageIndexes(t *testing.T) {
 					err = imgStore.DeleteImageManifest(repoName, indexDigest.String(), false)
 					So(err, ShouldBeNil)
 
-					err = gc.CleanRepo(repoName)
+					err = gc.CleanRepo(ctx, repoName)
 					So(err, ShouldBeNil)
 
 					_, _, _, err = imgStore.GetImageManifest(repoName, artifactDigest.String())

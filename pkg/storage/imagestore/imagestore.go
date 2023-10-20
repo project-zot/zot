@@ -2,6 +2,7 @@ package imagestore
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/json"
 	"errors"
@@ -1828,7 +1829,7 @@ func (is *ImageStore) getOriginalBlob(digest godigest.Digest, duplicateBlobs []s
 	return originalBlob, nil
 }
 
-func (is *ImageStore) dedupeBlobs(digest godigest.Digest, duplicateBlobs []string) error {
+func (is *ImageStore) dedupeBlobs(ctx context.Context, digest godigest.Digest, duplicateBlobs []string) error {
 	if fmt.Sprintf("%v", is.cache) == fmt.Sprintf("%v", nil) {
 		is.log.Error().Err(zerr.ErrDedupeRebuild).Msg("no cache driver found, can not dedupe blobs")
 
@@ -1841,6 +1842,10 @@ func (is *ImageStore) dedupeBlobs(digest godigest.Digest, duplicateBlobs []strin
 
 	// rebuild from dedupe false to true
 	for _, blobPath := range duplicateBlobs {
+		if zcommon.IsContextDone(ctx) {
+			return ctx.Err()
+		}
+
 		binfo, err := is.storeDriver.Stat(blobPath)
 		if err != nil {
 			is.log.Error().Err(err).Str("path", blobPath).Msg("rebuild dedupe: failed to stat blob")
@@ -1901,7 +1906,7 @@ func (is *ImageStore) dedupeBlobs(digest godigest.Digest, duplicateBlobs []strin
 	return nil
 }
 
-func (is *ImageStore) restoreDedupedBlobs(digest godigest.Digest, duplicateBlobs []string) error {
+func (is *ImageStore) restoreDedupedBlobs(ctx context.Context, digest godigest.Digest, duplicateBlobs []string) error {
 	is.log.Info().Str("digest", digest.String()).Msg("rebuild dedupe: restoring deduped blobs for digest")
 
 	// first we need to find the original blob, either in cache or by checking each blob size
@@ -1913,6 +1918,10 @@ func (is *ImageStore) restoreDedupedBlobs(digest godigest.Digest, duplicateBlobs
 	}
 
 	for _, blobPath := range duplicateBlobs {
+		if zcommon.IsContextDone(ctx) {
+			return ctx.Err()
+		}
+
 		binfo, err := is.storeDriver.Stat(blobPath)
 		if err != nil {
 			is.log.Error().Err(err).Str("path", blobPath).Msg("rebuild dedupe: failed to stat blob")
@@ -1943,17 +1952,19 @@ func (is *ImageStore) restoreDedupedBlobs(digest godigest.Digest, duplicateBlobs
 	return nil
 }
 
-func (is *ImageStore) RunDedupeForDigest(digest godigest.Digest, dedupe bool, duplicateBlobs []string) error {
+func (is *ImageStore) RunDedupeForDigest(ctx context.Context, digest godigest.Digest, dedupe bool,
+	duplicateBlobs []string,
+) error {
 	var lockLatency time.Time
 
 	is.Lock(&lockLatency)
 	defer is.Unlock(&lockLatency)
 
 	if dedupe {
-		return is.dedupeBlobs(digest, duplicateBlobs)
+		return is.dedupeBlobs(ctx, digest, duplicateBlobs)
 	}
 
-	return is.restoreDedupedBlobs(digest, duplicateBlobs)
+	return is.restoreDedupedBlobs(ctx, digest, duplicateBlobs)
 }
 
 func (is *ImageStore) RunDedupeBlobs(interval time.Duration, sch *scheduler.Scheduler) {

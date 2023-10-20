@@ -353,7 +353,7 @@ func SetImageMetaFromInput(ctx context.Context, repo, reference, mediaType strin
 				return err
 			}
 
-			err = metaDB.UpdateSignaturesValidity(repo, signedManifestDigest)
+			err = metaDB.UpdateSignaturesValidity(ctx, repo, signedManifestDigest)
 			if err != nil {
 				log.Error().Err(err).Str("repository", repo).Str("reference", reference).Str("digest",
 					signedManifestDigest.String()).Msg("load-repo: failed verify signatures validity for signed image")

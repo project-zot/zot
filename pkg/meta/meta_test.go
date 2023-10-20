@@ -1366,7 +1366,7 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 				})
 				So(err, ShouldBeNil)
 
-				err = metaDB.UpdateSignaturesValidity(repo1, image1.Digest())
+				err = metaDB.UpdateSignaturesValidity(ctx, repo1, image1.Digest())
 				So(err, ShouldBeNil)
 
 				repoData, err := metaDB.GetRepoMeta(ctx, repo1)
@@ -1375,6 +1375,14 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 					ShouldBeEmpty)
 				So(repoData.Signatures[image1.DigestStr()]["cosign"][0].LayersInfo[0].Date,
 					ShouldBeZeroValue)
+
+				Convey("with context done", func() {
+					ctx, cancel := context.WithCancel(context.Background())
+					cancel()
+
+					err = metaDB.UpdateSignaturesValidity(ctx, repo1, image1.Digest())
+					So(err, ShouldNotBeNil)
+				})
 			})
 
 			//nolint: contextcheck
@@ -1462,7 +1470,7 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 				err = imagetrust.UploadCertificate(imgTrustStore.NotationStorage, certificateContent, "ca")
 				So(err, ShouldBeNil)
 
-				err = metaDB.UpdateSignaturesValidity(repo, image1.Digest()) //nolint:contextcheck
+				err = metaDB.UpdateSignaturesValidity(ctx, repo, image1.Digest()) //nolint:contextcheck
 				So(err, ShouldBeNil)
 
 				repoData, err := metaDB.GetRepoMeta(ctx, repo)

@@ -101,7 +101,7 @@ type MetaDB interface { //nolint:interfacebloat
 	DeleteSignature(repo string, signedManifestDigest godigest.Digest, sigMeta SignatureMetadata) error
 
 	// UpdateSignaturesValidity checks and updates signatures validity of a given manifest
-	UpdateSignaturesValidity(repo string, manifestDigest godigest.Digest) error
+	UpdateSignaturesValidity(ctx context.Context, repo string, manifestDigest godigest.Digest) error
 
 	// IncrementRepoStars adds 1 to the star count of an image
 	IncrementRepoStars(repo string) error

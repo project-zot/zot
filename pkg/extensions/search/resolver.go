@@ -211,7 +211,7 @@ func getCVEListForImage(
 		return &gql_generated.CVEResultForImage{}, gqlerror.Errorf("no reference provided")
 	}
 
-	cveList, pageInfo, err := cveInfo.GetCVEListForImage(repo, ref, searchedCVE, pageInput)
+	cveList, pageInfo, err := cveInfo.GetCVEListForImage(ctx, repo, ref, searchedCVE, pageInput)
 	if err != nil {
 		return &gql_generated.CVEResultForImage{}, err
 	}
@@ -334,7 +334,7 @@ func getImageListForCVE(
 
 		log.Info().Str("repository", repo).Str("CVE", cveID).Msg("extracting list of tags affected by CVE")
 
-		tagsInfo, err := cveInfo.GetImageListForCVE(repo, cveID)
+		tagsInfo, err := cveInfo.GetImageListForCVE(ctx, repo, cveID)
 		if err != nil {
 			log.Error().Str("repository", repo).Str("CVE", cveID).Err(err).
 				Msg("error getting image list for CVE from repo")
@@ -407,7 +407,7 @@ func getImageListWithCVEFixed(
 
 	log.Info().Str("repository", repo).Str("CVE", cveID).Msg("extracting list of tags where CVE is fixed")
 
-	tagsInfo, err := cveInfo.GetImageListWithCVEFixed(repo, cveID)
+	tagsInfo, err := cveInfo.GetImageListWithCVEFixed(ctx, repo, cveID)
 	if err != nil {
 		log.Error().Str("repository", repo).Str("CVE", cveID).Err(err).
 			Msg("error getting image list with CVE fixed from repo")

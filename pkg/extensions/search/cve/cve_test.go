@@ -913,7 +913,7 @@ func TestCVEStruct(t *testing.T) { //nolint:gocyclo
 		// MetaDB loaded with initial data, now mock the scanner
 		// Setup test CVE data in mock scanner
 		scanner := mocks.CveScannerMock{
-			ScanImageFn: func(image string) (map[string]cvemodel.CVE, error) {
+			ScanImageFn: func(ctx context.Context, image string) (map[string]cvemodel.CVE, error) {
 				result := cache.Get(image)
 				// Will not match sending the repo:tag as a parameter, but we don't care
 				if result != nil {
@@ -1127,15 +1127,17 @@ func TestCVEStruct(t *testing.T) { //nolint:gocyclo
 			SortBy: cveinfo.SeverityDsc,
 		}
 
+		ctx := context.Background()
+
 		// Image is found
-		cveList, pageInfo, err := cveInfo.GetCVEListForImage(repo1, "0.1.0", "", pageInput)
+		cveList, pageInfo, err := cveInfo.GetCVEListForImage(ctx, repo1, "0.1.0", "", pageInput)
 		So(err, ShouldBeNil)
 		So(len(cveList), ShouldEqual, 1)
 		So(cveList[0].ID, ShouldEqual, "CVE1")
 		So(pageInfo.ItemCount, ShouldEqual, 1)
 		So(pageInfo.TotalCount, ShouldEqual, 1)
 
-		cveList, pageInfo, err = cveInfo.GetCVEListForImage(repo1, "1.0.0", "", pageInput)
+		cveList, pageInfo, err = cveInfo.GetCVEListForImage(ctx, repo1, "1.0.0", "", pageInput)
 		So(err, ShouldBeNil)
 		So(len(cveList), ShouldEqual, 3)
 		So(cveList[0].ID, ShouldEqual, "CVE2")
@@ -1144,7 +1146,7 @@ func TestCVEStruct(t *testing.T) { //nolint:gocyclo
 		So(pageInfo.ItemCount, ShouldEqual, 3)
 		So(pageInfo.TotalCount, ShouldEqual, 3)
 
-		cveList, pageInfo, err = cveInfo.GetCVEListForImage(repo1, "1.0.1", "", pageInput)
+		cveList, pageInfo, err = cveInfo.GetCVEListForImage(ctx, repo1, "1.0.1", "", pageInput)
 		So(err, ShouldBeNil)
 		So(len(cveList), ShouldEqual, 2)
 		So(cveList[0].ID, ShouldEqual, "CVE1")
@@ -1152,21 +1154,21 @@ func TestCVEStruct(t *testing.T) { //nolint:gocyclo
 		So(pageInfo.ItemCount, ShouldEqual, 2)
 		So(pageInfo.TotalCount, ShouldEqual, 2)
 
-		cveList, pageInfo, err = cveInfo.GetCVEListForImage(repo1, "1.1.0", "", pageInput)
+		cveList, pageInfo, err = cveInfo.GetCVEListForImage(ctx, repo1, "1.1.0", "", pageInput)
 		So(err, ShouldBeNil)
 		So(len(cveList), ShouldEqual, 1)
 		So(cveList[0].ID, ShouldEqual, "CVE3")
 		So(pageInfo.ItemCount, ShouldEqual, 1)
 		So(pageInfo.TotalCount, ShouldEqual, 1)
 
-		cveList, pageInfo, err = cveInfo.GetCVEListForImage(repo6, "1.0.0", "", pageInput)
+		cveList, pageInfo, err = cveInfo.GetCVEListForImage(ctx, repo6, "1.0.0", "", pageInput)
 		So(err, ShouldBeNil)
 		So(len(cveList), ShouldEqual, 0)
 		So(pageInfo.ItemCount, ShouldEqual, 0)
 		So(pageInfo.TotalCount, ShouldEqual, 0)
 
 		// Image is multiarch
-		cveList, pageInfo, err = cveInfo.GetCVEListForImage(repoMultiarch, "tagIndex", "", pageInput)
+		cveList, pageInfo, err = cveInfo.GetCVEListForImage(ctx, repoMultiarch, "tagIndex", "", pageInput)
 		So(err, ShouldBeNil)
 		So(len(cveList), ShouldEqual, 1)
 		So(cveList[0].ID, ShouldEqual, "CVE1")
@@ -1174,35 +1176,35 @@ func TestCVEStruct(t *testing.T) { //nolint:gocyclo
 		So(pageInfo.TotalCount, ShouldEqual, 1)
 
 		// Image is not scannable
-		cveList, pageInfo, err = cveInfo.GetCVEListForImage(repo2, "1.0.0", "", pageInput)
+		cveList, pageInfo, err = cveInfo.GetCVEListForImage(ctx, repo2, "1.0.0", "", pageInput)
 		So(err, ShouldEqual, zerr.ErrScanNotSupported)
 		So(len(cveList), ShouldEqual, 0)
 		So(pageInfo.ItemCount, ShouldEqual, 0)
 		So(pageInfo.TotalCount, ShouldEqual, 0)
 
 		// Tag is not found
-		cveList, pageInfo, err = cveInfo.GetCVEListForImage(repo3, "1.0.0", "", pageInput)
+		cveList, pageInfo, err = cveInfo.GetCVEListForImage(ctx, repo3, "1.0.0", "", pageInput)
 		So(err, ShouldEqual, zerr.ErrTagMetaNotFound)
 		So(len(cveList), ShouldEqual, 0)
 		So(pageInfo.ItemCount, ShouldEqual, 0)
 		So(pageInfo.TotalCount, ShouldEqual, 0)
 
 		// Scan failed
-		cveList, pageInfo, err = cveInfo.GetCVEListForImage(repo7, "1.0.0", "", pageInput)
+		cveList, pageInfo, err = cveInfo.GetCVEListForImage(ctx, repo7, "1.0.0", "", pageInput)
 		So(err, ShouldEqual, ErrFailedScan)
 		So(len(cveList), ShouldEqual, 0)
 		So(pageInfo.ItemCount, ShouldEqual, 0)
 		So(pageInfo.TotalCount, ShouldEqual, 0)
 
 		// Tag is not found
-		cveList, pageInfo, err = cveInfo.GetCVEListForImage("repo-with-bad-tag-digest", "tag", "", pageInput)
+		cveList, pageInfo, err = cveInfo.GetCVEListForImage(ctx, "repo-with-bad-tag-digest", "tag", "", pageInput)
 		So(err, ShouldEqual, zerr.ErrImageMetaNotFound)
 		So(len(cveList), ShouldEqual, 0)
 		So(pageInfo.ItemCount, ShouldEqual, 0)
 		So(pageInfo.TotalCount, ShouldEqual, 0)
 
 		// Repo is not found
-		cveList, pageInfo, err = cveInfo.GetCVEListForImage(repo100, "1.0.0", "", pageInput)
+		cveList, pageInfo, err = cveInfo.GetCVEListForImage(ctx, repo100, "1.0.0", "", pageInput)
 		So(err, ShouldEqual, zerr.ErrRepoMetaNotFound)
 		So(len(cveList), ShouldEqual, 0)
 		So(pageInfo.ItemCount, ShouldEqual, 0)
@@ -1212,51 +1214,51 @@ func TestCVEStruct(t *testing.T) { //nolint:gocyclo
 		t.Log("\nTest GetCVESummaryForImage\n")
 
 		// Image is found
-		cveSummary, err := cveInfo.GetCVESummaryForImageMedia(repo1, image11Digest, image11Media)
+		cveSummary, err := cveInfo.GetCVESummaryForImageMedia(ctx, repo1, image11Digest, image11Media)
 		So(err, ShouldBeNil)
 		So(cveSummary.Count, ShouldEqual, 1)
 		So(cveSummary.MaxSeverity, ShouldEqual, "MEDIUM")
 
-		cveSummary, err = cveInfo.GetCVESummaryForImageMedia(repo1, image12Digest, image12Media)
+		cveSummary, err = cveInfo.GetCVESummaryForImageMedia(ctx, repo1, image12Digest, image12Media)
 		So(err, ShouldBeNil)
 		So(cveSummary.Count, ShouldEqual, 3)
 		So(cveSummary.MaxSeverity, ShouldEqual, "HIGH")
 
-		cveSummary, err = cveInfo.GetCVESummaryForImageMedia(repo1, image14Digest, image14Media)
+		cveSummary, err = cveInfo.GetCVESummaryForImageMedia(ctx, repo1, image14Digest, image14Media)
 		So(err, ShouldBeNil)
 		So(cveSummary.Count, ShouldEqual, 2)
 		So(cveSummary.MaxSeverity, ShouldEqual, "MEDIUM")
 
-		cveSummary, err = cveInfo.GetCVESummaryForImageMedia(repo1, image13Digest, image13Media)
+		cveSummary, err = cveInfo.GetCVESummaryForImageMedia(ctx, repo1, image13Digest, image13Media)
 		So(err, ShouldBeNil)
 		So(cveSummary.Count, ShouldEqual, 1)
 		So(cveSummary.MaxSeverity, ShouldEqual, "LOW")
 
-		cveSummary, err = cveInfo.GetCVESummaryForImageMedia(repo6, image61Digest, image61Media)
+		cveSummary, err = cveInfo.GetCVESummaryForImageMedia(ctx, repo6, image61Digest, image61Media)
 		So(err, ShouldBeNil)
 		So(cveSummary.Count, ShouldEqual, 0)
 		So(cveSummary.MaxSeverity, ShouldEqual, "NONE")
 
 		// Image is multiarch
-		cveSummary, err = cveInfo.GetCVESummaryForImageMedia(repoMultiarch, indexDigest, indexMedia)
+		cveSummary, err = cveInfo.GetCVESummaryForImageMedia(ctx, repoMultiarch, indexDigest, indexMedia)
 		So(err, ShouldBeNil)
 		So(cveSummary.Count, ShouldEqual, 1)
 		So(cveSummary.MaxSeverity, ShouldEqual, "MEDIUM")
 
 		// Image is not scannable
-		cveSummary, err = cveInfo.GetCVESummaryForImageMedia(repo2, image21Digest, image21Media)
+		cveSummary, err = cveInfo.GetCVESummaryForImageMedia(ctx, repo2, image21Digest, image21Media)
 		So(err, ShouldEqual, zerr.ErrScanNotSupported)
 		So(cveSummary.Count, ShouldEqual, 0)
 		So(cveSummary.MaxSeverity, ShouldEqual, "")
 
 		// Scan failed
-		cveSummary, err = cveInfo.GetCVESummaryForImageMedia(repo5, image71Digest, image71Media)
+		cveSummary, err = cveInfo.GetCVESummaryForImageMedia(ctx, repo5, image71Digest, image71Media)
 		So(err, ShouldBeNil)
 		So(cveSummary.Count, ShouldEqual, 0)
 		So(cveSummary.MaxSeverity, ShouldEqual, "")
 
 		// Repo is not found
-		cveSummary, err = cveInfo.GetCVESummaryForImageMedia(repo100,
+		cveSummary, err = cveInfo.GetCVESummaryForImageMedia(ctx, repo100,
 			godigest.FromString("missing_digest").String(), ispec.MediaTypeImageManifest)
 		So(err, ShouldEqual, zerr.ErrRepoMetaNotFound)
 		So(cveSummary.Count, ShouldEqual, 0)
@@ -1265,19 +1267,19 @@ func TestCVEStruct(t *testing.T) { //nolint:gocyclo
 		t.Log("\nTest GetImageListWithCVEFixed\n")
 
 		// Image is found
-		tagList, err := cveInfo.GetImageListWithCVEFixed(repo1, "CVE1")
+		tagList, err := cveInfo.GetImageListWithCVEFixed(ctx, repo1, "CVE1")
 		So(err, ShouldBeNil)
 		So(len(tagList), ShouldEqual, 1)
 		So(tagList[0].Tag, ShouldEqual, "1.1.0")
 
-		tagList, err = cveInfo.GetImageListWithCVEFixed(repo1, "CVE2")
+		tagList, err = cveInfo.GetImageListWithCVEFixed(ctx, repo1, "CVE2")
 		So(err, ShouldBeNil)
 		So(len(tagList), ShouldEqual, 2)
 		expectedTags := []string{"1.0.1", "1.1.0"}
 		So(expectedTags, ShouldContain, tagList[0].Tag)
 		So(expectedTags, ShouldContain, tagList[1].Tag)
 
-		tagList, err = cveInfo.GetImageListWithCVEFixed(repo1, "CVE3")
+		tagList, err = cveInfo.GetImageListWithCVEFixed(ctx, repo1, "CVE3")
 		So(err, ShouldBeNil)
 		// CVE3 is not present in 0.1.0, but that is older than all other
 		// images where it is present. The rest of the images explicitly  have it.
@@ -1285,13 +1287,13 @@ func TestCVEStruct(t *testing.T) { //nolint:gocyclo
 		So(len(tagList), ShouldEqual, 0)
 
 		// Image doesn't have any CVEs in the first place
-		tagList, err = cveInfo.GetImageListWithCVEFixed(repo6, "CVE1")
+		tagList, err = cveInfo.GetImageListWithCVEFixed(ctx, repo6, "CVE1")
 		So(err, ShouldBeNil)
 		So(len(tagList), ShouldEqual, 1)
 		So(tagList[0].Tag, ShouldEqual, "1.0.0")
 
 		// Image is not scannable
-		tagList, err = cveInfo.GetImageListWithCVEFixed(repo2, "CVE100")
+		tagList, err = cveInfo.GetImageListWithCVEFixed(ctx, repo2, "CVE100")
 		// CVE is not considered fixed as scan is not possible
 		// but do not return an error
 		So(err, ShouldBeNil)
@@ -1299,14 +1301,14 @@ func TestCVEStruct(t *testing.T) { //nolint:gocyclo
 
 		// Repo is not found, there could potentially be unaffected tags in the repo
 		// but we can't access their data
-		tagList, err = cveInfo.GetImageListWithCVEFixed(repo100, "CVE100")
+		tagList, err = cveInfo.GetImageListWithCVEFixed(ctx, repo100, "CVE100")
 		So(err, ShouldEqual, zerr.ErrRepoMetaNotFound)
 		So(len(tagList), ShouldEqual, 0)
 
 		t.Log("\nTest GetImageListForCVE\n")
 
 		// Image is found
-		tagList, err = cveInfo.GetImageListForCVE(repo1, "CVE1")
+		tagList, err = cveInfo.GetImageListForCVE(ctx, repo1, "CVE1")
 		So(err, ShouldBeNil)
 		So(len(tagList), ShouldEqual, 3)
 		expectedTags = []string{"0.1.0", "1.0.0", "1.0.1"}
@@ -1314,12 +1316,12 @@ func TestCVEStruct(t *testing.T) { //nolint:gocyclo
 		So(expectedTags, ShouldContain, tagList[1].Tag)
 		So(expectedTags, ShouldContain, tagList[2].Tag)
 
-		tagList, err = cveInfo.GetImageListForCVE(repo1, "CVE2")
+		tagList, err = cveInfo.GetImageListForCVE(ctx, repo1, "CVE2")
 		So(err, ShouldBeNil)
 		So(len(tagList), ShouldEqual, 1)
 		So(tagList[0].Tag, ShouldEqual, "1.0.0")
 
-		tagList, err = cveInfo.GetImageListForCVE(repo1, "CVE3")
+		tagList, err = cveInfo.GetImageListForCVE(ctx, repo1, "CVE3")
 		So(err, ShouldBeNil)
 		So(len(tagList), ShouldEqual, 3)
 		expectedTags = []string{"1.0.0", "1.0.1", "1.1.0"}
@@ -1328,32 +1330,32 @@ func TestCVEStruct(t *testing.T) { //nolint:gocyclo
 		So(expectedTags, ShouldContain, tagList[2].Tag)
 
 		// Image/repo doesn't have the CVE at all
-		tagList, err = cveInfo.GetImageListForCVE(repo6, "CVE1")
+		tagList, err = cveInfo.GetImageListForCVE(ctx, repo6, "CVE1")
 		So(err, ShouldBeNil)
 		So(len(tagList), ShouldEqual, 0)
 
 		// Image is not scannable
-		tagList, err = cveInfo.GetImageListForCVE(repo2, "CVE100")
+		tagList, err = cveInfo.GetImageListForCVE(ctx, repo2, "CVE100")
 		// Image is not considered affected with CVE as scan is not possible
 		// but do not return an error
 		So(err, ShouldBeNil)
 		So(len(tagList), ShouldEqual, 0)
 
 		// Tag is not found, but we should not error
-		tagList, err = cveInfo.GetImageListForCVE(repo3, "CVE101")
+		tagList, err = cveInfo.GetImageListForCVE(ctx, repo3, "CVE101")
 		So(err, ShouldBeNil)
 		So(len(tagList), ShouldEqual, 0)
 
 		// Repo is not found, assume it is affected by the CVE
 		// But we don't have enough of its data to actually return it
-		tagList, err = cveInfo.GetImageListForCVE(repo100, "CVE100")
+		tagList, err = cveInfo.GetImageListForCVE(ctx, repo100, "CVE100")
 		So(err, ShouldEqual, zerr.ErrRepoMetaNotFound)
 		So(len(tagList), ShouldEqual, 0)
 
 		t.Log("\nTest errors while scanning\n")
 
 		faultyScanner := mocks.CveScannerMock{
-			ScanImageFn: func(image string) (map[string]cvemodel.CVE, error) {
+			ScanImageFn: func(ctx context.Context, image string) (map[string]cvemodel.CVE, error) {
 				// Could be any type of error, let's reuse this one
 				return nil, zerr.ErrScanNotSupported
 			},
@@ -1361,24 +1363,24 @@ func TestCVEStruct(t *testing.T) { //nolint:gocyclo
 
 		cveInfo = cveinfo.BaseCveInfo{Log: log, Scanner: faultyScanner, MetaDB: metaDB}
 
-		cveSummary, err = cveInfo.GetCVESummaryForImageMedia(repo1, image11Digest, image11Media)
+		cveSummary, err = cveInfo.GetCVESummaryForImageMedia(ctx, repo1, image11Digest, image11Media)
 		So(err, ShouldBeNil)
 		So(cveSummary.Count, ShouldEqual, 0)
 		So(cveSummary.MaxSeverity, ShouldEqual, "")
 
-		cveList, pageInfo, err = cveInfo.GetCVEListForImage(repo1, "0.1.0", "", pageInput)
+		cveList, pageInfo, err = cveInfo.GetCVEListForImage(ctx, repo1, "0.1.0", "", pageInput)
 		So(err, ShouldNotBeNil)
 		So(cveList, ShouldBeEmpty)
 		So(pageInfo.ItemCount, ShouldEqual, 0)
 		So(pageInfo.TotalCount, ShouldEqual, 0)
 
-		tagList, err = cveInfo.GetImageListWithCVEFixed(repo1, "CVE1")
+		tagList, err = cveInfo.GetImageListWithCVEFixed(ctx, repo1, "CVE1")
 		// CVE is not considered fixed as scan is not possible
 		// but do not return an error
 		So(err, ShouldBeNil)
 		So(len(tagList), ShouldEqual, 0)
 
-		tagList, err = cveInfo.GetImageListForCVE(repo1, "CVE1")
+		tagList, err = cveInfo.GetImageListForCVE(ctx, repo1, "CVE1")
 		// Image is not considered affected with CVE as scan is not possible
 		// but do not return an error
 		So(err, ShouldBeNil)
@@ -1390,19 +1392,19 @@ func TestCVEStruct(t *testing.T) { //nolint:gocyclo
 			},
 		}, MetaDB: metaDB}
 
-		_, err = cveInfo.GetImageListForCVE(repoMultiarch, "CVE1")
+		_, err = cveInfo.GetImageListForCVE(ctx, repoMultiarch, "CVE1")
 		So(err, ShouldBeNil)
 
 		cveInfo = cveinfo.BaseCveInfo{Log: log, Scanner: mocks.CveScannerMock{
 			IsImageFormatScannableFn: func(repo, reference string) (bool, error) {
 				return true, nil
 			},
-			ScanImageFn: func(image string) (map[string]cvemodel.CVE, error) {
+			ScanImageFn: func(ctx context.Context, image string) (map[string]cvemodel.CVE, error) {
 				return nil, zerr.ErrTypeAssertionFailed
 			},
 		}, MetaDB: metaDB}
 
-		_, err = cveInfo.GetImageListForCVE(repoMultiarch, "CVE1")
+		_, err = cveInfo.GetImageListForCVE(ctx, repoMultiarch, "CVE1")
 		So(err, ShouldBeNil)
 	})
 }
@@ -1545,7 +1547,7 @@ func TestFixedTagsWithIndex(t *testing.T) {
 
 		cveInfo := cveinfo.NewCVEInfo(ctlr.CveScanner, ctlr.MetaDB, ctlr.Log)
 
-		tagsInfo, err := cveInfo.GetImageListWithCVEFixed("repo", Vulnerability1ID)
+		tagsInfo, err := cveInfo.GetImageListWithCVEFixed(context.Background(), "repo", Vulnerability1ID)
 		So(err, ShouldBeNil)
 		So(len(tagsInfo), ShouldEqual, 1)
 		So(len(tagsInfo[0].Manifests), ShouldEqual, 1)
@@ -1593,7 +1595,7 @@ func TestGetCVESummaryForImageMediaErrors(t *testing.T) {
 
 			cveInfo := cveinfo.NewCVEInfo(scanner, metaDB, log)
 
-			_, err := cveInfo.GetCVESummaryForImageMedia("repo", "digest", ispec.MediaTypeImageManifest)
+			_, err := cveInfo.GetCVESummaryForImageMedia(context.Background(), "repo", "digest", ispec.MediaTypeImageManifest)
 			So(err, ShouldNotBeNil)
 		})
 	})

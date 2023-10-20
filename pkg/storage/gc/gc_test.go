@@ -159,6 +159,8 @@ func TestGarbageCollectAndRetention(t *testing.T) {
 			storeController := storage.StoreController{}
 			storeController.DefaultStore = imgStore
 
+			ctx := context.Background()
+
 			Convey("setup gc images", t, func() {
 				// for gc testing
 				// basic images
@@ -244,10 +246,10 @@ func TestGarbageCollectAndRetention(t *testing.T) {
 				err = WriteImageToFileSystem(gcNew3, "retention", "0.0.6", storeController)
 				So(err, ShouldBeNil)
 
-				err = meta.ParseStorage(metaDB, storeController, log)
+				err = meta.ParseStorage(metaDB, storeController, log) //nolint: contextcheck
 				So(err, ShouldBeNil)
 
-				retentionMeta, err := metaDB.GetRepoMeta(context.Background(), "retention")
+				retentionMeta, err := metaDB.GetRepoMeta(ctx, "retention")
 				So(err, ShouldBeNil)
 
 				// update timestamps for image retention
@@ -305,16 +307,16 @@ func TestGarbageCollectAndRetention(t *testing.T) {
 						},
 					}, audit, log)
 
-					err := gc.CleanRepo("gc-test1")
+					err := gc.CleanRepo(ctx, "gc-test1")
 					So(err, ShouldBeNil)
 
-					err = gc.CleanRepo("gc-test2")
+					err = gc.CleanRepo(ctx, "gc-test2")
 					So(err, ShouldBeNil)
 
-					err = gc.CleanRepo("gc-test3")
+					err = gc.CleanRepo(ctx, "gc-test3")
 					So(err, ShouldBeNil)
 
-					err = gc.CleanRepo("retention")
+					err = gc.CleanRepo(ctx, "retention")
 					So(err, ShouldBeNil)
 
 					_, _, _, err = imgStore.GetImageManifest("gc-test1", gcTest1.DigestStr())
@@ -388,16 +390,16 @@ func TestGarbageCollectAndRetention(t *testing.T) {
 						},
 					}, audit, log)
 
-					err := gc.CleanRepo("gc-test1")
+					err := gc.CleanRepo(ctx, "gc-test1")
 					So(err, ShouldBeNil)
 
-					err = gc.CleanRepo("gc-test2")
+					err = gc.CleanRepo(ctx, "gc-test2")
 					So(err, ShouldBeNil)
 
-					err = gc.CleanRepo("gc-test3")
+					err = gc.CleanRepo(ctx, "gc-test3")
 					So(err, ShouldBeNil)
 
-					err = gc.CleanRepo("retention")
+					err = gc.CleanRepo(ctx, "retention")
 					So(err, ShouldBeNil)
 
 					_, _, _, err = imgStore.GetImageManifest("gc-test1", gcTest1.DigestStr())
@@ -457,7 +459,7 @@ func TestGarbageCollectAndRetention(t *testing.T) {
 						},
 					}, audit, log)
 
-					err := gc.CleanRepo("gc-test1")
+					err := gc.CleanRepo(ctx, "gc-test1")
 					So(err, ShouldBeNil)
 
 					_, _, _, err = imgStore.GetImageManifest("gc-test1", gcUntagged1.DigestStr())
@@ -503,7 +505,7 @@ func TestGarbageCollectAndRetention(t *testing.T) {
 						},
 					}, audit, log)
 
-					err := gc.CleanRepo("gc-test1")
+					err := gc.CleanRepo(ctx, "gc-test1")
 					So(err, ShouldBeNil)
 
 					_, _, _, err = imgStore.GetImageManifest("gc-test1", gcUntagged1.DigestStr())
@@ -549,7 +551,7 @@ func TestGarbageCollectAndRetention(t *testing.T) {
 						},
 					}, audit, log)
 
-					err = gc.CleanRepo("retention")
+					err = gc.CleanRepo(ctx, "retention")
 					So(err, ShouldBeNil)
 
 					_, _, _, err = imgStore.GetImageManifest("gc-test1", "0.0.1")
@@ -607,7 +609,7 @@ func TestGarbageCollectAndRetention(t *testing.T) {
 						},
 					}, audit, log)
 
-					err = gc.CleanRepo("retention")
+					err = gc.CleanRepo(ctx, "retention")
 					So(err, ShouldBeNil)
 
 					tags, err := imgStore.GetImageTags("retention")
@@ -643,7 +645,7 @@ func TestGarbageCollectAndRetention(t *testing.T) {
 						},
 					}, audit, log)
 
-					err = gc.CleanRepo("retention")
+					err = gc.CleanRepo(ctx, "retention")
 					So(err, ShouldBeNil)
 
 					tags, err := imgStore.GetImageTags("retention")
@@ -679,7 +681,7 @@ func TestGarbageCollectAndRetention(t *testing.T) {
 						},
 					}, audit, log)
 
-					err = gc.CleanRepo("retention")
+					err = gc.CleanRepo(ctx, "retention")
 					So(err, ShouldBeNil)
 
 					tags, err := imgStore.GetImageTags("retention")
@@ -716,7 +718,7 @@ func TestGarbageCollectAndRetention(t *testing.T) {
 						},
 					}, audit, log)
 
-					err = gc.CleanRepo("retention")
+					err = gc.CleanRepo(ctx, "retention")
 					So(err, ShouldBeNil)
 
 					tags, err := imgStore.GetImageTags("retention")
@@ -759,7 +761,7 @@ func TestGarbageCollectAndRetention(t *testing.T) {
 						},
 					}, audit, log)
 
-					err = gc.CleanRepo("retention")
+					err = gc.CleanRepo(ctx, "retention")
 					So(err, ShouldBeNil)
 
 					tags, err := imgStore.GetImageTags("retention")
@@ -789,7 +791,7 @@ func TestGarbageCollectAndRetention(t *testing.T) {
 						},
 					}, audit, log)
 
-					err := gc.CleanRepo("gc-test1")
+					err := gc.CleanRepo(ctx, "gc-test1")
 					So(err, ShouldBeNil)
 
 					_, _, _, err = imgStore.GetImageManifest("gc-test1", gcUntagged1.DigestStr())
@@ -833,7 +835,7 @@ func TestGarbageCollectAndRetention(t *testing.T) {
 						},
 					}, audit, log)
 
-					err = gc.CleanRepo("retention")
+					err = gc.CleanRepo(ctx, "retention")
 					So(err, ShouldBeNil)
 
 					_, _, _, err = imgStore.GetImageManifest("retention", "0.0.1")
@@ -856,6 +858,33 @@ func TestGarbageCollectAndRetention(t *testing.T) {
 
 					_, _, _, err = imgStore.GetImageManifest("retention", "0.0.7")
 					So(err, ShouldBeNil)
+				})
+
+				Convey("gc with context done", func() {
+					gc := gc.NewGarbageCollect(imgStore, metaDB, gc.Options{
+						Delay: storageConstants.DefaultGCDelay,
+						ImageRetention: config.ImageRetention{
+							Delay: 1 * time.Millisecond,
+							Policies: []config.RetentionPolicy{
+								{
+									Repositories:    []string{"**"},
+									DeleteReferrers: true,
+									DeleteUntagged:  &trueVal,
+									KeepTags: []config.KeepTagsPolicy{
+										{
+											Patterns: []string{"0.0.*"},
+										},
+									},
+								},
+							},
+						},
+					}, audit, log)
+
+					ctx, cancel := context.WithCancel(ctx)
+					cancel()
+
+					err := gc.CleanRepo(ctx, "gc-test1")
+					So(err, ShouldNotBeNil)
 				})
 			})
 		})
