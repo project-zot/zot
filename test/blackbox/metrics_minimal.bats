@@ -32,6 +32,7 @@ function setup_file() {
     zot_config_file=${BATS_FILE_TMPDIR}/zot_config.json
     zot_htpasswd_file=${BATS_FILE_TMPDIR}/zot_htpasswd
     htpasswd -Bbn ${AUTH_USER} ${AUTH_PASS} >> ${zot_htpasswd_file}
+    htpasswd -Bbn ${METRICS_USER} ${METRICS_PASS} >> ${zot_htpasswd_file}
 
     mkdir -p ${zot_root_dir}
     touch ${zot_log_file}
@@ -47,6 +48,20 @@ function setup_file() {
         "auth": {
             "htpasswd": {
                 "path": "${zot_htpasswd_file}"
+            }
+        },
+        "accessControl": {
+            "metrics":{
+                "users": ["${METRICS_USER}"]
+            },
+            "repositories": {
+                "**": {
+                    "anonymousPolicy": [
+                        "read",
+                        "create"
+                    ],
+                    "defaultPolicy": ["read"]
+                }
             }
         }
     },
@@ -72,13 +87,20 @@ function teardown_file() {
 }
 
 @test "unauthorized request to metrics" {
+# anonymous policy: metrics endpoint should not be available
+# 401 - http.StatusUnauthorized
     run metrics_route_check 8080 "" 401
     [ "$status" -eq 0 ]
+# user is not in htpasswd
     run metrics_route_check 8080 "-u test:wrongpass" 401
+    [ "$status" -eq 0 ]
+# proper user/pass tuple from htpasswd, but user not allowed to access metrics
+# 403 - http.StatusForbidden
+    run metrics_route_check 8080 "-u ${AUTH_USER}:${AUTH_PASS}" 403
     [ "$status" -eq 0 ]
 }
 
 @test "authorized request: metrics enabled" {
-    run metrics_route_check 8080 "-u ${AUTH_USER}:${AUTH_PASS}" 200
+    run metrics_route_check 8080 "-u ${METRICS_USER}:${METRICS_PASS}" 200
     [ "$status" -eq 0 ]
 }

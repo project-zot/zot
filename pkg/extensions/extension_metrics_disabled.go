@@ -22,13 +22,14 @@ func EnableMetricsExtension(config *config.Config, log log.Logger, rootDir strin
 
 // SetupMetricsRoutes ...
 func SetupMetricsRoutes(conf *config.Config, router *mux.Router,
-	authFunc mux.MiddlewareFunc, log log.Logger, metrics monitoring.MetricServer,
+	authnFunc, authzFunc mux.MiddlewareFunc, log log.Logger, metrics monitoring.MetricServer,
 ) {
 	getMetrics := func(w http.ResponseWriter, r *http.Request) {
 		m := metrics.ReceiveMetrics()
 		zcommon.WriteJSON(w, http.StatusOK, m)
 	}
 
-	router.Use(authFunc)
+	router.Use(authnFunc)
+	router.Use(authzFunc)
 	router.HandleFunc("/metrics", getMetrics).Methods("GET")
 }

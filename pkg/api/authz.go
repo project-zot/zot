@@ -191,14 +191,10 @@ func (ac *AccessController) getAuthnMiddlewareContext(authnType string, request 
 func (ac *AccessController) isPermitted(userGroups []string, username, action string,
 	policyGroup config.PolicyGroup,
 ) bool {
-	var result bool
-
 	// check repo/system based policies
 	for _, p := range policyGroup.Policies {
 		if common.Contains(p.Users, username) && common.Contains(p.Actions, action) {
-			result = true
-
-			return result
+			return true
 		}
 	}
 
@@ -207,9 +203,7 @@ func (ac *AccessController) isPermitted(userGroups []string, username, action st
 			if common.Contains(p.Actions, action) {
 				for _, group := range p.Groups {
 					if common.Contains(userGroups, group) {
-						result = true
-
-						return result
+						return true
 					}
 				}
 			}
@@ -217,20 +211,16 @@ func (ac *AccessController) isPermitted(userGroups []string, username, action st
 	}
 
 	// check defaultPolicy
-	if !result {
-		if common.Contains(policyGroup.DefaultPolicy, action) && username != "" {
-			result = true
-		}
+	if common.Contains(policyGroup.DefaultPolicy, action) && username != "" {
+		return true
 	}
 
 	// check anonymousPolicy
-	if !result {
-		if common.Contains(policyGroup.AnonymousPolicy, action) && username == "" {
-			result = true
-		}
+	if common.Contains(policyGroup.AnonymousPolicy, action) && username == "" {
+		return true
 	}
 
-	return result
+	return false
 }
 
 func BaseAuthzHandler(ctlr *Controller) mux.MiddlewareFunc {
@@ -340,6 +330,43 @@ func DistSpecAuthzHandler(ctlr *Controller) mux.MiddlewareFunc {
 			} else {
 				next.ServeHTTP(response, request) //nolint:contextcheck
 			}
+		})
+	}
+}
+
+func MetricsAuthzHandler(ctlr *Controller) mux.MiddlewareFunc {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+			if ctlr.Config.HTTP.AccessControl == nil {
+				// allow access to authenticated user as anonymous policy does not exist
+				next.ServeHTTP(response, request)
+
+				return
+			}
+			if len(ctlr.Config.HTTP.AccessControl.Metrics.Users) == 0 {
+				log := ctlr.Log
+				log.Warn().Msg("auth is enabled but no metrics users in accessControl: /metrics is unaccesible")
+				common.AuthzFail(response, request, "", ctlr.Config.HTTP.Realm, ctlr.Config.HTTP.Auth.FailDelay)
+
+				return
+			}
+
+			// get access control context made in authn.go
+			userAc, err := reqCtx.UserAcFromContext(request.Context())
+			if err != nil { // should never happen
+				common.AuthzFail(response, request, "", ctlr.Config.HTTP.Realm, ctlr.Config.HTTP.Auth.FailDelay)
+
+				return
+			}
+
+			username := userAc.GetUsername()
+			if !common.Contains(ctlr.Config.HTTP.AccessControl.Metrics.Users, username) {
+				common.AuthzFail(response, request, username, ctlr.Config.HTTP.Realm, ctlr.Config.HTTP.Auth.FailDelay)
+
+				return
+			}
+
+			next.ServeHTTP(response, request) //nolint:contextcheck
 		})
 	}
 }

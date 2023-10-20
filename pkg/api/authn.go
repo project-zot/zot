@@ -57,7 +57,7 @@ func AuthHandler(ctlr *Controller) mux.MiddlewareFunc {
 		return bearerAuthHandler(ctlr)
 	}
 
-	return authnMiddleware.TryAuthnHandlers(ctlr)
+	return authnMiddleware.tryAuthnHandlers(ctlr)
 }
 
 func (amw *AuthnMiddleware) sessionAuthn(ctlr *Controller, userAc *reqCtx.UserAccessControl,
@@ -247,7 +247,7 @@ func (amw *AuthnMiddleware) basicAuthn(ctlr *Controller, userAc *reqCtx.UserAcce
 	return false, nil
 }
 
-func (amw *AuthnMiddleware) TryAuthnHandlers(ctlr *Controller) mux.MiddlewareFunc { //nolint: gocyclo
+func (amw *AuthnMiddleware) tryAuthnHandlers(ctlr *Controller) mux.MiddlewareFunc { //nolint: gocyclo
 	// no password based authN, if neither LDAP nor HTTP BASIC is enabled
 	if !ctlr.Config.IsBasicAuthnEnabled() {
 		return noPasswdAuth(ctlr)
