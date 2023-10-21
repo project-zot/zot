@@ -18,7 +18,7 @@ jobs:
     permissions:
       contents: write
       packages: write
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-latest-16-cores
     strategy:
       matrix:
         os: [linux, darwin, freebsd]

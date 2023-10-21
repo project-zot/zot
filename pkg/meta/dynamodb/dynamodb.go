@@ -1451,8 +1451,11 @@ func (dwr *DynamoDB) createRepoMetaTable() error {
 		},
 		BillingMode: types.BillingModePayPerRequest,
 	})
+	if err != nil {
+		if strings.Contains(err.Error(), "Table already exists") {
+			return nil
+		}
 
-	if err != nil && !strings.Contains(err.Error(), "Table already exists") {
 		return err
 	}
 
@@ -1517,8 +1520,11 @@ func (dwr *DynamoDB) createManifestDataTable() error {
 		},
 		BillingMode: types.BillingModePayPerRequest,
 	})
+	if err != nil {
+		if strings.Contains(err.Error(), "Table already exists") {
+			return nil
+		}
 
-	if err != nil && !strings.Contains(err.Error(), "Table already exists") {
 		return err
 	}
 
@@ -1542,9 +1548,12 @@ func (dwr *DynamoDB) createIndexDataTable() error {
 		},
 		BillingMode: types.BillingModePayPerRequest,
 	})
+	if err != nil {
+		if strings.Contains(err.Error(), "Table already exists") {
+			return nil
+		}
 
-	if err != nil && strings.Contains(err.Error(), "Table already exists") {
-		return nil
+		return err
 	}
 
 	return dwr.waitTableToBeCreated(dwr.IndexDataTablename)
@@ -1837,8 +1846,11 @@ func (dwr *DynamoDB) createUserDataTable() error {
 		},
 		BillingMode: types.BillingModePayPerRequest,
 	})
+	if err != nil {
+		if strings.Contains(err.Error(), "Table already exists") {
+			return nil
+		}
 
-	if err != nil && !strings.Contains(err.Error(), "Table already exists") {
 		return err
 	}
 
@@ -1862,8 +1874,11 @@ func (dwr DynamoDB) createAPIKeyTable() error {
 		},
 		BillingMode: types.BillingModePayPerRequest,
 	})
+	if err != nil {
+		if strings.Contains(err.Error(), "Table already exists") {
+			return nil
+		}
 
-	if err != nil && !strings.Contains(err.Error(), "Table already exists") {
 		return err
 	}
 
