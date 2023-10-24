@@ -6,14 +6,14 @@ require (
 	github.com/99designs/gqlgen v0.17.39
 	github.com/Masterminds/semver v1.5.0
 	github.com/aquasecurity/trivy-db v0.0.0-20231005141211-4fc651f7ac8d
-	github.com/bmatcuk/doublestar/v4 v4.6.0
+	github.com/bmatcuk/doublestar/v4 v4.6.1
 	github.com/briandowns/spinner v1.23.0
 	github.com/chartmuseum/auth v0.5.0
 	github.com/containers/common v0.56.0
 	github.com/didip/tollbooth/v6 v6.1.2
 	github.com/docker/distribution v2.8.3+incompatible
 	github.com/dustin/go-humanize v1.0.1
-	github.com/fsnotify/fsnotify v1.6.0
+	github.com/fsnotify/fsnotify v1.7.0
 	github.com/go-ldap/ldap/v3 v3.4.6
 	github.com/gofrs/uuid v4.4.0+incompatible
 	github.com/google/go-containerregistry v0.16.1
@@ -45,8 +45,8 @@ require (
 
 require (
 	github.com/aquasecurity/trivy v0.46.0
-	github.com/aws/aws-sdk-go-v2/service/dynamodb v1.22.2
-	github.com/aws/aws-sdk-go-v2/service/secretsmanager v1.21.5
+	github.com/aws/aws-sdk-go-v2/service/dynamodb v1.23.0
+	github.com/aws/aws-sdk-go-v2/service/secretsmanager v1.21.6
 	github.com/aws/aws-secretsmanager-caching-go v1.1.2
 	github.com/containers/image/v5 v5.28.0
 	github.com/google/go-github/v52 v52.0.0
@@ -62,11 +62,11 @@ require (
 	github.com/zitadel/oidc v1.13.5
 	golang.org/x/oauth2 v0.13.0
 	modernc.org/sqlite v1.26.0
-	oras.land/oras-go/v2 v2.3.0
+	oras.land/oras-go/v2 v2.3.1
 )
 
 require (
-	golang.org/x/sync v0.3.0 // indirect
+	golang.org/x/sync v0.4.0 // indirect
 	golang.org/x/sys v0.13.0 // indirect
 	golang.org/x/text v0.13.0 // indirect
 )
@@ -291,11 +291,11 @@ require (
 	github.com/aquasecurity/go-pep440-version v0.0.0-20210121094942-22b2f8951d46 // indirect
 	github.com/aquasecurity/go-version v0.0.0-20210121072130-637058cfe492 // indirect
 	github.com/asaskevich/govalidator v0.0.0-20230301143203-a9d515a09cc2 // indirect
-	github.com/aws/aws-sdk-go v1.45.24
+	github.com/aws/aws-sdk-go v1.46.1
 	github.com/aws/aws-sdk-go-v2 v1.21.2
 	github.com/aws/aws-sdk-go-v2/config v1.18.44
 	github.com/aws/aws-sdk-go-v2/credentials v1.13.42 // indirect
-	github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue v1.10.42
+	github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue v1.10.43
 	github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.13.12 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/configsources v1.1.43 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/endpoints/v2 v2.4.37 // indirect
