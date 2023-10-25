@@ -1,0 +1,77 @@
+name: QEMU environment
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  release:
+    types:
+      - published
+
+jobs:
+  build-linux-arm64:
+    runs-on: ubuntu-latest-16-cores
+    steps:
+      - name: Install VM dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y qemu-system-arm qemu-efi-aarch64 qemu-utils cloud-image-utils wget
+      - name: Provision VM
+        run: |
+          wget https://cloud-images.ubuntu.com/jammy/current/jammy-server-cloudimg-arm64.img
+
+          qemu-img create -f qcow2 -F qcow2 \
+            -b jammy-server-cloudimg-arm64.img \
+            jammy-snapshot.qcow2 200G
+
+          cat >"user-data" << EOF
+          #cloud-config
+          password: passw0rd
+          chpasswd: { expire: False }
+          ssh_pwauth: True
+          EOF
+          cloud-localds user-data.img user-data
+
+          cp /usr/share/AAVMF/AAVMF_CODE.fd .
+          cp /usr/share/AAVMF/AAVMF_VARS.fd .
+
+          qemu-system-aarch64 \
+            -m 2048 \
+            -cpu max -smp 4 \
+            -machine virt,gic-version=max \
+            -display none \
+            -drive if=pflash,format=raw,readonly=on,file=AAVMF_CODE.fd \
+            -drive if=pflash,format=raw,file=AAVMF_VARS.fd \
+            -drive if=none,file=jammy-server-cloudimg-arm64.img,id=hd0,cache=unsafe \
+            -device virtio-blk-device,drive=hd0 \
+            -drive file=user-data.img,format=raw,media=cdrom,if=none,id=cd0 \
+            -device virtio-blk-device,drive=cd0 \
+            -netdev type=user,id=net0,hostfwd=tcp::22225-:22 \
+            -device virtio-net-device,netdev=net0 \
+            -daemonize
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y sshpass
+      - name: Check ssh connectivity
+        run: |
+          set +e
+          while true; do
+            echo Trying to connect
+            sshpass -p passw0rd ssh -v -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p 22225 ubuntu@localhost whoami
+            if [ $? -eq 0 ]; then
+              break
+            fi
+            ps -axf | grep qemu
+            netstat -tnlp
+            sudo dmesg
+            echo "intel"
+            cat /sys/module/kvm_intel/parameters/nested
+            echo "amd"
+            cat /sys/module/kvm_amd/parameters/nested
+            sleep 10
+          done
+          exit 0
