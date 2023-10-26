@@ -14,10 +14,9 @@ permissions: read-all
 jobs:
   client-tools:
     name: Check client tools
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-latest-16-cores
     steps:
       - uses: actions/checkout@v4
-      - uses: ./.github/actions/clean-runner
       - uses: actions/setup-go@v4
         with:
           cache: false
@@ -53,7 +52,6 @@ jobs:
           make bin/dex
           ./bin/dex serve $GITHUB_WORKSPACE/test/dex/config-dev.yaml &
           cd $GITHUB_WORKSPACE
-      - uses: ./.github/actions/check-diskspace
       - name: Run CI tests
         run: |
           make run-blackbox-ci
@@ -79,5 +77,4 @@ jobs:
         env:
           AWS_ACCESS_KEY_ID: fake
           AWS_SECRET_ACCESS_KEY: fake
-      - uses: ./.github/actions/check-diskspace
       - uses: ./.github/actions/teardown-localstack

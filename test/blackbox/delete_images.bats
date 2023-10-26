@@ -32,6 +32,8 @@ function setup_file() {
     local zot_config_file=${BATS_FILE_TMPDIR}/zot_config.json
     mkdir -p ${ZOT_ROOT_DIR}
     touch ${zot_log_file}
+    zot_port=$(get_free_port)
+    echo ${zot_port} > ${BATS_FILE_TMPDIR}/zot.port
     cat >${zot_config_file} <<EOF
 {
     "distSpecVersion": "1.1.0-dev",
@@ -40,7 +42,7 @@ function setup_file() {
     },
     "http": {
         "address": "0.0.0.0",
-        "port": "8080"
+        "port": "${zot_port}"
     },
     "log": {
         "level": "debug",
@@ -55,17 +57,17 @@ function setup_file() {
 EOF
 
     zot_serve ${ZOT_PATH} ${zot_config_file}
-    wait_zot_reachable 8080
+    wait_zot_reachable ${zot_port}
 
     run skopeo --insecure-policy copy --dest-tls-verify=false \
         oci:${TEST_DATA_DIR}/alpine:3.17.3 \
-        docker://127.0.0.1:8080/alpine:3.17.3
+        docker://127.0.0.1:${zot_port}/alpine:3.17.3
     [ "$status" -eq 0 ]
-    run curl http://127.0.0.1:8080/v2/_catalog
+    run curl http://127.0.0.1:${zot_port}/v2/_catalog
     [ "$status" -eq 0 ]
     [ $(echo "${lines[-1]}" | jq '.repositories[]') = '"alpine"' ]
 
-    MANIFEST_DIGEST=$(skopeo inspect --tls-verify=false docker://localhost:8080/alpine:3.17.3 | jq -r '.Digest')
+    MANIFEST_DIGEST=$(skopeo inspect --tls-verify=false docker://localhost:${zot_port}/alpine:3.17.3 | jq -r '.Digest')
     echo ${MANIFEST_DIGEST}
 }
 
@@ -79,11 +81,12 @@ function teardown_file() {
 }
 
 @test "delete one manifest by it's tag" {
-    run curl http://127.0.0.1:8080/v2/_catalog
+    zot_port=`cat ${BATS_FILE_TMPDIR}/zot.port`
+    run curl http://127.0.0.1:${zot_port}/v2/_catalog
     [ "$status" -eq 0 ]
     [ $(echo "${lines[-1]}" | jq '.repositories[]') = '"alpine"' ]
 
-    run curl -i -X GET  http://localhost:8080/v2/alpine/manifests/3.17.3
+    run curl -i -X GET  http://localhost:${zot_port}/v2/alpine/manifests/3.17.3
     [ "$status" -eq 0 ]
     echo $(echo "${lines[-1]}")
 
@@ -96,10 +99,10 @@ function teardown_file() {
     done
     [ "$foundConfigDigest" -eq 1 ]
 
-    run curl -X DELETE  http://localhost:8080/v2/alpine/manifests/3.17.3
+    run curl -X DELETE  http://localhost:${zot_port}/v2/alpine/manifests/3.17.3
     [ "$status" -eq 0 ]
 
-    run curl -i -X GET  http://localhost:8080/v2/alpine/manifests/3.17.3
+    run curl -i -X GET  http://localhost:${zot_port}/v2/alpine/manifests/3.17.3
     [ "$status" -eq 0 ]
     
     found=0

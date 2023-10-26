@@ -34,6 +34,8 @@ function setup() {
     ZOT_CONFIG_FILE=${BATS_FILE_TMPDIR}/zot_config.json
     mkdir -p ${ZOT_ROOT_DIR}
     touch ${ZOT_LOG_FILE}
+    zot_port=$(get_free_port)
+    echo ${zot_port} > ${BATS_FILE_TMPDIR}/zot.port
     cat >${ZOT_CONFIG_FILE} <<EOF
 {
     "distSpecVersion": "1.1.0-dev",
@@ -42,7 +44,7 @@ function setup() {
     },
     "http": {
         "address": "0.0.0.0",
-        "port": "8080"
+        "port": "${zot_port}"
     },
     "log": {
         "level": "debug",
@@ -68,23 +70,23 @@ EOF
 EOF
 
     zot_serve ${ZOT_PATH} ${ZOT_CONFIG_FILE}
-    wait_zot_reachable 8080
+    wait_zot_reachable ${zot_port}
 
     run skopeo --insecure-policy copy --dest-tls-verify=false \
         oci:${TEST_DATA_DIR}/golang:1.20 \
-        docker://127.0.0.1:8080/golang:1.20
+        docker://127.0.0.1:${zot_port}/golang:1.20
     [ "$status" -eq 0 ]
-    run curl http://127.0.0.1:8080/v2/_catalog
+    run curl http://127.0.0.1:${zot_port}/v2/_catalog
     [ "$status" -eq 0 ]
     [ $(echo "${lines[-1]}" | jq '.repositories[]') = '"golang"' ]
 
-    run oras attach --plain-http --image-spec v1.1-image --artifact-type image.artifact/type 127.0.0.1:8080/golang:1.20 ${IMAGE_MANIFEST_REFERRER}
+    run oras attach --plain-http --image-spec v1.1-image --artifact-type image.artifact/type 127.0.0.1:${zot_port}/golang:1.20 ${IMAGE_MANIFEST_REFERRER}
     [ "$status" -eq 0 ]
 
-    MANIFEST_DIGEST=$(skopeo inspect --tls-verify=false docker://localhost:8080/golang:1.20 | jq -r '.Digest')
+    MANIFEST_DIGEST=$(skopeo inspect --tls-verify=false docker://localhost:${zot_port}/golang:1.20 | jq -r '.Digest')
     echo ${MANIFEST_DIGEST}
 
-    curl -X GET http://127.0.0.1:8080/v2/golang/referrers/${MANIFEST_DIGEST}?artifactType=image.artifact/type
+    curl -X GET http://127.0.0.1:${zot_port}/v2/golang/referrers/${MANIFEST_DIGEST}?artifactType=image.artifact/type
 }
 
 function teardown() {
@@ -97,15 +99,15 @@ function teardown_file() {
 }
 
 @test "add referrers, one artifact and one image" {
-
+    zot_port=`cat ${BATS_FILE_TMPDIR}/zot.port`
     # Check referrers API using the normal REST endpoint
-    run curl -X GET http://127.0.0.1:8080/v2/golang/referrers/${MANIFEST_DIGEST}?artifactType=image.artifact/type
+    run curl -X GET http://127.0.0.1:${zot_port}/v2/golang/referrers/${MANIFEST_DIGEST}?artifactType=image.artifact/type
     [ "$status" -eq 0 ]
     [ $(echo "${lines[-1]}" | jq '.manifests[].artifactType') = '"image.artifact/type"' ]
 
     # Check referrers API using the GQL endpoint
     REFERRER_QUERY_DATA="{ \"query\": \"{ Referrers(repo:\\\"golang\\\", digest:\\\"${MANIFEST_DIGEST}\\\", type:[\\\"image.artifact/type\\\"]) { MediaType ArtifactType Digest Size} }\"}"
-    run curl -X POST -H "Content-Type: application/json" --data "${REFERRER_QUERY_DATA}" http://localhost:8080/v2/_zot/ext/search
+    run curl -X POST -H "Content-Type: application/json" --data "${REFERRER_QUERY_DATA}" http://localhost:${zot_port}/v2/_zot/ext/search
     [ "$status" -eq 0 ]
     [ $(echo "${lines[-1]}" | jq '.data.Referrers[].ArtifactType') = '"image.artifact/type"' ]
 }

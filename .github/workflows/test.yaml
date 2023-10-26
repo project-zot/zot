@@ -17,7 +17,6 @@ jobs:
     runs-on: ubuntu-latest-16-cores
     steps:
       - uses: actions/checkout@v4
-      - uses: ./.github/actions/clean-runner
       - name: Install go
         uses: actions/setup-go@v4
         with:
@@ -38,7 +37,6 @@ jobs:
           cd $GITHUB_WORKSPACE
           go mod download
       - uses: ./.github/actions/setup-localstack
-      - uses: ./.github/actions/check-diskspace
       - name: run zot minimal tests
         run: |
           cd $GITHUB_WORKSPACE
@@ -53,14 +51,12 @@ jobs:
         with:
           name: coverage-minimal
           path: coverage-minimal.txt
-      - uses: ./.github/actions/check-diskspace
       - uses: ./.github/actions/teardown-localstack
   test-run-extensions:
     name: Run zot with extensions tests
     runs-on: ubuntu-latest-16-cores
     steps:
       - uses: actions/checkout@v4
-      - uses: ./.github/actions/clean-runner
       - uses: actions/setup-go@v4
         with:
           cache: false
@@ -94,14 +90,12 @@ jobs:
         with:
           name: coverage-extended
           path: coverage-extended.txt
-      - uses: ./.github/actions/check-diskspace
       - uses: ./.github/actions/teardown-localstack
   test-run-devmode:
     name: Running privileged tests on Linux
     runs-on: ubuntu-latest-16-cores
     steps:
       - uses: actions/checkout@v4
-      - uses: ./.github/actions/clean-runner
       - uses: actions/setup-go@v4
         with:
           cache: false
@@ -120,7 +114,6 @@ jobs:
         run: |
             cd $GITHUB_WORKSPACE
             go mod download
-      - uses: ./.github/actions/check-diskspace
       - name: run zot development-mode unit tests (possibly using failure injection)
         run: make test-devmode
       - name: run zot privileged tests
@@ -130,7 +123,6 @@ jobs:
         with:
           name: coverage-devmode
           path: coverage-dev-*.txt
-      - uses: ./.github/actions/check-diskspace
   test-coverage:
     name: Collect all test coverage
     runs-on: ubuntu-latest

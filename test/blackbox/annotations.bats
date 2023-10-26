@@ -35,6 +35,8 @@ function setup_file() {
     local zot_root_dir=${BATS_FILE_TMPDIR}/zot
     local zot_config_file=${BATS_FILE_TMPDIR}/zot_config.json
     mkdir -p ${zot_root_dir}
+    zot_port=$(get_free_port)
+    echo ${zot_port} > ${BATS_FILE_TMPDIR}/zot.port
     cat > ${zot_config_file}<<EOF
 {
     "distSpecVersion": "1.1.0-dev",
@@ -43,7 +45,7 @@ function setup_file() {
     },
     "http": {
         "address": "0.0.0.0",
-        "port": "8080"
+        "port": "${zot_port}"
     },
     "log": {
         "level": "debug",
@@ -76,7 +78,7 @@ FROM public.ecr.aws/t0x7q1g8/centos:7
 CMD ["/bin/sh", "-c", "echo 'It works!'"]
 EOF
     zot_serve ${ZOT_PATH} ${zot_config_file}
-    wait_zot_reachable 8080
+    wait_zot_reachable ${zot_port}
 }
 
 function teardown() {
@@ -90,11 +92,12 @@ function teardown_file() {
 }
 
 @test "build image with podman and specify annotations" {
-    run podman build -f ${BATS_FILE_TMPDIR}/Dockerfile -t 127.0.0.1:8080/annotations:latest . --format oci --annotation org.opencontainers.image.vendor="CentOS" --annotation org.opencontainers.image.licenses="GPLv2"
+    zot_port=`cat ${BATS_FILE_TMPDIR}/zot.port`
+    run podman build -f ${BATS_FILE_TMPDIR}/Dockerfile -t 127.0.0.1:${zot_port}/annotations:latest . --format oci --annotation org.opencontainers.image.vendor="CentOS" --annotation org.opencontainers.image.licenses="GPLv2"
     [ "$status" -eq 0 ]
-    run podman push 127.0.0.1:8080/annotations:latest --tls-verify=false --format=oci
+    run podman push 127.0.0.1:${zot_port}/annotations:latest --tls-verify=false --format=oci
     [ "$status" -eq 0 ]
-    run curl -X POST -H "Content-Type: application/json" --data '{ "query": "{ ImageList(repo: \"annotations\") { Results { RepoName Tag Manifests {Digest ConfigDigest Size Layers { Size Digest }} Vendor Licenses }}}"}' http://localhost:8080/v2/_zot/ext/search
+    run curl -X POST -H "Content-Type: application/json" --data '{ "query": "{ ImageList(repo: \"annotations\") { Results { RepoName Tag Manifests {Digest ConfigDigest Size Layers { Size Digest }} Vendor Licenses }}}"}' http://localhost:${zot_port}/v2/_zot/ext/search
     [ "$status" -eq 0 ]
 
     [ $(echo "${lines[-1]}" | jq '.data.ImageList.Results[0].RepoName') = '"annotations"' ]
@@ -103,11 +106,12 @@ function teardown_file() {
 }
 
 @test "build image with stacker and specify annotations" {
+    zot_port=`cat ${BATS_FILE_TMPDIR}/zot.port`
     run stacker --oci-dir ${BATS_FILE_TMPDIR}/stackeroci --stacker-dir ${BATS_FILE_TMPDIR}/.stacker --roots-dir ${BATS_FILE_TMPDIR}/roots build -f ${BATS_FILE_TMPDIR}/stacker.yaml --substitute IMAGE_NAME="ghcr.io/project-zot/golang" --substitute IMAGE_TAG="1.20" --substitute DESCRIPTION="mydesc" --substitute VENDOR="CentOs" --substitute LICENSES="GPLv2" --substitute COMMIT= --substitute OS=$OS --substitute ARCH=$ARCH
     [ "$status" -eq 0 ]
-    run stacker --oci-dir ${BATS_FILE_TMPDIR}/stackeroci --stacker-dir ${BATS_FILE_TMPDIR}/.stacker --roots-dir ${BATS_FILE_TMPDIR}/roots publish -f ${BATS_FILE_TMPDIR}/stacker.yaml --substitute IMAGE_NAME="ghcr.io/project-zot/golang" --substitute IMAGE_TAG="1.20" --substitute DESCRIPTION="mydesc" --substitute VENDOR="CentOs" --substitute LICENSES="GPLv2" --url docker://127.0.0.1:8080 --tag 1.20 --skip-tls
+    run stacker --oci-dir ${BATS_FILE_TMPDIR}/stackeroci --stacker-dir ${BATS_FILE_TMPDIR}/.stacker --roots-dir ${BATS_FILE_TMPDIR}/roots publish -f ${BATS_FILE_TMPDIR}/stacker.yaml --substitute IMAGE_NAME="ghcr.io/project-zot/golang" --substitute IMAGE_TAG="1.20" --substitute DESCRIPTION="mydesc" --substitute VENDOR="CentOs" --substitute LICENSES="GPLv2" --url docker://127.0.0.1:${zot_port} --tag 1.20 --skip-tls
     [ "$status" -eq 0 ]
-    run curl -X POST -H "Content-Type: application/json" --data '{ "query": "{ ImageList(repo: \"ghcr.io/project-zot/golang\") { Results { RepoName Tag Manifests {Digest ConfigDigest Size Layers { Size Digest }} Vendor Licenses Description }}}"}' http://localhost:8080/v2/_zot/ext/search
+    run curl -X POST -H "Content-Type: application/json" --data '{ "query": "{ ImageList(repo: \"ghcr.io/project-zot/golang\") { Results { RepoName Tag Manifests {Digest ConfigDigest Size Layers { Size Digest }} Vendor Licenses Description }}}"}' http://localhost:${zot_port}/v2/_zot/ext/search
     [ "$status" -eq 0 ]
     [ $(echo "${lines[-1]}" | jq '.data.ImageList.Results[0].RepoName') = '"ghcr.io/project-zot/golang"' ]
     [ $(echo "${lines[-1]}" | jq '.data.ImageList.Results[0].Description') = '"mydesc"' ]
@@ -116,7 +120,8 @@ function teardown_file() {
 }
 
 @test "sign/verify with cosign (only tag-based signatures)" {
-    run curl -X POST -H "Content-Type: application/json" --data '{ "query": "{ ImageList(repo: \"annotations\") { Results { RepoName Tag Manifests {Digest ConfigDigest Size Layers { Size Digest }} Vendor Licenses }}}"}' http://localhost:8080/v2/_zot/ext/search
+    zot_port=`cat ${BATS_FILE_TMPDIR}/zot.port`
+    run curl -X POST -H "Content-Type: application/json" --data '{ "query": "{ ImageList(repo: \"annotations\") { Results { RepoName Tag Manifests {Digest ConfigDigest Size Layers { Size Digest }} Vendor Licenses }}}"}' http://localhost:${zot_port}/v2/_zot/ext/search
     [ "$status" -eq 0 ]
     [ $(echo "${lines[-1]}" | jq '.data.ImageList.Results[0].RepoName') = '"annotations"' ]
     local digest=$(echo "${lines[-1]}" | jq -r '.data.ImageList.Results[0].Manifests[0].Digest')
@@ -125,16 +130,17 @@ function teardown_file() {
     [ "$status" -eq 0 ]
     run cosign generate-key-pair --output-key-prefix "${BATS_FILE_TMPDIR}/cosign-sign-test"
     [ "$status" -eq 0 ]
-    run cosign sign --key ${BATS_FILE_TMPDIR}/cosign-sign-test.key localhost:8080/annotations:latest --yes
+    run cosign sign --key ${BATS_FILE_TMPDIR}/cosign-sign-test.key localhost:${zot_port}/annotations:latest --yes
     [ "$status" -eq 0 ]
-    run cosign verify --key ${BATS_FILE_TMPDIR}/cosign-sign-test.pub localhost:8080/annotations:latest
+    run cosign verify --key ${BATS_FILE_TMPDIR}/cosign-sign-test.pub localhost:${zot_port}/annotations:latest
     [ "$status" -eq 0 ]
     local sigName=$(echo "${lines[-1]}" | jq '.[].critical.image."docker-manifest-digest"')
     [[ "$sigName" == *"${digest}"* ]]
 }
 
 @test "sign/verify with cosign (only referrers)" {
-    run curl -X POST -H "Content-Type: application/json" --data '{ "query": "{ ImageList(repo: \"annotations\") { Results { RepoName Tag Manifests {Digest ConfigDigest Size Layers { Size Digest }} Vendor Licenses }}}"}' http://localhost:8080/v2/_zot/ext/search
+    zot_port=`cat ${BATS_FILE_TMPDIR}/zot.port`
+    run curl -X POST -H "Content-Type: application/json" --data '{ "query": "{ ImageList(repo: \"annotations\") { Results { RepoName Tag Manifests {Digest ConfigDigest Size Layers { Size Digest }} Vendor Licenses }}}"}' http://localhost:${zot_port}/v2/_zot/ext/search
     [ "$status" -eq 0 ]
     [ $(echo "${lines[-1]}" | jq '.data.ImageList.Results[0].RepoName') = '"annotations"' ]
     local digest=$(echo "${lines[-1]}" | jq -r '.data.ImageList.Results[0].Manifests[0].Digest')
@@ -145,9 +151,9 @@ function teardown_file() {
     [ "$status" -eq 0 ]
     run cosign generate-key-pair --output-key-prefix "${BATS_FILE_TMPDIR}/cosign-sign-test-experimental"
     [ "$status" -eq 0 ]
-    run cosign sign --registry-referrers-mode=oci-1-1 --key ${BATS_FILE_TMPDIR}/cosign-sign-test-experimental.key localhost:8080/annotations:latest --yes
+    run cosign sign --registry-referrers-mode=oci-1-1 --key ${BATS_FILE_TMPDIR}/cosign-sign-test-experimental.key localhost:${zot_port}/annotations:latest --yes
     [ "$status" -eq 0 ]
-    run cosign verify --key ${BATS_FILE_TMPDIR}/cosign-sign-test-experimental.pub localhost:8080/annotations:latest
+    run cosign verify --key ${BATS_FILE_TMPDIR}/cosign-sign-test-experimental.pub localhost:${zot_port}/annotations:latest
     [ "$status" -eq 0 ]
     local sigName=$(echo "${lines[-1]}" | jq '.[].critical.image."docker-manifest-digest"')
     [[ "$sigName" == *"${digest}"* ]]
@@ -156,7 +162,8 @@ function teardown_file() {
 }
 
 @test "sign/verify with cosign (tag and referrers)" {
-    run curl -X POST -H "Content-Type: application/json" --data '{ "query": "{ ImageList(repo: \"annotations\") { Results { RepoName Tag Manifests {Digest ConfigDigest Size Layers { Size Digest }} Vendor Licenses }}}"}' http://localhost:8080/v2/_zot/ext/search
+    zot_port=`cat ${BATS_FILE_TMPDIR}/zot.port`
+    run curl -X POST -H "Content-Type: application/json" --data '{ "query": "{ ImageList(repo: \"annotations\") { Results { RepoName Tag Manifests {Digest ConfigDigest Size Layers { Size Digest }} Vendor Licenses }}}"}' http://localhost:${zot_port}/v2/_zot/ext/search
     [ "$status" -eq 0 ]
     [ $(echo "${lines[-1]}" | jq '.data.ImageList.Results[0].RepoName') = '"annotations"' ]
     local digest=$(echo "${lines[-1]}" | jq -r '.data.ImageList.Results[0].Manifests[0].Digest')
@@ -168,37 +175,37 @@ function teardown_file() {
 
     run cosign generate-key-pair --output-key-prefix "${BATS_FILE_TMPDIR}/cosign-sign-test-tag-1"
     [ "$status" -eq 0 ]
-    run cosign sign --key ${BATS_FILE_TMPDIR}/cosign-sign-test-tag-1.key localhost:8080/annotations:latest --yes
+    run cosign sign --key ${BATS_FILE_TMPDIR}/cosign-sign-test-tag-1.key localhost:${zot_port}/annotations:latest --yes
     [ "$status" -eq 0 ]
 
     run cosign generate-key-pair --output-key-prefix "${BATS_FILE_TMPDIR}/cosign-sign-test-referrers-1"
     [ "$status" -eq 0 ]
-    run cosign sign --registry-referrers-mode=oci-1-1 --key ${BATS_FILE_TMPDIR}/cosign-sign-test-referrers-1.key localhost:8080/annotations:latest --yes
+    run cosign sign --registry-referrers-mode=oci-1-1 --key ${BATS_FILE_TMPDIR}/cosign-sign-test-referrers-1.key localhost:${zot_port}/annotations:latest --yes
     [ "$status" -eq 0 ]
 
     run cosign generate-key-pair --output-key-prefix "${BATS_FILE_TMPDIR}/cosign-sign-test-tag-2"
     [ "$status" -eq 0 ]
-    run cosign sign --key ${BATS_FILE_TMPDIR}/cosign-sign-test-tag-2.key localhost:8080/annotations:latest --yes
+    run cosign sign --key ${BATS_FILE_TMPDIR}/cosign-sign-test-tag-2.key localhost:${zot_port}/annotations:latest --yes
     [ "$status" -eq 0 ]
 
-    run cosign verify --key ${BATS_FILE_TMPDIR}/cosign-sign-test-tag-1.pub localhost:8080/annotations:latest
+    run cosign verify --key ${BATS_FILE_TMPDIR}/cosign-sign-test-tag-1.pub localhost:${zot_port}/annotations:latest
     [ "$status" -eq 0 ]
     local sigName=$(echo "${lines[-1]}" | jq '.[].critical.image."docker-manifest-digest"')
     [[ "$sigName" == *"${digest}"* ]]
-    run cosign verify --key ${BATS_FILE_TMPDIR}/cosign-sign-test-tag-2.pub localhost:8080/annotations:latest
+    run cosign verify --key ${BATS_FILE_TMPDIR}/cosign-sign-test-tag-2.pub localhost:${zot_port}/annotations:latest
     [ "$status" -eq 0 ]
     local sigName=$(echo "${lines[-1]}" | jq '.[].critical.image."docker-manifest-digest"')
     [[ "$sigName" == *"${digest}"* ]]
-    run cosign verify --key ${BATS_FILE_TMPDIR}/cosign-sign-test-referrers-1.pub localhost:8080/annotations:latest
+    run cosign verify --key ${BATS_FILE_TMPDIR}/cosign-sign-test-referrers-1.pub localhost:${zot_port}/annotations:latest
     [ "$status" -eq 0 ]
     local sigName=$(echo "${lines[-1]}" | jq '.[].critical.image."docker-manifest-digest"')
     [[ "$sigName" == *"${digest}"* ]]
 
     run cosign generate-key-pair --output-key-prefix "${BATS_FILE_TMPDIR}/cosign-sign-test-referrers-2"
     [ "$status" -eq 0 ]
-    run cosign sign --registry-referrers-mode=oci-1-1 --key ${BATS_FILE_TMPDIR}/cosign-sign-test-referrers-2.key localhost:8080/annotations:latest --yes
+    run cosign sign --registry-referrers-mode=oci-1-1 --key ${BATS_FILE_TMPDIR}/cosign-sign-test-referrers-2.key localhost:${zot_port}/annotations:latest --yes
     [ "$status" -eq 0 ]
-    run cosign verify --key ${BATS_FILE_TMPDIR}/cosign-sign-test-referrers-2.pub localhost:8080/annotations:latest
+    run cosign verify --key ${BATS_FILE_TMPDIR}/cosign-sign-test-referrers-2.pub localhost:${zot_port}/annotations:latest
     [ "$status" -eq 0 ]
     local sigName=$(echo "${lines[-1]}" | jq '.[].critical.image."docker-manifest-digest"')
     [[ "$sigName" == *"${digest}"* ]]
@@ -208,7 +215,8 @@ function teardown_file() {
 }
 
 @test "sign/verify with notation" {
-    run curl -X POST -H "Content-Type: application/json" --data '{ "query": "{ ImageList(repo: \"annotations\") { Results { RepoName Tag Manifests {Digest ConfigDigest Size Layers { Size Digest }} Vendor Licenses }}}"}' http://localhost:8080/v2/_zot/ext/search
+    zot_port=`cat ${BATS_FILE_TMPDIR}/zot.port`
+    run curl -X POST -H "Content-Type: application/json" --data '{ "query": "{ ImageList(repo: \"annotations\") { Results { RepoName Tag Manifests {Digest ConfigDigest Size Layers { Size Digest }} Vendor Licenses }}}"}' http://localhost:${zot_port}/v2/_zot/ext/search
     [ "$status" -eq 0 ]
     [ $(echo "${lines[-1]}" | jq '.data.ImageList.Results[0].RepoName') = '"annotations"' ]
     [ "$status" -eq 0 ]
@@ -237,16 +245,17 @@ function teardown_file() {
 }
 EOF
 
-    run notation sign --key "notation-sign-test" --insecure-registry localhost:8080/annotations:latest
+    run notation sign --key "notation-sign-test" --insecure-registry localhost:${zot_port}/annotations:latest
     [ "$status" -eq 0 ]
-    run notation verify --insecure-registry localhost:8080/annotations:latest
+    run notation verify --insecure-registry localhost:${zot_port}/annotations:latest
     [ "$status" -eq 0 ]
-    run notation list --insecure-registry localhost:8080/annotations:latest
+    run notation list --insecure-registry localhost:${zot_port}/annotations:latest
     [ "$status" -eq 0 ]
 }
 
 @test "sign/verify with notation( NOTATION_EXPERIMENTAL=1 and --allow-referrers-api )" {
-    run curl -X POST -H "Content-Type: application/json" --data '{ "query": "{ ImageList(repo: \"annotations\") { Results { RepoName Tag Manifests {Digest ConfigDigest Size Layers { Size Digest }} Vendor Licenses }}}"}' http://localhost:8080/v2/_zot/ext/search
+    zot_port=`cat ${BATS_FILE_TMPDIR}/zot.port`
+    run curl -X POST -H "Content-Type: application/json" --data '{ "query": "{ ImageList(repo: \"annotations\") { Results { RepoName Tag Manifests {Digest ConfigDigest Size Layers { Size Digest }} Vendor Licenses }}}"}' http://localhost:${zot_port}/v2/_zot/ext/search
     [ "$status" -eq 0 ]
     [ $(echo "${lines[-1]}" | jq '.data.ImageList.Results[0].RepoName') = '"annotations"' ]
     [ "$status" -eq 0 ]
@@ -276,11 +285,11 @@ EOF
 EOF
 
     export NOTATION_EXPERIMENTAL=1
-    run notation sign --allow-referrers-api --key "notation-sign-test-experimental" --insecure-registry localhost:8080/annotations:latest
+    run notation sign --allow-referrers-api --key "notation-sign-test-experimental" --insecure-registry localhost:${zot_port}/annotations:latest
     [ "$status" -eq 0 ]
-    run notation verify --allow-referrers-api --insecure-registry localhost:8080/annotations:latest
+    run notation verify --allow-referrers-api --insecure-registry localhost:${zot_port}/annotations:latest
     [ "$status" -eq 0 ]
-    run notation list --allow-referrers-api --insecure-registry localhost:8080/annotations:latest
+    run notation list --allow-referrers-api --insecure-registry localhost:${zot_port}/annotations:latest
     [ "$status" -eq 0 ]
     unset NOTATION_EXPERIMENTAL
 }

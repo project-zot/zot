@@ -18,7 +18,7 @@ jobs:
     permissions:
       contents: write
       packages: write
-    runs-on: ubuntu-latest-16-cores
+    runs-on: ubuntu-latest
     strategy:
       matrix:
         os: [linux, darwin, freebsd]
@@ -26,7 +26,6 @@ jobs:
     steps:
       - name: Check out source code
         uses: actions/checkout@v4
-      - uses: ./.github/actions/clean-runner
       - name: Install go
         uses: actions/setup-go@v4
         with:
@@ -72,9 +71,8 @@ jobs:
           curl -Lo notation.tar.gz https://github.com/notaryproject/notation/releases/download/v1.0.0-rc.4/notation_1.0.0-rc.4_linux_amd64.tar.gz
           sudo tar xvzf notation.tar.gz -C /usr/bin notation
           rm -f notation.tar.gz
-      - uses: ./.github/actions/check-diskspace
       - name: Run build
-        timeout-minutes: 80
+        timeout-minutes: 10
         run: |
           echo "Building for $OS:$ARCH"
           cd $GITHUB_WORKSPACE
@@ -82,7 +80,6 @@ jobs:
         env:
           OS: ${{ matrix.os }}
           ARCH: ${{ matrix.arch }}
-      - uses: ./.github/actions/check-diskspace
 
       - name: Generate GraphQL Introspection JSON on Release
         if: github.event_name == 'release' && github.event.action == 'published' && matrix.os == 'linux' && matrix.arch == 'amd64'

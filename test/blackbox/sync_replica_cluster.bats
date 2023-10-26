@@ -41,6 +41,11 @@ function setup_file() {
     mkdir -p ${zot_sync_one_root_dir}
     mkdir -p ${zot_sync_two_root_dir}
 
+    zot_port1=$(get_free_port)
+    echo ${zot_port1} > ${BATS_FILE_TMPDIR}/zot.port1
+    zot_port2=$(get_free_port)
+    echo ${zot_port2} > ${BATS_FILE_TMPDIR}/zot.port2
+
     cat >${zot_sync_one_config_file} <<EOF
 {
     "distSpecVersion": "1.1.0-dev",
@@ -49,7 +54,7 @@ function setup_file() {
     },
     "http": {
         "address": "0.0.0.0",
-        "port": "8081"
+        "port": "${zot_port1}"
     },
     "log": {
         "level": "debug"
@@ -59,8 +64,8 @@ function setup_file() {
             "registries": [
                 {
                     "urls": [
-                        "http://localhost:8081",
-                        "http://localhost:8082"
+                        "http://localhost:${zot_port1}",
+                        "http://localhost:${zot_port2}"
                     ],
                     "onDemand": false,
                     "tlsVerify": false,
@@ -85,7 +90,7 @@ EOF
     },
     "http": {
         "address": "0.0.0.0",
-        "port": "8082"
+        "port": "${zot_port2}"
     },
     "log": {
         "level": "debug"
@@ -95,8 +100,8 @@ EOF
             "registries": [
                 {
                     "urls": [
-                        "http://localhost:8081",
-                        "http://localhost:8082"
+                        "http://localhost:${zot_port1}",
+                        "http://localhost:${zot_port2}"
                     ],
                     "onDemand": false,
                     "tlsVerify": false,
@@ -116,10 +121,10 @@ EOF
     git -C ${BATS_FILE_TMPDIR} clone https://github.com/project-zot/helm-charts.git
 
     zot_serve ${ZOT_PATH} ${zot_sync_one_config_file}
-    wait_zot_reachable 8081
+    wait_zot_reachable ${zot_port1}
 
     zot_serve ${ZOT_PATH} ${zot_sync_two_config_file}
-    wait_zot_reachable 8082
+    wait_zot_reachable ${zot_port2}
 }
 
 function teardown_file() {
@@ -128,47 +133,51 @@ function teardown_file() {
 
 # sync image
 @test "push one image to zot one, zot two should sync it" {
+    zot_port1=`cat ${BATS_FILE_TMPDIR}/zot.port1`
+    zot_port2=`cat ${BATS_FILE_TMPDIR}/zot.port2`
     run skopeo --insecure-policy copy --dest-tls-verify=false \
         oci:${TEST_DATA_DIR}/golang:1.20 \
-        docker://127.0.0.1:8081/golang:1.20
+        docker://127.0.0.1:${zot_port1}/golang:1.20
     [ "$status" -eq 0 ]
-    run curl http://127.0.0.1:8081/v2/_catalog
+    run curl http://127.0.0.1:${zot_port1}/v2/_catalog
     [ "$status" -eq 0 ]
     [ $(echo "${lines[-1]}" | jq '.repositories[]') = '"golang"' ]
-    run curl http://127.0.0.1:8081/v2/golang/tags/list
+    run curl http://127.0.0.1:${zot_port1}/v2/golang/tags/list
     [ "$status" -eq 0 ]
     [ $(echo "${lines[-1]}" | jq '.tags[]') = '"1.20"' ]
 
     run sleep 30s
 
-    run curl http://127.0.0.1:8082/v2/_catalog
+    run curl http://127.0.0.1:${zot_port2}/v2/_catalog
     [ "$status" -eq 0 ]
     [ $(echo "${lines[-1]}" | jq '.repositories[]') = '"golang"' ]
 
-    run curl http://127.0.0.1:8082/v2/golang/tags/list
+    run curl http://127.0.0.1:${zot_port2}/v2/golang/tags/list
     [ "$status" -eq 0 ]
     [ $(echo "${lines[-1]}" | jq '.tags[]') = '"1.20"' ]
 }
 
 @test "push one image to zot-two, zot-one should sync it" {
+    zot_port1=`cat ${BATS_FILE_TMPDIR}/zot.port1`
+    zot_port2=`cat ${BATS_FILE_TMPDIR}/zot.port2`
     run skopeo --insecure-policy copy --dest-tls-verify=false \
         oci:${TEST_DATA_DIR}/golang:1.20 \
-        docker://127.0.0.1:8082/anothergolang:1.20
+        docker://127.0.0.1:${zot_port2}/anothergolang:1.20
     [ "$status" -eq 0 ]
-    run curl http://127.0.0.1:8082/v2/_catalog
+    run curl http://127.0.0.1:${zot_port2}/v2/_catalog
     [ "$status" -eq 0 ]
     [ $(echo "${lines[-1]}" | jq '.repositories[0]') = '"anothergolang"' ]
-    run curl http://127.0.0.1:8082/v2/anothergolang/tags/list
+    run curl http://127.0.0.1:${zot_port2}/v2/anothergolang/tags/list
     [ "$status" -eq 0 ]
     [ $(echo "${lines[-1]}" | jq '.tags[]') = '"1.20"' ]
 
     run sleep 30s
 
-    run curl http://127.0.0.1:8081/v2/_catalog
+    run curl http://127.0.0.1:${zot_port1}/v2/_catalog
     [ "$status" -eq 0 ]
     [ $(echo "${lines[-1]}" | jq '.repositories[0]') = '"anothergolang"' ]
 
-    run curl http://127.0.0.1:8081/v2/anothergolang/tags/list
+    run curl http://127.0.0.1:${zot_port1}/v2/anothergolang/tags/list
     [ "$status" -eq 0 ]
     [ $(echo "${lines[-1]}" | jq '.tags[]') = '"1.20"' ]
 }

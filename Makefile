@@ -486,24 +486,8 @@ run-blackbox-tests: $(BATS_TEST_FILE_PATH) check-blackbox-prerequisites binary b
 
 .PHONY: run-blackbox-ci
 run-blackbox-ci: check-blackbox-prerequisites binary binary-minimal cli
-	# ideally we would run a single bats command but too much disk space would be used at once
-	echo running CI bats tests; \
-	$(BATS) $(BATS_FLAGS) test/blackbox/pushpull.bats && \
-	$(BATS) $(BATS_FLAGS) test/blackbox/pushpull_authn.bats && \
-	$(BATS) $(BATS_FLAGS) test/blackbox/delete_images.bats && \
-	$(BATS) $(BATS_FLAGS) test/blackbox/referrers.bats && \
-	$(BATS) $(BATS_FLAGS) test/blackbox/metadata.bats && \
-	$(BATS) $(BATS_FLAGS) test/blackbox/anonymous_policy.bats && \
-	$(BATS) $(BATS_FLAGS) test/blackbox/annotations.bats && \
-	$(BATS) $(BATS_FLAGS) test/blackbox/detect_manifest_collision.bats && \
-	$(BATS) $(BATS_FLAGS) test/blackbox/cve.bats && \
-	$(BATS) $(BATS_FLAGS) test/blackbox/sync.bats && \
-	$(BATS) $(BATS_FLAGS) test/blackbox/sync_docker.bats && \
-	$(BATS) $(BATS_FLAGS) test/blackbox/sync_replica_cluster.bats && \
-	$(BATS) $(BATS_FLAGS) test/blackbox/scrub.bats && \
-	$(BATS) $(BATS_FLAGS) test/blackbox/garbage_collect.bats && \
-	$(BATS) $(BATS_FLAGS) test/blackbox/metrics.bats && \
-	$(BATS) $(BATS_FLAGS) test/blackbox/metrics_minimal.bats
+	echo running CI bats tests concurently
+	BATS_FLAGS="$(BATS_FLAGS)" test/blackbox/ci.sh
 
 .PHONY: run-blackbox-cloud-ci
 run-blackbox-cloud-ci: check-blackbox-prerequisites check-awslocal binary $(BATS)
