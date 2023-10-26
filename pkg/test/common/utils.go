@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math/rand"
 	"net/http"
 	"net/url"
 	"os"
@@ -15,9 +16,10 @@ import (
 )
 
 const (
-	BaseURL       = "http://127.0.0.1:%s"
-	BaseSecureURL = "https://127.0.0.1:%s"
-	SleepTime     = 100 * time.Millisecond
+	BaseURL               = "http://127.0.0.1:%s"
+	BaseSecureURL         = "https://127.0.0.1:%s"
+	SleepTime             = 100 * time.Millisecond
+	AuthorizationAllRepos = "**"
 )
 
 type isser interface {
@@ -176,4 +178,36 @@ func CustomRedirectPolicy(noOfRedirect int) resty.RedirectPolicy {
 
 		return nil
 	})
+}
+
+// Generates a random string with length 10 from lower case & upper case characters and
+// a seed that can be logged in tests (if test fails, you can reconstruct random string).
+func GenerateRandomString() (string, int64) {
+	seed := time.Now().UnixNano()
+	//nolint: gosec
+	seededRand := rand.New(rand.NewSource(seed))
+	charset := "abcdefghijklmnopqrstuvwxyz" + "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+
+	randomBytes := make([]byte, 10)
+	for i := range randomBytes {
+		randomBytes[i] = charset[seededRand.Intn(len(charset))]
+	}
+
+	return string(randomBytes), seed
+}
+
+// Generates a random string with length 10 from lower case characters and digits and
+// a seed that can be logged in tests (if test fails, you can reconstruct random string).
+func GenerateRandomName() (string, int64) {
+	seed := time.Now().UnixNano()
+	//nolint: gosec
+	seededRand := rand.New(rand.NewSource(seed))
+	charset := "abcdefghijklmnopqrstuvwxyz" + "0123456789"
+
+	randomBytes := make([]byte, 10)
+	for i := range randomBytes {
+		randomBytes[i] = charset[seededRand.Intn(len(charset))]
+	}
+
+	return string(randomBytes), seed
 }

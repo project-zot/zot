@@ -28,19 +28,6 @@ import (
 	ociutils "zotregistry.io/zot/pkg/test/oci-utils"
 )
 
-const (
-	username               = "test"
-	passphrase             = "test"
-	ServerCert             = "../../test/data/server.cert"
-	ServerKey              = "../../test/data/server.key"
-	CACert                 = "../../test/data/ca.crt"
-	AuthorizedNamespace    = "everyone/isallowed"
-	UnauthorizedNamespace  = "fortknox/notallowed"
-	ALICE                  = "alice"
-	AuthorizationNamespace = "authz/image"
-	AuthorizationAllRepos  = "**"
-)
-
 func TestVerifyMandatoryAnnotations(t *testing.T) {
 	//nolint: dupl
 	Convey("Mandatory annotations disabled", t, func() {
@@ -67,8 +54,7 @@ func TestVerifyMandatoryAnnotations(t *testing.T) {
 		cm.StartAndWait(port)
 		defer cm.StopServer()
 
-		resp, err := resty.R().SetBasicAuth(username, passphrase).
-			Get(baseURL + "/v2/zot-test/manifests/0.0.1")
+		resp, err := resty.R().Get(baseURL + "/v2/zot-test/manifests/0.0.1")
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
@@ -114,8 +100,7 @@ func TestVerifyMandatoryAnnotations(t *testing.T) {
 		cm.StartAndWait(port)
 		defer cm.StopServer()
 
-		resp, err := resty.R().SetBasicAuth(username, passphrase).
-			Get(baseURL + "/v2/zot-test/manifests/0.0.1")
+		resp, err := resty.R().Get(baseURL + "/v2/zot-test/manifests/0.0.1")
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
@@ -161,8 +146,7 @@ func TestVerifyMandatoryAnnotations(t *testing.T) {
 		cm.StartAndWait(port)
 		defer cm.StopServer()
 
-		resp, err := resty.R().SetBasicAuth(username, passphrase).
-			Get(baseURL + "/v2/zot-test/manifests/0.0.1")
+		resp, err := resty.R().Get(baseURL + "/v2/zot-test/manifests/0.0.1")
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
@@ -214,8 +198,7 @@ func TestVerifyMandatoryAnnotations(t *testing.T) {
 		cm.StartAndWait(port)
 		defer cm.StopServer()
 
-		resp, err := resty.R().SetBasicAuth(username, passphrase).
-			Get(baseURL + "/v2/zot-test/manifests/0.0.1")
+		resp, err := resty.R().Get(baseURL + "/v2/zot-test/manifests/0.0.1")
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
@@ -232,8 +215,7 @@ func TestVerifyMandatoryAnnotations(t *testing.T) {
 
 		configDigest := manifest.Config.Digest
 
-		resp, err = resty.R().SetBasicAuth(username, passphrase).
-			Get(baseURL + fmt.Sprintf("/v2/zot-test/blobs/%s", configDigest))
+		resp, err = resty.R().Get(baseURL + fmt.Sprintf("/v2/zot-test/blobs/%s", configDigest))
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
@@ -302,8 +284,7 @@ func TestVerifyMandatoryAnnotations(t *testing.T) {
 		cm.StartAndWait(port)
 		defer cm.StopServer()
 
-		resp, err := resty.R().SetBasicAuth(username, passphrase).
-			Get(baseURL + "/v2/zot-test/manifests/0.0.1")
+		resp, err := resty.R().Get(baseURL + "/v2/zot-test/manifests/0.0.1")
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
@@ -319,8 +300,7 @@ func TestVerifyMandatoryAnnotations(t *testing.T) {
 
 		configDigest := manifest.Config.Digest
 
-		resp, err = resty.R().SetBasicAuth(username, passphrase).
-			Get(baseURL + fmt.Sprintf("/v2/zot-test/blobs/%s", configDigest))
+		resp, err = resty.R().Get(baseURL + fmt.Sprintf("/v2/zot-test/blobs/%s", configDigest))
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
@@ -389,8 +369,7 @@ func TestVerifyMandatoryAnnotations(t *testing.T) {
 		cm.StartAndWait(port)
 		defer cm.StopServer()
 
-		resp, err := resty.R().SetBasicAuth(username, passphrase).
-			Get(baseURL + "/v2/zot-test/manifests/0.0.1")
+		resp, err := resty.R().Get(baseURL + "/v2/zot-test/manifests/0.0.1")
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
@@ -445,8 +424,7 @@ func TestVerifyMandatoryAnnotations(t *testing.T) {
 		cm.StartAndWait(port)
 		defer cm.StopServer()
 
-		resp, err := resty.R().SetBasicAuth(username, passphrase).
-			Get(baseURL + "/v2/zot-test/manifests/0.0.1")
+		resp, err := resty.R().Get(baseURL + "/v2/zot-test/manifests/0.0.1")
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusOK)

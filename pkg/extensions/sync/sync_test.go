@@ -69,6 +69,8 @@ const (
 )
 
 var (
+	username     = "test" //nolint: gochecknoglobals
+	password     = "test" //nolint: gochecknoglobals
 	errSync      = errors.New("sync error, src oci repo differs from dest one")
 	errBadStatus = errors.New("bad http status")
 )
@@ -127,7 +129,7 @@ func makeUpstreamServer(
 
 	var htpasswdPath string
 	if basicAuth {
-		htpasswdPath = test.MakeHtpasswdFile()
+		htpasswdPath = test.MakeHtpasswdFileFromString(test.GetCredString(username, password))
 		srcConfig.HTTP.Auth = &config.AuthConfig{
 			HTPasswd: config.AuthHTPasswd{
 				Path: htpasswdPath,
@@ -2376,7 +2378,8 @@ func TestBasicAuth(t *testing.T) {
 			defer scm.StopServer()
 
 			registryName := sync.StripRegistryTransport(srcBaseURL)
-			credentialsFile := makeCredentialsFile(fmt.Sprintf(`{"%s":{"username": "test", "password": "test"}}`, registryName))
+			credentialsFile := makeCredentialsFile(fmt.Sprintf(`{"%s":{"username": "%s", "password": "%s"}}`,
+				registryName, username, password))
 
 			var tlsVerify bool
 
@@ -2408,7 +2411,7 @@ func TestBasicAuth(t *testing.T) {
 			var srcTagsList TagsList
 			var destTagsList TagsList
 
-			resp, _ := srcClient.R().SetBasicAuth("test", "test").Get(srcBaseURL + "/v2/" + testImage + "/tags/list")
+			resp, _ := srcClient.R().SetBasicAuth(username, password).Get(srcBaseURL + "/v2/" + testImage + "/tags/list")
 			So(resp, ShouldNotBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
@@ -2474,8 +2477,8 @@ func TestBasicAuth(t *testing.T) {
 
 			registryName := sync.StripRegistryTransport(srcBaseURL)
 
-			credentialsFile := makeCredentialsFile(fmt.Sprintf(`{"%s":{"username": "test", "password": "invalid"}}`,
-				registryName))
+			credentialsFile := makeCredentialsFile(fmt.Sprintf(`{"%s":{"username": "%s", "password": "invalid"}}`,
+				registryName, username))
 
 			var tlsVerify bool
 
@@ -2541,8 +2544,8 @@ func TestBasicAuth(t *testing.T) {
 
 			registryName := sync.StripRegistryTransport(srcBaseURL)
 
-			credentialsFile := makeCredentialsFile(fmt.Sprintf(`{"%s":{"username": "test", "password": "test"}}`,
-				registryName))
+			credentialsFile := makeCredentialsFile(fmt.Sprintf(`{"%s":{"username": "%s", "password": "%s"}}`,
+				registryName, username, password))
 
 			err := os.Chmod(credentialsFile, 0o000)
 			So(err, ShouldBeNil)
@@ -2614,7 +2617,8 @@ func TestBasicAuth(t *testing.T) {
 			defer scm.StopServer()
 
 			registryName := sync.StripRegistryTransport(srcBaseURL)
-			credentialsFile := makeCredentialsFile(fmt.Sprintf(`{"%s":{"username": "test", "password": "test"}}`, registryName))
+			credentialsFile := makeCredentialsFile(fmt.Sprintf(`{"%s":{"username": "%s", "password": "%s"}}`,
+				registryName, username, password))
 
 			defaultValue := false
 			syncRegistryConfig := syncconf.RegistryConfig{
@@ -2654,7 +2658,7 @@ func TestBasicAuth(t *testing.T) {
 			var srcTagsList TagsList
 			var destTagsList TagsList
 
-			resp, _ := srcClient.R().SetBasicAuth("test", "test").Get(srcBaseURL + "/v2/" + testImage + "/tags/list")
+			resp, _ := srcClient.R().SetBasicAuth(username, password).Get(srcBaseURL + "/v2/" + testImage + "/tags/list")
 			So(resp, ShouldNotBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 

@@ -11,7 +11,6 @@ import (
 	"time"
 
 	. "github.com/smartystreets/goconvey/convey"
-	"golang.org/x/crypto/bcrypt"
 
 	cli "zotregistry.io/zot/pkg/cli/server"
 	test "zotregistry.io/zot/pkg/test/common"
@@ -32,14 +31,7 @@ func TestConfigReloader(t *testing.T) {
 		username := "alice"
 		password := "alice"
 
-		hash, err := bcrypt.GenerateFromPassword([]byte(password), 10)
-		if err != nil {
-			panic(err)
-		}
-
-		usernameAndHash := fmt.Sprintf("%s:%s", username, string(hash))
-
-		htpasswdPath := test.MakeHtpasswdFileFromString(usernameAndHash)
+		htpasswdPath := test.MakeHtpasswdFileFromString(test.GetCredString(username, password))
 		defer os.Remove(htpasswdPath)
 
 		defer os.Remove(logFile.Name()) // clean up
