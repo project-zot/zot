@@ -308,7 +308,7 @@ clean:
 	rm -rf pkg/extensions/build
 
 .PHONY: run
-run: binary test
+run: binary
 	./bin/zot-$(OS)-$(ARCH) serve examples/config-test.json
 
 .PHONY: verify-config
