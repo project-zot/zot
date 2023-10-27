@@ -22,22 +22,17 @@ jobs:
       - name: Install dependencies
         run: |
           cd $GITHUB_WORKSPACE
-          sudo apt-get update
-          sudo apt-get install -y apache2-utils openssl
           mkdir -p test/data
           cd test/data
           ../scripts/gen_certs.sh
-          htpasswd -bBn test test123 > htpasswd
       - name: Check for TLS settings
-        continue-on-error: true
         run: |
           cd $GITHUB_WORKSPACE
           make binary
-          bin/zot-linux-amd64 serve examples/config-tls.json &
+          bin/zot-linux-amd64 serve examples/config-tls.json & echo $! > zot.PID
           sleep 5
-          curl -kv --tls-max 1.0 -0  https://localhost:8080/v2/
-          if [[ "$?" -eq 0 ]]; then echo "TLSv1.0 detected"; exit 1; fi
-          curl -kv --tls-max 1.1 -0  https://localhost:8080/v2/
-          if [[ "$?" -eq 0 ]]; then echo "TLSv1.1 detected"; exit 1; fi
-          curl -kv --tls-max 1.2 -0  https://localhost:8080/v2/
-          if [[ "$?" -ne 0 ]]; then echo "TLSv1.2 missing"; exit 1; fi
+          # Check if zot server is running
+          cat /proc/$(cat zot.PID)/status | grep State || exit 1
+
+          # zot server is running: proceed to testing
+          ./test/scripts/tls_scan.sh
