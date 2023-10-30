@@ -4,9 +4,12 @@
 package monitoring_test
 
 import (
+	"context"
+	"fmt"
 	"math/rand"
 	"net/http"
 	"os"
+	"path"
 	"testing"
 	"time"
 
@@ -17,6 +20,8 @@ import (
 	"zotregistry.io/zot/pkg/api/config"
 	extconf "zotregistry.io/zot/pkg/extensions/config"
 	"zotregistry.io/zot/pkg/extensions/monitoring"
+	"zotregistry.io/zot/pkg/scheduler"
+	common "zotregistry.io/zot/pkg/storage/common"
 	test "zotregistry.io/zot/pkg/test/common"
 	. "zotregistry.io/zot/pkg/test/image-utils"
 	ociutils "zotregistry.io/zot/pkg/test/oci-utils"
@@ -410,6 +415,70 @@ func TestMetricsAuthorization(t *testing.T) {
 			So(resp, ShouldNotBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 		})
+	})
+}
+
+func TestPopulateStorageMetrics(t *testing.T) {
+	Convey("Start a scheduler when metrics enabled", t, func() {
+		port := test.GetFreePort()
+		baseURL := test.GetBaseURL(port)
+		conf := config.New()
+		conf.HTTP.Port = port
+
+		rootDir := t.TempDir()
+
+		conf.Storage.RootDirectory = rootDir
+		conf.Extensions = &extconf.ExtensionConfig{}
+		enabled := true
+		conf.Extensions.Metrics = &extconf.MetricsConfig{
+			BaseConfig: extconf.BaseConfig{Enable: &enabled},
+			Prometheus: &extconf.PrometheusConfig{Path: "/metrics"},
+		}
+
+		ctlr := api.NewController(conf)
+		So(ctlr, ShouldNotBeNil)
+
+		cm := test.NewControllerManager(ctlr)
+		cm.StartAndWait(port)
+		defer cm.StopServer()
+
+		// write a couple of images
+		srcStorageCtlr := ociutils.GetDefaultStoreController(rootDir, ctlr.Log)
+		err := WriteImageToFileSystem(CreateDefaultImage(), "alpine", "0.0.1", srcStorageCtlr)
+		So(err, ShouldBeNil)
+		err = WriteImageToFileSystem(CreateDefaultImage(), "busybox", "0.0.1", srcStorageCtlr)
+		So(err, ShouldBeNil)
+
+		sch := scheduler.NewScheduler(conf, ctlr.Log)
+		ctx, cancel := context.WithCancel(context.Background())
+		sch.RunScheduler(ctx)
+
+		generator := &common.StorageMetricsInitGenerator{
+			ImgStore: ctlr.StoreController.DefaultStore,
+			Metrics:  ctlr.Metrics,
+			Log:      ctlr.Log,
+			MaxDelay: 1, // maximum delay between jobs (each job computes repo's storage size)
+		}
+
+		sch.SubmitGenerator(generator, time.Duration(0), scheduler.LowPriority)
+
+		time.Sleep(5 * time.Second)
+		cancel()
+		alpineSize, err := monitoring.GetDirSize(path.Join(rootDir, "alpine"))
+		So(err, ShouldBeNil)
+		busyboxSize, err := monitoring.GetDirSize(path.Join(rootDir, "busybox"))
+		So(err, ShouldBeNil)
+
+		resp, err := resty.R().Get(baseURL + "/metrics")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+		alpineMetric := fmt.Sprintf("zot_repo_storage_bytes{repo=\"alpine\"} %d", alpineSize)
+		busyboxMetric := fmt.Sprintf("zot_repo_storage_bytes{repo=\"busybox\"} %d", busyboxSize)
+		respStr := string(resp.Body())
+		So(respStr, ShouldContainSubstring, alpineMetric)
+		So(respStr, ShouldContainSubstring, busyboxMetric)
 	})
 }
 

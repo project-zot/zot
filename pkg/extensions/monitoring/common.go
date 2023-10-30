@@ -16,7 +16,7 @@ type MetricServer interface {
 	IsEnabled() bool
 }
 
-func getDirSize(path string) (int64, error) {
+func GetDirSize(path string) (int64, error) {
 	var size int64
 
 	err := filepath.Walk(path, func(_ string, info os.FileInfo, err error) error {

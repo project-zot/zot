@@ -486,7 +486,7 @@ func IncUploadCounter(ms MetricServer, repo string) {
 func SetStorageUsage(ms MetricServer, rootDir, repo string) {
 	dir := path.Join(rootDir, repo)
 
-	repoSize, err := getDirSize(dir)
+	repoSize, err := GetDirSize(dir)
 	if err != nil {
 		ms.(*metricServer).log.Error().Err(err).Msg("failed to set storage usage")
 	}
