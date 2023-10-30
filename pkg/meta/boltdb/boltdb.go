@@ -141,21 +141,9 @@ func (bdw *BoltDB) SetRepoReference(repo string, reference string, imageMeta mTy
 			return err
 		}
 
-		repoMetaBlob := repoBuck.Get([]byte(repo))
-
-		protoRepoMeta := &proto_go.RepoMeta{
-			Name:       repo,
-			Tags:       map[string]*proto_go.TagDescriptor{"": {}}, // This is done so Protobuf can initialize a non-nil map
-			Statistics: map[string]*proto_go.DescriptorStatistics{"": {}},
-			Signatures: map[string]*proto_go.ManifestSignatures{"": {Map: map[string]*proto_go.SignaturesInfo{"": {}}}},
-			Referrers:  map[string]*proto_go.ReferrersInfo{"": {}},
-		}
-
-		if len(repoMetaBlob) > 0 {
-			err := proto.Unmarshal(repoMetaBlob, protoRepoMeta)
-			if err != nil {
-				return err
-			}
+		protoRepoMeta, err := getProtoRepoMeta(repo, repoBuck)
+		if err != nil && !errors.Is(err, zerr.ErrRepoNotFound) {
+			return err
 		}
 
 		// 2. Referrers
@@ -215,17 +203,11 @@ func (bdw *BoltDB) SetRepoReference(repo string, reference string, imageMeta mTy
 		}
 
 		// 4. Blobs
-		repoBlobsBytes := repoBlobsBuck.Get([]byte(protoRepoMeta.Name))
+		repoBlobsBytes := repoBlobsBuck.Get([]byte(repo))
 
-		repoBlobs := &proto_go.RepoBlobs{}
-
-		if repoBlobsBytes == nil {
-			repoBlobs.Blobs = map[string]*proto_go.BlobInfo{}
-		} else {
-			err := proto.Unmarshal(repoBlobsBytes, repoBlobs)
-			if err != nil {
-				return err
-			}
+		repoBlobs, err := unmarshalProtoRepoBlobs(repo, repoBlobsBytes)
+		if err != nil {
+			return err
 		}
 
 		protoRepoMeta, repoBlobs, err = common.AddImageMetaToRepoMeta(protoRepoMeta, repoBlobs, reference, imageMeta)
@@ -233,25 +215,95 @@ func (bdw *BoltDB) SetRepoReference(repo string, reference string, imageMeta mTy
 			return err
 		}
 
-		repoBlobsBytes, err = proto.Marshal(repoBlobs)
+		err = setProtoRepoBlobs(repoBlobs, repoBlobsBuck)
 		if err != nil {
 			return err
 		}
 
-		err = repoBlobsBuck.Put([]byte(protoRepoMeta.Name), repoBlobsBytes)
-		if err != nil {
-			return err
-		}
-
-		repoMetaBlob, err = proto.Marshal(protoRepoMeta)
-		if err != nil {
-			return err
-		}
-
-		return repoBuck.Put([]byte(repo), repoMetaBlob)
+		return setProtoRepoMeta(protoRepoMeta, repoBuck)
 	})
 
 	return err
+}
+
+func unmarshalProtoRepoBlobs(repo string, repoBlobsBytes []byte) (*proto_go.RepoBlobs, error) {
+	repoBlobs := &proto_go.RepoBlobs{
+		Name: repo,
+	}
+
+	if len(repoBlobsBytes) > 0 {
+		err := proto.Unmarshal(repoBlobsBytes, repoBlobs)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if repoBlobs.Blobs == nil {
+		repoBlobs.Blobs = map[string]*proto_go.BlobInfo{"": {}}
+	}
+
+	return repoBlobs, nil
+}
+
+func setProtoRepoBlobs(repoBlobs *proto_go.RepoBlobs, repoBlobsBuck *bbolt.Bucket) error {
+	repoBlobsBytes, err := proto.Marshal(repoBlobs)
+	if err != nil {
+		return err
+	}
+
+	return repoBlobsBuck.Put([]byte(repoBlobs.Name), repoBlobsBytes)
+}
+
+func getProtoRepoMeta(repo string, repoMetaBuck *bbolt.Bucket) (*proto_go.RepoMeta, error) {
+	repoMetaBlob := repoMetaBuck.Get([]byte(repo))
+
+	return unmarshalProtoRepoMeta(repo, repoMetaBlob)
+}
+
+// unmarshalProtoRepoMeta will unmarshal the repoMeta blob and initialize nil maps. If the blob is empty
+// an empty initialized object is returned.
+func unmarshalProtoRepoMeta(repo string, repoMetaBlob []byte) (*proto_go.RepoMeta, error) {
+	protoRepoMeta := &proto_go.RepoMeta{
+		Name: repo,
+	}
+
+	if len(repoMetaBlob) > 0 {
+		err := proto.Unmarshal(repoMetaBlob, protoRepoMeta)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if protoRepoMeta.Tags == nil {
+		protoRepoMeta.Tags = map[string]*proto_go.TagDescriptor{"": {}}
+	}
+
+	if protoRepoMeta.Statistics == nil {
+		protoRepoMeta.Statistics = map[string]*proto_go.DescriptorStatistics{"": {}}
+	}
+
+	if protoRepoMeta.Signatures == nil {
+		protoRepoMeta.Signatures = map[string]*proto_go.ManifestSignatures{"": {}}
+	}
+
+	if protoRepoMeta.Referrers == nil {
+		protoRepoMeta.Referrers = map[string]*proto_go.ReferrersInfo{"": {}}
+	}
+
+	if len(repoMetaBlob) == 0 {
+		return protoRepoMeta, zerr.ErrRepoNotFound
+	}
+
+	return protoRepoMeta, nil
+}
+
+func setProtoRepoMeta(repoMeta *proto_go.RepoMeta, repoBuck *bbolt.Bucket) error {
+	repoMetaBlob, err := proto.Marshal(repoMeta)
+	if err != nil {
+		return err
+	}
+
+	return repoBuck.Put([]byte(repoMeta.Name), repoMetaBlob)
 }
 
 func (bdw *BoltDB) FilterImageMeta(ctx context.Context, digests []string,
@@ -262,7 +314,7 @@ func (bdw *BoltDB) FilterImageMeta(ctx context.Context, digests []string,
 		imageBuck := transaction.Bucket([]byte(ImageMetaBuck))
 
 		for _, digest := range digests {
-			protoImageMeta, err := fetchProtoImageMeta(imageBuck, digest)
+			protoImageMeta, err := getProtoImageMeta(imageBuck, digest)
 			if err != nil {
 				return err
 			}
@@ -271,7 +323,7 @@ func (bdw *BoltDB) FilterImageMeta(ctx context.Context, digests []string,
 				manifestDataList := make([]*proto_go.ManifestMeta, 0, len(protoImageMeta.Index.Index.Manifests))
 
 				for _, manifest := range protoImageMeta.Index.Index.Manifests {
-					imageManifestData, err := fetchProtoImageMeta(imageBuck, manifest.Digest)
+					imageManifestData, err := getProtoImageMeta(imageBuck, manifest.Digest)
 					if err != nil {
 						return err
 					}
@@ -314,9 +366,7 @@ func (bdw *BoltDB) SearchRepos(ctx context.Context, searchText string,
 				continue
 			}
 
-			var protoRepoMeta proto_go.RepoMeta
-
-			err := proto.Unmarshal(repoMetaBlob, &protoRepoMeta)
+			protoRepoMeta, err := unmarshalProtoRepoMeta(string(repoName), repoMetaBlob)
 			if err != nil {
 				return err
 			}
@@ -327,7 +377,7 @@ func (bdw *BoltDB) SearchRepos(ctx context.Context, searchText string,
 			protoRepoMeta.IsStarred = zcommon.Contains(userStars, protoRepoMeta.Name)
 			protoRepoMeta.IsBookmarked = zcommon.Contains(userBookmarks, protoRepoMeta.Name)
 
-			repos = append(repos, mConvert.GetRepoMeta(&protoRepoMeta))
+			repos = append(repos, mConvert.GetRepoMeta(protoRepoMeta))
 		}
 
 		return nil
@@ -336,7 +386,7 @@ func (bdw *BoltDB) SearchRepos(ctx context.Context, searchText string,
 	return repos, err
 }
 
-func fetchProtoImageMeta(imageBuck *bbolt.Bucket, digest string) (*proto_go.ImageMeta, error) {
+func getProtoImageMeta(imageBuck *bbolt.Bucket, digest string) (*proto_go.ImageMeta, error) {
 	imageMetaBlob := imageBuck.Get([]byte(digest))
 
 	if len(imageMetaBlob) == 0 {
@@ -381,9 +431,7 @@ func (bdw *BoltDB) SearchTags(ctx context.Context, searchText string,
 			return err
 		}
 
-		protoRepoMeta := &proto_go.RepoMeta{}
-
-		err := proto.Unmarshal(repoMetaBlob, protoRepoMeta)
+		protoRepoMeta, err := unmarshalProtoRepoMeta(string(repoName), repoMetaBlob)
 		if err != nil {
 			return err
 		}
@@ -404,7 +452,7 @@ func (bdw *BoltDB) SearchTags(ctx context.Context, searchText string,
 			case ispec.MediaTypeImageManifest:
 				manifestDigest := descriptor.Digest
 
-				imageManifestData, err := fetchProtoImageMeta(imageBuck, manifestDigest)
+				imageManifestData, err := getProtoImageMeta(imageBuck, manifestDigest)
 				if err != nil {
 					return fmt.Errorf("metadb: error fetching manifest meta for manifest with digest %s %w",
 						manifestDigest, err)
@@ -414,7 +462,7 @@ func (bdw *BoltDB) SearchTags(ctx context.Context, searchText string,
 			case ispec.MediaTypeImageIndex:
 				indexDigest := descriptor.Digest
 
-				imageIndexData, err := fetchProtoImageMeta(imageBuck, indexDigest)
+				imageIndexData, err := getProtoImageMeta(imageBuck, indexDigest)
 				if err != nil {
 					return fmt.Errorf("metadb: error fetching manifest meta for manifest with digest %s %w",
 						indexDigest, err)
@@ -423,7 +471,7 @@ func (bdw *BoltDB) SearchTags(ctx context.Context, searchText string,
 				manifestDataList := make([]*proto_go.ManifestMeta, 0, len(imageIndexData.Index.Index.Manifests))
 
 				for _, manifest := range imageIndexData.Index.Index.Manifests {
-					imageManifestData, err := fetchProtoImageMeta(imageBuck, manifest.Digest)
+					imageManifestData, err := getProtoImageMeta(imageBuck, manifest.Digest)
 					if err != nil {
 						return err
 					}
@@ -471,9 +519,7 @@ func (bdw *BoltDB) FilterTags(ctx context.Context, filterRepoTag mTypes.FilterRe
 				continue
 			}
 
-			protoRepoMeta := &proto_go.RepoMeta{}
-
-			err := proto.Unmarshal(repoMetaBlob, protoRepoMeta)
+			protoRepoMeta, err := unmarshalProtoRepoMeta(string(repoName), repoMetaBlob)
 			if err != nil {
 				viewError = errors.Join(viewError, err)
 
@@ -494,7 +540,7 @@ func (bdw *BoltDB) FilterTags(ctx context.Context, filterRepoTag mTypes.FilterRe
 				case ispec.MediaTypeImageManifest:
 					manifestDigest := descriptor.Digest
 
-					imageManifestData, err := fetchProtoImageMeta(imageMetaBuck, manifestDigest)
+					imageManifestData, err := getProtoImageMeta(imageMetaBuck, manifestDigest)
 					if err != nil {
 						viewError = errors.Join(viewError, err)
 
@@ -509,7 +555,7 @@ func (bdw *BoltDB) FilterTags(ctx context.Context, filterRepoTag mTypes.FilterRe
 				case ispec.MediaTypeImageIndex:
 					indexDigest := descriptor.Digest
 
-					imageIndexData, err := fetchProtoImageMeta(imageMetaBuck, indexDigest)
+					imageIndexData, err := getProtoImageMeta(imageMetaBuck, indexDigest)
 					if err != nil {
 						viewError = errors.Join(viewError, err)
 
@@ -521,7 +567,7 @@ func (bdw *BoltDB) FilterTags(ctx context.Context, filterRepoTag mTypes.FilterRe
 					for _, manifest := range imageIndexData.Index.Index.Manifests {
 						manifestDigest := manifest.Digest
 
-						imageManifestData, err := fetchProtoImageMeta(imageMetaBuck, manifestDigest)
+						imageManifestData, err := getProtoImageMeta(imageMetaBuck, manifestDigest)
 						if err != nil {
 							viewError = errors.Join(viewError, err)
 
@@ -576,9 +622,7 @@ func (bdw *BoltDB) FilterRepos(ctx context.Context, acceptName mTypes.FilterRepo
 				continue
 			}
 
-			repoMeta := proto_go.RepoMeta{}
-
-			err := proto.Unmarshal(repoMetaBlob, &repoMeta)
+			repoMeta, err := unmarshalProtoRepoMeta(string(repoName), repoMetaBlob)
 			if err != nil {
 				return err
 			}
@@ -586,7 +630,7 @@ func (bdw *BoltDB) FilterRepos(ctx context.Context, acceptName mTypes.FilterRepo
 			repoMeta.IsBookmarked = zcommon.Contains(userBookmarks, repoMeta.Name)
 			repoMeta.IsStarred = zcommon.Contains(userStars, repoMeta.Name)
 
-			fullRepoMeta := mConvert.GetRepoMeta(&repoMeta)
+			fullRepoMeta := mConvert.GetRepoMeta(repoMeta)
 
 			if filter(fullRepoMeta) {
 				repos = append(repos, fullRepoMeta)
@@ -603,7 +647,7 @@ func (bdw *BoltDB) FilterRepos(ctx context.Context, acceptName mTypes.FilterRepo
 }
 
 func (bdw *BoltDB) GetRepoMeta(ctx context.Context, repo string) (mTypes.RepoMeta, error) {
-	var protoRepoMeta proto_go.RepoMeta
+	var protoRepoMeta *proto_go.RepoMeta
 
 	err := bdw.DB.View(func(tx *bbolt.Tx) error {
 		buck := tx.Bucket([]byte(RepoMetaBuck))
@@ -612,13 +656,9 @@ func (bdw *BoltDB) GetRepoMeta(ctx context.Context, repo string) (mTypes.RepoMet
 
 		repoMetaBlob := buck.Get([]byte(repo))
 
-		// object not found
-		if repoMetaBlob == nil {
-			return zerr.ErrRepoMetaNotFound
-		}
+		var err error
 
-		// object found
-		err := proto.Unmarshal(repoMetaBlob, &protoRepoMeta)
+		protoRepoMeta, err = unmarshalProtoRepoMeta(repo, repoMetaBlob)
 		if err != nil {
 			return err
 		}
@@ -630,7 +670,7 @@ func (bdw *BoltDB) GetRepoMeta(ctx context.Context, repo string) (mTypes.RepoMet
 		return nil
 	})
 
-	return mConvert.GetRepoMeta(&protoRepoMeta), err
+	return mConvert.GetRepoMeta(protoRepoMeta), err
 }
 
 func (bdw *BoltDB) GetFullImageMeta(ctx context.Context, repo string, tag string) (mTypes.FullImageMeta, error) {
@@ -650,8 +690,9 @@ func (bdw *BoltDB) GetFullImageMeta(ctx context.Context, repo string, tag string
 			return zerr.ErrRepoMetaNotFound
 		}
 
-		// object found
-		err := proto.Unmarshal(repoMetaBlob, protoRepoMeta)
+		var err error
+
+		protoRepoMeta, err = unmarshalProtoRepoMeta(repo, repoMetaBlob)
 		if err != nil {
 			return err
 		}
@@ -665,7 +706,7 @@ func (bdw *BoltDB) GetFullImageMeta(ctx context.Context, repo string, tag string
 			return zerr.ErrImageMetaNotFound
 		}
 
-		protoImageMeta, err = fetchProtoImageMeta(imageBuck, descriptor.Digest)
+		protoImageMeta, err = getProtoImageMeta(imageBuck, descriptor.Digest)
 		if err != nil {
 			return err
 		}
@@ -674,7 +715,7 @@ func (bdw *BoltDB) GetFullImageMeta(ctx context.Context, repo string, tag string
 			manifestDataList := make([]*proto_go.ManifestMeta, 0, len(protoImageMeta.Index.Index.Manifests))
 
 			for _, manifest := range protoImageMeta.Index.Index.Manifests {
-				imageManifestData, err := fetchProtoImageMeta(imageBuck, manifest.Digest)
+				imageManifestData, err := getProtoImageMeta(imageBuck, manifest.Digest)
 				if err != nil {
 					return err
 				}
@@ -697,7 +738,7 @@ func (bdw *BoltDB) GetImageMeta(digest godigest.Digest) (mTypes.ImageMeta, error
 	err := bdw.DB.View(func(tx *bbolt.Tx) error {
 		imageBuck := tx.Bucket([]byte(ImageMetaBuck))
 
-		protoImageMeta, err := fetchProtoImageMeta(imageBuck, digest.String())
+		protoImageMeta, err := getProtoImageMeta(imageBuck, digest.String())
 		if err != nil {
 			return err
 		}
@@ -706,7 +747,7 @@ func (bdw *BoltDB) GetImageMeta(digest godigest.Digest) (mTypes.ImageMeta, error
 			manifestDataList := make([]*proto_go.ManifestMeta, 0, len(protoImageMeta.Index.Index.Manifests))
 
 			for _, manifest := range protoImageMeta.Index.Index.Manifests {
-				imageManifestData, err := fetchProtoImageMeta(imageBuck, manifest.Digest)
+				imageManifestData, err := getProtoImageMeta(imageBuck, manifest.Digest)
 				if err != nil {
 					return err
 				}
@@ -739,16 +780,14 @@ func (bdw *BoltDB) GetMultipleRepoMeta(ctx context.Context, filter func(repoMeta
 				continue
 			}
 
-			protoRepoMeta := proto_go.RepoMeta{}
-
-			err := proto.Unmarshal(repoMetaBlob, &protoRepoMeta)
+			protoRepoMeta, err := unmarshalProtoRepoMeta(string(repoName), repoMetaBlob)
 			if err != nil {
 				return err
 			}
 
 			delete(protoRepoMeta.Tags, "")
 
-			repoMeta := mConvert.GetRepoMeta(&protoRepoMeta)
+			repoMeta := mConvert.GetRepoMeta(protoRepoMeta)
 
 			if filter(repoMeta) {
 				foundRepos = append(foundRepos, repoMeta)
@@ -765,9 +804,9 @@ func (bdw *BoltDB) AddManifestSignature(repo string, signedManifestDigest godige
 	sygMeta mTypes.SignatureMetadata,
 ) error {
 	err := bdw.DB.Update(func(tx *bbolt.Tx) error {
-		buck := tx.Bucket([]byte(RepoMetaBuck))
+		repoMetaBuck := tx.Bucket([]byte(RepoMetaBuck))
 
-		repoMetaBlob := buck.Get([]byte(repo))
+		repoMetaBlob := repoMetaBuck.Get([]byte(repo))
 
 		if len(repoMetaBlob) == 0 {
 			var err error
@@ -798,12 +837,10 @@ func (bdw *BoltDB) AddManifestSignature(repo string, signedManifestDigest godige
 				return err
 			}
 
-			return buck.Put([]byte(repo), repoMetaBlob)
+			return repoMetaBuck.Put([]byte(repo), repoMetaBlob)
 		}
 
-		protoRepoMeta := &proto_go.RepoMeta{}
-
-		err := proto.Unmarshal(repoMetaBlob, protoRepoMeta)
+		protoRepoMeta, err := unmarshalProtoRepoMeta(repo, repoMetaBlob)
 		if err != nil {
 			return err
 		}
@@ -840,12 +877,7 @@ func (bdw *BoltDB) AddManifestSignature(repo string, signedManifestDigest godige
 		manifestSignatures.Map[sygMeta.SignatureType] = signatureSlice
 		protoRepoMeta.Signatures[signedManifestDigest.String()] = manifestSignatures
 
-		repoMetaBlob, err = proto.Marshal(protoRepoMeta)
-		if err != nil {
-			return err
-		}
-
-		return buck.Put([]byte(repo), repoMetaBlob)
+		return setProtoRepoMeta(protoRepoMeta, repoMetaBuck)
 	})
 
 	return err
@@ -855,16 +887,14 @@ func (bdw *BoltDB) DeleteSignature(repo string, signedManifestDigest godigest.Di
 	sigMeta mTypes.SignatureMetadata,
 ) error {
 	err := bdw.DB.Update(func(tx *bbolt.Tx) error {
-		buck := tx.Bucket([]byte(RepoMetaBuck))
+		repoMetaBuck := tx.Bucket([]byte(RepoMetaBuck))
 
-		repoMetaBlob := buck.Get([]byte(repo))
+		repoMetaBlob := repoMetaBuck.Get([]byte(repo))
 		if repoMetaBlob == nil {
 			return zerr.ErrManifestMetaNotFound
 		}
 
-		protoRepoMeta := proto_go.RepoMeta{}
-
-		err := proto.Unmarshal(repoMetaBlob, &protoRepoMeta)
+		protoRepoMeta, err := unmarshalProtoRepoMeta(repo, repoMetaBlob)
 		if err != nil {
 			return err
 		}
@@ -888,12 +918,7 @@ func (bdw *BoltDB) DeleteSignature(repo string, signedManifestDigest godigest.Di
 
 		protoRepoMeta.Signatures[signedManifestDigest.String()] = manifestSignatures
 
-		repoMetaBlob, err = proto.Marshal(&protoRepoMeta)
-		if err != nil {
-			return err
-		}
-
-		return buck.Put([]byte(repo), repoMetaBlob)
+		return setProtoRepoMeta(protoRepoMeta, repoMetaBuck)
 	})
 
 	return err
@@ -901,28 +926,21 @@ func (bdw *BoltDB) DeleteSignature(repo string, signedManifestDigest godigest.Di
 
 func (bdw *BoltDB) IncrementRepoStars(repo string) error {
 	err := bdw.DB.Update(func(tx *bbolt.Tx) error {
-		buck := tx.Bucket([]byte(RepoMetaBuck))
+		repoMetaBuck := tx.Bucket([]byte(RepoMetaBuck))
 
-		repoMetaBlob := buck.Get([]byte(repo))
+		repoMetaBlob := repoMetaBuck.Get([]byte(repo))
 		if repoMetaBlob == nil {
 			return zerr.ErrRepoMetaNotFound
 		}
 
-		var repoMeta proto_go.RepoMeta
-
-		err := proto.Unmarshal(repoMetaBlob, &repoMeta)
+		protoRepoMeta, err := unmarshalProtoRepoMeta(repo, repoMetaBlob)
 		if err != nil {
 			return err
 		}
 
-		repoMeta.Stars++
+		protoRepoMeta.Stars++
 
-		repoMetaBlob, err = proto.Marshal(&repoMeta)
-		if err != nil {
-			return err
-		}
-
-		return buck.Put([]byte(repo), repoMetaBlob)
+		return setProtoRepoMeta(protoRepoMeta, repoMetaBuck)
 	})
 
 	return err
@@ -930,32 +948,25 @@ func (bdw *BoltDB) IncrementRepoStars(repo string) error {
 
 func (bdw *BoltDB) DecrementRepoStars(repo string) error {
 	err := bdw.DB.Update(func(tx *bbolt.Tx) error {
-		buck := tx.Bucket([]byte(RepoMetaBuck))
+		repoMetaBuck := tx.Bucket([]byte(RepoMetaBuck))
 
-		repoMetaBlob := buck.Get([]byte(repo))
+		repoMetaBlob := repoMetaBuck.Get([]byte(repo))
 		if repoMetaBlob == nil {
 			return zerr.ErrRepoMetaNotFound
 		}
 
-		var repoMeta proto_go.RepoMeta
-
-		err := proto.Unmarshal(repoMetaBlob, &repoMeta)
+		protoRepoMeta, err := unmarshalProtoRepoMeta(repo, repoMetaBlob)
 		if err != nil {
 			return err
 		}
 
-		if repoMeta.Stars == 0 {
+		if protoRepoMeta.Stars == 0 {
 			return nil
 		}
 
-		repoMeta.Stars--
+		protoRepoMeta.Stars--
 
-		repoMetaBlob, err = proto.Marshal(&repoMeta)
-		if err != nil {
-			return err
-		}
-
-		return buck.Put([]byte(repo), repoMetaBlob)
+		return setProtoRepoMeta(protoRepoMeta, repoMetaBuck)
 	})
 
 	return err
@@ -984,14 +995,8 @@ func (bdw *BoltDB) ResetRepoReferences(repo string) error {
 
 		repoMetaBlob := buck.Get([]byte(repo))
 
-		if repoMetaBlob == nil {
-			return nil
-		}
-
-		protoRepoMeta := &proto_go.RepoMeta{}
-
-		err := proto.Unmarshal(repoMetaBlob, protoRepoMeta)
-		if err != nil {
+		protoRepoMeta, err := unmarshalProtoRepoMeta(repo, repoMetaBlob)
+		if err != nil && !errors.Is(err, zerr.ErrRepoNotFound) {
 			return err
 		}
 
@@ -1021,18 +1026,13 @@ func (bdw *BoltDB) GetReferrersInfo(repo string, referredDigest godigest.Digest,
 		buck := tx.Bucket([]byte(RepoMetaBuck))
 
 		repoMetaBlob := buck.Get([]byte(repo))
-		if len(repoMetaBlob) == 0 {
-			return zerr.ErrRepoMetaNotFound
-		}
 
-		var repoMeta proto_go.RepoMeta
-
-		err := proto.Unmarshal(repoMetaBlob, &repoMeta)
+		protoRepoMeta, err := unmarshalProtoRepoMeta(repo, repoMetaBlob)
 		if err != nil {
 			return err
 		}
 
-		referrersInfo := repoMeta.Referrers[referredDigest.String()].List
+		referrersInfo := protoRepoMeta.Referrers[referredDigest.String()].List
 
 		for i := range referrersInfo {
 			if !common.MatchesArtifactTypes(referrersInfo[i].ArtifactType, artifactTypes) {
@@ -1056,16 +1056,14 @@ func (bdw *BoltDB) GetReferrersInfo(repo string, referredDigest godigest.Digest,
 
 func (bdw *BoltDB) IncrementImageDownloads(repo string, reference string) error {
 	err := bdw.DB.Update(func(tx *bbolt.Tx) error {
-		buck := tx.Bucket([]byte(RepoMetaBuck))
+		repoMetaBuck := tx.Bucket([]byte(RepoMetaBuck))
 
-		repoMetaBlob := buck.Get([]byte(repo))
+		repoMetaBlob := repoMetaBuck.Get([]byte(repo))
 		if repoMetaBlob == nil {
 			return zerr.ErrRepoMetaNotFound
 		}
 
-		var repoMeta proto_go.RepoMeta
-
-		err := proto.Unmarshal(repoMetaBlob, &repoMeta)
+		protoRepoMeta, err := unmarshalProtoRepoMeta(repo, repoMetaBlob)
 		if err != nil {
 			return err
 		}
@@ -1074,7 +1072,7 @@ func (bdw *BoltDB) IncrementImageDownloads(repo string, reference string) error 
 
 		if !common.ReferenceIsDigest(reference) {
 			// search digest for tag
-			descriptor, found := repoMeta.Tags[reference]
+			descriptor, found := protoRepoMeta.Tags[reference]
 
 			if !found {
 				return zerr.ErrManifestMetaNotFound
@@ -1083,20 +1081,15 @@ func (bdw *BoltDB) IncrementImageDownloads(repo string, reference string) error 
 			manifestDigest = descriptor.Digest
 		}
 
-		manifestStatistics, ok := repoMeta.Statistics[manifestDigest]
+		manifestStatistics, ok := protoRepoMeta.Statistics[manifestDigest]
 		if !ok {
 			return zerr.ErrManifestMetaNotFound
 		}
 
 		manifestStatistics.DownloadCount++
-		repoMeta.Statistics[manifestDigest] = manifestStatistics
+		protoRepoMeta.Statistics[manifestDigest] = manifestStatistics
 
-		repoMetaBlob, err = proto.Marshal(&repoMeta)
-		if err != nil {
-			return err
-		}
-
-		return buck.Put([]byte(repo), repoMetaBlob)
+		return setProtoRepoMeta(protoRepoMeta, repoMetaBuck)
 	})
 
 	return err
@@ -1134,9 +1127,7 @@ func (bdw *BoltDB) UpdateSignaturesValidity(repo string, manifestDigest godigest
 			return zerr.ErrRepoMetaNotFound
 		}
 
-		protoRepoMeta := proto_go.RepoMeta{}
-
-		err = proto.Unmarshal(repoMetaBlob, &protoRepoMeta)
+		protoRepoMeta, err := unmarshalProtoRepoMeta(repo, repoMetaBlob)
 		if err != nil {
 			return err
 		}
@@ -1175,12 +1166,7 @@ func (bdw *BoltDB) UpdateSignaturesValidity(repo string, manifestDigest godigest
 
 		protoRepoMeta.Signatures[manifestDigest.String()] = &manifestSignatures
 
-		repoMetaBlob, err = proto.Marshal(&protoRepoMeta)
-		if err != nil {
-			return err
-		}
-
-		return repoBuck.Put([]byte(repo), repoMetaBlob)
+		return setProtoRepoMeta(protoRepoMeta, repoBuck)
 	})
 
 	return err
@@ -1188,23 +1174,20 @@ func (bdw *BoltDB) UpdateSignaturesValidity(repo string, manifestDigest godigest
 
 func (bdw *BoltDB) RemoveRepoReference(repo, reference string, manifestDigest godigest.Digest) error {
 	err := bdw.DB.Update(func(tx *bbolt.Tx) error {
-		buck := tx.Bucket([]byte(RepoMetaBuck))
+		repoMetaBuck := tx.Bucket([]byte(RepoMetaBuck))
 		imageMetaBuck := tx.Bucket([]byte(ImageMetaBuck))
 		repoBlobsBuck := tx.Bucket([]byte(RepoBlobsBuck))
 
-		repoMetaBlob := buck.Get([]byte(repo))
-		if repoMetaBlob == nil {
-			return nil
-		}
-
-		repoMeta := &proto_go.RepoMeta{}
-
-		err := proto.Unmarshal(repoMetaBlob, repoMeta)
+		protoRepoMeta, err := getProtoRepoMeta(repo, repoMetaBuck)
 		if err != nil {
+			if errors.Is(err, zerr.ErrRepoNotFound) {
+				return nil
+			}
+
 			return err
 		}
 
-		imageMeta, err := fetchProtoImageMeta(imageMetaBuck, manifestDigest.String())
+		protoImageMeta, err := getProtoImageMeta(imageMetaBuck, manifestDigest.String())
 		if err != nil {
 			if errors.Is(err, zerr.ErrImageMetaNotFound) {
 				return nil
@@ -1214,12 +1197,12 @@ func (bdw *BoltDB) RemoveRepoReference(repo, reference string, manifestDigest go
 		}
 
 		// Remove Referrers
-		if subject := mConvert.GetImageSubject(imageMeta); subject != nil {
+		if subject := mConvert.GetImageSubject(protoImageMeta); subject != nil {
 			referredDigest := subject.Digest.String()
 			refInfo := &proto_go.ReferrersInfo{}
 
-			if repoMeta.Referrers[referredDigest] != nil {
-				refInfo = repoMeta.Referrers[referredDigest]
+			if protoRepoMeta.Referrers[referredDigest] != nil {
+				refInfo = protoRepoMeta.Referrers[referredDigest]
 			}
 
 			referrers := refInfo.List
@@ -1238,16 +1221,16 @@ func (bdw *BoltDB) RemoveRepoReference(repo, reference string, manifestDigest go
 
 			refInfo.List = referrers
 
-			repoMeta.Referrers[referredDigest] = refInfo
+			protoRepoMeta.Referrers[referredDigest] = refInfo
 		}
 
 		if !common.ReferenceIsDigest(reference) {
-			delete(repoMeta.Tags, reference)
+			delete(protoRepoMeta.Tags, reference)
 		} else {
 			// remove all tags pointing to this digest
-			for tag, desc := range repoMeta.Tags {
+			for tag, desc := range protoRepoMeta.Tags {
 				if desc.Digest == reference {
-					delete(repoMeta.Tags, tag)
+					delete(protoRepoMeta.Tags, tag)
 				}
 			}
 		}
@@ -1255,32 +1238,26 @@ func (bdw *BoltDB) RemoveRepoReference(repo, reference string, manifestDigest go
 		/* try to find at least one tag pointing to manifestDigest
 		if not found then we can also remove everything related to this digest */
 		var foundTag bool
-		for _, desc := range repoMeta.Tags {
+		for _, desc := range protoRepoMeta.Tags {
 			if desc.Digest == manifestDigest.String() {
 				foundTag = true
 			}
 		}
 
 		if !foundTag {
-			delete(repoMeta.Statistics, manifestDigest.String())
-			delete(repoMeta.Signatures, manifestDigest.String())
-			delete(repoMeta.Referrers, manifestDigest.String())
+			delete(protoRepoMeta.Statistics, manifestDigest.String())
+			delete(protoRepoMeta.Signatures, manifestDigest.String())
+			delete(protoRepoMeta.Referrers, manifestDigest.String())
 		}
 
-		repoBlobsBytes := repoBlobsBuck.Get([]byte(repoMeta.Name))
+		repoBlobsBytes := repoBlobsBuck.Get([]byte(protoRepoMeta.Name))
 
-		repoBlobs := &proto_go.RepoBlobs{}
-
-		if repoBlobsBytes == nil {
-			repoBlobs.Blobs = map[string]*proto_go.BlobInfo{}
-		} else {
-			err := proto.Unmarshal(repoBlobsBytes, repoBlobs)
-			if err != nil {
-				return err
-			}
+		repoBlobs, err := unmarshalProtoRepoBlobs(repo, repoBlobsBytes)
+		if err != nil {
+			return err
 		}
 
-		repoMeta, repoBlobs, err = common.RemoveImageFromRepoMeta(repoMeta, repoBlobs, reference)
+		protoRepoMeta, repoBlobs, err = common.RemoveImageFromRepoMeta(protoRepoMeta, repoBlobs, reference)
 		if err != nil {
 			return err
 		}
@@ -1290,17 +1267,12 @@ func (bdw *BoltDB) RemoveRepoReference(repo, reference string, manifestDigest go
 			return err
 		}
 
-		err = repoBlobsBuck.Put([]byte(repoMeta.Name), repoBlobsBytes)
+		err = repoBlobsBuck.Put([]byte(protoRepoMeta.Name), repoBlobsBytes)
 		if err != nil {
 			return err
 		}
 
-		repoMetaBlob, err = proto.Marshal(repoMeta)
-		if err != nil {
-			return err
-		}
-
-		return buck.Put([]byte(repo), repoMetaBlob)
+		return setProtoRepoMeta(protoRepoMeta, repoMetaBuck)
 	})
 
 	return err
@@ -1358,31 +1330,19 @@ func (bdw *BoltDB) ToggleStarRepo(ctx context.Context, repo string) (mTypes.Togg
 			return zerr.ErrRepoMetaNotFound
 		}
 
-		repoMeta := &proto_go.RepoMeta{}
-
-		err = proto.Unmarshal(repoMetaBlob, repoMeta)
+		protoRepoMeta, err := unmarshalProtoRepoMeta(repo, repoMetaBlob)
 		if err != nil {
 			return err
 		}
 
 		switch res {
 		case mTypes.Added:
-			repoMeta.Stars++
+			protoRepoMeta.Stars++
 		case mTypes.Removed:
-			repoMeta.Stars--
+			protoRepoMeta.Stars--
 		}
 
-		repoMetaBlob, err = proto.Marshal(repoMeta)
-		if err != nil {
-			return err
-		}
-
-		err = repoBuck.Put([]byte(repo), repoMetaBlob)
-		if err != nil {
-			return err
-		}
-
-		return nil
+		return setProtoRepoMeta(protoRepoMeta, repoBuck)
 	}); err != nil {
 		return mTypes.NotChanged, err
 	}

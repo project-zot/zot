@@ -208,25 +208,45 @@ func (dwr *DynamoDB) getProtoRepoMeta(ctx context.Context, repo string) (*proto_
 		return nil, err
 	}
 
-	if resp.Item == nil {
-		return nil, zerr.ErrRepoMetaNotFound
+	protoRepoMeta := &proto_go.RepoMeta{
+		Name: repo,
 	}
 
 	blob := []byte{}
 
-	err = attributevalue.Unmarshal(resp.Item["RepoMetadata"], &blob)
-	if err != nil {
-		return nil, err
+	if resp.Item != nil {
+		err = attributevalue.Unmarshal(resp.Item["RepoMetadata"], &blob)
+		if err != nil {
+			return nil, err
+		}
+
+		err = proto.Unmarshal(blob, protoRepoMeta)
+		if err != nil {
+			return nil, err
+		}
 	}
 
-	repoMeta := &proto_go.RepoMeta{}
-
-	err = proto.Unmarshal(blob, repoMeta)
-	if err != nil {
-		return nil, err
+	if protoRepoMeta.Tags == nil {
+		protoRepoMeta.Tags = map[string]*proto_go.TagDescriptor{"": {}}
 	}
 
-	return repoMeta, nil
+	if protoRepoMeta.Statistics == nil {
+		protoRepoMeta.Statistics = map[string]*proto_go.DescriptorStatistics{"": {}}
+	}
+
+	if protoRepoMeta.Signatures == nil {
+		protoRepoMeta.Signatures = map[string]*proto_go.ManifestSignatures{"": {}}
+	}
+
+	if protoRepoMeta.Referrers == nil {
+		protoRepoMeta.Referrers = map[string]*proto_go.ReferrersInfo{"": {}}
+	}
+
+	if len(blob) == 0 || resp.Item == nil {
+		return protoRepoMeta, zerr.ErrRepoMetaNotFound
+	}
+
+	return protoRepoMeta, nil
 }
 
 func (dwr *DynamoDB) SetRepoReference(repo string, reference string, imageMeta mTypes.ImageMeta) error {
@@ -243,18 +263,8 @@ func (dwr *DynamoDB) SetRepoReference(repo string, reference string, imageMeta m
 	}
 
 	repoMeta, err := dwr.getProtoRepoMeta(context.Background(), repo)
-	if err != nil {
-		if !errors.Is(err, zerr.ErrRepoMetaNotFound) {
-			return err
-		}
-
-		repoMeta = &proto_go.RepoMeta{
-			Name:       repo,
-			Tags:       map[string]*proto_go.TagDescriptor{"": {}},
-			Statistics: map[string]*proto_go.DescriptorStatistics{"": {}},
-			Signatures: map[string]*proto_go.ManifestSignatures{"": {Map: map[string]*proto_go.SignaturesInfo{"": {}}}},
-			Referrers:  map[string]*proto_go.ReferrersInfo{"": {}},
-		}
+	if err != nil && !errors.Is(err, zerr.ErrRepoMetaNotFound) {
+		return err
 	}
 
 	// 2. Referrers
@@ -314,7 +324,7 @@ func (dwr *DynamoDB) SetRepoReference(repo string, reference string, imageMeta m
 	}
 
 	// 4. Blobs
-	repoBlobs, err := dwr.getRepoBlobsInfo(repo)
+	repoBlobs, err := dwr.getProtoRepoBlobs(repo)
 	if err != nil {
 		return err
 	}
@@ -332,7 +342,7 @@ func (dwr *DynamoDB) SetRepoReference(repo string, reference string, imageMeta m
 	return dwr.setProtoRepoMeta(repo, repoMeta)
 }
 
-func (dwr *DynamoDB) getRepoBlobsInfo(repo string) (*proto_go.RepoBlobs, error) {
+func (dwr *DynamoDB) getProtoRepoBlobs(repo string) (*proto_go.RepoBlobs, error) {
 	resp, err := dwr.Client.GetItem(context.Background(), &dynamodb.GetItemInput{
 		TableName: aws.String(dwr.RepoBlobsTablename),
 		Key: map[string]types.AttributeValue{
@@ -343,25 +353,28 @@ func (dwr *DynamoDB) getRepoBlobsInfo(repo string) (*proto_go.RepoBlobs, error) 
 		return nil, err
 	}
 
-	if resp.Item == nil {
-		return &proto_go.RepoBlobs{Name: repo, Blobs: map[string]*proto_go.BlobInfo{"": {}}}, nil
+	repoBlobs := &proto_go.RepoBlobs{
+		Name: repo,
 	}
 
 	repoBlobsBytes := []byte{}
 
-	err = attributevalue.Unmarshal(resp.Item["RepoBlobsInfo"], &repoBlobsBytes)
-	if err != nil {
-		return nil, err
-	}
-
-	repoBlobs := &proto_go.RepoBlobs{}
-	if repoBlobsBytes == nil {
-		repoBlobs.Blobs = map[string]*proto_go.BlobInfo{}
-	} else {
-		err := proto.Unmarshal(repoBlobsBytes, repoBlobs)
+	if resp.Item != nil {
+		err = attributevalue.Unmarshal(resp.Item["RepoBlobsInfo"], &repoBlobsBytes)
 		if err != nil {
 			return nil, err
 		}
+
+		if len(repoBlobsBytes) > 0 {
+			err := proto.Unmarshal(repoBlobsBytes, repoBlobs)
+			if err != nil {
+				return nil, err
+			}
+		}
+	}
+
+	if repoBlobs.Blobs == nil {
+		repoBlobs.Blobs = map[string]*proto_go.BlobInfo{"": {}}
 	}
 
 	return repoBlobs, nil
@@ -1243,7 +1256,7 @@ func (dwr *DynamoDB) RemoveRepoReference(repo, reference string, manifestDigest 
 		delete(protoRepoMeta.Referrers, manifestDigest.String())
 	}
 
-	repoBlobsInfo, err := dwr.getRepoBlobsInfo(repo)
+	repoBlobsInfo, err := dwr.getProtoRepoBlobs(repo)
 	if err != nil {
 		return err
 	}
