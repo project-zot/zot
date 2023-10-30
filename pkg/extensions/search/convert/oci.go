@@ -9,19 +9,6 @@ import (
 	"zotregistry.io/zot/pkg/extensions/search/gql_generated"
 )
 
-// updateRepoBlobsMap adds all the image blobs and their respective size to the repo blobs map
-// and returnes the total size of the image.
-func updateRepoBlobsMap(imageBlobs map[string]int64, repoBlob2Size map[string]int64) int64 {
-	imgSize := int64(0)
-
-	for digest, size := range imageBlobs {
-		repoBlob2Size[digest] = size
-		imgSize += size
-	}
-
-	return imgSize
-}
-
 func getLayersSummaries(manifestContent ispec.Manifest) []*gql_generated.LayerSummary {
 	layers := make([]*gql_generated.LayerSummary, 0, len(manifestContent.Layers))
 

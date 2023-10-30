@@ -4,21 +4,19 @@ package convert_test
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"testing"
 	"time"
 
-	"github.com/99designs/gqlgen/graphql"
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	. "github.com/smartystreets/goconvey/convey"
 
 	"zotregistry.io/zot/pkg/extensions/search/convert"
-	cvemodel "zotregistry.io/zot/pkg/extensions/search/cve/model"
 	"zotregistry.io/zot/pkg/extensions/search/gql_generated"
 	"zotregistry.io/zot/pkg/extensions/search/pagination"
 	"zotregistry.io/zot/pkg/log"
+	"zotregistry.io/zot/pkg/meta/boltdb"
 	mTypes "zotregistry.io/zot/pkg/meta/types"
 	. "zotregistry.io/zot/pkg/test/image-utils"
 	"zotregistry.io/zot/pkg/test/mocks"
@@ -26,187 +24,6 @@ import (
 )
 
 var ErrTestError = errors.New("TestError")
-
-func TestConvertErrors(t *testing.T) {
-	Convey("ImageIndex2ImageSummary errors", t, func() {
-		ctx := graphql.WithResponseContext(context.Background(),
-			graphql.DefaultErrorPresenter, graphql.DefaultRecover)
-
-		_, _, err := convert.ImageIndex2ImageSummary(
-			ctx,
-			"repo",
-			"tag",
-			godigest.FromString("indexDigest"),
-			mTypes.RepoMetadata{},
-			mTypes.IndexData{
-				IndexBlob: []byte("bad json"),
-			},
-			map[string]mTypes.ManifestMetadata{},
-		)
-		So(err, ShouldNotBeNil)
-	})
-
-	Convey("ImageIndex2ImageSummary cve scanning", t, func() {
-		ctx := graphql.WithResponseContext(context.Background(),
-			graphql.DefaultErrorPresenter, graphql.DefaultRecover)
-
-		_, _, err := convert.ImageIndex2ImageSummary(
-			ctx,
-			"repo",
-			"tag",
-			godigest.FromString("indexDigest"),
-			mTypes.RepoMetadata{},
-			mTypes.IndexData{
-				IndexBlob: []byte("{}"),
-			},
-			map[string]mTypes.ManifestMetadata{},
-		)
-		So(err, ShouldBeNil)
-	})
-
-	Convey("ImageManifest2ImageSummary", t, func() {
-		ctx := graphql.WithResponseContext(context.Background(),
-			graphql.DefaultErrorPresenter, graphql.DefaultRecover)
-		configBlob, err := json.Marshal(ispec.Image{
-			Platform: ispec.Platform{
-				OS:           "os",
-				Architecture: "arch",
-				Variant:      "var",
-			},
-		})
-		So(err, ShouldBeNil)
-
-		_, _, err = convert.ImageManifest2ImageSummary(
-			ctx,
-			"repo",
-			"tag",
-			godigest.FromString("manifestDigest"),
-			mTypes.RepoMetadata{},
-			mTypes.ManifestMetadata{
-				ManifestBlob: []byte("{}"),
-				ConfigBlob:   configBlob,
-			},
-		)
-		So(err, ShouldBeNil)
-	})
-
-	Convey("ImageManifest2ManifestSummary", t, func() {
-		ctx := graphql.WithResponseContext(context.Background(),
-			graphql.DefaultErrorPresenter, graphql.DefaultRecover)
-
-		// with bad config json, shouldn't error when unmarshaling
-		_, _, _, err := convert.ImageManifest2ManifestSummary(
-			ctx,
-			"repo",
-			"tag",
-			ispec.Descriptor{
-				Digest:    "dig",
-				MediaType: ispec.MediaTypeImageManifest,
-			},
-			mTypes.RepoMetadata{
-				Tags:       map[string]mTypes.Descriptor{},
-				Statistics: map[string]mTypes.DescriptorStatistics{},
-				Signatures: map[string]mTypes.ManifestSignatures{},
-				Referrers:  map[string][]mTypes.ReferrerInfo{},
-			},
-			mTypes.ManifestMetadata{
-				ManifestBlob: []byte(`{}`),
-				ConfigBlob:   []byte("bad json"),
-			},
-			nil,
-		)
-		So(err, ShouldBeNil)
-
-		// CVE scan using platform
-		configBlob, err := json.Marshal(ispec.Image{
-			Platform: ispec.Platform{
-				OS:           "os",
-				Architecture: "arch",
-				Variant:      "var",
-			},
-		})
-		So(err, ShouldBeNil)
-
-		_, _, _, err = convert.ImageManifest2ManifestSummary(
-			ctx,
-			"repo",
-			"tag",
-			ispec.Descriptor{
-				Digest:    "dig",
-				MediaType: ispec.MediaTypeImageManifest,
-			},
-			mTypes.RepoMetadata{
-				Tags:       map[string]mTypes.Descriptor{},
-				Statistics: map[string]mTypes.DescriptorStatistics{},
-				Signatures: map[string]mTypes.ManifestSignatures{"dig": {"cosine": []mTypes.SignatureInfo{{}}}},
-				Referrers:  map[string][]mTypes.ReferrerInfo{},
-			},
-			mTypes.ManifestMetadata{
-				ManifestBlob: []byte("{}"),
-				ConfigBlob:   configBlob,
-			},
-			nil,
-		)
-		So(err, ShouldBeNil)
-	})
-
-	Convey("RepoMeta2ExpandedRepoInfo", t, func() {
-		ctx := graphql.WithResponseContext(context.Background(),
-			graphql.DefaultErrorPresenter, graphql.DefaultRecover)
-
-		// with bad config json, error while unmarshaling
-		_, imageSummaries := convert.RepoMeta2ExpandedRepoInfo(
-			ctx,
-			mTypes.RepoMetadata{
-				Tags: map[string]mTypes.Descriptor{
-					"tag1": {Digest: "dig", MediaType: ispec.MediaTypeImageManifest},
-				},
-			},
-			map[string]mTypes.ManifestMetadata{
-				"dig": {
-					ManifestBlob: []byte("{}"),
-					ConfigBlob:   []byte("bad json"),
-				},
-			},
-			map[string]mTypes.IndexData{},
-			convert.SkipQGLField{
-				Vulnerabilities: false,
-			},
-			mocks.CveInfoMock{
-				GetCVESummaryForImageMediaFn: func(repo, digest, mediaType string) (cvemodel.ImageCVESummary, error) {
-					return cvemodel.ImageCVESummary{}, ErrTestError
-				},
-			}, log.NewLogger("debug", ""),
-		)
-		So(len(imageSummaries), ShouldEqual, 1)
-
-		// cveInfo present no error
-		_, imageSummaries = convert.RepoMeta2ExpandedRepoInfo(
-			ctx,
-			mTypes.RepoMetadata{
-				Tags: map[string]mTypes.Descriptor{
-					"tag1": {Digest: "dig", MediaType: ispec.MediaTypeImageManifest},
-				},
-			},
-			map[string]mTypes.ManifestMetadata{
-				"dig": {
-					ManifestBlob: []byte("{}"),
-					ConfigBlob:   []byte("{}"),
-				},
-			},
-			map[string]mTypes.IndexData{},
-			convert.SkipQGLField{
-				Vulnerabilities: false,
-			},
-			mocks.CveInfoMock{
-				GetCVESummaryForImageMediaFn: func(repo, digest, mediaType string) (cvemodel.ImageCVESummary, error) {
-					return cvemodel.ImageCVESummary{}, ErrTestError
-				},
-			}, log.NewLogger("debug", ""),
-		)
-		So(len(imageSummaries), ShouldEqual, 1)
-	})
-}
 
 func TestUpdateLastUpdatedTimestamp(t *testing.T) {
 	Convey("Image summary is the first image checked for the repo", t, func() {
@@ -300,14 +117,25 @@ func TestLabels(t *testing.T) {
 
 func TestGetSignaturesInfo(t *testing.T) {
 	Convey("Test get signatures info - cosign", t, func() {
-		indexDigest := godigest.FromString("123")
-		repoMeta := mTypes.RepoMetadata{
-			Signatures: map[string]mTypes.ManifestSignatures{string(indexDigest): {"cosign": []mTypes.SignatureInfo{{
-				LayersInfo: []mTypes.LayerInfo{{LayerContent: []byte{}, LayerDigest: "", SignatureKey: "", Signer: "author"}},
-			}}}},
+		digest := godigest.FromString("dig")
+		signatures := map[string]mTypes.ManifestSignatures{
+			digest.String(): {
+				"cosign": []mTypes.SignatureInfo{
+					{
+						LayersInfo: []mTypes.LayerInfo{
+							{
+								LayerContent: []byte{},
+								LayerDigest:  "",
+								SignatureKey: "",
+								Signer:       "author",
+							},
+						},
+					},
+				},
+			},
 		}
 
-		signaturesSummary := convert.GetSignaturesInfo(true, repoMeta, indexDigest)
+		signaturesSummary := convert.GetSignaturesInfo(true, signatures[digest.String()])
 		So(signaturesSummary, ShouldNotBeEmpty)
 		So(*signaturesSummary[0].Author, ShouldEqual, "author")
 		So(*signaturesSummary[0].IsTrusted, ShouldEqual, true)
@@ -315,22 +143,26 @@ func TestGetSignaturesInfo(t *testing.T) {
 	})
 
 	Convey("Test get signatures info - notation", t, func() {
-		indexDigest := godigest.FromString("123")
-		repoMeta := mTypes.RepoMetadata{
-			Signatures: map[string]mTypes.ManifestSignatures{string(indexDigest): {"notation": []mTypes.SignatureInfo{{
-				LayersInfo: []mTypes.LayerInfo{
+		digest := godigest.FromString("dig")
+		signatures := map[string]mTypes.ManifestSignatures{
+			digest.String(): {
+				"notation": []mTypes.SignatureInfo{
 					{
-						LayerContent: []byte{},
-						LayerDigest:  "",
-						SignatureKey: "",
-						Signer:       "author",
-						Date:         time.Now().AddDate(0, 0, -1),
+						LayersInfo: []mTypes.LayerInfo{
+							{
+								LayerContent: []byte{},
+								LayerDigest:  "",
+								SignatureKey: "",
+								Signer:       "author",
+								Date:         time.Now().AddDate(0, 0, -1),
+							},
+						},
 					},
 				},
-			}}}},
+			},
 		}
 
-		signaturesSummary := convert.GetSignaturesInfo(true, repoMeta, indexDigest)
+		signaturesSummary := convert.GetSignaturesInfo(true, signatures[digest.String()])
 		So(signaturesSummary, ShouldNotBeEmpty)
 		So(*signaturesSummary[0].Author, ShouldEqual, "author")
 		So(*signaturesSummary[0].IsTrusted, ShouldEqual, false)
@@ -422,6 +254,18 @@ func ref[T any](val T) *T {
 func TestPaginatedConvert(t *testing.T) {
 	ctx := context.Background()
 
+	tempDir := t.TempDir()
+
+	driver, err := boltdb.GetBoltDriver(boltdb.DBParameters{RootDir: tempDir})
+	if err != nil {
+		t.FailNow()
+	}
+
+	metaDB, err := boltdb.New(driver, log.NewLogger("debug", ""))
+	if err != nil {
+		t.FailNow()
+	}
+
 	var (
 		badBothImage = CreateImageWith().DefaultLayers().ImageConfig(
 			ispec.Image{Platform: ispec.Platform{OS: "bad-os", Architecture: "bad-arch"}}).Build()
@@ -432,8 +276,9 @@ func TestPaginatedConvert(t *testing.T) {
 		goodImage = CreateImageWith().DefaultLayers().ImageConfig(
 			ispec.Image{Platform: ispec.Platform{OS: "good-os", Architecture: "good-arch"}}).Build()
 
-		randomImage1 = CreateRandomImage()
-		randomImage2 = CreateRandomImage()
+		randomImage1    = CreateRandomImage()
+		randomImage2    = CreateRandomImage()
+		signatureDigest = godigest.FromString("signature")
 
 		badMultiArch = CreateMultiarchWith().Images(
 			[]Image{badBothImage, badOsImage, badArchImage, randomImage1}).Build()
@@ -441,14 +286,14 @@ func TestPaginatedConvert(t *testing.T) {
 			[]Image{badOsImage, badArchImage, randomImage2, goodImage}).Build()
 	)
 
-	reposMeta, manifestMetaMap, indexDataMap := ociutils.GetMetadataForRepos(
+	ctx, err = ociutils.InitializeTestMetaDB(ctx, metaDB,
 		ociutils.Repo{
 			Name: "repo1-only-images",
 			Images: []ociutils.RepoImage{
-				{Image: goodImage, Tag: "goodImage"},
-				{Image: badOsImage, Tag: "badOsImage"},
-				{Image: badArchImage, Tag: "badArchImage"},
-				{Image: badBothImage, Tag: "badBothImage"},
+				{Image: goodImage, Reference: "goodImage"},
+				{Image: badOsImage, Reference: "badOsImage"},
+				{Image: badArchImage, Reference: "badArchImage"},
+				{Image: badBothImage, Reference: "badBothImage"},
 			},
 			IsBookmarked: true,
 			IsStarred:    true,
@@ -456,9 +301,9 @@ func TestPaginatedConvert(t *testing.T) {
 		ociutils.Repo{
 			Name: "repo2-only-bad-images",
 			Images: []ociutils.RepoImage{
-				{Image: randomImage1, Tag: "randomImage1"},
-				{Image: randomImage2, Tag: "randomImage2"},
-				{Image: badBothImage, Tag: "badBothImage"},
+				{Image: randomImage1, Reference: "randomImage1"},
+				{Image: randomImage2, Reference: "randomImage2"},
+				{Image: badBothImage, Reference: "badBothImage"},
 			},
 			IsBookmarked: true,
 			IsStarred:    true,
@@ -466,8 +311,8 @@ func TestPaginatedConvert(t *testing.T) {
 		ociutils.Repo{
 			Name: "repo3-only-multiarch",
 			MultiArchImages: []ociutils.RepoMultiArchImage{
-				{MultiarchImage: badMultiArch, Tag: "badMultiArch"},
-				{MultiarchImage: goodMultiArch, Tag: "goodMultiArch"},
+				{MultiarchImage: badMultiArch, Reference: "badMultiArch"},
+				{MultiarchImage: goodMultiArch, Reference: "goodMultiArch"},
 			},
 			IsBookmarked: true,
 			IsStarred:    true,
@@ -475,44 +320,56 @@ func TestPaginatedConvert(t *testing.T) {
 		ociutils.Repo{
 			Name: "repo4-not-bookmarked-or-starred",
 			Images: []ociutils.RepoImage{
-				{Image: goodImage, Tag: "goodImage"},
+				{Image: goodImage, Reference: "goodImage"},
 			},
 			MultiArchImages: []ociutils.RepoMultiArchImage{
-				{MultiarchImage: goodMultiArch, Tag: "goodMultiArch"},
+				{MultiarchImage: goodMultiArch, Reference: "goodMultiArch"},
 			},
 		},
 		ociutils.Repo{
 			Name: "repo5-signed",
 			Images: []ociutils.RepoImage{
-				{Image: goodImage, Tag: "goodImage"}, // is fake signed by the image below
-				{Image: CreateFakeTestSignature(goodImage.DescriptorRef())},
+				{Image: goodImage, Reference: "goodImage"}, // is fake signed by the image below
+			},
+			Signatures: map[string]mTypes.ManifestSignatures{
+				goodImage.DigestStr(): ociutils.GetFakeSignatureInfo(signatureDigest.String()),
 			},
 		},
 	)
+	if err != nil {
+		t.FailNow()
+	}
 
 	skipCVE := convert.SkipQGLField{Vulnerabilities: true}
 
 	Convey("PaginatedRepoMeta2RepoSummaries filtering and sorting", t, func() {
 		// Test different combinations of the filter
+		repoMetaList, err := metaDB.FilterRepos(ctx, mTypes.AcceptAllRepoNames, mTypes.AcceptAllRepoMeta)
+		So(err, ShouldBeNil)
+		imageMeta, err := metaDB.FilterImageMeta(ctx, mTypes.GetLatestImageDigests(repoMetaList))
+		So(err, ShouldBeNil)
 
 		reposSum, pageInfo, err := convert.PaginatedRepoMeta2RepoSummaries(
-			ctx, reposMeta, manifestMetaMap, indexDataMap, skipCVE, mocks.CveInfoMock{},
+			ctx, repoMetaList, imageMeta,
 			mTypes.Filter{
 				Os:           []*string{ref("good-os")},
 				Arch:         []*string{ref("good-arch")},
 				IsBookmarked: ref(true),
 				IsStarred:    ref(true),
 			},
-			pagination.PageInput{SortBy: pagination.AlphabeticAsc},
+			pagination.PageInput{SortBy: pagination.AlphabeticAsc}, mocks.CveInfoMock{}, skipCVE,
 		)
 		So(err, ShouldBeNil)
 		So(len(reposSum), ShouldEqual, 2)
 		So(*reposSum[0].Name, ShouldResemble, "repo1-only-images")
 		So(*reposSum[1].Name, ShouldResemble, "repo3-only-multiarch")
 		So(pageInfo.ItemCount, ShouldEqual, 2)
+		So(pageInfo.ItemCount, ShouldEqual, 2)
+		So(pageInfo.ItemCount, ShouldEqual, 2)
+		So(pageInfo.ItemCount, ShouldEqual, 2)
 
 		reposSum, pageInfo, err = convert.PaginatedRepoMeta2RepoSummaries(
-			ctx, reposMeta, manifestMetaMap, indexDataMap, skipCVE, mocks.CveInfoMock{},
+			ctx, repoMetaList, imageMeta,
 			mTypes.Filter{
 				Os:            []*string{ref("good-os")},
 				Arch:          []*string{ref("good-arch")},
@@ -520,18 +377,18 @@ func TestPaginatedConvert(t *testing.T) {
 				IsStarred:     ref(true),
 				HasToBeSigned: ref(true),
 			},
-			pagination.PageInput{SortBy: pagination.AlphabeticAsc},
+			pagination.PageInput{SortBy: pagination.AlphabeticAsc}, mocks.CveInfoMock{}, skipCVE,
 		)
 		So(err, ShouldBeNil)
 		So(len(reposSum), ShouldEqual, 0)
 		So(pageInfo.ItemCount, ShouldEqual, 0)
 
 		reposSum, pageInfo, err = convert.PaginatedRepoMeta2RepoSummaries(
-			ctx, reposMeta, manifestMetaMap, indexDataMap, skipCVE, mocks.CveInfoMock{},
+			ctx, repoMetaList, imageMeta,
 			mTypes.Filter{
 				HasToBeSigned: ref(true),
 			},
-			pagination.PageInput{SortBy: pagination.AlphabeticAsc},
+			pagination.PageInput{SortBy: pagination.AlphabeticAsc}, mocks.CveInfoMock{}, skipCVE,
 		)
 		So(err, ShouldBeNil)
 		So(len(reposSum), ShouldEqual, 1)
@@ -540,8 +397,8 @@ func TestPaginatedConvert(t *testing.T) {
 
 		// no filter
 		reposSum, pageInfo, err = convert.PaginatedRepoMeta2RepoSummaries(
-			ctx, reposMeta, manifestMetaMap, indexDataMap, skipCVE, mocks.CveInfoMock{},
-			mTypes.Filter{}, pagination.PageInput{SortBy: pagination.AlphabeticAsc},
+			ctx, repoMetaList, imageMeta,
+			mTypes.Filter{}, pagination.PageInput{SortBy: pagination.AlphabeticAsc}, mocks.CveInfoMock{}, skipCVE,
 		)
 		So(err, ShouldBeNil)
 		So(len(reposSum), ShouldEqual, 5)
@@ -554,8 +411,8 @@ func TestPaginatedConvert(t *testing.T) {
 
 		// no filter opposite sorting
 		reposSum, pageInfo, err = convert.PaginatedRepoMeta2RepoSummaries(
-			ctx, reposMeta, manifestMetaMap, indexDataMap, skipCVE, mocks.CveInfoMock{},
-			mTypes.Filter{}, pagination.PageInput{SortBy: pagination.AlphabeticDsc},
+			ctx, repoMetaList, imageMeta,
+			mTypes.Filter{}, pagination.PageInput{SortBy: pagination.AlphabeticDsc}, mocks.CveInfoMock{}, skipCVE,
 		)
 		So(err, ShouldBeNil)
 		So(len(reposSum), ShouldEqual, 5)
@@ -568,14 +425,14 @@ func TestPaginatedConvert(t *testing.T) {
 
 		// add pagination
 		reposSum, pageInfo, err = convert.PaginatedRepoMeta2RepoSummaries(
-			ctx, reposMeta, manifestMetaMap, indexDataMap, skipCVE, mocks.CveInfoMock{},
+			ctx, repoMetaList, imageMeta,
 			mTypes.Filter{
 				Os:           []*string{ref("good-os")},
 				Arch:         []*string{ref("good-arch")},
 				IsBookmarked: ref(true),
 				IsStarred:    ref(true),
 			},
-			pagination.PageInput{Limit: 1, Offset: 0, SortBy: pagination.AlphabeticAsc},
+			pagination.PageInput{Limit: 1, Offset: 0, SortBy: pagination.AlphabeticAsc}, mocks.CveInfoMock{}, skipCVE,
 		)
 		So(err, ShouldBeNil)
 		So(len(reposSum), ShouldEqual, 1)
@@ -584,14 +441,14 @@ func TestPaginatedConvert(t *testing.T) {
 		So(pageInfo.TotalCount, ShouldEqual, 2)
 
 		reposSum, pageInfo, err = convert.PaginatedRepoMeta2RepoSummaries(
-			ctx, reposMeta, manifestMetaMap, indexDataMap, skipCVE, mocks.CveInfoMock{},
+			ctx, repoMetaList, imageMeta,
 			mTypes.Filter{
 				Os:           []*string{ref("good-os")},
 				Arch:         []*string{ref("good-arch")},
 				IsBookmarked: ref(true),
 				IsStarred:    ref(true),
 			},
-			pagination.PageInput{Limit: 1, Offset: 1, SortBy: pagination.AlphabeticAsc},
+			pagination.PageInput{Limit: 1, Offset: 1, SortBy: pagination.AlphabeticAsc}, mocks.CveInfoMock{}, skipCVE,
 		)
 		So(err, ShouldBeNil)
 		So(len(reposSum), ShouldEqual, 1)
@@ -601,8 +458,11 @@ func TestPaginatedConvert(t *testing.T) {
 	})
 
 	Convey("PaginatedRepoMeta2ImageSummaries filtering and sorting", t, func() {
-		imgSum, pageInfo, err := convert.PaginatedRepoMeta2ImageSummaries(
-			ctx, reposMeta, manifestMetaMap, indexDataMap, skipCVE, mocks.CveInfoMock{},
+		fullImageMetaList, err := metaDB.FilterTags(ctx, mTypes.AcceptAllRepoTag, mTypes.AcceptAllImageMeta)
+		So(err, ShouldBeNil)
+
+		imgSum, pageInfo, err := convert.PaginatedFullImageMeta2ImageSummaries(
+			ctx, fullImageMetaList, skipCVE, mocks.CveInfoMock{},
 			mTypes.Filter{
 				Os:   []*string{ref("good-os")},
 				Arch: []*string{ref("good-arch")},
@@ -624,8 +484,8 @@ func TestPaginatedConvert(t *testing.T) {
 		So(pageInfo.ItemCount, ShouldEqual, 5)
 
 		// add page of size 2
-		imgSum, pageInfo, err = convert.PaginatedRepoMeta2ImageSummaries(
-			ctx, reposMeta, manifestMetaMap, indexDataMap, skipCVE, mocks.CveInfoMock{},
+		imgSum, pageInfo, err = convert.PaginatedFullImageMeta2ImageSummaries(
+			ctx, fullImageMetaList, skipCVE, mocks.CveInfoMock{},
 			mTypes.Filter{
 				Os:   []*string{ref("good-os")},
 				Arch: []*string{ref("good-arch")},
@@ -642,8 +502,8 @@ func TestPaginatedConvert(t *testing.T) {
 		So(pageInfo.TotalCount, ShouldEqual, 5)
 
 		// next page
-		imgSum, pageInfo, err = convert.PaginatedRepoMeta2ImageSummaries(
-			ctx, reposMeta, manifestMetaMap, indexDataMap, skipCVE, mocks.CveInfoMock{},
+		imgSum, pageInfo, err = convert.PaginatedFullImageMeta2ImageSummaries(
+			ctx, fullImageMetaList, skipCVE, mocks.CveInfoMock{},
 			mTypes.Filter{
 				Os:   []*string{ref("good-os")},
 				Arch: []*string{ref("good-arch")},
@@ -660,8 +520,8 @@ func TestPaginatedConvert(t *testing.T) {
 		So(pageInfo.TotalCount, ShouldEqual, 5)
 
 		// last page
-		imgSum, pageInfo, err = convert.PaginatedRepoMeta2ImageSummaries(
-			ctx, reposMeta, manifestMetaMap, indexDataMap, skipCVE, mocks.CveInfoMock{},
+		imgSum, pageInfo, err = convert.PaginatedFullImageMeta2ImageSummaries(
+			ctx, fullImageMetaList, skipCVE, mocks.CveInfoMock{},
 			mTypes.Filter{
 				Os:   []*string{ref("good-os")},
 				Arch: []*string{ref("good-arch")},
@@ -676,8 +536,8 @@ func TestPaginatedConvert(t *testing.T) {
 		So(pageInfo.TotalCount, ShouldEqual, 5)
 
 		// has to be signed
-		imgSum, pageInfo, err = convert.PaginatedRepoMeta2ImageSummaries(
-			ctx, reposMeta, manifestMetaMap, indexDataMap, skipCVE, mocks.CveInfoMock{},
+		imgSum, pageInfo, err = convert.PaginatedFullImageMeta2ImageSummaries(
+			ctx, fullImageMetaList, skipCVE, mocks.CveInfoMock{},
 			mTypes.Filter{
 				Os:            []*string{ref("good-os")},
 				Arch:          []*string{ref("good-arch")},
@@ -696,6 +556,16 @@ func TestPaginatedConvert(t *testing.T) {
 func TestIndexAnnotations(t *testing.T) {
 	Convey("Test ImageIndex2ImageSummary annotations logic", t, func() {
 		ctx := context.Background()
+
+		tempDir := t.TempDir()
+
+		driver, err := boltdb.GetBoltDriver(boltdb.DBParameters{RootDir: tempDir})
+		if err != nil {
+			t.FailNow()
+		}
+
+		metaDB, err := boltdb.New(driver, log.NewLogger("debug", ""))
+		So(err, ShouldBeNil)
 
 		configLabels := map[string]string{
 			ispec.AnnotationDescription:   "ConfigDescription",
@@ -746,17 +616,22 @@ func TestIndexAnnotations(t *testing.T) {
 			[]Image{imageWithManifestAndConfigAnnotations},
 		).Annotations(indexAnnotations).Build()
 
-		repoMeta, manifestMetadata, indexData := ociutils.GetMetadataForRepos(ociutils.Repo{
-			Name: "repo",
-			MultiArchImages: []ociutils.RepoMultiArchImage{
-				{MultiarchImage: indexWithAnnotations, Tag: "tag"},
-			},
-		})
+		ctx, err = ociutils.InitializeTestMetaDB(ctx, metaDB,
+			ociutils.Repo{
+				Name: "repo",
+				MultiArchImages: []ociutils.RepoMultiArchImage{
+					{MultiarchImage: indexWithAnnotations, Reference: "tag"},
+				},
+			})
+		So(err, ShouldBeNil)
 
-		digest := indexWithAnnotations.Digest()
+		repoMeta, err := metaDB.GetRepoMeta(ctx, "repo")
+		So(err, ShouldBeNil)
+		imageMeta, err := metaDB.FilterImageMeta(ctx, []string{indexWithAnnotations.DigestStr()})
+		So(err, ShouldBeNil)
 
-		imageSummary, _, err := convert.ImageIndex2ImageSummary(ctx, "repo", "tag", digest, repoMeta[0],
-			indexData[digest.String()], manifestMetadata)
+		imageSummary, _, err := convert.ImageIndex2ImageSummary(ctx, convert.GetFullImageMeta("tag", repoMeta,
+			imageMeta[indexWithAnnotations.DigestStr()]))
 		So(err, ShouldBeNil)
 		So(*imageSummary.Description, ShouldResemble, "IndexDescription")
 		So(*imageSummary.Licenses, ShouldResemble, "IndexLicenses")
@@ -766,19 +641,30 @@ func TestIndexAnnotations(t *testing.T) {
 		So(*imageSummary.Vendor, ShouldResemble, "IndexVendor")
 		So(*imageSummary.Authors, ShouldResemble, "IndexAuthors")
 
+		err = metaDB.ResetDB()
+		So(err, ShouldBeNil)
 		// --------------------------------------------------------
 		indexWithManifestAndConfigAnnotations := CreateMultiarchWith().Images(
 			[]Image{imageWithManifestAndConfigAnnotations, CreateRandomImage(), CreateRandomImage()},
 		).Build()
 
-		repoMeta, manifestMetadata, indexData = ociutils.GetMetadataForRepos(ociutils.Repo{
-			Name:            "repo",
-			MultiArchImages: []ociutils.RepoMultiArchImage{{MultiarchImage: indexWithManifestAndConfigAnnotations}},
+		ctx, err = ociutils.InitializeTestMetaDB(ctx, metaDB, ociutils.Repo{
+			Name: "repo",
+			MultiArchImages: []ociutils.RepoMultiArchImage{
+				{MultiarchImage: indexWithManifestAndConfigAnnotations, Reference: "tag"},
+			},
 		})
-		digest = indexWithManifestAndConfigAnnotations.Digest()
+		So(err, ShouldBeNil)
 
-		imageSummary, _, err = convert.ImageIndex2ImageSummary(ctx, "repo", "tag", digest,
-			repoMeta[0], indexData[digest.String()], manifestMetadata)
+		digest := indexWithManifestAndConfigAnnotations.DigestStr()
+
+		repoMeta, err = metaDB.GetRepoMeta(ctx, "repo")
+		So(err, ShouldBeNil)
+		imageMeta, err = metaDB.FilterImageMeta(ctx, []string{digest})
+		So(err, ShouldBeNil)
+
+		imageSummary, _, err = convert.ImageIndex2ImageSummary(ctx, convert.GetFullImageMeta("tag", repoMeta,
+			imageMeta[digest]))
 		So(err, ShouldBeNil)
 		So(*imageSummary.Description, ShouldResemble, "ManifestDescription")
 		So(*imageSummary.Licenses, ShouldResemble, "ManifestLicenses")
@@ -787,19 +673,31 @@ func TestIndexAnnotations(t *testing.T) {
 		So(*imageSummary.Documentation, ShouldResemble, "ManifestDocumentation")
 		So(*imageSummary.Vendor, ShouldResemble, "ManifestVendor")
 		So(*imageSummary.Authors, ShouldResemble, "ManifestAuthors")
+
+		err = metaDB.ResetDB()
+		So(err, ShouldBeNil)
 		// --------------------------------------------------------
 		indexWithConfigAnnotations := CreateMultiarchWith().Images(
 			[]Image{imageWithConfigAnnotations, CreateRandomImage(), CreateRandomImage()},
 		).Build()
 
-		repoMeta, manifestMetadata, indexData = ociutils.GetMetadataForRepos(ociutils.Repo{
-			Name:            "repo",
-			MultiArchImages: []ociutils.RepoMultiArchImage{{MultiarchImage: indexWithConfigAnnotations, Tag: "tag"}},
+		ctx, err = ociutils.InitializeTestMetaDB(ctx, metaDB, ociutils.Repo{
+			Name: "repo",
+			MultiArchImages: []ociutils.RepoMultiArchImage{
+				{MultiarchImage: indexWithConfigAnnotations, Reference: "tag"},
+			},
 		})
-		digest = indexWithConfigAnnotations.Digest()
+		So(err, ShouldBeNil)
 
-		imageSummary, _, err = convert.ImageIndex2ImageSummary(ctx, "repo", "tag", digest,
-			repoMeta[0], indexData[digest.String()], manifestMetadata)
+		digest = indexWithConfigAnnotations.DigestStr()
+
+		repoMeta, err = metaDB.GetRepoMeta(ctx, "repo")
+		So(err, ShouldBeNil)
+		imageMeta, err = metaDB.FilterImageMeta(ctx, []string{digest})
+		So(err, ShouldBeNil)
+
+		imageSummary, _, err = convert.ImageIndex2ImageSummary(ctx, convert.GetFullImageMeta("tag", repoMeta,
+			imageMeta[digest]))
 		So(err, ShouldBeNil)
 		So(*imageSummary.Description, ShouldResemble, "ConfigDescription")
 		So(*imageSummary.Licenses, ShouldResemble, "ConfigLicenses")
@@ -808,6 +706,9 @@ func TestIndexAnnotations(t *testing.T) {
 		So(*imageSummary.Documentation, ShouldResemble, "ConfigDocumentation")
 		So(*imageSummary.Vendor, ShouldResemble, "ConfigVendor")
 		So(*imageSummary.Authors, ShouldResemble, "ConfigAuthors")
+
+		err = metaDB.ResetDB()
+		So(err, ShouldBeNil)
 		//--------------------------------------------------------
 
 		indexWithMixAnnotations := CreateMultiarchWith().Images(
@@ -834,14 +735,23 @@ func TestIndexAnnotations(t *testing.T) {
 			},
 		).Build()
 
-		repoMeta, manifestMetadata, indexData = ociutils.GetMetadataForRepos(ociutils.Repo{
-			Name:            "repo",
-			MultiArchImages: []ociutils.RepoMultiArchImage{{MultiarchImage: indexWithMixAnnotations, Tag: "tag"}},
+		ctx, err = ociutils.InitializeTestMetaDB(ctx, metaDB, ociutils.Repo{
+			Name: "repo",
+			MultiArchImages: []ociutils.RepoMultiArchImage{
+				{MultiarchImage: indexWithMixAnnotations, Reference: "tag"},
+			},
 		})
-		digest = indexWithMixAnnotations.Digest()
+		So(err, ShouldBeNil)
 
-		imageSummary, _, err = convert.ImageIndex2ImageSummary(ctx, "repo", "tag", digest,
-			repoMeta[0], indexData[digest.String()], manifestMetadata)
+		digest = indexWithMixAnnotations.DigestStr()
+
+		repoMeta, err = metaDB.GetRepoMeta(ctx, "repo")
+		So(err, ShouldBeNil)
+		imageMeta, err = metaDB.FilterImageMeta(ctx, []string{digest})
+		So(err, ShouldBeNil)
+
+		imageSummary, _, err = convert.ImageIndex2ImageSummary(ctx, convert.GetFullImageMeta("tag", repoMeta,
+			imageMeta[digest]))
 		So(err, ShouldBeNil)
 		So(*imageSummary.Description, ShouldResemble, "ConfigDescription")
 		So(*imageSummary.Licenses, ShouldResemble, "ConfigLicenses")
@@ -851,17 +761,28 @@ func TestIndexAnnotations(t *testing.T) {
 		So(*imageSummary.Documentation, ShouldResemble, "IndexDocumentation")
 		So(*imageSummary.Source, ShouldResemble, "IndexSource")
 
+		err = metaDB.ResetDB()
+		So(err, ShouldBeNil)
 		//--------------------------------------------------------
 		indexWithNoAnnotations := CreateRandomMultiarch()
 
-		repoMeta, manifestMetadata, indexData = ociutils.GetMetadataForRepos(ociutils.Repo{
-			Name:            "repo",
-			MultiArchImages: []ociutils.RepoMultiArchImage{{MultiarchImage: indexWithNoAnnotations, Tag: "tag"}},
+		ctx, err = ociutils.InitializeTestMetaDB(ctx, metaDB, ociutils.Repo{
+			Name: "repo",
+			MultiArchImages: []ociutils.RepoMultiArchImage{
+				{MultiarchImage: indexWithNoAnnotations, Reference: "tag"},
+			},
 		})
-		digest = indexWithNoAnnotations.Digest()
+		So(err, ShouldBeNil)
 
-		imageSummary, _, err = convert.ImageIndex2ImageSummary(ctx, "repo", "tag", digest,
-			repoMeta[0], indexData[digest.String()], manifestMetadata)
+		digest = indexWithNoAnnotations.DigestStr()
+
+		repoMeta, err = metaDB.GetRepoMeta(ctx, "repo")
+		So(err, ShouldBeNil)
+		imageMeta, err = metaDB.FilterImageMeta(ctx, []string{digest})
+		So(err, ShouldBeNil)
+
+		imageSummary, _, err = convert.ImageIndex2ImageSummary(ctx, convert.GetFullImageMeta("tag", repoMeta,
+			imageMeta[digest]))
 		So(err, ShouldBeNil)
 		So(*imageSummary.Description, ShouldBeBlank)
 		So(*imageSummary.Licenses, ShouldBeBlank)
@@ -870,94 +791,8 @@ func TestIndexAnnotations(t *testing.T) {
 		So(*imageSummary.Title, ShouldBeBlank)
 		So(*imageSummary.Documentation, ShouldBeBlank)
 		So(*imageSummary.Source, ShouldBeBlank)
-	})
-}
 
-func TestDownloadCount(t *testing.T) {
-	Convey("manifest", t, func() {
-		repoMeta, manifestMetaMap, indexDataMap := ociutils.GetMetadataForRepos(
-			ociutils.Repo{
-				Name: "repo",
-				Images: []ociutils.RepoImage{
-					{
-						Image: CreateRandomImage(),
-						Tag:   "10-downloads",
-						Statistics: mTypes.DescriptorStatistics{
-							DownloadCount: 10,
-						},
-					},
-				},
-			},
-		)
-
-		repoSummary := convert.RepoMeta2RepoSummary(context.Background(), repoMeta[0], manifestMetaMap, indexDataMap)
-		So(*repoSummary.DownloadCount, ShouldEqual, 10)
-		So(*repoSummary.NewestImage.DownloadCount, ShouldEqual, 10)
-	})
-
-	Convey("index", t, func() {
-		img1, img2, img3 := CreateRandomImage(), CreateRandomImage(), CreateRandomImage()
-		multiArch := CreateMultiarchWith().Images([]Image{img1, img2, img3}).Build()
-
-		repoMeta, manifestMetaMap, indexDataMap := ociutils.GetMetadataForRepos(
-			ociutils.Repo{
-				Name: "repo",
-				MultiArchImages: []ociutils.RepoMultiArchImage{
-					{
-						MultiarchImage: multiArch,
-						Tag:            "160-multiarch",
-						ImageStatistics: map[string]mTypes.DescriptorStatistics{
-							img1.DigestStr():      {DownloadCount: 10},
-							img2.DigestStr():      {DownloadCount: 20},
-							img3.DigestStr():      {DownloadCount: 30},
-							multiArch.DigestStr(): {DownloadCount: 100},
-						},
-					},
-				},
-			},
-		)
-
-		repoSummary := convert.RepoMeta2RepoSummary(context.Background(), repoMeta[0], manifestMetaMap, indexDataMap)
-		So(*repoSummary.DownloadCount, ShouldEqual, 100)
-		So(*repoSummary.NewestImage.DownloadCount, ShouldEqual, 100)
-	})
-
-	Convey("index + manifest mixed", t, func() {
-		img1 := CreateRandomImage()
-		img2 := CreateRandomImage()
-		img3 := CreateImageWith().DefaultLayers().ImageConfig(
-			ispec.Image{Created: DateRef(2020, 1, 1, 1, 1, 1, 0, time.UTC)},
-		).Build()
-
-		multiArch := CreateMultiarchWith().Images([]Image{img1, img2, img3}).Build()
-
-		repoMeta, manifestMetaMap, indexDataMap := ociutils.GetMetadataForRepos(
-			ociutils.Repo{
-				Name: "repo",
-				Images: []ociutils.RepoImage{
-					{
-						Image:      CreateRandomImage(),
-						Tag:        "5-downloads",
-						Statistics: mTypes.DescriptorStatistics{DownloadCount: 5},
-					},
-				},
-				MultiArchImages: []ociutils.RepoMultiArchImage{
-					{
-						MultiarchImage: multiArch,
-						Tag:            "160-multiarch",
-						ImageStatistics: map[string]mTypes.DescriptorStatistics{
-							img1.DigestStr():      {DownloadCount: 10},
-							img2.DigestStr():      {DownloadCount: 20},
-							img3.DigestStr():      {DownloadCount: 30},
-							multiArch.DigestStr(): {DownloadCount: 100},
-						},
-					},
-				},
-			},
-		)
-
-		repoSummary := convert.RepoMeta2RepoSummary(context.Background(), repoMeta[0], manifestMetaMap, indexDataMap)
-		So(*repoSummary.DownloadCount, ShouldEqual, 105)
-		So(*repoSummary.NewestImage.DownloadCount, ShouldEqual, 100)
+		err = metaDB.ResetDB()
+		So(err, ShouldBeNil)
 	})
 }

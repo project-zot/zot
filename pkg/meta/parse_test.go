@@ -13,7 +13,6 @@ import (
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	. "github.com/smartystreets/goconvey/convey"
 
-	zerr "zotregistry.io/zot/errors"
 	zcommon "zotregistry.io/zot/pkg/common"
 	"zotregistry.io/zot/pkg/extensions/monitoring"
 	"zotregistry.io/zot/pkg/log"
@@ -97,50 +96,6 @@ func TestParseStorageErrors(t *testing.T) {
 			So(err, ShouldNotBeNil)
 		})
 
-		Convey("resetRepoMetaTags errors", func() {
-			imageStore.GetIndexContentFn = func(repo string) ([]byte, error) {
-				return []byte("{}"), nil
-			}
-
-			Convey("metaDB.GetRepoMeta errors", func() {
-				metaDB.GetRepoMetaFn = func(repo string) (mTypes.RepoMetadata, error) {
-					return mTypes.RepoMetadata{}, ErrTestError
-				}
-
-				err := meta.ParseRepo("repo", metaDB, storeController, log)
-				So(err, ShouldNotBeNil)
-			})
-		})
-
-		Convey("isManifestMetaPresent errors", func() {
-			indexContent := ispec.Index{
-				Manifests: []ispec.Descriptor{
-					{
-						Digest:    godigest.FromString("manifest1"),
-						MediaType: ispec.MediaTypeImageManifest,
-						Annotations: map[string]string{
-							ispec.AnnotationRefName: "tag1",
-						},
-					},
-				},
-			}
-			indexBlob, err := json.Marshal(indexContent)
-			So(err, ShouldBeNil)
-
-			imageStore.GetIndexContentFn = func(repo string) ([]byte, error) {
-				return indexBlob, nil
-			}
-
-			Convey("metaDB.GetManifestMeta errors", func() {
-				metaDB.GetManifestMetaFn = func(repo string, manifestDigest godigest.Digest) (mTypes.ManifestMetadata, error) {
-					return mTypes.ManifestMetadata{}, ErrTestError
-				}
-
-				err = meta.ParseRepo("repo", metaDB, storeController, log)
-				So(err, ShouldNotBeNil)
-			})
-		})
-
 		Convey("manifestMetaIsPresent true", func() {
 			indexContent := ispec.Index{
 				Manifests: []ispec.Descriptor{
@@ -161,218 +116,12 @@ func TestParseStorageErrors(t *testing.T) {
 			}
 
 			Convey("metaDB.SetRepoReference", func() {
-				metaDB.SetRepoReferenceFn = func(repo, tag string, manifestDigest godigest.Digest, mediaType string) error {
+				metaDB.SetRepoReferenceFn = func(repo, reference string, imageMeta mTypes.ImageMeta) error {
 					return ErrTestError
 				}
 
 				err = meta.ParseRepo("repo", metaDB, storeController, log)
 				So(err, ShouldNotBeNil)
-			})
-		})
-
-		Convey("manifestMetaIsPresent false", func() {
-			indexContent := ispec.Index{
-				Manifests: []ispec.Descriptor{
-					{
-						Digest:    godigest.FromString("manifest1"),
-						MediaType: ispec.MediaTypeImageManifest,
-						Annotations: map[string]string{
-							ispec.AnnotationRefName: "tag1",
-						},
-					},
-				},
-			}
-			indexBlob, err := json.Marshal(indexContent)
-			So(err, ShouldBeNil)
-
-			imageStore.GetIndexContentFn = func(repo string) ([]byte, error) {
-				return indexBlob, nil
-			}
-
-			metaDB.GetManifestMetaFn = func(repo string, manifestDigest godigest.Digest) (mTypes.ManifestMetadata, error) {
-				return mTypes.ManifestMetadata{}, zerr.ErrManifestMetaNotFound
-			}
-
-			Convey("GetImageManifest errors", func() {
-				imageStore.GetImageManifestFn = func(repo, reference string) ([]byte, godigest.Digest, string, error) {
-					return nil, "", "", ErrTestError
-				}
-				err = meta.ParseRepo("repo", metaDB, storeController, log)
-				So(err, ShouldNotBeNil)
-			})
-
-			Convey("CheckIsImageSignature errors", func() {
-				// CheckIsImageSignature will fail because of a invalid json
-				imageStore.GetImageManifestFn = func(repo, reference string) ([]byte, godigest.Digest, string, error) {
-					return []byte("Invalid JSON"), "", "", nil
-				}
-				err = meta.ParseRepo("repo", metaDB, storeController, log)
-				So(err, ShouldNotBeNil)
-			})
-			Convey("CheckIsImageSignature -> not signature", func() {
-				manifestContent := ispec.Manifest{}
-				manifestBlob, err := json.Marshal(manifestContent)
-				So(err, ShouldBeNil)
-
-				imageStore.GetImageManifestFn = func(repo, reference string) ([]byte, godigest.Digest, string, error) {
-					return manifestBlob, "", "", nil
-				}
-
-				Convey("imgStore.GetBlobContent errors", func() {
-					imageStore.GetBlobContentFn = func(repo string, digest godigest.Digest) ([]byte, error) {
-						return nil, ErrTestError
-					}
-
-					err = meta.ParseRepo("repo", metaDB, storeController, log)
-					So(err, ShouldNotBeNil)
-				})
-			})
-
-			Convey("CheckIsImageSignature -> is signature", func() {
-				manifestContent := ispec.Manifest{
-					Subject: &ispec.Descriptor{
-						Digest: "123",
-					},
-					ArtifactType: "application/vnd.cncf.notary.signature",
-					Layers:       []ispec.Descriptor{{MediaType: ispec.MediaTypeImageLayer}},
-				}
-
-				manifestBlob, err := json.Marshal(manifestContent)
-				So(err, ShouldBeNil)
-
-				imageStore.GetImageManifestFn = func(repo, reference string) ([]byte, godigest.Digest, string, error) {
-					return manifestBlob, "", "", nil
-				}
-
-				metaDB.AddManifestSignatureFn = func(repo string, signedManifestDigest godigest.Digest,
-					sm mTypes.SignatureMetadata,
-				) error {
-					return ErrTestError
-				}
-
-				err = meta.ParseRepo("repo", metaDB, storeController, log)
-				So(err, ShouldNotBeNil)
-
-				metaDB.AddManifestSignatureFn = func(repo string, signedManifestDigest godigest.Digest,
-					sm mTypes.SignatureMetadata,
-				) error {
-					return nil
-				}
-
-				metaDB.UpdateSignaturesValidityFn = func(repo string, signedManifestDigest godigest.Digest,
-				) error {
-					return ErrTestError
-				}
-
-				err = meta.ParseRepo("repo", metaDB, storeController, log)
-				So(err, ShouldNotBeNil)
-			})
-
-			Convey("GetSignatureLayersInfo errors", func() {
-				// get notation signature layers info
-				badNotationManifestContent := ispec.Manifest{
-					Subject: &ispec.Descriptor{
-						Digest: "123",
-					},
-					ArtifactType: "application/vnd.cncf.notary.signature",
-				}
-
-				badNotationManifestBlob, err := json.Marshal(badNotationManifestContent)
-				So(err, ShouldBeNil)
-
-				imageStore.GetImageManifestFn = func(repo, reference string) ([]byte, godigest.Digest, string, error) {
-					return badNotationManifestBlob, "", "", nil
-				}
-
-				// wrong number of layers of notation manifest
-				err = meta.ParseRepo("repo", metaDB, storeController, log)
-				So(err, ShouldNotBeNil)
-
-				notationManifestContent := ispec.Manifest{
-					Subject: &ispec.Descriptor{
-						Digest: "123",
-					},
-					ArtifactType: "application/vnd.cncf.notary.signature",
-					Layers:       []ispec.Descriptor{{MediaType: ispec.MediaTypeImageLayer}},
-				}
-
-				notationManifestBlob, err := json.Marshal(notationManifestContent)
-				So(err, ShouldBeNil)
-
-				imageStore.GetImageManifestFn = func(repo, reference string) ([]byte, godigest.Digest, string, error) {
-					return notationManifestBlob, "", "", nil
-				}
-
-				imageStore.GetBlobContentFn = func(repo string, digest godigest.Digest) ([]byte, error) {
-					return []byte{}, ErrTestError
-				}
-
-				// unable to get layer content
-				err = meta.ParseRepo("repo", metaDB, storeController, log)
-				So(err, ShouldNotBeNil)
-
-				_, _, cosignManifestContent, _ := deprecated.GetRandomImageComponents(10) //nolint:staticcheck
-				_, _, signedManifest, _ := deprecated.GetRandomImageComponents(10)        //nolint:staticcheck
-				signatureTag, err := signature.GetCosignSignatureTagForManifest(signedManifest)
-				So(err, ShouldBeNil)
-
-				cosignManifestContent.Annotations = map[string]string{ispec.AnnotationRefName: signatureTag}
-
-				cosignManifestBlob, err := json.Marshal(cosignManifestContent)
-				So(err, ShouldBeNil)
-
-				imageStore.GetImageManifestFn = func(repo, reference string) ([]byte, godigest.Digest, string, error) {
-					return cosignManifestBlob, "", "", nil
-				}
-
-				indexContent := ispec.Index{
-					Manifests: []ispec.Descriptor{
-						{
-							Digest:    godigest.FromString("cosignSig"),
-							MediaType: ispec.MediaTypeImageManifest,
-							Annotations: map[string]string{
-								ispec.AnnotationRefName: signatureTag,
-							},
-						},
-					},
-				}
-				indexBlob, err := json.Marshal(indexContent)
-				So(err, ShouldBeNil)
-
-				imageStore.GetIndexContentFn = func(repo string) ([]byte, error) {
-					return indexBlob, nil
-				}
-
-				// unable to get layer content
-				err = meta.ParseRepo("repo", metaDB, storeController, log)
-				So(err, ShouldNotBeNil)
-			})
-
-			Convey("IsReferrersTag -> true", func() {
-				indexContent := ispec.Index{
-					Manifests: []ispec.Descriptor{
-						{
-							Digest:    godigest.FromString("indx1"),
-							MediaType: ispec.MediaTypeImageIndex,
-							Annotations: map[string]string{
-								ispec.AnnotationRefName: "sha256-123",
-							},
-						},
-					},
-				}
-				indexBlob, err := json.Marshal(indexContent)
-				So(err, ShouldBeNil)
-
-				imageStore.GetIndexContentFn = func(repo string) ([]byte, error) {
-					return indexBlob, nil
-				}
-
-				metaDB.SetIndexDataFn = func(digest godigest.Digest, indexData mTypes.IndexData) error {
-					return ErrTestError
-				}
-
-				err = meta.ParseRepo("repo", metaDB, storeController, log)
-				So(err, ShouldBeNil)
 			})
 		})
 	})
@@ -401,14 +150,14 @@ func TestParseStorageDynamoWrapper(t *testing.T) {
 		rootDir := t.TempDir()
 
 		params := dynamodb.DBDriverParameters{
-			Endpoint:              os.Getenv("DYNAMODBMOCK_ENDPOINT"),
-			Region:                "us-east-2",
-			RepoMetaTablename:     "RepoMetadataTable",
-			ManifestDataTablename: "ManifestDataTable",
-			IndexDataTablename:    "IndexDataTable",
-			UserDataTablename:     "UserDataTable",
-			APIKeyTablename:       "ApiKeyTable",
-			VersionTablename:      "Version",
+			Endpoint:               os.Getenv("DYNAMODBMOCK_ENDPOINT"),
+			Region:                 "us-east-2",
+			RepoMetaTablename:      "RepoMetadataTable",
+			RepoBlobsInfoTablename: "RepoBlobsInfoTablename",
+			ImageMetaTablename:     "ImageMetaTablename",
+			UserDataTablename:      "UserDataTable",
+			APIKeyTablename:        "ApiKeyTable",
+			VersionTablename:       "Version",
 		}
 
 		dynamoClient, err := dynamodb.GetDynamoClient(params)
@@ -417,10 +166,13 @@ func TestParseStorageDynamoWrapper(t *testing.T) {
 		dynamoWrapper, err := dynamodb.New(dynamoClient, params, log.NewLogger("debug", ""))
 		So(err, ShouldBeNil)
 
-		err = dynamoWrapper.ResetManifestDataTable()
+		err = dynamoWrapper.ResetTable(dynamoWrapper.RepoMetaTablename)
 		So(err, ShouldBeNil)
 
-		err = dynamoWrapper.ResetRepoMetaTable()
+		err = dynamoWrapper.ResetTable(dynamoWrapper.RepoBlobsTablename)
+		So(err, ShouldBeNil)
+
+		err = dynamoWrapper.ResetTable(dynamoWrapper.ImageMetaTablename)
 		So(err, ShouldBeNil)
 
 		RunParseStorageTests(rootDir, dynamoWrapper)
@@ -496,20 +248,20 @@ func RunParseStorageTests(rootDir string, metaDB mTypes.MetaDB) {
 		So(err, ShouldBeNil)
 
 		repos, err := metaDB.GetMultipleRepoMeta(context.Background(),
-			func(repoMeta mTypes.RepoMetadata) bool { return true })
+			func(repoMeta mTypes.RepoMeta) bool { return true })
 		So(err, ShouldBeNil)
 
 		So(len(repos), ShouldEqual, 1)
 		So(len(repos[0].Tags), ShouldEqual, 2)
 
-		for _, descriptor := range repos[0].Tags {
-			manifestMeta, err := metaDB.GetManifestMeta(repo, godigest.Digest(descriptor.Digest))
+		ctx := context.Background()
+
+		for tag, descriptor := range repos[0].Tags {
+			imageManifestData, err := metaDB.GetFullImageMeta(ctx, repo, tag)
 			So(err, ShouldBeNil)
-			So(manifestMeta.ManifestBlob, ShouldNotBeNil)
-			So(manifestMeta.ConfigBlob, ShouldNotBeNil)
 
 			if descriptor.Digest == signedManifestDigest.String() {
-				So(manifestMeta.Signatures, ShouldNotBeEmpty)
+				So(imageManifestData.Signatures, ShouldNotBeEmpty)
 			}
 		}
 	})
@@ -555,10 +307,8 @@ func RunParseStorageTests(rootDir string, metaDB mTypes.MetaDB) {
 		err = meta.ParseStorage(metaDB, storeController, log.NewLogger("debug", ""))
 		So(err, ShouldBeNil)
 
-		repos, err := metaDB.GetMultipleRepoMeta(
-			context.Background(),
-			func(repoMeta mTypes.RepoMetadata) bool { return true },
-		)
+		repos, err := metaDB.GetMultipleRepoMeta(context.Background(),
+			func(repoMeta mTypes.RepoMeta) bool { return true })
 		So(err, ShouldBeNil)
 
 		for _, desc := range repos[0].Tags {
@@ -577,15 +327,12 @@ func RunParseStorageTests(rootDir string, metaDB mTypes.MetaDB) {
 
 		storeController := storage.StoreController{DefaultStore: imageStore}
 		// add an image
-		image, err := deprecated.GetRandomImage() //nolint:staticcheck
+		image := CreateRandomImage() //nolint:staticcheck
+
+		err := WriteImageToFileSystem(image, repo, "tag", storeController)
 		So(err, ShouldBeNil)
 
-		manifestDigest := image.Digest()
-
-		err = WriteImageToFileSystem(image, repo, "tag", storeController)
-		So(err, ShouldBeNil)
-
-		err = metaDB.SetRepoReference(repo, "tag", manifestDigest, ispec.MediaTypeImageManifest)
+		err = metaDB.SetRepoReference(repo, "tag", image.AsImageMeta())
 		So(err, ShouldBeNil)
 
 		err = metaDB.IncrementRepoStars(repo)
@@ -597,30 +344,20 @@ func RunParseStorageTests(rootDir string, metaDB mTypes.MetaDB) {
 		err = metaDB.IncrementImageDownloads(repo, "tag")
 		So(err, ShouldBeNil)
 
-		repoMeta, err := metaDB.GetRepoMeta(repo)
+		repoMeta, err := metaDB.GetRepoMeta(context.Background(), repo)
 		So(err, ShouldBeNil)
 
-		So(repoMeta.Statistics[manifestDigest.String()].DownloadCount, ShouldEqual, 3)
-		So(repoMeta.Stars, ShouldEqual, 1)
+		So(repoMeta.Statistics[image.DigestStr()].DownloadCount, ShouldEqual, 3)
+		So(repoMeta.StarCount, ShouldEqual, 1)
 
 		err = meta.ParseStorage(metaDB, storeController, log.NewLogger("debug", ""))
 		So(err, ShouldBeNil)
 
-		repoMeta, err = metaDB.GetRepoMeta(repo)
+		repoMeta, err = metaDB.GetRepoMeta(context.Background(), repo)
 		So(err, ShouldBeNil)
 
-		So(repoMeta.Statistics[manifestDigest.String()].DownloadCount, ShouldEqual, 3)
-		So(repoMeta.Stars, ShouldEqual, 1)
-	})
-}
-
-func TestGetReferredInfo(t *testing.T) {
-	Convey("GetReferredInfo error", t, func() {
-		_, _, _, err := meta.GetReferredInfo([]byte("bad json"), "digest", ispec.MediaTypeImageManifest)
-		So(err, ShouldNotBeNil)
-
-		_, _, _, err = meta.GetReferredInfo([]byte("bad json"), "digest", ispec.MediaTypeImageIndex)
-		So(err, ShouldNotBeNil)
+		So(repoMeta.Statistics[image.DigestStr()].DownloadCount, ShouldEqual, 3)
+		So(repoMeta.StarCount, ShouldEqual, 1)
 	})
 }
 

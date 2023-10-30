@@ -4,8 +4,6 @@ import (
 	"context"
 	"sync"
 
-	godigest "github.com/opencontainers/go-digest"
-
 	"zotregistry.io/zot/pkg/log"
 	mTypes "zotregistry.io/zot/pkg/meta/types"
 	reqCtx "zotregistry.io/zot/pkg/requestcontext"
@@ -43,13 +41,13 @@ type scanTaskGenerator struct {
 }
 
 func (gen *scanTaskGenerator) getMatcherFunc() mTypes.FilterFunc {
-	return func(repoMeta mTypes.RepoMetadata, manifestMeta mTypes.ManifestMetadata) bool {
+	return func(repoMeta mTypes.RepoMeta, imageMeta mTypes.ImageMeta) bool {
 		// Note this matcher will return information based on scan status of manifests
 		// An index scan aggregates results of manifest scans
 		// If at least one of its manifests can be scanned,
 		// the index and its tag will be returned by the caller function too
 		repoName := repoMeta.Name
-		manifestDigest := godigest.FromBytes(manifestMeta.ManifestBlob).String()
+		manifestDigest := imageMeta.Digest.String()
 
 		if gen.isScheduled(manifestDigest) {
 			// We skip this manifest as it has already scheduled
@@ -121,18 +119,18 @@ func (gen *scanTaskGenerator) Next() (scheduler.Task, error) {
 	userAc.SetIsAdmin(true)
 	ctx := userAc.DeriveContext(context.Background())
 
-	// Obtain a list of repos with unscanned scannable manifests
+	// Obtain a list of repos with un-scanned scannable manifests
 	// We may implement a method to return just 1 match at some point
-	reposMeta, _, _, err := gen.metaDB.FilterTags(ctx, gen.getMatcherFunc())
+	imageMeta, err := gen.metaDB.FilterTags(ctx, mTypes.AcceptAllRepoTag, gen.getMatcherFunc())
 	if err != nil {
-		// Do not crash the generator for potential repodb inconistencies
+		// Do not crash the generator for potential metadb inconsistencies
 		// as there may be scannable images not yet scanned
 		gen.log.Warn().Err(err).Msg("Scheduled CVE scan: error while obtaining repo metadata")
 	}
 
-	// no reposMeta are returned, all results are in already in cache
+	// no imageMeta are returned, all results are in already in cache
 	// or manifests cannot be scanned
-	if len(reposMeta) == 0 {
+	if len(imageMeta) == 0 {
 		gen.log.Info().Msg("Scheduled CVE scan: finished for available images")
 
 		gen.done = true
@@ -140,23 +138,14 @@ func (gen *scanTaskGenerator) Next() (scheduler.Task, error) {
 		return nil, nil
 	}
 
-	// Since reposMeta will always contain just unscanned images we can pick
-	// any repo and any tag out of the resulting matches
-	repoMeta := reposMeta[0]
-
-	var digest string
-
-	// Pick any tag
-	for _, descriptor := range repoMeta.Tags {
-		digest = descriptor.Digest
-
-		break
-	}
+	// Since imageMeta will always contain just un-scanned images we can pick
+	// any image out of the resulting matches
+	digest := imageMeta[0].Digest.String()
 
 	// Mark the digest as scheduled so it is skipped on next generator run
 	gen.setScheduled(digest, true)
 
-	return newScanTask(gen, repoMeta.Name, digest), nil
+	return newScanTask(gen, imageMeta[0].Repo, digest), nil
 }
 
 func (gen *scanTaskGenerator) IsDone() bool {

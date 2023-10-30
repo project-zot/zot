@@ -40,8 +40,8 @@ func TestCVEDBGenerator(t *testing.T) {
 		sch := scheduler.NewScheduler(cfg, logger)
 
 		metaDB := &mocks.MetaDBMock{
-			GetRepoMetaFn: func(repo string) (mTypes.RepoMetadata, error) {
-				return mTypes.RepoMetadata{
+			GetRepoMetaFn: func(ctx context.Context, repo string) (mTypes.RepoMeta, error) {
+				return mTypes.RepoMeta{
 					Tags: map[string]mTypes.Descriptor{
 						"tag": {MediaType: ispec.MediaTypeImageIndex},
 					},

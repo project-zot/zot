@@ -5,7 +5,6 @@ package cveinfo_test
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"io"
 	"os"
@@ -69,77 +68,38 @@ func TestScanGeneratorWithMockedData(t *testing.T) { //nolint: gocyclo
 		metaDB, err := boltdb.New(boltDriver, log.NewLogger("debug", ""))
 		So(err, ShouldBeNil)
 
+		// Refactor Idea: We can use InitializeTestMetaDB
+
 		// Create metadb data for scannable image with vulnerabilities
 		image11 := CreateImageWith().DefaultLayers().
 			ImageConfig(ispec.Image{Created: DateRef(2008, 1, 1, 12, 0, 0, 0, time.UTC)}).Build()
 
-		repoMeta11 := mTypes.ManifestMetadata{
-			ManifestBlob:  image11.ManifestDescriptor.Data,
-			ConfigBlob:    image11.ConfigDescriptor.Data,
-			DownloadCount: 0,
-			Signatures:    mTypes.ManifestSignatures{},
-		}
-
-		err = metaDB.SetManifestMeta("repo1", image11.ManifestDescriptor.Digest, repoMeta11)
-		So(err, ShouldBeNil)
-		err = metaDB.SetRepoReference("repo1", "0.1.0", image11.ManifestDescriptor.Digest, ispec.MediaTypeImageManifest)
+		err = metaDB.SetRepoReference("repo1", "0.1.0", image11.AsImageMeta())
 		So(err, ShouldBeNil)
 
 		image12 := CreateImageWith().DefaultLayers().
 			ImageConfig(ispec.Image{Created: DateRef(2009, 1, 1, 12, 0, 0, 0, time.UTC)}).Build()
 
-		repoMeta12 := mTypes.ManifestMetadata{
-			ManifestBlob:  image12.ManifestDescriptor.Data,
-			ConfigBlob:    image12.ConfigDescriptor.Data,
-			DownloadCount: 0,
-			Signatures:    mTypes.ManifestSignatures{},
-		}
-
-		err = metaDB.SetManifestMeta("repo1", image12.ManifestDescriptor.Digest, repoMeta12)
-		So(err, ShouldBeNil)
-		err = metaDB.SetRepoReference("repo1", "1.0.0", image12.ManifestDescriptor.Digest, ispec.MediaTypeImageManifest)
+		err = metaDB.SetRepoReference("repo1", "1.0.0", image12.AsImageMeta())
 		So(err, ShouldBeNil)
 
 		image13 := CreateImageWith().DefaultLayers().
 			ImageConfig(ispec.Image{Created: DateRef(2010, 1, 1, 12, 0, 0, 0, time.UTC)}).Build()
 
-		repoMeta13 := mTypes.ManifestMetadata{
-			ManifestBlob:  image13.ManifestDescriptor.Data,
-			ConfigBlob:    image13.ConfigDescriptor.Data,
-			DownloadCount: 0,
-			Signatures:    mTypes.ManifestSignatures{},
-		}
-
-		err = metaDB.SetManifestMeta("repo1", image13.ManifestDescriptor.Digest, repoMeta13)
-		So(err, ShouldBeNil)
-		err = metaDB.SetRepoReference("repo1", "1.1.0", image13.ManifestDescriptor.Digest, ispec.MediaTypeImageManifest)
+		err = metaDB.SetRepoReference("repo1", "1.1.0", image13.AsImageMeta())
 		So(err, ShouldBeNil)
 
 		image14 := CreateImageWith().DefaultLayers().
 			ImageConfig(ispec.Image{Created: DateRef(2011, 1, 1, 12, 0, 0, 0, time.UTC)}).Build()
 
-		repoMeta14 := mTypes.ManifestMetadata{
-			ManifestBlob: image14.ManifestDescriptor.Data,
-			ConfigBlob:   image14.ConfigDescriptor.Data,
-		}
-
-		err = metaDB.SetManifestMeta("repo1", image14.ManifestDescriptor.Digest, repoMeta14)
-		So(err, ShouldBeNil)
-		err = metaDB.SetRepoReference("repo1", "1.0.1", image14.ManifestDescriptor.Digest, ispec.MediaTypeImageManifest)
+		err = metaDB.SetRepoReference("repo1", "1.0.1", image14.AsImageMeta())
 		So(err, ShouldBeNil)
 
 		// Create metadb data for scannable image with no vulnerabilities
 		image61 := CreateImageWith().DefaultLayers().
 			ImageConfig(ispec.Image{Created: DateRef(2016, 1, 1, 12, 0, 0, 0, time.UTC)}).Build()
 
-		repoMeta61 := mTypes.ManifestMetadata{
-			ManifestBlob: image61.ManifestDescriptor.Data,
-			ConfigBlob:   image61.ConfigDescriptor.Data,
-		}
-
-		err = metaDB.SetManifestMeta("repo6", image61.ManifestDescriptor.Digest, repoMeta61)
-		So(err, ShouldBeNil)
-		err = metaDB.SetRepoReference("repo6", "1.0.0", image61.ManifestDescriptor.Digest, ispec.MediaTypeImageManifest)
+		err = metaDB.SetRepoReference("repo6", "1.0.0", image61.AsImageMeta())
 		So(err, ShouldBeNil)
 
 		// Create metadb data for image not supporting scanning
@@ -149,104 +109,58 @@ func TestScanGeneratorWithMockedData(t *testing.T) { //nolint: gocyclo
 			Digest:    godigest.FromBytes([]byte{10, 10, 10}),
 		}}).ImageConfig(ispec.Image{Created: DateRef(2009, 1, 1, 12, 0, 0, 0, time.UTC)}).Build()
 
-		repoMeta21 := mTypes.ManifestMetadata{
-			ManifestBlob: image21.ManifestDescriptor.Data,
-			ConfigBlob:   image21.ConfigDescriptor.Data,
-		}
-
-		err = metaDB.SetManifestMeta("repo2", image21.ManifestDescriptor.Digest, repoMeta21)
-		So(err, ShouldBeNil)
-		err = metaDB.SetRepoReference("repo2", "1.0.0", image21.ManifestDescriptor.Digest, ispec.MediaTypeImageManifest)
+		err = metaDB.SetRepoReference("repo2", "1.0.0", image21.AsImageMeta())
 		So(err, ShouldBeNil)
 
 		// Create metadb data for invalid images/negative tests
-		manifestBlob31 := []byte("invalid manifest blob")
-		So(err, ShouldBeNil)
+		img := CreateRandomImage()
+		digest31 := img.Digest()
 
-		repoMeta31 := mTypes.ManifestMetadata{
-			ManifestBlob: manifestBlob31,
-		}
-
-		digest31 := godigest.FromBytes(manifestBlob31)
-		err = metaDB.SetManifestMeta("repo3", digest31, repoMeta31)
-		So(err, ShouldBeNil)
-		err = metaDB.SetRepoReference("repo3", "invalid-manifest", digest31, ispec.MediaTypeImageManifest)
+		err = metaDB.SetRepoReference("repo3", "invalid-manifest", img.AsImageMeta())
 		So(err, ShouldBeNil)
 
 		image41 := CreateImageWith().DefaultLayers().
 			CustomConfigBlob([]byte("invalid config blob"), ispec.MediaTypeImageConfig).Build()
 
-		repoMeta41 := mTypes.ManifestMetadata{
-			ManifestBlob: image41.ManifestDescriptor.Data,
-			ConfigBlob:   image41.ConfigDescriptor.Data,
-		}
-
-		err = metaDB.SetManifestMeta("repo4", image41.ManifestDescriptor.Digest, repoMeta41)
-		So(err, ShouldBeNil)
-		err = metaDB.SetRepoReference("repo4", "invalid-config", image41.ManifestDescriptor.Digest,
-			ispec.MediaTypeImageManifest)
+		err = metaDB.SetRepoReference("repo4", "invalid-config", image41.AsImageMeta())
 		So(err, ShouldBeNil)
 
-		digest51 := godigest.FromString("abc8")
-		err = metaDB.SetRepoReference("repo5", "nonexitent-manifest", digest51, ispec.MediaTypeImageManifest)
+		image15 := CreateRandomMultiarch()
+
+		digest51 := image15.Digest()
+		err = metaDB.SetRepoReference("repo5", "nonexitent-manifests-for-multiarch", image15.AsImageMeta())
 		So(err, ShouldBeNil)
 
 		// Create metadb data for scannable image which errors during scan
 		image71 := CreateImageWith().DefaultLayers().
 			ImageConfig(ispec.Image{Created: DateRef(2000, 1, 1, 12, 0, 0, 0, time.UTC)}).Build()
 
-		repoMeta71 := mTypes.ManifestMetadata{
-			ManifestBlob: image71.ManifestDescriptor.Data,
-			ConfigBlob:   image71.ConfigDescriptor.Data,
-		}
-
-		err = metaDB.SetManifestMeta("repo7", image71.ManifestDescriptor.Digest, repoMeta71)
-		So(err, ShouldBeNil)
-		err = metaDB.SetRepoReference("repo7", "1.0.0", image71.ManifestDescriptor.Digest, ispec.MediaTypeImageManifest)
+		err = metaDB.SetRepoReference("repo7", "1.0.0", image71.AsImageMeta())
 		So(err, ShouldBeNil)
 
 		// Create multiarch image with vulnerabilities
 		multiarchImage := CreateRandomMultiarch()
 
-		err = metaDB.SetIndexData(
-			multiarchImage.IndexDescriptor.Digest,
-			mTypes.IndexData{IndexBlob: multiarchImage.IndexDescriptor.Data},
-		)
+		err = metaDB.SetRepoReference(repoIndex, multiarchImage.Images[0].DigestStr(),
+			multiarchImage.Images[0].AsImageMeta())
+		So(err, ShouldBeNil)
+		err = metaDB.SetRepoReference(repoIndex, multiarchImage.Images[1].DigestStr(),
+			multiarchImage.Images[1].AsImageMeta())
+		So(err, ShouldBeNil)
+		err = metaDB.SetRepoReference(repoIndex, multiarchImage.Images[2].DigestStr(),
+			multiarchImage.Images[2].AsImageMeta())
 		So(err, ShouldBeNil)
 
-		err = metaDB.SetManifestData(
-			multiarchImage.Images[0].ManifestDescriptor.Digest,
-			mTypes.ManifestData{
-				ManifestBlob: multiarchImage.Images[0].ManifestDescriptor.Data,
-				ConfigBlob:   multiarchImage.Images[0].ConfigDescriptor.Data,
+		err = metaDB.SetRepoReference(repoIndex, "tagIndex", multiarchImage.AsImageMeta())
+		So(err, ShouldBeNil)
+
+		err = metaDB.SetRepoMeta("repo-with-bad-tag-digest", mTypes.RepoMeta{
+			Name: "repo-with-bad-tag-digest",
+			Tags: map[string]mTypes.Descriptor{
+				"tag":            {MediaType: ispec.MediaTypeImageManifest, Digest: godigest.FromString("1").String()},
+				"tag-multi-arch": {MediaType: ispec.MediaTypeImageIndex, Digest: godigest.FromString("2").String()},
 			},
-		)
-		So(err, ShouldBeNil)
-
-		err = metaDB.SetManifestData(
-			multiarchImage.Images[1].ManifestDescriptor.Digest,
-			mTypes.ManifestData{
-				ManifestBlob: multiarchImage.Images[1].ManifestDescriptor.Data,
-				ConfigBlob:   multiarchImage.Images[1].ConfigDescriptor.Data,
-			},
-		)
-		So(err, ShouldBeNil)
-
-		err = metaDB.SetManifestData(
-			multiarchImage.Images[2].ManifestDescriptor.Digest,
-			mTypes.ManifestData{
-				ManifestBlob: multiarchImage.Images[2].ManifestDescriptor.Data,
-				ConfigBlob:   multiarchImage.Images[2].ConfigDescriptor.Data,
-			},
-		)
-		So(err, ShouldBeNil)
-
-		err = metaDB.SetRepoReference(
-			repoIndex,
-			"tagIndex",
-			multiarchImage.IndexDescriptor.Digest,
-			ispec.MediaTypeImageIndex,
-		)
+		})
 		So(err, ShouldBeNil)
 
 		// Keep a record of all the image references / digest pairings
@@ -274,7 +188,7 @@ func TestScanGeneratorWithMockedData(t *testing.T) { //nolint: gocyclo
 		image41Digest := image41.ManifestDescriptor.Digest.String()
 		image41Name := "repo4:invalid-config"
 		imageMap[image41Name] = image41Digest
-		image51Name := "repo5:nonexitent-manifest"
+		image51Name := "repo5:nonexitent-manifest-for-multiarch"
 		imageMap[image51Name] = digest51.String()
 		image61Digest := image61.ManifestDescriptor.Digest.String()
 		image61Name := "repo6:1.0.0"
@@ -296,7 +210,7 @@ func TestScanGeneratorWithMockedData(t *testing.T) { //nolint: gocyclo
 		imageMap[indexM3Name] = indexM3Digest
 
 		// Initialize a test CVE cache
-		cache := cvecache.NewCveCache(10, logger)
+		cache := cvecache.NewCveCache(20, logger)
 
 		// MetaDB loaded with initial data, now mock the scanner
 		// Setup test CVE data in mock scanner
@@ -440,7 +354,7 @@ func TestScanGeneratorWithMockedData(t *testing.T) { //nolint: gocyclo
 				// Almost same logic compared to actual Trivy specific implementation
 				imageDir, inputTag := repo, reference
 
-				repoMeta, err := metaDB.GetRepoMeta(imageDir)
+				repoMeta, err := metaDB.GetRepoMeta(context.Background(), imageDir)
 				if err != nil {
 					return false, err
 				}
@@ -463,19 +377,12 @@ func TestScanGeneratorWithMockedData(t *testing.T) { //nolint: gocyclo
 					return false, err
 				}
 
-				manifestData, err := metaDB.GetManifestData(manifestDigest)
+				manifestData, err := metaDB.GetImageMeta(manifestDigest)
 				if err != nil {
 					return false, err
 				}
 
-				var manifestContent ispec.Manifest
-
-				err = json.Unmarshal(manifestData.ManifestBlob, &manifestContent)
-				if err != nil {
-					return false, zerr.ErrScanNotSupported
-				}
-
-				for _, imageLayer := range manifestContent.Layers {
+				for _, imageLayer := range manifestData.Manifests[0].Manifest.Layers {
 					switch imageLayer.MediaType {
 					case ispec.MediaTypeImageLayerGzip, ispec.MediaTypeImageLayer, string(regTypes.DockerLayer):
 
@@ -531,7 +438,7 @@ func TestScanGeneratorWithMockedData(t *testing.T) { //nolint: gocyclo
 
 		// Make sure the scanner generator has completed despite errors
 		found, err := test.ReadLogFileAndSearchString(logPath,
-			"Scheduled CVE scan: finished for available images", 20*time.Second)
+			"Scheduled CVE scan: finished for available images", 40*time.Second)
 		So(err, ShouldBeNil)
 		So(found, ShouldBeTrue)
 
@@ -546,13 +453,12 @@ func TestScanGeneratorWithMockedData(t *testing.T) { //nolint: gocyclo
 				t.Log("expecting " + image + " " + digestStr + " to be present in cache")
 				So(scanner.IsResultCached(digestStr), ShouldBeTrue)
 			} else {
-				// We don't cache results for unscannable manifests
+				// We don't cache results for un-scannable manifests
 				t.Log("expecting " + image + " " + digestStr + " to be absent from cache")
 				So(scanner.IsResultCached(digestStr), ShouldBeFalse)
 			}
 		}
 
-		// Make sure the scanner generator is catching the metadb error for repo5:nonexitent-manifest
 		found, err = test.ReadLogFileAndSearchString(logPath,
 			"Scheduled CVE scan: error while obtaining repo metadata", 20*time.Second)
 		So(err, ShouldBeNil)

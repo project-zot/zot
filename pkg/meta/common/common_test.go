@@ -5,23 +5,15 @@ import (
 	"testing"
 	"time"
 
-	"github.com/opencontainers/go-digest"
-	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	. "github.com/smartystreets/goconvey/convey"
 
 	"zotregistry.io/zot/pkg/meta/common"
 	mTypes "zotregistry.io/zot/pkg/meta/types"
-	"zotregistry.io/zot/pkg/test/mocks"
 )
 
 var ErrTestError = errors.New("test error")
 
 func TestUtils(t *testing.T) {
-	Convey("GetReferredSubject", t, func() {
-		_, err := common.GetReferredSubject([]byte("bad json"))
-		So(err, ShouldNotBeNil)
-	})
-
 	Convey("MatchesArtifactTypes", t, func() {
 		res := common.MatchesArtifactTypes("", nil)
 		So(res, ShouldBeTrue)
@@ -115,146 +107,5 @@ func TestUtils(t *testing.T) {
 		)
 
 		So(res, ShouldEqual, false)
-	})
-
-	Convey("FilterDataByRepo", t, func() {
-		Convey("Functionality", func() {
-			_, _, err := common.FilterDataByRepo(
-				[]mTypes.RepoMetadata{{
-					Tags: map[string]mTypes.Descriptor{
-						"manifest": {
-							Digest:    "manifestDigest",
-							MediaType: ispec.MediaTypeImageManifest,
-						},
-						"index": {
-							Digest:    "indexDigest",
-							MediaType: ispec.MediaTypeImageIndex,
-						},
-						"rand": {
-							Digest:    "randDigest",
-							MediaType: "rand",
-						},
-					},
-				}},
-				map[string]mTypes.ManifestMetadata{},
-				map[string]mTypes.IndexData{
-					"indexDigest": {
-						IndexBlob: []byte(`{
-							"manifests": [
-								{
-									"digest": "manifestDigest"
-								}
-							]
-						}`),
-					},
-				},
-			)
-			So(err, ShouldBeNil)
-		})
-		Convey("Errors", func() {
-			// Unmarshal index data error
-			_, _, err := common.FilterDataByRepo(
-				[]mTypes.RepoMetadata{{
-					Tags: map[string]mTypes.Descriptor{
-						"tag": {
-							Digest:    "indexDigest",
-							MediaType: ispec.MediaTypeImageIndex,
-						},
-					},
-				}},
-				map[string]mTypes.ManifestMetadata{},
-				map[string]mTypes.IndexData{
-					"indexDigest": {
-						IndexBlob: []byte("bad blob"),
-					},
-				},
-			)
-
-			So(err, ShouldNotBeNil)
-		})
-	})
-
-	Convey("FetchDataForRepos", t, func() {
-		Convey("Errors", func() {
-			// Unmarshal index data error
-			_, _, err := common.FetchDataForRepos(
-				mocks.MetaDBMock{
-					GetIndexDataFn: func(indexDigest digest.Digest) (mTypes.IndexData, error) {
-						return mTypes.IndexData{
-							IndexBlob: []byte("bad blob"),
-						}, nil
-					},
-				},
-				[]mTypes.RepoMetadata{{
-					Tags: map[string]mTypes.Descriptor{
-						"tag": {
-							Digest:    "indexDigest",
-							MediaType: ispec.MediaTypeImageIndex,
-						},
-					},
-				}},
-			)
-			So(err, ShouldNotBeNil)
-		})
-	})
-}
-
-func TestFetchDataForRepos(t *testing.T) {
-	Convey("GetReferredSubject", t, func() {
-		mockMetaDB := mocks.MetaDBMock{}
-
-		Convey("GetManifestData errors", func() {
-			mockMetaDB.GetManifestDataFn = func(manifestDigest digest.Digest) (mTypes.ManifestData, error) {
-				return mTypes.ManifestData{}, ErrTestError
-			}
-
-			_, _, err := common.FetchDataForRepos(mockMetaDB, []mTypes.RepoMetadata{
-				{
-					Tags: map[string]mTypes.Descriptor{
-						"tag1": {Digest: "dig1", MediaType: ispec.MediaTypeImageManifest},
-					},
-				},
-			})
-			So(err, ShouldNotBeNil)
-		})
-
-		Convey("GetIndexData errors", func() {
-			mockMetaDB.GetIndexDataFn = func(indexDigest digest.Digest) (mTypes.IndexData, error) {
-				return mTypes.IndexData{}, ErrTestError
-			}
-
-			_, _, err := common.FetchDataForRepos(mockMetaDB, []mTypes.RepoMetadata{
-				{
-					Tags: map[string]mTypes.Descriptor{
-						"tag1": {Digest: "dig1", MediaType: ispec.MediaTypeImageIndex},
-					},
-				},
-			})
-			So(err, ShouldNotBeNil)
-		})
-
-		Convey("GetIndexData ok, GetManifestData errors", func() {
-			mockMetaDB.GetIndexDataFn = func(indexDigest digest.Digest) (mTypes.IndexData, error) {
-				return mTypes.IndexData{
-					IndexBlob: []byte(`{
-						"manifests": [
-							{"digest": "dig1"}
-						]
-					}`),
-				}, nil
-			}
-			mockMetaDB.GetManifestDataFn = func(manifestDigest digest.Digest) (mTypes.ManifestData, error) {
-				return mTypes.ManifestData{}, ErrTestError
-			}
-
-			_, _, err := common.FetchDataForRepos(mockMetaDB, []mTypes.RepoMetadata{
-				{
-					Tags: map[string]mTypes.Descriptor{
-						"tag1": {Digest: "dig1", MediaType: ispec.MediaTypeImageIndex},
-					},
-				},
-			})
-			So(err, ShouldNotBeNil)
-		})
 	})
 }

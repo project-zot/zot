@@ -41,8 +41,8 @@ function setup() {
             "region": "us-east-2",
             "cacheTablename": "BlobTable",
             "repoMetaTablename": "RepoMetadataTable",
-            "manifestDataTablename": "ManifestDataTable",
-            "indexDataTablename": "IndexDataTable",
+            "imageMetaTablename": "ImageMetaTable",
+            "repoBlobsInfoTablename": "RepoBlobsInfoTable",
             "userDataTablename": "UserDataTable",
             "apiKeyTablename":"ApiKeyTable",
             "versionTablename": "Version"

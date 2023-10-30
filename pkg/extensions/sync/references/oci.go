@@ -137,22 +137,9 @@ func (ref OciReferences) SyncReferences(ctx context.Context, localRepo, remoteRe
 			ref.log.Debug().Str("repository", localRepo).Str("subject", subjectDigestStr).
 				Msg("metaDB: trying to add oci references for image")
 
-			isSig, sigType, signedManifestDig, err := storage.CheckIsImageSignature(localRepo, referenceBuf,
-				referrer.Digest.String())
-			if err != nil {
-				return refsDigests, fmt.Errorf("failed to check if oci reference '%s@%s' is a signature: %w", localRepo,
-					referrer.Digest.String(), err)
-			}
-
-			if isSig {
-				err = addSigToMeta(ref.metaDB, localRepo, sigType, referrer.Digest.String(), signedManifestDig, referenceDigest,
-					referenceBuf, imageStore, ref.log)
-			} else {
-				err = meta.SetImageMetaFromInput(localRepo, referenceDigest.String(), referrer.MediaType,
-					referenceDigest, referenceBuf, ref.storeController.GetImageStore(localRepo),
-					ref.metaDB, ref.log)
-			}
-
+			err = meta.SetImageMetaFromInput(localRepo, referenceDigest.String(), referrer.MediaType,
+				referenceDigest, referenceBuf, ref.storeController.GetImageStore(localRepo),
+				ref.metaDB, ref.log)
 			if err != nil {
 				return refsDigests, fmt.Errorf("failed to set metadata for oci reference in '%s@%s': %w",
 					localRepo, subjectDigestStr, err)

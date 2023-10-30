@@ -6,7 +6,6 @@ package client_test
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -733,7 +732,7 @@ func getMockCveScanner(metaDB mTypes.MetaDB) cveinfo.Scanner {
 			imageDir := repo
 			inputTag := reference
 
-			repoMeta, err := metaDB.GetRepoMeta(imageDir)
+			repoMeta, err := metaDB.GetRepoMeta(context.Background(), imageDir)
 			if err != nil {
 				return false, err
 			}
@@ -756,19 +755,12 @@ func getMockCveScanner(metaDB mTypes.MetaDB) cveinfo.Scanner {
 				return false, err
 			}
 
-			manifestData, err := metaDB.GetManifestData(manifestDigest)
+			manifestData, err := metaDB.GetImageMeta(manifestDigest)
 			if err != nil {
 				return false, err
 			}
 
-			var manifestContent ispec.Manifest
-
-			err = json.Unmarshal(manifestData.ManifestBlob, &manifestContent)
-			if err != nil {
-				return false, zerr.ErrScanNotSupported
-			}
-
-			for _, imageLayer := range manifestContent.Layers {
+			for _, imageLayer := range manifestData.Manifests[0].Manifest.Layers {
 				switch imageLayer.MediaType {
 				case ispec.MediaTypeImageLayerGzip, ispec.MediaTypeImageLayer, string(regTypes.DockerLayer):
 

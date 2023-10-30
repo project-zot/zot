@@ -29,8 +29,6 @@ func TestWrapperErrors(t *testing.T) {
 	}
 
 	repoMetaTablename := "RepoMetadataTable" + uuid.String()
-	manifestDataTablename := "ManifestDataTable" + uuid.String()
-	indexDataTablename := "IndexDataTable" + uuid.String()
 	userDataTablename := "UserDataTable" + uuid.String()
 	apiKeyTablename := "ApiKeyTable" + uuid.String()
 
@@ -54,31 +52,23 @@ func TestWrapperErrors(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		dynamoWrapper := DynamoDB{
-			Client:                dynamodb.NewFromConfig(cfg),
-			RepoMetaTablename:     repoMetaTablename,
-			ManifestDataTablename: manifestDataTablename,
-			IndexDataTablename:    indexDataTablename,
-			VersionTablename:      versionTablename,
-			UserDataTablename:     userDataTablename,
-			APIKeyTablename:       apiKeyTablename,
-			Patches:               version.GetDynamoDBPatches(),
-			Log:                   log.Logger{Logger: zerolog.New(os.Stdout)},
+			Client:            dynamodb.NewFromConfig(cfg),
+			RepoMetaTablename: repoMetaTablename,
+			VersionTablename:  versionTablename,
+			UserDataTablename: userDataTablename,
+			APIKeyTablename:   apiKeyTablename,
+			Patches:           version.GetDynamoDBPatches(),
+			Log:               log.Logger{Logger: zerolog.New(os.Stdout)},
 		}
 
 		// The table creation should fail as the endpoint is not configured correctly
-		err = dynamoWrapper.createRepoMetaTable()
-		So(err, ShouldNotBeNil)
-
-		err = dynamoWrapper.createManifestDataTable()
-		So(err, ShouldNotBeNil)
-
-		err = dynamoWrapper.createIndexDataTable()
+		err = dynamoWrapper.createTable(dynamoWrapper.RepoMetaTablename)
 		So(err, ShouldNotBeNil)
 
 		err = dynamoWrapper.createVersionTable()
 		So(err, ShouldNotBeNil)
 
-		err = dynamoWrapper.createAPIKeyTable()
+		err = dynamoWrapper.createTable(dynamoWrapper.APIKeyTablename)
 		So(err, ShouldNotBeNil)
 	})
 
@@ -98,21 +88,16 @@ func TestWrapperErrors(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		dynamoWrapper := DynamoDB{
-			Client:                dynamodb.NewFromConfig(cfg),
-			RepoMetaTablename:     repoMetaTablename,
-			ManifestDataTablename: manifestDataTablename,
-			VersionTablename:      versionTablename,
-			IndexDataTablename:    indexDataTablename,
-			UserDataTablename:     userDataTablename,
-			Patches:               version.GetDynamoDBPatches(),
-			Log:                   log.Logger{Logger: zerolog.New(os.Stdout)},
+			Client:            dynamodb.NewFromConfig(cfg),
+			RepoMetaTablename: repoMetaTablename,
+			VersionTablename:  versionTablename,
+			UserDataTablename: userDataTablename,
+			Patches:           version.GetDynamoDBPatches(),
+			Log:               log.Logger{Logger: zerolog.New(os.Stdout)},
 		}
 
 		// The tables were not created so delete calls fail, but dynamoWrapper should not error
-		err = dynamoWrapper.deleteRepoMetaTable()
-		So(err, ShouldBeNil)
-
-		err = dynamoWrapper.deleteManifestDataTable()
+		err = dynamoWrapper.deleteTable(dynamoWrapper.RepoMetaTablename)
 		So(err, ShouldBeNil)
 	})
 }

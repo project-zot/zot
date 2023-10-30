@@ -29,6 +29,12 @@ const (
 	ArtifactTypeNotation = "application/vnd.cncf.notary.signature"
 )
 
+var cosignTagRule = regexp.MustCompile(`sha256\-.+\.sig`)
+
+func IsCosignTag(tag string) bool {
+	return cosignTagRule.MatchString(tag)
+}
+
 func Contains[T comparable](elems []T, v T) bool {
 	for _, s := range elems {
 		if v == s {

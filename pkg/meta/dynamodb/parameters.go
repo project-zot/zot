@@ -9,7 +9,7 @@ import (
 )
 
 type DBDriverParameters struct {
-	Endpoint, Region, RepoMetaTablename, ManifestDataTablename, IndexDataTablename,
+	Endpoint, Region, RepoMetaTablename, RepoBlobsInfoTablename, ImageMetaTablename,
 	UserDataTablename, APIKeyTablename, VersionTablename string
 }
 

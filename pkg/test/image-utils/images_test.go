@@ -166,16 +166,6 @@ func TestPredefinedImages(t *testing.T) {
 		img = CreateRandomVulnerableImageWith().ArtifactType("art.type").Build()
 		So(img.Manifest.ArtifactType, ShouldEqual, "art.type")
 	})
-
-	Convey("Predefined Multiarch-Images", t, func() {
-		multiArch := CreateRandomMultiarch()
-		So(len(multiArch.Images), ShouldEqual, 3)
-		So(multiArch.Reference, ShouldResemble, multiArch.Digest().String())
-
-		multiArch = CreateVulnerableMultiarch()
-		So(len(multiArch.Images), ShouldEqual, 3)
-		So(multiArch.Reference, ShouldResemble, multiArch.Digest().String())
-	})
 }
 
 func TestImageMethods(t *testing.T) {

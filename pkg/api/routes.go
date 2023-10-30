@@ -516,7 +516,7 @@ func (rh *RouteHandler) GetManifest(response http.ResponseWriter, request *http.
 	}
 
 	if rh.c.MetaDB != nil {
-		err := meta.OnGetManifest(name, reference, content, rh.c.StoreController, rh.c.MetaDB, rh.c.Log)
+		err := meta.OnGetManifest(name, reference, mediaType, content, rh.c.StoreController, rh.c.MetaDB, rh.c.Log)
 		if err != nil {
 			response.WriteHeader(http.StatusInternalServerError)
 

@@ -2,7 +2,6 @@ package dynamodb
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -14,46 +13,48 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
+	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/timestamppb"
 
 	zerr "zotregistry.io/zot/errors"
 	"zotregistry.io/zot/pkg/api/constants"
 	zcommon "zotregistry.io/zot/pkg/common"
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/meta/common"
+	mConvert "zotregistry.io/zot/pkg/meta/convert"
+	proto_go "zotregistry.io/zot/pkg/meta/proto/gen"
 	mTypes "zotregistry.io/zot/pkg/meta/types"
 	"zotregistry.io/zot/pkg/meta/version"
 	reqCtx "zotregistry.io/zot/pkg/requestcontext"
 )
 
-var errMetaDB = errors.New("metadb: error while constructing manifest meta")
-
 type DynamoDB struct {
-	Client                *dynamodb.Client
-	APIKeyTablename       string
-	RepoMetaTablename     string
-	IndexDataTablename    string
-	ManifestDataTablename string
-	UserDataTablename     string
-	VersionTablename      string
-	Patches               []func(client *dynamodb.Client, tableNames map[string]string) error
-	imgTrustStore         mTypes.ImageTrustStore
-	Log                   log.Logger
+	Client             *dynamodb.Client
+	APIKeyTablename    string
+	RepoMetaTablename  string
+	RepoBlobsTablename string
+	ImageMetaTablename string
+	UserDataTablename  string
+	VersionTablename   string
+	Patches            []func(client *dynamodb.Client, tableNames map[string]string) error
+	imgTrustStore      mTypes.ImageTrustStore
+	Log                log.Logger
 }
 
 func New(
 	client *dynamodb.Client, params DBDriverParameters, log log.Logger,
 ) (*DynamoDB, error) {
 	dynamoWrapper := DynamoDB{
-		Client:                client,
-		RepoMetaTablename:     params.RepoMetaTablename,
-		ManifestDataTablename: params.ManifestDataTablename,
-		IndexDataTablename:    params.IndexDataTablename,
-		VersionTablename:      params.VersionTablename,
-		UserDataTablename:     params.UserDataTablename,
-		APIKeyTablename:       params.APIKeyTablename,
-		Patches:               version.GetDynamoDBPatches(),
-		imgTrustStore:         nil,
-		Log:                   log,
+		Client:             client,
+		VersionTablename:   params.VersionTablename,
+		UserDataTablename:  params.UserDataTablename,
+		APIKeyTablename:    params.APIKeyTablename,
+		RepoMetaTablename:  params.RepoMetaTablename,
+		ImageMetaTablename: params.ImageMetaTablename,
+		RepoBlobsTablename: params.RepoBlobsInfoTablename,
+		Patches:            version.GetDynamoDBPatches(),
+		imgTrustStore:      nil,
+		Log:                log,
 	}
 
 	err := dynamoWrapper.createVersionTable()
@@ -61,27 +62,27 @@ func New(
 		return nil, err
 	}
 
-	err = dynamoWrapper.createRepoMetaTable()
+	err = dynamoWrapper.createTable(dynamoWrapper.RepoMetaTablename)
 	if err != nil {
 		return nil, err
 	}
 
-	err = dynamoWrapper.createManifestDataTable()
+	err = dynamoWrapper.createTable(dynamoWrapper.RepoBlobsTablename)
 	if err != nil {
 		return nil, err
 	}
 
-	err = dynamoWrapper.createIndexDataTable()
+	err = dynamoWrapper.createTable(dynamoWrapper.ImageMetaTablename)
 	if err != nil {
 		return nil, err
 	}
 
-	err = dynamoWrapper.createUserDataTable()
+	err = dynamoWrapper.createTable(dynamoWrapper.UserDataTablename)
 	if err != nil {
 		return nil, err
 	}
 
-	err = dynamoWrapper.createAPIKeyTable()
+	err = dynamoWrapper.createTable(dynamoWrapper.APIKeyTablename)
 	if err != nil {
 		return nil, err
 	}
@@ -98,147 +99,794 @@ func (dwr *DynamoDB) SetImageTrustStore(imgTrustStore mTypes.ImageTrustStore) {
 	dwr.imgTrustStore = imgTrustStore
 }
 
-func (dwr *DynamoDB) SetManifestData(manifestDigest godigest.Digest, manifestData mTypes.ManifestData) error {
-	mdAttributeValue, err := attributevalue.Marshal(manifestData)
+func (dwr *DynamoDB) SetProtoImageMeta(digest godigest.Digest, protoImageMeta *proto_go.ImageMeta) error {
+	bytes, err := proto.Marshal(protoImageMeta)
+	if err != nil {
+		return err
+	}
+
+	mdAttributeValue, err := attributevalue.Marshal(bytes)
 	if err != nil {
 		return err
 	}
 
 	_, err = dwr.Client.UpdateItem(context.TODO(), &dynamodb.UpdateItemInput{
 		ExpressionAttributeNames: map[string]string{
-			"#MD": "ManifestData",
+			"#ID": "ImageMeta",
 		},
 		ExpressionAttributeValues: map[string]types.AttributeValue{
-			":ManifestData": mdAttributeValue,
+			":ImageMeta": mdAttributeValue,
 		},
 		Key: map[string]types.AttributeValue{
-			"Digest": &types.AttributeValueMemberS{
-				Value: manifestDigest.String(),
+			"Key": &types.AttributeValueMemberS{
+				Value: mConvert.GetImageDigestStr(protoImageMeta),
 			},
 		},
-		TableName:        aws.String(dwr.ManifestDataTablename),
-		UpdateExpression: aws.String("SET #MD = :ManifestData"),
+		TableName:        aws.String(dwr.ImageMetaTablename),
+		UpdateExpression: aws.String("SET #ID = :ImageMeta"),
 	})
 
 	return err
 }
 
-func (dwr *DynamoDB) GetManifestData(manifestDigest godigest.Digest) (mTypes.ManifestData, error) {
-	resp, err := dwr.Client.GetItem(context.Background(), &dynamodb.GetItemInput{
-		TableName: aws.String(dwr.ManifestDataTablename),
+func (dwr *DynamoDB) SetImageMeta(digest godigest.Digest, imageMeta mTypes.ImageMeta) error {
+	return dwr.SetProtoImageMeta(imageMeta.Digest, mConvert.GetProtoImageMeta(imageMeta))
+}
+
+func (dwr *DynamoDB) GetProtoImageMeta(ctx context.Context, digest godigest.Digest) (*proto_go.ImageMeta, error) {
+	resp, err := dwr.Client.GetItem(ctx, &dynamodb.GetItemInput{
+		TableName: aws.String(dwr.ImageMetaTablename),
 		Key: map[string]types.AttributeValue{
-			"Digest": &types.AttributeValueMemberS{Value: manifestDigest.String()},
+			"Key": &types.AttributeValueMemberS{Value: digest.String()},
 		},
 	})
 	if err != nil {
-		return mTypes.ManifestData{}, err
+		return nil, err
+	}
+
+	blob := []byte{}
+
+	if resp.Item == nil {
+		return nil, zerr.ErrImageMetaNotFound
+	}
+
+	err = attributevalue.Unmarshal(resp.Item["ImageMeta"], &blob)
+	if err != nil {
+		return nil, err
+	}
+
+	imageMeta := &proto_go.ImageMeta{}
+
+	err = proto.Unmarshal(blob, imageMeta)
+	if err != nil {
+		return nil, err
+	}
+
+	return imageMeta, nil
+}
+
+func (dwr *DynamoDB) setProtoRepoMeta(repo string, repoMeta *proto_go.RepoMeta) error {
+	repoMeta.Name = repo
+
+	repoMetaBlob, err := proto.Marshal(repoMeta)
+	if err != nil {
+		return err
+	}
+
+	repoAttributeValue, err := attributevalue.Marshal(repoMetaBlob)
+	if err != nil {
+		return err
+	}
+
+	_, err = dwr.Client.UpdateItem(context.TODO(), &dynamodb.UpdateItemInput{
+		ExpressionAttributeNames: map[string]string{
+			"#RM": "RepoMetadata",
+		},
+		ExpressionAttributeValues: map[string]types.AttributeValue{
+			":RepoMetadata": repoAttributeValue,
+		},
+		Key: map[string]types.AttributeValue{
+			"Key": &types.AttributeValueMemberS{
+				Value: repo,
+			},
+		},
+		TableName:        aws.String(dwr.RepoMetaTablename),
+		UpdateExpression: aws.String("SET #RM = :RepoMetadata"),
+	})
+
+	return err
+}
+
+func (dwr *DynamoDB) getProtoRepoMeta(ctx context.Context, repo string) (*proto_go.RepoMeta, error) {
+	resp, err := dwr.Client.GetItem(ctx, &dynamodb.GetItemInput{
+		TableName: aws.String(dwr.RepoMetaTablename),
+		Key: map[string]types.AttributeValue{
+			"Key": &types.AttributeValueMemberS{Value: repo},
+		},
+	})
+	if err != nil {
+		return nil, err
 	}
 
 	if resp.Item == nil {
-		return mTypes.ManifestData{}, zerr.ErrManifestDataNotFound
+		return nil, zerr.ErrRepoMetaNotFound
 	}
 
-	var manifestData mTypes.ManifestData
+	blob := []byte{}
 
-	err = attributevalue.Unmarshal(resp.Item["ManifestData"], &manifestData)
+	err = attributevalue.Unmarshal(resp.Item["RepoMetadata"], &blob)
 	if err != nil {
-		return mTypes.ManifestData{}, err
+		return nil, err
 	}
 
-	return manifestData, nil
+	repoMeta := &proto_go.RepoMeta{}
+
+	err = proto.Unmarshal(blob, repoMeta)
+	if err != nil {
+		return nil, err
+	}
+
+	return repoMeta, nil
 }
 
-func (dwr *DynamoDB) SetManifestMeta(repo string, manifestDigest godigest.Digest, manifestMeta mTypes.ManifestMetadata,
-) error {
-	if manifestMeta.Signatures == nil {
-		manifestMeta.Signatures = mTypes.ManifestSignatures{}
+func (dwr *DynamoDB) SetRepoReference(repo string, reference string, imageMeta mTypes.ImageMeta) error {
+	if err := common.ValidateRepoReferenceInput(repo, reference, imageMeta.Digest); err != nil {
+		return err
 	}
 
-	repoMeta, err := dwr.GetRepoMeta(repo)
+	// 1. Add image data to db if needed
+	protoImageMeta := mConvert.GetProtoImageMeta(imageMeta)
+
+	err := dwr.SetProtoImageMeta(imageMeta.Digest, protoImageMeta)
+	if err != nil {
+		return err
+	}
+
+	repoMeta, err := dwr.getProtoRepoMeta(context.Background(), repo)
 	if err != nil {
 		if !errors.Is(err, zerr.ErrRepoMetaNotFound) {
 			return err
 		}
 
-		repoMeta = mTypes.RepoMetadata{
+		repoMeta = &proto_go.RepoMeta{
 			Name:       repo,
-			Tags:       map[string]mTypes.Descriptor{},
-			Statistics: map[string]mTypes.DescriptorStatistics{},
-			Signatures: map[string]mTypes.ManifestSignatures{},
-			Referrers:  map[string][]mTypes.ReferrerInfo{},
+			Tags:       map[string]*proto_go.TagDescriptor{"": {}},
+			Statistics: map[string]*proto_go.DescriptorStatistics{"": {}},
+			Signatures: map[string]*proto_go.ManifestSignatures{"": {Map: map[string]*proto_go.SignaturesInfo{"": {}}}},
+			Referrers:  map[string]*proto_go.ReferrersInfo{"": {}},
 		}
 	}
 
-	err = dwr.SetManifestData(manifestDigest, mTypes.ManifestData{
-		ManifestBlob: manifestMeta.ManifestBlob,
-		ConfigBlob:   manifestMeta.ConfigBlob,
+	// 2. Referrers
+	if subject := mConvert.GetImageSubject(protoImageMeta); subject != nil {
+		refInfo := &proto_go.ReferrersInfo{}
+		if repoMeta.Referrers[subject.Digest.String()] != nil {
+			refInfo = repoMeta.Referrers[subject.Digest.String()]
+		}
+
+		foundReferrer := false
+
+		for i := range refInfo.List {
+			if refInfo.List[i].Digest == mConvert.GetImageDigestStr(protoImageMeta) {
+				foundReferrer = true
+				refInfo.List[i].Count += 1
+
+				break
+			}
+		}
+
+		if !foundReferrer {
+			refInfo.List = append(refInfo.List, &proto_go.ReferrerInfo{
+				Count:        1,
+				MediaType:    protoImageMeta.MediaType,
+				Digest:       mConvert.GetImageDigestStr(protoImageMeta),
+				ArtifactType: mConvert.GetImageArtifactType(protoImageMeta),
+				Size:         mConvert.GetImageManifestSize(protoImageMeta),
+				Annotations:  mConvert.GetImageAnnotations(protoImageMeta),
+			})
+		}
+
+		repoMeta.Referrers[subject.Digest.String()] = refInfo
+	}
+
+	// 3. Update tag
+	if !common.ReferenceIsDigest(reference) {
+		repoMeta.Tags[reference] = &proto_go.TagDescriptor{
+			Digest:    imageMeta.Digest.String(),
+			MediaType: imageMeta.MediaType,
+		}
+	}
+
+	if _, ok := repoMeta.Statistics[imageMeta.Digest.String()]; !ok {
+		repoMeta.Statistics[imageMeta.Digest.String()] = &proto_go.DescriptorStatistics{DownloadCount: 0}
+	}
+
+	if _, ok := repoMeta.Signatures[imageMeta.Digest.String()]; !ok {
+		repoMeta.Signatures[imageMeta.Digest.String()] = &proto_go.ManifestSignatures{
+			Map: map[string]*proto_go.SignaturesInfo{"": {}},
+		}
+	}
+
+	if _, ok := repoMeta.Referrers[imageMeta.Digest.String()]; !ok {
+		repoMeta.Referrers[imageMeta.Digest.String()] = &proto_go.ReferrersInfo{
+			List: []*proto_go.ReferrerInfo{},
+		}
+	}
+
+	// 4. Blobs
+	repoBlobs, err := dwr.getRepoBlobsInfo(repo)
+	if err != nil {
+		return err
+	}
+
+	repoMeta, repoBlobs, err = common.AddImageMetaToRepoMeta(repoMeta, repoBlobs, reference, imageMeta)
+	if err != nil {
+		return err
+	}
+
+	err = dwr.setRepoBlobsInfo(repo, repoBlobs)
+	if err != nil {
+		return err
+	}
+
+	return dwr.setProtoRepoMeta(repo, repoMeta)
+}
+
+func (dwr *DynamoDB) getRepoBlobsInfo(repo string) (*proto_go.RepoBlobs, error) {
+	resp, err := dwr.Client.GetItem(context.Background(), &dynamodb.GetItemInput{
+		TableName: aws.String(dwr.RepoBlobsTablename),
+		Key: map[string]types.AttributeValue{
+			"Key": &types.AttributeValueMemberS{Value: repo},
+		},
 	})
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	updatedRepoMeta := common.UpdateManifestMeta(repoMeta, manifestDigest, manifestMeta)
+	if resp.Item == nil {
+		return &proto_go.RepoBlobs{Name: repo, Blobs: map[string]*proto_go.BlobInfo{"": {}}}, nil
+	}
 
-	err = dwr.SetRepoMeta(repo, updatedRepoMeta)
+	repoBlobsBytes := []byte{}
+
+	err = attributevalue.Unmarshal(resp.Item["RepoBlobsInfo"], &repoBlobsBytes)
+	if err != nil {
+		return nil, err
+	}
+
+	repoBlobs := &proto_go.RepoBlobs{}
+	if repoBlobsBytes == nil {
+		repoBlobs.Blobs = map[string]*proto_go.BlobInfo{}
+	} else {
+		err := proto.Unmarshal(repoBlobsBytes, repoBlobs)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return repoBlobs, nil
+}
+
+func (dwr *DynamoDB) setRepoBlobsInfo(repo string, repoBlobs *proto_go.RepoBlobs) error {
+	bytes, err := proto.Marshal(repoBlobs)
 	if err != nil {
 		return err
 	}
+
+	mdAttributeValue, err := attributevalue.Marshal(bytes)
+	if err != nil {
+		return err
+	}
+
+	_, err = dwr.Client.UpdateItem(context.TODO(), &dynamodb.UpdateItemInput{
+		ExpressionAttributeNames: map[string]string{
+			"#RBI": "RepoBlobsInfo",
+		},
+		ExpressionAttributeValues: map[string]types.AttributeValue{
+			":RepoBlobsInfo": mdAttributeValue,
+		},
+		Key: map[string]types.AttributeValue{
+			"Key": &types.AttributeValueMemberS{
+				Value: repo,
+			},
+		},
+		TableName:        aws.String(dwr.RepoBlobsTablename),
+		UpdateExpression: aws.String("SET #RBI = :RepoBlobsInfo"),
+	})
 
 	return err
 }
 
-func (dwr *DynamoDB) GetManifestMeta(repo string, manifestDigest godigest.Digest,
-) (mTypes.ManifestMetadata, error) { //nolint:contextcheck
-	manifestData, err := dwr.GetManifestData(manifestDigest)
-	if err != nil {
-		if errors.Is(err, zerr.ErrManifestDataNotFound) {
-			return mTypes.ManifestMetadata{}, zerr.ErrManifestMetaNotFound
+func (dwr *DynamoDB) SearchRepos(ctx context.Context, searchText string) ([]mTypes.RepoMeta, error) {
+	repos := []mTypes.RepoMeta{}
+
+	userBookmarks := getUserBookmarks(ctx, dwr)
+	userStars := getUserStars(ctx, dwr)
+
+	repoMetaAttributeIterator := NewBaseDynamoAttributesIterator(
+		dwr.Client, dwr.RepoMetaTablename, "RepoMetadata", 0, dwr.Log,
+	)
+
+	repoMetaAttribute, err := repoMetaAttributeIterator.First(ctx)
+
+	for ; repoMetaAttribute != nil; repoMetaAttribute, err = repoMetaAttributeIterator.Next(ctx) {
+		if err != nil {
+			return []mTypes.RepoMeta{}, err
 		}
 
-		return mTypes.ManifestMetadata{},
-			fmt.Errorf("%w for manifest '%s' from repo '%s'", errMetaDB, manifestDigest, repo)
+		repoMetaBlob := []byte{}
+
+		err := attributevalue.Unmarshal(repoMetaAttribute, &repoMetaBlob)
+		if err != nil {
+			return []mTypes.RepoMeta{}, err
+		}
+
+		protoRepoMeta := &proto_go.RepoMeta{}
+
+		err = proto.Unmarshal(repoMetaBlob, protoRepoMeta)
+		if err != nil {
+			return []mTypes.RepoMeta{}, err
+		}
+
+		if ok, err := reqCtx.RepoIsUserAvailable(ctx, protoRepoMeta.Name); !ok || err != nil {
+			continue
+		}
+
+		rank := common.RankRepoName(searchText, protoRepoMeta.Name)
+		if rank == -1 {
+			continue
+		}
+
+		protoRepoMeta.Rank = int32(rank)
+		protoRepoMeta.IsStarred = zcommon.Contains(userStars, protoRepoMeta.Name)
+		protoRepoMeta.IsBookmarked = zcommon.Contains(userBookmarks, protoRepoMeta.Name)
+
+		repos = append(repos, mConvert.GetRepoMeta(protoRepoMeta))
 	}
 
-	repoMeta, err := dwr.GetRepoMeta(repo)
+	return repos, nil
+}
+
+func (dwr *DynamoDB) SearchTags(ctx context.Context, searchText string) ([]mTypes.FullImageMeta, error) {
+	images := []mTypes.FullImageMeta{}
+	userBookmarks := getUserBookmarks(ctx, dwr)
+	userStars := getUserStars(ctx, dwr)
+
+	searchedRepo, searchedTag, err := common.GetRepoTag(searchText)
+	if err != nil {
+		return []mTypes.FullImageMeta{},
+			fmt.Errorf("metadb: error while parsing search text, invalid format %w", err)
+	}
+
+	if ok, err := reqCtx.RepoIsUserAvailable(ctx, searchedRepo); !ok || err != nil {
+		return []mTypes.FullImageMeta{}, err
+	}
+
+	protoRepoMeta, err := dwr.getProtoRepoMeta(ctx, searchedRepo)
 	if err != nil {
 		if errors.Is(err, zerr.ErrRepoMetaNotFound) {
-			return mTypes.ManifestMetadata{}, zerr.ErrManifestMetaNotFound
+			return []mTypes.FullImageMeta{}, nil
 		}
 
-		return mTypes.ManifestMetadata{},
-			fmt.Errorf("%w for manifest '%s' from repo '%s'", errMetaDB, manifestDigest, repo)
+		return nil, err
 	}
 
-	manifestMetadata := mTypes.ManifestMetadata{}
+	delete(protoRepoMeta.Tags, "")
 
-	manifestMetadata.ManifestBlob = manifestData.ManifestBlob
-	manifestMetadata.ConfigBlob = manifestData.ConfigBlob
-	manifestMetadata.DownloadCount = repoMeta.Statistics[manifestDigest.String()].DownloadCount
+	protoRepoMeta.IsBookmarked = zcommon.Contains(userBookmarks, searchedRepo)
+	protoRepoMeta.IsStarred = zcommon.Contains(userStars, searchedRepo)
 
-	manifestMetadata.Signatures = mTypes.ManifestSignatures{}
+	for tag, descriptor := range protoRepoMeta.Tags {
+		if !strings.HasPrefix(tag, searchedTag) {
+			continue
+		}
 
-	if repoMeta.Signatures[manifestDigest.String()] != nil {
-		manifestMetadata.Signatures = repoMeta.Signatures[manifestDigest.String()]
+		var protoImageMeta *proto_go.ImageMeta
+
+		switch descriptor.MediaType {
+		case ispec.MediaTypeImageManifest:
+			manifestDigest := descriptor.Digest
+
+			imageManifestData, err := dwr.GetProtoImageMeta(ctx, godigest.Digest(manifestDigest))
+			if err != nil {
+				return []mTypes.FullImageMeta{},
+					fmt.Errorf("metadb: error fetching manifest meta for manifest with digest %s %w", manifestDigest, err)
+			}
+
+			protoImageMeta = imageManifestData
+		case ispec.MediaTypeImageIndex:
+			indexDigest := godigest.Digest(descriptor.Digest)
+
+			imageIndexData, err := dwr.GetProtoImageMeta(ctx, indexDigest)
+			if err != nil {
+				return []mTypes.FullImageMeta{},
+					fmt.Errorf("metadb: error fetching manifest meta for manifest with digest %s %w", indexDigest, err)
+			}
+
+			manifestDataList := make([]*proto_go.ManifestMeta, 0, len(imageIndexData.Index.Index.Manifests))
+
+			for _, manifest := range imageIndexData.Index.Index.Manifests {
+				manifestDigest := godigest.Digest(manifest.Digest)
+
+				imageManifestData, err := dwr.GetProtoImageMeta(ctx, manifestDigest)
+				if err != nil {
+					return []mTypes.FullImageMeta{}, err
+				}
+
+				manifestDataList = append(manifestDataList, imageManifestData.Manifests[0])
+			}
+
+			imageIndexData.Manifests = manifestDataList
+
+			protoImageMeta = imageIndexData
+		default:
+			dwr.Log.Error().Str("mediaType", descriptor.MediaType).Msg("Unsupported media type")
+
+			continue
+		}
+
+		images = append(images, mConvert.GetFullImageMetaFromProto(tag, protoRepoMeta, protoImageMeta))
 	}
 
-	return manifestMetadata, nil
+	return images, err
+}
+
+func (dwr *DynamoDB) FilterTags(ctx context.Context, filterRepoTag mTypes.FilterRepoTagFunc,
+	filterFunc mTypes.FilterFunc,
+) ([]mTypes.FullImageMeta, error) {
+	images := []mTypes.FullImageMeta{}
+	userBookmarks := getUserBookmarks(ctx, dwr)
+	userStars := getUserStars(ctx, dwr)
+
+	var viewError error
+
+	repoMetaAttributeIterator := NewBaseDynamoAttributesIterator(
+		dwr.Client, dwr.RepoMetaTablename, "RepoMetadata", 0, dwr.Log,
+	)
+
+	repoMetaAttribute, err := repoMetaAttributeIterator.First(ctx)
+
+	for ; repoMetaAttribute != nil; repoMetaAttribute, err = repoMetaAttributeIterator.Next(ctx) {
+		if err != nil {
+			viewError = errors.Join(viewError, err)
+
+			continue
+		}
+
+		protoRepoMeta, err := getProtoRepoMetaFromAttribute(repoMetaAttribute)
+		if err != nil {
+			viewError = errors.Join(viewError, err)
+
+			continue
+		}
+
+		if ok, err := reqCtx.RepoIsUserAvailable(ctx, protoRepoMeta.Name); !ok || err != nil {
+			continue
+		}
+
+		protoRepoMeta.IsBookmarked = zcommon.Contains(userBookmarks, protoRepoMeta.Name)
+		protoRepoMeta.IsStarred = zcommon.Contains(userStars, protoRepoMeta.Name)
+		repoMeta := mConvert.GetRepoMeta(protoRepoMeta)
+
+		for tag, descriptor := range repoMeta.Tags {
+			if !filterRepoTag(repoMeta.Name, tag) {
+				continue
+			}
+
+			switch descriptor.MediaType {
+			case ispec.MediaTypeImageManifest:
+				manifestDigest := descriptor.Digest
+
+				imageManifestData, err := dwr.GetProtoImageMeta(ctx, godigest.Digest(manifestDigest))
+				if err != nil {
+					viewError = errors.Join(viewError, err)
+
+					continue
+				}
+
+				imageMeta := mConvert.GetImageMeta(imageManifestData)
+
+				if filterFunc(repoMeta, imageMeta) {
+					images = append(images, mConvert.GetFullImageMetaFromProto(tag, protoRepoMeta, imageManifestData))
+				}
+			case ispec.MediaTypeImageIndex:
+				indexDigest := descriptor.Digest
+
+				imageIndexData, err := dwr.GetProtoImageMeta(ctx, godigest.Digest(indexDigest))
+				if err != nil {
+					viewError = errors.Join(viewError, err)
+
+					continue
+				}
+
+				matchedManifests := []*proto_go.ManifestMeta{}
+
+				for _, manifest := range imageIndexData.Index.Index.Manifests {
+					manifestDigest := manifest.Digest
+
+					imageManifestData, err := dwr.GetProtoImageMeta(ctx, godigest.Digest(manifestDigest))
+					if err != nil {
+						viewError = errors.Join(viewError, err)
+
+						continue
+					}
+
+					imageMeta := mConvert.GetImageMeta(imageManifestData)
+
+					if filterFunc(repoMeta, imageMeta) {
+						matchedManifests = append(matchedManifests, imageManifestData.Manifests[0])
+					}
+				}
+
+				if len(matchedManifests) > 0 {
+					imageIndexData.Manifests = matchedManifests
+
+					images = append(images, mConvert.GetFullImageMetaFromProto(tag, protoRepoMeta, imageIndexData))
+				}
+			default:
+				dwr.Log.Error().Str("mediaType", descriptor.MediaType).Msg("Unsupported media type")
+
+				continue
+			}
+		}
+	}
+
+	viewError = errors.Join(viewError, err)
+
+	return images, viewError
+}
+
+func getProtoRepoMetaFromAttribute(repoMetaAttribute types.AttributeValue) (*proto_go.RepoMeta, error) {
+	blob := []byte{}
+
+	err := attributevalue.Unmarshal(repoMetaAttribute, &blob)
+	if err != nil {
+		return nil, err
+	}
+
+	protoRepoMeta := &proto_go.RepoMeta{}
+
+	err = proto.Unmarshal(blob, protoRepoMeta)
+	if err != nil {
+		return nil, err
+	}
+
+	return protoRepoMeta, nil
+}
+
+func getProtoImageMetaFromAttribute(imageMetaAttribute types.AttributeValue) (*proto_go.ImageMeta, error) {
+	blob := []byte{}
+
+	err := attributevalue.Unmarshal(imageMetaAttribute, &blob)
+	if err != nil {
+		return nil, err
+	}
+
+	protoImageMeta := &proto_go.ImageMeta{}
+
+	err = proto.Unmarshal(blob, protoImageMeta)
+	if err != nil {
+		return nil, err
+	}
+
+	return protoImageMeta, nil
+}
+
+func (dwr *DynamoDB) ResetRepoReferences(repo string) error {
+	protoRepoMeta, err := dwr.getProtoRepoMeta(context.Background(), repo)
+	if err != nil {
+		return err
+	}
+
+	return dwr.setProtoRepoMeta(repo, &proto_go.RepoMeta{
+		Name:       repo,
+		Statistics: protoRepoMeta.Statistics,
+		Stars:      protoRepoMeta.Stars,
+		Tags:       map[string]*proto_go.TagDescriptor{"": {}},
+		Referrers:  map[string]*proto_go.ReferrersInfo{"": {}},
+		Signatures: map[string]*proto_go.ManifestSignatures{"": {Map: map[string]*proto_go.SignaturesInfo{"": {}}}},
+	})
+}
+
+func (dwr *DynamoDB) GetRepoMeta(ctx context.Context, repo string) (mTypes.RepoMeta, error) {
+	protoRepoMeta, err := dwr.getProtoRepoMeta(ctx, repo)
+	if err != nil {
+		return mTypes.RepoMeta{}, err
+	}
+
+	delete(protoRepoMeta.Tags, "")
+
+	userBookmarks := getUserBookmarks(ctx, dwr)
+	userStars := getUserStars(ctx, dwr)
+
+	protoRepoMeta.IsBookmarked = zcommon.Contains(userBookmarks, repo)
+	protoRepoMeta.IsStarred = zcommon.Contains(userStars, repo)
+
+	return mConvert.GetRepoMeta(protoRepoMeta), nil
+}
+
+func (dwr *DynamoDB) GetFullImageMeta(ctx context.Context, repo string, tag string) (mTypes.FullImageMeta, error) {
+	protoRepoMeta, err := dwr.getProtoRepoMeta(ctx, repo)
+	if err != nil {
+		return mTypes.FullImageMeta{}, err
+	}
+
+	delete(protoRepoMeta.Tags, "")
+
+	bookmarks, stars := dwr.getUserBookmarksAndStars(ctx)
+
+	protoRepoMeta.IsBookmarked = zcommon.Contains(bookmarks, repo)
+	protoRepoMeta.IsStarred = zcommon.Contains(stars, repo)
+
+	descriptor, ok := protoRepoMeta.Tags[tag]
+	if !ok {
+		return mTypes.FullImageMeta{}, zerr.ErrImageMetaNotFound
+	}
+
+	protoImageMeta, err := dwr.GetProtoImageMeta(ctx, godigest.Digest(descriptor.Digest))
+	if err != nil {
+		return mTypes.FullImageMeta{}, err
+	}
+
+	if protoImageMeta.MediaType == ispec.MediaTypeImageIndex {
+		manifestDataList := make([]*proto_go.ManifestMeta, 0, len(protoImageMeta.Index.Index.Manifests))
+
+		for _, manifest := range protoImageMeta.Index.Index.Manifests {
+			imageManifestData, err := dwr.GetProtoImageMeta(ctx, godigest.Digest(manifest.Digest))
+			if err != nil {
+				return mTypes.FullImageMeta{}, err
+			}
+
+			manifestDataList = append(manifestDataList, imageManifestData.Manifests[0])
+		}
+
+		protoImageMeta.Manifests = manifestDataList
+	}
+
+	return mConvert.GetFullImageMetaFromProto(tag, protoRepoMeta, protoImageMeta), nil
+}
+
+func (dwr *DynamoDB) getUserBookmarksAndStars(ctx context.Context) ([]string, []string) {
+	userData, err := dwr.GetUserData(ctx)
+	if err != nil {
+		return []string{}, []string{}
+	}
+
+	return userData.BookmarkedRepos, userData.StarredRepos
+}
+
+func (dwr *DynamoDB) GetImageMeta(digest godigest.Digest) (mTypes.ImageMeta, error) {
+	protoImageMeta, err := dwr.GetProtoImageMeta(context.Background(), digest)
+	if err != nil {
+		return mTypes.ImageMeta{}, err
+	}
+
+	if protoImageMeta.MediaType == ispec.MediaTypeImageIndex {
+		manifestDataList := make([]*proto_go.ManifestMeta, 0, len(protoImageMeta.Index.Index.Manifests))
+
+		for _, manifest := range protoImageMeta.Index.Index.Manifests {
+			manifestDigest := godigest.Digest(manifest.Digest)
+
+			imageManifestData, err := dwr.GetProtoImageMeta(context.Background(), manifestDigest)
+			if err != nil {
+				return mTypes.ImageMeta{}, err
+			}
+
+			manifestDataList = append(manifestDataList, imageManifestData.Manifests[0])
+		}
+
+		protoImageMeta.Manifests = manifestDataList
+	}
+
+	return mConvert.GetImageMeta(protoImageMeta), nil
+}
+
+func (dwr *DynamoDB) GetMultipleRepoMeta(ctx context.Context, filter func(repoMeta mTypes.RepoMeta) bool,
+) ([]mTypes.RepoMeta, error) {
+	var (
+		foundRepos                = []mTypes.RepoMeta{}
+		repoMetaAttributeIterator AttributesIterator
+	)
+
+	repoMetaAttributeIterator = NewBaseDynamoAttributesIterator(
+		dwr.Client, dwr.RepoMetaTablename, "RepoMetadata", 0, dwr.Log,
+	)
+
+	repoMetaAttribute, err := repoMetaAttributeIterator.First(ctx)
+
+	for ; repoMetaAttribute != nil; repoMetaAttribute, err = repoMetaAttributeIterator.Next(ctx) {
+		if err != nil {
+			return []mTypes.RepoMeta{}, err
+		}
+
+		repoMetaBlob := []byte{}
+
+		err := attributevalue.Unmarshal(repoMetaAttribute, &repoMetaBlob)
+		if err != nil {
+			return []mTypes.RepoMeta{}, err
+		}
+
+		protoRepoMeta := &proto_go.RepoMeta{}
+
+		err = proto.Unmarshal(repoMetaBlob, protoRepoMeta)
+		if err != nil {
+			return []mTypes.RepoMeta{}, err
+		}
+
+		delete(protoRepoMeta.Tags, "")
+
+		if ok, err := reqCtx.RepoIsUserAvailable(ctx, protoRepoMeta.Name); !ok || err != nil {
+			continue
+		}
+
+		repoMeta := mConvert.GetRepoMeta(protoRepoMeta)
+
+		if filter(repoMeta) {
+			foundRepos = append(foundRepos, repoMeta)
+		}
+	}
+
+	return foundRepos, err
+}
+
+func (dwr *DynamoDB) FilterRepos(ctx context.Context, acceptName mTypes.FilterRepoNameFunc,
+	filterFunc mTypes.FilterFullRepoFunc,
+) ([]mTypes.RepoMeta, error) {
+	repos := []mTypes.RepoMeta{}
+	userBookmarks := getUserBookmarks(ctx, dwr)
+	userStars := getUserStars(ctx, dwr)
+
+	repoMetaAttributeIterator := NewBaseDynamoAttributesIterator(
+		dwr.Client, dwr.RepoMetaTablename, "RepoMetadata", 0, dwr.Log,
+	)
+
+	repoMetaAttribute, err := repoMetaAttributeIterator.First(ctx)
+
+	for ; repoMetaAttribute != nil; repoMetaAttribute, err = repoMetaAttributeIterator.Next(ctx) {
+		if err != nil {
+			return []mTypes.RepoMeta{},
+				err
+		}
+
+		protoRepoMeta, err := getProtoRepoMetaFromAttribute(repoMetaAttribute)
+		if err != nil {
+			return nil, err
+		}
+
+		if ok, err := reqCtx.RepoIsUserAvailable(ctx, protoRepoMeta.Name); !ok || err != nil {
+			continue
+		}
+
+		if !acceptName(protoRepoMeta.Name) {
+			continue
+		}
+
+		protoRepoMeta.IsBookmarked = zcommon.Contains(userBookmarks, protoRepoMeta.Name)
+		protoRepoMeta.IsStarred = zcommon.Contains(userStars, protoRepoMeta.Name)
+
+		fullRepoMeta := mConvert.GetRepoMeta(protoRepoMeta)
+
+		if filterFunc(fullRepoMeta) {
+			repos = append(repos, fullRepoMeta)
+		}
+	}
+
+	return repos, err
 }
 
 func (dwr *DynamoDB) IncrementRepoStars(repo string) error {
-	repoMeta, err := dwr.GetRepoMeta(repo)
+	repoMeta, err := dwr.getProtoRepoMeta(context.Background(), repo)
 	if err != nil {
 		return err
 	}
 
 	repoMeta.Stars++
 
-	err = dwr.SetRepoMeta(repo, repoMeta)
-
-	return err
+	return dwr.setProtoRepoMeta(repo, repoMeta)
 }
 
 func (dwr *DynamoDB) DecrementRepoStars(repo string) error {
-	repoMeta, err := dwr.GetRepoMeta(repo)
+	repoMeta, err := dwr.getProtoRepoMeta(context.Background(), repo)
 	if err != nil {
 		return err
 	}
@@ -247,192 +895,23 @@ func (dwr *DynamoDB) DecrementRepoStars(repo string) error {
 		repoMeta.Stars--
 	}
 
-	err = dwr.SetRepoMeta(repo, repoMeta)
-
-	return err
+	return dwr.setProtoRepoMeta(repo, repoMeta)
 }
 
-func (dwr *DynamoDB) GetRepoStars(repo string) (int, error) {
-	repoMeta, err := dwr.GetRepoMeta(repo)
-	if err != nil {
-		return 0, err
-	}
+func (dwr *DynamoDB) SetRepoMeta(repo string, repoMeta mTypes.RepoMeta) error {
+	protoRepoMeta := mConvert.GetProtoRepoMeta(repoMeta)
 
-	return repoMeta.Stars, nil
+	return dwr.setProtoRepoMeta(repo, protoRepoMeta)
 }
 
-func (dwr *DynamoDB) SetIndexData(indexDigest godigest.Digest, indexData mTypes.IndexData) error {
-	indexAttributeValue, err := attributevalue.Marshal(indexData)
-	if err != nil {
-		return err
-	}
-
-	_, err = dwr.Client.UpdateItem(context.TODO(), &dynamodb.UpdateItemInput{
-		ExpressionAttributeNames: map[string]string{
-			"#ID": "IndexData",
-		},
-		ExpressionAttributeValues: map[string]types.AttributeValue{
-			":IndexData": indexAttributeValue,
-		},
-		Key: map[string]types.AttributeValue{
-			"IndexDigest": &types.AttributeValueMemberS{
-				Value: indexDigest.String(),
-			},
-		},
-		TableName:        aws.String(dwr.IndexDataTablename),
-		UpdateExpression: aws.String("SET #ID = :IndexData"),
-	})
-
-	return err
-}
-
-func (dwr *DynamoDB) GetIndexData(indexDigest godigest.Digest) (mTypes.IndexData, error) {
-	resp, err := dwr.Client.GetItem(context.TODO(), &dynamodb.GetItemInput{
-		TableName: aws.String(dwr.IndexDataTablename),
-		Key: map[string]types.AttributeValue{
-			"IndexDigest": &types.AttributeValueMemberS{
-				Value: indexDigest.String(),
-			},
-		},
-	})
-	if err != nil {
-		return mTypes.IndexData{}, err
-	}
-
-	if resp.Item == nil {
-		return mTypes.IndexData{}, zerr.ErrRepoMetaNotFound
-	}
-
-	var indexData mTypes.IndexData
-
-	err = attributevalue.Unmarshal(resp.Item["IndexData"], &indexData)
-	if err != nil {
-		return mTypes.IndexData{}, err
-	}
-
-	return indexData, nil
-}
-
-func (dwr DynamoDB) SetReferrer(repo string, referredDigest godigest.Digest, referrer mTypes.ReferrerInfo) error {
-	resp, err := dwr.Client.GetItem(context.TODO(), &dynamodb.GetItemInput{
-		TableName: aws.String(dwr.RepoMetaTablename),
-		Key: map[string]types.AttributeValue{
-			"RepoName": &types.AttributeValueMemberS{Value: repo},
-		},
-	})
-	if err != nil {
-		return err
-	}
-
-	repoMeta := mTypes.RepoMetadata{
-		Name:       repo,
-		Tags:       map[string]mTypes.Descriptor{},
-		Statistics: map[string]mTypes.DescriptorStatistics{},
-		Signatures: map[string]mTypes.ManifestSignatures{},
-		Referrers:  map[string][]mTypes.ReferrerInfo{},
-	}
-
-	if resp.Item != nil {
-		err := attributevalue.Unmarshal(resp.Item["RepoMetadata"], &repoMeta)
-		if err != nil {
-			return err
-		}
-	}
-
-	referrers := repoMeta.Referrers[referredDigest.String()]
-
-	for i := range referrers {
-		if referrers[i].Digest == referrer.Digest {
-			return nil
-		}
-	}
-
-	referrers = append(referrers, referrer)
-
-	repoMeta.Referrers[referredDigest.String()] = referrers
-
-	return dwr.SetRepoMeta(repo, repoMeta)
-}
-
-func (dwr DynamoDB) GetReferrers(repo string, referredDigest godigest.Digest) ([]mTypes.ReferrerInfo, error) {
-	resp, err := dwr.Client.GetItem(context.TODO(), &dynamodb.GetItemInput{
-		TableName: aws.String(dwr.RepoMetaTablename),
-		Key: map[string]types.AttributeValue{
-			"RepoName": &types.AttributeValueMemberS{Value: repo},
-		},
-	})
+func (dwr *DynamoDB) GetReferrersInfo(repo string, referredDigest godigest.Digest, artifactTypes []string,
+) ([]mTypes.ReferrerInfo, error) {
+	repoMeta, err := dwr.GetRepoMeta(context.Background(), repo)
 	if err != nil {
 		return []mTypes.ReferrerInfo{}, err
 	}
 
-	repoMeta := mTypes.RepoMetadata{
-		Name:       repo,
-		Tags:       map[string]mTypes.Descriptor{},
-		Statistics: map[string]mTypes.DescriptorStatistics{},
-		Signatures: map[string]mTypes.ManifestSignatures{},
-		Referrers:  map[string][]mTypes.ReferrerInfo{},
-	}
-
-	if resp.Item != nil {
-		err := attributevalue.Unmarshal(resp.Item["RepoMetadata"], &repoMeta)
-		if err != nil {
-			return []mTypes.ReferrerInfo{}, err
-		}
-	}
-
-	return repoMeta.Referrers[referredDigest.String()], nil
-}
-
-func (dwr DynamoDB) DeleteReferrer(repo string, referredDigest godigest.Digest,
-	referrerDigest godigest.Digest,
-) error {
-	resp, err := dwr.Client.GetItem(context.TODO(), &dynamodb.GetItemInput{
-		TableName: aws.String(dwr.RepoMetaTablename),
-		Key: map[string]types.AttributeValue{
-			"RepoName": &types.AttributeValueMemberS{Value: repo},
-		},
-	})
-	if err != nil {
-		return err
-	}
-
-	repoMeta := mTypes.RepoMetadata{
-		Name:       repo,
-		Tags:       map[string]mTypes.Descriptor{},
-		Statistics: map[string]mTypes.DescriptorStatistics{},
-		Signatures: map[string]mTypes.ManifestSignatures{},
-		Referrers:  map[string][]mTypes.ReferrerInfo{},
-	}
-
-	if resp.Item != nil {
-		err := attributevalue.Unmarshal(resp.Item["RepoMetadata"], &repoMeta)
-		if err != nil {
-			return err
-		}
-	}
-
-	referrers := repoMeta.Referrers[referredDigest.String()]
-
-	for i := range referrers {
-		if referrers[i].Digest == referrerDigest.String() {
-			referrers = append(referrers[:i], referrers[i+1:]...)
-
-			break
-		}
-	}
-
-	repoMeta.Referrers[referredDigest.String()] = referrers
-
-	return dwr.SetRepoMeta(repo, repoMeta)
-}
-
-func (dwr DynamoDB) GetReferrersInfo(repo string, referredDigest godigest.Digest,
-	artifactTypes []string,
-) ([]mTypes.ReferrerInfo, error) {
-	referrersInfo, err := dwr.GetReferrers(repo, referredDigest)
-	if err != nil {
-		return nil, err
-	}
+	referrersInfo := repoMeta.Referrers[referredDigest.String()]
 
 	filteredResults := make([]mTypes.ReferrerInfo, 0, len(referrersInfo))
 
@@ -447,243 +926,8 @@ func (dwr DynamoDB) GetReferrersInfo(repo string, referredDigest godigest.Digest
 	return filteredResults, nil
 }
 
-/*
-	RemoveRepoReference removes the tag from RepoMetadata if the reference is a tag,
-
-it also removes its corresponding digest from Statistics, Signatures and Referrers if there are no tags
-pointing to it.
-If the reference is a digest then it will remove the digest from Statistics, Signatures and Referrers only
-if there are no tags pointing to the digest, otherwise it's noop.
-*/
-func (dwr *DynamoDB) RemoveRepoReference(repo, reference string, manifestDigest godigest.Digest,
-) error {
-	resp, err := dwr.Client.GetItem(context.TODO(), &dynamodb.GetItemInput{
-		TableName: aws.String(dwr.RepoMetaTablename),
-		Key: map[string]types.AttributeValue{
-			"RepoName": &types.AttributeValueMemberS{Value: repo},
-		},
-	})
-	if err != nil {
-		return err
-	}
-
-	repoMeta := mTypes.RepoMetadata{
-		Name:       repo,
-		Tags:       map[string]mTypes.Descriptor{},
-		Statistics: map[string]mTypes.DescriptorStatistics{},
-		Signatures: map[string]mTypes.ManifestSignatures{},
-		Referrers:  map[string][]mTypes.ReferrerInfo{},
-	}
-
-	if resp.Item != nil {
-		err := attributevalue.Unmarshal(resp.Item["RepoMetadata"], &repoMeta)
-		if err != nil {
-			return err
-		}
-	}
-
-	if !common.ReferenceIsDigest(reference) {
-		delete(repoMeta.Tags, reference)
-	} else {
-		// find all tags pointing to this digest
-		tags := []string{}
-		for tag, desc := range repoMeta.Tags {
-			if desc.Digest == reference {
-				tags = append(tags, tag)
-			}
-		}
-
-		// remove all tags
-		for _, tag := range tags {
-			delete(repoMeta.Tags, tag)
-		}
-	}
-
-	/* try to find at least one tag pointing to manifestDigest
-	if not found then we can also remove everything related to this digest */
-	var foundTag bool
-
-	for _, desc := range repoMeta.Tags {
-		if desc.Digest == manifestDigest.String() {
-			foundTag = true
-		}
-	}
-
-	if !foundTag {
-		delete(repoMeta.Statistics, manifestDigest.String())
-		delete(repoMeta.Signatures, manifestDigest.String())
-		delete(repoMeta.Referrers, manifestDigest.String())
-	}
-
-	err = dwr.SetRepoMeta(repo, repoMeta)
-
-	return err
-}
-
-func (dwr *DynamoDB) SetRepoReference(repo string, reference string, manifestDigest godigest.Digest,
-	mediaType string,
-) error {
-	if err := common.ValidateRepoReferenceInput(repo, reference, manifestDigest); err != nil {
-		return err
-	}
-
-	resp, err := dwr.Client.GetItem(context.TODO(), &dynamodb.GetItemInput{
-		TableName: aws.String(dwr.RepoMetaTablename),
-		Key: map[string]types.AttributeValue{
-			"RepoName": &types.AttributeValueMemberS{Value: repo},
-		},
-	})
-	if err != nil {
-		return err
-	}
-
-	repoMeta := mTypes.RepoMetadata{
-		Name:       repo,
-		Tags:       map[string]mTypes.Descriptor{},
-		Statistics: map[string]mTypes.DescriptorStatistics{},
-		Signatures: map[string]mTypes.ManifestSignatures{},
-		Referrers:  map[string][]mTypes.ReferrerInfo{},
-	}
-
-	if resp.Item != nil {
-		err := attributevalue.Unmarshal(resp.Item["RepoMetadata"], &repoMeta)
-		if err != nil {
-			return err
-		}
-	}
-
-	if !common.ReferenceIsDigest(reference) {
-		repoMeta.Tags[reference] = mTypes.Descriptor{
-			Digest:    manifestDigest.String(),
-			MediaType: mediaType,
-		}
-	}
-
-	if _, ok := repoMeta.Statistics[manifestDigest.String()]; !ok {
-		repoMeta.Statistics[manifestDigest.String()] = mTypes.DescriptorStatistics{DownloadCount: 0}
-	}
-
-	if _, ok := repoMeta.Signatures[manifestDigest.String()]; !ok {
-		repoMeta.Signatures[manifestDigest.String()] = mTypes.ManifestSignatures{}
-	}
-
-	if _, ok := repoMeta.Referrers[manifestDigest.String()]; !ok {
-		repoMeta.Referrers[manifestDigest.String()] = []mTypes.ReferrerInfo{}
-	}
-
-	err = dwr.SetRepoMeta(repo, repoMeta)
-
-	return err
-}
-
-func (dwr *DynamoDB) DeleteRepoTag(repo string, tag string) error {
-	resp, err := dwr.Client.GetItem(context.TODO(), &dynamodb.GetItemInput{
-		TableName: aws.String(dwr.RepoMetaTablename),
-		Key: map[string]types.AttributeValue{
-			"RepoName": &types.AttributeValueMemberS{Value: repo},
-		},
-	})
-	if err != nil {
-		return err
-	}
-
-	if resp.Item == nil {
-		return nil
-	}
-
-	var repoMeta mTypes.RepoMetadata
-
-	err = attributevalue.Unmarshal(resp.Item["RepoMetadata"], &repoMeta)
-	if err != nil {
-		return err
-	}
-
-	delete(repoMeta.Tags, tag)
-
-	repoAttributeValue, err := attributevalue.Marshal(repoMeta)
-	if err != nil {
-		return err
-	}
-
-	_, err = dwr.Client.UpdateItem(context.TODO(), &dynamodb.UpdateItemInput{
-		ExpressionAttributeNames: map[string]string{
-			"#RM": "RepoMetadata",
-		},
-		ExpressionAttributeValues: map[string]types.AttributeValue{
-			":RepoMetadata": repoAttributeValue,
-		},
-		Key: map[string]types.AttributeValue{
-			"RepoName": &types.AttributeValueMemberS{
-				Value: repo,
-			},
-		},
-		TableName:        aws.String(dwr.RepoMetaTablename),
-		UpdateExpression: aws.String("SET #RM = :RepoMetadata"),
-	})
-
-	return err
-}
-
-func (dwr *DynamoDB) GetRepoMeta(repo string) (mTypes.RepoMetadata, error) {
-	resp, err := dwr.Client.GetItem(context.TODO(), &dynamodb.GetItemInput{
-		TableName: aws.String(dwr.RepoMetaTablename),
-		Key: map[string]types.AttributeValue{
-			"RepoName": &types.AttributeValueMemberS{Value: repo},
-		},
-	})
-	if err != nil {
-		return mTypes.RepoMetadata{}, err
-	}
-
-	if resp.Item == nil {
-		return mTypes.RepoMetadata{}, zerr.ErrRepoMetaNotFound
-	}
-
-	var repoMeta mTypes.RepoMetadata
-
-	err = attributevalue.Unmarshal(resp.Item["RepoMetadata"], &repoMeta)
-	if err != nil {
-		return mTypes.RepoMetadata{}, err
-	}
-
-	return repoMeta, nil
-}
-
-func (dwr *DynamoDB) GetUserRepoMeta(ctx context.Context, repo string) (mTypes.RepoMetadata, error) {
-	resp, err := dwr.Client.GetItem(ctx, &dynamodb.GetItemInput{
-		TableName: aws.String(dwr.RepoMetaTablename),
-		Key: map[string]types.AttributeValue{
-			"RepoName": &types.AttributeValueMemberS{Value: repo},
-		},
-	})
-	if err != nil {
-		return mTypes.RepoMetadata{}, err
-	}
-
-	if resp.Item == nil {
-		return mTypes.RepoMetadata{}, zerr.ErrRepoMetaNotFound
-	}
-
-	var repoMeta mTypes.RepoMetadata
-
-	err = attributevalue.Unmarshal(resp.Item["RepoMetadata"], &repoMeta)
-	if err != nil {
-		return mTypes.RepoMetadata{}, err
-	}
-
-	userData, err := dwr.GetUserData(ctx)
-	if err != nil {
-		return mTypes.RepoMetadata{}, err
-	}
-
-	repoMeta.IsBookmarked = zcommon.Contains(userData.BookmarkedRepos, repo)
-	repoMeta.IsStarred = zcommon.Contains(userData.StarredRepos, repo)
-
-	return repoMeta, nil
-}
-
 func (dwr *DynamoDB) IncrementImageDownloads(repo string, reference string) error {
-	repoMeta, err := dwr.GetRepoMeta(repo)
+	repoMeta, err := dwr.getProtoRepoMeta(context.Background(), repo)
 	if err != nil {
 		return err
 	}
@@ -701,11 +945,15 @@ func (dwr *DynamoDB) IncrementImageDownloads(repo string, reference string) erro
 		descriptorDigest = descriptor.Digest
 	}
 
-	manifestStatistics := repoMeta.Statistics[descriptorDigest]
+	manifestStatistics, ok := repoMeta.Statistics[descriptorDigest]
+	if !ok {
+		return zerr.ErrManifestMetaNotFound
+	}
+
 	manifestStatistics.DownloadCount++
 	repoMeta.Statistics[descriptorDigest] = manifestStatistics
 
-	return dwr.SetRepoMeta(repo, repoMeta)
+	return dwr.setProtoRepoMeta(repo, repoMeta)
 }
 
 func (dwr *DynamoDB) UpdateSignaturesValidity(repo string, manifestDigest godigest.Digest) error {
@@ -715,42 +963,28 @@ func (dwr *DynamoDB) UpdateSignaturesValidity(repo string, manifestDigest godige
 		return nil
 	}
 
-	// get ManifestData of signed manifest
-	var blob []byte
-
-	manifestData, err := dwr.GetManifestData(manifestDigest)
-	if err != nil {
-		if errors.Is(err, zerr.ErrManifestDataNotFound) {
-			indexData, err := dwr.GetIndexData(manifestDigest)
-			if err != nil {
-				return nil //nolint: nilerr
-			}
-
-			blob = indexData.IndexBlob
-		} else {
-			return fmt.Errorf("%w for manifest '%s' from repo '%s'", errMetaDB, manifestDigest, repo)
-		}
-	} else {
-		blob = manifestData.ManifestBlob
-	}
-
-	// update signatures with details about validity and author
-	repoMeta, err := dwr.GetRepoMeta(repo)
+	protoImageMeta, err := dwr.GetProtoImageMeta(context.Background(), manifestDigest)
 	if err != nil {
 		return err
 	}
 
-	manifestSignatures := mTypes.ManifestSignatures{}
+	// update signatures with details about validity and author
+	protoRepoMeta, err := dwr.getProtoRepoMeta(context.Background(), repo)
+	if err != nil {
+		return err
+	}
 
-	for sigType, sigs := range repoMeta.Signatures[manifestDigest.String()] {
-		signaturesInfo := []mTypes.SignatureInfo{}
+	manifestSignatures := proto_go.ManifestSignatures{Map: map[string]*proto_go.SignaturesInfo{"": {}}}
 
-		for _, sigInfo := range sigs {
-			layersInfo := []mTypes.LayerInfo{}
+	for sigType, sigs := range protoRepoMeta.Signatures[manifestDigest.String()].Map {
+		signaturesInfo := []*proto_go.SignatureInfo{}
+
+		for _, sigInfo := range sigs.List {
+			layersInfo := []*proto_go.LayersInfo{}
 
 			for _, layerInfo := range sigInfo.LayersInfo {
-				author, date, isTrusted, _ := imgTrustStore.VerifySignature(sigType, layerInfo.LayerContent, layerInfo.SignatureKey,
-					manifestDigest, blob, repo)
+				author, date, isTrusted, _ := imgTrustStore.VerifySignature(sigType, layerInfo.LayerContent,
+					layerInfo.SignatureKey, manifestDigest, mConvert.GetImageMeta(protoImageMeta), repo)
 
 				if isTrusted {
 					layerInfo.Signer = author
@@ -758,90 +992,98 @@ func (dwr *DynamoDB) UpdateSignaturesValidity(repo string, manifestDigest godige
 
 				if !date.IsZero() {
 					layerInfo.Signer = author
-					layerInfo.Date = date
+					layerInfo.Date = timestamppb.New(date)
 				}
 
 				layersInfo = append(layersInfo, layerInfo)
 			}
 
-			signaturesInfo = append(signaturesInfo, mTypes.SignatureInfo{
+			signaturesInfo = append(signaturesInfo, &proto_go.SignatureInfo{
 				SignatureManifestDigest: sigInfo.SignatureManifestDigest,
 				LayersInfo:              layersInfo,
 			})
 		}
 
-		manifestSignatures[sigType] = signaturesInfo
+		manifestSignatures.Map[sigType] = &proto_go.SignaturesInfo{List: signaturesInfo}
 	}
 
-	repoMeta.Signatures[manifestDigest.String()] = manifestSignatures
+	protoRepoMeta.Signatures[manifestDigest.String()] = &manifestSignatures
 
-	return dwr.SetRepoMeta(repoMeta.Name, repoMeta)
+	return dwr.setProtoRepoMeta(protoRepoMeta.Name, protoRepoMeta)
 }
 
 func (dwr *DynamoDB) AddManifestSignature(repo string, signedManifestDigest godigest.Digest,
 	sygMeta mTypes.SignatureMetadata,
 ) error {
-	repoMeta, err := dwr.GetRepoMeta(repo)
+	protoRepoMeta, err := dwr.getProtoRepoMeta(context.Background(), repo)
 	if err != nil {
 		if errors.Is(err, zerr.ErrRepoMetaNotFound) {
-			repoMeta = mTypes.RepoMetadata{
+			protoRepoMeta = &proto_go.RepoMeta{
 				Name:       repo,
-				Tags:       map[string]mTypes.Descriptor{},
-				Statistics: map[string]mTypes.DescriptorStatistics{},
-				Signatures: map[string]mTypes.ManifestSignatures{
+				Tags:       map[string]*proto_go.TagDescriptor{"": {}},
+				Statistics: map[string]*proto_go.DescriptorStatistics{"": {}},
+				Referrers:  map[string]*proto_go.ReferrersInfo{"": {}},
+				Signatures: map[string]*proto_go.ManifestSignatures{
 					signedManifestDigest.String(): {
-						sygMeta.SignatureType: []mTypes.SignatureInfo{
-							{
-								SignatureManifestDigest: sygMeta.SignatureDigest,
-								LayersInfo:              sygMeta.LayersInfo,
+						Map: map[string]*proto_go.SignaturesInfo{
+							sygMeta.SignatureType: {
+								List: []*proto_go.SignatureInfo{
+									{
+										SignatureManifestDigest: sygMeta.SignatureDigest,
+										LayersInfo:              mConvert.GetProtoLayersInfo(sygMeta.LayersInfo),
+									},
+								},
 							},
 						},
 					},
 				},
-				Referrers: map[string][]mTypes.ReferrerInfo{},
 			}
 
-			return dwr.SetRepoMeta(repo, repoMeta)
+			return dwr.setProtoRepoMeta(repo, protoRepoMeta)
 		}
 
 		return err
 	}
 
 	var (
-		manifestSignatures mTypes.ManifestSignatures
+		manifestSignatures *proto_go.ManifestSignatures
 		found              bool
 	)
 
-	if manifestSignatures, found = repoMeta.Signatures[signedManifestDigest.String()]; !found {
-		manifestSignatures = mTypes.ManifestSignatures{}
+	if manifestSignatures, found = protoRepoMeta.Signatures[signedManifestDigest.String()]; !found {
+		manifestSignatures = &proto_go.ManifestSignatures{Map: map[string]*proto_go.SignaturesInfo{"": {}}}
 	}
 
-	signatureSlice := manifestSignatures[sygMeta.SignatureType]
-	if !common.SignatureAlreadyExists(signatureSlice, sygMeta) {
-		if sygMeta.SignatureType == zcommon.NotationSignature {
-			signatureSlice = append(signatureSlice, mTypes.SignatureInfo{
+	signatureSlice := &proto_go.SignaturesInfo{List: []*proto_go.SignatureInfo{}}
+	if sigSlice, found := manifestSignatures.Map[sygMeta.SignatureType]; found {
+		signatureSlice = sigSlice
+	}
+
+	if !common.ProtoSignatureAlreadyExists(signatureSlice.List, sygMeta) {
+		switch sygMeta.SignatureType {
+		case zcommon.NotationSignature:
+			signatureSlice.List = append(signatureSlice.List, &proto_go.SignatureInfo{
 				SignatureManifestDigest: sygMeta.SignatureDigest,
-				LayersInfo:              sygMeta.LayersInfo,
+				LayersInfo:              mConvert.GetProtoLayersInfo(sygMeta.LayersInfo),
 			})
-		} else if sygMeta.SignatureType == zcommon.CosignSignature {
-			signatureSlice = []mTypes.SignatureInfo{{
+		case zcommon.CosignSignature:
+			signatureSlice.List = []*proto_go.SignatureInfo{{
 				SignatureManifestDigest: sygMeta.SignatureDigest,
-				LayersInfo:              sygMeta.LayersInfo,
+				LayersInfo:              mConvert.GetProtoLayersInfo(sygMeta.LayersInfo),
 			}}
 		}
 	}
 
-	manifestSignatures[sygMeta.SignatureType] = signatureSlice
+	manifestSignatures.Map[sygMeta.SignatureType] = signatureSlice
+	protoRepoMeta.Signatures[signedManifestDigest.String()] = manifestSignatures
 
-	repoMeta.Signatures[signedManifestDigest.String()] = manifestSignatures
-
-	return dwr.SetRepoMeta(repoMeta.Name, repoMeta)
+	return dwr.setProtoRepoMeta(protoRepoMeta.Name, protoRepoMeta)
 }
 
 func (dwr *DynamoDB) DeleteSignature(repo string, signedManifestDigest godigest.Digest,
 	sigMeta mTypes.SignatureMetadata,
 ) error {
-	repoMeta, err := dwr.GetRepoMeta(repo)
+	protoRepoMeta, err := dwr.getProtoRepoMeta(context.Background(), repo)
 	if err != nil {
 		return err
 	}
@@ -849,167 +1091,175 @@ func (dwr *DynamoDB) DeleteSignature(repo string, signedManifestDigest godigest.
 	sigType := sigMeta.SignatureType
 
 	var (
-		manifestSignatures mTypes.ManifestSignatures
+		manifestSignatures *proto_go.ManifestSignatures
 		found              bool
 	)
 
-	if manifestSignatures, found = repoMeta.Signatures[signedManifestDigest.String()]; !found {
+	if manifestSignatures, found = protoRepoMeta.Signatures[signedManifestDigest.String()]; !found {
 		return zerr.ErrManifestMetaNotFound
 	}
 
-	signatureSlice := manifestSignatures[sigType]
+	signatureSlice := manifestSignatures.Map[sigType]
 
-	newSignatureSlice := make([]mTypes.SignatureInfo, 0, len(signatureSlice)-1)
+	newSignatureSlice := make([]*proto_go.SignatureInfo, 0, len(signatureSlice.List)-1)
 
-	for _, sigDigest := range signatureSlice {
+	for _, sigDigest := range signatureSlice.List {
 		if sigDigest.SignatureManifestDigest != sigMeta.SignatureDigest {
 			newSignatureSlice = append(newSignatureSlice, sigDigest)
 		}
 	}
 
-	manifestSignatures[sigType] = newSignatureSlice
+	manifestSignatures.Map[sigMeta.SignatureType] = &proto_go.SignaturesInfo{List: newSignatureSlice}
 
-	repoMeta.Signatures[signedManifestDigest.String()] = manifestSignatures
+	protoRepoMeta.Signatures[signedManifestDigest.String()] = manifestSignatures
 
-	err = dwr.SetRepoMeta(repoMeta.Name, repoMeta)
-
-	return err
+	return dwr.setProtoRepoMeta(protoRepoMeta.Name, protoRepoMeta)
 }
 
-func (dwr *DynamoDB) GetMultipleRepoMeta(ctx context.Context,
-	filter func(repoMeta mTypes.RepoMetadata) bool,
-) ([]mTypes.RepoMetadata, error) {
-	var (
-		foundRepos                = []mTypes.RepoMetadata{}
-		repoMetaAttributeIterator AttributesIterator
-	)
-
-	repoMetaAttributeIterator = NewBaseDynamoAttributesIterator(
-		dwr.Client, dwr.RepoMetaTablename, "RepoMetadata", 0, dwr.Log,
-	)
-
-	repoMetaAttribute, err := repoMetaAttributeIterator.First(ctx)
-
-	for ; repoMetaAttribute != nil; repoMetaAttribute, err = repoMetaAttributeIterator.Next(ctx) {
-		if err != nil {
-			return []mTypes.RepoMetadata{}, err
-		}
-
-		var repoMeta mTypes.RepoMetadata
-
-		err := attributevalue.Unmarshal(repoMetaAttribute, &repoMeta)
-		if err != nil {
-			return []mTypes.RepoMetadata{}, err
-		}
-
-		if ok, err := reqCtx.RepoIsUserAvailable(ctx, repoMeta.Name); !ok || err != nil {
-			continue
-		}
-
-		if filter(repoMeta) {
-			foundRepos = append(foundRepos, repoMeta)
-		}
+func (dwr *DynamoDB) FilterImageMeta(ctx context.Context, digests []string,
+) (map[string]mTypes.ImageMeta, error) {
+	imageMetaAttributes, err := dwr.fetchImageMetaAttributesByDigest(ctx, digests)
+	if err != nil {
+		return nil, err
 	}
 
-	return foundRepos, err
+	results := map[string]mTypes.ImageMeta{}
+
+	for _, attributes := range imageMetaAttributes {
+		protoImageMeta, err := getProtoImageMetaFromAttribute(attributes["ImageMeta"])
+		if err != nil {
+			return nil, err
+		}
+
+		if protoImageMeta.MediaType == ispec.MediaTypeImageIndex {
+			manifestDataList := make([]*proto_go.ManifestMeta, 0, len(protoImageMeta.Index.Index.Manifests))
+
+			indexDigests := make([]string, 0, len(protoImageMeta.Index.Index.Manifests))
+			for i := range protoImageMeta.Index.Index.Manifests {
+				indexDigests = append(indexDigests, protoImageMeta.Index.Index.Manifests[i].Digest)
+			}
+
+			manifestsAttributes, err := dwr.fetchImageMetaAttributesByDigest(ctx, indexDigests)
+			if err != nil {
+				return nil, err
+			}
+
+			for _, manifestAttribute := range manifestsAttributes {
+				imageManifestData, err := getProtoImageMetaFromAttribute(manifestAttribute["ImageMeta"])
+				if err != nil {
+					return nil, err
+				}
+
+				manifestDataList = append(manifestDataList, imageManifestData.Manifests[0])
+			}
+
+			protoImageMeta.Manifests = manifestDataList
+		}
+
+		results[mConvert.GetImageDigestStr(protoImageMeta)] = mConvert.GetImageMeta(protoImageMeta)
+	}
+
+	return results, nil
 }
 
-func (dwr *DynamoDB) SearchRepos(ctx context.Context, searchText string,
-) ([]mTypes.RepoMetadata, map[string]mTypes.ManifestMetadata, map[string]mTypes.IndexData, error) {
-	var (
-		repos                     = []mTypes.RepoMetadata{}
-		manifestMetadataMap       = make(map[string]mTypes.ManifestMetadata)
-		indexDataMap              = make(map[string]mTypes.IndexData)
-		repoMetaAttributeIterator AttributesIterator
-
-		userBookmarks = getUserBookmarks(ctx, dwr)
-		userStars     = getUserStars(ctx, dwr)
-	)
-
-	repoMetaAttributeIterator = NewBaseDynamoAttributesIterator(
-		dwr.Client, dwr.RepoMetaTablename, "RepoMetadata", 0, dwr.Log,
-	)
-
-	repoMetaAttribute, err := repoMetaAttributeIterator.First(ctx)
-
-	for ; repoMetaAttribute != nil; repoMetaAttribute, err = repoMetaAttributeIterator.Next(ctx) {
-		if err != nil {
-			return []mTypes.RepoMetadata{}, map[string]mTypes.ManifestMetadata{}, map[string]mTypes.IndexData{},
-				err
+func (dwr *DynamoDB) RemoveRepoReference(repo, reference string, manifestDigest godigest.Digest,
+) error {
+	protoRepoMeta, err := dwr.getProtoRepoMeta(context.Background(), repo)
+	if err != nil {
+		if errors.Is(err, zerr.ErrRepoMetaNotFound) {
+			return nil
 		}
 
-		var repoMeta mTypes.RepoMetadata
+		return err
+	}
 
-		err := attributevalue.Unmarshal(repoMetaAttribute, &repoMeta)
-		if err != nil {
-			return []mTypes.RepoMetadata{}, map[string]mTypes.ManifestMetadata{}, map[string]mTypes.IndexData{},
-				err
+	protoImageMeta, err := dwr.GetProtoImageMeta(context.TODO(), manifestDigest)
+	if err != nil {
+		if errors.Is(err, zerr.ErrImageMetaNotFound) {
+			return nil
 		}
 
-		if ok, err := reqCtx.RepoIsUserAvailable(ctx, repoMeta.Name); !ok || err != nil {
-			continue
+		return err
+	}
+
+	// Remove Referrers
+	if subject := mConvert.GetImageSubject(protoImageMeta); subject != nil {
+		referredDigest := subject.Digest.String()
+		refInfo := &proto_go.ReferrersInfo{}
+
+		if protoRepoMeta.Referrers[referredDigest] != nil {
+			refInfo = protoRepoMeta.Referrers[referredDigest]
 		}
 
-		rank := common.RankRepoName(searchText, repoMeta.Name)
-		if rank == -1 {
-			continue
-		}
+		referrers := refInfo.List
 
-		repoMeta.IsBookmarked = zcommon.Contains(userBookmarks, repoMeta.Name)
-		repoMeta.IsStarred = zcommon.Contains(userStars, repoMeta.Name)
-		repoMeta.Rank = rank
+		for i := range referrers {
+			if referrers[i].Digest == manifestDigest.String() {
+				referrers[i].Count -= 1
 
-		for _, descriptor := range repoMeta.Tags {
-			switch descriptor.MediaType {
-			case ispec.MediaTypeImageManifest:
-				manifestDigest := descriptor.Digest
-
-				manifestMeta, err := dwr.fetchManifestMetaWithCheck(repoMeta.Name, manifestDigest, //nolint:contextcheck
-					manifestMetadataMap)
-				if err != nil {
-					return []mTypes.RepoMetadata{}, map[string]mTypes.ManifestMetadata{}, map[string]mTypes.IndexData{},
-						err
+				if referrers[i].Count == 0 || common.ReferenceIsDigest(reference) {
+					referrers = append(referrers[:i], referrers[i+1:]...)
 				}
 
-				manifestMetadataMap[descriptor.Digest] = manifestMeta
-			case ispec.MediaTypeImageIndex:
-				indexData, err := dwr.fetchIndexDataWithCheck(descriptor.Digest, indexDataMap) //nolint:contextcheck
-				if err != nil {
-					return []mTypes.RepoMetadata{}, map[string]mTypes.ManifestMetadata{}, map[string]mTypes.IndexData{},
-						err
-				}
-
-				var indexContent ispec.Index
-
-				err = json.Unmarshal(indexData.IndexBlob, &indexContent)
-				if err != nil {
-					return []mTypes.RepoMetadata{}, map[string]mTypes.ManifestMetadata{}, map[string]mTypes.IndexData{},
-						fmt.Errorf("metadb: error while unmarshaling index content for digest %s %w", descriptor.Digest, err)
-				}
-
-				for _, manifest := range indexContent.Manifests {
-					manifestMeta, err := dwr.fetchManifestMetaWithCheck(repoMeta.Name, manifest.Digest.String(), //nolint: contextcheck
-						manifestMetadataMap)
-					if err != nil {
-						return []mTypes.RepoMetadata{}, map[string]mTypes.ManifestMetadata{}, map[string]mTypes.IndexData{},
-							err
-					}
-
-					manifestMetadataMap[manifest.Digest.String()] = manifestMeta
-				}
-
-				indexDataMap[descriptor.Digest] = indexData
-			default:
-				dwr.Log.Error().Str("mediaType", descriptor.MediaType).Msg("Unsupported media type")
-
-				continue
+				break
 			}
 		}
 
-		repos = append(repos, repoMeta)
+		refInfo.List = referrers
+
+		protoRepoMeta.Referrers[referredDigest] = refInfo
 	}
 
-	return repos, manifestMetadataMap, indexDataMap, nil
+	if !common.ReferenceIsDigest(reference) {
+		delete(protoRepoMeta.Tags, reference)
+	} else {
+		// find all tags pointing to this digest
+		tags := []string{}
+		for tag, desc := range protoRepoMeta.Tags {
+			if desc.Digest == reference {
+				tags = append(tags, tag)
+			}
+		}
+
+		// remove all tags
+		for _, tag := range tags {
+			delete(protoRepoMeta.Tags, tag)
+		}
+	}
+
+	/* try to find at least one tag pointing to manifestDigest
+	if not found then we can also remove everything related to this digest */
+	var foundTag bool
+
+	for _, desc := range protoRepoMeta.Tags {
+		if desc.Digest == manifestDigest.String() {
+			foundTag = true
+		}
+	}
+
+	if !foundTag {
+		delete(protoRepoMeta.Statistics, manifestDigest.String())
+		delete(protoRepoMeta.Signatures, manifestDigest.String())
+		delete(protoRepoMeta.Referrers, manifestDigest.String())
+	}
+
+	repoBlobsInfo, err := dwr.getRepoBlobsInfo(repo)
+	if err != nil {
+		return err
+	}
+
+	protoRepoMeta, repoBlobsInfo, err = common.RemoveImageFromRepoMeta(protoRepoMeta, repoBlobsInfo, reference)
+	if err != nil {
+		return err
+	}
+
+	err = dwr.setRepoBlobsInfo(repo, repoBlobsInfo)
+	if err != nil {
+		return err
+	}
+	err = dwr.setProtoRepoMeta(repo, protoRepoMeta)
+
+	return err
 }
 
 func getUserStars(ctx context.Context, dwr *DynamoDB) []string {
@@ -1030,641 +1280,6 @@ func getUserBookmarks(ctx context.Context, dwr *DynamoDB) []string {
 	return bookmarkedRepos
 }
 
-func (dwr *DynamoDB) fetchManifestMetaWithCheck(repoName string, manifestDigest string,
-	manifestMetadataMap map[string]mTypes.ManifestMetadata,
-) (mTypes.ManifestMetadata, error) {
-	var (
-		manifestMeta mTypes.ManifestMetadata
-		err          error
-	)
-
-	manifestMeta, manifestDownloaded := manifestMetadataMap[manifestDigest]
-
-	if !manifestDownloaded {
-		manifestMeta, err = dwr.GetManifestMeta(repoName, godigest.Digest(manifestDigest)) //nolint:contextcheck
-		if err != nil {
-			return mTypes.ManifestMetadata{}, err
-		}
-	}
-
-	return manifestMeta, nil
-}
-
-func (dwr *DynamoDB) fetchIndexDataWithCheck(indexDigest string, indexDataMap map[string]mTypes.IndexData,
-) (mTypes.IndexData, error) {
-	var (
-		indexData mTypes.IndexData
-		err       error
-	)
-
-	indexData, indexExists := indexDataMap[indexDigest]
-
-	if !indexExists {
-		indexData, err = dwr.GetIndexData(godigest.Digest(indexDigest)) //nolint:contextcheck
-		if err != nil {
-			return mTypes.IndexData{},
-				fmt.Errorf("metadb: error while unmarshaling index data for digest %s \n%w", indexDigest, err)
-		}
-	}
-
-	return indexData, err
-}
-
-func (dwr *DynamoDB) FilterTags(ctx context.Context, filterFunc mTypes.FilterFunc,
-) ([]mTypes.RepoMetadata, map[string]mTypes.ManifestMetadata, map[string]mTypes.IndexData, error,
-) {
-	var (
-		foundRepos                = make([]mTypes.RepoMetadata, 0)
-		manifestMetadataMap       = make(map[string]mTypes.ManifestMetadata)
-		indexDataMap              = make(map[string]mTypes.IndexData)
-		repoMetaAttributeIterator AttributesIterator
-		userBookmarks             = getUserBookmarks(ctx, dwr)
-		userStars                 = getUserStars(ctx, dwr)
-		aggregateError            error
-	)
-
-	repoMetaAttributeIterator = NewBaseDynamoAttributesIterator(
-		dwr.Client, dwr.RepoMetaTablename, "RepoMetadata", 0, dwr.Log,
-	)
-
-	repoMetaAttribute, err := repoMetaAttributeIterator.First(ctx)
-	if err != nil {
-		return foundRepos, manifestMetadataMap, indexDataMap, err
-	}
-
-	for ; repoMetaAttribute != nil; repoMetaAttribute, err = repoMetaAttributeIterator.Next(ctx) {
-		if err != nil {
-			aggregateError = errors.Join(aggregateError, err)
-
-			continue
-		}
-
-		var repoMeta mTypes.RepoMetadata
-
-		err := attributevalue.Unmarshal(repoMetaAttribute, &repoMeta)
-		if err != nil {
-			aggregateError = errors.Join(aggregateError, err)
-
-			continue
-		}
-
-		if ok, err := reqCtx.RepoIsUserAvailable(ctx, repoMeta.Name); !ok || err != nil {
-			continue
-		}
-
-		repoMeta.IsBookmarked = zcommon.Contains(userBookmarks, repoMeta.Name)
-		repoMeta.IsStarred = zcommon.Contains(userStars, repoMeta.Name)
-
-		matchedTags := make(map[string]mTypes.Descriptor)
-
-		for tag, descriptor := range repoMeta.Tags {
-			switch descriptor.MediaType {
-			case ispec.MediaTypeImageManifest:
-				manifestDigest := descriptor.Digest
-
-				manifestMeta, err := dwr.fetchManifestMetaWithCheck(repoMeta.Name, manifestDigest, //nolint:contextcheck
-					manifestMetadataMap)
-				if err != nil {
-					err = fmt.Errorf("metadb: error while unmashaling manifest metadata for digest %s \n%w", manifestDigest, err)
-					aggregateError = errors.Join(aggregateError, err)
-
-					continue
-				}
-
-				if filterFunc(repoMeta, manifestMeta) {
-					matchedTags[tag] = descriptor
-					manifestMetadataMap[manifestDigest] = manifestMeta
-				}
-			case ispec.MediaTypeImageIndex:
-				indexDigest := descriptor.Digest
-
-				indexData, err := dwr.fetchIndexDataWithCheck(indexDigest, indexDataMap) //nolint:contextcheck
-				if err != nil {
-					err = fmt.Errorf("metadb: error while getting index data for digest %s %w", indexDigest, err)
-					aggregateError = errors.Join(aggregateError, err)
-
-					continue
-				}
-
-				var indexContent ispec.Index
-
-				err = json.Unmarshal(indexData.IndexBlob, &indexContent)
-				if err != nil {
-					err = fmt.Errorf("metadb: error while unmashaling index content for digest %s %w", indexDigest, err)
-					aggregateError = errors.Join(aggregateError, err)
-
-					continue
-				}
-
-				matchedManifests := []ispec.Descriptor{}
-
-				for _, manifest := range indexContent.Manifests {
-					manifestDigest := manifest.Digest.String()
-
-					manifestMeta, err := dwr.fetchManifestMetaWithCheck(repoMeta.Name, manifestDigest, //nolint:contextcheck
-						manifestMetadataMap)
-					if err != nil {
-						err = fmt.Errorf("%w metadb: error while getting manifest data for digest %s", err, manifestDigest)
-						aggregateError = errors.Join(aggregateError, err)
-
-						continue
-					}
-
-					if filterFunc(repoMeta, manifestMeta) {
-						matchedManifests = append(matchedManifests, manifest)
-						manifestMetadataMap[manifestDigest] = manifestMeta
-					}
-				}
-
-				if len(matchedManifests) > 0 {
-					indexContent.Manifests = matchedManifests
-
-					indexBlob, err := json.Marshal(indexContent)
-					if err != nil {
-						aggregateError = errors.Join(aggregateError, err)
-
-						continue
-					}
-
-					indexData.IndexBlob = indexBlob
-
-					indexDataMap[indexDigest] = indexData
-					matchedTags[tag] = descriptor
-				}
-			default:
-				dwr.Log.Error().Str("mediaType", descriptor.MediaType).Msg("Unsupported media type")
-
-				continue
-			}
-		}
-
-		if len(matchedTags) == 0 {
-			continue
-		}
-
-		repoMeta.Tags = matchedTags
-
-		foundRepos = append(foundRepos, repoMeta)
-	}
-
-	return foundRepos, manifestMetadataMap, indexDataMap, aggregateError
-}
-
-func (dwr *DynamoDB) FilterRepos(ctx context.Context, filter mTypes.FilterRepoFunc,
-) ([]mTypes.RepoMetadata, map[string]mTypes.ManifestMetadata, map[string]mTypes.IndexData, error) {
-	var (
-		foundRepos                = []mTypes.RepoMetadata{}
-		repoMetaAttributeIterator AttributesIterator
-		userBookmarks             = getUserBookmarks(ctx, dwr)
-		userStars                 = getUserStars(ctx, dwr)
-	)
-
-	repoMetaAttributeIterator = NewBaseDynamoAttributesIterator(
-		dwr.Client, dwr.RepoMetaTablename, "RepoMetadata", 0, dwr.Log,
-	)
-
-	repoMetaAttribute, err := repoMetaAttributeIterator.First(ctx)
-
-	for ; repoMetaAttribute != nil; repoMetaAttribute, err = repoMetaAttributeIterator.Next(ctx) {
-		if err != nil {
-			return []mTypes.RepoMetadata{}, map[string]mTypes.ManifestMetadata{}, map[string]mTypes.IndexData{},
-				err
-		}
-
-		var repoMeta mTypes.RepoMetadata
-
-		err := attributevalue.Unmarshal(repoMetaAttribute, &repoMeta)
-		if err != nil {
-			return []mTypes.RepoMetadata{}, map[string]mTypes.ManifestMetadata{}, map[string]mTypes.IndexData{},
-				err
-		}
-
-		if ok, err := reqCtx.RepoIsUserAvailable(ctx, repoMeta.Name); !ok || err != nil {
-			continue
-		}
-
-		repoMeta.IsBookmarked = zcommon.Contains(userBookmarks, repoMeta.Name)
-		repoMeta.IsStarred = zcommon.Contains(userStars, repoMeta.Name)
-
-		if filter(repoMeta) {
-			foundRepos = append(foundRepos, repoMeta)
-		}
-	}
-
-	foundManifestMetadataMap, foundIndexDataMap, err := common.FetchDataForRepos(dwr, foundRepos)
-
-	return foundRepos, foundManifestMetadataMap, foundIndexDataMap, err
-}
-
-func (dwr *DynamoDB) SearchTags(ctx context.Context, searchText string,
-) ([]mTypes.RepoMetadata, map[string]mTypes.ManifestMetadata, map[string]mTypes.IndexData,
-	error,
-) {
-	var (
-		foundRepos                = make([]mTypes.RepoMetadata, 0, 1)
-		manifestMetadataMap       = make(map[string]mTypes.ManifestMetadata)
-		indexDataMap              = make(map[string]mTypes.IndexData)
-		repoMetaAttributeIterator AttributesIterator
-		userBookmarks             = getUserBookmarks(ctx, dwr)
-		userStars                 = getUserStars(ctx, dwr)
-	)
-
-	repoMetaAttributeIterator = NewBaseDynamoAttributesIterator(
-		dwr.Client, dwr.RepoMetaTablename, "RepoMetadata", 0, dwr.Log,
-	)
-
-	searchedRepo, searchedTag, err := common.GetRepoTag(searchText)
-	if err != nil {
-		return []mTypes.RepoMetadata{}, map[string]mTypes.ManifestMetadata{}, map[string]mTypes.IndexData{},
-			fmt.Errorf("metadb: error while parsing search text, invalid format %w", err)
-	}
-
-	repoMetaAttribute, err := repoMetaAttributeIterator.First(ctx)
-	if err != nil {
-		return []mTypes.RepoMetadata{}, map[string]mTypes.ManifestMetadata{}, map[string]mTypes.IndexData{},
-			err
-	}
-
-	var repoMeta mTypes.RepoMetadata
-
-	err = attributevalue.Unmarshal(repoMetaAttribute, &repoMeta)
-	if err != nil {
-		return []mTypes.RepoMetadata{}, map[string]mTypes.ManifestMetadata{}, map[string]mTypes.IndexData{},
-			err
-	}
-
-	if ok, err := reqCtx.RepoIsUserAvailable(ctx, repoMeta.Name); !ok || err != nil {
-		return []mTypes.RepoMetadata{}, map[string]mTypes.ManifestMetadata{}, map[string]mTypes.IndexData{},
-			err
-	}
-
-	if repoMeta.Name != searchedRepo {
-		return []mTypes.RepoMetadata{}, map[string]mTypes.ManifestMetadata{}, map[string]mTypes.IndexData{},
-			err
-	}
-
-	repoMeta.IsBookmarked = zcommon.Contains(userBookmarks, repoMeta.Name)
-	repoMeta.IsStarred = zcommon.Contains(userStars, repoMeta.Name)
-
-	matchedTags := make(map[string]mTypes.Descriptor)
-
-	for tag, descriptor := range repoMeta.Tags {
-		if !strings.HasPrefix(tag, searchedTag) {
-			continue
-		}
-
-		matchedTags[tag] = descriptor
-
-		switch descriptor.MediaType {
-		case ispec.MediaTypeImageManifest:
-			manifestDigest := descriptor.Digest
-
-			manifestMeta, err := dwr.fetchManifestMetaWithCheck(repoMeta.Name, manifestDigest, //nolint:contextcheck
-				manifestMetadataMap)
-			if err != nil {
-				return []mTypes.RepoMetadata{}, map[string]mTypes.ManifestMetadata{}, map[string]mTypes.IndexData{},
-					fmt.Errorf("metadb: error while unmashaling manifest metadata for digest %s %w", descriptor.Digest, err)
-			}
-
-			manifestMetadataMap[descriptor.Digest] = manifestMeta
-		case ispec.MediaTypeImageIndex:
-			indexDigest := descriptor.Digest
-
-			indexData, err := dwr.fetchIndexDataWithCheck(indexDigest, indexDataMap) //nolint:contextcheck
-			if err != nil {
-				return []mTypes.RepoMetadata{}, map[string]mTypes.ManifestMetadata{}, map[string]mTypes.IndexData{},
-					fmt.Errorf("%w", err)
-			}
-
-			var indexContent ispec.Index
-
-			err = json.Unmarshal(indexData.IndexBlob, &indexContent)
-			if err != nil {
-				return []mTypes.RepoMetadata{}, map[string]mTypes.ManifestMetadata{}, map[string]mTypes.IndexData{},
-					fmt.Errorf("metadb: error while unmashaling index content for digest %s %w", indexDigest, err)
-			}
-
-			for _, manifest := range indexContent.Manifests {
-				manifestDigest := manifest.Digest.String()
-
-				manifestMeta, err := dwr.fetchManifestMetaWithCheck(repoMeta.Name, manifestDigest, //nolint:contextcheck
-					manifestMetadataMap)
-				if err != nil {
-					return []mTypes.RepoMetadata{}, map[string]mTypes.ManifestMetadata{}, map[string]mTypes.IndexData{},
-						fmt.Errorf("%w", err)
-				}
-
-				manifestMetadataMap[manifestDigest] = manifestMeta
-			}
-
-			indexDataMap[indexDigest] = indexData
-		default:
-			dwr.Log.Error().Str("mediaType", descriptor.MediaType).Msg("Unsupported media type")
-
-			continue
-		}
-	}
-
-	if len(matchedTags) == 0 {
-		return []mTypes.RepoMetadata{}, map[string]mTypes.ManifestMetadata{}, map[string]mTypes.IndexData{},
-			err
-	}
-
-	repoMeta.Tags = matchedTags
-
-	foundRepos = append(foundRepos, repoMeta)
-
-	return foundRepos, manifestMetadataMap, indexDataMap, err
-}
-
-func (dwr *DynamoDB) PatchDB() error {
-	DBVersion, err := dwr.getDBVersion()
-	if err != nil {
-		return fmt.Errorf("patching dynamo failed, error retrieving database version %w", err)
-	}
-
-	if version.GetVersionIndex(DBVersion) == -1 {
-		return fmt.Errorf("DB has broken format, no version found %w", err)
-	}
-
-	for patchIndex, patch := range dwr.Patches {
-		if patchIndex < version.GetVersionIndex(DBVersion) {
-			continue
-		}
-
-		tableNames := map[string]string{
-			"RepoMetaTablename":     dwr.RepoMetaTablename,
-			"ManifestDataTablename": dwr.ManifestDataTablename,
-			"VersionTablename":      dwr.VersionTablename,
-		}
-
-		err := patch(dwr.Client, tableNames)
-		if err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
-func (dwr *DynamoDB) SetRepoMeta(repo string, repoMeta mTypes.RepoMetadata) error {
-	repoMeta.Name = repo
-
-	repoAttributeValue, err := attributevalue.Marshal(repoMeta)
-	if err != nil {
-		return err
-	}
-
-	_, err = dwr.Client.UpdateItem(context.TODO(), &dynamodb.UpdateItemInput{
-		ExpressionAttributeNames: map[string]string{
-			"#RM": "RepoMetadata",
-		},
-		ExpressionAttributeValues: map[string]types.AttributeValue{
-			":RepoMetadata": repoAttributeValue,
-		},
-		Key: map[string]types.AttributeValue{
-			"RepoName": &types.AttributeValueMemberS{
-				Value: repo,
-			},
-		},
-		TableName:        aws.String(dwr.RepoMetaTablename),
-		UpdateExpression: aws.String("SET #RM = :RepoMetadata"),
-	})
-
-	return err
-}
-
-func (dwr *DynamoDB) createRepoMetaTable() error {
-	_, err := dwr.Client.CreateTable(context.Background(), &dynamodb.CreateTableInput{
-		TableName: aws.String(dwr.RepoMetaTablename),
-		AttributeDefinitions: []types.AttributeDefinition{
-			{
-				AttributeName: aws.String("RepoName"),
-				AttributeType: types.ScalarAttributeTypeS,
-			},
-		},
-		KeySchema: []types.KeySchemaElement{
-			{
-				AttributeName: aws.String("RepoName"),
-				KeyType:       types.KeyTypeHash,
-			},
-		},
-		BillingMode: types.BillingModePayPerRequest,
-	})
-	if err != nil {
-		if strings.Contains(err.Error(), "Table already exists") {
-			return nil
-		}
-
-		return err
-	}
-
-	return dwr.waitTableToBeCreated(dwr.RepoMetaTablename)
-}
-
-func (dwr *DynamoDB) deleteRepoMetaTable() error {
-	_, err := dwr.Client.DeleteTable(context.Background(), &dynamodb.DeleteTableInput{
-		TableName: aws.String(dwr.RepoMetaTablename),
-	})
-
-	if temp := new(types.ResourceNotFoundException); errors.As(err, &temp) {
-		return nil
-	}
-
-	return dwr.waitTableToBeDeleted(dwr.RepoMetaTablename)
-}
-
-func (dwr *DynamoDB) ResetRepoMetaTable() error {
-	err := dwr.deleteRepoMetaTable()
-	if err != nil {
-		return err
-	}
-
-	return dwr.createRepoMetaTable()
-}
-
-func (dwr *DynamoDB) waitTableToBeCreated(tableName string) error {
-	const maxWaitTime = 20 * time.Second
-
-	waiter := dynamodb.NewTableExistsWaiter(dwr.Client)
-
-	return waiter.Wait(context.Background(), &dynamodb.DescribeTableInput{
-		TableName: &tableName,
-	}, maxWaitTime)
-}
-
-func (dwr *DynamoDB) waitTableToBeDeleted(tableName string) error {
-	const maxWaitTime = 20 * time.Second
-
-	waiter := dynamodb.NewTableNotExistsWaiter(dwr.Client)
-
-	return waiter.Wait(context.Background(), &dynamodb.DescribeTableInput{
-		TableName: &tableName,
-	}, maxWaitTime)
-}
-
-func (dwr *DynamoDB) createManifestDataTable() error {
-	_, err := dwr.Client.CreateTable(context.Background(), &dynamodb.CreateTableInput{
-		TableName: aws.String(dwr.ManifestDataTablename),
-		AttributeDefinitions: []types.AttributeDefinition{
-			{
-				AttributeName: aws.String("Digest"),
-				AttributeType: types.ScalarAttributeTypeS,
-			},
-		},
-		KeySchema: []types.KeySchemaElement{
-			{
-				AttributeName: aws.String("Digest"),
-				KeyType:       types.KeyTypeHash,
-			},
-		},
-		BillingMode: types.BillingModePayPerRequest,
-	})
-	if err != nil {
-		if strings.Contains(err.Error(), "Table already exists") {
-			return nil
-		}
-
-		return err
-	}
-
-	return dwr.waitTableToBeCreated(dwr.ManifestDataTablename)
-}
-
-func (dwr *DynamoDB) createIndexDataTable() error {
-	_, err := dwr.Client.CreateTable(context.Background(), &dynamodb.CreateTableInput{
-		TableName: aws.String(dwr.IndexDataTablename),
-		AttributeDefinitions: []types.AttributeDefinition{
-			{
-				AttributeName: aws.String("IndexDigest"),
-				AttributeType: types.ScalarAttributeTypeS,
-			},
-		},
-		KeySchema: []types.KeySchemaElement{
-			{
-				AttributeName: aws.String("IndexDigest"),
-				KeyType:       types.KeyTypeHash,
-			},
-		},
-		BillingMode: types.BillingModePayPerRequest,
-	})
-	if err != nil {
-		if strings.Contains(err.Error(), "Table already exists") {
-			return nil
-		}
-
-		return err
-	}
-
-	return dwr.waitTableToBeCreated(dwr.IndexDataTablename)
-}
-
-func (dwr *DynamoDB) createVersionTable() error {
-	_, err := dwr.Client.CreateTable(context.Background(), &dynamodb.CreateTableInput{
-		TableName: aws.String(dwr.VersionTablename),
-		AttributeDefinitions: []types.AttributeDefinition{
-			{
-				AttributeName: aws.String("VersionKey"),
-				AttributeType: types.ScalarAttributeTypeS,
-			},
-		},
-		KeySchema: []types.KeySchemaElement{
-			{
-				AttributeName: aws.String("VersionKey"),
-				KeyType:       types.KeyTypeHash,
-			},
-		},
-		BillingMode: types.BillingModePayPerRequest,
-	})
-	if err != nil {
-		if strings.Contains(err.Error(), "Table already exists") {
-			return nil
-		}
-
-		return err
-	}
-
-	err = dwr.waitTableToBeCreated(dwr.VersionTablename)
-	if err != nil {
-		return err
-	}
-
-	if err == nil {
-		mdAttributeValue, err := attributevalue.Marshal(version.CurrentVersion)
-		if err != nil {
-			return err
-		}
-
-		_, err = dwr.Client.UpdateItem(context.TODO(), &dynamodb.UpdateItemInput{
-			ExpressionAttributeNames: map[string]string{
-				"#V": "Version",
-			},
-			ExpressionAttributeValues: map[string]types.AttributeValue{
-				":Version": mdAttributeValue,
-			},
-			Key: map[string]types.AttributeValue{
-				"VersionKey": &types.AttributeValueMemberS{
-					Value: version.DBVersionKey,
-				},
-			},
-			TableName:        aws.String(dwr.VersionTablename),
-			UpdateExpression: aws.String("SET #V = :Version"),
-		})
-
-		if err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
-func (dwr *DynamoDB) getDBVersion() (string, error) {
-	resp, err := dwr.Client.GetItem(context.TODO(), &dynamodb.GetItemInput{
-		TableName: aws.String(dwr.VersionTablename),
-		Key: map[string]types.AttributeValue{
-			"VersionKey": &types.AttributeValueMemberS{Value: version.DBVersionKey},
-		},
-	})
-	if err != nil {
-		return "", err
-	}
-
-	if resp.Item == nil {
-		return "", nil
-	}
-
-	var version string
-
-	err = attributevalue.Unmarshal(resp.Item["Version"], &version)
-	if err != nil {
-		return "", err
-	}
-
-	return version, nil
-}
-
-func (dwr *DynamoDB) deleteManifestDataTable() error {
-	_, err := dwr.Client.DeleteTable(context.Background(), &dynamodb.DeleteTableInput{
-		TableName: aws.String(dwr.ManifestDataTablename),
-	})
-
-	if temp := new(types.ResourceNotFoundException); errors.As(err, &temp) {
-		return nil
-	}
-
-	return dwr.waitTableToBeDeleted(dwr.ManifestDataTablename)
-}
-
-func (dwr *DynamoDB) ResetManifestDataTable() error {
-	err := dwr.deleteManifestDataTable()
-	if err != nil {
-		return err
-	}
-
-	return dwr.createManifestDataTable()
-}
-
 func (dwr *DynamoDB) ToggleBookmarkRepo(ctx context.Context, repo string) (
 	mTypes.ToggleState, error,
 ) {
@@ -1680,11 +1295,7 @@ func (dwr *DynamoDB) ToggleBookmarkRepo(ctx context.Context, repo string) (
 	}
 
 	userData, err := dwr.GetUserData(ctx)
-	if err != nil {
-		if errors.Is(err, zerr.ErrUserDataNotFound) {
-			return mTypes.NotChanged, nil
-		}
-
+	if err != nil && !errors.Is(err, zerr.ErrUserDataNotFound) {
 		return res, err
 	}
 
@@ -1749,7 +1360,7 @@ func (dwr *DynamoDB) ToggleStarRepo(ctx context.Context, repo string) (
 	}
 
 	if res != mTypes.NotChanged {
-		repoMeta, err := dwr.GetRepoMeta(repo) //nolint:contextcheck
+		repoMeta, err := dwr.getProtoRepoMeta(ctx, repo) //nolint:contextcheck
 		if err != nil {
 			return mTypes.NotChanged, err
 		}
@@ -1761,7 +1372,12 @@ func (dwr *DynamoDB) ToggleStarRepo(ctx context.Context, repo string) (
 			repoMeta.Stars--
 		}
 
-		repoAttributeValue, err := attributevalue.Marshal(repoMeta)
+		repoMetaBlob, err := proto.Marshal(repoMeta)
+		if err != nil {
+			return mTypes.NotChanged, err
+		}
+
+		repoAttributeValue, err := attributevalue.Marshal(repoMetaBlob)
 		if err != nil {
 			return mTypes.NotChanged, err
 		}
@@ -1783,7 +1399,7 @@ func (dwr *DynamoDB) ToggleStarRepo(ctx context.Context, repo string) (
 							":UserData": userAttributeValue,
 						},
 						Key: map[string]types.AttributeValue{
-							"Identity": &types.AttributeValueMemberS{
+							"Key": &types.AttributeValueMemberS{
 								Value: userid,
 							},
 						},
@@ -1801,7 +1417,7 @@ func (dwr *DynamoDB) ToggleStarRepo(ctx context.Context, repo string) (
 							":RepoMetadata": repoAttributeValue,
 						},
 						Key: map[string]types.AttributeValue{
-							"RepoName": &types.AttributeValueMemberS{
+							"Key": &types.AttributeValueMemberS{
 								Value: repo,
 							},
 						},
@@ -1827,62 +1443,6 @@ func (dwr *DynamoDB) GetStarredRepos(ctx context.Context) ([]string, error) {
 	}
 
 	return userMeta.StarredRepos, err
-}
-
-func (dwr *DynamoDB) createUserDataTable() error {
-	_, err := dwr.Client.CreateTable(context.Background(), &dynamodb.CreateTableInput{
-		TableName: aws.String(dwr.UserDataTablename),
-		AttributeDefinitions: []types.AttributeDefinition{
-			{
-				AttributeName: aws.String("Identity"),
-				AttributeType: types.ScalarAttributeTypeS,
-			},
-		},
-		KeySchema: []types.KeySchemaElement{
-			{
-				AttributeName: aws.String("Identity"),
-				KeyType:       types.KeyTypeHash,
-			},
-		},
-		BillingMode: types.BillingModePayPerRequest,
-	})
-	if err != nil {
-		if strings.Contains(err.Error(), "Table already exists") {
-			return nil
-		}
-
-		return err
-	}
-
-	return dwr.waitTableToBeCreated(dwr.UserDataTablename)
-}
-
-func (dwr DynamoDB) createAPIKeyTable() error {
-	_, err := dwr.Client.CreateTable(context.Background(), &dynamodb.CreateTableInput{
-		TableName: aws.String(dwr.APIKeyTablename),
-		AttributeDefinitions: []types.AttributeDefinition{
-			{
-				AttributeName: aws.String("HashedKey"),
-				AttributeType: types.ScalarAttributeTypeS,
-			},
-		},
-		KeySchema: []types.KeySchemaElement{
-			{
-				AttributeName: aws.String("HashedKey"),
-				KeyType:       types.KeyTypeHash,
-			},
-		},
-		BillingMode: types.BillingModePayPerRequest,
-	})
-	if err != nil {
-		if strings.Contains(err.Error(), "Table already exists") {
-			return nil
-		}
-
-		return err
-	}
-
-	return dwr.waitTableToBeCreated(dwr.APIKeyTablename)
 }
 
 func (dwr DynamoDB) SetUserGroups(ctx context.Context, groups []string) error {
@@ -2033,7 +1593,7 @@ func (dwr DynamoDB) AddUserAPIKey(ctx context.Context, hashedKey string, apiKeyD
 						":UserData": userAttributeValue,
 					},
 					Key: map[string]types.AttributeValue{
-						"Identity": &types.AttributeValueMemberS{
+						"Key": &types.AttributeValueMemberS{
 							Value: userid,
 						},
 					},
@@ -2051,7 +1611,7 @@ func (dwr DynamoDB) AddUserAPIKey(ctx context.Context, hashedKey string, apiKeyD
 						":Identity": &types.AttributeValueMemberS{Value: userid},
 					},
 					Key: map[string]types.AttributeValue{
-						"HashedKey": &types.AttributeValueMemberS{
+						"Key": &types.AttributeValueMemberS{
 							Value: hashedKey,
 						},
 					},
@@ -2078,7 +1638,7 @@ func (dwr DynamoDB) DeleteUserAPIKey(ctx context.Context, keyID string) error {
 			_, err = dwr.Client.DeleteItem(ctx, &dynamodb.DeleteItemInput{
 				TableName: aws.String(dwr.APIKeyTablename),
 				Key: map[string]types.AttributeValue{
-					"HashedKey": &types.AttributeValueMemberS{Value: hash},
+					"Key": &types.AttributeValueMemberS{Value: hash},
 				},
 			})
 			if err != nil {
@@ -2100,7 +1660,7 @@ func (dwr DynamoDB) GetUserAPIKeyInfo(hashedKey string) (string, error) {
 	resp, err := dwr.Client.GetItem(context.Background(), &dynamodb.GetItemInput{
 		TableName: aws.String(dwr.APIKeyTablename),
 		Key: map[string]types.AttributeValue{
-			"HashedKey": &types.AttributeValueMemberS{Value: hashedKey},
+			"Key": &types.AttributeValueMemberS{Value: hashedKey},
 		},
 	})
 	if err != nil {
@@ -2136,7 +1696,7 @@ func (dwr DynamoDB) GetUserData(ctx context.Context) (mTypes.UserData, error) {
 	resp, err := dwr.Client.GetItem(ctx, &dynamodb.GetItemInput{
 		TableName: aws.String(dwr.UserDataTablename),
 		Key: map[string]types.AttributeValue{
-			"Identity": &types.AttributeValueMemberS{Value: userid},
+			"Key": &types.AttributeValueMemberS{Value: userid},
 		},
 	})
 	if err != nil {
@@ -2180,7 +1740,7 @@ func (dwr DynamoDB) SetUserData(ctx context.Context, userData mTypes.UserData) e
 			":UserData": userAttributeValue,
 		},
 		Key: map[string]types.AttributeValue{
-			"Identity": &types.AttributeValueMemberS{
+			"Key": &types.AttributeValueMemberS{
 				Value: userid,
 			},
 		},
@@ -2206,9 +1766,252 @@ func (dwr DynamoDB) DeleteUserData(ctx context.Context) error {
 	_, err = dwr.Client.DeleteItem(ctx, &dynamodb.DeleteItemInput{
 		TableName: aws.String(dwr.UserDataTablename),
 		Key: map[string]types.AttributeValue{
-			"Identity": &types.AttributeValueMemberS{Value: userid},
+			"Key": &types.AttributeValueMemberS{Value: userid},
 		},
 	})
 
 	return err
+}
+
+func (dwr *DynamoDB) fetchImageMetaAttributesByDigest(ctx context.Context, digests []string,
+) ([]map[string]types.AttributeValue, error) {
+	resp, err := dwr.Client.BatchGetItem(ctx, &dynamodb.BatchGetItemInput{
+		RequestItems: map[string]types.KeysAndAttributes{
+			dwr.ImageMetaTablename: {
+				Keys: getBatchImageKeys(digests),
+			},
+		},
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	if len(resp.Responses[dwr.ImageMetaTablename]) != len(digests) {
+		return nil, zerr.ErrImageMetaNotFound
+	}
+
+	return resp.Responses[dwr.ImageMetaTablename], nil
+}
+
+func getBatchImageKeys(digests []string) []map[string]types.AttributeValue {
+	result := []map[string]types.AttributeValue{}
+
+	for _, digest := range digests {
+		result = append(result, map[string]types.AttributeValue{
+			"Key": &types.AttributeValueMemberS{
+				Value: digest,
+			},
+		})
+	}
+
+	return result
+}
+
+func (dwr *DynamoDB) PatchDB() error {
+	DBVersion, err := dwr.getDBVersion()
+	if err != nil {
+		return fmt.Errorf("patching dynamo failed, error retrieving database version %w", err)
+	}
+
+	if version.GetVersionIndex(DBVersion) == -1 {
+		return fmt.Errorf("DB has broken format, no version found %w", err)
+	}
+
+	for patchIndex, patch := range dwr.Patches {
+		if patchIndex < version.GetVersionIndex(DBVersion) {
+			continue
+		}
+
+		tableNames := map[string]string{
+			"RepoMetaTablename": dwr.RepoMetaTablename,
+			"VersionTablename":  dwr.VersionTablename,
+		}
+
+		err := patch(dwr.Client, tableNames)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (dwr *DynamoDB) ResetDB() error {
+	err := dwr.ResetTable(dwr.APIKeyTablename)
+	if err != nil {
+		return err
+	}
+
+	err = dwr.ResetTable(dwr.ImageMetaTablename)
+	if err != nil {
+		return err
+	}
+
+	err = dwr.ResetTable(dwr.RepoBlobsTablename)
+	if err != nil {
+		return err
+	}
+
+	err = dwr.ResetTable(dwr.RepoMetaTablename)
+	if err != nil {
+		return err
+	}
+
+	err = dwr.ResetTable(dwr.UserDataTablename)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (dwr *DynamoDB) ResetTable(tableName string) error {
+	err := dwr.deleteTable(tableName)
+	if err != nil {
+		return err
+	}
+
+	return dwr.createTable(tableName)
+}
+
+func (dwr *DynamoDB) createTable(tableName string) error {
+	_, err := dwr.Client.CreateTable(context.Background(), &dynamodb.CreateTableInput{
+		TableName: aws.String(tableName),
+		AttributeDefinitions: []types.AttributeDefinition{
+			{
+				AttributeName: aws.String("Key"),
+				AttributeType: types.ScalarAttributeTypeS,
+			},
+		},
+		KeySchema: []types.KeySchemaElement{
+			{
+				AttributeName: aws.String("Key"),
+				KeyType:       types.KeyTypeHash,
+			},
+		},
+		BillingMode: types.BillingModePayPerRequest,
+	})
+
+	if err != nil && !strings.Contains(err.Error(), "Table already exists") {
+		return err
+	}
+
+	return dwr.waitTableToBeCreated(tableName)
+}
+
+func (dwr *DynamoDB) deleteTable(tableName string) error {
+	_, err := dwr.Client.DeleteTable(context.Background(), &dynamodb.DeleteTableInput{
+		TableName: aws.String(tableName),
+	})
+
+	if temp := new(types.ResourceNotFoundException); errors.As(err, &temp) {
+		return nil
+	}
+
+	return dwr.waitTableToBeDeleted(tableName)
+}
+
+func (dwr *DynamoDB) waitTableToBeCreated(tableName string) error {
+	const maxWaitTime = 20 * time.Second
+
+	waiter := dynamodb.NewTableExistsWaiter(dwr.Client)
+
+	return waiter.Wait(context.Background(), &dynamodb.DescribeTableInput{
+		TableName: &tableName,
+	}, maxWaitTime)
+}
+
+func (dwr *DynamoDB) waitTableToBeDeleted(tableName string) error {
+	const maxWaitTime = 20 * time.Second
+
+	waiter := dynamodb.NewTableNotExistsWaiter(dwr.Client)
+
+	return waiter.Wait(context.Background(), &dynamodb.DescribeTableInput{
+		TableName: &tableName,
+	}, maxWaitTime)
+}
+
+func (dwr *DynamoDB) createVersionTable() error {
+	_, err := dwr.Client.CreateTable(context.Background(), &dynamodb.CreateTableInput{
+		TableName: aws.String(dwr.VersionTablename),
+		AttributeDefinitions: []types.AttributeDefinition{
+			{
+				AttributeName: aws.String("Key"),
+				AttributeType: types.ScalarAttributeTypeS,
+			},
+		},
+		KeySchema: []types.KeySchemaElement{
+			{
+				AttributeName: aws.String("Key"),
+				KeyType:       types.KeyTypeHash,
+			},
+		},
+		BillingMode: types.BillingModePayPerRequest,
+	})
+	if err != nil {
+		if strings.Contains(err.Error(), "Table already exists") {
+			return nil
+		}
+
+		return err
+	}
+
+	err = dwr.waitTableToBeCreated(dwr.VersionTablename)
+	if err != nil {
+		return err
+	}
+
+	if err == nil {
+		mdAttributeValue, err := attributevalue.Marshal(version.CurrentVersion)
+		if err != nil {
+			return err
+		}
+
+		_, err = dwr.Client.UpdateItem(context.TODO(), &dynamodb.UpdateItemInput{
+			ExpressionAttributeNames: map[string]string{
+				"#V": "Version",
+			},
+			ExpressionAttributeValues: map[string]types.AttributeValue{
+				":Version": mdAttributeValue,
+			},
+			Key: map[string]types.AttributeValue{
+				"Key": &types.AttributeValueMemberS{
+					Value: version.DBVersionKey,
+				},
+			},
+			TableName:        aws.String(dwr.VersionTablename),
+			UpdateExpression: aws.String("SET #V = :Version"),
+		})
+
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (dwr *DynamoDB) getDBVersion() (string, error) {
+	resp, err := dwr.Client.GetItem(context.TODO(), &dynamodb.GetItemInput{
+		TableName: aws.String(dwr.VersionTablename),
+		Key: map[string]types.AttributeValue{
+			"Key": &types.AttributeValueMemberS{Value: version.DBVersionKey},
+		},
+	})
+	if err != nil {
+		return "", err
+	}
+
+	if resp.Item == nil {
+		return "", nil
+	}
+
+	var version string
+
+	err = attributevalue.Unmarshal(resp.Item["Version"], &version)
+	if err != nil {
+		return "", err
+	}
+
+	return version, nil
 }

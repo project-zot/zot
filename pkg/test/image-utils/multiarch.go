@@ -11,9 +11,8 @@ import (
 )
 
 type MultiarchImage struct {
-	Index     ispec.Index
-	Images    []Image
-	Reference string
+	Index  ispec.Index
+	Images []Image
 
 	IndexDescriptor ispec.Descriptor
 }
@@ -31,17 +30,27 @@ func (mi *MultiarchImage) DigestStr() string {
 	return mi.Digest().String()
 }
 
-func (mi *MultiarchImage) IndexData() mTypes.IndexData {
-	indexBlob, err := json.Marshal(mi.Index)
-	if err != nil {
-		panic("unreachable: ispec.Index should always be marshable")
+func (mi MultiarchImage) AsImageMeta() mTypes.ImageMeta {
+	index := mi.Index
+
+	manifests := make([]mTypes.ManifestData, 0, len(index.Manifests))
+
+	for _, image := range mi.Images {
+		manifests = append(manifests, image.AsImageMeta().Manifests...)
 	}
 
-	return mTypes.IndexData{IndexBlob: indexBlob}
+	return mTypes.ImageMeta{
+		MediaType: ispec.MediaTypeImageIndex,
+		Digest:    mi.IndexDescriptor.Digest,
+		Size:      mi.IndexDescriptor.Size,
+		Index:     &index,
+		Manifests: manifests,
+	}
 }
 
 type ImagesBuilder interface {
 	Images(images []Image) MultiarchBuilder
+	RandomImages(count int) MultiarchBuilder
 }
 
 type MultiarchBuilder interface {
@@ -83,6 +92,18 @@ type BaseMultiarchBuilder struct {
 }
 
 func (mb *BaseMultiarchBuilder) Images(images []Image) MultiarchBuilder {
+	mb.images = images
+
+	return mb
+}
+
+func (mb *BaseMultiarchBuilder) RandomImages(count int) MultiarchBuilder {
+	images := make([]Image, count)
+
+	for i := range images {
+		images[i] = CreateRandomImage()
+	}
+
 	mb.images = images
 
 	return mb
@@ -135,12 +156,9 @@ func (mb *BaseMultiarchBuilder) Build() MultiarchImage {
 
 	indexDigest := godigest.FromBytes(indexBlob)
 
-	ref := indexDigest.String()
-
 	return MultiarchImage{
-		Index:     index,
-		Images:    mb.images,
-		Reference: ref,
+		Index:  index,
+		Images: mb.images,
 
 		IndexDescriptor: ispec.Descriptor{
 			MediaType: ispec.MediaTypeImageIndex,

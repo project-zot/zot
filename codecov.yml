@@ -6,3 +6,4 @@ ignore:
     - "./pkg/test/mocks/*.go"
     - "./swagger/*.go"
     - "./pkg/test/test_http_server.go"
+    - "./pkg/meta/proto/gen/*.go"

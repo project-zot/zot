@@ -2,10 +2,10 @@ package meta
 
 import (
 	godigest "github.com/opencontainers/go-digest"
+	v1 "github.com/opencontainers/image-spec/specs-go/v1"
 
 	zcommon "zotregistry.io/zot/pkg/common"
 	"zotregistry.io/zot/pkg/log"
-	"zotregistry.io/zot/pkg/meta/common"
 	mTypes "zotregistry.io/zot/pkg/meta/types"
 	"zotregistry.io/zot/pkg/storage"
 )
@@ -22,55 +22,9 @@ func OnUpdateManifest(repo, reference, mediaType string, digest godigest.Digest,
 
 	imgStore := storeController.GetImageStore(repo)
 
-	// check if image is a signature
-	isSignature, signatureType, signedManifestDigest, err := storage.CheckIsImageSignature(repo, body, reference)
+	err := SetImageMetaFromInput(repo, reference, mediaType, digest, body,
+		imgStore, metaDB, log)
 	if err != nil {
-		log.Error().Err(err).Msg("can't check if image is a signature or not")
-
-		if err := imgStore.DeleteImageManifest(repo, reference, false); err != nil {
-			log.Error().Err(err).Str("manifest", reference).Str("repository", repo).Msg("couldn't remove image manifest in repo")
-
-			return err
-		}
-
-		return err
-	}
-
-	metadataSuccessfullySet := true
-
-	if isSignature {
-		layersInfo, errGetLayers := GetSignatureLayersInfo(repo, reference, digest.String(), signatureType, body,
-			imgStore, log)
-		if errGetLayers != nil {
-			metadataSuccessfullySet = false
-			err = errGetLayers
-		} else {
-			err = metaDB.AddManifestSignature(repo, signedManifestDigest, mTypes.SignatureMetadata{
-				SignatureType:   signatureType,
-				SignatureDigest: digest.String(),
-				LayersInfo:      layersInfo,
-			})
-			if err != nil {
-				log.Error().Err(err).Msg("metadb: error while putting repo meta")
-				metadataSuccessfullySet = false
-			} else {
-				err = metaDB.UpdateSignaturesValidity(repo, signedManifestDigest)
-				if err != nil {
-					log.Error().Err(err).Str("repository", repo).Str("reference", reference).Str("digest",
-						signedManifestDigest.String()).Msg("metadb: failed verify signatures validity for signed image")
-					metadataSuccessfullySet = false
-				}
-			}
-		}
-	} else {
-		err = SetImageMetaFromInput(repo, reference, mediaType, digest, body,
-			imgStore, metaDB, log)
-		if err != nil {
-			metadataSuccessfullySet = false
-		}
-	}
-
-	if !metadataSuccessfullySet {
 		log.Info().Str("tag", reference).Str("repository", repo).Msg("uploading image meta was unsuccessful for tag in repo")
 
 		if err := imgStore.DeleteImageManifest(repo, reference, false); err != nil {
@@ -130,15 +84,6 @@ func OnDeleteManifest(repo, reference, mediaType string, digest godigest.Digest,
 
 			manageRepoMetaSuccessfully = false
 		}
-
-		if referredDigest, hasSubject := common.GetReferredSubject(manifestBlob); hasSubject {
-			err := metaDB.DeleteReferrer(repo, referredDigest, digest)
-			if err != nil {
-				log.Error().Err(err).Msg("metadb: error while deleting referrer")
-
-				return err
-			}
-		}
 	}
 
 	if !manageRepoMetaSuccessfully {
@@ -152,7 +97,7 @@ func OnDeleteManifest(repo, reference, mediaType string, digest godigest.Digest,
 }
 
 // OnDeleteManifest is called when a manifest is downloaded. It increments the download couter on that manifest.
-func OnGetManifest(name, reference string, body []byte,
+func OnGetManifest(name, reference, mediaType string, body []byte,
 	storeController storage.StoreController, metaDB mTypes.MetaDB, log log.Logger,
 ) error {
 	// check if image is a signature
@@ -163,14 +108,20 @@ func OnGetManifest(name, reference string, body []byte,
 		return err
 	}
 
-	if !isSignature && !zcommon.IsReferrersTag(reference) {
-		err := metaDB.IncrementImageDownloads(name, reference)
-		if err != nil {
-			log.Error().Err(err).Str("repository", name).Str("reference", reference).
-				Msg("unexpected error for image")
+	if isSignature || zcommon.IsReferrersTag(reference) {
+		return nil
+	}
 
-			return err
-		}
+	if !(mediaType == v1.MediaTypeImageManifest || mediaType == v1.MediaTypeImageIndex) {
+		return nil
+	}
+
+	err = metaDB.IncrementImageDownloads(name, reference)
+	if err != nil {
+		log.Error().Err(err).Str("repository", name).Str("reference", reference).
+			Msg("unexpected error for image")
+
+		return err
 	}
 
 	return nil

@@ -5,6 +5,7 @@
 package cveinfo_test
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -385,8 +386,8 @@ func TestImageFormat(t *testing.T) {
 		log := log.NewLogger("debug", "")
 
 		metaDB := &mocks.MetaDBMock{
-			GetRepoMetaFn: func(repo string) (mTypes.RepoMetadata, error) {
-				return mTypes.RepoMetadata{
+			GetRepoMetaFn: func(ctx context.Context, repo string) (mTypes.RepoMeta, error) {
+				return mTypes.RepoMeta{
 					Tags: map[string]mTypes.Descriptor{
 						"tag": {
 							MediaType: ispec.MediaTypeImageIndex,
@@ -395,8 +396,12 @@ func TestImageFormat(t *testing.T) {
 					},
 				}, nil
 			},
-			GetIndexDataFn: func(indexDigest godigest.Digest) (mTypes.IndexData, error) {
-				return mTypes.IndexData{IndexBlob: []byte(`{}`)}, nil
+			GetImageMetaFn: func(digest godigest.Digest) (mTypes.ImageMeta, error) {
+				return mTypes.ImageMeta{
+					MediaType: ispec.MediaTypeImageIndex,
+					Digest:    godigest.FromString("digest"),
+					Index:     &ispec.Index{},
+				}, nil
 			},
 		}
 		storeController := storage.StoreController{
@@ -765,73 +770,32 @@ func TestCVEStruct(t *testing.T) { //nolint:gocyclo
 		image11 := CreateImageWith().DefaultLayers().
 			ImageConfig(ispec.Image{Created: DateRef(2008, 1, 1, 12, 0, 0, 0, time.UTC)}).Build()
 
-		repoMeta11 := mTypes.ManifestMetadata{
-			ManifestBlob:  image11.ManifestDescriptor.Data,
-			ConfigBlob:    image11.ConfigDescriptor.Data,
-			DownloadCount: 0,
-			Signatures:    mTypes.ManifestSignatures{},
-		}
-
-		err = metaDB.SetManifestMeta(repo1, image11.ManifestDescriptor.Digest, repoMeta11)
-		So(err, ShouldBeNil)
-		err = metaDB.SetRepoReference(repo1, "0.1.0", image11.ManifestDescriptor.Digest, ispec.MediaTypeImageManifest)
+		err = metaDB.SetRepoReference(repo1, "0.1.0", image11.AsImageMeta())
 		So(err, ShouldBeNil)
 
 		image12 := CreateImageWith().DefaultLayers().
 			ImageConfig(ispec.Image{Created: DateRef(2009, 1, 1, 12, 0, 0, 0, time.UTC)}).Build()
 
-		repoMeta12 := mTypes.ManifestMetadata{
-			ManifestBlob:  image12.ManifestDescriptor.Data,
-			ConfigBlob:    image12.ConfigDescriptor.Data,
-			DownloadCount: 0,
-			Signatures:    mTypes.ManifestSignatures{},
-		}
-
-		err = metaDB.SetManifestMeta(repo1, image12.ManifestDescriptor.Digest, repoMeta12)
-		So(err, ShouldBeNil)
-		err = metaDB.SetRepoReference(repo1, "1.0.0", image12.ManifestDescriptor.Digest, ispec.MediaTypeImageManifest)
+		err = metaDB.SetRepoReference(repo1, "1.0.0", image12.AsImageMeta())
 		So(err, ShouldBeNil)
 
 		image13 := CreateImageWith().DefaultLayers().
 			ImageConfig(ispec.Image{Created: DateRef(2010, 1, 1, 12, 0, 0, 0, time.UTC)}).Build()
 
-		repoMeta13 := mTypes.ManifestMetadata{
-			ManifestBlob:  image13.ManifestDescriptor.Data,
-			ConfigBlob:    image13.ConfigDescriptor.Data,
-			DownloadCount: 0,
-			Signatures:    mTypes.ManifestSignatures{},
-		}
-
-		err = metaDB.SetManifestMeta(repo1, image13.ManifestDescriptor.Digest, repoMeta13)
-		So(err, ShouldBeNil)
-		err = metaDB.SetRepoReference(repo1, "1.1.0", image13.ManifestDescriptor.Digest, ispec.MediaTypeImageManifest)
+		err = metaDB.SetRepoReference(repo1, "1.1.0", image13.AsImageMeta())
 		So(err, ShouldBeNil)
 
 		image14 := CreateImageWith().DefaultLayers().
 			ImageConfig(ispec.Image{Created: DateRef(2011, 1, 1, 12, 0, 0, 0, time.UTC)}).Build()
 
-		repoMeta14 := mTypes.ManifestMetadata{
-			ManifestBlob: image14.ManifestDescriptor.Data,
-			ConfigBlob:   image14.ConfigDescriptor.Data,
-		}
-
-		err = metaDB.SetManifestMeta(repo1, image14.ManifestDescriptor.Digest, repoMeta14)
-		So(err, ShouldBeNil)
-		err = metaDB.SetRepoReference(repo1, "1.0.1", image14.ManifestDescriptor.Digest, ispec.MediaTypeImageManifest)
+		err = metaDB.SetRepoReference(repo1, "1.0.1", image14.AsImageMeta())
 		So(err, ShouldBeNil)
 
 		// Create metadb data for scannable image with no vulnerabilities
 		image61 := CreateImageWith().DefaultLayers().
 			ImageConfig(ispec.Image{Created: DateRef(2016, 1, 1, 12, 0, 0, 0, time.UTC)}).Build()
 
-		repoMeta61 := mTypes.ManifestMetadata{
-			ManifestBlob: image61.ManifestDescriptor.Data,
-			ConfigBlob:   image61.ConfigDescriptor.Data,
-		}
-
-		err = metaDB.SetManifestMeta(repo6, image61.ManifestDescriptor.Digest, repoMeta61)
-		So(err, ShouldBeNil)
-		err = metaDB.SetRepoReference(repo6, "1.0.0", image61.ManifestDescriptor.Digest, ispec.MediaTypeImageManifest)
+		err = metaDB.SetRepoReference(repo6, "1.0.0", image61.AsImageMeta())
 		So(err, ShouldBeNil)
 
 		// Create metadb data for image not supporting scanning
@@ -841,106 +805,59 @@ func TestCVEStruct(t *testing.T) { //nolint:gocyclo
 			Digest:    godigest.FromBytes([]byte{10, 10, 10}),
 		}}).ImageConfig(ispec.Image{Created: DateRef(2009, 1, 1, 12, 0, 0, 0, time.UTC)}).Build()
 
-		repoMeta21 := mTypes.ManifestMetadata{
-			ManifestBlob: image21.ManifestDescriptor.Data,
-			ConfigBlob:   image21.ConfigDescriptor.Data,
-		}
-
-		err = metaDB.SetManifestMeta(repo2, image21.ManifestDescriptor.Digest, repoMeta21)
-		So(err, ShouldBeNil)
-		err = metaDB.SetRepoReference(repo2, "1.0.0", image21.ManifestDescriptor.Digest, ispec.MediaTypeImageManifest)
+		err = metaDB.SetRepoReference(repo2, "1.0.0", image21.AsImageMeta())
 		So(err, ShouldBeNil)
 
 		// Create metadb data for invalid images/negative tests
-		manifestBlob31 := []byte("invalid manifest blob")
-		So(err, ShouldBeNil)
-
-		repoMeta31 := mTypes.ManifestMetadata{
-			ManifestBlob: manifestBlob31,
-		}
-
-		digest31 := godigest.FromBytes(manifestBlob31)
-		err = metaDB.SetManifestMeta(repo3, digest31, repoMeta31)
-		So(err, ShouldBeNil)
-		err = metaDB.SetRepoReference(repo3, "invalid-manifest", digest31, ispec.MediaTypeImageManifest)
+		image := CreateRandomImage()
+		err = metaDB.SetRepoReference(repo3, "invalid-manifest", image.AsImageMeta())
 		So(err, ShouldBeNil)
 
 		image41 := CreateImageWith().DefaultLayers().
 			CustomConfigBlob([]byte("invalid config blob"), ispec.MediaTypeImageConfig).Build()
 
-		repoMeta41 := mTypes.ManifestMetadata{
-			ManifestBlob: image41.ManifestDescriptor.Data,
-			ConfigBlob:   image41.ConfigDescriptor.Data,
-		}
-
-		err = metaDB.SetManifestMeta(repo4, image41.ManifestDescriptor.Digest, repoMeta41)
-		So(err, ShouldBeNil)
-		err = metaDB.SetRepoReference(repo4, "invalid-config", image41.ManifestDescriptor.Digest,
-			ispec.MediaTypeImageManifest)
+		err = metaDB.SetRepoReference(repo4, "invalid-config", image41.AsImageMeta())
 		So(err, ShouldBeNil)
 
 		digest51 := godigest.FromString("abc8")
-		err = metaDB.SetRepoReference(repo5, "nonexitent-manifest", digest51, ispec.MediaTypeImageManifest)
+		randomImgData := CreateRandomImage().AsImageMeta()
+		randomImgData.Digest = digest51
+		randomImgData.Manifests[0].Digest = digest51
+		err = metaDB.SetRepoReference(repo5, "nonexitent-manifest", randomImgData)
 		So(err, ShouldBeNil)
 
 		// Create metadb data for scannable image which errors during scan
 		image71 := CreateImageWith().DefaultLayers().
 			ImageConfig(ispec.Image{Created: DateRef(2000, 1, 1, 12, 0, 0, 0, time.UTC)}).Build()
 
-		repoMeta71 := mTypes.ManifestMetadata{
-			ManifestBlob: image71.ManifestDescriptor.Data,
-			ConfigBlob:   image71.ConfigDescriptor.Data,
-		}
-
-		err = metaDB.SetManifestMeta(repo7, image71.ManifestDescriptor.Digest, repoMeta71)
-		So(err, ShouldBeNil)
-		err = metaDB.SetRepoReference(repo7, "1.0.0", image71.ManifestDescriptor.Digest, ispec.MediaTypeImageManifest)
+		err = metaDB.SetRepoReference(repo7, "1.0.0", image71.AsImageMeta())
 		So(err, ShouldBeNil)
 
 		// create multiarch image with vulnerabilities
 		multiarchImage := CreateRandomMultiarch()
 
-		err = metaDB.SetIndexData(
-			multiarchImage.IndexDescriptor.Digest,
-			mTypes.IndexData{IndexBlob: multiarchImage.IndexDescriptor.Data},
-		)
+		err = metaDB.SetRepoReference(repoMultiarch, multiarchImage.Images[0].DigestStr(),
+			multiarchImage.Images[0].AsImageMeta())
 		So(err, ShouldBeNil)
 
-		err = metaDB.SetManifestData(
-			multiarchImage.Images[0].ManifestDescriptor.Digest,
-			mTypes.ManifestData{
-				ManifestBlob: multiarchImage.Images[0].ManifestDescriptor.Data,
-				ConfigBlob:   multiarchImage.Images[0].ConfigDescriptor.Data,
+		err = metaDB.SetRepoReference(repoMultiarch, multiarchImage.Images[1].DigestStr(),
+			multiarchImage.Images[1].AsImageMeta())
+		So(err, ShouldBeNil)
+
+		err = metaDB.SetRepoReference(repoMultiarch, multiarchImage.Images[2].DigestStr(),
+			multiarchImage.Images[2].AsImageMeta())
+		So(err, ShouldBeNil)
+
+		err = metaDB.SetRepoReference(repoMultiarch, "tagIndex", multiarchImage.AsImageMeta())
+		So(err, ShouldBeNil)
+
+		err = metaDB.SetRepoMeta("repo-with-bad-tag-digest", mTypes.RepoMeta{
+			Name: "repo-with-bad-tag-digest",
+			Tags: map[string]mTypes.Descriptor{
+				"tag": {MediaType: ispec.MediaTypeImageManifest, Digest: godigest.FromString("1").String()},
 			},
-		)
+		})
 		So(err, ShouldBeNil)
-
-		err = metaDB.SetManifestData(
-			multiarchImage.Images[1].ManifestDescriptor.Digest,
-			mTypes.ManifestData{
-				ManifestBlob: multiarchImage.Images[1].ManifestDescriptor.Data,
-				ConfigBlob:   multiarchImage.Images[1].ConfigDescriptor.Data,
-			},
-		)
-		So(err, ShouldBeNil)
-
-		err = metaDB.SetManifestData(
-			multiarchImage.Images[2].ManifestDescriptor.Digest,
-			mTypes.ManifestData{
-				ManifestBlob: multiarchImage.Images[2].ManifestDescriptor.Data,
-				ConfigBlob:   multiarchImage.Images[2].ConfigDescriptor.Data,
-			},
-		)
-		So(err, ShouldBeNil)
-
-		err = metaDB.SetRepoReference(
-			repoMultiarch,
-			"tagIndex",
-			multiarchImage.IndexDescriptor.Digest,
-			ispec.MediaTypeImageIndex,
-		)
-		So(err, ShouldBeNil)
-
 		// Keep a record of all the image references / digest pairings
 		// This is normally done in MetaDB, but we want to verify
 		// the whole flow, including MetaDB
@@ -966,18 +883,6 @@ func TestCVEStruct(t *testing.T) { //nolint:gocyclo
 		image21Media := image21.ManifestDescriptor.MediaType
 		image21Name := repo2 + ":1.0.0"
 		imageMap[image21Name] = image21Digest
-		image31Digest := digest31.String()
-		image31Media := ispec.MediaTypeImageManifest
-		image31Name := repo3 + ":invalid-manifest"
-		imageMap[image31Name] = image31Digest
-		image41Digest := image41.ManifestDescriptor.Digest.String()
-		image41Media := image41.ManifestDescriptor.MediaType
-		image41Name := repo4 + ":invalid-config"
-		imageMap[image41Name] = image41Digest
-		image51Digest := digest51.String()
-		image51Media := ispec.MediaTypeImageManifest
-		image51Name := repo5 + ":nonexitent-manifest"
-		imageMap[image51Name] = digest51.String()
 		image61Digest := image61.ManifestDescriptor.Digest.String()
 		image61Media := image61.ManifestDescriptor.MediaType
 		image61Name := repo6 + ":1.0.0"
@@ -1151,7 +1056,7 @@ func TestCVEStruct(t *testing.T) { //nolint:gocyclo
 				// Almost same logic compared to actual Trivy specific implementation
 				imageDir, inputTag := repo, reference
 
-				repoMeta, err := metaDB.GetRepoMeta(imageDir)
+				repoMeta, err := metaDB.GetRepoMeta(context.Background(), imageDir)
 				if err != nil {
 					return false, err
 				}
@@ -1174,19 +1079,12 @@ func TestCVEStruct(t *testing.T) { //nolint:gocyclo
 					return false, err
 				}
 
-				manifestData, err := metaDB.GetManifestData(manifestDigest)
+				manifestData, err := metaDB.GetImageMeta(manifestDigest)
 				if err != nil {
 					return false, err
 				}
 
-				var manifestContent ispec.Manifest
-
-				err = json.Unmarshal(manifestData.ManifestBlob, &manifestContent)
-				if err != nil {
-					return false, zerr.ErrScanNotSupported
-				}
-
-				for _, imageLayer := range manifestContent.Layers {
+				for _, imageLayer := range manifestData.Manifests[0].Manifest.Layers {
 					switch imageLayer.MediaType {
 					case ispec.MediaTypeImageLayerGzip, ispec.MediaTypeImageLayer, string(regTypes.DockerLayer):
 
@@ -1202,12 +1100,6 @@ func TestCVEStruct(t *testing.T) { //nolint:gocyclo
 			IsImageMediaScannableFn: func(repo, digest, mediaType string) (bool, error) {
 				if repo == repo2 && digest == image21Digest {
 					return false, zerr.ErrScanNotSupported
-				}
-				if repo == repo3 && digest == image31Digest {
-					return false, zerr.ErrTagMetaNotFound
-				}
-				if repo == repo5 && digest == image51Digest {
-					return false, zerr.ErrManifestDataNotFound
 				}
 				if repo == repo100 {
 					return false, zerr.ErrRepoMetaNotFound
@@ -1295,23 +1187,16 @@ func TestCVEStruct(t *testing.T) { //nolint:gocyclo
 		So(pageInfo.ItemCount, ShouldEqual, 0)
 		So(pageInfo.TotalCount, ShouldEqual, 0)
 
-		// Config not valid
-		cveList, pageInfo, err = cveInfo.GetCVEListForImage(repo4, "invalid-config", "", pageInput)
-		So(err, ShouldBeNil)
-		So(len(cveList), ShouldEqual, 0)
-		So(pageInfo.ItemCount, ShouldEqual, 0)
-		So(pageInfo.TotalCount, ShouldEqual, 0)
-
-		// Manifest is not found
-		cveList, pageInfo, err = cveInfo.GetCVEListForImage(repo5, "nonexitent-manifest", "", pageInput)
-		So(err, ShouldEqual, zerr.ErrManifestDataNotFound)
-		So(len(cveList), ShouldEqual, 0)
-		So(pageInfo.ItemCount, ShouldEqual, 0)
-		So(pageInfo.TotalCount, ShouldEqual, 0)
-
 		// Scan failed
 		cveList, pageInfo, err = cveInfo.GetCVEListForImage(repo7, "1.0.0", "", pageInput)
 		So(err, ShouldEqual, ErrFailedScan)
+		So(len(cveList), ShouldEqual, 0)
+		So(pageInfo.ItemCount, ShouldEqual, 0)
+		So(pageInfo.TotalCount, ShouldEqual, 0)
+
+		// Tag is not found
+		cveList, pageInfo, err = cveInfo.GetCVEListForImage("repo-with-bad-tag-digest", "tag", "", pageInput)
+		So(err, ShouldEqual, zerr.ErrImageMetaNotFound)
 		So(len(cveList), ShouldEqual, 0)
 		So(pageInfo.ItemCount, ShouldEqual, 0)
 		So(pageInfo.TotalCount, ShouldEqual, 0)
@@ -1364,24 +1249,6 @@ func TestCVEStruct(t *testing.T) { //nolint:gocyclo
 		So(cveSummary.Count, ShouldEqual, 0)
 		So(cveSummary.MaxSeverity, ShouldEqual, "")
 
-		// Tag is not found
-		cveSummary, err = cveInfo.GetCVESummaryForImageMedia(repo3, image31Digest, image31Media)
-		So(err, ShouldEqual, zerr.ErrTagMetaNotFound)
-		So(cveSummary.Count, ShouldEqual, 0)
-		So(cveSummary.MaxSeverity, ShouldEqual, "")
-
-		// Config not valid
-		cveSummary, err = cveInfo.GetCVESummaryForImageMedia(repo4, image41Digest, image41Media)
-		So(err, ShouldBeNil)
-		So(cveSummary.Count, ShouldEqual, 0)
-		So(cveSummary.MaxSeverity, ShouldEqual, "NONE")
-
-		// Manifest is not found
-		cveSummary, err = cveInfo.GetCVESummaryForImageMedia(repo5, image51Digest, image51Media)
-		So(err, ShouldEqual, zerr.ErrManifestDataNotFound)
-		So(cveSummary.Count, ShouldEqual, 0)
-		So(cveSummary.MaxSeverity, ShouldEqual, "")
-
 		// Scan failed
 		cveSummary, err = cveInfo.GetCVESummaryForImageMedia(repo5, image71Digest, image71Media)
 		So(err, ShouldBeNil)
@@ -1427,16 +1294,6 @@ func TestCVEStruct(t *testing.T) { //nolint:gocyclo
 		tagList, err = cveInfo.GetImageListWithCVEFixed(repo2, "CVE100")
 		// CVE is not considered fixed as scan is not possible
 		// but do not return an error
-		So(err, ShouldBeNil)
-		So(len(tagList), ShouldEqual, 0)
-
-		// Tag is not found, but we should not error
-		tagList, err = cveInfo.GetImageListWithCVEFixed(repo3, "CVE101")
-		So(err, ShouldBeNil)
-		So(len(tagList), ShouldEqual, 0)
-
-		// Manifest is not found, we just consider exclude it from the fixed list
-		tagList, err = cveInfo.GetImageListWithCVEFixed(repo5, "CVE101")
 		So(err, ShouldBeNil)
 		So(len(tagList), ShouldEqual, 0)
 
@@ -1716,158 +1573,6 @@ func TestFixedTagsWithIndex(t *testing.T) {
 		So(len(responseStruct.Results[0].Manifests), ShouldEqual, 1)
 		fixedManifestResp := responseStruct.Results[0].Manifests[0]
 		So(fixedManifestResp.Digest, ShouldResemble, fixedDigest.String())
-	})
-}
-
-func TestImageListWithCVEFixedErrors(t *testing.T) {
-	indexDigest := godigest.FromString("index")
-	manifestDigest := "sha256:1111111111111111111111111111111111111111111111111111111111111111"
-
-	Convey("Errors", t, func() {
-		storeController := storage.StoreController{}
-		storeController.DefaultStore = mocks.MockedImageStore{}
-
-		metaDB := mocks.MetaDBMock{}
-		log := log.NewLogger("debug", "")
-
-		Convey("getIndexContent errors", func() {
-			metaDB.GetRepoMetaFn = func(repo string) (mTypes.RepoMetadata, error) {
-				return mTypes.RepoMetadata{
-					Tags: map[string]mTypes.Descriptor{
-						"tag": {
-							Digest:    indexDigest.String(),
-							MediaType: ispec.MediaTypeImageIndex,
-						},
-					},
-				}, nil
-			}
-			metaDB.GetIndexDataFn = func(indexDigest godigest.Digest) (mTypes.IndexData, error) {
-				return mTypes.IndexData{}, zerr.ErrIndexDataNotFount
-			}
-
-			scanner := cveinfo.NewScanner(storeController, metaDB, "", "", log)
-			cveInfo := cveinfo.NewCVEInfo(scanner, metaDB, log)
-
-			_, err := cveInfo.GetImageListWithCVEFixed("repo", Vulnerability1ID)
-			So(err, ShouldBeNil)
-		})
-
-		Convey("getIndexContent bad indexDigest", func() {
-			metaDB.GetRepoMetaFn = func(repo string) (mTypes.RepoMetadata, error) {
-				return mTypes.RepoMetadata{
-					Tags: map[string]mTypes.Descriptor{
-						"tag": {
-							Digest:    "bad digest",
-							MediaType: ispec.MediaTypeImageIndex,
-						},
-					},
-				}, nil
-			}
-			metaDB.GetIndexDataFn = func(indexDigest godigest.Digest) (mTypes.IndexData, error) {
-				return mTypes.IndexData{}, zerr.ErrIndexDataNotFount
-			}
-
-			scanner := cveinfo.NewScanner(storeController, metaDB, "", "", log)
-			cveInfo := cveinfo.NewCVEInfo(scanner, metaDB, log)
-
-			_, err := cveInfo.GetImageListWithCVEFixed("repo", Vulnerability1ID)
-			So(err, ShouldBeNil)
-		})
-
-		Convey("getIndexContent bad index content", func() {
-			metaDB.GetRepoMetaFn = func(repo string) (mTypes.RepoMetadata, error) {
-				return mTypes.RepoMetadata{
-					Tags: map[string]mTypes.Descriptor{
-						"tag": {
-							Digest:    indexDigest.String(),
-							MediaType: ispec.MediaTypeImageIndex,
-						},
-					},
-				}, nil
-			}
-			metaDB.GetIndexDataFn = func(indexDigest godigest.Digest) (mTypes.IndexData, error) {
-				return mTypes.IndexData{IndexBlob: []byte(`bad index`)}, nil
-			}
-
-			scanner := cveinfo.NewScanner(storeController, metaDB, "", "", log)
-			cveInfo := cveinfo.NewCVEInfo(scanner, metaDB, log)
-
-			_, err := cveInfo.GetImageListWithCVEFixed("repo", Vulnerability1ID)
-			So(err, ShouldBeNil)
-		})
-
-		Convey("getTagInfoForManifest bad manifest digest", func() {
-			metaDB.GetRepoMetaFn = func(repo string) (mTypes.RepoMetadata, error) {
-				return mTypes.RepoMetadata{
-					Tags: map[string]mTypes.Descriptor{
-						"tag": {
-							Digest:    "bad digest",
-							MediaType: ispec.MediaTypeImageManifest,
-						},
-					},
-				}, nil
-			}
-
-			scanner := cveinfo.NewScanner(storeController, metaDB, "", "", log)
-			cveInfo := cveinfo.NewCVEInfo(scanner, metaDB, log)
-
-			_, err := cveInfo.GetImageListWithCVEFixed("repo", Vulnerability1ID)
-			So(err, ShouldBeNil)
-		})
-
-		Convey("getTagInfoForManifest fails for index", func() {
-			metaDB.GetRepoMetaFn = func(repo string) (mTypes.RepoMetadata, error) {
-				return mTypes.RepoMetadata{
-					Tags: map[string]mTypes.Descriptor{
-						"tag": {
-							Digest:    indexDigest.String(),
-							MediaType: ispec.MediaTypeImageIndex,
-						},
-					},
-				}, nil
-			}
-			metaDB.GetIndexDataFn = func(indexDigest godigest.Digest) (mTypes.IndexData, error) {
-				return mTypes.IndexData{
-					IndexBlob: []byte(fmt.Sprintf(`{
-						"manifests": [
-							{
-								"digest": "%s",
-								"mediaType": "application/vnd.oci.image.manifest.v1+json"
-							}
-						]}`, manifestDigest)),
-				}, nil
-			}
-			metaDB.GetManifestDataFn = func(manifestDigest godigest.Digest) (mTypes.ManifestData, error) {
-				return mTypes.ManifestData{}, zerr.ErrManifestDataNotFound
-			}
-
-			scanner := cveinfo.NewScanner(storeController, metaDB, "", "", log)
-			cveInfo := cveinfo.NewCVEInfo(scanner, metaDB, log)
-
-			tagsInfo, err := cveInfo.GetImageListWithCVEFixed("repo", Vulnerability1ID)
-			So(err, ShouldBeNil)
-			So(tagsInfo, ShouldBeEmpty)
-		})
-
-		Convey("media type not supported", func() {
-			metaDB.GetRepoMetaFn = func(repo string) (mTypes.RepoMetadata, error) {
-				return mTypes.RepoMetadata{
-					Tags: map[string]mTypes.Descriptor{
-						"tag": {
-							Digest:    godigest.FromString("media type").String(),
-							MediaType: "bad media type",
-						},
-					},
-				}, nil
-			}
-
-			scanner := cveinfo.NewScanner(storeController, metaDB, "", "", log)
-			cveInfo := cveinfo.NewCVEInfo(scanner, metaDB, log)
-
-			tagsInfo, err := cveInfo.GetImageListWithCVEFixed("repo", Vulnerability1ID)
-			So(err, ShouldBeNil)
-			So(tagsInfo, ShouldBeEmpty)
-		})
 	})
 }
 

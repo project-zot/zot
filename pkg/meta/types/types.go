@@ -5,17 +5,8 @@ import (
 	"time"
 
 	godigest "github.com/opencontainers/go-digest"
+	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 )
-
-// DetailedRepoMeta is a auxiliary structure used for sorting RepoMeta arrays by information
-// that's not directly available in the RepoMetadata structure (ex. that needs to be calculated
-// by iterating the manifests, etc.)
-type DetailedRepoMeta struct {
-	RepoMetadata
-	Rank       int
-	Downloads  int
-	UpdateTime time.Time
-}
 
 // Used to model changes to an object after a call to the DB.
 type ToggleState int
@@ -27,23 +18,109 @@ const (
 )
 
 type (
-	FilterFunc     func(repoMeta RepoMetadata, manifestMeta ManifestMetadata) bool
-	FilterRepoFunc func(repoMeta RepoMetadata) bool
+	// Currently imageMeta applied for indexes is applied for each manifest individually so imageMeta.manifests
+	// contains just 1 manifest.
+	FilterFunc         func(repoMeta RepoMeta, imageMeta ImageMeta) bool
+	FilterRepoNameFunc func(repo string) bool
+	FilterFullRepoFunc func(repoMeta RepoMeta) bool
+	FilterRepoTagFunc  func(repo, tag string) bool
+)
+
+func AcceptAllRepoNames(repo string) bool {
+	return true
+}
+
+func AcceptAllRepoMeta(repoMeta RepoMeta) bool {
+	return true
+}
+
+func AcceptAllRepoTag(repo, tag string) bool {
+	return true
+}
+
+func AcceptAllImageMeta(repoMeta RepoMeta, imageMeta ImageMeta) bool {
+	return true
+}
+
+func GetLatestImageDigests(repoMetaList []RepoMeta) []string {
+	digests := make([]string, 0, len(repoMetaList))
+
+	for i := range repoMetaList {
+		if repoMetaList[i].LastUpdatedImage != nil {
+			digests = append(digests, repoMetaList[i].LastUpdatedImage.Digest)
+		}
+	}
+
+	return digests
+}
+
+type (
+	ImageDigest = string
 )
 
 type MetaDB interface { //nolint:interfacebloat
 	UserDB
+
+	SetImageMeta(digest godigest.Digest, imageMeta ImageMeta) error
+
+	// SetRepoReference sets the given image data to the repo metadata.
+	SetRepoReference(repo string, reference string, imageMeta ImageMeta) error
+
+	// SearchRepos searches for repos given a search string
+	SearchRepos(ctx context.Context, searchText string) ([]RepoMeta, error)
+
+	// SearchTags searches for images(repo:tag) given a search string
+	SearchTags(ctx context.Context, searchText string) ([]FullImageMeta, error)
+
+	// FilterTags filters for images given a filter function
+	FilterTags(ctx context.Context, filterRepoTag FilterRepoTagFunc, filterFunc FilterFunc,
+	) ([]FullImageMeta, error)
+
+	// FilterRepos filters for repos given a filter function
+	FilterRepos(ctx context.Context, rankName FilterRepoNameFunc, filterFunc FilterFullRepoFunc,
+	) ([]RepoMeta, error)
+
+	// GetRepoMeta returns the full information about a repo
+	GetRepoMeta(ctx context.Context, repo string) (RepoMeta, error)
+
+	// GetFullImageMeta returns the full information about an image
+	GetFullImageMeta(ctx context.Context, repo string, tag string) (FullImageMeta, error)
+
+	// GetImageMeta returns the raw information about an image
+	GetImageMeta(digest godigest.Digest) (ImageMeta, error)
+
+	// GetMultipleRepoMeta returns information about all repositories as map[string]RepoMetadata filtered by the filter
+	// function
+	GetMultipleRepoMeta(ctx context.Context, filter func(repoMeta RepoMeta) bool) (
+		[]RepoMeta, error)
+
+	// AddManifestSignature adds signature metadata to a given manifest in the database
+	AddManifestSignature(repo string, signedManifestDigest godigest.Digest, sm SignatureMetadata) error
+
+	// DeleteSignature deletes signature metadata to a given manifest from the database
+	DeleteSignature(repo string, signedManifestDigest godigest.Digest, sigMeta SignatureMetadata) error
+
+	// UpdateSignaturesValidity checks and updates signatures validity of a given manifest
+	UpdateSignaturesValidity(repo string, manifestDigest godigest.Digest) error
+
 	// IncrementRepoStars adds 1 to the star count of an image
 	IncrementRepoStars(repo string) error
 
-	// IncrementRepoStars subtracts 1 from the star count of an image
+	// DecrementRepoStars subtracts 1 from the star count of an image
 	DecrementRepoStars(repo string) error
 
-	// GetRepoStars returns the total number of stars a repo has
-	GetRepoStars(repo string) (int, error)
+	// SetRepoMeta returns RepoMetadata of a repo from the database
+	SetRepoMeta(repo string, repoMeta RepoMeta) error
 
-	// SetRepoReference sets the reference of a manifest in the tag list of a repo
-	SetRepoReference(repo string, reference string, manifestDigest godigest.Digest, mediaType string) error
+	// GetReferrersInfo returns a list of  for all referrers of the given digest that match one of the
+	// artifact types.
+	GetReferrersInfo(repo string, referredDigest godigest.Digest, artifactTypes []string) ([]ReferrerInfo, error)
+
+	// IncrementImageDownloads adds 1 to the download count of an image
+	IncrementImageDownloads(repo string, reference string) error
+
+	// FilterImageMeta returns the image data for the given digests
+	FilterImageMeta(ctx context.Context, digests []string) (map[string]ImageMeta, error)
 
 	/*
 	   	RemoveRepoReference removes the tag from RepoMetadata if the reference is a tag,
@@ -55,80 +132,12 @@ type MetaDB interface { //nolint:interfacebloat
 	*/
 	RemoveRepoReference(repo, reference string, manifestDigest godigest.Digest) error
 
-	// DeleteRepoTag delets the tag from the tag list of a repo
-	DeleteRepoTag(repo string, tag string) error
+	// ResetRepoReferences resets all layout specific data (tags, signatures, referrers, etc.) but keep user and image
+	// specific metadata such as star count, downloads other statistics
+	ResetRepoReferences(repo string) error
 
-	// GetRepoMeta returns RepoMetadata of a repo from the database
-	GetRepoMeta(repo string) (RepoMetadata, error)
-
-	// GetUserRepometa return RepoMetadata of a repo from the database along side specific information about the
-	// user
-	GetUserRepoMeta(ctx context.Context, repo string) (RepoMetadata, error)
-
-	// GetRepoMeta returns RepoMetadata of a repo from the database
-	SetRepoMeta(repo string, repoMeta RepoMetadata) error
-
-	// GetMultipleRepoMeta returns information about all repositories as map[string]RepoMetadata filtered by the filter
-	// function
-	GetMultipleRepoMeta(ctx context.Context, filter func(repoMeta RepoMetadata) bool) (
-		[]RepoMetadata, error)
-
-	// SetManifestData sets ManifestData for a given manifest in the database
-	SetManifestData(manifestDigest godigest.Digest, md ManifestData) error
-
-	// GetManifestData return the manifest and its related config
-	GetManifestData(manifestDigest godigest.Digest) (ManifestData, error)
-
-	// GetManifestMeta returns ManifestMetadata for a given manifest from the database
-	GetManifestMeta(repo string, manifestDigest godigest.Digest) (ManifestMetadata, error)
-
-	// GetManifestMeta sets ManifestMetadata for a given manifest in the database
-	SetManifestMeta(repo string, manifestDigest godigest.Digest, mm ManifestMetadata) error
-
-	// SetIndexData sets indexData for a given index in the database
-	SetIndexData(digest godigest.Digest, indexData IndexData) error
-
-	// GetIndexData returns indexData for a given Index from the database
-	GetIndexData(indexDigest godigest.Digest) (IndexData, error)
-
-	// SetReferrer adds a referrer to the referrers list of a manifest inside a repo
-	SetReferrer(repo string, referredDigest godigest.Digest, referrer ReferrerInfo) error
-
-	// SetReferrer delets a referrer to the referrers list of a manifest inside a repo
-	DeleteReferrer(repo string, referredDigest godigest.Digest, referrerDigest godigest.Digest) error
-
-	// GetReferrersInfo returnes a list of  for all referrers of the given digest that match one of the
-	// artifact types.
-	GetReferrersInfo(repo string, referredDigest godigest.Digest, artifactTypes []string) (
-		[]ReferrerInfo, error)
-
-	// IncrementManifestDownloads adds 1 to the download count of a manifest
-	IncrementImageDownloads(repo string, reference string) error
-
-	// AddManifestSignature adds signature metadata to a given manifest in the database
-	AddManifestSignature(repo string, signedManifestDigest godigest.Digest, sm SignatureMetadata) error
-
-	// DeleteSignature delets signature metadata to a given manifest from the database
-	DeleteSignature(repo string, signedManifestDigest godigest.Digest, sm SignatureMetadata) error
-
-	// UpdateSignaturesValidity checks and updates signatures validity of a given manifest
-	UpdateSignaturesValidity(repo string, manifestDigest godigest.Digest) error
-
-	// SearchRepos searches for repos given a search string
-	SearchRepos(ctx context.Context, searchText string) (
-		[]RepoMetadata, map[string]ManifestMetadata, map[string]IndexData, error)
-
-	// SearchTags searches for images(repo:tag) given a search string
-	SearchTags(ctx context.Context, searchText string) (
-		[]RepoMetadata, map[string]ManifestMetadata, map[string]IndexData, error)
-
-	// FilterRepos filters for repos given a filter function
-	FilterRepos(ctx context.Context, filter FilterRepoFunc) (
-		[]RepoMetadata, map[string]ManifestMetadata, map[string]IndexData, error)
-
-	// FilterTags filters for images given a filter function
-	FilterTags(ctx context.Context, filterFunc FilterFunc) (
-		[]RepoMetadata, map[string]ManifestMetadata, map[string]IndexData, error)
+	// ResetDB will delete all data in the DB
+	ResetDB() error
 
 	PatchDB() error
 
@@ -176,25 +185,78 @@ type UserDB interface { //nolint:interfacebloat
 
 type ImageTrustStore interface {
 	VerifySignature(
-		signatureType string, rawSignature []byte, sigKey string, manifestDigest godigest.Digest, manifestContent []byte,
+		signatureType string, rawSignature []byte, sigKey string, manifestDigest godigest.Digest, imageMeta ImageMeta,
 		repo string,
 	) (string, time.Time, bool, error)
 }
 
-type ManifestMetadata struct {
-	ManifestBlob  []byte
-	ConfigBlob    []byte
-	DownloadCount int
-	Signatures    ManifestSignatures
+// ImageMeta can store all data related to a image, multiarch or simple. Used for writing imaged to MetaDB.
+type ImageMeta struct {
+	MediaType string          // MediaType refers to the image descriptor, a manifest or a index (if multiarch)
+	Digest    godigest.Digest // Digest refers to the image descriptor, a manifest or a index (if multiarch)
+	Size      int64           // Size refers to the image descriptor, a manifest or a index (if multiarch)
+	Index     *ispec.Index    // If the image is multiarch the Index will be non-nil
+	Manifests []ManifestData  // All manifests under the image, 1 for simple images and many for multiarch
 }
 
-type IndexData struct {
-	IndexBlob []byte
-}
-
+// ManifestData represents all data related to an image manifests (found from the image contents itself).
 type ManifestData struct {
-	ManifestBlob []byte
-	ConfigBlob   []byte
+	Size     int64
+	Digest   godigest.Digest
+	Manifest ispec.Manifest
+	Config   ispec.Image
+}
+
+type RepoMeta struct {
+	Name string
+	Tags map[string]Descriptor
+
+	Statistics map[string]DescriptorStatistics
+	Signatures map[string]ManifestSignatures
+	Referrers  map[string][]ReferrerInfo
+
+	LastUpdatedImage *LastUpdatedImage
+	Platforms        []ispec.Platform
+	Vendors          []string
+	Size             int64
+
+	IsStarred    bool
+	IsBookmarked bool
+	Rank         int
+
+	StarCount     int
+	DownloadCount int
+}
+
+// FullImageMeta is a condensed structure of all information needed about an image when searching MetaDB.
+type FullImageMeta struct {
+	Repo         string
+	Tag          string
+	MediaType    string
+	Digest       godigest.Digest
+	Size         int64
+	Index        *ispec.Index
+	Manifests    []FullManifestMeta
+	IsStarred    bool
+	IsBookmarked bool
+
+	Referrers  []ReferrerInfo
+	Statistics DescriptorStatistics
+	Signatures ManifestSignatures
+}
+
+type FullManifestMeta struct {
+	ManifestData
+
+	Referrers  []ReferrerInfo
+	Statistics DescriptorStatistics
+	Signatures ManifestSignatures
+}
+
+type LastUpdatedImage struct {
+	Descriptor
+	Tag         string
+	LastUpdated *time.Time
 }
 
 type ReferrerInfo struct {
@@ -216,21 +278,6 @@ type DescriptorStatistics struct {
 }
 
 type ManifestSignatures map[string][]SignatureInfo
-
-type RepoMetadata struct {
-	Name string
-	Tags map[string]Descriptor
-
-	Statistics map[string]DescriptorStatistics
-	Signatures map[string]ManifestSignatures
-	Referrers  map[string][]ReferrerInfo
-
-	IsStarred    bool
-	IsBookmarked bool
-	Rank         int
-
-	Stars int
-}
 
 type LayerInfo struct {
 	LayerDigest  string

@@ -153,21 +153,9 @@ func (ref CosignReference) SyncReferences(ctx context.Context, localRepo, remote
 			ref.log.Debug().Str("repository", localRepo).Str("subject", subjectDigestStr).
 				Msg("metaDB: trying to sync cosign reference for image")
 
-			isSig, sigType, signedManifestDig, err := storage.CheckIsImageSignature(localRepo, manifestBuf,
-				cosignTag)
-			if err != nil {
-				return refsDigests, fmt.Errorf("failed to check if cosign reference '%s@%s' is a signature: %w", localRepo,
-					cosignTag, err)
-			}
-
-			if isSig {
-				err = addSigToMeta(ref.metaDB, localRepo, sigType, cosignTag, signedManifestDig, referenceDigest,
-					manifestBuf, imageStore, ref.log)
-			} else {
-				err = meta.SetImageMetaFromInput(localRepo, cosignTag, ispec.MediaTypeImageManifest,
-					referenceDigest, manifestBuf, ref.storeController.GetImageStore(localRepo),
-					ref.metaDB, ref.log)
-			}
+			err = meta.SetImageMetaFromInput(localRepo, cosignTag, ispec.MediaTypeImageManifest,
+				referenceDigest, manifestBuf, ref.storeController.GetImageStore(localRepo),
+				ref.metaDB, ref.log)
 
 			if err != nil {
 				return refsDigests, fmt.Errorf("failed to set metadata for cosign reference in '%s@%s': %w",

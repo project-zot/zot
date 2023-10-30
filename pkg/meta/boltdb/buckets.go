@@ -2,10 +2,10 @@ package boltdb
 
 // MetadataDB.
 const (
-	ManifestDataBucket = "ManifestData"
-	IndexDataBucket    = "IndexData"
-	RepoMetadataBucket = "RepoMetadata"
-	UserDataBucket     = "UserData"
-	VersionBucket      = "Version"
-	UserAPIKeysBucket  = "UserAPIKeys"
+	ImageMetaBuck     = "ImageMeta"
+	RepoMetaBuck      = "RepoMeta"
+	RepoBlobsBuck     = "RepoBlobsMeta"
+	UserDataBucket    = "UserData"
+	VersionBucket     = "Version"
+	UserAPIKeysBucket = "UserAPIKeys"
 )

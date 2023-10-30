@@ -1,0 +1,115 @@
+syntax = "proto3";
+package meta_v1;
+
+import "oci/config.proto";
+import "oci/manifest.proto";
+import "oci/index.proto";
+import "oci/timestamp.proto";
+import "oci/descriptor.proto";
+
+message TagDescriptor {
+    string            MediaType = 1;
+    string            Digest    = 2;
+}
+
+message ImageMeta {
+    string                MediaType    = 1;
+    repeated ManifestMeta Manifests    = 2;
+    optional IndexMeta    Index        = 3;
+}
+
+message ManifestMeta {
+    string           Digest    = 1;
+    int64            Size      = 2;
+    oci_v1.Manifest  Manifest  = 3;
+    oci_v1.Image     Config    = 4;
+}
+
+message IndexMeta {
+    string       Digest    = 1;
+    int64        Size      = 2;
+    oci_v1.Index Index     = 3;
+}
+
+message RepoLastUpdatedImage {
+    optional google.protobuf.Timestamp LastUpdated = 1;
+    string MediaType = 2;
+    string Digest    = 3;
+    string Tag       = 4;
+}
+
+message RepoMeta {
+    string                     Name = 1;
+    map<string, TagDescriptor> Tags = 2;
+
+    map<string, DescriptorStatistics> Statistics = 3;
+    map<string, ManifestSignatures>   Signatures = 4;
+    map<string, ReferrersInfo>        Referrers  = 5;
+
+    bool  IsStarred    = 6;
+    bool  IsBookmarked = 7;
+    int32 Rank         = 8;
+
+    int32 Stars = 9;
+
+    int32 Size = 10;
+    repeated string   Vendors   = 11;
+    repeated oci_v1.Platform Platforms = 12;
+    optional RepoLastUpdatedImage LastUpdatedImage = 13;
+}
+
+message RepoBlobs {
+    string Name = 1;
+    map<string, BlobInfo> Blobs = 2;
+}
+
+// for example this is a manifest and it has a config, and layers
+// or index and has manifests
+message BlobInfo {
+    int64             Size      = 1;
+    repeated string   Vendors   = 2;
+    repeated string   SubBlobs  = 3;
+    repeated oci_v1.Platform Platforms = 4;
+
+    optional google.protobuf.Timestamp LastUpdated = 5;
+}
+
+message DescriptorStatistics {
+    int32 DownloadCount = 1;
+}
+
+message ReferrersInfo {
+    repeated ReferrerInfo list = 1;
+}
+
+message ReferrerInfo {
+    string Digest       = 1;
+    int64  Count        = 2;
+    string MediaType    = 3;
+    string ArtifactType = 4;
+    int64  Size         = 5;
+
+    map<string, string> Annotations = 6;
+}
+
+message ManifestSignatures {
+    map<string, SignaturesInfo> map = 1;
+}
+
+message SignaturesInfo {
+    repeated SignatureInfo list = 1;
+}
+
+message SignatureInfo {
+    string              SignatureManifestDigest = 1;
+    repeated LayersInfo LayersInfo              = 2;
+}
+
+message LayersInfo {
+    string LayerDigest  = 1;
+    bytes  LayerContent = 2;
+    string SignatureKey = 3;
+    string Signer       = 4;
+
+    google.protobuf.Timestamp Date = 5;
+}

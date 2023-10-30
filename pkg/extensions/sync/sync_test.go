@@ -877,9 +877,7 @@ func TestOnDemand(t *testing.T) {
 
 					return nil
 				},
-				SetRepoReferenceFn: func(repo, reference string, manifestDigest godigest.Digest,
-					mediaType string,
-				) error {
+				SetRepoReferenceFn: func(repo, reference string, imageMeta mTypes.ImageMeta) error {
 					if strings.HasPrefix(reference, "sha256-") &&
 						(strings.HasSuffix(reference, remote.SignatureTagSuffix) ||
 							strings.HasSuffix(reference, remote.SBOMTagSuffix)) ||
@@ -1019,8 +1017,8 @@ func TestOnDemand(t *testing.T) {
 
 			// metadb fails for syncReferrersTag"
 			dctlr.MetaDB = mocks.MetaDBMock{
-				SetManifestDataFn: func(manifestDigest godigest.Digest, mm mTypes.ManifestData) error {
-					if manifestDigest.String() == ociRefImage.ManifestDescriptor.Digest.String() {
+				SetRepoReferenceFn: func(repo, reference string, imageMeta mTypes.ImageMeta) error {
+					if imageMeta.Digest.String() == ociRefImage.ManifestDescriptor.Digest.String() {
 						return sync.ErrTestError
 					}
 
@@ -4670,7 +4668,7 @@ func TestSyncedSignaturesMetaDB(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
-		repoMeta, err := dctlr.MetaDB.GetRepoMeta(repoName)
+		repoMeta, err := dctlr.MetaDB.GetRepoMeta(context.Background(), repoName)
 		So(err, ShouldBeNil)
 		So(repoMeta.Tags, ShouldContainKey, tag)
 		So(len(repoMeta.Tags), ShouldEqual, 1)

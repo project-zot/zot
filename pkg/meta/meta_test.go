@@ -5,9 +5,7 @@ package meta_test
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"math/rand"
 	"os"
 	"path"
 	"testing"
@@ -19,11 +17,12 @@ import (
 	"github.com/notaryproject/notation-go"
 	"github.com/notaryproject/notation-go/signer"
 	godigest "github.com/opencontainers/go-digest"
-	"github.com/opencontainers/image-spec/specs-go"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	. "github.com/smartystreets/goconvey/convey"
 
+	zcommon "zotregistry.io/zot/pkg/common"
 	"zotregistry.io/zot/pkg/extensions/imagetrust"
+	"zotregistry.io/zot/pkg/extensions/search/convert"
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/meta"
 	"zotregistry.io/zot/pkg/meta/boltdb"
@@ -31,10 +30,9 @@ import (
 	mdynamodb "zotregistry.io/zot/pkg/meta/dynamodb"
 	mTypes "zotregistry.io/zot/pkg/meta/types"
 	reqCtx "zotregistry.io/zot/pkg/requestcontext"
-	test "zotregistry.io/zot/pkg/test/common"
-	"zotregistry.io/zot/pkg/test/deprecated"
+	tCommon "zotregistry.io/zot/pkg/test/common"
 	. "zotregistry.io/zot/pkg/test/image-utils"
-	signature "zotregistry.io/zot/pkg/test/signature"
+	"zotregistry.io/zot/pkg/test/signature"
 	tskip "zotregistry.io/zot/pkg/test/skip"
 )
 
@@ -44,6 +42,8 @@ const (
 	AMD     = "amd"
 	ARM     = "arm64"
 )
+
+func getManifestDigest(md mTypes.ManifestData) string { return md.Digest.String() }
 
 func TestBoltDB(t *testing.T) {
 	Convey("BoltDB creation", t, func() {
@@ -106,25 +106,23 @@ func TestDynamoDBWrapper(t *testing.T) {
 	}
 
 	repoMetaTablename := "RepoMetadataTable" + uuid.String()
-	manifestDataTablename := "ManifestDataTable" + uuid.String()
 	versionTablename := "Version" + uuid.String()
-	indexDataTablename := "IndexDataTable" + uuid.String()
 	userDataTablename := "UserDataTable" + uuid.String()
 	apiKeyTablename := "ApiKeyTable" + uuid.String()
+	imageMetaTablename := "ImageMeta" + uuid.String()
+	repoBlobsTablename := "RepoBlobs" + uuid.String()
 
 	Convey("DynamoDB Wrapper", t, func() {
 		dynamoDBDriverParams := mdynamodb.DBDriverParameters{
-			Endpoint:              os.Getenv("DYNAMODBMOCK_ENDPOINT"),
-			RepoMetaTablename:     repoMetaTablename,
-			ManifestDataTablename: manifestDataTablename,
-			IndexDataTablename:    indexDataTablename,
-			VersionTablename:      versionTablename,
-			UserDataTablename:     userDataTablename,
-			APIKeyTablename:       apiKeyTablename,
-			Region:                "us-east-2",
+			Endpoint:               os.Getenv("DYNAMODBMOCK_ENDPOINT"),
+			RepoMetaTablename:      repoMetaTablename,
+			RepoBlobsInfoTablename: repoBlobsTablename,
+			ImageMetaTablename:     imageMetaTablename,
+			VersionTablename:       versionTablename,
+			UserDataTablename:      userDataTablename,
+			APIKeyTablename:        apiKeyTablename,
+			Region:                 "us-east-2",
 		}
-
-		t.Logf("using dynamo driver options: %v", dynamoDBDriverParams)
 
 		dynamoClient, err := mdynamodb.GetDynamoClient(dynamoDBDriverParams)
 		So(err, ShouldBeNil)
@@ -141,14 +139,22 @@ func TestDynamoDBWrapper(t *testing.T) {
 		dynamoDriver.SetImageTrustStore(imgTrustStore)
 
 		resetDynamoDBTables := func() error {
-			err := dynamoDriver.ResetRepoMetaTable()
+			err := dynamoDriver.ResetTable(dynamoDriver.RepoMetaTablename)
+			if err != nil {
+				return err
+			}
+
+			err = dynamoDriver.ResetTable(dynamoDriver.ImageMetaTablename)
+			if err != nil {
+				return err
+			}
+
+			err = dynamoDriver.ResetTable(dynamoDriver.RepoBlobsTablename)
 			if err != nil {
 				return err
 			}
 
 			// Note: Tests are very slow if we reset the UserData table every new convey. We'll reset it as needed
-
-			err = dynamoDriver.ResetManifestDataTable()
 
 			return err
 		}
@@ -158,6 +164,8 @@ func TestDynamoDBWrapper(t *testing.T) {
 }
 
 func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func() error) { //nolint: thelper
+	ctx := context.Background()
+
 	Convey("Test MetaDB Interface implementation", func() {
 		for _, prepFunc := range preparationFuncs {
 			err := prepFunc()
@@ -453,242 +461,258 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 			})
 		})
 
-		Convey("Test SetManifestData and GetManifestData", func() {
-			configBlob, manifestBlob, err := generateTestImage()
+		Convey("Test Setting an image by tag and retrieving data", func() {
+			imgData := CreateImageWith().
+				DefaultLayers().
+				ImageConfig(ispec.Image{
+					Created: DateRef(2000, 10, 10, 10, 10, 10, 10, time.UTC),
+					Author:  "author",
+					Platform: ispec.Platform{
+						Architecture: "arch",
+						OS:           "os",
+						OSVersion:    "os-vers",
+						OSFeatures:   []string{"os-features"},
+						Variant:      "variant",
+					},
+					Config: ispec.ImageConfig{
+						Labels:       map[string]string{"test": "test"},
+						Env:          []string{"test"},
+						ExposedPorts: map[string]struct{}{"test": {}},
+						Volumes:      map[string]struct{}{"test": {}},
+					},
+					RootFS: ispec.RootFS{
+						DiffIDs: []godigest.Digest{godigest.FromString("test")},
+					},
+				}).Build().AsImageMeta()
+
+			err := metaDB.SetImageMeta(imgData.Digest, imgData)
 			So(err, ShouldBeNil)
 
-			manifestDigest := godigest.FromBytes(manifestBlob)
+			retrievedImgData, err := metaDB.GetImageMeta(imgData.Digest)
+			So(err, ShouldBeNil)
+			So(imgData, ShouldResemble, retrievedImgData)
 
-			err = metaDB.SetManifestData(manifestDigest, mTypes.ManifestData{
-				ManifestBlob: manifestBlob,
-				ConfigBlob:   configBlob,
-			})
+			imgMulti := CreateRandomMultiarch()
+
+			for i := range imgMulti.Images {
+				err = metaDB.SetImageMeta(imgMulti.Images[i].Digest(), imgMulti.Images[i].AsImageMeta())
+				So(err, ShouldBeNil)
+			}
+
+			err = metaDB.SetImageMeta(imgMulti.Digest(), imgMulti.AsImageMeta())
 			So(err, ShouldBeNil)
 
-			mm, err := metaDB.GetManifestData(manifestDigest)
+			retrievedImgMultiData, err := metaDB.GetImageMeta(imgMulti.Digest())
 			So(err, ShouldBeNil)
-			So(mm.ManifestBlob, ShouldResemble, manifestBlob)
-			So(mm.ConfigBlob, ShouldResemble, configBlob)
+			So(imgMulti.AsImageMeta(), ShouldEqual, retrievedImgMultiData)
+
+			// set subject on multiarch
 		})
 
-		Convey("Test GetManifestMeta fails", func() {
-			_, err := metaDB.GetManifestMeta("repo", "bad digest")
-			So(err, ShouldNotBeNil)
-		})
+		Convey("Set/Get RepoMeta", func() {
+			err := metaDB.SetRepoMeta("repo", mTypes.RepoMeta{
+				Name: "repo",
+				Tags: map[string]mTypes.Descriptor{"tag": {Digest: "dig"}},
 
-		Convey("Test SetManifestMeta", func() {
-			Convey("RepoMeta not found", func() {
-				var (
-					manifestDigest = godigest.FromString("dig")
-					manifestBlob   = []byte("manifestBlob")
-					configBlob     = []byte("configBlob")
-
-					signatures = mTypes.ManifestSignatures{
-						"digest1": []mTypes.SignatureInfo{
-							{
-								SignatureManifestDigest: "signatureDigest",
-								LayersInfo: []mTypes.LayerInfo{
-									{
-										LayerDigest:  "layerDigest",
-										LayerContent: []byte("layerContent"),
-									},
-								},
-							},
-						},
-					}
-				)
-
-				err := metaDB.SetManifestMeta("repo", manifestDigest, mTypes.ManifestMetadata{
-					ManifestBlob:  manifestBlob,
-					ConfigBlob:    configBlob,
-					DownloadCount: 10,
-					Signatures:    signatures,
-				})
-				So(err, ShouldBeNil)
-
-				manifestMeta, err := metaDB.GetManifestMeta("repo", manifestDigest)
-				So(err, ShouldBeNil)
-
-				So(manifestMeta.ManifestBlob, ShouldResemble, manifestBlob)
-				So(manifestMeta.ConfigBlob, ShouldResemble, configBlob)
-				So(manifestMeta.DownloadCount, ShouldEqual, 10)
-				So(manifestMeta.Signatures, ShouldResemble, signatures)
+				Statistics: map[string]mTypes.DescriptorStatistics{},
+				Signatures: map[string]mTypes.ManifestSignatures{},
+				Referrers:  map[string][]mTypes.ReferrerInfo{"digest": {{Digest: "dig"}}},
 			})
+			So(err, ShouldBeNil)
+			repoMeta, err := metaDB.GetRepoMeta(ctx, "repo")
+			So(err, ShouldBeNil)
+			So(repoMeta.Name, ShouldResemble, "repo")
+			So(repoMeta.Tags, ShouldContainKey, "tag")
 		})
 
 		Convey("Test SetRepoReference", func() {
-			// test behaviours
 			var (
-				repo1           = "repo1"
-				repo2           = "repo2"
-				tag1            = "0.0.1"
-				manifestDigest1 = godigest.FromString("fake-manifest1")
-
-				tag2            = "0.0.2"
-				manifestDigest2 = godigest.FromString("fake-manifes2")
+				repo1 = "repo1"
+				repo2 = "repo2"
+				tag1  = "0.0.1"
+				tag2  = "0.0.2"
 			)
 
+			img1 := CreateImageWith().RandomLayers(2, 10).RandomConfig().
+				Annotations(map[string]string{"test": "annotation"}).Build()
+			imgData1 := img1.AsImageMeta()
+			img1Size := img1.ConfigDescriptor.Size + img1.ManifestDescriptor.Size + 2*10
+
+			img2 := CreateImageWith().LayerBlobs(img1.Layers).RandomConfig().
+				Annotations(map[string]string{"test": "annotation"}).Build()
+			imgData2 := img2.AsImageMeta()
+			img2Size := img2.ConfigDescriptor.Size + img2.ManifestDescriptor.Size + 2*10
+
+			multiImages := []Image{
+				CreateImageWith().RandomLayers(2, 10).
+					ImageConfig(ispec.Image{Platform: ispec.Platform{OS: "multi-os1", Architecture: "multi-arch1"}}).
+					Annotations(map[string]string{ispec.AnnotationVendor: "vendor1"}).
+					Build(),
+				CreateImageWith().RandomLayers(2, 10).
+					ImageConfig(ispec.Image{Platform: ispec.Platform{OS: "multi-os2", Architecture: "multi-arch2"}}).
+					Annotations(map[string]string{ispec.AnnotationVendor: "vendor2"}).
+					Build(),
+			}
+
+			imgMulti := CreateMultiarchWith().
+				Images(multiImages).
+				Annotations(map[string]string{ispec.AnnotationVendor: "vendor1"}).Build()
+
 			Convey("Setting a good repo", func() {
-				err := metaDB.SetRepoReference(repo1, tag1, manifestDigest1, ispec.MediaTypeImageManifest)
+				err := metaDB.SetRepoReference(repo1, tag1, imgData1)
 				So(err, ShouldBeNil)
 
-				repoMeta, err := metaDB.GetRepoMeta(repo1)
+				repoMeta, err := metaDB.GetRepoMeta(ctx, repo1)
 				So(err, ShouldBeNil)
 				So(repoMeta.Name, ShouldResemble, repo1)
-				So(repoMeta.Tags[tag1].Digest, ShouldEqual, manifestDigest1.String())
-
-				err = metaDB.SetRepoMeta(repo2, mTypes.RepoMetadata{Tags: map[string]mTypes.Descriptor{
-					tag2: {
-						Digest: manifestDigest2.String(),
-					},
-				}})
-				So(err, ShouldBeNil)
-
-				repoMeta, err = metaDB.GetRepoMeta(repo2)
-				So(err, ShouldBeNil)
-				So(repoMeta.Name, ShouldResemble, repo2)
-				So(repoMeta.Tags[tag2].Digest, ShouldEqual, manifestDigest2.String())
+				So(repoMeta.Tags[tag1].Digest, ShouldEqual, img1.DigestStr())
 			})
 
-			Convey("Setting a good repo using a digest", func() {
-				_, err := metaDB.GetRepoMeta(repo1)
+			Convey("Setting an index with it's manifests", func() {
+				_, err := metaDB.GetRepoMeta(ctx, repo1)
 				So(err, ShouldNotBeNil)
 
-				digest := godigest.FromString("digest")
-				err = metaDB.SetRepoReference(repo1, digest.String(), digest,
-					ispec.MediaTypeImageManifest)
+				for i := range imgMulti.Images {
+					err := metaDB.SetRepoReference(repo1, imgMulti.Images[i].DigestStr(),
+						imgMulti.Images[i].AsImageMeta())
+					So(err, ShouldBeNil)
+				}
+
+				err = metaDB.SetRepoReference(repo1, tag1, imgMulti.AsImageMeta())
 				So(err, ShouldBeNil)
 
-				repoMeta, err := metaDB.GetRepoMeta(repo1)
+				image1TotalSize := multiImages[0].ManifestDescriptor.Size + multiImages[0].ConfigDescriptor.Size + 2*10
+				image2TotalSize := multiImages[1].ManifestDescriptor.Size + multiImages[1].ConfigDescriptor.Size + 2*10
+				indexTotalSize := image1TotalSize + image2TotalSize + imgMulti.IndexDescriptor.Size
+
+				repoMeta, err := metaDB.GetRepoMeta(ctx, repo1)
 				So(err, ShouldBeNil)
 				So(repoMeta.Name, ShouldResemble, repo1)
-			})
-
-			Convey("Set multiple tags for repo", func() {
-				err := metaDB.SetRepoReference(repo1, tag1, manifestDigest1, ispec.MediaTypeImageManifest)
-				So(err, ShouldBeNil)
-				err = metaDB.SetRepoReference(repo1, tag2, manifestDigest2, ispec.MediaTypeImageManifest)
-				So(err, ShouldBeNil)
-
-				repoMeta, err := metaDB.GetRepoMeta(repo1)
-				So(err, ShouldBeNil)
-				So(repoMeta.Tags[tag1].Digest, ShouldEqual, manifestDigest1.String())
-				So(repoMeta.Tags[tag2].Digest, ShouldEqual, manifestDigest2.String())
+				So(repoMeta.Platforms, ShouldContain, ispec.Platform{OS: "multi-os1", Architecture: "multi-arch1"})
+				So(repoMeta.Platforms, ShouldContain, ispec.Platform{OS: "multi-os2", Architecture: "multi-arch2"})
+				So(repoMeta.Vendors, ShouldContain, "vendor1")
+				So(repoMeta.Vendors, ShouldContain, "vendor2")
+				So(repoMeta.Size, ShouldEqual, indexTotalSize)
 			})
 
 			Convey("Set multiple repos", func() {
-				err := metaDB.SetRepoReference(repo1, tag1, manifestDigest1, ispec.MediaTypeImageManifest)
+				err := metaDB.SetRepoReference(repo1, tag1, imgData1)
 				So(err, ShouldBeNil)
-				err = metaDB.SetRepoReference(repo2, tag2, manifestDigest2, ispec.MediaTypeImageManifest)
-				So(err, ShouldBeNil)
-
-				repoMeta1, err := metaDB.GetRepoMeta(repo1)
-				So(err, ShouldBeNil)
-				repoMeta2, err := metaDB.GetRepoMeta(repo2)
+				err = metaDB.SetRepoReference(repo2, tag1, imgData2)
 				So(err, ShouldBeNil)
 
-				So(repoMeta1.Tags[tag1].Digest, ShouldResemble, manifestDigest1.String())
-				So(repoMeta2.Tags[tag2].Digest, ShouldResemble, manifestDigest2.String())
+				repoMeta1, err := metaDB.GetRepoMeta(ctx, repo1)
+				So(err, ShouldBeNil)
+				repoMeta2, err := metaDB.GetRepoMeta(ctx, repo2)
+				So(err, ShouldBeNil)
+
+				So(repoMeta1.Tags[tag1].Digest, ShouldResemble, imgData1.Digest.String())
+				So(repoMeta2.Tags[tag1].Digest, ShouldResemble, imgData2.Digest.String())
+				So(repoMeta1.Size, ShouldEqual, img1Size)
+				So(repoMeta2.Size, ShouldEqual, img2Size)
 			})
 
-			Convey("Setting a repo with invalid fields", func() {
-				Convey("Repo name is not valid", func() {
-					err := metaDB.SetRepoReference("", tag1, manifestDigest1, ispec.MediaTypeImageManifest)
-					So(err, ShouldNotBeNil)
-				})
+			Convey("Check repo blobs info for manifest image", func() {
+				image1 := CreateImageWith().RandomLayers(2, 10).
+					ImageConfig(ispec.Image{Platform: ispec.Platform{OS: "os1", Architecture: "arch1"}}).
+					Annotations(map[string]string{ispec.AnnotationVendor: "vendor1"}).
+					Build()
+				imageMeta1 := image1.AsImageMeta()
 
-				Convey("Tag is not valid", func() {
-					err := metaDB.SetRepoReference(repo1, "", manifestDigest1, ispec.MediaTypeImageManifest)
-					So(err, ShouldNotBeNil)
-				})
+				layersSize := int64(2 * 10)
+				image1Size := imageMeta1.Manifests[0].Size + imageMeta1.Manifests[0].Manifest.Config.Size + layersSize
 
-				Convey("Manifest Digest is not valid", func() {
-					err := metaDB.SetRepoReference(repo1, tag1, "", ispec.MediaTypeImageManifest)
-					So(err, ShouldNotBeNil)
-				})
-			})
-		})
-
-		Convey("Test GetRepoMeta", func() {
-			var (
-				repo1           = "repo1"
-				tag1            = "0.0.1"
-				manifestDigest1 = godigest.FromString("fake-manifest1")
-
-				repo2           = "repo2"
-				tag2            = "0.0.2"
-				manifestDigest2 = godigest.FromString("fake-manifest2")
-
-				InexistentRepo = "InexistentRepo"
-			)
-
-			err := metaDB.SetRepoReference(repo1, tag1, manifestDigest1, ispec.MediaTypeImageManifest)
-			So(err, ShouldBeNil)
-
-			err = metaDB.SetRepoReference(repo2, tag2, manifestDigest2, ispec.MediaTypeImageManifest)
-			So(err, ShouldBeNil)
-
-			Convey("Get a existent repo", func() {
-				repoMeta1, err := metaDB.GetRepoMeta(repo1)
+				err := metaDB.SetRepoReference(repo1, tag1, imageMeta1)
 				So(err, ShouldBeNil)
-				So(repoMeta1.Tags[tag1].Digest, ShouldResemble, manifestDigest1.String())
 
-				repoMeta2, err := metaDB.GetRepoMeta(repo2)
+				repoMeta, err := metaDB.GetRepoMeta(ctx, repo1)
 				So(err, ShouldBeNil)
-				So(repoMeta2.Tags[tag2].Digest, ShouldResemble, manifestDigest2.String())
-			})
+				So(repoMeta.Vendors, ShouldContain, "vendor1")
+				So(repoMeta.Platforms, ShouldContain, ispec.Platform{OS: "os1", Architecture: "arch1"})
+				So(repoMeta.Size, ShouldEqual, image1Size)
 
-			Convey("Get a repo that doesn't exist", func() {
-				repoMeta, err := metaDB.GetRepoMeta(InexistentRepo)
-				So(err, ShouldNotBeNil)
-				So(repoMeta, ShouldBeZeroValue)
+				image2 := CreateImageWith().
+					LayerBlobs(image1.Layers).
+					ImageConfig(ispec.Image{Platform: ispec.Platform{OS: "os2", Architecture: "arch2"}}).
+					Annotations(map[string]string{ispec.AnnotationVendor: "vendor2"}).
+					Build()
+				imageMeta2 := image2.AsImageMeta()
+
+				// the layers are the same so we add them once
+				repoSize := image1Size + image2.ManifestDescriptor.Size + image2.ConfigDescriptor.Size
+
+				err = metaDB.SetRepoReference(repo1, tag2, imageMeta2)
+				So(err, ShouldBeNil)
+
+				repoMeta, err = metaDB.GetRepoMeta(ctx, repo1)
+				So(err, ShouldBeNil)
+				So(repoMeta.Vendors, ShouldContain, "vendor1")
+				So(repoMeta.Vendors, ShouldContain, "vendor2")
+				So(repoMeta.Platforms, ShouldContain, ispec.Platform{OS: "os1", Architecture: "arch1"})
+				So(repoMeta.Platforms, ShouldContain, ispec.Platform{OS: "os2", Architecture: "arch2"})
+				So(repoMeta.Size, ShouldEqual, repoSize)
 			})
 		})
 
-		Convey("Test RemoveRepoReference and DeleteRepoTag", func() {
+		Convey("Test RemoveRepoReference", func() {
 			var (
-				repo            = "repo1"
-				tag1            = "0.0.1"
-				manifestDigest1 = godigest.FromString("fake-manifest1")
-				tag2            = "0.0.2"
-				manifestDigest2 = godigest.FromString("fake-manifest2")
+				repo = "repo1"
+				tag1 = "0.0.1"
+				tag2 = "0.0.2"
 			)
 
-			err := metaDB.SetRepoReference(repo, tag1, manifestDigest1, ispec.MediaTypeImageManifest)
+			layersSize := int64(2 * 10)
+
+			image1 := CreateImageWith().
+				RandomLayers(2, 10).
+				ImageConfig(ispec.Image{Platform: ispec.Platform{OS: "os1", Architecture: "arch1"}}).
+				Annotations(map[string]string{ispec.AnnotationVendor: "vendor1"}).
+				Build()
+			imageMeta1 := image1.AsImageMeta()
+			image1Size := imageMeta1.Manifests[0].Size + imageMeta1.Manifests[0].Manifest.Config.Size + layersSize
+
+			image2 := CreateImageWith().
+				LayerBlobs(image1.Layers).
+				ImageConfig(ispec.Image{Platform: ispec.Platform{OS: "os2", Architecture: "arch2"}}).
+				Annotations(map[string]string{ispec.AnnotationVendor: "vendor2", "annotation": "test"}).
+				Build()
+			imageMeta2 := image2.AsImageMeta()
+			image2Size := imageMeta2.Manifests[0].Size + imageMeta2.Manifests[0].Manifest.Config.Size + layersSize
+
+			totalRepoSize := image1Size + image2Size - layersSize
+
+			err := metaDB.SetRepoReference(repo, tag1, imageMeta1)
 			So(err, ShouldBeNil)
 
-			err = metaDB.SetRepoReference(repo, tag2, manifestDigest2, ispec.MediaTypeImageManifest)
+			err = metaDB.SetRepoReference(repo, tag2, imageMeta2)
 			So(err, ShouldBeNil)
 
 			Convey("Delete reference from repo", func() {
-				_, err := metaDB.GetRepoMeta(repo)
+				err = metaDB.RemoveRepoReference(repo, tag1, imageMeta1.Digest)
 				So(err, ShouldBeNil)
 
-				err = metaDB.RemoveRepoReference(repo, tag1, manifestDigest1)
-				So(err, ShouldBeNil)
-
-				repoMeta, err := metaDB.GetRepoMeta(repo)
+				repoMeta, err := metaDB.GetRepoMeta(ctx, repo)
 				So(err, ShouldBeNil)
 
 				_, ok := repoMeta.Tags[tag1]
 				So(ok, ShouldBeFalse)
-				So(repoMeta.Tags[tag2].Digest, ShouldResemble, manifestDigest2.String())
+				So(repoMeta.Size, ShouldEqual, image2Size)
+				So(repoMeta.Platforms, ShouldNotContain, ispec.Platform{OS: "os1", Architecture: "arch1"})
+				So(repoMeta.Vendors, ShouldNotContain, "vendor1")
 			})
 
-			Convey("Delete a reference from repo", func() {
-				_, err := metaDB.GetRepoMeta(repo)
+			Convey("Delete a digest from repo", func() {
+				err = metaDB.RemoveRepoReference(repo, tag2, imageMeta2.Digest)
 				So(err, ShouldBeNil)
 
-				// shouldn't do anything because there is tag1 pointing to it
-				err = metaDB.RemoveRepoReference(repo, manifestDigest1.String(), manifestDigest1)
+				repoMeta, err := metaDB.GetRepoMeta(ctx, repo)
 				So(err, ShouldBeNil)
 
-				repoMeta, err := metaDB.GetRepoMeta(repo)
-				So(err, ShouldBeNil)
-
-				_, ok := repoMeta.Tags[tag1]
+				_, ok := repoMeta.Tags[tag2]
 				So(ok, ShouldBeFalse)
-				So(repoMeta.Tags[tag2].Digest, ShouldResemble, manifestDigest2.String())
+				So(repoMeta.Size, ShouldEqual, image1Size)
+				So(repoMeta.Platforms, ShouldNotContain, ispec.Platform{OS: "os2", Architecture: "arch2"})
+				So(repoMeta.Vendors, ShouldNotContain, "vendor2")
 			})
 
 			Convey("Delete inexistent reference from repo", func() {
@@ -696,11 +720,12 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 				err := metaDB.RemoveRepoReference(repo, inexistentDigest.String(), inexistentDigest)
 				So(err, ShouldBeNil)
 
-				repoMeta, err := metaDB.GetRepoMeta(repo)
+				repoMeta, err := metaDB.GetRepoMeta(ctx, repo)
 				So(err, ShouldBeNil)
 
-				So(repoMeta.Tags[tag1].Digest, ShouldResemble, manifestDigest1.String())
-				So(repoMeta.Tags[tag2].Digest, ShouldResemble, manifestDigest2.String())
+				So(repoMeta.Tags[tag1].Digest, ShouldResemble, imageMeta1.Digest.String())
+				So(repoMeta.Tags[tag2].Digest, ShouldResemble, imageMeta2.Digest.String())
+				So(repoMeta.Size, ShouldEqual, totalRepoSize)
 			})
 
 			Convey("Delete reference from inexistent repo", func() {
@@ -709,72 +734,48 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 				err := metaDB.RemoveRepoReference("InexistentRepo", inexistentDigest.String(), inexistentDigest)
 				So(err, ShouldBeNil)
 
-				repoMeta, err := metaDB.GetRepoMeta(repo)
+				repoMeta, err := metaDB.GetRepoMeta(ctx, repo)
 				So(err, ShouldBeNil)
 
-				So(repoMeta.Tags[tag1].Digest, ShouldResemble, manifestDigest1.String())
-				So(repoMeta.Tags[tag2].Digest, ShouldResemble, manifestDigest2.String())
-			})
-
-			Convey("Delete from repo a tag", func() {
-				_, err := metaDB.GetRepoMeta(repo)
-				So(err, ShouldBeNil)
-
-				err = metaDB.DeleteRepoTag(repo, tag1)
-				So(err, ShouldBeNil)
-
-				repoMeta, err := metaDB.GetRepoMeta(repo)
-				So(err, ShouldBeNil)
-
-				_, ok := repoMeta.Tags[tag1]
-				So(ok, ShouldBeFalse)
-				So(repoMeta.Tags[tag2].Digest, ShouldResemble, manifestDigest2.String())
-			})
-
-			Convey("Delete inexistent tag from repo", func() {
-				err := metaDB.DeleteRepoTag(repo, "InexistentTag")
-				So(err, ShouldBeNil)
-
-				repoMeta, err := metaDB.GetRepoMeta(repo)
-				So(err, ShouldBeNil)
-
-				So(repoMeta.Tags[tag1].Digest, ShouldResemble, manifestDigest1.String())
-				So(repoMeta.Tags[tag2].Digest, ShouldResemble, manifestDigest2.String())
-			})
-
-			Convey("Delete tag from inexistent repo", func() {
-				err := metaDB.DeleteRepoTag("InexistentRepo", "InexistentTag")
-				So(err, ShouldBeNil)
-
-				repoMeta, err := metaDB.GetRepoMeta(repo)
-				So(err, ShouldBeNil)
-
-				So(repoMeta.Tags[tag1].Digest, ShouldResemble, manifestDigest1.String())
-				So(repoMeta.Tags[tag2].Digest, ShouldResemble, manifestDigest2.String())
+				So(repoMeta.Tags[tag1].Digest, ShouldResemble, imageMeta1.Digest.String())
+				So(repoMeta.Tags[tag2].Digest, ShouldResemble, imageMeta2.Digest.String())
+				So(repoMeta.Size, ShouldEqual, totalRepoSize)
 			})
 		})
 
 		Convey("Test GetMultipleRepoMeta", func() {
 			var (
-				repo1           = "repo1"
-				repo2           = "repo2"
-				tag1            = "0.0.1"
-				manifestDigest1 = godigest.FromString("fake-manifest1")
-				tag2            = "0.0.2"
-				manifestDigest2 = godigest.FromString("fake-manifest2")
+				repo1 = "repo1"
+				repo2 = "repo2"
+				tag1  = "0.0.1"
+				tag2  = "0.0.2"
 			)
 
-			err := metaDB.SetRepoReference(repo1, tag1, manifestDigest1, ispec.MediaTypeImageManifest)
+			image1 := CreateImageWith().
+				RandomLayers(2, 10).
+				ImageConfig(ispec.Image{Platform: ispec.Platform{OS: "os1", Architecture: "arch1"}}).
+				Annotations(map[string]string{ispec.AnnotationVendor: "vendor1"}).
+				Build()
+			imageMeta1 := image1.AsImageMeta()
+
+			image2 := CreateImageWith().
+				LayerBlobs(image1.Layers).
+				ImageConfig(ispec.Image{Platform: ispec.Platform{OS: "os2", Architecture: "arch2"}}).
+				Annotations(map[string]string{ispec.AnnotationVendor: "vendor2"}).
+				Build()
+			imageMeta2 := image2.AsImageMeta()
+
+			err := metaDB.SetRepoReference(repo1, tag1, imageMeta1)
 			So(err, ShouldBeNil)
 
-			err = metaDB.SetRepoReference(repo1, tag2, manifestDigest2, ispec.MediaTypeImageManifest)
+			err = metaDB.SetRepoReference(repo1, tag2, imageMeta2)
 			So(err, ShouldBeNil)
 
-			err = metaDB.SetRepoReference(repo2, tag2, manifestDigest2, ispec.MediaTypeImageManifest)
+			err = metaDB.SetRepoReference(repo2, tag2, imageMeta2)
 			So(err, ShouldBeNil)
 
-			Convey("Get all Repometa", func() {
-				repoMetaSlice, err := metaDB.GetMultipleRepoMeta(context.TODO(), func(repoMeta mTypes.RepoMetadata) bool {
+			Convey("Get all RepoMeta", func() {
+				repoMetaSlice, err := metaDB.GetMultipleRepoMeta(context.TODO(), func(repoMeta mTypes.RepoMeta) bool {
 					return true
 				})
 				So(err, ShouldBeNil)
@@ -782,7 +783,7 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 			})
 
 			Convey("Get repo with a tag", func() {
-				repoMetaSlice, err := metaDB.GetMultipleRepoMeta(context.TODO(), func(repoMeta mTypes.RepoMetadata) bool {
+				repoMetaSlice, err := metaDB.GetMultipleRepoMeta(context.TODO(), func(repoMeta mTypes.RepoMeta) bool {
 					for tag := range repoMeta.Tags {
 						if tag == tag1 {
 							return true
@@ -793,113 +794,110 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 				})
 				So(err, ShouldBeNil)
 				So(len(repoMetaSlice), ShouldEqual, 1)
-				So(repoMetaSlice[0].Tags[tag1].Digest == manifestDigest1.String(), ShouldBeTrue)
+				So(repoMetaSlice[0].Tags[tag1].Digest == imageMeta1.Digest.String(), ShouldBeTrue)
 			})
 		})
 
 		Convey("Test IncrementRepoStars", func() {
 			var (
-				repo1           = "repo1"
-				tag1            = "0.0.1"
-				manifestDigest1 = godigest.FromString("fake-manifest1")
+				repo1     = "repo1"
+				tag1      = "0.0.1"
+				imageMeta = CreateDefaultImage().AsImageMeta()
 			)
 
-			err := metaDB.SetRepoReference(repo1, tag1, manifestDigest1, ispec.MediaTypeImageManifest)
+			err := metaDB.SetRepoReference(repo1, tag1, imageMeta)
 			So(err, ShouldBeNil)
 
 			err = metaDB.IncrementRepoStars(repo1)
 			So(err, ShouldBeNil)
 
-			repoMeta, err := metaDB.GetRepoMeta(repo1)
+			repoMeta, err := metaDB.GetRepoMeta(ctx, repo1)
 			So(err, ShouldBeNil)
-			So(repoMeta.Stars, ShouldEqual, 1)
+			So(repoMeta.StarCount, ShouldEqual, 1)
 
 			err = metaDB.IncrementRepoStars(repo1)
 			So(err, ShouldBeNil)
 
-			repoMeta, err = metaDB.GetRepoMeta(repo1)
+			repoMeta, err = metaDB.GetRepoMeta(ctx, repo1)
 			So(err, ShouldBeNil)
-			So(repoMeta.Stars, ShouldEqual, 2)
+			So(repoMeta.StarCount, ShouldEqual, 2)
 
 			err = metaDB.IncrementRepoStars(repo1)
 			So(err, ShouldBeNil)
 
-			repoMeta, err = metaDB.GetRepoMeta(repo1)
+			repoMeta, err = metaDB.GetRepoMeta(ctx, repo1)
 			So(err, ShouldBeNil)
-			So(repoMeta.Stars, ShouldEqual, 3)
+			So(repoMeta.StarCount, ShouldEqual, 3)
 		})
 
 		Convey("Test DecrementRepoStars", func() {
 			var (
-				repo1           = "repo1"
-				tag1            = "0.0.1"
-				manifestDigest1 = godigest.FromString("fake-manifest1")
+				repo1     = "repo1"
+				tag1      = "0.0.1"
+				imageMeta = CreateDefaultImage().AsImageMeta()
 			)
 
-			err := metaDB.SetRepoReference(repo1, tag1, manifestDigest1, ispec.MediaTypeImageManifest)
+			err := metaDB.SetRepoReference(repo1, tag1, imageMeta)
 			So(err, ShouldBeNil)
 
 			err = metaDB.IncrementRepoStars(repo1)
 			So(err, ShouldBeNil)
 
-			repoMeta, err := metaDB.GetRepoMeta(repo1)
+			repoMeta, err := metaDB.GetRepoMeta(ctx, repo1)
 			So(err, ShouldBeNil)
-			So(repoMeta.Stars, ShouldEqual, 1)
+			So(repoMeta.StarCount, ShouldEqual, 1)
 
 			err = metaDB.DecrementRepoStars(repo1)
 			So(err, ShouldBeNil)
 
-			repoMeta, err = metaDB.GetRepoMeta(repo1)
+			repoMeta, err = metaDB.GetRepoMeta(ctx, repo1)
 			So(err, ShouldBeNil)
-			So(repoMeta.Stars, ShouldEqual, 0)
+			So(repoMeta.StarCount, ShouldEqual, 0)
 
 			err = metaDB.DecrementRepoStars(repo1)
 			So(err, ShouldBeNil)
 
-			repoMeta, err = metaDB.GetRepoMeta(repo1)
+			repoMeta, err = metaDB.GetRepoMeta(ctx, repo1)
 			So(err, ShouldBeNil)
-			So(repoMeta.Stars, ShouldEqual, 0)
+			So(repoMeta.StarCount, ShouldEqual, 0)
 
-			_, err = metaDB.GetRepoMeta("badRepo")
+			_, err = metaDB.GetRepoMeta(ctx, "badRepo")
 			So(err, ShouldNotBeNil)
 		})
 
-		Convey("Test GetRepoStars", func() {
+		Convey("Test Repo Stars", func() {
 			var (
-				repo1           = "repo1"
-				tag1            = "0.0.1"
-				manifestDigest1 = godigest.FromString("fake-manifest1")
+				repo1 = "repo1"
+				tag1  = "0.0.1"
 			)
 
-			err := metaDB.SetRepoReference(repo1, tag1, manifestDigest1, ispec.MediaTypeImageManifest)
+			err := metaDB.SetRepoReference(repo1, tag1, CreateDefaultImage().AsImageMeta())
 			So(err, ShouldBeNil)
 
 			err = metaDB.IncrementRepoStars(repo1)
 			So(err, ShouldBeNil)
-
-			stars, err := metaDB.GetRepoStars(repo1)
+			repoMeta, err := metaDB.GetRepoMeta(ctx, repo1)
 			So(err, ShouldBeNil)
-			So(stars, ShouldEqual, 1)
+			So(repoMeta.StarCount, ShouldEqual, 1)
 
 			err = metaDB.IncrementRepoStars(repo1)
 			So(err, ShouldBeNil)
+			repoMeta, err = metaDB.GetRepoMeta(ctx, repo1)
+			So(err, ShouldBeNil)
+			So(repoMeta.StarCount, ShouldEqual, 2)
+
 			err = metaDB.IncrementRepoStars(repo1)
 			So(err, ShouldBeNil)
-
-			stars, err = metaDB.GetRepoStars(repo1)
+			repoMeta, err = metaDB.GetRepoMeta(ctx, repo1)
 			So(err, ShouldBeNil)
-			So(stars, ShouldEqual, 3)
-
-			_, err = metaDB.GetRepoStars("badRepo")
-			So(err, ShouldNotBeNil)
+			So(repoMeta.StarCount, ShouldEqual, 3)
 		})
 
 		Convey("Test repo stars for user", func() {
 			var (
-				repo1           = "repo1"
-				tag1            = "0.0.1"
-				manifestDigest1 = godigest.FromString("fake-manifest1")
-				repo2           = "repo2"
+				repo1 = "repo1"
+				tag1  = "0.0.1"
+				repo2 = "repo2"
 			)
 
 			userAc := reqCtx.NewUserAccessControl()
@@ -910,7 +908,7 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 			})
 
 			// "user1"
-			ctx1 := userAc.DeriveContext(context.Background())
+			ctx1 := userAc.DeriveContext(ctx)
 
 			userAc = reqCtx.NewUserAccessControl()
 			userAc.SetUsername("user2")
@@ -920,7 +918,7 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 			})
 
 			// "user2"
-			ctx2 := userAc.DeriveContext(context.Background())
+			ctx2 := userAc.DeriveContext(ctx)
 
 			userAc = reqCtx.NewUserAccessControl()
 			userAc.SetGlobPatterns("read", map[string]bool{
@@ -929,21 +927,13 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 			})
 
 			// anonymous user
-			ctx3 := userAc.DeriveContext(context.Background())
+			ctx3 := userAc.DeriveContext(ctx)
 
-			err := metaDB.SetRepoReference(repo1, tag1, manifestDigest1, ispec.MediaTypeImageManifest)
+			err := metaDB.SetRepoReference(repo1, tag1, CreateDefaultImage().AsImageMeta())
 			So(err, ShouldBeNil)
 
-			err = metaDB.SetRepoReference(repo2, tag1, manifestDigest1, ispec.MediaTypeImageManifest)
+			err = metaDB.SetRepoReference(repo2, tag1, CreateDefaultImage().AsImageMeta())
 			So(err, ShouldBeNil)
-
-			starCount, err := metaDB.GetRepoStars(repo1)
-			So(err, ShouldBeNil)
-			So(starCount, ShouldEqual, 0)
-
-			starCount, err = metaDB.GetRepoStars(repo2)
-			So(err, ShouldBeNil)
-			So(starCount, ShouldEqual, 0)
 
 			repos, err := metaDB.GetStarredRepos(ctx1)
 			So(err, ShouldBeNil)
@@ -962,13 +952,9 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 			So(err, ShouldBeNil)
 			So(toggleState, ShouldEqual, mTypes.Added)
 
-			repoMeta, err := metaDB.GetRepoMeta(repo1)
+			repoMeta, err := metaDB.GetRepoMeta(ctx, repo1)
 			So(err, ShouldBeNil)
-			So(repoMeta.Stars, ShouldEqual, 1)
-
-			starCount, err = metaDB.GetRepoStars(repo1)
-			So(err, ShouldBeNil)
-			So(starCount, ShouldEqual, 1)
+			So(repoMeta.StarCount, ShouldEqual, 1)
 
 			repos, err = metaDB.GetStarredRepos(ctx1)
 			So(err, ShouldBeNil)
@@ -988,13 +974,9 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 			So(err, ShouldBeNil)
 			So(toggleState, ShouldEqual, mTypes.Added)
 
-			repoMeta, err = metaDB.GetRepoMeta(repo1)
+			repoMeta, err = metaDB.GetRepoMeta(ctx, repo1)
 			So(err, ShouldBeNil)
-			So(repoMeta.Stars, ShouldEqual, 2)
-
-			starCount, err = metaDB.GetRepoStars(repo1)
-			So(err, ShouldBeNil)
-			So(starCount, ShouldEqual, 2)
+			So(repoMeta.StarCount, ShouldEqual, 2)
 
 			repos, err = metaDB.GetStarredRepos(ctx1)
 			So(err, ShouldBeNil)
@@ -1015,13 +997,9 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 			So(err, ShouldBeNil)
 			So(toggleState, ShouldEqual, mTypes.Added)
 
-			repoMeta, err = metaDB.GetRepoMeta(repo2)
+			repoMeta, err = metaDB.GetRepoMeta(ctx, repo2)
 			So(err, ShouldBeNil)
-			So(repoMeta.Stars, ShouldEqual, 1)
-
-			starCount, err = metaDB.GetRepoStars(repo2)
-			So(err, ShouldBeNil)
-			So(starCount, ShouldEqual, 1)
+			So(repoMeta.StarCount, ShouldEqual, 1)
 
 			repos, err = metaDB.GetStarredRepos(ctx1)
 			So(err, ShouldBeNil)
@@ -1043,13 +1021,9 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 			So(err, ShouldBeNil)
 			So(toggleState, ShouldEqual, mTypes.Removed)
 
-			repoMeta, err = metaDB.GetRepoMeta(repo1)
+			repoMeta, err = metaDB.GetRepoMeta(ctx, repo1)
 			So(err, ShouldBeNil)
-			So(repoMeta.Stars, ShouldEqual, 1)
-
-			starCount, err = metaDB.GetRepoStars(repo1)
-			So(err, ShouldBeNil)
-			So(starCount, ShouldEqual, 1)
+			So(repoMeta.StarCount, ShouldEqual, 1)
 
 			repos, err = metaDB.GetStarredRepos(ctx1)
 			So(err, ShouldBeNil)
@@ -1074,21 +1048,13 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 			So(err, ShouldBeNil)
 			So(toggleState, ShouldEqual, mTypes.Removed)
 
-			repoMeta, err = metaDB.GetRepoMeta(repo1)
+			repoMeta, err = metaDB.GetRepoMeta(ctx, repo1)
 			So(err, ShouldBeNil)
-			So(repoMeta.Stars, ShouldEqual, 1)
+			So(repoMeta.StarCount, ShouldEqual, 1)
 
-			repoMeta, err = metaDB.GetRepoMeta(repo2)
+			repoMeta, err = metaDB.GetRepoMeta(ctx, repo2)
 			So(err, ShouldBeNil)
-			So(repoMeta.Stars, ShouldEqual, 1)
-
-			starCount, err = metaDB.GetRepoStars(repo1)
-			So(err, ShouldBeNil)
-			So(starCount, ShouldEqual, 1)
-
-			starCount, err = metaDB.GetRepoStars(repo2)
-			So(err, ShouldBeNil)
-			So(starCount, ShouldEqual, 1)
+			So(repoMeta.StarCount, ShouldEqual, 1)
 
 			repos, err = metaDB.GetStarredRepos(ctx1)
 			So(err, ShouldBeNil)
@@ -1104,14 +1070,10 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 			So(err, ShouldBeNil)
 			So(len(repos), ShouldEqual, 0)
 
-			// Anonyous user attempts to toggle a star
+			// Anonymous user attempts to toggle a star
 			toggleState, err = metaDB.ToggleStarRepo(ctx3, repo1)
 			So(err, ShouldNotBeNil)
 			So(toggleState, ShouldEqual, mTypes.NotChanged)
-
-			starCount, err = metaDB.GetRepoStars(repo1)
-			So(err, ShouldBeNil)
-			So(starCount, ShouldEqual, 1)
 
 			repos, err = metaDB.GetStarredRepos(ctx3)
 			So(err, ShouldBeNil)
@@ -1122,10 +1084,6 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 			So(err, ShouldBeNil)
 			So(toggleState, ShouldEqual, mTypes.Removed)
 
-			starCount, err = metaDB.GetRepoStars(repo2)
-			So(err, ShouldBeNil)
-			So(starCount, ShouldEqual, 0)
-
 			repos, err = metaDB.GetStarredRepos(ctx3)
 			So(err, ShouldBeNil)
 			So(len(repos), ShouldEqual, 0)
@@ -1133,10 +1091,10 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 
 		Convey("Test repo bookmarks for user", func() {
 			var (
-				repo1           = "repo1"
-				tag1            = "0.0.1"
-				manifestDigest1 = godigest.FromString("fake-manifest1")
-				repo2           = "repo2"
+				repo1  = "repo1"
+				tag1   = "0.0.1"
+				repo2  = "repo2"
+				image1 = CreateRandomImage().AsImageMeta()
 			)
 
 			userAc := reqCtx.NewUserAccessControl()
@@ -1168,10 +1126,10 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 			// anonymous user
 			ctx3 := userAc.DeriveContext(context.Background())
 
-			err := metaDB.SetRepoReference(repo1, tag1, manifestDigest1, ispec.MediaTypeImageManifest)
+			err := metaDB.SetRepoReference(repo1, tag1, image1)
 			So(err, ShouldBeNil)
 
-			err = metaDB.SetRepoReference(repo2, tag1, manifestDigest1, ispec.MediaTypeImageManifest)
+			err = metaDB.SetRepoReference(repo2, tag1, image1)
 			So(err, ShouldBeNil)
 
 			repos, err := metaDB.GetBookmarkedRepos(ctx1)
@@ -1277,122 +1235,98 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 
 		Convey("Test IncrementImageDownloads", func() {
 			var (
-				repo1 = "repo1"
-				tag1  = "0.0.1"
+				repo1  = "repo1"
+				tag1   = "0.0.1"
+				image1 = CreateRandomImage().AsImageMeta()
 			)
 
-			configBlob, manifestBlob, err := generateTestImage()
-			So(err, ShouldBeNil)
-
-			manifestDigest := godigest.FromBytes(manifestBlob)
-
-			err = metaDB.SetRepoReference(repo1, tag1, manifestDigest, ispec.MediaTypeImageManifest)
-			So(err, ShouldBeNil)
-
-			err = metaDB.SetManifestMeta(repo1, manifestDigest, mTypes.ManifestMetadata{
-				ManifestBlob: manifestBlob,
-				ConfigBlob:   configBlob,
-			})
+			err := metaDB.SetRepoReference(repo1, tag1, image1)
 			So(err, ShouldBeNil)
 
 			err = metaDB.IncrementImageDownloads(repo1, tag1)
 			So(err, ShouldBeNil)
 
-			repoMeta, err := metaDB.GetRepoMeta(repo1)
+			repoMeta, err := metaDB.GetRepoMeta(ctx, repo1)
 			So(err, ShouldBeNil)
 
-			So(repoMeta.Statistics[manifestDigest.String()].DownloadCount, ShouldEqual, 1)
+			So(repoMeta.Statistics[image1.Digest.String()].DownloadCount, ShouldEqual, 1)
 
 			err = metaDB.IncrementImageDownloads(repo1, tag1)
 			So(err, ShouldBeNil)
 
-			repoMeta, err = metaDB.GetRepoMeta(repo1)
+			repoMeta, err = metaDB.GetRepoMeta(ctx, repo1)
 			So(err, ShouldBeNil)
 
-			So(repoMeta.Statistics[manifestDigest.String()].DownloadCount, ShouldEqual, 2)
-
-			_, err = metaDB.GetManifestMeta(repo1, "badManiestDigest")
-			So(err, ShouldNotBeNil)
+			So(repoMeta.Statistics[image1.Digest.String()].DownloadCount, ShouldEqual, 2)
 		})
 
 		Convey("Test AddImageSignature", func() {
 			var (
-				repo1           = "repo1"
-				tag1            = "0.0.1"
-				manifestDigest1 = godigest.FromString("fake-manifest1")
+				repo1  = "repo1"
+				tag1   = "0.0.1"
+				image1 = CreateRandomImage().AsImageMeta()
 			)
 
-			err := metaDB.SetRepoReference(repo1, tag1, manifestDigest1, ispec.MediaTypeImageManifest)
+			err := metaDB.SetRepoReference(repo1, tag1, image1)
 			So(err, ShouldBeNil)
 
-			err = metaDB.SetManifestMeta(repo1, manifestDigest1, mTypes.ManifestMetadata{})
-			So(err, ShouldBeNil)
-
-			err = metaDB.AddManifestSignature(repo1, manifestDigest1, mTypes.SignatureMetadata{
+			err = metaDB.AddManifestSignature(repo1, image1.Digest, mTypes.SignatureMetadata{
 				SignatureType:   "cosign",
 				SignatureDigest: "digest",
+				LayersInfo:      []mTypes.LayerInfo{{LayerDigest: "layer-digest", LayerContent: []byte{10}}},
 			})
 			So(err, ShouldBeNil)
 
-			repoMeta, err := metaDB.GetRepoMeta(repo1)
+			repoMeta, err := metaDB.GetRepoMeta(ctx, repo1)
 			So(err, ShouldBeNil)
-			So(repoMeta.Signatures[manifestDigest1.String()]["cosign"][0].SignatureManifestDigest,
+			So(repoMeta.Signatures[image1.Digest.String()]["cosign"][0].SignatureManifestDigest,
 				ShouldResemble, "digest")
 
-			_, err = metaDB.GetManifestMeta(repo1, "badDigest")
-			So(err, ShouldNotBeNil)
+			imageMeta, err := metaDB.GetImageMeta(image1.Digest)
+
+			fullImageMeta := convert.GetFullImageMeta(tag1, repoMeta, imageMeta)
+			So(err, ShouldBeNil)
+			So(fullImageMeta.Signatures["cosign"][0].SignatureManifestDigest, ShouldResemble, "digest")
+			So(fullImageMeta.Signatures["cosign"][0].LayersInfo[0].LayerDigest, ShouldResemble, "layer-digest")
+			So(fullImageMeta.Signatures["cosign"][0].LayersInfo[0].LayerContent[0], ShouldEqual, 10)
 		})
 
 		Convey("Test UpdateSignaturesValidity", func() {
 			Convey("untrusted signature", func() {
 				var (
-					repo1           = "repo1"
-					tag1            = "0.0.1"
-					manifestDigest1 = godigest.FromString("dig")
+					repo1  = "repo1"
+					tag1   = "0.0.1"
+					image1 = CreateRandomImage()
 				)
 
-				err := metaDB.SetRepoReference(repo1, tag1, manifestDigest1, ispec.MediaTypeImageManifest)
-				So(err, ShouldBeNil)
-
-				err = metaDB.SetManifestMeta(repo1, manifestDigest1, mTypes.ManifestMetadata{
-					ManifestBlob: []byte("Bad Manifest"),
-					ConfigBlob:   []byte("Bad Manifest"),
-				})
+				err := metaDB.SetRepoReference(repo1, tag1, image1.AsImageMeta())
 				So(err, ShouldBeNil)
 
 				layerInfo := mTypes.LayerInfo{LayerDigest: "", LayerContent: []byte{}, SignatureKey: ""}
 
-				err = metaDB.AddManifestSignature(repo1, manifestDigest1, mTypes.SignatureMetadata{
+				err = metaDB.AddManifestSignature(repo1, image1.Digest(), mTypes.SignatureMetadata{
 					SignatureType:   "cosign",
-					SignatureDigest: string(manifestDigest1),
+					SignatureDigest: image1.DigestStr(),
 					LayersInfo:      []mTypes.LayerInfo{layerInfo},
 				})
 				So(err, ShouldBeNil)
 
-				err = metaDB.UpdateSignaturesValidity(repo1, manifestDigest1)
+				err = metaDB.UpdateSignaturesValidity(repo1, image1.Digest())
 				So(err, ShouldBeNil)
 
-				repoData, err := metaDB.GetRepoMeta(repo1)
+				repoData, err := metaDB.GetRepoMeta(ctx, repo1)
 				So(err, ShouldBeNil)
-				So(repoData.Signatures[string(manifestDigest1)]["cosign"][0].LayersInfo[0].Signer,
+				So(repoData.Signatures[image1.DigestStr()]["cosign"][0].LayersInfo[0].Signer,
 					ShouldBeEmpty)
-				So(repoData.Signatures[string(manifestDigest1)]["cosign"][0].LayersInfo[0].Date,
+				So(repoData.Signatures[image1.DigestStr()]["cosign"][0].LayersInfo[0].Date,
 					ShouldBeZeroValue)
 			})
 			Convey("trusted signature", func() {
-				_, _, manifest, _ := deprecated.GetRandomImageComponents(10) //nolint:staticcheck
-				manifestContent, _ := json.Marshal(manifest)
-				manifestDigest := godigest.FromBytes(manifestContent)
-				repo := "repo"
+				image1 := CreateRandomImage()
+				repo := "repo1"
 				tag := "0.0.1"
 
-				err := metaDB.SetRepoReference(repo, tag, manifestDigest, ispec.MediaTypeImageManifest)
-				So(err, ShouldBeNil)
-
-				err = metaDB.SetManifestMeta(repo, manifestDigest, mTypes.ManifestMetadata{
-					ManifestBlob: manifestContent,
-					ConfigBlob:   []byte("configContent"),
-				})
+				err := metaDB.SetRepoReference(repo, tag, image1.AsImageMeta())
 				So(err, ShouldBeNil)
 
 				mediaType := jws.MediaTypeEnvelope
@@ -1424,7 +1358,7 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 				signingKeys, err := signature.LoadNotationSigningkeys(tdir)
 				So(err, ShouldBeNil)
 
-				idx := test.Index(signingKeys.Keys, keyName)
+				idx := tCommon.Index(signingKeys.Keys, keyName)
 				So(idx, ShouldBeGreaterThanOrEqualTo, 0)
 
 				key := signingKeys.Keys[idx]
@@ -1435,9 +1369,9 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 				}
 
 				descToSign := ispec.Descriptor{
-					MediaType: manifest.MediaType,
-					Digest:    manifestDigest,
-					Size:      int64(len(manifestContent)),
+					MediaType: image1.Manifest.MediaType,
+					Digest:    image1.Digest(),
+					Size:      image1.ManifestDescriptor.Size,
 				}
 
 				ctx := context.Background()
@@ -1450,7 +1384,7 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 					LayerContent: sig, SignatureKey: mediaType,
 				}
 
-				err = metaDB.AddManifestSignature(repo, manifestDigest, mTypes.SignatureMetadata{
+				err = metaDB.AddManifestSignature(repo, image1.Digest(), mTypes.SignatureMetadata{
 					SignatureType:   "notation",
 					SignatureDigest: string(godigest.FromString("signature digest")),
 					LayersInfo:      []mTypes.LayerInfo{layerInfo},
@@ -1471,80 +1405,71 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 				err = imagetrust.UploadCertificate(imgTrustStore.NotationStorage, certificateContent, "ca")
 				So(err, ShouldBeNil)
 
-				err = metaDB.UpdateSignaturesValidity(repo, manifestDigest) //nolint:contextcheck
+				err = metaDB.UpdateSignaturesValidity(repo, image1.Digest()) //nolint:contextcheck
 				So(err, ShouldBeNil)
 
-				repoData, err := metaDB.GetRepoMeta(repo)
+				repoData, err := metaDB.GetRepoMeta(ctx, repo)
 				So(err, ShouldBeNil)
 
-				So(repoData.Signatures[string(manifestDigest)]["notation"][0].LayersInfo[0].Signer,
+				So(repoData.Signatures[image1.DigestStr()]["notation"][0].LayersInfo[0].Signer,
 					ShouldNotBeEmpty)
-				So(repoData.Signatures[string(manifestDigest)]["notation"][0].LayersInfo[0].Date,
+				So(repoData.Signatures[image1.DigestStr()]["notation"][0].LayersInfo[0].Date,
 					ShouldNotBeZeroValue)
 			})
 		})
 
 		Convey("Test AddImageSignature with inverted order", func() {
 			var (
-				repo1           = "repo1"
-				tag1            = "0.0.1"
-				manifestDigest1 = godigest.FromString("fake-manifest1")
+				repo1  = "repo1"
+				tag1   = "0.0.1"
+				image1 = CreateRandomImage()
 			)
 
-			err := metaDB.AddManifestSignature(repo1, manifestDigest1, mTypes.SignatureMetadata{
+			err := metaDB.AddManifestSignature(repo1, image1.Digest(), mTypes.SignatureMetadata{
 				SignatureType:   "cosign",
 				SignatureDigest: "digest",
 			})
 			So(err, ShouldBeNil)
 
-			err = metaDB.SetRepoReference(repo1, tag1, manifestDigest1, ispec.MediaTypeImageManifest)
+			err = metaDB.SetRepoReference(repo1, tag1, image1.AsImageMeta())
 			So(err, ShouldBeNil)
 
-			err = metaDB.SetManifestData(manifestDigest1, mTypes.ManifestData{})
+			repoMeta, err := metaDB.GetRepoMeta(ctx, repo1)
 			So(err, ShouldBeNil)
-
-			repoMeta, err := metaDB.GetRepoMeta(repo1)
-			So(err, ShouldBeNil)
-			So(repoMeta.Signatures[manifestDigest1.String()]["cosign"][0].SignatureManifestDigest,
+			So(repoMeta.Signatures[image1.DigestStr()]["cosign"][0].SignatureManifestDigest,
 				ShouldResemble, "digest")
-
-			_, err = metaDB.GetManifestMeta(repo1, "badDigest")
-			So(err, ShouldNotBeNil)
 		})
 
 		Convey("Test DeleteSignature", func() {
 			var (
-				repo1           = "repo1"
-				tag1            = "0.0.1"
-				manifestDigest1 = godigest.FromString("fake-manifest1")
+				repo1  = "repo1"
+				tag1   = "0.0.1"
+				image1 = CreateRandomImage()
 			)
 
-			err := metaDB.SetRepoReference(repo1, tag1, manifestDigest1, ispec.MediaTypeImageManifest)
+			err := metaDB.SetRepoReference(repo1, tag1, image1.AsImageMeta())
 			So(err, ShouldBeNil)
 
-			err = metaDB.SetManifestData(manifestDigest1, mTypes.ManifestData{})
-			So(err, ShouldBeNil)
-
-			err = metaDB.AddManifestSignature(repo1, manifestDigest1, mTypes.SignatureMetadata{
+			err = metaDB.AddManifestSignature(repo1, image1.Digest(), mTypes.SignatureMetadata{
 				SignatureType:   "cosign",
 				SignatureDigest: "digest",
 			})
 			So(err, ShouldBeNil)
 
-			repoMeta, err := metaDB.GetRepoMeta(repo1)
+			repoMeta, err := metaDB.GetRepoMeta(ctx, repo1)
 			So(err, ShouldBeNil)
-			So(repoMeta.Signatures[manifestDigest1.String()]["cosign"][0].SignatureManifestDigest,
+			So(repoMeta.Signatures[image1.DigestStr()]["cosign"][0].SignatureManifestDigest,
 				ShouldResemble, "digest")
 
-			err = metaDB.DeleteSignature(repo1, manifestDigest1, mTypes.SignatureMetadata{
+			err = metaDB.DeleteSignature(repo1, image1.Digest(), mTypes.SignatureMetadata{
 				SignatureType:   "cosign",
 				SignatureDigest: "digest",
 			})
 			So(err, ShouldBeNil)
 
-			repoMeta, err = metaDB.GetRepoMeta(repo1)
+			repoMeta, err = metaDB.GetRepoMeta(ctx, repo1)
 			So(err, ShouldBeNil)
-			So(repoMeta.Signatures[manifestDigest1.String()]["cosign"], ShouldBeEmpty)
+			So(repoMeta.Signatures[image1.DigestStr()]["cosign"], ShouldBeEmpty)
 
 			err = metaDB.DeleteSignature(repo1, "badDigest", mTypes.SignatureMetadata{
 				SignatureType:   "cosign",
@@ -1555,138 +1480,89 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 
 		Convey("Test SearchRepos", func() {
 			var (
-				repo1           = "repo1"
-				repo2           = "repo2"
-				repo3           = "repo3"
-				tag1            = "0.0.1"
-				manifestDigest1 = godigest.FromString("fake-manifest1")
-				tag2            = "0.0.2"
-				manifestDigest2 = godigest.FromString("fake-manifest2")
-				tag3            = "0.0.3"
-				manifestDigest3 = godigest.FromString("fake-manifest3")
-				ctx             = context.Background()
-				emptyManifest   ispec.Manifest
-				emptyConfig     ispec.Manifest
+				repo1  = "repo1"
+				repo2  = "repo2"
+				repo3  = "repo3"
+				tag1   = "0.0.1"
+				tag2   = "0.0.2"
+				tag3   = "0.0.3"
+				image1 = CreateRandomImage()
+				image2 = CreateRandomImage()
+				image3 = CreateRandomImage()
+				ctx    = context.Background()
 			)
-			emptyManifestBlob, err := json.Marshal(emptyManifest)
-			So(err, ShouldBeNil)
-
-			emptyConfigBlob, err := json.Marshal(emptyConfig)
-			So(err, ShouldBeNil)
-
-			emptyRepoMeta := mTypes.ManifestMetadata{
-				ManifestBlob: emptyManifestBlob,
-				ConfigBlob:   emptyConfigBlob,
-			}
-
+			_ = repo3
 			Convey("Search all repos", func() {
-				err := metaDB.SetRepoReference(repo1, tag1, manifestDigest1, ispec.MediaTypeImageManifest)
+				err := metaDB.SetRepoReference(repo1, tag1, image1.AsImageMeta())
 				So(err, ShouldBeNil)
-				err = metaDB.SetRepoReference(repo1, tag2, manifestDigest2, ispec.MediaTypeImageManifest)
+				err = metaDB.SetRepoReference(repo1, tag2, image2.AsImageMeta())
 				So(err, ShouldBeNil)
-				err = metaDB.SetRepoReference(repo2, tag3, manifestDigest3, ispec.MediaTypeImageManifest)
-				So(err, ShouldBeNil)
-
-				err = metaDB.SetManifestMeta(repo1, manifestDigest1, emptyRepoMeta)
-				So(err, ShouldBeNil)
-				err = metaDB.SetManifestMeta(repo1, manifestDigest2, emptyRepoMeta)
-				So(err, ShouldBeNil)
-				err = metaDB.SetManifestMeta(repo1, manifestDigest3, emptyRepoMeta)
+				err = metaDB.SetRepoReference(repo2, tag3, image3.AsImageMeta())
 				So(err, ShouldBeNil)
 
-				repos, manifestMetaMap, _, err := metaDB.SearchRepos(ctx, "")
+				repoMetaList, err := metaDB.SearchRepos(ctx, "")
 				So(err, ShouldBeNil)
-				So(len(repos), ShouldEqual, 2)
-				So(len(manifestMetaMap), ShouldEqual, 3)
-				So(manifestMetaMap, ShouldContainKey, manifestDigest1.String())
-				So(manifestMetaMap, ShouldContainKey, manifestDigest2.String())
-				So(manifestMetaMap, ShouldContainKey, manifestDigest3.String())
+				So(len(repoMetaList), ShouldEqual, 2)
+
+				So(repoMetaList[0].Tags[tag1].Digest, ShouldResemble, image1.DigestStr())
+				So(repoMetaList[0].Tags[tag2].Digest, ShouldResemble, image2.DigestStr())
+				So(repoMetaList[1].Tags[tag3].Digest, ShouldResemble, image3.DigestStr())
 			})
 
 			Convey("Search a repo by name", func() {
-				err := metaDB.SetRepoReference(repo1, tag1, manifestDigest1, ispec.MediaTypeImageManifest)
+				err := metaDB.SetRepoReference(repo1, tag1, image1.AsImageMeta())
 				So(err, ShouldBeNil)
 
-				err = metaDB.SetManifestMeta(repo1, manifestDigest1, emptyRepoMeta)
+				repoMetaList, err := metaDB.SearchRepos(ctx, repo1)
 				So(err, ShouldBeNil)
-
-				repos, manifestMetaMap, _, err := metaDB.SearchRepos(ctx, repo1)
-				So(err, ShouldBeNil)
-				So(len(repos), ShouldEqual, 1)
-				So(len(manifestMetaMap), ShouldEqual, 1)
-				So(manifestMetaMap, ShouldContainKey, manifestDigest1.String())
+				So(len(repoMetaList), ShouldEqual, 1)
+				So(repoMetaList[0].Tags[tag1].Digest, ShouldResemble, image1.DigestStr())
 			})
 
 			Convey("Search non-existing repo by name", func() {
-				err := metaDB.SetRepoReference(repo1, tag1, manifestDigest1, ispec.MediaTypeImageManifest)
+				err := metaDB.SetRepoReference(repo1, tag1, image1.AsImageMeta())
 				So(err, ShouldBeNil)
 
-				err = metaDB.SetRepoReference(repo1, tag2, manifestDigest2, ispec.MediaTypeImageManifest)
+				err = metaDB.SetRepoReference(repo1, tag2, image2.AsImageMeta())
 				So(err, ShouldBeNil)
 
-				repos, manifestMetaMap, _, err := metaDB.SearchRepos(ctx, "RepoThatDoesntExist")
+				repoMetaList, err := metaDB.SearchRepos(ctx, "RepoThatDoesntExist")
 				So(err, ShouldBeNil)
-				So(len(repos), ShouldEqual, 0)
-				So(len(manifestMetaMap), ShouldEqual, 0)
+				So(len(repoMetaList), ShouldEqual, 0)
 			})
 
 			Convey("Search with partial match", func() {
-				err := metaDB.SetRepoReference("alpine", tag1, manifestDigest1, ispec.MediaTypeImageManifest)
+				err := metaDB.SetRepoReference("alpine", tag1, image1.AsImageMeta())
 				So(err, ShouldBeNil)
-				err = metaDB.SetRepoReference("pine", tag2, manifestDigest2, ispec.MediaTypeImageManifest)
+				err = metaDB.SetRepoReference("pine", tag2, image2.AsImageMeta())
 				So(err, ShouldBeNil)
-				err = metaDB.SetRepoReference("golang", tag3, manifestDigest3, ispec.MediaTypeImageManifest)
-				So(err, ShouldBeNil)
-
-				err = metaDB.SetManifestMeta("alpine", manifestDigest1, emptyRepoMeta)
-				So(err, ShouldBeNil)
-				err = metaDB.SetManifestMeta("pine", manifestDigest2, emptyRepoMeta)
-				So(err, ShouldBeNil)
-				err = metaDB.SetManifestMeta("golang", manifestDigest3, emptyRepoMeta)
+				err = metaDB.SetRepoReference("golang", tag3, image3.AsImageMeta())
 				So(err, ShouldBeNil)
 
-				repos, manifestMetaMap, _, err := metaDB.SearchRepos(ctx, "pine")
+				repoMetaList, err := metaDB.SearchRepos(ctx, "pine")
 				So(err, ShouldBeNil)
-				So(len(repos), ShouldEqual, 2)
-				So(manifestMetaMap, ShouldContainKey, manifestDigest1.String())
-				So(manifestMetaMap, ShouldContainKey, manifestDigest2.String())
-				So(manifestMetaMap, ShouldNotContainKey, manifestDigest3.String())
+				So(len(repoMetaList), ShouldEqual, 2)
 			})
 
 			Convey("Search multiple repos that share manifests", func() {
-				err := metaDB.SetRepoReference(repo1, tag1, manifestDigest1, ispec.MediaTypeImageManifest)
+				err := metaDB.SetRepoReference("alpine", tag1, image1.AsImageMeta())
 				So(err, ShouldBeNil)
-				err = metaDB.SetRepoReference(repo2, tag2, manifestDigest1, ispec.MediaTypeImageManifest)
+				err = metaDB.SetRepoReference("pine", tag2, image1.AsImageMeta())
 				So(err, ShouldBeNil)
-				err = metaDB.SetRepoReference(repo3, tag3, manifestDigest1, ispec.MediaTypeImageManifest)
-				So(err, ShouldBeNil)
-
-				err = metaDB.SetManifestMeta(repo1, manifestDigest1, emptyRepoMeta)
-				So(err, ShouldBeNil)
-				err = metaDB.SetManifestMeta(repo2, manifestDigest1, emptyRepoMeta)
-				So(err, ShouldBeNil)
-				err = metaDB.SetManifestMeta(repo3, manifestDigest1, emptyRepoMeta)
+				err = metaDB.SetRepoReference("golang", tag3, image1.AsImageMeta())
 				So(err, ShouldBeNil)
 
-				repos, manifestMetaMap, _, err := metaDB.SearchRepos(ctx, "")
+				repoMetaList, err := metaDB.SearchRepos(ctx, "")
 				So(err, ShouldBeNil)
-				So(len(repos), ShouldEqual, 3)
-				So(len(manifestMetaMap), ShouldEqual, 1)
+				So(len(repoMetaList), ShouldEqual, 3)
 			})
 
 			Convey("Search repos with access control", func() {
-				err := metaDB.SetRepoReference(repo1, tag1, manifestDigest1, ispec.MediaTypeImageManifest)
+				err := metaDB.SetRepoReference(repo1, tag1, image1.AsImageMeta())
 				So(err, ShouldBeNil)
-				err = metaDB.SetRepoReference(repo2, tag2, manifestDigest1, ispec.MediaTypeImageManifest)
+				err = metaDB.SetRepoReference(repo2, tag2, image2.AsImageMeta())
 				So(err, ShouldBeNil)
-				err = metaDB.SetRepoReference(repo3, tag3, manifestDigest1, ispec.MediaTypeImageManifest)
-				So(err, ShouldBeNil)
-
-				err = metaDB.SetManifestMeta(repo1, manifestDigest1, emptyRepoMeta)
-				So(err, ShouldBeNil)
-				err = metaDB.SetManifestMeta(repo2, manifestDigest1, emptyRepoMeta)
-				So(err, ShouldBeNil)
-				err = metaDB.SetManifestMeta(repo3, manifestDigest1, emptyRepoMeta)
+				err = metaDB.SetRepoReference(repo3, tag3, image3.AsImageMeta())
 				So(err, ShouldBeNil)
 
 				userAc := reqCtx.NewUserAccessControl()
@@ -1698,153 +1574,84 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 
 				ctx := userAc.DeriveContext(context.Background())
 
-				repos, _, _, err := metaDB.SearchRepos(ctx, "repo")
+				repoMetaList, err := metaDB.SearchRepos(ctx, "repo")
 				So(err, ShouldBeNil)
-				So(len(repos), ShouldEqual, 2)
-				for _, k := range repos {
+				So(len(repoMetaList), ShouldEqual, 2)
+				for _, k := range repoMetaList {
 					So(k.Name, ShouldBeIn, []string{repo1, repo2})
 				}
 			})
 
 			Convey("Search Repos with Indexes", func() {
 				var (
-					tag4            = "0.0.4"
-					indexDigest     = godigest.FromString("Multiarch")
-					manifestDigest1 = godigest.FromString("manifestDigest1")
-					manifestDigest2 = godigest.FromString("manifestDigest2")
+					tag4      = "0.0.4"
+					subImage1 = CreateRandomImage()
+					subImage2 = CreateRandomImage()
+					multiarch = CreateMultiarchWith().Images([]Image{subImage1, subImage2}).Build()
 
-					tag5            = "0.0.5"
-					manifestDigest3 = godigest.FromString("manifestDigest3")
+					tag5   = "0.0.5"
+					image1 = CreateRandomImage()
 				)
 
-				err := metaDB.SetManifestData(manifestDigest1, mTypes.ManifestData{
-					ManifestBlob: []byte("{}"),
-					ConfigBlob:   []byte("{}"),
-				})
+				err := metaDB.SetRepoReference("repo", subImage1.DigestStr(), subImage1.AsImageMeta())
+				So(err, ShouldBeNil)
+				err = metaDB.SetRepoReference("repo", subImage2.DigestStr(), subImage2.AsImageMeta())
+				So(err, ShouldBeNil)
+				err = metaDB.SetRepoReference("repo", tag4, multiarch.AsImageMeta())
 				So(err, ShouldBeNil)
 
-				config := ispec.Image{
-					Platform: ispec.Platform{
-						Architecture: "arch",
-						OS:           "os",
-					},
-				}
-
-				confBlob, err := json.Marshal(config)
+				err = metaDB.SetRepoReference("repo", tag5, image1.AsImageMeta())
 				So(err, ShouldBeNil)
 
-				err = metaDB.SetManifestData(manifestDigest2, mTypes.ManifestData{
-					ManifestBlob: []byte("{}"),
-					ConfigBlob:   confBlob,
-				})
-				So(err, ShouldBeNil)
-				err = metaDB.SetManifestData(manifestDigest3, mTypes.ManifestData{
-					ManifestBlob: []byte("{}"),
-					ConfigBlob:   []byte("{}"),
-				})
+				repoMetaList, err := metaDB.SearchRepos(ctx, "repo")
 				So(err, ShouldBeNil)
 
-				indexContent := ispec.Index{
-					MediaType: ispec.MediaTypeImageIndex,
-					Manifests: []ispec.Descriptor{
-						{
-							Digest: manifestDigest1,
-						},
-						{
-							Digest: manifestDigest2,
-						},
-					},
-				}
-
-				indexBlob, err := json.Marshal(indexContent)
-				So(err, ShouldBeNil)
-
-				err = metaDB.SetIndexData(indexDigest, mTypes.IndexData{
-					IndexBlob: indexBlob,
-				})
-				So(err, ShouldBeNil)
-
-				err = metaDB.SetRepoReference("repo", tag4, indexDigest, ispec.MediaTypeImageIndex)
-				So(err, ShouldBeNil)
-
-				err = metaDB.SetRepoReference("repo", tag5, manifestDigest3, ispec.MediaTypeImageManifest)
-				So(err, ShouldBeNil)
-
-				repos, manifestMetaMap, indexDataMap, err := metaDB.SearchRepos(ctx, "repo")
-				So(err, ShouldBeNil)
-
-				So(len(repos), ShouldEqual, 1)
-				So(repos[0].Name, ShouldResemble, "repo")
-				So(repos[0].Tags, ShouldContainKey, tag4)
-				So(repos[0].Tags, ShouldContainKey, tag5)
-				So(manifestMetaMap, ShouldContainKey, manifestDigest1.String())
-				So(manifestMetaMap, ShouldContainKey, manifestDigest2.String())
-				So(manifestMetaMap, ShouldContainKey, manifestDigest3.String())
-				So(indexDataMap, ShouldContainKey, indexDigest.String())
+				So(len(repoMetaList), ShouldEqual, 1)
+				So(repoMetaList[0].Name, ShouldResemble, "repo")
+				So(repoMetaList[0].Tags, ShouldContainKey, tag4)
+				So(repoMetaList[0].Tags[tag4].MediaType, ShouldResemble, ispec.MediaTypeImageIndex)
+				So(repoMetaList[0].Tags, ShouldContainKey, tag5)
+				So(repoMetaList[0].Tags[tag5].MediaType, ShouldResemble, ispec.MediaTypeImageManifest)
 			})
 		})
 
 		Convey("Test SearchTags", func() {
 			var (
-				repo1           = "repo1"
-				repo2           = "repo2"
-				manifestDigest1 = godigest.FromString("fake-manifest1")
-				manifestDigest2 = godigest.FromString("fake-manifest2")
-				manifestDigest3 = godigest.FromString("fake-manifest3")
-				ctx             = context.Background()
-				emptyManifest   ispec.Manifest
-				emptyConfig     ispec.Manifest
+				repo1  = "repo1"
+				repo2  = "repo2"
+				image1 = CreateRandomImage()
+				image2 = CreateRandomImage()
+				image3 = CreateRandomImage()
+				ctx    = context.Background()
 			)
 
-			emptyManifestBlob, err := json.Marshal(emptyManifest)
+			err := metaDB.SetRepoReference(repo1, "0.0.1", image1.AsImageMeta())
 			So(err, ShouldBeNil)
-
-			emptyConfigBlob, err := json.Marshal(emptyConfig)
+			err = metaDB.SetRepoReference(repo1, "0.0.2", image3.AsImageMeta())
 			So(err, ShouldBeNil)
-
-			emptyRepoMeta := mTypes.ManifestMetadata{
-				ManifestBlob: emptyManifestBlob,
-				ConfigBlob:   emptyConfigBlob,
-			}
-
-			err = metaDB.SetRepoReference(repo1, "0.0.1", manifestDigest1, ispec.MediaTypeImageManifest)
+			err = metaDB.SetRepoReference(repo1, "0.1.0", image2.AsImageMeta())
 			So(err, ShouldBeNil)
-			err = metaDB.SetRepoReference(repo1, "0.0.2", manifestDigest3, ispec.MediaTypeImageManifest)
+			err = metaDB.SetRepoReference(repo1, "1.0.0", image2.AsImageMeta())
 			So(err, ShouldBeNil)
-			err = metaDB.SetRepoReference(repo1, "0.1.0", manifestDigest2, ispec.MediaTypeImageManifest)
+			err = metaDB.SetRepoReference(repo1, "1.0.1", image2.AsImageMeta())
 			So(err, ShouldBeNil)
-			err = metaDB.SetRepoReference(repo1, "1.0.0", manifestDigest2, ispec.MediaTypeImageManifest)
-			So(err, ShouldBeNil)
-			err = metaDB.SetRepoReference(repo1, "1.0.1", manifestDigest2, ispec.MediaTypeImageManifest)
-			So(err, ShouldBeNil)
-			err = metaDB.SetRepoReference(repo2, "0.0.1", manifestDigest3, ispec.MediaTypeImageManifest)
-			So(err, ShouldBeNil)
-
-			err = metaDB.SetManifestMeta(repo1, manifestDigest1, emptyRepoMeta)
-			So(err, ShouldBeNil)
-			err = metaDB.SetManifestMeta(repo1, manifestDigest2, emptyRepoMeta)
-			So(err, ShouldBeNil)
-			err = metaDB.SetManifestMeta(repo1, manifestDigest3, emptyRepoMeta)
-			So(err, ShouldBeNil)
-			err = metaDB.SetManifestMeta(repo2, manifestDigest3, emptyRepoMeta)
+			err = metaDB.SetRepoReference(repo2, "0.0.1", image3.AsImageMeta())
 			So(err, ShouldBeNil)
 
 			Convey("With exact match", func() {
-				repos, manifestMetaMap, _, err := metaDB.SearchTags(ctx, "repo1:0.0.1")
+				fullImageMetaList, err := metaDB.SearchTags(ctx, "repo1:0.0.1")
 				So(err, ShouldBeNil)
-				So(len(repos), ShouldEqual, 1)
-				So(len(repos[0].Tags), ShouldEqual, 1)
-				So(repos[0].Tags, ShouldContainKey, "0.0.1")
-				So(manifestMetaMap, ShouldContainKey, manifestDigest1.String())
+				So(len(fullImageMetaList), ShouldEqual, 1)
+				So(fullImageMetaList[0].Digest.String(), ShouldResemble, image1.DigestStr())
 			})
 
 			Convey("With no match", func() {
-				repos, _, _, err := metaDB.SearchTags(ctx, "repo1:badtag")
+				fullImageMetaList, err := metaDB.SearchTags(ctx, "repo1:badtag")
 				So(err, ShouldBeNil)
-				So(len(repos), ShouldEqual, 0)
+				So(len(fullImageMetaList), ShouldEqual, 0)
 			})
 
-			Convey("With no permision", func() {
+			Convey("With no permission", func() {
 				userAc := reqCtx.NewUserAccessControl()
 				userAc.SetUsername("user1")
 				userAc.SetGlobPatterns("read",
@@ -1855,76 +1662,51 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 				)
 				ctx1 := userAc.DeriveContext(context.Background())
 
-				repos, _, _, err := metaDB.SearchTags(ctx1, "repo1:0.0.1")
+				fullImageMetaList, err := metaDB.SearchTags(ctx1, "repo1:0.0.1")
 				So(err, ShouldBeNil)
-				So(len(repos), ShouldEqual, 0)
+				So(len(fullImageMetaList), ShouldEqual, 0)
 			})
 
 			Convey("With partial repo path", func() {
-				repos, manifestMetaMap, _, err := metaDB.SearchTags(ctx, "repo:0.0.1")
+				fullImageMetaList, err := metaDB.SearchTags(ctx, "repo:0.0.1")
 				So(err, ShouldBeNil)
-				So(len(repos), ShouldEqual, 0)
-				So(len(manifestMetaMap), ShouldEqual, 0)
+				So(len(fullImageMetaList), ShouldEqual, 0)
 			})
 
 			Convey("With partial tag", func() {
-				repos, manifestMetaMap, _, err := metaDB.SearchTags(ctx, "repo1:0.0")
+				fullImageMetaList, err := metaDB.SearchTags(ctx, "repo1:0.0")
 				So(err, ShouldBeNil)
-				So(len(repos), ShouldEqual, 1)
-				So(len(repos[0].Tags), ShouldEqual, 2)
-				So(repos[0].Tags, ShouldContainKey, "0.0.2")
-				So(repos[0].Tags, ShouldContainKey, "0.0.1")
-				So(manifestMetaMap, ShouldContainKey, manifestDigest1.String())
-				So(manifestMetaMap, ShouldContainKey, manifestDigest3.String())
+				So(len(fullImageMetaList), ShouldEqual, 2)
 
-				repos, manifestMetaMap, _, err = metaDB.SearchTags(ctx, "repo1:0.")
+				tags := map[string]struct{}{}
+				for _, imageMeta := range fullImageMetaList {
+					tags[imageMeta.Tag] = struct{}{}
+				}
+
+				So(tags, ShouldContainKey, "0.0.2")
+				So(tags, ShouldContainKey, "0.0.1")
+
+				fullImageMetaList, err = metaDB.SearchTags(ctx, "repo1:0.")
 				So(err, ShouldBeNil)
-				So(len(repos), ShouldEqual, 1)
-				So(len(repos[0].Tags), ShouldEqual, 3)
-				So(repos[0].Tags, ShouldContainKey, "0.0.1")
-				So(repos[0].Tags, ShouldContainKey, "0.0.2")
-				So(repos[0].Tags, ShouldContainKey, "0.1.0")
-				So(manifestMetaMap, ShouldContainKey, manifestDigest1.String())
-				So(manifestMetaMap, ShouldContainKey, manifestDigest2.String())
-				So(manifestMetaMap, ShouldContainKey, manifestDigest3.String())
+				So(len(fullImageMetaList), ShouldEqual, 3)
+
+				tags = map[string]struct{}{}
+				for _, imageMeta := range fullImageMetaList {
+					tags[imageMeta.Tag] = struct{}{}
+				}
+
+				So(tags, ShouldContainKey, "0.0.1")
+				So(tags, ShouldContainKey, "0.0.2")
+				So(tags, ShouldContainKey, "0.1.0")
 			})
 
 			Convey("With bad query", func() {
-				repos, manifestMetaMap, _, err := metaDB.SearchTags(ctx, "repo:0.0.1:test")
+				fullImageMetaList, err := metaDB.SearchTags(ctx, "repo:0.0.1:test")
 				So(err, ShouldNotBeNil)
-				So(len(repos), ShouldEqual, 0)
-				So(len(manifestMetaMap), ShouldEqual, 0)
+				So(len(fullImageMetaList), ShouldEqual, 0)
 			})
 
 			Convey("Search with access control", func() {
-				var (
-					repo1           = "repo1"
-					repo2           = "repo2"
-					repo3           = "repo3"
-					tag1            = "0.0.1"
-					manifestDigest1 = godigest.FromString("fake-manifest1")
-					tag2            = "0.0.2"
-					tag3            = "0.0.3"
-				)
-
-				err := metaDB.SetRepoReference(repo1, tag1, manifestDigest1, ispec.MediaTypeImageManifest)
-				So(err, ShouldBeNil)
-				err = metaDB.SetRepoReference(repo2, tag2, manifestDigest1, ispec.MediaTypeImageManifest)
-				So(err, ShouldBeNil)
-				err = metaDB.SetRepoReference(repo3, tag3, manifestDigest1, ispec.MediaTypeImageManifest)
-				So(err, ShouldBeNil)
-
-				config := ispec.Image{}
-				configBlob, err := json.Marshal(config)
-				So(err, ShouldBeNil)
-
-				err = metaDB.SetManifestMeta(repo1, manifestDigest1, mTypes.ManifestMetadata{ConfigBlob: configBlob})
-				So(err, ShouldBeNil)
-				err = metaDB.SetManifestMeta(repo2, manifestDigest1, mTypes.ManifestMetadata{ConfigBlob: configBlob})
-				So(err, ShouldBeNil)
-				err = metaDB.SetManifestMeta(repo3, manifestDigest1, mTypes.ManifestMetadata{ConfigBlob: configBlob})
-				So(err, ShouldBeNil)
-
 				userAc := reqCtx.NewUserAccessControl()
 				userAc.SetUsername("username")
 				userAc.SetGlobPatterns("read", map[string]bool{
@@ -1934,297 +1716,205 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 
 				ctx := userAc.DeriveContext(context.Background())
 
-				repos, _, _, err := metaDB.SearchTags(ctx, "repo1:")
+				fullImageMetaList, err := metaDB.SearchTags(ctx, "repo1:")
 				So(err, ShouldBeNil)
-				So(len(repos), ShouldEqual, 1)
-				So(repos[0].Name, ShouldResemble, repo1)
+				So(len(fullImageMetaList), ShouldEqual, 5)
+				So(fullImageMetaList[0].Repo, ShouldResemble, repo1)
 
-				repos, _, _, err = metaDB.SearchTags(ctx, "repo2:")
+				fullImageMetaList, err = metaDB.SearchTags(ctx, "repo2:")
 				So(err, ShouldBeNil)
-				So(repos, ShouldBeEmpty)
+				So(fullImageMetaList, ShouldBeEmpty)
 			})
 
 			Convey("Search Tags with Indexes", func() {
 				var (
-					tag4            = "0.0.4"
-					indexDigest     = godigest.FromString("Multiarch")
-					manifestDigest1 = godigest.FromString("manifestDigest1")
-					manifestDigest2 = godigest.FromString("manifestDigest2")
+					tag4      = "0.0.4"
+					subImage1 = CreateRandomImage()
+					subImage2 = CreateRandomImage()
+					multiarch = CreateMultiarchWith().Images([]Image{subImage1, subImage2}).Build()
 
-					tag5            = "0.0.5"
-					manifestDigest3 = godigest.FromString("manifestDigest3")
+					tag5   = "0.0.5"
+					image5 = CreateRandomImage()
 
-					tag6            = "6.0.0"
-					manifestDigest4 = godigest.FromString("manifestDigest4")
+					tag6   = "6.0.0"
+					image6 = CreateRandomImage()
 				)
 
-				err := metaDB.SetManifestData(manifestDigest1, mTypes.ManifestData{
-					ManifestBlob: []byte("{}"),
-					ConfigBlob:   []byte("{}"),
-				})
+				err = metaDB.SetRepoReference("repo", subImage1.DigestStr(), subImage1.AsImageMeta())
+				So(err, ShouldBeNil)
+				err = metaDB.SetRepoReference("repo", subImage2.DigestStr(), subImage2.AsImageMeta())
+				So(err, ShouldBeNil)
+				err = metaDB.SetRepoReference("repo", tag4, multiarch.AsImageMeta())
 				So(err, ShouldBeNil)
 
-				config := ispec.Image{
-					Platform: ispec.Platform{
-						Architecture: "arch",
-						OS:           "os",
-					},
+				err = metaDB.SetRepoReference("repo", tag5, image5.AsImageMeta())
+				So(err, ShouldBeNil)
+
+				err = metaDB.SetRepoReference("repo", tag6, image6.AsImageMeta())
+				So(err, ShouldBeNil)
+
+				fullImageMetaList, err := metaDB.SearchTags(ctx, "repo:0.0")
+				So(err, ShouldBeNil)
+
+				tags := map[string]struct{}{}
+				for _, imageMeta := range fullImageMetaList {
+					tags[imageMeta.Tag] = struct{}{}
 				}
 
-				confBlob, err := json.Marshal(config)
-				So(err, ShouldBeNil)
+				So(len(fullImageMetaList), ShouldEqual, 2)
+				So(tags, ShouldContainKey, tag4)
+				So(tags, ShouldContainKey, tag5)
+				So(tags, ShouldNotContainKey, tag6)
 
-				err = metaDB.SetManifestData(manifestDigest2, mTypes.ManifestData{
-					ManifestBlob: []byte("{}"),
-					ConfigBlob:   confBlob,
-				})
-				So(err, ShouldBeNil)
-				err = metaDB.SetManifestData(manifestDigest3, mTypes.ManifestData{
-					ManifestBlob: []byte("{}"),
-					ConfigBlob:   []byte("{}"),
-				})
-				So(err, ShouldBeNil)
+				multiarchImageMeta := mTypes.FullImageMeta{}
+				found := false
 
-				err = metaDB.SetManifestData(manifestDigest4, mTypes.ManifestData{
-					ManifestBlob: []byte("{}"),
-					ConfigBlob:   []byte("{}"),
-				})
-				So(err, ShouldBeNil)
+				for _, imageMeta := range fullImageMetaList {
+					if imageMeta.MediaType == ispec.MediaTypeImageIndex {
+						multiarchImageMeta = imageMeta
+						found = true
+					}
+				}
 
-				indexBlob, err := GetIndexBlobWithManifests(
-					[]godigest.Digest{
-						manifestDigest1,
-						manifestDigest2,
-					},
-				)
-				So(err, ShouldBeNil)
+				So(found, ShouldBeTrue)
+				So(len(multiarchImageMeta.Manifests), ShouldEqual, 2)
 
-				err = metaDB.SetIndexData(indexDigest, mTypes.IndexData{
-					IndexBlob: indexBlob,
-				})
-				So(err, ShouldBeNil)
+				digests := []string{}
+				for _, manifest := range multiarchImageMeta.Manifests {
+					digests = append(digests, manifest.Digest.String())
+				}
 
-				err = metaDB.SetRepoReference("repo", tag4, indexDigest, ispec.MediaTypeImageIndex)
-				So(err, ShouldBeNil)
-
-				err = metaDB.SetRepoReference("repo", tag5, manifestDigest3, ispec.MediaTypeImageManifest)
-				So(err, ShouldBeNil)
-
-				err = metaDB.SetRepoReference("repo", tag6, manifestDigest4, ispec.MediaTypeImageManifest)
-				So(err, ShouldBeNil)
-
-				repos, manifestMetaMap, indexDataMap, err := metaDB.SearchTags(ctx, "repo:0.0")
-				So(err, ShouldBeNil)
-
-				So(len(repos), ShouldEqual, 1)
-				So(repos[0].Name, ShouldResemble, "repo")
-				So(repos[0].Tags, ShouldContainKey, tag4)
-				So(repos[0].Tags, ShouldContainKey, tag5)
-				So(repos[0].Tags, ShouldNotContainKey, tag6)
-				So(manifestMetaMap, ShouldContainKey, manifestDigest1.String())
-				So(manifestMetaMap, ShouldContainKey, manifestDigest2.String())
-				So(manifestMetaMap, ShouldContainKey, manifestDigest3.String())
-				So(manifestMetaMap, ShouldNotContainKey, manifestDigest4.String())
-				So(indexDataMap, ShouldContainKey, indexDigest.String())
+				So(digests, ShouldContain, subImage1.DigestStr())
+				So(digests, ShouldContain, subImage2.DigestStr())
 			})
-		})
 
-		Convey("Paginated tag search", func() {
-			var (
-				repo1           = "repo1"
-				tag1            = "0.0.1"
-				manifestDigest1 = godigest.FromString("fake-manifest1")
-				tag2            = "0.0.2"
-				tag3            = "0.0.3"
-				tag4            = "0.0.4"
-				tag5            = "0.0.5"
-			)
+			Convey("With referrer", func() {
+				refImage := CreateRandomImageWith().Subject(image1.DescriptorRef()).Build()
+				err := metaDB.SetRepoReference(repo1, "ref-tag", refImage.AsImageMeta())
+				So(err, ShouldBeNil)
 
-			err := metaDB.SetRepoReference(repo1, tag1, manifestDigest1, ispec.MediaTypeImageManifest)
-			So(err, ShouldBeNil)
-			err = metaDB.SetRepoReference(repo1, tag2, manifestDigest1, ispec.MediaTypeImageManifest)
-			So(err, ShouldBeNil)
-			err = metaDB.SetRepoReference(repo1, tag3, manifestDigest1, ispec.MediaTypeImageManifest)
-			So(err, ShouldBeNil)
-			err = metaDB.SetRepoReference(repo1, tag4, manifestDigest1, ispec.MediaTypeImageManifest)
-			So(err, ShouldBeNil)
-			err = metaDB.SetRepoReference(repo1, tag5, manifestDigest1, ispec.MediaTypeImageManifest)
-			So(err, ShouldBeNil)
-
-			config := ispec.Image{}
-			configBlob, err := json.Marshal(config)
-			So(err, ShouldBeNil)
-
-			err = metaDB.SetManifestMeta(repo1, manifestDigest1, mTypes.ManifestMetadata{ConfigBlob: configBlob})
-			So(err, ShouldBeNil)
-
-			repos, _, _, err := metaDB.SearchTags(context.TODO(), "repo1:")
-
-			So(err, ShouldBeNil)
-			So(len(repos), ShouldEqual, 1)
-			keys := make([]string, 0, len(repos[0].Tags))
-			for k := range repos[0].Tags {
-				keys = append(keys, k)
-			}
-
-			repos, _, _, err = metaDB.SearchTags(context.TODO(), "repo1:")
-
-			So(err, ShouldBeNil)
-			So(len(repos), ShouldEqual, 1)
-			for k := range repos[0].Tags {
-				keys = append(keys, k)
-			}
-
-			repos, _, _, err = metaDB.SearchTags(context.TODO(), "repo1:")
-
-			So(err, ShouldBeNil)
-			So(len(repos), ShouldEqual, 1)
-			for k := range repos[0].Tags {
-				keys = append(keys, k)
-			}
-
-			So(keys, ShouldContain, tag1)
-			So(keys, ShouldContain, tag2)
-			So(keys, ShouldContain, tag3)
+				fullImageMetaList, err := metaDB.SearchTags(ctx, "repo1:0.0.1")
+				So(err, ShouldBeNil)
+				So(len(fullImageMetaList), ShouldEqual, 1)
+				So(len(fullImageMetaList[0].Referrers), ShouldEqual, 1)
+				So(fullImageMetaList[0].Referrers[0].Digest, ShouldResemble, refImage.DigestStr())
+			})
 		})
 
 		Convey("Test FilterTags", func() {
 			var (
-				repo1                    = "repo1"
-				repo2                    = "repo2"
-				manifestDigest1          = godigest.FromString("fake-manifest1")
-				manifestDigest2          = godigest.FromString("fake-manifest2")
-				manifestDigest3          = godigest.FromString("fake-manifest3")
-				indexDigest              = godigest.FromString("index-digest")
-				manifestFromIndexDigest1 = godigest.FromString("fake-manifestFromIndexDigest1")
-				manifestFromIndexDigest2 = godigest.FromString("fake-manifestFromIndexDigest2")
+				repo1  = "repo1"
+				repo2  = "repo2"
+				image1 = CreateRandomImage()
+				image2 = CreateRandomImage()
+				image3 = CreateRandomImage()
 
-				emptyManifest ispec.Manifest
-				emptyConfig   ispec.Image
-				ctx           = context.Background()
+				subImage1 = CreateRandomImage()
+				subImage2 = CreateRandomImage()
+				multiarch = CreateMultiarchWith().Images([]Image{subImage1, subImage2}).Build()
+				ctx       = context.Background()
 			)
 
-			emptyManifestBlob, err := json.Marshal(emptyManifest)
+			err := metaDB.SetRepoReference(repo1, subImage1.DigestStr(), subImage1.AsImageMeta())
+			So(err, ShouldBeNil)
+			err = metaDB.SetRepoReference(repo1, subImage2.DigestStr(), subImage2.AsImageMeta())
+			So(err, ShouldBeNil)
+			err = metaDB.SetRepoReference(repo1, "2.0.0", multiarch.AsImageMeta())
 			So(err, ShouldBeNil)
 
-			emptyConfigBlob, err := json.Marshal(emptyConfig)
+			err = metaDB.SetRepoReference(repo1, "0.0.1", image1.AsImageMeta())
 			So(err, ShouldBeNil)
-
-			emptyManifestMeta := mTypes.ManifestMetadata{
-				ManifestBlob: emptyManifestBlob,
-				ConfigBlob:   emptyConfigBlob,
-			}
-
-			emptyManifestData := mTypes.ManifestData{
-				ManifestBlob: emptyManifestBlob,
-				ConfigBlob:   emptyConfigBlob,
-			}
-
-			err = metaDB.SetRepoReference(repo1, "2.0.0", indexDigest, ispec.MediaTypeImageIndex)
+			err = metaDB.SetRepoReference(repo1, "0.0.2", image3.AsImageMeta())
 			So(err, ShouldBeNil)
-
-			indexBlob, err := GetIndexBlobWithManifests([]godigest.Digest{
-				manifestFromIndexDigest1,
-				manifestFromIndexDigest2,
-			})
+			err = metaDB.SetRepoReference(repo1, "0.1.0", image2.AsImageMeta())
 			So(err, ShouldBeNil)
-
-			err = metaDB.SetIndexData(indexDigest, mTypes.IndexData{
-				IndexBlob: indexBlob,
-			})
+			err = metaDB.SetRepoReference(repo1, "1.0.0", image2.AsImageMeta())
 			So(err, ShouldBeNil)
-
-			err = metaDB.SetRepoReference(repo1, "0.0.1", manifestDigest1, ispec.MediaTypeImageManifest)
+			err = metaDB.SetRepoReference(repo1, "1.0.1", image2.AsImageMeta())
 			So(err, ShouldBeNil)
-			err = metaDB.SetRepoReference(repo1, "0.0.2", manifestDigest3, ispec.MediaTypeImageManifest)
-			So(err, ShouldBeNil)
-			err = metaDB.SetRepoReference(repo1, "0.1.0", manifestDigest2, ispec.MediaTypeImageManifest)
-			So(err, ShouldBeNil)
-			err = metaDB.SetRepoReference(repo1, "1.0.0", manifestDigest2, ispec.MediaTypeImageManifest)
-			So(err, ShouldBeNil)
-			err = metaDB.SetRepoReference(repo1, "1.0.1", manifestDigest2, ispec.MediaTypeImageManifest)
-			So(err, ShouldBeNil)
-			err = metaDB.SetRepoReference(repo2, "0.0.1", manifestDigest3, ispec.MediaTypeImageManifest)
-			So(err, ShouldBeNil)
-
-			err = metaDB.SetManifestMeta(repo1, manifestDigest1, emptyManifestMeta)
-			So(err, ShouldBeNil)
-			err = metaDB.SetManifestMeta(repo1, manifestDigest2, emptyManifestMeta)
-			So(err, ShouldBeNil)
-			err = metaDB.SetManifestMeta(repo1, manifestDigest3, emptyManifestMeta)
-			So(err, ShouldBeNil)
-			err = metaDB.SetManifestMeta(repo2, manifestDigest3, emptyManifestMeta)
-			So(err, ShouldBeNil)
-
-			err = metaDB.SetManifestData(manifestFromIndexDigest1, emptyManifestData)
-			So(err, ShouldBeNil)
-			err = metaDB.SetManifestData(manifestFromIndexDigest2, emptyManifestData)
+			err = metaDB.SetRepoReference(repo2, "0.0.1", image3.AsImageMeta())
 			So(err, ShouldBeNil)
 
 			Convey("Return all tags", func() {
-				repos, manifestMetaMap, indexDataMap, err := metaDB.FilterTags(ctx,
-					func(repoMeta mTypes.RepoMetadata, manifestMeta mTypes.ManifestMetadata) bool {
-						return true
-					})
+				fullImageMetaList, err := metaDB.FilterTags(ctx, mTypes.AcceptAllRepoTag, mTypes.AcceptAllImageMeta)
 
 				So(err, ShouldBeNil)
-				So(len(repos), ShouldEqual, 2)
-				So(repos[0].Name, ShouldEqual, "repo1")
-				So(repos[1].Name, ShouldEqual, "repo2")
-				So(len(repos[0].Tags), ShouldEqual, 6)
-				So(len(repos[1].Tags), ShouldEqual, 1)
-				So(repos[0].Tags, ShouldContainKey, "0.0.1")
-				So(repos[0].Tags, ShouldContainKey, "0.0.2")
-				So(repos[0].Tags, ShouldContainKey, "0.1.0")
-				So(repos[0].Tags, ShouldContainKey, "1.0.0")
-				So(repos[0].Tags, ShouldContainKey, "1.0.1")
-				So(repos[0].Tags, ShouldContainKey, "2.0.0")
-				So(repos[1].Tags, ShouldContainKey, "0.0.1")
+				So(len(fullImageMetaList), ShouldEqual, 7)
 
-				So(manifestMetaMap, ShouldContainKey, manifestDigest1.String())
-				So(manifestMetaMap, ShouldContainKey, manifestDigest2.String())
-				So(manifestMetaMap, ShouldContainKey, manifestDigest3.String())
+				tags := []string{}
+				indexImage := mTypes.FullImageMeta{}
 
-				So(indexDataMap, ShouldContainKey, indexDigest.String())
-				So(manifestMetaMap, ShouldContainKey, manifestFromIndexDigest1.String())
-				So(manifestMetaMap, ShouldContainKey, manifestFromIndexDigest2.String())
+				for _, imageMeta := range fullImageMetaList {
+					tags = append(tags, imageMeta.Tag)
+
+					if imageMeta.MediaType == ispec.MediaTypeImageIndex {
+						indexImage = imageMeta
+					}
+				}
+
+				So(zcommon.Contains(tags, "0.0.1"), ShouldBeTrue)
+				So(zcommon.Contains(tags, "0.0.2"), ShouldBeTrue)
+				So(zcommon.Contains(tags, "0.1.0"), ShouldBeTrue)
+				So(zcommon.Contains(tags, "1.0.0"), ShouldBeTrue)
+				So(zcommon.Contains(tags, "1.0.1"), ShouldBeTrue)
+				So(zcommon.Contains(tags, "2.0.0"), ShouldBeTrue)
+				So(zcommon.Contains(tags, "0.0.1"), ShouldBeTrue)
+
+				So(indexImage.Digest.String(), ShouldResemble, multiarch.DigestStr())
+
+				digests := []string{}
+				for _, manifest := range indexImage.Manifests {
+					digests = append(digests, manifest.Digest.String())
+				}
+
+				So(digests, ShouldContain, subImage1.DigestStr())
+				So(digests, ShouldContain, subImage2.DigestStr())
 			})
 
 			Convey("Return all tags in a specific repo", func() {
-				repos, manifestMetaMap, indexDataMap, err := metaDB.FilterTags(
-					ctx,
-					func(repoMeta mTypes.RepoMetadata, manifestMeta mTypes.ManifestMetadata) bool {
-						return repoMeta.Name == repo1
-					})
+				fullImageMetaList, err := metaDB.FilterTags(ctx, func(repo, tag string) bool { return repo == repo1 },
+					mTypes.AcceptAllImageMeta)
 
 				So(err, ShouldBeNil)
-				So(len(repos), ShouldEqual, 1)
-				So(repos[0].Name, ShouldEqual, repo1)
-				So(len(repos[0].Tags), ShouldEqual, 6)
-				So(repos[0].Tags, ShouldContainKey, "0.0.1")
-				So(repos[0].Tags, ShouldContainKey, "0.0.2")
-				So(repos[0].Tags, ShouldContainKey, "0.1.0")
-				So(repos[0].Tags, ShouldContainKey, "1.0.0")
-				So(repos[0].Tags, ShouldContainKey, "1.0.1")
-				So(repos[0].Tags, ShouldContainKey, "2.0.0")
-				So(manifestMetaMap, ShouldContainKey, manifestDigest1.String())
-				So(manifestMetaMap, ShouldContainKey, manifestDigest2.String())
-				So(manifestMetaMap, ShouldContainKey, manifestDigest3.String())
-				So(indexDataMap, ShouldContainKey, indexDigest.String())
-				So(manifestMetaMap, ShouldContainKey, manifestFromIndexDigest1.String())
-				So(manifestMetaMap, ShouldContainKey, manifestFromIndexDigest2.String())
+				So(len(fullImageMetaList), ShouldEqual, 6)
+
+				tags := map[string]struct{}{}
+				indexImage := mTypes.FullImageMeta{}
+
+				for _, imageMeta := range fullImageMetaList {
+					tags[imageMeta.Tag] = struct{}{}
+
+					if imageMeta.MediaType == ispec.MediaTypeImageIndex {
+						indexImage = imageMeta
+					}
+				}
+
+				So(tags, ShouldContainKey, "0.0.1")
+				So(tags, ShouldContainKey, "0.0.2")
+				So(tags, ShouldContainKey, "0.1.0")
+				So(tags, ShouldContainKey, "1.0.0")
+				So(tags, ShouldContainKey, "1.0.1")
+				So(tags, ShouldContainKey, "2.0.0")
+
+				So(indexImage.Digest.String(), ShouldResemble, multiarch.DigestStr())
+
+				digests := []string{}
+				for _, manifest := range indexImage.Manifests {
+					digests = append(digests, manifest.Digest.String())
+				}
+
+				So(digests, ShouldContain, subImage1.DigestStr())
+				So(digests, ShouldContain, subImage2.DigestStr())
 			})
 
 			Convey("Filter everything out", func() {
-				repos, manifestMetaMap, _, err := metaDB.FilterTags(
-					ctx,
-					func(repoMeta mTypes.RepoMetadata, manifestMeta mTypes.ManifestMetadata) bool {
-						return false
-					})
+				fullImageMetaList, err := metaDB.FilterTags(ctx,
+					func(repo, tag string) bool { return false },
+					func(repoMeta mTypes.RepoMeta, imageMeta mTypes.ImageMeta) bool { return false },
+				)
 
 				So(err, ShouldBeNil)
-				So(len(repos), ShouldEqual, 0)
-				So(len(manifestMetaMap), ShouldEqual, 0)
+				So(len(fullImageMetaList), ShouldEqual, 0)
 			})
 
 			Convey("Search with access control", func() {
@@ -2237,243 +1927,288 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 
 				ctx := userAc.DeriveContext(context.Background())
 
-				repos, manifestMetaMap, _, err := metaDB.FilterTags(ctx,
-					func(repoMeta mTypes.RepoMetadata, manifestMeta mTypes.ManifestMetadata) bool {
-						return true
-					})
+				fullImageMetaList, err := metaDB.FilterTags(ctx, mTypes.AcceptAllRepoTag, mTypes.AcceptAllImageMeta)
 
 				So(err, ShouldBeNil)
-				So(len(repos), ShouldEqual, 1)
-				So(repos[0].Name, ShouldResemble, repo2)
-				So(len(repos[0].Tags), ShouldEqual, 1)
-				So(repos[0].Tags, ShouldContainKey, "0.0.1")
-				So(manifestMetaMap, ShouldContainKey, manifestDigest3.String())
+				So(len(fullImageMetaList), ShouldEqual, 1)
+				So(fullImageMetaList[0].Repo, ShouldResemble, repo2)
+				So(fullImageMetaList[0].Tag, ShouldResemble, "0.0.1")
 			})
-		})
-
-		Convey("Test index logic", func() {
-			multiArch, err := deprecated.GetRandomMultiarchImage("tag1") //nolint:staticcheck
-			So(err, ShouldBeNil)
-
-			indexDigest := multiArch.Digest()
-
-			indexData := multiArch.IndexData()
-
-			err = metaDB.SetIndexData(indexDigest, indexData)
-			So(err, ShouldBeNil)
-
-			result, err := metaDB.GetIndexData(indexDigest)
-			So(err, ShouldBeNil)
-			So(result, ShouldResemble, indexData)
-
-			_, err = metaDB.GetIndexData(godigest.FromString("inexistent"))
-			So(err, ShouldNotBeNil)
 		})
 
 		Convey("Test Referrers", func() {
-			image, err := deprecated.GetRandomImage() //nolint:staticcheck
+			image1 := CreateRandomImage()
+
+			err := metaDB.SetRepoReference("repo", "tag", image1.AsImageMeta())
 			So(err, ShouldBeNil)
 
-			referredDigest := image.Digest()
+			// Artifact 1 with artifact type in Manifest
+			artifact1 := CreateImageWith().
+				RandomLayers(10, 2).DefaultConfig().
+				ArtifactType("art-type1").
+				Subject(image1.DescriptorRef()).
+				Build()
 
-			manifestBlob, err := json.Marshal(image.Manifest)
+			err = metaDB.SetRepoReference("repo", artifact1.DigestStr(), artifact1.AsImageMeta())
 			So(err, ShouldBeNil)
 
-			configBlob, err := json.Marshal(image.Config)
+			// Artifact 2 with artifact type in Config media type
+			artifact2 := CreateImageWith().
+				RandomLayers(10, 2).
+				ArtifactConfig("art-type2").
+				Subject(image1.DescriptorRef()).
+				Build()
+
+			err = metaDB.SetRepoReference("repo", artifact2.DigestStr(), artifact2.AsImageMeta())
 			So(err, ShouldBeNil)
 
-			manifestData := mTypes.ManifestData{
-				ManifestBlob: manifestBlob,
-				ConfigBlob:   configBlob,
-			}
-
-			err = metaDB.SetManifestData(referredDigest, manifestData)
-			So(err, ShouldBeNil)
-
-			err = metaDB.SetRepoReference("repo", "tag", referredDigest, ispec.MediaTypeImageManifest)
-			So(err, ShouldBeNil)
-
-			// ------- Add Artifact 1
-
-			artifact1, err := deprecated.GetImageWithSubject( //nolint:staticcheck
-				referredDigest,
-				ispec.MediaTypeImageManifest,
-			)
-			So(err, ShouldBeNil)
-
-			artifactDigest1 := artifact1.Digest()
-
-			err = metaDB.SetReferrer("repo", referredDigest, mTypes.ReferrerInfo{
-				Digest:    artifactDigest1.String(),
-				MediaType: ispec.MediaTypeImageManifest,
-			})
-			So(err, ShouldBeNil)
-
-			// ------- Add Artifact 2
-
-			artifact2, err := deprecated.GetImageWithSubject( //nolint:staticcheck
-				referredDigest,
-				ispec.MediaTypeImageManifest,
-			)
-			So(err, ShouldBeNil)
-
-			artifactDigest2 := artifact2.Digest()
-
-			err = metaDB.SetReferrer("repo", referredDigest, mTypes.ReferrerInfo{
-				Digest:    artifactDigest2.String(),
-				MediaType: ispec.MediaTypeImageManifest,
-			})
-			So(err, ShouldBeNil)
-
-			// ------ GetReferrers
-
-			referrers, err := metaDB.GetReferrersInfo("repo", referredDigest, nil)
+			// GetReferrers
+			referrers, err := metaDB.GetReferrersInfo("repo", image1.Digest(), nil)
 			So(len(referrers), ShouldEqual, 2)
 			So(referrers, ShouldContain, mTypes.ReferrerInfo{
-				Digest:    artifactDigest1.String(),
-				MediaType: ispec.MediaTypeImageManifest,
+				Digest:       artifact1.DigestStr(),
+				MediaType:    ispec.MediaTypeImageManifest,
+				ArtifactType: "art-type1",
+				Size:         int(artifact1.ManifestDescriptor.Size),
 			})
 			So(referrers, ShouldContain, mTypes.ReferrerInfo{
-				Digest:    artifactDigest2.String(),
-				MediaType: ispec.MediaTypeImageManifest,
+				Digest:       artifact2.DigestStr(),
+				MediaType:    ispec.MediaTypeImageManifest,
+				ArtifactType: "art-type2",
+				Size:         int(artifact2.ManifestDescriptor.Size),
 			})
 			So(err, ShouldBeNil)
 
-			// ------ DeleteReferrers
-
-			err = metaDB.DeleteReferrer("repo", referredDigest, artifactDigest1)
+			// Delete the Referrers
+			err = metaDB.RemoveRepoReference("repo", artifact1.DigestStr(), artifact1.Digest())
 			So(err, ShouldBeNil)
 
-			err = metaDB.DeleteReferrer("repo", referredDigest, artifactDigest2)
+			referrers, err = metaDB.GetReferrersInfo("repo", image1.Digest(), nil)
+			So(err, ShouldBeNil)
+			So(len(referrers), ShouldEqual, 1)
+
+			err = metaDB.RemoveRepoReference("repo", artifact2.DigestStr(), artifact2.Digest())
 			So(err, ShouldBeNil)
 
-			referrers, err = metaDB.GetReferrersInfo("repo", referredDigest, nil)
+			referrers, err = metaDB.GetReferrersInfo("repo", image1.Digest(), nil)
 			So(err, ShouldBeNil)
 			So(len(referrers), ShouldEqual, 0)
 		})
 
-		Convey("Test Referrers on empty Repo", func() {
-			repoMeta, err := metaDB.GetRepoMeta("repo")
+		Convey("Test Referrers add same one twice but with different tags - delete by tag then digest", func() {
+			_, err := metaDB.GetRepoMeta(ctx, "repo")
 			So(err, ShouldNotBeNil)
-			So(repoMeta, ShouldResemble, mTypes.RepoMetadata{})
 
-			referredDigest := godigest.FromString("referredDigest")
-			referrerDigest := godigest.FromString("referrerDigest")
+			tag := "tag1"
+			refTag := "refTag"
+			image := CreateRandomImage()
+			referrer := CreateRandomImageWith().Subject(image.DescriptorRef()).Build()
 
-			err = metaDB.SetReferrer("repo", referredDigest, mTypes.ReferrerInfo{
-				Digest:    referrerDigest.String(),
-				MediaType: ispec.MediaTypeImageManifest,
-			})
+			err = metaDB.SetRepoReference("repo", tag, image.AsImageMeta())
 			So(err, ShouldBeNil)
 
-			repoMeta, err = metaDB.GetRepoMeta("repo")
+			err = metaDB.SetRepoReference("repo", refTag, referrer.AsImageMeta())
 			So(err, ShouldBeNil)
-			So(repoMeta.Referrers[referredDigest.String()][0].Digest, ShouldResemble, referrerDigest.String())
+
+			err = metaDB.SetRepoReference("repo", referrer.DigestStr(), referrer.AsImageMeta())
+			So(err, ShouldBeNil)
+
+			repoMeta, err := metaDB.GetRepoMeta(ctx, "repo")
+			So(err, ShouldBeNil)
+			So(len(repoMeta.Referrers[image.DigestStr()]), ShouldEqual, 1)
+
+			err = metaDB.RemoveRepoReference("repo", refTag, referrer.Digest())
+			So(err, ShouldBeNil)
+
+			// we still have the untagged manifest
+			repoMeta, err = metaDB.GetRepoMeta(ctx, "repo")
+			So(err, ShouldBeNil)
+			So(len(repoMeta.Referrers[image.DigestStr()]), ShouldEqual, 1)
+
+			err = metaDB.RemoveRepoReference("repo", referrer.DigestStr(), referrer.Digest())
+			So(err, ShouldBeNil)
+
+			repoMeta, err = metaDB.GetRepoMeta(ctx, "repo")
+			So(err, ShouldBeNil)
+			So(len(repoMeta.Referrers[image.DigestStr()]), ShouldEqual, 0)
+		})
+
+		Convey("Test Referrers add same one twice but with different tags - delete by digest", func() {
+			_, err := metaDB.GetRepoMeta(ctx, "repo")
+			So(err, ShouldNotBeNil)
+
+			tag := "tag-1"
+			refTag := "refTag"
+			image := CreateRandomImage()
+			referrer := CreateRandomImageWith().Subject(image.DescriptorRef()).Build()
+
+			err = metaDB.SetRepoReference("repo", tag, image.AsImageMeta())
+			So(err, ShouldBeNil)
+
+			err = metaDB.SetRepoReference("repo", refTag, referrer.AsImageMeta())
+			So(err, ShouldBeNil)
+
+			err = metaDB.SetRepoReference("repo", referrer.DigestStr(), referrer.AsImageMeta())
+			So(err, ShouldBeNil)
+
+			repoMeta, err := metaDB.GetRepoMeta(ctx, "repo")
+			So(err, ShouldBeNil)
+			So(len(repoMeta.Referrers[image.DigestStr()]), ShouldEqual, 1)
+
+			// this should delete all references
+			err = metaDB.RemoveRepoReference("repo", referrer.DigestStr(), referrer.Digest())
+			So(err, ShouldBeNil)
+
+			repoMeta, err = metaDB.GetRepoMeta(ctx, "repo")
+			So(err, ShouldBeNil)
+			So(len(repoMeta.Referrers[image.DigestStr()]), ShouldEqual, 0)
 		})
 
 		Convey("Test Referrers add same one twice", func() {
-			repoMeta, err := metaDB.GetRepoMeta("repo")
+			_, err := metaDB.GetRepoMeta(ctx, "repo")
 			So(err, ShouldNotBeNil)
-			So(repoMeta, ShouldResemble, mTypes.RepoMetadata{})
 
-			referredDigest := godigest.FromString("referredDigest")
-			referrerDigest := godigest.FromString("referrerDigest")
+			tag := "tag-ref"
+			image := CreateRandomImage()
+			referrer := CreateRandomImageWith().Subject(image.DescriptorRef()).Build()
 
-			err = metaDB.SetReferrer("repo", referredDigest, mTypes.ReferrerInfo{
-				Digest:    referrerDigest.String(),
-				MediaType: ispec.MediaTypeImageManifest,
-			})
+			err = metaDB.SetRepoReference("repo", tag, image.AsImageMeta())
 			So(err, ShouldBeNil)
 
-			err = metaDB.SetReferrer("repo", referredDigest, mTypes.ReferrerInfo{
-				Digest:    referrerDigest.String(),
-				MediaType: ispec.MediaTypeImageManifest,
-			})
+			err = metaDB.SetRepoReference("repo", referrer.DigestStr(), referrer.AsImageMeta())
 			So(err, ShouldBeNil)
 
-			repoMeta, err = metaDB.GetRepoMeta("repo")
+			err = metaDB.SetRepoReference("repo", referrer.DigestStr(), referrer.AsImageMeta())
 			So(err, ShouldBeNil)
-			So(len(repoMeta.Referrers[referredDigest.String()]), ShouldEqual, 1)
+
+			repoMeta, err := metaDB.GetRepoMeta(ctx, "repo")
+			So(err, ShouldBeNil)
+			So(len(repoMeta.Referrers[image.DigestStr()]), ShouldEqual, 1)
 		})
 
 		Convey("GetReferrersInfo", func() {
-			referredDigest := godigest.FromString("referredDigest")
+			repo := "repo"
+			tag := "tag"
 
-			err := metaDB.SetReferrer("repo", referredDigest, mTypes.ReferrerInfo{
-				Digest:    "inexistendManifestDigest",
-				MediaType: ispec.MediaTypeImageManifest,
-			})
+			image := CreateRandomImage()
+			err := metaDB.SetRepoReference(repo, tag, image.AsImageMeta())
 			So(err, ShouldBeNil)
 
-			// ------- Set existent manifest and artifact manifest
-			err = metaDB.SetManifestData("goodManifest", mTypes.ManifestData{
-				ManifestBlob: []byte(`{"artifactType": "unwantedType"}`),
-				ConfigBlob:   []byte("{}"),
-			})
+			referrerWantedType := CreateRandomImageWith().
+				ArtifactType("wanted-type").
+				Subject(image.DescriptorRef()).Build()
+
+			referrerNotWantedType := CreateRandomImageWith().
+				ArtifactType("not-wanted-type").
+				Subject(image.DescriptorRef()).Build()
+
+			err = metaDB.SetRepoReference(repo, referrerWantedType.DigestStr(), referrerWantedType.AsImageMeta())
+			So(err, ShouldBeNil)
+			err = metaDB.SetRepoReference(repo, referrerNotWantedType.DigestStr(), referrerNotWantedType.AsImageMeta())
 			So(err, ShouldBeNil)
 
-			err = metaDB.SetReferrer("repo", referredDigest, mTypes.ReferrerInfo{
-				Digest:       "goodManifestUnwanted",
-				MediaType:    ispec.MediaTypeImageManifest,
-				ArtifactType: "unwantedType",
-			})
-			So(err, ShouldBeNil)
-
-			err = metaDB.SetReferrer("repo", referredDigest, mTypes.ReferrerInfo{
-				Digest:       "goodManifest",
-				MediaType:    ispec.MediaTypeImageManifest,
-				ArtifactType: "wantedType",
-			})
-			So(err, ShouldBeNil)
-
-			referrerInfo, err := metaDB.GetReferrersInfo("repo", referredDigest, []string{"wantedType"})
+			referrerInfo, err := metaDB.GetReferrersInfo("repo", image.Digest(), []string{"wanted-type"})
 			So(err, ShouldBeNil)
 			So(len(referrerInfo), ShouldEqual, 1)
-			So(referrerInfo[0].ArtifactType, ShouldResemble, "wantedType")
-			So(referrerInfo[0].Digest, ShouldResemble, "goodManifest")
+			So(referrerInfo[0].ArtifactType, ShouldResemble, "wanted-type")
+			So(referrerInfo[0].Digest, ShouldResemble, referrerWantedType.DigestStr())
+		})
+
+		Convey("FilterImageMeta", func() {
+			repo := "repo"
+			tag := "tag"
+
+			Convey("Just manifests", func() {
+				image := CreateRandomImage()
+				err := metaDB.SetRepoReference(repo, tag, image.AsImageMeta())
+				So(err, ShouldBeNil)
+
+				imageMeta, err := metaDB.FilterImageMeta(ctx, []string{image.DigestStr()})
+				So(err, ShouldBeNil)
+				So(imageMeta, ShouldContainKey, image.DigestStr())
+
+				_, err = metaDB.FilterImageMeta(ctx, []string{image.DigestStr(), "bad-digest"})
+				So(err, ShouldNotBeNil)
+			})
+
+			Convey("Index", func() {
+				multi := CreateRandomMultiarch()
+				digests := []string{}
+
+				for i := range multi.Images {
+					err := metaDB.SetRepoReference(repo, multi.Images[i].DigestStr(), multi.Images[i].AsImageMeta())
+					So(err, ShouldBeNil)
+
+					digests = append(digests, multi.Images[i].DigestStr())
+				}
+
+				err := metaDB.SetRepoReference(repo, tag, multi.AsImageMeta())
+				So(err, ShouldBeNil)
+
+				imageMeta, err := metaDB.FilterImageMeta(ctx, []string{multi.DigestStr()})
+				So(err, ShouldBeNil)
+				So(imageMeta, ShouldContainKey, multi.DigestStr())
+
+				actualDigests := tCommon.AccumulateField(imageMeta[multi.DigestStr()].Manifests, getManifestDigest)
+				So(tCommon.ContainSameElements(actualDigests, digests), ShouldBeTrue)
+			})
+		})
+
+		Convey("ResetDB", func() {
+			repo := "repo-reset"
+			tag := "tag-reset"
+
+			image := CreateRandomImage()
+			referrer := CreateRandomImageWith().Subject(image.DescriptorRef()).Build()
+			err := metaDB.SetRepoReference(repo, tag, image.AsImageMeta())
+			So(err, ShouldBeNil)
+			err = metaDB.SetRepoReference(repo, tag, referrer.AsImageMeta())
+			So(err, ShouldBeNil)
+
+			repoMeta, err := metaDB.GetRepoMeta(ctx, repo)
+			So(err, ShouldBeNil)
+			So(repoMeta.Tags, ShouldNotBeEmpty)
+			So(repoMeta.Statistics, ShouldNotBeEmpty)
+			So(repoMeta.Referrers, ShouldNotBeEmpty)
+
+			err = metaDB.ResetDB()
+			So(err, ShouldBeNil)
+
+			_, err = metaDB.GetRepoMeta(ctx, repo)
+			So(err, ShouldNotBeNil)
 		})
 
 		Convey("FilterRepos", func() {
-			img, err := deprecated.GetRandomImage() //nolint:staticcheck
-			So(err, ShouldBeNil)
-			imgDigest := img.Digest()
+			repo := "repoFilter"
+			tag1 := "tag1"
+			tag2 := "tag2"
 
-			manifestData, err := NewManifestData(img.Manifest, img.Config)
-			So(err, ShouldBeNil)
-
-			err = metaDB.SetManifestData(imgDigest, manifestData)
+			image := CreateImageWith().DefaultLayers().PlatformConfig("image-platform", "image-os").Build()
+			err := metaDB.SetRepoReference(repo, tag1, image.AsImageMeta())
 			So(err, ShouldBeNil)
 
-			multiarch, err := deprecated.GetRandomMultiarchImage("multi") //nolint:staticcheck
-			So(err, ShouldBeNil)
-			multiarchDigest := multiarch.Digest()
-
-			indexData, err := NewIndexData(multiarch.Index)
-			So(err, ShouldBeNil)
-
-			err = metaDB.SetIndexData(multiarchDigest, indexData)
-			So(err, ShouldBeNil)
+			multiarch := CreateMultiarchWith().
+				Images([]Image{
+					CreateImageWith().DefaultLayers().PlatformConfig("sub-platform1", "sub-os1").Build(),
+					CreateImageWith().DefaultLayers().PlatformConfig("sub-platform2", "sub-os2").Build(),
+				}).Build()
 
 			for _, img := range multiarch.Images {
-				digest := img.Digest()
-
-				indManData1, err := NewManifestData(multiarch.Images[0].Manifest, multiarch.Images[0].Config)
-				So(err, ShouldBeNil)
-
-				err = metaDB.SetManifestData(digest, indManData1)
+				err := metaDB.SetRepoReference(repo, img.DigestStr(), img.AsImageMeta())
 				So(err, ShouldBeNil)
 			}
 
-			err = metaDB.SetRepoReference("repo", img.DigestStr(), imgDigest, img.Manifest.MediaType)
+			err = metaDB.SetRepoReference(repo, tag2, multiarch.AsImageMeta())
 			So(err, ShouldBeNil)
 
-			err = metaDB.SetRepoReference("repo", multiarch.DigestStr(), multiarchDigest, ispec.MediaTypeImageIndex)
+			repoMetaList, err := metaDB.FilterRepos(context.Background(), mTypes.AcceptAllRepoNames,
+				mTypes.AcceptAllRepoMeta)
 			So(err, ShouldBeNil)
-
-			repoMetas, _, _, err := metaDB.FilterRepos(context.Background(),
-				func(repoMeta mTypes.RepoMetadata) bool { return true })
-			So(err, ShouldBeNil)
-			So(len(repoMetas), ShouldEqual, 1)
+			So(len(repoMetaList), ShouldEqual, 1)
+			repoMeta := repoMetaList[0]
+			So(repoMeta.Platforms, ShouldContain, ispec.Platform{Architecture: "image-platform", OS: "image-os"})
+			So(repoMeta.Platforms, ShouldContain, ispec.Platform{Architecture: "sub-platform1", OS: "sub-os1"})
+			So(repoMeta.Platforms, ShouldContain, ispec.Platform{Architecture: "sub-platform2", OS: "sub-os2"})
 		})
 
 		Convey("Test bookmarked/starred field present in returned RepoMeta", func() {
@@ -2486,42 +2221,34 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 
 			ctx := userAc.DeriveContext(context.Background())
 
-			manifestDigest := godigest.FromString("dig")
-			err := metaDB.SetManifestData(manifestDigest, mTypes.ManifestData{
-				ManifestBlob: []byte("{}"),
-				ConfigBlob:   []byte("{}"),
-			})
+			image := CreateRandomImage()
+
+			err := metaDB.SetRepoReference(repo99, "tag", image.AsImageMeta())
 			So(err, ShouldBeNil)
 
-			err = metaDB.SetRepoReference(repo99, "tag", manifestDigest, ispec.MediaTypeImageManifest)
+			repoMetaList, err := metaDB.SearchRepos(ctx, repo99)
 			So(err, ShouldBeNil)
+			So(len(repoMetaList), ShouldEqual, 1)
+			So(repoMetaList[0].IsBookmarked, ShouldBeFalse)
+			So(repoMetaList[0].IsStarred, ShouldBeFalse)
 
-			repoMetas, _, _, err := metaDB.SearchRepos(ctx, repo99)
+			fullImageMetaList, err := metaDB.SearchTags(ctx, repo99+":")
 			So(err, ShouldBeNil)
-			So(len(repoMetas), ShouldEqual, 1)
-			So(repoMetas[0].IsBookmarked, ShouldBeFalse)
-			So(repoMetas[0].IsStarred, ShouldBeFalse)
+			So(len(fullImageMetaList), ShouldEqual, 1)
+			So(fullImageMetaList[0].IsBookmarked, ShouldBeFalse)
+			So(fullImageMetaList[0].IsStarred, ShouldBeFalse)
 
-			repoMetas, _, _, err = metaDB.SearchTags(ctx, repo99+":")
+			repoMetaList, err = metaDB.FilterRepos(ctx, mTypes.AcceptAllRepoNames, mTypes.AcceptAllRepoMeta)
 			So(err, ShouldBeNil)
-			So(len(repoMetas), ShouldEqual, 1)
-			So(repoMetas[0].IsBookmarked, ShouldBeFalse)
-			So(repoMetas[0].IsStarred, ShouldBeFalse)
+			So(len(repoMetaList), ShouldEqual, 1)
+			So(repoMetaList[0].IsBookmarked, ShouldBeFalse)
+			So(repoMetaList[0].IsStarred, ShouldBeFalse)
 
-			repoMetas, _, _, err = metaDB.FilterRepos(ctx, func(repoMeta mTypes.RepoMetadata) bool {
-				return true
-			})
+			fullImageMetaList, err = metaDB.FilterTags(ctx, mTypes.AcceptAllRepoTag, mTypes.AcceptAllImageMeta)
 			So(err, ShouldBeNil)
-			So(len(repoMetas), ShouldEqual, 1)
-			So(repoMetas[0].IsBookmarked, ShouldBeFalse)
-			So(repoMetas[0].IsStarred, ShouldBeFalse)
-
-			repoMetas, _, _, err = metaDB.FilterTags(ctx,
-				func(repoMeta mTypes.RepoMetadata, manifestMeta mTypes.ManifestMetadata) bool { return true })
-			So(err, ShouldBeNil)
-			So(len(repoMetas), ShouldEqual, 1)
-			So(repoMetas[0].IsBookmarked, ShouldBeFalse)
-			So(repoMetas[0].IsStarred, ShouldBeFalse)
+			So(len(fullImageMetaList), ShouldEqual, 1)
+			So(fullImageMetaList[0].IsBookmarked, ShouldBeFalse)
+			So(fullImageMetaList[0].IsStarred, ShouldBeFalse)
 
 			_, err = metaDB.ToggleBookmarkRepo(ctx, repo99)
 			So(err, ShouldBeNil)
@@ -2529,35 +2256,35 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 			_, err = metaDB.ToggleStarRepo(ctx, repo99)
 			So(err, ShouldBeNil)
 
-			repoMetas, _, _, err = metaDB.SearchRepos(ctx, repo99)
+			repoMetaList, err = metaDB.SearchRepos(ctx, repo99)
 			So(err, ShouldBeNil)
-			So(len(repoMetas), ShouldEqual, 1)
-			So(repoMetas[0].IsBookmarked, ShouldBeTrue)
-			So(repoMetas[0].IsStarred, ShouldBeTrue)
+			So(len(repoMetaList), ShouldEqual, 1)
+			So(repoMetaList[0].IsBookmarked, ShouldBeTrue)
+			So(repoMetaList[0].IsStarred, ShouldBeTrue)
 
-			repoMetas, _, _, err = metaDB.SearchTags(ctx, repo99+":")
+			fullImageMetaList, err = metaDB.SearchTags(ctx, repo99+":")
 			So(err, ShouldBeNil)
-			So(len(repoMetas), ShouldEqual, 1)
-			So(repoMetas[0].IsBookmarked, ShouldBeTrue)
-			So(repoMetas[0].IsStarred, ShouldBeTrue)
+			So(len(fullImageMetaList), ShouldEqual, 1)
+			So(fullImageMetaList[0].IsBookmarked, ShouldBeTrue)
+			So(fullImageMetaList[0].IsStarred, ShouldBeTrue)
 
-			repoMetas, _, _, err = metaDB.FilterRepos(ctx, func(repoMeta mTypes.RepoMetadata) bool {
-				return true
-			})
+			repoMetaList, err = metaDB.FilterRepos(ctx, mTypes.AcceptAllRepoNames, mTypes.AcceptAllRepoMeta)
 			So(err, ShouldBeNil)
-			So(len(repoMetas), ShouldEqual, 1)
-			So(repoMetas[0].IsBookmarked, ShouldBeTrue)
-			So(repoMetas[0].IsStarred, ShouldBeTrue)
+			So(len(repoMetaList), ShouldEqual, 1)
+			So(repoMetaList[0].IsBookmarked, ShouldBeTrue)
+			So(repoMetaList[0].IsStarred, ShouldBeTrue)
 
-			repoMetas, _, _, err = metaDB.FilterTags(ctx,
-				func(repoMeta mTypes.RepoMetadata, manifestMeta mTypes.ManifestMetadata) bool { return true })
+			fullImageMetaList, err = metaDB.FilterTags(ctx, mTypes.AcceptAllRepoTag, mTypes.AcceptAllImageMeta)
 			So(err, ShouldBeNil)
-			So(len(repoMetas), ShouldEqual, 1)
-			So(repoMetas[0].IsBookmarked, ShouldBeTrue)
-			So(repoMetas[0].IsStarred, ShouldBeTrue)
+			So(len(fullImageMetaList), ShouldEqual, 1)
+			So(fullImageMetaList[0].IsBookmarked, ShouldBeTrue)
+			So(fullImageMetaList[0].IsStarred, ShouldBeTrue)
 		})
 
 		Convey("Test GetUserRepoMeta", func() {
+			err := metaDB.ResetDB()
+			So(err, ShouldBeNil)
+
 			userAc := reqCtx.NewUserAccessControl()
 			userAc.SetUsername("user1")
 			userAc.SetGlobPatterns("read", map[string]bool{
@@ -2566,9 +2293,7 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 
 			ctx := userAc.DeriveContext(context.Background())
 
-			digest := godigest.FromString("1")
-
-			err := metaDB.SetRepoReference("repo", "tag", digest, ispec.MediaTypeImageManifest)
+			err = metaDB.SetRepoReference("repo", "tag", CreateDefaultImage().AsImageMeta())
 			So(err, ShouldBeNil)
 
 			_, err = metaDB.ToggleBookmarkRepo(ctx, "repo")
@@ -2577,35 +2302,13 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 			_, err = metaDB.ToggleStarRepo(ctx, "repo")
 			So(err, ShouldBeNil)
 
-			repoMeta, err := metaDB.GetUserRepoMeta(ctx, "repo")
+			repoMeta, err := metaDB.GetRepoMeta(ctx, "repo")
 			So(err, ShouldBeNil)
 			So(repoMeta.IsBookmarked, ShouldBeTrue)
 			So(repoMeta.IsStarred, ShouldBeTrue)
 			So(repoMeta.Tags, ShouldContainKey, "tag")
 		})
 	})
-}
-
-func NewManifestData(manifest ispec.Manifest, config ispec.Image) (mTypes.ManifestData, error) {
-	configBlob, err := json.Marshal(config)
-	if err != nil {
-		return mTypes.ManifestData{}, err
-	}
-
-	manifest.Config.Digest = godigest.FromBytes(configBlob)
-
-	manifestBlob, err := json.Marshal(manifest)
-	if err != nil {
-		return mTypes.ManifestData{}, err
-	}
-
-	return mTypes.ManifestData{ManifestBlob: manifestBlob, ConfigBlob: configBlob}, nil
-}
-
-func NewIndexData(index ispec.Index) (mTypes.IndexData, error) {
-	indexBlob, err := json.Marshal(index)
-
-	return mTypes.IndexData{IndexBlob: indexBlob}, err
 }
 
 func TestRelevanceSorting(t *testing.T) {
@@ -2629,78 +2332,19 @@ func TestRelevanceSorting(t *testing.T) {
 	})
 }
 
-func generateTestImage() ([]byte, []byte, error) {
-	config := ispec.Image{
-		Platform: ispec.Platform{
-			Architecture: "amd64",
-			OS:           LINUX,
-		},
-		RootFS: ispec.RootFS{
-			Type:    "layers",
-			DiffIDs: []godigest.Digest{},
-		},
-		Author: "ZotUser",
-	}
-
-	configBlob, err := json.Marshal(config)
-	if err != nil {
-		return []byte{}, []byte{}, err
-	}
-
-	configDigest := godigest.FromBytes(configBlob)
-
-	layers := [][]byte{
-		make([]byte, 100),
-	}
-
-	// init layers with random values
-	for i := range layers {
-		//nolint:gosec
-		_, err := rand.Read(layers[i]) //nolint:staticcheck
-		if err != nil {
-			return []byte{}, []byte{}, err
-		}
-	}
-
-	manifest := ispec.Manifest{
-		Versioned: specs.Versioned{
-			SchemaVersion: 2,
-		},
-		Config: ispec.Descriptor{
-			MediaType: "application/vnd.oci.image.config.v1+json",
-			Digest:    configDigest,
-			Size:      int64(len(configBlob)),
-		},
-		Layers: []ispec.Descriptor{
-			{
-				MediaType: "application/vnd.oci.image.layer.v1.tar",
-				Digest:    godigest.FromBytes(layers[0]),
-				Size:      int64(len(layers[0])),
-			},
-		},
-	}
-
-	manifestBlob, err := json.Marshal(manifest)
-	if err != nil {
-		return []byte{}, []byte{}, err
-	}
-
-	return configBlob, manifestBlob, nil
-}
-
 func TestCreateDynamo(t *testing.T) {
 	tskip.SkipDynamo(t)
 
 	Convey("Create", t, func() {
 		dynamoDBDriverParams := mdynamodb.DBDriverParameters{
-			Endpoint:              os.Getenv("DYNAMODBMOCK_ENDPOINT"),
-			RepoMetaTablename:     "RepoMetadataTable",
-			ManifestDataTablename: "ManifestDataTable",
-			IndexDataTablename:    "IndexDataTable",
-			UserDataTablename:     "UserDataTable",
-			APIKeyTablename:       "ApiKeyTable",
-			VersionTablename:      "Version",
-			Region:                "us-east-2",
+			Endpoint:               os.Getenv("DYNAMODBMOCK_ENDPOINT"),
+			RepoMetaTablename:      "RepoMetadataTable",
+			RepoBlobsInfoTablename: "RepoBlobs",
+			ImageMetaTablename:     "ImageMeta",
+			UserDataTablename:      "UserDataTable",
+			APIKeyTablename:        "ApiKeyTable",
+			VersionTablename:       "Version",
+			Region:                 "us-east-2",
 		}
 
 		client, err := mdynamodb.GetDynamoClient(dynamoDBDriverParams)

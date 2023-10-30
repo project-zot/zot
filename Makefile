@@ -32,6 +32,22 @@ TESTDATA := $(TOP_LEVEL)/test/data
 OS ?= $(shell go env GOOS)
 ARCH ?= $(shell go env GOARCH)
 
+PROTOC := $(TOOLSDIR)/bin/protoc
+PROTOC_VERSION := 24.4
+GO_PROTOC_VERSION := 1.31.0
+HOST_OS := $(shell go env GOOS)
+HOST_ARCH := $(shell go env GOARCH)
+ifeq ($(HOST_OS),linux)
+	PROTOC_OS := linux
+else ifeq ($(HOST_OS),darwin)
+	PROTOC_OS := osx
+endif
+ifeq ($(HOST_ARCH),amd64)
+	PROTOC_ARCH := x86_64
+else ifeq ($(HOST_ARCH),arm64)
+	PROTOC_ARCH := aarch_64
+endif
+
 BENCH_OUTPUT ?= stdout
 ALL_EXTENSIONS = debug,imagetrust,lint,metrics,mgmt,profile,scrub,search,sync,ui,userprefs
 EXTENSIONS ?= sync,search,scrub,metrics,lint,ui,mgmt,profile,userprefs,imagetrust
@@ -96,6 +112,51 @@ build-metadata: $(if $(findstring ui,$(BUILD_LABELS)), ui)
 	go list -tags $(BUILD_TAGS) -f '{{ join .Imports "\n" }}' ./... | sort -u
 	echo "\n Files: \n"
 	go list -tags $(BUILD_TAGS) -f '{{ join .GoFiles "\n" }}' ./... | sort -u
+
+.PHONY: gen-protobuf
+gen-protobuf: check-not-freebds $(PROTOC)
+	$(PROTOC) --experimental_allow_proto3_optional \
+		--proto_path=$(TOP_LEVEL)/pkg/meta/proto \
+		--go_out=$(TOP_LEVEL)/pkg/meta/proto \
+		--go_opt='Moci/oci.proto=./gen' \
+		--go_opt='Mmeta/meta.proto=./gen' \
+		--go_opt='Moci/config.proto=./gen' \
+		--go_opt='Moci/manifest.proto=./gen' \
+		--go_opt='Moci/index.proto=./gen' \
+		--go_opt='Moci/descriptor.proto=./gen' \
+		--go_opt='Moci/versioned.proto=./gen' \
+		$(TOP_LEVEL)/pkg/meta/proto/meta/meta.proto
+	$(PROTOC) --experimental_allow_proto3_optional \
+		--proto_path=$(TOP_LEVEL)/pkg/meta/proto \
+		--go_out=$(TOP_LEVEL)/pkg/meta/proto \
+		--go_opt='Moci/versioned.proto=./gen' \
+		$(TOP_LEVEL)/pkg/meta/proto/oci/versioned.proto
+	$(PROTOC) --experimental_allow_proto3_optional \
+		--proto_path=$(TOP_LEVEL)/pkg/meta/proto \
+		--go_out=$(TOP_LEVEL)/pkg/meta/proto \
+		--go_opt='Moci/descriptor.proto=./gen' \
+		$(TOP_LEVEL)/pkg/meta/proto/oci/descriptor.proto
+	$(PROTOC) --experimental_allow_proto3_optional \
+		--proto_path=$(TOP_LEVEL)/pkg/meta/proto \
+		--go_out=$(TOP_LEVEL)/pkg/meta/proto \
+		--go_opt='Moci/descriptor.proto=./gen' \
+		--go_opt='Moci/versioned.proto=./gen' \
+		--go_opt='Moci/index.proto=./gen' \
+		$(TOP_LEVEL)/pkg/meta/proto/oci/index.proto
+	$(PROTOC) --experimental_allow_proto3_optional \
+		--proto_path=$(TOP_LEVEL)/pkg/meta/proto \
+		--go_out=$(TOP_LEVEL)/pkg/meta/proto \
+		--go_opt='Moci/oci.proto=./gen' \
+		--go_opt='Moci/descriptor.proto=./gen' \
+		--go_opt='Moci/config.proto=./gen' \
+		$(TOP_LEVEL)/pkg/meta/proto/oci/config.proto
+	$(PROTOC) --experimental_allow_proto3_optional \
+		--proto_path=$(TOP_LEVEL)/pkg/meta/proto \
+		--go_out=$(TOP_LEVEL)/pkg/meta/proto \
+		--go_opt='Moci/versioned.proto=./gen' \
+		--go_opt='Moci/descriptor.proto=./gen' \
+		--go_opt='Moci/manifest.proto=./gen' \
+		$(TOP_LEVEL)/pkg/meta/proto/oci/manifest.proto
 
 .PHONY: binary-minimal
 binary-minimal: EXTENSIONS=
@@ -218,6 +279,13 @@ $(CRICTL):
 	mv crictl $(TOOLSDIR)/bin/crictl
 	chmod +x $(TOOLSDIR)/bin/crictl
 
+$(PROTOC):
+	mkdir -p $(TOOLSDIR)/bin
+	curl -Lo protoc.zip https://github.com/protocolbuffers/protobuf/releases/download/v$(PROTOC_VERSION)/protoc-$(PROTOC_VERSION)-$(PROTOC_OS)-$(PROTOC_ARCH).zip
+	unzip -o -d $(TOOLSDIR) protoc.zip bin/protoc
+	rm protoc.zip
+	chmod +x $(PROTOC)
+	go install google.golang.org/protobuf/cmd/protoc-gen-go@v$(GO_PROTOC_VERSION)
 
 $(ACTION_VALIDATOR):
 	mkdir -p $(TOOLSDIR)/bin
@@ -513,6 +581,12 @@ ui:
 check-linux:
 ifneq ($(shell go env GOOS),linux)
 	$(error makefile target can be run only on linux)
+endif
+
+.PHONY: check-not-freebds
+check-not-freebds:
+ifneq ($(shell go env GOOS),freebsd)
+	$(error makefile target can't be run on freebsd)
 endif
 
 .PHONY: check-compatibility

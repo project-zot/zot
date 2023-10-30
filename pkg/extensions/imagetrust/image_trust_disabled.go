@@ -7,6 +7,8 @@ import (
 	"time"
 
 	godigest "github.com/opencontainers/go-digest"
+
+	mTypes "zotregistry.io/zot/pkg/meta/types"
 )
 
 func NewLocalImageTrustStore(dir string) (*imageTrustDisabled, error) {
@@ -20,7 +22,7 @@ func NewAWSImageTrustStore(region, endpoint string) (*imageTrustDisabled, error)
 type imageTrustDisabled struct{}
 
 func (imgTrustStore *imageTrustDisabled) VerifySignature(
-	signatureType string, rawSignature []byte, sigKey string, manifestDigest godigest.Digest, manifestContent []byte,
+	signatureType string, rawSignature []byte, sigKey string, manifestDigest godigest.Digest, imageMeta mTypes.ImageMeta,
 	repo string,
 ) (string, time.Time, bool, error) {
 	return "", time.Time{}, false, nil

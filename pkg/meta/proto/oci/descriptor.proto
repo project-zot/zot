@@ -1,0 +1,23 @@
+syntax = "proto3";
+package oci_v1;
+
+// https://github.com/opencontainers/image-spec/blob/main/specs-go/v1/descriptor.go
+
+message Descriptor {
+  string            MediaType     = 1;
+  string            Digest        = 2;
+  int64             Size          = 3;
+  repeated string   URLs          = 4;
+  bytes             Data          = 5;
+  optional Platform Platform      = 6;
+  optional string   ArtifactType  = 7;
+  map <string,string> Annotations = 8;
+}
+
+message Platform {
+  string Architecture = 1;
+  string OS = 2;
+  optional string OSVersion  = 3;
+  repeated string OSFeatures = 4;
+  optional string Variant = 5;
+}

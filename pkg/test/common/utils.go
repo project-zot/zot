@@ -211,3 +211,35 @@ func GenerateRandomName() (string, int64) {
 
 	return string(randomBytes), seed
 }
+
+func AccumulateField[R any, T any](list []T, accFunc func(T) R) []R {
+	result := make([]R, 0, len(list))
+
+	for i := range list {
+		result = append(result, accFunc(list[i]))
+	}
+
+	return result
+}
+
+func ContainSameElements[T comparable](list1, list2 []T) bool {
+	if len(list1) != len(list2) {
+		return false
+	}
+
+	count1 := map[T]int{}
+	count2 := map[T]int{}
+
+	for i := range list1 {
+		count1[list1[i]]++
+		count2[list2[i]]++
+	}
+
+	for key := range count1 {
+		if count1[key] != count2[key] {
+			return false
+		}
+	}
+
+	return true
+}

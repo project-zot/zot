@@ -11,12 +11,16 @@ import (
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"go.etcd.io/bbolt"
+	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/timestamppb"
 
 	zerr "zotregistry.io/zot/errors"
 	"zotregistry.io/zot/pkg/api/constants"
 	zcommon "zotregistry.io/zot/pkg/common"
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/meta/common"
+	mConvert "zotregistry.io/zot/pkg/meta/convert"
+	proto_go "zotregistry.io/zot/pkg/meta/proto/gen"
 	mTypes "zotregistry.io/zot/pkg/meta/types"
 	"zotregistry.io/zot/pkg/meta/version"
 	reqCtx "zotregistry.io/zot/pkg/requestcontext"
@@ -41,27 +45,27 @@ func New(boltDB *bbolt.DB, log log.Logger) (*BoltDB, error) {
 			return err
 		}
 
-		_, err = transaction.CreateBucketIfNotExists([]byte(ManifestDataBucket))
-		if err != nil {
-			return err
-		}
-
-		_, err = transaction.CreateBucketIfNotExists([]byte(IndexDataBucket))
-		if err != nil {
-			return err
-		}
-
-		_, err = transaction.CreateBucketIfNotExists([]byte(RepoMetadataBucket))
-		if err != nil {
-			return err
-		}
-
 		_, err = transaction.CreateBucketIfNotExists([]byte(UserDataBucket))
 		if err != nil {
 			return err
 		}
 
 		_, err = transaction.CreateBucketIfNotExists([]byte(UserAPIKeysBucket))
+		if err != nil {
+			return err
+		}
+
+		_, err = transaction.CreateBucketIfNotExists([]byte(ImageMetaBuck))
+		if err != nil {
+			return err
+		}
+
+		_, err = transaction.CreateBucketIfNotExists([]byte(RepoMetaBuck))
+		if err != nil {
+			return err
+		}
+
+		_, err = transaction.CreateBucketIfNotExists([]byte(RepoBlobsBuck))
 		if err != nil {
 			return err
 		}
@@ -80,26 +84,30 @@ func New(boltDB *bbolt.DB, log log.Logger) (*BoltDB, error) {
 	}, nil
 }
 
-func (bdw *BoltDB) ImageTrustStore() mTypes.ImageTrustStore {
-	return bdw.imgTrustStore
-}
-
-func (bdw *BoltDB) SetImageTrustStore(imgTrustStore mTypes.ImageTrustStore) {
-	bdw.imgTrustStore = imgTrustStore
-}
-
-func (bdw *BoltDB) SetManifestData(manifestDigest godigest.Digest, manifestData mTypes.ManifestData) error {
+func (bdw *BoltDB) SetImageMeta(digest godigest.Digest, imageMeta mTypes.ImageMeta) error {
 	err := bdw.DB.Update(func(tx *bbolt.Tx) error {
-		buck := tx.Bucket([]byte(ManifestDataBucket))
+		buck := tx.Bucket([]byte(ImageMetaBuck))
 
-		mdBlob, err := json.Marshal(manifestData)
-		if err != nil {
-			return fmt.Errorf("metadb: error while calculating blob for manifest with digest %s %w", manifestDigest, err)
+		protoImageMeta := &proto_go.ImageMeta{}
+
+		switch imageMeta.MediaType {
+		case ispec.MediaTypeImageManifest:
+			manifest := imageMeta.Manifests[0]
+
+			protoImageMeta = mConvert.GetProtoImageManifestData(manifest.Manifest, manifest.Config,
+				manifest.Size, manifest.Digest.String())
+		case ispec.MediaTypeImageIndex:
+			protoImageMeta = mConvert.GetProtoImageIndexMeta(*imageMeta.Index, imageMeta.Size, imageMeta.Digest.String())
 		}
 
-		err = buck.Put([]byte(manifestDigest), mdBlob)
+		pImageMetaBlob, err := proto.Marshal(protoImageMeta)
 		if err != nil {
-			return fmt.Errorf("metadb: error while setting manifest data with for digest %s %w", manifestDigest, err)
+			return fmt.Errorf("metadb: error while calculating blob for manifest with digest %s %w", digest, err)
+		}
+
+		err = buck.Put([]byte(digest), pImageMetaBlob)
+		if err != nil {
+			return fmt.Errorf("metadb: error while setting manifest data with for digest %s %w", digest, err)
 		}
 
 		return nil
@@ -108,217 +116,731 @@ func (bdw *BoltDB) SetManifestData(manifestDigest godigest.Digest, manifestData 
 	return err
 }
 
-func (bdw *BoltDB) GetManifestData(manifestDigest godigest.Digest) (mTypes.ManifestData, error) {
-	var manifestData mTypes.ManifestData
-
-	err := bdw.DB.View(func(tx *bbolt.Tx) error {
-		buck := tx.Bucket([]byte(ManifestDataBucket))
-
-		mdBlob := buck.Get([]byte(manifestDigest))
-
-		if len(mdBlob) == 0 {
-			return zerr.ErrManifestDataNotFound
-		}
-
-		err := json.Unmarshal(mdBlob, &manifestData)
-		if err != nil {
-			return fmt.Errorf("metadb: error while unmashaling manifest meta for digest %s %w", manifestDigest, err)
-		}
-
-		return nil
-	})
-
-	return manifestData, err
-}
-
-func (bdw *BoltDB) SetManifestMeta(repo string, manifestDigest godigest.Digest, manifestMeta mTypes.ManifestMetadata,
+func (bdw *BoltDB) SetRepoReference(repo string, reference string, imageMeta mTypes.ImageMeta,
 ) error {
-	err := bdw.DB.Update(func(tx *bbolt.Tx) error {
-		dataBuck := tx.Bucket([]byte(ManifestDataBucket))
-		repoBuck := tx.Bucket([]byte(RepoMetadataBucket))
+	if err := common.ValidateRepoReferenceInput(repo, reference, imageMeta.Digest); err != nil {
+		return err
+	}
 
-		repoMeta := mTypes.RepoMetadata{
-			Name:       repo,
-			Tags:       map[string]mTypes.Descriptor{},
-			Statistics: map[string]mTypes.DescriptorStatistics{},
-			Signatures: map[string]mTypes.ManifestSignatures{},
-			Referrers:  map[string][]mTypes.ReferrerInfo{},
+	err := bdw.DB.Update(func(tx *bbolt.Tx) error {
+		repoBuck := tx.Bucket([]byte(RepoMetaBuck))
+		repoBlobsBuck := tx.Bucket([]byte(RepoBlobsBuck))
+		imageBuck := tx.Bucket([]byte(ImageMetaBuck))
+
+		// 1. Add image data to db if needed
+
+		protoImageMeta := mConvert.GetProtoImageMeta(imageMeta)
+
+		imageMetaBlob, err := proto.Marshal(protoImageMeta)
+		if err != nil {
+			return err
+		}
+
+		err = imageBuck.Put([]byte(imageMeta.Digest), imageMetaBlob)
+		if err != nil {
+			return err
 		}
 
 		repoMetaBlob := repoBuck.Get([]byte(repo))
+
+		protoRepoMeta := &proto_go.RepoMeta{
+			Name:       repo,
+			Tags:       map[string]*proto_go.TagDescriptor{"": {}}, // This is done so Protobuf can initialize a non-nil map
+			Statistics: map[string]*proto_go.DescriptorStatistics{"": {}},
+			Signatures: map[string]*proto_go.ManifestSignatures{"": {Map: map[string]*proto_go.SignaturesInfo{"": {}}}},
+			Referrers:  map[string]*proto_go.ReferrersInfo{"": {}},
+		}
+
 		if len(repoMetaBlob) > 0 {
-			err := json.Unmarshal(repoMetaBlob, &repoMeta)
+			err := proto.Unmarshal(repoMetaBlob, protoRepoMeta)
 			if err != nil {
 				return err
 			}
 		}
 
-		mdBlob, err := json.Marshal(mTypes.ManifestData{
-			ManifestBlob: manifestMeta.ManifestBlob,
-			ConfigBlob:   manifestMeta.ConfigBlob,
-		})
-		if err != nil {
-			return fmt.Errorf("metadb: error while calculating blob for manifest with digest %s %w", manifestDigest, err)
+		// 2. Referrers
+		if subject := mConvert.GetImageSubject(protoImageMeta); subject != nil {
+			refInfo := &proto_go.ReferrersInfo{}
+			if protoRepoMeta.Referrers[subject.Digest.String()] != nil {
+				refInfo = protoRepoMeta.Referrers[subject.Digest.String()]
+			}
+
+			foundReferrer := false
+
+			for i := range refInfo.List {
+				if refInfo.List[i].Digest == mConvert.GetImageDigestStr(protoImageMeta) {
+					foundReferrer = true
+					refInfo.List[i].Count += 1
+
+					break
+				}
+			}
+
+			if !foundReferrer {
+				refInfo.List = append(refInfo.List, &proto_go.ReferrerInfo{
+					Count:        1,
+					MediaType:    protoImageMeta.MediaType,
+					Digest:       mConvert.GetImageDigestStr(protoImageMeta),
+					ArtifactType: mConvert.GetImageArtifactType(protoImageMeta),
+					Size:         mConvert.GetImageManifestSize(protoImageMeta),
+					Annotations:  mConvert.GetImageAnnotations(protoImageMeta),
+				})
+			}
+
+			protoRepoMeta.Referrers[subject.Digest.String()] = refInfo
 		}
 
-		err = dataBuck.Put([]byte(manifestDigest), mdBlob)
-		if err != nil {
-			return fmt.Errorf("metadb: error while setting manifest meta with for digest %s %w", manifestDigest, err)
-		}
-
-		updatedRepoMeta := common.UpdateManifestMeta(repoMeta, manifestDigest, manifestMeta)
-
-		updatedRepoMetaBlob, err := json.Marshal(updatedRepoMeta)
-		if err != nil {
-			return fmt.Errorf("metadb: error while calculating blob for updated repo meta '%s' %w", repo, err)
-		}
-
-		return repoBuck.Put([]byte(repo), updatedRepoMetaBlob)
-	})
-
-	return err
-}
-
-func (bdw *BoltDB) GetManifestMeta(repo string, manifestDigest godigest.Digest) (mTypes.ManifestMetadata, error) {
-	var manifestMetadata mTypes.ManifestMetadata
-
-	err := bdw.DB.View(func(tx *bbolt.Tx) error {
-		dataBuck := tx.Bucket([]byte(ManifestDataBucket))
-		repoBuck := tx.Bucket([]byte(RepoMetadataBucket))
-
-		mdBlob := dataBuck.Get([]byte(manifestDigest))
-
-		if len(mdBlob) == 0 {
-			return zerr.ErrManifestMetaNotFound
-		}
-
-		var manifestData mTypes.ManifestData
-
-		err := json.Unmarshal(mdBlob, &manifestData)
-		if err != nil {
-			return fmt.Errorf("metadb: error while unmashaling manifest meta for digest %s %w", manifestDigest, err)
-		}
-
-		var repoMeta mTypes.RepoMetadata
-
-		repoMetaBlob := repoBuck.Get([]byte(repo))
-		if len(repoMetaBlob) > 0 {
-			err = json.Unmarshal(repoMetaBlob, &repoMeta)
-			if err != nil {
-				return fmt.Errorf("metadb: error while unmashaling manifest meta for digest %s %w", manifestDigest, err)
+		// 3. Update tag
+		if !common.ReferenceIsDigest(reference) {
+			protoRepoMeta.Tags[reference] = &proto_go.TagDescriptor{
+				Digest:    imageMeta.Digest.String(),
+				MediaType: imageMeta.MediaType,
 			}
 		}
 
-		manifestMetadata.ManifestBlob = manifestData.ManifestBlob
-		manifestMetadata.ConfigBlob = manifestData.ConfigBlob
-		manifestMetadata.DownloadCount = repoMeta.Statistics[manifestDigest.String()].DownloadCount
-
-		manifestMetadata.Signatures = mTypes.ManifestSignatures{}
-		if repoMeta.Signatures[manifestDigest.String()] != nil {
-			manifestMetadata.Signatures = repoMeta.Signatures[manifestDigest.String()]
+		if _, ok := protoRepoMeta.Statistics[imageMeta.Digest.String()]; !ok {
+			protoRepoMeta.Statistics[imageMeta.Digest.String()] = &proto_go.DescriptorStatistics{DownloadCount: 0}
 		}
 
-		return nil
-	})
+		if _, ok := protoRepoMeta.Signatures[imageMeta.Digest.String()]; !ok {
+			protoRepoMeta.Signatures[imageMeta.Digest.String()] = &proto_go.ManifestSignatures{
+				Map: map[string]*proto_go.SignaturesInfo{"": {}},
+			}
+		}
 
-	return manifestMetadata, err
-}
+		if _, ok := protoRepoMeta.Referrers[imageMeta.Digest.String()]; !ok {
+			protoRepoMeta.Referrers[imageMeta.Digest.String()] = &proto_go.ReferrersInfo{
+				List: []*proto_go.ReferrerInfo{},
+			}
+		}
 
-func (bdw *BoltDB) SetIndexData(indexDigest godigest.Digest, indexMetadata mTypes.IndexData) error {
-	// we make the assumption that the oci layout is consistent and all manifests refferenced inside the
-	// index are present
-	err := bdw.DB.Update(func(tx *bbolt.Tx) error {
-		buck := tx.Bucket([]byte(IndexDataBucket))
+		// 4. Blobs
+		repoBlobsBytes := repoBlobsBuck.Get([]byte(protoRepoMeta.Name))
 
-		imBlob, err := json.Marshal(indexMetadata)
+		repoBlobs := &proto_go.RepoBlobs{}
+
+		if repoBlobsBytes == nil {
+			repoBlobs.Blobs = map[string]*proto_go.BlobInfo{}
+		} else {
+			err := proto.Unmarshal(repoBlobsBytes, repoBlobs)
+			if err != nil {
+				return err
+			}
+		}
+
+		protoRepoMeta, repoBlobs, err = common.AddImageMetaToRepoMeta(protoRepoMeta, repoBlobs, reference, imageMeta)
 		if err != nil {
-			return fmt.Errorf("metadb: error while calculating blob for manifest with digest %s %w", indexDigest, err)
+			return err
 		}
 
-		err = buck.Put([]byte(indexDigest), imBlob)
+		repoBlobsBytes, err = proto.Marshal(repoBlobs)
 		if err != nil {
-			return fmt.Errorf("metadb: error while setting manifest meta with for digest %s %w", indexDigest, err)
+			return err
 		}
 
-		return nil
+		err = repoBlobsBuck.Put([]byte(protoRepoMeta.Name), repoBlobsBytes)
+		if err != nil {
+			return err
+		}
+
+		repoMetaBlob, err = proto.Marshal(protoRepoMeta)
+		if err != nil {
+			return err
+		}
+
+		return repoBuck.Put([]byte(repo), repoMetaBlob)
 	})
 
 	return err
 }
 
-func (bdw *BoltDB) GetIndexData(indexDigest godigest.Digest) (mTypes.IndexData, error) {
-	var indexMetadata mTypes.IndexData
+func (bdw *BoltDB) FilterImageMeta(ctx context.Context, digests []string,
+) (map[string]mTypes.ImageMeta, error) {
+	imageMetaMap := map[string]mTypes.ImageMeta{}
 
-	err := bdw.DB.View(func(tx *bbolt.Tx) error {
-		buck := tx.Bucket([]byte(IndexDataBucket))
+	err := bdw.DB.View(func(transaction *bbolt.Tx) error {
+		imageBuck := transaction.Bucket([]byte(ImageMetaBuck))
 
-		mmBlob := buck.Get([]byte(indexDigest))
+		for _, digest := range digests {
+			protoImageMeta, err := fetchProtoImageMeta(imageBuck, digest)
+			if err != nil {
+				return err
+			}
 
-		if len(mmBlob) == 0 {
-			return zerr.ErrManifestMetaNotFound
-		}
+			if protoImageMeta.MediaType == ispec.MediaTypeImageIndex {
+				manifestDataList := make([]*proto_go.ManifestMeta, 0, len(protoImageMeta.Index.Index.Manifests))
 
-		err := json.Unmarshal(mmBlob, &indexMetadata)
-		if err != nil {
-			return fmt.Errorf("metadb: error while unmashaling manifest meta for digest %s %w", indexDigest, err)
+				for _, manifest := range protoImageMeta.Index.Index.Manifests {
+					imageManifestData, err := fetchProtoImageMeta(imageBuck, manifest.Digest)
+					if err != nil {
+						return err
+					}
+
+					manifestDataList = append(manifestDataList, imageManifestData.Manifests[0])
+				}
+
+				protoImageMeta.Manifests = manifestDataList
+			}
+
+			imageMetaMap[digest] = mConvert.GetImageMeta(protoImageMeta)
 		}
 
 		return nil
 	})
 
-	return indexMetadata, err
+	return imageMetaMap, err
 }
 
-func (bdw BoltDB) SetReferrer(repo string, referredDigest godigest.Digest, referrer mTypes.ReferrerInfo) error {
-	err := bdw.DB.Update(func(tx *bbolt.Tx) error {
-		buck := tx.Bucket([]byte(RepoMetadataBucket))
+func (bdw *BoltDB) SearchRepos(ctx context.Context, searchText string,
+) ([]mTypes.RepoMeta, error) {
+	repos := []mTypes.RepoMeta{}
+
+	err := bdw.DB.View(func(transaction *bbolt.Tx) error {
+		var (
+			repoBuck      = transaction.Bucket([]byte(RepoMetaBuck))
+			userBookmarks = getUserBookmarks(ctx, transaction)
+			userStars     = getUserStars(ctx, transaction)
+		)
+
+		cursor := repoBuck.Cursor()
+
+		for repoName, repoMetaBlob := cursor.First(); repoName != nil; repoName, repoMetaBlob = cursor.Next() {
+			if ok, err := reqCtx.RepoIsUserAvailable(ctx, string(repoName)); !ok || err != nil {
+				continue
+			}
+
+			rank := common.RankRepoName(searchText, string(repoName))
+			if rank == -1 {
+				continue
+			}
+
+			var protoRepoMeta proto_go.RepoMeta
+
+			err := proto.Unmarshal(repoMetaBlob, &protoRepoMeta)
+			if err != nil {
+				return err
+			}
+
+			delete(protoRepoMeta.Tags, "")
+
+			protoRepoMeta.Rank = int32(rank)
+			protoRepoMeta.IsStarred = zcommon.Contains(userStars, protoRepoMeta.Name)
+			protoRepoMeta.IsBookmarked = zcommon.Contains(userBookmarks, protoRepoMeta.Name)
+
+			repos = append(repos, mConvert.GetRepoMeta(&protoRepoMeta))
+		}
+
+		return nil
+	})
+
+	return repos, err
+}
+
+func fetchProtoImageMeta(imageBuck *bbolt.Bucket, digest string) (*proto_go.ImageMeta, error) {
+	imageMetaBlob := imageBuck.Get([]byte(digest))
+
+	if len(imageMetaBlob) == 0 {
+		return nil, zerr.ErrImageMetaNotFound
+	}
+
+	imageMeta := proto_go.ImageMeta{}
+
+	err := proto.Unmarshal(imageMetaBlob, &imageMeta)
+	if err != nil {
+		return nil, err
+	}
+
+	return &imageMeta, nil
+}
+
+func (bdw *BoltDB) SearchTags(ctx context.Context, searchText string,
+) ([]mTypes.FullImageMeta, error) {
+	images := []mTypes.FullImageMeta{}
+
+	searchedRepo, searchedTag, err := common.GetRepoTag(searchText)
+	if err != nil {
+		return []mTypes.FullImageMeta{},
+			fmt.Errorf("metadb: error while parsing search text, invalid format %w", err)
+	}
+
+	err = bdw.DB.View(func(transaction *bbolt.Tx) error {
+		var (
+			repoBuck      = transaction.Bucket([]byte(RepoMetaBuck))
+			imageBuck     = transaction.Bucket([]byte(ImageMetaBuck))
+			userBookmarks = getUserBookmarks(ctx, transaction)
+			userStars     = getUserStars(ctx, transaction)
+		)
+
+		repoName, repoMetaBlob := repoBuck.Cursor().Seek([]byte(searchedRepo))
+
+		if string(repoName) != searchedRepo {
+			return nil
+		}
+
+		if ok, err := reqCtx.RepoIsUserAvailable(ctx, string(repoName)); !ok || err != nil {
+			return err
+		}
+
+		protoRepoMeta := &proto_go.RepoMeta{}
+
+		err := proto.Unmarshal(repoMetaBlob, protoRepoMeta)
+		if err != nil {
+			return err
+		}
+
+		delete(protoRepoMeta.Tags, "")
+
+		protoRepoMeta.IsBookmarked = zcommon.Contains(userBookmarks, protoRepoMeta.Name)
+		protoRepoMeta.IsStarred = zcommon.Contains(userStars, protoRepoMeta.Name)
+
+		for tag, descriptor := range protoRepoMeta.Tags {
+			if !strings.HasPrefix(tag, searchedTag) || tag == "" {
+				continue
+			}
+
+			var protoImageMeta *proto_go.ImageMeta
+
+			switch descriptor.MediaType {
+			case ispec.MediaTypeImageManifest:
+				manifestDigest := descriptor.Digest
+
+				imageManifestData, err := fetchProtoImageMeta(imageBuck, manifestDigest)
+				if err != nil {
+					return fmt.Errorf("metadb: error fetching manifest meta for manifest with digest %s %w",
+						manifestDigest, err)
+				}
+
+				protoImageMeta = imageManifestData
+			case ispec.MediaTypeImageIndex:
+				indexDigest := descriptor.Digest
+
+				imageIndexData, err := fetchProtoImageMeta(imageBuck, indexDigest)
+				if err != nil {
+					return fmt.Errorf("metadb: error fetching manifest meta for manifest with digest %s %w",
+						indexDigest, err)
+				}
+
+				manifestDataList := make([]*proto_go.ManifestMeta, 0, len(imageIndexData.Index.Index.Manifests))
+
+				for _, manifest := range imageIndexData.Index.Index.Manifests {
+					imageManifestData, err := fetchProtoImageMeta(imageBuck, manifest.Digest)
+					if err != nil {
+						return err
+					}
+
+					manifestDataList = append(manifestDataList, imageManifestData.Manifests[0])
+				}
+
+				imageIndexData.Manifests = manifestDataList
+
+				protoImageMeta = imageIndexData
+			default:
+				bdw.Log.Error().Str("mediaType", descriptor.MediaType).Msg("Unsupported media type")
+
+				continue
+			}
+
+			images = append(images, mConvert.GetFullImageMetaFromProto(tag, protoRepoMeta, protoImageMeta))
+		}
+
+		return nil
+	})
+
+	return images, err
+}
+
+func (bdw *BoltDB) FilterTags(ctx context.Context, filterRepoTag mTypes.FilterRepoTagFunc,
+	filterFunc mTypes.FilterFunc,
+) ([]mTypes.FullImageMeta, error) {
+	images := []mTypes.FullImageMeta{}
+
+	err := bdw.DB.View(func(transaction *bbolt.Tx) error {
+		var (
+			repoBuck      = transaction.Bucket([]byte(RepoMetaBuck))
+			imageMetaBuck = transaction.Bucket([]byte(ImageMetaBuck))
+			userBookmarks = getUserBookmarks(ctx, transaction)
+			userStars     = getUserStars(ctx, transaction)
+			viewError     error
+		)
+
+		cursor := repoBuck.Cursor()
+		repoName, repoMetaBlob := cursor.First()
+
+		for ; repoName != nil; repoName, repoMetaBlob = cursor.Next() {
+			if ok, err := reqCtx.RepoIsUserAvailable(ctx, string(repoName)); !ok || err != nil {
+				continue
+			}
+
+			protoRepoMeta := &proto_go.RepoMeta{}
+
+			err := proto.Unmarshal(repoMetaBlob, protoRepoMeta)
+			if err != nil {
+				viewError = errors.Join(viewError, err)
+
+				continue
+			}
+
+			delete(protoRepoMeta.Tags, "")
+			protoRepoMeta.IsBookmarked = zcommon.Contains(userBookmarks, protoRepoMeta.Name)
+			protoRepoMeta.IsStarred = zcommon.Contains(userStars, protoRepoMeta.Name)
+			repoMeta := mConvert.GetRepoMeta(protoRepoMeta)
+
+			for tag, descriptor := range protoRepoMeta.Tags {
+				if !filterRepoTag(string(repoName), tag) {
+					continue
+				}
+
+				switch descriptor.MediaType {
+				case ispec.MediaTypeImageManifest:
+					manifestDigest := descriptor.Digest
+
+					imageManifestData, err := fetchProtoImageMeta(imageMetaBuck, manifestDigest)
+					if err != nil {
+						viewError = errors.Join(viewError, err)
+
+						continue
+					}
+
+					imageMeta := mConvert.GetImageMeta(imageManifestData)
+
+					if filterFunc(repoMeta, imageMeta) {
+						images = append(images, mConvert.GetFullImageMetaFromProto(tag, protoRepoMeta, imageManifestData))
+					}
+				case ispec.MediaTypeImageIndex:
+					indexDigest := descriptor.Digest
+
+					imageIndexData, err := fetchProtoImageMeta(imageMetaBuck, indexDigest)
+					if err != nil {
+						viewError = errors.Join(viewError, err)
+
+						continue
+					}
+
+					matchedManifests := []*proto_go.ManifestMeta{}
+
+					for _, manifest := range imageIndexData.Index.Index.Manifests {
+						manifestDigest := manifest.Digest
+
+						imageManifestData, err := fetchProtoImageMeta(imageMetaBuck, manifestDigest)
+						if err != nil {
+							viewError = errors.Join(viewError, err)
+
+							continue
+						}
+
+						imageMeta := mConvert.GetImageMeta(imageManifestData)
+
+						if filterFunc(repoMeta, imageMeta) {
+							matchedManifests = append(matchedManifests, imageManifestData.Manifests[0])
+						}
+					}
+
+					if len(matchedManifests) > 0 {
+						imageIndexData.Manifests = matchedManifests
+
+						images = append(images, mConvert.GetFullImageMetaFromProto(tag, protoRepoMeta, imageIndexData))
+					}
+				default:
+					bdw.Log.Error().Str("mediaType", descriptor.MediaType).Msg("Unsupported media type")
+
+					continue
+				}
+			}
+		}
+
+		return viewError
+	})
+
+	return images, err
+}
+
+func (bdw *BoltDB) FilterRepos(ctx context.Context, acceptName mTypes.FilterRepoNameFunc,
+	filter mTypes.FilterFullRepoFunc,
+) ([]mTypes.RepoMeta, error) {
+	repos := []mTypes.RepoMeta{}
+
+	err := bdw.DB.View(func(tx *bbolt.Tx) error {
+		var (
+			buck          = tx.Bucket([]byte(RepoMetaBuck))
+			cursor        = buck.Cursor()
+			userBookmarks = getUserBookmarks(ctx, tx)
+			userStars     = getUserStars(ctx, tx)
+		)
+
+		for repoName, repoMetaBlob := cursor.First(); repoName != nil; repoName, repoMetaBlob = cursor.Next() {
+			if ok, err := reqCtx.RepoIsUserAvailable(ctx, string(repoName)); !ok || err != nil {
+				continue
+			}
+
+			if !acceptName(string(repoName)) {
+				continue
+			}
+
+			repoMeta := proto_go.RepoMeta{}
+
+			err := proto.Unmarshal(repoMetaBlob, &repoMeta)
+			if err != nil {
+				return err
+			}
+
+			repoMeta.IsBookmarked = zcommon.Contains(userBookmarks, repoMeta.Name)
+			repoMeta.IsStarred = zcommon.Contains(userStars, repoMeta.Name)
+
+			fullRepoMeta := mConvert.GetRepoMeta(&repoMeta)
+
+			if filter(fullRepoMeta) {
+				repos = append(repos, fullRepoMeta)
+			}
+		}
+
+		return nil
+	})
+	if err != nil {
+		return []mTypes.RepoMeta{}, err
+	}
+
+	return repos, err
+}
+
+func (bdw *BoltDB) GetRepoMeta(ctx context.Context, repo string) (mTypes.RepoMeta, error) {
+	var protoRepoMeta proto_go.RepoMeta
+
+	err := bdw.DB.View(func(tx *bbolt.Tx) error {
+		buck := tx.Bucket([]byte(RepoMetaBuck))
+		userBookmarks := getUserBookmarks(ctx, tx)
+		userStars := getUserStars(ctx, tx)
 
 		repoMetaBlob := buck.Get([]byte(repo))
 
 		// object not found
-		if len(repoMetaBlob) == 0 {
-			var err error
+		if repoMetaBlob == nil {
+			return zerr.ErrRepoMetaNotFound
+		}
 
-			// create a new object
-			repoMeta := mTypes.RepoMetadata{
-				Name:       repo,
-				Tags:       map[string]mTypes.Descriptor{},
-				Statistics: map[string]mTypes.DescriptorStatistics{},
-				Signatures: map[string]mTypes.ManifestSignatures{},
-				Referrers: map[string][]mTypes.ReferrerInfo{
-					referredDigest.String(): {
-						referrer,
-					},
-				},
+		// object found
+		err := proto.Unmarshal(repoMetaBlob, &protoRepoMeta)
+		if err != nil {
+			return err
+		}
+
+		delete(protoRepoMeta.Tags, "")
+		protoRepoMeta.IsBookmarked = zcommon.Contains(userBookmarks, repo)
+		protoRepoMeta.IsStarred = zcommon.Contains(userStars, repo)
+
+		return nil
+	})
+
+	return mConvert.GetRepoMeta(&protoRepoMeta), err
+}
+
+func (bdw *BoltDB) GetFullImageMeta(ctx context.Context, repo string, tag string) (mTypes.FullImageMeta, error) {
+	protoRepoMeta := &proto_go.RepoMeta{}
+	protoImageMeta := &proto_go.ImageMeta{}
+
+	err := bdw.DB.View(func(tx *bbolt.Tx) error {
+		buck := tx.Bucket([]byte(RepoMetaBuck))
+		imageBuck := tx.Bucket([]byte(ImageMetaBuck))
+		userBookmarks := getUserBookmarks(ctx, tx)
+		userStars := getUserStars(ctx, tx)
+
+		repoMetaBlob := buck.Get([]byte(repo))
+
+		// object not found
+		if repoMetaBlob == nil {
+			return zerr.ErrRepoMetaNotFound
+		}
+
+		// object found
+		err := proto.Unmarshal(repoMetaBlob, protoRepoMeta)
+		if err != nil {
+			return err
+		}
+
+		delete(protoRepoMeta.Tags, "")
+		protoRepoMeta.IsBookmarked = zcommon.Contains(userBookmarks, repo)
+		protoRepoMeta.IsStarred = zcommon.Contains(userStars, repo)
+
+		descriptor, ok := protoRepoMeta.Tags[tag]
+		if !ok {
+			return zerr.ErrImageMetaNotFound
+		}
+
+		protoImageMeta, err = fetchProtoImageMeta(imageBuck, descriptor.Digest)
+		if err != nil {
+			return err
+		}
+
+		if protoImageMeta.MediaType == ispec.MediaTypeImageIndex {
+			manifestDataList := make([]*proto_go.ManifestMeta, 0, len(protoImageMeta.Index.Index.Manifests))
+
+			for _, manifest := range protoImageMeta.Index.Index.Manifests {
+				imageManifestData, err := fetchProtoImageMeta(imageBuck, manifest.Digest)
+				if err != nil {
+					return err
+				}
+
+				manifestDataList = append(manifestDataList, imageManifestData.Manifests[0])
 			}
 
-			repoMetaBlob, err = json.Marshal(repoMeta)
+			protoImageMeta.Manifests = manifestDataList
+		}
+
+		return nil
+	})
+
+	return mConvert.GetFullImageMetaFromProto(tag, protoRepoMeta, protoImageMeta), err
+}
+
+func (bdw *BoltDB) GetImageMeta(digest godigest.Digest) (mTypes.ImageMeta, error) {
+	imageMeta := mTypes.ImageMeta{}
+
+	err := bdw.DB.View(func(tx *bbolt.Tx) error {
+		imageBuck := tx.Bucket([]byte(ImageMetaBuck))
+
+		protoImageMeta, err := fetchProtoImageMeta(imageBuck, digest.String())
+		if err != nil {
+			return err
+		}
+
+		if protoImageMeta.MediaType == ispec.MediaTypeImageIndex {
+			manifestDataList := make([]*proto_go.ManifestMeta, 0, len(protoImageMeta.Index.Index.Manifests))
+
+			for _, manifest := range protoImageMeta.Index.Index.Manifests {
+				imageManifestData, err := fetchProtoImageMeta(imageBuck, manifest.Digest)
+				if err != nil {
+					return err
+				}
+
+				manifestDataList = append(manifestDataList, imageManifestData.Manifests[0])
+			}
+
+			protoImageMeta.Manifests = manifestDataList
+		}
+
+		imageMeta = mConvert.GetImageMeta(protoImageMeta)
+
+		return nil
+	})
+
+	return imageMeta, err
+}
+
+func (bdw *BoltDB) GetMultipleRepoMeta(ctx context.Context, filter func(repoMeta mTypes.RepoMeta) bool,
+) ([]mTypes.RepoMeta, error) {
+	foundRepos := []mTypes.RepoMeta{}
+
+	err := bdw.DB.View(func(tx *bbolt.Tx) error {
+		buck := tx.Bucket([]byte(RepoMetaBuck))
+
+		cursor := buck.Cursor()
+
+		for repoName, repoMetaBlob := cursor.First(); repoName != nil; repoName, repoMetaBlob = cursor.Next() {
+			if ok, err := reqCtx.RepoIsUserAvailable(ctx, string(repoName)); !ok || err != nil {
+				continue
+			}
+
+			protoRepoMeta := proto_go.RepoMeta{}
+
+			err := proto.Unmarshal(repoMetaBlob, &protoRepoMeta)
+			if err != nil {
+				return err
+			}
+
+			delete(protoRepoMeta.Tags, "")
+
+			repoMeta := mConvert.GetRepoMeta(&protoRepoMeta)
+
+			if filter(repoMeta) {
+				foundRepos = append(foundRepos, repoMeta)
+			}
+		}
+
+		return nil
+	})
+
+	return foundRepos, err
+}
+
+func (bdw *BoltDB) AddManifestSignature(repo string, signedManifestDigest godigest.Digest,
+	sygMeta mTypes.SignatureMetadata,
+) error {
+	err := bdw.DB.Update(func(tx *bbolt.Tx) error {
+		buck := tx.Bucket([]byte(RepoMetaBuck))
+
+		repoMetaBlob := buck.Get([]byte(repo))
+
+		if len(repoMetaBlob) == 0 {
+			var err error
+			// create a new object
+			repoMeta := proto_go.RepoMeta{
+				Name: repo,
+				Tags: map[string]*proto_go.TagDescriptor{"": {}},
+				Signatures: map[string]*proto_go.ManifestSignatures{
+					signedManifestDigest.String(): {
+						Map: map[string]*proto_go.SignaturesInfo{
+							sygMeta.SignatureType: {
+								List: []*proto_go.SignatureInfo{
+									{
+										SignatureManifestDigest: sygMeta.SignatureDigest,
+										LayersInfo:              mConvert.GetProtoLayersInfo(sygMeta.LayersInfo),
+									},
+								},
+							},
+						},
+					},
+				},
+				Referrers:  map[string]*proto_go.ReferrersInfo{"": {}},
+				Statistics: map[string]*proto_go.DescriptorStatistics{"": {}},
+			}
+
+			repoMetaBlob, err = proto.Marshal(&repoMeta)
 			if err != nil {
 				return err
 			}
 
 			return buck.Put([]byte(repo), repoMetaBlob)
 		}
-		var repoMeta mTypes.RepoMetadata
 
-		err := json.Unmarshal(repoMetaBlob, &repoMeta)
+		protoRepoMeta := &proto_go.RepoMeta{}
+
+		err := proto.Unmarshal(repoMetaBlob, protoRepoMeta)
 		if err != nil {
 			return err
 		}
 
-		referrers := repoMeta.Referrers[referredDigest.String()]
+		var (
+			manifestSignatures *proto_go.ManifestSignatures
+			found              bool
+		)
 
-		for i := range referrers {
-			if referrers[i].Digest == referrer.Digest {
-				return nil
+		if manifestSignatures, found = protoRepoMeta.Signatures[signedManifestDigest.String()]; !found {
+			manifestSignatures = &proto_go.ManifestSignatures{Map: map[string]*proto_go.SignaturesInfo{"": {}}}
+		}
+
+		signatureSlice := &proto_go.SignaturesInfo{List: []*proto_go.SignatureInfo{}}
+		if sigSlice, found := manifestSignatures.Map[sygMeta.SignatureType]; found {
+			signatureSlice = sigSlice
+		}
+
+		if !common.ProtoSignatureAlreadyExists(signatureSlice.List, sygMeta) {
+			switch sygMeta.SignatureType {
+			case zcommon.NotationSignature:
+				signatureSlice.List = append(signatureSlice.List, &proto_go.SignatureInfo{
+					SignatureManifestDigest: sygMeta.SignatureDigest,
+					LayersInfo:              mConvert.GetProtoLayersInfo(sygMeta.LayersInfo),
+				})
+			case zcommon.CosignSignature:
+				signatureSlice.List = []*proto_go.SignatureInfo{{
+					SignatureManifestDigest: sygMeta.SignatureDigest,
+					LayersInfo:              mConvert.GetProtoLayersInfo(sygMeta.LayersInfo),
+				}}
 			}
 		}
 
-		referrers = append(referrers, referrer)
+		manifestSignatures.Map[sygMeta.SignatureType] = signatureSlice
+		protoRepoMeta.Signatures[signedManifestDigest.String()] = manifestSignatures
 
-		repoMeta.Referrers[referredDigest.String()] = referrers
-
-		repoMetaBlob, err = json.Marshal(repoMeta)
+		repoMetaBlob, err = proto.Marshal(protoRepoMeta)
 		if err != nil {
 			return err
 		}
@@ -329,73 +851,201 @@ func (bdw BoltDB) SetReferrer(repo string, referredDigest godigest.Digest, refer
 	return err
 }
 
-func (bdw BoltDB) DeleteReferrer(repo string, referredDigest godigest.Digest,
-	referrerDigest godigest.Digest,
+func (bdw *BoltDB) DeleteSignature(repo string, signedManifestDigest godigest.Digest,
+	sigMeta mTypes.SignatureMetadata,
 ) error {
-	return bdw.DB.Update(func(tx *bbolt.Tx) error {
-		buck := tx.Bucket([]byte(RepoMetadataBucket))
+	err := bdw.DB.Update(func(tx *bbolt.Tx) error {
+		buck := tx.Bucket([]byte(RepoMetaBuck))
 
 		repoMetaBlob := buck.Get([]byte(repo))
-
-		if len(repoMetaBlob) == 0 {
-			return zerr.ErrRepoMetaNotFound
+		if repoMetaBlob == nil {
+			return zerr.ErrManifestMetaNotFound
 		}
 
-		var repoMeta mTypes.RepoMetadata
+		protoRepoMeta := proto_go.RepoMeta{}
 
-		err := json.Unmarshal(repoMetaBlob, &repoMeta)
+		err := proto.Unmarshal(repoMetaBlob, &protoRepoMeta)
 		if err != nil {
 			return err
 		}
 
-		referrers := repoMeta.Referrers[referredDigest.String()]
+		manifestSignatures, found := protoRepoMeta.Signatures[signedManifestDigest.String()]
+		if !found {
+			return zerr.ErrManifestMetaNotFound
+		}
 
-		for i := range referrers {
-			if referrers[i].Digest == referrerDigest.String() {
-				referrers = append(referrers[:i], referrers[i+1:]...)
+		signatureSlice := manifestSignatures.Map[sigMeta.SignatureType]
 
-				break
+		newSignatureSlice := make([]*proto_go.SignatureInfo, 0, len(signatureSlice.List))
+
+		for _, sigInfo := range signatureSlice.List {
+			if sigInfo.SignatureManifestDigest != sigMeta.SignatureDigest {
+				newSignatureSlice = append(newSignatureSlice, sigInfo)
 			}
 		}
 
-		repoMeta.Referrers[referredDigest.String()] = referrers
+		manifestSignatures.Map[sigMeta.SignatureType] = &proto_go.SignaturesInfo{List: newSignatureSlice}
 
-		repoMetaBlob, err = json.Marshal(repoMeta)
+		protoRepoMeta.Signatures[signedManifestDigest.String()] = manifestSignatures
+
+		repoMetaBlob, err = proto.Marshal(&protoRepoMeta)
 		if err != nil {
 			return err
 		}
 
 		return buck.Put([]byte(repo), repoMetaBlob)
 	})
+
+	return err
 }
 
-func (bdw BoltDB) GetReferrersInfo(repo string, referredDigest godigest.Digest, artifactTypes []string,
+func (bdw *BoltDB) IncrementRepoStars(repo string) error {
+	err := bdw.DB.Update(func(tx *bbolt.Tx) error {
+		buck := tx.Bucket([]byte(RepoMetaBuck))
+
+		repoMetaBlob := buck.Get([]byte(repo))
+		if repoMetaBlob == nil {
+			return zerr.ErrRepoMetaNotFound
+		}
+
+		var repoMeta proto_go.RepoMeta
+
+		err := proto.Unmarshal(repoMetaBlob, &repoMeta)
+		if err != nil {
+			return err
+		}
+
+		repoMeta.Stars++
+
+		repoMetaBlob, err = proto.Marshal(&repoMeta)
+		if err != nil {
+			return err
+		}
+
+		return buck.Put([]byte(repo), repoMetaBlob)
+	})
+
+	return err
+}
+
+func (bdw *BoltDB) DecrementRepoStars(repo string) error {
+	err := bdw.DB.Update(func(tx *bbolt.Tx) error {
+		buck := tx.Bucket([]byte(RepoMetaBuck))
+
+		repoMetaBlob := buck.Get([]byte(repo))
+		if repoMetaBlob == nil {
+			return zerr.ErrRepoMetaNotFound
+		}
+
+		var repoMeta proto_go.RepoMeta
+
+		err := proto.Unmarshal(repoMetaBlob, &repoMeta)
+		if err != nil {
+			return err
+		}
+
+		if repoMeta.Stars == 0 {
+			return nil
+		}
+
+		repoMeta.Stars--
+
+		repoMetaBlob, err = proto.Marshal(&repoMeta)
+		if err != nil {
+			return err
+		}
+
+		return buck.Put([]byte(repo), repoMetaBlob)
+	})
+
+	return err
+}
+
+func (bdw *BoltDB) SetRepoMeta(repo string, repoMeta mTypes.RepoMeta) error {
+	err := bdw.DB.Update(func(tx *bbolt.Tx) error {
+		buck := tx.Bucket([]byte(RepoMetaBuck))
+
+		repoMeta.Name = repo
+
+		repoMetaBlob, err := proto.Marshal(mConvert.GetProtoRepoMeta(repoMeta))
+		if err != nil {
+			return err
+		}
+
+		return buck.Put([]byte(repo), repoMetaBlob)
+	})
+
+	return err
+}
+
+func (bdw *BoltDB) ResetRepoReferences(repo string) error {
+	err := bdw.DB.Update(func(tx *bbolt.Tx) error {
+		buck := tx.Bucket([]byte(RepoMetaBuck))
+
+		repoMetaBlob := buck.Get([]byte(repo))
+
+		if repoMetaBlob == nil {
+			return nil
+		}
+
+		protoRepoMeta := &proto_go.RepoMeta{}
+
+		err := proto.Unmarshal(repoMetaBlob, protoRepoMeta)
+		if err != nil {
+			return err
+		}
+
+		repoMetaBlob, err = proto.Marshal(&proto_go.RepoMeta{
+			Name:       repo,
+			Statistics: protoRepoMeta.Statistics,
+			Stars:      protoRepoMeta.Stars,
+			Tags:       map[string]*proto_go.TagDescriptor{"": {}},
+			Signatures: map[string]*proto_go.ManifestSignatures{"": {Map: map[string]*proto_go.SignaturesInfo{"": {}}}},
+			Referrers:  map[string]*proto_go.ReferrersInfo{"": {}},
+		})
+		if err != nil {
+			return err
+		}
+
+		return buck.Put([]byte(repo), repoMetaBlob)
+	})
+
+	return err
+}
+
+func (bdw *BoltDB) GetReferrersInfo(repo string, referredDigest godigest.Digest, artifactTypes []string,
 ) ([]mTypes.ReferrerInfo, error) {
 	referrersInfoResult := []mTypes.ReferrerInfo{}
 
 	err := bdw.DB.View(func(tx *bbolt.Tx) error {
-		buck := tx.Bucket([]byte(RepoMetadataBucket))
+		buck := tx.Bucket([]byte(RepoMetaBuck))
 
 		repoMetaBlob := buck.Get([]byte(repo))
 		if len(repoMetaBlob) == 0 {
 			return zerr.ErrRepoMetaNotFound
 		}
 
-		var repoMeta mTypes.RepoMetadata
+		var repoMeta proto_go.RepoMeta
 
-		err := json.Unmarshal(repoMetaBlob, &repoMeta)
+		err := proto.Unmarshal(repoMetaBlob, &repoMeta)
 		if err != nil {
 			return err
 		}
 
-		referrersInfo := repoMeta.Referrers[referredDigest.String()]
+		referrersInfo := repoMeta.Referrers[referredDigest.String()].List
 
 		for i := range referrersInfo {
 			if !common.MatchesArtifactTypes(referrersInfo[i].ArtifactType, artifactTypes) {
 				continue
 			}
 
-			referrersInfoResult = append(referrersInfoResult, referrersInfo[i])
+			referrersInfoResult = append(referrersInfoResult, mTypes.ReferrerInfo{
+				Digest:       referrersInfo[i].Digest,
+				MediaType:    referrersInfo[i].MediaType,
+				ArtifactType: referrersInfo[i].ArtifactType,
+				Size:         int(referrersInfo[i].Size),
+				Annotations:  referrersInfo[i].Annotations,
+			})
 		}
 
 		return nil
@@ -404,34 +1054,191 @@ func (bdw BoltDB) GetReferrersInfo(repo string, referredDigest godigest.Digest, 
 	return referrersInfoResult, err
 }
 
-/*
-	RemoveRepoReference removes the tag from RepoMetadata if the reference is a tag,
-
-it also removes its corresponding digest from Statistics, Signatures and Referrers if there are no tags
-pointing to it.
-If the reference is a digest then it will remove the digest from Statistics, Signatures and Referrers only
-if there are no tags pointing to the digest, otherwise it's noop.
-*/
-func (bdw *BoltDB) RemoveRepoReference(repo, reference string, manifestDigest godigest.Digest) error {
+func (bdw *BoltDB) IncrementImageDownloads(repo string, reference string) error {
 	err := bdw.DB.Update(func(tx *bbolt.Tx) error {
-		buck := tx.Bucket([]byte(RepoMetadataBucket))
+		buck := tx.Bucket([]byte(RepoMetaBuck))
 
 		repoMetaBlob := buck.Get([]byte(repo))
-
-		repoMeta := mTypes.RepoMetadata{
-			Name:       repo,
-			Tags:       map[string]mTypes.Descriptor{},
-			Statistics: map[string]mTypes.DescriptorStatistics{},
-			Signatures: map[string]mTypes.ManifestSignatures{},
-			Referrers:  map[string][]mTypes.ReferrerInfo{},
+		if repoMetaBlob == nil {
+			return zerr.ErrRepoMetaNotFound
 		}
 
-		// object not found
-		if len(repoMetaBlob) > 0 {
-			err := json.Unmarshal(repoMetaBlob, &repoMeta)
-			if err != nil {
-				return err
+		var repoMeta proto_go.RepoMeta
+
+		err := proto.Unmarshal(repoMetaBlob, &repoMeta)
+		if err != nil {
+			return err
+		}
+
+		manifestDigest := reference
+
+		if !common.ReferenceIsDigest(reference) {
+			// search digest for tag
+			descriptor, found := repoMeta.Tags[reference]
+
+			if !found {
+				return zerr.ErrManifestMetaNotFound
 			}
+
+			manifestDigest = descriptor.Digest
+		}
+
+		manifestStatistics, ok := repoMeta.Statistics[manifestDigest]
+		if !ok {
+			return zerr.ErrManifestMetaNotFound
+		}
+
+		manifestStatistics.DownloadCount++
+		repoMeta.Statistics[manifestDigest] = manifestStatistics
+
+		repoMetaBlob, err = proto.Marshal(&repoMeta)
+		if err != nil {
+			return err
+		}
+
+		return buck.Put([]byte(repo), repoMetaBlob)
+	})
+
+	return err
+}
+
+func (bdw *BoltDB) UpdateSignaturesValidity(repo string, manifestDigest godigest.Digest) error {
+	err := bdw.DB.Update(func(transaction *bbolt.Tx) error {
+		imgTrustStore := bdw.ImageTrustStore()
+
+		if imgTrustStore == nil {
+			return nil
+		}
+
+		// get ManifestData of signed manifest
+		imageMetaBuck := transaction.Bucket([]byte(ImageMetaBuck))
+		idBlob := imageMetaBuck.Get([]byte(manifestDigest))
+
+		if len(idBlob) == 0 {
+			// manifest meta not found, updating signatures with details about validity and author will not be performed
+			return nil
+		}
+
+		protoImageMeta := proto_go.ImageMeta{}
+
+		err := proto.Unmarshal(idBlob, &protoImageMeta)
+		if err != nil {
+			return err
+		}
+
+		// update signatures with details about validity and author
+		repoBuck := transaction.Bucket([]byte(RepoMetaBuck))
+
+		repoMetaBlob := repoBuck.Get([]byte(repo))
+		if repoMetaBlob == nil {
+			return zerr.ErrRepoMetaNotFound
+		}
+
+		protoRepoMeta := proto_go.RepoMeta{}
+
+		err = proto.Unmarshal(repoMetaBlob, &protoRepoMeta)
+		if err != nil {
+			return err
+		}
+
+		manifestSignatures := proto_go.ManifestSignatures{Map: map[string]*proto_go.SignaturesInfo{"": {}}}
+		for sigType, sigs := range protoRepoMeta.Signatures[manifestDigest.String()].Map {
+			signaturesInfo := []*proto_go.SignatureInfo{}
+
+			for _, sigInfo := range sigs.List {
+				layersInfo := []*proto_go.LayersInfo{}
+
+				for _, layerInfo := range sigInfo.LayersInfo {
+					author, date, isTrusted, _ := imgTrustStore.VerifySignature(sigType, layerInfo.LayerContent,
+						layerInfo.SignatureKey, manifestDigest, mConvert.GetImageMeta(&protoImageMeta), repo)
+
+					if isTrusted {
+						layerInfo.Signer = author
+					}
+
+					if !date.IsZero() {
+						layerInfo.Signer = author
+						layerInfo.Date = timestamppb.New(date)
+					}
+
+					layersInfo = append(layersInfo, layerInfo)
+				}
+
+				signaturesInfo = append(signaturesInfo, &proto_go.SignatureInfo{
+					SignatureManifestDigest: sigInfo.SignatureManifestDigest,
+					LayersInfo:              layersInfo,
+				})
+			}
+
+			manifestSignatures.Map[sigType] = &proto_go.SignaturesInfo{List: signaturesInfo}
+		}
+
+		protoRepoMeta.Signatures[manifestDigest.String()] = &manifestSignatures
+
+		repoMetaBlob, err = proto.Marshal(&protoRepoMeta)
+		if err != nil {
+			return err
+		}
+
+		return repoBuck.Put([]byte(repo), repoMetaBlob)
+	})
+
+	return err
+}
+
+func (bdw *BoltDB) RemoveRepoReference(repo, reference string, manifestDigest godigest.Digest) error {
+	err := bdw.DB.Update(func(tx *bbolt.Tx) error {
+		buck := tx.Bucket([]byte(RepoMetaBuck))
+		imageMetaBuck := tx.Bucket([]byte(ImageMetaBuck))
+		repoBlobsBuck := tx.Bucket([]byte(RepoBlobsBuck))
+
+		repoMetaBlob := buck.Get([]byte(repo))
+		if repoMetaBlob == nil {
+			return nil
+		}
+
+		repoMeta := &proto_go.RepoMeta{}
+
+		err := proto.Unmarshal(repoMetaBlob, repoMeta)
+		if err != nil {
+			return err
+		}
+
+		imageMeta, err := fetchProtoImageMeta(imageMetaBuck, manifestDigest.String())
+		if err != nil {
+			if errors.Is(err, zerr.ErrImageMetaNotFound) {
+				return nil
+			}
+
+			return err
+		}
+
+		// Remove Referrers
+		if subject := mConvert.GetImageSubject(imageMeta); subject != nil {
+			referredDigest := subject.Digest.String()
+			refInfo := &proto_go.ReferrersInfo{}
+
+			if repoMeta.Referrers[referredDigest] != nil {
+				refInfo = repoMeta.Referrers[referredDigest]
+			}
+
+			referrers := refInfo.List
+
+			for i := range referrers {
+				if referrers[i].Digest == manifestDigest.String() {
+					referrers[i].Count -= 1
+
+					if referrers[i].Count == 0 || common.ReferenceIsDigest(reference) {
+						referrers = append(referrers[:i], referrers[i+1:]...)
+					}
+
+					break
+				}
+			}
+
+			refInfo.List = referrers
+
+			repoMeta.Referrers[referredDigest] = refInfo
 		}
 
 		if !common.ReferenceIsDigest(reference) {
@@ -460,516 +1267,35 @@ func (bdw *BoltDB) RemoveRepoReference(repo, reference string, manifestDigest go
 			delete(repoMeta.Referrers, manifestDigest.String())
 		}
 
-		repoMetaBlob, err := json.Marshal(repoMeta)
-		if err != nil {
-			return err
-		}
+		repoBlobsBytes := repoBlobsBuck.Get([]byte(repoMeta.Name))
 
-		return buck.Put([]byte(repo), repoMetaBlob)
-	})
+		repoBlobs := &proto_go.RepoBlobs{}
 
-	return err
-}
-
-func (bdw *BoltDB) SetRepoReference(repo string, reference string, manifestDigest godigest.Digest,
-	mediaType string,
-) error {
-	if err := common.ValidateRepoReferenceInput(repo, reference, manifestDigest); err != nil {
-		return err
-	}
-
-	err := bdw.DB.Update(func(tx *bbolt.Tx) error {
-		buck := tx.Bucket([]byte(RepoMetadataBucket))
-
-		repoMetaBlob := buck.Get([]byte(repo))
-
-		repoMeta := mTypes.RepoMetadata{
-			Name:       repo,
-			Tags:       map[string]mTypes.Descriptor{},
-			Statistics: map[string]mTypes.DescriptorStatistics{},
-			Signatures: map[string]mTypes.ManifestSignatures{},
-			Referrers:  map[string][]mTypes.ReferrerInfo{},
-		}
-
-		// object not found
-		if len(repoMetaBlob) > 0 {
-			err := json.Unmarshal(repoMetaBlob, &repoMeta)
-			if err != nil {
-				return err
-			}
-		}
-
-		if !common.ReferenceIsDigest(reference) {
-			repoMeta.Tags[reference] = mTypes.Descriptor{
-				Digest:    manifestDigest.String(),
-				MediaType: mediaType,
-			}
-		}
-
-		if _, ok := repoMeta.Statistics[manifestDigest.String()]; !ok {
-			repoMeta.Statistics[manifestDigest.String()] = mTypes.DescriptorStatistics{DownloadCount: 0}
-		}
-
-		if _, ok := repoMeta.Signatures[manifestDigest.String()]; !ok {
-			repoMeta.Signatures[manifestDigest.String()] = mTypes.ManifestSignatures{}
-		}
-
-		if _, ok := repoMeta.Referrers[manifestDigest.String()]; !ok {
-			repoMeta.Referrers[manifestDigest.String()] = []mTypes.ReferrerInfo{}
-		}
-
-		repoMetaBlob, err := json.Marshal(repoMeta)
-		if err != nil {
-			return err
-		}
-
-		return buck.Put([]byte(repo), repoMetaBlob)
-	})
-
-	return err
-}
-
-func (bdw *BoltDB) GetRepoMeta(repo string) (mTypes.RepoMetadata, error) {
-	var repoMeta mTypes.RepoMetadata
-
-	err := bdw.DB.View(func(tx *bbolt.Tx) error {
-		buck := tx.Bucket([]byte(RepoMetadataBucket))
-
-		repoMetaBlob := buck.Get([]byte(repo))
-
-		// object not found
-		if repoMetaBlob == nil {
-			return zerr.ErrRepoMetaNotFound
-		}
-
-		// object found
-		err := json.Unmarshal(repoMetaBlob, &repoMeta)
-		if err != nil {
-			return err
-		}
-
-		return nil
-	})
-
-	return repoMeta, err
-}
-
-func (bdw *BoltDB) GetUserRepoMeta(ctx context.Context, repo string) (mTypes.RepoMetadata, error) {
-	var repoMeta mTypes.RepoMetadata
-
-	err := bdw.DB.View(func(tx *bbolt.Tx) error {
-		buck := tx.Bucket([]byte(RepoMetadataBucket))
-		userBookmarks := getUserBookmarks(ctx, tx)
-		userStars := getUserStars(ctx, tx)
-
-		repoMetaBlob := buck.Get([]byte(repo))
-
-		// object not found
-		if repoMetaBlob == nil {
-			return zerr.ErrRepoMetaNotFound
-		}
-
-		// object found
-		err := json.Unmarshal(repoMetaBlob, &repoMeta)
-		if err != nil {
-			return err
-		}
-
-		repoMeta.IsBookmarked = zcommon.Contains(userBookmarks, repo)
-		repoMeta.IsStarred = zcommon.Contains(userStars, repo)
-
-		return nil
-	})
-
-	return repoMeta, err
-}
-
-func (bdw *BoltDB) SetRepoMeta(repo string, repoMeta mTypes.RepoMetadata) error {
-	err := bdw.DB.Update(func(tx *bbolt.Tx) error {
-		buck := tx.Bucket([]byte(RepoMetadataBucket))
-
-		repoMeta.Name = repo
-
-		repoMetaBlob, err := json.Marshal(repoMeta)
-		if err != nil {
-			return err
-		}
-
-		return buck.Put([]byte(repo), repoMetaBlob)
-	})
-
-	return err
-}
-
-func (bdw *BoltDB) DeleteRepoTag(repo string, tag string) error {
-	err := bdw.DB.Update(func(tx *bbolt.Tx) error {
-		buck := tx.Bucket([]byte(RepoMetadataBucket))
-
-		repoMetaBlob := buck.Get([]byte(repo))
-
-		// object not found
-		if repoMetaBlob == nil {
-			return nil
-		}
-
-		// object found
-		var repoMeta mTypes.RepoMetadata
-
-		err := json.Unmarshal(repoMetaBlob, &repoMeta)
-		if err != nil {
-			return err
-		}
-
-		delete(repoMeta.Tags, tag)
-
-		repoMetaBlob, err = json.Marshal(repoMeta)
-		if err != nil {
-			return err
-		}
-
-		return buck.Put([]byte(repo), repoMetaBlob)
-	})
-
-	return err
-}
-
-func (bdw *BoltDB) IncrementRepoStars(repo string) error {
-	err := bdw.DB.Update(func(tx *bbolt.Tx) error {
-		buck := tx.Bucket([]byte(RepoMetadataBucket))
-
-		repoMetaBlob := buck.Get([]byte(repo))
-		if repoMetaBlob == nil {
-			return zerr.ErrRepoMetaNotFound
-		}
-
-		var repoMeta mTypes.RepoMetadata
-
-		err := json.Unmarshal(repoMetaBlob, &repoMeta)
-		if err != nil {
-			return err
-		}
-
-		repoMeta.Stars++
-
-		repoMetaBlob, err = json.Marshal(repoMeta)
-		if err != nil {
-			return err
-		}
-
-		return buck.Put([]byte(repo), repoMetaBlob)
-	})
-
-	return err
-}
-
-func (bdw *BoltDB) DecrementRepoStars(repo string) error {
-	err := bdw.DB.Update(func(tx *bbolt.Tx) error {
-		buck := tx.Bucket([]byte(RepoMetadataBucket))
-
-		repoMetaBlob := buck.Get([]byte(repo))
-		if repoMetaBlob == nil {
-			return zerr.ErrRepoMetaNotFound
-		}
-
-		var repoMeta mTypes.RepoMetadata
-
-		err := json.Unmarshal(repoMetaBlob, &repoMeta)
-		if err != nil {
-			return err
-		}
-
-		if repoMeta.Stars > 0 {
-			repoMeta.Stars--
-		}
-
-		repoMetaBlob, err = json.Marshal(repoMeta)
-		if err != nil {
-			return err
-		}
-
-		return buck.Put([]byte(repo), repoMetaBlob)
-	})
-
-	return err
-}
-
-func (bdw *BoltDB) GetRepoStars(repo string) (int, error) {
-	stars := 0
-
-	err := bdw.DB.View(func(tx *bbolt.Tx) error {
-		buck := tx.Bucket([]byte(RepoMetadataBucket))
-
-		buck.Get([]byte(repo))
-		repoMetaBlob := buck.Get([]byte(repo))
-		if repoMetaBlob == nil {
-			return zerr.ErrRepoMetaNotFound
-		}
-
-		var repoMeta mTypes.RepoMetadata
-
-		err := json.Unmarshal(repoMetaBlob, &repoMeta)
-		if err != nil {
-			return err
-		}
-
-		stars = repoMeta.Stars
-
-		return nil
-	})
-
-	return stars, err
-}
-
-func (bdw *BoltDB) GetMultipleRepoMeta(ctx context.Context, filter func(repoMeta mTypes.RepoMetadata) bool,
-) ([]mTypes.RepoMetadata, error) {
-	foundRepos := []mTypes.RepoMetadata{}
-
-	err := bdw.DB.View(func(tx *bbolt.Tx) error {
-		buck := tx.Bucket([]byte(RepoMetadataBucket))
-
-		cursor := buck.Cursor()
-
-		for repoName, repoMetaBlob := cursor.First(); repoName != nil; repoName, repoMetaBlob = cursor.Next() {
-			if ok, err := reqCtx.RepoIsUserAvailable(ctx, string(repoName)); !ok || err != nil {
-				continue
-			}
-
-			repoMeta := mTypes.RepoMetadata{}
-
-			err := json.Unmarshal(repoMetaBlob, &repoMeta)
-			if err != nil {
-				return err
-			}
-
-			if filter(repoMeta) {
-				foundRepos = append(foundRepos, repoMeta)
-			}
-		}
-
-		return nil
-	})
-
-	return foundRepos, err
-}
-
-func (bdw *BoltDB) IncrementImageDownloads(repo string, reference string) error {
-	err := bdw.DB.Update(func(tx *bbolt.Tx) error {
-		buck := tx.Bucket([]byte(RepoMetadataBucket))
-
-		repoMetaBlob := buck.Get([]byte(repo))
-		if repoMetaBlob == nil {
-			return zerr.ErrManifestMetaNotFound
-		}
-
-		var repoMeta mTypes.RepoMetadata
-
-		err := json.Unmarshal(repoMetaBlob, &repoMeta)
-		if err != nil {
-			return err
-		}
-
-		manifestDigest := reference
-
-		if !common.ReferenceIsDigest(reference) {
-			// search digest for tag
-			descriptor, found := repoMeta.Tags[reference]
-
-			if !found {
-				return zerr.ErrManifestMetaNotFound
-			}
-
-			manifestDigest = descriptor.Digest
-		}
-
-		manifestStatistics := repoMeta.Statistics[manifestDigest]
-		manifestStatistics.DownloadCount++
-		repoMeta.Statistics[manifestDigest] = manifestStatistics
-
-		repoMetaBlob, err = json.Marshal(repoMeta)
-		if err != nil {
-			return err
-		}
-
-		return buck.Put([]byte(repo), repoMetaBlob)
-	})
-
-	return err
-}
-
-func (bdw *BoltDB) UpdateSignaturesValidity(repo string, manifestDigest godigest.Digest) error {
-	err := bdw.DB.Update(func(transaction *bbolt.Tx) error {
-		imgTrustStore := bdw.ImageTrustStore()
-
-		if imgTrustStore == nil {
-			return nil
-		}
-
-		// get ManifestData of signed manifest
-		manifestBuck := transaction.Bucket([]byte(ManifestDataBucket))
-		mdBlob := manifestBuck.Get([]byte(manifestDigest))
-
-		var blob []byte
-
-		if len(mdBlob) != 0 {
-			var manifestData mTypes.ManifestData
-
-			err := json.Unmarshal(mdBlob, &manifestData)
-			if err != nil {
-				return fmt.Errorf("metadb: %w error while unmashaling manifest meta for digest %s", err, manifestDigest)
-			}
-
-			blob = manifestData.ManifestBlob
+		if repoBlobsBytes == nil {
+			repoBlobs.Blobs = map[string]*proto_go.BlobInfo{}
 		} else {
-			var indexData mTypes.IndexData
-
-			indexBuck := transaction.Bucket([]byte(IndexDataBucket))
-			idBlob := indexBuck.Get([]byte(manifestDigest))
-
-			if len(idBlob) == 0 {
-				// manifest meta not found, updating signatures with details about validity and author will not be performed
-				return nil
-			}
-
-			err := json.Unmarshal(idBlob, &indexData)
-			if err != nil {
-				return fmt.Errorf("metadb: %w error while unmashaling index meta for digest %s", err, manifestDigest)
-			}
-
-			blob = indexData.IndexBlob
-		}
-
-		// update signatures with details about validity and author
-		repoBuck := transaction.Bucket([]byte(RepoMetadataBucket))
-
-		repoMetaBlob := repoBuck.Get([]byte(repo))
-		if repoMetaBlob == nil {
-			return zerr.ErrRepoMetaNotFound
-		}
-
-		var repoMeta mTypes.RepoMetadata
-
-		err := json.Unmarshal(repoMetaBlob, &repoMeta)
-		if err != nil {
-			return err
-		}
-
-		manifestSignatures := mTypes.ManifestSignatures{}
-		for sigType, sigs := range repoMeta.Signatures[manifestDigest.String()] {
-			signaturesInfo := []mTypes.SignatureInfo{}
-
-			for _, sigInfo := range sigs {
-				layersInfo := []mTypes.LayerInfo{}
-
-				for _, layerInfo := range sigInfo.LayersInfo {
-					author, date, isTrusted, _ := imgTrustStore.VerifySignature(sigType, layerInfo.LayerContent,
-						layerInfo.SignatureKey, manifestDigest, blob, repo)
-
-					if isTrusted {
-						layerInfo.Signer = author
-					}
-
-					if !date.IsZero() {
-						layerInfo.Signer = author
-						layerInfo.Date = date
-					}
-
-					layersInfo = append(layersInfo, layerInfo)
-				}
-
-				signaturesInfo = append(signaturesInfo, mTypes.SignatureInfo{
-					SignatureManifestDigest: sigInfo.SignatureManifestDigest,
-					LayersInfo:              layersInfo,
-				})
-			}
-
-			manifestSignatures[sigType] = signaturesInfo
-		}
-
-		repoMeta.Signatures[manifestDigest.String()] = manifestSignatures
-
-		repoMetaBlob, err = json.Marshal(repoMeta)
-		if err != nil {
-			return err
-		}
-
-		return repoBuck.Put([]byte(repo), repoMetaBlob)
-	})
-
-	return err
-}
-
-func (bdw *BoltDB) AddManifestSignature(repo string, signedManifestDigest godigest.Digest,
-	sygMeta mTypes.SignatureMetadata,
-) error {
-	err := bdw.DB.Update(func(tx *bbolt.Tx) error {
-		buck := tx.Bucket([]byte(RepoMetadataBucket))
-
-		repoMetaBlob := buck.Get([]byte(repo))
-
-		if len(repoMetaBlob) == 0 {
-			var err error
-			// create a new object
-			repoMeta := mTypes.RepoMetadata{
-				Name: repo,
-				Tags: map[string]mTypes.Descriptor{},
-				Signatures: map[string]mTypes.ManifestSignatures{
-					signedManifestDigest.String(): {
-						sygMeta.SignatureType: []mTypes.SignatureInfo{
-							{
-								SignatureManifestDigest: sygMeta.SignatureDigest,
-								LayersInfo:              sygMeta.LayersInfo,
-							},
-						},
-					},
-				},
-				Statistics: map[string]mTypes.DescriptorStatistics{},
-				Referrers:  map[string][]mTypes.ReferrerInfo{},
-			}
-
-			repoMetaBlob, err = json.Marshal(repoMeta)
+			err := proto.Unmarshal(repoBlobsBytes, repoBlobs)
 			if err != nil {
 				return err
 			}
-
-			return buck.Put([]byte(repo), repoMetaBlob)
 		}
 
-		var repoMeta mTypes.RepoMetadata
-
-		err := json.Unmarshal(repoMetaBlob, &repoMeta)
+		repoMeta, repoBlobs, err = common.RemoveImageFromRepoMeta(repoMeta, repoBlobs, reference)
 		if err != nil {
 			return err
 		}
 
-		var (
-			manifestSignatures mTypes.ManifestSignatures
-			found              bool
-		)
-
-		if manifestSignatures, found = repoMeta.Signatures[signedManifestDigest.String()]; !found {
-			manifestSignatures = mTypes.ManifestSignatures{}
+		repoBlobsBytes, err = proto.Marshal(repoBlobs)
+		if err != nil {
+			return err
 		}
 
-		signatureSlice := manifestSignatures[sygMeta.SignatureType]
-		if !common.SignatureAlreadyExists(signatureSlice, sygMeta) {
-			if sygMeta.SignatureType == zcommon.NotationSignature {
-				signatureSlice = append(signatureSlice, mTypes.SignatureInfo{
-					SignatureManifestDigest: sygMeta.SignatureDigest,
-					LayersInfo:              sygMeta.LayersInfo,
-				})
-			} else if sygMeta.SignatureType == zcommon.CosignSignature {
-				signatureSlice = []mTypes.SignatureInfo{{
-					SignatureManifestDigest: sygMeta.SignatureDigest,
-					LayersInfo:              sygMeta.LayersInfo,
-				}}
-			}
+		err = repoBlobsBuck.Put([]byte(repoMeta.Name), repoBlobsBytes)
+		if err != nil {
+			return err
 		}
 
-		manifestSignatures[sygMeta.SignatureType] = signatureSlice
-
-		repoMeta.Signatures[signedManifestDigest.String()] = manifestSignatures
-
-		repoMetaBlob, err = json.Marshal(repoMeta)
+		repoMetaBlob, err = proto.Marshal(repoMeta)
 		if err != nil {
 			return err
 		}
@@ -980,518 +1306,12 @@ func (bdw *BoltDB) AddManifestSignature(repo string, signedManifestDigest godige
 	return err
 }
 
-func (bdw *BoltDB) DeleteSignature(repo string, signedManifestDigest godigest.Digest,
-	sigMeta mTypes.SignatureMetadata,
-) error {
-	err := bdw.DB.Update(func(tx *bbolt.Tx) error {
-		buck := tx.Bucket([]byte(RepoMetadataBucket))
-
-		repoMetaBlob := buck.Get([]byte(repo))
-		if repoMetaBlob == nil {
-			return zerr.ErrManifestMetaNotFound
-		}
-
-		var repoMeta mTypes.RepoMetadata
-
-		err := json.Unmarshal(repoMetaBlob, &repoMeta)
-		if err != nil {
-			return err
-		}
-
-		sigType := sigMeta.SignatureType
-
-		var (
-			manifestSignatures mTypes.ManifestSignatures
-			found              bool
-		)
-
-		if manifestSignatures, found = repoMeta.Signatures[signedManifestDigest.String()]; !found {
-			return zerr.ErrManifestMetaNotFound
-		}
-
-		signatureSlice := manifestSignatures[sigType]
-
-		newSignatureSlice := make([]mTypes.SignatureInfo, 0, len(signatureSlice)-1)
-
-		for _, sigDigest := range signatureSlice {
-			if sigDigest.SignatureManifestDigest != sigMeta.SignatureDigest {
-				newSignatureSlice = append(newSignatureSlice, sigDigest)
-			}
-		}
-
-		manifestSignatures[sigType] = newSignatureSlice
-
-		repoMeta.Signatures[signedManifestDigest.String()] = manifestSignatures
-
-		repoMetaBlob, err = json.Marshal(repoMeta)
-		if err != nil {
-			return err
-		}
-
-		return buck.Put([]byte(repo), repoMetaBlob)
-	})
-
-	return err
+func (bdw *BoltDB) ImageTrustStore() mTypes.ImageTrustStore {
+	return bdw.imgTrustStore
 }
 
-func (bdw *BoltDB) SearchRepos(ctx context.Context, searchText string,
-) ([]mTypes.RepoMetadata, map[string]mTypes.ManifestMetadata, map[string]mTypes.IndexData, error) {
-	var (
-		foundRepos          = make([]mTypes.RepoMetadata, 0)
-		manifestMetadataMap = make(map[string]mTypes.ManifestMetadata)
-		indexDataMap        = make(map[string]mTypes.IndexData)
-	)
-
-	err := bdw.DB.View(func(transaction *bbolt.Tx) error {
-		var (
-			repoBuck      = transaction.Bucket([]byte(RepoMetadataBucket))
-			indexBuck     = transaction.Bucket([]byte(IndexDataBucket))
-			manifestBuck  = transaction.Bucket([]byte(ManifestDataBucket))
-			userBookmarks = getUserBookmarks(ctx, transaction)
-			userStars     = getUserStars(ctx, transaction)
-		)
-
-		cursor := repoBuck.Cursor()
-
-		for repoName, repoMetaBlob := cursor.First(); repoName != nil; repoName, repoMetaBlob = cursor.Next() {
-			if ok, err := reqCtx.RepoIsUserAvailable(ctx, string(repoName)); !ok || err != nil {
-				continue
-			}
-
-			var repoMeta mTypes.RepoMetadata
-
-			err := json.Unmarshal(repoMetaBlob, &repoMeta)
-			if err != nil {
-				return err
-			}
-
-			rank := common.RankRepoName(searchText, repoMeta.Name)
-			if rank == -1 {
-				continue
-			}
-
-			repoMeta.IsBookmarked = zcommon.Contains(userBookmarks, repoMeta.Name)
-			repoMeta.IsStarred = zcommon.Contains(userStars, repoMeta.Name)
-			repoMeta.Rank = rank
-
-			for tag, descriptor := range repoMeta.Tags {
-				switch descriptor.MediaType {
-				case ispec.MediaTypeImageManifest:
-					manifestDigest := descriptor.Digest
-
-					manifestMeta, err := fetchManifestMetaWithCheck(repoMeta, manifestDigest,
-						manifestMetadataMap, manifestBuck)
-					if err != nil {
-						return fmt.Errorf("metadb: error fetching manifest meta for manifest with digest %s %w",
-							manifestDigest, err)
-					}
-
-					manifestMetadataMap[descriptor.Digest] = manifestMeta
-				case ispec.MediaTypeImageIndex:
-					indexDigest := descriptor.Digest
-
-					indexData, err := fetchIndexDataWithCheck(indexDigest, indexDataMap, indexBuck)
-					if err != nil {
-						return fmt.Errorf("metadb: error fetching index data for index with digest %s %w",
-							indexDigest, err)
-					}
-
-					var indexContent ispec.Index
-
-					err = json.Unmarshal(indexData.IndexBlob, &indexContent)
-					if err != nil {
-						return fmt.Errorf("metadb: error while unmashaling index content for %s:%s %w",
-							repoName, tag, err)
-					}
-
-					for _, manifest := range indexContent.Manifests {
-						manifestDigest := manifest.Digest
-
-						manifestMeta, err := fetchManifestMetaWithCheck(repoMeta, manifestDigest.String(),
-							manifestMetadataMap, manifestBuck)
-						if err != nil {
-							return err
-						}
-
-						manifestMetadataMap[manifest.Digest.String()] = manifestMeta
-					}
-
-					indexDataMap[indexDigest] = indexData
-				default:
-					bdw.Log.Error().Str("mediaType", descriptor.MediaType).Msg("Unsupported media type")
-
-					continue
-				}
-			}
-
-			foundRepos = append(foundRepos, repoMeta)
-		}
-
-		return nil
-	})
-
-	return foundRepos, manifestMetadataMap, indexDataMap, err
-}
-
-func fetchManifestMetaWithCheck(repoMeta mTypes.RepoMetadata, manifestDigest string,
-	manifestMetadataMap map[string]mTypes.ManifestMetadata, manifestBuck *bbolt.Bucket,
-) (mTypes.ManifestMetadata, error) {
-	manifestMeta, manifestDownloaded := manifestMetadataMap[manifestDigest]
-
-	if !manifestDownloaded {
-		var manifestData mTypes.ManifestData
-
-		manifestDataBlob := manifestBuck.Get([]byte(manifestDigest))
-		if manifestDataBlob == nil {
-			return mTypes.ManifestMetadata{}, zerr.ErrManifestMetaNotFound
-		}
-
-		err := json.Unmarshal(manifestDataBlob, &manifestData)
-		if err != nil {
-			return mTypes.ManifestMetadata{}, fmt.Errorf("metadb: error while unmarshaling manifest metadata for digest %s %w",
-				manifestDigest, err)
-		}
-
-		manifestMeta = NewManifestMetadata(manifestDigest, repoMeta, manifestData)
-	}
-
-	return manifestMeta, nil
-}
-
-func fetchIndexDataWithCheck(indexDigest string, indexDataMap map[string]mTypes.IndexData,
-	indexBuck *bbolt.Bucket,
-) (mTypes.IndexData, error) {
-	var (
-		indexData mTypes.IndexData
-		err       error
-	)
-
-	indexData, indexExists := indexDataMap[indexDigest]
-
-	if !indexExists {
-		indexDataBlob := indexBuck.Get([]byte(indexDigest))
-		if indexDataBlob == nil {
-			return mTypes.IndexData{}, zerr.ErrIndexDataNotFount
-		}
-
-		err := json.Unmarshal(indexDataBlob, &indexData)
-		if err != nil {
-			return mTypes.IndexData{},
-				fmt.Errorf("metadb: error while unmashaling index data for digest %s %w", indexDigest, err)
-		}
-	}
-
-	return indexData, err
-}
-
-func NewManifestMetadata(manifestDigest string, repoMeta mTypes.RepoMetadata,
-	manifestData mTypes.ManifestData,
-) mTypes.ManifestMetadata {
-	manifestMeta := mTypes.ManifestMetadata{
-		ManifestBlob: manifestData.ManifestBlob,
-		ConfigBlob:   manifestData.ConfigBlob,
-	}
-
-	manifestMeta.DownloadCount = repoMeta.Statistics[manifestDigest].DownloadCount
-
-	manifestMeta.Signatures = mTypes.ManifestSignatures{}
-	if repoMeta.Signatures[manifestDigest] != nil {
-		manifestMeta.Signatures = repoMeta.Signatures[manifestDigest]
-	}
-
-	return manifestMeta
-}
-
-func (bdw *BoltDB) FilterTags(ctx context.Context, filterFunc mTypes.FilterFunc,
-) ([]mTypes.RepoMetadata, map[string]mTypes.ManifestMetadata, map[string]mTypes.IndexData, error,
-) {
-	var (
-		foundRepos          = make([]mTypes.RepoMetadata, 0)
-		manifestMetadataMap = make(map[string]mTypes.ManifestMetadata)
-		indexDataMap        = make(map[string]mTypes.IndexData)
-	)
-
-	err := bdw.DB.View(func(transaction *bbolt.Tx) error {
-		var (
-			repoBuck      = transaction.Bucket([]byte(RepoMetadataBucket))
-			indexBuck     = transaction.Bucket([]byte(IndexDataBucket))
-			manifestBuck  = transaction.Bucket([]byte(ManifestDataBucket))
-			cursor        = repoBuck.Cursor()
-			userBookmarks = getUserBookmarks(ctx, transaction)
-			userStars     = getUserStars(ctx, transaction)
-			viewError     error
-		)
-
-		repoName, repoMetaBlob := cursor.First()
-
-		for ; repoName != nil; repoName, repoMetaBlob = cursor.Next() {
-			if ok, err := reqCtx.RepoIsUserAvailable(ctx, string(repoName)); !ok || err != nil {
-				continue
-			}
-
-			repoMeta := mTypes.RepoMetadata{}
-
-			if err := json.Unmarshal(repoMetaBlob, &repoMeta); err != nil {
-				viewError = errors.Join(viewError, err)
-
-				continue
-			}
-
-			repoMeta.IsBookmarked = zcommon.Contains(userBookmarks, repoMeta.Name)
-			repoMeta.IsStarred = zcommon.Contains(userStars, repoMeta.Name)
-
-			matchedTags := make(map[string]mTypes.Descriptor)
-			// take all manifestsMeta
-			for tag, descriptor := range repoMeta.Tags {
-				switch descriptor.MediaType {
-				case ispec.MediaTypeImageManifest:
-					manifestDigest := descriptor.Digest
-
-					manifestMeta, err := fetchManifestMetaWithCheck(repoMeta, manifestDigest, manifestMetadataMap, manifestBuck)
-					if err != nil {
-						err = fmt.Errorf("metadb: error while unmashaling manifest metadata for digest %s %w", manifestDigest, err)
-						viewError = errors.Join(viewError, err)
-
-						continue
-					}
-
-					if filterFunc(repoMeta, manifestMeta) {
-						matchedTags[tag] = descriptor
-						manifestMetadataMap[manifestDigest] = manifestMeta
-					}
-				case ispec.MediaTypeImageIndex:
-					indexDigest := descriptor.Digest
-
-					indexData, err := fetchIndexDataWithCheck(indexDigest, indexDataMap, indexBuck)
-					if err != nil {
-						err = fmt.Errorf("metadb: error while getting index data for digest %s %w", indexDigest, err)
-						viewError = errors.Join(viewError, err)
-
-						continue
-					}
-
-					var indexContent ispec.Index
-
-					err = json.Unmarshal(indexData.IndexBlob, &indexContent)
-					if err != nil {
-						err = fmt.Errorf("metadb: error while unmashaling index content for digest %s %w", indexDigest, err)
-						viewError = errors.Join(viewError, err)
-
-						continue
-					}
-
-					matchedManifests := []ispec.Descriptor{}
-
-					for _, manifest := range indexContent.Manifests {
-						manifestDigest := manifest.Digest.String()
-
-						manifestMeta, err := fetchManifestMetaWithCheck(repoMeta, manifestDigest, manifestMetadataMap, manifestBuck)
-						if err != nil {
-							err = fmt.Errorf("metadb: error while getting manifest data for digest %s %w", manifestDigest, err)
-							viewError = errors.Join(viewError, err)
-
-							continue
-						}
-
-						if filterFunc(repoMeta, manifestMeta) {
-							matchedManifests = append(matchedManifests, manifest)
-							manifestMetadataMap[manifestDigest] = manifestMeta
-						}
-					}
-
-					if len(matchedManifests) > 0 {
-						indexContent.Manifests = matchedManifests
-
-						indexBlob, err := json.Marshal(indexContent)
-						if err != nil {
-							viewError = errors.Join(viewError, err)
-
-							continue
-						}
-
-						indexData.IndexBlob = indexBlob
-
-						indexDataMap[indexDigest] = indexData
-						matchedTags[tag] = descriptor
-					}
-				default:
-					bdw.Log.Error().Str("mediaType", descriptor.MediaType).Msg("Unsupported media type")
-
-					continue
-				}
-			}
-
-			if len(matchedTags) == 0 {
-				continue
-			}
-
-			repoMeta.Tags = matchedTags
-
-			foundRepos = append(foundRepos, repoMeta)
-		}
-
-		return viewError
-	})
-
-	return foundRepos, manifestMetadataMap, indexDataMap, err
-}
-
-func (bdw *BoltDB) FilterRepos(ctx context.Context, filter mTypes.FilterRepoFunc) (
-	[]mTypes.RepoMetadata, map[string]mTypes.ManifestMetadata, map[string]mTypes.IndexData, error,
-) {
-	foundRepos := make([]mTypes.RepoMetadata, 0)
-
-	err := bdw.DB.View(func(tx *bbolt.Tx) error {
-		var (
-			buck          = tx.Bucket([]byte(RepoMetadataBucket))
-			cursor        = buck.Cursor()
-			userBookmarks = getUserBookmarks(ctx, tx)
-			userStars     = getUserStars(ctx, tx)
-		)
-
-		for repoName, repoMetaBlob := cursor.First(); repoName != nil; repoName, repoMetaBlob = cursor.Next() {
-			if ok, err := reqCtx.RepoIsUserAvailable(ctx, string(repoName)); !ok || err != nil {
-				continue
-			}
-
-			repoMeta := mTypes.RepoMetadata{}
-
-			err := json.Unmarshal(repoMetaBlob, &repoMeta)
-			if err != nil {
-				return err
-			}
-
-			repoMeta.IsBookmarked = zcommon.Contains(userBookmarks, repoMeta.Name)
-			repoMeta.IsStarred = zcommon.Contains(userStars, repoMeta.Name)
-
-			if filter(repoMeta) {
-				foundRepos = append(foundRepos, repoMeta)
-			}
-		}
-
-		return nil
-	})
-	if err != nil {
-		return []mTypes.RepoMetadata{}, map[string]mTypes.ManifestMetadata{}, map[string]mTypes.IndexData{}, err
-	}
-
-	foundManifestMetadataMap, foundIndexDataMap, err := common.FetchDataForRepos(bdw, foundRepos)
-
-	return foundRepos, foundManifestMetadataMap, foundIndexDataMap, err
-}
-
-func (bdw *BoltDB) SearchTags(ctx context.Context, searchText string,
-) ([]mTypes.RepoMetadata, map[string]mTypes.ManifestMetadata, map[string]mTypes.IndexData, error) {
-	var (
-		foundRepos          = make([]mTypes.RepoMetadata, 0)
-		manifestMetadataMap = make(map[string]mTypes.ManifestMetadata)
-		indexDataMap        = make(map[string]mTypes.IndexData)
-	)
-
-	searchedRepo, searchedTag, err := common.GetRepoTag(searchText)
-	if err != nil {
-		return []mTypes.RepoMetadata{}, map[string]mTypes.ManifestMetadata{}, map[string]mTypes.IndexData{},
-			fmt.Errorf("metadb: error while parsing search text, invalid format %w", err)
-	}
-
-	err = bdw.DB.View(func(transaction *bbolt.Tx) error {
-		var (
-			repoBuck      = transaction.Bucket([]byte(RepoMetadataBucket))
-			indexBuck     = transaction.Bucket([]byte(IndexDataBucket))
-			manifestBuck  = transaction.Bucket([]byte(ManifestDataBucket))
-			userBookmarks = getUserBookmarks(ctx, transaction)
-			userStars     = getUserStars(ctx, transaction)
-		)
-
-		repoName, repoMetaBlob := repoBuck.Cursor().Seek([]byte(searchedRepo))
-
-		if string(repoName) != searchedRepo {
-			return nil
-		}
-
-		if ok, err := reqCtx.RepoIsUserAvailable(ctx, string(repoName)); !ok || err != nil {
-			return err
-		}
-
-		repoMeta := mTypes.RepoMetadata{}
-
-		err := json.Unmarshal(repoMetaBlob, &repoMeta)
-		if err != nil {
-			return err
-		}
-
-		repoMeta.IsBookmarked = zcommon.Contains(userBookmarks, repoMeta.Name)
-		repoMeta.IsStarred = zcommon.Contains(userStars, repoMeta.Name)
-
-		matchedTags := make(map[string]mTypes.Descriptor)
-
-		for tag, descriptor := range repoMeta.Tags {
-			if !strings.HasPrefix(tag, searchedTag) {
-				continue
-			}
-
-			matchedTags[tag] = descriptor
-
-			switch descriptor.MediaType {
-			case ispec.MediaTypeImageManifest:
-				manifestDigest := descriptor.Digest
-
-				manifestMeta, err := fetchManifestMetaWithCheck(repoMeta, manifestDigest, manifestMetadataMap, manifestBuck)
-				if err != nil {
-					return fmt.Errorf("metadb: error fetching manifest meta for manifest with digest %s %w",
-						manifestDigest, err)
-				}
-
-				manifestMetadataMap[descriptor.Digest] = manifestMeta
-			case ispec.MediaTypeImageIndex:
-				indexDigest := descriptor.Digest
-
-				indexData, err := fetchIndexDataWithCheck(indexDigest, indexDataMap, indexBuck)
-				if err != nil {
-					return fmt.Errorf("metadb: error fetching index data for index with digest %s %w",
-						indexDigest, err)
-				}
-
-				var indexContent ispec.Index
-
-				err = json.Unmarshal(indexData.IndexBlob, &indexContent)
-				if err != nil {
-					return fmt.Errorf("metadb: error collecting filter data for index with digest %s %w",
-						indexDigest, err)
-				}
-
-				for _, manifest := range indexContent.Manifests {
-					manifestDigest := manifest.Digest.String()
-
-					manifestMeta, err := fetchManifestMetaWithCheck(repoMeta, manifestDigest, manifestMetadataMap, manifestBuck)
-					if err != nil {
-						return fmt.Errorf("metadb: error fetching from db manifest meta for manifest with digest %s %w",
-							manifestDigest, err)
-					}
-
-					manifestMetadataMap[manifestDigest] = manifestMeta
-				}
-
-				indexDataMap[indexDigest] = indexData
-			default:
-				bdw.Log.Error().Str("mediaType", descriptor.MediaType).Msg("Unsupported media type")
-
-				continue
-			}
-		}
-
-		if len(matchedTags) == 0 {
-			return nil
-		}
-
-		repoMeta.Tags = matchedTags
-
-		foundRepos = append(foundRepos, repoMeta)
-
-		return nil
-	})
-
-	return foundRepos, manifestMetadataMap, indexDataMap, err
+func (bdw *BoltDB) SetImageTrustStore(imgTrustStore mTypes.ImageTrustStore) {
+	bdw.imgTrustStore = imgTrustStore
 }
 
 func (bdw *BoltDB) ToggleStarRepo(ctx context.Context, repo string) (mTypes.ToggleState, error) {
@@ -1531,16 +1351,16 @@ func (bdw *BoltDB) ToggleStarRepo(ctx context.Context, repo string) (mTypes.Togg
 			return err
 		}
 
-		repoBuck := tx.Bucket([]byte(RepoMetadataBucket))
+		repoBuck := tx.Bucket([]byte(RepoMetaBuck))
 
 		repoMetaBlob := repoBuck.Get([]byte(repo))
 		if repoMetaBlob == nil {
 			return zerr.ErrRepoMetaNotFound
 		}
 
-		var repoMeta mTypes.RepoMetadata
+		repoMeta := &proto_go.RepoMeta{}
 
-		err = json.Unmarshal(repoMetaBlob, &repoMeta)
+		err = proto.Unmarshal(repoMetaBlob, repoMeta)
 		if err != nil {
 			return err
 		}
@@ -1552,7 +1372,7 @@ func (bdw *BoltDB) ToggleStarRepo(ctx context.Context, repo string) (mTypes.Togg
 			repoMeta.Stars--
 		}
 
-		repoMetaBlob, err = json.Marshal(repoMeta)
+		repoMetaBlob, err = proto.Marshal(repoMeta)
 		if err != nil {
 			return err
 		}
@@ -2084,6 +1904,54 @@ func (bdw *BoltDB) DeleteUserData(ctx context.Context) error {
 
 		return nil
 	})
+
+	return err
+}
+
+func (bdw *BoltDB) ResetDB() error {
+	err := bdw.DB.Update(func(transaction *bbolt.Tx) error {
+		err := resetBucket(transaction, RepoMetaBuck)
+		if err != nil {
+			return err
+		}
+
+		err = resetBucket(transaction, ImageMetaBuck)
+		if err != nil {
+			return err
+		}
+
+		err = resetBucket(transaction, RepoBlobsBuck)
+		if err != nil {
+			return err
+		}
+
+		err = resetBucket(transaction, UserAPIKeysBucket)
+		if err != nil {
+			return err
+		}
+
+		err = resetBucket(transaction, UserDataBucket)
+		if err != nil {
+			return err
+		}
+
+		return nil
+	})
+
+	return err
+}
+
+func resetBucket(transaction *bbolt.Tx, bucketName string) error {
+	bucket := transaction.Bucket([]byte(bucketName))
+
+	if bucket != nil {
+		err := transaction.DeleteBucket([]byte(bucketName))
+		if err != nil {
+			return err
+		}
+	}
+
+	_, err := transaction.CreateBucketIfNotExists([]byte(bucketName))
 
 	return err
 }

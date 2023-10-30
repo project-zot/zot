@@ -143,14 +143,15 @@ func TestCreateCacheDatabaseDriver(t *testing.T) {
 
 		endpoint := os.Getenv("DYNAMODBMOCK_ENDPOINT")
 		conf.Storage.CacheDriver = map[string]interface{}{
-			"name":                  "dynamodb",
-			"endpoint":              endpoint,
-			"region":                "us-east-2",
-			"cacheTablename":        "BlobTable",
-			"repoMetaTablename":     "RepoMetadataTable",
-			"manifestDataTablename": "ManifestDataTable",
-			"userDataTablename":     "ZotUserDataTable",
-			"versionTablename":      "Version",
+			"name":                   "dynamodb",
+			"endpoint":               endpoint,
+			"region":                 "us-east-2",
+			"cacheTablename":         "BlobTable",
+			"repoMetaTablename":      "RepoMetadataTable",
+			"imageMetaTablename":     "ZotImageMetaTable",
+			"repoBlobsInfoTablename": "ZotRepoBlobsInfoTable",
+			"userDataTablename":      "ZotUserDataTable",
+			"versionTablename":       "Version",
 		}
 
 		driver := storage.CreateCacheDatabaseDriver(conf.Storage.StorageConfig, log)
@@ -159,27 +160,29 @@ func TestCreateCacheDatabaseDriver(t *testing.T) {
 		// negative test cases
 
 		conf.Storage.CacheDriver = map[string]interface{}{
-			"endpoint":              endpoint,
-			"region":                "us-east-2",
-			"cacheTablename":        "BlobTable",
-			"repoMetaTablename":     "RepoMetadataTable",
-			"manifestDataTablename": "ManifestDataTable",
-			"userDataTablename":     "ZotUserDataTable",
-			"versionTablename":      "Version",
+			"endpoint":               endpoint,
+			"region":                 "us-east-2",
+			"cacheTablename":         "BlobTable",
+			"repoMetaTablename":      "RepoMetadataTable",
+			"imageMetaTablename":     "ZotImageMetaTable",
+			"repoBlobsInfoTablename": "ZotRepoBlobsInfoTable",
+			"userDataTablename":      "ZotUserDataTable",
+			"versionTablename":       "Version",
 		}
 
 		driver = storage.CreateCacheDatabaseDriver(conf.Storage.StorageConfig, log)
 		So(driver, ShouldBeNil)
 
 		conf.Storage.CacheDriver = map[string]interface{}{
-			"name":                  "dummy",
-			"endpoint":              endpoint,
-			"region":                "us-east-2",
-			"cacheTablename":        "BlobTable",
-			"repoMetaTablename":     "RepoMetadataTable",
-			"manifestDataTablename": "ManifestDataTable",
-			"userDataTablename":     "ZotUserDataTable",
-			"versionTablename":      "Version",
+			"name":                   "dummy",
+			"endpoint":               endpoint,
+			"region":                 "us-east-2",
+			"cacheTablename":         "BlobTable",
+			"repoMetaTablename":      "RepoMetadataTable",
+			"imageMetaTablename":     "ZotImageMetaTable",
+			"repoBlobsInfoTablename": "ZotRepoBlobsInfoTable",
+			"userDataTablename":      "ZotUserDataTable",
+			"versionTablename":       "Version",
 		}
 
 		driver = storage.CreateCacheDatabaseDriver(conf.Storage.StorageConfig, log)
@@ -205,43 +208,45 @@ func TestCreateMetaDBDriver(t *testing.T) {
 		}
 
 		conf.Storage.CacheDriver = map[string]interface{}{
-			"name":                  "dummy",
-			"endpoint":              "http://localhost:4566",
-			"region":                "us-east-2",
-			"cachetablename":        "BlobTable",
-			"repometatablename":     "RepoMetadataTable",
-			"manifestdatatablename": "ManifestDataTable",
-			"userdatatablename":     "UserDatatable",
+			"name":                   "dummy",
+			"endpoint":               "http://localhost:4566",
+			"region":                 "us-east-2",
+			"cachetablename":         "BlobTable",
+			"repometatablename":      "RepoMetadataTable",
+			"imageMetaTablename":     "ZotImageMetaTable",
+			"repoBlobsInfoTablename": "ZotRepoBlobsInfoTable",
+			"userdatatablename":      "UserDatatable",
 		}
 
 		testFunc := func() { _, _ = meta.New(conf.Storage.StorageConfig, log) }
 		So(testFunc, ShouldPanic)
 
 		conf.Storage.CacheDriver = map[string]interface{}{
-			"name":                  "dummy",
-			"endpoint":              "http://localhost:4566",
-			"region":                "us-east-2",
-			"cachetablename":        "",
-			"repometatablename":     "RepoMetadataTable",
-			"manifestdatatablename": "ManifestDataTable",
-			"userDataTablename":     "ZotUserDataTable",
-			"versiontablename":      1,
+			"name":                   "dummy",
+			"endpoint":               "http://localhost:4566",
+			"region":                 "us-east-2",
+			"cachetablename":         "",
+			"repometatablename":      "RepoMetadataTable",
+			"imageMetaTablename":     "ZotImageMetaTable",
+			"repoBlobsInfoTablename": "ZotRepoBlobsInfoTable",
+			"userDataTablename":      "ZotUserDataTable",
+			"versiontablename":       1,
 		}
 
 		testFunc = func() { _, _ = meta.New(conf.Storage.StorageConfig, log) }
 		So(testFunc, ShouldPanic)
 
 		conf.Storage.CacheDriver = map[string]interface{}{
-			"name":                  "dummy",
-			"endpoint":              "http://localhost:4566",
-			"region":                "us-east-2",
-			"cachetablename":        "test",
-			"repometatablename":     "RepoMetadataTable",
-			"manifestdatatablename": "ManifestDataTable",
-			"indexdatatablename":    "IndexDataTable",
-			"userdatatablename":     "ZotUserDataTable",
-			"apikeytablename":       "APIKeyTable",
-			"versiontablename":      "1",
+			"name":                   "dummy",
+			"endpoint":               "http://localhost:4566",
+			"region":                 "us-east-2",
+			"cachetablename":         "test",
+			"repometatablename":      "RepoMetadataTable",
+			"imagemetatablename":     "ZotImageMetaTable",
+			"repoblobsinfotablename": "ZotRepoBlobsInfoTable",
+			"userdatatablename":      "ZotUserDataTable",
+			"apikeytablename":        "APIKeyTable",
+			"versiontablename":       "1",
 		}
 
 		testFunc = func() { _, _ = meta.New(conf.Storage.StorageConfig, log) }
@@ -414,16 +419,16 @@ func TestObjectStorageController(t *testing.T) {
 		conf.Storage.StorageDriver = storageDriverParams
 
 		conf.Storage.CacheDriver = map[string]interface{}{
-			"name":                  "dynamodb",
-			"endpoint":              os.Getenv("DYNAMODBMOCK_ENDPOINT"),
-			"region":                "us-east-2",
-			"cachetablename":        "test",
-			"repometatablename":     "RepoMetadataTable",
-			"manifestdatatablename": "ManifestDataTable",
-			"indexdatatablename":    "IndexDataTable",
-			"userdatatablename":     "ZotUserDataTable",
-			"apikeytablename":       "APIKeyTable1",
-			"versiontablename":      "Version",
+			"name":                   "dynamodb",
+			"endpoint":               os.Getenv("DYNAMODBMOCK_ENDPOINT"),
+			"region":                 "us-east-2",
+			"cachetablename":         "test",
+			"repometatablename":      "RepoMetadataTable",
+			"imagemetatablename":     "ZotImageMetaTable",
+			"repoblobsinfotablename": "ZotRepoBlobsInfoTable",
+			"userdatatablename":      "ZotUserDataTable",
+			"apikeytablename":        "APIKeyTable1",
+			"versiontablename":       "Version",
 		}
 
 		mockOIDCServer, err := authutils.MockOIDCRun()
@@ -7773,6 +7778,8 @@ func TestInjectTooManyOpenFiles(t *testing.T) {
 }
 
 func TestGCSignaturesAndUntaggedManifestsWithMetaDB(t *testing.T) {
+	ctx := context.Background()
+
 	Convey("Make controller", t, func() {
 		Convey("Garbage collect signatures without subject and manifests without tags", func(c C) {
 			repoName := "testrepo" //nolint:goconst
@@ -7804,7 +7811,7 @@ func TestGCSignaturesAndUntaggedManifestsWithMetaDB(t *testing.T) {
 			ctlr.Config.Storage.Dedupe = false
 
 			cm := test.NewControllerManager(ctlr)
-			cm.StartServer()
+			cm.StartServer() //nolint: contextcheck
 			cm.WaitServerToBeReady(port)
 			defer cm.StopServer()
 
@@ -7835,7 +7842,7 @@ func TestGCSignaturesAndUntaggedManifestsWithMetaDB(t *testing.T) {
 
 			// generate a keypair
 			os.Setenv("COSIGN_PASSWORD", "")
-			err = generate.GenerateKeyPairCmd(context.TODO(), "", "cosign", nil)
+			err = generate.GenerateKeyPairCmd(ctx, "", "cosign", nil)
 			So(err, ShouldBeNil)
 
 			image := fmt.Sprintf("localhost:%s/%s@%s", port, repoName, digest.String())
@@ -7864,7 +7871,7 @@ func TestGCSignaturesAndUntaggedManifestsWithMetaDB(t *testing.T) {
 			So(err, ShouldBeNil)
 
 			// sign the image
-			err = signature.SignWithNotation("good", image, tdir, true)
+			err = signature.SignWithNotation("good", image, tdir, true) //nolint: contextcheck
 			So(err, ShouldBeNil)
 
 			// get cosign signature manifest
@@ -7894,7 +7901,7 @@ func TestGCSignaturesAndUntaggedManifestsWithMetaDB(t *testing.T) {
 			So(err, ShouldBeNil)
 
 			// make sure both signatures are stored in repodb
-			repoMeta, err := ctlr.MetaDB.GetRepoMeta(repoName)
+			repoMeta, err := ctlr.MetaDB.GetRepoMeta(ctx, repoName)
 			So(err, ShouldBeNil)
 
 			sigMeta := repoMeta.Signatures[digest.String()]
@@ -7955,7 +7962,7 @@ func TestGCSignaturesAndUntaggedManifestsWithMetaDB(t *testing.T) {
 				So(err, ShouldBeNil)
 
 				// make sure repoDB reference was added
-				repoMeta, err := ctlr.MetaDB.GetRepoMeta(repoName)
+				repoMeta, err := ctlr.MetaDB.GetRepoMeta(ctx, repoName)
 				So(err, ShouldBeNil)
 
 				_, ok := repoMeta.Referrers[untaggedManifestDigest.String()]
@@ -7984,8 +7991,8 @@ func TestGCSignaturesAndUntaggedManifestsWithMetaDB(t *testing.T) {
 				err = gc.CleanRepo(repoName)
 				So(err, ShouldBeNil)
 
-				// make sure both signatures are removed from repodb and repo reference for untagged is removed
-				repoMeta, err = ctlr.MetaDB.GetRepoMeta(repoName)
+				// make sure both signatures are removed from metaDB and repo reference for untagged is removed
+				repoMeta, err = ctlr.MetaDB.GetRepoMeta(ctx, repoName)
 				So(err, ShouldBeNil)
 
 				sigMeta := repoMeta.Signatures[digest.String()]

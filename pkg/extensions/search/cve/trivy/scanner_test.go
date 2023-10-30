@@ -11,7 +11,6 @@ import (
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	. "github.com/smartystreets/goconvey/convey"
 
-	zerr "zotregistry.io/zot/errors"
 	"zotregistry.io/zot/pkg/api"
 	"zotregistry.io/zot/pkg/api/config"
 	extconf "zotregistry.io/zot/pkg/extensions/config"
@@ -20,13 +19,11 @@ import (
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/meta"
 	"zotregistry.io/zot/pkg/meta/boltdb"
-	mTypes "zotregistry.io/zot/pkg/meta/types"
 	"zotregistry.io/zot/pkg/storage"
 	"zotregistry.io/zot/pkg/storage/local"
 	. "zotregistry.io/zot/pkg/test/common"
 	"zotregistry.io/zot/pkg/test/deprecated"
 	. "zotregistry.io/zot/pkg/test/image-utils"
-	"zotregistry.io/zot/pkg/test/mocks"
 )
 
 func TestScanBigTestFile(t *testing.T) {
@@ -127,31 +124,6 @@ func TestScanningByDigest(t *testing.T) {
 		So(cveMap, ShouldContainKey, Vulnerability1ID)
 		So(cveMap, ShouldContainKey, Vulnerability2ID)
 		So(cveMap, ShouldContainKey, Vulnerability3ID)
-	})
-}
-
-func TestScannerErrors(t *testing.T) {
-	digest := godigest.FromString("dig")
-
-	Convey("Errors", t, func() {
-		storeController := storage.StoreController{}
-		storeController.DefaultStore = mocks.MockedImageStore{}
-
-		metaDB := mocks.MetaDBMock{}
-		log := log.NewLogger("debug", "")
-
-		Convey("IsImageFormatSanable", func() {
-			metaDB.GetManifestDataFn = func(manifestDigest godigest.Digest) (mTypes.ManifestData, error) {
-				return mTypes.ManifestData{}, zerr.ErrManifestDataNotFound
-			}
-			metaDB.GetIndexDataFn = func(indexDigest godigest.Digest) (mTypes.IndexData, error) {
-				return mTypes.IndexData{}, zerr.ErrManifestDataNotFound
-			}
-			scanner := trivy.NewScanner(storeController, metaDB, "", "", log)
-
-			_, err := scanner.ScanImage("repo@" + digest.String())
-			So(err, ShouldNotBeNil)
-		})
 	})
 }
 

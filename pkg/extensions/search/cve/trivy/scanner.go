@@ -2,7 +2,6 @@ package trivy
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"os"
 	"path"
@@ -26,7 +25,6 @@ import (
 	cvecache "zotregistry.io/zot/pkg/extensions/search/cve/cache"
 	cvemodel "zotregistry.io/zot/pkg/extensions/search/cve/model"
 	"zotregistry.io/zot/pkg/log"
-	mcommon "zotregistry.io/zot/pkg/meta/common"
 	mTypes "zotregistry.io/zot/pkg/meta/types"
 	"zotregistry.io/zot/pkg/storage"
 )
@@ -193,7 +191,7 @@ func (scanner Scanner) IsImageFormatScannable(repo, ref string) (bool, error) {
 	)
 
 	if zcommon.IsTag(ref) {
-		imgDescriptor, err := mcommon.GetImageDescriptor(scanner.metaDB, repo, ref)
+		imgDescriptor, err := getImageDescriptor(scanner.metaDB, repo, ref)
 		if err != nil {
 			return false, err
 		}
@@ -203,7 +201,7 @@ func (scanner Scanner) IsImageFormatScannable(repo, ref string) (bool, error) {
 	} else {
 		var found bool
 
-		found, mediaType = mcommon.FindMediaTypeForDigest(scanner.metaDB, godigest.Digest(ref))
+		found, mediaType = findMediaTypeForDigest(scanner.metaDB, godigest.Digest(ref))
 		if !found {
 			return false, zerr.ErrManifestNotFound
 		}
@@ -224,7 +222,7 @@ func (scanner Scanner) IsImageMediaScannable(repo, digestStr, mediaType string) 
 
 		return ok, nil
 	case ispec.MediaTypeImageIndex:
-		ok, err := scanner.isIndexScanable(digestStr)
+		ok, err := scanner.isIndexScannable(digestStr)
 		if err != nil {
 			return ok, fmt.Errorf("image '%s' %w", image, err)
 		}
@@ -240,21 +238,16 @@ func (scanner Scanner) isManifestScanable(digestStr string) (bool, error) {
 		return true, nil
 	}
 
-	manifestData, err := scanner.metaDB.GetManifestData(godigest.Digest(digestStr))
+	manifestData, err := scanner.metaDB.GetImageMeta(godigest.Digest(digestStr))
 	if err != nil {
 		return false, err
 	}
 
-	var manifestContent ispec.Manifest
-
-	err = json.Unmarshal(manifestData.ManifestBlob, &manifestContent)
-	if err != nil {
-		scanner.log.Error().Err(err).Msg("unable to unmashal manifest blob")
-
-		return false, zerr.ErrScanNotSupported
+	if manifestData.MediaType != ispec.MediaTypeImageManifest {
+		return false, zerr.ErrUnexpectedMediaType
 	}
 
-	for _, imageLayer := range manifestContent.Layers {
+	for _, imageLayer := range manifestData.Manifests[0].Manifest.Layers {
 		switch imageLayer.MediaType {
 		case ispec.MediaTypeImageLayerGzip, ispec.MediaTypeImageLayer, string(regTypes.DockerLayer):
 			continue
@@ -266,34 +259,54 @@ func (scanner Scanner) isManifestScanable(digestStr string) (bool, error) {
 	return true, nil
 }
 
-func (scanner Scanner) isIndexScanable(digestStr string) (bool, error) {
+func (scanner Scanner) isManifestDataScannable(manifestData mTypes.ManifestData) (bool, error) {
+	if scanner.cache.Get(manifestData.Digest.String()) != nil {
+		return true, nil
+	}
+
+	if manifestData.Manifest.MediaType != ispec.MediaTypeImageManifest {
+		return false, zerr.ErrScanNotSupported
+	}
+
+	for _, imageLayer := range manifestData.Manifest.Layers {
+		switch imageLayer.MediaType {
+		case ispec.MediaTypeImageLayerGzip, ispec.MediaTypeImageLayer, string(regTypes.DockerLayer):
+			continue
+		default:
+			return false, zerr.ErrScanNotSupported
+		}
+	}
+
+	return true, nil
+}
+
+func (scanner Scanner) isIndexScannable(digestStr string) (bool, error) {
 	if scanner.cache.Get(digestStr) != nil {
 		return true, nil
 	}
 
-	indexData, err := scanner.metaDB.GetIndexData(godigest.Digest(digestStr))
+	indexData, err := scanner.metaDB.GetImageMeta(godigest.Digest(digestStr))
 	if err != nil {
 		return false, err
 	}
 
-	var indexContent ispec.Index
-
-	err = json.Unmarshal(indexData.IndexBlob, &indexContent)
-	if err != nil {
-		return false, err
+	if indexData.MediaType != ispec.MediaTypeImageIndex || indexData.Index == nil {
+		return false, zerr.ErrUnexpectedMediaType
 	}
+
+	indexContent := *indexData.Index
 
 	if len(indexContent.Manifests) == 0 {
 		return true, nil
 	}
 
-	for _, manifest := range indexContent.Manifests {
-		isScannable, err := scanner.isManifestScanable(manifest.Digest.String())
+	for _, manifest := range indexData.Manifests {
+		isScannable, err := scanner.isManifestDataScannable(manifest)
 		if err != nil {
 			continue
 		}
 
-		// if at least 1 manifest is scanable, the whole index is scanable
+		// if at least 1 manifest is scannable, the whole index is scannable
 		if isScannable {
 			return true, nil
 		}
@@ -323,7 +336,7 @@ func (scanner Scanner) ScanImage(image string) (map[string]cvemodel.CVE, error) 
 	digest = ref
 
 	if isTag {
-		imgDescriptor, err := mcommon.GetImageDescriptor(scanner.metaDB, repo, ref)
+		imgDescriptor, err := getImageDescriptor(scanner.metaDB, repo, ref)
 		if err != nil {
 			return map[string]cvemodel.CVE{}, err
 		}
@@ -333,7 +346,7 @@ func (scanner Scanner) ScanImage(image string) (map[string]cvemodel.CVE, error) 
 	} else {
 		var found bool
 
-		found, mediaType = mcommon.FindMediaTypeForDigest(scanner.metaDB, godigest.Digest(ref))
+		found, mediaType = findMediaTypeForDigest(scanner.metaDB, godigest.Digest(ref))
 		if !found {
 			return map[string]cvemodel.CVE{}, zerr.ErrManifestNotFound
 		}
@@ -441,21 +454,18 @@ func (scanner Scanner) scanIndex(repo, digest string) (map[string]cvemodel.CVE, 
 		return cachedMap, nil
 	}
 
-	indexData, err := scanner.metaDB.GetIndexData(godigest.Digest(digest))
+	indexData, err := scanner.metaDB.GetImageMeta(godigest.Digest(digest))
 	if err != nil {
 		return map[string]cvemodel.CVE{}, err
 	}
 
-	var indexContent ispec.Index
-
-	err = json.Unmarshal(indexData.IndexBlob, &indexContent)
-	if err != nil {
-		return map[string]cvemodel.CVE{}, err
+	if indexData.Index == nil {
+		return map[string]cvemodel.CVE{}, zerr.ErrUnexpectedMediaType
 	}
 
 	indexCveIDMap := map[string]cvemodel.CVE{}
 
-	for _, manifest := range indexContent.Manifests {
+	for _, manifest := range indexData.Index.Manifests {
 		if isScannable, err := scanner.isManifestScanable(manifest.Digest.String()); isScannable && err == nil {
 			manifestCveIDMap, err := scanner.scanManifest(repo, manifest.Digest.String())
 			if err != nil {
@@ -565,6 +575,31 @@ func (scanner Scanner) checkDBPresence() error {
 	}
 
 	return nil
+}
+
+func getImageDescriptor(metaDB mTypes.MetaDB, repo, tag string) (mTypes.Descriptor, error) {
+	repoMeta, err := metaDB.GetRepoMeta(context.Background(), repo)
+	if err != nil {
+		return mTypes.Descriptor{}, err
+	}
+
+	imageDescriptor, ok := repoMeta.Tags[tag]
+	if !ok {
+		return mTypes.Descriptor{}, zerr.ErrTagMetaNotFound
+	}
+
+	return imageDescriptor, nil
+}
+
+// findMediaTypeForDigest will look into the buckets for a certain digest. Depending on which bucket that
+// digest is found the corresponding mediatype is returned.
+func findMediaTypeForDigest(metaDB mTypes.MetaDB, digest godigest.Digest) (bool, string) {
+	imageMeta, err := metaDB.GetImageMeta(digest)
+	if err == nil {
+		return true, imageMeta.MediaType
+	}
+
+	return false, ""
 }
 
 func convertSeverity(detectedSeverity string) string {

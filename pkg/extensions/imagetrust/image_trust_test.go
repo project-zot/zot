@@ -150,31 +150,21 @@ func TestInitCosignAndNotationDirs(t *testing.T) {
 }
 
 func TestVerifySignatures(t *testing.T) {
-	Convey("wrong manifest content", t, func() {
-		manifestContent := []byte("wrong json")
-
-		imgTrustStore := &imagetrust.ImageTrustStore{}
-		_, _, _, err := imgTrustStore.VerifySignature("", []byte(""), "", "", manifestContent, "repo")
-		So(err, ShouldNotBeNil)
-	})
-
 	Convey("empty manifest digest", t, func() {
 		image := CreateRandomImage()
-		manifestContent := image.ManifestDescriptor.Data
 
 		imgTrustStore := &imagetrust.ImageTrustStore{}
-		_, _, _, err := imgTrustStore.VerifySignature("", []byte(""), "", "", manifestContent, "repo")
+		_, _, _, err := imgTrustStore.VerifySignature("", []byte(""), "", "", image.AsImageMeta(), "repo")
 		So(err, ShouldNotBeNil)
 		So(err, ShouldEqual, zerr.ErrBadManifestDigest)
 	})
 
 	Convey("wrong signature type", t, func() {
 		image := CreateRandomImage()
-		manifestContent := image.ManifestDescriptor.Data
-		manifestDigest := image.ManifestDescriptor.Digest
 
 		imgTrustStore := &imagetrust.ImageTrustStore{}
-		_, _, _, err := imgTrustStore.VerifySignature("wrongType", []byte(""), "", manifestDigest, manifestContent, "repo")
+		_, _, _, err := imgTrustStore.VerifySignature("wrongType", []byte(""), "", image.Digest(), image.AsImageMeta(),
+			"repo")
 		So(err, ShouldNotBeNil)
 		So(err, ShouldEqual, zerr.ErrInvalidSignatureType)
 	})
@@ -184,15 +174,13 @@ func TestVerifySignatures(t *testing.T) {
 		tag := "test"  //nolint:goconst
 
 		image := CreateRandomImage()
-		manifestContent := image.ManifestDescriptor.Data
-		manifestDigest := image.ManifestDescriptor.Digest
 
 		Convey("cosignDir is not set", func() {
 			imgTrustStore := &imagetrust.ImageTrustStore{
 				CosignStorage: &imagetrust.PublicKeyLocalStorage{},
 			}
 
-			_, _, _, err := imgTrustStore.VerifySignature("cosign", []byte(""), "", manifestDigest, manifestContent, repo)
+			_, _, _, err := imgTrustStore.VerifySignature("cosign", []byte(""), "", image.Digest(), image.AsImageMeta(), repo)
 			So(err, ShouldNotBeNil)
 			So(err, ShouldEqual, zerr.ErrSignConfigDirNotSet)
 		})
@@ -212,7 +200,7 @@ func TestVerifySignatures(t *testing.T) {
 				CosignStorage: pubKeyStorage,
 			}
 
-			_, _, _, err = imgTrustStore.VerifySignature("cosign", []byte(""), "", manifestDigest, manifestContent, repo)
+			_, _, _, err = imgTrustStore.VerifySignature("cosign", []byte(""), "", image.Digest(), image.AsImageMeta(), repo)
 			So(err, ShouldNotBeNil)
 		})
 
@@ -232,8 +220,8 @@ func TestVerifySignatures(t *testing.T) {
 				CosignStorage: pubKeyStorage,
 			}
 
-			_, _, isTrusted, err := imgTrustStore.VerifySignature("cosign", []byte(""), "", manifestDigest,
-				manifestContent, repo)
+			_, _, isTrusted, err := imgTrustStore.VerifySignature("cosign", []byte(""), "", image.Digest(), image.AsImageMeta(),
+				repo)
 			So(err, ShouldBeNil)
 			So(isTrusted, ShouldBeFalse)
 		})
@@ -282,7 +270,7 @@ func TestVerifySignatures(t *testing.T) {
 					AnnotationOptions: options.AnnotationOptions{Annotations: []string{fmt.Sprintf("tag=%s", tag)}},
 					Upload:            true,
 				},
-				[]string{fmt.Sprintf("localhost:%s/%s@%s", port, repo, manifestDigest.String())})
+				[]string{fmt.Sprintf("localhost:%s/%s@%s", port, repo, image.DigestStr())})
 			So(err, ShouldBeNil)
 
 			err = os.Remove(path.Join(cosignDir, "cosign.key"))
@@ -299,7 +287,7 @@ func TestVerifySignatures(t *testing.T) {
 			var sigKey string
 
 			for _, manifest := range index.Manifests {
-				if manifest.Digest != manifestDigest {
+				if manifest.Digest != image.Digest() {
 					blobContent, err := ctlr.StoreController.DefaultStore.GetBlobContent(repo, manifest.Digest)
 					So(err, ShouldBeNil)
 
@@ -320,8 +308,8 @@ func TestVerifySignatures(t *testing.T) {
 			}
 
 			// signature is trusted
-			author, _, isTrusted, err := imgTrustStore.VerifySignature("cosign", rawSignature, sigKey, manifestDigest,
-				manifestContent, repo)
+			author, _, isTrusted, err := imgTrustStore.VerifySignature("cosign", rawSignature, sigKey, image.Digest(),
+				image.AsImageMeta(), repo)
 			So(err, ShouldBeNil)
 			So(isTrusted, ShouldBeTrue)
 			So(author, ShouldNotBeEmpty)
@@ -332,16 +320,14 @@ func TestVerifySignatures(t *testing.T) {
 		repo := "repo" //nolint:goconst
 		tag := "test"  //nolint:goconst
 		image := CreateRandomImage()
-		manifestContent := image.ManifestDescriptor.Data
-		manifestDigest := image.ManifestDescriptor.Digest
 
 		Convey("notationDir is not set", func() {
 			imgTrustStore := &imagetrust.ImageTrustStore{
 				NotationStorage: &imagetrust.CertificateLocalStorage{},
 			}
 
-			_, _, _, err := imgTrustStore.VerifySignature("notation", []byte("signature"), "", manifestDigest,
-				manifestContent, repo)
+			_, _, _, err := imgTrustStore.VerifySignature("notation", []byte("signature"), "", image.Digest(),
+				image.AsImageMeta(), repo)
 			So(err, ShouldNotBeNil)
 			So(err, ShouldEqual, zerr.ErrSignConfigDirNotSet)
 		})
@@ -356,8 +342,8 @@ func TestVerifySignatures(t *testing.T) {
 				NotationStorage: certStorage,
 			}
 
-			_, _, isTrusted, err := imgTrustStore.VerifySignature("notation", []byte(""), "", manifestDigest,
-				manifestContent, repo)
+			_, _, isTrusted, err := imgTrustStore.VerifySignature("notation", []byte(""), "", image.Digest(),
+				image.AsImageMeta(), repo)
 			So(err, ShouldNotBeNil)
 			So(isTrusted, ShouldBeFalse)
 		})
@@ -377,8 +363,8 @@ func TestVerifySignatures(t *testing.T) {
 				NotationStorage: certStorage,
 			}
 
-			_, _, _, err = imgTrustStore.VerifySignature("notation", []byte("signature"), "", manifestDigest,
-				manifestContent, repo)
+			_, _, _, err = imgTrustStore.VerifySignature("notation", []byte("signature"), "", image.Digest(),
+				image.AsImageMeta(), repo)
 			So(err, ShouldNotBeNil)
 		})
 
@@ -399,8 +385,8 @@ func TestVerifySignatures(t *testing.T) {
 				NotationStorage: certStorage,
 			}
 
-			_, _, _, err = imgTrustStore.VerifySignature("notation", []byte("signature"), "", manifestDigest, manifestContent,
-				repo)
+			_, _, _, err = imgTrustStore.VerifySignature("notation", []byte("signature"), "", image.Digest(),
+				image.AsImageMeta(), repo)
 			So(err, ShouldNotBeNil)
 		})
 
@@ -437,10 +423,10 @@ func TestVerifySignatures(t *testing.T) {
 			err = signature.GenerateNotationCerts(notationDir, "notation-sign-test")
 			So(err, ShouldBeNil)
 
-			// sign the image
-			image := fmt.Sprintf("localhost:%s/%s", port, fmt.Sprintf("%s:%s", repo, tag))
+			// sign the imageURL
+			imageURL := fmt.Sprintf("localhost:%s/%s", port, fmt.Sprintf("%s:%s", repo, tag))
 
-			err = signature.SignWithNotation("notation-sign-test", image, notationDir, true)
+			err = signature.SignWithNotation("notation-sign-test", imageURL, notationDir, true)
 			So(err, ShouldBeNil)
 
 			err = test.CopyFiles(path.Join(notationDir, "notation", "truststore"), path.Join(notationDir, "truststore"))
@@ -481,7 +467,7 @@ func TestVerifySignatures(t *testing.T) {
 			var sigKey string
 
 			for _, manifest := range index.Manifests {
-				if manifest.Digest != manifestDigest {
+				if manifest.Digest != image.Digest() {
 					blobContent, err := ctlr.StoreController.DefaultStore.GetBlobContent(repo, manifest.Digest)
 					So(err, ShouldBeNil)
 
@@ -502,8 +488,8 @@ func TestVerifySignatures(t *testing.T) {
 			}
 
 			// signature is trusted
-			author, _, isTrusted, err := imgTrustStore.VerifySignature("notation", rawSignature, sigKey, manifestDigest,
-				manifestContent, repo)
+			author, _, isTrusted, err := imgTrustStore.VerifySignature("notation", rawSignature, sigKey, image.Digest(),
+				image.AsImageMeta(), repo)
 			So(err, ShouldBeNil)
 			So(isTrusted, ShouldBeTrue)
 			So(author, ShouldNotBeEmpty)
@@ -512,8 +498,8 @@ func TestVerifySignatures(t *testing.T) {
 			So(err, ShouldBeNil)
 
 			// signature is not trusted
-			author, _, isTrusted, err = imgTrustStore.VerifySignature("notation", rawSignature, sigKey, manifestDigest,
-				manifestContent, repo)
+			author, _, isTrusted, err = imgTrustStore.VerifySignature("notation", rawSignature, sigKey, image.Digest(),
+				image.AsImageMeta(), repo)
 			So(err, ShouldNotBeNil)
 			So(isTrusted, ShouldBeFalse)
 			So(author, ShouldNotBeEmpty)
@@ -977,9 +963,6 @@ func TestAWSTrustStore(t *testing.T) {
 		repo := "repo"
 		image := CreateRandomImage()
 
-		manifestContent := image.ManifestDescriptor.Data
-		manifestDigest := image.ManifestDescriptor.Digest
-
 		secretsManagerMock := mocks.SecretsManagerMock{
 			CreateSecretFn: func(ctx context.Context, params *secretsmanager.CreateSecretInput,
 				optFns ...func(*secretsmanager.Options),
@@ -1001,17 +984,14 @@ func TestAWSTrustStore(t *testing.T) {
 			NotationStorage: notationStorage,
 		}
 
-		_, _, _, err = imgTrustStore.VerifySignature("notation", []byte("signature"), "", manifestDigest,
-			manifestContent, repo)
+		_, _, _, err = imgTrustStore.VerifySignature("notation", []byte("signature"), "", image.Digest(),
+			image.AsImageMeta(), repo)
 		So(err, ShouldNotBeNil)
 	})
 
 	Convey("VerifySignature - trustpolicy.json has invalid content", t, func() {
 		repo := "repo"
 		image := CreateRandomImage()
-
-		manifestContent := image.ManifestDescriptor.Data
-		manifestDigest := image.ManifestDescriptor.Digest
 
 		secretsManagerMock := mocks.SecretsManagerMock{
 			CreateSecretFn: func(ctx context.Context, params *secretsmanager.CreateSecretInput,
@@ -1034,8 +1014,8 @@ func TestAWSTrustStore(t *testing.T) {
 			NotationStorage: notationStorage,
 		}
 
-		_, _, _, err = imgTrustStore.VerifySignature("notation", []byte("signature"), "", manifestDigest,
-			manifestContent, repo)
+		_, _, _, err = imgTrustStore.VerifySignature("notation", []byte("signature"), "", image.Digest(),
+			image.AsImageMeta(), repo)
 		So(err, ShouldNotBeNil)
 
 		secretsManagerCacheMock = mocks.SecretsManagerCacheMock{
@@ -1051,8 +1031,8 @@ func TestAWSTrustStore(t *testing.T) {
 			NotationStorage: notationStorage,
 		}
 
-		_, _, _, err = imgTrustStore.VerifySignature("notation", []byte("signature"), "", manifestDigest,
-			manifestContent, repo)
+		_, _, _, err = imgTrustStore.VerifySignature("notation", []byte("signature"), "", image.Digest(),
+			image.AsImageMeta(), repo)
 		So(err, ShouldNotBeNil)
 
 		secretsManagerCacheMock = mocks.SecretsManagerCacheMock{
@@ -1068,8 +1048,8 @@ func TestAWSTrustStore(t *testing.T) {
 			NotationStorage: notationStorage,
 		}
 
-		_, _, _, err = imgTrustStore.VerifySignature("notation", []byte("signature"), "", manifestDigest,
-			manifestContent, repo)
+		_, _, _, err = imgTrustStore.VerifySignature("notation", []byte("signature"), "", image.Digest(),
+			image.AsImageMeta(), repo)
 		So(err, ShouldNotBeNil)
 	})
 
@@ -1080,22 +1060,22 @@ func TestAWSTrustStore(t *testing.T) {
 		}
 
 		repoMetaTablename := "RepoMetadataTable" + uuid.String()
-		manifestDataTablename := "ManifestDataTable" + uuid.String()
 		versionTablename := "Version" + uuid.String()
-		indexDataTablename := "IndexDataTable" + uuid.String()
 		userDataTablename := "UserDataTable" + uuid.String()
 		apiKeyTablename := "ApiKeyTable" + uuid.String()
+		imageMetaTablename := "imageMetaTable" + uuid.String()
+		repoBlobsInfoTablename := "repoBlobsInfoTable" + uuid.String()
 
 		dynamoDBDriverParams := map[string]interface{}{
-			"name":                  "dynamoDB",
-			"endpoint":              os.Getenv("DYNAMODBMOCK_ENDPOINT"),
-			"region":                "us-east-2",
-			"repometatablename":     repoMetaTablename,
-			"manifestdatatablename": manifestDataTablename,
-			"indexdatatablename":    indexDataTablename,
-			"userdatatablename":     userDataTablename,
-			"apikeytablename":       apiKeyTablename,
-			"versiontablename":      versionTablename,
+			"name":                   "dynamoDB",
+			"endpoint":               os.Getenv("DYNAMODBMOCK_ENDPOINT"),
+			"region":                 "us-east-2",
+			"repometatablename":      repoMetaTablename,
+			"imagemetatablename":     imageMetaTablename,
+			"repoblobsinfotablename": repoBlobsInfoTablename,
+			"userdatatablename":      userDataTablename,
+			"apikeytablename":        apiKeyTablename,
+			"versiontablename":       versionTablename,
 		}
 
 		t.Logf("using dynamo driver options: %v", dynamoDBDriverParams)
@@ -1237,8 +1217,6 @@ func RunVerificationTests(t *testing.T, dbDriverParams map[string]interface{}) {
 
 		Convey("verify cosign signature is trusted", func() {
 			image := CreateRandomImage()
-			manifestContent := image.ManifestDescriptor.Data
-			manifestDigest := image.ManifestDescriptor.Digest
 
 			err = UploadImage(image, baseURL, repo, tag)
 			So(err, ShouldBeNil)
@@ -1264,7 +1242,7 @@ func RunVerificationTests(t *testing.T, dbDriverParams map[string]interface{}) {
 					AnnotationOptions: options.AnnotationOptions{Annotations: []string{fmt.Sprintf("tag=%s", tag)}},
 					Upload:            true,
 				},
-				[]string{fmt.Sprintf("localhost:%s/%s@%s", port, repo, manifestDigest.String())})
+				[]string{fmt.Sprintf("localhost:%s/%s@%s", port, repo, image.DigestStr())})
 			So(err, ShouldBeNil)
 
 			indexContent, err := ctlr.StoreController.DefaultStore.GetIndexContent(repo)
@@ -1278,7 +1256,7 @@ func RunVerificationTests(t *testing.T, dbDriverParams map[string]interface{}) {
 			var sigKey string
 
 			for _, manifest := range index.Manifests {
-				if manifest.Digest != manifestDigest {
+				if manifest.Digest != image.Digest() {
 					blobContent, err := ctlr.StoreController.DefaultStore.GetBlobContent(repo, manifest.Digest)
 					So(err, ShouldBeNil)
 
@@ -1308,8 +1286,8 @@ func RunVerificationTests(t *testing.T, dbDriverParams map[string]interface{}) {
 			imageTrustStore := ctlr.MetaDB.ImageTrustStore()
 
 			// signature is trusted
-			author, _, isTrusted, err := imageTrustStore.VerifySignature("cosign", rawSignature, sigKey, manifestDigest,
-				manifestContent, repo)
+			author, _, isTrusted, err := imageTrustStore.VerifySignature("cosign", rawSignature, sigKey, image.Digest(),
+				image.AsImageMeta(), repo)
 			So(err, ShouldBeNil)
 			So(isTrusted, ShouldBeTrue)
 			So(author, ShouldNotBeEmpty)
@@ -1317,8 +1295,6 @@ func RunVerificationTests(t *testing.T, dbDriverParams map[string]interface{}) {
 
 		Convey("verify notation signature is trusted", func() {
 			image := CreateRandomImage()
-			manifestContent := image.ManifestDescriptor.Data
-			manifestDigest := image.ManifestDescriptor.Digest
 
 			err = UploadImage(image, baseURL, repo, tag)
 			So(err, ShouldBeNil)
@@ -1366,7 +1342,7 @@ func RunVerificationTests(t *testing.T, dbDriverParams map[string]interface{}) {
 
 				t.Logf("Processing manifest %v", notationSig)
 				if notationSig.Config.MediaType != notreg.ArtifactTypeNotation ||
-					notationSig.Subject.Digest != manifestDigest {
+					notationSig.Subject.Digest != image.Digest() {
 					continue
 				}
 
@@ -1400,8 +1376,8 @@ func RunVerificationTests(t *testing.T, dbDriverParams map[string]interface{}) {
 			imageTrustStore := ctlr.MetaDB.ImageTrustStore()
 
 			// signature is trusted
-			author, _, isTrusted, err := imageTrustStore.VerifySignature("notation", rawSignature, sigKey, manifestDigest,
-				manifestContent, repo)
+			author, _, isTrusted, err := imageTrustStore.VerifySignature("notation", rawSignature, sigKey, image.Digest(),
+				image.AsImageMeta(), repo)
 			So(err, ShouldBeNil)
 			So(isTrusted, ShouldBeTrue)
 			So(author, ShouldEqual, "CN=cert,O=Notary,L=Seattle,ST=WA,C=US")

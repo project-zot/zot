@@ -131,23 +131,23 @@ func TestSignatureUploadAndVerificationAWS(t *testing.T) {
 
 		cacheTablename := "BlobTable" + uuid.String()
 		repoMetaTablename := "RepoMetadataTable" + uuid.String()
-		manifestDataTablename := "ManifestDataTable" + uuid.String()
 		versionTablename := "Version" + uuid.String()
-		indexDataTablename := "IndexDataTable" + uuid.String()
 		userDataTablename := "UserDataTable" + uuid.String()
 		apiKeyTablename := "ApiKeyTable" + uuid.String()
+		imageMetaTablename := "imageMetaTable" + uuid.String()
+		repoBlobsInfoTablename := "repoBlobsInfoTable" + uuid.String()
 
 		cacheDriverParams := map[string]interface{}{
-			"name":                  "dynamoDB",
-			"endpoint":              os.Getenv("DYNAMODBMOCK_ENDPOINT"),
-			"region":                "us-east-2",
-			"cacheTablename":        cacheTablename,
-			"repoMetaTablename":     repoMetaTablename,
-			"manifestDataTablename": manifestDataTablename,
-			"indexDataTablename":    indexDataTablename,
-			"userDataTablename":     userDataTablename,
-			"apiKeyTablename":       apiKeyTablename,
-			"versionTablename":      versionTablename,
+			"name":                   "dynamoDB",
+			"endpoint":               os.Getenv("DYNAMODBMOCK_ENDPOINT"),
+			"region":                 "us-east-2",
+			"cacheTablename":         cacheTablename,
+			"repoMetaTablename":      repoMetaTablename,
+			"imageMetaTablename":     imageMetaTablename,
+			"repoBlobsInfoTablename": repoBlobsInfoTablename,
+			"userDataTablename":      userDataTablename,
+			"apiKeyTablename":        apiKeyTablename,
+			"versionTablename":       versionTablename,
 		}
 
 		t.Logf("using dynamo driver options: %v", cacheDriverParams)

@@ -176,21 +176,3 @@ func GetRandomImageConfig() ([]byte, godigest.Digest) {
 
 	return configBlobContent, configBlobDigestRaw
 }
-
-func GetIndexBlobWithManifests(manifestDigests []godigest.Digest) ([]byte, error) {
-	manifests := make([]ispec.Descriptor, 0, len(manifestDigests))
-
-	for _, manifestDigest := range manifestDigests {
-		manifests = append(manifests, ispec.Descriptor{
-			Digest:    manifestDigest,
-			MediaType: ispec.MediaTypeImageManifest,
-		})
-	}
-
-	indexContent := ispec.Index{
-		MediaType: ispec.MediaTypeImageIndex,
-		Manifests: manifests,
-	}
-
-	return json.Marshal(indexContent)
-}

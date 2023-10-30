@@ -9,74 +9,6 @@ import (
 )
 
 type MetaDBMock struct {
-	SetRepoDescriptionFn func(repo, description string) error
-
-	IncrementRepoStarsFn func(repo string) error
-
-	DecrementRepoStarsFn func(repo string) error
-
-	GetRepoStarsFn func(repo string) (int, error)
-
-	SetRepoLogoFn func(repo string, logoPath string) error
-
-	SetRepoReferenceFn func(repo string, Reference string, manifestDigest godigest.Digest, mediaType string) error
-
-	RemoveRepoReferenceFn func(repo, reference string, manifestDigest godigest.Digest) error
-
-	DeleteRepoTagFn func(repo string, tag string) error
-
-	GetRepoMetaFn func(repo string) (mTypes.RepoMetadata, error)
-
-	GetUserRepoMetaFn func(ctx context.Context, repo string) (mTypes.RepoMetadata, error)
-
-	SetRepoMetaFn func(repo string, repoMeta mTypes.RepoMetadata) error
-
-	GetMultipleRepoMetaFn func(ctx context.Context, filter func(repoMeta mTypes.RepoMetadata) bool) (
-		[]mTypes.RepoMetadata, error)
-
-	GetManifestDataFn func(manifestDigest godigest.Digest) (mTypes.ManifestData, error)
-
-	SetManifestDataFn func(manifestDigest godigest.Digest, mm mTypes.ManifestData) error
-
-	GetManifestMetaFn func(repo string, manifestDigest godigest.Digest) (mTypes.ManifestMetadata, error)
-
-	SetManifestMetaFn func(repo string, manifestDigest godigest.Digest, mm mTypes.ManifestMetadata) error
-
-	SetIndexDataFn func(digest godigest.Digest, indexData mTypes.IndexData) error
-
-	GetIndexDataFn func(indexDigest godigest.Digest) (mTypes.IndexData, error)
-
-	SetReferrerFn func(repo string, referredDigest godigest.Digest, referrer mTypes.ReferrerInfo) error
-
-	DeleteReferrerFn func(repo string, referredDigest godigest.Digest, referrerDigest godigest.Digest) error
-
-	GetReferrersFn func(repo string, referredDigest godigest.Digest) ([]mTypes.Descriptor, error)
-
-	GetReferrersInfoFn func(repo string, referredDigest godigest.Digest, artifactTypes []string) (
-		[]mTypes.ReferrerInfo, error)
-
-	IncrementImageDownloadsFn func(repo string, reference string) error
-
-	UpdateSignaturesValidityFn func(repo string, manifestDigest godigest.Digest) error
-
-	AddManifestSignatureFn func(repo string, signedManifestDigest godigest.Digest, sm mTypes.SignatureMetadata) error
-
-	DeleteSignatureFn func(repo string, signedManifestDigest godigest.Digest, sm mTypes.SignatureMetadata) error
-
-	SearchReposFn func(ctx context.Context, txt string) (
-		[]mTypes.RepoMetadata, map[string]mTypes.ManifestMetadata, map[string]mTypes.IndexData,
-		error)
-
-	SearchTagsFn func(ctx context.Context, txt string) (
-		[]mTypes.RepoMetadata, map[string]mTypes.ManifestMetadata, map[string]mTypes.IndexData,
-		error)
-
-	FilterReposFn func(ctx context.Context, filter mTypes.FilterRepoFunc) (
-		[]mTypes.RepoMetadata, map[string]mTypes.ManifestMetadata, map[string]mTypes.IndexData, error)
-
-	FilterTagsFn func(ctx context.Context, filterFunc mTypes.FilterFunc) (
-		[]mTypes.RepoMetadata, map[string]mTypes.ManifestMetadata, map[string]mTypes.IndexData, error)
-
 	GetStarredReposFn func(ctx context.Context) ([]string, error)
 
 	GetBookmarkedReposFn func(ctx context.Context) ([]string, error)
@@ -112,6 +44,69 @@ type MetaDBMock struct {
 	ImageTrustStoreFn func() mTypes.ImageTrustStore
 
 	SetImageTrustStoreFn func(mTypes.ImageTrustStore)
+
+	SetRepoReferenceFn func(repo string, reference string, imageMeta mTypes.ImageMeta) error
+
+	SearchReposFn func(ctx context.Context, searchText string,
+	) ([]mTypes.RepoMeta, error)
+
+	SearchTagsFn func(ctx context.Context, searchText string) ([]mTypes.FullImageMeta, error)
+
+	FilterTagFn func(ctx context.Context, filterFunc mTypes.FilterFunc,
+	) ([]mTypes.RepoMeta, map[string]mTypes.ImageMeta, error)
+
+	GetImageMetaFn func(digest godigest.Digest) (mTypes.ImageMeta, error)
+
+	GetMultipleRepoMetaFn func(ctx context.Context, filter func(repoMeta mTypes.RepoMeta) bool,
+	) ([]mTypes.RepoMeta, error)
+
+	FilterReposFn func(ctx context.Context, rankName mTypes.FilterRepoNameFunc,
+		filterFunc mTypes.FilterFullRepoFunc) ([]mTypes.RepoMeta, error)
+
+	IncrementRepoStarsFn func(repo string) error
+
+	DecrementRepoStarsFn func(repo string) error
+
+	SetRepoMetaFn func(repo string, repoMeta mTypes.RepoMeta) error
+
+	DeleteReferrerFn func(repo string, referredDigest godigest.Digest, referrerDigest godigest.Digest) error
+
+	GetReferrersInfoFn func(repo string, referredDigest godigest.Digest, artifactTypes []string,
+	) ([]mTypes.ReferrerInfo, error)
+
+	IncrementImageDownloadsFn func(repo string, reference string) error
+
+	UpdateSignaturesValidityFn func(repo string, manifestDigest godigest.Digest) error
+
+	AddManifestSignatureFn func(repo string, signedManifestDigest godigest.Digest, sygMeta mTypes.SignatureMetadata,
+	) error
+
+	DeleteSignatureFn func(repo string, signedManifestDigest godigest.Digest, sigMeta mTypes.SignatureMetadata) error
+
+	SetImageMetaFn func(digest godigest.Digest, imageMeta mTypes.ImageMeta) error
+
+	FilterTagsFn func(ctx context.Context, filterRepoTag mTypes.FilterRepoTagFunc,
+		filterFunc mTypes.FilterFunc) ([]mTypes.FullImageMeta, error)
+
+	GetRepoMetaFn func(ctx context.Context, repo string) (mTypes.RepoMeta, error)
+
+	FilterImageMetaFn func(ctx context.Context, digests []string) (map[string]mTypes.ImageMeta, error)
+
+	RemoveRepoReferenceFn func(repo, reference string, manifestDigest godigest.Digest) error
+
+	GetFullImageMetaFn func(ctx context.Context, repo string, tag string) (mTypes.FullImageMeta, error)
+
+	ResetRepoReferencesFn func(repo string) error
+
+	ResetDBFn func() error
+}
+
+func (sdm MetaDBMock) ResetDB() error {
+	if sdm.ResetDBFn != nil {
+		return sdm.ResetDBFn()
+	}
+
+	return nil
 }
 
 func (sdm MetaDBMock) ImageTrustStore() mTypes.ImageTrustStore {
@@ -128,255 +123,12 @@ func (sdm MetaDBMock) SetImageTrustStore(imgTrustStore mTypes.ImageTrustStore) {
 	}
 }
 
-func (sdm MetaDBMock) SetRepoDescription(repo, description string) error {
-	if sdm.SetRepoDescriptionFn != nil {
-		return sdm.SetRepoDescriptionFn(repo, description)
-	}
-
-	return nil
-}
-
-func (sdm MetaDBMock) IncrementRepoStars(repo string) error {
-	if sdm.IncrementRepoStarsFn != nil {
-		return sdm.IncrementRepoStarsFn(repo)
-	}
-
-	return nil
-}
-
-func (sdm MetaDBMock) DecrementRepoStars(repo string) error {
-	if sdm.DecrementRepoStarsFn != nil {
-		return sdm.DecrementRepoStarsFn(repo)
-	}
-
-	return nil
-}
-
-func (sdm MetaDBMock) GetRepoStars(repo string) (int, error) {
-	if sdm.GetRepoStarsFn != nil {
-		return sdm.GetRepoStarsFn(repo)
-	}
-
-	return 0, nil
-}
-
-func (sdm MetaDBMock) SetRepoReference(repo string, reference string, manifestDigest godigest.Digest,
-	mediaType string,
-) error {
-	if sdm.SetRepoReferenceFn != nil {
-		return sdm.SetRepoReferenceFn(repo, reference, manifestDigest, mediaType)
-	}
-
-	return nil
-}
-
-func (sdm MetaDBMock) RemoveRepoReference(repo, reference string, manifestDigest godigest.Digest) error {
-	if sdm.RemoveRepoReferenceFn != nil {
-		return sdm.RemoveRepoReferenceFn(repo, reference, manifestDigest)
-	}
-
-	return nil
-}
-
-func (sdm MetaDBMock) DeleteRepoTag(repo string, tag string) error {
-	if sdm.DeleteRepoTagFn != nil {
-		return sdm.DeleteRepoTagFn(repo, tag)
-	}
-
-	return nil
-}
-
-func (sdm MetaDBMock) GetRepoMeta(repo string) (mTypes.RepoMetadata, error) {
-	if sdm.GetRepoMetaFn != nil {
-		return sdm.GetRepoMetaFn(repo)
-	}
-
-	return mTypes.RepoMetadata{}, nil
-}
-
-func (sdm MetaDBMock) GetUserRepoMeta(ctx context.Context, repo string) (mTypes.RepoMetadata, error) {
-	if sdm.GetUserRepoMetaFn != nil {
-		return sdm.GetUserRepoMetaFn(ctx, repo)
-	}
-
-	return mTypes.RepoMetadata{}, nil
-}
-
-func (sdm MetaDBMock) SetRepoMeta(repo string, repoMeta mTypes.RepoMetadata) error {
-	if sdm.SetRepoMetaFn != nil {
-		return sdm.SetRepoMetaFn(repo, repoMeta)
-	}
-
-	return nil
-}
-
-func (sdm MetaDBMock) GetMultipleRepoMeta(ctx context.Context, filter func(repoMeta mTypes.RepoMetadata) bool,
-) ([]mTypes.RepoMetadata, error) {
-	if sdm.GetMultipleRepoMetaFn != nil {
-		return sdm.GetMultipleRepoMetaFn(ctx, filter)
-	}
-
-	return []mTypes.RepoMetadata{}, nil
-}
-
-func (sdm MetaDBMock) GetManifestData(manifestDigest godigest.Digest) (mTypes.ManifestData, error) {
-	if sdm.GetManifestDataFn != nil {
-		return sdm.GetManifestDataFn(manifestDigest)
-	}
-
-	return mTypes.ManifestData{}, nil
-}
-
-func (sdm MetaDBMock) SetManifestData(manifestDigest godigest.Digest, md mTypes.ManifestData) error {
-	if sdm.SetManifestDataFn != nil {
-		return sdm.SetManifestDataFn(manifestDigest, md)
-	}
-
-	return nil
-}
-
-func (sdm MetaDBMock) GetManifestMeta(repo string, manifestDigest godigest.Digest) (mTypes.ManifestMetadata, error) {
-	if sdm.GetManifestMetaFn != nil {
-		return sdm.GetManifestMetaFn(repo, manifestDigest)
-	}
-
-	return mTypes.ManifestMetadata{}, nil
-}
-
-func (sdm MetaDBMock) SetManifestMeta(repo string, manifestDigest godigest.Digest, mm mTypes.ManifestMetadata) error {
-	if sdm.SetManifestMetaFn != nil {
-		return sdm.SetManifestMetaFn(repo, manifestDigest, mm)
-	}
-
-	return nil
-}
-
-func (sdm MetaDBMock) IncrementImageDownloads(repo string, reference string) error {
-	if sdm.IncrementImageDownloadsFn != nil {
-		return sdm.IncrementImageDownloadsFn(repo, reference)
-	}
-
-	return nil
-}
-
-func (sdm MetaDBMock) UpdateSignaturesValidity(repo string, manifestDigest godigest.Digest) error {
-	if sdm.UpdateSignaturesValidityFn != nil {
-		return sdm.UpdateSignaturesValidityFn(repo, manifestDigest)
-	}
-
-	return nil
-}
-
-func (sdm MetaDBMock) AddManifestSignature(repo string, signedManifestDigest godigest.Digest,
-	sm mTypes.SignatureMetadata,
-) error {
-	if sdm.AddManifestSignatureFn != nil {
-		return sdm.AddManifestSignatureFn(repo, signedManifestDigest, sm)
-	}
-
-	return nil
-}
-
-func (sdm MetaDBMock) DeleteSignature(repo string, signedManifestDigest godigest.Digest,
-	sm mTypes.SignatureMetadata,
-) error {
-	if sdm.DeleteSignatureFn != nil {
-		return sdm.DeleteSignatureFn(repo, signedManifestDigest, sm)
-	}
-
-	return nil
-}
-
-func (sdm MetaDBMock) SearchRepos(ctx context.Context, searchText string,
-) ([]mTypes.RepoMetadata, map[string]mTypes.ManifestMetadata, map[string]mTypes.IndexData, error) {
-	if sdm.SearchReposFn != nil {
-		return sdm.SearchReposFn(ctx, searchText)
-	}
-
-	return []mTypes.RepoMetadata{}, map[string]mTypes.ManifestMetadata{},
-		map[string]mTypes.IndexData{}, nil
-}
-
-func (sdm MetaDBMock) SearchTags(ctx context.Context, searchText string,
-) ([]mTypes.RepoMetadata, map[string]mTypes.ManifestMetadata, map[string]mTypes.IndexData, error) {
-	if sdm.SearchTagsFn != nil {
-		return sdm.SearchTagsFn(ctx, searchText)
-	}
-
-	return []mTypes.RepoMetadata{}, map[string]mTypes.ManifestMetadata{},
-		map[string]mTypes.IndexData{}, nil
-}
-
-func (sdm MetaDBMock) FilterRepos(ctx context.Context, filter mTypes.FilterRepoFunc,
-) ([]mTypes.RepoMetadata, map[string]mTypes.ManifestMetadata, map[string]mTypes.IndexData, error) {
-	if sdm.FilterReposFn != nil {
-		return sdm.FilterReposFn(ctx, filter)
-	}
-
-	return []mTypes.RepoMetadata{}, map[string]mTypes.ManifestMetadata{},
-		map[string]mTypes.IndexData{}, nil
-}
-
-func (sdm MetaDBMock) FilterTags(ctx context.Context, filterFunc mTypes.FilterFunc,
-) ([]mTypes.RepoMetadata, map[string]mTypes.ManifestMetadata, map[string]mTypes.IndexData, error) {
-	if sdm.FilterTagsFn != nil {
-		return sdm.FilterTagsFn(ctx, filterFunc)
-	}
-
-	return []mTypes.RepoMetadata{}, map[string]mTypes.ManifestMetadata{},
-		map[string]mTypes.IndexData{}, nil
-}
-
-func (sdm MetaDBMock) SetIndexData(digest godigest.Digest, indexData mTypes.IndexData) error {
-	if sdm.SetIndexDataFn != nil {
-		return sdm.SetIndexDataFn(digest, indexData)
-	}
-
-	return nil
-}
-
-func (sdm MetaDBMock) GetIndexData(indexDigest godigest.Digest) (mTypes.IndexData, error) {
-	if sdm.GetIndexDataFn != nil {
-		return sdm.GetIndexDataFn(indexDigest)
-	}
-
-	return mTypes.IndexData{}, nil
-}
-
 func (sdm MetaDBMock) PatchDB() error {
 	if sdm.PatchDBFn != nil {
 		return sdm.PatchDBFn()
 	}
 
 	return nil
-}
-
-func (sdm MetaDBMock) SetReferrer(repo string, referredDigest godigest.Digest, referrer mTypes.ReferrerInfo) error {
-	if sdm.SetReferrerFn != nil {
-		return sdm.SetReferrerFn(repo, referredDigest, referrer)
-	}
-
-	return nil
-}
-
-func (sdm MetaDBMock) DeleteReferrer(repo string, referredDigest godigest.Digest,
-	referrerDigest godigest.Digest,
-) error {
-	if sdm.DeleteReferrerFn != nil {
-		return sdm.DeleteReferrerFn(repo, referredDigest, referrerDigest)
-	}
-
-	return nil
-}
-
-func (sdm MetaDBMock) GetReferrersInfo(repo string, referredDigest godigest.Digest,
-	artifactTypes []string,
-) ([]mTypes.ReferrerInfo, error) {
-	if sdm.GetReferrersInfoFn != nil {
-		return sdm.GetReferrersInfoFn(repo, referredDigest, artifactTypes)
-	}
-
-	return []mTypes.ReferrerInfo{}, nil
 }
 
 func (sdm MetaDBMock) GetStarredRepos(ctx context.Context) ([]string, error) {
@@ -494,6 +246,187 @@ func (sdm MetaDBMock) UpdateUserAPIKeyLastUsed(ctx context.Context, hashedKey st
 func (sdm MetaDBMock) DeleteUserAPIKey(ctx context.Context, id string) error {
 	if sdm.DeleteUserAPIKeyFn != nil {
 		return sdm.DeleteUserAPIKeyFn(ctx, id)
+	}
+
+	return nil
+}
+
+func (sdm MetaDBMock) SetImageMeta(digest godigest.Digest, imageMeta mTypes.ImageMeta) error {
+	if sdm.SetImageMetaFn != nil {
+		return sdm.SetImageMetaFn(digest, imageMeta)
+	}
+
+	return nil
+}
+
+func (sdm MetaDBMock) SetRepoReference(repo string, reference string, imageMeta mTypes.ImageMeta) error {
+	if sdm.SetRepoReferenceFn != nil {
+		return sdm.SetRepoReferenceFn(repo, reference, imageMeta)
+	}
+
+	return nil
+}
+
+func (sdm MetaDBMock) SearchRepos(ctx context.Context, searchText string) ([]mTypes.RepoMeta, error) {
+	if sdm.SearchReposFn != nil {
+		return sdm.SearchReposFn(ctx, searchText)
+	}
+
+	return []mTypes.RepoMeta{}, nil
+}
+
+func (sdm MetaDBMock) SearchTags(ctx context.Context, searchText string) ([]mTypes.FullImageMeta, error) {
+	if sdm.SearchTagsFn != nil {
+		return sdm.SearchTagsFn(ctx, searchText)
+	}
+
+	return []mTypes.FullImageMeta{}, nil
+}
+
+func (sdm MetaDBMock) FilterTags(ctx context.Context, filterRepoTag mTypes.FilterRepoTagFunc,
+	filterFunc mTypes.FilterFunc,
+) ([]mTypes.FullImageMeta, error) {
+	if sdm.FilterTagsFn != nil {
+		return sdm.FilterTagsFn(ctx, filterRepoTag, filterFunc)
+	}
+
+	return []mTypes.FullImageMeta{}, nil
+}
+
+func (sdm MetaDBMock) GetRepoMeta(ctx context.Context, repo string) (mTypes.RepoMeta, error) {
+	if sdm.GetRepoMetaFn != nil {
+		return sdm.GetRepoMetaFn(ctx, repo)
+	}
+
+	return mTypes.RepoMeta{}, nil
+}
+
+func (sdm MetaDBMock) GetImageMeta(digest godigest.Digest) (mTypes.ImageMeta, error) {
+	if sdm.GetImageMetaFn != nil {
+		return sdm.GetImageMetaFn(digest)
+	}
+
+	return mTypes.ImageMeta{}, nil
+}
+
+func (sdm MetaDBMock) GetMultipleRepoMeta(ctx context.Context, filter func(repoMeta mTypes.RepoMeta) bool,
+) ([]mTypes.RepoMeta, error) {
+	if sdm.GetMultipleRepoMetaFn != nil {
+		return sdm.GetMultipleRepoMetaFn(ctx, filter)
+	}
+
+	return []mTypes.RepoMeta{}, nil
+}
+
+func (sdm MetaDBMock) FilterRepos(ctx context.Context, rankName mTypes.FilterRepoNameFunc,
+	filterFunc mTypes.FilterFullRepoFunc,
+) ([]mTypes.RepoMeta, error) {
+	if sdm.FilterReposFn != nil {
+		return sdm.FilterReposFn(ctx, rankName, filterFunc)
+	}
+
+	return []mTypes.RepoMeta{}, nil
+}
+
+func (sdm MetaDBMock) IncrementRepoStars(repo string) error {
+	if sdm.IncrementRepoStarsFn != nil {
+		return sdm.IncrementRepoStarsFn(repo)
+	}
+
+	return nil
+}
+
+func (sdm MetaDBMock) DecrementRepoStars(repo string) error {
+	if sdm.DecrementRepoStarsFn != nil {
+		return sdm.DecrementRepoStarsFn(repo)
+	}
+
+	return nil
+}
+
+func (sdm MetaDBMock) SetRepoMeta(repo string, repoMeta mTypes.RepoMeta) error {
+	if sdm.SetRepoMetaFn != nil {
+		return sdm.SetRepoMetaFn(repo, repoMeta)
+	}
+
+	return nil
+}
+
+func (sdm MetaDBMock) GetReferrersInfo(repo string, referredDigest godigest.Digest,
+	artifactTypes []string,
+) ([]mTypes.ReferrerInfo, error) {
+	if sdm.GetReferrersInfoFn != nil {
+		return sdm.GetReferrersInfoFn(repo, referredDigest, artifactTypes)
+	}
+
+	return []mTypes.ReferrerInfo{}, nil
+}
+
+func (sdm MetaDBMock) IncrementImageDownloads(repo string, reference string) error {
+	if sdm.IncrementImageDownloadsFn != nil {
+		return sdm.IncrementImageDownloadsFn(repo, reference)
+	}
+
+	return nil
+}
+
+func (sdm MetaDBMock) UpdateSignaturesValidity(repo string, manifestDigest godigest.Digest) error {
+	if sdm.UpdateSignaturesValidityFn != nil {
+		return sdm.UpdateSignaturesValidityFn(repo, manifestDigest)
+	}
+
+	return nil
+}
+
+func (sdm MetaDBMock) AddManifestSignature(repo string, signedManifestDigest godigest.Digest,
+	sygMeta mTypes.SignatureMetadata,
+) error {
+	if sdm.AddManifestSignatureFn != nil {
+		return sdm.AddManifestSignatureFn(repo, signedManifestDigest, sygMeta)
+	}
+
+	return nil
+}
+
+func (sdm MetaDBMock) DeleteSignature(repo string, signedManifestDigest godigest.Digest,
+	sigMeta mTypes.SignatureMetadata,
+) error {
+	if sdm.DeleteSignatureFn != nil {
+		return sdm.DeleteSignatureFn(repo, signedManifestDigest, sigMeta)
+	}
+
+	return nil
+}
+
+func (sdm MetaDBMock) FilterImageMeta(ctx context.Context, digests []string,
+) (map[string]mTypes.ImageMeta, error) {
+	if sdm.FilterImageMetaFn != nil {
+		return sdm.FilterImageMetaFn(ctx, digests)
+	}
+
+	return map[string]mTypes.ImageMeta{}, nil
+}
+
+func (sdm MetaDBMock) RemoveRepoReference(repo, reference string, manifestDigest godigest.Digest) error {
+	if sdm.RemoveRepoReferenceFn != nil {
+		return sdm.RemoveRepoReferenceFn(repo, reference, manifestDigest)
+	}
+
+	return nil
+}
+
+func (sdm MetaDBMock) GetFullImageMeta(ctx context.Context, repo string, tag string,
+) (mTypes.FullImageMeta, error) {
+	if sdm.GetFullImageMetaFn != nil {
+		return sdm.GetFullImageMetaFn(ctx, repo, tag)
+	}
+
+	return mTypes.FullImageMeta{}, nil
+}
+
+func (sdm MetaDBMock) ResetRepoReferences(repo string) error {
+	if sdm.ResetRepoReferencesFn != nil {
+		return sdm.ResetRepoReferencesFn(repo)
 	}
 
 	return nil
