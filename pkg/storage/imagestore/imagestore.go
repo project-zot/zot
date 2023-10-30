@@ -3,9 +3,11 @@ package imagestore
 import (
 	"bytes"
 	"crypto/sha256"
+	"crypto/sha512"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"hash"
 	"io"
 	"path"
 	"path/filepath"
@@ -933,7 +935,14 @@ func (is *ImageStore) FullBlobUpload(repo string, body io.Reader, dstDigest godi
 
 	uuid := u.String()
 	src := is.BlobUploadPath(repo, uuid)
-	digester := sha256.New()
+
+	var digester hash.Hash
+	if dstDigest.Algorithm() == godigest.SHA256 {
+		digester = sha256.New()
+	} else if dstDigest.Algorithm() == godigest.SHA512 {
+		digester = sha512.New()
+	}
+
 	buf := new(bytes.Buffer)
 
 	_, err = buf.ReadFrom(body)
@@ -957,7 +966,7 @@ func (is *ImageStore) FullBlobUpload(repo string, body io.Reader, dstDigest godi
 		return "", -1, err
 	}
 
-	srcDigest := godigest.NewDigestFromEncoded(godigest.SHA256, fmt.Sprintf("%x", digester.Sum(nil)))
+	srcDigest := godigest.NewDigestFromEncoded(dstDigest.Algorithm(), fmt.Sprintf("%x", digester.Sum(nil)))
 	if srcDigest != dstDigest {
 		is.log.Error().Str("srcDigest", srcDigest.String()).
 			Str("dstDigest", dstDigest.String()).Msg("actual digest not equal to expected digest")
