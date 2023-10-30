@@ -67,6 +67,8 @@ func TestAllowedMethodsHeaderAPIKey(t *testing.T) {
 		resp, _ := resty.R().Options(baseURL + constants.APIKeyPath)
 		So(resp, ShouldNotBeNil)
 		So(resp.Header().Get("Access-Control-Allow-Methods"), ShouldResemble, "GET,POST,DELETE,OPTIONS")
+		So(resp.Header().Get("Access-Control-Allow-Origin"), ShouldResemble, "*")
+		So(resp.Header().Get("Access-Control-Allow-Headers"), ShouldResemble, "Authorization,content-type,X-ZOT-API-CLIENT")
 		So(resp.StatusCode(), ShouldEqual, http.StatusNoContent)
 	})
 }
