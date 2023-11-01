@@ -406,6 +406,10 @@ func GetFullImageMetaFromProto(tag string, protoRepoMeta *proto_go.RepoMeta, pro
 
 func GetFullManifestData(protoRepoMeta *proto_go.RepoMeta, manifestData []mTypes.ManifestData,
 ) []mTypes.FullManifestMeta {
+	if protoRepoMeta == nil {
+		return []mTypes.FullManifestMeta{}
+	}
+
 	results := []mTypes.FullManifestMeta{}
 
 	for i := range manifestData {
@@ -421,6 +425,10 @@ func GetFullManifestData(protoRepoMeta *proto_go.RepoMeta, manifestData []mTypes
 }
 
 func GetRepoMeta(protoRepoMeta *proto_go.RepoMeta) mTypes.RepoMeta {
+	if protoRepoMeta == nil {
+		return mTypes.RepoMeta{}
+	}
+
 	repoDownloads := int32(0)
 
 	for _, descriptor := range protoRepoMeta.Tags {
