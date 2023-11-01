@@ -372,6 +372,10 @@ func (c *Controller) StartBackgroundTasks(reloadCtx context.Context) {
 		ext.EnableMetricsExtension(c.Config, c.Log, c.Config.Storage.RootDirectory)
 		ext.EnableSearchExtension(c.Config, c.StoreController, c.MetaDB, taskScheduler, c.CveScanner, c.Log)
 	}
+	// runs once if metrics are enabled & imagestore is local
+	if c.Config.IsMetricsEnabled() && c.Config.Storage.StorageDriver == nil {
+		c.StoreController.DefaultStore.PopulateStorageMetrics(time.Duration(0), taskScheduler)
+	}
 
 	if c.Config.Storage.SubPaths != nil {
 		for route, storageConfig := range c.Config.Storage.SubPaths {
@@ -396,6 +400,10 @@ func (c *Controller) StartBackgroundTasks(reloadCtx context.Context) {
 			substore := c.StoreController.SubStore[route]
 			if substore != nil {
 				substore.RunDedupeBlobs(time.Duration(0), taskScheduler)
+
+				if c.Config.IsMetricsEnabled() && c.Config.Storage.StorageDriver == nil {
+					substore.PopulateStorageMetrics(time.Duration(0), taskScheduler)
+				}
 			}
 		}
 	}

@@ -488,7 +488,10 @@ func (is *ImageStore) PutImageManifest(repo, reference, mediaType string, //noli
 		is.Unlock(&lockLatency)
 
 		if err == nil {
-			monitoring.SetStorageUsage(is.metrics, is.rootDir, repo)
+			if is.storeDriver.Name() == storageConstants.LocalStorageDriverName {
+				monitoring.SetStorageUsage(is.metrics, is.rootDir, repo)
+			}
+
 			monitoring.IncUploadCounter(is.metrics, repo)
 		}
 	}()
@@ -621,7 +624,11 @@ func (is *ImageStore) DeleteImageManifest(repo, reference string, detectCollisio
 }
 
 func (is *ImageStore) deleteImageManifest(repo, reference string, detectCollisions bool) error {
-	defer monitoring.SetStorageUsage(is.metrics, is.rootDir, repo)
+	defer func() {
+		if is.storeDriver.Name() == storageConstants.LocalStorageDriverName {
+			monitoring.SetStorageUsage(is.metrics, is.rootDir, repo)
+		}
+	}()
 
 	index, err := common.GetIndex(is, repo, is.log)
 	if err != nil {
@@ -1927,6 +1934,17 @@ func (is *ImageStore) RunDedupeBlobs(interval time.Duration, sch *scheduler.Sche
 	}
 
 	sch.SubmitGenerator(generator, interval, scheduler.MediumPriority)
+}
+
+func (is *ImageStore) PopulateStorageMetrics(interval time.Duration, sch *scheduler.Scheduler) {
+	generator := &common.StorageMetricsInitGenerator{
+		ImgStore: is,
+		Metrics:  is.metrics,
+		Log:      is.log,
+		MaxDelay: 15, //nolint:gomnd
+	}
+
+	sch.SubmitGenerator(generator, interval, scheduler.LowPriority)
 }
 
 type blobStream struct {

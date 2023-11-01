@@ -61,6 +61,7 @@ type ImageStore interface { //nolint:interfacebloat
 	RunDedupeForDigest(digest godigest.Digest, dedupe bool, duplicateBlobs []string) error
 	GetNextDigestWithBlobPaths(repos []string, lastDigests []godigest.Digest) (godigest.Digest, []string, error)
 	GetAllBlobs(repo string) ([]string, error)
+	PopulateStorageMetrics(interval time.Duration, sch *scheduler.Scheduler)
 }
 
 type Driver interface { //nolint:interfacebloat

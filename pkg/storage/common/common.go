@@ -6,8 +6,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math/rand"
 	"path"
 	"strings"
+	"time"
 
 	"github.com/docker/distribution/registry/storage/driver"
 	godigest "github.com/opencontainers/go-digest"
@@ -18,6 +20,7 @@ import (
 
 	zerr "zotregistry.io/zot/errors"
 	zcommon "zotregistry.io/zot/pkg/common"
+	"zotregistry.io/zot/pkg/extensions/monitoring"
 	zlog "zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/scheduler"
 	storageConstants "zotregistry.io/zot/pkg/storage/constants"
@@ -1051,4 +1054,73 @@ func (dt *dedupeTask) DoWork(ctx context.Context) error {
 	}
 
 	return err
+}
+
+type StorageMetricsInitGenerator struct {
+	ImgStore storageTypes.ImageStore
+	done     bool
+	Metrics  monitoring.MetricServer
+	lastRepo string
+	nextRun  time.Time
+	rand     *rand.Rand
+	Log      zlog.Logger
+	MaxDelay int
+}
+
+func (gen *StorageMetricsInitGenerator) Next() (scheduler.Task, error) {
+	if gen.lastRepo == "" && gen.nextRun.IsZero() {
+		gen.rand = rand.New(rand.NewSource(time.Now().UTC().UnixNano())) //nolint: gosec
+	}
+
+	delay := gen.rand.Intn(gen.MaxDelay)
+
+	gen.nextRun = time.Now().Add(time.Duration(delay) * time.Second)
+
+	repo, err := gen.ImgStore.GetNextRepository(gen.lastRepo)
+	if err != nil {
+		return nil, err
+	}
+
+	gen.Log.Debug().Str("repo", repo).Int("randomDelay", delay).Msg("StorageMetricsInitGenerator")
+
+	if repo == "" {
+		gen.done = true
+
+		return nil, nil
+	}
+	gen.lastRepo = repo
+
+	return NewStorageMetricsTask(gen.ImgStore, gen.Metrics, repo), nil
+}
+
+func (gen *StorageMetricsInitGenerator) IsDone() bool {
+	return gen.done
+}
+
+func (gen *StorageMetricsInitGenerator) IsReady() bool {
+	return time.Now().After(gen.nextRun)
+}
+
+func (gen *StorageMetricsInitGenerator) Reset() {
+	gen.lastRepo = ""
+	gen.done = false
+	gen.nextRun = time.Time{}
+}
+
+type smTask struct {
+	imgStore storageTypes.ImageStore
+	metrics  monitoring.MetricServer
+	repo     string
+}
+
+func NewStorageMetricsTask(imgStore storageTypes.ImageStore, metrics monitoring.MetricServer, repo string,
+) *smTask {
+	return &smTask{imgStore, metrics, repo}
+}
+
+func (smt *smTask) DoWork(ctx context.Context) error {
+	// run task
+	monitoring.SetStorageUsage(smt.metrics, smt.imgStore.RootDir(), smt.repo)
+
+	return nil
 }
