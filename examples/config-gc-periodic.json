@@ -4,13 +4,13 @@
         "rootDirectory": "/tmp/zot",
         "gc": true,
         "gcDelay": "1h",
-        "gcInterval": "24h",
+        "gcInterval": "1h",
         "subPaths": {
             "/a": {
                 "rootDirectory": "/tmp/zot1",
                 "gc": true,
                 "gcDelay": "1h",
-                "gcInterval": "24h"
+                "gcInterval": "1h"
             }
         }
     },

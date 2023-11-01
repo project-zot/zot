@@ -84,6 +84,12 @@ to wasted storage, and background garbage collection can be enabled with:
         "gc": true,
 ```
 
+Orphan blobs are removed if they are older than gcDelay.
+
+```
+        "gcDelay": "2h"
+```
+
 It is also possible to store and serve images from multiple filesystems with
 their own repository paths, dedupe and garbage collection settings with:
 
@@ -104,6 +110,77 @@ their own repository paths, dedupe and garbage collection settings with:
             }
         }
     },
+```
+
+## Retention
+
+You can define tag retention rules that govern how many tags of a given repository to retain, or for how long to retain certain tags.
+
+There are 4 possible rules for tags:
+
+mostRecentlyPushedCount: x - top x most recently pushed tags
+mostRecentlyPulledCount: x - top x most recently pulled tags
+pulledWithin: x hours - tags pulled in the last x hours
+pushedWithin: x hours - tags pushed in the last x hours
+
+If ANY of these rules are met by a tag, then it will be retained, in other words there is an OR logic between them
+
+repoNames uses glob patterns
+tag patterns uses regex
+
+```
+        "retention": {
+            "dryRun": false,  // if enabled will just log the retain action without actually removing
+            "delay": "24h",   // is applied on untagged and referrers, will remove them only if they are older than 24h
+            "policies": [     // a repo will match a policy if it matches any repoNames[] glob pattern, it will select the first policy it can matches
+                {
+                    "repoNames": ["infra/*", "prod/*"], // patterns to match
+                    "deleteReferrers": false,           // delete manifests with missing Subject (default is false)
+                    "deleteUntagged": true,             // delete untagged manifests (default is true)
+                    "KeepTags": [{                      // same as repo, the first pattern(this time regex) matched is the policy applied
+                        "patterns": ["v2.*", ".*-prod"] // if there is no rule then the default is to retain always, this tagRetention will retain all tags matching the regexes in the patterns list.
+                    },
+                    {
+                        "patterns": ["v3.*", ".*-prod"], 
+                        "pulledWithin": "168h"          // will keep v3.* and .*-prod tags that are pulled within last 168h
+                    }]
+                },                                      // all tags under infra/* and prod/* will be removed! because they don't match any retention policy
+                {
+                    "repoNames": ["tmp/**"],            // matches recursively all repos under tmp/
+                    "deleteReferrers": true,
+                    "deleteUntagged": true,
+                    "KeepTags": [{                      // will retain all tags starting with v1 and pulled within the last 168h
+                        "patterns": ["v1.*"],           // all the other tags will be removed
+                        "pulledWithin": "168h",      
+                        "pushedWithin": "168h"
+                    }]
+                },
+                {
+                    "repoNames": ["**"],
+                    "deleteReferrers": true,
+                    "deleteUntagged": true,
+                    "keepTags": [{
+                        "mostRecentlyPushedCount": 10,    // top 10 recently pushed tags
+                        "mostRecentlyPulledCount": 10,    // top 10 recently pulled tags
+                        "pulledWithin": "720h",
+                        "pushedWithin": "720h"
+                    }]
+                }
+            ]
+        }
+```
+
+If a repo doesn't match any policy, then that repo and all its tags are retained. (default is to not delete anything)
+If keepTags is empty, then all tags are retained (default is to retain all tags)
+If we have at least one tagRetention policy in the tagRetention list then all tags that don't match at least one of them will be removed!
+
+For safety purpose you can have a default policy as the last policy in list, all tags that don't match the above policies will be retained by this one:
+```
+                    "keepTags": [
+                      {                               
+                        "patterns": [".*"]           // will retain all tags
+                      }
+                    }]
 ```
 
 ## Authentication

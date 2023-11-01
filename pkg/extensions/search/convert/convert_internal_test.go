@@ -39,7 +39,7 @@ func TestCVEConvert(t *testing.T) {
 				Blob:      ispec.DescriptorEmptyJSON.Data,
 			}}).DefaultConfig().Build()
 
-		err = metaDB.SetRepoReference("repo1", "0.1.0", image.AsImageMeta())
+		err = metaDB.SetRepoReference(context.Background(), "repo1", "0.1.0", image.AsImageMeta())
 		So(err, ShouldBeNil)
 
 		repoMetaList, err := metaDB.SearchRepos(context.Background(), "")

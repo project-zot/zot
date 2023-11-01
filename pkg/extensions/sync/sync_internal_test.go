@@ -337,7 +337,7 @@ func TestLocalRegistry(t *testing.T) {
 
 		Convey("trigger metaDB error on index manifest in CommitImage()", func() {
 			registry := NewLocalRegistry(storage.StoreController{DefaultStore: syncImgStore}, mocks.MetaDBMock{
-				SetRepoReferenceFn: func(repo string, reference string, imageMeta mTypes.ImageMeta) error {
+				SetRepoReferenceFn: func(ctx context.Context, repo string, reference string, imageMeta mTypes.ImageMeta) error {
 					if reference == "1.0" {
 						return zerr.ErrRepoMetaNotFound
 					}
@@ -352,7 +352,7 @@ func TestLocalRegistry(t *testing.T) {
 
 		Convey("trigger metaDB error on image manifest in CommitImage()", func() {
 			registry := NewLocalRegistry(storage.StoreController{DefaultStore: syncImgStore}, mocks.MetaDBMock{
-				SetRepoReferenceFn: func(repo, reference string, imageMeta mTypes.ImageMeta) error {
+				SetRepoReferenceFn: func(ctx context.Context, repo, reference string, imageMeta mTypes.ImageMeta) error {
 					return zerr.ErrRepoMetaNotFound
 				},
 			}, log)

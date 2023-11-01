@@ -8,6 +8,7 @@ import (
 	"os"
 	"path"
 	"testing"
+	"time"
 
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
@@ -116,7 +117,7 @@ func TestParseStorageErrors(t *testing.T) {
 			}
 
 			Convey("metaDB.SetRepoReference", func() {
-				metaDB.SetRepoReferenceFn = func(repo, reference string, imageMeta mTypes.ImageMeta) error {
+				metaDB.SetRepoReferenceFn = func(ctx context.Context, repo, reference string, imageMeta mTypes.ImageMeta) error {
 					return ErrTestError
 				}
 
@@ -332,16 +333,16 @@ func RunParseStorageTests(rootDir string, metaDB mTypes.MetaDB) {
 		err := WriteImageToFileSystem(image, repo, "tag", storeController)
 		So(err, ShouldBeNil)
 
-		err = metaDB.SetRepoReference(repo, "tag", image.AsImageMeta())
+		err = metaDB.SetRepoReference(context.Background(), repo, "tag", image.AsImageMeta())
 		So(err, ShouldBeNil)
 
 		err = metaDB.IncrementRepoStars(repo)
 		So(err, ShouldBeNil)
-		err = metaDB.IncrementImageDownloads(repo, "tag")
+		err = metaDB.UpdateStatsOnDownload(repo, "tag")
 		So(err, ShouldBeNil)
-		err = metaDB.IncrementImageDownloads(repo, "tag")
+		err = metaDB.UpdateStatsOnDownload(repo, "tag")
 		So(err, ShouldBeNil)
-		err = metaDB.IncrementImageDownloads(repo, "tag")
+		err = metaDB.UpdateStatsOnDownload(repo, "tag")
 		So(err, ShouldBeNil)
 
 		repoMeta, err := metaDB.GetRepoMeta(context.Background(), repo)
@@ -349,6 +350,7 @@ func RunParseStorageTests(rootDir string, metaDB mTypes.MetaDB) {
 
 		So(repoMeta.Statistics[image.DigestStr()].DownloadCount, ShouldEqual, 3)
 		So(repoMeta.StarCount, ShouldEqual, 1)
+		So(time.Now(), ShouldHappenAfter, repoMeta.Statistics[image.DigestStr()].LastPullTimestamp)
 
 		err = meta.ParseStorage(metaDB, storeController, log.NewLogger("debug", ""))
 		So(err, ShouldBeNil)

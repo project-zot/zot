@@ -4484,7 +4484,7 @@ func TestMetaDBWhenPushingImages(t *testing.T) {
 
 		Convey("SetManifestMeta succeeds but SetRepoReference fails", func() {
 			ctlr.MetaDB = mocks.MetaDBMock{
-				SetRepoReferenceFn: func(repo, reference string, imageMeta mTypes.ImageMeta) error {
+				SetRepoReferenceFn: func(ctx context.Context, repo, reference string, imageMeta mTypes.ImageMeta) error {
 					return ErrTestError
 				},
 			}
@@ -5196,7 +5196,7 @@ func TestMetaDBWhenReadingImages(t *testing.T) {
 
 		Convey("Error when incrementing", func() {
 			ctlr.MetaDB = mocks.MetaDBMock{
-				IncrementImageDownloadsFn: func(repo string, tag string) error {
+				UpdateStatsOnDownloadFn: func(repo string, tag string) error {
 					return ErrTestError
 				},
 			}

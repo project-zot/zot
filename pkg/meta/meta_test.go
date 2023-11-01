@@ -559,7 +559,7 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 				Annotations(map[string]string{ispec.AnnotationVendor: "vendor1"}).Build()
 
 			Convey("Setting a good repo", func() {
-				err := metaDB.SetRepoReference(repo1, tag1, imgData1)
+				err := metaDB.SetRepoReference(ctx, repo1, tag1, imgData1)
 				So(err, ShouldBeNil)
 
 				repoMeta, err := metaDB.GetRepoMeta(ctx, repo1)
@@ -573,12 +573,12 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 				So(err, ShouldNotBeNil)
 
 				for i := range imgMulti.Images {
-					err := metaDB.SetRepoReference(repo1, imgMulti.Images[i].DigestStr(),
+					err := metaDB.SetRepoReference(ctx, repo1, imgMulti.Images[i].DigestStr(),
 						imgMulti.Images[i].AsImageMeta())
 					So(err, ShouldBeNil)
 				}
 
-				err = metaDB.SetRepoReference(repo1, tag1, imgMulti.AsImageMeta())
+				err = metaDB.SetRepoReference(ctx, repo1, tag1, imgMulti.AsImageMeta())
 				So(err, ShouldBeNil)
 
 				image1TotalSize := multiImages[0].ManifestDescriptor.Size + multiImages[0].ConfigDescriptor.Size + 2*10
@@ -596,9 +596,9 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 			})
 
 			Convey("Set multiple repos", func() {
-				err := metaDB.SetRepoReference(repo1, tag1, imgData1)
+				err := metaDB.SetRepoReference(ctx, repo1, tag1, imgData1)
 				So(err, ShouldBeNil)
-				err = metaDB.SetRepoReference(repo2, tag1, imgData2)
+				err = metaDB.SetRepoReference(ctx, repo2, tag1, imgData2)
 				So(err, ShouldBeNil)
 
 				repoMeta1, err := metaDB.GetRepoMeta(ctx, repo1)
@@ -622,7 +622,7 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 				layersSize := int64(2 * 10)
 				image1Size := imageMeta1.Manifests[0].Size + imageMeta1.Manifests[0].Manifest.Config.Size + layersSize
 
-				err := metaDB.SetRepoReference(repo1, tag1, imageMeta1)
+				err := metaDB.SetRepoReference(ctx, repo1, tag1, imageMeta1)
 				So(err, ShouldBeNil)
 
 				repoMeta, err := metaDB.GetRepoMeta(ctx, repo1)
@@ -641,7 +641,7 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 				// the layers are the same so we add them once
 				repoSize := image1Size + image2.ManifestDescriptor.Size + image2.ConfigDescriptor.Size
 
-				err = metaDB.SetRepoReference(repo1, tag2, imageMeta2)
+				err = metaDB.SetRepoReference(ctx, repo1, tag2, imageMeta2)
 				So(err, ShouldBeNil)
 
 				repoMeta, err = metaDB.GetRepoMeta(ctx, repo1)
@@ -681,10 +681,10 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 
 			totalRepoSize := image1Size + image2Size - layersSize
 
-			err := metaDB.SetRepoReference(repo, tag1, imageMeta1)
+			err := metaDB.SetRepoReference(ctx, repo, tag1, imageMeta1)
 			So(err, ShouldBeNil)
 
-			err = metaDB.SetRepoReference(repo, tag2, imageMeta2)
+			err = metaDB.SetRepoReference(ctx, repo, tag2, imageMeta2)
 			So(err, ShouldBeNil)
 
 			Convey("Delete reference from repo", func() {
@@ -765,13 +765,13 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 				Build()
 			imageMeta2 := image2.AsImageMeta()
 
-			err := metaDB.SetRepoReference(repo1, tag1, imageMeta1)
+			err := metaDB.SetRepoReference(ctx, repo1, tag1, imageMeta1)
 			So(err, ShouldBeNil)
 
-			err = metaDB.SetRepoReference(repo1, tag2, imageMeta2)
+			err = metaDB.SetRepoReference(ctx, repo1, tag2, imageMeta2)
 			So(err, ShouldBeNil)
 
-			err = metaDB.SetRepoReference(repo2, tag2, imageMeta2)
+			err = metaDB.SetRepoReference(ctx, repo2, tag2, imageMeta2)
 			So(err, ShouldBeNil)
 
 			Convey("Get all RepoMeta", func() {
@@ -805,7 +805,7 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 				imageMeta = CreateDefaultImage().AsImageMeta()
 			)
 
-			err := metaDB.SetRepoReference(repo1, tag1, imageMeta)
+			err := metaDB.SetRepoReference(ctx, repo1, tag1, imageMeta)
 			So(err, ShouldBeNil)
 
 			err = metaDB.IncrementRepoStars(repo1)
@@ -837,7 +837,7 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 				imageMeta = CreateDefaultImage().AsImageMeta()
 			)
 
-			err := metaDB.SetRepoReference(repo1, tag1, imageMeta)
+			err := metaDB.SetRepoReference(ctx, repo1, tag1, imageMeta)
 			So(err, ShouldBeNil)
 
 			err = metaDB.IncrementRepoStars(repo1)
@@ -871,7 +871,7 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 				tag1  = "0.0.1"
 			)
 
-			err := metaDB.SetRepoReference(repo1, tag1, CreateDefaultImage().AsImageMeta())
+			err := metaDB.SetRepoReference(ctx, repo1, tag1, CreateDefaultImage().AsImageMeta())
 			So(err, ShouldBeNil)
 
 			err = metaDB.IncrementRepoStars(repo1)
@@ -929,10 +929,10 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 			// anonymous user
 			ctx3 := userAc.DeriveContext(ctx)
 
-			err := metaDB.SetRepoReference(repo1, tag1, CreateDefaultImage().AsImageMeta())
+			err := metaDB.SetRepoReference(ctx, repo1, tag1, CreateDefaultImage().AsImageMeta())
 			So(err, ShouldBeNil)
 
-			err = metaDB.SetRepoReference(repo2, tag1, CreateDefaultImage().AsImageMeta())
+			err = metaDB.SetRepoReference(ctx, repo2, tag1, CreateDefaultImage().AsImageMeta())
 			So(err, ShouldBeNil)
 
 			repos, err := metaDB.GetStarredRepos(ctx1)
@@ -1089,6 +1089,7 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 			So(len(repos), ShouldEqual, 0)
 		})
 
+		//nolint: contextcheck
 		Convey("Test repo bookmarks for user", func() {
 			var (
 				repo1  = "repo1"
@@ -1126,49 +1127,49 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 			// anonymous user
 			ctx3 := userAc.DeriveContext(context.Background())
 
-			err := metaDB.SetRepoReference(repo1, tag1, image1)
+			err := metaDB.SetRepoReference(ctx, repo1, tag1, image1)
 			So(err, ShouldBeNil)
 
-			err = metaDB.SetRepoReference(repo2, tag1, image1)
+			err = metaDB.SetRepoReference(ctx, repo2, tag1, image1)
 			So(err, ShouldBeNil)
 
-			repos, err := metaDB.GetBookmarkedRepos(ctx1)
+			repos, err := metaDB.GetBookmarkedRepos(ctx1) //nolint: contextcheck
 			So(err, ShouldBeNil)
 			So(len(repos), ShouldEqual, 0)
 
-			repos, err = metaDB.GetBookmarkedRepos(ctx2)
+			repos, err = metaDB.GetBookmarkedRepos(ctx2) //nolint: contextcheck
 			So(err, ShouldBeNil)
 			So(len(repos), ShouldEqual, 0)
 
 			// anonymous cannot use bookmarks
-			repos, err = metaDB.GetBookmarkedRepos(ctx3)
+			repos, err = metaDB.GetBookmarkedRepos(ctx3) //nolint: contextcheck
 			So(err, ShouldBeNil)
 			So(len(repos), ShouldEqual, 0)
 
-			toggleState, err := metaDB.ToggleBookmarkRepo(ctx3, repo1)
+			toggleState, err := metaDB.ToggleBookmarkRepo(ctx3, repo1) //nolint: contextcheck
 			So(err, ShouldNotBeNil)
 			So(toggleState, ShouldEqual, mTypes.NotChanged)
 
-			repos, err = metaDB.GetBookmarkedRepos(ctx3)
+			repos, err = metaDB.GetBookmarkedRepos(ctx3) //nolint: contextcheck
 			So(err, ShouldBeNil)
 			So(len(repos), ShouldEqual, 0)
 
 			// User 1 bookmarks repo 1, User 2 has no bookmarks
-			toggleState, err = metaDB.ToggleBookmarkRepo(ctx1, repo1)
+			toggleState, err = metaDB.ToggleBookmarkRepo(ctx1, repo1) //nolint: contextcheck
 			So(err, ShouldBeNil)
 			So(toggleState, ShouldEqual, mTypes.Added)
 
-			repos, err = metaDB.GetBookmarkedRepos(ctx1)
+			repos, err = metaDB.GetBookmarkedRepos(ctx1) //nolint: contextcheck
 			So(err, ShouldBeNil)
 			So(len(repos), ShouldEqual, 1)
 			So(repos, ShouldContain, repo1)
 
-			repos, err = metaDB.GetBookmarkedRepos(ctx2)
+			repos, err = metaDB.GetBookmarkedRepos(ctx2) //nolint: contextcheck
 			So(err, ShouldBeNil)
 			So(len(repos), ShouldEqual, 0)
 
 			// User 1 and User 2 bookmark only repo 1
-			toggleState, err = metaDB.ToggleBookmarkRepo(ctx2, repo1)
+			toggleState, err = metaDB.ToggleBookmarkRepo(ctx2, repo1) //nolint: contextcheck
 			So(err, ShouldBeNil)
 			So(toggleState, ShouldEqual, mTypes.Added)
 
@@ -1233,17 +1234,17 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 			So(len(repos), ShouldEqual, 0)
 		})
 
-		Convey("Test IncrementImageDownloads", func() {
+		Convey("Test UpdateStatsOnDownload", func() {
 			var (
 				repo1  = "repo1"
 				tag1   = "0.0.1"
 				image1 = CreateRandomImage().AsImageMeta()
 			)
 
-			err := metaDB.SetRepoReference(repo1, tag1, image1)
+			err := metaDB.SetRepoReference(ctx, repo1, tag1, image1)
 			So(err, ShouldBeNil)
 
-			err = metaDB.IncrementImageDownloads(repo1, tag1)
+			err = metaDB.UpdateStatsOnDownload(repo1, tag1)
 			So(err, ShouldBeNil)
 
 			repoMeta, err := metaDB.GetRepoMeta(ctx, repo1)
@@ -1251,13 +1252,14 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 
 			So(repoMeta.Statistics[image1.Digest.String()].DownloadCount, ShouldEqual, 1)
 
-			err = metaDB.IncrementImageDownloads(repo1, tag1)
+			err = metaDB.UpdateStatsOnDownload(repo1, tag1)
 			So(err, ShouldBeNil)
 
 			repoMeta, err = metaDB.GetRepoMeta(ctx, repo1)
 			So(err, ShouldBeNil)
 
 			So(repoMeta.Statistics[image1.Digest.String()].DownloadCount, ShouldEqual, 2)
+			So(time.Now(), ShouldHappenAfter, repoMeta.Statistics[image1.Digest.String()].LastPullTimestamp)
 		})
 
 		Convey("Test AddImageSignature", func() {
@@ -1267,7 +1269,7 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 				image1 = CreateRandomImage().AsImageMeta()
 			)
 
-			err := metaDB.SetRepoReference(repo1, tag1, image1)
+			err := metaDB.SetRepoReference(ctx, repo1, tag1, image1)
 			So(err, ShouldBeNil)
 
 			err = metaDB.AddManifestSignature(repo1, image1.Digest, mTypes.SignatureMetadata{
@@ -1299,7 +1301,7 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 					image1 = CreateRandomImage()
 				)
 
-				err := metaDB.SetRepoReference(repo1, tag1, image1.AsImageMeta())
+				err := metaDB.SetRepoReference(ctx, repo1, tag1, image1.AsImageMeta())
 				So(err, ShouldBeNil)
 
 				layerInfo := mTypes.LayerInfo{LayerDigest: "", LayerContent: []byte{}, SignatureKey: ""}
@@ -1321,12 +1323,14 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 				So(repoData.Signatures[image1.DigestStr()]["cosign"][0].LayersInfo[0].Date,
 					ShouldBeZeroValue)
 			})
+
+			//nolint: contextcheck
 			Convey("trusted signature", func() {
 				image1 := CreateRandomImage()
 				repo := "repo1"
 				tag := "0.0.1"
 
-				err := metaDB.SetRepoReference(repo, tag, image1.AsImageMeta())
+				err := metaDB.SetRepoReference(ctx, repo, tag, image1.AsImageMeta())
 				So(err, ShouldBeNil)
 
 				mediaType := jws.MediaTypeEnvelope
@@ -1431,7 +1435,7 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 			})
 			So(err, ShouldBeNil)
 
-			err = metaDB.SetRepoReference(repo1, tag1, image1.AsImageMeta())
+			err = metaDB.SetRepoReference(ctx, repo1, tag1, image1.AsImageMeta())
 			So(err, ShouldBeNil)
 
 			repoMeta, err := metaDB.GetRepoMeta(ctx, repo1)
@@ -1447,7 +1451,7 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 				image1 = CreateRandomImage()
 			)
 
-			err := metaDB.SetRepoReference(repo1, tag1, image1.AsImageMeta())
+			err := metaDB.SetRepoReference(ctx, repo1, tag1, image1.AsImageMeta())
 			So(err, ShouldBeNil)
 
 			err = metaDB.AddManifestSignature(repo1, image1.Digest(), mTypes.SignatureMetadata{
@@ -1493,11 +1497,11 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 			)
 			_ = repo3
 			Convey("Search all repos", func() {
-				err := metaDB.SetRepoReference(repo1, tag1, image1.AsImageMeta())
+				err := metaDB.SetRepoReference(ctx, repo1, tag1, image1.AsImageMeta())
 				So(err, ShouldBeNil)
-				err = metaDB.SetRepoReference(repo1, tag2, image2.AsImageMeta())
+				err = metaDB.SetRepoReference(ctx, repo1, tag2, image2.AsImageMeta())
 				So(err, ShouldBeNil)
-				err = metaDB.SetRepoReference(repo2, tag3, image3.AsImageMeta())
+				err = metaDB.SetRepoReference(ctx, repo2, tag3, image3.AsImageMeta())
 				So(err, ShouldBeNil)
 
 				repoMetaList, err := metaDB.SearchRepos(ctx, "")
@@ -1510,7 +1514,7 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 			})
 
 			Convey("Search a repo by name", func() {
-				err := metaDB.SetRepoReference(repo1, tag1, image1.AsImageMeta())
+				err := metaDB.SetRepoReference(ctx, repo1, tag1, image1.AsImageMeta())
 				So(err, ShouldBeNil)
 
 				repoMetaList, err := metaDB.SearchRepos(ctx, repo1)
@@ -1520,10 +1524,10 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 			})
 
 			Convey("Search non-existing repo by name", func() {
-				err := metaDB.SetRepoReference(repo1, tag1, image1.AsImageMeta())
+				err := metaDB.SetRepoReference(ctx, repo1, tag1, image1.AsImageMeta())
 				So(err, ShouldBeNil)
 
-				err = metaDB.SetRepoReference(repo1, tag2, image2.AsImageMeta())
+				err = metaDB.SetRepoReference(ctx, repo1, tag2, image2.AsImageMeta())
 				So(err, ShouldBeNil)
 
 				repoMetaList, err := metaDB.SearchRepos(ctx, "RepoThatDoesntExist")
@@ -1532,11 +1536,11 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 			})
 
 			Convey("Search with partial match", func() {
-				err := metaDB.SetRepoReference("alpine", tag1, image1.AsImageMeta())
+				err := metaDB.SetRepoReference(ctx, "alpine", tag1, image1.AsImageMeta())
 				So(err, ShouldBeNil)
-				err = metaDB.SetRepoReference("pine", tag2, image2.AsImageMeta())
+				err = metaDB.SetRepoReference(ctx, "pine", tag2, image2.AsImageMeta())
 				So(err, ShouldBeNil)
-				err = metaDB.SetRepoReference("golang", tag3, image3.AsImageMeta())
+				err = metaDB.SetRepoReference(ctx, "golang", tag3, image3.AsImageMeta())
 				So(err, ShouldBeNil)
 
 				repoMetaList, err := metaDB.SearchRepos(ctx, "pine")
@@ -1545,11 +1549,11 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 			})
 
 			Convey("Search multiple repos that share manifests", func() {
-				err := metaDB.SetRepoReference("alpine", tag1, image1.AsImageMeta())
+				err := metaDB.SetRepoReference(ctx, "alpine", tag1, image1.AsImageMeta())
 				So(err, ShouldBeNil)
-				err = metaDB.SetRepoReference("pine", tag2, image1.AsImageMeta())
+				err = metaDB.SetRepoReference(ctx, "pine", tag2, image1.AsImageMeta())
 				So(err, ShouldBeNil)
-				err = metaDB.SetRepoReference("golang", tag3, image1.AsImageMeta())
+				err = metaDB.SetRepoReference(ctx, "golang", tag3, image1.AsImageMeta())
 				So(err, ShouldBeNil)
 
 				repoMetaList, err := metaDB.SearchRepos(ctx, "")
@@ -1558,11 +1562,11 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 			})
 
 			Convey("Search repos with access control", func() {
-				err := metaDB.SetRepoReference(repo1, tag1, image1.AsImageMeta())
+				err := metaDB.SetRepoReference(ctx, repo1, tag1, image1.AsImageMeta())
 				So(err, ShouldBeNil)
-				err = metaDB.SetRepoReference(repo2, tag2, image2.AsImageMeta())
+				err = metaDB.SetRepoReference(ctx, repo2, tag2, image2.AsImageMeta())
 				So(err, ShouldBeNil)
-				err = metaDB.SetRepoReference(repo3, tag3, image3.AsImageMeta())
+				err = metaDB.SetRepoReference(ctx, repo3, tag3, image3.AsImageMeta())
 				So(err, ShouldBeNil)
 
 				userAc := reqCtx.NewUserAccessControl()
@@ -1572,9 +1576,9 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 					repo2: true,
 				})
 
-				ctx := userAc.DeriveContext(context.Background())
+				ctx := userAc.DeriveContext(context.Background()) //nolint: contextcheck
 
-				repoMetaList, err := metaDB.SearchRepos(ctx, "repo")
+				repoMetaList, err := metaDB.SearchRepos(ctx, "repo") //nolint: contextcheck
 				So(err, ShouldBeNil)
 				So(len(repoMetaList), ShouldEqual, 2)
 				for _, k := range repoMetaList {
@@ -1593,14 +1597,14 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 					image1 = CreateRandomImage()
 				)
 
-				err := metaDB.SetRepoReference("repo", subImage1.DigestStr(), subImage1.AsImageMeta())
+				err := metaDB.SetRepoReference(ctx, "repo", subImage1.DigestStr(), subImage1.AsImageMeta())
 				So(err, ShouldBeNil)
-				err = metaDB.SetRepoReference("repo", subImage2.DigestStr(), subImage2.AsImageMeta())
+				err = metaDB.SetRepoReference(ctx, "repo", subImage2.DigestStr(), subImage2.AsImageMeta())
 				So(err, ShouldBeNil)
-				err = metaDB.SetRepoReference("repo", tag4, multiarch.AsImageMeta())
+				err = metaDB.SetRepoReference(ctx, "repo", tag4, multiarch.AsImageMeta())
 				So(err, ShouldBeNil)
 
-				err = metaDB.SetRepoReference("repo", tag5, image1.AsImageMeta())
+				err = metaDB.SetRepoReference(ctx, "repo", tag5, image1.AsImageMeta())
 				So(err, ShouldBeNil)
 
 				repoMetaList, err := metaDB.SearchRepos(ctx, "repo")
@@ -1625,17 +1629,17 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 				ctx    = context.Background()
 			)
 
-			err := metaDB.SetRepoReference(repo1, "0.0.1", image1.AsImageMeta())
+			err := metaDB.SetRepoReference(ctx, repo1, "0.0.1", image1.AsImageMeta())
 			So(err, ShouldBeNil)
-			err = metaDB.SetRepoReference(repo1, "0.0.2", image3.AsImageMeta())
+			err = metaDB.SetRepoReference(ctx, repo1, "0.0.2", image3.AsImageMeta())
 			So(err, ShouldBeNil)
-			err = metaDB.SetRepoReference(repo1, "0.1.0", image2.AsImageMeta())
+			err = metaDB.SetRepoReference(ctx, repo1, "0.1.0", image2.AsImageMeta())
 			So(err, ShouldBeNil)
-			err = metaDB.SetRepoReference(repo1, "1.0.0", image2.AsImageMeta())
+			err = metaDB.SetRepoReference(ctx, repo1, "1.0.0", image2.AsImageMeta())
 			So(err, ShouldBeNil)
-			err = metaDB.SetRepoReference(repo1, "1.0.1", image2.AsImageMeta())
+			err = metaDB.SetRepoReference(ctx, repo1, "1.0.1", image2.AsImageMeta())
 			So(err, ShouldBeNil)
-			err = metaDB.SetRepoReference(repo2, "0.0.1", image3.AsImageMeta())
+			err = metaDB.SetRepoReference(ctx, repo2, "0.0.1", image3.AsImageMeta())
 			So(err, ShouldBeNil)
 
 			Convey("With exact match", func() {
@@ -1740,17 +1744,17 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 					image6 = CreateRandomImage()
 				)
 
-				err = metaDB.SetRepoReference("repo", subImage1.DigestStr(), subImage1.AsImageMeta())
+				err = metaDB.SetRepoReference(ctx, "repo", subImage1.DigestStr(), subImage1.AsImageMeta())
 				So(err, ShouldBeNil)
-				err = metaDB.SetRepoReference("repo", subImage2.DigestStr(), subImage2.AsImageMeta())
+				err = metaDB.SetRepoReference(ctx, "repo", subImage2.DigestStr(), subImage2.AsImageMeta())
 				So(err, ShouldBeNil)
-				err = metaDB.SetRepoReference("repo", tag4, multiarch.AsImageMeta())
-				So(err, ShouldBeNil)
-
-				err = metaDB.SetRepoReference("repo", tag5, image5.AsImageMeta())
+				err = metaDB.SetRepoReference(ctx, "repo", tag4, multiarch.AsImageMeta())
 				So(err, ShouldBeNil)
 
-				err = metaDB.SetRepoReference("repo", tag6, image6.AsImageMeta())
+				err = metaDB.SetRepoReference(ctx, "repo", tag5, image5.AsImageMeta())
+				So(err, ShouldBeNil)
+
+				err = metaDB.SetRepoReference(ctx, "repo", tag6, image6.AsImageMeta())
 				So(err, ShouldBeNil)
 
 				fullImageMetaList, err := metaDB.SearchTags(ctx, "repo:0.0")
@@ -1790,7 +1794,7 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 
 			Convey("With referrer", func() {
 				refImage := CreateRandomImageWith().Subject(image1.DescriptorRef()).Build()
-				err := metaDB.SetRepoReference(repo1, "ref-tag", refImage.AsImageMeta())
+				err := metaDB.SetRepoReference(ctx, repo1, "ref-tag", refImage.AsImageMeta())
 				So(err, ShouldBeNil)
 
 				fullImageMetaList, err := metaDB.SearchTags(ctx, "repo1:0.0.1")
@@ -1815,24 +1819,24 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 				ctx       = context.Background()
 			)
 
-			err := metaDB.SetRepoReference(repo1, subImage1.DigestStr(), subImage1.AsImageMeta())
+			err := metaDB.SetRepoReference(ctx, repo1, subImage1.DigestStr(), subImage1.AsImageMeta())
 			So(err, ShouldBeNil)
-			err = metaDB.SetRepoReference(repo1, subImage2.DigestStr(), subImage2.AsImageMeta())
+			err = metaDB.SetRepoReference(ctx, repo1, subImage2.DigestStr(), subImage2.AsImageMeta())
 			So(err, ShouldBeNil)
-			err = metaDB.SetRepoReference(repo1, "2.0.0", multiarch.AsImageMeta())
+			err = metaDB.SetRepoReference(ctx, repo1, "2.0.0", multiarch.AsImageMeta())
 			So(err, ShouldBeNil)
 
-			err = metaDB.SetRepoReference(repo1, "0.0.1", image1.AsImageMeta())
+			err = metaDB.SetRepoReference(ctx, repo1, "0.0.1", image1.AsImageMeta())
 			So(err, ShouldBeNil)
-			err = metaDB.SetRepoReference(repo1, "0.0.2", image3.AsImageMeta())
+			err = metaDB.SetRepoReference(ctx, repo1, "0.0.2", image3.AsImageMeta())
 			So(err, ShouldBeNil)
-			err = metaDB.SetRepoReference(repo1, "0.1.0", image2.AsImageMeta())
+			err = metaDB.SetRepoReference(ctx, repo1, "0.1.0", image2.AsImageMeta())
 			So(err, ShouldBeNil)
-			err = metaDB.SetRepoReference(repo1, "1.0.0", image2.AsImageMeta())
+			err = metaDB.SetRepoReference(ctx, repo1, "1.0.0", image2.AsImageMeta())
 			So(err, ShouldBeNil)
-			err = metaDB.SetRepoReference(repo1, "1.0.1", image2.AsImageMeta())
+			err = metaDB.SetRepoReference(ctx, repo1, "1.0.1", image2.AsImageMeta())
 			So(err, ShouldBeNil)
-			err = metaDB.SetRepoReference(repo2, "0.0.1", image3.AsImageMeta())
+			err = metaDB.SetRepoReference(ctx, repo2, "0.0.1", image3.AsImageMeta())
 			So(err, ShouldBeNil)
 
 			Convey("Return all tags", func() {
@@ -1939,7 +1943,7 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 		Convey("Test Referrers", func() {
 			image1 := CreateRandomImage()
 
-			err := metaDB.SetRepoReference("repo", "tag", image1.AsImageMeta())
+			err := metaDB.SetRepoReference(ctx, "repo", "tag", image1.AsImageMeta())
 			So(err, ShouldBeNil)
 
 			// Artifact 1 with artifact type in Manifest
@@ -1949,7 +1953,7 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 				Subject(image1.DescriptorRef()).
 				Build()
 
-			err = metaDB.SetRepoReference("repo", artifact1.DigestStr(), artifact1.AsImageMeta())
+			err = metaDB.SetRepoReference(ctx, "repo", artifact1.DigestStr(), artifact1.AsImageMeta())
 			So(err, ShouldBeNil)
 
 			// Artifact 2 with artifact type in Config media type
@@ -1959,7 +1963,7 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 				Subject(image1.DescriptorRef()).
 				Build()
 
-			err = metaDB.SetRepoReference("repo", artifact2.DigestStr(), artifact2.AsImageMeta())
+			err = metaDB.SetRepoReference(ctx, "repo", artifact2.DigestStr(), artifact2.AsImageMeta())
 			So(err, ShouldBeNil)
 
 			// GetReferrers
@@ -2004,13 +2008,13 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 			image := CreateRandomImage()
 			referrer := CreateRandomImageWith().Subject(image.DescriptorRef()).Build()
 
-			err = metaDB.SetRepoReference("repo", tag, image.AsImageMeta())
+			err = metaDB.SetRepoReference(ctx, "repo", tag, image.AsImageMeta())
 			So(err, ShouldBeNil)
 
-			err = metaDB.SetRepoReference("repo", refTag, referrer.AsImageMeta())
+			err = metaDB.SetRepoReference(ctx, "repo", refTag, referrer.AsImageMeta())
 			So(err, ShouldBeNil)
 
-			err = metaDB.SetRepoReference("repo", referrer.DigestStr(), referrer.AsImageMeta())
+			err = metaDB.SetRepoReference(ctx, "repo", referrer.DigestStr(), referrer.AsImageMeta())
 			So(err, ShouldBeNil)
 
 			repoMeta, err := metaDB.GetRepoMeta(ctx, "repo")
@@ -2042,13 +2046,13 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 			image := CreateRandomImage()
 			referrer := CreateRandomImageWith().Subject(image.DescriptorRef()).Build()
 
-			err = metaDB.SetRepoReference("repo", tag, image.AsImageMeta())
+			err = metaDB.SetRepoReference(ctx, "repo", tag, image.AsImageMeta())
 			So(err, ShouldBeNil)
 
-			err = metaDB.SetRepoReference("repo", refTag, referrer.AsImageMeta())
+			err = metaDB.SetRepoReference(ctx, "repo", refTag, referrer.AsImageMeta())
 			So(err, ShouldBeNil)
 
-			err = metaDB.SetRepoReference("repo", referrer.DigestStr(), referrer.AsImageMeta())
+			err = metaDB.SetRepoReference(ctx, "repo", referrer.DigestStr(), referrer.AsImageMeta())
 			So(err, ShouldBeNil)
 
 			repoMeta, err := metaDB.GetRepoMeta(ctx, "repo")
@@ -2072,13 +2076,13 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 			image := CreateRandomImage()
 			referrer := CreateRandomImageWith().Subject(image.DescriptorRef()).Build()
 
-			err = metaDB.SetRepoReference("repo", tag, image.AsImageMeta())
+			err = metaDB.SetRepoReference(ctx, "repo", tag, image.AsImageMeta())
 			So(err, ShouldBeNil)
 
-			err = metaDB.SetRepoReference("repo", referrer.DigestStr(), referrer.AsImageMeta())
+			err = metaDB.SetRepoReference(ctx, "repo", referrer.DigestStr(), referrer.AsImageMeta())
 			So(err, ShouldBeNil)
 
-			err = metaDB.SetRepoReference("repo", referrer.DigestStr(), referrer.AsImageMeta())
+			err = metaDB.SetRepoReference(ctx, "repo", referrer.DigestStr(), referrer.AsImageMeta())
 			So(err, ShouldBeNil)
 
 			repoMeta, err := metaDB.GetRepoMeta(ctx, "repo")
@@ -2091,7 +2095,7 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 			tag := "tag"
 
 			image := CreateRandomImage()
-			err := metaDB.SetRepoReference(repo, tag, image.AsImageMeta())
+			err := metaDB.SetRepoReference(ctx, repo, tag, image.AsImageMeta())
 			So(err, ShouldBeNil)
 
 			referrerWantedType := CreateRandomImageWith().
@@ -2102,9 +2106,11 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 				ArtifactType("not-wanted-type").
 				Subject(image.DescriptorRef()).Build()
 
-			err = metaDB.SetRepoReference(repo, referrerWantedType.DigestStr(), referrerWantedType.AsImageMeta())
+			err = metaDB.SetRepoReference(ctx, repo, referrerWantedType.DigestStr(),
+				referrerWantedType.AsImageMeta())
 			So(err, ShouldBeNil)
-			err = metaDB.SetRepoReference(repo, referrerNotWantedType.DigestStr(), referrerNotWantedType.AsImageMeta())
+			err = metaDB.SetRepoReference(ctx, repo, referrerNotWantedType.DigestStr(),
+				referrerNotWantedType.AsImageMeta())
 			So(err, ShouldBeNil)
 
 			referrerInfo, err := metaDB.GetReferrersInfo("repo", image.Digest(), []string{"wanted-type"})
@@ -2120,7 +2126,7 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 
 			Convey("Just manifests", func() {
 				image := CreateRandomImage()
-				err := metaDB.SetRepoReference(repo, tag, image.AsImageMeta())
+				err := metaDB.SetRepoReference(ctx, repo, tag, image.AsImageMeta())
 				So(err, ShouldBeNil)
 
 				imageMeta, err := metaDB.FilterImageMeta(ctx, []string{image.DigestStr()})
@@ -2136,13 +2142,14 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 				digests := []string{}
 
 				for i := range multi.Images {
-					err := metaDB.SetRepoReference(repo, multi.Images[i].DigestStr(), multi.Images[i].AsImageMeta())
+					err := metaDB.SetRepoReference(ctx, repo, multi.Images[i].DigestStr(),
+						multi.Images[i].AsImageMeta())
 					So(err, ShouldBeNil)
 
 					digests = append(digests, multi.Images[i].DigestStr())
 				}
 
-				err := metaDB.SetRepoReference(repo, tag, multi.AsImageMeta())
+				err := metaDB.SetRepoReference(ctx, repo, tag, multi.AsImageMeta())
 				So(err, ShouldBeNil)
 
 				imageMeta, err := metaDB.FilterImageMeta(ctx, []string{multi.DigestStr()})
@@ -2160,9 +2167,9 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 
 			image := CreateRandomImage()
 			referrer := CreateRandomImageWith().Subject(image.DescriptorRef()).Build()
-			err := metaDB.SetRepoReference(repo, tag, image.AsImageMeta())
+			err := metaDB.SetRepoReference(ctx, repo, tag, image.AsImageMeta())
 			So(err, ShouldBeNil)
-			err = metaDB.SetRepoReference(repo, tag, referrer.AsImageMeta())
+			err = metaDB.SetRepoReference(ctx, repo, tag, referrer.AsImageMeta())
 			So(err, ShouldBeNil)
 
 			repoMeta, err := metaDB.GetRepoMeta(ctx, repo)
@@ -2184,7 +2191,7 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 			tag2 := "tag2"
 
 			image := CreateImageWith().DefaultLayers().PlatformConfig("image-platform", "image-os").Build()
-			err := metaDB.SetRepoReference(repo, tag1, image.AsImageMeta())
+			err := metaDB.SetRepoReference(ctx, repo, tag1, image.AsImageMeta())
 			So(err, ShouldBeNil)
 
 			multiarch := CreateMultiarchWith().
@@ -2194,13 +2201,14 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 				}).Build()
 
 			for _, img := range multiarch.Images {
-				err := metaDB.SetRepoReference(repo, img.DigestStr(), img.AsImageMeta())
+				err := metaDB.SetRepoReference(ctx, repo, img.DigestStr(), img.AsImageMeta())
 				So(err, ShouldBeNil)
 			}
 
-			err = metaDB.SetRepoReference(repo, tag2, multiarch.AsImageMeta())
+			err = metaDB.SetRepoReference(ctx, repo, tag2, multiarch.AsImageMeta())
 			So(err, ShouldBeNil)
 
+			//nolint: contextcheck
 			repoMetaList, err := metaDB.FilterRepos(context.Background(), mTypes.AcceptAllRepoNames,
 				mTypes.AcceptAllRepoMeta)
 			So(err, ShouldBeNil)
@@ -2223,7 +2231,7 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 
 			image := CreateRandomImage()
 
-			err := metaDB.SetRepoReference(repo99, "tag", image.AsImageMeta())
+			err := metaDB.SetRepoReference(ctx, repo99, "tag", image.AsImageMeta())
 			So(err, ShouldBeNil)
 
 			repoMetaList, err := metaDB.SearchRepos(ctx, repo99)
@@ -2293,7 +2301,7 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 
 			ctx := userAc.DeriveContext(context.Background())
 
-			err = metaDB.SetRepoReference("repo", "tag", CreateDefaultImage().AsImageMeta())
+			err = metaDB.SetRepoReference(ctx, "repo", "tag", CreateDefaultImage().AsImageMeta())
 			So(err, ShouldBeNil)
 
 			_, err = metaDB.ToggleBookmarkRepo(ctx, "repo")

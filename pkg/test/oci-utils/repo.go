@@ -46,7 +46,7 @@ func InitializeTestMetaDB(ctx context.Context, metaDB mTypes.MetaDB, repos ...Re
 		statistics := map[string]mTypes.DescriptorStatistics{"": {}}
 
 		for _, image := range repo.Images {
-			err := metaDB.SetRepoReference(repo.Name, image.Reference, image.AsImageMeta())
+			err := metaDB.SetRepoReference(ctx, repo.Name, image.Reference, image.AsImageMeta())
 			if err != nil {
 				return uacContext, err
 			}
@@ -56,7 +56,7 @@ func InitializeTestMetaDB(ctx context.Context, metaDB mTypes.MetaDB, repos ...Re
 
 		for _, multiArch := range repo.MultiArchImages {
 			for _, image := range multiArch.Images {
-				err := metaDB.SetRepoReference(repo.Name, image.DigestStr(), image.AsImageMeta())
+				err := metaDB.SetRepoReference(ctx, repo.Name, image.DigestStr(), image.AsImageMeta())
 				if err != nil {
 					return uacContext, err
 				}
@@ -64,7 +64,7 @@ func InitializeTestMetaDB(ctx context.Context, metaDB mTypes.MetaDB, repos ...Re
 				statistics[image.DigestStr()] = multiArch.ImageStatistics[image.DigestStr()]
 			}
 
-			err := metaDB.SetRepoReference(repo.Name, multiArch.Reference, multiArch.AsImageMeta())
+			err := metaDB.SetRepoReference(ctx, repo.Name, multiArch.Reference, multiArch.AsImageMeta())
 			if err != nil {
 				return uacContext, err
 			}

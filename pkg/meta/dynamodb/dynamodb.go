@@ -229,20 +229,29 @@ func (dwr *DynamoDB) getProtoRepoMeta(ctx context.Context, repo string) (*proto_
 	return repoMeta, nil
 }
 
-func (dwr *DynamoDB) SetRepoReference(repo string, reference string, imageMeta mTypes.ImageMeta) error {
+func (dwr *DynamoDB) SetRepoReference(ctx context.Context, repo string, reference string,
+	imageMeta mTypes.ImageMeta,
+) error {
 	if err := common.ValidateRepoReferenceInput(repo, reference, imageMeta.Digest); err != nil {
 		return err
+	}
+
+	var userid string
+
+	userAc, err := reqCtx.UserAcFromContext(ctx)
+	if err == nil {
+		userid = userAc.GetUsername()
 	}
 
 	// 1. Add image data to db if needed
 	protoImageMeta := mConvert.GetProtoImageMeta(imageMeta)
 
-	err := dwr.SetProtoImageMeta(imageMeta.Digest, protoImageMeta)
+	err = dwr.SetProtoImageMeta(imageMeta.Digest, protoImageMeta) //nolint: contextcheck
 	if err != nil {
 		return err
 	}
 
-	repoMeta, err := dwr.getProtoRepoMeta(context.Background(), repo)
+	repoMeta, err := dwr.getProtoRepoMeta(ctx, repo)
 	if err != nil {
 		if !errors.Is(err, zerr.ErrRepoMetaNotFound) {
 			return err
@@ -298,7 +307,12 @@ func (dwr *DynamoDB) SetRepoReference(repo string, reference string, imageMeta m
 	}
 
 	if _, ok := repoMeta.Statistics[imageMeta.Digest.String()]; !ok {
-		repoMeta.Statistics[imageMeta.Digest.String()] = &proto_go.DescriptorStatistics{DownloadCount: 0}
+		repoMeta.Statistics[imageMeta.Digest.String()] = &proto_go.DescriptorStatistics{
+			DownloadCount:     0,
+			LastPullTimestamp: &timestamppb.Timestamp{},
+			PushTimestamp:     timestamppb.Now(),
+			PushedBy:          userid,
+		}
 	}
 
 	if _, ok := repoMeta.Signatures[imageMeta.Digest.String()]; !ok {
@@ -314,7 +328,7 @@ func (dwr *DynamoDB) SetRepoReference(repo string, reference string, imageMeta m
 	}
 
 	// 4. Blobs
-	repoBlobs, err := dwr.getRepoBlobsInfo(repo)
+	repoBlobs, err := dwr.getRepoBlobsInfo(repo) //nolint: contextcheck
 	if err != nil {
 		return err
 	}
@@ -324,12 +338,12 @@ func (dwr *DynamoDB) SetRepoReference(repo string, reference string, imageMeta m
 		return err
 	}
 
-	err = dwr.setRepoBlobsInfo(repo, repoBlobs)
+	err = dwr.setRepoBlobsInfo(repo, repoBlobs) //nolint: contextcheck
 	if err != nil {
 		return err
 	}
 
-	return dwr.setProtoRepoMeta(repo, repoMeta)
+	return dwr.setProtoRepoMeta(repo, repoMeta) //nolint: contextcheck
 }
 
 func (dwr *DynamoDB) getRepoBlobsInfo(repo string) (*proto_go.RepoBlobs, error) {
@@ -344,7 +358,7 @@ func (dwr *DynamoDB) getRepoBlobsInfo(repo string) (*proto_go.RepoBlobs, error) 
 	}
 
 	if resp.Item == nil {
-		return &proto_go.RepoBlobs{Name: repo, Blobs: map[string]*proto_go.BlobInfo{"": {}}}, nil
+		return &proto_go.RepoBlobs{Name: repo, Blobs: make(map[string]*proto_go.BlobInfo)}, nil
 	}
 
 	repoBlobsBytes := []byte{}
@@ -355,13 +369,17 @@ func (dwr *DynamoDB) getRepoBlobsInfo(repo string) (*proto_go.RepoBlobs, error) 
 	}
 
 	repoBlobs := &proto_go.RepoBlobs{}
-	if repoBlobsBytes == nil {
-		repoBlobs.Blobs = map[string]*proto_go.BlobInfo{}
+	if len(repoBlobsBytes) == 0 {
+		repoBlobs.Blobs = make(map[string]*proto_go.BlobInfo)
 	} else {
 		err := proto.Unmarshal(repoBlobsBytes, repoBlobs)
 		if err != nil {
 			return nil, err
 		}
+	}
+
+	if len(repoBlobs.Blobs) == 0 {
+		repoBlobs.Blobs = make(map[string]*proto_go.BlobInfo)
 	}
 
 	return repoBlobs, nil
@@ -926,7 +944,7 @@ func (dwr *DynamoDB) GetReferrersInfo(repo string, referredDigest godigest.Diges
 	return filteredResults, nil
 }
 
-func (dwr *DynamoDB) IncrementImageDownloads(repo string, reference string) error {
+func (dwr *DynamoDB) UpdateStatsOnDownload(repo string, reference string) error {
 	repoMeta, err := dwr.getProtoRepoMeta(context.Background(), repo)
 	if err != nil {
 		return err
@@ -951,6 +969,7 @@ func (dwr *DynamoDB) IncrementImageDownloads(repo string, reference string) erro
 	}
 
 	manifestStatistics.DownloadCount++
+	manifestStatistics.LastPullTimestamp = timestamppb.Now()
 	repoMeta.Statistics[descriptorDigest] = manifestStatistics
 
 	return dwr.setProtoRepoMeta(repo, repoMeta)
@@ -1253,11 +1272,11 @@ func (dwr *DynamoDB) RemoveRepoReference(repo, reference string, manifestDigest 
 		return err
 	}
 
-	err = dwr.setRepoBlobsInfo(repo, repoBlobsInfo)
+	err = dwr.setRepoBlobsInfo(repo, repoBlobsInfo) //nolint: contextcheck
 	if err != nil {
 		return err
 	}
-	err = dwr.setProtoRepoMeta(repo, protoRepoMeta)
+	err = dwr.setProtoRepoMeta(repo, protoRepoMeta) //nolint: contextcheck
 
 	return err
 }

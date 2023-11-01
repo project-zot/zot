@@ -417,6 +417,94 @@ func TestVerify(t *testing.T) {
 		So(func() { _ = cli.NewServerRootCmd().Execute() }, ShouldNotPanic)
 	})
 
+	Convey("Test verify with bad gc retention repo patterns", t, func(c C) {
+		tmpfile, err := os.CreateTemp("", "zot-test*.json")
+		So(err, ShouldBeNil)
+		defer os.Remove(tmpfile.Name()) // clean up
+		content := []byte(`{
+			"distSpecVersion": "1.1.0-dev",
+			"storage": {
+				"rootDirectory": "/tmp/zot",
+				"gc": true,
+				"retention": {
+					"policies": [
+						{
+							"repositories": ["["],
+							"deleteReferrers": false
+						}
+					]
+				},
+				"subPaths":{
+					"/a":{
+					   "rootDirectory":"/zot-a",
+					   "retention": {
+							"policies": [
+								{
+									"repositories": ["**"],
+									"deleteReferrers": true
+								}
+							]
+					   }
+					}
+				 }
+			},
+			"http": {
+				"address": "127.0.0.1",
+				"port": "8080"
+			},
+			"log": {
+				"level": "debug"
+			}
+		}`)
+
+		_, err = tmpfile.Write(content)
+		So(err, ShouldBeNil)
+		err = tmpfile.Close()
+		So(err, ShouldBeNil)
+		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
+		So(func() { _ = cli.NewServerRootCmd().Execute() }, ShouldPanic)
+	})
+
+	Convey("Test verify with bad gc image retention tag regex", t, func(c C) {
+		tmpfile, err := os.CreateTemp("", "zot-test*.json")
+		So(err, ShouldBeNil)
+		defer os.Remove(tmpfile.Name()) // clean up
+		content := []byte(`{
+			"distSpecVersion": "1.1.0-dev",
+			"storage": {
+				"rootDirectory": "/tmp/zot",
+				"gc": true,
+				"retention": {
+					"dryRun": false,
+					"policies": [
+						{
+							"repositories": ["infra/*"],
+							"deleteReferrers": false,
+							"deleteUntagged": true,
+							"keepTags": [{
+								"names": ["["]
+							}]
+						}
+					]
+				}
+			},
+			"http": {
+				"address": "127.0.0.1",
+				"port": "8080"
+			},
+			"log": {
+				"level": "debug"
+			}
+		}`)
+
+		_, err = tmpfile.Write(content)
+		So(err, ShouldBeNil)
+		err = tmpfile.Close()
+		So(err, ShouldBeNil)
+		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
+		So(func() { _ = cli.NewServerRootCmd().Execute() }, ShouldPanic)
+	})
+
 	Convey("Test apply defaults cache db", t, func(c C) {
 		tmpfile, err := os.CreateTemp("", "zot-test*.json")
 		So(err, ShouldBeNil)

@@ -74,32 +74,32 @@ func TestScanGeneratorWithMockedData(t *testing.T) { //nolint: gocyclo
 		image11 := CreateImageWith().DefaultLayers().
 			ImageConfig(ispec.Image{Created: DateRef(2008, 1, 1, 12, 0, 0, 0, time.UTC)}).Build()
 
-		err = metaDB.SetRepoReference("repo1", "0.1.0", image11.AsImageMeta())
+		err = metaDB.SetRepoReference(context.Background(), "repo1", "0.1.0", image11.AsImageMeta())
 		So(err, ShouldBeNil)
 
 		image12 := CreateImageWith().DefaultLayers().
 			ImageConfig(ispec.Image{Created: DateRef(2009, 1, 1, 12, 0, 0, 0, time.UTC)}).Build()
 
-		err = metaDB.SetRepoReference("repo1", "1.0.0", image12.AsImageMeta())
+		err = metaDB.SetRepoReference(context.Background(), "repo1", "1.0.0", image12.AsImageMeta())
 		So(err, ShouldBeNil)
 
 		image13 := CreateImageWith().DefaultLayers().
 			ImageConfig(ispec.Image{Created: DateRef(2010, 1, 1, 12, 0, 0, 0, time.UTC)}).Build()
 
-		err = metaDB.SetRepoReference("repo1", "1.1.0", image13.AsImageMeta())
+		err = metaDB.SetRepoReference(context.Background(), "repo1", "1.1.0", image13.AsImageMeta())
 		So(err, ShouldBeNil)
 
 		image14 := CreateImageWith().DefaultLayers().
 			ImageConfig(ispec.Image{Created: DateRef(2011, 1, 1, 12, 0, 0, 0, time.UTC)}).Build()
 
-		err = metaDB.SetRepoReference("repo1", "1.0.1", image14.AsImageMeta())
+		err = metaDB.SetRepoReference(context.Background(), "repo1", "1.0.1", image14.AsImageMeta())
 		So(err, ShouldBeNil)
 
 		// Create metadb data for scannable image with no vulnerabilities
 		image61 := CreateImageWith().DefaultLayers().
 			ImageConfig(ispec.Image{Created: DateRef(2016, 1, 1, 12, 0, 0, 0, time.UTC)}).Build()
 
-		err = metaDB.SetRepoReference("repo6", "1.0.0", image61.AsImageMeta())
+		err = metaDB.SetRepoReference(context.Background(), "repo6", "1.0.0", image61.AsImageMeta())
 		So(err, ShouldBeNil)
 
 		// Create metadb data for image not supporting scanning
@@ -109,49 +109,50 @@ func TestScanGeneratorWithMockedData(t *testing.T) { //nolint: gocyclo
 			Digest:    godigest.FromBytes([]byte{10, 10, 10}),
 		}}).ImageConfig(ispec.Image{Created: DateRef(2009, 1, 1, 12, 0, 0, 0, time.UTC)}).Build()
 
-		err = metaDB.SetRepoReference("repo2", "1.0.0", image21.AsImageMeta())
+		err = metaDB.SetRepoReference(context.Background(), "repo2", "1.0.0", image21.AsImageMeta())
 		So(err, ShouldBeNil)
 
 		// Create metadb data for invalid images/negative tests
 		img := CreateRandomImage()
 		digest31 := img.Digest()
 
-		err = metaDB.SetRepoReference("repo3", "invalid-manifest", img.AsImageMeta())
+		err = metaDB.SetRepoReference(context.Background(), "repo3", "invalid-manifest", img.AsImageMeta())
 		So(err, ShouldBeNil)
 
 		image41 := CreateImageWith().DefaultLayers().
 			CustomConfigBlob([]byte("invalid config blob"), ispec.MediaTypeImageConfig).Build()
 
-		err = metaDB.SetRepoReference("repo4", "invalid-config", image41.AsImageMeta())
+		err = metaDB.SetRepoReference(context.Background(), "repo4", "invalid-config", image41.AsImageMeta())
 		So(err, ShouldBeNil)
 
 		image15 := CreateRandomMultiarch()
 
 		digest51 := image15.Digest()
-		err = metaDB.SetRepoReference("repo5", "nonexitent-manifests-for-multiarch", image15.AsImageMeta())
+		err = metaDB.SetRepoReference(context.Background(), "repo5", "nonexitent-manifests-for-multiarch",
+			image15.AsImageMeta())
 		So(err, ShouldBeNil)
 
 		// Create metadb data for scannable image which errors during scan
 		image71 := CreateImageWith().DefaultLayers().
 			ImageConfig(ispec.Image{Created: DateRef(2000, 1, 1, 12, 0, 0, 0, time.UTC)}).Build()
 
-		err = metaDB.SetRepoReference("repo7", "1.0.0", image71.AsImageMeta())
+		err = metaDB.SetRepoReference(context.Background(), "repo7", "1.0.0", image71.AsImageMeta())
 		So(err, ShouldBeNil)
 
 		// Create multiarch image with vulnerabilities
 		multiarchImage := CreateRandomMultiarch()
 
-		err = metaDB.SetRepoReference(repoIndex, multiarchImage.Images[0].DigestStr(),
+		err = metaDB.SetRepoReference(context.Background(), repoIndex, multiarchImage.Images[0].DigestStr(),
 			multiarchImage.Images[0].AsImageMeta())
 		So(err, ShouldBeNil)
-		err = metaDB.SetRepoReference(repoIndex, multiarchImage.Images[1].DigestStr(),
+		err = metaDB.SetRepoReference(context.Background(), repoIndex, multiarchImage.Images[1].DigestStr(),
 			multiarchImage.Images[1].AsImageMeta())
 		So(err, ShouldBeNil)
-		err = metaDB.SetRepoReference(repoIndex, multiarchImage.Images[2].DigestStr(),
+		err = metaDB.SetRepoReference(context.Background(), repoIndex, multiarchImage.Images[2].DigestStr(),
 			multiarchImage.Images[2].AsImageMeta())
 		So(err, ShouldBeNil)
 
-		err = metaDB.SetRepoReference(repoIndex, "tagIndex", multiarchImage.AsImageMeta())
+		err = metaDB.SetRepoReference(context.Background(), repoIndex, "tagIndex", multiarchImage.AsImageMeta())
 		So(err, ShouldBeNil)
 
 		err = metaDB.SetRepoMeta("repo-with-bad-tag-digest", mTypes.RepoMeta{

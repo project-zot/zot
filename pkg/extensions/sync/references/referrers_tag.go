@@ -113,7 +113,7 @@ func (ref TagReferences) SyncReferences(ctx context.Context, localRepo, remoteRe
 			ref.log.Debug().Str("repository", localRepo).Str("subject", subjectDigestStr).
 				Msg("metaDB: trying to add oci references for image")
 
-			err = meta.SetImageMetaFromInput(localRepo, referenceDigest.String(), referrer.MediaType,
+			err = meta.SetImageMetaFromInput(ctx, localRepo, referenceDigest.String(), referrer.MediaType,
 				referenceDigest, referenceBuf, ref.storeController.GetImageStore(localRepo),
 				ref.metaDB, ref.log)
 			if err != nil {

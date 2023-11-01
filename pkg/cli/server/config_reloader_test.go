@@ -158,6 +158,112 @@ func TestConfigReloader(t *testing.T) {
 		So(string(data), ShouldContainSubstring, "\"Actions\":[\"read\",\"create\",\"update\",\"delete\"]")
 	})
 
+	Convey("reload gc config", t, func(c C) {
+		port := test.GetFreePort()
+		baseURL := test.GetBaseURL(port)
+
+		logFile, err := os.CreateTemp("", "zot-log*.txt")
+		So(err, ShouldBeNil)
+
+		defer os.Remove(logFile.Name()) // clean up
+
+		content := fmt.Sprintf(`{
+				"distSpecVersion": "1.1.0-dev",
+				"storage": {
+					"rootDirectory": "%s",
+					"gc": false,
+					"dedupe": false,
+					"subPaths": {
+						"/a": {
+							"rootDirectory": "%s",
+							"gc": false,
+							"dedupe": false
+						}
+					}
+				},
+				"http": {
+					"address": "127.0.0.1",
+					"port": "%s"
+				},
+				"log": {
+					"level": "debug",
+					"output": "%s"
+				}
+			}`, t.TempDir(), t.TempDir(), port, logFile.Name())
+
+		cfgfile, err := os.CreateTemp("", "zot-test*.json")
+		So(err, ShouldBeNil)
+
+		defer os.Remove(cfgfile.Name()) // clean up
+
+		_, err = cfgfile.WriteString(content)
+		So(err, ShouldBeNil)
+
+		// err = cfgfile.Close()
+		// So(err, ShouldBeNil)
+
+		os.Args = []string{"cli_test", "serve", cfgfile.Name()}
+		go func() {
+			err = cli.NewServerRootCmd().Execute()
+			So(err, ShouldBeNil)
+		}()
+
+		test.WaitTillServerReady(baseURL)
+
+		content = fmt.Sprintf(`{
+			"distSpecVersion": "1.1.0-dev",
+			"storage": {
+				"rootDirectory": "%s",
+				"gc": true,
+				"dedupe": true,
+				"subPaths": {
+					"/a": {
+						"rootDirectory": "%s",
+						"gc": true,
+						"dedupe": true
+					}
+				}
+			},
+			"http": {
+				"address": "127.0.0.1",
+				"port": "%s"
+			},
+			"log": {
+				"level": "debug",
+				"output": "%s"
+			}
+		}`, t.TempDir(), t.TempDir(), port, logFile.Name())
+
+		err = cfgfile.Truncate(0)
+		So(err, ShouldBeNil)
+
+		_, err = cfgfile.Seek(0, io.SeekStart)
+		So(err, ShouldBeNil)
+
+		// truncate log before changing config, for the ShouldNotContainString
+		So(logFile.Truncate(0), ShouldBeNil)
+
+		_, err = cfgfile.WriteString(content)
+		So(err, ShouldBeNil)
+
+		err = cfgfile.Close()
+		So(err, ShouldBeNil)
+
+		// wait for config reload
+		time.Sleep(2 * time.Second)
+
+		data, err := os.ReadFile(logFile.Name())
+		So(err, ShouldBeNil)
+		t.Logf("log file: %s", data)
+
+		So(string(data), ShouldContainSubstring, "reloaded params")
+		So(string(data), ShouldContainSubstring, "loaded new configuration settings")
+		So(string(data), ShouldContainSubstring, "\"GC\":true")
+		So(string(data), ShouldContainSubstring, "\"Dedupe\":true")
+		So(string(data), ShouldNotContainSubstring, "\"GC\":false")
+		So(string(data), ShouldNotContainSubstring, "\"Dedupe\":false")
+	})
+
 	Convey("reload sync config", t, func(c C) {
 		port := test.GetFreePort()
 		baseURL := test.GetBaseURL(port)

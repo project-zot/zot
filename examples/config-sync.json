@@ -35,12 +35,12 @@
 							}
 						},
 						{
-							"prefix": "/repo1/repo",
+							"prefix": "/repo2/repo",
 							"destination": "/repo",
 							"stripPrefix": true
 						},
 						{
-							"prefix": "/repo2/repo"
+							"prefix": "/repo3/**"
 						}
 					]
 				},
@@ -54,7 +54,7 @@
 					"onDemand": false,
 					"content": [
 						{
-							"prefix": "/repo2",
+							"prefix": "**",
 							"tags": {
 								"semver": true
 							}

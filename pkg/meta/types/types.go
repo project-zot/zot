@@ -64,7 +64,7 @@ type MetaDB interface { //nolint:interfacebloat
 	SetImageMeta(digest godigest.Digest, imageMeta ImageMeta) error
 
 	// SetRepoReference sets the given image data to the repo metadata.
-	SetRepoReference(repo string, reference string, imageMeta ImageMeta) error
+	SetRepoReference(ctx context.Context, repo string, reference string, imageMeta ImageMeta) error
 
 	// SearchRepos searches for repos given a search string
 	SearchRepos(ctx context.Context, searchText string) ([]RepoMeta, error)
@@ -116,8 +116,8 @@ type MetaDB interface { //nolint:interfacebloat
 	// artifact types.
 	GetReferrersInfo(repo string, referredDigest godigest.Digest, artifactTypes []string) ([]ReferrerInfo, error)
 
-	// IncrementImageDownloads adds 1 to the download count of an image
-	IncrementImageDownloads(repo string, reference string) error
+	// UpdateStatsOnDownload adds 1 to the download count of an image and sets the timestamp of download
+	UpdateStatsOnDownload(repo string, reference string) error
 
 	// FilterImageMeta returns the image data for the given digests
 	FilterImageMeta(ctx context.Context, digests []string) (map[string]ImageMeta, error)
@@ -274,7 +274,10 @@ type Descriptor struct {
 }
 
 type DescriptorStatistics struct {
-	DownloadCount int
+	DownloadCount     int
+	LastPullTimestamp time.Time
+	PushTimestamp     time.Time
+	PushedBy          string
 }
 
 type ManifestSignatures map[string][]SignatureInfo

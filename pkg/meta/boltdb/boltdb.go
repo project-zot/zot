@@ -116,13 +116,20 @@ func (bdw *BoltDB) SetImageMeta(digest godigest.Digest, imageMeta mTypes.ImageMe
 	return err
 }
 
-func (bdw *BoltDB) SetRepoReference(repo string, reference string, imageMeta mTypes.ImageMeta,
+func (bdw *BoltDB) SetRepoReference(ctx context.Context, repo string, reference string, imageMeta mTypes.ImageMeta,
 ) error {
 	if err := common.ValidateRepoReferenceInput(repo, reference, imageMeta.Digest); err != nil {
 		return err
 	}
 
-	err := bdw.DB.Update(func(tx *bbolt.Tx) error {
+	var userid string
+
+	userAc, err := reqCtx.UserAcFromContext(ctx)
+	if err == nil {
+		userid = userAc.GetUsername()
+	}
+
+	err = bdw.DB.Update(func(tx *bbolt.Tx) error {
 		repoBuck := tx.Bucket([]byte(RepoMetaBuck))
 		repoBlobsBuck := tx.Bucket([]byte(RepoBlobsBuck))
 		imageBuck := tx.Bucket([]byte(ImageMetaBuck))
@@ -199,7 +206,12 @@ func (bdw *BoltDB) SetRepoReference(repo string, reference string, imageMeta mTy
 		}
 
 		if _, ok := protoRepoMeta.Statistics[imageMeta.Digest.String()]; !ok {
-			protoRepoMeta.Statistics[imageMeta.Digest.String()] = &proto_go.DescriptorStatistics{DownloadCount: 0}
+			protoRepoMeta.Statistics[imageMeta.Digest.String()] = &proto_go.DescriptorStatistics{
+				DownloadCount:     0,
+				LastPullTimestamp: &timestamppb.Timestamp{},
+				PushTimestamp:     timestamppb.Now(),
+				PushedBy:          userid,
+			}
 		}
 
 		if _, ok := protoRepoMeta.Signatures[imageMeta.Digest.String()]; !ok {
@@ -219,8 +231,8 @@ func (bdw *BoltDB) SetRepoReference(repo string, reference string, imageMeta mTy
 
 		repoBlobs := &proto_go.RepoBlobs{}
 
-		if repoBlobsBytes == nil {
-			repoBlobs.Blobs = map[string]*proto_go.BlobInfo{}
+		if len(repoBlobsBytes) == 0 {
+			repoBlobs.Blobs = make(map[string]*proto_go.BlobInfo)
 		} else {
 			err := proto.Unmarshal(repoBlobsBytes, repoBlobs)
 			if err != nil {
@@ -1054,7 +1066,7 @@ func (bdw *BoltDB) GetReferrersInfo(repo string, referredDigest godigest.Digest,
 	return referrersInfoResult, err
 }
 
-func (bdw *BoltDB) IncrementImageDownloads(repo string, reference string) error {
+func (bdw *BoltDB) UpdateStatsOnDownload(repo string, reference string) error {
 	err := bdw.DB.Update(func(tx *bbolt.Tx) error {
 		buck := tx.Bucket([]byte(RepoMetaBuck))
 
@@ -1089,6 +1101,7 @@ func (bdw *BoltDB) IncrementImageDownloads(repo string, reference string) error 
 		}
 
 		manifestStatistics.DownloadCount++
+		manifestStatistics.LastPullTimestamp = timestamppb.Now()
 		repoMeta.Statistics[manifestDigest] = manifestStatistics
 
 		repoMetaBlob, err = proto.Marshal(&repoMeta)
@@ -1271,8 +1284,8 @@ func (bdw *BoltDB) RemoveRepoReference(repo, reference string, manifestDigest go
 
 		repoBlobs := &proto_go.RepoBlobs{}
 
-		if repoBlobsBytes == nil {
-			repoBlobs.Blobs = map[string]*proto_go.BlobInfo{}
+		if len(repoBlobsBytes) == 0 {
+			repoBlobs.Blobs = make(map[string]*proto_go.BlobInfo)
 		} else {
 			err := proto.Unmarshal(repoBlobsBytes, repoBlobs)
 			if err != nil {

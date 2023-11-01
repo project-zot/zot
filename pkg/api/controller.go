@@ -277,7 +277,8 @@ func (c *Controller) initCookieStore() error {
 
 func (c *Controller) InitMetaDB(reloadCtx context.Context) error {
 	// init metaDB if search is enabled or we need to store user profiles, api keys or signatures
-	if c.Config.IsSearchEnabled() || c.Config.IsBasicAuthnEnabled() || c.Config.IsImageTrustEnabled() {
+	if c.Config.IsSearchEnabled() || c.Config.IsBasicAuthnEnabled() || c.Config.IsImageTrustEnabled() ||
+		c.Config.IsRetentionEnabled() {
 		driver, err := meta.New(c.Config.Storage.StorageConfig, c.Log) //nolint:contextcheck
 		if err != nil {
 			return err
@@ -293,7 +294,7 @@ func (c *Controller) InitMetaDB(reloadCtx context.Context) error {
 			return err
 		}
 
-		err = meta.ParseStorage(driver, c.StoreController, c.Log)
+		err = meta.ParseStorage(driver, c.StoreController, c.Log) //nolint: contextcheck
 		if err != nil {
 			return err
 		}
@@ -309,10 +310,30 @@ func (c *Controller) LoadNewConfig(reloadCtx context.Context, newConfig *config.
 	c.Config.HTTP.AccessControl = newConfig.HTTP.AccessControl
 
 	// reload periodical gc config
-	c.Config.Storage.GCInterval = newConfig.Storage.GCInterval
 	c.Config.Storage.GC = newConfig.Storage.GC
+	c.Config.Storage.Dedupe = newConfig.Storage.Dedupe
 	c.Config.Storage.GCDelay = newConfig.Storage.GCDelay
-	c.Config.Storage.GCReferrers = newConfig.Storage.GCReferrers
+	c.Config.Storage.GCInterval = newConfig.Storage.GCInterval
+	// only if we have a metaDB already in place
+	if c.Config.IsRetentionEnabled() {
+		c.Config.Storage.Retention = newConfig.Storage.Retention
+	}
+
+	for subPath, storageConfig := range newConfig.Storage.SubPaths {
+		subPathConfig, ok := c.Config.Storage.SubPaths[subPath]
+		if ok {
+			subPathConfig.GC = storageConfig.GC
+			subPathConfig.Dedupe = storageConfig.Dedupe
+			subPathConfig.GCDelay = storageConfig.GCDelay
+			subPathConfig.GCInterval = storageConfig.GCInterval
+			// only if we have a metaDB already in place
+			if c.Config.IsRetentionEnabled() {
+				subPathConfig.Retention = storageConfig.Retention
+			}
+
+			c.Config.Storage.SubPaths[subPath] = subPathConfig
+		}
+	}
 
 	// reload background tasks
 	if newConfig.Extensions != nil {
@@ -356,10 +377,9 @@ func (c *Controller) StartBackgroundTasks(reloadCtx context.Context) {
 	// Enable running garbage-collect periodically for DefaultStore
 	if c.Config.Storage.GC {
 		gc := gc.NewGarbageCollect(c.StoreController.DefaultStore, c.MetaDB, gc.Options{
-			Referrers:      c.Config.Storage.GCReferrers,
 			Delay:          c.Config.Storage.GCDelay,
-			RetentionDelay: c.Config.Storage.UntaggedImageRetentionDelay,
-		}, c.Log)
+			ImageRetention: c.Config.Storage.Retention,
+		}, c.Audit, c.Log)
 
 		gc.CleanImageStorePeriodically(c.Config.Storage.GCInterval, taskScheduler)
 	}
@@ -383,10 +403,9 @@ func (c *Controller) StartBackgroundTasks(reloadCtx context.Context) {
 			if storageConfig.GC {
 				gc := gc.NewGarbageCollect(c.StoreController.SubStore[route], c.MetaDB,
 					gc.Options{
-						Referrers:      storageConfig.GCReferrers,
 						Delay:          storageConfig.GCDelay,
-						RetentionDelay: storageConfig.UntaggedImageRetentionDelay,
-					}, c.Log)
+						ImageRetention: storageConfig.Retention,
+					}, c.Audit, c.Log)
 
 				gc.CleanImageStorePeriodically(storageConfig.GCInterval, taskScheduler)
 			}

@@ -721,8 +721,8 @@ func (rh *RouteHandler) UpdateManifest(response http.ResponseWriter, request *ht
 	}
 
 	if rh.c.MetaDB != nil {
-		err := meta.OnUpdateManifest(name, reference, mediaType, digest, body, rh.c.StoreController, rh.c.MetaDB,
-			rh.c.Log)
+		err := meta.OnUpdateManifest(request.Context(), name, reference, mediaType,
+			digest, body, rh.c.StoreController, rh.c.MetaDB, rh.c.Log)
 		if err != nil {
 			response.WriteHeader(http.StatusInternalServerError)
 

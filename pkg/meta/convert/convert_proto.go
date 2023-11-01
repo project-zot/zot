@@ -121,7 +121,10 @@ func GetProtoStatistics(stats map[string]mTypes.DescriptorStatistics) map[string
 
 	for digest, stat := range stats {
 		results[digest] = &proto_go.DescriptorStatistics{
-			DownloadCount: int32(stat.DownloadCount),
+			DownloadCount:     int32(stat.DownloadCount),
+			LastPullTimestamp: timestamppb.New(stat.LastPullTimestamp),
+			PushTimestamp:     timestamppb.New(stat.PushTimestamp),
+			PushedBy:          stat.PushedBy,
 		}
 	}
 

@@ -1167,7 +1167,7 @@ func (is *ImageStore) CheckBlob(repo string, digest godigest.Digest) (bool, int6
 	// Check blobs in cache
 	dstRecord, err := is.checkCacheBlob(digest)
 	if err != nil {
-		is.log.Error().Err(err).Str("digest", digest.String()).Msg("cache: not found")
+		is.log.Debug().Err(err).Str("digest", digest.String()).Msg("cache: not found")
 
 		return false, -1, zerr.ErrBlobNotFound
 	}
@@ -1213,7 +1213,7 @@ func (is *ImageStore) StatBlob(repo string, digest godigest.Digest) (bool, int64
 	// Check blobs in cache
 	dstRecord, err := is.checkCacheBlob(digest)
 	if err != nil {
-		is.log.Error().Err(err).Str("digest", digest.String()).Msg("cache: not found")
+		is.log.Debug().Err(err).Str("digest", digest.String()).Msg("cache: not found")
 
 		return false, -1, time.Time{}, zerr.ErrBlobNotFound
 	}
@@ -1540,7 +1540,8 @@ func (is *ImageStore) CleanupRepo(repo string, blobs []godigest.Digest, removeRe
 	count := 0
 
 	for _, digest := range blobs {
-		is.log.Debug().Str("repository", repo).Str("digest", digest.String()).Msg("perform GC on blob")
+		is.log.Debug().Str("repository", repo).
+			Str("digest", digest.String()).Msg("perform GC on blob")
 
 		if err := is.deleteBlob(repo, digest); err != nil {
 			if errors.Is(err, zerr.ErrBlobReferenced) {
@@ -1572,6 +1573,8 @@ func (is *ImageStore) CleanupRepo(repo string, blobs []godigest.Digest, removeRe
 
 	// if removeRepo flag is true and we cleanup all blobs and there are no blobs currently being uploaded.
 	if removeRepo && count == len(blobs) && count > 0 && len(blobUploads) == 0 {
+		is.log.Info().Str("repository", repo).Msg("removed all blobs, removing repo")
+
 		if err := is.storeDriver.Delete(path.Join(is.rootDir, repo)); err != nil {
 			is.log.Error().Err(err).Str("repository", repo).Msg("unable to remove repo")
 

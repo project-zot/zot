@@ -5122,6 +5122,7 @@ func TestHardLink(t *testing.T) {
 		port := test.GetFreePort()
 		conf := config.New()
 		conf.HTTP.Port = port
+		conf.Storage.GC = false
 
 		dir := t.TempDir()
 
@@ -7781,6 +7782,8 @@ func TestGCSignaturesAndUntaggedManifestsWithMetaDB(t *testing.T) {
 	ctx := context.Background()
 
 	Convey("Make controller", t, func() {
+		trueVal := true
+
 		Convey("Garbage collect signatures without subject and manifests without tags", func(c C) {
 			repoName := "testrepo" //nolint:goconst
 			tag := "0.0.1"
@@ -7789,6 +7792,11 @@ func TestGCSignaturesAndUntaggedManifestsWithMetaDB(t *testing.T) {
 			baseURL := test.GetBaseURL(port)
 			conf := config.New()
 			conf.HTTP.Port = port
+
+			logFile, err := os.CreateTemp("", "zot-log*.txt")
+			So(err, ShouldBeNil)
+
+			conf.Log.Audit = logFile.Name()
 
 			value := true
 			searchConfig := &extconf.SearchConfig{
@@ -7806,7 +7814,21 @@ func TestGCSignaturesAndUntaggedManifestsWithMetaDB(t *testing.T) {
 			ctlr.Config.Storage.RootDirectory = dir
 			ctlr.Config.Storage.GC = true
 			ctlr.Config.Storage.GCDelay = 1 * time.Millisecond
-			ctlr.Config.Storage.UntaggedImageRetentionDelay = 1 * time.Millisecond
+			ctlr.Config.Storage.Retention = config.ImageRetention{
+				Delay: 1 * time.Millisecond,
+				Policies: []config.RetentionPolicy{
+					{
+						Repositories:    []string{"**"},
+						DeleteReferrers: true,
+						DeleteUntagged:  &trueVal,
+						KeepTags: []config.KeepTagsPolicy{
+							{
+								Patterns: []string{".*"}, // just for coverage
+							},
+						},
+					},
+				},
+			}
 
 			ctlr.Config.Storage.Dedupe = false
 
@@ -7817,16 +7839,14 @@ func TestGCSignaturesAndUntaggedManifestsWithMetaDB(t *testing.T) {
 
 			img := CreateDefaultImage()
 
-			err := UploadImage(img, baseURL, repoName, tag)
+			err = UploadImage(img, baseURL, repoName, tag)
 			So(err, ShouldBeNil)
 
 			gc := gc.NewGarbageCollect(ctlr.StoreController.DefaultStore, ctlr.MetaDB,
 				gc.Options{
-					Referrers:      ctlr.Config.Storage.GCReferrers,
 					Delay:          ctlr.Config.Storage.GCDelay,
-					RetentionDelay: ctlr.Config.Storage.UntaggedImageRetentionDelay,
-				},
-				ctlr.Log)
+					ImageRetention: ctlr.Config.Storage.Retention,
+				}, ctlr.Audit, ctlr.Log)
 
 			resp, err := resty.R().Get(baseURL + fmt.Sprintf("/v2/%s/manifests/%s", repoName, tag))
 			So(err, ShouldBeNil)
@@ -7897,7 +7917,7 @@ func TestGCSignaturesAndUntaggedManifestsWithMetaDB(t *testing.T) {
 			So(len(index.Manifests), ShouldEqual, 1)
 
 			// shouldn't do anything
-			err = gc.CleanRepo(repoName)
+			err = gc.CleanRepo(repoName) //nolint: contextcheck
 			So(err, ShouldBeNil)
 
 			// make sure both signatures are stored in repodb
@@ -7988,7 +8008,7 @@ func TestGCSignaturesAndUntaggedManifestsWithMetaDB(t *testing.T) {
 				So(err, ShouldBeNil)
 				newManifestDigest := godigest.FromBytes(manifestBuf)
 
-				err = gc.CleanRepo(repoName)
+				err = gc.CleanRepo(repoName) //nolint: contextcheck
 				So(err, ShouldBeNil)
 
 				// make sure both signatures are removed from metaDB and repo reference for untagged is removed
@@ -8051,7 +8071,16 @@ func TestGCSignaturesAndUntaggedManifestsWithMetaDB(t *testing.T) {
 			ctlr.Config.Storage.RootDirectory = dir
 			ctlr.Config.Storage.GC = true
 			ctlr.Config.Storage.GCDelay = 1 * time.Second
-			ctlr.Config.Storage.UntaggedImageRetentionDelay = 1 * time.Second
+			ctlr.Config.Storage.Retention = config.ImageRetention{
+				Delay: 1 * time.Second,
+				Policies: []config.RetentionPolicy{
+					{
+						Repositories:    []string{"**"},
+						DeleteReferrers: true,
+						DeleteUntagged:  &trueVal,
+					},
+				},
+			}
 
 			err := WriteImageToFileSystem(CreateDefaultImage(), repoName, tag,
 				ociutils.GetDefaultStoreController(dir, ctlr.Log))
@@ -8063,10 +8092,9 @@ func TestGCSignaturesAndUntaggedManifestsWithMetaDB(t *testing.T) {
 
 			gc := gc.NewGarbageCollect(ctlr.StoreController.DefaultStore, ctlr.MetaDB,
 				gc.Options{
-					Referrers:      ctlr.Config.Storage.GCReferrers,
 					Delay:          ctlr.Config.Storage.GCDelay,
-					RetentionDelay: ctlr.Config.Storage.UntaggedImageRetentionDelay,
-				}, ctlr.Log)
+					ImageRetention: ctlr.Config.Storage.Retention,
+				}, ctlr.Audit, ctlr.Log)
 
 			resp, err := resty.R().Get(baseURL + fmt.Sprintf("/v2/%s/manifests/%s", repoName, tag))
 			So(err, ShouldBeNil)
@@ -8196,8 +8224,12 @@ func TestPeriodicGC(t *testing.T) {
 		subPaths := make(map[string]config.StorageConfig)
 
 		subPaths["/a"] = config.StorageConfig{
-			RootDirectory: subDir, GC: true, GCDelay: 1 * time.Second,
-			UntaggedImageRetentionDelay: 1 * time.Second, GCInterval: 24 * time.Hour, RemoteCache: false, Dedupe: false,
+			RootDirectory: subDir,
+			GC:            true,
+			GCDelay:       1 * time.Second,
+			GCInterval:    24 * time.Hour,
+			RemoteCache:   false,
+			Dedupe:        false,
 		} //nolint:lll // gofumpt conflicts with lll
 		ctlr.Config.Storage.Dedupe = false
 		ctlr.Config.Storage.SubPaths = subPaths

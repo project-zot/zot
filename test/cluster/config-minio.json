@@ -2,7 +2,7 @@
     "distSpecVersion": "1.1.0-dev",
     "storage": {
         "rootDirectory": "/tmp/zot",
-        "gc": false,
+        "gc": true,
         "dedupe": false,
         "storageDriver": {
             "name": "s3",

@@ -585,8 +585,8 @@ endif
 
 .PHONY: check-not-freebds
 check-not-freebds:
-ifneq ($(shell go env GOOS),freebsd)
-	$(error makefile target can't be run on freebsd)
+ifeq ($(shell go env GOOS),freebsd)
+  $(error makefile target can't be run on freebsd)
 endif
 
 .PHONY: check-compatibility

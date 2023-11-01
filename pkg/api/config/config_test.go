@@ -65,6 +65,7 @@ func TestConfig(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(isSame, ShouldBeTrue)
 	})
+
 	Convey("Test DeepCopy() & Sanitize()", t, func() {
 		conf := config.New()
 		So(conf, ShouldNotBeNil)
@@ -80,5 +81,49 @@ func TestConfig(t *testing.T) {
 		So(err, ShouldNotBeNil)
 		err = config.DeepCopy(obj, conf)
 		So(err, ShouldNotBeNil)
+	})
+
+	Convey("Test IsRetentionEnabled()", t, func() {
+		conf := config.New()
+		So(conf.IsRetentionEnabled(), ShouldBeFalse)
+
+		conf.Storage.Retention.Policies = []config.RetentionPolicy{
+			{
+				Repositories: []string{"repo"},
+			},
+		}
+
+		So(conf.IsRetentionEnabled(), ShouldBeFalse)
+
+		policies := []config.RetentionPolicy{
+			{
+				Repositories: []string{"repo"},
+				KeepTags: []config.KeepTagsPolicy{
+					{
+						Patterns:                []string{"tag"},
+						MostRecentlyPulledCount: 2,
+					},
+				},
+			},
+		}
+
+		conf.Storage.Retention = config.ImageRetention{
+			Policies: policies,
+		}
+
+		So(conf.IsRetentionEnabled(), ShouldBeTrue)
+
+		subPaths := make(map[string]config.StorageConfig)
+
+		subPaths["/a"] = config.StorageConfig{
+			GC: true,
+			Retention: config.ImageRetention{
+				Policies: policies,
+			},
+		}
+
+		conf.Storage.SubPaths = subPaths
+
+		So(conf.IsRetentionEnabled(), ShouldBeTrue)
 	})
 }
