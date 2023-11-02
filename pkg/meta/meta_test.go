@@ -612,6 +612,17 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 				So(repoMeta2.Size, ShouldEqual, img2Size)
 			})
 
+			Convey("Set, delete and set again", func() {
+				err := metaDB.SetRepoReference(ctx, repo1, tag1, imgData1)
+				So(err, ShouldBeNil)
+
+				err = metaDB.RemoveRepoReference(repo1, tag1, imgData1.Digest)
+				So(err, ShouldBeNil)
+
+				err = metaDB.SetRepoReference(ctx, repo1, tag1, imgData1)
+				So(err, ShouldBeNil)
+			})
+
 			Convey("Check repo blobs info for manifest image", func() {
 				image1 := CreateImageWith().RandomLayers(2, 10).
 					ImageConfig(ispec.Image{Platform: ispec.Platform{OS: "os1", Architecture: "arch1"}}).
