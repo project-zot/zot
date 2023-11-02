@@ -23,6 +23,8 @@ func GetProtoRepoMeta(repo mTypes.RepoMeta) *proto_go.RepoMeta {
 		Vendors:          repo.Vendors,
 		Platforms:        GetProtoPlatforms(repo.Platforms),
 		LastUpdatedImage: GetProtoLastUpdatedImage(repo.LastUpdatedImage),
+		Stars:            int32(repo.StarCount),
+		Downloads:        int32(repo.DownloadCount),
 	}
 }
 
