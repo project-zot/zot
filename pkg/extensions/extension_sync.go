@@ -6,6 +6,7 @@ package extensions
 import (
 	"net"
 	"net/url"
+	"os"
 	"strings"
 
 	zerr "zotregistry.io/zot/errors"
@@ -41,23 +42,31 @@ func EnableSyncExtension(config *config.Config, metaDB mTypes.MetaDB,
 			isPeriodical := len(registryConfig.Content) != 0 && registryConfig.PollInterval != 0
 			isOnDemand := registryConfig.OnDemand
 
-			if isPeriodical || isOnDemand {
-				service, err := sync.New(registryConfig, config.Extensions.Sync.CredentialsFile,
-					storeController, metaDB, log)
-				if err != nil {
-					return nil, err
-				}
+			if !(isPeriodical || isOnDemand) {
+				continue
+			}
 
-				if isPeriodical {
-					// add to task scheduler periodic sync
-					gen := sync.NewTaskGenerator(service, log)
-					sch.SubmitGenerator(gen, registryConfig.PollInterval, scheduler.MediumPriority)
-				}
+			tmpDir := config.Extensions.Sync.TmpDir
+			if tmpDir == "" {
+				// use an os tmpdir as tmpdir if not set
+				tmpDir = os.TempDir()
+			}
 
-				if isOnDemand {
-					// onDemand services used in routes.go
-					onDemand.Add(service)
-				}
+			service, err := sync.New(registryConfig, config.Extensions.Sync.CredentialsFile, tmpDir,
+				storeController, metaDB, log)
+			if err != nil {
+				return nil, err
+			}
+
+			if isPeriodical {
+				// add to task scheduler periodic sync
+				gen := sync.NewTaskGenerator(service, log)
+				sch.SubmitGenerator(gen, registryConfig.PollInterval, scheduler.MediumPriority)
+			}
+
+			if isOnDemand {
+				// onDemand services used in routes.go
+				onDemand.Add(service)
 			}
 		}
 
