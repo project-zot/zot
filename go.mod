@@ -44,6 +44,7 @@ require (
 )
 
 require (
+	github.com/alicebob/miniredis/v2 v2.30.4
 	github.com/aquasecurity/trivy v0.46.1
 	github.com/aws/aws-sdk-go-v2/service/dynamodb v1.23.0
 	github.com/aws/aws-sdk-go-v2/service/secretsmanager v1.21.6
@@ -57,6 +58,7 @@ require (
 	github.com/notaryproject/notation-go v1.0.0
 	github.com/opencontainers/distribution-spec/specs-go v0.0.0-20230117141039-067a0f5b0e25
 	github.com/project-zot/mockoidc v0.0.0-20230307111146-f607b4b5fb97
+	github.com/redis/go-redis/v9 v9.3.0
 	github.com/sigstore/cosign/v2 v2.2.0
 	github.com/swaggo/http-swagger v1.3.4
 	github.com/zitadel/oidc v1.13.5
@@ -93,6 +95,7 @@ require (
 	github.com/Masterminds/squirrel v1.5.4 // indirect
 	github.com/Microsoft/hcsshim v0.12.0-rc.0 // indirect
 	github.com/alecthomas/chroma v0.10.0 // indirect
+	github.com/alicebob/gopher-json v0.0.0-20200520072559-a9ecdc9d1d3a // indirect
 	github.com/anchore/go-struct-converter v0.0.0-20221118182256-c68fdcfa2092 // indirect
 	github.com/aquasecurity/defsec v0.93.1 // indirect
 	github.com/aquasecurity/table v1.8.0 // indirect
@@ -209,6 +212,7 @@ require (
 	github.com/xeipuuv/gojsonschema v1.2.0 // indirect
 	github.com/xlab/treeprint v1.2.0 // indirect
 	github.com/xrash/smetrics v0.0.0-20201216005158-039620a65673 // indirect
+	github.com/yuin/gopher-lua v1.1.0 // indirect
 	go.opentelemetry.io/otel/metric v1.16.0 // indirect
 	go.opentelemetry.io/otel/sdk v1.16.0 // indirect
 	go.starlark.net v0.0.0-20230525235612-a134d8f9ddca // indirect
