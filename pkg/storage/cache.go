@@ -60,6 +60,10 @@ func Create(dbtype string, parameters interface{}, log zlog.Logger) (cache.Cache
 		{
 			return cache.NewDynamoDBCache(parameters, log)
 		}
+	case "redis":
+		{
+			return cache.NewRedisCache(parameters, log), nil
+		}
 	default:
 		{
 			return nil, zerr.ErrBadConfig
