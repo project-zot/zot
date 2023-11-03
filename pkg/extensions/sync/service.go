@@ -8,19 +8,21 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"time"
 
-	"github.com/containers/common/pkg/retry"
-	"github.com/containers/image/v5/copy"
-	"github.com/opencontainers/go-digest"
+	godigest "github.com/opencontainers/go-digest"
+	"github.com/regclient/regclient"
+	"github.com/regclient/regclient/config"
+	"github.com/regclient/regclient/mod"
+	"github.com/regclient/regclient/scheme/reg"
+	"github.com/regclient/regclient/types/ref"
 
 	zerr "zotregistry.dev/zot/errors"
-	"zotregistry.dev/zot/pkg/api/config"
+	zconfig "zotregistry.dev/zot/pkg/api/config"
 	"zotregistry.dev/zot/pkg/api/constants"
 	"zotregistry.dev/zot/pkg/cluster"
 	"zotregistry.dev/zot/pkg/common"
 	syncconf "zotregistry.dev/zot/pkg/extensions/config/sync"
-	client "zotregistry.dev/zot/pkg/extensions/sync/httpclient"
-	"zotregistry.dev/zot/pkg/extensions/sync/references"
 	"zotregistry.dev/zot/pkg/log"
 	mTypes "zotregistry.dev/zot/pkg/meta/types"
 	"zotregistry.dev/zot/pkg/storage"
@@ -29,23 +31,22 @@ import (
 type BaseService struct {
 	config          syncconf.RegistryConfig
 	credentials     syncconf.CredentialsFile
-	clusterConfig   *config.ClusterConfig
 	remote          Remote
 	destination     Destination
-	retryOptions    *retry.RetryOptions
+	clusterConfig   *zconfig.ClusterConfig
+	copyOptions     []regclient.ImageOpts
 	contentManager  ContentManager
 	storeController storage.StoreController
 	metaDB          mTypes.MetaDB
 	repositories    []string
-	references      references.References
-	client          *client.Client
+	regclient       *regclient.RegClient
 	log             log.Logger
 }
 
 func New(
 	opts syncconf.RegistryConfig,
 	credentialsFilepath string,
-	clusterConfig *config.ClusterConfig,
+	clusterConfig *zconfig.ClusterConfig,
 	tmpDir string,
 	storeController storage.StoreController,
 	metadb mTypes.MetaDB,
@@ -56,6 +57,8 @@ func New(
 	service.config = opts
 	service.log = log
 	service.metaDB = metadb
+	service.contentManager = NewContentManager(opts.Content, log)
+	service.storeController = storeController
 
 	var err error
 
@@ -91,100 +94,105 @@ func New(
 		)
 	}
 
-	retryOptions := &retry.RetryOptions{}
+	var maxRetries int
+
+	var retryDelay time.Duration
 
 	if opts.MaxRetries != nil {
-		retryOptions.MaxRetry = *opts.MaxRetries
+		maxRetries = *opts.MaxRetries
+
 		if opts.RetryDelay != nil {
-			retryOptions.Delay = *opts.RetryDelay
+			retryDelay = *opts.RetryDelay
 		}
 	}
 
-	service.retryOptions = retryOptions
 	service.storeController = storeController
 
-	// try to set next client.
-	if err := service.SetNextAvailableClient(); err != nil {
-		// if it's a ping issue, it will be retried
-		if !errors.Is(err, zerr.ErrSyncPingRegistry) {
-			return service, err
-		}
+	urls, err := parseRegistryURLs(opts.URLs)
+	if err != nil {
+		return nil, err
 	}
 
-	service.references = references.NewReferences(
-		service.client,
-		service.storeController,
-		service.metaDB,
-		service.log,
+	tls := config.TLSEnabled // default
+
+	mainHost := urls[0].Host
+
+	if urls[0].Scheme == "http" {
+		tls = config.TLSDisabled
+	}
+
+	mirrorsHosts := make([]string, 0)
+	for _, url := range urls[1:] {
+		mirrorsHosts = append(mirrorsHosts, url.Host)
+	}
+
+	hostConfig := config.Host{}
+	hostConfig.Name = mainHost
+	hostConfig.Mirrors = mirrorsHosts
+	hostConfig.TLS = tls
+
+	if opts.CertDir != "" {
+		clientCert, clientKey, regCert, err := getCertificates(opts.CertDir)
+		if err != nil {
+			return nil, err
+		}
+
+		hostConfig.ClientCert = clientCert
+		hostConfig.ClientKey = clientKey
+		hostConfig.RegCert = regCert
+	}
+
+	if mainHost == regclient.DockerRegistryAuth ||
+		mainHost == regclient.DockerRegistryDNS ||
+		mainHost == regclient.DockerRegistry ||
+		mainHost == "index.docker.io" {
+		hostConfig.Name = regclient.DockerRegistry
+		hostConfig.Hostname = regclient.DockerRegistryDNS
+		hostConfig.CredHost = regclient.DockerRegistryAuth
+	}
+
+	credentials, ok := credentialsFile[mainHost]
+	if ok {
+		hostConfig.User = credentials.Username
+		hostConfig.Pass = credentials.Password
+	}
+
+	hostConfigOpts := []config.Host{}
+	hostConfigOpts = append(hostConfigOpts, hostConfig)
+
+	for _, mirror := range mirrorsHosts {
+		mirroHostConfig := hostConfig
+		mirroHostConfig.Name = mirror
+		hostConfigOpts = append(hostConfigOpts, mirroHostConfig)
+	}
+
+	service.regclient = regclient.New(
+		regclient.WithDockerCerts(),
+		regclient.WithDockerCreds(),
+		regclient.WithRegOpts(
+			reg.WithCertDirs([]string{opts.CertDir}),
+			reg.WithRetryLimit(maxRetries),
+			reg.WithDelay(1*time.Second, retryDelay),
+		),
+		regclient.WithConfigHost(hostConfigOpts...),
 	)
+
+	hosts := []string{}
+	hosts = append(hosts, mainHost)
+	hosts = append(hosts, mirrorsHosts...)
 
 	service.remote = NewRemoteRegistry(
-		service.client,
+		service.regclient,
+		hosts,
 		service.log,
 	)
 
+	// we want referrers using sha-<digest>.*" tags
+	// service.copyOptions = append(service.copyOptions, regclient.ImageWithDigestTags())
+	// we want oci referrers
+	service.copyOptions = append(service.copyOptions, regclient.ImageWithReferrers())
+
 	return service, nil
-}
-
-func (service *BaseService) SetNextAvailableClient() error {
-	if service.client != nil && service.client.Ping() {
-		return nil
-	}
-
-	found := false
-
-	for _, url := range service.config.URLs {
-		// skip current client
-		if service.client != nil && service.client.GetBaseURL() == url {
-			continue
-		}
-
-		remoteAddress := StripRegistryTransport(url)
-		credentials := service.credentials[remoteAddress]
-
-		tlsVerify := true
-		if service.config.TLSVerify != nil {
-			tlsVerify = *service.config.TLSVerify
-		}
-
-		options := client.Config{
-			URL:       url,
-			Username:  credentials.Username,
-			Password:  credentials.Password,
-			TLSVerify: tlsVerify,
-			CertDir:   service.config.CertDir,
-		}
-
-		var err error
-
-		if service.client != nil {
-			err = service.client.SetConfig(options)
-		} else {
-			service.client, err = client.New(options, service.log)
-		}
-
-		if err != nil {
-			service.log.Error().Err(err).Str("url", url).Msg("failed to initialize http client")
-
-			return err
-		}
-
-		if service.client.Ping() {
-			found = true
-
-			break
-		}
-	}
-
-	if service.client == nil || !found {
-		return zerr.ErrSyncPingRegistry
-	}
-
-	return nil
-}
-
-func (service *BaseService) GetRetryOptions() *retry.Options {
-	return service.retryOptions
 }
 
 func (service *BaseService) getNextRepoFromCatalog(lastRepo string) string {
@@ -219,13 +227,10 @@ func (service *BaseService) GetNextRepo(lastRepo string) (string, error) {
 	var err error
 
 	if len(service.repositories) == 0 {
-		if err = retry.RetryIfNecessary(context.Background(), func() error {
-			service.repositories, err = service.remote.GetRepositories(context.Background())
-
-			return err
-		}, service.retryOptions); err != nil {
-			service.log.Error().Str("errorType", common.TypeOf(err)).Str("remote registry", service.client.GetConfig().URL).
-				Err(err).Msg("failed to get repository list from remote registry")
+		service.repositories, err = service.remote.GetRepositories(context.Background())
+		if err != nil {
+			service.log.Error().Str("errorType", common.TypeOf(err)).Str("remote registry", service.remote.GetHostName()).
+				Err(err).Msg("error while getting repositories from remote registry")
 
 			return "", err
 		}
@@ -262,82 +267,41 @@ func (service *BaseService) GetNextRepo(lastRepo string) (string, error) {
 	return lastRepo, nil
 }
 
-// SyncReference on demand.
-func (service *BaseService) SyncReference(ctx context.Context, repo string,
-	subjectDigestStr string, referenceType string,
-) error {
-	remoteRepo := repo
-
-	remoteURL := service.client.GetConfig().URL
-
-	if len(service.config.Content) > 0 {
-		remoteRepo = service.contentManager.GetRepoSource(repo)
-		if remoteRepo == "" {
-			service.log.Info().Str("remote", remoteURL).Str("repository", repo).Str("subject", subjectDigestStr).
-				Str("reference type", referenceType).Msg("will not sync reference for image, filtered out by content")
-
-			return zerr.ErrSyncImageFilteredOut
-		}
-	}
-
-	remoteRepo = service.remote.GetDockerRemoteRepo(remoteRepo)
-
-	service.log.Info().Str("remote", remoteURL).Str("repository", repo).Str("subject", subjectDigestStr).
-		Str("reference type", referenceType).Msg("syncing reference for image")
-
-	return service.references.SyncReference(ctx, repo, remoteRepo, subjectDigestStr, referenceType)
-}
-
 // SyncImage on demand.
 func (service *BaseService) SyncImage(ctx context.Context, repo, reference string) error {
 	remoteRepo := repo
 
-	remoteURL := service.client.GetConfig().URL
+	remoteURL := service.remote.GetHostName()
 
 	if len(service.config.Content) > 0 {
 		remoteRepo = service.contentManager.GetRepoSource(repo)
 		if remoteRepo == "" {
-			service.log.Info().Str("remote", remoteURL).Str("repository", repo).Str("reference", reference).
+			service.log.Info().Str("remote", remoteURL).Str("repo", repo).Str("reference", reference).
 				Msg("will not sync image, filtered out by content")
 
 			return zerr.ErrSyncImageFilteredOut
 		}
 	}
 
-	remoteRepo = service.remote.GetDockerRemoteRepo(remoteRepo)
+	service.log.Info().Str("remote", remoteURL).Str("repo", repo).Str("reference", reference).
+		Msg("sync: syncing image")
 
-	service.log.Info().Str("remote", remoteURL).Str("repository", repo).Str("reference", reference).
-		Msg("syncing image")
-
-	manifestDigest, err := service.syncTag(ctx, repo, remoteRepo, reference)
-	if err != nil {
-		return err
-	}
-
-	err = service.references.SyncAll(ctx, repo, remoteRepo, manifestDigest.String())
-	if err != nil && !errors.Is(err, zerr.ErrSyncReferrerNotFound) {
-		return err
-	}
-
-	return nil
+	return service.syncTagAndReferrers(ctx, repo, remoteRepo, reference)
 }
 
 // sync repo periodically.
 func (service *BaseService) SyncRepo(ctx context.Context, repo string) error {
-	service.log.Info().Str("repository", repo).Str("registry", service.client.GetConfig().URL).
-		Msg("syncing repo")
+	service.log.Info().Str("repo", repo).Str("registry", service.remote.GetHostName()).
+		Msg("sync: syncing repo")
 
 	var err error
 
 	var tags []string
 
-	if err = retry.RetryIfNecessary(ctx, func() error {
-		tags, err = service.remote.GetRepoTags(repo)
-
-		return err
-	}, service.retryOptions); err != nil {
-		service.log.Error().Str("errorType", common.TypeOf(err)).Str("repository", repo).
-			Err(err).Msg("failed to get tags for repository")
+	tags, err = service.remote.GetTags(ctx, repo)
+	if err != nil {
+		service.log.Error().Str("errorType", common.TypeOf(err)).Str("repo", repo).
+			Err(err).Msg("error while getting tags for repo")
 
 		return err
 	}
@@ -348,164 +312,191 @@ func (service *BaseService) SyncRepo(ctx context.Context, repo string) error {
 		return err
 	}
 
-	service.log.Info().Str("repository", repo).Msgf("syncing tags %v", tags)
+	service.log.Info().Str("repo", repo).Msgf("sync: syncing tags %v", tags)
 
 	// apply content.destination rule
-	destinationRepo := service.contentManager.GetRepoDestination(repo)
+	localRepo := service.contentManager.GetRepoDestination(repo)
 
 	for _, tag := range tags {
 		if common.IsContextDone(ctx) {
 			return ctx.Err()
 		}
 
-		if references.IsCosignTag(tag) || common.IsReferrersTag(tag) {
-			continue
-		}
+		// if isCosignTag(tag) || common.IsReferrersTag(tag) {
+		// 	continue
+		// }
 
-		var manifestDigest digest.Digest
-
-		if err = retry.RetryIfNecessary(ctx, func() error {
-			manifestDigest, err = service.syncTag(ctx, destinationRepo, repo, tag)
-
-			return err
-		}, service.retryOptions); err != nil {
-			if errors.Is(err, zerr.ErrSyncImageNotSigned) || errors.Is(err, zerr.ErrMediaTypeNotSupported) {
+		err = service.syncTagAndReferrers(ctx, localRepo, repo, tag)
+		if err != nil {
+			if errors.Is(err, zerr.ErrSyncImageNotSigned) ||
+				errors.Is(err, zerr.ErrUnauthorizedAccess) ||
+				errors.Is(err, zerr.ErrMediaTypeNotSupported) ||
+				errors.Is(err, zerr.ErrManifestNotFound) {
 				// skip unsigned images or unsupported image mediatype
 				continue
 			}
 
-			service.log.Error().Str("errorType", common.TypeOf(err)).Str("repository", repo).
-				Err(err).Msg("failed to sync tags for repository")
+			service.log.Error().Str("errorType", common.TypeOf(err)).Str("repo", repo).
+				Err(err).Msg("error while syncing tags for repo")
 
 			return err
 		}
-
-		if manifestDigest != "" {
-			if err = retry.RetryIfNecessary(ctx, func() error {
-				err = service.references.SyncAll(ctx, destinationRepo, repo, manifestDigest.String())
-				if errors.Is(err, zerr.ErrSyncReferrerNotFound) {
-					return nil
-				}
-
-				return err
-			}, service.retryOptions); err != nil {
-				service.log.Error().Str("errorType", common.TypeOf(err)).Str("repository", repo).
-					Err(err).Msg("failed to sync tags for repository")
-			}
-		}
 	}
 
-	service.log.Info().Str("component", "sync").Str("repository", repo).Msg("finished syncing repository")
+	service.log.Info().Str("repo", repo).Msg("sync: finished syncing repo")
 
 	return nil
 }
 
-func (service *BaseService) syncTag(ctx context.Context, destinationRepo, remoteRepo, tag string,
-) (digest.Digest, error) {
-	copyOptions := getCopyOptions(service.remote.GetContext(), service.destination.GetContext())
+func (service *BaseService) syncReference(ctx context.Context, localRepo string, remoteImageRef, localImageRef ref.Ref,
+	remoteManifestDigest godigest.Digest,
+) (bool, error) {
+	var reference string
 
-	policyContext, err := getPolicyContext(service.log)
-	if err != nil {
-		return "", err
+	if remoteImageRef.Tag != "" {
+		reference = remoteImageRef.Tag
+	} else {
+		reference = remoteImageRef.Digest
 	}
 
-	defer func() {
-		_ = policyContext.Destroy()
-	}()
+	// check if image digest + its referrers digests are already synced, otherwise sync everything again
+	skipImage, err := service.destination.CanSkipImage(localRepo, reference, remoteManifestDigest)
+	if err != nil {
+		service.log.Error().Err(err).Str("errortype", common.TypeOf(err)).
+			Str("repo", localRepo).Str("reference", remoteImageRef.Tag).
+			Msg("couldn't check if the local image can be skipped")
+	}
+
+	if !skipImage {
+		service.log.Info().Str("remote image", remoteImageRef.CommonName()).
+			Str("local image", fmt.Sprintf("%s:%s", localRepo, remoteImageRef.Tag)).Msg("syncing image")
+
+		err = service.regclient.ImageCopy(ctx, remoteImageRef, localImageRef)
+		if err != nil {
+			service.log.Error().Err(err).Str("errortype", common.TypeOf(err)).
+				Str("remote image", remoteImageRef.CommonName()).
+				Str("local image", fmt.Sprintf("%s:%s", localRepo, remoteImageRef.Tag)).Msg("failed to sync image")
+
+			return false, err
+		}
+	} else {
+		service.log.Info().Str("image", remoteImageRef.CommonName()).
+			Msg("skipping image because it's already synced")
+
+		return true, nil
+	}
+
+	return false, nil
+}
+
+func (service *BaseService) syncTagAndReferrers(ctx context.Context, localRepo, remoteRepo, tag string) error {
+	var shouldCommit bool
 
 	remoteImageRef, err := service.remote.GetImageReference(remoteRepo, tag)
 	if err != nil {
 		service.log.Error().Err(err).Str("errortype", common.TypeOf(err)).
 			Str("repository", remoteRepo).Str("reference", tag).Msg("couldn't get a remote image reference")
 
-		return "", err
+		return err
 	}
 
-	_, mediaType, manifestDigest, err := service.remote.GetManifestContent(remoteImageRef)
+	defer service.regclient.Close(ctx, remoteImageRef)
+
+	_, remoteManifestDesc, isConverted, err := service.remote.GetOCIManifest(ctx, remoteRepo, tag)
 	if err != nil {
 		service.log.Error().Err(err).Str("repository", remoteRepo).Str("reference", tag).
-			Msg("couldn't get upstream image manifest details")
+			Msg("failed to get upstream image manifest details")
 
-		return "", err
+		return err
 	}
 
-	if !isSupportedMediaType(mediaType) {
-		return "", zerr.ErrMediaTypeNotSupported
+	referrers, err := service.regclient.ReferrerList(ctx, remoteImageRef)
+	if err != nil {
+		return err
 	}
 
 	if service.config.OnlySigned != nil && *service.config.OnlySigned &&
-		!references.IsCosignTag(tag) && !common.IsReferrersTag(tag) {
-		signed := service.references.IsSigned(ctx, remoteRepo, manifestDigest.String())
+		!isCosignTag(tag) && !common.IsReferrersTag(tag) {
+		signed := hasSignatureReferrers(referrers)
 		if !signed {
 			// skip unsigned images
-			service.log.Info().Str("image", remoteImageRef.DockerReference().String()).
+			service.log.Info().Str("image", remoteImageRef.CommonName()).
 				Msg("skipping image without mandatory signature")
 
-			return "", zerr.ErrSyncImageNotSigned
+			return zerr.ErrSyncImageNotSigned
 		}
 	}
 
-	skipImage, err := service.destination.CanSkipImage(destinationRepo, tag, manifestDigest)
+	localImageRef, err := service.destination.GetImageReference(localRepo, tag)
 	if err != nil {
 		service.log.Error().Err(err).Str("errortype", common.TypeOf(err)).
-			Str("repository", destinationRepo).Str("reference", tag).
-			Msg("couldn't check if the local image can be skipped")
+			Str("repo", localRepo).Str("reference", localImageRef.Tag).Msg("failed to get a local image reference")
+
+		return err
 	}
 
-	if !skipImage {
-		localImageRef, err := service.destination.GetImageReference(destinationRepo, tag)
-		if err != nil {
-			service.log.Error().Err(err).Str("errortype", common.TypeOf(err)).
-				Str("repository", destinationRepo).Str("reference", tag).Msg("couldn't get a local image reference")
+	defer service.regclient.Close(ctx, localImageRef)
 
-			return "", err
-		}
-
-		service.log.Info().Str("remote image", remoteImageRef.DockerReference().String()).
-			Str("local image", fmt.Sprintf("%s:%s", destinationRepo, tag)).Msg("syncing image")
-
-		_, err = copy.Image(ctx, policyContext, localImageRef, remoteImageRef, &copyOptions)
-		if err != nil {
-			// cleanup in cases of copy.Image errors while copying.
-			if cErr := service.destination.CleanupImage(localImageRef, destinationRepo, tag); cErr != nil {
-				service.log.Error().Err(err).Str("errortype", common.TypeOf(err)).
-					Str("local image", fmt.Sprintf("%s:%s", destinationRepo, tag)).
-					Msg("couldn't cleanup temp local image")
-			}
-
-			service.log.Error().Err(err).Str("errortype", common.TypeOf(err)).
-				Str("remote image", remoteImageRef.DockerReference().String()).
-				Str("local image", fmt.Sprintf("%s:%s", destinationRepo, tag)).Msg("coulnd't sync image")
-
-			return "", err
-		}
-
-		err = service.destination.CommitImage(localImageRef, destinationRepo, tag)
-		if err != nil {
-			service.log.Error().Err(err).Str("errortype", common.TypeOf(err)).
-				Str("repository", destinationRepo).Str("reference", tag).Msg("couldn't commit image to local image store")
-
-			return "", err
-		}
-	} else {
-		service.log.Info().Str("image", remoteImageRef.DockerReference().String()).
-			Msg("skipping image because it's already synced")
+	// first sync image
+	skipped, err := service.syncReference(ctx, localRepo, remoteImageRef, localImageRef, remoteManifestDesc.Digest)
+	if err != nil {
+		return err
 	}
 
-	service.log.Info().Str("component", "sync").
-		Str("image", remoteImageRef.DockerReference().String()).Msg("finished syncing image")
+	shouldCommit = !skipped
 
-	return manifestDigest, nil
+	// if image was skipped, then copy it's referrers if needed (they may have changed in the meantime)
+	for _, desc := range referrers.Descriptors {
+		remoteImageRef = remoteImageRef.SetDigest(desc.Digest.String())
+
+		localImageRef = localImageRef.SetDigest(desc.Digest.String())
+
+		skipped, err := service.syncReference(ctx, localRepo, remoteImageRef, localImageRef, desc.Digest)
+		if err != nil {
+			service.log.Error().Err(err).Str("errortype", common.TypeOf(err)).
+				Str("repo", localRepo).Str("local reference", localImageRef.Tag).
+				Str("remote reference", remoteImageRef.Tag).Msg("failed to sync referrer")
+		}
+
+		if skipped {
+			service.log.Info().Str("repo", localRepo).Str("local reference", localImageRef.Tag).
+				Str("remote reference", remoteImageRef.Tag).Msg("skipping syncing referrer because it's already synced")
+		} else {
+			shouldCommit = true
+		}
+	}
+
+	// convert image to oci if needed
+	if isConverted {
+		localImageRef, err = mod.Apply(ctx, service.regclient, localImageRef,
+			mod.WithRefTgt(localImageRef),
+			mod.WithManifestToOCI(),
+			mod.WithManifestToOCIReferrers(),
+		)
+		if err != nil {
+			return err
+		}
+
+		defer service.regclient.Close(ctx, localImageRef)
+	}
+
+	if shouldCommit {
+		err = service.destination.CommitAll(localRepo, localImageRef)
+		if err != nil {
+			service.log.Error().Err(err).Str("errortype", common.TypeOf(err)).
+				Str("repo", localRepo).Str("reference", tag).Msg("failed to commit image to local image store")
+
+			return err
+		}
+	}
+
+	service.log.Info().Str("repo", localRepo).Str("reference", tag).Msg("successfully synced image")
+
+	return nil
 }
 
 func (service *BaseService) ResetCatalog() {
 	service.log.Info().Msg("resetting catalog")
 
 	service.repositories = []string{}
-}
-
-func (service *BaseService) SetNextAvailableURL() error {
-	service.log.Info().Msg("getting available client")
-
-	return service.SetNextAvailableClient()
 }

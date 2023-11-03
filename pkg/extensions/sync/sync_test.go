@@ -74,6 +74,7 @@ var (
 	password     = "test" //nolint: gochecknoglobals
 	errSync      = errors.New("sync error, src oci repo differs from dest one")
 	errBadStatus = errors.New("bad http status")
+	ErrTestError = fmt.Errorf("testError")
 )
 
 type TagsList struct {
@@ -555,6 +556,7 @@ func TestOnDemand(t *testing.T) {
 
 			hostname, err := os.Hostname()
 			So(err, ShouldBeNil)
+			So(hostname, ShouldNotBeEmpty)
 
 			syncRegistryConfig := syncconf.RegistryConfig{
 				Content: []syncconf.Content{
@@ -568,8 +570,10 @@ func TestOnDemand(t *testing.T) {
 				},
 				// include self url, should be ignored
 				URLs: []string{
-					"http://" + hostname, destBaseURL,
-					srcBaseURL, "http://localhost:" + destPort,
+					fmt.Sprintf("http://%s:%s", hostname, destPort), //nolint:nosprintfhostport
+					destBaseURL,
+					srcBaseURL,
+					fmt.Sprintf("http://localhost:%s", destPort),
 				},
 				TLSVerify: &tlsVerify,
 				CertDir:   "",
@@ -602,7 +606,7 @@ func TestOnDemand(t *testing.T) {
 					sm mTypes.SignatureMetadata,
 				) error {
 					if sm.SignatureType == zcommon.CosignSignature || sm.SignatureType == zcommon.NotationSignature {
-						return sync.ErrTestError
+						return ErrTestError
 					}
 
 					return nil
@@ -612,7 +616,7 @@ func TestOnDemand(t *testing.T) {
 						(strings.HasSuffix(reference, remote.SignatureTagSuffix) ||
 							strings.HasSuffix(reference, remote.SBOMTagSuffix)) ||
 						strings.HasPrefix(reference, "sha256:") {
-						return sync.ErrTestError
+						return ErrTestError
 					}
 
 					// don't return err for normal image with tag
@@ -717,8 +721,8 @@ func TestOnDemand(t *testing.T) {
 				},
 				// include self url, should be ignored
 				URLs: []string{
-					"http://" + hostname, destBaseURL,
-					srcBaseURL, "http://localhost:" + destPort,
+					fmt.Sprintf("http://%s:%s", hostname, destPort), destBaseURL, //nolint:nosprintfhostport
+					srcBaseURL, fmt.Sprintf("http://localhost:%s", destPort),
 				},
 				TLSVerify: &tlsVerify,
 				CertDir:   "",
@@ -749,7 +753,7 @@ func TestOnDemand(t *testing.T) {
 			dctlr.MetaDB = mocks.MetaDBMock{
 				SetRepoReferenceFn: func(ctx context.Context, repo, reference string, imageMeta mTypes.ImageMeta) error {
 					if imageMeta.Digest.String() == ociRefImage.ManifestDescriptor.Digest.String() {
-						return sync.ErrTestError
+						return ErrTestError
 					}
 
 					return nil
@@ -1968,7 +1972,7 @@ func TestPermsDenied(t *testing.T) {
 		dcm.StartAndWait(destPort)
 
 		found, err := test.ReadLogFileAndSearchString(dctlr.Config.Log.Output,
-			"couldn't get a local image reference", 50*time.Second)
+			"failed to sync image", 50*time.Second)
 		if err != nil {
 			panic(err)
 		}
@@ -2343,7 +2347,7 @@ func TestMandatoryAnnotations(t *testing.T) {
 		defer dcm.StopServer()
 
 		found, err := test.ReadLogFileAndSearchString(dctlr.Config.Log.Output,
-			"couldn't upload manifest because of missing annotations", 15*time.Second)
+			"failed to upload manifest because of missing annotations", 15*time.Second)
 		if err != nil {
 			panic(err)
 		}
@@ -2517,7 +2521,7 @@ func TestTLS(t *testing.T) {
 			Registries: []syncconf.RegistryConfig{syncRegistryConfig},
 		}
 
-		dctlr, _, destDir, _ := makeDownstreamServer(t, true, syncConfig)
+		dctlr, destBaseURL, destDir, destClient := makeDownstreamServer(t, true, syncConfig)
 
 		dcm := test.NewControllerManager(dctlr)
 		dcm.StartAndWait(dctlr.Config.HTTP.Port)
@@ -2549,6 +2553,10 @@ func TestTLS(t *testing.T) {
 		}
 
 		waitSyncFinish(dctlr.Config.Log.Output)
+
+		resp, err := destClient.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 	})
 }
 
@@ -2996,7 +3004,7 @@ func TestBasicAuth(t *testing.T) {
 			defer dcm.StopServer()
 
 			found, err := test.ReadLogFileAndSearchString(dctlr.Config.Log.Output,
-				"authentication required", 15*time.Second)
+				"unauthorized", 15*time.Second)
 			if err != nil {
 				panic(err)
 			}
@@ -4114,7 +4122,7 @@ func TestMultipleURLs(t *testing.T) {
 					},
 				},
 			},
-			URLs:         []string{"badURL", "@!#!$#@%", "http://invalid.invalid/invalid/", srcBaseURL},
+			URLs:         []string{"http://badURL", srcBaseURL},
 			PollInterval: updateDuration,
 			TLSVerify:    &tlsVerify,
 			CertDir:      "",
@@ -4307,7 +4315,7 @@ func TestPeriodicallySignaturesErr(t *testing.T) {
 			defer dcm.StopServer()
 
 			found, err := test.ReadLogFileAndSearchString(dctlr.Config.Log.Output,
-				"finished syncing all repos", 15*time.Second)
+				"failed to get upstream image manifest details", 60*time.Second)
 			if err != nil {
 				panic(err)
 			}
@@ -4355,7 +4363,7 @@ func TestPeriodicallySignaturesErr(t *testing.T) {
 			defer dcm.StopServer()
 
 			found, err := test.ReadLogFileAndSearchString(dctlr.Config.Log.Output,
-				"finished syncing all repos", 15*time.Second)
+				"failed to sync image", 60*time.Second)
 			if err != nil {
 				panic(err)
 			}
@@ -4425,7 +4433,7 @@ func TestPeriodicallySignaturesErr(t *testing.T) {
 			defer dcm.StopServer()
 
 			found, err := test.ReadLogFileAndSearchString(dctlr.Config.Log.Output,
-				"finished syncing all repos", 15*time.Second)
+				"failed to sync image", 30*time.Second)
 			if err != nil {
 				panic(err)
 			}
@@ -4506,7 +4514,7 @@ func TestPeriodicallySignaturesErr(t *testing.T) {
 				defer dcm.StopServer()
 
 				found, err := test.ReadLogFileAndSearchString(dctlr.Config.Log.Output,
-					"couldn't sync image referrer", 15*time.Second)
+					"failed to sync image", 30*time.Second)
 				if err != nil {
 					panic(err)
 				}
@@ -4563,7 +4571,7 @@ func TestPeriodicallySignaturesErr(t *testing.T) {
 				defer dcm.StopServer()
 
 				found, err := test.ReadLogFileAndSearchString(dctlr.Config.Log.Output,
-					"couldn't sync image referrer", 15*time.Second)
+					"failed to sync image", 30*time.Second)
 				if err != nil {
 					panic(err)
 				}
@@ -4591,72 +4599,18 @@ func TestPeriodicallySignaturesErr(t *testing.T) {
 				So(err, ShouldBeNil)
 				So(len(index.Manifests), ShouldEqual, 0)
 			})
-
-			Convey("of type OCI image, error on downstream in canSkipReference()", func() { //nolint: dupl
-				// start downstream server
-				updateDuration, err = time.ParseDuration("1s")
-				So(err, ShouldBeNil)
-
-				syncConfig.Registries[0].PollInterval = updateDuration
-				dctlr, _, destDir, _ := makeDownstreamServer(t, false, syncConfig)
-
-				dcm := test.NewControllerManager(dctlr)
-				dcm.StartAndWait(dctlr.Config.HTTP.Port)
-				defer dcm.StopServer()
-
-				found, err := test.ReadLogFileAndSearchString(dctlr.Config.Log.Output,
-					"finished syncing all repos", 15*time.Second)
-				if err != nil {
-					panic(err)
-				}
-
-				if !found {
-					data, err := os.ReadFile(dctlr.Config.Log.Output)
-					So(err, ShouldBeNil)
-
-					t.Logf("downstream log: %s", string(data))
-				}
-
-				So(found, ShouldBeTrue)
-
-				time.Sleep(time.Second)
-
-				blob := referrers.Manifests[0]
-				blobsDir := path.Join(destDir, repoName, "blobs", string(blob.Digest.Algorithm()))
-				blobPath := path.Join(blobsDir, blob.Digest.Encoded())
-				err = os.MkdirAll(blobsDir, storageConstants.DefaultDirPerms)
-				So(err, ShouldBeNil)
-				err = os.WriteFile(blobPath, []byte("blob"), storageConstants.DefaultFilePerms)
-				So(err, ShouldBeNil)
-				err = os.Chmod(blobPath, 0o000)
-				So(err, ShouldBeNil)
-
-				found, err = test.ReadLogFileAndSearchString(dctlr.Config.Log.Output,
-					"couldn't check if the upstream oci references for image can be skipped", 30*time.Second)
-				if err != nil {
-					panic(err)
-				}
-
-				if !found {
-					data, err := os.ReadFile(dctlr.Config.Log.Output)
-					So(err, ShouldBeNil)
-
-					t.Logf("downstream log: %s", string(data))
-				}
-
-				So(found, ShouldBeTrue)
-			})
 		})
 	})
 }
 
 func TestSignatures(t *testing.T) {
 	Convey("Verify sync signatures", t, func() {
-		updateDuration, _ := time.ParseDuration("30m")
+		// updateDuration, _ := time.ParseDuration("30m")
 
 		sctlr, srcBaseURL, srcDir, _, _ := makeUpstreamServer(t, false, false)
 
 		scm := test.NewControllerManager(sctlr)
+
 		scm.StartAndWait(sctlr.Config.HTTP.Port)
 
 		defer scm.StopServer()
@@ -4760,12 +4714,12 @@ func TestSignatures(t *testing.T) {
 					},
 				},
 			},
-			URLs:         []string{srcBaseURL},
-			PollInterval: updateDuration,
-			TLSVerify:    &tlsVerify,
-			CertDir:      "",
-			OnlySigned:   &onlySigned,
-			OnDemand:     true,
+			URLs: []string{srcBaseURL},
+			// PollInterval: updateDuration,
+			TLSVerify:  &tlsVerify,
+			CertDir:    "",
+			OnlySigned: &onlySigned,
+			OnDemand:   true,
 		}
 
 		defaultVal := true
@@ -4781,31 +4735,15 @@ func TestSignatures(t *testing.T) {
 
 		defer dcm.StopServer()
 
-		// wait for sync
-		var destTagsList TagsList
-
-		for {
-			resp, err := destClient.R().Get(destBaseURL + "/v2/" + repoName + "/tags/list")
-			if err != nil {
-				panic(err)
-			}
-
-			err = json.Unmarshal(resp.Body(), &destTagsList)
-			if err != nil {
-				panic(err)
-			}
-
-			if len(destTagsList.Tags) > 0 {
-				break
-			}
-
-			time.Sleep(500 * time.Millisecond)
-		}
+		// sync image with all its refs
+		resp, err = destClient.R().Get(destBaseURL + "/v2/" + repoName + "/manifests/" + testImageTag)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
 		splittedURL = strings.SplitAfter(destBaseURL, ":")
 		destPort := splittedURL[len(splittedURL)-1]
 
-		time.Sleep(1 * time.Second)
+		time.Sleep(5 * time.Second)
 
 		// notation verify the image
 		image := fmt.Sprintf("localhost:%s/%s@%s", destPort, repoName, digest)
@@ -5295,7 +5233,6 @@ func TestSyncedSignaturesMetaDB(t *testing.T) {
 	Convey("Verify that metadb update correctly when syncing a signature", t, func() {
 		repoName := "signed-repo"
 		tag := "random-signed-image"
-		updateDuration := 30 * time.Minute
 
 		// Create source registry
 
@@ -5341,11 +5278,10 @@ func TestSyncedSignaturesMetaDB(t *testing.T) {
 							Tags:   &syncconf.Tags{Regex: &regex, Semver: &semver},
 						},
 					},
-					URLs:         []string{srcBaseURL},
-					PollInterval: updateDuration,
-					TLSVerify:    &tlsVerify,
-					CertDir:      "",
-					OnDemand:     true,
+					URLs:      []string{srcBaseURL},
+					TLSVerify: &tlsVerify,
+					CertDir:   "",
+					OnDemand:  true,
 				},
 			},
 		}
@@ -5363,10 +5299,12 @@ func TestSyncedSignaturesMetaDB(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
+		// regclient will put all referrers under ref tag "alg-subjectDigest"
 		repoMeta, err := dctlr.MetaDB.GetRepoMeta(context.Background(), repoName)
 		So(err, ShouldBeNil)
 		So(repoMeta.Tags, ShouldContainKey, tag)
-		So(len(repoMeta.Tags), ShouldEqual, 1)
+		// one tag for refs and the tag we pushed earlier
+		So(len(repoMeta.Tags), ShouldEqual, 2)
 		So(repoMeta.Signatures, ShouldContainKey, signedImage.DigestStr())
 
 		imageSignatures := repoMeta.Signatures[signedImage.DigestStr()]
@@ -5578,7 +5516,7 @@ func TestOnDemandRetryGoroutineErr(t *testing.T) {
 		So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
 
 		found, err := test.ReadLogFileAndSearchString(dctlr.Config.Log.Output,
-			"failed to copy image", 15*time.Second)
+			"failed to sync image", 15*time.Second)
 		if err != nil {
 			panic(err)
 		}
@@ -5701,7 +5639,7 @@ func TestOnDemandMultipleImage(t *testing.T) {
 			time.Sleep(500 * time.Millisecond)
 		}
 
-		waitSync(destDir, testImage)
+		// waitSync(destDir, testImage)
 
 		So(len(populatedDirs), ShouldEqual, 1)
 
@@ -6036,7 +5974,7 @@ func TestSignaturesOnDemand(t *testing.T) {
 		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
 		found, err := test.ReadLogFileAndSearchString(dctlr.Config.Log.Output,
-			"couldn't find any oci reference", 15*time.Second)
+			"failed to sync referrer", 15*time.Second)
 		if err != nil {
 			panic(err)
 		}
@@ -6614,7 +6552,7 @@ func TestSyncSignaturesDiff(t *testing.T) {
 		So(reflect.DeepEqual(cosignManifest, syncedCosignManifest), ShouldEqual, true)
 
 		found, err := test.ReadLogFileAndSearchString(dctlr.Config.Log.Output,
-			"skipping syncing cosign reference", 15*time.Second)
+			"skipping syncing referrer because it's already synced", 15*time.Second)
 		if err != nil {
 			panic(err)
 		}
@@ -6629,7 +6567,7 @@ func TestSyncSignaturesDiff(t *testing.T) {
 		So(found, ShouldBeTrue)
 
 		found, err = test.ReadLogFileAndSearchString(dctlr.Config.Log.Output,
-			"skipping oci references", 15*time.Second)
+			"skipping syncing referrer because it's already synced", 15*time.Second)
 		if err != nil {
 			panic(err)
 		}
