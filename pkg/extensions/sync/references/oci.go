@@ -53,7 +53,7 @@ func (ref OciReferences) IsSigned(ctx context.Context, remoteRepo, subjectDigest
 		return false
 	}
 
-	if len(getNotationManifestsFromOCIRefs(index)) > 0 {
+	if len(getNotationManifestsFromOCIRefs(index)) > 0 || len(getCosignManifestsFromOCIRefs(index)) > 0 {
 		return true
 	}
 

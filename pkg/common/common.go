@@ -27,6 +27,7 @@ const (
 	// same value as github.com/notaryproject/notation-go/registry.ArtifactTypeNotation (assert by internal test).
 	// reason used: to reduce zot minimal binary size (otherwise adds oras.land/oras-go/v2 deps).
 	ArtifactTypeNotation = "application/vnd.cncf.notary.signature"
+	ArtifactTypeCosign   = "application/vnd.dev.cosign.artifact.sig.v1+json"
 )
 
 var cosignTagRule = regexp.MustCompile(`sha256\-.+\.sig`)

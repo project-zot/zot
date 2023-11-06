@@ -30,7 +30,7 @@ func GetCosignSignatureTagForDigest(manifestDigest godigest.Digest) string {
 	return manifestDigest.Algorithm().String() + "-" + manifestDigest.Encoded() + ".sig"
 }
 
-func SignImageUsingCosign(repoTag, port string) error {
+func SignImageUsingCosign(repoTag, port string, withReferrers bool) error {
 	cwd, err := os.Getwd()
 	if err != nil {
 		return err
@@ -59,13 +59,21 @@ func SignImageUsingCosign(repoTag, port string) error {
 
 	const timeoutPeriod = 5
 
+	signOpts := options.SignOptions{
+		Registry:          options.RegistryOptions{AllowInsecure: true},
+		AnnotationOptions: options.AnnotationOptions{Annotations: []string{"tag=1.0"}},
+		Upload:            true,
+	}
+
+	if withReferrers {
+		signOpts.RegistryExperimental = options.RegistryExperimentalOptions{
+			RegistryReferrersMode: options.RegistryReferrersModeOCI11,
+		}
+	}
+
 	// sign the image
 	return sign.SignCmd(&options.RootOptions{Verbose: true, Timeout: timeoutPeriod * time.Minute},
 		options.KeyOpts{KeyRef: path.Join(tdir, "cosign.key"), PassFunc: generate.GetPass},
-		options.SignOptions{
-			Registry:          options.RegistryOptions{AllowInsecure: true},
-			AnnotationOptions: options.AnnotationOptions{Annotations: []string{"tag=1.0"}},
-			Upload:            true,
-		},
+		signOpts,
 		[]string{imageURL})
 }

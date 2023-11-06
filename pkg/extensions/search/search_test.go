@@ -1349,7 +1349,7 @@ func TestExpandedRepoInfo(t *testing.T) {
 		}
 		So(found, ShouldEqual, true)
 
-		err = signature.SignImageUsingCosign("zot-cve-test:0.0.1", port)
+		err = signature.SignImageUsingCosign("zot-cve-test:0.0.1", port, false)
 		So(err, ShouldBeNil)
 
 		resp, err = resty.R().Get(baseURL + graphqlQueryPrefix + "?query=" + url.QueryEscape(query))
@@ -1421,7 +1421,7 @@ func TestExpandedRepoInfo(t *testing.T) {
 		}
 		So(found, ShouldEqual, true)
 
-		err = signature.SignImageUsingCosign("zot-test@"+testManifestDigest.String(), port)
+		err = signature.SignImageUsingCosign("zot-test@"+testManifestDigest.String(), port, false)
 		So(err, ShouldBeNil)
 
 		resp, err = resty.R().Get(baseURL + graphqlQueryPrefix + "/query?query=" + url.QueryEscape(query))
@@ -3759,7 +3759,7 @@ func TestGlobalSearchFiltering(t *testing.T) {
 		)
 		So(err, ShouldBeNil)
 
-		err = signature.SignImageUsingCosign("signed-repo:test", port)
+		err = signature.SignImageUsingCosign("signed-repo:test", port, false)
 		So(err, ShouldBeNil)
 
 		query := `{
@@ -4323,7 +4323,7 @@ func TestMetaDBWhenSigningImages(t *testing.T) {
 		`
 
 		Convey("Sign with cosign", func() {
-			err = signature.SignImageUsingCosign("repo1:1.0.1", port)
+			err = signature.SignImageUsingCosign("repo1:1.0.1", port, false)
 			So(err, ShouldBeNil)
 
 			resp, err := resty.R().Get(baseURL + graphqlQueryPrefix + "?query=" + url.QueryEscape(queryImage1))
@@ -4403,7 +4403,7 @@ func TestMetaDBWhenSigningImages(t *testing.T) {
 					},
 				}
 
-				err := signature.SignImageUsingCosign("repo1:1.0.1", port)
+				err := signature.SignImageUsingCosign("repo1:1.0.1", port, false)
 				So(err, ShouldNotBeNil)
 			})
 		})
@@ -4443,7 +4443,7 @@ func TestMetaDBWhenSigningImages(t *testing.T) {
 		})
 
 		Convey("Sign with cosign index", func() {
-			err = signature.SignImageUsingCosign("repo1:index", port)
+			err = signature.SignImageUsingCosign("repo1:index", port, false)
 			So(err, ShouldBeNil)
 
 			resp, err := resty.R().Get(baseURL + graphqlQueryPrefix + "?query=" + url.QueryEscape(queryIndex))
@@ -4572,7 +4572,7 @@ func RunMetaDBIndexTests(baseURL, port string) {
 		responseImage := responseImages[0]
 		So(len(responseImage.Manifests), ShouldEqual, 3)
 
-		err = signature.SignImageUsingCosign(fmt.Sprintf("repo@%s", multiarchImage.DigestStr()), port)
+		err = signature.SignImageUsingCosign(fmt.Sprintf("repo@%s", multiarchImage.DigestStr()), port, false)
 		So(err, ShouldBeNil)
 
 		resp, err = resty.R().Get(baseURL + graphqlQueryPrefix + "?query=" + url.QueryEscape(query))
@@ -5301,7 +5301,7 @@ func TestMetaDBWhenDeletingImages(t *testing.T) {
 
 		Convey("Delete a cosign signature", func() {
 			repo := "repo1"
-			err := signature.SignImageUsingCosign("repo1:1.0.1", port)
+			err := signature.SignImageUsingCosign("repo1:1.0.1", port, false)
 			So(err, ShouldBeNil)
 
 			query := `

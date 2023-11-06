@@ -331,6 +331,100 @@ func TestBaseOciLayoutUtils(t *testing.T) {
 		isSigned = olu.CheckManifestSignature(repo, manifestList[0].Digest)
 		So(isSigned, ShouldBeTrue)
 	})
+
+	//nolint: dupl
+	Convey("CheckManifestSignature: cosign(tag)", t, func() {
+		// checkCosignSignature -> true (tag)
+		dir := t.TempDir()
+
+		port := tcommon.GetFreePort()
+		baseURL := tcommon.GetBaseURL(port)
+		conf := config.New()
+		conf.HTTP.Port = port
+		conf.Storage.RootDirectory = dir
+		defaultVal := true
+		conf.Extensions = &extconf.ExtensionConfig{
+			Search: &extconf.SearchConfig{BaseConfig: extconf.BaseConfig{Enable: &defaultVal}},
+		}
+
+		conf.Extensions.Search.CVE = nil
+
+		ctlr := api.NewController(conf)
+
+		ctlrManager := tcommon.NewControllerManager(ctlr)
+		ctlrManager.StartAndWait(port)
+		defer ctlrManager.StopServer()
+
+		// push test image to repo
+		image := CreateRandomImage()
+
+		repo := "repo2"
+		tag := "1.0.2"
+		err := UploadImage(image, baseURL, repo, tag)
+		So(err, ShouldBeNil)
+
+		olu := ociutils.NewBaseOciLayoutUtils(ctlr.StoreController, log.NewLogger("debug", ""))
+		manifestList, err := olu.GetImageManifests(repo)
+		So(err, ShouldBeNil)
+		So(len(manifestList), ShouldEqual, 1)
+
+		isSigned := olu.CheckManifestSignature(repo, manifestList[0].Digest)
+		So(isSigned, ShouldBeFalse)
+
+		// checkCosignSignature -> true (tag)
+		err = signature.SignImageUsingCosign(fmt.Sprintf("%s:%s", repo, tag), port, false)
+		So(err, ShouldBeNil)
+
+		isSigned = olu.CheckManifestSignature(repo, manifestList[0].Digest)
+		So(isSigned, ShouldBeTrue)
+	})
+
+	//nolint: dupl
+	Convey("CheckManifestSignature: cosign(with referrers)", t, func() {
+		// checkCosignSignature -> true (referrers)
+		dir := t.TempDir()
+
+		port := tcommon.GetFreePort()
+		baseURL := tcommon.GetBaseURL(port)
+		conf := config.New()
+		conf.HTTP.Port = port
+		conf.Storage.RootDirectory = dir
+		defaultVal := true
+		conf.Extensions = &extconf.ExtensionConfig{
+			Search: &extconf.SearchConfig{BaseConfig: extconf.BaseConfig{Enable: &defaultVal}},
+		}
+
+		conf.Extensions.Search.CVE = nil
+
+		ctlr := api.NewController(conf)
+
+		ctlrManager := tcommon.NewControllerManager(ctlr)
+		ctlrManager.StartAndWait(port)
+		defer ctlrManager.StopServer()
+
+		// push test image to repo
+		image := CreateRandomImage()
+
+		repo := "repo3"
+		tag := "1.0.3"
+		err := UploadImage(image, baseURL, repo, tag)
+		So(err, ShouldBeNil)
+
+		olu := ociutils.NewBaseOciLayoutUtils(ctlr.StoreController, log.NewLogger("debug", ""))
+		manifestList, err := olu.GetImageManifests(repo)
+		So(err, ShouldBeNil)
+		So(len(manifestList), ShouldEqual, 1)
+
+		isSigned := olu.CheckManifestSignature(repo, manifestList[0].Digest)
+		So(isSigned, ShouldBeFalse)
+
+		// checkCosignSignature -> true (referrers)
+		err = signature.SignImageUsingCosign(fmt.Sprintf("%s:%s", repo, tag), port, true)
+		So(err, ShouldBeNil)
+
+		isSigned = olu.CheckManifestSignature(repo, manifestList[0].Digest)
+		So(isSigned, ShouldBeTrue)
+	})
 }
 
 func TestExtractImageDetails(t *testing.T) {

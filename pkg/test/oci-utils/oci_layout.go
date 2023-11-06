@@ -262,7 +262,21 @@ func (olu BaseOciLayoutUtils) checkCosignSignature(name string, digest godigest.
 	reference := fmt.Sprintf("sha256-%s.sig", digest.Encoded())
 
 	_, _, _, err := imageStore.GetImageManifest(name, reference) //nolint: dogsled
+	if err == nil {
+		return true
+	}
+
+	mediaType := common.ArtifactTypeCosign
+
+	referrers, err := imageStore.GetReferrers(name, digest, []string{mediaType})
 	if err != nil {
+		olu.Log.Info().Err(err).Str("repository", name).Str("digest",
+			digest.String()).Str("mediatype", mediaType).Msg("invalid cosign signature")
+
+		return false
+	}
+
+	if len(referrers.Manifests) == 0 {
 		olu.Log.Info().Err(err).Str("repository", name).Str("digest",
 			digest.String()).Msg("invalid cosign signature")
 

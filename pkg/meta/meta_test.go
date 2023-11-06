@@ -1290,18 +1290,31 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 			})
 			So(err, ShouldBeNil)
 
+			err = metaDB.AddManifestSignature(repo1, image1.Digest, mTypes.SignatureMetadata{
+				SignatureType:   "cosign",
+				SignatureTag:    fmt.Sprintf("sha256-%s.sig", image1.Digest.Encoded()),
+				SignatureDigest: "digesttag",
+				LayersInfo:      []mTypes.LayerInfo{{LayerDigest: "layer-digest", LayerContent: []byte{10}}},
+			})
+			So(err, ShouldBeNil)
+
 			repoMeta, err := metaDB.GetRepoMeta(ctx, repo1)
 			So(err, ShouldBeNil)
 			So(repoMeta.Signatures[image1.Digest.String()]["cosign"][0].SignatureManifestDigest,
+				ShouldResemble, "digesttag")
+			So(repoMeta.Signatures[image1.Digest.String()]["cosign"][1].SignatureManifestDigest,
 				ShouldResemble, "digest")
 
 			imageMeta, err := metaDB.GetImageMeta(image1.Digest)
 
 			fullImageMeta := convert.GetFullImageMeta(tag1, repoMeta, imageMeta)
 			So(err, ShouldBeNil)
-			So(fullImageMeta.Signatures["cosign"][0].SignatureManifestDigest, ShouldResemble, "digest")
+			So(fullImageMeta.Signatures["cosign"][0].SignatureManifestDigest, ShouldResemble, "digesttag")
 			So(fullImageMeta.Signatures["cosign"][0].LayersInfo[0].LayerDigest, ShouldResemble, "layer-digest")
 			So(fullImageMeta.Signatures["cosign"][0].LayersInfo[0].LayerContent[0], ShouldEqual, 10)
+			So(fullImageMeta.Signatures["cosign"][1].SignatureManifestDigest, ShouldResemble, "digest")
+			So(fullImageMeta.Signatures["cosign"][1].LayersInfo[0].LayerDigest, ShouldResemble, "layer-digest")
+			So(fullImageMeta.Signatures["cosign"][1].LayersInfo[0].LayerContent[0], ShouldEqual, 10)
 		})
 
 		Convey("Test UpdateSignaturesValidity", func() {
@@ -1320,6 +1333,7 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 				err = metaDB.AddManifestSignature(repo1, image1.Digest(), mTypes.SignatureMetadata{
 					SignatureType:   "cosign",
 					SignatureDigest: image1.DigestStr(),
+					SignatureTag:    fmt.Sprintf("sha256-%s.sig", image1.Digest().Encoded()),
 					LayersInfo:      []mTypes.LayerInfo{layerInfo},
 				})
 				So(err, ShouldBeNil)
@@ -1442,6 +1456,7 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 
 			err := metaDB.AddManifestSignature(repo1, image1.Digest(), mTypes.SignatureMetadata{
 				SignatureType:   "cosign",
+				SignatureTag:    fmt.Sprintf("sha256-%s.sig", image1.Digest().Encoded()),
 				SignatureDigest: "digest",
 			})
 			So(err, ShouldBeNil)
@@ -1467,6 +1482,7 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 
 			err = metaDB.AddManifestSignature(repo1, image1.Digest(), mTypes.SignatureMetadata{
 				SignatureType:   "cosign",
+				SignatureTag:    fmt.Sprintf("sha256-%s.sig", image1.Digest().Encoded()),
 				SignatureDigest: "digest",
 			})
 			So(err, ShouldBeNil)

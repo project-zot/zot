@@ -34,12 +34,16 @@ import (
 	"zotregistry.io/zot/pkg/test/signature"
 )
 
+//nolint:dupl
 func TestSignature(t *testing.T) {
 	space := regexp.MustCompile(`\s+`)
+	repoName := "repo7"
 
-	Convey("Test from real server", t, func() {
+	Convey("Test with cosign signature(tag)", t, func() {
 		currentWorkingDir, err := os.Getwd()
 		So(err, ShouldBeNil)
+
+		defer func() { _ = os.Chdir(currentWorkingDir) }()
 
 		currentDir := t.TempDir()
 		err = os.Chdir(currentDir)
@@ -59,7 +63,6 @@ func TestSignature(t *testing.T) {
 		cm.StartAndWait(conf.HTTP.Port)
 		defer cm.StopServer()
 
-		repoName := "repo7"
 		image := CreateDefaultImage()
 		err = UploadImage(image, url, repoName, "1.0")
 		So(err, ShouldBeNil)
@@ -108,14 +111,13 @@ func TestSignature(t *testing.T) {
 		actual = strings.TrimSpace(space.ReplaceAllString(buff.String(), " "))
 		So(actual, ShouldContainSubstring, "REPOSITORY TAG OS/ARCH DIGEST SIGNED SIZE")
 		So(actual, ShouldContainSubstring, "repo7 1.0 linux/amd64 db573b01 true 854B")
-
-		err = os.Chdir(currentWorkingDir)
-		So(err, ShouldBeNil)
 	})
 
-	Convey("Test with notation signature", t, func() {
+	Convey("Test with cosign signature(withReferrers)", t, func() {
 		currentWorkingDir, err := os.Getwd()
 		So(err, ShouldBeNil)
+
+		defer func() { _ = os.Chdir(currentWorkingDir) }()
 
 		currentDir := t.TempDir()
 		err = os.Chdir(currentDir)
@@ -135,7 +137,60 @@ func TestSignature(t *testing.T) {
 		cm.StartAndWait(conf.HTTP.Port)
 		defer cm.StopServer()
 
-		repoName := "repo7"
+		err = UploadImage(CreateDefaultImage(), url, repoName, "0.0.1")
+		So(err, ShouldBeNil)
+
+		err = signature.SignImageUsingCosign("repo7:0.0.1", port, true)
+		So(err, ShouldBeNil)
+
+		searchConfig := getTestSearchConfig(url, client.NewSearchService())
+
+		t.Logf("%s", ctlr.Config.Storage.RootDirectory)
+
+		buff := &bytes.Buffer{}
+		searchConfig.ResultWriter = buff
+		err = client.SearchAllImagesGQL(searchConfig)
+		So(err, ShouldBeNil)
+
+		actual := strings.TrimSpace(space.ReplaceAllString(buff.String(), " "))
+		So(actual, ShouldContainSubstring, "REPOSITORY TAG OS/ARCH DIGEST SIGNED SIZE")
+		So(actual, ShouldContainSubstring, "repo7 0.0.1 linux/amd64 db573b01 true 854B")
+
+		t.Log("Test getting all images using rest calls to get catalog and individual manifests")
+		buff = &bytes.Buffer{}
+		searchConfig.ResultWriter = buff
+		err = client.SearchAllImages(searchConfig)
+		So(err, ShouldBeNil)
+
+		actual = strings.TrimSpace(space.ReplaceAllString(buff.String(), " "))
+		So(actual, ShouldContainSubstring, "REPOSITORY TAG OS/ARCH DIGEST SIGNED SIZE")
+		So(actual, ShouldContainSubstring, "repo7 0.0.1 linux/amd64 db573b01 true 854B")
+	})
+
+	Convey("Test with notation signature", t, func() {
+		currentWorkingDir, err := os.Getwd()
+		So(err, ShouldBeNil)
+
+		defer func() { _ = os.Chdir(currentWorkingDir) }()
+
+		currentDir := t.TempDir()
+		err = os.Chdir(currentDir)
+		So(err, ShouldBeNil)
+
+		port := test.GetFreePort()
+		url := test.GetBaseURL(port)
+		conf := config.New()
+		conf.HTTP.Port = port
+		defaultVal := true
+		conf.Extensions = &extconf.ExtensionConfig{
+			Search: &extconf.SearchConfig{BaseConfig: extconf.BaseConfig{Enable: &defaultVal}},
+		}
+		ctlr := api.NewController(conf)
+		ctlr.Config.Storage.RootDirectory = currentDir
+		cm := test.NewControllerManager(ctlr)
+		cm.StartAndWait(conf.HTTP.Port)
+		defer cm.StopServer()
+
 		err = UploadImage(CreateDefaultImage(), url, repoName, "0.0.1")
 		So(err, ShouldBeNil)
 
@@ -164,9 +219,6 @@ func TestSignature(t *testing.T) {
 		actual = strings.TrimSpace(space.ReplaceAllString(buff.String(), " "))
 		So(actual, ShouldContainSubstring, "REPOSITORY TAG OS/ARCH DIGEST SIGNED SIZE")
 		So(actual, ShouldContainSubstring, "repo7 0.0.1 linux/amd64 db573b01 true 854B")
-
-		err = os.Chdir(currentWorkingDir)
-		So(err, ShouldBeNil)
 	})
 }
 

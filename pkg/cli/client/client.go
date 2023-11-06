@@ -509,7 +509,27 @@ func isCosignSigned(ctx context.Context, repo, digestStr string, searchConf Sear
 	_, err := makeGETRequest(ctx, URL, username, password, searchConf.VerifyTLS,
 		searchConf.Debug, &result, searchConf.ResultWriter)
 
-	return err == nil
+	if err == nil {
+		return true
+	}
+
+	var referrers ispec.Index
+
+	artifactType := url.QueryEscape(common.ArtifactTypeCosign)
+	URL = fmt.Sprintf("%s/v2/%s/referrers/%s?artifactType=%s",
+		searchConf.ServURL, repo, digestStr, artifactType)
+
+	_, err = makeGETRequest(ctx, URL, username, password, searchConf.VerifyTLS,
+		searchConf.Debug, &referrers, searchConf.ResultWriter)
+	if err != nil {
+		return false
+	}
+
+	if len(referrers.Manifests) == 0 {
+		return false
+	}
+
+	return true
 }
 
 func (p *requestsPool) submitJob(job *httpJob) {
