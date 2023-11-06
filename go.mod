@@ -45,7 +45,7 @@ require (
 
 require (
 	github.com/aquasecurity/trivy v0.46.1
-	github.com/aws/aws-sdk-go-v2/service/dynamodb v1.23.0
+	github.com/aws/aws-sdk-go-v2/service/dynamodb v1.25.0
 	github.com/aws/aws-sdk-go-v2/service/secretsmanager v1.21.6
 	github.com/aws/aws-secretsmanager-caching-go v1.1.2
 	github.com/containers/image/v5 v5.28.0
@@ -98,11 +98,11 @@ require (
 	github.com/aquasecurity/table v1.8.0 // indirect
 	github.com/aquasecurity/tml v0.6.1 // indirect
 	github.com/aquasecurity/trivy-java-db v0.0.0-20230209231723-7cddb1406728 // indirect
-	github.com/aws/aws-sdk-go-v2/service/dynamodbstreams v1.15.7 // indirect
+	github.com/aws/aws-sdk-go-v2/service/dynamodbstreams v1.17.0 // indirect
 	github.com/aws/aws-sdk-go-v2/service/ebs v1.18.1 // indirect
 	github.com/aws/aws-sdk-go-v2/service/ec2 v1.98.0 // indirect
-	github.com/aws/aws-sdk-go-v2/service/internal/accept-encoding v1.9.15 // indirect
-	github.com/aws/aws-sdk-go-v2/service/internal/endpoint-discovery v1.7.37 // indirect
+	github.com/aws/aws-sdk-go-v2/service/internal/accept-encoding v1.10.0 // indirect
+	github.com/aws/aws-sdk-go-v2/service/internal/endpoint-discovery v1.8.1 // indirect
 	github.com/buildkite/agent/v3 v3.52.1 // indirect
 	github.com/buildkite/interpolate v0.0.0-20200526001904-07f35b4ae251 // indirect
 	github.com/chai2010/gettext-go v1.0.2 // indirect
@@ -292,13 +292,13 @@ require (
 	github.com/aquasecurity/go-version v0.0.0-20210121072130-637058cfe492 // indirect
 	github.com/asaskevich/govalidator v0.0.0-20230301143203-a9d515a09cc2 // indirect
 	github.com/aws/aws-sdk-go v1.46.7
-	github.com/aws/aws-sdk-go-v2 v1.21.2
+	github.com/aws/aws-sdk-go-v2 v1.22.1
 	github.com/aws/aws-sdk-go-v2/config v1.19.1
 	github.com/aws/aws-sdk-go-v2/credentials v1.13.43 // indirect
-	github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue v1.10.43
+	github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue v1.12.0
 	github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.13.13 // indirect
-	github.com/aws/aws-sdk-go-v2/internal/configsources v1.1.43 // indirect
-	github.com/aws/aws-sdk-go-v2/internal/endpoints/v2 v2.4.37 // indirect
+	github.com/aws/aws-sdk-go-v2/internal/configsources v1.2.1 // indirect
+	github.com/aws/aws-sdk-go-v2/internal/endpoints/v2 v2.5.1 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/ini v1.3.45 // indirect
 	github.com/aws/aws-sdk-go-v2/service/ecr v1.17.18 // indirect
 	github.com/aws/aws-sdk-go-v2/service/ecrpublic v1.12.0 // indirect
@@ -306,7 +306,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/sso v1.15.2 // indirect
 	github.com/aws/aws-sdk-go-v2/service/ssooidc v1.17.3 // indirect
 	github.com/aws/aws-sdk-go-v2/service/sts v1.23.2 // indirect
-	github.com/aws/smithy-go v1.15.0
+	github.com/aws/smithy-go v1.16.0
 	github.com/awslabs/amazon-ecr-credential-helper/ecr-login v0.0.0-20220228164355-396b2034c795 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/bgentry/go-netrc v0.0.0-20140422174119-9fd32a8b3d3d // indirect
