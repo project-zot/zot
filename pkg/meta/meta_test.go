@@ -43,7 +43,7 @@ const (
 	ARM     = "arm64"
 )
 
-func getManifestDigest(md mTypes.ManifestData) string { return md.Digest.String() }
+func getManifestDigest(md mTypes.ManifestMeta) string { return md.Digest.String() }
 
 func TestBoltDB(t *testing.T) {
 	Convey("BoltDB creation", t, func() {
@@ -509,6 +509,20 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 			// set subject on multiarch
 		})
 
+		Convey("GetFullImageMeta", func() {
+			img1 := CreateRandomImage()
+			multi := CreateMultiarchWith().Images([]Image{img1}).Build()
+
+			err := metaDB.SetRepoReference(ctx, "repo", img1.Digest().String(), img1.AsImageMeta())
+			So(err, ShouldBeNil)
+			err = metaDB.SetRepoReference(ctx, "repo", "tag", multi.AsImageMeta())
+			So(err, ShouldBeNil)
+
+			fullImageMeta, err := metaDB.GetFullImageMeta(ctx, "repo", "tag")
+			So(err, ShouldBeNil)
+			So(fullImageMeta.Digest.String(), ShouldResemble, multi.DigestStr())
+		})
+
 		Convey("Set/Get RepoMeta", func() {
 			err := metaDB.SetRepoMeta("repo", mTypes.RepoMeta{
 				Name: "repo",
@@ -663,6 +677,14 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 				So(repoMeta.Platforms, ShouldContain, ispec.Platform{OS: "os2", Architecture: "arch2"})
 				So(repoMeta.Size, ShouldEqual, repoSize)
 			})
+
+			Convey("Set with a bad reference", func() {
+				err := metaDB.SetRepoReference(ctx, "repo", "", imgData1)
+				So(err, ShouldNotBeNil)
+
+				err = metaDB.SetRepoReference(ctx, "", "tag", imgData1)
+				So(err, ShouldNotBeNil)
+			})
 		})
 
 		Convey("Test RemoveRepoReference", func() {
@@ -816,7 +838,10 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 				imageMeta = CreateDefaultImage().AsImageMeta()
 			)
 
-			err := metaDB.SetRepoReference(ctx, repo1, tag1, imageMeta)
+			err := metaDB.IncrementRepoStars("missing-repo")
+			So(err, ShouldNotBeNil)
+
+			err = metaDB.SetRepoReference(ctx, repo1, tag1, imageMeta)
 			So(err, ShouldBeNil)
 
 			err = metaDB.IncrementRepoStars(repo1)
@@ -848,7 +873,10 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 				imageMeta = CreateDefaultImage().AsImageMeta()
 			)
 
-			err := metaDB.SetRepoReference(ctx, repo1, tag1, imageMeta)
+			err := metaDB.IncrementRepoStars("missing-repo")
+			So(err, ShouldNotBeNil)
+
+			err = metaDB.SetRepoReference(ctx, repo1, tag1, imageMeta)
 			So(err, ShouldBeNil)
 
 			err = metaDB.IncrementRepoStars(repo1)

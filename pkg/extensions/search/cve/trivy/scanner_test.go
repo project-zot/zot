@@ -3,6 +3,7 @@
 package trivy_test
 
 import (
+	"errors"
 	"path/filepath"
 	"testing"
 	"time"
@@ -19,12 +20,16 @@ import (
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/meta"
 	"zotregistry.io/zot/pkg/meta/boltdb"
+	"zotregistry.io/zot/pkg/meta/types"
 	"zotregistry.io/zot/pkg/storage"
 	"zotregistry.io/zot/pkg/storage/local"
 	. "zotregistry.io/zot/pkg/test/common"
 	"zotregistry.io/zot/pkg/test/deprecated"
 	. "zotregistry.io/zot/pkg/test/image-utils"
+	"zotregistry.io/zot/pkg/test/mocks"
 )
+
+var ErrTestError = errors.New("test error")
 
 func TestScanBigTestFile(t *testing.T) {
 	Convey("Scan zot-test", t, func() {
@@ -198,5 +203,76 @@ func TestVulnerableLayer(t *testing.T) {
 		So(cveMap, ShouldContainKey, "CVE-2023-2975")
 		So(cveMap, ShouldContainKey, "CVE-2023-3817")
 		So(cveMap, ShouldContainKey, "CVE-2023-3446")
+	})
+}
+
+func TestScannerErrors(t *testing.T) {
+	Convey("Errors", t, func() {
+		storeController := storage.StoreController{}
+		metaDB := mocks.MetaDBMock{}
+		log := log.NewLogger("debug", "")
+
+		Convey("IsImageFormatScannable", func() {
+			storeController.DefaultStore = mocks.MockedImageStore{}
+			metaDB.GetImageMetaFn = func(digest godigest.Digest) (types.ImageMeta, error) {
+				return types.ImageMeta{}, ErrTestError
+			}
+			scanner := trivy.NewScanner(storeController, metaDB, "ghcr.io/project-zot/trivy-db", "", log)
+
+			_, err := scanner.IsImageFormatScannable("repo", godigest.FromString("dig").String())
+			So(err, ShouldNotBeNil)
+		})
+		Convey("IsImageMediaScannable", func() {
+			storeController.DefaultStore = mocks.MockedImageStore{}
+			metaDB.GetImageMetaFn = func(digest godigest.Digest) (types.ImageMeta, error) {
+				return types.ImageMeta{}, ErrTestError
+			}
+			scanner := trivy.NewScanner(storeController, metaDB, "ghcr.io/project-zot/trivy-db", "", log)
+
+			Convey("Manifest", func() {
+				_, err := scanner.IsImageMediaScannable("repo", godigest.FromString("dig").String(), ispec.MediaTypeImageManifest)
+				So(err, ShouldNotBeNil)
+			})
+			Convey("Index", func() {
+				_, err := scanner.IsImageMediaScannable("repo", godigest.FromString("dig").String(), ispec.MediaTypeImageIndex)
+				So(err, ShouldNotBeNil)
+			})
+			Convey("Index with nil index", func() {
+				metaDB.GetImageMetaFn = func(digest godigest.Digest) (types.ImageMeta, error) {
+					return types.ImageMeta{}, nil
+				}
+				scanner := trivy.NewScanner(storeController, metaDB, "ghcr.io/project-zot/trivy-db", "", log)
+
+				_, err := scanner.IsImageMediaScannable("repo", godigest.FromString("dig").String(), ispec.MediaTypeImageIndex)
+				So(err, ShouldNotBeNil)
+			})
+			Convey("Index with good index", func() {
+				metaDB.GetImageMetaFn = func(digest godigest.Digest) (types.ImageMeta, error) {
+					return types.ImageMeta{
+						Index: &ispec.Index{
+							Manifests: []ispec.Descriptor{{MediaType: ispec.MediaTypeImageLayer}},
+						},
+						Manifests: []types.ManifestMeta{{Manifest: ispec.Manifest{
+							Layers: []ispec.Descriptor{{MediaType: ispec.MediaTypeImageLayer}},
+						}}},
+					}, nil
+				}
+				scanner := trivy.NewScanner(storeController, metaDB, "ghcr.io/project-zot/trivy-db", "", log)
+
+				_, err := scanner.IsImageMediaScannable("repo", godigest.FromString("dig").String(), ispec.MediaTypeImageIndex)
+				So(err, ShouldBeNil)
+			})
+		})
+		Convey("ScanImage", func() {
+			storeController.DefaultStore = mocks.MockedImageStore{}
+			metaDB.GetImageMetaFn = func(digest godigest.Digest) (types.ImageMeta, error) {
+				return types.ImageMeta{}, ErrTestError
+			}
+
+			scanner := trivy.NewScanner(storeController, metaDB, "ghcr.io/project-zot/trivy-db", "", log)
+
+			_, err := scanner.ScanImage("image@" + godigest.FromString("digest").String())
+			So(err, ShouldNotBeNil)
+		})
 	})
 }

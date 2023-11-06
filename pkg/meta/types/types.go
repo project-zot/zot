@@ -196,11 +196,11 @@ type ImageMeta struct {
 	Digest    godigest.Digest // Digest refers to the image descriptor, a manifest or a index (if multiarch)
 	Size      int64           // Size refers to the image descriptor, a manifest or a index (if multiarch)
 	Index     *ispec.Index    // If the image is multiarch the Index will be non-nil
-	Manifests []ManifestData  // All manifests under the image, 1 for simple images and many for multiarch
+	Manifests []ManifestMeta  // All manifests under the image, 1 for simple images and many for multiarch
 }
 
-// ManifestData represents all data related to an image manifests (found from the image contents itself).
-type ManifestData struct {
+// ManifestMeta represents all data related to an image manifests (found from the image contents itself).
+type ManifestMeta struct {
 	Size     int64
 	Digest   godigest.Digest
 	Manifest ispec.Manifest
@@ -246,7 +246,7 @@ type FullImageMeta struct {
 }
 
 type FullManifestMeta struct {
-	ManifestData
+	ManifestMeta
 
 	Referrers  []ReferrerInfo
 	Statistics DescriptorStatistics

@@ -327,7 +327,7 @@ func GetImageManifestMeta(manifestContent ispec.Manifest, configContent ispec.Im
 		MediaType: ispec.MediaTypeImageManifest,
 		Digest:    digest,
 		Size:      size,
-		Manifests: []mTypes.ManifestData{
+		Manifests: []mTypes.ManifestMeta{
 			{
 				Digest:   digest,
 				Size:     size,
@@ -361,11 +361,11 @@ func GetTags(tags map[string]*proto_go.TagDescriptor) map[string]mTypes.Descript
 	return resultMap
 }
 
-func GetManifests(descriptors []ispec.Descriptor) []mTypes.ManifestData {
-	manifestList := []mTypes.ManifestData{}
+func GetManifests(descriptors []ispec.Descriptor) []mTypes.ManifestMeta {
+	manifestList := []mTypes.ManifestMeta{}
 
 	for _, manifest := range descriptors {
-		manifestList = append(manifestList, mTypes.ManifestData{
+		manifestList = append(manifestList, mTypes.ManifestMeta{
 			Digest: manifest.Digest,
 			Size:   manifest.Size,
 		})
@@ -384,6 +384,10 @@ func GetTime(time *timestamppb.Timestamp) *time.Time {
 
 func GetFullImageMetaFromProto(tag string, protoRepoMeta *proto_go.RepoMeta, protoImageMeta *proto_go.ImageMeta,
 ) mTypes.FullImageMeta {
+	if protoRepoMeta == nil {
+		return mTypes.FullImageMeta{}
+	}
+
 	imageMeta := GetImageMeta(protoImageMeta)
 	imageDigest := imageMeta.Digest.String()
 
@@ -404,7 +408,7 @@ func GetFullImageMetaFromProto(tag string, protoRepoMeta *proto_go.RepoMeta, pro
 	}
 }
 
-func GetFullManifestData(protoRepoMeta *proto_go.RepoMeta, manifestData []mTypes.ManifestData,
+func GetFullManifestData(protoRepoMeta *proto_go.RepoMeta, manifestData []mTypes.ManifestMeta,
 ) []mTypes.FullManifestMeta {
 	if protoRepoMeta == nil {
 		return []mTypes.FullManifestMeta{}
@@ -414,7 +418,7 @@ func GetFullManifestData(protoRepoMeta *proto_go.RepoMeta, manifestData []mTypes
 
 	for i := range manifestData {
 		results = append(results, mTypes.FullManifestMeta{
-			ManifestData: manifestData[i],
+			ManifestMeta: manifestData[i],
 			Referrers:    GetImageReferrers(protoRepoMeta.Referrers[manifestData[i].Digest.String()]),
 			Statistics:   GetImageStatistics(protoRepoMeta.Statistics[manifestData[i].Digest.String()]),
 			Signatures:   GetImageSignatures(protoRepoMeta.Signatures[manifestData[i].Digest.String()]),
@@ -511,6 +515,10 @@ func GetLastUpdatedImage(protoLastUpdated *proto_go.RepoLastUpdatedImage) *mType
 }
 
 func GetImageMeta(dbImageMeta *proto_go.ImageMeta) mTypes.ImageMeta {
+	if dbImageMeta == nil {
+		return mTypes.ImageMeta{}
+	}
+
 	imageMeta := mTypes.ImageMeta{
 		MediaType: dbImageMeta.MediaType,
 		Size:      GetImageManifestSize(dbImageMeta),
@@ -538,10 +546,10 @@ func GetImageMeta(dbImageMeta *proto_go.ImageMeta) mTypes.ImageMeta {
 		}
 	}
 
-	manifestDataList := make([]mTypes.ManifestData, 0, len(dbImageMeta.Manifests))
+	manifestDataList := make([]mTypes.ManifestMeta, 0, len(dbImageMeta.Manifests))
 
 	for _, manifest := range dbImageMeta.Manifests {
-		manifestDataList = append(manifestDataList, mTypes.ManifestData{
+		manifestDataList = append(manifestDataList, mTypes.ManifestMeta{
 			Size:   manifest.Size,
 			Digest: godigest.Digest(manifest.Digest),
 			Manifest: ispec.Manifest{

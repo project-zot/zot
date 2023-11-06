@@ -244,6 +244,39 @@ func TestRepoListWithNewestImage(t *testing.T) {
 	})
 }
 
+func TestGetFilteredPaginatedRepos(t *testing.T) {
+	ctx := context.Background()
+	log := log.NewLogger("debug", "")
+
+	Convey("getFilteredPaginatedRepos", t, func() {
+		metaDB := mocks.MetaDBMock{}
+
+		Convey("FilterRepos", func() {
+			metaDB.FilterReposFn = func(ctx context.Context, rankName mTypes.FilterRepoNameFunc,
+				filterFunc mTypes.FilterFullRepoFunc,
+			) ([]mTypes.RepoMeta, error) {
+				return nil, ErrTestError
+			}
+			_, err := getFilteredPaginatedRepos(ctx, nil, func(repo string) bool { return true }, log,
+				&gql_generated.PageInput{}, metaDB)
+			So(err, ShouldNotBeNil)
+		})
+		Convey("FilterImageMeta", func() {
+			metaDB.FilterImageMetaFn = func(ctx context.Context, digests []string) (map[string]mTypes.ImageMeta, error) {
+				return nil, ErrTestError
+			}
+			_, err := getFilteredPaginatedRepos(ctx, nil, func(repo string) bool { return true }, log,
+				&gql_generated.PageInput{}, metaDB)
+			So(err, ShouldNotBeNil)
+		})
+		Convey("PaginatedRepoMeta2RepoSummaries", func() {
+			_, err := getFilteredPaginatedRepos(ctx, nil, func(repo string) bool { return true }, log,
+				&gql_generated.PageInput{Limit: ref(-10)}, metaDB)
+			So(err, ShouldNotBeNil)
+		})
+	})
+}
+
 func TestGetBookmarkedRepos(t *testing.T) {
 	Convey("getBookmarkedRepos", t, func() {
 		responseContext := graphql.WithResponseContext(context.Background(), graphql.DefaultErrorPresenter,
@@ -426,6 +459,24 @@ func TestImageListForDigest(t *testing.T) {
 	})
 }
 
+func TestGetImageSummaryError(t *testing.T) {
+	Convey("getImageSummary", t, func() {
+		metaDB := mocks.MetaDBMock{
+			GetRepoMetaFn: func(ctx context.Context, repo string) (mTypes.RepoMeta, error) {
+				return mTypes.RepoMeta{Tags: map[string]mTypes.Descriptor{"tag": {}}}, nil
+			},
+			FilterImageMetaFn: func(ctx context.Context, digests []string) (map[string]mTypes.ImageMeta, error) {
+				return nil, ErrTestError
+			},
+		}
+		log := log.NewLogger("debug", "")
+
+		_, err := getImageSummary(context.Background(), "repo", "tag", nil, convert.SkipQGLField{},
+			metaDB, nil, log)
+		So(err, ShouldNotBeNil)
+	})
+}
+
 func TestImageListError(t *testing.T) {
 	Convey("getImageList", t, func() {
 		testLogger := log.NewLogger("debug", "/dev/null")
@@ -588,6 +639,18 @@ func TestQueryResolverErrors(t *testing.T) {
 			So(err, ShouldNotBeNil)
 		})
 
+		Convey("GlobalSearch error filte image meta", func() {
+			resolverConfig := NewResolver(log, storage.StoreController{}, mocks.MetaDBMock{
+				FilterImageMetaFn: func(ctx context.Context, digests []string) (map[string]mTypes.ImageMeta, error) {
+					return nil, ErrTestError
+				},
+			}, mocks.CveInfoMock{})
+			resolver := queryResolver{resolverConfig}
+
+			_, err := resolver.GlobalSearch(ctx, "some_string", &gql_generated.Filter{}, getPageInput(1, 1))
+			So(err, ShouldNotBeNil)
+		})
+
 		Convey("ImageListForCve error in GetMultipleRepoMeta", func() {
 			resolverConfig := NewResolver(
 				log,
@@ -648,6 +711,30 @@ func TestQueryResolverErrors(t *testing.T) {
 			qr := queryResolver{resolverConfig}
 
 			_, err := qr.ImageListWithCVEFixed(ctx, "cve1", "image", &gql_generated.Filter{}, &gql_generated.PageInput{})
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("RepoListWithNewestImage repoListWithNewestImage() filter image meta error", func() {
+			resolverConfig := NewResolver(
+				log,
+				storage.StoreController{
+					DefaultStore: mocks.MockedImageStore{},
+				},
+				mocks.MetaDBMock{
+					SearchReposFn: func(ctx context.Context, searchText string,
+					) ([]mTypes.RepoMeta, error) {
+						return []mTypes.RepoMeta{}, nil
+					},
+					FilterImageMetaFn: func(ctx context.Context, digests []string) (map[string]mTypes.ImageMeta, error) {
+						return nil, ErrTestError
+					},
+				},
+				mocks.CveInfoMock{},
+			)
+
+			qr := queryResolver{resolverConfig}
+
+			_, err := qr.RepoListWithNewestImage(ctx, &gql_generated.PageInput{})
 			So(err, ShouldNotBeNil)
 		})
 

@@ -243,10 +243,6 @@ func (scanner Scanner) isManifestScanable(digestStr string) (bool, error) {
 		return false, err
 	}
 
-	if manifestData.MediaType != ispec.MediaTypeImageManifest {
-		return false, zerr.ErrUnexpectedMediaType
-	}
-
 	for _, imageLayer := range manifestData.Manifests[0].Manifest.Layers {
 		switch imageLayer.MediaType {
 		case ispec.MediaTypeImageLayerGzip, ispec.MediaTypeImageLayer, string(regTypes.DockerLayer):
@@ -259,13 +255,9 @@ func (scanner Scanner) isManifestScanable(digestStr string) (bool, error) {
 	return true, nil
 }
 
-func (scanner Scanner) isManifestDataScannable(manifestData mTypes.ManifestData) (bool, error) {
+func (scanner Scanner) isManifestDataScannable(manifestData mTypes.ManifestMeta) (bool, error) {
 	if scanner.cache.Get(manifestData.Digest.String()) != nil {
 		return true, nil
-	}
-
-	if manifestData.Manifest.MediaType != ispec.MediaTypeImageManifest {
-		return false, zerr.ErrScanNotSupported
 	}
 
 	for _, imageLayer := range manifestData.Manifest.Layers {
@@ -290,7 +282,7 @@ func (scanner Scanner) isIndexScannable(digestStr string) (bool, error) {
 		return false, err
 	}
 
-	if indexData.MediaType != ispec.MediaTypeImageIndex || indexData.Index == nil {
+	if indexData.Index == nil {
 		return false, zerr.ErrUnexpectedMediaType
 	}
 

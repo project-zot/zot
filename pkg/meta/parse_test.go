@@ -34,6 +34,8 @@ import (
 const repo = "repo"
 
 func TestParseStorageErrors(t *testing.T) {
+	ctx := context.Background()
+
 	Convey("ParseStorage", t, func() {
 		imageStore := mocks.MockedImageStore{
 			GetIndexContentFn: func(repo string) ([]byte, error) {
@@ -97,6 +99,54 @@ func TestParseStorageErrors(t *testing.T) {
 			So(err, ShouldNotBeNil)
 		})
 
+		Convey("resetRepoReferences errors", func() {
+			imageStore.GetIndexContentFn = func(repo string) ([]byte, error) {
+				return []byte("{}"), nil
+			}
+			metaDB.ResetRepoReferencesFn = func(repo string) error { return ErrTestError }
+			err := meta.ParseRepo("repo", metaDB, storeController, log)
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("zcommon.IsReferrersTag", func() {
+			imageStore.GetIndexContentFn = func(repo string) ([]byte, error) {
+				return getIndexBlob(ispec.Index{
+					Manifests: []ispec.Descriptor{
+						{
+							MediaType: ispec.MediaTypeImageManifest,
+							Digest:    godigest.FromString("digest"),
+							Annotations: map[string]string{
+								ispec.AnnotationRefName: "sha256-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+							},
+						},
+					},
+				}), nil
+			}
+			err := meta.ParseRepo("repo", metaDB, storeController, log)
+			So(err, ShouldBeNil)
+		})
+
+		Convey("imageStore.GetImageManifest errors", func() {
+			imageStore.GetIndexContentFn = func(repo string) ([]byte, error) {
+				return getIndexBlob(ispec.Index{
+					Manifests: []ispec.Descriptor{
+						{
+							MediaType: ispec.MediaTypeImageManifest,
+							Digest:    godigest.FromString("digest"),
+							Annotations: map[string]string{
+								ispec.AnnotationRefName: "tag",
+							},
+						},
+					},
+				}), nil
+			}
+			imageStore.GetImageManifestFn = func(repo, reference string) ([]byte, godigest.Digest, string, error) {
+				return nil, "", "", ErrTestError
+			}
+			err := meta.ParseRepo("repo", metaDB, storeController, log)
+			So(err, ShouldNotBeNil)
+		})
+
 		Convey("manifestMetaIsPresent true", func() {
 			indexContent := ispec.Index{
 				Manifests: []ispec.Descriptor{
@@ -126,6 +176,75 @@ func TestParseStorageErrors(t *testing.T) {
 			})
 		})
 	})
+
+	image := CreateRandomImage()
+
+	Convey("SetImageMetaFromInput errors", t, func() {
+		mockImageStore := mocks.MockedImageStore{}
+		mockedMetaDB := mocks.MetaDBMock{}
+		log := log.NewLogger("debug", "")
+
+		Convey("Image Manifest errors", func() {
+			Convey("Get Config blob error", func() {
+				mockImageStore.GetBlobContentFn = func(repo string, digest godigest.Digest) ([]byte, error) {
+					return []byte{}, ErrTestError
+				}
+
+				err := meta.SetImageMetaFromInput(ctx, "repo", "tag", ispec.MediaTypeImageManifest, image.Digest(),
+					image.ManifestDescriptor.Data, mockImageStore, mockedMetaDB, log)
+				So(err, ShouldNotBeNil)
+			})
+			Convey("Unmarshal config blob error", func() {
+				mockImageStore.GetBlobContentFn = func(repo string, digest godigest.Digest) ([]byte, error) {
+					return []byte("bad-blob"), nil
+				}
+
+				err := meta.SetImageMetaFromInput(ctx, "repo", "tag", ispec.MediaTypeImageManifest, image.Digest(),
+					image.ManifestDescriptor.Data, mockImageStore, mockedMetaDB, log)
+				So(err, ShouldNotBeNil)
+			})
+			Convey("Is Signature", func() {
+				image := CreateDefaultImage()
+				mediaType := ispec.MediaTypeImageManifest
+				// it has more than 1 layer
+				badNotationSignature := CreateImageWith().RandomLayers(2, 10).EmptyConfig().Subject(image.DescriptorRef()).
+					ArtifactType(zcommon.ArtifactTypeNotation).Build()
+				goodNotationSignature := CreateMockNotationSignature(image.DescriptorRef())
+
+				Convey("GetSignatureLayersInfo errors", func() {
+					err := meta.SetImageMetaFromInput(ctx, "repo", "tag", mediaType, badNotationSignature.Digest(),
+						badNotationSignature.ManifestDescriptor.Data, mockImageStore, mockedMetaDB, log)
+					So(err, ShouldNotBeNil)
+				})
+				Convey("UpdateSignaturesValidity errors", func() {
+					mockedMetaDB.UpdateSignaturesValidityFn = func(repo string, manifestDigest godigest.Digest) error {
+						return ErrTestError
+					}
+					err := meta.SetImageMetaFromInput(ctx, "repo", "tag", mediaType, goodNotationSignature.Digest(),
+						goodNotationSignature.ManifestDescriptor.Data, mockImageStore, mockedMetaDB, log)
+					So(err, ShouldNotBeNil)
+				})
+			})
+		})
+		Convey("Image Index errors", func() {
+			Convey("Unmarshal error", func() {
+				err := meta.SetImageMetaFromInput(ctx, "repo", "tag", ispec.MediaTypeImageIndex, "",
+					[]byte("bad-json"), mockImageStore, mockedMetaDB, log)
+				So(err, ShouldNotBeNil)
+			})
+		})
+	})
+}
+
+func getIndexBlob(index ispec.Index) []byte {
+	index.MediaType = ispec.MediaTypeImageIndex
+
+	blob, err := json.Marshal(index)
+	if err != nil {
+		panic("image index should always be marshable")
+	}
+
+	return blob
 }
 
 func TestParseStorageWithBoltDB(t *testing.T) {
@@ -381,6 +500,42 @@ func TestGetSignatureLayersInfo(t *testing.T) {
 		layers, err := meta.GetSignatureLayersInfo("repo", "tag", "123", zcommon.NotationSignature, notationIndexBlob,
 			nil, log.NewLogger("debug", ""))
 		So(err, ShouldBeNil)
+		So(layers, ShouldBeEmpty)
+	})
+
+	Convey("GetBlobContent errors", t, func() {
+		mockImageStore := mocks.MockedImageStore{}
+		mockImageStore.GetBlobContentFn = func(repo string, digest godigest.Digest) ([]byte, error) {
+			return nil, ErrTestError
+		}
+		image := CreateRandomImage()
+
+		layers, err := meta.GetSignatureLayersInfo("repo", "tag", "123", zcommon.CosignSignature,
+			image.ManifestDescriptor.Data, mockImageStore, log.NewLogger("debug", ""))
+		So(err, ShouldNotBeNil)
+		So(layers, ShouldBeEmpty)
+	})
+
+	Convey("notation len(manifestContent.Layers) != 1", t, func() {
+		mockImageStore := mocks.MockedImageStore{}
+		image := CreateImageWith().RandomLayers(3, 10).RandomConfig().Build()
+
+		layers, err := meta.GetSignatureLayersInfo("repo", "tag", "123", zcommon.NotationSignature,
+			image.ManifestDescriptor.Data, mockImageStore, log.NewLogger("debug", ""))
+		So(err, ShouldNotBeNil)
+		So(layers, ShouldBeEmpty)
+	})
+
+	Convey("notation GetBlobContent errors", t, func() {
+		mockImageStore := mocks.MockedImageStore{}
+		mockImageStore.GetBlobContentFn = func(repo string, digest godigest.Digest) ([]byte, error) {
+			return nil, ErrTestError
+		}
+		image := CreateImageWith().RandomLayers(1, 10).RandomConfig().Build()
+
+		layers, err := meta.GetSignatureLayersInfo("repo", "tag", "123", zcommon.NotationSignature,
+			image.ManifestDescriptor.Data, mockImageStore, log.NewLogger("debug", ""))
+		So(err, ShouldNotBeNil)
 		So(layers, ShouldBeEmpty)
 	})
 
