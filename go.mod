@@ -51,8 +51,8 @@ require (
 	github.com/containers/image/v5 v5.28.0
 	github.com/google/go-github/v52 v52.0.0
 	github.com/gorilla/handlers v1.5.1
-	github.com/gorilla/securecookie v1.1.1
-	github.com/gorilla/sessions v1.2.1
+	github.com/gorilla/securecookie v1.1.2
+	github.com/gorilla/sessions v1.2.2
 	github.com/migueleliasweb/go-github-mock v0.0.21
 	github.com/notaryproject/notation-go v1.0.0
 	github.com/opencontainers/distribution-spec/specs-go v0.0.0-20230117141039-067a0f5b0e25
