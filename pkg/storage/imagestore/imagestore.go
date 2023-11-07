@@ -392,6 +392,14 @@ func (is *ImageStore) GetNextRepository(repo string) (string, error) {
 
 	driverErr := &driver.Error{}
 
+	// some s3 implementations (eg, digitalocean spaces) will return pathnotfounderror for walk but not list
+	// therefore, we must also catch that error here.
+	if errors.As(err, &driver.PathNotFoundError{}) {
+		is.log.Debug().Msg("empty rootDir")
+
+		return "", nil
+	}
+
 	if errors.Is(err, io.EOF) ||
 		(errors.As(err, driverErr) && errors.Is(driverErr.Enclosed, io.EOF)) {
 		return store, nil
