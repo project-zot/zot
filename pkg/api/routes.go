@@ -91,9 +91,11 @@ func (rh *RouteHandler) SetupRoutes() {
 		apiKeyRouter := rh.c.Router.PathPrefix(constants.APIKeyPath).Subrouter()
 		apiKeyRouter.Use(authHandler)
 		apiKeyRouter.Use(BaseAuthzHandler(rh.c))
+
+		// Always use CORSHeadersMiddleware before ACHeadersMiddleware
+		apiKeyRouter.Use(zcommon.CORSHeadersMiddleware(rh.c.Config.HTTP.AllowOrigin))
 		apiKeyRouter.Use(zcommon.ACHeadersMiddleware(rh.c.Config,
 			http.MethodGet, http.MethodPost, http.MethodDelete, http.MethodOptions))
-		apiKeyRouter.Use(zcommon.CORSHeadersMiddleware(rh.c.Config.HTTP.AllowOrigin))
 
 		apiKeyRouter.Methods(http.MethodPost, http.MethodOptions).HandlerFunc(rh.CreateAPIKey)
 		apiKeyRouter.Methods(http.MethodGet).HandlerFunc(rh.GetAPIKeys)
