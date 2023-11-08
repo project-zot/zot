@@ -11,6 +11,7 @@ import (
 	"github.com/opencontainers/image-spec/specs-go"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 
+	"zotregistry.io/zot/pkg/common"
 	mTypes "zotregistry.io/zot/pkg/meta/types"
 	storageConstants "zotregistry.io/zot/pkg/storage/constants"
 )
@@ -145,7 +146,7 @@ func (img Image) AsImageMeta() mTypes.ImageMeta {
 		MediaType: img.Manifest.MediaType,
 		Digest:    img.ManifestDescriptor.Digest,
 		Size:      img.ManifestDescriptor.Size,
-		Manifests: []mTypes.ManifestData{
+		Manifests: []mTypes.ManifestMeta{
 			{
 				Size:     img.ManifestDescriptor.Size,
 				Digest:   img.ManifestDescriptor.Digest,
@@ -203,11 +204,14 @@ func CreateRandomVulnerableImageWith() ManifestBuilder {
 	return CreateImageWith().VulnerableLayers().RandomVulnConfig()
 }
 
-// CreateFakeTestSignature returns a test signature that is used to mark a image as signed
-// when creating a test Repo. It won't be recognized as a signature if uploaded to the repository directly.
-func CreateFakeTestSignature(subject *ispec.Descriptor) Image {
-	return CreateImageWith().RandomLayers(1, 10).DefaultConfig().
-		ArtifactType(TestFakeSignatureArtType).Subject(subject).Build()
+func CreateMockNotationSignature(subject *ispec.Descriptor) Image {
+	return CreateImageWith().RandomLayers(1, 10).EmptyConfig().Subject(subject).
+		ArtifactType(common.ArtifactTypeNotation).Build()
+}
+
+func CreateMockCosignSignature(subject *ispec.Descriptor) Image {
+	return CreateImageWith().RandomLayers(1, 10).EmptyConfig().Subject(subject).
+		ArtifactType(common.ArtifactTypeCosign).Build()
 }
 
 type BaseImageBuilder struct {

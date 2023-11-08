@@ -796,3 +796,24 @@ func TestIndexAnnotations(t *testing.T) {
 		So(err, ShouldBeNil)
 	})
 }
+
+func TestConvertErrors(t *testing.T) {
+	ctx := context.Background()
+	log := log.NewLogger("debug", "")
+
+	Convey("Errors", t, func() {
+		Convey("RepoMeta2ExpandedRepoInfo", func() {
+			_, imgSums := convert.RepoMeta2ExpandedRepoInfo(ctx,
+				mTypes.RepoMeta{
+					Tags: map[string]mTypes.Descriptor{"tag": {MediaType: "bad-type", Digest: "digest"}},
+				},
+				map[string]mTypes.ImageMeta{
+					"digest": {},
+				},
+				convert.SkipQGLField{}, nil,
+				log,
+			)
+			So(len(imgSums), ShouldEqual, 0)
+		})
+	})
+}

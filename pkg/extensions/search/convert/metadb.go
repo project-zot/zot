@@ -175,12 +175,12 @@ func GetFullImageMeta(tag string, repoMeta mTypes.RepoMeta, imageMeta mTypes.Ima
 	}
 }
 
-func GetFullManifestMeta(repoMeta mTypes.RepoMeta, manifests []mTypes.ManifestData) []mTypes.FullManifestMeta {
+func GetFullManifestMeta(repoMeta mTypes.RepoMeta, manifests []mTypes.ManifestMeta) []mTypes.FullManifestMeta {
 	results := make([]mTypes.FullManifestMeta, 0, len(manifests))
 
 	for i := range manifests {
 		results = append(results, mTypes.FullManifestMeta{
-			ManifestData: manifests[i],
+			ManifestMeta: manifests[i],
 			Referrers:    repoMeta.Referrers[manifests[i].Digest.String()],
 			Statistics:   repoMeta.Statistics[manifests[i].Digest.String()],
 			Signatures:   repoMeta.Signatures[manifests[i].Digest.String()],

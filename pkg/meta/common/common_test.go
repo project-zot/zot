@@ -22,6 +22,20 @@ func TestUtils(t *testing.T) {
 		So(res, ShouldBeFalse)
 	})
 
+	Convey("GetProtoPlatform", t, func() {
+		platform := common.GetProtoPlatform(nil)
+		So(platform, ShouldBeNil)
+	})
+
+	Convey("ValidateRepoReferenceInput", t, func() {
+		err := common.ValidateRepoReferenceInput("", "tag", "digest")
+		So(err, ShouldNotBeNil)
+		err = common.ValidateRepoReferenceInput("repo", "", "digest")
+		So(err, ShouldNotBeNil)
+		err = common.ValidateRepoReferenceInput("repo", "tag", "")
+		So(err, ShouldNotBeNil)
+	})
+
 	Convey("CheckImageLastUpdated", t, func() {
 		Convey("No image checked, it doesn't have time", func() {
 			repoLastUpdated := time.Time{}

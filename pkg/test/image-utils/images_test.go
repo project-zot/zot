@@ -8,6 +8,7 @@ import (
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	. "github.com/smartystreets/goconvey/convey"
 
+	"zotregistry.io/zot/pkg/common"
 	. "zotregistry.io/zot/pkg/test/image-utils"
 )
 
@@ -16,6 +17,15 @@ func TestImageBuilder(t *testing.T) {
 	if err != nil {
 		t.FailNow()
 	}
+
+	Convey("Signature images", t, func() {
+		image := CreateDefaultImage()
+		cosign := CreateMockCosignSignature(image.DescriptorRef())
+		So(cosign.Manifest.ArtifactType, ShouldResemble, common.ArtifactTypeCosign)
+
+		notation := CreateMockNotationSignature(image.DescriptorRef())
+		So(notation.Manifest.ArtifactType, ShouldResemble, common.ArtifactTypeNotation)
+	})
 
 	Convey("Test Layer Builders", t, func() {
 		layerBuilder := CreateImageWith()

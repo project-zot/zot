@@ -41,8 +41,7 @@ type DynamoDB struct {
 	Log                log.Logger
 }
 
-func New(
-	client *dynamodb.Client, params DBDriverParameters, log log.Logger,
+func New(client *dynamodb.Client, params DBDriverParameters, log log.Logger,
 ) (*DynamoDB, error) {
 	dynamoWrapper := DynamoDB{
 		Client:             client,
@@ -110,27 +109,27 @@ func (dwr *DynamoDB) SetProtoImageMeta(digest godigest.Digest, protoImageMeta *p
 		return err
 	}
 
-	_, err = dwr.Client.UpdateItem(context.TODO(), &dynamodb.UpdateItemInput{
+	_, err = dwr.Client.UpdateItem(context.Background(), &dynamodb.UpdateItemInput{
 		ExpressionAttributeNames: map[string]string{
-			"#ID": "ImageMeta",
+			"#IM": "ImageMeta",
 		},
 		ExpressionAttributeValues: map[string]types.AttributeValue{
 			":ImageMeta": mdAttributeValue,
 		},
 		Key: map[string]types.AttributeValue{
 			"Key": &types.AttributeValueMemberS{
-				Value: mConvert.GetImageDigestStr(protoImageMeta),
+				Value: digest.String(),
 			},
 		},
 		TableName:        aws.String(dwr.ImageMetaTablename),
-		UpdateExpression: aws.String("SET #ID = :ImageMeta"),
+		UpdateExpression: aws.String("SET #IM = :ImageMeta"),
 	})
 
 	return err
 }
 
 func (dwr *DynamoDB) SetImageMeta(digest godigest.Digest, imageMeta mTypes.ImageMeta) error {
-	return dwr.SetProtoImageMeta(imageMeta.Digest, mConvert.GetProtoImageMeta(imageMeta))
+	return dwr.SetProtoImageMeta(digest, mConvert.GetProtoImageMeta(imageMeta))
 }
 
 func (dwr *DynamoDB) GetProtoImageMeta(ctx context.Context, digest godigest.Digest) (*proto_go.ImageMeta, error) {
@@ -180,10 +179,10 @@ func (dwr *DynamoDB) setProtoRepoMeta(repo string, repoMeta *proto_go.RepoMeta) 
 
 	_, err = dwr.Client.UpdateItem(context.TODO(), &dynamodb.UpdateItemInput{
 		ExpressionAttributeNames: map[string]string{
-			"#RM": "RepoMetadata",
+			"#RM": "RepoMeta",
 		},
 		ExpressionAttributeValues: map[string]types.AttributeValue{
-			":RepoMetadata": repoAttributeValue,
+			":RepoMeta": repoAttributeValue,
 		},
 		Key: map[string]types.AttributeValue{
 			"Key": &types.AttributeValueMemberS{
@@ -191,7 +190,7 @@ func (dwr *DynamoDB) setProtoRepoMeta(repo string, repoMeta *proto_go.RepoMeta) 
 			},
 		},
 		TableName:        aws.String(dwr.RepoMetaTablename),
-		UpdateExpression: aws.String("SET #RM = :RepoMetadata"),
+		UpdateExpression: aws.String("SET #RM = :RepoMeta"),
 	})
 
 	return err
@@ -215,7 +214,7 @@ func (dwr *DynamoDB) getProtoRepoMeta(ctx context.Context, repo string) (*proto_
 	blob := []byte{}
 
 	if resp.Item != nil {
-		err = attributevalue.Unmarshal(resp.Item["RepoMetadata"], &blob)
+		err = attributevalue.Unmarshal(resp.Item["RepoMeta"], &blob)
 		if err != nil {
 			return nil, err
 		}
@@ -343,10 +342,7 @@ func (dwr *DynamoDB) SetRepoReference(ctx context.Context, repo string, referenc
 		return err
 	}
 
-	repoMeta, repoBlobs, err = common.AddImageMetaToRepoMeta(repoMeta, repoBlobs, reference, imageMeta)
-	if err != nil {
-		return err
-	}
+	repoMeta, repoBlobs = common.AddImageMetaToRepoMeta(repoMeta, repoBlobs, reference, imageMeta)
 
 	err = dwr.setRepoBlobsInfo(repo, repoBlobs) //nolint: contextcheck
 	if err != nil {
@@ -431,7 +427,7 @@ func (dwr *DynamoDB) SearchRepos(ctx context.Context, searchText string) ([]mTyp
 	userStars := getUserStars(ctx, dwr)
 
 	repoMetaAttributeIterator := NewBaseDynamoAttributesIterator(
-		dwr.Client, dwr.RepoMetaTablename, "RepoMetadata", 0, dwr.Log,
+		dwr.Client, dwr.RepoMetaTablename, "RepoMeta", 0, dwr.Log,
 	)
 
 	repoMetaAttribute, err := repoMetaAttributeIterator.First(ctx)
@@ -574,7 +570,7 @@ func (dwr *DynamoDB) FilterTags(ctx context.Context, filterRepoTag mTypes.Filter
 	var viewError error
 
 	repoMetaAttributeIterator := NewBaseDynamoAttributesIterator(
-		dwr.Client, dwr.RepoMetaTablename, "RepoMetadata", 0, dwr.Log,
+		dwr.Client, dwr.RepoMetaTablename, "RepoMeta", 0, dwr.Log,
 	)
 
 	repoMetaAttribute, err := repoMetaAttributeIterator.First(ctx)
@@ -822,7 +818,7 @@ func (dwr *DynamoDB) GetMultipleRepoMeta(ctx context.Context, filter func(repoMe
 	)
 
 	repoMetaAttributeIterator = NewBaseDynamoAttributesIterator(
-		dwr.Client, dwr.RepoMetaTablename, "RepoMetadata", 0, dwr.Log,
+		dwr.Client, dwr.RepoMetaTablename, "RepoMeta", 0, dwr.Log,
 	)
 
 	repoMetaAttribute, err := repoMetaAttributeIterator.First(ctx)
@@ -870,7 +866,7 @@ func (dwr *DynamoDB) FilterRepos(ctx context.Context, acceptName mTypes.FilterRe
 	userStars := getUserStars(ctx, dwr)
 
 	repoMetaAttributeIterator := NewBaseDynamoAttributesIterator(
-		dwr.Client, dwr.RepoMetaTablename, "RepoMetadata", 0, dwr.Log,
+		dwr.Client, dwr.RepoMetaTablename, "RepoMeta", 0, dwr.Log,
 	)
 
 	repoMetaAttribute, err := repoMetaAttributeIterator.First(ctx)
@@ -1302,10 +1298,7 @@ func (dwr *DynamoDB) RemoveRepoReference(repo, reference string, manifestDigest 
 		return err
 	}
 
-	protoRepoMeta, repoBlobsInfo, err = common.RemoveImageFromRepoMeta(protoRepoMeta, repoBlobsInfo, reference)
-	if err != nil {
-		return err
-	}
+	protoRepoMeta, repoBlobsInfo = common.RemoveImageFromRepoMeta(protoRepoMeta, repoBlobsInfo, reference)
 
 	err = dwr.setRepoBlobsInfo(repo, repoBlobsInfo) //nolint: contextcheck
 	if err != nil {
@@ -1465,10 +1458,10 @@ func (dwr *DynamoDB) ToggleStarRepo(ctx context.Context, repo string) (
 					// Update Repo Meta with updated repo stars
 					Update: &types.Update{
 						ExpressionAttributeNames: map[string]string{
-							"#RM": "RepoMetadata",
+							"#RM": "RepoMeta",
 						},
 						ExpressionAttributeValues: map[string]types.AttributeValue{
-							":RepoMetadata": repoAttributeValue,
+							":RepoMeta": repoAttributeValue,
 						},
 						Key: map[string]types.AttributeValue{
 							"Key": &types.AttributeValueMemberS{
@@ -1476,7 +1469,7 @@ func (dwr *DynamoDB) ToggleStarRepo(ctx context.Context, repo string) (
 							},
 						},
 						TableName:        aws.String(dwr.RepoMetaTablename),
-						UpdateExpression: aws.String("SET #RM = :RepoMetadata"),
+						UpdateExpression: aws.String("SET #RM = :RepoMeta"),
 					},
 				},
 			},

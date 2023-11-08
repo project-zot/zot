@@ -40,6 +40,10 @@ func ReferenceIsDigest(reference string) bool {
 	return err == nil
 }
 
+func ReferenceIsTag(reference string) bool {
+	return !ReferenceIsDigest(reference)
+}
+
 func ValidateRepoReferenceInput(repo, reference string, manifestDigest godigest.Digest) error {
 	if repo == "" {
 		return zerr.ErrEmptyRepoName
@@ -188,7 +192,7 @@ func CheckImageLastUpdated(repoLastUpdated time.Time, isSigned bool, noImageChec
 
 func AddImageMetaToRepoMeta(repoMeta *proto_go.RepoMeta, repoBlobs *proto_go.RepoBlobs, reference string,
 	imageMeta mTypes.ImageMeta,
-) (*proto_go.RepoMeta, *proto_go.RepoBlobs, error) {
+) (*proto_go.RepoMeta, *proto_go.RepoBlobs) {
 	switch imageMeta.MediaType {
 	case ispec.MediaTypeImageManifest:
 		manifestData := imageMeta.Manifests[0]
@@ -203,7 +207,7 @@ func AddImageMetaToRepoMeta(repoMeta *proto_go.RepoMeta, repoBlobs *proto_go.Rep
 			vendors = append(vendors, vendor)
 		}
 
-		platforms := []*proto_go.Platform{getProtoPlatform(&manifestData.Config.Platform)}
+		platforms := []*proto_go.Platform{GetProtoPlatform(&manifestData.Config.Platform)}
 		if platforms[0].OS == "" && platforms[0].Architecture == "" {
 			platforms = []*proto_go.Platform{}
 		}
@@ -241,7 +245,7 @@ func AddImageMetaToRepoMeta(repoMeta *proto_go.RepoMeta, repoBlobs *proto_go.Rep
 
 	// update info only when a tag is added
 	if zcommon.IsDigest(reference) {
-		return repoMeta, repoBlobs, nil
+		return repoMeta, repoBlobs
 	}
 
 	size, platforms, vendors := recalculateAggregateFields(repoMeta, repoBlobs)
@@ -258,11 +262,11 @@ func AddImageMetaToRepoMeta(repoMeta *proto_go.RepoMeta, repoBlobs *proto_go.Rep
 			Tag:         reference,
 		})
 
-	return repoMeta, repoBlobs, nil
+	return repoMeta, repoBlobs
 }
 
 func RemoveImageFromRepoMeta(repoMeta *proto_go.RepoMeta, repoBlobs *proto_go.RepoBlobs, ref string,
-) (*proto_go.RepoMeta, *proto_go.RepoBlobs, error) {
+) (*proto_go.RepoMeta, *proto_go.RepoBlobs) {
 	var updatedLastImage *proto_go.RepoLastUpdatedImage
 
 	updatedBlobs := map[string]*proto_go.BlobInfo{}
@@ -308,7 +312,7 @@ func RemoveImageFromRepoMeta(repoMeta *proto_go.RepoMeta, repoBlobs *proto_go.Re
 
 	repoBlobs.Blobs = updatedBlobs
 
-	return repoMeta, repoBlobs, nil
+	return repoMeta, repoBlobs
 }
 
 func recalculateAggregateFields(repoMeta *proto_go.RepoMeta, repoBlobs *proto_go.RepoBlobs,
@@ -348,7 +352,7 @@ func recalculateAggregateFields(repoMeta *proto_go.RepoMeta, repoBlobs *proto_go
 	return size, platforms, vendors
 }
 
-func getProtoPlatform(platform *ispec.Platform) *proto_go.Platform {
+func GetProtoPlatform(platform *ispec.Platform) *proto_go.Platform {
 	if platform == nil {
 		return nil
 	}

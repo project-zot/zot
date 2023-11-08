@@ -33,7 +33,7 @@ func (mi *MultiarchImage) DigestStr() string {
 func (mi MultiarchImage) AsImageMeta() mTypes.ImageMeta {
 	index := mi.Index
 
-	manifests := make([]mTypes.ManifestData, 0, len(index.Manifests))
+	manifests := make([]mTypes.ManifestMeta, 0, len(index.Manifests))
 
 	for _, image := range mi.Images {
 		manifests = append(manifests, image.AsImageMeta().Manifests...)
