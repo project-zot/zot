@@ -277,7 +277,7 @@ func RemoveImageFromRepoMeta(repoMeta *proto_go.RepoMeta, repoBlobs *proto_go.Re
 
 		queue := []string{descriptor.Digest}
 
-		mConvert.GetProtoEarlierUpdatedImage(updatedLastImage, &proto_go.RepoLastUpdatedImage{
+		updatedLastImage = mConvert.GetProtoEarlierUpdatedImage(updatedLastImage, &proto_go.RepoLastUpdatedImage{
 			LastUpdated: repoBlobs.Blobs[descriptor.Digest].LastUpdated,
 			MediaType:   descriptor.MediaType,
 			Digest:      descriptor.Digest,
