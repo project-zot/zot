@@ -321,7 +321,10 @@ func RepoMeta2RepoSummary(ctx context.Context, repoMeta mTypes.RepoMeta,
 ) *gql_generated.RepoSummary {
 	var (
 		repoName                 = repoMeta.Name
-		repoLastUpdatedTimestamp = deref(repoMeta.LastUpdatedImage, mTypes.LastUpdatedImage{}).LastUpdated
+		lastUpdatedImage         = deref(repoMeta.LastUpdatedImage, mTypes.LastUpdatedImage{})
+		lastUpdatedImageMeta     = imageMetaMap[lastUpdatedImage.Digest]
+		lastUpdatedTag           = lastUpdatedImage.Tag
+		repoLastUpdatedTimestamp = lastUpdatedImage.LastUpdated
 		repoPlatforms            = repoMeta.Platforms
 		repoVendors              = repoMeta.Vendors
 		repoDownloadCount        = repoMeta.DownloadCount
@@ -329,8 +332,6 @@ func RepoMeta2RepoSummary(ctx context.Context, repoMeta mTypes.RepoMeta,
 		repoIsUserStarred        = repoMeta.IsStarred    // value specific to the current user
 		repoIsUserBookMarked     = repoMeta.IsBookmarked // value specific to the current user
 		repoSize                 = repoMeta.Size
-		lastUpdatedImageMeta     = imageMetaMap[repoMeta.LastUpdatedImage.Digest]
-		lastUpdatedTag           = repoMeta.LastUpdatedImage.Tag
 	)
 
 	if repoLastUpdatedTimestamp == nil {

@@ -459,6 +459,12 @@ func (dwr *DynamoDB) SearchRepos(ctx context.Context, searchText string) ([]mTyp
 			continue
 		}
 
+		delete(protoRepoMeta.Tags, "")
+
+		if len(protoRepoMeta.Tags) == 0 {
+			continue
+		}
+
 		rank := common.RankRepoName(searchText, protoRepoMeta.Name)
 		if rank == -1 {
 			continue

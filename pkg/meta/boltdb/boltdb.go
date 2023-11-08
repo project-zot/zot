@@ -385,6 +385,10 @@ func (bdw *BoltDB) SearchRepos(ctx context.Context, searchText string,
 
 			delete(protoRepoMeta.Tags, "")
 
+			if len(protoRepoMeta.Tags) == 0 {
+				continue
+			}
+
 			protoRepoMeta.Rank = int32(rank)
 			protoRepoMeta.IsStarred = zcommon.Contains(userStars, protoRepoMeta.Name)
 			protoRepoMeta.IsBookmarked = zcommon.Contains(userBookmarks, protoRepoMeta.Name)

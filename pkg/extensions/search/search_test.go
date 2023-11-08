@@ -19,6 +19,7 @@ import (
 	"time"
 
 	dbTypes "github.com/aquasecurity/trivy-db/pkg/types"
+	guuid "github.com/gofrs/uuid"
 	regTypes "github.com/google/go-containerregistry/pkg/v1/types"
 	notreg "github.com/notaryproject/notation-go/registry"
 	godigest "github.com/opencontainers/go-digest"
@@ -47,6 +48,7 @@ import (
 	"zotregistry.io/zot/pkg/test/mocks"
 	ociutils "zotregistry.io/zot/pkg/test/oci-utils"
 	"zotregistry.io/zot/pkg/test/signature"
+	tskip "zotregistry.io/zot/pkg/test/skip"
 )
 
 const (
@@ -6405,4 +6407,382 @@ func TestUploadingArtifactsWithDifferentMediaType(t *testing.T) {
 		So(responseStruct.Images[0].Manifests[0].ConfigDigest, ShouldResemble,
 			imageWithIncompatibleConfig.ConfigDescriptor.Digest.String())
 	})
+}
+
+func TestReadUploadDeleteDynamoDB(t *testing.T) {
+	tskip.SkipDynamo(t)
+
+	uuid, err := guuid.NewV4()
+	if err != nil {
+		panic(err)
+	}
+
+	cacheTablename := "BlobTable" + uuid.String()
+	repoMetaTablename := "RepoMetadataTable" + uuid.String()
+	versionTablename := "Version" + uuid.String()
+	userDataTablename := "UserDataTable" + uuid.String()
+	apiKeyTablename := "ApiKeyTable" + uuid.String()
+	imageMetaTablename := "ImageMeta" + uuid.String()
+	repoBlobsTablename := "RepoBlobs" + uuid.String()
+
+	cacheDriverParams := map[string]interface{}{
+		"name":                   "dynamoDB",
+		"endpoint":               os.Getenv("DYNAMODBMOCK_ENDPOINT"),
+		"region":                 "us-east-2",
+		"cachetablename":         cacheTablename,
+		"repometatablename":      repoMetaTablename,
+		"imagemetatablename":     imageMetaTablename,
+		"repoblobsinfotablename": repoBlobsTablename,
+		"userdatatablename":      userDataTablename,
+		"apikeytablename":        apiKeyTablename,
+		"versiontablename":       versionTablename,
+	}
+
+	port := GetFreePort()
+	baseURL := GetBaseURL(port)
+	conf := config.New()
+	conf.HTTP.Port = port
+	conf.Storage.RootDirectory = t.TempDir()
+	conf.Storage.GC = false
+	conf.Storage.CacheDriver = cacheDriverParams
+	conf.Storage.RemoteCache = true
+	conf.Log = &config.LogConfig{Level: "debug", Output: "/dev/null"}
+
+	defaultVal := true
+	conf.Extensions = &extconf.ExtensionConfig{
+		Search: &extconf.SearchConfig{BaseConfig: extconf.BaseConfig{Enable: &defaultVal}, CVE: nil},
+	}
+
+	ctlr := api.NewController(conf)
+	ctlrManager := NewControllerManager(ctlr)
+
+	ctlrManager.StartAndWait(port)
+	defer ctlrManager.StopServer()
+
+	RunReadUploadDeleteTests(t, baseURL)
+}
+
+func TestReadUploadDeleteBoltDB(t *testing.T) {
+	port := GetFreePort()
+	baseURL := GetBaseURL(port)
+	conf := config.New()
+	conf.HTTP.Port = port
+	conf.Storage.RootDirectory = t.TempDir()
+	conf.Storage.GC = false
+	conf.Log = &config.LogConfig{Level: "debug", Output: "/dev/null"}
+
+	defaultVal := true
+	conf.Extensions = &extconf.ExtensionConfig{
+		Search: &extconf.SearchConfig{BaseConfig: extconf.BaseConfig{Enable: &defaultVal}, CVE: nil},
+	}
+
+	ctlr := api.NewController(conf)
+	ctlrManager := NewControllerManager(ctlr)
+
+	ctlrManager.StartAndWait(port)
+	defer ctlrManager.StopServer()
+
+	RunReadUploadDeleteTests(t, baseURL)
+}
+
+func RunReadUploadDeleteTests(t *testing.T, baseURL string) {
+	t.Helper()
+
+	repo1 := "repo1"
+	image := CreateRandomImage()
+	tag1 := "tag1"
+
+	imageWithoutTag := CreateRandomImage()
+
+	usedImages := []repoRef{
+		{repo1, tag1},
+		{repo1, imageWithoutTag.DigestStr()},
+	}
+
+	Convey("Push-Read-Delete", t, func() {
+		results := GlobalSearchGQL("", baseURL)
+		So(len(results.Images), ShouldEqual, 0)
+		So(len(results.Repos), ShouldEqual, 0)
+
+		Convey("Push an image without tag", func() {
+			err := UploadImage(imageWithoutTag, baseURL, repo1, imageWithoutTag.DigestStr())
+			So(err, ShouldBeNil)
+
+			results := GlobalSearchGQL("", baseURL)
+			So(len(results.Repos), ShouldEqual, 0)
+
+			Convey("Add tag and delete it", func() {
+				err := UploadImage(image, baseURL, repo1, tag1)
+				So(err, ShouldBeNil)
+
+				results := GlobalSearchGQL("", baseURL)
+				So(len(results.Repos), ShouldEqual, 1)
+
+				status, err := DeleteImage(repo1, tag1, baseURL)
+				So(status, ShouldEqual, http.StatusAccepted)
+				So(err, ShouldBeNil)
+
+				results = GlobalSearchGQL("", baseURL)
+				So(len(results.Repos), ShouldEqual, 0)
+			})
+		})
+		Convey("Push a random image", func() {
+			err := UploadImage(image, baseURL, repo1, tag1)
+			So(err, ShouldBeNil)
+
+			results := GlobalSearchGQL("", baseURL)
+			So(len(results.Repos), ShouldEqual, 1)
+
+			Convey("Delete the image pushed", func() {
+				status, err := DeleteImage(repo1, tag1, baseURL)
+				So(status, ShouldEqual, http.StatusAccepted)
+				So(err, ShouldBeNil)
+
+				results := GlobalSearchGQL("", baseURL)
+				So(len(results.Repos), ShouldEqual, 0)
+
+				Convey("Push an image without tag", func() {
+					err := UploadImage(imageWithoutTag, baseURL, repo1, imageWithoutTag.DigestStr())
+					So(err, ShouldBeNil)
+
+					results := GlobalSearchGQL("", baseURL)
+					So(len(results.Repos), ShouldEqual, 0)
+				})
+			})
+			Convey("Delete the image pushed multiple times", func() {
+				for i := 0; i < 3; i++ {
+					status, err := DeleteImage(repo1, tag1, baseURL)
+					So(status, ShouldBeIn, []int{http.StatusAccepted, http.StatusNotFound, http.StatusBadRequest})
+					So(err, ShouldBeNil)
+
+					results := GlobalSearchGQL("", baseURL)
+					So(len(results.Repos), ShouldEqual, 0)
+				}
+			})
+			Convey("Upload same image multiple times", func() {
+				for i := 0; i < 3; i++ {
+					err := UploadImage(image, baseURL, repo1, tag1)
+					So(err, ShouldBeNil)
+				}
+
+				results := GlobalSearchGQL("", baseURL)
+				So(len(results.Repos), ShouldEqual, 1)
+			})
+		})
+
+		deleteUsedImages(usedImages, baseURL)
+	})
+
+	// Images with create time
+	repoLatest := "repo-latest"
+
+	afterImage := CreateImageWith().DefaultLayers().
+		ImageConfig(ispec.Image{Created: DateRef(2010, 1, 1, 1, 1, 1, 0, time.UTC)}).Build()
+	tagAfter := "after"
+
+	middleImage := CreateImageWith().DefaultLayers().
+		ImageConfig(ispec.Image{Created: DateRef(2005, 1, 1, 1, 1, 1, 0, time.UTC)}).Build()
+	tagMiddle := "middle"
+
+	beforeImage := CreateImageWith().DefaultLayers().
+		ImageConfig(ispec.Image{Created: DateRef(2000, 1, 1, 1, 1, 1, 0, time.UTC)}).Build()
+	tagBefore := "before"
+
+	imageWithoutTag = CreateImageWith().DefaultLayers().
+		ImageConfig(ispec.Image{Created: DateRef(2020, 1, 1, 1, 1, 1, 0, time.UTC)}).Build()
+
+	imageWithoutCreateTime := CreateImageWith().DefaultLayers().
+		ImageConfig(ispec.Image{Created: nil}).Build()
+	tagWithoutTime := "without-time"
+
+	usedImages = []repoRef{
+		{repoLatest, tagAfter},
+		{repoLatest, tagMiddle},
+		{repoLatest, tagBefore},
+		{repoLatest, tagWithoutTime},
+		{repoLatest, imageWithoutTag.DigestStr()},
+	}
+
+	Convey("Last Updated Image", t, func() {
+		results := GlobalSearchGQL("", baseURL)
+		So(len(results.Images), ShouldEqual, 0)
+		So(len(results.Repos), ShouldEqual, 0)
+
+		Convey("Without time", func() {
+			err := UploadImage(imageWithoutCreateTime, baseURL, repoLatest, tagWithoutTime)
+			So(err, ShouldBeNil)
+
+			results := GlobalSearchGQL("", baseURL)
+			So(len(results.Repos), ShouldEqual, 1)
+			So(results.Repos[0].NewestImage.Digest, ShouldResemble, imageWithoutCreateTime.DigestStr())
+
+			Convey("Add an image with create time and delete it", func() {
+				err := UploadImage(beforeImage, baseURL, repoLatest, tagBefore)
+				So(err, ShouldBeNil)
+
+				results := GlobalSearchGQL("", baseURL)
+				So(len(results.Repos), ShouldEqual, 1)
+				So(results.Repos[0].NewestImage.Digest, ShouldResemble, beforeImage.DigestStr())
+
+				status, err := DeleteImage(repoLatest, tagBefore, baseURL)
+				So(status, ShouldEqual, http.StatusAccepted)
+				So(err, ShouldBeNil)
+
+				results = GlobalSearchGQL("", baseURL)
+				So(len(results.Repos), ShouldEqual, 1)
+				So(results.Repos[0].NewestImage.Digest, ShouldResemble, imageWithoutCreateTime.DigestStr())
+			})
+		})
+		Convey("Upload middle image", func() {
+			err := UploadImage(middleImage, baseURL, repoLatest, tagMiddle)
+			So(err, ShouldBeNil)
+
+			results := GlobalSearchGQL("", baseURL)
+			So(len(results.Repos), ShouldEqual, 1)
+			So(results.Repos[0].NewestImage.Digest, ShouldResemble, middleImage.DigestStr())
+
+			Convey("Upload an image created before", func() {
+				err := UploadImage(beforeImage, baseURL, repoLatest, tagBefore)
+				So(err, ShouldBeNil)
+
+				results := GlobalSearchGQL("", baseURL)
+				So(len(results.Repos), ShouldEqual, 1)
+				So(results.Repos[0].NewestImage.Digest, ShouldResemble, middleImage.DigestStr())
+
+				Convey("Upload an image created after", func() {
+					err := UploadImage(afterImage, baseURL, repoLatest, tagAfter)
+					So(err, ShouldBeNil)
+
+					results := GlobalSearchGQL("", baseURL)
+					So(len(results.Repos), ShouldEqual, 1)
+					So(results.Repos[0].NewestImage.Digest, ShouldResemble, afterImage.DigestStr())
+
+					Convey("Delete middle then after", func() {
+						status, err := DeleteImage(repoLatest, tagMiddle, baseURL)
+						So(status, ShouldEqual, http.StatusAccepted)
+						So(err, ShouldBeNil)
+
+						results := GlobalSearchGQL("", baseURL)
+						So(len(results.Repos), ShouldEqual, 1)
+						So(results.Repos[0].NewestImage.Digest, ShouldResemble, afterImage.DigestStr())
+
+						status, err = DeleteImage(repoLatest, tagAfter, baseURL)
+						So(status, ShouldEqual, http.StatusAccepted)
+						So(err, ShouldBeNil)
+
+						results = GlobalSearchGQL("", baseURL)
+						So(len(results.Repos), ShouldEqual, 1)
+						So(results.Repos[0].NewestImage.Digest, ShouldResemble, beforeImage.DigestStr())
+					})
+				})
+			})
+			Convey("Upload an image created after", func() {
+				err := UploadImage(afterImage, baseURL, repoLatest, tagAfter)
+				So(err, ShouldBeNil)
+
+				results := GlobalSearchGQL("", baseURL)
+				So(len(results.Repos), ShouldEqual, 1)
+				So(results.Repos[0].NewestImage.Digest, ShouldResemble, afterImage.DigestStr())
+
+				Convey("Add newer image without tag", func() {
+					err := UploadImage(imageWithoutTag, baseURL, repoLatest, imageWithoutTag.DigestStr())
+					So(err, ShouldBeNil)
+
+					results := GlobalSearchGQL("", baseURL)
+					So(len(results.Repos), ShouldEqual, 1)
+					So(results.Repos[0].NewestImage.Digest, ShouldResemble, afterImage.DigestStr())
+				})
+
+				Convey("Delete afterImage", func() {
+					status, err := DeleteImage(repoLatest, tagAfter, baseURL)
+					So(status, ShouldEqual, http.StatusAccepted)
+					So(err, ShouldBeNil)
+
+					results := GlobalSearchGQL("", baseURL)
+					So(len(results.Repos), ShouldEqual, 1)
+					So(results.Repos[0].NewestImage.Digest, ShouldResemble, middleImage.DigestStr())
+				})
+			})
+		})
+
+		deleteUsedImages(usedImages, baseURL)
+	})
+}
+
+type repoRef struct {
+	Repo string
+	Tag  string
+}
+
+func deleteUsedImages(repoTags []repoRef, baseURL string) {
+	for _, image := range repoTags {
+		status, err := DeleteImage(image.Repo, image.Tag, baseURL)
+		So(status, ShouldBeIn, []int{http.StatusAccepted, http.StatusNotFound, http.StatusBadRequest})
+		So(err, ShouldBeNil)
+	}
+}
+
+func GlobalSearchGQL(query, baseURL string) *zcommon.GlobalSearchResultResp {
+	queryStr := `
+	{
+		GlobalSearch(query:"` + query + `"){
+			Images {
+				RepoName Tag Digest MediaType Size DownloadCount LastUpdated IsSigned
+				Description Licenses Labels Title Source Documentation Authors Vendor
+				Manifests {
+					Digest ConfigDigest LastUpdated Size IsSigned
+					DownloadCount
+					SignatureInfo {Tool IsTrusted Author}
+					Platform {Os Arch}
+					Layers {Size Digest}
+					History {
+						Layer { Size Digest }
+						HistoryDescription { Author Comment Created CreatedBy EmptyLayer }
+					}
+					Vulnerabilities {Count MaxSeverity}
+					Referrers {MediaType ArtifactType Size Digest Annotations {Key Value}}
+				}
+				Referrers {MediaType ArtifactType Size Digest Annotations {Key Value}}
+				Vulnerabilities { Count MaxSeverity }
+				SignatureInfo {Tool IsTrusted Author}
+			}
+			Repos {
+				Name LastUpdated Size DownloadCount StarCount IsBookmarked IsStarred
+				Platforms { Os Arch }
+				Vendors
+				NewestImage {
+					RepoName Tag Digest MediaType Size DownloadCount LastUpdated IsSigned
+					Description Licenses Labels Title Source Documentation Authors Vendor
+					Manifests {
+						Digest ConfigDigest LastUpdated Size IsSigned
+						DownloadCount
+						SignatureInfo {Tool IsTrusted Author}
+						Platform {Os Arch}
+						Layers {Size Digest}
+						History {
+							Layer { Size Digest }
+							HistoryDescription { Author Comment Created CreatedBy EmptyLayer }
+						}
+						Vulnerabilities {Count MaxSeverity}
+						Referrers {MediaType ArtifactType Size Digest Annotations {Key Value}}
+					}
+					Referrers {MediaType ArtifactType Size Digest Annotations {Key Value}}
+					Vulnerabilities { Count MaxSeverity }
+					SignatureInfo {Tool IsTrusted Author}
+				}
+			}
+		}
+	}`
+
+	resp, err := resty.R().Get(baseURL + graphqlQueryPrefix + "?query=" + url.QueryEscape(queryStr))
+	So(resp, ShouldNotBeNil)
+	So(err, ShouldBeNil)
+	So(resp.StatusCode(), ShouldEqual, 200)
+
+	responseStruct := &zcommon.GlobalSearchResultResp{}
+
+	err = json.Unmarshal(resp.Body(), responseStruct)
+	So(err, ShouldBeNil)
+
+	return responseStruct
 }
