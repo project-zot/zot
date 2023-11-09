@@ -2994,6 +2994,24 @@ func TestPullRange(t *testing.T) {
 	})
 }
 
+func TestStatIndex(t *testing.T) {
+	Convey("NewImageStore", t, func() {
+		dir := t.TempDir()
+		log := zlog.Logger{Logger: zerolog.New(os.Stdout)}
+		metrics := monitoring.NewMetricsServer(false, log)
+		imgStore := local.NewImageStore(dir, true, true, log, metrics, nil, nil)
+
+		err := WriteImageToFileSystem(CreateRandomImage(), "repo", "tag",
+			storage.StoreController{DefaultStore: imgStore})
+		So(err, ShouldBeNil)
+
+		Convey("StatIndex PathNotFoundError", func() {
+			_, _, _, err := imgStore.StatIndex("not-found")
+			So(err, ShouldNotBeNil)
+		})
+	})
+}
+
 func TestStorageDriverErr(t *testing.T) {
 	dir := t.TempDir()
 

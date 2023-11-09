@@ -112,6 +112,9 @@ type MetaDB interface { //nolint:interfacebloat
 	// SetRepoMeta returns RepoMetadata of a repo from the database
 	SetRepoMeta(repo string, repoMeta RepoMeta) error
 
+	// DeleteRepoMeta
+	DeleteRepoMeta(repo string) error
+
 	// GetReferrersInfo returns a list of  for all referrers of the given digest that match one of the
 	// artifact types.
 	GetReferrersInfo(repo string, referredDigest godigest.Digest, artifactTypes []string) ([]ReferrerInfo, error)
@@ -135,6 +138,10 @@ type MetaDB interface { //nolint:interfacebloat
 	// ResetRepoReferences resets all layout specific data (tags, signatures, referrers, etc.) but keep user and image
 	// specific metadata such as star count, downloads other statistics
 	ResetRepoReferences(repo string) error
+
+	GetRepoLastUpdated(repo string) time.Time
+
+	GetAllRepoNames() ([]string, error)
 
 	// ResetDB will delete all data in the DB
 	ResetDB() error

@@ -1505,6 +1505,25 @@ func (is *ImageStore) GetIndexContent(repo string) ([]byte, error) {
 	return buf, nil
 }
 
+func (is *ImageStore) StatIndex(repo string) (bool, int64, time.Time, error) {
+	repoIndexPath := path.Join(is.rootDir, repo, "index.json")
+
+	fileInfo, err := is.storeDriver.Stat(repoIndexPath)
+	if err != nil {
+		if errors.As(err, &driver.PathNotFoundError{}) {
+			is.log.Error().Err(err).Str("indexFile", repoIndexPath).Msg("index.json doesn't exist")
+
+			return false, 0, time.Time{}, zerr.ErrRepoNotFound
+		}
+
+		is.log.Error().Err(err).Str("indexFile", repoIndexPath).Msg("failed to read index.json")
+
+		return false, 0, time.Time{}, err
+	}
+
+	return true, fileInfo.Size(), fileInfo.ModTime(), nil
+}
+
 func (is *ImageStore) PutIndexContent(repo string, index ispec.Index) error {
 	dir := path.Join(is.rootDir, repo)
 

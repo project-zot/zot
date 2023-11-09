@@ -14,8 +14,7 @@ import (
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/meta/convert"
 	mTypes "zotregistry.io/zot/pkg/meta/types"
-	"zotregistry.io/zot/pkg/storage"
-	storageTypes "zotregistry.io/zot/pkg/storage/types"
+	stypes "zotregistry.io/zot/pkg/storage/types"
 )
 
 const (
@@ -25,27 +24,56 @@ const (
 
 // ParseStorage will sync all repos found in the rootdirectory of the oci layout that zot was deployed on with the
 // ParseStorage database.
-func ParseStorage(metaDB mTypes.MetaDB, storeController storage.StoreController, log log.Logger) error {
+func ParseStorage(metaDB mTypes.MetaDB, storeController stypes.StoreController, log log.Logger) error {
 	log.Info().Msg("Started parsing storage and updating MetaDB")
 
-	allRepos, err := getAllRepos(storeController)
+	allStorageRepos, err := getAllRepos(storeController, log)
 	if err != nil {
-		rootDir := storeController.DefaultStore.RootDir()
-		log.Error().Err(err).Str("rootDir", rootDir).
-			Msg("load-local-layout: failed to get all repo names present under rootDir")
+		return err
+	}
+
+	allMetaDBRepos, err := metaDB.GetAllRepoNames()
+	if err != nil {
+		log.Error().Err(err).
+			Msg("load-metadb-layout: failed to get all repo names present in metadb")
 
 		return err
 	}
 
-	for i, repo := range allRepos {
-		log.Info().Int("total", len(allRepos)).Int("progress", i).Str("current-repo", repo).
-			Msgf("parsing next repo '%s'", repo)
-
-		err := ParseRepo(repo, metaDB, storeController, log)
+	for _, repo := range getReposToBeDeleted(allStorageRepos, allMetaDBRepos) {
+		err := metaDB.DeleteRepoMeta(repo)
 		if err != nil {
-			log.Error().Err(err).Str("repository", repo).Msg("load-local-layout: failed to sync repo")
+			log.Error().Err(err).Str("rootDir", storeController.GetImageStore(repo).RootDir()).
+				Str("repo", repo).Msg("load-metadb-layout: failed to get all repo names present in metadb")
 
 			return err
+		}
+	}
+
+	for i, repo := range allStorageRepos {
+		log.Info().Int("total", len(allStorageRepos)).Int("progress", i).Str("current-repo", repo).
+			Msgf("parsing next repo '%s'", repo)
+
+		imgStore := storeController.GetImageStore(repo)
+
+		_, _, storageLastUpdated, err := imgStore.StatIndex(repo)
+		if err != nil {
+			log.Error().Err(err).Str("repository", repo).Msg("failed to sync repo")
+
+			continue
+		}
+
+		metaLastUpdated := metaDB.GetRepoLastUpdated(repo)
+
+		if storageLastUpdated.Before(metaLastUpdated) {
+			continue
+		}
+
+		err = ParseRepo(repo, metaDB, storeController, log)
+		if err != nil {
+			log.Error().Err(err).Str("repository", repo).Msg("failed to sync repo")
+
+			continue
 		}
 	}
 
@@ -54,8 +82,27 @@ func ParseStorage(metaDB mTypes.MetaDB, storeController storage.StoreController,
 	return nil
 }
 
+// getReposToBeDeleted will return all repos that are found in metaDB but not found in storage anymore.
+func getReposToBeDeleted(allStorageRepos []string, allMetaDBRepos []string) []string {
+	toBeDeleted := []string{}
+
+	storageRepoNameSet := map[string]struct{}{}
+
+	for i := range allStorageRepos {
+		storageRepoNameSet[allStorageRepos[i]] = struct{}{}
+	}
+
+	for _, metaDBRepo := range allMetaDBRepos {
+		if _, found := storageRepoNameSet[metaDBRepo]; !found {
+			toBeDeleted = append(toBeDeleted, metaDBRepo)
+		}
+	}
+
+	return toBeDeleted
+}
+
 // ParseRepo reads the contents of a repo and syncs all images and signatures found.
-func ParseRepo(repo string, metaDB mTypes.MetaDB, storeController storage.StoreController, log log.Logger) error {
+func ParseRepo(repo string, metaDB mTypes.MetaDB, storeController stypes.StoreController, log log.Logger) error {
 	imageStore := storeController.GetImageStore(repo)
 
 	var lockLatency time.Time
@@ -120,16 +167,22 @@ func ParseRepo(repo string, metaDB mTypes.MetaDB, storeController storage.StoreC
 	return nil
 }
 
-func getAllRepos(storeController storage.StoreController) ([]string, error) {
-	allRepos, err := storeController.DefaultStore.GetRepositories()
+func getAllRepos(storeController stypes.StoreController, log log.Logger) ([]string, error) {
+	allRepos, err := storeController.GetDefaultImageStore().GetRepositories()
 	if err != nil {
+		log.Error().Err(err).Str("rootDir", storeController.GetDefaultImageStore().RootDir()).
+			Msg("load-local-layout: failed to get all repo names present under rootDir")
+
 		return nil, err
 	}
 
-	if storeController.SubStore != nil {
-		for _, store := range storeController.SubStore {
+	if storeController.GetImageSubStores() != nil {
+		for _, store := range storeController.GetImageSubStores() {
 			substoreRepos, err := store.GetRepositories()
 			if err != nil {
+				log.Error().Err(err).Str("rootDir", store.RootDir()).
+					Msg("load-local-layout: failed to get all repo names present under rootDir")
+
 				return nil, err
 			}
 
@@ -141,7 +194,7 @@ func getAllRepos(storeController storage.StoreController) ([]string, error) {
 }
 
 func GetSignatureLayersInfo(repo, tag, manifestDigest, signatureType string, manifestBlob []byte,
-	imageStore storageTypes.ImageStore, log log.Logger,
+	imageStore stypes.ImageStore, log log.Logger,
 ) ([]mTypes.LayerInfo, error) {
 	switch signatureType {
 	case zcommon.CosignSignature:
@@ -154,7 +207,7 @@ func GetSignatureLayersInfo(repo, tag, manifestDigest, signatureType string, man
 }
 
 func getCosignSignatureLayersInfo(
-	repo, tag, manifestDigest string, manifestBlob []byte, imageStore storageTypes.ImageStore, log log.Logger,
+	repo, tag, manifestDigest string, manifestBlob []byte, imageStore stypes.ImageStore, log log.Logger,
 ) ([]mTypes.LayerInfo, error) {
 	layers := []mTypes.LayerInfo{}
 
@@ -197,7 +250,7 @@ func getCosignSignatureLayersInfo(
 }
 
 func getNotationSignatureLayersInfo(
-	repo, manifestDigest string, manifestBlob []byte, imageStore storageTypes.ImageStore, log log.Logger,
+	repo, manifestDigest string, manifestBlob []byte, imageStore stypes.ImageStore, log log.Logger,
 ) ([]mTypes.LayerInfo, error) {
 	layers := []mTypes.LayerInfo{}
 
@@ -250,7 +303,7 @@ func getNotationSignatureLayersInfo(
 // SetMetadataFromInput tries to set manifest metadata and update repo metadata by adding the current tag
 // (in case the reference is a tag). The function expects image manifests and indexes (multi arch images).
 func SetImageMetaFromInput(ctx context.Context, repo, reference, mediaType string, digest godigest.Digest, blob []byte,
-	imageStore storageTypes.ImageStore, metaDB mTypes.MetaDB, log log.Logger,
+	imageStore stypes.ImageStore, metaDB mTypes.MetaDB, log log.Logger,
 ) error {
 	var imageMeta mTypes.ImageMeta
 

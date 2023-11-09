@@ -212,7 +212,7 @@ func GenerateRandomName() (string, int64) {
 	return string(randomBytes), seed
 }
 
-func AccumulateField[R any, T any](list []T, accFunc func(T) R) []R {
+func AccumulateField[T any, R any](list []T, accFunc func(T) R) []R {
 	result := make([]R, 0, len(list))
 
 	for i := range list {

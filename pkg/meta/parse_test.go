@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -24,9 +25,11 @@ import (
 	"zotregistry.io/zot/pkg/storage"
 	"zotregistry.io/zot/pkg/storage/local"
 	storageTypes "zotregistry.io/zot/pkg/storage/types"
+	tcommon "zotregistry.io/zot/pkg/test/common"
 	"zotregistry.io/zot/pkg/test/deprecated"
 	. "zotregistry.io/zot/pkg/test/image-utils"
 	"zotregistry.io/zot/pkg/test/mocks"
+	ociutils "zotregistry.io/zot/pkg/test/oci-utils"
 	"zotregistry.io/zot/pkg/test/signature"
 	tskip "zotregistry.io/zot/pkg/test/skip"
 )
@@ -50,7 +53,7 @@ func TestParseStorageErrors(t *testing.T) {
 
 		// sync repo fail
 		err := meta.ParseStorage(metaDB, storeController, log.NewLogger("debug", ""))
-		So(err, ShouldNotBeNil)
+		So(err, ShouldBeNil)
 
 		Convey("getAllRepos errors", func() {
 			imageStore1 := mocks.MockedImageStore{
@@ -72,6 +75,40 @@ func TestParseStorageErrors(t *testing.T) {
 
 			err := meta.ParseStorage(metaDB, storeController, log.NewLogger("debug", ""))
 			So(err, ShouldNotBeNil)
+		})
+
+		Convey("metaDB.GetAllRepoNames errors", func() {
+			metaDB.GetAllRepoNamesFn = func() ([]string, error) { return nil, ErrTestError }
+
+			err := meta.ParseStorage(metaDB, storeController, log.NewLogger("debug", ""))
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("metaDB.DeleteRepoMeta errors", func() {
+			imageStore1 := mocks.MockedImageStore{
+				GetRepositoriesFn: func() ([]string, error) { return []string{"repo1", "repo2"}, nil },
+			}
+			storeController := storage.StoreController{DefaultStore: imageStore1}
+
+			metaDB.GetAllRepoNamesFn = func() ([]string, error) { return []string{"deleted"}, nil }
+			metaDB.DeleteRepoMetaFn = func(repo string) error { return ErrTestError }
+
+			err := meta.ParseStorage(metaDB, storeController, log.NewLogger("debug", ""))
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("StatIndex errors", func() {
+			imageStore1 := mocks.MockedImageStore{
+				GetRepositoriesFn: func() ([]string, error) { return []string{"repo1", "repo2"}, nil },
+			}
+			imageStore1.StatIndexFn = func(repo string) (bool, int64, time.Time, error) {
+				return false, 0, time.Time{}, ErrTestError
+			}
+
+			storeController := storage.StoreController{DefaultStore: imageStore1}
+
+			err := meta.ParseStorage(metaDB, storeController, log.NewLogger("debug", ""))
+			So(err, ShouldBeNil)
 		})
 	})
 
@@ -250,16 +287,17 @@ func getIndexBlob(index ispec.Index) []byte {
 func TestParseStorageWithBoltDB(t *testing.T) {
 	Convey("Boltdb", t, func() {
 		rootDir := t.TempDir()
+		log := log.NewLogger("debug", "/dev/null")
 
 		boltDB, err := boltdb.GetBoltDriver(boltdb.DBParameters{
 			RootDir: rootDir,
 		})
 		So(err, ShouldBeNil)
 
-		metaDB, err := boltdb.New(boltDB, log.NewLogger("debug", ""))
+		metaDB, err := boltdb.New(boltDB, log)
 		So(err, ShouldBeNil)
 
-		RunParseStorageTests(rootDir, metaDB)
+		RunParseStorageTests(rootDir, metaDB, log)
 	})
 }
 
@@ -268,6 +306,7 @@ func TestParseStorageDynamoWrapper(t *testing.T) {
 
 	Convey("Dynamodb", t, func() {
 		rootDir := t.TempDir()
+		log := log.NewLogger("debug", "/dev/null")
 
 		params := dynamodb.DBDriverParameters{
 			Endpoint:               os.Getenv("DYNAMODBMOCK_ENDPOINT"),
@@ -283,7 +322,7 @@ func TestParseStorageDynamoWrapper(t *testing.T) {
 		dynamoClient, err := dynamodb.GetDynamoClient(params)
 		So(err, ShouldBeNil)
 
-		dynamoWrapper, err := dynamodb.New(dynamoClient, params, log.NewLogger("debug", ""))
+		dynamoWrapper, err := dynamodb.New(dynamoClient, params, log)
 		So(err, ShouldBeNil)
 
 		err = dynamoWrapper.ResetTable(dynamoWrapper.RepoMetaTablename)
@@ -295,29 +334,26 @@ func TestParseStorageDynamoWrapper(t *testing.T) {
 		err = dynamoWrapper.ResetTable(dynamoWrapper.ImageMetaTablename)
 		So(err, ShouldBeNil)
 
-		RunParseStorageTests(rootDir, dynamoWrapper)
+		RunParseStorageTests(rootDir, dynamoWrapper, log)
 	})
 }
 
-func RunParseStorageTests(rootDir string, metaDB mTypes.MetaDB) {
+func RunParseStorageTests(rootDir string, metaDB mTypes.MetaDB, log log.Logger) {
+	ctx := context.Background()
+
 	Convey("Test with simple case", func() {
 		imageStore := local.NewImageStore(rootDir, false, false,
-			log.NewLogger("debug", ""), monitoring.NewMetricsServer(false, log.NewLogger("debug", "")), nil, nil)
+			log, monitoring.NewMetricsServer(false, log), nil, nil)
 
 		storeController := storage.StoreController{DefaultStore: imageStore}
 		manifests := []ispec.Manifest{}
 		for i := 0; i < 3; i++ {
-			config, layers, manifest, err := deprecated.GetRandomImageComponents(100) //nolint:staticcheck
-			So(err, ShouldBeNil)
+			image := CreateRandomImage() //nolint:staticcheck
 
-			manifests = append(manifests, manifest)
+			manifests = append(manifests, image.Manifest)
 
-			err = WriteImageToFileSystem(
-				Image{
-					Config:   config,
-					Layers:   layers,
-					Manifest: manifest,
-				}, repo, fmt.Sprintf("tag%d", i), storeController)
+			err := WriteImageToFileSystem(
+				image, repo, fmt.Sprintf("tag%d", i), storeController)
 			So(err, ShouldBeNil)
 		}
 
@@ -364,17 +400,15 @@ func RunParseStorageTests(rootDir string, metaDB mTypes.MetaDB) {
 		err = os.WriteFile(indexPath, buf, 0o600)
 		So(err, ShouldBeNil)
 
-		err = meta.ParseStorage(metaDB, storeController, log.NewLogger("debug", ""))
+		err = meta.ParseStorage(metaDB, storeController, log) //nolint: contextcheck
 		So(err, ShouldBeNil)
 
-		repos, err := metaDB.GetMultipleRepoMeta(context.Background(),
+		repos, err := metaDB.GetMultipleRepoMeta(ctx,
 			func(repoMeta mTypes.RepoMeta) bool { return true })
 		So(err, ShouldBeNil)
 
 		So(len(repos), ShouldEqual, 1)
 		So(len(repos[0].Tags), ShouldEqual, 2)
-
-		ctx := context.Background()
 
 		for tag, descriptor := range repos[0].Tags {
 			imageManifestData, err := metaDB.GetFullImageMeta(ctx, repo, tag)
@@ -388,7 +422,7 @@ func RunParseStorageTests(rootDir string, metaDB mTypes.MetaDB) {
 
 	Convey("Accept orphan signatures", func() {
 		imageStore := local.NewImageStore(rootDir, false, false,
-			log.NewLogger("debug", ""), monitoring.NewMetricsServer(false, log.NewLogger("debug", "")), nil, nil)
+			log, monitoring.NewMetricsServer(false, log), nil, nil)
 
 		storeController := storage.StoreController{DefaultStore: imageStore}
 		// add an image
@@ -424,10 +458,10 @@ func RunParseStorageTests(rootDir string, metaDB mTypes.MetaDB) {
 			}, repo, signatureTag, storeController)
 		So(err, ShouldBeNil)
 
-		err = meta.ParseStorage(metaDB, storeController, log.NewLogger("debug", ""))
+		err = meta.ParseStorage(metaDB, storeController, log) //nolint: contextcheck
 		So(err, ShouldBeNil)
 
-		repos, err := metaDB.GetMultipleRepoMeta(context.Background(),
+		repos, err := metaDB.GetMultipleRepoMeta(ctx,
 			func(repoMeta mTypes.RepoMeta) bool { return true })
 		So(err, ShouldBeNil)
 
@@ -443,7 +477,7 @@ func RunParseStorageTests(rootDir string, metaDB mTypes.MetaDB) {
 
 	Convey("Check statistics after load", func() {
 		imageStore := local.NewImageStore(rootDir, false, false,
-			log.NewLogger("debug", ""), monitoring.NewMetricsServer(false, log.NewLogger("debug", "")), nil, nil)
+			log, monitoring.NewMetricsServer(false, log), nil, nil)
 
 		storeController := storage.StoreController{DefaultStore: imageStore}
 		// add an image
@@ -452,7 +486,7 @@ func RunParseStorageTests(rootDir string, metaDB mTypes.MetaDB) {
 		err := WriteImageToFileSystem(image, repo, "tag", storeController)
 		So(err, ShouldBeNil)
 
-		err = metaDB.SetRepoReference(context.Background(), repo, "tag", image.AsImageMeta())
+		err = metaDB.SetRepoReference(ctx, repo, "tag", image.AsImageMeta())
 		So(err, ShouldBeNil)
 
 		err = metaDB.IncrementRepoStars(repo)
@@ -464,17 +498,17 @@ func RunParseStorageTests(rootDir string, metaDB mTypes.MetaDB) {
 		err = metaDB.UpdateStatsOnDownload(repo, "tag")
 		So(err, ShouldBeNil)
 
-		repoMeta, err := metaDB.GetRepoMeta(context.Background(), repo)
+		repoMeta, err := metaDB.GetRepoMeta(ctx, repo)
 		So(err, ShouldBeNil)
 
 		So(repoMeta.Statistics[image.DigestStr()].DownloadCount, ShouldEqual, 3)
 		So(repoMeta.StarCount, ShouldEqual, 1)
 		So(time.Now(), ShouldHappenAfter, repoMeta.Statistics[image.DigestStr()].LastPullTimestamp)
 
-		err = meta.ParseStorage(metaDB, storeController, log.NewLogger("debug", ""))
+		err = meta.ParseStorage(metaDB, storeController, log) //nolint: contextcheck
 		So(err, ShouldBeNil)
 
-		repoMeta, err = metaDB.GetRepoMeta(context.Background(), repo)
+		repoMeta, err = metaDB.GetRepoMeta(ctx, repo)
 		So(err, ShouldBeNil)
 
 		So(repoMeta.Statistics[image.DigestStr()].DownloadCount, ShouldEqual, 3)
@@ -484,7 +518,7 @@ func RunParseStorageTests(rootDir string, metaDB mTypes.MetaDB) {
 	// make sure pushTimestamp is always populated to not interfere with retention logic
 	Convey("Always update pushTimestamp if its value is 0(time.Time{})", func() {
 		imageStore := local.NewImageStore(rootDir, false, false,
-			log.NewLogger("debug", ""), monitoring.NewMetricsServer(false, log.NewLogger("debug", "")), nil, nil)
+			log, monitoring.NewMetricsServer(false, log), nil, nil)
 
 		storeController := storage.StoreController{DefaultStore: imageStore}
 		// add an image
@@ -493,13 +527,13 @@ func RunParseStorageTests(rootDir string, metaDB mTypes.MetaDB) {
 		err := WriteImageToFileSystem(image, repo, "tag", storeController)
 		So(err, ShouldBeNil)
 
-		err = metaDB.SetRepoReference(context.Background(), repo, "tag", image.AsImageMeta())
+		err = metaDB.SetRepoReference(ctx, repo, "tag", image.AsImageMeta())
 		So(err, ShouldBeNil)
 
 		err = metaDB.UpdateStatsOnDownload(repo, "tag")
 		So(err, ShouldBeNil)
 
-		repoMeta, err := metaDB.GetRepoMeta(context.Background(), repo)
+		repoMeta, err := metaDB.GetRepoMeta(ctx, repo)
 		So(err, ShouldBeNil)
 
 		So(repoMeta.Statistics[image.DigestStr()].DownloadCount, ShouldEqual, 1)
@@ -516,15 +550,99 @@ func RunParseStorageTests(rootDir string, metaDB mTypes.MetaDB) {
 		So(err, ShouldBeNil)
 
 		// metaDB should detect that pushTimestamp is 0 and update it.
-		err = meta.ParseStorage(metaDB, storeController, log.NewLogger("debug", ""))
+		err = meta.ParseStorage(metaDB, storeController, log) //nolint: contextcheck
 		So(err, ShouldBeNil)
 
-		repoMeta, err = metaDB.GetRepoMeta(context.Background(), repo)
+		repoMeta, err = metaDB.GetRepoMeta(ctx, repo)
 		So(err, ShouldBeNil)
 
 		So(repoMeta.Statistics[image.DigestStr()].DownloadCount, ShouldEqual, 1)
 		So(repoMeta.DownloadCount, ShouldEqual, 1)
 		So(repoMeta.Statistics[image.DigestStr()].PushTimestamp, ShouldHappenAfter, oldPushTimestamp)
+	})
+
+	Convey("Parse 2 times and check correct update of the metaDB for modified and deleted repos", func() {
+		storeController := ociutils.GetDefaultStoreController(rootDir, log)
+
+		notModifiedRepo := "not-modified-repo"
+		modifiedAddImageRepo := "modified-add-image-repo"
+		modifiedRemoveImageRepo := "modified-remove-image-repo"
+		deletedRepo := "deleted-repo"
+		addedRepo := "added-repo"
+		tag := "tag"
+		tag2 := "tag2"
+		newTag := "newTag"
+
+		image := CreateRandomImage()
+
+		err := WriteImageToFileSystem(image, notModifiedRepo, tag, storeController)
+		So(err, ShouldBeNil)
+		err = WriteImageToFileSystem(image, modifiedAddImageRepo, tag, storeController)
+		So(err, ShouldBeNil)
+
+		err = WriteImageToFileSystem(image, modifiedRemoveImageRepo, tag, storeController)
+		So(err, ShouldBeNil)
+		err = WriteImageToFileSystem(image, modifiedRemoveImageRepo, tag2, storeController)
+		So(err, ShouldBeNil)
+
+		err = WriteImageToFileSystem(image, deletedRepo, tag, storeController)
+		So(err, ShouldBeNil)
+
+		err = meta.ParseStorage(metaDB, storeController, log) //nolint: contextcheck
+		So(err, ShouldBeNil)
+
+		repoMetaList, err := metaDB.SearchRepos(ctx, "")
+		So(err, ShouldBeNil)
+		So(len(repoMetaList), ShouldEqual, 4)
+
+		repoNames := tcommon.AccumulateField(repoMetaList, func(rm mTypes.RepoMeta) string { return rm.Name })
+		So(repoNames, ShouldContain, notModifiedRepo)
+		So(repoNames, ShouldContain, modifiedAddImageRepo)
+		So(repoNames, ShouldContain, modifiedRemoveImageRepo)
+		So(repoNames, ShouldContain, deletedRepo)
+
+		time.Sleep(time.Second)
+
+		// Update the storage
+
+		err = WriteImageToFileSystem(image, modifiedAddImageRepo, newTag, storeController)
+		So(err, ShouldBeNil)
+
+		err = storeController.GetDefaultImageStore().DeleteImageManifest(modifiedRemoveImageRepo, tag2, false)
+		So(err, ShouldBeNil)
+
+		err = os.RemoveAll(filepath.Join(rootDir, deletedRepo))
+		So(err, ShouldBeNil)
+
+		err = WriteImageToFileSystem(image, addedRepo, tag, storeController)
+		So(err, ShouldBeNil)
+
+		// Parse again
+		err = meta.ParseStorage(metaDB, storeController, log) //nolint: contextcheck
+		So(err, ShouldBeNil)
+
+		repoMetaList, err = metaDB.SearchRepos(ctx, "")
+		So(err, ShouldBeNil)
+		So(len(repoMetaList), ShouldEqual, 4)
+
+		repoNames = tcommon.AccumulateField(repoMetaList, func(rm mTypes.RepoMeta) string { return rm.Name })
+		So(repoNames, ShouldContain, notModifiedRepo)
+		So(repoNames, ShouldContain, modifiedAddImageRepo)
+		So(repoNames, ShouldContain, modifiedRemoveImageRepo)
+		So(repoNames, ShouldNotContain, deletedRepo)
+		So(repoNames, ShouldContain, addedRepo)
+
+		repoMeta, err := metaDB.GetRepoMeta(ctx, modifiedAddImageRepo)
+		So(err, ShouldBeNil)
+
+		So(repoMeta.Tags, ShouldContainKey, tag)
+		So(repoMeta.Tags, ShouldContainKey, newTag)
+
+		repoMeta, err = metaDB.GetRepoMeta(ctx, modifiedRemoveImageRepo)
+		So(err, ShouldBeNil)
+
+		So(repoMeta.Tags, ShouldContainKey, tag)
+		So(repoMeta.Tags, ShouldNotContainKey, tag2)
 	})
 }
 

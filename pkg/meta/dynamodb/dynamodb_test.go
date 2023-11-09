@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
@@ -879,6 +880,22 @@ func TestWrapperErrors(t *testing.T) {
 			So(err, ShouldNotBeNil)
 		})
 
+		Convey("GetRepoLastUpdated", func() {
+			Convey("bad table", func() {
+				dynamoWrapper.RepoBlobsTablename = "bad-table"
+
+				lastUpdated := dynamoWrapper.GetRepoLastUpdated("repo")
+				So(lastUpdated, ShouldEqual, time.Time{})
+			})
+
+			Convey("unmarshal error", func() {
+				err := setRepoLastUpdated("repo", []byte("bad-blob"), dynamoWrapper)
+				So(err, ShouldBeNil)
+				lastUpdated := dynamoWrapper.GetRepoLastUpdated("repo")
+				So(lastUpdated, ShouldEqual, time.Time{})
+			})
+		})
+
 		Convey("DeleteUserAPIKey returns nil", func() {
 			userAc := reqCtx.NewUserAccessControl()
 			userAc.SetUsername("email")
@@ -1090,12 +1107,37 @@ func setRepoMeta(repo string, blob []byte, dynamoWrapper *mdynamodb.DynamoDB) er
 			":RepoMeta": userAttributeValue,
 		},
 		Key: map[string]types.AttributeValue{
-			"Key": &types.AttributeValueMemberS{
+			"TableKey": &types.AttributeValueMemberS{
 				Value: repo,
 			},
 		},
 		TableName:        aws.String(dynamoWrapper.RepoMetaTablename),
 		UpdateExpression: aws.String("SET #RM = :RepoMeta"),
+	})
+
+	return err
+}
+
+func setRepoLastUpdated(repo string, blob []byte, dynamoWrapper *mdynamodb.DynamoDB) error { //nolint: unparam
+	lastUpdatedAttributeValue, err := attributevalue.Marshal(blob)
+	if err != nil {
+		return err
+	}
+
+	_, err = dynamoWrapper.Client.UpdateItem(context.Background(), &dynamodb.UpdateItemInput{
+		ExpressionAttributeNames: map[string]string{
+			"#RLU": "RepoLastUpdated",
+		},
+		ExpressionAttributeValues: map[string]types.AttributeValue{
+			":RepoLastUpdated": lastUpdatedAttributeValue,
+		},
+		Key: map[string]types.AttributeValue{
+			"TableKey": &types.AttributeValueMemberS{
+				Value: repo,
+			},
+		},
+		TableName:        aws.String(dynamoWrapper.RepoBlobsTablename),
+		UpdateExpression: aws.String("SET #RLU = :RepoLastUpdated"),
 	})
 
 	return err
@@ -1115,7 +1157,7 @@ func setRepoBlobInfo(repo string, blob []byte, dynamoWrapper *mdynamodb.DynamoDB
 			":RepoBlobsInfo": userAttributeValue,
 		},
 		Key: map[string]types.AttributeValue{
-			"Key": &types.AttributeValueMemberS{
+			"TableKey": &types.AttributeValueMemberS{
 				Value: repo,
 			},
 		},
@@ -1140,7 +1182,7 @@ func setImageMeta(digest godigest.Digest, blob []byte, dynamoWrapper *mdynamodb.
 			":ImageMeta": userAttributeValue,
 		},
 		Key: map[string]types.AttributeValue{
-			"Key": &types.AttributeValueMemberS{
+			"TableKey": &types.AttributeValueMemberS{
 				Value: digest.String(),
 			},
 		},
@@ -1165,7 +1207,7 @@ func setBadUserData(client *dynamodb.Client, userDataTablename, userID string) e
 			":UserData": userAttributeValue,
 		},
 		Key: map[string]types.AttributeValue{
-			"Key": &types.AttributeValueMemberS{
+			"TableKey": &types.AttributeValueMemberS{
 				Value: userID,
 			},
 		},
@@ -1190,7 +1232,7 @@ func setVersion(client *dynamodb.Client, versionTablename string, version string
 			":Version": mdAttributeValue,
 		},
 		Key: map[string]types.AttributeValue{
-			"Key": &types.AttributeValueMemberS{
+			"TableKey": &types.AttributeValueMemberS{
 				Value: "DBVersion",
 			},
 		},

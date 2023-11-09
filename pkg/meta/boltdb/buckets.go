@@ -4,8 +4,12 @@ package boltdb
 const (
 	ImageMetaBuck     = "ImageMeta"
 	RepoMetaBuck      = "RepoMeta"
-	RepoBlobsBuck     = "RepoBlobsMeta"
 	UserDataBucket    = "UserData"
 	VersionBucket     = "Version"
 	UserAPIKeysBucket = "UserAPIKeys"
+)
+
+const (
+	RepoBlobsBuck       = "RepoBlobsMeta"
+	RepoLastUpdatedBuck = "RepoLastUpdated" // Sub-bucket
 )

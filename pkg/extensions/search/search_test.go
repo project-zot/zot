@@ -53,7 +53,7 @@ import (
 
 const (
 	graphqlQueryPrefix = constants.FullSearchPrefix
-	DBFileName         = "repo.db"
+	DBFileName         = "meta.db"
 )
 
 var (

@@ -51,8 +51,8 @@ var testCases = []struct {
 }
 
 func TestGarbageCollectAndRetention(t *testing.T) {
-	log := zlog.NewLogger("info", "")
-	audit := zlog.NewAuditLogger("debug", "")
+	log := zlog.NewLogger("info", "/dev/null")
+	audit := zlog.NewAuditLogger("debug", "/dev/null")
 
 	metrics := monitoring.NewMetricsServer(false, log)
 

@@ -264,22 +264,22 @@ func TestCreateMetaDBDriver(t *testing.T) {
 
 		const perms = 0o600
 
-		boltDB, err := bbolt.Open(path.Join(dir, "repo.db"), perms, &bbolt.Options{Timeout: time.Second * 10})
+		boltDB, err := bbolt.Open(path.Join(dir, "meta.db"), perms, &bbolt.Options{Timeout: time.Second * 10})
 		So(err, ShouldBeNil)
 
 		err = boltDB.Close()
 		So(err, ShouldBeNil)
 
-		err = os.Chmod(path.Join(dir, "repo.db"), 0o200)
+		err = os.Chmod(path.Join(dir, "meta.db"), 0o200)
 		So(err, ShouldBeNil)
 
 		_, err = meta.New(conf.Storage.StorageConfig, log)
 		So(err, ShouldNotBeNil)
 
-		err = os.Chmod(path.Join(dir, "repo.db"), 0o600)
+		err = os.Chmod(path.Join(dir, "meta.db"), 0o600)
 		So(err, ShouldBeNil)
 
-		defer os.Remove(path.Join(dir, "repo.db"))
+		defer os.Remove(path.Join(dir, "meta.db"))
 	})
 }
 

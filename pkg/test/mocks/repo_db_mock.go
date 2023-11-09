@@ -2,6 +2,7 @@ package mocks
 
 import (
 	"context"
+	"time"
 
 	godigest "github.com/opencontainers/go-digest"
 
@@ -9,6 +10,10 @@ import (
 )
 
 type MetaDBMock struct {
+	DeleteRepoMetaFn func(repo string) error
+
+	GetRepoLastUpdatedFn func(repo string) time.Time
+
 	GetStarredReposFn func(ctx context.Context) ([]string, error)
 
 	GetBookmarkedReposFn func(ctx context.Context) ([]string, error)
@@ -98,7 +103,33 @@ type MetaDBMock struct {
 
 	ResetRepoReferencesFn func(repo string) error
 
+	GetAllRepoNamesFn func() ([]string, error)
+
 	ResetDBFn func() error
+}
+
+func (sdm MetaDBMock) DeleteRepoMeta(repo string) error {
+	if sdm.DeleteRepoMetaFn != nil {
+		return sdm.DeleteRepoMetaFn(repo)
+	}
+
+	return nil
+}
+
+func (sdm MetaDBMock) GetAllRepoNames() ([]string, error) {
+	if sdm.GetAllRepoNamesFn != nil {
+		return sdm.GetAllRepoNamesFn()
+	}
+
+	return []string{}, nil
+}
+
+func (sdm MetaDBMock) GetRepoLastUpdated(repo string) time.Time {
+	if sdm.GetRepoLastUpdatedFn != nil {
+		return sdm.GetRepoLastUpdatedFn(repo)
+	}
+
+	return time.Time{}
 }
 
 func (sdm MetaDBMock) ResetDB() error {

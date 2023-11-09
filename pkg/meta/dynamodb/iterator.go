@@ -50,8 +50,9 @@ func NewBaseDynamoAttributesIterator(client *dynamodb.Client, table, attribute s
 
 func (dii *BaseAttributesIterator) First(ctx context.Context) (types.AttributeValue, error) {
 	scanOutput, err := dii.Client.Scan(ctx, &dynamodb.ScanInput{
-		TableName: aws.String(dii.Table),
-		Limit:     dii.readLimit,
+		TableName:            aws.String(dii.Table),
+		Limit:                dii.readLimit,
+		ProjectionExpression: aws.String(dii.Attribute),
 	})
 	if err != nil {
 		return &types.AttributeValueMemberBOOL{}, err

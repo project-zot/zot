@@ -48,7 +48,7 @@ func getManifestDigest(md mTypes.ManifestMeta) string { return md.Digest.String(
 func TestBoltDB(t *testing.T) {
 	Convey("BoltDB creation", t, func() {
 		boltDBParams := boltdb.DBParameters{RootDir: t.TempDir()}
-		repoDBPath := path.Join(boltDBParams.RootDir, "repo.db")
+		repoDBPath := path.Join(boltDBParams.RootDir, "meta.db")
 
 		boltDriver, err := boltdb.GetBoltDriver(boltDBParams)
 		So(err, ShouldBeNil)
@@ -85,7 +85,7 @@ func TestBoltDB(t *testing.T) {
 		boltdbWrapper.SetImageTrustStore(imgTrustStore)
 
 		defer func() {
-			os.Remove(path.Join(boltDBParams.RootDir, "repo.db"))
+			os.Remove(path.Join(boltDBParams.RootDir, "meta.db"))
 			os.RemoveAll(path.Join(boltDBParams.RootDir, "_cosign"))
 			os.RemoveAll(path.Join(boltDBParams.RootDir, "_notation"))
 		}()
@@ -2147,7 +2147,7 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 
 		Convey("GetReferrersInfo", func() {
 			repo := "repo"
-			tag := "tag"
+			tag := "test-tag"
 
 			image := CreateRandomImage()
 			err := metaDB.SetRepoReference(ctx, repo, tag, image.AsImageMeta())
@@ -2243,7 +2243,7 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 		Convey("FilterRepos", func() {
 			repo := "repoFilter"
 			tag1 := "tag1"
-			tag2 := "tag2"
+			tag2 := "tag22"
 
 			image := CreateImageWith().DefaultLayers().PlatformConfig("image-platform", "image-os").Build()
 			err := metaDB.SetRepoReference(ctx, repo, tag1, image.AsImageMeta())
@@ -2370,6 +2370,71 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 			So(repoMeta.IsBookmarked, ShouldBeTrue)
 			So(repoMeta.IsStarred, ShouldBeTrue)
 			So(repoMeta.Tags, ShouldContainKey, "tag")
+		})
+
+		Convey("GetAllRepoNames", func() {
+			repo1 := "repo1"
+			repo2 := "repo2"
+			repo3 := "repo3"
+			imageMeta := CreateRandomImage().AsImageMeta()
+
+			err := metaDB.SetRepoReference(ctx, repo1, "tag", imageMeta)
+			So(err, ShouldBeNil)
+			err = metaDB.SetRepoReference(ctx, repo2, "tag", imageMeta)
+			So(err, ShouldBeNil)
+			err = metaDB.SetRepoReference(ctx, repo3, "tag", imageMeta)
+			So(err, ShouldBeNil)
+
+			repos, err := metaDB.GetAllRepoNames()
+			So(err, ShouldBeNil)
+			So(repos, ShouldContain, repo1)
+			So(repos, ShouldContain, repo2)
+			So(repos, ShouldContain, repo3)
+
+			err = metaDB.DeleteRepoMeta(repo1)
+			So(err, ShouldBeNil)
+
+			repos, err = metaDB.GetAllRepoNames()
+			So(err, ShouldBeNil)
+			So(repos, ShouldNotContain, repo1)
+			So(repos, ShouldContain, repo2)
+			So(repos, ShouldContain, repo3)
+
+			err = metaDB.DeleteRepoMeta(repo2)
+			So(err, ShouldBeNil)
+
+			repos, err = metaDB.GetAllRepoNames()
+			So(err, ShouldBeNil)
+			So(repos, ShouldNotContain, repo1)
+			So(repos, ShouldNotContain, repo2)
+			So(repos, ShouldContain, repo3)
+
+			err = metaDB.SetRepoReference(ctx, repo1, "tag", imageMeta)
+			So(err, ShouldBeNil)
+
+			repos, err = metaDB.GetAllRepoNames()
+			So(err, ShouldBeNil)
+			So(repos, ShouldContain, repo1)
+			So(repos, ShouldNotContain, repo2)
+			So(repos, ShouldContain, repo3)
+
+			err = metaDB.DeleteRepoMeta(repo1)
+			So(err, ShouldBeNil)
+
+			repos, err = metaDB.GetAllRepoNames()
+			So(err, ShouldBeNil)
+			So(repos, ShouldNotContain, repo1)
+			So(repos, ShouldNotContain, repo2)
+			So(repos, ShouldContain, repo3)
+
+			err = metaDB.DeleteRepoMeta(repo3)
+			So(err, ShouldBeNil)
+
+			repos, err = metaDB.GetAllRepoNames()
+			So(err, ShouldBeNil)
+			So(repos, ShouldNotContain, repo1)
+			So(repos, ShouldNotContain, repo2)
+			So(repos, ShouldNotContain, repo3)
 		})
 	})
 }
