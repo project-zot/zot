@@ -176,7 +176,7 @@ github.com/go-pkgz/expirable-cache|https://github.com/go-pkgz/expirable-cache/bl
 github.com/go-playground/locales|https://github.com/go-playground/locales/blob/v0.14.1/LICENSE|MIT
 github.com/go-playground/universal-translator|https://github.com/go-playground/universal-translator/blob/v0.18.1/LICENSE|MIT
 github.com/go-playground/validator/v10|https://github.com/go-playground/validator/blob/v10.15.1/LICENSE|MIT
-github.com/go-redis/redis/v8|https://github.com/go-redis/redis/blob/v8.11.5/LICENSE|BSD-2-Clause
+github.com/go-redis/redis/v9|https://github.com/redis/go-redis/blob/v9.3.0/LICENSE|BSD-2-Clause
 github.com/gobwas/glob|https://github.com/gobwas/glob/blob/v0.2.3/LICENSE|MIT
 github.com/goccy/go-json|https://github.com/goccy/go-json/blob/v0.10.2/LICENSE|MIT
 github.com/gofrs/uuid|https://github.com/gofrs/uuid/blob/v4.4.0/LICENSE|MIT
