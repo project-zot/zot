@@ -480,6 +480,52 @@ func RunParseStorageTests(rootDir string, metaDB mTypes.MetaDB) {
 		So(repoMeta.Statistics[image.DigestStr()].DownloadCount, ShouldEqual, 3)
 		So(repoMeta.StarCount, ShouldEqual, 1)
 	})
+
+	// make sure pushTimestamp is always populated to not interfere with retention logic
+	Convey("Always update pushTimestamp if its value is 0(time.Time{})", func() {
+		imageStore := local.NewImageStore(rootDir, false, false,
+			log.NewLogger("debug", ""), monitoring.NewMetricsServer(false, log.NewLogger("debug", "")), nil, nil)
+
+		storeController := storage.StoreController{DefaultStore: imageStore}
+		// add an image
+		image := CreateRandomImage() //nolint:staticcheck
+
+		err := WriteImageToFileSystem(image, repo, "tag", storeController)
+		So(err, ShouldBeNil)
+
+		err = metaDB.SetRepoReference(context.Background(), repo, "tag", image.AsImageMeta())
+		So(err, ShouldBeNil)
+
+		err = metaDB.UpdateStatsOnDownload(repo, "tag")
+		So(err, ShouldBeNil)
+
+		repoMeta, err := metaDB.GetRepoMeta(context.Background(), repo)
+		So(err, ShouldBeNil)
+
+		So(repoMeta.Statistics[image.DigestStr()].DownloadCount, ShouldEqual, 1)
+		So(time.Now(), ShouldHappenAfter, repoMeta.Statistics[image.DigestStr()].LastPullTimestamp)
+		So(time.Now(), ShouldHappenAfter, repoMeta.Statistics[image.DigestStr()].PushTimestamp)
+
+		// update statistics (simulate that a metaDB has statistics, but pushTimestamp is 0)
+		stats := repoMeta.Statistics[image.DigestStr()]
+		oldPushTimestamp := stats.PushTimestamp
+		stats.PushTimestamp = time.Time{}
+		repoMeta.Statistics[image.DigestStr()] = stats
+
+		err = metaDB.SetRepoMeta(repo, repoMeta)
+		So(err, ShouldBeNil)
+
+		// metaDB should detect that pushTimestamp is 0 and update it.
+		err = meta.ParseStorage(metaDB, storeController, log.NewLogger("debug", ""))
+		So(err, ShouldBeNil)
+
+		repoMeta, err = metaDB.GetRepoMeta(context.Background(), repo)
+		So(err, ShouldBeNil)
+
+		So(repoMeta.Statistics[image.DigestStr()].DownloadCount, ShouldEqual, 1)
+		So(repoMeta.DownloadCount, ShouldEqual, 1)
+		So(repoMeta.Statistics[image.DigestStr()].PushTimestamp, ShouldHappenAfter, oldPushTimestamp)
+	})
 }
 
 func TestGetSignatureLayersInfo(t *testing.T) {

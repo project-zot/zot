@@ -322,6 +322,8 @@ func (dwr *DynamoDB) SetRepoReference(ctx context.Context, repo string, referenc
 			PushTimestamp:     timestamppb.Now(),
 			PushedBy:          userid,
 		}
+	} else if repoMeta.Statistics[imageMeta.Digest.String()].PushTimestamp.AsTime().IsZero() {
+		repoMeta.Statistics[imageMeta.Digest.String()].PushTimestamp = timestamppb.Now()
 	}
 
 	if _, ok := repoMeta.Signatures[imageMeta.Digest.String()]; !ok {

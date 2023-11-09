@@ -200,6 +200,8 @@ func (bdw *BoltDB) SetRepoReference(ctx context.Context, repo string, reference 
 				PushTimestamp:     timestamppb.Now(),
 				PushedBy:          userid,
 			}
+		} else if protoRepoMeta.Statistics[imageMeta.Digest.String()].PushTimestamp.AsTime().IsZero() {
+			protoRepoMeta.Statistics[imageMeta.Digest.String()].PushTimestamp = timestamppb.Now()
 		}
 
 		if _, ok := protoRepoMeta.Signatures[imageMeta.Digest.String()]; !ok {
