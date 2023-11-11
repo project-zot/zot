@@ -83,7 +83,7 @@ func (onDemand *BaseOnDemand) SyncImage(ctx context.Context, repo, reference str
 	return err
 }
 
-func (onDemand *BaseOnDemand) SyncReference(ctx context.Context, repo string,
+func (onDemand *BaseOnDemand) SyncReference(ctx context.Context, localRepo string,
 	subjectDigestStr string, referenceType string,
 ) error {
 	var err error
@@ -94,7 +94,17 @@ func (onDemand *BaseOnDemand) SyncReference(ctx context.Context, repo string,
 			return err
 		}
 
-		err = service.SyncReference(ctx, repo, subjectDigestStr, referenceType)
+		remoteRepo, err := service.GetRemoteRepoName(localRepo)
+		if err != nil {
+			// filtered out
+			onDemand.log.Info().Str("local repository", localRepo).
+				Str("repository", localRepo).Str("subject", subjectDigestStr).
+				Msg("will not sync image, filtered out by content")
+
+			continue
+		}
+
+		err = service.SyncReference(ctx, localRepo, remoteRepo, subjectDigestStr, referenceType)
 		if err != nil {
 			continue
 		} else {
@@ -105,7 +115,7 @@ func (onDemand *BaseOnDemand) SyncReference(ctx context.Context, repo string,
 	return err
 }
 
-func (onDemand *BaseOnDemand) syncImage(ctx context.Context, repo, reference string, syncResult chan error) {
+func (onDemand *BaseOnDemand) syncImage(ctx context.Context, localRepo, reference string, syncResult chan error) {
 	var err error
 	for serviceID, service := range onDemand.services {
 		err = service.SetNextAvailableURL()
@@ -115,16 +125,25 @@ func (onDemand *BaseOnDemand) syncImage(ctx context.Context, repo, reference str
 			return
 		}
 
-		err = service.SyncImage(ctx, repo, reference)
+		remoteRepo, err := service.GetRemoteRepoName(localRepo)
+		if err != nil {
+			// filtered out
+			onDemand.log.Info().Str("local repository", localRepo).
+				Str("remote repository", remoteRepo).Str("repository", localRepo).Str("reference", reference).
+				Msg("will not sync image, filtered out by content")
+
+			continue
+		}
+
+		err = service.SyncImage(ctx, localRepo, remoteRepo, reference)
 		if err != nil {
 			if errors.Is(err, zerr.ErrManifestNotFound) ||
-				errors.Is(err, zerr.ErrSyncImageFilteredOut) ||
 				errors.Is(err, zerr.ErrSyncImageNotSigned) {
 				continue
 			}
 
 			req := request{
-				repo:         repo,
+				repo:         localRepo,
 				reference:    reference,
 				serviceID:    serviceID,
 				isBackground: true,
@@ -143,22 +162,25 @@ func (onDemand *BaseOnDemand) syncImage(ctx context.Context, repo, reference str
 					// remove image after syncing
 					defer func() {
 						onDemand.requestStore.Delete(req)
-						onDemand.log.Info().Str("repo", repo).Str("reference", reference).
+						onDemand.log.Info().Str("local repository", localRepo).
+							Str("remote repository", remoteRepo).Str("reference", reference).
 							Msg("sync routine for image exited")
 					}()
 
-					onDemand.log.Info().Str("repo", repo).Str(reference, "reference").Str("err", err.Error()).
+					onDemand.log.Info().Str("local repository", localRepo).
+						Str("remote repository", remoteRepo).Str(reference, "reference").Str("err", err.Error()).
 						Msg("sync routine: starting routine to copy image, because of error")
 
 					time.Sleep(retryOptions.Delay)
 
 					// retrying in background, can't use the same context which should be cancelled by now.
 					if err = retry.RetryIfNecessary(context.Background(), func() error {
-						err := service.SyncImage(context.Background(), repo, reference)
+						err := service.SyncImage(context.Background(), localRepo, remoteRepo, reference)
 
 						return err
 					}, retryOptions); err != nil {
-						onDemand.log.Error().Str("errorType", common.TypeOf(err)).Str("repo", repo).Str("reference", reference).
+						onDemand.log.Error().Str("errorType", common.TypeOf(err)).Str("local repository", localRepo).
+							Str("remote repository", remoteRepo).Str("reference", reference).
 							Err(err).Msg("sync routine: error while copying image")
 					}
 				}(service)

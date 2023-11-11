@@ -38,10 +38,11 @@ func EnableSyncExtension(config *config.Config, metaDB mTypes.MetaDB,
 				return nil, zerr.ErrSyncNoURLsLeft
 			}
 
-			isPeriodical := len(registryConfig.Content) != 0 && registryConfig.PollInterval != 0
+			isPeriodical := isPeriodical(registryConfig)
 			isOnDemand := registryConfig.OnDemand
+			hasSpecificImagesToSync := hasSpecificImages(registryConfig)
 
-			if isPeriodical || isOnDemand {
+			if isPeriodical || isOnDemand || hasSpecificImagesToSync {
 				service, err := sync.New(registryConfig, config.Extensions.Sync.CredentialsFile,
 					storeController, metaDB, log)
 				if err != nil {
@@ -51,6 +52,12 @@ func EnableSyncExtension(config *config.Config, metaDB mTypes.MetaDB,
 				if isPeriodical {
 					// add to task scheduler periodic sync
 					gen := sync.NewTaskGenerator(service, log)
+					sch.SubmitGenerator(gen, registryConfig.PollInterval, scheduler.MediumPriority)
+				}
+
+				if hasSpecificImagesToSync {
+					// add to task scheduler periodically sync specific images
+					gen := sync.NewSpecificImagesGenerator(service, log)
 					sch.SubmitGenerator(gen, registryConfig.PollInterval, scheduler.MediumPriority)
 				}
 
@@ -170,4 +177,28 @@ func removeSelfURLs(config *config.Config, registryConfig *syncconf.RegistryConf
 	}
 
 	return nil
+}
+
+func hasSpecificImages(registryConfig syncconf.RegistryConfig) bool {
+	if registryConfig.PollInterval != 0 {
+		for _, content := range registryConfig.Content {
+			if len(content.Images) > 0 {
+				return true
+			}
+		}
+	}
+
+	return false
+}
+
+func isPeriodical(registryConfig syncconf.RegistryConfig) bool {
+	if registryConfig.PollInterval != 0 {
+		for _, content := range registryConfig.Content {
+			if content.Prefix != "" {
+				return true
+			}
+		}
+	}
+
+	return false
 }

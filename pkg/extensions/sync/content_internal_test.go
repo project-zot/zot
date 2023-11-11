@@ -68,16 +68,23 @@ func TestContentManager(t *testing.T) {
 	Convey("Test GetRepoDestination()", t, func() {
 		for _, test := range testCases {
 			cm := NewContentManager([]syncconf.Content{test.content}, log.Logger{})
-			actualResult := cm.GetRepoDestination(test.expected)
+			actualResult, _ := cm.GetRepoDestination(test.expected)
 			So(actualResult, ShouldEqual, test.repo)
 		}
+	})
+
+	Convey("Test GetRepoDestination() with empty contents", t, func() {
+		cm := NewContentManager(nil, log.Logger{})
+		repoName := "test"
+		actualResult, _ := cm.GetRepoDestination(repoName)
+		So(actualResult, ShouldEqual, repoName)
 	})
 
 	// this is the inverse function of getRepoDestination()
 	Convey("Test GetRepoSource()", t, func() {
 		for _, test := range testCases {
 			cm := NewContentManager([]syncconf.Content{test.content}, log.Logger{})
-			actualResult := cm.GetRepoSource(test.repo)
+			actualResult, _ := cm.GetRepoSource(test.repo)
 			So(actualResult, ShouldEqual, test.expected)
 		}
 	})

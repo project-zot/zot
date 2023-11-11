@@ -31,6 +31,7 @@ type RegistryConfig struct {
 }
 
 type Content struct {
+	Images      map[string][]string
 	Prefix      string
 	Tags        *Tags
 	Destination string `mapstructure:",omitempty"`

@@ -10,6 +10,7 @@ import (
 	"github.com/Masterminds/semver"
 	glob "github.com/bmatcuk/doublestar/v4"
 
+	zerr "zotregistry.io/zot/errors"
 	"zotregistry.io/zot/pkg/common"
 	syncconf "zotregistry.io/zot/pkg/extensions/config/sync"
 	"zotregistry.io/zot/pkg/log"
@@ -75,13 +76,17 @@ func (cm ContentManager) FilterTags(repo string, tags []string) ([]string, error
 GetRepoDestination applies content destination config rule and returns the final repo namespace.
 - used by periodically sync.
 */
-func (cm ContentManager) GetRepoDestination(repo string) string {
-	content := cm.getContentByUpstreamRepo(repo)
-	if content == nil {
-		return ""
+func (cm ContentManager) GetRepoDestination(repo string) (string, error) {
+	if len(cm.contents) == 0 {
+		return repo, nil
 	}
 
-	return getRepoDestination(repo, *content)
+	content := cm.getContentByUpstreamRepo(repo)
+	if content == nil {
+		return "", zerr.ErrSyncImageFilteredOut
+	}
+
+	return getRepoDestination(repo, *content), nil
 }
 
 /*
@@ -89,13 +94,17 @@ GetRepoSource is the inverse function of GetRepoDestination, needed in on demand
 the remote name of a repo given a local repo.
 - used by on demand sync.
 */
-func (cm ContentManager) GetRepoSource(repo string) string {
-	content := cm.getContentByLocalRepo(repo)
-	if content == nil {
-		return ""
+func (cm ContentManager) GetRepoSource(repo string) (string, error) {
+	if len(cm.contents) == 0 {
+		return repo, nil
 	}
 
-	return getRepoSource(repo, *content)
+	content := cm.getContentByLocalRepo(repo)
+	if content == nil {
+		return "", zerr.ErrSyncImageFilteredOut
+	}
+
+	return getRepoSource(repo, *content), nil
 }
 
 // utilies functions.
@@ -107,6 +116,10 @@ func (cm ContentManager) getContentByUpstreamRepo(repo string) *syncconf.Content
 			prefix = content.Prefix[1:]
 		} else {
 			prefix = content.Prefix
+		}
+
+		if _, ok := content.Images[repo]; ok {
+			return &content
 		}
 
 		matched, err := glob.Match(prefix, repo)

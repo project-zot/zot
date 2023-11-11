@@ -5,6 +5,7 @@ package sync
 
 import (
 	"context"
+	"sync"
 
 	"github.com/containers/common/pkg/retry"
 	"github.com/containers/image/v5/types"
@@ -20,14 +21,21 @@ import (
 
 // Sync general functionalities, one service per registry config.
 type Service interface {
+	// GetLocalRepoName applies sync config (destination && stripPrefix) on a remote repo to determine where to sync it.
+	GetLocalRepoName(remoteRepo string) (string, error)
+	/* GetRemoteRepoName applies sync config (destination && stripPrefix) on a local repo
+	to determine from where to sync it. */
+	GetRemoteRepoName(localRepo string) (string, error)
 	// Get next repo from remote /v2/_catalog, will return empty string when there is no repo left.
 	GetNextRepo(lastRepo string) (string, error) // used by task scheduler
+	// Get next repo with its tags from specific images config (content.Images)
+	GetNextRepoTags(lastRepo string) (string, []string) // used by task scheduler
 	// Sync a repo with all of its tags and references (signatures, artifacts, sboms) into ImageStore.
-	SyncRepo(ctx context.Context, repo string) error // used by periodically sync
+	SyncRepo(ctx context.Context, localRepo, remoteRepo string) error // used by periodically sync
 	// Sync an image (repo:tag || repo:digest) into ImageStore.
-	SyncImage(ctx context.Context, repo, reference string) error // used by sync on demand
+	SyncImage(ctx context.Context, localRepo, remoteRepo, reference string) error // used by sync on demand
 	// Sync a single reference for an image.
-	SyncReference(ctx context.Context, repo string, subjectDigestStr string,
+	SyncReference(ctx context.Context, localRepo, remoteRepo, subjectDigestStr string,
 		referenceType string) error // used by sync on demand
 	// Remove all internal catalog entries.
 	ResetCatalog() // used by scheduler to empty out the catalog after a sync periodically roundtrip finishes
@@ -96,7 +104,11 @@ func (gen *TaskGenerator) Next() (scheduler.Task, error) {
 
 	repo, err := gen.Service.GetNextRepo(gen.lastRepo)
 	if err != nil {
-		return nil, err
+		// unreachable registry task scheduler will retry at intervals
+		gen.done = true
+
+		//nolint: nilerr
+		return nil, nil
 	}
 
 	if repo == "" {
@@ -135,5 +147,90 @@ func newSyncRepoTask(repo string, service Service) *syncRepoTask {
 }
 
 func (srt *syncRepoTask) DoWork(ctx context.Context) error {
-	return srt.service.SyncRepo(ctx, srt.repo)
+	localRepo, err := srt.service.GetLocalRepoName(srt.repo)
+	// image filtered out by sync config content
+	if err != nil {
+		return nil //nolint: nilerr
+	}
+
+	return srt.service.SyncRepo(ctx, localRepo, srt.repo)
+}
+
+// periodically sync specific images generator.
+type SpecificImagesGenerator struct {
+	Service  Service
+	lastRepo string
+	done     bool
+	log      log.Logger
+	lock     *sync.Mutex
+}
+
+func NewSpecificImagesGenerator(service Service, log log.Logger) *SpecificImagesGenerator {
+	return &SpecificImagesGenerator{
+		Service:  service,
+		done:     false,
+		lastRepo: "",
+		log:      log,
+		lock:     &sync.Mutex{},
+	}
+}
+
+func (gen *SpecificImagesGenerator) Next() (scheduler.Task, error) {
+	gen.lock.Lock()
+	defer gen.lock.Unlock()
+
+	lastRepo, tags := gen.Service.GetNextRepoTags(gen.lastRepo)
+	if lastRepo == "" {
+		gen.log.Info().Msg("sync: finished syncing all repos from config")
+		gen.done = true
+
+		return nil, nil
+	}
+
+	gen.lastRepo = lastRepo
+
+	return newSpecificImageTask(gen.lastRepo, tags, gen.Service, gen.log), nil
+}
+
+func (gen *SpecificImagesGenerator) IsDone() bool {
+	return gen.done
+}
+
+func (gen *SpecificImagesGenerator) IsReady() bool {
+	return true
+}
+
+func (gen *SpecificImagesGenerator) Reset() {
+	gen.lastRepo = ""
+	gen.done = false
+}
+
+type specificImageTask struct {
+	repo    string
+	tags    []string
+	service Service
+	log     log.Logger
+}
+
+func newSpecificImageTask(repo string, tags []string, service Service, log log.Logger) *specificImageTask {
+	return &specificImageTask{repo, tags, service, log}
+}
+
+func (sit *specificImageTask) DoWork(ctx context.Context) error {
+	localRepo, _ := sit.service.GetLocalRepoName(sit.repo)
+
+	// if no references provided, sync all repo's tags
+	if len(sit.tags) == 0 {
+		return sit.service.SyncRepo(ctx, localRepo, sit.repo)
+	}
+
+	// otherwise sync only given references
+	for _, reference := range sit.tags {
+		_ = sit.service.SyncImage(ctx, localRepo, sit.repo, reference)
+	}
+
+	sit.log.Info().Str("local repo", localRepo).Str("remote repo", sit.repo).Interface("tags", sit.tags).
+		Msg("sync: finished syncing specific images for repo")
+
+	return nil
 }
