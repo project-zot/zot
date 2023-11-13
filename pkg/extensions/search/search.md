@@ -20,7 +20,7 @@
 The examples below only include the GraphQL query without any additional details on how to send them to a server. They were made with the GraphQL playground from the debug binary. You can also use curl to make these queries, here's an example:
 
 ```bash
-curl -X POST -H "Content-Type: application/json" --data '{ "query": "{ ImageListForCVE (id:\"CVE-2002-1119\") { Results { Name Tags } } }" }' http://localhost:8080/v2/_zot/ext/search
+curl -X POST -H "Content-Type: application/json" --data '{ "query": "{ ImageListForCVE (id:\"CVE-2002-1119\") { Results { RepoName Tag } } }" }' http://localhost:8080/v2/_zot/ext/search
 ```
 
 ## List CVEs of given image
@@ -29,7 +29,10 @@ curl -X POST -H "Content-Type: application/json" --data '{ "query": "{ ImageList
 
 ```graphql
 {
-  CVEListForImage(image: "centos:8", requestedPage: {limit: 1, offset:1, sortBy: SEVERITY}) {
+  CVEListForImage(
+    image: "alpine:3.17"
+    requestedPage: {limit: 1, offset:1, sortBy: SEVERITY}
+  ) {
     Tag
     Page {
       TotalCount
@@ -56,22 +59,27 @@ curl -X POST -H "Content-Type: application/json" --data '{ "query": "{ ImageList
 {
   "data": {
     "CVEListForImage": {
-      "Tag": "8",
+      "Tag": "3.17",
       "Page": {
-        "TotalCount": 292,
+        "TotalCount": 9,
         "ItemCount": 1
       },
       "CVEList": [
         {
-          "Id": "CVE-2022-24407",
-          "Title": "cyrus-sasl: failure to properly escape SQL input allows an attacker to execute arbitrary SQL commands",
-          "Description": "In Cyrus SASL 2.1.17 through 2.1.27 before 2.1.28, plugins/sql.c does not escape the password for a SQL INSERT or UPDATE statement.",
+          "Id": "CVE-2023-5363",
+          "Title": "openssl: Incorrect cipher key and IV length processing",
+          "Description": "Issue summary: A bug has been identified in the processing of key and\ninitialisation vector (IV) lengths.  This can lead to potential truncation\nor overruns during the initialisation of some symmetric ciphers.\n\nImpact summary: A truncation in the IV can result in non-uniqueness,\nwhich could result in loss of confidentiality for some cipher modes.\n\nWhen calling EVP_EncryptInit_ex2(), EVP_DecryptInit_ex2() or\nEVP_CipherInit_ex2() the provided OSSL_PARAM array is processed after\nthe key and IV have been established.  Any alterations to the key length,\nvia the \"keylen\" parameter or the IV length, via the \"ivlen\" parameter,\nwithin the OSSL_PARAM array will not take effect as intended, potentially\ncausing truncation or overreading of these values.  The following ciphers\nand cipher modes are impacted: RC2, RC4, RC5, CCM, GCM and OCB.\n\nFor the CCM, GCM and OCB cipher modes, truncation of the IV can result in\nloss of confidentiality.  For example, when following NIST's SP 800-38D\nsection 8.2.1 guidance for constructing a deterministic IV for AES in\nGCM mode, truncation of the counter portion could lead to IV reuse.\n\nBoth truncations and overruns of the key and overruns of the IV will\nproduce incorrect results and could, in some cases, trigger a memory\nexception.  However, these issues are not currently assessed as security\ncritical.\n\nChanging the key and/or IV lengths is not considered to be a common operation\nand the vulnerable API was recently introduced. Furthermore it is likely that\napplication developers will have spotted this problem during testing since\ndecryption would fail unless both peers in the communication were similarly\nvulnerable. For these reasons we expect the probability of an application being\nvulnerable to this to be quite low. However if an application is vulnerable then\nthis issue is considered very serious. For these reasons we have assessed this\nissue as Moderate severity overall.\n\nThe OpenSSL SSL/TLS implementation is not affected by this issue.\n\nThe OpenSSL 3.0 and 3.1 FIPS providers are not affected by this because\nthe issue lies outside of the FIPS provider boundary.\n\nOpenSSL 3.1 and 3.0 are vulnerable to this issue.",
           "Severity": "HIGH",
           "PackageList": [
             {
-              "Name": "cyrus-sasl-lib",
-              "InstalledVersion": "2.1.27-5.el8",
-              "FixedVersion": "2.1.27-6.el8_5"
+              "Name": "libcrypto3",
+              "InstalledVersion": "3.0.8-r0",
+              "FixedVersion": "3.0.12-r0"
+            },
+            {
+              "Name": "libssl3",
+              "InstalledVersion": "3.0.8-r0",
+              "FixedVersion": "3.0.12-r0"
             }
           ]
         }
@@ -87,23 +95,26 @@ curl -X POST -H "Content-Type: application/json" --data '{ "query": "{ ImageList
 
 ```graphql
 {
-  ImageListForCVE(id: "CVE-2018-20651") {
+  ImageListForCVE(id: "CVE-2023-0464") {
     Results{
       RepoName
       Tag
       Digest
-      ConfigDigest
       LastUpdated
       IsSigned
       Size
-      Platform {
-        Os
-        Arch
-      }
       Vendor
       DownloadCount
       Licenses
       Title
+      Manifests {
+        Digest
+        ConfigDigest
+        Platform {
+          Os
+          Arch
+        }
+      }
     }
   }
 }
@@ -114,28 +125,32 @@ curl -X POST -H "Content-Type: application/json" --data '{ "query": "{ ImageList
 ```json
 {
   "data": {
-    "ImageListForCVE": [
-       {
-        "Results": {
-          "RepoName": "centos",
-          "Tag": "centos8",
-          "Digest": "sha256:ac0dc62b48b7f683b49365fecef3b1f4d99fbd249b762e99f13f74938d85a6c8",
-          "ConfigDigest": "sha256:98a5843635a2ccc7d72b269923a65721480de929f882143c6c0a0eb43f9a2869",
-          "LastUpdated": "2022-10-17T16:36:09.1751694+03:00",
+    "ImageListForCVE": {
+      "Results": [
+        {
+          "RepoName": "alpine",
+          "Tag": "3.17",
+          "Digest": "sha256:75bfe77c8d5a76b4421cfcebbd62a28ae70d10147578d0cda45820e99b0ef1d8",
+          "LastUpdated": "2023-02-11T04:46:42.558343068Z",
           "IsSigned": true,
-          "Size": "83545800",
-          "Platform": {
-            "Os": "linux",
-            "Arch": "amd64"
-          },
-          "Vendor": "[The CentOS Project](https://github.com/CentOS/sig-cloud-instance-images)\n",
-          "Score": null,
+          "Size": "3375436",
+          "Vendor": "",
           "DownloadCount": 0,
-          "Licenses": "View [license information](https://www.centos.org/legal/) for the software contained in this image.",
-          "Title": "centos"
+          "Licenses": "",
+          "Title": "",
+          "Manifests": [
+            {
+              "Digest": "sha256:75bfe77c8d5a76b4421cfcebbd62a28ae70d10147578d0cda45820e99b0ef1d8",
+              "ConfigDigest": "sha256:6a2bcc1c7b4c9207f791a4512d7f2fa8fc2daeae58dbc51cb2797b05415f082a",
+              "Platform": {
+                "Os": "linux",
+                "Arch": "amd64"
+              }
+            }
+          ]
         },
-      }
-    ]
+      ]
+    }
   }
 }
 ```
@@ -146,13 +161,16 @@ curl -X POST -H "Content-Type: application/json" --data '{ "query": "{ ImageList
 
 ```graphql
 {
-  ImageListWithCVEFixed(id: "CVE-2018-20651", image: "ubuntu") {
+  ImageListWithCVEFixed(id: "CVE-2023-0464", image: "ubuntu") {
     Results {
       RepoName
       Tag
       Digest
-      ConfigDigest
       LastUpdated
+      Manifests {
+        Digest
+        ConfigDigest
+      }
     }
   }
 }
@@ -163,17 +181,34 @@ curl -X POST -H "Content-Type: application/json" --data '{ "query": "{ ImageList
 ```json
 {
   "data": {
-    "ImageListWithCVEFixed": [
-      {
-        "Results": {
+    "ImageListWithCVEFixed": {
+      "Results": [
+        {
           "RepoName": "ubuntu",
-          "Tag": "latest",
-          "Digest": "sha256:650d596072ad45c6b74f4923e2cfea8158da2fb3a7b8dbb0b9ae4da3088d0591",
-          "ConfigDigest": "sha256:88eef892e29d5b11be933f13424ef885644a6a6978924fedfb51ba555278fe74",
-          "LastUpdated": "2022-10-25T01:53:41.769246372Z"
+          "Tag": "kinetic",
+          "Digest": "sha256:1ac35e499e330f6520e80e91b29a55ff298077211f5ed66aff5cb357cca4a28f",
+          "LastUpdated": "2022-10-14T15:28:55.0263968Z",
+          "Manifests": [
+            {
+              "Digest": "sha256:1ac35e499e330f6520e80e91b29a55ff298077211f5ed66aff5cb357cca4a28f",
+              "ConfigDigest": "sha256:824c0269745923afceb9765ae24f5b331bb6fcf2a82f7eba98b3cfd543afb41e"
+            }
+          ]
+        },
+        {
+          "RepoName": "ubuntu",
+          "Tag": "kinetic-20220922",
+          "Digest": "sha256:79eae04a0e32878fef3f8c5f901c32f6704c4a80b7f3fd9d89629e15867acfff",
+          "LastUpdated": "2022-10-14T15:27:41.2144454Z",
+          "Manifests": [
+            {
+              "Digest": "sha256:79eae04a0e32878fef3f8c5f901c32f6704c4a80b7f3fd9d89629e15867acfff",
+              "ConfigDigest": "sha256:15c8dcf63970bb14ea36e41aa001b87d8d31e25a082bf6f659d12489d3e53d90"
+            }
+          ]
         }
-      }
-    ]
+      ]
+    }
   }
 }
 ```
@@ -185,7 +220,7 @@ curl -X POST -H "Content-Type: application/json" --data '{ "query": "{ ImageList
 ```graphql
 {
   ImageListForDigest(
-    id: "5f34d0bb0261d32d0b0bc91024b7d4e98d94b08a49615e08c8a5a65bc3a7e09f"
+    id: "79eae04a0e32878fef3f8c5f901c32f6704c4a80b7f3fd9d89629e15867acfff"
   ) {
     Results{
       RepoName
@@ -201,15 +236,15 @@ curl -X POST -H "Content-Type: application/json" --data '{ "query": "{ ImageList
 ```json
 {
   "data": {
-    "ImageListForDigest": [
-      {
-        "Results": {
-          "RepoName": "centos",
-          "Tag": "8",
-          "Title": "CentOS Base Image"
+    "ImageListForDigest": {
+      "Results": [
+        {
+          "RepoName": "ubuntu",
+          "Tag": "kinetic-20220922",
+          "Title": "ubuntu"
         }
-      }
-    ]
+      ]
+    }
   }
 }
 ```
@@ -311,23 +346,46 @@ curl -X POST -H "Content-Type: application/json" --data '{ "query": "{ ImageList
 ```json
 {
   "data": {
-    "ImageList": [
-      {
-        "Results": 
+    "ImageList": {
+      "Results": [
         {
-          "Tag": "latest",
-          "Digest": "sha256:650d596072ad45c6b74f4923e2cfea8158da2fb3a7b8dbb0b9ae4da3088d0591",
-          "LastUpdated": "2022-10-25T01:53:41.769246372Z",
-          "Size": "30426374"
+          "Tag": "jammy",
+          "Digest": "sha256:f96fcb040c7ee00c037c758cf0ab40638e6ee89b03a9d639178fcbd0e7f96d27",
+          "LastUpdated": "2022-10-14T15:29:18.0325322Z",
+          "Size": "30472739"
         },
         {
-          "Tag": "xenial",
-          "Digest": "sha256:34de800b5da88feb7723a87ecbbf238afb63dbfe0c828838e26ac7458bef0ac5",
-          "LastUpdated": "2021-08-31T01:21:30.672229355Z",
-          "Size": "46499103"
+          "Tag": "jammy-20221003",
+          "Digest": "sha256:86681debca1719dff33f426a0f5c41792ebc52496c5d78a93b655b8b48fb71b2",
+          "LastUpdated": "2022-10-14T15:29:07.0004587Z",
+          "Size": "30472748"
+        },
+        {
+          "Tag": "kinetic",
+          "Digest": "sha256:1ac35e499e330f6520e80e91b29a55ff298077211f5ed66aff5cb357cca4a28f",
+          "LastUpdated": "2022-10-14T15:28:55.0263968Z",
+          "Size": "27498890"
+        },
+        {
+          "Tag": "kinetic-20220922",
+          "Digest": "sha256:79eae04a0e32878fef3f8c5f901c32f6704c4a80b7f3fd9d89629e15867acfff",
+          "LastUpdated": "2022-10-14T15:27:41.2144454Z",
+          "Size": "27498899"
+        },
+        {
+          "Tag": "latest",
+          "Digest": "sha256:9bc6d811431613bf2fd8bf3565b319af9998fc5c46304022b647c63e1165657c",
+          "LastUpdated": "2022-10-14T15:26:59.6707939Z",
+          "Size": "30472740"
+        },
+        {
+          "Tag": "rolling",
+          "Digest": "sha256:72e75626c5068b9d9a462c4fc80a29787d0cf61c8abc81bfd5ea69f6248d56fc",
+          "LastUpdated": "2022-10-14T15:27:21.2441356Z",
+          "Size": "30472741"
         }
-      }
-    ]
+      ]
+    }
   }
 }
 ```
@@ -364,21 +422,37 @@ curl -X POST -H "Content-Type: application/json" --data '{ "query": "{ ImageList
     "ExpandedRepoInfo": {
       "Images": [
         {
-          "Tag": "xenial",
-          "Digest": "sha256:34de800b5da88feb7723a87ecbbf238afb63dbfe0c828838e26ac7458bef0ac5"
+          "Tag": "jammy",
+          "Digest": "sha256:f96fcb040c7ee00c037c758cf0ab40638e6ee89b03a9d639178fcbd0e7f96d27"
+        },
+        {
+          "Tag": "jammy-20221003",
+          "Digest": "sha256:86681debca1719dff33f426a0f5c41792ebc52496c5d78a93b655b8b48fb71b2"
+        },
+        {
+          "Tag": "kinetic",
+          "Digest": "sha256:1ac35e499e330f6520e80e91b29a55ff298077211f5ed66aff5cb357cca4a28f"
+        },
+        {
+          "Tag": "kinetic-20220922",
+          "Digest": "sha256:79eae04a0e32878fef3f8c5f901c32f6704c4a80b7f3fd9d89629e15867acfff"
+        },
+        {
+          "Tag": "rolling",
+          "Digest": "sha256:72e75626c5068b9d9a462c4fc80a29787d0cf61c8abc81bfd5ea69f6248d56fc"
         },
         {
           "Tag": "latest",
-          "Digest": "sha256:650d596072ad45c6b74f4923e2cfea8158da2fb3a7b8dbb0b9ae4da3088d0591"
+          "Digest": "sha256:9bc6d811431613bf2fd8bf3565b319af9998fc5c46304022b647c63e1165657c"
         }
       ],
       "Summary": {
-        "LastUpdated": "2022-10-25T01:53:41.769246372Z",
-        "Size": "76929691",
+        "LastUpdated": "2022-10-14T15:29:18.0325322Z",
+        "Size": "58146896",
         "NewestImage": {
-          "Tag": "latest",
-          "LastUpdated": "2022-10-25T01:53:41.769246372Z",
-          "Digest": "sha256:650d596072ad45c6b74f4923e2cfea8158da2fb3a7b8dbb0b9ae4da3088d0591"
+          "Tag": "jammy",
+          "LastUpdated": "2022-10-14T15:29:18.0325322Z",
+          "Digest": "sha256:f96fcb040c7ee00c037c758cf0ab40638e6ee89b03a9d639178fcbd0e7f96d27"
         }
       }
     }
@@ -401,9 +475,12 @@ curl -X POST -H "Content-Type: application/json" --data '{ "query": "{ ImageList
       RepoName
       Tag
       LastUpdated
-      Layers {
-        Size
+      Manifests {
         Digest
+        Layers {
+          Size
+          Digest
+        }
       }
     }
   }
@@ -424,11 +501,16 @@ curl -X POST -H "Content-Type: application/json" --data '{ "query": "{ ImageList
         {
           "RepoName": "ubuntu",
           "Tag": "latest",
-          "LastUpdated": "2022-10-14T18:26:59.6707939+03:00",
-          "Layers": [
+          "LastUpdated": "2022-10-14T15:26:59.6707939Z",
+          "Manifests": [
             {
-              "Size": "30428928",
-              "Digest": "sha256:cf92e523b49ea3d1fae59f5f082437a5f96c244fda6697995920142ff31d59cf"
+              "Digest": "sha256:9bc6d811431613bf2fd8bf3565b319af9998fc5c46304022b647c63e1165657c",
+              "Layers": [
+                {
+                  "Size": "30428928",
+                  "Digest": "sha256:cf92e523b49ea3d1fae59f5f082437a5f96c244fda6697995920142ff31d59cf"
+                }
+              ]
             }
           ]
         }
