@@ -551,6 +551,7 @@ Should authentication fail, to prevent automated attacks, a delayed response can
 
 Allowing actions on one or more repository paths can be tied to user
 identities. Two additional per-repository policies can be specified for identities not in the whitelist:
+
 - anonymousPolicy - applied for unathenticated users.
 - defaultPolicy - applied for authenticated users.
 
@@ -570,17 +571,28 @@ because it will be longer. So that's why we have the option to specify an adminP
 Basically '**' means repositories not matched by any other per-repository policy.
 
 Method-based action list:
+
 - "read" - list/pull images
 - "create" - push images (needs "read")
 - "update" - overwrite tags (needs "read" and "create")
 - "delete" - delete images (needs "read")
 
 Behaviour-based action list
+
 - "detectManifestCollision" - delete manifest by digest will throw an error if multiple manifests have the same digest (needs "read" and "delete")
 
 
-```
+```json
 "accessControl": {
+  "groups": {                                                  # reusable groups of users
+    "group1": {
+      "users": ["jack", "john", "jane", "ana"]
+    },
+    "group2": {
+      "users": ["alice", "mike", "jim"]
+    }
+  },
+  "repositories": {                                            # per-repository policies
     "**": {                                                    # matches all repos (which are not matched by any other per-repository policy)
       "policies": [                                            # user based policies
         {
@@ -611,6 +623,7 @@ Behaviour-based action list
         "policies": [
           {
               "users": ["bob"],
+              "groups": ["group1"],
               "actions": ["read", "create"]
           },
           {
@@ -619,11 +632,12 @@ Behaviour-based action list
           }
         ],
         "defaultPolicy": ["read"]
-    },
-    "adminPolicy": {                                            # global admin policy (overrides per-repo policy)
-        "users": ["admin"],
-        "actions": ["read", "create", "update", "delete"]
     }
+  },
+  "adminPolicy": {                                             # global admin policy (overrides per-repo policy)
+      "users": ["admin"],
+      "actions": ["read", "create", "update", "delete"]
+  }
 }
 ```
 
