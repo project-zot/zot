@@ -54,7 +54,7 @@ require (
 	github.com/gorilla/securecookie v1.1.2
 	github.com/gorilla/sessions v1.2.2
 	github.com/migueleliasweb/go-github-mock v0.0.22
-	github.com/notaryproject/notation-go v1.0.0
+	github.com/notaryproject/notation-go v1.0.1
 	github.com/opencontainers/distribution-spec/specs-go v0.0.0-20230117141039-067a0f5b0e25
 	github.com/project-zot/mockoidc v0.0.0-20230307111146-f607b4b5fb97
 	github.com/sigstore/cosign/v2 v2.2.1
