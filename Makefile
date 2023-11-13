@@ -25,6 +25,8 @@ CRICTL_VERSION := v1.26.1
 ACTION_VALIDATOR := $(TOOLSDIR)/bin/action-validator
 ACTION_VALIDATOR_VERSION := v0.5.3
 ZUI_VERSION := commit-fad5572
+ZUI_REPO_OWNER := project-zot
+ZUI_REPO_NAME := zui
 SWAGGER_VERSION := v1.8.12
 STACKER := $(TOOLSDIR)/bin/stacker
 BATS := $(TOOLSDIR)/bin/bats
@@ -548,7 +550,7 @@ ui:
 		pwd=$$(pwd);\
 		tdir=$$(mktemp -d);\
 		cd $$tdir;\
-		git clone https://github.com/project-zot/zui.git;\
+		git clone https://github.com/$(ZUI_REPO_OWNER)/$(ZUI_REPO_NAME).git zui;\
 		cd zui;\
 		npm install;\
 		npm run build;\
@@ -556,12 +558,12 @@ ui:
 		rm -rf ./pkg/extensions/build;\
 		cp -R $$tdir/zui/build ./pkg/extensions/;\
 	else\
-		curl --fail --head https://github.com/project-zot/zui/releases/download/$(ZUI_VERSION)/zui.tgz;\
+		curl --fail --head https://github.com/$(ZUI_REPO_OWNER)/$(ZUI_REPO_NAME)/releases/download/$(ZUI_VERSION)/zui.tgz;\
 		if [ $$? -ne 0 ]; then\
 			pwd=$$(pwd);\
 			tdir=$$(mktemp -d);\
 			cd $$tdir;\
-  			git clone --depth=1 --branch $(ZUI_VERSION)  https://github.com/project-zot/zui.git;\
+			git clone --depth=1 --branch $(ZUI_VERSION) https://github.com/$(ZUI_REPO_OWNER)/$(ZUI_REPO_NAME).git zui;\
 			cd zui;\
 			git checkout $(ZUI_VERSION);\
 			npm install;\
@@ -570,7 +572,7 @@ ui:
 			rm -rf ./pkg/extensions/build;\
 			cp -R $$tdir/zui/build ./pkg/extensions/;\
 		else\
- 			curl -fsSL https://github.com/project-zot/zui/releases/download/$(ZUI_VERSION)/zui.tgz -o zui.tgz;\
+			curl -fsSL https://github.com/$(ZUI_REPO_OWNER)/$(ZUI_REPO_NAME)/releases/download/$(ZUI_VERSION)/zui.tgz -o zui.tgz;\
 			tar xvzf zui.tgz -C ./pkg/extensions/;\
 			rm zui.tgz;\
 		fi;\
