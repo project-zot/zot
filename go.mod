@@ -44,7 +44,7 @@ require (
 )
 
 require (
-	github.com/aquasecurity/trivy v0.46.1
+	github.com/aquasecurity/trivy v0.47.0
 	github.com/aws/aws-sdk-go-v2/service/dynamodb v1.25.1
 	github.com/aws/aws-sdk-go-v2/service/secretsmanager v1.21.6
 	github.com/aws/aws-secretsmanager-caching-go v1.1.2
@@ -98,11 +98,17 @@ require (
 	github.com/aquasecurity/table v1.8.0 // indirect
 	github.com/aquasecurity/tml v0.6.1 // indirect
 	github.com/aquasecurity/trivy-java-db v0.0.0-20230209231723-7cddb1406728 // indirect
+	github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.4.14 // indirect
+	github.com/aws/aws-sdk-go-v2/feature/s3/manager v1.11.90 // indirect
+	github.com/aws/aws-sdk-go-v2/internal/v4a v1.1.6 // indirect
 	github.com/aws/aws-sdk-go-v2/service/dynamodbstreams v1.17.1 // indirect
 	github.com/aws/aws-sdk-go-v2/service/ebs v1.18.1 // indirect
 	github.com/aws/aws-sdk-go-v2/service/ec2 v1.98.0 // indirect
 	github.com/aws/aws-sdk-go-v2/service/internal/accept-encoding v1.10.0 // indirect
+	github.com/aws/aws-sdk-go-v2/service/internal/checksum v1.1.38 // indirect
 	github.com/aws/aws-sdk-go-v2/service/internal/endpoint-discovery v1.8.2 // indirect
+	github.com/aws/aws-sdk-go-v2/service/internal/s3shared v1.15.6 // indirect
+	github.com/aws/aws-sdk-go-v2/service/s3 v1.40.2 // indirect
 	github.com/buildkite/agent/v3 v3.58.0 // indirect
 	github.com/buildkite/interpolate v0.0.0-20200526001904-07f35b4ae251 // indirect
 	github.com/chai2010/gettext-go v1.0.2 // indirect
@@ -183,8 +189,8 @@ require (
 	github.com/opencontainers/selinux v1.11.0 // indirect
 	github.com/openvex/go-vex v0.2.5 // indirect
 	github.com/outcaste-io/ristretto v0.2.3 // indirect
-	github.com/owenrumney/go-sarif/v2 v2.2.2 // indirect
-	github.com/package-url/packageurl-go v0.1.2-0.20230812223828-f8bb31c1f10b // indirect
+	github.com/owenrumney/go-sarif/v2 v2.3.0 // indirect
+	github.com/package-url/packageurl-go v0.1.2 // indirect
 	github.com/pborman/uuid v1.2.1 // indirect
 	github.com/peterbourgon/diskv v2.0.1+incompatible // indirect
 	github.com/philhofer/fwd v1.1.2 // indirect
@@ -226,9 +232,9 @@ require (
 	inet.af/netaddr v0.0.0-20230525184311-b8eac61e914a // indirect
 	k8s.io/apiextensions-apiserver v0.27.3 // indirect
 	k8s.io/apiserver v0.27.3 // indirect
-	k8s.io/cli-runtime v0.28.1 // indirect
-	k8s.io/component-base v0.28.1 // indirect
-	k8s.io/kubectl v0.28.1 // indirect
+	k8s.io/cli-runtime v0.28.2 // indirect
+	k8s.io/component-base v0.28.2 // indirect
+	k8s.io/kubectl v0.28.2 // indirect
 	lukechampine.com/uint128 v1.2.0 // indirect
 	modernc.org/cc/v3 v3.40.0 // indirect
 	modernc.org/ccgo/v3 v3.16.13 // indirect
@@ -288,7 +294,7 @@ require (
 	github.com/aliyun/credentials-go v1.3.1 // indirect
 	github.com/apparentlymart/go-cidr v1.1.0 // indirect
 	github.com/apparentlymart/go-textseg/v13 v13.0.0 // indirect
-	github.com/aquasecurity/go-dep-parser v0.0.0-20231013060839-6f348921ea39 // indirect
+	github.com/aquasecurity/go-dep-parser v0.0.0-20231030050624-4548cca9a5c9 // indirect
 	github.com/aquasecurity/go-gem-version v0.0.0-20201115065557-8eed6fe000ce // indirect
 	github.com/aquasecurity/go-npm-version v0.0.0-20201110091526-0b796d180798 // indirect
 	github.com/aquasecurity/go-pep440-version v0.0.0-20210121094942-22b2f8951d46 // indirect
@@ -303,7 +309,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/internal/configsources v1.2.2 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/endpoints/v2 v2.5.2 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/ini v1.5.2 // indirect
-	github.com/aws/aws-sdk-go-v2/service/ecr v1.20.2 // indirect
+	github.com/aws/aws-sdk-go-v2/service/ecr v1.21.0 // indirect
 	github.com/aws/aws-sdk-go-v2/service/ecrpublic v1.18.2 // indirect
 	github.com/aws/aws-sdk-go-v2/service/internal/presigned-url v1.10.2 // indirect
 	github.com/aws/aws-sdk-go-v2/service/sso v1.17.1 // indirect
@@ -405,7 +411,6 @@ require (
 	github.com/knqyf263/go-apk-version v0.0.0-20200609155635-041fdbb8563f // indirect
 	github.com/knqyf263/go-deb-version v0.0.0-20230223133812-3ed183d23422 // indirect
 	github.com/knqyf263/go-rpm-version v0.0.0-20220614171824-631e686d1075 // indirect
-	github.com/knqyf263/go-rpmdb v0.0.0-20230517124904-b97c85e63254 // indirect
 	github.com/knqyf263/nested v0.0.1 // indirect
 	github.com/leodido/go-urn v1.2.4 // indirect
 	github.com/letsencrypt/boulder v0.0.0-20231026200631-000cd05d5491 // indirect
