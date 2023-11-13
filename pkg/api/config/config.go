@@ -121,6 +121,13 @@ type SchedulerConfig struct {
 	NumWorkers int
 }
 
+// ClusterConfig is the scale-out configuration which is identical for all
+// replicas
+type ClusterConfig struct {
+	Members []string
+	HashKey string
+}
+
 type LDAPCredentials struct {
 	BindDN       string
 	BindPassword string
@@ -230,6 +237,7 @@ type Config struct {
 	Log             *LogConfig
 	Extensions      *extconf.ExtensionConfig
 	Scheduler       *SchedulerConfig `json:"scheduler" mapstructure:",omitempty"`
+	Cluster         *ClusterConfig   `json:"cluster" mapstructure:",omitempty"`
 }
 
 func New() *Config {
