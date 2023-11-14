@@ -157,7 +157,7 @@ func TestScanGeneratorWithMockedData(t *testing.T) { //nolint: gocyclo
 
 		err = metaDB.SetRepoMeta("repo-with-bad-tag-digest", mTypes.RepoMeta{
 			Name: "repo-with-bad-tag-digest",
-			Tags: map[string]mTypes.Descriptor{
+			Tags: map[mTypes.Tag]mTypes.Descriptor{
 				"tag":            {MediaType: ispec.MediaTypeImageManifest, Digest: godigest.FromString("1").String()},
 				"tag-multi-arch": {MediaType: ispec.MediaTypeImageIndex, Digest: godigest.FromString("2").String()},
 			},

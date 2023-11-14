@@ -292,8 +292,9 @@ func GetLayersInfo(layersInfo []*proto_go.LayersInfo) []mTypes.LayerInfo {
 	return results
 }
 
-func GetStatisticsMap(stats map[string]*proto_go.DescriptorStatistics) map[string]mTypes.DescriptorStatistics {
-	results := map[string]mTypes.DescriptorStatistics{}
+func GetStatisticsMap(stats map[mTypes.ImageDigest]*proto_go.DescriptorStatistics,
+) map[mTypes.ImageDigest]mTypes.DescriptorStatistics {
+	results := map[mTypes.ImageDigest]mTypes.DescriptorStatistics{}
 
 	for digest, stat := range stats {
 		results[digest] = mTypes.DescriptorStatistics{
@@ -348,8 +349,8 @@ func GetImageIndexMeta(indexContent ispec.Index, size int64, digest godigest.Dig
 	}
 }
 
-func GetTags(tags map[string]*proto_go.TagDescriptor) map[string]mTypes.Descriptor {
-	resultMap := map[string]mTypes.Descriptor{}
+func GetTags(tags map[mTypes.Tag]*proto_go.TagDescriptor) map[mTypes.Tag]mTypes.Descriptor {
+	resultMap := map[mTypes.Tag]mTypes.Descriptor{}
 
 	for tag, tagDescriptor := range tags {
 		resultMap[tag] = mTypes.Descriptor{

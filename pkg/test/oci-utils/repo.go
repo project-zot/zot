@@ -18,7 +18,7 @@ type RepoImage struct {
 
 type RepoMultiArchImage struct {
 	imageUtil.MultiarchImage
-	ImageStatistics map[string]mTypes.DescriptorStatistics
+	ImageStatistics map[mTypes.ImageDigest]mTypes.DescriptorStatistics
 	Reference       string
 }
 

@@ -42,7 +42,7 @@ func TestCVEDBGenerator(t *testing.T) {
 		metaDB := &mocks.MetaDBMock{
 			GetRepoMetaFn: func(ctx context.Context, repo string) (mTypes.RepoMeta, error) {
 				return mTypes.RepoMeta{
-					Tags: map[string]mTypes.Descriptor{
+					Tags: map[mTypes.Tag]mTypes.Descriptor{
 						"tag": {MediaType: ispec.MediaTypeImageIndex},
 					},
 				}, nil
