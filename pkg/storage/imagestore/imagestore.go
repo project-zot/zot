@@ -408,6 +408,17 @@ func (is *ImageStore) GetNextRepository(repo string) (string, error) {
 	return store, err
 }
 
+func (is *ImageStore) DeleteImageRepository(repo string) error {
+	dir := path.Join(is.rootDir, repo)
+	if fi, err := is.storeDriver.Stat(dir); err != nil || !fi.IsDir() {
+		return zerr.ErrRepoNotFound
+	}
+	if err := is.storeDriver.Delete(dir); err != nil {
+		return zerr.ErrRepoNotFound
+	}
+	return nil
+}
+
 // GetImageTags returns a list of image tags available in the specified repository.
 func (is *ImageStore) GetImageTags(repo string) ([]string, error) {
 	var lockLatency time.Time

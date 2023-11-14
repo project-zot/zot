@@ -142,6 +142,8 @@ func (rh *RouteHandler) SetupRoutes() {
 			rh.UpdateManifest).Methods(http.MethodPut)
 		prefixedDistSpecRouter.HandleFunc(fmt.Sprintf("/{name:%s}/manifests/{reference}", zreg.NameRegexp.String()),
 			rh.DeleteManifest).Methods(http.MethodDelete)
+		prefixedDistSpecRouter.HandleFunc(fmt.Sprintf("/{name:%s}/manifests/", zreg.NameRegexp.String()),
+			rh.DeleteImageRepository).Methods(http.MethodDelete)
 		prefixedDistSpecRouter.HandleFunc(fmt.Sprintf("/{name:%s}/blobs/{digest}", zreg.NameRegexp.String()),
 			rh.CheckBlob).Methods(http.MethodHead)
 		prefixedDistSpecRouter.HandleFunc(fmt.Sprintf("/{name:%s}/blobs/{digest}", zreg.NameRegexp.String()),
@@ -739,6 +741,124 @@ func (rh *RouteHandler) UpdateManifest(response http.ResponseWriter, request *ht
 	response.Header().Set("Location", fmt.Sprintf("/v2/%s/manifests/%s", name, digest))
 	response.Header().Set(constants.DistContentDigestKey, digest.String())
 	response.WriteHeader(http.StatusCreated)
+}
+
+// DeleteManifest godoc
+// @Summary Delete an entire repository
+// @Description Delete an entire repo given the repo name
+// @Accept  json
+// @Produce json
+// @Param   name          path    string     true        "repository name"
+// @Success 200 {string} string "ok"
+// @Router /v2/{name}/manifests/ [delete].
+func (rh *RouteHandler) DeleteImageRepository(response http.ResponseWriter, request *http.Request) {
+	vars := mux.Vars(request)
+	name, ok := vars["name"]
+
+	if !ok || name == "" {
+		response.WriteHeader(http.StatusNotFound)
+
+		return
+	}
+
+	imgStore := rh.getImageStore(name)
+
+	// user authz request context (set in authz middleware)
+	userAc, err := reqCtx.UserAcFromContext(request.Context())
+	if err != nil {
+		response.WriteHeader(http.StatusInternalServerError)
+
+		return
+	}
+
+	var detectCollision bool
+	if userAc != nil {
+		detectCollision = userAc.Can(constants.DetectManifestCollisionPermission, name)
+	}
+
+	tags, err := imgStore.GetImageTags(name)
+	if err != nil {
+		e := apiErr.NewError(apiErr.NAME_UNKNOWN).AddDetail(map[string]string{"name": name})
+		zcommon.WriteJSON(response, http.StatusNotFound, apiErr.NewErrorList(e))
+
+		return
+	}
+
+	for _, reference := range tags {
+		manifestBlob, manifestDigest, mediaType, err := imgStore.GetImageManifest(name, reference)
+		if err != nil {
+			details := zerr.GetDetails(err)
+			if errors.Is(err, zerr.ErrRepoNotFound) { //nolint:gocritic // errorslint conflicts with gocritic:IfElseChain
+				details["name"] = name
+				e := apiErr.NewError(apiErr.NAME_UNKNOWN).AddDetail(details)
+				zcommon.WriteJSON(response, http.StatusBadRequest, apiErr.NewErrorList(e))
+			} else if errors.Is(err, zerr.ErrManifestNotFound) {
+				details["reference"] = reference
+				e := apiErr.NewError(apiErr.MANIFEST_UNKNOWN).AddDetail(details)
+				zcommon.WriteJSON(response, http.StatusNotFound, apiErr.NewErrorList(e))
+			} else if errors.Is(err, zerr.ErrBadManifest) {
+				details["reference"] = reference
+				e := apiErr.NewError(apiErr.UNSUPPORTED).AddDetail(details)
+				zcommon.WriteJSON(response, http.StatusBadRequest, apiErr.NewErrorList(e))
+			} else {
+				rh.c.Log.Error().Err(err).Msg("unexpected error")
+				response.WriteHeader(http.StatusInternalServerError)
+			}
+
+			return
+		}
+
+		err = imgStore.DeleteImageManifest(name, reference, detectCollision)
+		if err != nil { //nolint: dupl
+			details := zerr.GetDetails(err)
+			if errors.Is(err, zerr.ErrRepoNotFound) { //nolint:gocritic // errorslint conflicts with gocritic:IfElseChain
+				details["name"] = name
+				e := apiErr.NewError(apiErr.NAME_UNKNOWN).AddDetail(details)
+				zcommon.WriteJSON(response, http.StatusBadRequest, apiErr.NewErrorList(e))
+			} else if errors.Is(err, zerr.ErrManifestNotFound) {
+				details["reference"] = reference
+				e := apiErr.NewError(apiErr.MANIFEST_UNKNOWN).AddDetail(details)
+				zcommon.WriteJSON(response, http.StatusNotFound, apiErr.NewErrorList(e))
+			} else if errors.Is(err, zerr.ErrManifestConflict) {
+				details["reference"] = reference
+				e := apiErr.NewError(apiErr.MANIFEST_INVALID).AddDetail(details)
+				zcommon.WriteJSON(response, http.StatusConflict, apiErr.NewErrorList(e))
+			} else if errors.Is(err, zerr.ErrBadManifest) {
+				details["reference"] = reference
+				e := apiErr.NewError(apiErr.UNSUPPORTED).AddDetail(details)
+				zcommon.WriteJSON(response, http.StatusBadRequest, apiErr.NewErrorList(e))
+			} else if errors.Is(err, zerr.ErrManifestReferenced) {
+				// manifest is part of an index image, don't allow index manipulations.
+				details["reference"] = reference
+				e := apiErr.NewError(apiErr.DENIED).AddDetail(details)
+				zcommon.WriteJSON(response, http.StatusMethodNotAllowed, apiErr.NewErrorList(e))
+			} else {
+				rh.c.Log.Error().Err(err).Msg("unexpected error")
+				response.WriteHeader(http.StatusInternalServerError)
+			}
+
+			return
+		}
+
+		if rh.c.MetaDB != nil {
+			err := meta.OnDeleteManifest(name, reference, mediaType, manifestDigest, manifestBlob,
+				rh.c.StoreController, rh.c.MetaDB, rh.c.Log)
+			if err != nil {
+				response.WriteHeader(http.StatusInternalServerError)
+
+				return
+			}
+		}
+
+	}
+	if err := imgStore.DeleteImageRepository(name); err != nil {
+		rh.c.Log.Error().Err(err).Msg("unexpected error")
+		response.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	response.WriteHeader(http.StatusAccepted)
+
 }
 
 // DeleteManifest godoc
