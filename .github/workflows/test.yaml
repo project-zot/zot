@@ -15,6 +15,9 @@ jobs:
   test-run-minimal:
     name: Running zot without extensions tests
     runs-on: ubuntu-latest-16-cores
+    strategy:
+      matrix:
+        go: ['1.20.x', '1.21.x']
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/clean-runner
@@ -22,7 +25,7 @@ jobs:
         uses: actions/setup-go@v4
         with:
           cache: false
-          go-version: 1.20.x
+          go-version: ${{ matrix.go }}
       - name: Cache go dependencies
         id: cache-go-dependencies
         uses: actions/cache@v3
@@ -58,13 +61,16 @@ jobs:
   test-run-extensions:
     name: Run zot with extensions tests
     runs-on: ubuntu-latest-16-cores
+    strategy:
+      matrix:
+        go: ['1.20.x', '1.21.x']
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/clean-runner
       - uses: actions/setup-go@v4
         with:
           cache: false
-          go-version: 1.20.x
+          go-version: ${{ matrix.go }}
       - name: Cache go dependencies
         id: cache-go-dependencies
         uses: actions/cache@v3
@@ -99,13 +105,16 @@ jobs:
   test-run-devmode:
     name: Running privileged tests on Linux
     runs-on: ubuntu-latest-16-cores
+    strategy:
+      matrix:
+        go: ['1.20.x', '1.21.x']
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/clean-runner
       - uses: actions/setup-go@v4
         with:
           cache: false
-          go-version: 1.20.x
+          go-version: ${{ matrix.go }}
       - name: Cache go dependencies
         id: cache-go-dependencies
         uses: actions/cache@v3
