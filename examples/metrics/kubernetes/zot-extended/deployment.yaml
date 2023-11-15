@@ -35,6 +35,8 @@ spec:
             items:
             - key: zot_config.json
               path: config.json
+            - key: htpasswd
+              path: htpasswd
 ---
 apiVersion: v1
 kind: ConfigMap
@@ -49,7 +51,25 @@ data:
       },
       "http": {
           "address": "0.0.0.0",
-          "port": "5000"
+          "port": "5000",
+          "auth": {
+              "htpasswd": {
+                "path": "/zot-config/htpasswd"
+              }
+          },
+          "accessControl": {
+              "metrics":{
+                  "users": ["metrics"]
+              },
+              "repositories": {
+                  "**": {
+                      "anonymousPolicy": [
+                          "read"
+                      ],
+                      "defaultPolicy": ["read","create"]
+                  }
+              }
+          }
       },
       "log": {
           "level": "debug"
@@ -91,3 +111,7 @@ data:
         }
       }
     }
+  # Example htpasswd with 'test:test' & 'metrics:metrics' user:pass pairs
+  htpasswd: |-
+    test:$2y$05$.jSWenVyzEK3em/Gfr0AG.WRSAIdi4nxqW9h27xK7WCw24wmQH/1m
+    metrics:$2y$05$4yBka/ZTKgXhvCMb48BnyOZqj/DrKT1sGPZLAg5RbobQ0CQCJHmTO

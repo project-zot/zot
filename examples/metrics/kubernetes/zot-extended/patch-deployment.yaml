@@ -1,0 +1,7 @@
+spec:
+  template:
+    spec:
+      containers:
+      - name: zot-extended
+        command: ["/usr/local/bin/zot-linux-amd64"]
+
