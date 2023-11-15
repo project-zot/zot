@@ -14,7 +14,7 @@ permissions: read-all
 jobs:
   dedupe:
     name: Dedupe/restore blobs
-    runs-on: ubuntu-latest-8-cores
+    runs-on: ubuntu-latest-4-cores
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v3
@@ -61,7 +61,7 @@ jobs:
 
   sync:
     name: Sync harness
-    runs-on: ubuntu-latest-8-cores
+    runs-on: ubuntu-latest-4-cores
     steps:
       - name: Check out source code
         uses: actions/checkout@v4
@@ -153,7 +153,7 @@ jobs:
 
   docker-image:
     name: Build docker image (for users still using Docker environments)
-    runs-on: ubuntu-latest-4-cores
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - name: Check out source code

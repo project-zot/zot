@@ -28,6 +28,8 @@ function setup_file() {
     local zot_htpasswd_file=${BATS_FILE_TMPDIR}/htpasswd
     mkdir -p ${zot_root_dir}
     mkdir -p ${oci_data_dir}
+    zot_port=$(get_free_port)
+    echo ${zot_port} > ${BATS_FILE_TMPDIR}/zot.port
     htpasswd -Bbn ${AUTH_USER} ${AUTH_PASS} >> ${zot_htpasswd_file}
     cat > ${zot_config_file}<<EOF
 {
@@ -37,7 +39,7 @@ function setup_file() {
     },
     "http": {
         "address": "127.0.0.1",
-        "port": "8080",
+        "port": "${zot_port}",
         "auth": {
             "htpasswd": {
                 "path": "${zot_htpasswd_file}"
@@ -70,7 +72,7 @@ function setup_file() {
 }
 EOF
     zot_serve ${ZOT_PATH} ${zot_config_file}
-    wait_zot_reachable 8080
+    wait_zot_reachable ${zot_port}
 }
 
 function teardown() {
@@ -83,23 +85,26 @@ function teardown_file() {
 }
 
 @test "push image user policy" {
+    zot_port=`cat ${BATS_FILE_TMPDIR}/zot.port`
     run skopeo --insecure-policy copy --dest-creds ${AUTH_USER}:${AUTH_PASS} --dest-tls-verify=false \
         oci:${TEST_DATA_DIR}/busybox:1.36 \
-        docker://127.0.0.1:8080/busybox:1.36
+        docker://127.0.0.1:${zot_port}/busybox:1.36
     [ "$status" -eq 0 ]
 }
 
 @test "pull image anonymous policy" {
     local oci_data_dir=${BATS_FILE_TMPDIR}/oci
+    zot_port=`cat ${BATS_FILE_TMPDIR}/zot.port`
     run skopeo --insecure-policy copy --src-tls-verify=false \
-        docker://127.0.0.1:8080/busybox:1.36 \
+        docker://127.0.0.1:${zot_port}/busybox:1.36 \
         oci:${oci_data_dir}/busybox:1.36
     [ "$status" -eq 0 ]
 }
 
 @test "push image anonymous policy" {
+    zot_port=`cat ${BATS_FILE_TMPDIR}/zot.port`
     run skopeo --insecure-policy copy --dest-tls-verify=false \
         oci:${TEST_DATA_DIR}/busybox:1.36 \
-        docker://127.0.0.1:8080/busybox:1.36
+        docker://127.0.0.1:${zot_port}/busybox:1.36
     [ "$status" -eq 1 ]
 }

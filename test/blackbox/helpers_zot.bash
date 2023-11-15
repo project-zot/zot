@@ -1,15 +1,29 @@
 ROOT_DIR=$(git rev-parse --show-toplevel)
-TEST_DATA_DIR=${ROOT_DIR}/test/data/
 OS=$(go env GOOS)
 ARCH=$(go env GOARCH)
 ZOT_PATH=${ROOT_DIR}/bin/zot-${OS}-${ARCH}
 ZLI_PATH=${ROOT_DIR}/bin/zli-${OS}-${ARCH}
 ZOT_MINIMAL_PATH=${ROOT_DIR}/bin/zot-${OS}-${ARCH}-minimal
 ZB_PATH=${ROOT_DIR}/bin/zb-${OS}-${ARCH}
+TEST_DATA_DIR=${BATS_FILE_TMPDIR}/test/data
 AUTH_USER=poweruser
 AUTH_PASS=sup*rSecr9T
 
 mkdir -p ${TEST_DATA_DIR}
+
+function get_free_port(){
+    while true
+    do
+        random_port=$(( ((RANDOM<<15)|RANDOM) % 49152 + 10000 ))
+        status="$(nc -z 127.0.0.1 $random_port < /dev/null &>/dev/null; echo $?)"
+        if [ "${status}" != "0" ]; then
+            free_port=${random_port};
+            break;
+        fi
+    done
+
+    echo ${free_port}
+}
 
 function zot_serve() {
     local zot_path=${1}

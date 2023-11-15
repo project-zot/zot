@@ -14,10 +14,9 @@ permissions: read-all
 jobs:
   gc-referrers-stress-local:
     name: GC(with referrers) on filesystem with short interval
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-latest-8-cores
     steps:
       - uses: actions/checkout@v4
-      - uses: ./.github/actions/clean-runner
       - uses: actions/setup-go@v4
         with:
           cache: false
@@ -46,10 +45,9 @@ jobs:
 
   gc-stress-local:
     name: GC(without referrers) on filesystem with short interval
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-latest-8-cores
     steps:
       - uses: actions/checkout@v4
-      - uses: ./.github/actions/clean-runner
       - uses: actions/setup-go@v4
         with:
           cache: false
@@ -78,10 +76,9 @@ jobs:
 
   gc-referrers-stress-s3:
     name: GC(with referrers) on S3(minio) with short interval
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-latest-8-cores
     steps:
       - uses: actions/checkout@v4
-      - uses: ./.github/actions/clean-runner
       - uses: actions/setup-go@v4
         with:
           cache: false
@@ -154,10 +151,9 @@ jobs:
 
   gc-stress-s3:
     name: GC(without referrers) on S3(minio) with short interval
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-latest-8-cores
     steps:
       - uses: actions/checkout@v4
-      - uses: ./.github/actions/clean-runner
       - uses: actions/setup-go@v4
         with:
           cache: false

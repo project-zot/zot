@@ -10,7 +10,7 @@ function verify_prerequisites() {
 }
 
 function setup_file(){
-    skopeo --insecure-policy copy --format=oci docker://ghcr.io/project-zot/golang:1.20 oci:${TEST_DATA_DIR}/golang:1.20
+    skopeo --insecure-policy copy --format=oci docker://ghcr.io/project-zot/test-images/alpine:3.17.3 oci:${TEST_DATA_DIR}/alpine:3.17.3
 }
 
 function setup() {
@@ -24,6 +24,8 @@ function setup() {
     echo ${ZOT_ROOT_DIR}
     ZOT_LOG_FILE=${ZOT_ROOT_DIR}/zot-log.json
     ZOT_CONFIG_FILE=${BATS_FILE_TMPDIR}/zot_config.json
+    zot_port=$(get_free_port)
+    echo ${zot_port} > ${BATS_FILE_TMPDIR}/zot.port
     mkdir -p ${ZOT_ROOT_DIR}
     touch ${ZOT_LOG_FILE}
     cat >${ZOT_CONFIG_FILE} <<EOF
@@ -35,7 +37,7 @@ function setup() {
     },
     "http": {
         "address": "0.0.0.0",
-        "port": "8080"
+        "port": "${zot_port}"
     },
     "log": {
         "level": "debug",
@@ -58,10 +60,11 @@ function teardown() {
 }
 
 @test "blobs/manifest integrity not affected" {
+    zot_port=`cat ${BATS_FILE_TMPDIR}/zot.port`
     add_test_files
     echo ${ZOT_CONFIG_FILE}
     zot_serve ${ZOT_PATH} ${ZOT_CONFIG_FILE}
-    wait_zot_reachable 8080
+    wait_zot_reachable ${zot_port}
 
     # wait for scrub to be done and logs to get populated
     run sleep 20s
@@ -71,11 +74,12 @@ function teardown() {
 }
 
 @test "blobs/manifest integrity affected" {
+    zot_port=`cat ${BATS_FILE_TMPDIR}/zot.port`
     add_test_files
     delete_blob
     echo ${ZOT_CONFIG_FILE}
     zot_serve ${ZOT_PATH} ${ZOT_CONFIG_FILE}
-    wait_zot_reachable 8080
+    wait_zot_reachable ${zot_port}
 
     # wait for scrub to be done and logs to get populated
     run sleep 20s

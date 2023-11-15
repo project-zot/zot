@@ -13,7 +13,7 @@ permissions:
 jobs:
   golangci:
     name: lint
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-latest-8-cores
     steps:
       - uses: actions/setup-go@v4
         with:

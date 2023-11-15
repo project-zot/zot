@@ -1,5 +1,5 @@
 ROOT_DIR=$(git rev-parse --show-toplevel)
-TEST_DATA_DIR=${ROOT_DIR}/test/data/
+TEST_DATA_DIR=${ROOT_DIR}/test/data
 OS="${OS:-linux}"
 ARCH="${ARCH:-amd64}"
 ZOT_PATH=${ROOT_DIR}/bin/zot-${OS}-${ARCH}
