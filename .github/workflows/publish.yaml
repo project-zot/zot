@@ -16,7 +16,7 @@ jobs:
       packages: write
     strategy:
       matrix:
-        os: [linux, darwin]
+        os: [linux, darwin, freebsd]
         arch: [amd64, arm64]
     steps:
       - name: Check out the repo
@@ -27,6 +27,13 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Setup build vars
+        run: |
+          if [ ${{ matrix.os }} == "freebsd" ]; then
+            echo "BASE_IMAGE=dougrabson/freebsd-minimal:13" >> $GITHUB_ENV
+          else
+            echo "BASE_IMAGE=gcr.io/distroless/base:latest-${{ matrix.arch }}" >> $GITHUB_ENV
+          fi
       - name: Build and push zot container image
         uses: project-stacker/stacker-build-push-action@main
         with:
@@ -37,6 +44,7 @@ jobs:
             OS=${{ matrix.os }}
             ARCH=${{ matrix.arch }}
             REPO_NAME=zot-${{ matrix.os }}-${{ matrix.arch }}
+            BASE_IMAGE=${{ env.BASE_IMAGE }}
           url: docker://ghcr.io/${{ github.repository_owner }}
           tags: ${{ github.event.release.tag_name }} latest
           username: ${{ github.actor }}
@@ -84,6 +92,7 @@ jobs:
             ARCH=${{ matrix.arch }}
             EXT=-minimal
             REPO_NAME=zot-minimal-${{ matrix.os }}-${{ matrix.arch }}
+            BASE_IMAGE=${{ env.BASE_IMAGE }}
           url: docker://ghcr.io/${{ github.repository_owner }}
           tags: ${{ github.event.release.tag_name }} latest
           username: ${{ github.actor }}
@@ -130,6 +139,7 @@ jobs:
             OS=${{ matrix.os }}
             ARCH=${{ matrix.arch }}
             REPO_NAME=zxp-${{ matrix.os }}-${{ matrix.arch }}
+            BASE_IMAGE=${{ env.BASE_IMAGE }}
           url: docker://ghcr.io/${{ github.repository_owner }}
           tags: ${{ github.event.release.tag_name }} latest
           username: ${{ github.actor }}
@@ -176,6 +186,7 @@ jobs:
             OS=${{ matrix.os }}
             ARCH=${{ matrix.arch }}
             REPO_NAME=zb-${{ matrix.os }}-${{ matrix.arch }}
+            BASE_IMAGE=${{ env.BASE_IMAGE }}
           url: docker://ghcr.io/${{ github.repository_owner }}
           tags: ${{ github.event.release.tag_name }} latest
           username: ${{ github.actor }}

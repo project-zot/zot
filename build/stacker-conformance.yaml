@@ -46,7 +46,7 @@ build:
   arch: ${{ARCH}}
   from:
     type: docker
-    url: docker://gcr.io/distroless/base:latest-${{ARCH}}
+    url: docker://${{BASE_IMAGE}}
   overlay_dirs:
     - source: ../.build/${{REPO_NAME}}/binary
       dest: /usr/local/bin
