@@ -6,6 +6,7 @@ package monitoring_test
 import (
 	"context"
 	"fmt"
+	"io"
 	"math/rand"
 	"net/http"
 	"os"
@@ -435,8 +436,19 @@ func TestPopulateStorageMetrics(t *testing.T) {
 			Prometheus: &extconf.PrometheusConfig{Path: "/metrics"},
 		}
 
+		logFile, err := os.CreateTemp(t.TempDir(), "zot-log*.txt")
+		if err != nil {
+			panic(err)
+		}
+
+		logPath := logFile.Name()
+		defer os.Remove(logPath)
+
+		writers := io.MultiWriter(os.Stdout, logFile)
+
 		ctlr := api.NewController(conf)
 		So(ctlr, ShouldNotBeNil)
+		ctlr.Log.Logger = ctlr.Log.Output(writers)
 
 		cm := test.NewControllerManager(ctlr)
 		cm.StartAndWait(port)
@@ -444,7 +456,7 @@ func TestPopulateStorageMetrics(t *testing.T) {
 
 		// write a couple of images
 		srcStorageCtlr := ociutils.GetDefaultStoreController(rootDir, ctlr.Log)
-		err := WriteImageToFileSystem(CreateDefaultImage(), "alpine", "0.0.1", srcStorageCtlr)
+		err = WriteImageToFileSystem(CreateDefaultImage(), "alpine", "0.0.1", srcStorageCtlr)
 		So(err, ShouldBeNil)
 		err = WriteImageToFileSystem(CreateDefaultImage(), "busybox", "0.0.1", srcStorageCtlr)
 		So(err, ShouldBeNil)
@@ -462,7 +474,16 @@ func TestPopulateStorageMetrics(t *testing.T) {
 
 		sch.SubmitGenerator(generator, time.Duration(0), scheduler.LowPriority)
 
-		time.Sleep(5 * time.Second)
+		// Wait for storage metrics to update
+		found, err := test.ReadLogFileAndSearchString(logPath,
+			"monitoring: computed storage usage for repo alpine", time.Minute)
+		So(err, ShouldBeNil)
+		So(found, ShouldBeTrue)
+		found, err = test.ReadLogFileAndSearchString(logPath,
+			"monitoring: computed storage usage for repo busybox", time.Minute)
+		So(err, ShouldBeNil)
+		So(found, ShouldBeTrue)
+
 		cancel()
 		alpineSize, err := monitoring.GetDirSize(path.Join(rootDir, "alpine"))
 		So(err, ShouldBeNil)

@@ -1095,7 +1095,7 @@ func (gen *StorageMetricsInitGenerator) Next() (scheduler.Task, error) {
 	}
 	gen.lastRepo = repo
 
-	return NewStorageMetricsTask(gen.ImgStore, gen.Metrics, repo), nil
+	return NewStorageMetricsTask(gen.ImgStore, gen.Metrics, repo, gen.Log), nil
 }
 
 func (gen *StorageMetricsInitGenerator) IsDone() bool {
@@ -1116,16 +1116,19 @@ type smTask struct {
 	imgStore storageTypes.ImageStore
 	metrics  monitoring.MetricServer
 	repo     string
+	log      zlog.Logger
 }
 
 func NewStorageMetricsTask(imgStore storageTypes.ImageStore, metrics monitoring.MetricServer, repo string,
+	log zlog.Logger,
 ) *smTask {
-	return &smTask{imgStore, metrics, repo}
+	return &smTask{imgStore, metrics, repo, log}
 }
 
 func (smt *smTask) DoWork(ctx context.Context) error {
 	// run task
 	monitoring.SetStorageUsage(smt.metrics, smt.imgStore.RootDir(), smt.repo)
+	smt.log.Debug().Msg("monitoring: computed storage usage for repo " + smt.repo)
 
 	return nil
 }
