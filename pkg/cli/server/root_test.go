@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -1444,6 +1445,88 @@ func TestScrub(t *testing.T) {
 			os.Args = []string{"cli_test", "scrub", tmpfile.Name()}
 			So(func() { _ = cli.NewServerRootCmd().Execute() }, ShouldPanic)
 		})
+	})
+}
+
+func TestUpdateLDAPConfig(t *testing.T) {
+	Convey("updateLDAPConfig errors while unmarshaling ldap config", t, func() {
+		tempDir := t.TempDir()
+		ldapConfigContent := "bad-json"
+		ldapConfigPath := filepath.Join(tempDir, "ldap.json")
+
+		err := os.WriteFile(ldapConfigPath, []byte(ldapConfigContent), 0o000)
+		So(err, ShouldBeNil)
+
+		configStr := fmt.Sprintf(`
+		{
+			"Storage": {
+				"RootDirectory": "%s"
+			},
+			"HTTP": {
+				"Address": "%s",
+				"Port": "%s",
+				"Auth": {
+					"LDAP": {
+						"CredentialsFile":    "%s",
+						"BaseDN":             "%v",
+						"UserAttribute":      "uid",
+						"UserGroupAttribute": "memberOf",
+						"Insecure":           true,
+						"Address":            "%v",
+						"Port":               %v
+					}
+				}
+			}
+		}`, tempDir, "127.0.0.1", "8000", ldapConfigPath, "LDAPBaseDN", "LDAPAddress", 1000)
+
+		configPath := filepath.Join(tempDir, "config.json")
+
+		err = os.WriteFile(configPath, []byte(configStr), 0o0600)
+		So(err, ShouldBeNil)
+
+		server := cli.NewServerRootCmd()
+		server.SetArgs([]string{"serve", configPath})
+		So(func() { err = server.Execute() }, ShouldPanic)
+
+		err = os.Chmod(ldapConfigPath, 0o600)
+		So(err, ShouldBeNil)
+
+		server = cli.NewServerRootCmd()
+		server.SetArgs([]string{"serve", configPath})
+		So(func() { err = server.Execute() }, ShouldPanic)
+	})
+
+	Convey("unauthenticated LDAP config", t, func() {
+		tempDir := t.TempDir()
+
+		configStr := fmt.Sprintf(`
+		{
+			"Storage": {
+				"RootDirectory": "%s"
+			},
+			"HTTP": {
+				"Address": "%s",
+				"Port": "%s",
+				"Auth": {
+					"LDAP": {
+						"BaseDN":             "%v",
+						"UserAttribute":      "uid",
+						"UserGroupAttribute": "memberOf",
+						"Insecure":           true,
+						"Address":            "%v",
+						"Port":               %v
+					}
+				}
+			}
+		}`, tempDir, "127.0.0.1", "8000", "LDAPBaseDN", "LDAPAddress", 1000)
+
+		configPath := filepath.Join(tempDir, "config.json")
+
+		err := os.WriteFile(configPath, []byte(configStr), 0o0600)
+		So(err, ShouldBeNil)
+
+		err = cli.LoadConfiguration(config.New(), configPath)
+		So(err, ShouldBeNil)
 	})
 }
 

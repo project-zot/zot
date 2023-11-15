@@ -121,19 +121,45 @@ type SchedulerConfig struct {
 	NumWorkers int
 }
 
+type LDAPCredentials struct {
+	BindDN       string
+	BindPassword string
+}
+
 type LDAPConfig struct {
+	CredentialsFile    string
 	Port               int
 	Insecure           bool
 	StartTLS           bool // if !Insecure, then StartTLS or LDAPs
 	SkipVerify         bool
 	SubtreeSearch      bool
 	Address            string
-	BindDN             string
+	bindDN             string `json:"-"`
+	bindPassword       string `json:"-"`
 	UserGroupAttribute string
-	BindPassword       string
 	BaseDN             string
 	UserAttribute      string
 	CACert             string
+}
+
+func (ldapConf *LDAPConfig) BindDN() string {
+	return ldapConf.bindDN
+}
+
+func (ldapConf *LDAPConfig) SetBindDN(bindDN string) *LDAPConfig {
+	ldapConf.bindDN = bindDN
+
+	return ldapConf
+}
+
+func (ldapConf *LDAPConfig) BindPassword() string {
+	return ldapConf.bindPassword
+}
+
+func (ldapConf *LDAPConfig) SetBindPassword(bindPassword string) *LDAPConfig {
+	ldapConf.bindPassword = bindPassword
+
+	return ldapConf
 }
 
 type LogConfig struct {
@@ -266,14 +292,14 @@ func (c *Config) Sanitize() *Config {
 		panic(err)
 	}
 
-	if c.HTTP.Auth != nil && c.HTTP.Auth.LDAP != nil && c.HTTP.Auth.LDAP.BindPassword != "" {
+	if c.HTTP.Auth != nil && c.HTTP.Auth.LDAP != nil && c.HTTP.Auth.LDAP.bindPassword != "" {
 		sanitizedConfig.HTTP.Auth.LDAP = &LDAPConfig{}
 
 		if err := DeepCopy(c.HTTP.Auth.LDAP, sanitizedConfig.HTTP.Auth.LDAP); err != nil {
 			panic(err)
 		}
 
-		sanitizedConfig.HTTP.Auth.LDAP.BindPassword = "******"
+		sanitizedConfig.HTTP.Auth.LDAP.bindPassword = "******"
 	}
 
 	return sanitizedConfig

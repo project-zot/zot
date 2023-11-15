@@ -225,11 +225,10 @@ func TestMgmtExtension(t *testing.T) {
 
 	Convey("Verify mgmt auth info route enabled with ldap", t, func() {
 		defer os.Remove(conf.HTTP.Auth.HTPasswd.Path) // cleanup of a file created in previous Convey
-		conf.HTTP.Auth.LDAP = &config.LDAPConfig{
-			BindDN:  "binddn",
+		conf.HTTP.Auth.LDAP = (&config.LDAPConfig{
 			BaseDN:  "basedn",
 			Address: "ldapexample",
-		}
+		}).SetBindDN("binddn")
 
 		conf.Extensions = &extconf.ExtensionConfig{}
 		conf.Extensions.Search = &extconf.SearchConfig{}
@@ -290,11 +289,10 @@ func TestMgmtExtension(t *testing.T) {
 		htpasswdPath := test.MakeHtpasswdFileFromString(test.GetCredString(username, password))
 		defer os.Remove(htpasswdPath)
 		conf.HTTP.Auth.HTPasswd.Path = htpasswdPath
-		conf.HTTP.Auth.LDAP = &config.LDAPConfig{
-			BindDN:  "binddn",
+		conf.HTTP.Auth.LDAP = (&config.LDAPConfig{
 			BaseDN:  "basedn",
 			Address: "ldapexample",
-		}
+		}).SetBindDN("binddn")
 
 		conf.Extensions = &extconf.ExtensionConfig{}
 		conf.Extensions.Search = &extconf.SearchConfig{}
@@ -369,11 +367,10 @@ func TestMgmtExtension(t *testing.T) {
 		htpasswdPath := test.MakeHtpasswdFileFromString(test.GetCredString(username, password))
 		defer os.Remove(htpasswdPath)
 		conf.HTTP.Auth.HTPasswd.Path = htpasswdPath
-		conf.HTTP.Auth.LDAP = &config.LDAPConfig{
-			BindDN:  "binddn",
+		conf.HTTP.Auth.LDAP = (&config.LDAPConfig{
 			BaseDN:  "basedn",
 			Address: "ldapexample",
-		}
+		}).SetBindDN("binddn")
 
 		conf.HTTP.Auth.Bearer = &config.BearerConfig{
 			Realm:   "realm",
@@ -449,11 +446,10 @@ func TestMgmtExtension(t *testing.T) {
 
 	Convey("Verify mgmt auth info route enabled with ldap + bearer", t, func() {
 		conf.HTTP.Auth.HTPasswd.Path = ""
-		conf.HTTP.Auth.LDAP = &config.LDAPConfig{
-			BindDN:  "binddn",
+		conf.HTTP.Auth.LDAP = (&config.LDAPConfig{
 			BaseDN:  "basedn",
 			Address: "ldapexample",
-		}
+		}).SetBindDN("binddn")
 
 		conf.HTTP.Auth.Bearer = &config.BearerConfig{
 			Realm:   "realm",

@@ -13,14 +13,13 @@
       },
       "auth": {
         "ldap": {
+          "credentialsFile": "examples/config-ldap-credentials.json",
           "address": "ldap.example.org",
           "port": 389,
           "startTLS": false,
           "baseDN":"ou=Users,dc=example,dc=org",
           "userAttribute": "uid",
           "userGroupAttribute": "memberOf",
-          "bindDN":"cn=ldap-searcher,ou=Users,dc=example,dc=org",
-          "bindPassword":"ldap-searcher-password",
           "skipVerify": true,
           "subtreeSearch": true
         },
