@@ -28,7 +28,7 @@ ZUI_BUILD_PATH := ""
 ZUI_VERSION := commit-0edfe0f
 ZUI_REPO_OWNER := project-zot
 ZUI_REPO_NAME := zui
-SWAGGER_VERSION := v1.8.12
+SWAGGER_VERSION := v1.16.2
 STACKER := $(TOOLSDIR)/bin/stacker
 BATS := $(TOOLSDIR)/bin/bats
 TESTDATA := $(TOP_LEVEL)/test/data
@@ -336,7 +336,7 @@ swagger:
 update-licenses: check-linux
 	@echo "Detecting and updating licenses ... please be patient!"
 	go install github.com/google/go-licenses@latest
-	$(shell echo "Module | License URL | License" > THIRD-PARTY-LICENSES.md; echo "---|---|---" >> THIRD-PARTY-LICENSES.md; for i in $$(go list -m all  | awk '{print $$1}'); do l=$$(go-licenses csv $$i 2>/dev/null); if [ $$? -ne 0 ]; then continue; fi; echo $$l | tr \, \| | tr ' ' '\n'; done | LC_ALL=C sort -u >> THIRD-PARTY-LICENSES.md)
+	./scripts/update_licenses.sh
 	$(eval UNCOMMITED_FILES = $(shell git status --porcelain | grep -c THIRD-PARTY-LICENSES.md))
 	@if [ $(UNCOMMITED_FILES) != 0 ]; then \
 		echo "THIRD-PARTY-LICENSES.md file needs to be updated";\

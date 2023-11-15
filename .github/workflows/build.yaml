@@ -30,7 +30,7 @@ jobs:
         uses: actions/setup-go@v5
         with:
           cache: false
-          go-version: 1.20.x
+          go-version: 1.21.x
       - name: Cache go dependencies
         id: cache-go-dependencies
         uses: actions/cache@v4
@@ -57,7 +57,7 @@ jobs:
       - name: Install other dependencies
         run: |
           cd $GITHUB_WORKSPACE
-          go install github.com/swaggo/swag/cmd/swag@v1.8.12
+          go install github.com/swaggo/swag/cmd/swag@v1.16.2
           sudo apt-get update
           sudo apt-get install rpm
           sudo apt-get install snapd
