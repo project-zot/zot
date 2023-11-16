@@ -718,7 +718,7 @@ func LoadConfiguration(config *config.Config, configPath string) error {
 	}
 
 	metaData := &mapstructure.Metadata{}
-	if err := viperInstance.Unmarshal(&config, metadataConfig(metaData)); err != nil {
+	if err := viperInstance.UnmarshalExact(&config, metadataConfig(metaData)); err != nil {
 		log.Error().Err(err).Msg("error while unmarshaling new config")
 
 		return err
