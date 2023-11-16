@@ -56,6 +56,15 @@ type MockedImageStore struct {
 	CleanupRepoFn                func(repo string, blobs []godigest.Digest, removeRepo bool) (int, error)
 	PutIndexContentFn            func(repo string, index ispec.Index) error
 	PopulateStorageMetricsFn     func(interval time.Duration, sch *scheduler.Scheduler)
+	StatIndexFn                  func(repo string) (bool, int64, time.Time, error)
+}
+
+func (is MockedImageStore) StatIndex(repo string) (bool, int64, time.Time, error) {
+	if is.StatIndexFn != nil {
+		return is.StatIndexFn(repo)
+	}
+
+	return true, 0, time.Time{}, nil
 }
 
 func (is MockedImageStore) Lock(t *time.Time) {

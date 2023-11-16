@@ -63,58 +63,6 @@ func TestWrapperErrors(t *testing.T) {
 
 		ctx := userAc.DeriveContext(context.Background())
 
-		Convey("ResetDB", func() {
-			Convey("RepoMetaBuck", func() {
-				err := boltdbWrapper.DB.Update(func(tx *bbolt.Tx) error {
-					return tx.DeleteBucket([]byte(boltdb.RepoMetaBuck))
-				})
-				So(err, ShouldBeNil)
-
-				err = boltdbWrapper.ResetDB()
-				So(err, ShouldNotBeNil)
-			})
-
-			Convey("ImageMetaBuck", func() {
-				err := boltdbWrapper.DB.Update(func(tx *bbolt.Tx) error {
-					return tx.DeleteBucket([]byte(boltdb.ImageMetaBuck))
-				})
-				So(err, ShouldBeNil)
-
-				err = boltdbWrapper.ResetDB()
-				So(err, ShouldNotBeNil)
-			})
-
-			Convey("RepoBlobsBuck", func() {
-				err := boltdbWrapper.DB.Update(func(tx *bbolt.Tx) error {
-					return tx.DeleteBucket([]byte(boltdb.RepoBlobsBuck))
-				})
-				So(err, ShouldBeNil)
-
-				err = boltdbWrapper.ResetDB()
-				So(err, ShouldNotBeNil)
-			})
-
-			Convey("UserAPIKeysBucket", func() {
-				err := boltdbWrapper.DB.Update(func(tx *bbolt.Tx) error {
-					return tx.DeleteBucket([]byte(boltdb.UserAPIKeysBucket))
-				})
-				So(err, ShouldBeNil)
-
-				err = boltdbWrapper.ResetDB()
-				So(err, ShouldNotBeNil)
-			})
-
-			Convey("UserDataBucket", func() {
-				err := boltdbWrapper.DB.Update(func(tx *bbolt.Tx) error {
-					return tx.DeleteBucket([]byte(boltdb.UserDataBucket))
-				})
-				So(err, ShouldBeNil)
-
-				err = boltdbWrapper.ResetDB()
-				So(err, ShouldNotBeNil)
-			})
-		})
-
 		Convey("RemoveRepoReference", func() {
 			Convey("getProtoRepoMeta errors", func() {
 				err := setRepoMeta("repo", badProtoBlob, boltdbWrapper.DB)
@@ -189,6 +137,21 @@ func TestWrapperErrors(t *testing.T) {
 
 				err = boltdbWrapper.UpdateSignaturesValidity("repo", digest)
 				So(err, ShouldNotBeNil)
+			})
+		})
+
+		Convey("GetRepoLastUpdated", func() {
+			Convey("bad blob in db", func() {
+				err := boltdbWrapper.DB.Update(func(tx *bbolt.Tx) error {
+					repoBlobsBuck := tx.Bucket([]byte(boltdb.RepoBlobsBuck))
+					lastUpdatedBuck := repoBlobsBuck.Bucket([]byte(boltdb.RepoLastUpdatedBuck))
+
+					return lastUpdatedBuck.Put([]byte("repo"), []byte("bad-blob"))
+				})
+				So(err, ShouldBeNil)
+
+				lastUpdated := boltdbWrapper.GetRepoLastUpdated("repo")
+				So(lastUpdated, ShouldEqual, time.Time{})
 			})
 		})
 

@@ -34,7 +34,7 @@ func TestVersioningBoltDB(t *testing.T) {
 		log := log.NewLogger("debug", "")
 
 		boltdbWrapper, err := boltdb.New(boltDriver, log)
-		defer os.Remove(path.Join(boltDBParams.RootDir, "repo.db"))
+		defer os.Remove(path.Join(boltDBParams.RootDir, "meta.db"))
 		So(boltdbWrapper, ShouldNotBeNil)
 		So(err, ShouldBeNil)
 
@@ -200,7 +200,7 @@ func setDynamoDBVersion(client *dynamodb.Client, versTable, vers string) error {
 			":Version": mdAttributeValue,
 		},
 		Key: map[string]types.AttributeValue{
-			"Key": &types.AttributeValueMemberS{
+			"TableKey": &types.AttributeValueMemberS{
 				Value: version.DBVersionKey,
 			},
 		},

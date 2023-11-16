@@ -90,6 +90,66 @@ func New(client *dynamodb.Client, params DBDriverParameters, log log.Logger,
 	return &dynamoWrapper, nil
 }
 
+func (dwr *DynamoDB) GetAllRepoNames() ([]string, error) {
+	ctx := context.Background()
+	attributeIterator := NewBaseDynamoAttributesIterator(dwr.Client, dwr.RepoMetaTablename, "TableKey", 0, dwr.Log)
+
+	repoNames := []string{}
+
+	repoNameAttribute, err := attributeIterator.First(ctx)
+
+	for ; repoNameAttribute != nil; repoNameAttribute, err = attributeIterator.Next(ctx) {
+		if err != nil {
+			return []string{}, err
+		}
+
+		var repoName string
+
+		err := attributevalue.Unmarshal(repoNameAttribute, &repoName)
+		if err != nil {
+			continue
+		}
+
+		repoNames = append(repoNames, repoName)
+	}
+
+	return repoNames, nil
+}
+
+func (dwr *DynamoDB) GetRepoLastUpdated(repo string) time.Time {
+	resp, err := dwr.Client.GetItem(context.Background(), &dynamodb.GetItemInput{
+		TableName: aws.String(dwr.RepoBlobsTablename),
+		Key: map[string]types.AttributeValue{
+			"TableKey": &types.AttributeValueMemberS{Value: repo},
+		},
+		ProjectionExpression: aws.String("RepoLastUpdated"),
+	})
+	if err != nil {
+		return time.Time{}
+	}
+
+	protoRepoLastUpdated := &timestamppb.Timestamp{}
+	repoLastUpdatedBlob := []byte{}
+
+	if resp.Item != nil {
+		err = attributevalue.Unmarshal(resp.Item["RepoLastUpdated"], &repoLastUpdatedBlob)
+		if err != nil {
+			return time.Time{}
+		}
+
+		if len(repoLastUpdatedBlob) > 0 {
+			err := proto.Unmarshal(repoLastUpdatedBlob, protoRepoLastUpdated)
+			if err != nil {
+				return time.Time{}
+			}
+		}
+	}
+
+	lastUpdated := *mConvert.GetTime(protoRepoLastUpdated)
+
+	return lastUpdated
+}
+
 func (dwr *DynamoDB) ImageTrustStore() mTypes.ImageTrustStore {
 	return dwr.imgTrustStore
 }
@@ -117,7 +177,7 @@ func (dwr *DynamoDB) SetProtoImageMeta(digest godigest.Digest, protoImageMeta *p
 			":ImageMeta": mdAttributeValue,
 		},
 		Key: map[string]types.AttributeValue{
-			"Key": &types.AttributeValueMemberS{
+			"TableKey": &types.AttributeValueMemberS{
 				Value: digest.String(),
 			},
 		},
@@ -136,7 +196,7 @@ func (dwr *DynamoDB) GetProtoImageMeta(ctx context.Context, digest godigest.Dige
 	resp, err := dwr.Client.GetItem(ctx, &dynamodb.GetItemInput{
 		TableName: aws.String(dwr.ImageMetaTablename),
 		Key: map[string]types.AttributeValue{
-			"Key": &types.AttributeValueMemberS{Value: digest.String()},
+			"TableKey": &types.AttributeValueMemberS{Value: digest.String()},
 		},
 	})
 	if err != nil {
@@ -185,7 +245,7 @@ func (dwr *DynamoDB) setProtoRepoMeta(repo string, repoMeta *proto_go.RepoMeta) 
 			":RepoMeta": repoAttributeValue,
 		},
 		Key: map[string]types.AttributeValue{
-			"Key": &types.AttributeValueMemberS{
+			"TableKey": &types.AttributeValueMemberS{
 				Value: repo,
 			},
 		},
@@ -200,7 +260,7 @@ func (dwr *DynamoDB) getProtoRepoMeta(ctx context.Context, repo string) (*proto_
 	resp, err := dwr.Client.GetItem(ctx, &dynamodb.GetItemInput{
 		TableName: aws.String(dwr.RepoMetaTablename),
 		Key: map[string]types.AttributeValue{
-			"Key": &types.AttributeValueMemberS{Value: repo},
+			"TableKey": &types.AttributeValueMemberS{Value: repo},
 		},
 	})
 	if err != nil {
@@ -354,11 +414,43 @@ func (dwr *DynamoDB) SetRepoReference(ctx context.Context, repo string, referenc
 	return dwr.setProtoRepoMeta(repo, repoMeta) //nolint: contextcheck
 }
 
+func (dwr *DynamoDB) updateRepoLastUpdated(ctx context.Context, repo string, time time.Time) error {
+	protoTime := timestamppb.New(time)
+
+	protoTimeBlob, err := proto.Marshal(protoTime)
+	if err != nil {
+		return err
+	}
+
+	mdAttributeValue, err := attributevalue.Marshal(protoTimeBlob)
+	if err != nil {
+		return err
+	}
+
+	_, err = dwr.Client.UpdateItem(ctx, &dynamodb.UpdateItemInput{
+		ExpressionAttributeNames: map[string]string{
+			"#RLU": "RepoLastUpdated",
+		},
+		ExpressionAttributeValues: map[string]types.AttributeValue{
+			":RepoLastUpdated": mdAttributeValue,
+		},
+		Key: map[string]types.AttributeValue{
+			"TableKey": &types.AttributeValueMemberS{
+				Value: repo,
+			},
+		},
+		TableName:        aws.String(dwr.RepoBlobsTablename),
+		UpdateExpression: aws.String("SET #RLU = :RepoLastUpdated"),
+	})
+
+	return err
+}
+
 func (dwr *DynamoDB) getProtoRepoBlobs(ctx context.Context, repo string) (*proto_go.RepoBlobs, error) {
 	resp, err := dwr.Client.GetItem(ctx, &dynamodb.GetItemInput{
 		TableName: aws.String(dwr.RepoBlobsTablename),
 		Key: map[string]types.AttributeValue{
-			"Key": &types.AttributeValueMemberS{Value: repo},
+			"TableKey": &types.AttributeValueMemberS{Value: repo},
 		},
 	})
 	if err != nil {
@@ -393,6 +485,18 @@ func (dwr *DynamoDB) getProtoRepoBlobs(ctx context.Context, repo string) (*proto
 }
 
 func (dwr *DynamoDB) setRepoBlobsInfo(repo string, repoBlobs *proto_go.RepoBlobs) error {
+	protoTime := timestamppb.Now()
+
+	protoTimeBlob, err := proto.Marshal(protoTime)
+	if err != nil {
+		return err
+	}
+
+	timeAttributeValue, err := attributevalue.Marshal(protoTimeBlob)
+	if err != nil {
+		return err
+	}
+
 	bytes, err := proto.Marshal(repoBlobs)
 	if err != nil {
 		return err
@@ -406,17 +510,19 @@ func (dwr *DynamoDB) setRepoBlobsInfo(repo string, repoBlobs *proto_go.RepoBlobs
 	_, err = dwr.Client.UpdateItem(context.TODO(), &dynamodb.UpdateItemInput{
 		ExpressionAttributeNames: map[string]string{
 			"#RBI": "RepoBlobsInfo",
+			"#RLU": "RepoLastUpdated",
 		},
 		ExpressionAttributeValues: map[string]types.AttributeValue{
-			":RepoBlobsInfo": mdAttributeValue,
+			":RepoBlobsInfo":   mdAttributeValue,
+			":RepoLastUpdated": timeAttributeValue,
 		},
 		Key: map[string]types.AttributeValue{
-			"Key": &types.AttributeValueMemberS{
+			"TableKey": &types.AttributeValueMemberS{
 				Value: repo,
 			},
 		},
 		TableName:        aws.String(dwr.RepoBlobsTablename),
-		UpdateExpression: aws.String("SET #RBI = :RepoBlobsInfo"),
+		UpdateExpression: aws.String("SET #RBI = :RepoBlobsInfo, #RLU = :RepoLastUpdated"),
 	})
 
 	return err
@@ -932,7 +1038,41 @@ func (dwr *DynamoDB) DecrementRepoStars(repo string) error {
 func (dwr *DynamoDB) SetRepoMeta(repo string, repoMeta mTypes.RepoMeta) error {
 	protoRepoMeta := mConvert.GetProtoRepoMeta(repoMeta)
 
+	err := dwr.updateRepoLastUpdated(context.Background(), repo, time.Time{})
+	if err != nil {
+		return err
+	}
+
 	return dwr.setProtoRepoMeta(repo, protoRepoMeta)
+}
+
+func (dwr *DynamoDB) DeleteRepoMeta(repo string) error {
+	_, err := dwr.Client.TransactWriteItems(context.Background(), &dynamodb.TransactWriteItemsInput{
+		TransactItems: []types.TransactWriteItem{
+			{
+				Delete: &types.Delete{
+					Key: map[string]types.AttributeValue{
+						"TableKey": &types.AttributeValueMemberS{
+							Value: repo,
+						},
+					},
+					TableName: aws.String(dwr.RepoMetaTablename),
+				},
+			},
+			{
+				Delete: &types.Delete{
+					Key: map[string]types.AttributeValue{
+						"TableKey": &types.AttributeValueMemberS{
+							Value: repo,
+						},
+					},
+					TableName: aws.String(dwr.RepoBlobsTablename),
+				},
+			},
+		},
+	})
+
+	return err
 }
 
 func (dwr *DynamoDB) GetReferrersInfo(repo string, referredDigest godigest.Digest, artifactTypes []string,
@@ -1216,6 +1356,8 @@ func (dwr *DynamoDB) FilterImageMeta(ctx context.Context, digests []string,
 
 func (dwr *DynamoDB) RemoveRepoReference(repo, reference string, manifestDigest godigest.Digest,
 ) error {
+	ctx := context.Background()
+
 	protoRepoMeta, err := dwr.getProtoRepoMeta(context.Background(), repo)
 	if err != nil {
 		if errors.Is(err, zerr.ErrRepoMetaNotFound) {
@@ -1295,7 +1437,7 @@ func (dwr *DynamoDB) RemoveRepoReference(repo, reference string, manifestDigest 
 		delete(protoRepoMeta.Referrers, manifestDigest.String())
 	}
 
-	repoBlobsInfo, err := dwr.getProtoRepoBlobs(context.Background(), repo)
+	repoBlobsInfo, err := dwr.getProtoRepoBlobs(ctx, repo)
 	if err != nil {
 		return err
 	}
@@ -1448,7 +1590,7 @@ func (dwr *DynamoDB) ToggleStarRepo(ctx context.Context, repo string) (
 							":UserData": userAttributeValue,
 						},
 						Key: map[string]types.AttributeValue{
-							"Key": &types.AttributeValueMemberS{
+							"TableKey": &types.AttributeValueMemberS{
 								Value: userid,
 							},
 						},
@@ -1466,7 +1608,7 @@ func (dwr *DynamoDB) ToggleStarRepo(ctx context.Context, repo string) (
 							":RepoMeta": repoAttributeValue,
 						},
 						Key: map[string]types.AttributeValue{
-							"Key": &types.AttributeValueMemberS{
+							"TableKey": &types.AttributeValueMemberS{
 								Value: repo,
 							},
 						},
@@ -1642,7 +1784,7 @@ func (dwr DynamoDB) AddUserAPIKey(ctx context.Context, hashedKey string, apiKeyD
 						":UserData": userAttributeValue,
 					},
 					Key: map[string]types.AttributeValue{
-						"Key": &types.AttributeValueMemberS{
+						"TableKey": &types.AttributeValueMemberS{
 							Value: userid,
 						},
 					},
@@ -1660,7 +1802,7 @@ func (dwr DynamoDB) AddUserAPIKey(ctx context.Context, hashedKey string, apiKeyD
 						":Identity": &types.AttributeValueMemberS{Value: userid},
 					},
 					Key: map[string]types.AttributeValue{
-						"Key": &types.AttributeValueMemberS{
+						"TableKey": &types.AttributeValueMemberS{
 							Value: hashedKey,
 						},
 					},
@@ -1687,7 +1829,7 @@ func (dwr DynamoDB) DeleteUserAPIKey(ctx context.Context, keyID string) error {
 			_, err = dwr.Client.DeleteItem(ctx, &dynamodb.DeleteItemInput{
 				TableName: aws.String(dwr.APIKeyTablename),
 				Key: map[string]types.AttributeValue{
-					"Key": &types.AttributeValueMemberS{Value: hash},
+					"TableKey": &types.AttributeValueMemberS{Value: hash},
 				},
 			})
 			if err != nil {
@@ -1709,7 +1851,7 @@ func (dwr DynamoDB) GetUserAPIKeyInfo(hashedKey string) (string, error) {
 	resp, err := dwr.Client.GetItem(context.Background(), &dynamodb.GetItemInput{
 		TableName: aws.String(dwr.APIKeyTablename),
 		Key: map[string]types.AttributeValue{
-			"Key": &types.AttributeValueMemberS{Value: hashedKey},
+			"TableKey": &types.AttributeValueMemberS{Value: hashedKey},
 		},
 	})
 	if err != nil {
@@ -1745,7 +1887,7 @@ func (dwr DynamoDB) GetUserData(ctx context.Context) (mTypes.UserData, error) {
 	resp, err := dwr.Client.GetItem(ctx, &dynamodb.GetItemInput{
 		TableName: aws.String(dwr.UserDataTablename),
 		Key: map[string]types.AttributeValue{
-			"Key": &types.AttributeValueMemberS{Value: userid},
+			"TableKey": &types.AttributeValueMemberS{Value: userid},
 		},
 	})
 	if err != nil {
@@ -1789,7 +1931,7 @@ func (dwr DynamoDB) SetUserData(ctx context.Context, userData mTypes.UserData) e
 			":UserData": userAttributeValue,
 		},
 		Key: map[string]types.AttributeValue{
-			"Key": &types.AttributeValueMemberS{
+			"TableKey": &types.AttributeValueMemberS{
 				Value: userid,
 			},
 		},
@@ -1815,7 +1957,7 @@ func (dwr DynamoDB) DeleteUserData(ctx context.Context) error {
 	_, err = dwr.Client.DeleteItem(ctx, &dynamodb.DeleteItemInput{
 		TableName: aws.String(dwr.UserDataTablename),
 		Key: map[string]types.AttributeValue{
-			"Key": &types.AttributeValueMemberS{Value: userid},
+			"TableKey": &types.AttributeValueMemberS{Value: userid},
 		},
 	})
 
@@ -1847,7 +1989,7 @@ func getBatchImageKeys(digests []string) []map[string]types.AttributeValue {
 
 	for _, digest := range digests {
 		result = append(result, map[string]types.AttributeValue{
-			"Key": &types.AttributeValueMemberS{
+			"TableKey": &types.AttributeValueMemberS{
 				Value: digest,
 			},
 		})
@@ -1928,13 +2070,13 @@ func (dwr *DynamoDB) createTable(tableName string) error {
 		TableName: aws.String(tableName),
 		AttributeDefinitions: []types.AttributeDefinition{
 			{
-				AttributeName: aws.String("Key"),
+				AttributeName: aws.String("TableKey"),
 				AttributeType: types.ScalarAttributeTypeS,
 			},
 		},
 		KeySchema: []types.KeySchemaElement{
 			{
-				AttributeName: aws.String("Key"),
+				AttributeName: aws.String("TableKey"),
 				KeyType:       types.KeyTypeHash,
 			},
 		},
@@ -1985,13 +2127,13 @@ func (dwr *DynamoDB) createVersionTable() error {
 		TableName: aws.String(dwr.VersionTablename),
 		AttributeDefinitions: []types.AttributeDefinition{
 			{
-				AttributeName: aws.String("Key"),
+				AttributeName: aws.String("TableKey"),
 				AttributeType: types.ScalarAttributeTypeS,
 			},
 		},
 		KeySchema: []types.KeySchemaElement{
 			{
-				AttributeName: aws.String("Key"),
+				AttributeName: aws.String("TableKey"),
 				KeyType:       types.KeyTypeHash,
 			},
 		},
@@ -2024,7 +2166,7 @@ func (dwr *DynamoDB) createVersionTable() error {
 				":Version": mdAttributeValue,
 			},
 			Key: map[string]types.AttributeValue{
-				"Key": &types.AttributeValueMemberS{
+				"TableKey": &types.AttributeValueMemberS{
 					Value: version.DBVersionKey,
 				},
 			},
@@ -2044,7 +2186,7 @@ func (dwr *DynamoDB) getDBVersion() (string, error) {
 	resp, err := dwr.Client.GetItem(context.TODO(), &dynamodb.GetItemInput{
 		TableName: aws.String(dwr.VersionTablename),
 		Key: map[string]types.AttributeValue{
-			"Key": &types.AttributeValueMemberS{Value: version.DBVersionKey},
+			"TableKey": &types.AttributeValueMemberS{Value: version.DBVersionKey},
 		},
 	})
 	if err != nil {

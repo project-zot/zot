@@ -54,6 +54,7 @@ type ImageStore interface { //nolint:interfacebloat
 	CleanupRepo(repo string, blobs []godigest.Digest, removeRepo bool) (int, error)
 	GetIndexContent(repo string) ([]byte, error)
 	PutIndexContent(repo string, index ispec.Index) error
+	StatIndex(repo string) (bool, int64, time.Time, error)
 	GetBlobContent(repo string, digest godigest.Digest) ([]byte, error)
 	GetReferrers(repo string, digest godigest.Digest, artifactTypes []string) (ispec.Index, error)
 	GetOrasReferrers(repo string, digest godigest.Digest, artifactType string) ([]artifactspec.Descriptor, error)
