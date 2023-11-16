@@ -663,7 +663,7 @@ func (rh *RouteHandler) UpdateManifest(response http.ResponseWriter, request *ht
 		return
 	}
 
-	mediaType := request.Header.Get("Content-Type")
+	mediaType := zcommon.GetContentType(request)
 	if !storageCommon.IsSupportedMediaType(mediaType) {
 		err := apiErr.NewError(apiErr.MANIFEST_INVALID).AddDetail(map[string]string{"mediaType": mediaType})
 		zcommon.WriteJSON(response, http.StatusUnsupportedMediaType, apiErr.NewErrorList(err))
