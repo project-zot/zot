@@ -7,6 +7,7 @@ import (
 
 	distspec "github.com/opencontainers/distribution-spec/specs-go"
 
+	"zotregistry.io/zot/pkg/cluster"
 	extconf "zotregistry.io/zot/pkg/extensions/config"
 	storageConstants "zotregistry.io/zot/pkg/storage/constants"
 )
@@ -229,7 +230,8 @@ type Config struct {
 	HTTP            HTTPConfig
 	Log             *LogConfig
 	Extensions      *extconf.ExtensionConfig
-	Scheduler       *SchedulerConfig `json:"scheduler" mapstructure:",omitempty"`
+	Scheduler       *SchedulerConfig       `json:"scheduler" mapstructure:",omitempty"`
+	Cluster         *cluster.ClusterConfig `json:"cluster" mapstructure:",omitempty"`
 }
 
 func New() *Config {

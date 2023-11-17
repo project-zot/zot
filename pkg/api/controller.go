@@ -123,6 +123,13 @@ func (c *Controller) Run(reloadCtx context.Context) error {
 		engine.Use(SessionAuditLogger(c.Audit))
 	}
 
+	/*
+		if c.Cluster != nil {
+			engine.Use(ProxyCluster)
+		}
+
+	*/
+
 	c.Router = engine
 	c.Router.UseEncodedPath()
 
