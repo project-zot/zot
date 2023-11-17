@@ -1974,7 +1974,7 @@ func (is *ImageStore) PopulateStorageMetrics(interval time.Duration, sch *schedu
 		MaxDelay: 15, //nolint:gomnd
 	}
 
-	sch.SubmitGenerator(generator, interval, scheduler.LowPriority)
+	sch.SubmitGenerator(generator, interval, scheduler.HighPriority)
 }
 
 type blobStream struct {
