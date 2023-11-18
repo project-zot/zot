@@ -8,7 +8,7 @@ BATS=${SCRIPTPATH}/../../hack/tools/bin/bats
 PATH=$PATH:${SCRIPTPATH}/../../hack/tools/bin
 
 tests=("pushpull" "pushpull_authn" "delete_images" "referrers" "metadata" "anonymous_policy"
-       "annotations" "detect_manifest_collision" "cve" "sync" "sync_docker" "sync_replica_cluster"
+       "annotations" "detect_manifest_collision" "cve" "sync" "sync_docker" "sync_remote" "sync_replica_cluster"
        "scrub" "garbage_collect" "metrics" "metrics_minimal")
 
 for test in ${tests[*]}; do

@@ -20,13 +20,14 @@ import (
 	"zotregistry.io/zot/pkg/log"
 	mTypes "zotregistry.io/zot/pkg/meta/types"
 	"zotregistry.io/zot/pkg/storage"
+	"zotregistry.io/zot/pkg/storage/local"
 )
 
 type BaseService struct {
 	config          syncconf.RegistryConfig
 	credentials     syncconf.CredentialsFile
 	remote          Remote
-	local           Local
+	destination     Destination
 	retryOptions    *retry.RetryOptions
 	contentManager  ContentManager
 	storeController storage.StoreController
@@ -37,8 +38,13 @@ type BaseService struct {
 	log             log.Logger
 }
 
-func New(opts syncconf.RegistryConfig, credentialsFilepath string,
-	storeController storage.StoreController, metadb mTypes.MetaDB, log log.Logger,
+func New(
+	opts syncconf.RegistryConfig,
+	credentialsFilepath string,
+	tmpDir string,
+	storeController storage.StoreController,
+	metadb mTypes.MetaDB,
+	log log.Logger,
 ) (Service, error) {
 	service := &BaseService{}
 
@@ -60,7 +66,14 @@ func New(opts syncconf.RegistryConfig, credentialsFilepath string,
 	service.credentials = credentialsFile
 
 	service.contentManager = NewContentManager(opts.Content, log)
-	service.local = NewLocalRegistry(storeController, metadb, log)
+
+	tmpImageStore := local.NewImageStore(tmpDir,
+		false, false, log, nil, nil, nil,
+	)
+
+	tmpStorage := NewOciLayoutStorage(storage.StoreController{DefaultStore: tmpImageStore})
+
+	service.destination = NewDestinationRegistry(storeController, tmpStorage, metadb, log)
 
 	retryOptions := &retry.RetryOptions{}
 
@@ -289,7 +302,7 @@ func (service *BaseService) SyncRepo(ctx context.Context, repo string) error {
 	service.log.Info().Str("repo", repo).Msgf("sync: syncing tags %v", tags)
 
 	// apply content.destination rule
-	localRepo := service.contentManager.GetRepoDestination(repo)
+	destinationRepo := service.contentManager.GetRepoDestination(repo)
 
 	for _, tag := range tags {
 		select {
@@ -305,7 +318,7 @@ func (service *BaseService) SyncRepo(ctx context.Context, repo string) error {
 		var manifestDigest digest.Digest
 
 		if err = retry.RetryIfNecessary(ctx, func() error {
-			manifestDigest, err = service.syncTag(ctx, localRepo, repo, tag)
+			manifestDigest, err = service.syncTag(ctx, destinationRepo, repo, tag)
 
 			return err
 		}, service.retryOptions); err != nil {
@@ -322,7 +335,7 @@ func (service *BaseService) SyncRepo(ctx context.Context, repo string) error {
 
 		if manifestDigest != "" {
 			if err = retry.RetryIfNecessary(ctx, func() error {
-				err = service.references.SyncAll(ctx, localRepo, repo, manifestDigest.String())
+				err = service.references.SyncAll(ctx, destinationRepo, repo, manifestDigest.String())
 				if errors.Is(err, zerr.ErrSyncReferrerNotFound) {
 					return nil
 				}
@@ -342,8 +355,8 @@ func (service *BaseService) SyncRepo(ctx context.Context, repo string) error {
 	return nil
 }
 
-func (service *BaseService) syncTag(ctx context.Context, localRepo, remoteRepo, tag string) (digest.Digest, error) {
-	copyOptions := getCopyOptions(service.remote.GetContext(), service.local.GetContext())
+func (service *BaseService) syncTag(ctx context.Context, destinationRepo, remoteRepo, tag string) (digest.Digest, error) {
+	copyOptions := getCopyOptions(service.remote.GetContext(), service.destination.GetContext())
 
 	policyContext, err := getPolicyContext(service.log)
 	if err != nil {
@@ -386,38 +399,38 @@ func (service *BaseService) syncTag(ctx context.Context, localRepo, remoteRepo, 
 		}
 	}
 
-	skipImage, err := service.local.CanSkipImage(localRepo, tag, manifestDigest)
+	skipImage, err := service.destination.CanSkipImage(destinationRepo, tag, manifestDigest)
 	if err != nil {
 		service.log.Error().Err(err).Str("errortype", common.TypeOf(err)).
-			Str("repo", localRepo).Str("reference", tag).
+			Str("repo", destinationRepo).Str("reference", tag).
 			Msg("couldn't check if the local image can be skipped")
 	}
 
 	if !skipImage {
-		localImageRef, err := service.local.GetImageReference(localRepo, tag)
+		localImageRef, err := service.destination.GetImageReference(destinationRepo, tag)
 		if err != nil {
 			service.log.Error().Err(err).Str("errortype", common.TypeOf(err)).
-				Str("repo", localRepo).Str("reference", tag).Msg("couldn't get a local image reference")
+				Str("repo", destinationRepo).Str("reference", tag).Msg("couldn't get a local image reference")
 
 			return "", err
 		}
 
 		service.log.Info().Str("remote image", remoteImageRef.DockerReference().String()).
-			Str("local image", fmt.Sprintf("%s:%s", localRepo, tag)).Msg("syncing image")
+			Str("local image", fmt.Sprintf("%s:%s", destinationRepo, tag)).Msg("syncing image")
 
 		_, err = copy.Image(ctx, policyContext, localImageRef, remoteImageRef, &copyOptions)
 		if err != nil {
 			service.log.Error().Err(err).Str("errortype", common.TypeOf(err)).
 				Str("remote image", remoteImageRef.DockerReference().String()).
-				Str("local image", fmt.Sprintf("%s:%s", localRepo, tag)).Msg("coulnd't sync image")
+				Str("local image", fmt.Sprintf("%s:%s", destinationRepo, tag)).Msg("coulnd't sync image")
 
 			return "", err
 		}
 
-		err = service.local.CommitImage(localImageRef, localRepo, tag)
+		err = service.destination.CommitImage(localImageRef, destinationRepo, tag)
 		if err != nil {
 			service.log.Error().Err(err).Str("errortype", common.TypeOf(err)).
-				Str("repo", localRepo).Str("reference", tag).Msg("couldn't commit image to local image store")
+				Str("repo", destinationRepo).Str("reference", tag).Msg("couldn't commit image to local image store")
 
 			return "", err
 		}

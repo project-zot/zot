@@ -15,6 +15,7 @@ type Credentials struct {
 type Config struct {
 	Enable          *bool
 	CredentialsFile string
+	TmpDir          string
 	Registries      []RegistryConfig
 }
 

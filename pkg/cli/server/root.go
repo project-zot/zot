@@ -380,13 +380,6 @@ func validateConfiguration(config *config.Config, log zlog.Logger) error {
 
 			return zerr.ErrBadConfig
 		}
-
-		// enforce filesystem storage in case sync feature is enabled
-		if config.Extensions != nil && config.Extensions.Sync != nil {
-			log.Error().Err(zerr.ErrBadConfig).Msg("sync supports only filesystem storage")
-
-			return zerr.ErrBadConfig
-		}
 	}
 
 	// enforce s3 driver on subpaths in case of using storage driver

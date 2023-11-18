@@ -219,6 +219,7 @@ func makeDownstreamServer(
 		BaseConfig: extconf.BaseConfig{Enable: &defVal},
 	}
 	destConfig.Extensions.Sync = syncConfig
+	destConfig.Extensions.Sync.TmpDir = destDir
 	destConfig.Log.Output = path.Join(destDir, "sync.log")
 	destConfig.Log.Level = "debug"
 

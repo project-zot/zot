@@ -162,7 +162,7 @@ func TestService(t *testing.T) {
 			URLs: []string{"http://localhost"},
 		}
 
-		service, err := New(conf, "", storage.StoreController{}, mocks.MetaDBMock{}, log.Logger{})
+		service, err := New(conf, "", os.TempDir(), storage.StoreController{}, mocks.MetaDBMock{}, log.Logger{})
 		So(err, ShouldBeNil)
 
 		err = service.SyncRepo(context.Background(), "repo")
@@ -170,7 +170,7 @@ func TestService(t *testing.T) {
 	})
 }
 
-func TestLocalRegistry(t *testing.T) {
+func TestDestinationRegistry(t *testing.T) {
 	Convey("make StoreController", t, func() {
 		dir := t.TempDir()
 
@@ -185,7 +185,7 @@ func TestLocalRegistry(t *testing.T) {
 		syncImgStore := local.NewImageStore(dir, true, true, log, metrics, nil, cacheDriver)
 		repoName := "repo"
 
-		registry := NewLocalRegistry(storage.StoreController{DefaultStore: syncImgStore}, nil, log)
+		registry := NewDestinationRegistry(storage.StoreController{DefaultStore: syncImgStore}, nil, nil, log)
 		imageReference, err := registry.GetImageReference(repoName, "1.0")
 		So(err, ShouldBeNil)
 		So(imageReference, ShouldNotBeNil)
@@ -302,7 +302,7 @@ func TestLocalRegistry(t *testing.T) {
 			syncImgStore := local.NewImageStore(dir, true, true, log, metrics, linter, cacheDriver)
 			repoName := "repo"
 
-			registry := NewLocalRegistry(storage.StoreController{DefaultStore: syncImgStore}, nil, log)
+			registry := NewDestinationRegistry(storage.StoreController{DefaultStore: syncImgStore}, nil, nil, log)
 
 			err = registry.CommitImage(imageReference, repoName, "1.0")
 			So(err, ShouldBeNil)
@@ -336,7 +336,7 @@ func TestLocalRegistry(t *testing.T) {
 		})
 
 		Convey("trigger metaDB error on index manifest in CommitImage()", func() {
-			registry := NewLocalRegistry(storage.StoreController{DefaultStore: syncImgStore}, mocks.MetaDBMock{
+			registry := NewDestinationRegistry(storage.StoreController{DefaultStore: syncImgStore}, nil, mocks.MetaDBMock{
 				SetRepoReferenceFn: func(ctx context.Context, repo string, reference string, imageMeta mTypes.ImageMeta) error {
 					if reference == "1.0" {
 						return zerr.ErrRepoMetaNotFound
@@ -351,7 +351,7 @@ func TestLocalRegistry(t *testing.T) {
 		})
 
 		Convey("trigger metaDB error on image manifest in CommitImage()", func() {
-			registry := NewLocalRegistry(storage.StoreController{DefaultStore: syncImgStore}, mocks.MetaDBMock{
+			registry := NewDestinationRegistry(storage.StoreController{DefaultStore: syncImgStore}, nil, mocks.MetaDBMock{
 				SetRepoReferenceFn: func(ctx context.Context, repo, reference string, imageMeta mTypes.ImageMeta) error {
 					return zerr.ErrRepoMetaNotFound
 				},
