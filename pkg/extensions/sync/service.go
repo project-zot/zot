@@ -355,7 +355,10 @@ func (service *BaseService) SyncRepo(ctx context.Context, repo string) error {
 	return nil
 }
 
-func (service *BaseService) syncTag(ctx context.Context, destinationRepo, remoteRepo, tag string) (digest.Digest, error) {
+func (service *BaseService) syncTag(
+	ctx context.Context,
+	destinationRepo, remoteRepo, tag string,
+) (digest.Digest, error) {
 	copyOptions := getCopyOptions(service.remote.GetContext(), service.destination.GetContext())
 
 	policyContext, err := getPolicyContext(service.log)

@@ -46,6 +46,7 @@ func NewDestinationRegistry(
 		// to allow passing nil we can do this, noting that it will only work for a local StoreController
 		tmpStorage = NewOciLayoutStorage(storeController)
 	}
+
 	return &DestinationRegistry{
 		storeController: storeController,
 		metaDB:          metaDB,
