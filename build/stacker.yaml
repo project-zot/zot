@@ -59,7 +59,7 @@ build:
   arch: ${{ARCH}}
   from:
     type: docker
-    url: docker://gcr.io/distroless/base:latest-${{ARCH}}
+    url: docker://gcr.io/distroless/base-debian12:latest-${{ARCH}}
   overlay_dirs:
     - source: ../.build/${{REPO_NAME}}/binary
       dest: /usr/local/bin

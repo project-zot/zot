@@ -28,7 +28,7 @@ RUN echo '{\n\
 # ---
 # Stage 2: Final image with nothing but binary and default config file
 # ---
-FROM gcr.io/distroless/base AS final
+FROM gcr.io/distroless/base-debian12 AS final
 ARG TARGETOS
 ARG TARGETARCH
 COPY --from=builder /go/src/github.com/project-zot/zot/bin/zxp-$TARGETOS-$TARGETARCH /zxp
