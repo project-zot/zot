@@ -37,22 +37,18 @@ type DestinationRegistry struct {
 }
 
 func NewDestinationRegistry(
-	storeController storage.StoreController,
-	tmpStorage OciLayoutStorage,
+	storeController storage.StoreController, // local store controller
+	tempStoreController storage.StoreController, // temp store controller
 	metaDB mTypes.MetaDB,
 	log log.Logger,
 ) Destination {
-	if tmpStorage == nil {
-		// to allow passing nil we can do this, noting that it will only work for a local StoreController
-		tmpStorage = NewOciLayoutStorage(storeController)
-	}
 	return &DestinationRegistry{
 		storeController: storeController,
+		tempStorage:     NewOciLayoutStorage(tempStoreController),
 		metaDB:          metaDB,
 		// first we sync from remote (using containers/image copy from docker:// to oci:) to a temp imageStore
 		// then we copy the image from tempStorage to zot's storage using ImageStore APIs
-		tempStorage: tmpStorage,
-		log:         log,
+		log: log,
 	}
 }
 
@@ -288,9 +284,11 @@ func getImageStoreFromImageReference(imageReference types.ImageReference, repo, 
 		tempRootDir = strings.ReplaceAll(imageReference.StringWithinTransport(), fmt.Sprintf("%s:", repo), "")
 	}
 
+	return getImageStore(tempRootDir)
+}
+
+func getImageStore(rootDir string) storageTypes.ImageStore {
 	metrics := monitoring.NewMetricsServer(false, log.Logger{})
 
-	tempImageStore := local.NewImageStore(tempRootDir, false, false, log.Logger{}, metrics, nil, nil)
-
-	return tempImageStore
+	return local.NewImageStore(rootDir, false, false, log.Logger{}, metrics, nil, nil)
 }

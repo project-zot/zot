@@ -185,7 +185,8 @@ func TestDestinationRegistry(t *testing.T) {
 		syncImgStore := local.NewImageStore(dir, true, true, log, metrics, nil, cacheDriver)
 		repoName := "repo"
 
-		registry := NewDestinationRegistry(storage.StoreController{DefaultStore: syncImgStore}, nil, nil, log)
+		storeController := storage.StoreController{DefaultStore: syncImgStore}
+		registry := NewDestinationRegistry(storeController, storeController, nil, log)
 		imageReference, err := registry.GetImageReference(repoName, "1.0")
 		So(err, ShouldBeNil)
 		So(imageReference, ShouldNotBeNil)
@@ -302,7 +303,8 @@ func TestDestinationRegistry(t *testing.T) {
 			syncImgStore := local.NewImageStore(dir, true, true, log, metrics, linter, cacheDriver)
 			repoName := "repo"
 
-			registry := NewDestinationRegistry(storage.StoreController{DefaultStore: syncImgStore}, nil, nil, log)
+			storeController := storage.StoreController{DefaultStore: syncImgStore}
+			registry := NewDestinationRegistry(storeController, storeController, nil, log)
 
 			err = registry.CommitImage(imageReference, repoName, "1.0")
 			So(err, ShouldBeNil)
@@ -336,7 +338,8 @@ func TestDestinationRegistry(t *testing.T) {
 		})
 
 		Convey("trigger metaDB error on index manifest in CommitImage()", func() {
-			registry := NewDestinationRegistry(storage.StoreController{DefaultStore: syncImgStore}, nil, mocks.MetaDBMock{
+			storeController := storage.StoreController{DefaultStore: syncImgStore}
+			registry := NewDestinationRegistry(storeController, storeController, mocks.MetaDBMock{
 				SetRepoReferenceFn: func(ctx context.Context, repo string, reference string, imageMeta mTypes.ImageMeta) error {
 					if reference == "1.0" {
 						return zerr.ErrRepoMetaNotFound
@@ -351,7 +354,8 @@ func TestDestinationRegistry(t *testing.T) {
 		})
 
 		Convey("trigger metaDB error on image manifest in CommitImage()", func() {
-			registry := NewDestinationRegistry(storage.StoreController{DefaultStore: syncImgStore}, nil, mocks.MetaDBMock{
+			storeController := storage.StoreController{DefaultStore: syncImgStore}
+			registry := NewDestinationRegistry(storeController, storeController, mocks.MetaDBMock{
 				SetRepoReferenceFn: func(ctx context.Context, repo, reference string, imageMeta mTypes.ImageMeta) error {
 					return zerr.ErrRepoMetaNotFound
 				},

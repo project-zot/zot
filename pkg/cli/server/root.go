@@ -392,6 +392,13 @@ func validateConfiguration(config *config.Config, log zlog.Logger) error {
 			return zerr.ErrBadConfig
 		}
 
+		// enforce tmpDir in case sync + s3
+		if config.Extensions != nil && config.Extensions.Sync != nil && config.Extensions.Sync.DownloadDir == "" {
+			log.Error().Err(zerr.ErrBadConfig).
+				Msg("using both sync and remote storage features needs config.Extensions.Sync.DownloadDir to be specified")
+
+			return zerr.ErrBadConfig
+		}
 	}
 
 	// enforce s3 driver on subpaths in case of using storage driver
@@ -404,6 +411,14 @@ func validateConfiguration(config *config.Config, log zlog.Logger) error {
 					if storageConfig.StorageDriver["name"] != storageConstants.S3StorageDriverName {
 						log.Error().Err(zerr.ErrBadConfig).Str("subpath", route).Interface("storageDriver",
 							storageConfig.StorageDriver["name"]).Msg("unsupported storage driver")
+
+						return zerr.ErrBadConfig
+					}
+
+					// enforce tmpDir in case sync + s3
+					if config.Extensions != nil && config.Extensions.Sync != nil && config.Extensions.Sync.DownloadDir == "" {
+						log.Error().Err(zerr.ErrBadConfig).
+							Msg("using both sync and remote storage features needs config.Extensions.Sync.DownloadDir to be specified")
 
 						return zerr.ErrBadConfig
 					}

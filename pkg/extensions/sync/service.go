@@ -20,7 +20,6 @@ import (
 	"zotregistry.io/zot/pkg/log"
 	mTypes "zotregistry.io/zot/pkg/meta/types"
 	"zotregistry.io/zot/pkg/storage"
-	"zotregistry.io/zot/pkg/storage/local"
 )
 
 type BaseService struct {
@@ -67,13 +66,20 @@ func New(
 
 	service.contentManager = NewContentManager(opts.Content, log)
 
-	tmpImageStore := local.NewImageStore(tmpDir,
-		false, false, log, nil, nil, nil,
-	)
-
-	tmpStorage := NewOciLayoutStorage(storage.StoreController{DefaultStore: tmpImageStore})
-
-	service.destination = NewDestinationRegistry(storeController, tmpStorage, metadb, log)
+	if len(tmpDir) == 0 {
+		// first it will sync in tmpDir then it will move everything into local ImageStore
+		service.destination = NewDestinationRegistry(storeController, storeController, metadb, log)
+	} else {
+		// first it will sync under /rootDir/reponame/.sync/ then it will move everything into local ImageStore
+		service.destination = NewDestinationRegistry(
+			storeController,
+			storage.StoreController{
+				DefaultStore: getImageStore(tmpDir),
+			},
+			metadb,
+			log,
+		)
+	}
 
 	retryOptions := &retry.RetryOptions{}
 
@@ -140,7 +146,7 @@ func (service *BaseService) SetNextAvailableClient() error {
 		if err != nil {
 			service.log.Error().Err(err).Str("url", url).Msg("sync: failed to initialize http client")
 
-			continue
+			return err
 		}
 
 		if !service.client.Ping() {
@@ -353,7 +359,8 @@ func (service *BaseService) SyncRepo(ctx context.Context, repo string) error {
 	return nil
 }
 
-func (service *BaseService) syncTag(ctx context.Context, destinationRepo, remoteRepo, tag string) (digest.Digest, error) {
+func (service *BaseService) syncTag(ctx context.Context, destinationRepo, remoteRepo, tag string,
+) (digest.Digest, error) {
 	copyOptions := getCopyOptions(service.remote.GetContext(), service.destination.GetContext())
 
 	policyContext, err := getPolicyContext(service.log)

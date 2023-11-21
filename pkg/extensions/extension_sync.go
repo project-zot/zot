@@ -6,7 +6,6 @@ package extensions
 import (
 	"net"
 	"net/url"
-	"os"
 	"strings"
 
 	zerr "zotregistry.io/zot/errors"
@@ -46,14 +45,10 @@ func EnableSyncExtension(config *config.Config, metaDB mTypes.MetaDB,
 				continue
 			}
 
-			tmpDir := config.Extensions.Sync.TmpDir
-			if tmpDir == "" {
-				// use an os tmpdir as tmpdir if not set
-				tmpDir = os.TempDir()
-			}
+			tmpDir := config.Extensions.Sync.DownloadDir
+			credsPath := config.Extensions.Sync.CredentialsFile
 
-			service, err := sync.New(registryConfig, config.Extensions.Sync.CredentialsFile, tmpDir,
-				storeController, metaDB, log)
+			service, err := sync.New(registryConfig, credsPath, tmpDir, storeController, metaDB, log)
 			if err != nil {
 				return nil, err
 			}
