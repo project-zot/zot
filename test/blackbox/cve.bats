@@ -31,6 +31,8 @@ function setup_file() {
     local zot_root_dir=${BATS_FILE_TMPDIR}/zot
     local zot_config_file=${BATS_FILE_TMPDIR}/zot_config.json
     mkdir -p ${zot_root_dir}
+    zot_port=$(get_free_port)
+    echo ${zot_port} > ${BATS_FILE_TMPDIR}/zot.port
     cat >${zot_config_file} <<EOF
 {
     "distSpecVersion": "1.1.0-dev",
@@ -39,7 +41,7 @@ function setup_file() {
     },
     "http": {
         "address": "0.0.0.0",
-        "port": "8080"
+        "port": "${zot_port}"
     },
     "log": {
         "level": "debug",
@@ -56,12 +58,11 @@ function setup_file() {
 }
 EOF
     zot_serve ${ZOT_PATH} ${zot_config_file}
-    wait_zot_reachable 8080
+    wait_zot_reachable ${zot_port}
 
     # setup zli to add zot registry to configs
-    local registry_name=main
-    local registry_url="http://127.0.0.1:8080/"
-    zli_add_config ${registry_name} ${registry_url}
+    local registry_url="http://127.0.0.1:${zot_port}/"
+    zli_add_config ${REGISTRY_NAME} ${registry_url}
 }
 
 function teardown() {
@@ -74,14 +75,15 @@ function teardown_file() {
 }
 
 @test "cve by image name and tag" {
+    zot_port=`cat ${BATS_FILE_TMPDIR}/zot.port`
     run skopeo --insecure-policy copy --dest-tls-verify=false \
         oci:${TEST_DATA_DIR}/golang:1.20 \
-        docker://127.0.0.1:8080/golang:1.20
+        docker://127.0.0.1:${zot_port}/golang:1.20
     [ "$status" -eq 0 ]
-    run curl http://127.0.0.1:8080/v2/_catalog
+    run curl http://127.0.0.1:${zot_port}/v2/_catalog
     [ "$status" -eq 0 ]
     [ $(echo "${lines[-1]}" | jq '.repositories[]') = '"golang"' ]
-    run curl http://127.0.0.1:8080/v2/golang/tags/list
+    run curl http://127.0.0.1:${zot_port}/v2/golang/tags/list
     [ "$status" -eq 0 ]
     [ $(echo "${lines[-1]}" | jq '.tags[]') = '"1.20"' ]
     run ${ZLI_PATH} cve list golang:1.20 --config ${REGISTRY_NAME}

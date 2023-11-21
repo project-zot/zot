@@ -53,9 +53,12 @@ function wait_zot_reachable() {
 function zli_add_config() {
     local registry_name=${1}
     local registry_url=${2}
-    if ! ${ZLI_PATH} config --list | grep -q main; then
-        ${ZLI_PATH} config add ${registry_name} ${registry_url}
+    # Clean up old configuration for the same registry
+    if ${ZLI_PATH} config --list | grep -q ${registry_name}; then
+        ${ZLI_PATH} config remove ${registry_name}
     fi
+    # Add the new registry
+    ${ZLI_PATH} config add ${registry_name} ${registry_url}
 }
 
 function zb_run() {
