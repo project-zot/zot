@@ -52,6 +52,29 @@ func TestValidateManifest(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(clen, ShouldEqual, len(cblob))
 
+		Convey("bad manifest mediatype", func() {
+			manifest := ispec.Manifest{}
+
+			body, err := json.Marshal(manifest)
+			So(err, ShouldBeNil)
+
+			_, _, err = imgStore.PutImageManifest("test", "1.0", ispec.MediaTypeImageConfig, body)
+			So(err, ShouldNotBeNil)
+			So(err, ShouldEqual, zerr.ErrBadManifest)
+		})
+
+		Convey("empty manifest with bad media type", func() {
+			_, _, err = imgStore.PutImageManifest("test", "1.0", ispec.MediaTypeImageConfig, []byte(""))
+			So(err, ShouldNotBeNil)
+			So(err, ShouldEqual, zerr.ErrBadManifest)
+		})
+
+		Convey("empty manifest with correct media type", func() {
+			_, _, err = imgStore.PutImageManifest("test", "1.0", ispec.MediaTypeImageManifest, []byte(""))
+			So(err, ShouldNotBeNil)
+			So(err, ShouldEqual, zerr.ErrBadManifest)
+		})
+
 		Convey("bad manifest schema version", func() {
 			manifest := ispec.Manifest{
 				Config: ispec.Descriptor{

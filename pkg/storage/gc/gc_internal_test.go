@@ -427,8 +427,8 @@ func TestGarbageCollectWithMockedImageStore(t *testing.T) {
 				GetIndexContentFn: func(repo string) ([]byte, error) {
 					return returnedIndexJSONBuf, nil
 				},
-				GetAllBlobsFn: func(repo string) ([]string, error) {
-					return []string{}, errGC
+				GetAllBlobsFn: func(repo string) ([]godigest.Digest, error) {
+					return []godigest.Digest{}, errGC
 				},
 			}
 

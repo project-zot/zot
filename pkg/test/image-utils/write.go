@@ -18,9 +18,15 @@ func WriteImageToFileSystem(image Image, repoName, ref string, storeController s
 		return err
 	}
 
+	digestAlgorithm := image.digestAlgorithm
+
+	if digestAlgorithm == "" {
+		digestAlgorithm = godigest.Canonical
+	}
+
 	for _, layerBlob := range image.Layers {
 		layerReader := bytes.NewReader(layerBlob)
-		layerDigest := godigest.FromBytes(layerBlob)
+		layerDigest := digestAlgorithm.FromBytes(layerBlob)
 
 		_, _, err = store.FullBlobUpload(repoName, layerReader, layerDigest)
 		if err != nil {
@@ -34,7 +40,7 @@ func WriteImageToFileSystem(image Image, repoName, ref string, storeController s
 	}
 
 	configReader := bytes.NewReader(configBlob)
-	configDigest := godigest.FromBytes(configBlob)
+	configDigest := digestAlgorithm.FromBytes(configBlob)
 
 	_, _, err = store.FullBlobUpload(repoName, configReader, configDigest)
 	if err != nil {
