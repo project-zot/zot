@@ -125,7 +125,7 @@ pushedWithin: x hours - tags pushed in the last x hours
 
 If ANY of these rules are met by a tag, then it will be retained, in other words there is an OR logic between them
 
-repoNames uses glob patterns
+repositories uses glob patterns
 tag patterns uses regex
 
 ```
@@ -134,7 +134,7 @@ tag patterns uses regex
             "delay": "24h",   // is applied on untagged and referrers, will remove them only if they are older than 24h
             "policies": [     // a repo will match a policy if it matches any repoNames[] glob pattern, it will select the first policy it can matches
                 {
-                    "repoNames": ["infra/*", "prod/*"], // patterns to match
+                    "repositories": ["infra/*", "prod/*"], // patterns to match
                     "deleteReferrers": false,           // delete manifests with missing Subject (default is false)
                     "deleteUntagged": true,             // delete untagged manifests (default is true)
                     "KeepTags": [{                      // same as repo, the first pattern(this time regex) matched is the policy applied
@@ -146,7 +146,7 @@ tag patterns uses regex
                     }]
                 },                                      // all tags under infra/* and prod/* will be removed! because they don't match any retention policy
                 {
-                    "repoNames": ["tmp/**"],            // matches recursively all repos under tmp/
+                    "repositories": ["tmp/**"],            // matches recursively all repos under tmp/
                     "deleteReferrers": true,
                     "deleteUntagged": true,
                     "KeepTags": [{                      // will retain all tags starting with v1 and pulled within the last 168h
@@ -156,7 +156,7 @@ tag patterns uses regex
                     }]
                 },
                 {
-                    "repoNames": ["**"],
+                    "repositories": ["**"],
                     "deleteReferrers": true,
                     "deleteUntagged": true,
                     "keepTags": [{
