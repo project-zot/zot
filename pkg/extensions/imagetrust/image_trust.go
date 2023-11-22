@@ -5,6 +5,7 @@ package imagetrust
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -273,4 +274,14 @@ func (validityT *validityTask) DoWork(ctx context.Context) error {
 	validityT.log.Info().Msg("update signatures validity completed")
 
 	return nil
+}
+
+func (validityT *validityTask) String() string {
+	return fmt.Sprintf("{sigValidityTaskGenerator: %s, repo: %s}",
+		"signatures validity task", // description of generator's task purpose
+		validityT.repo.Name)
+}
+
+func (validityT *validityTask) Name() string {
+	return "SignatureValidityTask"
 }

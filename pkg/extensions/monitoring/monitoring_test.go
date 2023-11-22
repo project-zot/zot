@@ -461,7 +461,8 @@ func TestPopulateStorageMetrics(t *testing.T) {
 		err = WriteImageToFileSystem(CreateDefaultImage(), "busybox", "0.0.1", srcStorageCtlr)
 		So(err, ShouldBeNil)
 
-		sch := scheduler.NewScheduler(conf, ctlr.Log)
+		metrics := monitoring.NewMetricsServer(true, ctlr.Log)
+		sch := scheduler.NewScheduler(conf, metrics, ctlr.Log)
 		ctx, cancel := context.WithCancel(context.Background())
 		sch.RunScheduler(ctx)
 

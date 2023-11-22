@@ -9,11 +9,14 @@ import (
 	"time"
 
 	"zotregistry.io/zot/pkg/api/config"
+	"zotregistry.io/zot/pkg/extensions/monitoring"
 	"zotregistry.io/zot/pkg/log"
 )
 
 type Task interface {
 	DoWork(ctx context.Context) error
+	Name() string
+	String() string
 }
 
 type generatorsPriorityQueue []*generator
@@ -58,25 +61,31 @@ func (pq *generatorsPriorityQueue) Pop() any {
 const (
 	rateLimiterScheduler = 400
 	rateLimit            = 5 * time.Second
-	numWorkersMultiplier = 4
+	NumWorkersMultiplier = 4
+	sendMetricsInterval  = 5 * time.Second
 )
 
 type Scheduler struct {
 	tasksQLow         chan Task
 	tasksQMedium      chan Task
 	tasksQHigh        chan Task
+	tasksDoWork       int
+	tasksLock         *sync.Mutex
 	generators        generatorsPriorityQueue
 	waitingGenerators []*generator
+	doneGenerators    []*generator
 	generatorsLock    *sync.Mutex
 	log               log.Logger
 	RateLimit         time.Duration
 	NumWorkers        int
 	workerChan        chan Task
+	metricsChan       chan struct{}
 	workerWg          *sync.WaitGroup
 	isShuttingDown    atomic.Bool
+	metricServer      monitoring.MetricServer
 }
 
-func NewScheduler(cfg *config.Config, logC log.Logger) *Scheduler {
+func NewScheduler(cfg *config.Config, ms monitoring.MetricServer, logC log.Logger) *Scheduler { //nolint: varnamelen
 	chLow := make(chan Task, rateLimiterScheduler)
 	chMedium := make(chan Task, rateLimiterScheduler)
 	chHigh := make(chan Task, rateLimiterScheduler)
@@ -85,19 +94,25 @@ func NewScheduler(cfg *config.Config, logC log.Logger) *Scheduler {
 	sublogger := logC.With().Str("component", "scheduler").Logger()
 
 	heap.Init(&generatorPQ)
+	// force pushing this metric (for zot minimal metrics are enabled on first scraping)
+	monitoring.SetSchedulerNumWorkers(ms, numWorkers)
 
 	return &Scheduler{
 		tasksQLow:      chLow,
 		tasksQMedium:   chMedium,
 		tasksQHigh:     chHigh,
+		tasksDoWork:    0, // number of tasks that are in working state
+		tasksLock:      new(sync.Mutex),
 		generators:     generatorPQ,
 		generatorsLock: new(sync.Mutex),
 		log:            log.Logger{Logger: sublogger},
 		// default value
-		RateLimit:  rateLimit,
-		NumWorkers: numWorkers,
-		workerChan: make(chan Task, numWorkers),
-		workerWg:   new(sync.WaitGroup),
+		RateLimit:    rateLimit,
+		NumWorkers:   numWorkers,
+		workerChan:   make(chan Task, numWorkers),
+		metricsChan:  make(chan struct{}, 1),
+		workerWg:     new(sync.WaitGroup),
+		metricServer: ms,
 	}
 }
 
@@ -106,16 +121,92 @@ func (scheduler *Scheduler) poolWorker(ctx context.Context) {
 		go func(workerID int) {
 			defer scheduler.workerWg.Done()
 
-			for task := range scheduler.workerChan {
-				scheduler.log.Debug().Int("worker", workerID).Msg("scheduler: starting task")
+			var workStart time.Time
 
-				if err := task.DoWork(ctx); err != nil {
-					scheduler.log.Error().Int("worker", workerID).Err(err).Msg("scheduler: error while executing task")
+			var workDuration time.Duration
+
+			for task := range scheduler.workerChan {
+				// leave below line here (for zot minimal metrics can be enabled on first scraping)
+				metricsEnabled := scheduler.metricServer.IsEnabled()
+				scheduler.log.Debug().Int("worker", workerID).Str("task", task.String()).Msg("scheduler: starting task")
+
+				if metricsEnabled {
+					scheduler.tasksLock.Lock()
+					scheduler.tasksDoWork++
+					scheduler.tasksLock.Unlock()
+					workStart = time.Now()
 				}
 
-				scheduler.log.Debug().Int("worker", workerID).Msg("scheduler: finished task")
+				if err := task.DoWork(ctx); err != nil {
+					scheduler.log.Error().Int("worker", workerID).Str("task", task.String()).Err(err).
+						Msg("scheduler: error while executing task")
+				}
+
+				if metricsEnabled {
+					scheduler.tasksLock.Lock()
+					scheduler.tasksDoWork--
+					scheduler.tasksLock.Unlock()
+					workDuration = time.Since(workStart)
+					monitoring.ObserveWorkersTasksDuration(scheduler.metricServer, task.Name(), workDuration)
+				}
+
+				scheduler.log.Debug().Int("worker", workerID).Str("task", task.String()).Msg("scheduler: finished task")
 			}
 		}(i + 1)
+	}
+}
+
+func (scheduler *Scheduler) metricsWorker() {
+	ticker := time.NewTicker(sendMetricsInterval)
+
+	for {
+		if scheduler.inShutdown() {
+			return
+		}
+		select {
+		case <-scheduler.metricsChan:
+			ticker.Stop()
+
+			return
+		case <-ticker.C:
+			genMap := make(map[string]map[string]uint64)
+			tasksMap := make(map[string]int)
+			// initialize map
+			for _, p := range []Priority{LowPriority, MediumPriority, HighPriority} {
+				priority := p.String()
+				genMap[priority] = make(map[string]uint64)
+
+				for _, s := range []State{Ready, Waiting, Done} {
+					genMap[priority][s.String()] = 0
+				}
+			}
+
+			scheduler.generatorsLock.Lock()
+			generators := append(append(scheduler.generators, scheduler.waitingGenerators...),
+				scheduler.doneGenerators...)
+
+			for _, gen := range generators {
+				p := gen.priority.String()
+				s := gen.getState().String()
+				genMap[p][s]++
+			}
+
+			// tasks queue size by priority
+			tasksMap[LowPriority.String()] = len(scheduler.tasksQLow)
+			tasksMap[MediumPriority.String()] = len(scheduler.tasksQMedium)
+			tasksMap[HighPriority.String()] = len(scheduler.tasksQHigh)
+			scheduler.generatorsLock.Unlock()
+
+			monitoring.SetSchedulerGenerators(scheduler.metricServer, genMap)
+			monitoring.SetSchedulerTasksQueue(scheduler.metricServer, tasksMap)
+			workersMap := make(map[string]int)
+
+			scheduler.tasksLock.Lock()
+			workersMap["idle"] = scheduler.NumWorkers - scheduler.tasksDoWork
+			workersMap["working"] = scheduler.tasksDoWork
+			scheduler.tasksLock.Unlock()
+			monitoring.SetSchedulerWorkers(scheduler.metricServer, workersMap)
+		}
 	}
 }
 
@@ -133,6 +224,7 @@ func (scheduler *Scheduler) inShutdown() bool {
 
 func (scheduler *Scheduler) shutdown() {
 	close(scheduler.workerChan)
+	close(scheduler.metricsChan)
 	scheduler.isShuttingDown.Store(true)
 }
 
@@ -146,6 +238,9 @@ func (scheduler *Scheduler) RunScheduler(ctx context.Context) {
 
 	// start worker pool
 	go scheduler.poolWorker(ctx)
+
+	// periodically send metrics
+	go scheduler.metricsWorker()
 
 	go func() {
 		for {
@@ -166,7 +261,7 @@ func (scheduler *Scheduler) RunScheduler(ctx context.Context) {
 					if task != nil {
 						// push tasks into worker pool
 						if !scheduler.inShutdown() {
-							scheduler.log.Debug().Msg("scheduler: pushing task into worker pool")
+							scheduler.log.Debug().Str("task", task.String()).Msg("scheduler: pushing task into worker pool")
 							scheduler.workerChan <- task
 						}
 					}
@@ -185,7 +280,7 @@ func (scheduler *Scheduler) pushReadyGenerators() {
 		modified := false
 
 		for i, gen := range scheduler.waitingGenerators {
-			if gen.getState() == ready {
+			if gen.getState() == Ready {
 				gen.done = false
 				heap.Push(&scheduler.generators, gen)
 				scheduler.waitingGenerators = append(scheduler.waitingGenerators[:i], scheduler.waitingGenerators[i+1:]...)
@@ -217,13 +312,15 @@ func (scheduler *Scheduler) generateTasks() {
 
 	var gen *generator
 
-	// check if the generator with highest prioriy is ready to run
-	if scheduler.generators[0].getState() == ready {
+	// check if the generator with highest priority is ready to run
+	if scheduler.generators[0].getState() == Ready {
 		gen = scheduler.generators[0]
 	} else {
 		gen, _ = heap.Pop(&scheduler.generators).(*generator)
-		if gen.getState() == waiting {
+		if gen.getState() == Waiting {
 			scheduler.waitingGenerators = append(scheduler.waitingGenerators, gen)
+		} else if gen.getState() == Done {
+			scheduler.doneGenerators = append(scheduler.doneGenerators, gen)
 		}
 
 		return
@@ -279,7 +376,7 @@ func (scheduler *Scheduler) SubmitTask(task Task, priority Priority) {
 		return
 	}
 
-	// check if the scheduler it's still running in order to add the task to the channel
+	// check if the scheduler is still running in order to add the task to the channel
 	if scheduler.inShutdown() {
 		return
 	}
@@ -302,12 +399,12 @@ const (
 	HighPriority
 )
 
-type state int
+type State int
 
 const (
-	ready state = iota
-	waiting
-	done
+	Ready State = iota
+	Waiting
+	Done
 )
 
 type TaskGenerator interface {
@@ -342,8 +439,6 @@ func (gen *generator) generate(sch *Scheduler) {
 			return
 		}
 
-		task = nextTask
-
 		// check if the generator is done
 		if gen.taskGenerator.IsDone() {
 			gen.done = true
@@ -352,6 +447,8 @@ func (gen *generator) generate(sch *Scheduler) {
 
 			return
 		}
+
+		task = nextTask
 	}
 
 	// check if it's possible to add a new task to the channel
@@ -370,22 +467,22 @@ func (gen *generator) generate(sch *Scheduler) {
 // if the generator is not periodic then it can be done or ready to generate a new task.
 // if the generator is periodic then it can be waiting (finished its work and wait for its interval to pass)
 // or ready to generate a new task.
-func (gen *generator) getState() state {
+func (gen *generator) getState() State {
 	if gen.interval == time.Duration(0) {
 		if gen.done && gen.remainingTask == nil {
-			return done
+			return Done
 		}
 	} else {
 		if gen.done && time.Since(gen.lastRun) < gen.interval && gen.remainingTask == nil {
-			return waiting
+			return Waiting
 		}
 	}
 
 	if !gen.taskGenerator.IsReady() {
-		return waiting
+		return Waiting
 	}
 
-	return ready
+	return Ready
 }
 
 func (scheduler *Scheduler) SubmitGenerator(taskGenerator TaskGenerator, interval time.Duration, priority Priority) {
@@ -402,6 +499,8 @@ func (scheduler *Scheduler) SubmitGenerator(taskGenerator TaskGenerator, interva
 
 	// add generator to the generators priority queue
 	heap.Push(&scheduler.generators, newGenerator)
+	// force pushing this metric (for zot minimal metrics are enabled on first scraping)
+	monitoring.IncSchedulerGenerators(scheduler.metricServer)
 }
 
 func getNumWorkers(cfg *config.Config) int {
@@ -409,5 +508,39 @@ func getNumWorkers(cfg *config.Config) int {
 		return cfg.Scheduler.NumWorkers
 	}
 
-	return runtime.NumCPU() * numWorkersMultiplier
+	return runtime.NumCPU() * NumWorkersMultiplier
+}
+
+func (p Priority) String() string {
+	var priority string
+
+	switch p {
+	case LowPriority:
+		priority = "low"
+	case MediumPriority:
+		priority = "medium"
+	case HighPriority:
+		priority = "high"
+	default:
+		priority = "invalid"
+	}
+
+	return priority
+}
+
+func (s State) String() string {
+	var status string
+
+	switch s {
+	case Ready:
+		status = "ready"
+	case Waiting:
+		status = "waiting"
+	case Done:
+		status = "done"
+	default:
+		status = "invalid"
+	}
+
+	return status
 }

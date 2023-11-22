@@ -5,6 +5,7 @@ package sync
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/containers/common/pkg/retry"
 	"github.com/containers/image/v5/types"
@@ -136,4 +137,13 @@ func newSyncRepoTask(repo string, service Service) *syncRepoTask {
 
 func (srt *syncRepoTask) DoWork(ctx context.Context) error {
 	return srt.service.SyncRepo(ctx, srt.repo)
+}
+
+func (srt *syncRepoTask) String() string {
+	return fmt.Sprintf("{Name: \"%s\", repo: \"%s\"}",
+		srt.Name(), srt.repo)
+}
+
+func (srt *syncRepoTask) Name() string {
+	return "SyncTask"
 }

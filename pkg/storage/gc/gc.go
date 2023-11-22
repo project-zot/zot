@@ -851,3 +851,12 @@ func (gct *gcTask) DoWork(ctx context.Context) error {
 	// run task
 	return gct.gc.CleanRepo(ctx, gct.repo) //nolint: contextcheck
 }
+
+func (gct *gcTask) String() string {
+	return fmt.Sprintf("{Name: %s, repo: %s}",
+		gct.Name(), gct.repo)
+}
+
+func (gct *gcTask) Name() string {
+	return "GCTask"
+}

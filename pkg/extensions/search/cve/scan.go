@@ -2,6 +2,7 @@ package cveinfo
 
 import (
 	"context"
+	"fmt"
 	"sync"
 
 	"zotregistry.io/zot/pkg/log"
@@ -193,4 +194,13 @@ func (st *scanTask) DoWork(ctx context.Context) error {
 	st.generator.log.Debug().Str("image", image).Msg("Scheduled CVE scan completed successfully for image")
 
 	return nil
+}
+
+func (st *scanTask) String() string {
+	return fmt.Sprintf("{Name: \"%s\", repo: \"%s\", digest: \"%s\"}",
+		st.Name(), st.repo, st.digest)
+}
+
+func (st *scanTask) Name() string {
+	return "ScanTask"
 }

@@ -57,7 +57,8 @@ func TestScanGeneratorWithMockedData(t *testing.T) { //nolint: gocyclo
 
 		cfg := config.New()
 		cfg.Scheduler = &config.SchedulerConfig{NumWorkers: 3}
-		sch := scheduler.NewScheduler(cfg, logger)
+		metrics := monitoring.NewMetricsServer(true, logger)
+		sch := scheduler.NewScheduler(cfg, metrics, logger)
 
 		params := boltdb.DBParameters{
 			RootDir: t.TempDir(),
@@ -502,8 +503,9 @@ func TestScanGeneratorWithRealData(t *testing.T) {
 		metaDB, err := boltdb.New(boltDriver, logger)
 		So(err, ShouldBeNil)
 
+		metrics := monitoring.NewMetricsServer(true, logger)
 		imageStore := local.NewImageStore(rootDir, false, false,
-			logger, monitoring.NewMetricsServer(false, logger), nil, nil)
+			logger, metrics, nil, nil)
 		storeController := storage.StoreController{DefaultStore: imageStore}
 
 		image := CreateRandomVulnerableImage()
@@ -520,7 +522,7 @@ func TestScanGeneratorWithRealData(t *testing.T) {
 
 		So(scanner.IsResultCached(image.DigestStr()), ShouldBeFalse)
 
-		sch := scheduler.NewScheduler(cfg, logger)
+		sch := scheduler.NewScheduler(cfg, metrics, logger)
 
 		generator := cveinfo.NewScanTaskGenerator(metaDB, scanner, logger)
 

@@ -14,6 +14,7 @@ import (
 	. "github.com/smartystreets/goconvey/convey"
 
 	"zotregistry.io/zot/pkg/api/config"
+	"zotregistry.io/zot/pkg/extensions/monitoring"
 	cveinfo "zotregistry.io/zot/pkg/extensions/search/cve"
 	"zotregistry.io/zot/pkg/log"
 	mTypes "zotregistry.io/zot/pkg/meta/types"
@@ -37,7 +38,8 @@ func TestCVEDBGenerator(t *testing.T) {
 
 		cfg := config.New()
 		cfg.Scheduler = &config.SchedulerConfig{NumWorkers: 3}
-		sch := scheduler.NewScheduler(cfg, logger)
+		metrics := monitoring.NewMetricsServer(true, logger)
+		sch := scheduler.NewScheduler(cfg, metrics, logger)
 
 		metaDB := &mocks.MetaDBMock{
 			GetRepoMetaFn: func(ctx context.Context, repo string) (mTypes.RepoMeta, error) {

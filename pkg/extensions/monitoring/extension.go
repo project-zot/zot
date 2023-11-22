@@ -83,6 +83,53 @@ var (
 		},
 		[]string{"storageName", "lockType"},
 	)
+	schedulerGenerators = promauto.NewCounter( //nolint: gochecknoglobals
+		prometheus.CounterOpts{
+			Namespace: metricsNamespace,
+			Name:      "scheduler_generators_total",
+			Help:      "Total number of generators registered in scheduler",
+		},
+	)
+	schedulerGeneratorsStatus = promauto.NewGaugeVec( //nolint: gochecknoglobals
+		prometheus.GaugeOpts{
+			Namespace: metricsNamespace,
+			Name:      "scheduler_generators_status",
+			Help:      "Scheduler generators by priority & state",
+		},
+		[]string{"priority", "state"},
+	)
+	schedulerNumWorkers = promauto.NewGauge( //nolint: gochecknoglobals
+		prometheus.GaugeOpts{ //nolint: promlinter
+			Namespace: metricsNamespace,
+			Name:      "scheduler_workers_total",
+			Help:      "Total number of available workers to perform scheduler tasks",
+		},
+	)
+	schedulerWorkers = promauto.NewGaugeVec( //nolint: gochecknoglobals
+		prometheus.GaugeOpts{
+			Namespace: metricsNamespace,
+			Name:      "scheduler_workers",
+			Help:      "Scheduler workers state",
+		},
+		[]string{"state"},
+	)
+	schedulerTasksQueue = promauto.NewGaugeVec( //nolint: gochecknoglobals
+		prometheus.GaugeOpts{
+			Namespace: metricsNamespace,
+			Name:      "scheduler_tasksqueue_length",
+			Help:      "Number of tasks waiting in the queue to pe processed by scheduler workers",
+		},
+		[]string{"priority"},
+	)
+	workersTasksDuration = promauto.NewHistogramVec( //nolint: gochecknoglobals
+		prometheus.HistogramOpts{
+			Namespace: metricsNamespace,
+			Name:      "scheduler_workers_tasks_duration_seconds",
+			Help:      "How long it takes for a worker to execute a task",
+			Buckets:   GetDefaultBuckets(),
+		},
+		[]string{"name"},
+	)
 )
 
 type metricServer struct {
@@ -169,7 +216,7 @@ func IncDownloadCounter(ms MetricServer, repo string) {
 }
 
 func SetStorageUsage(ms MetricServer, rootDir, repo string) {
-	ms.SendMetric(func() {
+	ms.ForceSendMetric(func() {
 		dir := path.Join(rootDir, repo)
 		repoSize, err := GetDirSize(dir)
 
@@ -194,5 +241,49 @@ func SetServerInfo(ms MetricServer, lvalues ...string) {
 func ObserveStorageLockLatency(ms MetricServer, latency time.Duration, storageName, lockType string) {
 	ms.SendMetric(func() {
 		storageLockLatency.WithLabelValues(storageName, lockType).Observe(latency.Seconds())
+	})
+}
+
+func IncSchedulerGenerators(ms MetricServer) {
+	ms.ForceSendMetric(func() {
+		schedulerGenerators.Inc()
+	})
+}
+
+func SetSchedulerGenerators(ms MetricServer, gen map[string]map[string]uint64) {
+	ms.SendMetric(func() {
+		for priority, states := range gen {
+			for state, value := range states {
+				schedulerGeneratorsStatus.WithLabelValues(priority, state).Set(float64(value))
+			}
+		}
+	})
+}
+
+func SetSchedulerNumWorkers(ms MetricServer, total int) {
+	ms.SendMetric(func() {
+		schedulerNumWorkers.Set(float64(total))
+	})
+}
+
+func SetSchedulerWorkers(ms MetricServer, w map[string]int) {
+	ms.SendMetric(func() {
+		for state, value := range w {
+			schedulerWorkers.WithLabelValues(state).Set(float64(value))
+		}
+	})
+}
+
+func SetSchedulerTasksQueue(ms MetricServer, tq map[string]int) {
+	ms.SendMetric(func() {
+		for priority, value := range tq {
+			schedulerTasksQueue.WithLabelValues(priority).Set(float64(value))
+		}
+	})
+}
+
+func ObserveWorkersTasksDuration(ms MetricServer, taskName string, duration time.Duration) {
+	ms.SendMetric(func() {
+		workersTasksDuration.WithLabelValues(taskName).Observe(duration.Seconds())
 	})
 }
