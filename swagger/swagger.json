@@ -1382,6 +1382,9 @@
                 "binaryType": {
                     "type": "string"
                 },
+                "commit": {
+                    "type": "string"
+                },
                 "distSpecVersion": {
                     "type": "string"
                 },
@@ -1392,6 +1395,9 @@
                             "$ref": "#/definitions/extensions.Auth"
                         }
                     }
+                },
+                "releaseTag": {
+                    "type": "string"
                 }
             }
         },

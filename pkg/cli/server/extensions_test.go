@@ -1179,7 +1179,7 @@ func TestServeMgmtExtension(t *testing.T) {
 		So(found, ShouldBeTrue)
 	})
 
-	Convey("Mgmt disabled - search unconfigured", t, func(c C) {
+	Convey("Mgmt disabled - Search unconfigured", t, func(c C) {
 		content := `{
 					"storage": {
 						"rootDirectory": "%s"
@@ -1193,9 +1193,6 @@ func TestServeMgmtExtension(t *testing.T) {
 						"output": "%s"
 					},
 					"extensions": {
-						"search": {
-							"enable": false
-						}
 					}
 				}`
 

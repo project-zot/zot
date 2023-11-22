@@ -1391,6 +1391,9 @@ const docTemplate = `{
                 "binaryType": {
                     "type": "string"
                 },
+                "commit": {
+                    "type": "string"
+                },
                 "distSpecVersion": {
                     "type": "string"
                 },
@@ -1401,6 +1404,9 @@ const docTemplate = `{
                             "$ref": "#/definitions/extensions.Auth"
                         }
                     }
+                },
+                "releaseTag": {
+                    "type": "string"
                 }
             }
         },
