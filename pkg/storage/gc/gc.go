@@ -581,11 +581,10 @@ func (gc GarbageCollect) removeUnreferencedBlobs(repo string, delay time.Duratio
 
 	gcBlobs := make([]godigest.Digest, 0)
 
-	for _, blob := range allBlobs {
-		digest := godigest.NewDigestFromEncoded(godigest.SHA256, blob)
+	for _, digest := range allBlobs {
 		if err = digest.Validate(); err != nil {
-			log.Error().Err(err).Str("module", "gc").Str("repository", repo).Str("digest", blob).
-				Msg("failed to parse digest")
+			log.Error().Err(err).Str("module", "gc").Str("repository", repo).
+				Str("digest", digest.String()).Msg("failed to parse digest")
 
 			return err
 		}
@@ -593,8 +592,8 @@ func (gc GarbageCollect) removeUnreferencedBlobs(repo string, delay time.Duratio
 		if _, ok := refBlobs[digest.String()]; !ok {
 			canGC, err := isBlobOlderThan(gc.imgStore, repo, digest, delay, log)
 			if err != nil {
-				log.Error().Err(err).Str("module", "gc").Str("repository", repo).Str("digest", blob).
-					Msg("failed to determine GC delay")
+				log.Error().Err(err).Str("module", "gc").Str("repository", repo).
+					Str("digest", digest.String()).Msg("failed to determine GC delay")
 
 				return err
 			}

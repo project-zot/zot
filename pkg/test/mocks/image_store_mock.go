@@ -51,7 +51,7 @@ type MockedImageStore struct {
 	RunDedupeForDigestFn func(ctx context.Context, digest godigest.Digest, dedupe bool,
 		duplicateBlobs []string) error
 	GetNextDigestWithBlobPathsFn  func(repos []string, lastDigests []godigest.Digest) (godigest.Digest, []string, error)
-	GetAllBlobsFn                 func(repo string) ([]string, error)
+	GetAllBlobsFn                 func(repo string) ([]godigest.Digest, error)
 	CleanupRepoFn                 func(repo string, blobs []godigest.Digest, removeRepo bool) (int, error)
 	PutIndexContentFn             func(repo string, index ispec.Index) error
 	PopulateStorageMetricsFn      func(interval time.Duration, sch *scheduler.Scheduler)
@@ -165,12 +165,12 @@ func (is MockedImageStore) GetImageTags(name string) ([]string, error) {
 	return []string{}, nil
 }
 
-func (is MockedImageStore) GetAllBlobs(repo string) ([]string, error) {
+func (is MockedImageStore) GetAllBlobs(repo string) ([]godigest.Digest, error) {
 	if is.GetAllBlobsFn != nil {
 		return is.GetAllBlobsFn(repo)
 	}
 
-	return []string{}, nil
+	return []godigest.Digest{}, nil
 }
 
 func (is MockedImageStore) DeleteImageManifest(name string, reference string, detectCollision bool) error {

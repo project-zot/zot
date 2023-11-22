@@ -21,6 +21,12 @@ var (
 )
 
 func UploadImage(img Image, baseURL, repo, ref string) error {
+	digestAlgorithm := img.digestAlgorithm
+
+	if digestAlgorithm == "" {
+		digestAlgorithm = godigest.Canonical
+	}
+
 	for _, blob := range img.Layers {
 		resp, err := resty.R().Post(baseURL + "/v2/" + repo + "/blobs/uploads/")
 		if err != nil {
@@ -33,7 +39,7 @@ func UploadImage(img Image, baseURL, repo, ref string) error {
 
 		loc := resp.Header().Get("Location")
 
-		digest := godigest.FromBytes(blob).String()
+		digest := digestAlgorithm.FromBytes(blob).String()
 
 		resp, err = resty.R().
 			SetHeader("Content-Length", fmt.Sprintf("%d", len(blob))).
@@ -63,7 +69,7 @@ func UploadImage(img Image, baseURL, repo, ref string) error {
 		}
 	}
 
-	cdigest := godigest.FromBytes(cblob)
+	cdigest := digestAlgorithm.FromBytes(cblob)
 
 	if img.Manifest.Config.MediaType == ispec.MediaTypeEmptyJSON ||
 		img.Manifest.Config.Digest == ispec.DescriptorEmptyJSON.Digest {
@@ -117,14 +123,16 @@ func UploadImage(img Image, baseURL, repo, ref string) error {
 		return ErrPutBlob
 	}
 
-	if inject.ErrStatusCode(resp.StatusCode()) != http.StatusCreated {
-		return ErrPutBlob
-	}
-
 	return err
 }
 
 func UploadImageWithBasicAuth(img Image, baseURL, repo, ref, user, password string) error {
+	digestAlgorithm := img.digestAlgorithm
+
+	if digestAlgorithm == "" {
+		digestAlgorithm = godigest.Canonical
+	}
+
 	for _, blob := range img.Layers {
 		resp, err := resty.R().
 			SetBasicAuth(user, password).
@@ -139,7 +147,7 @@ func UploadImageWithBasicAuth(img Image, baseURL, repo, ref, user, password stri
 
 		loc := resp.Header().Get("Location")
 
-		digest := godigest.FromBytes(blob).String()
+		digest := digestAlgorithm.FromBytes(blob).String()
 
 		resp, err = resty.R().
 			SetBasicAuth(user, password).
@@ -163,7 +171,7 @@ func UploadImageWithBasicAuth(img Image, baseURL, repo, ref, user, password stri
 		return err
 	}
 
-	cdigest := godigest.FromBytes(cblob)
+	cdigest := digestAlgorithm.FromBytes(cblob)
 
 	if img.Manifest.Config.MediaType == ispec.MediaTypeEmptyJSON {
 		cblob = ispec.DescriptorEmptyJSON.Data
