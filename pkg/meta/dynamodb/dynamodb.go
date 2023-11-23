@@ -729,16 +729,17 @@ func (dwr *DynamoDB) FilterTags(ctx context.Context, filterRepoTag mTypes.Filter
 			case ispec.MediaTypeImageIndex:
 				indexDigest := descriptor.Digest
 
-				imageIndexData, err := dwr.GetProtoImageMeta(ctx, godigest.Digest(indexDigest))
+				protoImageIndexMeta, err := dwr.GetProtoImageMeta(ctx, godigest.Digest(indexDigest))
 				if err != nil {
 					viewError = errors.Join(viewError, err)
 
 					continue
 				}
 
+				imageIndexMeta := mConvert.GetImageMeta(protoImageIndexMeta)
 				matchedManifests := []*proto_go.ManifestMeta{}
 
-				for _, manifest := range imageIndexData.Index.Index.Manifests {
+				for _, manifest := range protoImageIndexMeta.Index.Index.Manifests {
 					manifestDigest := manifest.Digest
 
 					imageManifestData, err := dwr.GetProtoImageMeta(ctx, godigest.Digest(manifestDigest))
@@ -749,16 +750,17 @@ func (dwr *DynamoDB) FilterTags(ctx context.Context, filterRepoTag mTypes.Filter
 					}
 
 					imageMeta := mConvert.GetImageMeta(imageManifestData)
+					partialImageMeta := common.GetPartialImageMeta(imageIndexMeta, imageMeta)
 
-					if filterFunc(repoMeta, imageMeta) {
+					if filterFunc(repoMeta, partialImageMeta) {
 						matchedManifests = append(matchedManifests, imageManifestData.Manifests[0])
 					}
 				}
 
 				if len(matchedManifests) > 0 {
-					imageIndexData.Manifests = matchedManifests
+					protoImageIndexMeta.Manifests = matchedManifests
 
-					images = append(images, mConvert.GetFullImageMetaFromProto(tag, protoRepoMeta, imageIndexData))
+					images = append(images, mConvert.GetFullImageMetaFromProto(tag, protoRepoMeta, protoImageIndexMeta))
 				}
 			default:
 				dwr.Log.Error().Str("mediaType", descriptor.MediaType).Msg("Unsupported media type")

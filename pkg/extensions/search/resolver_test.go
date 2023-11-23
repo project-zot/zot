@@ -88,6 +88,52 @@ func TestResolverGlobalSearch(t *testing.T) {
 			So(layers, ShouldBeEmpty)
 			So(repos.Results, ShouldBeEmpty)
 		})
+
+		Convey("Searching by digest", func() {
+			ctx := context.Background()
+			query := "sha256:aabb12341baf2"
+			mockMetaDB := mocks.MetaDBMock{
+				FilterTagsFn: func(ctx context.Context, filterRepoTag mTypes.FilterRepoTagFunc,
+					filterFunc mTypes.FilterFunc,
+				) ([]mTypes.FullImageMeta, error) {
+					return []mTypes.FullImageMeta{}, ErrTestError
+				},
+			}
+
+			responseContext := graphql.WithResponseContext(ctx, graphql.DefaultErrorPresenter, graphql.DefaultRecover)
+			repos, images, layers, err := globalSearch(responseContext, query, mockMetaDB, &gql_generated.Filter{},
+				&gql_generated.PageInput{}, mocks.CveInfoMock{}, log.NewLogger("debug", ""))
+			So(err, ShouldNotBeNil)
+			So(images, ShouldBeEmpty)
+			So(layers, ShouldBeEmpty)
+			So(repos.Results, ShouldBeEmpty)
+		})
+
+		Convey("Searching by digest with bad pagination", func() {
+			ctx := context.Background()
+			query := "sha256:aabb12341baf2"
+
+			responseContext := graphql.WithResponseContext(ctx, graphql.DefaultErrorPresenter, graphql.DefaultRecover)
+			repos, images, layers, err := globalSearch(responseContext, query, mocks.MetaDBMock{}, &gql_generated.Filter{},
+				&gql_generated.PageInput{Limit: ref(-10)}, mocks.CveInfoMock{}, log.NewLogger("debug", ""))
+			So(err, ShouldNotBeNil)
+			So(images, ShouldBeEmpty)
+			So(layers, ShouldBeEmpty)
+			So(repos.Results, ShouldBeEmpty)
+		})
+
+		Convey("Searching with a bad query", func() {
+			ctx := context.Background()
+			query := ":test"
+
+			responseContext := graphql.WithResponseContext(ctx, graphql.DefaultErrorPresenter, graphql.DefaultRecover)
+			repos, images, layers, err := globalSearch(responseContext, query, mocks.MetaDBMock{}, &gql_generated.Filter{},
+				&gql_generated.PageInput{}, mocks.CveInfoMock{}, log.NewLogger("debug", ""))
+			So(err, ShouldNotBeNil)
+			So(images, ShouldBeEmpty)
+			So(layers, ShouldBeEmpty)
+			So(repos.Results, ShouldBeEmpty)
+		})
 	})
 }
 
@@ -647,7 +693,7 @@ func TestQueryResolverErrors(t *testing.T) {
 			}, mocks.CveInfoMock{})
 			resolver := queryResolver{resolverConfig}
 
-			_, err := resolver.GlobalSearch(ctx, "some_string", &gql_generated.Filter{}, getPageInput(1, 1))
+			_, err := resolver.GlobalSearch(ctx, "some_string", &gql_generated.Filter{}, getGQLPageInput(1, 1))
 			So(err, ShouldNotBeNil)
 		})
 
@@ -1240,7 +1286,7 @@ func TestCVEResolvers(t *testing.T) { //nolint:gocyclo
 		})
 
 		Convey("context done", func() {
-			pageInput := getPageInput(1, 0)
+			pageInput := getGQLPageInput(1, 0)
 
 			ctx, cancel := context.WithCancel(ctx)
 			cancel()
@@ -1270,7 +1316,7 @@ func TestCVEResolvers(t *testing.T) { //nolint:gocyclo
 				graphql.DefaultRecover,
 			)
 
-			pageInput := getPageInput(1, 0)
+			pageInput := getGQLPageInput(1, 0)
 
 			images, err := getImageListForCVE(responseContext, "CVE1", cveInfo, nil, pageInput, metaDB, log)
 			So(err, ShouldBeNil)
@@ -1284,7 +1330,7 @@ func TestCVEResolvers(t *testing.T) { //nolint:gocyclo
 				So(fmt.Sprintf("%s:%s", *image.RepoName, *image.Tag), ShouldBeIn, expectedImages)
 			}
 
-			pageInput = getPageInput(1, 1)
+			pageInput = getGQLPageInput(1, 1)
 
 			images, err = getImageListForCVE(responseContext, "CVE1", cveInfo, nil, pageInput, metaDB, log)
 			So(err, ShouldBeNil)
@@ -1298,34 +1344,19 @@ func TestCVEResolvers(t *testing.T) { //nolint:gocyclo
 				So(fmt.Sprintf("%s:%s", *image.RepoName, *image.Tag), ShouldBeIn, expectedImages)
 			}
 
-			pageInput = getPageInput(1, 2)
+			pageInput = getGQLPageInput(1, 2)
 
 			images, err = getImageListForCVE(responseContext, "CVE1", cveInfo, nil, pageInput, metaDB, log)
 			So(err, ShouldBeNil)
 			So(len(images.Results), ShouldEqual, 0)
 
-			pageInput = getPageInput(1, 5)
+			pageInput = getGQLPageInput(1, 5)
 
 			images, err = getImageListForCVE(responseContext, "CVE1", cveInfo, nil, pageInput, metaDB, log)
 			So(err, ShouldBeNil)
 			So(len(images.Results), ShouldEqual, 0)
 
-			pageInput = getPageInput(2, 0)
-
-			images, err = getImageListForCVE(responseContext, "CVE1", cveInfo, nil, pageInput, metaDB, log)
-			So(err, ShouldBeNil)
-
-			expectedImages = []string{
-				"repo1:1.0.0",
-				"repo2:2.0.0",
-			}
-			So(len(images.Results), ShouldEqual, len(expectedImages))
-
-			for _, image := range images.Results {
-				So(fmt.Sprintf("%s:%s", *image.RepoName, *image.Tag), ShouldBeIn, expectedImages)
-			}
-
-			pageInput = getPageInput(5, 0)
+			pageInput = getGQLPageInput(2, 0)
 
 			images, err = getImageListForCVE(responseContext, "CVE1", cveInfo, nil, pageInput, metaDB, log)
 			So(err, ShouldBeNil)
@@ -1340,7 +1371,22 @@ func TestCVEResolvers(t *testing.T) { //nolint:gocyclo
 				So(fmt.Sprintf("%s:%s", *image.RepoName, *image.Tag), ShouldBeIn, expectedImages)
 			}
 
-			pageInput = getPageInput(5, 1)
+			pageInput = getGQLPageInput(5, 0)
+
+			images, err = getImageListForCVE(responseContext, "CVE1", cveInfo, nil, pageInput, metaDB, log)
+			So(err, ShouldBeNil)
+
+			expectedImages = []string{
+				"repo1:1.0.0",
+				"repo2:2.0.0",
+			}
+			So(len(images.Results), ShouldEqual, len(expectedImages))
+
+			for _, image := range images.Results {
+				So(fmt.Sprintf("%s:%s", *image.RepoName, *image.Tag), ShouldBeIn, expectedImages)
+			}
+
+			pageInput = getGQLPageInput(5, 1)
 
 			images, err = getImageListForCVE(responseContext, "CVE1", cveInfo, nil, pageInput, metaDB, log)
 			So(err, ShouldBeNil)
@@ -1354,19 +1400,19 @@ func TestCVEResolvers(t *testing.T) { //nolint:gocyclo
 				So(fmt.Sprintf("%s:%s", *image.RepoName, *image.Tag), ShouldBeIn, expectedImages)
 			}
 
-			pageInput = getPageInput(5, 2)
+			pageInput = getGQLPageInput(5, 2)
 
 			images, err = getImageListForCVE(responseContext, "CVE1", cveInfo, nil, pageInput, metaDB, log)
 			So(err, ShouldBeNil)
 			So(len(images.Results), ShouldEqual, 0)
 
-			pageInput = getPageInput(5, 5)
+			pageInput = getGQLPageInput(5, 5)
 
 			images, err = getImageListForCVE(responseContext, "CVE1", cveInfo, nil, pageInput, metaDB, log)
 			So(err, ShouldBeNil)
 			So(len(images.Results), ShouldEqual, 0)
 
-			pageInput = getPageInput(5, 0)
+			pageInput = getGQLPageInput(5, 0)
 
 			images, err = getImageListForCVE(responseContext, "CVE2", cveInfo, nil, pageInput, metaDB, log)
 			So(err, ShouldBeNil)
@@ -1382,7 +1428,7 @@ func TestCVEResolvers(t *testing.T) { //nolint:gocyclo
 				So(fmt.Sprintf("%s:%s", *image.RepoName, *image.Tag), ShouldBeIn, expectedImages)
 			}
 
-			pageInput = getPageInput(5, 3)
+			pageInput = getGQLPageInput(5, 3)
 
 			images, err = getImageListForCVE(responseContext, "CVE2", cveInfo, nil, pageInput, metaDB, log)
 			So(err, ShouldBeNil)
@@ -1397,7 +1443,7 @@ func TestCVEResolvers(t *testing.T) { //nolint:gocyclo
 				So(fmt.Sprintf("%s:%s", *image.RepoName, *image.Tag), ShouldBeIn, expectedImages)
 			}
 
-			pageInput = getPageInput(5, 0)
+			pageInput = getGQLPageInput(5, 0)
 
 			images, err = getImageListForCVE(responseContext, "CVE3", cveInfo, nil, pageInput, metaDB, log)
 			So(err, ShouldBeNil)
@@ -1412,7 +1458,7 @@ func TestCVEResolvers(t *testing.T) { //nolint:gocyclo
 				So(fmt.Sprintf("%s:%s", *image.RepoName, *image.Tag), ShouldBeIn, expectedImages)
 			}
 
-			pageInput = getPageInput(5, 5)
+			pageInput = getGQLPageInput(5, 5)
 
 			images, err = getImageListForCVE(responseContext, "CVE3", cveInfo, nil, pageInput, metaDB, log)
 			So(err, ShouldBeNil)
@@ -1427,7 +1473,7 @@ func TestCVEResolvers(t *testing.T) { //nolint:gocyclo
 				So(fmt.Sprintf("%s:%s", *image.RepoName, *image.Tag), ShouldBeIn, expectedImages)
 			}
 
-			pageInput = getPageInput(5, 10)
+			pageInput = getGQLPageInput(5, 10)
 
 			images, err = getImageListForCVE(responseContext, "CVE3", cveInfo, nil, pageInput, metaDB, log)
 			So(err, ShouldBeNil)
@@ -1442,7 +1488,7 @@ func TestCVEResolvers(t *testing.T) { //nolint:gocyclo
 			}
 
 			amdFilter := &gql_generated.Filter{Arch: []*string{&AMD}}
-			pageInput = getPageInput(5, 0)
+			pageInput = getGQLPageInput(5, 0)
 
 			images, err = getImageListForCVE(responseContext, "CVE3", cveInfo, amdFilter, pageInput, metaDB, log)
 			So(err, ShouldBeNil)
@@ -1458,7 +1504,7 @@ func TestCVEResolvers(t *testing.T) { //nolint:gocyclo
 				So(fmt.Sprintf("%s:%s", *image.RepoName, *image.Tag), ShouldBeIn, expectedImages)
 			}
 
-			pageInput = getPageInput(2, 2)
+			pageInput = getGQLPageInput(2, 2)
 
 			images, err = getImageListForCVE(responseContext, "CVE3", cveInfo, amdFilter, pageInput, metaDB, log)
 			So(err, ShouldBeNil)
@@ -1548,7 +1594,7 @@ func TestCVEResolvers(t *testing.T) { //nolint:gocyclo
 				graphql.DefaultRecover,
 			)
 
-			pageInput := getPageInput(1, 0)
+			pageInput := getGQLPageInput(1, 0)
 
 			images, err := getImageListWithCVEFixed(responseContext, "CVE1", "repo1", cveInfo, nil, pageInput, metaDB, log)
 			So(err, ShouldBeNil)
@@ -1562,7 +1608,7 @@ func TestCVEResolvers(t *testing.T) { //nolint:gocyclo
 				So(fmt.Sprintf("%s:%s", *image.RepoName, *image.Tag), ShouldBeIn, expectedImages)
 			}
 
-			pageInput = getPageInput(1, 1)
+			pageInput = getGQLPageInput(1, 1)
 
 			images, err = getImageListWithCVEFixed(responseContext, "CVE1", "repo1", cveInfo, nil, pageInput, metaDB, log)
 			So(err, ShouldBeNil)
@@ -1576,7 +1622,7 @@ func TestCVEResolvers(t *testing.T) { //nolint:gocyclo
 				So(fmt.Sprintf("%s:%s", *image.RepoName, *image.Tag), ShouldBeIn, expectedImages)
 			}
 
-			pageInput = getPageInput(1, 2)
+			pageInput = getGQLPageInput(1, 2)
 
 			images, err = getImageListWithCVEFixed(responseContext, "CVE1", "repo1", cveInfo, nil, pageInput, metaDB, log)
 			So(err, ShouldBeNil)
@@ -1590,19 +1636,19 @@ func TestCVEResolvers(t *testing.T) { //nolint:gocyclo
 				So(fmt.Sprintf("%s:%s", *image.RepoName, *image.Tag), ShouldBeIn, expectedImages)
 			}
 
-			pageInput = getPageInput(1, 3)
+			pageInput = getGQLPageInput(1, 3)
 
 			images, err = getImageListWithCVEFixed(responseContext, "CVE1", "repo1", cveInfo, nil, pageInput, metaDB, log)
 			So(err, ShouldBeNil)
 			So(len(images.Results), ShouldEqual, 0)
 
-			pageInput = getPageInput(1, 10)
+			pageInput = getGQLPageInput(1, 10)
 
 			images, err = getImageListWithCVEFixed(responseContext, "CVE1", "repo1", cveInfo, nil, pageInput, metaDB, log)
 			So(err, ShouldBeNil)
 			So(len(images.Results), ShouldEqual, 0)
 
-			pageInput = getPageInput(2, 0)
+			pageInput = getGQLPageInput(2, 0)
 
 			images, err = getImageListWithCVEFixed(responseContext, "CVE1", "repo1", cveInfo, nil, pageInput, metaDB, log)
 			So(err, ShouldBeNil)
@@ -1616,7 +1662,7 @@ func TestCVEResolvers(t *testing.T) { //nolint:gocyclo
 				So(fmt.Sprintf("%s:%s", *image.RepoName, *image.Tag), ShouldBeIn, expectedImages)
 			}
 
-			pageInput = getPageInput(2, 1)
+			pageInput = getGQLPageInput(2, 1)
 
 			images, err = getImageListWithCVEFixed(responseContext, "CVE1", "repo1", cveInfo, nil, pageInput, metaDB, log)
 			So(err, ShouldBeNil)
@@ -1630,7 +1676,7 @@ func TestCVEResolvers(t *testing.T) { //nolint:gocyclo
 				So(fmt.Sprintf("%s:%s", *image.RepoName, *image.Tag), ShouldBeIn, expectedImages)
 			}
 
-			pageInput = getPageInput(2, 2)
+			pageInput = getGQLPageInput(2, 2)
 
 			images, err = getImageListWithCVEFixed(responseContext, "CVE1", "repo1", cveInfo, nil, pageInput, metaDB, log)
 			So(err, ShouldBeNil)
@@ -1644,7 +1690,7 @@ func TestCVEResolvers(t *testing.T) { //nolint:gocyclo
 				So(fmt.Sprintf("%s:%s", *image.RepoName, *image.Tag), ShouldBeIn, expectedImages)
 			}
 
-			pageInput = getPageInput(5, 0)
+			pageInput = getGQLPageInput(5, 0)
 
 			images, err = getImageListWithCVEFixed(responseContext, "CVE1", "repo1", cveInfo, nil, pageInput, metaDB, log)
 			So(err, ShouldBeNil)
@@ -1658,7 +1704,7 @@ func TestCVEResolvers(t *testing.T) { //nolint:gocyclo
 				So(fmt.Sprintf("%s:%s", *image.RepoName, *image.Tag), ShouldBeIn, expectedImages)
 			}
 
-			pageInput = getPageInput(5, 0)
+			pageInput = getGQLPageInput(5, 0)
 
 			images, err = getImageListWithCVEFixed(responseContext, "CVE2", "repo1", cveInfo, nil, pageInput, metaDB, log)
 			So(err, ShouldBeNil)
@@ -1672,7 +1718,7 @@ func TestCVEResolvers(t *testing.T) { //nolint:gocyclo
 				So(fmt.Sprintf("%s:%s", *image.RepoName, *image.Tag), ShouldBeIn, expectedImages)
 			}
 
-			pageInput = getPageInput(5, 2)
+			pageInput = getGQLPageInput(5, 2)
 
 			images, err = getImageListWithCVEFixed(responseContext, "CVE2", "repo1", cveInfo, nil, pageInput, metaDB, log)
 			So(err, ShouldBeNil)
@@ -1681,7 +1727,7 @@ func TestCVEResolvers(t *testing.T) { //nolint:gocyclo
 			amdFilter := &gql_generated.Filter{Arch: []*string{&AMD}}
 			armFilter := &gql_generated.Filter{Arch: []*string{&ARM}}
 
-			pageInput = getPageInput(3, 0)
+			pageInput = getGQLPageInput(3, 0)
 
 			images, err = getImageListWithCVEFixed(responseContext, "CVE1", "repo1", cveInfo, amdFilter, pageInput, metaDB, log)
 			So(err, ShouldBeNil)
@@ -1703,7 +1749,7 @@ func TestCVEResolvers(t *testing.T) { //nolint:gocyclo
 				So(fmt.Sprintf("%s:%s", *image.RepoName, *image.Tag), ShouldBeIn, expectedImages)
 			}
 
-			pageInput = getPageInput(1, 1)
+			pageInput = getGQLPageInput(1, 1)
 
 			images, err = getImageListWithCVEFixed(responseContext, "CVE1", "repo1", cveInfo, armFilter, pageInput, metaDB, log)
 			So(err, ShouldBeNil)
@@ -2213,7 +2259,7 @@ func ref[T any](input T) *T {
 	return &ref
 }
 
-func getPageInput(limit int, offset int) *gql_generated.PageInput {
+func getGQLPageInput(limit int, offset int) *gql_generated.PageInput {
 	sortCriteria := gql_generated.SortCriteriaAlphabeticAsc
 
 	return &gql_generated.PageInput{
