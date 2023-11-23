@@ -253,7 +253,13 @@ jobs:
       - name: Update image tag
         uses: mikefarah/yq@master
         with:
-          cmd: yq -i '.image.tag = "${{ github.event.release.tag_name }}"' 'helm-charts/charts/zot/values.yaml'
+          cmd: |
+            yq e '.image.tag = "${{ github.event.release.tag_name }}"' 'helm-charts/charts/zot/values.yaml' > values-updated.yaml
+      - name: Patch values.yaml file
+        run: |
+          diff -b 'helm-charts/charts/zot/values.yaml' values-updated.yaml > values.diff || true
+          patch 'helm-charts/charts/zot/values.yaml' < values.diff
+          rm values-updated.yaml values.diff
       - name: Update version
         run: |
           sudo apt-get install pip
