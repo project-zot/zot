@@ -292,10 +292,8 @@ func (service *BaseService) SyncRepo(ctx context.Context, repo string) error {
 	localRepo := service.contentManager.GetRepoDestination(repo)
 
 	for _, tag := range tags {
-		select {
-		case <-ctx.Done():
+		if common.IsContextDone(ctx) {
 			return ctx.Err()
-		default:
 		}
 
 		if references.IsCosignTag(tag) || common.IsReferrersTag(tag) {

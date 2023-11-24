@@ -216,7 +216,7 @@ func TestScanGeneratorWithMockedData(t *testing.T) { //nolint: gocyclo
 		// MetaDB loaded with initial data, now mock the scanner
 		// Setup test CVE data in mock scanner
 		scanner := mocks.CveScannerMock{
-			ScanImageFn: func(image string) (map[string]cvemodel.CVE, error) {
+			ScanImageFn: func(ctx context.Context, image string) (map[string]cvemodel.CVE, error) {
 				result := cache.Get(image)
 				// Will not match sending the repo:tag as a parameter, but we don't care
 				if result != nil {
@@ -408,7 +408,7 @@ func TestScanGeneratorWithMockedData(t *testing.T) { //nolint: gocyclo
 			IsResultCachedFn: func(digest string) bool {
 				return cache.Contains(digest)
 			},
-			UpdateDBFn: func() error {
+			UpdateDBFn: func(ctx context.Context) error {
 				cache.Purge()
 
 				return nil
@@ -416,7 +416,7 @@ func TestScanGeneratorWithMockedData(t *testing.T) { //nolint: gocyclo
 		}
 
 		// Purge scan, it should not be needed
-		So(scanner.UpdateDB(), ShouldBeNil)
+		So(scanner.UpdateDB(context.Background()), ShouldBeNil)
 
 		// Verify none of the entries are cached to begin with
 		t.Log("verify cache is initially empty")
@@ -515,7 +515,7 @@ func TestScanGeneratorWithRealData(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		scanner := cveinfo.NewScanner(storeController, metaDB, "ghcr.io/project-zot/trivy-db", "", logger)
-		err = scanner.UpdateDB()
+		err = scanner.UpdateDB(context.Background())
 		So(err, ShouldBeNil)
 
 		So(scanner.IsResultCached(image.DigestStr()), ShouldBeFalse)
@@ -551,7 +551,7 @@ func TestScanGeneratorWithRealData(t *testing.T) {
 
 		So(scanner.IsResultCached(image.DigestStr()), ShouldBeTrue)
 
-		cveMap, err := scanner.ScanImage("zot-test:0.0.1")
+		cveMap, err := scanner.ScanImage(context.Background(), "zot-test:0.0.1")
 		So(err, ShouldBeNil)
 		t.Logf("cveMap: %v", cveMap)
 		// As of September 22 2023 there are 5 CVEs:
@@ -567,7 +567,7 @@ func TestScanGeneratorWithRealData(t *testing.T) {
 		cveInfo := cveinfo.NewCVEInfo(scanner, metaDB, logger)
 
 		// Based on cache population only, no extra scanning
-		cveSummary, err := cveInfo.GetCVESummaryForImageMedia("zot-test", image.DigestStr(),
+		cveSummary, err := cveInfo.GetCVESummaryForImageMedia(context.Background(), "zot-test", image.DigestStr(),
 			image.ManifestDescriptor.MediaType)
 		So(err, ShouldBeNil)
 		So(cveSummary.Count, ShouldBeGreaterThanOrEqualTo, 5)

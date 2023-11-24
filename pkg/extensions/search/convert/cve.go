@@ -47,7 +47,7 @@ func updateImageSummaryVulnerabilities(
 		return
 	}
 
-	imageCveSummary, err := cveInfo.GetCVESummaryForImageMedia(*imageSummary.RepoName, *imageSummary.Digest,
+	imageCveSummary, err := cveInfo.GetCVESummaryForImageMedia(ctx, *imageSummary.RepoName, *imageSummary.Digest,
 		*imageSummary.MediaType)
 	if err != nil {
 		// Log the error, but we should still include the image in results
@@ -91,7 +91,7 @@ func updateManifestSummaryVulnerabilities(
 		return
 	}
 
-	imageCveSummary, err := cveInfo.GetCVESummaryForImageMedia(repoName, *manifestSummary.Digest,
+	imageCveSummary, err := cveInfo.GetCVESummaryForImageMedia(ctx, repoName, *manifestSummary.Digest,
 		ispec.MediaTypeImageManifest)
 	if err != nil {
 		// Log the error, but we should still include the manifest in results

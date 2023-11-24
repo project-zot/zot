@@ -1052,7 +1052,7 @@ func newDedupeTask(imgStore storageTypes.ImageStore, digest godigest.Digest, ded
 
 func (dt *dedupeTask) DoWork(ctx context.Context) error {
 	// run task
-	err := dt.imgStore.RunDedupeForDigest(dt.digest, dt.dedupe, dt.duplicateBlobs) //nolint: contextcheck
+	err := dt.imgStore.RunDedupeForDigest(ctx, dt.digest, dt.dedupe, dt.duplicateBlobs) //nolint: contextcheck
 	if err != nil {
 		// log it
 		dt.log.Error().Err(err).Str("digest", dt.digest.String()).Msg("rebuild dedupe: failed to rebuild digest")

@@ -1149,7 +1149,7 @@ func FuzzRunGCRepo(f *testing.F) {
 			ImageRetention: DeleteReferrers,
 		}, audit, log)
 
-		if err := gc.CleanRepo(data); err != nil {
+		if err := gc.CleanRepo(context.Background(), data); err != nil {
 			t.Error(err)
 		}
 	})
@@ -1359,7 +1359,7 @@ func TestDedupeLinks(t *testing.T) {
 					err := os.Remove(path.Join(dir, "dedupe1", "blobs", "sha256", blobDigest1))
 					So(err, ShouldBeNil)
 
-					err = imgStore.RunDedupeForDigest(godigest.Digest(blobDigest1), true, duplicateBlobs)
+					err = imgStore.RunDedupeForDigest(context.TODO(), godigest.Digest(blobDigest1), true, duplicateBlobs)
 					So(err, ShouldNotBeNil)
 				})
 
@@ -1370,7 +1370,7 @@ func TestDedupeLinks(t *testing.T) {
 						imgStore := local.NewImageStore(dir, true, true, log, metrics, nil, cacheDriver)
 
 						imgStore.RunDedupeBlobs(time.Duration(0), taskScheduler)
-						sleepValue := i * 50
+						sleepValue := i * 5
 						time.Sleep(time.Duration(sleepValue) * time.Millisecond)
 
 						cancel()
@@ -2001,8 +2001,11 @@ func TestInjectWriteFile(t *testing.T) {
 }
 
 func TestGarbageCollectForImageStore(t *testing.T) {
+	//nolint: contextcheck
 	Convey("Garbage collect for a specific repo from an ImageStore", t, func(c C) {
 		dir := t.TempDir()
+
+		ctx := context.Background()
 
 		Convey("Garbage collect error for repo with config removed", func() {
 			logFile, _ := os.CreateTemp("", "zot-log*.txt")
@@ -2039,7 +2042,7 @@ func TestGarbageCollectForImageStore(t *testing.T) {
 				panic(err)
 			}
 
-			err = gc.CleanRepo(repoName)
+			err = gc.CleanRepo(ctx, repoName)
 			So(err, ShouldNotBeNil)
 
 			time.Sleep(500 * time.Millisecond)
@@ -2081,7 +2084,7 @@ func TestGarbageCollectForImageStore(t *testing.T) {
 
 			So(os.Chmod(path.Join(dir, repoName, "index.json"), 0o000), ShouldBeNil)
 
-			err = gc.CleanRepo(repoName)
+			err = gc.CleanRepo(ctx, repoName)
 			So(err, ShouldNotBeNil)
 
 			time.Sleep(500 * time.Millisecond)
@@ -2163,7 +2166,7 @@ func TestGarbageCollectForImageStore(t *testing.T) {
 			err = WriteImageToFileSystem(cosignWithReferrersSig, repoName, "cosign", storeController)
 			So(err, ShouldBeNil)
 
-			err = gc.CleanRepo(repoName)
+			err = gc.CleanRepo(ctx, repoName)
 			So(err, ShouldBeNil)
 		})
 	})
@@ -2171,6 +2174,8 @@ func TestGarbageCollectForImageStore(t *testing.T) {
 
 func TestGarbageCollectImageUnknownManifest(t *testing.T) {
 	Convey("Garbage collect with short delay", t, func() {
+		ctx := context.Background()
+
 		dir := t.TempDir()
 
 		log := zlog.NewLogger("debug", "")
@@ -2276,7 +2281,7 @@ func TestGarbageCollectImageUnknownManifest(t *testing.T) {
 		time.Sleep(1 * time.Second)
 
 		Convey("Garbage collect blobs referenced by manifest with unsupported media type", func() {
-			err = gc.CleanRepo(repoName)
+			err = gc.CleanRepo(ctx, repoName)
 			So(err, ShouldBeNil)
 
 			_, _, _, err = imgStore.GetImageManifest(repoName, img.DigestStr())
@@ -2313,7 +2318,7 @@ func TestGarbageCollectImageUnknownManifest(t *testing.T) {
 			err = imgStore.DeleteImageManifest(repoName, img.DigestStr(), true)
 			So(err, ShouldBeNil)
 
-			err = gc.CleanRepo(repoName)
+			err = gc.CleanRepo(ctx, repoName)
 			So(err, ShouldBeNil)
 
 			_, _, _, err = imgStore.GetImageManifest(repoName, img.DigestStr())
@@ -2350,6 +2355,8 @@ func TestGarbageCollectImageUnknownManifest(t *testing.T) {
 
 func TestGarbageCollectErrors(t *testing.T) {
 	Convey("Make image store", t, func(c C) {
+		ctx := context.Background()
+
 		dir := t.TempDir()
 
 		log := zlog.NewLogger("debug", "")
@@ -2456,7 +2463,7 @@ func TestGarbageCollectErrors(t *testing.T) {
 
 			time.Sleep(500 * time.Millisecond)
 
-			err = gc.CleanRepo(repoName)
+			err = gc.CleanRepo(ctx, repoName)
 			So(err, ShouldNotBeNil)
 		})
 
@@ -2507,14 +2514,14 @@ func TestGarbageCollectErrors(t *testing.T) {
 
 			time.Sleep(500 * time.Millisecond)
 
-			err = gc.CleanRepo(repoName)
+			err = gc.CleanRepo(ctx, repoName)
 			So(err, ShouldNotBeNil)
 
 			// trigger Unmarshal error
 			_, err = os.Create(imgStore.BlobPath(repoName, digest))
 			So(err, ShouldBeNil)
 
-			err = gc.CleanRepo(repoName)
+			err = gc.CleanRepo(ctx, repoName)
 			So(err, ShouldNotBeNil)
 		})
 
@@ -2564,7 +2571,7 @@ func TestGarbageCollectErrors(t *testing.T) {
 
 			time.Sleep(500 * time.Millisecond)
 
-			err = gc.CleanRepo(repoName)
+			err = gc.CleanRepo(ctx, repoName)
 			So(err, ShouldBeNil)
 
 			// blob shouldn't be gc'ed //TODO check this one

@@ -19,20 +19,20 @@ import (
 )
 
 type CveInfo interface {
-	GetImageListForCVE(repo, cveID string) ([]cvemodel.TagInfo, error)
-	GetImageListWithCVEFixed(repo, cveID string) ([]cvemodel.TagInfo, error)
-	GetCVEListForImage(repo, tag string, searchedCVE string, pageinput cvemodel.PageInput,
+	GetImageListForCVE(ctx context.Context, repo, cveID string) ([]cvemodel.TagInfo, error)
+	GetImageListWithCVEFixed(ctx context.Context, repo, cveID string) ([]cvemodel.TagInfo, error)
+	GetCVEListForImage(ctx context.Context, repo, tag string, searchedCVE string, pageinput cvemodel.PageInput,
 	) ([]cvemodel.CVE, zcommon.PageInfo, error)
-	GetCVESummaryForImageMedia(repo, digest, mediaType string) (cvemodel.ImageCVESummary, error)
+	GetCVESummaryForImageMedia(ctx context.Context, repo, digest, mediaType string) (cvemodel.ImageCVESummary, error)
 }
 
 type Scanner interface {
-	ScanImage(image string) (map[string]cvemodel.CVE, error)
+	ScanImage(ctx context.Context, image string) (map[string]cvemodel.CVE, error)
 	IsImageFormatScannable(repo, ref string) (bool, error)
 	IsImageMediaScannable(repo, digestStr, mediaType string) (bool, error)
 	IsResultCached(digestStr string) bool
 	GetCachedResult(digestStr string) map[string]cvemodel.CVE
-	UpdateDB() error
+	UpdateDB(ctx context.Context) error
 }
 
 type BaseCveInfo struct {
@@ -55,10 +55,10 @@ func NewCVEInfo(scanner Scanner, metaDB mTypes.MetaDB, log log.Logger) *BaseCveI
 	}
 }
 
-func (cveinfo BaseCveInfo) GetImageListForCVE(repo, cveID string) ([]cvemodel.TagInfo, error) {
+func (cveinfo BaseCveInfo) GetImageListForCVE(ctx context.Context, repo, cveID string) ([]cvemodel.TagInfo, error) {
 	imgList := make([]cvemodel.TagInfo, 0)
 
-	repoMeta, err := cveinfo.MetaDB.GetRepoMeta(context.Background(), repo)
+	repoMeta, err := cveinfo.MetaDB.GetRepoMeta(ctx, repo)
 	if err != nil {
 		cveinfo.Log.Error().Err(err).Str("repository", repo).Str("cve-id", cveID).
 			Msg("unable to get list of tags from repo")
@@ -80,8 +80,12 @@ func (cveinfo BaseCveInfo) GetImageListForCVE(repo, cveID string) ([]cvemodel.Ta
 				continue
 			}
 
-			cveMap, err := cveinfo.Scanner.ScanImage(zcommon.GetFullImageName(repo, tag))
+			cveMap, err := cveinfo.Scanner.ScanImage(ctx, zcommon.GetFullImageName(repo, tag))
 			if err != nil {
+				if zcommon.IsContextDone(ctx) {
+					return imgList, err
+				}
+
 				cveinfo.Log.Info().Str("image", repo+":"+tag).Err(err).Msg("image scan failed")
 
 				continue
@@ -105,8 +109,9 @@ func (cveinfo BaseCveInfo) GetImageListForCVE(repo, cveID string) ([]cvemodel.Ta
 	return imgList, nil
 }
 
-func (cveinfo BaseCveInfo) GetImageListWithCVEFixed(repo, cveID string) ([]cvemodel.TagInfo, error) {
-	repoMeta, err := cveinfo.MetaDB.GetRepoMeta(context.Background(), repo)
+func (cveinfo BaseCveInfo) GetImageListWithCVEFixed(ctx context.Context, repo, cveID string,
+) ([]cvemodel.TagInfo, error) {
+	repoMeta, err := cveinfo.MetaDB.GetRepoMeta(ctx, repo)
 	if err != nil {
 		cveinfo.Log.Error().Err(err).Str("repository", repo).Str("cve-id", cveID).
 			Msg("unable to get list of tags from repo")
@@ -118,6 +123,10 @@ func (cveinfo BaseCveInfo) GetImageListWithCVEFixed(repo, cveID string) ([]cvemo
 	allTags := make([]cvemodel.TagInfo, 0)
 
 	for tag, descriptor := range repoMeta.Tags {
+		if zcommon.IsContextDone(ctx) {
+			return []cvemodel.TagInfo{}, ctx.Err()
+		}
+
 		switch descriptor.MediaType {
 		case ispec.MediaTypeImageManifest:
 			manifestDigestStr := descriptor.Digest
@@ -132,7 +141,7 @@ func (cveinfo BaseCveInfo) GetImageListWithCVEFixed(repo, cveID string) ([]cvemo
 
 			allTags = append(allTags, tagInfo)
 
-			if cveinfo.isManifestVulnerable(repo, tag, manifestDigestStr, cveID) {
+			if cveinfo.isManifestVulnerable(ctx, repo, tag, manifestDigestStr, cveID) {
 				vulnerableTags = append(vulnerableTags, tagInfo)
 			}
 		case ispec.MediaTypeImageIndex:
@@ -162,7 +171,7 @@ func (cveinfo BaseCveInfo) GetImageListWithCVEFixed(repo, cveID string) ([]cvemo
 
 				allManifests = append(allManifests, manifestDescriptorInfo)
 
-				if cveinfo.isManifestVulnerable(repo, tag, manifest.Digest.String(), cveID) {
+				if cveinfo.isManifestVulnerable(ctx, repo, tag, manifest.Digest.String(), cveID) {
 					vulnerableManifests = append(vulnerableManifests, manifestDescriptorInfo)
 				}
 			}
@@ -250,7 +259,8 @@ func getTagInfoForManifest(tag, manifestDigestStr string, metaDB mTypes.MetaDB) 
 	}, nil
 }
 
-func (cveinfo *BaseCveInfo) isManifestVulnerable(repo, tag, manifestDigestStr, cveID string) bool {
+func (cveinfo *BaseCveInfo) isManifestVulnerable(ctx context.Context, repo, tag, manifestDigestStr, cveID string,
+) bool {
 	image := zcommon.GetFullImageName(repo, tag)
 
 	isValidImage, err := cveinfo.Scanner.IsImageMediaScannable(repo, manifestDigestStr, ispec.MediaTypeImageManifest)
@@ -261,7 +271,7 @@ func (cveinfo *BaseCveInfo) isManifestVulnerable(repo, tag, manifestDigestStr, c
 		return true
 	}
 
-	cveMap, err := cveinfo.Scanner.ScanImage(zcommon.GetFullImageName(repo, manifestDigestStr))
+	cveMap, err := cveinfo.Scanner.ScanImage(ctx, zcommon.GetFullImageName(repo, manifestDigestStr))
 	if err != nil {
 		cveinfo.Log.Debug().Str("image", image).Str("cve-id", cveID).
 			Msg("scanning failed, adding as a vulnerable image")
@@ -330,10 +340,10 @@ func filterCVEList(cveMap map[string]cvemodel.CVE, searchedCVE string, pageFinde
 	}
 }
 
-func (cveinfo BaseCveInfo) GetCVEListForImage(repo, ref string, searchedCVE string, pageInput cvemodel.PageInput) (
-	[]cvemodel.CVE,
-	zcommon.PageInfo,
-	error,
+func (cveinfo BaseCveInfo) GetCVEListForImage(ctx context.Context, repo, ref string, searchedCVE string,
+	pageInput cvemodel.PageInput,
+) (
+	[]cvemodel.CVE, zcommon.PageInfo, error,
 ) {
 	isValidImage, err := cveinfo.Scanner.IsImageFormatScannable(repo, ref)
 	if !isValidImage {
@@ -344,7 +354,7 @@ func (cveinfo BaseCveInfo) GetCVEListForImage(repo, ref string, searchedCVE stri
 
 	image := zcommon.GetFullImageName(repo, ref)
 
-	cveMap, err := cveinfo.Scanner.ScanImage(image)
+	cveMap, err := cveinfo.Scanner.ScanImage(ctx, image)
 	if err != nil {
 		return []cvemodel.CVE{}, zcommon.PageInfo{}, err
 	}
@@ -361,7 +371,7 @@ func (cveinfo BaseCveInfo) GetCVEListForImage(repo, ref string, searchedCVE stri
 	return cveList, pageInfo, nil
 }
 
-func (cveinfo BaseCveInfo) GetCVESummaryForImageMedia(repo, digest, mediaType string,
+func (cveinfo BaseCveInfo) GetCVESummaryForImageMedia(ctx context.Context, repo, digest, mediaType string,
 ) (cvemodel.ImageCVESummary, error) {
 	// There are several cases, expected returned values below:
 	// not scanned yet                     - max severity ""            - cve count 0   - no Errors

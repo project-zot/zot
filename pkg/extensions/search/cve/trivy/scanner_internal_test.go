@@ -128,46 +128,56 @@ func TestMultipleStoragePath(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		// Try to scan without the DB being downloaded
-		_, err = scanner.ScanImage(img0)
+		_, err = scanner.ScanImage(context.Background(), img0)
 		So(err, ShouldNotBeNil)
 		So(err, ShouldWrap, zerr.ErrCVEDBNotFound)
 
+		// Try to scan with a context done
+
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+
+		_, err = scanner.ScanImage(ctx, img0)
+		So(err, ShouldNotBeNil)
+
+		ctx = context.Background()
+
 		// Download DB since DB download on scan is disabled
-		err = scanner.UpdateDB()
+		err = scanner.UpdateDB(ctx)
 		So(err, ShouldBeNil)
 
 		// Scanning image in default store
-		cveMap, err := scanner.ScanImage(img0)
+		cveMap, err := scanner.ScanImage(ctx, img0)
 
 		So(err, ShouldBeNil)
 		So(len(cveMap), ShouldEqual, 0)
 
 		// Scanning image in substore
-		cveMap, err = scanner.ScanImage(img1)
+		cveMap, err = scanner.ScanImage(ctx, img1)
 		So(err, ShouldBeNil)
 		So(len(cveMap), ShouldEqual, 0)
 
 		// Scanning image which does not exist
-		cveMap, err = scanner.ScanImage("a/test/image2:tag100")
+		cveMap, err = scanner.ScanImage(ctx, "a/test/image2:tag100")
 		So(err, ShouldNotBeNil)
 		So(len(cveMap), ShouldEqual, 0)
 
 		// Download the DB to a default store location without permissions
 		err = os.Chmod(firstRootDir, 0o000)
 		So(err, ShouldBeNil)
-		err = scanner.UpdateDB()
+		err = scanner.UpdateDB(ctx)
 		So(err, ShouldNotBeNil)
 
 		// Check the download works correctly when permissions allow
 		err = os.Chmod(firstRootDir, 0o777)
 		So(err, ShouldBeNil)
-		err = scanner.UpdateDB()
+		err = scanner.UpdateDB(ctx)
 		So(err, ShouldBeNil)
 
 		// Download the DB to a substore location without permissions
 		err = os.Chmod(secondRootDir, 0o000)
 		So(err, ShouldBeNil)
-		err = scanner.UpdateDB()
+		err = scanner.UpdateDB(ctx)
 		So(err, ShouldNotBeNil)
 
 		err = os.Chmod(secondRootDir, 0o777)
@@ -210,12 +220,14 @@ func TestTrivyLibraryErrors(t *testing.T) {
 		// Download DB fails for missing DB url
 		scanner := NewScanner(storeController, metaDB, "", "", log)
 
-		err = scanner.UpdateDB()
+		ctx := context.Background()
+
+		err = scanner.UpdateDB(ctx)
 		So(err, ShouldNotBeNil)
 
 		// Try to scan without the DB being downloaded
 		opts := scanner.getTrivyOptions(img)
-		_, err = scanner.runTrivy(opts)
+		_, err = scanner.runTrivy(ctx, opts)
 		So(err, ShouldNotBeNil)
 		So(err, ShouldWrap, zerr.ErrCVEDBNotFound)
 
@@ -223,37 +235,38 @@ func TestTrivyLibraryErrors(t *testing.T) {
 		scanner = NewScanner(storeController, metaDB, "ghcr.io/project-zot/trivy-db",
 			"ghcr.io/project-zot/trivy-not-db", log)
 
-		err = scanner.UpdateDB()
+		err = scanner.UpdateDB(ctx)
 		So(err, ShouldNotBeNil)
 
 		// Download DB passes for valid Trivy DB url, and missing Trivy Java DB url
 		// Download DB is necessary since DB download on scan is disabled
 		scanner = NewScanner(storeController, metaDB, "ghcr.io/project-zot/trivy-db", "", log)
 
-		err = scanner.UpdateDB()
+		// UpdateDB with good ctx
+		err = scanner.UpdateDB(ctx)
 		So(err, ShouldBeNil)
 
 		// Scanning image with correct options
 		opts = scanner.getTrivyOptions(img)
-		_, err = scanner.runTrivy(opts)
+		_, err = scanner.runTrivy(ctx, opts)
 		So(err, ShouldBeNil)
 
 		// Scanning image with incorrect cache options
 		// to trigger runner initialization errors
 		opts.CacheOptions.CacheBackend = "redis://asdf!$%&!*)("
-		_, err = scanner.runTrivy(opts)
+		_, err = scanner.runTrivy(ctx, opts)
 		So(err, ShouldNotBeNil)
 
 		// Scanning image with invalid input to trigger a scanner error
 		opts = scanner.getTrivyOptions("nilnonexisting_image:0.0.1")
-		_, err = scanner.runTrivy(opts)
+		_, err = scanner.runTrivy(ctx, opts)
 		So(err, ShouldNotBeNil)
 
 		// Scanning image with incorrect report options
 		// to trigger report filtering errors
 		opts = scanner.getTrivyOptions(img)
 		opts.ReportOptions.IgnorePolicy = "invalid file path"
-		_, err = scanner.runTrivy(opts)
+		_, err = scanner.runTrivy(ctx, opts)
 		So(err, ShouldNotBeNil)
 	})
 }
@@ -397,22 +410,31 @@ func TestDefaultTrivyDBUrl(t *testing.T) {
 		scanner := NewScanner(storeController, metaDB, "ghcr.io/aquasecurity/trivy-db",
 			"ghcr.io/aquasecurity/trivy-java-db", log)
 
+		ctx := context.Background()
+
+		cancelCtx, cancel := context.WithCancel(ctx)
+		cancel()
+
+		// Download DB with context done should return ctx error.
+		err = scanner.UpdateDB(cancelCtx)
+		So(err, ShouldNotBeNil)
+
 		// Download DB since DB download on scan is disabled
-		err = scanner.UpdateDB()
+		err = scanner.UpdateDB(ctx)
 		So(err, ShouldBeNil)
 
 		// Scanning image
 		img := "zot-test:0.0.1" //nolint:goconst
 
 		opts := scanner.getTrivyOptions(img)
-		_, err = scanner.runTrivy(opts)
+		_, err = scanner.runTrivy(ctx, opts)
 		So(err, ShouldBeNil)
 
 		// Scanning image containing a jar file
 		img = "zot-cve-java-test:0.0.1"
 
 		opts = scanner.getTrivyOptions(img)
-		_, err = scanner.runTrivy(opts)
+		_, err = scanner.runTrivy(ctx, opts)
 		So(err, ShouldBeNil)
 	})
 }

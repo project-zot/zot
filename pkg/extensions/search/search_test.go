@@ -292,7 +292,7 @@ func getMockCveScanner(metaDB mTypes.MetaDB) cveinfo.Scanner {
 	}
 
 	scanner := mocks.CveScannerMock{
-		ScanImageFn: func(image string) (map[string]cvemodel.CVE, error) {
+		ScanImageFn: func(ctx context.Context, image string) (map[string]cvemodel.CVE, error) {
 			return getCveResults(image), nil
 		},
 		GetCachedResultFn: func(digestStr string) map[string]cvemodel.CVE {

@@ -1228,7 +1228,7 @@ func (bdw *BoltDB) UpdateStatsOnDownload(repo string, reference string) error {
 	return err
 }
 
-func (bdw *BoltDB) UpdateSignaturesValidity(repo string, manifestDigest godigest.Digest) error {
+func (bdw *BoltDB) UpdateSignaturesValidity(ctx context.Context, repo string, manifestDigest godigest.Digest) error {
 	err := bdw.DB.Update(func(transaction *bbolt.Tx) error {
 		imgTrustStore := bdw.ImageTrustStore()
 
@@ -1267,6 +1267,10 @@ func (bdw *BoltDB) UpdateSignaturesValidity(repo string, manifestDigest godigest
 
 		manifestSignatures := proto_go.ManifestSignatures{Map: map[string]*proto_go.SignaturesInfo{"": {}}}
 		for sigType, sigs := range protoRepoMeta.Signatures[manifestDigest.String()].Map {
+			if zcommon.IsContextDone(ctx) {
+				return ctx.Err()
+			}
+
 			signaturesInfo := []*proto_go.SignatureInfo{}
 
 			for _, sigInfo := range sigs.List {

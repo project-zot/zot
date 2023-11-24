@@ -1,36 +1,39 @@
 package mocks
 
 import (
+	"context"
+
 	"zotregistry.io/zot/pkg/common"
 	cvemodel "zotregistry.io/zot/pkg/extensions/search/cve/model"
 )
 
 type CveInfoMock struct {
-	GetImageListForCVEFn       func(repo, cveID string) ([]cvemodel.TagInfo, error)
-	GetImageListWithCVEFixedFn func(repo, cveID string) ([]cvemodel.TagInfo, error)
-	GetCVEListForImageFn       func(repo string, reference string, searchedCVE string, pageInput cvemodel.PageInput,
-	) ([]cvemodel.CVE, common.PageInfo, error)
-	GetCVESummaryForImageMediaFn func(repo string, digest, mediaType string,
+	GetImageListForCVEFn       func(ctx context.Context, repo, cveID string) ([]cvemodel.TagInfo, error)
+	GetImageListWithCVEFixedFn func(ctx context.Context, repo, cveID string) ([]cvemodel.TagInfo, error)
+	GetCVEListForImageFn       func(ctx context.Context, repo string, reference string, searchedCVE string,
+		pageInput cvemodel.PageInput) ([]cvemodel.CVE, common.PageInfo, error)
+	GetCVESummaryForImageMediaFn func(ctx context.Context, repo string, digest, mediaType string,
 	) (cvemodel.ImageCVESummary, error)
 }
 
-func (cveInfo CveInfoMock) GetImageListForCVE(repo, cveID string) ([]cvemodel.TagInfo, error) {
+func (cveInfo CveInfoMock) GetImageListForCVE(ctx context.Context, repo, cveID string) ([]cvemodel.TagInfo, error) {
 	if cveInfo.GetImageListForCVEFn != nil {
-		return cveInfo.GetImageListForCVEFn(repo, cveID)
+		return cveInfo.GetImageListForCVEFn(ctx, repo, cveID)
 	}
 
 	return []cvemodel.TagInfo{}, nil
 }
 
-func (cveInfo CveInfoMock) GetImageListWithCVEFixed(repo, cveID string) ([]cvemodel.TagInfo, error) {
+func (cveInfo CveInfoMock) GetImageListWithCVEFixed(ctx context.Context, repo, cveID string,
+) ([]cvemodel.TagInfo, error) {
 	if cveInfo.GetImageListWithCVEFixedFn != nil {
-		return cveInfo.GetImageListWithCVEFixedFn(repo, cveID)
+		return cveInfo.GetImageListWithCVEFixedFn(ctx, repo, cveID)
 	}
 
 	return []cvemodel.TagInfo{}, nil
 }
 
-func (cveInfo CveInfoMock) GetCVEListForImage(repo string, reference string,
+func (cveInfo CveInfoMock) GetCVEListForImage(ctx context.Context, repo string, reference string,
 	searchedCVE string, pageInput cvemodel.PageInput,
 ) (
 	[]cvemodel.CVE,
@@ -38,16 +41,16 @@ func (cveInfo CveInfoMock) GetCVEListForImage(repo string, reference string,
 	error,
 ) {
 	if cveInfo.GetCVEListForImageFn != nil {
-		return cveInfo.GetCVEListForImageFn(repo, reference, searchedCVE, pageInput)
+		return cveInfo.GetCVEListForImageFn(ctx, repo, reference, searchedCVE, pageInput)
 	}
 
 	return []cvemodel.CVE{}, common.PageInfo{}, nil
 }
 
-func (cveInfo CveInfoMock) GetCVESummaryForImageMedia(repo, digest, mediaType string,
+func (cveInfo CveInfoMock) GetCVESummaryForImageMedia(ctx context.Context, repo, digest, mediaType string,
 ) (cvemodel.ImageCVESummary, error) {
 	if cveInfo.GetCVESummaryForImageMediaFn != nil {
-		return cveInfo.GetCVESummaryForImageMediaFn(repo, digest, mediaType)
+		return cveInfo.GetCVESummaryForImageMediaFn(ctx, repo, digest, mediaType)
 	}
 
 	return cvemodel.ImageCVESummary{}, nil
@@ -58,8 +61,8 @@ type CveScannerMock struct {
 	IsImageMediaScannableFn  func(repo string, digest, mediaType string) (bool, error)
 	IsResultCachedFn         func(digest string) bool
 	GetCachedResultFn        func(digest string) map[string]cvemodel.CVE
-	ScanImageFn              func(image string) (map[string]cvemodel.CVE, error)
-	UpdateDBFn               func() error
+	ScanImageFn              func(ctx context.Context, image string) (map[string]cvemodel.CVE, error)
+	UpdateDBFn               func(ctx context.Context) error
 }
 
 func (scanner CveScannerMock) IsImageFormatScannable(repo string, reference string) (bool, error) {
@@ -94,17 +97,17 @@ func (scanner CveScannerMock) GetCachedResult(digest string) map[string]cvemodel
 	return map[string]cvemodel.CVE{}
 }
 
-func (scanner CveScannerMock) ScanImage(image string) (map[string]cvemodel.CVE, error) {
+func (scanner CveScannerMock) ScanImage(ctx context.Context, image string) (map[string]cvemodel.CVE, error) {
 	if scanner.ScanImageFn != nil {
-		return scanner.ScanImageFn(image)
+		return scanner.ScanImageFn(ctx, image)
 	}
 
 	return map[string]cvemodel.CVE{}, nil
 }
 
-func (scanner CveScannerMock) UpdateDB() error {
+func (scanner CveScannerMock) UpdateDB(ctx context.Context) error {
 	if scanner.UpdateDBFn != nil {
-		return scanner.UpdateDBFn()
+		return scanner.UpdateDBFn(ctx)
 	}
 
 	return nil

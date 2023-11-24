@@ -80,11 +80,11 @@ in any manifests referenced in repo's index.json
 It also gc referrers with missing subject if the Referrer Option is enabled
 It also gc untagged manifests.
 */
-func (gc GarbageCollect) CleanRepo(repo string) error {
+func (gc GarbageCollect) CleanRepo(ctx context.Context, repo string) error {
 	gc.log.Info().Str("module", "gc").
 		Msg(fmt.Sprintf("executing GC of orphaned blobs for %s", path.Join(gc.imgStore.RootDir(), repo)))
 
-	if err := gc.cleanRepo(repo); err != nil {
+	if err := gc.cleanRepo(ctx, repo); err != nil {
 		errMessage := fmt.Sprintf("error while running GC for %s", path.Join(gc.imgStore.RootDir(), repo))
 		gc.log.Error().Err(err).Str("module", "gc").Msg(errMessage)
 		gc.log.Info().Str("module", "gc").
@@ -99,7 +99,7 @@ func (gc GarbageCollect) CleanRepo(repo string) error {
 	return nil
 }
 
-func (gc GarbageCollect) cleanRepo(repo string) error {
+func (gc GarbageCollect) cleanRepo(ctx context.Context, repo string) error {
 	var lockLatency time.Time
 
 	dir := path.Join(gc.imgStore.RootDir(), repo)
@@ -127,12 +127,12 @@ func (gc GarbageCollect) cleanRepo(repo string) error {
 	}
 
 	// apply tags retention
-	if err := gc.removeTagsPerRetentionPolicy(repo, &index); err != nil {
+	if err := gc.removeTagsPerRetentionPolicy(ctx, repo, &index); err != nil {
 		return err
 	}
 
 	// gc referrers manifests with missing subject and untagged manifests
-	if err := gc.removeManifestsPerRepoPolicy(repo, &index); err != nil {
+	if err := gc.removeManifestsPerRepoPolicy(ctx, repo, &index); err != nil {
 		return err
 	}
 
@@ -153,13 +153,17 @@ func (gc GarbageCollect) cleanRepo(repo string) error {
 	return nil
 }
 
-func (gc GarbageCollect) removeManifestsPerRepoPolicy(repo string, index *ispec.Index) error {
+func (gc GarbageCollect) removeManifestsPerRepoPolicy(ctx context.Context, repo string, index *ispec.Index) error {
 	var err error
 
 	/* gc all manifests that have a missing subject, stop when neither gc(referrer and untagged)
 	happened in a full loop over index.json. */
 	var stop bool
 	for !stop {
+		if zcommon.IsContextDone(ctx) {
+			return ctx.Err()
+		}
+
 		var gcedReferrer bool
 
 		var gcedUntagged bool
@@ -349,22 +353,26 @@ func (gc GarbageCollect) removeReferrer(repo string, index *ispec.Index, manifes
 	return gced, nil
 }
 
-func (gc GarbageCollect) removeTagsPerRetentionPolicy(repo string, index *ispec.Index) error {
+func (gc GarbageCollect) removeTagsPerRetentionPolicy(ctx context.Context, repo string, index *ispec.Index) error {
 	if !gc.policyMgr.HasTagRetention(repo) {
 		return nil
 	}
 
-	repoMeta, err := gc.metaDB.GetRepoMeta(context.Background(), repo)
+	repoMeta, err := gc.metaDB.GetRepoMeta(ctx, repo)
 	if err != nil {
 		gc.log.Error().Err(err).Str("module", "gc").Str("repository", repo).Msg("can't retrieve repoMeta for repo")
 
 		return err
 	}
 
-	retainTags := gc.policyMgr.GetRetainedTags(repoMeta, *index)
+	retainTags := gc.policyMgr.GetRetainedTags(ctx, repoMeta, *index)
 
 	// remove
 	for _, desc := range index.Manifests {
+		if zcommon.IsContextDone(ctx) {
+			return ctx.Err()
+		}
+
 		// check tag
 		tag, ok := getDescriptorTag(desc)
 		if ok && !zcommon.Contains(retainTags, tag) {
@@ -841,5 +849,5 @@ func NewGCTask(imgStore types.ImageStore, gc GarbageCollect, repo string,
 
 func (gct *gcTask) DoWork(ctx context.Context) error {
 	// run task
-	return gct.gc.CleanRepo(gct.repo) //nolint: contextcheck
+	return gct.gc.CleanRepo(ctx, gct.repo) //nolint: contextcheck
 }

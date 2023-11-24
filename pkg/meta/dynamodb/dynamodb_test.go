@@ -164,6 +164,7 @@ func TestWrapperErrors(t *testing.T) {
 	// 	t.FailNow()
 	// }
 
+	//nolint: contextcheck
 	Convey("Errors", t, func() {
 		params := mdynamodb.DBDriverParameters{ //nolint:contextcheck
 			Endpoint:               endpoint,
@@ -258,7 +259,15 @@ func TestWrapperErrors(t *testing.T) {
 			digest := image.Digest()
 
 			Convey("image meta blob not found", func() {
-				err := dynamoWrapper.UpdateSignaturesValidity("repo", digest)
+				err := dynamoWrapper.UpdateSignaturesValidity(ctx, "repo", digest)
+				So(err, ShouldNotBeNil)
+			})
+
+			Convey("UpdateSignaturesValidity with context done", func() {
+				ctx, cancel := context.WithCancel(context.Background())
+				cancel()
+
+				err := dynamoWrapper.UpdateSignaturesValidity(ctx, "repo", digest)
 				So(err, ShouldNotBeNil)
 			})
 
@@ -266,7 +275,7 @@ func TestWrapperErrors(t *testing.T) {
 				err := setImageMeta(digest, badProtoBlob, dynamoWrapper)
 				So(err, ShouldBeNil)
 
-				err = dynamoWrapper.UpdateSignaturesValidity("repo", digest)
+				err = dynamoWrapper.UpdateSignaturesValidity(ctx, "repo", digest)
 				So(err, ShouldNotBeNil)
 			})
 
@@ -274,7 +283,7 @@ func TestWrapperErrors(t *testing.T) {
 				err := dynamoWrapper.SetImageMeta(digest, imageMeta)
 				So(err, ShouldBeNil)
 
-				err = dynamoWrapper.UpdateSignaturesValidity("repo", digest)
+				err = dynamoWrapper.UpdateSignaturesValidity(ctx, "repo", digest)
 				So(err, ShouldNotBeNil)
 			})
 
@@ -285,7 +294,7 @@ func TestWrapperErrors(t *testing.T) {
 				err = setRepoMeta("repo", badProtoBlob, dynamoWrapper)
 				So(err, ShouldBeNil)
 
-				err = dynamoWrapper.UpdateSignaturesValidity("repo", digest)
+				err = dynamoWrapper.UpdateSignaturesValidity(ctx, "repo", digest)
 				So(err, ShouldNotBeNil)
 			})
 		})

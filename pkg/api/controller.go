@@ -49,6 +49,7 @@ type Controller struct {
 	SyncOnDemand    SyncOnDemand
 	RelyingParties  map[string]rp.RelyingParty
 	CookieStore     *CookieStore
+	taskScheduler   *scheduler.Scheduler
 	// runtime params
 	chosenPort int // kernel-chosen port
 }
@@ -370,13 +371,14 @@ func (c *Controller) LoadNewConfig(reloadCtx context.Context, newConfig *config.
 }
 
 func (c *Controller) Shutdown() {
+	c.taskScheduler.Shutdown()
 	ctx := context.Background()
 	_ = c.Server.Shutdown(ctx)
 }
 
 func (c *Controller) StartBackgroundTasks(reloadCtx context.Context) {
-	taskScheduler := scheduler.NewScheduler(c.Config, c.Log)
-	taskScheduler.RunScheduler(reloadCtx)
+	c.taskScheduler = scheduler.NewScheduler(c.Config, c.Log)
+	c.taskScheduler.RunScheduler(reloadCtx)
 
 	// Enable running garbage-collect periodically for DefaultStore
 	if c.Config.Storage.GC {
@@ -385,20 +387,20 @@ func (c *Controller) StartBackgroundTasks(reloadCtx context.Context) {
 			ImageRetention: c.Config.Storage.Retention,
 		}, c.Audit, c.Log)
 
-		gc.CleanImageStorePeriodically(c.Config.Storage.GCInterval, taskScheduler)
+		gc.CleanImageStorePeriodically(c.Config.Storage.GCInterval, c.taskScheduler)
 	}
 
 	// Enable running dedupe blobs both ways (dedupe or restore deduped blobs)
-	c.StoreController.DefaultStore.RunDedupeBlobs(time.Duration(0), taskScheduler)
+	c.StoreController.DefaultStore.RunDedupeBlobs(time.Duration(0), c.taskScheduler)
 
 	// Enable extensions if extension config is provided for DefaultStore
 	if c.Config != nil && c.Config.Extensions != nil {
 		ext.EnableMetricsExtension(c.Config, c.Log, c.Config.Storage.RootDirectory)
-		ext.EnableSearchExtension(c.Config, c.StoreController, c.MetaDB, taskScheduler, c.CveScanner, c.Log)
+		ext.EnableSearchExtension(c.Config, c.StoreController, c.MetaDB, c.taskScheduler, c.CveScanner, c.Log)
 	}
 	// runs once if metrics are enabled & imagestore is local
 	if c.Config.IsMetricsEnabled() && c.Config.Storage.StorageDriver == nil {
-		c.StoreController.DefaultStore.PopulateStorageMetrics(time.Duration(0), taskScheduler)
+		c.StoreController.DefaultStore.PopulateStorageMetrics(time.Duration(0), c.taskScheduler)
 	}
 
 	if c.Config.Storage.SubPaths != nil {
@@ -411,7 +413,7 @@ func (c *Controller) StartBackgroundTasks(reloadCtx context.Context) {
 						ImageRetention: storageConfig.Retention,
 					}, c.Audit, c.Log)
 
-				gc.CleanImageStorePeriodically(storageConfig.GCInterval, taskScheduler)
+				gc.CleanImageStorePeriodically(storageConfig.GCInterval, c.taskScheduler)
 			}
 
 			// Enable extensions if extension config is provided for subImageStore
@@ -422,19 +424,19 @@ func (c *Controller) StartBackgroundTasks(reloadCtx context.Context) {
 			// Enable running dedupe blobs both ways (dedupe or restore deduped blobs) for subpaths
 			substore := c.StoreController.SubStore[route]
 			if substore != nil {
-				substore.RunDedupeBlobs(time.Duration(0), taskScheduler)
+				substore.RunDedupeBlobs(time.Duration(0), c.taskScheduler)
 
 				if c.Config.IsMetricsEnabled() && c.Config.Storage.StorageDriver == nil {
-					substore.PopulateStorageMetrics(time.Duration(0), taskScheduler)
+					substore.PopulateStorageMetrics(time.Duration(0), c.taskScheduler)
 				}
 			}
 		}
 	}
 
 	if c.Config.Extensions != nil {
-		ext.EnableScrubExtension(c.Config, c.Log, c.StoreController, taskScheduler)
+		ext.EnableScrubExtension(c.Config, c.Log, c.StoreController, c.taskScheduler)
 		//nolint: contextcheck
-		syncOnDemand, err := ext.EnableSyncExtension(c.Config, c.MetaDB, c.StoreController, taskScheduler, c.Log)
+		syncOnDemand, err := ext.EnableSyncExtension(c.Config, c.MetaDB, c.StoreController, c.taskScheduler, c.Log)
 		if err != nil {
 			c.Log.Error().Err(err).Msg("unable to start sync extension")
 		}
@@ -443,11 +445,11 @@ func (c *Controller) StartBackgroundTasks(reloadCtx context.Context) {
 	}
 
 	if c.CookieStore != nil {
-		c.CookieStore.RunSessionCleaner(taskScheduler)
+		c.CookieStore.RunSessionCleaner(c.taskScheduler)
 	}
 
 	// we can later move enabling the other scheduled tasks inside the call below
-	ext.EnableScheduledTasks(c.Config, taskScheduler, c.MetaDB, c.Log) //nolint: contextcheck
+	ext.EnableScheduledTasks(c.Config, c.taskScheduler, c.MetaDB, c.Log) //nolint: contextcheck
 }
 
 type SyncOnDemand interface {

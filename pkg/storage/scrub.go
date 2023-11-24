@@ -13,6 +13,7 @@ import (
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 
 	"zotregistry.io/zot/errors"
+	"zotregistry.io/zot/pkg/common"
 	storageTypes "zotregistry.io/zot/pkg/storage/types"
 )
 
@@ -87,10 +88,6 @@ func CheckImageStoreBlobsIntegrity(ctx context.Context, imgStore storageTypes.Im
 func CheckRepo(ctx context.Context, imageName string, imgStore storageTypes.ImageStore) ([]ScrubImageResult, error) {
 	results := []ScrubImageResult{}
 
-	if ctx.Err() != nil {
-		return results, ctx.Err()
-	}
-
 	var lockLatency time.Time
 
 	imgStore.RLock(&lockLatency)
@@ -120,6 +117,10 @@ func CheckRepo(ctx context.Context, imageName string, imgStore storageTypes.Imag
 	scrubbedManifests := make(map[godigest.Digest]ScrubImageResult)
 
 	for _, manifest := range index.Manifests {
+		if common.IsContextDone(ctx) {
+			return results, ctx.Err()
+		}
+
 		tag := manifest.Annotations[ispec.AnnotationRefName]
 		scrubManifest(ctx, manifest, imgStore, imageName, tag, scrubbedManifests)
 		results = append(results, scrubbedManifests[manifest.Digest])
@@ -159,12 +160,12 @@ func scrubManifest(
 		}
 
 		// check all manifests
-		for _, m := range idx.Manifests {
-			scrubManifest(ctx, m, imgStore, imageName, tag, scrubbedManifests)
+		for _, man := range idx.Manifests {
+			scrubManifest(ctx, man, imgStore, imageName, tag, scrubbedManifests)
 
 			// if the manifest is affected then this index is also affected
-			if scrubbedManifests[m.Digest].Error != "" {
-				mRes := scrubbedManifests[m.Digest]
+			if scrubbedManifests[man.Digest].Error != "" {
+				mRes := scrubbedManifests[man.Digest]
 
 				scrubbedManifests[manifest.Digest] = newScrubImageResult(imageName, tag, mRes.Status,
 					mRes.AffectedBlob, mRes.Error)
@@ -226,6 +227,7 @@ func CheckIntegrity(
 func CheckManifestAndConfig(
 	imageName string, manifestDesc ispec.Descriptor, imgStore storageTypes.ImageStore,
 ) (godigest.Digest, error) {
+	// Q oras artifacts?
 	if manifestDesc.MediaType != ispec.MediaTypeImageManifest {
 		return manifestDesc.Digest, errors.ErrBadManifest
 	}

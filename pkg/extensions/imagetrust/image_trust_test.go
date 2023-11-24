@@ -1215,6 +1215,13 @@ func RunVerificationTests(t *testing.T, dbDriverParams map[string]interface{}) {
 		repo := "repo" //nolint:goconst
 		tag := "test"  //nolint:goconst
 
+		Convey("verify running an image trust with context done", func() {
+			image := CreateRandomImage()
+
+			err = UploadImage(image, baseURL, repo, tag)
+			So(err, ShouldBeNil)
+		})
+
 		Convey("verify cosign signature is trusted", func() {
 			image := CreateRandomImage()
 
@@ -1291,6 +1298,18 @@ func RunVerificationTests(t *testing.T, dbDriverParams map[string]interface{}) {
 			So(err, ShouldBeNil)
 			So(isTrusted, ShouldBeTrue)
 			So(author, ShouldNotBeEmpty)
+
+			Convey("run imagetrust task with context done", func() {
+				repoMeta, err := ctlr.MetaDB.GetRepoMeta(context.Background(), repo)
+				So(err, ShouldBeNil)
+
+				cancelCtx, cancel := context.WithCancel(context.Background())
+				cancel()
+
+				task := imagetrust.NewValidityTask(ctlr.MetaDB, repoMeta, ctlr.Log)
+				err = task.DoWork(cancelCtx)
+				So(err, ShouldEqual, cancelCtx.Err())
+			})
 		})
 
 		Convey("verify notation signature is trusted", func() {

@@ -183,7 +183,7 @@ func (st *scanTask) DoWork(ctx context.Context) error {
 
 	// We cache the results internally in the scanner
 	// so we can discard the actual results for now
-	if _, err := st.generator.scanner.ScanImage(image); err != nil {
+	if _, err := st.generator.scanner.ScanImage(ctx, image); err != nil {
 		st.generator.log.Error().Err(err).Str("image", image).Msg("Scheduled CVE scan errored for image")
 		st.generator.addError(st.digest, err)
 

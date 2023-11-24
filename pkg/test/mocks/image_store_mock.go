@@ -1,6 +1,7 @@
 package mocks
 
 import (
+	"context"
 	"io"
 	"time"
 
@@ -46,11 +47,12 @@ type MockedImageStore struct {
 	GetReferrersFn     func(repo string, digest godigest.Digest, artifactTypes []string) (ispec.Index, error)
 	GetOrasReferrersFn func(repo string, digest godigest.Digest, artifactType string,
 	) ([]artifactspec.Descriptor, error)
-	URLForPathFn                 func(path string) (string, error)
-	RunGCRepoFn                  func(repo string) error
-	RunGCPeriodicallyFn          func(interval time.Duration, sch *scheduler.Scheduler)
-	RunDedupeBlobsFn             func(interval time.Duration, sch *scheduler.Scheduler)
-	RunDedupeForDigestFn         func(digest godigest.Digest, dedupe bool, duplicateBlobs []string) error
+	URLForPathFn         func(path string) (string, error)
+	RunGCRepoFn          func(repo string) error
+	RunGCPeriodicallyFn  func(interval time.Duration, sch *scheduler.Scheduler)
+	RunDedupeBlobsFn     func(interval time.Duration, sch *scheduler.Scheduler)
+	RunDedupeForDigestFn func(ctx context.Context, digest godigest.Digest, dedupe bool,
+		duplicateBlobs []string) error
 	GetNextDigestWithBlobPathsFn func(repos []string, lastDigests []godigest.Digest) (godigest.Digest, []string, error)
 	GetAllBlobsFn                func(repo string) ([]string, error)
 	CleanupRepoFn                func(repo string, blobs []godigest.Digest, removeRepo bool) (int, error)
@@ -383,9 +385,11 @@ func (is MockedImageStore) RunDedupeBlobs(interval time.Duration, sch *scheduler
 	}
 }
 
-func (is MockedImageStore) RunDedupeForDigest(digest godigest.Digest, dedupe bool, duplicateBlobs []string) error {
+func (is MockedImageStore) RunDedupeForDigest(ctx context.Context, digest godigest.Digest, dedupe bool,
+	duplicateBlobs []string,
+) error {
 	if is.RunDedupeForDigestFn != nil {
-		return is.RunDedupeForDigestFn(digest, dedupe, duplicateBlobs)
+		return is.RunDedupeForDigestFn(ctx, digest, dedupe, duplicateBlobs)
 	}
 
 	return nil

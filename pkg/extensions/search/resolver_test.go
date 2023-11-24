@@ -1046,14 +1046,14 @@ func TestCVEResolvers(t *testing.T) { //nolint:gocyclo
 	// MetaDB loaded with initial data, now mock the scanner
 	// Setup test CVE data in mock scanner
 	scanner := mocks.CveScannerMock{
-		ScanImageFn: func(image string) (map[string]cvemodel.CVE, error) {
+		ScanImageFn: func(ctx context.Context, image string) (map[string]cvemodel.CVE, error) {
 			repo, ref, _, _ := common.GetRepoReference(image)
 
 			if common.IsDigest(ref) {
 				return getCveResults(ref), nil
 			}
 
-			repoMeta, _ := metaDB.GetRepoMeta(context.Background(), repo)
+			repoMeta, _ := metaDB.GetRepoMeta(ctx, repo)
 
 			if _, ok := repoMeta.Tags[ref]; !ok {
 				panic("unexpected tag '" + ref + "', test might be wrong")
@@ -1237,6 +1237,32 @@ func TestCVEResolvers(t *testing.T) { //nolint:gocyclo
 			_, err = getImageListForCVE(responseContext, "repo1:1.1.0", cveInfo, &gql_generated.Filter{},
 				pageInput, mocks.MetaDBMock{}, log)
 			So(err, ShouldNotBeNil)
+		})
+
+		Convey("context done", func() {
+			pageInput := getPageInput(1, 0)
+
+			ctx, cancel := context.WithCancel(ctx)
+			cancel()
+
+			responseContext := graphql.WithResponseContext(ctx, graphql.DefaultErrorPresenter,
+				graphql.DefaultRecover)
+
+			canceledScanner := scanner
+
+			canceledScanner.ScanImageFn = func(ctx context.Context, image string) (map[string]cvemodel.CVE, error) {
+				return nil, ctx.Err()
+			}
+
+			cveInfo.Scanner = canceledScanner
+
+			defer func() {
+				cveInfo.Scanner = scanner
+			}()
+
+			_, err = getImageListForCVE(responseContext, "repo1:1.1.0", cveInfo, &gql_generated.Filter{},
+				pageInput, metaDB, log)
+			So(err, ShouldEqual, ctx.Err())
 		})
 
 		Convey("Paginated requests", func() {
@@ -1506,6 +1532,17 @@ func TestCVEResolvers(t *testing.T) { //nolint:gocyclo
 			So(err, ShouldNotBeNil)
 		})
 
+		Convey("context done", func() {
+			ctx, cancel := context.WithCancel(ctx)
+			cancel()
+
+			responseContext := graphql.WithResponseContext(ctx, graphql.DefaultErrorPresenter,
+				graphql.DefaultRecover)
+
+			_, err := getImageListWithCVEFixed(responseContext, "CVE1", "repo1", cveInfo, nil, nil, metaDB, log)
+			So(err, ShouldNotBeNil)
+		})
+
 		Convey("Paginated requests", func() {
 			responseContext := graphql.WithResponseContext(ctx, graphql.DefaultErrorPresenter,
 				graphql.DefaultRecover,
@@ -1685,7 +1722,7 @@ func TestCVEResolvers(t *testing.T) { //nolint:gocyclo
 			ctx,
 			"id",
 			mocks.CveInfoMock{
-				GetImageListForCVEFn: func(repo, cveID string) ([]cvemodel.TagInfo, error) {
+				GetImageListForCVEFn: func(ctx context.Context, repo, cveID string) ([]cvemodel.TagInfo, error) {
 					return []cvemodel.TagInfo{}, ErrTestError
 				},
 			},

@@ -94,7 +94,7 @@ func newDBUpdadeTask(interval time.Duration, scanner Scanner,
 func (dbt *dbUpdateTask) DoWork(ctx context.Context) error {
 	dbt.log.Info().Msg("updating the CVE database")
 
-	err := dbt.scanner.UpdateDB()
+	err := dbt.scanner.UpdateDB(ctx)
 	if err != nil {
 		dbt.generator.lock.Lock()
 		dbt.generator.status = pending

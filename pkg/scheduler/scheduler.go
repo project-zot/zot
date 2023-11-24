@@ -5,6 +5,7 @@ import (
 	"context"
 	"runtime"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"zotregistry.io/zot/pkg/api/config"
@@ -68,9 +69,11 @@ type Scheduler struct {
 	waitingGenerators []*generator
 	generatorsLock    *sync.Mutex
 	log               log.Logger
-	stopCh            chan struct{}
 	RateLimit         time.Duration
 	NumWorkers        int
+	workerChan        chan Task
+	workerWg          *sync.WaitGroup
+	isShuttingDown    atomic.Bool
 }
 
 func NewScheduler(cfg *config.Config, logC log.Logger) *Scheduler {
@@ -90,17 +93,20 @@ func NewScheduler(cfg *config.Config, logC log.Logger) *Scheduler {
 		generators:     generatorPQ,
 		generatorsLock: new(sync.Mutex),
 		log:            log.Logger{Logger: sublogger},
-		stopCh:         make(chan struct{}),
 		// default value
 		RateLimit:  rateLimit,
 		NumWorkers: numWorkers,
+		workerChan: make(chan Task, numWorkers),
+		workerWg:   new(sync.WaitGroup),
 	}
 }
 
-func (scheduler *Scheduler) poolWorker(ctx context.Context, numWorkers int, tasks chan Task) {
-	for i := 0; i < numWorkers; i++ {
+func (scheduler *Scheduler) poolWorker(ctx context.Context) {
+	for i := 0; i < scheduler.NumWorkers; i++ {
 		go func(workerID int) {
-			for task := range tasks {
+			defer scheduler.workerWg.Done()
+
+			for task := range scheduler.workerChan {
 				scheduler.log.Debug().Int("worker", workerID).Msg("scheduler: starting task")
 
 				if err := task.DoWork(ctx); err != nil {
@@ -113,33 +119,56 @@ func (scheduler *Scheduler) poolWorker(ctx context.Context, numWorkers int, task
 	}
 }
 
+func (scheduler *Scheduler) Shutdown() {
+	if !scheduler.inShutdown() {
+		scheduler.shutdown()
+	}
+
+	scheduler.workerWg.Wait()
+}
+
+func (scheduler *Scheduler) inShutdown() bool {
+	return scheduler.isShuttingDown.Load()
+}
+
+func (scheduler *Scheduler) shutdown() {
+	close(scheduler.workerChan)
+	scheduler.isShuttingDown.Store(true)
+}
+
 func (scheduler *Scheduler) RunScheduler(ctx context.Context) {
 	throttle := time.NewTicker(rateLimit).C
 
 	numWorkers := scheduler.NumWorkers
-	tasksWorker := make(chan Task, numWorkers)
+
+	// wait all workers to finish their work before exiting from Shutdown()
+	scheduler.workerWg.Add(numWorkers)
 
 	// start worker pool
-	go scheduler.poolWorker(ctx, numWorkers, tasksWorker)
+	go scheduler.poolWorker(ctx)
 
 	go func() {
 		for {
 			select {
 			case <-ctx.Done():
-				close(tasksWorker)
-				close(scheduler.stopCh)
+				if !scheduler.inShutdown() {
+					scheduler.shutdown()
+				}
 
-				scheduler.log.Debug().Msg("scheduler: received stop signal, exiting...")
+				scheduler.log.Debug().Msg("scheduler: received stop signal, gracefully shutting down...")
 
 				return
 			default:
 				i := 0
 				for i < numWorkers {
 					task := scheduler.getTask()
+
 					if task != nil {
 						// push tasks into worker pool
-						scheduler.log.Debug().Msg("scheduler: pushing task into worker pool")
-						tasksWorker <- task
+						if !scheduler.inShutdown() {
+							scheduler.log.Debug().Msg("scheduler: pushing task into worker pool")
+							scheduler.workerChan <- task
+						}
 					}
 					i++
 				}
@@ -251,17 +280,17 @@ func (scheduler *Scheduler) SubmitTask(task Task, priority Priority) {
 	}
 
 	// check if the scheduler it's still running in order to add the task to the channel
-	select {
-	case <-scheduler.stopCh:
+	if scheduler.inShutdown() {
 		return
-	default:
 	}
 
 	select {
-	case <-scheduler.stopCh:
-		return
 	case tasksQ <- task:
 		scheduler.log.Info().Msg("scheduler: adding a new task")
+	default:
+		if scheduler.inShutdown() {
+			return
+		}
 	}
 }
 

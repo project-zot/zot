@@ -415,7 +415,7 @@ func (service searchService) getReferrers(ctx context.Context, config SearchConf
 	referrersEndpoint, err := combineServerAndEndpointURL(config.ServURL,
 		fmt.Sprintf("/v2/%s/referrers/%s", repo, digest))
 	if err != nil {
-		if isContextDone(ctx) {
+		if common.IsContextDone(ctx) {
 			return referrersResult{}, nil
 		}
 
@@ -427,7 +427,7 @@ func (service searchService) getReferrers(ctx context.Context, config SearchConf
 		config.Debug, &referrerResp, config.ResultWriter)
 
 	if err != nil {
-		if isContextDone(ctx) {
+		if common.IsContextDone(ctx) {
 			return referrersResult{}, nil
 		}
 
@@ -477,7 +477,7 @@ func (service searchService) getAllImages(ctx context.Context, config SearchConf
 	catalogEndPoint, err := combineServerAndEndpointURL(config.ServURL, fmt.Sprintf("%s%s",
 		constants.RoutePrefix, constants.ExtCatalogPrefix))
 	if err != nil {
-		if isContextDone(ctx) {
+		if common.IsContextDone(ctx) {
 			return
 		}
 		rch <- stringResult{"", err}
@@ -488,7 +488,7 @@ func (service searchService) getAllImages(ctx context.Context, config SearchConf
 	_, err = makeGETRequest(ctx, catalogEndPoint, username, password, config.VerifyTLS,
 		config.Debug, catalog, config.ResultWriter)
 	if err != nil {
-		if isContextDone(ctx) {
+		if common.IsContextDone(ctx) {
 			return
 		}
 		rch <- stringResult{"", err}
@@ -522,7 +522,7 @@ func getImage(ctx context.Context, config SearchConfig, username, password, imag
 
 	tagListEndpoint, err := combineServerAndEndpointURL(config.ServURL, fmt.Sprintf("/v2/%s/tags/list", repo))
 	if err != nil {
-		if isContextDone(ctx) {
+		if common.IsContextDone(ctx) {
 			return
 		}
 		rch <- stringResult{"", err}
@@ -535,7 +535,7 @@ func getImage(ctx context.Context, config SearchConfig, username, password, imag
 		config.Debug, &tagList, config.ResultWriter)
 
 	if err != nil {
-		if isContextDone(ctx) {
+		if common.IsContextDone(ctx) {
 			return
 		}
 		rch <- stringResult{"", err}
@@ -601,7 +601,7 @@ func (service searchService) getImagesByDigest(ctx context.Context, config Searc
 
 	err := service.makeGraphQLQuery(ctx, config, username, password, query, result)
 	if err != nil {
-		if isContextDone(ctx) {
+		if common.IsContextDone(ctx) {
 			return
 		}
 		rch <- stringResult{"", err}
@@ -616,7 +616,7 @@ func (service searchService) getImagesByDigest(ctx context.Context, config Searc
 			fmt.Fprintln(&errBuilder, err.Message)
 		}
 
-		if isContextDone(ctx) {
+		if common.IsContextDone(ctx) {
 			return
 		}
 		rch <- stringResult{"", errors.New(errBuilder.String())} //nolint: goerr113
@@ -638,15 +638,6 @@ func (service searchService) getImagesByDigest(ctx context.Context, config Searc
 	}
 
 	localWg.Wait()
-}
-
-func isContextDone(ctx context.Context) bool {
-	select {
-	case <-ctx.Done():
-		return true
-	default:
-		return false
-	}
 }
 
 // Query using GQL, the query string is passed as a parameter
@@ -672,7 +663,7 @@ func (service searchService) makeGraphQLQuery(ctx context.Context,
 func checkResultGraphQLQuery(ctx context.Context, err error, resultErrors []common.ErrorGQL,
 ) error {
 	if err != nil {
-		if isContextDone(ctx) {
+		if common.IsContextDone(ctx) {
 			return nil //nolint:nilnil
 		}
 
@@ -686,7 +677,7 @@ func checkResultGraphQLQuery(ctx context.Context, err error, resultErrors []comm
 			fmt.Fprintln(&errBuilder, error.Message)
 		}
 
-		if isContextDone(ctx) {
+		if common.IsContextDone(ctx) {
 			return nil
 		}
 
@@ -705,7 +696,7 @@ func addManifestCallToPool(ctx context.Context, config SearchConfig, pool *reque
 	manifestEndpoint, err := combineServerAndEndpointURL(config.ServURL,
 		fmt.Sprintf("/v2/%s/manifests/%s", imageName, tagName))
 	if err != nil {
-		if isContextDone(ctx) {
+		if common.IsContextDone(ctx) {
 			return
 		}
 		rch <- stringResult{"", err}
@@ -1315,7 +1306,7 @@ func (service searchService) getRepos(ctx context.Context, config SearchConfig, 
 	catalogEndPoint, err := combineServerAndEndpointURL(config.ServURL, fmt.Sprintf("%s%s",
 		constants.RoutePrefix, constants.ExtCatalogPrefix))
 	if err != nil {
-		if isContextDone(ctx) {
+		if common.IsContextDone(ctx) {
 			return
 		}
 		rch <- stringResult{"", err}
@@ -1326,7 +1317,7 @@ func (service searchService) getRepos(ctx context.Context, config SearchConfig, 
 	_, err = makeGETRequest(ctx, catalogEndPoint, username, password, config.VerifyTLS,
 		config.Debug, catalog, config.ResultWriter)
 	if err != nil {
-		if isContextDone(ctx) {
+		if common.IsContextDone(ctx) {
 			return
 		}
 		rch <- stringResult{"", err}
