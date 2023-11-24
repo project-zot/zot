@@ -2488,9 +2488,11 @@ func TestCreateDynamo(t *testing.T) {
 	Convey("Fails", t, func() {
 		log := log.NewLogger("debug", "")
 
-		So(func() { _, _ = meta.Create("dynamodb", nil, boltdb.DBParameters{RootDir: "root"}, log) }, ShouldPanic)
+		_, err := meta.Create("dynamodb", nil, boltdb.DBParameters{RootDir: "root"}, log)
+		So(err, ShouldNotBeNil)
 
-		So(func() { _, _ = meta.Create("dynamodb", &dynamodb.Client{}, "bad", log) }, ShouldPanic)
+		_, err = meta.Create("dynamodb", &dynamodb.Client{}, "bad", log)
+		So(err, ShouldNotBeNil)
 
 		metaDB, err := meta.Create("random", nil, boltdb.DBParameters{RootDir: "root"}, log)
 		So(metaDB, ShouldBeNil)
@@ -2517,6 +2519,7 @@ func TestCreateBoltDB(t *testing.T) {
 	Convey("fails", t, func() {
 		log := log.NewLogger("debug", "")
 
-		So(func() { _, _ = meta.Create("boltdb", nil, mdynamodb.DBDriverParameters{}, log) }, ShouldPanic)
+		_, err := meta.Create("boltdb", nil, mdynamodb.DBDriverParameters{}, log)
+		So(err, ShouldNotBeNil)
 	})
 }

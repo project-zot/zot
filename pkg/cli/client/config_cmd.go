@@ -37,7 +37,7 @@ func NewConfigCommand() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			home, err := os.UserHomeDir()
 			if err != nil {
-				panic(err)
+				return err
 			}
 
 			configPath := path.Join(home, "/.zot")
@@ -112,7 +112,7 @@ func NewConfigAddCommand() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			home, err := os.UserHomeDir()
 			if err != nil {
-				panic(err)
+				return err
 			}
 
 			configPath := path.Join(home, "/.zot")
@@ -142,7 +142,7 @@ func NewConfigRemoveCommand() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			home, err := os.UserHomeDir()
 			if err != nil {
-				panic(err)
+				return err
 			}
 
 			configPath := path.Join(home, "/.zot")

@@ -50,12 +50,14 @@ func TestServe(t *testing.T) {
 	Convey("Test serve config", t, func(c C) {
 		Convey("unknown config", func(c C) {
 			os.Args = []string{"cli_test", "serve", path.Join(os.TempDir(), "/x")}
-			So(func() { _ = cli.NewServerRootCmd().Execute() }, ShouldPanic)
+			err := cli.NewServerRootCmd().Execute()
+			So(err, ShouldNotBeNil)
 		})
 
 		Convey("non-existent config", func(c C) {
 			os.Args = []string{"cli_test", "serve", path.Join(os.TempDir(), "/x.yaml")}
-			So(func() { _ = cli.NewServerRootCmd().Execute() }, ShouldPanic)
+			err := cli.NewServerRootCmd().Execute()
+			So(err, ShouldNotBeNil)
 		})
 
 		Convey("bad config", func(c C) {
@@ -67,7 +69,8 @@ func TestServe(t *testing.T) {
 
 			os.Args = []string{"cli_test", "serve", tmpFile}
 
-			So(func() { _ = cli.NewServerRootCmd().Execute() }, ShouldPanic)
+			err = cli.NewServerRootCmd().Execute()
+			So(err, ShouldNotBeNil)
 		})
 
 		Convey("config with missing rootDir", func(c C) {
@@ -88,7 +91,8 @@ func TestServe(t *testing.T) {
 
 			os.Args = []string{"cli_test", "serve", tmpFile}
 
-			So(func() { _ = cli.NewServerRootCmd().Execute() }, ShouldPanic)
+			err = cli.NewServerRootCmd().Execute()
+			So(err, ShouldNotBeNil)
 
 			// wait for the config reloader goroutine to start watching the config file
 			// if we end the test too fast it will delete the config file
@@ -113,7 +117,88 @@ func TestVerify(t *testing.T) {
 		err = tmpfile.Close()
 		So(err, ShouldBeNil)
 		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
-		So(func() { _ = cli.NewServerRootCmd().Execute() }, ShouldPanic)
+		err = cli.NewServerRootCmd().Execute()
+		So(err, ShouldNotBeNil)
+	})
+
+	Convey("Test verify CVE warn for remote storage", t, func(c C) {
+		tmpfile, err := os.CreateTemp("", "zot-test*.json")
+		So(err, ShouldBeNil)
+		defer os.Remove(tmpfile.Name()) // clean up
+
+		content := []byte(`{
+			"storage":{
+				"rootDirectory":"/tmp/zot",
+				"dedupe":true,
+				"remoteCache":false,
+				"storageDriver":{
+					"name":"s3",
+					"rootdirectory":"/zot",
+					"region":"us-east-2",
+					"bucket":"zot-storage",
+					"secure":true,
+					"skipverify":false
+				}
+			},
+			"http":{
+				"address":"127.0.0.1",
+				"port":"8080"
+			},
+			"extensions":{
+				"search": {
+					"enable": true,
+					"cve": {
+						"updateInterval": "24h"
+					}
+				}
+			}
+		}`)
+		err = os.WriteFile(tmpfile.Name(), content, 0o0600)
+		So(err, ShouldBeNil)
+
+		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
+		err = cli.NewServerRootCmd().Execute()
+		So(err, ShouldNotBeNil)
+
+		content = []byte(`{
+			"storage":{
+				"rootDirectory":"/tmp/zot",
+				"dedupe":true,
+				"remoteCache":false,
+				"subPaths":{
+					"/a": {
+						"rootDirectory": "/tmp/zot1",
+						"dedupe": false,
+						"storageDriver":{
+							"name":"s3",
+							"rootdirectory":"/zot-a",
+							"region":"us-east-2",
+							"bucket":"zot-storage",
+							"secure":true,
+							"skipverify":false
+						}
+					}
+				}
+			},
+			"http":{
+				"address":"127.0.0.1",
+				"port":"8080"
+			},
+			"extensions":{
+				"search": {
+					"enable": true,
+					"cve": {
+						"updateInterval": "24h"
+					}
+				}
+			}
+		}`)
+		err = os.WriteFile(tmpfile.Name(), content, 0o0600)
+		So(err, ShouldBeNil)
+
+		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
+		err = cli.NewServerRootCmd().Execute()
+		So(err, ShouldNotBeNil)
 	})
 
 	Convey("Test cached db config", t, func(c C) {
@@ -152,7 +237,8 @@ func TestVerify(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
-		So(func() { _ = cli.NewServerRootCmd().Execute() }, ShouldPanic)
+		err = cli.NewServerRootCmd().Execute()
+		So(err, ShouldNotBeNil)
 
 		// local storage with remote caching
 		content = []byte(`{
@@ -183,7 +269,8 @@ func TestVerify(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
-		So(func() { _ = cli.NewServerRootCmd().Execute() }, ShouldPanic)
+		err = cli.NewServerRootCmd().Execute()
+		So(err, ShouldNotBeNil)
 
 		// unsupported cache driver
 		content = []byte(`{
@@ -219,7 +306,8 @@ func TestVerify(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
-		So(func() { _ = cli.NewServerRootCmd().Execute() }, ShouldPanic)
+		err = cli.NewServerRootCmd().Execute()
+		So(err, ShouldNotBeNil)
 
 		// remoteCache false but provided cacheDriver config, ignored
 		content = []byte(`{
@@ -259,7 +347,8 @@ func TestVerify(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
-		So(func() { _ = cli.NewServerRootCmd().Execute() }, ShouldNotPanic)
+		err = cli.NewServerRootCmd().Execute()
+		So(err, ShouldBeNil)
 
 		// SubPaths
 		// dedupe true, remote storage, remoteCache true, but no cacheDriver (remote)
@@ -299,7 +388,8 @@ func TestVerify(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
-		So(func() { _ = cli.NewServerRootCmd().Execute() }, ShouldPanic)
+		err = cli.NewServerRootCmd().Execute()
+		So(err, ShouldNotBeNil)
 
 		// local storage with remote caching
 		content = []byte(`{
@@ -336,7 +426,8 @@ func TestVerify(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
-		So(func() { _ = cli.NewServerRootCmd().Execute() }, ShouldPanic)
+		err = cli.NewServerRootCmd().Execute()
+		So(err, ShouldNotBeNil)
 
 		// unsupported cache driver
 		content = []byte(`{
@@ -378,7 +469,8 @@ func TestVerify(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
-		So(func() { _ = cli.NewServerRootCmd().Execute() }, ShouldPanic)
+		err = cli.NewServerRootCmd().Execute()
+		So(err, ShouldNotBeNil)
 
 		// remoteCache false but provided cacheDriver config, ignored
 		content = []byte(`{
@@ -415,7 +507,8 @@ func TestVerify(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
-		So(func() { _ = cli.NewServerRootCmd().Execute() }, ShouldNotPanic)
+		err = cli.NewServerRootCmd().Execute()
+		So(err, ShouldBeNil)
 	})
 
 	Convey("Test verify with bad gc retention repo patterns", t, func(c C) {
@@ -463,7 +556,7 @@ func TestVerify(t *testing.T) {
 		err = tmpfile.Close()
 		So(err, ShouldBeNil)
 		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
-		So(func() { _ = cli.NewServerRootCmd().Execute() }, ShouldPanic)
+		So(cli.NewServerRootCmd().Execute(), ShouldNotBeNil)
 	})
 
 	Convey("Test verify with bad gc image retention tag regex", t, func(c C) {
@@ -503,7 +596,7 @@ func TestVerify(t *testing.T) {
 		err = tmpfile.Close()
 		So(err, ShouldBeNil)
 		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
-		So(func() { _ = cli.NewServerRootCmd().Execute() }, ShouldPanic)
+		So(cli.NewServerRootCmd().Execute(), ShouldNotBeNil)
 	})
 
 	Convey("Test apply defaults cache db", t, func(c C) {
@@ -525,7 +618,8 @@ func TestVerify(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
-		So(func() { _ = cli.NewServerRootCmd().Execute() }, ShouldPanic)
+		err = cli.NewServerRootCmd().Execute()
+		So(err, ShouldNotBeNil)
 
 		// subpath s3 dedup=false, check for previous dedup usage and set to true if cachedb found
 		cacheDir = t.TempDir()
@@ -542,7 +636,8 @@ func TestVerify(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
-		So(func() { _ = cli.NewServerRootCmd().Execute() }, ShouldPanic)
+		err = cli.NewServerRootCmd().Execute()
+		So(err, ShouldNotBeNil)
 
 		// subpath s3 dedup=false, check for previous dedup usage and set to true if cachedb found
 		cacheDir = t.TempDir()
@@ -556,7 +651,8 @@ func TestVerify(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
-		So(func() { _ = cli.NewServerRootCmd().Execute() }, ShouldPanic)
+		err = cli.NewServerRootCmd().Execute()
+		So(err, ShouldNotBeNil)
 	})
 
 	Convey("Test verify storage driver different than s3", t, func(c C) {
@@ -571,7 +667,8 @@ func TestVerify(t *testing.T) {
 		err = tmpfile.Close()
 		So(err, ShouldBeNil)
 		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
-		So(func() { _ = cli.NewServerRootCmd().Execute() }, ShouldPanic)
+		err = cli.NewServerRootCmd().Execute()
+		So(err, ShouldNotBeNil)
 	})
 
 	Convey("Test verify subpath storage driver different than s3", t, func(c C) {
@@ -587,7 +684,8 @@ func TestVerify(t *testing.T) {
 		err = tmpfile.Close()
 		So(err, ShouldBeNil)
 		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
-		So(func() { _ = cli.NewServerRootCmd().Execute() }, ShouldPanic)
+		err = cli.NewServerRootCmd().Execute()
+		So(err, ShouldNotBeNil)
 	})
 
 	Convey("Test verify subpath storage config", t, func(c C) {
@@ -613,7 +711,8 @@ func TestVerify(t *testing.T) {
 		err = os.WriteFile(tmpfile.Name(), content, 0o0600)
 		So(err, ShouldBeNil)
 		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
-		So(func() { _ = cli.NewServerRootCmd().Execute() }, ShouldPanic)
+		err = cli.NewServerRootCmd().Execute()
+		So(err, ShouldNotBeNil)
 
 		// sub paths that point to default root directory should not be allowed.
 		content = []byte(`{"storage":{"rootDirectory":"/tmp/zot",
@@ -623,7 +722,8 @@ func TestVerify(t *testing.T) {
 		err = os.WriteFile(tmpfile.Name(), content, 0o0600)
 		So(err, ShouldBeNil)
 		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
-		So(func() { _ = cli.NewServerRootCmd().Execute() }, ShouldPanic)
+		err = cli.NewServerRootCmd().Execute()
+		So(err, ShouldNotBeNil)
 
 		content = []byte(`{"storage":{"rootDirectory":"/tmp/zot",
 							"subPaths": {"/a": {"rootDirectory": "/zot-a","dedupe":"true","gc":"true"},
@@ -633,7 +733,8 @@ func TestVerify(t *testing.T) {
 		err = os.WriteFile(tmpfile.Name(), content, 0o0600)
 		So(err, ShouldBeNil)
 		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
-		So(func() { _ = cli.NewServerRootCmd().Execute() }, ShouldPanic)
+		err = cli.NewServerRootCmd().Execute()
+		So(err, ShouldNotBeNil)
 
 		content = []byte(`{"storage":{"rootDirectory":"/tmp/zot",
 							"subPaths": {"/a": {"rootDirectory": "/zot-a","dedupe":"true","gc":"true"},
@@ -643,7 +744,8 @@ func TestVerify(t *testing.T) {
 		err = os.WriteFile(tmpfile.Name(), content, 0o0600)
 		So(err, ShouldBeNil)
 		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
-		So(func() { _ = cli.NewServerRootCmd().Execute() }, ShouldPanic)
+		err = cli.NewServerRootCmd().Execute()
+		So(err, ShouldNotBeNil)
 
 		content = []byte(`{"storage":{"rootDirectory":"/tmp/zot",
 							"subPaths": {"/a": {"rootDirectory": "/zot-a","dedupe":"true","gc":"true","gcDelay":"1s","gcInterval":"1s"},
@@ -653,7 +755,8 @@ func TestVerify(t *testing.T) {
 		err = os.WriteFile(tmpfile.Name(), content, 0o0600)
 		So(err, ShouldBeNil)
 		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
-		So(func() { _ = cli.NewServerRootCmd().Execute() }, ShouldPanic)
+		err = cli.NewServerRootCmd().Execute()
+		So(err, ShouldNotBeNil)
 
 		content = []byte(`{"storage":{"rootDirectory":"/tmp/zot",
 							"subPaths": {"/a": {"rootDirectory": "/tmp/zot","dedupe":"true","gc":"true","gcDelay":"1s","gcInterval":"1s"},
@@ -663,7 +766,8 @@ func TestVerify(t *testing.T) {
 		err = os.WriteFile(tmpfile.Name(), content, 0o0600)
 		So(err, ShouldBeNil)
 		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
-		So(func() { _ = cli.NewServerRootCmd().Execute() }, ShouldPanic)
+		err = cli.NewServerRootCmd().Execute()
+		So(err, ShouldNotBeNil)
 	})
 
 	Convey("Test verify w/ authorization and w/o authentication", t, func(c C) {
@@ -679,7 +783,8 @@ func TestVerify(t *testing.T) {
 		err = tmpfile.Close()
 		So(err, ShouldBeNil)
 		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
-		So(func() { _ = cli.NewServerRootCmd().Execute() }, ShouldPanic)
+		err = cli.NewServerRootCmd().Execute()
+		So(err, ShouldNotBeNil)
 	})
 
 	Convey("Test verify w/ authorization and w/ authentication", t, func(c C) {
@@ -696,7 +801,8 @@ func TestVerify(t *testing.T) {
 		err = tmpfile.Close()
 		So(err, ShouldBeNil)
 		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
-		So(func() { _ = cli.NewServerRootCmd().Execute() }, ShouldNotPanic)
+		err = cli.NewServerRootCmd().Execute()
+		So(err, ShouldBeNil)
 	})
 
 	Convey("Test verify anonymous authorization", t, func(c C) {
@@ -713,7 +819,8 @@ func TestVerify(t *testing.T) {
 		err = tmpfile.Close()
 		So(err, ShouldBeNil)
 		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
-		So(func() { _ = cli.NewServerRootCmd().Execute() }, ShouldNotPanic)
+		err = cli.NewServerRootCmd().Execute()
+		So(err, ShouldBeNil)
 	})
 
 	Convey("Test verify admin policy authz is not allowed if no authn is configured", t, func(c C) {
@@ -738,7 +845,8 @@ func TestVerify(t *testing.T) {
 		err = tmpfile.Close()
 		So(err, ShouldBeNil)
 		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
-		So(func() { _ = cli.NewServerRootCmd().Execute() }, ShouldPanic)
+		err = cli.NewServerRootCmd().Execute()
+		So(err, ShouldNotBeNil)
 	})
 
 	Convey("Test verify default policy authz is not allowed if no authn is configured", t, func(c C) {
@@ -759,7 +867,8 @@ func TestVerify(t *testing.T) {
 		err = tmpfile.Close()
 		So(err, ShouldBeNil)
 		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
-		So(func() { _ = cli.NewServerRootCmd().Execute() }, ShouldPanic)
+		err = cli.NewServerRootCmd().Execute()
+		So(err, ShouldNotBeNil)
 	})
 
 	Convey("Test verify authz per user policies fail if no authn is configured", t, func(c C) {
@@ -785,7 +894,101 @@ func TestVerify(t *testing.T) {
 		err = tmpfile.Close()
 		So(err, ShouldBeNil)
 		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
-		So(func() { _ = cli.NewServerRootCmd().Execute() }, ShouldPanic)
+		err = cli.NewServerRootCmd().Execute()
+		So(err, ShouldNotBeNil)
+	})
+
+	Convey("Test verify w/ sync and w/o filesystem storage", t, func(c C) {
+		tmpfile, err := os.CreateTemp("", "zot-test*.json")
+		So(err, ShouldBeNil)
+		defer os.Remove(tmpfile.Name()) // clean up
+		content := []byte(`{"storage":{"rootDirectory":"/tmp/zot", "storageDriver": {"name": "s3"}},
+							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
+							"auth":{"htpasswd":{"path":"test/data/htpasswd"},"failDelay":1}},
+							"extensions":{"sync": {"registries": [{"urls":["localhost:9999"],
+							"maxRetries": 1, "retryDelay": "10s"}]}}}`)
+		_, err = tmpfile.Write(content)
+		So(err, ShouldBeNil)
+		err = tmpfile.Close()
+		So(err, ShouldBeNil)
+		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
+		err = cli.NewServerRootCmd().Execute()
+		So(err, ShouldNotBeNil)
+	})
+
+	Convey("Test verify w/ sync and w/ filesystem storage", t, func(c C) {
+		tmpfile, err := os.CreateTemp("", "zot-test*.json")
+		So(err, ShouldBeNil)
+		defer os.Remove(tmpfile.Name()) // clean up
+		content := []byte(`{"storage":{"rootDirectory":"/tmp/zot"},
+							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
+							"auth":{"htpasswd":{"path":"test/data/htpasswd"},"failDelay":1}},
+							"extensions":{"sync": {"registries": [{"urls":["localhost:9999"],
+							"maxRetries": 1, "retryDelay": "10s"}]}}}`)
+		_, err = tmpfile.Write(content)
+		So(err, ShouldBeNil)
+		err = tmpfile.Close()
+		So(err, ShouldBeNil)
+		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
+		err = cli.NewServerRootCmd().Execute()
+		So(err, ShouldBeNil)
+	})
+
+	Convey("Test verify with bad sync prefixes", t, func(c C) {
+		tmpfile, err := os.CreateTemp("", "zot-test*.json")
+		So(err, ShouldBeNil)
+		defer os.Remove(tmpfile.Name()) // clean up
+		content := []byte(`{"storage":{"rootDirectory":"/tmp/zot"},
+							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
+							"auth":{"htpasswd":{"path":"test/data/htpasswd"},"failDelay":1}},
+							"extensions":{"sync": {"registries": [{"urls":["localhost:9999"],
+							"maxRetries": 1, "retryDelay": "10s",
+							"content": [{"prefix":"[repo%^&"}]}]}}}`)
+		_, err = tmpfile.Write(content)
+		So(err, ShouldBeNil)
+		err = tmpfile.Close()
+		So(err, ShouldBeNil)
+		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
+		err = cli.NewServerRootCmd().Execute()
+		So(err, ShouldNotBeNil)
+	})
+
+	Convey("Test verify with bad sync content config", t, func(c C) {
+		tmpfile, err := os.CreateTemp("", "zot-test*.json")
+		So(err, ShouldBeNil)
+		defer os.Remove(tmpfile.Name()) // clean up
+		content := []byte(`{"storage":{"rootDirectory":"/tmp/zot"},
+							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
+							"auth":{"htpasswd":{"path":"test/data/htpasswd"},"failDelay":1}},
+							"extensions":{"sync": {"registries": [{"urls":["localhost:9999"],
+							"maxRetries": 1, "retryDelay": "10s",
+							"content": [{"prefix":"zot-repo","stripPrefix":true,"destination":"/"}]}]}}}`)
+		_, err = tmpfile.Write(content)
+		So(err, ShouldBeNil)
+		err = tmpfile.Close()
+		So(err, ShouldBeNil)
+		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
+		err = cli.NewServerRootCmd().Execute()
+		So(err, ShouldNotBeNil)
+	})
+
+	Convey("Test verify with good sync content config", t, func(c C) {
+		tmpfile, err := os.CreateTemp("", "zot-test*.json")
+		So(err, ShouldBeNil)
+		defer os.Remove(tmpfile.Name()) // clean up
+		content := []byte(`{"storage":{"rootDirectory":"/tmp/zot"},
+							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
+							"auth":{"htpasswd":{"path":"test/data/htpasswd"},"failDelay":1}},
+							"extensions":{"sync": {"registries": [{"urls":["localhost:9999"],
+							"maxRetries": 1, "retryDelay": "10s",
+							"content": [{"prefix":"zot-repo/*","stripPrefix":true,"destination":"/"}]}]}}}`)
+		_, err = tmpfile.Write(content)
+		So(err, ShouldBeNil)
+		err = tmpfile.Close()
+		So(err, ShouldBeNil)
+		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
+		err = cli.NewServerRootCmd().Execute()
+		So(err, ShouldBeNil)
 	})
 
 	Convey("Test verify with bad authorization repo patterns", t, func(c C) {
@@ -801,7 +1004,45 @@ func TestVerify(t *testing.T) {
 		err = tmpfile.Close()
 		So(err, ShouldBeNil)
 		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
-		So(func() { _ = cli.NewServerRootCmd().Execute() }, ShouldPanic)
+		err = cli.NewServerRootCmd().Execute()
+		So(err, ShouldNotBeNil)
+	})
+
+	Convey("Test verify sync config default tls value", t, func(c C) {
+		tmpfile, err := os.CreateTemp("", "zot-test*.json")
+		So(err, ShouldBeNil)
+		defer os.Remove(tmpfile.Name()) // clean up
+		content := []byte(`{"storage":{"rootDirectory":"/tmp/zot"},
+							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
+							"auth":{"htpasswd":{"path":"test/data/htpasswd"},"failDelay":1}},
+							"extensions":{"sync": {"registries": [{"urls":["localhost:9999"],
+							"maxRetries": 1, "retryDelay": "10s",
+							"content": [{"prefix":"repo**"}]}]}}}`)
+		_, err = tmpfile.Write(content)
+		So(err, ShouldBeNil)
+		err = tmpfile.Close()
+		So(err, ShouldBeNil)
+		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
+		err = cli.NewServerRootCmd().Execute()
+		So(err, ShouldBeNil)
+	})
+
+	Convey("Test verify sync without retry options", t, func(c C) {
+		tmpfile, err := os.CreateTemp("", "zot-test*.json")
+		So(err, ShouldBeNil)
+		defer os.Remove(tmpfile.Name()) // clean up
+		content := []byte(`{"storage":{"rootDirectory":"/tmp/zot"},
+							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
+							"auth":{"htpasswd":{"path":"test/data/htpasswd"},"failDelay":1}},
+							"extensions":{"sync": {"registries": [{"urls":["localhost:9999"],
+							"maxRetries": 10, "content": [{"prefix":"repo**"}]}]}}}`)
+		_, err = tmpfile.Write(content)
+		So(err, ShouldBeNil)
+		err = tmpfile.Close()
+		So(err, ShouldBeNil)
+		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
+		err = cli.NewServerRootCmd().Execute()
+		So(err, ShouldNotBeNil)
 	})
 
 	Convey("Test verify config with unknown keys", t, func(c C) {
@@ -816,7 +1057,8 @@ func TestVerify(t *testing.T) {
 		err = tmpfile.Close()
 		So(err, ShouldBeNil)
 		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
-		So(func() { _ = cli.NewServerRootCmd().Execute() }, ShouldPanic)
+		err = cli.NewServerRootCmd().Execute()
+		So(err, ShouldNotBeNil)
 	})
 
 	Convey("Test verify openid config with missing parameter", t, func(c C) {
@@ -832,7 +1074,8 @@ func TestVerify(t *testing.T) {
 		err = tmpfile.Close()
 		So(err, ShouldBeNil)
 		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
-		So(func() { _ = cli.NewServerRootCmd().Execute() }, ShouldPanic)
+		err = cli.NewServerRootCmd().Execute()
+		So(err, ShouldNotBeNil)
 	})
 
 	Convey("Test verify oauth2 config with missing parameter", t, func(c C) {
@@ -848,7 +1091,8 @@ func TestVerify(t *testing.T) {
 		err = tmpfile.Close()
 		So(err, ShouldBeNil)
 		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
-		So(func() { _ = cli.NewServerRootCmd().Execute() }, ShouldPanic)
+		err = cli.NewServerRootCmd().Execute()
+		So(err, ShouldNotBeNil)
 	})
 
 	Convey("Test verify openid config with unsupported provider", t, func(c C) {
@@ -864,7 +1108,8 @@ func TestVerify(t *testing.T) {
 		err = tmpfile.Close()
 		So(err, ShouldBeNil)
 		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
-		So(func() { _ = cli.NewServerRootCmd().Execute() }, ShouldPanic)
+		err = cli.NewServerRootCmd().Execute()
+		So(err, ShouldNotBeNil)
 	})
 
 	Convey("Test verify openid config without apikey extension enabled", t, func(c C) {
@@ -881,7 +1126,8 @@ func TestVerify(t *testing.T) {
 		err = tmpfile.Close()
 		So(err, ShouldBeNil)
 		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
-		So(func() { _ = cli.NewServerRootCmd().Execute() }, ShouldNotPanic)
+		err = cli.NewServerRootCmd().Execute()
+		So(err, ShouldBeNil)
 	})
 
 	Convey("Test verify config with missing basedn key", t, func(c C) {
@@ -897,7 +1143,8 @@ func TestVerify(t *testing.T) {
 		err = tmpfile.Close()
 		So(err, ShouldBeNil)
 		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
-		So(func() { _ = cli.NewServerRootCmd().Execute() }, ShouldPanic)
+		err = cli.NewServerRootCmd().Execute()
+		So(err, ShouldNotBeNil)
 	})
 
 	Convey("Test verify config with missing address key", t, func(c C) {
@@ -913,7 +1160,8 @@ func TestVerify(t *testing.T) {
 		err = tmpfile.Close()
 		So(err, ShouldBeNil)
 		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
-		So(func() { _ = cli.NewServerRootCmd().Execute() }, ShouldPanic)
+		err = cli.NewServerRootCmd().Execute()
+		So(err, ShouldNotBeNil)
 	})
 
 	Convey("Test verify config with missing userattribute key", t, func(c C) {
@@ -929,7 +1177,8 @@ func TestVerify(t *testing.T) {
 		err = tmpfile.Close()
 		So(err, ShouldBeNil)
 		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
-		So(func() { _ = cli.NewServerRootCmd().Execute() }, ShouldPanic)
+		err = cli.NewServerRootCmd().Execute()
+		So(err, ShouldNotBeNil)
 	})
 
 	Convey("Test verify good config", t, func(c C) {
@@ -1307,12 +1556,14 @@ func TestScrub(t *testing.T) {
 	Convey("Test scrub config", t, func(c C) {
 		Convey("non-existent config", func(c C) {
 			os.Args = []string{"cli_test", "scrub", path.Join(os.TempDir(), "/x.yaml")}
-			So(func() { _ = cli.NewServerRootCmd().Execute() }, ShouldPanic)
+			err := cli.NewServerRootCmd().Execute()
+			So(err, ShouldNotBeNil)
 		})
 
 		Convey("unknown config", func(c C) {
 			os.Args = []string{"cli_test", "scrub", path.Join(os.TempDir(), "/x")}
-			So(func() { _ = cli.NewServerRootCmd().Execute() }, ShouldPanic)
+			err := cli.NewServerRootCmd().Execute()
+			So(err, ShouldNotBeNil)
 		})
 
 		Convey("bad config", func(c C) {
@@ -1325,7 +1576,8 @@ func TestScrub(t *testing.T) {
 			err = tmpfile.Close()
 			So(err, ShouldBeNil)
 			os.Args = []string{"cli_test", "scrub", tmpfile.Name()}
-			So(func() { _ = cli.NewServerRootCmd().Execute() }, ShouldPanic)
+			err = cli.NewServerRootCmd().Execute()
+			So(err, ShouldNotBeNil)
 		})
 
 		Convey("server is running", func(c C) {
@@ -1361,7 +1613,8 @@ func TestScrub(t *testing.T) {
 			So(err, ShouldBeNil)
 
 			os.Args = []string{"cli_test", "scrub", tmpfile.Name()}
-			So(func() { _ = cli.NewServerRootCmd().Execute() }, ShouldPanic)
+			err = cli.NewServerRootCmd().Execute()
+			So(err, ShouldNotBeNil)
 
 			defer ctrlManager.StopServer()
 		})
@@ -1389,7 +1642,8 @@ func TestScrub(t *testing.T) {
 			err = tmpfile.Close()
 			So(err, ShouldBeNil)
 			os.Args = []string{"cli_test", "scrub", tmpfile.Name()}
-			So(func() { _ = cli.NewServerRootCmd().Execute() }, ShouldPanic)
+			err = cli.NewServerRootCmd().Execute()
+			So(err, ShouldNotBeNil)
 		})
 
 		Convey("bad index.json", func(c C) {
@@ -1443,7 +1697,8 @@ func TestScrub(t *testing.T) {
 			So(err, ShouldBeNil)
 
 			os.Args = []string{"cli_test", "scrub", tmpfile.Name()}
-			So(func() { _ = cli.NewServerRootCmd().Execute() }, ShouldPanic)
+			err = cli.NewServerRootCmd().Execute()
+			So(err, ShouldNotBeNil)
 		})
 	})
 }
@@ -1486,14 +1741,14 @@ func TestUpdateLDAPConfig(t *testing.T) {
 
 		server := cli.NewServerRootCmd()
 		server.SetArgs([]string{"serve", configPath})
-		So(func() { err = server.Execute() }, ShouldPanic)
+		So(server.Execute(), ShouldNotBeNil)
 
 		err = os.Chmod(ldapConfigPath, 0o600)
 		So(err, ShouldBeNil)
 
 		server = cli.NewServerRootCmd()
 		server.SetArgs([]string{"serve", configPath})
-		So(func() { err = server.Execute() }, ShouldPanic)
+		So(server.Execute(), ShouldNotBeNil)
 	})
 
 	Convey("unauthenticated LDAP config", t, func() {

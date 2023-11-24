@@ -62,7 +62,7 @@ func TestVerifyExtensionsConfig(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
-		So(func() { _ = cli.NewServerRootCmd().Execute() }, ShouldPanic)
+		So(cli.NewServerRootCmd().Execute(), ShouldNotBeNil)
 
 		content = fmt.Sprintf(`{
 			"storage":{
@@ -101,7 +101,7 @@ func TestVerifyExtensionsConfig(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
-		So(func() { _ = cli.NewServerRootCmd().Execute() }, ShouldPanic)
+		So(cli.NewServerRootCmd().Execute(), ShouldNotBeNil)
 	})
 
 	Convey("Test verify w/ sync and w/o filesystem storage", t, func(c C) {
@@ -118,7 +118,7 @@ func TestVerifyExtensionsConfig(t *testing.T) {
 		err = tmpfile.Close()
 		So(err, ShouldBeNil)
 		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
-		So(func() { _ = cli.NewServerRootCmd().Execute() }, ShouldPanic)
+		So(cli.NewServerRootCmd().Execute(), ShouldNotBeNil)
 	})
 
 	Convey("Test verify w/ sync and w/ filesystem storage", t, func(c C) {
@@ -135,7 +135,7 @@ func TestVerifyExtensionsConfig(t *testing.T) {
 		err = tmpfile.Close()
 		So(err, ShouldBeNil)
 		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
-		So(func() { _ = cli.NewServerRootCmd().Execute() }, ShouldNotPanic)
+		So(cli.NewServerRootCmd().Execute(), ShouldBeNil)
 	})
 
 	Convey("Test verify with bad sync prefixes", t, func(c C) {
@@ -153,7 +153,7 @@ func TestVerifyExtensionsConfig(t *testing.T) {
 		err = tmpfile.Close()
 		So(err, ShouldBeNil)
 		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
-		So(func() { _ = cli.NewServerRootCmd().Execute() }, ShouldPanic)
+		So(cli.NewServerRootCmd().Execute(), ShouldNotBeNil)
 	})
 
 	Convey("Test verify with bad sync content config", t, func(c C) {
@@ -171,7 +171,7 @@ func TestVerifyExtensionsConfig(t *testing.T) {
 		err = tmpfile.Close()
 		So(err, ShouldBeNil)
 		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
-		So(func() { _ = cli.NewServerRootCmd().Execute() }, ShouldPanic)
+		So(cli.NewServerRootCmd().Execute(), ShouldNotBeNil)
 	})
 
 	Convey("Test verify with good sync content config", t, func(c C) {
@@ -226,7 +226,7 @@ func TestVerifyExtensionsConfig(t *testing.T) {
 		err = tmpfile.Close()
 		So(err, ShouldBeNil)
 		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
-		So(func() { _ = cli.NewServerRootCmd().Execute() }, ShouldPanic)
+		So(cli.NewServerRootCmd().Execute(), ShouldNotBeNil)
 	})
 }
 
@@ -375,6 +375,7 @@ func TestServeExtensions(t *testing.T) {
 		logFile, err := os.CreateTemp("", "zot-log*.txt")
 		So(err, ShouldBeNil)
 		defer os.Remove(logFile.Name()) // clean up
+		tmpFile := t.TempDir()
 
 		content := fmt.Sprintf(`{
 			"storage": {
@@ -388,7 +389,7 @@ func TestServeExtensions(t *testing.T) {
 				"level": "debug",
 				"output": "%s"
 			}
-		}`, t.TempDir(), port, logFile.Name())
+		}`, tmpFile, port, logFile.Name())
 
 		cfgfile, err := os.CreateTemp("", "zot-test*.json")
 		So(err, ShouldBeNil)
@@ -400,8 +401,10 @@ func TestServeExtensions(t *testing.T) {
 
 		os.Args = []string{"cli_test", "serve", cfgfile.Name()}
 		go func() {
-			err = cli.NewServerRootCmd().Execute()
-			So(err, ShouldBeNil)
+			Convey("run", t, func() {
+				err = cli.NewServerRootCmd().Execute()
+				So(err, ShouldBeNil)
+			})
 		}()
 
 		WaitTillServerReady(baseURL)
@@ -416,6 +419,7 @@ func TestServeExtensions(t *testing.T) {
 		logFile, err := os.CreateTemp("", "zot-log*.txt")
 		So(err, ShouldBeNil)
 		defer os.Remove(logFile.Name()) // clean up
+		tmpFile := t.TempDir()
 
 		content := fmt.Sprintf(`{
 			"storage": {
@@ -431,7 +435,7 @@ func TestServeExtensions(t *testing.T) {
 			},
 			"extensions": {
 			}
-		}`, t.TempDir(), port, logFile.Name())
+		}`, tmpFile, port, logFile.Name())
 
 		cfgfile, err := os.CreateTemp("", "zot-test*.json")
 		So(err, ShouldBeNil)
@@ -442,9 +446,12 @@ func TestServeExtensions(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		os.Args = []string{"cli_test", "serve", cfgfile.Name()}
+
 		go func() {
-			err = cli.NewServerRootCmd().Execute()
-			So(err, ShouldBeNil)
+			Convey("run", t, func() {
+				err = cli.NewServerRootCmd().Execute()
+				So(err, ShouldBeNil)
+			})
 		}()
 
 		WaitTillServerReady(baseURL)
@@ -455,7 +462,8 @@ func TestServeExtensions(t *testing.T) {
 	})
 }
 
-func testWithMetricsEnabled(rootDir string, cfgContentFormat string) {
+func testWithMetricsEnabled(t *testing.T, rootDir string, cfgContentFormat string) {
+	t.Helper()
 	port := GetFreePort()
 	baseURL := GetBaseURL(port)
 	logFile, err := os.CreateTemp("", "zot-log*.txt")
@@ -476,8 +484,10 @@ func testWithMetricsEnabled(rootDir string, cfgContentFormat string) {
 	os.Args = []string{"cli_test", "serve", cfgfile.Name()}
 
 	go func() {
-		err = cli.NewServerRootCmd().Execute()
-		So(err, ShouldBeNil)
+		Convey("run", t, func() {
+			err = cli.NewServerRootCmd().Execute()
+			So(err, ShouldBeNil)
+		})
 	}()
 	WaitTillServerReady(baseURL)
 
@@ -501,6 +511,8 @@ func TestServeMetricsExtension(t *testing.T) {
 	defer func() { os.Args = oldArgs }()
 
 	Convey("no explicit enable", t, func(c C) {
+		tmpFile := t.TempDir()
+
 		content := `{
 			"storage": {
 				"rootDirectory": "%s"
@@ -518,10 +530,12 @@ func TestServeMetricsExtension(t *testing.T) {
 				}
 			}
 		}`
-		testWithMetricsEnabled(t.TempDir(), content)
+		testWithMetricsEnabled(t, tmpFile, content)
 	})
 
 	Convey("no explicit enable but with prometheus parameter", t, func(c C) {
+		tmpFile := t.TempDir()
+
 		content := `{
 			"storage": {
 				"rootDirectory": "%s"
@@ -542,10 +556,12 @@ func TestServeMetricsExtension(t *testing.T) {
 				}
 			}
 		}`
-		testWithMetricsEnabled(t.TempDir(), content)
+		testWithMetricsEnabled(t, tmpFile, content)
 	})
 
 	Convey("with explicit enable, but without prometheus parameter", t, func(c C) {
+		tmpFile := t.TempDir()
+
 		content := `{
 			"storage": {
 				"rootDirectory": "%s"
@@ -564,7 +580,7 @@ func TestServeMetricsExtension(t *testing.T) {
 				}
 			}
 		}`
-		testWithMetricsEnabled(t.TempDir(), content)
+		testWithMetricsEnabled(t, tmpFile, content)
 	})
 
 	Convey("with explicit disable", t, func(c C) {
@@ -572,6 +588,7 @@ func TestServeMetricsExtension(t *testing.T) {
 		baseURL := GetBaseURL(port)
 		logFile, err := os.CreateTemp("", "zot-log*.txt")
 		So(err, ShouldBeNil)
+		tmpFile := t.TempDir()
 		defer os.Remove(logFile.Name()) // clean up
 
 		content := fmt.Sprintf(`{
@@ -591,7 +608,7 @@ func TestServeMetricsExtension(t *testing.T) {
 							"enable": false
 						}
 					}
-				}`, t.TempDir(), port, logFile.Name())
+				}`, tmpFile, port, logFile.Name())
 
 		cfgfile, err := os.CreateTemp("", "zot-test*.json")
 		So(err, ShouldBeNil)
@@ -603,8 +620,10 @@ func TestServeMetricsExtension(t *testing.T) {
 
 		os.Args = []string{"cli_test", "serve", cfgfile.Name()}
 		go func() {
-			err = cli.NewServerRootCmd().Execute()
-			So(err, ShouldBeNil)
+			Convey("run", t, func() {
+				err = cli.NewServerRootCmd().Execute()
+				So(err, ShouldBeNil)
+			})
 		}()
 		WaitTillServerReady(baseURL)
 

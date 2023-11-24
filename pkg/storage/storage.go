@@ -9,7 +9,7 @@ import (
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 
-	"zotregistry.io/zot/errors"
+	zerr "zotregistry.io/zot/errors"
 	"zotregistry.io/zot/pkg/api/config"
 	zcommon "zotregistry.io/zot/pkg/common"
 	"zotregistry.io/zot/pkg/extensions/monitoring"
@@ -28,9 +28,9 @@ func New(config *config.Config, linter common.Lint, metrics monitoring.MetricSer
 
 	if config.Storage.RootDirectory == "" {
 		// we can't proceed without global storage
-		log.Error().Err(errors.ErrImgStoreNotFound).Msg("controller: no storage config provided")
+		log.Error().Err(zerr.ErrImgStoreNotFound).Msg("controller: no storage config provided")
 
-		return storeController, errors.ErrImgStoreNotFound
+		return storeController, zerr.ErrImgStoreNotFound
 	}
 
 	// no need to validate hard links work on s3
@@ -47,18 +47,24 @@ func New(config *config.Config, linter common.Lint, metrics monitoring.MetricSer
 	var defaultStore storageTypes.ImageStore
 
 	if config.Storage.StorageDriver == nil {
+		cacheDriver, err := CreateCacheDatabaseDriver(config.Storage.StorageConfig, log)
+		if err != nil {
+			return storeController, err
+		}
+
 		// false positive lint - linter does not implement Lint method
 		//nolint:typecheck,contextcheck
 		rootDir := config.Storage.RootDirectory
 		defaultStore = local.NewImageStore(rootDir,
-			config.Storage.Dedupe, config.Storage.Commit, log, metrics, linter,
-			CreateCacheDatabaseDriver(config.Storage.StorageConfig, log),
+			config.Storage.Dedupe, config.Storage.Commit, log, metrics, linter, cacheDriver,
 		)
 	} else {
 		storeName := fmt.Sprintf("%v", config.Storage.StorageDriver["name"])
 		if storeName != constants.S3StorageDriverName {
-			log.Fatal().Err(errors.ErrBadConfig).Str("storageDriver", storeName).
+			log.Error().Err(zerr.ErrBadConfig).Str("storageDriver", storeName).
 				Msg("unsupported storage driver")
+
+			return storeController, fmt.Errorf("storageDriver '%s' unsupported storage driver: %w", storeName, zerr.ErrBadConfig)
 		}
 		// Init a Storager from connection string.
 		store, err := factory.Create(storeName, config.Storage.StorageDriver)
@@ -75,11 +81,15 @@ func New(config *config.Config, linter common.Lint, metrics monitoring.MetricSer
 			rootDir = fmt.Sprintf("%v", config.Storage.StorageDriver["rootdirectory"])
 		}
 
+		cacheDriver, err := CreateCacheDatabaseDriver(config.Storage.StorageConfig, log)
+		if err != nil {
+			return storeController, err
+		}
+
 		// false positive lint - linter does not implement Lint method
 		//nolint: typecheck,contextcheck
 		defaultStore = s3.NewImageStore(rootDir, config.Storage.RootDirectory,
-			config.Storage.Dedupe, config.Storage.Commit, log, metrics, linter, store,
-			CreateCacheDatabaseDriver(config.Storage.StorageConfig, log))
+			config.Storage.Dedupe, config.Storage.Commit, log, metrics, linter, store, cacheDriver)
 	}
 
 	storeController.DefaultStore = defaultStore
@@ -128,9 +138,9 @@ func getSubStore(cfg *config.Config, subPaths map[string]config.StorageConfig,
 			isSame, _ := config.SameFile(cfg.Storage.RootDirectory, storageConfig.RootDirectory)
 
 			if isSame {
-				log.Error().Err(errors.ErrBadConfig).Msg("sub path storage directory is same as root directory")
+				log.Error().Err(zerr.ErrBadConfig).Msg("sub path storage directory is same as root directory")
 
-				return nil, errors.ErrBadConfig
+				return nil, zerr.ErrBadConfig
 			}
 
 			isUnique := true
@@ -149,10 +159,14 @@ func getSubStore(cfg *config.Config, subPaths map[string]config.StorageConfig,
 			// add it to uniqueSubFiles
 			// Create a new image store and assign it to imgStoreMap
 			if isUnique {
+				cacheDriver, err := CreateCacheDatabaseDriver(storageConfig, log)
+				if err != nil {
+					return nil, err
+				}
+
 				rootDir := storageConfig.RootDirectory
 				imgStoreMap[storageConfig.RootDirectory] = local.NewImageStore(rootDir,
-					storageConfig.Dedupe, storageConfig.Commit, log, metrics, linter,
-					CreateCacheDatabaseDriver(storageConfig, log),
+					storageConfig.Dedupe, storageConfig.Commit, log, metrics, linter, cacheDriver,
 				)
 
 				subImageStore[route] = imgStoreMap[storageConfig.RootDirectory]
@@ -160,8 +174,10 @@ func getSubStore(cfg *config.Config, subPaths map[string]config.StorageConfig,
 		} else {
 			storeName := fmt.Sprintf("%v", storageConfig.StorageDriver["name"])
 			if storeName != constants.S3StorageDriverName {
-				log.Fatal().Err(errors.ErrBadConfig).Str("storageDriver", storeName).
+				log.Error().Err(zerr.ErrBadConfig).Str("storageDriver", storeName).
 					Msg("unsupported storage driver")
+
+				return nil, fmt.Errorf("storageDriver '%s' unsupported storage driver: %w", storeName, zerr.ErrBadConfig)
 			}
 
 			// Init a Storager from connection string.
@@ -179,11 +195,18 @@ func getSubStore(cfg *config.Config, subPaths map[string]config.StorageConfig,
 				rootDir = fmt.Sprintf("%v", cfg.Storage.StorageDriver["rootdirectory"])
 			}
 
+			cacheDriver, err := CreateCacheDatabaseDriver(storageConfig, log)
+			if err != nil {
+				log.Error().Err(err).Any("config", storageConfig).
+					Msg("failed creating storage driver")
+
+				return nil, err
+			}
+
 			// false positive lint - linter does not implement Lint method
 			//nolint: typecheck
 			subImageStore[route] = s3.NewImageStore(rootDir, storageConfig.RootDirectory,
-				storageConfig.Dedupe, storageConfig.Commit, log, metrics, linter, store,
-				CreateCacheDatabaseDriver(storageConfig, log),
+				storageConfig.Dedupe, storageConfig.Commit, log, metrics, linter, store, cacheDriver,
 			)
 		}
 	}

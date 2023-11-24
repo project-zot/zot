@@ -114,13 +114,15 @@ func TestCreateCacheDatabaseDriver(t *testing.T) {
 			panic(err)
 		}
 
-		driver := storage.CreateCacheDatabaseDriver(conf.Storage.StorageConfig, log)
+		driver, err := storage.CreateCacheDatabaseDriver(conf.Storage.StorageConfig, log)
+		So(err, ShouldNotBeNil)
 		So(driver, ShouldBeNil)
 
 		conf.Storage.RemoteCache = true
 		conf.Storage.RootDirectory = t.TempDir()
 
-		driver = storage.CreateCacheDatabaseDriver(conf.Storage.StorageConfig, log)
+		driver, err = storage.CreateCacheDatabaseDriver(conf.Storage.StorageConfig, log)
+		So(err, ShouldBeNil)
 		So(driver, ShouldBeNil)
 	})
 	tskip.SkipDynamo(t)
@@ -147,15 +149,16 @@ func TestCreateCacheDatabaseDriver(t *testing.T) {
 			"name":                   "dynamodb",
 			"endpoint":               endpoint,
 			"region":                 "us-east-2",
-			"cacheTablename":         "BlobTable",
-			"repoMetaTablename":      "RepoMetadataTable",
-			"imageMetaTablename":     "ZotImageMetaTable",
-			"repoBlobsInfoTablename": "ZotRepoBlobsInfoTable",
-			"userDataTablename":      "ZotUserDataTable",
-			"versionTablename":       "Version",
+			"cachetablename":         "BlobTable",
+			"repometatablename":      "RepoMetadataTable",
+			"imagemetatablename":     "ZotImageMetaTable",
+			"repoblobsinfotablename": "ZotRepoBlobsInfoTable",
+			"userdatatablename":      "ZotUserDataTable",
+			"versiontablename":       "Version",
 		}
 
-		driver := storage.CreateCacheDatabaseDriver(conf.Storage.StorageConfig, log)
+		driver, err := storage.CreateCacheDatabaseDriver(conf.Storage.StorageConfig, log)
+		So(err, ShouldBeNil)
 		So(driver, ShouldNotBeNil)
 
 		// negative test cases
@@ -163,30 +166,32 @@ func TestCreateCacheDatabaseDriver(t *testing.T) {
 		conf.Storage.CacheDriver = map[string]interface{}{
 			"endpoint":               endpoint,
 			"region":                 "us-east-2",
-			"cacheTablename":         "BlobTable",
-			"repoMetaTablename":      "RepoMetadataTable",
-			"imageMetaTablename":     "ZotImageMetaTable",
-			"repoBlobsInfoTablename": "ZotRepoBlobsInfoTable",
-			"userDataTablename":      "ZotUserDataTable",
-			"versionTablename":       "Version",
+			"cachetablename":         "BlobTable",
+			"repometatablename":      "RepoMetadataTable",
+			"imagemetatablename":     "ZotImageMetaTable",
+			"repoblobsinfotablename": "ZotRepoBlobsInfoTable",
+			"userdatatablename":      "ZotUserDataTable",
+			"versiontablename":       "Version",
 		}
 
-		driver = storage.CreateCacheDatabaseDriver(conf.Storage.StorageConfig, log)
+		driver, err = storage.CreateCacheDatabaseDriver(conf.Storage.StorageConfig, log)
+		So(err, ShouldBeNil)
 		So(driver, ShouldBeNil)
 
 		conf.Storage.CacheDriver = map[string]interface{}{
 			"name":                   "dummy",
 			"endpoint":               endpoint,
 			"region":                 "us-east-2",
-			"cacheTablename":         "BlobTable",
-			"repoMetaTablename":      "RepoMetadataTable",
-			"imageMetaTablename":     "ZotImageMetaTable",
-			"repoBlobsInfoTablename": "ZotRepoBlobsInfoTable",
-			"userDataTablename":      "ZotUserDataTable",
-			"versionTablename":       "Version",
+			"cachetablename":         "BlobTable",
+			"repometatablename":      "RepoMetadataTable",
+			"imagemetatablename":     "ZotImageMetaTable",
+			"repoblobsinfotablename": "ZotRepoBlobsInfoTable",
+			"userdatatablename":      "ZotUserDataTable",
+			"versiontablename":       "Version",
 		}
 
-		driver = storage.CreateCacheDatabaseDriver(conf.Storage.StorageConfig, log)
+		driver, err = storage.CreateCacheDatabaseDriver(conf.Storage.StorageConfig, log)
+		So(err, ShouldBeNil)
 		So(driver, ShouldBeNil)
 	})
 }
@@ -296,7 +301,7 @@ func TestRunAlreadyRunningServer(t *testing.T) {
 		defer cm.StopServer()
 
 		err := ctlr.Init(context.Background())
-		So(err, ShouldBeNil)
+		So(err, ShouldNotBeNil)
 
 		err = ctlr.Run(context.Background())
 		So(err, ShouldNotBeNil)
@@ -362,12 +367,14 @@ func TestObjectStorageController(t *testing.T) {
 		port := test.GetFreePort()
 		conf := config.New()
 		conf.HTTP.Port = port
+		tmp := t.TempDir()
+
 		storageDriverParams := map[string]interface{}{
-			"rootdirectory": "zot",
+			"rootdirectory": tmp,
 			"name":          storageConstants.S3StorageDriverName,
 		}
 		conf.Storage.StorageDriver = storageDriverParams
-		ctlr := makeController(conf, "zot")
+		ctlr := makeController(conf, tmp)
 		So(ctlr, ShouldNotBeNil)
 
 		err := ctlr.Init(context.Background())
@@ -380,9 +387,10 @@ func TestObjectStorageController(t *testing.T) {
 		conf.HTTP.Port = port
 
 		endpoint := os.Getenv("S3MOCK_ENDPOINT")
+		tmp := t.TempDir()
 
 		storageDriverParams := map[string]interface{}{
-			"rootdirectory":  "zot",
+			"rootdirectory":  tmp,
 			"name":           storageConstants.S3StorageDriverName,
 			"region":         "us-east-2",
 			"bucket":         bucket,
@@ -392,7 +400,7 @@ func TestObjectStorageController(t *testing.T) {
 		}
 
 		conf.Storage.StorageDriver = storageDriverParams
-		ctlr := makeController(conf, "/")
+		ctlr := makeController(conf, tmp)
 		So(ctlr, ShouldNotBeNil)
 
 		cm := test.NewControllerManager(ctlr)
@@ -486,9 +494,10 @@ func TestObjectStorageControllerSubPaths(t *testing.T) {
 		conf.HTTP.Port = port
 
 		endpoint := os.Getenv("S3MOCK_ENDPOINT")
+		tmp := t.TempDir()
 
 		storageDriverParams := map[string]interface{}{
-			"rootdirectory":  "zot",
+			"rootdirectory":  tmp,
 			"name":           storageConstants.S3StorageDriverName,
 			"region":         "us-east-2",
 			"bucket":         bucket,
@@ -497,12 +506,12 @@ func TestObjectStorageControllerSubPaths(t *testing.T) {
 			"skipverify":     false,
 		}
 		conf.Storage.StorageDriver = storageDriverParams
-		ctlr := makeController(conf, "zot")
+		ctlr := makeController(conf, tmp)
 		So(ctlr, ShouldNotBeNil)
 
 		subPathMap := make(map[string]config.StorageConfig)
 		subPathMap["/a"] = config.StorageConfig{
-			RootDirectory: "/a",
+			RootDirectory: t.TempDir(),
 			StorageDriver: storageDriverParams,
 		}
 		ctlr.Config.Storage.SubPaths = subPathMap
@@ -1279,7 +1288,6 @@ func TestMultipleInstance(t *testing.T) {
 
 	Convey("Test zot multiple subpath with same root directory", t, func() {
 		port := test.GetFreePort()
-		baseURL := test.GetBaseURL(port)
 		conf := config.New()
 		conf.HTTP.Port = port
 		username, seedUser := test.GenerateRandomString()
@@ -1320,27 +1328,8 @@ func TestMultipleInstance(t *testing.T) {
 
 		ctlr.Config.Storage.SubPaths = subPathMap
 
-		cm := test.NewControllerManager(ctlr)
-		cm.StartAndWait(port)
-		defer cm.StopServer()
-
-		// without creds, should get access error
-		resp, err := resty.R().Get(baseURL + "/v2/")
-		So(err, ShouldBeNil)
-		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
-		var e apiErr.Error
-		err = json.Unmarshal(resp.Body(), &e)
-		So(err, ShouldBeNil)
-
-		// with creds, should get expected status code
-		resp, _ = resty.R().SetBasicAuth(username, password).Get(baseURL)
-		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
-
-		resp, _ = resty.R().SetBasicAuth(username, password).Get(baseURL + "/v2/")
-		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+		err = ctlr.Init(context.Background())
+		So(err, ShouldNotBeNil)
 	})
 }
 
@@ -1568,6 +1557,131 @@ func TestMutualTLSAuthWithUserPermissions(t *testing.T) {
 	})
 }
 
+func TestAuthnErrors(t *testing.T) {
+	Convey("ldap CA certs fail", t, func() {
+		port := test.GetFreePort()
+		conf := config.New()
+		conf.HTTP.Port = port
+		tmpDir := t.TempDir()
+		tmpFile := path.Join(tmpDir, "test-file.txt")
+
+		err := os.WriteFile(tmpFile, []byte("test"), 0o000)
+		So(err, ShouldBeNil)
+
+		conf.HTTP.Auth.LDAP = (&config.LDAPConfig{
+			Insecure:      true,
+			Address:       LDAPAddress,
+			Port:          9000,
+			BaseDN:        LDAPBaseDN,
+			UserAttribute: "uid",
+			CACert:        tmpFile,
+		}).SetBindDN(LDAPBindDN).SetBindPassword(LDAPBindPassword)
+
+		ctlr := makeController(conf, t.TempDir())
+
+		So(func() {
+			api.AuthHandler(ctlr)
+		}, ShouldPanic)
+
+		err = os.Chmod(tmpFile, 0o644)
+		So(err, ShouldBeNil)
+	})
+
+	Convey("ldap CA certs is empty", t, func() {
+		port := test.GetFreePort()
+		conf := config.New()
+		conf.HTTP.Port = port
+		tmpDir := t.TempDir()
+		tmpFile := path.Join(tmpDir, "test-file.txt")
+		err := os.WriteFile(tmpFile, []byte(""), 0o600)
+		So(err, ShouldBeNil)
+
+		conf.HTTP.Auth.LDAP = (&config.LDAPConfig{
+			Insecure:      true,
+			Address:       LDAPAddress,
+			Port:          9000,
+			BaseDN:        LDAPBaseDN,
+			UserAttribute: "uid",
+			CACert:        tmpFile,
+		}).SetBindDN(LDAPBindDN).SetBindPassword(LDAPBindPassword)
+
+		ctlr := makeController(conf, t.TempDir())
+
+		So(func() {
+			api.AuthHandler(ctlr)
+		}, ShouldPanic)
+
+		So(err, ShouldBeNil)
+	})
+
+	Convey("ldap CA certs is empty", t, func() {
+		port := test.GetFreePort()
+		conf := config.New()
+		conf.HTTP.Port = port
+
+		conf.HTTP.Auth.LDAP = (&config.LDAPConfig{
+			Insecure:      true,
+			Address:       LDAPAddress,
+			Port:          9000,
+			BaseDN:        LDAPBaseDN,
+			UserAttribute: "uid",
+			CACert:        CACert,
+		}).SetBindDN(LDAPBindDN).SetBindPassword(LDAPBindPassword)
+
+		ctlr := makeController(conf, t.TempDir())
+
+		So(func() {
+			api.AuthHandler(ctlr)
+		}, ShouldNotPanic)
+	})
+
+	Convey("Htpasswd file fail", t, func() {
+		port := test.GetFreePort()
+		conf := config.New()
+		conf.HTTP.Port = port
+		tmpDir := t.TempDir()
+		tmpFile := path.Join(tmpDir, "test-file.txt")
+
+		err := os.WriteFile(tmpFile, []byte("test"), 0o000)
+		So(err, ShouldBeNil)
+
+		conf.HTTP.Auth.HTPasswd = config.AuthHTPasswd{
+			Path: tmpFile,
+		}
+
+		ctlr := makeController(conf, t.TempDir())
+
+		So(func() {
+			api.AuthHandler(ctlr)
+		}, ShouldPanic)
+
+		err = os.Chmod(tmpFile, 0o644)
+		So(err, ShouldBeNil)
+	})
+
+	Convey("NewRelyingPartyGithub fail", t, func() {
+		port := test.GetFreePort()
+		conf := config.New()
+		conf.HTTP.Port = port
+		tmpDir := t.TempDir()
+		tmpFile := path.Join(tmpDir, "test-file.txt")
+
+		err := os.WriteFile(tmpFile, []byte("test"), 0o000)
+		So(err, ShouldBeNil)
+
+		conf.HTTP.Auth.HTPasswd = config.AuthHTPasswd{
+			Path: tmpFile,
+		}
+
+		So(func() {
+			api.NewRelyingPartyGithub(conf, "prov", log.NewLogger("debug", ""))
+		}, ShouldPanic)
+
+		err = os.Chmod(tmpFile, 0o644)
+		So(err, ShouldBeNil)
+	})
+}
+
 func TestMutualTLSAuthWithoutCN(t *testing.T) {
 	Convey("Make a new controller", t, func() {
 		caCert, err := os.ReadFile("../../test/data/noidentity/ca.crt")
@@ -1687,6 +1801,91 @@ func TestTLSMutualAuth(t *testing.T) {
 		resp, _ = resty.R().SetBasicAuth(username, password).Get(secureBaseURL + "/v2/")
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+	})
+}
+
+func TestTSLFailedReadingOfCACert(t *testing.T) {
+	Convey("no permissions", t, func() {
+		port := test.GetFreePort()
+		conf := config.New()
+		conf.HTTP.Port = port
+		conf.HTTP.TLS = &config.TLSConfig{
+			Cert:   ServerCert,
+			Key:    ServerKey,
+			CACert: CACert,
+		}
+
+		err := os.Chmod(CACert, 0o000)
+		defer func() {
+			err := os.Chmod(CACert, 0o644)
+			So(err, ShouldBeNil)
+		}()
+		So(err, ShouldBeNil)
+
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		ctlr := makeController(conf, t.TempDir())
+
+		err = ctlr.Init(ctx)
+		So(err, ShouldBeNil)
+
+		errChan := make(chan error, 1)
+		go func() {
+			err = ctlr.Run(ctx)
+			errChan <- err
+		}()
+
+		testTimeout := false
+
+		select {
+		case err := <-errChan:
+			So(err, ShouldNotBeNil)
+		case <-ctx.Done():
+			testTimeout = true
+			cancel()
+		}
+
+		So(testTimeout, ShouldBeFalse)
+	})
+
+	Convey("empty CACert", t, func() {
+		badCACert := filepath.Join(t.TempDir(), "badCACert")
+		err := os.WriteFile(badCACert, []byte(""), 0o600)
+		So(err, ShouldBeNil)
+
+		port := test.GetFreePort()
+		conf := config.New()
+		conf.HTTP.Port = port
+		conf.HTTP.TLS = &config.TLSConfig{
+			Cert:   ServerCert,
+			Key:    ServerKey,
+			CACert: badCACert,
+		}
+
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		ctlr := makeController(conf, t.TempDir())
+
+		err = ctlr.Init(ctx)
+		So(err, ShouldBeNil)
+
+		errChan := make(chan error, 1)
+		go func() {
+			err = ctlr.Run(ctx)
+			errChan <- err
+		}()
+
+		testTimeout := false
+
+		select {
+		case err := <-errChan:
+			So(err, ShouldNotBeNil)
+		case <-ctx.Done():
+			testTimeout = true
+			cancel()
+		}
+
+		So(testTimeout, ShouldBeFalse)
 	})
 }
 
@@ -3046,7 +3245,7 @@ func TestNewRelyingPartyOIDC(t *testing.T) {
 		}
 
 		Convey("provider not found in config", func() {
-			So(func() { _ = api.NewRelyingPartyOIDC(conf, "notDex") }, ShouldPanic)
+			So(func() { _ = api.NewRelyingPartyOIDC(conf, "notDex", log.NewLogger("debug", "")) }, ShouldPanic)
 		})
 
 		Convey("key path not found on disk", func() {
@@ -3054,7 +3253,7 @@ func TestNewRelyingPartyOIDC(t *testing.T) {
 			oidcProviderCfg.KeyPath = "path/to/file"
 			conf.HTTP.Auth.OpenID.Providers["oidc"] = oidcProviderCfg
 
-			So(func() { _ = api.NewRelyingPartyOIDC(conf, "oidc") }, ShouldPanic)
+			So(func() { _ = api.NewRelyingPartyOIDC(conf, "oidc", log.NewLogger("debug", "")) }, ShouldPanic)
 		})
 
 		Convey("https callback", func() {
@@ -3063,7 +3262,7 @@ func TestNewRelyingPartyOIDC(t *testing.T) {
 				Key:  ServerKey,
 			}
 
-			rp := api.NewRelyingPartyOIDC(conf, "oidc")
+			rp := api.NewRelyingPartyOIDC(conf, "oidc", log.NewLogger("debug", ""))
 			So(rp, ShouldNotBeNil)
 		})
 
@@ -3072,7 +3271,7 @@ func TestNewRelyingPartyOIDC(t *testing.T) {
 			oidcProvider.ClientSecret = ""
 			conf.HTTP.Auth.OpenID.Providers["oidc"] = oidcProvider
 
-			rp := api.NewRelyingPartyOIDC(conf, "oidc")
+			rp := api.NewRelyingPartyOIDC(conf, "oidc", log.NewLogger("debug", ""))
 			So(rp, ShouldNotBeNil)
 		})
 
@@ -3081,7 +3280,7 @@ func TestNewRelyingPartyOIDC(t *testing.T) {
 			oidcProvider.Issuer = ""
 			conf.HTTP.Auth.OpenID.Providers["oidc"] = oidcProvider
 
-			So(func() { _ = api.NewRelyingPartyOIDC(conf, "oidc") }, ShouldPanic)
+			So(func() { _ = api.NewRelyingPartyOIDC(conf, "oidc", log.NewLogger("debug", "")) }, ShouldPanic)
 		})
 	})
 }
@@ -8757,45 +8956,9 @@ func TestPeriodicGC(t *testing.T) {
 
 func TestSearchRoutes(t *testing.T) {
 	Convey("Upload image for test", t, func(c C) {
-		port := test.GetFreePort()
-		baseURL := test.GetBaseURL(port)
-		conf := config.New()
-		conf.HTTP.Port = port
 		tempDir := t.TempDir()
-
-		ctlr := makeController(conf, tempDir)
-		cm := test.NewControllerManager(ctlr)
-
-		cm.StartAndWait(port)
-		defer cm.StopServer()
-
 		repoName := "testrepo" //nolint:goconst
 		inaccessibleRepo := "inaccessible"
-
-		cfg, layers, manifest, err := deprecated.GetImageComponents(10000) //nolint:staticcheck
-		So(err, ShouldBeNil)
-
-		err = UploadImage(
-			Image{
-				Config:   cfg,
-				Layers:   layers,
-				Manifest: manifest,
-			}, baseURL, repoName, "latest")
-
-		So(err, ShouldBeNil)
-
-		// data for the inaccessible repo
-		cfg, layers, manifest, err = deprecated.GetImageComponents(10000) //nolint:staticcheck
-		So(err, ShouldBeNil)
-
-		err = UploadImage(
-			Image{
-				Config:   cfg,
-				Layers:   layers,
-				Manifest: manifest,
-			}, baseURL, inaccessibleRepo, "latest")
-
-		So(err, ShouldBeNil)
 
 		Convey("GlobalSearch with authz enabled", func(c C) {
 			conf := config.New()
@@ -9005,7 +9168,7 @@ func TestSearchRoutes(t *testing.T) {
 
 			img := CreateRandomImage()
 
-			err = UploadImageWithBasicAuth(img, baseURL, repoName, img.DigestStr(), user1, password1)
+			err := UploadImageWithBasicAuth(img, baseURL, repoName, img.DigestStr(), user1, password1)
 			So(err, ShouldBeNil)
 
 			query := `
@@ -9092,7 +9255,7 @@ func TestSearchRoutes(t *testing.T) {
 
 			img := CreateRandomImage()
 
-			err = UploadImageWithBasicAuth(img, baseURL, repoName, img.DigestStr(), user1, password1)
+			err := UploadImageWithBasicAuth(img, baseURL, repoName, img.DigestStr(), user1, password1)
 			So(err, ShouldNotBeNil)
 		})
 
@@ -9160,7 +9323,7 @@ func TestSearchRoutes(t *testing.T) {
 
 			img := CreateRandomImage()
 
-			err = UploadImageWithBasicAuth(img, baseURL, repoName, img.DigestStr(), user1, password1)
+			err := UploadImageWithBasicAuth(img, baseURL, repoName, img.DigestStr(), user1, password1)
 			So(err, ShouldBeNil)
 		})
 
@@ -9228,7 +9391,7 @@ func TestSearchRoutes(t *testing.T) {
 
 			img := CreateRandomImage()
 
-			err = UploadImageWithBasicAuth(img, baseURL, repoName, img.DigestStr(), user1, password1)
+			err := UploadImageWithBasicAuth(img, baseURL, repoName, img.DigestStr(), user1, password1)
 			So(err, ShouldBeNil)
 		})
 
@@ -9282,7 +9445,7 @@ func TestSearchRoutes(t *testing.T) {
 
 			img := CreateRandomImage()
 
-			err = UploadImageWithBasicAuth(img, baseURL, repoName, img.DigestStr(), user1, password1)
+			err := UploadImageWithBasicAuth(img, baseURL, repoName, img.DigestStr(), user1, password1)
 			So(err, ShouldBeNil)
 		})
 
@@ -9347,7 +9510,7 @@ func TestSearchRoutes(t *testing.T) {
 
 			img := CreateRandomImage()
 
-			err = UploadImageWithBasicAuth(img, baseURL, repoName, img.DigestStr(), "", "")
+			err := UploadImageWithBasicAuth(img, baseURL, repoName, img.DigestStr(), "", "")
 			So(err, ShouldBeNil)
 		})
 	})

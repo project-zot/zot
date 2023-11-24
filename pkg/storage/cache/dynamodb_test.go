@@ -22,9 +22,8 @@ func TestDynamoDB(t *testing.T) {
 
 		// bad params
 
-		So(func() {
-			_ = cache.NewDynamoDBCache("bad params", log)
-		}, ShouldPanic)
+		_, err := cache.NewDynamoDBCache("bad params", log)
+		So(err, ShouldNotBeNil)
 
 		keyDigest := godigest.FromString("key")
 
@@ -33,20 +32,7 @@ func TestDynamoDB(t *testing.T) {
 			TableName: "BlobTable",
 			Region:    "us-east-2",
 		}, log)
-		So(cacheDriver, ShouldNotBeNil)
-		So(err, ShouldBeNil)
-
-		val, err := cacheDriver.GetBlob(keyDigest)
-		So(err, ShouldNotBeNil)
-		So(val, ShouldBeEmpty)
-
-		err = cacheDriver.PutBlob(keyDigest, path.Join(dir, "value"))
-		So(err, ShouldNotBeNil)
-
-		exists := cacheDriver.HasBlob(keyDigest, path.Join(dir, "value"))
-		So(exists, ShouldBeFalse)
-
-		err = cacheDriver.DeleteBlob(keyDigest, path.Join(dir, "value"))
+		So(cacheDriver, ShouldBeNil)
 		So(err, ShouldNotBeNil)
 
 		cacheDriver, err = storage.Create("dynamodb", cache.DynamoDBDriverParameters{
@@ -60,7 +46,7 @@ func TestDynamoDB(t *testing.T) {
 		returnedName := cacheDriver.Name()
 		So(returnedName, ShouldEqual, "dynamodb")
 
-		val, err = cacheDriver.GetBlob(keyDigest)
+		val, err := cacheDriver.GetBlob(keyDigest)
 		So(err, ShouldNotBeNil)
 		So(val, ShouldBeEmpty)
 
@@ -74,7 +60,7 @@ func TestDynamoDB(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(val, ShouldNotBeEmpty)
 
-		exists = cacheDriver.HasBlob(keyDigest, path.Join(dir, "value"))
+		exists := cacheDriver.HasBlob(keyDigest, path.Join(dir, "value"))
 		So(exists, ShouldBeTrue)
 
 		err = cacheDriver.DeleteBlob(keyDigest, path.Join(dir, "value"))
@@ -157,5 +143,34 @@ func TestDynamoDB(t *testing.T) {
 		val, err = cacheDriver.GetBlob("key2")
 		So(err, ShouldNotBeNil)
 		So(val, ShouldBeEmpty)
+	})
+}
+
+func TestDynamoDBError(t *testing.T) {
+	tskip.SkipDynamo(t)
+	Convey("Test dynamoDB", t, func(c C) {
+		log := log.NewLogger("debug", "")
+
+		cacheDriver, err := cache.NewDynamoDBCache(cache.DynamoDBDriverParameters{
+			Endpoint:  os.Getenv("DYNAMODBMOCK_ENDPOINT"),
+			TableName: "BlobTable",
+			Region:    "us-east-2",
+		}, log)
+		So(cacheDriver, ShouldNotBeNil)
+		So(err, ShouldBeNil)
+
+		returnedName := cacheDriver.Name()
+		So(returnedName, ShouldEqual, "dynamodb")
+
+		cacheDriver.SetTableName("bad-table")
+
+		_, err = cacheDriver.GetBlob(godigest.FromString("str"))
+		So(err, ShouldNotBeNil)
+		found := cacheDriver.HasBlob(godigest.FromString("str"), "path")
+		So(found, ShouldBeFalse)
+		_, err = cacheDriver.GetDuplicateBlob(godigest.FromString("str"))
+		So(err, ShouldNotBeNil)
+		err = cacheDriver.DeleteBlob(godigest.FromString("str"), "path")
+		So(err, ShouldNotBeNil)
 	})
 }
