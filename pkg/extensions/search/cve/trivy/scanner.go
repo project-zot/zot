@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path"
+	"strings"
 	"sync"
 
 	"github.com/aquasecurity/trivy-db/pkg/metadata"
@@ -427,6 +428,7 @@ func (scanner Scanner) scanManifest(ctx context.Context, repo, digest string) (m
 					ID:          vulnerability.VulnerabilityID,
 					Title:       vulnerability.Title,
 					Description: vulnerability.Description,
+					Reference:   getCVEReference(vulnerability.PrimaryURL, vulnerability.References),
 					Severity:    convertSeverity(vulnerability.Severity),
 					PackageList: newPkgList,
 				}
@@ -437,6 +439,34 @@ func (scanner Scanner) scanManifest(ctx context.Context, repo, digest string) (m
 	scanner.cache.Add(digest, cveidMap)
 
 	return cveidMap, nil
+}
+
+func getCVEReference(primaryURL string, references []string) string {
+	if primaryURL != "" {
+		return primaryURL
+	}
+
+	if len(references) > 0 {
+		nvdReference, found := getNVDReference(references)
+
+		if found {
+			return nvdReference
+		}
+
+		return references[0]
+	}
+
+	return ""
+}
+
+func getNVDReference(references []string) (string, bool) {
+	for i := range references {
+		if strings.Contains(references[i], "nvd.nist.gov") {
+			return references[i], true
+		}
+	}
+
+	return "", false
 }
 
 func (scanner Scanner) scanIndex(ctx context.Context, repo, digest string) (map[string]cvemodel.CVE, error) {

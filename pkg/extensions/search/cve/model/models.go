@@ -17,6 +17,7 @@ type CVE struct {
 	Description string    `json:"Description"`
 	Severity    string    `json:"Severity"`
 	Title       string    `json:"Title"`
+	Reference   string    `json:"Reference"`
 	PackageList []Package `json:"PackageList"`
 }
 

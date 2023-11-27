@@ -54,6 +54,7 @@ type ComplexityRoot struct {
 		Description func(childComplexity int) int
 		ID          func(childComplexity int) int
 		PackageList func(childComplexity int) int
+		Reference   func(childComplexity int) int
 		Severity    func(childComplexity int) int
 		Title       func(childComplexity int) int
 	}
@@ -280,6 +281,13 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 		}
 
 		return e.complexity.CVE.PackageList(childComplexity), true
+
+	case "CVE.Reference":
+		if e.complexity.CVE.Reference == nil {
+			break
+		}
+
+		return e.complexity.CVE.Reference(childComplexity), true
 
 	case "CVE.Severity":
 		if e.complexity.CVE.Severity == nil {
@@ -1183,6 +1191,10 @@ type CVE {
     A detailed description of the CVE
     """
     Description: String
+    """
+    Reference for the given CVE
+    """
+    Reference: String
     """
     The impact the CVE has, one of "UNKNOWN", "LOW", "MEDIUM", "HIGH", "CRITICAL"
     """
@@ -2510,6 +2522,47 @@ func (ec *executionContext) fieldContext_CVE_Description(ctx context.Context, fi
 	return fc, nil
 }
 
+func (ec *executionContext) _CVE_Reference(ctx context.Context, field graphql.CollectedField, obj *Cve) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_CVE_Reference(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.Reference, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		return graphql.Null
+	}
+	res := resTmp.(*string)
+	fc.Result = res
+	return ec.marshalOString2ᚖstring(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_CVE_Reference(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "CVE",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type String does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
 func (ec *executionContext) _CVE_Severity(ctx context.Context, field graphql.CollectedField, obj *Cve) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_CVE_Severity(ctx, field)
 	if err != nil {
@@ -2683,6 +2736,8 @@ func (ec *executionContext) fieldContext_CVEResultForImage_CVEList(ctx context.C
 				return ec.fieldContext_CVE_Title(ctx, field)
 			case "Description":
 				return ec.fieldContext_CVE_Description(ctx, field)
+			case "Reference":
+				return ec.fieldContext_CVE_Reference(ctx, field)
 			case "Severity":
 				return ec.fieldContext_CVE_Severity(ctx, field)
 			case "PackageList":
@@ -9407,6 +9462,8 @@ func (ec *executionContext) _CVE(ctx context.Context, sel ast.SelectionSet, obj 
 			out.Values[i] = ec._CVE_Title(ctx, field, obj)
 		case "Description":
 			out.Values[i] = ec._CVE_Description(ctx, field, obj)
+		case "Reference":
+			out.Values[i] = ec._CVE_Reference(ctx, field, obj)
 		case "Severity":
 			out.Values[i] = ec._CVE_Severity(ctx, field, obj)
 		case "PackageList":

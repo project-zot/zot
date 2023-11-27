@@ -488,3 +488,19 @@ func TestIsIndexScannableErrors(t *testing.T) {
 		})
 	})
 }
+
+func TestGetCVEReference(t *testing.T) {
+	Convey("getCVEReference", t, func() {
+		ref := getCVEReference("primary", []string{})
+		So(ref, ShouldResemble, "primary")
+
+		ref = getCVEReference("", []string{"secondary"})
+		So(ref, ShouldResemble, "secondary")
+
+		ref = getCVEReference("", []string{""})
+		So(ref, ShouldResemble, "")
+
+		ref = getCVEReference("", []string{"https://nvd.nist.gov/vuln/detail/CVE-2023-2650"})
+		So(ref, ShouldResemble, "https://nvd.nist.gov/vuln/detail/CVE-2023-2650")
+	})
+}
