@@ -76,7 +76,12 @@ func FilterByDigest(digest string) mTypes.FilterFunc {
 	// imageMeta will always contain 1 manifest
 	return func(repoMeta mTypes.RepoMeta, imageMeta mTypes.ImageMeta) bool {
 		lookupDigest := digest
-		contains := false
+
+		// Check in case of an index if the index digest matches the search digest
+		// For Manifests, this is equivalent to imageMeta.Manifests[0]
+		if imageMeta.Digest.String() == lookupDigest {
+			return true
+		}
 
 		manifest := imageMeta.Manifests[0]
 
@@ -85,24 +90,24 @@ func FilterByDigest(digest string) mTypes.FilterFunc {
 		// Check the image manifest in index.json matches the search digest
 		// This is a blob with mediaType application/vnd.oci.image.manifest.v1+json
 		if strings.Contains(manifestDigest, lookupDigest) {
-			contains = true
+			return true
 		}
 
 		// Check the image config matches the search digest
 		// This is a blob with mediaType application/vnd.oci.image.config.v1+json
 		if strings.Contains(manifest.Manifest.Config.Digest.String(), lookupDigest) {
-			contains = true
+			return true
 		}
 
 		// Check to see if the individual layers in the oci image manifest match the digest
 		// These are blobs with mediaType application/vnd.oci.image.layer.v1.tar+gzip
 		for _, layer := range manifest.Manifest.Layers {
 			if strings.Contains(layer.Digest.String(), lookupDigest) {
-				contains = true
+				return true
 			}
 		}
 
-		return contains
+		return false
 	}
 }
 
@@ -628,18 +633,10 @@ func globalSearch(ctx context.Context, query string, metaDB mTypes.MetaDB, filte
 		}
 	}
 
-	if searchingForRepos(query) {
-		skip := convert.SkipQGLField{
-			Vulnerabilities: canSkipField(preloads, "Repos.NewestImage.Vulnerabilities"),
-		}
-
-		pageInput := pagination.PageInput{
-			Limit:  deref(requestedPage.Limit, 0),
-			Offset: deref(requestedPage.Offset, 0),
-			SortBy: pagination.SortCriteria(
-				deref(requestedPage.SortBy, gql_generated.SortCriteriaRelevance),
-			),
-		}
+	switch getSearchTarget(query) {
+	case RepoTarget:
+		skip := convert.SkipQGLField{Vulnerabilities: canSkipField(preloads, "Repos.NewestImage.Vulnerabilities")}
+		pageInput := getPageInput(requestedPage)
 
 		repoMetaList, err := metaDB.SearchRepos(ctx, query)
 		if err != nil {
@@ -667,18 +664,9 @@ func globalSearch(ctx context.Context, query string, metaDB mTypes.MetaDB, filte
 		}
 
 		paginatedRepos.Results = repos
-	} else { // search for images
-		skip := convert.SkipQGLField{
-			Vulnerabilities: canSkipField(preloads, "Images.Vulnerabilities"),
-		}
-
-		pageInput := pagination.PageInput{
-			Limit:  deref(requestedPage.Limit, 0),
-			Offset: deref(requestedPage.Offset, 0),
-			SortBy: pagination.SortCriteria(
-				deref(requestedPage.SortBy, gql_generated.SortCriteriaRelevance),
-			),
-		}
+	case ImageTarget:
+		skip := convert.SkipQGLField{Vulnerabilities: canSkipField(preloads, "Images.Vulnerabilities")}
+		pageInput := getPageInput(requestedPage)
 
 		fullImageMetaList, err := metaDB.SearchTags(ctx, query)
 		if err != nil {
@@ -697,9 +685,69 @@ func globalSearch(ctx context.Context, query string, metaDB mTypes.MetaDB, filte
 			TotalCount: pageInfo.TotalCount,
 			ItemCount:  pageInfo.ItemCount,
 		}
+	case DigestTarget:
+		skip := convert.SkipQGLField{Vulnerabilities: canSkipField(preloads, "Images.Vulnerabilities")}
+		pageInput := getPageInput(requestedPage)
+
+		searchedDigest := query
+
+		fullImageMetaList, err := metaDB.FilterTags(ctx, mTypes.AcceptAllRepoTag, FilterByDigest(searchedDigest))
+		if err != nil {
+			return &gql_generated.PaginatedReposResult{}, []*gql_generated.ImageSummary{}, []*gql_generated.LayerSummary{}, err
+		}
+
+		imageSummaries, pageInfo, err := convert.PaginatedFullImageMeta2ImageSummaries(ctx, fullImageMetaList, skip, cveInfo,
+			localFilter, pageInput)
+		if err != nil {
+			return &gql_generated.PaginatedReposResult{}, []*gql_generated.ImageSummary{}, []*gql_generated.LayerSummary{}, err
+		}
+
+		images = imageSummaries
+
+		paginatedRepos.Page = &gql_generated.PageInfo{
+			TotalCount: pageInfo.TotalCount,
+			ItemCount:  pageInfo.ItemCount,
+		}
+	default:
+		return &paginatedRepos, images, layers, zerr.ErrInvalidSearchQuery
 	}
 
 	return &paginatedRepos, images, layers, nil
+}
+
+func getPageInput(requestedPage *gql_generated.PageInput) pagination.PageInput {
+	return pagination.PageInput{
+		Limit:  deref(requestedPage.Limit, 0),
+		Offset: deref(requestedPage.Offset, 0),
+		SortBy: pagination.SortCriteria(
+			deref(requestedPage.SortBy, gql_generated.SortCriteriaRelevance),
+		),
+	}
+}
+
+type SearchTarget int
+
+const (
+	RepoTarget = iota
+	ImageTarget
+	DigestTarget
+	InvalidTarget
+)
+
+func getSearchTarget(query string) SearchTarget {
+	if !strings.ContainsAny(query, ":@") {
+		return RepoTarget
+	}
+
+	if strings.HasPrefix(query, string(godigest.SHA256)+":") {
+		return DigestTarget
+	}
+
+	if before, _, found := strings.Cut(query, ":"); found && before != "" {
+		return ImageTarget
+	}
+
+	return InvalidTarget
 }
 
 func canSkipField(preloads map[string]bool, s string) bool {
@@ -1098,10 +1146,6 @@ func deref[T any](pointer *T, defaultVal T) T {
 	}
 
 	return defaultVal
-}
-
-func searchingForRepos(query string) bool {
-	return !strings.Contains(query, ":")
 }
 
 func getImageList(ctx context.Context, repo string, metaDB mTypes.MetaDB, cveInfo cveinfo.CveInfo,

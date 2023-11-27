@@ -528,9 +528,9 @@ func GetImageMeta(dbImageMeta *proto_go.ImageMeta) mTypes.ImageMeta {
 	if dbImageMeta.MediaType == ispec.MediaTypeImageIndex {
 		manifests := make([]ispec.Descriptor, 0, len(dbImageMeta.Manifests))
 
-		for _, manifest := range dbImageMeta.Manifests {
+		for _, manifest := range deref(dbImageMeta.Index, proto_go.IndexMeta{}).Index.Manifests {
 			manifests = append(manifests, ispec.Descriptor{
-				MediaType: deref(manifest.Manifest.MediaType, ""),
+				MediaType: manifest.MediaType,
 				Digest:    godigest.Digest(manifest.Digest),
 				Size:      manifest.Size,
 			})

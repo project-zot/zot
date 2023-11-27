@@ -386,3 +386,35 @@ func GetAnnotationValue(annotations map[string]string, annotationKey, labelKey s
 
 	return value
 }
+
+func GetPartialImageMeta(imageIndexMeta mTypes.ImageMeta, imageMeta mTypes.ImageMeta) mTypes.ImageMeta {
+	partialImageMeta := imageIndexMeta
+	partialImageMeta.Manifests = imageMeta.Manifests
+
+	partialIndex := deref(imageIndexMeta.Index, ispec.Index{})
+	partialIndex.Manifests = getPartialManifestList(partialIndex.Manifests, imageMeta.Digest.String())
+
+	partialImageMeta.Index = &partialIndex
+
+	return partialImageMeta
+}
+
+func getPartialManifestList(descriptors []ispec.Descriptor, manifestDigest string) []ispec.Descriptor {
+	result := []ispec.Descriptor{}
+
+	for i := range descriptors {
+		if descriptors[i].Digest.String() == manifestDigest {
+			result = append(result, descriptors[i])
+		}
+	}
+
+	return result
+}
+
+func deref[T any](pointer *T, defaultVal T) T {
+	if pointer != nil {
+		return *pointer
+	}
+
+	return defaultVal
+}

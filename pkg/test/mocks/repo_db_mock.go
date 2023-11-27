@@ -57,9 +57,6 @@ type MetaDBMock struct {
 
 	SearchTagsFn func(ctx context.Context, searchText string) ([]mTypes.FullImageMeta, error)
 
-	FilterTagFn func(ctx context.Context, filterFunc mTypes.FilterFunc,
-	) ([]mTypes.RepoMeta, map[string]mTypes.ImageMeta, error)
-
 	GetImageMetaFn func(digest godigest.Digest) (mTypes.ImageMeta, error)
 
 	GetMultipleRepoMetaFn func(ctx context.Context, filter func(repoMeta mTypes.RepoMeta) bool,

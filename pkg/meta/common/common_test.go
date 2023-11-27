@@ -14,6 +14,10 @@ import (
 var ErrTestError = errors.New("test error")
 
 func TestUtils(t *testing.T) {
+	Convey("GetPartialImageMeta", t, func() {
+		So(func() { common.GetPartialImageMeta(mTypes.ImageMeta{}, mTypes.ImageMeta{}) }, ShouldNotPanic)
+	})
+
 	Convey("MatchesArtifactTypes", t, func() {
 		res := common.MatchesArtifactTypes("", nil)
 		So(res, ShouldBeTrue)

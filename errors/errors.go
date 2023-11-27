@@ -160,6 +160,7 @@ var (
 	ErrBadHTTPStatusCode              = errors.New("cli: the response doesn't contain the expected status code")
 	ErrFormatNotSupported             = errors.New("cli: the given output format is not supported")
 	ErrAPINotSupported                = errors.New("registry at the given address doesn't implement the correct API")
+	ErrInvalidSearchQuery             = errors.New("invalid search query")
 	ErrFileAlreadyCancelled           = errors.New("storageDriver: file already cancelled")
 	ErrFileAlreadyClosed              = errors.New("storageDriver: file already closed")
 	ErrFileAlreadyCommitted           = errors.New("storageDriver: file already committed")

@@ -3651,6 +3651,71 @@ func TestGlobalSearch(t *testing.T) {
 		So(actualImageSummary.Vulnerabilities.Count, ShouldEqual, 4)
 		So(actualImageSummary.Vulnerabilities.MaxSeverity, ShouldEqual, "CRITICAL")
 	})
+
+	Convey("global searching by digest", t, func() {
+		log := log.NewLogger("debug", "")
+		rootDir := t.TempDir()
+		port := GetFreePort()
+		baseURL := GetBaseURL(port)
+		conf := config.New()
+		conf.HTTP.Port = port
+		conf.Storage.RootDirectory = rootDir
+		defaultVal := true
+		conf.Extensions = &extconf.ExtensionConfig{
+			Search: &extconf.SearchConfig{BaseConfig: extconf.BaseConfig{Enable: &defaultVal}},
+		}
+		conf.Extensions.Search.CVE = nil
+
+		ctlr := api.NewController(conf)
+		ctlrManager := NewControllerManager(ctlr)
+
+		storeCtlr := ociutils.GetDefaultStoreController(rootDir, log)
+
+		image1 := CreateRandomImage()
+		image2 := CreateRandomImage()
+		multiArch := CreateRandomMultiarch()
+
+		err := WriteImageToFileSystem(image1, "repo1", "tag1", storeCtlr)
+		So(err, ShouldBeNil)
+		err = WriteImageToFileSystem(image2, "repo1", "tag2", storeCtlr)
+		So(err, ShouldBeNil)
+		err = WriteMultiArchImageToFileSystem(multiArch, "repo1", "tag-multi", storeCtlr)
+		So(err, ShouldBeNil)
+
+		err = WriteImageToFileSystem(image2, "repo2", "tag2", storeCtlr)
+		So(err, ShouldBeNil)
+
+		ctlrManager.StartAndWait(port)
+		defer ctlrManager.StopServer()
+
+		// simple image
+		results := GlobalSearchGQL(image1.DigestStr(), baseURL).GlobalSearch
+		So(len(results.Images), ShouldEqual, 1)
+		So(results.Images[0].Digest, ShouldResemble, image1.DigestStr())
+		So(results.Images[0].RepoName, ShouldResemble, "repo1")
+
+		results = GlobalSearchGQL(image2.DigestStr(), baseURL).GlobalSearch
+		So(len(results.Images), ShouldEqual, 2)
+
+		repos := AccumulateField(results.Images,
+			func(is zcommon.ImageSummary) string { return is.RepoName })
+		So(repos, ShouldContain, "repo1")
+		So(repos, ShouldContain, "repo2")
+
+		// multiarch
+		results = GlobalSearchGQL(multiArch.DigestStr(), baseURL).GlobalSearch
+		So(len(results.Images), ShouldEqual, 1)
+		So(results.Images[0].Digest, ShouldResemble, multiArch.DigestStr())
+		So(len(results.Images[0].Manifests), ShouldEqual, len(multiArch.Images))
+		So(results.Images[0].RepoName, ShouldResemble, "repo1")
+
+		results = GlobalSearchGQL(multiArch.Images[0].DigestStr(), baseURL).GlobalSearch
+		So(len(results.Images), ShouldEqual, 1)
+		So(results.Images[0].Digest, ShouldResemble, multiArch.DigestStr())
+		So(len(results.Images[0].Manifests), ShouldEqual, 1)
+		So(results.Images[0].Manifests[0].Digest, ShouldResemble, multiArch.Images[0].DigestStr())
+		So(results.Images[0].RepoName, ShouldResemble, "repo1")
+	})
 }
 
 func TestCleaningFilteringParamsGlobalSearch(t *testing.T) {

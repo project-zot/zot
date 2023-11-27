@@ -639,16 +639,17 @@ func (bdw *BoltDB) FilterTags(ctx context.Context, filterRepoTag mTypes.FilterRe
 				case ispec.MediaTypeImageIndex:
 					indexDigest := descriptor.Digest
 
-					imageIndexData, err := getProtoImageMeta(imageMetaBuck, indexDigest)
+					protoImageIndexMeta, err := getProtoImageMeta(imageMetaBuck, indexDigest)
 					if err != nil {
 						viewError = errors.Join(viewError, err)
 
 						continue
 					}
 
+					imageIndexMeta := mConvert.GetImageMeta(protoImageIndexMeta)
 					matchedManifests := []*proto_go.ManifestMeta{}
 
-					for _, manifest := range imageIndexData.Index.Index.Manifests {
+					for _, manifest := range protoImageIndexMeta.Index.Index.Manifests {
 						manifestDigest := manifest.Digest
 
 						imageManifestData, err := getProtoImageMeta(imageMetaBuck, manifestDigest)
@@ -659,16 +660,17 @@ func (bdw *BoltDB) FilterTags(ctx context.Context, filterRepoTag mTypes.FilterRe
 						}
 
 						imageMeta := mConvert.GetImageMeta(imageManifestData)
+						partialImageMeta := common.GetPartialImageMeta(imageIndexMeta, imageMeta)
 
-						if filterFunc(repoMeta, imageMeta) {
+						if filterFunc(repoMeta, partialImageMeta) {
 							matchedManifests = append(matchedManifests, imageManifestData.Manifests[0])
 						}
 					}
 
 					if len(matchedManifests) > 0 {
-						imageIndexData.Manifests = matchedManifests
+						protoImageIndexMeta.Manifests = matchedManifests
 
-						images = append(images, mConvert.GetFullImageMetaFromProto(tag, protoRepoMeta, imageIndexData))
+						images = append(images, mConvert.GetFullImageMetaFromProto(tag, protoRepoMeta, protoImageIndexMeta))
 					}
 				default:
 					bdw.Log.Error().Str("mediaType", descriptor.MediaType).Msg("Unsupported media type")
