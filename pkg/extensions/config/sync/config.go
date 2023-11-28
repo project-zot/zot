@@ -15,7 +15,11 @@ type Credentials struct {
 type Config struct {
 	Enable          *bool
 	CredentialsFile string
-	Registries      []RegistryConfig
+	/* DownloadDir is needed only in case of using cloud based storages
+	it uses regclient to first copy images into this dir (as oci layout)
+	and then move them into storage. */
+	DownloadDir string
+	Registries  []RegistryConfig
 }
 
 type RegistryConfig struct {

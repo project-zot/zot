@@ -65,7 +65,7 @@ type Remote interface {
 }
 
 // Local registry.
-type Local interface {
+type Destination interface {
 	Registry
 	// Check if an image is already synced
 	CanSkipImage(repo, tag string, imageDigest digest.Digest) (bool, error)

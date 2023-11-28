@@ -1653,3 +1653,207 @@ func TestOverlappingSyncRetentionConfig(t *testing.T) {
 		So(string(data), ShouldContainSubstring, "overlapping sync content\":{\"Prefix\":\"prod/*")
 	})
 }
+
+func TestSyncWithRemoteStorageConfig(t *testing.T) {
+	oldArgs := os.Args
+
+	defer func() { os.Args = oldArgs }()
+
+	Convey("Test verify sync with remote storage works if sync.tmpdir is provided", t, func(c C) {
+		tmpfile, err := os.CreateTemp("", "zot-test*.json")
+		So(err, ShouldBeNil)
+		defer os.Remove(tmpfile.Name()) // clean up
+
+		content := `{
+			"distSpecVersion": "1.1.0-dev",
+			"storage": {
+				"rootDirectory": "%s",
+				"dedupe": false,
+				"remoteCache": false,
+				"storageDriver": {
+					"name": "s3",
+					"rootdirectory": "/zot",
+					"region": "us-east-2",
+					"regionendpoint": "localhost:4566",
+					"bucket": "zot-storage",
+					"secure": false,
+					"skipverify": false
+				}
+			},
+			"http": {
+				"address": "0.0.0.0",
+				"port": "%s"
+			},
+			"log": {
+				"level": "debug",
+				"output": "%s"
+			},
+			"extensions": {
+				"sync": {
+					"downloadDir": "/tmp/sync",
+					"registries": [
+						{
+							"urls": [
+								"http://localhost:9000"
+							],
+							"onDemand": true,
+							"tlsVerify": false,
+							"content": [
+								{
+									"prefix": "**"
+								}
+							]
+						}
+					]
+				}
+			}
+		}`
+
+		logPath, err := runCLIWithConfig(t.TempDir(), content)
+		So(err, ShouldBeNil)
+
+		data, err := os.ReadFile(logPath)
+		So(err, ShouldBeNil)
+		defer os.Remove(logPath) // clean up
+		So(string(data), ShouldNotContainSubstring,
+			"using both sync and remote storage features needs config.Extensions.Sync.DownloadDir to be specified")
+	})
+
+	Convey("Test verify sync with remote storage panics if sync.tmpdir is not provided", t, func(c C) {
+		port := GetFreePort()
+		logFile, err := os.CreateTemp("", "zot-log*.txt")
+		So(err, ShouldBeNil)
+		defer os.Remove(logFile.Name()) // clean up
+
+		tmpfile, err := os.CreateTemp("", "zot-test*.json")
+		So(err, ShouldBeNil)
+		defer os.Remove(tmpfile.Name()) // clean up
+		content := fmt.Sprintf(`{
+			"distSpecVersion": "1.1.0-dev",
+			"storage": {
+				"rootDirectory": "%s",
+				"dedupe": false,
+				"remoteCache": false,
+				"storageDriver": {
+					"name": "s3",
+					"rootdirectory": "/zot",
+					"region": "us-east-2",
+					"regionendpoint": "localhost:4566",
+					"bucket": "zot-storage",
+					"secure": false,
+					"skipverify": false
+				}
+			},
+			"http": {
+				"address": "0.0.0.0",
+				"port": "%s"
+			},
+			"log": {
+				"level": "debug",
+				"output": "%s"
+			},
+			"extensions": {
+				"sync": {
+					"registries": [
+						{
+							"urls": [
+								"http://localhost:9000"
+							],
+							"onDemand": true,
+							"tlsVerify": false,
+							"content": [
+								{
+									"prefix": "**"
+								}
+							]
+						}
+					]
+				}
+			}
+		}`, t.TempDir(), port, logFile.Name())
+
+		err = os.WriteFile(tmpfile.Name(), []byte(content), 0o0600)
+		So(err, ShouldBeNil)
+
+		os.Args = []string{"cli_test", "serve", tmpfile.Name()}
+		err = cli.NewServerRootCmd().Execute()
+		So(err, ShouldNotBeNil)
+
+		data, err := os.ReadFile(logFile.Name())
+		So(err, ShouldBeNil)
+		defer os.Remove(logFile.Name()) // clean up
+		So(string(data), ShouldContainSubstring,
+			"using both sync and remote storage features needs config.Extensions.Sync.DownloadDir to be specified")
+	})
+
+	Convey("Test verify sync with remote storage on subpath panics if sync.tmpdir is not provided", t, func(c C) {
+		port := GetFreePort()
+		logFile, err := os.CreateTemp("", "zot-log*.txt")
+		So(err, ShouldBeNil)
+		defer os.Remove(logFile.Name()) // clean up
+
+		tmpfile, err := os.CreateTemp("", "zot-test*.json")
+		So(err, ShouldBeNil)
+		defer os.Remove(tmpfile.Name()) // clean up
+		content := fmt.Sprintf(`{
+			"distSpecVersion": "1.1.0-dev",
+			"storage": {
+				"rootDirectory": "%s",
+				"subPaths":{
+					"/a": {
+						"rootDirectory": "%s",
+						"dedupe": false,
+						"remoteCache": false,
+						"storageDriver":{
+							"name":"s3",
+							"rootdirectory":"/zot-a",
+							"region":"us-east-2",
+							"bucket":"zot-storage",
+							"secure":true,
+							"skipverify":true
+						}
+					}
+				}
+			},
+			"http": {
+				"address": "0.0.0.0",
+				"port": "%s"
+			},
+			"log": {
+				"level": "debug",
+				"output": "%s"
+			},
+			"extensions": {
+				"sync": {
+					"registries": [
+						{
+							"urls": [
+								"http://localhost:9000"
+							],
+							"onDemand": true,
+							"tlsVerify": false,
+							"content": [
+								{
+									"prefix": "**"
+								}
+							]
+						}
+					]
+				}
+			}
+		}`, t.TempDir(), t.TempDir(), port, logFile.Name())
+
+		err = os.WriteFile(tmpfile.Name(), []byte(content), 0o0600)
+		So(err, ShouldBeNil)
+
+		os.Args = []string{"cli_test", "serve", tmpfile.Name()}
+		err = cli.NewServerRootCmd().Execute()
+		So(err, ShouldNotBeNil)
+
+		data, err := os.ReadFile(logFile.Name())
+		So(err, ShouldBeNil)
+		defer os.Remove(logFile.Name()) // clean up
+		So(string(data), ShouldContainSubstring,
+			"using both sync and remote storage features needs config.Extensions.Sync.DownloadDir to be specified")
+	})
+}

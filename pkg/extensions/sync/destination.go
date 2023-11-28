@@ -29,25 +29,30 @@ import (
 	storageTypes "zotregistry.io/zot/pkg/storage/types"
 )
 
-type LocalRegistry struct {
+type DestinationRegistry struct {
 	storeController storage.StoreController
 	tempStorage     OciLayoutStorage
 	metaDB          mTypes.MetaDB
 	log             log.Logger
 }
 
-func NewLocalRegistry(storeController storage.StoreController, metaDB mTypes.MetaDB, log log.Logger) Local {
-	return &LocalRegistry{
+func NewDestinationRegistry(
+	storeController storage.StoreController, // local store controller
+	tempStoreController storage.StoreController, // temp store controller
+	metaDB mTypes.MetaDB,
+	log log.Logger,
+) Destination {
+	return &DestinationRegistry{
 		storeController: storeController,
+		tempStorage:     NewOciLayoutStorage(tempStoreController),
 		metaDB:          metaDB,
 		// first we sync from remote (using containers/image copy from docker:// to oci:) to a temp imageStore
 		// then we copy the image from tempStorage to zot's storage using ImageStore APIs
-		tempStorage: NewOciLayoutStorage(storeController),
-		log:         log,
+		log: log,
 	}
 }
 
-func (registry *LocalRegistry) CanSkipImage(repo, tag string, imageDigest digest.Digest) (bool, error) {
+func (registry *DestinationRegistry) CanSkipImage(repo, tag string, imageDigest digest.Digest) (bool, error) {
 	// check image already synced
 	imageStore := registry.storeController.GetImageStore(repo)
 
@@ -75,16 +80,16 @@ func (registry *LocalRegistry) CanSkipImage(repo, tag string, imageDigest digest
 	return true, nil
 }
 
-func (registry *LocalRegistry) GetContext() *types.SystemContext {
+func (registry *DestinationRegistry) GetContext() *types.SystemContext {
 	return registry.tempStorage.GetContext()
 }
 
-func (registry *LocalRegistry) GetImageReference(repo, reference string) (types.ImageReference, error) {
+func (registry *DestinationRegistry) GetImageReference(repo, reference string) (types.ImageReference, error) {
 	return registry.tempStorage.GetImageReference(repo, reference)
 }
 
 // finalize a syncing image.
-func (registry *LocalRegistry) CommitImage(imageReference types.ImageReference, repo, reference string) error {
+func (registry *DestinationRegistry) CommitImage(imageReference types.ImageReference, repo, reference string) error {
 	imageStore := registry.storeController.GetImageStore(repo)
 
 	tempImageStore := getImageStoreFromImageReference(imageReference, repo, reference)
@@ -180,7 +185,7 @@ func (registry *LocalRegistry) CommitImage(imageReference types.ImageReference, 
 	return nil
 }
 
-func (registry *LocalRegistry) copyManifest(repo string, manifestContent []byte, reference string,
+func (registry *DestinationRegistry) copyManifest(repo string, manifestContent []byte, reference string,
 	tempImageStore storageTypes.ImageStore,
 ) error {
 	imageStore := registry.storeController.GetImageStore(repo)
@@ -239,7 +244,7 @@ func (registry *LocalRegistry) copyManifest(repo string, manifestContent []byte,
 }
 
 // Copy a blob from one image store to another image store.
-func (registry *LocalRegistry) copyBlob(repo string, blobDigest digest.Digest, blobMediaType string,
+func (registry *DestinationRegistry) copyBlob(repo string, blobDigest digest.Digest, blobMediaType string,
 	tempImageStore storageTypes.ImageStore,
 ) error {
 	imageStore := registry.storeController.GetImageStore(repo)
@@ -279,9 +284,11 @@ func getImageStoreFromImageReference(imageReference types.ImageReference, repo, 
 		tempRootDir = strings.ReplaceAll(imageReference.StringWithinTransport(), fmt.Sprintf("%s:", repo), "")
 	}
 
+	return getImageStore(tempRootDir)
+}
+
+func getImageStore(rootDir string) storageTypes.ImageStore {
 	metrics := monitoring.NewMetricsServer(false, log.Logger{})
 
-	tempImageStore := local.NewImageStore(tempRootDir, false, false, log.Logger{}, metrics, nil, nil)
-
-	return tempImageStore
+	return local.NewImageStore(rootDir, false, false, log.Logger{}, metrics, nil, nil)
 }

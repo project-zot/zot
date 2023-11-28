@@ -1,0 +1,49 @@
+{
+    "distSpecVersion": "1.1.0-dev",
+    "storage": {
+        "rootDirectory": "/tmp/zot",
+        "dedupe": true,
+        "gc": true,
+        "remoteCache": true,
+        "storageDriver": {
+            "name": "s3",
+            "rootdirectory": "/zot",
+            "region": "us-east-2",
+            "bucket": "zot-storage",
+            "secure": true,
+            "skipverify": false
+        },
+        "cacheDriver": {
+            "name": "dynamodb",
+            "region": "us-east-2",
+            "cacheTablename": "BlobTable"
+        }
+    },
+    "http": {
+        "address": "0.0.0.0",
+        "port": "8080"
+    },
+    "log": {
+        "level": "debug"
+    },
+    "extensions": {
+        "sync": {
+            "downloadDir": "/tmp/sync",
+            "registries": [
+                {
+                    "urls": [
+                        "http://localhost:5000"
+                    ],
+                    "onDemand": false,
+                    "tlsVerify": false,
+                    "PollInterval": "30m",
+                    "content": [
+                        {
+                            "prefix": "**"
+                        }
+                    ]
+                }
+            ]
+        }
+    }
+}

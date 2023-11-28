@@ -41,23 +41,27 @@ func EnableSyncExtension(config *config.Config, metaDB mTypes.MetaDB,
 			isPeriodical := len(registryConfig.Content) != 0 && registryConfig.PollInterval != 0
 			isOnDemand := registryConfig.OnDemand
 
-			if isPeriodical || isOnDemand {
-				service, err := sync.New(registryConfig, config.Extensions.Sync.CredentialsFile,
-					storeController, metaDB, log)
-				if err != nil {
-					return nil, err
-				}
+			if !(isPeriodical || isOnDemand) {
+				continue
+			}
 
-				if isPeriodical {
-					// add to task scheduler periodic sync
-					gen := sync.NewTaskGenerator(service, log)
-					sch.SubmitGenerator(gen, registryConfig.PollInterval, scheduler.MediumPriority)
-				}
+			tmpDir := config.Extensions.Sync.DownloadDir
+			credsPath := config.Extensions.Sync.CredentialsFile
 
-				if isOnDemand {
-					// onDemand services used in routes.go
-					onDemand.Add(service)
-				}
+			service, err := sync.New(registryConfig, credsPath, tmpDir, storeController, metaDB, log)
+			if err != nil {
+				return nil, err
+			}
+
+			if isPeriodical {
+				// add to task scheduler periodic sync
+				gen := sync.NewTaskGenerator(service, log)
+				sch.SubmitGenerator(gen, registryConfig.PollInterval, scheduler.MediumPriority)
+			}
+
+			if isOnDemand {
+				// onDemand services used in routes.go
+				onDemand.Add(service)
 			}
 		}
 

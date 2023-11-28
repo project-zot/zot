@@ -30,7 +30,7 @@ function setup_file() {
         exit 1
     fi
 
-    # Download test data to folder common for the entire suite, not just this file
+        # Download test data to folder common for the entire suite, not just this file
     skopeo --insecure-policy copy --format=oci docker://ghcr.io/project-zot/golang:1.20 oci:${TEST_DATA_DIR}/golang:1.20
     # Setup zot server
     local zot_sync_per_root_dir=${BATS_FILE_TMPDIR}/zot-per
@@ -58,7 +58,18 @@ function setup_file() {
 {
     "distSpecVersion": "1.1.0-dev",
     "storage": {
-        "rootDirectory": "${zot_sync_per_root_dir}"
+        "rootDirectory": "${zot_sync_per_root_dir}",
+        "dedupe": false,
+        "remoteCache": false,
+        "storageDriver": {
+            "name": "s3",
+            "rootdirectory": "/zot/per",
+            "region": "us-east-2",
+            "regionendpoint": "localhost:4566",
+            "bucket": "zot-storage",
+            "secure": false,
+            "skipverify": true
+        }
     },
     "http": {
         "address": "0.0.0.0",
@@ -69,6 +80,7 @@ function setup_file() {
     },
     "extensions": {
         "sync": {
+            "downloadDir": "${zot_sync_per_root_dir}",
             "registries": [
                 {
                     "urls": [
@@ -93,7 +105,18 @@ EOF
 {
     "distSpecVersion": "1.1.0-dev",
     "storage": {
-        "rootDirectory": "${zot_sync_ondemand_root_dir}"
+        "rootDirectory": "${zot_sync_ondemand_root_dir}",
+        "dedupe": false,
+        "remoteCache": false,
+        "storageDriver": {
+            "name": "s3",
+            "rootdirectory": "/zot/ondemand",
+            "region": "us-east-2",
+            "regionendpoint": "localhost:4566",
+            "bucket": "zot-storage",
+            "secure": false,
+            "skipverify": true
+        }
     },
     "http": {
         "address": "0.0.0.0",
@@ -104,6 +127,7 @@ EOF
     },
     "extensions": {
         "sync": {
+            "downloadDir": "${zot_sync_ondemand_root_dir}",
             "registries": [
                 {
                     "urls": [
@@ -139,6 +163,8 @@ EOF
 EOF
     git -C ${BATS_FILE_TMPDIR} clone https://github.com/project-zot/helm-charts.git
 
+    awslocal s3 --region "us-east-2" mb s3://zot-storage
+
     zot_serve ${ZOT_MINIMAL_PATH} ${zot_minimal_config_file}
     wait_zot_reachable ${zot_port3}
 
@@ -152,6 +178,7 @@ EOF
 function teardown_file() {
     zot_stop_all
     run rm -rf ${HOME}/.config/notation
+    awslocal s3 rb s3://"zot-storage" --force
 }
 
 # sync image
