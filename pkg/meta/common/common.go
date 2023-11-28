@@ -233,13 +233,24 @@ func AddImageMetaToRepoMeta(repoMeta *proto_go.RepoMeta, repoBlobs *proto_go.Rep
 		}
 	case ispec.MediaTypeImageIndex:
 		subBlobs := []string{}
+		lastUpdated := time.Time{}
+
 		for _, manifest := range imageMeta.Index.Manifests {
 			subBlobs = append(subBlobs, manifest.Digest.String())
+
+			blobInfo := repoBlobs.Blobs[manifest.Digest.String()]
+
+			if blobInfo != nil && blobInfo.LastUpdated != nil {
+				if lastUpdated.Before(blobInfo.LastUpdated.AsTime()) {
+					lastUpdated = blobInfo.LastUpdated.AsTime()
+				}
+			}
 		}
 
 		repoBlobs.Blobs[imageMeta.Digest.String()] = &proto_go.BlobInfo{
-			Size:     imageMeta.Size,
-			SubBlobs: subBlobs,
+			Size:        imageMeta.Size,
+			SubBlobs:    subBlobs,
+			LastUpdated: mConvert.GetProtoTime(&lastUpdated),
 		}
 	}
 

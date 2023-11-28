@@ -2,6 +2,7 @@ package convert_test
 
 import (
 	"testing"
+	"time"
 
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	. "github.com/smartystreets/goconvey/convey"
@@ -68,5 +69,33 @@ func TestConvertErrors(t *testing.T) {
 			imageMeta := convert.GetFullManifestData(nil, nil)
 			So(len(imageMeta), ShouldEqual, 0)
 		})
+	})
+}
+
+func TestGetProtoEarlierUpdatedImage(t *testing.T) {
+	Convey("GetProtoEarlierUpdatedImage with nil params", t, func() {
+		// repoLastImage is nil
+		lastImage := gen.RepoLastUpdatedImage{}
+
+		repoLastUpdatedImage := convert.GetProtoEarlierUpdatedImage(nil, &lastImage)
+		So(repoLastUpdatedImage, ShouldNotBeNil)
+		So(repoLastUpdatedImage.LastUpdated, ShouldBeNil)
+
+		// lastImage is nil
+		repoLastImage := gen.RepoLastUpdatedImage{}
+
+		repoLastUpdatedImage = convert.GetProtoEarlierUpdatedImage(&repoLastImage, nil)
+		So(repoLastUpdatedImage, ShouldNotBeNil)
+		So(repoLastUpdatedImage.LastUpdated, ShouldBeNil)
+
+		// lastImage.LastUpdated is not nil, but repoLastImage.LastUpdated is nil
+		lastUpdated := time.Time{}
+		lastImage = gen.RepoLastUpdatedImage{
+			LastUpdated: convert.GetProtoTime(&lastUpdated),
+		}
+
+		repoLastUpdatedImage = convert.GetProtoEarlierUpdatedImage(&repoLastImage, &lastImage)
+		So(repoLastUpdatedImage, ShouldNotBeNil)
+		So(repoLastUpdatedImage.LastUpdated, ShouldNotBeNil)
 	})
 }
