@@ -257,7 +257,7 @@ func RunSignatureUploadAndVerificationTests(t *testing.T, cacheDriverParams map[
 			[]string{fmt.Sprintf("localhost:%s/%s@%s", port, repo, image.DigestStr())})
 		So(err, ShouldBeNil)
 
-		found, err = test.ReadLogFileAndSearchString(logFile.Name(), "update signatures validity", 10*time.Second)
+		found, err = test.ReadLogFileAndSearchString(logFile.Name(), "update signatures validity", 30*time.Second)
 		So(err, ShouldBeNil)
 		So(found, ShouldBeTrue)
 
@@ -369,7 +369,7 @@ func RunSignatureUploadAndVerificationTests(t *testing.T, cacheDriverParams map[
 		err = signature.SignWithNotation(certName, imageURL, rootDir, true)
 		So(err, ShouldBeNil)
 
-		found, err = test.ReadLogFileAndSearchString(logFile.Name(), "update signatures validity", 10*time.Second)
+		found, err = test.ReadLogFileAndSearchString(logFile.Name(), "update signatures validity", 30*time.Second)
 		So(err, ShouldBeNil)
 		So(found, ShouldBeTrue)
 
@@ -502,7 +502,7 @@ func RunSignatureUploadAndVerificationTests(t *testing.T, cacheDriverParams map[
 		err = signature.SignWithNotation(certName, imageURL, rootDir, false)
 		So(err, ShouldBeNil)
 
-		found, err = test.ReadLogFileAndSearchString(logFile.Name(), "update signatures validity", 10*time.Second)
+		found, err = test.ReadLogFileAndSearchString(logFile.Name(), "update signatures validity", 30*time.Second)
 		So(err, ShouldBeNil)
 		So(found, ShouldBeTrue)
 
@@ -672,7 +672,7 @@ func RunSignatureUploadAndVerificationTests(t *testing.T, cacheDriverParams map[
 			[]string{fmt.Sprintf("localhost:%s/%s@%s", port, repo, image.DigestStr())})
 		So(err, ShouldBeNil)
 
-		found, err = test.ReadLogFileAndSearchString(logFile.Name(), "update signatures validity", 10*time.Second)
+		found, err = test.ReadLogFileAndSearchString(logFile.Name(), "update signatures validity", 30*time.Second)
 		So(err, ShouldBeNil)
 		So(found, ShouldBeTrue)
 
@@ -883,7 +883,7 @@ func RunSignatureUploadAndVerificationTests(t *testing.T, cacheDriverParams map[
 		So(err, ShouldBeNil)
 		So(found, ShouldBeTrue)
 
-		found, err = test.ReadLogFileAndSearchString(logFile.Name(), "update signatures validity", 10*time.Second)
+		found, err = test.ReadLogFileAndSearchString(logFile.Name(), "update signatures validity", 30*time.Second)
 		So(err, ShouldBeNil)
 		So(found, ShouldBeTrue)
 

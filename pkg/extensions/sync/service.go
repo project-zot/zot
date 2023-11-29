@@ -44,7 +44,7 @@ func New(
 	storeController storage.StoreController,
 	metadb mTypes.MetaDB,
 	log log.Logger,
-) (Service, error) {
+) (*BaseService, error) {
 	service := &BaseService{}
 
 	service.config = opts

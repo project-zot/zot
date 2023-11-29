@@ -170,6 +170,29 @@ func TestService(t *testing.T) {
 	})
 }
 
+func TestSyncRepo(t *testing.T) {
+	Convey("trigger context error", t, func() {
+		conf := syncconf.RegistryConfig{
+			URLs: []string{"http://localhost"},
+		}
+
+		service, err := New(conf, "", os.TempDir(), storage.StoreController{}, mocks.MetaDBMock{}, log.Logger{})
+		So(err, ShouldBeNil)
+
+		service.remote = mocks.SyncRemote{
+			GetRepoTagsFn: func(repo string) ([]string, error) {
+				return []string{"repo1", "repo2"}, nil
+			},
+		}
+
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+
+		err = service.SyncRepo(ctx, "repo")
+		So(err, ShouldEqual, ctx.Err())
+	})
+}
+
 func TestDestinationRegistry(t *testing.T) {
 	Convey("make StoreController", t, func() {
 		dir := t.TempDir()

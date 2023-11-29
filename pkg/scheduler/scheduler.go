@@ -83,6 +83,12 @@ type Scheduler struct {
 	workerWg          *sync.WaitGroup
 	isShuttingDown    atomic.Bool
 	metricServer      monitoring.MetricServer
+
+	// ensure the scheduler can only be stopped once
+	stop sync.Once
+
+	// close to signal the workers to stop working
+	quit chan struct{}
 }
 
 func NewScheduler(cfg *config.Config, ms monitoring.MetricServer, logC log.Logger) *Scheduler { //nolint: varnamelen
@@ -107,12 +113,14 @@ func NewScheduler(cfg *config.Config, ms monitoring.MetricServer, logC log.Logge
 		generatorsLock: new(sync.Mutex),
 		log:            log.Logger{Logger: sublogger},
 		// default value
+		metricServer: ms,
 		RateLimit:    rateLimit,
 		NumWorkers:   numWorkers,
 		workerChan:   make(chan Task, numWorkers),
 		metricsChan:  make(chan struct{}, 1),
 		workerWg:     new(sync.WaitGroup),
-		metricServer: ms,
+		stop:         sync.Once{},
+		quit:         make(chan struct{}),
 	}
 }
 
@@ -210,12 +218,19 @@ func (scheduler *Scheduler) metricsWorker() {
 	}
 }
 
+/*
+Scheduler can be stopped either by stopping the context provided in scheduler.RunScheduler(ctx context.Context)
+
+	or by calling this function or both.
+
+Shutdown() will wait for all tasks being run to finish their work before exiting.
+*/
 func (scheduler *Scheduler) Shutdown() {
+	defer scheduler.workerWg.Wait()
+
 	if !scheduler.inShutdown() {
 		scheduler.shutdown()
 	}
-
-	scheduler.workerWg.Wait()
 }
 
 func (scheduler *Scheduler) inShutdown() bool {
@@ -223,11 +238,19 @@ func (scheduler *Scheduler) inShutdown() bool {
 }
 
 func (scheduler *Scheduler) shutdown() {
-	close(scheduler.workerChan)
-	close(scheduler.metricsChan)
-	scheduler.isShuttingDown.Store(true)
+	scheduler.stop.Do(func() {
+		scheduler.isShuttingDown.Store(true)
+
+		close(scheduler.metricsChan)
+		close(scheduler.quit)
+	})
 }
 
+/*
+	This context is passed to all task generators
+
+canceling the context will stop scheduler and also it will notify tasks to finish their work gracefully.
+*/
 func (scheduler *Scheduler) RunScheduler(ctx context.Context) {
 	throttle := time.NewTicker(rateLimit).C
 
@@ -243,8 +266,12 @@ func (scheduler *Scheduler) RunScheduler(ctx context.Context) {
 	go scheduler.metricsWorker()
 
 	go func() {
+		// will close workers chan when either ctx is canceled or scheduler.Shutdown()
+		defer close(scheduler.workerChan)
+
 		for {
 			select {
+			// can be stopped either by closing from outside the ctx given to RunScheduler()
 			case <-ctx.Done():
 				if !scheduler.inShutdown() {
 					scheduler.shutdown()
@@ -253,23 +280,26 @@ func (scheduler *Scheduler) RunScheduler(ctx context.Context) {
 				scheduler.log.Debug().Msg("received stop signal, gracefully shutting down...")
 
 				return
-			default:
-				i := 0
-				for i < numWorkers {
-					task := scheduler.getTask()
+			// or by running scheduler.Shutdown()
+			case <-scheduler.quit:
+				scheduler.log.Debug().Msg("scheduler: received stop signal, gracefully shutting down...")
 
-					if task != nil {
-						// push tasks into worker pool
-						if !scheduler.inShutdown() {
-							scheduler.log.Debug().Str("task", task.String()).Msg("pushing task into worker pool")
-							scheduler.workerChan <- task
-						}
-					}
-					i++
+				return
+			default:
+				// we don't want to block on sending task in workerChan.
+				if len(scheduler.workerChan) == scheduler.NumWorkers {
+					<-throttle
+
+					continue
+				}
+
+				task := scheduler.getTask()
+
+				if task != nil {
+					// push tasks into worker pool until workerChan is full.
+					scheduler.workerChan <- task
 				}
 			}
-
-			<-throttle
 		}
 	}()
 }

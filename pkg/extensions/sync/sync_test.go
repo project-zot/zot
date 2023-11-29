@@ -3939,6 +3939,12 @@ func TestPeriodicallySignaturesErr(t *testing.T) {
 				}
 
 				// start downstream server
+				updateDuration, err = time.ParseDuration("1s")
+				So(err, ShouldBeNil)
+
+				syncConfig.Registries[0].PollInterval = updateDuration
+
+				// start downstream server
 				dctlr, destBaseURL, _, _ := makeDownstreamServer(t, false, syncConfig)
 
 				dcm := test.NewControllerManager(dctlr)
@@ -4029,6 +4035,61 @@ func TestPeriodicallySignaturesErr(t *testing.T) {
 				err = json.Unmarshal(resp.Body(), &index)
 				So(err, ShouldBeNil)
 				So(len(index.Manifests), ShouldEqual, 0)
+			})
+
+			Convey("of type OCI image, error on downstream in canSkipReference()", func() { //nolint: dupl
+				// start downstream server
+				updateDuration, err = time.ParseDuration("1s")
+				So(err, ShouldBeNil)
+
+				syncConfig.Registries[0].PollInterval = updateDuration
+				dctlr, _, destDir, _ := makeDownstreamServer(t, false, syncConfig)
+
+				dcm := test.NewControllerManager(dctlr)
+				dcm.StartAndWait(dctlr.Config.HTTP.Port)
+				defer dcm.StopServer()
+
+				found, err := test.ReadLogFileAndSearchString(dctlr.Config.Log.Output,
+					"finished syncing all repos", 15*time.Second)
+				if err != nil {
+					panic(err)
+				}
+
+				if !found {
+					data, err := os.ReadFile(dctlr.Config.Log.Output)
+					So(err, ShouldBeNil)
+
+					t.Logf("downstream log: %s", string(data))
+				}
+
+				So(found, ShouldBeTrue)
+
+				time.Sleep(time.Second)
+
+				blob := referrers.Manifests[0]
+				blobsDir := path.Join(destDir, repoName, "blobs", string(blob.Digest.Algorithm()))
+				blobPath := path.Join(blobsDir, blob.Digest.Encoded())
+				err = os.MkdirAll(blobsDir, storageConstants.DefaultDirPerms)
+				So(err, ShouldBeNil)
+				err = os.WriteFile(blobPath, []byte("blob"), storageConstants.DefaultFilePerms)
+				So(err, ShouldBeNil)
+				err = os.Chmod(blobPath, 0o000)
+				So(err, ShouldBeNil)
+
+				found, err = test.ReadLogFileAndSearchString(dctlr.Config.Log.Output,
+					"couldn't check if the upstream oci references for image can be skipped", 30*time.Second)
+				if err != nil {
+					panic(err)
+				}
+
+				if !found {
+					data, err := os.ReadFile(dctlr.Config.Log.Output)
+					So(err, ShouldBeNil)
+
+					t.Logf("downstream log: %s", string(data))
+				}
+
+				So(found, ShouldBeTrue)
 			})
 		})
 	})
@@ -5197,78 +5258,6 @@ func TestOnDemandPullsOnce(t *testing.T) {
 		done <- true
 
 		So(maxLen, ShouldEqual, 1)
-	})
-}
-
-func TestError(t *testing.T) {
-	Convey("Verify periodically sync pushSyncedLocalImage() error", t, func() {
-		updateDuration, _ := time.ParseDuration("30m")
-
-		sctlr, srcBaseURL, _, _, _ := makeUpstreamServer(t, false, false)
-
-		scm := test.NewControllerManager(sctlr)
-		scm.StartAndWait(sctlr.Config.HTTP.Port)
-		defer scm.StopServer()
-
-		regex := ".*"
-		semver := true
-		var tlsVerify bool
-
-		syncRegistryConfig := syncconf.RegistryConfig{
-			Content: []syncconf.Content{
-				{
-					Prefix: testImage,
-					Tags: &syncconf.Tags{
-						Regex:  &regex,
-						Semver: &semver,
-					},
-				},
-			},
-			URLs:         []string{srcBaseURL},
-			PollInterval: updateDuration,
-			TLSVerify:    &tlsVerify,
-			CertDir:      "",
-		}
-
-		defaultVal := true
-		syncConfig := &syncconf.Config{
-			Enable:     &defaultVal,
-			Registries: []syncconf.RegistryConfig{syncRegistryConfig},
-		}
-
-		dctlr, _, destDir, _ := makeDownstreamServer(t, false, syncConfig)
-
-		dcm := test.NewControllerManager(dctlr)
-		dcm.StartAndWait(dctlr.Config.HTTP.Port)
-		defer dcm.StopServer()
-
-		// give permission denied on pushSyncedLocalImage()
-		localRepoPath := path.Join(destDir, testImage, "blobs")
-		err := os.MkdirAll(localRepoPath, 0o755)
-		So(err, ShouldBeNil)
-
-		err = os.Chmod(localRepoPath, 0o000)
-		So(err, ShouldBeNil)
-
-		defer func() {
-			err = os.Chmod(localRepoPath, 0o755)
-			So(err, ShouldBeNil)
-		}()
-
-		found, err := test.ReadLogFileAndSearchString(dctlr.Config.Log.Output,
-			"couldn't commit image to local image store", 30*time.Second)
-		if err != nil {
-			panic(err)
-		}
-
-		if !found {
-			data, err := os.ReadFile(dctlr.Config.Log.Output)
-			So(err, ShouldBeNil)
-
-			t.Logf("downstream log: %s", string(data))
-		}
-
-		So(found, ShouldBeTrue)
 	})
 }
 
