@@ -685,6 +685,50 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 				err = metaDB.SetRepoReference(ctx, "", "tag", imgData1)
 				So(err, ShouldNotBeNil)
 			})
+
+			Convey("Check last updated for indexes", func() {
+				config1 := GetDefaultConfig()
+				config1.Created = DateRef(2009, 2, 1, 12, 0, 0, 0, time.UTC)
+
+				config2 := GetDefaultConfig()
+				config2.Created = DateRef(2011, 2, 1, 12, 0, 0, 0, time.UTC)
+
+				config3 := GetDefaultConfig()
+				config3.Created = DateRef(2011, 3, 1, 12, 0, 0, 0, time.UTC)
+
+				image1 := CreateMultiarchWith().Images([]Image{
+					CreateImageWith().RandomLayers(1, 10).ImageConfig(config1).Build(),
+				}).Build()
+				image2 := CreateMultiarchWith().Images([]Image{
+					CreateImageWith().RandomLayers(1, 10).ImageConfig(config2).Build(),
+					CreateImageWith().RandomLayers(1, 10).ImageConfig(config3).Build(),
+				}).Build()
+
+				_, err := metaDB.GetRepoMeta(ctx, repo1)
+				So(err, ShouldNotBeNil)
+
+				for i := range image1.Images {
+					err := metaDB.SetRepoReference(ctx, repo1, image1.Images[i].DigestStr(),
+						image1.Images[i].AsImageMeta())
+					So(err, ShouldBeNil)
+				}
+
+				err = metaDB.SetRepoReference(ctx, repo1, tag1, image1.AsImageMeta())
+				So(err, ShouldBeNil)
+
+				for i := range image2.Images {
+					err := metaDB.SetRepoReference(ctx, repo1, image2.Images[i].DigestStr(),
+						image2.Images[i].AsImageMeta())
+					So(err, ShouldBeNil)
+				}
+
+				err = metaDB.SetRepoReference(ctx, repo1, tag2, image2.AsImageMeta())
+				So(err, ShouldBeNil)
+
+				repoMeta, err := metaDB.GetRepoMeta(ctx, repo1)
+				So(err, ShouldBeNil)
+				So(*repoMeta.LastUpdatedImage.LastUpdated, ShouldEqual, time.Date(2011, 3, 1, 12, 0, 0, 0, time.UTC))
+			})
 		})
 
 		Convey("Test RemoveRepoReference", func() {
