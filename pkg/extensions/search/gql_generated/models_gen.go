@@ -27,6 +27,8 @@ type Cve struct {
 	Title *string `json:"Title,omitempty"`
 	// A detailed description of the CVE
 	Description *string `json:"Description,omitempty"`
+	// Reference for the given CVE
+	Reference *string `json:"Reference,omitempty"`
 	// The impact the CVE has, one of "UNKNOWN", "LOW", "MEDIUM", "HIGH", "CRITICAL"
 	Severity *string `json:"Severity,omitempty"`
 	// Information on the packages in which the CVE was found

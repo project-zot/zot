@@ -46,6 +46,10 @@ type CVE {
     """
     Description: String
     """
+    Reference for the given CVE
+    """
+    Reference: String
+    """
     The impact the CVE has, one of "UNKNOWN", "LOW", "MEDIUM", "HIGH", "CRITICAL"
     """
     Severity: String

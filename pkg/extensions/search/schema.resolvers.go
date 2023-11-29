@@ -20,11 +20,7 @@ func (r *queryResolver) CVEListForImage(ctx context.Context, image string, reque
 		return &gql_generated.CVEResultForImage{}, zerr.ErrCVESearchDisabled
 	}
 
-	if searchedCve == nil {
-		return getCVEListForImage(ctx, image, r.cveInfo, requestedPage, "", r.log)
-	}
-
-	return getCVEListForImage(ctx, image, r.cveInfo, requestedPage, *searchedCve, r.log)
+	return getCVEListForImage(ctx, image, r.cveInfo, requestedPage, deref(searchedCve, ""), r.log)
 }
 
 // ImageListForCve is the resolver for the ImageListForCVE field.

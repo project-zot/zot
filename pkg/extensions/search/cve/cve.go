@@ -8,6 +8,7 @@ import (
 
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
+	"golang.org/x/exp/slices"
 
 	zerr "zotregistry.io/zot/errors"
 	zcommon "zotregistry.io/zot/pkg/common"
@@ -334,7 +335,15 @@ func filterCVEList(cveMap map[string]cvemodel.CVE, searchedCVE string, pageFinde
 
 	for _, cve := range cveMap {
 		if strings.Contains(strings.ToUpper(cve.Title), searchedCVE) ||
-			strings.Contains(strings.ToUpper(cve.ID), searchedCVE) {
+			strings.Contains(strings.ToUpper(cve.ID), searchedCVE) ||
+			strings.Contains(strings.ToUpper(cve.Description), searchedCVE) ||
+			strings.Contains(strings.ToUpper(cve.Reference), searchedCVE) ||
+			strings.Contains(strings.ToUpper(cve.Severity), searchedCVE) ||
+			slices.ContainsFunc(cve.PackageList, func(pack cvemodel.Package) bool {
+				return strings.Contains(strings.ToUpper(pack.Name), searchedCVE) ||
+					strings.Contains(strings.ToUpper(pack.FixedVersion), searchedCVE) ||
+					strings.Contains(strings.ToUpper(pack.InstalledVersion), searchedCVE)
+			}) {
 			pageFinder.Add(cve)
 		}
 	}
