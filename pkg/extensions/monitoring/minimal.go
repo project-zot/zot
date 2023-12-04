@@ -18,17 +18,23 @@ import (
 const (
 	metricsNamespace = "zot"
 	// Counters.
-	httpConnRequests = metricsNamespace + ".http.requests"
-	repoDownloads    = metricsNamespace + ".repo.downloads"
-	repoUploads      = metricsNamespace + ".repo.uploads"
+	httpConnRequests    = metricsNamespace + ".http.requests"
+	repoDownloads       = metricsNamespace + ".repo.downloads"
+	repoUploads         = metricsNamespace + ".repo.uploads"
+	schedulerGenerators = metricsNamespace + ".scheduler.generators"
 	// Gauge.
-	repoStorageBytes = metricsNamespace + ".repo.storage.bytes"
-	serverInfo       = metricsNamespace + ".info"
+	repoStorageBytes          = metricsNamespace + ".repo.storage.bytes"
+	serverInfo                = metricsNamespace + ".info"
+	schedulerNumWorkers       = metricsNamespace + ".scheduler.workers.total"
+	schedulerWorkers          = metricsNamespace + ".scheduler.workers"
+	schedulerGeneratorsStatus = metricsNamespace + ".scheduler.generators.status"
+	schedulerTasksQueue       = metricsNamespace + ".scheduler.tasksqueue.length"
 	// Summary.
 	httpRepoLatencySeconds = metricsNamespace + ".http.repo.latency.seconds"
 	// Histogram.
 	httpMethodLatencySeconds  = metricsNamespace + ".http.method.latency.seconds"
 	storageLockLatencySeconds = metricsNamespace + ".storage.lock.latency.seconds"
+	workersTasksDuration      = metricsNamespace + ".scheduler.workers.tasks.duration.seconds"
 
 	metricsScrapeTimeout       = 2 * time.Minute
 	metricsScrapeCheckInterval = 30 * time.Second
@@ -39,7 +45,7 @@ type metricServer struct {
 	lastCheck  time.Time
 	reqChan    chan interface{}
 	cache      *MetricsInfo
-	cacheChan  chan *MetricsInfo
+	cacheChan  chan MetricsCopy
 	bucketsF2S map[float64]string // float64 to string conversion of buckets label
 	log        log.Logger
 	lock       *sync.RWMutex
@@ -50,6 +56,12 @@ type MetricsInfo struct {
 	Gauges     []*GaugeValue
 	Summaries  []*SummaryValue
 	Histograms []*HistogramValue
+}
+type MetricsCopy struct {
+	Counters   []CounterValue
+	Gauges     []GaugeValue
+	Summaries  []SummaryValue
+	Histograms []HistogramValue
 }
 
 // CounterValue stores info about a metric that is incremented over time,
@@ -118,7 +130,7 @@ func (ms *metricServer) ReceiveMetrics() interface{} {
 		ms.enabled = true
 	}
 	ms.lock.Unlock()
-	ms.cacheChan <- &MetricsInfo{}
+	ms.cacheChan <- MetricsCopy{}
 
 	return <-ms.cacheChan
 }
@@ -145,7 +157,29 @@ func (ms *metricServer) Run() {
 		select {
 		case <-ms.cacheChan:
 			ms.lastCheck = time.Now()
-			ms.cacheChan <- ms.cache
+			// make a copy of cache values to prevent data race
+			metrics := MetricsCopy{
+				Counters:   make([]CounterValue, len(ms.cache.Counters)),
+				Gauges:     make([]GaugeValue, len(ms.cache.Gauges)),
+				Summaries:  make([]SummaryValue, len(ms.cache.Summaries)),
+				Histograms: make([]HistogramValue, len(ms.cache.Histograms)),
+			}
+			for i, cv := range ms.cache.Counters {
+				metrics.Counters[i] = *cv
+			}
+
+			for i, gv := range ms.cache.Gauges {
+				metrics.Gauges[i] = *gv
+			}
+
+			for i, sv := range ms.cache.Summaries {
+				metrics.Summaries[i] = *sv
+			}
+
+			for i, hv := range ms.cache.Histograms {
+				metrics.Histograms[i] = *hv
+			}
+			ms.cacheChan <- metrics
 		case m := <-ms.reqChan:
 			switch v := m.(type) {
 			case CounterValue:
@@ -200,7 +234,7 @@ func NewMetricsServer(enabled bool, log log.Logger) MetricServer {
 	ms := &metricServer{
 		enabled:    enabled,
 		reqChan:    make(chan interface{}),
-		cacheChan:  make(chan *MetricsInfo),
+		cacheChan:  make(chan MetricsCopy),
 		cache:      mi,
 		bucketsF2S: bucketsFloat2String,
 		log:        log,
@@ -215,16 +249,21 @@ func NewMetricsServer(enabled bool, log log.Logger) MetricServer {
 // contains a map with key=CounterName and value=CounterLabels.
 func GetCounters() map[string][]string {
 	return map[string][]string{
-		httpConnRequests: {"method", "code"},
-		repoDownloads:    {"repo"},
-		repoUploads:      {"repo"},
+		httpConnRequests:    {"method", "code"},
+		repoDownloads:       {"repo"},
+		repoUploads:         {"repo"},
+		schedulerGenerators: {},
 	}
 }
 
 func GetGauges() map[string][]string {
 	return map[string][]string{
-		repoStorageBytes: {"repo"},
-		serverInfo:       {"commit", "binaryType", "goVersion", "version"},
+		repoStorageBytes:          {"repo"},
+		serverInfo:                {"commit", "binaryType", "goVersion", "version"},
+		schedulerNumWorkers:       {},
+		schedulerGeneratorsStatus: {"priority", "state"},
+		schedulerTasksQueue:       {"priority"},
+		schedulerWorkers:          {"state"},
 	}
 }
 
@@ -238,6 +277,7 @@ func GetHistograms() map[string][]string {
 	return map[string][]string{
 		httpMethodLatencySeconds:  {"method"},
 		storageLockLatencySeconds: {"storageName", "lockType"},
+		workersTasksDuration:      {"name"},
 	}
 }
 
@@ -531,5 +571,68 @@ func GetBuckets(metricName string) []float64 {
 		return GetStorageLatencyBuckets()
 	default:
 		return GetDefaultBuckets()
+	}
+}
+
+func SetSchedulerNumWorkers(ms MetricServer, workers int) {
+	numWorkers := GaugeValue{
+		Name:  schedulerNumWorkers,
+		Value: float64(workers),
+	}
+	ms.ForceSendMetric(numWorkers)
+}
+
+func IncSchedulerGenerators(ms MetricServer) {
+	genCounter := CounterValue{
+		Name: schedulerGenerators,
+	}
+	ms.ForceSendMetric(genCounter)
+}
+
+func ObserveWorkersTasksDuration(ms MetricServer, taskName string, duration time.Duration) {
+	h := HistogramValue{
+		Name:        workersTasksDuration,
+		Sum:         duration.Seconds(), // convenient temporary store for Histogram latency value
+		LabelNames:  []string{"name"},
+		LabelValues: []string{taskName},
+	}
+	ms.SendMetric(h)
+}
+
+func SetSchedulerGenerators(ms MetricServer, gen map[string]map[string]uint64) {
+	for priority, states := range gen {
+		for state, value := range states {
+			generator := GaugeValue{
+				Name:        schedulerGeneratorsStatus,
+				Value:       float64(value),
+				LabelNames:  []string{"priority", "state"},
+				LabelValues: []string{priority, state},
+			}
+			ms.SendMetric(generator)
+		}
+	}
+}
+
+func SetSchedulerTasksQueue(ms MetricServer, tq map[string]int) {
+	for priority, value := range tq {
+		tasks := GaugeValue{
+			Name:        schedulerTasksQueue,
+			Value:       float64(value),
+			LabelNames:  []string{"priority"},
+			LabelValues: []string{priority},
+		}
+		ms.SendMetric(tasks)
+	}
+}
+
+func SetSchedulerWorkers(ms MetricServer, w map[string]int) {
+	for state, value := range w {
+		workers := GaugeValue{
+			Name:        schedulerWorkers,
+			Value:       float64(value),
+			LabelNames:  []string{"state"},
+			LabelValues: []string{state},
+		}
+		ms.SendMetric(workers)
 	}
 }

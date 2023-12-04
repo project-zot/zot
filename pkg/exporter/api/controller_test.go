@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"math/big"
 	"net/http"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -25,6 +26,7 @@ import (
 	zotcfg "zotregistry.io/zot/pkg/api/config"
 	"zotregistry.io/zot/pkg/exporter/api"
 	"zotregistry.io/zot/pkg/extensions/monitoring"
+	"zotregistry.io/zot/pkg/scheduler"
 	. "zotregistry.io/zot/pkg/test/common"
 )
 
@@ -70,11 +72,21 @@ func readDefaultMetrics(collector *api.Collector, chMetric chan prometheus.Metri
 	So(*metric.Gauge.Value, ShouldEqual, 1)
 
 	pmMetric = <-chMetric
+	So(pmMetric.Desc().String(), ShouldEqual, collector.MetricsDesc["zot_scheduler_workers_total"].String())
+
+	err = pmMetric.Write(&metric)
+	So(err, ShouldBeNil)
+	So(*metric.Gauge.Value, ShouldEqual, runtime.NumCPU()*scheduler.NumWorkersMultiplier)
+
+	pmMetric = <-chMetric
 	So(pmMetric.Desc().String(), ShouldEqual, collector.MetricsDesc["zot_info"].String())
 
 	err = pmMetric.Write(&metric)
 	So(err, ShouldBeNil)
 	So(*metric.Gauge.Value, ShouldEqual, 0)
+
+	pmMetric = <-chMetric
+	So(pmMetric.Desc().String(), ShouldEqual, collector.MetricsDesc["zot_scheduler_generators_total"].String())
 }
 
 func TestNewExporter(t *testing.T) {

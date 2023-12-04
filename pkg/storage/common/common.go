@@ -1061,6 +1061,15 @@ func (dt *dedupeTask) DoWork(ctx context.Context) error {
 	return err
 }
 
+func (dt *dedupeTask) String() string {
+	return fmt.Sprintf("{Name: %s, digest: %s, dedupe: %t}",
+		dt.Name(), dt.digest, dt.dedupe)
+}
+
+func (dt *dedupeTask) Name() string {
+	return "DedupeTask"
+}
+
 type StorageMetricsInitGenerator struct {
 	ImgStore storageTypes.ImageStore
 	done     bool
@@ -1131,4 +1140,13 @@ func (smt *smTask) DoWork(ctx context.Context) error {
 	smt.log.Debug().Msg("monitoring: computed storage usage for repo " + smt.repo)
 
 	return nil
+}
+
+func (smt *smTask) String() string {
+	return fmt.Sprintf("{Name: \"%s\", repo: \"%s\"}",
+		smt.Name(), smt.repo)
+}
+
+func (smt *smTask) Name() string {
+	return "StorageMetricsTask"
 }

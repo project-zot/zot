@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"encoding/gob"
+	"fmt"
 	"io/fs"
 	"os"
 	"path"
@@ -156,4 +157,13 @@ func (cleanTask *CleanTask) DoWork(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+func (cleanTask *CleanTask) String() string {
+	return fmt.Sprintf("{Name: %s, sessions: %s}",
+		cleanTask.Name(), cleanTask.sessions)
+}
+
+func (cleanTask *CleanTask) Name() string {
+	return "SessionCleanupTask"
 }

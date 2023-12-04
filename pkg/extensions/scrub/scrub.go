@@ -63,3 +63,13 @@ func NewTask(imgStore storageTypes.ImageStore, repo string, log log.Logger) *Tas
 func (scrubT *Task) DoWork(ctx context.Context) error {
 	return RunScrubRepo(ctx, scrubT.imgStore, scrubT.repo, scrubT.log) //nolint: contextcheck
 }
+
+func (scrubT *Task) String() string {
+	return fmt.Sprintf("{taskGenerator: \"%s\", repo: \"%s\"}",
+		"image scrub", // description of generator's task purpose
+		scrubT.repo)
+}
+
+func (scrubT *Task) Name() string {
+	return "ScrubTask"
+}

@@ -12,6 +12,7 @@ import (
 	. "github.com/smartystreets/goconvey/convey"
 
 	"zotregistry.io/zot/pkg/api/config"
+	"zotregistry.io/zot/pkg/extensions/monitoring"
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/scheduler"
 )
@@ -32,6 +33,14 @@ func (t *task) DoWork(ctx context.Context) error {
 	t.log.Info().Msg(t.msg)
 
 	return nil
+}
+
+func (t *task) String() string {
+	return t.Name()
+}
+
+func (t *task) Name() string {
+	return "TestTask"
 }
 
 type generator struct {
@@ -100,7 +109,8 @@ func TestScheduler(t *testing.T) {
 		defer os.Remove(logFile.Name()) // clean up
 
 		logger := log.NewLogger("debug", logFile.Name())
-		sch := scheduler.NewScheduler(config.New(), logger)
+		metrics := monitoring.NewMetricsServer(true, logger)
+		sch := scheduler.NewScheduler(config.New(), metrics, logger)
 
 		genH := &shortGenerator{log: logger, priority: "high priority"}
 		// interval has to be higher than throttle value to simulate
@@ -126,7 +136,8 @@ func TestScheduler(t *testing.T) {
 		logger := log.NewLogger("debug", logFile.Name())
 		cfg := config.New()
 		cfg.Scheduler = &config.SchedulerConfig{NumWorkers: 3}
-		sch := scheduler.NewScheduler(cfg, logger)
+		metrics := monitoring.NewMetricsServer(true, logger)
+		sch := scheduler.NewScheduler(cfg, metrics, logger)
 
 		genL := &generator{log: logger, priority: "low priority"}
 		sch.SubmitGenerator(genL, time.Duration(0), scheduler.LowPriority)
@@ -160,7 +171,8 @@ func TestScheduler(t *testing.T) {
 		defer os.Remove(logFile.Name()) // clean up
 
 		logger := log.NewLogger("debug", logFile.Name())
-		sch := scheduler.NewScheduler(config.New(), logger)
+		metrics := monitoring.NewMetricsServer(true, logger)
+		sch := scheduler.NewScheduler(config.New(), metrics, logger)
 
 		t := &task{log: logger, msg: "", err: true}
 		sch.SubmitTask(t, scheduler.MediumPriority)
@@ -184,7 +196,8 @@ func TestScheduler(t *testing.T) {
 		defer os.Remove(logFile.Name()) // clean up
 
 		logger := log.NewLogger("debug", logFile.Name())
-		sch := scheduler.NewScheduler(config.New(), logger)
+		metrics := monitoring.NewMetricsServer(true, logger)
+		sch := scheduler.NewScheduler(config.New(), metrics, logger)
 
 		genL := &generator{log: logger, priority: "low priority"}
 		sch.SubmitGenerator(genL, 20*time.Millisecond, scheduler.LowPriority)
@@ -208,7 +221,8 @@ func TestScheduler(t *testing.T) {
 		defer os.Remove(logFile.Name()) // clean up
 
 		logger := log.NewLogger("debug", logFile.Name())
-		sch := scheduler.NewScheduler(config.New(), logger)
+		metrics := monitoring.NewMetricsServer(true, logger)
+		sch := scheduler.NewScheduler(config.New(), metrics, logger)
 
 		t := &task{log: logger, msg: "", err: false}
 		sch.SubmitTask(t, -1)
@@ -225,7 +239,8 @@ func TestScheduler(t *testing.T) {
 		defer os.Remove(logFile.Name()) // clean up
 
 		logger := log.NewLogger("debug", logFile.Name())
-		sch := scheduler.NewScheduler(config.New(), logger)
+		metrics := monitoring.NewMetricsServer(true, logger)
+		sch := scheduler.NewScheduler(config.New(), metrics, logger)
 
 		ctx, cancel := context.WithCancel(context.Background())
 
@@ -240,11 +255,39 @@ func TestScheduler(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(string(data), ShouldNotContainSubstring, "scheduler: adding a new task")
 	})
+
+	Convey("Test scheduler Priority.String() method", t, func() {
+		var p scheduler.Priority //nolint: varnamelen
+		// test invalid priority
+		p = 6238734
+		So(p.String(), ShouldEqual, "invalid")
+		p = scheduler.LowPriority
+		So(p.String(), ShouldEqual, "low")
+		p = scheduler.MediumPriority
+		So(p.String(), ShouldEqual, "medium")
+		p = scheduler.HighPriority
+		So(p.String(), ShouldEqual, "high")
+	})
+
+	Convey("Test scheduler State.String() method", t, func() {
+		var s scheduler.State //nolint: varnamelen
+		// test invalid state
+		s = -67
+		So(s.String(), ShouldEqual, "invalid")
+		s = scheduler.Ready
+		So(s.String(), ShouldEqual, "ready")
+		s = scheduler.Waiting
+		So(s.String(), ShouldEqual, "waiting")
+		s = scheduler.Done
+		So(s.String(), ShouldEqual, "done")
+	})
 }
 
 func TestGetNumWorkers(t *testing.T) {
 	Convey("Test setting the number of workers - default value", t, func() {
-		sch := scheduler.NewScheduler(config.New(), log.NewLogger("debug", "logFile"))
+		logger := log.NewLogger("debug", "logFile")
+		metrics := monitoring.NewMetricsServer(true, logger)
+		sch := scheduler.NewScheduler(config.New(), metrics, logger)
 		defer os.Remove("logFile")
 		So(sch.NumWorkers, ShouldEqual, runtime.NumCPU()*4)
 	})
@@ -252,7 +295,9 @@ func TestGetNumWorkers(t *testing.T) {
 	Convey("Test setting the number of workers - getting the value from config", t, func() {
 		cfg := config.New()
 		cfg.Scheduler = &config.SchedulerConfig{NumWorkers: 3}
-		sch := scheduler.NewScheduler(cfg, log.NewLogger("debug", "logFile"))
+		logger := log.NewLogger("debug", "logFile")
+		metrics := monitoring.NewMetricsServer(true, logger)
+		sch := scheduler.NewScheduler(cfg, metrics, logger)
 		defer os.Remove("logFile")
 		So(sch.NumWorkers, ShouldEqual, 3)
 	})

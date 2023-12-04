@@ -63,7 +63,9 @@ var DeleteReferrers = config.ImageRetention{ //nolint: gochecknoglobals
 var errCache = errors.New("new cache error")
 
 func runAndGetScheduler() (*scheduler.Scheduler, context.CancelFunc) {
-	taskScheduler := scheduler.NewScheduler(config.New(), zlog.Logger{})
+	log := zlog.Logger{}
+	metrics := monitoring.NewMetricsServer(true, log)
+	taskScheduler := scheduler.NewScheduler(config.New(), metrics, log)
 	taskScheduler.RateLimit = 50 * time.Millisecond
 
 	ctx, cancel := context.WithCancel(context.Background())

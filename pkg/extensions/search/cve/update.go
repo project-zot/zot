@@ -2,6 +2,7 @@ package cveinfo
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"time"
 
@@ -117,4 +118,12 @@ func (dbt *dbUpdateTask) DoWork(ctx context.Context) error {
 	dbt.log.Info().Str("DB update completed, next update scheduled after", dbt.interval.String()).Msg("")
 
 	return nil
+}
+
+func (dbt *dbUpdateTask) String() string {
+	return fmt.Sprintf("{Name: %s}", dbt.Name())
+}
+
+func (dbt *dbUpdateTask) Name() string {
+	return "DBUpdateTask"
 }
