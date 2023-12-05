@@ -1325,7 +1325,7 @@ func (is *ImageStore) GetBlobPartial(repo string, digest godigest.Digest, mediaT
 		// Check blobs in cache
 		blobPath, err = is.checkCacheBlob(digest)
 		if err != nil {
-			is.log.Error().Err(err).Str("digest", digest.String()).Msg("cache: not found")
+			is.log.Debug().Err(err).Str("digest", digest.String()).Msg("cache: not found")
 
 			return nil, -1, -1, zerr.ErrBlobNotFound
 		}
@@ -1395,7 +1395,7 @@ func (is *ImageStore) GetBlob(repo string, digest godigest.Digest, mediaType str
 		// Check blobs in cache
 		dstRecord, err := is.checkCacheBlob(digest)
 		if err != nil {
-			is.log.Error().Err(err).Str("digest", digest.String()).Msg("cache: not found")
+			is.log.Debug().Err(err).Str("digest", digest.String()).Msg("cache: not found")
 
 			return nil, -1, zerr.ErrBlobNotFound
 		}
@@ -1448,7 +1448,7 @@ func (is *ImageStore) GetBlobContent(repo string, digest godigest.Digest) ([]byt
 		// Check blobs in cache
 		dstRecord, err := is.checkCacheBlob(digest)
 		if err != nil {
-			is.log.Error().Err(err).Str("digest", digest.String()).Msg("cache: not found")
+			is.log.Debug().Err(err).Str("digest", digest.String()).Msg("cache: not found")
 
 			return nil, zerr.ErrBlobNotFound
 		}
