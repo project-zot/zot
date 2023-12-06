@@ -18,7 +18,6 @@ import (
 	"testing"
 	"time"
 
-	dbTypes "github.com/aquasecurity/trivy-db/pkg/types"
 	guuid "github.com/gofrs/uuid"
 	regTypes "github.com/google/go-containerregistry/pkg/v1/types"
 	notreg "github.com/notaryproject/notation-go/registry"
@@ -530,6 +529,11 @@ func TestRepoListWithNewestImage(t *testing.T) {
 							Tag
 							Vulnerabilities{
 								MaxSeverity
+								UnknownCount
+								LowCount
+								MediumCount
+								HighCount
+								CriticalCount
 								Count
 							}
 						}
@@ -551,6 +555,11 @@ func TestRepoListWithNewestImage(t *testing.T) {
 			images = responseStruct.Results
 			So(images[0].NewestImage.Tag, ShouldEqual, "0.0.1")
 			So(images[0].NewestImage.Vulnerabilities.Count, ShouldEqual, 0)
+			So(images[0].NewestImage.Vulnerabilities.UnknownCount, ShouldEqual, 0)
+			So(images[0].NewestImage.Vulnerabilities.LowCount, ShouldEqual, 0)
+			So(images[0].NewestImage.Vulnerabilities.MediumCount, ShouldEqual, 0)
+			So(images[0].NewestImage.Vulnerabilities.HighCount, ShouldEqual, 0)
+			So(images[0].NewestImage.Vulnerabilities.CriticalCount, ShouldEqual, 0)
 			So(images[0].NewestImage.Vulnerabilities.MaxSeverity, ShouldEqual, "")
 
 			query = `{
@@ -741,6 +750,11 @@ func TestRepoListWithNewestImage(t *testing.T) {
 						Digest
 						Vulnerabilities{
 							MaxSeverity
+							UnknownCount
+							LowCount
+							MediumCount
+							HighCount
+							CriticalCount
 							Count
 						}
 					}
@@ -765,12 +779,12 @@ func TestRepoListWithNewestImage(t *testing.T) {
 			So(vulnerabilities, ShouldNotBeNil)
 			t.Logf("Found vulnerability summary %v", vulnerabilities)
 			// Depends on test data, but current tested images contain hundreds
-			So(vulnerabilities.Count, ShouldBeGreaterThan, 1)
-			So(
-				dbTypes.CompareSeverityString(dbTypes.SeverityUnknown.String(), vulnerabilities.MaxSeverity),
-				ShouldBeGreaterThan,
-				0,
-			)
+			So(vulnerabilities.Count, ShouldEqual, 4)
+			So(vulnerabilities.UnknownCount, ShouldEqual, 0)
+			So(vulnerabilities.LowCount, ShouldEqual, 1)
+			So(vulnerabilities.MediumCount, ShouldEqual, 1)
+			So(vulnerabilities.HighCount, ShouldEqual, 1)
+			So(vulnerabilities.CriticalCount, ShouldEqual, 1)
 			So(vulnerabilities.MaxSeverity, ShouldEqual, "CRITICAL")
 		}
 	})
@@ -3178,7 +3192,7 @@ func TestGlobalSearch(t *testing.T) {
 								Layer { Size Digest }
 								HistoryDescription { Author Comment Created CreatedBy EmptyLayer }
 							}
-							Vulnerabilities { Count MaxSeverity }
+							Vulnerabilities { Count UnknownCount LowCount MediumCount HighCount CriticalCount MaxSeverity }
 						}
 						Vendor
 						Vulnerabilities { Count MaxSeverity }
@@ -3199,7 +3213,7 @@ func TestGlobalSearch(t *testing.T) {
 									HistoryDescription { Author Comment Created CreatedBy EmptyLayer }
 								}
 							}
-							Vulnerabilities { Count MaxSeverity }
+							Vulnerabilities { Count UnknownCount LowCount MediumCount HighCount CriticalCount MaxSeverity }
 						}
 					}
 					Layers { Digest Size }
@@ -3256,6 +3270,11 @@ func TestGlobalSearch(t *testing.T) {
 			// No vulnerabilities should be detected since trivy is disabled
 			t.Logf("Found vulnerability summary %v", repoSummary.NewestImage.Vulnerabilities)
 			So(repoSummary.NewestImage.Vulnerabilities.Count, ShouldEqual, 0)
+			So(repoSummary.NewestImage.Vulnerabilities.UnknownCount, ShouldEqual, 0)
+			So(repoSummary.NewestImage.Vulnerabilities.LowCount, ShouldEqual, 0)
+			So(repoSummary.NewestImage.Vulnerabilities.MediumCount, ShouldEqual, 0)
+			So(repoSummary.NewestImage.Vulnerabilities.HighCount, ShouldEqual, 0)
+			So(repoSummary.NewestImage.Vulnerabilities.CriticalCount, ShouldEqual, 0)
 			So(repoSummary.NewestImage.Vulnerabilities.MaxSeverity, ShouldEqual, "")
 		}
 
@@ -3272,7 +3291,7 @@ func TestGlobalSearch(t *testing.T) {
 							HistoryDescription { Author Comment Created CreatedBy EmptyLayer }
 						}
 					}
-					Vulnerabilities { Count MaxSeverity }
+					Vulnerabilities { Count UnknownCount LowCount MediumCount HighCount CriticalCount MaxSeverity }
 				}
 				Repos {
 					Name LastUpdated Size
@@ -3288,7 +3307,7 @@ func TestGlobalSearch(t *testing.T) {
 								HistoryDescription { Author Comment Created CreatedBy EmptyLayer }
 							}
 						}
-						Vulnerabilities { Count MaxSeverity }
+						Vulnerabilities { Count UnknownCount LowCount MediumCount HighCount CriticalCount MaxSeverity }
 					}
 				}
 				Layers { Digest Size }
@@ -3323,6 +3342,11 @@ func TestGlobalSearch(t *testing.T) {
 		// 0 vulnerabilities should be detected since trivy is disabled
 		t.Logf("Found vulnerability summary %v", actualImageSummary.Vulnerabilities)
 		So(actualImageSummary.Vulnerabilities.Count, ShouldEqual, 0)
+		So(actualImageSummary.Vulnerabilities.UnknownCount, ShouldEqual, 0)
+		So(actualImageSummary.Vulnerabilities.LowCount, ShouldEqual, 0)
+		So(actualImageSummary.Vulnerabilities.MediumCount, ShouldEqual, 0)
+		So(actualImageSummary.Vulnerabilities.HighCount, ShouldEqual, 0)
+		So(actualImageSummary.Vulnerabilities.CriticalCount, ShouldEqual, 0)
 		So(actualImageSummary.Vulnerabilities.MaxSeverity, ShouldEqual, "")
 	})
 
@@ -3500,7 +3524,7 @@ func TestGlobalSearch(t *testing.T) {
 								HistoryDescription { Author Comment Created CreatedBy EmptyLayer }
 							}
 						}
-						Vulnerabilities { Count MaxSeverity }
+						Vulnerabilities { Count UnknownCount LowCount MediumCount HighCount CriticalCount MaxSeverity }
 					}
 					Repos {
 						Name LastUpdated Size
@@ -3516,7 +3540,7 @@ func TestGlobalSearch(t *testing.T) {
 									HistoryDescription { Author Comment Created CreatedBy EmptyLayer }
 								}
 							}
-							Vulnerabilities { Count MaxSeverity }
+							Vulnerabilities { Count UnknownCount LowCount MediumCount HighCount CriticalCount MaxSeverity }
 						}
 					}
 					Layers { Digest Size }
@@ -3575,10 +3599,20 @@ func TestGlobalSearch(t *testing.T) {
 			if repoName == "repo1" { //nolint:goconst
 				So(repoSummary.NewestImage.Vulnerabilities.Count, ShouldEqual, 4)
 				// There are 4 vulnerabilities in the data used in tests
+				So(repoSummary.NewestImage.Vulnerabilities.UnknownCount, ShouldEqual, 0)
+				So(repoSummary.NewestImage.Vulnerabilities.LowCount, ShouldEqual, 1)
+				So(repoSummary.NewestImage.Vulnerabilities.MediumCount, ShouldEqual, 1)
+				So(repoSummary.NewestImage.Vulnerabilities.HighCount, ShouldEqual, 1)
+				So(repoSummary.NewestImage.Vulnerabilities.CriticalCount, ShouldEqual, 1)
 				So(repoSummary.NewestImage.Vulnerabilities.MaxSeverity, ShouldEqual, "CRITICAL")
 			} else {
 				So(repoSummary.NewestImage.Vulnerabilities.Count, ShouldEqual, 0)
 				// There are 0 vulnerabilities this data used in tests
+				So(repoSummary.NewestImage.Vulnerabilities.UnknownCount, ShouldEqual, 0)
+				So(repoSummary.NewestImage.Vulnerabilities.LowCount, ShouldEqual, 0)
+				So(repoSummary.NewestImage.Vulnerabilities.MediumCount, ShouldEqual, 0)
+				So(repoSummary.NewestImage.Vulnerabilities.HighCount, ShouldEqual, 0)
+				So(repoSummary.NewestImage.Vulnerabilities.CriticalCount, ShouldEqual, 0)
 				So(repoSummary.NewestImage.Vulnerabilities.MaxSeverity, ShouldEqual, "NONE")
 			}
 		}
@@ -3596,7 +3630,7 @@ func TestGlobalSearch(t *testing.T) {
 							HistoryDescription { Author Comment Created CreatedBy EmptyLayer }
 						}
 					}
-					Vulnerabilities { Count MaxSeverity }
+					Vulnerabilities { Count UnknownCount LowCount MediumCount HighCount CriticalCount  MaxSeverity }
 				}
 				Repos {
 					Name LastUpdated Size
@@ -3612,7 +3646,7 @@ func TestGlobalSearch(t *testing.T) {
 								HistoryDescription { Author Comment Created CreatedBy EmptyLayer }
 							}
 						}
-						Vulnerabilities { Count MaxSeverity }
+						Vulnerabilities { Count UnknownCount LowCount MediumCount HighCount CriticalCount MaxSeverity }
 					}
 				}
 				Layers { Digest Size }
@@ -3647,6 +3681,11 @@ func TestGlobalSearch(t *testing.T) {
 		t.Logf("Found vulnerability summary %v", actualImageSummary.Vulnerabilities)
 		// There are 4 vulnerabilities in the data used in tests
 		So(actualImageSummary.Vulnerabilities.Count, ShouldEqual, 4)
+		So(actualImageSummary.Vulnerabilities.UnknownCount, ShouldEqual, 0)
+		So(actualImageSummary.Vulnerabilities.LowCount, ShouldEqual, 1)
+		So(actualImageSummary.Vulnerabilities.MediumCount, ShouldEqual, 1)
+		So(actualImageSummary.Vulnerabilities.HighCount, ShouldEqual, 1)
+		So(actualImageSummary.Vulnerabilities.CriticalCount, ShouldEqual, 1)
 		So(actualImageSummary.Vulnerabilities.MaxSeverity, ShouldEqual, "CRITICAL")
 	})
 
@@ -5949,7 +5988,7 @@ func TestImageSummary(t *testing.T) {
 						Size
 						Platform { Os Arch }
 						Layers { Digest Size }
-						Vulnerabilities { Count MaxSeverity }
+						Vulnerabilities { Count UnknownCount LowCount MediumCount HighCount CriticalCount MaxSeverity }
 						History {
 							HistoryDescription { Created }
 							Layer { Digest Size }
@@ -5957,7 +5996,7 @@ func TestImageSummary(t *testing.T) {
 					}
 					LastUpdated
 					Size
-					Vulnerabilities { Count MaxSeverity }
+					Vulnerabilities { Count UnknownCount LowCount MediumCount HighCount CriticalCount MaxSeverity }
 					Referrers {MediaType ArtifactType Digest Annotations {Key Value}}
 				}
 			}`
@@ -5976,7 +6015,7 @@ func TestImageSummary(t *testing.T) {
 						Size
 						Platform { Os Arch }
 						Layers { Digest Size }
-						Vulnerabilities { Count MaxSeverity }
+						Vulnerabilities { Count UnknownCount LowCount MediumCount HighCount CriticalCount MaxSeverity }
 						History {
 							HistoryDescription { Created }
 							Layer { Digest Size }
@@ -6089,6 +6128,11 @@ func TestImageSummary(t *testing.T) {
 		So(imgSummary.Manifests[0].History[0].HistoryDescription.Created, ShouldEqual, createdTime)
 		// No vulnerabilities should be detected since trivy is disabled
 		So(imgSummary.Vulnerabilities.Count, ShouldEqual, 0)
+		So(imgSummary.Vulnerabilities.UnknownCount, ShouldEqual, 0)
+		So(imgSummary.Vulnerabilities.LowCount, ShouldEqual, 0)
+		So(imgSummary.Vulnerabilities.MediumCount, ShouldEqual, 0)
+		So(imgSummary.Vulnerabilities.HighCount, ShouldEqual, 0)
+		So(imgSummary.Vulnerabilities.CriticalCount, ShouldEqual, 0)
 		So(imgSummary.Vulnerabilities.MaxSeverity, ShouldEqual, "")
 		So(len(imgSummary.Referrers), ShouldEqual, 1)
 		So(imgSummary.Referrers[0], ShouldResemble, zcommon.Referrer{
@@ -6177,7 +6221,7 @@ func TestImageSummary(t *testing.T) {
 						Size
 						Platform { Os Arch }
 						Layers { Digest Size }
-						Vulnerabilities { Count MaxSeverity }
+						Vulnerabilities { Count UnknownCount LowCount MediumCount HighCount CriticalCount MaxSeverity }
 						History {
 							HistoryDescription { Created }
 							Layer { Digest Size }
@@ -6185,7 +6229,7 @@ func TestImageSummary(t *testing.T) {
 					}
 					LastUpdated
 					Size
-					Vulnerabilities { Count MaxSeverity }
+					Vulnerabilities { Count UnknownCount LowCount MediumCount HighCount CriticalCount MaxSeverity }
 				}
 			}`
 
@@ -6271,6 +6315,11 @@ func TestImageSummary(t *testing.T) {
 		So(len(imgSummary.Manifests[0].History), ShouldEqual, 1)
 		So(imgSummary.Manifests[0].History[0].HistoryDescription.Created, ShouldEqual, createdTime)
 		So(imgSummary.Vulnerabilities.Count, ShouldEqual, 4)
+		So(imgSummary.Vulnerabilities.UnknownCount, ShouldEqual, 0)
+		So(imgSummary.Vulnerabilities.LowCount, ShouldEqual, 1)
+		So(imgSummary.Vulnerabilities.MediumCount, ShouldEqual, 1)
+		So(imgSummary.Vulnerabilities.HighCount, ShouldEqual, 1)
+		So(imgSummary.Vulnerabilities.CriticalCount, ShouldEqual, 1)
 		// There are 0 vulnerabilities this data used in tests
 		So(imgSummary.Vulnerabilities.MaxSeverity, ShouldEqual, "CRITICAL")
 	})
@@ -6800,11 +6849,11 @@ func GlobalSearchGQL(query, baseURL string) *zcommon.GlobalSearchResultResp {
 						Layer { Size Digest }
 						HistoryDescription { Author Comment Created CreatedBy EmptyLayer }
 					}
-					Vulnerabilities {Count MaxSeverity}
+					Vulnerabilities {Count UnknownCount LowCount MediumCount HighCount CriticalCount MaxSeverity}
 					Referrers {MediaType ArtifactType Size Digest Annotations {Key Value}}
 				}
 				Referrers {MediaType ArtifactType Size Digest Annotations {Key Value}}
-				Vulnerabilities { Count MaxSeverity }
+				Vulnerabilities { Count UnknownCount LowCount MediumCount HighCount CriticalCount MaxSeverity }
 				SignatureInfo {Tool IsTrusted Author}
 			}
 			Repos {
@@ -6824,11 +6873,11 @@ func GlobalSearchGQL(query, baseURL string) *zcommon.GlobalSearchResultResp {
 							Layer { Size Digest }
 							HistoryDescription { Author Comment Created CreatedBy EmptyLayer }
 						}
-						Vulnerabilities {Count MaxSeverity}
+						Vulnerabilities {Count UnknownCount LowCount MediumCount HighCount CriticalCount MaxSeverity}
 						Referrers {MediaType ArtifactType Size Digest Annotations {Key Value}}
 					}
 					Referrers {MediaType ArtifactType Size Digest Annotations {Key Value}}
-					Vulnerabilities { Count MaxSeverity }
+					Vulnerabilities { Count UnknownCount LowCount MediumCount HighCount CriticalCount MaxSeverity }
 					SignatureInfo {Tool IsTrusted Author}
 				}
 			}

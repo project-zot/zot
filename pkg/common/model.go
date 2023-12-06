@@ -84,8 +84,13 @@ type Platform struct {
 }
 
 type ImageVulnerabilitySummary struct {
-	MaxSeverity string `json:"maxSeverity"`
-	Count       int    `json:"count"`
+	MaxSeverity   string `json:"maxSeverity"`
+	UnknownCount  int    `json:"unknownCount"`
+	LowCount      int    `json:"lowCount"`
+	MediumCount   int    `json:"mediumCount"`
+	HighCount     int    `json:"highCount"`
+	CriticalCount int    `json:"criticalCount"`
+	Count         int    `json:"count"`
 }
 
 type LayerSummary struct {

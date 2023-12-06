@@ -245,6 +245,14 @@ func SearchCVEForImageGQL(config SearchConfig, image, searchedCveID string) erro
 	var builder strings.Builder
 
 	if config.OutputFormat == defaultOutputFormat || config.OutputFormat == "" {
+		imageCVESummary := cveList.Data.CVEListForImage.Summary
+
+		statsStr := fmt.Sprintf("CRITICAL %d, HIGH %d, MEDIUM %d, LOW %d, UNKNOWN %d, TOTAL %d\n\n",
+			imageCVESummary.CriticalCount, imageCVESummary.HighCount, imageCVESummary.MediumCount,
+			imageCVESummary.LowCount, imageCVESummary.UnknownCount, imageCVESummary.Count)
+
+		fmt.Fprint(config.ResultWriter, statsStr)
+
 		printCVETableHeader(&builder)
 		fmt.Fprint(config.ResultWriter, builder.String())
 	}

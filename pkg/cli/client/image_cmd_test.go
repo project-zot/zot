@@ -379,11 +379,13 @@ func TestOutputFormatGQL(t *testing.T) {
 				`"lastUpdated":"2023-01-01T12:00:00Z","size":"528","platform":{"os":"linux","arch":"amd64",` +
 				`"variant":""},"isSigned":false,"downloadCount":0,"layers":[{"size":"15","digest":` +
 				`"sha256:b8781e8844f5b7bf6f2f8fa343de18ec471c3b278027355bc34c120585ff04f6","score":0}],` +
-				`"history":null,"vulnerabilities":{"maxSeverity":"","count":0},` +
+				`"history":null,"vulnerabilities":{"maxSeverity":"","unknownCount":0,"lowCount":0,"mediumCount":0,` +
+				`"highCount":0,"criticalCount":0,"count":0},` +
 				`"referrers":null,"artifactType":"","signatureInfo":null}],` +
 				`"size":"528","downloadCount":0,"lastUpdated":"2023-01-01T12:00:00Z","description":"","isSigned":false,` +
 				`"licenses":"","labels":"","title":"","source":"","documentation":"","authors":"","vendor":"",` +
-				`"vulnerabilities":{"maxSeverity":"","count":0},"referrers":null,"signatureInfo":null}` + "\n" +
+				`"vulnerabilities":{"maxSeverity":"","unknownCount":0,"lowCount":0,"mediumCount":0,` +
+				`"highCount":0,"criticalCount":0,"count":0},"referrers":null,"signatureInfo":null}` + "\n" +
 				`{"repoName":"repo7","tag":"test:2.0",` +
 				`"digest":"sha256:51e18f508fd7125b0831ff9a22ba74cd79f0b934e77661ff72cfb54896951a06",` +
 				`"mediaType":"application/vnd.oci.image.manifest.v1+json",` +
@@ -392,11 +394,13 @@ func TestOutputFormatGQL(t *testing.T) {
 				`"lastUpdated":"2023-01-01T12:00:00Z","size":"528","platform":{"os":"linux","arch":"amd64",` +
 				`"variant":""},"isSigned":false,"downloadCount":0,"layers":[{"size":"15","digest":` +
 				`"sha256:b8781e8844f5b7bf6f2f8fa343de18ec471c3b278027355bc34c120585ff04f6","score":0}],` +
-				`"history":null,"vulnerabilities":{"maxSeverity":"","count":0},` +
+				`"history":null,"vulnerabilities":{"maxSeverity":"","unknownCount":0,"lowCount":0,"mediumCount":0,` +
+				`"highCount":0,"criticalCount":0,"count":0},` +
 				`"referrers":null,"artifactType":"","signatureInfo":null}],` +
 				`"size":"528","downloadCount":0,"lastUpdated":"2023-01-01T12:00:00Z","description":"","isSigned":false,` +
 				`"licenses":"","labels":"","title":"","source":"","documentation":"","authors":"","vendor":"",` +
-				`"vulnerabilities":{"maxSeverity":"","count":0},"referrers":null,"signatureInfo":null}` + "\n"
+				`"vulnerabilities":{"maxSeverity":"","unknownCount":0,"lowCount":0,"mediumCount":0,` +
+				`"highCount":0,"criticalCount":0,"count":0},"referrers":null,"signatureInfo":null}` + "\n"
 			// Output is supposed to be in json lines format, keep all spaces as is for verification
 			So(buff.String(), ShouldEqual, expectedStr)
 			So(err, ShouldBeNil)
@@ -424,10 +428,13 @@ func TestOutputFormatGQL(t *testing.T) {
 				`issigned: false downloadcount: 0 layers: - size: "15" ` +
 				`digest: sha256:b8781e8844f5b7bf6f2f8fa343de18ec471c3b278027355bc34c120585ff04f6 score: 0 ` +
 				`history: [] vulnerabilities: maxseverity: "" ` +
-				`count: 0 referrers: [] artifacttype: "" signatureinfo: [] ` +
+				`unknowncount: 0 lowcount: 0 mediumcount: 0 highcount: 0 criticalcount: 0 count: 0 ` +
+				`referrers: [] artifacttype: "" signatureinfo: [] ` +
 				`size: "528" downloadcount: 0 lastupdated: 2023-01-01T12:00:00Z description: "" ` +
 				`issigned: false licenses: "" labels: "" title: "" source: "" documentation: "" ` +
-				`authors: "" vendor: "" vulnerabilities: maxseverity: "" count: 0 referrers: [] signatureinfo: [] ` +
+				`authors: "" vendor: "" vulnerabilities: maxseverity: "" ` +
+				`unknowncount: 0 lowcount: 0 mediumcount: 0 highcount: 0 criticalcount: 0 count: 0 ` +
+				`referrers: [] signatureinfo: [] ` +
 				`--- reponame: repo7 tag: test:2.0 ` +
 				`digest: sha256:51e18f508fd7125b0831ff9a22ba74cd79f0b934e77661ff72cfb54896951a06 ` +
 				`mediatype: application/vnd.oci.image.manifest.v1+json manifests: - ` +
@@ -437,10 +444,13 @@ func TestOutputFormatGQL(t *testing.T) {
 				`issigned: false downloadcount: 0 layers: - size: "15" ` +
 				`digest: sha256:b8781e8844f5b7bf6f2f8fa343de18ec471c3b278027355bc34c120585ff04f6 score: 0 ` +
 				`history: [] vulnerabilities: maxseverity: "" ` +
-				`count: 0 referrers: [] artifacttype: "" signatureinfo: [] ` +
+				`unknowncount: 0 lowcount: 0 mediumcount: 0 highcount: 0 criticalcount: 0 count: 0 ` +
+				`referrers: [] artifacttype: "" signatureinfo: [] ` +
 				`size: "528" downloadcount: 0 lastupdated: 2023-01-01T12:00:00Z description: "" ` +
 				`issigned: false licenses: "" labels: "" title: "" source: "" documentation: "" ` +
-				`authors: "" vendor: "" vulnerabilities: maxseverity: "" count: 0 referrers: [] signatureinfo: []`
+				`authors: "" vendor: "" vulnerabilities: maxseverity: "" ` +
+				`unknowncount: 0 lowcount: 0 mediumcount: 0 highcount: 0 criticalcount: 0 count: 0 ` +
+				`referrers: [] signatureinfo: []`
 			So(strings.TrimSpace(str), ShouldEqual, expectedStr)
 			So(err, ShouldBeNil)
 		})
@@ -467,11 +477,13 @@ func TestOutputFormatGQL(t *testing.T) {
 				`issigned: false downloadcount: 0 layers: - size: "15" ` +
 				`digest: sha256:b8781e8844f5b7bf6f2f8fa343de18ec471c3b278027355bc34c120585ff04f6 score: 0 ` +
 				`history: [] vulnerabilities: maxseverity: "" ` +
-				`count: 0 referrers: [] artifacttype: "" signatureinfo: [] ` +
+				`unknowncount: 0 lowcount: 0 mediumcount: 0 highcount: 0 criticalcount: 0 count: 0 ` +
+				`referrers: [] artifacttype: "" signatureinfo: [] ` +
 				`size: "528" downloadcount: 0 lastupdated: 2023-01-01T12:00:00Z description: "" ` +
 				`issigned: false licenses: "" labels: "" title: "" source: "" documentation: "" ` +
 				`authors: "" vendor: "" vulnerabilities: maxseverity: "" ` +
-				`count: 0 referrers: [] signatureinfo: [] ` +
+				`unknowncount: 0 lowcount: 0 mediumcount: 0 highcount: 0 criticalcount: 0 count: 0 ` +
+				`referrers: [] signatureinfo: [] ` +
 				`--- reponame: repo7 tag: test:2.0 ` +
 				`digest: sha256:51e18f508fd7125b0831ff9a22ba74cd79f0b934e77661ff72cfb54896951a06 ` +
 				`mediatype: application/vnd.oci.image.manifest.v1+json manifests: - ` +
@@ -481,10 +493,13 @@ func TestOutputFormatGQL(t *testing.T) {
 				`issigned: false downloadcount: 0 layers: - size: "15" ` +
 				`digest: sha256:b8781e8844f5b7bf6f2f8fa343de18ec471c3b278027355bc34c120585ff04f6 score: 0 ` +
 				`history: [] vulnerabilities: maxseverity: "" ` +
-				`count: 0 referrers: [] artifacttype: "" signatureinfo: [] ` +
+				`unknowncount: 0 lowcount: 0 mediumcount: 0 highcount: 0 criticalcount: 0 count: 0 ` +
+				`referrers: [] artifacttype: "" signatureinfo: [] ` +
 				`size: "528" downloadcount: 0 lastupdated: 2023-01-01T12:00:00Z description: "" ` +
 				`issigned: false licenses: "" labels: "" title: "" source: "" documentation: "" ` +
-				`authors: "" vendor: "" vulnerabilities: maxseverity: "" count: 0 referrers: [] signatureinfo: []`
+				`authors: "" vendor: "" vulnerabilities: maxseverity: "" ` +
+				`unknowncount: 0 lowcount: 0 mediumcount: 0 highcount: 0 criticalcount: 0 count: 0 ` +
+				`referrers: [] signatureinfo: []`
 			So(strings.TrimSpace(str), ShouldEqual, expectedStr)
 			So(err, ShouldBeNil)
 		})

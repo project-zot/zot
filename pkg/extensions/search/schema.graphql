@@ -10,6 +10,7 @@ A timestamp
 """
 scalar Time
 
+
 """
 Contains the tag of the image and a list of CVEs
 """
@@ -22,6 +23,10 @@ type CVEResultForImage {
     List of CVE objects which affect this specific image:tag
     """
     CVEList: [CVE]
+    """
+    Summary of the findings for this image
+    """
+    Summary: ImageVulnerabilitySummary
     """
     The CVE pagination information, see PageInfo object for more details
     """
@@ -272,6 +277,26 @@ type ImageVulnerabilitySummary {
     Count of all CVEs found in this image
     """
     Count: Int
+    """
+    Coresponds to CVSS 3 score NONE
+    """
+    UnknownCount: Int
+    """
+    Coresponds to CVSS 3 score LOW
+    """
+    LowCount: Int
+    """
+    Coresponds to CVSS 3 score MEDIUM
+    """
+    MediumCount: Int
+    """
+    Coresponds to CVSS 3 score HIGH
+    """
+    HighCount: Int
+    """
+    Coresponds to CVSS 3 score CRITICAL
+    """
+    CriticalCount: Int
 }
 
 """

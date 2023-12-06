@@ -346,6 +346,15 @@ func TestSearchCVEForImageGQL(t *testing.T) {
 									},
 								},
 							},
+							Summary: common.ImageVulnerabilitySummary{
+								Count:         1,
+								UnknownCount:  0,
+								LowCount:      0,
+								MediumCount:   0,
+								HighCount:     1,
+								CriticalCount: 0,
+								MaxSeverity:   "HIGH",
+							},
 						},
 					},
 				}, nil
@@ -357,6 +366,7 @@ func TestSearchCVEForImageGQL(t *testing.T) {
 		space := regexp.MustCompile(`\s+`)
 		str := space.ReplaceAllString(buff.String(), " ")
 		actual := strings.TrimSpace(str)
+		So(actual, ShouldContainSubstring, "CRITICAL 0, HIGH 1, MEDIUM 0, LOW 0, UNKNOWN 0, TOTAL 1")
 		So(actual, ShouldContainSubstring, "dummyCVEID HIGH Title of that CVE")
 	})
 

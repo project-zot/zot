@@ -384,11 +384,13 @@ func TestOutputFormat(t *testing.T) {
 			`"lastUpdated":"0001-01-01T00:00:00Z","size":"123445","platform":{"os":"os","arch":"arch",`+
 			`"variant":""},"isSigned":false,"downloadCount":0,`+
 			`"layers":[{"size":"","digest":"sha256:c122a146f0d02349be211bb95cc2530f4a5793f96edbdfa00860f741e5d8c0e6",`+
-			`"score":0}],"history":null,"vulnerabilities":{"maxSeverity":"","count":0},`+
+			`"score":0}],"history":null,"vulnerabilities":{"maxSeverity":"","unknownCount":0,"lowCount":0,`+
+			`"mediumCount":0,"highCount":0,"criticalCount":0,"count":0},`+
 			`"referrers":null,"artifactType":"","signatureInfo":null}],"size":"123445",`+
 			`"downloadCount":0,"lastUpdated":"0001-01-01T00:00:00Z","description":"","isSigned":false,"licenses":"",`+
 			`"labels":"","title":"","source":"","documentation":"","authors":"","vendor":"",`+
-			`"vulnerabilities":{"maxSeverity":"","count":0},"referrers":null,"signatureInfo":null}`+"\n")
+			`"vulnerabilities":{"maxSeverity":"","unknownCount":0,"lowCount":0,"mediumCount":0,"highCount":0,`+
+			`"criticalCount":0,"count":0},"referrers":null,"signatureInfo":null}`+"\n")
 		So(err, ShouldBeNil)
 	})
 
@@ -415,10 +417,13 @@ func TestOutputFormat(t *testing.T) {
 				`lastupdated: 0001-01-01T00:00:00Z size: "123445" platform: os: os arch: arch variant: "" `+
 				`issigned: false downloadcount: 0 layers: - size: "" `+
 				`digest: sha256:c122a146f0d02349be211bb95cc2530f4a5793f96edbdfa00860f741e5d8c0e6 score: 0 `+
-				`history: [] vulnerabilities: maxseverity: "" count: 0 referrers: [] artifacttype: "" `+
+				`history: [] vulnerabilities: maxseverity: "" `+
+				`unknowncount: 0 lowcount: 0 mediumcount: 0 highcount: 0 criticalcount: 0 count: 0 `+
+				`referrers: [] artifacttype: "" `+
 				`signatureinfo: [] size: "123445" downloadcount: 0 `+
 				`lastupdated: 0001-01-01T00:00:00Z description: "" issigned: false licenses: "" labels: "" `+
 				`title: "" source: "" documentation: "" authors: "" vendor: "" vulnerabilities: maxseverity: "" `+
+				`unknowncount: 0 lowcount: 0 mediumcount: 0 highcount: 0 criticalcount: 0 `+
 				`count: 0 referrers: [] signatureinfo: []`,
 		)
 		So(err, ShouldBeNil)
@@ -449,11 +454,13 @@ func TestOutputFormat(t *testing.T) {
 					`lastupdated: 0001-01-01T00:00:00Z size: "123445" platform: os: os arch: arch variant: "" `+
 					`issigned: false downloadcount: 0 layers: - size: "" `+
 					`digest: sha256:c122a146f0d02349be211bb95cc2530f4a5793f96edbdfa00860f741e5d8c0e6 score: 0 `+
-					`history: [] vulnerabilities: maxseverity: "" count: 0 referrers: [] artifacttype: "" `+
+					`history: [] vulnerabilities: maxseverity: "" unknowncount: 0 lowcount: 0 mediumcount: 0 `+
+					`highcount: 0 criticalcount: 0 count: 0 referrers: [] artifacttype: "" `+
 					`signatureinfo: [] size: "123445" downloadcount: 0 `+
 					`lastupdated: 0001-01-01T00:00:00Z description: "" issigned: false licenses: "" labels: "" `+
-					`title: "" source: "" documentation: "" authors: "" vendor: "" vulnerabilities: maxseverity: `+
-					`"" count: 0 referrers: [] signatureinfo: []`,
+					`title: "" source: "" documentation: "" authors: "" vendor: "" vulnerabilities: maxseverity: "" `+
+					`unknowncount: 0 lowcount: 0 mediumcount: 0 highcount: 0 criticalcount: 0 `+
+					`count: 0 referrers: [] signatureinfo: []`,
 			)
 			So(err, ShouldBeNil)
 		})
@@ -783,6 +790,7 @@ func TestImagesCommandGQL(t *testing.T) {
 			space := regexp.MustCompile(`\s+`)
 			str := space.ReplaceAllString(buff.String(), " ")
 			actual := strings.TrimSpace(str)
+			So(actual, ShouldContainSubstring, "CRITICAL 0, HIGH 1, MEDIUM 0, LOW 0, UNKNOWN 0, TOTAL 1")
 			So(actual, ShouldContainSubstring, "dummyCVEID HIGH Title of that CVE")
 		})
 
@@ -1341,6 +1349,15 @@ func (service mockService) getCveByImageGQL(ctx context.Context, config SearchCo
 						},
 					},
 				},
+			},
+			Summary: common.ImageVulnerabilitySummary{
+				Count:         1,
+				UnknownCount:  0,
+				LowCount:      0,
+				MediumCount:   0,
+				HighCount:     1,
+				CriticalCount: 0,
+				MaxSeverity:   "HIGH",
 			},
 		},
 	}

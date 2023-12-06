@@ -88,6 +88,11 @@ func TestCVEConvert(t *testing.T) {
 
 			So(imageSummary.Vulnerabilities, ShouldNotBeNil)
 			So(*imageSummary.Vulnerabilities.Count, ShouldEqual, 0)
+			So(*imageSummary.Vulnerabilities.UnknownCount, ShouldEqual, 0)
+			So(*imageSummary.Vulnerabilities.LowCount, ShouldEqual, 0)
+			So(*imageSummary.Vulnerabilities.MediumCount, ShouldEqual, 0)
+			So(*imageSummary.Vulnerabilities.HighCount, ShouldEqual, 0)
+			So(*imageSummary.Vulnerabilities.CriticalCount, ShouldEqual, 0)
 			So(*imageSummary.Vulnerabilities.MaxSeverity, ShouldEqual, "")
 			So(graphql.GetErrors(ctx), ShouldBeNil)
 
@@ -102,20 +107,35 @@ func TestCVEConvert(t *testing.T) {
 					GetCVESummaryForImageMediaFn: func(ctx context.Context, repo string, digest, mediaType string,
 					) (cvemodel.ImageCVESummary, error) {
 						return cvemodel.ImageCVESummary{
-							Count:       1,
-							MaxSeverity: "HIGH",
+							Count:         30,
+							UnknownCount:  1,
+							LowCount:      2,
+							MediumCount:   3,
+							HighCount:     10,
+							CriticalCount: 14,
+							MaxSeverity:   "HIGH",
 						}, nil
 					},
 				},
 			)
 
 			So(imageSummary.Vulnerabilities, ShouldNotBeNil)
-			So(*imageSummary.Vulnerabilities.Count, ShouldEqual, 1)
+			So(*imageSummary.Vulnerabilities.Count, ShouldEqual, 30)
+			So(*imageSummary.Vulnerabilities.UnknownCount, ShouldEqual, 1)
+			So(*imageSummary.Vulnerabilities.LowCount, ShouldEqual, 2)
+			So(*imageSummary.Vulnerabilities.MediumCount, ShouldEqual, 3)
+			So(*imageSummary.Vulnerabilities.HighCount, ShouldEqual, 10)
+			So(*imageSummary.Vulnerabilities.CriticalCount, ShouldEqual, 14)
 			So(*imageSummary.Vulnerabilities.MaxSeverity, ShouldEqual, "HIGH")
 			So(graphql.GetErrors(ctx), ShouldBeNil)
 			So(len(imageSummary.Manifests), ShouldEqual, 1)
 			So(imageSummary.Manifests[0].Vulnerabilities, ShouldNotBeNil)
-			So(*imageSummary.Manifests[0].Vulnerabilities.Count, ShouldEqual, 1)
+			So(*imageSummary.Manifests[0].Vulnerabilities.Count, ShouldEqual, 30)
+			So(*imageSummary.Manifests[0].Vulnerabilities.UnknownCount, ShouldEqual, 1)
+			So(*imageSummary.Manifests[0].Vulnerabilities.LowCount, ShouldEqual, 2)
+			So(*imageSummary.Manifests[0].Vulnerabilities.MediumCount, ShouldEqual, 3)
+			So(*imageSummary.Manifests[0].Vulnerabilities.HighCount, ShouldEqual, 10)
+			So(*imageSummary.Manifests[0].Vulnerabilities.CriticalCount, ShouldEqual, 14)
 			So(*imageSummary.Manifests[0].Vulnerabilities.MaxSeverity, ShouldEqual, "HIGH")
 
 			imageSummary.Vulnerabilities = nil
@@ -152,8 +172,13 @@ func TestCVEConvert(t *testing.T) {
 					GetCVESummaryForImageMediaFn: func(ctx context.Context, repo string, digest, mediaType string,
 					) (cvemodel.ImageCVESummary, error) {
 						return cvemodel.ImageCVESummary{
-							Count:       1,
-							MaxSeverity: "HIGH",
+							Count:         30,
+							UnknownCount:  1,
+							LowCount:      2,
+							MediumCount:   3,
+							HighCount:     10,
+							CriticalCount: 14,
+							MaxSeverity:   "HIGH",
 						}, nil
 					},
 				},
@@ -182,15 +207,25 @@ func TestCVEConvert(t *testing.T) {
 					GetCVESummaryForImageMediaFn: func(ctx context.Context, repo string, digest, mediaType string,
 					) (cvemodel.ImageCVESummary, error) {
 						return cvemodel.ImageCVESummary{
-							Count:       1,
-							MaxSeverity: "HIGH",
+							Count:         30,
+							UnknownCount:  1,
+							LowCount:      2,
+							MediumCount:   3,
+							HighCount:     10,
+							CriticalCount: 14,
+							MaxSeverity:   "HIGH",
 						}, nil
 					},
 				},
 			)
 
 			So(repoSummary.NewestImage.Vulnerabilities, ShouldNotBeNil)
-			So(*repoSummary.NewestImage.Vulnerabilities.Count, ShouldEqual, 1)
+			So(*repoSummary.NewestImage.Vulnerabilities.Count, ShouldEqual, 30)
+			So(*repoSummary.NewestImage.Vulnerabilities.UnknownCount, ShouldEqual, 1)
+			So(*repoSummary.NewestImage.Vulnerabilities.LowCount, ShouldEqual, 2)
+			So(*repoSummary.NewestImage.Vulnerabilities.MediumCount, ShouldEqual, 3)
+			So(*repoSummary.NewestImage.Vulnerabilities.HighCount, ShouldEqual, 10)
+			So(*repoSummary.NewestImage.Vulnerabilities.CriticalCount, ShouldEqual, 14)
 			So(*repoSummary.NewestImage.Vulnerabilities.MaxSeverity, ShouldEqual, "HIGH")
 			So(graphql.GetErrors(ctx), ShouldBeNil)
 		})
@@ -251,15 +286,25 @@ func TestCVEConvert(t *testing.T) {
 					GetCVESummaryForImageMediaFn: func(ctx context.Context, repo string, digest, mediaType string,
 					) (cvemodel.ImageCVESummary, error) {
 						return cvemodel.ImageCVESummary{
-							Count:       1,
-							MaxSeverity: "HIGH",
+							Count:         30,
+							UnknownCount:  1,
+							LowCount:      2,
+							MediumCount:   3,
+							HighCount:     10,
+							CriticalCount: 14,
+							MaxSeverity:   "HIGH",
 						}, nil
 					},
 				},
 			)
 
 			So(manifestSummary.Vulnerabilities, ShouldNotBeNil)
-			So(*manifestSummary.Vulnerabilities.Count, ShouldEqual, 1)
+			So(*manifestSummary.Vulnerabilities.Count, ShouldEqual, 30)
+			So(*manifestSummary.Vulnerabilities.UnknownCount, ShouldEqual, 1)
+			So(*manifestSummary.Vulnerabilities.LowCount, ShouldEqual, 2)
+			So(*manifestSummary.Vulnerabilities.MediumCount, ShouldEqual, 3)
+			So(*manifestSummary.Vulnerabilities.HighCount, ShouldEqual, 10)
+			So(*manifestSummary.Vulnerabilities.CriticalCount, ShouldEqual, 14)
 			So(*manifestSummary.Vulnerabilities.MaxSeverity, ShouldEqual, "HIGH")
 
 			manifestSummary.Vulnerabilities = nil

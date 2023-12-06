@@ -62,6 +62,7 @@ type ComplexityRoot struct {
 	CVEResultForImage struct {
 		CVEList func(childComplexity int) int
 		Page    func(childComplexity int) int
+		Summary func(childComplexity int) int
 		Tag     func(childComplexity int) int
 	}
 
@@ -104,8 +105,13 @@ type ComplexityRoot struct {
 	}
 
 	ImageVulnerabilitySummary struct {
-		Count       func(childComplexity int) int
-		MaxSeverity func(childComplexity int) int
+		Count         func(childComplexity int) int
+		CriticalCount func(childComplexity int) int
+		HighCount     func(childComplexity int) int
+		LowCount      func(childComplexity int) int
+		MaxSeverity   func(childComplexity int) int
+		MediumCount   func(childComplexity int) int
+		UnknownCount  func(childComplexity int) int
 	}
 
 	LayerHistory struct {
@@ -316,6 +322,13 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 		}
 
 		return e.complexity.CVEResultForImage.Page(childComplexity), true
+
+	case "CVEResultForImage.Summary":
+		if e.complexity.CVEResultForImage.Summary == nil {
+			break
+		}
+
+		return e.complexity.CVEResultForImage.Summary(childComplexity), true
 
 	case "CVEResultForImage.Tag":
 		if e.complexity.CVEResultForImage.Tag == nil {
@@ -534,12 +547,47 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 
 		return e.complexity.ImageVulnerabilitySummary.Count(childComplexity), true
 
+	case "ImageVulnerabilitySummary.CriticalCount":
+		if e.complexity.ImageVulnerabilitySummary.CriticalCount == nil {
+			break
+		}
+
+		return e.complexity.ImageVulnerabilitySummary.CriticalCount(childComplexity), true
+
+	case "ImageVulnerabilitySummary.HighCount":
+		if e.complexity.ImageVulnerabilitySummary.HighCount == nil {
+			break
+		}
+
+		return e.complexity.ImageVulnerabilitySummary.HighCount(childComplexity), true
+
+	case "ImageVulnerabilitySummary.LowCount":
+		if e.complexity.ImageVulnerabilitySummary.LowCount == nil {
+			break
+		}
+
+		return e.complexity.ImageVulnerabilitySummary.LowCount(childComplexity), true
+
 	case "ImageVulnerabilitySummary.MaxSeverity":
 		if e.complexity.ImageVulnerabilitySummary.MaxSeverity == nil {
 			break
 		}
 
 		return e.complexity.ImageVulnerabilitySummary.MaxSeverity(childComplexity), true
+
+	case "ImageVulnerabilitySummary.MediumCount":
+		if e.complexity.ImageVulnerabilitySummary.MediumCount == nil {
+			break
+		}
+
+		return e.complexity.ImageVulnerabilitySummary.MediumCount(childComplexity), true
+
+	case "ImageVulnerabilitySummary.UnknownCount":
+		if e.complexity.ImageVulnerabilitySummary.UnknownCount == nil {
+			break
+		}
+
+		return e.complexity.ImageVulnerabilitySummary.UnknownCount(childComplexity), true
 
 	case "LayerHistory.HistoryDescription":
 		if e.complexity.LayerHistory.HistoryDescription == nil {
@@ -1156,6 +1204,7 @@ A timestamp
 """
 scalar Time
 
+
 """
 Contains the tag of the image and a list of CVEs
 """
@@ -1168,6 +1217,10 @@ type CVEResultForImage {
     List of CVE objects which affect this specific image:tag
     """
     CVEList: [CVE]
+    """
+    Summary of the findings for this image
+    """
+    Summary: ImageVulnerabilitySummary
     """
     The CVE pagination information, see PageInfo object for more details
     """
@@ -1418,6 +1471,26 @@ type ImageVulnerabilitySummary {
     Count of all CVEs found in this image
     """
     Count: Int
+    """
+    Coresponds to CVSS 3 score NONE
+    """
+    UnknownCount: Int
+    """
+    Coresponds to CVSS 3 score LOW
+    """
+    LowCount: Int
+    """
+    Coresponds to CVSS 3 score MEDIUM
+    """
+    MediumCount: Int
+    """
+    Coresponds to CVSS 3 score HIGH
+    """
+    HighCount: Int
+    """
+    Coresponds to CVSS 3 score CRITICAL
+    """
+    CriticalCount: Int
 }
 
 """
@@ -2749,6 +2822,63 @@ func (ec *executionContext) fieldContext_CVEResultForImage_CVEList(ctx context.C
 	return fc, nil
 }
 
+func (ec *executionContext) _CVEResultForImage_Summary(ctx context.Context, field graphql.CollectedField, obj *CVEResultForImage) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_CVEResultForImage_Summary(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.Summary, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		return graphql.Null
+	}
+	res := resTmp.(*ImageVulnerabilitySummary)
+	fc.Result = res
+	return ec.marshalOImageVulnerabilitySummary2ᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐImageVulnerabilitySummary(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_CVEResultForImage_Summary(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "CVEResultForImage",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "MaxSeverity":
+				return ec.fieldContext_ImageVulnerabilitySummary_MaxSeverity(ctx, field)
+			case "Count":
+				return ec.fieldContext_ImageVulnerabilitySummary_Count(ctx, field)
+			case "UnknownCount":
+				return ec.fieldContext_ImageVulnerabilitySummary_UnknownCount(ctx, field)
+			case "LowCount":
+				return ec.fieldContext_ImageVulnerabilitySummary_LowCount(ctx, field)
+			case "MediumCount":
+				return ec.fieldContext_ImageVulnerabilitySummary_MediumCount(ctx, field)
+			case "HighCount":
+				return ec.fieldContext_ImageVulnerabilitySummary_HighCount(ctx, field)
+			case "CriticalCount":
+				return ec.fieldContext_ImageVulnerabilitySummary_CriticalCount(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type ImageVulnerabilitySummary", field.Name)
+		},
+	}
+	return fc, nil
+}
+
 func (ec *executionContext) _CVEResultForImage_Page(ctx context.Context, field graphql.CollectedField, obj *CVEResultForImage) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_CVEResultForImage_Page(ctx, field)
 	if err != nil {
@@ -4057,6 +4187,16 @@ func (ec *executionContext) fieldContext_ImageSummary_Vulnerabilities(ctx contex
 				return ec.fieldContext_ImageVulnerabilitySummary_MaxSeverity(ctx, field)
 			case "Count":
 				return ec.fieldContext_ImageVulnerabilitySummary_Count(ctx, field)
+			case "UnknownCount":
+				return ec.fieldContext_ImageVulnerabilitySummary_UnknownCount(ctx, field)
+			case "LowCount":
+				return ec.fieldContext_ImageVulnerabilitySummary_LowCount(ctx, field)
+			case "MediumCount":
+				return ec.fieldContext_ImageVulnerabilitySummary_MediumCount(ctx, field)
+			case "HighCount":
+				return ec.fieldContext_ImageVulnerabilitySummary_HighCount(ctx, field)
+			case "CriticalCount":
+				return ec.fieldContext_ImageVulnerabilitySummary_CriticalCount(ctx, field)
 			}
 			return nil, fmt.Errorf("no field named %q was found under type ImageVulnerabilitySummary", field.Name)
 		},
@@ -4187,6 +4327,211 @@ func (ec *executionContext) _ImageVulnerabilitySummary_Count(ctx context.Context
 }
 
 func (ec *executionContext) fieldContext_ImageVulnerabilitySummary_Count(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "ImageVulnerabilitySummary",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Int does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _ImageVulnerabilitySummary_UnknownCount(ctx context.Context, field graphql.CollectedField, obj *ImageVulnerabilitySummary) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_ImageVulnerabilitySummary_UnknownCount(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.UnknownCount, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		return graphql.Null
+	}
+	res := resTmp.(*int)
+	fc.Result = res
+	return ec.marshalOInt2ᚖint(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_ImageVulnerabilitySummary_UnknownCount(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "ImageVulnerabilitySummary",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Int does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _ImageVulnerabilitySummary_LowCount(ctx context.Context, field graphql.CollectedField, obj *ImageVulnerabilitySummary) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_ImageVulnerabilitySummary_LowCount(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.LowCount, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		return graphql.Null
+	}
+	res := resTmp.(*int)
+	fc.Result = res
+	return ec.marshalOInt2ᚖint(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_ImageVulnerabilitySummary_LowCount(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "ImageVulnerabilitySummary",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Int does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _ImageVulnerabilitySummary_MediumCount(ctx context.Context, field graphql.CollectedField, obj *ImageVulnerabilitySummary) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_ImageVulnerabilitySummary_MediumCount(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.MediumCount, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		return graphql.Null
+	}
+	res := resTmp.(*int)
+	fc.Result = res
+	return ec.marshalOInt2ᚖint(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_ImageVulnerabilitySummary_MediumCount(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "ImageVulnerabilitySummary",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Int does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _ImageVulnerabilitySummary_HighCount(ctx context.Context, field graphql.CollectedField, obj *ImageVulnerabilitySummary) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_ImageVulnerabilitySummary_HighCount(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.HighCount, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		return graphql.Null
+	}
+	res := resTmp.(*int)
+	fc.Result = res
+	return ec.marshalOInt2ᚖint(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_ImageVulnerabilitySummary_HighCount(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "ImageVulnerabilitySummary",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Int does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _ImageVulnerabilitySummary_CriticalCount(ctx context.Context, field graphql.CollectedField, obj *ImageVulnerabilitySummary) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_ImageVulnerabilitySummary_CriticalCount(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.CriticalCount, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		return graphql.Null
+	}
+	res := resTmp.(*int)
+	fc.Result = res
+	return ec.marshalOInt2ᚖint(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_ImageVulnerabilitySummary_CriticalCount(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
 	fc = &graphql.FieldContext{
 		Object:     "ImageVulnerabilitySummary",
 		Field:      field,
@@ -4857,6 +5202,16 @@ func (ec *executionContext) fieldContext_ManifestSummary_Vulnerabilities(ctx con
 				return ec.fieldContext_ImageVulnerabilitySummary_MaxSeverity(ctx, field)
 			case "Count":
 				return ec.fieldContext_ImageVulnerabilitySummary_Count(ctx, field)
+			case "UnknownCount":
+				return ec.fieldContext_ImageVulnerabilitySummary_UnknownCount(ctx, field)
+			case "LowCount":
+				return ec.fieldContext_ImageVulnerabilitySummary_LowCount(ctx, field)
+			case "MediumCount":
+				return ec.fieldContext_ImageVulnerabilitySummary_MediumCount(ctx, field)
+			case "HighCount":
+				return ec.fieldContext_ImageVulnerabilitySummary_HighCount(ctx, field)
+			case "CriticalCount":
+				return ec.fieldContext_ImageVulnerabilitySummary_CriticalCount(ctx, field)
 			}
 			return nil, fmt.Errorf("no field named %q was found under type ImageVulnerabilitySummary", field.Name)
 		},
@@ -5542,6 +5897,8 @@ func (ec *executionContext) fieldContext_Query_CVEListForImage(ctx context.Conte
 				return ec.fieldContext_CVEResultForImage_Tag(ctx, field)
 			case "CVEList":
 				return ec.fieldContext_CVEResultForImage_CVEList(ctx, field)
+			case "Summary":
+				return ec.fieldContext_CVEResultForImage_Summary(ctx, field)
 			case "Page":
 				return ec.fieldContext_CVEResultForImage_Page(ctx, field)
 			}
@@ -9490,6 +9847,8 @@ func (ec *executionContext) _CVEResultForImage(ctx context.Context, sel ast.Sele
 			out.Values[i] = ec._CVEResultForImage_Tag(ctx, field, obj)
 		case "CVEList":
 			out.Values[i] = ec._CVEResultForImage_CVEList(ctx, field, obj)
+		case "Summary":
+			out.Values[i] = ec._CVEResultForImage_Summary(ctx, field, obj)
 		case "Page":
 			out.Values[i] = ec._CVEResultForImage_Page(ctx, field, obj)
 		default:
@@ -9690,6 +10049,16 @@ func (ec *executionContext) _ImageVulnerabilitySummary(ctx context.Context, sel 
 			out.Values[i] = ec._ImageVulnerabilitySummary_MaxSeverity(ctx, field, obj)
 		case "Count":
 			out.Values[i] = ec._ImageVulnerabilitySummary_Count(ctx, field, obj)
+		case "UnknownCount":
+			out.Values[i] = ec._ImageVulnerabilitySummary_UnknownCount(ctx, field, obj)
+		case "LowCount":
+			out.Values[i] = ec._ImageVulnerabilitySummary_LowCount(ctx, field, obj)
+		case "MediumCount":
+			out.Values[i] = ec._ImageVulnerabilitySummary_MediumCount(ctx, field, obj)
+		case "HighCount":
+			out.Values[i] = ec._ImageVulnerabilitySummary_HighCount(ctx, field, obj)
+		case "CriticalCount":
+			out.Values[i] = ec._ImageVulnerabilitySummary_CriticalCount(ctx, field, obj)
 		default:
 			panic("unknown field " + strconv.Quote(field.Name))
 		}

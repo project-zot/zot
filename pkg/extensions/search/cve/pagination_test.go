@@ -140,22 +140,36 @@ func TestCVEPagination(t *testing.T) {
 		Convey("Page", func() {
 			Convey("defaults", func() {
 				// By default expect unlimitted results sorted by severity
-				cves, pageInfo, err := cveInfo.GetCVEListForImage(ctx, "repo1", "0.1.0", "", cvemodel.PageInput{})
+				cves, cveSummary, pageInfo, err := cveInfo.GetCVEListForImage(ctx, "repo1", "0.1.0", "", cvemodel.PageInput{})
 				So(err, ShouldBeNil)
 				So(len(cves), ShouldEqual, 5)
 				So(pageInfo.ItemCount, ShouldEqual, 5)
 				So(pageInfo.TotalCount, ShouldEqual, 5)
+				So(cveSummary.Count, ShouldEqual, 5)
+				So(cveSummary.UnknownCount, ShouldEqual, 1)
+				So(cveSummary.LowCount, ShouldEqual, 1)
+				So(cveSummary.MediumCount, ShouldEqual, 1)
+				So(cveSummary.HighCount, ShouldEqual, 1)
+				So(cveSummary.CriticalCount, ShouldEqual, 1)
+				So(cveSummary.MaxSeverity, ShouldEqual, "CRITICAL")
 				previousSeverity := 4
 				for _, cve := range cves {
 					So(severityToInt[cve.Severity], ShouldBeLessThanOrEqualTo, previousSeverity)
 					previousSeverity = severityToInt[cve.Severity]
 				}
 
-				cves, pageInfo, err = cveInfo.GetCVEListForImage(ctx, "repo1", "1.0.0", "", cvemodel.PageInput{})
+				cves, cveSummary, pageInfo, err = cveInfo.GetCVEListForImage(ctx, "repo1", "1.0.0", "", cvemodel.PageInput{})
 				So(err, ShouldBeNil)
 				So(len(cves), ShouldEqual, 30)
 				So(pageInfo.ItemCount, ShouldEqual, 30)
 				So(pageInfo.TotalCount, ShouldEqual, 30)
+				So(cveSummary.Count, ShouldEqual, 30)
+				So(cveSummary.UnknownCount, ShouldEqual, 6)
+				So(cveSummary.LowCount, ShouldEqual, 6)
+				So(cveSummary.MediumCount, ShouldEqual, 6)
+				So(cveSummary.HighCount, ShouldEqual, 6)
+				So(cveSummary.CriticalCount, ShouldEqual, 6)
+				So(cveSummary.MaxSeverity, ShouldEqual, "CRITICAL")
 				previousSeverity = 4
 				for _, cve := range cves {
 					So(severityToInt[cve.Severity], ShouldBeLessThanOrEqualTo, previousSeverity)
@@ -169,44 +183,72 @@ func TestCVEPagination(t *testing.T) {
 					cveIds = append(cveIds, fmt.Sprintf("CVE%d", i))
 				}
 
-				cves, pageInfo, err := cveInfo.GetCVEListForImage(ctx, "repo1", "0.1.0", "",
+				cves, cveSummary, pageInfo, err := cveInfo.GetCVEListForImage(ctx, "repo1", "0.1.0", "",
 					cvemodel.PageInput{SortBy: cveinfo.AlphabeticAsc})
 				So(err, ShouldBeNil)
 				So(len(cves), ShouldEqual, 5)
 				So(pageInfo.ItemCount, ShouldEqual, 5)
 				So(pageInfo.TotalCount, ShouldEqual, 5)
+				So(cveSummary.Count, ShouldEqual, 5)
+				So(cveSummary.UnknownCount, ShouldEqual, 1)
+				So(cveSummary.LowCount, ShouldEqual, 1)
+				So(cveSummary.MediumCount, ShouldEqual, 1)
+				So(cveSummary.HighCount, ShouldEqual, 1)
+				So(cveSummary.CriticalCount, ShouldEqual, 1)
+				So(cveSummary.MaxSeverity, ShouldEqual, "CRITICAL")
 				for i, cve := range cves {
 					So(cve.ID, ShouldEqual, cveIds[i])
 				}
 
 				sort.Strings(cveIds)
-				cves, pageInfo, err = cveInfo.GetCVEListForImage(ctx, "repo1", "1.0.0", "",
+				cves, cveSummary, pageInfo, err = cveInfo.GetCVEListForImage(ctx, "repo1", "1.0.0", "",
 					cvemodel.PageInput{SortBy: cveinfo.AlphabeticAsc})
 				So(err, ShouldBeNil)
 				So(len(cves), ShouldEqual, 30)
 				So(pageInfo.ItemCount, ShouldEqual, 30)
 				So(pageInfo.TotalCount, ShouldEqual, 30)
+				So(cveSummary.Count, ShouldEqual, 30)
+				So(cveSummary.UnknownCount, ShouldEqual, 6)
+				So(cveSummary.LowCount, ShouldEqual, 6)
+				So(cveSummary.MediumCount, ShouldEqual, 6)
+				So(cveSummary.HighCount, ShouldEqual, 6)
+				So(cveSummary.CriticalCount, ShouldEqual, 6)
+				So(cveSummary.MaxSeverity, ShouldEqual, "CRITICAL")
 				for i, cve := range cves {
 					So(cve.ID, ShouldEqual, cveIds[i])
 				}
 
 				sort.Sort(sort.Reverse(sort.StringSlice(cveIds)))
-				cves, pageInfo, err = cveInfo.GetCVEListForImage(ctx, "repo1", "1.0.0", "",
+				cves, cveSummary, pageInfo, err = cveInfo.GetCVEListForImage(ctx, "repo1", "1.0.0", "",
 					cvemodel.PageInput{SortBy: cveinfo.AlphabeticDsc})
 				So(err, ShouldBeNil)
 				So(len(cves), ShouldEqual, 30)
 				So(pageInfo.ItemCount, ShouldEqual, 30)
 				So(pageInfo.TotalCount, ShouldEqual, 30)
+				So(cveSummary.Count, ShouldEqual, 30)
+				So(cveSummary.UnknownCount, ShouldEqual, 6)
+				So(cveSummary.LowCount, ShouldEqual, 6)
+				So(cveSummary.MediumCount, ShouldEqual, 6)
+				So(cveSummary.HighCount, ShouldEqual, 6)
+				So(cveSummary.CriticalCount, ShouldEqual, 6)
+				So(cveSummary.MaxSeverity, ShouldEqual, "CRITICAL")
 				for i, cve := range cves {
 					So(cve.ID, ShouldEqual, cveIds[i])
 				}
 
-				cves, pageInfo, err = cveInfo.GetCVEListForImage(ctx, "repo1", "1.0.0", "",
+				cves, cveSummary, pageInfo, err = cveInfo.GetCVEListForImage(ctx, "repo1", "1.0.0", "",
 					cvemodel.PageInput{SortBy: cveinfo.SeverityDsc})
 				So(err, ShouldBeNil)
 				So(len(cves), ShouldEqual, 30)
 				So(pageInfo.ItemCount, ShouldEqual, 30)
 				So(pageInfo.TotalCount, ShouldEqual, 30)
+				So(cveSummary.Count, ShouldEqual, 30)
+				So(cveSummary.UnknownCount, ShouldEqual, 6)
+				So(cveSummary.LowCount, ShouldEqual, 6)
+				So(cveSummary.MediumCount, ShouldEqual, 6)
+				So(cveSummary.HighCount, ShouldEqual, 6)
+				So(cveSummary.CriticalCount, ShouldEqual, 6)
+				So(cveSummary.MaxSeverity, ShouldEqual, "CRITICAL")
 				previousSeverity := 4
 				for _, cve := range cves {
 					So(severityToInt[cve.Severity], ShouldBeLessThanOrEqualTo, previousSeverity)
@@ -220,7 +262,7 @@ func TestCVEPagination(t *testing.T) {
 					cveIds = append(cveIds, fmt.Sprintf("CVE%d", i))
 				}
 
-				cves, pageInfo, err := cveInfo.GetCVEListForImage(ctx, "repo1", "0.1.0", "", cvemodel.PageInput{
+				cves, cveSummary, pageInfo, err := cveInfo.GetCVEListForImage(ctx, "repo1", "0.1.0", "", cvemodel.PageInput{
 					Limit:  3,
 					Offset: 1,
 					SortBy: cveinfo.AlphabeticAsc,
@@ -233,8 +275,15 @@ func TestCVEPagination(t *testing.T) {
 				So(cves[0].ID, ShouldEqual, "CVE1") // CVE0 is first ID and is not part of the page
 				So(cves[1].ID, ShouldEqual, "CVE2")
 				So(cves[2].ID, ShouldEqual, "CVE3")
+				So(cveSummary.Count, ShouldEqual, 5)
+				So(cveSummary.UnknownCount, ShouldEqual, 1)
+				So(cveSummary.LowCount, ShouldEqual, 1)
+				So(cveSummary.MediumCount, ShouldEqual, 1)
+				So(cveSummary.HighCount, ShouldEqual, 1)
+				So(cveSummary.CriticalCount, ShouldEqual, 1)
+				So(cveSummary.MaxSeverity, ShouldEqual, "CRITICAL")
 
-				cves, pageInfo, err = cveInfo.GetCVEListForImage(ctx, "repo1", "0.1.0", "", cvemodel.PageInput{
+				cves, cveSummary, pageInfo, err = cveInfo.GetCVEListForImage(ctx, "repo1", "0.1.0", "", cvemodel.PageInput{
 					Limit:  2,
 					Offset: 1,
 					SortBy: cveinfo.AlphabeticDsc,
@@ -246,8 +295,15 @@ func TestCVEPagination(t *testing.T) {
 				So(pageInfo.TotalCount, ShouldEqual, 5)
 				So(cves[0].ID, ShouldEqual, "CVE3")
 				So(cves[1].ID, ShouldEqual, "CVE2")
+				So(cveSummary.Count, ShouldEqual, 5)
+				So(cveSummary.UnknownCount, ShouldEqual, 1)
+				So(cveSummary.LowCount, ShouldEqual, 1)
+				So(cveSummary.MediumCount, ShouldEqual, 1)
+				So(cveSummary.HighCount, ShouldEqual, 1)
+				So(cveSummary.CriticalCount, ShouldEqual, 1)
+				So(cveSummary.MaxSeverity, ShouldEqual, "CRITICAL")
 
-				cves, pageInfo, err = cveInfo.GetCVEListForImage(ctx, "repo1", "0.1.0", "", cvemodel.PageInput{
+				cves, cveSummary, pageInfo, err = cveInfo.GetCVEListForImage(ctx, "repo1", "0.1.0", "", cvemodel.PageInput{
 					Limit:  3,
 					Offset: 1,
 					SortBy: cveinfo.SeverityDsc,
@@ -257,6 +313,13 @@ func TestCVEPagination(t *testing.T) {
 				So(len(cves), ShouldEqual, 3)
 				So(pageInfo.ItemCount, ShouldEqual, 3)
 				So(pageInfo.TotalCount, ShouldEqual, 5)
+				So(cveSummary.Count, ShouldEqual, 5)
+				So(cveSummary.UnknownCount, ShouldEqual, 1)
+				So(cveSummary.LowCount, ShouldEqual, 1)
+				So(cveSummary.MediumCount, ShouldEqual, 1)
+				So(cveSummary.HighCount, ShouldEqual, 1)
+				So(cveSummary.CriticalCount, ShouldEqual, 1)
+				So(cveSummary.MaxSeverity, ShouldEqual, "CRITICAL")
 				previousSeverity := 4
 				for _, cve := range cves {
 					So(severityToInt[cve.Severity], ShouldBeLessThanOrEqualTo, previousSeverity)
@@ -264,7 +327,7 @@ func TestCVEPagination(t *testing.T) {
 				}
 
 				sort.Strings(cveIds)
-				cves, pageInfo, err = cveInfo.GetCVEListForImage(ctx, "repo1", "1.0.0", "", cvemodel.PageInput{
+				cves, cveSummary, pageInfo, err = cveInfo.GetCVEListForImage(ctx, "repo1", "1.0.0", "", cvemodel.PageInput{
 					Limit:  5,
 					Offset: 20,
 					SortBy: cveinfo.AlphabeticAsc,
@@ -274,13 +337,20 @@ func TestCVEPagination(t *testing.T) {
 				So(len(cves), ShouldEqual, 5)
 				So(pageInfo.ItemCount, ShouldEqual, 5)
 				So(pageInfo.TotalCount, ShouldEqual, 30)
+				So(cveSummary.Count, ShouldEqual, 30)
+				So(cveSummary.UnknownCount, ShouldEqual, 6)
+				So(cveSummary.LowCount, ShouldEqual, 6)
+				So(cveSummary.MediumCount, ShouldEqual, 6)
+				So(cveSummary.HighCount, ShouldEqual, 6)
+				So(cveSummary.CriticalCount, ShouldEqual, 6)
+				So(cveSummary.MaxSeverity, ShouldEqual, "CRITICAL")
 				for i, cve := range cves {
 					So(cve.ID, ShouldEqual, cveIds[i+20])
 				}
 			})
 
 			Convey("limit > len(cves)", func() {
-				cves, pageInfo, err := cveInfo.GetCVEListForImage(ctx, "repo1", "0.1.0", "", cvemodel.PageInput{
+				cves, cveSummary, pageInfo, err := cveInfo.GetCVEListForImage(ctx, "repo1", "0.1.0", "", cvemodel.PageInput{
 					Limit:  6,
 					Offset: 3,
 					SortBy: cveinfo.AlphabeticAsc,
@@ -292,8 +362,15 @@ func TestCVEPagination(t *testing.T) {
 				So(pageInfo.TotalCount, ShouldEqual, 5)
 				So(cves[0].ID, ShouldEqual, "CVE3")
 				So(cves[1].ID, ShouldEqual, "CVE4")
+				So(cveSummary.Count, ShouldEqual, 5)
+				So(cveSummary.UnknownCount, ShouldEqual, 1)
+				So(cveSummary.LowCount, ShouldEqual, 1)
+				So(cveSummary.MediumCount, ShouldEqual, 1)
+				So(cveSummary.HighCount, ShouldEqual, 1)
+				So(cveSummary.CriticalCount, ShouldEqual, 1)
+				So(cveSummary.MaxSeverity, ShouldEqual, "CRITICAL")
 
-				cves, pageInfo, err = cveInfo.GetCVEListForImage(ctx, "repo1", "0.1.0", "", cvemodel.PageInput{
+				cves, cveSummary, pageInfo, err = cveInfo.GetCVEListForImage(ctx, "repo1", "0.1.0", "", cvemodel.PageInput{
 					Limit:  6,
 					Offset: 3,
 					SortBy: cveinfo.AlphabeticDsc,
@@ -305,8 +382,15 @@ func TestCVEPagination(t *testing.T) {
 				So(pageInfo.TotalCount, ShouldEqual, 5)
 				So(cves[0].ID, ShouldEqual, "CVE1")
 				So(cves[1].ID, ShouldEqual, "CVE0")
+				So(cveSummary.Count, ShouldEqual, 5)
+				So(cveSummary.UnknownCount, ShouldEqual, 1)
+				So(cveSummary.LowCount, ShouldEqual, 1)
+				So(cveSummary.MediumCount, ShouldEqual, 1)
+				So(cveSummary.HighCount, ShouldEqual, 1)
+				So(cveSummary.CriticalCount, ShouldEqual, 1)
+				So(cveSummary.MaxSeverity, ShouldEqual, "CRITICAL")
 
-				cves, pageInfo, err = cveInfo.GetCVEListForImage(ctx, "repo1", "0.1.0", "", cvemodel.PageInput{
+				cves, cveSummary, pageInfo, err = cveInfo.GetCVEListForImage(ctx, "repo1", "0.1.0", "", cvemodel.PageInput{
 					Limit:  6,
 					Offset: 3,
 					SortBy: cveinfo.SeverityDsc,
@@ -316,6 +400,13 @@ func TestCVEPagination(t *testing.T) {
 				So(len(cves), ShouldEqual, 2)
 				So(pageInfo.ItemCount, ShouldEqual, 2)
 				So(pageInfo.TotalCount, ShouldEqual, 5)
+				So(cveSummary.Count, ShouldEqual, 5)
+				So(cveSummary.UnknownCount, ShouldEqual, 1)
+				So(cveSummary.LowCount, ShouldEqual, 1)
+				So(cveSummary.MediumCount, ShouldEqual, 1)
+				So(cveSummary.HighCount, ShouldEqual, 1)
+				So(cveSummary.CriticalCount, ShouldEqual, 1)
+				So(cveSummary.MaxSeverity, ShouldEqual, "CRITICAL")
 				previousSeverity := 4
 				for _, cve := range cves {
 					So(severityToInt[cve.Severity], ShouldBeLessThanOrEqualTo, previousSeverity)
