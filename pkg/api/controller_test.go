@@ -7303,7 +7303,7 @@ func TestListingTags(t *testing.T) {
 			} else if testCase.expectedTags[len(testCase.expectedTags)-1] == alltags[len(alltags)-1] {
 				So(actualLinkValue, ShouldEqual, "")
 			} else {
-				expectedLinkValue := fmt.Sprintf("/v2/%s/tags/list?n=%s&last=%s; rel=\"next\"",
+				expectedLinkValue := fmt.Sprintf("</v2/%s/tags/list?n=%s&last=%s>; rel=\"next\"",
 					repoName, testCase.pageSize, tags.Tags[len(tags.Tags)-1],
 				)
 				So(actualLinkValue, ShouldEqual, expectedLinkValue)

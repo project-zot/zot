@@ -375,7 +375,7 @@ func (rh *RouteHandler) ListTags(response http.ResponseWriter, request *http.Req
 		stopIndex = startIndex + numTags - 1
 		response.Header().Set(
 			"Link",
-			fmt.Sprintf("/v2/%s/tags/list?n=%d&last=%s; rel=\"next\"",
+			fmt.Sprintf("</v2/%s/tags/list?n=%d&last=%s>; rel=\"next\"",
 				name,
 				numTags,
 				tags[stopIndex],

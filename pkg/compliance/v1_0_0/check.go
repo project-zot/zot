@@ -602,8 +602,16 @@ func CheckWorkflows(t *testing.T, config *compliance.Config) {
 			next := resp.Header().Get("Link")
 			So(next, ShouldNotBeEmpty)
 
-			u := baseURL + strings.Split(next, ";")[0]
-			resp, err = resty.R().Get(u)
+			nextURL := strings.Split(next, ";")[0]
+			if strings.HasPrefix(nextURL, "<") || strings.HasPrefix(nextURL, "\"") {
+				nextURL = nextURL[1:]
+			}
+			if strings.HasSuffix(nextURL, ">") || strings.HasSuffix(nextURL, "\"") {
+				nextURL = nextURL[:len(nextURL)-1]
+			}
+			nextURL = baseURL + nextURL
+
+			resp, err = resty.R().Get(nextURL)
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 			next = resp.Header().Get("Link")
