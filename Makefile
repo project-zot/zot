@@ -24,6 +24,7 @@ CRICTL := $(TOOLSDIR)/bin/crictl
 CRICTL_VERSION := v1.26.1
 ACTION_VALIDATOR := $(TOOLSDIR)/bin/action-validator
 ACTION_VALIDATOR_VERSION := v0.5.3
+ZUI_BUILD_PATH := ""
 ZUI_VERSION := commit-fad5572
 ZUI_REPO_OWNER := project-zot
 ZUI_REPO_NAME := zui
@@ -531,6 +532,11 @@ $(COSIGN):
 .PHONY: ui
 ui:
 	echo $(BUILD_LABELS);\
+	if [ -n $(ZUI_BUILD_PATH) ]; then\
+		rm -rf ./pkg/extensions/build;\
+		cp -R $(ZUI_BUILD_PATH) ./pkg/extensions/;\
+		exit 0;\
+	fi;\
 	if [ -z $(ZUI_VERSION) ]; then\
 		pwd=$$(pwd);\
 		tdir=$$(mktemp -d);\
