@@ -935,7 +935,7 @@ func TestCookiestoreCleanup(t *testing.T) {
 	Convey("Test cookiestore cleanup works", t, func() {
 		taskScheduler := scheduler.NewScheduler(config.New(), metrics, log)
 		taskScheduler.RateLimit = 50 * time.Millisecond
-		taskScheduler.RunScheduler(context.Background())
+		taskScheduler.RunScheduler()
 
 		rootDir := t.TempDir()
 
@@ -973,7 +973,7 @@ func TestCookiestoreCleanup(t *testing.T) {
 	Convey("Test cookiestore cleanup without permissions on rootDir", t, func() {
 		taskScheduler := scheduler.NewScheduler(config.New(), metrics, log)
 		taskScheduler.RateLimit = 50 * time.Millisecond
-		taskScheduler.RunScheduler(context.Background())
+		taskScheduler.RunScheduler()
 
 		rootDir := t.TempDir()
 

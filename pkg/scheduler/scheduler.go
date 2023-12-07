@@ -83,12 +83,7 @@ type Scheduler struct {
 	workerWg          *sync.WaitGroup
 	isShuttingDown    atomic.Bool
 	metricServer      monitoring.MetricServer
-
-	// ensure the scheduler can only be stopped once
-	stop sync.Once
-
-	// close to signal the workers to stop working
-	quit chan struct{}
+	cancelFunc        context.CancelFunc
 }
 
 func NewScheduler(cfg *config.Config, ms monitoring.MetricServer, logC log.Logger) *Scheduler { //nolint: varnamelen
@@ -119,8 +114,6 @@ func NewScheduler(cfg *config.Config, ms monitoring.MetricServer, logC log.Logge
 		workerChan:   make(chan Task, numWorkers),
 		metricsChan:  make(chan struct{}, 1),
 		workerWg:     new(sync.WaitGroup),
-		stop:         sync.Once{},
-		quit:         make(chan struct{}),
 	}
 }
 
@@ -219,11 +212,8 @@ func (scheduler *Scheduler) metricsWorker() {
 }
 
 /*
-Scheduler can be stopped either by stopping the context provided in scheduler.RunScheduler(ctx context.Context)
-
-	or by calling this function or both.
-
-Shutdown() will wait for all tasks being run to finish their work before exiting.
+Scheduler can be stopped by calling Shutdown().
+it will wait for all tasks being run to finish their work before exiting.
 */
 func (scheduler *Scheduler) Shutdown() {
 	defer scheduler.workerWg.Wait()
@@ -238,20 +228,19 @@ func (scheduler *Scheduler) inShutdown() bool {
 }
 
 func (scheduler *Scheduler) shutdown() {
-	scheduler.stop.Do(func() {
-		scheduler.isShuttingDown.Store(true)
+	scheduler.isShuttingDown.Store(true)
 
-		close(scheduler.metricsChan)
-		close(scheduler.quit)
-	})
+	scheduler.cancelFunc()
+	close(scheduler.metricsChan)
 }
 
-/*
-	This context is passed to all task generators
+func (scheduler *Scheduler) RunScheduler() {
+	/*This context is passed to all task generators
+	calling scheduler.Shutdown() will cancel this context and will wait for all tasks
+	to finish their work gracefully.*/
+	ctx, cancel := context.WithCancel(context.Background())
+	scheduler.cancelFunc = cancel
 
-canceling the context will stop scheduler and also it will notify tasks to finish their work gracefully.
-*/
-func (scheduler *Scheduler) RunScheduler(ctx context.Context) {
 	throttle := time.NewTicker(rateLimit).C
 
 	numWorkers := scheduler.NumWorkers
@@ -271,18 +260,12 @@ func (scheduler *Scheduler) RunScheduler(ctx context.Context) {
 
 		for {
 			select {
-			// can be stopped either by closing from outside the ctx given to RunScheduler()
 			case <-ctx.Done():
 				if !scheduler.inShutdown() {
 					scheduler.shutdown()
 				}
 
 				scheduler.log.Debug().Msg("received stop signal, gracefully shutting down...")
-
-				return
-			// or by running scheduler.Shutdown()
-			case <-scheduler.quit:
-				scheduler.log.Debug().Msg("scheduler: received stop signal, gracefully shutting down...")
 
 				return
 			default:

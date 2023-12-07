@@ -132,11 +132,9 @@ func TestScheduler(t *testing.T) {
 		// interval has to be higher than throttle value to simulate
 		sch.SubmitGenerator(genH, 6*time.Second, scheduler.HighPriority)
 
-		ctx, cancel := context.WithCancel(context.Background())
-		sch.RunScheduler(ctx)
-
+		sch.RunScheduler()
 		time.Sleep(7 * time.Second)
-		cancel()
+		sch.Shutdown()
 
 		data, err := os.ReadFile(logFile.Name())
 		So(err, ShouldBeNil)
@@ -164,12 +162,9 @@ func TestScheduler(t *testing.T) {
 		genH := &generator{log: logger, priority: "high priority"}
 		sch.SubmitGenerator(genH, time.Duration(0), scheduler.HighPriority)
 
-		ctx, cancel := context.WithCancel(context.Background())
-
-		sch.RunScheduler(ctx)
-
+		sch.RunScheduler()
 		time.Sleep(4 * time.Second)
-		cancel()
+		sch.Shutdown()
 
 		data, err := os.ReadFile(logFile.Name())
 		So(err, ShouldBeNil)
@@ -193,11 +188,9 @@ func TestScheduler(t *testing.T) {
 		t := &task{log: logger, msg: "", err: true}
 		sch.SubmitTask(t, scheduler.MediumPriority)
 
-		ctx, cancel := context.WithCancel(context.Background())
-		sch.RunScheduler(ctx)
-
+		sch.RunScheduler()
 		time.Sleep(500 * time.Millisecond)
-		cancel()
+		sch.Shutdown()
 
 		data, err := os.ReadFile(logFile.Name())
 		So(err, ShouldBeNil)
@@ -218,11 +211,9 @@ func TestScheduler(t *testing.T) {
 		genL := &generator{log: logger, priority: "low priority"}
 		sch.SubmitGenerator(genL, 20*time.Millisecond, scheduler.LowPriority)
 
-		ctx, cancel := context.WithCancel(context.Background())
-		sch.RunScheduler(ctx)
-
+		sch.RunScheduler()
 		time.Sleep(4 * time.Second)
-		cancel()
+		sch.Shutdown()
 
 		data, err := os.ReadFile(logFile.Name())
 		So(err, ShouldBeNil)
@@ -258,10 +249,8 @@ func TestScheduler(t *testing.T) {
 		metrics := monitoring.NewMetricsServer(true, logger)
 		sch := scheduler.NewScheduler(config.New(), metrics, logger)
 
-		ctx, cancel := context.WithCancel(context.Background())
-
-		sch.RunScheduler(ctx)
-		cancel()
+		sch.RunScheduler()
+		sch.Shutdown()
 		time.Sleep(500 * time.Millisecond)
 
 		t := &task{log: logger, msg: "", err: false}
@@ -272,7 +261,7 @@ func TestScheduler(t *testing.T) {
 		So(string(data), ShouldNotContainSubstring, "adding a new task")
 	})
 
-	Convey("Test stopping scheduler by cancelling the context", t, func() {
+	Convey("Test stopping scheduler by calling Shutdown()", t, func() {
 		logFile, err := os.CreateTemp("", "zot-log*.txt")
 		So(err, ShouldBeNil)
 
@@ -285,86 +274,15 @@ func TestScheduler(t *testing.T) {
 		genL := &generator{log: logger, priority: "medium priority"}
 		sch.SubmitGenerator(genL, 20*time.Millisecond, scheduler.MediumPriority)
 
-		ctx, cancel := context.WithCancel(context.Background())
-		sch.RunScheduler(ctx)
-
-		time.Sleep(1 * time.Second)
-		cancel()
-
+		sch.RunScheduler()
 		time.Sleep(4 * time.Second)
+		sch.Shutdown()
 
 		data, err := os.ReadFile(logFile.Name())
 		So(err, ShouldBeNil)
 		So(string(data), ShouldContainSubstring, "executing medium priority task; index: 1")
 		So(string(data), ShouldContainSubstring, "executing medium priority task; index: 2")
-		So(string(data), ShouldContainSubstring, "scheduler: received stop signal, gracefully shutting down...")
-	})
-
-	Convey("Test stopping scheduler by calling scheduler.Shutdown()", t, func() {
-		logFile, err := os.CreateTemp("", "zot-log*.txt")
-		So(err, ShouldBeNil)
-
-		defer os.Remove(logFile.Name()) // clean up
-
-		logger := log.NewLogger("debug", logFile.Name())
-		metrics := monitoring.NewMetricsServer(true, logger)
-		sch := scheduler.NewScheduler(config.New(), metrics, logger)
-
-		genL := &generator{log: logger, priority: "high priority"}
-		sch.SubmitGenerator(genL, 20*time.Millisecond, scheduler.HighPriority)
-
-		sch.RunScheduler(context.Background())
-
-		time.Sleep(4 * time.Second)
-
-		sch.Shutdown()
-
-		data, err := os.ReadFile(logFile.Name())
-		t.Log(string(data))
-		So(err, ShouldBeNil)
-		So(string(data), ShouldContainSubstring, "executing high priority task; index: 1")
-		So(string(data), ShouldContainSubstring, "executing high priority task; index: 2")
-		So(string(data), ShouldContainSubstring, "scheduler: received stop signal, gracefully shutting down...")
-	})
-
-	Convey("Test stopping scheduler by both calling scheduler.Shutdown() and cancelling context", t, func() {
-		logFile, err := os.CreateTemp("", "zot-log*.txt")
-		So(err, ShouldBeNil)
-
-		defer os.Remove(logFile.Name()) // clean up
-
-		logger := log.NewLogger("debug", logFile.Name())
-		metrics := monitoring.NewMetricsServer(true, logger)
-		sch := scheduler.NewScheduler(config.New(), metrics, logger)
-
-		genL := &generator{log: logger, priority: "high priority"}
-		sch.SubmitGenerator(genL, 1*time.Millisecond, scheduler.HighPriority)
-
-		ctx, cancel := context.WithCancel(context.Background())
-		sch.RunScheduler(ctx)
-
-		time.Sleep(4 * time.Second)
-
-		go func() {
-			cancel()
-			sch.Shutdown()
-		}()
-
-		go func() {
-			sch.Shutdown()
-		}()
-
-		// will wait for scheduler to finish all tasks
-		sch.Shutdown()
-
-		sch.Shutdown()
-
-		data, err := os.ReadFile(logFile.Name())
-		t.Log(string(data))
-		So(err, ShouldBeNil)
-		So(string(data), ShouldContainSubstring, "executing high priority task; index: 1")
-		So(string(data), ShouldContainSubstring, "executing high priority task; index: 2")
-		So(string(data), ShouldContainSubstring, "scheduler: received stop signal, gracefully shutting down...")
+		So(string(data), ShouldContainSubstring, "received stop signal, gracefully shutting down...")
 	})
 
 	Convey("Test scheduler Priority.String() method", t, func() {

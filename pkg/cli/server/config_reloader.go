@@ -1,7 +1,6 @@
 package server
 
 import (
-	"context"
 	"os"
 	"os/signal"
 	"syscall"
@@ -35,28 +34,22 @@ func NewHotReloader(ctlr *api.Controller, filePath string) (*HotReloader, error)
 	return hotReloader, nil
 }
 
-func signalHandler(ctlr *api.Controller, sigCh chan os.Signal, ctx context.Context, cancel context.CancelFunc) {
-	select {
+func signalHandler(ctlr *api.Controller, sigCh chan os.Signal) {
 	// if signal then shutdown
-	case sig := <-sigCh:
-		defer cancel()
-
+	if sig, ok := <-sigCh; ok {
 		ctlr.Log.Info().Interface("signal", sig).Msg("received signal")
 
 		// gracefully shutdown http server
 		ctlr.Shutdown() //nolint: contextcheck
 
 		close(sigCh)
-	// if reload then return
-	case <-ctx.Done():
-		return
 	}
 }
 
-func initShutDownRoutine(ctlr *api.Controller, ctx context.Context, cancel context.CancelFunc) {
+func initShutDownRoutine(ctlr *api.Controller) {
 	sigCh := make(chan os.Signal, 1)
 
-	go signalHandler(ctlr, sigCh, ctx, cancel)
+	go signalHandler(ctlr, sigCh)
 
 	// block all async signals to this server
 	signal.Ignore()
@@ -65,12 +58,10 @@ func initShutDownRoutine(ctlr *api.Controller, ctx context.Context, cancel conte
 	signal.Notify(sigCh, syscall.SIGTERM, syscall.SIGINT, syscall.SIGHUP)
 }
 
-func (hr *HotReloader) Start() context.Context {
-	reloadCtx, cancelFunc := context.WithCancel(context.Background())
-
+func (hr *HotReloader) Start() {
 	done := make(chan bool)
 
-	initShutDownRoutine(hr.ctlr, reloadCtx, cancelFunc)
+	initShutDownRoutine(hr.ctlr)
 
 	// run watcher
 	go func() {
@@ -92,16 +83,15 @@ func (hr *HotReloader) Start() context.Context {
 
 							continue
 						}
-						// if valid config then reload
-						cancelFunc()
 
-						// create new context
-						reloadCtx, cancelFunc = context.WithCancel(context.Background())
+						// stop background tasks gracefully
+						hr.ctlr.StopBackgroundTasks()
 
-						// init shutdown routine
-						initShutDownRoutine(hr.ctlr, reloadCtx, cancelFunc)
+						// load new config
+						hr.ctlr.LoadNewConfig(newConfig)
 
-						hr.ctlr.LoadNewConfig(reloadCtx, newConfig)
+						// start background tasks based on new loaded config
+						hr.ctlr.StartBackgroundTasks()
 					}
 				// watch for errors
 				case err := <-hr.watcher.Errors:
@@ -116,6 +106,4 @@ func (hr *HotReloader) Start() context.Context {
 
 		<-done
 	}()
-
-	return reloadCtx
 }

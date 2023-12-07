@@ -1,7 +1,6 @@
 package common
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"math/rand"
@@ -62,44 +61,34 @@ func Location(baseURL string, resp *resty.Response) string {
 }
 
 type Controller interface {
-	Init(ctx context.Context) error
-	Run(ctx context.Context) error
+	Init() error
+	Run() error
 	Shutdown()
 	GetPort() int
 }
 
 type ControllerManager struct {
 	controller Controller
-	// used to stop background tasks(goroutines)
-	cancelRoutinesFunc context.CancelFunc
 }
 
-func (cm *ControllerManager) RunServer(ctx context.Context) {
+func (cm *ControllerManager) RunServer() {
 	// Useful to be able to call in the same goroutine for testing purposes
-	if err := cm.controller.Run(ctx); !errors.Is(err, http.ErrServerClosed) {
+	if err := cm.controller.Run(); !errors.Is(err, http.ErrServerClosed) {
 		panic(err)
 	}
 }
 
 func (cm *ControllerManager) StartServer() {
-	ctx, cancel := context.WithCancel(context.Background())
-	cm.cancelRoutinesFunc = cancel
-
-	if err := cm.controller.Init(ctx); err != nil {
+	if err := cm.controller.Init(); err != nil {
 		panic(err)
 	}
 
 	go func() {
-		cm.RunServer(ctx)
+		cm.RunServer()
 	}()
 }
 
 func (cm *ControllerManager) StopServer() {
-	// stop background tasks
-	if cm.cancelRoutinesFunc != nil {
-		cm.cancelRoutinesFunc()
-	}
-
 	cm.controller.Shutdown()
 }
 

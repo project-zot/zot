@@ -1901,15 +1901,15 @@ func TestConfigReloader(t *testing.T) {
 			hotReloader, err := cli.NewHotReloader(dctlr, cfgfile.Name())
 			So(err, ShouldBeNil)
 
-			reloadCtx := hotReloader.Start()
+			hotReloader.Start()
 
 			go func() {
 				// this blocks
-				if err := dctlr.Init(reloadCtx); err != nil {
+				if err := dctlr.Init(); err != nil {
 					return
 				}
 
-				if err := dctlr.Run(reloadCtx); err != nil {
+				if err := dctlr.Run(); err != nil {
 					return
 				}
 			}()
@@ -2051,15 +2051,15 @@ func TestConfigReloader(t *testing.T) {
 			hotReloader, err := cli.NewHotReloader(dctlr, cfgfile.Name())
 			So(err, ShouldBeNil)
 
-			reloadCtx := hotReloader.Start()
+			hotReloader.Start()
 
 			go func() {
 				// this blocks
-				if err := dctlr.Init(reloadCtx); err != nil {
+				if err := dctlr.Init(); err != nil {
 					return
 				}
 
-				if err := dctlr.Run(reloadCtx); err != nil {
+				if err := dctlr.Run(); err != nil {
 					return
 				}
 			}()

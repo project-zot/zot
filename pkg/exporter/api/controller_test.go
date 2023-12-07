@@ -140,12 +140,12 @@ func TestNewExporter(t *testing.T) {
 				dir := t.TempDir()
 				serverController.Config.Storage.RootDirectory = dir
 				go func(ctrl *zotapi.Controller) {
-					if err := ctrl.Init(context.Background()); err != nil {
+					if err := ctrl.Init(); err != nil {
 						panic(err)
 					}
 
 					// this blocks
-					if err := ctrl.Run(context.Background()); !errors.Is(err, http.ErrServerClosed) {
+					if err := ctrl.Run(); !errors.Is(err, http.ErrServerClosed) {
 						panic(err)
 					}
 				}(serverController)

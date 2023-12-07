@@ -69,7 +69,7 @@ function setup_file() {
                     ],
                     "onDemand": false,
                     "tlsVerify": false,
-                    "PollInterval": "1s",
+                    "PollInterval": "10s",
                     "content": [
                         {
                             "prefix": "**"
@@ -105,7 +105,7 @@ EOF
                     ],
                     "onDemand": false,
                     "tlsVerify": false,
-                    "PollInterval": "1s",
+                    "PollInterval": "10s",
                     "content": [
                         {
                             "prefix": "**"

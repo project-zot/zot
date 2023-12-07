@@ -30,7 +30,7 @@ function setup_file() {
         exit 1
     fi
 
-        # Download test data to folder common for the entire suite, not just this file
+    # Download test data to folder common for the entire suite, not just this file
     skopeo --insecure-policy copy --format=oci docker://ghcr.io/project-zot/golang:1.20 oci:${TEST_DATA_DIR}/golang:1.20
     # Setup zot server
     local zot_sync_per_root_dir=${BATS_FILE_TMPDIR}/zot-per
@@ -88,7 +88,7 @@ function setup_file() {
                     ],
                     "onDemand": false,
                     "tlsVerify": false,
-                    "PollInterval": "1s",
+                    "PollInterval": "10s",
                     "content": [
                         {
                             "prefix": "**"
@@ -197,7 +197,7 @@ function teardown_file() {
     [ "$status" -eq 0 ]
     [ $(echo "${lines[-1]}" | jq '.tags[]') = '"1.20"' ]
 
-    run sleep 20s
+    run sleep 30s
 
     run curl http://127.0.0.1:${zot_port1}/v2/_catalog
     [ "$status" -eq 0 ]
