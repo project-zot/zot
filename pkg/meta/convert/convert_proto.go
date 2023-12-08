@@ -19,7 +19,7 @@ func GetProtoRepoMeta(repo mTypes.RepoMeta) *proto_go.RepoMeta {
 		Statistics:       GetProtoStatistics(repo.Statistics),
 		Signatures:       GetProtoSignatures(repo.Signatures),
 		Referrers:        GetProtoReferrers(repo.Referrers),
-		Size:             int32(repo.Size),
+		Size:             repo.Size,
 		Vendors:          repo.Vendors,
 		Platforms:        GetProtoPlatforms(repo.Platforms),
 		LastUpdatedImage: GetProtoLastUpdatedImage(repo.LastUpdatedImage),

@@ -262,7 +262,7 @@ func AddImageMetaToRepoMeta(repoMeta *proto_go.RepoMeta, repoBlobs *proto_go.Rep
 	size, platforms, vendors := recalculateAggregateFields(repoMeta, repoBlobs)
 	repoMeta.Vendors = vendors
 	repoMeta.Platforms = platforms
-	repoMeta.Size = int32(size)
+	repoMeta.Size = size
 
 	imageBlobInfo := repoBlobs.Blobs[imageMeta.Digest.String()]
 	repoMeta.LastUpdatedImage = mConvert.GetProtoEarlierUpdatedImage(repoMeta.LastUpdatedImage,
@@ -316,7 +316,7 @@ func RemoveImageFromRepoMeta(repoMeta *proto_go.RepoMeta, repoBlobs *proto_go.Re
 		}
 	}
 
-	repoMeta.Size = int32(updatedSize)
+	repoMeta.Size = updatedSize
 	repoMeta.Vendors = updatedVendors
 	repoMeta.Platforms = updatedPlatforms
 	repoMeta.LastUpdatedImage = updatedLastImage
