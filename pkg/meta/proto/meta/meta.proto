@@ -52,7 +52,7 @@ message RepoMeta {
 
     int32 Stars = 9;
 
-    int32 Size = 10;
+    int64 Size = 10;
     repeated string   Vendors   = 11;
     repeated oci_v1.Platform Platforms = 12;
     optional RepoLastUpdatedImage LastUpdatedImage = 13;

@@ -445,7 +445,7 @@ func GetRepoMeta(protoRepoMeta *proto_go.RepoMeta) mTypes.RepoMeta {
 		Name:             protoRepoMeta.Name,
 		Tags:             GetTags(protoRepoMeta.Tags),
 		Rank:             int(protoRepoMeta.Rank),
-		Size:             int64(protoRepoMeta.Size),
+		Size:             protoRepoMeta.Size,
 		Platforms:        GetPlatforms(protoRepoMeta.Platforms),
 		Vendors:          protoRepoMeta.Vendors,
 		IsStarred:        protoRepoMeta.IsStarred,
