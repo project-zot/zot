@@ -22,7 +22,7 @@ type Logger struct {
 }
 
 func (l Logger) Println(v ...interface{}) {
-	l.Logger.Error().Msg("panic recovered")
+	l.Logger.Error().Msg("panic recovered") //nolint: check-logs
 }
 
 func NewLogger(level, output string) Logger {

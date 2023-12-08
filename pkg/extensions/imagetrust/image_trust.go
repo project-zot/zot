@@ -168,7 +168,7 @@ func (imgTrustStore *ImageTrustStore) VerifySignature(
 	}
 
 	if manifestDigest.String() == "" {
-		return "", time.Time{}, false, zerr.ErrBadManifestDigest
+		return "", time.Time{}, false, zerr.ErrBadSignatureManifestDigest
 	}
 
 	switch signatureType {
@@ -264,7 +264,7 @@ func (validityT *validityTask) DoWork(ctx context.Context) error {
 		if len(sigs[zcommon.CosignSignature]) != 0 || len(sigs[zcommon.NotationSignature]) != 0 {
 			err := validityT.metaDB.UpdateSignaturesValidity(ctx, validityT.repo.Name, godigest.Digest(signedManifest))
 			if err != nil {
-				validityT.log.Info().Msg("error while verifying signatures")
+				validityT.log.Info().Msg("failed to verify signatures")
 
 				return err
 			}

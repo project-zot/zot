@@ -33,7 +33,7 @@ func EnableSyncExtension(config *config.Config, metaDB mTypes.MetaDB,
 			}
 
 			if len(registryConfig.URLs) == 0 {
-				log.Error().Err(zerr.ErrSyncNoURLsLeft).Msg("unable to start sync extension")
+				log.Error().Err(zerr.ErrSyncNoURLsLeft).Msg("failed to start sync extension")
 
 				return nil, zerr.ErrSyncNoURLsLeft
 			}
@@ -68,7 +68,7 @@ func EnableSyncExtension(config *config.Config, metaDB mTypes.MetaDB,
 		return onDemand, nil
 	}
 
-	log.Info().Msg("Sync registries config not provided or disabled, skipping sync")
+	log.Info().Msg("sync config not provided or disabled, so not enabling sync")
 
 	return nil, nil //nolint: nilnil
 }

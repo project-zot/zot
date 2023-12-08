@@ -125,7 +125,7 @@ func (mgmt *Mgmt) HandleGetConfig(w http.ResponseWriter, r *http.Request) {
 
 	buf, err := zcommon.MarshalThroughStruct(sanitizedConfig, &StrippedConfig{})
 	if err != nil {
-		mgmt.Log.Error().Err(err).Msg("mgmt: couldn't marshal config response")
+		mgmt.Log.Error().Err(err).Str("component", "mgmt").Msg("failed to marshal config response")
 		w.WriteHeader(http.StatusInternalServerError)
 	}
 

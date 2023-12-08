@@ -500,7 +500,7 @@ func TestOutputFormatGQL(t *testing.T) {
 			cmd.SetArgs(args)
 			err := cmd.Execute()
 			So(err, ShouldNotBeNil)
-			So(buff.String(), ShouldContainSubstring, "invalid output format")
+			So(buff.String(), ShouldContainSubstring, "invalid cli output format")
 		})
 	})
 }
@@ -554,7 +554,7 @@ func TestServerResponseGQL(t *testing.T) {
 				cmd.SetArgs(args)
 				err := cmd.Execute()
 				So(err, ShouldNotBeNil)
-				So(buff.String(), ShouldContainSubstring, "invalid output format")
+				So(buff.String(), ShouldContainSubstring, "invalid cli output format")
 			})
 		})
 
@@ -632,7 +632,7 @@ func TestServerResponseGQL(t *testing.T) {
 				cmd.SetArgs(args)
 				err := cmd.Execute()
 				So(err, ShouldNotBeNil)
-				So(buff.String(), ShouldContainSubstring, "invalid output format")
+				So(buff.String(), ShouldContainSubstring, "invalid cli output format")
 			})
 		})
 
@@ -683,7 +683,7 @@ func TestServerResponseGQL(t *testing.T) {
 				cmd.SetArgs(args)
 				err := cmd.Execute()
 				So(err, ShouldNotBeNil)
-				So(buff.String(), ShouldContainSubstring, "invalid output format")
+				So(buff.String(), ShouldContainSubstring, "invalid cli output format")
 			})
 		})
 

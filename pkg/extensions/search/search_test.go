@@ -703,11 +703,12 @@ func TestRepoListWithNewestImage(t *testing.T) {
 		So(found, ShouldBeTrue)
 		So(err, ShouldBeNil)
 
-		found, err = readFileAndSearchString(logPath, "updating the CVE database", 2*time.Minute)
+		found, err = readFileAndSearchString(logPath, "updating cve-db", 2*time.Minute)
 		So(found, ShouldBeTrue)
 		So(err, ShouldBeNil)
 
-		found, err = readFileAndSearchString(logPath, "DB update completed, next update scheduled", 4*time.Minute)
+		found, err = readFileAndSearchString(logPath,
+			"cve-db update completed, next update scheduled after interval", 4*time.Minute)
 		So(found, ShouldBeTrue)
 		So(err, ShouldBeNil)
 
@@ -2096,7 +2097,7 @@ func TestDerivedImageList(t *testing.T) {
 			}`
 
 		resp, err := resty.R().Get(baseURL + graphqlQueryPrefix + "?query=" + url.QueryEscape(query))
-		So(strings.Contains(string(resp.Body()), "repository: not found"), ShouldBeTrue)
+		So(string(resp.Body()), ShouldContainSubstring, "repository not found")
 		So(err, ShouldBeNil)
 	})
 
@@ -2179,7 +2180,7 @@ func TestDerivedImageListNoRepos(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
 
-		So(strings.Contains(string(resp.Body()), "repository: not found"), ShouldBeTrue)
+		So(string(resp.Body()), ShouldContainSubstring, "repository not found")
 		So(err, ShouldBeNil)
 	})
 }
@@ -2742,7 +2743,7 @@ func TestBaseImageList(t *testing.T) {
 			}`
 
 		resp, err := resty.R().Get(baseURL + graphqlQueryPrefix + "?query=" + url.QueryEscape(query))
-		So(strings.Contains(string(resp.Body()), "repository: not found"), ShouldBeTrue)
+		So(string(resp.Body()), ShouldContainSubstring, "repository not found")
 		So(err, ShouldBeNil)
 	})
 
@@ -3395,11 +3396,12 @@ func TestGlobalSearch(t *testing.T) {
 		So(found, ShouldBeTrue)
 		So(err, ShouldBeNil)
 
-		found, err = readFileAndSearchString(logPath, "updating the CVE database", 2*time.Minute)
+		found, err = readFileAndSearchString(logPath, "updating cve-db", 2*time.Minute)
 		So(found, ShouldBeTrue)
 		So(err, ShouldBeNil)
 
-		found, err = readFileAndSearchString(logPath, "DB update completed, next update scheduled", 4*time.Minute)
+		found, err = readFileAndSearchString(logPath, "cve-db update completed, next update scheduled after interval",
+			4*time.Minute)
 		So(found, ShouldBeTrue)
 		So(err, ShouldBeNil)
 
@@ -6118,7 +6120,7 @@ func TestImageSummary(t *testing.T) {
 
 		So(len(imgSummaryResponse.Errors), ShouldEqual, 1)
 		So(imgSummaryResponse.Errors[0].Message,
-			ShouldContainSubstring, "metadb: repo metadata not found for given repo name")
+			ShouldContainSubstring, "repo metadata not found for given repo name")
 
 		t.Log("starting Test retrieve image with bad tag")
 		// gql is parametrized with the repo.

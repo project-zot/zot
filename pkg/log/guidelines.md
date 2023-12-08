@@ -61,3 +61,5 @@ For example, lookup a cache (fast path) and it throws a not-found error, and we
 expect to handle it and perform a slow path lookup. Instead of logging the
 lookup failure at ERROR level, it may be more appropriate to log at DEBUG level
 and then handle the error.
+
+Also, instead of `Msg("error at something")` standardize on `Msg("failed at something")`.

@@ -86,7 +86,7 @@ func (amw *AuthnMiddleware) sessionAuthn(ctlr *Controller, userAc *reqCtx.UserAc
 
 	groups, err := ctlr.MetaDB.GetUserGroups(request.Context())
 	if err != nil {
-		ctlr.Log.Err(err).Str("identity", identity).Msg("can not get user profile in DB")
+		ctlr.Log.Err(err).Str("identity", identity).Msg("failed to get user profile in DB")
 
 		return false, err
 	}
@@ -134,7 +134,7 @@ func (amw *AuthnMiddleware) basicAuthn(ctlr *Controller, userAc *reqCtx.UserAcce
 
 			// we have already populated the request context with userAc
 			if err := ctlr.MetaDB.SetUserGroups(request.Context(), groups); err != nil {
-				ctlr.Log.Error().Err(err).Str("identity", identity).Msg("couldn't update user profile")
+				ctlr.Log.Error().Err(err).Str("identity", identity).Msg("failed to update user profile")
 
 				return false, err
 			}
@@ -172,7 +172,7 @@ func (amw *AuthnMiddleware) basicAuthn(ctlr *Controller, userAc *reqCtx.UserAcce
 
 			// we have already populated the request context with userAc
 			if err := ctlr.MetaDB.SetUserGroups(request.Context(), groups); err != nil {
-				ctlr.Log.Error().Err(err).Str("identity", identity).Msg("couldn't update user profile")
+				ctlr.Log.Error().Err(err).Str("identity", identity).Msg("failed to update user profile")
 
 				return false, err
 			}
@@ -186,7 +186,7 @@ func (amw *AuthnMiddleware) basicAuthn(ctlr *Controller, userAc *reqCtx.UserAcce
 		apiKey := passphrase
 
 		if !strings.HasPrefix(apiKey, constants.APIKeysPrefix) {
-			ctlr.Log.Error().Msg("api token has invalid format")
+			ctlr.Log.Error().Msg("invalid api token format")
 
 			return false, nil
 		}
@@ -198,12 +198,12 @@ func (amw *AuthnMiddleware) basicAuthn(ctlr *Controller, userAc *reqCtx.UserAcce
 		storedIdentity, err := ctlr.MetaDB.GetUserAPIKeyInfo(hashedKey)
 		if err != nil {
 			if errors.Is(err, zerr.ErrUserAPIKeyNotFound) {
-				ctlr.Log.Info().Err(err).Msgf("can not find any user info for hashed key %s in DB", hashedKey)
+				ctlr.Log.Info().Err(err).Msgf("failed to find any user info for hashed key %s in DB", hashedKey)
 
 				return false, nil
 			}
 
-			ctlr.Log.Error().Err(err).Msgf("can not get user info for hashed key %s in DB", hashedKey)
+			ctlr.Log.Error().Err(err).Msgf("failed to get user info for hashed key %s in DB", hashedKey)
 
 			return false, err
 		}
@@ -215,7 +215,7 @@ func (amw *AuthnMiddleware) basicAuthn(ctlr *Controller, userAc *reqCtx.UserAcce
 			// check if api key expired
 			isExpired, err := ctlr.MetaDB.IsAPIKeyExpired(request.Context(), hashedKey)
 			if err != nil {
-				ctlr.Log.Err(err).Str("identity", identity).Msg("can not verify if api key expired")
+				ctlr.Log.Err(err).Str("identity", identity).Msg("failed to verify if api key expired")
 
 				return false, err
 			}
@@ -226,14 +226,14 @@ func (amw *AuthnMiddleware) basicAuthn(ctlr *Controller, userAc *reqCtx.UserAcce
 
 			err = ctlr.MetaDB.UpdateUserAPIKeyLastUsed(request.Context(), hashedKey)
 			if err != nil {
-				ctlr.Log.Err(err).Str("identity", identity).Msg("can not update user profile in DB")
+				ctlr.Log.Err(err).Str("identity", identity).Msg("failed to update user profile in DB")
 
 				return false, err
 			}
 
 			groups, err := ctlr.MetaDB.GetUserGroups(request.Context())
 			if err != nil {
-				ctlr.Log.Err(err).Str("identity", identity).Msg("can not get user's groups in DB")
+				ctlr.Log.Err(err).Str("identity", identity).Msg("failed to get user's groups in DB")
 
 				return false, err
 			}
@@ -376,7 +376,7 @@ func (amw *AuthnMiddleware) tryAuthnHandlers(ctlr *Controller) mux.MiddlewareFun
 				authenticated, err := amw.sessionAuthn(ctlr, userAc, response, request)
 				if err != nil {
 					if errors.Is(err, zerr.ErrUserDataNotFound) {
-						ctlr.Log.Err(err).Msg("can not find user profile in DB")
+						ctlr.Log.Err(err).Msg("failed to find user profile in DB")
 
 						authFail(response, request, ctlr.Config.HTTP.Realm, delay)
 					}
@@ -419,7 +419,7 @@ func bearerAuthHandler(ctlr *Controller) mux.MiddlewareFunc {
 		EmptyDefaultNamespace: true,
 	})
 	if err != nil {
-		ctlr.Log.Panic().Err(err).Msg("error creating bearer authorizer")
+		ctlr.Log.Panic().Err(err).Msg("failed to create bearer authorizer")
 	}
 
 	return func(next http.Handler) http.Handler {
@@ -452,7 +452,7 @@ func bearerAuthHandler(ctlr *Controller) mux.MiddlewareFunc {
 
 			permissions, err := authorizer.Authorize(header, action, name)
 			if err != nil {
-				ctlr.Log.Error().Err(err).Msg("issue parsing Authorization header")
+				ctlr.Log.Error().Err(err).Msg("failed to parse Authorization header")
 				response.Header().Set("Content-Type", "application/json")
 				zcommon.WriteJSON(response, http.StatusInternalServerError, apiErr.NewError(apiErr.UNSUPPORTED))
 
@@ -523,7 +523,7 @@ func (rh *RouteHandler) AuthURLHandler() http.HandlerFunc {
 
 		client, ok := rh.c.RelyingParties[provider]
 		if !ok {
-			rh.c.Log.Error().Msg("unrecognized openid provider")
+			rh.c.Log.Error().Msg("failed to authenticate due to unrecognized openid provider")
 
 			w.WriteHeader(http.StatusBadRequest)
 
@@ -547,7 +547,7 @@ func (rh *RouteHandler) AuthURLHandler() http.HandlerFunc {
 		// let the session set its own id
 		err := session.Save(r, w)
 		if err != nil {
-			rh.c.Log.Error().Err(err).Msg("unable to save http session")
+			rh.c.Log.Error().Err(err).Msg("failed to save http session")
 
 			w.WriteHeader(http.StatusInternalServerError)
 
@@ -720,7 +720,7 @@ func GetGithubUserInfo(ctx context.Context, client *github.Client, log log.Logge
 
 	userEmails, _, err := client.Users.ListEmails(ctx, nil)
 	if err != nil {
-		log.Error().Msg("couldn't set user record for empty email value")
+		log.Error().Msg("failed to set user record for empty email value")
 
 		return "", []string{}, err
 	}
@@ -737,7 +737,7 @@ func GetGithubUserInfo(ctx context.Context, client *github.Client, log log.Logge
 
 	orgs, _, err := client.Organizations.List(ctx, "", nil)
 	if err != nil {
-		log.Error().Msg("couldn't set user record for empty email value")
+		log.Error().Msg("failed to set user record for empty email value")
 
 		return "", []string{}, err
 	}
@@ -764,7 +764,7 @@ func saveUserLoggedSession(cookieStore sessions.Store, response http.ResponseWri
 	// let the session set its own id
 	err := session.Save(request, response)
 	if err != nil {
-		log.Error().Err(err).Str("identity", identity).Msg("unable to save http session")
+		log.Error().Err(err).Str("identity", identity).Msg("failed to save http session")
 
 		return err
 	}
@@ -790,13 +790,15 @@ func OAuth2Callback(ctlr *Controller, w http.ResponseWriter, r *http.Request, st
 
 	stateOrigin, ok := stateCookie.Values["state"].(string)
 	if !ok {
-		ctlr.Log.Error().Err(zerr.ErrInvalidStateCookie).Msg("openID: unable to get 'state' cookie from request")
+		ctlr.Log.Error().Err(zerr.ErrInvalidStateCookie).Str("component", "openID").
+			Msg(": failed to get 'state' cookie from request")
 
 		return "", zerr.ErrInvalidStateCookie
 	}
 
 	if stateOrigin != state {
-		ctlr.Log.Error().Err(zerr.ErrInvalidStateCookie).Msg("openID: 'state' cookie differs from the actual one")
+		ctlr.Log.Error().Err(zerr.ErrInvalidStateCookie).Str("component", "openID").
+			Msg(": 'state' cookie differs from the actual one")
 
 		return "", zerr.ErrInvalidStateCookie
 	}
@@ -813,7 +815,7 @@ func OAuth2Callback(ctlr *Controller, w http.ResponseWriter, r *http.Request, st
 	}
 
 	if err := ctlr.MetaDB.SetUserGroups(r.Context(), groups); err != nil {
-		ctlr.Log.Error().Err(err).Str("identity", email).Msg("couldn't update the user profile")
+		ctlr.Log.Error().Err(err).Str("identity", email).Msg("failed to update the user profile")
 
 		return "", err
 	}
@@ -841,7 +843,7 @@ func GetAuthUserFromRequestSession(cookieStore sessions.Store, request *http.Req
 ) (string, bool) {
 	session, err := cookieStore.Get(request, "session")
 	if err != nil {
-		log.Error().Err(err).Msg("can not decode existing session")
+		log.Error().Err(err).Msg("failed to decode existing session")
 		// expired cookie, no need to return err
 		return "", false
 	}
@@ -854,14 +856,14 @@ func GetAuthUserFromRequestSession(cookieStore sessions.Store, request *http.Req
 
 	authenticated := session.Values["authStatus"]
 	if authenticated != true {
-		log.Error().Msg("can not get `user` session value")
+		log.Error().Msg("failed to get `user` session value")
 
 		return "", false
 	}
 
 	identity, ok := session.Values["user"].(string)
 	if !ok {
-		log.Error().Msg("can not get `user` session value")
+		log.Error().Msg("failed to get `user` session value")
 
 		return "", false
 	}
@@ -873,7 +875,7 @@ func GenerateAPIKey(uuidGenerator guuid.Generator, log log.Logger,
 ) (string, string, error) {
 	apiKeyBase, err := uuidGenerator.NewV4()
 	if err != nil {
-		log.Error().Err(err).Msg("unable to generate uuid for api key base")
+		log.Error().Err(err).Msg("failed to generate uuid for api key base")
 
 		return "", "", err
 	}
@@ -883,7 +885,7 @@ func GenerateAPIKey(uuidGenerator guuid.Generator, log log.Logger,
 	// will be used for identifying a specific api key
 	apiKeyID, err := uuidGenerator.NewV4()
 	if err != nil {
-		log.Error().Err(err).Msg("unable to generate uuid for api key id")
+		log.Error().Err(err).Msg("failed to generate uuid for api key id")
 
 		return "", "", err
 	}

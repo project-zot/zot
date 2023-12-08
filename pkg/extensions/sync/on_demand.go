@@ -148,7 +148,7 @@ func (onDemand *BaseOnDemand) syncImage(ctx context.Context, repo, reference str
 					}()
 
 					onDemand.log.Info().Str("repo", repo).Str(reference, "reference").Str("err", err.Error()).
-						Msg("sync routine: starting routine to copy image, because of error")
+						Str("component", "sync").Msg("starting routine to copy image, because of error")
 
 					time.Sleep(retryOptions.Delay)
 
@@ -159,7 +159,7 @@ func (onDemand *BaseOnDemand) syncImage(ctx context.Context, repo, reference str
 						return err
 					}, retryOptions); err != nil {
 						onDemand.log.Error().Str("errorType", common.TypeOf(err)).Str("repo", repo).Str("reference", reference).
-							Err(err).Msg("sync routine: error while copying image")
+							Err(err).Str("component", "sync").Msg("failed to copy image")
 					}
 				}(service)
 			}

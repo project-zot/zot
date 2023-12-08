@@ -43,7 +43,7 @@ func (linter *Linter) CheckMandatoryAnnotations(repo string, manifestDigest godi
 
 	content, err := imgStore.GetBlobContent(repo, manifestDigest)
 	if err != nil {
-		linter.log.Error().Err(err).Msg("linter: unable to get image manifest")
+		linter.log.Error().Err(err).Str("component", "linter").Msg("failed to get image manifest")
 
 		return false, err
 	}
@@ -51,7 +51,7 @@ func (linter *Linter) CheckMandatoryAnnotations(repo string, manifestDigest godi
 	var manifest ispec.Manifest
 
 	if err := json.Unmarshal(content, &manifest); err != nil {
-		linter.log.Error().Err(err).Msg("linter: couldn't unmarshal manifest JSON")
+		linter.log.Error().Err(err).Str("component", "linter").Msg("failed to unmarshal manifest JSON")
 
 		return false, err
 	}
@@ -78,7 +78,7 @@ func (linter *Linter) CheckMandatoryAnnotations(repo string, manifestDigest godi
 
 	content, err = imgStore.GetBlobContent(repo, configDigest)
 	if err != nil {
-		linter.log.Error().Err(err).Msg("linter: couldn't get config JSON " +
+		linter.log.Error().Err(err).Str("component", "linter").Msg("failed to get config JSON " +
 			configDigest.String())
 
 		return false, err
@@ -86,7 +86,7 @@ func (linter *Linter) CheckMandatoryAnnotations(repo string, manifestDigest godi
 
 	var imageConfig ispec.Image
 	if err := json.Unmarshal(content, &imageConfig); err != nil {
-		linter.log.Error().Err(err).Msg("linter: couldn't unmarshal config JSON " + configDigest.String())
+		linter.log.Error().Err(err).Str("component", "linter").Msg("failed to unmarshal config JSON " + configDigest.String())
 
 		return false, err
 	}

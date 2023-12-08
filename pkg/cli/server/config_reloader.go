@@ -88,7 +88,7 @@ func (hr *HotReloader) Start() context.Context {
 
 						err := LoadConfiguration(newConfig, hr.filePath)
 						if err != nil {
-							log.Error().Err(err).Msg("couldn't reload config, retry writing it.")
+							log.Error().Err(err).Msg("failed to reload config, retry writing it.")
 
 							continue
 						}
@@ -111,7 +111,7 @@ func (hr *HotReloader) Start() context.Context {
 		}()
 
 		if err := hr.watcher.Add(hr.filePath); err != nil {
-			log.Panic().Err(err).Str("config", hr.filePath).Msg("error adding config file to FsNotify watcher")
+			log.Panic().Err(err).Str("config", hr.filePath).Msg("failed to add config file to fsnotity watcher")
 		}
 
 		<-done

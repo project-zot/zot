@@ -311,6 +311,10 @@ $(GOLINTER):
 	curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(TOOLSDIR)/bin $(GOLINTER_VERSION)
 	$(GOLINTER) version
 
+.PHONY: check-logs
+check-logs: 
+	@./scripts/check_logs.sh
+
 .PHONY: check
 check: $(if $(findstring ui,$(BUILD_LABELS)), ui)
 check: ./golangcilint.yaml $(GOLINTER)

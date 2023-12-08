@@ -101,7 +101,7 @@ func (gen *TaskGenerator) Next() (scheduler.Task, error) {
 	}
 
 	if repo == "" {
-		gen.log.Info().Msg("sync: finished syncing all repos")
+		gen.log.Info().Str("component", "sync").Msg("finished syncing all repos")
 		gen.done = true
 
 		return nil, nil

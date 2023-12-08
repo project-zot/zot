@@ -170,7 +170,7 @@ func RunCheckAllBlobsIntegrityTests( //nolint: thelper
 			actual := strings.TrimSpace(str)
 			So(actual, ShouldContainSubstring, "REPOSITORY TAG STATUS AFFECTED BLOB ERROR")
 			// verify error message
-			So(actual, ShouldContainSubstring, fmt.Sprintf("test 1.0 affected %s blob: not found", manifestDig))
+			So(actual, ShouldContainSubstring, fmt.Sprintf("test 1.0 affected %s blob not found", manifestDig))
 
 			index, err := common.GetIndex(imgStore, repoName, log)
 			So(err, ShouldBeNil)
@@ -180,7 +180,7 @@ func RunCheckAllBlobsIntegrityTests( //nolint: thelper
 
 			imageRes := storage.CheckLayers(context.Background(), repoName, tag, manifestDescriptor, imgStore)
 			So(imageRes.Status, ShouldEqual, "affected")
-			So(imageRes.Error, ShouldEqual, "blob: not found")
+			So(imageRes.Error, ShouldEqual, "blob not found")
 
 			_, err = driver.WriteFile(manifestFile, []byte("invalid content"))
 			So(err, ShouldBeNil)
@@ -195,7 +195,7 @@ func RunCheckAllBlobsIntegrityTests( //nolint: thelper
 			actual = strings.TrimSpace(str)
 			So(actual, ShouldContainSubstring, "REPOSITORY TAG STATUS AFFECTED BLOB ERROR")
 			// verify error message
-			So(actual, ShouldContainSubstring, fmt.Sprintf("test 1.0 affected %s manifest: invalid contents", manifestDig))
+			So(actual, ShouldContainSubstring, fmt.Sprintf("test 1.0 affected %s invalid manifest content", manifestDig))
 
 			index, err = common.GetIndex(imgStore, repoName, log)
 			So(err, ShouldBeNil)
@@ -205,7 +205,7 @@ func RunCheckAllBlobsIntegrityTests( //nolint: thelper
 
 			imageRes = storage.CheckLayers(context.Background(), repoName, tag, manifestDescriptor, imgStore)
 			So(imageRes.Status, ShouldEqual, "affected")
-			So(imageRes.Error, ShouldEqual, "manifest: invalid contents")
+			So(imageRes.Error, ShouldEqual, "invalid manifest content")
 		})
 
 		Convey("Config integrity affected", func() {
@@ -235,7 +235,7 @@ func RunCheckAllBlobsIntegrityTests( //nolint: thelper
 			str := space.ReplaceAllString(buff.String(), " ")
 			actual := strings.TrimSpace(str)
 			So(actual, ShouldContainSubstring, "REPOSITORY TAG STATUS AFFECTED BLOB ERROR")
-			So(actual, ShouldContainSubstring, fmt.Sprintf("test 1.0 affected %s blob: not found", configDig))
+			So(actual, ShouldContainSubstring, fmt.Sprintf("test 1.0 affected %s blob not found", configDig))
 
 			_, err = driver.WriteFile(configFile, []byte("invalid content"))
 			So(err, ShouldBeNil)
@@ -249,7 +249,7 @@ func RunCheckAllBlobsIntegrityTests( //nolint: thelper
 			str = space.ReplaceAllString(buff.String(), " ")
 			actual = strings.TrimSpace(str)
 			So(actual, ShouldContainSubstring, "REPOSITORY TAG STATUS AFFECTED BLOB ERROR")
-			So(actual, ShouldContainSubstring, fmt.Sprintf("test 1.0 affected %s config: invalid config", configDig))
+			So(actual, ShouldContainSubstring, fmt.Sprintf("test 1.0 affected %s invalid server config", configDig))
 		})
 
 		Convey("Layers integrity affected", func() {
@@ -279,7 +279,7 @@ func RunCheckAllBlobsIntegrityTests( //nolint: thelper
 			str := space.ReplaceAllString(buff.String(), " ")
 			actual := strings.TrimSpace(str)
 			So(actual, ShouldContainSubstring, "REPOSITORY TAG STATUS AFFECTED BLOB ERROR")
-			So(actual, ShouldContainSubstring, fmt.Sprintf("test 1.0 affected %s blob: bad blob digest", layerDig))
+			So(actual, ShouldContainSubstring, fmt.Sprintf("test 1.0 affected %s bad blob digest", layerDig))
 		})
 
 		Convey("Layer not found", func() {
@@ -307,7 +307,7 @@ func RunCheckAllBlobsIntegrityTests( //nolint: thelper
 
 			imageRes := storage.CheckLayers(context.Background(), repoName, tag, manifestDescriptor, imgStore)
 			So(imageRes.Status, ShouldEqual, "affected")
-			So(imageRes.Error, ShouldEqual, "blob: not found")
+			So(imageRes.Error, ShouldEqual, "blob not found")
 
 			buff := bytes.NewBufferString("")
 
@@ -319,7 +319,7 @@ func RunCheckAllBlobsIntegrityTests( //nolint: thelper
 			str := space.ReplaceAllString(buff.String(), " ")
 			actual := strings.TrimSpace(str)
 			So(actual, ShouldContainSubstring, "REPOSITORY TAG STATUS AFFECTED BLOB ERROR")
-			So(actual, ShouldContainSubstring, fmt.Sprintf("test 1.0 affected %s blob: not found", layerDig))
+			So(actual, ShouldContainSubstring, fmt.Sprintf("test 1.0 affected %s blob not found", layerDig))
 		})
 
 		Convey("Scrub index", func() {
@@ -487,7 +487,7 @@ func RunCheckAllBlobsIntegrityTests( //nolint: thelper
 			str := space.ReplaceAllString(buff.String(), " ")
 			actual := strings.TrimSpace(str)
 			So(actual, ShouldContainSubstring, "REPOSITORY TAG STATUS AFFECTED BLOB ERROR")
-			So(actual, ShouldContainSubstring, fmt.Sprintf("test 1.0 affected %s blob: not found", manifestDig))
+			So(actual, ShouldContainSubstring, fmt.Sprintf("test 1.0 affected %s blob not found", manifestDig))
 
 			index, err := common.GetIndex(imgStore, repoName, log)
 			So(err, ShouldBeNil)
@@ -497,7 +497,7 @@ func RunCheckAllBlobsIntegrityTests( //nolint: thelper
 
 			imageRes := storage.CheckLayers(context.Background(), repoName, tag, manifestDescriptor, imgStore)
 			So(imageRes.Status, ShouldEqual, "affected")
-			So(imageRes.Error, ShouldContainSubstring, "blob: not found")
+			So(imageRes.Error, ShouldContainSubstring, "blob not found")
 		})
 
 		Convey("use the result of an already scrubed manifest which is the subject of the current manifest", func() {

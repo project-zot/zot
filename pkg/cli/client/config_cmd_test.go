@@ -221,7 +221,7 @@ func TestConfigCmdMain(t *testing.T) {
 		cmd.SetArgs(args)
 		err := cmd.Execute()
 		So(err, ShouldNotBeNil)
-		So(buff.String(), ShouldContainSubstring, "invalid config")
+		So(buff.String(), ShouldContainSubstring, "invalid server config")
 	})
 
 	Convey("Test remove config bad permissions", t, func() {

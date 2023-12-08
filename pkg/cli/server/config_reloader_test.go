@@ -491,7 +491,7 @@ func TestConfigReloader(t *testing.T) {
 		time.Sleep(5 * time.Second)
 
 		found, err := test.ReadLogFileAndSearchString(logFile.Name(),
-			"Error downloading Trivy DB to destination dir", 30*time.Second)
+			"failed to download trivy-db to destination dir", 30*time.Second)
 		So(err, ShouldBeNil)
 		So(found, ShouldBeTrue)
 

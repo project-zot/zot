@@ -64,7 +64,7 @@ func (d *DynamoDBDriver) NewTable(tableName string) error {
 func NewDynamoDBCache(parameters interface{}, log zlog.Logger) (*DynamoDBDriver, error) {
 	properParameters, ok := parameters.(DynamoDBDriverParameters)
 	if !ok {
-		log.Error().Err(zerr.ErrTypeAssertionFailed).Msgf("expected type '%T' but got '%T'",
+		log.Error().Err(zerr.ErrTypeAssertionFailed).Msgf("failed to cast type, expected type '%T' but got '%T'",
 			BoltDBDriverParameters{}, parameters)
 
 		return nil, zerr.ErrTypeAssertionFailed
@@ -86,7 +86,7 @@ func NewDynamoDBCache(parameters interface{}, log zlog.Logger) (*DynamoDBDriver,
 	cfg, err := config.LoadDefaultConfig(context.Background(), config.WithRegion(properParameters.Region),
 		config.WithEndpointResolverWithOptions(customResolver))
 	if err != nil {
-		log.Error().Err(err).Msg("unable to load AWS SDK config for dynamodb")
+		log.Error().Err(err).Msg("failed to load AWS SDK config for dynamodb")
 
 		return nil, err
 	}
@@ -95,7 +95,7 @@ func NewDynamoDBCache(parameters interface{}, log zlog.Logger) (*DynamoDBDriver,
 
 	err = driver.NewTable(driver.tableName)
 	if err != nil {
-		log.Error().Err(err).Str("tableName", driver.tableName).Msg("unable to create table for cache")
+		log.Error().Err(err).Str("tableName", driver.tableName).Msg("failed to create table for cache")
 
 		return nil, err
 	}
@@ -143,7 +143,8 @@ func (d *DynamoDBDriver) GetBlob(digest godigest.Digest) (string, error) {
 
 func (d *DynamoDBDriver) PutBlob(digest godigest.Digest, path string) error {
 	if path == "" {
-		d.log.Error().Err(zerr.ErrEmptyValue).Str("digest", digest.String()).Msg("empty path provided")
+		d.log.Error().Err(zerr.ErrEmptyValue).Str("digest", digest.String()).
+			Msg("failed to put blob because the path provided is empty")
 
 		return zerr.ErrEmptyValue
 	}
@@ -159,7 +160,7 @@ func (d *DynamoDBDriver) PutBlob(digest godigest.Digest, path string) error {
 	attrPath := types.AttributeValueMemberSS{Value: []string{path}}
 
 	if err := d.updateItem(digest, expression, map[string]types.AttributeValue{":i": &attrPath}); err != nil {
-		d.log.Error().Err(err).Str("digest", digest.String()).Str("path", path).Msg("unable to put blob")
+		d.log.Error().Err(err).Str("digest", digest.String()).Str("path", path).Msg("failed to put blob")
 
 		return err
 	}
@@ -183,7 +184,7 @@ func (d *DynamoDBDriver) HasBlob(digest godigest.Digest, path string) bool {
 	out := Blob{}
 
 	if resp.Item == nil {
-		d.log.Debug().Err(zerr.ErrCacheMiss).Str("digest", string(digest)).Msg("unable to find blob in cache")
+		d.log.Debug().Err(zerr.ErrCacheMiss).Str("digest", string(digest)).Msg("failed to find blob in cache")
 
 		return false
 	}
@@ -200,7 +201,7 @@ func (d *DynamoDBDriver) HasBlob(digest godigest.Digest, path string) bool {
 		}
 	}
 
-	d.log.Debug().Err(zerr.ErrCacheMiss).Str("digest", string(digest)).Msg("unable to find blob in cache")
+	d.log.Debug().Err(zerr.ErrCacheMiss).Str("digest", string(digest)).Msg("failed to find blob in cache")
 
 	return false
 }
@@ -212,7 +213,7 @@ func (d *DynamoDBDriver) DeleteBlob(digest godigest.Digest, path string) error {
 	attrPath := types.AttributeValueMemberSS{Value: []string{path}}
 
 	if err := d.updateItem(digest, expression, map[string]types.AttributeValue{":i": &attrPath}); err != nil {
-		d.log.Error().Err(err).Str("digest", digest.String()).Str("path", path).Msg("unable to delete")
+		d.log.Error().Err(err).Str("digest", digest.String()).Str("path", path).Msg("failed to delete")
 
 		return err
 	}
@@ -274,7 +275,7 @@ func (d *DynamoDBDriver) putOriginBlob(digest godigest.Digest, path string) erro
 	attrPath := types.AttributeValueMemberS{Value: path}
 
 	if err := d.updateItem(digest, expression, map[string]types.AttributeValue{":s": &attrPath}); err != nil {
-		d.log.Error().Err(err).Str("digest", digest.String()).Str("path", path).Msg("unable to put original blob")
+		d.log.Error().Err(err).Str("digest", digest.String()).Str("path", path).Msg("failed to put original blob")
 
 		return err
 	}

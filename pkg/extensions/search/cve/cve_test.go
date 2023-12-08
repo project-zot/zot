@@ -462,23 +462,23 @@ func TestCVESearchDisabled(t *testing.T) {
 		ctrlManager.StartAndWait(port)
 
 		// Wait for trivy db to download
-		found, err := test.ReadLogFileAndSearchString(logPath, "CVE config not provided, skipping CVE update", 90*time.Second)
+		found, err := test.ReadLogFileAndSearchString(logPath, "cve config not provided, skipping cve-db update", 90*time.Second)
 		So(err, ShouldBeNil)
 		So(found, ShouldBeTrue)
 
 		defer ctrlManager.StopServer()
 
 		resp, _ := resty.R().SetBasicAuth(username, password).Get(baseURL + constants.FullSearchPrefix + "?query={CVEListForImage(image:\"zot-test\"){Tag%20CVEList{Id%20Description%20Severity%20PackageList{Name%20InstalledVersion%20FixedVersion}}}}")
-		So(string(resp.Body()), ShouldContainSubstring, "search: CVE search is disabled")
+		So(string(resp.Body()), ShouldContainSubstring, "cve search is disabled")
 		So(resp.StatusCode(), ShouldEqual, 200)
 
 		resp, _ = resty.R().SetBasicAuth(username, password).Get(baseURL + constants.FullSearchPrefix + "?query={ImageListForCVE(id:\"CVE-201-20482\"){Results{RepoName%20Tag}}}")
-		So(string(resp.Body()), ShouldContainSubstring, "search: CVE search is disabled")
+		So(string(resp.Body()), ShouldContainSubstring, "cve search is disabled")
 		So(resp.StatusCode(), ShouldEqual, 200)
 
 		resp, _ = resty.R().SetBasicAuth(username, password).Get(baseURL + constants.FullSearchPrefix + "?query={ImageListWithCVEFixed(id:\"" + "randomId" + "\",image:\"zot-test\"){Results{RepoName%20LastUpdated}}}")
 		So(resp, ShouldNotBeNil)
-		So(string(resp.Body()), ShouldContainSubstring, "search: CVE search is disabled")
+		So(string(resp.Body()), ShouldContainSubstring, "cve search is disabled")
 		So(resp.StatusCode(), ShouldEqual, 200)
 	})
 }
@@ -542,7 +542,7 @@ func TestCVESearch(t *testing.T) {
 		// trivy db download fail
 		err = os.Mkdir(dbDir+"/_trivy", 0o000)
 		So(err, ShouldBeNil)
-		found, err := test.ReadLogFileAndSearchString(logPath, "Error downloading Trivy DB to destination dir", 180*time.Second)
+		found, err := test.ReadLogFileAndSearchString(logPath, "failed to download trivy-db to destination dir", 180*time.Second)
 		So(err, ShouldBeNil)
 		So(found, ShouldBeTrue)
 
@@ -550,7 +550,7 @@ func TestCVESearch(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		// Wait for trivy db to download
-		found, err = test.ReadLogFileAndSearchString(logPath, "DB update completed, next update scheduled", 180*time.Second)
+		found, err = test.ReadLogFileAndSearchString(logPath, "cve-db update completed, next update scheduled after interval", 180*time.Second)
 		So(err, ShouldBeNil)
 		So(found, ShouldBeTrue)
 
@@ -1541,7 +1541,7 @@ func TestFixedTagsWithIndex(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		// Wait for trivy db to download
-		found, err := test.ReadLogFileAndSearchString(logPath, "DB update completed, next update scheduled", 180*time.Second)
+		found, err := test.ReadLogFileAndSearchString(logPath, "cve-db update completed, next update scheduled after interval", 180*time.Second)
 		So(err, ShouldBeNil)
 		So(found, ShouldBeTrue)
 

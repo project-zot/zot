@@ -20,7 +20,7 @@ func RunScrubRepo(ctx context.Context, imgStore storageTypes.ImageStore, repo st
 
 	results, err := storage.CheckRepo(ctx, repo, imgStore)
 	if err != nil {
-		errMessage := fmt.Sprintf("error while running scrub for %s", path.Join(imgStore.RootDir(), repo))
+		errMessage := fmt.Sprintf("failed to run scrub for %s", path.Join(imgStore.RootDir(), repo))
 		log.Error().Err(err).Msg(errMessage)
 		log.Info().Msg(fmt.Sprintf("scrub unsuccessfully completed for %s", path.Join(imgStore.RootDir(), repo)))
 
@@ -33,7 +33,8 @@ func RunScrubRepo(ctx context.Context, imgStore storageTypes.ImageStore, repo st
 				Str("image", result.ImageName).
 				Str("tag", result.Tag).
 				Str("status", result.Status).
-				Msg("scrub: blobs/manifest ok")
+				Str("component", "scrub").
+				Msg("blobs/manifest ok")
 		} else {
 			log.Warn().
 				Str("image", result.ImageName).
@@ -41,7 +42,8 @@ func RunScrubRepo(ctx context.Context, imgStore storageTypes.ImageStore, repo st
 				Str("status", result.Status).
 				Str("affected blob", result.AffectedBlob).
 				Str("error", result.Error).
-				Msg("scrub: blobs/manifest affected")
+				Str("component", "scrub").
+				Msg("blobs/manifest affected")
 		}
 	}
 

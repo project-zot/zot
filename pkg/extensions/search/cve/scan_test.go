@@ -440,7 +440,7 @@ func TestScanGeneratorWithMockedData(t *testing.T) { //nolint: gocyclo
 
 		// Make sure the scanner generator has completed despite errors
 		found, err := test.ReadLogFileAndSearchString(logPath,
-			"Scheduled CVE scan: finished for available images", 40*time.Second)
+			"finished scanning available images during scheduled cve scan", 40*time.Second)
 		So(err, ShouldBeNil)
 		So(found, ShouldBeTrue)
 
@@ -462,19 +462,19 @@ func TestScanGeneratorWithMockedData(t *testing.T) { //nolint: gocyclo
 		}
 
 		found, err = test.ReadLogFileAndSearchString(logPath,
-			"Scheduled CVE scan: error while obtaining repo metadata", 20*time.Second)
+			"failed to obtain repo metadata during scheduled cve scan", 20*time.Second)
 		So(err, ShouldBeNil)
 		So(found, ShouldBeTrue)
 
 		// Make sure the scanner generator is catching the scanning error for repo7
 		found, err = test.ReadLogFileAndSearchString(logPath,
-			"Scheduled CVE scan errored for image", 20*time.Second)
+			"failed to perform scheduled cve scan for image", 20*time.Second)
 		So(err, ShouldBeNil)
 		So(found, ShouldBeTrue)
 
 		// Make sure the scanner generator is triggered at least twice
 		found, err = test.ReadLogFileAndCountStringOccurence(logPath,
-			"Scheduled CVE scan: finished for available images", 30*time.Second, 2)
+			"finished scanning available images during scheduled cve scan", 30*time.Second, 2)
 		So(err, ShouldBeNil)
 		So(found, ShouldBeTrue)
 	})
@@ -537,7 +537,7 @@ func TestScanGeneratorWithRealData(t *testing.T) {
 
 		// Make sure the scanner generator has completed
 		found, err := test.ReadLogFileAndSearchString(logPath,
-			"Scheduled CVE scan: finished for available images", 120*time.Second)
+			"finished scanning available images during scheduled cve scan", 120*time.Second)
 		So(err, ShouldBeNil)
 		So(found, ShouldBeTrue)
 
@@ -547,7 +547,7 @@ func TestScanGeneratorWithRealData(t *testing.T) {
 		So(found, ShouldBeTrue)
 
 		found, err = test.ReadLogFileAndSearchString(logPath,
-			"Scheduled CVE scan completed successfully for image", 120*time.Second)
+			"scheduled cve scan completed successfully for image", 120*time.Second)
 		So(err, ShouldBeNil)
 		So(found, ShouldBeTrue)
 

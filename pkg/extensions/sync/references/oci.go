@@ -134,8 +134,8 @@ func (ref OciReferences) SyncReferences(ctx context.Context, localRepo, remoteRe
 		refsDigests = append(refsDigests, referenceDigest)
 
 		if ref.metaDB != nil {
-			ref.log.Debug().Str("repository", localRepo).Str("subject", subjectDigestStr).
-				Msg("metaDB: trying to add oci references for image")
+			ref.log.Debug().Str("repository", localRepo).Str("subject", subjectDigestStr).Str("component", "metadb").
+				Msg("trying to add oci references for image")
 
 			err = meta.SetImageMetaFromInput(ctx, localRepo, referenceDigest.String(), referrer.MediaType,
 				referenceDigest, referenceBuf, ref.storeController.GetImageStore(localRepo),
@@ -145,8 +145,8 @@ func (ref OciReferences) SyncReferences(ctx context.Context, localRepo, remoteRe
 					localRepo, subjectDigestStr, err)
 			}
 
-			ref.log.Info().Str("repository", localRepo).Str("subject", subjectDigestStr).
-				Msg("metaDB: successfully added oci references to MetaDB for image")
+			ref.log.Info().Str("repository", localRepo).Str("subject", subjectDigestStr).Str("component", "metadb").
+				Msg("successfully added oci references to MetaDB for image")
 		}
 	}
 

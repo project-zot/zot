@@ -157,7 +157,8 @@ func (ms *metricServer) SendMetric(mfunc interface{}) {
 	if ms.enabled {
 		mfn, ok := mfunc.(func())
 		if !ok {
-			ms.log.Error().Err(errors.ErrInvalidMetric).Msg("type conversion")
+			ms.log.Error().Err(errors.ErrInvalidMetric).
+				Msgf("failed to cast type, expected '%T' but got '%T'", func() {}, mfunc)
 
 			return
 		}
@@ -169,7 +170,8 @@ func (ms *metricServer) SendMetric(mfunc interface{}) {
 func (ms *metricServer) ForceSendMetric(mfunc interface{}) {
 	mfn, ok := mfunc.(func())
 	if !ok {
-		ms.log.Error().Err(errors.ErrInvalidMetric).Msg("type conversion")
+		ms.log.Error().Err(errors.ErrInvalidMetric).
+			Msgf("failed to cast type, expected '%T' but got '%T'", func() {}, mfunc)
 
 		return
 	}

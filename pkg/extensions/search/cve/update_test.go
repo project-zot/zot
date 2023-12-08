@@ -71,7 +71,7 @@ func TestCVEDBGenerator(t *testing.T) {
 
 		// Wait for trivy db to download
 		found, err := test.ReadLogFileAndCountStringOccurence(logPath,
-			"DB update completed, next update scheduled", 140*time.Second, 2)
+			"cve-db update completed, next update scheduled after interval", 140*time.Second, 2)
 		So(err, ShouldBeNil)
 		So(found, ShouldBeTrue)
 	})

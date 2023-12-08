@@ -438,7 +438,7 @@ func (c *Controller) StartBackgroundTasks(reloadCtx context.Context) {
 		//nolint: contextcheck
 		syncOnDemand, err := ext.EnableSyncExtension(c.Config, c.MetaDB, c.StoreController, c.taskScheduler, c.Log)
 		if err != nil {
-			c.Log.Error().Err(err).Msg("unable to start sync extension")
+			c.Log.Error().Err(err).Msg("failed to start sync extension")
 		}
 
 		c.SyncOnDemand = syncOnDemand

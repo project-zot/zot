@@ -49,7 +49,7 @@ func (lc *LDAPClient) Connect() error {
 		if !lc.UseSSL {
 			l, err = ldap.Dial("tcp", address)
 			if err != nil {
-				lc.Log.Error().Err(err).Str("address", address).Msg("non-TLS connection failed")
+				lc.Log.Error().Err(err).Str("address", address).Msg("failed to establish a TCP connection")
 
 				return err
 			}
@@ -68,7 +68,7 @@ func (lc *LDAPClient) Connect() error {
 				err = l.StartTLS(config)
 
 				if err != nil {
-					lc.Log.Error().Err(err).Str("address", address).Msg("TLS connection failed")
+					lc.Log.Error().Err(err).Str("address", address).Msg("failed to establish a TLS connection")
 
 					return err
 				}
@@ -85,7 +85,7 @@ func (lc *LDAPClient) Connect() error {
 			}
 			l, err = ldap.DialTLS("tcp", address, config)
 			if err != nil {
-				lc.Log.Error().Err(err).Str("address", address).Msg("TLS connection failed")
+				lc.Log.Error().Err(err).Str("address", address).Msg("failed to establish a TLS connection")
 
 				return err
 			}
@@ -143,7 +143,7 @@ func (lc *LDAPClient) Authenticate(username, password string) (bool, map[string]
 		if lc.BindPassword != "" {
 			err := lc.Conn.Bind(lc.BindDN, lc.BindPassword)
 			if err != nil {
-				lc.Log.Error().Err(err).Str("bindDN", lc.BindDN).Msg("bind failed")
+				lc.Log.Error().Err(err).Str("bindDN", lc.BindDN).Msg("failed to bind")
 				// clean up the cached conn, so we can retry
 				lc.Conn.Close()
 				lc.Conn = nil
@@ -153,7 +153,7 @@ func (lc *LDAPClient) Authenticate(username, password string) (bool, map[string]
 		} else {
 			err := lc.Conn.UnauthenticatedBind(lc.BindDN)
 			if err != nil {
-				lc.Log.Error().Err(err).Str("bindDN", lc.BindDN).Msg("bind failed")
+				lc.Log.Error().Err(err).Str("bindDN", lc.BindDN).Msg("failed to bind")
 				// clean up the cached conn, so we can retry
 				lc.Conn.Close()
 				lc.Conn = nil
@@ -167,7 +167,7 @@ func (lc *LDAPClient) Authenticate(username, password string) (bool, map[string]
 
 	// exhausted all retries?
 	if !connected {
-		lc.Log.Error().Err(errors.ErrLDAPBadConn).Msg("exhausted all retries")
+		lc.Log.Error().Err(errors.ErrLDAPBadConn).Msg("failed to authenticate, exhausted all retries")
 
 		return false, nil, nil, errors.ErrLDAPBadConn
 	}
@@ -194,7 +194,7 @@ func (lc *LDAPClient) Authenticate(username, password string) (bool, map[string]
 	if err != nil {
 		fmt.Printf("%v\n", err)
 		lc.Log.Error().Err(err).Str("bindDN", lc.BindDN).Str("username", username).
-			Str("baseDN", lc.Base).Msg("search failed")
+			Str("baseDN", lc.Base).Msg("failed to perform a search request")
 
 		return false, nil, nil, err
 	}
@@ -202,7 +202,7 @@ func (lc *LDAPClient) Authenticate(username, password string) (bool, map[string]
 	if len(search.Entries) < 1 {
 		err := errors.ErrBadUser
 		lc.Log.Error().Err(err).Str("bindDN", lc.BindDN).Str("username", username).
-			Str("baseDN", lc.Base).Msg("entries not found")
+			Str("baseDN", lc.Base).Msg("failed to find entry")
 
 		return false, nil, nil, err
 	}
@@ -210,7 +210,7 @@ func (lc *LDAPClient) Authenticate(username, password string) (bool, map[string]
 	if len(search.Entries) > 1 {
 		err := errors.ErrEntriesExceeded
 		lc.Log.Error().Err(err).Str("bindDN", lc.BindDN).Str("username", username).
-			Str("baseDN", lc.Base).Msg("too many entries")
+			Str("baseDN", lc.Base).Msg("failed to retrieve due to an excessive amount of entries")
 
 		return false, nil, nil, err
 	}
@@ -227,7 +227,7 @@ func (lc *LDAPClient) Authenticate(username, password string) (bool, map[string]
 	// Bind as the user to verify their password
 	err = lc.Conn.Bind(userDN, password)
 	if err != nil {
-		lc.Log.Error().Err(err).Str("bindDN", userDN).Msg("user bind failed")
+		lc.Log.Error().Err(err).Str("bindDN", userDN).Msg("failed to bind user")
 
 		return false, user, userGroups, err
 	}

@@ -62,7 +62,7 @@ func (cveinfo BaseCveInfo) GetImageListForCVE(ctx context.Context, repo, cveID s
 	repoMeta, err := cveinfo.MetaDB.GetRepoMeta(ctx, repo)
 	if err != nil {
 		cveinfo.Log.Error().Err(err).Str("repository", repo).Str("cve-id", cveID).
-			Msg("unable to get list of tags from repo")
+			Msg("failed to get list of tags from repo")
 
 		return imgList, err
 	}
@@ -115,7 +115,7 @@ func (cveinfo BaseCveInfo) GetImageListWithCVEFixed(ctx context.Context, repo, c
 	repoMeta, err := cveinfo.MetaDB.GetRepoMeta(ctx, repo)
 	if err != nil {
 		cveinfo.Log.Error().Err(err).Str("repository", repo).Str("cve-id", cveID).
-			Msg("unable to get list of tags from repo")
+			Msg("failed to get list of tags from repo")
 
 		return []cvemodel.TagInfo{}, err
 	}
@@ -135,7 +135,7 @@ func (cveinfo BaseCveInfo) GetImageListWithCVEFixed(ctx context.Context, repo, c
 			tagInfo, err := getTagInfoForManifest(tag, manifestDigestStr, cveinfo.MetaDB)
 			if err != nil {
 				cveinfo.Log.Error().Err(err).Str("repository", repo).Str("tag", tag).
-					Str("cve-id", cveID).Msg("unable to retrieve manifest and config")
+					Str("cve-id", cveID).Msg("failed to retrieve manifest and config")
 
 				continue
 			}
@@ -160,7 +160,7 @@ func (cveinfo BaseCveInfo) GetImageListWithCVEFixed(ctx context.Context, repo, c
 				tagInfo, err := getTagInfoForManifest(tag, manifest.Digest.String(), cveinfo.MetaDB)
 				if err != nil {
 					cveinfo.Log.Error().Err(err).Str("repository", repo).Str("tag", tag).
-						Str("cve-id", cveID).Msg("unable to retrieve manifest and config")
+						Str("cve-id", cveID).Msg("failed to retrieve manifest and config")
 
 					continue
 				}
@@ -210,10 +210,10 @@ func (cveinfo BaseCveInfo) GetImageListWithCVEFixed(ctx context.Context, repo, c
 
 	if len(vulnerableTags) != 0 {
 		cveinfo.Log.Info().Str("repository", repo).Str("cve-id", cveID).
-			Interface("vulnerableTags", vulnerableTags).Msg("Vulnerable tags")
+			Interface("tags", vulnerableTags).Msg("vulnerable tags")
 		fixedTags = GetFixedTags(allTags, vulnerableTags)
 		cveinfo.Log.Info().Str("repository", repo).Str("cve-id", cveID).
-			Interface("fixedTags", fixedTags).Msg("Fixed tags")
+			Interface("tags", fixedTags).Msg("fixed tags")
 	} else {
 		cveinfo.Log.Info().Str("repository", repo).Str("cve-id", cveID).
 			Msg("image does not contain any tag that have given cve")

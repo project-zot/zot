@@ -150,8 +150,8 @@ func (ref CosignReference) SyncReferences(ctx context.Context, localRepo, remote
 			Msg("successfully synced cosign reference for image")
 
 		if ref.metaDB != nil {
-			ref.log.Debug().Str("repository", localRepo).Str("subject", subjectDigestStr).
-				Msg("metaDB: trying to sync cosign reference for image")
+			ref.log.Debug().Str("repository", localRepo).Str("subject", subjectDigestStr).Str("component", "metadb").
+				Msg("trying to sync cosign reference for image")
 
 			err = meta.SetImageMetaFromInput(ctx, localRepo, cosignTag, ispec.MediaTypeImageManifest,
 				referenceDigest, manifestBuf, ref.storeController.GetImageStore(localRepo),
@@ -162,8 +162,8 @@ func (ref CosignReference) SyncReferences(ctx context.Context, localRepo, remote
 					localRepo, subjectDigestStr, err)
 			}
 
-			ref.log.Info().Str("repository", localRepo).Str("subject", subjectDigestStr).
-				Msg("metaDB: successfully added cosign reference for image")
+			ref.log.Info().Str("repository", localRepo).Str("subject", subjectDigestStr).Str("component", "metadb").
+				Msg("successfully added cosign reference for image")
 		}
 	}
 

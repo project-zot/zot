@@ -108,12 +108,12 @@ func (olu BaseOciLayoutUtils) GetImageManifests(repo string) ([]ispec.Descriptor
 	buf, err := imageStore.GetIndexContent(repo)
 	if err != nil {
 		if goerrors.Is(zerr.ErrRepoNotFound, err) {
-			olu.Log.Error().Err(err).Msg("index.json doesn't exist")
+			olu.Log.Error().Err(err).Msg("failed to get index.json contents because the file is missing")
 
 			return nil, zerr.ErrRepoNotFound
 		}
 
-		olu.Log.Error().Err(err).Msg("unable to open index.json")
+		olu.Log.Error().Err(err).Msg("failed to open index.json")
 
 		return nil, zerr.ErrRepoNotFound
 	}
@@ -121,7 +121,8 @@ func (olu BaseOciLayoutUtils) GetImageManifests(repo string) ([]ispec.Descriptor
 	var index ispec.Index
 
 	if err := json.Unmarshal(buf, &index); err != nil {
-		olu.Log.Error().Err(err).Str("dir", path.Join(imageStore.RootDir(), repo)).Msg("invalid JSON")
+		olu.Log.Error().Err(err).Str("dir", path.Join(imageStore.RootDir(), repo)).
+			Msg("failed to unmarshal json")
 
 		return nil, zerr.ErrRepoNotFound
 	}
@@ -141,13 +142,13 @@ func (olu BaseOciLayoutUtils) GetImageBlobManifest(repo string, digest godigest.
 
 	blobBuf, err := imageStore.GetBlobContent(repo, digest)
 	if err != nil {
-		olu.Log.Error().Err(err).Msg("unable to open image metadata file")
+		olu.Log.Error().Err(err).Msg("failed to open image metadata file")
 
 		return blobIndex, err
 	}
 
 	if err := json.Unmarshal(blobBuf, &blobIndex); err != nil {
-		olu.Log.Error().Err(err).Msg("unable to marshal blob index")
+		olu.Log.Error().Err(err).Msg("failed to marshal blob index")
 
 		return blobIndex, err
 	}
@@ -167,13 +168,13 @@ func (olu BaseOciLayoutUtils) GetImageInfo(repo string, configDigest godigest.Di
 
 	blobBuf, err := imageStore.GetBlobContent(repo, configDigest)
 	if err != nil {
-		olu.Log.Error().Err(err).Msg("unable to open image layers file")
+		olu.Log.Error().Err(err).Msg("failed to open image layers file")
 
 		return imageInfo, err
 	}
 
 	if err := json.Unmarshal(blobBuf, &imageInfo); err != nil {
-		olu.Log.Error().Err(err).Msg("unable to marshal blob index")
+		olu.Log.Error().Err(err).Msg("failed to marshal blob index")
 
 		return imageInfo, err
 	}
@@ -187,7 +188,7 @@ func (olu BaseOciLayoutUtils) GetImageTagsWithTimestamp(repo string) ([]cvemodel
 
 	manifests, err := olu.GetImageManifests(repo)
 	if err != nil {
-		olu.Log.Error().Err(err).Msg("unable to read image manifests")
+		olu.Log.Error().Err(err).Msg("failed to read image manifests")
 
 		return tagsInfo, err
 	}
@@ -199,14 +200,14 @@ func (olu BaseOciLayoutUtils) GetImageTagsWithTimestamp(repo string) ([]cvemodel
 		if ok {
 			imageBlobManifest, err := olu.GetImageBlobManifest(repo, digest)
 			if err != nil {
-				olu.Log.Error().Err(err).Msg("unable to read image blob manifest")
+				olu.Log.Error().Err(err).Msg("failed to read image blob manifest")
 
 				return tagsInfo, err
 			}
 
 			imageInfo, err := olu.GetImageInfo(repo, imageBlobManifest.Config.Digest)
 			if err != nil {
-				olu.Log.Error().Err(err).Msg("unable to read image info")
+				olu.Log.Error().Err(err).Msg("failed to read image info")
 
 				return tagsInfo, err
 			}
@@ -327,7 +328,7 @@ func (olu BaseOciLayoutUtils) GetImageManifestSize(repo string, manifestDigest g
 
 	manifestBlob, err := imageStore.GetBlobContent(repo, manifestDigest)
 	if err != nil {
-		olu.Log.Error().Err(err).Msg("error when getting manifest blob content")
+		olu.Log.Error().Err(err).Msg("failed to get manifest blob content")
 
 		return int64(len(manifestBlob))
 	}
@@ -338,7 +339,7 @@ func (olu BaseOciLayoutUtils) GetImageManifestSize(repo string, manifestDigest g
 func (olu BaseOciLayoutUtils) GetImageConfigSize(repo string, manifestDigest godigest.Digest) int64 {
 	imageBlobManifest, err := olu.GetImageBlobManifest(repo, manifestDigest)
 	if err != nil {
-		olu.Log.Error().Err(err).Msg("can't get image blob manifest")
+		olu.Log.Error().Err(err).Msg("failed to get image blob manifest")
 
 		return 0
 	}
@@ -368,14 +369,14 @@ func (olu BaseOciLayoutUtils) GetExpandedRepoInfo(repoName string) (common.RepoI
 
 	manifestList, err := olu.GetImageManifests(repoName)
 	if err != nil {
-		olu.Log.Error().Err(err).Msg("error getting image manifests")
+		olu.Log.Error().Err(err).Msg("failed to get image manifests")
 
 		return common.RepoInfo{}, err
 	}
 
 	lastUpdatedTag, err := olu.GetRepoLastUpdated(repoName)
 	if err != nil {
-		olu.Log.Error().Err(err).Str("repository", repoName).Msg("can't get last updated manifest for repo")
+		olu.Log.Error().Err(err).Str("repository", repoName).Msg("failed to get last updated manifest for repo")
 
 		return common.RepoInfo{}, err
 	}
@@ -398,7 +399,7 @@ func (olu BaseOciLayoutUtils) GetExpandedRepoInfo(repoName string) (common.RepoI
 
 		manifest, err := olu.GetImageBlobManifest(repoName, man.Digest)
 		if err != nil {
-			olu.Log.Error().Err(err).Msg("error getting image manifest blob")
+			olu.Log.Error().Err(err).Msg("failed to get image manifest blob")
 
 			return common.RepoInfo{}, err
 		}
@@ -415,7 +416,7 @@ func (olu BaseOciLayoutUtils) GetExpandedRepoInfo(repoName string) (common.RepoI
 		imageConfigInfo, err := olu.GetImageConfigInfo(repoName, man.Digest)
 		if err != nil {
 			olu.Log.Error().Err(err).Str("repository", repoName).Str("manifest digest", man.Digest.String()).
-				Msg("can't retrieve config info for the image")
+				Msg("failed to retrieve config info for the image")
 
 			continue
 		}
@@ -580,7 +581,7 @@ func (olu BaseOciLayoutUtils) ExtractImageDetails(
 ) {
 	manifest, dig, err := olu.GetImageManifest(repo, tag)
 	if err != nil {
-		log.Error().Err(err).Msg("Could not retrieve image ispec manifest")
+		log.Error().Err(err).Msg("failed to retrieve image manifest")
 
 		return "", nil, nil, err
 	}
@@ -589,7 +590,7 @@ func (olu BaseOciLayoutUtils) ExtractImageDetails(
 
 	imageConfig, err := olu.GetImageConfigInfo(repo, digest)
 	if err != nil {
-		log.Error().Err(err).Msg("Could not retrieve image config")
+		log.Error().Err(err).Msg("failed to retrieve image config")
 
 		return "", nil, nil, err
 	}

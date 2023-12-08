@@ -45,3 +45,6 @@ jobs:
       - name: Run linter from make target
         run: |
           make check
+      - name: Run log linter
+        run: |
+          make check-logs

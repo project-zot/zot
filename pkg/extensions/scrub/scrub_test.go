@@ -76,7 +76,7 @@ func TestScrubExtension(t *testing.T) {
 
 		data, err := os.ReadFile(logFile.Name())
 		So(err, ShouldBeNil)
-		So(string(data), ShouldContainSubstring, "scrub: blobs/manifest ok")
+		So(string(data), ShouldContainSubstring, "blobs/manifest ok")
 	})
 
 	Convey("Blobs integrity affected", t, func(c C) {
@@ -128,7 +128,7 @@ func TestScrubExtension(t *testing.T) {
 
 		data, err := os.ReadFile(logFile.Name())
 		So(err, ShouldBeNil)
-		So(string(data), ShouldContainSubstring, "scrub: blobs/manifest affected")
+		So(string(data), ShouldContainSubstring, "blobs/manifest affected")
 	})
 
 	Convey("Generator error - not enough permissions to access root directory", t, func(c C) {
@@ -176,7 +176,7 @@ func TestScrubExtension(t *testing.T) {
 
 		data, err := os.ReadFile(logFile.Name())
 		So(err, ShouldBeNil)
-		So(string(data), ShouldContainSubstring, "error while executing generator")
+		So(string(data), ShouldContainSubstring, "failed to execute generator")
 
 		So(os.Chmod(path.Join(dir, repoName), 0o755), ShouldBeNil)
 	})
@@ -215,7 +215,7 @@ func TestRunScrubRepo(t *testing.T) {
 
 		data, err := os.ReadFile(logFile.Name())
 		So(err, ShouldBeNil)
-		So(string(data), ShouldContainSubstring, "scrub: blobs/manifest ok")
+		So(string(data), ShouldContainSubstring, "blobs/manifest ok")
 	})
 
 	Convey("Blobs integrity affected", t, func(c C) {
@@ -258,7 +258,7 @@ func TestRunScrubRepo(t *testing.T) {
 
 		data, err := os.ReadFile(logFile.Name())
 		So(err, ShouldBeNil)
-		So(string(data), ShouldContainSubstring, "scrub: blobs/manifest affected")
+		So(string(data), ShouldContainSubstring, "blobs/manifest affected")
 	})
 
 	Convey("CheckRepo error - not enough permissions to access root directory", t, func(c C) {
@@ -295,7 +295,7 @@ func TestRunScrubRepo(t *testing.T) {
 		data, err := os.ReadFile(logFile.Name())
 		So(err, ShouldBeNil)
 		So(string(data), ShouldContainSubstring,
-			fmt.Sprintf("error while running scrub for %s", imgStore.RootDir()))
+			fmt.Sprintf("failed to run scrub for %s", imgStore.RootDir()))
 		So(os.Chmod(path.Join(dir, repoName), 0o755), ShouldBeNil)
 	})
 }

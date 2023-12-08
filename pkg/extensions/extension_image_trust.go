@@ -84,7 +84,7 @@ type ImageTrust struct {
 func (trust *ImageTrust) HandleCosignPublicKeyUpload(response http.ResponseWriter, request *http.Request) {
 	body, err := io.ReadAll(request.Body)
 	if err != nil {
-		trust.Log.Error().Err(err).Msg("image trust: couldn't read cosign key body")
+		trust.Log.Error().Err(err).Str("component", "image-trust").Msg("failed to read cosign key body")
 		response.WriteHeader(http.StatusInternalServerError)
 
 		return
@@ -95,7 +95,7 @@ func (trust *ImageTrust) HandleCosignPublicKeyUpload(response http.ResponseWrite
 		if errors.Is(err, zerr.ErrInvalidPublicKeyContent) {
 			response.WriteHeader(http.StatusBadRequest)
 		} else {
-			trust.Log.Error().Err(err).Msg("image trust: failed to save cosign key")
+			trust.Log.Error().Err(err).Str("component", "image-trust").Msg("failed to save cosign key")
 			response.WriteHeader(http.StatusInternalServerError)
 		}
 
@@ -127,7 +127,7 @@ func (trust *ImageTrust) HandleNotationCertificateUpload(response http.ResponseW
 
 	body, err := io.ReadAll(request.Body)
 	if err != nil {
-		trust.Log.Error().Err(err).Msg("image trust: couldn't read notation certificate body")
+		trust.Log.Error().Err(err).Str("component", "image-trust").Msg("failed to read notation certificate body")
 		response.WriteHeader(http.StatusInternalServerError)
 
 		return
@@ -139,7 +139,7 @@ func (trust *ImageTrust) HandleNotationCertificateUpload(response http.ResponseW
 			errors.Is(err, zerr.ErrInvalidCertificateContent) {
 			response.WriteHeader(http.StatusBadRequest)
 		} else {
-			trust.Log.Error().Err(err).Msg("image trust: failed to save notation certificate")
+			trust.Log.Error().Err(err).Str("component", "image-trust").Msg("failed to save notation certificate")
 			response.WriteHeader(http.StatusInternalServerError)
 		}
 

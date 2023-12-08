@@ -141,8 +141,8 @@ func RepoMeta2ExpandedRepoInfo(ctx context.Context, repoMeta mTypes.RepoMeta,
 
 		imageSummary, _, err := FullImageMeta2ImageSummary(ctx, GetFullImageMeta(tag, repoMeta, imageMeta))
 		if err != nil {
-			log.Error().Str("repository", repoName).Str("reference", tag).
-				Msg("metadb: error while converting descriptor for image")
+			log.Error().Str("repository", repoName).Str("reference", tag).Str("component", "metadb").
+				Msg("error while converting descriptor for image")
 
 			continue
 		}

@@ -128,7 +128,7 @@ func (scheduler *Scheduler) poolWorker(ctx context.Context) {
 			for task := range scheduler.workerChan {
 				// leave below line here (for zot minimal metrics can be enabled on first scraping)
 				metricsEnabled := scheduler.metricServer.IsEnabled()
-				scheduler.log.Debug().Int("worker", workerID).Str("task", task.String()).Msg("scheduler: starting task")
+				scheduler.log.Debug().Int("worker", workerID).Str("task", task.String()).Msg("starting task")
 
 				if metricsEnabled {
 					scheduler.tasksLock.Lock()
@@ -139,7 +139,7 @@ func (scheduler *Scheduler) poolWorker(ctx context.Context) {
 
 				if err := task.DoWork(ctx); err != nil {
 					scheduler.log.Error().Int("worker", workerID).Str("task", task.String()).Err(err).
-						Msg("scheduler: error while executing task")
+						Msg("failed to execute task")
 				}
 
 				if metricsEnabled {
@@ -150,7 +150,7 @@ func (scheduler *Scheduler) poolWorker(ctx context.Context) {
 					monitoring.ObserveWorkersTasksDuration(scheduler.metricServer, task.Name(), workDuration)
 				}
 
-				scheduler.log.Debug().Int("worker", workerID).Str("task", task.String()).Msg("scheduler: finished task")
+				scheduler.log.Debug().Int("worker", workerID).Str("task", task.String()).Msg("finished task")
 			}
 		}(i + 1)
 	}
@@ -250,7 +250,7 @@ func (scheduler *Scheduler) RunScheduler(ctx context.Context) {
 					scheduler.shutdown()
 				}
 
-				scheduler.log.Debug().Msg("scheduler: received stop signal, gracefully shutting down...")
+				scheduler.log.Debug().Msg("received stop signal, gracefully shutting down...")
 
 				return
 			default:
@@ -261,7 +261,7 @@ func (scheduler *Scheduler) RunScheduler(ctx context.Context) {
 					if task != nil {
 						// push tasks into worker pool
 						if !scheduler.inShutdown() {
-							scheduler.log.Debug().Str("task", task.String()).Msg("scheduler: pushing task into worker pool")
+							scheduler.log.Debug().Str("task", task.String()).Msg("pushing task into worker pool")
 							scheduler.workerChan <- task
 						}
 					}
@@ -286,7 +286,7 @@ func (scheduler *Scheduler) pushReadyGenerators() {
 				scheduler.waitingGenerators = append(scheduler.waitingGenerators[:i], scheduler.waitingGenerators[i+1:]...)
 				modified = true
 
-				scheduler.log.Debug().Msg("scheduler: waiting generator is ready, pushing to ready generators")
+				scheduler.log.Debug().Msg("waiting generator is ready, pushing to ready generators")
 
 				break
 			}
@@ -383,7 +383,7 @@ func (scheduler *Scheduler) SubmitTask(task Task, priority Priority) {
 
 	select {
 	case tasksQ <- task:
-		scheduler.log.Info().Msg("scheduler: adding a new task")
+		scheduler.log.Info().Msg("adding a new task")
 	default:
 		if scheduler.inShutdown() {
 			return
@@ -434,7 +434,7 @@ func (gen *generator) generate(sch *Scheduler) {
 	if gen.remainingTask == nil {
 		nextTask, err := gen.taskGenerator.Next()
 		if err != nil {
-			sch.log.Error().Err(err).Msg("scheduler: error while executing generator")
+			sch.log.Error().Err(err).Msg("failed to execute generator")
 
 			return
 		}

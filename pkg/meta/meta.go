@@ -43,8 +43,8 @@ func Create(dbtype string, dbDriver, parameters interface{}, log log.Logger, //n
 		{
 			properDriver, ok := dbDriver.(*bbolt.DB)
 			if !ok {
-				log.Error().Err(errors.ErrTypeAssertionFailed).Msgf("expected type '%T' but got '%T'",
-					&bbolt.DB{}, dbDriver)
+				log.Error().Err(errors.ErrTypeAssertionFailed).
+					Msgf("failed to cast type, expected type '%T' but got '%T'", &bbolt.DB{}, dbDriver)
 
 				return nil, errors.ErrTypeAssertionFailed
 			}
@@ -55,16 +55,17 @@ func Create(dbtype string, dbDriver, parameters interface{}, log log.Logger, //n
 		{
 			properDriver, ok := dbDriver.(*dynamodb.Client)
 			if !ok {
-				log.Error().Err(errors.ErrTypeAssertionFailed).Msgf("expected type '%T' but got '%T'",
-					&dynamodb.Client{}, dbDriver)
+				log.Error().Err(errors.ErrTypeAssertionFailed).
+					Msgf("failed to cast type, expected type '%T' but got '%T'", &dynamodb.Client{}, dbDriver)
 
 				return nil, errors.ErrTypeAssertionFailed
 			}
 
 			properParameters, ok := parameters.(mdynamodb.DBDriverParameters)
 			if !ok {
-				log.Error().Err(errors.ErrTypeAssertionFailed).Msgf("expected type '%T' but got '%T'",
-					mdynamodb.DBDriverParameters{}, parameters)
+				log.Error().Err(errors.ErrTypeAssertionFailed).
+					Msgf("failed to cast type, expected type '%T' but got '%T'", mdynamodb.DBDriverParameters{},
+						parameters)
 
 				return nil, errors.ErrTypeAssertionFailed
 			}
@@ -125,7 +126,7 @@ func toStringIfOk(cacheDriverConfig map[string]interface{}, param string, log lo
 	val, ok := cacheDriverConfig[param]
 
 	if !ok {
-		log.Error().Str("field", param).Msg("parsing CacheDriver config failed, field is not present")
+		log.Error().Str("field", param).Msg("failed to parse CacheDriver config, field is not present")
 
 		return "", false
 	}
@@ -133,13 +134,13 @@ func toStringIfOk(cacheDriverConfig map[string]interface{}, param string, log lo
 	str, ok := val.(string)
 
 	if !ok {
-		log.Error().Str("parameter", param).Msg("parsing CacheDriver config failed, parameter isn't a string")
+		log.Error().Str("parameter", param).Msg("failed to parse CacheDriver config, parameter isn't a string")
 
 		return "", false
 	}
 
 	if str == "" {
-		log.Error().Str("field", param).Msg("parsing CacheDriver config failed, field is empty")
+		log.Error().Str("field", param).Msg("failed to parse CacheDriver config, field is empty")
 
 		return "", false
 	}

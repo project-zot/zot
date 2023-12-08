@@ -173,10 +173,11 @@ func (registry *DestinationRegistry) CommitImage(imageReference types.ImageRefer
 			err = meta.SetImageMetaFromInput(context.Background(), repo, reference, mediaType,
 				manifestDigest, manifestBlob, imageStore, registry.metaDB, registry.log)
 			if err != nil {
-				return fmt.Errorf("metaDB: failed to set metadata for image '%s %s': %w", repo, reference, err)
+				return fmt.Errorf("failed to set metadata for image '%s %s': %w", repo, reference, err)
 			}
 
-			registry.log.Debug().Str("repo", repo).Str("reference", reference).Msg("metaDB: successfully set metadata for image")
+			registry.log.Debug().Str("repo", repo).Str("reference", reference).Str("component", "metadb").
+				Msg("successfully set metadata for image")
 		}
 	}
 
