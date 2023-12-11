@@ -62,16 +62,15 @@ var DeleteReferrers = config.ImageRetention{ //nolint: gochecknoglobals
 
 var errCache = errors.New("new cache error")
 
-func runAndGetScheduler() (*scheduler.Scheduler, context.CancelFunc) {
+func runAndGetScheduler() *scheduler.Scheduler {
 	log := zlog.Logger{}
 	metrics := monitoring.NewMetricsServer(true, log)
 	taskScheduler := scheduler.NewScheduler(config.New(), metrics, log)
 	taskScheduler.RateLimit = 50 * time.Millisecond
 
-	ctx, cancel := context.WithCancel(context.Background())
-	taskScheduler.RunScheduler(ctx)
+	taskScheduler.RunScheduler()
 
-	return taskScheduler, cancel
+	return taskScheduler
 }
 
 func TestStorageFSAPIs(t *testing.T) {
@@ -1195,14 +1194,15 @@ func TestDedupeLinks(t *testing.T) {
 
 			// run on empty image store
 			// switch dedupe to true from false
-			taskScheduler, cancel := runAndGetScheduler()
+			taskScheduler := runAndGetScheduler()
+			defer taskScheduler.Shutdown()
 
 			// rebuild with dedupe true
 			imgStore.RunDedupeBlobs(time.Duration(0), taskScheduler)
 			// wait until rebuild finishes
 			time.Sleep(1 * time.Second)
 
-			cancel()
+			taskScheduler.Shutdown()
 
 			// manifest1
 			upload, err := imgStore.NewBlobUpload("dedupe1")
@@ -1367,7 +1367,9 @@ func TestDedupeLinks(t *testing.T) {
 
 				Convey("Intrerrupt rebuilding and restart, checking idempotency", func() {
 					for i := 0; i < 10; i++ {
-						taskScheduler, cancel := runAndGetScheduler()
+						taskScheduler := runAndGetScheduler()
+						defer taskScheduler.Shutdown()
+
 						// rebuild with dedupe true
 						imgStore := local.NewImageStore(dir, true, true, log, metrics, nil, cacheDriver)
 
@@ -1375,10 +1377,11 @@ func TestDedupeLinks(t *testing.T) {
 						sleepValue := i * 5
 						time.Sleep(time.Duration(sleepValue) * time.Millisecond)
 
-						cancel()
+						taskScheduler.Shutdown()
 					}
 
-					taskScheduler, cancel := runAndGetScheduler()
+					taskScheduler := runAndGetScheduler()
+					defer taskScheduler.Shutdown()
 
 					// rebuild with dedupe true
 					imgStore := local.NewImageStore(dir, true, true, log, metrics, nil, cacheDriver)
@@ -1387,7 +1390,7 @@ func TestDedupeLinks(t *testing.T) {
 					// wait until rebuild finishes
 					time.Sleep(10 * time.Second)
 
-					cancel()
+					taskScheduler.Shutdown()
 
 					fi1, err := os.Stat(path.Join(dir, "dedupe1", "blobs", "sha256", blobDigest1))
 					So(err, ShouldBeNil)
@@ -1398,7 +1401,8 @@ func TestDedupeLinks(t *testing.T) {
 
 				Convey("rebuild dedupe index error cache nil", func() {
 					// switch dedupe to true from false
-					taskScheduler, cancel := runAndGetScheduler()
+					taskScheduler := runAndGetScheduler()
+					defer taskScheduler.Shutdown()
 
 					imgStore := local.NewImageStore(dir, true, true, log, metrics, nil, nil)
 
@@ -1408,7 +1412,7 @@ func TestDedupeLinks(t *testing.T) {
 
 					time.Sleep(3 * time.Second)
 
-					cancel()
+					taskScheduler.Shutdown()
 
 					fi1, err := os.Stat(path.Join(dir, "dedupe1", "blobs", "sha256", blobDigest1))
 					So(err, ShouldBeNil)
@@ -1420,7 +1424,8 @@ func TestDedupeLinks(t *testing.T) {
 
 				Convey("rebuild dedupe index cache error on original blob", func() {
 					// switch dedupe to true from false
-					taskScheduler, cancel := runAndGetScheduler()
+					taskScheduler := runAndGetScheduler()
+					defer taskScheduler.Shutdown()
 
 					imgStore := local.NewImageStore(dir, true, true, log, metrics, nil, &mocks.CacheMock{
 						HasBlobFn: func(digest godigest.Digest, path string) bool {
@@ -1436,7 +1441,7 @@ func TestDedupeLinks(t *testing.T) {
 
 					time.Sleep(10 * time.Second)
 
-					cancel()
+					taskScheduler.Shutdown()
 
 					fi1, err := os.Stat(path.Join(dir, "dedupe1", "blobs", "sha256", blobDigest1))
 					So(err, ShouldBeNil)
@@ -1448,7 +1453,8 @@ func TestDedupeLinks(t *testing.T) {
 
 				Convey("rebuild dedupe index cache error on duplicate blob", func() {
 					// switch dedupe to true from false
-					taskScheduler, cancel := runAndGetScheduler()
+					taskScheduler := runAndGetScheduler()
+					defer taskScheduler.Shutdown()
 
 					imgStore := local.NewImageStore(dir, true, true, log, metrics, nil, &mocks.CacheMock{
 						HasBlobFn: func(digest godigest.Digest, path string) bool {
@@ -1468,7 +1474,7 @@ func TestDedupeLinks(t *testing.T) {
 
 					time.Sleep(15 * time.Second)
 
-					cancel()
+					taskScheduler.Shutdown()
 
 					fi1, err := os.Stat(path.Join(dir, "dedupe1", "blobs", "sha256", blobDigest1))
 					So(err, ShouldBeNil)

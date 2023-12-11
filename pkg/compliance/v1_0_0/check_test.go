@@ -81,12 +81,12 @@ func startServer(t *testing.T) (*api.Controller, string) {
 	ctrl.Config.Storage.SubPaths = subPaths
 
 	go func() {
-		if err := ctrl.Init(context.Background()); err != nil {
+		if err := ctrl.Init(); err != nil {
 			return
 		}
 
 		// this blocks
-		if err := ctrl.Run(context.Background()); err != nil {
+		if err := ctrl.Run(); err != nil {
 			return
 		}
 	}()

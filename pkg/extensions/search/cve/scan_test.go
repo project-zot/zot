@@ -432,11 +432,9 @@ func TestScanGeneratorWithMockedData(t *testing.T) { //nolint: gocyclo
 
 		sch.SubmitGenerator(generator, 10*time.Second, scheduler.MediumPriority)
 
-		ctx, cancel := context.WithCancel(context.Background())
+		sch.RunScheduler()
 
-		sch.RunScheduler(ctx)
-
-		defer cancel()
+		defer sch.Shutdown()
 
 		// Make sure the scanner generator has completed despite errors
 		found, err := test.ReadLogFileAndSearchString(logPath,
@@ -529,11 +527,9 @@ func TestScanGeneratorWithRealData(t *testing.T) {
 		// Start the generator
 		sch.SubmitGenerator(generator, 120*time.Second, scheduler.MediumPriority)
 
-		ctx, cancel := context.WithCancel(context.Background())
+		sch.RunScheduler()
 
-		sch.RunScheduler(ctx)
-
-		defer cancel()
+		defer sch.Shutdown()
 
 		// Make sure the scanner generator has completed
 		found, err := test.ReadLogFileAndSearchString(logPath,

@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path"
 	"testing"
 	"time"
 
@@ -23,9 +24,14 @@ import (
 	"zotregistry.io/zot/pkg/api/config"
 	"zotregistry.io/zot/pkg/api/constants"
 	extconf "zotregistry.io/zot/pkg/extensions/config"
+	"zotregistry.io/zot/pkg/extensions/monitoring"
 	"zotregistry.io/zot/pkg/log"
 	mTypes "zotregistry.io/zot/pkg/meta/types"
 	reqCtx "zotregistry.io/zot/pkg/requestcontext"
+	"zotregistry.io/zot/pkg/scheduler"
+	"zotregistry.io/zot/pkg/storage"
+	storageConstants "zotregistry.io/zot/pkg/storage/constants"
+	"zotregistry.io/zot/pkg/storage/local"
 	authutils "zotregistry.io/zot/pkg/test/auth"
 	test "zotregistry.io/zot/pkg/test/common"
 	"zotregistry.io/zot/pkg/test/mocks"
@@ -919,6 +925,88 @@ func TestAPIKeysGeneratorErrors(t *testing.T) {
 		So(err, ShouldNotBeNil)
 		So(apiKey, ShouldEqual, "")
 		So(apiKeyID, ShouldEqual, "")
+	})
+}
+
+func TestCookiestoreCleanup(t *testing.T) {
+	log := log.Logger{}
+	metrics := monitoring.NewMetricsServer(true, log)
+
+	Convey("Test cookiestore cleanup works", t, func() {
+		taskScheduler := scheduler.NewScheduler(config.New(), metrics, log)
+		taskScheduler.RateLimit = 50 * time.Millisecond
+		taskScheduler.RunScheduler()
+
+		rootDir := t.TempDir()
+
+		err := os.MkdirAll(path.Join(rootDir, "_sessions"), storageConstants.DefaultDirPerms)
+		So(err, ShouldBeNil)
+
+		sessionPath := path.Join(rootDir, "_sessions", "session_1234")
+
+		err = os.WriteFile(sessionPath, []byte("session"), storageConstants.DefaultFilePerms)
+		So(err, ShouldBeNil)
+
+		err = os.Chtimes(sessionPath, time.Time{}, time.Time{})
+		So(err, ShouldBeNil)
+
+		imgStore := local.NewImageStore(rootDir, false, false, log, metrics, nil, nil)
+
+		storeController := storage.StoreController{
+			DefaultStore: imgStore,
+		}
+
+		cookieStore, err := api.NewCookieStore(storeController)
+		So(err, ShouldBeNil)
+
+		cookieStore.RunSessionCleaner(taskScheduler)
+
+		time.Sleep(2 * time.Second)
+
+		taskScheduler.Shutdown()
+
+		// make sure session is removed
+		_, err = os.Stat(sessionPath)
+		So(err, ShouldNotBeNil)
+	})
+
+	Convey("Test cookiestore cleanup without permissions on rootDir", t, func() {
+		taskScheduler := scheduler.NewScheduler(config.New(), metrics, log)
+		taskScheduler.RateLimit = 50 * time.Millisecond
+		taskScheduler.RunScheduler()
+
+		rootDir := t.TempDir()
+
+		err := os.MkdirAll(path.Join(rootDir, "_sessions"), storageConstants.DefaultDirPerms)
+		So(err, ShouldBeNil)
+
+		sessionPath := path.Join(rootDir, "_sessions", "session_1234")
+
+		err = os.WriteFile(sessionPath, []byte("session"), storageConstants.DefaultFilePerms)
+		So(err, ShouldBeNil)
+
+		imgStore := local.NewImageStore(rootDir, false, false, log, metrics, nil, nil)
+
+		storeController := storage.StoreController{
+			DefaultStore: imgStore,
+		}
+
+		cookieStore, err := api.NewCookieStore(storeController)
+		So(err, ShouldBeNil)
+
+		err = os.Chmod(rootDir, 0o000)
+		So(err, ShouldBeNil)
+
+		defer func() {
+			err = os.Chmod(rootDir, storageConstants.DefaultDirPerms)
+			So(err, ShouldBeNil)
+		}()
+
+		cookieStore.RunSessionCleaner(taskScheduler)
+
+		time.Sleep(1 * time.Second)
+
+		taskScheduler.Shutdown()
 	})
 }
 

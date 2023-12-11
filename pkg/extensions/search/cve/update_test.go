@@ -63,11 +63,9 @@ func TestCVEDBGenerator(t *testing.T) {
 
 		sch.SubmitGenerator(generator, 12000*time.Millisecond, scheduler.HighPriority)
 
-		ctx, cancel := context.WithCancel(context.Background())
+		sch.RunScheduler()
 
-		sch.RunScheduler(ctx)
-
-		defer cancel()
+		defer sch.Shutdown()
 
 		// Wait for trivy db to download
 		found, err := test.ReadLogFileAndCountStringOccurence(logPath,

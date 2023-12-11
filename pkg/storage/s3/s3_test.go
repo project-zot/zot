@@ -186,16 +186,15 @@ func createObjectsStoreDynamo(rootDir string, cacheDir string, dedupe bool, tabl
 	return store, il, err
 }
 
-func runAndGetScheduler() (*scheduler.Scheduler, context.CancelFunc) {
+func runAndGetScheduler() *scheduler.Scheduler {
 	logger := log.Logger{}
 	metrics := monitoring.NewMetricsServer(false, logger)
 	taskScheduler := scheduler.NewScheduler(config.New(), metrics, logger)
 	taskScheduler.RateLimit = 50 * time.Millisecond
 
-	ctx, cancel := context.WithCancel(context.Background())
-	taskScheduler.RunScheduler(ctx)
+	taskScheduler.RunScheduler()
 
-	return taskScheduler, cancel
+	return taskScheduler
 }
 
 type FileInfoMock struct {
@@ -1587,7 +1586,8 @@ func TestS3Dedupe(t *testing.T) {
 			})
 
 			Convey("rebuild s3 dedupe index from true to false", func() { //nolint: dupl
-				taskScheduler, cancel := runAndGetScheduler()
+				taskScheduler := runAndGetScheduler()
+				defer taskScheduler.Shutdown()
 
 				storeDriver, imgStore, _ := createObjectsStore(testDir, t.TempDir(), false)
 				defer cleanupStorage(storeDriver, testDir)
@@ -1598,7 +1598,7 @@ func TestS3Dedupe(t *testing.T) {
 
 				time.Sleep(10 * time.Second)
 
-				cancel()
+				taskScheduler.Shutdown()
 
 				fi1, err := storeDriver.Stat(context.Background(), path.Join(testDir, "dedupe1", "blobs", "sha256",
 					blobDigest1.Encoded()))
@@ -1615,9 +1615,8 @@ func TestS3Dedupe(t *testing.T) {
 				So(len(blobContent), ShouldEqual, fi1.Size())
 
 				Convey("rebuild s3 dedupe index from false to true", func() {
-					taskScheduler, cancel := runAndGetScheduler()
-
-					defer cancel()
+					taskScheduler := runAndGetScheduler()
+					defer taskScheduler.Shutdown()
 
 					storeDriver, imgStore, _ := createObjectsStore(testDir, t.TempDir(), true)
 					defer cleanupStorage(storeDriver, testDir)
@@ -1627,6 +1626,8 @@ func TestS3Dedupe(t *testing.T) {
 					// wait until rebuild finishes
 
 					time.Sleep(10 * time.Second)
+
+					taskScheduler.Shutdown()
 
 					fi2, err := storeDriver.Stat(context.Background(), path.Join(testDir, "dedupe2", "blobs", "sha256",
 						blobDigest2.Encoded()))
@@ -1816,7 +1817,8 @@ func TestS3Dedupe(t *testing.T) {
 		})
 
 		Convey("rebuild s3 dedupe index from true to false", func() { //nolint: dupl
-			taskScheduler, cancel := runAndGetScheduler()
+			taskScheduler := runAndGetScheduler()
+			defer taskScheduler.Shutdown()
 
 			storeDriver, imgStore, _ := createObjectsStore(testDir, t.TempDir(), false)
 			defer cleanupStorage(storeDriver, testDir)
@@ -1827,7 +1829,7 @@ func TestS3Dedupe(t *testing.T) {
 
 			time.Sleep(10 * time.Second)
 
-			cancel()
+			taskScheduler.Shutdown()
 
 			fi1, err := storeDriver.Stat(context.Background(), path.Join(testDir, "dedupe1", "blobs", "sha256",
 				blobDigest1.Encoded()))
@@ -1861,7 +1863,8 @@ func TestS3Dedupe(t *testing.T) {
 			})
 
 			Convey("rebuild s3 dedupe index from false to true", func() {
-				taskScheduler, cancel := runAndGetScheduler()
+				taskScheduler := runAndGetScheduler()
+				defer taskScheduler.Shutdown()
 
 				storeDriver, imgStore, _ := createObjectsStore(testDir, t.TempDir(), true)
 				defer cleanupStorage(storeDriver, testDir)
@@ -1872,7 +1875,7 @@ func TestS3Dedupe(t *testing.T) {
 
 				time.Sleep(10 * time.Second)
 
-				cancel()
+				taskScheduler.Shutdown()
 
 				fi2, err := storeDriver.Stat(context.Background(), path.Join(testDir, "dedupe2", "blobs", "sha256",
 					blobDigest2.Encoded()))
@@ -2055,9 +2058,8 @@ func TestRebuildDedupeIndex(t *testing.T) {
 				taskScheduler := scheduler.NewScheduler(config.New(), metrics, logger)
 				taskScheduler.RateLimit = 1 * time.Millisecond
 
-				ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
-
-				taskScheduler.RunScheduler(ctx)
+				taskScheduler.RunScheduler()
+				defer taskScheduler.Shutdown()
 
 				storeDriver, imgStore, _ = createObjectsStore(testDir, t.TempDir(), false)
 				defer cleanupStorage(storeDriver, testDir)
@@ -2067,17 +2069,18 @@ func TestRebuildDedupeIndex(t *testing.T) {
 				sleepValue := i * 5
 				time.Sleep(time.Duration(sleepValue) * time.Millisecond)
 
-				cancel()
+				taskScheduler.Shutdown()
 			}
 
-			taskScheduler, cancel := runAndGetScheduler()
+			taskScheduler := runAndGetScheduler()
+			defer taskScheduler.Shutdown()
 
 			imgStore.RunDedupeBlobs(time.Duration(0), taskScheduler)
 
 			// wait until rebuild finishes
 			time.Sleep(10 * time.Second)
 
-			cancel()
+			taskScheduler.Shutdown()
 
 			fi2, err := storeDriver.Stat(context.Background(), path.Join(testDir, "dedupe2", "blobs", "sha256",
 				blobDigest2.Encoded()))
@@ -2096,10 +2099,8 @@ func TestRebuildDedupeIndex(t *testing.T) {
 				taskScheduler := scheduler.NewScheduler(config.New(), metrics, logger)
 				taskScheduler.RateLimit = 1 * time.Millisecond
 
-				ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
-				defer cancel()
-
-				taskScheduler.RunScheduler(ctx)
+				taskScheduler.RunScheduler()
+				defer taskScheduler.Shutdown()
 
 				storeDriver, imgStore, _ = createObjectsStore(testDir, t.TempDir(), true)
 				defer cleanupStorage(storeDriver, testDir)
@@ -2110,10 +2111,11 @@ func TestRebuildDedupeIndex(t *testing.T) {
 				sleepValue := i * 5
 				time.Sleep(time.Duration(sleepValue) * time.Millisecond)
 
-				cancel()
+				taskScheduler.Shutdown()
 			}
 
-			taskScheduler, cancel = runAndGetScheduler()
+			taskScheduler = runAndGetScheduler()
+			defer taskScheduler.Shutdown()
 
 			// rebuild with dedupe false, should have all blobs with content
 			imgStore.RunDedupeBlobs(time.Duration(0), taskScheduler)
@@ -2121,7 +2123,7 @@ func TestRebuildDedupeIndex(t *testing.T) {
 			// wait until rebuild finishes
 			time.Sleep(10 * time.Second)
 
-			cancel()
+			taskScheduler.Shutdown()
 
 			fi2, err = storeDriver.Stat(context.Background(), path.Join(testDir, "dedupe2", "blobs", "sha256",
 				blobDigest2.Encoded()))
@@ -2140,8 +2142,8 @@ func TestRebuildDedupeIndex(t *testing.T) {
 			storeDriver, imgStore, _ := createObjectsStore(testDir, tdir, true)
 			defer cleanupStorage(storeDriver, testDir)
 
-			taskScheduler, cancel := runAndGetScheduler()
-			defer cancel()
+			taskScheduler := runAndGetScheduler()
+			defer taskScheduler.Shutdown()
 
 			imgStore.RunDedupeBlobs(time.Duration(0), taskScheduler)
 
@@ -2150,8 +2152,8 @@ func TestRebuildDedupeIndex(t *testing.T) {
 		})
 
 		Convey("Rebuild dedupe index already rebuilt", func() {
-			taskScheduler, cancel := runAndGetScheduler()
-			defer cancel()
+			taskScheduler := runAndGetScheduler()
+			defer taskScheduler.Shutdown()
 
 			storeDriver, imgStore, _ := createObjectsStore(testDir, t.TempDir(), true)
 			defer cleanupStorage(storeDriver, testDir)
@@ -2171,8 +2173,8 @@ func TestRebuildDedupeIndex(t *testing.T) {
 			err := storeDriver.PutContent(context.Background(), fi1.Path(), []byte{})
 			So(err, ShouldBeNil)
 
-			taskScheduler, cancel := runAndGetScheduler()
-			defer cancel()
+			taskScheduler := runAndGetScheduler()
+			defer taskScheduler.Shutdown()
 
 			imgStore.RunDedupeBlobs(time.Duration(0), taskScheduler)
 
@@ -2185,8 +2187,8 @@ func TestRebuildDedupeIndex(t *testing.T) {
 			err := storeDriver.Delete(context.Background(), fi1.Path())
 			So(err, ShouldBeNil)
 
-			taskScheduler, cancel := runAndGetScheduler()
-			defer cancel()
+			taskScheduler := runAndGetScheduler()
+			defer taskScheduler.Shutdown()
 
 			storeDriver, imgStore, _ := createObjectsStore(testDir, t.TempDir(), true)
 			defer cleanupStorage(storeDriver, testDir)
@@ -2202,8 +2204,8 @@ func TestRebuildDedupeIndex(t *testing.T) {
 			err := storeDriver.PutContent(context.Background(), fi1.Path(), []byte{})
 			So(err, ShouldBeNil)
 
-			taskScheduler, cancel := runAndGetScheduler()
-			defer cancel()
+			taskScheduler := runAndGetScheduler()
+			defer taskScheduler.Shutdown()
 
 			storeDriver, imgStore, _ := createObjectsStore(testDir, t.TempDir(), true)
 			defer cleanupStorage(storeDriver, testDir)
@@ -2224,8 +2226,8 @@ func TestRebuildDedupeIndex(t *testing.T) {
 			err := storeDriver.Delete(context.Background(), imgStore.RootDir())
 			So(err, ShouldBeNil)
 
-			taskScheduler, cancel := runAndGetScheduler()
-			defer cancel()
+			taskScheduler := runAndGetScheduler()
+			defer taskScheduler.Shutdown()
 
 			// rebuild with dedupe false, should have all blobs with content
 			imgStore.RunDedupeBlobs(time.Duration(0), taskScheduler)
@@ -2235,8 +2237,8 @@ func TestRebuildDedupeIndex(t *testing.T) {
 		})
 
 		Convey("Rebuild from true to false", func() {
-			taskScheduler, cancel := runAndGetScheduler()
-			defer cancel()
+			taskScheduler := runAndGetScheduler()
+			defer taskScheduler.Shutdown()
 
 			storeDriver, imgStore, _ := createObjectsStore(testDir, t.TempDir(), false)
 			defer cleanupStorage(storeDriver, testDir)
@@ -2246,6 +2248,8 @@ func TestRebuildDedupeIndex(t *testing.T) {
 
 			// wait until rebuild finishes
 			time.Sleep(10 * time.Second)
+
+			taskScheduler.Shutdown()
 
 			fi2, err := storeDriver.Stat(context.Background(), path.Join(testDir, "dedupe2", "blobs", "sha256",
 				blobDigest2.Encoded()))

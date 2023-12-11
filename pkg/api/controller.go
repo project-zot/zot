@@ -94,12 +94,12 @@ func (c *Controller) GetPort() int {
 	return c.chosenPort
 }
 
-func (c *Controller) Run(reloadCtx context.Context) error {
+func (c *Controller) Run() error {
 	if err := c.initCookieStore(); err != nil {
 		return err
 	}
 
-	c.StartBackgroundTasks(reloadCtx)
+	c.StartBackgroundTasks()
 
 	// setup HTTP API router
 	engine := mux.NewRouter()
@@ -216,7 +216,7 @@ func (c *Controller) Run(reloadCtx context.Context) error {
 	return server.Serve(listener)
 }
 
-func (c *Controller) Init(reloadCtx context.Context) error {
+func (c *Controller) Init() error {
 	// print the current configuration, but strip secrets
 	c.Log.Info().Interface("params", c.Config.Sanitize()).Msg("configuration settings")
 
@@ -237,7 +237,7 @@ func (c *Controller) Init(reloadCtx context.Context) error {
 		return err
 	}
 
-	if err := c.InitMetaDB(reloadCtx); err != nil {
+	if err := c.InitMetaDB(); err != nil {
 		return err
 	}
 
@@ -280,7 +280,7 @@ func (c *Controller) initCookieStore() error {
 	return nil
 }
 
-func (c *Controller) InitMetaDB(reloadCtx context.Context) error {
+func (c *Controller) InitMetaDB() error {
 	// init metaDB if search is enabled or we need to store user profiles, api keys or signatures
 	if c.Config.IsSearchEnabled() || c.Config.IsBasicAuthnEnabled() || c.Config.IsImageTrustEnabled() ||
 		c.Config.IsRetentionEnabled() {
@@ -310,7 +310,7 @@ func (c *Controller) InitMetaDB(reloadCtx context.Context) error {
 	return nil
 }
 
-func (c *Controller) LoadNewConfig(reloadCtx context.Context, newConfig *config.Config) {
+func (c *Controller) LoadNewConfig(newConfig *config.Config) {
 	// reload access control config
 	c.Config.HTTP.AccessControl = newConfig.HTTP.AccessControl
 
@@ -364,21 +364,24 @@ func (c *Controller) LoadNewConfig(reloadCtx context.Context, newConfig *config.
 
 	c.InitCVEInfo()
 
-	c.StartBackgroundTasks(reloadCtx)
-
 	c.Log.Info().Interface("reloaded params", c.Config.Sanitize()).
 		Msg("loaded new configuration settings")
 }
 
 func (c *Controller) Shutdown() {
-	c.taskScheduler.Shutdown()
+	c.StopBackgroundTasks()
 	ctx := context.Background()
 	_ = c.Server.Shutdown(ctx)
 }
 
-func (c *Controller) StartBackgroundTasks(reloadCtx context.Context) {
+// Will stop scheduler and wait for all tasks to finish their work.
+func (c *Controller) StopBackgroundTasks() {
+	c.taskScheduler.Shutdown()
+}
+
+func (c *Controller) StartBackgroundTasks() {
 	c.taskScheduler = scheduler.NewScheduler(c.Config, c.Metrics, c.Log)
-	c.taskScheduler.RunScheduler(reloadCtx)
+	c.taskScheduler.RunScheduler()
 
 	// Enable running garbage-collect periodically for DefaultStore
 	if c.Config.Storage.GC {

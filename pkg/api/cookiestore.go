@@ -152,7 +152,9 @@ type CleanTask struct {
 func (cleanTask *CleanTask) DoWork(ctx context.Context) error {
 	for _, session := range cleanTask.sessions {
 		if err := os.Remove(session); err != nil {
-			return err
+			if !os.IsNotExist(err) {
+				return err
+			}
 		}
 	}
 

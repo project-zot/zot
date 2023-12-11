@@ -163,16 +163,14 @@ func TestNegativeServerResponse(t *testing.T) {
 		ctlr := api.NewController(conf)
 		ctlr.Log.Logger = ctlr.Log.Output(writers)
 
-		ctx := context.Background()
-
-		if err := ctlr.Init(ctx); err != nil {
+		if err := ctlr.Init(); err != nil {
 			panic(err)
 		}
 
 		ctlr.CveScanner = getMockCveScanner(ctlr.MetaDB)
 
 		go func() {
-			if err := ctlr.Run(ctx); !errors.Is(err, http.ErrServerClosed) {
+			if err := ctlr.Run(); !errors.Is(err, http.ErrServerClosed) {
 				panic(err)
 			}
 		}()
@@ -239,16 +237,14 @@ func TestServerCVEResponse(t *testing.T) {
 	ctlr := api.NewController(conf)
 	ctlr.Log.Logger = ctlr.Log.Output(writers)
 
-	ctx := context.Background()
-
-	if err := ctlr.Init(ctx); err != nil {
+	if err := ctlr.Init(); err != nil {
 		panic(err)
 	}
 
 	ctlr.CveScanner = getMockCveScanner(ctlr.MetaDB)
 
 	go func() {
-		if err := ctlr.Run(ctx); !errors.Is(err, http.ErrServerClosed) {
+		if err := ctlr.Run(); !errors.Is(err, http.ErrServerClosed) {
 			panic(err)
 		}
 	}()
@@ -578,9 +574,7 @@ func TestCVESort(t *testing.T) {
 		t.FailNow()
 	}
 
-	ctx := context.Background()
-
-	if err := ctlr.Init(ctx); err != nil {
+	if err := ctlr.Init(); err != nil {
 		panic(err)
 	}
 
@@ -617,7 +611,7 @@ func TestCVESort(t *testing.T) {
 	}
 
 	go func() {
-		if err := ctlr.Run(ctx); !errors.Is(err, http.ErrServerClosed) {
+		if err := ctlr.Run(); !errors.Is(err, http.ErrServerClosed) {
 			panic(err)
 		}
 	}()

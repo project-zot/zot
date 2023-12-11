@@ -681,16 +681,14 @@ func TestRepoListWithNewestImage(t *testing.T) {
 		ctlr := api.NewController(conf)
 		ctlr.Log.Logger = ctlr.Log.Output(writers)
 
-		ctx := context.Background()
-
-		if err := ctlr.Init(ctx); err != nil {
+		if err := ctlr.Init(); err != nil {
 			panic(err)
 		}
 
 		ctlr.CveScanner = getMockCveScanner(ctlr.MetaDB)
 
 		go func() {
-			if err := ctlr.Run(ctx); !errors.Is(err, http.ErrServerClosed) {
+			if err := ctlr.Run(); !errors.Is(err, http.ErrServerClosed) {
 				panic(err)
 			}
 		}()
@@ -3373,16 +3371,14 @@ func TestGlobalSearch(t *testing.T) {
 		ctlr := api.NewController(conf)
 		ctlr.Log.Logger = ctlr.Log.Output(writers)
 
-		ctx := context.Background()
-
-		if err := ctlr.Init(ctx); err != nil {
+		if err := ctlr.Init(); err != nil {
 			panic(err)
 		}
 
 		ctlr.CveScanner = getMockCveScanner(ctlr.MetaDB)
 
 		go func() {
-			if err := ctlr.Run(ctx); !errors.Is(err, http.ErrServerClosed) {
+			if err := ctlr.Run(); !errors.Is(err, http.ErrServerClosed) {
 				panic(err)
 			}
 		}()
@@ -6205,16 +6201,14 @@ func TestImageSummary(t *testing.T) {
 		configDigest := godigest.FromBytes(configBlob)
 		So(errConfig, ShouldBeNil) // marshall success, config is valid JSON
 
-		ctx := context.Background()
-
-		if err := ctlr.Init(ctx); err != nil {
+		if err := ctlr.Init(); err != nil {
 			panic(err)
 		}
 
 		ctlr.CveScanner = getMockCveScanner(ctlr.MetaDB)
 
 		go func() {
-			if err := ctlr.Run(ctx); !errors.Is(err, http.ErrServerClosed) {
+			if err := ctlr.Run(); !errors.Is(err, http.ErrServerClosed) {
 				panic(err)
 			}
 		}()

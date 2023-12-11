@@ -1,7 +1,6 @@
 package common_test
 
 import (
-	"context"
 	"os"
 	"path"
 	"testing"
@@ -53,11 +52,9 @@ func TestControllerManager(t *testing.T) {
 		ctlr := api.NewController(conf)
 		ctlrManager := tcommon.NewControllerManager(ctlr)
 
-		ctx := context.Background()
-
-		err := ctlr.Init(ctx)
+		err := ctlr.Init()
 		So(err, ShouldBeNil)
 
-		So(func() { ctlrManager.RunServer(ctx) }, ShouldPanic)
+		So(func() { ctlrManager.RunServer() }, ShouldPanic)
 	})
 }

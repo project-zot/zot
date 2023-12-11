@@ -4,7 +4,6 @@
 package monitoring_test
 
 import (
-	"context"
 	"fmt"
 	"io"
 	"math/rand"
@@ -463,8 +462,7 @@ func TestPopulateStorageMetrics(t *testing.T) {
 
 		metrics := monitoring.NewMetricsServer(true, ctlr.Log)
 		sch := scheduler.NewScheduler(conf, metrics, ctlr.Log)
-		ctx, cancel := context.WithCancel(context.Background())
-		sch.RunScheduler(ctx)
+		sch.RunScheduler()
 
 		generator := &common.StorageMetricsInitGenerator{
 			ImgStore: ctlr.StoreController.DefaultStore,
@@ -485,7 +483,7 @@ func TestPopulateStorageMetrics(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(found, ShouldBeTrue)
 
-		cancel()
+		sch.Shutdown()
 		alpineSize, err := monitoring.GetDirSize(path.Join(rootDir, "alpine"))
 		So(err, ShouldBeNil)
 		busyboxSize, err := monitoring.GetDirSize(path.Join(rootDir, "busybox"))

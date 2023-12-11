@@ -61,20 +61,16 @@ func newServeCmd(conf *config.Config) *cobra.Command {
 				return err
 			}
 
-			/* context used to cancel go routines so that
-			we can change their config on the fly (restart routines with different config) */
-			reloaderCtx := hotReloader.Start()
+			hotReloader.Start()
 
-			if err := ctlr.Init(reloaderCtx); err != nil {
+			if err := ctlr.Init(); err != nil {
 				ctlr.Log.Error().Err(err).Msg("failed to init controller")
 
 				return err
 			}
 
-			if err := ctlr.Run(reloaderCtx); err != nil {
+			if err := ctlr.Run(); err != nil {
 				log.Error().Err(err).Msg("failed to start controller, exiting")
-
-				return err
 			}
 
 			return nil

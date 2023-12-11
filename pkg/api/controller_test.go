@@ -300,10 +300,10 @@ func TestRunAlreadyRunningServer(t *testing.T) {
 		cm.StartAndWait(port)
 		defer cm.StopServer()
 
-		err := ctlr.Init(context.Background())
+		err := ctlr.Init()
 		So(err, ShouldNotBeNil)
 
-		err = ctlr.Run(context.Background())
+		err = ctlr.Run()
 		So(err, ShouldNotBeNil)
 	})
 }
@@ -377,7 +377,7 @@ func TestObjectStorageController(t *testing.T) {
 		ctlr := makeController(conf, tmp)
 		So(ctlr, ShouldNotBeNil)
 
-		err := ctlr.Init(context.Background())
+		err := ctlr.Init()
 		So(err, ShouldNotBeNil)
 	})
 
@@ -1218,7 +1218,7 @@ func TestMultipleInstance(t *testing.T) {
 		}
 		ctlr := api.NewController(conf)
 		ctlr.Log.Info().Int64("seedUser", seedUser).Int64("seedPass", seedPass).Msg("random seed for username & password")
-		err := ctlr.Init(context.Background())
+		err := ctlr.Init()
 		So(err, ShouldEqual, errors.ErrImgStoreNotFound)
 
 		globalDir := t.TempDir()
@@ -1311,7 +1311,7 @@ func TestMultipleInstance(t *testing.T) {
 
 		ctlr.Config.Storage.SubPaths = subPathMap
 
-		err := ctlr.Init(context.Background())
+		err := ctlr.Init()
 		So(err, ShouldNotBeNil)
 
 		// subpath root directory does not exist.
@@ -1320,7 +1320,7 @@ func TestMultipleInstance(t *testing.T) {
 
 		ctlr.Config.Storage.SubPaths = subPathMap
 
-		err = ctlr.Init(context.Background())
+		err = ctlr.Init()
 		So(err, ShouldNotBeNil)
 
 		subPathMap["/a"] = config.StorageConfig{RootDirectory: subDir, Dedupe: true, GC: true}
@@ -1328,7 +1328,7 @@ func TestMultipleInstance(t *testing.T) {
 
 		ctlr.Config.Storage.SubPaths = subPathMap
 
-		err = ctlr.Init(context.Background())
+		err = ctlr.Init()
 		So(err, ShouldNotBeNil)
 	})
 }
@@ -1826,12 +1826,12 @@ func TestTSLFailedReadingOfCACert(t *testing.T) {
 		defer cancel()
 		ctlr := makeController(conf, t.TempDir())
 
-		err = ctlr.Init(ctx)
+		err = ctlr.Init()
 		So(err, ShouldBeNil)
 
 		errChan := make(chan error, 1)
 		go func() {
-			err = ctlr.Run(ctx)
+			err = ctlr.Run()
 			errChan <- err
 		}()
 
@@ -1866,12 +1866,12 @@ func TestTSLFailedReadingOfCACert(t *testing.T) {
 		defer cancel()
 		ctlr := makeController(conf, t.TempDir())
 
-		err = ctlr.Init(ctx)
+		err = ctlr.Init()
 		So(err, ShouldBeNil)
 
 		errChan := make(chan error, 1)
 		go func() {
-			err = ctlr.Run(ctx)
+			err = ctlr.Run()
 			errChan <- err
 		}()
 

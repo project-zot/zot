@@ -30,6 +30,14 @@ func (t *task) DoWork(ctx context.Context) error {
 		return errInternal
 	}
 
+	for idx := 0; idx < 5; idx++ {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+
+		time.Sleep(100 * time.Millisecond)
+	}
+
 	t.log.Info().Msg(t.msg)
 
 	return nil
@@ -52,11 +60,19 @@ type generator struct {
 }
 
 func (g *generator) Next() (scheduler.Task, error) {
-	if g.step > 1 {
+	if g.step > 100 {
 		g.done = true
 	}
 	g.step++
 	g.index++
+
+	if g.step%11 == 0 {
+		return nil, nil
+	}
+
+	if g.step%13 == 0 {
+		return nil, errInternal
+	}
 
 	return &task{log: g.log, msg: fmt.Sprintf("executing %s task; index: %d", g.priority, g.index), err: false}, nil
 }
@@ -114,13 +130,11 @@ func TestScheduler(t *testing.T) {
 
 		genH := &shortGenerator{log: logger, priority: "high priority"}
 		// interval has to be higher than throttle value to simulate
-		sch.SubmitGenerator(genH, 12000*time.Millisecond, scheduler.HighPriority)
+		sch.SubmitGenerator(genH, 6*time.Second, scheduler.HighPriority)
 
-		ctx, cancel := context.WithCancel(context.Background())
-		sch.RunScheduler(ctx)
-
-		time.Sleep(16 * time.Second)
-		cancel()
+		sch.RunScheduler()
+		time.Sleep(7 * time.Second)
+		sch.Shutdown()
 
 		data, err := os.ReadFile(logFile.Name())
 		So(err, ShouldBeNil)
@@ -148,12 +162,9 @@ func TestScheduler(t *testing.T) {
 		genH := &generator{log: logger, priority: "high priority"}
 		sch.SubmitGenerator(genH, time.Duration(0), scheduler.HighPriority)
 
-		ctx, cancel := context.WithCancel(context.Background())
-
-		sch.RunScheduler(ctx)
-
+		sch.RunScheduler()
 		time.Sleep(4 * time.Second)
-		cancel()
+		sch.Shutdown()
 
 		data, err := os.ReadFile(logFile.Name())
 		So(err, ShouldBeNil)
@@ -177,11 +188,9 @@ func TestScheduler(t *testing.T) {
 		t := &task{log: logger, msg: "", err: true}
 		sch.SubmitTask(t, scheduler.MediumPriority)
 
-		ctx, cancel := context.WithCancel(context.Background())
-		sch.RunScheduler(ctx)
-
+		sch.RunScheduler()
 		time.Sleep(500 * time.Millisecond)
-		cancel()
+		sch.Shutdown()
 
 		data, err := os.ReadFile(logFile.Name())
 		So(err, ShouldBeNil)
@@ -202,11 +211,9 @@ func TestScheduler(t *testing.T) {
 		genL := &generator{log: logger, priority: "low priority"}
 		sch.SubmitGenerator(genL, 20*time.Millisecond, scheduler.LowPriority)
 
-		ctx, cancel := context.WithCancel(context.Background())
-		sch.RunScheduler(ctx)
-
-		time.Sleep(6 * time.Second)
-		cancel()
+		sch.RunScheduler()
+		time.Sleep(4 * time.Second)
+		sch.Shutdown()
 
 		data, err := os.ReadFile(logFile.Name())
 		So(err, ShouldBeNil)
@@ -242,10 +249,8 @@ func TestScheduler(t *testing.T) {
 		metrics := monitoring.NewMetricsServer(true, logger)
 		sch := scheduler.NewScheduler(config.New(), metrics, logger)
 
-		ctx, cancel := context.WithCancel(context.Background())
-
-		sch.RunScheduler(ctx)
-		cancel()
+		sch.RunScheduler()
+		sch.Shutdown()
 		time.Sleep(500 * time.Millisecond)
 
 		t := &task{log: logger, msg: "", err: false}
@@ -254,6 +259,30 @@ func TestScheduler(t *testing.T) {
 		data, err := os.ReadFile(logFile.Name())
 		So(err, ShouldBeNil)
 		So(string(data), ShouldNotContainSubstring, "adding a new task")
+	})
+
+	Convey("Test stopping scheduler by calling Shutdown()", t, func() {
+		logFile, err := os.CreateTemp("", "zot-log*.txt")
+		So(err, ShouldBeNil)
+
+		defer os.Remove(logFile.Name()) // clean up
+
+		logger := log.NewLogger("debug", logFile.Name())
+		metrics := monitoring.NewMetricsServer(true, logger)
+		sch := scheduler.NewScheduler(config.New(), metrics, logger)
+
+		genL := &generator{log: logger, priority: "medium priority"}
+		sch.SubmitGenerator(genL, 20*time.Millisecond, scheduler.MediumPriority)
+
+		sch.RunScheduler()
+		time.Sleep(4 * time.Second)
+		sch.Shutdown()
+
+		data, err := os.ReadFile(logFile.Name())
+		So(err, ShouldBeNil)
+		So(string(data), ShouldContainSubstring, "executing medium priority task; index: 1")
+		So(string(data), ShouldContainSubstring, "executing medium priority task; index: 2")
+		So(string(data), ShouldContainSubstring, "received stop signal, gracefully shutting down...")
 	})
 
 	Convey("Test scheduler Priority.String() method", t, func() {

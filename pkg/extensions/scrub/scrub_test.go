@@ -70,13 +70,11 @@ func TestScrubExtension(t *testing.T) {
 
 		cm := test.NewControllerManager(ctlr)
 		cm.StartAndWait(port)
-		time.Sleep(6 * time.Second)
-
 		defer cm.StopServer()
 
-		data, err := os.ReadFile(logFile.Name())
+		found, err := test.ReadLogFileAndSearchString(logFile.Name(), "blobs/manifest ok", 60*time.Second)
+		So(found, ShouldBeTrue)
 		So(err, ShouldBeNil)
-		So(string(data), ShouldContainSubstring, "blobs/manifest ok")
 	})
 
 	Convey("Blobs integrity affected", t, func(c C) {
@@ -122,13 +120,11 @@ func TestScrubExtension(t *testing.T) {
 
 		cm := test.NewControllerManager(ctlr)
 		cm.StartAndWait(port)
-		time.Sleep(6 * time.Second)
-
 		defer cm.StopServer()
 
-		data, err := os.ReadFile(logFile.Name())
+		found, err := test.ReadLogFileAndSearchString(logFile.Name(), "blobs/manifest affected", 60*time.Second)
+		So(found, ShouldBeTrue)
 		So(err, ShouldBeNil)
-		So(string(data), ShouldContainSubstring, "blobs/manifest affected")
 	})
 
 	Convey("Generator error - not enough permissions to access root directory", t, func(c C) {
@@ -170,13 +166,11 @@ func TestScrubExtension(t *testing.T) {
 
 		cm := test.NewControllerManager(ctlr)
 		cm.StartAndWait(port)
-		time.Sleep(6 * time.Second)
-
 		defer cm.StopServer()
 
-		data, err := os.ReadFile(logFile.Name())
+		found, err := test.ReadLogFileAndSearchString(logFile.Name(), "failed to execute generator", 60*time.Second)
+		So(found, ShouldBeTrue)
 		So(err, ShouldBeNil)
-		So(string(data), ShouldContainSubstring, "failed to execute generator")
 
 		So(os.Chmod(path.Join(dir, repoName), 0o755), ShouldBeNil)
 	})
