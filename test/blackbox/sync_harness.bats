@@ -108,7 +108,7 @@ function teardown_file() {
     start=`date +%s`
     echo "waiting for sync to finish" >&3
 
-    run wait_for_string "sync: finished syncing all repos" ${ZOT_LOG_FILE} "5m"
+    run wait_for_string "finished syncing all repos" ${ZOT_LOG_FILE} "5m"
     [ "$status" -eq 0 ]
 
     end=`date +%s`
