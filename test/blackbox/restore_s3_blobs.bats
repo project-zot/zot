@@ -131,7 +131,7 @@ function teardown_file() {
 
     start=`date +%s`
     echo "waiting for restoring blobs task to finish" >&3
-    run wait_for_string "dedupe rebuild: finished" ${ZOT_LOG_FILE} "5m"
+    run wait_for_string "no digests left, finished" ${ZOT_LOG_FILE} "5m"
     [ "$status" -eq 0 ]
 
     end=`date +%s`

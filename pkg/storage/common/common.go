@@ -1007,7 +1007,7 @@ func (gen *DedupeTaskGenerator) Next() (scheduler.Task, error) {
 
 	// if no digests left, then mark the task generator as done
 	if gen.digest == "" {
-		gen.Log.Info().Str("component", "dedupe").Msg("finished")
+		gen.Log.Info().Str("component", "dedupe").Msg("no digests left, finished")
 
 		gen.done = true
 
