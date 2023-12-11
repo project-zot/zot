@@ -246,10 +246,14 @@ func RepoIsUserAvailable(ctx context.Context, repoName string) (bool, error) {
 		return false, err
 	}
 
-	// no authn/authz enabled on server
-	if uac == nil {
-		return true, nil
+	return uac.Can(constants.ReadPermission, repoName), nil
+}
+
+func CanDelete(ctx context.Context, repoName string) (bool, error) {
+	uac, err := UserAcFromContext(ctx)
+	if err != nil {
+		return false, err
 	}
 
-	return uac.Can("read", repoName), nil
+	return uac.Can(constants.DeletePermission, repoName), nil
 }

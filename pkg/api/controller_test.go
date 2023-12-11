@@ -639,7 +639,7 @@ func TestAllowMethodsHeader(t *testing.T) {
 		// /v2/{name}/manifests/{reference}
 		resp, err = simpleUserClient.Options(baseURL + "/v2/reponame/manifests/" + digest.String())
 		So(err, ShouldBeNil)
-		So(resp.Header().Get("Access-Control-Allow-Methods"), ShouldResemble, "HEAD,GET,OPTIONS")
+		So(resp.Header().Get("Access-Control-Allow-Methods"), ShouldResemble, "HEAD,GET,DELETE,OPTIONS")
 
 		// /v2/{name}/referrers/{digest}
 		resp, err = simpleUserClient.Options(baseURL + "/v2/reponame/referrers/" + digest.String())

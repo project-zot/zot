@@ -86,6 +86,7 @@ type ComplexityRoot struct {
 		Digest          func(childComplexity int) int
 		Documentation   func(childComplexity int) int
 		DownloadCount   func(childComplexity int) int
+		IsDeletable     func(childComplexity int) int
 		IsSigned        func(childComplexity int) int
 		Labels          func(childComplexity int) int
 		LastUpdated     func(childComplexity int) int
@@ -421,6 +422,13 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 		}
 
 		return e.complexity.ImageSummary.DownloadCount(childComplexity), true
+
+	case "ImageSummary.IsDeletable":
+		if e.complexity.ImageSummary.IsDeletable == nil {
+			break
+		}
+
+		return e.complexity.ImageSummary.IsDeletable(childComplexity), true
 
 	case "ImageSummary.IsSigned":
 		if e.complexity.ImageSummary.IsSigned == nil {
@@ -1346,6 +1354,10 @@ type ImageSummary {
     Information about objects that reference this image
     """
     Referrers: [Referrer]
+    """
+    True if current user has delete permission on this tag.
+    """
+    IsDeletable: Boolean
 }
 """
 Details about a specific version of an image for a certain operating system and architecture.
@@ -2919,6 +2931,8 @@ func (ec *executionContext) fieldContext_GlobalSearchResult_Images(ctx context.C
 				return ec.fieldContext_ImageSummary_Vulnerabilities(ctx, field)
 			case "Referrers":
 				return ec.fieldContext_ImageSummary_Referrers(ctx, field)
+			case "IsDeletable":
+				return ec.fieldContext_ImageSummary_IsDeletable(ctx, field)
 			}
 			return nil, fmt.Errorf("no field named %q was found under type ImageSummary", field.Name)
 		},
@@ -4117,6 +4131,47 @@ func (ec *executionContext) fieldContext_ImageSummary_Referrers(ctx context.Cont
 	return fc, nil
 }
 
+func (ec *executionContext) _ImageSummary_IsDeletable(ctx context.Context, field graphql.CollectedField, obj *ImageSummary) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_ImageSummary_IsDeletable(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.IsDeletable, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		return graphql.Null
+	}
+	res := resTmp.(*bool)
+	fc.Result = res
+	return ec.marshalOBoolean2ᚖbool(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_ImageSummary_IsDeletable(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "ImageSummary",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Boolean does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
 func (ec *executionContext) _ImageVulnerabilitySummary_MaxSeverity(ctx context.Context, field graphql.CollectedField, obj *ImageVulnerabilitySummary) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_ImageVulnerabilitySummary_MaxSeverity(ctx, field)
 	if err != nil {
@@ -5295,6 +5350,8 @@ func (ec *executionContext) fieldContext_PaginatedImagesResult_Results(ctx conte
 				return ec.fieldContext_ImageSummary_Vulnerabilities(ctx, field)
 			case "Referrers":
 				return ec.fieldContext_ImageSummary_Referrers(ctx, field)
+			case "IsDeletable":
+				return ec.fieldContext_ImageSummary_IsDeletable(ctx, field)
 			}
 			return nil, fmt.Errorf("no field named %q was found under type ImageSummary", field.Name)
 		},
@@ -6194,6 +6251,8 @@ func (ec *executionContext) fieldContext_Query_Image(ctx context.Context, field 
 				return ec.fieldContext_ImageSummary_Vulnerabilities(ctx, field)
 			case "Referrers":
 				return ec.fieldContext_ImageSummary_Referrers(ctx, field)
+			case "IsDeletable":
+				return ec.fieldContext_ImageSummary_IsDeletable(ctx, field)
 			}
 			return nil, fmt.Errorf("no field named %q was found under type ImageSummary", field.Name)
 		},
@@ -6820,6 +6879,8 @@ func (ec *executionContext) fieldContext_RepoInfo_Images(ctx context.Context, fi
 				return ec.fieldContext_ImageSummary_Vulnerabilities(ctx, field)
 			case "Referrers":
 				return ec.fieldContext_ImageSummary_Referrers(ctx, field)
+			case "IsDeletable":
+				return ec.fieldContext_ImageSummary_IsDeletable(ctx, field)
 			}
 			return nil, fmt.Errorf("no field named %q was found under type ImageSummary", field.Name)
 		},
@@ -7179,6 +7240,8 @@ func (ec *executionContext) fieldContext_RepoSummary_NewestImage(ctx context.Con
 				return ec.fieldContext_ImageSummary_Vulnerabilities(ctx, field)
 			case "Referrers":
 				return ec.fieldContext_ImageSummary_Referrers(ctx, field)
+			case "IsDeletable":
+				return ec.fieldContext_ImageSummary_IsDeletable(ctx, field)
 			}
 			return nil, fmt.Errorf("no field named %q was found under type ImageSummary", field.Name)
 		},
@@ -9652,6 +9715,8 @@ func (ec *executionContext) _ImageSummary(ctx context.Context, sel ast.Selection
 			out.Values[i] = ec._ImageSummary_Vulnerabilities(ctx, field, obj)
 		case "Referrers":
 			out.Values[i] = ec._ImageSummary_Referrers(ctx, field, obj)
+		case "IsDeletable":
+			out.Values[i] = ec._ImageSummary_IsDeletable(ctx, field, obj)
 		default:
 			panic("unknown field " + strconv.Quote(field.Name))
 		}

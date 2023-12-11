@@ -134,14 +134,14 @@ func (rh *RouteHandler) SetupRoutes() {
 			getUIHeadersHandler(rh.c.Config, http.MethodGet, http.MethodOptions)(
 				applyCORSHeaders(rh.ListTags))).Methods(http.MethodGet, http.MethodOptions)
 		prefixedDistSpecRouter.HandleFunc(fmt.Sprintf("/{name:%s}/manifests/{reference}", zreg.NameRegexp.String()),
-			getUIHeadersHandler(rh.c.Config, http.MethodHead, http.MethodGet, http.MethodOptions)(
+			getUIHeadersHandler(rh.c.Config, http.MethodHead, http.MethodGet, http.MethodDelete, http.MethodOptions)(
 				applyCORSHeaders(rh.CheckManifest))).Methods(http.MethodHead, http.MethodOptions)
 		prefixedDistSpecRouter.HandleFunc(fmt.Sprintf("/{name:%s}/manifests/{reference}", zreg.NameRegexp.String()),
 			applyCORSHeaders(rh.GetManifest)).Methods(http.MethodGet)
 		prefixedDistSpecRouter.HandleFunc(fmt.Sprintf("/{name:%s}/manifests/{reference}", zreg.NameRegexp.String()),
 			rh.UpdateManifest).Methods(http.MethodPut)
 		prefixedDistSpecRouter.HandleFunc(fmt.Sprintf("/{name:%s}/manifests/{reference}", zreg.NameRegexp.String()),
-			rh.DeleteManifest).Methods(http.MethodDelete)
+			applyCORSHeaders(rh.DeleteManifest)).Methods(http.MethodDelete)
 		prefixedDistSpecRouter.HandleFunc(fmt.Sprintf("/{name:%s}/blobs/{digest}", zreg.NameRegexp.String()),
 			rh.CheckBlob).Methods(http.MethodHead)
 		prefixedDistSpecRouter.HandleFunc(fmt.Sprintf("/{name:%s}/blobs/{digest}", zreg.NameRegexp.String()),

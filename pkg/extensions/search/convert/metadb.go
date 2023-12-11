@@ -17,6 +17,7 @@ import (
 	"zotregistry.io/zot/pkg/extensions/search/pagination"
 	"zotregistry.io/zot/pkg/log"
 	mTypes "zotregistry.io/zot/pkg/meta/types"
+	reqCtx "zotregistry.io/zot/pkg/requestcontext"
 )
 
 type SkipQGLField struct {
@@ -136,6 +137,8 @@ func RepoMeta2ExpandedRepoInfo(ctx context.Context, repoMeta mTypes.RepoMeta,
 	repoName := repoMeta.Name
 	imageSummaries := make([]*gql_generated.ImageSummary, 0, len(repoMeta.Tags))
 
+	userCanDeleteTag, _ := reqCtx.CanDelete(ctx, repoName)
+
 	for tag, descriptor := range repoMeta.Tags {
 		imageMeta := imageMetaMap[descriptor.Digest]
 
@@ -146,6 +149,8 @@ func RepoMeta2ExpandedRepoInfo(ctx context.Context, repoMeta mTypes.RepoMeta,
 
 			continue
 		}
+
+		imageSummary.IsDeletable = &userCanDeleteTag
 
 		updateImageSummaryVulnerabilities(ctx, imageSummary, skip, cveInfo)
 

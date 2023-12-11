@@ -18,6 +18,7 @@ import (
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/meta/boltdb"
 	mTypes "zotregistry.io/zot/pkg/meta/types"
+	reqCtx "zotregistry.io/zot/pkg/requestcontext"
 	. "zotregistry.io/zot/pkg/test/image-utils"
 	"zotregistry.io/zot/pkg/test/mocks"
 	ociutils "zotregistry.io/zot/pkg/test/oci-utils"
@@ -807,6 +808,36 @@ func TestConvertErrors(t *testing.T) {
 				mTypes.RepoMeta{
 					Tags: map[string]mTypes.Descriptor{"tag": {MediaType: "bad-type", Digest: "digest"}},
 				},
+				map[string]mTypes.ImageMeta{
+					"digest": {},
+				},
+				convert.SkipQGLField{}, nil,
+				log,
+			)
+			So(len(imgSums), ShouldEqual, 0)
+		})
+
+		Convey("RepoMeta2ExpandedRepoInfo - bad ctx value", func() {
+			uacKey := reqCtx.GetContextKey()
+			ctx := context.WithValue(ctx, uacKey, "bad context")
+
+			_, imgSums := convert.RepoMeta2ExpandedRepoInfo(ctx,
+				mTypes.RepoMeta{},
+				map[string]mTypes.ImageMeta{
+					"digest": {},
+				},
+				convert.SkipQGLField{}, nil,
+				log,
+			)
+			So(len(imgSums), ShouldEqual, 0)
+		})
+
+		Convey("RepoMeta2ExpandedRepoInfo - nil ctx value", func() {
+			uacKey := reqCtx.GetContextKey()
+			ctx := context.WithValue(ctx, uacKey, nil)
+
+			_, imgSums := convert.RepoMeta2ExpandedRepoInfo(ctx,
+				mTypes.RepoMeta{},
 				map[string]mTypes.ImageMeta{
 					"digest": {},
 				},
