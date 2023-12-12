@@ -17,7 +17,7 @@ jobs:
     runs-on: ubuntu-latest-4-cores
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-go@v3
+      - uses: actions/setup-go@v5
         with:
           go-version: 1.20.x
       - name: Install dependencies
@@ -65,7 +65,7 @@ jobs:
     steps:
       - name: Check out source code
         uses: actions/checkout@v4
-      - uses: actions/setup-go@v3
+      - uses: actions/setup-go@v5
         with:
           go-version: 1.20.x
       - name: Install dependencies
@@ -82,7 +82,7 @@ jobs:
     runs-on: ubuntu-latest-16-cores
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-go@v4
+      - uses: actions/setup-go@v5
         with:
           cache: false
           go-version: 1.20.x
@@ -119,7 +119,7 @@ jobs:
     runs-on: ubuntu-latest-16-cores
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-go@v4
+      - uses: actions/setup-go@v5
         with:
           cache: false
           go-version: 1.20.x
@@ -168,7 +168,7 @@ jobs:
     runs-on: ubuntu-latest-8-cores
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-go@v3
+      - uses: actions/setup-go@v5
         with:
           go-version: 1.20.x
       - name: Install dependencies
