@@ -134,6 +134,8 @@ type ImageSummary struct {
 	Vulnerabilities *ImageVulnerabilitySummary `json:"Vulnerabilities,omitempty"`
 	// Information about objects that reference this image
 	Referrers []*Referrer `json:"Referrers,omitempty"`
+	// True if current user has delete permission on this tag.
+	IsDeletable *bool `json:"IsDeletable,omitempty"`
 }
 
 // Contains summary of vulnerabilities found in a specific image

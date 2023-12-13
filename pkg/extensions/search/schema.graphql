@@ -200,6 +200,10 @@ type ImageSummary {
     Information about objects that reference this image
     """
     Referrers: [Referrer]
+    """
+    True if current user has delete permission on this tag.
+    """
+    IsDeletable: Boolean
 }
 """
 Details about a specific version of an image for a certain operating system and architecture.
