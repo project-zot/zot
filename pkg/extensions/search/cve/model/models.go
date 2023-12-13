@@ -7,8 +7,13 @@ import (
 )
 
 type ImageCVESummary struct {
-	Count       int
-	MaxSeverity string
+	Count         int
+	UnknownCount  int
+	LowCount      int
+	MediumCount   int
+	HighCount     int
+	CriticalCount int
+	MaxSeverity   string
 }
 
 //nolint:tagliatelle // graphQL schema

@@ -38,8 +38,13 @@ func updateImageSummaryVulnerabilities(
 	imageCveSummary := cvemodel.ImageCVESummary{}
 
 	imageSummary.Vulnerabilities = &gql_generated.ImageVulnerabilitySummary{
-		MaxSeverity: &imageCveSummary.MaxSeverity,
-		Count:       &imageCveSummary.Count,
+		MaxSeverity:   &imageCveSummary.MaxSeverity,
+		UnknownCount:  &imageCveSummary.UnknownCount,
+		LowCount:      &imageCveSummary.LowCount,
+		MediumCount:   &imageCveSummary.MediumCount,
+		HighCount:     &imageCveSummary.HighCount,
+		CriticalCount: &imageCveSummary.CriticalCount,
+		Count:         &imageCveSummary.Count,
 	}
 
 	// Check if vulnerability scanning is disabled
@@ -61,6 +66,11 @@ func updateImageSummaryVulnerabilities(
 	}
 
 	imageSummary.Vulnerabilities.MaxSeverity = &imageCveSummary.MaxSeverity
+	imageSummary.Vulnerabilities.UnknownCount = &imageCveSummary.UnknownCount
+	imageSummary.Vulnerabilities.LowCount = &imageCveSummary.LowCount
+	imageSummary.Vulnerabilities.MediumCount = &imageCveSummary.MediumCount
+	imageSummary.Vulnerabilities.HighCount = &imageCveSummary.HighCount
+	imageSummary.Vulnerabilities.CriticalCount = &imageCveSummary.CriticalCount
 	imageSummary.Vulnerabilities.Count = &imageCveSummary.Count
 
 	for _, manifestSummary := range imageSummary.Manifests {
@@ -82,8 +92,13 @@ func updateManifestSummaryVulnerabilities(
 	imageCveSummary := cvemodel.ImageCVESummary{}
 
 	manifestSummary.Vulnerabilities = &gql_generated.ImageVulnerabilitySummary{
-		MaxSeverity: &imageCveSummary.MaxSeverity,
-		Count:       &imageCveSummary.Count,
+		MaxSeverity:   &imageCveSummary.MaxSeverity,
+		UnknownCount:  &imageCveSummary.UnknownCount,
+		LowCount:      &imageCveSummary.LowCount,
+		MediumCount:   &imageCveSummary.MediumCount,
+		HighCount:     &imageCveSummary.HighCount,
+		CriticalCount: &imageCveSummary.CriticalCount,
+		Count:         &imageCveSummary.Count,
 	}
 
 	// Check if vulnerability scanning is disabled
@@ -105,5 +120,10 @@ func updateManifestSummaryVulnerabilities(
 	}
 
 	manifestSummary.Vulnerabilities.MaxSeverity = &imageCveSummary.MaxSeverity
+	manifestSummary.Vulnerabilities.UnknownCount = &imageCveSummary.UnknownCount
+	manifestSummary.Vulnerabilities.LowCount = &imageCveSummary.LowCount
+	manifestSummary.Vulnerabilities.MediumCount = &imageCveSummary.MediumCount
+	manifestSummary.Vulnerabilities.HighCount = &imageCveSummary.HighCount
+	manifestSummary.Vulnerabilities.CriticalCount = &imageCveSummary.CriticalCount
 	manifestSummary.Vulnerabilities.Count = &imageCveSummary.Count
 }

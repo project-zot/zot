@@ -634,7 +634,7 @@ func TestCVESort(t *testing.T) {
 		str := space.ReplaceAllString(buff.String(), " ")
 		actual := strings.TrimSpace(str)
 		So(actual, ShouldResemble,
-			"ID SEVERITY TITLE "+
+			"CRITICAL 1, HIGH 1, MEDIUM 2, LOW 1, UNKNOWN 0, TOTAL 5 ID SEVERITY TITLE "+
 				"CVE-2023-3446 CRITICAL Excessive time spent checking DH keys and par... "+
 				"CVE-2023-2975 HIGH AES-SIV cipher implementation contains a bug ... "+
 				"CVE-2023-2650 MEDIUM Possible DoS translating ASN.1 object identif... "+
@@ -652,7 +652,7 @@ func TestCVESort(t *testing.T) {
 		str = space.ReplaceAllString(buff.String(), " ")
 		actual = strings.TrimSpace(str)
 		So(actual, ShouldResemble,
-			"ID SEVERITY TITLE "+
+			"CRITICAL 1, HIGH 1, MEDIUM 2, LOW 1, UNKNOWN 0, TOTAL 5 ID SEVERITY TITLE "+
 				"CVE-2023-1255 LOW Input buffer over-read in AES-XTS implementat... "+
 				"CVE-2023-2650 MEDIUM Possible DoS translating ASN.1 object identif... "+
 				"CVE-2023-2975 HIGH AES-SIV cipher implementation contains a bug ... "+
@@ -670,7 +670,7 @@ func TestCVESort(t *testing.T) {
 		str = space.ReplaceAllString(buff.String(), " ")
 		actual = strings.TrimSpace(str)
 		So(actual, ShouldResemble,
-			"ID SEVERITY TITLE "+
+			"CRITICAL 1, HIGH 1, MEDIUM 2, LOW 1, UNKNOWN 0, TOTAL 5 ID SEVERITY TITLE "+
 				"CVE-2023-3817 MEDIUM Excessive time spent checking DH q parameter ... "+
 				"CVE-2023-3446 CRITICAL Excessive time spent checking DH keys and par... "+
 				"CVE-2023-2975 HIGH AES-SIV cipher implementation contains a bug ... "+

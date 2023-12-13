@@ -305,9 +305,13 @@ func (service searchService) getCveByImageGQL(ctx context.Context, config Search
 	query := fmt.Sprintf(`
 	{
 		CVEListForImage (image:"%s", searchedCVE:"%s", requestedPage: {sortBy: %s}) {
-			Tag CVEList {
+			Tag
+			CVEList {
 				Id Title Severity Description
 				PackageList {Name InstalledVersion FixedVersion}
+			}
+			Summary {
+				Count UnknownCount LowCount MediumCount HighCount CriticalCount MaxSeverity
 			}
 		}
 	}`, imageName, searchedCVE, Flag2SortCriteria(config.SortBy))
@@ -743,8 +747,9 @@ type cve struct {
 
 //nolint:tagliatelle // graphQL schema
 type cveListForImage struct {
-	Tag     string `json:"Tag"`
-	CVEList []cve  `json:"CVEList"`
+	Tag     string                           `json:"Tag"`
+	CVEList []cve                            `json:"CVEList"`
+	Summary common.ImageVulnerabilitySummary `json:"Summary"`
 }
 
 //nolint:tagliatelle // graphQL schema

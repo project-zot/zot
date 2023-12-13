@@ -41,6 +41,8 @@ type CVEResultForImage struct {
 	Tag *string `json:"Tag,omitempty"`
 	// List of CVE objects which affect this specific image:tag
 	CVEList []*Cve `json:"CVEList,omitempty"`
+	// Summary of the findings for this image
+	Summary *ImageVulnerabilitySummary `json:"Summary,omitempty"`
 	// The CVE pagination information, see PageInfo object for more details
 	Page *PageInfo `json:"Page,omitempty"`
 }
@@ -144,6 +146,16 @@ type ImageVulnerabilitySummary struct {
 	MaxSeverity *string `json:"MaxSeverity,omitempty"`
 	// Count of all CVEs found in this image
 	Count *int `json:"Count,omitempty"`
+	// Coresponds to CVSS 3 score NONE
+	UnknownCount *int `json:"UnknownCount,omitempty"`
+	// Coresponds to CVSS 3 score LOW
+	LowCount *int `json:"LowCount,omitempty"`
+	// Coresponds to CVSS 3 score MEDIUM
+	MediumCount *int `json:"MediumCount,omitempty"`
+	// Coresponds to CVSS 3 score HIGH
+	HighCount *int `json:"HighCount,omitempty"`
+	// Coresponds to CVSS 3 score CRITICAL
+	CriticalCount *int `json:"CriticalCount,omitempty"`
 }
 
 // Information about how/when a layer was built
