@@ -39,6 +39,7 @@ type Auth struct {
 		Address string `json:"address,omitempty" mapstructure:"address"`
 	} `json:"ldap,omitempty"   mapstructure:"ldap"`
 	OpenID *OpenIDConfig `json:"openid,omitempty" mapstructure:"openid"`
+	APIKey bool          `json:"apikey,omitempty" mapstructure:"apikey"`
 }
 
 type StrippedConfig struct {
