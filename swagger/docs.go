@@ -1308,6 +1308,9 @@ const docTemplate = `{
         "extensions.Auth": {
             "type": "object",
             "properties": {
+                "apikey": {
+                    "type": "boolean"
+                },
                 "bearer": {
                     "$ref": "#/definitions/extensions.BearerConfig"
                 },

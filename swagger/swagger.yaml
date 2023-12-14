@@ -101,6 +101,8 @@ definitions:
     type: object
   extensions.Auth:
     properties:
+      apikey:
+        type: boolean
       bearer:
         $ref: '#/definitions/extensions.BearerConfig'
       htpasswd:

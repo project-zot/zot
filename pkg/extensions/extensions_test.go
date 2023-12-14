@@ -143,6 +143,12 @@ func TestMgmtExtension(t *testing.T) {
 		username, seedUser := test.GenerateRandomString()
 		password, seedPass := test.GenerateRandomString()
 		htpasswdPath := test.MakeHtpasswdFileFromString(test.GetCredString(username, password))
+
+		defer func() {
+			conf.HTTP.Auth.HTPasswd.Path = ""
+			os.Remove(htpasswdPath)
+		}()
+
 		conf.HTTP.Auth.HTPasswd.Path = htpasswdPath
 
 		conf.Extensions = &extconf.ExtensionConfig{}
@@ -203,6 +209,7 @@ func TestMgmtExtension(t *testing.T) {
 		So(mgmtResp.HTTP.Auth.HTPasswd.Path, ShouldEqual, "")
 		So(mgmtResp.HTTP.Auth.Bearer, ShouldBeNil)
 		So(mgmtResp.HTTP.Auth.LDAP, ShouldBeNil)
+		So(mgmtResp.HTTP.Auth.APIKey, ShouldBeFalse)
 
 		// with credentials
 		resp, err = resty.R().SetBasicAuth(username, password).Get(baseURL + constants.FullMgmt)
@@ -216,6 +223,7 @@ func TestMgmtExtension(t *testing.T) {
 		So(mgmtResp.HTTP.Auth.HTPasswd.Path, ShouldEqual, "")
 		So(mgmtResp.HTTP.Auth.Bearer, ShouldBeNil)
 		So(mgmtResp.HTTP.Auth.LDAP, ShouldBeNil)
+		So(mgmtResp.HTTP.Auth.APIKey, ShouldBeFalse)
 
 		// with wrong credentials
 		resp, err = resty.R().SetBasicAuth(username, "wrong").Get(baseURL + constants.FullMgmt)
@@ -224,7 +232,6 @@ func TestMgmtExtension(t *testing.T) {
 	})
 
 	Convey("Verify mgmt auth info route enabled with ldap", t, func() {
-		defer os.Remove(conf.HTTP.Auth.HTPasswd.Path) // cleanup of a file created in previous Convey
 		conf.HTTP.Auth.LDAP = (&config.LDAPConfig{
 			BaseDN:  "basedn",
 			Address: "ldapexample",
@@ -281,13 +288,84 @@ func TestMgmtExtension(t *testing.T) {
 		// ldap is always nil, htpasswd should be populated when ldap is used
 		So(mgmtResp.HTTP.Auth.LDAP, ShouldBeNil)
 		So(mgmtResp.HTTP.Auth.Bearer, ShouldBeNil)
+		So(mgmtResp.HTTP.Auth.APIKey, ShouldBeFalse)
+	})
+
+	Convey("Verify mgmt auth info route enabled with ldap + apikey", t, func() {
+		conf.HTTP.Auth.LDAP = (&config.LDAPConfig{
+			BaseDN:  "basedn",
+			Address: "ldapexample",
+		}).SetBindDN("binddn")
+		conf.HTTP.Auth.APIKey = true
+
+		defer func() {
+			conf.HTTP.Auth.APIKey = false
+		}()
+
+		conf.Extensions = &extconf.ExtensionConfig{}
+		conf.Extensions.Search = &extconf.SearchConfig{}
+		conf.Extensions.Search.Enable = &defaultValue
+		conf.Extensions.Search.CVE = nil
+		conf.Extensions.UI = &extconf.UIConfig{}
+		conf.Extensions.UI.Enable = &defaultValue
+
+		conf.Log.Output = logFile.Name()
+		defer os.Remove(logFile.Name()) // cleanup
+
+		ctlr := api.NewController(conf)
+
+		subPaths := make(map[string]config.StorageConfig)
+		subPaths["/a"] = config.StorageConfig{RootDirectory: t.TempDir()}
+
+		ctlr.Config.Storage.RootDirectory = t.TempDir()
+		ctlr.Config.Storage.SubPaths = subPaths
+
+		ctlrManager := test.NewControllerManager(ctlr)
+		ctlrManager.StartAndWait(port)
+		defer ctlrManager.StopServer()
+
+		found, err := test.ReadLogFileAndSearchString(logFile.Name(),
+			"setting up mgmt routes", mgmtReadyTimeout)
+		defer func() {
+			if !found {
+				data, err := os.ReadFile(logFile.Name())
+				So(err, ShouldBeNil)
+				t.Log(string(data))
+			}
+		}()
+		So(found, ShouldBeTrue)
+		So(err, ShouldBeNil)
+
+		found, err = test.ReadLogFileAndSearchString(logFile.Name(),
+			"finished setting up mgmt routes", mgmtReadyTimeout)
+		So(found, ShouldBeTrue)
+		So(err, ShouldBeNil)
+
+		// without credentials
+		resp, err := resty.R().Get(baseURL + constants.FullMgmt)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+		mgmtResp := extensions.StrippedConfig{}
+		err = json.Unmarshal(resp.Body(), &mgmtResp)
+		So(err, ShouldBeNil)
+		So(mgmtResp.HTTP.Auth.HTPasswd.Path, ShouldEqual, "")
+		// ldap is always nil, htpasswd should be populated when ldap is used
+		So(mgmtResp.HTTP.Auth.LDAP, ShouldBeNil)
+		So(mgmtResp.HTTP.Auth.Bearer, ShouldBeNil)
+		So(mgmtResp.HTTP.Auth.APIKey, ShouldBeTrue)
 	})
 
 	Convey("Verify mgmt auth info route enabled with htpasswd + ldap", t, func() {
 		username, seedUser := test.GenerateRandomString()
 		password, seedPass := test.GenerateRandomString()
 		htpasswdPath := test.MakeHtpasswdFileFromString(test.GetCredString(username, password))
-		defer os.Remove(htpasswdPath)
+
+		defer func() {
+			conf.HTTP.Auth.HTPasswd.Path = ""
+			os.Remove(htpasswdPath)
+		}()
+
 		conf.HTTP.Auth.HTPasswd.Path = htpasswdPath
 		conf.HTTP.Auth.LDAP = (&config.LDAPConfig{
 			BaseDN:  "basedn",
@@ -346,6 +424,7 @@ func TestMgmtExtension(t *testing.T) {
 		So(mgmtResp.HTTP.Auth.HTPasswd.Path, ShouldEqual, "")
 		So(mgmtResp.HTTP.Auth.LDAP, ShouldBeNil)
 		So(mgmtResp.HTTP.Auth.Bearer, ShouldBeNil)
+		So(mgmtResp.HTTP.Auth.APIKey, ShouldBeFalse)
 
 		// with credentials
 		resp, err = resty.R().SetBasicAuth(username, password).Get(baseURL + constants.FullMgmt)
@@ -359,13 +438,19 @@ func TestMgmtExtension(t *testing.T) {
 		So(mgmtResp.HTTP.Auth.HTPasswd.Path, ShouldEqual, "")
 		So(mgmtResp.HTTP.Auth.LDAP, ShouldBeNil)
 		So(mgmtResp.HTTP.Auth.Bearer, ShouldBeNil)
+		So(mgmtResp.HTTP.Auth.APIKey, ShouldBeFalse)
 	})
 
 	Convey("Verify mgmt auth info route enabled with htpasswd + ldap + bearer", t, func() {
 		username, seedUser := test.GenerateRandomString()
 		password, seedPass := test.GenerateRandomString()
 		htpasswdPath := test.MakeHtpasswdFileFromString(test.GetCredString(username, password))
-		defer os.Remove(htpasswdPath)
+
+		defer func() {
+			conf.HTTP.Auth.HTPasswd.Path = ""
+			os.Remove(htpasswdPath)
+		}()
+
 		conf.HTTP.Auth.HTPasswd.Path = htpasswdPath
 		conf.HTTP.Auth.LDAP = (&config.LDAPConfig{
 			BaseDN:  "basedn",
@@ -427,6 +512,7 @@ func TestMgmtExtension(t *testing.T) {
 		So(mgmtResp.HTTP.Auth.Bearer, ShouldNotBeNil)
 		So(mgmtResp.HTTP.Auth.Bearer.Realm, ShouldEqual, "realm")
 		So(mgmtResp.HTTP.Auth.Bearer.Service, ShouldEqual, "service")
+		So(mgmtResp.HTTP.Auth.APIKey, ShouldBeFalse)
 
 		// with credentials
 		resp, err = resty.R().SetBasicAuth(username, password).Get(baseURL + constants.FullMgmt)
@@ -442,6 +528,7 @@ func TestMgmtExtension(t *testing.T) {
 		So(mgmtResp.HTTP.Auth.Bearer, ShouldNotBeNil)
 		So(mgmtResp.HTTP.Auth.Bearer.Realm, ShouldEqual, "realm")
 		So(mgmtResp.HTTP.Auth.Bearer.Service, ShouldEqual, "service")
+		So(mgmtResp.HTTP.Auth.APIKey, ShouldBeFalse)
 	})
 
 	Convey("Verify mgmt auth info route enabled with ldap + bearer", t, func() {
@@ -509,6 +596,7 @@ func TestMgmtExtension(t *testing.T) {
 		So(mgmtResp.HTTP.Auth.Bearer, ShouldNotBeNil)
 		So(mgmtResp.HTTP.Auth.Bearer.Realm, ShouldEqual, "realm")
 		So(mgmtResp.HTTP.Auth.Bearer.Service, ShouldEqual, "service")
+		So(mgmtResp.HTTP.Auth.APIKey, ShouldBeFalse)
 	})
 
 	Convey("Verify mgmt auth info route enabled with bearer", t, func() {
@@ -567,6 +655,7 @@ func TestMgmtExtension(t *testing.T) {
 		So(mgmtResp.HTTP.Auth.Bearer, ShouldNotBeNil)
 		So(mgmtResp.HTTP.Auth.Bearer.Realm, ShouldEqual, "realm")
 		So(mgmtResp.HTTP.Auth.Bearer.Service, ShouldEqual, "service")
+		So(mgmtResp.HTTP.Auth.APIKey, ShouldBeFalse)
 	})
 
 	Convey("Verify mgmt auth info route enabled with openID", t, func() {
@@ -634,13 +723,18 @@ func TestMgmtExtension(t *testing.T) {
 		So(mgmtResp.HTTP.Auth.Bearer, ShouldBeNil)
 		So(mgmtResp.HTTP.Auth.OpenID, ShouldNotBeNil)
 		So(mgmtResp.HTTP.Auth.OpenID.Providers, ShouldNotBeEmpty)
+		So(mgmtResp.HTTP.Auth.APIKey, ShouldBeFalse)
 	})
 
 	Convey("Verify mgmt auth info route enabled with empty openID provider list", t, func() {
 		username, seedUser := test.GenerateRandomString()
 		password, seedPass := test.GenerateRandomString()
 		htpasswdPath := test.MakeHtpasswdFileFromString(test.GetCredString(username, password))
-		defer os.Remove(htpasswdPath)
+
+		defer func() {
+			conf.HTTP.Auth.HTPasswd.Path = ""
+			os.Remove(htpasswdPath)
+		}()
 
 		conf.HTTP.Auth.HTPasswd.Path = htpasswdPath
 		conf.HTTP.Auth.LDAP = nil
@@ -701,6 +795,7 @@ func TestMgmtExtension(t *testing.T) {
 		So(mgmtResp.HTTP.Auth.LDAP, ShouldBeNil)
 		So(mgmtResp.HTTP.Auth.Bearer, ShouldBeNil)
 		So(mgmtResp.HTTP.Auth.OpenID, ShouldBeNil)
+		So(mgmtResp.HTTP.Auth.APIKey, ShouldBeFalse)
 	})
 
 	Convey("Verify mgmt auth info route enabled without any auth", t, func() {
@@ -745,6 +840,7 @@ func TestMgmtExtension(t *testing.T) {
 		So(mgmtResp.HTTP.Auth.Bearer, ShouldBeNil)
 		So(mgmtResp.HTTP.Auth.HTPasswd, ShouldBeNil)
 		So(mgmtResp.HTTP.Auth.LDAP, ShouldBeNil)
+		So(mgmtResp.HTTP.Auth.APIKey, ShouldBeFalse)
 
 		found, err := test.ReadLogFileAndSearchString(logFile.Name(),
 			"setting up mgmt routes", mgmtReadyTimeout)
@@ -898,6 +994,7 @@ func TestMgmtWithBearer(t *testing.T) {
 		So(mgmtResp.HTTP.Auth.Bearer.Service, ShouldEqual, conf.HTTP.Auth.Bearer.Service)
 		So(mgmtResp.HTTP.Auth.HTPasswd, ShouldBeNil)
 		So(mgmtResp.HTTP.Auth.LDAP, ShouldBeNil)
+		So(mgmtResp.HTTP.Auth.APIKey, ShouldBeFalse)
 
 		resp, err = resty.R().SetBasicAuth("", "").Get(baseURL + constants.FullMgmt)
 		So(err, ShouldBeNil)
@@ -912,6 +1009,7 @@ func TestMgmtWithBearer(t *testing.T) {
 		So(mgmtResp.HTTP.Auth.Bearer.Service, ShouldEqual, conf.HTTP.Auth.Bearer.Service)
 		So(mgmtResp.HTTP.Auth.HTPasswd, ShouldBeNil)
 		So(mgmtResp.HTTP.Auth.LDAP, ShouldBeNil)
+		So(mgmtResp.HTTP.Auth.APIKey, ShouldBeFalse)
 	})
 }
 
