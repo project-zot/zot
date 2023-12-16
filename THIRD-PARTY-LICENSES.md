@@ -88,8 +88,8 @@ github.com/aws/aws-sdk-go-v2/service/ssooidc|https://github.com/aws/aws-sdk-go-v
 github.com/aws/aws-sdk-go-v2/service/sso|https://github.com/aws/aws-sdk-go-v2/blob/service/sso/v1.18.2/service/sso/LICENSE.txt|Apache-2.0
 github.com/aws/aws-sdk-go-v2/service/sts|https://github.com/aws/aws-sdk-go-v2/blob/service/sts/v1.26.2/service/sts/LICENSE.txt|Apache-2.0
 github.com/aws/aws-sdk-go-v2|https://github.com/aws/aws-sdk-go-v2/blob/v1.24.0/LICENSE.txt|Apache-2.0
-github.com/aws/aws-sdk-go/internal/sync/singleflight|https://github.com/aws/aws-sdk-go/blob/v1.48.16/internal/sync/singleflight/LICENSE|BSD-3-Clause
-github.com/aws/aws-sdk-go|https://github.com/aws/aws-sdk-go/blob/v1.48.16/LICENSE.txt|Apache-2.0
+github.com/aws/aws-sdk-go/internal/sync/singleflight|https://github.com/aws/aws-sdk-go/blob/v1.49.0/internal/sync/singleflight/LICENSE|BSD-3-Clause
+github.com/aws/aws-sdk-go|https://github.com/aws/aws-sdk-go/blob/v1.49.0/LICENSE.txt|Apache-2.0
 github.com/aws/smithy-go/internal/sync/singleflight|https://github.com/aws/smithy-go/blob/v1.19.0/internal/sync/singleflight/LICENSE|BSD-3-Clause
 github.com/aws/smithy-go/logging|https://github.com/aws/smithy-go/blob/v1.19.0/LICENSE|Apache-2.0
 github.com/aws/smithy-go|https://github.com/aws/smithy-go/blob/v1.19.0/LICENSE|Apache-2.0
