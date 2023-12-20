@@ -41,8 +41,6 @@ func signalHandler(ctlr *api.Controller, sigCh chan os.Signal) {
 
 		// gracefully shutdown http server
 		ctlr.Shutdown() //nolint: contextcheck
-
-		close(sigCh)
 	}
 }
 
@@ -60,8 +58,6 @@ func initShutDownRoutine(ctlr *api.Controller) {
 
 func (hr *HotReloader) Start() {
 	done := make(chan bool)
-
-	initShutDownRoutine(hr.ctlr)
 
 	// run watcher
 	go func() {
