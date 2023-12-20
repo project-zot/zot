@@ -22,7 +22,14 @@ type Logger struct {
 }
 
 func (l Logger) Println(v ...interface{}) {
-	l.Logger.Error().Msg("panic recovered") //nolint: check-logs
+	for _, i := range v {
+		switch t := i.(type) {
+		case error:
+			l.Logger.Error().Err(t).Msg("panic recovered") //nolint: check-logs
+		case string:
+			l.Logger.Error().Msg(t)
+		}
+	}
 }
 
 func NewLogger(level, output string) Logger {

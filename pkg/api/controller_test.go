@@ -61,6 +61,7 @@ import (
 	"zotregistry.io/zot/pkg/storage"
 	storageConstants "zotregistry.io/zot/pkg/storage/constants"
 	"zotregistry.io/zot/pkg/storage/gc"
+	storageTypes "zotregistry.io/zot/pkg/storage/types"
 	authutils "zotregistry.io/zot/pkg/test/auth"
 	test "zotregistry.io/zot/pkg/test/common"
 	"zotregistry.io/zot/pkg/test/deprecated"
@@ -305,6 +306,39 @@ func TestRunAlreadyRunningServer(t *testing.T) {
 
 		err = ctlr.Run()
 		So(err, ShouldNotBeNil)
+	})
+}
+
+func TestPrintTracebackOnPanic(t *testing.T) {
+	Convey("Run server on unavailable port", t, func() {
+		port := test.GetFreePort()
+		baseURL := test.GetBaseURL(port)
+
+		conf := config.New()
+		conf.HTTP.Port = port
+
+		logFile, err := os.CreateTemp("", "zot-log*.txt")
+		So(err, ShouldBeNil)
+		conf.Log.Output = logFile.Name()
+		defer os.Remove(logFile.Name()) // clean up
+
+		ctlr := makeController(conf, t.TempDir())
+		cm := test.NewControllerManager(ctlr)
+
+		cm.StartAndWait(port)
+		defer cm.StopServer()
+
+		ctlr.StoreController.SubStore = make(map[string]storageTypes.ImageStore)
+		ctlr.StoreController.SubStore["/a"] = nil
+
+		resp, err := resty.R().Get(baseURL + "/v2/_catalog")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusInternalServerError)
+
+		data, err := os.ReadFile(logFile.Name())
+		So(err, ShouldBeNil)
+		So(string(data), ShouldContainSubstring, "runtime error: invalid memory address or nil pointer dereference")
 	})
 }
 
