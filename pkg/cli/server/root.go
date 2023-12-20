@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"path"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -23,6 +24,7 @@ import (
 	"zotregistry.io/zot/pkg/api"
 	"zotregistry.io/zot/pkg/api/config"
 	"zotregistry.io/zot/pkg/api/constants"
+	"zotregistry.io/zot/pkg/common"
 	extconf "zotregistry.io/zot/pkg/extensions/config"
 	"zotregistry.io/zot/pkg/extensions/monitoring"
 	zlog "zotregistry.io/zot/pkg/log"
@@ -738,12 +740,44 @@ func LoadConfiguration(config *config.Config, configPath string) error {
 	// we need another key delimiter.
 	viperInstance := viper.NewWithOptions(viper.KeyDelimiter("::"))
 
-	viperInstance.SetConfigFile(configPath)
+	ext := filepath.Ext(configPath)
+	ext = strings.Replace(ext, ".", "", 1)
 
-	if err := viperInstance.ReadInConfig(); err != nil {
-		log.Error().Err(err).Msg("failed to read configuration")
+	/* if file extension is not supported, try everything
+	it's also possible that the filename is starting with a dot eg: ".config". */
+	if !common.Contains(viper.SupportedExts, ext) {
+		ext = ""
+	}
 
-		return err
+	switch ext {
+	case "":
+		log.Info().Str("path", configPath).Msg("config file with no extension, trying all supported config types")
+
+		var err error
+
+		for _, configType := range viper.SupportedExts {
+			viperInstance.SetConfigType(configType)
+			viperInstance.SetConfigFile(configPath)
+
+			err = viperInstance.ReadInConfig()
+			if err == nil {
+				break
+			}
+		}
+
+		if err != nil {
+			log.Error().Err(err).Str("path", configPath).Msg("failed to read configuration, tried all supported config types")
+
+			return err
+		}
+	default:
+		viperInstance.SetConfigFile(configPath)
+
+		if err := viperInstance.ReadInConfig(); err != nil {
+			log.Error().Err(err).Str("path", configPath).Msg("failed to read configuration")
+
+			return err
+		}
 	}
 
 	metaData := &mapstructure.Metadata{}

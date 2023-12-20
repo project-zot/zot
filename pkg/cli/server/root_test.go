@@ -121,6 +121,46 @@ func TestVerify(t *testing.T) {
 		So(err, ShouldNotBeNil)
 	})
 
+	Convey("Test verify config with no extension", t, func(c C) {
+		tmpfile, err := os.CreateTemp("", "zot-test*")
+		So(err, ShouldBeNil)
+		defer os.Remove(tmpfile.Name()) // clean up
+		content := []byte(`{"distSpecVersion":"1.1.0-dev","storage":{"rootDirectory":"/tmp/zot"},
+							"http":{"address":"127.0.0.1","port":"8080","realm":"zot"},
+							"log":{"level":"debug"}}`)
+		_, err = tmpfile.Write(content)
+		So(err, ShouldBeNil)
+		err = tmpfile.Close()
+		So(err, ShouldBeNil)
+		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
+		err = cli.NewServerRootCmd().Execute()
+		So(err, ShouldBeNil)
+	})
+
+	Convey("Test verify config with dotted config name", t, func(c C) {
+		tmpfile, err := os.CreateTemp("", ".zot-test*")
+		So(err, ShouldBeNil)
+		defer os.Remove(tmpfile.Name()) // clean up
+		content := []byte(`
+distspecversion: 1.1.0-dev
+http:
+  address: 127.0.0.1
+  port: 8080
+  realm: zot
+log:
+  level: debug
+storage:
+  rootdirectory: /tmp/zot
+`)
+		_, err = tmpfile.Write(content)
+		So(err, ShouldBeNil)
+		err = tmpfile.Close()
+		So(err, ShouldBeNil)
+		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
+		err = cli.NewServerRootCmd().Execute()
+		So(err, ShouldBeNil)
+	})
+
 	Convey("Test verify CVE warn for remote storage", t, func(c C) {
 		tmpfile, err := os.CreateTemp("", "zot-test*.json")
 		So(err, ShouldBeNil)
