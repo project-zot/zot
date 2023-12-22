@@ -635,6 +635,8 @@ type Query {
         requestedPage: PageInput
         "Search term for specific CVE by title/id"
         searchedCVE: String
+        "Search term that must not be present in the returned results"
+        excludedCVE: String
     ): CVEResultForImage!
 
     """

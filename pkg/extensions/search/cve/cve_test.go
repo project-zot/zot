@@ -1193,7 +1193,7 @@ func TestCVEStruct(t *testing.T) { //nolint:gocyclo
 		ctx := context.Background()
 
 		// Image is found
-		cveList, cveSummary, pageInfo, err := cveInfo.GetCVEListForImage(ctx, repo1, "0.1.0", "", pageInput)
+		cveList, cveSummary, pageInfo, err := cveInfo.GetCVEListForImage(ctx, repo1, "0.1.0", "", "", pageInput)
 		So(err, ShouldBeNil)
 		So(len(cveList), ShouldEqual, 1)
 		So(cveList[0].ID, ShouldEqual, "CVE1")
@@ -1207,7 +1207,7 @@ func TestCVEStruct(t *testing.T) { //nolint:gocyclo
 		So(cveSummary.CriticalCount, ShouldEqual, 0)
 		So(cveSummary.MaxSeverity, ShouldEqual, "MEDIUM")
 
-		cveList, cveSummary, pageInfo, err = cveInfo.GetCVEListForImage(ctx, repo1, "1.0.0", "", pageInput)
+		cveList, cveSummary, pageInfo, err = cveInfo.GetCVEListForImage(ctx, repo1, "1.0.0", "", "", pageInput)
 		So(err, ShouldBeNil)
 		So(len(cveList), ShouldEqual, 3)
 		So(cveList[0].ID, ShouldEqual, "CVE2")
@@ -1223,7 +1223,7 @@ func TestCVEStruct(t *testing.T) { //nolint:gocyclo
 		So(cveSummary.CriticalCount, ShouldEqual, 0)
 		So(cveSummary.MaxSeverity, ShouldEqual, "HIGH")
 
-		cveList, cveSummary, pageInfo, err = cveInfo.GetCVEListForImage(ctx, repo1, "1.0.1", "", pageInput)
+		cveList, cveSummary, pageInfo, err = cveInfo.GetCVEListForImage(ctx, repo1, "1.0.1", "", "", pageInput)
 		So(err, ShouldBeNil)
 		So(len(cveList), ShouldEqual, 2)
 		So(cveList[0].ID, ShouldEqual, "CVE1")
@@ -1238,7 +1238,7 @@ func TestCVEStruct(t *testing.T) { //nolint:gocyclo
 		So(cveSummary.CriticalCount, ShouldEqual, 0)
 		So(cveSummary.MaxSeverity, ShouldEqual, "MEDIUM")
 
-		cveList, cveSummary, pageInfo, err = cveInfo.GetCVEListForImage(ctx, repo1, "1.1.0", "", pageInput)
+		cveList, cveSummary, pageInfo, err = cveInfo.GetCVEListForImage(ctx, repo1, "1.1.0", "", "", pageInput)
 		So(err, ShouldBeNil)
 		So(len(cveList), ShouldEqual, 1)
 		So(cveList[0].ID, ShouldEqual, "CVE3")
@@ -1252,7 +1252,7 @@ func TestCVEStruct(t *testing.T) { //nolint:gocyclo
 		So(cveSummary.CriticalCount, ShouldEqual, 0)
 		So(cveSummary.MaxSeverity, ShouldEqual, "LOW")
 
-		cveList, cveSummary, pageInfo, err = cveInfo.GetCVEListForImage(ctx, repo6, "1.0.0", "", pageInput)
+		cveList, cveSummary, pageInfo, err = cveInfo.GetCVEListForImage(ctx, repo6, "1.0.0", "", "", pageInput)
 		So(err, ShouldBeNil)
 		So(len(cveList), ShouldEqual, 0)
 		So(pageInfo.ItemCount, ShouldEqual, 0)
@@ -1265,7 +1265,7 @@ func TestCVEStruct(t *testing.T) { //nolint:gocyclo
 		So(cveSummary.CriticalCount, ShouldEqual, 0)
 		So(cveSummary.MaxSeverity, ShouldEqual, "NONE")
 
-		cveList, cveSummary, pageInfo, err = cveInfo.GetCVEListForImage(ctx, repo8, "1.0.0", "", pageInput)
+		cveList, cveSummary, pageInfo, err = cveInfo.GetCVEListForImage(ctx, repo8, "1.0.0", "", "", pageInput)
 		So(err, ShouldBeNil)
 		So(len(cveList), ShouldEqual, 7)
 		So(pageInfo.ItemCount, ShouldEqual, 7)
@@ -1279,7 +1279,7 @@ func TestCVEStruct(t *testing.T) { //nolint:gocyclo
 		So(cveSummary.MaxSeverity, ShouldEqual, "CRITICAL")
 
 		// Image is multiarch
-		cveList, cveSummary, pageInfo, err = cveInfo.GetCVEListForImage(ctx, repoMultiarch, "tagIndex", "", pageInput)
+		cveList, cveSummary, pageInfo, err = cveInfo.GetCVEListForImage(ctx, repoMultiarch, "tagIndex", "", "", pageInput)
 		So(err, ShouldBeNil)
 		So(len(cveList), ShouldEqual, 1)
 		So(cveList[0].ID, ShouldEqual, "CVE1")
@@ -1294,7 +1294,7 @@ func TestCVEStruct(t *testing.T) { //nolint:gocyclo
 		So(cveSummary.MaxSeverity, ShouldEqual, "MEDIUM")
 
 		// Image is not scannable
-		cveList, cveSummary, pageInfo, err = cveInfo.GetCVEListForImage(ctx, repo2, "1.0.0", "", pageInput)
+		cveList, cveSummary, pageInfo, err = cveInfo.GetCVEListForImage(ctx, repo2, "1.0.0", "", "", pageInput)
 		So(err, ShouldEqual, zerr.ErrScanNotSupported)
 		So(len(cveList), ShouldEqual, 0)
 		So(pageInfo.ItemCount, ShouldEqual, 0)
@@ -1308,7 +1308,7 @@ func TestCVEStruct(t *testing.T) { //nolint:gocyclo
 		So(cveSummary.MaxSeverity, ShouldEqual, "")
 
 		// Tag is not found
-		cveList, cveSummary, pageInfo, err = cveInfo.GetCVEListForImage(ctx, repo3, "1.0.0", "", pageInput)
+		cveList, cveSummary, pageInfo, err = cveInfo.GetCVEListForImage(ctx, repo3, "1.0.0", "", "", pageInput)
 		So(err, ShouldEqual, zerr.ErrTagMetaNotFound)
 		So(len(cveList), ShouldEqual, 0)
 		So(pageInfo.ItemCount, ShouldEqual, 0)
@@ -1322,7 +1322,7 @@ func TestCVEStruct(t *testing.T) { //nolint:gocyclo
 		So(cveSummary.MaxSeverity, ShouldEqual, "")
 
 		// Scan failed
-		cveList, cveSummary, pageInfo, err = cveInfo.GetCVEListForImage(ctx, repo7, "1.0.0", "", pageInput)
+		cveList, cveSummary, pageInfo, err = cveInfo.GetCVEListForImage(ctx, repo7, "1.0.0", "", "", pageInput)
 		So(err, ShouldEqual, ErrFailedScan)
 		So(len(cveList), ShouldEqual, 0)
 		So(pageInfo.ItemCount, ShouldEqual, 0)
@@ -1336,7 +1336,7 @@ func TestCVEStruct(t *testing.T) { //nolint:gocyclo
 		So(cveSummary.MaxSeverity, ShouldEqual, "")
 
 		// Tag is not found
-		cveList, cveSummary, pageInfo, err = cveInfo.GetCVEListForImage(ctx, "repo-with-bad-tag-digest", "tag", "", pageInput)
+		cveList, cveSummary, pageInfo, err = cveInfo.GetCVEListForImage(ctx, "repo-with-bad-tag-digest", "tag", "", "", pageInput)
 		So(err, ShouldEqual, zerr.ErrImageMetaNotFound)
 		So(len(cveList), ShouldEqual, 0)
 		So(pageInfo.ItemCount, ShouldEqual, 0)
@@ -1350,7 +1350,7 @@ func TestCVEStruct(t *testing.T) { //nolint:gocyclo
 		So(cveSummary.MaxSeverity, ShouldEqual, "")
 
 		// Repo is not found
-		cveList, cveSummary, pageInfo, err = cveInfo.GetCVEListForImage(ctx, repo100, "1.0.0", "", pageInput)
+		cveList, cveSummary, pageInfo, err = cveInfo.GetCVEListForImage(ctx, repo100, "1.0.0", "", "", pageInput)
 		So(err, ShouldEqual, zerr.ErrRepoMetaNotFound)
 		So(len(cveList), ShouldEqual, 0)
 		So(pageInfo.ItemCount, ShouldEqual, 0)
@@ -1581,7 +1581,7 @@ func TestCVEStruct(t *testing.T) { //nolint:gocyclo
 		So(cveSummary.CriticalCount, ShouldEqual, 0)
 		So(cveSummary.MaxSeverity, ShouldEqual, "")
 
-		cveList, cveSummary, pageInfo, err = cveInfo.GetCVEListForImage(ctx, repo1, "0.1.0", "", pageInput)
+		cveList, cveSummary, pageInfo, err = cveInfo.GetCVEListForImage(ctx, repo1, "0.1.0", "", "", pageInput)
 		So(err, ShouldNotBeNil)
 		So(cveList, ShouldBeEmpty)
 		So(pageInfo.ItemCount, ShouldEqual, 0)

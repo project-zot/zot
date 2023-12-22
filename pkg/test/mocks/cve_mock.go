@@ -10,7 +10,7 @@ import (
 type CveInfoMock struct {
 	GetImageListForCVEFn       func(ctx context.Context, repo, cveID string) ([]cvemodel.TagInfo, error)
 	GetImageListWithCVEFixedFn func(ctx context.Context, repo, cveID string) ([]cvemodel.TagInfo, error)
-	GetCVEListForImageFn       func(ctx context.Context, repo string, reference string, searchedCVE string,
+	GetCVEListForImageFn       func(ctx context.Context, repo, reference, searchedCVE, excludedCVE string,
 		pageInput cvemodel.PageInput) ([]cvemodel.CVE, cvemodel.ImageCVESummary, common.PageInfo, error)
 	GetCVESummaryForImageMediaFn func(ctx context.Context, repo string, digest, mediaType string,
 	) (cvemodel.ImageCVESummary, error)
@@ -34,7 +34,7 @@ func (cveInfo CveInfoMock) GetImageListWithCVEFixed(ctx context.Context, repo, c
 }
 
 func (cveInfo CveInfoMock) GetCVEListForImage(ctx context.Context, repo string, reference string,
-	searchedCVE string, pageInput cvemodel.PageInput,
+	searchedCVE string, excludedCVE string, pageInput cvemodel.PageInput,
 ) (
 	[]cvemodel.CVE,
 	cvemodel.ImageCVESummary,
@@ -42,7 +42,7 @@ func (cveInfo CveInfoMock) GetCVEListForImage(ctx context.Context, repo string, 
 	error,
 ) {
 	if cveInfo.GetCVEListForImageFn != nil {
-		return cveInfo.GetCVEListForImageFn(ctx, repo, reference, searchedCVE, pageInput)
+		return cveInfo.GetCVEListForImageFn(ctx, repo, reference, searchedCVE, excludedCVE, pageInput)
 	}
 
 	return []cvemodel.CVE{}, cvemodel.ImageCVESummary{}, common.PageInfo{}, nil

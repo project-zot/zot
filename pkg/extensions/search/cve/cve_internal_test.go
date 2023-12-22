@@ -20,6 +20,21 @@ var ErrTestError = errors.New("test error")
 
 func TestUtils(t *testing.T) {
 	Convey("Utils", t, func() {
+		Convey("cve.ContainsStr for package list", func() {
+			cve := cvemodel.CVE{
+				PackageList: []cvemodel.Package{
+					{
+						Name:             "NameTest",
+						FixedVersion:     "FixedVersionTest",
+						InstalledVersion: "InstalledVersionTest",
+					},
+				},
+			}
+
+			So(cve.ContainsStr("NameTest"), ShouldBeTrue)
+			So(cve.ContainsStr("FixedVersionTest"), ShouldBeTrue)
+			So(cve.ContainsStr("InstalledVersionTest"), ShouldBeTrue)
+		})
 		Convey("getConfigAndDigest", func() {
 			_, _, err := getConfigAndDigest(mocks.MetaDBMock{}, "bad-digest")
 			So(err, ShouldNotBeNil)
