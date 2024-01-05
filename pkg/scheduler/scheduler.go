@@ -60,7 +60,7 @@ func (pq *generatorsPriorityQueue) Pop() any {
 
 const (
 	rateLimiterScheduler = 400
-	rateLimit            = 5 * time.Second
+	rateLimit            = 50 * time.Millisecond
 	NumWorkersMultiplier = 4
 	sendMetricsInterval  = 5 * time.Second
 )
@@ -241,7 +241,7 @@ func (scheduler *Scheduler) RunScheduler() {
 	ctx, cancel := context.WithCancel(context.Background())
 	scheduler.cancelFunc = cancel
 
-	throttle := time.NewTicker(rateLimit).C
+	throttle := time.NewTicker(scheduler.RateLimit).C
 
 	numWorkers := scheduler.NumWorkers
 
@@ -278,10 +278,14 @@ func (scheduler *Scheduler) RunScheduler() {
 
 				task := scheduler.getTask()
 
-				if task != nil {
-					// push tasks into worker pool until workerChan is full.
-					scheduler.workerChan <- task
+				if task == nil {
+					<-throttle
+
+					continue
 				}
+
+				// push tasks into worker pool until workerChan is full.
+				scheduler.workerChan <- task
 			}
 		}
 	}()

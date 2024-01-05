@@ -130,10 +130,10 @@ func TestScheduler(t *testing.T) {
 
 		genH := &shortGenerator{log: logger, priority: "high priority"}
 		// interval has to be higher than throttle value to simulate
-		sch.SubmitGenerator(genH, 6*time.Second, scheduler.HighPriority)
+		sch.SubmitGenerator(genH, 1*time.Second, scheduler.HighPriority)
 
 		sch.RunScheduler()
-		time.Sleep(7 * time.Second)
+		time.Sleep(2 * time.Second)
 		sch.Shutdown()
 
 		data, err := os.ReadFile(logFile.Name())
@@ -152,6 +152,7 @@ func TestScheduler(t *testing.T) {
 		cfg.Scheduler = &config.SchedulerConfig{NumWorkers: 3}
 		metrics := monitoring.NewMetricsServer(true, logger)
 		sch := scheduler.NewScheduler(cfg, metrics, logger)
+		sch.RateLimit = 5 * time.Second
 
 		genL := &generator{log: logger, priority: "low priority"}
 		sch.SubmitGenerator(genL, time.Duration(0), scheduler.LowPriority)
@@ -212,7 +213,7 @@ func TestScheduler(t *testing.T) {
 		sch.SubmitGenerator(genL, 20*time.Millisecond, scheduler.LowPriority)
 
 		sch.RunScheduler()
-		time.Sleep(4 * time.Second)
+		time.Sleep(1 * time.Second)
 		sch.Shutdown()
 
 		data, err := os.ReadFile(logFile.Name())
@@ -275,7 +276,7 @@ func TestScheduler(t *testing.T) {
 		sch.SubmitGenerator(genL, 20*time.Millisecond, scheduler.MediumPriority)
 
 		sch.RunScheduler()
-		time.Sleep(4 * time.Second)
+		time.Sleep(1 * time.Second)
 		sch.Shutdown()
 
 		data, err := os.ReadFile(logFile.Name())

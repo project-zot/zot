@@ -134,6 +134,8 @@ func TestNewExporter(t *testing.T) {
 				baseURL := fmt.Sprintf(BaseURL, serverPort)
 				servercConfig.HTTP.Port = serverPort
 				servercConfig.BinaryType = "minimal"
+				servercConfig.Storage.Dedupe = false
+				servercConfig.Storage.GC = false
 				serverController := zotapi.NewController(servercConfig)
 				So(serverController, ShouldNotBeNil)
 
