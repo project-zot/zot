@@ -370,13 +370,18 @@ func (c *Controller) LoadNewConfig(newConfig *config.Config) {
 
 func (c *Controller) Shutdown() {
 	c.StopBackgroundTasks()
-	ctx := context.Background()
-	_ = c.Server.Shutdown(ctx)
+
+	if c.Server != nil {
+		ctx := context.Background()
+		_ = c.Server.Shutdown(ctx)
+	}
 }
 
 // Will stop scheduler and wait for all tasks to finish their work.
 func (c *Controller) StopBackgroundTasks() {
-	c.taskScheduler.Shutdown()
+	if c.taskScheduler != nil {
+		c.taskScheduler.Shutdown()
+	}
 }
 
 func (c *Controller) StartBackgroundTasks() {

@@ -69,6 +69,8 @@ func newServeCmd(conf *config.Config) *cobra.Command {
 				return err
 			}
 
+			initShutDownRoutine(ctlr)
+
 			if err := ctlr.Run(); err != nil {
 				log.Error().Err(err).Msg("failed to start controller, exiting")
 			}
