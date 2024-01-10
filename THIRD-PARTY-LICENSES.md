@@ -5,6 +5,7 @@ cloud.google.com/go/iam|https://github.com/googleapis/google-cloud-go/blob/iam/v
 cloud.google.com/go/internal|https://github.com/googleapis/google-cloud-go/blob/v0.110.10/LICENSE|Apache-2.0
 cloud.google.com/go/storage|https://github.com/googleapis/google-cloud-go/blob/storage/v1.33.0/storage/LICENSE|Apache-2.0
 cloud.google.com/go|https://github.com/googleapis/google-cloud-go/blob/v0.110.10/LICENSE|Apache-2.0
+dario.cat/mergo|https://github.com/imdario/mergo/blob/v1.0.0/LICENSE|BSD-3-Clause
 filippo.io/edwards25519|https://github.com/FiloSottile/edwards25519/blob/v1.0.0/LICENSE|BSD-3-Clause
 github.com/99designs/gqlgen|https://github.com/99designs/gqlgen/blob/v0.17.41/LICENSE|MIT
 github.com/AdaLogics/go-fuzz-headers|https://github.com/AdaLogics/go-fuzz-headers/blob/ced1acdcaa24/LICENSE|Apache-2.0
@@ -41,7 +42,6 @@ github.com/ProtonMail/go-crypto|https://github.com/ProtonMail/go-crypto/blob/afb
 github.com/ThalesIgnite/crypto11|https://github.com/ThalesIgnite/crypto11/blob/v1.2.5/LICENCE.txt|MIT
 github.com/VividCortex/ewma|https://github.com/VividCortex/ewma/blob/v1.2.0/LICENSE|MIT
 github.com/acarl005/stripansi|https://github.com/acarl005/stripansi/blob/5a71ef0e047d/LICENSE|MIT
-github.com/acomagu/bufpipe|https://github.com/acomagu/bufpipe/blob/v1.0.4/LICENSE|MIT
 github.com/agext/levenshtein|https://github.com/agext/levenshtein/blob/v1.2.3/LICENSE|Apache-2.0
 github.com/agnivade/levenshtein|https://github.com/agnivade/levenshtein/blob/v1.1.1/License.txt|MIT
 github.com/alecthomas/chroma|https://github.com/alecthomas/chroma/blob/v0.10.0/COPYING|MIT
@@ -88,8 +88,8 @@ github.com/aws/aws-sdk-go-v2/service/ssooidc|https://github.com/aws/aws-sdk-go-v
 github.com/aws/aws-sdk-go-v2/service/sso|https://github.com/aws/aws-sdk-go-v2/blob/service/sso/v1.18.2/service/sso/LICENSE.txt|Apache-2.0
 github.com/aws/aws-sdk-go-v2/service/sts|https://github.com/aws/aws-sdk-go-v2/blob/service/sts/v1.26.2/service/sts/LICENSE.txt|Apache-2.0
 github.com/aws/aws-sdk-go-v2|https://github.com/aws/aws-sdk-go-v2/blob/v1.24.0/LICENSE.txt|Apache-2.0
-github.com/aws/aws-sdk-go/internal/sync/singleflight|https://github.com/aws/aws-sdk-go/blob/v1.49.0/internal/sync/singleflight/LICENSE|BSD-3-Clause
-github.com/aws/aws-sdk-go|https://github.com/aws/aws-sdk-go/blob/v1.49.0/LICENSE.txt|Apache-2.0
+github.com/aws/aws-sdk-go/internal/sync/singleflight|https://github.com/aws/aws-sdk-go/blob/v1.49.18/internal/sync/singleflight/LICENSE|BSD-3-Clause
+github.com/aws/aws-sdk-go|https://github.com/aws/aws-sdk-go/blob/v1.49.18/LICENSE.txt|Apache-2.0
 github.com/aws/smithy-go/internal/sync/singleflight|https://github.com/aws/smithy-go/blob/v1.19.0/internal/sync/singleflight/LICENSE|BSD-3-Clause
 github.com/aws/smithy-go/logging|https://github.com/aws/smithy-go/blob/v1.19.0/LICENSE|Apache-2.0
 github.com/aws/smithy-go|https://github.com/aws/smithy-go/blob/v1.19.0/LICENSE|Apache-2.0
@@ -108,7 +108,7 @@ github.com/chartmuseum/auth|https://github.com/chartmuseum/auth/blob/v0.5.0/LICE
 github.com/cheggaaa/pb/v3|https://github.com/cheggaaa/pb/blob/v3.1.4/v3/LICENSE|BSD-3-Clause
 github.com/chrismellard/docker-credential-acr-env|https://github.com/chrismellard/docker-credential-acr-env/blob/82a0ddb27589/LICENSE|Apache-2.0
 github.com/clbanning/mxj/v2|https://github.com/clbanning/mxj/blob/v2.7.0/LICENSE|MIT
-github.com/cloudflare/circl|https://github.com/cloudflare/circl/blob/v1.3.5/LICENSE|BSD-3-Clause
+github.com/cloudflare/circl|https://github.com/cloudflare/circl/blob/v1.3.7/LICENSE|BSD-3-Clause
 github.com/cockroachdb/apd/v3|https://github.com/cockroachdb/apd/blob/v3.2.1/LICENSE|Apache-2.0
 github.com/common-nighthawk/go-figure|https://github.com/common-nighthawk/go-figure/blob/734e95fb86be/LICENSE|MIT
 github.com/containerd/cgroups/v3|https://github.com/containerd/cgroups/blob/v3.0.2/LICENSE|Apache-2.0
@@ -153,8 +153,8 @@ github.com/go-asn1-ber/asn1-ber|https://github.com/go-asn1-ber/asn1-ber/blob/v1.
 github.com/go-chi/chi|https://github.com/go-chi/chi/blob/v4.1.2/LICENSE|MIT
 github.com/go-errors/errors|https://github.com/go-errors/errors/blob/v1.4.2/LICENSE.MIT|MIT
 github.com/go-git/gcfg|https://github.com/go-git/gcfg/blob/3a3c6141e376/LICENSE|BSD-3-Clause
-github.com/go-git/go-billy/v5|https://github.com/go-git/go-billy/blob/v5.4.1/LICENSE|Apache-2.0
-github.com/go-git/go-git/v5|https://github.com/go-git/go-git/blob/v5.7.0/LICENSE|Apache-2.0
+github.com/go-git/go-billy/v5|https://github.com/go-git/go-billy/blob/v5.5.0/LICENSE|Apache-2.0
+github.com/go-git/go-git/v5|https://github.com/go-git/go-git/blob/v5.11.0/LICENSE|Apache-2.0
 github.com/go-gorp/gorp/v3|https://github.com/go-gorp/gorp/blob/v3.0.5/LICENSE|MIT
 github.com/go-ini/ini|https://github.com/go-ini/ini/blob/v1.67.0/LICENSE|Apache-2.0
 github.com/go-jose/go-jose/v3/json|https://github.com/go-jose/go-jose/blob/v3.0.1/json/LICENSE|BSD-3-Clause
@@ -332,7 +332,7 @@ github.com/sergi/go-diff/diffmatchpatch|https://github.com/sergi/go-diff/blob/v1
 github.com/shibumi/go-pathspec|https://github.com/shibumi/go-pathspec/blob/v1.3.0/LICENSE|Apache-2.0
 github.com/shopspring/decimal|https://github.com/shopspring/decimal/blob/v1.3.1/LICENSE|MIT
 github.com/sirupsen/logrus|https://github.com/sirupsen/logrus/blob/v1.9.3/LICENSE|MIT
-github.com/skeema/knownhosts|https://github.com/skeema/knownhosts/blob/v1.1.1/LICENSE|Apache-2.0
+github.com/skeema/knownhosts|https://github.com/skeema/knownhosts/blob/v1.2.1/LICENSE|Apache-2.0
 github.com/smarty/assertions/internal/go-diff/diffmatchpatch|https://github.com/smarty/assertions/blob/v1.15.0/internal/go-diff/LICENSE|MIT
 github.com/smarty/assertions/internal/go-render/render|https://github.com/smarty/assertions/blob/v1.15.0/internal/go-render/LICENSE|BSD-3-Clause
 github.com/smarty/assertions/internal/oglematchers|https://github.com/smarty/assertions/blob/v1.15.0/internal/oglematchers/LICENSE|Apache-2.0
@@ -386,10 +386,10 @@ go.opentelemetry.io/otel/trace|https://github.com/open-telemetry/opentelemetry-g
 go.opentelemetry.io/otel|https://github.com/open-telemetry/opentelemetry-go/blob/v1.21.0/LICENSE|Apache-2.0
 go.uber.org/multierr|https://github.com/uber-go/multierr/blob/v1.11.0/LICENSE.txt|MIT
 go.uber.org/zap|https://github.com/uber-go/zap/blob/v1.26.0/LICENSE.txt|MIT
-golang.org/x/crypto/md4|https://cs.opensource.google/go/x/crypto/+/v0.16.0:LICENSE|BSD-3-Clause
-golang.org/x/crypto/pbkdf2|https://cs.opensource.google/go/x/crypto/+/v0.16.0:LICENSE|BSD-3-Clause
-golang.org/x/crypto/pkcs12|https://cs.opensource.google/go/x/crypto/+/v0.16.0:LICENSE|BSD-3-Clause
-golang.org/x/crypto|https://cs.opensource.google/go/x/crypto/+/v0.16.0:LICENSE|BSD-3-Clause
+golang.org/x/crypto/md4|https://cs.opensource.google/go/x/crypto/+/v0.17.0:LICENSE|BSD-3-Clause
+golang.org/x/crypto/pbkdf2|https://cs.opensource.google/go/x/crypto/+/v0.17.0:LICENSE|BSD-3-Clause
+golang.org/x/crypto/pkcs12|https://cs.opensource.google/go/x/crypto/+/v0.17.0:LICENSE|BSD-3-Clause
+golang.org/x/crypto|https://cs.opensource.google/go/x/crypto/+/v0.17.0:LICENSE|BSD-3-Clause
 golang.org/x/exp/constraints|https://cs.opensource.google/go/x/exp/+/2478ac86:LICENSE|BSD-3-Clause
 golang.org/x/exp|https://cs.opensource.google/go/x/exp/+/2478ac86:LICENSE|BSD-3-Clause
 golang.org/x/mod/semver|https://cs.opensource.google/go/x/mod/+/v0.14.0:LICENSE|BSD-3-Clause
@@ -459,4 +459,4 @@ sigs.k8s.io/kustomize/api|https://github.com/kubernetes-sigs/kustomize/blob/6ce0
 sigs.k8s.io/kustomize/kyaml|https://github.com/kubernetes-sigs/kustomize/blob/6ce0bf390ce3/kyaml/LICENSE|Apache-2.0
 sigs.k8s.io/yaml/goyaml.v2|https://github.com/kubernetes-sigs/yaml/blob/v1.4.0/goyaml.v2/LICENSE|Apache-2.0
 sigs.k8s.io/yaml|https://github.com/kubernetes-sigs/yaml/blob/v1.4.0/LICENSE|Apache-2.0
-zotregistry.io/zot|https://github.com/project-zot/zot/blob/HEAD/LICENSE|Apache-2.0
+zotregistry.io/zot|Unknown|Apache-2.0
