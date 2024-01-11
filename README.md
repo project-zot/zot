@@ -4,7 +4,7 @@
 
 # Docs
 
-Documentation for `zot` is located at: [https://zotregistry.io](https://zotregistry.io)
+Documentation for `zot` is located at: [https://zotregistry.dev](https://zotregistry.dev)
 
 # Code of Conduct
 
