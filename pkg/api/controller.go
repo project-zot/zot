@@ -117,8 +117,9 @@ func (c *Controller) Run() error {
 
 	engine.Use(
 		SessionLogger(c),
-		handlers.RecoveryHandler(handlers.RecoveryLogger(c.Log),
-			handlers.PrintRecoveryStack(false)))
+		handlers.RecoveryHandler(
+			handlers.PrintRecoveryStack(true),
+		))
 
 	if c.Audit != nil {
 		engine.Use(SessionAuditLogger(c.Audit))
