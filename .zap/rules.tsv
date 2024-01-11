@@ -43,6 +43,7 @@
 10061	WARN	(X-AspNet-Version Response Header)
 10062	WARN	(PII Disclosure)
 10063	WARN	(Permissions Policy Header Not Set)
+10094	IGNORE	Base64 Disclosure)	The UI needs to use xlsx library to export the vulnerabilities list and this library triggers this warning
 10096	IGNORE	(Timestamp Disclosure)  All existing timestamps are related to container images and are required
 10097	WARN	(Hash Disclosure)
 10098	IGNORE	(Cross-Domain Misconfiguration) Cannot know in advance what DN the users will configure for CORS headers
