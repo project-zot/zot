@@ -173,8 +173,11 @@ func (lc *LDAPClient) Authenticate(username, password string) (bool, map[string]
 	}
 
 	attributes := lc.Attributes
+
 	attributes = append(attributes, "dn")
-	attributes = append(attributes, lc.UserGroupAttribute)
+	if lc.UserGroupAttribute != "" {
+		attributes = append(attributes, lc.UserGroupAttribute)
+	}
 
 	searchScope := ldap.ScopeSingleLevel
 
@@ -216,8 +219,13 @@ func (lc *LDAPClient) Authenticate(username, password string) (bool, map[string]
 	}
 
 	userDN := search.Entries[0].DN
-	userAttributes := search.Entries[0].Attributes[0]
-	userGroups := userAttributes.Values
+
+	var userGroups []string
+
+	if lc.UserGroupAttribute != "" && len(search.Entries[0].Attributes) > 0 {
+		userAttributes := search.Entries[0].Attributes[0]
+		userGroups = userAttributes.Values
+	}
 	user := map[string]string{}
 
 	for _, attr := range lc.Attributes {
