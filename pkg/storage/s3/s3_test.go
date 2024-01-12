@@ -3798,6 +3798,9 @@ func TestS3DedupeErr(t *testing.T) {
 					SizeFn: func() int64 {
 						return 0
 					},
+					PathFn: func() string {
+						return "repo1/dst1"
+					},
 				}, nil
 			},
 			ReaderFn: func(ctx context.Context, path string, offset int64) (io.ReadCloser, error) {
