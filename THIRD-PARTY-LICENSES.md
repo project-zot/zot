@@ -147,7 +147,6 @@ github.com/emirpasic/gods|https://github.com/emirpasic/gods/blob/v1.18.1/LICENSE
 github.com/evanphx/json-patch|https://github.com/evanphx/json-patch/blob/v5.6.0/LICENSE|BSD-3-Clause
 github.com/exponent-io/jsonpath|https://github.com/exponent-io/jsonpath/blob/d6023ce2651d/LICENSE|MIT
 github.com/fatih/color|https://github.com/fatih/color/blob/v1.15.0/LICENSE.md|MIT
-github.com/felixge/httpsnoop|https://github.com/felixge/httpsnoop/blob/v1.0.4/LICENSE.txt|MIT
 github.com/fsnotify/fsnotify|https://github.com/fsnotify/fsnotify/blob/v1.7.0/LICENSE|BSD-3-Clause
 github.com/go-asn1-ber/asn1-ber|https://github.com/go-asn1-ber/asn1-ber/blob/v1.5.5/LICENSE|MIT
 github.com/go-chi/chi|https://github.com/go-chi/chi/blob/v4.1.2/LICENSE|MIT
@@ -198,7 +197,6 @@ github.com/google/uuid|https://github.com/google/uuid/blob/v1.4.0/LICENSE|BSD-3-
 github.com/google/wire|https://github.com/google/wire/blob/v0.5.0/LICENSE|Apache-2.0
 github.com/googleapis/enterprise-certificate-proxy/client|https://github.com/googleapis/enterprise-certificate-proxy/blob/v0.3.2/LICENSE|Apache-2.0
 github.com/googleapis/gax-go/v2|https://github.com/googleapis/gax-go/blob/v2.12.0/v2/LICENSE|BSD-3-Clause
-github.com/gorilla/handlers|https://github.com/gorilla/handlers/blob/v1.5.2/LICENSE|BSD-3-Clause
 github.com/gorilla/mux|https://github.com/gorilla/mux/blob/v1.8.0/LICENSE|BSD-3-Clause
 github.com/gorilla/schema|https://github.com/gorilla/schema/blob/v1.2.0/LICENSE|BSD-3-Clause
 github.com/gorilla/securecookie|https://github.com/gorilla/securecookie/blob/v1.1.2/LICENSE|BSD-3-Clause
