@@ -14,7 +14,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/gorilla/handlers"
 	"github.com/gorilla/mux"
 	"github.com/zitadel/oidc/pkg/client/rp"
 
@@ -117,9 +116,8 @@ func (c *Controller) Run() error {
 
 	engine.Use(
 		SessionLogger(c),
-		handlers.RecoveryHandler(
-			handlers.PrintRecoveryStack(true),
-		))
+		RecoveryHandler(c.Log),
+	)
 
 	if c.Audit != nil {
 		engine.Use(SessionAuditLogger(c.Audit))
