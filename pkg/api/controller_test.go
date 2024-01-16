@@ -2331,6 +2331,183 @@ func TestBasicAuthWithLDAP(t *testing.T) {
 	})
 }
 
+func TestBasicAuthWithReloadedCredentials(t *testing.T) {
+	Convey("Start server with bad credentials", t, func() {
+		l := newTestLDAPServer()
+		ldapPort, err := strconv.Atoi(test.GetFreePort())
+		So(err, ShouldBeNil)
+		l.Start(ldapPort)
+		defer l.Stop()
+
+		tempDir := t.TempDir()
+		ldapConfigContent := fmt.Sprintf(`{"BindDN": "%s", "BindPassword": "%s"}`, LDAPBindDN, LDAPBindPassword)
+		ldapConfigPath := filepath.Join(tempDir, "ldap.json")
+
+		err = os.WriteFile(ldapConfigPath, []byte(ldapConfigContent), 0o600)
+		So(err, ShouldBeNil)
+
+		port := test.GetFreePort()
+		baseURL := test.GetBaseURL(port)
+
+		configTemplate := `
+		{
+			"Storage": {
+				"rootDirectory": "%s"
+			},
+			"HTTP": {
+				"Address": "%s",
+				"Port": "%s",
+				"Auth": {
+					"LDAP": {
+						"CredentialsFile":    "%s",
+						"UserAttribute":      "uid",
+						"BaseDN": 			  "LDAPBaseDN",
+						"UserGroupAttribute": "memberOf",
+						"Insecure":           true,
+						"Address":            "%v",
+						"Port":               %v
+					}
+				}
+			}
+		}
+		`
+
+		configStr := fmt.Sprintf(configTemplate,
+			tempDir, "127.0.0.1", port, ldapConfigPath, LDAPAddress, ldapPort)
+
+		configPath := filepath.Join(tempDir, "config.json")
+		err = os.WriteFile(configPath, []byte(configStr), 0o600)
+		So(err, ShouldBeNil)
+
+		conf := config.New()
+		err = server.LoadConfiguration(conf, configPath)
+		So(err, ShouldBeNil)
+
+		ctlr := api.NewController(conf)
+		ctlrManager := test.NewControllerManager(ctlr)
+
+		hotReloader, err := server.NewHotReloader(ctlr, configPath, ldapConfigPath)
+		So(err, ShouldBeNil)
+
+		hotReloader.Start()
+
+		ctlrManager.StartAndWait(port)
+		defer ctlrManager.StopServer()
+		time.Sleep(time.Second * 2)
+
+		// test if the credentials work
+		resp, _ := resty.R().SetBasicAuth(username, password).Get(baseURL + "/v2/")
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+		newLdapConfigContent := `{"BindDN": "NewBindDB", "BindPassword": "NewBindPassword"}`
+
+		err = os.WriteFile(ldapConfigPath, []byte(newLdapConfigContent), 0o600)
+		So(err, ShouldBeNil)
+
+		for i := 0; i < 10; i++ {
+			// test if the credentials don't work
+			resp, _ = resty.R().SetBasicAuth(username, password).Get(baseURL + "/v2/")
+			So(resp, ShouldNotBeNil)
+
+			if resp.StatusCode() != http.StatusOK {
+				break
+			}
+
+			time.Sleep(100 * time.Millisecond)
+		}
+
+		So(resp.StatusCode(), ShouldNotEqual, http.StatusOK)
+
+		err = os.WriteFile(ldapConfigPath, []byte(ldapConfigContent), 0o600)
+		So(err, ShouldBeNil)
+
+		for i := 0; i < 10; i++ {
+			// test if the credentials don't work
+			resp, _ = resty.R().SetBasicAuth(username, password).Get(baseURL + "/v2/")
+			So(resp, ShouldNotBeNil)
+			if resp.StatusCode() == http.StatusOK {
+				break
+			}
+
+			time.Sleep(100 * time.Millisecond)
+		}
+
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+		// change the file
+		changedDir := t.TempDir()
+		changedLdapConfigPath := filepath.Join(changedDir, "ldap.json")
+
+		err = os.WriteFile(changedLdapConfigPath, []byte(newLdapConfigContent), 0o600)
+		So(err, ShouldBeNil)
+
+		configStr = fmt.Sprintf(configTemplate,
+			tempDir, "127.0.0.1", port, changedLdapConfigPath, LDAPAddress, ldapPort)
+
+		err = os.WriteFile(configPath, []byte(configStr), 0o600)
+		So(err, ShouldBeNil)
+
+		for i := 0; i < 10; i++ {
+			// test if the credentials don't work
+			resp, _ = resty.R().SetBasicAuth(username, password).Get(baseURL + "/v2/")
+			So(resp, ShouldNotBeNil)
+
+			if resp.StatusCode() != http.StatusOK {
+				break
+			}
+
+			time.Sleep(100 * time.Millisecond)
+		}
+
+		So(resp.StatusCode(), ShouldNotEqual, http.StatusOK)
+
+		err = os.WriteFile(changedLdapConfigPath, []byte(ldapConfigContent), 0o600)
+		So(err, ShouldBeNil)
+
+		for i := 0; i < 10; i++ {
+			// test if the credentials don't work
+			resp, _ = resty.R().SetBasicAuth(username, password).Get(baseURL + "/v2/")
+			So(resp, ShouldNotBeNil)
+			if resp.StatusCode() == http.StatusOK {
+				break
+			}
+
+			time.Sleep(100 * time.Millisecond)
+		}
+
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+		// make it panic
+		badLDAPFilePath := filepath.Join(changedDir, "ldap222.json")
+
+		err = os.WriteFile(badLDAPFilePath, []byte(newLdapConfigContent), 0o600)
+		So(err, ShouldBeNil)
+
+		configStr = fmt.Sprintf(configTemplate,
+			tempDir, "127.0.0.1", port, changedLdapConfigPath, LDAPAddress, ldapPort)
+
+		err = os.WriteFile(configPath, []byte(configStr), 0o600)
+		So(err, ShouldBeNil)
+
+		// Loading the config should fail because the file doesn't exist so the old credentials
+		// are still up and working fine.
+
+		for i := 0; i < 10; i++ {
+			// test if the credentials don't work
+			resp, _ = resty.R().SetBasicAuth(username, password).Get(baseURL + "/v2/")
+			So(resp, ShouldNotBeNil)
+			if resp.StatusCode() == http.StatusOK {
+				break
+			}
+
+			time.Sleep(100 * time.Millisecond)
+		}
+
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+	})
+}
+
 func TestLDAPWithoutCreds(t *testing.T) {
 	Convey("Make a new LDAP server", t, func() {
 		l := newTestLDAPServer()

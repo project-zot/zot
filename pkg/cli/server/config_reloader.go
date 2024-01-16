@@ -1,6 +1,7 @@
 package server
 
 import (
+	"errors"
 	"os"
 	"os/signal"
 	"syscall"
@@ -13,12 +14,13 @@ import (
 )
 
 type HotReloader struct {
-	watcher  *fsnotify.Watcher
-	filePath string
-	ctlr     *api.Controller
+	watcher             *fsnotify.Watcher
+	configPath          string
+	ldapCredentialsPath string
+	ctlr                *api.Controller
 }
 
-func NewHotReloader(ctlr *api.Controller, filePath string) (*HotReloader, error) {
+func NewHotReloader(ctlr *api.Controller, filePath, ldapCredentialsPath string) (*HotReloader, error) {
 	// creates a new file watcher
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
@@ -26,9 +28,10 @@ func NewHotReloader(ctlr *api.Controller, filePath string) (*HotReloader, error)
 	}
 
 	hotReloader := &HotReloader{
-		watcher:  watcher,
-		filePath: filePath,
-		ctlr:     ctlr,
+		watcher:             watcher,
+		configPath:          filePath,
+		ldapCredentialsPath: ldapCredentialsPath,
+		ctlr:                ctlr,
 	}
 
 	return hotReloader, nil
@@ -73,11 +76,25 @@ func (hr *HotReloader) Start() {
 
 						newConfig := config.New()
 
-						err := LoadConfiguration(newConfig, hr.filePath)
+						err := LoadConfiguration(newConfig, hr.configPath)
 						if err != nil {
 							log.Error().Err(err).Msg("failed to reload config, retry writing it.")
 
 							continue
+						}
+
+						if hr.ctlr.Config.HTTP.Auth != nil && hr.ctlr.Config.HTTP.Auth.LDAP != nil &&
+							hr.ctlr.Config.HTTP.Auth.LDAP.CredentialsFile != newConfig.HTTP.Auth.LDAP.CredentialsFile {
+							err = hr.watcher.Remove(hr.ctlr.Config.HTTP.Auth.LDAP.CredentialsFile)
+							if err != nil && !errors.Is(err, fsnotify.ErrNonExistentWatch) {
+								log.Error().Err(err).Msg("failed to remove old watch for the credentials file")
+							}
+
+							err = hr.watcher.Add(newConfig.HTTP.Auth.LDAP.CredentialsFile)
+							if err != nil {
+								log.Panic().Err(err).Str("ldap-credentials-file", newConfig.HTTP.Auth.LDAP.CredentialsFile).
+									Msg("failed to watch ldap credentials file")
+							}
 						}
 
 						// stop background tasks gracefully
@@ -91,13 +108,20 @@ func (hr *HotReloader) Start() {
 					}
 				// watch for errors
 				case err := <-hr.watcher.Errors:
-					log.Panic().Err(err).Str("config", hr.filePath).Msg("fsnotfy error while watching config")
+					log.Panic().Err(err).Str("config", hr.configPath).Msg("fsnotfy error while watching config")
 				}
 			}
 		}()
 
-		if err := hr.watcher.Add(hr.filePath); err != nil {
-			log.Panic().Err(err).Str("config", hr.filePath).Msg("failed to add config file to fsnotity watcher")
+		if err := hr.watcher.Add(hr.configPath); err != nil {
+			log.Panic().Err(err).Str("config", hr.configPath).Msg("failed to add config file to fsnotity watcher")
+		}
+
+		if hr.ldapCredentialsPath != "" {
+			if err := hr.watcher.Add(hr.ldapCredentialsPath); err != nil {
+				log.Panic().Err(err).Str("ldap-credentials", hr.ldapCredentialsPath).
+					Msg("failed to add ldap-credentials to fsnotity watcher")
+			}
 		}
 
 		<-done
