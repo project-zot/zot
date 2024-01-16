@@ -215,6 +215,9 @@ func TestStorageAPIs(t *testing.T) {
 					So(err, ShouldBeNil)
 					So(n, ShouldEqual, len(body))
 					So(upload, ShouldNotBeEmpty)
+
+					err = imgStore.VerifyBlobDigestValue("test", digest)
+					So(err, ShouldBeNil)
 				})
 
 				Convey("New blob upload", func() {

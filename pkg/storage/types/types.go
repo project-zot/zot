@@ -64,6 +64,7 @@ type ImageStore interface { //nolint:interfacebloat
 	GetNextDigestWithBlobPaths(repos []string, lastDigests []godigest.Digest) (godigest.Digest, []string, error)
 	GetAllBlobs(repo string) ([]string, error)
 	PopulateStorageMetrics(interval time.Duration, sch *scheduler.Scheduler)
+	VerifyBlobDigestValue(repo string, digest godigest.Digest) error
 }
 
 type Driver interface { //nolint:interfacebloat

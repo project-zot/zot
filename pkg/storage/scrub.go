@@ -279,17 +279,8 @@ func CheckLayers(
 	}
 
 	for _, layer := range man.Layers {
-		layerContent, err := imgStore.GetBlobContent(imageName, layer.Digest)
-		if err != nil {
+		if err := imgStore.VerifyBlobDigestValue(imageName, layer.Digest); err != nil {
 			imageRes = getResult(imageName, tagName, layer.Digest, err)
-
-			break
-		}
-
-		computedDigest := godigest.FromBytes(layerContent)
-
-		if computedDigest != layer.Digest {
-			imageRes = getResult(imageName, tagName, layer.Digest, errors.ErrBadBlobDigest)
 
 			break
 		}
