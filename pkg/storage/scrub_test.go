@@ -26,7 +26,6 @@ import (
 	"zotregistry.io/zot/pkg/storage/local"
 	"zotregistry.io/zot/pkg/storage/s3"
 	storageTypes "zotregistry.io/zot/pkg/storage/types"
-	"zotregistry.io/zot/pkg/test/deprecated"
 	. "zotregistry.io/zot/pkg/test/image-utils"
 	"zotregistry.io/zot/pkg/test/mocks"
 	tskip "zotregistry.io/zot/pkg/test/skip"
@@ -92,24 +91,9 @@ func RunCheckAllBlobsIntegrityTests( //nolint: thelper
 		storeCtlr.DefaultStore = imgStore
 		So(storeCtlr.GetImageStore(repoName), ShouldResemble, imgStore)
 
-		config, layers, manifest, err := deprecated.GetImageComponents(1000) //nolint:staticcheck
-		So(err, ShouldBeNil)
+		image := CreateRandomImage()
 
-		layerReader := bytes.NewReader(layers[0])
-		layerDigest := godigest.FromBytes(layers[0])
-		_, _, err = imgStore.FullBlobUpload(repoName, layerReader, layerDigest)
-		So(err, ShouldBeNil)
-
-		configBlob, err := json.Marshal(config)
-		So(err, ShouldBeNil)
-		configReader := bytes.NewReader(configBlob)
-		configDigest := godigest.FromBytes(configBlob)
-		_, _, err = imgStore.FullBlobUpload(repoName, configReader, configDigest)
-		So(err, ShouldBeNil)
-
-		manifestBlob, err := json.Marshal(manifest)
-		So(err, ShouldBeNil)
-		manifestDigest, _, err := imgStore.PutImageManifest(repoName, tag, ispec.MediaTypeImageManifest, manifestBlob)
+		err = WriteImageToFileSystem(image, repoName, tag, storeCtlr)
 		So(err, ShouldBeNil)
 
 		Convey("Blobs integrity not affected", func() {
@@ -144,11 +128,11 @@ func RunCheckAllBlobsIntegrityTests( //nolint: thelper
 
 		Convey("Manifest integrity affected", func() {
 			// get content of manifest file
-			content, _, _, err := imgStore.GetImageManifest(repoName, manifestDigest.String())
+			content, _, _, err := imgStore.GetImageManifest(repoName, image.ManifestDescriptor.Digest.String())
 			So(err, ShouldBeNil)
 
 			// delete content of manifest file
-			manifestDig := manifestDigest.Encoded()
+			manifestDig := image.ManifestDescriptor.Digest.Encoded()
 			manifestFile := path.Join(imgStore.RootDir(), repoName, "/blobs/sha256", manifestDig)
 			err = driver.Delete(manifestFile)
 			So(err, ShouldBeNil)
@@ -210,11 +194,11 @@ func RunCheckAllBlobsIntegrityTests( //nolint: thelper
 
 		Convey("Config integrity affected", func() {
 			// get content of config file
-			content, err := imgStore.GetBlobContent(repoName, configDigest)
+			content, err := imgStore.GetBlobContent(repoName, image.ConfigDescriptor.Digest)
 			So(err, ShouldBeNil)
 
 			// delete content of config file
-			configDig := configDigest.Encoded()
+			configDig := image.ConfigDescriptor.Digest.Encoded()
 			configFile := path.Join(imgStore.RootDir(), repoName, "/blobs/sha256", configDig)
 			err = driver.Delete(configFile)
 			So(err, ShouldBeNil)
@@ -254,11 +238,11 @@ func RunCheckAllBlobsIntegrityTests( //nolint: thelper
 
 		Convey("Layers integrity affected", func() {
 			// get content of layer
-			content, err := imgStore.GetBlobContent(repoName, layerDigest)
+			content, err := imgStore.GetBlobContent(repoName, image.Manifest.Layers[0].Digest)
 			So(err, ShouldBeNil)
 
 			// delete content of layer file
-			layerDig := layerDigest.Encoded()
+			layerDig := image.Manifest.Layers[0].Digest.Encoded()
 			layerFile := path.Join(imgStore.RootDir(), repoName, "/blobs/sha256", layerDig)
 			_, err = driver.WriteFile(layerFile, []byte(" "))
 			So(err, ShouldBeNil)
@@ -284,11 +268,11 @@ func RunCheckAllBlobsIntegrityTests( //nolint: thelper
 
 		Convey("Layer not found", func() {
 			// get content of layer
-			content, err := imgStore.GetBlobContent(repoName, layerDigest)
+			content, err := imgStore.GetBlobContent(repoName, image.Manifest.Layers[0].Digest)
 			So(err, ShouldBeNil)
 
 			// change layer file permissions
-			layerDig := layerDigest.Encoded()
+			layerDig := image.Manifest.Layers[0].Digest.Encoded()
 			repoDir := path.Join(imgStore.RootDir(), repoName)
 			layerFile := path.Join(repoDir, "/blobs/sha256", layerDig)
 			err = driver.Delete(layerFile)
@@ -323,32 +307,16 @@ func RunCheckAllBlobsIntegrityTests( //nolint: thelper
 		})
 
 		Convey("Scrub index", func() {
-			newConfig, newLayers, newManifest, err := deprecated.GetImageComponents(10) //nolint:staticcheck
-			So(err, ShouldBeNil)
+			newImage := CreateRandomImage()
+			newManifestDigest := newImage.ManifestDescriptor.Digest
 
-			newLayerReader := bytes.NewReader(newLayers[0])
-			newLayerDigest := godigest.FromBytes(newLayers[0])
-			_, _, err = imgStore.FullBlobUpload(repoName, newLayerReader, newLayerDigest)
-			So(err, ShouldBeNil)
-
-			newConfigBlob, err := json.Marshal(newConfig)
-			So(err, ShouldBeNil)
-			newConfigReader := bytes.NewReader(newConfigBlob)
-			newConfigDigest := godigest.FromBytes(newConfigBlob)
-			_, _, err = imgStore.FullBlobUpload(repoName, newConfigReader, newConfigDigest)
-			So(err, ShouldBeNil)
-
-			newManifestBlob, err := json.Marshal(newManifest)
-			So(err, ShouldBeNil)
-			newManifestReader := bytes.NewReader(newManifestBlob)
-			newManifestDigest := godigest.FromBytes(newManifestBlob)
-			_, _, err = imgStore.FullBlobUpload(repoName, newManifestReader, newManifestDigest)
+			err = WriteImageToFileSystem(newImage, repoName, "2.0", storeCtlr)
 			So(err, ShouldBeNil)
 
 			idx, err := common.GetIndex(imgStore, repoName, log)
 			So(err, ShouldBeNil)
 
-			manifestDescriptor, ok := common.GetManifestDescByReference(idx, manifestDigest.String())
+			manifestDescriptor, ok := common.GetManifestDescByReference(idx, image.ManifestDescriptor.Digest.String())
 			So(ok, ShouldBeTrue)
 
 			var index ispec.Index
@@ -358,7 +326,7 @@ func RunCheckAllBlobsIntegrityTests( //nolint: thelper
 				{
 					MediaType: ispec.MediaTypeImageManifest,
 					Digest:    newManifestDigest,
-					Size:      int64(len(newManifestBlob)),
+					Size:      newImage.ManifestDescriptor.Size,
 				},
 			}
 
@@ -472,7 +440,7 @@ func RunCheckAllBlobsIntegrityTests( //nolint: thelper
 
 		Convey("Manifest not found", func() {
 			// delete manifest file
-			manifestDig := manifestDigest.Encoded()
+			manifestDig := image.ManifestDescriptor.Digest.Encoded()
 			manifestFile := path.Join(imgStore.RootDir(), repoName, "/blobs/sha256", manifestDig)
 			err = driver.Delete(manifestFile)
 			So(err, ShouldBeNil)
@@ -504,7 +472,7 @@ func RunCheckAllBlobsIntegrityTests( //nolint: thelper
 			index, err := common.GetIndex(imgStore, repoName, log)
 			So(err, ShouldBeNil)
 
-			manifestDescriptor, ok := common.GetManifestDescByReference(index, manifestDigest.String())
+			manifestDescriptor, ok := common.GetManifestDescByReference(index, image.ManifestDescriptor.Digest.String())
 			So(ok, ShouldBeTrue)
 
 			err = WriteImageToFileSystem(CreateDefaultImageWith().Subject(&manifestDescriptor).Build(),
@@ -557,5 +525,42 @@ func RunCheckAllBlobsIntegrityTests( //nolint: thelper
 		_, err = storeController.CheckAllBlobsIntegrity(context.Background())
 		So(err, ShouldNotBeNil)
 		So(err, ShouldEqual, errUnexpectedError)
+
+		manifestDigest := godigest.FromString("abcd")
+
+		mockedImgStore = mocks.MockedImageStore{
+			GetRepositoriesFn: func() ([]string, error) {
+				return []string{repoName}, nil
+			},
+			GetIndexContentFn: func(repo string) ([]byte, error) {
+				var index ispec.Index
+				index.SchemaVersion = 2
+				index.Manifests = []ispec.Descriptor{
+					{
+						MediaType:   "InvalidMediaType",
+						Digest:      manifestDigest,
+						Size:        int64(100),
+						Annotations: map[string]string{ispec.AnnotationRefName: "1.0"},
+					},
+				}
+
+				return json.Marshal(index)
+			},
+		}
+
+		storeController.DefaultStore = mockedImgStore
+
+		res, err := storeController.CheckAllBlobsIntegrity(context.Background())
+		So(err, ShouldBeNil)
+
+		buff := bytes.NewBufferString("")
+		res.PrintScrubResults(buff)
+
+		space := regexp.MustCompile(`\s+`)
+		str := space.ReplaceAllString(buff.String(), " ")
+		actual := strings.TrimSpace(str)
+		So(actual, ShouldContainSubstring, "REPOSITORY TAG STATUS AFFECTED BLOB ERROR")
+		So(actual, ShouldContainSubstring, fmt.Sprintf("%s 1.0 affected %s invalid manifest content",
+			repoName, manifestDigest.Encoded()))
 	})
 }

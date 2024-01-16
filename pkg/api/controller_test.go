@@ -64,7 +64,6 @@ import (
 	storageTypes "zotregistry.io/zot/pkg/storage/types"
 	authutils "zotregistry.io/zot/pkg/test/auth"
 	test "zotregistry.io/zot/pkg/test/common"
-	"zotregistry.io/zot/pkg/test/deprecated"
 	. "zotregistry.io/zot/pkg/test/image-utils"
 	"zotregistry.io/zot/pkg/test/inject"
 	"zotregistry.io/zot/pkg/test/mocks"
@@ -6327,25 +6326,12 @@ func TestArtifactReferences(t *testing.T) {
 		defer cm.StopServer()
 
 		repoName := "artifact-repo"
-		content := []byte("this is a blob")
-		digest := godigest.FromBytes(content)
-		So(digest, ShouldNotBeNil)
 
-		cfg, layers, manifest, err := deprecated.GetImageComponents(2) //nolint:staticcheck
-		So(err, ShouldBeNil)
+		image := CreateImageWith().RandomLayers(1, 2).DefaultConfig().Build()
+		digest := image.ManifestDescriptor.Digest
 
-		err = UploadImage(
-			Image{
-				Config:   cfg,
-				Layers:   layers,
-				Manifest: manifest,
-			}, baseURL, repoName, "1.0")
+		err := UploadImage(image, baseURL, repoName, "1.0")
 		So(err, ShouldBeNil)
-
-		content, err = json.Marshal(manifest)
-		So(err, ShouldBeNil)
-		digest = godigest.FromBytes(content)
-		So(digest, ShouldNotBeNil)
 
 		artifactType := "application/vnd.example.icecream.v1"
 
@@ -6389,13 +6375,13 @@ func TestArtifactReferences(t *testing.T) {
 					{
 						MediaType: "application/vnd.oci.image.layer.v1.tar",
 						Digest:    digest,
-						Size:      int64(len(content)),
+						Size:      image.ManifestDescriptor.Size,
 					},
 				},
 				Subject: &ispec.Descriptor{
 					MediaType: ispec.MediaTypeImageManifest,
 					Digest:    digest,
-					Size:      int64(len(content)),
+					Size:      image.ManifestDescriptor.Size,
 				},
 				Annotations: map[string]string{
 					"key": "val",
@@ -6530,7 +6516,7 @@ func TestArtifactReferences(t *testing.T) {
 			})
 
 			Convey("Using valid content", func() {
-				content, err = json.Marshal(manifest)
+				content, err := json.Marshal(manifest)
 				So(err, ShouldBeNil)
 				resp, err = resty.R().SetHeader("Content-Type", ispec.MediaTypeImageManifest).
 					SetBody(content).Put(baseURL + fmt.Sprintf("/v2/%s/manifests/1.0", repoName))
@@ -7366,33 +7352,23 @@ func TestStorageCommit(t *testing.T) {
 		Convey("Manifests", func() {
 			_, _ = Print("\nManifests")
 
-			cfg, layers, manifest, err := deprecated.GetImageComponents(2) //nolint:staticcheck
-			So(err, ShouldBeNil)
-
-			content := []byte("this is a blob5")
-			digest := godigest.FromBytes(content)
-			So(digest, ShouldNotBeNil)
 			// check a non-existent manifest
 			resp, err := resty.R().SetHeader("Content-Type", "application/vnd.oci.image.manifest.v1+json").
-				SetBody(content).Head(baseURL + "/v2/unknown/manifests/test:1.0")
+				Head(baseURL + "/v2/unknown/manifests/test:1.0")
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
 
+			image := CreateImageWith().RandomLayers(1, 2).DefaultConfig().Build()
+
 			repoName := "repo7"
-			err = UploadImage(
-				Image{
-					Config:   cfg,
-					Layers:   layers,
-					Manifest: manifest,
-				}, baseURL, repoName, "test:1.0")
+			err = UploadImage(image, baseURL, repoName, "test:1.0")
 			So(err, ShouldBeNil)
 
 			_, err = os.Stat(path.Join(dir, "repo7"))
 			So(err, ShouldBeNil)
 
-			content, err = json.Marshal(manifest)
-			So(err, ShouldBeNil)
-			digest = godigest.FromBytes(content)
+			content := image.ManifestDescriptor.Data
+			digest := image.ManifestDescriptor.Digest
 			So(digest, ShouldNotBeNil)
 			resp, err = resty.R().SetHeader("Content-Type", "application/vnd.oci.image.manifest.v1+json").
 				SetBody(content).Put(baseURL + "/v2/repo7/manifests/test:1.0")
@@ -7410,26 +7386,12 @@ func TestStorageCommit(t *testing.T) {
 			So(digestHdr, ShouldNotBeEmpty)
 			So(digestHdr, ShouldEqual, digest.String())
 
-			content, err = json.Marshal(manifest)
+			err = UploadImage(image, baseURL, repoName, "test:1.0.1")
 			So(err, ShouldBeNil)
 
-			err = UploadImage(
-				Image{
-					Config:   cfg,
-					Layers:   layers,
-					Manifest: manifest,
-				}, baseURL, repoName, "test:1.0.1")
-			So(err, ShouldBeNil)
+			image = CreateImageWith().RandomLayers(1, 1).DefaultConfig().Build()
 
-			cfg, layers, manifest, err = deprecated.GetImageComponents(1) //nolint:staticcheck
-			So(err, ShouldBeNil)
-
-			err = UploadImage(
-				Image{
-					Config:   cfg,
-					Layers:   layers,
-					Manifest: manifest,
-				}, baseURL, repoName, "test:2.0")
+			err = UploadImage(image, baseURL, repoName, "test:2.0")
 			So(err, ShouldBeNil)
 
 			resp, err = resty.R().SetHeader("Content-Type", "application/vnd.oci.image.manifest.v1+json").
@@ -7519,34 +7481,23 @@ func TestManifestImageIndex(t *testing.T) {
 
 		rthdlr := api.NewRouteHandler(ctlr)
 
-		cfg, layers, manifest, err := deprecated.GetImageComponents(2) //nolint:staticcheck
-		So(err, ShouldBeNil)
-
-		content := []byte("this is a blob1")
-		digest := godigest.FromBytes(content)
-		So(digest, ShouldNotBeNil)
+		img := CreateImageWith().RandomLayers(1, 2).DefaultConfig().Build()
 
 		// check a non-existent manifest
 		resp, err := resty.R().SetHeader("Content-Type", ispec.MediaTypeImageManifest).
-			SetBody(content).Head(baseURL + "/v2/unknown/manifests/test:1.0")
+			Head(baseURL + "/v2/unknown/manifests/test:1.0")
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
 
 		repoName := "index"
-		err = UploadImage(
-			Image{
-				Config:   cfg,
-				Layers:   layers,
-				Manifest: manifest,
-			}, baseURL, repoName, "test:1.0")
+		err = UploadImage(img, baseURL, repoName, "test:1.0")
 		So(err, ShouldBeNil)
 
 		_, err = os.Stat(path.Join(dir, "index"))
 		So(err, ShouldBeNil)
 
-		content, err = json.Marshal(manifest)
-		So(err, ShouldBeNil)
-		digest = godigest.FromBytes(content)
+		content := img.ManifestDescriptor.Data
+		digest := img.ManifestDescriptor.Digest
 		So(digest, ShouldNotBeNil)
 		m1content := content
 		resp, err = resty.R().SetHeader("Content-Type", ispec.MediaTypeImageManifest).
@@ -7564,7 +7515,7 @@ func TestManifestImageIndex(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
 
-		img := CreateRandomImage()
+		img = CreateRandomImage()
 
 		err = UploadImage(img, baseURL, repoName, img.DigestStr())
 		So(err, ShouldBeNil)
@@ -7946,41 +7897,24 @@ func TestManifestCollision(t *testing.T) {
 		cm.StartAndWait(port)
 		defer cm.StopServer()
 
-		cfg, layers, manifest, err := deprecated.GetImageComponents(2) //nolint:staticcheck
-		So(err, ShouldBeNil)
+		img := CreateImageWith().RandomLayers(1, 2).DefaultConfig().Build()
 
-		err = UploadImage(
-			Image{
-				Config:   cfg,
-				Layers:   layers,
-				Manifest: manifest,
-			}, baseURL, "index", "test:1.0")
+		err := UploadImage(img, baseURL, "index", "test:1.0")
 		So(err, ShouldBeNil)
 
 		_, err = os.Stat(path.Join(dir, "index"))
 		So(err, ShouldBeNil)
 
-		content := []byte("this is a blob1")
-		digest := godigest.FromBytes(content)
-		So(digest, ShouldNotBeNil)
-
 		// check a non-existent manifest
 		resp, err := resty.R().SetHeader("Content-Type", ispec.MediaTypeImageManifest).
-			SetBody(content).Head(baseURL + "/v2/unknown/manifests/test:1.0")
+			Head(baseURL + "/v2/unknown/manifests/test:1.0")
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
 
-		content, err = json.Marshal(manifest)
-		So(err, ShouldBeNil)
-		digest = godigest.FromBytes(content)
+		digest := img.ManifestDescriptor.Digest
 		So(digest, ShouldNotBeNil)
 
-		err = UploadImage(
-			Image{
-				Config:   cfg,
-				Layers:   layers,
-				Manifest: manifest,
-			}, baseURL, "index", "test:2.0")
+		err = UploadImage(img, baseURL, "index", "test:2.0")
 		So(err, ShouldBeNil)
 
 		// Deletion should fail if using digest
@@ -8660,19 +8594,11 @@ func TestGCSignaturesAndUntaggedManifestsWithMetaDB(t *testing.T) {
 
 			Convey("Overwrite original image, signatures should be garbage-collected", func() {
 				// push an image without tag
-				cfg, layers, manifest, err := deprecated.GetImageComponents(2) //nolint:staticcheck
-				So(err, ShouldBeNil)
+				img := CreateImageWith().RandomLayers(1, 2).DefaultConfig().Build()
 
-				manifestBuf, err := json.Marshal(manifest)
-				So(err, ShouldBeNil)
-				untaggedManifestDigest := godigest.FromBytes(manifestBuf)
+				untaggedManifestDigest := img.ManifestDescriptor.Digest
 
-				err = UploadImage(
-					Image{
-						Config:   cfg,
-						Layers:   layers,
-						Manifest: manifest,
-					}, baseURL, repoName, untaggedManifestDigest.String())
+				err = UploadImage(img, baseURL, repoName, untaggedManifestDigest.String())
 				So(err, ShouldBeNil)
 
 				// make sure repoDB reference was added
@@ -8687,20 +8613,12 @@ func TestGCSignaturesAndUntaggedManifestsWithMetaDB(t *testing.T) {
 				So(ok, ShouldBeTrue)
 
 				// overwrite image so that signatures will get invalidated and gc'ed
-				cfg, layers, manifest, err = deprecated.GetImageComponents(3) //nolint:staticcheck
+				img = CreateImageWith().RandomLayers(1, 3).DefaultConfig().Build()
+
+				err = UploadImage(img, baseURL, repoName, tag)
 				So(err, ShouldBeNil)
 
-				err = UploadImage(
-					Image{
-						Config:   cfg,
-						Layers:   layers,
-						Manifest: manifest,
-					}, baseURL, repoName, tag)
-				So(err, ShouldBeNil)
-
-				manifestBuf, err = json.Marshal(manifest)
-				So(err, ShouldBeNil)
-				newManifestDigest := godigest.FromBytes(manifestBuf)
+				newManifestDigest := img.ManifestDescriptor.Digest
 
 				err = gc.CleanRepo(ctx, repoName) //nolint: contextcheck
 				So(err, ShouldBeNil)
@@ -8804,26 +8722,17 @@ func TestGCSignaturesAndUntaggedManifestsWithMetaDB(t *testing.T) {
 
 			// upload multiple manifests
 			for i := 0; i < 4; i++ {
-				config, layers, manifest, err := deprecated.GetImageComponents(1000 + i) //nolint:staticcheck
-				So(err, ShouldBeNil)
+				img := CreateImageWith().RandomLayers(1, 1000+i).DefaultConfig().Build()
 
-				manifestContent, err := json.Marshal(manifest)
-				So(err, ShouldBeNil)
+				manifestDigest := img.ManifestDescriptor.Digest
 
-				manifestDigest := godigest.FromBytes(manifestContent)
-
-				err = UploadImage(
-					Image{
-						Manifest: manifest,
-						Config:   config,
-						Layers:   layers,
-					}, baseURL, repoName, manifestDigest.String())
+				err = UploadImage(img, baseURL, repoName, manifestDigest.String())
 				So(err, ShouldBeNil)
 
 				index.Manifests = append(index.Manifests, ispec.Descriptor{
 					Digest:    manifestDigest,
 					MediaType: ispec.MediaTypeImageManifest,
-					Size:      int64(len(manifestContent)),
+					Size:      img.ManifestDescriptor.Size,
 				})
 			}
 
@@ -9055,28 +8964,18 @@ func TestSearchRoutes(t *testing.T) {
 			cm.StartAndWait(port)
 			defer cm.StopServer()
 
-			cfg, layers, manifest, err := deprecated.GetImageComponents(10000) //nolint:staticcheck
-			So(err, ShouldBeNil)
+			img := CreateImageWith().RandomLayers(1, 10000).DefaultConfig().Build()
 
-			err = UploadImageWithBasicAuth(
-				Image{
-					Config:   cfg,
-					Layers:   layers,
-					Manifest: manifest,
-				}, baseURL, repoName, "latest",
+			err := UploadImageWithBasicAuth(
+				img, baseURL, repoName, "latest",
 				user1, password1)
 			So(err, ShouldBeNil)
 
 			// data for the inaccessible repo
-			cfg, layers, manifest, err = deprecated.GetImageComponents(10000) //nolint:staticcheck
-			So(err, ShouldBeNil)
+			img = CreateImageWith().RandomLayers(1, 10000).DefaultConfig().Build()
 
 			err = UploadImageWithBasicAuth(
-				Image{
-					Config:   cfg,
-					Layers:   layers,
-					Manifest: manifest,
-				}, baseURL, inaccessibleRepo, "latest",
+				img, baseURL, inaccessibleRepo, "latest",
 				user1, password1)
 			So(err, ShouldBeNil)
 

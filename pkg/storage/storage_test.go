@@ -171,6 +171,15 @@ func TestStorageAPIs(t *testing.T) {
 			Convey("Repo layout", t, func(c C) {
 				repoName := "test"
 
+				Convey("Get all blobs from repo without initialization", func() {
+					allBlobs, err := imgStore.GetAllBlobs(repoName)
+					So(err, ShouldBeNil)
+					So(allBlobs, ShouldBeEmpty)
+
+					ok := imgStore.DirExists(path.Join(imgStore.RootDir(), repoName))
+					So(ok, ShouldBeFalse)
+				})
+
 				Convey("Validate repo without initialization", func() {
 					v, err := imgStore.ValidateRepo(repoName)
 					So(v, ShouldEqual, false)

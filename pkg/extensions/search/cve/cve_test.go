@@ -40,7 +40,6 @@ import (
 	"zotregistry.io/zot/pkg/storage"
 	"zotregistry.io/zot/pkg/storage/local"
 	test "zotregistry.io/zot/pkg/test/common"
-	"zotregistry.io/zot/pkg/test/deprecated"
 	. "zotregistry.io/zot/pkg/test/image-utils"
 	"zotregistry.io/zot/pkg/test/mocks"
 	ociutils "zotregistry.io/zot/pkg/test/oci-utils"
@@ -1729,35 +1728,30 @@ func TestFixedTagsWithIndex(t *testing.T) {
 		defer cm.StopServer()
 		// push index with 2 manifests: one with vulns and one without
 		vulnManifestCreated := time.Date(2010, 1, 1, 1, 1, 1, 1, time.UTC)
-		vulnManifest, err := deprecated.GetVulnImageWithConfig(ispec.Image{ //nolint:staticcheck
-			Created:  &vulnManifestCreated,
-			Platform: ispec.Platform{OS: "linux", Architecture: "amd64"},
-		})
-		So(err, ShouldBeNil)
+		vulnImageConfig := GetDefaultConfig()
+		vulnImageConfig.Created = &vulnManifestCreated
+		vulnImageConfig.Platform = ispec.Platform{OS: "linux", Architecture: "amd64"}
+		vulnSingleArchImage := CreateImageWith().VulnerableLayers().VulnerableConfig(vulnImageConfig).Build()
 
 		fixedManifestCreated := time.Date(2010, 1, 1, 1, 1, 1, 1, time.UTC)
-		fixedManifest, err := deprecated.GetImageWithConfig(ispec.Image{ //nolint:staticcheck
-			Created:  &fixedManifestCreated,
-			Platform: ispec.Platform{OS: "windows", Architecture: "amd64"},
-		})
-		So(err, ShouldBeNil)
-		fixedDigest := fixedManifest.Digest()
+		fixedImageConfig := GetDefaultConfig()
+		fixedImageConfig.Created = &fixedManifestCreated
+		fixedImageConfig.Platform = ispec.Platform{OS: "windows", Architecture: "amd64"}
+		fixedSingleArchImage := CreateImageWith().DefaultLayers().ImageConfig(fixedImageConfig).Build()
 
-		multiArch := deprecated.GetMultiarchImageForImages([]Image{fixedManifest, //nolint:staticcheck
-			vulnManifest})
+		multiArchImage := CreateMultiarchWith().Images([]Image{vulnSingleArchImage, fixedSingleArchImage}).Build()
 
-		err = UploadMultiarchImage(multiArch, baseURL, "repo", "multi-arch-tag")
+		err = UploadMultiarchImage(multiArchImage, baseURL, "repo", "multi-arch-tag")
 		So(err, ShouldBeNil)
 
 		// oldest vulnerability
 		simpleVulnCreated := time.Date(2005, 1, 1, 1, 1, 1, 1, time.UTC)
-		simpleVulnImg, err := deprecated.GetVulnImageWithConfig(ispec.Image{ //nolint:staticcheck
-			Created:  &simpleVulnCreated,
-			Platform: ispec.Platform{OS: "windows", Architecture: "amd64"},
-		})
-		So(err, ShouldBeNil)
+		singleVulnImageConfig := GetDefaultConfig()
+		singleVulnImageConfig.Created = &simpleVulnCreated
+		singleVulnImageConfig.Platform = ispec.Platform{OS: "windows", Architecture: "amd64"}
+		simpleVulnImage := CreateImageWith().VulnerableLayers().VulnerableConfig(singleVulnImageConfig).Build()
 
-		err = UploadImage(simpleVulnImg, baseURL, "repo", "vuln-img")
+		err = UploadImage(simpleVulnImage, baseURL, "repo", "vuln-img")
 		So(err, ShouldBeNil)
 
 		// Wait for trivy db to download
@@ -1771,7 +1765,7 @@ func TestFixedTagsWithIndex(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(len(tagsInfo), ShouldEqual, 1)
 		So(len(tagsInfo[0].Manifests), ShouldEqual, 1)
-		So(tagsInfo[0].Manifests[0].Digest, ShouldResemble, fixedDigest)
+		So(tagsInfo[0].Manifests[0].Digest, ShouldResemble, fixedSingleArchImage.ManifestDescriptor.Digest)
 
 		const query = `
 		{
@@ -1794,7 +1788,7 @@ func TestFixedTagsWithIndex(t *testing.T) {
 		So(len(responseStruct.Results), ShouldEqual, 1)
 		So(len(responseStruct.Results[0].Manifests), ShouldEqual, 1)
 		fixedManifestResp := responseStruct.Results[0].Manifests[0]
-		So(fixedManifestResp.Digest, ShouldResemble, fixedDigest.String())
+		So(fixedManifestResp.Digest, ShouldResemble, fixedSingleArchImage.ManifestDescriptor.Digest.String())
 	})
 }
 

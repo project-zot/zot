@@ -25,7 +25,6 @@ import (
 	"zotregistry.io/zot/pkg/storage"
 	"zotregistry.io/zot/pkg/storage/local"
 	. "zotregistry.io/zot/pkg/test/common"
-	"zotregistry.io/zot/pkg/test/deprecated"
 	. "zotregistry.io/zot/pkg/test/image-utils"
 	"zotregistry.io/zot/pkg/test/mocks"
 )
@@ -97,8 +96,8 @@ func TestScanningByDigest(t *testing.T) {
 
 		simpleImage := CreateRandomImage()
 
-		multiArch := deprecated.GetMultiarchImageForImages([]Image{simpleImage, //nolint:staticcheck
-			vulnImage})
+		multiArch := CreateMultiarchWith().Images([]Image{simpleImage, //nolint:staticcheck
+			vulnImage}).Build()
 
 		err := UploadMultiarchImage(multiArch, baseURL, "multi-arch", "multi-arch-tag")
 		So(err, ShouldBeNil)

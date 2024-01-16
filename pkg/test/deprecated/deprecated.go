@@ -122,36 +122,6 @@ func GetRandomLayer(size int) []byte {
 }
 
 // Deprecated: Should use the new functions starting with "Create".
-func GetVulnImageWithConfig(config ispec.Image) (image.Image, error) {
-	vulnerableLayer, err := image.GetLayerWithVulnerability()
-	if err != nil {
-		return image.Image{}, err
-	}
-
-	vulnerableConfig := ispec.Image{
-		Platform: config.Platform,
-		Config:   config.Config,
-		RootFS: ispec.RootFS{
-			Type:    "layers",
-			DiffIDs: []godigest.Digest{"sha256:f1417ff83b319fbdae6dd9cd6d8c9c88002dcd75ecf6ec201c8c6894681cf2b5"},
-		},
-		Created: config.Created,
-		History: config.History,
-	}
-
-	img, err := GetImageWithComponents(
-		vulnerableConfig,
-		[][]byte{
-			vulnerableLayer,
-		})
-	if err != nil {
-		return image.Image{}, err
-	}
-
-	return img, err
-}
-
-// Deprecated: Should use the new functions starting with "Create".
 func GetRandomImage() (image.Image, error) {
 	const layerSize = 20
 
