@@ -14,6 +14,7 @@ import (
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	. "github.com/smartystreets/goconvey/convey"
 
+	zerr "zotregistry.dev/zot/errors"
 	"zotregistry.dev/zot/pkg/common"
 	"zotregistry.dev/zot/pkg/extensions/search/convert"
 	cveinfo "zotregistry.dev/zot/pkg/extensions/search/cve"
@@ -727,6 +728,50 @@ func TestQueryResolverErrors(t *testing.T) {
 			resolver := queryResolver{resolverConfig}
 
 			_, err := resolver.GlobalSearch(ctx, "some_string", &gql_generated.Filter{}, getGQLPageInput(1, 1))
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("CVEDiffListForImages nill cveinfo", func() {
+			resolverConfig := NewResolver(
+				log,
+				storage.StoreController{
+					DefaultStore: mocks.MockedImageStore{},
+				},
+				mocks.MetaDBMock{
+					GetMultipleRepoMetaFn: func(ctx context.Context, filter func(repoMeta mTypes.RepoMeta) bool,
+					) ([]mTypes.RepoMeta, error) {
+						return []mTypes.RepoMeta{}, ErrTestError
+					},
+				},
+				nil,
+			)
+
+			qr := queryResolver{resolverConfig}
+
+			_, err := qr.CVEDiffListForImages(ctx, gql_generated.ImageInput{}, gql_generated.ImageInput{},
+				&gql_generated.PageInput{}, nil, nil)
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("CVEDiffListForImages error", func() {
+			resolverConfig := NewResolver(
+				log,
+				storage.StoreController{
+					DefaultStore: mocks.MockedImageStore{},
+				},
+				mocks.MetaDBMock{
+					GetMultipleRepoMetaFn: func(ctx context.Context, filter func(repoMeta mTypes.RepoMeta) bool,
+					) ([]mTypes.RepoMeta, error) {
+						return []mTypes.RepoMeta{}, ErrTestError
+					},
+				},
+				mocks.CveInfoMock{},
+			)
+
+			qr := queryResolver{resolverConfig}
+
+			_, err := qr.CVEDiffListForImages(ctx, gql_generated.ImageInput{}, gql_generated.ImageInput{},
+				&gql_generated.PageInput{}, nil, nil)
 			So(err, ShouldNotBeNil)
 		})
 
@@ -1850,6 +1895,266 @@ func TestCVEResolvers(t *testing.T) { //nolint:gocyclo
 		)
 		So(err, ShouldNotBeNil)
 	})
+
+	Convey("CVE Diff between images", t, func() {
+		// image := "image:tag"
+		// baseImage := "base:basetag"
+		ctx := context.Background()
+		pageInput := &gql_generated.PageInput{
+			SortBy: ref(gql_generated.SortCriteriaAlphabeticAsc),
+		}
+
+		boltDriver, err := boltdb.GetBoltDriver(boltdb.DBParameters{RootDir: t.TempDir()})
+		if err != nil {
+			panic(err)
+		}
+
+		metaDB, err := boltdb.New(boltDriver, log)
+		if err != nil {
+			panic(err)
+		}
+
+		layer1 := []byte{10, 20, 30}
+		layer2 := []byte{11, 21, 31}
+		layer3 := []byte{12, 22, 23}
+
+		otherImage := CreateImageWith().LayerBlobs([][]byte{
+			layer1,
+		}).DefaultConfig().Build()
+
+		baseImage := CreateImageWith().LayerBlobs([][]byte{
+			layer1,
+			layer2,
+		}).PlatformConfig("testArch", "testOs").Build()
+
+		image := CreateImageWith().LayerBlobs([][]byte{
+			layer1,
+			layer2,
+			layer3,
+		}).PlatformConfig("testArch", "testOs").Build()
+
+		multiArchBase := CreateMultiarchWith().Images([]Image{baseImage, CreateRandomImage(), CreateRandomImage()}).
+			Build()
+		multiArchImage := CreateMultiarchWith().Images([]Image{image, CreateRandomImage(), CreateRandomImage()}).
+			Build()
+
+		getCveResults := func(digestStr string) map[string]cvemodel.CVE {
+			switch digestStr {
+			case image.DigestStr():
+				return map[string]cvemodel.CVE{
+					"CVE1": {
+						ID:          "CVE1",
+						Severity:    "HIGH",
+						Title:       "Title CVE1",
+						Description: "Description CVE1",
+						PackageList: []cvemodel.Package{{}},
+					},
+					"CVE2": {
+						ID:          "CVE2",
+						Severity:    "MEDIUM",
+						Title:       "Title CVE2",
+						Description: "Description CVE2",
+						PackageList: []cvemodel.Package{{}},
+					},
+					"CVE3": {
+						ID:          "CVE3",
+						Severity:    "LOW",
+						Title:       "Title CVE3",
+						Description: "Description CVE3",
+						PackageList: []cvemodel.Package{{}},
+					},
+				}
+			case baseImage.DigestStr():
+				return map[string]cvemodel.CVE{
+					"CVE1": {
+						ID:          "CVE1",
+						Severity:    "HIGH",
+						Title:       "Title CVE1",
+						Description: "Description CVE1",
+						PackageList: []cvemodel.Package{{}},
+					},
+					"CVE2": {
+						ID:          "CVE2",
+						Severity:    "MEDIUM",
+						Title:       "Title CVE2",
+						Description: "Description CVE2",
+						PackageList: []cvemodel.Package{{}},
+					},
+				}
+			case otherImage.DigestStr():
+				return map[string]cvemodel.CVE{
+					"CVE1": {
+						ID:          "CVE1",
+						Severity:    "HIGH",
+						Title:       "Title CVE1",
+						Description: "Description CVE1",
+						PackageList: []cvemodel.Package{{}},
+					},
+				}
+			}
+
+			// By default the image has no vulnerabilities
+			return map[string]cvemodel.CVE{}
+		}
+
+		// MetaDB loaded with initial data, now mock the scanner
+		// Setup test CVE data in mock scanner
+		scanner := mocks.CveScannerMock{
+			ScanImageFn: func(ctx context.Context, image string) (map[string]cvemodel.CVE, error) {
+				repo, ref, _, _ := common.GetRepoReference(image)
+
+				if common.IsDigest(ref) {
+					return getCveResults(ref), nil
+				}
+
+				repoMeta, _ := metaDB.GetRepoMeta(ctx, repo)
+
+				if _, ok := repoMeta.Tags[ref]; !ok {
+					panic("unexpected tag '" + ref + "', test might be wrong")
+				}
+
+				return getCveResults(repoMeta.Tags[ref].Digest), nil
+			},
+			GetCachedResultFn: func(digestStr string) map[string]cvemodel.CVE {
+				return getCveResults(digestStr)
+			},
+			IsResultCachedFn: func(digestStr string) bool {
+				return true
+			},
+		}
+
+		cveInfo := &cveinfo.BaseCveInfo{
+			Log:     log,
+			Scanner: scanner,
+			MetaDB:  metaDB,
+		}
+
+		ctx, err = ociutils.InitializeTestMetaDB(ctx, metaDB,
+			ociutils.Repo{
+				Name: "repo",
+				Images: []ociutils.RepoImage{
+					{Image: otherImage, Reference: "other-image"},
+					{Image: baseImage, Reference: "base-image"},
+					{Image: image, Reference: "image"},
+				},
+			},
+			ociutils.Repo{
+				Name: "repo-multi",
+				MultiArchImages: []ociutils.RepoMultiArchImage{
+					{MultiarchImage: CreateRandomMultiarch(), Reference: "multi-rand"},
+					{MultiarchImage: multiArchBase, Reference: "multi-base"},
+					{MultiarchImage: multiArchImage, Reference: "multi-img"},
+				},
+			},
+		)
+		So(err, ShouldBeNil)
+
+		minuend := gql_generated.ImageInput{Repo: "repo", Tag: "image"}
+		subtrahend := gql_generated.ImageInput{Repo: "repo", Tag: "image"}
+		diffResult, err := getCVEDiffListForImages(ctx, minuend, subtrahend, metaDB, cveInfo, pageInput, "", "", log)
+		So(err, ShouldBeNil)
+		So(len(diffResult.CVEList), ShouldEqual, 0)
+
+		minuend = gql_generated.ImageInput{Repo: "repo", Tag: "image"}
+		subtrahend = gql_generated.ImageInput{}
+		diffResult, err = getCVEDiffListForImages(ctx, minuend, subtrahend, metaDB, cveInfo, pageInput, "", "", log)
+		So(err, ShouldBeNil)
+		So(len(diffResult.CVEList), ShouldEqual, 1)
+
+		minuend = gql_generated.ImageInput{Repo: "repo", Tag: "base-image"}
+		subtrahend = gql_generated.ImageInput{Repo: "repo", Tag: "image"}
+		diffResult, err = getCVEDiffListForImages(ctx, minuend, subtrahend, metaDB, cveInfo, pageInput, "", "", log)
+		So(err, ShouldBeNil)
+		So(len(diffResult.CVEList), ShouldEqual, 0)
+
+		minuend = gql_generated.ImageInput{Repo: "repo-multi", Tag: "multi-img", Platform: &gql_generated.PlatformInput{}}
+		subtrahend = gql_generated.ImageInput{}
+		_, err = getCVEDiffListForImages(ctx, minuend, subtrahend, metaDB, cveInfo, pageInput, "", "", log)
+		So(err, ShouldNotBeNil)
+
+		minuend = gql_generated.ImageInput{Repo: "repo-multi", Tag: "multi-img", Platform: &gql_generated.PlatformInput{
+			Os:   ref("testOs"),
+			Arch: ref("testArch"),
+		}}
+		subtrahend = gql_generated.ImageInput{}
+		diffResult, err = getCVEDiffListForImages(ctx, minuend, subtrahend, metaDB, cveInfo, pageInput, "", "", log)
+		So(err, ShouldBeNil)
+		So(len(diffResult.CVEList), ShouldEqual, 1)
+		So(diffResult.Subtrahend.Repo, ShouldEqual, "repo-multi")
+		So(diffResult.Subtrahend.Tag, ShouldEqual, "multi-base")
+		So(dderef(diffResult.Subtrahend.Platform.Os), ShouldResemble, "testOs")
+		So(dderef(diffResult.Subtrahend.Platform.Arch), ShouldResemble, "testArch")
+
+		minuend = gql_generated.ImageInput{Repo: "repo-multi", Tag: "multi-img", Platform: &gql_generated.PlatformInput{
+			Os:   ref("testOs"),
+			Arch: ref("testArch"),
+		}}
+		subtrahend = gql_generated.ImageInput{Repo: "repo-multi", Tag: "multi-base", Platform: &gql_generated.PlatformInput{
+			Os:   ref("testOs"),
+			Arch: ref("testArch"),
+		}}
+		diffResult, err = getCVEDiffListForImages(ctx, minuend, subtrahend, metaDB, cveInfo, pageInput, "", "", log)
+		So(err, ShouldBeNil)
+		So(len(diffResult.CVEList), ShouldEqual, 1)
+
+		minuend = gql_generated.ImageInput{Repo: "repo-multi", Tag: "multi-img", Platform: &gql_generated.PlatformInput{
+			Os:   ref("testOs"),
+			Arch: ref("testArch"),
+		}}
+		subtrahend = gql_generated.ImageInput{Repo: "repo-multi", Tag: "multi-base", Platform: &gql_generated.PlatformInput{}}
+		_, err = getCVEDiffListForImages(ctx, minuend, subtrahend, metaDB, cveInfo, pageInput, "", "", log)
+		So(err, ShouldNotBeNil)
+	})
+
+	Convey("CVE Diff Errors", t, func() {
+		ctx := context.Background()
+		metaDB := mocks.MetaDBMock{}
+		cveInfo := mocks.CveInfoMock{}
+		emptyImage := gql_generated.ImageInput{}
+
+		Convey("minuend is empty", func() {
+			_, err := getCVEDiffListForImages(ctx, emptyImage, emptyImage, metaDB, cveInfo, getGQLPageInput(0, 0), "", "", log)
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("getImageSummary for subtrahend errors", func() {
+			metaDB.GetRepoMetaFn = func(ctx context.Context, repo string) (mTypes.RepoMeta, error) {
+				return mTypes.RepoMeta{}, ErrTestError
+			}
+			minuend := gql_generated.ImageInput{Repo: "test", Tag: "img"}
+			_, err := getCVEDiffListForImages(ctx, minuend, emptyImage, metaDB, cveInfo, getGQLPageInput(0, 0), "", "", log)
+			So(err, ShouldNotBeNil)
+
+			metaDB.GetRepoMetaFn = func(ctx context.Context, repo string) (mTypes.RepoMeta, error) {
+				return mTypes.RepoMeta{}, zerr.ErrRepoMetaNotFound
+			}
+			minuend = gql_generated.ImageInput{Repo: "test", Tag: "img"}
+			_, err = getCVEDiffListForImages(ctx, minuend, emptyImage, metaDB, cveInfo, getGQLPageInput(0, 0), "", "", log)
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("FilterTags for subtrahend errors", func() {
+			metaDB.FilterTagsFn = func(ctx context.Context, filterRepoTag mTypes.FilterRepoTagFunc, filterFunc mTypes.FilterFunc,
+			) ([]mTypes.FullImageMeta, error) {
+				return nil, ErrTestError
+			}
+			minuend := gql_generated.ImageInput{Repo: "test", Tag: "img"}
+			_, err = getCVEDiffListForImages(ctx, minuend, emptyImage, metaDB, cveInfo, getGQLPageInput(0, 0), "", "", log)
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("GetCVEDiffListForImages errors", func() {
+			cveInfo.GetCVEDiffListForImagesFn = func(ctx context.Context, minuend, subtrahend, searchedCVE, excluded string,
+				pageInput cvemodel.PageInput,
+			) ([]cvemodel.CVE, cvemodel.ImageCVESummary, common.PageInfo, error) {
+				return nil, cvemodel.ImageCVESummary{}, common.PageInfo{}, ErrTestError
+			}
+			minuend := gql_generated.ImageInput{Repo: "test", Tag: "img"}
+			subtrahend := gql_generated.ImageInput{Repo: "sub", Tag: "img"}
+			_, err = getCVEDiffListForImages(ctx, minuend, subtrahend, metaDB, cveInfo, getGQLPageInput(0, 0), "", "", log)
+			So(err, ShouldNotBeNil)
+		})
+	})
 }
 
 func TestMockedDerivedImageList(t *testing.T) {
@@ -2317,12 +2622,6 @@ func TestExpandedRepoInfoErrors(t *testing.T) {
 		_, err := expandedRepoInfo(responseContext, "repo", mocks.MetaDBMock{}, mocks.CveInfoMock{}, log)
 		So(err, ShouldBeNil)
 	})
-}
-
-func ref[T any](input T) *T {
-	ref := input
-
-	return &ref
 }
 
 func getGQLPageInput(limit int, offset int) *gql_generated.PageInput {

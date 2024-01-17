@@ -21,8 +21,10 @@ import (
 type CveInfo interface {
 	GetImageListForCVE(ctx context.Context, repo, cveID string) ([]cvemodel.TagInfo, error)
 	GetImageListWithCVEFixed(ctx context.Context, repo, cveID string) ([]cvemodel.TagInfo, error)
-	GetCVEListForImage(ctx context.Context, repo, tag string, searchedCVE string, excludedCVE string,
+	GetCVEListForImage(ctx context.Context, repo, tag string, searchedCVE, excludedCVE string,
 		pageinput cvemodel.PageInput) ([]cvemodel.CVE, cvemodel.ImageCVESummary, zcommon.PageInfo, error)
+	GetCVEDiffListForImages(ctx context.Context, minuend, subtrahend, searchedCVE, excludedCVE string,
+		pageInput cvemodel.PageInput) ([]cvemodel.CVE, cvemodel.ImageCVESummary, zcommon.PageInfo, error)
 	GetCVESummaryForImageMedia(ctx context.Context, repo, digestStr, mediaType string) (cvemodel.ImageCVESummary, error)
 }
 
@@ -329,7 +331,21 @@ func getConfigAndDigest(metaDB mTypes.MetaDB, manifestDigestStr string) (ispec.I
 	return manifestData.Manifests[0].Config, manifestDigest, err
 }
 
-func filterCVEList(cveMap map[string]cvemodel.CVE, searchedCVE, excludedCVE string, pageFinder *CvePageFinder) {
+func filterCVEMap(cveMap map[string]cvemodel.CVE, searchedCVE, excludedCVE string, pageFinder *CvePageFinder) {
+	searchedCVE = strings.ToUpper(searchedCVE)
+
+	for _, cve := range cveMap {
+		if excludedCVE != "" && cve.ContainsStr(excludedCVE) {
+			continue
+		}
+
+		if cve.ContainsStr(searchedCVE) {
+			pageFinder.Add(cve)
+		}
+	}
+}
+
+func filterCVEList(cveMap []cvemodel.CVE, searchedCVE, excludedCVE string, pageFinder *CvePageFinder) {
 	searchedCVE = strings.ToUpper(searchedCVE)
 
 	for _, cve := range cveMap {
@@ -373,11 +389,96 @@ func (cveinfo BaseCveInfo) GetCVEListForImage(ctx context.Context, repo, ref str
 		return []cvemodel.CVE{}, imageCVESummary, zcommon.PageInfo{}, err
 	}
 
-	filterCVEList(cveMap, searchedCVE, excludedCVE, pageFinder)
+	filterCVEMap(cveMap, searchedCVE, excludedCVE, pageFinder)
 
 	cveList, pageInfo := pageFinder.Page()
 
 	return cveList, imageCVESummary, pageInfo, nil
+}
+
+func (cveinfo BaseCveInfo) GetCVEDiffListForImages(ctx context.Context, minuend, subtrahend, searchedCVE string,
+	excludedCVE string, pageInput cvemodel.PageInput,
+) ([]cvemodel.CVE, cvemodel.ImageCVESummary, zcommon.PageInfo, error) {
+	minuendRepo, minuendRef, _ := zcommon.GetImageDirAndReference(minuend)
+	subtrahendRepo, subtrahendRef, _ := zcommon.GetImageDirAndReference(subtrahend)
+
+	// get the CVEs of image and comparedImage
+	minuendCVEList, _, _, err := cveinfo.GetCVEListForImage(ctx, minuendRepo, minuendRef, searchedCVE, excludedCVE,
+		cvemodel.PageInput{})
+	if err != nil {
+		return nil, cvemodel.ImageCVESummary{}, zcommon.PageInfo{}, err
+	}
+
+	subtrahendCVEList, _, _, err := cveinfo.GetCVEListForImage(ctx, subtrahendRepo, subtrahendRef,
+		searchedCVE, excludedCVE, cvemodel.PageInput{})
+	if err != nil {
+		return nil, cvemodel.ImageCVESummary{}, zcommon.PageInfo{}, err
+	}
+
+	subtrahendCVEMap := map[string]cvemodel.CVE{}
+
+	for _, cve := range subtrahendCVEList {
+		cve := cve
+		subtrahendCVEMap[cve.ID] = cve
+	}
+
+	var (
+		count         int
+		unknownCount  int
+		lowCount      int
+		mediumCount   int
+		highCount     int
+		criticalCount int
+		maxSeverity   string
+
+		diffCVEs = []cvemodel.CVE{}
+	)
+
+	for i := range minuendCVEList {
+		if _, ok := subtrahendCVEMap[minuendCVEList[i].ID]; !ok {
+			diffCVEs = append(diffCVEs, minuendCVEList[i])
+
+			switch minuendCVEList[i].Severity {
+			case cvemodel.SeverityUnknown:
+				unknownCount++
+			case cvemodel.SeverityLow:
+				lowCount++
+			case cvemodel.SeverityMedium:
+				mediumCount++
+			case cvemodel.SeverityHigh:
+				highCount++
+			case cvemodel.SeverityCritical:
+				criticalCount++
+			}
+
+			if cvemodel.CompareSeverities(maxSeverity, minuendCVEList[i].Severity) > 0 {
+				maxSeverity = minuendCVEList[i].Severity
+			}
+		}
+	}
+
+	pageFinder, err := NewCvePageFinder(pageInput.Limit, pageInput.Offset, pageInput.SortBy)
+	if err != nil {
+		return nil, cvemodel.ImageCVESummary{}, zcommon.PageInfo{}, err
+	}
+
+	filterCVEList(diffCVEs, "", "", pageFinder)
+
+	cveList, pageInfo := pageFinder.Page()
+
+	count = unknownCount + lowCount + mediumCount + highCount + criticalCount
+
+	diffCVESummary := cvemodel.ImageCVESummary{
+		Count:         count,
+		UnknownCount:  unknownCount,
+		LowCount:      lowCount,
+		MediumCount:   mediumCount,
+		HighCount:     highCount,
+		CriticalCount: criticalCount,
+		MaxSeverity:   maxSeverity,
+	}
+
+	return cveList, diffCVESummary, pageInfo, nil
 }
 
 func (cveinfo BaseCveInfo) GetCVESummaryForImageMedia(ctx context.Context, repo, digestStr, mediaType string,

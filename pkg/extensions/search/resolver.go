@@ -277,6 +277,263 @@ func getCVEListForImage(
 	}, nil
 }
 
+func getCVEDiffListForImages(
+	ctx context.Context, //nolint:unparam // may be used in the future to filter by permissions
+	minuend gql_generated.ImageInput,
+	subtrahend gql_generated.ImageInput,
+	metaDB mTypes.MetaDB,
+	cveInfo cveinfo.CveInfo,
+	requestedPage *gql_generated.PageInput,
+	searchedCVE string,
+	excludedCVE string,
+	log log.Logger, //nolint:unparam // may be used by devs for debugging
+) (*gql_generated.CVEDiffResult, error) {
+	minuend, err := checkImageInput(ctx, minuend, metaDB)
+	if err != nil {
+		return nil, err
+	}
+
+	resultMinuend := getImageIdentifier(minuend)
+	resultSubtrahend := gql_generated.ImageIdentifier{}
+
+	if subtrahend.Repo != "" {
+		subtrahend, err = checkImageInput(ctx, subtrahend, metaDB)
+		if err != nil {
+			return nil, err
+		}
+		resultSubtrahend = getImageIdentifier(subtrahend)
+	} else {
+		// search for base images
+		// get minuend image meta
+		minuendSummary, err := metaDB.GetImageMeta(godigest.Digest(deref(minuend.Digest, "")))
+		if err != nil {
+			return &gql_generated.CVEDiffResult{}, err
+		}
+
+		// get the base images for the minuend
+		minuendBaseImages, err := metaDB.FilterTags(ctx, mTypes.AcceptOnlyRepo(minuend.Repo),
+			filterBaseImagesForMeta(minuendSummary))
+		if err != nil {
+			return &gql_generated.CVEDiffResult{}, err
+		}
+
+		// get the best base image as subtrahend
+		// get the one with most layers in common
+		imgLayers := map[string]struct{}{}
+
+		for _, layer := range minuendSummary.Manifests[0].Manifest.Layers {
+			imgLayers[layer.Digest.String()] = struct{}{}
+		}
+
+		bestMatchingScore := 0
+
+		for _, baseImage := range minuendBaseImages {
+			for _, baseManifest := range baseImage.Manifests {
+				currentMatchingScore := 0
+
+				for _, layer := range baseManifest.Manifest.Layers {
+					if _, ok := imgLayers[layer.Digest.String()]; ok {
+						currentMatchingScore++
+					}
+				}
+
+				if currentMatchingScore > bestMatchingScore {
+					bestMatchingScore = currentMatchingScore
+
+					resultSubtrahend = gql_generated.ImageIdentifier{
+						Repo:   baseImage.Repo,
+						Tag:    baseImage.Tag,
+						Digest: ref(baseImage.Manifests[0].Digest.String()),
+						Platform: &gql_generated.Platform{
+							Os:   ref(baseImage.Manifests[0].Config.OS),
+							Arch: ref(getArch(baseImage.Manifests[0].Config.Platform)),
+						},
+					}
+					subtrahend.Repo = baseImage.Repo
+					subtrahend.Tag = baseImage.Tag
+					subtrahend.Digest = ref(baseImage.Manifests[0].Digest.String())
+				}
+			}
+		}
+	}
+
+	minuendRepoRef := minuend.Repo + "@" + deref(minuend.Digest, "")
+	subtrahendRepoRef := subtrahend.Repo + "@" + deref(subtrahend.Digest, "")
+
+	diffCVEs, diffSummary, _, err := cveInfo.GetCVEDiffListForImages(ctx, minuendRepoRef, subtrahendRepoRef, searchedCVE,
+		excludedCVE, cvemodel.PageInput{
+			Limit:  deref(requestedPage.Limit, 0),
+			Offset: deref(requestedPage.Offset, 0),
+			SortBy: cvemodel.SortCriteria(deref(requestedPage.SortBy, gql_generated.SortCriteriaSeverity)),
+		})
+	if err != nil {
+		return nil, err
+	}
+
+	cveids := []*gql_generated.Cve{}
+
+	for _, cveDetail := range diffCVEs {
+		vulID := cveDetail.ID
+		desc := cveDetail.Description
+		title := cveDetail.Title
+		severity := cveDetail.Severity
+		referenceURL := cveDetail.Reference
+
+		pkgList := make([]*gql_generated.PackageInfo, 0)
+
+		for _, pkg := range cveDetail.PackageList {
+			pkg := pkg
+
+			pkgList = append(pkgList,
+				&gql_generated.PackageInfo{
+					Name:             &pkg.Name,
+					InstalledVersion: &pkg.InstalledVersion,
+					FixedVersion:     &pkg.FixedVersion,
+				},
+			)
+		}
+
+		cveids = append(cveids,
+			&gql_generated.Cve{
+				ID:          &vulID,
+				Title:       &title,
+				Description: &desc,
+				Severity:    &severity,
+				Reference:   &referenceURL,
+				PackageList: pkgList,
+			},
+		)
+	}
+
+	return &gql_generated.CVEDiffResult{
+		Minuend:    &resultMinuend,
+		Subtrahend: &resultSubtrahend,
+		Summary: &gql_generated.ImageVulnerabilitySummary{
+			Count:         &diffSummary.Count,
+			UnknownCount:  &diffSummary.UnknownCount,
+			LowCount:      &diffSummary.LowCount,
+			MediumCount:   &diffSummary.MediumCount,
+			HighCount:     &diffSummary.HighCount,
+			CriticalCount: &diffSummary.CriticalCount,
+			MaxSeverity:   &diffSummary.MaxSeverity,
+		},
+		CVEList: cveids,
+		Page:    &gql_generated.PageInfo{},
+	}, nil
+}
+
+func getImageIdentifier(img gql_generated.ImageInput) gql_generated.ImageIdentifier {
+	return gql_generated.ImageIdentifier{
+		Repo:     img.Repo,
+		Tag:      img.Tag,
+		Digest:   img.Digest,
+		Platform: getIdentifierPlatform(img.Platform),
+	}
+}
+
+func getIdentifierPlatform(platform *gql_generated.PlatformInput) *gql_generated.Platform {
+	if platform == nil {
+		return nil
+	}
+
+	return &gql_generated.Platform{
+		Os:   platform.Os,
+		Arch: platform.Arch,
+	}
+}
+
+// rename idea: identify image from input.
+func checkImageInput(ctx context.Context, imageInput gql_generated.ImageInput, metaDB mTypes.MetaDB,
+) (gql_generated.ImageInput, error) {
+	if imageInput.Repo == "" {
+		return gql_generated.ImageInput{}, zerr.ErrEmptyRepoName
+	}
+
+	if imageInput.Tag == "" {
+		return gql_generated.ImageInput{}, zerr.ErrEmptyTag
+	}
+
+	// try checking if the tag is a simple image first
+	repoMeta, err := metaDB.GetRepoMeta(ctx, imageInput.Repo)
+	if err != nil {
+		return gql_generated.ImageInput{}, err
+	}
+
+	descriptor, ok := repoMeta.Tags[imageInput.Tag]
+	if !ok {
+		return gql_generated.ImageInput{}, zerr.ErrImageNotFound
+	}
+
+	switch descriptor.MediaType {
+	case ispec.MediaTypeImageManifest:
+		imageInput.Digest = ref(descriptor.Digest)
+
+		return imageInput, nil
+	case ispec.MediaTypeImageIndex:
+		if dderef(imageInput.Digest) == "" && !isPlatformSpecified(imageInput.Platform) {
+			return gql_generated.ImageInput{},
+				fmt.Errorf("%w: platform or specific manifest digest needed", zerr.ErrAmbiguousInput)
+		}
+
+		imageMeta, err := metaDB.GetImageMeta(godigest.Digest(descriptor.Digest))
+		if err != nil {
+			return gql_generated.ImageInput{}, err
+		}
+
+		for _, manifest := range imageMeta.Manifests {
+			if manifest.Digest.String() == dderef(imageInput.Digest) ||
+				isMatchingPlatform(manifest.Config.Platform, dderef(imageInput.Platform)) {
+				imageInput.Digest = ref(manifest.Digest.String())
+				imageInput.Platform = &gql_generated.PlatformInput{
+					Os:   ref(manifest.Config.OS),
+					Arch: ref(getArch(manifest.Config.Platform)),
+				}
+
+				return imageInput, nil
+			}
+		}
+
+		return imageInput, zerr.ErrImageNotFound
+	}
+
+	return imageInput, nil
+}
+
+func isPlatformSpecified(platformInput *gql_generated.PlatformInput) bool {
+	if platformInput == nil {
+		return false
+	}
+
+	if dderef(platformInput.Os) == "" || dderef(platformInput.Arch) == "" {
+		return false
+	}
+
+	return true
+}
+
+func isMatchingPlatform(platform ispec.Platform, platformInput gql_generated.PlatformInput) bool {
+	if platform.OS != deref(platformInput.Os, "") {
+		return false
+	}
+
+	arch := getArch(platform)
+
+	if arch == deref(platformInput.Arch, "") {
+		return true
+	}
+
+	return true
+}
+
+func getArch(platform ispec.Platform) string {
+	arch := platform.Architecture
+	if arch != "" && platform.Variant != "" {
+		arch += "/" + platform.Variant
+	}
+
+	return arch
+}
+
 func FilterByTagInfo(tagsInfo []cvemodel.TagInfo) mTypes.FilterFunc {
 	return func(repoMeta mTypes.RepoMeta, imageMeta mTypes.ImageMeta) bool {
 		manifestDigest := imageMeta.Manifests[0].Digest.String()
@@ -999,6 +1256,47 @@ func filterBaseImages(image *gql_generated.ImageSummary) mTypes.FilterFunc {
 	}
 }
 
+func filterBaseImagesForMeta(image mTypes.ImageMeta) mTypes.FilterFunc {
+	return func(repoMeta mTypes.RepoMeta, imageMeta mTypes.ImageMeta) bool {
+		var addImageToList bool
+
+		manifest := imageMeta.Manifests[0]
+
+		for i := range image.Manifests {
+			manifestDigest := manifest.Digest.String()
+			if manifestDigest == image.Manifests[i].Digest.String() {
+				return false
+			}
+
+			addImageToList = true
+
+			for _, l := range manifest.Manifest.Layers {
+				foundLayer := false
+
+				for _, k := range image.Manifests[i].Manifest.Layers {
+					if l.Digest.String() == k.Digest.String() {
+						foundLayer = true
+
+						break
+					}
+				}
+
+				if !foundLayer {
+					addImageToList = false
+
+					break
+				}
+			}
+
+			if addImageToList {
+				return true
+			}
+		}
+
+		return false
+	}
+}
+
 func validateGlobalSearchInput(query string, filter *gql_generated.Filter,
 	requestedPage *gql_generated.PageInput,
 ) error {
@@ -1185,12 +1483,29 @@ func (p timeSlice) Swap(i, j int) {
 	p[i], p[j] = p[j], p[i]
 }
 
+// dderef is a default deref.
+func dderef[T any](pointer *T) T {
+	var defValue T
+
+	if pointer != nil {
+		return *pointer
+	}
+
+	return defValue
+}
+
 func deref[T any](pointer *T, defaultVal T) T {
 	if pointer != nil {
 		return *pointer
 	}
 
 	return defaultVal
+}
+
+func ref[T any](input T) *T {
+	ref := input
+
+	return &ref
 }
 
 func getImageList(ctx context.Context, repo string, metaDB mTypes.MetaDB, cveInfo cveinfo.CveInfo,
