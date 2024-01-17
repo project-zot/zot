@@ -36,7 +36,6 @@ import (
 	storageConstants "zotregistry.io/zot/pkg/storage/constants"
 	"zotregistry.io/zot/pkg/storage/s3"
 	storageTypes "zotregistry.io/zot/pkg/storage/types"
-	"zotregistry.io/zot/pkg/test/deprecated"
 	. "zotregistry.io/zot/pkg/test/image-utils"
 	"zotregistry.io/zot/pkg/test/inject"
 	"zotregistry.io/zot/pkg/test/mocks"
@@ -467,8 +466,11 @@ func TestGetOrasAndOCIReferrers(t *testing.T) {
 	_, imgStore, _ := createObjectsStore(testDir, tdir, true)
 
 	Convey("Upload test image", t, func(c C) {
-		cfg, layers, manifest, err := deprecated.GetImageComponents(100) //nolint:staticcheck
-		So(err, ShouldBeNil)
+		image := CreateDefaultImage()
+
+		manifest := image.Manifest
+		cfg := image.Config
+		layers := image.Layers
 
 		for _, content := range layers {
 			upload, err := imgStore.NewBlobUpload(repo)

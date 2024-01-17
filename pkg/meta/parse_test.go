@@ -26,7 +26,6 @@ import (
 	"zotregistry.io/zot/pkg/storage/local"
 	storageTypes "zotregistry.io/zot/pkg/storage/types"
 	tcommon "zotregistry.io/zot/pkg/test/common"
-	"zotregistry.io/zot/pkg/test/deprecated"
 	. "zotregistry.io/zot/pkg/test/image-utils"
 	"zotregistry.io/zot/pkg/test/mocks"
 	ociutils "zotregistry.io/zot/pkg/test/oci-utils"
@@ -368,15 +367,9 @@ func RunParseStorageTests(rootDir string, metaDB mTypes.MetaDB, log log.Logger) 
 
 		signedManifestDigest := godigest.FromBytes(manifestBlob)
 
-		config, layers, manifest, err := deprecated.GetRandomImageComponents(100) //nolint:staticcheck
-		So(err, ShouldBeNil)
+		image := CreateRandomImage()
 
-		err = WriteImageToFileSystem(
-			Image{
-				Config:   config,
-				Layers:   layers,
-				Manifest: manifest,
-			}, repo, signatureTag, storeController)
+		err = WriteImageToFileSystem(image, repo, signatureTag, storeController)
 		So(err, ShouldBeNil)
 
 		// remove tag2 from index.json
@@ -427,37 +420,26 @@ func RunParseStorageTests(rootDir string, metaDB mTypes.MetaDB, log log.Logger) 
 			log, monitoring.NewMetricsServer(false, log), nil, nil)
 
 		storeController := storage.StoreController{DefaultStore: imageStore}
-		// add an image
-		config, layers, manifest, err := deprecated.GetRandomImageComponents(100) //nolint:staticcheck
-		So(err, ShouldBeNil)
 
-		err = WriteImageToFileSystem(
-			Image{
-				Config:   config,
-				Layers:   layers,
-				Manifest: manifest,
-			}, repo, "tag1", storeController)
+		// add an image
+		image := CreateRandomImage()
+
+		err := WriteImageToFileSystem(image, repo, "tag1", storeController)
 		So(err, ShouldBeNil)
 
 		// add mock cosign signature without pushing the signed image
-		image, err := deprecated.GetRandomImage() //nolint:staticcheck
+		image = CreateRandomImage()
 		So(err, ShouldBeNil)
 
 		signatureTag, err := signature.GetCosignSignatureTagForManifest(image.Manifest)
 		So(err, ShouldBeNil)
 
-		missingImageDigest := image.Digest()
+		missingImageDigest := image.ManifestDescriptor.Digest
 
 		// get the body of the signature
-		config, layers, manifest, err = deprecated.GetRandomImageComponents(100) //nolint:staticcheck
-		So(err, ShouldBeNil)
+		signature := CreateRandomImage()
 
-		err = WriteImageToFileSystem(
-			Image{
-				Config:   config,
-				Layers:   layers,
-				Manifest: manifest,
-			}, repo, signatureTag, storeController)
+		err = WriteImageToFileSystem(signature, repo, signatureTag, storeController)
 		So(err, ShouldBeNil)
 
 		err = meta.ParseStorage(metaDB, storeController, log) //nolint: contextcheck

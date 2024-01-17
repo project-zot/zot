@@ -4,9 +4,7 @@
 package trivy
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"os"
 	"path"
 	"testing"
@@ -29,38 +27,17 @@ import (
 	"zotregistry.io/zot/pkg/storage/local"
 	storageTypes "zotregistry.io/zot/pkg/storage/types"
 	test "zotregistry.io/zot/pkg/test/common"
-	"zotregistry.io/zot/pkg/test/deprecated"
 	. "zotregistry.io/zot/pkg/test/image-utils"
 	"zotregistry.io/zot/pkg/test/mocks"
 )
 
-func generateTestImage(storeController storage.StoreController, image string) {
-	repoName, tag := common.GetImageDirAndTag(image)
+func generateTestImage(storeController storage.StoreController, imageName string) {
+	repoName, tag := common.GetImageDirAndTag(imageName)
 
-	config, layers, manifest, err := deprecated.GetImageComponents(10) //nolint:staticcheck
-	So(err, ShouldBeNil)
+	image := CreateRandomImage()
 
-	store := storeController.GetImageStore(repoName)
-	err = store.InitRepo(repoName)
-	So(err, ShouldBeNil)
-
-	for _, layerBlob := range layers {
-		layerReader := bytes.NewReader(layerBlob)
-		layerDigest := godigest.FromBytes(layerBlob)
-		_, _, err = store.FullBlobUpload(repoName, layerReader, layerDigest)
-		So(err, ShouldBeNil)
-	}
-
-	configBlob, err := json.Marshal(config)
-	So(err, ShouldBeNil)
-	configReader := bytes.NewReader(configBlob)
-	configDigest := godigest.FromBytes(configBlob)
-	_, _, err = store.FullBlobUpload(repoName, configReader, configDigest)
-	So(err, ShouldBeNil)
-
-	manifestBlob, err := json.Marshal(manifest)
-	So(err, ShouldBeNil)
-	_, _, err = store.PutImageManifest(repoName, tag, ispec.MediaTypeImageManifest, manifestBlob)
+	err := WriteImageToFileSystem(
+		image, repoName, tag, storeController)
 	So(err, ShouldBeNil)
 }
 
