@@ -38,6 +38,10 @@ func AcceptAllRepoTag(repo, tag string) bool {
 	return true
 }
 
+func AcceptOnlyRepo(repo string) func(repo, tag string) bool {
+	return func(r, t string) bool { return repo == r }
+}
+
 func AcceptAllImageMeta(repoMeta RepoMeta, imageMeta ImageMeta) bool {
 	return true
 }

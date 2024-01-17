@@ -59,6 +59,14 @@ type ComplexityRoot struct {
 		Title       func(childComplexity int) int
 	}
 
+	CVEDiffResult struct {
+		CVEList    func(childComplexity int) int
+		Minuend    func(childComplexity int) int
+		Page       func(childComplexity int) int
+		Subtrahend func(childComplexity int) int
+		Summary    func(childComplexity int) int
+	}
+
 	CVEResultForImage struct {
 		CVEList func(childComplexity int) int
 		Page    func(childComplexity int) int
@@ -79,6 +87,13 @@ type ComplexityRoot struct {
 		Created    func(childComplexity int) int
 		CreatedBy  func(childComplexity int) int
 		EmptyLayer func(childComplexity int) int
+	}
+
+	ImageIdentifier struct {
+		Digest   func(childComplexity int) int
+		Platform func(childComplexity int) int
+		Repo     func(childComplexity int) int
+		Tag      func(childComplexity int) int
 	}
 
 	ImageSummary struct {
@@ -171,6 +186,7 @@ type ComplexityRoot struct {
 	Query struct {
 		BaseImageList           func(childComplexity int, image string, digest *string, requestedPage *PageInput) int
 		BookmarkedRepos         func(childComplexity int, requestedPage *PageInput) int
+		CVEDiffListForImages    func(childComplexity int, minuend ImageInput, subtrahend ImageInput, requestedPage *PageInput, searchedCve *string, excludedCve *string) int
 		CVEListForImage         func(childComplexity int, image string, requestedPage *PageInput, searchedCve *string, excludedCve *string, severity *string) int
 		DerivedImageList        func(childComplexity int, image string, digest *string, requestedPage *PageInput) int
 		ExpandedRepoInfo        func(childComplexity int, repo string) int
@@ -221,6 +237,7 @@ type ComplexityRoot struct {
 
 type QueryResolver interface {
 	CVEListForImage(ctx context.Context, image string, requestedPage *PageInput, searchedCve *string, excludedCve *string, severity *string) (*CVEResultForImage, error)
+	CVEDiffListForImages(ctx context.Context, minuend ImageInput, subtrahend ImageInput, requestedPage *PageInput, searchedCve *string, excludedCve *string) (*CVEDiffResult, error)
 	ImageListForCve(ctx context.Context, id string, filter *Filter, requestedPage *PageInput) (*PaginatedImagesResult, error)
 	ImageListWithCVEFixed(ctx context.Context, id string, image string, filter *Filter, requestedPage *PageInput) (*PaginatedImagesResult, error)
 	ImageListForDigest(ctx context.Context, id string, requestedPage *PageInput) (*PaginatedImagesResult, error)
@@ -310,6 +327,41 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 		}
 
 		return e.complexity.CVE.Title(childComplexity), true
+
+	case "CVEDiffResult.CVEList":
+		if e.complexity.CVEDiffResult.CVEList == nil {
+			break
+		}
+
+		return e.complexity.CVEDiffResult.CVEList(childComplexity), true
+
+	case "CVEDiffResult.Minuend":
+		if e.complexity.CVEDiffResult.Minuend == nil {
+			break
+		}
+
+		return e.complexity.CVEDiffResult.Minuend(childComplexity), true
+
+	case "CVEDiffResult.Page":
+		if e.complexity.CVEDiffResult.Page == nil {
+			break
+		}
+
+		return e.complexity.CVEDiffResult.Page(childComplexity), true
+
+	case "CVEDiffResult.Subtrahend":
+		if e.complexity.CVEDiffResult.Subtrahend == nil {
+			break
+		}
+
+		return e.complexity.CVEDiffResult.Subtrahend(childComplexity), true
+
+	case "CVEDiffResult.Summary":
+		if e.complexity.CVEDiffResult.Summary == nil {
+			break
+		}
+
+		return e.complexity.CVEDiffResult.Summary(childComplexity), true
 
 	case "CVEResultForImage.CVEList":
 		if e.complexity.CVEResultForImage.CVEList == nil {
@@ -401,6 +453,34 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 		}
 
 		return e.complexity.HistoryDescription.EmptyLayer(childComplexity), true
+
+	case "ImageIdentifier.Digest":
+		if e.complexity.ImageIdentifier.Digest == nil {
+			break
+		}
+
+		return e.complexity.ImageIdentifier.Digest(childComplexity), true
+
+	case "ImageIdentifier.Platform":
+		if e.complexity.ImageIdentifier.Platform == nil {
+			break
+		}
+
+		return e.complexity.ImageIdentifier.Platform(childComplexity), true
+
+	case "ImageIdentifier.Repo":
+		if e.complexity.ImageIdentifier.Repo == nil {
+			break
+		}
+
+		return e.complexity.ImageIdentifier.Repo(childComplexity), true
+
+	case "ImageIdentifier.Tag":
+		if e.complexity.ImageIdentifier.Tag == nil {
+			break
+		}
+
+		return e.complexity.ImageIdentifier.Tag(childComplexity), true
 
 	case "ImageSummary.Authors":
 		if e.complexity.ImageSummary.Authors == nil {
@@ -825,6 +905,18 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 
 		return e.complexity.Query.BookmarkedRepos(childComplexity, args["requestedPage"].(*PageInput)), true
 
+	case "Query.CVEDiffListForImages":
+		if e.complexity.Query.CVEDiffListForImages == nil {
+			break
+		}
+
+		args, err := ec.field_Query_CVEDiffListForImages_args(context.TODO(), rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.complexity.Query.CVEDiffListForImages(childComplexity, args["minuend"].(ImageInput), args["subtrahend"].(ImageInput), args["requestedPage"].(*PageInput), args["searchedCVE"].(*string), args["excludedCVE"].(*string)), true
+
 	case "Query.CVEListForImage":
 		if e.complexity.Query.CVEListForImage == nil {
 			break
@@ -1125,7 +1217,9 @@ func (e *executableSchema) Exec(ctx context.Context) graphql.ResponseHandler {
 	ec := executionContext{rc, e, 0, 0, make(chan graphql.DeferredResult)}
 	inputUnmarshalMap := graphql.BuildUnmarshalerMap(
 		ec.unmarshalInputFilter,
+		ec.unmarshalInputImageInput,
 		ec.unmarshalInputPageInput,
+		ec.unmarshalInputPlatformInput,
 	)
 	first := true
 
@@ -1231,6 +1325,54 @@ type CVEResultForImage {
     Tag: String
     """
     List of CVE objects which affect this specific image:tag
+    """
+    CVEList: [CVE]
+    """
+    Summary of the findings for this image
+    """
+    Summary: ImageVulnerabilitySummary
+    """
+    The CVE pagination information, see PageInfo object for more details
+    """
+    Page: PageInfo
+}
+
+"""
+ImageIdentifier
+"""
+type ImageIdentifier {
+    """
+    Repo name of the image
+    """
+    Repo: String!
+    """
+    The tag of the image
+    """
+    Tag: String!
+    """
+    The digest of the image
+    """
+    Digest: String
+    """
+    The platform of the image
+    """
+    Platform: Platform
+}
+
+"""
+Contains the diff results of subtracting Subtrahend's CVEs from Minuend's CVEs 
+"""
+type CVEDiffResult {
+    """
+    Minuend is the image from which CVE's we subtract
+    """
+    Minuend: ImageIdentifier!
+    """
+    Subtrahend is the image which CVE's are subtracted
+    """
+    Subtrahend: ImageIdentifier!
+    """
+    List of CVE objects which are present in minuend but not in subtrahend
     """
     CVEList: [CVE]
     """
@@ -1778,6 +1920,42 @@ input PageInput {
 }
 
 """
+PlatformInput contains the Os and the Arch of the input image
+"""
+input PlatformInput {
+    """
+    The os of the image
+    """
+    Os: String
+    """
+    The arch of the image
+    """
+    Arch: String
+}
+
+"""
+ImageInput 
+"""
+input ImageInput {
+    """
+    Repo name of the image
+    """
+    repo: String!
+    """
+    The tag of the image
+    """
+    tag: String!
+    """
+    The digest of the image
+    """
+    digest: String
+    """
+    The platform of the image
+    """
+    platform: PlatformInput
+}
+
+"""
 Paginated list of RepoSummary objects
 """
 type PaginatedReposResult {
@@ -1854,6 +2032,22 @@ type Query {
         "Severity of the CVEs that should be present in the returned results"
         severity: String
     ): CVEResultForImage!
+
+    """
+    Returns a list with CVE's that are present in ` + "`" + `image` + "`" + ` but not in ` + "`" + `comparedImage` + "`" + `
+    """
+    CVEDiffListForImages(
+        "Image name in format ` + "`" + `repository:tag` + "`" + ` or ` + "`" + `repository@digest` + "`" + `"
+        minuend: ImageInput!,
+        "Compared image name in format ` + "`" + `repository:tag` + "`" + ` or ` + "`" + `repository@digest` + "`" + `"
+        subtrahend: ImageInput!,
+        "Sets the parameters of the requested page"
+        requestedPage: PageInput
+        "Search term for specific CVE by title/id"
+        searchedCVE: String
+        "Search term that must not be present in the returned results"
+        excludedCVE: String
+    ): CVEDiffResult!
 
     """
     Returns a list of images vulnerable to the CVE of the specified ID
@@ -2047,6 +2241,57 @@ func (ec *executionContext) field_Query_BookmarkedRepos_args(ctx context.Context
 		}
 	}
 	args["requestedPage"] = arg0
+	return args, nil
+}
+
+func (ec *executionContext) field_Query_CVEDiffListForImages_args(ctx context.Context, rawArgs map[string]interface{}) (map[string]interface{}, error) {
+	var err error
+	args := map[string]interface{}{}
+	var arg0 ImageInput
+	if tmp, ok := rawArgs["minuend"]; ok {
+		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("minuend"))
+		arg0, err = ec.unmarshalNImageInput2zotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐImageInput(ctx, tmp)
+		if err != nil {
+			return nil, err
+		}
+	}
+	args["minuend"] = arg0
+	var arg1 ImageInput
+	if tmp, ok := rawArgs["subtrahend"]; ok {
+		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("subtrahend"))
+		arg1, err = ec.unmarshalNImageInput2zotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐImageInput(ctx, tmp)
+		if err != nil {
+			return nil, err
+		}
+	}
+	args["subtrahend"] = arg1
+	var arg2 *PageInput
+	if tmp, ok := rawArgs["requestedPage"]; ok {
+		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("requestedPage"))
+		arg2, err = ec.unmarshalOPageInput2ᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐPageInput(ctx, tmp)
+		if err != nil {
+			return nil, err
+		}
+	}
+	args["requestedPage"] = arg2
+	var arg3 *string
+	if tmp, ok := rawArgs["searchedCVE"]; ok {
+		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("searchedCVE"))
+		arg3, err = ec.unmarshalOString2ᚖstring(ctx, tmp)
+		if err != nil {
+			return nil, err
+		}
+	}
+	args["searchedCVE"] = arg3
+	var arg4 *string
+	if tmp, ok := rawArgs["excludedCVE"]; ok {
+		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("excludedCVE"))
+		arg4, err = ec.unmarshalOString2ᚖstring(ctx, tmp)
+		if err != nil {
+			return nil, err
+		}
+	}
+	args["excludedCVE"] = arg4
 	return args, nil
 }
 
@@ -2774,6 +3019,273 @@ func (ec *executionContext) fieldContext_CVE_PackageList(ctx context.Context, fi
 	return fc, nil
 }
 
+func (ec *executionContext) _CVEDiffResult_Minuend(ctx context.Context, field graphql.CollectedField, obj *CVEDiffResult) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_CVEDiffResult_Minuend(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.Minuend, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(*ImageIdentifier)
+	fc.Result = res
+	return ec.marshalNImageIdentifier2ᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐImageIdentifier(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_CVEDiffResult_Minuend(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "CVEDiffResult",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "Repo":
+				return ec.fieldContext_ImageIdentifier_Repo(ctx, field)
+			case "Tag":
+				return ec.fieldContext_ImageIdentifier_Tag(ctx, field)
+			case "Digest":
+				return ec.fieldContext_ImageIdentifier_Digest(ctx, field)
+			case "Platform":
+				return ec.fieldContext_ImageIdentifier_Platform(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type ImageIdentifier", field.Name)
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _CVEDiffResult_Subtrahend(ctx context.Context, field graphql.CollectedField, obj *CVEDiffResult) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_CVEDiffResult_Subtrahend(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.Subtrahend, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(*ImageIdentifier)
+	fc.Result = res
+	return ec.marshalNImageIdentifier2ᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐImageIdentifier(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_CVEDiffResult_Subtrahend(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "CVEDiffResult",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "Repo":
+				return ec.fieldContext_ImageIdentifier_Repo(ctx, field)
+			case "Tag":
+				return ec.fieldContext_ImageIdentifier_Tag(ctx, field)
+			case "Digest":
+				return ec.fieldContext_ImageIdentifier_Digest(ctx, field)
+			case "Platform":
+				return ec.fieldContext_ImageIdentifier_Platform(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type ImageIdentifier", field.Name)
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _CVEDiffResult_CVEList(ctx context.Context, field graphql.CollectedField, obj *CVEDiffResult) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_CVEDiffResult_CVEList(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.CVEList, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		return graphql.Null
+	}
+	res := resTmp.([]*Cve)
+	fc.Result = res
+	return ec.marshalOCVE2ᚕᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐCve(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_CVEDiffResult_CVEList(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "CVEDiffResult",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "Id":
+				return ec.fieldContext_CVE_Id(ctx, field)
+			case "Title":
+				return ec.fieldContext_CVE_Title(ctx, field)
+			case "Description":
+				return ec.fieldContext_CVE_Description(ctx, field)
+			case "Reference":
+				return ec.fieldContext_CVE_Reference(ctx, field)
+			case "Severity":
+				return ec.fieldContext_CVE_Severity(ctx, field)
+			case "PackageList":
+				return ec.fieldContext_CVE_PackageList(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type CVE", field.Name)
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _CVEDiffResult_Summary(ctx context.Context, field graphql.CollectedField, obj *CVEDiffResult) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_CVEDiffResult_Summary(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.Summary, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		return graphql.Null
+	}
+	res := resTmp.(*ImageVulnerabilitySummary)
+	fc.Result = res
+	return ec.marshalOImageVulnerabilitySummary2ᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐImageVulnerabilitySummary(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_CVEDiffResult_Summary(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "CVEDiffResult",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "MaxSeverity":
+				return ec.fieldContext_ImageVulnerabilitySummary_MaxSeverity(ctx, field)
+			case "Count":
+				return ec.fieldContext_ImageVulnerabilitySummary_Count(ctx, field)
+			case "UnknownCount":
+				return ec.fieldContext_ImageVulnerabilitySummary_UnknownCount(ctx, field)
+			case "LowCount":
+				return ec.fieldContext_ImageVulnerabilitySummary_LowCount(ctx, field)
+			case "MediumCount":
+				return ec.fieldContext_ImageVulnerabilitySummary_MediumCount(ctx, field)
+			case "HighCount":
+				return ec.fieldContext_ImageVulnerabilitySummary_HighCount(ctx, field)
+			case "CriticalCount":
+				return ec.fieldContext_ImageVulnerabilitySummary_CriticalCount(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type ImageVulnerabilitySummary", field.Name)
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _CVEDiffResult_Page(ctx context.Context, field graphql.CollectedField, obj *CVEDiffResult) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_CVEDiffResult_Page(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.Page, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		return graphql.Null
+	}
+	res := resTmp.(*PageInfo)
+	fc.Result = res
+	return ec.marshalOPageInfo2ᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐPageInfo(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_CVEDiffResult_Page(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "CVEDiffResult",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "TotalCount":
+				return ec.fieldContext_PageInfo_TotalCount(ctx, field)
+			case "ItemCount":
+				return ec.fieldContext_PageInfo_ItemCount(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type PageInfo", field.Name)
+		},
+	}
+	return fc, nil
+}
+
 func (ec *executionContext) _CVEResultForImage_Tag(ctx context.Context, field graphql.CollectedField, obj *CVEResultForImage) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_CVEResultForImage_Tag(ctx, field)
 	if err != nil {
@@ -3418,6 +3930,182 @@ func (ec *executionContext) fieldContext_HistoryDescription_EmptyLayer(ctx conte
 		IsResolver: false,
 		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
 			return nil, errors.New("field of type Boolean does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _ImageIdentifier_Repo(ctx context.Context, field graphql.CollectedField, obj *ImageIdentifier) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_ImageIdentifier_Repo(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.Repo, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(string)
+	fc.Result = res
+	return ec.marshalNString2string(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_ImageIdentifier_Repo(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "ImageIdentifier",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type String does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _ImageIdentifier_Tag(ctx context.Context, field graphql.CollectedField, obj *ImageIdentifier) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_ImageIdentifier_Tag(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.Tag, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(string)
+	fc.Result = res
+	return ec.marshalNString2string(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_ImageIdentifier_Tag(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "ImageIdentifier",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type String does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _ImageIdentifier_Digest(ctx context.Context, field graphql.CollectedField, obj *ImageIdentifier) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_ImageIdentifier_Digest(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.Digest, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		return graphql.Null
+	}
+	res := resTmp.(*string)
+	fc.Result = res
+	return ec.marshalOString2ᚖstring(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_ImageIdentifier_Digest(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "ImageIdentifier",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type String does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _ImageIdentifier_Platform(ctx context.Context, field graphql.CollectedField, obj *ImageIdentifier) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_ImageIdentifier_Platform(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.Platform, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		return graphql.Null
+	}
+	res := resTmp.(*Platform)
+	fc.Result = res
+	return ec.marshalOPlatform2ᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐPlatform(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_ImageIdentifier_Platform(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "ImageIdentifier",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "Os":
+				return ec.fieldContext_Platform_Os(ctx, field)
+			case "Arch":
+				return ec.fieldContext_Platform_Arch(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type Platform", field.Name)
 		},
 	}
 	return fc, nil
@@ -6047,6 +6735,73 @@ func (ec *executionContext) fieldContext_Query_CVEListForImage(ctx context.Conte
 	}()
 	ctx = graphql.WithFieldContext(ctx, fc)
 	if fc.Args, err = ec.field_Query_CVEListForImage_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Query_CVEDiffListForImages(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_Query_CVEDiffListForImages(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return ec.resolvers.Query().CVEDiffListForImages(rctx, fc.Args["minuend"].(ImageInput), fc.Args["subtrahend"].(ImageInput), fc.Args["requestedPage"].(*PageInput), fc.Args["searchedCVE"].(*string), fc.Args["excludedCVE"].(*string))
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(*CVEDiffResult)
+	fc.Result = res
+	return ec.marshalNCVEDiffResult2ᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐCVEDiffResult(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_Query_CVEDiffListForImages(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Query",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "Minuend":
+				return ec.fieldContext_CVEDiffResult_Minuend(ctx, field)
+			case "Subtrahend":
+				return ec.fieldContext_CVEDiffResult_Subtrahend(ctx, field)
+			case "CVEList":
+				return ec.fieldContext_CVEDiffResult_CVEList(ctx, field)
+			case "Summary":
+				return ec.fieldContext_CVEDiffResult_Summary(ctx, field)
+			case "Page":
+				return ec.fieldContext_CVEDiffResult_Page(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type CVEDiffResult", field.Name)
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Query_CVEDiffListForImages_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
 		ec.Error(ctx, err)
 		return fc, err
 	}
@@ -9839,6 +10594,54 @@ func (ec *executionContext) unmarshalInputFilter(ctx context.Context, obj interf
 	return it, nil
 }
 
+func (ec *executionContext) unmarshalInputImageInput(ctx context.Context, obj interface{}) (ImageInput, error) {
+	var it ImageInput
+	asMap := map[string]interface{}{}
+	for k, v := range obj.(map[string]interface{}) {
+		asMap[k] = v
+	}
+
+	fieldsInOrder := [...]string{"repo", "tag", "digest", "platform"}
+	for _, k := range fieldsInOrder {
+		v, ok := asMap[k]
+		if !ok {
+			continue
+		}
+		switch k {
+		case "repo":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("repo"))
+			data, err := ec.unmarshalNString2string(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.Repo = data
+		case "tag":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("tag"))
+			data, err := ec.unmarshalNString2string(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.Tag = data
+		case "digest":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("digest"))
+			data, err := ec.unmarshalOString2ᚖstring(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.Digest = data
+		case "platform":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("platform"))
+			data, err := ec.unmarshalOPlatformInput2ᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐPlatformInput(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.Platform = data
+		}
+	}
+
+	return it, nil
+}
+
 func (ec *executionContext) unmarshalInputPageInput(ctx context.Context, obj interface{}) (PageInput, error) {
 	var it PageInput
 	asMap := map[string]interface{}{}
@@ -9874,6 +10677,40 @@ func (ec *executionContext) unmarshalInputPageInput(ctx context.Context, obj int
 				return it, err
 			}
 			it.SortBy = data
+		}
+	}
+
+	return it, nil
+}
+
+func (ec *executionContext) unmarshalInputPlatformInput(ctx context.Context, obj interface{}) (PlatformInput, error) {
+	var it PlatformInput
+	asMap := map[string]interface{}{}
+	for k, v := range obj.(map[string]interface{}) {
+		asMap[k] = v
+	}
+
+	fieldsInOrder := [...]string{"Os", "Arch"}
+	for _, k := range fieldsInOrder {
+		v, ok := asMap[k]
+		if !ok {
+			continue
+		}
+		switch k {
+		case "Os":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("Os"))
+			data, err := ec.unmarshalOString2ᚖstring(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.Os = data
+		case "Arch":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("Arch"))
+			data, err := ec.unmarshalOString2ᚖstring(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.Arch = data
 		}
 	}
 
@@ -9949,6 +10786,56 @@ func (ec *executionContext) _CVE(ctx context.Context, sel ast.SelectionSet, obj 
 			out.Values[i] = ec._CVE_Severity(ctx, field, obj)
 		case "PackageList":
 			out.Values[i] = ec._CVE_PackageList(ctx, field, obj)
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.deferred, int32(len(deferred)))
+
+	for label, dfs := range deferred {
+		ec.processDeferredGroup(graphql.DeferredGroup{
+			Label:    label,
+			Path:     graphql.GetPath(ctx),
+			FieldSet: dfs,
+			Context:  ctx,
+		})
+	}
+
+	return out
+}
+
+var cVEDiffResultImplementors = []string{"CVEDiffResult"}
+
+func (ec *executionContext) _CVEDiffResult(ctx context.Context, sel ast.SelectionSet, obj *CVEDiffResult) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, cVEDiffResultImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferred := make(map[string]*graphql.FieldSet)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("CVEDiffResult")
+		case "Minuend":
+			out.Values[i] = ec._CVEDiffResult_Minuend(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "Subtrahend":
+			out.Values[i] = ec._CVEDiffResult_Subtrahend(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "CVEList":
+			out.Values[i] = ec._CVEDiffResult_CVEList(ctx, field, obj)
+		case "Summary":
+			out.Values[i] = ec._CVEDiffResult_Summary(ctx, field, obj)
+		case "Page":
+			out.Values[i] = ec._CVEDiffResult_Page(ctx, field, obj)
 		default:
 			panic("unknown field " + strconv.Quote(field.Name))
 		}
@@ -10077,6 +10964,54 @@ func (ec *executionContext) _HistoryDescription(ctx context.Context, sel ast.Sel
 			out.Values[i] = ec._HistoryDescription_Comment(ctx, field, obj)
 		case "EmptyLayer":
 			out.Values[i] = ec._HistoryDescription_EmptyLayer(ctx, field, obj)
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.deferred, int32(len(deferred)))
+
+	for label, dfs := range deferred {
+		ec.processDeferredGroup(graphql.DeferredGroup{
+			Label:    label,
+			Path:     graphql.GetPath(ctx),
+			FieldSet: dfs,
+			Context:  ctx,
+		})
+	}
+
+	return out
+}
+
+var imageIdentifierImplementors = []string{"ImageIdentifier"}
+
+func (ec *executionContext) _ImageIdentifier(ctx context.Context, sel ast.SelectionSet, obj *ImageIdentifier) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, imageIdentifierImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferred := make(map[string]*graphql.FieldSet)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("ImageIdentifier")
+		case "Repo":
+			out.Values[i] = ec._ImageIdentifier_Repo(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "Tag":
+			out.Values[i] = ec._ImageIdentifier_Tag(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "Digest":
+			out.Values[i] = ec._ImageIdentifier_Digest(ctx, field, obj)
+		case "Platform":
+			out.Values[i] = ec._ImageIdentifier_Platform(ctx, field, obj)
 		default:
 			panic("unknown field " + strconv.Quote(field.Name))
 		}
@@ -10595,6 +11530,28 @@ func (ec *executionContext) _Query(ctx context.Context, sel ast.SelectionSet) gr
 					}
 				}()
 				res = ec._Query_CVEListForImage(ctx, field)
+				if res == graphql.Null {
+					atomic.AddUint32(&fs.Invalids, 1)
+				}
+				return res
+			}
+
+			rrm := func(ctx context.Context) graphql.Marshaler {
+				return ec.OperationContext.RootResolverMiddleware(ctx,
+					func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
+			}
+
+			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return rrm(innerCtx) })
+		case "CVEDiffListForImages":
+			field := field
+
+			innerFunc := func(ctx context.Context, fs *graphql.FieldSet) (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._Query_CVEDiffListForImages(ctx, field)
 				if res == graphql.Null {
 					atomic.AddUint32(&fs.Invalids, 1)
 				}
@@ -11484,6 +12441,20 @@ func (ec *executionContext) marshalNBoolean2bool(ctx context.Context, sel ast.Se
 	return res
 }
 
+func (ec *executionContext) marshalNCVEDiffResult2zotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐCVEDiffResult(ctx context.Context, sel ast.SelectionSet, v CVEDiffResult) graphql.Marshaler {
+	return ec._CVEDiffResult(ctx, sel, &v)
+}
+
+func (ec *executionContext) marshalNCVEDiffResult2ᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐCVEDiffResult(ctx context.Context, sel ast.SelectionSet, v *CVEDiffResult) graphql.Marshaler {
+	if v == nil {
+		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
+			ec.Errorf(ctx, "the requested element is null which the schema does not allow")
+		}
+		return graphql.Null
+	}
+	return ec._CVEDiffResult(ctx, sel, v)
+}
+
 func (ec *executionContext) marshalNCVEResultForImage2zotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐCVEResultForImage(ctx context.Context, sel ast.SelectionSet, v CVEResultForImage) graphql.Marshaler {
 	return ec._CVEResultForImage(ctx, sel, &v)
 }
@@ -11510,6 +12481,21 @@ func (ec *executionContext) marshalNGlobalSearchResult2ᚖzotregistryᚗdevᚋzo
 		return graphql.Null
 	}
 	return ec._GlobalSearchResult(ctx, sel, v)
+}
+
+func (ec *executionContext) marshalNImageIdentifier2ᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐImageIdentifier(ctx context.Context, sel ast.SelectionSet, v *ImageIdentifier) graphql.Marshaler {
+	if v == nil {
+		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
+			ec.Errorf(ctx, "the requested element is null which the schema does not allow")
+		}
+		return graphql.Null
+	}
+	return ec._ImageIdentifier(ctx, sel, v)
+}
+
+func (ec *executionContext) unmarshalNImageInput2zotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐImageInput(ctx context.Context, v interface{}) (ImageInput, error) {
+	res, err := ec.unmarshalInputImageInput(ctx, v)
+	return res, graphql.ErrorOnPath(ctx, err)
 }
 
 func (ec *executionContext) marshalNImageSummary2zotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐImageSummary(ctx context.Context, sel ast.SelectionSet, v ImageSummary) graphql.Marshaler {
@@ -12407,6 +13393,14 @@ func (ec *executionContext) marshalOPlatform2ᚖzotregistryᚗdevᚋzotᚋpkgᚋ
 		return graphql.Null
 	}
 	return ec._Platform(ctx, sel, v)
+}
+
+func (ec *executionContext) unmarshalOPlatformInput2ᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐPlatformInput(ctx context.Context, v interface{}) (*PlatformInput, error) {
+	if v == nil {
+		return nil, nil
+	}
+	res, err := ec.unmarshalInputPlatformInput(ctx, v)
+	return &res, graphql.ErrorOnPath(ctx, err)
 }
 
 func (ec *executionContext) marshalOReferrer2ᚕᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐReferrer(ctx context.Context, sel ast.SelectionSet, v []*Referrer) graphql.Marshaler {

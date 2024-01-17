@@ -34,6 +34,54 @@ type CVEResultForImage {
 }
 
 """
+ImageIdentifier
+"""
+type ImageIdentifier {
+    """
+    Repo name of the image
+    """
+    Repo: String!
+    """
+    The tag of the image
+    """
+    Tag: String!
+    """
+    The digest of the image
+    """
+    Digest: String
+    """
+    The platform of the image
+    """
+    Platform: Platform
+}
+
+"""
+Contains the diff results of subtracting Subtrahend's CVEs from Minuend's CVEs 
+"""
+type CVEDiffResult {
+    """
+    Minuend is the image from which CVE's we subtract
+    """
+    Minuend: ImageIdentifier!
+    """
+    Subtrahend is the image which CVE's are subtracted
+    """
+    Subtrahend: ImageIdentifier!
+    """
+    List of CVE objects which are present in minuend but not in subtrahend
+    """
+    CVEList: [CVE]
+    """
+    Summary of the findings for this image
+    """
+    Summary: ImageVulnerabilitySummary
+    """
+    The CVE pagination information, see PageInfo object for more details
+    """
+    Page: PageInfo
+}
+
+"""
 Contains various details about the CVE (Common Vulnerabilities and Exposures)
 and a list of PackageInfo about the affected packages
 """
@@ -568,6 +616,42 @@ input PageInput {
 }
 
 """
+PlatformInput contains the Os and the Arch of the input image
+"""
+input PlatformInput {
+    """
+    The os of the image
+    """
+    Os: String
+    """
+    The arch of the image
+    """
+    Arch: String
+}
+
+"""
+ImageInput 
+"""
+input ImageInput {
+    """
+    Repo name of the image
+    """
+    repo: String!
+    """
+    The tag of the image
+    """
+    tag: String!
+    """
+    The digest of the image
+    """
+    digest: String
+    """
+    The platform of the image
+    """
+    platform: PlatformInput
+}
+
+"""
 Paginated list of RepoSummary objects
 """
 type PaginatedReposResult {
@@ -644,6 +728,22 @@ type Query {
         "Severity of the CVEs that should be present in the returned results"
         severity: String
     ): CVEResultForImage!
+
+    """
+    Returns a list with CVE's that are present in `image` but not in `comparedImage`
+    """
+    CVEDiffListForImages(
+        "Image name in format `repository:tag` or `repository@digest`"
+        minuend: ImageInput!,
+        "Compared image name in format `repository:tag` or `repository@digest`"
+        subtrahend: ImageInput!,
+        "Sets the parameters of the requested page"
+        requestedPage: PageInput
+        "Search term for specific CVE by title/id"
+        searchedCVE: String
+        "Search term that must not be present in the returned results"
+        excludedCVE: String
+    ): CVEDiffResult!
 
     """
     Returns a list of images vulnerable to the CVE of the specified ID

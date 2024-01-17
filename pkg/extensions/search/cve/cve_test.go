@@ -1277,6 +1277,11 @@ func TestCVEStruct(t *testing.T) { //nolint:gocyclo
 		So(cveSummary.CriticalCount, ShouldEqual, 2)
 		So(cveSummary.MaxSeverity, ShouldEqual, "CRITICAL")
 
+		_, _, _, err = cveInfo.GetCVEDiffListForImages(ctx, "repo8:1.0.0", "repo1@"+image13Digest, "", "", pageInput)
+		So(err, ShouldBeNil)
+		_, _, _, err = cveInfo.GetCVEDiffListForImages(ctx, "repo8:1.0.0", "repo1:0.1.0", "", "", pageInput)
+		So(err, ShouldBeNil)
+
 		// Image is multiarch
 		cveList, cveSummary, pageInfo, err = cveInfo.GetCVEListForImage(ctx, repoMultiarch, "tagIndex", "", "", "", pageInput)
 		So(err, ShouldBeNil)
@@ -1625,6 +1630,35 @@ func TestCVEStruct(t *testing.T) { //nolint:gocyclo
 
 		_, err = cveInfo.GetImageListForCVE(ctx, repoMultiarch, "CVE1")
 		So(err, ShouldBeNil)
+
+		cveInfo = cveinfo.BaseCveInfo{Log: log, Scanner: mocks.CveScannerMock{
+			IsImageFormatScannableFn: func(repo, reference string) (bool, error) {
+				return true, nil
+			},
+			ScanImageFn: func(ctx context.Context, image string) (map[string]cvemodel.CVE, error) {
+				return nil, zerr.ErrTypeAssertionFailed
+			},
+		}, MetaDB: metaDB}
+		_, _, _, err = cveInfo.GetCVEDiffListForImages(ctx, "repo8:1.0.0", "repo1:0.1.0", "", "", pageInput)
+		So(err, ShouldNotBeNil)
+
+		try := 0
+		cveInfo = cveinfo.BaseCveInfo{Log: log, Scanner: mocks.CveScannerMock{
+			IsImageFormatScannableFn: func(repo, reference string) (bool, error) {
+				return true, nil
+			},
+			ScanImageFn: func(ctx context.Context, image string) (map[string]cvemodel.CVE, error) {
+				if try == 1 {
+					return nil, zerr.ErrTypeAssertionFailed
+				}
+
+				try++
+
+				return make(map[string]cvemodel.CVE), nil
+			},
+		}, MetaDB: metaDB}
+		_, _, _, err = cveInfo.GetCVEDiffListForImages(ctx, "repo8:1.0.0", "repo6:0.1.0", "", "", pageInput)
+		So(err, ShouldNotBeNil)
 	})
 }
 
