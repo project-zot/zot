@@ -42,7 +42,6 @@ import (
 	"zotregistry.io/zot/pkg/storage/local"
 	storageTypes "zotregistry.io/zot/pkg/storage/types"
 	. "zotregistry.io/zot/pkg/test/common"
-	"zotregistry.io/zot/pkg/test/deprecated"
 	. "zotregistry.io/zot/pkg/test/image-utils"
 	"zotregistry.io/zot/pkg/test/mocks"
 	ociutils "zotregistry.io/zot/pkg/test/oci-utils"
@@ -227,7 +226,9 @@ func getMockCveScanner(metaDB mTypes.MetaDB) cveinfo.Scanner {
 	getCveResults := func(image string) map[string]cvemodel.CVE {
 		if image == "zot-cve-test:0.0.1" || image == "a/zot-cve-test:0.0.1" ||
 			image == "zot-test:0.0.1" || image == "a/zot-test:0.0.1" ||
-			strings.Contains(image, "sha256:40d1f74918aefed733c590f798d7eafde8fc0a7ec63bb8bc52eaae133cf92495") {
+			strings.Contains(image, "sha256:40d1f74918aefed733c590f798d7eafde8fc0a7ec63bb8bc52eaae133cf92495") ||
+			strings.Contains(image, "sha256:db573b0146a853af339bde42256a810b911d89c9252d055e0218de53690e031e") ||
+			strings.Contains(image, "sha256:0d8d7cae58478b43cde65d4fd495e1b4ab3f6404450b17e75d7e04eb2040d297") {
 			return map[string]cvemodel.CVE{
 				"CVE1": {
 					ID:          "CVE1",
@@ -257,7 +258,8 @@ func getMockCveScanner(metaDB mTypes.MetaDB) cveinfo.Scanner {
 		}
 
 		if image == "test-repo:latest" ||
-			strings.Contains(image, "sha256:9f8e1a125c4fb03a0f157d75999b73284ccc5cba18eb772e4643e3499343607e") {
+			strings.Contains(image, "sha256:9f8e1a125c4fb03a0f157d75999b73284ccc5cba18eb772e4643e3499343607e") ||
+			strings.Contains(image, "sha256:5c6e8dd5dce1c488fc79d02690b11ff7a190fad21885297101dbd531f0db3597") {
 			return map[string]cvemodel.CVE{
 				"CVE1": {
 					ID:          "CVE1",
@@ -376,12 +378,9 @@ func TestRepoListWithNewestImage(t *testing.T) {
 		ctlrManager.StartAndWait(port)
 		defer ctlrManager.StopServer()
 
-		config, layers, _, err := deprecated.GetImageComponents(100) //nolint:staticcheck
-		So(err, ShouldBeNil)
+		uploadedImage := CreateImageWith().RandomLayers(1, 100).DefaultConfig().Build()
 
-		uploadedImage := CreateImageWith().LayerBlobs(layers).ImageConfig(config).Build()
-
-		err = UploadImage(uploadedImage, baseURL, "zot-cve-test", "0.0.1")
+		err := UploadImage(uploadedImage, baseURL, "zot-cve-test", "0.0.1")
 		So(err, ShouldBeNil)
 
 		err = UploadImage(uploadedImage, baseURL, "a/zot-cve-test", "0.0.1")
@@ -726,19 +725,18 @@ func TestRepoListWithNewestImage(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, 422)
 
-		config, layers, manifest, err := deprecated.GetImageComponents(100) //nolint:staticcheck
+		uploadedImage := CreateDefaultImage()
+
+		err = UploadImage(uploadedImage, baseURL, "zot-cve-test", "0.0.1")
 		So(err, ShouldBeNil)
 
-		err = UploadImage(Image{Manifest: manifest, Config: config, Layers: layers}, baseURL, "zot-cve-test", "0.0.1")
+		err = UploadImage(uploadedImage, baseURL, "a/zot-cve-test", "0.0.1")
 		So(err, ShouldBeNil)
 
-		err = UploadImage(Image{Manifest: manifest, Config: config, Layers: layers}, baseURL, "a/zot-cve-test", "0.0.1")
+		err = UploadImage(uploadedImage, baseURL, "zot-test", "0.0.1")
 		So(err, ShouldBeNil)
 
-		err = UploadImage(Image{Manifest: manifest, Config: config, Layers: layers}, baseURL, "zot-test", "0.0.1")
-		So(err, ShouldBeNil)
-
-		err = UploadImage(Image{Manifest: manifest, Config: config, Layers: layers}, baseURL, "a/zot-test", "0.0.1")
+		err = UploadImage(uploadedImage, baseURL, "a/zot-test", "0.0.1")
 		So(err, ShouldBeNil)
 
 		query := `{
@@ -819,24 +817,15 @@ func TestGetReferrersGQL(t *testing.T) {
 
 		// =======================
 
-		config, layers, manifest, err := deprecated.GetImageComponents(1000) //nolint:staticcheck
-		So(err, ShouldBeNil)
+		uploadedImage := CreateImageWith().RandomLayers(1, 1000).DefaultConfig().Build()
 
 		repo := "artifact-ref"
 
-		err = UploadImage(
-			Image{
-				Manifest: manifest,
-				Config:   config,
-				Layers:   layers,
-			}, baseURL, repo, "1.0")
-
+		err := UploadImage(uploadedImage, baseURL, repo, "1.0")
 		So(err, ShouldBeNil)
 
-		manifestBlob, err := json.Marshal(manifest)
-		So(err, ShouldBeNil)
-		manifestDigest := godigest.FromBytes(manifestBlob)
-		manifestSize := int64(len(manifestBlob))
+		manifestDigest := uploadedImage.ManifestDescriptor.Digest
+		manifestSize := uploadedImage.ManifestDescriptor.Size
 
 		subjectDescriptor := &ispec.Descriptor{
 			MediaType: "application/vnd.oci.image.manifest.v1+json",
@@ -952,11 +941,11 @@ func TestGetReferrersGQL(t *testing.T) {
 
 		// =======================
 
-		multiarch, err := deprecated.GetRandomMultiarchImage("multiarch") //nolint:staticcheck
-		So(err, ShouldBeNil)
+		multiarch := CreateRandomMultiarch()
+
 		repo := "artifact-ref"
 
-		err = UploadMultiarchImage(multiarch, baseURL, repo, "multiarch")
+		err := UploadMultiarchImage(multiarch, baseURL, repo, "multiarch")
 		So(err, ShouldBeNil)
 
 		indexBlob, err := json.Marshal(multiarch.Index)
@@ -1173,15 +1162,9 @@ func TestExpandedRepoInfo(t *testing.T) {
 
 		// init storage layout with 3 images
 		for i := 1; i <= 3; i++ {
-			config, layers, manifest, err := deprecated.GetImageComponents(100) //nolint:staticcheck
-			So(err, ShouldBeNil)
+			image := CreateImageWith().RandomLayers(1, 100).DefaultConfig().Build()
 
-			err = WriteImageToFileSystem(
-				Image{
-					Manifest: manifest,
-					Config:   config,
-					Layers:   layers,
-				}, repo1, fmt.Sprintf("%d.0", i), storeController)
+			err := WriteImageToFileSystem(image, repo1, fmt.Sprintf("%d.0", i), storeController)
 			So(err, ShouldBeNil)
 		}
 
@@ -1272,16 +1255,13 @@ func TestExpandedRepoInfo(t *testing.T) {
 		ctlrManager.StartAndWait(port)
 		defer ctlrManager.StopServer()
 
-		config, layers, _, err := deprecated.GetImageComponents(100) //nolint:staticcheck
-		So(err, ShouldBeNil)
-
 		annotations := make(map[string]string)
 		annotations["org.opencontainers.image.vendor"] = "zot"
 
-		uploadedImage := CreateImageWith().LayerBlobs(layers).ImageConfig(config).
+		uploadedImage := CreateImageWith().RandomLayers(1, 100).DefaultConfig().
 			Annotations(annotations).Build()
 
-		err = UploadImage(uploadedImage, baseURL, "zot-cve-test", "0.0.1")
+		err := UploadImage(uploadedImage, baseURL, "zot-cve-test", "0.0.1")
 		So(err, ShouldBeNil)
 
 		err = UploadImage(uploadedImage, baseURL, "a/zot-cve-test", "0.0.1")
@@ -1496,16 +1476,15 @@ func TestExpandedRepoInfo(t *testing.T) {
 		ctlrManager.StartAndWait(port)
 		defer ctlrManager.StopServer()
 
-		image, err := deprecated.GetRandomImage() //nolint:staticcheck
-		So(err, ShouldBeNil)
-		manifestDigest := image.Digest()
+		image := CreateImageWith().RandomLayers(1, 20).DefaultConfig().Build()
 
-		err = UploadImage(image, baseURL, "repo", testTag)
+		err := UploadImage(image, baseURL, "repo", testTag)
 		So(err, ShouldBeNil)
 
-		referrer, err := deprecated.GetImageWithSubject(manifestDigest, //nolint:staticcheck
-			ispec.MediaTypeImageManifest)
-		So(err, ShouldBeNil)
+		referrer := CreateImageWith().RandomLayers(1, 100).DefaultConfig().Subject(&ispec.Descriptor{
+			Digest:    image.ManifestDescriptor.Digest,
+			MediaType: ispec.MediaTypeImageManifest,
+		}).Build()
 
 		tag := "test-ref-tag"
 		err = UploadImage(referrer, baseURL, "repo", tag)
@@ -1648,55 +1627,51 @@ func TestExpandedRepoInfo(t *testing.T) {
 		}
 
 		// ------- Create test images
-
-		indexSubImage11, err := deprecated.GetImageWithConfig(ispec.Image{ //nolint:staticcheck
+		indexSubImage11 := CreateImageWith().RandomLayers(1, 100).ImageConfig(ispec.Image{
 			Platform: ispec.Platform{
 				OS:           "os11",
 				Architecture: "arch11",
 			},
-		})
-		So(err, ShouldBeNil)
+		}).Build()
 
-		indexSubImage12, err := deprecated.GetImageWithConfig(ispec.Image{ //nolint:staticcheck
+		indexSubImage12 := CreateImageWith().RandomLayers(1, 100).ImageConfig(ispec.Image{
 			Platform: ispec.Platform{
 				OS:           "os12",
 				Architecture: "arch12",
 			},
-		})
-		So(err, ShouldBeNil)
+		}).Build()
 
-		multiImage1 := deprecated.GetMultiarchImageForImages([]Image{indexSubImage11, //nolint:staticcheck
-			indexSubImage12})
+		multiImage1 := CreateMultiarchWith().Images([]Image{
+			indexSubImage11, indexSubImage12,
+		}).Build()
 
-		indexSubImage21, err := deprecated.GetImageWithConfig(ispec.Image{ //nolint:staticcheck
+		indexSubImage21 := CreateImageWith().RandomLayers(1, 100).ImageConfig(ispec.Image{
 			Platform: ispec.Platform{
 				OS:           "os21",
 				Architecture: "arch21",
 			},
-		})
-		So(err, ShouldBeNil)
+		}).Build()
 
-		indexSubImage22, err := deprecated.GetImageWithConfig(ispec.Image{ //nolint:staticcheck
+		indexSubImage22 := CreateImageWith().RandomLayers(1, 100).ImageConfig(ispec.Image{
 			Platform: ispec.Platform{
 				OS:           "os22",
 				Architecture: "arch22",
 			},
-		})
-		So(err, ShouldBeNil)
+		}).Build()
 
-		indexSubImage23, err := deprecated.GetImageWithConfig(ispec.Image{ //nolint:staticcheck
+		indexSubImage23 := CreateImageWith().RandomLayers(1, 100).ImageConfig(ispec.Image{
 			Platform: ispec.Platform{
 				OS:           "os23",
 				Architecture: "arch23",
 			},
-		})
-		So(err, ShouldBeNil)
+		}).Build()
 
-		multiImage2 := deprecated.GetMultiarchImageForImages([]Image{indexSubImage21, //nolint:staticcheck
-			indexSubImage22, indexSubImage23})
+		multiImage2 := CreateMultiarchWith().Images([]Image{
+			indexSubImage21, indexSubImage22, indexSubImage23,
+		}).Build()
 
 		// ------- Write test Images
-		err = WriteMultiArchImageToFileSystem(multiImage1, "repo", "1.0.0", storeController)
+		err := WriteMultiArchImageToFileSystem(multiImage1, "repo", "1.0.0", storeController)
 		So(err, ShouldBeNil)
 
 		err = WriteMultiArchImageToFileSystem(multiImage2, "repo", "2.0.0", storeController)
@@ -2892,18 +2867,13 @@ func TestGlobalSearchImageAuthor(t *testing.T) {
 	defer ctlrManager.StopServer()
 
 	Convey("Test global search with author in manifest's annotations", t, func() {
-		cfg, layers, manifest, err := deprecated.GetImageComponents(10000) //nolint:staticcheck
-		So(err, ShouldBeNil)
+		annotations := make(map[string]string)
+		annotations["org.opencontainers.image.authors"] = "author name"
 
-		manifest.Annotations = make(map[string]string)
-		manifest.Annotations["org.opencontainers.image.authors"] = "author name"
-		err = UploadImage(
-			Image{
-				Config:   cfg,
-				Layers:   layers,
-				Manifest: manifest,
-			}, baseURL, "repowithauthor", "latest")
+		image := CreateImageWith().RandomLayers(1, 10000).DefaultConfig().
+			Annotations(annotations).Build()
 
+		err := UploadImage(image, baseURL, "repowithauthor", "latest")
 		So(err, ShouldBeNil)
 
 		query := `
@@ -2956,16 +2926,9 @@ func TestGlobalSearchImageAuthor(t *testing.T) {
 	})
 
 	Convey("Test global search with author in manifest's config", t, func() {
-		cfg, layers, manifest, err := deprecated.GetImageComponents(10000) //nolint:staticcheck
-		So(err, ShouldBeNil)
+		image := CreateImageWith().RandomLayers(1, 10000).DefaultConfig().Build()
 
-		err = UploadImage(
-			Image{
-				Config:   cfg,
-				Layers:   layers,
-				Manifest: manifest,
-			}, baseURL, "repowithauthorconfig", "latest")
-
+		err := UploadImage(image, baseURL, "repowithauthorconfig", "latest")
 		So(err, ShouldBeNil)
 
 		query := `
@@ -3048,9 +3011,6 @@ func TestGlobalSearch(t *testing.T) {
 		defer ctlrManager.StopServer()
 
 		// push test images to repo 1 image 1
-		_, layers1, manifest1, err := deprecated.GetImageComponents(100) //nolint:staticcheck
-		So(err, ShouldBeNil)
-
 		createdTime := time.Date(2010, 1, 1, 12, 0, 0, 0, time.UTC)
 		createdTimeL2 := time.Date(2010, 2, 1, 12, 0, 0, 0, time.UTC)
 		config1 := ispec.Image{
@@ -3064,101 +3024,104 @@ func TestGlobalSearch(t *testing.T) {
 				DiffIDs: []godigest.Digest{},
 			},
 			Author: "ZotUser",
+			History: []ispec.History{
+				{
+					Created:    &createdTime,
+					CreatedBy:  "go test data",
+					Author:     "ZotUser",
+					Comment:    "Test history comment",
+					EmptyLayer: true,
+				},
+				{
+					Created:    &createdTimeL2,
+					CreatedBy:  "go test data 2",
+					Author:     "ZotUser",
+					Comment:    "Test history comment2",
+					EmptyLayer: false,
+				},
+			},
 		}
 
-		config1.History = append(
-			config1.History,
-			ispec.History{
-				Created:    &createdTime,
-				CreatedBy:  "go test data",
-				Author:     "ZotUser",
-				Comment:    "Test history comment",
-				EmptyLayer: true,
-			},
-			ispec.History{
-				Created:    &createdTimeL2,
-				CreatedBy:  "go test data 2",
-				Author:     "ZotUser",
-				Comment:    "Test history comment2",
-				EmptyLayer: false,
-			},
-		)
-		manifest1, err = updateManifestConfig(manifest1, config1)
-		So(err, ShouldBeNil)
+		image1 := CreateImageWith().LayerBlobs([][]byte{make([]byte, 100)}).
+			ImageConfig(config1).Build()
 
 		layersSize1 := 0
-		for _, l := range layers1 {
+		for _, l := range image1.Layers {
 			layersSize1 += len(l)
 		}
 
-		err = UploadImage(
-			Image{
-				Manifest: manifest1,
-				Config:   config1,
-				Layers:   layers1,
-			}, baseURL, "repo1", "1.0.1",
-		)
+		err := UploadImage(image1, baseURL, "repo1", "1.0.1")
 		So(err, ShouldBeNil)
 
 		// push test images to repo 1 image 2
-		config2, layers2, manifest2, err := deprecated.GetImageComponents(200) //nolint:staticcheck
-		So(err, ShouldBeNil)
 		createdTime2 := time.Date(2009, 1, 1, 12, 0, 0, 0, time.UTC)
 		createdTimeL2 = time.Date(2009, 2, 1, 12, 0, 0, 0, time.UTC)
-		config2.History = append(
-			config2.History,
-			ispec.History{
-				Created:    &createdTime2,
-				CreatedBy:  "go test data",
-				Author:     "ZotUser",
-				Comment:    "Test history comment",
-				EmptyLayer: true,
+
+		config2 := ispec.Image{
+			Created: &createdTimeL2,
+			Platform: ispec.Platform{
+				Architecture: "amd64",
+				OS:           "linux",
 			},
-			ispec.History{
-				Created:    &createdTimeL2,
-				CreatedBy:  "go test data 2",
-				Author:     "ZotUser",
-				Comment:    "Test history comment2",
-				EmptyLayer: false,
+			RootFS: ispec.RootFS{
+				Type:    "layers",
+				DiffIDs: []godigest.Digest{},
 			},
-		)
-		manifest2, err = updateManifestConfig(manifest2, config2)
-		So(err, ShouldBeNil)
+			Author: "ZotUser",
+			History: []ispec.History{
+				{
+					Created:    &createdTime2,
+					CreatedBy:  "go test data",
+					Author:     "ZotUser",
+					Comment:    "Test history comment",
+					EmptyLayer: true,
+				},
+				{
+					Created:    &createdTimeL2,
+					CreatedBy:  "go test data 2",
+					Author:     "ZotUser",
+					Comment:    "Test history comment2",
+					EmptyLayer: false,
+				},
+			},
+		}
+
+		image2 := CreateImageWith().LayerBlobs([][]byte{make([]byte, 200)}).
+			ImageConfig(config2).Build()
 
 		layersSize2 := 0
-		for _, l := range layers2 {
+		for _, l := range image2.Layers {
 			layersSize2 += len(l)
 		}
 
-		err = UploadImage(
-			Image{
-				Manifest: manifest2,
-				Config:   config2,
-				Layers:   layers2,
-			}, baseURL, "repo1", "1.0.2",
-		)
+		err = UploadImage(image2, baseURL, "repo1", "1.0.2")
 		So(err, ShouldBeNil)
 
 		// push test images to repo 2 image 1
-		config3, layers3, manifest3, err := deprecated.GetImageComponents(300) //nolint:staticcheck
-		So(err, ShouldBeNil)
 		createdTime3 := time.Date(2009, 2, 1, 12, 0, 0, 0, time.UTC)
-		config3.History = append(config3.History, ispec.History{Created: &createdTime3})
-		manifest3, err = updateManifestConfig(manifest3, config3)
-		So(err, ShouldBeNil)
+		config3 := ispec.Image{
+			Created: &createdTime3,
+			Platform: ispec.Platform{
+				Architecture: "amd64",
+				OS:           "linux",
+			},
+			RootFS: ispec.RootFS{
+				Type:    "layers",
+				DiffIDs: []godigest.Digest{},
+			},
+			Author:  "ZotUser",
+			History: []ispec.History{{Created: &createdTime3}},
+		}
+
+		image3 := CreateImageWith().LayerBlobs([][]byte{make([]byte, 300)}).
+			ImageConfig(config3).Build()
 
 		layersSize3 := 0
-		for _, l := range layers3 {
+		for _, l := range image3.Layers {
 			layersSize3 += len(l)
 		}
 
-		err = UploadImage(
-			Image{
-				Manifest: manifest3,
-				Config:   config3,
-				Layers:   layers3,
-			}, baseURL, "repo2", "1.0.0",
-		)
+		err = UploadImage(image3, baseURL, "repo2", "1.0.0")
 		So(err, ShouldBeNil)
 
 		olu := ociutils.NewBaseOciLayoutUtils(ctlr.StoreController, log.NewLogger("debug", ""))
@@ -3428,69 +3391,82 @@ func TestGlobalSearch(t *testing.T) {
 		WaitTillServerReady(baseURL)
 
 		// push test images to repo 1 image 1
-		config1, layers1, manifest1, err := deprecated.GetImageComponents(100) //nolint:staticcheck
-		So(err, ShouldBeNil)
 		createdTime := time.Date(2010, 1, 1, 12, 0, 0, 0, time.UTC)
-		config1.History = append(config1.History, ispec.History{Created: &createdTime})
-		manifest1, err = updateManifestConfig(manifest1, config1)
-		So(err, ShouldBeNil)
+		config1 := ispec.Image{
+			Created: &createdTime,
+			Platform: ispec.Platform{
+				Architecture: "amd64",
+				OS:           "linux",
+			},
+			RootFS: ispec.RootFS{
+				Type:    "layers",
+				DiffIDs: []godigest.Digest{},
+			},
+			Author:  "ZotUser",
+			History: []ispec.History{{Created: &createdTime}},
+		}
+
+		image1 := CreateImageWith().LayerBlobs([][]byte{make([]byte, 100)}).
+			ImageConfig(config1).Build()
 
 		layersSize1 := 0
-		for _, l := range layers1 {
+		for _, l := range image1.Layers {
 			layersSize1 += len(l)
 		}
 
-		err = UploadImage(
-			Image{
-				Manifest: manifest1,
-				Config:   config1,
-				Layers:   layers1,
-			}, baseURL, "repo1", "1.0.1",
-		)
+		err = UploadImage(image1, baseURL, "repo1", "1.0.1")
 		So(err, ShouldBeNil)
 
 		// push test images to repo 1 image 2
-		config2, layers2, manifest2, err := deprecated.GetImageComponents(200) //nolint:staticcheck
-		So(err, ShouldBeNil)
 		createdTime2 := time.Date(2009, 1, 1, 12, 0, 0, 0, time.UTC)
-		config2.History = append(config2.History, ispec.History{Created: &createdTime2})
-		manifest2, err = updateManifestConfig(manifest2, config2)
-		So(err, ShouldBeNil)
+		config2 := ispec.Image{
+			Platform: ispec.Platform{
+				Architecture: "amd64",
+				OS:           "linux",
+			},
+			RootFS: ispec.RootFS{
+				Type:    "layers",
+				DiffIDs: []godigest.Digest{},
+			},
+			Author:  "ZotUser",
+			History: []ispec.History{{Created: &createdTime2}},
+		}
+
+		image2 := CreateImageWith().LayerBlobs([][]byte{make([]byte, 200)}).
+			ImageConfig(config2).Build()
 
 		layersSize2 := 0
-		for _, l := range layers2 {
+		for _, l := range image2.Layers {
 			layersSize2 += len(l)
 		}
 
-		err = UploadImage(
-			Image{
-				Manifest: manifest2,
-				Config:   config2,
-				Layers:   layers2,
-			}, baseURL, "repo1", "1.0.2",
-		)
+		err = UploadImage(image2, baseURL, "repo1", "1.0.2")
 		So(err, ShouldBeNil)
 
 		// push test images to repo 2 image 1
-		config3, layers3, manifest3, err := deprecated.GetImageComponents(300) //nolint:staticcheck
-		So(err, ShouldBeNil)
 		createdTime3 := time.Date(2009, 2, 1, 12, 0, 0, 0, time.UTC)
-		config3.History = append(config3.History, ispec.History{Created: &createdTime3})
-		manifest3, err = updateManifestConfig(manifest3, config3)
-		So(err, ShouldBeNil)
+		config3 := ispec.Image{
+			Platform: ispec.Platform{
+				Architecture: "amd64",
+				OS:           "linux",
+			},
+			RootFS: ispec.RootFS{
+				Type:    "layers",
+				DiffIDs: []godigest.Digest{},
+			},
+			Author:  "ZotUser",
+			History: []ispec.History{{Created: &createdTime3}},
+		}
+
+		image3 := CreateImageWith().LayerBlobs([][]byte{make([]byte, 300)}).
+			ImageConfig(config3).Build()
 
 		layersSize3 := 0
-		for _, l := range layers3 {
+		for _, l := range image3.Layers {
 			layersSize3 += len(l)
 		}
 
-		err = UploadImage(
-			Image{
-				Manifest: manifest3,
-				Config:   config3,
-				Layers:   layers3,
-			}, baseURL, "repo2", "1.0.0",
-		)
+		err = UploadImage(image3, baseURL, "repo2", "1.0.0")
 		So(err, ShouldBeNil)
 
 		olu := ociutils.NewBaseOciLayoutUtils(ctlr.StoreController, log.NewLogger("debug", ""))
@@ -3775,24 +3751,20 @@ func TestCleaningFilteringParamsGlobalSearch(t *testing.T) {
 		ctlrManager.StartAndWait(port)
 		defer ctlrManager.StopServer()
 
-		image, err := deprecated.GetImageWithConfig(ispec.Image{ //nolint:staticcheck
-			Platform: ispec.Platform{
+		image := CreateImageWith().RandomLayers(1, 100).
+			ImageConfig(ispec.Image{Platform: ispec.Platform{
 				OS:           "windows",
 				Architecture: "amd64",
-			},
-		})
+			}}).Build()
+
+		err := UploadImage(image, baseURL, "repo1", image.DigestStr())
 		So(err, ShouldBeNil)
 
-		err = UploadImage(image, baseURL, "repo1", image.DigestStr())
-		So(err, ShouldBeNil)
-
-		image, err = deprecated.GetImageWithConfig(ispec.Image{ //nolint:staticcheck
-			Platform: ispec.Platform{
+		image = CreateImageWith().RandomLayers(1, 100).
+			ImageConfig(ispec.Image{Platform: ispec.Platform{
 				OS:           "linux",
 				Architecture: "amd64",
-			},
-		})
-		So(err, ShouldBeNil)
+			}}).Build()
 
 		err = UploadImage(image, baseURL, "repo2", image.DigestStr())
 		So(err, ShouldBeNil)
@@ -3839,28 +3811,14 @@ func TestGlobalSearchFiltering(t *testing.T) {
 		ctlrManager.StartAndWait(port)
 		defer ctlrManager.StopServer()
 
-		config, layers, manifest, err := deprecated.GetRandomImageComponents(100) //nolint:staticcheck
+		image := CreateRandomImage()
+
+		err := UploadImage(image, baseURL, "unsigned-repo", "test")
 		So(err, ShouldBeNil)
 
-		err = UploadImage(
-			Image{
-				Config:   config,
-				Layers:   layers,
-				Manifest: manifest,
-			}, baseURL, "unsigned-repo", "test",
-		)
-		So(err, ShouldBeNil)
+		image = CreateRandomImage()
 
-		config, layers, manifest, err = deprecated.GetRandomImageComponents(100) //nolint:staticcheck
-		So(err, ShouldBeNil)
-
-		err = UploadImage(
-			Image{
-				Config:   config,
-				Layers:   layers,
-				Manifest: manifest,
-			}, baseURL, "signed-repo", "test",
-		)
+		err = UploadImage(image, baseURL, "signed-repo", "test")
 		So(err, ShouldBeNil)
 
 		err = signature.SignImageUsingCosign("signed-repo:test", port, false)
@@ -4003,41 +3961,48 @@ func TestImageList(t *testing.T) {
 		ctlrManager.StartAndWait(port)
 		defer ctlrManager.StopServer()
 
-		config, layers, manifest, err := deprecated.GetImageComponents(100) //nolint:staticcheck
-		So(err, ShouldBeNil)
-
 		createdTime := time.Date(2010, 1, 1, 12, 0, 0, 0, time.UTC)
 		createdTimeL2 := time.Date(2010, 2, 1, 12, 0, 0, 0, time.UTC)
-		config.History = append(
-			config.History,
-			ispec.History{
-				Created:    &createdTime,
-				CreatedBy:  "go test data",
-				Author:     "ZotUser",
-				Comment:    "Test history comment",
-				EmptyLayer: true,
+		config := ispec.Image{
+			Platform: ispec.Platform{
+				Architecture: "amd64",
+				OS:           "linux",
 			},
-			ispec.History{
-				Created:    &createdTimeL2,
-				CreatedBy:  "go test data 2",
-				Author:     "ZotUser",
-				Comment:    "Test history comment2",
-				EmptyLayer: false,
+			RootFS: ispec.RootFS{
+				Type:    "layers",
+				DiffIDs: []godigest.Digest{},
 			},
-		)
-		manifest, err = updateManifestConfig(manifest, config)
+			Author: "ZotUser",
+			History: []ispec.History{
+				{
+					Created:    &createdTime,
+					CreatedBy:  "go test data",
+					Author:     "ZotUser",
+					Comment:    "Test history comment",
+					EmptyLayer: true,
+				},
+				{
+					Created:    &createdTimeL2,
+					CreatedBy:  "go test data 2",
+					Author:     "ZotUser",
+					Comment:    "Test history comment2",
+					EmptyLayer: false,
+				},
+			},
+		}
+
+		image := CreateImageWith().RandomLayers(1, 100).ImageConfig(config).Build()
+
+		err := UploadImage(image, baseURL, "zot-cve-test", "0.0.1")
 		So(err, ShouldBeNil)
 
-		err = UploadImage(Image{Manifest: manifest, Config: config, Layers: layers}, baseURL, "zot-cve-test", "0.0.1")
+		err = UploadImage(image, baseURL, "a/zot-cve-test", "0.0.1")
 		So(err, ShouldBeNil)
 
-		err = UploadImage(Image{Manifest: manifest, Config: config, Layers: layers}, baseURL, "a/zot-cve-test", "0.0.1")
+		err = UploadImage(image, baseURL, "zot-test", "0.0.1")
 		So(err, ShouldBeNil)
 
-		err = UploadImage(Image{Manifest: manifest, Config: config, Layers: layers}, baseURL, "zot-test", "0.0.1")
-		So(err, ShouldBeNil)
-
-		err = UploadImage(Image{Manifest: manifest, Config: config, Layers: layers}, baseURL, "a/zot-test", "0.0.1")
+		err = UploadImage(image, baseURL, "a/zot-test", "0.0.1")
 		So(err, ShouldBeNil)
 
 		imageStore := ctlr.StoreController.DefaultStore
@@ -4155,16 +4120,9 @@ func TestGlobalSearchPagination(t *testing.T) {
 		defer ctlrManager.StopServer()
 
 		for i := 0; i < 3; i++ {
-			config, layers, manifest, err := deprecated.GetImageComponents(10) //nolint:staticcheck
-			So(err, ShouldBeNil)
+			image := CreateImageWith().RandomLayers(1, 10).DefaultConfig().Build()
 
-			err = UploadImage(
-				Image{
-					Manifest: manifest,
-					Config:   config,
-					Layers:   layers,
-				}, baseURL, fmt.Sprintf("repo%d", i), "0.0.1",
-			)
+			err := UploadImage(image, baseURL, fmt.Sprintf("repo%d", i), "0.0.1")
 			So(err, ShouldBeNil)
 		}
 
@@ -4353,33 +4311,12 @@ func TestMetaDBWhenSigningImages(t *testing.T) {
 		defer ctlrManager.StopServer()
 
 		// push test images to repo 1 image 1
-		createdTime := time.Date(2010, 1, 1, 12, 0, 0, 0, time.UTC)
+		image1 := CreateDefaultImage()
 
-		image1, err := deprecated.GetImageWithConfig(ispec.Image{ //nolint:staticcheck
-			History: []ispec.History{
-				{
-					Created: &createdTime,
-				},
-			},
-		})
+		err := UploadImage(image1, baseURL, "repo1", "1.0.1")
 		So(err, ShouldBeNil)
 
-		err = UploadImage(
-			Image{
-				Manifest: image1.Manifest,
-				Config:   image1.Config,
-				Layers:   image1.Layers,
-			}, baseURL, "repo1", "1.0.1",
-		)
-		So(err, ShouldBeNil)
-
-		err = UploadImage(
-			Image{
-				Manifest: image1.Manifest,
-				Config:   image1.Config,
-				Layers:   image1.Layers,
-			}, baseURL, "repo1", "2.0.2",
-		)
+		err = UploadImage(image1, baseURL, "repo1", "2.0.2")
 		So(err, ShouldBeNil)
 
 		manifestBlob, err := json.Marshal(image1.Manifest)
@@ -4387,8 +4324,7 @@ func TestMetaDBWhenSigningImages(t *testing.T) {
 
 		manifestDigest := godigest.FromBytes(manifestBlob)
 
-		multiArch, err := deprecated.GetRandomMultiarchImage("index") //nolint:staticcheck
-		So(err, ShouldBeNil)
+		multiArch := CreateRandomMultiarch()
 
 		err = UploadMultiarchImage(multiArch, baseURL, "repo1", "index")
 		So(err, ShouldBeNil)
@@ -4718,120 +4654,90 @@ func RunMetaDBIndexTests(baseURL, port string) {
 	})
 	Convey("Index base images", func() {
 		// ---------------- BASE IMAGE -------------------
-		imageAMD64, err := deprecated.GetImageWithComponents( //nolint:staticcheck
-			ispec.Image{
-				Platform: ispec.Platform{
-					OS:           "linux",
-					Architecture: "amd64",
-				},
+		imageAMD64 := CreateImageWith().LayerBlobs([][]byte{
+			{10, 20, 30},
+			{11, 21, 31},
+		}).ImageConfig(ispec.Image{
+			Platform: ispec.Platform{
+				OS:           "linux",
+				Architecture: "amd64",
 			},
-			[][]byte{
-				{10, 20, 30},
-				{11, 21, 31},
-			})
-		So(err, ShouldBeNil)
+		}).Build()
 
-		imageSomeArch, err := deprecated.GetImageWithComponents( //nolint:staticcheck
-			ispec.Image{
-				Platform: ispec.Platform{
-					OS:           "linux",
-					Architecture: "someArch",
-				},
-			}, [][]byte{
-				{18, 28, 38},
-				{12, 22, 32},
-			})
-		So(err, ShouldBeNil)
+		imageSomeArch := CreateImageWith().LayerBlobs([][]byte{
+			{18, 28, 38},
+			{12, 22, 32},
+		}).ImageConfig(ispec.Image{
+			Platform: ispec.Platform{
+				OS:           "linux",
+				Architecture: "someArch",
+			},
+		}).Build()
 
-		multiImage := deprecated.GetMultiarchImageForImages([]Image{ //nolint:staticcheck
-			imageAMD64,
-			imageSomeArch,
-		})
-		err = UploadMultiarchImage(multiImage, baseURL, "test-repo", "latest")
+		multiImage := CreateMultiarchWith().Images([]Image{imageAMD64, imageSomeArch}).Build()
+
+		err := UploadMultiarchImage(multiImage, baseURL, "test-repo", "latest")
 		So(err, ShouldBeNil)
 		// ---------------- BASE IMAGE -------------------
 
 		//  ---------------- SAME LAYERS -------------------
-		image1, err := deprecated.GetImageWithComponents( //nolint:staticcheck
-			imageSomeArch.Config,
-			[][]byte{
-				{0, 0, 2},
-			},
-		)
-		So(err, ShouldBeNil)
+		image1 := CreateImageWith().LayerBlobs([][]byte{{0, 0, 2}}).ImageConfig(imageSomeArch.Config).Build()
 
-		image2, err := deprecated.GetImageWithComponents( //nolint:staticcheck
-			imageAMD64.Config,
-			imageAMD64.Layers,
-		)
-		So(err, ShouldBeNil)
+		image2 := CreateImageWith().LayerBlobs(imageAMD64.Layers).ImageConfig(imageAMD64.Config).Build()
 
-		multiImage = deprecated.GetMultiarchImageForImages([]Image{image1, image2}) //nolint:staticcheck
+		multiImage = CreateMultiarchWith().Images([]Image{image1, image2}).Build()
 
 		err = UploadMultiarchImage(multiImage, baseURL, "index-one-arch-same-layers", "index-one-arch-same-layers")
 		So(err, ShouldBeNil)
 		//  ---------------- SAME LAYERS -------------------
 
 		//  ---------------- LESS LAYERS -------------------
-		image1, err = deprecated.GetImageWithComponents( //nolint:staticcheck
-			imageSomeArch.Config,
-			[][]byte{
-				{3, 2, 2},
-				{5, 2, 5},
-			},
-		)
-		So(err, ShouldBeNil)
+		image1 = CreateImageWith().LayerBlobs([][]byte{
+			{3, 2, 2},
+			{5, 2, 5},
+		}).ImageConfig(imageSomeArch.Config).Build()
 
-		image2, err = deprecated.GetImageWithComponents( //nolint:staticcheck
-			imageAMD64.Config,
-			[][]byte{imageAMD64.Layers[0]},
-		)
-		So(err, ShouldBeNil)
-		multiImage = deprecated.GetMultiarchImageForImages([]Image{image1, image2}) //nolint:staticcheck
+		image2 = CreateImageWith().LayerBlobs([][]byte{
+			imageAMD64.Layers[0],
+		}).ImageConfig(imageAMD64.Config).Build()
+
+		multiImage = CreateMultiarchWith().Images([]Image{image1, image2}).Build()
 
 		err = UploadMultiarchImage(multiImage, baseURL, "index-one-arch-less-layers", "index-one-arch-less-layers")
 		So(err, ShouldBeNil)
 		//  ---------------- LESS LAYERS -------------------
 
 		//  ---------------- LESS LAYERS FALSE -------------------
-		image1, err = deprecated.GetImageWithComponents( //nolint:staticcheck
-			imageSomeArch.Config,
-			[][]byte{
-				{3, 2, 2},
-				{5, 2, 5},
-			},
-		)
-		So(err, ShouldBeNil)
+		image1 = CreateImageWith().LayerBlobs([][]byte{
+			{3, 2, 2},
+			{5, 2, 5},
+		}).ImageConfig(imageSomeArch.Config).Build()
+
 		auxLayer := imageAMD64.Layers[0]
 		auxLayer[0] = 20
 
-		image2, err = deprecated.GetImageWithComponents( //nolint:staticcheck
-			imageAMD64.Config,
-			[][]byte{auxLayer},
-		)
-		So(err, ShouldBeNil)
-		multiImage = deprecated.GetMultiarchImageForImages([]Image{image1, image2}) //nolint:staticcheck
+		image2 = CreateImageWith().LayerBlobs([][]byte{
+			auxLayer,
+		}).ImageConfig(imageAMD64.Config).Build()
+
+		multiImage = CreateMultiarchWith().Images([]Image{image1, image2}).Build()
+
 		err = UploadMultiarchImage(multiImage, baseURL, "index-one-arch-less-layers-false",
 			"index-one-arch-less-layers-false")
 		So(err, ShouldBeNil)
 		//  ---------------- LESS LAYERS FALSE -------------------
 
 		//  ---------------- MORE LAYERS -------------------
-		image1, err = deprecated.GetImageWithComponents( //nolint:staticcheck
-			imageSomeArch.Config,
-			[][]byte{
-				{0, 0, 2},
-				{3, 0, 2},
-			},
-		)
-		So(err, ShouldBeNil)
+		image1 = CreateImageWith().LayerBlobs([][]byte{
+			{0, 0, 2},
+			{3, 0, 2},
+		}).ImageConfig(imageSomeArch.Config).Build()
 
-		image2, err = deprecated.GetImageWithComponents( //nolint:staticcheck
-			imageAMD64.Config,
+		image2 = CreateImageWith().LayerBlobs(
 			append(imageAMD64.Layers, []byte{1, 3, 55}),
-		)
-		So(err, ShouldBeNil)
-		multiImage = deprecated.GetMultiarchImageForImages([]Image{image1, image2}) //nolint:staticcheck
+		).ImageConfig(imageAMD64.Config).Build()
+
+		multiImage = CreateMultiarchWith().Images([]Image{image1, image2}).Build()
 
 		err = UploadMultiarchImage(multiImage, baseURL, "index-one-arch-more-layers", "index-one-arch-more-layers")
 		So(err, ShouldBeNil)
@@ -4867,57 +4773,48 @@ func RunMetaDBIndexTests(baseURL, port string) {
 
 	Convey("Index base images for digest", func() {
 		// ---------------- BASE IMAGE -------------------
-		imageAMD64, err := deprecated.GetImageWithComponents( //nolint:staticcheck
-			ispec.Image{
-				Platform: ispec.Platform{
-					OS:           "linux",
-					Architecture: "amd64",
-				},
+		imageAMD64 := CreateImageWith().LayerBlobs([][]byte{
+			{10, 20, 30},
+			{11, 21, 31},
+		}).ImageConfig(ispec.Image{
+			Platform: ispec.Platform{
+				OS:           "linux",
+				Architecture: "amd64",
 			},
-			[][]byte{
-				{10, 20, 30},
-				{11, 21, 31},
-			})
-		So(err, ShouldBeNil)
+		}).Build()
 
-		baseLinuxAMD64Digest := imageAMD64.Digest()
+		baseLinuxAMD64Digest := imageAMD64.ManifestDescriptor.Digest
 
-		imageSomeArch, err := deprecated.GetImageWithComponents( //nolint:staticcheck
-			ispec.Image{
-				Platform: ispec.Platform{
-					OS:           "linux",
-					Architecture: "someArch",
-				},
-			}, [][]byte{
-				{18, 28, 38},
-				{12, 22, 32},
-			})
-		So(err, ShouldBeNil)
+		imageSomeArch := CreateImageWith().LayerBlobs([][]byte{
+			{18, 28, 38},
+			{12, 22, 32},
+		}).ImageConfig(ispec.Image{
+			Platform: ispec.Platform{
+				OS:           "linux",
+				Architecture: "someArch",
+			},
+		}).Build()
 
-		baseLinuxSomeArchDigest := imageSomeArch.Digest()
+		baseLinuxSomeArchDigest := imageSomeArch.ManifestDescriptor.Digest
 
-		multiImage := deprecated.GetMultiarchImageForImages([]Image{imageAMD64, //nolint:staticcheck
-			imageSomeArch})
-		err = UploadMultiarchImage(multiImage, baseURL, "test-repo", "index")
+		multiImage := CreateMultiarchWith().Images([]Image{imageAMD64, imageSomeArch}).Build()
+
+		err := UploadMultiarchImage(multiImage, baseURL, "test-repo", "index")
 		So(err, ShouldBeNil)
 		// ---------------- BASE IMAGE FOR LINUX AMD64 -------------------
 
-		image, err := deprecated.GetImageWithComponents( //nolint:staticcheck
-			imageAMD64.Config,
-			[][]byte{imageAMD64.Layers[0]},
-		)
-		So(err, ShouldBeNil)
+		image := CreateImageWith().LayerBlobs([][]byte{
+			imageAMD64.Layers[0],
+		}).ImageConfig(imageAMD64.Config).Build()
 
 		err = UploadImage(image, baseURL, "test-repo", "less-layers-linux-amd64")
 		So(err, ShouldBeNil)
 
 		// ---------------- BASE IMAGE FOR LINUX SOMEARCH -------------------
 
-		image, err = deprecated.GetImageWithComponents( //nolint:staticcheck
-			imageAMD64.Config,
-			[][]byte{imageSomeArch.Layers[0]},
-		)
-		So(err, ShouldBeNil)
+		image = CreateImageWith().LayerBlobs([][]byte{
+			imageSomeArch.Layers[0],
+		}).ImageConfig(imageAMD64.Config).Build()
 
 		err = UploadImage(image, baseURL, "test-repo", "less-layers-linux-somearch")
 		So(err, ShouldBeNil)
@@ -4966,128 +4863,94 @@ func RunMetaDBIndexTests(baseURL, port string) {
 
 	Convey("Index derived images", func() {
 		// ---------------- BASE IMAGE -------------------
-		imageAMD64, err := deprecated.GetImageWithComponents( //nolint:staticcheck
-			ispec.Image{
-				Platform: ispec.Platform{
-					OS:           "linux",
-					Architecture: "amd64",
-				},
+		imageAMD64 := CreateImageWith().LayerBlobs([][]byte{
+			{10, 20, 30},
+			{11, 21, 31},
+		}).ImageConfig(ispec.Image{
+			Platform: ispec.Platform{
+				OS:           "linux",
+				Architecture: "amd64",
 			},
-			[][]byte{
-				{10, 20, 30},
-				{11, 21, 31},
-			})
-		So(err, ShouldBeNil)
+		}).Build()
 
-		imageSomeArch, err := deprecated.GetImageWithComponents( //nolint:staticcheck
-			ispec.Image{
-				Platform: ispec.Platform{
-					OS:           "linux",
-					Architecture: "someArch",
-				},
-			}, [][]byte{
-				{18, 28, 38},
-				{12, 22, 32},
-			})
-		So(err, ShouldBeNil)
+		imageSomeArch := CreateImageWith().LayerBlobs([][]byte{
+			{18, 28, 38},
+			{12, 22, 32},
+		}).ImageConfig(ispec.Image{
+			Platform: ispec.Platform{
+				OS:           "linux",
+				Architecture: "someArch",
+			},
+		}).Build()
 
-		multiImage := deprecated.GetMultiarchImageForImages([]Image{ //nolint:staticcheck
-			imageAMD64, imageSomeArch,
-		})
-		err = UploadMultiarchImage(multiImage, baseURL, "test-repo", "latest")
+		multiImage := CreateMultiarchWith().Images([]Image{imageAMD64, imageSomeArch}).Build()
+
+		err := UploadMultiarchImage(multiImage, baseURL, "test-repo", "latest")
 		So(err, ShouldBeNil)
 		// ---------------- BASE IMAGE -------------------
 
 		//  ---------------- SAME LAYERS -------------------
-		image1, err := deprecated.GetImageWithComponents( //nolint:staticcheck
-			imageSomeArch.Config,
-			[][]byte{
-				{0, 0, 2},
-			},
-		)
-		So(err, ShouldBeNil)
+		image1 := CreateImageWith().LayerBlobs([][]byte{
+			{0, 0, 2},
+		}).ImageConfig(imageSomeArch.Config).Build()
 
-		image2, err := deprecated.GetImageWithComponents( //nolint:staticcheck
-			imageAMD64.Config,
+		image2 := CreateImageWith().LayerBlobs(
 			imageAMD64.Layers,
-		)
-		So(err, ShouldBeNil)
+		).ImageConfig(imageAMD64.Config).Build()
 
-		multiImage = deprecated.GetMultiarchImageForImages([]Image{ //nolint:staticcheck
-			image1, image2,
-		})
+		multiImage = CreateMultiarchWith().Images([]Image{image1, image2}).Build()
+
 		err = UploadMultiarchImage(multiImage, baseURL, "index-one-arch-same-layers", "index-one-arch-same-layers")
 		So(err, ShouldBeNil)
 		//  ---------------- SAME LAYERS -------------------
 
 		//  ---------------- LESS LAYERS -------------------
-		image1, err = deprecated.GetImageWithComponents( //nolint:staticcheck
-			imageSomeArch.Config,
-			[][]byte{
-				{3, 2, 2},
-				{5, 2, 5},
-			},
-		)
-		So(err, ShouldBeNil)
+		image1 = CreateImageWith().LayerBlobs([][]byte{
+			{3, 2, 2},
+			{5, 2, 5},
+		}).ImageConfig(imageSomeArch.Config).Build()
 
-		image2, err = deprecated.GetImageWithComponents( //nolint:staticcheck
-			imageAMD64.Config,
-			[][]byte{imageAMD64.Layers[0]},
-		)
-		So(err, ShouldBeNil)
-		multiImage = deprecated.GetMultiarchImageForImages([]Image{ //nolint:staticcheck
-			image1, image2,
-		})
+		image2 = CreateImageWith().LayerBlobs([][]byte{
+			imageAMD64.Layers[0],
+		}).ImageConfig(imageAMD64.Config).Build()
+
+		multiImage = CreateMultiarchWith().Images([]Image{image1, image2}).Build()
+
 		err = UploadMultiarchImage(multiImage, baseURL, "index-one-arch-less-layers", "index-one-arch-less-layers")
 		So(err, ShouldBeNil)
 		//  ---------------- LESS LAYERS -------------------
 
 		//  ---------------- LESS LAYERS FALSE -------------------
-		image1, err = deprecated.GetImageWithComponents( //nolint:staticcheck
-			imageSomeArch.Config,
-			[][]byte{
-				{3, 2, 2},
-				{5, 2, 5},
-			},
-		)
-		So(err, ShouldBeNil)
+		image1 = CreateImageWith().LayerBlobs([][]byte{
+			{3, 2, 2},
+			{5, 2, 5},
+		}).ImageConfig(imageSomeArch.Config).Build()
 
-		image2, err = deprecated.GetImageWithComponents( //nolint:staticcheck
-			imageAMD64.Config,
-			[][]byte{{99, 100, 102}},
-		)
-		So(err, ShouldBeNil)
-		multiImage = deprecated.GetMultiarchImageForImages([]Image{ //nolint:staticcheck
-			image1, image2,
-		})
+		image2 = CreateImageWith().LayerBlobs([][]byte{
+			{99, 100, 102},
+		}).ImageConfig(imageAMD64.Config).Build()
+
+		multiImage = CreateMultiarchWith().Images([]Image{image1, image2}).Build()
+
 		err = UploadMultiarchImage(multiImage, baseURL, "index-one-arch-less-layers-false",
 			"index-one-arch-less-layers-false")
 		So(err, ShouldBeNil)
 		//  ---------------- LESS LAYERS FALSE -------------------
 
 		//  ---------------- MORE LAYERS -------------------
-		image1, err = deprecated.GetImageWithComponents( //nolint:staticcheck
-			imageSomeArch.Config,
-			[][]byte{
-				{0, 0, 2},
-				{3, 0, 2},
-			},
-		)
-		So(err, ShouldBeNil)
+		image1 = CreateImageWith().LayerBlobs([][]byte{
+			{0, 0, 2},
+			{3, 0, 2},
+		}).ImageConfig(imageSomeArch.Config).Build()
 
-		image2, err = deprecated.GetImageWithComponents( //nolint:staticcheck
-			imageAMD64.Config,
-			[][]byte{
-				imageAMD64.Layers[0],
-				imageAMD64.Layers[1],
-				{1, 3, 55},
-			},
-		)
-		So(err, ShouldBeNil)
+		image2 = CreateImageWith().LayerBlobs([][]byte{
+			imageAMD64.Layers[0],
+			imageAMD64.Layers[1],
+			{1, 3, 55},
+		}).ImageConfig(imageAMD64.Config).Build()
 
-		multiImage = deprecated.GetMultiarchImageForImages([]Image{ //nolint:staticcheck
-			image1, image2,
-		})
+		multiImage = CreateMultiarchWith().Images([]Image{image1, image2}).Build()
+
 		err = UploadMultiarchImage(multiImage, baseURL, "index-one-arch-more-layers", "index-one-arch-more-layers")
 		So(err, ShouldBeNil)
 		//  ---------------- MORE LAYERS -------------------
@@ -5122,68 +4985,52 @@ func RunMetaDBIndexTests(baseURL, port string) {
 
 	Convey("Index derived images for digest", func() {
 		// ---------------- BASE IMAGE -------------------
-		imageAMD64, err := deprecated.GetImageWithComponents( //nolint:staticcheck
-			ispec.Image{
-				Platform: ispec.Platform{
-					OS:           "linux",
-					Architecture: "amd64",
-				},
+		imageAMD64 := CreateImageWith().LayerBlobs([][]byte{
+			{10, 20, 30},
+			{11, 21, 31},
+		}).ImageConfig(ispec.Image{
+			Platform: ispec.Platform{
+				OS:           "linux",
+				Architecture: "amd64",
 			},
-			[][]byte{
-				{10, 20, 30},
-				{11, 21, 31},
-			})
-		So(err, ShouldBeNil)
+		}).Build()
 
-		baseLinuxAMD64Digest := imageAMD64.Digest()
+		baseLinuxAMD64Digest := imageAMD64.ManifestDescriptor.Digest
 
-		imageSomeArch, err := deprecated.GetImageWithComponents( //nolint:staticcheck
-			ispec.Image{
-				Platform: ispec.Platform{
-					OS:           "linux",
-					Architecture: "someArch",
-				},
-			}, [][]byte{
-				{18, 28, 38},
-				{12, 22, 32},
-			})
-		So(err, ShouldBeNil)
+		imageSomeArch := CreateImageWith().LayerBlobs([][]byte{
+			{18, 28, 38},
+			{12, 22, 32},
+		}).ImageConfig(ispec.Image{
+			Platform: ispec.Platform{
+				OS:           "linux",
+				Architecture: "someArch",
+			},
+		}).Build()
 
-		baseLinuxSomeArchDigest := imageSomeArch.Digest()
+		baseLinuxSomeArchDigest := imageSomeArch.ManifestDescriptor.Digest
 
-		multiImage := deprecated.GetMultiarchImageForImages([]Image{ //nolint:staticcheck
-			imageAMD64, imageSomeArch,
-		})
-		err = UploadMultiarchImage(multiImage, baseURL, "test-repo", "index")
+		multiImage := CreateMultiarchWith().Images([]Image{imageAMD64, imageSomeArch}).Build()
+
+		err := UploadMultiarchImage(multiImage, baseURL, "test-repo", "index")
 		So(err, ShouldBeNil)
 		// ---------------- BASE IMAGE FOR LINUX AMD64 -------------------
-
-		image, err := deprecated.GetImageWithComponents( //nolint:staticcheck
-			imageAMD64.Config,
-			[][]byte{
-				imageAMD64.Layers[0],
-				imageAMD64.Layers[1],
-				{0, 0, 0, 0},
-				{1, 1, 1, 1},
-			},
-		)
-		So(err, ShouldBeNil)
+		image := CreateImageWith().LayerBlobs([][]byte{
+			imageAMD64.Layers[0],
+			imageAMD64.Layers[1],
+			{0, 0, 0, 0},
+			{1, 1, 1, 1},
+		}).ImageConfig(imageAMD64.Config).Build()
 
 		err = UploadImage(image, baseURL, "test-repo", "more-layers-linux-amd64")
 		So(err, ShouldBeNil)
 
 		// ---------------- BASE IMAGE FOR LINUX SOMEARCH -------------------
-
-		image, err = deprecated.GetImageWithComponents( //nolint:staticcheck
-			imageAMD64.Config,
-			[][]byte{
-				imageSomeArch.Layers[0],
-				imageSomeArch.Layers[1],
-				{3, 3, 3, 3},
-				{2, 2, 2, 2},
-			},
-		)
-		So(err, ShouldBeNil)
+		image = CreateImageWith().LayerBlobs([][]byte{
+			imageSomeArch.Layers[0],
+			imageSomeArch.Layers[1],
+			{3, 3, 3, 3},
+			{2, 2, 2, 2},
+		}).ImageConfig(imageAMD64.Config).Build()
 
 		err = UploadImage(image, baseURL, "test-repo", "more-layers-linux-somearch")
 		So(err, ShouldBeNil)
@@ -5251,16 +5098,9 @@ func TestMetaDBWhenReadingImages(t *testing.T) {
 		ctlrManager.StartAndWait(port)
 		defer ctlrManager.StopServer()
 
-		config1, layers1, manifest1, err := deprecated.GetImageComponents(100) //nolint:staticcheck
-		So(err, ShouldBeNil)
+		image := CreateImageWith().RandomLayers(1, 100).DefaultConfig().Build()
 
-		err = UploadImage(
-			Image{
-				Manifest: manifest1,
-				Config:   config1,
-				Layers:   layers1,
-			}, baseURL, "repo1", "1.0.1",
-		)
+		err := UploadImage(image, baseURL, "repo1", "1.0.1")
 		So(err, ShouldBeNil)
 
 		Convey("Download 3 times", func() {
@@ -5337,23 +5177,21 @@ func TestMetaDBWhenDeletingImages(t *testing.T) {
 		defer ctlrManager.StopServer()
 
 		// push test images to repo 1 image 1
-		image1, err := deprecated.GetRandomImage() //nolint:staticcheck
-		So(err, ShouldBeNil)
+		image1 := CreateRandomImage()
 
-		err = UploadImage(image1, baseURL, "repo1", "1.0.1")
+		err := UploadImage(image1, baseURL, "repo1", "1.0.1")
 		So(err, ShouldBeNil)
 
 		// push test images to repo 1 image 2
 		createdTime2 := time.Date(2009, 1, 1, 12, 0, 0, 0, time.UTC)
-		image2, err := deprecated.GetImageWithConfig(ispec.Image{ //nolint:staticcheck
+		image2 := CreateImageWith().RandomLayers(1, 100).ImageConfig(ispec.Image{
 			Created: &createdTime2,
 			History: []ispec.History{
 				{
 					Created: &createdTime2,
 				},
 			},
-		})
-		So(err, ShouldBeNil)
+		}).Build()
 
 		err = UploadImage(image2, baseURL, "repo1", "1.0.2")
 		So(err, ShouldBeNil)
@@ -5570,11 +5408,13 @@ func TestMetaDBWhenDeletingImages(t *testing.T) {
 		})
 
 		Convey("Delete a referrer", func() {
-			referredImageDigest := image1.Digest()
+			referredImageDescriptor := &ispec.Descriptor{
+				Digest:    image1.ManifestDescriptor.Digest,
+				MediaType: ispec.MediaTypeImageManifest,
+			}
 
-			referrerImage, err := deprecated.GetImageWithSubject(referredImageDigest, //nolint:staticcheck
-				ispec.MediaTypeImageManifest)
-			So(err, ShouldBeNil)
+			referrerImage := CreateImageWith().RandomLayers(1, 100).DefaultConfig().
+				Subject(referredImageDescriptor).Build()
 
 			err = UploadImage(referrerImage, baseURL, "repo1", referrerImage.DigestStr())
 			So(err, ShouldBeNil)
@@ -5587,7 +5427,7 @@ func TestMetaDBWhenDeletingImages(t *testing.T) {
 					MediaType
 					Digest
 				}
-			}`, referredImageDigest.String())
+			}`, image1.ManifestDescriptor.Digest.String())
 
 			resp, err = resty.R().Get(baseURL + graphqlQueryPrefix + "?query=" + url.QueryEscape(query))
 			So(resp, ShouldNotBeNil)
@@ -5741,18 +5581,6 @@ func TestMetaDBWhenDeletingImages(t *testing.T) {
 	})
 }
 
-func updateManifestConfig(manifest ispec.Manifest, config ispec.Image) (ispec.Manifest, error) {
-	configBlob, err := json.Marshal(config)
-
-	configDigest := godigest.FromBytes(configBlob)
-	configSize := len(configBlob)
-
-	manifest.Config.Digest = configDigest
-	manifest.Config.Size = int64(configSize)
-
-	return manifest, err
-}
-
 func TestSearchSize(t *testing.T) {
 	Convey("Repo sizes", t, func() {
 		port := GetFreePort()
@@ -5774,29 +5602,16 @@ func TestSearchSize(t *testing.T) {
 		defer ctlrManager.StopServer()
 
 		repoName := "testrepo"
-		config, layers, manifest, err := deprecated.GetImageComponents(10000) //nolint:staticcheck
-		So(err, ShouldBeNil)
+		uploadedImage := CreateImageWith().RandomLayers(1, 10000).DefaultConfig().Build()
 
-		configBlob, err := json.Marshal(config)
-		So(err, ShouldBeNil)
-		configSize := len(configBlob)
-
-		layersSize := 0
-		for _, l := range layers {
-			layersSize += len(l)
+		configSize := uploadedImage.ConfigDescriptor.Size
+		manifestSize := uploadedImage.ManifestDescriptor.Size
+		layersSize := int64(0)
+		for _, l := range uploadedImage.Layers {
+			layersSize += int64(len(l))
 		}
 
-		manifestBlob, err := json.Marshal(manifest)
-		So(err, ShouldBeNil)
-		manifestSize := len(manifestBlob)
-
-		err = UploadImage(
-			Image{
-				Manifest: manifest,
-				Config:   config,
-				Layers:   layers,
-			}, baseURL, repoName, "latest",
-		)
+		err := UploadImage(uploadedImage, baseURL, repoName, "latest")
 		So(err, ShouldBeNil)
 
 		query := `
@@ -5872,13 +5687,7 @@ func TestSearchSize(t *testing.T) {
 		So(size, ShouldEqual, configSize+layersSize+manifestSize)
 
 		// add the same image with different tag
-		err = UploadImage(
-			Image{
-				Manifest: manifest,
-				Config:   config,
-				Layers:   layers,
-			}, baseURL, repoName, "10.2.14",
-		)
+		err = UploadImage(uploadedImage, baseURL, repoName, "10.2.14")
 		So(err, ShouldBeNil)
 
 		// query for images
@@ -6036,31 +5845,31 @@ func TestImageSummary(t *testing.T) {
 
 		createdTime := time.Date(2010, 1, 1, 12, 0, 0, 0, time.UTC)
 
-		image, err := deprecated.GetImageWithConfig( //nolint:staticcheck
-			ispec.Image{
-				History: []ispec.History{{Created: &createdTime}},
-				Platform: ispec.Platform{
-					Architecture: "amd64",
-					OS:           "linux",
-				},
+		image := CreateImageWith().RandomLayers(1, 100).ImageConfig(ispec.Image{
+			History: []ispec.History{{Created: &createdTime}},
+			Platform: ispec.Platform{
+				Architecture: "amd64",
+				OS:           "linux",
 			},
-		)
-		So(err, ShouldBeNil)
-		manifestDigest := image.Digest()
+		}).Build()
 
-		err = UploadImage(image, baseURL, repoName, tagTarget)
+		manifestDigest := image.ManifestDescriptor.Digest
+
+		err := UploadImage(image, baseURL, repoName, tagTarget)
 		So(err, ShouldBeNil)
 
 		// ------ Add a referrer
-		referrerImage, err := deprecated.GetImageWithConfig(ispec.Image{}) //nolint:staticcheck
-		So(err, ShouldBeNil)
+		referrerImage := CreateImageWith().RandomLayers(1, 100).
+			CustomConfigBlob(
+				[]byte{},
+				"application/test.artifact.type",
+			).
+			Subject(&ispec.Descriptor{
+				Digest:    manifestDigest,
+				MediaType: ispec.MediaTypeImageManifest,
+			}).Annotations(map[string]string{"testAnnotationKey": "testAnnotationValue"}).
+			Build()
 
-		referrerImage.Manifest.Subject = &ispec.Descriptor{
-			Digest:    manifestDigest,
-			MediaType: ispec.MediaTypeImageManifest,
-		}
-		referrerImage.Manifest.Config.MediaType = "application/test.artifact.type"
-		referrerImage.Manifest.Annotations = map[string]string{"testAnnotationKey": "testAnnotationValue"}
 		referrerManifestDigest := referrerImage.Digest()
 
 		err = UploadImage(referrerImage, baseURL, repoName, referrerManifestDigest.String())
@@ -6234,16 +6043,19 @@ func TestImageSummary(t *testing.T) {
 			}`
 
 		gqlEndpoint := fmt.Sprintf("%s%s?query=", baseURL, graphqlQueryPrefix)
-		config, layers, manifest, err := deprecated.GetImageComponents(100) //nolint:staticcheck
-		So(err, ShouldBeNil)
-		createdTime := time.Date(2010, 1, 1, 12, 0, 0, 0, time.UTC)
-		config.History = append(config.History, ispec.History{Created: &createdTime})
-		manifest, err = updateManifestConfig(manifest, config)
-		So(err, ShouldBeNil)
 
-		configBlob, errConfig := json.Marshal(config)
-		configDigest := godigest.FromBytes(configBlob)
-		So(errConfig, ShouldBeNil) // marshall success, config is valid JSON
+		createdTime := time.Date(2010, 1, 1, 12, 0, 0, 0, time.UTC)
+
+		image := CreateImageWith().DefaultLayers().ImageConfig(ispec.Image{
+			History: []ispec.History{{Created: &createdTime}},
+			Platform: ispec.Platform{
+				Architecture: "amd64",
+				OS:           "linux",
+			},
+		}).Build()
+
+		manifestDigest := image.ManifestDescriptor.Digest
+		configDigest := image.ConfigDescriptor.Digest
 
 		if err := ctlr.Init(); err != nil {
 			panic(err)
@@ -6261,20 +6073,9 @@ func TestImageSummary(t *testing.T) {
 
 		WaitTillServerReady(baseURL)
 
-		manifestBlob, errMarshal := json.Marshal(manifest)
-		So(errMarshal, ShouldBeNil)
-		So(manifestBlob, ShouldNotBeNil)
-		manifestDigest := godigest.FromBytes(manifestBlob)
 		repoName := "test-repo" //nolint:goconst
-
 		tagTarget := "latest"
-		err = UploadImage(
-			Image{
-				Manifest: manifest,
-				Config:   config,
-				Layers:   layers,
-			}, baseURL, repoName, tagTarget,
-		)
+		err := UploadImage(image, baseURL, repoName, tagTarget)
 		So(err, ShouldBeNil)
 		var (
 			imgSummaryResponse zcommon.ImageSummaryResult
@@ -6305,9 +6106,9 @@ func TestImageSummary(t *testing.T) {
 		So(imgSummary.Tag, ShouldContainSubstring, tagTarget)
 		So(imgSummary.Manifests[0].ConfigDigest, ShouldContainSubstring, configDigest.Encoded())
 		So(imgSummary.Manifests[0].Digest, ShouldContainSubstring, manifestDigest.Encoded())
-		So(len(imgSummary.Manifests[0].Layers), ShouldEqual, 1)
+		So(len(imgSummary.Manifests[0].Layers), ShouldEqual, 3)
 		So(imgSummary.Manifests[0].Layers[0].Digest, ShouldContainSubstring,
-			godigest.FromBytes(layers[0]).Encoded())
+			godigest.FromBytes(image.Layers[0]).Encoded())
 		So(imgSummary.LastUpdated, ShouldEqual, createdTime)
 		So(imgSummary.IsSigned, ShouldEqual, false)
 		So(imgSummary.Manifests[0].Platform.Os, ShouldEqual, "linux")
@@ -6367,19 +6168,12 @@ func TestImageSummary(t *testing.T) {
 		artType1 := "application/test.signature.v1"
 		artType2 := "application/test.signature.v2"
 
-		img1, err := deprecated.GetRandomImage() //nolint:staticcheck
-		So(err, ShouldBeNil)
-		img1.Manifest.Config = ispec.DescriptorEmptyJSON
-		img1.Manifest.ArtifactType = artType1
-		digest1 := img1.Digest()
+		img1 := CreateImageWith().RandomLayers(1, 20).EmptyConfig().ArtifactType(artType1).Build()
 
-		err = UploadImage(img1, baseURL, "repo", "art1")
+		err := UploadImage(img1, baseURL, "repo", "art1")
 		So(err, ShouldBeNil)
 
-		img2, err := deprecated.GetRandomImage() //nolint:staticcheck
-		So(err, ShouldBeNil)
-		img2.Manifest.Config.MediaType = artType2
-		digest2 := img2.Digest()
+		img2 := CreateImageWith().RandomLayers(1, 20).DefaultConfig().ArtifactType(artType2).Build()
 
 		err = UploadImage(img2, baseURL, "repo", "art2")
 		So(err, ShouldBeNil)
@@ -6442,9 +6236,9 @@ func TestImageSummary(t *testing.T) {
 
 		for _, imgSum := range imgSums {
 			switch imgSum.Digest {
-			case digest1.String():
+			case img1.ManifestDescriptor.Digest.String():
 				So(imgSum.Manifests[0].ArtifactType, ShouldResemble, artType1)
-			case digest2.String():
+			case img2.ManifestDescriptor.Digest.String():
 				So(imgSum.Manifests[0].ArtifactType, ShouldResemble, artType2)
 			}
 		}
