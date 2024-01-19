@@ -78,7 +78,7 @@ func DerivedImageListQuery() GQLQuery {
 func CVEListForImageQuery() GQLQuery {
 	return GQLQuery{
 		Name:       "CVEListForImage",
-		Args:       []string{"image", "requestedPage", "searchedCVE"},
+		Args:       []string{"image", "requestedPage", "searchedCVE", "excludedCVE"},
 		ReturnType: CVEResultForImage(),
 	}
 }

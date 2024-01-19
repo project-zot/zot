@@ -170,7 +170,7 @@ type ComplexityRoot struct {
 	Query struct {
 		BaseImageList           func(childComplexity int, image string, digest *string, requestedPage *PageInput) int
 		BookmarkedRepos         func(childComplexity int, requestedPage *PageInput) int
-		CVEListForImage         func(childComplexity int, image string, requestedPage *PageInput, searchedCve *string) int
+		CVEListForImage         func(childComplexity int, image string, requestedPage *PageInput, searchedCve *string, excludedCve *string) int
 		DerivedImageList        func(childComplexity int, image string, digest *string, requestedPage *PageInput) int
 		ExpandedRepoInfo        func(childComplexity int, repo string) int
 		GlobalSearch            func(childComplexity int, query string, filter *Filter, requestedPage *PageInput) int
@@ -219,7 +219,7 @@ type ComplexityRoot struct {
 }
 
 type QueryResolver interface {
-	CVEListForImage(ctx context.Context, image string, requestedPage *PageInput, searchedCve *string) (*CVEResultForImage, error)
+	CVEListForImage(ctx context.Context, image string, requestedPage *PageInput, searchedCve *string, excludedCve *string) (*CVEResultForImage, error)
 	ImageListForCve(ctx context.Context, id string, filter *Filter, requestedPage *PageInput) (*PaginatedImagesResult, error)
 	ImageListWithCVEFixed(ctx context.Context, id string, image string, filter *Filter, requestedPage *PageInput) (*PaginatedImagesResult, error)
 	ImageListForDigest(ctx context.Context, id string, requestedPage *PageInput) (*PaginatedImagesResult, error)
@@ -827,7 +827,7 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 			return 0, false
 		}
 
-		return e.complexity.Query.CVEListForImage(childComplexity, args["image"].(string), args["requestedPage"].(*PageInput), args["searchedCVE"].(*string)), true
+		return e.complexity.Query.CVEListForImage(childComplexity, args["image"].(string), args["requestedPage"].(*PageInput), args["searchedCVE"].(*string), args["excludedCVE"].(*string)), true
 
 	case "Query.DerivedImageList":
 		if e.complexity.Query.DerivedImageList == nil {
@@ -1837,6 +1837,8 @@ type Query {
         requestedPage: PageInput
         "Search term for specific CVE by title/id"
         searchedCVE: String
+        "Search term that must not be present in the returned results"
+        excludedCVE: String
     ): CVEResultForImage!
 
     """
@@ -2064,6 +2066,15 @@ func (ec *executionContext) field_Query_CVEListForImage_args(ctx context.Context
 		}
 	}
 	args["searchedCVE"] = arg2
+	var arg3 *string
+	if tmp, ok := rawArgs["excludedCVE"]; ok {
+		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("excludedCVE"))
+		arg3, err = ec.unmarshalOString2ᚖstring(ctx, tmp)
+		if err != nil {
+			return nil, err
+		}
+	}
+	args["excludedCVE"] = arg3
 	return args, nil
 }
 
@@ -5925,7 +5936,7 @@ func (ec *executionContext) _Query_CVEListForImage(ctx context.Context, field gr
 	}()
 	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
 		ctx = rctx // use context from middleware stack in children
-		return ec.resolvers.Query().CVEListForImage(rctx, fc.Args["image"].(string), fc.Args["requestedPage"].(*PageInput), fc.Args["searchedCVE"].(*string))
+		return ec.resolvers.Query().CVEListForImage(rctx, fc.Args["image"].(string), fc.Args["requestedPage"].(*PageInput), fc.Args["searchedCVE"].(*string), fc.Args["excludedCVE"].(*string))
 	})
 	if err != nil {
 		ec.Error(ctx, err)

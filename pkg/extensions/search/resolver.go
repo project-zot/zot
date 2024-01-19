@@ -196,6 +196,7 @@ func getCVEListForImage(
 	cveInfo cveinfo.CveInfo,
 	requestedPage *gql_generated.PageInput,
 	searchedCVE string,
+	excludedCVE string,
 	log log.Logger, //nolint:unparam // may be used by devs for debugging
 ) (*gql_generated.CVEResultForImage, error) {
 	if requestedPage == nil {
@@ -217,7 +218,7 @@ func getCVEListForImage(
 	}
 
 	cveList, imageCveSummary, pageInfo, err := cveInfo.GetCVEListForImage(ctx, repo, ref,
-		searchedCVE, pageInput)
+		searchedCVE, excludedCVE, pageInput)
 	if err != nil {
 		return &gql_generated.CVEResultForImage{}, err
 	}
