@@ -20,7 +20,6 @@ import (
 	extconf "zotregistry.io/zot/pkg/extensions/config"
 	"zotregistry.io/zot/pkg/log"
 	test "zotregistry.io/zot/pkg/test/common"
-	"zotregistry.io/zot/pkg/test/deprecated"
 	. "zotregistry.io/zot/pkg/test/image-utils"
 	. "zotregistry.io/zot/pkg/test/oci-utils"
 )
@@ -94,25 +93,16 @@ func TestUserData(t *testing.T) {
 		ctlrManager.StartAndWait(port)
 		defer ctlrManager.StopServer()
 
-		config, layers, manifest, err := deprecated.GetImageComponents(100) //nolint:staticcheck
-		So(err, ShouldBeNil)
+		image := CreateDefaultImage()
 
-		err = UploadImageWithBasicAuth(
-			Image{
-				Config:   config,
-				Layers:   layers,
-				Manifest: manifest,
-			}, baseURL, accessibleRepo, tag,
+		err := UploadImageWithBasicAuth(
+			image, baseURL, accessibleRepo, tag,
 			adminUser, adminPassword,
 		)
 		So(err, ShouldBeNil)
 
 		err = UploadImageWithBasicAuth(
-			Image{
-				Config:   config,
-				Layers:   layers,
-				Manifest: manifest,
-			}, baseURL, forbiddenRepo, tag,
+			image, baseURL, forbiddenRepo, tag,
 			adminUser, adminPassword,
 		)
 		So(err, ShouldBeNil)
@@ -655,15 +645,15 @@ func TestGlobalSearchWithUserPrefFiltering(t *testing.T) {
 
 		// ------ Add simple repo
 		repo := "repo"
-		img, err := deprecated.GetRandomImage() //nolint:staticcheck
-		So(err, ShouldBeNil)
-		err = UploadImageWithBasicAuth(img, baseURL, repo, "tag", simpleUser, simpleUserPassword)
+		img := CreateRandomImage()
+
+		err := UploadImageWithBasicAuth(img, baseURL, repo, "tag", simpleUser, simpleUserPassword)
 		So(err, ShouldBeNil)
 
 		// ------ Add repo and star it
 		sRepo := "starred-repo"
-		img, err = deprecated.GetRandomImage() //nolint:staticcheck
-		So(err, ShouldBeNil)
+		img = CreateRandomImage()
+
 		err = UploadImageWithBasicAuth(img, baseURL, sRepo, "tag", simpleUser, simpleUserPassword)
 		So(err, ShouldBeNil)
 
@@ -673,8 +663,8 @@ func TestGlobalSearchWithUserPrefFiltering(t *testing.T) {
 
 		// ------ Add repo and bookmark it
 		bRepo := "bookmarked-repo"
-		img, err = deprecated.GetRandomImage() //nolint:staticcheck
-		So(err, ShouldBeNil)
+		img = CreateRandomImage()
+
 		err = UploadImageWithBasicAuth(img, baseURL, bRepo, "tag", simpleUser, simpleUserPassword)
 		So(err, ShouldBeNil)
 
@@ -684,8 +674,8 @@ func TestGlobalSearchWithUserPrefFiltering(t *testing.T) {
 
 		// ------ Add repo, star and bookmark it
 		sbRepo := "starred-bookmarked-repo"
-		img, err = deprecated.GetRandomImage() //nolint:staticcheck
-		So(err, ShouldBeNil)
+		img = CreateRandomImage()
+
 		err = UploadImageWithBasicAuth(img, baseURL, sbRepo, "tag", simpleUser, simpleUserPassword)
 		So(err, ShouldBeNil)
 
@@ -849,9 +839,9 @@ func TestExpandedRepoInfoWithUserPrefs(t *testing.T) {
 
 		// ------ Add sbrepo and star/bookmark it
 		sbrepo := "sbrepo"
-		img, err := deprecated.GetRandomImage() //nolint:staticcheck
-		So(err, ShouldBeNil)
-		err = UploadImageWithBasicAuth(img, baseURL, sbrepo, "tag", simpleUser, simpleUserPassword)
+		img := CreateRandomImage()
+
+		err := UploadImageWithBasicAuth(img, baseURL, sbrepo, "tag", simpleUser, simpleUserPassword)
 		So(err, ShouldBeNil)
 
 		resp, err := simpleUserClient.Put(preferencesBaseURL + PutRepoStarURL(sbrepo))
@@ -889,8 +879,8 @@ func TestExpandedRepoInfoWithUserPrefs(t *testing.T) {
 
 		// ------ Add srepo and star it
 		srepo := "srepo"
-		img, err = deprecated.GetRandomImage() //nolint:staticcheck
-		So(err, ShouldBeNil)
+		img = CreateRandomImage()
+
 		err = UploadImageWithBasicAuth(img, baseURL, srepo, "tag", simpleUser, simpleUserPassword)
 		So(err, ShouldBeNil)
 
@@ -924,8 +914,8 @@ func TestExpandedRepoInfoWithUserPrefs(t *testing.T) {
 
 		// ------ Add brepo and bookmark it
 		brepo := "brepo"
-		img, err = deprecated.GetRandomImage() //nolint:staticcheck
-		So(err, ShouldBeNil)
+		img = CreateRandomImage()
+
 		err = UploadImageWithBasicAuth(img, baseURL, brepo, "tag", simpleUser, simpleUserPassword)
 		So(err, ShouldBeNil)
 
@@ -959,8 +949,8 @@ func TestExpandedRepoInfoWithUserPrefs(t *testing.T) {
 
 		// ------ Add repo without star/bookmark
 		repo := "repo"
-		img, err = deprecated.GetRandomImage() //nolint:staticcheck
-		So(err, ShouldBeNil)
+		img = CreateRandomImage()
+
 		err = UploadImageWithBasicAuth(img, baseURL, repo, "tag", simpleUser, simpleUserPassword)
 		So(err, ShouldBeNil)
 
