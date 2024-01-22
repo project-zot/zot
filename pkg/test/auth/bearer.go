@@ -36,20 +36,25 @@ func MakeAuthTestServer(serverKey string, unauthorizedNamespace string) *httptes
 	}
 
 	authTestServer := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		var access []auth.AccessEntry
+
 		scope := request.URL.Query().Get("scope")
-		parts := strings.Split(scope, ":")
-		name := parts[1]
-		actions := strings.Split(parts[2], ",")
-		if name == unauthorizedNamespace {
-			actions = []string{}
+		if scope != "" {
+			parts := strings.Split(scope, ":")
+			name := parts[1]
+			actions := strings.Split(parts[2], ",")
+			if name == unauthorizedNamespace {
+				actions = []string{}
+			}
+			access = []auth.AccessEntry{
+				{
+					Name:    name,
+					Type:    "repository",
+					Actions: actions,
+				},
+			}
 		}
-		access := []auth.AccessEntry{
-			{
-				Name:    name,
-				Type:    "repository",
-				Actions: actions,
-			},
-		}
+
 		token, err := cmTokenGenerator.GenerateToken(access, time.Minute*1)
 		if err != nil {
 			panic(err)
