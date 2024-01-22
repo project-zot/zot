@@ -110,6 +110,10 @@ func getExpiredSessions(dir string) ([]string, error) {
 		return nil
 	})
 
+	if os.IsNotExist(err) {
+		return sessions, nil
+	}
+
 	return sessions, err
 }
 

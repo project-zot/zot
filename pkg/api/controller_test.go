@@ -2916,7 +2916,6 @@ func TestBearerAuth(t *testing.T) {
 		authorizationHeader := authutils.ParseBearerAuthHeader(resp.Header().Get("WWW-Authenticate"))
 		resp, err = resty.R().
 			SetQueryParam("service", authorizationHeader.Service).
-			SetQueryParam("scope", authorizationHeader.Scope).
 			Get(authorizationHeader.Realm)
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
@@ -2931,6 +2930,14 @@ func TestBearerAuth(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+		// trigger decode error
+		resp, err = resty.R().
+			SetHeader("Authorization", fmt.Sprintf("Bearer %s", "invalidToken")).
+			Get(baseURL + "/v2/")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusInternalServerError)
 
 		resp, err = resty.R().SetHeader("Authorization",
 			fmt.Sprintf("Bearer %s", goodToken.AccessToken)).Options(baseURL + "/v2/")
