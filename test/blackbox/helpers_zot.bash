@@ -42,10 +42,10 @@ function wait_zot_reachable() {
     local zot_port=${1}
     local zot_url=http://127.0.0.1:${zot_port}/v2/_catalog
     curl --connect-timeout 3 \
-        --max-time 3 \
-        --retry 10 \
-        --retry-delay 0 \
-        --retry-max-time 120 \
+        --max-time 5 \
+        --retry 20 \
+        --retry-delay 1 \
+        --retry-max-time 180 \
         --retry-connrefused \
         ${zot_url}
 }

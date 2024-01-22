@@ -120,6 +120,9 @@ function teardown_file() {
 
     zot_serve ${ZOT_PATH} ${zot_config_file}
 
+    # sleep a bit before running wait_zot_reachable(curl)
+    sleep 5
+
     wait_zot_reachable 8080
     # deduping will now run in background (task scheduler) while we push images, shouldn't interfere
 }
