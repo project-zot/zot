@@ -111,9 +111,9 @@ func TestScrubExtension(t *testing.T) {
 		err = WriteImageToFileSystem(image, repoName, "0.0.1", srcStorageCtlr)
 		So(err, ShouldBeNil)
 
-		manifestDigest := image.ManifestDescriptor.Digest
+		layerDigest := image.Manifest.Layers[0].Digest
 
-		err = os.Remove(path.Join(dir, repoName, "blobs/sha256", manifestDigest.Encoded()))
+		err = os.Remove(path.Join(dir, repoName, "blobs/sha256", layerDigest.Encoded()))
 		if err != nil {
 			panic(err)
 		}
@@ -240,9 +240,9 @@ func TestRunScrubRepo(t *testing.T) {
 		err = WriteImageToFileSystem(image, repoName, "0.0.1", srcStorageCtlr)
 		So(err, ShouldBeNil)
 
-		manifestDigest := image.ManifestDescriptor.Digest
+		layerDigest := image.Manifest.Layers[0].Digest
 
-		err = os.Remove(path.Join(dir, repoName, "blobs/sha256", manifestDigest.Encoded()))
+		err = os.Remove(path.Join(dir, repoName, "blobs/sha256", layerDigest.Encoded()))
 		if err != nil {
 			panic(err)
 		}

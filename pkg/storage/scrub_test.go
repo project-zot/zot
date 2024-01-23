@@ -108,6 +108,20 @@ func RunCheckAllBlobsIntegrityTests( //nolint: thelper
 			actual := strings.TrimSpace(str)
 			So(actual, ShouldContainSubstring, "REPOSITORY TAG STATUS AFFECTED BLOB ERROR")
 			So(actual, ShouldContainSubstring, "test 1.0 ok")
+
+			err = WriteMultiArchImageToFileSystem(CreateMultiarchWith().RandomImages(0).Build(), repoName, "2.0", storeCtlr)
+			So(err, ShouldBeNil)
+
+			buff = bytes.NewBufferString("")
+
+			res, err = storeCtlr.CheckAllBlobsIntegrity(context.Background())
+			res.PrintScrubResults(buff)
+			So(err, ShouldBeNil)
+			str = space.ReplaceAllString(buff.String(), " ")
+			actual = strings.TrimSpace(str)
+			So(actual, ShouldContainSubstring, "REPOSITORY TAG STATUS AFFECTED BLOB ERROR")
+			So(actual, ShouldContainSubstring, "test 1.0 ok")
+			So(actual, ShouldContainSubstring, "test 2.0 ok")
 		})
 
 		Convey("Blobs integrity with context done", func() {
@@ -153,18 +167,12 @@ func RunCheckAllBlobsIntegrityTests( //nolint: thelper
 			str := space.ReplaceAllString(buff.String(), " ")
 			actual := strings.TrimSpace(str)
 			So(actual, ShouldContainSubstring, "REPOSITORY TAG STATUS AFFECTED BLOB ERROR")
-			// verify error message
-			So(actual, ShouldContainSubstring, fmt.Sprintf("test 1.0 affected %s blob not found", manifestDig))
+			So(actual, ShouldNotContainSubstring, "affected")
 
 			index, err := common.GetIndex(imgStore, repoName, log)
 			So(err, ShouldBeNil)
 
 			So(len(index.Manifests), ShouldEqual, 1)
-			manifestDescriptor := index.Manifests[0]
-
-			imageRes := storage.CheckLayers(context.Background(), repoName, tag, manifestDescriptor, imgStore)
-			So(imageRes.Status, ShouldEqual, "affected")
-			So(imageRes.Error, ShouldEqual, "blob not found")
 
 			_, err = driver.WriteFile(manifestFile, []byte("invalid content"))
 			So(err, ShouldBeNil)
@@ -185,11 +193,10 @@ func RunCheckAllBlobsIntegrityTests( //nolint: thelper
 			So(err, ShouldBeNil)
 
 			So(len(index.Manifests), ShouldEqual, 1)
-			manifestDescriptor = index.Manifests[0]
+			manifestDescriptor := index.Manifests[0]
 
-			imageRes = storage.CheckLayers(context.Background(), repoName, tag, manifestDescriptor, imgStore)
-			So(imageRes.Status, ShouldEqual, "affected")
-			So(imageRes.Error, ShouldEqual, "invalid manifest content")
+			_, _, err = storage.CheckManifestAndConfig(repoName, manifestDescriptor, []byte("invalid content"), imgStore)
+			So(err, ShouldNotBeNil)
 		})
 
 		Convey("Config integrity affected", func() {
@@ -268,7 +275,8 @@ func RunCheckAllBlobsIntegrityTests( //nolint: thelper
 
 		Convey("Layer not found", func() {
 			// get content of layer
-			content, err := imgStore.GetBlobContent(repoName, image.Manifest.Layers[0].Digest)
+			digest := image.Manifest.Layers[0].Digest
+			content, err := imgStore.GetBlobContent(repoName, digest)
 			So(err, ShouldBeNil)
 
 			// change layer file permissions
@@ -287,9 +295,9 @@ func RunCheckAllBlobsIntegrityTests( //nolint: thelper
 			So(err, ShouldBeNil)
 
 			So(len(index.Manifests), ShouldEqual, 1)
-			manifestDescriptor := index.Manifests[0]
 
-			imageRes := storage.CheckLayers(context.Background(), repoName, tag, manifestDescriptor, imgStore)
+			// get content of layer
+			imageRes := storage.CheckLayers(repoName, tag, []ispec.Descriptor{{Digest: digest}}, imgStore)
 			So(imageRes.Status, ShouldEqual, "affected")
 			So(imageRes.Error, ShouldEqual, "blob not found")
 
@@ -365,8 +373,22 @@ func RunCheckAllBlobsIntegrityTests( //nolint: thelper
 			So(actual, ShouldNotContainSubstring, "test ok")
 
 			// test scrub index - errors
-			// delete content of manifest file
 			manifestFile := path.Join(imgStore.RootDir(), repoName, "/blobs/sha256", newManifestDigest.Encoded())
+			_, err = driver.WriteFile(manifestFile, []byte("invalid content"))
+			So(err, ShouldBeNil)
+
+			buff = bytes.NewBufferString("")
+
+			res, err = storeCtlr.CheckAllBlobsIntegrity(context.Background())
+			res.PrintScrubResults(buff)
+			So(err, ShouldBeNil)
+
+			str = space.ReplaceAllString(buff.String(), " ")
+			actual = strings.TrimSpace(str)
+			So(actual, ShouldContainSubstring, "REPOSITORY TAG STATUS AFFECTED BLOB ERROR")
+			So(actual, ShouldContainSubstring, "test affected")
+
+			// delete content of manifest file
 			err = driver.Delete(manifestFile)
 			So(err, ShouldBeNil)
 
@@ -394,7 +416,8 @@ func RunCheckAllBlobsIntegrityTests( //nolint: thelper
 			str = space.ReplaceAllString(buff.String(), " ")
 			actual = strings.TrimSpace(str)
 			So(actual, ShouldContainSubstring, "REPOSITORY TAG STATUS AFFECTED BLOB ERROR")
-			So(actual, ShouldContainSubstring, "test affected")
+			So(actual, ShouldContainSubstring, "test 1.0 ok")
+			So(actual, ShouldNotContainSubstring, "test affected")
 
 			index.Manifests[0].MediaType = "invalid"
 			indexBlob, err = json.Marshal(index)
@@ -409,7 +432,7 @@ func RunCheckAllBlobsIntegrityTests( //nolint: thelper
 			res.PrintScrubResults(buff)
 			So(err, ShouldBeNil)
 
-			_, err = storage.CheckManifestAndConfig(repoName, index.Manifests[0], imgStore)
+			_, _, err = storage.CheckManifestAndConfig(repoName, index.Manifests[0], []byte{}, imgStore)
 			So(err, ShouldNotBeNil)
 			So(err, ShouldEqual, zerr.ErrBadManifest)
 
@@ -455,17 +478,12 @@ func RunCheckAllBlobsIntegrityTests( //nolint: thelper
 			str := space.ReplaceAllString(buff.String(), " ")
 			actual := strings.TrimSpace(str)
 			So(actual, ShouldContainSubstring, "REPOSITORY TAG STATUS AFFECTED BLOB ERROR")
-			So(actual, ShouldContainSubstring, fmt.Sprintf("test 1.0 affected %s blob not found", manifestDig))
+			So(actual, ShouldNotContainSubstring, fmt.Sprintf("test 1.0 affected %s blob not found", manifestDig))
 
 			index, err := common.GetIndex(imgStore, repoName, log)
 			So(err, ShouldBeNil)
 
 			So(len(index.Manifests), ShouldEqual, 1)
-			manifestDescriptor := index.Manifests[0]
-
-			imageRes := storage.CheckLayers(context.Background(), repoName, tag, manifestDescriptor, imgStore)
-			So(imageRes.Status, ShouldEqual, "affected")
-			So(imageRes.Error, ShouldContainSubstring, "blob not found")
 		})
 
 		Convey("use the result of an already scrubed manifest which is the subject of the current manifest", func() {
@@ -491,6 +509,86 @@ func RunCheckAllBlobsIntegrityTests( //nolint: thelper
 			So(actual, ShouldContainSubstring, "REPOSITORY TAG STATUS AFFECTED BLOB ERROR")
 			So(actual, ShouldContainSubstring, "test 1.0 ok")
 			So(actual, ShouldContainSubstring, "test 0.0.1 ok")
+		})
+
+		Convey("the subject of the current manifest doesn't exist", func() {
+			index, err := common.GetIndex(imgStore, repoName, log)
+			So(err, ShouldBeNil)
+
+			manifestDescriptor, ok := common.GetManifestDescByReference(index, image.ManifestDescriptor.Digest.String())
+			So(ok, ShouldBeTrue)
+
+			err = WriteImageToFileSystem(CreateDefaultImageWith().Subject(&manifestDescriptor).Build(),
+				repoName, "0.0.2", storeCtlr)
+			So(err, ShouldBeNil)
+
+			// get content of manifest file
+			content, _, _, err := imgStore.GetImageManifest(repoName, manifestDescriptor.Digest.String())
+			So(err, ShouldBeNil)
+
+			// delete content of manifest file
+			manifestDig := image.ManifestDescriptor.Digest.Encoded()
+			manifestFile := path.Join(imgStore.RootDir(), repoName, "/blobs/sha256", manifestDig)
+			err = driver.Delete(manifestFile)
+			So(err, ShouldBeNil)
+
+			defer func() {
+				// put manifest content back to file
+				_, err = driver.WriteFile(manifestFile, content)
+				So(err, ShouldBeNil)
+			}()
+
+			buff := bytes.NewBufferString("")
+
+			res, err := storeCtlr.CheckAllBlobsIntegrity(context.Background())
+			res.PrintScrubResults(buff)
+			So(err, ShouldBeNil)
+
+			space := regexp.MustCompile(`\s+`)
+			str := space.ReplaceAllString(buff.String(), " ")
+			actual := strings.TrimSpace(str)
+			So(actual, ShouldContainSubstring, "REPOSITORY TAG STATUS AFFECTED BLOB ERROR")
+			So(actual, ShouldContainSubstring, "test 0.0.2 affected")
+		})
+
+		Convey("the subject of the current index doesn't exist", func() {
+			index, err := common.GetIndex(imgStore, repoName, log)
+			So(err, ShouldBeNil)
+
+			manifestDescriptor, ok := common.GetManifestDescByReference(index, image.ManifestDescriptor.Digest.String())
+			So(ok, ShouldBeTrue)
+
+			err = WriteMultiArchImageToFileSystem(CreateMultiarchWith().RandomImages(1).Subject(&manifestDescriptor).Build(),
+				repoName, "0.0.2", storeCtlr)
+			So(err, ShouldBeNil)
+
+			// get content of manifest file
+			content, _, _, err := imgStore.GetImageManifest(repoName, manifestDescriptor.Digest.String())
+			So(err, ShouldBeNil)
+
+			// delete content of manifest file
+			manifestDig := image.ManifestDescriptor.Digest.Encoded()
+			manifestFile := path.Join(imgStore.RootDir(), repoName, "/blobs/sha256", manifestDig)
+			err = driver.Delete(manifestFile)
+			So(err, ShouldBeNil)
+
+			defer func() {
+				// put manifest content back to file
+				_, err = driver.WriteFile(manifestFile, content)
+				So(err, ShouldBeNil)
+			}()
+
+			buff := bytes.NewBufferString("")
+
+			res, err := storeCtlr.CheckAllBlobsIntegrity(context.Background())
+			res.PrintScrubResults(buff)
+			So(err, ShouldBeNil)
+
+			space := regexp.MustCompile(`\s+`)
+			str := space.ReplaceAllString(buff.String(), " ")
+			actual := strings.TrimSpace(str)
+			So(actual, ShouldContainSubstring, "REPOSITORY TAG STATUS AFFECTED BLOB ERROR")
+			So(actual, ShouldContainSubstring, "test 0.0.2 affected")
 		})
 	})
 
