@@ -3,6 +3,7 @@ package scheduler
 import (
 	"container/heap"
 	"context"
+	"math"
 	"runtime"
 	"sync"
 	"sync/atomic"
@@ -26,7 +27,7 @@ func (pq generatorsPriorityQueue) Len() int {
 }
 
 func (pq generatorsPriorityQueue) Less(i, j int) bool {
-	return pq[i].priority > pq[j].priority
+	return pq[i].getRanking() > pq[j].getRanking()
 }
 
 func (pq generatorsPriorityQueue) Swap(i, j int) {
@@ -331,7 +332,13 @@ func (scheduler *Scheduler) generateTasks() {
 
 	// check if the generator with highest priority is ready to run
 	if scheduler.generators[0].getState() == Ready {
+		// we are not popping it as we will generate multiple tasks until it is done
+		// we are going to pop after all tasks are generated
 		gen = scheduler.generators[0]
+
+		// trigger a generator reorder, as generating a task may impact the order
+		// equivalent of pop/remove followed by push, but more efficient
+		heap.Fix(&scheduler.generators, 0)
 	} else {
 		gen, _ = heap.Pop(&scheduler.generators).(*generator)
 		if gen.getState() == Waiting {
@@ -439,6 +446,7 @@ type generator struct {
 	taskGenerator TaskGenerator
 	remainingTask Task
 	index         int
+	taskCount     int64
 }
 
 func (gen *generator) generate(sch *Scheduler) {
@@ -460,6 +468,7 @@ func (gen *generator) generate(sch *Scheduler) {
 		if gen.taskGenerator.IsDone() {
 			gen.done = true
 			gen.lastRun = time.Now()
+			gen.taskCount = 0
 			gen.taskGenerator.Reset()
 
 			return
@@ -467,6 +476,9 @@ func (gen *generator) generate(sch *Scheduler) {
 
 		task = nextTask
 	}
+
+	// keep track of generated task count to use it for generator ordering
+	gen.taskCount++
 
 	// check if it's possible to add a new task to the channel
 	// if not, keep the generated task and retry to add it next time
@@ -502,12 +514,19 @@ func (gen *generator) getState() State {
 	return Ready
 }
 
+func (gen *generator) getRanking() float64 {
+	// take into account the priority, but also how many tasks of
+	// a specific generator were executed in the current generator run
+	return math.Pow(10, float64(gen.priority)) / (1 + float64(gen.taskCount)) //nolint:gomnd
+}
+
 func (scheduler *Scheduler) SubmitGenerator(taskGenerator TaskGenerator, interval time.Duration, priority Priority) {
 	newGenerator := &generator{
 		interval:      interval,
 		done:          false,
 		priority:      priority,
 		taskGenerator: taskGenerator,
+		taskCount:     0,
 		remainingTask: nil,
 	}
 
