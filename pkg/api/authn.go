@@ -262,7 +262,8 @@ func (amw *AuthnMiddleware) tryAuthnHandlers(ctlr *Controller) mux.MiddlewareFun
 	// ldap and htpasswd based authN
 	if ctlr.Config.IsLdapAuthEnabled() {
 		ldapConfig := ctlr.Config.HTTP.Auth.LDAP
-		amw.ldapClient = &LDAPClient{
+
+		ctlr.LDAPClient = &LDAPClient{
 			Host:               ldapConfig.Address,
 			Port:               ldapConfig.Port,
 			UseSSL:             !ldapConfig.Insecure,
@@ -277,6 +278,8 @@ func (amw *AuthnMiddleware) tryAuthnHandlers(ctlr *Controller) mux.MiddlewareFun
 			Log:                ctlr.Log,
 			SubtreeSearch:      ldapConfig.SubtreeSearch,
 		}
+
+		amw.ldapClient = ctlr.LDAPClient
 
 		if ctlr.Config.HTTP.Auth.LDAP.CACert != "" {
 			caCert, err := os.ReadFile(ctlr.Config.HTTP.Auth.LDAP.CACert)

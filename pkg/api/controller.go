@@ -48,6 +48,7 @@ type Controller struct {
 	SyncOnDemand    SyncOnDemand
 	RelyingParties  map[string]rp.RelyingParty
 	CookieStore     *CookieStore
+	LDAPClient      *LDAPClient
 	taskScheduler   *scheduler.Scheduler
 	// runtime params
 	chosenPort int // kernel-chosen port
@@ -312,6 +313,17 @@ func (c *Controller) InitMetaDB() error {
 func (c *Controller) LoadNewConfig(newConfig *config.Config) {
 	// reload access control config
 	c.Config.HTTP.AccessControl = newConfig.HTTP.AccessControl
+
+	if c.Config.HTTP.Auth != nil {
+		c.Config.HTTP.Auth.LDAP = newConfig.HTTP.Auth.LDAP
+
+		if c.LDAPClient != nil {
+			c.LDAPClient.lock.Lock()
+			c.LDAPClient.BindDN = newConfig.HTTP.Auth.LDAP.BindDN()
+			c.LDAPClient.BindPassword = newConfig.HTTP.Auth.LDAP.BindPassword()
+			c.LDAPClient.lock.Unlock()
+		}
+	}
 
 	// reload periodical gc config
 	c.Config.Storage.GC = newConfig.Storage.GC
