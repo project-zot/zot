@@ -4629,6 +4629,60 @@ func TestAuthorization(t *testing.T) {
 	})
 }
 
+func TestChangePassword(t *testing.T) {
+	Convey("Make a new controller", t, func() {
+		port := test.GetFreePort()
+		baseURL := test.GetBaseURL(port)
+		conf := config.New()
+		conf.HTTP.Port = port
+		username, seedUser := test.GenerateRandomString()
+		password, seedPass := test.GenerateRandomString()
+		htpasswdPath := test.MakeHtpasswdFileFromString(test.GetCredString(username, password))
+		defer os.Remove(htpasswdPath)
+
+		conf.HTTP.Auth = &config.AuthConfig{
+			HTPasswd: config.AuthHTPasswd{
+				Path: htpasswdPath,
+			},
+		}
+		conf.HTTP.AccessControl = &config.AccessControlConfig{
+			Repositories: config.Repositories{
+				test.AuthorizationAllRepos: config.PolicyGroup{
+					Policies: []config.Policy{
+						{
+							Users:   []string{},
+							Actions: []string{},
+						},
+					},
+					DefaultPolicy: []string{},
+				},
+			},
+			AdminPolicy: config.Policy{
+				Users:   []string{},
+				Actions: []string{},
+			},
+		}
+
+		Convey("with basic auth", func() {
+			ctlr := api.NewController(conf)
+			ctlr.Config.Storage.RootDirectory = t.TempDir()
+
+			err := WriteImageToFileSystem(CreateDefaultImage(), "zot-test", "0.0.1",
+				ociutils.GetDefaultStoreController(ctlr.Config.Storage.RootDirectory, ctlr.Log))
+			So(err, ShouldBeNil)
+
+			cm := test.NewControllerManager(ctlr)
+			cm.StartAndWait(port)
+			defer cm.StopServer()
+
+			client := resty.New()
+			client.SetBasicAuth(username, password)
+
+			RunAuthorizationTests(t, client, baseURL, username, conf)
+		})
+	})
+}
+
 func TestGetUsername(t *testing.T) {
 	Convey("Make a new controller", t, func() {
 		port := test.GetFreePort()

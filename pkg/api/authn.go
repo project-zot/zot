@@ -1,7 +1,6 @@
 package api
 
 import (
-	"bufio"
 	"context"
 	"crypto/sha256"
 	"crypto/x509"
@@ -27,7 +26,6 @@ import (
 	"github.com/zitadel/oidc/pkg/client/rp"
 	httphelper "github.com/zitadel/oidc/pkg/http"
 	"github.com/zitadel/oidc/pkg/oidc"
-	"golang.org/x/crypto/bcrypt"
 	"golang.org/x/oauth2"
 	githubOAuth "golang.org/x/oauth2/github"
 
@@ -47,9 +45,9 @@ const (
 )
 
 type AuthnMiddleware struct {
-	credMap    map[string]string
-	ldapClient *LDAPClient
-	log        log.Logger
+	htpasswdClient *HtpasswdClient
+	ldapClient     *LDAPClient
+	log            log.Logger
 }
 
 func AuthHandler(ctlr *Controller) mux.MiddlewareFunc {
@@ -110,10 +108,10 @@ func (amw *AuthnMiddleware) basicAuthn(ctlr *Controller, userAc *reqCtx.UserAcce
 		return false, nil
 	}
 
-	passphraseHash, ok := amw.credMap[identity]
+	passphraseHash, ok := amw.htpasswdClient.Get(identity)
 	if ok {
 		// first, HTTPPassword authN (which is local)
-		if err := bcrypt.CompareHashAndPassword([]byte(passphraseHash), []byte(passphrase)); err == nil {
+		if err := amw.htpasswdClient.CheckPassword(identity, passphraseHash); err == nil {
 			// Process request
 			var groups []string
 
@@ -255,8 +253,6 @@ func (amw *AuthnMiddleware) tryAuthnHandlers(ctlr *Controller) mux.MiddlewareFun
 		return noPasswdAuth(ctlr)
 	}
 
-	amw.credMap = make(map[string]string)
-
 	delay := ctlr.Config.HTTP.Auth.FailDelay
 
 	// ldap and htpasswd based authN
@@ -305,25 +301,6 @@ func (amw *AuthnMiddleware) tryAuthnHandlers(ctlr *Controller) mux.MiddlewareFun
 			}
 
 			amw.ldapClient.ClientCAs = caCertPool
-		}
-	}
-
-	if ctlr.Config.IsHtpasswdAuthEnabled() {
-		credsFile, err := os.Open(ctlr.Config.HTTP.Auth.HTPasswd.Path)
-		if err != nil {
-			amw.log.Panic().Err(err).Str("credsFile", ctlr.Config.HTTP.Auth.HTPasswd.Path).
-				Msg("failed to open creds-file")
-		}
-		defer credsFile.Close()
-
-		scanner := bufio.NewScanner(credsFile)
-
-		for scanner.Scan() {
-			line := scanner.Text()
-			if strings.Contains(line, ":") {
-				tokens := strings.Split(scanner.Text(), ":")
-				amw.credMap[tokens[0]] = tokens[1]
-			}
 		}
 	}
 

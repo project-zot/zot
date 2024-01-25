@@ -1513,6 +1513,79 @@ func TestRoutes(t *testing.T) {
 			})
 		})
 
+		Convey("ChangePassword Route", func() {
+			type testCase struct {
+				username string
+				reqBody  api.ChangePasswordRequest
+				wantCode int
+				wantBody []byte
+			}
+
+			testFn := func(testCase testCase) func() {
+				return func() {
+					userAc := reqCtx.NewUserAccessControl()
+					userAc.SetUsername(testCase.username)
+					ctx := userAc.DeriveContext(context.Background())
+
+					reqBody, err := json.Marshal(testCase.reqBody)
+					So(err, ShouldBeNil)
+
+					request, _ := http.NewRequestWithContext(ctx, http.MethodPost,
+						baseURL+constants.ChangePasswordPath, bytes.NewReader(reqBody))
+					response := httptest.NewRecorder()
+
+					rthdlr.ChangePassword(response, request)
+
+					resp := response.Result()
+					defer resp.Body.Close()
+					body, _ := io.ReadAll(resp.Body)
+
+					So(resp.StatusCode, ShouldEqual, testCase.wantCode)
+					So(body, ShouldEqual, testCase.wantBody)
+				}
+			}
+
+			Convey("successful password change", testFn(testCase{
+				username: username,
+				reqBody: api.ChangePasswordRequest{
+					OldPassword: password,
+					NewPassword: "new_password",
+				},
+				wantCode: http.StatusOK,
+				wantBody: []byte("password changed"),
+			}))
+
+			Convey("user is not found", testFn(testCase{
+				username: "non-existing-user",
+				reqBody: api.ChangePasswordRequest{
+					OldPassword: "old_password",
+					NewPassword: "new_password",
+				},
+				wantCode: http.StatusNotFound,
+				wantBody: []byte(zerr.ErrUserIsNotFound.Error()),
+			}))
+
+			Convey("old password is wrong", testFn(testCase{
+				username: username,
+				reqBody: api.ChangePasswordRequest{
+					OldPassword: "wrong_old_password",
+					NewPassword: "new_password",
+				},
+				wantCode: http.StatusUnauthorized,
+				wantBody: []byte(zerr.ErrOldPasswordIsWrong.Error()),
+			}))
+
+			Convey("new password is empty", testFn(testCase{
+				username: username,
+				reqBody: api.ChangePasswordRequest{
+					OldPassword: password,
+					NewPassword: "",
+				},
+				wantCode: http.StatusBadRequest,
+				wantBody: []byte(zerr.ErrPasswordIsEmpty.Error()),
+			}))
+		})
+
 		Convey("Helper functions", func() {
 			testUpdateBlobUpload := func(
 				query []struct{ k, v string },

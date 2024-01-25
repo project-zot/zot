@@ -19,6 +19,7 @@ const (
 	LoginPath                    = AppNamespacePath + "/auth/login"
 	LogoutPath                   = AppNamespacePath + "/auth/logout"
 	APIKeyPath                   = AppNamespacePath + "/auth/apikey"
+	ChangePasswordPath           = AppNamespacePath + "/auth/change_password"
 	SessionClientHeaderName      = "X-ZOT-API-CLIENT"
 	SessionClientHeaderValue     = "zot-ui"
 	APIKeysPrefix                = "zak_"

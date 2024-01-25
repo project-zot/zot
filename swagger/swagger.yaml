@@ -993,6 +993,48 @@ paths:
           schema:
             type: string
       summary: Create an API key for the current user
+  /zot/auth/change_password:
+    post:
+      consumes:
+      - application/json
+      description: Change user's password. Invalidates all user's other active sessions.
+      parameters:
+      - description: Old password
+        in: body
+        name: old_password
+        required: true
+        schema:
+          type: string
+      - description: New password
+        in: body
+        name: new_password
+        required: true
+        schema:
+          type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: password changed
+          schema:
+            type: string
+        "400":
+          description: bad request
+          schema:
+            type: string
+        "401":
+          description: unauthorized
+          schema:
+            type: string
+        "403":
+          description: old password is incorrect
+          schema:
+            type: string
+        "500":
+          description: internal server error
+          schema:
+            type: string
+      summary: Change user's password
   /zot/auth/logout:
     post:
       consumes:
