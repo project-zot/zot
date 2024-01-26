@@ -13,8 +13,8 @@ import (
 
 	. "github.com/smartystreets/goconvey/convey"
 
-	zerr "zotregistry.io/zot/errors"
-	"zotregistry.io/zot/pkg/cli/client"
+	zerr "zotregistry.dev/zot/errors"
+	"zotregistry.dev/zot/pkg/cli/client"
 )
 
 func TestConfigCmdBasics(t *testing.T) {

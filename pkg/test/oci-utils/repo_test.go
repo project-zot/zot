@@ -7,10 +7,10 @@ import (
 
 	. "github.com/smartystreets/goconvey/convey"
 
-	"zotregistry.io/zot/pkg/meta/types"
-	"zotregistry.io/zot/pkg/test/image-utils"
-	"zotregistry.io/zot/pkg/test/mocks"
-	ociutils "zotregistry.io/zot/pkg/test/oci-utils"
+	"zotregistry.dev/zot/pkg/meta/types"
+	"zotregistry.dev/zot/pkg/test/image-utils"
+	"zotregistry.dev/zot/pkg/test/mocks"
+	ociutils "zotregistry.dev/zot/pkg/test/oci-utils"
 )
 
 var ErrTestFail = fmt.Errorf("fail")

@@ -9,11 +9,11 @@ import (
 
 	. "github.com/smartystreets/goconvey/convey"
 
-	"zotregistry.io/zot/pkg/api"
-	"zotregistry.io/zot/pkg/api/config"
-	"zotregistry.io/zot/pkg/cli/client"
-	extconf "zotregistry.io/zot/pkg/extensions/config"
-	test "zotregistry.io/zot/pkg/test/common"
+	"zotregistry.dev/zot/pkg/api"
+	"zotregistry.dev/zot/pkg/api/config"
+	"zotregistry.dev/zot/pkg/cli/client"
+	extconf "zotregistry.dev/zot/pkg/extensions/config"
+	test "zotregistry.dev/zot/pkg/test/common"
 )
 
 func TestGQLQueries(t *testing.T) {

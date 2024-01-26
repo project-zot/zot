@@ -10,11 +10,11 @@ import (
 	. "github.com/smartystreets/goconvey/convey"
 	"gopkg.in/resty.v1"
 
-	"zotregistry.io/zot/pkg/api"
-	"zotregistry.io/zot/pkg/api/config"
-	extconf "zotregistry.io/zot/pkg/extensions/config"
-	syncconf "zotregistry.io/zot/pkg/extensions/config/sync"
-	test "zotregistry.io/zot/pkg/test/common"
+	"zotregistry.dev/zot/pkg/api"
+	"zotregistry.dev/zot/pkg/api/config"
+	extconf "zotregistry.dev/zot/pkg/extensions/config"
+	syncconf "zotregistry.dev/zot/pkg/extensions/config/sync"
+	test "zotregistry.dev/zot/pkg/test/common"
 )
 
 func TestSyncExtension(t *testing.T) {

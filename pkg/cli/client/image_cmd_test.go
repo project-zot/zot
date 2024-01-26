@@ -23,15 +23,15 @@ import (
 	. "github.com/smartystreets/goconvey/convey"
 	"gopkg.in/resty.v1"
 
-	"zotregistry.io/zot/pkg/api"
-	"zotregistry.io/zot/pkg/api/config"
-	"zotregistry.io/zot/pkg/cli/client"
-	extconf "zotregistry.io/zot/pkg/extensions/config"
-	zlog "zotregistry.io/zot/pkg/log"
-	test "zotregistry.io/zot/pkg/test/common"
-	. "zotregistry.io/zot/pkg/test/image-utils"
-	ociutils "zotregistry.io/zot/pkg/test/oci-utils"
-	"zotregistry.io/zot/pkg/test/signature"
+	"zotregistry.dev/zot/pkg/api"
+	"zotregistry.dev/zot/pkg/api/config"
+	"zotregistry.dev/zot/pkg/cli/client"
+	extconf "zotregistry.dev/zot/pkg/extensions/config"
+	zlog "zotregistry.dev/zot/pkg/log"
+	test "zotregistry.dev/zot/pkg/test/common"
+	. "zotregistry.dev/zot/pkg/test/image-utils"
+	ociutils "zotregistry.dev/zot/pkg/test/oci-utils"
+	"zotregistry.dev/zot/pkg/test/signature"
 )
 
 //nolint:dupl

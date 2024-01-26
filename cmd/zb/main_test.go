@@ -5,8 +5,8 @@ import (
 
 	. "github.com/smartystreets/goconvey/convey"
 
-	"zotregistry.io/zot/pkg/api"
-	"zotregistry.io/zot/pkg/api/config"
+	"zotregistry.dev/zot/pkg/api"
+	"zotregistry.dev/zot/pkg/api/config"
 )
 
 func TestIntegration(t *testing.T) {

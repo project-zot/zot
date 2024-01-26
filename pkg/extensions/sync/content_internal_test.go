@@ -8,8 +8,8 @@ import (
 
 	. "github.com/smartystreets/goconvey/convey"
 
-	syncconf "zotregistry.io/zot/pkg/extensions/config/sync"
-	"zotregistry.io/zot/pkg/log"
+	syncconf "zotregistry.dev/zot/pkg/extensions/config/sync"
+	"zotregistry.dev/zot/pkg/log"
 )
 
 func TestContentManager(t *testing.T) {

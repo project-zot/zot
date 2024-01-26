@@ -10,14 +10,14 @@ import (
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/vektah/gqlparser/v2/gqlerror"
 
-	zerr "zotregistry.io/zot/errors"
-	zcommon "zotregistry.io/zot/pkg/common"
-	cveinfo "zotregistry.io/zot/pkg/extensions/search/cve"
-	"zotregistry.io/zot/pkg/extensions/search/gql_generated"
-	"zotregistry.io/zot/pkg/extensions/search/pagination"
-	"zotregistry.io/zot/pkg/log"
-	mTypes "zotregistry.io/zot/pkg/meta/types"
-	reqCtx "zotregistry.io/zot/pkg/requestcontext"
+	zerr "zotregistry.dev/zot/errors"
+	zcommon "zotregistry.dev/zot/pkg/common"
+	cveinfo "zotregistry.dev/zot/pkg/extensions/search/cve"
+	"zotregistry.dev/zot/pkg/extensions/search/gql_generated"
+	"zotregistry.dev/zot/pkg/extensions/search/pagination"
+	"zotregistry.dev/zot/pkg/log"
+	mTypes "zotregistry.dev/zot/pkg/meta/types"
+	reqCtx "zotregistry.dev/zot/pkg/requestcontext"
 )
 
 type SkipQGLField struct {

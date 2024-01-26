@@ -6,12 +6,12 @@ package extensions
 import (
 	"time"
 
-	"zotregistry.io/zot/pkg/api/config"
-	"zotregistry.io/zot/pkg/extensions/scrub"
-	"zotregistry.io/zot/pkg/log"
-	"zotregistry.io/zot/pkg/scheduler"
-	"zotregistry.io/zot/pkg/storage"
-	storageTypes "zotregistry.io/zot/pkg/storage/types"
+	"zotregistry.dev/zot/pkg/api/config"
+	"zotregistry.dev/zot/pkg/extensions/scrub"
+	"zotregistry.dev/zot/pkg/log"
+	"zotregistry.dev/zot/pkg/scheduler"
+	"zotregistry.dev/zot/pkg/storage"
+	storageTypes "zotregistry.dev/zot/pkg/storage/types"
 )
 
 // EnableScrubExtension enables scrub extension.

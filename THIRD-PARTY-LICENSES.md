@@ -463,4 +463,4 @@ sigs.k8s.io/kustomize/api|https://github.com/kubernetes-sigs/kustomize/blob/6ce0
 sigs.k8s.io/kustomize/kyaml|https://github.com/kubernetes-sigs/kustomize/blob/6ce0bf390ce3/kyaml/LICENSE|Apache-2.0
 sigs.k8s.io/yaml/goyaml.v2|https://github.com/kubernetes-sigs/yaml/blob/v1.4.0/goyaml.v2/LICENSE|Apache-2.0
 sigs.k8s.io/yaml|https://github.com/kubernetes-sigs/yaml/blob/v1.4.0/LICENSE|Apache-2.0
-zotregistry.io/zot|Unknown|Apache-2.0
+zotregistry.dev/zot|Unknown|Apache-2.0

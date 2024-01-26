@@ -13,16 +13,16 @@ import (
 	"github.com/rs/zerolog"
 	. "github.com/smartystreets/goconvey/convey"
 
-	zerr "zotregistry.io/zot/errors"
-	"zotregistry.io/zot/pkg/extensions/monitoring"
-	"zotregistry.io/zot/pkg/log"
-	"zotregistry.io/zot/pkg/storage"
-	"zotregistry.io/zot/pkg/storage/cache"
-	common "zotregistry.io/zot/pkg/storage/common"
-	"zotregistry.io/zot/pkg/storage/imagestore"
-	"zotregistry.io/zot/pkg/storage/local"
-	. "zotregistry.io/zot/pkg/test/image-utils"
-	"zotregistry.io/zot/pkg/test/mocks"
+	zerr "zotregistry.dev/zot/errors"
+	"zotregistry.dev/zot/pkg/extensions/monitoring"
+	"zotregistry.dev/zot/pkg/log"
+	"zotregistry.dev/zot/pkg/storage"
+	"zotregistry.dev/zot/pkg/storage/cache"
+	common "zotregistry.dev/zot/pkg/storage/common"
+	"zotregistry.dev/zot/pkg/storage/imagestore"
+	"zotregistry.dev/zot/pkg/storage/local"
+	. "zotregistry.dev/zot/pkg/test/image-utils"
+	"zotregistry.dev/zot/pkg/test/mocks"
 )
 
 func TestValidateManifest(t *testing.T) {

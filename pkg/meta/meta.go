@@ -4,12 +4,12 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"go.etcd.io/bbolt"
 
-	"zotregistry.io/zot/errors"
-	"zotregistry.io/zot/pkg/api/config"
-	"zotregistry.io/zot/pkg/log"
-	"zotregistry.io/zot/pkg/meta/boltdb"
-	mdynamodb "zotregistry.io/zot/pkg/meta/dynamodb"
-	mTypes "zotregistry.io/zot/pkg/meta/types"
+	"zotregistry.dev/zot/errors"
+	"zotregistry.dev/zot/pkg/api/config"
+	"zotregistry.dev/zot/pkg/log"
+	"zotregistry.dev/zot/pkg/meta/boltdb"
+	mdynamodb "zotregistry.dev/zot/pkg/meta/dynamodb"
+	mTypes "zotregistry.dev/zot/pkg/meta/types"
 )
 
 func New(storageConfig config.StorageConfig, log log.Logger) (mTypes.MetaDB, error) {

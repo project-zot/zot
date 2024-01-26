@@ -8,10 +8,10 @@ import (
 	"context"
 
 	"github.com/vektah/gqlparser/v2/gqlerror"
-	zerr "zotregistry.io/zot/errors"
-	"zotregistry.io/zot/pkg/common"
-	"zotregistry.io/zot/pkg/extensions/search/convert"
-	"zotregistry.io/zot/pkg/extensions/search/gql_generated"
+	zerr "zotregistry.dev/zot/errors"
+	"zotregistry.dev/zot/pkg/common"
+	"zotregistry.dev/zot/pkg/extensions/search/convert"
+	"zotregistry.dev/zot/pkg/extensions/search/gql_generated"
 )
 
 // CVEListForImage is the resolver for the CVEListForImage field.

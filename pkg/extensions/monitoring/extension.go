@@ -10,8 +10,8 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
-	"zotregistry.io/zot/errors"
-	"zotregistry.io/zot/pkg/log"
+	"zotregistry.dev/zot/errors"
+	"zotregistry.dev/zot/pkg/log"
 )
 
 const metricsNamespace = "zot"

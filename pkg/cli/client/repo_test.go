@@ -13,11 +13,11 @@ import (
 
 	. "github.com/smartystreets/goconvey/convey"
 
-	"zotregistry.io/zot/pkg/api"
-	"zotregistry.io/zot/pkg/api/config"
-	"zotregistry.io/zot/pkg/cli/client"
-	test "zotregistry.io/zot/pkg/test/common"
-	. "zotregistry.io/zot/pkg/test/image-utils"
+	"zotregistry.dev/zot/pkg/api"
+	"zotregistry.dev/zot/pkg/api/config"
+	"zotregistry.dev/zot/pkg/cli/client"
+	test "zotregistry.dev/zot/pkg/test/common"
+	. "zotregistry.dev/zot/pkg/test/image-utils"
 )
 
 func TestReposCommand(t *testing.T) {

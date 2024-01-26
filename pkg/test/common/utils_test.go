@@ -8,9 +8,9 @@ import (
 
 	. "github.com/smartystreets/goconvey/convey"
 
-	"zotregistry.io/zot/pkg/api"
-	"zotregistry.io/zot/pkg/api/config"
-	tcommon "zotregistry.io/zot/pkg/test/common"
+	"zotregistry.dev/zot/pkg/api"
+	"zotregistry.dev/zot/pkg/api/config"
+	tcommon "zotregistry.dev/zot/pkg/test/common"
 )
 
 func TestWaitTillTrivyDBDownloadStarted(t *testing.T) {

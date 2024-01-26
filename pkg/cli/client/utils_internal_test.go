@@ -17,7 +17,7 @@ import (
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	. "github.com/smartystreets/goconvey/convey"
 
-	test "zotregistry.io/zot/pkg/test/common"
+	test "zotregistry.dev/zot/pkg/test/common"
 )
 
 func getDefaultSearchConf(baseURL string) SearchConfig {

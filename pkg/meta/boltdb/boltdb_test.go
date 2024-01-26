@@ -14,13 +14,13 @@ import (
 	"go.etcd.io/bbolt"
 	"google.golang.org/protobuf/proto"
 
-	zerr "zotregistry.io/zot/errors"
-	"zotregistry.io/zot/pkg/log"
-	"zotregistry.io/zot/pkg/meta/boltdb"
-	proto_go "zotregistry.io/zot/pkg/meta/proto/gen"
-	mTypes "zotregistry.io/zot/pkg/meta/types"
-	reqCtx "zotregistry.io/zot/pkg/requestcontext"
-	. "zotregistry.io/zot/pkg/test/image-utils"
+	zerr "zotregistry.dev/zot/errors"
+	"zotregistry.dev/zot/pkg/log"
+	"zotregistry.dev/zot/pkg/meta/boltdb"
+	proto_go "zotregistry.dev/zot/pkg/meta/proto/gen"
+	mTypes "zotregistry.dev/zot/pkg/meta/types"
+	reqCtx "zotregistry.dev/zot/pkg/requestcontext"
+	. "zotregistry.dev/zot/pkg/test/image-utils"
 )
 
 type imgTrustStore struct{}

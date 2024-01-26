@@ -1,12 +1,12 @@
 package local
 
 import (
-	"zotregistry.io/zot/pkg/extensions/monitoring"
-	zlog "zotregistry.io/zot/pkg/log"
-	"zotregistry.io/zot/pkg/storage/cache"
-	common "zotregistry.io/zot/pkg/storage/common"
-	"zotregistry.io/zot/pkg/storage/imagestore"
-	storageTypes "zotregistry.io/zot/pkg/storage/types"
+	"zotregistry.dev/zot/pkg/extensions/monitoring"
+	zlog "zotregistry.dev/zot/pkg/log"
+	"zotregistry.dev/zot/pkg/storage/cache"
+	common "zotregistry.dev/zot/pkg/storage/common"
+	"zotregistry.dev/zot/pkg/storage/imagestore"
+	storageTypes "zotregistry.dev/zot/pkg/storage/types"
 )
 
 // NewImageStore returns a new image store backed by a file storage.

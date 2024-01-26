@@ -10,11 +10,11 @@ import (
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	. "github.com/smartystreets/goconvey/convey"
 
-	"zotregistry.io/zot/pkg/api"
-	"zotregistry.io/zot/pkg/api/config"
-	"zotregistry.io/zot/pkg/common"
-	"zotregistry.io/zot/pkg/log"
-	test "zotregistry.io/zot/pkg/test/common"
+	"zotregistry.dev/zot/pkg/api"
+	"zotregistry.dev/zot/pkg/api/config"
+	"zotregistry.dev/zot/pkg/common"
+	"zotregistry.dev/zot/pkg/log"
+	test "zotregistry.dev/zot/pkg/test/common"
 )
 
 func TestHTTPClient(t *testing.T) {

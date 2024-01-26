@@ -14,10 +14,10 @@ import (
 	"github.com/gorilla/securecookie"
 	"github.com/gorilla/sessions"
 
-	zerr "zotregistry.io/zot/errors"
-	"zotregistry.io/zot/pkg/scheduler"
-	"zotregistry.io/zot/pkg/storage"
-	storageConstants "zotregistry.io/zot/pkg/storage/constants"
+	zerr "zotregistry.dev/zot/errors"
+	"zotregistry.dev/zot/pkg/scheduler"
+	"zotregistry.dev/zot/pkg/storage"
+	storageConstants "zotregistry.dev/zot/pkg/storage/constants"
 )
 
 const cookiesMaxAge = 7200 // 2h

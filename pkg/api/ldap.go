@@ -11,8 +11,8 @@ import (
 
 	"github.com/go-ldap/ldap/v3"
 
-	"zotregistry.io/zot/errors"
-	"zotregistry.io/zot/pkg/log"
+	"zotregistry.dev/zot/errors"
+	"zotregistry.dev/zot/pkg/log"
 )
 
 type LDAPClient struct {

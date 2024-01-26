@@ -4,10 +4,10 @@
 package extensions
 
 import (
-	"zotregistry.io/zot/pkg/api/config"
-	"zotregistry.io/zot/pkg/log"
-	"zotregistry.io/zot/pkg/scheduler"
-	"zotregistry.io/zot/pkg/storage"
+	"zotregistry.dev/zot/pkg/api/config"
+	"zotregistry.dev/zot/pkg/log"
+	"zotregistry.dev/zot/pkg/scheduler"
+	"zotregistry.dev/zot/pkg/storage"
 )
 
 // EnableScrubExtension ...

@@ -15,16 +15,16 @@ import (
 	. "github.com/smartystreets/goconvey/convey"
 	"gopkg.in/resty.v1"
 
-	zerr "zotregistry.io/zot/errors"
-	"zotregistry.io/zot/pkg/api"
-	"zotregistry.io/zot/pkg/api/config"
-	"zotregistry.io/zot/pkg/api/constants"
-	"zotregistry.io/zot/pkg/extensions"
-	extconf "zotregistry.io/zot/pkg/extensions/config"
-	"zotregistry.io/zot/pkg/log"
-	mTypes "zotregistry.io/zot/pkg/meta/types"
-	test "zotregistry.io/zot/pkg/test/common"
-	"zotregistry.io/zot/pkg/test/mocks"
+	zerr "zotregistry.dev/zot/errors"
+	"zotregistry.dev/zot/pkg/api"
+	"zotregistry.dev/zot/pkg/api/config"
+	"zotregistry.dev/zot/pkg/api/constants"
+	"zotregistry.dev/zot/pkg/extensions"
+	extconf "zotregistry.dev/zot/pkg/extensions/config"
+	"zotregistry.dev/zot/pkg/log"
+	mTypes "zotregistry.dev/zot/pkg/meta/types"
+	test "zotregistry.dev/zot/pkg/test/common"
+	"zotregistry.dev/zot/pkg/test/mocks"
 )
 
 var ErrTestError = errors.New("TestError")

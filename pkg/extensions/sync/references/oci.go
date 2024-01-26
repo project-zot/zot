@@ -13,15 +13,15 @@ import (
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 
-	zerr "zotregistry.io/zot/errors"
-	"zotregistry.io/zot/pkg/common"
-	"zotregistry.io/zot/pkg/extensions/sync/constants"
-	client "zotregistry.io/zot/pkg/extensions/sync/httpclient"
-	"zotregistry.io/zot/pkg/log"
-	"zotregistry.io/zot/pkg/meta"
-	mTypes "zotregistry.io/zot/pkg/meta/types"
-	"zotregistry.io/zot/pkg/storage"
-	storageTypes "zotregistry.io/zot/pkg/storage/types"
+	zerr "zotregistry.dev/zot/errors"
+	"zotregistry.dev/zot/pkg/common"
+	"zotregistry.dev/zot/pkg/extensions/sync/constants"
+	client "zotregistry.dev/zot/pkg/extensions/sync/httpclient"
+	"zotregistry.dev/zot/pkg/log"
+	"zotregistry.dev/zot/pkg/meta"
+	mTypes "zotregistry.dev/zot/pkg/meta/types"
+	"zotregistry.dev/zot/pkg/storage"
+	storageTypes "zotregistry.dev/zot/pkg/storage/types"
 )
 
 type OciReferences struct {

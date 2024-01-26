@@ -11,8 +11,8 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 	godigest "github.com/opencontainers/go-digest"
 
-	zerr "zotregistry.io/zot/errors"
-	zlog "zotregistry.io/zot/pkg/log"
+	zerr "zotregistry.dev/zot/errors"
+	zlog "zotregistry.dev/zot/pkg/log"
 )
 
 type DynamoDBDriver struct {

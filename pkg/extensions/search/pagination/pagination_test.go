@@ -8,8 +8,8 @@ import (
 
 	. "github.com/smartystreets/goconvey/convey"
 
-	"zotregistry.io/zot/pkg/extensions/search/gql_generated"
-	"zotregistry.io/zot/pkg/extensions/search/pagination"
+	"zotregistry.dev/zot/pkg/extensions/search/gql_generated"
+	"zotregistry.dev/zot/pkg/extensions/search/pagination"
 )
 
 func TestImgSumPagination(t *testing.T) {

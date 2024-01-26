@@ -31,13 +31,13 @@ import (
 	"golang.org/x/oauth2"
 	githubOAuth "golang.org/x/oauth2/github"
 
-	zerr "zotregistry.io/zot/errors"
-	"zotregistry.io/zot/pkg/api/config"
-	"zotregistry.io/zot/pkg/api/constants"
-	apiErr "zotregistry.io/zot/pkg/api/errors"
-	zcommon "zotregistry.io/zot/pkg/common"
-	"zotregistry.io/zot/pkg/log"
-	reqCtx "zotregistry.io/zot/pkg/requestcontext"
+	zerr "zotregistry.dev/zot/errors"
+	"zotregistry.dev/zot/pkg/api/config"
+	"zotregistry.dev/zot/pkg/api/constants"
+	apiErr "zotregistry.dev/zot/pkg/api/errors"
+	zcommon "zotregistry.dev/zot/pkg/common"
+	"zotregistry.dev/zot/pkg/log"
+	reqCtx "zotregistry.dev/zot/pkg/requestcontext"
 )
 
 const (

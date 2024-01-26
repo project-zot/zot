@@ -12,10 +12,10 @@ import (
 
 	. "github.com/smartystreets/goconvey/convey"
 
-	"zotregistry.io/zot/pkg/api/config"
-	"zotregistry.io/zot/pkg/extensions/monitoring"
-	"zotregistry.io/zot/pkg/log"
-	"zotregistry.io/zot/pkg/scheduler"
+	"zotregistry.dev/zot/pkg/api/config"
+	"zotregistry.dev/zot/pkg/extensions/monitoring"
+	"zotregistry.dev/zot/pkg/log"
+	"zotregistry.dev/zot/pkg/scheduler"
 )
 
 type task struct {

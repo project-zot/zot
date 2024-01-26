@@ -11,11 +11,11 @@ import (
 	. "github.com/smartystreets/goconvey/convey"
 	"gopkg.in/resty.v1"
 
-	"zotregistry.io/zot/pkg/api"
-	"zotregistry.io/zot/pkg/api/config"
-	"zotregistry.io/zot/pkg/api/constants"
-	extconf "zotregistry.io/zot/pkg/extensions/config"
-	test "zotregistry.io/zot/pkg/test/common"
+	"zotregistry.dev/zot/pkg/api"
+	"zotregistry.dev/zot/pkg/api/config"
+	"zotregistry.dev/zot/pkg/api/constants"
+	extconf "zotregistry.dev/zot/pkg/extensions/config"
+	test "zotregistry.dev/zot/pkg/test/common"
 )
 
 func TestGetExensionsDisabled(t *testing.T) {

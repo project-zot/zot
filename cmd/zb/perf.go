@@ -21,7 +21,7 @@ import (
 	godigest "github.com/opencontainers/go-digest"
 	"gopkg.in/resty.v1"
 
-	"zotregistry.io/zot/pkg/api/constants"
+	"zotregistry.dev/zot/pkg/api/constants"
 )
 
 const (

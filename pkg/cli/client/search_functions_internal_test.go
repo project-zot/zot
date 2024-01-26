@@ -21,8 +21,8 @@ import (
 	. "github.com/smartystreets/goconvey/convey"
 	"github.com/spf13/cobra"
 
-	zerr "zotregistry.io/zot/errors"
-	"zotregistry.io/zot/pkg/common"
+	zerr "zotregistry.dev/zot/errors"
+	"zotregistry.dev/zot/pkg/common"
 )
 
 func TestSearchAllImages(t *testing.T) {

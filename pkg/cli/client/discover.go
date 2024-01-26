@@ -9,9 +9,9 @@ import (
 
 	distext "github.com/opencontainers/distribution-spec/specs-go/v1/extensions"
 
-	zerr "zotregistry.io/zot/errors"
-	"zotregistry.io/zot/pkg/api/constants"
-	zcommon "zotregistry.io/zot/pkg/common"
+	zerr "zotregistry.dev/zot/errors"
+	"zotregistry.dev/zot/pkg/api/constants"
+	zcommon "zotregistry.dev/zot/pkg/common"
 )
 
 type field struct {

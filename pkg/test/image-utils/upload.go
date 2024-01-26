@@ -10,8 +10,8 @@ import (
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"gopkg.in/resty.v1"
 
-	tcommon "zotregistry.io/zot/pkg/test/common"
-	"zotregistry.io/zot/pkg/test/inject"
+	tcommon "zotregistry.dev/zot/pkg/test/common"
+	"zotregistry.dev/zot/pkg/test/inject"
 )
 
 var (

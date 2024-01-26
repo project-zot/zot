@@ -15,8 +15,8 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
-	"zotregistry.io/zot/pkg/extensions/monitoring"
-	"zotregistry.io/zot/pkg/log"
+	"zotregistry.dev/zot/pkg/extensions/monitoring"
+	"zotregistry.dev/zot/pkg/log"
 )
 
 const (

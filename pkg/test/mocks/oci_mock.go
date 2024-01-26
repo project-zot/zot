@@ -4,8 +4,8 @@ import (
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 
-	"zotregistry.io/zot/pkg/common"
-	cvemodel "zotregistry.io/zot/pkg/extensions/search/cve/model"
+	"zotregistry.dev/zot/pkg/common"
+	cvemodel "zotregistry.dev/zot/pkg/extensions/search/cve/model"
 )
 
 type OciLayoutUtilsMock struct {

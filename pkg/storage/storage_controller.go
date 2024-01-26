@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	storageTypes "zotregistry.io/zot/pkg/storage/types"
+	storageTypes "zotregistry.dev/zot/pkg/storage/types"
 )
 
 const (

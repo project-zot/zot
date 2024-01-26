@@ -6,10 +6,10 @@ package server
 import (
 	"path"
 
-	"zotregistry.io/zot/pkg/api/config"
-	syncconf "zotregistry.io/zot/pkg/extensions/config/sync"
-	"zotregistry.io/zot/pkg/extensions/sync"
-	zlog "zotregistry.io/zot/pkg/log"
+	"zotregistry.dev/zot/pkg/api/config"
+	syncconf "zotregistry.dev/zot/pkg/extensions/config/sync"
+	"zotregistry.dev/zot/pkg/extensions/sync"
+	zlog "zotregistry.dev/zot/pkg/log"
 )
 
 func validateRetentionSyncOverlaps(config *config.Config, content syncconf.Content, urls []string, log zlog.Logger) {

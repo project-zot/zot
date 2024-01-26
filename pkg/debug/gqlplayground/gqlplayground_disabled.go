@@ -6,8 +6,8 @@ package debug
 import (
 	"github.com/gorilla/mux"
 
-	"zotregistry.io/zot/pkg/log"
-	"zotregistry.io/zot/pkg/storage"
+	"zotregistry.dev/zot/pkg/log"
+	"zotregistry.dev/zot/pkg/storage"
 )
 
 // SetupGQLPlaygroundRoutes ...

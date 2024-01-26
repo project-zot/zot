@@ -3,12 +3,12 @@ package ociutils
 import (
 	godigest "github.com/opencontainers/go-digest"
 
-	"zotregistry.io/zot/pkg/extensions/monitoring"
-	zLog "zotregistry.io/zot/pkg/log"
-	"zotregistry.io/zot/pkg/storage"
-	"zotregistry.io/zot/pkg/storage/local"
-	stypes "zotregistry.io/zot/pkg/storage/types"
-	"zotregistry.io/zot/pkg/test/mocks"
+	"zotregistry.dev/zot/pkg/extensions/monitoring"
+	zLog "zotregistry.dev/zot/pkg/log"
+	"zotregistry.dev/zot/pkg/storage"
+	"zotregistry.dev/zot/pkg/storage/local"
+	stypes "zotregistry.dev/zot/pkg/storage/types"
+	"zotregistry.dev/zot/pkg/test/mocks"
 )
 
 func GetDefaultImageStore(rootDir string, log zLog.Logger) stypes.ImageStore {

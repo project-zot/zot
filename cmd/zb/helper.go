@@ -20,8 +20,8 @@ import (
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"gopkg.in/resty.v1"
 
-	zerr "zotregistry.io/zot/errors"
-	"zotregistry.io/zot/pkg/common"
+	zerr "zotregistry.dev/zot/errors"
+	"zotregistry.dev/zot/pkg/common"
 )
 
 func makeHTTPGetRequest(url string, resultPtr interface{}, client *resty.Client) error {

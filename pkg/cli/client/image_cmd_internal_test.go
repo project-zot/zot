@@ -22,14 +22,14 @@ import (
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	. "github.com/smartystreets/goconvey/convey"
 
-	zerr "zotregistry.io/zot/errors"
-	"zotregistry.io/zot/pkg/api"
-	"zotregistry.io/zot/pkg/api/config"
-	"zotregistry.io/zot/pkg/common"
-	extconf "zotregistry.io/zot/pkg/extensions/config"
-	stypes "zotregistry.io/zot/pkg/storage/types"
-	test "zotregistry.io/zot/pkg/test/common"
-	. "zotregistry.io/zot/pkg/test/image-utils"
+	zerr "zotregistry.dev/zot/errors"
+	"zotregistry.dev/zot/pkg/api"
+	"zotregistry.dev/zot/pkg/api/config"
+	"zotregistry.dev/zot/pkg/common"
+	extconf "zotregistry.dev/zot/pkg/extensions/config"
+	stypes "zotregistry.dev/zot/pkg/storage/types"
+	test "zotregistry.dev/zot/pkg/test/common"
+	. "zotregistry.dev/zot/pkg/test/image-utils"
 )
 
 func TestSearchImageCmd(t *testing.T) {

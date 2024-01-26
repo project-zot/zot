@@ -15,7 +15,7 @@ import (
 	jsoniter "github.com/json-iterator/go"
 	"github.com/spf13/cobra"
 
-	zerr "zotregistry.io/zot/errors"
+	zerr "zotregistry.dev/zot/errors"
 )
 
 const (

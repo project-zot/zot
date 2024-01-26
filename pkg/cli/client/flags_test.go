@@ -8,8 +8,8 @@ import (
 
 	. "github.com/smartystreets/goconvey/convey"
 
-	. "zotregistry.io/zot/pkg/cli/client"
-	gql_gen "zotregistry.io/zot/pkg/extensions/search/gql_generated"
+	. "zotregistry.dev/zot/pkg/cli/client"
+	gql_gen "zotregistry.dev/zot/pkg/extensions/search/gql_generated"
 )
 
 func TestSortFlagsMapping(t *testing.T) {

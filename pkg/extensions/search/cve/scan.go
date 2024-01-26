@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"sync"
 
-	"zotregistry.io/zot/pkg/log"
-	mTypes "zotregistry.io/zot/pkg/meta/types"
-	reqCtx "zotregistry.io/zot/pkg/requestcontext"
-	"zotregistry.io/zot/pkg/scheduler"
+	"zotregistry.dev/zot/pkg/log"
+	mTypes "zotregistry.dev/zot/pkg/meta/types"
+	reqCtx "zotregistry.dev/zot/pkg/requestcontext"
+	"zotregistry.dev/zot/pkg/scheduler"
 )
 
 func NewScanTaskGenerator(

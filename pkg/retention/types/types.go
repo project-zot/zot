@@ -6,7 +6,7 @@ import (
 
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 
-	mTypes "zotregistry.io/zot/pkg/meta/types"
+	mTypes "zotregistry.dev/zot/pkg/meta/types"
 )
 
 type Candidate struct {

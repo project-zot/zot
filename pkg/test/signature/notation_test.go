@@ -13,11 +13,11 @@ import (
 	notconfig "github.com/notaryproject/notation-go/config"
 	. "github.com/smartystreets/goconvey/convey"
 
-	"zotregistry.io/zot/pkg/api"
-	"zotregistry.io/zot/pkg/api/config"
-	tcommon "zotregistry.io/zot/pkg/test/common"
-	. "zotregistry.io/zot/pkg/test/image-utils"
-	signature "zotregistry.io/zot/pkg/test/signature"
+	"zotregistry.dev/zot/pkg/api"
+	"zotregistry.dev/zot/pkg/api/config"
+	tcommon "zotregistry.dev/zot/pkg/test/common"
+	. "zotregistry.dev/zot/pkg/test/image-utils"
+	signature "zotregistry.dev/zot/pkg/test/signature"
 )
 
 func TestLoadNotationSigningkeys(t *testing.T) {

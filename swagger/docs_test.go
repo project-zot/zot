@@ -5,7 +5,7 @@ import (
 
 	. "github.com/smartystreets/goconvey/convey"
 
-	"zotregistry.io/zot/swagger"
+	"zotregistry.dev/zot/swagger"
 )
 
 func TestDocs(t *testing.T) {

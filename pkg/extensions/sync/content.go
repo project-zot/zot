@@ -10,9 +10,9 @@ import (
 	"github.com/Masterminds/semver"
 	glob "github.com/bmatcuk/doublestar/v4"
 
-	"zotregistry.io/zot/pkg/common"
-	syncconf "zotregistry.io/zot/pkg/extensions/config/sync"
-	"zotregistry.io/zot/pkg/log"
+	"zotregistry.dev/zot/pkg/common"
+	syncconf "zotregistry.dev/zot/pkg/extensions/config/sync"
+	"zotregistry.dev/zot/pkg/log"
 )
 
 /* ContentManager uses registry content configuration to filter repos/tags

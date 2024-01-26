@@ -10,8 +10,8 @@ package debug
 import (
 	"github.com/gorilla/mux"
 
-	"zotregistry.io/zot/pkg/api/config"
-	"zotregistry.io/zot/pkg/log"
+	"zotregistry.dev/zot/pkg/api/config"
+	"zotregistry.dev/zot/pkg/log"
 )
 
 func SetupSwaggerRoutes(conf *config.Config, router *mux.Router, authFunc mux.MiddlewareFunc,

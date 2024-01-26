@@ -8,14 +8,14 @@ import (
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	. "github.com/smartystreets/goconvey/convey"
 
-	"zotregistry.io/zot/pkg/extensions/monitoring"
-	"zotregistry.io/zot/pkg/log"
-	"zotregistry.io/zot/pkg/meta"
-	"zotregistry.io/zot/pkg/meta/boltdb"
-	"zotregistry.io/zot/pkg/storage"
-	"zotregistry.io/zot/pkg/storage/local"
-	. "zotregistry.io/zot/pkg/test/image-utils"
-	"zotregistry.io/zot/pkg/test/mocks"
+	"zotregistry.dev/zot/pkg/extensions/monitoring"
+	"zotregistry.dev/zot/pkg/log"
+	"zotregistry.dev/zot/pkg/meta"
+	"zotregistry.dev/zot/pkg/meta/boltdb"
+	"zotregistry.dev/zot/pkg/storage"
+	"zotregistry.dev/zot/pkg/storage/local"
+	. "zotregistry.dev/zot/pkg/test/image-utils"
+	"zotregistry.dev/zot/pkg/test/mocks"
 )
 
 var ErrTestError = errors.New("test error")

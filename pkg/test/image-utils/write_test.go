@@ -8,9 +8,9 @@ import (
 	godigest "github.com/opencontainers/go-digest"
 	. "github.com/smartystreets/goconvey/convey"
 
-	"zotregistry.io/zot/pkg/storage"
-	. "zotregistry.io/zot/pkg/test/image-utils"
-	"zotregistry.io/zot/pkg/test/mocks"
+	"zotregistry.dev/zot/pkg/storage"
+	. "zotregistry.dev/zot/pkg/test/image-utils"
+	"zotregistry.dev/zot/pkg/test/mocks"
 )
 
 var ErrTestError = errors.New("ErrTestError")

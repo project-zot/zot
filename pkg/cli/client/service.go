@@ -20,9 +20,9 @@ import (
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"gopkg.in/yaml.v2"
 
-	zerr "zotregistry.io/zot/errors"
-	"zotregistry.io/zot/pkg/api/constants"
-	"zotregistry.io/zot/pkg/common"
+	zerr "zotregistry.dev/zot/errors"
+	"zotregistry.dev/zot/pkg/api/constants"
+	"zotregistry.dev/zot/pkg/common"
 )
 
 const (

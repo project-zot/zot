@@ -11,9 +11,9 @@ import (
 
 	"github.com/containers/common/pkg/retry"
 
-	zerr "zotregistry.io/zot/errors"
-	"zotregistry.io/zot/pkg/common"
-	"zotregistry.io/zot/pkg/log"
+	zerr "zotregistry.dev/zot/errors"
+	"zotregistry.dev/zot/pkg/common"
+	"zotregistry.dev/zot/pkg/log"
 )
 
 type request struct {

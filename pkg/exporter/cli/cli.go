@@ -9,8 +9,8 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
-	zerr "zotregistry.io/zot/errors"
-	"zotregistry.io/zot/pkg/exporter/api"
+	zerr "zotregistry.dev/zot/errors"
+	"zotregistry.dev/zot/pkg/exporter/api"
 )
 
 // metadataConfig reports metadata after parsing, which we use to track

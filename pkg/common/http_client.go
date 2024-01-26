@@ -12,7 +12,7 @@ import (
 	"path"
 	"path/filepath"
 
-	"zotregistry.io/zot/pkg/log"
+	"zotregistry.dev/zot/pkg/log"
 )
 
 func GetTLSConfig(certsPath string, caCertPool *x509.CertPool) (*tls.Config, error) {

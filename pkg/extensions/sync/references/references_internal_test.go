@@ -13,11 +13,11 @@ import (
 	artifactspec "github.com/oras-project/artifacts-spec/specs-go/v1"
 	. "github.com/smartystreets/goconvey/convey"
 
-	zerr "zotregistry.io/zot/errors"
-	client "zotregistry.io/zot/pkg/extensions/sync/httpclient"
-	"zotregistry.io/zot/pkg/log"
-	"zotregistry.io/zot/pkg/storage"
-	"zotregistry.io/zot/pkg/test/mocks"
+	zerr "zotregistry.dev/zot/errors"
+	client "zotregistry.dev/zot/pkg/extensions/sync/httpclient"
+	"zotregistry.dev/zot/pkg/log"
+	"zotregistry.dev/zot/pkg/storage"
+	"zotregistry.dev/zot/pkg/test/mocks"
 )
 
 var errRef = errors.New("err")

@@ -22,12 +22,12 @@ import (
 	. "github.com/smartystreets/goconvey/convey"
 	"gopkg.in/resty.v1"
 
-	zotapi "zotregistry.io/zot/pkg/api"
-	zotcfg "zotregistry.io/zot/pkg/api/config"
-	"zotregistry.io/zot/pkg/exporter/api"
-	"zotregistry.io/zot/pkg/extensions/monitoring"
-	"zotregistry.io/zot/pkg/scheduler"
-	. "zotregistry.io/zot/pkg/test/common"
+	zotapi "zotregistry.dev/zot/pkg/api"
+	zotcfg "zotregistry.dev/zot/pkg/api/config"
+	"zotregistry.dev/zot/pkg/exporter/api"
+	"zotregistry.dev/zot/pkg/extensions/monitoring"
+	"zotregistry.dev/zot/pkg/scheduler"
+	. "zotregistry.dev/zot/pkg/test/common"
 )
 
 func getRandomLatencyN(max int64) time.Duration {

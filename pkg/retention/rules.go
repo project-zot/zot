@@ -5,7 +5,7 @@ import (
 	"sort"
 	"time"
 
-	"zotregistry.io/zot/pkg/retention/types"
+	"zotregistry.dev/zot/pkg/retention/types"
 )
 
 const (

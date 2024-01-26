@@ -12,9 +12,9 @@ import (
 	"github.com/rs/zerolog"
 	. "github.com/smartystreets/goconvey/convey"
 
-	"zotregistry.io/zot/pkg/log" //nolint:go-staticcheck
-	"zotregistry.io/zot/pkg/meta/version"
-	tskip "zotregistry.io/zot/pkg/test/skip"
+	"zotregistry.dev/zot/pkg/log" //nolint:go-staticcheck
+	"zotregistry.dev/zot/pkg/meta/version"
+	tskip "zotregistry.dev/zot/pkg/test/skip"
 )
 
 func TestWrapperErrors(t *testing.T) {

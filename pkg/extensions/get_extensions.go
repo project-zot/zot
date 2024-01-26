@@ -3,11 +3,11 @@ package extensions
 import (
 	distext "github.com/opencontainers/distribution-spec/specs-go/v1/extensions"
 
-	"zotregistry.io/zot/pkg/api/config"
-	"zotregistry.io/zot/pkg/api/constants"
-	"zotregistry.io/zot/pkg/log"
-	mTypes "zotregistry.io/zot/pkg/meta/types"
-	"zotregistry.io/zot/pkg/scheduler"
+	"zotregistry.dev/zot/pkg/api/config"
+	"zotregistry.dev/zot/pkg/api/constants"
+	"zotregistry.dev/zot/pkg/log"
+	mTypes "zotregistry.dev/zot/pkg/meta/types"
+	"zotregistry.dev/zot/pkg/scheduler"
 )
 
 func GetExtensions(config *config.Config) distext.ExtensionList {
