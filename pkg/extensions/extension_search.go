@@ -102,4 +102,11 @@ func SetupSearchRoutes(conf *config.Config, router *mux.Router, storeController 
 		Handler(gqlHandler.NewDefaultServer(gql_generated.NewExecutableSchema(resConfig)))
 
 	log.Info().Msg("finished setting up search routes")
+
+	extRouter = router.PathPrefix(constants.ExtArtifactsSearchPrefix).Subrouter()
+	extRouter.Use(zcommon.CORSHeadersMiddleware(conf.HTTP.AllowOrigin))
+	extRouter.Use(zcommon.ACHeadersMiddleware(conf, allowedMethods...))
+	extRouter.Use(zcommon.AddExtensionSecurityHeaders())
+	extRouter.Methods(allowedMethods...).
+		Handler(gqlHandler.NewDefaultServer(gql_generated.NewExecutableSchema(resConfig)))
 }

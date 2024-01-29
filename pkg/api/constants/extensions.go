@@ -16,6 +16,14 @@ const (
 	ExtSearchPrefix  = ExtPrefix + ExtSearch
 	FullSearchPrefix = RoutePrefix + ExtSearchPrefix
 
+	// CNCF artifacts search extension.
+	BaseArtifactsPrefix = "/_artifacts"
+	ExtArtifactsPrefix  = BaseArtifactsPrefix + "/ext"
+
+	ExtArtifactsSearch        = "/search"
+	ExtArtifactsSearchPrefix  = ExtArtifactsPrefix + ExtArtifactsSearch
+	FullSearchArtifactsPrefix = RoutePrefix + ExtArtifactsSearchPrefix
+
 	// mgmt extension.
 	Mgmt     = "/mgmt"
 	ExtMgmt  = ExtPrefix + Mgmt
