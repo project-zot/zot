@@ -59,7 +59,7 @@ jobs:
     - run: mkdir -p .out/ && mv {report.html,junit.xml} .out/
       if: always()
     - name: Upload test results zip as build artifact
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: oci-test-results-${{ github.sha }}
         path: .out/
