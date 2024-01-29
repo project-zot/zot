@@ -698,6 +698,30 @@ func globalSearch(ctx context.Context, query string, metaDB mTypes.MetaDB, filte
 			TotalCount: pageInfo.TotalCount,
 			ItemCount:  pageInfo.ItemCount,
 		}
+	case TagTarget:
+		skip := convert.SkipQGLField{Vulnerabilities: canSkipField(preloads, "Images.Vulnerabilities")}
+		pageInput := getPageInput(requestedPage)
+
+		expectedTag := strings.TrimPrefix(query, `:`)
+		matchTagName := func(repoName, actualTag string) bool { return strings.Contains(actualTag, expectedTag) }
+
+		fullImageMetaList, err := metaDB.FilterTags(ctx, matchTagName, mTypes.AcceptAllImageMeta)
+		if err != nil {
+			return &gql_generated.PaginatedReposResult{}, []*gql_generated.ImageSummary{}, []*gql_generated.LayerSummary{}, err
+		}
+
+		imageSummaries, pageInfo, err := convert.PaginatedFullImageMeta2ImageSummaries(ctx, fullImageMetaList, skip, cveInfo,
+			localFilter, pageInput)
+		if err != nil {
+			return &gql_generated.PaginatedReposResult{}, []*gql_generated.ImageSummary{}, []*gql_generated.LayerSummary{}, err
+		}
+
+		images = imageSummaries
+
+		paginatedRepos.Page = &gql_generated.PageInfo{
+			TotalCount: pageInfo.TotalCount,
+			ItemCount:  pageInfo.ItemCount,
+		}
 	case DigestTarget:
 		skip := convert.SkipQGLField{Vulnerabilities: canSkipField(preloads, "Images.Vulnerabilities")}
 		pageInput := getPageInput(requestedPage)
@@ -745,6 +769,7 @@ const (
 	ImageTarget
 	DigestTarget
 	InvalidTarget
+	TagTarget
 )
 
 func getSearchTarget(query string) SearchTarget {
@@ -756,8 +781,12 @@ func getSearchTarget(query string) SearchTarget {
 		return DigestTarget
 	}
 
-	if before, _, found := strings.Cut(query, ":"); found && before != "" {
-		return ImageTarget
+	if before, after, found := strings.Cut(query, ":"); found {
+		if before != "" {
+			return ImageTarget
+		} else if after != "" {
+			return TagTarget
+		}
 	}
 
 	return InvalidTarget

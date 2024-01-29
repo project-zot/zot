@@ -122,9 +122,42 @@ func TestResolverGlobalSearch(t *testing.T) {
 			So(repos.Results, ShouldBeEmpty)
 		})
 
-		Convey("Searching with a bad query", func() {
+		Convey("Searching by tag returns a filter error", func() {
 			ctx := context.Background()
 			query := ":test"
+			mockMetaDB := mocks.MetaDBMock{
+				FilterTagsFn: func(ctx context.Context, filterRepoTag mTypes.FilterRepoTagFunc,
+					filterFunc mTypes.FilterFunc,
+				) ([]mTypes.FullImageMeta, error) {
+					return []mTypes.FullImageMeta{}, ErrTestError
+				},
+			}
+
+			responseContext := graphql.WithResponseContext(ctx, graphql.DefaultErrorPresenter, graphql.DefaultRecover)
+			repos, images, layers, err := globalSearch(responseContext, query, mockMetaDB, &gql_generated.Filter{},
+				&gql_generated.PageInput{}, mocks.CveInfoMock{}, log.NewLogger("debug", ""))
+			So(err, ShouldNotBeNil)
+			So(images, ShouldBeEmpty)
+			So(layers, ShouldBeEmpty)
+			So(repos.Results, ShouldBeEmpty)
+		})
+
+		Convey("Searching by tag returns a pagination error", func() {
+			ctx := context.Background()
+			query := ":test"
+
+			responseContext := graphql.WithResponseContext(ctx, graphql.DefaultErrorPresenter, graphql.DefaultRecover)
+			repos, images, layers, err := globalSearch(responseContext, query, mocks.MetaDBMock{}, &gql_generated.Filter{},
+				&gql_generated.PageInput{Limit: ref(-10)}, mocks.CveInfoMock{}, log.NewLogger("debug", ""))
+			So(err, ShouldNotBeNil)
+			So(images, ShouldBeEmpty)
+			So(layers, ShouldBeEmpty)
+			So(repos.Results, ShouldBeEmpty)
+		})
+
+		Convey("Searching with a bad query", func() {
+			ctx := context.Background()
+			query := ":"
 
 			responseContext := graphql.WithResponseContext(ctx, graphql.DefaultErrorPresenter, graphql.DefaultRecover)
 			repos, images, layers, err := globalSearch(responseContext, query, mocks.MetaDBMock{}, &gql_generated.Filter{},
