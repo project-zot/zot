@@ -1,0 +1,9 @@
+{
+    "target_repo": "zxp",
+    "source_repos": [
+        "zxp-linux-amd64",
+        "zxp-linux-arm64",
+        "zxp-darwin-amd64",
+        "zxp-darwin-arm64"
+    ]
+}

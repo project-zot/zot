@@ -2,17 +2,16 @@ on:
   release:
     types:
       - published
-name: publish
+name: Publish OCI images
 
 permissions: read-all
 
 jobs:
-  push-image:
-    name: Push OCI images to GitHub Packages
+  push-singlearch-image:
+    name: Push single arch OCI images to GitHub Packages
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      security-events: write
       packages: write
     strategy:
       matrix:
@@ -41,38 +40,6 @@ jobs:
           tags: ${{ github.event.release.tag_name }} latest
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Run zot container image with docker
-        run: |
-          if [[ $OS == "linux" && $ARCH == "amd64" ]]; then
-            docker run -d -p 5000:5000 ghcr.io/${{ github.repository_owner }}/zot-${{ matrix.os }}-${{ matrix.arch }}:${{ github.event.release.tag_name }}
-            sleep 2
-            curl --connect-timeout 5 \
-              --max-time 10 \
-              --retry 12 \
-              --retry-max-time 360 \
-              --retry-connrefused \
-              'http://localhost:5000/v2/'
-            docker kill $(docker ps -q)
-          fi
-        env:
-          OS: ${{ matrix.os }}
-          ARCH: ${{ matrix.arch }}
-      - name: Run zot container image with podman
-        run: |
-          if [[ $OS == "linux" && $ARCH == "amd64" ]]; then
-            podman run -d -p 5000:5000 ghcr.io/${{ github.repository_owner }}/zot-${{ matrix.os }}-${{ matrix.arch }}:${{ github.event.release.tag_name }}
-            sleep 2
-            curl --connect-timeout 5 \
-              --max-time 10 \
-              --retry 12 \
-              --retry-max-time 360 \
-              --retry-connrefused \
-              'http://localhost:5000/v2/'
-            podman kill --all
-          fi
-        env:
-          OS: ${{ matrix.os }}
-          ARCH: ${{ matrix.arch }}
       - name: Build and push zot-minimal container image
         uses: project-stacker/stacker-build-push-action@main
         with:
@@ -88,38 +55,6 @@ jobs:
           tags: ${{ github.event.release.tag_name }} latest
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Run zot-minimal container image with docker
-        run: |
-          if [[ $OS == "linux" && $ARCH == "amd64" ]]; then
-            docker run -d -p 5000:5000 ghcr.io/${{ github.repository_owner }}/zot-minimal-${{ matrix.os }}-${{ matrix.arch }}:${{ github.event.release.tag_name }}
-            sleep 2
-            curl --connect-timeout 5 \
-              --max-time 10 \
-              --retry 12 \
-              --retry-max-time 360 \
-              --retry-connrefused \
-              'http://localhost:5000/v2/'
-            docker kill $(docker ps -q)
-          fi
-        env:
-          OS: ${{ matrix.os }}
-          ARCH: ${{ matrix.arch }}
-      - name: Run zot-minimal container image with podman
-        run: |
-          if [[ $OS == "linux" && $ARCH == "amd64" ]]; then
-            podman run -d -p 5000:5000 ghcr.io/${{ github.repository_owner }}/zot-minimal-${{ matrix.os }}-${{ matrix.arch }}:${{ github.event.release.tag_name }}
-            sleep 2
-            curl --connect-timeout 5 \
-              --max-time 10 \
-              --retry 12 \
-              --retry-max-time 360 \
-              --retry-connrefused \
-              'http://localhost:5000/v2/'
-            podman kill --all
-          fi
-        env:
-          OS: ${{ matrix.os }}
-          ARCH: ${{ matrix.arch }}
       - name: Build and push zot-exporter container image
         uses: project-stacker/stacker-build-push-action@main
         with:
@@ -134,38 +69,6 @@ jobs:
           tags: ${{ github.event.release.tag_name }} latest
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Run zot-exporter container image with docker
-        run: |
-          if [[ $OS == "linux" && $ARCH == "amd64" ]]; then
-            docker run -d -p 5001:5001 ghcr.io/${{ github.repository_owner }}/zxp-${{ matrix.os }}-${{ matrix.arch }}:${{ github.event.release.tag_name }}
-            sleep 2
-            curl --connect-timeout 5 \
-              --max-time 10 \
-              --retry 12 \
-              --retry-max-time 360 \
-              --retry-connrefused \
-              'http://localhost:5001/metrics'
-            docker kill $(docker ps -q)
-          fi
-        env:
-          OS: ${{ matrix.os }}
-          ARCH: ${{ matrix.arch }}
-      - name: Run zot-exporter container image with podman
-        run: |
-          if [[ $OS == "linux" && $ARCH == "amd64" ]]; then
-            podman run -d -p 5001:5001 ghcr.io/${{ github.repository_owner }}/zxp-${{ matrix.os }}-${{ matrix.arch }}:${{ github.event.release.tag_name }}
-            sleep 2
-            curl --connect-timeout 5 \
-              --max-time 10 \
-              --retry 12 \
-              --retry-max-time 360 \
-              --retry-connrefused \
-              'http://localhost:5001/metrics'
-            podman kill --all
-          fi
-        env:
-          OS: ${{ matrix.os }}
-          ARCH: ${{ matrix.arch }}
       - name: Build and push zb container image
         uses: project-stacker/stacker-build-push-action@main
         with:
@@ -180,26 +83,145 @@ jobs:
           tags: ${{ github.event.release.tag_name }} latest
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+
+  push-multiarch-image:
+    name: Push multiarch OCI images to GitHub Packages
+    needs: push-singlearch-image
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      matrix:
+        image: [zot, zot-minimal, zxp, zb]
+    steps:
+      - name: Check out the repo
+        uses: actions/checkout@v4
+      - name: Log in to GitHub Docker Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Run build
+        run: |
+          echo "Building multiarch image for ${{ matrix.image }}"
+          cd $GITHUB_WORKSPACE
+          make check-blackbox-prerequisites
+          export PATH=${PATH}:${GITHUB_WORKSPACE}/hack/tools/bin
+          ./scripts/build_multiarch_image.sh --registry ghcr.io/${{ github.repository_owner }} \
+            --source-tag ${{ github.event.release.tag_name }} \
+            --destination-tags "${{ github.event.release.tag_name }} latest" \
+            --file build/multiarch-${{ matrix.image }}.json
+
+  test-image:
+    name: Test OCI images published to GitHub Packages
+    needs: push-multiarch-image
+    runs-on: ubuntu-latest
+    permissions:
+      packages: read
+    steps:
+      - name: Log in to GitHub Docker Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Run zot container image with docker
+        run: |
+          docker run -d -p 5000:5000 ghcr.io/${{ github.repository_owner }}/zot:${{ github.event.release.tag_name }}
+          sleep 2
+          curl --connect-timeout 5 \
+            --max-time 10 \
+            --retry 12 \
+            --retry-max-time 360 \
+            --retry-connrefused \
+            'http://localhost:5000/v2/'
+          docker kill $(docker ps -q)
+      - name: Run zot container image with podman
+        run: |
+          podman run -d -p 5000:5000 ghcr.io/${{ github.repository_owner }}/zot:${{ github.event.release.tag_name }}
+          sleep 2
+          curl --connect-timeout 5 \
+            --max-time 10 \
+            --retry 12 \
+            --retry-max-time 360 \
+            --retry-connrefused \
+            'http://localhost:5000/v2/'
+          podman kill --all
+      - name: Run zot-minimal container image with docker
+        run: |
+          docker run -d -p 5000:5000 ghcr.io/${{ github.repository_owner }}/zot-minimal:${{ github.event.release.tag_name }}
+          sleep 2
+          curl --connect-timeout 5 \
+            --max-time 10 \
+            --retry 12 \
+            --retry-max-time 360 \
+            --retry-connrefused \
+            'http://localhost:5000/v2/'
+          docker kill $(docker ps -q)
+      - name: Run zot-minimal container image with podman
+        run: |
+          podman run -d -p 5000:5000 ghcr.io/${{ github.repository_owner }}/zot-minimal:${{ github.event.release.tag_name }}
+          sleep 2
+          curl --connect-timeout 5 \
+            --max-time 10 \
+            --retry 12 \
+            --retry-max-time 360 \
+            --retry-connrefused \
+            'http://localhost:5000/v2/'
+          podman kill --all
+      - name: Run zot-exporter container image with docker
+        run: |
+          docker run -d -p 5001:5001 ghcr.io/${{ github.repository_owner }}/zxp:${{ github.event.release.tag_name }}
+          sleep 2
+          curl --connect-timeout 5 \
+            --max-time 10 \
+            --retry 12 \
+            --retry-max-time 360 \
+            --retry-connrefused \
+            'http://localhost:5001/metrics'
+          docker kill $(docker ps -q)
+      - name: Run zot-exporter container image with podman
+        run: |
+          podman run -d -p 5001:5001 ghcr.io/${{ github.repository_owner }}/zxp:${{ github.event.release.tag_name }}
+          sleep 2
+          curl --connect-timeout 5 \
+            --max-time 10 \
+            --retry 12 \
+            --retry-max-time 360 \
+            --retry-connrefused \
+            'http://localhost:5001/metrics'
+          podman kill --all
       - name: Run zb container image with docker
         run: |
-          if [[ $OS == "linux" && $ARCH == "amd64" ]]; then
-            docker run ghcr.io/${{ github.repository_owner }}/zb-${{ matrix.os }}-${{ matrix.arch }}:${{ github.event.release.tag_name }} --help
-          fi
-        env:
-          OS: ${{ matrix.os }}
-          ARCH: ${{ matrix.arch }}
+          docker run ghcr.io/${{ github.repository_owner }}/zb:${{ github.event.release.tag_name }} --help
       - name: Run zb container image with podman
         run: |
-          if [[ $OS == "linux" && $ARCH == "amd64" ]]; then
-            podman run ghcr.io/${{ github.repository_owner }}/zb-${{ matrix.os }}-${{ matrix.arch }}:${{ github.event.release.tag_name }} --help
-          fi
-        env:
-          OS: ${{ matrix.os }}
-          ARCH: ${{ matrix.arch }}
+          podman run ghcr.io/${{ github.repository_owner }}/zb:${{ github.event.release.tag_name }} --help
+
+  scan-image:
+    name: Run Trivy scan on OCI images published to GitHub Packages
+    needs: push-singlearch-image
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+      packages: read
+    strategy:
+      matrix:
+        os: [linux, darwin]
+        arch: [amd64, arm64]
+    steps:
+      - name: Log in to GitHub Docker Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
       - name: Run Trivy vulnerability scanner
         uses: aquasecurity/trivy-action@master
         with:
-          image-ref: 'ghcr.io/${{ github.repository }}-${{ matrix.os }}-${{ matrix.arch }}:${{ github.event.release.tag_name }}'
+          image-ref: 'ghcr.io/${{ github.repository_owner }}/zot-${{ matrix.os }}-${{ matrix.arch }}:${{ github.event.release.tag_name }}'
           format: 'sarif'
           output: 'trivy-results.sarif'
         env:
@@ -208,7 +230,44 @@ jobs:
       - name: Run Trivy vulnerability scanner (minimal)
         uses: aquasecurity/trivy-action@master
         with:
-          image-ref: 'ghcr.io/${{ github.repository }}-minimal-${{ matrix.os }}-${{ matrix.arch }}:${{ github.event.release.tag_name }}'
+          image-ref: 'ghcr.io/${{ github.repository_owner }}/zot-minimal-${{ matrix.os }}-${{ matrix.arch }}:${{ github.event.release.tag_name }}'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+        env:
+          TRIVY_USERNAME: ${{ github.actor }}
+          TRIVY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
+      - name: Upload Trivy scan results to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@v3.23.2
+        with:
+          sarif_file: 'trivy-results.sarif'
+
+  scan-multiarch-image:
+    name: Run Trivy scan on OCI multiarch images published to GitHub Packages
+    needs: push-multiarch-image
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+      packages: read
+    steps:
+      - name: Log in to GitHub Docker Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: 'ghcr.io/${{ github.repository_owner }}/zot:${{ github.event.release.tag_name }}'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+        env:
+          TRIVY_USERNAME: ${{ github.actor }}
+          TRIVY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
+      - name: Run Trivy vulnerability scanner (minimal)
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: 'ghcr.io/${{ github.repository_owner }}/zot-minimal:${{ github.event.release.tag_name }}'
           format: 'sarif'
           output: 'trivy-results.sarif'
         env:
@@ -221,7 +280,7 @@ jobs:
 
   update-helm-chart:
     if: github.event_name == 'release' && github.event.action== 'published'
-    needs: push-image
+    needs: push-multiarch-image
     name: Update Helm Chart
     permissions:
       contents: write
