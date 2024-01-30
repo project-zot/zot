@@ -3729,6 +3729,143 @@ func TestGlobalSearch(t *testing.T) {
 		So(results.Images[0].Manifests[0].Digest, ShouldResemble, multiArch.Images[0].DigestStr())
 		So(results.Images[0].RepoName, ShouldResemble, "repo1")
 	})
+
+	Convey("global searching by tag cross repo", t, func() {
+		log := log.NewLogger("debug", "")
+		rootDir := t.TempDir()
+		port := GetFreePort()
+		baseURL := GetBaseURL(port)
+		conf := config.New()
+		conf.HTTP.Port = port
+		conf.Storage.RootDirectory = rootDir
+		defaultVal := true
+		conf.Extensions = &extconf.ExtensionConfig{
+			Search: &extconf.SearchConfig{BaseConfig: extconf.BaseConfig{Enable: &defaultVal}},
+		}
+		conf.Extensions.Search.CVE = nil
+
+		ctlr := api.NewController(conf)
+		ctlrManager := NewControllerManager(ctlr)
+
+		storeCtlr := ociutils.GetDefaultStoreController(rootDir, log)
+
+		image11 := CreateRandomImage()
+		image12 := CreateRandomImage()
+		err := WriteImageToFileSystem(image11, "repo1", "tag1", storeCtlr)
+		So(err, ShouldBeNil)
+		err = WriteImageToFileSystem(image12, "repo1", "tag2", storeCtlr)
+		So(err, ShouldBeNil)
+
+		image21 := CreateRandomImage()
+		image22 := CreateRandomImage()
+		multiArch2 := CreateRandomMultiarch()
+		err = WriteImageToFileSystem(image21, "repo2", "tag1", storeCtlr)
+		So(err, ShouldBeNil)
+		err = WriteImageToFileSystem(image22, "repo2", "tag2", storeCtlr)
+		So(err, ShouldBeNil)
+		err = WriteMultiArchImageToFileSystem(multiArch2, "repo2", "tag-multi", storeCtlr)
+		So(err, ShouldBeNil)
+
+		image31 := CreateRandomImage()
+		image32 := CreateRandomImage()
+		err = WriteImageToFileSystem(image31, "repo3", "tag1", storeCtlr)
+		So(err, ShouldBeNil)
+		err = WriteImageToFileSystem(image32, "repo3", "tag2", storeCtlr)
+		So(err, ShouldBeNil)
+
+		image41 := CreateRandomImage()
+		image42 := CreateRandomImage()
+		multiArch4 := CreateRandomMultiarch()
+		err = WriteImageToFileSystem(image41, "repo4", "tag1", storeCtlr)
+		So(err, ShouldBeNil)
+		err = WriteImageToFileSystem(image42, "repo4", "tag2", storeCtlr)
+		So(err, ShouldBeNil)
+		err = WriteMultiArchImageToFileSystem(multiArch4, "repo4", "tag-multi", storeCtlr)
+		So(err, ShouldBeNil)
+
+		image51 := CreateRandomImage()
+		err = WriteImageToFileSystem(image51, "repo5", "tag1", storeCtlr)
+		So(err, ShouldBeNil)
+
+		multiArch62 := CreateRandomMultiarch()
+		err = WriteMultiArchImageToFileSystem(multiArch62, "repo6", "tag2", storeCtlr)
+		So(err, ShouldBeNil)
+
+		ctlrManager.StartAndWait(port)
+		defer ctlrManager.StopServer()
+
+		// Search for a specific tag cross-repo and return single arch images
+		results := GlobalSearchGQL(":tag1", baseURL).GlobalSearch
+		So(len(results.Images), ShouldEqual, 5)
+		So(len(results.Repos), ShouldEqual, 0)
+
+		expectedRepos := []string{"repo1", "repo2", "repo3", "repo4", "repo5"}
+		for _, image := range results.Images {
+			So(image.Tag, ShouldEqual, "tag1")
+			So(image.RepoName, ShouldBeIn, expectedRepos)
+			So(len(image.Manifests), ShouldEqual, 1)
+		}
+
+		// Search for a specific tag cross-repo and return multi arch images
+		results = GlobalSearchGQL(":tag-multi", baseURL).GlobalSearch
+		So(len(results.Images), ShouldEqual, 2)
+		So(len(results.Repos), ShouldEqual, 0)
+
+		expectedRepos = []string{"repo2", "repo4"}
+		for _, image := range results.Images {
+			So(image.Tag, ShouldEqual, "tag-multi")
+			So(image.RepoName, ShouldBeIn, expectedRepos)
+			So(len(image.Manifests), ShouldEqual, 3)
+		}
+
+		// Search for a specific tag cross-repo and return mixed single and multiarch images
+		results = GlobalSearchGQL(":tag2", baseURL).GlobalSearch
+		So(len(results.Images), ShouldEqual, 5)
+		So(len(results.Repos), ShouldEqual, 0)
+
+		expectedRepos = []string{"repo1", "repo2", "repo3", "repo4", "repo6"}
+		for _, image := range results.Images {
+			So(image.Tag, ShouldEqual, "tag2")
+			So(image.RepoName, ShouldBeIn, expectedRepos)
+			if image.RepoName == "repo6" {
+				So(len(image.Manifests), ShouldEqual, 3)
+			} else {
+				So(len(image.Manifests), ShouldEqual, 1)
+			}
+		}
+
+		// Search for multiple tags using a partial match cross-repo and return multiarch images
+		results = GlobalSearchGQL(":multi", baseURL).GlobalSearch
+		So(len(results.Images), ShouldEqual, 2)
+		So(len(results.Repos), ShouldEqual, 0)
+
+		expectedRepos = []string{"repo2", "repo4"}
+		for _, image := range results.Images {
+			So(image.Tag, ShouldContainSubstring, "multi")
+			So(image.RepoName, ShouldBeIn, expectedRepos)
+			So(len(image.Manifests), ShouldEqual, 3)
+		}
+
+		// Search for multiple tags using a partial match cross-repo and return mixed single and multiarch images
+		results = GlobalSearchGQL(":tag", baseURL).GlobalSearch
+		So(len(results.Images), ShouldEqual, 12)
+		So(len(results.Repos), ShouldEqual, 0)
+
+		expectedRepos = []string{"repo1", "repo2", "repo3", "repo4", "repo5", "repo6"}
+		for _, image := range results.Images {
+			So(image.Tag, ShouldContainSubstring, "tag")
+			So(image.RepoName, ShouldBeIn, expectedRepos)
+		}
+
+		// Search for a specific tag cross-repo and return mixt single and multiarch images
+		result := GlobalSearchGQL(":", baseURL)
+		errors := result.Errors
+		So(len(errors), ShouldEqual, 1)
+
+		results = result.GlobalSearch
+		So(len(results.Images), ShouldEqual, 0)
+		So(len(results.Repos), ShouldEqual, 0)
+	})
 }
 
 func TestCleaningFilteringParamsGlobalSearch(t *testing.T) {
