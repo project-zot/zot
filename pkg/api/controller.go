@@ -50,7 +50,7 @@ type Controller struct {
 	CookieStore     *CookieStore
 	LDAPClient      *LDAPClient
 	taskScheduler   *scheduler.Scheduler
-	htpasswdClient  *HtpasswdClient
+	HtpasswdClient  *HtpasswdClient
 	// runtime params
 	chosenPort int // kernel-chosen port
 }
@@ -100,9 +100,7 @@ func (c *Controller) Run() error {
 		return err
 	}
 
-	if err := c.initHtpasswdClient(); err != nil {
-		return err
-	}
+	c.StartBackgroundTasks()
 
 	// setup HTTP API router
 	engine := mux.NewRouter()
@@ -246,6 +244,12 @@ func (c *Controller) Init() error {
 
 	c.InitCVEInfo()
 
+	if c.Config.IsHtpasswdAuthEnabled() {
+		if err := c.initHtpasswdClient(); err != nil {
+			return err
+		}
+	}
+
 	return nil
 }
 
@@ -285,9 +289,9 @@ func (c *Controller) initCookieStore() error {
 
 func (c *Controller) initHtpasswdClient() error {
 	if c.Config.IsHtpasswdAuthEnabled() {
-		c.htpasswdClient = NewHtpasswdClient(c.Config.HTTP.Auth.HTPasswd.Path)
+		c.HtpasswdClient = NewHtpasswdClient(c.Config.HTTP.Auth.HTPasswd.Path)
 
-		return c.htpasswdClient.Init()
+		return c.HtpasswdClient.Init()
 	}
 
 	return nil

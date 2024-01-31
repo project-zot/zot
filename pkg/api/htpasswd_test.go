@@ -27,7 +27,7 @@ func TestHtpasswdClient_ChangePassword(t *testing.T) {
 
 		Convey("change for non-existing login", func() {
 			err := client.ChangePassword("non-existing", "old_password", "new_password")
-			So(err, ShouldEqual, zerr.ErrUserIsNotFound)
+			So(err, ShouldEqual, zerr.ErrBadUser)
 		})
 
 		Convey("change with wrong old oldPassword", func() {
@@ -96,7 +96,7 @@ func TestHtpasswdClient_CheckPassword(t *testing.T) {
 
 		Convey("check for non-existing login", func() {
 			err := client.CheckPassword("non-existing", "password")
-			So(err, ShouldEqual, zerr.ErrUserIsNotFound)
+			So(err, ShouldEqual, zerr.ErrBadUser)
 		})
 
 		Convey("check with wrong password", func() {
@@ -146,38 +146,3 @@ func TestHtpasswdClient_Init(t *testing.T) {
 		})
 	})
 }
-
-//
-// func Test_credMap_Get(t *testing.T) {
-// 	credsMap := credMap{
-// 		m:  map[string]string{"testuser": "testpassword"},
-// 		rw: &sync.RWMutex{},
-// 	}
-//
-// 	Convey("test credMap Get", t, func() {
-// 		Convey("should get existing password", func() {
-// 			passhprase, ok := credsMap.Get("testuser")
-// 			So(ok, ShouldBeTrue)
-// 			So(passhprase, ShouldEqual, "testpassword")
-// 		})
-//
-// 		Convey("should not get unexisting password", func() {
-// 			passhprase, ok := credsMap.Get("non-existing")
-// 			So(ok, ShouldBeFalse)
-// 			So(passhprase, ShouldBeBlank)
-// 		})
-// 	})
-// }
-//
-// func Test_credMap_Set(t *testing.T) {
-// 	credsMap := credMap{
-// 		m:  make(map[string]string),
-// 		rw: &sync.RWMutex{},
-// 	}
-//
-// 	Convey("should set password", t, func() {
-// 		err := credsMap.Set("testuser", "testpassword")
-// 		So(err, ShouldBeNil)
-// 		So(credsMap.m["testuser"], ShouldNotBeEmpty)
-// 	})
-// }

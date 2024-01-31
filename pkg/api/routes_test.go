@@ -1562,7 +1562,7 @@ func TestRoutes(t *testing.T) {
 					NewPassword: "new_password",
 				},
 				wantCode: http.StatusNotFound,
-				wantBody: []byte(zerr.ErrUserIsNotFound.Error()),
+				wantBody: []byte(zerr.ErrBadUser.Error()),
 			}))
 
 			Convey("old password is wrong", testFn(testCase{

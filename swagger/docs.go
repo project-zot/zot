@@ -1187,7 +1187,7 @@ const docTemplate = `{
                         }
                     },
                     "403": {
-                        "description": "old password is incorrect",
+                        "description": "old password is incorrect\".",
                         "schema": {
                             "type": "string"
                         }

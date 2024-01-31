@@ -2234,7 +2234,6 @@ func (rh *RouteHandler) ChangePassword(resp http.ResponseWriter, req *http.Reque
 	if err != nil {
 		rh.c.Log.Error().Msg("failed to read req body")
 		resp.WriteHeader(http.StatusInternalServerError)
-		_, _ = resp.Write([]byte("internal server error"))
 
 		return
 	}
@@ -2243,41 +2242,41 @@ func (rh *RouteHandler) ChangePassword(resp http.ResponseWriter, req *http.Reque
 	if err := json.Unmarshal(body, &reqBody); err != nil {
 		rh.c.Log.Error().Msg("failed to unmarshal req body")
 		resp.WriteHeader(http.StatusBadRequest)
-		_, _ = resp.Write([]byte("bad req"))
 
 		return
 	}
 
 	userAc, err := reqCtx.UserAcFromContext(req.Context())
 	if err != nil {
+		resp.WriteHeader(http.StatusNotFound)
+
 		return
 	}
 
 	username := userAc.GetUsername()
-	if err := rh.c.htpasswdClient.ChangePassword(username, reqBody.OldPassword, reqBody.NewPassword); err != nil {
+	if username == "" {
+		resp.WriteHeader(http.StatusNotFound)
+	}
+
+	if err := rh.c.HtpasswdClient.ChangePassword(username, reqBody.OldPassword, reqBody.NewPassword); err != nil {
 		rh.c.Log.Error().Err(err).Str("identity", username).Msg("failed to change user password")
 		status := http.StatusInternalServerError
-		msg := err.Error()
 
 		switch {
-		case errors.Is(err, zerr.ErrUserIsNotFound):
+		case errors.Is(err, zerr.ErrBadUser):
 			status = http.StatusNotFound
 		case errors.Is(err, zerr.ErrOldPasswordIsWrong):
 			status = http.StatusUnauthorized
 		case errors.Is(err, zerr.ErrPasswordIsEmpty):
 			status = http.StatusBadRequest
-		default:
-			msg = "internal server error"
 		}
 
 		resp.WriteHeader(status)
-		_, _ = resp.Write([]byte(msg))
 
 		return
 	}
 
 	resp.WriteHeader(http.StatusOK)
-	_, _ = resp.Write([]byte("password changed"))
 }
 
 type ChangePasswordRequest struct {

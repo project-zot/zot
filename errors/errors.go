@@ -169,13 +169,11 @@ var (
 	ErrURLNotFound                    = errors.New("url not found")
 	ErrInvalidSearchQuery             = errors.New("invalid search query")
 
-	// ErrUserIsNotFound returned if the user is not found.
-	ErrUserIsNotFound = errors.New("user is not found")
 	// ErrPasswordsDoNotMatch returned if given password does not match existing user's password.
 	ErrPasswordsDoNotMatch = errors.New("passwords do not match")
 	// ErrOldPasswordIsWrong returned if provided old password for user verification
 	// during the password change is wrong.
 	ErrOldPasswordIsWrong = errors.New("old password is wrong")
-	// ErrPasswordIsEmpty returned if user's new password is empty
+	// ErrPasswordIsEmpty returned if user's new password is empty.
 	ErrPasswordIsEmpty = errors.New("password can not be empty")
 )

@@ -92,7 +92,7 @@ func (hc *HtpasswdClient) Set(login, password string) error {
 func (hc *HtpasswdClient) CheckPassword(login, password string) error {
 	passwordHash, ok := hc.Get(login)
 	if !ok {
-		return zerr.ErrUserIsNotFound
+		return zerr.ErrBadUser
 	}
 
 	err := bcrypt.CompareHashAndPassword([]byte(passwordHash), []byte(password))
@@ -115,7 +115,7 @@ func (hc *HtpasswdClient) ChangePassword(login, supposedOldPassword, newPassword
 	hc.credMap.rw.RUnlock()
 
 	if !ok {
-		return zerr.ErrUserIsNotFound
+		return zerr.ErrBadUser
 	}
 
 	// given old password must match actual old password

@@ -524,28 +524,28 @@ func TestInjectUploadImageWithBasicAuth(t *testing.T) {
 		}
 
 		Convey("first marshal", func() {
-			injected := inject.InjectFailure(0)
-			if injected {
-				err := UploadImageWithBasicAuth(img, baseURL, "test", img.DigestStr(), "user", "password")
-				So(err, ShouldNotBeNil)
-			}
-		})
-		Convey("CreateBlobUpload POST call", func() {
 			injected := inject.InjectFailure(1)
 			if injected {
 				err := UploadImageWithBasicAuth(img, baseURL, "test", img.DigestStr(), "user", "password")
 				So(err, ShouldNotBeNil)
 			}
 		})
+		Convey("CreateBlobUpload POST call", func() {
+			injected := inject.InjectFailure(2)
+			if injected {
+				err := UploadImageWithBasicAuth(img, baseURL, "test", img.DigestStr(), "user", "password")
+				So(err, ShouldNotBeNil)
+			}
+		})
 		Convey("UpdateBlobUpload PUT call", func() {
-			injected := inject.InjectFailure(3)
+			injected := inject.InjectFailure(4)
 			if injected {
 				err := UploadImageWithBasicAuth(img, baseURL, "test", img.DigestStr(), "user", "password")
 				So(err, ShouldNotBeNil)
 			}
 		})
 		Convey("second marshal", func() {
-			injected := inject.InjectFailure(5)
+			injected := inject.InjectFailure(6)
 			if injected {
 				err := UploadImageWithBasicAuth(img, baseURL, "test", img.DigestStr(), "user", "password")
 				So(err, ShouldNotBeNil)
