@@ -8,8 +8,7 @@ http:
     ldap:
       address: ldap.example.org
       basedn: ou=Users,dc=example,dc=org
-      binddn: cn=ldap-searcher,ou=Users,dc=example,dc=org
-      bindpassword: ldap-searcher-password
+      credentialsFile: examples/config-ldap-credentials.json
       port: 389
       skipverify: false
       starttls: false

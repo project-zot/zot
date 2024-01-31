@@ -861,8 +861,8 @@ func readLDAPCredentials(ldapConfigPath string) (config.LDAPCredentials, error) 
 
 	var ldapCredentials config.LDAPCredentials
 
-	if err := viperInstance.Unmarshal(&ldapCredentials); err != nil {
-		log.Error().Err(err).Msg("failed to unmarshal new config")
+	if err := viperInstance.UnmarshalExact(&ldapCredentials); err != nil {
+		log.Error().Err(err).Msg("failed to unmarshal ldap credentials config")
 
 		return config.LDAPCredentials{}, err
 	}

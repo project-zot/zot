@@ -392,7 +392,7 @@ verify-config: _verify-config verify-config-warnings verify-config-commited
 .PHONY: _verify-config
 _verify-config: binary
 	rm -f output.txt
-	$(foreach file, $(wildcard examples/config-*), ./bin/zot-$(OS)-$(ARCH) verify $(file) 2>&1 | tee -a output.txt || exit 1;)
+	$(foreach file, $(filter-out examples/config-ldap-credentials.json, $(wildcard examples/config-*)), ./bin/zot-$(OS)-$(ARCH) verify $(file) 2>&1 | tee -a output.txt || exit 1;)
 
 .PHONY: verify-config-warnings
 verify-config-warnings: _verify-config

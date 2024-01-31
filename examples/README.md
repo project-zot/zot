@@ -225,14 +225,14 @@ authentication:
         "startTLS":false,
         "baseDN":"ou=Users,dc=example,dc=org",
         "userAttribute":"uid",
-        "bindDN":"cn=ldap-searcher,ou=Users,dc=example,dc=org",
-        "bindPassword":"ldap-searcher-password",
+        "credentialsFile": "config-ldap-credentials.json",
         "skipVerify":false,
         "subtreeSearch":true
       },
 ```
 
 NOTE: When both htpasswd and LDAP configuration are specified, LDAP authentication is given preference.
+NOTE: The separate file for storing DN and password credentials must be created. You can see example in `examples/config-ldap-credentials.json` file.
 
 **OAuth2 authentication** (client credentials grant type) support via _Bearer Token_ configured with:
 
