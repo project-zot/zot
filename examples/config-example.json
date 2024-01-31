@@ -18,8 +18,7 @@
         "startTLS": false,
         "baseDN": "ou=Users,dc=example,dc=org",
         "userAttribute": "uid",
-        "bindDN": "cn=ldap-searcher,ou=Users,dc=example,dc=org",
-        "bindPassword": "ldap-searcher-password",
+        "credentialsFile": "examples/config-ldap-credentials.json",
         "skipVerify": false,
         "subtreeSearch": true
       },
