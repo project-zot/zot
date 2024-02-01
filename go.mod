@@ -1,6 +1,8 @@
 module zotregistry.dev/zot
 
-go 1.20
+go 1.21
+
+toolchain go1.21.6
 
 require (
 	github.com/99designs/gqlgen v0.17.41
@@ -78,6 +80,7 @@ require (
 	github.com/Azure/azure-sdk-for-go/sdk/azidentity v1.4.0 // indirect
 	github.com/Azure/azure-sdk-for-go/sdk/internal v1.5.0 // indirect
 	github.com/Azure/go-ansiterm v0.0.0-20230124172434-306776ec8161 // indirect
+	github.com/Azure/go-autorest/autorest/to v0.4.0 // indirect
 	github.com/AzureAD/microsoft-authentication-library-for-go v1.2.0 // indirect
 	github.com/CycloneDX/cyclonedx-go v0.7.2 // indirect
 	github.com/MakeNowJust/heredoc v1.0.0 // indirect
