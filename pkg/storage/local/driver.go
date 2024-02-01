@@ -13,7 +13,7 @@ import (
 	"time"
 	"unicode/utf8"
 
-	storagedriver "github.com/docker/distribution/registry/storage/driver"
+	storagedriver "github.com/distribution/distribution/v3/registry/storage/driver"
 
 	zerr "zotregistry.dev/zot/errors"
 	storageConstants "zotregistry.dev/zot/pkg/storage/constants"

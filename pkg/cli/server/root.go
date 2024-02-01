@@ -399,7 +399,7 @@ func validateConfiguration(config *config.Config, log zlog.Logger) error {
 	}
 
 	if len(config.Storage.StorageDriver) != 0 {
-		switch storageConfig.StorageDriver["name"] {
+		switch config.Storage.StorageDriver["name"] {
 		case storageConstants.S3StorageDriverName:
 		case storageConstants.AzureBlobStorageDriverName:
 		default:
