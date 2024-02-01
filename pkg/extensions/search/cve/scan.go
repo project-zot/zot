@@ -115,6 +115,10 @@ func (gen *scanTaskGenerator) isScheduled(digest string) bool {
 	return ok
 }
 
+func (gen *scanTaskGenerator) Name() string {
+	return "CVEScanGenerator"
+}
+
 func (gen *scanTaskGenerator) Next() (scheduler.Task, error) {
 	// metaRB requires us to use a context for authorization
 	userAc := reqCtx.NewUserAccessControl()

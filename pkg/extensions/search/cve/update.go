@@ -46,6 +46,10 @@ type DBUpdateTaskGenerator struct {
 	lock         *sync.Mutex
 }
 
+func (gen *DBUpdateTaskGenerator) Name() string {
+	return "CVEDBUpdateGenerator"
+}
+
 func (gen *DBUpdateTaskGenerator) Next() (scheduler.Task, error) {
 	var newTask scheduler.Task
 

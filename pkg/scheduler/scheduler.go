@@ -304,7 +304,8 @@ func (scheduler *Scheduler) pushReadyGenerators() {
 				scheduler.waitingGenerators = append(scheduler.waitingGenerators[:i], scheduler.waitingGenerators[i+1:]...)
 				modified = true
 
-				scheduler.log.Debug().Msg("waiting generator is ready, pushing to ready generators")
+				scheduler.log.Debug().Str("generator", gen.taskGenerator.Name()).
+					Msg("waiting generator is ready, pushing to ready generators")
 
 				break
 			}
@@ -435,6 +436,7 @@ type TaskGenerator interface {
 	Next() (Task, error)
 	IsDone() bool
 	IsReady() bool
+	Name() string
 	Reset()
 }
 
@@ -459,7 +461,8 @@ func (gen *generator) generate(sch *Scheduler) {
 	if gen.remainingTask == nil {
 		nextTask, err := gen.taskGenerator.Next()
 		if err != nil {
-			sch.log.Error().Err(err).Msg("failed to execute generator")
+			sch.log.Error().Err(err).Str("generator", gen.taskGenerator.Name()).
+				Msg("failed to execute generator")
 
 			return
 		}
@@ -470,6 +473,9 @@ func (gen *generator) generate(sch *Scheduler) {
 			gen.lastRun = time.Now()
 			gen.taskCount = 0
 			gen.taskGenerator.Reset()
+
+			sch.log.Debug().Str("generator", gen.taskGenerator.Name()).
+				Msg("generator is done")
 
 			return
 		}

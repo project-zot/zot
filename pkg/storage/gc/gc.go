@@ -800,6 +800,10 @@ func (gen *GCTaskGenerator) getRandomDelay() int {
 	return gen.rand.Intn(maxDelay)
 }
 
+func (gen *GCTaskGenerator) Name() string {
+	return "GCTaskGenerator"
+}
+
 func (gen *GCTaskGenerator) Next() (scheduler.Task, error) {
 	if gen.lastRepo == "" && gen.nextRun.IsZero() {
 		gen.rand = rand.New(rand.NewSource(time.Now().UTC().UnixNano())) //nolint: gosec

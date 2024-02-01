@@ -200,6 +200,10 @@ type sigValidityTaskGenerator struct {
 	log       log.Logger
 }
 
+func (gen *sigValidityTaskGenerator) Name() string {
+	return "SignatureValidationGenerator"
+}
+
 func (gen *sigValidityTaskGenerator) Next() (scheduler.Task, error) {
 	if len(gen.repos) == 0 {
 		ctx := context.Background()
