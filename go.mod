@@ -1,4 +1,4 @@
-module zotregistry.io/zot
+module zotregistry.dev/zot
 
 go 1.20
 

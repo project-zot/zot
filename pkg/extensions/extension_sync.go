@@ -8,14 +8,14 @@ import (
 	"net/url"
 	"strings"
 
-	zerr "zotregistry.io/zot/errors"
-	"zotregistry.io/zot/pkg/api/config"
-	syncconf "zotregistry.io/zot/pkg/extensions/config/sync"
-	"zotregistry.io/zot/pkg/extensions/sync"
-	"zotregistry.io/zot/pkg/log"
-	mTypes "zotregistry.io/zot/pkg/meta/types"
-	"zotregistry.io/zot/pkg/scheduler"
-	"zotregistry.io/zot/pkg/storage"
+	zerr "zotregistry.dev/zot/errors"
+	"zotregistry.dev/zot/pkg/api/config"
+	syncconf "zotregistry.dev/zot/pkg/extensions/config/sync"
+	"zotregistry.dev/zot/pkg/extensions/sync"
+	"zotregistry.dev/zot/pkg/log"
+	mTypes "zotregistry.dev/zot/pkg/meta/types"
+	"zotregistry.dev/zot/pkg/scheduler"
+	"zotregistry.dev/zot/pkg/storage"
 )
 
 func EnableSyncExtension(config *config.Config, metaDB mTypes.MetaDB,

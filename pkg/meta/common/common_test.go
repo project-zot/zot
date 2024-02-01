@@ -7,8 +7,8 @@ import (
 
 	. "github.com/smartystreets/goconvey/convey"
 
-	"zotregistry.io/zot/pkg/meta/common"
-	mTypes "zotregistry.io/zot/pkg/meta/types"
+	"zotregistry.dev/zot/pkg/meta/common"
+	mTypes "zotregistry.dev/zot/pkg/meta/types"
 )
 
 var ErrTestError = errors.New("test error")

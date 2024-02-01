@@ -9,7 +9,7 @@ import (
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	artifactspec "github.com/oras-project/artifacts-spec/specs-go/v1"
 
-	"zotregistry.io/zot/pkg/scheduler"
+	"zotregistry.dev/zot/pkg/scheduler"
 )
 
 type MockedImageStore struct {

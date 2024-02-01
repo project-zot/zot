@@ -12,15 +12,15 @@ import (
 	godigest "github.com/opencontainers/go-digest"
 	oras "github.com/oras-project/artifacts-spec/specs-go/v1"
 
-	zerr "zotregistry.io/zot/errors"
-	apiConstants "zotregistry.io/zot/pkg/api/constants"
-	"zotregistry.io/zot/pkg/common"
-	"zotregistry.io/zot/pkg/extensions/sync/constants"
-	client "zotregistry.io/zot/pkg/extensions/sync/httpclient"
-	"zotregistry.io/zot/pkg/log"
-	"zotregistry.io/zot/pkg/meta"
-	mTypes "zotregistry.io/zot/pkg/meta/types"
-	"zotregistry.io/zot/pkg/storage"
+	zerr "zotregistry.dev/zot/errors"
+	apiConstants "zotregistry.dev/zot/pkg/api/constants"
+	"zotregistry.dev/zot/pkg/common"
+	"zotregistry.dev/zot/pkg/extensions/sync/constants"
+	client "zotregistry.dev/zot/pkg/extensions/sync/httpclient"
+	"zotregistry.dev/zot/pkg/log"
+	"zotregistry.dev/zot/pkg/meta"
+	mTypes "zotregistry.dev/zot/pkg/meta/types"
+	"zotregistry.dev/zot/pkg/storage"
 )
 
 type ReferenceList struct {

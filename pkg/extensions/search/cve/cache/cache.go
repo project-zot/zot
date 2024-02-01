@@ -3,8 +3,8 @@ package cache
 import (
 	lru "github.com/hashicorp/golang-lru/v2"
 
-	cvemodel "zotregistry.io/zot/pkg/extensions/search/cve/model"
-	"zotregistry.io/zot/pkg/log"
+	cvemodel "zotregistry.dev/zot/pkg/extensions/search/cve/model"
+	"zotregistry.dev/zot/pkg/log"
 )
 
 type CveCache struct {

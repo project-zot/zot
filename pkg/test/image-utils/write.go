@@ -7,7 +7,7 @@ import (
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 
-	stypes "zotregistry.io/zot/pkg/storage/types"
+	stypes "zotregistry.dev/zot/pkg/storage/types"
 )
 
 func WriteImageToFileSystem(image Image, repoName, ref string, storeController stypes.StoreController) error {

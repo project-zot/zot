@@ -11,7 +11,7 @@ import (
 
 	. "github.com/smartystreets/goconvey/convey"
 
-	"zotregistry.io/zot/pkg/test/inject"
+	"zotregistry.dev/zot/pkg/test/inject"
 )
 
 var (

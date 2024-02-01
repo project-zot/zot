@@ -8,10 +8,10 @@ import (
 
 	godigest "github.com/opencontainers/go-digest"
 
-	"zotregistry.io/zot/pkg/log"
-	"zotregistry.io/zot/pkg/storage"
-	"zotregistry.io/zot/pkg/storage/cache"
-	test "zotregistry.io/zot/pkg/test/common"
+	"zotregistry.dev/zot/pkg/log"
+	"zotregistry.dev/zot/pkg/storage"
+	"zotregistry.dev/zot/pkg/storage/cache"
+	test "zotregistry.dev/zot/pkg/test/common"
 )
 
 const (

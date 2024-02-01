@@ -9,8 +9,8 @@ import (
 	"net/http"
 	"sync"
 
-	zerr "zotregistry.io/zot/errors"
-	"zotregistry.io/zot/pkg/log"
+	zerr "zotregistry.dev/zot/errors"
+	"zotregistry.dev/zot/pkg/log"
 )
 
 func Ok(ok bool) bool {

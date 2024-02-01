@@ -15,11 +15,11 @@ import (
 	. "github.com/smartystreets/goconvey/convey"
 	"go.etcd.io/bbolt"
 
-	"zotregistry.io/zot/pkg/log"
-	"zotregistry.io/zot/pkg/meta/boltdb"
-	mdynamodb "zotregistry.io/zot/pkg/meta/dynamodb"
-	"zotregistry.io/zot/pkg/meta/version"
-	tskip "zotregistry.io/zot/pkg/test/skip"
+	"zotregistry.dev/zot/pkg/log"
+	"zotregistry.dev/zot/pkg/meta/boltdb"
+	mdynamodb "zotregistry.dev/zot/pkg/meta/dynamodb"
+	"zotregistry.dev/zot/pkg/meta/version"
+	tskip "zotregistry.dev/zot/pkg/test/skip"
 )
 
 var ErrTestError = errors.New("test error")

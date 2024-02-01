@@ -14,16 +14,16 @@ import (
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	zerr "zotregistry.io/zot/errors"
-	"zotregistry.io/zot/pkg/api/constants"
-	zcommon "zotregistry.io/zot/pkg/common"
-	"zotregistry.io/zot/pkg/log"
-	"zotregistry.io/zot/pkg/meta/common"
-	mConvert "zotregistry.io/zot/pkg/meta/convert"
-	proto_go "zotregistry.io/zot/pkg/meta/proto/gen"
-	mTypes "zotregistry.io/zot/pkg/meta/types"
-	"zotregistry.io/zot/pkg/meta/version"
-	reqCtx "zotregistry.io/zot/pkg/requestcontext"
+	zerr "zotregistry.dev/zot/errors"
+	"zotregistry.dev/zot/pkg/api/constants"
+	zcommon "zotregistry.dev/zot/pkg/common"
+	"zotregistry.dev/zot/pkg/log"
+	"zotregistry.dev/zot/pkg/meta/common"
+	mConvert "zotregistry.dev/zot/pkg/meta/convert"
+	proto_go "zotregistry.dev/zot/pkg/meta/proto/gen"
+	mTypes "zotregistry.dev/zot/pkg/meta/types"
+	"zotregistry.dev/zot/pkg/meta/version"
+	reqCtx "zotregistry.dev/zot/pkg/requestcontext"
 )
 
 type BoltDB struct {

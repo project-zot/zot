@@ -8,8 +8,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	zerr "zotregistry.io/zot/errors"
-	zcommon "zotregistry.io/zot/pkg/common"
+	zerr "zotregistry.dev/zot/errors"
+	zcommon "zotregistry.dev/zot/pkg/common"
 )
 
 func NewImageListCommand(searchService SearchService) *cobra.Command {

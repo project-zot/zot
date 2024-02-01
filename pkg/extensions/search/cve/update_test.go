@@ -13,15 +13,15 @@ import (
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	. "github.com/smartystreets/goconvey/convey"
 
-	"zotregistry.io/zot/pkg/api/config"
-	"zotregistry.io/zot/pkg/extensions/monitoring"
-	cveinfo "zotregistry.io/zot/pkg/extensions/search/cve"
-	"zotregistry.io/zot/pkg/log"
-	mTypes "zotregistry.io/zot/pkg/meta/types"
-	"zotregistry.io/zot/pkg/scheduler"
-	"zotregistry.io/zot/pkg/storage"
-	test "zotregistry.io/zot/pkg/test/common"
-	"zotregistry.io/zot/pkg/test/mocks"
+	"zotregistry.dev/zot/pkg/api/config"
+	"zotregistry.dev/zot/pkg/extensions/monitoring"
+	cveinfo "zotregistry.dev/zot/pkg/extensions/search/cve"
+	"zotregistry.dev/zot/pkg/log"
+	mTypes "zotregistry.dev/zot/pkg/meta/types"
+	"zotregistry.dev/zot/pkg/scheduler"
+	"zotregistry.dev/zot/pkg/storage"
+	test "zotregistry.dev/zot/pkg/test/common"
+	"zotregistry.dev/zot/pkg/test/mocks"
 )
 
 func TestCVEDBGenerator(t *testing.T) {

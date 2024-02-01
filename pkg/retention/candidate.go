@@ -1,8 +1,8 @@
 package retention
 
 import (
-	mTypes "zotregistry.io/zot/pkg/meta/types"
-	"zotregistry.io/zot/pkg/retention/types"
+	mTypes "zotregistry.dev/zot/pkg/meta/types"
+	"zotregistry.dev/zot/pkg/retention/types"
 )
 
 func GetCandidates(repoMeta mTypes.RepoMeta) []*types.Candidate {

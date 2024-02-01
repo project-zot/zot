@@ -7,8 +7,8 @@ import (
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	. "github.com/smartystreets/goconvey/convey"
 
-	"zotregistry.io/zot/pkg/meta/convert"
-	"zotregistry.io/zot/pkg/meta/proto/gen"
+	"zotregistry.dev/zot/pkg/meta/convert"
+	"zotregistry.dev/zot/pkg/meta/proto/gen"
 )
 
 func TestConvertErrors(t *testing.T) {

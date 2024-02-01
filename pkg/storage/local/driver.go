@@ -15,9 +15,9 @@ import (
 
 	storagedriver "github.com/docker/distribution/registry/storage/driver"
 
-	zerr "zotregistry.io/zot/errors"
-	storageConstants "zotregistry.io/zot/pkg/storage/constants"
-	"zotregistry.io/zot/pkg/test/inject"
+	zerr "zotregistry.dev/zot/errors"
+	storageConstants "zotregistry.dev/zot/pkg/storage/constants"
+	"zotregistry.dev/zot/pkg/test/inject"
 )
 
 type Driver struct {

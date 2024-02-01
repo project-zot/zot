@@ -7,8 +7,8 @@ import (
 
 	distspec "github.com/opencontainers/distribution-spec/specs-go"
 
-	extconf "zotregistry.io/zot/pkg/extensions/config"
-	storageConstants "zotregistry.io/zot/pkg/storage/constants"
+	extconf "zotregistry.dev/zot/pkg/extensions/config"
+	storageConstants "zotregistry.dev/zot/pkg/storage/constants"
 )
 
 var (

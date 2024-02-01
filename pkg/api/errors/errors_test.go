@@ -5,7 +5,7 @@ import (
 
 	. "github.com/smartystreets/goconvey/convey"
 
-	apiErr "zotregistry.io/zot/pkg/api/errors"
+	apiErr "zotregistry.dev/zot/pkg/api/errors"
 )
 
 func TestUnknownCodeError(t *testing.T) {

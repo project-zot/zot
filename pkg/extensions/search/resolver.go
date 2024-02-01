@@ -15,17 +15,17 @@ import (
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/vektah/gqlparser/v2/gqlerror"
 
-	zerr "zotregistry.io/zot/errors"
-	zcommon "zotregistry.io/zot/pkg/common"
-	"zotregistry.io/zot/pkg/extensions/search/convert"
-	cveinfo "zotregistry.io/zot/pkg/extensions/search/cve"
-	cvemodel "zotregistry.io/zot/pkg/extensions/search/cve/model"
-	"zotregistry.io/zot/pkg/extensions/search/gql_generated"
-	"zotregistry.io/zot/pkg/extensions/search/pagination"
-	"zotregistry.io/zot/pkg/log"
-	mTypes "zotregistry.io/zot/pkg/meta/types"
-	reqCtx "zotregistry.io/zot/pkg/requestcontext"
-	"zotregistry.io/zot/pkg/storage"
+	zerr "zotregistry.dev/zot/errors"
+	zcommon "zotregistry.dev/zot/pkg/common"
+	"zotregistry.dev/zot/pkg/extensions/search/convert"
+	cveinfo "zotregistry.dev/zot/pkg/extensions/search/cve"
+	cvemodel "zotregistry.dev/zot/pkg/extensions/search/cve/model"
+	"zotregistry.dev/zot/pkg/extensions/search/gql_generated"
+	"zotregistry.dev/zot/pkg/extensions/search/pagination"
+	"zotregistry.dev/zot/pkg/log"
+	mTypes "zotregistry.dev/zot/pkg/meta/types"
+	reqCtx "zotregistry.dev/zot/pkg/requestcontext"
+	"zotregistry.dev/zot/pkg/storage"
 )
 
 // THIS CODE IS A STARTING POINT ONLY. IT WILL NOT BE UPDATED WITH SCHEMA CHANGES.

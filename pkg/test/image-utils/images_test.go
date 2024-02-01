@@ -8,8 +8,8 @@ import (
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	. "github.com/smartystreets/goconvey/convey"
 
-	"zotregistry.io/zot/pkg/common"
-	. "zotregistry.io/zot/pkg/test/image-utils"
+	"zotregistry.dev/zot/pkg/common"
+	. "zotregistry.dev/zot/pkg/test/image-utils"
 )
 
 func TestImageBuilder(t *testing.T) {

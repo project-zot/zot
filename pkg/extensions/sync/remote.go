@@ -14,10 +14,10 @@ import (
 	"github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 
-	"zotregistry.io/zot/pkg/api/constants"
-	"zotregistry.io/zot/pkg/common"
-	client "zotregistry.io/zot/pkg/extensions/sync/httpclient"
-	"zotregistry.io/zot/pkg/log"
+	"zotregistry.dev/zot/pkg/api/constants"
+	"zotregistry.dev/zot/pkg/common"
+	client "zotregistry.dev/zot/pkg/extensions/sync/httpclient"
+	"zotregistry.dev/zot/pkg/log"
 )
 
 type catalog struct {

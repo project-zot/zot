@@ -16,11 +16,11 @@ import (
 	. "github.com/smartystreets/goconvey/convey"
 	"gopkg.in/resty.v1"
 
-	"zotregistry.io/zot/pkg/api"
-	"zotregistry.io/zot/pkg/api/config"
-	"zotregistry.io/zot/pkg/api/constants"
-	"zotregistry.io/zot/pkg/cli/client"
-	test "zotregistry.io/zot/pkg/test/common"
+	"zotregistry.dev/zot/pkg/api"
+	"zotregistry.dev/zot/pkg/api/config"
+	"zotregistry.dev/zot/pkg/api/constants"
+	"zotregistry.dev/zot/pkg/cli/client"
+	test "zotregistry.dev/zot/pkg/test/common"
 )
 
 func TestElevatedPrivilegesTLSNewControllerPrivilegedCert(t *testing.T) {

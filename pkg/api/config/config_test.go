@@ -6,7 +6,7 @@ import (
 
 	. "github.com/smartystreets/goconvey/convey"
 
-	"zotregistry.io/zot/pkg/api/config"
+	"zotregistry.dev/zot/pkg/api/config"
 )
 
 func TestConfig(t *testing.T) {

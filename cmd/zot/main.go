@@ -3,7 +3,7 @@ package main
 import (
 	"os"
 
-	cli "zotregistry.io/zot/pkg/cli/server"
+	cli "zotregistry.dev/zot/pkg/cli/server"
 )
 
 func main() {

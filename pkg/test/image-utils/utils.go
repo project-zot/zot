@@ -13,7 +13,7 @@ import (
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 
-	tcommon "zotregistry.io/zot/pkg/test/common"
+	tcommon "zotregistry.dev/zot/pkg/test/common"
 )
 
 var vulnerableLayer []byte //nolint: gochecknoglobals

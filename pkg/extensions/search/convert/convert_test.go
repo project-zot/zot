@@ -12,16 +12,16 @@ import (
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	. "github.com/smartystreets/goconvey/convey"
 
-	"zotregistry.io/zot/pkg/extensions/search/convert"
-	"zotregistry.io/zot/pkg/extensions/search/gql_generated"
-	"zotregistry.io/zot/pkg/extensions/search/pagination"
-	"zotregistry.io/zot/pkg/log"
-	"zotregistry.io/zot/pkg/meta/boltdb"
-	mTypes "zotregistry.io/zot/pkg/meta/types"
-	reqCtx "zotregistry.io/zot/pkg/requestcontext"
-	. "zotregistry.io/zot/pkg/test/image-utils"
-	"zotregistry.io/zot/pkg/test/mocks"
-	ociutils "zotregistry.io/zot/pkg/test/oci-utils"
+	"zotregistry.dev/zot/pkg/extensions/search/convert"
+	"zotregistry.dev/zot/pkg/extensions/search/gql_generated"
+	"zotregistry.dev/zot/pkg/extensions/search/pagination"
+	"zotregistry.dev/zot/pkg/log"
+	"zotregistry.dev/zot/pkg/meta/boltdb"
+	mTypes "zotregistry.dev/zot/pkg/meta/types"
+	reqCtx "zotregistry.dev/zot/pkg/requestcontext"
+	. "zotregistry.dev/zot/pkg/test/image-utils"
+	"zotregistry.dev/zot/pkg/test/mocks"
+	ociutils "zotregistry.dev/zot/pkg/test/oci-utils"
 )
 
 var ErrTestError = errors.New("TestError")

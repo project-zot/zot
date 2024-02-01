@@ -6,7 +6,7 @@ package main
 import (
 	"os"
 
-	"zotregistry.io/zot/pkg/exporter/cli"
+	"zotregistry.dev/zot/pkg/exporter/cli"
 )
 
 func main() {

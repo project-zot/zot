@@ -21,13 +21,13 @@ import (
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	_ "modernc.org/sqlite"
 
-	zerr "zotregistry.io/zot/errors"
-	zcommon "zotregistry.io/zot/pkg/common"
-	cvecache "zotregistry.io/zot/pkg/extensions/search/cve/cache"
-	cvemodel "zotregistry.io/zot/pkg/extensions/search/cve/model"
-	"zotregistry.io/zot/pkg/log"
-	mTypes "zotregistry.io/zot/pkg/meta/types"
-	"zotregistry.io/zot/pkg/storage"
+	zerr "zotregistry.dev/zot/errors"
+	zcommon "zotregistry.dev/zot/pkg/common"
+	cvecache "zotregistry.dev/zot/pkg/extensions/search/cve/cache"
+	cvemodel "zotregistry.dev/zot/pkg/extensions/search/cve/model"
+	"zotregistry.dev/zot/pkg/log"
+	mTypes "zotregistry.dev/zot/pkg/meta/types"
+	"zotregistry.dev/zot/pkg/storage"
 )
 
 const cacheSize = 1000000

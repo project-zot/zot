@@ -9,7 +9,7 @@ import (
 
 	. "github.com/smartystreets/goconvey/convey"
 
-	"zotregistry.io/zot/pkg/exporter/cli"
+	"zotregistry.dev/zot/pkg/exporter/cli"
 )
 
 func TestExporterCli(t *testing.T) {

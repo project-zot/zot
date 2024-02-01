@@ -17,13 +17,13 @@ import (
 	"github.com/rs/zerolog"
 	. "github.com/smartystreets/goconvey/convey"
 
-	"zotregistry.io/zot/pkg/extensions/imagetrust"
-	"zotregistry.io/zot/pkg/log"
-	mdynamodb "zotregistry.io/zot/pkg/meta/dynamodb"
-	mTypes "zotregistry.io/zot/pkg/meta/types"
-	reqCtx "zotregistry.io/zot/pkg/requestcontext"
-	. "zotregistry.io/zot/pkg/test/image-utils"
-	tskip "zotregistry.io/zot/pkg/test/skip"
+	"zotregistry.dev/zot/pkg/extensions/imagetrust"
+	"zotregistry.dev/zot/pkg/log"
+	mdynamodb "zotregistry.dev/zot/pkg/meta/dynamodb"
+	mTypes "zotregistry.dev/zot/pkg/meta/types"
+	reqCtx "zotregistry.dev/zot/pkg/requestcontext"
+	. "zotregistry.dev/zot/pkg/test/image-utils"
+	tskip "zotregistry.dev/zot/pkg/test/skip"
 )
 
 const badTablename = "bad tablename"

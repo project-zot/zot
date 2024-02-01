@@ -9,8 +9,8 @@ import (
 
 	. "github.com/smartystreets/goconvey/convey"
 
-	"zotregistry.io/zot/pkg/extensions/imagetrust"
-	. "zotregistry.io/zot/pkg/test/image-utils"
+	"zotregistry.dev/zot/pkg/extensions/imagetrust"
+	. "zotregistry.dev/zot/pkg/test/image-utils"
 )
 
 func TestImageTrust(t *testing.T) {

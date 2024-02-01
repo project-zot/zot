@@ -12,10 +12,10 @@ import (
 	"github.com/containers/image/v5/types"
 	"github.com/gofrs/uuid"
 
-	"zotregistry.io/zot/pkg/extensions/sync/constants"
-	"zotregistry.io/zot/pkg/storage"
-	storageConstants "zotregistry.io/zot/pkg/storage/constants"
-	"zotregistry.io/zot/pkg/test/inject"
+	"zotregistry.dev/zot/pkg/extensions/sync/constants"
+	"zotregistry.dev/zot/pkg/storage"
+	storageConstants "zotregistry.dev/zot/pkg/storage/constants"
+	"zotregistry.dev/zot/pkg/test/inject"
 )
 
 type OciLayoutStorageImpl struct {

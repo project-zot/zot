@@ -12,14 +12,14 @@ import (
 	"github.com/containers/image/v5/copy"
 	"github.com/opencontainers/go-digest"
 
-	zerr "zotregistry.io/zot/errors"
-	"zotregistry.io/zot/pkg/common"
-	syncconf "zotregistry.io/zot/pkg/extensions/config/sync"
-	client "zotregistry.io/zot/pkg/extensions/sync/httpclient"
-	"zotregistry.io/zot/pkg/extensions/sync/references"
-	"zotregistry.io/zot/pkg/log"
-	mTypes "zotregistry.io/zot/pkg/meta/types"
-	"zotregistry.io/zot/pkg/storage"
+	zerr "zotregistry.dev/zot/errors"
+	"zotregistry.dev/zot/pkg/common"
+	syncconf "zotregistry.dev/zot/pkg/extensions/config/sync"
+	client "zotregistry.dev/zot/pkg/extensions/sync/httpclient"
+	"zotregistry.dev/zot/pkg/extensions/sync/references"
+	"zotregistry.dev/zot/pkg/log"
+	mTypes "zotregistry.dev/zot/pkg/meta/types"
+	"zotregistry.dev/zot/pkg/storage"
 )
 
 type BaseService struct {

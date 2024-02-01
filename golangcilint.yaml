@@ -38,7 +38,7 @@ linters-settings:
     sections:
       - standard
       - default
-      - prefix(zotregistry.io/zot)
+      - prefix(zotregistry.dev/zot)
   wsl:
     allow-assign-and-anything: true
     enforce-err-cuddling: true

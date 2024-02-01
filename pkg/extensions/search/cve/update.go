@@ -6,8 +6,8 @@ import (
 	"sync"
 	"time"
 
-	"zotregistry.io/zot/pkg/log"
-	"zotregistry.io/zot/pkg/scheduler"
+	"zotregistry.dev/zot/pkg/log"
+	"zotregistry.dev/zot/pkg/scheduler"
 )
 
 type state int

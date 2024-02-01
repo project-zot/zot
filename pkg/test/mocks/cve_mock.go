@@ -3,8 +3,8 @@ package mocks
 import (
 	"context"
 
-	"zotregistry.io/zot/pkg/common"
-	cvemodel "zotregistry.io/zot/pkg/extensions/search/cve/model"
+	"zotregistry.dev/zot/pkg/common"
+	cvemodel "zotregistry.dev/zot/pkg/extensions/search/cve/model"
 )
 
 type CveInfoMock struct {

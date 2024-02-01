@@ -11,8 +11,8 @@ import (
 	"sync"
 	"time"
 
-	zerr "zotregistry.io/zot/errors"
-	zcommon "zotregistry.io/zot/pkg/common"
+	zerr "zotregistry.dev/zot/errors"
+	zcommon "zotregistry.dev/zot/pkg/common"
 )
 
 const CveDBRetryInterval = 3

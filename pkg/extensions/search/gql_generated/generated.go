@@ -2012,7 +2012,7 @@ func (ec *executionContext) field_Query_BaseImageList_args(ctx context.Context, 
 	var arg2 *PageInput
 	if tmp, ok := rawArgs["requestedPage"]; ok {
 		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("requestedPage"))
-		arg2, err = ec.unmarshalOPageInput2ᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐPageInput(ctx, tmp)
+		arg2, err = ec.unmarshalOPageInput2ᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐPageInput(ctx, tmp)
 		if err != nil {
 			return nil, err
 		}
@@ -2027,7 +2027,7 @@ func (ec *executionContext) field_Query_BookmarkedRepos_args(ctx context.Context
 	var arg0 *PageInput
 	if tmp, ok := rawArgs["requestedPage"]; ok {
 		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("requestedPage"))
-		arg0, err = ec.unmarshalOPageInput2ᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐPageInput(ctx, tmp)
+		arg0, err = ec.unmarshalOPageInput2ᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐPageInput(ctx, tmp)
 		if err != nil {
 			return nil, err
 		}
@@ -2051,7 +2051,7 @@ func (ec *executionContext) field_Query_CVEListForImage_args(ctx context.Context
 	var arg1 *PageInput
 	if tmp, ok := rawArgs["requestedPage"]; ok {
 		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("requestedPage"))
-		arg1, err = ec.unmarshalOPageInput2ᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐPageInput(ctx, tmp)
+		arg1, err = ec.unmarshalOPageInput2ᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐPageInput(ctx, tmp)
 		if err != nil {
 			return nil, err
 		}
@@ -2102,7 +2102,7 @@ func (ec *executionContext) field_Query_DerivedImageList_args(ctx context.Contex
 	var arg2 *PageInput
 	if tmp, ok := rawArgs["requestedPage"]; ok {
 		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("requestedPage"))
-		arg2, err = ec.unmarshalOPageInput2ᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐPageInput(ctx, tmp)
+		arg2, err = ec.unmarshalOPageInput2ᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐPageInput(ctx, tmp)
 		if err != nil {
 			return nil, err
 		}
@@ -2141,7 +2141,7 @@ func (ec *executionContext) field_Query_GlobalSearch_args(ctx context.Context, r
 	var arg1 *Filter
 	if tmp, ok := rawArgs["filter"]; ok {
 		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("filter"))
-		arg1, err = ec.unmarshalOFilter2ᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐFilter(ctx, tmp)
+		arg1, err = ec.unmarshalOFilter2ᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐFilter(ctx, tmp)
 		if err != nil {
 			return nil, err
 		}
@@ -2150,7 +2150,7 @@ func (ec *executionContext) field_Query_GlobalSearch_args(ctx context.Context, r
 	var arg2 *PageInput
 	if tmp, ok := rawArgs["requestedPage"]; ok {
 		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("requestedPage"))
-		arg2, err = ec.unmarshalOPageInput2ᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐPageInput(ctx, tmp)
+		arg2, err = ec.unmarshalOPageInput2ᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐPageInput(ctx, tmp)
 		if err != nil {
 			return nil, err
 		}
@@ -2174,7 +2174,7 @@ func (ec *executionContext) field_Query_ImageListForCVE_args(ctx context.Context
 	var arg1 *Filter
 	if tmp, ok := rawArgs["filter"]; ok {
 		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("filter"))
-		arg1, err = ec.unmarshalOFilter2ᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐFilter(ctx, tmp)
+		arg1, err = ec.unmarshalOFilter2ᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐFilter(ctx, tmp)
 		if err != nil {
 			return nil, err
 		}
@@ -2183,7 +2183,7 @@ func (ec *executionContext) field_Query_ImageListForCVE_args(ctx context.Context
 	var arg2 *PageInput
 	if tmp, ok := rawArgs["requestedPage"]; ok {
 		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("requestedPage"))
-		arg2, err = ec.unmarshalOPageInput2ᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐPageInput(ctx, tmp)
+		arg2, err = ec.unmarshalOPageInput2ᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐPageInput(ctx, tmp)
 		if err != nil {
 			return nil, err
 		}
@@ -2207,7 +2207,7 @@ func (ec *executionContext) field_Query_ImageListForDigest_args(ctx context.Cont
 	var arg1 *PageInput
 	if tmp, ok := rawArgs["requestedPage"]; ok {
 		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("requestedPage"))
-		arg1, err = ec.unmarshalOPageInput2ᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐPageInput(ctx, tmp)
+		arg1, err = ec.unmarshalOPageInput2ᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐPageInput(ctx, tmp)
 		if err != nil {
 			return nil, err
 		}
@@ -2240,7 +2240,7 @@ func (ec *executionContext) field_Query_ImageListWithCVEFixed_args(ctx context.C
 	var arg2 *Filter
 	if tmp, ok := rawArgs["filter"]; ok {
 		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("filter"))
-		arg2, err = ec.unmarshalOFilter2ᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐFilter(ctx, tmp)
+		arg2, err = ec.unmarshalOFilter2ᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐFilter(ctx, tmp)
 		if err != nil {
 			return nil, err
 		}
@@ -2249,7 +2249,7 @@ func (ec *executionContext) field_Query_ImageListWithCVEFixed_args(ctx context.C
 	var arg3 *PageInput
 	if tmp, ok := rawArgs["requestedPage"]; ok {
 		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("requestedPage"))
-		arg3, err = ec.unmarshalOPageInput2ᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐPageInput(ctx, tmp)
+		arg3, err = ec.unmarshalOPageInput2ᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐPageInput(ctx, tmp)
 		if err != nil {
 			return nil, err
 		}
@@ -2273,7 +2273,7 @@ func (ec *executionContext) field_Query_ImageList_args(ctx context.Context, rawA
 	var arg1 *PageInput
 	if tmp, ok := rawArgs["requestedPage"]; ok {
 		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("requestedPage"))
-		arg1, err = ec.unmarshalOPageInput2ᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐPageInput(ctx, tmp)
+		arg1, err = ec.unmarshalOPageInput2ᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐPageInput(ctx, tmp)
 		if err != nil {
 			return nil, err
 		}
@@ -2336,7 +2336,7 @@ func (ec *executionContext) field_Query_RepoListWithNewestImage_args(ctx context
 	var arg0 *PageInput
 	if tmp, ok := rawArgs["requestedPage"]; ok {
 		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("requestedPage"))
-		arg0, err = ec.unmarshalOPageInput2ᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐPageInput(ctx, tmp)
+		arg0, err = ec.unmarshalOPageInput2ᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐPageInput(ctx, tmp)
 		if err != nil {
 			return nil, err
 		}
@@ -2351,7 +2351,7 @@ func (ec *executionContext) field_Query_StarredRepos_args(ctx context.Context, r
 	var arg0 *PageInput
 	if tmp, ok := rawArgs["requestedPage"]; ok {
 		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("requestedPage"))
-		arg0, err = ec.unmarshalOPageInput2ᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐPageInput(ctx, tmp)
+		arg0, err = ec.unmarshalOPageInput2ᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐPageInput(ctx, tmp)
 		if err != nil {
 			return nil, err
 		}
@@ -2725,7 +2725,7 @@ func (ec *executionContext) _CVE_PackageList(ctx context.Context, field graphql.
 	}
 	res := resTmp.([]*PackageInfo)
 	fc.Result = res
-	return ec.marshalOPackageInfo2ᚕᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐPackageInfo(ctx, field.Selections, res)
+	return ec.marshalOPackageInfo2ᚕᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐPackageInfo(ctx, field.Selections, res)
 }
 
 func (ec *executionContext) fieldContext_CVE_PackageList(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
@@ -2815,7 +2815,7 @@ func (ec *executionContext) _CVEResultForImage_CVEList(ctx context.Context, fiel
 	}
 	res := resTmp.([]*Cve)
 	fc.Result = res
-	return ec.marshalOCVE2ᚕᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐCve(ctx, field.Selections, res)
+	return ec.marshalOCVE2ᚕᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐCve(ctx, field.Selections, res)
 }
 
 func (ec *executionContext) fieldContext_CVEResultForImage_CVEList(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
@@ -2870,7 +2870,7 @@ func (ec *executionContext) _CVEResultForImage_Summary(ctx context.Context, fiel
 	}
 	res := resTmp.(*ImageVulnerabilitySummary)
 	fc.Result = res
-	return ec.marshalOImageVulnerabilitySummary2ᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐImageVulnerabilitySummary(ctx, field.Selections, res)
+	return ec.marshalOImageVulnerabilitySummary2ᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐImageVulnerabilitySummary(ctx, field.Selections, res)
 }
 
 func (ec *executionContext) fieldContext_CVEResultForImage_Summary(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
@@ -2927,7 +2927,7 @@ func (ec *executionContext) _CVEResultForImage_Page(ctx context.Context, field g
 	}
 	res := resTmp.(*PageInfo)
 	fc.Result = res
-	return ec.marshalOPageInfo2ᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐPageInfo(ctx, field.Selections, res)
+	return ec.marshalOPageInfo2ᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐPageInfo(ctx, field.Selections, res)
 }
 
 func (ec *executionContext) fieldContext_CVEResultForImage_Page(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
@@ -2974,7 +2974,7 @@ func (ec *executionContext) _GlobalSearchResult_Page(ctx context.Context, field 
 	}
 	res := resTmp.(*PageInfo)
 	fc.Result = res
-	return ec.marshalOPageInfo2ᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐPageInfo(ctx, field.Selections, res)
+	return ec.marshalOPageInfo2ᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐPageInfo(ctx, field.Selections, res)
 }
 
 func (ec *executionContext) fieldContext_GlobalSearchResult_Page(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
@@ -3021,7 +3021,7 @@ func (ec *executionContext) _GlobalSearchResult_Images(ctx context.Context, fiel
 	}
 	res := resTmp.([]*ImageSummary)
 	fc.Result = res
-	return ec.marshalOImageSummary2ᚕᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐImageSummary(ctx, field.Selections, res)
+	return ec.marshalOImageSummary2ᚕᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐImageSummary(ctx, field.Selections, res)
 }
 
 func (ec *executionContext) fieldContext_GlobalSearchResult_Images(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
@@ -3106,7 +3106,7 @@ func (ec *executionContext) _GlobalSearchResult_Repos(ctx context.Context, field
 	}
 	res := resTmp.([]*RepoSummary)
 	fc.Result = res
-	return ec.marshalORepoSummary2ᚕᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐRepoSummary(ctx, field.Selections, res)
+	return ec.marshalORepoSummary2ᚕᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐRepoSummary(ctx, field.Selections, res)
 }
 
 func (ec *executionContext) fieldContext_GlobalSearchResult_Repos(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
@@ -3171,7 +3171,7 @@ func (ec *executionContext) _GlobalSearchResult_Layers(ctx context.Context, fiel
 	}
 	res := resTmp.([]*LayerSummary)
 	fc.Result = res
-	return ec.marshalOLayerSummary2ᚕᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐLayerSummary(ctx, field.Selections, res)
+	return ec.marshalOLayerSummary2ᚕᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐLayerSummary(ctx, field.Selections, res)
 }
 
 func (ec *executionContext) fieldContext_GlobalSearchResult_Layers(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
@@ -3587,7 +3587,7 @@ func (ec *executionContext) _ImageSummary_Manifests(ctx context.Context, field g
 	}
 	res := resTmp.([]*ManifestSummary)
 	fc.Result = res
-	return ec.marshalOManifestSummary2ᚕᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐManifestSummary(ctx, field.Selections, res)
+	return ec.marshalOManifestSummary2ᚕᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐManifestSummary(ctx, field.Selections, res)
 }
 
 func (ec *executionContext) fieldContext_ImageSummary_Manifests(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
@@ -3861,7 +3861,7 @@ func (ec *executionContext) _ImageSummary_SignatureInfo(ctx context.Context, fie
 	}
 	res := resTmp.([]*SignatureSummary)
 	fc.Result = res
-	return ec.marshalOSignatureSummary2ᚕᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐSignatureSummary(ctx, field.Selections, res)
+	return ec.marshalOSignatureSummary2ᚕᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐSignatureSummary(ctx, field.Selections, res)
 }
 
 func (ec *executionContext) fieldContext_ImageSummary_SignatureInfo(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
@@ -4197,7 +4197,7 @@ func (ec *executionContext) _ImageSummary_Vulnerabilities(ctx context.Context, f
 	}
 	res := resTmp.(*ImageVulnerabilitySummary)
 	fc.Result = res
-	return ec.marshalOImageVulnerabilitySummary2ᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐImageVulnerabilitySummary(ctx, field.Selections, res)
+	return ec.marshalOImageVulnerabilitySummary2ᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐImageVulnerabilitySummary(ctx, field.Selections, res)
 }
 
 func (ec *executionContext) fieldContext_ImageSummary_Vulnerabilities(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
@@ -4254,7 +4254,7 @@ func (ec *executionContext) _ImageSummary_Referrers(ctx context.Context, field g
 	}
 	res := resTmp.([]*Referrer)
 	fc.Result = res
-	return ec.marshalOReferrer2ᚕᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐReferrer(ctx, field.Selections, res)
+	return ec.marshalOReferrer2ᚕᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐReferrer(ctx, field.Selections, res)
 }
 
 func (ec *executionContext) fieldContext_ImageSummary_Referrers(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
@@ -4635,7 +4635,7 @@ func (ec *executionContext) _LayerHistory_Layer(ctx context.Context, field graph
 	}
 	res := resTmp.(*LayerSummary)
 	fc.Result = res
-	return ec.marshalOLayerSummary2ᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐLayerSummary(ctx, field.Selections, res)
+	return ec.marshalOLayerSummary2ᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐLayerSummary(ctx, field.Selections, res)
 }
 
 func (ec *executionContext) fieldContext_LayerHistory_Layer(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
@@ -4682,7 +4682,7 @@ func (ec *executionContext) _LayerHistory_HistoryDescription(ctx context.Context
 	}
 	res := resTmp.(*HistoryDescription)
 	fc.Result = res
-	return ec.marshalOHistoryDescription2ᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐHistoryDescription(ctx, field.Selections, res)
+	return ec.marshalOHistoryDescription2ᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐHistoryDescription(ctx, field.Selections, res)
 }
 
 func (ec *executionContext) fieldContext_LayerHistory_HistoryDescription(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
@@ -5022,7 +5022,7 @@ func (ec *executionContext) _ManifestSummary_SignatureInfo(ctx context.Context, 
 	}
 	res := resTmp.([]*SignatureSummary)
 	fc.Result = res
-	return ec.marshalOSignatureSummary2ᚕᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐSignatureSummary(ctx, field.Selections, res)
+	return ec.marshalOSignatureSummary2ᚕᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐSignatureSummary(ctx, field.Selections, res)
 }
 
 func (ec *executionContext) fieldContext_ManifestSummary_SignatureInfo(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
@@ -5071,7 +5071,7 @@ func (ec *executionContext) _ManifestSummary_Platform(ctx context.Context, field
 	}
 	res := resTmp.(*Platform)
 	fc.Result = res
-	return ec.marshalOPlatform2ᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐPlatform(ctx, field.Selections, res)
+	return ec.marshalOPlatform2ᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐPlatform(ctx, field.Selections, res)
 }
 
 func (ec *executionContext) fieldContext_ManifestSummary_Platform(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
@@ -5159,7 +5159,7 @@ func (ec *executionContext) _ManifestSummary_Layers(ctx context.Context, field g
 	}
 	res := resTmp.([]*LayerSummary)
 	fc.Result = res
-	return ec.marshalOLayerSummary2ᚕᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐLayerSummary(ctx, field.Selections, res)
+	return ec.marshalOLayerSummary2ᚕᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐLayerSummary(ctx, field.Selections, res)
 }
 
 func (ec *executionContext) fieldContext_ManifestSummary_Layers(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
@@ -5206,7 +5206,7 @@ func (ec *executionContext) _ManifestSummary_History(ctx context.Context, field 
 	}
 	res := resTmp.([]*LayerHistory)
 	fc.Result = res
-	return ec.marshalOLayerHistory2ᚕᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐLayerHistory(ctx, field.Selections, res)
+	return ec.marshalOLayerHistory2ᚕᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐLayerHistory(ctx, field.Selections, res)
 }
 
 func (ec *executionContext) fieldContext_ManifestSummary_History(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
@@ -5253,7 +5253,7 @@ func (ec *executionContext) _ManifestSummary_Vulnerabilities(ctx context.Context
 	}
 	res := resTmp.(*ImageVulnerabilitySummary)
 	fc.Result = res
-	return ec.marshalOImageVulnerabilitySummary2ᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐImageVulnerabilitySummary(ctx, field.Selections, res)
+	return ec.marshalOImageVulnerabilitySummary2ᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐImageVulnerabilitySummary(ctx, field.Selections, res)
 }
 
 func (ec *executionContext) fieldContext_ManifestSummary_Vulnerabilities(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
@@ -5310,7 +5310,7 @@ func (ec *executionContext) _ManifestSummary_Referrers(ctx context.Context, fiel
 	}
 	res := resTmp.([]*Referrer)
 	fc.Result = res
-	return ec.marshalOReferrer2ᚕᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐReferrer(ctx, field.Selections, res)
+	return ec.marshalOReferrer2ᚕᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐReferrer(ctx, field.Selections, res)
 }
 
 func (ec *executionContext) fieldContext_ManifestSummary_Referrers(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
@@ -5615,7 +5615,7 @@ func (ec *executionContext) _PaginatedImagesResult_Page(ctx context.Context, fie
 	}
 	res := resTmp.(*PageInfo)
 	fc.Result = res
-	return ec.marshalOPageInfo2ᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐPageInfo(ctx, field.Selections, res)
+	return ec.marshalOPageInfo2ᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐPageInfo(ctx, field.Selections, res)
 }
 
 func (ec *executionContext) fieldContext_PaginatedImagesResult_Page(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
@@ -5665,7 +5665,7 @@ func (ec *executionContext) _PaginatedImagesResult_Results(ctx context.Context, 
 	}
 	res := resTmp.([]*ImageSummary)
 	fc.Result = res
-	return ec.marshalNImageSummary2ᚕᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐImageSummaryᚄ(ctx, field.Selections, res)
+	return ec.marshalNImageSummary2ᚕᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐImageSummaryᚄ(ctx, field.Selections, res)
 }
 
 func (ec *executionContext) fieldContext_PaginatedImagesResult_Results(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
@@ -5750,7 +5750,7 @@ func (ec *executionContext) _PaginatedReposResult_Page(ctx context.Context, fiel
 	}
 	res := resTmp.(*PageInfo)
 	fc.Result = res
-	return ec.marshalOPageInfo2ᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐPageInfo(ctx, field.Selections, res)
+	return ec.marshalOPageInfo2ᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐPageInfo(ctx, field.Selections, res)
 }
 
 func (ec *executionContext) fieldContext_PaginatedReposResult_Page(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
@@ -5800,7 +5800,7 @@ func (ec *executionContext) _PaginatedReposResult_Results(ctx context.Context, f
 	}
 	res := resTmp.([]*RepoSummary)
 	fc.Result = res
-	return ec.marshalNRepoSummary2ᚕᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐRepoSummaryᚄ(ctx, field.Selections, res)
+	return ec.marshalNRepoSummary2ᚕᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐRepoSummaryᚄ(ctx, field.Selections, res)
 }
 
 func (ec *executionContext) fieldContext_PaginatedReposResult_Results(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
@@ -5950,7 +5950,7 @@ func (ec *executionContext) _Query_CVEListForImage(ctx context.Context, field gr
 	}
 	res := resTmp.(*CVEResultForImage)
 	fc.Result = res
-	return ec.marshalNCVEResultForImage2ᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐCVEResultForImage(ctx, field.Selections, res)
+	return ec.marshalNCVEResultForImage2ᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐCVEResultForImage(ctx, field.Selections, res)
 }
 
 func (ec *executionContext) fieldContext_Query_CVEListForImage(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
@@ -6015,7 +6015,7 @@ func (ec *executionContext) _Query_ImageListForCVE(ctx context.Context, field gr
 	}
 	res := resTmp.(*PaginatedImagesResult)
 	fc.Result = res
-	return ec.marshalNPaginatedImagesResult2ᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐPaginatedImagesResult(ctx, field.Selections, res)
+	return ec.marshalNPaginatedImagesResult2ᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐPaginatedImagesResult(ctx, field.Selections, res)
 }
 
 func (ec *executionContext) fieldContext_Query_ImageListForCVE(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
@@ -6076,7 +6076,7 @@ func (ec *executionContext) _Query_ImageListWithCVEFixed(ctx context.Context, fi
 	}
 	res := resTmp.(*PaginatedImagesResult)
 	fc.Result = res
-	return ec.marshalNPaginatedImagesResult2ᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐPaginatedImagesResult(ctx, field.Selections, res)
+	return ec.marshalNPaginatedImagesResult2ᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐPaginatedImagesResult(ctx, field.Selections, res)
 }
 
 func (ec *executionContext) fieldContext_Query_ImageListWithCVEFixed(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
@@ -6137,7 +6137,7 @@ func (ec *executionContext) _Query_ImageListForDigest(ctx context.Context, field
 	}
 	res := resTmp.(*PaginatedImagesResult)
 	fc.Result = res
-	return ec.marshalNPaginatedImagesResult2ᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐPaginatedImagesResult(ctx, field.Selections, res)
+	return ec.marshalNPaginatedImagesResult2ᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐPaginatedImagesResult(ctx, field.Selections, res)
 }
 
 func (ec *executionContext) fieldContext_Query_ImageListForDigest(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
@@ -6198,7 +6198,7 @@ func (ec *executionContext) _Query_RepoListWithNewestImage(ctx context.Context, 
 	}
 	res := resTmp.(*PaginatedReposResult)
 	fc.Result = res
-	return ec.marshalNPaginatedReposResult2ᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐPaginatedReposResult(ctx, field.Selections, res)
+	return ec.marshalNPaginatedReposResult2ᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐPaginatedReposResult(ctx, field.Selections, res)
 }
 
 func (ec *executionContext) fieldContext_Query_RepoListWithNewestImage(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
@@ -6259,7 +6259,7 @@ func (ec *executionContext) _Query_ImageList(ctx context.Context, field graphql.
 	}
 	res := resTmp.(*PaginatedImagesResult)
 	fc.Result = res
-	return ec.marshalNPaginatedImagesResult2ᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐPaginatedImagesResult(ctx, field.Selections, res)
+	return ec.marshalNPaginatedImagesResult2ᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐPaginatedImagesResult(ctx, field.Selections, res)
 }
 
 func (ec *executionContext) fieldContext_Query_ImageList(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
@@ -6320,7 +6320,7 @@ func (ec *executionContext) _Query_ExpandedRepoInfo(ctx context.Context, field g
 	}
 	res := resTmp.(*RepoInfo)
 	fc.Result = res
-	return ec.marshalNRepoInfo2ᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐRepoInfo(ctx, field.Selections, res)
+	return ec.marshalNRepoInfo2ᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐRepoInfo(ctx, field.Selections, res)
 }
 
 func (ec *executionContext) fieldContext_Query_ExpandedRepoInfo(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
@@ -6381,7 +6381,7 @@ func (ec *executionContext) _Query_GlobalSearch(ctx context.Context, field graph
 	}
 	res := resTmp.(*GlobalSearchResult)
 	fc.Result = res
-	return ec.marshalNGlobalSearchResult2ᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐGlobalSearchResult(ctx, field.Selections, res)
+	return ec.marshalNGlobalSearchResult2ᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐGlobalSearchResult(ctx, field.Selections, res)
 }
 
 func (ec *executionContext) fieldContext_Query_GlobalSearch(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
@@ -6446,7 +6446,7 @@ func (ec *executionContext) _Query_DerivedImageList(ctx context.Context, field g
 	}
 	res := resTmp.(*PaginatedImagesResult)
 	fc.Result = res
-	return ec.marshalNPaginatedImagesResult2ᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐPaginatedImagesResult(ctx, field.Selections, res)
+	return ec.marshalNPaginatedImagesResult2ᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐPaginatedImagesResult(ctx, field.Selections, res)
 }
 
 func (ec *executionContext) fieldContext_Query_DerivedImageList(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
@@ -6507,7 +6507,7 @@ func (ec *executionContext) _Query_BaseImageList(ctx context.Context, field grap
 	}
 	res := resTmp.(*PaginatedImagesResult)
 	fc.Result = res
-	return ec.marshalNPaginatedImagesResult2ᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐPaginatedImagesResult(ctx, field.Selections, res)
+	return ec.marshalNPaginatedImagesResult2ᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐPaginatedImagesResult(ctx, field.Selections, res)
 }
 
 func (ec *executionContext) fieldContext_Query_BaseImageList(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
@@ -6568,7 +6568,7 @@ func (ec *executionContext) _Query_Image(ctx context.Context, field graphql.Coll
 	}
 	res := resTmp.(*ImageSummary)
 	fc.Result = res
-	return ec.marshalNImageSummary2ᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐImageSummary(ctx, field.Selections, res)
+	return ec.marshalNImageSummary2ᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐImageSummary(ctx, field.Selections, res)
 }
 
 func (ec *executionContext) fieldContext_Query_Image(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
@@ -6667,7 +6667,7 @@ func (ec *executionContext) _Query_Referrers(ctx context.Context, field graphql.
 	}
 	res := resTmp.([]*Referrer)
 	fc.Result = res
-	return ec.marshalNReferrer2ᚕᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐReferrer(ctx, field.Selections, res)
+	return ec.marshalNReferrer2ᚕᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐReferrer(ctx, field.Selections, res)
 }
 
 func (ec *executionContext) fieldContext_Query_Referrers(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
@@ -6734,7 +6734,7 @@ func (ec *executionContext) _Query_StarredRepos(ctx context.Context, field graph
 	}
 	res := resTmp.(*PaginatedReposResult)
 	fc.Result = res
-	return ec.marshalNPaginatedReposResult2ᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐPaginatedReposResult(ctx, field.Selections, res)
+	return ec.marshalNPaginatedReposResult2ᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐPaginatedReposResult(ctx, field.Selections, res)
 }
 
 func (ec *executionContext) fieldContext_Query_StarredRepos(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
@@ -6795,7 +6795,7 @@ func (ec *executionContext) _Query_BookmarkedRepos(ctx context.Context, field gr
 	}
 	res := resTmp.(*PaginatedReposResult)
 	fc.Result = res
-	return ec.marshalNPaginatedReposResult2ᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐPaginatedReposResult(ctx, field.Selections, res)
+	return ec.marshalNPaginatedReposResult2ᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐPaginatedReposResult(ctx, field.Selections, res)
 }
 
 func (ec *executionContext) fieldContext_Query_BookmarkedRepos(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
@@ -7149,7 +7149,7 @@ func (ec *executionContext) _Referrer_Annotations(ctx context.Context, field gra
 	}
 	res := resTmp.([]*Annotation)
 	fc.Result = res
-	return ec.marshalNAnnotation2ᚕᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐAnnotation(ctx, field.Selections, res)
+	return ec.marshalNAnnotation2ᚕᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐAnnotation(ctx, field.Selections, res)
 }
 
 func (ec *executionContext) fieldContext_Referrer_Annotations(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
@@ -7196,7 +7196,7 @@ func (ec *executionContext) _RepoInfo_Images(ctx context.Context, field graphql.
 	}
 	res := resTmp.([]*ImageSummary)
 	fc.Result = res
-	return ec.marshalOImageSummary2ᚕᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐImageSummary(ctx, field.Selections, res)
+	return ec.marshalOImageSummary2ᚕᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐImageSummary(ctx, field.Selections, res)
 }
 
 func (ec *executionContext) fieldContext_RepoInfo_Images(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
@@ -7281,7 +7281,7 @@ func (ec *executionContext) _RepoInfo_Summary(ctx context.Context, field graphql
 	}
 	res := resTmp.(*RepoSummary)
 	fc.Result = res
-	return ec.marshalORepoSummary2ᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐRepoSummary(ctx, field.Selections, res)
+	return ec.marshalORepoSummary2ᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐRepoSummary(ctx, field.Selections, res)
 }
 
 func (ec *executionContext) fieldContext_RepoInfo_Summary(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
@@ -7469,7 +7469,7 @@ func (ec *executionContext) _RepoSummary_Platforms(ctx context.Context, field gr
 	}
 	res := resTmp.([]*Platform)
 	fc.Result = res
-	return ec.marshalOPlatform2ᚕᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐPlatform(ctx, field.Selections, res)
+	return ec.marshalOPlatform2ᚕᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐPlatform(ctx, field.Selections, res)
 }
 
 func (ec *executionContext) fieldContext_RepoSummary_Platforms(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
@@ -7557,7 +7557,7 @@ func (ec *executionContext) _RepoSummary_NewestImage(ctx context.Context, field 
 	}
 	res := resTmp.(*ImageSummary)
 	fc.Result = res
-	return ec.marshalOImageSummary2ᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐImageSummary(ctx, field.Selections, res)
+	return ec.marshalOImageSummary2ᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐImageSummary(ctx, field.Selections, res)
 }
 
 func (ec *executionContext) fieldContext_RepoSummary_NewestImage(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
@@ -9803,7 +9803,7 @@ func (ec *executionContext) unmarshalInputPageInput(ctx context.Context, obj int
 			it.Offset = data
 		case "sortBy":
 			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("sortBy"))
-			data, err := ec.unmarshalOSortCriteria2ᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐSortCriteria(ctx, v)
+			data, err := ec.unmarshalOSortCriteria2ᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐSortCriteria(ctx, v)
 			if err != nil {
 				return it, err
 			}
@@ -11363,7 +11363,7 @@ func (ec *executionContext) ___Type(ctx context.Context, sel ast.SelectionSet, o
 
 // region    ***************************** type.gotpl *****************************
 
-func (ec *executionContext) marshalNAnnotation2ᚕᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐAnnotation(ctx context.Context, sel ast.SelectionSet, v []*Annotation) graphql.Marshaler {
+func (ec *executionContext) marshalNAnnotation2ᚕᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐAnnotation(ctx context.Context, sel ast.SelectionSet, v []*Annotation) graphql.Marshaler {
 	ret := make(graphql.Array, len(v))
 	var wg sync.WaitGroup
 	isLen1 := len(v) == 1
@@ -11387,7 +11387,7 @@ func (ec *executionContext) marshalNAnnotation2ᚕᚖzotregistryᚗioᚋzotᚋpk
 			if !isLen1 {
 				defer wg.Done()
 			}
-			ret[i] = ec.marshalOAnnotation2ᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐAnnotation(ctx, sel, v[i])
+			ret[i] = ec.marshalOAnnotation2ᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐAnnotation(ctx, sel, v[i])
 		}
 		if isLen1 {
 			f(i)
@@ -11416,11 +11416,11 @@ func (ec *executionContext) marshalNBoolean2bool(ctx context.Context, sel ast.Se
 	return res
 }
 
-func (ec *executionContext) marshalNCVEResultForImage2zotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐCVEResultForImage(ctx context.Context, sel ast.SelectionSet, v CVEResultForImage) graphql.Marshaler {
+func (ec *executionContext) marshalNCVEResultForImage2zotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐCVEResultForImage(ctx context.Context, sel ast.SelectionSet, v CVEResultForImage) graphql.Marshaler {
 	return ec._CVEResultForImage(ctx, sel, &v)
 }
 
-func (ec *executionContext) marshalNCVEResultForImage2ᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐCVEResultForImage(ctx context.Context, sel ast.SelectionSet, v *CVEResultForImage) graphql.Marshaler {
+func (ec *executionContext) marshalNCVEResultForImage2ᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐCVEResultForImage(ctx context.Context, sel ast.SelectionSet, v *CVEResultForImage) graphql.Marshaler {
 	if v == nil {
 		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
 			ec.Errorf(ctx, "the requested element is null which the schema does not allow")
@@ -11430,11 +11430,11 @@ func (ec *executionContext) marshalNCVEResultForImage2ᚖzotregistryᚗioᚋzot�
 	return ec._CVEResultForImage(ctx, sel, v)
 }
 
-func (ec *executionContext) marshalNGlobalSearchResult2zotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐGlobalSearchResult(ctx context.Context, sel ast.SelectionSet, v GlobalSearchResult) graphql.Marshaler {
+func (ec *executionContext) marshalNGlobalSearchResult2zotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐGlobalSearchResult(ctx context.Context, sel ast.SelectionSet, v GlobalSearchResult) graphql.Marshaler {
 	return ec._GlobalSearchResult(ctx, sel, &v)
 }
 
-func (ec *executionContext) marshalNGlobalSearchResult2ᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐGlobalSearchResult(ctx context.Context, sel ast.SelectionSet, v *GlobalSearchResult) graphql.Marshaler {
+func (ec *executionContext) marshalNGlobalSearchResult2ᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐGlobalSearchResult(ctx context.Context, sel ast.SelectionSet, v *GlobalSearchResult) graphql.Marshaler {
 	if v == nil {
 		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
 			ec.Errorf(ctx, "the requested element is null which the schema does not allow")
@@ -11444,11 +11444,11 @@ func (ec *executionContext) marshalNGlobalSearchResult2ᚖzotregistryᚗioᚋzot
 	return ec._GlobalSearchResult(ctx, sel, v)
 }
 
-func (ec *executionContext) marshalNImageSummary2zotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐImageSummary(ctx context.Context, sel ast.SelectionSet, v ImageSummary) graphql.Marshaler {
+func (ec *executionContext) marshalNImageSummary2zotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐImageSummary(ctx context.Context, sel ast.SelectionSet, v ImageSummary) graphql.Marshaler {
 	return ec._ImageSummary(ctx, sel, &v)
 }
 
-func (ec *executionContext) marshalNImageSummary2ᚕᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐImageSummaryᚄ(ctx context.Context, sel ast.SelectionSet, v []*ImageSummary) graphql.Marshaler {
+func (ec *executionContext) marshalNImageSummary2ᚕᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐImageSummaryᚄ(ctx context.Context, sel ast.SelectionSet, v []*ImageSummary) graphql.Marshaler {
 	ret := make(graphql.Array, len(v))
 	var wg sync.WaitGroup
 	isLen1 := len(v) == 1
@@ -11472,7 +11472,7 @@ func (ec *executionContext) marshalNImageSummary2ᚕᚖzotregistryᚗioᚋzotᚋ
 			if !isLen1 {
 				defer wg.Done()
 			}
-			ret[i] = ec.marshalNImageSummary2ᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐImageSummary(ctx, sel, v[i])
+			ret[i] = ec.marshalNImageSummary2ᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐImageSummary(ctx, sel, v[i])
 		}
 		if isLen1 {
 			f(i)
@@ -11492,7 +11492,7 @@ func (ec *executionContext) marshalNImageSummary2ᚕᚖzotregistryᚗioᚋzotᚋ
 	return ret
 }
 
-func (ec *executionContext) marshalNImageSummary2ᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐImageSummary(ctx context.Context, sel ast.SelectionSet, v *ImageSummary) graphql.Marshaler {
+func (ec *executionContext) marshalNImageSummary2ᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐImageSummary(ctx context.Context, sel ast.SelectionSet, v *ImageSummary) graphql.Marshaler {
 	if v == nil {
 		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
 			ec.Errorf(ctx, "the requested element is null which the schema does not allow")
@@ -11517,11 +11517,11 @@ func (ec *executionContext) marshalNInt2int(ctx context.Context, sel ast.Selecti
 	return res
 }
 
-func (ec *executionContext) marshalNPaginatedImagesResult2zotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐPaginatedImagesResult(ctx context.Context, sel ast.SelectionSet, v PaginatedImagesResult) graphql.Marshaler {
+func (ec *executionContext) marshalNPaginatedImagesResult2zotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐPaginatedImagesResult(ctx context.Context, sel ast.SelectionSet, v PaginatedImagesResult) graphql.Marshaler {
 	return ec._PaginatedImagesResult(ctx, sel, &v)
 }
 
-func (ec *executionContext) marshalNPaginatedImagesResult2ᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐPaginatedImagesResult(ctx context.Context, sel ast.SelectionSet, v *PaginatedImagesResult) graphql.Marshaler {
+func (ec *executionContext) marshalNPaginatedImagesResult2ᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐPaginatedImagesResult(ctx context.Context, sel ast.SelectionSet, v *PaginatedImagesResult) graphql.Marshaler {
 	if v == nil {
 		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
 			ec.Errorf(ctx, "the requested element is null which the schema does not allow")
@@ -11531,11 +11531,11 @@ func (ec *executionContext) marshalNPaginatedImagesResult2ᚖzotregistryᚗioᚋ
 	return ec._PaginatedImagesResult(ctx, sel, v)
 }
 
-func (ec *executionContext) marshalNPaginatedReposResult2zotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐPaginatedReposResult(ctx context.Context, sel ast.SelectionSet, v PaginatedReposResult) graphql.Marshaler {
+func (ec *executionContext) marshalNPaginatedReposResult2zotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐPaginatedReposResult(ctx context.Context, sel ast.SelectionSet, v PaginatedReposResult) graphql.Marshaler {
 	return ec._PaginatedReposResult(ctx, sel, &v)
 }
 
-func (ec *executionContext) marshalNPaginatedReposResult2ᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐPaginatedReposResult(ctx context.Context, sel ast.SelectionSet, v *PaginatedReposResult) graphql.Marshaler {
+func (ec *executionContext) marshalNPaginatedReposResult2ᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐPaginatedReposResult(ctx context.Context, sel ast.SelectionSet, v *PaginatedReposResult) graphql.Marshaler {
 	if v == nil {
 		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
 			ec.Errorf(ctx, "the requested element is null which the schema does not allow")
@@ -11545,7 +11545,7 @@ func (ec *executionContext) marshalNPaginatedReposResult2ᚖzotregistryᚗioᚋz
 	return ec._PaginatedReposResult(ctx, sel, v)
 }
 
-func (ec *executionContext) marshalNReferrer2ᚕᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐReferrer(ctx context.Context, sel ast.SelectionSet, v []*Referrer) graphql.Marshaler {
+func (ec *executionContext) marshalNReferrer2ᚕᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐReferrer(ctx context.Context, sel ast.SelectionSet, v []*Referrer) graphql.Marshaler {
 	ret := make(graphql.Array, len(v))
 	var wg sync.WaitGroup
 	isLen1 := len(v) == 1
@@ -11569,7 +11569,7 @@ func (ec *executionContext) marshalNReferrer2ᚕᚖzotregistryᚗioᚋzotᚋpkg�
 			if !isLen1 {
 				defer wg.Done()
 			}
-			ret[i] = ec.marshalOReferrer2ᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐReferrer(ctx, sel, v[i])
+			ret[i] = ec.marshalOReferrer2ᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐReferrer(ctx, sel, v[i])
 		}
 		if isLen1 {
 			f(i)
@@ -11583,11 +11583,11 @@ func (ec *executionContext) marshalNReferrer2ᚕᚖzotregistryᚗioᚋzotᚋpkg�
 	return ret
 }
 
-func (ec *executionContext) marshalNRepoInfo2zotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐRepoInfo(ctx context.Context, sel ast.SelectionSet, v RepoInfo) graphql.Marshaler {
+func (ec *executionContext) marshalNRepoInfo2zotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐRepoInfo(ctx context.Context, sel ast.SelectionSet, v RepoInfo) graphql.Marshaler {
 	return ec._RepoInfo(ctx, sel, &v)
 }
 
-func (ec *executionContext) marshalNRepoInfo2ᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐRepoInfo(ctx context.Context, sel ast.SelectionSet, v *RepoInfo) graphql.Marshaler {
+func (ec *executionContext) marshalNRepoInfo2ᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐRepoInfo(ctx context.Context, sel ast.SelectionSet, v *RepoInfo) graphql.Marshaler {
 	if v == nil {
 		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
 			ec.Errorf(ctx, "the requested element is null which the schema does not allow")
@@ -11597,7 +11597,7 @@ func (ec *executionContext) marshalNRepoInfo2ᚖzotregistryᚗioᚋzotᚋpkgᚋe
 	return ec._RepoInfo(ctx, sel, v)
 }
 
-func (ec *executionContext) marshalNRepoSummary2ᚕᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐRepoSummaryᚄ(ctx context.Context, sel ast.SelectionSet, v []*RepoSummary) graphql.Marshaler {
+func (ec *executionContext) marshalNRepoSummary2ᚕᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐRepoSummaryᚄ(ctx context.Context, sel ast.SelectionSet, v []*RepoSummary) graphql.Marshaler {
 	ret := make(graphql.Array, len(v))
 	var wg sync.WaitGroup
 	isLen1 := len(v) == 1
@@ -11621,7 +11621,7 @@ func (ec *executionContext) marshalNRepoSummary2ᚕᚖzotregistryᚗioᚋzotᚋp
 			if !isLen1 {
 				defer wg.Done()
 			}
-			ret[i] = ec.marshalNRepoSummary2ᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐRepoSummary(ctx, sel, v[i])
+			ret[i] = ec.marshalNRepoSummary2ᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐRepoSummary(ctx, sel, v[i])
 		}
 		if isLen1 {
 			f(i)
@@ -11641,7 +11641,7 @@ func (ec *executionContext) marshalNRepoSummary2ᚕᚖzotregistryᚗioᚋzotᚋp
 	return ret
 }
 
-func (ec *executionContext) marshalNRepoSummary2ᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐRepoSummary(ctx context.Context, sel ast.SelectionSet, v *RepoSummary) graphql.Marshaler {
+func (ec *executionContext) marshalNRepoSummary2ᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐRepoSummary(ctx context.Context, sel ast.SelectionSet, v *RepoSummary) graphql.Marshaler {
 	if v == nil {
 		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
 			ec.Errorf(ctx, "the requested element is null which the schema does not allow")
@@ -11919,7 +11919,7 @@ func (ec *executionContext) marshalN__TypeKind2string(ctx context.Context, sel a
 	return res
 }
 
-func (ec *executionContext) marshalOAnnotation2ᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐAnnotation(ctx context.Context, sel ast.SelectionSet, v *Annotation) graphql.Marshaler {
+func (ec *executionContext) marshalOAnnotation2ᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐAnnotation(ctx context.Context, sel ast.SelectionSet, v *Annotation) graphql.Marshaler {
 	if v == nil {
 		return graphql.Null
 	}
@@ -11952,7 +11952,7 @@ func (ec *executionContext) marshalOBoolean2ᚖbool(ctx context.Context, sel ast
 	return res
 }
 
-func (ec *executionContext) marshalOCVE2ᚕᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐCve(ctx context.Context, sel ast.SelectionSet, v []*Cve) graphql.Marshaler {
+func (ec *executionContext) marshalOCVE2ᚕᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐCve(ctx context.Context, sel ast.SelectionSet, v []*Cve) graphql.Marshaler {
 	if v == nil {
 		return graphql.Null
 	}
@@ -11979,7 +11979,7 @@ func (ec *executionContext) marshalOCVE2ᚕᚖzotregistryᚗioᚋzotᚋpkgᚋext
 			if !isLen1 {
 				defer wg.Done()
 			}
-			ret[i] = ec.marshalOCVE2ᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐCve(ctx, sel, v[i])
+			ret[i] = ec.marshalOCVE2ᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐCve(ctx, sel, v[i])
 		}
 		if isLen1 {
 			f(i)
@@ -11993,14 +11993,14 @@ func (ec *executionContext) marshalOCVE2ᚕᚖzotregistryᚗioᚋzotᚋpkgᚋext
 	return ret
 }
 
-func (ec *executionContext) marshalOCVE2ᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐCve(ctx context.Context, sel ast.SelectionSet, v *Cve) graphql.Marshaler {
+func (ec *executionContext) marshalOCVE2ᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐCve(ctx context.Context, sel ast.SelectionSet, v *Cve) graphql.Marshaler {
 	if v == nil {
 		return graphql.Null
 	}
 	return ec._CVE(ctx, sel, v)
 }
 
-func (ec *executionContext) unmarshalOFilter2ᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐFilter(ctx context.Context, v interface{}) (*Filter, error) {
+func (ec *executionContext) unmarshalOFilter2ᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐFilter(ctx context.Context, v interface{}) (*Filter, error) {
 	if v == nil {
 		return nil, nil
 	}
@@ -12008,14 +12008,14 @@ func (ec *executionContext) unmarshalOFilter2ᚖzotregistryᚗioᚋzotᚋpkgᚋe
 	return &res, graphql.ErrorOnPath(ctx, err)
 }
 
-func (ec *executionContext) marshalOHistoryDescription2ᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐHistoryDescription(ctx context.Context, sel ast.SelectionSet, v *HistoryDescription) graphql.Marshaler {
+func (ec *executionContext) marshalOHistoryDescription2ᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐHistoryDescription(ctx context.Context, sel ast.SelectionSet, v *HistoryDescription) graphql.Marshaler {
 	if v == nil {
 		return graphql.Null
 	}
 	return ec._HistoryDescription(ctx, sel, v)
 }
 
-func (ec *executionContext) marshalOImageSummary2ᚕᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐImageSummary(ctx context.Context, sel ast.SelectionSet, v []*ImageSummary) graphql.Marshaler {
+func (ec *executionContext) marshalOImageSummary2ᚕᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐImageSummary(ctx context.Context, sel ast.SelectionSet, v []*ImageSummary) graphql.Marshaler {
 	if v == nil {
 		return graphql.Null
 	}
@@ -12042,7 +12042,7 @@ func (ec *executionContext) marshalOImageSummary2ᚕᚖzotregistryᚗioᚋzotᚋ
 			if !isLen1 {
 				defer wg.Done()
 			}
-			ret[i] = ec.marshalOImageSummary2ᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐImageSummary(ctx, sel, v[i])
+			ret[i] = ec.marshalOImageSummary2ᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐImageSummary(ctx, sel, v[i])
 		}
 		if isLen1 {
 			f(i)
@@ -12056,14 +12056,14 @@ func (ec *executionContext) marshalOImageSummary2ᚕᚖzotregistryᚗioᚋzotᚋ
 	return ret
 }
 
-func (ec *executionContext) marshalOImageSummary2ᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐImageSummary(ctx context.Context, sel ast.SelectionSet, v *ImageSummary) graphql.Marshaler {
+func (ec *executionContext) marshalOImageSummary2ᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐImageSummary(ctx context.Context, sel ast.SelectionSet, v *ImageSummary) graphql.Marshaler {
 	if v == nil {
 		return graphql.Null
 	}
 	return ec._ImageSummary(ctx, sel, v)
 }
 
-func (ec *executionContext) marshalOImageVulnerabilitySummary2ᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐImageVulnerabilitySummary(ctx context.Context, sel ast.SelectionSet, v *ImageVulnerabilitySummary) graphql.Marshaler {
+func (ec *executionContext) marshalOImageVulnerabilitySummary2ᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐImageVulnerabilitySummary(ctx context.Context, sel ast.SelectionSet, v *ImageVulnerabilitySummary) graphql.Marshaler {
 	if v == nil {
 		return graphql.Null
 	}
@@ -12086,7 +12086,7 @@ func (ec *executionContext) marshalOInt2ᚖint(ctx context.Context, sel ast.Sele
 	return res
 }
 
-func (ec *executionContext) marshalOLayerHistory2ᚕᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐLayerHistory(ctx context.Context, sel ast.SelectionSet, v []*LayerHistory) graphql.Marshaler {
+func (ec *executionContext) marshalOLayerHistory2ᚕᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐLayerHistory(ctx context.Context, sel ast.SelectionSet, v []*LayerHistory) graphql.Marshaler {
 	if v == nil {
 		return graphql.Null
 	}
@@ -12113,7 +12113,7 @@ func (ec *executionContext) marshalOLayerHistory2ᚕᚖzotregistryᚗioᚋzotᚋ
 			if !isLen1 {
 				defer wg.Done()
 			}
-			ret[i] = ec.marshalOLayerHistory2ᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐLayerHistory(ctx, sel, v[i])
+			ret[i] = ec.marshalOLayerHistory2ᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐLayerHistory(ctx, sel, v[i])
 		}
 		if isLen1 {
 			f(i)
@@ -12127,14 +12127,14 @@ func (ec *executionContext) marshalOLayerHistory2ᚕᚖzotregistryᚗioᚋzotᚋ
 	return ret
 }
 
-func (ec *executionContext) marshalOLayerHistory2ᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐLayerHistory(ctx context.Context, sel ast.SelectionSet, v *LayerHistory) graphql.Marshaler {
+func (ec *executionContext) marshalOLayerHistory2ᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐLayerHistory(ctx context.Context, sel ast.SelectionSet, v *LayerHistory) graphql.Marshaler {
 	if v == nil {
 		return graphql.Null
 	}
 	return ec._LayerHistory(ctx, sel, v)
 }
 
-func (ec *executionContext) marshalOLayerSummary2ᚕᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐLayerSummary(ctx context.Context, sel ast.SelectionSet, v []*LayerSummary) graphql.Marshaler {
+func (ec *executionContext) marshalOLayerSummary2ᚕᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐLayerSummary(ctx context.Context, sel ast.SelectionSet, v []*LayerSummary) graphql.Marshaler {
 	if v == nil {
 		return graphql.Null
 	}
@@ -12161,7 +12161,7 @@ func (ec *executionContext) marshalOLayerSummary2ᚕᚖzotregistryᚗioᚋzotᚋ
 			if !isLen1 {
 				defer wg.Done()
 			}
-			ret[i] = ec.marshalOLayerSummary2ᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐLayerSummary(ctx, sel, v[i])
+			ret[i] = ec.marshalOLayerSummary2ᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐLayerSummary(ctx, sel, v[i])
 		}
 		if isLen1 {
 			f(i)
@@ -12175,14 +12175,14 @@ func (ec *executionContext) marshalOLayerSummary2ᚕᚖzotregistryᚗioᚋzotᚋ
 	return ret
 }
 
-func (ec *executionContext) marshalOLayerSummary2ᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐLayerSummary(ctx context.Context, sel ast.SelectionSet, v *LayerSummary) graphql.Marshaler {
+func (ec *executionContext) marshalOLayerSummary2ᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐLayerSummary(ctx context.Context, sel ast.SelectionSet, v *LayerSummary) graphql.Marshaler {
 	if v == nil {
 		return graphql.Null
 	}
 	return ec._LayerSummary(ctx, sel, v)
 }
 
-func (ec *executionContext) marshalOManifestSummary2ᚕᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐManifestSummary(ctx context.Context, sel ast.SelectionSet, v []*ManifestSummary) graphql.Marshaler {
+func (ec *executionContext) marshalOManifestSummary2ᚕᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐManifestSummary(ctx context.Context, sel ast.SelectionSet, v []*ManifestSummary) graphql.Marshaler {
 	if v == nil {
 		return graphql.Null
 	}
@@ -12209,7 +12209,7 @@ func (ec *executionContext) marshalOManifestSummary2ᚕᚖzotregistryᚗioᚋzot
 			if !isLen1 {
 				defer wg.Done()
 			}
-			ret[i] = ec.marshalOManifestSummary2ᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐManifestSummary(ctx, sel, v[i])
+			ret[i] = ec.marshalOManifestSummary2ᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐManifestSummary(ctx, sel, v[i])
 		}
 		if isLen1 {
 			f(i)
@@ -12223,14 +12223,14 @@ func (ec *executionContext) marshalOManifestSummary2ᚕᚖzotregistryᚗioᚋzot
 	return ret
 }
 
-func (ec *executionContext) marshalOManifestSummary2ᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐManifestSummary(ctx context.Context, sel ast.SelectionSet, v *ManifestSummary) graphql.Marshaler {
+func (ec *executionContext) marshalOManifestSummary2ᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐManifestSummary(ctx context.Context, sel ast.SelectionSet, v *ManifestSummary) graphql.Marshaler {
 	if v == nil {
 		return graphql.Null
 	}
 	return ec._ManifestSummary(ctx, sel, v)
 }
 
-func (ec *executionContext) marshalOPackageInfo2ᚕᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐPackageInfo(ctx context.Context, sel ast.SelectionSet, v []*PackageInfo) graphql.Marshaler {
+func (ec *executionContext) marshalOPackageInfo2ᚕᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐPackageInfo(ctx context.Context, sel ast.SelectionSet, v []*PackageInfo) graphql.Marshaler {
 	if v == nil {
 		return graphql.Null
 	}
@@ -12257,7 +12257,7 @@ func (ec *executionContext) marshalOPackageInfo2ᚕᚖzotregistryᚗioᚋzotᚋp
 			if !isLen1 {
 				defer wg.Done()
 			}
-			ret[i] = ec.marshalOPackageInfo2ᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐPackageInfo(ctx, sel, v[i])
+			ret[i] = ec.marshalOPackageInfo2ᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐPackageInfo(ctx, sel, v[i])
 		}
 		if isLen1 {
 			f(i)
@@ -12271,21 +12271,21 @@ func (ec *executionContext) marshalOPackageInfo2ᚕᚖzotregistryᚗioᚋzotᚋp
 	return ret
 }
 
-func (ec *executionContext) marshalOPackageInfo2ᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐPackageInfo(ctx context.Context, sel ast.SelectionSet, v *PackageInfo) graphql.Marshaler {
+func (ec *executionContext) marshalOPackageInfo2ᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐPackageInfo(ctx context.Context, sel ast.SelectionSet, v *PackageInfo) graphql.Marshaler {
 	if v == nil {
 		return graphql.Null
 	}
 	return ec._PackageInfo(ctx, sel, v)
 }
 
-func (ec *executionContext) marshalOPageInfo2ᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐPageInfo(ctx context.Context, sel ast.SelectionSet, v *PageInfo) graphql.Marshaler {
+func (ec *executionContext) marshalOPageInfo2ᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐPageInfo(ctx context.Context, sel ast.SelectionSet, v *PageInfo) graphql.Marshaler {
 	if v == nil {
 		return graphql.Null
 	}
 	return ec._PageInfo(ctx, sel, v)
 }
 
-func (ec *executionContext) unmarshalOPageInput2ᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐPageInput(ctx context.Context, v interface{}) (*PageInput, error) {
+func (ec *executionContext) unmarshalOPageInput2ᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐPageInput(ctx context.Context, v interface{}) (*PageInput, error) {
 	if v == nil {
 		return nil, nil
 	}
@@ -12293,7 +12293,7 @@ func (ec *executionContext) unmarshalOPageInput2ᚖzotregistryᚗioᚋzotᚋpkg�
 	return &res, graphql.ErrorOnPath(ctx, err)
 }
 
-func (ec *executionContext) marshalOPlatform2ᚕᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐPlatform(ctx context.Context, sel ast.SelectionSet, v []*Platform) graphql.Marshaler {
+func (ec *executionContext) marshalOPlatform2ᚕᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐPlatform(ctx context.Context, sel ast.SelectionSet, v []*Platform) graphql.Marshaler {
 	if v == nil {
 		return graphql.Null
 	}
@@ -12320,7 +12320,7 @@ func (ec *executionContext) marshalOPlatform2ᚕᚖzotregistryᚗioᚋzotᚋpkg�
 			if !isLen1 {
 				defer wg.Done()
 			}
-			ret[i] = ec.marshalOPlatform2ᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐPlatform(ctx, sel, v[i])
+			ret[i] = ec.marshalOPlatform2ᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐPlatform(ctx, sel, v[i])
 		}
 		if isLen1 {
 			f(i)
@@ -12334,14 +12334,14 @@ func (ec *executionContext) marshalOPlatform2ᚕᚖzotregistryᚗioᚋzotᚋpkg�
 	return ret
 }
 
-func (ec *executionContext) marshalOPlatform2ᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐPlatform(ctx context.Context, sel ast.SelectionSet, v *Platform) graphql.Marshaler {
+func (ec *executionContext) marshalOPlatform2ᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐPlatform(ctx context.Context, sel ast.SelectionSet, v *Platform) graphql.Marshaler {
 	if v == nil {
 		return graphql.Null
 	}
 	return ec._Platform(ctx, sel, v)
 }
 
-func (ec *executionContext) marshalOReferrer2ᚕᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐReferrer(ctx context.Context, sel ast.SelectionSet, v []*Referrer) graphql.Marshaler {
+func (ec *executionContext) marshalOReferrer2ᚕᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐReferrer(ctx context.Context, sel ast.SelectionSet, v []*Referrer) graphql.Marshaler {
 	if v == nil {
 		return graphql.Null
 	}
@@ -12368,7 +12368,7 @@ func (ec *executionContext) marshalOReferrer2ᚕᚖzotregistryᚗioᚋzotᚋpkg�
 			if !isLen1 {
 				defer wg.Done()
 			}
-			ret[i] = ec.marshalOReferrer2ᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐReferrer(ctx, sel, v[i])
+			ret[i] = ec.marshalOReferrer2ᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐReferrer(ctx, sel, v[i])
 		}
 		if isLen1 {
 			f(i)
@@ -12382,14 +12382,14 @@ func (ec *executionContext) marshalOReferrer2ᚕᚖzotregistryᚗioᚋzotᚋpkg�
 	return ret
 }
 
-func (ec *executionContext) marshalOReferrer2ᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐReferrer(ctx context.Context, sel ast.SelectionSet, v *Referrer) graphql.Marshaler {
+func (ec *executionContext) marshalOReferrer2ᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐReferrer(ctx context.Context, sel ast.SelectionSet, v *Referrer) graphql.Marshaler {
 	if v == nil {
 		return graphql.Null
 	}
 	return ec._Referrer(ctx, sel, v)
 }
 
-func (ec *executionContext) marshalORepoSummary2ᚕᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐRepoSummary(ctx context.Context, sel ast.SelectionSet, v []*RepoSummary) graphql.Marshaler {
+func (ec *executionContext) marshalORepoSummary2ᚕᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐRepoSummary(ctx context.Context, sel ast.SelectionSet, v []*RepoSummary) graphql.Marshaler {
 	if v == nil {
 		return graphql.Null
 	}
@@ -12416,7 +12416,7 @@ func (ec *executionContext) marshalORepoSummary2ᚕᚖzotregistryᚗioᚋzotᚋp
 			if !isLen1 {
 				defer wg.Done()
 			}
-			ret[i] = ec.marshalORepoSummary2ᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐRepoSummary(ctx, sel, v[i])
+			ret[i] = ec.marshalORepoSummary2ᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐRepoSummary(ctx, sel, v[i])
 		}
 		if isLen1 {
 			f(i)
@@ -12430,14 +12430,14 @@ func (ec *executionContext) marshalORepoSummary2ᚕᚖzotregistryᚗioᚋzotᚋp
 	return ret
 }
 
-func (ec *executionContext) marshalORepoSummary2ᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐRepoSummary(ctx context.Context, sel ast.SelectionSet, v *RepoSummary) graphql.Marshaler {
+func (ec *executionContext) marshalORepoSummary2ᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐRepoSummary(ctx context.Context, sel ast.SelectionSet, v *RepoSummary) graphql.Marshaler {
 	if v == nil {
 		return graphql.Null
 	}
 	return ec._RepoSummary(ctx, sel, v)
 }
 
-func (ec *executionContext) marshalOSignatureSummary2ᚕᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐSignatureSummary(ctx context.Context, sel ast.SelectionSet, v []*SignatureSummary) graphql.Marshaler {
+func (ec *executionContext) marshalOSignatureSummary2ᚕᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐSignatureSummary(ctx context.Context, sel ast.SelectionSet, v []*SignatureSummary) graphql.Marshaler {
 	if v == nil {
 		return graphql.Null
 	}
@@ -12464,7 +12464,7 @@ func (ec *executionContext) marshalOSignatureSummary2ᚕᚖzotregistryᚗioᚋzo
 			if !isLen1 {
 				defer wg.Done()
 			}
-			ret[i] = ec.marshalOSignatureSummary2ᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐSignatureSummary(ctx, sel, v[i])
+			ret[i] = ec.marshalOSignatureSummary2ᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐSignatureSummary(ctx, sel, v[i])
 		}
 		if isLen1 {
 			f(i)
@@ -12478,14 +12478,14 @@ func (ec *executionContext) marshalOSignatureSummary2ᚕᚖzotregistryᚗioᚋzo
 	return ret
 }
 
-func (ec *executionContext) marshalOSignatureSummary2ᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐSignatureSummary(ctx context.Context, sel ast.SelectionSet, v *SignatureSummary) graphql.Marshaler {
+func (ec *executionContext) marshalOSignatureSummary2ᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐSignatureSummary(ctx context.Context, sel ast.SelectionSet, v *SignatureSummary) graphql.Marshaler {
 	if v == nil {
 		return graphql.Null
 	}
 	return ec._SignatureSummary(ctx, sel, v)
 }
 
-func (ec *executionContext) unmarshalOSortCriteria2ᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐSortCriteria(ctx context.Context, v interface{}) (*SortCriteria, error) {
+func (ec *executionContext) unmarshalOSortCriteria2ᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐSortCriteria(ctx context.Context, v interface{}) (*SortCriteria, error) {
 	if v == nil {
 		return nil, nil
 	}
@@ -12494,7 +12494,7 @@ func (ec *executionContext) unmarshalOSortCriteria2ᚖzotregistryᚗioᚋzotᚋp
 	return res, graphql.ErrorOnPath(ctx, err)
 }
 
-func (ec *executionContext) marshalOSortCriteria2ᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐSortCriteria(ctx context.Context, sel ast.SelectionSet, v *SortCriteria) graphql.Marshaler {
+func (ec *executionContext) marshalOSortCriteria2ᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐSortCriteria(ctx context.Context, sel ast.SelectionSet, v *SortCriteria) graphql.Marshaler {
 	if v == nil {
 		return graphql.Null
 	}

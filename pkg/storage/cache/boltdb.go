@@ -10,9 +10,9 @@ import (
 	godigest "github.com/opencontainers/go-digest"
 	"go.etcd.io/bbolt"
 
-	zerr "zotregistry.io/zot/errors"
-	zlog "zotregistry.io/zot/pkg/log"
-	"zotregistry.io/zot/pkg/storage/constants"
+	zerr "zotregistry.dev/zot/errors"
+	zlog "zotregistry.dev/zot/pkg/log"
+	"zotregistry.dev/zot/pkg/storage/constants"
 )
 
 type BoltDBDriver struct {

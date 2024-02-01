@@ -8,7 +8,7 @@ import (
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 
-	"zotregistry.io/zot/pkg/api/config"
+	"zotregistry.dev/zot/pkg/api/config"
 )
 
 // "zli" - client-side cli.

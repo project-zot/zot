@@ -17,17 +17,17 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/zitadel/oidc/pkg/client/rp"
 
-	"zotregistry.io/zot/errors"
-	"zotregistry.io/zot/pkg/api/config"
-	ext "zotregistry.io/zot/pkg/extensions"
-	extconf "zotregistry.io/zot/pkg/extensions/config"
-	"zotregistry.io/zot/pkg/extensions/monitoring"
-	"zotregistry.io/zot/pkg/log"
-	"zotregistry.io/zot/pkg/meta"
-	mTypes "zotregistry.io/zot/pkg/meta/types"
-	"zotregistry.io/zot/pkg/scheduler"
-	"zotregistry.io/zot/pkg/storage"
-	"zotregistry.io/zot/pkg/storage/gc"
+	"zotregistry.dev/zot/errors"
+	"zotregistry.dev/zot/pkg/api/config"
+	ext "zotregistry.dev/zot/pkg/extensions"
+	extconf "zotregistry.dev/zot/pkg/extensions/config"
+	"zotregistry.dev/zot/pkg/extensions/monitoring"
+	"zotregistry.dev/zot/pkg/log"
+	"zotregistry.dev/zot/pkg/meta"
+	mTypes "zotregistry.dev/zot/pkg/meta/types"
+	"zotregistry.dev/zot/pkg/scheduler"
+	"zotregistry.dev/zot/pkg/storage"
+	"zotregistry.dev/zot/pkg/storage/gc"
 )
 
 const (

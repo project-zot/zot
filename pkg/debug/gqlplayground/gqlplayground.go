@@ -10,10 +10,10 @@ import (
 
 	"github.com/gorilla/mux"
 
-	"zotregistry.io/zot/pkg/api/constants"
-	debugCst "zotregistry.io/zot/pkg/debug/constants"
-	"zotregistry.io/zot/pkg/log"
-	"zotregistry.io/zot/pkg/storage"
+	"zotregistry.dev/zot/pkg/api/constants"
+	debugCst "zotregistry.dev/zot/pkg/debug/constants"
+	"zotregistry.dev/zot/pkg/log"
+	"zotregistry.dev/zot/pkg/storage"
 )
 
 //go:embed index.html.tmpl

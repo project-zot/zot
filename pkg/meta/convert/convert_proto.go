@@ -7,9 +7,9 @@ import (
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	"zotregistry.io/zot/pkg/common"
-	proto_go "zotregistry.io/zot/pkg/meta/proto/gen"
-	mTypes "zotregistry.io/zot/pkg/meta/types"
+	"zotregistry.dev/zot/pkg/common"
+	proto_go "zotregistry.dev/zot/pkg/meta/proto/gen"
+	mTypes "zotregistry.dev/zot/pkg/meta/types"
 )
 
 func GetProtoRepoMeta(repo mTypes.RepoMeta) *proto_go.RepoMeta {

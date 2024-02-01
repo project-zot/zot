@@ -10,8 +10,8 @@ import (
 	"github.com/didip/tollbooth/v6"
 	"github.com/gorilla/mux"
 
-	"zotregistry.io/zot/pkg/extensions/monitoring"
-	"zotregistry.io/zot/pkg/log"
+	"zotregistry.dev/zot/pkg/extensions/monitoring"
+	"zotregistry.dev/zot/pkg/log"
 )
 
 type statusWriter struct {

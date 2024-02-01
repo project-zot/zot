@@ -7,8 +7,8 @@ import (
 	"net/url"
 	"sync"
 
-	"zotregistry.io/zot/pkg/common"
-	"zotregistry.io/zot/pkg/log"
+	"zotregistry.dev/zot/pkg/common"
+	"zotregistry.dev/zot/pkg/log"
 )
 
 type Config struct {

@@ -11,8 +11,8 @@ import (
 	"github.com/containers/image/v5/types"
 	"github.com/opencontainers/go-digest"
 
-	"zotregistry.io/zot/pkg/log"
-	"zotregistry.io/zot/pkg/scheduler"
+	"zotregistry.dev/zot/pkg/log"
+	"zotregistry.dev/zot/pkg/scheduler"
 )
 
 // below types are used by containers/image to copy images

@@ -11,7 +11,7 @@ import (
 	"net/http"
 	"time"
 
-	"zotregistry.io/zot/pkg/log"
+	"zotregistry.dev/zot/pkg/log"
 )
 
 const (

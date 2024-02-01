@@ -14,12 +14,12 @@ import (
 	artifactspec "github.com/oras-project/artifacts-spec/specs-go/v1"
 	"github.com/sigstore/cosign/v2/pkg/oci/static"
 
-	"zotregistry.io/zot/pkg/common"
-	client "zotregistry.io/zot/pkg/extensions/sync/httpclient"
-	"zotregistry.io/zot/pkg/log"
-	mTypes "zotregistry.io/zot/pkg/meta/types"
-	"zotregistry.io/zot/pkg/storage"
-	storageTypes "zotregistry.io/zot/pkg/storage/types"
+	"zotregistry.dev/zot/pkg/common"
+	client "zotregistry.dev/zot/pkg/extensions/sync/httpclient"
+	"zotregistry.dev/zot/pkg/log"
+	mTypes "zotregistry.dev/zot/pkg/meta/types"
+	"zotregistry.dev/zot/pkg/storage"
+	storageTypes "zotregistry.dev/zot/pkg/storage/types"
 )
 
 type Reference interface {

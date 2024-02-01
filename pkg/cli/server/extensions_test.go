@@ -13,9 +13,9 @@ import (
 	. "github.com/smartystreets/goconvey/convey"
 	"gopkg.in/resty.v1"
 
-	"zotregistry.io/zot/pkg/api/config"
-	cli "zotregistry.io/zot/pkg/cli/server"
-	. "zotregistry.io/zot/pkg/test/common"
+	"zotregistry.dev/zot/pkg/api/config"
+	cli "zotregistry.dev/zot/pkg/cli/server"
+	. "zotregistry.dev/zot/pkg/test/common"
 )
 
 const readLogFileTimeout = 5 * time.Second

@@ -16,12 +16,12 @@ import (
 
 	. "github.com/smartystreets/goconvey/convey"
 
-	zerr "zotregistry.io/zot/errors"
-	"zotregistry.io/zot/pkg/api"
-	"zotregistry.io/zot/pkg/api/config"
-	zcommon "zotregistry.io/zot/pkg/common"
-	extconf "zotregistry.io/zot/pkg/extensions/config"
-	test "zotregistry.io/zot/pkg/test/common"
+	zerr "zotregistry.dev/zot/errors"
+	"zotregistry.dev/zot/pkg/api"
+	"zotregistry.dev/zot/pkg/api/config"
+	zcommon "zotregistry.dev/zot/pkg/common"
+	extconf "zotregistry.dev/zot/pkg/extensions/config"
+	test "zotregistry.dev/zot/pkg/test/common"
 )
 
 func TestSearchCVECmd(t *testing.T) {

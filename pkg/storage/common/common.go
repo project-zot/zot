@@ -18,13 +18,13 @@ import (
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	oras "github.com/oras-project/artifacts-spec/specs-go/v1"
 
-	zerr "zotregistry.io/zot/errors"
-	zcommon "zotregistry.io/zot/pkg/common"
-	"zotregistry.io/zot/pkg/extensions/monitoring"
-	zlog "zotregistry.io/zot/pkg/log"
-	"zotregistry.io/zot/pkg/scheduler"
-	storageConstants "zotregistry.io/zot/pkg/storage/constants"
-	storageTypes "zotregistry.io/zot/pkg/storage/types"
+	zerr "zotregistry.dev/zot/errors"
+	zcommon "zotregistry.dev/zot/pkg/common"
+	"zotregistry.dev/zot/pkg/extensions/monitoring"
+	zlog "zotregistry.dev/zot/pkg/log"
+	"zotregistry.dev/zot/pkg/scheduler"
+	storageConstants "zotregistry.dev/zot/pkg/storage/constants"
+	storageTypes "zotregistry.dev/zot/pkg/storage/types"
 )
 
 const (

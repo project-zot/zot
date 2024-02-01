@@ -12,7 +12,7 @@ import (
 	"sync"
 	"time"
 
-	"zotregistry.io/zot/pkg/log"
+	"zotregistry.dev/zot/pkg/log"
 )
 
 const (

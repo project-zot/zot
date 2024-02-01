@@ -1,11 +1,11 @@
 package storage
 
 import (
-	zerr "zotregistry.io/zot/errors"
-	"zotregistry.io/zot/pkg/api/config"
-	zlog "zotregistry.io/zot/pkg/log"
-	"zotregistry.io/zot/pkg/storage/cache"
-	"zotregistry.io/zot/pkg/storage/constants"
+	zerr "zotregistry.dev/zot/errors"
+	"zotregistry.dev/zot/pkg/api/config"
+	zlog "zotregistry.dev/zot/pkg/log"
+	"zotregistry.dev/zot/pkg/storage/cache"
+	"zotregistry.dev/zot/pkg/storage/constants"
 )
 
 func CreateCacheDatabaseDriver(storageConfig config.StorageConfig, log zlog.Logger) (cache.Cache, error) {

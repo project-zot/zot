@@ -17,11 +17,11 @@ import (
 
 	"github.com/gorilla/mux"
 
-	"zotregistry.io/zot/pkg/api/config"
-	registryConst "zotregistry.io/zot/pkg/api/constants"
-	zcommon "zotregistry.io/zot/pkg/common"
-	"zotregistry.io/zot/pkg/debug/constants"
-	"zotregistry.io/zot/pkg/log"
+	"zotregistry.dev/zot/pkg/api/config"
+	registryConst "zotregistry.dev/zot/pkg/api/constants"
+	zcommon "zotregistry.dev/zot/pkg/common"
+	"zotregistry.dev/zot/pkg/debug/constants"
+	"zotregistry.dev/zot/pkg/log"
 )
 
 type profileEntry struct {

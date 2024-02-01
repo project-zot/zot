@@ -9,16 +9,16 @@ import (
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 
-	zerr "zotregistry.io/zot/errors"
-	"zotregistry.io/zot/pkg/api/config"
-	zcommon "zotregistry.io/zot/pkg/common"
-	"zotregistry.io/zot/pkg/extensions/monitoring"
-	"zotregistry.io/zot/pkg/log"
-	common "zotregistry.io/zot/pkg/storage/common"
-	"zotregistry.io/zot/pkg/storage/constants"
-	"zotregistry.io/zot/pkg/storage/local"
-	"zotregistry.io/zot/pkg/storage/s3"
-	storageTypes "zotregistry.io/zot/pkg/storage/types"
+	zerr "zotregistry.dev/zot/errors"
+	"zotregistry.dev/zot/pkg/api/config"
+	zcommon "zotregistry.dev/zot/pkg/common"
+	"zotregistry.dev/zot/pkg/extensions/monitoring"
+	"zotregistry.dev/zot/pkg/log"
+	common "zotregistry.dev/zot/pkg/storage/common"
+	"zotregistry.dev/zot/pkg/storage/constants"
+	"zotregistry.dev/zot/pkg/storage/local"
+	"zotregistry.dev/zot/pkg/storage/s3"
+	storageTypes "zotregistry.dev/zot/pkg/storage/types"
 )
 
 func New(config *config.Config, linter common.Lint, metrics monitoring.MetricServer,

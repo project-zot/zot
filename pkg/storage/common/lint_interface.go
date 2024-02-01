@@ -3,7 +3,7 @@ package storage
 import (
 	godigest "github.com/opencontainers/go-digest"
 
-	storageTypes "zotregistry.io/zot/pkg/storage/types"
+	storageTypes "zotregistry.dev/zot/pkg/storage/types"
 )
 
 type Lint interface {
