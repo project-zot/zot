@@ -240,7 +240,7 @@ func (rh *RouteHandler) CheckVersionSupport(response http.ResponseWriter, reques
 	response.Header().Set(constants.DistAPIVersion, "registry/2.0")
 	// NOTE: compatibility workaround - return this header in "allowed-read" mode to allow for clients to
 	// work correctly
-	if rh.c.Config.HTTP.Auth != nil {
+	if rh.c.Config.IsBasicAuthnEnabled() || rh.c.Config.IsBearerAuthEnabled() {
 		// don't send auth headers if request is coming from UI
 		if request.Header.Get(constants.SessionClientHeaderName) != constants.SessionClientHeaderValue {
 			if rh.c.Config.HTTP.Auth.Bearer != nil {

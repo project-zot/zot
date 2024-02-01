@@ -93,9 +93,12 @@ func New(
 	service.retryOptions = retryOptions
 	service.storeController = storeController
 
-	err = service.SetNextAvailableClient()
-	if err != nil {
-		return nil, err
+	// try to set next client.
+	if err := service.SetNextAvailableClient(); err != nil {
+		// if it's a ping issue, it will be retried
+		if !errors.Is(err, zerr.ErrSyncPingRegistry) {
+			return service, err
+		}
 	}
 
 	service.references = references.NewReferences(
@@ -118,7 +121,14 @@ func (service *BaseService) SetNextAvailableClient() error {
 		return nil
 	}
 
+	found := false
+
 	for _, url := range service.config.URLs {
+		// skip current client
+		if service.client != nil && service.client.GetBaseURL() == url {
+			continue
+		}
+
 		remoteAddress := StripRegistryTransport(url)
 		credentials := service.credentials[remoteAddress]
 
@@ -149,12 +159,14 @@ func (service *BaseService) SetNextAvailableClient() error {
 			return err
 		}
 
-		if !service.client.Ping() {
-			continue
+		if service.client.Ping() {
+			found = true
+
+			break
 		}
 	}
 
-	if service.client == nil {
+	if service.client == nil || !found {
 		return zerr.ErrSyncPingRegistry
 	}
 
@@ -241,6 +253,8 @@ func (service *BaseService) SyncReference(ctx context.Context, repo string,
 		}
 	}
 
+	remoteRepo = service.remote.GetDockerRemoteRepo(remoteRepo)
+
 	service.log.Info().Str("remote", remoteURL).Str("repository", repo).Str("subject", subjectDigestStr).
 		Str("reference type", referenceType).Msg("syncing reference for image")
 
@@ -262,6 +276,8 @@ func (service *BaseService) SyncImage(ctx context.Context, repo, reference strin
 			return zerr.ErrSyncImageFilteredOut
 		}
 	}
+
+	remoteRepo = service.remote.GetDockerRemoteRepo(remoteRepo)
 
 	service.log.Info().Str("remote", remoteURL).Str("repository", repo).Str("reference", reference).
 		Msg("syncing image")

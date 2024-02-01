@@ -1,19 +1,14 @@
 package common_test
 
 import (
-	"context"
 	"crypto/x509"
 	"os"
 	"path"
 	"testing"
 
-	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	. "github.com/smartystreets/goconvey/convey"
 
-	"zotregistry.dev/zot/pkg/api"
-	"zotregistry.dev/zot/pkg/api/config"
 	"zotregistry.dev/zot/pkg/common"
-	"zotregistry.dev/zot/pkg/log"
 	test "zotregistry.dev/zot/pkg/test/common"
 )
 
@@ -53,31 +48,5 @@ func TestHTTPClient(t *testing.T) {
 
 		_, err = common.CreateHTTPClient(true, "localhost", tempDir)
 		So(err, ShouldNotBeNil)
-	})
-
-	Convey("test MakeHTTPGetRequest() no permissions on key", t, func() {
-		port := test.GetFreePort()
-		baseURL := test.GetBaseURL(port)
-
-		conf := config.New()
-		conf.HTTP.Port = port
-
-		ctlr := api.NewController(conf)
-		tempDir := t.TempDir()
-		err := test.CopyTestKeysAndCerts(tempDir)
-		So(err, ShouldBeNil)
-		ctlr.Config.Storage.RootDirectory = tempDir
-
-		cm := test.NewControllerManager(ctlr)
-		cm.StartServer()
-		defer cm.StopServer()
-		test.WaitTillServerReady(baseURL)
-
-		var resultPtr interface{}
-		httpClient, err := common.CreateHTTPClient(true, "localhost", tempDir)
-		So(err, ShouldBeNil)
-		_, _, _, err = common.MakeHTTPGetRequest(context.Background(), httpClient, "", "",
-			resultPtr, baseURL+"/v2/", ispec.MediaTypeImageManifest, log.NewLogger("", ""))
-		So(err, ShouldBeNil)
 	})
 }

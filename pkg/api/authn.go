@@ -482,7 +482,7 @@ func bearerAuthHandler(ctlr *Controller) mux.MiddlewareFunc {
 					if err != nil {
 						ctlr.Log.Error().Err(err).Msg("failed to parse Authorization header")
 						response.Header().Set("Content-Type", "application/json")
-						zcommon.WriteJSON(response, http.StatusInternalServerError, apiErr.NewError(apiErr.UNSUPPORTED))
+						zcommon.WriteJSON(response, http.StatusUnauthorized, apiErr.NewError(apiErr.UNSUPPORTED))
 
 						return
 					}

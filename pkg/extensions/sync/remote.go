@@ -6,6 +6,7 @@ package sync
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/containers/image/v5/docker"
 	dockerReference "github.com/containers/image/v5/docker/reference"
@@ -56,6 +57,26 @@ func (registry *RemoteRegistry) GetRepositories(ctx context.Context) ([]string, 
 	}
 
 	return catalog.Repositories, nil
+}
+
+func (registry *RemoteRegistry) GetDockerRemoteRepo(repo string) string {
+	dockerNamespace := "library"
+	dockerRegistry := "docker.io"
+
+	remoteHost := registry.client.GetHostname()
+
+	repoRef, err := parseRepositoryReference(fmt.Sprintf("%s/%s", remoteHost, repo))
+	if err != nil {
+		return repo
+	}
+
+	if !strings.Contains(repo, dockerNamespace) &&
+		strings.Contains(repoRef.String(), dockerNamespace) &&
+		strings.Contains(repoRef.String(), dockerRegistry) {
+		return fmt.Sprintf("%s/%s", dockerNamespace, repo)
+	}
+
+	return repo
 }
 
 func (registry *RemoteRegistry) GetImageReference(repo, reference string) (types.ImageReference, error) {

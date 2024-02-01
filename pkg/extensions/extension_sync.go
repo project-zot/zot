@@ -50,6 +50,8 @@ func EnableSyncExtension(config *config.Config, metaDB mTypes.MetaDB,
 
 			service, err := sync.New(registryConfig, credsPath, tmpDir, storeController, metaDB, log)
 			if err != nil {
+				log.Error().Err(err).Msg("failed to initialize sync extension")
+
 				return nil, err
 			}
 

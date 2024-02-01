@@ -20,8 +20,18 @@ type SyncRemote struct {
 	// Get a list of tags given a repo
 	GetRepoTagsFn func(repo string) ([]string, error)
 
+	GetDockerRemoteRepoFn func(repo string) string
+
 	// Get manifest content, mediaType, digest given an ImageReference
 	GetManifestContentFn func(imageReference types.ImageReference) ([]byte, string, digest.Digest, error)
+}
+
+func (remote SyncRemote) GetDockerRemoteRepo(repo string) string {
+	if remote.GetDockerRemoteRepoFn != nil {
+		return remote.GetDockerRemoteRepoFn(repo)
+	}
+
+	return ""
 }
 
 func (remote SyncRemote) GetImageReference(repo string, tag string) (types.ImageReference, error) {

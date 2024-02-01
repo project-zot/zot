@@ -109,14 +109,20 @@ func (onDemand *BaseOnDemand) syncImage(ctx context.Context, repo, reference str
 	var err error
 	for serviceID, service := range onDemand.services {
 		err = service.SetNextAvailableURL()
-		if err != nil {
+
+		isPingErr := errors.Is(err, zerr.ErrSyncPingRegistry)
+		if err != nil && !isPingErr {
 			syncResult <- err
 
 			return
 		}
 
-		err = service.SyncImage(ctx, repo, reference)
-		if err != nil {
+		// no need to try to sync inline if there is a ping error, we want to retry in background
+		if !isPingErr {
+			err = service.SyncImage(ctx, repo, reference)
+		}
+
+		if err != nil || isPingErr {
 			if errors.Is(err, zerr.ErrManifestNotFound) ||
 				errors.Is(err, zerr.ErrSyncImageFilteredOut) ||
 				errors.Is(err, zerr.ErrSyncImageNotSigned) {
