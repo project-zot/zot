@@ -63,6 +63,10 @@ type generator struct {
 	taskDelay time.Duration
 }
 
+func (g *generator) Name() string {
+	return "TestGenerator"
+}
+
 func (g *generator) Next() (scheduler.Task, error) {
 	if g.step > g.limit {
 		g.done = true
@@ -105,6 +109,10 @@ type shortGenerator struct {
 	done     bool
 	index    int
 	step     int
+}
+
+func (g *shortGenerator) Name() string {
+	return "ShortTestGenerator"
 }
 
 func (g *shortGenerator) Next() (scheduler.Task, error) {

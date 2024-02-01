@@ -90,6 +90,10 @@ func NewTaskGenerator(service Service, log log.Logger) *TaskGenerator {
 	}
 }
 
+func (gen *TaskGenerator) Name() string {
+	return "SyncGenerator"
+}
+
 func (gen *TaskGenerator) Next() (scheduler.Task, error) {
 	if err := gen.Service.SetNextAvailableURL(); err != nil {
 		return nil, err

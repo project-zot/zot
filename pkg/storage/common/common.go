@@ -972,6 +972,10 @@ type DedupeTaskGenerator struct {
 	Log         zlog.Logger
 }
 
+func (gen *DedupeTaskGenerator) Name() string {
+	return "DedupeTaskGenerator"
+}
+
 func (gen *DedupeTaskGenerator) Next() (scheduler.Task, error) {
 	var err error
 
@@ -1083,6 +1087,10 @@ type StorageMetricsInitGenerator struct {
 	rand     *rand.Rand
 	Log      zlog.Logger
 	MaxDelay int
+}
+
+func (gen *StorageMetricsInitGenerator) Name() string {
+	return "StorageMetricsInitGenerator"
 }
 
 func (gen *StorageMetricsInitGenerator) Next() (scheduler.Task, error) {

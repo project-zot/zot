@@ -30,7 +30,11 @@ type CookieStore struct {
 
 func (c *CookieStore) RunSessionCleaner(sch *scheduler.Scheduler) {
 	if c.needsCleanup {
-		sch.SubmitGenerator(&SessionCleanup{rootDir: c.rootDir}, cookiesMaxAge, scheduler.LowPriority)
+		sch.SubmitGenerator(
+			&SessionCleanup{rootDir: c.rootDir},
+			cookiesMaxAge*time.Second,
+			scheduler.LowPriority,
+		)
 	}
 }
 
@@ -120,6 +124,10 @@ func getExpiredSessions(dir string) ([]string, error) {
 type SessionCleanup struct {
 	rootDir string
 	done    bool
+}
+
+func (gen *SessionCleanup) Name() string {
+	return "SessionCleanupGenerator"
 }
 
 func (gen *SessionCleanup) Next() (scheduler.Task, error) {
