@@ -65,7 +65,7 @@ func (driver *Driver) WriteFile(filepath string, content []byte) (int, error) {
 			return -1, err
 		}
 
-		if err := stwr.Commit(); err != nil {
+		if err := stwr.Commit(context.Background()); err != nil {
 			return -1, err
 		}
 	} else {

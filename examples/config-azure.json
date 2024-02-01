@@ -20,12 +20,10 @@
                 "rootDirectory": "/tmp/zot1",
                 "dedupe": false,
                 "storageDriver": {
-                    "name": "s3",
+                    "name": "azure",
                     "rootdirectory": "/zot-a",
-                    "region": "us-east-2",
-                    "bucket": "zot-storage",
-                    "secure": true,
-                    "skipverify": false
+                    "accountname": "stacczot",
+                    "container": "zot-storage"
                 }
             },
             "/b": {
@@ -33,12 +31,10 @@
                 "dedupe": true,
                 "remoteCache": false,
                 "storageDriver": {
-                    "name": "s3",
+                    "name": "azure",
                     "rootdirectory": "/zot-b",
-                    "region": "us-east-2",
-                    "bucket": "zot-storage",
-                    "secure": true,
-                    "skipverify": false
+                    "accountname": "stacczot",
+                    "container": "zot-storage"
                 }
             },
             "/c": {
@@ -46,12 +42,10 @@
                 "dedupe": true,
                 "remoteCache": true,
                 "storageDriver": {
-                    "name": "s3",
+                    "name": "azure",
                     "rootdirectory": "/zot-c",
-                    "region": "us-east-2",
-                    "bucket": "zot-storage",
-                    "secure": false,
-                    "skipverify": false
+                    "accountname": "stacczot",
+                    "container": "zot-storage"
                 },
                 "cacheDriver": {
                     "name": "dynamodb",

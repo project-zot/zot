@@ -401,7 +401,7 @@ func (is *ImageStore) GetNextRepository(repo string) (string, error) {
 	}
 
 	if errors.Is(err, io.EOF) ||
-		(errors.As(err, driverErr) && errors.Is(driverErr.Enclosed, io.EOF)) {
+		(errors.As(err, driverErr) && errors.Is(driverErr.Detail, io.EOF)) {
 		return store, nil
 	}
 
@@ -870,7 +870,7 @@ func (is *ImageStore) FinishBlobUpload(repo, uuid string, body io.Reader, dstDig
 		return zerr.ErrUploadNotFound
 	}
 
-	if err := fileWriter.Commit(); err != nil {
+	if err := fileWriter.Commit(context.Background()); err != nil {
 		is.log.Error().Err(err).Msg("failed to commit file")
 
 		return err
@@ -967,7 +967,7 @@ func (is *ImageStore) FullBlobUpload(repo string, body io.Reader, dstDigest godi
 		return "", -1, err
 	}
 
-	if err := blobFile.Commit(); err != nil {
+	if err := blobFile.Commit(context.Background()); err != nil {
 		is.log.Error().Err(err).Str("blob", src).Msg("failed to commit blob")
 
 		return "", -1, err
@@ -1125,7 +1125,7 @@ func (is *ImageStore) DeleteBlobUpload(repo, uuid string) error {
 
 	defer writer.Close()
 
-	if err := writer.Cancel(); err != nil {
+	if err := writer.Cancel(context.Background()); err != nil {
 		is.log.Error().Err(err).Str("blobUploadPath", blobUploadPath).Msg("failed to delete blob upload")
 
 		return err
