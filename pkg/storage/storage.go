@@ -1,11 +1,14 @@
 package storage
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"strings"
+	"zotregistry.dev/zot/pkg/storage/azure"
+	"zotregistry.dev/zot/pkg/storage/local"
 
-	"github.com/docker/distribution/registry/storage/driver/factory"
+	"github.com/distribution/distribution/v3/registry/storage/driver/factory"
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 
@@ -16,7 +19,6 @@ import (
 	"zotregistry.dev/zot/pkg/log"
 	common "zotregistry.dev/zot/pkg/storage/common"
 	"zotregistry.dev/zot/pkg/storage/constants"
-	"zotregistry.dev/zot/pkg/storage/local"
 	"zotregistry.dev/zot/pkg/storage/s3"
 	storageTypes "zotregistry.dev/zot/pkg/storage/types"
 )
@@ -34,7 +36,7 @@ func New(config *config.Config, linter common.Lint, metrics monitoring.MetricSer
 		return storeController, zerr.ErrImgStoreNotFound
 	}
 
-	// no need to validate hard links work on s3
+	// no need to validate hard links work on blob storage
 	if config.Storage.Dedupe && config.Storage.StorageDriver == nil {
 		err := local.ValidateHardLink(config.Storage.RootDirectory)
 		if err != nil {
@@ -61,22 +63,25 @@ func New(config *config.Config, linter common.Lint, metrics monitoring.MetricSer
 		)
 	} else {
 		storeName := fmt.Sprintf("%v", config.Storage.StorageDriver["name"])
-		if storeName != constants.S3StorageDriverName {
+		switch storeName {
+		case constants.S3StorageDriverName:
+		case constants.AzureBlobStorageDriverName:
+		default:
 			log.Error().Err(zerr.ErrBadConfig).Str("storageDriver", storeName).
 				Msg("unsupported storage driver")
 
 			return storeController, fmt.Errorf("storageDriver '%s' unsupported storage driver: %w", storeName, zerr.ErrBadConfig)
 		}
 		// Init a Storager from connection string.
-		store, err := factory.Create(storeName, config.Storage.StorageDriver)
+		store, err := factory.Create(context.Background(), storeName, config.Storage.StorageDriver)
 		if err != nil {
-			log.Error().Err(err).Str("rootDir", config.Storage.RootDirectory).Msg("failed to create s3 service")
+			log.Error().Err(err).Str("rootDir", config.Storage.RootDirectory).Msg("failed to create blob service")
 
 			return storeController, err
 		}
 
-		/* in the case of s3 config.Storage.RootDirectory is used for caching blobs locally and
-		config.Storage.StorageDriver["rootdirectory"] is the actual rootDir in s3 */
+		/* in the case of blob storage config.Storage.RootDirectory is used for caching blobs locally and
+		config.Storage.StorageDriver["rootdirectory"] is the actual rootDir in blob storage */
 		rootDir := "/"
 		if config.Storage.StorageDriver["rootdirectory"] != nil {
 			rootDir = fmt.Sprintf("%v", config.Storage.StorageDriver["rootdirectory"])
@@ -89,8 +94,19 @@ func New(config *config.Config, linter common.Lint, metrics monitoring.MetricSer
 
 		// false positive lint - linter does not implement Lint method
 		//nolint: typecheck,contextcheck
-		defaultStore = s3.NewImageStore(rootDir, config.Storage.RootDirectory,
-			config.Storage.Dedupe, config.Storage.Commit, log, metrics, linter, store, cacheDriver)
+		switch storeName {
+		case constants.S3StorageDriverName:
+			defaultStore = s3.NewImageStore(rootDir, config.Storage.RootDirectory,
+				config.Storage.Dedupe, config.Storage.Commit, log, metrics, linter, store, cacheDriver)
+		case constants.AzureBlobStorageDriverName:
+			defaultStore = azure.NewImageStore(rootDir, config.Storage.RootDirectory,
+				config.Storage.Dedupe, config.Storage.Commit, log, metrics, linter, store, cacheDriver)
+		default:
+			log.Error().Err(zerr.ErrBadConfig).Str("storageDriver", storeName).
+				Msg("unsupported storage driver")
+
+			return storeController, fmt.Errorf("storageDriver '%s' unsupported storage driver: %w", storeName, zerr.ErrBadConfig)
+		}
 	}
 
 	storeController.DefaultStore = defaultStore
@@ -123,7 +139,7 @@ func getSubStore(cfg *config.Config, subPaths map[string]config.StorageConfig,
 
 	// creating image store per subpaths
 	for route, storageConfig := range subPaths {
-		// no need to validate hard links work on s3
+		// no need to validate hard links work on blob storage
 		if storageConfig.Dedupe && storageConfig.StorageDriver == nil {
 			err := local.ValidateHardLink(storageConfig.RootDirectory)
 			if err != nil {
@@ -175,7 +191,10 @@ func getSubStore(cfg *config.Config, subPaths map[string]config.StorageConfig,
 			}
 		} else {
 			storeName := fmt.Sprintf("%v", storageConfig.StorageDriver["name"])
-			if storeName != constants.S3StorageDriverName {
+			switch storeName {
+			case constants.S3StorageDriverName:
+			case constants.AzureBlobStorageDriverName:
+			default:
 				log.Error().Err(zerr.ErrBadConfig).Str("storageDriver", storeName).
 					Msg("unsupported storage driver")
 
@@ -183,15 +202,15 @@ func getSubStore(cfg *config.Config, subPaths map[string]config.StorageConfig,
 			}
 
 			// Init a Storager from connection string.
-			store, err := factory.Create(storeName, storageConfig.StorageDriver)
+			store, err := factory.Create(context.Background(), storeName, storageConfig.StorageDriver)
 			if err != nil {
-				log.Error().Err(err).Str("rootDir", storageConfig.RootDirectory).Msg("failed to create s3 service")
+				log.Error().Err(err).Str("rootDir", storageConfig.RootDirectory).Msg("failed to create blob service")
 
 				return nil, err
 			}
 
-			/* in the case of s3 c.Config.Storage.RootDirectory is used for caching blobs locally and
-			c.Config.Storage.StorageDriver["rootdirectory"] is the actual rootDir in s3 */
+			/* in the case of blob storage c.Config.Storage.RootDirectory is used for caching blobs locally and
+			c.Config.Storage.StorageDriver["rootdirectory"] is the actual rootDir in blob storage */
 			rootDir := "/"
 			if cfg.Storage.StorageDriver["rootdirectory"] != nil {
 				rootDir = fmt.Sprintf("%v", cfg.Storage.StorageDriver["rootdirectory"])
@@ -207,9 +226,17 @@ func getSubStore(cfg *config.Config, subPaths map[string]config.StorageConfig,
 
 			// false positive lint - linter does not implement Lint method
 			//nolint: typecheck
-			subImageStore[route] = s3.NewImageStore(rootDir, storageConfig.RootDirectory,
-				storageConfig.Dedupe, storageConfig.Commit, log, metrics, linter, store, cacheDriver,
-			)
+
+			switch storeName {
+			case constants.S3StorageDriverName:
+				subImageStore[route] = azure.NewImageStore(rootDir, storageConfig.RootDirectory,
+					storageConfig.Dedupe, storageConfig.Commit, log, metrics, linter, store, cacheDriver,
+				)
+			case constants.AzureBlobStorageDriverName:
+				subImageStore[route] = s3.NewImageStore(rootDir, storageConfig.RootDirectory,
+					storageConfig.Dedupe, storageConfig.Commit, log, metrics, linter, store, cacheDriver,
+				)
+			}
 		}
 	}
 

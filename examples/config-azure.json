@@ -1,0 +1,66 @@
+{
+    "distSpecVersion": "1.1.0-dev",
+    "storage": {
+        "rootDirectory": "/tmp/zot",
+        "dedupe": true,
+        "storageDriver": {
+            "name": "azure",
+            "rootdirectory": "/zot",
+            "accountname": "stacczot",
+            "container": "zot-storage"
+        },
+        "cacheDriver": {
+            "name": "dynamodb",
+            "endpoint": "http://localhost:4566",
+            "region": "us-east-2",
+            "cacheTablename": "MainTable"
+        },
+        "subPaths": {
+            "/a": {
+                "rootDirectory": "/tmp/zot1",
+                "dedupe": false,
+                "storageDriver": {
+                    "name": "azure",
+                    "rootdirectory": "/zot-a",
+                    "accountname": "stacczot",
+                    "container": "zot-storage"
+                }
+            },
+            "/b": {
+                "rootDirectory": "/tmp/zot2",
+                "dedupe": true,
+                "remoteCache": false,
+                "storageDriver": {
+                    "name": "azure",
+                    "rootdirectory": "/zot-b",
+                    "accountname": "stacczot",
+                    "container": "zot-storage"
+                }
+            },
+            "/c": {
+                "rootDirectory": "/tmp/zot3",
+                "dedupe": true,
+                "remoteCache": true,
+                "storageDriver": {
+                    "name": "azure",
+                    "rootdirectory": "/zot-c",
+                    "accountname": "stacczot",
+                    "container": "zot-storage"
+                },
+                "cacheDriver": {
+                    "name": "dynamodb",
+                    "endpoint": "http://localhost:4566",
+                    "region": "us-east-2",
+                    "cacheTablename": "cTable"
+                }
+            }
+        }
+    },
+    "http": {
+        "address": "127.0.0.1",
+        "port": "8080"
+    },
+    "log": {
+        "level": "debug"
+    }
+}

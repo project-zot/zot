@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/docker/distribution/registry/storage/driver/factory"
-	_ "github.com/docker/distribution/registry/storage/driver/s3-aws"
+	"github.com/distribution/distribution/v3/registry/storage/driver/factory"
+	_ "github.com/distribution/distribution/v3/registry/storage/driver/s3-aws"
 	guuid "github.com/gofrs/uuid"
 	. "github.com/smartystreets/goconvey/convey"
 	"gopkg.in/resty.v1"
@@ -41,6 +41,10 @@ var testCases = []struct {
 	storageType  string
 }{
 	{
+		testCaseName: "AzureAPIs",
+		storageType:  storageConstants.AzureBlobStorageDriverName,
+	},
+	{
 		testCaseName: "S3APIs",
 		storageType:  storageConstants.S3StorageDriverName,
 	},
@@ -65,7 +69,9 @@ func TestGarbageCollectAndRetention(t *testing.T) {
 
 			var metaDB mTypes.MetaDB
 
-			if testcase.storageType == storageConstants.S3StorageDriverName {
+			switch testcase.storageType {
+			case storageConstants.AzureBlobStorageDriverName:
+			case storageConstants.S3StorageDriverName:
 				tskip.SkipDynamo(t)
 				tskip.SkipS3(t)
 
@@ -133,7 +139,7 @@ func TestGarbageCollectAndRetention(t *testing.T) {
 				}
 
 				imgStore = s3.NewImageStore(rootDir, cacheDir, true, false, log, metrics, nil, store, nil)
-			} else {
+			default:
 				// Create temporary directory
 				rootDir := t.TempDir()
 

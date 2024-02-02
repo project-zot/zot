@@ -1,4 +1,4 @@
-package s3_test
+package azure_test
 
 import (
 	"bytes"

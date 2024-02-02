@@ -1,4 +1,4 @@
-package s3
+package azure
 
 import (
 	"context"
@@ -6,7 +6,7 @@ import (
 
 	// Add s3 support.
 	"github.com/distribution/distribution/v3/registry/storage/driver"
-	_ "github.com/distribution/distribution/v3/registry/storage/driver/s3-aws"
+	_ "github.com/distribution/distribution/v3/registry/storage/driver/azure"
 
 	storageConstants "zotregistry.dev/zot/pkg/storage/constants"
 )
@@ -20,7 +20,7 @@ func New(storeDriver driver.StorageDriver) *Driver {
 }
 
 func (driver *Driver) Name() string {
-	return storageConstants.S3StorageDriverName
+	return storageConstants.AzureBlobStorageDriverName
 }
 
 func (driver *Driver) EnsureDir(path string) error {
@@ -107,7 +107,7 @@ func (driver *Driver) SameFile(path1, path2 string) bool {
 /*
 	Link put an empty file that will act like a link between the original file and deduped one
 
-because s3 doesn't support symlinks, wherever the storage will encounter an empty file, it will get the original one
+because azure blob doesn't support symlinks, wherever the storage will encounter an empty file, it will get the original one
 from cache.
 */
 func (driver *Driver) Link(src, dest string) error {
