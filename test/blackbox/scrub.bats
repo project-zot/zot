@@ -67,7 +67,7 @@ function teardown() {
     wait_zot_reachable ${zot_port}
 
     # wait for scrub to be done and logs to get populated
-    run sleep 20s
+    run sleep 30s
     run not_affected
     [ "$status" -eq 0 ]
     [ $(echo "${lines[0]}" ) = 'true' ]
@@ -82,7 +82,7 @@ function teardown() {
     wait_zot_reachable ${zot_port}
 
     # wait for scrub to be done and logs to get populated
-    run sleep 20s
+    run sleep 30s
     run affected
     [ "$status" -eq 0 ]
     [ $(echo "${lines[0]}" ) = 'true' ]
