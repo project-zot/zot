@@ -298,7 +298,7 @@ github.com/opencontainers/distribution-spec/specs-go|https://github.com/opencont
 github.com/opencontainers/go-digest|https://github.com/opencontainers/go-digest/blob/v1.0.0/LICENSE|Apache-2.0
 github.com/opencontainers/image-spec/specs-go|https://github.com/opencontainers/image-spec/blob/v1.1.0-rc5/LICENSE|Apache-2.0
 github.com/opencontainers/image-spec|https://github.com/opencontainers/image-spec/blob/v1.1.0-rc5/LICENSE|Apache-2.0
-github.com/opencontainers/runc/libcontainer/user|https://github.com/opencontainers/runc/blob/v1.1.10/LICENSE|Apache-2.0
+github.com/opencontainers/runc/libcontainer/user|https://github.com/opencontainers/runc/blob/v1.1.12/LICENSE|Apache-2.0
 github.com/opencontainers/runtime-spec/specs-go|https://github.com/opencontainers/runtime-spec/blob/v1.1.0/LICENSE|Apache-2.0
 github.com/opencontainers/selinux|https://github.com/opencontainers/selinux/blob/v1.11.0/LICENSE|Apache-2.0
 github.com/opentracing/opentracing-go|https://github.com/opentracing/opentracing-go/blob/v1.2.0/LICENSE|Apache-2.0
@@ -434,6 +434,7 @@ gopkg.in/ini.v1|https://github.com/go-ini/ini/blob/v1.67.0/LICENSE|Apache-2.0
 gopkg.in/resty.v1|https://github.com/go-resty/resty/blob/v1.12.0/LICENSE|MIT
 gopkg.in/square/go-jose.v2/json|https://github.com/square/go-jose/blob/v2.6.0/json/LICENSE|BSD-3-Clause
 gopkg.in/square/go-jose.v2|https://github.com/square/go-jose/blob/v2.6.0/LICENSE|Apache-2.0
+gopkg.in/warnings.v0|Unknown|BSD-2-Clause
 gopkg.in/warnings.v0|https://github.com/go-warnings/warnings/blob/v0.1.2/LICENSE|BSD-2-Clause
 gopkg.in/yaml.v2|https://github.com/go-yaml/yaml/blob/v2.4.0/LICENSE|Apache-2.0
 gopkg.in/yaml.v3|https://github.com/go-yaml/yaml/blob/v3.0.1/LICENSE|MIT
@@ -463,4 +464,4 @@ sigs.k8s.io/kustomize/api|https://github.com/kubernetes-sigs/kustomize/blob/6ce0
 sigs.k8s.io/kustomize/kyaml|https://github.com/kubernetes-sigs/kustomize/blob/6ce0bf390ce3/kyaml/LICENSE|Apache-2.0
 sigs.k8s.io/yaml/goyaml.v2|https://github.com/kubernetes-sigs/yaml/blob/v1.4.0/goyaml.v2/LICENSE|Apache-2.0
 sigs.k8s.io/yaml|https://github.com/kubernetes-sigs/yaml/blob/v1.4.0/LICENSE|Apache-2.0
-zotregistry.dev/zot|Unknown|Apache-2.0
+zotregistry.dev/zot|https://github.com/project-zot/zot/blob/HEAD/LICENSE|Apache-2.0
