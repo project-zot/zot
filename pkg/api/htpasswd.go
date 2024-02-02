@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 
@@ -110,10 +111,7 @@ func (hc *HtpasswdClient) ChangePassword(login, supposedOldPassword, newPassword
 		return zerr.ErrPasswordIsEmpty
 	}
 
-	hc.credMap.rw.RLock()
-	oldPassphrase, ok := hc.credMap.m[login]
-	hc.credMap.rw.RUnlock()
-
+	oldPassphrase, ok := hc.credMap.Get(login)
 	if !ok {
 		return zerr.ErrBadUser
 	}
@@ -151,10 +149,31 @@ func (hc *HtpasswdClient) ChangePassword(login, supposedOldPassword, newPassword
 		}
 	}
 
-	// write new content to file
-	output := strings.Join(lines, "\n")
+	// write new content to temporary file
+	// and replace the old file with temporary, so the operation is atomic
+	output := []byte(strings.Join(lines, "\n"))
 
-	err = os.WriteFile(hc.filepath, []byte(output), constants.DefaultDirPerms)
+	tmpfile, err := os.CreateTemp(filepath.Dir(hc.filepath), "htpasswd-*.tmp")
+	if err != nil {
+		return fmt.Errorf("error occurred when creating temp htpasswd file: %w", err)
+	}
+
+	if _, err := tmpfile.Write(output); err != nil {
+		tmpfile.Close()
+		os.Remove(tmpfile.Name())
+		return fmt.Errorf("error occurred when writing to temp htpasswd file: %w", err)
+	}
+
+	if err := tmpfile.Close(); err != nil {
+		os.Remove(tmpfile.Name())
+		return fmt.Errorf("error occurred when closing temp htpasswd file: %w", err)
+	}
+
+	if err := os.Rename(tmpfile.Name(), hc.filepath); err != nil {
+		return fmt.Errorf("error occurred while replacing htpasswd file with new file: %w", err)
+	}
+
+	err = os.WriteFile(hc.filepath, output, constants.DefaultDirPerms)
 	if err != nil {
 		return fmt.Errorf("error occurred while writing to creds-file: %w", err)
 	}

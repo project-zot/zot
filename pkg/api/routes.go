@@ -2248,7 +2248,7 @@ func (rh *RouteHandler) ChangePassword(resp http.ResponseWriter, req *http.Reque
 
 	userAc, err := reqCtx.UserAcFromContext(req.Context())
 	if err != nil {
-		resp.WriteHeader(http.StatusNotFound)
+		resp.WriteHeader(http.StatusInternalServerError)
 
 		return
 	}
@@ -2256,6 +2256,8 @@ func (rh *RouteHandler) ChangePassword(resp http.ResponseWriter, req *http.Reque
 	username := userAc.GetUsername()
 	if username == "" {
 		resp.WriteHeader(http.StatusNotFound)
+
+		return
 	}
 
 	if err := rh.c.HtpasswdClient.ChangePassword(username, reqBody.OldPassword, reqBody.NewPassword); err != nil {
