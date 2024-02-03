@@ -119,6 +119,8 @@ jobs:
           patterns: z*
           method: sha256
           output: checksums.sha256.txt
+      - name: Add wildcard character prefix to filenames in checksum file
+        run: sed -i 's! ! \*!g' checksums.sha256.txt
       - name: Publish checksums on releases
         uses: svenstaro/upload-release-action@v2
         with:
