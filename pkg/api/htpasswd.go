@@ -10,8 +10,8 @@ import (
 
 	"golang.org/x/crypto/bcrypt"
 
-	zerr "zotregistry.io/zot/errors"
-	"zotregistry.io/zot/pkg/storage/constants"
+	zerr "zotregistry.dev/zot/errors"
+	"zotregistry.dev/zot/pkg/storage/constants"
 )
 
 const (

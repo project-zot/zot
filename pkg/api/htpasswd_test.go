@@ -8,9 +8,9 @@ import (
 	. "github.com/smartystreets/goconvey/convey"
 	"golang.org/x/crypto/bcrypt"
 
-	zerr "zotregistry.io/zot/errors"
-	"zotregistry.io/zot/pkg/api"
-	test "zotregistry.io/zot/pkg/test/common"
+	zerr "zotregistry.dev/zot/errors"
+	"zotregistry.dev/zot/pkg/api"
+	test "zotregistry.dev/zot/pkg/test/common"
 )
 
 func TestHtpasswdClient_ChangePassword(t *testing.T) {
