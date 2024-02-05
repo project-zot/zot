@@ -98,3 +98,33 @@ jobs:
           tag: ${{ github.ref }}
           overwrite: true
           file_glob: true
+
+  release-checksums:
+    name: Release Artifact Checksums
+    needs: build-arch
+    if: github.event_name == 'release' && github.event.action == 'published'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
+    steps:
+      - name: Download Release Artifacts
+        uses: robinraju/release-downloader@v1.9
+        with:
+          tag: ${{ github.ref_name }}
+          fileName: "z*"
+      - name: Generate checksum
+        uses: jmgilman/actions-generate-checksum@v1
+        with:
+          patterns: z*
+          method: sha256
+          output: checksums.sha256.txt
+      - name: Add wildcard character prefix to filenames in checksum file
+        run: sed -i 's! ! \*!g' checksums.sha256.txt
+      - name: Publish checksums on releases
+        uses: svenstaro/upload-release-action@v2
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          file: checksums.sha256.txt
+          tag: ${{ github.ref }}
+          overwrite: true
