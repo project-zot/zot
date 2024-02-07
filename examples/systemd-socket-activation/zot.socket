@@ -1,0 +1,10 @@
+[Unit]
+Description=OCI Distribution Registry
+
+[Socket]
+ListenStream=80
+FileDescriptorName=http
+Service=zot.service
+
+[Install]
+WantedBy=sockets.target
