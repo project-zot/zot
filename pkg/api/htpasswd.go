@@ -20,7 +20,12 @@ const (
 
 type HtpasswdClient struct {
 	credMap  credMap
-	filepath string
+	credFile credFile
+}
+
+type credFile struct {
+	path string
+	rw   *sync.RWMutex
 }
 
 type credMap struct {
@@ -30,7 +35,10 @@ type credMap struct {
 
 func NewHtpasswdClient(filepath string) *HtpasswdClient {
 	return &HtpasswdClient{
-		filepath: filepath,
+		credFile: credFile{
+			path: filepath,
+			rw:   &sync.RWMutex{},
+		},
 		credMap: credMap{
 			m:  make(map[string]string),
 			rw: &sync.RWMutex{},
@@ -39,12 +47,12 @@ func NewHtpasswdClient(filepath string) *HtpasswdClient {
 }
 
 // Init initializes the HtpasswdClient.
-// It performs the file read using the filename specified in NewHtpasswdClient
+// It performs the credFile read using the filename specified in NewHtpasswdClient
 // and caches all user passwords.
 func (hc *HtpasswdClient) Init() error {
-	credsFile, err := os.Open(hc.filepath)
+	credsFile, err := os.Open(hc.credFile.path)
 	if err != nil {
-		return fmt.Errorf("error occurred while opening creds-file: %w", err)
+		return fmt.Errorf("error occurred while opening creds-credFile: %w", err)
 	}
 	defer credsFile.Close()
 
@@ -63,7 +71,7 @@ func (hc *HtpasswdClient) Init() error {
 	}
 
 	if err := scanner.Err(); err != nil {
-		return fmt.Errorf("error occurred while reading creds-file: %w", err)
+		return fmt.Errorf("error occurred while reading creds-credFile: %w", err)
 	}
 
 	return nil
@@ -121,7 +129,7 @@ func (hc *HtpasswdClient) ChangePassword(login, supposedOldPassword, newPassword
 		return zerr.ErrOldPasswordIsWrong
 	}
 
-	// if passwords match, no need to update file and map, return nil as if operation is successful
+	// if passwords match, no need to update credFile and map, return nil as if operation is successful
 	if err := bcrypt.CompareHashAndPassword([]byte(oldPassphrase), []byte(newPassword)); err == nil {
 		return nil
 	}
@@ -132,9 +140,9 @@ func (hc *HtpasswdClient) ChangePassword(login, supposedOldPassword, newPassword
 		return fmt.Errorf("error occurred while encrypting new password: %w", err)
 	}
 
-	file, err := os.ReadFile(hc.filepath)
+	file, err := os.ReadFile(hc.credFile.path)
 	if err != nil {
-		return fmt.Errorf("error occurred while reading creds-file: %w", err)
+		return fmt.Errorf("error occurred while reading creds-credFile: %w", err)
 	}
 
 	// read passwords line by line to find the corresponding login
@@ -149,41 +157,39 @@ func (hc *HtpasswdClient) ChangePassword(login, supposedOldPassword, newPassword
 		}
 	}
 
-	// write new content to temporary file
-	// and replace the old file with temporary, so the operation is atomic
+	// write new content to temporary credFile
+	// and replace the old credFile with temporary, so the operation is atomic
 	output := []byte(strings.Join(lines, "\n"))
 
-	tmpfile, err := os.CreateTemp(filepath.Dir(hc.filepath), "htpasswd-*.tmp")
+	tmpfile, err := os.CreateTemp(filepath.Dir(hc.credFile.path), "htpasswd-*.tmp")
 	if err != nil {
-		return fmt.Errorf("error occurred when creating temp htpasswd file: %w", err)
+		return fmt.Errorf("error occurred when creating temp htpasswd credFile: %w", err)
 	}
 
 	if _, err := tmpfile.Write(output); err != nil {
 		tmpfile.Close()
 		os.Remove(tmpfile.Name())
-		return fmt.Errorf("error occurred when writing to temp htpasswd file: %w", err)
+
+		return fmt.Errorf("error occurred when writing to temp htpasswd credFile: %w", err)
 	}
 
 	if err := tmpfile.Close(); err != nil {
 		os.Remove(tmpfile.Name())
-		return fmt.Errorf("error occurred when closing temp htpasswd file: %w", err)
+
+		return fmt.Errorf("error occurred when closing temp htpasswd credFile: %w", err)
 	}
 
-	if err := os.Rename(tmpfile.Name(), hc.filepath); err != nil {
-		return fmt.Errorf("error occurred while replacing htpasswd file with new file: %w", err)
+	if err := os.Rename(tmpfile.Name(), hc.credFile.path); err != nil {
+		return fmt.Errorf("error occurred while replacing htpasswd credFile with new credFile: %w", err)
 	}
 
-	err = os.WriteFile(hc.filepath, output, constants.DefaultDirPerms)
+	err = os.WriteFile(hc.credFile.path, output, constants.DefaultDirPerms)
 	if err != nil {
-		return fmt.Errorf("error occurred while writing to creds-file: %w", err)
+		return fmt.Errorf("error occurred while writing to creds-credFile: %w", err)
 	}
 
-	// set to credMap only if all file operations are successful to prevent collisions
-	hc.credMap.rw.Lock()
-	hc.credMap.m[login] = string(newPassphrase)
-	hc.credMap.rw.Unlock()
-
-	return nil
+	// set to credMap only if all credFile operations are successful to prevent collisions
+	return hc.credMap.Set(login, string(newPassphrase))
 }
 
 func (c credMap) Set(login, passphrase string) error {
