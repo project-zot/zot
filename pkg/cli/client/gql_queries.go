@@ -25,6 +25,12 @@ func CVEResultForImage() GQLType {
 	}
 }
 
+func CVEDiffResult() GQLType {
+	return GQLType{
+		Name: "CVEDiffResult",
+	}
+}
+
 func PaginatedImagesResult() GQLType {
 	return GQLType{
 		Name: "PaginatedImagesResult",
@@ -48,6 +54,14 @@ func ImageListQuery() GQLQuery {
 		Name:       "ImageList",
 		Args:       []string{"repo", "requestedPage"},
 		ReturnType: PaginatedImagesResult(),
+	}
+}
+
+func CVEDiffListForImagesQuery() GQLQuery {
+	return GQLQuery{
+		Name:       "CVEDiffListForImages",
+		Args:       []string{"minuend", "subtrahend", "requestedPage", "searchedCVE", "excludedCVE"},
+		ReturnType: CVEDiffResult(),
 	}
 }
 

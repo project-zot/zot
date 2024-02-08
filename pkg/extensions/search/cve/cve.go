@@ -351,10 +351,10 @@ func filterCVEMap(cveMap map[string]cvemodel.CVE, searchedCVE, excludedCVE, seve
 	}
 }
 
-func filterCVEList(cveMap []cvemodel.CVE, searchedCVE, excludedCVE, severity string, pageFinder *CvePageFinder) {
+func filterCVEList(cveList []cvemodel.CVE, searchedCVE, excludedCVE, severity string, pageFinder *CvePageFinder) {
 	searchedCVE = strings.ToUpper(searchedCVE)
 
-	for _, cve := range cveMap {
+	for _, cve := range cveList {
 		if severity != "" && (cvemodel.CompareSeverities(cve.Severity, severity) != 0) {
 			continue
 		}

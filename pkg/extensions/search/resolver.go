@@ -290,7 +290,7 @@ func getCVEDiffListForImages(
 	excludedCVE string,
 	log log.Logger, //nolint:unparam // may be used by devs for debugging
 ) (*gql_generated.CVEDiffResult, error) {
-	minuend, err := checkImageInput(ctx, minuend, metaDB)
+	minuend, err := resolveImageData(ctx, minuend, metaDB)
 	if err != nil {
 		return nil, err
 	}
@@ -299,7 +299,7 @@ func getCVEDiffListForImages(
 	resultSubtrahend := gql_generated.ImageIdentifier{}
 
 	if subtrahend.Repo != "" {
-		subtrahend, err = checkImageInput(ctx, subtrahend, metaDB)
+		subtrahend, err = resolveImageData(ctx, subtrahend, metaDB)
 		if err != nil {
 			return nil, err
 		}
@@ -361,12 +361,13 @@ func getCVEDiffListForImages(
 
 	minuendRepoRef := minuend.Repo + "@" + deref(minuend.Digest, "")
 	subtrahendRepoRef := subtrahend.Repo + "@" + deref(subtrahend.Digest, "")
+	page := dderef(requestedPage)
 
 	diffCVEs, diffSummary, _, err := cveInfo.GetCVEDiffListForImages(ctx, minuendRepoRef, subtrahendRepoRef, searchedCVE,
 		excludedCVE, cvemodel.PageInput{
-			Limit:  deref(requestedPage.Limit, 0),
-			Offset: deref(requestedPage.Offset, 0),
-			SortBy: cvemodel.SortCriteria(deref(requestedPage.SortBy, gql_generated.SortCriteriaSeverity)),
+			Limit:  deref(page.Limit, 0),
+			Offset: deref(page.Offset, 0),
+			SortBy: cvemodel.SortCriteria(deref(page.SortBy, gql_generated.SortCriteriaSeverity)),
 		})
 	if err != nil {
 		return nil, err
@@ -445,7 +446,7 @@ func getIdentifierPlatform(platform *gql_generated.PlatformInput) *gql_generated
 }
 
 // rename idea: identify image from input.
-func checkImageInput(ctx context.Context, imageInput gql_generated.ImageInput, metaDB mTypes.MetaDB,
+func resolveImageData(ctx context.Context, imageInput gql_generated.ImageInput, metaDB mTypes.MetaDB,
 ) (gql_generated.ImageInput, error) {
 	if imageInput.Repo == "" {
 		return gql_generated.ImageInput{}, zerr.ErrEmptyRepoName
@@ -520,11 +521,7 @@ func isMatchingPlatform(platform ispec.Platform, platformInput gql_generated.Pla
 
 	arch := getArch(platform)
 
-	if arch == deref(platformInput.Arch, "") {
-		return true
-	}
-
-	return true
+	return arch == deref(platformInput.Arch, "")
 }
 
 func getArch(platform ispec.Platform) string {

@@ -636,19 +636,19 @@ input ImageInput {
     """
     Repo name of the image
     """
-    repo: String!
+    Repo: String!
     """
     The tag of the image
     """
-    tag: String!
+    Tag: String!
     """
     The digest of the image
     """
-    digest: String
+    Digest: String
     """
     The platform of the image
     """
-    platform: PlatformInput
+    Platform: PlatformInput
 }
 
 """

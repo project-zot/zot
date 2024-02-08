@@ -1077,6 +1077,20 @@ type mockService struct {
 	getFixedTagsForCVEGQLFn func(ctx context.Context, config SearchConfig, username, password,
 		imageName, cveID string,
 	) (*common.ImageListWithCVEFixedResponse, error)
+
+	getCVEDiffListGQLFn func(ctx context.Context, config SearchConfig, username, password string,
+		minuend, subtrahend ImageIdentifier,
+	) (*cveDiffListResp, error)
+}
+
+func (service mockService) getCVEDiffListGQL(ctx context.Context, config SearchConfig, username, password string,
+	minuend, subtrahend ImageIdentifier,
+) (*cveDiffListResp, error) {
+	if service.getCVEDiffListGQLFn != nil {
+		return service.getCVEDiffListGQLFn(ctx, config, username, password, minuend, subtrahend)
+	}
+
+	return &cveDiffListResp{}, nil
 }
 
 func (service mockService) getRepos(ctx context.Context, config SearchConfig, username,

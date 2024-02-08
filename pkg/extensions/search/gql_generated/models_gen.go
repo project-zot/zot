@@ -121,13 +121,13 @@ type ImageIdentifier struct {
 // ImageInput
 type ImageInput struct {
 	// Repo name of the image
-	Repo string `json:"repo"`
+	Repo string `json:"Repo"`
 	// The tag of the image
-	Tag string `json:"tag"`
+	Tag string `json:"Tag"`
 	// The digest of the image
-	Digest *string `json:"digest,omitempty"`
+	Digest *string `json:"Digest,omitempty"`
 	// The platform of the image
-	Platform *PlatformInput `json:"platform,omitempty"`
+	Platform *PlatformInput `json:"Platform,omitempty"`
 }
 
 // Details about a specific image, it is used by queries returning a list of images

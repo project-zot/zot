@@ -267,6 +267,52 @@ func SearchCVEForImageGQL(config SearchConfig, image, searchedCveID string) erro
 	return nil
 }
 
+func SearchCVEDiffList(config SearchConfig, minuend, subtrahend ImageIdentifier) error {
+	username, password := getUsernameAndPassword(config.User)
+
+	response, err := config.SearchService.getCVEDiffListGQL(context.Background(), config, username, password,
+		minuend, subtrahend)
+	if err != nil {
+		return err
+	}
+
+	cveDiffResult := response.Data.CveDiffResult
+
+	result := cveResult{
+		Data: cveData{
+			CVEListForImage: cveListForImage{
+				Tag:     cveDiffResult.Minuend.Tag,
+				CVEList: cveDiffResult.CVEList,
+				Summary: cveDiffResult.Summary,
+			},
+		},
+	}
+
+	var builder strings.Builder
+
+	if config.OutputFormat == defaultOutputFormat || config.OutputFormat == "" {
+		imageCVESummary := result.Data.CVEListForImage.Summary
+
+		statsStr := fmt.Sprintf("CRITICAL %d, HIGH %d, MEDIUM %d, LOW %d, UNKNOWN %d, TOTAL %d\n\n",
+			imageCVESummary.CriticalCount, imageCVESummary.HighCount, imageCVESummary.MediumCount,
+			imageCVESummary.LowCount, imageCVESummary.UnknownCount, imageCVESummary.Count)
+
+		fmt.Fprint(config.ResultWriter, statsStr)
+
+		printCVETableHeader(&builder)
+		fmt.Fprint(config.ResultWriter, builder.String())
+	}
+
+	out, err := result.string(config.OutputFormat)
+	if err != nil {
+		return err
+	}
+
+	fmt.Fprint(config.ResultWriter, out)
+
+	return nil
+}
+
 func SearchImagesByCVEIDGQL(config SearchConfig, repo, cveid string) error {
 	username, password := getUsernameAndPassword(config.User)
 	ctx, cancel := context.WithCancel(context.Background())

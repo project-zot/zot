@@ -112,6 +112,17 @@ type HistoryDescription struct {
 	EmptyLayer bool      `json:"emptyLayer"`
 }
 
+type OsArch struct {
+	Os, Arch string
+}
+
+type ImageIdentifier struct {
+	Repo     string
+	Tag      string
+	Digest   string
+	Platform OsArch
+}
+
 type Referrer struct {
 	MediaType    string       `json:"mediatype"`
 	ArtifactType string       `json:"artifacttype"`

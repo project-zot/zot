@@ -1940,19 +1940,19 @@ input ImageInput {
     """
     Repo name of the image
     """
-    repo: String!
+    Repo: String!
     """
     The tag of the image
     """
-    tag: String!
+    Tag: String!
     """
     The digest of the image
     """
-    digest: String
+    Digest: String
     """
     The platform of the image
     """
-    platform: PlatformInput
+    Platform: PlatformInput
 }
 
 """
@@ -10601,36 +10601,36 @@ func (ec *executionContext) unmarshalInputImageInput(ctx context.Context, obj in
 		asMap[k] = v
 	}
 
-	fieldsInOrder := [...]string{"repo", "tag", "digest", "platform"}
+	fieldsInOrder := [...]string{"Repo", "Tag", "Digest", "Platform"}
 	for _, k := range fieldsInOrder {
 		v, ok := asMap[k]
 		if !ok {
 			continue
 		}
 		switch k {
-		case "repo":
-			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("repo"))
+		case "Repo":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("Repo"))
 			data, err := ec.unmarshalNString2string(ctx, v)
 			if err != nil {
 				return it, err
 			}
 			it.Repo = data
-		case "tag":
-			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("tag"))
+		case "Tag":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("Tag"))
 			data, err := ec.unmarshalNString2string(ctx, v)
 			if err != nil {
 				return it, err
 			}
 			it.Tag = data
-		case "digest":
-			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("digest"))
+		case "Digest":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("Digest"))
 			data, err := ec.unmarshalOString2ᚖstring(ctx, v)
 			if err != nil {
 				return it, err
 			}
 			it.Digest = data
-		case "platform":
-			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("platform"))
+		case "Platform":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("Platform"))
 			data, err := ec.unmarshalOPlatformInput2ᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐPlatformInput(ctx, v)
 			if err != nil {
 				return it, err

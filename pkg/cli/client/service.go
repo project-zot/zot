@@ -48,6 +48,9 @@ type SearchService interface { //nolint:interfacebloat
 		baseImage string) (*common.BaseImageListResponse, error)
 	getReferrersGQL(ctx context.Context, config SearchConfig, username, password string,
 		repo, digest string) (*common.ReferrersResp, error)
+	getCVEDiffListGQL(ctx context.Context, config SearchConfig, username, password string,
+		minuend, subtrahend ImageIdentifier,
+	) (*cveDiffListResp, error)
 	globalSearchGQL(ctx context.Context, config SearchConfig, username, password string,
 		query string) (*common.GlobalSearch, error)
 
@@ -144,6 +147,46 @@ func (service searchService) getReferrersGQL(ctx context.Context, config SearchC
 	}
 
 	return result, nil
+}
+
+func (service searchService) getCVEDiffListGQL(ctx context.Context, config SearchConfig, username, password string,
+	minuend, subtrahend ImageIdentifier,
+) (*cveDiffListResp, error) {
+	minuendInput := getImageInput(minuend)
+	subtrahendInput := getImageInput(subtrahend)
+	query := fmt.Sprintf(`
+		{
+			CVEDiffListForImages( minuend: %s, subtrahend: %s ) {
+				Minuend {Repo Tag}
+				Subtrahend {Repo Tag}
+				CVEList {
+					Id Title Description Severity Reference 
+					PackageList {Name InstalledVersion FixedVersion}
+				} 
+				Summary {
+					Count UnknownCount LowCount MediumCount HighCount CriticalCount
+				} 
+				Page {TotalCount ItemCount}
+			}
+		}`, minuendInput, subtrahendInput)
+
+	result := &cveDiffListResp{}
+
+	err := service.makeGraphQLQuery(ctx, config, username, password, query, result)
+	if errResult := checkResultGraphQLQuery(ctx, err, result.Errors); errResult != nil {
+		return nil, errResult
+	}
+
+	return result, nil
+}
+
+func getImageInput(img ImageIdentifier) string {
+	platform := ""
+	if img.Platform != nil {
+		platform = fmt.Sprintf(`, Platform: {Os: "%s", Arch: "%s"}`, img.Platform.Os, img.Platform.Arch)
+	}
+
+	return fmt.Sprintf(`{Repo: "%s", Tag: "%s", Digest: "%s"%s}`, img.Repo, img.Tag, img.Digest, platform)
 }
 
 func (service searchService) globalSearchGQL(ctx context.Context, config SearchConfig, username, password string,
@@ -746,6 +789,22 @@ type cve struct {
 	PackageList []packageList `json:"PackageList"`
 }
 
+type cveDiffListResp struct {
+	Data   cveDiffResultsForImages `json:"data"`
+	Errors []common.ErrorGQL       `json:"errors"`
+}
+
+type cveDiffResultsForImages struct {
+	CveDiffResult cveDiffResult `json:"cveDiffListForImages"`
+}
+
+type cveDiffResult struct {
+	Minuend    ImageIdentifier                  `json:"minuend"`
+	Subtrahend ImageIdentifier                  `json:"subtrahend"`
+	CVEList    []cve                            `json:"cveList"`
+	Summary    common.ImageVulnerabilitySummary `json:"summary"`
+}
+
 //nolint:tagliatelle // graphQL schema
 type cveListForImage struct {
 	Tag     string                           `json:"Tag"`
@@ -755,7 +814,7 @@ type cveListForImage struct {
 
 //nolint:tagliatelle // graphQL schema
 type cveData struct {
-	CVEListForImage cveListForImage `json:"CVEListForImage"`
+	CVEListForImage cveListForImage `json:"cveListForImage"`
 }
 
 func (cve cveResult) string(format string) (string, error) {

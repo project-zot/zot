@@ -2150,6 +2150,12 @@ func TestCVEResolvers(t *testing.T) { //nolint:gocyclo
 			So(err, ShouldNotBeNil)
 		})
 
+		Convey("no ", func() {
+			minuend := gql_generated.ImageInput{Repo: "repo", Tag: "bad-tag"}
+			_, err := getCVEDiffListForImages(ctx, minuend, emptyImage, metaDB, cveInfo, getGQLPageInput(0, 0), "", "", log)
+			So(err, ShouldNotBeNil)
+		})
+
 		Convey("getImageSummary for subtrahend errors", func() {
 			metaDB.GetRepoMetaFn = func(ctx context.Context, repo string) (mTypes.RepoMeta, error) {
 				return mTypes.RepoMeta{}, ErrTestError
@@ -2654,6 +2660,69 @@ func TestExpandedRepoInfoErrors(t *testing.T) {
 
 		_, err := expandedRepoInfo(responseContext, "repo", mocks.MetaDBMock{}, mocks.CveInfoMock{}, log)
 		So(err, ShouldBeNil)
+	})
+}
+
+func TestUtils(t *testing.T) {
+	Convey("utils", t, func() {
+		Convey("", func() {
+			So(isMatchingPlatform(ispec.Platform{OS: "test"}, gql_generated.PlatformInput{Os: ref("t")}), ShouldBeFalse)
+			So(getArch(ispec.Platform{OS: "t", Architecture: "e", Variant: "st"}), ShouldResemble, "e/st")
+		})
+
+		Convey("checkImageInput", func() {
+			_, err := resolveImageData(context.Background(), gql_generated.ImageInput{Repo: "test"}, mocks.MetaDBMock{})
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("checkImageInput can't find index data", func() {
+			_, err := resolveImageData(context.Background(), gql_generated.ImageInput{
+				Repo: "test", Tag: "test", Digest: ref("dig"),
+			},
+				mocks.MetaDBMock{
+					GetRepoMetaFn: func(ctx context.Context, repo string) (mTypes.RepoMeta, error) {
+						return mTypes.RepoMeta{Tags: map[string]mTypes.Descriptor{
+							"test": {MediaType: ispec.MediaTypeImageIndex},
+						}}, nil
+					},
+					GetImageMetaFn: func(digest godigest.Digest) (mTypes.ImageMeta, error) {
+						return mTypes.ImageMeta{}, ErrTestError
+					},
+				})
+			So(err, ShouldNotBeNil)
+		})
+		Convey("checkImageInput image meta not found", func() {
+			_, err := resolveImageData(context.Background(), gql_generated.ImageInput{
+				Repo: "test", Tag: "test", Digest: ref("dig"),
+			},
+				mocks.MetaDBMock{
+					GetRepoMetaFn: func(ctx context.Context, repo string) (mTypes.RepoMeta, error) {
+						return mTypes.RepoMeta{Tags: map[string]mTypes.Descriptor{
+							"test": {MediaType: ispec.MediaTypeImageIndex},
+						}}, nil
+					},
+					GetImageMetaFn: func(digest godigest.Digest) (mTypes.ImageMeta, error) {
+						return mTypes.ImageMeta{}, nil
+					},
+				})
+			So(err, ShouldNotBeNil)
+		})
+		Convey("checkImageInput image meta bad media type", func() {
+			_, err := resolveImageData(context.Background(), gql_generated.ImageInput{
+				Repo: "test", Tag: "test", Digest: ref("dig"),
+			},
+				mocks.MetaDBMock{
+					GetRepoMetaFn: func(ctx context.Context, repo string) (mTypes.RepoMeta, error) {
+						return mTypes.RepoMeta{Tags: map[string]mTypes.Descriptor{
+							"test": {MediaType: "bad-type"},
+						}}, nil
+					},
+					GetImageMetaFn: func(digest godigest.Digest) (mTypes.ImageMeta, error) {
+						return mTypes.ImageMeta{}, nil
+					},
+				})
+			So(err, ShouldBeNil)
+		})
 	})
 }
 

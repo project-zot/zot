@@ -30,6 +30,7 @@ func NewCVECommand(searchService SearchService) *cobra.Command {
 	cvesCmd.AddCommand(NewCveForImageCommand(searchService))
 	cvesCmd.AddCommand(NewImagesByCVEIDCommand(searchService))
 	cvesCmd.AddCommand(NewFixedTagsCommand(searchService))
+	cvesCmd.AddCommand(NewCVEDiffCommand(searchService))
 
 	return cvesCmd
 }
