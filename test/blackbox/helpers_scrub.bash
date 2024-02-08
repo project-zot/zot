@@ -7,7 +7,8 @@ function add_test_files() {
 
 function delete_blob() {
     local zot_test_files=${BATS_FILE_TMPDIR}/zot/alpine
-    find ${zot_test_files}/blobs/sha256 -maxdepth 1 -type f -name "*" -print0 |
+    # Delete one of the blobs which is not of type json, meaning not a manifest/config
+    find ${zot_test_files}/blobs/sha256 -maxdepth 1 -type f -name "*" -exec sh -c 'file -b "$1" | grep -iqv "json"' sh {} \; -print0|
         sort -z -R |
         head -z -n 1 | xargs -0 rm
     ls -al ${zot_test_files}/blobs/sha256/
