@@ -5729,10 +5729,16 @@ func TestSyncWithDiffDigest(t *testing.T) {
 		// copy images so we have them before syncing, sync should not pull them again
 		srcStorageCtlr := ociutils.GetDefaultStoreController(destDir, log.NewLogger("debug", ""))
 
-		err := WriteImageToFileSystem(CreateDefaultImage(), "zot-test", "0.0.1", srcStorageCtlr)
+		// both default images are present in both upstream and downstream
+		image := CreateDefaultImage()
+
+		// original digest
+		originalManifestDigest := image.Descriptor().Digest
+
+		err := WriteImageToFileSystem(image, testImage, testImageTag, srcStorageCtlr)
 		So(err, ShouldBeNil)
 
-		err = WriteImageToFileSystem(CreateDefaultVulnerableImage(), "zot-cve-test", "0.0.1", srcStorageCtlr)
+		err = WriteImageToFileSystem(CreateDefaultVulnerableImage(), testCveImage, testImageTag, srcStorageCtlr)
 		So(err, ShouldBeNil)
 
 		destConfig.Storage.RootDirectory = destDir
@@ -5793,6 +5799,9 @@ func TestSyncWithDiffDigest(t *testing.T) {
 			panic(err)
 		}
 
+		modifiedUpstreamManifestDigest := godigest.FromBytes(manifestBody)
+		So(modifiedUpstreamManifestDigest, ShouldNotEqual, originalManifestDigest)
+
 		resp, err = resty.R().SetHeader("Content-type", "application/vnd.oci.image.manifest.v1+json").
 			SetBody(manifestBody).
 			Put(srcBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
@@ -5801,39 +5810,25 @@ func TestSyncWithDiffDigest(t *testing.T) {
 		So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
 
 		dcm.StartServer()
-
-		// watch .sync subdir, should be populated
-		done := make(chan bool)
-		var isPopulated bool
-		go func() {
-			for {
-				select {
-				case <-done:
-					return
-				default:
-					_, err := os.ReadDir(path.Join(destDir, testImage, ".sync"))
-					if err == nil {
-						isPopulated = true
-					}
-					time.Sleep(200 * time.Millisecond)
-				}
-			}
-		}()
-
 		defer dcm.StopServer()
 
 		test.WaitTillServerReady(destBaseURL)
 
-		resp, err = resty.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
-		So(err, ShouldBeNil)
-		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
-
+		// wait generator to finish generating tasks.
+		waitSyncFinish(dctlr.Config.Log.Output)
+		// wait till .sync temp subdir gets removed.
 		waitSync(destDir, testImage)
 
-		done <- true
-		So(isPopulated, ShouldBeTrue)
+		resp, err = resty.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
-		waitSyncFinish(dctlr.Config.Log.Output)
+		modifiedDownstreamManifestDigest := godigest.FromBytes(resp.Body())
+		// should differ from original.
+		So(modifiedDownstreamManifestDigest, ShouldNotEqual, originalManifestDigest)
+		// should be the same with the one we pushed to upstream.
+		So(modifiedDownstreamManifestDigest, ShouldEqual, modifiedUpstreamManifestDigest)
 	})
 }
 
@@ -6754,6 +6749,7 @@ func pushRepo(url, repoName string) godigest.Digest {
 	return digest
 }
 
+// will wait until .sync temp dir is removed and the image is moved into local imagestore.
 func waitSync(rootDir, repoName string) {
 	// wait for .sync subdirs to be removed
 	for {
@@ -6800,6 +6796,7 @@ func pushBlob(url string, repoName string, buf []byte) godigest.Digest {
 	return digest
 }
 
+// this is waiting for generator to finish working, it doesn't mean sync has finished though.
 func waitSyncFinish(logPath string) bool {
 	found, err := test.ReadLogFileAndSearchString(logPath,
 		"finished syncing all repos", 60*time.Second)
