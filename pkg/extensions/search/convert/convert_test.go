@@ -69,6 +69,9 @@ func TestLabels(t *testing.T) {
 		// Test various labels
 		labels := make(map[string]string)
 
+		created := convert.GetCreated(labels)
+		So(created, ShouldBeNil)
+
 		desc := convert.GetDescription(labels)
 		So(desc, ShouldEqual, "")
 
@@ -81,10 +84,15 @@ func TestLabels(t *testing.T) {
 		categories := convert.GetCategories(labels)
 		So(categories, ShouldEqual, "")
 
+		expectedCreatedTime := time.Date(2010, 1, 1, 12, 0, 0, 0, time.UTC)
+		labels[ispec.AnnotationCreated] = expectedCreatedTime.Format(time.RFC3339)
 		labels[ispec.AnnotationVendor] = "zot"
 		labels[ispec.AnnotationDescription] = "zot-desc"
 		labels[ispec.AnnotationLicenses] = "zot-license"
 		labels[convert.AnnotationLabels] = "zot-labels"
+
+		created = convert.GetCreated(labels)
+		So(*created, ShouldEqual, expectedCreatedTime)
 
 		desc = convert.GetDescription(labels)
 		So(desc, ShouldEqual, "zot-desc")
@@ -101,9 +109,13 @@ func TestLabels(t *testing.T) {
 		labels = make(map[string]string)
 
 		// Use diff key
+		labels[convert.LabelAnnotationCreated] = expectedCreatedTime.Format(time.RFC3339)
 		labels[convert.LabelAnnotationVendor] = "zot-vendor"
 		labels[convert.LabelAnnotationDescription] = "zot-label-desc"
 		labels[ispec.AnnotationLicenses] = "zot-label-license"
+
+		created = convert.GetCreated(labels)
+		So(*created, ShouldEqual, expectedCreatedTime)
 
 		desc = convert.GetDescription(labels)
 		So(desc, ShouldEqual, "zot-label-desc")
@@ -113,6 +125,14 @@ func TestLabels(t *testing.T) {
 
 		vendor = convert.GetVendor(labels)
 		So(vendor, ShouldEqual, "zot-vendor")
+
+		labels = make(map[string]string)
+
+		// Handle conversion errors
+		labels[ispec.AnnotationCreated] = "asd"
+
+		created = convert.GetCreated(labels)
+		So(created, ShouldBeNil)
 	})
 }
 
@@ -568,7 +588,13 @@ func TestIndexAnnotations(t *testing.T) {
 		metaDB, err := boltdb.New(driver, log.NewLogger("debug", ""))
 		So(err, ShouldBeNil)
 
+		defaultCreatedTime := *DefaultTimeRef()
+		configCreatedTime := time.Date(2009, 1, 1, 12, 0, 0, 0, time.UTC)
+		manifestCreatedTime := time.Date(2010, 1, 1, 12, 0, 0, 0, time.UTC)
+		indexCreatedTime := time.Date(2011, 1, 1, 12, 0, 0, 0, time.UTC)
+
 		configLabels := map[string]string{
+			ispec.AnnotationCreated:       configCreatedTime.Format(time.RFC3339),
 			ispec.AnnotationDescription:   "ConfigDescription",
 			ispec.AnnotationLicenses:      "ConfigLicenses",
 			ispec.AnnotationVendor:        "ConfigVendor",
@@ -579,6 +605,7 @@ func TestIndexAnnotations(t *testing.T) {
 		}
 
 		manifestAnnotations := map[string]string{
+			ispec.AnnotationCreated:       manifestCreatedTime.Format(time.RFC3339),
 			ispec.AnnotationDescription:   "ManifestDescription",
 			ispec.AnnotationLicenses:      "ManifestLicenses",
 			ispec.AnnotationVendor:        "ManifestVendor",
@@ -589,6 +616,7 @@ func TestIndexAnnotations(t *testing.T) {
 		}
 
 		indexAnnotations := map[string]string{
+			ispec.AnnotationCreated:       indexCreatedTime.Format(time.RFC3339),
 			ispec.AnnotationDescription:   "IndexDescription",
 			ispec.AnnotationLicenses:      "IndexLicenses",
 			ispec.AnnotationVendor:        "IndexVendor",
@@ -634,6 +662,7 @@ func TestIndexAnnotations(t *testing.T) {
 		imageSummary, _, err := convert.ImageIndex2ImageSummary(ctx, convert.GetFullImageMeta("tag", repoMeta,
 			imageMeta[indexWithAnnotations.DigestStr()]))
 		So(err, ShouldBeNil)
+		So(*imageSummary.LastUpdated, ShouldEqual, indexCreatedTime)
 		So(*imageSummary.Description, ShouldResemble, "IndexDescription")
 		So(*imageSummary.Licenses, ShouldResemble, "IndexLicenses")
 		So(*imageSummary.Title, ShouldResemble, "IndexTitle")
@@ -667,6 +696,7 @@ func TestIndexAnnotations(t *testing.T) {
 		imageSummary, _, err = convert.ImageIndex2ImageSummary(ctx, convert.GetFullImageMeta("tag", repoMeta,
 			imageMeta[digest]))
 		So(err, ShouldBeNil)
+		So(*imageSummary.LastUpdated, ShouldEqual, manifestCreatedTime)
 		So(*imageSummary.Description, ShouldResemble, "ManifestDescription")
 		So(*imageSummary.Licenses, ShouldResemble, "ManifestLicenses")
 		So(*imageSummary.Title, ShouldResemble, "ManifestTitle")
@@ -700,6 +730,7 @@ func TestIndexAnnotations(t *testing.T) {
 		imageSummary, _, err = convert.ImageIndex2ImageSummary(ctx, convert.GetFullImageMeta("tag", repoMeta,
 			imageMeta[digest]))
 		So(err, ShouldBeNil)
+		So(*imageSummary.LastUpdated, ShouldEqual, configCreatedTime)
 		So(*imageSummary.Description, ShouldResemble, "ConfigDescription")
 		So(*imageSummary.Licenses, ShouldResemble, "ConfigLicenses")
 		So(*imageSummary.Title, ShouldResemble, "ConfigTitle")
@@ -715,6 +746,7 @@ func TestIndexAnnotations(t *testing.T) {
 		indexWithMixAnnotations := CreateMultiarchWith().Images(
 			[]Image{
 				CreateImageWith().DefaultLayers().ImageConfig(ispec.Image{
+					Created: &defaultCreatedTime,
 					Config: ispec.ImageConfig{
 						Labels: map[string]string{
 							ispec.AnnotationDescription: "ConfigDescription",
@@ -730,6 +762,7 @@ func TestIndexAnnotations(t *testing.T) {
 			},
 		).Annotations(
 			map[string]string{
+				ispec.AnnotationCreated:       indexCreatedTime.Format(time.RFC3339),
 				ispec.AnnotationTitle:         "IndexTitle",
 				ispec.AnnotationDocumentation: "IndexDocumentation",
 				ispec.AnnotationSource:        "IndexSource",
@@ -754,6 +787,7 @@ func TestIndexAnnotations(t *testing.T) {
 		imageSummary, _, err = convert.ImageIndex2ImageSummary(ctx, convert.GetFullImageMeta("tag", repoMeta,
 			imageMeta[digest]))
 		So(err, ShouldBeNil)
+		So(*imageSummary.LastUpdated, ShouldEqual, indexCreatedTime)
 		So(*imageSummary.Description, ShouldResemble, "ConfigDescription")
 		So(*imageSummary.Licenses, ShouldResemble, "ConfigLicenses")
 		So(*imageSummary.Vendor, ShouldResemble, "ManifestVendor")
@@ -765,7 +799,12 @@ func TestIndexAnnotations(t *testing.T) {
 		err = metaDB.ResetDB()
 		So(err, ShouldBeNil)
 		//--------------------------------------------------------
-		indexWithNoAnnotations := CreateRandomMultiarch()
+		indexWithNoAnnotations := CreateMultiarchWith().Images(
+			[]Image{
+				CreateImageWith().RandomLayers(1, 10).DefaultConfig().Build(),
+				CreateImageWith().RandomLayers(1, 10).DefaultConfig().Build(),
+			},
+		).Build()
 
 		ctx, err = ociutils.InitializeTestMetaDB(ctx, metaDB, ociutils.Repo{
 			Name: "repo",
@@ -785,6 +824,7 @@ func TestIndexAnnotations(t *testing.T) {
 		imageSummary, _, err = convert.ImageIndex2ImageSummary(ctx, convert.GetFullImageMeta("tag", repoMeta,
 			imageMeta[digest]))
 		So(err, ShouldBeNil)
+		So(*imageSummary.LastUpdated, ShouldEqual, defaultCreatedTime)
 		So(*imageSummary.Description, ShouldBeBlank)
 		So(*imageSummary.Licenses, ShouldBeBlank)
 		So(*imageSummary.Vendor, ShouldBeBlank)

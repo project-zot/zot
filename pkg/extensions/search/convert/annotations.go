@@ -1,6 +1,8 @@
 package convert
 
 import (
+	"time"
+
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 )
 
@@ -18,6 +20,7 @@ const (
 
 type ImageAnnotations struct {
 	Description   string
+	Created       *time.Time
 	Licenses      string
 	Title         string
 	Documentation string
@@ -43,6 +46,17 @@ func GetAnnotationValue(annotations map[string]string, annotationKey, labelKey s
 	}
 
 	return value
+}
+
+func GetCreated(annotations map[string]string) *time.Time {
+	createdStr := GetAnnotationValue(annotations, ispec.AnnotationCreated, LabelAnnotationCreated)
+
+	created, err := time.Parse(time.RFC3339, createdStr)
+	if err != nil {
+		return nil
+	}
+
+	return &created
 }
 
 func GetDescription(annotations map[string]string) string {
@@ -82,6 +96,11 @@ func GetCategories(labels map[string]string) string {
 }
 
 func GetAnnotations(annotations, labels map[string]string) ImageAnnotations {
+	created := GetCreated(annotations)
+	if created == nil {
+		created = GetCreated(labels)
+	}
+
 	description := GetDescription(annotations)
 	if description == "" {
 		description = GetDescription(labels)
@@ -123,6 +142,7 @@ func GetAnnotations(annotations, labels map[string]string) ImageAnnotations {
 	}
 
 	return ImageAnnotations{
+		Created:       created,
 		Description:   description,
 		Title:         title,
 		Documentation: documentation,
@@ -138,6 +158,11 @@ func GetIndexAnnotations(
 	indexAnnotations map[string]string,
 	annotationsFromManifest *ImageAnnotations,
 ) ImageAnnotations {
+	created := GetCreated(indexAnnotations)
+	if created == nil {
+		created = annotationsFromManifest.Created
+	}
+
 	description := GetDescription(indexAnnotations)
 	if description == "" {
 		description = annotationsFromManifest.Description
@@ -179,6 +204,7 @@ func GetIndexAnnotations(
 	}
 
 	return ImageAnnotations{
+		Created:       created,
 		Description:   description,
 		Title:         title,
 		Documentation: documentation,
