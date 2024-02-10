@@ -39,13 +39,15 @@ func (cve *CVE) ContainsStr(str string) bool {
 		slices.ContainsFunc(cve.PackageList, func(pack Package) bool {
 			return strings.Contains(strings.ToUpper(pack.Name), str) ||
 				strings.Contains(strings.ToUpper(pack.FixedVersion), str) ||
-				strings.Contains(strings.ToUpper(pack.InstalledVersion), str)
+				strings.Contains(strings.ToUpper(pack.InstalledVersion), str) ||
+				strings.Contains(strings.ToUpper(pack.PackagePath), str)
 		})
 }
 
 //nolint:tagliatelle // graphQL schema
 type Package struct {
 	Name             string `json:"Name"`
+	PackagePath      string `json:"PackagePath"`
 	InstalledVersion string `json:"InstalledVersion"`
 	FixedVersion     string `json:"FixedVersion"`
 }

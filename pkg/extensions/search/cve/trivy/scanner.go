@@ -394,6 +394,13 @@ func (scanner Scanner) scanManifest(ctx context.Context, repo, digest string) (m
 				fixedVersion = "Not Specified"
 			}
 
+			var packagePath string
+			if vulnerability.PkgPath != "" {
+				packagePath = vulnerability.PkgPath
+			} else {
+				packagePath = "Not Specified"
+			}
+
 			_, ok := cveidMap[vulnerability.VulnerabilityID]
 			if ok {
 				cveDetailStruct := cveidMap[vulnerability.VulnerabilityID]
@@ -404,6 +411,7 @@ func (scanner Scanner) scanManifest(ctx context.Context, repo, digest string) (m
 					pkgList,
 					cvemodel.Package{
 						Name:             pkgName,
+						PackagePath:      packagePath,
 						InstalledVersion: installedVersion,
 						FixedVersion:     fixedVersion,
 					},
@@ -419,6 +427,7 @@ func (scanner Scanner) scanManifest(ctx context.Context, repo, digest string) (m
 					newPkgList,
 					cvemodel.Package{
 						Name:             pkgName,
+						PackagePath:      packagePath,
 						InstalledVersion: installedVersion,
 						FixedVersion:     fixedVersion,
 					},

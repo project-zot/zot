@@ -206,6 +206,84 @@ func TestVulnerableLayer(t *testing.T) {
 		So(cveMap, ShouldContainKey, "CVE-2023-3817")
 		So(cveMap, ShouldContainKey, "CVE-2023-3446")
 	})
+
+	Convey("Vulnerable layer with vulnerability in language-specific file", t, func() {
+		vulnerableLayer, err := GetLayerWithLanguageFileVulnerability()
+		So(err, ShouldBeNil)
+
+		created, err := time.Parse(time.RFC3339, "2024-02-15T09:56:01.500079786Z")
+		So(err, ShouldBeNil)
+
+		config := ispec.Image{
+			Created: &created,
+			Platform: ispec.Platform{
+				Architecture: "amd64",
+				OS:           "linux",
+			},
+			Config: ispec.ImageConfig{
+				Env: []string{"PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"},
+			},
+			RootFS: ispec.RootFS{
+				Type:    "layers",
+				DiffIDs: []godigest.Digest{"sha256:d789b0723f3e6e5064d612eb3c84071cc84a7cf7921d549642252c3295e5f937"},
+			},
+		}
+
+		img := CreateImageWith().
+			LayerBlobs([][]byte{vulnerableLayer}).
+			ImageConfig(config).
+			Build()
+
+		tempDir := t.TempDir()
+
+		log := log.NewLogger("debug", "")
+		imageStore := local.NewImageStore(tempDir, false, false,
+			log, monitoring.NewMetricsServer(false, log), nil, nil)
+
+		storeController := storage.StoreController{
+			DefaultStore: imageStore,
+		}
+
+		err = WriteImageToFileSystem(img, "repo", img.DigestStr(), storeController)
+		So(err, ShouldBeNil)
+
+		params := boltdb.DBParameters{
+			RootDir: tempDir,
+		}
+		boltDriver, err := boltdb.GetBoltDriver(params)
+		So(err, ShouldBeNil)
+
+		metaDB, err := boltdb.New(boltDriver, log)
+		So(err, ShouldBeNil)
+
+		err = meta.ParseStorage(metaDB, storeController, log)
+		So(err, ShouldBeNil)
+
+		scanner := trivy.NewScanner(storeController, metaDB, "ghcr.io/project-zot/trivy-db",
+			"ghcr.io/aquasecurity/trivy-java-db", log)
+
+		err = scanner.UpdateDB(context.Background())
+		So(err, ShouldBeNil)
+
+		cveMap, err := scanner.ScanImage(context.Background(), "repo@"+img.DigestStr())
+		So(err, ShouldBeNil)
+		t.Logf("cveMap: %v", cveMap)
+
+		// As of Feb 15 2024, there is 1 CVE in this layer:
+		So(len(cveMap), ShouldBeGreaterThanOrEqualTo, 1)
+		So(cveMap, ShouldContainKey, "CVE-2016-1000027")
+
+		cveData := cveMap["CVE-2016-1000027"]
+		vulnerablePackages := cveData.PackageList
+
+		// There is only 1 vulnerable package in this layer
+		So(len(vulnerablePackages), ShouldEqual, 1)
+		vulnerableSpringWebPackage := vulnerablePackages[0]
+		So(vulnerableSpringWebPackage.Name, ShouldEqual, "org.springframework:spring-web")
+		So(vulnerableSpringWebPackage.InstalledVersion, ShouldEqual, "5.3.31")
+		So(vulnerableSpringWebPackage.FixedVersion, ShouldEqual, "6.0.0")
+		So(vulnerableSpringWebPackage.PackagePath, ShouldEqual, "usr/local/artifacts/spring-web-5.3.31.jar")
+	})
 }
 
 func TestScannerErrors(t *testing.T) {

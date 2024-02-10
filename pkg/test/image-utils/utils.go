@@ -29,23 +29,34 @@ func GetLayerWithVulnerability() ([]byte, error) {
 	if vulnerableLayer != nil {
 		return vulnerableLayer, nil
 	}
+	// this is the path of the blob relative to the root of the zot folder
+	vulnBlobPath := "test/data/alpine/blobs/sha256/f56be85fc22e46face30e2c3de3f7fe7c15f8fd7c4e5add29d7f64b87abdaa09"
+	vulnerableLayer, err := GetLayerRelativeToProjectRoot(vulnBlobPath)
 
+	return vulnerableLayer, err
+}
+
+func GetLayerWithLanguageFileVulnerability() ([]byte, error) {
+	vulnBlobPath := "test/data/spring-web/blobs/sha256/506c47a6827e325a63d4b38c7ce656e07d5e98a09d748ec7ac989a45af7d6567"
+	vulnerableLayerWithLanguageFile, err := GetLayerRelativeToProjectRoot(vulnBlobPath)
+
+	return vulnerableLayerWithLanguageFile, err
+}
+
+func GetLayerRelativeToProjectRoot(pathToLayerBlob string) ([]byte, error) {
 	projectRootDir, err := tcommon.GetProjectRootDir()
 	if err != nil {
 		return nil, err
 	}
 
-	// this is the path of the blob relative to the root of the zot folder
-	vulnBlobPath := "test/data/alpine/blobs/sha256/f56be85fc22e46face30e2c3de3f7fe7c15f8fd7c4e5add29d7f64b87abdaa09"
+	absoluteBlobPath, _ := filepath.Abs(filepath.Join(projectRootDir, pathToLayerBlob))
 
-	absoluteVulnBlobPath, _ := filepath.Abs(filepath.Join(projectRootDir, vulnBlobPath))
-
-	vulnerableLayer, err := os.ReadFile(absoluteVulnBlobPath) //nolint: lll
+	layer, err := os.ReadFile(absoluteBlobPath) //nolint: lll
 	if err != nil {
 		return nil, err
 	}
 
-	return vulnerableLayer, nil
+	return layer, nil
 }
 
 func GetDefaultLayers() []Layer {

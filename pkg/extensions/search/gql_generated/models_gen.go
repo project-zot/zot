@@ -209,6 +209,8 @@ type ManifestSummary struct {
 type PackageInfo struct {
 	// Name of the package affected by a CVE
 	Name *string `json:"Name,omitempty"`
+	// Path where the vulnerable package is located
+	PackagePath *string `json:"PackagePath,omitempty"`
 	// Current version of the package, typically affected by the CVE
 	InstalledVersion *string `json:"InstalledVersion,omitempty"`
 	// Minimum version of the package in which the CVE is fixed

@@ -241,6 +241,7 @@ func getCVEListForImage(
 			pkgList = append(pkgList,
 				&gql_generated.PackageInfo{
 					Name:             &pkg.Name,
+					PackagePath:      &pkg.PackagePath,
 					InstalledVersion: &pkg.InstalledVersion,
 					FixedVersion:     &pkg.FixedVersion,
 				},
