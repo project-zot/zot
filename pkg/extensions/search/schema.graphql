@@ -637,6 +637,8 @@ type Query {
         searchedCVE: String
         "Search term that must not be present in the returned results"
         excludedCVE: String
+        "Severity of the CVEs that should be present in the returned results"
+        severity: String
     ): CVEResultForImage!
 
     """

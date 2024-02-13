@@ -21,7 +21,7 @@ import (
 type CveInfo interface {
 	GetImageListForCVE(ctx context.Context, repo, cveID string) ([]cvemodel.TagInfo, error)
 	GetImageListWithCVEFixed(ctx context.Context, repo, cveID string) ([]cvemodel.TagInfo, error)
-	GetCVEListForImage(ctx context.Context, repo, tag string, searchedCVE string, excludedCVE string,
+	GetCVEListForImage(ctx context.Context, repo, tag string, searchedCVE string, excludedCVE string, severity string,
 		pageinput cvemodel.PageInput) ([]cvemodel.CVE, cvemodel.ImageCVESummary, zcommon.PageInfo, error)
 	GetCVESummaryForImageMedia(ctx context.Context, repo, digestStr, mediaType string) (cvemodel.ImageCVESummary, error)
 }
@@ -329,10 +329,16 @@ func getConfigAndDigest(metaDB mTypes.MetaDB, manifestDigestStr string) (ispec.I
 	return manifestData.Manifests[0].Config, manifestDigest, err
 }
 
-func filterCVEList(cveMap map[string]cvemodel.CVE, searchedCVE, excludedCVE string, pageFinder *CvePageFinder) {
+func filterCVEList(
+	cveMap map[string]cvemodel.CVE, searchedCVE, excludedCVE, severity string, pageFinder *CvePageFinder,
+) {
 	searchedCVE = strings.ToUpper(searchedCVE)
 
 	for _, cve := range cveMap {
+		if severity != "" && (cvemodel.CompareSeverities(cve.Severity, severity) != 0) {
+			continue
+		}
+
 		if excludedCVE != "" && cve.ContainsStr(excludedCVE) {
 			continue
 		}
@@ -344,7 +350,7 @@ func filterCVEList(cveMap map[string]cvemodel.CVE, searchedCVE, excludedCVE stri
 }
 
 func (cveinfo BaseCveInfo) GetCVEListForImage(ctx context.Context, repo, ref string, searchedCVE string,
-	excludedCVE string, pageInput cvemodel.PageInput,
+	excludedCVE string, severity string, pageInput cvemodel.PageInput,
 ) (
 	[]cvemodel.CVE, cvemodel.ImageCVESummary, zcommon.PageInfo, error,
 ) {
@@ -373,7 +379,7 @@ func (cveinfo BaseCveInfo) GetCVEListForImage(ctx context.Context, repo, ref str
 		return []cvemodel.CVE{}, imageCVESummary, zcommon.PageInfo{}, err
 	}
 
-	filterCVEList(cveMap, searchedCVE, excludedCVE, pageFinder)
+	filterCVEList(cveMap, searchedCVE, excludedCVE, severity, pageFinder)
 
 	cveList, pageInfo := pageFinder.Page()
 
