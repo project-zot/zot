@@ -463,13 +463,18 @@ func ImageIndex2ImageSummary(ctx context.Context, fullImageMeta mTypes.FullImage
 
 	annotations := GetIndexAnnotations(fullImageMeta.Index.Annotations, manifestAnnotations)
 
+	imageLastUpdated := annotations.Created
+	if imageLastUpdated == nil {
+		imageLastUpdated = &indexLastUpdated
+	}
+
 	indexSummary := gql_generated.ImageSummary{
 		RepoName:      &repo,
 		Tag:           &tag,
 		Digest:        &indexDigestStr,
 		MediaType:     &indexMediaType,
 		Manifests:     manifestSummaries,
-		LastUpdated:   &indexLastUpdated,
+		LastUpdated:   imageLastUpdated,
 		IsSigned:      &isSigned,
 		SignatureInfo: signaturesInfo,
 		Size:          ref(strconv.FormatInt(indexSize, 10)),
@@ -493,18 +498,17 @@ func ImageManifest2ImageSummary(ctx context.Context, fullImageMeta mTypes.FullIm
 	manifest := fullImageMeta.Manifests[0]
 
 	var (
-		repoName         = fullImageMeta.Repo
-		tag              = fullImageMeta.Tag
-		configDigest     = manifest.Manifest.Config.Digest.String()
-		configSize       = manifest.Manifest.Config.Size
-		manifestDigest   = manifest.Digest.String()
-		manifestSize     = manifest.Size
-		mediaType        = manifest.Manifest.MediaType
-		artifactType     = zcommon.GetManifestArtifactType(fullImageMeta.Manifests[0].Manifest)
-		platform         = getPlatform(manifest.Config.Platform)
-		imageLastUpdated = zcommon.GetImageLastUpdated(manifest.Config)
-		downloadCount    = fullImageMeta.Statistics.DownloadCount
-		isSigned         = isImageSigned(fullImageMeta.Signatures)
+		repoName       = fullImageMeta.Repo
+		tag            = fullImageMeta.Tag
+		configDigest   = manifest.Manifest.Config.Digest.String()
+		configSize     = manifest.Manifest.Config.Size
+		manifestDigest = manifest.Digest.String()
+		manifestSize   = manifest.Size
+		mediaType      = manifest.Manifest.MediaType
+		artifactType   = zcommon.GetManifestArtifactType(fullImageMeta.Manifests[0].Manifest)
+		platform       = getPlatform(manifest.Config.Platform)
+		downloadCount  = fullImageMeta.Statistics.DownloadCount
+		isSigned       = isImageSigned(fullImageMeta.Signatures)
 	)
 
 	imageSize, imageBlobsMap := getImageBlobsInfo(manifestDigest, manifestSize, configDigest, configSize,
@@ -515,6 +519,12 @@ func ImageManifest2ImageSummary(ctx context.Context, fullImageMeta mTypes.FullIm
 	authors := annotations.Authors
 	if authors == "" {
 		authors = manifest.Config.Author
+	}
+
+	imageLastUpdated := annotations.Created
+	if imageLastUpdated == nil {
+		configCreated := zcommon.GetImageLastUpdated(manifest.Config)
+		imageLastUpdated = &configCreated
 	}
 
 	historyEntries, err := getAllHistory(manifest.Manifest, manifest.Config)
@@ -528,7 +538,7 @@ func ImageManifest2ImageSummary(ctx context.Context, fullImageMeta mTypes.FullIm
 	manifestSummary := gql_generated.ManifestSummary{
 		Digest:        &manifestDigest,
 		ConfigDigest:  &configDigest,
-		LastUpdated:   &imageLastUpdated,
+		LastUpdated:   imageLastUpdated,
 		Size:          &imageSizeStr,
 		IsSigned:      &isSigned,
 		SignatureInfo: signaturesInfo,
@@ -546,7 +556,7 @@ func ImageManifest2ImageSummary(ctx context.Context, fullImageMeta mTypes.FullIm
 		Digest:        &manifestDigest,
 		MediaType:     &mediaType,
 		Manifests:     []*gql_generated.ManifestSummary{&manifestSummary},
-		LastUpdated:   &imageLastUpdated,
+		LastUpdated:   imageLastUpdated,
 		IsSigned:      &isSigned,
 		SignatureInfo: signaturesInfo,
 		Size:          &imageSizeStr,
