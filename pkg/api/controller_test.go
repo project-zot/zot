@@ -3114,7 +3114,7 @@ func TestBearerAuth(t *testing.T) {
 			Get(baseURL + "/v2/")
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, http.StatusInternalServerError)
+		So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
 
 		resp, err = resty.R().SetHeader("Authorization",
 			fmt.Sprintf("Bearer %s", goodToken.AccessToken)).Options(baseURL + "/v2/")

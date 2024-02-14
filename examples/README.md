@@ -936,7 +936,7 @@ Configure each registry sync:
 				]
 			},
 			{
-				"urls": ["https://docker.io/library"],
+				"urls": ["https://index.docker.io"],
 				"onDemand": true,                     # doesn't have content, don't periodically pull, pull just on demand.
 				"tlsVerify": true,
 				"maxRetries": 3,                      

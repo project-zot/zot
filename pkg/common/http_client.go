@@ -1,18 +1,12 @@
 package common
 
 import (
-	"context"
 	"crypto/tls"
 	"crypto/x509"
-	"encoding/json"
-	"errors"
-	"io"
 	"net/http"
 	"os"
 	"path"
 	"path/filepath"
-
-	"zotregistry.dev/zot/pkg/log"
 )
 
 func GetTLSConfig(certsPath string, caCertPool *x509.CertPool) (*tls.Config, error) {
@@ -107,57 +101,7 @@ func CreateHTTPClient(verifyTLS bool, host string, certDir string) (*http.Client
 	}
 
 	return &http.Client{
-		Timeout:   httpTimeout,
 		Transport: htr,
+		Timeout:   httpTimeout,
 	}, nil
-}
-
-func MakeHTTPGetRequest(ctx context.Context, httpClient *http.Client,
-	username string, password string, resultPtr interface{},
-	blobURL string, mediaType string, log log.Logger,
-) ([]byte, string, int, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, blobURL, nil) //nolint
-	if err != nil {
-		return nil, "", 0, err
-	}
-
-	if mediaType != "" {
-		req.Header.Set("Accept", mediaType)
-	}
-
-	if username != "" && password != "" {
-		req.SetBasicAuth(username, password)
-	}
-
-	resp, err := httpClient.Do(req)
-	if err != nil {
-		log.Error().Str("errorType", TypeOf(err)).
-			Err(err).Str("blobURL", blobURL).Msg("couldn't get blob")
-
-		return nil, "", -1, err
-	}
-
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		log.Error().Str("errorType", TypeOf(err)).
-			Err(err).Str("blobURL", blobURL).Msg("couldn't get blob")
-
-		return nil, "", resp.StatusCode, err
-	}
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, "", resp.StatusCode, errors.New(string(body)) //nolint:goerr113
-	}
-
-	// read blob
-	if len(body) > 0 {
-		err = json.Unmarshal(body, &resultPtr)
-		if err != nil {
-			return body, "", resp.StatusCode, err
-		}
-	}
-
-	return body, resp.Header.Get("Content-Type"), resp.StatusCode, err
 }

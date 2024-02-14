@@ -63,6 +63,9 @@ type Remote interface {
 	GetRepoTags(repo string) ([]string, error)
 	// Get manifest content, mediaType, digest given an ImageReference
 	GetManifestContent(imageReference types.ImageReference) ([]byte, string, digest.Digest, error)
+	// In the case of public dockerhub images 'library' namespace is added to the repo names of images
+	// eg: alpine -> library/alpine
+	GetDockerRemoteRepo(repo string) string
 }
 
 // Local registry.
@@ -108,6 +111,11 @@ func (gen *TaskGenerator) Next() (scheduler.Task, error) {
 		gen.log.Info().Str("component", "sync").Msg("finished syncing all repos")
 		gen.done = true
 
+		return nil, nil
+	}
+
+	// a task with this repo is already running
+	if gen.lastRepo == repo {
 		return nil, nil
 	}
 
