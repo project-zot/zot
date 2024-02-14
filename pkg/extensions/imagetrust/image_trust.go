@@ -160,7 +160,7 @@ func IsResourceExistsException(err error) bool {
 func (imgTrustStore *ImageTrustStore) VerifySignature(
 	signatureType string, rawSignature []byte, sigKey string, manifestDigest godigest.Digest, imageMeta mTypes.ImageMeta,
 	repo string,
-) (string, time.Time, bool, error) {
+) (mTypes.Author, mTypes.ExpiryDate, mTypes.Validity, error) {
 	desc := ispec.Descriptor{
 		MediaType: imageMeta.MediaType,
 		Digest:    imageMeta.Digest,

@@ -165,7 +165,7 @@ func getImageSummary(ctx context.Context, repo, tag string, digest *string, skip
 		return nil, gqlerror.Errorf("can't find image: %s:%s", repo, tag)
 	}
 
-	repoMeta.Tags = map[string]mTypes.Descriptor{tag: manifestDescriptor}
+	repoMeta.Tags = map[mTypes.Tag]mTypes.Descriptor{tag: manifestDescriptor}
 
 	imageDigest := manifestDescriptor.Digest
 	if digest != nil {

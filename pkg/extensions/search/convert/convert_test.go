@@ -806,7 +806,7 @@ func TestConvertErrors(t *testing.T) {
 		Convey("RepoMeta2ExpandedRepoInfo", func() {
 			_, imgSums := convert.RepoMeta2ExpandedRepoInfo(ctx,
 				mTypes.RepoMeta{
-					Tags: map[string]mTypes.Descriptor{"tag": {MediaType: "bad-type", Digest: "digest"}},
+					Tags: map[mTypes.Tag]mTypes.Descriptor{"tag": {MediaType: "bad-type", Digest: "digest"}},
 				},
 				map[string]mTypes.ImageMeta{
 					"digest": {},

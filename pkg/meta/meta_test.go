@@ -526,11 +526,11 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 		Convey("Set/Get RepoMeta", func() {
 			err := metaDB.SetRepoMeta("repo", mTypes.RepoMeta{
 				Name: "repo",
-				Tags: map[string]mTypes.Descriptor{"tag": {Digest: "dig"}},
+				Tags: map[mTypes.Tag]mTypes.Descriptor{"tag": {Digest: "dig"}},
 
-				Statistics: map[string]mTypes.DescriptorStatistics{},
-				Signatures: map[string]mTypes.ManifestSignatures{},
-				Referrers:  map[string][]mTypes.ReferrerInfo{"digest": {{Digest: "dig"}}},
+				Statistics: map[mTypes.ImageDigest]mTypes.DescriptorStatistics{},
+				Signatures: map[mTypes.ImageDigest]mTypes.ManifestSignatures{},
+				Referrers:  map[mTypes.ImageDigest][]mTypes.ReferrerInfo{"digest": {{Digest: "dig"}}},
 			})
 			So(err, ShouldBeNil)
 			repoMeta, err := metaDB.GetRepoMeta(ctx, "repo")

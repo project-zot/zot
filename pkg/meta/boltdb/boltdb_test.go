@@ -28,7 +28,7 @@ type imgTrustStore struct{}
 func (its imgTrustStore) VerifySignature(
 	signatureType string, rawSignature []byte, sigKey string, manifestDigest godigest.Digest, imageMeta mTypes.ImageMeta,
 	repo string,
-) (string, time.Time, bool, error) {
+) (mTypes.Author, mTypes.ExpiryDate, mTypes.Validity, error) {
 	return "", time.Time{}, false, nil
 }
 
@@ -75,7 +75,7 @@ func TestWrapperErrors(t *testing.T) {
 			Convey("getProtoImageMeta errors", func() {
 				err := boltdbWrapper.SetRepoMeta("repo", mTypes.RepoMeta{
 					Name: "repo",
-					Tags: map[string]mTypes.Descriptor{
+					Tags: map[mTypes.Tag]mTypes.Descriptor{
 						"tag": {
 							MediaType: ispec.MediaTypeImageManifest,
 							Digest:    imageMeta.Digest.String(),
@@ -288,7 +288,7 @@ func TestWrapperErrors(t *testing.T) {
 			Convey("getProtoImageMeta fails", func() {
 				err := boltdbWrapper.SetRepoMeta("repo", mTypes.RepoMeta{
 					Name: "repo",
-					Tags: map[string]mTypes.Descriptor{
+					Tags: map[mTypes.Tag]mTypes.Descriptor{
 						"tag": {
 							MediaType: ispec.MediaTypeImageManifest,
 							Digest:    godigest.FromString("not-found").String(),
@@ -307,7 +307,7 @@ func TestWrapperErrors(t *testing.T) {
 
 				err = boltdbWrapper.SetRepoMeta("repo", mTypes.RepoMeta{
 					Name: "repo",
-					Tags: map[string]mTypes.Descriptor{
+					Tags: map[mTypes.Tag]mTypes.Descriptor{
 						"tag": {
 							MediaType: ispec.MediaTypeImageIndex,
 							Digest:    multiarchImageMeta.Digest.String(),
@@ -344,7 +344,7 @@ func TestWrapperErrors(t *testing.T) {
 					badImageDigest := godigest.FromString("bad-image-manifest")
 					err := boltdbWrapper.SetRepoMeta("repo", mTypes.RepoMeta{
 						Name: "repo",
-						Tags: map[string]mTypes.Descriptor{
+						Tags: map[mTypes.Tag]mTypes.Descriptor{
 							"bad-image-manifest": {
 								MediaType: ispec.MediaTypeImageManifest,
 								Digest:    badImageDigest.String(),
@@ -363,7 +363,7 @@ func TestWrapperErrors(t *testing.T) {
 					badIndexDigest := godigest.FromString("bad-image-manifest")
 					err := boltdbWrapper.SetRepoMeta("repo", mTypes.RepoMeta{
 						Name: "repo",
-						Tags: map[string]mTypes.Descriptor{
+						Tags: map[mTypes.Tag]mTypes.Descriptor{
 							"bad-image-index": {
 								MediaType: ispec.MediaTypeImageIndex,
 								Digest:    badIndexDigest.String(),
@@ -382,7 +382,7 @@ func TestWrapperErrors(t *testing.T) {
 					goodIndexBadManifestDigest := godigest.FromString("good-index-bad-manifests")
 					err := boltdbWrapper.SetRepoMeta("repo", mTypes.RepoMeta{
 						Name: "repo",
-						Tags: map[string]mTypes.Descriptor{
+						Tags: map[mTypes.Tag]mTypes.Descriptor{
 							"good-index-bad-manifests": {
 								MediaType: ispec.MediaTypeImageIndex,
 								Digest:    goodIndexBadManifestDigest.String(),
@@ -403,7 +403,7 @@ func TestWrapperErrors(t *testing.T) {
 				Convey("bad media type", func() {
 					err := boltdbWrapper.SetRepoMeta("repo", mTypes.RepoMeta{
 						Name: "repo",
-						Tags: map[string]mTypes.Descriptor{
+						Tags: map[mTypes.Tag]mTypes.Descriptor{
 							"mad-media-type": {
 								MediaType: "bad media type",
 								Digest:    godigest.FromString("dig").String(),
@@ -430,7 +430,7 @@ func TestWrapperErrors(t *testing.T) {
 			Convey("bad media Type fails", func() {
 				err := boltdbWrapper.SetRepoMeta("repo", mTypes.RepoMeta{
 					Name: "repo",
-					Tags: map[string]mTypes.Descriptor{
+					Tags: map[mTypes.Tag]mTypes.Descriptor{
 						"bad-repo-meta": {
 							MediaType: "bad media type",
 							Digest:    godigest.FromString("dig").String(),

@@ -118,8 +118,9 @@ func GetProtoImageIndexMeta(indexContent ispec.Index, size int64, digest string)
 	}
 }
 
-func GetProtoStatistics(stats map[string]mTypes.DescriptorStatistics) map[string]*proto_go.DescriptorStatistics {
-	results := map[string]*proto_go.DescriptorStatistics{}
+func GetProtoStatistics(stats map[mTypes.ImageDigest]mTypes.DescriptorStatistics,
+) map[mTypes.ImageDigest]*proto_go.DescriptorStatistics {
+	results := map[mTypes.ImageDigest]*proto_go.DescriptorStatistics{}
 
 	for digest, stat := range stats {
 		results[digest] = &proto_go.DescriptorStatistics{
@@ -335,8 +336,8 @@ func GetProtoTime(time *time.Time) *timestamppb.Timestamp {
 	return timestamppb.New(*time)
 }
 
-func GetProtoTags(tags map[string]mTypes.Descriptor) map[string]*proto_go.TagDescriptor {
-	resultMap := map[string]*proto_go.TagDescriptor{}
+func GetProtoTags(tags map[mTypes.Tag]mTypes.Descriptor) map[mTypes.Tag]*proto_go.TagDescriptor {
+	resultMap := map[mTypes.Tag]*proto_go.TagDescriptor{}
 
 	for tag, tagDescriptor := range tags {
 		resultMap[tag] = &proto_go.TagDescriptor{

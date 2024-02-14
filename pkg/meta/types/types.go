@@ -54,10 +54,6 @@ func GetLatestImageDigests(repoMetaList []RepoMeta) []string {
 	return digests
 }
 
-type (
-	ImageDigest = string
-)
-
 type MetaDB interface { //nolint:interfacebloat
 	UserDB
 
@@ -89,7 +85,7 @@ type MetaDB interface { //nolint:interfacebloat
 	// GetImageMeta returns the raw information about an image
 	GetImageMeta(digest godigest.Digest) (ImageMeta, error)
 
-	// GetMultipleRepoMeta returns information about all repositories as map[string]RepoMetadata filtered by the filter
+	// GetMultipleRepoMeta returns a list of all repos that match the given filter.
 	// function
 	GetMultipleRepoMeta(ctx context.Context, filter func(repoMeta RepoMeta) bool) (
 		[]RepoMeta, error)
@@ -123,7 +119,7 @@ type MetaDB interface { //nolint:interfacebloat
 	UpdateStatsOnDownload(repo string, reference string) error
 
 	// FilterImageMeta returns the image data for the given digests
-	FilterImageMeta(ctx context.Context, digests []string) (map[string]ImageMeta, error)
+	FilterImageMeta(ctx context.Context, digests []string) (map[ImageDigest]ImageMeta, error)
 
 	/*
 	   	RemoveRepoReference removes the tag from RepoMetadata if the reference is a tag,
@@ -190,11 +186,17 @@ type UserDB interface { //nolint:interfacebloat
 	DeleteUserAPIKey(ctx context.Context, id string) error
 }
 
+type (
+	Author     = string
+	ExpiryDate = time.Time
+	Validity   = bool
+)
+
 type ImageTrustStore interface {
 	VerifySignature(
 		signatureType string, rawSignature []byte, sigKey string, manifestDigest godigest.Digest, imageMeta ImageMeta,
 		repo string,
-	) (string, time.Time, bool, error)
+	) (Author, ExpiryDate, Validity, error)
 }
 
 // ImageMeta can store all data related to a image, multiarch or simple. Used for writing imaged to MetaDB.
@@ -214,13 +216,18 @@ type ManifestMeta struct {
 	Config   ispec.Image
 }
 
+type (
+	Tag         = string
+	ImageDigest = string
+)
+
 type RepoMeta struct {
 	Name string
-	Tags map[string]Descriptor
+	Tags map[Tag]Descriptor
 
-	Statistics map[string]DescriptorStatistics
-	Signatures map[string]ManifestSignatures
-	Referrers  map[string][]ReferrerInfo
+	Statistics map[ImageDigest]DescriptorStatistics
+	Signatures map[ImageDigest]ManifestSignatures
+	Referrers  map[ImageDigest][]ReferrerInfo
 
 	LastUpdatedImage *LastUpdatedImage
 	Platforms        []ispec.Platform
@@ -287,7 +294,11 @@ type DescriptorStatistics struct {
 	PushedBy          string
 }
 
-type ManifestSignatures map[string][]SignatureInfo
+type (
+	SignatureType = string
+)
+
+type ManifestSignatures map[SignatureType][]SignatureInfo
 
 type LayerInfo struct {
 	LayerDigest  string
@@ -309,11 +320,15 @@ type SignatureMetadata struct {
 	LayersInfo      []LayerInfo
 }
 
+type (
+	HashedAPIKey = string
+)
+
 type UserData struct {
 	StarredRepos    []string
 	BookmarkedRepos []string
 	Groups          []string
-	APIKeys         map[string]APIKeyDetails
+	APIKeys         map[HashedAPIKey]APIKeyDetails
 }
 
 type Filter struct {

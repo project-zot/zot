@@ -229,13 +229,13 @@ func TestRepoListWithNewestImage(t *testing.T) {
 					repos := []mTypes.RepoMeta{
 						{
 							Name: "repo1",
-							Tags: map[string]mTypes.Descriptor{
+							Tags: map[mTypes.Tag]mTypes.Descriptor{
 								"1.0.1": {
 									Digest:    img1.DigestStr(),
 									MediaType: ispec.MediaTypeImageManifest,
 								},
 							},
-							Signatures: map[string]mTypes.ManifestSignatures{
+							Signatures: map[mTypes.ImageDigest]mTypes.ManifestSignatures{
 								img1.DigestStr(): {
 									"cosign": []mTypes.SignatureInfo{
 										{SignatureManifestDigest: "testSignature", LayersInfo: []mTypes.LayerInfo{}},
@@ -254,13 +254,13 @@ func TestRepoListWithNewestImage(t *testing.T) {
 						},
 						{
 							Name: "repo2",
-							Tags: map[string]mTypes.Descriptor{
+							Tags: map[mTypes.Tag]mTypes.Descriptor{
 								"1.0.2": {
 									Digest:    img2.DigestStr(),
 									MediaType: ispec.MediaTypeImageManifest,
 								},
 							},
-							Signatures: map[string]mTypes.ManifestSignatures{
+							Signatures: map[mTypes.ImageDigest]mTypes.ManifestSignatures{
 								img1.DigestStr(): {
 									"cosign": []mTypes.SignatureInfo{
 										{SignatureManifestDigest: "testSignature", LayersInfo: []mTypes.LayerInfo{}},
@@ -395,9 +395,9 @@ func TestGetStarredRepos(t *testing.T) {
 }
 
 func getTestRepoMetaWithImages(repo string, images []Image) mTypes.RepoMeta {
-	tags := map[string]mTypes.Descriptor{"": {}}
-	statistics := map[string]mTypes.DescriptorStatistics{"": {}}
-	signatures := map[string]mTypes.ManifestSignatures{"": {}}
+	tags := map[mTypes.Tag]mTypes.Descriptor{"": {}}
+	statistics := map[mTypes.Tag]mTypes.DescriptorStatistics{"": {}}
+	signatures := map[mTypes.ImageDigest]mTypes.ManifestSignatures{"": {}}
 	referrers := map[string][]mTypes.ReferrerInfo{"": {}}
 
 	for i := range images {
@@ -542,7 +542,7 @@ func TestGetImageSummaryError(t *testing.T) {
 	Convey("getImageSummary", t, func() {
 		metaDB := mocks.MetaDBMock{
 			GetRepoMetaFn: func(ctx context.Context, repo string) (mTypes.RepoMeta, error) {
-				return mTypes.RepoMeta{Tags: map[string]mTypes.Descriptor{"tag": {}}}, nil
+				return mTypes.RepoMeta{Tags: map[mTypes.Tag]mTypes.Descriptor{"tag": {}}}, nil
 			},
 			FilterImageMetaFn: func(ctx context.Context, digests []string) (map[string]mTypes.ImageMeta, error) {
 				return nil, ErrTestError
@@ -597,7 +597,7 @@ func TestImageListError(t *testing.T) {
 					image := CreateDefaultImage()
 					repoMeta := mTypes.RepoMeta{
 						Name: "repo",
-						Tags: map[string]mTypes.Descriptor{image.DigestStr(): {
+						Tags: map[mTypes.Tag]mTypes.Descriptor{image.DigestStr(): {
 							Digest:    image.DigestStr(),
 							MediaType: ispec.MediaTypeImageManifest,
 						}},
@@ -944,7 +944,7 @@ func TestQueryResolverErrors(t *testing.T) {
 					GetRepoMetaFn: func(ctx context.Context, repo string) (mTypes.RepoMeta, error) {
 						return mTypes.RepoMeta{
 							Name: "repo",
-							Tags: map[string]mTypes.Descriptor{
+							Tags: map[mTypes.Tag]mTypes.Descriptor{
 								"tag": {Digest: image.DigestStr(), MediaType: ispec.MediaTypeImageManifest},
 							},
 						}, nil
@@ -1632,7 +1632,7 @@ func TestCVEResolvers(t *testing.T) { //nolint:gocyclo
 				pageInput, mocks.MetaDBMock{
 					GetRepoMetaFn: func(ctx context.Context, repo string) (mTypes.RepoMeta, error) {
 						return mTypes.RepoMeta{
-							Tags: map[string]mTypes.Descriptor{
+							Tags: map[mTypes.Tag]mTypes.Descriptor{
 								"1.1.0": {
 									Digest:    godigest.FromString("str").String(),
 									MediaType: ispec.MediaTypeImageManifest,
@@ -1893,7 +1893,7 @@ func TestMockedDerivedImageList(t *testing.T) {
 			mocks.MetaDBMock{
 				GetRepoMetaFn: func(ctx context.Context, repo string) (mTypes.RepoMeta, error) {
 					return mTypes.RepoMeta{
-						Tags: map[string]mTypes.Descriptor{
+						Tags: map[mTypes.Tag]mTypes.Descriptor{
 							"1.0.1": {
 								Digest:    image.DigestStr(),
 								MediaType: ispec.MediaTypeImageManifest,
@@ -1923,7 +1923,7 @@ func TestMockedDerivedImageList(t *testing.T) {
 			GetRepoMetaFn: func(ctx context.Context, repo string) (mTypes.RepoMeta, error) {
 				return mTypes.RepoMeta{
 					Name: "repo1",
-					Tags: map[string]mTypes.Descriptor{
+					Tags: map[mTypes.Tag]mTypes.Descriptor{
 						"1.0.1": {Digest: image.DigestStr(), MediaType: ispec.MediaTypeImageManifest},
 					},
 				}, nil
@@ -1979,7 +1979,7 @@ func TestMockedDerivedImageList(t *testing.T) {
 			GetRepoMetaFn: func(ctx context.Context, repo string) (mTypes.RepoMeta, error) {
 				return mTypes.RepoMeta{
 					Name: "repo1",
-					Tags: map[string]mTypes.Descriptor{
+					Tags: map[mTypes.Tag]mTypes.Descriptor{
 						"1.0.1": {Digest: image.DigestStr(), MediaType: ispec.MediaTypeImageManifest},
 					},
 				}, nil
@@ -2001,7 +2001,7 @@ func TestMockedDerivedImageList(t *testing.T) {
 				fullImageMetaList := []mTypes.FullImageMeta{}
 				repos := []mTypes.RepoMeta{{
 					Name: "repo1",
-					Tags: map[string]mTypes.Descriptor{
+					Tags: map[mTypes.Tag]mTypes.Descriptor{
 						"1.0.1": {Digest: image.DigestStr(), MediaType: ispec.MediaTypeImageManifest},
 						"1.0.2": {Digest: derivedImage.DigestStr(), MediaType: ispec.MediaTypeImageManifest},
 						"1.0.3": {Digest: derivedImage.DigestStr(), MediaType: ispec.MediaTypeImageManifest},
@@ -2084,7 +2084,7 @@ func TestMockedBaseImageList(t *testing.T) {
 			mocks.MetaDBMock{
 				GetRepoMetaFn: func(ctx context.Context, repo string) (mTypes.RepoMeta, error) {
 					return mTypes.RepoMeta{
-						Tags: map[string]mTypes.Descriptor{
+						Tags: map[mTypes.Tag]mTypes.Descriptor{
 							"1.0.2": {
 								Digest:    image.DigestStr(),
 								MediaType: ispec.MediaTypeImageManifest,
@@ -2112,7 +2112,7 @@ func TestMockedBaseImageList(t *testing.T) {
 			GetRepoMetaFn: func(ctx context.Context, repo string) (mTypes.RepoMeta, error) {
 				return mTypes.RepoMeta{
 					Name: "repo1",
-					Tags: map[string]mTypes.Descriptor{
+					Tags: map[mTypes.Tag]mTypes.Descriptor{
 						"1.0.2": {Digest: image.DigestStr(), MediaType: ispec.MediaTypeImageManifest},
 					},
 				}, nil
@@ -2162,7 +2162,7 @@ func TestMockedBaseImageList(t *testing.T) {
 			GetRepoMetaFn: func(ctx context.Context, repo string) (mTypes.RepoMeta, error) {
 				return mTypes.RepoMeta{
 					Name: "repo1",
-					Tags: map[string]mTypes.Descriptor{
+					Tags: map[mTypes.Tag]mTypes.Descriptor{
 						"1.0.2": {Digest: derivedImage.DigestStr(), MediaType: ispec.MediaTypeImageManifest},
 					},
 				}, nil
@@ -2175,7 +2175,7 @@ func TestMockedBaseImageList(t *testing.T) {
 				fullImageMetaList := []mTypes.FullImageMeta{}
 				repos := []mTypes.RepoMeta{{
 					Name: "repo1",
-					Tags: map[string]mTypes.Descriptor{
+					Tags: map[mTypes.Tag]mTypes.Descriptor{
 						"1.0.1": {Digest: image.DigestStr(), MediaType: ispec.MediaTypeImageManifest},
 						"1.0.3": {Digest: image.DigestStr(), MediaType: ispec.MediaTypeImageManifest},
 						"1.0.2": {Digest: derivedImage.DigestStr(), MediaType: ispec.MediaTypeImageManifest},
@@ -2257,7 +2257,7 @@ func TestMockedBaseImageList(t *testing.T) {
 			GetRepoMetaFn: func(ctx context.Context, repo string) (mTypes.RepoMeta, error) {
 				return mTypes.RepoMeta{
 					Name: "repo1",
-					Tags: map[string]mTypes.Descriptor{
+					Tags: map[mTypes.Tag]mTypes.Descriptor{
 						"1.0.2": {Digest: derivedImage.DigestStr(), MediaType: ispec.MediaTypeImageManifest},
 					},
 				}, nil
@@ -2270,7 +2270,7 @@ func TestMockedBaseImageList(t *testing.T) {
 				fullImageMetaList := []mTypes.FullImageMeta{}
 				repos := []mTypes.RepoMeta{{
 					Name: "repo1",
-					Tags: map[string]mTypes.Descriptor{
+					Tags: map[mTypes.Tag]mTypes.Descriptor{
 						"1.0.1": {Digest: image.DigestStr(), MediaType: ispec.MediaTypeImageManifest},
 						"1.0.2": {Digest: derivedImage.DigestStr(), MediaType: ispec.MediaTypeImageManifest},
 					},
