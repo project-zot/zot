@@ -73,6 +73,10 @@ type PackageInfo {
     """
     Name: String
     """
+    Path where the vulnerable package is located
+    """
+    PackagePath: String
+    """
     Current version of the package, typically affected by the CVE
     """
     InstalledVersion: String

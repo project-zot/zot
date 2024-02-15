@@ -25,6 +25,13 @@ func TestUtils(t *testing.T) {
 				PackageList: []cvemodel.Package{
 					{
 						Name:             "NameTest",
+						PackagePath:      "/usr/bin/artifacts/dummy.jar",
+						FixedVersion:     "FixedVersionTest",
+						InstalledVersion: "InstalledVersionTest",
+					},
+					{
+						Name:             "NameTest",
+						PackagePath:      "/usr/local/artifacts/dummy.gem",
 						FixedVersion:     "FixedVersionTest",
 						InstalledVersion: "InstalledVersionTest",
 					},
@@ -34,6 +41,10 @@ func TestUtils(t *testing.T) {
 			So(cve.ContainsStr("NameTest"), ShouldBeTrue)
 			So(cve.ContainsStr("FixedVersionTest"), ShouldBeTrue)
 			So(cve.ContainsStr("InstalledVersionTest"), ShouldBeTrue)
+			So(cve.ContainsStr("/usr/bin/artifacts/dummy.jar"), ShouldBeTrue)
+			So(cve.ContainsStr("dummy.jar"), ShouldBeTrue)
+			So(cve.ContainsStr("/usr/local/artifacts/dummy.gem"), ShouldBeTrue)
+			So(cve.ContainsStr("dummy.gem"), ShouldBeTrue)
 		})
 		Convey("getConfigAndDigest", func() {
 			_, _, err := getConfigAndDigest(mocks.MetaDBMock{}, "bad-digest")

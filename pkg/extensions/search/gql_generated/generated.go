@@ -145,6 +145,7 @@ type ComplexityRoot struct {
 		FixedVersion     func(childComplexity int) int
 		InstalledVersion func(childComplexity int) int
 		Name             func(childComplexity int) int
+		PackagePath      func(childComplexity int) int
 	}
 
 	PageInfo struct {
@@ -737,6 +738,13 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 
 		return e.complexity.PackageInfo.Name(childComplexity), true
 
+	case "PackageInfo.PackagePath":
+		if e.complexity.PackageInfo.PackagePath == nil {
+			break
+		}
+
+		return e.complexity.PackageInfo.PackagePath(childComplexity), true
+
 	case "PageInfo.ItemCount":
 		if e.complexity.PageInfo.ItemCount == nil {
 			break
@@ -1274,6 +1282,10 @@ type PackageInfo {
     Name of the package affected by a CVE
     """
     Name: String
+    """
+    Path where the vulnerable package is located
+    """
+    PackagePath: String
     """
     Current version of the package, typically affected by the CVE
     """
@@ -2749,6 +2761,8 @@ func (ec *executionContext) fieldContext_CVE_PackageList(ctx context.Context, fi
 			switch field.Name {
 			case "Name":
 				return ec.fieldContext_PackageInfo_Name(ctx, field)
+			case "PackagePath":
+				return ec.fieldContext_PackageInfo_PackagePath(ctx, field)
 			case "InstalledVersion":
 				return ec.fieldContext_PackageInfo_InstalledVersion(ctx, field)
 			case "FixedVersion":
@@ -5419,6 +5433,47 @@ func (ec *executionContext) _PackageInfo_Name(ctx context.Context, field graphql
 }
 
 func (ec *executionContext) fieldContext_PackageInfo_Name(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "PackageInfo",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type String does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _PackageInfo_PackagePath(ctx context.Context, field graphql.CollectedField, obj *PackageInfo) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_PackageInfo_PackagePath(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.PackagePath, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		return graphql.Null
+	}
+	res := resTmp.(*string)
+	fc.Result = res
+	return ec.marshalOString2ᚖstring(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_PackageInfo_PackagePath(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
 	fc = &graphql.FieldContext{
 		Object:     "PackageInfo",
 		Field:      field,
@@ -10318,6 +10373,8 @@ func (ec *executionContext) _PackageInfo(ctx context.Context, sel ast.SelectionS
 			out.Values[i] = graphql.MarshalString("PackageInfo")
 		case "Name":
 			out.Values[i] = ec._PackageInfo_Name(ctx, field, obj)
+		case "PackagePath":
+			out.Values[i] = ec._PackageInfo_PackagePath(ctx, field, obj)
 		case "InstalledVersion":
 			out.Values[i] = ec._PackageInfo_InstalledVersion(ctx, field, obj)
 		case "FixedVersion":

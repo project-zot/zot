@@ -227,7 +227,7 @@ func TestSearchCVECmd(t *testing.T) {
 		So(buff.String(), ShouldEqual, `{"Tag":"dummyImageName:tag","CVEList":`+
 			`[{"Id":"dummyCVEID","Severity":"HIGH","Title":"Title of that CVE",`+
 			`"Description":"Description of the CVE","PackageList":[{"Name":"packagename",`+
-			`"InstalledVersion":"installedver","FixedVersion":"fixedver"}]}],"Summary":`+
+			`"PackagePath":"","InstalledVersion":"installedver","FixedVersion":"fixedver"}]}],"Summary":`+
 			`{"maxSeverity":"HIGH","unknownCount":0,"lowCount":0,"mediumCount":0,"highCount":1,`+
 			`"criticalCount":0,"count":1}}`+"\n")
 		So(err, ShouldBeNil)
@@ -247,7 +247,7 @@ func TestSearchCVECmd(t *testing.T) {
 		str := space.ReplaceAllString(buff.String(), " ")
 		So(strings.TrimSpace(str), ShouldEqual, `--- tag: dummyImageName:tag cvelist: - id: dummyCVEID`+
 			` severity: HIGH title: Title of that CVE description: Description of the CVE packagelist: `+
-			`- name: packagename installedversion: installedver fixedversion: fixedver `+
+			`- name: packagename packagepath: "" installedversion: installedver fixedversion: fixedver `+
 			`summary: maxseverity: HIGH unknowncount: 0 lowcount: 0 mediumcount: 0 highcount: 1 criticalcount: 0 count: 1`)
 		So(err, ShouldBeNil)
 	})

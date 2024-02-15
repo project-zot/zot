@@ -308,7 +308,7 @@ func (service searchService) getCveByImageGQL(ctx context.Context, config Search
 			Tag
 			CVEList {
 				Id Title Severity Description
-				PackageList {Name InstalledVersion FixedVersion}
+				PackageList {Name PackagePath InstalledVersion FixedVersion}
 			}
 			Summary {
 				Count UnknownCount LowCount MediumCount HighCount CriticalCount MaxSeverity
@@ -732,6 +732,7 @@ type tagListResp struct {
 //nolint:tagliatelle // graphQL schema
 type packageList struct {
 	Name             string `json:"Name"`
+	PackagePath      string `json:"PackagePath"`
 	InstalledVersion string `json:"InstalledVersion"`
 	FixedVersion     string `json:"FixedVersion"`
 }

@@ -345,13 +345,33 @@ func TestSearchCVEForImageGQL(t *testing.T) {
 										},
 									},
 								},
+								{
+									ID:          "test-cve-id2",
+									Description: "Test CVE ID 2",
+									Title:       "Test CVE 2",
+									Severity:    "HIGH",
+									PackageList: []packageList{
+										{
+											Name:             "packagename",
+											PackagePath:      "/usr/bin/dummy.jar",
+											FixedVersion:     "fixedver",
+											InstalledVersion: "installedver",
+										},
+										{
+											Name:             "packagename",
+											PackagePath:      "/usr/bin/dummy.gem",
+											FixedVersion:     "fixedver",
+											InstalledVersion: "installedver",
+										},
+									},
+								},
 							},
 							Summary: common.ImageVulnerabilitySummary{
-								Count:         1,
+								Count:         2,
 								UnknownCount:  0,
 								LowCount:      0,
 								MediumCount:   0,
-								HighCount:     1,
+								HighCount:     2,
 								CriticalCount: 0,
 								MaxSeverity:   "HIGH",
 							},
@@ -363,14 +383,27 @@ func TestSearchCVEForImageGQL(t *testing.T) {
 
 		err := SearchCVEForImageGQL(searchConfig, "repo-test", "dummyCVEID")
 		So(err, ShouldBeNil)
+		bufferContent := buff.String()
+		bufferLines := strings.Split(bufferContent, "\n")
+
+		// Expected result - each row indicates a row of the table with reduced spaces
+		expected := []string{
+			"CRITICAL 0, HIGH 2, MEDIUM 0, LOW 0, UNKNOWN 0, TOTAL 2",
+			"",
+			"ID SEVERITY TITLE",
+			"dummyCVEID HIGH Title of that CVE",
+			"test-cve-id2 HIGH Test CVE 2",
+		}
+
 		space := regexp.MustCompile(`\s+`)
-		str := space.ReplaceAllString(buff.String(), " ")
-		actual := strings.TrimSpace(str)
-		So(actual, ShouldContainSubstring, "CRITICAL 0, HIGH 1, MEDIUM 0, LOW 0, UNKNOWN 0, TOTAL 1")
-		So(actual, ShouldContainSubstring, "dummyCVEID HIGH Title of that CVE")
+
+		for lineIndex := 0; lineIndex < len(expected); lineIndex++ {
+			line := space.ReplaceAllString(bufferLines[lineIndex], " ")
+			So(line, ShouldEqualTrimSpace, expected[lineIndex])
+		}
 	})
 
-	Convey("SearchCVEForImageGQL", t, func() {
+	Convey("SearchCVEForImageGQL with injected error", t, func() {
 		buff := bytes.NewBufferString("")
 		searchConfig := getMockSearchConfig(buff, mockService{
 			getCveByImageGQLFn: func(ctx context.Context, config SearchConfig, username string, password string,
