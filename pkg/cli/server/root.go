@@ -861,10 +861,32 @@ func readLDAPCredentials(ldapConfigPath string) (config.LDAPCredentials, error) 
 
 	var ldapCredentials config.LDAPCredentials
 
-	if err := viperInstance.UnmarshalExact(&ldapCredentials); err != nil {
+	metaData := &mapstructure.Metadata{}
+	if err := viperInstance.UnmarshalExact(&ldapCredentials, metadataConfig(metaData)); err != nil {
 		log.Error().Err(err).Msg("failed to unmarshal ldap credentials config")
 
 		return config.LDAPCredentials{}, err
+	}
+
+	if len(metaData.Keys) == 0 {
+		log.Error().Err(zerr.ErrBadConfig).
+			Msg("failed to load ldap credentials config due to the absence of any key:value pair")
+
+		return config.LDAPCredentials{}, zerr.ErrBadConfig
+	}
+
+	if len(metaData.Unused) > 0 {
+		log.Error().Err(zerr.ErrBadConfig).Strs("keys", metaData.Unused).
+			Msg("failed to load ldap credentials config due to unknown keys")
+
+		return config.LDAPCredentials{}, zerr.ErrBadConfig
+	}
+
+	if len(metaData.Unset) > 0 {
+		log.Error().Err(zerr.ErrBadConfig).Strs("keys", metaData.Unset).
+			Msg("failed to load ldap credentials config due to unset keys")
+
+		return config.LDAPCredentials{}, zerr.ErrBadConfig
 	}
 
 	return ldapCredentials, nil
