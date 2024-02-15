@@ -39,7 +39,6 @@ jobs:
         run: |
           cd $GITHUB_WORKSPACE
           go mod download
-      - uses: ./.github/actions/setup-localstack
       - name: run verify-config
         run: |
           cd $GITHUB_WORKSPACE
