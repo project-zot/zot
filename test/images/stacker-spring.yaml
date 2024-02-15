@@ -1,0 +1,6 @@
+spring-test:
+  from:
+    type: scratch
+  import:
+    - path: "https://repo1.maven.org/maven2/org/springframework/spring-web/5.3.31/spring-web-5.3.31.jar"
+      dest: /usr/local/artifacts/
