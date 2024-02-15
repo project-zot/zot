@@ -1,0 +1,31 @@
+build-java-test:
+  from:
+    type: docker
+    url: docker://zothub.io/c3/ubuntu/openj9-devel-amd64:11
+  import:
+    - test.java
+  run: |
+    . /etc/profile
+    env # export PATH=$PATH:/bin:/usr/bin
+    javac -version
+    java -version
+    mkdir /workspace
+    cp /stacker/test.java /workspace/
+    cd /workspace/
+    mkdir META-INF
+    echo "Main-Class: test" > META-INF/MANIFEST.MF
+    javac test.java
+    ls
+    java test
+    jar cmvf META-INF/MANIFEST.MF test.jar test.class
+    ls
+    jar tf test.jar
+    java -jar test.jar
+  build_only: true
+
+java-test:
+  from:
+    type: scratch
+  import:
+    path: stacker://build-java-test/workspace/
+    dest: /
