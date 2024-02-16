@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -856,7 +857,7 @@ func readLDAPCredentials(ldapConfigPath string) (config.LDAPCredentials, error) 
 	if err := viperInstance.ReadInConfig(); err != nil {
 		log.Error().Err(err).Msg("failed to read configuration")
 
-		return config.LDAPCredentials{}, err
+		return config.LDAPCredentials{}, errors.Join(zerr.ErrBadConfig, err)
 	}
 
 	var ldapCredentials config.LDAPCredentials
@@ -865,7 +866,7 @@ func readLDAPCredentials(ldapConfigPath string) (config.LDAPCredentials, error) 
 	if err := viperInstance.UnmarshalExact(&ldapCredentials, metadataConfig(metaData)); err != nil {
 		log.Error().Err(err).Msg("failed to unmarshal ldap credentials config")
 
-		return config.LDAPCredentials{}, err
+		return config.LDAPCredentials{}, errors.Join(zerr.ErrBadConfig, err)
 	}
 
 	if len(metaData.Keys) == 0 {

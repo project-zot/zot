@@ -1275,7 +1275,7 @@ storage:
 		So(err, ShouldBeNil)
 	})
 
-	Convey("Test verify bad ldap config", t, func(c C) {
+	Convey("Test verify bad ldap config: key is missing", t, func(c C) {
 		tmpFile, err := os.CreateTemp("", "zot-test*.json")
 		So(err, ShouldBeNil)
 		defer os.Remove(tmpFile.Name())
@@ -1288,6 +1288,84 @@ storage:
 		content := []byte(`{
     		"bindPassword":"ldap-searcher-password"
 		}`)
+
+		_, err = tmpCredsFile.Write(content)
+		So(err, ShouldBeNil)
+		err = tmpCredsFile.Close()
+		So(err, ShouldBeNil)
+
+		content = []byte(fmt.Sprintf(`{ "distSpecVersion": "1.1.0-dev", 
+			"storage": { "rootDirectory": "/tmp/zot" }, "http": { "address": "127.0.0.1", "port": "8080", 
+			"auth": { "ldap": { "credentialsFile": "%v", "address": "ldap.example.org", "port": 389, 
+			"startTLS": false, "baseDN": "ou=Users,dc=example,dc=org", 
+			"userAttribute": "uid", "userGroupAttribute": "memberOf", "skipVerify": true, "subtreeSearch": true }, 
+			"failDelay": 5 } }, "log": { "level": "debug" } }`,
+			tmpCredsFile.Name()),
+		)
+
+		_, err = tmpFile.Write(content)
+		So(err, ShouldBeNil)
+		err = tmpFile.Close()
+		So(err, ShouldBeNil)
+
+		os.Args = []string{"cli_test", "verify", tmpFile.Name()}
+		err = cli.NewServerRootCmd().Execute()
+		So(err, ShouldNotBeNil)
+		So(err.Error(), ShouldContainSubstring, "invalid server config")
+	})
+
+	Convey("Test verify bad ldap config: unused key", t, func(c C) {
+		tmpFile, err := os.CreateTemp("", "zot-test*.json")
+		So(err, ShouldBeNil)
+		defer os.Remove(tmpFile.Name())
+
+		tmpCredsFile, err := os.CreateTemp("", "zot-cred*.json")
+		So(err, ShouldBeNil)
+		defer os.Remove(tmpCredsFile.Name())
+
+		// `bindDN` key is missing
+		content := []byte(`{
+    		"bindDN":"cn=ldap-searcher,ou=Users,dc=example,dc=org",
+    		"bindPassword":"ldap-searcher-password",
+			"extraKey": "extraValue"
+		}`)
+
+		_, err = tmpCredsFile.Write(content)
+		So(err, ShouldBeNil)
+		err = tmpCredsFile.Close()
+		So(err, ShouldBeNil)
+
+		content = []byte(fmt.Sprintf(`{ "distSpecVersion": "1.1.0-dev", 
+			"storage": { "rootDirectory": "/tmp/zot" }, "http": { "address": "127.0.0.1", "port": "8080", 
+			"auth": { "ldap": { "credentialsFile": "%v", "address": "ldap.example.org", "port": 389, 
+			"startTLS": false, "baseDN": "ou=Users,dc=example,dc=org", 
+			"userAttribute": "uid", "userGroupAttribute": "memberOf", "skipVerify": true, "subtreeSearch": true }, 
+			"failDelay": 5 } }, "log": { "level": "debug" } }`,
+			tmpCredsFile.Name()),
+		)
+
+		_, err = tmpFile.Write(content)
+		So(err, ShouldBeNil)
+		err = tmpFile.Close()
+		So(err, ShouldBeNil)
+
+		os.Args = []string{"cli_test", "verify", tmpFile.Name()}
+		err = cli.NewServerRootCmd().Execute()
+		So(err, ShouldNotBeNil)
+		So(err.Error(), ShouldContainSubstring, "invalid server config")
+	})
+
+	Convey("Test verify bad ldap config: no keys set", t, func(c C) {
+		tmpFile, err := os.CreateTemp("", "zot-test*.json")
+		So(err, ShouldBeNil)
+		defer os.Remove(tmpFile.Name())
+
+		tmpCredsFile, err := os.CreateTemp("", "zot-cred*.json")
+		So(err, ShouldBeNil)
+		defer os.Remove(tmpCredsFile.Name())
+
+		// `bindDN` key is missing
+		content := []byte(``)
 
 		_, err = tmpCredsFile.Write(content)
 		So(err, ShouldBeNil)
