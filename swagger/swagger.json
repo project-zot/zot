@@ -8,7 +8,7 @@
             "name": "Apache 2.0",
             "url": "http://www.apache.org/licenses/LICENSE-2.0.html"
         },
-        "version": "v1.1.0-dev"
+        "version": "v1.1.0"
     },
     "paths": {
         "/oras/artifacts/v1/{name}/manifests/{digest}/referrers": {

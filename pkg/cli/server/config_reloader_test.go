@@ -37,7 +37,7 @@ func TestConfigReloader(t *testing.T) {
 		defer os.Remove(logFile.Name()) // clean up
 
 		content := fmt.Sprintf(`{
-			"distSpecVersion": "1.1.0-dev",
+			"distSpecVersion": "1.1.0",
 			"storage": {
 			  "rootDirectory": "%s"
 			},
@@ -95,7 +95,7 @@ func TestConfigReloader(t *testing.T) {
 		test.WaitTillServerReady(baseURL)
 
 		content = fmt.Sprintf(`{
-			"distSpecVersion": "1.1.0-dev",
+			"distSpecVersion": "1.1.0",
 			"storage": {
 			  "rootDirectory": "%s"
 			},
@@ -168,7 +168,7 @@ func TestConfigReloader(t *testing.T) {
 		defer os.Remove(logFile.Name()) // clean up
 
 		content := fmt.Sprintf(`{
-				"distSpecVersion": "1.1.0-dev",
+				"distSpecVersion": "1.1.0",
 				"storage": {
 					"rootDirectory": "%s",
 					"gc": false,
@@ -211,7 +211,7 @@ func TestConfigReloader(t *testing.T) {
 		test.WaitTillServerReady(baseURL)
 
 		content = fmt.Sprintf(`{
-			"distSpecVersion": "1.1.0-dev",
+			"distSpecVersion": "1.1.0",
 			"storage": {
 				"rootDirectory": "%s",
 				"gc": true,
@@ -274,7 +274,7 @@ func TestConfigReloader(t *testing.T) {
 		defer os.Remove(logFile.Name()) // clean up
 
 		content := fmt.Sprintf(`{
-				"distSpecVersion": "1.1.0-dev",
+				"distSpecVersion": "1.1.0",
 				"storage": {
 					"rootDirectory": "%s"
 				},
@@ -329,7 +329,7 @@ func TestConfigReloader(t *testing.T) {
 		test.WaitTillServerReady(baseURL)
 
 		content = fmt.Sprintf(`{
-			"distSpecVersion": "1.1.0-dev",
+			"distSpecVersion": "1.1.0",
 			"storage": {
 				"rootDirectory": "%s"
 			},
@@ -406,7 +406,7 @@ func TestConfigReloader(t *testing.T) {
 		defer os.Remove(logFile.Name()) // clean up
 
 		content := fmt.Sprintf(`{
-				"distSpecVersion": "1.1.0-dev",
+				"distSpecVersion": "1.1.0",
 				"storage": {
 					"rootDirectory": "%s"
 				},
@@ -451,7 +451,7 @@ func TestConfigReloader(t *testing.T) {
 		test.WaitTillServerReady(baseURL)
 
 		content = fmt.Sprintf(`{
-			"distSpecVersion": "1.1.0-dev",
+			"distSpecVersion": "1.1.0",
 			"storage": {
 				"rootDirectory": "%s"
 			},
@@ -521,7 +521,7 @@ func TestConfigReloader(t *testing.T) {
 		defer os.Remove(logFile.Name()) // clean up
 
 		content := fmt.Sprintf(`{
-				"distSpecVersion": "1.1.0-dev",
+				"distSpecVersion": "1.1.0",
 				"storage": {
 					"rootDirectory": "%s"
 				},

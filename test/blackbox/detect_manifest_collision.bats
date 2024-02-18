@@ -34,7 +34,7 @@ function setup_file() {
     htpasswd -Bbn ${AUTH_USER} ${AUTH_PASS} >> ${zot_htpasswd_file}
     cat > ${zot_config_file}<<EOF
 {
-    "distSpecVersion": "1.1.0-dev",
+    "distSpecVersion": "1.1.0",
     "storage": {
         "rootDirectory": "${zot_root_dir}"
     },

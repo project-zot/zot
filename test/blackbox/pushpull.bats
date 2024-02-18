@@ -35,7 +35,7 @@ function setup_file() {
     echo ${zot_port} > ${BATS_FILE_TMPDIR}/zot.port
     cat > ${zot_config_file}<<EOF
 {
-    "distSpecVersion": "1.1.0-dev",
+    "distSpecVersion": "1.1.0",
     "storage": {
         "rootDirectory": "${zot_root_dir}"
     },

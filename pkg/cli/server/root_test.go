@@ -78,7 +78,7 @@ func TestServe(t *testing.T) {
 
 			// missing storage config should result in an error in Controller.Init()
 			content := []byte(`{
-				"distSpecVersion": "1.1.0-dev",
+				"distSpecVersion": "1.1.0",
 				"http": {
 					"address":"127.0.0.1",
 					"port":"8080"
@@ -125,7 +125,7 @@ func TestVerify(t *testing.T) {
 		tmpfile, err := os.CreateTemp("", "zot-test*")
 		So(err, ShouldBeNil)
 		defer os.Remove(tmpfile.Name()) // clean up
-		content := []byte(`{"distSpecVersion":"1.1.0-dev","storage":{"rootDirectory":"/tmp/zot"},
+		content := []byte(`{"distSpecVersion":"1.1.0","storage":{"rootDirectory":"/tmp/zot"},
 							"http":{"address":"127.0.0.1","port":"8080","realm":"zot"},
 							"log":{"level":"debug"}}`)
 		_, err = tmpfile.Write(content)
@@ -142,7 +142,7 @@ func TestVerify(t *testing.T) {
 		So(err, ShouldBeNil)
 		defer os.Remove(tmpfile.Name()) // clean up
 		content := []byte(`
-distspecversion: 1.1.0-dev
+distspecversion: 1.1.0
 http:
   address: 127.0.0.1
   port: 8080
@@ -556,7 +556,7 @@ storage:
 		So(err, ShouldBeNil)
 		defer os.Remove(tmpfile.Name()) // clean up
 		content := []byte(`{
-			"distSpecVersion": "1.1.0-dev",
+			"distSpecVersion": "1.1.0",
 			"storage": {
 				"rootDirectory": "/tmp/zot",
 				"gc": true,
@@ -604,7 +604,7 @@ storage:
 		So(err, ShouldBeNil)
 		defer os.Remove(tmpfile.Name()) // clean up
 		content := []byte(`{
-			"distSpecVersion": "1.1.0-dev",
+			"distSpecVersion": "1.1.0",
 			"storage": {
 				"rootDirectory": "/tmp/zot",
 				"gc": true,
@@ -1105,7 +1105,7 @@ storage:
 		tmpfile, err := os.CreateTemp("", "zot-test*.json")
 		So(err, ShouldBeNil)
 		defer os.Remove(tmpfile.Name()) // clean up
-		content := []byte(`{"distSpecVersion":"1.1.0-dev","storage":{"rootDirectory":"/tmp/zot"},
+		content := []byte(`{"distSpecVersion":"1.1.0","storage":{"rootDirectory":"/tmp/zot"},
 							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
 							"auth":{"openid":{"providers":{"oidc":{"issuer":"http://127.0.0.1:5556/dex"}}}}},
 							"log":{"level":"debug"}}`)
@@ -1122,7 +1122,7 @@ storage:
 		tmpfile, err := os.CreateTemp("", "zot-test*.json")
 		So(err, ShouldBeNil)
 		defer os.Remove(tmpfile.Name()) // clean up
-		content := []byte(`{"distSpecVersion":"1.1.0-dev","storage":{"rootDirectory":"/tmp/zot"},
+		content := []byte(`{"distSpecVersion":"1.1.0","storage":{"rootDirectory":"/tmp/zot"},
 							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
 							"auth":{"openid":{"providers":{"github":{"clientid":"client_id"}}}}},
 							"log":{"level":"debug"}}`)
@@ -1139,7 +1139,7 @@ storage:
 		tmpfile, err := os.CreateTemp("", "zot-test*.json")
 		So(err, ShouldBeNil)
 		defer os.Remove(tmpfile.Name()) // clean up
-		content := []byte(`{"distSpecVersion":"1.1.0-dev","storage":{"rootDirectory":"/tmp/zot"},
+		content := []byte(`{"distSpecVersion":"1.1.0","storage":{"rootDirectory":"/tmp/zot"},
 							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
 							"auth":{"openid":{"providers":{"unsupported":{"issuer":"http://127.0.0.1:5556/dex"}}}}},
 							"log":{"level":"debug"}}`)
@@ -1156,7 +1156,7 @@ storage:
 		tmpfile, err := os.CreateTemp("", "zot-test*.json")
 		So(err, ShouldBeNil)
 		defer os.Remove(tmpfile.Name()) // clean up
-		content := []byte(`{"distSpecVersion":"1.1.0-dev","storage":{"rootDirectory":"/tmp/zot"},
+		content := []byte(`{"distSpecVersion":"1.1.0","storage":{"rootDirectory":"/tmp/zot"},
 							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
 							"auth":{"openid":{"providers":{"oidc":{"issuer":"http://127.0.0.1:5556/dex",
 						    "clientid":"client_id","scopes":["openid"]}}}}},
@@ -1245,7 +1245,7 @@ func TestApiKeyConfig(t *testing.T) {
 		So(err, ShouldBeNil)
 		defer os.Remove(tmpfile.Name())
 
-		content := []byte(`{"distSpecVersion":"1.1.0-dev","storage":{"rootDirectory":"/tmp/zot"},
+		content := []byte(`{"distSpecVersion":"1.1.0","storage":{"rootDirectory":"/tmp/zot"},
 							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
 							"auth":{"openid":{"providers":{"oidc":{"issuer":"http://127.0.0.1:5556/dex",
 						    "clientid":"client_id","scopes":["openid"]}}}}},
@@ -1265,7 +1265,7 @@ func TestApiKeyConfig(t *testing.T) {
 		So(err, ShouldBeNil)
 		defer os.Remove(tmpfile.Name())
 
-		content := []byte(`{"distSpecVersion":"1.1.0-dev","storage":{"rootDirectory":"/tmp/zot"},
+		content := []byte(`{"distSpecVersion":"1.1.0","storage":{"rootDirectory":"/tmp/zot"},
 							"http":{"address":"127.0.0.1","port":"8080","realm":"zot"},
 							"log":{"level":"debug"}}`)
 
@@ -1283,7 +1283,7 @@ func TestApiKeyConfig(t *testing.T) {
 		So(err, ShouldBeNil)
 		defer os.Remove(tmpfile.Name())
 
-		content := []byte(`{"distSpecVersion":"1.1.0-dev","storage":{"rootDirectory":"/tmp/zot"},
+		content := []byte(`{"distSpecVersion":"1.1.0","storage":{"rootDirectory":"/tmp/zot"},
 							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
 							"auth":{"htpasswd":{"path":"test/data/htpasswd"}}},
 							"log":{"level":"debug"}}`)

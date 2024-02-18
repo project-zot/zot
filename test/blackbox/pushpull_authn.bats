@@ -42,7 +42,7 @@ function setup_file() {
 
     cat > ${zot_config_file}<<EOF
 {
-  "distSpecVersion":"1.1.0-dev",
+  "distSpecVersion":"1.1.0",
   "storage":{
     "dedupe": true,
     "gc": true,

@@ -1888,7 +1888,7 @@ func TestConfigReloader(t *testing.T) {
 
 		//nolint: dupl
 		Convey("Reload config without sync", func() {
-			content := fmt.Sprintf(`{"distSpecVersion": "1.1.0-dev", "storage": {"rootDirectory": "%s"},
+			content := fmt.Sprintf(`{"distSpecVersion": "1.1.0", "storage": {"rootDirectory": "%s"},
 			"http": {"address": "127.0.0.1", "port": "%s"},
 			"log": {"level": "debug", "output": "%s"}}`, destDir, destPort, logFile.Name())
 
@@ -1946,7 +1946,7 @@ func TestConfigReloader(t *testing.T) {
 
 			// reload config from extensions nil to sync
 			content = fmt.Sprintf(`{
-				"distSpecVersion": "1.1.0-dev",
+				"distSpecVersion": "1.1.0",
 				"storage": {
 					"rootDirectory": "%s"
 				},
@@ -2006,7 +2006,7 @@ func TestConfigReloader(t *testing.T) {
 		//nolint: dupl
 		Convey("Reload bad sync config", func() {
 			content := fmt.Sprintf(`{
-				"distSpecVersion": "1.1.0-dev",
+				"distSpecVersion": "1.1.0",
 				"storage": {
 					"rootDirectory": "%s"
 				},

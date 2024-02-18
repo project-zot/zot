@@ -30,7 +30,7 @@ function setup() {
     touch ${ZOT_LOG_FILE}
     cat >${ZOT_CONFIG_FILE} <<EOF
 {
-    "distSpecVersion": "1.1.0-dev",
+    "distSpecVersion": "1.1.0",
     "storage": {
         "rootDirectory": "${ZOT_ROOT_DIR}",
         "dedupe": false
