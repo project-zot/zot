@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -1010,6 +1011,77 @@ func TestCookiestoreCleanup(t *testing.T) {
 
 		taskScheduler.Shutdown()
 	})
+
+	Convey("Test session expiration checks", t, func() {
+		rootDir := t.TempDir()
+
+		err := os.MkdirAll(path.Join(rootDir, "_sessions"), storageConstants.DefaultDirPerms)
+		So(err, ShouldBeNil)
+
+		sessionPath := path.Join(rootDir, "_sessions", "session_1234")
+
+		err = os.WriteFile(sessionPath, []byte("session"), storageConstants.DefaultFilePerms)
+		So(err, ShouldBeNil)
+
+		Convey("New session file should not be expired", func() {
+			fileInfo, err := os.Stat(sessionPath)
+			So(err, ShouldBeNil)
+
+			dirEntry := fs.FileInfoToDirEntry(fileInfo)
+			So(api.IsExpiredSession(dirEntry), ShouldBeFalse)
+		})
+
+		Convey("Deleted session file should not flagged as expired", func() {
+			fileInfo, err := os.Stat(sessionPath)
+			So(err, ShouldBeNil)
+
+			err = os.Remove(sessionPath)
+			So(err, ShouldBeNil)
+
+			dirEntry := fs.FileInfoToDirEntry(fileInfo)
+			So(api.IsExpiredSession(dirEntry), ShouldBeFalse)
+		})
+
+		// Fix flaky coverage in integration tests
+		Convey("Error on dirEntry.Info()", func() {
+			fileInfo, err := os.Stat(sessionPath)
+			So(err, ShouldBeNil)
+
+			dirEntry := badDirInfo{fileInfo: fileInfo}
+
+			So(api.IsExpiredSession(dirEntry), ShouldBeFalse)
+		})
+
+		Convey("File with invalid name should not be expired", func() {
+			newSessionPath := path.Join(rootDir, "_sessions", "1234")
+			err := os.Rename(sessionPath, newSessionPath)
+			So(err, ShouldBeNil)
+
+			changeTime := time.Now().Add(-4 * time.Hour)
+
+			err = os.Chtimes(newSessionPath, changeTime, changeTime)
+			So(err, ShouldBeNil)
+
+			fileInfo, err := os.Stat(newSessionPath)
+			So(err, ShouldBeNil)
+
+			dirEntry := fs.FileInfoToDirEntry(fileInfo)
+			So(api.IsExpiredSession(dirEntry), ShouldBeFalse)
+		})
+
+		Convey("Old session file should be expired", func() {
+			changeTime := time.Now().Add(-4 * time.Hour)
+
+			err = os.Chtimes(sessionPath, changeTime, changeTime)
+			So(err, ShouldBeNil)
+
+			fileInfo, err := os.Stat(sessionPath)
+			So(err, ShouldBeNil)
+
+			dirEntry := fs.FileInfoToDirEntry(fileInfo)
+			So(api.IsExpiredSession(dirEntry), ShouldBeTrue)
+		})
+	})
 }
 
 type mockUUIDGenerator struct {
@@ -1036,4 +1108,28 @@ type errReader int
 
 func (errReader) Read(p []byte) (int, error) {
 	return 0, fmt.Errorf("test error") //nolint:goerr113
+}
+
+type badDirInfo struct {
+	fileInfo fs.FileInfo
+}
+
+func (di badDirInfo) IsDir() bool {
+	return di.fileInfo.IsDir()
+}
+
+func (di badDirInfo) Type() fs.FileMode {
+	return di.fileInfo.Mode().Type()
+}
+
+func (di badDirInfo) Info() (fs.FileInfo, error) {
+	return di.fileInfo, ErrUnexpectedError
+}
+
+func (di badDirInfo) Name() string {
+	return di.fileInfo.Name()
+}
+
+func (di badDirInfo) String() string {
+	return fs.FormatDirEntry(di)
 }

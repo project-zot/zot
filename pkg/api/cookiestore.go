@@ -90,25 +90,33 @@ func getHashKey() ([]byte, error) {
 	return hashKey, nil
 }
 
+func IsExpiredSession(dirEntry fs.DirEntry) bool {
+	fileInfo, err := dirEntry.Info()
+	if err != nil { // may have been deleted in the meantime
+		return false
+	}
+
+	if !strings.HasPrefix(fileInfo.Name(), "session_") {
+		return false
+	}
+
+	if fileInfo.ModTime().Add(cookiesMaxAge * time.Second).After(time.Now()) {
+		return false
+	}
+
+	return true
+}
+
 func getExpiredSessions(dir string) ([]string, error) {
 	sessions := make([]string, 0)
 
-	err := filepath.WalkDir(dir, func(_ string, dirEntry fs.DirEntry, err error) error {
+	err := filepath.WalkDir(dir, func(filePath string, dirEntry fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
 
-		fileInfo, err := dirEntry.Info()
-		if err != nil { // may have been deleted in the meantime
-			return nil //nolint: nilerr
-		}
-
-		if !strings.HasPrefix(fileInfo.Name(), "session_") {
-			return nil
-		}
-
-		if fileInfo.ModTime().Add(cookiesMaxAge * time.Second).Before(time.Now()) {
-			sessions = append(sessions, path.Join(dir, fileInfo.Name()))
+		if IsExpiredSession(dirEntry) {
+			sessions = append(sessions, filePath)
 		}
 
 		return nil
