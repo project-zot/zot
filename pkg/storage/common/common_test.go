@@ -25,6 +25,8 @@ import (
 	"zotregistry.dev/zot/pkg/test/mocks"
 )
 
+var ErrTestError = errors.New("TestError")
+
 func TestValidateManifest(t *testing.T) {
 	Convey("Make manifest", t, func(c C) {
 		dir := t.TempDir()
@@ -508,5 +510,34 @@ func TestIsSignature(t *testing.T) {
 			MediaType: "unknown media type",
 		})
 		So(isSingature, ShouldBeFalse)
+	})
+}
+
+func TestDedupeGeneratorErrors(t *testing.T) {
+	log := log.Logger{Logger: zerolog.New(os.Stdout)}
+
+	// Ideally this would be covered by the end-to-end test,
+	// but the coverage for the error is unpredictable, prone to race conditions
+	Convey("GetNextDigestWithBlobPaths errors", t, func(c C) {
+		imgStore := &mocks.MockedImageStore{
+			GetRepositoriesFn: func() ([]string, error) {
+				return []string{"repo1", "repo2"}, nil
+			},
+			GetNextDigestWithBlobPathsFn: func(repos []string, lastDigests []godigest.Digest) (
+				godigest.Digest, []string, error,
+			) {
+				return "sha256:123", []string{}, ErrTestError
+			},
+		}
+
+		generator := &common.DedupeTaskGenerator{
+			ImgStore: imgStore,
+			Dedupe:   true,
+			Log:      log,
+		}
+
+		task, err := generator.Next()
+		So(err, ShouldNotBeNil)
+		So(task, ShouldBeNil)
 	})
 }

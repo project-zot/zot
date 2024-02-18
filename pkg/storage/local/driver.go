@@ -5,11 +5,9 @@ import (
 	"bytes"
 	"errors"
 	"io"
-	"io/fs"
 	"os"
 	"path"
 	"sort"
-	"syscall"
 	"time"
 	"unicode/utf8"
 
@@ -45,13 +43,10 @@ func (driver *Driver) DirExists(path string) bool {
 
 	fileInfo, err := os.Stat(path)
 	if err != nil {
-		if e, ok := err.(*fs.PathError); ok && errors.Is(e.Err, syscall.ENAMETOOLONG) || //nolint: errorlint
-			errors.Is(e.Err, syscall.EINVAL) {
-			return false
-		}
-	}
-
-	if err != nil && os.IsNotExist(err) {
+		// if os.Stat returns any error, fileInfo will be nil
+		// we can't check if the path is a directory using fileInfo if we received an error
+		// let's assume the directory doesn't exist in all error cases
+		// see possible errors http://man.he.net/man2/newfstatat
 		return false
 	}
 

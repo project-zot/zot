@@ -2261,9 +2261,29 @@ func TestRebuildDedupeIndex(t *testing.T) {
 	})
 }
 
-func TestRebuildDedupeMockStoreDriver(t *testing.T) {
-	tskip.SkipS3(t)
+func TestNextRepositoryMockStoreDriver(t *testing.T) {
+	testDir := t.TempDir()
+	tdir := t.TempDir()
 
+	// some s3 implementations (eg, digitalocean spaces) will return pathnotfounderror for walk but not list
+	// This code cannot be reliably covered by end to end tests
+	Convey("Trigger PathNotFound error when Walk() is called in GetNextRepository()", t, func() {
+		imgStore := createMockStorage(testDir, tdir, false, &StorageDriverMock{
+			ListFn: func(ctx context.Context, path string) ([]string, error) {
+				return []string{}, nil
+			},
+			WalkFn: func(ctx context.Context, path string, walkFn driver.WalkFn) error {
+				return driver.PathNotFoundError{}
+			},
+		})
+
+		nextRepository, err := imgStore.GetNextRepository("testRepo")
+		So(err, ShouldBeNil)
+		So(nextRepository, ShouldEqual, "")
+	})
+}
+
+func TestRebuildDedupeMockStoreDriver(t *testing.T) {
 	uuid, err := guuid.NewV4()
 	if err != nil {
 		panic(err)
