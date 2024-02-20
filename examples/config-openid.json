@@ -1,5 +1,5 @@
 {
-  "distSpecVersion": "1.1.0-dev",
+  "distSpecVersion": "1.1.0",
   "storage": {
     "rootDirectory": "/tmp/zot",
     "dedupe": true

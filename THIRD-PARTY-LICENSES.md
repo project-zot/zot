@@ -296,10 +296,10 @@ github.com/nozzle/throttler|https://github.com/nozzle/throttler/blob/2ea98225148
 github.com/oklog/ulid|https://github.com/oklog/ulid/blob/v1.3.1/LICENSE|Apache-2.0
 github.com/oleiade/reflections|https://github.com/oleiade/reflections/blob/v1.0.1/LICENSE|MIT
 github.com/olekukonko/tablewriter|https://github.com/olekukonko/tablewriter/blob/v0.0.5/LICENSE.md|MIT
-github.com/opencontainers/distribution-spec/specs-go|https://github.com/opencontainers/distribution-spec/blob/067a0f5b0e25/specs-go/LICENSE|Apache-2.0
+github.com/opencontainers/distribution-spec/specs-go|https://github.com/opencontainers/distribution-spec/blob/0f98d91a0afe/specs-go/LICENSE|Apache-2.0
 github.com/opencontainers/go-digest|https://github.com/opencontainers/go-digest/blob/v1.0.0/LICENSE|Apache-2.0
-github.com/opencontainers/image-spec/specs-go|https://github.com/opencontainers/image-spec/blob/v1.1.0-rc6/LICENSE|Apache-2.0
-github.com/opencontainers/image-spec|https://github.com/opencontainers/image-spec/blob/v1.1.0-rc6/LICENSE|Apache-2.0
+github.com/opencontainers/image-spec/specs-go|https://github.com/opencontainers/image-spec/blob/v1.1.0/LICENSE|Apache-2.0
+github.com/opencontainers/image-spec|https://github.com/opencontainers/image-spec/blob/v1.1.0/LICENSE|Apache-2.0
 github.com/opencontainers/runtime-spec/specs-go|https://github.com/opencontainers/runtime-spec/blob/v1.1.0/LICENSE|Apache-2.0
 github.com/opencontainers/selinux|https://github.com/opencontainers/selinux/blob/v1.11.0/LICENSE|Apache-2.0
 github.com/opentracing/opentracing-go|https://github.com/opentracing/opentracing-go/blob/v1.2.0/LICENSE|Apache-2.0

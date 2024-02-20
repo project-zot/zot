@@ -1,4 +1,4 @@
-distspecversion: 1.1.0-dev
+distspecversion: 1.1.0
 http:
   address: 127.0.0.1
   auth:

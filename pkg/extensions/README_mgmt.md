@@ -23,7 +23,7 @@ curl http://localhost:8080/v2/_zot/ext/mgmt | jq
 
 ```json
 {
-  "distSpecVersion": "1.1.0-dev",
+  "distSpecVersion": "1.1.0",
   "binaryType": "-sync-search-scrub-metrics-lint-ui-mgmt",
   "http": {
     "auth": {
