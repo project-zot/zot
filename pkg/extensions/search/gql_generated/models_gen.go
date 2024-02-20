@@ -264,6 +264,10 @@ type Platform struct {
 	Arch *string `json:"Arch,omitempty"`
 }
 
+// Queries supported by the zot server
+type Query struct {
+}
+
 // A referrer is an object which has a reference to a another object
 type Referrer struct {
 	// Referrer MediaType
