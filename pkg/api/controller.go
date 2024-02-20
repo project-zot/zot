@@ -14,6 +14,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/coreos/go-systemd/v22/activation"
 	"github.com/gorilla/mux"
 	"github.com/zitadel/oidc/pkg/client/rp"
 
@@ -94,6 +95,73 @@ func (c *Controller) GetPort() int {
 	return c.chosenPort
 }
 
+func (c *Controller) createListener() (net.Listener, string, error) {
+	// try to create the listener from the ambient systemd socket activation
+	// environment variables. otherwise, create the listener from the address
+	// defined in the configuration.
+
+	listeners, err := activation.Listeners()
+	if err != nil {
+		return nil, "", fmt.Errorf("systemd socket activation listeners failed to initialize: %w", err)
+	}
+
+	if len(listeners) == 1 {
+		listener := listeners[0]
+
+		c.Log.Info().Stringer("addr", listener.Addr()).Msg("using systemd socket activation")
+
+		_, port, err := net.SplitHostPort(listener.Addr().String())
+		if err != nil {
+			return nil, "", err
+		}
+
+		chosenPort, err := strconv.ParseUint(port, 10, 16)
+		if err != nil {
+			return nil, "", err
+		}
+
+		c.chosenPort = int(chosenPort)
+
+		addr := fmt.Sprintf("%s:%d", c.Config.HTTP.Address, c.chosenPort)
+
+		return listener, addr, nil
+	}
+
+	if len(listeners) != 0 {
+		return nil, "", fmt.Errorf("systemd socket activation has an unexpected number of listeners: %w", err)
+	}
+
+	addr := fmt.Sprintf("%s:%s", c.Config.HTTP.Address, c.Config.HTTP.Port)
+
+	listener, err := net.Listen("tcp", addr)
+	if err != nil {
+		return nil, "", err
+	}
+
+	if c.Config.HTTP.Port == "0" || c.Config.HTTP.Port == "" {
+		chosenAddr, ok := listener.Addr().(*net.TCPAddr)
+		if !ok {
+			c.Log.Error().Str("port", c.Config.HTTP.Port).Msg("invalid addr type")
+
+			return nil, "", errors.ErrBadType
+		}
+		c.chosenPort = chosenAddr.Port
+
+		c.Log.Info().Int("port", chosenAddr.Port).IPAddr("address", chosenAddr.IP).Msg(
+			"port is unspecified, listening on kernel chosen port",
+		)
+	} else {
+		chosenPort, err := strconv.ParseUint(c.Config.HTTP.Port, 10, 16)
+		if err != nil {
+			return nil, "", err
+		}
+
+		c.chosenPort = int(chosenPort)
+	}
+
+	return listener, addr, nil
+}
+
 func (c *Controller) Run() error {
 	if err := c.initCookieStore(); err != nil {
 		return err
@@ -133,7 +201,11 @@ func (c *Controller) Run() error {
 	//nolint: contextcheck
 	_ = NewRouteHandler(c)
 
-	addr := fmt.Sprintf("%s:%s", c.Config.HTTP.Address, c.Config.HTTP.Port)
+	listener, addr, err := c.createListener()
+	if err != nil {
+		return err
+	}
+
 	server := &http.Server{
 		Addr:              addr,
 		Handler:           c.Router,
@@ -141,31 +213,6 @@ func (c *Controller) Run() error {
 		ReadHeaderTimeout: readHeaderTimeout,
 	}
 	c.Server = server
-
-	// Create the listener
-	listener, err := net.Listen("tcp", addr)
-	if err != nil {
-		return err
-	}
-
-	if c.Config.HTTP.Port == "0" || c.Config.HTTP.Port == "" {
-		chosenAddr, ok := listener.Addr().(*net.TCPAddr)
-		if !ok {
-			c.Log.Error().Str("port", c.Config.HTTP.Port).Msg("invalid addr type")
-
-			return errors.ErrBadType
-		}
-
-		c.chosenPort = chosenAddr.Port
-
-		c.Log.Info().Int("port", chosenAddr.Port).IPAddr("address", chosenAddr.IP).Msg(
-			"port is unspecified, listening on kernel chosen port",
-		)
-	} else {
-		chosenPort, _ := strconv.ParseInt(c.Config.HTTP.Port, 10, 64)
-
-		c.chosenPort = int(chosenPort)
-	}
 
 	if c.Config.HTTP.TLS != nil && c.Config.HTTP.TLS.Key != "" && c.Config.HTTP.TLS.Cert != "" {
 		server.TLSConfig = &tls.Config{
