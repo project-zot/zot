@@ -47,7 +47,7 @@ require (
 
 require (
 	github.com/aquasecurity/trivy v0.49.1
-	github.com/aws/aws-sdk-go-v2/service/dynamodb v1.29.0
+	github.com/aws/aws-sdk-go-v2/service/dynamodb v1.29.1
 	github.com/aws/aws-sdk-go-v2/service/secretsmanager v1.26.2
 	github.com/aws/aws-secretsmanager-caching-go v1.1.3
 	github.com/containers/image/v5 v5.29.2
@@ -102,7 +102,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.5.4 // indirect
 	github.com/aws/aws-sdk-go-v2/feature/s3/manager v1.15.11 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/v4a v1.2.10 // indirect
-	github.com/aws/aws-sdk-go-v2/service/dynamodbstreams v1.19.1 // indirect
+	github.com/aws/aws-sdk-go-v2/service/dynamodbstreams v1.19.2 // indirect
 	github.com/aws/aws-sdk-go-v2/service/ebs v1.21.7 // indirect
 	github.com/aws/aws-sdk-go-v2/service/ec2 v1.142.0 // indirect
 	github.com/aws/aws-sdk-go-v2/service/internal/accept-encoding v1.11.0 // indirect
@@ -294,7 +294,7 @@ require (
 	github.com/aws/aws-sdk-go-v2 v1.25.0
 	github.com/aws/aws-sdk-go-v2/config v1.26.6
 	github.com/aws/aws-sdk-go-v2/credentials v1.16.16 // indirect
-	github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue v1.13.2
+	github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue v1.13.3
 	github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.14.11 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/configsources v1.3.0 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/endpoints/v2 v2.6.0 // indirect
