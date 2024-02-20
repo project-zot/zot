@@ -37,7 +37,7 @@ require (
 	github.com/spf13/cobra v1.8.0
 	github.com/spf13/viper v1.18.2
 	github.com/stretchr/testify v1.8.4
-	github.com/swaggo/swag v1.16.2
+	github.com/swaggo/swag v1.16.3
 	github.com/vektah/gqlparser/v2 v2.5.11
 	go.etcd.io/bbolt v1.3.8
 	golang.org/x/crypto v0.18.0
