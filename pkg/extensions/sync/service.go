@@ -364,8 +364,6 @@ func (service *BaseService) SyncRepo(ctx context.Context, repo string) error {
 			}, service.retryOptions); err != nil {
 				service.log.Error().Str("errorType", common.TypeOf(err)).Str("repository", repo).
 					Err(err).Msg("failed to sync tags for repository")
-
-				return err
 			}
 		}
 	}

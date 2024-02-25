@@ -57,8 +57,10 @@ func EnableSyncExtension(config *config.Config, metaDB mTypes.MetaDB,
 
 			if isPeriodical {
 				// add to task scheduler periodic sync
-				gen := sync.NewTaskGenerator(service, log)
-				sch.SubmitGenerator(gen, registryConfig.PollInterval, scheduler.MediumPriority)
+				interval := registryConfig.PollInterval
+
+				gen := sync.NewTaskGenerator(service, interval, log)
+				sch.SubmitGenerator(gen, interval, scheduler.MediumPriority)
 			}
 
 			if isOnDemand {
