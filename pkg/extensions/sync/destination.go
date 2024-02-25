@@ -186,6 +186,12 @@ func (registry *DestinationRegistry) CommitImage(imageReference types.ImageRefer
 	return nil
 }
 
+func (registry *DestinationRegistry) CleanupImage(imageReference types.ImageReference, repo, reference string) error {
+	tmpDir := getTempRootDirFromImageReference(imageReference, repo, reference)
+
+	return os.RemoveAll(tmpDir)
+}
+
 func (registry *DestinationRegistry) copyManifest(repo string, manifestContent []byte, reference string,
 	tempImageStore storageTypes.ImageStore,
 ) error {
@@ -275,17 +281,24 @@ func (registry *DestinationRegistry) copyBlob(repo string, blobDigest digest.Dig
 	return err
 }
 
+// use only with local imageReferences.
 func getImageStoreFromImageReference(imageReference types.ImageReference, repo, reference string,
 ) storageTypes.ImageStore {
-	var tempRootDir string
+	tmpRootDir := getTempRootDirFromImageReference(imageReference, repo, reference)
+
+	return getImageStore(tmpRootDir)
+}
+
+func getTempRootDirFromImageReference(imageReference types.ImageReference, repo, reference string) string {
+	var tmpRootDir string
 
 	if strings.HasSuffix(imageReference.StringWithinTransport(), reference) {
-		tempRootDir = strings.ReplaceAll(imageReference.StringWithinTransport(), fmt.Sprintf("%s:%s", repo, reference), "")
+		tmpRootDir = strings.ReplaceAll(imageReference.StringWithinTransport(), fmt.Sprintf("%s:%s", repo, reference), "")
 	} else {
-		tempRootDir = strings.ReplaceAll(imageReference.StringWithinTransport(), fmt.Sprintf("%s:", repo), "")
+		tmpRootDir = strings.ReplaceAll(imageReference.StringWithinTransport(), fmt.Sprintf("%s:", repo), "")
 	}
 
-	return getImageStore(tempRootDir)
+	return tmpRootDir
 }
 
 func getImageStore(rootDir string) storageTypes.ImageStore {
