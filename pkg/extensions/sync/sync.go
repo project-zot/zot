@@ -75,6 +75,8 @@ type Destination interface {
 	CanSkipImage(repo, tag string, imageDigest digest.Digest) (bool, error)
 	// CommitImage moves a synced repo/ref from temporary oci layout to ImageStore
 	CommitImage(imageReference types.ImageReference, repo, tag string) error
+	// Removes image reference, used when copy.Image() errors out
+	CleanupImage(imageReference types.ImageReference, repo, reference string) error
 }
 
 type TaskGenerator struct {

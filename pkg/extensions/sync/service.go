@@ -441,6 +441,13 @@ func (service *BaseService) syncTag(ctx context.Context, destinationRepo, remote
 
 		_, err = copy.Image(ctx, policyContext, localImageRef, remoteImageRef, &copyOptions)
 		if err != nil {
+			// cleanup in cases of copy.Image errors while copying.
+			if cErr := service.destination.CleanupImage(localImageRef, destinationRepo, tag); cErr != nil {
+				service.log.Error().Err(err).Str("errortype", common.TypeOf(err)).
+					Str("local image", fmt.Sprintf("%s:%s", destinationRepo, tag)).
+					Msg("couldn't cleanup temp local image")
+			}
+
 			service.log.Error().Err(err).Str("errortype", common.TypeOf(err)).
 				Str("remote image", remoteImageRef.DockerReference().String()).
 				Str("local image", fmt.Sprintf("%s:%s", destinationRepo, tag)).Msg("coulnd't sync image")
