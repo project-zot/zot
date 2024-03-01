@@ -111,6 +111,13 @@ func (rh *RouteHandler) SetupRoutes() {
 			Methods(http.MethodPost, http.MethodOptions)
 	}
 
+	if rh.c.Config.IsHtpasswdAuthEnabled() {
+		// Changing password should be enabled only for users that have set it up through htpasswd
+		rh.c.Router.HandleFunc(constants.ChangePasswordPath,
+			getUIHeadersHandler(rh.c.Config, http.MethodPost, http.MethodOptions)(applyCORSHeaders(rh.ChangePassword))).
+			Methods(http.MethodPost, http.MethodOptions)
+	}
+
 	prefixedRouter := rh.c.Router.PathPrefix(constants.RoutePrefix).Subrouter()
 	prefixedRouter.Use(authHandler)
 
@@ -2202,6 +2209,81 @@ func (rh *RouteHandler) RevokeAPIKey(resp http.ResponseWriter, req *http.Request
 	}
 
 	resp.WriteHeader(http.StatusOK)
+}
+
+// ChangePassword godoc
+// @Summary Change user's password
+// @Description Change user's password. Invalidates all user's other active sessions.
+// @Router  /zot/auth/change_password [post]
+// @Accept  json
+// @Produce json
+// @Param old_password body string true "Old password"
+// @Param new_password body string true "New password"
+// @Success 200 {string} string "password changed"
+// @Failure 500 {string} string "internal server error"
+// @Failure 401 {string} string "unauthorized"
+// @Failure 400 {string} string "bad request"
+// @Failure 403 {string} string "old password is incorrect".
+func (rh *RouteHandler) ChangePassword(resp http.ResponseWriter, req *http.Request) {
+	// leave OPTIONS method
+	if req.Method == http.MethodOptions {
+		return
+	}
+
+	body, err := io.ReadAll(req.Body)
+	if err != nil {
+		rh.c.Log.Error().Msg("failed to read req body")
+		resp.WriteHeader(http.StatusInternalServerError)
+
+		return
+	}
+
+	var reqBody ChangePasswordRequest
+	if err := json.Unmarshal(body, &reqBody); err != nil {
+		rh.c.Log.Error().Msg("failed to unmarshal req body")
+		resp.WriteHeader(http.StatusBadRequest)
+
+		return
+	}
+
+	userAc, err := reqCtx.UserAcFromContext(req.Context())
+	if err != nil {
+		resp.WriteHeader(http.StatusInternalServerError)
+
+		return
+	}
+
+	username := userAc.GetUsername()
+	if username == "" {
+		resp.WriteHeader(http.StatusNotFound)
+
+		return
+	}
+
+	if err := rh.c.HtpasswdClient.ChangePassword(username, reqBody.OldPassword, reqBody.NewPassword); err != nil {
+		rh.c.Log.Error().Err(err).Str("identity", username).Msg("failed to change user password")
+		status := http.StatusInternalServerError
+
+		switch {
+		case errors.Is(err, zerr.ErrBadUser):
+			status = http.StatusNotFound
+		case errors.Is(err, zerr.ErrOldPasswordIsWrong):
+			status = http.StatusUnauthorized
+		case errors.Is(err, zerr.ErrPasswordIsEmpty):
+			status = http.StatusBadRequest
+		}
+
+		resp.WriteHeader(status)
+
+		return
+	}
+
+	resp.WriteHeader(http.StatusOK)
+}
+
+type ChangePasswordRequest struct {
+	OldPassword string `json:"oldPassword"`
+	NewPassword string `json:"newPassowrd"`
 }
 
 // GetBlobUploadSessionLocation returns actual blob location to start/resume uploading blobs.
