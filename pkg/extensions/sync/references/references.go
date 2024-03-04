@@ -6,6 +6,7 @@ package references
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 
@@ -14,7 +15,10 @@ import (
 	artifactspec "github.com/oras-project/artifacts-spec/specs-go/v1"
 	"github.com/sigstore/cosign/v2/pkg/oci/static"
 
+	zerr "zotregistry.dev/zot/errors"
 	"zotregistry.dev/zot/pkg/common"
+	"zotregistry.dev/zot/pkg/extensions/sync/constants"
+	"zotregistry.dev/zot/pkg/extensions/sync/features"
 	client "zotregistry.dev/zot/pkg/extensions/sync/httpclient"
 	"zotregistry.dev/zot/pkg/log"
 	mTypes "zotregistry.dev/zot/pkg/meta/types"
@@ -33,13 +37,14 @@ type Reference interface {
 
 type References struct {
 	referenceList []Reference
+	features      *features.Map
 	log           log.Logger
 }
 
 func NewReferences(httpClient *client.Client, storeController storage.StoreController,
 	metaDB mTypes.MetaDB, log log.Logger,
 ) References {
-	refs := References{log: log}
+	refs := References{features: features.New(), log: log}
 
 	refs.referenceList = append(refs.referenceList, NewCosignReference(httpClient, storeController, metaDB, log))
 	refs.referenceList = append(refs.referenceList, NewTagReferences(httpClient, storeController, metaDB, log))
@@ -78,12 +83,30 @@ func (refs References) syncAll(ctx context.Context, localRepo, upstreamRepo,
 
 	// for each reference type(cosign/oci/oras reference)
 	for _, ref := range refs.referenceList {
+		supported, ok := refs.features.Get(ref.Name(), upstreamRepo)
+		if !supported && ok {
+			continue
+		}
+
 		syncedRefsDigests, err = ref.SyncReferences(ctx, localRepo, upstreamRepo, subjectDigestStr)
 		if err != nil {
+			// for all referrers we can stop querying same repo (for ten minutes) if the errors are different than 404
+			if !errors.Is(err, zerr.ErrSyncReferrerNotFound) {
+				refs.features.Set(ref.Name(), upstreamRepo, false)
+			}
+
+			// in the case of oci referrers, it will return 404 only if the repo is not found or refferers API is not supported
+			// no need to continue to make requests to the same repo
+			if ref.Name() == constants.OCI && errors.Is(err, zerr.ErrSyncReferrerNotFound) {
+				refs.features.Set(ref.Name(), upstreamRepo, false)
+			}
+
 			refs.log.Debug().Err(err).
 				Str("reference type", ref.Name()).
 				Str("image", fmt.Sprintf("%s:%s", upstreamRepo, subjectDigestStr)).
 				Msg("couldn't sync image referrer")
+		} else {
+			refs.features.Set(ref.Name(), upstreamRepo, true)
 		}
 
 		// for each synced references

@@ -6,6 +6,8 @@ package sync
 import (
 	"context"
 	"fmt"
+	"sync"
+	"time"
 
 	"github.com/containers/common/pkg/retry"
 	"github.com/containers/image/v5/types"
@@ -80,18 +82,26 @@ type Destination interface {
 }
 
 type TaskGenerator struct {
-	Service  Service
-	lastRepo string
-	done     bool
-	log      log.Logger
+	Service      Service
+	lastRepo     string
+	done         bool
+	waitTime     time.Duration
+	lastTaskTime time.Time
+	maxWaitTime  time.Duration
+	lock         *sync.Mutex
+	log          log.Logger
 }
 
-func NewTaskGenerator(service Service, log log.Logger) *TaskGenerator {
+func NewTaskGenerator(service Service, maxWaitTime time.Duration, log log.Logger) *TaskGenerator {
 	return &TaskGenerator{
-		Service:  service,
-		done:     false,
-		lastRepo: "",
-		log:      log,
+		Service:      service,
+		done:         false,
+		waitTime:     0,
+		lastTaskTime: time.Now(),
+		lock:         &sync.Mutex{},
+		lastRepo:     "",
+		maxWaitTime:  maxWaitTime,
+		log:          log,
 	}
 }
 
@@ -100,24 +110,32 @@ func (gen *TaskGenerator) Name() string {
 }
 
 func (gen *TaskGenerator) Next() (scheduler.Task, error) {
+	gen.lock.Lock()
+	defer gen.lock.Unlock()
+
+	if time.Since(gen.lastTaskTime) <= gen.waitTime {
+		return nil, nil
+	}
+
 	if err := gen.Service.SetNextAvailableURL(); err != nil {
+		gen.increaseWaitTime()
+
 		return nil, err
 	}
 
 	repo, err := gen.Service.GetNextRepo(gen.lastRepo)
 	if err != nil {
+		gen.increaseWaitTime()
+
 		return nil, err
 	}
 
+	gen.resetWaitTime()
+
 	if repo == "" {
-		gen.log.Info().Str("component", "sync").Msg("finished syncing all repos")
+		gen.log.Info().Str("component", "sync").Msg("finished syncing all repositories")
 		gen.done = true
 
-		return nil, nil
-	}
-
-	// a task with this repo is already running
-	if gen.lastRepo == repo {
 		return nil, nil
 	}
 
@@ -135,9 +153,34 @@ func (gen *TaskGenerator) IsReady() bool {
 }
 
 func (gen *TaskGenerator) Reset() {
+	gen.lock.Lock()
+	defer gen.lock.Unlock()
+
 	gen.lastRepo = ""
 	gen.Service.ResetCatalog()
 	gen.done = false
+	gen.waitTime = 0
+}
+
+func (gen *TaskGenerator) increaseWaitTime() {
+	if gen.waitTime == 0 {
+		gen.waitTime = time.Second
+	}
+
+	gen.waitTime *= 2
+
+	// max wait time should not exceed generator interval.
+	if gen.waitTime > gen.maxWaitTime {
+		gen.waitTime = gen.maxWaitTime
+	}
+
+	gen.lastTaskTime = time.Now()
+}
+
+// resets wait time.
+func (gen *TaskGenerator) resetWaitTime() {
+	gen.lastTaskTime = time.Now()
+	gen.waitTime = 0
 }
 
 type syncRepoTask struct {
@@ -154,7 +197,7 @@ func (srt *syncRepoTask) DoWork(ctx context.Context) error {
 }
 
 func (srt *syncRepoTask) String() string {
-	return fmt.Sprintf("{Name: \"%s\", repo: \"%s\"}",
+	return fmt.Sprintf("{Name: \"%s\", repository: \"%s\"}",
 		srt.Name(), srt.repo)
 }
 

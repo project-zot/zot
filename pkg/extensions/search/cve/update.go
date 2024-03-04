@@ -59,6 +59,7 @@ func (gen *DBUpdateTaskGenerator) Next() (scheduler.Task, error) {
 		newTask = newDBUpdadeTask(gen.interval, gen.scanner, gen, gen.log)
 		gen.status = running
 	}
+
 	gen.lock.Unlock()
 
 	return newTask, nil
