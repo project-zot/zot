@@ -40,7 +40,7 @@ require (
 	github.com/swaggo/swag v1.16.3
 	github.com/vektah/gqlparser/v2 v2.5.11
 	go.etcd.io/bbolt v1.3.9
-	golang.org/x/crypto v0.19.0
+	golang.org/x/crypto v0.20.0
 	gopkg.in/resty.v1 v1.12.0
 	gopkg.in/yaml.v2 v2.4.0
 )
