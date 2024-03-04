@@ -18,7 +18,6 @@ import (
 	guuid "github.com/gofrs/uuid"
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
-	artifactspec "github.com/oras-project/artifacts-spec/specs-go/v1"
 
 	zerr "zotregistry.dev/zot/errors"
 	zcommon "zotregistry.dev/zot/pkg/common"
@@ -1448,16 +1447,6 @@ func (is *ImageStore) GetReferrers(repo string, gdigest godigest.Digest, artifac
 	defer is.RUnlock(&lockLatency)
 
 	return common.GetReferrers(is, repo, gdigest, artifactTypes, is.log)
-}
-
-func (is *ImageStore) GetOrasReferrers(repo string, gdigest godigest.Digest, artifactType string,
-) ([]artifactspec.Descriptor, error) {
-	var lockLatency time.Time
-
-	is.RLock(&lockLatency)
-	defer is.RUnlock(&lockLatency)
-
-	return common.GetOrasReferrers(is, repo, gdigest, artifactType, is.log)
 }
 
 // GetIndexContent returns index.json contents, the caller function MUST lock from outside.

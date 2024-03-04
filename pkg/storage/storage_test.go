@@ -22,7 +22,6 @@ import (
 	guuid "github.com/gofrs/uuid"
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
-	artifactspec "github.com/oras-project/artifacts-spec/specs-go/v1"
 	"github.com/rs/zerolog"
 	. "github.com/smartystreets/goconvey/convey"
 	"gopkg.in/resty.v1"
@@ -1389,87 +1388,6 @@ func TestReuploadCorruptedBlob(t *testing.T) {
 				So(size, ShouldEqual, blobSize)
 				So(err, ShouldBeNil)
 			})
-
-			Convey("Test reupload repair corrupted oras artifact", t, func() {
-				storeController := storage.StoreController{DefaultStore: imgStore}
-
-				image := CreateRandomImage()
-
-				tag := "oras-artifact"
-				err := WriteImageToFileSystem(image, repoName, tag, storeController)
-				So(err, ShouldBeNil)
-
-				body := []byte("this is a blob")
-				blobDigest := godigest.FromBytes(body)
-				blobPath := imgStore.BlobPath(repoName, blobDigest)
-				buf := bytes.NewBuffer(body)
-				blobSize := int64(buf.Len())
-
-				_, size, err := imgStore.FullBlobUpload(repoName, buf, blobDigest)
-				So(err, ShouldBeNil)
-				So(size, ShouldEqual, blobSize)
-
-				artifactManifest := artifactspec.Manifest{}
-				artifactType := "signature"
-				artifactManifest.ArtifactType = artifactType
-				artifactManifest.Subject = &artifactspec.Descriptor{
-					MediaType: ispec.MediaTypeImageManifest,
-					Digest:    image.Digest(),
-					Size:      image.ManifestDescriptor.Size,
-				}
-
-				artifactManifest.Blobs = []artifactspec.Descriptor{
-					{
-						Digest: blobDigest,
-						Size:   blobSize,
-					},
-				}
-
-				manBuf, err := json.Marshal(artifactManifest)
-				So(err, ShouldBeNil)
-
-				manBufLen := len(manBuf)
-				manDigest := godigest.FromBytes(manBuf)
-
-				_, _, err = imgStore.PutImageManifest(repoName, manDigest.String(), artifactspec.MediaTypeArtifactManifest, manBuf)
-				So(err, ShouldBeNil)
-
-				descriptors, err := imgStore.GetOrasReferrers(repoName, image.Digest(), artifactType)
-				So(err, ShouldBeNil)
-				So(descriptors, ShouldNotBeEmpty)
-				So(descriptors[0].ArtifactType, ShouldEqual, artifactType)
-				So(descriptors[0].MediaType, ShouldEqual, artifactspec.MediaTypeArtifactManifest)
-				So(descriptors[0].Size, ShouldEqual, manBufLen)
-				So(descriptors[0].Digest, ShouldEqual, manDigest)
-
-				ok, size, err := imgStore.CheckBlob(repoName, blobDigest)
-				So(ok, ShouldBeTrue)
-				So(size, ShouldEqual, blobSize)
-				So(err, ShouldBeNil)
-
-				_, err = driver.WriteFile(blobPath, []byte("corrupted"))
-				So(err, ShouldBeNil)
-
-				ok, size, err = imgStore.CheckBlob(repoName, blobDigest)
-				So(ok, ShouldBeFalse)
-				So(size, ShouldNotEqual, blobSize)
-				So(err, ShouldEqual, zerr.ErrBlobNotFound)
-
-				buf = bytes.NewBuffer(body)
-				_, size, err = imgStore.FullBlobUpload(repoName, buf, blobDigest)
-				So(err, ShouldBeNil)
-				So(size, ShouldEqual, blobSize)
-
-				ok, size, _, err = imgStore.StatBlob(repoName, blobDigest)
-				So(ok, ShouldBeTrue)
-				So(blobSize, ShouldEqual, size)
-				So(err, ShouldBeNil)
-
-				ok, size, err = imgStore.CheckBlob(repoName, blobDigest)
-				So(ok, ShouldBeTrue)
-				So(size, ShouldEqual, blobSize)
-				So(err, ShouldBeNil)
-			})
 		})
 	}
 }
@@ -1937,35 +1855,6 @@ func TestGarbageCollectImageManifest(t *testing.T) {
 						ispec.MediaTypeImageManifest, artifactManifestBuf)
 					So(err, ShouldBeNil)
 
-					// push oras manifest pointing to manifest
-					orasArtifactManifest := artifactspec.Manifest{}
-					orasArtifactManifest.ArtifactType = "signature-example" //nolint: goconst
-					orasArtifactManifest.Subject = &artifactspec.Descriptor{
-						MediaType: ispec.MediaTypeImageManifest,
-						Digest:    digest,
-						Size:      int64(len(manifestBuf)),
-					}
-					orasArtifactManifest.Blobs = []artifactspec.Descriptor{
-						{
-							Digest:    artifactBlobDigest,
-							MediaType: "application/vnd.oci.image.layer.v1.tar",
-							Size:      int64(len(artifactBlob)),
-						},
-					}
-
-					orasArtifactManifestBuf, err := json.Marshal(orasArtifactManifest)
-					So(err, ShouldBeNil)
-
-					orasDigest := godigest.FromBytes(orasArtifactManifestBuf)
-
-					// push oras manifest
-					_, _, err = imgStore.PutImageManifest(repoName, orasDigest.Encoded(),
-						artifactspec.MediaTypeArtifactManifest, orasArtifactManifestBuf)
-					So(err, ShouldBeNil)
-
-					_, _, _, err = imgStore.GetImageManifest(repoName, orasDigest.String())
-					So(err, ShouldBeNil)
-
 					err = gc.CleanRepo(ctx, repoName)
 					So(err, ShouldBeNil)
 
@@ -2005,9 +1894,6 @@ func TestGarbageCollectImageManifest(t *testing.T) {
 
 						// check artifacts are gc'ed
 						_, _, _, err := imgStore.GetImageManifest(repoName, artifactDigest.String())
-						So(err, ShouldNotBeNil)
-
-						_, _, _, err = imgStore.GetImageManifest(repoName, orasDigest.String())
 						So(err, ShouldNotBeNil)
 
 						_, _, _, err = imgStore.GetImageManifest(repoName, artifactOfArtifactManifestDigest.String())
@@ -2050,9 +1936,6 @@ func TestGarbageCollectImageManifest(t *testing.T) {
 
 						// check artifacts manifests
 						_, _, _, err := imgStore.GetImageManifest(repoName, artifactDigest.String())
-						So(err, ShouldBeNil)
-
-						_, _, _, err = imgStore.GetImageManifest(repoName, orasDigest.String())
 						So(err, ShouldBeNil)
 
 						_, _, _, err = imgStore.GetImageManifest(repoName, artifactOfArtifactManifestDigest.String())
@@ -2590,35 +2473,6 @@ func TestGarbageCollectImageIndex(t *testing.T) {
 						ispec.MediaTypeImageManifest, artifactManifestBuf)
 					So(err, ShouldBeNil)
 
-					// push oras manifest pointing to index image
-					orasArtifactManifest := artifactspec.Manifest{}
-					orasArtifactManifest.ArtifactType = "signature-example"
-					orasArtifactManifest.Subject = &artifactspec.Descriptor{
-						MediaType: ispec.MediaTypeImageIndex,
-						Digest:    indexDigest,
-						Size:      indexSize,
-					}
-					orasArtifactManifest.Blobs = []artifactspec.Descriptor{}
-
-					orasArtifactManifestBuf, err := json.Marshal(orasArtifactManifest)
-					So(err, ShouldBeNil)
-
-					orasDigest := godigest.FromBytes(orasArtifactManifestBuf)
-
-					// push oras manifest
-					_, _, err = imgStore.PutImageManifest(repoName, orasDigest.Encoded(),
-						artifactspec.MediaTypeArtifactManifest, orasArtifactManifestBuf)
-					So(err, ShouldBeNil)
-
-					_, _, _, err = imgStore.GetImageManifest(repoName, orasDigest.String())
-					So(err, ShouldBeNil)
-
-					err = gc.CleanRepo(ctx, repoName)
-					So(err, ShouldBeNil)
-
-					_, _, _, err = imgStore.GetImageManifest(repoName, orasDigest.String())
-					So(err, ShouldBeNil)
-
 					hasBlob, _, err := imgStore.CheckBlob(repoName, bdgst)
 					So(err, ShouldBeNil)
 					So(hasBlob, ShouldEqual, true)
@@ -2659,9 +2513,6 @@ func TestGarbageCollectImageIndex(t *testing.T) {
 						_, _, _, err = imgStore.GetImageManifest(repoName, artifactOfArtifactManifestDigest.String())
 						So(err, ShouldNotBeNil)
 
-						_, _, _, err = imgStore.GetImageManifest(repoName, orasDigest.String())
-						So(err, ShouldBeNil)
-
 						_, _, _, err = imgStore.GetImageManifest(repoName, artifactManifestIndexDigest.String())
 						So(err, ShouldBeNil)
 					})
@@ -2690,9 +2541,6 @@ func TestGarbageCollectImageIndex(t *testing.T) {
 						So(err, ShouldBeNil)
 
 						_, _, _, err = imgStore.GetImageManifest(repoName, artifactDigest.String())
-						So(err, ShouldNotBeNil)
-
-						_, _, _, err = imgStore.GetImageManifest(repoName, orasDigest.String())
 						So(err, ShouldNotBeNil)
 
 						_, _, _, err = imgStore.GetImageManifest(repoName, artifactOfArtifactManifestDigest.String())
@@ -3096,35 +2944,6 @@ func TestGarbageCollectChainedImageIndexes(t *testing.T) {
 					ispec.MediaTypeImageManifest, artifactManifestBuf)
 				So(err, ShouldBeNil)
 
-				// push oras manifest pointing to index image
-				orasArtifactManifest := artifactspec.Manifest{}
-				orasArtifactManifest.ArtifactType = "signature-example"
-				orasArtifactManifest.Subject = &artifactspec.Descriptor{
-					MediaType: ispec.MediaTypeImageIndex,
-					Digest:    indexDigest,
-					Size:      int64(len(indexContent)),
-				}
-				orasArtifactManifest.Blobs = []artifactspec.Descriptor{}
-
-				orasArtifactManifestBuf, err := json.Marshal(orasArtifactManifest)
-				So(err, ShouldBeNil)
-
-				orasDigest := godigest.FromBytes(orasArtifactManifestBuf)
-
-				// push oras manifest
-				_, _, err = imgStore.PutImageManifest(repoName, orasDigest.Encoded(),
-					artifactspec.MediaTypeArtifactManifest, orasArtifactManifestBuf)
-				So(err, ShouldBeNil)
-
-				_, _, _, err = imgStore.GetImageManifest(repoName, orasDigest.String())
-				So(err, ShouldBeNil)
-
-				err = gc.CleanRepo(ctx, repoName)
-				So(err, ShouldBeNil)
-
-				_, _, _, err = imgStore.GetImageManifest(repoName, orasDigest.String())
-				So(err, ShouldBeNil)
-
 				hasBlob, _, err := imgStore.CheckBlob(repoName, bdgst)
 				So(err, ShouldBeNil)
 				So(hasBlob, ShouldEqual, true)
@@ -3165,9 +2984,6 @@ func TestGarbageCollectChainedImageIndexes(t *testing.T) {
 					_, _, _, err = imgStore.GetImageManifest(repoName, artifactOfArtifactManifestDigest.String())
 					So(err, ShouldNotBeNil)
 
-					_, _, _, err = imgStore.GetImageManifest(repoName, orasDigest.String())
-					So(err, ShouldBeNil)
-
 					_, _, _, err = imgStore.GetImageManifest(repoName, artifactManifestIndexDigest.String())
 					So(err, ShouldBeNil)
 				})
@@ -3196,9 +3012,6 @@ func TestGarbageCollectChainedImageIndexes(t *testing.T) {
 					So(err, ShouldBeNil)
 
 					_, _, _, err = imgStore.GetImageManifest(repoName, artifactDigest.String())
-					So(err, ShouldNotBeNil)
-
-					_, _, _, err = imgStore.GetImageManifest(repoName, orasDigest.String())
 					So(err, ShouldNotBeNil)
 
 					_, _, _, err = imgStore.GetImageManifest(repoName, artifactOfArtifactManifestDigest.String())

@@ -36,7 +36,6 @@ import (
 	distext "github.com/opencontainers/distribution-spec/specs-go/v1/extensions"
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
-	artifactspec "github.com/oras-project/artifacts-spec/specs-go/v1"
 	"github.com/project-zot/mockoidc"
 	"github.com/sigstore/cosign/v2/cmd/cosign/cli/generate"
 	"github.com/sigstore/cosign/v2/cmd/cosign/cli/options"
@@ -6192,7 +6191,7 @@ func TestImageSignatures(t *testing.T) {
 			So(resp.StatusCode(), ShouldEqual, http.StatusUnsupportedMediaType)
 
 			// check invalid content with artifact media type
-			resp, err = resty.R().SetHeader("Content-Type", artifactspec.MediaTypeArtifactManifest).
+			resp, err = resty.R().SetHeader("Content-Type", ispec.MediaTypeImageManifest).
 				SetBody([]byte("bogus")).Put(baseURL + fmt.Sprintf("/v2/%s/manifests/1.0", repoName))
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusBadRequest)
@@ -6240,34 +6239,6 @@ func TestImageSignatures(t *testing.T) {
 				err = signature.VerifyWithNotation(image, tdir)
 				So(err, ShouldNotBeNil)
 			})
-		})
-
-		Convey("GetOrasReferrers", func() {
-			// cover error paths
-			resp, err := resty.R().Get(
-				fmt.Sprintf("%s/oras/artifacts/v1/%s/manifests/%s/referrers", baseURL, "badRepo", "badDigest"))
-			So(err, ShouldBeNil)
-			So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
-
-			resp, err = resty.R().Get(
-				fmt.Sprintf("%s/oras/artifacts/v1/%s/manifests/%s/referrers", baseURL, repoName, "badDigest"))
-			So(err, ShouldBeNil)
-			So(resp.StatusCode(), ShouldEqual, http.StatusBadRequest)
-
-			resp, err = resty.R().Get(
-				fmt.Sprintf("%s/oras/artifacts/v1/%s/manifests/%s/referrers", baseURL, repoName, digest.String()))
-			So(err, ShouldBeNil)
-			So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
-
-			resp, err = resty.R().SetQueryParam("artifactType", "badArtifact").Get(
-				fmt.Sprintf("%s/oras/artifacts/v1/%s/manifests/%s/referrers", baseURL, repoName, digest.String()))
-			So(err, ShouldBeNil)
-			So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
-
-			resp, err = resty.R().SetQueryParam("artifactType", notreg.ArtifactTypeNotation).Get(
-				fmt.Sprintf("%s/oras/artifacts/v1/%s/manifests/%s/referrers", baseURL, "badRepo", digest.String()))
-			So(err, ShouldBeNil)
-			So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
 		})
 	})
 }
@@ -7322,30 +7293,6 @@ func TestRouteFailures(t *testing.T) {
 			defer resp.Body.Close()
 			So(resp, ShouldNotBeNil)
 			So(resp.StatusCode, ShouldEqual, http.StatusNotFound)
-		})
-
-		Convey("Get referrers", func() {
-			request, _ := http.NewRequestWithContext(context.TODO(), http.MethodGet, baseURL, nil)
-			request = mux.SetURLVars(request, map[string]string{})
-			response := httptest.NewRecorder()
-
-			rthdlr.GetOrasReferrers(response, request)
-
-			resp := response.Result()
-			defer resp.Body.Close()
-			So(resp, ShouldNotBeNil)
-			So(resp.StatusCode, ShouldEqual, http.StatusNotFound)
-
-			request, _ = http.NewRequestWithContext(context.TODO(), http.MethodGet, baseURL, nil)
-			request = mux.SetURLVars(request, map[string]string{"name": "foo"})
-			response = httptest.NewRecorder()
-
-			rthdlr.GetOrasReferrers(response, request)
-
-			resp = response.Result()
-			defer resp.Body.Close()
-			So(resp, ShouldNotBeNil)
-			So(resp.StatusCode, ShouldEqual, http.StatusBadRequest)
 		})
 	})
 }

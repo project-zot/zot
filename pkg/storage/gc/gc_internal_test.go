@@ -12,7 +12,6 @@ import (
 
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
-	artifactspec "github.com/oras-project/artifacts-spec/specs-go/v1"
 	. "github.com/smartystreets/goconvey/convey"
 
 	"zotregistry.dev/zot/pkg/api/config"
@@ -81,18 +80,6 @@ func TestGarbageCollectManifestErrors(t *testing.T) {
 					{
 						Digest:    godigest.FromString("miss"),
 						MediaType: ispec.MediaTypeImageManifest,
-					},
-				},
-			}, map[string]bool{})
-			So(err, ShouldNotBeNil)
-		})
-
-		Convey("trigger repo not found in addORASImageManifestBlobsToReferences()", func() {
-			err := gc.addIndexBlobsToReferences(repoName, ispec.Index{
-				Manifests: []ispec.Descriptor{
-					{
-						Digest:    godigest.FromString("miss"),
-						MediaType: artifactspec.MediaTypeArtifactManifest,
 					},
 				},
 			}, map[string]bool{})

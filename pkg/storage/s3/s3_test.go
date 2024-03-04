@@ -20,7 +20,6 @@ import (
 	guuid "github.com/gofrs/uuid"
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
-	artifactspec "github.com/oras-project/artifacts-spec/specs-go/v1"
 	"github.com/rs/zerolog"
 	. "github.com/smartystreets/goconvey/convey"
 	"gopkg.in/resty.v1"
@@ -450,7 +449,7 @@ func TestStorageDriverStatFunction(t *testing.T) {
 	})
 }
 
-func TestGetOrasAndOCIReferrers(t *testing.T) {
+func TestGetOCIReferrers(t *testing.T) {
 	tskip.SkipS3(t)
 
 	repo := "zot-test"
@@ -576,40 +575,6 @@ func TestGetOrasAndOCIReferrers(t *testing.T) {
 			So(index.Manifests[0].MediaType, ShouldEqual, ispec.MediaTypeImageManifest)
 			So(index.Manifests[0].Size, ShouldEqual, manBufLen)
 			So(index.Manifests[0].Digest, ShouldEqual, manDigest)
-		})
-
-		Convey("Get oras referrers", func(c C) {
-			artifactManifest := artifactspec.Manifest{}
-			artifactManifest.ArtifactType = "signature-example"
-			artifactManifest.Subject = &artifactspec.Descriptor{
-				MediaType: ispec.MediaTypeImageManifest,
-				Digest:    mdigest,
-				Size:      int64(mbuflen),
-			}
-			artifactManifest.Blobs = []artifactspec.Descriptor{
-				{
-					Size:      int64(buflen),
-					Digest:    digest,
-					MediaType: "application/octet-stream",
-				},
-			}
-
-			manBuf, err := json.Marshal(artifactManifest)
-			So(err, ShouldBeNil)
-
-			manBufLen := len(manBuf)
-			manDigest := godigest.FromBytes(manBuf)
-
-			_, _, err = imgStore.PutImageManifest(repo, manDigest.Encoded(), artifactspec.MediaTypeArtifactManifest, manBuf)
-			So(err, ShouldBeNil)
-
-			descriptors, err := imgStore.GetOrasReferrers(repo, mdigest, "signature-example")
-			So(err, ShouldBeNil)
-			So(descriptors, ShouldNotBeEmpty)
-			So(descriptors[0].ArtifactType, ShouldEqual, "signature-example")
-			So(descriptors[0].MediaType, ShouldEqual, artifactspec.MediaTypeArtifactManifest)
-			So(descriptors[0].Size, ShouldEqual, manBufLen)
-			So(descriptors[0].Digest, ShouldEqual, manDigest)
 		})
 	})
 }
@@ -1216,14 +1181,6 @@ func TestNegativeCasesObjectsStorage(t *testing.T) {
 			imgStore = createMockStorage(testDir, tdir, false, &StorageDriverMock{})
 			d := godigest.FromBytes([]byte(""))
 			_, err := imgStore.GetReferrers(testImage, d, []string{"application/image"})
-			So(err, ShouldNotBeNil)
-			So(err, ShouldEqual, zerr.ErrRepoBadVersion)
-		})
-
-		Convey("Test GetOrasReferrers", func(c C) {
-			imgStore = createMockStorage(testDir, tdir, false, &StorageDriverMock{})
-			d := godigest.FromBytes([]byte(""))
-			_, err := imgStore.GetOrasReferrers(testImage, d, "application/image")
 			So(err, ShouldNotBeNil)
 			So(err, ShouldEqual, zerr.ErrRepoBadVersion)
 		})

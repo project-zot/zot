@@ -9,7 +9,6 @@ import (
 
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
-	artifactspec "github.com/oras-project/artifacts-spec/specs-go/v1"
 	"github.com/rs/zerolog"
 	. "github.com/smartystreets/goconvey/convey"
 
@@ -165,19 +164,11 @@ func TestGetReferrersErrors(t *testing.T) {
 			_, err := common.GetReferrers(imgStore, "zot-test", "invalidDigest",
 				[]string{artifactType}, log)
 			So(err, ShouldNotBeNil)
-
-			_, err = common.GetOrasReferrers(imgStore, "zot-test", "invalidDigest",
-				artifactType, log)
-			So(err, ShouldNotBeNil)
 		})
 
 		Convey("Trigger repo not found error", func(c C) {
 			_, err := common.GetReferrers(imgStore, "zot-test", validDigest,
 				[]string{artifactType}, log)
-			So(err, ShouldNotBeNil)
-
-			_, err = common.GetOrasReferrers(imgStore, "zot-test", validDigest,
-				artifactType, log)
 			So(err, ShouldNotBeNil)
 		})
 
@@ -190,7 +181,7 @@ func TestGetReferrersErrors(t *testing.T) {
 		index := ispec.Index{
 			Manifests: []ispec.Descriptor{
 				{
-					MediaType: artifactspec.MediaTypeArtifactManifest,
+					MediaType: "application/vnd.example.invalid.v1",
 					Digest:    digest,
 				},
 			},
@@ -212,10 +203,6 @@ func TestGetReferrersErrors(t *testing.T) {
 			_, err = common.GetReferrers(imgStore, "zot-test", validDigest,
 				[]string{artifactType}, log)
 			So(err, ShouldNotBeNil)
-
-			_, err = common.GetOrasReferrers(imgStore, "zot-test", validDigest,
-				artifactType, log)
-			So(err, ShouldNotBeNil)
 		})
 
 		Convey("Trigger GetBlobContent() generic error", func(c C) {
@@ -230,53 +217,6 @@ func TestGetReferrersErrors(t *testing.T) {
 
 			_, err = common.GetReferrers(imgStore, "zot-test", validDigest,
 				[]string{artifactType}, log)
-			So(err, ShouldNotBeNil)
-
-			_, err = common.GetOrasReferrers(imgStore, "zot-test", validDigest,
-				artifactType, log)
-			So(err, ShouldNotBeNil)
-		})
-
-		Convey("Trigger continue on different artifactType", func(c C) {
-			orasManifest := artifactspec.Manifest{
-				Subject: &artifactspec.Descriptor{
-					Digest:       digest,
-					ArtifactType: "unknown",
-				},
-			}
-
-			orasBuf, err := json.Marshal(orasManifest)
-			So(err, ShouldBeNil)
-
-			imgStore = &mocks.MockedImageStore{
-				GetIndexContentFn: func(repo string) ([]byte, error) {
-					return indexBuf, nil
-				},
-				GetBlobContentFn: func(repo string, digest godigest.Digest) ([]byte, error) {
-					return orasBuf, nil
-				},
-			}
-
-			_, err = common.GetOrasReferrers(imgStore, "zot-test", validDigest,
-				artifactType, log)
-			So(err, ShouldNotBeNil)
-
-			_, err = common.GetOrasReferrers(imgStore, "zot-test", digest,
-				artifactType, log)
-			So(err, ShouldNotBeNil)
-		})
-
-		Convey("Unmarshal oras artifact error", func(c C) {
-			imgStore = &mocks.MockedImageStore{
-				GetIndexContentFn: func(repo string) ([]byte, error) {
-					return indexBuf, nil
-				},
-				GetBlobContentFn: func(repo string, digest godigest.Digest) ([]byte, error) {
-					return []byte("wrong content"), nil
-				},
-			}
-
-			_, err = common.GetOrasReferrers(imgStore, "zot-test", validDigest, artifactType, log)
 			So(err, ShouldNotBeNil)
 		})
 

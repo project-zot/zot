@@ -12,7 +12,6 @@ import (
 
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
-	artifactspec "github.com/oras-project/artifacts-spec/specs-go/v1"
 	"github.com/sigstore/cosign/v2/pkg/oci/static"
 
 	zerr "zotregistry.dev/zot/errors"
@@ -27,7 +26,7 @@ import (
 )
 
 type Reference interface {
-	// Returns name of reference (OCIReference/CosignReference/OrasReference)
+	// Returns name of reference (OCIReference/CosignReference)
 	Name() string
 	// Returns whether or not image is signed
 	IsSigned(ctx context.Context, upstreamRepo, subjectDigestStr string) bool
@@ -49,7 +48,6 @@ func NewReferences(httpClient *client.Client, storeController storage.StoreContr
 	refs.referenceList = append(refs.referenceList, NewCosignReference(httpClient, storeController, metaDB, log))
 	refs.referenceList = append(refs.referenceList, NewTagReferences(httpClient, storeController, metaDB, log))
 	refs.referenceList = append(refs.referenceList, NewOciReferences(httpClient, storeController, metaDB, log))
-	refs.referenceList = append(refs.referenceList, NewORASReferences(httpClient, storeController, metaDB, log))
 
 	return refs
 }
@@ -81,7 +79,7 @@ func (refs References) syncAll(ctx context.Context, localRepo, upstreamRepo,
 	// mark subject digest as seen as soon as it comes in
 	*seen = append(*seen, godigest.Digest(subjectDigestStr))
 
-	// for each reference type(cosign/oci/oras reference)
+	// for each reference type(cosign/oci reference)
 	for _, ref := range refs.referenceList {
 		supported, ok := refs.features.Get(ref.Name(), upstreamRepo)
 		if !supported && ok {
@@ -184,23 +182,6 @@ func manifestsEqual(manifest1, manifest2 ispec.Manifest) bool {
 	}
 
 	return false
-}
-
-func artifactDescriptorsEqual(desc1, desc2 []artifactspec.Descriptor) bool {
-	if len(desc1) != len(desc2) {
-		return false
-	}
-
-	for id, desc := range desc1 {
-		if desc.Digest != desc2[id].Digest ||
-			desc.Size != desc2[id].Size ||
-			desc.MediaType != desc2[id].MediaType ||
-			desc.ArtifactType != desc2[id].ArtifactType {
-			return false
-		}
-	}
-
-	return true
 }
 
 func descriptorsEqual(desc1, desc2 []ispec.Descriptor) bool {

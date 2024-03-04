@@ -296,7 +296,6 @@ func scrubManifest(
 func CheckManifestAndConfig(
 	imageName string, manifestDesc ispec.Descriptor, manifestContent []byte, imgStore storageTypes.ImageStore,
 ) (godigest.Digest, ispec.Manifest, error) {
-	// Q oras artifacts?
 	if manifestDesc.MediaType != ispec.MediaTypeImageManifest {
 		return manifestDesc.Digest, ispec.Manifest{}, zerr.ErrBadManifest
 	}

@@ -10,7 +10,6 @@ import (
 
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
-	artifactspec "github.com/oras-project/artifacts-spec/specs-go/v1"
 	. "github.com/smartystreets/goconvey/convey"
 
 	zerr "zotregistry.dev/zot/errors"
@@ -129,45 +128,6 @@ func TestReferrersTag(t *testing.T) {
 
 		// different digest
 		ok, err = referrersTag.canSkipReferences("repo", "subjectdigest", "newdigest")
-		So(err, ShouldBeNil)
-		So(ok, ShouldBeFalse)
-	})
-}
-
-func TestORAS(t *testing.T) {
-	Convey("trigger errors", t, func() {
-		cfg := client.Config{
-			URL:       "url",
-			TLSVerify: false,
-		}
-
-		client, err := client.New(cfg, log.NewLogger("debug", ""))
-		So(err, ShouldBeNil)
-
-		orasRefs := []artifactspec.Descriptor{
-			{
-				MediaType:    "oras",
-				ArtifactType: "oras",
-				Digest:       "digest1",
-			},
-		}
-
-		oras := NewORASReferences(client, storage.StoreController{DefaultStore: mocks.MockedImageStore{
-			GetOrasReferrersFn: func(repo string, digest godigest.Digest, artifactType string) (
-				[]artifactspec.Descriptor, error,
-			) {
-				return orasRefs, nil
-			},
-		}}, nil, log.NewLogger("debug", ""))
-
-		// trigger artifactDescriptors not equal
-		ok, err := oras.canSkipReferences("repo", "tag", ReferenceList{[]artifactspec.Descriptor{
-			{
-				MediaType:    "oras",
-				ArtifactType: "oras",
-				Digest:       "digest2",
-			},
-		}})
 		So(err, ShouldBeNil)
 		So(ok, ShouldBeFalse)
 	})
@@ -340,102 +300,6 @@ func TestCompareManifest(t *testing.T) {
 	Convey("Test manifestsEqual()", t, func() {
 		for _, test := range testCases {
 			actualResult := manifestsEqual(test.manifest1, test.manifest2)
-			So(actualResult, ShouldEqual, test.expected)
-		}
-	})
-}
-
-func TestCompareArtifactRefs(t *testing.T) {
-	testCases := []struct {
-		refs1    []artifactspec.Descriptor
-		refs2    []artifactspec.Descriptor
-		expected bool
-	}{
-		{
-			refs1: []artifactspec.Descriptor{
-				{
-					Digest: "digest1",
-				},
-			},
-			refs2: []artifactspec.Descriptor{
-				{
-					Digest: "digest2",
-				},
-			},
-			expected: false,
-		},
-		{
-			refs1: []artifactspec.Descriptor{
-				{
-					Digest: "digest",
-				},
-			},
-			refs2: []artifactspec.Descriptor{
-				{
-					Digest: "digest",
-				},
-			},
-			expected: true,
-		},
-		{
-			refs1: []artifactspec.Descriptor{
-				{
-					Digest: "digest",
-				},
-				{
-					Digest: "digest2",
-				},
-			},
-			refs2: []artifactspec.Descriptor{
-				{
-					Digest: "digest",
-				},
-			},
-			expected: false,
-		},
-		{
-			refs1: []artifactspec.Descriptor{
-				{
-					Digest: "digest1",
-				},
-				{
-					Digest: "digest2",
-				},
-			},
-			refs2: []artifactspec.Descriptor{
-				{
-					Digest: "digest1",
-				},
-				{
-					Digest: "digest2",
-				},
-			},
-			expected: true,
-		},
-		{
-			refs1: []artifactspec.Descriptor{
-				{
-					Digest: "digest",
-				},
-				{
-					Digest: "digest1",
-				},
-			},
-			refs2: []artifactspec.Descriptor{
-				{
-					Digest: "digest1",
-				},
-				{
-					Digest: "digest2",
-				},
-			},
-			expected: false,
-		},
-	}
-
-	Convey("Test manifestsEqual()", t, func() {
-		for _, test := range testCases {
-			actualResult := artifactDescriptorsEqual(test.refs1, test.refs2)
 			So(actualResult, ShouldEqual, test.expected)
 		}
 	})

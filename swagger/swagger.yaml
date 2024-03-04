@@ -31,7 +31,7 @@ definitions:
       manifests:
         description: Manifests references platform specific manifests.
         items:
-          $ref: '#/definitions/github_com_opencontainers_image-spec_specs-go_v1.Descriptor'
+          $ref: '#/definitions/v1.Descriptor'
         type: array
       mediaType:
         description: MediaType specifies the type of this document data structure
@@ -42,7 +42,7 @@ definitions:
         type: integer
       subject:
         allOf:
-        - $ref: '#/definitions/github_com_opencontainers_image-spec_specs-go_v1.Descriptor'
+        - $ref: '#/definitions/v1.Descriptor'
         description: Subject is an optional link from the image manifest to another
           manifest forming an association between the image manifest and the other
           manifest.
@@ -60,14 +60,14 @@ definitions:
         type: string
       config:
         allOf:
-        - $ref: '#/definitions/github_com_opencontainers_image-spec_specs-go_v1.Descriptor'
+        - $ref: '#/definitions/v1.Descriptor'
         description: |-
           Config references a configuration object for a container, by digest.
           The referenced configuration object is a JSON blob that the runtime uses to set up the container.
       layers:
         description: Layers is an indexed list of layers referenced by the manifest.
         items:
-          $ref: '#/definitions/github_com_opencontainers_image-spec_specs-go_v1.Descriptor'
+          $ref: '#/definitions/v1.Descriptor'
         type: array
       mediaType:
         description: MediaType specifies the type of this document data structure
@@ -78,7 +78,7 @@ definitions:
         type: integer
       subject:
         allOf:
-        - $ref: '#/definitions/github_com_opencontainers_image-spec_specs-go_v1.Descriptor'
+        - $ref: '#/definitions/v1.Descriptor'
         description: Subject is an optional link from the image manifest to another
           manifest forming an association between the image manifest and the other
           manifest.
@@ -168,7 +168,7 @@ definitions:
       releaseTag:
         type: string
     type: object
-  github_com_opencontainers_image-spec_specs-go_v1.Descriptor:
+  v1.Descriptor:
     properties:
       annotations:
         additionalProperties:
@@ -247,43 +247,6 @@ info:
   title: Open Container Initiative Distribution Specification
   version: v1.1.0
 paths:
-  /oras/artifacts/v1/{name}/manifests/{digest}/referrers:
-    get:
-      consumes:
-      - application/json
-      description: Get references for an image given a digest and artifact type
-      parameters:
-      - description: repository name
-        in: path
-        name: name
-        required: true
-        type: string
-      - description: image digest
-        in: path
-        name: digest
-        required: true
-        type: string
-      - description: artifact type
-        in: query
-        name: artifactType
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: ok
-          schema:
-            type: string
-        "404":
-          description: not found
-          schema:
-            type: string
-        "500":
-          description: internal server error
-          schema:
-            type: string
-      summary: Get references for an image
   /v2/:
     get:
       consumes:
