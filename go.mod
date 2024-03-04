@@ -54,7 +54,7 @@ require (
 	github.com/google/go-github/v52 v52.0.0
 	github.com/gorilla/securecookie v1.1.2
 	github.com/gorilla/sessions v1.2.2
-	github.com/migueleliasweb/go-github-mock v0.0.22
+	github.com/migueleliasweb/go-github-mock v0.0.23
 	github.com/notaryproject/notation-go v1.1.0
 	github.com/opencontainers/distribution-spec/specs-go v0.0.0-20240201174943-0f98d91a0afe
 	github.com/project-zot/mockoidc v0.0.0-20230307111146-f607b4b5fb97
@@ -144,7 +144,7 @@ require (
 	github.com/gomodule/redigo v1.8.9 // indirect
 	github.com/google/gnostic-models v0.6.9-0.20230804172637-c7be7c783f49 // indirect
 	github.com/google/go-github/v55 v55.0.0 // indirect
-	github.com/google/go-github/v56 v56.0.0 // indirect
+	github.com/google/go-github/v59 v59.0.0 // indirect
 	github.com/google/licenseclassifier/v2 v2.0.0 // indirect
 	github.com/google/s2a-go v0.1.7 // indirect
 	github.com/google/shlex v0.0.0-20191202100458-e7afc7fbc510 // indirect
