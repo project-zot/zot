@@ -88,9 +88,10 @@ type ManifestBuilder interface {
 }
 
 type Image struct {
-	Manifest ispec.Manifest
-	Config   ispec.Image
-	Layers   [][]byte
+	Manifest        ispec.Manifest
+	Config          ispec.Image
+	Layers          [][]byte
+	digestAlgorithm godigest.Algorithm
 
 	ConfigDescriptor   ispec.Descriptor
 	ManifestDescriptor ispec.Descriptor
@@ -108,11 +109,26 @@ func (img *Image) Digest() godigest.Digest {
 		panic("unreachable: ispec.Manifest should always be marshable")
 	}
 
-	return godigest.FromBytes(blob)
+	digestAlgorithm := img.digestAlgorithm
+
+	if digestAlgorithm == "" {
+		digestAlgorithm = godigest.Canonical
+	}
+
+	return digestAlgorithm.FromBytes(blob)
 }
 
 func (img *Image) DigestStr() string {
 	return img.Digest().String()
+}
+
+func (img *Image) DigestForAlgorithm(digestAlgorithm godigest.Algorithm) godigest.Digest {
+	blob, err := json.Marshal(img.Manifest)
+	if err != nil {
+		panic("unreachable: ispec.Manifest should always be marshable")
+	}
+
+	return digestAlgorithm.FromBytes(blob)
 }
 
 func (img *Image) Size() int {
@@ -167,7 +183,15 @@ type Layer struct {
 // specifying the layers of the image.
 func CreateImageWith() LayerBuilder {
 	// set default values here
-	return &BaseImageBuilder{}
+	return &BaseImageBuilder{
+		digestAlgorithm: godigest.Canonical,
+	}
+}
+
+func CreateImageWithDigestAlgorithm(digestAlgorithm godigest.Algorithm) LayerBuilder {
+	return &BaseImageBuilder{
+		digestAlgorithm: digestAlgorithm,
+	}
 }
 
 func CreateDefaultImage() Image {
@@ -223,6 +247,8 @@ type BaseImageBuilder struct {
 	annotations  map[string]string
 	subject      *ispec.Descriptor
 	artifactType string
+
+	digestAlgorithm godigest.Algorithm
 }
 
 func (ib *BaseImageBuilder) Layers(layers []Layer) ConfigBuilder {
@@ -236,7 +262,7 @@ func (ib *BaseImageBuilder) LayerBlobs(layers [][]byte) ConfigBuilder {
 		ib.layers = append(ib.layers, Layer{
 			Blob:      layer,
 			MediaType: ispec.MediaTypeImageLayerGzip,
-			Digest:    godigest.FromBytes(layer),
+			Digest:    ib.digestAlgorithm.FromBytes(layer),
 		})
 	}
 
@@ -267,7 +293,7 @@ func (ib *BaseImageBuilder) RandomLayers(count, size int) ConfigBuilder {
 		ib.layers = append(ib.layers, Layer{
 			Blob:      layer,
 			MediaType: ispec.MediaTypeImageLayerGzip,
-			Digest:    godigest.FromBytes(layer),
+			Digest:    ib.digestAlgorithm.FromBytes(layer),
 		})
 	}
 
@@ -290,7 +316,7 @@ func (ib *BaseImageBuilder) VulnerableLayers() VulnerableConfigBuilder {
 		{
 			Blob:      layer,
 			MediaType: ispec.MediaTypeImageLayerGzip,
-			Digest:    godigest.FromBytes(layer),
+			Digest:    ib.digestAlgorithm.FromBytes(layer),
 		},
 	}
 
@@ -309,7 +335,7 @@ func (ib *BaseImageBuilder) ImageConfig(config ispec.Image) ManifestBuilder {
 		MediaType: ispec.MediaTypeImageConfig,
 		Size:      int64(len(configBlob)),
 		Data:      configBlob,
-		Digest:    godigest.FromBytes(configBlob),
+		Digest:    ib.digestAlgorithm.FromBytes(configBlob),
 	}
 
 	return ib
@@ -351,7 +377,7 @@ func (ib *BaseImageBuilder) CustomConfigBlob(configBlob []byte, mediaType string
 		MediaType: mediaType,
 		Size:      int64(len(configBlob)),
 		Data:      configBlob,
-		Digest:    godigest.FromBytes(configBlob),
+		Digest:    ib.digestAlgorithm.FromBytes(configBlob),
 	}
 
 	return ib
@@ -372,7 +398,7 @@ func (ib *BaseImageBuilder) RandomConfig() ManifestBuilder {
 
 	ib.configDescriptor = ispec.Descriptor{
 		MediaType: ispec.MediaTypeImageConfig,
-		Digest:    godigest.FromBytes(configBlob),
+		Digest:    ib.digestAlgorithm.FromBytes(configBlob),
 		Size:      int64(len(configBlob)),
 		Data:      configBlob,
 	}
@@ -390,7 +416,7 @@ func (ib *BaseImageBuilder) DefaultVulnConfig() ManifestBuilder {
 
 	vulnConfigDescriptor := ispec.Descriptor{
 		MediaType: ispec.MediaTypeImageConfig,
-		Digest:    godigest.FromBytes(configBlob),
+		Digest:    ib.digestAlgorithm.FromBytes(configBlob),
 		Size:      int64(len(configBlob)),
 		Data:      configBlob,
 	}
@@ -421,7 +447,7 @@ func (ib *BaseImageBuilder) VulnerableConfig(config ispec.Image) ManifestBuilder
 
 	vulnConfigDescriptor := ispec.Descriptor{
 		MediaType: ispec.MediaTypeImageConfig,
-		Digest:    godigest.FromBytes(configBlob),
+		Digest:    ib.digestAlgorithm.FromBytes(configBlob),
 		Size:      int64(len(configBlob)),
 		Data:      configBlob,
 	}
@@ -446,7 +472,7 @@ func (ib *BaseImageBuilder) RandomVulnConfig() ManifestBuilder {
 
 	vulnConfigDescriptor := ispec.Descriptor{
 		MediaType: ispec.MediaTypeImageConfig,
-		Digest:    godigest.FromBytes(configBlob),
+		Digest:    ib.digestAlgorithm.FromBytes(configBlob),
 		Size:      int64(len(configBlob)),
 		Data:      configBlob,
 	}
@@ -493,6 +519,7 @@ func (ib *BaseImageBuilder) Build() Image {
 			Subject:      ib.subject,
 			Annotations:  ib.annotations,
 		},
+		digestAlgorithm: ib.digestAlgorithm,
 	}
 
 	manifestBlob, err := json.Marshal(img.Manifest)
@@ -502,7 +529,7 @@ func (ib *BaseImageBuilder) Build() Image {
 
 	img.ManifestDescriptor = ispec.Descriptor{
 		MediaType: ispec.MediaTypeImageManifest,
-		Digest:    godigest.FromBytes(manifestBlob),
+		Digest:    ib.digestAlgorithm.FromBytes(manifestBlob),
 		Size:      int64(len(manifestBlob)),
 		Data:      manifestBlob,
 	}

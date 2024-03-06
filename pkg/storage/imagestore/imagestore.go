@@ -2,7 +2,6 @@ package imagestore
 
 import (
 	"context"
-	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -141,7 +140,7 @@ func (is *ImageStore) initRepo(name string) error {
 	}
 
 	// create "blobs" subdir
-	err := is.storeDriver.EnsureDir(path.Join(repoDir, "blobs"))
+	err := is.storeDriver.EnsureDir(path.Join(repoDir, ispec.ImageBlobsDir))
 	if err != nil {
 		is.log.Error().Err(err).Str("repository", name).Str("dir", repoDir).Msg("failed to create blobs subdir")
 
@@ -250,7 +249,7 @@ func (is *ImageStore) ValidateRepo(name string) (bool, error) {
 			return false, err
 		}
 
-		if filename == "blobs" && !fileInfo.IsDir() {
+		if filename == ispec.ImageBlobsDir && !fileInfo.IsDir() {
 			return false, nil
 		}
 
@@ -259,7 +258,7 @@ func (is *ImageStore) ValidateRepo(name string) (bool, error) {
 
 	// check blobs dir exists only for filesystem, in s3 we can't have empty dirs
 	if is.storeDriver.Name() == storageConstants.LocalStorageDriverName {
-		if !is.storeDriver.DirExists(path.Join(dir, "blobs")) {
+		if !is.storeDriver.DirExists(path.Join(dir, ispec.ImageBlobsDir)) {
 			return false, nil
 		}
 	}
@@ -515,9 +514,9 @@ func (is *ImageStore) PutImageManifest(repo, reference, mediaType string, //noli
 		refIsDigest = false
 	}
 
-	dig, err := common.ValidateManifest(is, repo, reference, mediaType, body, is.log)
+	err = common.ValidateManifest(is, repo, reference, mediaType, body, is.log)
 	if err != nil {
-		return dig, "", err
+		return mDigest, "", err
 	}
 
 	index, err := common.GetIndex(is, repo, is.log)
@@ -572,11 +571,11 @@ func (is *ImageStore) PutImageManifest(repo, reference, mediaType string, //noli
 	}
 
 	if !updateIndex {
-		return desc.Digest, subjectDigest, nil
+		return mDigest, subjectDigest, nil
 	}
 
 	// write manifest to "blobs"
-	dir := path.Join(is.rootDir, repo, "blobs", mDigest.Algorithm().String())
+	dir := path.Join(is.rootDir, repo, ispec.ImageBlobsDir, mDigest.Algorithm().String())
 	manifestPath := path.Join(dir, mDigest.Encoded())
 
 	if _, err = is.storeDriver.WriteFile(manifestPath, body); err != nil {
@@ -609,7 +608,7 @@ func (is *ImageStore) PutImageManifest(repo, reference, mediaType string, //noli
 		return "", "", err
 	}
 
-	return desc.Digest, subjectDigest, nil
+	return mDigest, subjectDigest, nil
 }
 
 // DeleteImageManifest deletes the image manifest from the repository.
@@ -696,7 +695,8 @@ func (is *ImageStore) deleteImageManifest(repo, reference string, detectCollisio
 	}
 
 	if toDelete {
-		p := path.Join(dir, "blobs", manifestDesc.Digest.Algorithm().String(), manifestDesc.Digest.Encoded())
+		p := path.Join(dir, ispec.ImageBlobsDir, manifestDesc.Digest.Algorithm().String(),
+			manifestDesc.Digest.Encoded())
 
 		err = is.storeDriver.Delete(p)
 		if err != nil {
@@ -882,7 +882,7 @@ func (is *ImageStore) FinishBlobUpload(repo, uuid string, body io.Reader, dstDig
 		return err
 	}
 
-	srcDigest, err := getBlobDigest(is, src)
+	srcDigest, err := getBlobDigest(is, src, dstDigest.Algorithm())
 	if err != nil {
 		is.log.Error().Err(err).Str("blob", src).Msg("failed to open blob")
 
@@ -896,11 +896,11 @@ func (is *ImageStore) FinishBlobUpload(repo, uuid string, body io.Reader, dstDig
 		return zerr.ErrBadBlobDigest
 	}
 
-	dir := path.Join(is.rootDir, repo, "blobs", dstDigest.Algorithm().String())
+	dir := path.Join(is.rootDir, repo, ispec.ImageBlobsDir, dstDigest.Algorithm().String())
 
 	err = is.storeDriver.EnsureDir(dir)
 	if err != nil {
-		is.log.Error().Err(err).Str("dir", dir).Msg("failed to create dir")
+		is.log.Error().Str("directory", dir).Err(err).Msg("failed to create dir")
 
 		return err
 	}
@@ -949,7 +949,10 @@ func (is *ImageStore) FullBlobUpload(repo string, body io.Reader, dstDigest godi
 
 	uuid := u.String()
 	src := is.BlobUploadPath(repo, uuid)
-	digester := sha256.New()
+
+	dstDigestAlgorithm := dstDigest.Algorithm()
+
+	digester := dstDigestAlgorithm.Hash()
 
 	blobFile, err := is.storeDriver.Writer(src, false)
 	if err != nil {
@@ -973,7 +976,7 @@ func (is *ImageStore) FullBlobUpload(repo string, body io.Reader, dstDigest godi
 		return "", -1, err
 	}
 
-	srcDigest := godigest.NewDigestFromEncoded(godigest.SHA256, fmt.Sprintf("%x", digester.Sum(nil)))
+	srcDigest := godigest.NewDigestFromEncoded(dstDigestAlgorithm, fmt.Sprintf("%x", digester.Sum(nil)))
 	if srcDigest != dstDigest {
 		is.log.Error().Str("srcDigest", srcDigest.String()).
 			Str("dstDigest", dstDigest.String()).Msg("actual digest not equal to expected digest")
@@ -981,7 +984,7 @@ func (is *ImageStore) FullBlobUpload(repo string, body io.Reader, dstDigest godi
 		return "", -1, zerr.ErrBadBlobDigest
 	}
 
-	dir := path.Join(is.rootDir, repo, "blobs", dstDigest.Algorithm().String())
+	dir := path.Join(is.rootDir, repo, ispec.ImageBlobsDir, dstDigestAlgorithm.String())
 	_ = is.storeDriver.EnsureDir(dir)
 
 	var lockLatency time.Time
@@ -1136,7 +1139,7 @@ func (is *ImageStore) DeleteBlobUpload(repo, uuid string) error {
 
 // BlobPath returns the repository path of a blob.
 func (is *ImageStore) BlobPath(repo string, digest godigest.Digest) string {
-	return path.Join(is.rootDir, repo, "blobs", digest.Algorithm().String(), digest.Encoded())
+	return path.Join(is.rootDir, repo, ispec.ImageBlobsDir, digest.Algorithm().String(), digest.Encoded())
 }
 
 /*
@@ -1667,7 +1670,8 @@ func (is *ImageStore) deleteBlob(repo string, digest godigest.Digest) error {
 	return nil
 }
 
-func getBlobDigest(imgStore *ImageStore, path string) (godigest.Digest, error) {
+func getBlobDigest(imgStore *ImageStore, path string, digestAlgorithm godigest.Algorithm,
+) (godigest.Digest, error) {
 	fileReader, err := imgStore.storeDriver.Reader(path, 0)
 	if err != nil {
 		return "", zerr.ErrUploadNotFound
@@ -1675,7 +1679,7 @@ func getBlobDigest(imgStore *ImageStore, path string) (godigest.Digest, error) {
 
 	defer fileReader.Close()
 
-	digest, err := godigest.FromReader(fileReader)
+	digest, err := digestAlgorithm.FromReader(fileReader)
 	if err != nil {
 		return "", zerr.ErrBadBlobDigest
 	}
@@ -1683,24 +1687,44 @@ func getBlobDigest(imgStore *ImageStore, path string) (godigest.Digest, error) {
 	return digest, nil
 }
 
-func (is *ImageStore) GetAllBlobs(repo string) ([]string, error) {
-	dir := path.Join(is.rootDir, repo, "blobs", "sha256")
+func (is *ImageStore) GetAllBlobs(repo string) ([]godigest.Digest, error) {
+	blobsDir := path.Join(is.rootDir, repo, ispec.ImageBlobsDir)
 
-	files, err := is.storeDriver.List(dir)
+	ret := []godigest.Digest{}
+
+	algorithmPaths, err := is.storeDriver.List(blobsDir)
 	if err != nil {
 		if errors.As(err, &driver.PathNotFoundError{}) {
-			is.log.Debug().Msg("empty rootDir")
+			is.log.Debug().Str("directory", blobsDir).Msg("empty blobs directory")
 
-			return []string{}, nil
+			return ret, nil
 		}
 
-		return []string{}, err
+		return ret, err
 	}
 
-	ret := []string{}
+	for _, algorithmPath := range algorithmPaths {
+		algorithm := godigest.Algorithm(path.Base(algorithmPath))
 
-	for _, file := range files {
-		ret = append(ret, filepath.Base(file))
+		if !algorithm.Available() {
+			continue
+		}
+
+		digestPaths, err := is.storeDriver.List(algorithmPath)
+		if err != nil {
+			// algorithmPath was obtained by looking up under the blobs directory
+			// we are sure it already exists, so PathNotFoundError does not need to be checked
+			return []godigest.Digest{}, err
+		}
+
+		for _, file := range digestPaths {
+			digest := godigest.NewDigestFromEncoded(algorithm, filepath.Base(file))
+			ret = append(ret, digest)
+		}
+	}
+
+	if len(ret) == 0 {
+		is.log.Debug().Str("directory", blobsDir).Msg("empty blobs directory")
 	}
 
 	return ret, nil
@@ -1729,14 +1753,24 @@ func (is *ImageStore) GetNextDigestWithBlobPaths(repos []string, lastDigests []g
 		if fileInfo.IsDir() {
 			// skip repositories not found in repos
 			repo := path.Base(fileInfo.Path())
+			if !zcommon.Contains(repos, repo) && repo != ispec.ImageBlobsDir {
+				candidateAlgorithm := godigest.Algorithm(repo)
 
-			if !zcommon.Contains(repos, repo) && repo != "blobs" && repo != "sha256" {
-				return driver.ErrSkipDir
+				if !candidateAlgorithm.Available() {
+					return driver.ErrSkipDir
+				}
 			}
 		}
 
-		blobDigest := godigest.NewDigestFromEncoded("sha256", path.Base(fileInfo.Path()))
+		digestHash := path.Base(fileInfo.Path())
+		digestAlgorithm := godigest.Algorithm(path.Base(path.Dir(fileInfo.Path())))
+
+		blobDigest := godigest.NewDigestFromEncoded(digestAlgorithm, digestHash)
 		if err := blobDigest.Validate(); err != nil { //nolint: nilerr
+			is.log.Debug().Str("path", fileInfo.Path()).Str("digestHash", digestHash).
+				Str("digestAlgorithm", digestAlgorithm.String()).
+				Msg("digest validation failed when walking blob paths")
+
 			return nil //nolint: nilerr // ignore files which are not blobs
 		}
 
