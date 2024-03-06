@@ -198,6 +198,276 @@ func TestNegativeServerResponse(t *testing.T) {
 	})
 }
 
+func TestCVEDiffList(t *testing.T) {
+	port := test.GetFreePort()
+	url := test.GetBaseURL(port)
+	conf := config.New()
+	conf.HTTP.Port = port
+
+	dir := t.TempDir()
+
+	conf.Storage.RootDirectory = dir
+	trivyConfig := &extconf.TrivyConfig{
+		DBRepository: "ghcr.io/project-zot/trivy-db",
+	}
+	cveConfig := &extconf.CVEConfig{
+		UpdateInterval: 2,
+		Trivy:          trivyConfig,
+	}
+	defaultVal := true
+	searchConfig := &extconf.SearchConfig{
+		BaseConfig: extconf.BaseConfig{Enable: &defaultVal},
+		CVE:        cveConfig,
+	}
+	conf.Extensions = &extconf.ExtensionConfig{
+		Search: searchConfig,
+	}
+
+	logFile, err := os.CreateTemp(t.TempDir(), "zot-log*.txt")
+	if err != nil {
+		panic(err)
+	}
+
+	logPath := logFile.Name()
+	defer os.Remove(logPath)
+
+	writers := io.MultiWriter(os.Stdout, logFile)
+
+	ctlr := api.NewController(conf)
+	ctlr.Log.Logger = ctlr.Log.Output(writers)
+
+	if err := ctlr.Init(); err != nil {
+		panic(err)
+	}
+
+	layer1 := []byte{10, 20, 30}
+	layer2 := []byte{11, 21, 31}
+	layer3 := []byte{12, 22, 23}
+
+	otherImage := CreateImageWith().LayerBlobs([][]byte{
+		layer1,
+	}).DefaultConfig().Build()
+
+	baseImage := CreateImageWith().LayerBlobs([][]byte{
+		layer1,
+		layer2,
+	}).PlatformConfig("testArch", "testOs").Build()
+
+	image := CreateImageWith().LayerBlobs([][]byte{
+		layer1,
+		layer2,
+		layer3,
+	}).PlatformConfig("testArch", "testOs").Build()
+
+	multiArchBase := CreateMultiarchWith().Images([]Image{baseImage, CreateRandomImage(), CreateRandomImage()}).
+		Build()
+	multiArchImage := CreateMultiarchWith().Images([]Image{image, CreateRandomImage(), CreateRandomImage()}).
+		Build()
+
+	getCveResults := func(digestStr string) map[string]cvemodel.CVE {
+		switch digestStr {
+		case image.DigestStr():
+			return map[string]cvemodel.CVE{
+				"CVE1": {
+					ID:          "CVE1",
+					Severity:    "HIGH",
+					Title:       "Title CVE1",
+					Description: "Description CVE1",
+					PackageList: []cvemodel.Package{{}},
+				},
+				"CVE2": {
+					ID:          "CVE2",
+					Severity:    "MEDIUM",
+					Title:       "Title CVE2",
+					Description: "Description CVE2",
+					PackageList: []cvemodel.Package{{}},
+				},
+				"CVE3": {
+					ID:          "CVE3",
+					Severity:    "LOW",
+					Title:       "Title CVE3",
+					Description: "Description CVE3",
+					PackageList: []cvemodel.Package{{}},
+				},
+			}
+		case baseImage.DigestStr():
+			return map[string]cvemodel.CVE{
+				"CVE1": {
+					ID:          "CVE1",
+					Severity:    "HIGH",
+					Title:       "Title CVE1",
+					Description: "Description CVE1",
+					PackageList: []cvemodel.Package{{}},
+				},
+				"CVE2": {
+					ID:          "CVE2",
+					Severity:    "MEDIUM",
+					Title:       "Title CVE2",
+					Description: "Description CVE2",
+					PackageList: []cvemodel.Package{{}},
+				},
+			}
+		case otherImage.DigestStr():
+			return map[string]cvemodel.CVE{
+				"CVE1": {
+					ID:          "CVE1",
+					Severity:    "HIGH",
+					Title:       "Title CVE1",
+					Description: "Description CVE1",
+					PackageList: []cvemodel.Package{{}},
+				},
+			}
+		}
+
+		// By default the image has no vulnerabilities
+		return map[string]cvemodel.CVE{}
+	}
+
+	// MetaDB loaded with initial data, now mock the scanner
+	// Setup test CVE data in mock scanner
+	scanner := mocks.CveScannerMock{
+		ScanImageFn: func(ctx context.Context, image string) (map[string]cvemodel.CVE, error) {
+			repo, ref, _, _ := zcommon.GetRepoReference(image)
+
+			if zcommon.IsDigest(ref) {
+				return getCveResults(ref), nil
+			}
+
+			repoMeta, _ := ctlr.MetaDB.GetRepoMeta(ctx, repo)
+
+			if _, ok := repoMeta.Tags[ref]; !ok {
+				panic("unexpected tag '" + ref + "', test might be wrong")
+			}
+
+			return getCveResults(repoMeta.Tags[ref].Digest), nil
+		},
+		GetCachedResultFn: func(digestStr string) map[string]cvemodel.CVE {
+			return getCveResults(digestStr)
+		},
+		IsResultCachedFn: func(digestStr string) bool {
+			return true
+		},
+	}
+
+	ctlr.CveScanner = scanner
+
+	go func() {
+		if err := ctlr.Run(); !errors.Is(err, http.ErrServerClosed) {
+			panic(err)
+		}
+	}()
+
+	defer ctlr.Shutdown()
+
+	test.WaitTillServerReady(url)
+
+	ctx := context.Background()
+	_, err = ociutils.InitializeTestMetaDB(ctx, ctlr.MetaDB,
+		ociutils.Repo{
+			Name: "repo",
+			Images: []ociutils.RepoImage{
+				{Image: otherImage, Reference: "other-image"},
+				{Image: baseImage, Reference: "base-image"},
+				{Image: image, Reference: "image"},
+			},
+		},
+		ociutils.Repo{
+			Name: "repo-multi",
+			MultiArchImages: []ociutils.RepoMultiArchImage{
+				{MultiarchImage: CreateRandomMultiarch(), Reference: "multi-rand"},
+				{MultiarchImage: multiArchBase, Reference: "multi-base"},
+				{MultiarchImage: multiArchImage, Reference: "multi-img"},
+			},
+		},
+	)
+
+	Convey("Test CVE by image name - GQL - positive", t, func() {
+		args := []string{"diff", "repo:image", "repo:base-image", "--config", "cvetest"}
+		configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"cvetest","url":"%s","showspinner":false}]}`, url))
+		defer os.Remove(configPath)
+		cveCmd := client.NewCVECommand(client.NewSearchService())
+		buff := bytes.NewBufferString("")
+		cveCmd.SetOut(buff)
+		cveCmd.SetErr(buff)
+		cveCmd.SetArgs(args)
+		err = cveCmd.Execute()
+		fmt.Println(buff.String())
+		space := regexp.MustCompile(`\s+`)
+		str := space.ReplaceAllString(buff.String(), " ")
+		str = strings.TrimSpace(str)
+		So(str, ShouldContainSubstring, "CVE3")
+		So(str, ShouldNotContainSubstring, "CVE1")
+		So(str, ShouldNotContainSubstring, "CVE2")
+	})
+
+	Convey("Errors", t, func() {
+		// args := []string{"diff", "repo:image", "repo:base-image", "--config", "cvetest"}
+		configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"cvetest","url":"%s","showspinner":false}]}`, url))
+		defer os.Remove(configPath)
+		cveCmd := client.NewCVECommand(client.NewSearchService())
+
+		Convey("Set wrong number of params", func() {
+			args := []string{"diff", "repo:image", "--config", "cvetest"}
+			cveCmd.SetArgs(args)
+			So(cveCmd.Execute(), ShouldNotBeNil)
+		})
+		Convey("First input is not a repo:tag", func() {
+			args := []string{"diff", "bad-input", "repo:base-image", "--config", "cvetest"}
+			cveCmd.SetArgs(args)
+			So(cveCmd.Execute(), ShouldNotBeNil)
+		})
+		Convey("Second input is arch but not enough args", func() {
+			args := []string{"diff", "repo:base-image", "linux/amd64", "--config", "cvetest"}
+			cveCmd.SetArgs(args)
+			So(cveCmd.Execute(), ShouldNotBeNil)
+		})
+		Convey("Second input is arch 3rd is repo:tag", func() {
+			args := []string{"diff", "repo:base-image", "linux/amd64", "repo:base-image", "--config", "cvetest"}
+			cveCmd.SetArgs(args)
+			So(cveCmd.Execute(), ShouldBeNil)
+		})
+		Convey("Second input is repo:tag 3rd is repo:tag", func() {
+			args := []string{"diff", "repo:base-image", "repo:base-image", "repo:base-image", "--config", "cvetest"}
+			cveCmd.SetArgs(args)
+			So(cveCmd.Execute(), ShouldNotBeNil)
+		})
+		Convey("Second input is arch 3rd is arch as well", func() {
+			args := []string{"diff", "repo:base-image", "linux/amd64", "linux/amd64", "--config", "cvetest"}
+			cveCmd.SetArgs(args)
+			So(cveCmd.Execute(), ShouldNotBeNil)
+		})
+		Convey("Second input is repo:tag 3rd is arch", func() {
+			args := []string{"diff", "repo:base-image", "repo:base-image", "linux/amd64", "--config", "cvetest"}
+			cveCmd.SetArgs(args)
+			So(cveCmd.Execute(), ShouldBeNil)
+		})
+		Convey("Second input is repo:tag 3rd is arch, 4th is repo:tag", func() {
+			args := []string{
+				"diff", "repo:base-image", "repo:base-image", "linux/amd64", "repo:base-image",
+				"--config", "cvetest",
+			}
+
+			cveCmd.SetArgs(args)
+			So(cveCmd.Execute(), ShouldNotBeNil)
+		})
+		Convey("Second input is arch 3rd is repo:tag, 4th is arch", func() {
+			args := []string{"diff", "repo:base-image", "linux/amd64", "repo:base-image", "linux/amd64", "--config", "cvetest"}
+			cveCmd.SetArgs(args)
+			So(cveCmd.Execute(), ShouldBeNil)
+		})
+		Convey("input is with digest ref", func() {
+			args := []string{"diff", "repo@sha256:123123", "--config", "cvetest"}
+			cveCmd.SetArgs(args)
+			So(cveCmd.Execute(), ShouldNotBeNil)
+		})
+		Convey("input is with just repo no ref", func() {
+			args := []string{"diff", "repo", "--config", "cvetest"}
+			cveCmd.SetArgs(args)
+			So(cveCmd.Execute(), ShouldNotBeNil)
+		})
+	})
+}
+
 //nolint:dupl
 func TestServerCVEResponse(t *testing.T) {
 	port := test.GetFreePort()

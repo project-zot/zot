@@ -22,6 +22,7 @@ const (
 	DebugFlag        = "debug"
 	SearchedCVEID    = "cve-id"
 	SortByFlag       = "sort-by"
+	PlatformFlag     = "platform"
 )
 
 const (

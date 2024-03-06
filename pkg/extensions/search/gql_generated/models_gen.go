@@ -35,6 +35,20 @@ type Cve struct {
 	PackageList []*PackageInfo `json:"PackageList,omitempty"`
 }
 
+// Contains the diff results of subtracting Subtrahend's CVEs from Minuend's CVEs
+type CVEDiffResult struct {
+	// Minuend is the image from which CVE's we subtract
+	Minuend *ImageIdentifier `json:"Minuend"`
+	// Subtrahend is the image which CVE's are subtracted
+	Subtrahend *ImageIdentifier `json:"Subtrahend"`
+	// List of CVE objects which are present in minuend but not in subtrahend
+	CVEList []*Cve `json:"CVEList,omitempty"`
+	// Summary of the findings for this image
+	Summary *ImageVulnerabilitySummary `json:"Summary,omitempty"`
+	// The CVE pagination information, see PageInfo object for more details
+	Page *PageInfo `json:"Page,omitempty"`
+}
+
 // Contains the tag of the image and a list of CVEs
 type CVEResultForImage struct {
 	// Tag affected by the CVEs
@@ -90,6 +104,30 @@ type HistoryDescription struct {
 	Comment *string `json:"Comment,omitempty"`
 	// EmptyLayer is used to mark if the history item created a filesystem diff.
 	EmptyLayer *bool `json:"EmptyLayer,omitempty"`
+}
+
+// ImageIdentifier
+type ImageIdentifier struct {
+	// Repo name of the image
+	Repo string `json:"Repo"`
+	// The tag of the image
+	Tag string `json:"Tag"`
+	// The digest of the image
+	Digest *string `json:"Digest,omitempty"`
+	// The platform of the image
+	Platform *Platform `json:"Platform,omitempty"`
+}
+
+// ImageInput
+type ImageInput struct {
+	// Repo name of the image
+	Repo string `json:"Repo"`
+	// The tag of the image
+	Tag string `json:"Tag"`
+	// The digest of the image
+	Digest *string `json:"Digest,omitempty"`
+	// The platform of the image
+	Platform *PlatformInput `json:"Platform,omitempty"`
 }
 
 // Details about a specific image, it is used by queries returning a list of images
@@ -261,6 +299,14 @@ type Platform struct {
 	Os *string `json:"Os,omitempty"`
 	// The name of the compilation architecture which the image is built to run on,
 	// Should be values listed in the Go Language document https://go.dev/doc/install/source#environment
+	Arch *string `json:"Arch,omitempty"`
+}
+
+// PlatformInput contains the Os and the Arch of the input image
+type PlatformInput struct {
+	// The os of the image
+	Os *string `json:"Os,omitempty"`
+	// The arch of the image
 	Arch *string `json:"Arch,omitempty"`
 }
 

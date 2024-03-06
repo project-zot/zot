@@ -140,3 +140,139 @@ func NewFixedTagsCommand(searchService SearchService) *cobra.Command {
 
 	return fixedTagsCmd
 }
+
+func NewCVEDiffCommand(searchService SearchService) *cobra.Command {
+	var (
+		minuendStr, minuendArch       string
+		subtrahendStr, subtrahendArch string
+	)
+	imagesByCVEIDCmd := &cobra.Command{
+		Use:   "diff [minuend] ([minuend-platform]) [subtrahend] ([subtrahend-platform])",
+		Short: "List the CVE's present in minuend that are not present in subtrahend",
+		Long:  `List the CVE's present in minuend that are not present in subtrahend`,
+		Args: func(cmd *cobra.Command, args []string) error {
+			const (
+				twoArgs   = 2
+				threeArgs = 3
+				fourArgs  = 4
+			)
+
+			if err := cobra.RangeArgs(twoArgs, fourArgs)(cmd, args); err != nil {
+				return err
+			}
+
+			if !isRepoTag(args[0]) {
+				return fmt.Errorf("%w: first parameter should be a repo:tag", zerr.ErrInvalidArgs)
+			}
+
+			minuendStr = args[0]
+
+			if isRepoTag(args[1]) {
+				subtrahendStr = args[1]
+			} else {
+				minuendArch = args[1]
+
+				if len(args) == twoArgs {
+					return fmt.Errorf("%w: not enough arguments, specified only 1 image with arch", zerr.ErrInvalidArgs)
+				}
+			}
+
+			if len(args) == twoArgs {
+				return nil
+			}
+
+			if isRepoTag(args[2]) {
+				if subtrahendStr == "" {
+					subtrahendStr = args[2]
+				} else {
+					return fmt.Errorf("%w: too many repo:tag inputs", zerr.ErrInvalidArgs)
+				}
+			} else {
+				if subtrahendStr == "" {
+					return fmt.Errorf("%w: 3rd argument should be a repo:tag", zerr.ErrInvalidArgs)
+				} else {
+					subtrahendArch = args[2]
+				}
+			}
+
+			if len(args) == threeArgs {
+				return nil
+			}
+
+			if isRepoTag(args[3]) {
+				return fmt.Errorf("%w: 4th argument should not be a repo:tag but an arch", zerr.ErrInvalidArgs)
+			} else {
+				subtrahendArch = args[3]
+			}
+
+			return nil
+		},
+		RunE: func(cmd *cobra.Command, args []string) error {
+			searchConfig, err := GetSearchConfigFromFlags(cmd, searchService)
+			if err != nil {
+				return err
+			}
+
+			err = CheckExtEndPointQuery(searchConfig, CVEDiffListForImagesQuery())
+			if err != nil {
+				return fmt.Errorf("%w: '%s'", err, CVEDiffListForImagesQuery().Name)
+			}
+
+			// parse the args and determine the input
+			minuend := getImageIdentifier(minuendStr, minuendArch)
+			subtrahend := getImageIdentifier(subtrahendStr, subtrahendArch)
+
+			return SearchCVEDiffList(searchConfig, minuend, subtrahend)
+		},
+	}
+
+	return imagesByCVEIDCmd
+}
+
+func isRepoTag(arg string) bool {
+	_, _, _, err := zcommon.GetRepoReference(arg) //nolint:dogsled
+
+	return err == nil
+}
+
+type osArch struct {
+	Os   string
+	Arch string
+}
+
+type ImageIdentifier struct {
+	Repo     string  `json:"repo"`
+	Tag      string  `json:"tag"`
+	Digest   string  `json:"digest"`
+	Platform *osArch `json:"platform"`
+}
+
+func getImageIdentifier(repoTagStr, platformStr string) ImageIdentifier {
+	var tag, digest string
+
+	repo, ref, isTag, err := zcommon.GetRepoReference(repoTagStr)
+	if err != nil {
+		return ImageIdentifier{}
+	}
+
+	if isTag {
+		tag = ref
+	} else {
+		digest = ref
+	}
+
+	// check if the following input is a repo:tag or repo@digest, if not then it's a platform
+	var platform *osArch
+
+	if platformStr != "" {
+		os, arch, _ := strings.Cut(platformStr, "/")
+		platform = &osArch{Os: os, Arch: arch}
+	}
+
+	return ImageIdentifier{
+		Repo:     repo,
+		Tag:      tag,
+		Digest:   digest,
+		Platform: platform,
+	}
+}

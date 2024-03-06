@@ -168,4 +168,6 @@ var (
 	ErrAPINotSupported                = errors.New("registry at the given address doesn't implement the correct API")
 	ErrURLNotFound                    = errors.New("url not found")
 	ErrInvalidSearchQuery             = errors.New("invalid search query")
+	ErrImageNotFound                  = errors.New("image not found")
+	ErrAmbiguousInput                 = errors.New("input is not specific enough")
 )
