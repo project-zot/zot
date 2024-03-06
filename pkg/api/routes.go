@@ -29,7 +29,6 @@ import (
 	"github.com/opencontainers/distribution-spec/specs-go/v1/extensions"
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
-	artifactspec "github.com/oras-project/artifacts-spec/specs-go/v1"
 	"github.com/zitadel/oidc/pkg/client/rp"
 	"github.com/zitadel/oidc/pkg/oidc"
 
@@ -172,10 +171,6 @@ func (rh *RouteHandler) SetupRoutes() {
 			getUIHeadersHandler(rh.c.Config, http.MethodGet, http.MethodOptions)(
 				applyCORSHeaders(rh.CheckVersionSupport))).Methods(http.MethodGet, http.MethodOptions)
 	}
-
-	// support for ORAS artifact reference types (alpha 1) - image signature use case
-	rh.c.Router.HandleFunc(fmt.Sprintf("%s/{name:%s}/manifests/{digest}/referrers",
-		constants.ArtifactSpecRoutePrefix, zreg.NameRegexp.String()), rh.GetOrasReferrers).Methods("GET")
 
 	// swagger
 	debug.SetupSwaggerRoutes(rh.c.Config, rh.c.Router, authHandler, rh.c.Log)
@@ -1924,104 +1919,6 @@ func getImageManifest(ctx context.Context, routeHandler *RouteHandler, imgStore 
 	}
 
 	return imgStore.GetImageManifest(name, reference)
-}
-
-// will sync referrers on demand if they are not found, in case sync extensions is enabled.
-func getOrasReferrers(ctx context.Context, routeHandler *RouteHandler,
-	imgStore storageTypes.ImageStore, name string, digest godigest.Digest,
-	artifactType string,
-) ([]artifactspec.Descriptor, error) {
-	refs, err := imgStore.GetOrasReferrers(name, digest, artifactType)
-	if err != nil {
-		if isSyncOnDemandEnabled(*routeHandler.c) {
-			routeHandler.c.Log.Info().Str("repository", name).Str("reference", digest.String()).
-				Msg("artifact not found, trying to get artifact by syncing on demand")
-
-			if errSync := routeHandler.c.SyncOnDemand.SyncReference(ctx, name, digest.String(),
-				syncConstants.Oras); errSync != nil {
-				routeHandler.c.Log.Error().Err(err).Str("name", name).Str("digest", digest.String()).
-					Msg("failed to get references")
-			}
-
-			refs, err = imgStore.GetOrasReferrers(name, digest, artifactType)
-		}
-	}
-
-	return refs, err
-}
-
-type ReferenceList struct {
-	References []artifactspec.Descriptor `json:"references"`
-}
-
-// GetOrasReferrers godoc
-// @Summary Get references for an image
-// @Description Get references for an image given a digest and artifact type
-// @Accept  json
-// @Produce json
-// @Param   name            path    string     true        "repository name"
-// @Param   digest          path    string     true        "image digest"
-// @Param   artifactType    query   string     true        "artifact type"
-// @Success 200 {string} string "ok"
-// @Failure 404 {string} string "not found"
-// @Failure 500 {string} string "internal server error"
-// @Router /oras/artifacts/v1/{name}/manifests/{digest}/referrers [get].
-func (rh *RouteHandler) GetOrasReferrers(response http.ResponseWriter, request *http.Request) {
-	vars := mux.Vars(request)
-	name, ok := vars["name"]
-
-	if !ok || name == "" {
-		response.WriteHeader(http.StatusNotFound)
-
-		return
-	}
-
-	digestStr, ok := vars["digest"]
-	digest, err := godigest.Parse(digestStr)
-
-	if !ok || digestStr == "" || err != nil {
-		response.WriteHeader(http.StatusBadRequest)
-
-		return
-	}
-
-	// filter by artifact type
-	artifactType := ""
-
-	artifactTypes, ok := request.URL.Query()["artifactType"]
-	if ok {
-		if len(artifactTypes) != 1 {
-			rh.c.Log.Error().Msg("invalid artifact types")
-			response.WriteHeader(http.StatusBadRequest)
-
-			return
-		}
-
-		artifactType = artifactTypes[0]
-	}
-
-	imgStore := rh.getImageStore(name)
-
-	rh.c.Log.Info().Str("digest", digest.String()).Str("artifactType", artifactType).Msg("getting manifest")
-
-	refs, err := getOrasReferrers(request.Context(), rh, imgStore, name, digest, artifactType) //nolint:contextcheck
-	if err != nil {
-		if errors.Is(err, zerr.ErrManifestNotFound) || errors.Is(err, zerr.ErrRepoNotFound) {
-			rh.c.Log.Error().Err(err).Str("name", name).Str("digest", digest.String()).
-				Msg("failed to get manifest")
-			response.WriteHeader(http.StatusNotFound)
-		} else {
-			rh.c.Log.Error().Err(err).Str("name", name).Str("digest", digest.String()).
-				Msg("failed to get references")
-			response.WriteHeader(http.StatusInternalServerError)
-		}
-
-		return
-	}
-
-	rs := ReferenceList{References: refs}
-
-	zcommon.WriteJSON(response, http.StatusOK, rs)
 }
 
 type APIKeyPayload struct { //nolint:revive

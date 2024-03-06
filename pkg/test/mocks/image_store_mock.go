@@ -7,7 +7,6 @@ import (
 
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
-	artifactspec "github.com/oras-project/artifacts-spec/specs-go/v1"
 
 	"zotregistry.dev/zot/pkg/scheduler"
 )
@@ -40,13 +39,11 @@ type MockedImageStore struct {
 	StatBlobFn             func(repo string, digest godigest.Digest) (bool, int64, time.Time, error)
 	GetBlobPartialFn       func(repo string, digest godigest.Digest, mediaType string, from, to int64,
 	) (io.ReadCloser, int64, int64, error)
-	GetBlobFn          func(repo string, digest godigest.Digest, mediaType string) (io.ReadCloser, int64, error)
-	DeleteBlobFn       func(repo string, digest godigest.Digest) error
-	GetIndexContentFn  func(repo string) ([]byte, error)
-	GetBlobContentFn   func(repo string, digest godigest.Digest) ([]byte, error)
-	GetReferrersFn     func(repo string, digest godigest.Digest, artifactTypes []string) (ispec.Index, error)
-	GetOrasReferrersFn func(repo string, digest godigest.Digest, artifactType string,
-	) ([]artifactspec.Descriptor, error)
+	GetBlobFn            func(repo string, digest godigest.Digest, mediaType string) (io.ReadCloser, int64, error)
+	DeleteBlobFn         func(repo string, digest godigest.Digest) error
+	GetIndexContentFn    func(repo string) ([]byte, error)
+	GetBlobContentFn     func(repo string, digest godigest.Digest) ([]byte, error)
+	GetReferrersFn       func(repo string, digest godigest.Digest, artifactTypes []string) (ispec.Index, error)
 	URLForPathFn         func(path string) (string, error)
 	RunGCRepoFn          func(repo string) error
 	RunGCPeriodicallyFn  func(interval time.Duration, sch *scheduler.Scheduler)
@@ -344,18 +341,6 @@ func (is MockedImageStore) GetReferrers(
 	}
 
 	return ispec.Index{}, nil
-}
-
-func (is MockedImageStore) GetOrasReferrers(
-	repo string,
-	digest godigest.Digest,
-	artifactType string,
-) ([]artifactspec.Descriptor, error) {
-	if is.GetOrasReferrersFn != nil {
-		return is.GetOrasReferrersFn(repo, digest, artifactType)
-	}
-
-	return []artifactspec.Descriptor{}, nil
 }
 
 func (is MockedImageStore) URLForPath(path string) (string, error) {

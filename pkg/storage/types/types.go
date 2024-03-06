@@ -8,7 +8,6 @@ import (
 	storagedriver "github.com/docker/distribution/registry/storage/driver"
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
-	artifactspec "github.com/oras-project/artifacts-spec/specs-go/v1"
 
 	"zotregistry.dev/zot/pkg/scheduler"
 )
@@ -58,7 +57,6 @@ type ImageStore interface { //nolint:interfacebloat
 	StatIndex(repo string) (bool, int64, time.Time, error)
 	GetBlobContent(repo string, digest godigest.Digest) ([]byte, error)
 	GetReferrers(repo string, digest godigest.Digest, artifactTypes []string) (ispec.Index, error)
-	GetOrasReferrers(repo string, digest godigest.Digest, artifactType string) ([]artifactspec.Descriptor, error)
 	RunDedupeBlobs(interval time.Duration, sch *scheduler.Scheduler)
 	RunDedupeForDigest(ctx context.Context, digest godigest.Digest, dedupe bool, duplicateBlobs []string) error
 	GetNextDigestWithBlobPaths(repos []string, lastDigests []godigest.Digest) (godigest.Digest, []string, error)

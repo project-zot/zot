@@ -21,7 +21,6 @@ import (
 	godigest "github.com/opencontainers/go-digest"
 	imeta "github.com/opencontainers/image-spec/specs-go"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
-	artifactspec "github.com/oras-project/artifacts-spec/specs-go/v1"
 	"github.com/rs/zerolog"
 	. "github.com/smartystreets/goconvey/convey"
 
@@ -182,16 +181,6 @@ func TestStorageFSAPIs(t *testing.T) {
 				panic(err)
 			}
 
-			// invalid GetOrasReferrers
-			_, err = imgStore.GetOrasReferrers("invalid", "invalid", "invalid")
-			So(err, ShouldNotBeNil)
-
-			_, err = imgStore.GetOrasReferrers(repoName, "invalid", "invalid")
-			So(err, ShouldNotBeNil)
-
-			_, err = imgStore.GetOrasReferrers(repoName, digest, "invalid")
-			So(err, ShouldNotBeNil)
-
 			// invalid DeleteImageManifest
 			indexPath := path.Join(imgStore.RootDir(), repoName, "index.json")
 			err = os.Chmod(indexPath, 0o000)
@@ -207,63 +196,6 @@ func TestStorageFSAPIs(t *testing.T) {
 				panic(err)
 			}
 		})
-	})
-}
-
-func TestGetOrasReferrers(t *testing.T) {
-	dir := t.TempDir()
-
-	log := zlog.Logger{Logger: zerolog.New(os.Stdout)}
-	metrics := monitoring.NewMetricsServer(false, log)
-	cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
-		RootDir:     dir,
-		Name:        "cache",
-		UseRelPaths: true,
-	}, log)
-
-	imgStore := local.NewImageStore(dir, true, true, log, metrics, nil, cacheDriver)
-
-	Convey("Get referrers", t, func(c C) {
-		err := WriteImageToFileSystem(CreateDefaultVulnerableImage(), "zot-test", "0.0.1", storage.StoreController{
-			DefaultStore: imgStore,
-		})
-		So(err, ShouldBeNil)
-
-		body := []byte("this is a blob")
-		digest := godigest.FromBytes(body)
-		buf := bytes.NewBuffer(body)
-		buflen := buf.Len()
-		err = os.WriteFile(path.Join(imgStore.RootDir(), //nolint: gosec
-			"zot-test", "blobs", digest.Algorithm().String(), digest.Encoded()),
-			buf.Bytes(), 0o644)
-		So(err, ShouldBeNil)
-		_, n, err := imgStore.FullBlobUpload("zot-test", buf, digest)
-		So(err, ShouldBeNil)
-		So(n, ShouldEqual, buflen)
-
-		artifactManifest := artifactspec.Manifest{}
-		artifactManifest.ArtifactType = "signature-example"
-		artifactManifest.Subject = &artifactspec.Descriptor{
-			MediaType: ispec.MediaTypeImageManifest,
-			Digest:    digest,
-			Size:      int64(buflen),
-		}
-		artifactManifest.Blobs = []artifactspec.Descriptor{}
-		manBuf, err := json.Marshal(artifactManifest)
-		manBufLen := len(manBuf)
-		So(err, ShouldBeNil)
-		manDigest := godigest.FromBytes(manBuf)
-		_, _, err = imgStore.PutImageManifest("zot-test", manDigest.Encoded(), artifactspec.MediaTypeArtifactManifest, manBuf)
-		So(err, ShouldBeNil)
-
-		So(err, ShouldBeNil)
-		descriptors, err := imgStore.GetOrasReferrers("zot-test", digest, "signature-example")
-		So(err, ShouldBeNil)
-		So(descriptors, ShouldNotBeEmpty)
-		So(descriptors[0].ArtifactType, ShouldEqual, "signature-example")
-		So(descriptors[0].MediaType, ShouldEqual, artifactspec.MediaTypeArtifactManifest)
-		So(descriptors[0].Size, ShouldEqual, manBufLen)
-		So(descriptors[0].Digest, ShouldEqual, manDigest)
 	})
 }
 
@@ -1059,69 +991,6 @@ func FuzzGetBlobContent(f *testing.F) {
 		_, err = imgStore.GetBlobContent(repoName, digest)
 		if err != nil {
 			if isKnownErr(err) {
-				return
-			}
-			t.Error(err)
-		}
-	})
-}
-
-func FuzzGetOrasReferrers(f *testing.F) {
-	f.Fuzz(func(t *testing.T, data string) {
-		log := &zlog.Logger{Logger: zerolog.New(os.Stdout)}
-		metrics := monitoring.NewMetricsServer(false, *log)
-
-		dir := t.TempDir()
-		defer os.RemoveAll(dir)
-
-		cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
-			RootDir:     dir,
-			Name:        "cache",
-			UseRelPaths: true,
-		}, *log)
-
-		imgStore := local.NewImageStore(dir, true, true, *log, metrics, nil, cacheDriver)
-
-		storageCtlr := storage.StoreController{DefaultStore: imgStore}
-		err := WriteImageToFileSystem(CreateDefaultVulnerableImage(), "zot-test", "0.0.1", storageCtlr)
-		if err != nil {
-			t.Error(err)
-		}
-		digest := godigest.FromBytes([]byte(data))
-		buf := bytes.NewBufferString(data)
-		buflen := buf.Len()
-		err = os.WriteFile(path.Join(imgStore.RootDir(), //nolint: gosec
-			"zot-test", "blobs", digest.Algorithm().String(), digest.Encoded()),
-			buf.Bytes(), 0o644)
-		if err != nil {
-			t.Error(err)
-		}
-		_, _, err = imgStore.FullBlobUpload("zot-test", buf, digest)
-		if err != nil {
-			t.Error(err)
-		}
-
-		artifactManifest := artifactspec.Manifest{}
-		artifactManifest.ArtifactType = data
-		artifactManifest.Subject = &artifactspec.Descriptor{
-			MediaType: ispec.MediaTypeImageManifest,
-			Digest:    digest,
-			Size:      int64(buflen),
-		}
-		artifactManifest.Blobs = []artifactspec.Descriptor{}
-
-		manBuf, err := json.Marshal(artifactManifest)
-		if err != nil {
-			t.Error(err)
-		}
-		manDigest := godigest.FromBytes(manBuf)
-		_, _, err = imgStore.PutImageManifest("zot-test", manDigest.Encoded(), artifactspec.MediaTypeArtifactManifest, manBuf)
-		if err != nil {
-			t.Error(err)
-		}
-		_, err = imgStore.GetOrasReferrers("zot-test", digest, data)
-		if err != nil {
-			if errors.Is(err, zerr.ErrManifestNotFound) || isKnownErr(err) {
 				return
 			}
 			t.Error(err)

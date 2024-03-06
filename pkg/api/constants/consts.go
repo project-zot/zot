@@ -3,7 +3,6 @@ package constants
 import "time"
 
 const (
-	ArtifactSpecRoutePrefix      = "/oras/artifacts/v1"
 	RoutePrefix                  = "/v2"
 	Blobs                        = "blobs"
 	Uploads                      = "uploads"

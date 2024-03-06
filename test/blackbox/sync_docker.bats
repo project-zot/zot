@@ -332,7 +332,7 @@ function teardown_file() {
 
 @test "sync image on demand from ghcr.io" {
     zot_port=`cat ${BATS_FILE_TMPDIR}/zot.port`
-    run skopeo copy docker://127.0.0.1:${zot_port}/project-zot/zot-linux-amd64:v2.0.0-rc5 oci:${TEST_DATA_DIR} --src-tls-verify=false
+    run skopeo copy docker://127.0.0.1:${zot_port}/project-zot/zot-linux-amd64:v2.0.1 oci:${TEST_DATA_DIR} --src-tls-verify=false
     [ "$status" -eq 0 ]
 
     run curl http://127.0.0.1:${zot_port}/v2/_catalog
@@ -340,7 +340,7 @@ function teardown_file() {
     [ $(echo "${lines[-1]}"| jq '.repositories | map(select(. == "project-zot/zot-linux-amd64"))' | jq '.[]') = '"project-zot/zot-linux-amd64"' ]
     run curl http://127.0.0.1:${zot_port}/v2/project-zot/zot-linux-amd64/tags/list
     [ "$status" -eq 0 ]
-    [ $(echo "${lines[-1]}" | jq '.tags[]') = '"v2.0.0-rc5"' ]
+    [ $(echo "${lines[-1]}" | jq '.tags[]') = '"v2.0.1"' ]
 }
 
 @test "run docker with image synced from docker.io" {
@@ -450,7 +450,7 @@ function teardown_file() {
 
 @test "run docker with image synced from ghcr.io" {
     zot_port=`cat ${BATS_FILE_TMPDIR}/zot.port`
-    run docker run -d 127.0.0.1:${zot_port}/project-zot/zot-linux-amd64:v2.0.0-rc5
+    run docker run -d 127.0.0.1:${zot_port}/project-zot/zot-linux-amd64:v2.0.1
     [ "$status" -eq 0 ]
 
     run curl http://127.0.0.1:${zot_port}/v2/_catalog
@@ -458,5 +458,5 @@ function teardown_file() {
     [ $(echo "${lines[-1]}"| jq '.repositories | map(select(. == "project-zot/zot-linux-amd64"))' | jq '.[]') = '"project-zot/zot-linux-amd64"' ]
     run curl http://127.0.0.1:${zot_port}/v2/project-zot/zot-linux-amd64/tags/list
     [ "$status" -eq 0 ]
-    [ $(echo "${lines[-1]}" | jq '.tags[]') = '"v2.0.0-rc5"' ]
+    [ $(echo "${lines[-1]}" | jq '.tags[]') = '"v2.0.1"' ]
 }

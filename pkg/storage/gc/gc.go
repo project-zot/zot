@@ -12,7 +12,6 @@ import (
 	"github.com/docker/distribution/registry/storage/driver"
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
-	oras "github.com/oras-project/artifacts-spec/specs-go/v1"
 
 	zerr "zotregistry.dev/zot/errors"
 	"zotregistry.dev/zot/pkg/api/config"
@@ -244,7 +243,7 @@ func (gc GarbageCollect) removeIndexReferrers(repo string, rootIndex *ispec.Inde
 			if gced {
 				count++
 			}
-		case ispec.MediaTypeImageManifest, oras.MediaTypeArtifactManifest:
+		case ispec.MediaTypeImageManifest:
 			image, err := common.GetImageManifest(gc.imgStore, repo, desc.Digest, gc.log)
 			if err != nil {
 				gc.log.Error().Err(err).Str("module", "gc").Str("repo", repo).Str("digest", desc.Digest.String()).
@@ -529,7 +528,7 @@ func (gc GarbageCollect) identifyManifestsReferencedInIndex(index ispec.Index, r
 			if err := gc.identifyManifestsReferencedInIndex(indexImage, repo, referenced); err != nil {
 				return err
 			}
-		case ispec.MediaTypeImageManifest, oras.MediaTypeArtifactManifest:
+		case ispec.MediaTypeImageManifest:
 			image, err := common.GetImageManifest(gc.imgStore, repo, desc.Digest, gc.log)
 			if err != nil {
 				gc.log.Error().Err(err).Str("module", "gc").Str("repo", repo).
@@ -640,13 +639,6 @@ func (gc GarbageCollect) addIndexBlobsToReferences(repo string, index ispec.Inde
 
 				return err
 			}
-		case oras.MediaTypeArtifactManifest:
-			if err := gc.addORASImageManifestBlobsToReferences(repo, desc.Digest, refBlobs); err != nil {
-				gc.log.Error().Err(err).Str("module", "gc").Str("repository", repo).
-					Str("digest", desc.Digest.String()).Msg("failed to read blobs in ORAS image manifest")
-
-				return err
-			}
 		}
 	}
 
@@ -698,31 +690,6 @@ func (gc GarbageCollect) addImageManifestBlobsToReferences(repo string, mdigest 
 
 	for _, layer := range manifestContent.Layers {
 		refBlobs[layer.Digest.String()] = true
-	}
-
-	return nil
-}
-
-func (gc GarbageCollect) addORASImageManifestBlobsToReferences(repo string, mdigest godigest.Digest,
-	refBlobs map[string]bool,
-) error {
-	manifestContent, err := common.GetOrasManifestByDigest(gc.imgStore, repo, mdigest, gc.log)
-	if err != nil {
-		gc.log.Error().Err(err).Str("module", "gc").Str("repository", repo).
-			Str("digest", mdigest.String()).Msg("failed to read manifest image")
-
-		return err
-	}
-
-	refBlobs[mdigest.String()] = true
-
-	// if there is a Subject, it may not exist yet and that is ok
-	if manifestContent.Subject != nil {
-		refBlobs[manifestContent.Subject.Digest.String()] = true
-	}
-
-	for _, blob := range manifestContent.Blobs {
-		refBlobs[blob.Digest.String()] = true
 	}
 
 	return nil

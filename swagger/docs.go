@@ -19,61 +19,6 @@ const docTemplate = `{
     "host": "{{.Host}}",
     "basePath": "{{.BasePath}}",
     "paths": {
-        "/oras/artifacts/v1/{name}/manifests/{digest}/referrers": {
-            "get": {
-                "description": "Get references for an image given a digest and artifact type",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "summary": "Get references for an image",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "repository name",
-                        "name": "name",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "image digest",
-                        "name": "digest",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "artifact type",
-                        "name": "artifactType",
-                        "in": "query",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "ok",
-                        "schema": {
-                            "type": "string"
-                        }
-                    },
-                    "404": {
-                        "description": "not found",
-                        "schema": {
-                            "type": "string"
-                        }
-                    },
-                    "500": {
-                        "description": "internal server error",
-                        "schema": {
-                            "type": "string"
-                        }
-                    }
-                }
-            }
-        },
         "/v2/": {
             "get": {
                 "description": "Check if this API version is supported",
@@ -1211,7 +1156,7 @@ const docTemplate = `{
                     "description": "Manifests references platform specific manifests.",
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/github_com_opencontainers_image-spec_specs-go_v1.Descriptor"
+                        "$ref": "#/definitions/v1.Descriptor"
                     }
                 },
                 "mediaType": {
@@ -1226,7 +1171,7 @@ const docTemplate = `{
                     "description": "Subject is an optional link from the image manifest to another manifest forming an association between the image manifest and the other manifest.",
                     "allOf": [
                         {
-                            "$ref": "#/definitions/github_com_opencontainers_image-spec_specs-go_v1.Descriptor"
+                            "$ref": "#/definitions/v1.Descriptor"
                         }
                     ]
                 }
@@ -1250,7 +1195,7 @@ const docTemplate = `{
                     "description": "Config references a configuration object for a container, by digest.\nThe referenced configuration object is a JSON blob that the runtime uses to set up the container.",
                     "allOf": [
                         {
-                            "$ref": "#/definitions/github_com_opencontainers_image-spec_specs-go_v1.Descriptor"
+                            "$ref": "#/definitions/v1.Descriptor"
                         }
                     ]
                 },
@@ -1258,7 +1203,7 @@ const docTemplate = `{
                     "description": "Layers is an indexed list of layers referenced by the manifest.",
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/github_com_opencontainers_image-spec_specs-go_v1.Descriptor"
+                        "$ref": "#/definitions/v1.Descriptor"
                     }
                 },
                 "mediaType": {
@@ -1273,7 +1218,7 @@ const docTemplate = `{
                     "description": "Subject is an optional link from the image manifest to another manifest forming an association between the image manifest and the other manifest.",
                     "allOf": [
                         {
-                            "$ref": "#/definitions/github_com_opencontainers_image-spec_specs-go_v1.Descriptor"
+                            "$ref": "#/definitions/v1.Descriptor"
                         }
                     ]
                 }
@@ -1412,7 +1357,7 @@ const docTemplate = `{
                 }
             }
         },
-        "github_com_opencontainers_image-spec_specs-go_v1.Descriptor": {
+        "v1.Descriptor": {
             "type": "object",
             "properties": {
                 "annotations": {

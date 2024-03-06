@@ -16,7 +16,6 @@ import (
 	"github.com/opencontainers/image-spec/schema"
 	imeta "github.com/opencontainers/image-spec/specs-go"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
-	oras "github.com/oras-project/artifacts-spec/specs-go/v1"
 
 	zerr "zotregistry.dev/zot/errors"
 	zcommon "zotregistry.dev/zot/pkg/common"
@@ -125,13 +124,6 @@ func ValidateManifest(imgStore storageTypes.ImageStore, repo, reference, mediaTy
 					return "", zerr.ErrBadManifest
 				}
 			}
-		}
-	case oras.MediaTypeArtifactManifest:
-		var m oras.Descriptor
-		if err := json.Unmarshal(body, &m); err != nil {
-			log.Error().Err(err).Msg("failed to unmarshal JSON")
-
-			return "", zerr.ErrBadManifest
 		}
 	case ispec.MediaTypeImageIndex:
 		// validate manifest
@@ -505,30 +497,6 @@ func isBlobReferencedInImageManifest(imgStore storageTypes.ImageStore, repo stri
 	return false, nil
 }
 
-func isBlobReferencedInORASManifest(imgStore storageTypes.ImageStore, repo string,
-	bdigest, mdigest godigest.Digest, log zlog.Logger,
-) (bool, error) {
-	if bdigest == mdigest {
-		return true, nil
-	}
-
-	manifestContent, err := GetOrasManifestByDigest(imgStore, repo, mdigest, log)
-	if err != nil {
-		log.Error().Err(err).Str("repo", repo).Str("digest", mdigest.String()).Str("component", "gc").
-			Msg("failed to read manifest image")
-
-		return false, err
-	}
-
-	for _, blob := range manifestContent.Blobs {
-		if bdigest == blob.Digest {
-			return true, nil
-		}
-	}
-
-	return false, nil
-}
-
 func IsBlobReferencedInImageIndex(imgStore storageTypes.ImageStore, repo string,
 	digest godigest.Digest, index ispec.Index, log zlog.Logger,
 ) (bool, error) {
@@ -548,8 +516,6 @@ func IsBlobReferencedInImageIndex(imgStore storageTypes.ImageStore, repo string,
 			found, _ = IsBlobReferencedInImageIndex(imgStore, repo, digest, indexImage, log)
 		case ispec.MediaTypeImageManifest:
 			found, _ = isBlobReferencedInImageManifest(imgStore, repo, digest, desc.Digest, log)
-		case oras.MediaTypeArtifactManifest:
-			found, _ = isBlobReferencedInORASManifest(imgStore, repo, digest, desc.Digest, log)
 		default:
 			log.Warn().Str("mediatype", desc.MediaType).Msg("unknown media-type")
 			// should return true for digests found in index.json even if we don't know it's mediatype
@@ -630,64 +596,6 @@ func IsSignature(descriptor ispec.Descriptor) bool {
 	}
 
 	return false
-}
-
-func GetOrasReferrers(imgStore storageTypes.ImageStore, repo string, gdigest godigest.Digest, artifactType string,
-	log zlog.Logger,
-) ([]oras.Descriptor, error) {
-	if err := gdigest.Validate(); err != nil {
-		return nil, err
-	}
-
-	dir := path.Join(imgStore.RootDir(), repo)
-	if !imgStore.DirExists(dir) {
-		return nil, zerr.ErrRepoNotFound
-	}
-
-	index, err := GetIndex(imgStore, repo, log)
-	if err != nil {
-		return nil, err
-	}
-
-	found := false
-
-	result := []oras.Descriptor{}
-
-	for _, manifest := range index.Manifests {
-		if manifest.MediaType != oras.MediaTypeArtifactManifest {
-			continue
-		}
-
-		artManifest, err := GetOrasManifestByDigest(imgStore, repo, manifest.Digest, log)
-		if err != nil {
-			return nil, err
-		}
-
-		if artManifest.Subject.Digest != gdigest {
-			continue
-		}
-
-		// filter by artifact type
-		if artifactType != "" && artManifest.ArtifactType != artifactType {
-			continue
-		}
-
-		result = append(result, oras.Descriptor{
-			MediaType:    manifest.MediaType,
-			ArtifactType: artManifest.ArtifactType,
-			Digest:       manifest.Digest,
-			Size:         manifest.Size,
-			Annotations:  manifest.Annotations,
-		})
-
-		found = true
-	}
-
-	if !found {
-		return nil, zerr.ErrManifestNotFound
-	}
-
-	return result, nil
 }
 
 func GetReferrers(imgStore storageTypes.ImageStore, repo string, gdigest godigest.Digest, artifactTypes []string,
@@ -794,32 +702,6 @@ func GetReferrers(imgStore storageTypes.ImageStore, repo string, gdigest godiges
 	return index, nil
 }
 
-func GetOrasManifestByDigest(imgStore storageTypes.ImageStore, repo string, digest godigest.Digest, log zlog.Logger,
-) (oras.Manifest, error) {
-	var artManifest oras.Manifest
-
-	blobPath := imgStore.BlobPath(repo, digest)
-
-	buf, err := imgStore.GetBlobContent(repo, digest)
-	if err != nil {
-		log.Error().Err(err).Str("blob", blobPath).Msg("failed to read manifest")
-
-		if errors.Is(err, zerr.ErrBlobNotFound) {
-			return artManifest, zerr.ErrManifestNotFound
-		}
-
-		return artManifest, err
-	}
-
-	if err := json.Unmarshal(buf, &artManifest); err != nil {
-		log.Error().Err(err).Str("blob", blobPath).Msg("invalid JSON")
-
-		return artManifest, err
-	}
-
-	return artManifest, nil
-}
-
 // Get blob descriptor from it's manifest contents, if blob can not be found it will return error.
 func GetBlobDescriptorFromRepo(imgStore storageTypes.ImageStore, repo string, blobDigest godigest.Digest,
 	log zlog.Logger,
@@ -854,10 +736,6 @@ func GetBlobDescriptorFromIndex(imgStore storageTypes.ImageStore, index ispec.In
 			if foundDescriptor, err := GetBlobDescriptorFromIndex(imgStore, indexImage, repo, blobDigest, log); err == nil {
 				return foundDescriptor, nil
 			}
-		case oras.MediaTypeArtifactManifest:
-			if foundDescriptor, err := getBlobDescriptorFromORASManifest(imgStore, repo, blobDigest, desc, log); err == nil {
-				return foundDescriptor, nil
-			}
 		}
 	}
 
@@ -885,33 +763,9 @@ func getBlobDescriptorFromManifest(imgStore storageTypes.ImageStore, repo string
 	return ispec.Descriptor{}, zerr.ErrBlobNotFound
 }
 
-func getBlobDescriptorFromORASManifest(imgStore storageTypes.ImageStore, repo string, blobDigest godigest.Digest,
-	desc ispec.Descriptor, log zlog.Logger,
-) (ispec.Descriptor, error) {
-	manifest, err := GetOrasManifestByDigest(imgStore, repo, desc.Digest, log)
-	if err != nil {
-		return ispec.Descriptor{}, err
-	}
-
-	for _, layer := range manifest.Blobs {
-		if layer.Digest == blobDigest {
-			return ispec.Descriptor{
-				MediaType:    layer.MediaType,
-				Size:         layer.Size,
-				Digest:       layer.Digest,
-				ArtifactType: layer.ArtifactType,
-				Annotations:  layer.Annotations,
-			}, nil
-		}
-	}
-
-	return ispec.Descriptor{}, zerr.ErrBlobNotFound
-}
-
 func IsSupportedMediaType(mediaType string) bool {
 	return mediaType == ispec.MediaTypeImageIndex ||
-		mediaType == ispec.MediaTypeImageManifest ||
-		mediaType == oras.MediaTypeArtifactManifest
+		mediaType == ispec.MediaTypeImageManifest
 }
 
 func IsNonDistributable(mediaType string) bool {

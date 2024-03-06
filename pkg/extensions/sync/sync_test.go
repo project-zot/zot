@@ -13,7 +13,6 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"os/exec"
 	"path"
 	"reflect"
 	"strings"
@@ -26,7 +25,6 @@ import (
 	godigest "github.com/opencontainers/go-digest"
 	"github.com/opencontainers/image-spec/specs-go"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
-	artifactspec "github.com/oras-project/artifacts-spec/specs-go/v1"
 	"github.com/sigstore/cosign/v2/cmd/cosign/cli/attach"
 	"github.com/sigstore/cosign/v2/cmd/cosign/cli/generate"
 	"github.com/sigstore/cosign/v2/cmd/cosign/cli/options"
@@ -227,297 +225,6 @@ func makeDownstreamServer(
 	dctlr := api.NewController(destConfig)
 
 	return dctlr, destBaseURL, destDir, client
-}
-
-func TestORAS(t *testing.T) {
-	Convey("Verify sync on demand for oras objects", t, func() {
-		sctlr, srcBaseURL, _, _, srcClient := makeUpstreamServer(t, false, false)
-
-		scm := test.NewControllerManager(sctlr)
-		scm.StartAndWait(sctlr.Config.HTTP.Port)
-		defer scm.StopServer()
-
-		content := []byte("{\"name\":\"foo\",\"value\":\"bar\"}")
-
-		fileDir := t.TempDir()
-
-		err := os.WriteFile(path.Join(fileDir, "config.json"), content, 0o600)
-		if err != nil {
-			panic(err)
-		}
-
-		content = []byte("helloworld")
-
-		err = os.WriteFile(path.Join(fileDir, "artifact.txt"), content, 0o600)
-		if err != nil {
-			panic(err)
-		}
-
-		cmd := exec.Command("oras", "version")
-
-		err = cmd.Run()
-		if err != nil {
-			panic(err)
-		}
-
-		srcURL := strings.Join([]string{sctlr.Server.Addr, "/oras-artifact:v2"}, "")
-
-		cmd = exec.Command("oras", "push", "--plain-http", srcURL, "--config",
-			"config.json:application/vnd.acme.rocket.config.v1+json", "artifact.txt:text/plain", "-d", "-v")
-		cmd.Dir = fileDir
-
-		// Pushing ORAS artifact to upstream
-		err = cmd.Run()
-		So(err, ShouldBeNil)
-
-		var tlsVerify bool
-
-		regex := ".*"
-
-		syncRegistryConfig := syncconf.RegistryConfig{
-			Content: []syncconf.Content{
-				{
-					Prefix: "oras-artifact",
-					Tags: &syncconf.Tags{
-						Regex: &regex,
-					},
-				},
-			},
-			URLs:      []string{srcBaseURL},
-			TLSVerify: &tlsVerify,
-			CertDir:   "",
-			OnDemand:  true,
-		}
-
-		defaultVal := true
-		syncConfig := &syncconf.Config{
-			Enable:     &defaultVal,
-			Registries: []syncconf.RegistryConfig{syncRegistryConfig},
-		}
-
-		dctlr, destBaseURL, _, destClient := makeDownstreamServer(t, false, syncConfig)
-
-		dcm := test.NewControllerManager(dctlr)
-		dcm.StartAndWait(dctlr.Config.HTTP.Port)
-		defer dcm.StopServer()
-
-		resp, _ := srcClient.R().Get(srcBaseURL + "/v2/" + "oras-artifact" + "/manifests/v2")
-		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
-
-		resp, err = destClient.R().Get(destBaseURL + "/v2/" + "oras-artifact" + "/manifests/v2")
-		So(err, ShouldBeNil)
-		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
-
-		destURL := strings.Join([]string{dctlr.Server.Addr, "/oras-artifact:v2"}, "")
-		cmd = exec.Command("oras", "pull", "--plain-http", destURL, "-d", "-v")
-		destDir := t.TempDir()
-		cmd.Dir = destDir
-		// pulling oras artifact from dest server
-		err = cmd.Run()
-		So(err, ShouldBeNil)
-
-		cmd = exec.Command("grep", "helloworld", "artifact.txt")
-		cmd.Dir = destDir
-		output, err := cmd.CombinedOutput()
-
-		So(err, ShouldBeNil)
-		So(string(output), ShouldContainSubstring, "helloworld")
-	})
-
-	Convey("Verify get and sync oras refs", t, func() {
-		updateDuration, _ := time.ParseDuration("30m")
-
-		sctlr, srcBaseURL, srcDir, _, _ := makeUpstreamServer(t, false, false)
-		scm := test.NewControllerManager(sctlr)
-		scm.StartAndWait(sctlr.Config.HTTP.Port)
-		defer scm.StopServer()
-
-		repoName := testImage
-		var digest godigest.Digest
-		So(func() { digest = pushRepo(srcBaseURL, repoName) }, ShouldNotPanic)
-
-		regex := ".*"
-		var semver bool
-		var tlsVerify bool
-
-		syncRegistryConfig := syncconf.RegistryConfig{
-			Content: []syncconf.Content{
-				{
-					Prefix: repoName,
-					Tags: &syncconf.Tags{
-						Regex:  &regex,
-						Semver: &semver,
-					},
-				},
-			},
-			URLs:         []string{srcBaseURL},
-			PollInterval: updateDuration,
-			TLSVerify:    &tlsVerify,
-			CertDir:      "",
-			OnDemand:     true,
-		}
-
-		defaultVal := true
-		syncConfig := &syncconf.Config{
-			Enable:     &defaultVal,
-			Registries: []syncconf.RegistryConfig{syncRegistryConfig},
-		}
-
-		dctlr, destBaseURL, destDir, destClient := makeDownstreamServer(t, false, syncConfig)
-
-		dcm := test.NewControllerManager(dctlr)
-		dcm.StartAndWait(dctlr.Config.HTTP.Port)
-		defer dcm.StopServer()
-
-		// wait for sync
-		var destTagsList TagsList
-
-		for {
-			resp, err := destClient.R().Get(destBaseURL + "/v2/" + repoName + "/tags/list")
-			if err != nil {
-				panic(err)
-			}
-
-			err = json.Unmarshal(resp.Body(), &destTagsList)
-			if err != nil {
-				panic(err)
-			}
-
-			if len(destTagsList.Tags) > 0 {
-				break
-			}
-
-			time.Sleep(500 * time.Millisecond)
-		}
-
-		time.Sleep(1 * time.Second)
-
-		// get oras refs from downstream, should be synced
-		getORASReferrersURL := destBaseURL + path.Join("/oras/artifacts/v1/", repoName, "manifests", digest.String(), "referrers") //nolint:lll
-
-		resp, err := resty.R().Get(getORASReferrersURL)
-
-		So(err, ShouldBeNil)
-		So(resp, ShouldNotBeEmpty)
-		So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
-
-		err = os.Chmod(path.Join(destDir, testImage, "index.json"), 0o000)
-		So(err, ShouldBeNil)
-
-		resp, err = resty.R().Get(getORASReferrersURL)
-
-		So(err, ShouldBeNil)
-		So(resp, ShouldNotBeEmpty)
-		So(resp.StatusCode(), ShouldEqual, http.StatusInternalServerError)
-
-		err = os.Chmod(path.Join(destDir, testImage, "index.json"), 0o755)
-		So(err, ShouldBeNil)
-
-		// get manifest digest from source
-		resp, err = destClient.R().Get(srcBaseURL + "/v2/" + testImage + "/manifests/" + digest.String())
-		So(err, ShouldBeNil)
-		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
-
-		digest = godigest.FromBytes(resp.Body())
-
-		// layer
-		layer := []byte("blob content")
-		blobDigest := pushBlob(srcBaseURL, repoName, layer)
-
-		// config
-		_ = pushBlob(srcBaseURL, repoName, ispec.DescriptorEmptyJSON.Data)
-
-		artifactManifest := ispec.Manifest{
-			Versioned: specs.Versioned{
-				SchemaVersion: 2,
-			},
-			MediaType:    artifactspec.MediaTypeArtifactManifest,
-			ArtifactType: "application/vnd.oras.artifact",
-			Layers: []ispec.Descriptor{
-				{
-					MediaType: "application/octet-stream",
-					Digest:    blobDigest,
-					Size:      int64(len(layer)),
-				},
-			},
-			Config: ispec.DescriptorEmptyJSON,
-			Subject: &ispec.Descriptor{
-				MediaType: "application/vnd.oci.image.manifest.v1+json",
-				Digest:    digest,
-				Size:      int64(len(resp.Body())),
-			},
-		}
-
-		artManifestBlob, err := json.Marshal(artifactManifest)
-		So(err, ShouldBeNil)
-
-		artifactDigest := godigest.FromBytes(artManifestBlob)
-
-		// put OCI reference artifact mediaType artifact
-		_, err = resty.R().SetHeader("Content-Type", artifactspec.MediaTypeArtifactManifest).
-			SetBody(artManifestBlob).Put(srcBaseURL + fmt.Sprintf("/v2/%s/manifests/%s", repoName, artifactDigest.String()))
-		So(err, ShouldBeNil)
-
-		err = os.Chmod(path.Join(destDir, testImage, "index.json"), 0o000)
-		So(err, ShouldBeNil)
-
-		resp, err = resty.R().Get(getORASReferrersURL)
-		So(err, ShouldBeNil)
-		So(resp, ShouldNotBeEmpty)
-		So(resp.StatusCode(), ShouldEqual, http.StatusInternalServerError)
-
-		err = os.Chmod(path.Join(destDir, testImage, "index.json"), 0o755)
-		So(err, ShouldBeNil)
-
-		// trigger getORASRefs err
-		err = os.Chmod(path.Join(srcDir, testImage, "blobs/sha256", artifactDigest.Encoded()), 0o000)
-		So(err, ShouldBeNil)
-
-		err = os.RemoveAll(path.Join(destDir, testImage))
-		So(err, ShouldBeNil)
-
-		resp, err = resty.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + digest.String())
-		So(err, ShouldBeNil)
-		So(resp, ShouldNotBeEmpty)
-		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
-
-		err = os.Chmod(path.Join(srcDir, testImage, "blobs/sha256", artifactDigest.Encoded()), 0o755)
-		So(err, ShouldBeNil)
-
-		resp, err = resty.R().Get(getORASReferrersURL)
-		So(err, ShouldBeNil)
-		So(resp, ShouldNotBeEmpty)
-		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
-
-		var refs ReferenceList
-
-		err = json.Unmarshal(resp.Body(), &refs)
-		So(err, ShouldBeNil)
-
-		So(len(refs.References), ShouldEqual, 1)
-
-		err = os.RemoveAll(path.Join(destDir, repoName))
-		So(err, ShouldBeNil)
-
-		err = os.WriteFile(path.Join(srcDir, repoName, "blobs", "sha256", artifactDigest.Encoded()),
-			[]byte("wrong content"), 0o600)
-		So(err, ShouldBeNil)
-
-		_, err = resty.R().SetHeader("Content-Type", artifactspec.MediaTypeArtifactManifest).
-			SetBody(artManifestBlob).Put(srcBaseURL + fmt.Sprintf("/v2/%s/manifests/%s", repoName, artifactDigest.String()))
-		if err != nil {
-			panic(err)
-		}
-
-		resp, err = resty.R().Get(getORASReferrersURL)
-
-		So(err, ShouldBeNil)
-		So(resp, ShouldNotBeEmpty)
-		So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
-
-		waitSyncFinish(dctlr.Config.Log.Output)
-	})
 }
 
 func TestOnDemand(t *testing.T) {
@@ -788,27 +495,6 @@ func TestOnDemand(t *testing.T) {
 				SetHeader("Content-type", ispec.MediaTypeImageManifest).
 				SetBody(OCIRefManifestBlob).
 				Put(srcBaseURL + "/v2/remote-repo/manifests/oci.ref")
-
-			So(err, ShouldBeNil)
-			So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
-
-			// add ORAS Ref
-			ORASRefManifest := artifactspec.Manifest{
-				Subject: &artifactspec.Descriptor{
-					MediaType: ispec.MediaTypeImageManifest,
-					Digest:    manifestDigest,
-				},
-				Blobs:     []artifactspec.Descriptor{},
-				MediaType: artifactspec.MediaTypeArtifactManifest,
-			}
-
-			ORASRefManifestBlob, err := json.Marshal(ORASRefManifest)
-			So(err, ShouldBeNil)
-
-			resp, err = resty.R().
-				SetHeader("Content-type", artifactspec.MediaTypeArtifactManifest).
-				SetBody(ORASRefManifestBlob).
-				Put(srcBaseURL + "/v2/remote-repo/manifests/oras.ref")
 
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
@@ -4463,29 +4149,6 @@ func TestSignatures(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
 
-		// add ORAS Ref to oci ref which points to sbom which points to image
-		ORASRefManifest := artifactspec.Manifest{
-			Subject: &artifactspec.Descriptor{
-				MediaType: ispec.MediaTypeImageManifest,
-				Digest:    ociRefDigest,
-				Size:      int64(len(OCIRefManifestBlob)),
-			},
-			Blobs:     []artifactspec.Descriptor{},
-			MediaType: artifactspec.MediaTypeArtifactManifest,
-		}
-
-		ORASRefManifestBlob, err := json.Marshal(ORASRefManifest)
-		So(err, ShouldBeNil)
-
-		ORASRefManifestDigest := godigest.FromBytes(ORASRefManifestBlob)
-
-		resp, err = resty.R().
-			SetHeader("Content-type", artifactspec.MediaTypeArtifactManifest).
-			SetBody(ORASRefManifestBlob).
-			Put(srcBaseURL + fmt.Sprintf("/v2/%s/manifests/%s", repoName, ORASRefManifestDigest))
-		So(err, ShouldBeNil)
-		So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
-
 		regex := ".*"
 		var semver bool
 		var tlsVerify bool
@@ -4620,22 +4283,6 @@ func TestSignatures(t *testing.T) {
 
 		So(len(index.Manifests), ShouldEqual, 2)
 		So(index.Manifests[1].Digest, ShouldEqual, ociRefDigest)
-
-		// get oras ref pointing to oci ref
-
-		getORASReferrersURL := destBaseURL + path.Join("/oras/artifacts/v1/", repoName, "manifests", ociRefDigest.String(), "referrers") //nolint:lll
-		resp, err = resty.R().Get(getORASReferrersURL)
-		So(err, ShouldBeNil)
-		So(resp, ShouldNotBeEmpty)
-		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
-
-		var refs ReferenceList
-
-		err = json.Unmarshal(resp.Body(), &refs)
-		So(err, ShouldBeNil)
-
-		So(len(refs.References), ShouldEqual, 1)
-		So(refs.References[0].Digest, ShouldEqual, ORASRefManifestDigest)
 
 		// test negative cases (trigger errors)
 		// test notary signatures errors
