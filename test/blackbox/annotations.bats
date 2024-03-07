@@ -136,6 +136,12 @@ function teardown_file() {
     [ "$status" -eq 0 ]
     local sigName=$(echo "${lines[-1]}" | jq '.[].critical.image."docker-manifest-digest"')
     [[ "$sigName" == *"${digest}"* ]]
+    tags=( $(oras repo tags --plain-http localhost:${zot_port}/annotations) )
+    [ "$status" -eq 0 ]
+    local sigdes=$(oras manifest fetch --descriptor localhost:${zot_port}/annotations:${tags[1]} | jq  .digest | tr -d \")
+    [ "$status" -eq 0 ]
+    run oras manifest fetch --plain-http localhost:${zot_port}/annotations@${sigdes}
+    [ "$status" -eq 0 ]
 }
 
 @test "sign/verify with cosign (only referrers)" {
