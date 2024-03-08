@@ -8,8 +8,8 @@ BATS=${SCRIPTPATH}/../../hack/tools/bin/bats
 PATH=$PATH:${SCRIPTPATH}/../../hack/tools/bin
 
 tests=("pushpull" "pushpull_authn" "delete_images" "referrers" "metadata" "anonymous_policy"
-       "annotations" "detect_manifest_collision" "cve" "sync" "sync_docker" "sync_replica_cluster"
-       "scrub" "garbage_collect" "metrics" "metrics_minimal")
+      "annotations" "detect_manifest_collision" "cve" "sync" "sync_docker" "sync_replica_cluster"
+      "scrub" "garbage_collect" "metrics" "metrics_minimal" "multiarch_index")
 
 for test in ${tests[*]}; do
     ${BATS} ${BATS_FLAGS} ${SCRIPTPATH}/${test}.bats > ${test}.log & pids+=($!)
