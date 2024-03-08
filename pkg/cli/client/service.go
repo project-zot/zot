@@ -817,10 +817,19 @@ type cveData struct {
 	CVEListForImage cveListForImage `json:"cveListForImage"`
 }
 
-func (cve cveResult) string(format string) (string, error) {
+func (cve cveResult) string(format string, verbose bool) (string, error) {
 	switch strings.ToLower(format) {
 	case "", defaultOutputFormat:
-		return cve.stringPlainText()
+		{
+			var out string
+			var err error
+			if verbose {
+				out = cve.stringPlainTextDetailed()
+			} else {
+				out, err = cve.stringPlainText()
+			}
+			return out, err
+		}
 	case jsonFormat:
 		return cve.stringJSON()
 	case ymlFormat, yamlFormat:
@@ -828,6 +837,39 @@ func (cve cveResult) string(format string) (string, error) {
 	default:
 		return "", zerr.ErrInvalidOutputFormat
 	}
+}
+
+func (cve cveResult) stringPlainTextDetailed() string {
+	var builder strings.Builder
+
+	for _, c := range cve.Data.CVEListForImage.CVEList {
+		cveDesc := strings.TrimSpace(c.Description)
+		if len(cveDesc) == 0 {
+			cveDesc = "Not Specified"
+		}
+		cveMetaData := fmt.Sprintf(
+			"%s\nSeverity: %s\nTitle: %s\nDescription:\n%s\n\n",
+			c.ID, c.Severity, c.Title, cveDesc,
+		)
+		fmt.Fprint(&builder, cveMetaData)
+		fmt.Fprint(&builder, "Vulnerable Packages:\n")
+
+		for _, pkg := range c.PackageList {
+			pkgMetaData := fmt.Sprintf(
+				" Package Name: %s\n Package Path: %s\n Installed Version: %s\n Fixed Version: %s\n\n",
+				pkg.Name, pkg.PackagePath, pkg.InstalledVersion, pkg.FixedVersion,
+			)
+			fmt.Fprint(&builder, pkgMetaData)
+		}
+
+		if len(c.PackageList) == 0 {
+			fmt.Fprintf(&builder, "No Vulnerable Packages\n\n")
+		}
+
+		fmt.Fprint(&builder, "\n")
+	}
+
+	return builder.String()
 }
 
 func (cve cveResult) stringPlainText() (string, error) {
