@@ -253,11 +253,13 @@ func SearchCVEForImageGQL(config SearchConfig, image, searchedCveID string) erro
 
 		fmt.Fprint(config.ResultWriter, statsStr)
 
-		printCVETableHeader(&builder)
-		fmt.Fprint(config.ResultWriter, builder.String())
+		if !config.Verbose {
+			printCVETableHeader(&builder)
+			fmt.Fprint(config.ResultWriter, builder.String())
+		}
 	}
 
-	out, err := cveList.string(config.OutputFormat)
+	out, err := cveList.string(config.OutputFormat, config.Verbose)
 	if err != nil {
 		return err
 	}
@@ -303,7 +305,7 @@ func SearchCVEDiffList(config SearchConfig, minuend, subtrahend ImageIdentifier)
 		fmt.Fprint(config.ResultWriter, builder.String())
 	}
 
-	out, err := result.string(config.OutputFormat)
+	out, err := result.string(config.OutputFormat, config.Verbose)
 	if err != nil {
 		return err
 	}

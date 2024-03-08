@@ -322,7 +322,7 @@ func TestSearchImagesForDigestGQL(t *testing.T) {
 }
 
 func TestSearchCVEForImageGQL(t *testing.T) {
-	Convey("SearchCVEForImageGQL", t, func() {
+	Convey("SearchCVEForImageGQL normal mode", t, func() {
 		buff := bytes.NewBufferString("")
 		searchConfig := getMockSearchConfig(buff, mockService{
 			getCveByImageGQLFn: func(ctx context.Context, config SearchConfig, username string, password string,
@@ -400,6 +400,130 @@ func TestSearchCVEForImageGQL(t *testing.T) {
 		for lineIndex := 0; lineIndex < len(expected); lineIndex++ {
 			line := space.ReplaceAllString(bufferLines[lineIndex], " ")
 			So(line, ShouldEqualTrimSpace, expected[lineIndex])
+		}
+	})
+
+	Convey("SearchCVEForImageGQL verbose mode", t, func() {
+		buff := bytes.NewBufferString("")
+		searchConfig := getMockSearchConfig(buff, mockService{
+			getCveByImageGQLFn: func(ctx context.Context, config SearchConfig, username string, password string,
+				imageName string, searchedCVE string) (*cveResult, error,
+			) {
+				return &cveResult{
+					Data: cveData{
+						CVEListForImage: cveListForImage{
+							CVEList: []cve{
+								{
+									ID:          "CVE-100",
+									Description: "",
+									Title:       "CVE-100 Title",
+									Severity:    "HIGH",
+									PackageList: []packageList{},
+								},
+								{
+									ID:          "CVE-101",
+									Description: "Desc 101\n",
+									Title:       "CVE-101 Title",
+									Severity:    "HIGH",
+									PackageList: []packageList{
+										{
+											Name:             "Pkg1",
+											FixedVersion:     "2.0.0",
+											InstalledVersion: "1.0.0",
+										},
+									},
+								},
+								{
+									ID:          "CVE-102",
+									Description: "Desc 102",
+									Title:       "CVE-102 Title",
+									Severity:    "HIGH",
+									PackageList: []packageList{
+										{
+											Name:             "dummy-java",
+											PackagePath:      "/usr/bin/dummy.jar",
+											FixedVersion:     "4.0.0",
+											InstalledVersion: "3.0.0",
+										},
+										{
+											Name:             "dummy-ruby",
+											PackagePath:      "/usr/bin/dummy.gem",
+											FixedVersion:     "5.0.0",
+											InstalledVersion: "1.0.0",
+										},
+									},
+								},
+							},
+							Summary: common.ImageVulnerabilitySummary{
+								Count:         3,
+								UnknownCount:  0,
+								LowCount:      0,
+								MediumCount:   0,
+								HighCount:     3,
+								CriticalCount: 0,
+								MaxSeverity:   "HIGH",
+							},
+						},
+					},
+				}, nil
+			},
+		})
+
+		searchConfig.Verbose = true
+		err := SearchCVEForImageGQL(searchConfig, "repo-test", "dummyCVEID")
+		So(err, ShouldBeNil)
+		bufferContent := buff.String()
+		bufferLines := strings.Split(bufferContent, "\n")
+
+		// Expected result - each row indicates a line in the output
+		expected := []string{
+			"CRITICAL 0, HIGH 3, MEDIUM 0, LOW 0, UNKNOWN 0, TOTAL 3",
+			"",
+			"CVE-100",
+			"Severity: HIGH",
+			"Title: CVE-100 Title",
+			"Description:",
+			"Not Specified",
+			"",
+			"Vulnerable Packages:",
+			"No Vulnerable Packages",
+			"",
+			"",
+			"CVE-101",
+			"Severity: HIGH",
+			"Title: CVE-101 Title",
+			"Description:",
+			"Desc 101",
+			"",
+			"Vulnerable Packages:",
+			" Package Name: Pkg1",
+			" Package Path: ",
+			" Installed Version: 1.0.0",
+			" Fixed Version: 2.0.0",
+			"",
+			"",
+			"CVE-102",
+			"Severity: HIGH",
+			"Title: CVE-102 Title",
+			"Description:",
+			"Desc 102",
+			"",
+			"Vulnerable Packages:",
+			" Package Name: dummy-java",
+			" Package Path: /usr/bin/dummy.jar",
+			" Installed Version: 3.0.0",
+			" Fixed Version: 4.0.0",
+			"",
+			" Package Name: dummy-ruby",
+			" Package Path: /usr/bin/dummy.gem",
+			" Installed Version: 1.0.0",
+			" Fixed Version: 5.0.0",
+			"",
+			"",
+		}
+
+		for index, expectedLine := range expected {
+			So(bufferLines[index], ShouldEqual, expectedLine)
 		}
 	})
 
