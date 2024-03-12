@@ -817,10 +817,19 @@ type cveData struct {
 	CVEListForImage cveListForImage `json:"cveListForImage"`
 }
 
-func (cve cveResult) string(format string) (string, error) {
+func (cve cveResult) string(format string, verbose bool) (string, error) {
 	switch strings.ToLower(format) {
 	case "", defaultOutputFormat:
-		return cve.stringPlainText()
+		{
+			var out string
+			if verbose {
+				out = cve.stringPlainTextDetailed()
+			} else {
+				out = cve.stringPlainText()
+			}
+
+			return out, nil
+		}
 	case jsonFormat:
 		return cve.stringJSON()
 	case ymlFormat, yamlFormat:
@@ -830,7 +839,40 @@ func (cve cveResult) string(format string) (string, error) {
 	}
 }
 
-func (cve cveResult) stringPlainText() (string, error) {
+func (cve cveResult) stringPlainTextDetailed() string {
+	var builder strings.Builder
+
+	for _, cveListItem := range cve.Data.CVEListForImage.CVEList {
+		cveDesc := strings.TrimSpace(cveListItem.Description)
+		if len(cveDesc) == 0 {
+			cveDesc = "Not Specified"
+		}
+		cveMetaData := fmt.Sprintf(
+			"%s\nSeverity: %s\nTitle: %s\nDescription:\n%s\n\n",
+			cveListItem.ID, cveListItem.Severity, cveListItem.Title, cveDesc,
+		)
+		fmt.Fprint(&builder, cveMetaData)
+		fmt.Fprint(&builder, "Vulnerable Packages:\n")
+
+		for _, pkg := range cveListItem.PackageList {
+			pkgMetaData := fmt.Sprintf(
+				" Package Name: %s\n Package Path: %s\n Installed Version: %s\n Fixed Version: %s\n\n",
+				pkg.Name, pkg.PackagePath, pkg.InstalledVersion, pkg.FixedVersion,
+			)
+			fmt.Fprint(&builder, pkgMetaData)
+		}
+
+		if len(cveListItem.PackageList) == 0 {
+			fmt.Fprintf(&builder, "No Vulnerable Packages\n\n")
+		}
+
+		fmt.Fprint(&builder, "\n")
+	}
+
+	return builder.String()
+}
+
+func (cve cveResult) stringPlainText() string {
 	var builder strings.Builder
 
 	table := getCVETableWriter(&builder)
@@ -849,7 +891,7 @@ func (cve cveResult) stringPlainText() (string, error) {
 
 	table.Render()
 
-	return builder.String(), nil
+	return builder.String()
 }
 
 func (cve cveResult) stringJSON() (string, error) {

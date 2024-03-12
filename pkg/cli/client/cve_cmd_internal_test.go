@@ -213,6 +213,43 @@ func TestSearchCVECmd(t *testing.T) {
 		So(err, ShouldBeNil)
 	})
 
+	Convey("Test CVE by image name - in text format - in verbose mode", t, func() {
+		args := []string{"list", "dummyImageName:tag", "--url", baseURL, "--verbose"}
+		configPath := makeConfigFile(`{"configs":[{"_name":"cvetest","showspinner":false}]}`)
+		defer os.Remove(configPath)
+		cveCmd := NewCVECommand(new(mockService))
+		buff := bytes.NewBufferString("")
+		cveCmd.SetOut(buff)
+		cveCmd.SetErr(buff)
+		cveCmd.SetArgs(args)
+		err := cveCmd.Execute()
+
+		outputLines := strings.Split(buff.String(), "\n")
+		expected := []string{
+			"CRITICAL 0, HIGH 1, MEDIUM 0, LOW 0, UNKNOWN 0, TOTAL 1",
+			"",
+			"dummyCVEID",
+			"Severity: HIGH",
+			"Title: Title of that CVE",
+			"Description:",
+			"Description of the CVE",
+			"",
+			"Vulnerable Packages:",
+			" Package Name: packagename",
+			" Package Path: ",
+			" Installed Version: installedver",
+			" Fixed Version: fixedver",
+			"",
+			"",
+		}
+
+		for index, expectedLine := range expected {
+			So(outputLines[index], ShouldEqual, expectedLine)
+		}
+
+		So(err, ShouldBeNil)
+	})
+
 	Convey("Test CVE by image name - in json format", t, func() {
 		args := []string{"list", "dummyImageName:tag", "--url", baseURL, "-f", "json"}
 		configPath := makeConfigFile(`{"configs":[{"_name":"cvetest","showspinner":false}]}`)
