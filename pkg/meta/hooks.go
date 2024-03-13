@@ -100,7 +100,7 @@ func OnDeleteManifest(repo, reference, mediaType string, digest godigest.Digest,
 	return nil
 }
 
-// OnDeleteManifest is called when a manifest is downloaded. It increments the download couter on that manifest.
+// OnGetManifest is called when a manifest is downloaded. It increments the download couter on that manifest.
 func OnGetManifest(name, reference, mediaType string, body []byte,
 	storeController storage.StoreController, metaDB mTypes.MetaDB, log log.Logger,
 ) error {
