@@ -863,7 +863,7 @@ func readLDAPCredentials(ldapConfigPath string) (config.LDAPCredentials, error) 
 	var ldapCredentials config.LDAPCredentials
 
 	metaData := &mapstructure.Metadata{}
-	if err := viperInstance.UnmarshalExact(&ldapCredentials, metadataConfig(metaData)); err != nil {
+	if err := viperInstance.Unmarshal(&ldapCredentials, metadataConfig(metaData)); err != nil {
 		log.Error().Err(err).Msg("failed to unmarshal ldap credentials config")
 
 		return config.LDAPCredentials{}, errors.Join(zerr.ErrBadConfig, err)
