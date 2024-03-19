@@ -18,7 +18,7 @@ jobs:
     strategy:
       matrix:
         golang_version:
-          - "1.21"
+          - "1.22"
     runs-on: ubuntu-latest
     steps:
       - name: Log in to GitHub Docker Registry

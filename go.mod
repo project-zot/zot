@@ -2,7 +2,7 @@ module zotregistry.dev/zot
 
 go 1.21
 
-toolchain go1.21.4
+toolchain go1.22.1
 
 require (
 	github.com/99designs/gqlgen v0.17.45

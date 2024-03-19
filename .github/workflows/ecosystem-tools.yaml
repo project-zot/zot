@@ -20,7 +20,7 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           cache: false
-          go-version: 1.21.x
+          go-version: 1.22.x
       - name: Install dependencies
         run: |
           cd $GITHUB_WORKSPACE
