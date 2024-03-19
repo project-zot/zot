@@ -55,12 +55,11 @@ BENCH_OUTPUT ?= stdout
 ALL_EXTENSIONS = debug,imagetrust,lint,metrics,mgmt,profile,scrub,search,sync,ui,userprefs
 EXTENSIONS ?= sync,search,scrub,metrics,lint,ui,mgmt,profile,userprefs,imagetrust
 UI_DEPENDENCIES := search,mgmt,userprefs
-# freebsd/arm64 not supported for pie builds
+# freebsd is not supported for pie builds if CGO is disabled
+# see supported platforms at https://cs.opensource.google/go/go/+/master:src/internal/platform/supported.go;l=222-231;drc=d7fcb5cf80953f1d63246f1ae9defa60c5ce2d76
 BUILDMODE_FLAGS := -buildmode=pie
 ifeq ($(OS),freebsd)
-	ifeq ($(ARCH),arm64)
-		BUILDMODE_FLAGS=
-	endif
+	BUILDMODE_FLAGS=
 endif
 comma:= ,
 space := $(null) #
