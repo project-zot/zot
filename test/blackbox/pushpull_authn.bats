@@ -173,3 +173,25 @@ EOF
     [ "$status" -eq 0 ]
     [ $(echo "${lines[-1]}" | jq '.manifests | length') -eq 0 ]
 }
+
+@test "ML artifacts" {
+  # download model data
+  curl -v -L0 https://github.com/tarilabs/demo20231212/raw/main/v1.nb20231206162408/mnist.onnx -o ${BATS_FILE_TMPDIR}/mnist.onnx
+  sha256_in=$(sha256sum ${BATS_FILE_TMPDIR}/mnist.onnx | awk '{print $1}')
+
+  zot_port=`cat ${BATS_FILE_TMPDIR}/zot.port`
+
+  # upload artifact with required annotations and version
+  regctl artifact put --annotation description="used for demo purposes" --annotation model_format_name="onnx" --annotation model_format_version="1" --artifact-type "application/vnd.model.type" localhost:${zot_port}/models/my-model-from-gh:v1 -f ${BATS_FILE_TMPDIR}/mnist.onnx
+
+  # list artifacts
+  regctl artifact list localhost:${zot_port}/models/my-model-from-gh:v1 --format '{{jsonPretty .}}'
+
+  # list artifacts of type
+  regctl artifact list --filter-artifact-type "application/vnd.model.type" localhost:${zot_port}/models/my-model-from-gh:v1 --format '{{jsonPretty .}}'
+
+  # get artifact
+  regctl artifact get localhost:${zot_port}/models/my-model-from-gh:v1 > ${BATS_FILE_TMPDIR}/mnist.onnx.check
+  sha256_out=$(sha256sum ${BATS_FILE_TMPDIR}/mnist.onnx.check | awk '{print $1}')
+  [ "$sha256_in" = "$sha256_out" ]
+}
