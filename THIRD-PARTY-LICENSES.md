@@ -9,7 +9,7 @@ cloud.google.com/go|https://github.com/googleapis/google-cloud-go/blob/v0.111.0/
 cuelabs.dev/go/oci/ociregistry|https://github.com/cue-labs/oci/blob/93e78c079a13/ociregistry/LICENSE|Apache-2.0
 dario.cat/mergo|https://github.com/imdario/mergo/blob/v1.0.0/LICENSE|BSD-3-Clause
 filippo.io/edwards25519|https://github.com/FiloSottile/edwards25519/blob/v1.1.0/LICENSE|BSD-3-Clause
-github.com/99designs/gqlgen|https://github.com/99designs/gqlgen/blob/v0.17.44/LICENSE|MIT
+github.com/99designs/gqlgen|https://github.com/99designs/gqlgen/blob/v0.17.45/LICENSE|MIT
 github.com/AdaLogics/go-fuzz-headers|https://github.com/AdaLogics/go-fuzz-headers/blob/ced1acdcaa24/LICENSE|Apache-2.0
 github.com/AdamKorcz/go-118-fuzz-build|https://github.com/AdamKorcz/go-118-fuzz-build/blob/8075edf89bb0/LICENSE|Apache-2.0
 github.com/AliyunContainerService/ack-ram-tool/pkg/credentials/alibabacloudsdkgo/helper|https://github.com/AliyunContainerService/ack-ram-tool/blob/pkg/credentials/alibabacloudsdkgo/helper/v0.2.0/pkg/credentials/alibabacloudsdkgo/helper/LICENSE|Apache-2.0
@@ -89,13 +89,13 @@ github.com/aws/aws-sdk-go-v2/service/internal/endpoint-discovery|https://github.
 github.com/aws/aws-sdk-go-v2/service/internal/presigned-url|https://github.com/aws/aws-sdk-go-v2/blob/service/internal/presigned-url/v1.11.5/service/internal/presigned-url/LICENSE.txt|Apache-2.0
 github.com/aws/aws-sdk-go-v2/service/internal/s3shared|https://github.com/aws/aws-sdk-go-v2/blob/service/internal/s3shared/v1.16.10/service/internal/s3shared/LICENSE.txt|Apache-2.0
 github.com/aws/aws-sdk-go-v2/service/s3|https://github.com/aws/aws-sdk-go-v2/blob/service/s3/v1.48.1/service/s3/LICENSE.txt|Apache-2.0
-github.com/aws/aws-sdk-go-v2/service/secretsmanager|https://github.com/aws/aws-sdk-go-v2/blob/service/secretsmanager/v1.28.2/service/secretsmanager/LICENSE.txt|Apache-2.0
+github.com/aws/aws-sdk-go-v2/service/secretsmanager|https://github.com/aws/aws-sdk-go-v2/blob/service/secretsmanager/v1.28.3/service/secretsmanager/LICENSE.txt|Apache-2.0
 github.com/aws/aws-sdk-go-v2/service/ssooidc|https://github.com/aws/aws-sdk-go-v2/blob/service/ssooidc/v1.23.2/service/ssooidc/LICENSE.txt|Apache-2.0
 github.com/aws/aws-sdk-go-v2/service/sso|https://github.com/aws/aws-sdk-go-v2/blob/service/sso/v1.20.2/service/sso/LICENSE.txt|Apache-2.0
 github.com/aws/aws-sdk-go-v2/service/sts|https://github.com/aws/aws-sdk-go-v2/blob/service/sts/v1.28.4/service/sts/LICENSE.txt|Apache-2.0
 github.com/aws/aws-sdk-go-v2|https://github.com/aws/aws-sdk-go-v2/blob/v1.25.3/LICENSE.txt|Apache-2.0
-github.com/aws/aws-sdk-go/internal/sync/singleflight|https://github.com/aws/aws-sdk-go/blob/v1.50.33/internal/sync/singleflight/LICENSE|BSD-3-Clause
-github.com/aws/aws-sdk-go|https://github.com/aws/aws-sdk-go/blob/v1.50.33/LICENSE.txt|Apache-2.0
+github.com/aws/aws-sdk-go/internal/sync/singleflight|https://github.com/aws/aws-sdk-go/blob/v1.51.1/internal/sync/singleflight/LICENSE|BSD-3-Clause
+github.com/aws/aws-sdk-go|https://github.com/aws/aws-sdk-go/blob/v1.51.1/LICENSE.txt|Apache-2.0
 github.com/aws/smithy-go/internal/sync/singleflight|https://github.com/aws/smithy-go/blob/v1.20.1/internal/sync/singleflight/LICENSE|BSD-3-Clause
 github.com/aws/smithy-go/logging|https://github.com/aws/smithy-go/blob/v1.20.1/LICENSE|Apache-2.0
 github.com/aws/smithy-go|https://github.com/aws/smithy-go/blob/v1.20.1/LICENSE|Apache-2.0
@@ -397,8 +397,8 @@ golang.org/x/crypto/pbkdf2|https://cs.opensource.google/go/x/crypto/+/v0.21.0:LI
 golang.org/x/crypto/pkcs12|https://cs.opensource.google/go/x/crypto/+/v0.21.0:LICENSE|BSD-3-Clause
 golang.org/x/crypto|https://cs.opensource.google/go/x/crypto/+/v0.21.0:LICENSE|BSD-3-Clause
 golang.org/x/exp/constraints|https://cs.opensource.google/go/x/exp/+/814bf88c:LICENSE|BSD-3-Clause
-golang.org/x/mod/semver|https://cs.opensource.google/go/x/mod/+/v0.15.0:LICENSE|BSD-3-Clause
-golang.org/x/mod|https://cs.opensource.google/go/x/mod/+/v0.15.0:LICENSE|BSD-3-Clause
+golang.org/x/mod/semver|https://cs.opensource.google/go/x/mod/+/v0.16.0:LICENSE|BSD-3-Clause
+golang.org/x/mod|https://cs.opensource.google/go/x/mod/+/v0.16.0:LICENSE|BSD-3-Clause
 golang.org/x/net/publicsuffix|https://cs.opensource.google/go/x/net/+/v0.22.0:LICENSE|BSD-3-Clause
 golang.org/x/net/webdav|https://cs.opensource.google/go/x/net/+/v0.22.0:LICENSE|BSD-3-Clause
 golang.org/x/net|https://cs.opensource.google/go/x/net/+/v0.22.0:LICENSE|BSD-3-Clause
@@ -412,7 +412,7 @@ golang.org/x/sys|https://cs.opensource.google/go/x/sys/+/v0.18.0:LICENSE|BSD-3-C
 golang.org/x/term|https://cs.opensource.google/go/x/term/+/v0.18.0:LICENSE|BSD-3-Clause
 golang.org/x/text|https://cs.opensource.google/go/x/text/+/v0.14.0:LICENSE|BSD-3-Clause
 golang.org/x/time/rate|https://cs.opensource.google/go/x/time/+/v0.5.0:LICENSE|BSD-3-Clause
-golang.org/x/tools|https://cs.opensource.google/go/x/tools/+/v0.18.0:LICENSE|BSD-3-Clause
+golang.org/x/tools|https://cs.opensource.google/go/x/tools/+/v0.19.0:LICENSE|BSD-3-Clause
 golang.org/x/xerrors|https://cs.opensource.google/go/x/xerrors/+/104605ab:LICENSE|BSD-3-Clause
 google.golang.org/api/googleapi|https://github.com/googleapis/google-api-go-client/blob/v0.159.0/LICENSE|BSD-3-Clause
 google.golang.org/api/internal/third_party/uritemplates|https://github.com/googleapis/google-api-go-client/blob/v0.159.0/internal/third_party/uritemplates/LICENSE|BSD-3-Clause
@@ -450,7 +450,7 @@ modernc.org/libc/honnef.co/go/netdb|https://gitlab.com/cznic/libc/blob/v1.41.0/h
 modernc.org/libc|https://gitlab.com/cznic/libc/blob/v1.41.0/LICENSE-GO|BSD-3-Clause
 modernc.org/mathutil|Unknown|Unknown
 modernc.org/memory|https://gitlab.com/cznic/memory/blob/v1.7.2/LICENSE-GO|BSD-3-Clause
-modernc.org/sqlite|https://gitlab.com/cznic/sqlite/blob/v1.29.3/LICENSE|BSD-3-Clause
+modernc.org/sqlite|https://gitlab.com/cznic/sqlite/blob/v1.29.5/LICENSE|BSD-3-Clause
 modernc.org/strutil|Unknown|Unknown
 modernc.org/token|https://gitlab.com/cznic/token/blob/v1.1.0/LICENSE|BSD-3-Clause
 oras.land/oras-go/v2|https://github.com/oras-project/oras-go/blob/v2.4.0/LICENSE|Apache-2.0
