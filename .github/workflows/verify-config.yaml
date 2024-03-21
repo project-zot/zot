@@ -1,0 +1,45 @@
+name: "Verify Example Config Files"
+
+# Validate all example config files are relevant and valid.
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches: [main]
+  release:
+    types:
+      - published
+
+permissions: read-all
+
+jobs:
+  verify-config:
+    name: Verify Config Files
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install go
+        uses: actions/setup-go@v5
+        with:
+          cache: false
+          go-version: 1.21.x
+      - name: Cache go dependencies
+        id: cache-go-dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-mod-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-mod-
+      - name: Install go dependencies
+        if: steps.cache-go-dependencies.outputs.cache-hit != 'true'
+        run: |
+          cd $GITHUB_WORKSPACE
+          go mod download
+      - name: run verify-config
+        run: |
+          cd $GITHUB_WORKSPACE
+          make verify-config
