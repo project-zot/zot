@@ -184,12 +184,12 @@ func printImageTableHeader(writer io.Writer, verbose bool, maxImageNameLen, maxT
 
 func printCVETableHeader(writer io.Writer) {
 	table := getCVETableWriter(writer)
-	row := make([]string, 3) //nolint:gomnd
-	row[colCVEIDIndex] = "ID"
-	row[colCVESeverityIndex] = "SEVERITY"
-	row[colCVETitleIndex] = "TITLE"
+	columnHeadingsRow := []string{
+		"ID", "SEVERITY", "TITLE",
+		"VULNERABLE PACKAGE", "PATH", "INSTALL-VER", "FIXED-VER",
+	}
 
-	table.Append(row)
+	table.Append(columnHeadingsRow)
 	table.Render()
 }
 

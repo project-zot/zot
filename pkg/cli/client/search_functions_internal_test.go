@@ -390,9 +390,12 @@ func TestSearchCVEForImageGQL(t *testing.T) {
 		expected := []string{
 			"CRITICAL 0, HIGH 2, MEDIUM 0, LOW 0, UNKNOWN 0, TOTAL 2",
 			"",
-			"ID SEVERITY TITLE",
+			"ID SEVERITY TITLE VULNERABLE PACKAGE PATH INSTALL-VER FIXED-VER",
 			"dummyCVEID HIGH Title of that CVE",
+			"packagename - installedver fixedver",
 			"test-cve-id2 HIGH Test CVE 2",
+			"packagename /usr/bin/dummy.jar installedver fixedver",
+			"packagename /usr/bin/dummy.gem installedver fixedver",
 		}
 
 		space := regexp.MustCompile(`\s+`)
