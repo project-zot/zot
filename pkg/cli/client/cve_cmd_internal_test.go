@@ -140,9 +140,22 @@ func TestSearchCVECmd(t *testing.T) {
 		cmd.SetArgs(args)
 		err := cmd.Execute()
 		space := regexp.MustCompile(`\s+`)
-		str := space.ReplaceAllString(buff.String(), " ")
-		So(strings.TrimSpace(str), ShouldEqual, "CRITICAL 0, HIGH 1, MEDIUM 0, LOW 0, UNKNOWN 0, TOTAL 1 "+
-			"ID SEVERITY TITLE dummyCVEID HIGH Title of that CVE")
+		outputLines := strings.Split(buff.String(), "\n")
+
+		expected := []string{
+			"CRITICAL 0, HIGH 1, MEDIUM 0, LOW 0, UNKNOWN 0, TOTAL 1",
+			"",
+			"ID SEVERITY TITLE VULNERABLE PACKAGE PATH INSTALL-VER FIXED-VER",
+			"dummyCVEID HIGH Title of that CVE",
+			"packagename - installedver fixedver",
+		}
+
+		for expectedLineIndex, expectedLine := range expected {
+			currentOutputLine := outputLines[expectedLineIndex]
+			str := space.ReplaceAllString(currentOutputLine, " ")
+			So(strings.TrimSpace(str), ShouldEqual, expectedLine)
+		}
+
 		So(err, ShouldBeNil)
 	})
 
@@ -207,9 +220,22 @@ func TestSearchCVECmd(t *testing.T) {
 		cveCmd.SetArgs(args)
 		err := cveCmd.Execute()
 		space := regexp.MustCompile(`\s+`)
-		str := space.ReplaceAllString(buff.String(), " ")
-		So(strings.TrimSpace(str), ShouldEqual, "CRITICAL 0, HIGH 1, MEDIUM 0, LOW 0, UNKNOWN 0, TOTAL 1 "+
-			"ID SEVERITY TITLE dummyCVEID HIGH Title of that CVE")
+		outputLines := strings.Split(buff.String(), "\n")
+
+		expected := []string{
+			"CRITICAL 0, HIGH 1, MEDIUM 0, LOW 0, UNKNOWN 0, TOTAL 1",
+			"",
+			"ID SEVERITY TITLE VULNERABLE PACKAGE PATH INSTALL-VER FIXED-VER",
+			"dummyCVEID HIGH Title of that CVE",
+			"packagename - installedver fixedver",
+		}
+
+		for expectedLineIndex, expectedLine := range expected {
+			currentOutputLine := outputLines[expectedLineIndex]
+			str := space.ReplaceAllString(currentOutputLine, " ")
+			So(strings.TrimSpace(str), ShouldEqual, expectedLine)
+		}
+
 		So(err, ShouldBeNil)
 	})
 

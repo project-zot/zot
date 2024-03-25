@@ -877,21 +877,45 @@ func (cve cveResult) stringPlainText() string {
 
 	table := getCVETableWriter(&builder)
 
-	for _, c := range cve.Data.CVEListForImage.CVEList {
-		id := ellipsize(c.ID, cveIDWidth, ellipsis)
-		title := ellipsize(c.Title, cveTitleWidth, ellipsis)
-		severity := ellipsize(c.Severity, cveSeverityWidth, ellipsis)
+	for _, cveListItem := range cve.Data.CVEListForImage.CVEList {
+		id := ellipsize(cveListItem.ID, cveIDWidth, ellipsis)
+		title := ellipsize(cveListItem.Title, cveTitleWidth, ellipsis)
+		severity := ellipsize(cveListItem.Severity, cveSeverityWidth, ellipsis)
 		row := make([]string, 3) //nolint:gomnd
 		row[colCVEIDIndex] = id
 		row[colCVESeverityIndex] = severity
 		row[colCVETitleIndex] = title
 
 		table.Append(row)
+
+		for _, pkg := range cveListItem.PackageList {
+			pkgRow := generateTableRowForVulnerablePackage(pkg)
+			table.Append(pkgRow)
+		}
 	}
 
 	table.Render()
 
 	return builder.String()
+}
+
+func generateTableRowForVulnerablePackage(pkg packageList) []string {
+	row := make([]string, cveColTotalCount)
+	pkgName := ellipsize(pkg.Name, cveVulnPkgNameWidth, ellipsis)
+	pkgPath := "-"
+
+	if pkg.PackagePath != "" {
+		pkgPath = ellipsize(pkg.PackagePath, cveVulnPkgPathWidth, ellipsis)
+	}
+	pkgInstalledVer := ellipsize(pkg.InstalledVersion, cveVulnPkgInstalledVerWidth, ellipsis)
+	pkgFixedVer := ellipsize(pkg.FixedVersion, cveVulnPkgFixedVerWidth, ellipsis)
+
+	row[colCVEVulnPkgNameIndex] = pkgName
+	row[colCVEVulnPkgPathIndex] = pkgPath
+	row[colCVEVulnPkgInstalledVerIndex] = pkgInstalledVer
+	row[colCVEVulnPkgFixedVerIndex] = pkgFixedVer
+
+	return row
 }
 
 func (cve cveResult) stringJSON() (string, error) {
@@ -1362,6 +1386,10 @@ func getCVETableWriter(writer io.Writer) *tablewriter.Table {
 	table.SetColMinWidth(colCVEIDIndex, cveIDWidth)
 	table.SetColMinWidth(colCVESeverityIndex, cveSeverityWidth)
 	table.SetColMinWidth(colCVETitleIndex, cveTitleWidth)
+	table.SetColMinWidth(colCVEVulnPkgNameIndex, cveVulnPkgNameWidth)
+	table.SetColMinWidth(colCVEVulnPkgPathIndex, cveVulnPkgPathWidth)
+	table.SetColMinWidth(colCVEVulnPkgInstalledVerIndex, cveVulnPkgInstalledVerWidth)
+	table.SetColMinWidth(colCVEVulnPkgFixedVerIndex, cveVulnPkgFixedVerWidth)
 
 	return table
 }
@@ -1459,13 +1487,23 @@ const (
 	layersWidth      = 8
 	ellipsis         = "..."
 
-	cveIDWidth       = 16
-	cveSeverityWidth = 8
-	cveTitleWidth    = 48
+	cveIDWidth                  = 16
+	cveSeverityWidth            = 8
+	cveTitleWidth               = 48
+	cveVulnPkgNameWidth         = 35
+	cveVulnPkgPathWidth         = 30
+	cveVulnPkgInstalledVerWidth = 20
+	cveVulnPkgFixedVerWidth     = 20
 
-	colCVEIDIndex       = 0
-	colCVESeverityIndex = 1
-	colCVETitleIndex    = 2
+	colCVEIDIndex                  = 0
+	colCVESeverityIndex            = 1
+	colCVETitleIndex               = 2
+	colCVEVulnPkgNameIndex         = 3
+	colCVEVulnPkgPathIndex         = 4
+	colCVEVulnPkgInstalledVerIndex = 5
+	colCVEVulnPkgFixedVerIndex     = 6
+
+	cveColTotalCount = 7
 
 	defaultOutputFormat = "text"
 )
