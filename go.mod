@@ -62,7 +62,7 @@ require (
 	github.com/zitadel/oidc v1.13.5
 	golang.org/x/oauth2 v0.18.0
 	modernc.org/sqlite v1.29.5
-	oras.land/oras-go/v2 v2.4.0
+	oras.land/oras-go/v2 v2.5.0
 )
 
 require (
