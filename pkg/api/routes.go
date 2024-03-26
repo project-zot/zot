@@ -514,7 +514,7 @@ func (rh *RouteHandler) GetManifest(response http.ResponseWriter, request *http.
 
 	if rh.c.MetaDB != nil {
 		err := meta.OnGetManifest(name, reference, mediaType, content, rh.c.StoreController, rh.c.MetaDB, rh.c.Log)
-		if err != nil && !errors.Is(err, zerr.ErrImageMetaNotFound) {
+		if err != nil && !errors.Is(err, zerr.ErrImageMetaNotFound) && !errors.Is(err, zerr.ErrRepoMetaNotFound) {
 			response.WriteHeader(http.StatusInternalServerError)
 
 			return
