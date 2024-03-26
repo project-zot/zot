@@ -52,6 +52,7 @@ linters-settings:
   gomoddirectives:
     replace-allow-list:
       - github.com/gorilla/mux
+      - github.com/testcontainers/testcontainers-go
 issues:
   exclude-rules:
     - path: pkg/extensions/search/schema.resolvers.go
