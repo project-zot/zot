@@ -42,6 +42,8 @@ build:
   build_only: true
 
 "${{REPO_NAME:zot}}":
+  annotations:
+    org.opencontainers.image.description: "OCI-native container image/artifact registry (purely based on OCI Distribution Specification)"
   os: ${{OS}}
   arch: ${{ARCH}}
   from:
