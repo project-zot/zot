@@ -40,6 +40,8 @@ build:
   build_only: true
 
 "${{REPO_NAME:zxp}}":
+  annotations:
+    org.opencontainers.image.description: "a metrics exporter for zot-minimal image"
   os: ${{OS}}
   arch: ${{ARCH}}
   from:
