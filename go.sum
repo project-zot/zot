@@ -1357,8 +1357,8 @@ github.com/sigstore/fulcio v1.4.3 h1:9JcUCZjjVhRF9fmhVuz6i1RyhCc/EGCD7MOl+iqCJLQ
 github.com/sigstore/fulcio v1.4.3/go.mod h1:BQPWo7cfxmJwgaHlphUHUpFkp5+YxeJes82oo39m5og=
 github.com/sigstore/rekor v1.3.4 h1:RGIia1iOZU7fOiiP2UY/WFYhhp50S5aUm7YrM8aiA6E=
 github.com/sigstore/rekor v1.3.4/go.mod h1:1GubPVO2yO+K0m0wt/3SHFqnilr/hWbsjSOe7Vzxrlg=
-github.com/sigstore/sigstore v1.8.2 h1:0Ttjcn3V0fVQXlYq7+oHaaHkGFIt3ywm7SF4JTU/l8c=
-github.com/sigstore/sigstore v1.8.2/go.mod h1:CHVcSyknCcjI4K2ZhS1SI28r0tcQyBlwtALG536x1DY=
+github.com/sigstore/sigstore v1.8.3 h1:G7LVXqL+ekgYtYdksBks9B38dPoIsbscjQJX/MGWkA4=
+github.com/sigstore/sigstore v1.8.3/go.mod h1:mqbTEariiGA94cn6G3xnDiV6BD8eSLdL/eA7bvJ0fVs=
 github.com/sigstore/sigstore/pkg/signature/kms/aws v1.8.1 h1:rEDdUefulkIQaMJyzLwtgPDLNXBIltBABiFYfb0YmgQ=
 github.com/sigstore/sigstore/pkg/signature/kms/aws v1.8.1/go.mod h1:RCdYCc1IxCYWzh2IdzdA6Yf7JIY0cMRqH08fpQYechw=
 github.com/sigstore/sigstore/pkg/signature/kms/azure v1.8.1 h1:DvRWG99QGWZC5mp42SEde2Xke/Q384Idnj2da7yB+Mk=
