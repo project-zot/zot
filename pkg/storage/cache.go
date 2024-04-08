@@ -62,7 +62,7 @@ func Create(dbtype string, parameters interface{}, log zlog.Logger) (cache.Cache
 		}
 	case "redis":
 		{
-			return cache.NewRedisCache(parameters, log), nil
+			return cache.NewRedisCache(parameters, log)
 		}
 	default:
 		{
