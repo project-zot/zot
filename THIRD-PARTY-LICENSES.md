@@ -8,7 +8,7 @@ github.com/Azure/go-autorest|https://github.com/Azure/go-autorest/blob/v14.2.0/L
 github.com/VividCortex/ewma|https://github.com/VividCortex/ewma/blob/v1.2.0/LICENSE|MIT
 github.com/agext/levenshtein|https://github.com/agext/levenshtein/blob/v1.2.3/LICENSE|Apache-2.0
 github.com/aliyun/credentials-go|https://github.com/aliyun/credentials-go/blob/v1.3.1/LICENSE|Apache-2.0
-github.com/aws/aws-sdk-go-v2|https://github.com/aws/aws-sdk-go-v2/blob/v1.26.0/LICENSE.txt|Apache-2.0
+github.com/aws/aws-sdk-go-v2|https://github.com/aws/aws-sdk-go-v2/blob/v1.26.1/LICENSE.txt|Apache-2.0
 github.com/cloudflare/circl|https://github.com/cloudflare/circl/blob/v1.3.7/LICENSE|BSD-3-Clause
 github.com/containers/image/v5|https://github.com/containers/image/blob/v5.30.0/LICENSE|Apache-2.0
 github.com/dgryski/go-rendezvous|https://github.com/dgryski/go-rendezvous/blob/9f7001d12a5f/LICENSE|MIT
