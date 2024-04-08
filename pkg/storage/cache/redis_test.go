@@ -7,24 +7,26 @@ import (
 	"github.com/alicebob/miniredis/v2"
 	. "github.com/smartystreets/goconvey/convey"
 
-	"zotregistry.io/zot/errors"
-	"zotregistry.io/zot/pkg/log"
-	"zotregistry.io/zot/pkg/storage"
-	"zotregistry.io/zot/pkg/storage/cache"
+	"zotregistry.dev/zot/errors"
+	"zotregistry.dev/zot/pkg/log"
+	"zotregistry.dev/zot/pkg/storage"
+	"zotregistry.dev/zot/pkg/storage/cache"
 )
 
 func TestRedisCache(t *testing.T) {
-	mr := miniredis.RunT(t)
-	Convey("Make a new cache", t, func() {
+	miniRedis := miniredis.RunT(t)
 
+	Convey("Make a new cache", t, func() {
 		dir := t.TempDir()
 
 		log := log.NewLogger("debug", "")
 		So(log, ShouldNotBeNil)
 
-		So(func() { _, _ = storage.Create("redis", "failTypeAssertion", log) }, ShouldPanic)
+		_, err := storage.Create("redis", "failTypeAssertion", log)
+		So(err, ShouldNotBeNil)
 
-		cacheDriver, _ := storage.Create("redis", cache.RedisDriverParameters{dir, "redis://" + mr.Addr(), true}, log)
+		cacheDriver, _ := storage.Create("redis",
+			cache.RedisDriverParameters{dir, "redis://" + miniRedis.Addr(), true}, log)
 		So(cacheDriver, ShouldNotBeNil)
 
 		name := cacheDriver.Name()
@@ -61,7 +63,8 @@ func TestRedisCache(t *testing.T) {
 		So(err, ShouldNotBeNil)
 		So(err, ShouldEqual, errors.ErrEmptyValue)
 
-		cacheDriver, _ = storage.Create("redis", cache.RedisDriverParameters{t.TempDir(), "redis://" + mr.Addr() + "/5", false}, log)
+		cacheDriver, _ = storage.Create("redis",
+			cache.RedisDriverParameters{t.TempDir(), "redis://" + miniRedis.Addr() + "/5", false}, log)
 		So(cacheDriver, ShouldNotBeNil)
 
 		err = cacheDriver.PutBlob("key1", "originalBlobPath")

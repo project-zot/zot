@@ -65,7 +65,6 @@ require (
 	golang.org/x/oauth2 v0.18.0
 	modernc.org/sqlite v1.29.5
 	oras.land/oras-go/v2 v2.5.0
-	zotregistry.io/zot v1.4.3
 )
 
 require (
@@ -95,7 +94,6 @@ require (
 	github.com/alecthomas/chroma v0.10.0 // indirect
 	github.com/alicebob/gopher-json v0.0.0-20200520072559-a9ecdc9d1d3a // indirect
 	github.com/anchore/go-struct-converter v0.0.0-20221118182256-c68fdcfa2092 // indirect
-	github.com/apex/log v1.9.0 // indirect
 	github.com/apparentlymart/go-textseg/v15 v15.0.0 // indirect
 	github.com/aquasecurity/table v1.8.0 // indirect
 	github.com/aquasecurity/tml v0.6.1 // indirect
@@ -185,11 +183,8 @@ require (
 	github.com/ncruces/go-strftime v0.1.9 // indirect
 	github.com/nozzle/throttler v0.0.0-20180817012639-2ea982251481 // indirect
 	github.com/oleiade/reflections v1.0.1 // indirect
-	github.com/opencontainers/runc v1.1.12 // indirect
 	github.com/opencontainers/selinux v1.11.0 // indirect
-	github.com/opencontainers/umoci v0.4.8-0.20210922062158-e60a0cc726e6 // indirect
 	github.com/openvex/go-vex v0.2.5 // indirect
-	github.com/oras-project/artifacts-spec v1.0.0-rc.2 // indirect
 	github.com/owenrumney/go-sarif/v2 v2.3.0 // indirect
 	github.com/package-url/packageurl-go v0.1.2 // indirect
 	github.com/pborman/uuid v1.2.1 // indirect
@@ -198,14 +193,12 @@ require (
 	github.com/pkg/browser v0.0.0-20240102092130-5ac0b6a4141c // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
-	github.com/rootless-containers/proto/go-proto v0.0.0-20210921234734-69430b6543fb // indirect
 	github.com/rubenv/sql-migrate v1.5.2 // indirect
 	github.com/sagikazarmark/locafero v0.4.0 // indirect
 	github.com/sagikazarmark/slog-shim v0.1.0 // indirect
 	github.com/samber/lo v1.39.0 // indirect
 	github.com/santhosh-tekuri/jsonschema/v5 v5.3.1 // indirect
 	github.com/shopspring/decimal v1.3.1 // indirect
-	github.com/sigstore/cosign v1.13.1 // indirect
 	github.com/sigstore/timestamp-authority v1.2.1 // indirect
 	github.com/skeema/knownhosts v1.2.1 // indirect
 	github.com/smarty/assertions v1.15.0 // indirect
@@ -213,9 +206,7 @@ require (
 	github.com/sourcegraph/conc v0.3.0 // indirect
 	github.com/spdx/tools-golang v0.5.4-0.20231108154018-0c0f394b5e1a // indirect
 	github.com/tetratelabs/wazero v1.7.0 // indirect
-	github.com/urfave/cli v1.22.14 // indirect
 	github.com/urfave/cli/v2 v2.27.1 // indirect
-	github.com/vbatts/go-mtree v0.5.0 // indirect
 	github.com/vbauerster/mpb/v8 v8.7.2 // indirect
 	github.com/xeipuuv/gojsonschema v1.2.0 // indirect
 	github.com/xlab/treeprint v1.2.0 // indirect
