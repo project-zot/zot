@@ -64,7 +64,6 @@ require (
 	golang.org/x/oauth2 v0.21.0
 	modernc.org/sqlite v1.30.1
 	oras.land/oras-go/v2 v2.5.0
-	zotregistry.io/zot v1.4.3
 )
 
 require (
@@ -94,7 +93,6 @@ require (
 	github.com/alecthomas/chroma v0.10.0 // indirect
 	github.com/alicebob/gopher-json v0.0.0-20200520072559-a9ecdc9d1d3a // indirect
 	github.com/anchore/go-struct-converter v0.0.0-20221118182256-c68fdcfa2092 // indirect
-	github.com/apex/log v1.9.0 // indirect
 	github.com/apparentlymart/go-textseg/v15 v15.0.0 // indirect
 	github.com/aquasecurity/table v1.8.0 // indirect
 	github.com/aquasecurity/tml v0.6.1 // indirect
@@ -183,9 +181,7 @@ require (
 	github.com/notaryproject/notation-plugin-framework-go v1.0.0 // indirect
 	github.com/nozzle/throttler v0.0.0-20180817012639-2ea982251481 // indirect
 	github.com/oleiade/reflections v1.0.1 // indirect
-	github.com/opencontainers/runc v1.1.12 // indirect
 	github.com/opencontainers/selinux v1.11.0 // indirect
-	github.com/opencontainers/umoci v0.4.8-0.20210922062158-e60a0cc726e6 // indirect
 	github.com/openvex/go-vex v0.2.5 // indirect
 	github.com/owenrumney/go-sarif/v2 v2.3.1 // indirect
 	github.com/package-url/packageurl-go v0.1.3 // indirect
@@ -212,11 +208,10 @@ require (
 	github.com/tetratelabs/wazero v1.7.2 // indirect
 	github.com/urfave/cli/v2 v2.27.2 // indirect
 	github.com/vbauerster/mpb/v8 v8.7.3 // indirect
-	github.com/xeipuuv/gojsonschema v1.2.0 // indirect
-	github.com/xlab/treeprint v1.2.0 // indirect
-	github.com/xrash/smetrics v0.0.0-20240312152122-5f08fbb34913 // indirect
-	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.49.0 // indirect
-	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.52.0 // indirect
+	github.com/spdx/tools-golang v0.5.4-0.20231108154018-0c0f394b5e1a // indirect
+	github.com/tetratelabs/wazero v1.7.0 // indirect
+	github.com/urfave/cli/v2 v2.27.1 // indirect
+	github.com/vbauerster/mpb/v8 v8.7.2 // indirect
 	go.opentelemetry.io/otel/metric v1.27.0 // indirect
 	go.opentelemetry.io/otel/sdk v1.27.0 // indirect
 	go.starlark.net v0.0.0-20230525235612-a134d8f9ddca // indirect
