@@ -47,7 +47,7 @@ func (lc *LDAPClient) Connect() error {
 		address := fmt.Sprintf("%s:%d", lc.Host, lc.Port)
 
 		if !lc.UseSSL {
-			l, err = ldap.Dial("tcp", address)
+			l, err = ldap.Dial("tcp", address) //nolint:staticcheck
 			if err != nil {
 				lc.Log.Error().Err(err).Str("address", address).Msg("failed to establish a TCP connection")
 
@@ -83,7 +83,7 @@ func (lc *LDAPClient) Connect() error {
 				config.Certificates = lc.ClientCertificates
 				// config.BuildNameToCertificate()
 			}
-			l, err = ldap.DialTLS("tcp", address, config)
+			l, err = ldap.DialTLS("tcp", address, config) //nolint:staticcheck
 			if err != nil {
 				lc.Log.Error().Err(err).Str("address", address).Msg("failed to establish a TLS connection")
 
