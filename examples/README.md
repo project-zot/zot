@@ -702,7 +702,7 @@ In order to test the Metrics feature locally in a [Kind](https://kind.sigs.k8s.i
 ## Storage Drivers
 
 Beside filesystem storage backend, zot also supports S3 storage backend, check below url to see how to configure it:
-- [s3 config](https://github.com/docker/docker.github.io/blob/master/registry/storage-drivers/s3.md): A driver storing objects in an Amazon Simple Storage Service (S3) bucket.
+- [s3 config](https://github.com/docker/docker.github.io/blob/master/registry/storage-drivers/s3.md): A driver storing objects in an Amazon Simple Storage Service (S3) bucket. **_[ NO DOCUMENTATION --- DEAD LINK ] MAYBE THIS ONE BUT NO EXPLICIT S3 Documentation :  https://github.com/docker/docs/tree/main/content/storage  -- there is this : https://github.com/docker/docs/blob/5f94cb4f31535cef234fd52c5268660a7c4fe514/content/build/cache/backends/s3.md#L4 but not convinient_**
 
 For an s3 zot configuration with multiple storage drivers see: [s3-config](config-s3.json).
 
@@ -756,6 +756,7 @@ The following AWS policy is required by zot for push and pull. Make sure to repl
             "accesskey": "<YOUR_ACCESS_KEY_ID>",
             "secretkey": "<YOUR_SECRET_ACCESS_KEY>"
         }
+    }
 ```
 
 There are multiple ways to specify S3 credentials besides config file:
