@@ -48,6 +48,18 @@ func TestServe(t *testing.T) {
 	})
 
 	Convey("Test serve config", t, func(c C) {
+		Convey("no config arg", func(c C) {
+			os.Args = []string{"cli_test", "serve"}
+			err := cli.NewServerRootCmd().Execute()
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("two args", func(c C) {
+			os.Args = []string{"cli_test", "serve", "config", "second arg"}
+			err := cli.NewServerRootCmd().Execute()
+			So(err, ShouldNotBeNil)
+		})
+
 		Convey("unknown config", func(c C) {
 			os.Args = []string{"cli_test", "serve", path.Join(os.TempDir(), "/x")}
 			err := cli.NewServerRootCmd().Execute()

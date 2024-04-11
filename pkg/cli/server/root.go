@@ -47,6 +47,7 @@ func newServeCmd(conf *config.Config) *cobra.Command {
 		Aliases: []string{"serve"},
 		Short:   "`serve` stores and distributes OCI images",
 		Long:    "`serve` stores and distributes OCI images",
+		Args:    cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if len(args) > 0 {
 				if err := LoadConfiguration(conf, args[0]); err != nil {
