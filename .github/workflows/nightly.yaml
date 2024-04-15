@@ -39,11 +39,14 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ github.token }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
       - name: Install localstack
         run: |
           pip install --upgrade pyopenssl
-          pip install localstack==2.3.1 awscli-local[ver1] # install LocalStack cli and awslocal
-          docker pull ghcr.io/project-zot/ci-images/localstack:2.3.1 # Make sure to pull the latest version of the image
+          pip install localstack==3.3.0 awscli-local[ver1] # install LocalStack cli and awslocal
+          docker pull ghcr.io/project-zot/ci-images/localstack:3.3.0 # Make sure to pull the latest version of the image
           localstack start -d                       # Start LocalStack in the background
 
           echo "Waiting for LocalStack startup..."  # Wait 30 seconds for the LocalStack container

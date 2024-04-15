@@ -18,11 +18,14 @@ runs:
         registry: ghcr.io
         username: ${{ inputs.username }}
         password: ${{ inputs.password }}
+    - uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
     - shell: bash
       run: |
-            pip install localstack==2.3.1                                # Install LocalStack cli
+            pip install localstack==3.3.0                                # Install LocalStack cli
             # Below image was copied manually from localstack/localstack:2.2 and uploaded to ghcr
-            docker pull ghcr.io/project-zot/ci-images/localstack:2.3.1     # Make sure to pull a working version of the image
+            docker pull ghcr.io/project-zot/ci-images/localstack:3.3.0   # Make sure to pull a working version of the image
             localstack start -d                                          # Start LocalStack in the background
 
             echo "Waiting for LocalStack startup..."                     # Wait 30 seconds for the LocalStack container
