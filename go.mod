@@ -61,7 +61,7 @@ require (
 	github.com/swaggo/http-swagger v1.3.4
 	github.com/zitadel/oidc v1.13.5
 	golang.org/x/oauth2 v0.19.0
-	modernc.org/sqlite v1.29.5
+	modernc.org/sqlite v1.29.6
 	oras.land/oras-go/v2 v2.5.0
 )
 
