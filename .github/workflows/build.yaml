@@ -109,7 +109,7 @@ jobs:
       packages: write
     steps:
       - name: Download Release Artifacts
-        uses: robinraju/release-downloader@v1.9
+        uses: robinraju/release-downloader@v1.10
         with:
           tag: ${{ github.ref_name }}
           fileName: "z*"
