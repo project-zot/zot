@@ -1,8 +1,8 @@
 Module | License URL | License
 ---|---|---
 
-cloud.google.com/go|https://github.com/googleapis/google-cloud-go/blob/v0.112.0/LICENSE|Apache-2.0
-github.com/Azure/azure-sdk-for-go/sdk/internal|https://github.com/Azure/azure-sdk-for-go/blob/sdk/internal/v1.5.1/sdk/internal/LICENSE.txt|MIT
+cloud.google.com/go|https://github.com/googleapis/google-cloud-go/blob/v0.112.1/LICENSE|Apache-2.0
+github.com/Azure/azure-sdk-for-go/sdk/internal|https://github.com/Azure/azure-sdk-for-go/blob/sdk/internal/v1.5.2/sdk/internal/LICENSE.txt|MIT
 github.com/Azure/azure-sdk-for-go|https://github.com/Azure/azure-sdk-for-go/blob/v68.0.0/LICENSE.txt|MIT
 github.com/Azure/go-autorest|https://github.com/Azure/go-autorest/blob/v14.2.0/LICENSE|Apache-2.0
 github.com/VividCortex/ewma|https://github.com/VividCortex/ewma/blob/v1.2.0/LICENSE|MIT
@@ -13,7 +13,7 @@ github.com/cloudflare/circl|https://github.com/cloudflare/circl/blob/v1.3.7/LICE
 github.com/containers/image/v5|https://github.com/containers/image/blob/v5.30.0/LICENSE|Apache-2.0
 github.com/dgryski/go-rendezvous|https://github.com/dgryski/go-rendezvous/blob/9f7001d12a5f/LICENSE|MIT
 github.com/docker/go-connections|https://github.com/docker/go-connections/blob/v0.5.0/LICENSE|Apache-2.0
-github.com/google/wire|https://github.com/google/wire/blob/v0.5.0/LICENSE|Apache-2.0
+github.com/google/wire|https://github.com/google/wire/blob/v0.6.0/LICENSE|Apache-2.0
 github.com/inconshreveable/mousetrap|https://github.com/inconshreveable/mousetrap/blob/v1.1.0/LICENSE|Apache-2.0
 github.com/jbenet/go-context|https://github.com/jbenet/go-context/blob/d14ea06fba99/LICENSE|MIT
 github.com/moby/buildkit|https://github.com/moby/buildkit/blob/v0.12.5/LICENSE|Apache-2.0
@@ -21,9 +21,9 @@ github.com/stretchr/testify|https://github.com/stretchr/testify/blob/v1.9.0/LICE
 github.com/transparency-dev/merkle|https://github.com/transparency-dev/merkle/blob/v0.0.2/LICENSE|Apache-2.0
 github.com/zitadel/oidc|https://github.com/zitadel/oidc/blob/v1.13.5/LICENSE|Apache-2.0
 go.opencensus.io|https://github.com/census-instrumentation/opencensus-go/blob/v0.24.0/LICENSE|Apache-2.0
-go.opentelemetry.io/otel/sdk|https://github.com/open-telemetry/opentelemetry-go/blob/sdk/v1.23.1/sdk/LICENSE|Apache-2.0
+go.opentelemetry.io/otel/sdk|https://github.com/open-telemetry/opentelemetry-go/blob/sdk/v1.24.0/sdk/LICENSE|Apache-2.0
 golang.org/x/text|https://cs.opensource.google/go/x/text/+/v0.14.0:LICENSE|BSD-3-Clause
-google.golang.org/api|https://github.com/googleapis/google-api-go-client/blob/v0.159.0/LICENSE|BSD-3-Clause
+google.golang.org/api|https://github.com/googleapis/google-api-go-client/blob/v0.172.0/LICENSE|BSD-3-Clause
 k8s.io/apimachinery|https://github.com/kubernetes/apimachinery/blob/v0.29.1/LICENSE|Apache-2.0
 k8s.io/apiserver|https://github.com/kubernetes/apiserver/blob/v0.29.0/LICENSE|Apache-2.0
 k8s.io/api|https://github.com/kubernetes/api/blob/v0.29.1/LICENSE|Apache-2.0
