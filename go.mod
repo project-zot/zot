@@ -61,7 +61,7 @@ require (
 	github.com/swaggo/http-swagger v1.3.4
 	github.com/zitadel/oidc v1.13.5
 	golang.org/x/oauth2 v0.19.0
-	modernc.org/sqlite v1.29.6
+	modernc.org/sqlite v1.29.7
 	oras.land/oras-go/v2 v2.5.0
 )
 
@@ -226,9 +226,9 @@ require (
 	k8s.io/component-base v0.29.0 // indirect
 	k8s.io/kubectl v0.29.0 // indirect
 	modernc.org/gc/v3 v3.0.0-20240107210532-573471604cb6 // indirect
-	modernc.org/libc v1.41.0 // indirect
+	modernc.org/libc v1.49.3 // indirect
 	modernc.org/mathutil v1.6.0 // indirect
-	modernc.org/memory v1.7.2 // indirect
+	modernc.org/memory v1.8.0 // indirect
 	modernc.org/strutil v1.2.0 // indirect
 	modernc.org/token v1.1.0 // indirect
 	oras.land/oras-go v1.2.5 // indirect
