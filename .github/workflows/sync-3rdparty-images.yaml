@@ -63,7 +63,6 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Tag and push localstack to ghcr
         run: |
-          docker trust inspect localstack:${{ matrix.localstack_version }}
           docker pull localstack:${{ matrix.localstack_version }}
           docker tag localstack:${{ matrix.localstack_version }} ghcr.io/${{ github.repository_owner }}/ci-images/localstack:${{ matrix.localstack_version }}
           docker push ghcr.io/${{ github.repository_owner }}/ci-images/localstack:${{ matrix.localstack_version }}
