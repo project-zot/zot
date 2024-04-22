@@ -11,12 +11,12 @@ require (
 	github.com/bmatcuk/doublestar/v4 v4.6.1
 	github.com/briandowns/spinner v1.23.0
 	github.com/chartmuseum/auth v0.5.0
-	github.com/containers/common v0.58.1
+	github.com/containers/common v0.58.2
 	github.com/didip/tollbooth/v6 v6.1.2
 	github.com/docker/distribution v2.8.3+incompatible
 	github.com/dustin/go-humanize v1.0.1
 	github.com/fsnotify/fsnotify v1.7.0
-	github.com/go-ldap/ldap/v3 v3.4.7
+	github.com/go-ldap/ldap/v3 v3.4.8
 	github.com/gofrs/uuid v4.4.0+incompatible
 	github.com/google/go-containerregistry v0.19.1
 	github.com/google/uuid v1.6.0
@@ -45,7 +45,7 @@ require (
 )
 
 require (
-	github.com/aquasecurity/trivy v0.50.1
+	github.com/aquasecurity/trivy v0.50.2
 	github.com/aws/aws-sdk-go-v2/service/dynamodb v1.31.1
 	github.com/aws/aws-sdk-go-v2/service/secretsmanager v1.28.6
 	github.com/aws/aws-secretsmanager-caching-go v1.1.3
@@ -61,7 +61,7 @@ require (
 	github.com/swaggo/http-swagger v1.3.4
 	github.com/zitadel/oidc v1.13.5
 	golang.org/x/oauth2 v0.19.0
-	modernc.org/sqlite v1.29.6
+	modernc.org/sqlite v1.29.8
 	oras.land/oras-go/v2 v2.5.0
 )
 
@@ -226,9 +226,9 @@ require (
 	k8s.io/component-base v0.29.0 // indirect
 	k8s.io/kubectl v0.29.0 // indirect
 	modernc.org/gc/v3 v3.0.0-20240107210532-573471604cb6 // indirect
-	modernc.org/libc v1.41.0 // indirect
+	modernc.org/libc v1.49.3 // indirect
 	modernc.org/mathutil v1.6.0 // indirect
-	modernc.org/memory v1.7.2 // indirect
+	modernc.org/memory v1.8.0 // indirect
 	modernc.org/strutil v1.2.0 // indirect
 	modernc.org/token v1.1.0 // indirect
 	oras.land/oras-go v1.2.5 // indirect
@@ -284,7 +284,7 @@ require (
 	github.com/aquasecurity/go-pep440-version v0.0.0-20210121094942-22b2f8951d46 // indirect
 	github.com/aquasecurity/go-version v0.0.0-20210121072130-637058cfe492 // indirect
 	github.com/asaskevich/govalidator v0.0.0-20230301143203-a9d515a09cc2 // indirect
-	github.com/aws/aws-sdk-go v1.51.21
+	github.com/aws/aws-sdk-go v1.51.25
 	github.com/aws/aws-sdk-go-v2 v1.26.1
 	github.com/aws/aws-sdk-go-v2/config v1.27.11
 	github.com/aws/aws-sdk-go-v2/credentials v1.17.11 // indirect
@@ -368,7 +368,7 @@ require (
 	github.com/gorilla/websocket v1.5.0 // indirect
 	github.com/hashicorp/errwrap v1.1.0 // indirect
 	github.com/hashicorp/go-cleanhttp v0.5.2 // indirect
-	github.com/hashicorp/go-getter v1.7.3 // indirect
+	github.com/hashicorp/go-getter v1.7.4 // indirect
 	github.com/hashicorp/go-multierror v1.1.1 // indirect
 	github.com/hashicorp/go-retryablehttp v0.7.5 // indirect
 	github.com/hashicorp/go-safetemp v1.0.0 // indirect
@@ -474,7 +474,7 @@ require (
 	go.uber.org/zap v1.27.0 // indirect
 	golang.org/x/exp v0.0.0-20240222234643-814bf88cf225
 	golang.org/x/mod v0.16.0 // indirect
-	golang.org/x/net v0.22.0 // indirect
+	golang.org/x/net v0.23.0 // indirect
 	golang.org/x/term v0.19.0 // indirect
 	golang.org/x/time v0.5.0 // indirect
 	golang.org/x/tools v0.19.0 // indirect
