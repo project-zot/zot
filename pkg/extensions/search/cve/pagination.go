@@ -62,6 +62,8 @@ type CvePageFinder struct {
 	pageBuffer []cvemodel.CVE
 }
 
+const maxCvePageLimit = 4 * 1024
+
 func NewCvePageFinder(limit, offset int, sortBy cvemodel.SortCriteria) (*CvePageFinder, error) {
 	if sortBy == "" {
 		sortBy = SeverityDsc
@@ -69,6 +71,10 @@ func NewCvePageFinder(limit, offset int, sortBy cvemodel.SortCriteria) (*CvePage
 
 	if limit < 0 {
 		return nil, zerr.ErrLimitIsNegative
+	}
+
+	if limit > maxCvePageLimit {
+		return nil, zerr.ErrLimitIsExcessive
 	}
 
 	if offset < 0 {

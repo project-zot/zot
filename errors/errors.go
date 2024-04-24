@@ -117,6 +117,7 @@ var (
 	ErrEmptyDigest                    = errors.New("digest can't be empty string")
 	ErrInvalidRepoRefFormat           = errors.New("invalid image reference format, use [repo:tag] or [repo@digest]")
 	ErrLimitIsNegative                = errors.New("pagination limit has negative value")
+	ErrLimitIsExcessive               = errors.New("pagination limit has excessive value")
 	ErrOffsetIsNegative               = errors.New("pagination offset has negative value")
 	ErrSortCriteriaNotSupported       = errors.New("the pagination sort criteria is not supported")
 	ErrMediaTypeNotSupported          = errors.New("media type is not supported")
