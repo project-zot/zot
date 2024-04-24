@@ -415,6 +415,23 @@ func TestCVEPagination(t *testing.T) {
 					previousSeverity = severityToInt[cve.Severity]
 				}
 			})
+			Convey("bad limits", func() {
+				_, _, _, err := cveInfo.GetCVEListForImage(ctx, "repo1", "0.1.0", "", "", "", cvemodel.PageInput{
+					Limit:  -1,
+					Offset: 3,
+					SortBy: cveinfo.AlphabeticAsc,
+				},
+				)
+				So(err, ShouldNotBeNil)
+
+				_, _, _, err = cveInfo.GetCVEListForImage(ctx, "repo1", "0.1.0", "", "", "", cvemodel.PageInput{
+					Limit:  4097,
+					Offset: 3,
+					SortBy: cveinfo.AlphabeticAsc,
+				},
+				)
+				So(err, ShouldNotBeNil)
+			})
 		})
 	})
 }
