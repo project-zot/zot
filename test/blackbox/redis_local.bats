@@ -72,6 +72,43 @@ EOF
     wait_zot_reachable ${zot_port}
 }
 
+@test "push 2 images" {
+    zot_port=`cat ${BATS_FILE_TMPDIR}/zot.port`
+    run skopeo --insecure-policy copy --dest-tls-verify=false \
+        oci:${TEST_DATA_DIR}/golang:1.20 \
+        docker://127.0.0.1:${zot_port}/golang:1.20
+    [ "$status" -eq 0 ]
+
+    run skopeo --insecure-policy copy --dest-tls-verify=false \
+        oci:${TEST_DATA_DIR}/golang:1.20 \
+        docker://127.0.0.1:${zot_port}/golang2:1.20
+    [ "$status" -eq 0 ]
+
+    run curl http://127.0.0.1:${zot_port}/v2/_catalog
+    [ "$status" -eq 0 ]
+    [ $(echo "${lines[-1]}" | jq '.repositories[]') = '"golang"' ]
+    run curl http://127.0.0.1:${zot_port}/v2/golang/tags/list
+    [ "$status" -eq 0 ]
+    [ $(echo "${lines[-1]}" | jq '.tags[]') = '"1.20"' ]
+}
+
+@test "pull both images" {
+    local oci_data_dir=${BATS_FILE_TMPDIR}/oci
+    zot_port=`cat ${BATS_FILE_TMPDIR}/zot.port`
+    run skopeo --insecure-policy copy --src-tls-verify=false \
+        docker://127.0.0.1:${zot_port}/golang:1.20 \
+        oci:${oci_data_dir}/golang:1.20
+    [ "$status" -eq 0 ]
+    run cat ${BATS_FILE_TMPDIR}/oci/golang/index.json
+    [ "$status" -eq 0 ]
+    [ $(echo "${lines[-1]}" | jq '.manifests[].annotations."org.opencontainers.image.ref.name"') = '"1.20"' ]
+
+    run skopeo --insecure-policy copy --src-tls-verify=false \
+        docker://127.0.0.1:${zot_port}/golang2:1.20 \
+        oci:${oci_data_dir}/golang:1.20
+    [ "$status" -eq 0 ]
+}
+
 function teardown_file() {
     zot_stop_all
     redis_stop
