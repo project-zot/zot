@@ -40,6 +40,7 @@ func NewRedisCache(parameters interface{}, log zlog.Logger) (*RedisDriver, error
 	if err != nil {
 		log.Error().Err(err).Str("directory", properParameters.URL).Msg("failed to connect to redis")
 	}
+
 	cacheDB := redis.NewClient(connOpts)
 
 	if _, err := cacheDB.Ping(context.Background()).Result(); err != nil {
