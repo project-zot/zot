@@ -127,40 +127,66 @@ func (rh *RouteHandler) SetupRoutes() {
 		prefixedDistSpecRouter.Use(DistSpecAuthzHandler(rh.c))
 	}
 
+	clusterRouteProxy := ClusterProxy(rh.c)
+
 	// https://github.com/opencontainers/distribution-spec/blob/main/spec.md#endpoints
+	// dist-spec APIs that need to be proxied are wrapped in clusterRouteProxy for scale-out proxying.
+	// these are handlers that have a repository name.
 	{
 		prefixedDistSpecRouter.HandleFunc(fmt.Sprintf("/{name:%s}/tags/list", zreg.NameRegexp.String()),
-			getUIHeadersHandler(rh.c.Config, http.MethodGet, http.MethodOptions)(
-				applyCORSHeaders(rh.ListTags))).Methods(http.MethodGet, http.MethodOptions)
+			clusterRouteProxy(
+				getUIHeadersHandler(rh.c.Config, http.MethodGet, http.MethodOptions)(
+					applyCORSHeaders(rh.ListTags),
+				),
+			),
+		).Methods(http.MethodGet, http.MethodOptions)
 		prefixedDistSpecRouter.HandleFunc(fmt.Sprintf("/{name:%s}/manifests/{reference}", zreg.NameRegexp.String()),
-			getUIHeadersHandler(rh.c.Config, http.MethodHead, http.MethodGet, http.MethodDelete, http.MethodOptions)(
-				applyCORSHeaders(rh.CheckManifest))).Methods(http.MethodHead, http.MethodOptions)
+			clusterRouteProxy(
+				getUIHeadersHandler(rh.c.Config, http.MethodHead, http.MethodGet, http.MethodDelete, http.MethodOptions)(
+					applyCORSHeaders(rh.CheckManifest),
+				),
+			),
+		).Methods(http.MethodHead, http.MethodOptions)
 		prefixedDistSpecRouter.HandleFunc(fmt.Sprintf("/{name:%s}/manifests/{reference}", zreg.NameRegexp.String()),
-			applyCORSHeaders(rh.GetManifest)).Methods(http.MethodGet)
+			clusterRouteProxy(
+				applyCORSHeaders(rh.GetManifest),
+			),
+		).Methods(http.MethodGet)
 		prefixedDistSpecRouter.HandleFunc(fmt.Sprintf("/{name:%s}/manifests/{reference}", zreg.NameRegexp.String()),
-			rh.UpdateManifest).Methods(http.MethodPut)
+			clusterRouteProxy(rh.UpdateManifest)).Methods(http.MethodPut)
 		prefixedDistSpecRouter.HandleFunc(fmt.Sprintf("/{name:%s}/manifests/{reference}", zreg.NameRegexp.String()),
-			applyCORSHeaders(rh.DeleteManifest)).Methods(http.MethodDelete)
+			clusterRouteProxy(
+				applyCORSHeaders(rh.DeleteManifest),
+			),
+		).Methods(http.MethodDelete)
 		prefixedDistSpecRouter.HandleFunc(fmt.Sprintf("/{name:%s}/blobs/{digest}", zreg.NameRegexp.String()),
-			rh.CheckBlob).Methods(http.MethodHead)
+			clusterRouteProxy(rh.CheckBlob)).Methods(http.MethodHead)
 		prefixedDistSpecRouter.HandleFunc(fmt.Sprintf("/{name:%s}/blobs/{digest}", zreg.NameRegexp.String()),
-			rh.GetBlob).Methods(http.MethodGet)
+			clusterRouteProxy(rh.GetBlob)).Methods(http.MethodGet)
 		prefixedDistSpecRouter.HandleFunc(fmt.Sprintf("/{name:%s}/blobs/{digest}", zreg.NameRegexp.String()),
-			rh.DeleteBlob).Methods(http.MethodDelete)
+			clusterRouteProxy(rh.DeleteBlob)).Methods(http.MethodDelete)
 		prefixedDistSpecRouter.HandleFunc(fmt.Sprintf("/{name:%s}/blobs/uploads/", zreg.NameRegexp.String()),
-			rh.CreateBlobUpload).Methods(http.MethodPost)
+			clusterRouteProxy(rh.CreateBlobUpload)).Methods(http.MethodPost)
 		prefixedDistSpecRouter.HandleFunc(fmt.Sprintf("/{name:%s}/blobs/uploads/{session_id}", zreg.NameRegexp.String()),
-			rh.GetBlobUpload).Methods(http.MethodGet)
+			clusterRouteProxy(rh.GetBlobUpload)).Methods(http.MethodGet)
 		prefixedDistSpecRouter.HandleFunc(fmt.Sprintf("/{name:%s}/blobs/uploads/{session_id}", zreg.NameRegexp.String()),
-			rh.PatchBlobUpload).Methods(http.MethodPatch)
+			clusterRouteProxy(rh.PatchBlobUpload)).Methods(http.MethodPatch)
 		prefixedDistSpecRouter.HandleFunc(fmt.Sprintf("/{name:%s}/blobs/uploads/{session_id}", zreg.NameRegexp.String()),
-			rh.UpdateBlobUpload).Methods(http.MethodPut)
+			clusterRouteProxy(rh.UpdateBlobUpload)).Methods(http.MethodPut)
 		prefixedDistSpecRouter.HandleFunc(fmt.Sprintf("/{name:%s}/blobs/uploads/{session_id}", zreg.NameRegexp.String()),
-			rh.DeleteBlobUpload).Methods(http.MethodDelete)
+			clusterRouteProxy(rh.DeleteBlobUpload)).Methods(http.MethodDelete)
 		// support for OCI artifact references
 		prefixedDistSpecRouter.HandleFunc(fmt.Sprintf("/{name:%s}/referrers/{digest}", zreg.NameRegexp.String()),
-			getUIHeadersHandler(rh.c.Config, http.MethodGet, http.MethodOptions)(
-				applyCORSHeaders(rh.GetReferrers))).Methods(http.MethodGet, http.MethodOptions)
+			clusterRouteProxy(
+				getUIHeadersHandler(rh.c.Config, http.MethodGet, http.MethodOptions)(
+					applyCORSHeaders(rh.GetReferrers),
+				),
+			),
+		).Methods(http.MethodGet, http.MethodOptions)
+
+		// handlers which work fine with a single node do not need proxying.
+		// catalog handler doesn't require proxying as the metadata and storage are shared.
+		// discover and the default path handlers are node-specific so do not require proxying.
 		prefixedRouter.HandleFunc(constants.ExtCatalogPrefix,
 			getUIHeadersHandler(rh.c.Config, http.MethodGet, http.MethodOptions)(
 				applyCORSHeaders(rh.ListRepositories))).Methods(http.MethodGet, http.MethodOptions)

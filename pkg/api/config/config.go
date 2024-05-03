@@ -121,11 +121,30 @@ type SchedulerConfig struct {
 	NumWorkers int
 }
 
-// ClusterConfig is the scale-out configuration which is identical for all
-// replicas
+// contains the scale-out configuration which is identical for all zot replicas.
 type ClusterConfig struct {
-	Members []string
-	HashKey string
+	// contains the "host:port" of all the zot instances participating
+	// in the cluster.
+	Members []string `json:"members" mapstructure:"members"`
+
+	// contains the hash key that is required for siphash.
+	// must be a 128-bit (16-byte) key
+	// https://github.com/dchest/siphash?tab=readme-ov-file#func-newkey-byte-hashhash64
+	HashKey string `json:"hashKey" mapstructure:"hashKey"`
+
+	// contains client TLS config.
+	TLS *TLSConfig `json:"tls" mapstructure:"tls"`
+
+	// private field for storing Proxy details such as internal socket list.
+	Proxy *ClusterRequestProxyConfig `json:"-" mapstructure:"-"`
+}
+
+type ClusterRequestProxyConfig struct {
+	// holds the cluster socket (IP:port) derived from the host's
+	// interface configuration and the listening port of the HTTP server.
+	LocalMemberClusterSocket string
+	// index of the local member cluster socket in the members array.
+	LocalMemberClusterSocketIndex uint64
 }
 
 type LDAPCredentials struct {
@@ -237,7 +256,7 @@ type Config struct {
 	Log             *LogConfig
 	Extensions      *extconf.ExtensionConfig
 	Scheduler       *SchedulerConfig `json:"scheduler" mapstructure:",omitempty"`
-	Cluster         *ClusterConfig   `json:"cluster" mapstructure:",omitempty"`
+	Cluster         *ClusterConfig   `json:"cluster"   mapstructure:",omitempty"`
 }
 
 func New() *Config {

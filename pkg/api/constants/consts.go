@@ -31,4 +31,9 @@ const (
 	DeletePermission = "delete"
 	// behaviour actions.
 	DetectManifestCollisionPermission = "detectManifestCollision"
+	// zot scale-out hop count header.
+	ScaleOutHopCountHeader = "X-Zot-Cluster-Hop-Count"
+	// log string keys.
+	// these can be used together with the logger to add context to a log message.
+	RepositoryLogKey = "repository"
 )

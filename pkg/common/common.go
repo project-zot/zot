@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"net"
 	"os"
 	"regexp"
 	"strings"
@@ -144,4 +145,94 @@ func IsContextDone(ctx context.Context) bool {
 	default:
 		return false
 	}
+}
+
+// get a list of IP addresses configured on the host's
+// interfaces.
+func GetLocalIPs() ([]string, error) {
+	var localIPs []string
+
+	ifaces, err := net.Interfaces()
+	if err != nil {
+		return []string{}, err
+	}
+
+	for _, i := range ifaces {
+		addrs, err := i.Addrs()
+		if err != nil {
+			return localIPs, err
+		}
+
+		for _, addr := range addrs {
+			if localIP, ok := addr.(*net.IPNet); ok {
+				localIPs = append(localIPs, localIP.IP.String())
+			}
+		}
+	}
+
+	return localIPs, nil
+}
+
+// get a list of listening sockets on the host (IP:port).
+// IPv6 is returned as [host]:port.
+func GetLocalSockets(port string) ([]string, error) {
+	localIPs, err := GetLocalIPs()
+	if err != nil {
+		return []string{}, err
+	}
+
+	localSockets := make([]string, len(localIPs))
+
+	for idx, ip := range localIPs {
+		// JoinHostPort automatically wraps IPv6 addresses in []
+		localSockets[idx] = net.JoinHostPort(ip, port)
+	}
+
+	return localSockets, nil
+}
+
+func GetIPFromHostName(host string) ([]string, error) {
+	addrs, err := net.LookupIP(host)
+	if err != nil {
+		return []string{}, err
+	}
+
+	ips := make([]string, 0, len(addrs))
+
+	for _, ip := range addrs {
+		ips = append(ips, ip.String())
+	}
+
+	return ips, nil
+}
+
+// checks if 2 sockets are equal at the host port level.
+func AreSocketsEqual(socketA string, socketB string) (bool, error) {
+	hostA, portA, err := net.SplitHostPort(socketA)
+	if err != nil {
+		return false, err
+	}
+
+	hostB, portB, err := net.SplitHostPort(socketB)
+	if err != nil {
+		return false, err
+	}
+
+	hostAIP := net.ParseIP(hostA)
+	if hostAIP == nil {
+		// this could be a fully-qualified domain name (FQDN)
+		// for FQDN, just a normal compare is enough
+		return hostA == hostB, nil
+	}
+
+	hostBIP := net.ParseIP(hostB)
+	if hostBIP == nil {
+		// if the host part of socketA was parsed successfully, it was an IP
+		// if the host part of socketA was an FQDN, then the comparison is
+		// already done as the host of socketB is also assumed to be an FQDN.
+		// since the parsing failed, assume that A and B are not equal.
+		return false, nil
+	}
+
+	return (hostAIP.Equal(hostBIP) && (portA == portB)), nil
 }
