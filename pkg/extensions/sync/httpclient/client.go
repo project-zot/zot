@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -114,7 +115,26 @@ func (httpClient *Client) SetConfig(config Config) error {
 
 	httpClient.url = clientURL
 
-	client, err := common.CreateHTTPClient(config.TLSVerify, clientURL.Host, config.CertDir)
+	clientOpts := common.HTTPClientOptions{
+		// we want TLS enabled when verifyTLS is true.
+		TLSEnabled: config.TLSVerify,
+		VerifyTLS:  config.TLSVerify,
+		Host:       clientURL.Host,
+	}
+
+	if config.CertDir != "" {
+		// only configure the default cert file names if the CertDir was specified.
+		clientOpts.CertOptions = common.HTTPClientCertOptions{
+			// filepath is the recommended library to use for joining paths
+			// taking into account the underlying OS.
+			// ref: https://stackoverflow.com/a/39182128
+			ClientCertFile: filepath.Join(config.CertDir, common.ClientCertFilename),
+			ClientKeyFile:  filepath.Join(config.CertDir, common.ClientKeyFilename),
+			RootCaCertFile: filepath.Join(config.CertDir, common.CaCertFilename),
+		}
+	}
+
+	client, err := common.CreateHTTPClient(&clientOpts)
 	if err != nil {
 		return err
 	}

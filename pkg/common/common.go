@@ -18,9 +18,9 @@ const (
 	httpTimeout        = 5 * time.Minute
 	certsPath          = "/etc/containers/certs.d"
 	homeCertsDir       = ".config/containers/certs.d"
-	clientCertFilename = "client.cert"
-	clientKeyFilename  = "client.key"
-	caCertFilename     = "ca.crt"
+	ClientCertFilename = "client.cert"
+	ClientKeyFilename  = "client.key"
+	CaCertFilename     = "ca.crt"
 
 	CosignSignature   = "cosign"
 	CosignSigKey      = "dev.cosignproject.cosign/signature"

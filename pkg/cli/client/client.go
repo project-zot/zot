@@ -90,7 +90,13 @@ func doHTTPRequest(req *http.Request, verifyTLS bool, debug bool,
 	httpClientLock.Lock()
 
 	if httpClientsMap[host] == nil {
-		httpClient, err = common.CreateHTTPClient(verifyTLS, host, "")
+		httpClient, err = common.CreateHTTPClient(&common.HTTPClientOptions{
+			// we want TLS enabled when verifyTLS is true.
+			TLSEnabled:  verifyTLS,
+			VerifyTLS:   verifyTLS,
+			Host:        host,
+			CertOptions: common.HTTPClientCertOptions{},
+		})
 		if err != nil {
 			return nil, err
 		}
