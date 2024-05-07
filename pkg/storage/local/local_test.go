@@ -1914,7 +1914,8 @@ func TestGarbageCollectForImageStore(t *testing.T) {
 			So(err, ShouldBeNil)
 
 			manifestDigest := image.ManifestDescriptor.Digest
-			err = os.Remove(path.Join(dir, repoName, "blobs/sha256", manifestDigest.Encoded()))
+			err = os.Remove(path.Join(dir, repoName, "blobs",
+				manifestDigest.Algorithm().String(), manifestDigest.Encoded()))
 			if err != nil {
 				panic(err)
 			}
@@ -2109,7 +2110,8 @@ func TestGarbageCollectImageUnknownManifest(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		artifactDigest := godigest.FromBytes(artifactBuf)
-		err = os.WriteFile(path.Join(imgStore.RootDir(), repoName, "blobs", "sha256", artifactDigest.Encoded()),
+		err = os.WriteFile(path.Join(imgStore.RootDir(), repoName, "blobs",
+			artifactDigest.Algorithm().String(), artifactDigest.Encoded()),
 			artifactBuf, storageConstants.DefaultFilePerms)
 		So(err, ShouldBeNil)
 
@@ -2126,7 +2128,8 @@ func TestGarbageCollectImageUnknownManifest(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		referrerDigest := godigest.FromBytes(referrerBuf)
-		err = os.WriteFile(path.Join(imgStore.RootDir(), repoName, "blobs", "sha256", referrerDigest.Encoded()),
+		err = os.WriteFile(path.Join(imgStore.RootDir(), repoName, "blobs",
+			artifactDigest.Algorithm().String(), referrerDigest.Encoded()),
 			referrerBuf, storageConstants.DefaultFilePerms)
 		So(err, ShouldBeNil)
 
