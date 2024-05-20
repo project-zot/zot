@@ -457,6 +457,11 @@ func validateConfiguration(config *config.Config, log zlog.Logger) error {
 		}
 	}
 
+	// check validity of scale out cluster config
+	if err := validateClusterConfig(config, log); err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -1098,6 +1103,30 @@ func validateSync(config *config.Config, log zlog.Logger) error {
 					validateRetentionSyncOverlaps(config, content, regCfg.URLs, log)
 				}
 			}
+		}
+	}
+
+	return nil
+}
+
+func validateClusterConfig(config *config.Config, log zlog.Logger) error {
+	if config.Cluster != nil {
+		if len(config.Cluster.Members) == 0 {
+			log.Error().Err(zerr.ErrBadConfig).
+				Msg("cannot have 0 members in a scale out cluster")
+
+			return zerr.ErrBadConfig
+		}
+
+		// the allowed length is 16 as the siphash requires a 128 bit key.
+		// that translates to 16 characters * 8 bits each.
+		allowedHashKeyLength := 16
+		if len(config.Cluster.HashKey) != allowedHashKeyLength {
+			log.Error().Err(zerr.ErrBadConfig).
+				Str("hashkey", config.Cluster.HashKey).
+				Msg(fmt.Sprintf("hashKey for scale out cluster must have %d characters", allowedHashKeyLength))
+
+			return zerr.ErrBadConfig
 		}
 	}
 

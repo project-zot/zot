@@ -2028,6 +2028,150 @@ func TestUpdateLDAPConfig(t *testing.T) {
 	})
 }
 
+func TestClusterConfig(t *testing.T) {
+	baseExamplePath := "../../../examples/scale-out-cluster-cloud/"
+
+	Convey("Should successfully load example configs for cloud", t, func() {
+		for memberIdx := 0; memberIdx < 3; memberIdx++ {
+			cfgFileToLoad := fmt.Sprintf("%s/config-cluster-member%d.json", baseExamplePath, memberIdx)
+			cfg := config.New()
+			err := cli.LoadConfiguration(cfg, cfgFileToLoad)
+			So(err, ShouldBeNil)
+		}
+	})
+
+	Convey("Should successfully load example TLS configs for cloud", t, func() {
+		for memberIdx := 0; memberIdx < 3; memberIdx++ {
+			cfgFileToLoad := fmt.Sprintf("%s/tls/config-cluster-member%d.json", baseExamplePath, memberIdx)
+			cfg := config.New()
+			err := cli.LoadConfiguration(cfg, cfgFileToLoad)
+			So(err, ShouldBeNil)
+		}
+	})
+
+	Convey("Should reject scale out cluster invalid cases", t, func() {
+		cfgFileContents, err := os.ReadFile(baseExamplePath + "config-cluster-member0.json")
+		So(err, ShouldBeNil)
+
+		Convey("Should reject empty members list", func() {
+			cfg := config.New()
+			err := json.Unmarshal(cfgFileContents, cfg)
+			So(err, ShouldBeNil)
+
+			// set the members to an empty list
+			cfg.Cluster.Members = []string{}
+
+			file, err := os.CreateTemp("", "cluster-config-*.json")
+			So(err, ShouldBeNil)
+			defer os.Remove(file.Name())
+
+			cfgFileContents, err := json.MarshalIndent(cfg, "", " ")
+			So(err, ShouldBeNil)
+
+			err = os.WriteFile(file.Name(), cfgFileContents, 0o600)
+			So(err, ShouldBeNil)
+			err = cli.LoadConfiguration(cfg, file.Name())
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("Should reject missing members list", func() {
+			cfg := config.New()
+
+			configStr := `
+			{
+				"storage": {
+					"RootDirectory": "/tmp/example"
+				},
+				"http": {
+					"address": "127.0.0.1",
+					"port": "800"
+				},
+				"cluster" {
+					"hashKey": "loremipsumdolors"
+				}
+			}`
+
+			file, err := os.CreateTemp("", "cluster-config-*.json")
+			So(err, ShouldBeNil)
+			defer os.Remove(file.Name())
+
+			err = os.WriteFile(file.Name(), []byte(configStr), 0o600)
+			So(err, ShouldBeNil)
+			err = cli.LoadConfiguration(cfg, file.Name())
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("Should reject missing hashkey", func() {
+			cfg := config.New()
+
+			configStr := `
+			{
+				"storage": {
+					"RootDirectory": "/tmp/example"
+				},
+				"http": {
+					"address": "127.0.0.1",
+					"port": "800"
+				},
+				"cluster" {
+					"members": ["127.0.0.1:9000"]
+				}
+			}`
+
+			file, err := os.CreateTemp("", "cluster-config-*.json")
+			So(err, ShouldBeNil)
+			defer os.Remove(file.Name())
+
+			err = os.WriteFile(file.Name(), []byte(configStr), 0o600)
+			So(err, ShouldBeNil)
+			err = cli.LoadConfiguration(cfg, file.Name())
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("Should reject a hashkey that is too short", func() {
+			cfg := config.New()
+			err := json.Unmarshal(cfgFileContents, cfg)
+			So(err, ShouldBeNil)
+
+			// set the hashkey to a string shorter than 16 characters
+			cfg.Cluster.HashKey = "fifteencharacte"
+
+			file, err := os.CreateTemp("", "cluster-config-*.json")
+			So(err, ShouldBeNil)
+			defer os.Remove(file.Name())
+
+			cfgFileContents, err := json.MarshalIndent(cfg, "", " ")
+			So(err, ShouldBeNil)
+
+			err = os.WriteFile(file.Name(), cfgFileContents, 0o600)
+			So(err, ShouldBeNil)
+			err = cli.LoadConfiguration(cfg, file.Name())
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("Should reject a hashkey that is too long", func() {
+			cfg := config.New()
+			err := json.Unmarshal(cfgFileContents, cfg)
+			So(err, ShouldBeNil)
+
+			// set the hashkey to a string longer than 16 characters
+			cfg.Cluster.HashKey = "seventeencharacte"
+
+			file, err := os.CreateTemp("", "cluster-config-*.json")
+			So(err, ShouldBeNil)
+			defer os.Remove(file.Name())
+
+			cfgFileContents, err := json.MarshalIndent(cfg, "", " ")
+			So(err, ShouldBeNil)
+
+			err = os.WriteFile(file.Name(), cfgFileContents, 0o600)
+			So(err, ShouldBeNil)
+			err = cli.LoadConfiguration(cfg, file.Name())
+			So(err, ShouldNotBeNil)
+		})
+	})
+}
+
 // run cli and return output.
 func runCLIWithConfig(tempDir string, config string) (string, error) {
 	port := GetFreePort()

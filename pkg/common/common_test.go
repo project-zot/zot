@@ -3,6 +3,7 @@ package common_test
 import (
 	"os"
 	"path"
+	"strings"
 	"testing"
 
 	notreg "github.com/notaryproject/notation-go/registry"
@@ -60,5 +61,108 @@ func TestCommon(t *testing.T) {
 
 	Convey("Test ArtifactTypeNotation const has same value as in notaryproject", t, func() {
 		So(common.ArtifactTypeNotation, ShouldEqual, notreg.ArtifactTypeNotation)
+	})
+
+	Convey("Test GetLocalIPs", t, func() {
+		localIPs, err := common.GetLocalIPs()
+		So(err, ShouldBeNil)
+		So(localIPs, ShouldNotBeEmpty)
+		So(localIPs, ShouldContain, "127.0.0.1")
+	})
+
+	Convey("Test GetLocalSockets IPv4", t, func() {
+		localSockets, err := common.GetLocalSockets("8765")
+		So(err, ShouldBeNil)
+		So(localSockets, ShouldNotBeEmpty)
+		So(localSockets, ShouldContain, "127.0.0.1:8765")
+		for _, socket := range localSockets {
+			lastColonIndex := strings.LastIndex(socket, ":")
+			So(socket[lastColonIndex+1:], ShouldEqual, "8765")
+		}
+	})
+
+	Convey("Test GetLocalSockets IPv6", t, func() {
+		localSockets, err := common.GetLocalSockets("8766")
+		So(err, ShouldBeNil)
+		So(localSockets, ShouldNotBeEmpty)
+		So(localSockets, ShouldContain, "[::1]:8766")
+		for _, socket := range localSockets {
+			lastColonIndex := strings.LastIndex(socket, ":")
+			So(socket[lastColonIndex+1:], ShouldEqual, "8766")
+		}
+	})
+
+	Convey("Test GetIPFromHostName with valid hostname", t, func() {
+		addrs, err := common.GetIPFromHostName("github.com")
+		So(err, ShouldBeNil)
+		So(addrs, ShouldNotBeEmpty)
+		// we can't check the actual addresses here as they can change
+	})
+
+	Convey("Test GetIPFromHostName with non-existent hostname", t, func() {
+		addrs, err := common.GetIPFromHostName("thisdoesnotexist")
+		So(err, ShouldNotBeNil)
+		So(err.Error(), ShouldContainSubstring, "lookup thisdoesnotexist")
+		So(addrs, ShouldBeEmpty)
+	})
+
+	Convey("Test AreSocketsEqual with equal IPv4 sockets", t, func() {
+		result, err := common.AreSocketsEqual("127.0.0.1:9000", "127.0.0.1:9000")
+		So(err, ShouldBeNil)
+		So(result, ShouldBeTrue)
+	})
+
+	Convey("Test AreSocketsEqual with equal IPv6 sockets", t, func() {
+		result, err := common.AreSocketsEqual("[::1]:9000", "[0000:0000:0000:0000:0000:0000:0000:00001]:9000")
+		So(err, ShouldBeNil)
+		So(result, ShouldBeTrue)
+	})
+
+	Convey("Test AreSocketsEqual with different IPv4 socket ports", t, func() {
+		result, err := common.AreSocketsEqual("127.0.0.1:9000", "127.0.0.1:9001")
+		So(err, ShouldBeNil)
+		So(result, ShouldBeFalse)
+	})
+
+	Convey("Test AreSocketsEqual with different IPv4 socket hosts", t, func() {
+		result, err := common.AreSocketsEqual("127.0.0.1:9000", "127.0.0.2:9000")
+		So(err, ShouldBeNil)
+		So(result, ShouldBeFalse)
+	})
+
+	Convey("Test AreSocketsEqual with 2 equal host names", t, func() {
+		result, err := common.AreSocketsEqual("localhost:9000", "localhost:9000")
+		So(err, ShouldBeNil)
+		So(result, ShouldBeTrue)
+	})
+
+	Convey("Test AreSocketsEqual with 2 different host names", t, func() {
+		result, err := common.AreSocketsEqual("localhost:9000", "notlocalhost:9000")
+		So(err, ShouldBeNil)
+		So(result, ShouldBeFalse)
+	})
+
+	Convey("Test AreSocketsEqual with hostname and IP address", t, func() {
+		result, err := common.AreSocketsEqual("localhost:9000", "127.0.0.1:9000")
+		So(err, ShouldBeNil)
+		So(result, ShouldBeFalse)
+	})
+
+	Convey("Test AreSocketsEqual with IP address and hostname", t, func() {
+		result, err := common.AreSocketsEqual("127.0.0.1:9000", "localhost:9000")
+		So(err, ShouldBeNil)
+		So(result, ShouldBeFalse)
+	})
+
+	Convey("Test AreSocketsEqual with invalid first socket", t, func() {
+		result, err := common.AreSocketsEqual("127.0.0.1", "localhost:9000")
+		So(err, ShouldNotBeNil)
+		So(result, ShouldBeFalse)
+	})
+
+	Convey("Test AreSocketsEqual with invalid second socket", t, func() {
+		result, err := common.AreSocketsEqual("localhost:9000", "127.0.0.1")
+		So(err, ShouldNotBeNil)
+		So(result, ShouldBeFalse)
 	})
 }

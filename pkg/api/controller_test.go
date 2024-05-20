@@ -95,6 +95,32 @@ func TestNew(t *testing.T) {
 		So(conf, ShouldNotBeNil)
 		So(api.NewController(conf), ShouldNotBeNil)
 	})
+
+	Convey("Given a scale out cluster config where the local cluster socket cannot be found", t, func() {
+		conf := config.New()
+		So(conf, ShouldNotBeNil)
+		conf.HTTP = config.HTTPConfig{
+			Address: "127.0.0.2",
+			Port:    "9000",
+		}
+		conf.Cluster = &config.ClusterConfig{
+			Members: []string{},
+		}
+		So(func() { api.NewController(conf) }, ShouldPanicWith, "failed to determine the local cluster socket")
+	})
+
+	Convey("Given a scale out cluster config where the local cluster socket cannot be found due to an error", t, func() {
+		conf := config.New()
+		So(conf, ShouldNotBeNil)
+		conf.HTTP = config.HTTPConfig{
+			Address: "127.0.0.2",
+			Port:    "9000",
+		}
+		conf.Cluster = &config.ClusterConfig{
+			Members: []string{"127.0.0.1"},
+		}
+		So(func() { api.NewController(conf) }, ShouldPanicWith, "failed to get member socket")
+	})
 }
 
 func TestCreateCacheDatabaseDriver(t *testing.T) {
@@ -955,6 +981,434 @@ func TestBlobReferenced(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
+	})
+}
+
+// tests for shared-storage scale-out cluster.
+func TestScaleOutRequestProxy(t *testing.T) {
+	// when there is only one member, no proxying is expected and the responses should be correct.
+	Convey("Given a zot scale out cluster in http mode with only 1 member", t, func() {
+		port := test.GetFreePort()
+		clusterMembers := make([]string, 1)
+		clusterMembers[0] = fmt.Sprintf("127.0.0.1:%s", port)
+
+		conf := config.New()
+		conf.HTTP.Port = port
+		conf.Cluster = &config.ClusterConfig{
+			Members: clusterMembers,
+			HashKey: "loremipsumdolors",
+		}
+
+		ctrlr := makeController(conf, t.TempDir())
+		cm := test.NewControllerManager(ctrlr)
+		cm.StartAndWait(port)
+		defer cm.StopServer()
+
+		Convey("Controller should start up and respond without error", func() {
+			resp, err := resty.R().Get(test.GetBaseURL(port) + "/v2/")
+			So(err, ShouldBeNil)
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+		})
+
+		Convey("Should upload images and fetch valid responses for repo tags list", func() {
+			reposToTest := []string{"debian", "alpine", "ubuntu"}
+			for _, repoName := range reposToTest {
+				img := CreateRandomImage()
+
+				err := UploadImage(img, test.GetBaseURL(port), repoName, "1.0")
+				So(err, ShouldBeNil)
+
+				resp, err := resty.R().Get(fmt.Sprintf("%s/v2/%s/tags/list", test.GetBaseURL(port), repoName))
+				So(err, ShouldBeNil)
+				So(resp, ShouldNotBeNil)
+				So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+				result := common.ImageTags{}
+				err = json.Unmarshal(resp.Body(), &result)
+				if err != nil {
+					t.Fatalf("Failed to unmarshal")
+				}
+				So(result.Name, ShouldEqual, repoName)
+				So(len(result.Tags), ShouldEqual, 1)
+				So(result.Tags[0], ShouldEqual, "1.0")
+			}
+		})
+	})
+
+	// when only one member in the cluster is online, an error is expected when there is a
+	// request proxied to an offline member.
+	Convey("Given a scale out http cluster with only 1 online member", t, func() {
+		port := test.GetFreePort()
+		clusterMembers := make([]string, 3)
+		clusterMembers[0] = fmt.Sprintf("127.0.0.1:%s", port)
+		clusterMembers[1] = "127.0.0.1:1"
+		clusterMembers[2] = "127.0.0.1:2"
+
+		conf := config.New()
+		conf.HTTP.Port = port
+		conf.Cluster = &config.ClusterConfig{
+			Members: clusterMembers,
+			HashKey: "loremipsumdolors",
+		}
+
+		ctrlr := makeController(conf, t.TempDir())
+		cm := test.NewControllerManager(ctrlr)
+		cm.StartAndWait(port)
+		defer cm.StopServer()
+
+		Convey("Controller should start up and respond without error", func() {
+			resp, err := resty.R().Get(test.GetBaseURL(port) + "/v2/")
+			So(err, ShouldBeNil)
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+		})
+
+		Convey("Should fail to upload an image that is proxied to another instance", func() {
+			repoName := "alpine"
+			img := CreateRandomImage()
+
+			err := UploadImage(img, test.GetBaseURL(port), repoName, "1.0")
+			So(err, ShouldNotBeNil)
+			So(err.Error(), ShouldEqual, "can't post blob")
+
+			resp, err := resty.R().Get(fmt.Sprintf("%s/v2/%s/tags/list", test.GetBaseURL(port), repoName))
+			So(err, ShouldBeNil)
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusInternalServerError)
+		})
+	})
+
+	// when there are multiple members in a cluster, requests are expected to return
+	// the same data for any member due to proxying.
+	Convey("Given a zot scale out cluster in http mode with 3 members", t, func() {
+		numMembers := 3
+		ports := make([]string, numMembers)
+
+		clusterMembers := make([]string, numMembers)
+		for idx := 0; idx < numMembers; idx++ {
+			port := test.GetFreePort()
+			ports[idx] = port
+			clusterMembers[idx] = fmt.Sprintf("127.0.0.1:%s", port)
+		}
+
+		for _, port := range ports {
+			conf := config.New()
+			conf.HTTP.Port = port
+			conf.Cluster = &config.ClusterConfig{
+				Members: clusterMembers,
+				HashKey: "loremipsumdolors",
+			}
+
+			ctrlr := makeController(conf, t.TempDir())
+			cm := test.NewControllerManager(ctrlr)
+			cm.StartAndWait(port)
+			defer cm.StopServer()
+		}
+
+		Convey("All 3 controllers should start up and respond without error", func() {
+			for _, port := range ports {
+				resp, err := resty.R().Get(test.GetBaseURL(port) + "/v2/")
+				So(err, ShouldBeNil)
+				So(resp, ShouldNotBeNil)
+				So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+			}
+		})
+
+		Convey("Should upload images to repos and fetch same response from all 3 members", func() {
+			reposToTest := []string{"debian", "alpine", "ubuntu"}
+			for idx, repoName := range reposToTest {
+				img := CreateRandomImage()
+
+				// Upload to each instance based on loop counter
+				err := UploadImage(img, test.GetBaseURL(ports[idx]), repoName, "1.0")
+				So(err, ShouldBeNil)
+
+				// Query all 3 instances and expect the same response
+				for _, port := range ports {
+					resp, err := resty.R().Get(fmt.Sprintf("%s/v2/%s/tags/list", test.GetBaseURL(port), repoName))
+					So(err, ShouldBeNil)
+					So(resp, ShouldNotBeNil)
+					So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+					result := common.ImageTags{}
+					err = json.Unmarshal(resp.Body(), &result)
+					if err != nil {
+						t.Fatalf("Failed to unmarshal")
+					}
+					So(result.Name, ShouldEqual, repoName)
+					So(len(result.Tags), ShouldEqual, 1)
+					So(result.Tags[0], ShouldEqual, "1.0")
+				}
+			}
+		})
+	})
+
+	// this test checks for functionality when TLS and htpasswd auth are enabled.
+	// it primarily checks that headers are correctly copied over during the proxying process.
+	Convey("Given a zot scale out cluster in https mode with auth enabled", t, func() {
+		numMembers := 3
+		ports := make([]string, numMembers)
+
+		clusterMembers := make([]string, numMembers)
+		for idx := 0; idx < numMembers; idx++ {
+			port := test.GetFreePort()
+			ports[idx] = port
+			clusterMembers[idx] = fmt.Sprintf("127.0.0.1:%s", port)
+		}
+
+		caCert, err := os.ReadFile(CACert)
+		So(err, ShouldBeNil)
+		caCertPool := x509.NewCertPool()
+		caCertPool.AppendCertsFromPEM(caCert)
+		username, _ := test.GenerateRandomString()
+		password, _ := test.GenerateRandomString()
+		htpasswdPath := test.MakeHtpasswdFileFromString(test.GetCredString(username, password))
+		defer os.Remove(htpasswdPath)
+		resty.SetTLSClientConfig(&tls.Config{RootCAs: caCertPool, MinVersion: tls.VersionTLS12})
+		defer func() { resty.SetTLSClientConfig(nil) }()
+
+		for _, port := range ports {
+			conf := config.New()
+			conf.HTTP.Port = port
+			conf.HTTP.TLS = &config.TLSConfig{
+				Cert: ServerCert,
+				Key:  ServerKey,
+			}
+			conf.HTTP.Auth = &config.AuthConfig{
+				HTPasswd: config.AuthHTPasswd{
+					Path: htpasswdPath,
+				},
+			}
+			conf.Cluster = &config.ClusterConfig{
+				Members: clusterMembers,
+				HashKey: "loremipsumdolors",
+				TLS: &config.TLSConfig{
+					CACert: CACert,
+				},
+			}
+
+			ctrlr := makeController(conf, t.TempDir())
+			cm := test.NewControllerManager(ctrlr)
+			cm.StartAndWait(port)
+			defer cm.StopServer()
+		}
+
+		Convey("All 3 controllers should start up and respond without error", func() {
+			for _, port := range ports {
+				resp, err := resty.R().SetBasicAuth(username, password).Get(test.GetSecureBaseURL(port) + "/v2/")
+				So(err, ShouldBeNil)
+				So(resp, ShouldNotBeNil)
+				So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+			}
+		})
+
+		Convey("Should upload images to repos and fetch same response from all 3 instances", func() {
+			reposToTest := []string{"debian", "alpine", "ubuntu"}
+			for idx, repoName := range reposToTest {
+				img := CreateRandomImage()
+
+				// Upload to each instance based on loop counter
+				err := UploadImageWithBasicAuth(img, test.GetSecureBaseURL(ports[idx]), repoName, "1.0", username, password)
+				So(err, ShouldBeNil)
+
+				// Query all 3 instances and expect the same response
+				for _, port := range ports {
+					resp, err := resty.R().SetBasicAuth(username, password).Get(
+						fmt.Sprintf("%s/v2/%s/tags/list", test.GetSecureBaseURL(port), repoName),
+					)
+					So(err, ShouldBeNil)
+					So(resp, ShouldNotBeNil)
+					So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+					result := common.ImageTags{}
+					err = json.Unmarshal(resp.Body(), &result)
+					if err != nil {
+						t.Fatalf("Failed to unmarshal")
+					}
+					So(result.Name, ShouldEqual, repoName)
+					So(len(result.Tags), ShouldEqual, 1)
+					So(result.Tags[0], ShouldEqual, "1.0")
+				}
+			}
+		})
+	})
+
+	// when the RootCA file does not exist, expect an error
+	Convey("Given a zot scale out cluster in with 2 members and an incorrect RootCACert", t, func() {
+		numMembers := 2
+		ports := make([]string, numMembers)
+
+		clusterMembers := make([]string, numMembers)
+		for idx := 0; idx < numMembers; idx++ {
+			port := test.GetFreePort()
+			ports[idx] = port
+			clusterMembers[idx] = fmt.Sprintf("127.0.0.1:%s", port)
+		}
+
+		for _, port := range ports {
+			conf := config.New()
+			conf.HTTP.Port = port
+			conf.HTTP.TLS = &config.TLSConfig{
+				Cert: ServerCert,
+				Key:  ServerKey,
+			}
+			conf.Cluster = &config.ClusterConfig{
+				Members: clusterMembers,
+				HashKey: "loremipsumdolors",
+				TLS: &config.TLSConfig{
+					CACert: "/tmp/does-not-exist.crt",
+				},
+			}
+
+			ctrlr := makeController(conf, t.TempDir())
+			cm := test.NewControllerManager(ctrlr)
+			cm.StartAndWait(port)
+			defer cm.StopServer()
+		}
+
+		caCert, err := os.ReadFile(CACert)
+		So(err, ShouldBeNil)
+		caCertPool := x509.NewCertPool()
+		caCertPool.AppendCertsFromPEM(caCert)
+		resty.SetTLSClientConfig(&tls.Config{RootCAs: caCertPool, MinVersion: tls.VersionTLS12})
+		defer func() { resty.SetTLSClientConfig(nil) }()
+
+		Convey("Both controllers should start up and respond without error", func() {
+			for _, port := range ports {
+				resp, err := resty.R().Get(test.GetSecureBaseURL(port) + "/v2/")
+				So(err, ShouldBeNil)
+				So(resp, ShouldNotBeNil)
+				So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+			}
+		})
+
+		Convey("Proxying a request should fail with an error", func() {
+			// debian gets proxied to the second instance
+			resp, err := resty.R().Get(fmt.Sprintf("%s/v2/%s/tags/list", test.GetSecureBaseURL(ports[0]), "debian"))
+			So(err, ShouldBeNil)
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusInternalServerError)
+		})
+	})
+
+	// when the server cert file does not exist, expect an error while proxying
+	Convey("Given a zot scale out cluster in with 2 members and an incorrect server cert", t, func() {
+		numMembers := 2
+		ports := make([]string, numMembers)
+
+		clusterMembers := make([]string, numMembers)
+		for idx := 0; idx < numMembers; idx++ {
+			port := test.GetFreePort()
+			ports[idx] = port
+			clusterMembers[idx] = fmt.Sprintf("127.0.0.1:%s", port)
+		}
+
+		for _, port := range ports {
+			conf := config.New()
+			conf.HTTP.Port = port
+			conf.HTTP.TLS = &config.TLSConfig{
+				Cert: ServerCert,
+				Key:  ServerKey,
+			}
+			conf.Cluster = &config.ClusterConfig{
+				Members: clusterMembers,
+				HashKey: "loremipsumdolors",
+				TLS: &config.TLSConfig{
+					CACert: CACert,
+					Cert:   "/tmp/does-not-exist.crt",
+				},
+			}
+
+			ctrlr := makeController(conf, t.TempDir())
+			cm := test.NewControllerManager(ctrlr)
+			cm.StartAndWait(port)
+			defer cm.StopServer()
+		}
+
+		caCert, err := os.ReadFile(CACert)
+		So(err, ShouldBeNil)
+		caCertPool := x509.NewCertPool()
+		caCertPool.AppendCertsFromPEM(caCert)
+		resty.SetTLSClientConfig(&tls.Config{RootCAs: caCertPool, MinVersion: tls.VersionTLS12})
+		defer func() { resty.SetTLSClientConfig(nil) }()
+
+		Convey("Both controllers should start up and respond without error", func() {
+			for _, port := range ports {
+				resp, err := resty.R().Get(test.GetSecureBaseURL(port) + "/v2/")
+				So(err, ShouldBeNil)
+				So(resp, ShouldNotBeNil)
+				So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+			}
+		})
+
+		Convey("Proxying a request should fail with an error", func() {
+			// debian gets proxied to the second instance
+			resp, err := resty.R().Get(fmt.Sprintf("%s/v2/%s/tags/list", test.GetSecureBaseURL(ports[0]), "debian"))
+			So(err, ShouldBeNil)
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusInternalServerError)
+		})
+	})
+
+	// when the server key file does not exist, expect an error while proxying
+	Convey("Given a zot scale out cluster in with 2 members and an incorrect server key", t, func() {
+		numMembers := 2
+		ports := make([]string, numMembers)
+
+		clusterMembers := make([]string, numMembers)
+		for idx := 0; idx < numMembers; idx++ {
+			port := test.GetFreePort()
+			ports[idx] = port
+			clusterMembers[idx] = fmt.Sprintf("127.0.0.1:%s", port)
+		}
+
+		for _, port := range ports {
+			conf := config.New()
+			conf.HTTP.Port = port
+			conf.HTTP.TLS = &config.TLSConfig{
+				Cert: ServerCert,
+				Key:  ServerKey,
+			}
+			conf.Cluster = &config.ClusterConfig{
+				Members: clusterMembers,
+				HashKey: "loremipsumdolors",
+				TLS: &config.TLSConfig{
+					CACert: CACert,
+					Cert:   ServerCert,
+					Key:    "/tmp/does-not-exist.crt",
+				},
+			}
+
+			ctrlr := makeController(conf, t.TempDir())
+			cm := test.NewControllerManager(ctrlr)
+			cm.StartAndWait(port)
+			defer cm.StopServer()
+		}
+
+		caCert, err := os.ReadFile(CACert)
+		So(err, ShouldBeNil)
+		caCertPool := x509.NewCertPool()
+		caCertPool.AppendCertsFromPEM(caCert)
+		resty.SetTLSClientConfig(&tls.Config{RootCAs: caCertPool, MinVersion: tls.VersionTLS12})
+		defer func() { resty.SetTLSClientConfig(nil) }()
+
+		Convey("Both controllers should start up and respond without error", func() {
+			for _, port := range ports {
+				resp, err := resty.R().Get(test.GetSecureBaseURL(port) + "/v2/")
+				So(err, ShouldBeNil)
+				So(resp, ShouldNotBeNil)
+				So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+			}
+		})
+
+		Convey("Proxying a request should fail with an error", func() {
+			// debian gets proxied to the second instance
+			resp, err := resty.R().Get(fmt.Sprintf("%s/v2/%s/tags/list", test.GetSecureBaseURL(ports[0]), "debian"))
+			So(err, ShouldBeNil)
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusInternalServerError)
+		})
 	})
 }
 

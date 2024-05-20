@@ -1,0 +1,51 @@
+{
+  "distSpecVersion": "1.1.0",
+  "storage": {
+    "rootDirectory": "/tmp/zot",
+    "dedupe": false,
+    "remoteCache": true,
+    "storageDriver": {
+      "name": "s3",
+      "rootdirectory": "/zot",
+      "region": "us-east-1",
+      "regionendpoint": "localhost:4566",
+      "bucket": "zot-storage",
+      "secure": false,
+      "skipverify": false
+    },
+    "cacheDriver": {
+      "name": "dynamodb",
+      "endpoint": "http://localhost:4566",
+      "region": "us-east-1",
+      "cacheTablename": "ZotBlobTable",
+      "repoMetaTablename": "ZotRepoMetadataTable",
+      "imageMetaTablename": "ZotImageMetaTable",
+      "repoBlobsInfoTablename": "ZotRepoBlobsInfoTable",
+      "userDataTablename": "ZotUserDataTable",
+      "versionTablename": "ZotVersion",
+      "apiKeyTablename": "ZotApiKeyTable"
+    }
+  },
+  "http": {
+    "address": "127.0.0.1",
+    "port": "9001",
+    "tls": {
+      "cert": "test/data/server.cert",
+      "key": "test/data/server.key"
+    }
+  },
+  "log": {
+    "level": "debug"
+  },
+  "cluster": {
+    "members": [
+      "127.0.0.1:9000",
+      "127.0.0.1:9001",
+      "127.0.0.1:9002"
+    ],
+    "hashKey": "loremipsumdolors",
+    "tls": {
+      "cacert": "test/data/ca.crt"
+    }
+  }
+}

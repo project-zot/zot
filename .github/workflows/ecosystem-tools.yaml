@@ -27,7 +27,7 @@ jobs:
           go install github.com/swaggo/swag/cmd/swag@v1.16.2
           go mod download
           sudo apt-get update
-          sudo apt-get install libgpgme-dev libassuan-dev libbtrfs-dev libdevmapper-dev pkg-config rpm uidmap
+          sudo apt-get install libgpgme-dev libassuan-dev libbtrfs-dev libdevmapper-dev pkg-config rpm uidmap haproxy jq
           # install skopeo
           git clone -b v1.12.0 https://github.com/containers/skopeo.git
           cd skopeo
@@ -80,4 +80,37 @@ jobs:
         env:
           AWS_ACCESS_KEY_ID: fake
           AWS_SECRET_ACCESS_KEY: fake
+      - name: Run cloud scale-out tests
+        id: scale
+        run: |
+          make run-cloud-scale-out-tests
+        env:
+          AWS_ACCESS_KEY_ID: fake
+          AWS_SECRET_ACCESS_KEY: fake
+        continue-on-error: true
+      - name: print service logs for scale-out
+        run: |
+          find /tmp/zot-ft-logs -name '*.log' -print0 | xargs -0 cat
+      - name: multi-hop detection
+        id: multihop
+        run: |
+          if find /tmp/zot-ft-logs -name '*.log' -print0 | xargs -0 cat | grep 'cannot proxy an already proxied request'; then
+            echo "detected multi-hop"
+            exit 1
+          else
+            exit 0
+          fi
+        continue-on-error: true
+      - name: clean up scale-out logs
+        run: |
+          rm -r /tmp/zot-ft-logs
+      - name: fail job if error
+        if: ${{ steps.scale.outcome != 'success' || steps.multihop.outcome != 'success' }}
+        run: |
+          exit 1
+      - name: Upload zb test results zip as build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: zb-cloud-scale-out-functional-results-${{ github.sha }}
+          path: ./zb-results/
       - uses: ./.github/actions/teardown-localstack

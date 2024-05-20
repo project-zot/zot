@@ -19,6 +19,7 @@ import (
 
 	"zotregistry.dev/zot/errors"
 	"zotregistry.dev/zot/pkg/api/config"
+	"zotregistry.dev/zot/pkg/common"
 	ext "zotregistry.dev/zot/pkg/extensions"
 	extconf "zotregistry.dev/zot/pkg/extensions/config"
 	"zotregistry.dev/zot/pkg/extensions/monitoring"
@@ -54,15 +55,52 @@ type Controller struct {
 	chosenPort int // kernel-chosen port
 }
 
-func NewController(config *config.Config) *Controller {
+func NewController(appConfig *config.Config) *Controller {
 	var controller Controller
 
-	logger := log.NewLogger(config.Log.Level, config.Log.Output)
-	controller.Config = config
+	logger := log.NewLogger(appConfig.Log.Level, appConfig.Log.Output)
+
+	if appConfig.Cluster != nil {
+		// we need the set of local sockets (IP address:port) for identifying
+		// the local member cluster socket for logging and lookup.
+		localSockets, err := common.GetLocalSockets(appConfig.HTTP.Port)
+		if err != nil {
+			logger.Error().Err(err).Msg("failed to get local sockets")
+			panic("failed to get local sockets")
+		}
+
+		// memberSocket is the local member's socket
+		// the index is also fetched for quick lookups during proxying
+		memberSocketIdx, memberSocket, err := GetLocalMemberClusterSocket(appConfig.Cluster.Members, localSockets)
+		if err != nil {
+			logger.Error().Err(err).Msg("failed to get member socket")
+			panic("failed to get member socket")
+		}
+
+		if memberSocket == "" {
+			// there is a misconfiguration if the memberSocket cannot be identified
+			logger.Error().
+				Str("members", strings.Join(appConfig.Cluster.Members, ",")).
+				Str("localSockets", strings.Join(localSockets, ",")).
+				Msg("failed to determine the local cluster socket")
+			panic("failed to determine the local cluster socket")
+		}
+
+		internalProxyConfig := &config.ClusterRequestProxyConfig{
+			LocalMemberClusterSocket:      memberSocket,
+			LocalMemberClusterSocketIndex: uint64(memberSocketIdx),
+		}
+		appConfig.Cluster.Proxy = internalProxyConfig
+
+		logger.Logger = logger.Logger.With().
+			Str("clusterMember", memberSocket).
+			Str("clusterMemberIndex", strconv.Itoa(memberSocketIdx)).Logger()
+	}
+	controller.Config = appConfig
 	controller.Log = logger
 
-	if config.Log.Audit != "" {
-		audit := log.NewAuditLogger(config.Log.Level, config.Log.Audit)
+	if appConfig.Log.Audit != "" {
+		audit := log.NewAuditLogger(appConfig.Log.Level, appConfig.Log.Audit)
 		controller.Audit = audit
 	}
 
