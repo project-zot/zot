@@ -10,7 +10,7 @@ github.com/agext/levenshtein|https://github.com/agext/levenshtein/blob/v1.2.3/LI
 github.com/aliyun/credentials-go|https://github.com/aliyun/credentials-go/blob/v1.3.1/LICENSE|Apache-2.0
 github.com/aws/aws-sdk-go-v2|https://github.com/aws/aws-sdk-go-v2/blob/v1.26.1/LICENSE.txt|Apache-2.0
 github.com/cloudflare/circl|https://github.com/cloudflare/circl/blob/v1.3.7/LICENSE|BSD-3-Clause
-github.com/containers/image/v5|https://github.com/containers/image/blob/v5.30.0/LICENSE|Apache-2.0
+github.com/containers/image/v5|https://github.com/containers/image/blob/v5.30.1/LICENSE|Apache-2.0
 github.com/dgryski/go-rendezvous|https://github.com/dgryski/go-rendezvous/blob/9f7001d12a5f/LICENSE|MIT
 github.com/docker/go-connections|https://github.com/docker/go-connections/blob/v0.5.0/LICENSE|Apache-2.0
 github.com/google/wire|https://github.com/google/wire/blob/v0.6.0/LICENSE|Apache-2.0
@@ -24,12 +24,12 @@ go.opencensus.io|https://github.com/census-instrumentation/opencensus-go/blob/v0
 go.opentelemetry.io/otel/sdk|https://github.com/open-telemetry/opentelemetry-go/blob/sdk/v1.24.0/sdk/LICENSE|Apache-2.0
 golang.org/x/text|https://cs.opensource.google/go/x/text/+/v0.14.0:LICENSE|BSD-3-Clause
 google.golang.org/api|https://github.com/googleapis/google-api-go-client/blob/v0.172.0/LICENSE|BSD-3-Clause
-k8s.io/apimachinery|https://github.com/kubernetes/apimachinery/blob/v0.29.1/LICENSE|Apache-2.0
+k8s.io/apimachinery|https://github.com/kubernetes/apimachinery/blob/v0.30.0/LICENSE|Apache-2.0
 k8s.io/apiserver|https://github.com/kubernetes/apiserver/blob/v0.29.0/LICENSE|Apache-2.0
-k8s.io/api|https://github.com/kubernetes/api/blob/v0.29.1/LICENSE|Apache-2.0
-k8s.io/cli-runtime|https://github.com/kubernetes/cli-runtime/blob/v0.29.0/LICENSE|Apache-2.0
-k8s.io/client-go|https://github.com/kubernetes/client-go/blob/v0.29.0/LICENSE|Apache-2.0
-k8s.io/component-base|https://github.com/kubernetes/component-base/blob/v0.29.0/LICENSE|Apache-2.0
-k8s.io/kubectl|https://github.com/kubernetes/kubectl/blob/v0.29.0/LICENSE|Apache-2.0
+k8s.io/api|https://github.com/kubernetes/api/blob/v0.30.0/LICENSE|Apache-2.0
+k8s.io/cli-runtime|https://github.com/kubernetes/cli-runtime/blob/v0.30.0/LICENSE|Apache-2.0
+k8s.io/client-go|https://github.com/kubernetes/client-go/blob/v0.30.0/LICENSE|Apache-2.0
+k8s.io/component-base|https://github.com/kubernetes/component-base/blob/v0.30.0/LICENSE|Apache-2.0
+k8s.io/kubectl|https://github.com/kubernetes/kubectl/blob/v0.30.0/LICENSE|Apache-2.0
 sigs.k8s.io/kustomize/kyaml|https://github.com/kubernetes-sigs/kustomize/blob/6ce0bf390ce3/kyaml/LICENSE|Apache-2.0
 zotregistry.dev/zot|https://github.com/project-zot/zot/blob/HEAD/LICENSE|Apache-2.0

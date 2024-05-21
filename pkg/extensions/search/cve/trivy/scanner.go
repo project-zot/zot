@@ -16,6 +16,7 @@ import (
 	"github.com/aquasecurity/trivy/pkg/flag"
 	"github.com/aquasecurity/trivy/pkg/javadb"
 	"github.com/aquasecurity/trivy/pkg/types"
+	"github.com/google/go-containerregistry/pkg/name"
 	regTypes "github.com/google/go-containerregistry/pkg/v1/types"
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
@@ -34,7 +35,25 @@ const cacheSize = 1000000
 
 // getNewScanOptions sets trivy configuration values for our scans and returns them as
 // a trivy Options structure.
-func getNewScanOptions(dir, dbRepository, javaDBRepository string) *flag.Options {
+func getNewScanOptions(dir, dbRepository, javaDBRepository string) (*flag.Options, error) {
+	var err error
+
+	var dbRef name.Reference
+	if dbRepository != "" {
+		dbRef, err = name.ParseReference(dbRepository)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	var javaRef name.Reference
+	if javaDBRepository != "" {
+		javaRef, err = name.ParseReference(javaDBRepository)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	scanOptions := flag.Options{
 		GlobalOptions: flag.GlobalOptions{
 			CacheDir: dir,
@@ -47,8 +66,8 @@ func getNewScanOptions(dir, dbRepository, javaDBRepository string) *flag.Options
 			VulnType: []string{types.VulnTypeOS, types.VulnTypeLibrary},
 		},
 		DBOptions: flag.DBOptions{
-			DBRepository:     dbRepository,
-			JavaDBRepository: javaDBRepository,
+			DBRepository:     dbRef,
+			JavaDBRepository: javaRef,
 			SkipDBUpdate:     true,
 			SkipJavaDBUpdate: true,
 		},
@@ -64,7 +83,7 @@ func getNewScanOptions(dir, dbRepository, javaDBRepository string) *flag.Options
 		},
 	}
 
-	return &scanOptions
+	return &scanOptions, nil
 }
 
 type cveTrivyController struct {
@@ -96,7 +115,11 @@ func NewScanner(storeController storage.StoreController,
 		rootDir := imageStore.RootDir()
 
 		cacheDir := path.Join(rootDir, "_trivy")
-		opts := getNewScanOptions(cacheDir, dbRepository, javaDBRepository)
+
+		opts, err := getNewScanOptions(cacheDir, dbRepository, javaDBRepository)
+		if err != nil {
+			log.Fatal().Err(err).Str("dbRef", dbRepository).Str("javaRef", javaDBRepository).Msg("failed to set scan options")
+		}
 
 		cveController.DefaultCveConfig = opts
 	}
@@ -106,7 +129,11 @@ func NewScanner(storeController storage.StoreController,
 			rootDir := storage.RootDir()
 
 			cacheDir := path.Join(rootDir, "_trivy")
-			opts := getNewScanOptions(cacheDir, dbRepository, javaDBRepository)
+
+			opts, err := getNewScanOptions(cacheDir, dbRepository, javaDBRepository)
+			if err != nil {
+				log.Fatal().Err(err).Str("dbRef", dbRepository).Str("javaRef", javaDBRepository).Msg("failed to set scan options")
+			}
 
 			subCveConfig[route] = opts
 		}
@@ -552,7 +579,12 @@ func (scanner Scanner) updateDB(ctx context.Context, dbDir string) error {
 
 	scanner.log.Debug().Str("dbDir", dbDir).Msg("started downloading trivy-db to destination dir")
 
-	err := operation.DownloadDB(ctx, "dev", dbDir, scanner.dbRepository, false, false, registryOpts)
+	dbRef, err := name.ParseReference(scanner.dbRepository)
+	if err != nil {
+		return err
+	}
+
+	err = operation.DownloadDB(ctx, "dev", dbDir, dbRef, false, false, registryOpts)
 	if err != nil {
 		scanner.log.Error().Err(err).Str("dbDir", dbDir).
 			Str("dbRepository", scanner.dbRepository).Msg("failed to download trivy-db to destination dir")
@@ -561,7 +593,12 @@ func (scanner Scanner) updateDB(ctx context.Context, dbDir string) error {
 	}
 
 	if scanner.javaDBRepository != "" {
-		javadb.Init(dbDir, scanner.javaDBRepository, false, false, registryOpts)
+		javaRef, err := name.ParseReference(scanner.javaDBRepository)
+		if err != nil {
+			return err
+		}
+
+		javadb.Init(dbDir, javaRef, false, false, registryOpts)
 
 		if err := javadb.Update(); err != nil {
 			scanner.log.Error().Err(err).Str("dbDir", dbDir).
