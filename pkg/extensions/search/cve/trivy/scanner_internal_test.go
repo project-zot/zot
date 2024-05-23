@@ -318,7 +318,7 @@ func TestImageScannable(t *testing.T) {
 	storeController.DefaultStore = store
 
 	scanner := NewScanner(storeController, metaDB, "ghcr.io/project-zot/trivy-db",
-		"ghcr.io/aquasecurity/trivy-java-db", log)
+		"ghcr.io/aquasecurity/trivy-java-db:1", log)
 
 	Convey("Valid image should be scannable", t, func() {
 		result, err := scanner.IsImageFormatScannable("repo1", "valid")
@@ -385,7 +385,7 @@ func TestDefaultTrivyDBUrl(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		scanner := NewScanner(storeController, metaDB, "ghcr.io/aquasecurity/trivy-db",
-			"ghcr.io/aquasecurity/trivy-java-db", log)
+			"ghcr.io/aquasecurity/trivy-java-db:1", log)
 
 		ctx := context.Background()
 

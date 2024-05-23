@@ -260,7 +260,7 @@ func TestVulnerableLayer(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		scanner := trivy.NewScanner(storeController, metaDB, "ghcr.io/project-zot/trivy-db",
-			"ghcr.io/aquasecurity/trivy-java-db", log)
+			"ghcr.io/aquasecurity/trivy-java-db:1", log)
 
 		err = scanner.UpdateDB(context.Background())
 		So(err, ShouldBeNil)
