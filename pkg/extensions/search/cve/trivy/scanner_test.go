@@ -112,6 +112,7 @@ func TestScanningByDigest(t *testing.T) {
 
 		cveMap, err := scanner.ScanImage(ctx, "multi-arch@"+vulnImage.DigestStr())
 		So(err, ShouldBeNil)
+		t.Logf("cveMap=%v\n", cveMap)
 		So(cveMap, ShouldContainKey, Vulnerability1ID)
 		So(cveMap, ShouldContainKey, Vulnerability2ID)
 		So(cveMap, ShouldContainKey, Vulnerability3ID)
