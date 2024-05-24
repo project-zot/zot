@@ -47,8 +47,9 @@ func EnableSyncExtension(config *config.Config, metaDB mTypes.MetaDB,
 
 			tmpDir := config.Extensions.Sync.DownloadDir
 			credsPath := config.Extensions.Sync.CredentialsFile
+			clusterCfg := config.Cluster
 
-			service, err := sync.New(registryConfig, credsPath, tmpDir, storeController, metaDB, log)
+			service, err := sync.New(registryConfig, credsPath, clusterCfg, tmpDir, storeController, metaDB, log)
 			if err != nil {
 				log.Error().Err(err).Msg("failed to initialize sync extension")
 

@@ -8,11 +8,10 @@ import (
 	"net"
 	"net/http"
 
-	"github.com/dchest/siphash"
 	"github.com/gorilla/mux"
 
-	"zotregistry.dev/zot/pkg/api/config"
 	"zotregistry.dev/zot/pkg/api/constants"
+	"zotregistry.dev/zot/pkg/cluster"
 	"zotregistry.dev/zot/pkg/common"
 )
 
@@ -46,8 +45,7 @@ func ClusterProxy(ctrlr *Controller) func(http.HandlerFunc) http.HandlerFunc {
 
 			// the target member is the only one which should do read/write for the dist-spec APIs
 			// for the given repository.
-			targetMemberIndex, targetMember := computeTargetMember(config, name)
-
+			targetMemberIndex, targetMember := cluster.ComputeTargetMember(config.Cluster.HashKey, config.Cluster.Members, name)
 			logger.Debug().Str(constants.RepositoryLogKey, name).
 				Msg(fmt.Sprintf("target member socket: %s index: %d", targetMember, targetMemberIndex))
 
@@ -84,20 +82,6 @@ func ClusterProxy(ctrlr *Controller) func(http.HandlerFunc) http.HandlerFunc {
 			_, _ = io.Copy(response, proxyResponse.Body)
 		})
 	}
-}
-
-// computes the target member using siphash and returns the index and the member
-// siphash was chosen to prevent against hash attacks where an attacker
-// can target all requests to one given instance instead of balancing across the cluster
-// resulting in a Denial-of-Service (DOS).
-// ref: https://en.wikipedia.org/wiki/SipHash
-func computeTargetMember(config *config.Config, name string) (uint64, string) {
-	h := siphash.New([]byte(config.Cluster.HashKey))
-	h.Write([]byte(name))
-	sum64 := h.Sum64()
-	targetIdx := sum64 % uint64(len(config.Cluster.Members))
-
-	return targetIdx, config.Cluster.Members[targetIdx]
 }
 
 // gets all the server sockets of a target member - IP:Port.
