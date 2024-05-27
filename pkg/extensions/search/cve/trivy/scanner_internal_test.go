@@ -17,6 +17,7 @@ import (
 	zerr "zotregistry.dev/zot/errors"
 	"zotregistry.dev/zot/pkg/common"
 	"zotregistry.dev/zot/pkg/extensions/monitoring"
+	cvecache "zotregistry.dev/zot/pkg/extensions/search/cve/cache"
 	"zotregistry.dev/zot/pkg/extensions/search/cve/model"
 	"zotregistry.dev/zot/pkg/log"
 	"zotregistry.dev/zot/pkg/meta"
@@ -194,15 +195,15 @@ func TestTrivyLibraryErrors(t *testing.T) {
 
 		img := "zot-test:0.0.1" //nolint:goconst
 
-		// Download DB fails for missing DB url
-		scanner := NewScanner(storeController, metaDB, "", "", log)
+		// Download DB fails for invalid DB url
+		scanner := NewScanner(storeController, metaDB, "ghcr.io/project-zot/trivy-not-db", "", log)
 
 		ctx := context.Background()
 
 		err = scanner.UpdateDB(ctx)
 		So(err, ShouldNotBeNil)
 
-		// Try to scan without the DB being downloaded
+		// Try to scan without a valid DB being downloaded
 		opts := scanner.getTrivyOptions(img)
 		_, err = scanner.runTrivy(ctx, opts)
 		So(err, ShouldNotBeNil)
@@ -425,7 +426,12 @@ func TestIsIndexScanable(t *testing.T) {
 		log := log.NewLogger("debug", "")
 
 		Convey("Find index in cache", func() {
-			scanner := NewScanner(storeController, metaDB, "", "", log)
+			scanner := Scanner{
+				log:             log,
+				metaDB:          metaDB,
+				storeController: storeController,
+				cache:           cvecache.NewCveCache(cacheSize, log),
+			}
 
 			scanner.cache.Add("digest", make(map[string]model.CVE))
 
@@ -458,7 +464,13 @@ func TestIsIndexScannableErrors(t *testing.T) {
 				}[digest.String()], nil
 			}
 
-			scanner := NewScanner(storeController, metaDB, "", "", log)
+			scanner := Scanner{
+				log:             log,
+				metaDB:          metaDB,
+				storeController: storeController,
+				cache:           cvecache.NewCveCache(cacheSize, log),
+			}
+
 			ok, err := scanner.isIndexScannable(multiarch.DigestStr())
 			So(err, ShouldBeNil)
 			So(ok, ShouldBeFalse)
