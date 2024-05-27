@@ -506,7 +506,7 @@ func TestConfigReloader(t *testing.T) {
 		So(string(data), ShouldContainSubstring, "\"DBRepository\":\"another/unreachable/trivy/url2\"")
 		// matching log message when it errors out, test that indeed the download will try the second url
 		found, err = test.ReadLogFileAndSearchString(logFile.Name(),
-			"\"dbRepository\":\"another/unreachable/trivy/url2\",\"goroutine", 1*time.Minute)
+			"\"dbRepository\":\"index.docker.io/another/unreachable/trivy/url2:2\",\"goroutine", 1*time.Minute)
 		So(err, ShouldBeNil)
 		So(found, ShouldBeTrue)
 	})
