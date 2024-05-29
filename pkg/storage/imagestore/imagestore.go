@@ -140,7 +140,7 @@ func (is *ImageStore) initRepo(name string) error {
 	}
 
 	// create "blobs" subdir
-	err := is.storeDriver.EnsureDir(path.Join(repoDir, "blobs"))
+	err := is.storeDriver.EnsureDir(path.Join(repoDir, ispec.ImageBlobsDir))
 	if err != nil {
 		is.log.Error().Err(err).Str("repository", name).Str("dir", repoDir).Msg("failed to create blobs subdir")
 
@@ -174,7 +174,7 @@ func (is *ImageStore) initRepo(name string) error {
 	}
 
 	// "index.json" file - create if it doesn't exist
-	indexPath := path.Join(repoDir, "index.json")
+	indexPath := path.Join(repoDir, ispec.ImageIndexFile)
 	if _, err := is.storeDriver.Stat(indexPath); err != nil {
 		index := ispec.Index{}
 		index.SchemaVersion = 2
@@ -217,9 +217,6 @@ func (is *ImageStore) ValidateRepo(name string) (bool, error) {
 	// and an additional/optional BlobUploadDir in each image store
 	// for s3 we can not create empty dirs, so we check only against index.json and oci-layout
 	dir := path.Join(is.rootDir, name)
-	if fi, err := is.storeDriver.Stat(dir); err != nil || !fi.IsDir() {
-		return false, zerr.ErrRepoNotFound
-	}
 
 	files, err := is.storeDriver.List(dir)
 	if err != nil {
@@ -235,52 +232,30 @@ func (is *ImageStore) ValidateRepo(name string) (bool, error) {
 
 	found := map[string]bool{
 		ispec.ImageLayoutFile: false,
-		"index.json":          false,
+		ispec.ImageIndexFile:  false,
 	}
 
 	for _, file := range files {
-		fileInfo, err := is.storeDriver.Stat(file)
-		if err != nil {
-			return false, err
+		if path.Base(file) == ispec.ImageIndexFile {
+			found[ispec.ImageIndexFile] = true
 		}
 
-		filename, err := filepath.Rel(dir, file)
-		if err != nil {
-			return false, err
+		if strings.HasSuffix(file, ispec.ImageLayoutFile) {
+			found[ispec.ImageLayoutFile] = true
 		}
-
-		if filename == "blobs" && !fileInfo.IsDir() {
-			return false, nil
-		}
-
-		found[filename] = true
 	}
 
 	// check blobs dir exists only for filesystem, in s3 we can't have empty dirs
 	if is.storeDriver.Name() == storageConstants.LocalStorageDriverName {
-		if !is.storeDriver.DirExists(path.Join(dir, "blobs")) {
+		if !is.storeDriver.DirExists(path.Join(dir, ispec.ImageBlobsDir)) {
 			return false, nil
 		}
 	}
 
-	for k, v := range found {
-		if !v && k != storageConstants.BlobUploadDir {
+	for _, v := range found {
+		if !v {
 			return false, nil
 		}
-	}
-
-	buf, err := is.storeDriver.ReadFile(path.Join(dir, ispec.ImageLayoutFile))
-	if err != nil {
-		return false, err
-	}
-
-	var il ispec.ImageLayout
-	if err := json.Unmarshal(buf, &il); err != nil {
-		return false, err
-	}
-
-	if il.Version != ispec.ImageLayoutVersion {
-		return false, zerr.ErrRepoBadVersion
 	}
 
 	return true, nil
@@ -304,6 +279,7 @@ func (is *ImageStore) GetRepositories() ([]string, error) {
 
 		// skip .sync and .uploads dirs no need to try to validate them
 		if strings.HasSuffix(fileInfo.Path(), syncConstants.SyncBlobUploadDir) ||
+			strings.HasSuffix(fileInfo.Path(), ispec.ImageBlobsDir) ||
 			strings.HasSuffix(fileInfo.Path(), storageConstants.BlobUploadDir) {
 			return driver.ErrSkipDir
 		}
@@ -669,7 +645,7 @@ func (is *ImageStore) deleteImageManifest(repo, reference string, detectCollisio
 
 	// now update "index.json"
 	dir := path.Join(is.rootDir, repo)
-	file := path.Join(dir, "index.json")
+	file := path.Join(dir, ispec.ImageIndexFile)
 
 	buf, err := json.Marshal(index)
 	if err != nil {
@@ -1453,7 +1429,7 @@ func (is *ImageStore) GetReferrers(repo string, gdigest godigest.Digest, artifac
 func (is *ImageStore) GetIndexContent(repo string) ([]byte, error) {
 	dir := path.Join(is.rootDir, repo)
 
-	buf, err := is.storeDriver.ReadFile(path.Join(dir, "index.json"))
+	buf, err := is.storeDriver.ReadFile(path.Join(dir, ispec.ImageIndexFile))
 	if err != nil {
 		if errors.Is(err, driver.PathNotFoundError{}) {
 			is.log.Error().Err(err).Str("dir", dir).Msg("failed to read index.json")
@@ -1470,7 +1446,7 @@ func (is *ImageStore) GetIndexContent(repo string) ([]byte, error) {
 }
 
 func (is *ImageStore) StatIndex(repo string) (bool, int64, time.Time, error) {
-	repoIndexPath := path.Join(is.rootDir, repo, "index.json")
+	repoIndexPath := path.Join(is.rootDir, repo, ispec.ImageIndexFile)
 
 	fileInfo, err := is.storeDriver.Stat(repoIndexPath)
 	if err != nil {
@@ -1491,7 +1467,7 @@ func (is *ImageStore) StatIndex(repo string) (bool, int64, time.Time, error) {
 func (is *ImageStore) PutIndexContent(repo string, index ispec.Index) error {
 	dir := path.Join(is.rootDir, repo)
 
-	indexPath := path.Join(dir, "index.json")
+	indexPath := path.Join(dir, ispec.ImageIndexFile)
 
 	buf, err := json.Marshal(index)
 	if err != nil {

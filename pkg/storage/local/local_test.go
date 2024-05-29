@@ -1562,8 +1562,8 @@ func TestNegativeCases(t *testing.T) {
 			panic(err)
 		}
 		isValid, err = imgStore.ValidateRepo("invalid-test")
-		So(err, ShouldNotBeNil)
-		So(isValid, ShouldEqual, false)
+		So(err, ShouldBeNil)
+		So(isValid, ShouldEqual, true)
 
 		err = os.WriteFile(path.Join(dir, "invalid-test", ispec.ImageLayoutFile), []byte("{}"), 0o755) //nolint: gosec
 		if err != nil {
@@ -1571,9 +1571,8 @@ func TestNegativeCases(t *testing.T) {
 		}
 
 		isValid, err = imgStore.ValidateRepo("invalid-test")
-		So(err, ShouldNotBeNil)
-		So(err, ShouldEqual, zerr.ErrRepoBadVersion)
-		So(isValid, ShouldEqual, false)
+		So(err, ShouldBeNil)
+		So(isValid, ShouldEqual, true)
 
 		files, err := os.ReadDir(path.Join(dir, "test"))
 		if err != nil {

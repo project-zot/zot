@@ -49,6 +49,7 @@ jobs:
           # install dex
           git clone https://github.com/dexidp/dex.git
           cd dex/
+          git checkout v2.39.1
           make bin/dex
           ./bin/dex serve $GITHUB_WORKSPACE/test/dex/config-dev.yaml &
           cd $GITHUB_WORKSPACE
