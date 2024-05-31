@@ -13,6 +13,9 @@ import (
 	"github.com/opencontainers/go-digest"
 
 	zerr "zotregistry.dev/zot/errors"
+	"zotregistry.dev/zot/pkg/api/config"
+	"zotregistry.dev/zot/pkg/api/constants"
+	"zotregistry.dev/zot/pkg/cluster"
 	"zotregistry.dev/zot/pkg/common"
 	syncconf "zotregistry.dev/zot/pkg/extensions/config/sync"
 	client "zotregistry.dev/zot/pkg/extensions/sync/httpclient"
@@ -25,6 +28,7 @@ import (
 type BaseService struct {
 	config          syncconf.RegistryConfig
 	credentials     syncconf.CredentialsFile
+	clusterConfig   *config.ClusterConfig
 	remote          Remote
 	destination     Destination
 	retryOptions    *retry.RetryOptions
@@ -40,6 +44,7 @@ type BaseService struct {
 func New(
 	opts syncconf.RegistryConfig,
 	credentialsFilepath string,
+	clusterConfig *config.ClusterConfig,
 	tmpDir string,
 	storeController storage.StoreController,
 	metadb mTypes.MetaDB,
@@ -63,6 +68,10 @@ func New(
 	}
 
 	service.credentials = credentialsFile
+
+	// load the cluster config into the object
+	// can be nil if the user did not configure cluster config
+	service.clusterConfig = clusterConfig
 
 	service.contentManager = NewContentManager(opts.Content, log)
 
@@ -227,6 +236,23 @@ func (service *BaseService) GetNextRepo(lastRepo string) (string, error) {
 		lastRepo = service.getNextRepoFromCatalog(lastRepo)
 		if lastRepo == "" {
 			break
+		}
+
+		if service.clusterConfig != nil {
+			targetIdx, targetMember := cluster.ComputeTargetMember(
+				service.clusterConfig.HashKey, service.clusterConfig.Members, lastRepo)
+
+			// if the target index does not match with the local socket index,
+			// then the local instance is not responsible for syncing the repo and should skip the sync
+			if targetIdx != service.clusterConfig.Proxy.LocalMemberClusterSocketIndex {
+				service.log.Debug().
+					Str(constants.RepositoryLogKey, lastRepo).
+					Str("targetMemberIndex", fmt.Sprintf("%d", targetIdx)).
+					Str("targetMember", targetMember).
+					Msg("skipping sync of repo not managed by local instance")
+
+				continue
+			}
 		}
 
 		matches = service.contentManager.MatchesContent(lastRepo)
