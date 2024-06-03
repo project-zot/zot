@@ -1215,10 +1215,12 @@ github.com/nmcclain/asn1-ber v0.0.0-20170104154839-2661553a0484 h1:D9EvfGQvlkKaD
 github.com/nmcclain/asn1-ber v0.0.0-20170104154839-2661553a0484/go.mod h1:O1EljZ+oHprtxDDPHiMWVo/5dBT6PlvWX5PSwj80aBA=
 github.com/nmcclain/ldap v0.0.0-20210720162743-7f8d1e44eeba h1:DO8NFYdcRv1dnyAINJIBm6Bw2XibtLvQniNFGzf2W8E=
 github.com/nmcclain/ldap v0.0.0-20210720162743-7f8d1e44eeba/go.mod h1:4S0XndRL8HNOaQBfdViJ2F/GPCgL524xlXRuXFH12/U=
-github.com/notaryproject/notation-core-go v1.0.2 h1:VEt+mbsgdANd9b4jqgmx2C7U0DmwynOuD2Nhxh3bANw=
-github.com/notaryproject/notation-core-go v1.0.2/go.mod h1:2HkQzUwg08B3x9oVIztHsEh7Vil2Rj+tYgxH+JObLX4=
-github.com/notaryproject/notation-go v1.1.0 h1:7WBeH8FGoA+GkeUwmBIBnlJc/PpdYaUKfiXu6ZZeEeg=
-github.com/notaryproject/notation-go v1.1.0/go.mod h1:ZSk34URQar5fnWflaFByzpDvuefgZKm/mp8Q2tQpBaw=
+github.com/notaryproject/notation-core-go v1.0.3 h1:FCgvULSypEFrrNgvDRdHbKAGAgbXK43n/jKD9q2WECA=
+github.com/notaryproject/notation-core-go v1.0.3/go.mod h1:eDo5/LTUp23mB7w0CckJLnl+p93oGdyiKDzzggpqTH4=
+github.com/notaryproject/notation-go v1.1.1 h1:EAY8ERBWhrdaG9MIumSZ9xyUHktgr6OkCByd75HR+FA=
+github.com/notaryproject/notation-go v1.1.1/go.mod h1:XykI2i5jHb6cGf+bcG/cIeNfNO2u4Xoy2mkuOKHjVVI=
+github.com/notaryproject/notation-plugin-framework-go v1.0.0 h1:6Qzr7DGXoCgXEQN+1gTZWuJAZvxh3p8Lryjn5FaLzi4=
+github.com/notaryproject/notation-plugin-framework-go v1.0.0/go.mod h1:RqWSrTOtEASCrGOEffq0n8pSg2KOgKYiWqFWczRSics=
 github.com/nozzle/throttler v0.0.0-20180817012639-2ea982251481 h1:Up6+btDp321ZG5/zdSLo48H9Iaq0UQGthrhWC6pCxzE=
 github.com/nozzle/throttler v0.0.0-20180817012639-2ea982251481/go.mod h1:yKZQO8QE2bHlgozqWDiRVqTFlLQSj30K/6SAK8EeYFw=
 github.com/nxadm/tail v1.4.4/go.mod h1:kenIhsEOeOJmVchQTgglprH7qJGnHDVpk1VPCcaMI8A=
