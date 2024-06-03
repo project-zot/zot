@@ -414,7 +414,7 @@ require (
 	github.com/modern-go/reflect2 v1.0.2 // indirect
 	github.com/mozillazg/docker-credential-acr-helper v0.3.0 // indirect
 	github.com/nmcclain/asn1-ber v0.0.0-20170104154839-2661553a0484 // indirect
-	github.com/notaryproject/notation-core-go v1.0.2
+	github.com/notaryproject/notation-core-go v1.0.3
 	github.com/oklog/ulid v1.3.1 // indirect
 	github.com/open-policy-agent/opa v0.64.1 // indirect
 	github.com/opencontainers/runtime-spec v1.2.0 // indirect
