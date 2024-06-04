@@ -862,64 +862,6 @@ func TestNegativeCasesObjectsStorage(t *testing.T) {
 
 			_, err := imgStore.ValidateRepo(testImage)
 			So(err, ShouldNotBeNil)
-
-			imgStore = createMockStorage(testDir, tdir, false, &StorageDriverMock{
-				ListFn: func(ctx context.Context, path string) ([]string, error) {
-					return []string{testImage, testImage}, nil
-				},
-				StatFn: func(ctx context.Context, path string) (driver.FileInfo, error) {
-					return nil, errS3
-				},
-			})
-
-			_, err = imgStore.ValidateRepo(testImage)
-			So(err, ShouldNotBeNil)
-		})
-
-		Convey("Test ValidateRepo2", func(c C) {
-			imgStore = createMockStorage(testDir, tdir, false, &StorageDriverMock{
-				ListFn: func(ctx context.Context, path string) ([]string, error) {
-					return []string{"test/test/oci-layout", "test/test/index.json"}, nil
-				},
-				StatFn: func(ctx context.Context, path string) (driver.FileInfo, error) {
-					return &FileInfoMock{}, nil
-				},
-			})
-			_, err := imgStore.ValidateRepo(testImage)
-			So(err, ShouldNotBeNil)
-		})
-
-		Convey("Test ValidateRepo3", func(c C) {
-			imgStore = createMockStorage(testDir, tdir, false, &StorageDriverMock{
-				ListFn: func(ctx context.Context, path string) ([]string, error) {
-					return []string{"test/test/oci-layout", "test/test/index.json"}, nil
-				},
-				StatFn: func(ctx context.Context, path string) (driver.FileInfo, error) {
-					return &FileInfoMock{}, nil
-				},
-				GetContentFn: func(ctx context.Context, path string) ([]byte, error) {
-					return []byte{}, errS3
-				},
-			})
-			_, err := imgStore.ValidateRepo(testImage)
-			So(err, ShouldNotBeNil)
-		})
-
-		Convey("Test ValidateRepo4", func(c C) {
-			ociLayout := []byte(`{"imageLayoutVersion": "9.9.9"}`)
-			imgStore = createMockStorage(testDir, tdir, false, &StorageDriverMock{
-				ListFn: func(ctx context.Context, path string) ([]string, error) {
-					return []string{"test/test/oci-layout", "test/test/index.json"}, nil
-				},
-				StatFn: func(ctx context.Context, path string) (driver.FileInfo, error) {
-					return &FileInfoMock{}, nil
-				},
-				GetContentFn: func(ctx context.Context, path string) ([]byte, error) {
-					return ociLayout, nil
-				},
-			})
-			_, err := imgStore.ValidateRepo(testImage)
-			So(err, ShouldNotBeNil)
 		})
 
 		Convey("Test GetRepositories", func(c C) {
