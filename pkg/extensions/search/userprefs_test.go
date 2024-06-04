@@ -497,7 +497,7 @@ func TestChangingRepoState(t *testing.T) {
 
 	gqlStarredRepos := `
 	{
-		StarredRepos() {
+		StarredRepos {
 			Results {
 				Name
 				StarCount
@@ -510,7 +510,7 @@ func TestChangingRepoState(t *testing.T) {
 
 	gqlBookmarkedRepos := `
 	{
-		BookmarkedRepos() {
+		BookmarkedRepos {
 			Results {
 				Name
 				StarCount
