@@ -128,7 +128,7 @@ func CheckExtEndPointQuery(config SearchConfig, requiredQueries ...GQLQuery) err
 
 	schemaQuery := `
 		{
-			__schema() {
+			__schema {
 				queryType {
 					fields {
 						name
