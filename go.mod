@@ -57,7 +57,7 @@ require (
 	github.com/migueleliasweb/go-github-mock v0.0.23
 	github.com/notaryproject/notation-go v1.1.1
 	github.com/opencontainers/distribution-spec/specs-go v0.0.0-20240201174943-0f98d91a0afe
-	github.com/project-zot/mockoidc v0.0.0-20230307111146-f607b4b5fb97
+	github.com/project-zot/mockoidc v0.0.0-20240610203808-d69d9e02020a
 	github.com/sigstore/cosign/v2 v2.2.4
 	github.com/swaggo/http-swagger v1.3.4
 	github.com/zitadel/oidc v1.13.5
