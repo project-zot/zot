@@ -61,7 +61,7 @@ require (
 	github.com/sigstore/cosign/v2 v2.2.4
 	github.com/swaggo/http-swagger v1.3.4
 	github.com/zitadel/oidc v1.13.5
-	golang.org/x/oauth2 v0.20.0
+	golang.org/x/oauth2 v0.21.0
 	modernc.org/sqlite v1.30.0
 	oras.land/oras-go/v2 v2.5.0
 )
