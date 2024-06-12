@@ -14,9 +14,9 @@ type DBDriverParameters struct {
 }
 
 func GetDynamoClient(params DBDriverParameters) (*dynamodb.Client, error) {
-	customResolver := aws.EndpointResolverWithOptionsFunc(
+	customResolver := aws.EndpointResolverWithOptionsFunc( //nolint: staticcheck
 		func(service, region string, options ...interface{}) (aws.Endpoint, error) {
-			return aws.Endpoint{
+			return aws.Endpoint{ //nolint: staticcheck
 				PartitionID:   "aws",
 				URL:           params.Endpoint,
 				SigningRegion: region,
@@ -27,7 +27,7 @@ func GetDynamoClient(params DBDriverParameters) (*dynamodb.Client, error) {
 	// and credentials values from the environment variables, shared
 	// credentials, and shared configuration files
 	cfg, err := config.LoadDefaultConfig(context.Background(), config.WithRegion(params.Region),
-		config.WithEndpointResolverWithOptions(customResolver))
+		config.WithEndpointResolverWithOptions(customResolver)) //nolint: staticcheck
 	if err != nil {
 		return nil, err
 	}

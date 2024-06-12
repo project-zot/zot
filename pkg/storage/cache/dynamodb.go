@@ -71,9 +71,9 @@ func NewDynamoDBCache(parameters interface{}, log zlog.Logger) (*DynamoDBDriver,
 	}
 
 	// custom endpoint resolver to point to localhost
-	customResolver := aws.EndpointResolverWithOptionsFunc(
+	customResolver := aws.EndpointResolverWithOptionsFunc( //nolint: staticcheck
 		func(service, region string, options ...interface{}) (aws.Endpoint, error) {
-			return aws.Endpoint{
+			return aws.Endpoint{ //nolint: staticcheck
 				PartitionID:   "aws",
 				URL:           properParameters.Endpoint,
 				SigningRegion: region,
@@ -84,7 +84,7 @@ func NewDynamoDBCache(parameters interface{}, log zlog.Logger) (*DynamoDBDriver,
 	// and credentials values from the environment variables, shared
 	// credentials, and shared configuration files
 	cfg, err := config.LoadDefaultConfig(context.Background(), config.WithRegion(properParameters.Region),
-		config.WithEndpointResolverWithOptions(customResolver))
+		config.WithEndpointResolverWithOptions(customResolver)) //nolint: staticcheck
 	if err != nil {
 		log.Error().Err(err).Msg("failed to load AWS SDK config for dynamodb")
 

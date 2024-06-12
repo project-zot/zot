@@ -91,9 +91,9 @@ func NewAWSImageTrustStore(region, endpoint string) (*ImageTrustStore, error) {
 }
 
 func GetSecretsManagerClient(region, endpoint string) (*secretsmanager.Client, error) {
-	customResolver := aws.EndpointResolverWithOptionsFunc(
-		func(service, region string, options ...interface{}) (aws.Endpoint, error) {
-			return aws.Endpoint{
+	customResolver := aws.EndpointResolverWithOptionsFunc( //nolint: staticcheck
+		func(service, region string, options ...interface{}) (aws.Endpoint, error) { //nolint: staticcheck
+			return aws.Endpoint{ //nolint: staticcheck
 				PartitionID:   "aws",
 				URL:           endpoint,
 				SigningRegion: region,
@@ -104,7 +104,7 @@ func GetSecretsManagerClient(region, endpoint string) (*secretsmanager.Client, e
 	// and credentials values from the environment variables, shared
 	// credentials, and shared configuration files
 	cfg, err := config.LoadDefaultConfig(context.Background(), config.WithRegion(region),
-		config.WithEndpointResolverWithOptions(customResolver))
+		config.WithEndpointResolverWithOptions(customResolver)) //nolint: staticcheck
 	if err != nil {
 		return nil, err
 	}
