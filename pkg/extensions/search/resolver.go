@@ -1439,7 +1439,11 @@ func expandedRepoInfo(ctx context.Context, repo string, metaDB mTypes.MetaDB, cv
 			continue
 		}
 
-		tagsDigests = append(tagsDigests, repoMeta.Tags[i].Digest)
+		digest := repoMeta.Tags[i].Digest
+
+		if !zcommon.Contains(tagsDigests, digest) {
+			tagsDigests = append(tagsDigests, digest)
+		}
 	}
 
 	imageMetaMap, err := metaDB.FilterImageMeta(ctx, tagsDigests)
