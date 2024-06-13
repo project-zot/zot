@@ -37,9 +37,9 @@ func TestWrapperErrors(t *testing.T) {
 	Convey("Create table errors", t, func() {
 		badEndpoint := endpoint + "1"
 
-		customResolver := aws.EndpointResolverWithOptionsFunc(
+		customResolver := aws.EndpointResolverWithOptionsFunc( //nolint: staticcheck
 			func(service, region string, options ...interface{}) (aws.Endpoint, error) {
-				return aws.Endpoint{
+				return aws.Endpoint{ //nolint: staticcheck
 					PartitionID:   "aws",
 					URL:           badEndpoint,
 					SigningRegion: region,
@@ -48,7 +48,7 @@ func TestWrapperErrors(t *testing.T) {
 		)
 
 		cfg, err := config.LoadDefaultConfig(context.Background(), config.WithRegion(region),
-			config.WithEndpointResolverWithOptions(customResolver))
+			config.WithEndpointResolverWithOptions(customResolver)) //nolint: staticcheck
 		So(err, ShouldBeNil)
 
 		dynamoWrapper := DynamoDB{
@@ -73,9 +73,9 @@ func TestWrapperErrors(t *testing.T) {
 	})
 
 	Convey("Delete table errors", t, func() {
-		customResolver := aws.EndpointResolverWithOptionsFunc(
+		customResolver := aws.EndpointResolverWithOptionsFunc( //nolint: staticcheck
 			func(service, region string, options ...interface{}) (aws.Endpoint, error) {
-				return aws.Endpoint{
+				return aws.Endpoint{ //nolint: staticcheck
 					PartitionID:   "aws",
 					URL:           endpoint,
 					SigningRegion: region,
@@ -84,7 +84,7 @@ func TestWrapperErrors(t *testing.T) {
 		)
 
 		cfg, err := config.LoadDefaultConfig(context.Background(), config.WithRegion(region),
-			config.WithEndpointResolverWithOptions(customResolver))
+			config.WithEndpointResolverWithOptions(customResolver)) //nolint: staticcheck
 		So(err, ShouldBeNil)
 
 		dynamoWrapper := DynamoDB{
