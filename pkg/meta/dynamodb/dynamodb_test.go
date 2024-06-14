@@ -236,6 +236,16 @@ func TestWrapperErrors(t *testing.T) {
 			})
 		})
 		Convey("FilterImageMeta", func() {
+			Convey("FilterImageMeta with duplicate digests", func() {
+				image := CreateRandomImage()
+
+				err := dynamoWrapper.SetRepoReference(ctx, "repo", "tag", image.AsImageMeta())
+				So(err, ShouldBeNil)
+
+				_, err = dynamoWrapper.FilterImageMeta(ctx, []string{image.DigestStr(), image.DigestStr()})
+				So(err, ShouldNotBeNil)
+			})
+
 			Convey("manifest meta unmarshal error", func() {
 				err = setImageMeta(image.Digest(), badProtoBlob, dynamoWrapper) //nolint: contextcheck
 				So(err, ShouldBeNil)
@@ -243,6 +253,7 @@ func TestWrapperErrors(t *testing.T) {
 				_, err = dynamoWrapper.FilterImageMeta(ctx, []string{image.DigestStr()})
 				So(err, ShouldNotBeNil)
 			})
+
 			Convey("MediaType ImageIndex, getProtoImageMeta fails", func() {
 				err := dynamoWrapper.SetImageMeta(multiarchImageMeta.Digest, multiarchImageMeta) //nolint: contextcheck
 				So(err, ShouldBeNil)
