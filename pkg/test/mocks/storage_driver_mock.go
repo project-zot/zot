@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/docker/distribution/registry/storage/driver"
+	"github.com/distribution/distribution/v3/registry/storage/driver"
 )
 
 type StorageDriverMock struct {

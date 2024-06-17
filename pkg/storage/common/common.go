@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/docker/distribution/registry/storage/driver"
+	"github.com/distribution/distribution/v3/registry/storage/driver"
 	godigest "github.com/opencontainers/go-digest"
 	"github.com/opencontainers/image-spec/schema"
 	imeta "github.com/opencontainers/image-spec/specs-go"

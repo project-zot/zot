@@ -2,9 +2,9 @@ package s3
 
 import (
 	// Add s3 support.
-	"github.com/docker/distribution/registry/storage/driver"
+	"github.com/distribution/distribution/v3/registry/storage/driver"
 	// Load s3 driver.
-	_ "github.com/docker/distribution/registry/storage/driver/s3-aws"
+	_ "github.com/distribution/distribution/v3/registry/storage/driver/s3-aws"
 
 	"zotregistry.dev/zot/pkg/extensions/monitoring"
 	zlog "zotregistry.dev/zot/pkg/log"

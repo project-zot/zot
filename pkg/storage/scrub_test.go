@@ -11,7 +11,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/docker/distribution/registry/storage/driver"
+	"github.com/distribution/distribution/v3/registry/storage/driver"
 	guuid "github.com/gofrs/uuid"
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
