@@ -9,7 +9,7 @@ require (
 	github.com/Masterminds/semver v1.5.0
 	github.com/aquasecurity/trivy-db v0.0.0-20231005141211-4fc651f7ac8d
 	github.com/bmatcuk/doublestar/v4 v4.6.1
-	github.com/briandowns/spinner v1.23.0
+	github.com/briandowns/spinner v1.23.1
 	github.com/chartmuseum/auth v0.5.0
 	github.com/containers/common v0.59.1
 	github.com/didip/tollbooth/v6 v6.1.2
