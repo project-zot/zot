@@ -13,14 +13,14 @@ require (
 	github.com/chartmuseum/auth v0.5.0
 	github.com/containers/common v0.59.1
 	github.com/didip/tollbooth/v6 v6.1.2
-	github.com/docker/distribution v2.8.3+incompatible
+	github.com/distribution/distribution/v3 v3.0.0-alpha.1.0.20240704151629-4dd0ac977e96
 	github.com/dustin/go-humanize v1.0.1
 	github.com/fsnotify/fsnotify v1.7.0
 	github.com/go-ldap/ldap/v3 v3.4.8
 	github.com/gofrs/uuid v4.4.0+incompatible
 	github.com/google/go-containerregistry v0.19.2
 	github.com/google/uuid v1.6.0
-	github.com/gorilla/mux v1.8.1
+	github.com/gorilla/mux v1.8.2-0.20240522102346-de7178dc9dff
 	github.com/hashicorp/golang-lru/v2 v2.0.7
 	github.com/json-iterator/go v1.1.12
 	github.com/mitchellh/mapstructure v1.5.0
@@ -124,6 +124,7 @@ require (
 	github.com/digitorus/timestamp v0.0.0-20231217203849-220c5c2851b7 // indirect
 	github.com/distribution/reference v0.6.0 // indirect
 	github.com/dlclark/regexp2 v1.4.0 // indirect
+	github.com/docker/distribution v2.8.3+incompatible // indirect
 	github.com/docker/go-events v0.0.0-20190806004212-e31b211e4f1c // indirect
 	github.com/emicklei/go-restful/v3 v3.11.0 // indirect
 	github.com/evanphx/json-patch v5.7.0+incompatible // indirect
@@ -133,20 +134,19 @@ require (
 	github.com/go-gorp/gorp/v3 v3.1.0 // indirect
 	github.com/go-ini/ini v1.67.0 // indirect
 	github.com/go-jose/go-jose/v3 v3.0.3 // indirect
-	github.com/go-jose/go-jose/v4 v4.0.1 // indirect
+	github.com/go-jose/go-jose/v4 v4.0.2 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/gobwas/glob v0.2.3 // indirect
 	github.com/golang-jwt/jwt/v5 v5.2.1 // indirect
-	github.com/gomodule/redigo v1.8.9 // indirect
 	github.com/google/gnostic-models v0.6.9-0.20230804172637-c7be7c783f49 // indirect
 	github.com/google/go-github/v55 v55.0.0 // indirect
 	github.com/google/go-github/v59 v59.0.0 // indirect
 	github.com/google/licenseclassifier/v2 v2.0.0 // indirect
 	github.com/google/s2a-go v0.1.7 // indirect
 	github.com/google/shlex v0.0.0-20191202100458-e7afc7fbc510 // indirect
-	github.com/gorilla/handlers v1.5.2 // indirect
 	github.com/gosuri/uitable v0.0.4 // indirect
 	github.com/gregjones/httpcache v0.0.0-20190611155906-901d90724c79 // indirect
+	github.com/grpc-ecosystem/grpc-gateway/v2 v2.20.0 // indirect
 	github.com/jmoiron/sqlx v1.3.5 // indirect
 	github.com/kylelemons/godebug v1.1.0 // indirect
 	github.com/lann/builder v0.0.0-20180802200727-47ae307949d0 // indirect
@@ -209,10 +209,21 @@ require (
 	github.com/xeipuuv/gojsonschema v1.2.0 // indirect
 	github.com/xlab/treeprint v1.2.0 // indirect
 	github.com/xrash/smetrics v0.0.0-20240312152122-5f08fbb34913 // indirect
+	go.opentelemetry.io/contrib/exporters/autoexport v0.46.1 // indirect
 	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.49.0 // indirect
 	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.52.0 // indirect
+	go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc v0.44.0 // indirect
+	go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetrichttp v0.44.0 // indirect
+	go.opentelemetry.io/otel/exporters/otlp/otlptrace v1.27.0 // indirect
+	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc v1.27.0 // indirect
+	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp v1.27.0 // indirect
+	go.opentelemetry.io/otel/exporters/prometheus v0.44.0 // indirect
+	go.opentelemetry.io/otel/exporters/stdout/stdoutmetric v0.44.0 // indirect
+	go.opentelemetry.io/otel/exporters/stdout/stdouttrace v1.27.0 // indirect
 	go.opentelemetry.io/otel/metric v1.27.0 // indirect
 	go.opentelemetry.io/otel/sdk v1.27.0 // indirect
+	go.opentelemetry.io/otel/sdk/metric v1.27.0 // indirect
+	go.opentelemetry.io/proto/otlp v1.2.0 // indirect
 	go.starlark.net v0.0.0-20230525235612-a134d8f9ddca // indirect
 	go.step.sm/crypto v0.44.2 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20240520151616-dc85e6b867a5 // indirect
@@ -497,6 +508,3 @@ require (
 	sigs.k8s.io/structured-merge-diff/v4 v4.4.1 // indirect
 	sigs.k8s.io/yaml v1.4.0 // indirect
 )
-
-// https://github.com/gorilla/mux/issues/739
-replace github.com/gorilla/mux => github.com/gorilla/mux v1.8.0

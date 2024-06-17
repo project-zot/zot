@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/docker/distribution/registry/storage/driver"
+	"github.com/distribution/distribution/v3/registry/storage/driver"
 )
 
 type StorageDriverMock struct {
@@ -152,7 +152,7 @@ func (f *FileWriterMock) Size() int64 {
 	return int64(fileWriterSize)
 }
 
-func (f *FileWriterMock) Cancel() error {
+func (f *FileWriterMock) Cancel(context.Context) error {
 	if f != nil && f.CancelFn != nil {
 		return f.CancelFn()
 	}
@@ -160,7 +160,7 @@ func (f *FileWriterMock) Cancel() error {
 	return nil
 }
 
-func (f *FileWriterMock) Commit() error {
+func (f *FileWriterMock) Commit(context.Context) error {
 	if f != nil && f.CommitFn != nil {
 		return f.CommitFn()
 	}

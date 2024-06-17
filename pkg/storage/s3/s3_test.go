@@ -8,15 +8,16 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"path"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/docker/distribution/registry/storage/driver"
-	"github.com/docker/distribution/registry/storage/driver/factory"
-	_ "github.com/docker/distribution/registry/storage/driver/s3-aws"
+	"github.com/distribution/distribution/v3/registry/storage/driver"
+	"github.com/distribution/distribution/v3/registry/storage/driver/factory"
+	_ "github.com/distribution/distribution/v3/registry/storage/driver/s3-aws"
 	guuid "github.com/gofrs/uuid"
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
@@ -107,7 +108,7 @@ func createStoreDriver(rootDir string) driver.StorageDriver {
 
 	storeName := fmt.Sprintf("%v", storageDriverParams["name"])
 
-	store, err := factory.Create(storeName, storageDriverParams)
+	store, err := factory.Create(context.Background(), storeName, storageDriverParams)
 	if err != nil {
 		panic(err)
 	}
@@ -240,7 +241,7 @@ func (f *FileWriterMock) Size() int64 {
 	return int64(fileWriterSize)
 }
 
-func (f *FileWriterMock) Cancel() error {
+func (f *FileWriterMock) Cancel(context.Context) error {
 	if f != nil && f.CancelFn != nil {
 		return f.CancelFn()
 	}
@@ -248,7 +249,7 @@ func (f *FileWriterMock) Cancel() error {
 	return nil
 }
 
-func (f *FileWriterMock) Commit() error {
+func (f *FileWriterMock) Commit(context.Context) error {
 	if f != nil && f.CommitFn != nil {
 		return f.CommitFn()
 	}
@@ -361,12 +362,19 @@ func (s *StorageDriverMock) URLFor(ctx context.Context, path string, options map
 	return "", nil
 }
 
-func (s *StorageDriverMock) Walk(ctx context.Context, path string, f driver.WalkFn) error {
+func (s *StorageDriverMock) Walk(ctx context.Context, path string, f driver.WalkFn,
+	options ...func(*driver.WalkOptions),
+) error {
 	if s != nil && s.WalkFn != nil {
 		return s.WalkFn(ctx, path, f)
 	}
 
 	return nil
+}
+
+// RedirectURL returns a URL which may be used to retrieve the content stored at the given path.
+func (s *StorageDriverMock) RedirectURL(*http.Request, string) (string, error) {
+	return "", nil
 }
 
 func TestStorageDriverStatFunction(t *testing.T) {

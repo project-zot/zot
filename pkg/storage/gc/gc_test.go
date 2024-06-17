@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/docker/distribution/registry/storage/driver/factory"
-	_ "github.com/docker/distribution/registry/storage/driver/s3-aws"
+	"github.com/distribution/distribution/v3/registry/storage/driver/factory"
+	_ "github.com/distribution/distribution/v3/registry/storage/driver/s3-aws"
 	guuid "github.com/gofrs/uuid"
 	. "github.com/smartystreets/goconvey/convey"
 	"gopkg.in/resty.v1"
@@ -93,7 +93,7 @@ func TestGarbageCollectAndRetention(t *testing.T) {
 
 				storeName := fmt.Sprintf("%v", storageDriverParams["name"])
 
-				store, err := factory.Create(storeName, storageDriverParams)
+				store, err := factory.Create(context.Background(), storeName, storageDriverParams)
 				if err != nil {
 					panic(err)
 				}

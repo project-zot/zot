@@ -3,6 +3,7 @@ package local
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"errors"
 	"io"
 	"os"
@@ -11,7 +12,7 @@ import (
 	"time"
 	"unicode/utf8"
 
-	storagedriver "github.com/docker/distribution/registry/storage/driver"
+	storagedriver "github.com/distribution/distribution/v3/registry/storage/driver"
 
 	zerr "zotregistry.dev/zot/errors"
 	storageConstants "zotregistry.dev/zot/pkg/storage/constants"
@@ -176,7 +177,7 @@ func (driver *Driver) WriteFile(filepath string, content []byte) (int, error) {
 
 	nbytes, err := io.Copy(writer, bytes.NewReader(content))
 	if err != nil {
-		_ = writer.Cancel()
+		_ = writer.Cancel(context.Background())
 
 		return -1, driver.formatErr(err)
 	}
@@ -315,7 +316,7 @@ func (driver *Driver) formatErr(err error) error {
 	default:
 		storageError := storagedriver.Error{
 			DriverName: driver.Name(),
-			Enclosed:   err,
+			Detail:     err,
 		}
 
 		return storageError
@@ -420,7 +421,7 @@ func (fw *fileWriter) Close() error {
 	return nil
 }
 
-func (fw *fileWriter) Cancel() error {
+func (fw *fileWriter) Cancel(ctx context.Context) error {
 	if fw.closed {
 		return zerr.ErrFileAlreadyClosed
 	}
@@ -431,7 +432,7 @@ func (fw *fileWriter) Cancel() error {
 	return os.Remove(fw.file.Name())
 }
 
-func (fw *fileWriter) Commit() error {
+func (fw *fileWriter) Commit(context.Context) error {
 	//nolint: gocritic
 	if fw.closed {
 		return zerr.ErrFileAlreadyClosed
