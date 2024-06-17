@@ -45,7 +45,7 @@ require (
 )
 
 require (
-	github.com/aquasecurity/trivy v0.52.0
+	github.com/aquasecurity/trivy v0.52.2
 	github.com/aws/aws-sdk-go-v2/service/dynamodb v1.32.8
 	github.com/aws/aws-sdk-go-v2/service/secretsmanager v1.30.0
 	github.com/aws/aws-secretsmanager-caching-go v1.1.3
