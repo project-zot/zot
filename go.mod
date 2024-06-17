@@ -37,7 +37,7 @@ require (
 	github.com/spf13/viper v1.19.0
 	github.com/stretchr/testify v1.9.0
 	github.com/swaggo/swag v1.16.3
-	github.com/vektah/gqlparser/v2 v2.5.15
+	github.com/vektah/gqlparser/v2 v2.5.16
 	go.etcd.io/bbolt v1.3.10
 	golang.org/x/crypto v0.24.0
 	gopkg.in/resty.v1 v1.12.0
