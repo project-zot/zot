@@ -49,7 +49,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/dynamodb v1.32.8
 	github.com/aws/aws-sdk-go-v2/service/secretsmanager v1.30.0
 	github.com/aws/aws-secretsmanager-caching-go v1.1.3
-	github.com/containers/image/v5 v5.31.0
+	github.com/containers/image/v5 v5.31.1
 	github.com/dchest/siphash v1.2.3
 	github.com/google/go-github/v52 v52.0.0
 	github.com/gorilla/securecookie v1.1.2
