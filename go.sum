@@ -458,8 +458,8 @@ github.com/aws/aws-sdk-go-v2/service/sts v1.29.1/go.mod h1:N2mQiucsO0VwK9CYuS4/c
 github.com/aws/aws-secretsmanager-caching-go v1.2.0 h1:gUA+CVKvFLj4OUSknhIrnt4dF7Y37+JrChKqfaehJME=
 github.com/aws/aws-secretsmanager-caching-go v1.2.0/go.mod h1:6t2/zQIsigFMlnpOdGj503Dgaz24tMqIRhass9uoTBo=
 github.com/aws/smithy-go v1.15.0/go.mod h1:Tg+OJXh4MB2R/uN61Ko2f6hTZwB/ZYGOtib8J3gBHzA=
-github.com/aws/smithy-go v1.20.2 h1:tbp628ireGtzcHDDmLT/6ADHidqnwgF57XOXZe6tp4Q=
-github.com/aws/smithy-go v1.20.2/go.mod h1:krry+ya/rV9RDcV/Q16kpu6ypI4K2czasz0NC3qS14E=
+github.com/aws/smithy-go v1.20.3 h1:ryHwveWzPV5BIof6fyDvor6V3iUL7nTfiTKXHiW05nE=
+github.com/aws/smithy-go v1.20.3/go.mod h1:krry+ya/rV9RDcV/Q16kpu6ypI4K2czasz0NC3qS14E=
 github.com/awslabs/amazon-ecr-credential-helper/ecr-login v0.0.0-20231024185945-8841054dbdb8 h1:SoFYaT9UyGkR0+nogNyD/Lj+bsixB+SNuAS4ABlEs6M=
 github.com/awslabs/amazon-ecr-credential-helper/ecr-login v0.0.0-20231024185945-8841054dbdb8/go.mod h1:2JF49jcDOrLStIXN/j/K1EKRq8a8R2qRnlZA6/o/c7c=
 github.com/beorn7/perks v0.0.0-20180321164747-3a771d992973/go.mod h1:Dwedo/Wpr24TaqPxmxbtue+5NUziq4I4S80YR8gNf3Q=
