@@ -63,6 +63,7 @@ type ImageStore interface { //nolint:interfacebloat
 	GetAllBlobs(repo string) ([]string, error)
 	PopulateStorageMetrics(interval time.Duration, sch *scheduler.Scheduler)
 	VerifyBlobDigestValue(repo string, digest godigest.Digest) error
+	GetAllDedupeReposCandidates(digest godigest.Digest) ([]string, error)
 }
 
 type Driver interface { //nolint:interfacebloat

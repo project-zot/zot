@@ -10,6 +10,7 @@ import (
 	"io"
 	"os"
 	"path"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -130,6 +131,75 @@ func TestStorageNew(t *testing.T) {
 		_, err := storage.New(conf, nil, nil, zlog.NewLogger("debug", ""))
 		So(err, ShouldNotBeNil)
 	})
+}
+
+func TestGetAllDedupeReposCandidates(t *testing.T) {
+	for _, testcase := range testCases {
+		testcase := testcase
+		t.Run(testcase.testCaseName, func(t *testing.T) {
+			var imgStore storageTypes.ImageStore
+			if testcase.storageType == storageConstants.S3StorageDriverName {
+				tskip.SkipS3(t)
+
+				uuid, err := guuid.NewV4()
+				if err != nil {
+					panic(err)
+				}
+
+				testDir := path.Join("/oci-repo-test", uuid.String())
+				tdir := t.TempDir()
+
+				var store driver.StorageDriver
+				store, imgStore, _ = createObjectsStore(testDir, tdir)
+				defer cleanupStorage(store, testDir)
+			} else {
+				dir := t.TempDir()
+
+				log := zlog.Logger{Logger: zerolog.New(os.Stdout)}
+				metrics := monitoring.NewMetricsServer(false, log)
+				cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
+					RootDir:     dir,
+					Name:        "cache",
+					UseRelPaths: true,
+				}, log)
+
+				driver := local.New(true)
+
+				imgStore = imagestore.NewImageStore(dir, dir, true, true, log, metrics, nil, driver, cacheDriver)
+			}
+
+			Convey("Push repos with deduped blobs", t, func(c C) {
+				repoNames := []string{
+					"first",
+					"second",
+					"repo/a",
+					"repo/a/b/c/d/e/f",
+					"repo/repo-b/blobs",
+					"foo/bar/baz",
+					"blobs/foo/bar/blobs",
+					"blobs",
+					"blobs/foo",
+				}
+
+				storeController := storage.StoreController{DefaultStore: imgStore}
+
+				image := CreateRandomImage()
+
+				for _, repoName := range repoNames {
+					err := WriteImageToFileSystem(image, repoName, tag, storeController)
+					So(err, ShouldBeNil)
+				}
+
+				randomBlobDigest := image.Manifest.Layers[0].Digest
+
+				repos, err := imgStore.GetAllDedupeReposCandidates(randomBlobDigest)
+				So(err, ShouldBeNil)
+				slices.Sort(repoNames)
+				slices.Sort(repos)
+				So(repoNames, ShouldResemble, repos)
+			})
+		})
+	}
 }
 
 func TestStorageAPIs(t *testing.T) {

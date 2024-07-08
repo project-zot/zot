@@ -50,13 +50,14 @@ type MockedImageStore struct {
 	RunDedupeBlobsFn     func(interval time.Duration, sch *scheduler.Scheduler)
 	RunDedupeForDigestFn func(ctx context.Context, digest godigest.Digest, dedupe bool,
 		duplicateBlobs []string) error
-	GetNextDigestWithBlobPathsFn func(repos []string, lastDigests []godigest.Digest) (godigest.Digest, []string, error)
-	GetAllBlobsFn                func(repo string) ([]string, error)
-	CleanupRepoFn                func(repo string, blobs []godigest.Digest, removeRepo bool) (int, error)
-	PutIndexContentFn            func(repo string, index ispec.Index) error
-	PopulateStorageMetricsFn     func(interval time.Duration, sch *scheduler.Scheduler)
-	StatIndexFn                  func(repo string) (bool, int64, time.Time, error)
-	VerifyBlobDigestValueFn      func(repo string, digest godigest.Digest) error
+	GetNextDigestWithBlobPathsFn  func(repos []string, lastDigests []godigest.Digest) (godigest.Digest, []string, error)
+	GetAllBlobsFn                 func(repo string) ([]string, error)
+	CleanupRepoFn                 func(repo string, blobs []godigest.Digest, removeRepo bool) (int, error)
+	PutIndexContentFn             func(repo string, index ispec.Index) error
+	PopulateStorageMetricsFn      func(interval time.Duration, sch *scheduler.Scheduler)
+	StatIndexFn                   func(repo string) (bool, int64, time.Time, error)
+	VerifyBlobDigestValueFn       func(repo string, digest godigest.Digest) error
+	GetAllDedupeReposCandidatesFn func(digest godigest.Digest) ([]string, error)
 }
 
 func (is MockedImageStore) StatIndex(repo string) (bool, int64, time.Time, error) {
@@ -418,4 +419,12 @@ func (is MockedImageStore) VerifyBlobDigestValue(repo string, digest godigest.Di
 	}
 
 	return nil
+}
+
+func (is MockedImageStore) GetAllDedupeReposCandidates(digest godigest.Digest) ([]string, error) {
+	if is.GetAllBlobsFn != nil {
+		return is.GetAllDedupeReposCandidatesFn(digest)
+	}
+
+	return []string{}, nil
 }

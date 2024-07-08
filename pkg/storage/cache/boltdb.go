@@ -174,6 +174,57 @@ func (d *BoltDBDriver) PutBlob(digest godigest.Digest, path string) error {
 	return nil
 }
 
+func (d *BoltDBDriver) GetAllBlobs(digest godigest.Digest) ([]string, error) {
+	var blobPath strings.Builder
+
+	blobPaths := []string{}
+
+	if err := d.db.View(func(tx *bbolt.Tx) error {
+		root := tx.Bucket([]byte(constants.BlobsCache))
+		if root == nil {
+			// this is a serious failure
+			err := zerr.ErrCacheRootBucket
+			d.log.Error().Err(err).Msg("failed to access root bucket")
+
+			return err
+		}
+
+		bucket := root.Bucket([]byte(digest.String()))
+		if bucket != nil {
+			origin := bucket.Bucket([]byte(constants.OriginalBucket))
+			blobPath.Write(d.getOne(origin))
+			originBlob := blobPath.String()
+
+			blobPaths = append(blobPaths, originBlob)
+
+			deduped := bucket.Bucket([]byte(constants.DuplicatesBucket))
+			if deduped != nil {
+				cursor := deduped.Cursor()
+
+				for k, _ := cursor.First(); k != nil; k, _ = cursor.Next() {
+					var blobPath strings.Builder
+
+					blobPath.Write(k)
+
+					duplicateBlob := blobPath.String()
+
+					if duplicateBlob != originBlob {
+						blobPaths = append(blobPaths, duplicateBlob)
+					}
+				}
+
+				return nil
+			}
+		}
+
+		return zerr.ErrCacheMiss
+	}); err != nil {
+		return nil, err
+	}
+
+	return blobPaths, nil
+}
+
 func (d *BoltDBDriver) GetBlob(digest godigest.Digest) (string, error) {
 	var blobPath strings.Builder
 

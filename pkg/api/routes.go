@@ -873,6 +873,37 @@ func (rh *RouteHandler) DeleteManifest(response http.ResponseWriter, request *ht
 	response.WriteHeader(http.StatusAccepted)
 }
 
+// canMount checks if a user has read permission on cached blobs with this specific digest.
+// returns true if the user have permission to copy blob from cache.
+func canMount(userAc *reqCtx.UserAccessControl, imgStore storageTypes.ImageStore, digest godigest.Digest,
+) (bool, error) {
+	canMount := true
+
+	// authz enabled
+	if userAc != nil {
+		canMount = false
+
+		repos, err := imgStore.GetAllDedupeReposCandidates(digest)
+		if err != nil {
+			// first write
+			return false, err
+		}
+
+		if len(repos) == 0 {
+			canMount = false
+		}
+
+		// check if user can read any repo which contain this blob
+		for _, repo := range repos {
+			if userAc.Can(constants.ReadPermission, repo) {
+				canMount = true
+			}
+		}
+	}
+
+	return canMount, nil
+}
+
 // CheckBlob godoc
 // @Summary Check image blob/layer
 // @Description Check an image's blob/layer given a digest
@@ -905,7 +936,31 @@ func (rh *RouteHandler) CheckBlob(response http.ResponseWriter, request *http.Re
 
 	digest := godigest.Digest(digestStr)
 
-	ok, blen, err := imgStore.CheckBlob(name, digest)
+	userAc, err := reqCtx.UserAcFromContext(request.Context())
+	if err != nil {
+		response.WriteHeader(http.StatusInternalServerError)
+
+		return
+	}
+
+	userCanMount, err := canMount(userAc, imgStore, digest)
+	if err != nil {
+		rh.c.Log.Error().Err(err).Msg("unexpected error")
+	}
+
+	var blen int64
+
+	if userCanMount {
+		ok, blen, err = imgStore.CheckBlob(name, digest)
+	} else {
+		var lockLatency time.Time
+
+		imgStore.RLock(&lockLatency)
+		defer imgStore.RUnlock(&lockLatency)
+
+		ok, blen, _, err = imgStore.StatBlob(name, digest)
+	}
+
 	if err != nil {
 		details := zerr.GetDetails(err)
 		if errors.Is(err, zerr.ErrBadBlobDigest) { //nolint:gocritic // errorslint conflicts with gocritic:IfElseChain
@@ -1191,11 +1246,27 @@ func (rh *RouteHandler) CreateBlobUpload(response http.ResponseWriter, request *
 		}
 
 		mountDigest := godigest.Digest(mountDigests[0])
+
+		userAc, err := reqCtx.UserAcFromContext(request.Context())
+		if err != nil {
+			response.WriteHeader(http.StatusInternalServerError)
+
+			return
+		}
+
+		userCanMount, err := canMount(userAc, imgStore, mountDigest)
+		if err != nil {
+			rh.c.Log.Error().Err(err).Msg("unexpected error")
+		}
+
 		// zot does not support cross mounting directly and do a workaround creating using hard link.
 		// check blob looks for actual path (name+mountDigests[0]) first then look for cache and
 		// if found in cache, will do hard link and if fails we will start new upload.
-		_, _, err := imgStore.CheckBlob(name, mountDigest)
-		if err != nil {
+		if userCanMount {
+			_, _, err = imgStore.CheckBlob(name, mountDigest)
+		}
+
+		if err != nil || !userCanMount {
 			upload, err := imgStore.NewBlobUpload(name)
 			if err != nil {
 				details := zerr.GetDetails(err)

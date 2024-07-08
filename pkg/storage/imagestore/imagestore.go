@@ -1114,6 +1114,37 @@ func (is *ImageStore) BlobPath(repo string, digest godigest.Digest) string {
 	return path.Join(is.rootDir, repo, "blobs", digest.Algorithm().String(), digest.Encoded())
 }
 
+func (is *ImageStore) GetAllDedupeReposCandidates(digest godigest.Digest) ([]string, error) {
+	var lockLatency time.Time
+
+	if err := digest.Validate(); err != nil {
+		return nil, err
+	}
+
+	is.RLock(&lockLatency)
+	defer is.RUnlock(&lockLatency)
+
+	blobsPaths, err := is.cache.GetAllBlobs(digest)
+	if err != nil {
+		return nil, err
+	}
+
+	repos := []string{}
+
+	for _, blobPath := range blobsPaths {
+		// these can be both full paths or relative paths depending on the cache options
+		if !is.cache.UsesRelativePaths() && path.IsAbs(blobPath) {
+			blobPath, _ = filepath.Rel(is.rootDir, blobPath)
+		}
+
+		blobsDirIndex := strings.LastIndex(blobPath, "/blobs/")
+
+		repos = append(repos, blobPath[:blobsDirIndex])
+	}
+
+	return repos, nil
+}
+
 /*
 	CheckBlob verifies a blob and returns true if the blob is correct
 

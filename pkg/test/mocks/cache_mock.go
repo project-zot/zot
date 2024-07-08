@@ -6,6 +6,8 @@ type CacheMock struct {
 	// Returns the human-readable "name" of the driver.
 	NameFn func() string
 
+	GetAllBlobsFn func(digest godigest.Digest) ([]string, error)
+
 	// Retrieves the blob matching provided digest.
 	GetBlobFn func(digest godigest.Digest) (string, error)
 
@@ -67,4 +69,12 @@ func (cacheMock CacheMock) DeleteBlob(digest godigest.Digest, path string) error
 	}
 
 	return nil
+}
+
+func (cacheMock CacheMock) GetAllBlobs(digest godigest.Digest) ([]string, error) {
+	if cacheMock.GetAllBlobsFn != nil {
+		return cacheMock.GetAllBlobsFn(digest)
+	}
+
+	return []string{}, nil
 }
