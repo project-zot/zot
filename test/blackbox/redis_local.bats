@@ -30,8 +30,12 @@ function setup_file() {
         exit 1
     fi
 
+    # Download test data to folder common for the entire suite, not just this file
+    skopeo --insecure-policy copy --format=oci docker://ghcr.io/project-zot/golang:1.20 oci:${TEST_DATA_DIR}/golang:1.20
+
     # Setup redis server
-    redis_start
+    redis_port=$(get_free_port)
+    redis_start redis_server_local ${redis_port}
 
     # Setup zot server
     local zot_root_dir=${BATS_FILE_TMPDIR}/zot
@@ -49,7 +53,7 @@ function setup_file() {
         "cacheDriver": {
             "name": "redis",
             "rootDir": "${zot_root_dir}/_redis",
-            "url": "redis://localhost:6379"
+            "url": "redis://localhost:${redis_port}"
         }
     },
     "http": {
@@ -62,6 +66,9 @@ function setup_file() {
     },
     "extensions": {
       "ui": {
+        "enable": true
+      },
+      "search": {
         "enable": true
       }
     }
@@ -86,7 +93,8 @@ EOF
 
     run curl http://127.0.0.1:${zot_port}/v2/_catalog
     [ "$status" -eq 0 ]
-    [ $(echo "${lines[-1]}" | jq '.repositories[]') = '"golang"' ]
+    [ $(echo "${lines[-1]}" | jq '.repositories[0]') = '"golang"' ]
+    [ $(echo "${lines[-1]}" | jq '.repositories[1]') = '"golang2"' ]
     run curl http://127.0.0.1:${zot_port}/v2/golang/tags/list
     [ "$status" -eq 0 ]
     [ $(echo "${lines[-1]}" | jq '.tags[]') = '"1.20"' ]
@@ -95,6 +103,8 @@ EOF
 @test "pull both images" {
     local oci_data_dir=${BATS_FILE_TMPDIR}/oci
     zot_port=`cat ${BATS_FILE_TMPDIR}/zot.port`
+
+    mkdir -p ${oci_data_dir}
     run skopeo --insecure-policy copy --src-tls-verify=false \
         docker://127.0.0.1:${zot_port}/golang:1.20 \
         oci:${oci_data_dir}/golang:1.20
@@ -111,5 +121,5 @@ EOF
 
 function teardown_file() {
     zot_stop_all
-    redis_stop
+    redis_stop redis_server_local
 }
