@@ -39,7 +39,7 @@ require (
 	github.com/swaggo/swag v1.16.3
 	github.com/vektah/gqlparser/v2 v2.5.16
 	go.etcd.io/bbolt v1.3.10
-	golang.org/x/crypto v0.24.0
+	golang.org/x/crypto v0.25.0
 	gopkg.in/resty.v1 v1.12.0
 	gopkg.in/yaml.v2 v2.4.0
 )
@@ -68,7 +68,7 @@ require (
 
 require (
 	golang.org/x/sync v0.7.0 // indirect
-	golang.org/x/sys v0.21.0 // indirect
+	golang.org/x/sys v0.22.0 // indirect
 	golang.org/x/text v0.16.0 // indirect
 )
 
@@ -472,7 +472,7 @@ require (
 	golang.org/x/exp v0.0.0-20240506185415-9bf2ced13842
 	golang.org/x/mod v0.18.0 // indirect
 	golang.org/x/net v0.26.0 // indirect
-	golang.org/x/term v0.21.0 // indirect
+	golang.org/x/term v0.22.0 // indirect
 	golang.org/x/time v0.5.0 // indirect
 	golang.org/x/tools v0.22.0 // indirect
 	golang.org/x/xerrors v0.0.0-20231012003039-104605ab7028 // indirect
