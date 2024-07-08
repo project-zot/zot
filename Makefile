@@ -510,6 +510,7 @@ run-blackbox-cloud-ci: check-blackbox-prerequisites check-awslocal binary $(BATS
 	echo running cloud CI bats tests; \
 	$(BATS) $(BATS_FLAGS) test/blackbox/cloud_only.bats
 	$(BATS) $(BATS_FLAGS) test/blackbox/sync_cloud.bats
+	$(BATS) $(BATS_FLAGS) test/blackbox/redis_s3.bats
 
 .PHONY: run-blackbox-dedupe-nightly
 run-blackbox-dedupe-nightly: check-blackbox-prerequisites check-awslocal binary binary-minimal

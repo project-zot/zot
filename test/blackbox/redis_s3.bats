@@ -7,16 +7,6 @@ load helpers_redis
 load helpers_cloud
 
 function verify_prerequisites() {
-    if [ ! $(command -v curl) ]; then
-        echo "you need to install curl as a prerequisite to running the tests" >&3
-        return 1
-    fi
-
-    if [ ! $(command -v jq) ]; then
-        echo "you need to install jq as a prerequisite to running the tests" >&3
-        return 1
-    fi
-
     if [ ! $(command -v docker) ]; then
         echo "you need to install docker as a prerequisite to running the tests" >&3
         return 1
@@ -32,7 +22,8 @@ function setup_file() {
     fi
 
     # Setup redis server
-    redis_start
+    redis_port=$(get_free_port)
+    redis_start redis_server ${redis_port}
 
     # Setup zot server
     local zot_root_dir=${BATS_FILE_TMPDIR}/zot
@@ -52,7 +43,7 @@ function setup_file() {
         "cacheDriver": {
             "name": "redis",
             "rootDir": "${zot_root_dir}/_redis",
-            "url": "redis://localhost:6379"
+            "url": "redis://localhost:${redis_port}"
         },
         "storageDriver": {
             "name": "s3",
@@ -75,12 +66,15 @@ function setup_file() {
     "extensions": {
       "ui": {
         "enable": true
+      },
+      "search": {
+        "enable": true
       }
     }
 }
 EOF
 
-    awslocal s3 --region "us-east-2" mb s3://zot-storage
+    awslocal s3 ls s3://zot-storage || awslocal s3 --region "us-east-2" mb s3://zot-storage
 
     zot_serve ${ZOT_PATH} ${zot_sync_ondemand_config_file}
     wait_zot_reachable ${zot_port}
@@ -123,5 +117,5 @@ EOF
 
 function teardown_file() {
     zot_stop_all
-    redis_stop
+    redis_stop redis_server
 }

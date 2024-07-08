@@ -19,6 +19,7 @@ const (
 	DBCacheLockCheckTimeout = 10 * time.Second
 	BoltdbName              = "cache"
 	DynamoDBDriverName      = "dynamodb"
+	RedisDriverName         = "redis"
 	DefaultGCDelay          = 1 * time.Hour
 	DefaultRetentionDelay   = 24 * time.Hour
 	DefaultGCInterval       = 1 * time.Hour
