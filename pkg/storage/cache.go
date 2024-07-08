@@ -32,19 +32,32 @@ func CreateCacheDatabaseDriver(storageConfig config.StorageConfig, log zlog.Logg
 			return nil, nil //nolint:nilnil
 		}
 
-		if name != constants.DynamoDBDriverName {
+		if name != constants.DynamoDBDriverName &&
+			name != constants.RedisDriverName {
 			log.Warn().Str("driver", name).Msg("remote cache driver unsupported!")
 
 			return nil, nil //nolint:nilnil
 		}
 
-		// dynamodb
-		dynamoParams := cache.DynamoDBDriverParameters{}
-		dynamoParams.Endpoint, _ = storageConfig.CacheDriver["endpoint"].(string)
-		dynamoParams.Region, _ = storageConfig.CacheDriver["region"].(string)
-		dynamoParams.TableName, _ = storageConfig.CacheDriver["cachetablename"].(string)
+		if name == constants.DynamoDBDriverName {
+			// dynamodb
+			dynamoParams := cache.DynamoDBDriverParameters{}
+			dynamoParams.Endpoint, _ = storageConfig.CacheDriver["endpoint"].(string)
+			dynamoParams.Region, _ = storageConfig.CacheDriver["region"].(string)
+			dynamoParams.TableName, _ = storageConfig.CacheDriver["cachetablename"].(string)
 
-		return Create("dynamodb", dynamoParams, log)
+			return Create(name, dynamoParams, log)
+		}
+
+		if name == constants.RedisDriverName {
+			// redis
+			redisParams := cache.RedisDriverParameters{}
+			redisParams.RootDir = storageConfig.RootDirectory
+			redisParams.URL, _ = storageConfig.CacheDriver["url"].(string)
+			redisParams.UseRelPaths = getUseRelPaths(&storageConfig)
+
+			return Create(name, redisParams, log)
+		}
 	}
 
 	return nil, nil //nolint:nilnil
@@ -72,5 +85,6 @@ func Create(dbtype string, parameters interface{}, log zlog.Logger) (cache.Cache
 }
 
 func getUseRelPaths(storageConfig *config.StorageConfig) bool {
+	// In case of local storage we use rel paths, in case of S3 we don't
 	return storageConfig.StorageDriver == nil
 }

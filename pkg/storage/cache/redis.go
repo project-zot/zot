@@ -31,7 +31,7 @@ func NewRedisCache(parameters interface{}, log zlog.Logger) (*RedisDriver, error
 	properParameters, ok := parameters.(RedisDriverParameters)
 	if !ok {
 		log.Error().Err(zerr.ErrTypeAssertionFailed).Msgf("failed to cast type, expected type '%T' but got '%T'",
-			BoltDBDriverParameters{}, parameters)
+			RedisDriverParameters{}, parameters)
 
 		return nil, zerr.ErrTypeAssertionFailed
 	}
