@@ -1121,6 +1121,10 @@ func (is *ImageStore) GetAllDedupeReposCandidates(digest godigest.Digest) ([]str
 		return nil, err
 	}
 
+	if is.cache == nil {
+		return nil, nil
+	}
+
 	is.RLock(&lockLatency)
 	defer is.RUnlock(&lockLatency)
 

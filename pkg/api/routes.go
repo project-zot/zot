@@ -879,13 +879,11 @@ func canMount(userAc *reqCtx.UserAccessControl, imgStore storageTypes.ImageStore
 ) (bool, error) {
 	canMount := true
 
-	// authz enabled
 	if userAc != nil {
 		canMount = false
 
 		repos, err := imgStore.GetAllDedupeReposCandidates(digest)
 		if err != nil {
-			// first write
 			return false, err
 		}
 
@@ -943,9 +941,12 @@ func (rh *RouteHandler) CheckBlob(response http.ResponseWriter, request *http.Re
 		return
 	}
 
-	userCanMount, err := canMount(userAc, imgStore, digest)
-	if err != nil {
-		rh.c.Log.Error().Err(err).Msg("unexpected error")
+	userCanMount := true
+	if rh.c.Config.IsAuthzEnabled() {
+		userCanMount, err = canMount(userAc, imgStore, digest)
+		if err != nil {
+			rh.c.Log.Error().Err(err).Msg("unexpected error")
+		}
 	}
 
 	var blen int64
@@ -963,7 +964,7 @@ func (rh *RouteHandler) CheckBlob(response http.ResponseWriter, request *http.Re
 
 	if err != nil {
 		details := zerr.GetDetails(err)
-		if errors.Is(err, zerr.ErrBadBlobDigest) { //nolint:gocritic // errorslint conflicts with gocritic:IfElseChain
+		if errors.Is(err, zerr.ErrBadBlobDigest) { //nolint:gocritic,dupl // errorslint conflicts with gocritic:IfElseChain
 			details["digest"] = digest.String()
 			e := apiErr.NewError(apiErr.DIGEST_INVALID).AddDetail(details)
 			zcommon.WriteJSON(response, http.StatusBadRequest, apiErr.NewErrorList(e))
@@ -1254,9 +1255,12 @@ func (rh *RouteHandler) CreateBlobUpload(response http.ResponseWriter, request *
 			return
 		}
 
-		userCanMount, err := canMount(userAc, imgStore, mountDigest)
-		if err != nil {
-			rh.c.Log.Error().Err(err).Msg("unexpected error")
+		userCanMount := true
+		if rh.c.Config.IsAuthzEnabled() {
+			userCanMount, err = canMount(userAc, imgStore, mountDigest)
+			if err != nil {
+				rh.c.Log.Error().Err(err).Msg("unexpected error")
+			}
 		}
 
 		// zot does not support cross mounting directly and do a workaround creating using hard link.
