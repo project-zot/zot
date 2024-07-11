@@ -141,6 +141,42 @@ func (d *DynamoDBDriver) GetBlob(digest godigest.Digest) (string, error) {
 	return out.OriginalBlobPath, nil
 }
 
+func (d *DynamoDBDriver) GetAllBlobs(digest godigest.Digest) ([]string, error) {
+	blobPaths := []string{}
+
+	resp, err := d.client.GetItem(context.TODO(), &dynamodb.GetItemInput{
+		TableName: aws.String(d.tableName),
+		Key: map[string]types.AttributeValue{
+			"Digest": &types.AttributeValueMemberS{Value: digest.String()},
+		},
+	})
+	if err != nil {
+		d.log.Error().Err(err).Str("tableName", d.tableName).Msg("failed to get blob")
+
+		return nil, err
+	}
+
+	out := Blob{}
+
+	if resp.Item == nil {
+		d.log.Debug().Err(zerr.ErrCacheMiss).Str("digest", string(digest)).Msg("failed to find blob in cache")
+
+		return nil, zerr.ErrCacheMiss
+	}
+
+	_ = attributevalue.UnmarshalMap(resp.Item, &out)
+
+	blobPaths = append(blobPaths, out.OriginalBlobPath)
+
+	for _, item := range out.DuplicateBlobPath {
+		if item != out.OriginalBlobPath {
+			blobPaths = append(blobPaths, item)
+		}
+	}
+
+	return blobPaths, nil
+}
+
 func (d *DynamoDBDriver) PutBlob(digest godigest.Digest, path string) error {
 	if path == "" {
 		d.log.Error().Err(zerr.ErrEmptyValue).Str("digest", digest.String()).

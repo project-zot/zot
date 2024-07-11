@@ -5142,6 +5142,122 @@ func TestGetUsername(t *testing.T) {
 	})
 }
 
+func TestAuthorizationMountBlob(t *testing.T) {
+	Convey("Make a new controller", t, func() {
+		port := test.GetFreePort()
+		baseURL := test.GetBaseURL(port)
+
+		conf := config.New()
+		conf.HTTP.Port = port
+		// have two users: one for  user Policy, and another for default policy
+		username1, _ := test.GenerateRandomString()
+		password1, _ := test.GenerateRandomString()
+		username2, _ := test.GenerateRandomString()
+		password2, _ := test.GenerateRandomString()
+		username1 = strings.ToLower(username1)
+		username2 = strings.ToLower(username2)
+
+		content := test.GetCredString(username1, password1) + test.GetCredString(username2, password2)
+		htpasswdPath := test.MakeHtpasswdFileFromString(content)
+		defer os.Remove(htpasswdPath)
+
+		conf.HTTP.Auth = &config.AuthConfig{
+			HTPasswd: config.AuthHTPasswd{
+				Path: htpasswdPath,
+			},
+		}
+
+		user1Repo := fmt.Sprintf("%s/**", username1)
+		user2Repo := fmt.Sprintf("%s/**", username2)
+
+		// config with all policy types, to test that the correct one is applied in each case
+		conf.HTTP.AccessControl = &config.AccessControlConfig{
+			Repositories: config.Repositories{
+				user1Repo: config.PolicyGroup{
+					Policies: []config.Policy{
+						{
+							Users: []string{username1},
+							Actions: []string{
+								constants.ReadPermission,
+								constants.CreatePermission,
+							},
+						},
+					},
+				},
+				user2Repo: config.PolicyGroup{
+					Policies: []config.Policy{
+						{
+							Users: []string{username2},
+							Actions: []string{
+								constants.ReadPermission,
+								constants.CreatePermission,
+							},
+						},
+					},
+				},
+			},
+		}
+
+		dir := t.TempDir()
+
+		ctlr := api.NewController(conf)
+		ctlr.Config.Storage.RootDirectory = dir
+
+		cm := test.NewControllerManager(ctlr)
+		cm.StartAndWait(port)
+		defer cm.StopServer()
+
+		userClient1 := resty.New()
+		userClient1.SetBasicAuth(username1, password1)
+
+		userClient2 := resty.New()
+		userClient2.SetBasicAuth(username2, password2)
+
+		img := CreateImageWith().RandomLayers(1, 2).DefaultConfig().Build()
+
+		repoName1 := username1 + "/" + "myrepo"
+		tag := "1.0"
+
+		// upload image with user1 on repoName1
+		err := UploadImageWithBasicAuth(img, baseURL, repoName1, tag, username1, password1)
+		So(err, ShouldBeNil)
+
+		repoName2 := username2 + "/" + "myrepo"
+
+		blobDigest := img.Manifest.Layers[0].Digest
+
+		/* a HEAD request by user2 on blob digest (found in user1Repo) should return 404
+		because user2 doesn't have permissions to read user1Repo */
+		resp, err := userClient2.R().Head(baseURL + fmt.Sprintf("/v2/%s/blobs/%s", repoName2, blobDigest))
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
+
+		params := make(map[string]string)
+		params["mount"] = blobDigest.String()
+
+		// trying to mount a blob which can be found in cache, but user doesn't have permission
+		// should return 202 instead of 201
+		resp, err = userClient2.R().SetQueryParams(params).Post(baseURL + "/v2/" + repoName2 + "/blobs/uploads/")
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
+
+		/* a HEAD request by user1 on blob digest (found in user1Repo) should return 200
+		because user1 has permission to read user1Repo */
+		resp, err = userClient1.R().Head(baseURL + fmt.Sprintf("/v2/%s/blobs/%s", username1+"/"+"mysecondrepo", blobDigest))
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+		// user2 can upload without dedupe
+		err = UploadImageWithBasicAuth(img, baseURL, repoName2, tag, username2, password2)
+		So(err, ShouldBeNil)
+
+		// trying to mount a blob which can be found in cache and user has permission should return 201 instead of 202
+		resp, err = userClient2.R().SetQueryParams(params).Post(baseURL + "/v2/" + repoName2 + "/blobs/uploads/")
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
+	})
+}
+
 func TestAuthorizationWithOnlyAnonymousPolicy(t *testing.T) {
 	Convey("Make a new controller", t, func() {
 		const TestRepo = "my-repos/repo"

@@ -122,4 +122,47 @@ func TestBoltDBCache(t *testing.T) {
 		So(err, ShouldNotBeNil)
 		So(val, ShouldBeEmpty)
 	})
+
+	Convey("Test cache.GetAllBlos()", t, func() {
+		dir := t.TempDir()
+
+		log := log.NewLogger("debug", "")
+		So(log, ShouldNotBeNil)
+
+		_, err := storage.Create("boltdb", "failTypeAssertion", log)
+		So(err, ShouldNotBeNil)
+
+		cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{dir, "cache_test", false}, log)
+		So(cacheDriver, ShouldNotBeNil)
+
+		err = cacheDriver.PutBlob("digest", "first")
+		So(err, ShouldBeNil)
+
+		err = cacheDriver.PutBlob("digest", "second")
+		So(err, ShouldBeNil)
+
+		err = cacheDriver.PutBlob("digest", "third")
+		So(err, ShouldBeNil)
+
+		blobs, err := cacheDriver.GetAllBlobs("digest")
+		So(err, ShouldBeNil)
+
+		So(blobs, ShouldResemble, []string{"first", "second", "third"})
+
+		err = cacheDriver.DeleteBlob("digest", "first")
+		So(err, ShouldBeNil)
+
+		blobs, err = cacheDriver.GetAllBlobs("digest")
+		So(err, ShouldBeNil)
+
+		So(blobs, ShouldResemble, []string{"second", "third"})
+
+		err = cacheDriver.DeleteBlob("digest", "third")
+		So(err, ShouldBeNil)
+
+		blobs, err = cacheDriver.GetAllBlobs("digest")
+		So(err, ShouldBeNil)
+
+		So(blobs, ShouldResemble, []string{"second"})
+	})
 }

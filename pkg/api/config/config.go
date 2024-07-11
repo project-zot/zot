@@ -340,6 +340,10 @@ func (c *Config) IsLdapAuthEnabled() bool {
 	return false
 }
 
+func (c *Config) IsAuthzEnabled() bool {
+	return c.HTTP.AccessControl != nil
+}
+
 func (c *Config) IsMTLSAuthEnabled() bool {
 	if c.HTTP.TLS != nil &&
 		c.HTTP.TLS.Key != "" &&

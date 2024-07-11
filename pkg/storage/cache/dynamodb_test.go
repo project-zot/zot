@@ -144,6 +144,48 @@ func TestDynamoDB(t *testing.T) {
 		So(err, ShouldNotBeNil)
 		So(val, ShouldBeEmpty)
 	})
+
+	Convey("Test dynamoDB", t, func(c C) {
+		log := log.NewLogger("debug", "")
+
+		cacheDriver, err := storage.Create("dynamodb", cache.DynamoDBDriverParameters{
+			Endpoint:  os.Getenv("DYNAMODBMOCK_ENDPOINT"),
+			TableName: "BlobTable",
+			Region:    "us-east-2",
+		}, log)
+		So(cacheDriver, ShouldNotBeNil)
+		So(err, ShouldBeNil)
+
+		err = cacheDriver.PutBlob("digest", "first")
+		So(err, ShouldBeNil)
+
+		err = cacheDriver.PutBlob("digest", "second")
+		So(err, ShouldBeNil)
+
+		err = cacheDriver.PutBlob("digest", "third")
+		So(err, ShouldBeNil)
+
+		blobs, err := cacheDriver.GetAllBlobs("digest")
+		So(err, ShouldBeNil)
+
+		So(blobs, ShouldResemble, []string{"first", "second", "third"})
+
+		err = cacheDriver.DeleteBlob("digest", "first")
+		So(err, ShouldBeNil)
+
+		blobs, err = cacheDriver.GetAllBlobs("digest")
+		So(err, ShouldBeNil)
+
+		So(blobs, ShouldResemble, []string{"second", "third"})
+
+		err = cacheDriver.DeleteBlob("digest", "third")
+		So(err, ShouldBeNil)
+
+		blobs, err = cacheDriver.GetAllBlobs("digest")
+		So(err, ShouldBeNil)
+
+		So(blobs, ShouldResemble, []string{"second"})
+	})
 }
 
 func TestDynamoDBError(t *testing.T) {
