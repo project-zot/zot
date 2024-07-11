@@ -13,6 +13,7 @@
       "htpasswd": {
         "path": "test/data/htpasswd"
       },
+      "sessionKeysFile": "examples/sessionKeys.json",
       "apikey": true,
       "openid": {
         "providers": {

@@ -11,10 +11,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/gorilla/securecookie"
 	"github.com/gorilla/sessions"
 
-	zerr "zotregistry.dev/zot/errors"
 	"zotregistry.dev/zot/pkg/scheduler"
 	"zotregistry.dev/zot/pkg/storage"
 	storageConstants "zotregistry.dev/zot/pkg/storage/constants"
@@ -38,15 +36,10 @@ func (c *CookieStore) RunSessionCleaner(sch *scheduler.Scheduler) {
 	}
 }
 
-func NewCookieStore(storeController storage.StoreController) (*CookieStore, error) {
+func NewCookieStore(storeController storage.StoreController, hashKey, encryptKey []byte) (*CookieStore, error) {
 	// To store custom types in our cookies
 	// we must first register them using gob.Register
 	gob.Register(map[string]interface{}{})
-
-	hashKey, err := getHashKey()
-	if err != nil {
-		return &CookieStore{}, err
-	}
 
 	var store sessions.Store
 
@@ -60,14 +53,14 @@ func NewCookieStore(storeController storage.StoreController) (*CookieStore, erro
 			return &CookieStore{}, err
 		}
 
-		localStore := sessions.NewFilesystemStore(sessionsDir, hashKey)
+		localStore := sessions.NewFilesystemStore(sessionsDir, hashKey, encryptKey)
 
 		localStore.MaxAge(cookiesMaxAge)
 
 		store = localStore
 		needsCleanup = true
 	} else {
-		memStore := sessions.NewCookieStore(hashKey)
+		memStore := sessions.NewCookieStore(hashKey, encryptKey)
 
 		memStore.MaxAge(cookiesMaxAge)
 
@@ -79,15 +72,6 @@ func NewCookieStore(storeController storage.StoreController) (*CookieStore, erro
 		rootDir:      sessionsDir,
 		needsCleanup: needsCleanup,
 	}, nil
-}
-
-func getHashKey() ([]byte, error) {
-	hashKey := securecookie.GenerateRandomKey(64)
-	if hashKey == nil {
-		return nil, zerr.ErrHashKeyNotCreated
-	}
-
-	return hashKey, nil
 }
 
 func IsExpiredSession(dirEntry fs.DirEntry) bool {

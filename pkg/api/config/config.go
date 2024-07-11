@@ -67,18 +67,26 @@ type AuthHTPasswd struct {
 }
 
 type AuthConfig struct {
-	FailDelay int
-	HTPasswd  AuthHTPasswd
-	LDAP      *LDAPConfig
-	Bearer    *BearerConfig
-	OpenID    *OpenIDConfig
-	APIKey    bool
+	FailDelay         int
+	HTPasswd          AuthHTPasswd
+	LDAP              *LDAPConfig
+	Bearer            *BearerConfig
+	OpenID            *OpenIDConfig
+	APIKey            bool
+	SessionKeysFile   string
+	SessionHashKey    []byte `json:"-"`
+	SessionEncryptKey []byte `json:"-"`
 }
 
 type BearerConfig struct {
 	Realm   string
 	Service string
 	Cert    string
+}
+
+type SessionKeys struct {
+	HashKey    string
+	EncryptKey string `mapstructure:",omitempty"`
 }
 
 type OpenIDConfig struct {

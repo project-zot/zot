@@ -960,7 +960,7 @@ func TestCookiestoreCleanup(t *testing.T) {
 			DefaultStore: imgStore,
 		}
 
-		cookieStore, err := api.NewCookieStore(storeController)
+		cookieStore, err := api.NewCookieStore(storeController, nil, nil)
 		So(err, ShouldBeNil)
 
 		cookieStore.RunSessionCleaner(taskScheduler)
@@ -995,7 +995,7 @@ func TestCookiestoreCleanup(t *testing.T) {
 			DefaultStore: imgStore,
 		}
 
-		cookieStore, err := api.NewCookieStore(storeController)
+		cookieStore, err := api.NewCookieStore(storeController, []byte("secret"), nil)
 		So(err, ShouldBeNil)
 
 		err = os.Chmod(rootDir, 0o000)
