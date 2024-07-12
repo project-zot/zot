@@ -214,7 +214,7 @@ func TestDestinationRegistry(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(imageReference, ShouldNotBeNil)
 
-		imgStore := getImageStoreFromImageReference(imageReference, repoName, "1.0")
+		imgStore := getImageStoreFromImageReference(imageReference, repoName, "1.0", log)
 
 		// create a blob/layer
 		upload, err := imgStore.NewBlobUpload(repoName)
@@ -393,7 +393,7 @@ func TestDestinationRegistry(t *testing.T) {
 			So(err, ShouldBeNil)
 			So(imageReference, ShouldNotBeNil)
 
-			imgStore := getImageStoreFromImageReference(imageReference, repoName, "2.0")
+			imgStore := getImageStoreFromImageReference(imageReference, repoName, "2.0", log)
 
 			// upload image
 

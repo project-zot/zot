@@ -83,7 +83,7 @@ func New(
 		service.destination = NewDestinationRegistry(
 			storeController,
 			storage.StoreController{
-				DefaultStore: getImageStore(tmpDir),
+				DefaultStore: getImageStore(tmpDir, log),
 			},
 			metadb,
 			log,
