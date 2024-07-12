@@ -83,6 +83,14 @@ func TestInjectSyncUtils(t *testing.T) {
 	})
 }
 
+func TestNilDefaultStore(t *testing.T) {
+	Convey("Nil default store", t, func() {
+		ols := NewOciLayoutStorage(storage.StoreController{})
+		_, err := ols.GetImageReference(testImage, testImageTag)
+		So(err, ShouldEqual, zerr.ErrLocalImgStoreNotFound)
+	})
+}
+
 func TestSyncInternal(t *testing.T) {
 	Convey("Verify parseRepositoryReference func", t, func() {
 		repositoryReference := fmt.Sprintf("%s/%s", host, testImage)
