@@ -322,9 +322,9 @@ func (service *BaseService) SyncRepo(ctx context.Context, repo string) error {
 			return ctx.Err()
 		}
 
-		// if isCosignTag(tag) || common.IsReferrersTag(tag) {
-		// 	continue
-		// }
+		if isCosignTag(tag) || common.IsReferrersTag(tag) {
+			continue
+		}
 
 		err = service.syncTagAndReferrers(ctx, localRepo, repo, tag)
 		if err != nil {

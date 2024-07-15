@@ -4605,7 +4605,7 @@ func TestPeriodicallySignaturesErr(t *testing.T) {
 
 func TestSignatures(t *testing.T) {
 	Convey("Verify sync signatures", t, func() {
-		// updateDuration, _ := time.ParseDuration("30m")
+		updateDuration, _ := time.ParseDuration("10s")
 
 		sctlr, srcBaseURL, srcDir, _, _ := makeUpstreamServer(t, false, false)
 
@@ -4714,12 +4714,12 @@ func TestSignatures(t *testing.T) {
 					},
 				},
 			},
-			URLs: []string{srcBaseURL},
-			// PollInterval: updateDuration,
-			TLSVerify:  &tlsVerify,
-			CertDir:    "",
-			OnlySigned: &onlySigned,
-			OnDemand:   true,
+			URLs:         []string{srcBaseURL},
+			PollInterval: updateDuration,
+			TLSVerify:    &tlsVerify,
+			CertDir:      "",
+			OnlySigned:   &onlySigned,
+			OnDemand:     true,
 		}
 
 		defaultVal := true

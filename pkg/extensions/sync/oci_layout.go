@@ -29,8 +29,9 @@ func NewOciLayoutStorage(storeController storage.StoreController) OciLayoutStora
 func (oci OciLayoutStorageImpl) GetImageReference(repo string, reference string) (ref.Ref, error) {
 	localImageStore := oci.storeController.GetImageStore(repo)
 	if localImageStore == nil {
-		return nil, zerr.ErrLocalImgStoreNotFound
+		return ref.Ref{}, zerr.ErrLocalImgStoreNotFound
 	}
+
 	tempSyncPath := path.Join(localImageStore.RootDir(), repo, constants.SyncBlobUploadDir)
 
 	// create session folder
