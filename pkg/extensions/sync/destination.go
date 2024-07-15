@@ -92,7 +92,7 @@ func (registry *DestinationRegistry) GetImageReference(repo, reference string) (
 func (registry *DestinationRegistry) CommitImage(imageReference types.ImageReference, repo, reference string) error {
 	imageStore := registry.storeController.GetImageStore(repo)
 
-	tempImageStore := getImageStoreFromImageReference(imageReference, repo, reference)
+	tempImageStore := getImageStoreFromImageReference(imageReference, repo, reference, registry.log)
 
 	defer os.RemoveAll(tempImageStore.RootDir())
 
@@ -282,11 +282,11 @@ func (registry *DestinationRegistry) copyBlob(repo string, blobDigest digest.Dig
 }
 
 // use only with local imageReferences.
-func getImageStoreFromImageReference(imageReference types.ImageReference, repo, reference string,
+func getImageStoreFromImageReference(imageReference types.ImageReference, repo, reference string, log log.Logger,
 ) storageTypes.ImageStore {
 	tmpRootDir := getTempRootDirFromImageReference(imageReference, repo, reference)
 
-	return getImageStore(tmpRootDir)
+	return getImageStore(tmpRootDir, log)
 }
 
 func getTempRootDirFromImageReference(imageReference types.ImageReference, repo, reference string) string {
@@ -301,8 +301,8 @@ func getTempRootDirFromImageReference(imageReference types.ImageReference, repo,
 	return tmpRootDir
 }
 
-func getImageStore(rootDir string) storageTypes.ImageStore {
-	metrics := monitoring.NewMetricsServer(false, log.Logger{})
+func getImageStore(rootDir string, log log.Logger) storageTypes.ImageStore {
+	metrics := monitoring.NewMetricsServer(false, log)
 
-	return local.NewImageStore(rootDir, false, false, log.Logger{}, metrics, nil, nil)
+	return local.NewImageStore(rootDir, false, false, log, metrics, nil, nil)
 }

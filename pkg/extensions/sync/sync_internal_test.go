@@ -83,6 +83,14 @@ func TestInjectSyncUtils(t *testing.T) {
 	})
 }
 
+func TestNilDefaultStore(t *testing.T) {
+	Convey("Nil default store", t, func() {
+		ols := NewOciLayoutStorage(storage.StoreController{})
+		_, err := ols.GetImageReference(testImage, testImageTag)
+		So(err, ShouldEqual, zerr.ErrLocalImgStoreNotFound)
+	})
+}
+
 func TestSyncInternal(t *testing.T) {
 	Convey("Verify parseRepositoryReference func", t, func() {
 		repositoryReference := fmt.Sprintf("%s/%s", host, testImage)
@@ -214,7 +222,7 @@ func TestDestinationRegistry(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(imageReference, ShouldNotBeNil)
 
-		imgStore := getImageStoreFromImageReference(imageReference, repoName, "1.0")
+		imgStore := getImageStoreFromImageReference(imageReference, repoName, "1.0", log)
 
 		// create a blob/layer
 		upload, err := imgStore.NewBlobUpload(repoName)
@@ -393,7 +401,7 @@ func TestDestinationRegistry(t *testing.T) {
 			So(err, ShouldBeNil)
 			So(imageReference, ShouldNotBeNil)
 
-			imgStore := getImageStoreFromImageReference(imageReference, repoName, "2.0")
+			imgStore := getImageStoreFromImageReference(imageReference, repoName, "2.0", log)
 
 			// upload image
 
