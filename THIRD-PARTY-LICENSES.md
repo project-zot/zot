@@ -1,6 +1,5 @@
 Module | License URL | License
 ---|---|---
-
 cloud.google.com/go/compute/metadata|https://github.com/googleapis/google-cloud-go/blob/compute/metadata/v0.3.0/compute/metadata/LICENSE|Apache-2.0
 cloud.google.com/go/iam|https://github.com/googleapis/google-cloud-go/blob/iam/v1.1.6/iam/LICENSE|Apache-2.0
 cloud.google.com/go/internal|https://github.com/googleapis/google-cloud-go/blob/v0.112.1/LICENSE|Apache-2.0
@@ -294,7 +293,7 @@ github.com/opencontainers/go-digest|https://github.com/opencontainers/go-digest/
 github.com/opencontainers/image-spec/specs-go|https://github.com/opencontainers/image-spec/blob/v1.1.0/LICENSE|Apache-2.0
 github.com/opencontainers/image-spec|https://github.com/opencontainers/image-spec/blob/v1.1.0/LICENSE|Apache-2.0
 github.com/opencontainers/runtime-spec/specs-go|https://github.com/opencontainers/runtime-spec/blob/v1.2.0/LICENSE|Apache-2.0
-github.com/opencontainers/selinux|https://github.com/opencontainers/selinux/blob/v1.11.0/LICENSE|Apache-2.0
+github.com/opencontainers/selinux/go-selinux|https://github.com/opencontainers/selinux/blob/v1.11.0/LICENSE|Apache-2.0
 github.com/opentracing/opentracing-go|https://github.com/opentracing/opentracing-go/blob/v1.2.0/LICENSE|Apache-2.0
 github.com/package-url/packageurl-go|https://github.com/package-url/packageurl-go/blob/v0.1.3/LICENSE|MIT
 github.com/pborman/uuid|https://github.com/pborman/uuid/blob/v1.2.1/LICENSE|BSD-3-Clause
@@ -398,7 +397,6 @@ golang.org/x/oauth2|https://cs.opensource.google/go/x/oauth2/+/v0.21.0:LICENSE|B
 golang.org/x/sync/errgroup|https://cs.opensource.google/go/x/sync/+/v0.7.0:LICENSE|BSD-3-Clause
 golang.org/x/sync/semaphore|https://cs.opensource.google/go/x/sync/+/v0.7.0:LICENSE|BSD-3-Clause
 golang.org/x/sync|https://cs.opensource.google/go/x/sync/+/v0.7.0:LICENSE|BSD-3-Clause
-golang.org/x/sys/cpu|https://cs.opensource.google/go/x/sys/+/v0.22.0:LICENSE|BSD-3-Clause
 golang.org/x/sys/unix|https://cs.opensource.google/go/x/sys/+/v0.22.0:LICENSE|BSD-3-Clause
 golang.org/x/sys|https://cs.opensource.google/go/x/sys/+/v0.22.0:LICENSE|BSD-3-Clause
 golang.org/x/term|https://cs.opensource.google/go/x/term/+/v0.22.0:LICENSE|BSD-3-Clause
@@ -437,6 +435,7 @@ k8s.io/component-base|https://github.com/kubernetes/component-base/blob/v0.30.1/
 k8s.io/klog/v2|https://github.com/kubernetes/klog/blob/v2.120.1/LICENSE|Apache-2.0
 k8s.io/kubectl|https://github.com/kubernetes/kubectl/blob/v0.30.1/LICENSE|Apache-2.0
 modernc.org/gc/v3|https://gitlab.com/cznic/gc/blob/573471604cb6/v3/LICENSE|BSD-3-Clause
+modernc.org/libc/honnef.co/go/netdb|https://gitlab.com/cznic/libc/blob/v1.52.1/honnef.co/go/netdb/LICENSE|MIT
 modernc.org/libc|https://gitlab.com/cznic/libc/blob/v1.52.1/LICENSE-GO|BSD-3-Clause
 modernc.org/mathutil|Unknown|Unknown
 modernc.org/memory|https://gitlab.com/cznic/memory/blob/v1.8.0/LICENSE-GO|BSD-3-Clause
