@@ -6,8 +6,4 @@ export GOFLAGS="-tags=debug,imagetrust,lint,metrics,mgmt,profile,scrub,search,sy
 echo "Module | License URL | License" > THIRD-PARTY-LICENSES.md
 echo "---|---|---" >> THIRD-PARTY-LICENSES.md;
 
-for i in $(go list -m all  | awk '{print $1}'); do
-    l=$(go-licenses csv $i 2>/dev/null)
-    if [ $? -ne 0 ]; then continue; fi
-    echo $l | tr \, \| | tr ' ' '\n'
-done | LC_ALL=C sort -u >> THIRD-PARTY-LICENSES.md
+go list -m all | awk '{print $1}' | xargs -P20 -n1 nice -n 15 go-licenses csv 2>/dev/null | awk -F, '{print $1"|"$2"|"$3}' | LC_ALL=C sort -u >> THIRD-PARTY-LICENSES.md
