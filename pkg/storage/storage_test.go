@@ -285,6 +285,22 @@ func TestStorageAPIs(t *testing.T) {
 					So(v, ShouldBeEmpty)
 				})
 
+				Convey("Full blob upload unavailable algorithm", func() {
+					body := []byte("this blob will be hashed using an unavailable hashing algorithm")
+					buf := bytes.NewBuffer(body)
+					digest := godigest.Digest("md5:8114c3f59ef9dcf737410e0f4b00a154")
+					upload, n, err := imgStore.FullBlobUpload("test", buf, digest)
+					So(err, ShouldEqual, godigest.ErrDigestUnsupported)
+					So(n, ShouldEqual, -1)
+					So(upload, ShouldEqual, "")
+
+					// Check no blobs are returned and there are no errors
+					// if other paths for different algorithms are missing
+					digests, err := imgStore.GetAllBlobs("test")
+					So(err, ShouldBeNil)
+					So(digests, ShouldBeEmpty)
+				})
+
 				Convey("Full blob upload", func() {
 					body := []byte("this is a blob")
 					buf := bytes.NewBuffer(body)
@@ -296,6 +312,51 @@ func TestStorageAPIs(t *testing.T) {
 
 					err = imgStore.VerifyBlobDigestValue("test", digest)
 					So(err, ShouldBeNil)
+
+					// Check the blob is returned and there are no errors
+					// if other paths for different algorithms are missing
+					digests, err := imgStore.GetAllBlobs("test")
+					So(err, ShouldBeNil)
+					So(digests, ShouldContain, digest)
+					So(len(digests), ShouldEqual, 1)
+				})
+
+				Convey("Full blob upload sha512", func() {
+					body := []byte("this blob will be hashed using sha512")
+					buf := bytes.NewBuffer(body)
+					digest := godigest.SHA512.FromBytes(body)
+					upload, n, err := imgStore.FullBlobUpload("test", buf, digest)
+					So(err, ShouldBeNil)
+					So(n, ShouldEqual, len(body))
+					So(upload, ShouldNotBeEmpty)
+
+					// Check the blob is returned and there are no errors
+					// if other paths for different algorithms are missing
+					digests, err := imgStore.GetAllBlobs("test")
+					So(err, ShouldBeNil)
+					So(digests, ShouldContain, digest)
+					// imgStore is reused so look for this digest and
+					// the ones uploaded by previous tests
+					So(len(digests), ShouldEqual, 2)
+				})
+
+				Convey("Full blob upload sha384", func() {
+					body := []byte("this blob will be hashed using sha384")
+					buf := bytes.NewBuffer(body)
+					digest := godigest.SHA384.FromBytes(body)
+					upload, n, err := imgStore.FullBlobUpload("test", buf, digest)
+					So(err, ShouldBeNil)
+					So(n, ShouldEqual, len(body))
+					So(upload, ShouldNotBeEmpty)
+
+					// Check the blob is returned and there are no errors
+					// if other paths for different algorithms are missing
+					digests, err := imgStore.GetAllBlobs("test")
+					So(err, ShouldBeNil)
+					So(digests, ShouldContain, digest)
+					// imgStore is reused so look for this digest and
+					// the ones uploaded by previous tests
+					So(len(digests), ShouldEqual, 3)
 				})
 
 				Convey("New blob upload", func() {

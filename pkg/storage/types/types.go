@@ -60,7 +60,7 @@ type ImageStore interface { //nolint:interfacebloat
 	RunDedupeBlobs(interval time.Duration, sch *scheduler.Scheduler)
 	RunDedupeForDigest(ctx context.Context, digest godigest.Digest, dedupe bool, duplicateBlobs []string) error
 	GetNextDigestWithBlobPaths(repos []string, lastDigests []godigest.Digest) (godigest.Digest, []string, error)
-	GetAllBlobs(repo string) ([]string, error)
+	GetAllBlobs(repo string) ([]godigest.Digest, error)
 	PopulateStorageMetrics(interval time.Duration, sch *scheduler.Scheduler)
 	VerifyBlobDigestValue(repo string, digest godigest.Digest) error
 	GetAllDedupeReposCandidates(digest godigest.Digest) ([]string, error)

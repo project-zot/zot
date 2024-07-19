@@ -11167,6 +11167,211 @@ func RunAuthorizationTests(t *testing.T, client *resty.Client, baseURL, user str
 	})
 }
 
+func TestSupportedDigestAlgorithms(t *testing.T) {
+	port := test.GetFreePort()
+	baseURL := test.GetBaseURL(port)
+
+	conf := config.New()
+	conf.HTTP.Port = port
+
+	dir := t.TempDir()
+
+	ctlr := api.NewController(conf)
+	ctlr.Config.Storage.RootDirectory = dir
+	ctlr.Config.Storage.Dedupe = false
+	ctlr.Config.Storage.GC = false
+
+	cm := test.NewControllerManager(ctlr)
+
+	cm.StartAndWait(port)
+	defer cm.StopServer()
+
+	Convey("Test SHA512 single-arch image", t, func() {
+		image := CreateImageWithDigestAlgorithm(godigest.SHA512).
+			RandomLayers(1, 10).DefaultConfig().Build()
+
+		name := "algo-sha512"
+		tag := "singlearch"
+
+		err := UploadImage(image, baseURL, name, tag)
+		So(err, ShouldBeNil)
+
+		client := resty.New()
+
+		// The server picks canonical digests when tags are pushed
+		// See https://github.com/opencontainers/distribution-spec/issues/494
+		// It would be nice to be able to push tags with other digest algorithms and verify those are returned
+		// but there is no way to specify a client preference
+		// so all we can do is verify the correct algorithm is returned
+
+		expectedDigestStr := image.DigestForAlgorithm(godigest.Canonical).String()
+
+		verifyReturnedManifestDigest(t, client, baseURL, name, tag, expectedDigestStr)
+		verifyReturnedManifestDigest(t, client, baseURL, name, expectedDigestStr, expectedDigestStr)
+	})
+
+	Convey("Test SHA512 single-arch image pushed by digest", t, func() {
+		image := CreateImageWithDigestAlgorithm(godigest.SHA512).
+			RandomLayers(1, 11).DefaultConfig().Build()
+
+		name := "algo-sha512-2"
+
+		err := UploadImage(image, baseURL, name, image.DigestStr())
+		So(err, ShouldBeNil)
+
+		client := resty.New()
+
+		expectedDigestStr := image.DigestForAlgorithm(godigest.SHA512).String()
+
+		verifyReturnedManifestDigest(t, client, baseURL, name, expectedDigestStr, expectedDigestStr)
+	})
+
+	Convey("Test SHA384 single-arch image", t, func() {
+		image := CreateImageWithDigestAlgorithm(godigest.SHA384).
+			RandomLayers(1, 10).DefaultConfig().Build()
+
+		name := "algo-sha384"
+		tag := "singlearch"
+
+		err := UploadImage(image, baseURL, name, tag)
+		So(err, ShouldBeNil)
+
+		client := resty.New()
+
+		// The server picks canonical digests when tags are pushed
+		// See https://github.com/opencontainers/distribution-spec/issues/494
+		// It would be nice to be able to push tags with other digest algorithms and verify those are returned
+		// but there is no way to specify a client preference
+		// so all we can do is verify the correct algorithm is returned
+
+		expectedDigestStr := image.DigestForAlgorithm(godigest.Canonical).String()
+
+		verifyReturnedManifestDigest(t, client, baseURL, name, tag, expectedDigestStr)
+		verifyReturnedManifestDigest(t, client, baseURL, name, expectedDigestStr, expectedDigestStr)
+	})
+
+	Convey("Test SHA512 multi-arch image", t, func() {
+		subImage1 := CreateImageWithDigestAlgorithm(godigest.SHA512).RandomLayers(1, 10).
+			DefaultConfig().Build()
+		subImage2 := CreateImageWithDigestAlgorithm(godigest.SHA512).RandomLayers(1, 10).
+			DefaultConfig().Build()
+		multiarch := CreateMultiarchWithDigestAlgorithm(godigest.SHA512).
+			Images([]Image{subImage1, subImage2}).Build()
+
+		name := "algo-sha512"
+		tag := "multiarch"
+
+		err := UploadMultiarchImage(multiarch, baseURL, name, tag)
+		So(err, ShouldBeNil)
+
+		client := resty.New()
+
+		// The server picks canonical digests when tags are pushed
+		// See https://github.com/opencontainers/distribution-spec/issues/494
+		// It would be nice to be able to push tags with other digest algorithms and verify those are returned
+		// but there is no way to specify a client preference
+		// so all we can do is verify the correct algorithm is returned
+		expectedDigestStr := multiarch.DigestForAlgorithm(godigest.Canonical).String()
+
+		verifyReturnedManifestDigest(t, client, baseURL, name, tag, expectedDigestStr)
+		verifyReturnedManifestDigest(t, client, baseURL, name, expectedDigestStr, expectedDigestStr)
+
+		// While the expected multiarch manifest digest is always using the canonical algorithm
+		// the sub-imgage manifest digest can use any algorith
+		verifyReturnedManifestDigest(t, client, baseURL, name,
+			subImage1.ManifestDescriptor.Digest.String(), subImage1.ManifestDescriptor.Digest.String())
+		verifyReturnedManifestDigest(t, client, baseURL, name,
+			subImage2.ManifestDescriptor.Digest.String(), subImage2.ManifestDescriptor.Digest.String())
+	})
+
+	Convey("Test SHA512 multi-arch image pushed by digest", t, func() {
+		subImage1 := CreateImageWithDigestAlgorithm(godigest.SHA512).RandomLayers(1, 10).
+			DefaultConfig().Build()
+		subImage2 := CreateImageWithDigestAlgorithm(godigest.SHA512).RandomLayers(1, 10).
+			DefaultConfig().Build()
+		multiarch := CreateMultiarchWithDigestAlgorithm(godigest.SHA512).
+			Images([]Image{subImage1, subImage2}).Build()
+
+		name := "algo-sha512-2"
+
+		t.Log(multiarch.DigestStr())
+
+		err := UploadMultiarchImage(multiarch, baseURL, name, multiarch.DigestStr())
+		So(err, ShouldBeNil)
+
+		client := resty.New()
+
+		expectedDigestStr := multiarch.DigestForAlgorithm(godigest.SHA512).String()
+		verifyReturnedManifestDigest(t, client, baseURL, name, expectedDigestStr, expectedDigestStr)
+
+		// While the expected multiarch manifest digest is always using the canonical algorithm
+		// the sub-imgage manifest digest can use any algorith
+		verifyReturnedManifestDigest(t, client, baseURL, name,
+			subImage1.ManifestDescriptor.Digest.String(), subImage1.ManifestDescriptor.Digest.String())
+		verifyReturnedManifestDigest(t, client, baseURL, name,
+			subImage2.ManifestDescriptor.Digest.String(), subImage2.ManifestDescriptor.Digest.String())
+	})
+
+	Convey("Test SHA384 multi-arch image", t, func() {
+		subImage1 := CreateImageWithDigestAlgorithm(godigest.SHA384).RandomLayers(1, 10).
+			DefaultConfig().Build()
+		subImage2 := CreateImageWithDigestAlgorithm(godigest.SHA384).RandomLayers(1, 10).
+			DefaultConfig().Build()
+		multiarch := CreateMultiarchWithDigestAlgorithm(godigest.SHA384).
+			Images([]Image{subImage1, subImage2}).Build()
+
+		name := "algo-sha384"
+		tag := "multiarch"
+
+		err := UploadMultiarchImage(multiarch, baseURL, name, tag)
+		So(err, ShouldBeNil)
+
+		client := resty.New()
+
+		// The server picks canonical digests when tags are pushed
+		// See https://github.com/opencontainers/distribution-spec/issues/494
+		// It would be nice to be able to push tags with other digest algorithms and verify those are returned
+		// but there is no way to specify a client preference
+		// so all we can do is verify the correct algorithm is returned
+		expectedDigestStr := multiarch.DigestForAlgorithm(godigest.Canonical).String()
+
+		verifyReturnedManifestDigest(t, client, baseURL, name, tag, expectedDigestStr)
+		verifyReturnedManifestDigest(t, client, baseURL, name, expectedDigestStr, expectedDigestStr)
+
+		// While the expected multiarch manifest digest is always using the canonical algorithm
+		// the sub-imgage manifest digest can use any algorith
+		verifyReturnedManifestDigest(t, client, baseURL, name,
+			subImage1.ManifestDescriptor.Digest.String(), subImage1.ManifestDescriptor.Digest.String())
+		verifyReturnedManifestDigest(t, client, baseURL, name,
+			subImage2.ManifestDescriptor.Digest.String(), subImage2.ManifestDescriptor.Digest.String())
+	})
+}
+
+func verifyReturnedManifestDigest(t *testing.T, client *resty.Client, baseURL, repoName,
+	reference, expectedDigestStr string,
+) {
+	t.Helper()
+
+	t.Logf("Verify Docker-Content-Digest returned for repo %s reference %s is %s",
+		repoName, reference, expectedDigestStr)
+
+	getResponse, err := client.R().Get(fmt.Sprintf("%s/v2/%s/manifests/%s", baseURL, repoName, reference))
+	So(err, ShouldBeNil)
+	So(getResponse, ShouldNotBeNil)
+	So(getResponse.StatusCode(), ShouldEqual, http.StatusOK)
+
+	contentDigestStr := getResponse.Header().Get("Docker-Content-Digest")
+	So(contentDigestStr, ShouldEqual, expectedDigestStr)
+
+	getResponse, err = client.R().Head(fmt.Sprintf("%s/v2/%s/manifests/%s", baseURL, repoName, reference))
+	So(err, ShouldBeNil)
+	So(getResponse, ShouldNotBeNil)
+	So(getResponse.StatusCode(), ShouldEqual, http.StatusOK)
+
+	contentDigestStr = getResponse.Header().Get("Docker-Content-Digest")
+	So(contentDigestStr, ShouldEqual, expectedDigestStr)
+}
+
 func getEmptyImageConfig() ([]byte, godigest.Digest) {
 	config := ispec.Image{}
 

@@ -2205,7 +2205,7 @@ func TestRebuildDedupeMockStoreDriver(t *testing.T) {
 						return false
 					},
 					PathFn: func() string {
-						return fmt.Sprintf("path/to/%s", validDigest.Encoded())
+						return fmt.Sprintf("path/to/%s/%s", validDigest.Algorithm().String(), validDigest.Encoded())
 					},
 				})
 			},
@@ -2221,7 +2221,7 @@ func TestRebuildDedupeMockStoreDriver(t *testing.T) {
 	Convey("Trigger GetContent error in restoreDedupedBlobs()", t, func() {
 		imgStore := createMockStorage(testDir, tdir, false, &StorageDriverMock{
 			StatFn: func(ctx context.Context, path string) (driver.FileInfo, error) {
-				if path == fmt.Sprintf("path/to/%s", validDigest.Encoded()) {
+				if path == fmt.Sprintf("path/to/%s/%s", validDigest.Algorithm().String(), validDigest.Encoded()) {
 					return &FileInfoMock{
 						SizeFn: func() int64 {
 							return int64(0)
@@ -2241,7 +2241,7 @@ func TestRebuildDedupeMockStoreDriver(t *testing.T) {
 						return false
 					},
 					PathFn: func() string {
-						return fmt.Sprintf("path/to/%s", validDigest.Encoded())
+						return fmt.Sprintf("path/to/%s/%s", validDigest.Algorithm().String(), validDigest.Encoded())
 					},
 				})
 				_ = walkFn(&FileInfoMock{
@@ -2249,7 +2249,7 @@ func TestRebuildDedupeMockStoreDriver(t *testing.T) {
 						return false
 					},
 					PathFn: func() string {
-						return fmt.Sprintf("path/to/second/%s", validDigest.Encoded())
+						return fmt.Sprintf("path/to/second/%s/%s", validDigest.Algorithm().String(), validDigest.Encoded())
 					},
 				})
 
@@ -2270,7 +2270,7 @@ func TestRebuildDedupeMockStoreDriver(t *testing.T) {
 	Convey("Trigger GetContent error in restoreDedupedBlobs()", t, func() {
 		imgStore := createMockStorage(testDir, tdir, false, &StorageDriverMock{
 			StatFn: func(ctx context.Context, path string) (driver.FileInfo, error) {
-				if path == fmt.Sprintf("path/to/%s", validDigest.Encoded()) {
+				if path == fmt.Sprintf("path/to/%s/%s", validDigest.Algorithm().String(), validDigest.Encoded()) {
 					return &FileInfoMock{
 						SizeFn: func() int64 {
 							return int64(0)
@@ -2290,7 +2290,7 @@ func TestRebuildDedupeMockStoreDriver(t *testing.T) {
 						return false
 					},
 					PathFn: func() string {
-						return fmt.Sprintf("path/to/%s", validDigest.Encoded())
+						return fmt.Sprintf("path/to/%s/%s", validDigest.Algorithm().String(), validDigest.Encoded())
 					},
 				})
 				_ = walkFn(&FileInfoMock{
@@ -2298,7 +2298,7 @@ func TestRebuildDedupeMockStoreDriver(t *testing.T) {
 						return false
 					},
 					PathFn: func() string {
-						return fmt.Sprintf("path/to/second/%s", validDigest.Encoded())
+						return fmt.Sprintf("path/to/second/%s/%s", validDigest.Algorithm().String(), validDigest.Encoded())
 					},
 				})
 
@@ -2319,7 +2319,7 @@ func TestRebuildDedupeMockStoreDriver(t *testing.T) {
 	Convey("Trigger Stat() error in restoreDedupedBlobs()", t, func() {
 		imgStore := createMockStorage(testDir, tdir, false, &StorageDriverMock{
 			StatFn: func(ctx context.Context, path string) (driver.FileInfo, error) {
-				if path == fmt.Sprintf("path/to/%s", validDigest.Encoded()) {
+				if path == fmt.Sprintf("path/to/%s/%s", validDigest.Algorithm().String(), validDigest.Encoded()) {
 					return &FileInfoMock{
 						SizeFn: func() int64 {
 							return int64(10)
@@ -2339,7 +2339,7 @@ func TestRebuildDedupeMockStoreDriver(t *testing.T) {
 						return false
 					},
 					PathFn: func() string {
-						return fmt.Sprintf("path/to/%s", validDigest.Encoded())
+						return fmt.Sprintf("path/to/%s/%s", validDigest.Algorithm().String(), validDigest.Encoded())
 					},
 				})
 				_ = walkFn(&FileInfoMock{
@@ -2347,7 +2347,7 @@ func TestRebuildDedupeMockStoreDriver(t *testing.T) {
 						return false
 					},
 					PathFn: func() string {
-						return fmt.Sprintf("path/to/second/%s", validDigest.Encoded())
+						return fmt.Sprintf("path/to/second/%s/%s", validDigest.Algorithm().String(), validDigest.Encoded())
 					},
 				})
 
@@ -2364,7 +2364,7 @@ func TestRebuildDedupeMockStoreDriver(t *testing.T) {
 		Convey("Trigger Stat() error in dedupeBlobs()", func() {
 			imgStore := createMockStorage(testDir, t.TempDir(), true, &StorageDriverMock{
 				StatFn: func(ctx context.Context, path string) (driver.FileInfo, error) {
-					if path == fmt.Sprintf("path/to/%s", validDigest.Encoded()) {
+					if path == fmt.Sprintf("path/to/%s/%s", validDigest.Algorithm().String(), validDigest.Encoded()) {
 						return &FileInfoMock{
 							SizeFn: func() int64 {
 								return int64(10)
@@ -2384,7 +2384,7 @@ func TestRebuildDedupeMockStoreDriver(t *testing.T) {
 							return false
 						},
 						PathFn: func() string {
-							return fmt.Sprintf("path/to/%s", validDigest.Encoded())
+							return fmt.Sprintf("path/to/%s/%s", validDigest.Algorithm().String(), validDigest.Encoded())
 						},
 					})
 					_ = walkFn(&FileInfoMock{
@@ -2392,7 +2392,7 @@ func TestRebuildDedupeMockStoreDriver(t *testing.T) {
 							return false
 						},
 						PathFn: func() string {
-							return fmt.Sprintf("path/to/second/%s", validDigest.Encoded())
+							return fmt.Sprintf("path/to/second/%s/%s", validDigest.Algorithm().String(), validDigest.Encoded())
 						},
 					})
 
@@ -2412,7 +2412,7 @@ func TestRebuildDedupeMockStoreDriver(t *testing.T) {
 		tdir := t.TempDir()
 		imgStore := createMockStorage(testDir, tdir, true, &StorageDriverMock{
 			StatFn: func(ctx context.Context, path string) (driver.FileInfo, error) {
-				if path == fmt.Sprintf("path/to/%s", validDigest.Encoded()) {
+				if path == fmt.Sprintf("path/to/%s/%s", validDigest.Algorithm().String(), validDigest.Encoded()) {
 					return &FileInfoMock{
 						SizeFn: func() int64 {
 							return int64(0)
@@ -2432,7 +2432,7 @@ func TestRebuildDedupeMockStoreDriver(t *testing.T) {
 						return false
 					},
 					PathFn: func() string {
-						return fmt.Sprintf("path/to/%s", validDigest.Encoded())
+						return fmt.Sprintf("path/to/%s/%s", validDigest.Algorithm().String(), validDigest.Encoded())
 					},
 				})
 				_ = walkFn(&FileInfoMock{
@@ -2440,7 +2440,7 @@ func TestRebuildDedupeMockStoreDriver(t *testing.T) {
 						return false
 					},
 					PathFn: func() string {
-						return fmt.Sprintf("path/to/second/%s", validDigest.Encoded())
+						return fmt.Sprintf("path/to/second/%s/%s", validDigest.Algorithm().String(), validDigest.Encoded())
 					},
 				})
 
@@ -2463,7 +2463,7 @@ func TestRebuildDedupeMockStoreDriver(t *testing.T) {
 		tdir := t.TempDir()
 		imgStore := createMockStorage(testDir, tdir, true, &StorageDriverMock{
 			StatFn: func(ctx context.Context, path string) (driver.FileInfo, error) {
-				if path == fmt.Sprintf("path/to/%s", validDigest.Encoded()) {
+				if path == fmt.Sprintf("path/to/%s/%s", validDigest.Algorithm().String(), validDigest.Encoded()) {
 					return &FileInfoMock{
 						SizeFn: func() int64 {
 							return int64(0)
@@ -2483,7 +2483,7 @@ func TestRebuildDedupeMockStoreDriver(t *testing.T) {
 						return false
 					},
 					PathFn: func() string {
-						return fmt.Sprintf("path/to/%s", validDigest.Encoded())
+						return fmt.Sprintf("path/to/%s/%s", validDigest.Algorithm().String(), validDigest.Encoded())
 					},
 				})
 				_ = walkFn(&FileInfoMock{
@@ -2491,7 +2491,7 @@ func TestRebuildDedupeMockStoreDriver(t *testing.T) {
 						return false
 					},
 					PathFn: func() string {
-						return fmt.Sprintf("path/to/second/%s", validDigest.Encoded())
+						return fmt.Sprintf("path/to/second/%s/%s", validDigest.Algorithm().String(), validDigest.Encoded())
 					},
 				})
 
@@ -2531,7 +2531,7 @@ func TestRebuildDedupeMockStoreDriver(t *testing.T) {
 						return false
 					},
 					PathFn: func() string {
-						return fmt.Sprintf("path/to/%s", validDigest.Encoded())
+						return fmt.Sprintf("path/to/%s/%s", validDigest.Algorithm().String(), validDigest.Encoded())
 					},
 				})
 				_ = walkFn(&FileInfoMock{
@@ -2539,7 +2539,7 @@ func TestRebuildDedupeMockStoreDriver(t *testing.T) {
 						return false
 					},
 					PathFn: func() string {
-						return fmt.Sprintf("path/to/second/%s", validDigest.Encoded())
+						return fmt.Sprintf("path/to/second/%s/%s", validDigest.Algorithm().String(), validDigest.Encoded())
 					},
 				})
 
@@ -2569,7 +2569,7 @@ func TestRebuildDedupeMockStoreDriver(t *testing.T) {
 	Convey("Trigger cache errors", t, func() {
 		storageDriverMockIfBranch := &StorageDriverMock{
 			StatFn: func(ctx context.Context, path string) (driver.FileInfo, error) {
-				if path == fmt.Sprintf("path/to/%s", validDigest.Encoded()) {
+				if path == fmt.Sprintf("path/to/%s/%s", validDigest.Algorithm().String(), validDigest.Encoded()) {
 					return &FileInfoMock{
 						SizeFn: func() int64 {
 							return int64(0)
@@ -2589,7 +2589,7 @@ func TestRebuildDedupeMockStoreDriver(t *testing.T) {
 						return false
 					},
 					PathFn: func() string {
-						return fmt.Sprintf("path/to/%s", validDigest.Encoded())
+						return fmt.Sprintf("path/to/%s/%s", validDigest.Algorithm().String(), validDigest.Encoded())
 					},
 				})
 				_ = walkFn(&FileInfoMock{
@@ -2597,7 +2597,7 @@ func TestRebuildDedupeMockStoreDriver(t *testing.T) {
 						return false
 					},
 					PathFn: func() string {
-						return fmt.Sprintf("path/to/second/%s", validDigest.Encoded())
+						return fmt.Sprintf("path/to/second/%s/%s", validDigest.Algorithm().String(), validDigest.Encoded())
 					},
 				})
 
@@ -2627,7 +2627,7 @@ func TestRebuildDedupeMockStoreDriver(t *testing.T) {
 						return false
 					},
 					PathFn: func() string {
-						return fmt.Sprintf("path/to/%s", validDigest.Encoded())
+						return fmt.Sprintf("path/to/%s/%s", validDigest.Algorithm().String(), validDigest.Encoded())
 					},
 				})
 				_ = walkFn(&FileInfoMock{
@@ -2635,7 +2635,7 @@ func TestRebuildDedupeMockStoreDriver(t *testing.T) {
 						return false
 					},
 					PathFn: func() string {
-						return fmt.Sprintf("path/to/second/%s", validDigest.Encoded())
+						return fmt.Sprintf("path/to/second/%s/%s", validDigest.Algorithm().String(), validDigest.Encoded())
 					},
 				})
 
@@ -2668,7 +2668,7 @@ func TestRebuildDedupeMockStoreDriver(t *testing.T) {
 						return false
 					},
 					PutBlobFn: func(digest godigest.Digest, path string) error {
-						if path == fmt.Sprintf("path/to/%s", validDigest.Encoded()) {
+						if path == fmt.Sprintf("path/to/%s/%s", validDigest.Algorithm().String(), validDigest.Encoded()) {
 							return errCache
 						}
 

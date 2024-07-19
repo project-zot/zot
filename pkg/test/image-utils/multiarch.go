@@ -11,8 +11,9 @@ import (
 )
 
 type MultiarchImage struct {
-	Index  ispec.Index
-	Images []Image
+	Index           ispec.Index
+	Images          []Image
+	digestAlgorithm godigest.Algorithm
 
 	IndexDescriptor ispec.Descriptor
 }
@@ -23,11 +24,26 @@ func (mi *MultiarchImage) Digest() godigest.Digest {
 		panic("unreachable: ispec.Index should always be marshable")
 	}
 
-	return godigest.FromBytes(indexBlob)
+	digestAlgorithm := mi.digestAlgorithm
+
+	if digestAlgorithm == "" {
+		digestAlgorithm = godigest.Canonical
+	}
+
+	return digestAlgorithm.FromBytes(indexBlob)
 }
 
 func (mi *MultiarchImage) DigestStr() string {
 	return mi.Digest().String()
+}
+
+func (mi *MultiarchImage) DigestForAlgorithm(digestAlgorithm godigest.Algorithm) godigest.Digest {
+	blob, err := json.Marshal(mi.Index)
+	if err != nil {
+		panic("unreachable: ispec.Index should always be marshable")
+	}
+
+	return digestAlgorithm.FromBytes(blob)
 }
 
 func (mi MultiarchImage) AsImageMeta() mTypes.ImageMeta {
@@ -61,7 +77,15 @@ type MultiarchBuilder interface {
 }
 
 func CreateMultiarchWith() ImagesBuilder {
-	return &BaseMultiarchBuilder{}
+	return &BaseMultiarchBuilder{
+		digestAlgorithm: godigest.Canonical,
+	}
+}
+
+func CreateMultiarchWithDigestAlgorithm(digestAlgorithm godigest.Algorithm) ImagesBuilder {
+	return &BaseMultiarchBuilder{
+		digestAlgorithm: digestAlgorithm,
+	}
 }
 
 func CreateRandomMultiarch() MultiarchImage {
@@ -85,10 +109,11 @@ func CreateVulnerableMultiarch() MultiarchImage {
 }
 
 type BaseMultiarchBuilder struct {
-	images       []Image
-	subject      *ispec.Descriptor
-	artifactType string
-	annotations  map[string]string
+	images          []Image
+	subject         *ispec.Descriptor
+	artifactType    string
+	annotations     map[string]string
+	digestAlgorithm godigest.Algorithm
 }
 
 func (mb *BaseMultiarchBuilder) Images(images []Image) MultiarchBuilder {
@@ -154,11 +179,12 @@ func (mb *BaseMultiarchBuilder) Build() MultiarchImage {
 		panic("unreachable: ispec.Index should always be marshable")
 	}
 
-	indexDigest := godigest.FromBytes(indexBlob)
+	indexDigest := mb.digestAlgorithm.FromBytes(indexBlob)
 
 	return MultiarchImage{
-		Index:  index,
-		Images: mb.images,
+		Index:           index,
+		Images:          mb.images,
+		digestAlgorithm: mb.digestAlgorithm,
 
 		IndexDescriptor: ispec.Descriptor{
 			MediaType: ispec.MediaTypeImageIndex,

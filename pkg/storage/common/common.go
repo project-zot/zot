@@ -63,19 +63,19 @@ func GetManifestDescByReference(index ispec.Index, reference string) (ispec.Desc
 
 func ValidateManifest(imgStore storageTypes.ImageStore, repo, reference, mediaType string, body []byte,
 	log zlog.Logger,
-) (godigest.Digest, error) {
+) error {
 	// validate the manifest
 	if !IsSupportedMediaType(mediaType) {
 		log.Debug().Interface("actual", mediaType).
 			Msg("bad manifest media type")
 
-		return "", zerr.ErrBadManifest
+		return zerr.ErrBadManifest
 	}
 
 	if len(body) == 0 {
 		log.Debug().Int("len", len(body)).Msg("invalid body length")
 
-		return "", zerr.ErrBadManifest
+		return zerr.ErrBadManifest
 	}
 
 	switch mediaType {
@@ -86,13 +86,13 @@ func ValidateManifest(imgStore storageTypes.ImageStore, repo, reference, mediaTy
 		if err := ValidateManifestSchema(body); err != nil {
 			log.Error().Err(err).Msg("failed to validate OCIv1 image manifest schema")
 
-			return "", zerr.NewError(zerr.ErrBadManifest).AddDetail("jsonSchemaValidation", err.Error())
+			return zerr.NewError(zerr.ErrBadManifest).AddDetail("jsonSchemaValidation", err.Error())
 		}
 
 		if err := json.Unmarshal(body, &manifest); err != nil {
 			log.Error().Err(err).Msg("failed to unmarshal JSON")
 
-			return "", zerr.ErrBadManifest
+			return zerr.ErrBadManifest
 		}
 
 		// validate blobs only for known media types
@@ -104,7 +104,7 @@ func ValidateManifest(imgStore storageTypes.ImageStore, repo, reference, mediaTy
 				log.Error().Err(err).Str("digest", manifest.Config.Digest.String()).
 					Msg("failed to stat blob due to missing config blob")
 
-				return "", zerr.ErrBadManifest
+				return zerr.ErrBadManifest
 			}
 
 			// validate layers - a lightweight check if the blob is present
@@ -121,7 +121,7 @@ func ValidateManifest(imgStore storageTypes.ImageStore, repo, reference, mediaTy
 					log.Error().Err(err).Str("digest", layer.Digest.String()).
 						Msg("failed to validate manifest due to missing layer blob")
 
-					return "", zerr.ErrBadManifest
+					return zerr.ErrBadManifest
 				}
 			}
 		}
@@ -130,14 +130,14 @@ func ValidateManifest(imgStore storageTypes.ImageStore, repo, reference, mediaTy
 		if err := ValidateImageIndexSchema(body); err != nil {
 			log.Error().Err(err).Msg("failed to validate OCIv1 image index manifest schema")
 
-			return "", zerr.NewError(zerr.ErrBadManifest).AddDetail("jsonSchemaValidation", err.Error())
+			return zerr.NewError(zerr.ErrBadManifest).AddDetail("jsonSchemaValidation", err.Error())
 		}
 
 		var indexManifest ispec.Index
 		if err := json.Unmarshal(body, &indexManifest); err != nil {
 			log.Error().Err(err).Msg("failed to unmarshal JSON")
 
-			return "", zerr.ErrBadManifest
+			return zerr.ErrBadManifest
 		}
 
 		for _, manifest := range indexManifest.Manifests {
@@ -145,28 +145,37 @@ func ValidateManifest(imgStore storageTypes.ImageStore, repo, reference, mediaTy
 				log.Error().Err(err).Str("digest", manifest.Digest.String()).
 					Msg("failed to stat manifest due to missing manifest blob")
 
-				return "", zerr.ErrBadManifest
+				return zerr.ErrBadManifest
 			}
 		}
 	}
 
-	return "", nil
+	return nil
 }
 
-func GetAndValidateRequestDigest(body []byte, digestStr string, log zlog.Logger) (godigest.Digest, error) {
-	bodyDigest := godigest.FromBytes(body)
-
-	d, err := godigest.Parse(digestStr)
-	if err == nil {
-		if d.String() != bodyDigest.String() {
-			log.Error().Str("actual", bodyDigest.String()).Str("expected", d.String()).
-				Msg("failed to validate manifest digest")
-
-			return "", zerr.ErrBadManifest
-		}
+// Returns the canonical digest or the digest provided by the reference if any
+// Per spec, the canonical digest would always be returned to the client in
+// request headers, but that does not make sense if the client requested a different digest algorithm
+// See https://github.com/opencontainers/distribution-spec/issues/494
+func GetAndValidateRequestDigest(body []byte, reference string, log zlog.Logger) (
+	godigest.Digest, error,
+) {
+	expectedDigest, err := godigest.Parse(reference)
+	if err != nil {
+		// This is a non-digest reference
+		return godigest.Canonical.FromBytes(body), err
 	}
 
-	return bodyDigest, err
+	actualDigest := expectedDigest.Algorithm().FromBytes(body)
+
+	if expectedDigest.String() != actualDigest.String() {
+		log.Error().Str("actual", actualDigest.String()).Str("expected", expectedDigest.String()).
+			Msg("failed to validate manifest digest")
+
+		return actualDigest, zerr.ErrBadManifest
+	}
+
+	return actualDigest, nil
 }
 
 /*
