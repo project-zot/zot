@@ -32,7 +32,8 @@ type ImageStore interface { //nolint:interfacebloat
 	GetNextRepository(repo string) (string, error)
 	GetImageTags(repo string) ([]string, error)
 	GetImageManifest(repo, reference string) ([]byte, godigest.Digest, string, error)
-	PutImageManifest(repo, reference, mediaType string, body []byte) (godigest.Digest, godigest.Digest, error)
+	PutImageManifest(repo, reference, mediaType string, body []byte, expectedDigest godigest.Digest,
+	) (godigest.Digest, godigest.Digest, error)
 	DeleteImageManifest(repo, reference string, detectCollision bool) error
 	BlobUploadPath(repo, uuid string) string
 	NewBlobUpload(repo string) (string, error)

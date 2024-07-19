@@ -453,7 +453,7 @@ func (is *ImageStore) GetImageManifest(repo, reference string) ([]byte, godigest
 
 // PutImageManifest adds an image manifest to the repository.
 func (is *ImageStore) PutImageManifest(repo, reference, mediaType string, //nolint: gocyclo
-	body []byte,
+	body []byte, expectedDigest godigest.Digest,
 ) (godigest.Digest, godigest.Digest, error) {
 	if err := is.InitRepo(repo); err != nil {
 		is.log.Debug().Err(err).Msg("init repo")
@@ -478,15 +478,9 @@ func (is *ImageStore) PutImageManifest(repo, reference, mediaType string, //noli
 		}
 	}()
 
-	refIsDigest := true
-
-	mDigest, err := common.GetAndValidateRequestDigest(body, reference, is.log)
+	mDigest, refIsDigest, err := common.GetAndValidateRequestDigest(body, reference, expectedDigest, is.log)
 	if err != nil {
-		if errors.Is(err, zerr.ErrBadManifest) {
-			return mDigest, "", err
-		}
-
-		refIsDigest = false
+		return mDigest, "", err
 	}
 
 	err = common.ValidateManifest(is, repo, reference, mediaType, body, is.log)

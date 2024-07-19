@@ -297,7 +297,9 @@ func (rh *RouteHandler) ListTags(response http.ResponseWriter, request *http.Req
 	name, ok := vars["name"]
 
 	if !ok || name == "" {
-		response.WriteHeader(http.StatusNotFound)
+		details := map[string]string{"name": ""}
+		e := apiErr.NewError(apiErr.NAME_UNKNOWN).AddDetail(details)
+		zcommon.WriteJSON(response, http.StatusNotFound, apiErr.NewErrorList(e))
 
 		return
 	}
@@ -430,7 +432,9 @@ func (rh *RouteHandler) CheckManifest(response http.ResponseWriter, request *htt
 	name, ok := vars["name"]
 
 	if !ok || name == "" {
-		response.WriteHeader(http.StatusNotFound)
+		details := map[string]string{"name": ""}
+		e := apiErr.NewError(apiErr.NAME_UNKNOWN).AddDetail(details)
+		zcommon.WriteJSON(response, http.StatusNotFound, apiErr.NewErrorList(e))
 
 		return
 	}
@@ -500,7 +504,9 @@ func (rh *RouteHandler) GetManifest(response http.ResponseWriter, request *http.
 	name, ok := vars["name"]
 
 	if !ok || name == "" {
-		response.WriteHeader(http.StatusNotFound)
+		details := map[string]string{"name": ""}
+		e := apiErr.NewError(apiErr.NAME_UNKNOWN).AddDetail(details)
+		zcommon.WriteJSON(response, http.StatusNotFound, apiErr.NewErrorList(e))
 
 		return
 	}
@@ -601,7 +607,9 @@ func (rh *RouteHandler) GetReferrers(response http.ResponseWriter, request *http
 
 	name, ok := vars["name"]
 	if !ok || name == "" {
-		response.WriteHeader(http.StatusNotFound)
+		details := map[string]string{"name": ""}
+		e := apiErr.NewError(apiErr.NAME_UNKNOWN).AddDetail(details)
+		zcommon.WriteJSON(response, http.StatusNotFound, apiErr.NewErrorList(e))
 
 		return
 	}
@@ -610,7 +618,9 @@ func (rh *RouteHandler) GetReferrers(response http.ResponseWriter, request *http
 	digest, err := godigest.Parse(digestStr)
 
 	if !ok || digestStr == "" || err != nil {
-		response.WriteHeader(http.StatusBadRequest)
+		details := map[string]string{"digest": digestStr}
+		e := apiErr.NewError(apiErr.DIGEST_INVALID).AddDetail(details)
+		zcommon.WriteJSON(response, http.StatusBadRequest, apiErr.NewErrorList(e))
 
 		return
 	}
@@ -660,6 +670,7 @@ func (rh *RouteHandler) GetReferrers(response http.ResponseWriter, request *http
 // @Produce json
 // @Param   name         path    string     true        "repository name"
 // @Param   reference    path    string     true        "image reference or digest"
+// @Param   digest       query   string     false       "manifest digest"
 // @Header  201 {object} constants.DistContentDigestKey
 // @Success 201 {string} string "created"
 // @Failure 400 {string} string "bad request"
@@ -671,7 +682,9 @@ func (rh *RouteHandler) UpdateManifest(response http.ResponseWriter, request *ht
 	name, ok := vars["name"]
 
 	if !ok || name == "" {
-		response.WriteHeader(http.StatusNotFound)
+		details := map[string]string{"name": ""}
+		e := apiErr.NewError(apiErr.NAME_UNKNOWN).AddDetail(details)
+		zcommon.WriteJSON(response, http.StatusNotFound, apiErr.NewErrorList(e))
 
 		return
 	}
@@ -684,6 +697,29 @@ func (rh *RouteHandler) UpdateManifest(response http.ResponseWriter, request *ht
 		zcommon.WriteJSON(response, http.StatusNotFound, apiErr.NewErrorList(err))
 
 		return
+	}
+
+	var expectedDigest godigest.Digest
+
+	// if a digest is present in the query parameters use it
+	digests, ok := request.URL.Query()["digest"]
+	if ok {
+		if len(digests) != 1 {
+			details := map[string]string{"digest": fmt.Sprintf("%v", digests)}
+			e := apiErr.NewError(apiErr.DIGEST_INVALID).AddDetail(details)
+			zcommon.WriteJSON(response, http.StatusBadRequest, apiErr.NewErrorList(e))
+
+			return
+		}
+
+		expectedDigest = godigest.Digest(digests[0])
+		if err := expectedDigest.Validate(); err != nil {
+			details := map[string]string{"digest": digests[0]}
+			e := apiErr.NewError(apiErr.DIGEST_INVALID).AddDetail(details)
+			zcommon.WriteJSON(response, http.StatusBadRequest, apiErr.NewErrorList(e))
+
+			return
+		}
 	}
 
 	mediaType := request.Header.Get("Content-Type")
@@ -704,7 +740,7 @@ func (rh *RouteHandler) UpdateManifest(response http.ResponseWriter, request *ht
 		return
 	}
 
-	digest, subjectDigest, err := imgStore.PutImageManifest(name, reference, mediaType, body)
+	digest, subjectDigest, err := imgStore.PutImageManifest(name, reference, mediaType, body, expectedDigest)
 	if err != nil {
 		details := zerr.GetDetails(err)
 		if errors.Is(err, zerr.ErrRepoNotFound) { //nolint:gocritic // errorslint conflicts with gocritic:IfElseChain
@@ -778,7 +814,9 @@ func (rh *RouteHandler) DeleteManifest(response http.ResponseWriter, request *ht
 	name, ok := vars["name"]
 
 	if !ok || name == "" {
-		response.WriteHeader(http.StatusNotFound)
+		details := map[string]string{"name": ""}
+		e := apiErr.NewError(apiErr.NAME_UNKNOWN).AddDetail(details)
+		zcommon.WriteJSON(response, http.StatusNotFound, apiErr.NewErrorList(e))
 
 		return
 	}
@@ -787,7 +825,8 @@ func (rh *RouteHandler) DeleteManifest(response http.ResponseWriter, request *ht
 
 	reference, ok := vars["reference"]
 	if !ok || reference == "" {
-		response.WriteHeader(http.StatusNotFound)
+		err := apiErr.NewError(apiErr.MANIFEST_INVALID).AddDetail(map[string]string{"reference": reference})
+		zcommon.WriteJSON(response, http.StatusNotFound, apiErr.NewErrorList(err))
 
 		return
 	}
@@ -917,7 +956,9 @@ func (rh *RouteHandler) CheckBlob(response http.ResponseWriter, request *http.Re
 	name, ok := vars["name"]
 
 	if !ok || name == "" {
-		response.WriteHeader(http.StatusNotFound)
+		details := map[string]string{"name": ""}
+		e := apiErr.NewError(apiErr.NAME_UNKNOWN).AddDetail(details)
+		zcommon.WriteJSON(response, http.StatusNotFound, apiErr.NewErrorList(e))
 
 		return
 	}
@@ -927,7 +968,9 @@ func (rh *RouteHandler) CheckBlob(response http.ResponseWriter, request *http.Re
 	digestStr, ok := vars["digest"]
 
 	if !ok || digestStr == "" {
-		response.WriteHeader(http.StatusNotFound)
+		details := map[string]string{"digest": ""}
+		e := apiErr.NewError(apiErr.DIGEST_INVALID).AddDetail(details)
+		zcommon.WriteJSON(response, http.StatusNotFound, apiErr.NewErrorList(e))
 
 		return
 	}
@@ -1058,7 +1101,9 @@ func (rh *RouteHandler) GetBlob(response http.ResponseWriter, request *http.Requ
 	name, ok := vars["name"]
 
 	if !ok || name == "" {
-		response.WriteHeader(http.StatusNotFound)
+		details := map[string]string{"name": ""}
+		e := apiErr.NewError(apiErr.NAME_UNKNOWN).AddDetail(details)
+		zcommon.WriteJSON(response, http.StatusNotFound, apiErr.NewErrorList(e))
 
 		return
 	}
@@ -1068,7 +1113,9 @@ func (rh *RouteHandler) GetBlob(response http.ResponseWriter, request *http.Requ
 	digestStr, ok := vars["digest"]
 
 	if !ok || digestStr == "" {
-		response.WriteHeader(http.StatusNotFound)
+		details := map[string]string{"digest": ""}
+		e := apiErr.NewError(apiErr.DIGEST_INVALID).AddDetail(details)
+		zcommon.WriteJSON(response, http.StatusNotFound, apiErr.NewErrorList(e))
 
 		return
 	}
@@ -1167,7 +1214,9 @@ func (rh *RouteHandler) DeleteBlob(response http.ResponseWriter, request *http.R
 	name, ok := vars["name"]
 
 	if !ok || name == "" {
-		response.WriteHeader(http.StatusNotFound)
+		details := map[string]string{"name": ""}
+		e := apiErr.NewError(apiErr.NAME_UNKNOWN).AddDetail(details)
+		zcommon.WriteJSON(response, http.StatusNotFound, apiErr.NewErrorList(e))
 
 		return
 	}
@@ -1176,7 +1225,9 @@ func (rh *RouteHandler) DeleteBlob(response http.ResponseWriter, request *http.R
 	digest, err := godigest.Parse(digestStr)
 
 	if !ok || digestStr == "" || err != nil {
-		response.WriteHeader(http.StatusNotFound)
+		details := map[string]string{"digest": digestStr}
+		e := apiErr.NewError(apiErr.DIGEST_INVALID).AddDetail(details)
+		zcommon.WriteJSON(response, http.StatusNotFound, apiErr.NewErrorList(e))
 
 		return
 	}
@@ -1231,7 +1282,9 @@ func (rh *RouteHandler) CreateBlobUpload(response http.ResponseWriter, request *
 	name, ok := vars["name"]
 
 	if !ok || name == "" {
-		response.WriteHeader(http.StatusNotFound)
+		details := map[string]string{"name": ""}
+		e := apiErr.NewError(apiErr.NAME_UNKNOWN).AddDetail(details)
+		zcommon.WriteJSON(response, http.StatusNotFound, apiErr.NewErrorList(e))
 
 		return
 	}
@@ -1309,7 +1362,9 @@ func (rh *RouteHandler) CreateBlobUpload(response http.ResponseWriter, request *
 	digests, ok := request.URL.Query()["digest"]
 	if ok {
 		if len(digests) != 1 {
-			response.WriteHeader(http.StatusBadRequest)
+			details := map[string]string{"digest": fmt.Sprintf("%v", digests)}
+			e := apiErr.NewError(apiErr.DIGEST_INVALID).AddDetail(details)
+			zcommon.WriteJSON(response, http.StatusBadRequest, apiErr.NewErrorList(e))
 
 			return
 		}
@@ -1404,7 +1459,9 @@ func (rh *RouteHandler) GetBlobUpload(response http.ResponseWriter, request *htt
 	name, ok := vars["name"]
 
 	if !ok || name == "" {
-		response.WriteHeader(http.StatusNotFound)
+		details := map[string]string{"name": ""}
+		e := apiErr.NewError(apiErr.NAME_UNKNOWN).AddDetail(details)
+		zcommon.WriteJSON(response, http.StatusNotFound, apiErr.NewErrorList(e))
 
 		return
 	}
@@ -1413,7 +1470,9 @@ func (rh *RouteHandler) GetBlobUpload(response http.ResponseWriter, request *htt
 
 	sessionID, ok := vars["session_id"]
 	if !ok || sessionID == "" {
-		response.WriteHeader(http.StatusNotFound)
+		details := map[string]string{"session_id": sessionID}
+		e := apiErr.NewError(apiErr.BLOB_UPLOAD_INVALID).AddDetail(details)
+		zcommon.WriteJSON(response, http.StatusNotFound, apiErr.NewErrorList(e))
 
 		return
 	}
@@ -1468,7 +1527,9 @@ func (rh *RouteHandler) PatchBlobUpload(response http.ResponseWriter, request *h
 	name, ok := vars["name"]
 
 	if !ok || name == "" {
-		response.WriteHeader(http.StatusNotFound)
+		details := map[string]string{"name": ""}
+		e := apiErr.NewError(apiErr.NAME_UNKNOWN).AddDetail(details)
+		zcommon.WriteJSON(response, http.StatusNotFound, apiErr.NewErrorList(e))
 
 		return
 	}
@@ -1477,7 +1538,9 @@ func (rh *RouteHandler) PatchBlobUpload(response http.ResponseWriter, request *h
 
 	sessionID, ok := vars["session_id"]
 	if !ok || sessionID == "" {
-		response.WriteHeader(http.StatusNotFound)
+		details := map[string]string{"session_id": sessionID}
+		e := apiErr.NewError(apiErr.BLOB_UPLOAD_INVALID).AddDetail(details)
+		zcommon.WriteJSON(response, http.StatusNotFound, apiErr.NewErrorList(e))
 
 		return
 	}
@@ -1555,7 +1618,7 @@ func (rh *RouteHandler) PatchBlobUpload(response http.ResponseWriter, request *h
 // @Param   session_id   path    string     true        "upload session_id"
 // @Param   digest       query   string     true        "blob/layer digest"
 // @Success 201 {string} string "created"
-// @Header  202 {string} Location "/v2/{name}/blobs/uploads/{digest}"
+// @Header  202 {string} Location "/v2/{name}/blobs/uploads/{session_id}"
 // @Header  200 {object} constants.DistContentDigestKey
 // @Failure 404 {string} string "not found"
 // @Failure 500 {string} string "internal server error"
@@ -1565,7 +1628,9 @@ func (rh *RouteHandler) UpdateBlobUpload(response http.ResponseWriter, request *
 	name, ok := vars["name"]
 
 	if !ok || name == "" {
-		response.WriteHeader(http.StatusNotFound)
+		details := map[string]string{"name": ""}
+		e := apiErr.NewError(apiErr.NAME_UNKNOWN).AddDetail(details)
+		zcommon.WriteJSON(response, http.StatusNotFound, apiErr.NewErrorList(e))
 
 		return
 	}
@@ -1574,21 +1639,27 @@ func (rh *RouteHandler) UpdateBlobUpload(response http.ResponseWriter, request *
 
 	sessionID, ok := vars["session_id"]
 	if !ok || sessionID == "" {
-		response.WriteHeader(http.StatusNotFound)
+		details := map[string]string{"session_id": sessionID}
+		e := apiErr.NewError(apiErr.BLOB_UPLOAD_INVALID).AddDetail(details)
+		zcommon.WriteJSON(response, http.StatusNotFound, apiErr.NewErrorList(e))
 
 		return
 	}
 
 	digests, ok := request.URL.Query()["digest"]
 	if !ok || len(digests) != 1 {
-		response.WriteHeader(http.StatusBadRequest)
+		details := map[string]string{"digest": fmt.Sprintf("%v", digests)}
+		e := apiErr.NewError(apiErr.DIGEST_INVALID).AddDetail(details)
+		zcommon.WriteJSON(response, http.StatusBadRequest, apiErr.NewErrorList(e))
 
 		return
 	}
 
 	digest, err := godigest.Parse(digests[0])
 	if err != nil {
-		response.WriteHeader(http.StatusBadRequest)
+		details := map[string]string{"digest": digests[0]}
+		e := apiErr.NewError(apiErr.DIGEST_INVALID).AddDetail(details)
+		zcommon.WriteJSON(response, http.StatusBadRequest, apiErr.NewErrorList(e))
 
 		return
 	}
@@ -1718,7 +1789,9 @@ func (rh *RouteHandler) DeleteBlobUpload(response http.ResponseWriter, request *
 	name, ok := vars["name"]
 
 	if !ok || name == "" {
-		response.WriteHeader(http.StatusNotFound)
+		details := map[string]string{"name": ""}
+		e := apiErr.NewError(apiErr.NAME_UNKNOWN).AddDetail(details)
+		zcommon.WriteJSON(response, http.StatusNotFound, apiErr.NewErrorList(e))
 
 		return
 	}
@@ -1727,7 +1800,9 @@ func (rh *RouteHandler) DeleteBlobUpload(response http.ResponseWriter, request *
 
 	sessionID, ok := vars["session_id"]
 	if !ok || sessionID == "" {
-		response.WriteHeader(http.StatusNotFound)
+		details := map[string]string{"session_id": sessionID}
+		e := apiErr.NewError(apiErr.BLOB_UPLOAD_INVALID).AddDetail(details)
+		zcommon.WriteJSON(response, http.StatusNotFound, apiErr.NewErrorList(e))
 
 		return
 	}

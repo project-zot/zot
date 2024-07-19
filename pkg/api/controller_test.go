@@ -11198,13 +11198,7 @@ func TestSupportedDigestAlgorithms(t *testing.T) {
 
 		client := resty.New()
 
-		// The server picks canonical digests when tags are pushed
-		// See https://github.com/opencontainers/distribution-spec/issues/494
-		// It would be nice to be able to push tags with other digest algorithms and verify those are returned
-		// but there is no way to specify a client preference
-		// so all we can do is verify the correct algorithm is returned
-
-		expectedDigestStr := image.DigestForAlgorithm(godigest.Canonical).String()
+		expectedDigestStr := image.DigestForAlgorithm(godigest.SHA512).String()
 
 		verifyReturnedManifestDigest(t, client, baseURL, name, tag, expectedDigestStr)
 		verifyReturnedManifestDigest(t, client, baseURL, name, expectedDigestStr, expectedDigestStr)
@@ -11238,13 +11232,7 @@ func TestSupportedDigestAlgorithms(t *testing.T) {
 
 		client := resty.New()
 
-		// The server picks canonical digests when tags are pushed
-		// See https://github.com/opencontainers/distribution-spec/issues/494
-		// It would be nice to be able to push tags with other digest algorithms and verify those are returned
-		// but there is no way to specify a client preference
-		// so all we can do is verify the correct algorithm is returned
-
-		expectedDigestStr := image.DigestForAlgorithm(godigest.Canonical).String()
+		expectedDigestStr := image.DigestForAlgorithm(godigest.SHA384).String()
 
 		verifyReturnedManifestDigest(t, client, baseURL, name, tag, expectedDigestStr)
 		verifyReturnedManifestDigest(t, client, baseURL, name, expectedDigestStr, expectedDigestStr)
@@ -11266,18 +11254,10 @@ func TestSupportedDigestAlgorithms(t *testing.T) {
 
 		client := resty.New()
 
-		// The server picks canonical digests when tags are pushed
-		// See https://github.com/opencontainers/distribution-spec/issues/494
-		// It would be nice to be able to push tags with other digest algorithms and verify those are returned
-		// but there is no way to specify a client preference
-		// so all we can do is verify the correct algorithm is returned
-		expectedDigestStr := multiarch.DigestForAlgorithm(godigest.Canonical).String()
+		expectedDigestStr := multiarch.DigestForAlgorithm(godigest.SHA512).String()
 
 		verifyReturnedManifestDigest(t, client, baseURL, name, tag, expectedDigestStr)
 		verifyReturnedManifestDigest(t, client, baseURL, name, expectedDigestStr, expectedDigestStr)
-
-		// While the expected multiarch manifest digest is always using the canonical algorithm
-		// the sub-imgage manifest digest can use any algorith
 		verifyReturnedManifestDigest(t, client, baseURL, name,
 			subImage1.ManifestDescriptor.Digest.String(), subImage1.ManifestDescriptor.Digest.String())
 		verifyReturnedManifestDigest(t, client, baseURL, name,
@@ -11303,9 +11283,6 @@ func TestSupportedDigestAlgorithms(t *testing.T) {
 
 		expectedDigestStr := multiarch.DigestForAlgorithm(godigest.SHA512).String()
 		verifyReturnedManifestDigest(t, client, baseURL, name, expectedDigestStr, expectedDigestStr)
-
-		// While the expected multiarch manifest digest is always using the canonical algorithm
-		// the sub-imgage manifest digest can use any algorith
 		verifyReturnedManifestDigest(t, client, baseURL, name,
 			subImage1.ManifestDescriptor.Digest.String(), subImage1.ManifestDescriptor.Digest.String())
 		verifyReturnedManifestDigest(t, client, baseURL, name,
@@ -11328,18 +11305,10 @@ func TestSupportedDigestAlgorithms(t *testing.T) {
 
 		client := resty.New()
 
-		// The server picks canonical digests when tags are pushed
-		// See https://github.com/opencontainers/distribution-spec/issues/494
-		// It would be nice to be able to push tags with other digest algorithms and verify those are returned
-		// but there is no way to specify a client preference
-		// so all we can do is verify the correct algorithm is returned
-		expectedDigestStr := multiarch.DigestForAlgorithm(godigest.Canonical).String()
+		expectedDigestStr := multiarch.DigestForAlgorithm(godigest.SHA384).String()
 
 		verifyReturnedManifestDigest(t, client, baseURL, name, tag, expectedDigestStr)
 		verifyReturnedManifestDigest(t, client, baseURL, name, expectedDigestStr, expectedDigestStr)
-
-		// While the expected multiarch manifest digest is always using the canonical algorithm
-		// the sub-imgage manifest digest can use any algorith
 		verifyReturnedManifestDigest(t, client, baseURL, name,
 			subImage1.ManifestDescriptor.Digest.String(), subImage1.ManifestDescriptor.Digest.String())
 		verifyReturnedManifestDigest(t, client, baseURL, name,

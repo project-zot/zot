@@ -26,6 +26,73 @@ import (
 
 var ErrTestError = errors.New("TestError")
 
+func TestValidateDigestComputation(t *testing.T) {
+	body := []byte{10, 20, 30, 40, 50}
+	sha256Digest := godigest.SHA256.FromBytes(body)
+	sha384Digest := godigest.SHA384.FromBytes(body)
+	sha512Digest := godigest.SHA512.FromBytes(body)
+	log := log.Logger{Logger: zerolog.New(os.Stdout)}
+
+	Convey("Compute digest using default canonical algorithm", t, func(c C) {
+		resultedDigest, refIsDigest, err := common.GetAndValidateRequestDigest(body, "sometag", "", log)
+		So(err, ShouldBeNil)
+		So(refIsDigest, ShouldBeFalse)
+		So(resultedDigest, ShouldEqual, sha256Digest)
+	})
+
+	Convey("Verify expected digest with no reference - positive", t, func(c C) {
+		resultedDigest, refIsDigest, err := common.GetAndValidateRequestDigest(body, "sometag", sha512Digest, log)
+		So(err, ShouldBeNil)
+		So(refIsDigest, ShouldBeFalse)
+		So(resultedDigest, ShouldEqual, sha512Digest)
+	})
+
+	Convey("Verify expected digest with no reference - negative", t, func(c C) {
+		resultedDigest, refIsDigest, err := common.GetAndValidateRequestDigest([]byte{10, 20, 30, 40},
+			"sometag", sha512Digest, log)
+		So(err, ShouldNotBeNil)
+		So(refIsDigest, ShouldBeFalse)
+		So(resultedDigest, ShouldEqual, godigest.SHA512.FromBytes([]byte{10, 20, 30, 40}))
+	})
+
+	Convey("Verify reference digest with no expected - positive", t, func(c C) {
+		resultedDigest, refIsDigest, err := common.GetAndValidateRequestDigest(body, sha512Digest.String(), "", log)
+		So(err, ShouldBeNil)
+		So(refIsDigest, ShouldBeTrue)
+		So(resultedDigest, ShouldEqual, sha512Digest)
+	})
+
+	Convey("Verify reference digest with no expected - negative", t, func(c C) {
+		resultedDigest, refIsDigest, err := common.GetAndValidateRequestDigest([]byte{10, 20, 30, 40},
+			sha512Digest.String(), "", log)
+		So(err, ShouldNotBeNil)
+		So(refIsDigest, ShouldBeTrue)
+		So(resultedDigest, ShouldEqual, godigest.SHA512.FromBytes([]byte{10, 20, 30, 40}))
+	})
+
+	Convey("Verify reference digest and expected digests - positive", t, func(c C) {
+		resultedDigest, refIsDigest, err := common.GetAndValidateRequestDigest(body, sha512Digest.String(), sha512Digest, log)
+		So(err, ShouldBeNil)
+		So(refIsDigest, ShouldBeTrue)
+		So(resultedDigest, ShouldEqual, sha512Digest)
+	})
+
+	Convey("Verify reference digest and expected digests - mismatch between them", t, func(c C) {
+		resultedDigest, refIsDigest, err := common.GetAndValidateRequestDigest(body, sha384Digest.String(), sha512Digest, log)
+		So(err, ShouldNotBeNil)
+		So(refIsDigest, ShouldBeTrue)
+		So(resultedDigest, ShouldEqual, sha512Digest)
+	})
+
+	Convey("Verify reference digest and expected digests - negative with actual", t, func(c C) {
+		resultedDigest, refIsDigest, err := common.GetAndValidateRequestDigest([]byte{10, 20, 30, 40},
+			sha512Digest.String(), sha512Digest, log)
+		So(err, ShouldNotBeNil)
+		So(refIsDigest, ShouldBeTrue)
+		So(resultedDigest, ShouldEqual, godigest.SHA512.FromBytes([]byte{10, 20, 30, 40}))
+	})
+}
+
 func TestValidateManifest(t *testing.T) {
 	Convey("Make manifest", t, func(c C) {
 		dir := t.TempDir()
@@ -58,19 +125,19 @@ func TestValidateManifest(t *testing.T) {
 			body, err := json.Marshal(manifest)
 			So(err, ShouldBeNil)
 
-			_, _, err = imgStore.PutImageManifest("test", "1.0", ispec.MediaTypeImageConfig, body)
+			_, _, err = imgStore.PutImageManifest("test", "1.0", ispec.MediaTypeImageConfig, body, "")
 			So(err, ShouldNotBeNil)
 			So(err, ShouldEqual, zerr.ErrBadManifest)
 		})
 
 		Convey("empty manifest with bad media type", func() {
-			_, _, err = imgStore.PutImageManifest("test", "1.0", ispec.MediaTypeImageConfig, []byte(""))
+			_, _, err = imgStore.PutImageManifest("test", "1.0", ispec.MediaTypeImageConfig, []byte(""), "")
 			So(err, ShouldNotBeNil)
 			So(err, ShouldEqual, zerr.ErrBadManifest)
 		})
 
 		Convey("empty manifest with correct media type", func() {
-			_, _, err = imgStore.PutImageManifest("test", "1.0", ispec.MediaTypeImageManifest, []byte(""))
+			_, _, err = imgStore.PutImageManifest("test", "1.0", ispec.MediaTypeImageManifest, []byte(""), "")
 			So(err, ShouldNotBeNil)
 			So(err, ShouldEqual, zerr.ErrBadManifest)
 		})
@@ -96,7 +163,7 @@ func TestValidateManifest(t *testing.T) {
 			body, err := json.Marshal(manifest)
 			So(err, ShouldBeNil)
 
-			_, _, err = imgStore.PutImageManifest("test", "1.0", ispec.MediaTypeImageManifest, body)
+			_, _, err = imgStore.PutImageManifest("test", "1.0", ispec.MediaTypeImageManifest, body, "")
 			So(err, ShouldNotBeNil)
 			var internalErr *zerr.Error
 			So(errors.As(err, &internalErr), ShouldBeTrue)
@@ -131,7 +198,7 @@ func TestValidateManifest(t *testing.T) {
 			So(err, ShouldBeNil)
 
 			// this was actually an umoci error on config blob
-			_, _, err = imgStore.PutImageManifest("test", "1.0", ispec.MediaTypeImageManifest, body)
+			_, _, err = imgStore.PutImageManifest("test", "1.0", ispec.MediaTypeImageManifest, body, "")
 			So(err, ShouldBeNil)
 		})
 
@@ -160,8 +227,100 @@ func TestValidateManifest(t *testing.T) {
 			body, err := json.Marshal(manifest)
 			So(err, ShouldBeNil)
 
-			_, _, err = imgStore.PutImageManifest("test", "1.0", ispec.MediaTypeImageManifest, body)
+			_, _, err = imgStore.PutImageManifest("test", "1.0", ispec.MediaTypeImageManifest, body, "")
 			So(err, ShouldBeNil)
+		})
+
+		Convey("good manifest with bad expected digest", func() {
+			content := []byte("this blob doesn't exist")
+			digest := godigest.FromBytes(content)
+			So(digest, ShouldNotBeNil)
+
+			manifest := ispec.Manifest{
+				Config: ispec.Descriptor{
+					MediaType: ispec.MediaTypeImageConfig,
+					Digest:    cdigest,
+					Size:      int64(len(cblob)),
+				},
+				Layers: []ispec.Descriptor{
+					{
+						MediaType: ispec.MediaTypeImageLayerNonDistributable, //nolint:staticcheck
+						Digest:    digest,
+						Size:      int64(len(content)),
+					},
+				},
+			}
+
+			manifest.SchemaVersion = 2
+
+			body, err := json.Marshal(manifest)
+			So(err, ShouldBeNil)
+
+			digest, _, err = imgStore.PutImageManifest("test", "1.0", ispec.MediaTypeImageManifest,
+				body, godigest.Canonical.FromString("123"))
+			So(err, ShouldNotBeNil)
+			So(digest, ShouldEqual, godigest.Canonical.FromBytes(body))
+		})
+
+		Convey("good manifest with good expected digest", func() {
+			content := []byte("this blob doesn't exist")
+			digest := godigest.FromBytes(content)
+			So(digest, ShouldNotBeNil)
+
+			manifest := ispec.Manifest{
+				Config: ispec.Descriptor{
+					MediaType: ispec.MediaTypeImageConfig,
+					Digest:    cdigest,
+					Size:      int64(len(cblob)),
+				},
+				Layers: []ispec.Descriptor{
+					{
+						MediaType: ispec.MediaTypeImageLayerNonDistributable, //nolint:staticcheck
+						Digest:    digest,
+						Size:      int64(len(content)),
+					},
+				},
+			}
+
+			manifest.SchemaVersion = 2
+
+			body, err := json.Marshal(manifest)
+			So(err, ShouldBeNil)
+
+			digest, _, err = imgStore.PutImageManifest("test", "1.0", ispec.MediaTypeImageManifest,
+				body, godigest.SHA512.FromBytes(body))
+			So(err, ShouldBeNil)
+			So(digest, ShouldEqual, godigest.SHA512.FromBytes(body))
+		})
+
+		Convey("good manifest with no expected digest", func() {
+			content := []byte("this blob doesn't exist")
+			digest := godigest.FromBytes(content)
+			So(digest, ShouldNotBeNil)
+
+			manifest := ispec.Manifest{
+				Config: ispec.Descriptor{
+					MediaType: ispec.MediaTypeImageConfig,
+					Digest:    cdigest,
+					Size:      int64(len(cblob)),
+				},
+				Layers: []ispec.Descriptor{
+					{
+						MediaType: ispec.MediaTypeImageLayerNonDistributable, //nolint:staticcheck
+						Digest:    digest,
+						Size:      int64(len(content)),
+					},
+				},
+			}
+
+			manifest.SchemaVersion = 2
+
+			body, err := json.Marshal(manifest)
+			So(err, ShouldBeNil)
+
+			digest, _, err = imgStore.PutImageManifest("test", "1.0", ispec.MediaTypeImageManifest, body, "")
+			So(err, ShouldBeNil)
+			So(digest, ShouldEqual, godigest.Canonical.FromBytes(body))
 		})
 	})
 }

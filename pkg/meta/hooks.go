@@ -80,7 +80,7 @@ func OnDeleteManifest(repo, reference, mediaType string, digest godigest.Digest,
 			log.Info().Str("component", "metadb").Msg("restoring image store")
 
 			// restore image store
-			_, _, err := imgStore.PutImageManifest(repo, reference, mediaType, manifestBlob)
+			_, _, err := imgStore.PutImageManifest(repo, reference, mediaType, manifestBlob, digest)
 			if err != nil {
 				log.Error().Err(err).Str("component", "metadb").
 					Msg("failed to restore manifest to image store, database is not consistent")

@@ -224,7 +224,7 @@ func syncManifest(ctx context.Context, client *client.Client, imageStore storage
 	}
 
 	refDigest, _, err = imageStore.PutImageManifest(localRepo, desc.Digest.String(),
-		desc.MediaType, OCIRefBuf)
+		desc.MediaType, OCIRefBuf, desc.Digest)
 	if err != nil {
 		log.Error().Str("errorType", common.TypeOf(err)).
 			Str("repository", localRepo).Str("subject", subjectDigestStr).

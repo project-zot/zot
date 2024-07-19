@@ -153,29 +153,59 @@ func ValidateManifest(imgStore storageTypes.ImageStore, repo, reference, mediaTy
 	return nil
 }
 
-// Returns the canonical digest or the digest provided by the reference if any
-// Per spec, the canonical digest would always be returned to the client in
-// request headers, but that does not make sense if the client requested a different digest algorithm
-// See https://github.com/opencontainers/distribution-spec/issues/494
-func GetAndValidateRequestDigest(body []byte, reference string, log zlog.Logger) (
-	godigest.Digest, error,
+// Returns the digest for a specific byte slice.
+// By default, if the expectedDigest is empty and the reference is a tag, the canonical algorithm is used.
+// If the expectedDigest is not empty, that algorithm will be used and the value
+// would be compared with the computed value.
+// If the reference is a digest, that algorithm will be used and the value would be compared with the computed value.
+// If both expectedDigest and reference are sent as digests, the values would be compared,
+// and then compared with the computed value.
+func GetAndValidateRequestDigest(body []byte, reference string, expectedDigest godigest.Digest, log zlog.Logger) (
+	godigest.Digest, bool, error,
 ) {
-	expectedDigest, err := godigest.Parse(reference)
-	if err != nil {
-		// This is a non-digest reference
-		return godigest.Canonical.FromBytes(body), err
+	refIsDigest := false
+
+	referenceDigest, err := godigest.Parse(reference)
+	if err == nil {
+		refIsDigest = true
 	}
 
-	actualDigest := expectedDigest.Algorithm().FromBytes(body)
+	// compare provided digest values against one another before spending time computing the digest of the body
+	if refIsDigest && expectedDigest != "" {
+		if referenceDigest.String() != expectedDigest.String() {
+			log.Error().Str("reference digest", referenceDigest.String()).Str("query digest", expectedDigest.String()).
+				Msg("the digest provided in the image reference is different from the one provided as a query parameter")
 
-	if expectedDigest.String() != actualDigest.String() {
+			return expectedDigest, refIsDigest, zerr.ErrBadManifest
+		}
+	}
+
+	var digestAlgorithm godigest.Algorithm
+	if expectedDigest != "" { //nolint:gocritic // code is more clear this way
+		digestAlgorithm = expectedDigest.Algorithm()
+	} else if refIsDigest {
+		digestAlgorithm = referenceDigest.Algorithm()
+	} else {
+		digestAlgorithm = godigest.Canonical
+	}
+
+	actualDigest := digestAlgorithm.FromBytes(body)
+
+	if expectedDigest != "" && expectedDigest.String() != actualDigest.String() {
 		log.Error().Str("actual", actualDigest.String()).Str("expected", expectedDigest.String()).
-			Msg("failed to validate manifest digest")
+			Msg("the actual digest is different from the one provided as a query parameter")
 
-		return actualDigest, zerr.ErrBadManifest
+		return actualDigest, refIsDigest, zerr.ErrBadManifest
 	}
 
-	return actualDigest, nil
+	if refIsDigest && referenceDigest.String() != actualDigest.String() {
+		log.Error().Str("actual", actualDigest.String()).Str("reference", referenceDigest.String()).
+			Msg("the actual digest is different from the one provided in the image reference")
+
+		return actualDigest, refIsDigest, zerr.ErrBadManifest
+	}
+
+	return actualDigest, refIsDigest, nil
 }
 
 /*

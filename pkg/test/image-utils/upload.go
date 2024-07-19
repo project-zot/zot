@@ -117,6 +117,7 @@ func UploadImage(img Image, baseURL, repo, ref string) error {
 	resp, err = resty.R().
 		SetHeader("Content-type", ispec.MediaTypeImageManifest).
 		SetBody(manifestBlob).
+		SetQueryParam("digest", img.DigestStr()).
 		Put(baseURL + "/v2/" + repo + "/manifests/" + ref)
 
 	if inject.ErrStatusCode(resp.StatusCode()) != http.StatusCreated {
@@ -217,6 +218,7 @@ func UploadImageWithBasicAuth(img Image, baseURL, repo, ref, user, password stri
 		SetBasicAuth(user, password).
 		SetHeader("Content-type", "application/vnd.oci.image.manifest.v1+json").
 		SetBody(manifestBlob).
+		SetQueryParam("digest", img.DigestStr()).
 		Put(baseURL + "/v2/" + repo + "/manifests/" + ref)
 
 	return err
@@ -245,6 +247,7 @@ func UploadMultiarchImage(multiImage MultiarchImage, baseURL string, repo, ref s
 	resp, err := resty.R().
 		SetHeader("Content-type", ispec.MediaTypeImageIndex).
 		SetBody(indexBlob).
+		SetQueryParam("digest", multiImage.DigestStr()).
 		Put(baseURL + "/v2/" + repo + "/manifests/" + ref)
 
 	if resp.StatusCode() != http.StatusCreated {
