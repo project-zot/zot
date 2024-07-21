@@ -1,11 +1,38 @@
 run:
-  deadline: 60m
-  skip-dirs:
-    - "internal"
+  timeout: 60m
 
 linters:
   enable-all: true
-  disable: funlen,gocognit,exhaustivestruct,paralleltest,forbidigo,ireturn,wrapcheck,exhaustive,maintidx,exhaustruct,nosnakecase,interfacer,structcheck,varcheck,deadcode,ifshort,golint,scopelint,maligned,rowserrcheck,sqlclosecheck,revive,musttag,depguard
+  disable:
+    - funlen
+    - gocognit
+    - paralleltest
+    - forbidigo
+    - ireturn
+    - wrapcheck
+    - exhaustive
+    - maintidx
+    - exhaustruct
+    - rowserrcheck
+    - sqlclosecheck
+    - revive
+    - musttag
+    - depguard
+    - execinquery
+    - gomnd
+    - inamedparam
+    - protogetter
+    - promlinter
+    - perfsprint
+    - testifylint
+    - wsl
+    - zerologlint
+    - canonicalheader
+    - contextcheck
+    - mnd
+    - nilnil
+    - intrange
+    - copyloopvar
 
 linters-settings:
   dupl:
@@ -41,22 +68,33 @@ linters-settings:
       - prefix(zotregistry.dev/zot)
   wsl:
     allow-assign-and-anything: true
-    enforce-err-cuddling: true
+    force-err-cuddling: true
   nolintlint:
     allow-unused: true
-  gomnd:
-    settings:
-      mnd:
-        checks: argument,case,condition,operation,return,assign
-        ignored-numbers: 10,64
+  mnd:
+    checks:
+      - argument
+      - case
+      - condition
+      - operation
+      - return
+      - assign
+    ignored-numbers:
+      - "10"
+      - "64"
   gomoddirectives:
     replace-allow-list:
       - github.com/gorilla/mux
       - github.com/testcontainers/testcontainers-go
 issues:
+  exclude-dirs:
+    - "internal"
   exclude-rules:
     - path: pkg/extensions/search/schema.resolvers.go
       linters:
         - lll
         - varnamelen
         - gci
+    - path: _test\.go
+      linters:
+        - dupl

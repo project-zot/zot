@@ -189,7 +189,6 @@ func (cloud *CertificateAWSStorage) InitTrustpolicy(trustpolicy []byte) error {
 		}
 
 		_, err = cloud.secretsManagerClient.DeleteSecret(context.Background(), deleteSecretParam)
-
 		if err != nil {
 			return err
 		}

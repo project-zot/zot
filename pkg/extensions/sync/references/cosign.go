@@ -156,7 +156,6 @@ func (ref CosignReference) SyncReferences(ctx context.Context, localRepo, remote
 			err = meta.SetImageMetaFromInput(ctx, localRepo, cosignTag, ispec.MediaTypeImageManifest,
 				referenceDigest, manifestBuf, ref.storeController.GetImageStore(localRepo),
 				ref.metaDB, ref.log)
-
 			if err != nil {
 				return refsDigests, fmt.Errorf("failed to set metadata for cosign reference in '%s@%s': %w",
 					localRepo, subjectDigestStr, err)

@@ -10452,7 +10452,6 @@ func getAllBlobs(imagePath string) []string {
 		p := path.Join(imagePath, "blobs", digest.Algorithm().String(), digest.Encoded())
 
 		buf, err = os.ReadFile(p)
-
 		if err != nil {
 			panic(err)
 		}

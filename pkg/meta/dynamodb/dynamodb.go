@@ -2179,7 +2179,6 @@ func (dwr *DynamoDB) createVersionTable() error {
 			TableName:        aws.String(dwr.VersionTablename),
 			UpdateExpression: aws.String("SET #V = :Version"),
 		})
-
 		if err != nil {
 			return err
 		}

@@ -12,7 +12,7 @@ import (
 	"github.com/rs/zerolog"
 	. "github.com/smartystreets/goconvey/convey"
 
-	"zotregistry.dev/zot/pkg/log" //nolint:go-staticcheck
+	"zotregistry.dev/zot/pkg/log"
 	"zotregistry.dev/zot/pkg/meta/version"
 	tskip "zotregistry.dev/zot/pkg/test/skip"
 )

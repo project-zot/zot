@@ -47,7 +47,6 @@ func UploadImage(img Image, baseURL, repo, ref string) error {
 			SetQueryParam("digest", digest).
 			SetBody(blob).
 			Put(baseURL + loc)
-
 		if err != nil {
 			return err
 		}
@@ -156,7 +155,6 @@ func UploadImageWithBasicAuth(img Image, baseURL, repo, ref, user, password stri
 			SetQueryParam("digest", digest).
 			SetBody(blob).
 			Put(baseURL + loc)
-
 		if err != nil {
 			return err
 		}

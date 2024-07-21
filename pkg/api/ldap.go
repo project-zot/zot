@@ -66,7 +66,6 @@ func (lc *LDAPClient) Connect() error {
 				}
 
 				err = l.StartTLS(config)
-
 				if err != nil {
 					lc.Log.Error().Err(err).Str("address", address).Msg("failed to establish a TLS connection")
 

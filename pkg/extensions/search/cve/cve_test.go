@@ -182,7 +182,6 @@ func generateTestData(dbDir string) error { //nolint: gocyclo
 
 	il := ispec.ImageLayout{Version: ispec.ImageLayoutVersion}
 	buf, err = json.Marshal(il)
-
 	if err != nil {
 		return err
 	}

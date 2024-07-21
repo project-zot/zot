@@ -472,7 +472,6 @@ func (service searchService) getReferrers(ctx context.Context, config SearchConf
 	referrerResp := &ispec.Index{}
 	_, err = makeGETRequest(ctx, referrersEndpoint, username, password, config.VerifyTLS,
 		config.Debug, &referrerResp, config.ResultWriter)
-
 	if err != nil {
 		if common.IsContextDone(ctx) {
 			return referrersResult{}, nil
@@ -580,7 +579,6 @@ func getImage(ctx context.Context, config SearchConfig, username, password, imag
 	tagList := &tagListResp{}
 	_, err = makeGETRequest(ctx, tagListEndpoint, username, password, config.VerifyTLS,
 		config.Debug, &tagList, config.ResultWriter)
-
 	if err != nil {
 		if common.IsContextDone(ctx) {
 			return
