@@ -172,4 +172,5 @@ var (
 	ErrInvalidSearchQuery             = errors.New("invalid search query")
 	ErrImageNotFound                  = errors.New("image not found")
 	ErrAmbiguousInput                 = errors.New("input is not specific enough")
+	ErrMissingCertificate             = errors.New("missing certificate file")
 )
