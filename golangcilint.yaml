@@ -21,18 +21,7 @@ linters:
     - execinquery
     - gomnd
     - inamedparam
-    - protogetter
-    - promlinter
-    - perfsprint
-    - testifylint
-    - wsl
-    - zerologlint
-    - canonicalheader
-    - contextcheck
-    - mnd
-    - nilnil
     - intrange
-    - copyloopvar
 
 linters-settings:
   dupl:
