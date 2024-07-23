@@ -46,6 +46,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"go.etcd.io/bbolt"
 	"gopkg.in/resty.v1"
+
 	"zotregistry.dev/zot/errors"
 	"zotregistry.dev/zot/pkg/api"
 	"zotregistry.dev/zot/pkg/api/config"

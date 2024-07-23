@@ -12,6 +12,7 @@ import (
 	"github.com/containers/common/pkg/retry"
 	"github.com/containers/image/v5/types"
 	"github.com/opencontainers/go-digest"
+
 	"zotregistry.dev/zot/pkg/log"
 	"zotregistry.dev/zot/pkg/scheduler"
 )

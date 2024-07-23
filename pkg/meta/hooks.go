@@ -5,6 +5,7 @@ import (
 
 	godigest "github.com/opencontainers/go-digest"
 	v1 "github.com/opencontainers/image-spec/specs-go/v1"
+
 	zcommon "zotregistry.dev/zot/pkg/common"
 	"zotregistry.dev/zot/pkg/log"
 	mTypes "zotregistry.dev/zot/pkg/meta/types"

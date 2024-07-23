@@ -6,6 +6,7 @@ import (
 	"time"
 
 	. "github.com/smartystreets/goconvey/convey"
+
 	"zotregistry.dev/zot/pkg/meta/common"
 	mTypes "zotregistry.dev/zot/pkg/meta/types"
 )

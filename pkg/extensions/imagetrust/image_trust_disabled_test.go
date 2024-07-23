@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	. "github.com/smartystreets/goconvey/convey"
+
 	"zotregistry.dev/zot/pkg/extensions/imagetrust"
 	. "zotregistry.dev/zot/pkg/test/image-utils"
 )

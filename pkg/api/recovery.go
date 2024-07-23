@@ -6,6 +6,7 @@ import (
 	"runtime"
 
 	"github.com/gorilla/mux"
+
 	"zotregistry.dev/zot/pkg/log"
 )
 

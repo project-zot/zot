@@ -11,6 +11,7 @@ import (
 	"github.com/containers/image/v5/oci/layout"
 	"github.com/containers/image/v5/types"
 	"github.com/gofrs/uuid"
+
 	zerr "zotregistry.dev/zot/errors"
 	"zotregistry.dev/zot/pkg/extensions/sync/constants"
 	"zotregistry.dev/zot/pkg/storage"

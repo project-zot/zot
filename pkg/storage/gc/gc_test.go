@@ -13,6 +13,7 @@ import (
 	guuid "github.com/gofrs/uuid"
 	. "github.com/smartystreets/goconvey/convey"
 	"gopkg.in/resty.v1"
+
 	"zotregistry.dev/zot/pkg/api/config"
 	"zotregistry.dev/zot/pkg/extensions/monitoring"
 	zlog "zotregistry.dev/zot/pkg/log"

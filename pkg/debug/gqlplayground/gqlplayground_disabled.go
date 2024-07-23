@@ -5,6 +5,7 @@ package debug
 
 import (
 	"github.com/gorilla/mux"
+
 	"zotregistry.dev/zot/pkg/log"
 	"zotregistry.dev/zot/pkg/storage"
 )

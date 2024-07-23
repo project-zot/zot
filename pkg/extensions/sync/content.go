@@ -9,6 +9,7 @@ import (
 
 	"github.com/Masterminds/semver"
 	glob "github.com/bmatcuk/doublestar/v4"
+
 	"zotregistry.dev/zot/pkg/common"
 	syncconf "zotregistry.dev/zot/pkg/extensions/config/sync"
 	"zotregistry.dev/zot/pkg/log"

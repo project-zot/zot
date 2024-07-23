@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+
 	tskip "zotregistry.dev/zot/pkg/test/skip"
 )
 

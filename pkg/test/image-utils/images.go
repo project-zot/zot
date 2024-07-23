@@ -10,6 +10,7 @@ import (
 	godigest "github.com/opencontainers/go-digest"
 	"github.com/opencontainers/image-spec/specs-go"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
+
 	"zotregistry.dev/zot/pkg/common"
 	mTypes "zotregistry.dev/zot/pkg/meta/types"
 	storageConstants "zotregistry.dev/zot/pkg/storage/constants"

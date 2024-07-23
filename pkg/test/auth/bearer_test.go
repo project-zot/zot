@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	. "github.com/smartystreets/goconvey/convey"
+
 	auth "zotregistry.dev/zot/pkg/test/auth"
 )
 

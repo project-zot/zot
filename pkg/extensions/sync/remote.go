@@ -14,6 +14,7 @@ import (
 	"github.com/containers/image/v5/types"
 	"github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
+
 	"zotregistry.dev/zot/pkg/api/constants"
 	"zotregistry.dev/zot/pkg/common"
 	client "zotregistry.dev/zot/pkg/extensions/sync/httpclient"

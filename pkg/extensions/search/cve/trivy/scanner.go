@@ -23,6 +23,7 @@ import (
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	_ "modernc.org/sqlite"
+
 	zerr "zotregistry.dev/zot/errors"
 	zcommon "zotregistry.dev/zot/pkg/common"
 	cvecache "zotregistry.dev/zot/pkg/extensions/search/cve/cache"

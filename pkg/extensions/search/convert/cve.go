@@ -6,6 +6,7 @@ import (
 	"github.com/99designs/gqlgen/graphql"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/vektah/gqlparser/v2/gqlerror"
+
 	cveinfo "zotregistry.dev/zot/pkg/extensions/search/cve"
 	cvemodel "zotregistry.dev/zot/pkg/extensions/search/cve/model"
 	"zotregistry.dev/zot/pkg/extensions/search/gql_generated"

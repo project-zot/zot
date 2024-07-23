@@ -11,6 +11,7 @@ import (
 	"time"
 
 	. "github.com/smartystreets/goconvey/convey"
+
 	cli "zotregistry.dev/zot/pkg/cli/server"
 	test "zotregistry.dev/zot/pkg/test/common"
 )

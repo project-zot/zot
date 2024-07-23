@@ -6,6 +6,7 @@ import (
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"google.golang.org/protobuf/types/known/timestamppb"
+
 	"zotregistry.dev/zot/pkg/common"
 	proto_go "zotregistry.dev/zot/pkg/meta/proto/gen"
 	mTypes "zotregistry.dev/zot/pkg/meta/types"

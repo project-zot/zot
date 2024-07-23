@@ -2,6 +2,7 @@ package extensions
 
 import (
 	distext "github.com/opencontainers/distribution-spec/specs-go/v1/extensions"
+
 	"zotregistry.dev/zot/pkg/api/config"
 	"zotregistry.dev/zot/pkg/api/constants"
 	"zotregistry.dev/zot/pkg/log"

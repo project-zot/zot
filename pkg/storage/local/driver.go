@@ -12,6 +12,7 @@ import (
 	"unicode/utf8"
 
 	storagedriver "github.com/docker/distribution/registry/storage/driver"
+
 	zerr "zotregistry.dev/zot/errors"
 	storageConstants "zotregistry.dev/zot/pkg/storage/constants"
 	"zotregistry.dev/zot/pkg/test/inject"

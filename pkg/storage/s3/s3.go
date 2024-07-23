@@ -5,6 +5,7 @@ import (
 	"github.com/docker/distribution/registry/storage/driver"
 	// Load s3 driver.
 	_ "github.com/docker/distribution/registry/storage/driver/s3-aws"
+
 	"zotregistry.dev/zot/pkg/extensions/monitoring"
 	zlog "zotregistry.dev/zot/pkg/log"
 	"zotregistry.dev/zot/pkg/storage/cache"

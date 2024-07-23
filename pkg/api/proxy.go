@@ -9,6 +9,7 @@ import (
 	"net/http"
 
 	"github.com/gorilla/mux"
+
 	"zotregistry.dev/zot/pkg/api/constants"
 	"zotregistry.dev/zot/pkg/cluster"
 	"zotregistry.dev/zot/pkg/common"

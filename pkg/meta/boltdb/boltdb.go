@@ -13,6 +13,7 @@ import (
 	"go.etcd.io/bbolt"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
+
 	zerr "zotregistry.dev/zot/errors"
 	"zotregistry.dev/zot/pkg/api/constants"
 	zcommon "zotregistry.dev/zot/pkg/common"

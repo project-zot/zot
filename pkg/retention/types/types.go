@@ -5,6 +5,7 @@ import (
 	"time"
 
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
+
 	mTypes "zotregistry.dev/zot/pkg/meta/types"
 )
 

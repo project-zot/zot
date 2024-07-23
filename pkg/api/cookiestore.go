@@ -13,6 +13,7 @@ import (
 
 	"github.com/gorilla/securecookie"
 	"github.com/gorilla/sessions"
+
 	zerr "zotregistry.dev/zot/errors"
 	"zotregistry.dev/zot/pkg/scheduler"
 	"zotregistry.dev/zot/pkg/storage"

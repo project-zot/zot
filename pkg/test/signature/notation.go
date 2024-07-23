@@ -30,6 +30,7 @@ import (
 	"oras.land/oras-go/v2/registry"
 	"oras.land/oras-go/v2/registry/remote"
 	"oras.land/oras-go/v2/registry/remote/auth"
+
 	tcommon "zotregistry.dev/zot/pkg/test/common"
 )
 

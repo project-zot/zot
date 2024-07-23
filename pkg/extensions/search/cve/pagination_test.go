@@ -12,6 +12,7 @@ import (
 
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	. "github.com/smartystreets/goconvey/convey"
+
 	cveinfo "zotregistry.dev/zot/pkg/extensions/search/cve"
 	cvemodel "zotregistry.dev/zot/pkg/extensions/search/cve/model"
 	"zotregistry.dev/zot/pkg/log"

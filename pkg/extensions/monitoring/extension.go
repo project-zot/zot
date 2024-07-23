@@ -9,6 +9,7 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+
 	"zotregistry.dev/zot/errors"
 	"zotregistry.dev/zot/pkg/log"
 )

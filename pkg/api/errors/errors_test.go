@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	. "github.com/smartystreets/goconvey/convey"
+
 	apiErr "zotregistry.dev/zot/pkg/api/errors"
 )
 

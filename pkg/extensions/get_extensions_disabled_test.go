@@ -10,6 +10,7 @@ import (
 	distext "github.com/opencontainers/distribution-spec/specs-go/v1/extensions"
 	. "github.com/smartystreets/goconvey/convey"
 	"gopkg.in/resty.v1"
+
 	"zotregistry.dev/zot/pkg/api"
 	"zotregistry.dev/zot/pkg/api/config"
 	"zotregistry.dev/zot/pkg/api/constants"

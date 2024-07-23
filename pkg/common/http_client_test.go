@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	. "github.com/smartystreets/goconvey/convey"
+
 	"zotregistry.dev/zot/pkg/common"
 	test "zotregistry.dev/zot/pkg/test/common"
 )

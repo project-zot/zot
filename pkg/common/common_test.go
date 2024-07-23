@@ -8,6 +8,7 @@ import (
 
 	notreg "github.com/notaryproject/notation-go/registry"
 	. "github.com/smartystreets/goconvey/convey"
+
 	"zotregistry.dev/zot/pkg/api/config"
 	"zotregistry.dev/zot/pkg/common"
 )

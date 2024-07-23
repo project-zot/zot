@@ -3,6 +3,7 @@ package meta
 import (
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"go.etcd.io/bbolt"
+
 	"zotregistry.dev/zot/errors"
 	"zotregistry.dev/zot/pkg/api/config"
 	"zotregistry.dev/zot/pkg/log"

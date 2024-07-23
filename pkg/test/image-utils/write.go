@@ -6,6 +6,7 @@ import (
 
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
+
 	stypes "zotregistry.dev/zot/pkg/storage/types"
 )
 

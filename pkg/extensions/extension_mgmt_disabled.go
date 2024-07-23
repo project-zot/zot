@@ -5,6 +5,7 @@ package extensions
 
 import (
 	"github.com/gorilla/mux"
+
 	"zotregistry.dev/zot/pkg/api/config"
 	"zotregistry.dev/zot/pkg/log"
 )

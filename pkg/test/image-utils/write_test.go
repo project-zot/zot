@@ -7,6 +7,7 @@ import (
 
 	godigest "github.com/opencontainers/go-digest"
 	. "github.com/smartystreets/goconvey/convey"
+
 	"zotregistry.dev/zot/pkg/storage"
 	. "zotregistry.dev/zot/pkg/test/image-utils"
 	"zotregistry.dev/zot/pkg/test/mocks"
