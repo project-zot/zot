@@ -92,12 +92,12 @@ func SessionLogger(ctlr *Controller) mux.MiddlewareFunc {
 
 			for key, value := range request.Header {
 				if key == "Authorization" { // anonymize from logs
-					s := strings.SplitN(value[0], " ", 2) //nolint:gomnd
+					s := strings.SplitN(value[0], " ", 2) //nolint:mnd
 					if len(s) == 2 && strings.EqualFold(s[0], "basic") {
 						b, err := base64.StdEncoding.DecodeString(s[1])
 						if err == nil {
-							pair := strings.SplitN(string(b), ":", 2) //nolint:gomnd
-							//nolint:gomnd
+							pair := strings.SplitN(string(b), ":", 2) //nolint:mnd
+							//nolint:mnd
 							if len(pair) == 2 {
 								log = log.Str("username", pair[0])
 							}
@@ -155,12 +155,12 @@ func SessionAuditLogger(audit *log.Logger) mux.MiddlewareFunc {
 
 			for key, value := range request.Header {
 				if key == "Authorization" { // anonymize from logs
-					s := strings.SplitN(value[0], " ", 2) //nolint:gomnd
+					s := strings.SplitN(value[0], " ", 2) //nolint:mnd
 					if len(s) == 2 && strings.EqualFold(s[0], "basic") {
 						b, err := base64.StdEncoding.DecodeString(s[1])
 						if err == nil {
-							pair := strings.SplitN(string(b), ":", 2) //nolint:gomnd
-							if len(pair) == 2 {                       //nolint:gomnd
+							pair := strings.SplitN(string(b), ":", 2) //nolint:mnd
+							if len(pair) == 2 {                       //nolint:mnd
 								username = pair[0]
 							}
 						}

@@ -222,7 +222,7 @@ func getConfigNames(configPath string) (string, error) {
 
 	var builder strings.Builder
 
-	writer := tabwriter.NewWriter(&builder, 0, 8, 1, '\t', tabwriter.AlignRight) //nolint:gomnd
+	writer := tabwriter.NewWriter(&builder, 0, 8, 1, '\t', tabwriter.AlignRight) //nolint:mnd
 
 	for _, val := range configs {
 		configMap, ok := val.(map[string]interface{})

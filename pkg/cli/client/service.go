@@ -878,7 +878,7 @@ func (cve cveResult) stringPlainText() string {
 		id := ellipsize(cveListItem.ID, cveIDWidth, ellipsis)
 		title := ellipsize(cveListItem.Title, cveTitleWidth, ellipsis)
 		severity := ellipsize(cveListItem.Severity, cveSeverityWidth, ellipsis)
-		row := make([]string, 3) //nolint:gomnd
+		row := make([]string, 3) //nolint:mnd
 		row[colCVEIDIndex] = id
 		row[colCVESeverityIndex] = severity
 		row[colCVETitleIndex] = title
@@ -1233,7 +1233,7 @@ func addManifestToTable(table *tablewriter.Table, imageName, tagName string, man
 	imgSize, _ := strconv.ParseUint(manifest.Size, 10, 64)
 	size := ellipsize(strings.ReplaceAll(humanize.Bytes(imgSize), " ", ""), sizeWidth, ellipsis)
 	isSigned := manifest.IsSigned
-	row := make([]string, 8) //nolint:gomnd
+	row := make([]string, 8) //nolint:mnd
 
 	row[colImageNameIndex] = imageName
 	row[colTagIndex] = tagName
@@ -1261,7 +1261,7 @@ func addManifestToTable(table *tablewriter.Table, imageName, tagName string, man
 
 			layerDigestStr := ellipsize(layerDigest.Encoded(), digestWidth, "")
 
-			layerRow := make([]string, 8) //nolint:gomnd
+			layerRow := make([]string, 8) //nolint:mnd
 			layerRow[colImageNameIndex] = ""
 			layerRow[colTagIndex] = ""
 			layerRow[colDigestIndex] = ""

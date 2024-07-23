@@ -231,7 +231,7 @@ func MakeHtpasswdFileFromString(fileContent string) string {
 	}
 
 	content := []byte(fileContent)
-	if err := os.WriteFile(htpasswdFile.Name(), content, 0o600); err != nil { //nolint:gomnd
+	if err := os.WriteFile(htpasswdFile.Name(), content, 0o600); err != nil { //nolint:mnd
 		panic(err)
 	}
 

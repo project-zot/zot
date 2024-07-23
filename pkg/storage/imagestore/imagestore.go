@@ -224,7 +224,7 @@ func (is *ImageStore) ValidateRepo(name string) (bool, error) {
 		return false, zerr.ErrRepoNotFound
 	}
 
-	//nolint:gomnd
+	//nolint:mnd
 	if len(files) < 2 {
 		return false, zerr.ErrRepoBadVersion
 	}
@@ -1996,7 +1996,7 @@ func (is *ImageStore) PopulateStorageMetrics(interval time.Duration, sch *schedu
 		ImgStore: is,
 		Metrics:  is.metrics,
 		Log:      is.log,
-		MaxDelay: 15, //nolint:gomnd
+		MaxDelay: 15, //nolint:mnd
 	}
 
 	sch.SubmitGenerator(generator, interval, scheduler.HighPriority)

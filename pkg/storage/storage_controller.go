@@ -17,9 +17,9 @@ type StoreController struct {
 }
 
 func GetRoutePrefix(name string) string {
-	names := strings.SplitN(name, "/", 2) //nolint:gomnd
+	names := strings.SplitN(name, "/", 2) //nolint:mnd
 
-	if len(names) != 2 { //nolint:gomnd
+	if len(names) != 2 { //nolint:mnd
 		// it means route is of global storage e.g "centos:latest"
 		if len(names) == 1 {
 			return "/"
