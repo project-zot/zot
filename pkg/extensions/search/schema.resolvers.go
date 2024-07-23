@@ -8,7 +8,6 @@ import (
 	"context"
 
 	"github.com/vektah/gqlparser/v2/gqlerror"
-
 	zerr "zotregistry.dev/zot/errors"
 	"zotregistry.dev/zot/pkg/common"
 	"zotregistry.dev/zot/pkg/extensions/search/convert"
