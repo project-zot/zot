@@ -136,6 +136,7 @@ func (scheduler *Scheduler) poolWorker(ctx context.Context) {
 					scheduler.tasksLock.Lock()
 					scheduler.tasksDoWork++
 					scheduler.tasksLock.Unlock()
+
 					workStart = time.Now()
 				}
 
@@ -148,6 +149,7 @@ func (scheduler *Scheduler) poolWorker(ctx context.Context) {
 					scheduler.tasksLock.Lock()
 					scheduler.tasksDoWork--
 					scheduler.tasksLock.Unlock()
+
 					workDuration = time.Since(workStart)
 					monitoring.ObserveWorkersTasksDuration(scheduler.metricServer, task.Name(), workDuration)
 				}
@@ -201,6 +203,7 @@ func (scheduler *Scheduler) metricsWorker() {
 
 			monitoring.SetSchedulerGenerators(scheduler.metricServer, genMap)
 			monitoring.SetSchedulerTasksQueue(scheduler.metricServer, tasksMap)
+
 			workersMap := make(map[string]int)
 
 			scheduler.tasksLock.Lock()

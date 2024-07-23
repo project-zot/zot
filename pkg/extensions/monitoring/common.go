@@ -23,6 +23,7 @@ func GetDirSize(path string) (int64, error) {
 		if err != nil {
 			return err
 		}
+
 		if !info.IsDir() {
 			size += info.Size()
 		}

@@ -145,6 +145,7 @@ func WriteFileWithPermission(path string, data []byte, perm fs.FileMode, overwri
 	if err := os.MkdirAll(filepath.Dir(path), os.ModePerm); err != nil {
 		return err
 	}
+
 	flag := os.O_WRONLY | os.O_CREATE
 
 	if overwrite {

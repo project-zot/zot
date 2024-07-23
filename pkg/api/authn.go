@@ -433,6 +433,7 @@ func bearerAuthHandler(ctlr *Controller) mux.MiddlewareFunc {
 
 				return
 			}
+
 			acCtrlr := NewAccessController(ctlr.Config)
 			vars := mux.Vars(request)
 			name := vars["name"]

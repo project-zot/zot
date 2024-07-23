@@ -233,6 +233,7 @@ func CheckIfIndexNeedsUpdate(index *ispec.Index, desc *ispec.Descriptor,
 				log.Error().Err(err).
 					Str("old mediaType", manifest.MediaType).
 					Str("new mediaType", desc.MediaType).Msg("cannot change media-type")
+
 				reason := fmt.Sprintf("changing manifest media-type from \"%s\" to \"%s\" is disallowed",
 					manifest.MediaType, desc.MediaType)
 
@@ -976,6 +977,7 @@ func (gen *StorageMetricsInitGenerator) Next() (scheduler.Task, error) {
 
 		return nil, nil
 	}
+
 	gen.lastRepo = repo
 
 	return NewStorageMetricsTask(gen.ImgStore, gen.Metrics, repo, gen.Log), nil

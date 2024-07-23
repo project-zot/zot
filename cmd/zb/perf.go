@@ -465,6 +465,7 @@ func Pull(
 	} else {
 		// Push blob given size
 		var err error
+
 		manifestHash, repos, err = pushMonolithImage(workdir, url, trepo, repos, config, client)
 		if err != nil {
 			return err
@@ -683,6 +684,7 @@ func Perf(
 	log.Printf("Starting tests ...\n")
 
 	var err error
+
 	zbError := false
 
 	// get host ips from command line to make requests from
@@ -723,6 +725,7 @@ func Perf(
 				}
 			}()
 		}
+
 		wg.Wait()
 
 		summary.total = time.Since(start)

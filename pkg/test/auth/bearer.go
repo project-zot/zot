@@ -43,9 +43,11 @@ func MakeAuthTestServer(serverKey string, unauthorizedNamespace string) *httptes
 			parts := strings.Split(scope, ":")
 			name := parts[1]
 			actions := strings.Split(parts[2], ",")
+
 			if name == unauthorizedNamespace {
 				actions = []string{}
 			}
+
 			access = []auth.AccessEntry{
 				{
 					Name:    name,
@@ -59,6 +61,7 @@ func MakeAuthTestServer(serverKey string, unauthorizedNamespace string) *httptes
 		if err != nil {
 			panic(err)
 		}
+
 		response.Header().Set("Content-Type", "application/json")
 		fmt.Fprintf(response, `{"access_token": "%s"}`, token)
 	}))

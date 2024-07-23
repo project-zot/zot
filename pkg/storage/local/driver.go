@@ -161,6 +161,7 @@ func (driver *Driver) Writer(filepath string, append bool) (storagedriver.FileWr
 
 			return nil, driver.formatErr(err)
 		}
+
 		offset = n
 	}
 
@@ -206,6 +207,7 @@ func (driver *Driver) Walk(path string, walkFn storagedriver.WalkFn) error {
 				return err
 			}
 		}
+
 		err = walkFn(fileInfo)
 		//nolint: gocritic
 		if err == nil && fileInfo.IsDir() {

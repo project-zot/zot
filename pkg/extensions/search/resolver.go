@@ -302,6 +302,7 @@ func getCVEDiffListForImages(
 		if err != nil {
 			return nil, err
 		}
+
 		resultSubtrahend = getImageIdentifier(subtrahend)
 	} else {
 		// search for base images
@@ -1123,6 +1124,7 @@ func filterDerivedImages(image *gql_generated.ImageSummary) mTypes.FilterFunc {
 			if manifestDigest == *image.Manifests[i].Digest {
 				return false
 			}
+
 			imageLayers := image.Manifests[i].Layers
 
 			addImageToList = false

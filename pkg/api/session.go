@@ -89,6 +89,7 @@ func SessionLogger(ctlr *Controller) mux.MiddlewareFunc {
 			method := request.Method
 			headers := map[string][]string{}
 			log := logger.Info()
+
 			for key, value := range request.Header {
 				if key == "Authorization" { // anonymize from logs
 					s := strings.SplitN(value[0], " ", 2) //nolint:gomnd
@@ -102,12 +103,16 @@ func SessionLogger(ctlr *Controller) mux.MiddlewareFunc {
 							}
 						}
 					}
+
 					value = []string{"******"}
 				}
+
 				headers[key] = value
 			}
+
 			statusCode := stwr.status
 			bodySize := stwr.length
+
 			if raw != "" {
 				path = path + "?" + raw
 			}
@@ -164,6 +169,7 @@ func SessionAuditLogger(audit *log.Logger) mux.MiddlewareFunc {
 			}
 
 			statusCode := statusWr.status
+
 			if raw != "" {
 				path = path + "?" + raw
 			}

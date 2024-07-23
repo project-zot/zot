@@ -229,7 +229,6 @@ func BaseAuthzHandler(ctlr *Controller) mux.MiddlewareFunc {
 			since we only do READ actions in extensions, this middleware is enough for them because
 			it populates the context with user relevant data to be processed by each individual extension
 			*/
-
 			if request.Method == http.MethodOptions {
 				next.ServeHTTP(response, request)
 
@@ -342,6 +341,7 @@ func MetricsAuthzHandler(ctlr *Controller) mux.MiddlewareFunc {
 
 				return
 			}
+
 			if len(ctlr.Config.HTTP.AccessControl.Metrics.Users) == 0 {
 				log := ctlr.Log
 				log.Warn().Msg("auth is enabled but no metrics users in accessControl: /metrics is unaccesible")

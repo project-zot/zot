@@ -70,6 +70,7 @@ func (g *generator) Next() (scheduler.Task, error) {
 	if g.step > g.limit {
 		g.done = true
 	}
+
 	g.step++
 	g.index++
 
@@ -267,6 +268,7 @@ func TestScheduler(t *testing.T) {
 			if strings.Contains(line, "executing medium") {
 				if !strings.Contains(line, fmt.Sprintf("executing medium %s", lastMediumGenerator)) {
 					samePriorityFlippedCounter++
+
 					if lastMediumGenerator == "1" {
 						lastMediumGenerator = "2"
 					} else {
@@ -277,6 +279,7 @@ func TestScheduler(t *testing.T) {
 
 			if !strings.Contains(line, fmt.Sprintf("executing %s", lastPriority)) {
 				priorityFlippedCounter++
+
 				if lastPriority == "low" {
 					lastPriority = "medium"
 				} else {
@@ -435,6 +438,7 @@ func TestGetNumWorkers(t *testing.T) {
 		logger := log.NewLogger("debug", "logFile")
 		metrics := monitoring.NewMetricsServer(true, logger)
 		sch := scheduler.NewScheduler(config.New(), metrics, logger)
+
 		defer os.Remove("logFile")
 		So(sch.NumWorkers, ShouldEqual, runtime.NumCPU()*4)
 	})
@@ -445,6 +449,7 @@ func TestGetNumWorkers(t *testing.T) {
 		logger := log.NewLogger("debug", "logFile")
 		metrics := monitoring.NewMetricsServer(true, logger)
 		sch := scheduler.NewScheduler(cfg, metrics, logger)
+
 		defer os.Remove("logFile")
 		So(sch.NumWorkers, ShouldEqual, 3)
 	})

@@ -396,6 +396,7 @@ func pushMonolithImage(workdir, url, trepo string, repos []string, config testCo
 
 	loc = getLocation(url, resp)
 	cblob, cdigest := getImageConfig()
+
 	resp, err = client.R().
 		SetContentLength(true).
 		SetHeader("Content-Length", fmt.Sprintf("%d", len(cblob))).
@@ -818,6 +819,7 @@ func pushChunkAndCollect(workdir, url, trepo string, count int,
 
 		loc = getLocation(url, resp)
 		cblob, cdigest := getImageConfig()
+
 		resp, err = client.R().
 			SetContentLength(true).
 			SetHeader("Content-Type", "application/octet-stream").

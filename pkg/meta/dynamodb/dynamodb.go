@@ -1414,6 +1414,7 @@ func (dwr *DynamoDB) RemoveRepoReference(repo, reference string, manifestDigest 
 	} else {
 		// find all tags pointing to this digest
 		tags := []string{}
+
 		for tag, desc := range protoRepoMeta.Tags {
 			if desc.Digest == reference {
 				tags = append(tags, tag)
@@ -1453,6 +1454,7 @@ func (dwr *DynamoDB) RemoveRepoReference(repo, reference string, manifestDigest 
 	if err != nil {
 		return err
 	}
+
 	err = dwr.setProtoRepoMeta(repo, protoRepoMeta) //nolint: contextcheck
 
 	return err

@@ -457,6 +457,7 @@ func (rh *RouteHandler) CheckManifest(response http.ResponseWriter, request *htt
 			zcommon.WriteJSON(response, http.StatusNotFound, apiErr.NewErrorList(e))
 		} else {
 			rh.c.Log.Error().Err(err).Msg("unexpected error")
+
 			e := apiErr.NewError(apiErr.MANIFEST_INVALID).AddDetail(details)
 			zcommon.WriteJSON(response, http.StatusInternalServerError, apiErr.NewErrorList(e))
 		}
@@ -1017,6 +1018,7 @@ func parseRangeHeader(contentRange string) (int64, int64, error) {
 	}
 
 	var from int64
+
 	to := int64(-1)
 
 	rangeFrom := paramsMap["rangeFrom"]
@@ -1134,6 +1136,7 @@ func (rh *RouteHandler) GetBlob(response http.ResponseWriter, request *http.Requ
 
 		return
 	}
+
 	defer repo.Close()
 
 	response.Header().Set("Content-Length", fmt.Sprintf("%d", blen))
@@ -1329,6 +1332,7 @@ func (rh *RouteHandler) CreateBlobUpload(response http.ResponseWriter, request *
 		contentLength, err := strconv.ParseInt(request.Header.Get("Content-Length"), 10, 64)
 		if err != nil || contentLength <= 0 {
 			rh.c.Log.Warn().Str("actual", request.Header.Get("Content-Length")).Msg("invalid content length")
+
 			details := map[string]string{"digest": digest.String()}
 
 			if err != nil {
@@ -1336,6 +1340,7 @@ func (rh *RouteHandler) CreateBlobUpload(response http.ResponseWriter, request *
 			} else {
 				details["Content-Length"] = request.Header.Get("Content-Length")
 			}
+
 			e := apiErr.NewError(apiErr.BLOB_UPLOAD_INVALID).AddDetail(details)
 			zcommon.WriteJSON(response, http.StatusBadRequest, apiErr.NewErrorList(e))
 
@@ -1490,7 +1495,6 @@ func (rh *RouteHandler) PatchBlobUpload(response http.ResponseWriter, request *h
 		clen, err = imgStore.PutBlobChunkStreamed(name, sessionID, request.Body)
 	} else {
 		// chunked blob upload
-
 		var contentLength int64
 
 		if contentLength, err = strconv.ParseInt(request.Header.Get("Content-Length"), 10, 64); err != nil {
@@ -1532,6 +1536,7 @@ func (rh *RouteHandler) PatchBlobUpload(response http.ResponseWriter, request *h
 				rh.c.Log.Error().Err(err).Str("blobUpload", sessionID).Str("repository", name).
 					Msg("couldn't remove blobUpload in repo")
 			}
+
 			response.WriteHeader(http.StatusInternalServerError)
 		}
 
@@ -1654,6 +1659,7 @@ func (rh *RouteHandler) UpdateBlobUpload(response http.ResponseWriter, request *
 					rh.c.Log.Error().Err(err).Str("blobUpload", sessionID).Str("repository", name).
 						Msg("failed to remove blobUpload in repo")
 				}
+
 				response.WriteHeader(http.StatusInternalServerError)
 			}
 

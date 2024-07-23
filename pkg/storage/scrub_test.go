@@ -84,8 +84,10 @@ func RunCheckAllBlobsIntegrityTests( //nolint: thelper
 		// initialize repo
 		err := imgStore.InitRepo(repoName)
 		So(err, ShouldBeNil)
+
 		ok := imgStore.DirExists(path.Join(imgStore.RootDir(), repoName))
 		So(ok, ShouldBeTrue)
+
 		storeCtlr := storage.StoreController{}
 		storeCtlr.DefaultStore = imgStore
 		So(storeCtlr.GetImageStore(repoName), ShouldResemble, imgStore)
@@ -116,6 +118,7 @@ func RunCheckAllBlobsIntegrityTests( //nolint: thelper
 			res, err = storeCtlr.CheckAllBlobsIntegrity(context.Background())
 			res.PrintScrubResults(buff)
 			So(err, ShouldBeNil)
+
 			str = space.ReplaceAllString(buff.String(), " ")
 			actual = strings.TrimSpace(str)
 			So(actual, ShouldContainSubstring, "REPOSITORY TAG STATUS AFFECTED BLOB ERROR")

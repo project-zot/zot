@@ -20,6 +20,7 @@ func TestWrapperErrors(t *testing.T) {
 	tskip.SkipDynamo(t)
 
 	const region = "us-east-2"
+
 	endpoint := os.Getenv("DYNAMODBMOCK_ENDPOINT")
 
 	uuid, err := guuid.NewV4()

@@ -54,6 +54,7 @@ func TestCopyFiles(t *testing.T) {
 		dir := t.TempDir()
 
 		filePath := path.Join(dir, "file.txt")
+
 		err := os.WriteFile(filePath, []byte("some dummy file content"), 0o644) //nolint: gosec
 		if err != nil {
 			panic(err)
@@ -80,12 +81,14 @@ func TestCopyFiles(t *testing.T) {
 		}
 
 		filePathTrivy := path.Join(srcDir, "_trivy", "db", "trivy.db")
+
 		err = os.WriteFile(filePathTrivy, []byte("some dummy file content"), 0o644) //nolint: gosec
 		if err != nil {
 			panic(err)
 		}
 
 		var index ispec.Index
+
 		content, err := json.Marshal(index)
 		if err != nil {
 			panic(err)
@@ -219,6 +222,7 @@ func TestCopyTestKeysAndCerts(t *testing.T) {
 		// ----- /test/data doesn't exist ------
 		workDir, err := os.Getwd()
 		So(err, ShouldBeNil)
+
 		defer func() { _ = os.Chdir(workDir) }()
 
 		dir = t.TempDir()
@@ -251,6 +255,7 @@ func TestGetProjectRootDir(t *testing.T) {
 	Convey("GetProjectRootDir negative testing", t, func() {
 		workDir, err := os.Getwd()
 		So(err, ShouldBeNil)
+
 		defer func() { _ = os.Chdir(workDir) }()
 
 		err = os.Chdir(os.TempDir())
@@ -266,9 +271,11 @@ func TestGetCredString(t *testing.T) {
 	Convey("GetCredString panics", t, func() {
 		passwordSize := 100
 		pass := make([]byte, passwordSize)
+
 		for i := 0; i < passwordSize; i++ {
 			pass[i] = 'Y'
 		}
+
 		f := func() { tcommon.GetCredString("testUser", string(pass)) }
 		So(f, ShouldPanicWith, bcrypt.ErrPasswordTooLong)
 	})

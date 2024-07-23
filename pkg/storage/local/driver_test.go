@@ -34,6 +34,7 @@ func TestStorageDriver(t *testing.T) {
 		fileName := "testFile"
 		_, err := os.Create(path.Join(rootDir, fileName))
 		So(err, ShouldBeNil)
+
 		result = driver.DirExists(path.Join(rootDir, fileName))
 		So(result, ShouldBeFalse)
 

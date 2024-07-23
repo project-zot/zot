@@ -68,9 +68,12 @@ func TestConfig(t *testing.T) {
 	Convey("Test DeepCopy() & Sanitize()", t, func() {
 		conf := config.New()
 		So(conf, ShouldNotBeNil)
+
 		authConfig := &config.AuthConfig{LDAP: (&config.LDAPConfig{}).SetBindPassword("oina")}
 		conf.HTTP.Auth = authConfig
+
 		So(func() { conf.Sanitize() }, ShouldNotPanic)
+
 		conf = conf.Sanitize()
 		So(conf.HTTP.Auth.LDAP.BindPassword(), ShouldEqual, "******")
 

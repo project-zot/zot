@@ -589,6 +589,7 @@ func applyDefaultValues(config *config.Config, viperInstance *viper.Viper, log z
 					defaultDBDownloadURL := "ghcr.io/aquasecurity/trivy-db"
 					log.Info().Str("url", defaultDBDownloadURL).Str("component", "config").
 						Msg("using default trivy-db download URL.")
+
 					config.Extensions.Search.CVE.Trivy.DBRepository = defaultDBDownloadURL
 				}
 
@@ -596,6 +597,7 @@ func applyDefaultValues(config *config.Config, viperInstance *viper.Viper, log z
 					defaultJavaDBDownloadURL := "ghcr.io/aquasecurity/trivy-java-db"
 					log.Info().Str("url", defaultJavaDBDownloadURL).Str("component", "config").
 						Msg("using default trivy-java-db download URL.")
+
 					config.Extensions.Search.CVE.Trivy.JavaDBRepository = defaultJavaDBDownloadURL
 				}
 			}

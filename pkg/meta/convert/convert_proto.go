@@ -33,6 +33,7 @@ func GetProtoImageMeta(imageMeta mTypes.ImageMeta) *proto_go.ImageMeta {
 		if len(imageMeta.Manifests) == 0 {
 			return nil
 		}
+
 		manifestData := imageMeta.Manifests[0]
 
 		return GetProtoImageManifestData(manifestData.Manifest, manifestData.Config, manifestData.Size,

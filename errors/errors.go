@@ -36,6 +36,7 @@ func NewError(err error) *Error {
 
 func GetDetails(err error) map[string]string {
 	var internalErr *Error
+
 	details := make(map[string]string)
 
 	if errors.As(err, &internalErr) {

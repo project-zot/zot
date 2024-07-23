@@ -71,6 +71,7 @@ func OnDeleteManifest(repo, reference, mediaType string, digest godigest.Digest,
 		if err != nil {
 			log.Error().Err(err).Str("component", "metadb").
 				Msg("failed to check if image is a signature or not")
+
 			manageRepoMetaSuccessfully = false
 		}
 	} else {

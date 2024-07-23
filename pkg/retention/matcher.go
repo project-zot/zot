@@ -28,6 +28,7 @@ func (r *RegexMatcher) MatchesListOfRegex(name string, regexes []string) bool {
 			// all are compilable because they are checked at startup
 			if tagReg, err := regexp.Compile(regex); err == nil {
 				r.compiled[regex] = tagReg
+
 				if tagReg.MatchString(name) {
 					return true
 				}

@@ -178,6 +178,7 @@ func TestUploadImage(t *testing.T) {
 		user1 := "test"
 		password1 := "test"
 		testString1 := tcommon.GetCredString(user1, password1)
+
 		htpasswdPath := tcommon.MakeHtpasswdFileFromString(testString1)
 		defer os.Remove(htpasswdPath)
 		conf.HTTP.Auth = &config.AuthConfig{
@@ -265,6 +266,7 @@ func TestUploadImage(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+
 			file, err := os.Create(path.Join(layerPath, layerBlobDigest.Encoded()))
 			if err != nil {
 				t.Fatal(err)
@@ -274,11 +276,13 @@ func TestUploadImage(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+
 			defer func() {
 				err = os.Chmod(layerPath, 0o700)
 				if err != nil {
 					t.Fatal(err)
 				}
+
 				os.RemoveAll(file.Name())
 			}()
 		}
@@ -491,6 +495,7 @@ func TestInjectUploadImageWithBasicAuth(t *testing.T) {
 		user := "user"
 		password := "password"
 		testString := tcommon.GetCredString(user, password)
+
 		htpasswdPath := tcommon.MakeHtpasswdFileFromString(testString)
 		defer os.Remove(htpasswdPath)
 		conf.HTTP.Auth = &config.AuthConfig{

@@ -45,10 +45,12 @@ func TestCommon(t *testing.T) {
 	Convey("test dirExists()", t, func() {
 		exists := common.DirExists("testdir")
 		So(exists, ShouldBeFalse)
+
 		tempDir := t.TempDir()
 
 		file, err := os.Create(path.Join(tempDir, "file.txt"))
 		So(err, ShouldBeNil)
+
 		isDir := common.DirExists(file.Name())
 		So(isDir, ShouldBeFalse)
 	})
@@ -74,6 +76,7 @@ func TestCommon(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(localSockets, ShouldNotBeEmpty)
 		So(localSockets, ShouldContain, "127.0.0.1:8765")
+
 		for _, socket := range localSockets {
 			lastColonIndex := strings.LastIndex(socket, ":")
 			So(socket[lastColonIndex+1:], ShouldEqual, "8765")
@@ -85,6 +88,7 @@ func TestCommon(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(localSockets, ShouldNotBeEmpty)
 		So(localSockets, ShouldContain, "[::1]:8766")
+
 		for _, socket := range localSockets {
 			lastColonIndex := strings.LastIndex(socket, ":")
 			So(socket[lastColonIndex+1:], ShouldEqual, "8766")

@@ -46,6 +46,7 @@ func NewLogger(level, output string) Logger {
 		if err != nil {
 			panic(err)
 		}
+
 		log = zerolog.New(file)
 	}
 

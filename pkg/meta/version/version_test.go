@@ -33,6 +33,7 @@ func TestVersioningBoltDB(t *testing.T) {
 		log := log.NewLogger("debug", "")
 
 		boltdbWrapper, err := boltdb.New(boltDriver, log)
+
 		defer os.Remove(path.Join(boltDBParams.RootDir, "meta.db"))
 		So(boltdbWrapper, ShouldNotBeNil)
 		So(err, ShouldBeNil)

@@ -482,6 +482,7 @@ func TestGetOCIReferrers(t *testing.T) {
 			blob, err := imgStore.PutBlobChunkStreamed(repo, upload, buf)
 			So(err, ShouldBeNil)
 			So(blob, ShouldEqual, buflen)
+
 			blobDigest1 := digest
 			So(blobDigest1, ShouldNotBeEmpty)
 
@@ -697,8 +698,10 @@ func TestNegativeCasesObjectsStorage(t *testing.T) {
 
 			So(storeDriver.Move(context.Background(), path.Join(testDir, testImage, "index.json"),
 				path.Join(testDir, testImage, "blobs")), ShouldBeNil)
+
 			ok, _ := imgStore.ValidateRepo(testImage)
 			So(ok, ShouldBeFalse)
+
 			_, err = imgStore.GetImageTags(testImage)
 			So(err, ShouldNotBeNil)
 
@@ -713,6 +716,7 @@ func TestNegativeCasesObjectsStorage(t *testing.T) {
 
 	Convey("Without dedupe", t, func(c C) {
 		tdir := t.TempDir()
+
 		storeDriver, imgStore, _ := createObjectsStore(testDir, tdir, false)
 		defer cleanupStorage(storeDriver, testDir)
 
@@ -739,6 +743,7 @@ func TestNegativeCasesObjectsStorage(t *testing.T) {
 			So(imgStore.InitRepo(testImage), ShouldBeNil)
 			So(storeDriver.Move(context.Background(), path.Join(testDir, testImage, "index.json"),
 				path.Join(testDir, testImage, "_index.json")), ShouldBeNil)
+
 			ok, err := imgStore.ValidateRepo(testImage)
 			So(err, ShouldBeNil)
 			So(ok, ShouldBeFalse)
@@ -1156,6 +1161,7 @@ func TestS3Dedupe(t *testing.T) {
 		blob, err := imgStore.PutBlobChunkStreamed("dedupe1", upload, buf)
 		So(err, ShouldBeNil)
 		So(blob, ShouldEqual, buflen)
+
 		blobDigest1 := digest
 		So(blobDigest1, ShouldNotBeEmpty)
 
@@ -1184,6 +1190,7 @@ func TestS3Dedupe(t *testing.T) {
 		_, clen, err := imgStore.FullBlobUpload("dedupe1", bytes.NewReader(cblob), cdigest)
 		So(err, ShouldBeNil)
 		So(clen, ShouldEqual, len(cblob))
+
 		hasBlob, _, err := imgStore.CheckBlob("dedupe1", cdigest)
 		So(err, ShouldBeNil)
 		So(hasBlob, ShouldEqual, true)
@@ -1206,6 +1213,7 @@ func TestS3Dedupe(t *testing.T) {
 		manifest.SchemaVersion = 2
 		manifestBuf, err := json.Marshal(manifest)
 		So(err, ShouldBeNil)
+
 		manifestDigest := godigest.FromBytes(manifestBuf)
 		_, _, err = imgStore.PutImageManifest("dedupe1", manifestDigest.String(),
 			ispec.MediaTypeImageManifest, manifestBuf)
@@ -1227,6 +1235,7 @@ func TestS3Dedupe(t *testing.T) {
 		blob, err = imgStore.PutBlobChunkStreamed("dedupe2", upload, buf)
 		So(err, ShouldBeNil)
 		So(blob, ShouldEqual, buflen)
+
 		blobDigest2 := digest
 		So(blobDigest2, ShouldNotBeEmpty)
 
@@ -1244,6 +1253,7 @@ func TestS3Dedupe(t *testing.T) {
 		So(getBlobSize2, ShouldBeGreaterThan, 0)
 		So(checkBlobSize1, ShouldEqual, checkBlobSize2)
 		So(getBlobSize1, ShouldEqual, getBlobSize2)
+
 		err = blobReadCloser.Close()
 		So(err, ShouldBeNil)
 
@@ -1252,6 +1262,7 @@ func TestS3Dedupe(t *testing.T) {
 		So(len(blobContent), ShouldBeGreaterThan, 0)
 		So(checkBlobSize1, ShouldEqual, len(blobContent))
 		So(getBlobSize1, ShouldEqual, len(blobContent))
+
 		err = blobReadCloser.Close()
 		So(err, ShouldBeNil)
 
@@ -1259,6 +1270,7 @@ func TestS3Dedupe(t *testing.T) {
 		_, clen, err = imgStore.FullBlobUpload("dedupe2", bytes.NewReader(cblob), cdigest)
 		So(err, ShouldBeNil)
 		So(clen, ShouldEqual, len(cblob))
+
 		hasBlob, _, err = imgStore.CheckBlob("dedupe2", cdigest)
 		So(err, ShouldBeNil)
 		So(hasBlob, ShouldEqual, true)
@@ -1280,6 +1292,7 @@ func TestS3Dedupe(t *testing.T) {
 		manifest.SchemaVersion = 2
 		manifestBuf, err = json.Marshal(manifest)
 		So(err, ShouldBeNil)
+
 		digest = godigest.FromBytes(manifestBuf)
 		_, _, err = imgStore.PutImageManifest("dedupe2", "1.0", ispec.MediaTypeImageManifest,
 			manifestBuf)
@@ -1378,6 +1391,7 @@ func TestS3Dedupe(t *testing.T) {
 			blob, err = imgStore.PutBlobChunkStreamed("dedupe3", upload, buf)
 			So(err, ShouldBeNil)
 			So(blob, ShouldEqual, buflen)
+
 			blobDigest2 := digest
 			So(blobDigest2, ShouldNotBeEmpty)
 
@@ -1393,6 +1407,7 @@ func TestS3Dedupe(t *testing.T) {
 				"application/vnd.oci.image.layer.v1.tar+gzip")
 			So(err, ShouldBeNil)
 			So(getBlobSize1, ShouldEqual, getBlobSize2)
+
 			err = blobReadCloser.Close()
 			So(err, ShouldBeNil)
 
@@ -1418,6 +1433,7 @@ func TestS3Dedupe(t *testing.T) {
 			_, clen, err = imgStore.FullBlobUpload("dedupe3", bytes.NewReader(cblob), cdigest)
 			So(err, ShouldBeNil)
 			So(clen, ShouldEqual, len(cblob))
+
 			hasBlob, _, err = imgStore.CheckBlob("dedupe3", cdigest)
 			So(err, ShouldBeNil)
 			So(hasBlob, ShouldEqual, true)
@@ -1439,6 +1455,7 @@ func TestS3Dedupe(t *testing.T) {
 			manifest.SchemaVersion = 2
 			manifestBuf, err = json.Marshal(manifest)
 			So(err, ShouldBeNil)
+
 			digest = godigest.FromBytes(manifestBuf)
 			_, _, err = imgStore.PutImageManifest("dedupe3", "1.0", ispec.MediaTypeImageManifest,
 				manifestBuf)
@@ -1567,6 +1584,7 @@ func TestS3Dedupe(t *testing.T) {
 		blob, err := imgStore.PutBlobChunkStreamed("dedupe1", upload, buf)
 		So(err, ShouldBeNil)
 		So(blob, ShouldEqual, buflen)
+
 		blobDigest1 := digest
 		So(blobDigest1, ShouldNotBeEmpty)
 
@@ -1589,6 +1607,7 @@ func TestS3Dedupe(t *testing.T) {
 		_, clen, err := imgStore.FullBlobUpload("dedupe1", bytes.NewReader(cblob), cdigest)
 		So(err, ShouldBeNil)
 		So(clen, ShouldEqual, len(cblob))
+
 		hasBlob, _, err := imgStore.CheckBlob("dedupe1", cdigest)
 		So(err, ShouldBeNil)
 		So(hasBlob, ShouldEqual, true)
@@ -1611,6 +1630,7 @@ func TestS3Dedupe(t *testing.T) {
 		manifest.SchemaVersion = 2
 		manifestBuf, err := json.Marshal(manifest)
 		So(err, ShouldBeNil)
+
 		manifestDigest := godigest.FromBytes(manifestBuf)
 		_, _, err = imgStore.PutImageManifest("dedupe1", manifestDigest.String(),
 			ispec.MediaTypeImageManifest, manifestBuf)
@@ -1632,6 +1652,7 @@ func TestS3Dedupe(t *testing.T) {
 		blob, err = imgStore.PutBlobChunkStreamed("dedupe2", upload, buf)
 		So(err, ShouldBeNil)
 		So(blob, ShouldEqual, buflen)
+
 		blobDigest2 := digest
 		So(blobDigest2, ShouldNotBeEmpty)
 
@@ -1649,6 +1670,7 @@ func TestS3Dedupe(t *testing.T) {
 		So(getBlobSize2, ShouldBeGreaterThan, 0)
 		So(checkBlobSize1, ShouldEqual, checkBlobSize2)
 		So(getBlobSize1, ShouldEqual, getBlobSize2)
+
 		err = blobReadCloser.Close()
 		So(err, ShouldBeNil)
 
@@ -1656,6 +1678,7 @@ func TestS3Dedupe(t *testing.T) {
 		_, clen, err = imgStore.FullBlobUpload("dedupe2", bytes.NewReader(cblob), cdigest)
 		So(err, ShouldBeNil)
 		So(clen, ShouldEqual, len(cblob))
+
 		hasBlob, _, err = imgStore.CheckBlob("dedupe2", cdigest)
 		So(err, ShouldBeNil)
 		So(hasBlob, ShouldEqual, true)
@@ -1677,6 +1700,7 @@ func TestS3Dedupe(t *testing.T) {
 		manifest.SchemaVersion = 2
 		manifestBuf, err = json.Marshal(manifest)
 		So(err, ShouldBeNil)
+
 		digest = godigest.FromBytes(manifestBuf)
 		_, _, err = imgStore.PutImageManifest("dedupe2", "1.0", ispec.MediaTypeImageManifest,
 			manifestBuf)
@@ -1883,6 +1907,7 @@ func TestRebuildDedupeIndex(t *testing.T) {
 		manifest.SchemaVersion = 2
 		manifestBuf, err := json.Marshal(manifest)
 		So(err, ShouldBeNil)
+
 		digest = godigest.FromBytes(manifestBuf)
 		_, _, err = imgStore.PutImageManifest("dedupe1", digest.String(),
 			ispec.MediaTypeImageManifest, manifestBuf)
@@ -1966,6 +1991,7 @@ func TestRebuildDedupeIndex(t *testing.T) {
 
 				// rebuild with dedupe false, should have all blobs with content
 				imgStore.RunDedupeBlobs(time.Duration(0), taskScheduler)
+
 				sleepValue := i * 5
 				time.Sleep(time.Duration(sleepValue) * time.Millisecond)
 
@@ -2066,6 +2092,7 @@ func TestRebuildDedupeIndex(t *testing.T) {
 
 		Convey("Trigger Stat error while getting original blob", func() {
 			tdir := t.TempDir()
+
 			storeDriver, imgStore, _ := createObjectsStore(testDir, tdir, false)
 			defer cleanupStorage(storeDriver, testDir)
 
@@ -2119,6 +2146,7 @@ func TestRebuildDedupeIndex(t *testing.T) {
 
 		Convey("Trigger GetNextDigestWithBlobPaths path not found err", func() {
 			tdir := t.TempDir()
+
 			storeDriver, imgStore, _ := createObjectsStore(testDir, tdir, true)
 			defer cleanupStorage(storeDriver, testDir)
 
@@ -2726,6 +2754,7 @@ func TestS3PullRange(t *testing.T) {
 		buflen := buf.Len()
 		digest := godigest.FromBytes(content)
 		So(digest, ShouldNotBeNil)
+
 		blob, err := imgStore.PutBlobChunkStreamed("index", upload, buf)
 		So(err, ShouldBeNil)
 		So(blob, ShouldEqual, buflen)
@@ -2796,6 +2825,7 @@ func TestS3PullRange(t *testing.T) {
 			buflen := buf.Len()
 			digest := godigest.FromBytes(dupcontent)
 			So(digest, ShouldNotBeNil)
+
 			blob, err := imgStore.PutBlobChunkStreamed("dupindex", upload, buf)
 			So(err, ShouldBeNil)
 			So(blob, ShouldEqual, buflen)
@@ -2902,9 +2932,11 @@ func TestS3ManifestImageIndex(t *testing.T) {
 		buflen := buf.Len()
 		digest := godigest.FromBytes(content)
 		So(digest, ShouldNotBeNil)
+
 		blob, err := imgStore.PutBlobChunkStreamed("index", upload, buf)
 		So(err, ShouldBeNil)
 		So(blob, ShouldEqual, buflen)
+
 		bdgst1 := digest
 		bsize1 := len(content)
 
@@ -2946,8 +2978,10 @@ func TestS3ManifestImageIndex(t *testing.T) {
 		manifest.SchemaVersion = 2
 		content, err = json.Marshal(manifest)
 		So(err, ShouldBeNil)
+
 		digest = godigest.FromBytes(content)
 		So(digest, ShouldNotBeNil)
+
 		m1content := content
 		_, _, err = imgStore.PutImageManifest("index", "test:1.0", ispec.MediaTypeImageManifest, content)
 		So(err, ShouldBeNil)
@@ -2988,6 +3022,7 @@ func TestS3ManifestImageIndex(t *testing.T) {
 		manifest.SchemaVersion = 2
 		content, err = json.Marshal(manifest)
 		So(err, ShouldBeNil)
+
 		digest = godigest.FromBytes(content)
 		So(digest, ShouldNotBeNil)
 		m2dgst := digest
@@ -3030,6 +3065,7 @@ func TestS3ManifestImageIndex(t *testing.T) {
 			manifest.SchemaVersion = 2
 			content, err = json.Marshal(manifest)
 			So(err, ShouldBeNil)
+
 			digest = godigest.FromBytes(content)
 			So(digest, ShouldNotBeNil)
 			_, _, err = imgStore.PutImageManifest("index", digest.String(), ispec.MediaTypeImageManifest, content)
@@ -3052,6 +3088,7 @@ func TestS3ManifestImageIndex(t *testing.T) {
 
 			content, err = json.Marshal(index)
 			So(err, ShouldBeNil)
+
 			digest = godigest.FromBytes(content)
 			So(digest, ShouldNotBeNil)
 			index1dgst := digest
@@ -3094,6 +3131,7 @@ func TestS3ManifestImageIndex(t *testing.T) {
 			manifest.SchemaVersion = 2
 			content, err = json.Marshal(manifest)
 			So(err, ShouldBeNil)
+
 			digest = godigest.FromBytes(content)
 			So(digest, ShouldNotBeNil)
 			m4dgst := digest
@@ -3117,8 +3155,10 @@ func TestS3ManifestImageIndex(t *testing.T) {
 
 			content, err = json.Marshal(index)
 			So(err, ShouldBeNil)
+
 			digest = godigest.FromBytes(content)
 			So(digest, ShouldNotBeNil)
+
 			_, _, err = imgStore.PutImageManifest("index", "test:index2", ispec.MediaTypeImageIndex, content)
 			So(err, ShouldBeNil)
 			_, _, _, err = imgStore.GetImageManifest("index", "test:index2")
@@ -3146,8 +3186,10 @@ func TestS3ManifestImageIndex(t *testing.T) {
 
 				content, err = json.Marshal(index)
 				So(err, ShouldBeNil)
+
 				digest = godigest.FromBytes(content)
 				So(digest, ShouldNotBeNil)
+
 				_, _, err = imgStore.PutImageManifest("index", "test:index3", ispec.MediaTypeImageIndex, content)
 				So(err, ShouldBeNil)
 				_, _, _, err = imgStore.GetImageManifest("index", "test:index3")
@@ -3167,6 +3209,7 @@ func TestS3ManifestImageIndex(t *testing.T) {
 
 				content, err = json.Marshal(index)
 				So(err, ShouldBeNil)
+
 				digest = godigest.FromBytes(content)
 				So(digest, ShouldNotBeNil)
 				_, _, err = imgStore.PutImageManifest("index", digest.String(), ispec.MediaTypeImageIndex, content)
@@ -3219,6 +3262,7 @@ func TestS3ManifestImageIndex(t *testing.T) {
 				buflen := buf.Len()
 				digest := godigest.FromBytes(content)
 				So(digest, ShouldNotBeNil)
+
 				blob, err := imgStore.PutBlobChunkStreamed("index", upload, buf)
 				So(err, ShouldBeNil)
 				So(blob, ShouldEqual, buflen)
@@ -3245,6 +3289,7 @@ func TestS3ManifestImageIndex(t *testing.T) {
 				manifest.SchemaVersion = 2
 				content, err = json.Marshal(manifest)
 				So(err, ShouldBeNil)
+
 				digest = godigest.FromBytes(content)
 				So(digest, ShouldNotBeNil)
 				_, _, err = imgStore.PutImageManifest("index", digest.String(), ispec.MediaTypeImageManifest, content)
@@ -3263,8 +3308,10 @@ func TestS3ManifestImageIndex(t *testing.T) {
 
 				content, err = json.Marshal(index)
 				So(err, ShouldBeNil)
+
 				digest = godigest.FromBytes(content)
 				So(digest, ShouldNotBeNil)
+
 				_, _, err = imgStore.PutImageManifest("index", "test:index1", ispec.MediaTypeImageIndex, content)
 				So(err, ShouldBeNil)
 				_, _, _, err = imgStore.GetImageManifest("index", "test:index1")
@@ -3296,6 +3343,7 @@ func TestS3ManifestImageIndex(t *testing.T) {
 					_, err = wrtr.Write([]byte("deadbeef"))
 					So(err, ShouldBeNil)
 					wrtr.Close()
+
 					err = imgStore.DeleteImageManifest("index", index1dgst.String(), false)
 					So(err, ShouldBeNil)
 					_, _, _, err = imgStore.GetImageManifest("index", "test:index1")
@@ -3316,8 +3364,10 @@ func TestS3ManifestImageIndex(t *testing.T) {
 
 					content, err = json.Marshal(index)
 					So(err, ShouldBeNil)
+
 					digest = godigest.FromBytes(content)
 					So(digest, ShouldNotBeNil)
+
 					_, _, err = imgStore.PutImageManifest("index", "test:1.0", ispec.MediaTypeImageIndex, content)
 					So(err, ShouldNotBeNil)
 
@@ -3351,6 +3401,7 @@ func TestS3ManifestImageIndex(t *testing.T) {
 		buflen := buf.Len()
 		bdigest := godigest.FromBytes(content)
 		bsize := len(content)
+
 		So(bdigest, ShouldNotBeNil)
 
 		_, clen, err := imgStore.FullBlobUpload("index", buf, bdigest)
@@ -3384,8 +3435,10 @@ func TestS3ManifestImageIndex(t *testing.T) {
 		manifest.SchemaVersion = 2
 		content, err = json.Marshal(manifest)
 		So(err, ShouldBeNil)
+
 		m1digest := godigest.FromBytes(content)
 		So(m1digest, ShouldNotBeNil)
+
 		m1size := len(content)
 
 		_, _, err = imgStore.PutImageManifest("index", "test:1.0", ispec.MediaTypeImageManifest, content)
@@ -3418,15 +3471,16 @@ func TestS3ManifestImageIndex(t *testing.T) {
 		manifest.SchemaVersion = 2
 		content, err = json.Marshal(manifest)
 		So(err, ShouldBeNil)
+
 		m2digest := godigest.FromBytes(content)
 		So(m2digest, ShouldNotBeNil)
+
 		m2size := len(content)
 		_, _, err = imgStore.PutImageManifest("index", m2digest.String(), ispec.MediaTypeImageManifest, content)
 		So(err, ShouldBeNil)
 
 		Convey("Put image index with valid subject", func() {
 			// create an image index containing the 2nd manifest, having the 1st manifest as subject
-
 			var index ispec.Index
 			index.SchemaVersion = 2
 			index.Manifests = []ispec.Descriptor{
@@ -3444,6 +3498,7 @@ func TestS3ManifestImageIndex(t *testing.T) {
 
 			content, err := json.Marshal(index)
 			So(err, ShouldBeNil)
+
 			idigest := godigest.FromBytes(content)
 			So(idigest, ShouldNotBeNil)
 
@@ -3860,6 +3915,7 @@ func TestInjectDedupe(t *testing.T) {
 
 		injected := inject.InjectFailure(0)
 		err = imgStore.DedupeBlob("blob", "digest", "", "newblob")
+
 		if injected {
 			So(err, ShouldNotBeNil)
 		} else {
@@ -3868,6 +3924,7 @@ func TestInjectDedupe(t *testing.T) {
 
 		injected = inject.InjectFailure(1)
 		err = imgStore.DedupeBlob("blob", "digest", "", "newblob")
+
 		if injected {
 			So(err, ShouldNotBeNil)
 		} else {

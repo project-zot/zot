@@ -31,6 +31,7 @@ func TestIterator(t *testing.T) {
 	tskip.SkipDynamo(t)
 
 	const region = "us-east-2"
+
 	endpoint := os.Getenv("DYNAMODBMOCK_ENDPOINT")
 
 	uuid, err := guuid.NewV4()
@@ -709,6 +710,7 @@ func TestWrapperErrors(t *testing.T) {
 			userAc.SetGlobPatterns("read", map[string]bool{
 				"repo": false,
 			})
+
 			ctx := userAc.DeriveContext(context.Background())
 
 			_, err := dynamoWrapper.ToggleBookmarkRepo(ctx, "unaccesible")
@@ -721,6 +723,7 @@ func TestWrapperErrors(t *testing.T) {
 			userAc.SetGlobPatterns("read", map[string]bool{
 				"repo": true,
 			})
+
 			ctx := userAc.DeriveContext(context.Background())
 
 			status, err := dynamoWrapper.ToggleBookmarkRepo(ctx, "repo")
@@ -734,6 +737,7 @@ func TestWrapperErrors(t *testing.T) {
 			userAc.SetGlobPatterns("read", map[string]bool{
 				"repo": false,
 			})
+
 			ctx := userAc.DeriveContext(context.Background())
 
 			dynamoWrapper.UserDataTablename = badTablename
@@ -749,6 +753,7 @@ func TestWrapperErrors(t *testing.T) {
 			userAc.SetGlobPatterns("read", map[string]bool{
 				"repo": false,
 			})
+
 			ctx := userAc.DeriveContext(context.Background())
 
 			repos, err := dynamoWrapper.GetBookmarkedRepos(ctx)
@@ -770,6 +775,7 @@ func TestWrapperErrors(t *testing.T) {
 			userAc.SetGlobPatterns("read", map[string]bool{
 				"repo": false,
 			})
+
 			ctx := userAc.DeriveContext(context.Background())
 
 			_, err := dynamoWrapper.ToggleStarRepo(ctx, "unaccesible")
@@ -782,6 +788,7 @@ func TestWrapperErrors(t *testing.T) {
 			userAc.SetGlobPatterns("read", map[string]bool{
 				"repo": false,
 			})
+
 			ctx := userAc.DeriveContext(context.Background())
 
 			dynamoWrapper.UserDataTablename = badTablename
@@ -796,6 +803,7 @@ func TestWrapperErrors(t *testing.T) {
 			userAc.SetGlobPatterns("read", map[string]bool{
 				"repo": true,
 			})
+
 			ctx := userAc.DeriveContext(context.Background())
 
 			dynamoWrapper.RepoMetaTablename = badTablename
@@ -820,6 +828,7 @@ func TestWrapperErrors(t *testing.T) {
 			userAc.SetGlobPatterns("read", map[string]bool{
 				"repo": true,
 			})
+
 			ctx := userAc.DeriveContext(context.Background())
 
 			dynamoWrapper.UserDataTablename = badTablename
@@ -834,6 +843,7 @@ func TestWrapperErrors(t *testing.T) {
 			userAc.SetGlobPatterns("read", map[string]bool{
 				"repo": true,
 			})
+
 			ctx := userAc.DeriveContext(context.Background())
 
 			err := setBadUserData(dynamoWrapper.Client, userDataTablename, userAc.GetUsername())
@@ -910,6 +920,7 @@ func TestWrapperErrors(t *testing.T) {
 			Convey("unmarshal error", func() {
 				err := setRepoLastUpdated("repo", []byte("bad-blob"), dynamoWrapper)
 				So(err, ShouldBeNil)
+
 				lastUpdated := dynamoWrapper.GetRepoLastUpdated("repo")
 				So(lastUpdated, ShouldEqual, time.Time{})
 			})

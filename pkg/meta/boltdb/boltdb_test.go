@@ -104,6 +104,7 @@ func TestWrapperErrors(t *testing.T) {
 
 		Convey("UpdateSignaturesValidity", func() {
 			boltdbWrapper.SetImageTrustStore(imgTrustStore{})
+
 			digest := image.Digest()
 
 			ctx := context.Background()
@@ -688,6 +689,7 @@ func TestWrapperErrors(t *testing.T) {
 			userAc.SetGlobPatterns("read", map[string]bool{
 				"repo": true,
 			})
+
 			ctx := userAc.DeriveContext(context.Background())
 
 			err := boltdbWrapper.DB.Update(func(tx *bbolt.Tx) error {
@@ -710,6 +712,7 @@ func TestWrapperErrors(t *testing.T) {
 			userAc.SetGlobPatterns("read", map[string]bool{
 				"repo": true,
 			})
+
 			ctx := userAc.DeriveContext(context.Background())
 
 			_, err = boltdbWrapper.ToggleStarRepo(ctx, "repo")
@@ -813,6 +816,7 @@ func TestWrapperErrors(t *testing.T) {
 			userAc.SetGlobPatterns("read", map[string]bool{
 				"repo": true,
 			})
+
 			ctx := userAc.DeriveContext(context.Background())
 
 			err = boltdbWrapper.DB.Update(func(tx *bbolt.Tx) error {

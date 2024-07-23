@@ -97,7 +97,9 @@ func TestValidateManifest(t *testing.T) {
 
 			_, _, err = imgStore.PutImageManifest("test", "1.0", ispec.MediaTypeImageManifest, body)
 			So(err, ShouldNotBeNil)
+
 			var internalErr *zerr.Error
+
 			So(errors.As(err, &internalErr), ShouldBeTrue)
 			So(internalErr.GetDetails(), ShouldContainKey, "jsonSchemaValidation")
 			So(internalErr.GetDetails()["jsonSchemaValidation"], ShouldEqual, "[schemaVersion: Must be less than or equal to 2]")

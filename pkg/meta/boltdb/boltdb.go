@@ -1267,6 +1267,7 @@ func (bdw *BoltDB) UpdateSignaturesValidity(ctx context.Context, repo string, ma
 		}
 
 		manifestSignatures := proto_go.ManifestSignatures{Map: map[string]*proto_go.SignaturesInfo{"": {}}}
+
 		for sigType, sigs := range protoRepoMeta.Signatures[manifestDigest.String()].Map {
 			if zcommon.IsContextDone(ctx) {
 				return ctx.Err()
@@ -1377,6 +1378,7 @@ func (bdw *BoltDB) RemoveRepoReference(repo, reference string, manifestDigest go
 		/* try to find at least one tag pointing to manifestDigest
 		if not found then we can also remove everything related to this digest */
 		var foundTag bool
+
 		for _, desc := range protoRepoMeta.Tags {
 			if desc.Digest == manifestDigest.String() {
 				foundTag = true
@@ -1882,6 +1884,7 @@ func (bdw *BoltDB) DeleteUserAPIKey(ctx context.Context, keyID string) error {
 
 func (bdw *BoltDB) GetUserAPIKeyInfo(hashedKey string) (string, error) {
 	var userid string
+
 	err := bdw.DB.View(func(tx *bbolt.Tx) error {
 		buck := tx.Bucket([]byte(UserAPIKeysBucket))
 		if buck == nil {

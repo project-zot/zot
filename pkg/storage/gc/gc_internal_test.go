@@ -198,6 +198,7 @@ func TestGarbageCollectIndexErrors(t *testing.T) {
 		index.MediaType = ispec.MediaTypeImageIndex
 
 		var digest godigest.Digest
+
 		for i := 0; i < 4; i++ {
 			// upload image config blob
 			upload, err := imgStore.NewBlobUpload(repoName)
@@ -233,6 +234,7 @@ func TestGarbageCollectIndexErrors(t *testing.T) {
 			manifest.SchemaVersion = 2
 			content, err = json.Marshal(manifest)
 			So(err, ShouldBeNil)
+
 			digest = godigest.FromBytes(content)
 			So(digest, ShouldNotBeNil)
 			_, _, err = imgStore.PutImageManifest(repoName, digest.String(), ispec.MediaTypeImageManifest, content)
@@ -248,6 +250,7 @@ func TestGarbageCollectIndexErrors(t *testing.T) {
 		// upload index image
 		indexContent, err := json.Marshal(index)
 		So(err, ShouldBeNil)
+
 		indexDigest := godigest.FromBytes(indexContent)
 		So(indexDigest, ShouldNotBeNil)
 

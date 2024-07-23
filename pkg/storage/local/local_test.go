@@ -109,6 +109,7 @@ func TestStorageFSAPIs(t *testing.T) {
 			_, clen, err := imgStore.FullBlobUpload(repoName, bytes.NewReader(cblob), cdigest)
 			So(err, ShouldBeNil)
 			So(clen, ShouldEqual, len(cblob))
+
 			hasBlob, _, err := imgStore.CheckBlob(repoName, cdigest)
 			So(err, ShouldBeNil)
 			So(hasBlob, ShouldEqual, true)
@@ -132,6 +133,7 @@ func TestStorageFSAPIs(t *testing.T) {
 			manifest.SchemaVersion = 2
 			manifestBuf, err := json.Marshal(manifest)
 			So(err, ShouldBeNil)
+
 			digest = godigest.FromBytes(manifestBuf)
 
 			err = os.Chmod(path.Join(imgStore.RootDir(), repoName, "index.json"), 0o000)
@@ -175,6 +177,7 @@ func TestStorageFSAPIs(t *testing.T) {
 
 			_, _, err = imgStore.PutImageManifest(repoName, "2.0", ispec.MediaTypeImageManifest, manifestBuf)
 			So(err, ShouldNotBeNil)
+
 			err = os.Chmod(path.Join(imgStore.RootDir(), repoName), 0o755)
 			if err != nil {
 				panic(err)
@@ -182,6 +185,7 @@ func TestStorageFSAPIs(t *testing.T) {
 
 			// invalid DeleteImageManifest
 			indexPath := path.Join(imgStore.RootDir(), repoName, "index.json")
+
 			err = os.Chmod(indexPath, 0o000)
 			if err != nil {
 				panic(err)
@@ -203,6 +207,7 @@ func FuzzNewBlobUpload(f *testing.F) {
 		dir := t.TempDir()
 		defer os.RemoveAll(dir)
 		t.Logf("Input argument is %s", data)
+
 		log := zlog.Logger{Logger: zerolog.New(os.Stdout)}
 		metrics := monitoring.NewMetricsServer(false, log)
 		cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
@@ -229,6 +234,7 @@ func FuzzPutBlobChunk(f *testing.F) {
 		dir := t.TempDir()
 		defer os.RemoveAll(dir)
 		t.Logf("Input argument is %s", data)
+
 		log := zlog.Logger{Logger: zerolog.New(os.Stdout)}
 
 		metrics := monitoring.NewMetricsServer(false, log)
@@ -240,6 +246,7 @@ func FuzzPutBlobChunk(f *testing.F) {
 		imgStore := local.NewImageStore(dir, true, true, log, metrics, nil, cacheDriver)
 
 		repoName := data
+
 		uuid, err := imgStore.NewBlobUpload(repoName)
 		if err != nil {
 			if isKnownErr(err) {
@@ -251,6 +258,7 @@ func FuzzPutBlobChunk(f *testing.F) {
 
 		buf := bytes.NewBufferString(data)
 		buflen := buf.Len()
+
 		_, err = imgStore.PutBlobChunk(repoName, uuid, 0, int64(buflen), buf)
 		if err != nil {
 			t.Error(err)
@@ -263,6 +271,7 @@ func FuzzPutBlobChunkStreamed(f *testing.F) {
 		dir := t.TempDir()
 		defer os.RemoveAll(dir)
 		t.Logf("Input argument is %s", data)
+
 		log := zlog.Logger{Logger: zerolog.New(os.Stdout)}
 		metrics := monitoring.NewMetricsServer(false, log)
 		cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
@@ -284,6 +293,7 @@ func FuzzPutBlobChunkStreamed(f *testing.F) {
 		}
 
 		buf := bytes.NewBufferString(data)
+
 		_, err = imgStore.PutBlobChunkStreamed(repoName, uuid, buf)
 		if err != nil {
 			t.Error(err)
@@ -310,6 +320,7 @@ func FuzzGetBlobUpload(f *testing.F) {
 			if errors.Is(err, zerr.ErrUploadNotFound) || isKnownErr(err) {
 				return
 			}
+
 			t.Error(err)
 		}
 	})
@@ -341,6 +352,7 @@ func FuzzTestPutGetImageManifest(f *testing.F) {
 		if err != nil {
 			t.Error(err)
 		}
+
 		_, _, err = imgStore.FullBlobUpload(repoName, bytes.NewReader(lblob), ldigest)
 		if err != nil {
 			t.Error(err)
@@ -350,15 +362,19 @@ func FuzzTestPutGetImageManifest(f *testing.F) {
 		if err != nil {
 			t.Error(err)
 		}
+
 		manifestBuf, err := json.Marshal(manifest)
 		if err != nil {
 			t.Errorf("Error %v occurred while marshaling manifest", err)
 		}
+
 		mdigest := godigest.FromBytes(manifestBuf)
+
 		_, _, err = imgStore.PutImageManifest(repoName, mdigest.String(), ispec.MediaTypeImageManifest, manifestBuf)
 		if err != nil && errors.Is(err, zerr.ErrBadManifest) {
 			t.Errorf("the error that occurred is %v \n", err)
 		}
+
 		_, _, _, err = imgStore.GetImageManifest(repoName, mdigest.String())
 		if err != nil {
 			t.Errorf("the error that occurred is %v \n", err)
@@ -407,7 +423,9 @@ func FuzzTestPutDeleteImageManifest(f *testing.F) {
 		if err != nil {
 			t.Errorf("Error %v occurred while marshaling manifest", err)
 		}
+
 		mdigest := godigest.FromBytes(manifestBuf)
+
 		_, _, err = imgStore.PutImageManifest(repoName, mdigest.String(), ispec.MediaTypeImageManifest, manifestBuf)
 		if err != nil && errors.Is(err, zerr.ErrBadManifest) {
 			t.Errorf("the error that occurred is %v \n", err)
@@ -418,6 +436,7 @@ func FuzzTestPutDeleteImageManifest(f *testing.F) {
 			if isKnownErr(err) {
 				return
 			}
+
 			t.Errorf("the error that occurred is %v \n", err)
 		}
 	})
@@ -443,11 +462,13 @@ func FuzzTestDeleteImageManifest(f *testing.F) {
 		if err != nil {
 			return
 		}
+
 		err = imgStore.DeleteImageManifest(string(data), digest.String(), false)
 		if err != nil {
 			if errors.Is(err, zerr.ErrRepoNotFound) || isKnownErr(err) {
 				return
 			}
+
 			t.Error(err)
 		}
 	})
@@ -473,11 +494,13 @@ func FuzzInitRepo(f *testing.F) {
 			UseRelPaths: true,
 		}, *log)
 		imgStore := local.NewImageStore(dir, true, true, *log, metrics, nil, cacheDriver)
+
 		err := imgStore.InitRepo(data)
 		if err != nil {
 			if isKnownErr(err) {
 				return
 			}
+
 			t.Error(err)
 		}
 	})
@@ -497,18 +520,22 @@ func FuzzInitValidateRepo(f *testing.F) {
 			UseRelPaths: true,
 		}, *log)
 		imgStore := local.NewImageStore(dir, true, true, *log, metrics, nil, cacheDriver)
+
 		err := imgStore.InitRepo(data)
 		if err != nil {
 			if isKnownErr(err) {
 				return
 			}
+
 			t.Error(err)
 		}
+
 		_, err = imgStore.ValidateRepo(data)
 		if err != nil {
 			if errors.Is(err, zerr.ErrRepoNotFound) || errors.Is(err, zerr.ErrRepoBadVersion) || isKnownErr(err) {
 				return
 			}
+
 			t.Error(err)
 		}
 	})
@@ -528,11 +555,13 @@ func FuzzGetImageTags(f *testing.F) {
 			UseRelPaths: true,
 		}, *log)
 		imgStore := local.NewImageStore(dir, true, true, *log, metrics, nil, cacheDriver)
+
 		_, err := imgStore.GetImageTags(data)
 		if err != nil {
 			if errors.Is(err, zerr.ErrRepoNotFound) || isKnownErr(err) {
 				return
 			}
+
 			t.Error(err)
 		}
 	})
@@ -578,6 +607,7 @@ func FuzzBlobUploadInfo(f *testing.F) {
 			if isKnownErr(err) {
 				return
 			}
+
 			t.Error(err)
 		}
 	})
@@ -606,6 +636,7 @@ func FuzzTestGetImageManifest(f *testing.F) {
 			if isKnownErr(err) {
 				return
 			}
+
 			t.Error(err)
 		}
 	})
@@ -632,6 +663,7 @@ func FuzzFinishBlobUpload(f *testing.F) {
 			if isKnownErr(err) {
 				return
 			}
+
 			t.Error(err)
 		}
 
@@ -645,6 +677,7 @@ func FuzzFinishBlobUpload(f *testing.F) {
 			if isKnownErr(err) {
 				return
 			}
+
 			t.Error(err)
 		}
 
@@ -653,6 +686,7 @@ func FuzzFinishBlobUpload(f *testing.F) {
 			if isKnownErr(err) {
 				return
 			}
+
 			t.Error(err)
 		}
 	})
@@ -684,6 +718,7 @@ func FuzzFullBlobUpload(f *testing.F) {
 			if isKnownErr(err) {
 				return
 			}
+
 			t.Error(err)
 		}
 	})
@@ -792,6 +827,7 @@ func FuzzDeleteBlobUpload(f *testing.F) {
 			if isKnownErr(err) {
 				return
 			}
+
 			t.Error(err)
 		}
 
@@ -845,8 +881,10 @@ func FuzzCheckBlob(f *testing.F) {
 			if isKnownErr(err) {
 				return
 			}
+
 			t.Error(err)
 		}
+
 		_, _, err = imgStore.CheckBlob(repoName, digest)
 		if err != nil {
 			t.Error(err)
@@ -876,6 +914,7 @@ func FuzzGetBlob(f *testing.F) {
 			if isKnownErr(err) {
 				return
 			}
+
 			t.Error(err)
 		}
 
@@ -884,8 +923,10 @@ func FuzzGetBlob(f *testing.F) {
 			if isKnownErr(err) {
 				return
 			}
+
 			t.Error(err)
 		}
+
 		if err = blobReadCloser.Close(); err != nil {
 			t.Error(err)
 		}
@@ -914,6 +955,7 @@ func FuzzDeleteBlob(f *testing.F) {
 			if isKnownErr(err) {
 				return
 			}
+
 			t.Error(err)
 		}
 
@@ -922,6 +964,7 @@ func FuzzDeleteBlob(f *testing.F) {
 			if isKnownErr(err) {
 				return
 			}
+
 			t.Error(err)
 		}
 	})
@@ -949,6 +992,7 @@ func FuzzGetIndexContent(f *testing.F) {
 			if isKnownErr(err) {
 				return
 			}
+
 			t.Error(err)
 		}
 
@@ -957,6 +1001,7 @@ func FuzzGetIndexContent(f *testing.F) {
 			if isKnownErr(err) {
 				return
 			}
+
 			t.Error(err)
 		}
 	})
@@ -984,6 +1029,7 @@ func FuzzGetBlobContent(f *testing.F) {
 			if isKnownErr(err) {
 				return
 			}
+
 			t.Error(err)
 		}
 
@@ -992,6 +1038,7 @@ func FuzzGetBlobContent(f *testing.F) {
 			if isKnownErr(err) {
 				return
 			}
+
 			t.Error(err)
 		}
 	})
@@ -1003,6 +1050,7 @@ func FuzzRunGCRepo(f *testing.F) {
 		audit := zlog.NewAuditLogger("debug", "")
 
 		metrics := monitoring.NewMetricsServer(false, log)
+
 		dir := t.TempDir()
 		defer os.RemoveAll(dir)
 
@@ -1084,6 +1132,7 @@ func TestDedupeLinks(t *testing.T) {
 			blob, err := imgStore.PutBlobChunkStreamed("dedupe1", upload, buf)
 			So(err, ShouldBeNil)
 			So(blob, ShouldEqual, buflen)
+
 			blobDigest1 := strings.Split(digest.String(), ":")[1]
 			So(blobDigest1, ShouldNotBeEmpty)
 
@@ -1103,6 +1152,7 @@ func TestDedupeLinks(t *testing.T) {
 			_, clen, err := imgStore.FullBlobUpload("dedupe1", bytes.NewReader(cblob), cdigest)
 			So(err, ShouldBeNil)
 			So(clen, ShouldEqual, len(cblob))
+
 			hasBlob, _, err := imgStore.CheckBlob("dedupe1", cdigest)
 			So(err, ShouldBeNil)
 			So(hasBlob, ShouldEqual, true)
@@ -1124,6 +1174,7 @@ func TestDedupeLinks(t *testing.T) {
 			manifest.SchemaVersion = 2
 			manifestBuf, err := json.Marshal(manifest)
 			So(err, ShouldBeNil)
+
 			manifestDigest := godigest.FromBytes(manifestBuf)
 			_, _, err = imgStore.PutImageManifest("dedupe1", manifestDigest.String(),
 				ispec.MediaTypeImageManifest, manifestBuf)
@@ -1144,6 +1195,7 @@ func TestDedupeLinks(t *testing.T) {
 			blob, err = imgStore.PutBlobChunkStreamed("dedupe2", upload, buf)
 			So(err, ShouldBeNil)
 			So(blob, ShouldEqual, buflen)
+
 			blobDigest2 := strings.Split(digest.String(), ":")[1]
 			So(blobDigest2, ShouldNotBeEmpty)
 
@@ -1163,6 +1215,7 @@ func TestDedupeLinks(t *testing.T) {
 			_, clen, err = imgStore.FullBlobUpload("dedupe2", bytes.NewReader(cblob), cdigest)
 			So(err, ShouldBeNil)
 			So(clen, ShouldEqual, len(cblob))
+
 			hasBlob, _, err = imgStore.CheckBlob("dedupe2", cdigest)
 			So(err, ShouldBeNil)
 			So(hasBlob, ShouldEqual, true)
@@ -1184,6 +1237,7 @@ func TestDedupeLinks(t *testing.T) {
 			manifest.SchemaVersion = 2
 			manifestBuf, err = json.Marshal(manifest)
 			So(err, ShouldBeNil)
+
 			digest = godigest.FromBytes(manifestBuf)
 			_, _, err = imgStore.PutImageManifest("dedupe2", "1.0", ispec.MediaTypeImageManifest, manifestBuf)
 			So(err, ShouldBeNil)
@@ -1242,6 +1296,7 @@ func TestDedupeLinks(t *testing.T) {
 						imgStore := local.NewImageStore(dir, true, true, log, metrics, nil, cacheDriver)
 
 						imgStore.RunDedupeBlobs(time.Duration(0), taskScheduler)
+
 						sleepValue := i * 5
 						time.Sleep(time.Duration(sleepValue) * time.Millisecond)
 
@@ -1390,6 +1445,7 @@ func TestDedupeLinks(t *testing.T) {
 				blob, err = imgStore.PutBlobChunkStreamed("dedupe3", upload, buf)
 				So(err, ShouldBeNil)
 				So(blob, ShouldEqual, buflen)
+
 				blobDigest2 := strings.Split(digest.String(), ":")[1]
 				So(blobDigest2, ShouldNotBeEmpty)
 
@@ -1405,6 +1461,7 @@ func TestDedupe(t *testing.T) {
 	Convey("Dedupe", t, func(c C) {
 		Convey("Nil ImageStore", func() {
 			var is storageTypes.ImageStore
+
 			So(func() { _ = is.DedupeBlob("", "", "", "") }, ShouldPanic)
 		})
 
@@ -1441,6 +1498,7 @@ func TestNegativeCases(t *testing.T) {
 
 		So(local.NewImageStore(dir, true,
 			true, log, metrics, nil, cacheDriver), ShouldNotBeNil)
+
 		if os.Geteuid() != 0 {
 			cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
 				RootDir:     "/deadBEEF",
@@ -1524,6 +1582,7 @@ func TestNegativeCases(t *testing.T) {
 		if err != nil {
 			panic(err)
 		}
+
 		_, err = imgStore.ValidateRepo("invalid-test")
 		So(err, ShouldNotBeNil)
 		So(err, ShouldEqual, zerr.ErrRepoNotFound)
@@ -1556,10 +1615,12 @@ func TestNegativeCases(t *testing.T) {
 		if err != nil {
 			panic(err)
 		}
+
 		err = os.Mkdir(path.Join(dir, "invalid-test", "blobs"), 0o755)
 		if err != nil {
 			panic(err)
 		}
+
 		isValid, err = imgStore.ValidateRepo("invalid-test")
 		So(err, ShouldBeNil)
 		So(isValid, ShouldEqual, true)
@@ -1628,11 +1689,13 @@ func TestNegativeCases(t *testing.T) {
 		So(imgStore, ShouldNotBeNil)
 		So(imgStore.InitRepo("test"), ShouldBeNil)
 		So(os.Remove(path.Join(dir, "test", "index.json")), ShouldBeNil)
+
 		_, err := imgStore.GetImageTags("test")
 		So(err, ShouldNotBeNil)
 		So(os.RemoveAll(path.Join(dir, "test")), ShouldBeNil)
 		So(imgStore.InitRepo("test"), ShouldBeNil)
 		So(os.WriteFile(path.Join(dir, "test", "index.json"), []byte{}, 0o600), ShouldBeNil)
+
 		_, err = imgStore.GetImageTags("test")
 		So(err, ShouldNotBeNil)
 	})
@@ -1680,6 +1743,7 @@ func TestNegativeCases(t *testing.T) {
 		if err != nil {
 			panic(err)
 		}
+
 		_, _, _, err = imgStore.GetImageManifest("test", "")
 		So(err, ShouldNotBeNil)
 	})
@@ -1704,6 +1768,7 @@ func TestNegativeCases(t *testing.T) {
 		if err != nil {
 			panic(err)
 		}
+
 		_, err = imgStore.NewBlobUpload("test")
 		So(err, ShouldNotBeNil)
 
@@ -1737,6 +1802,7 @@ func TestNegativeCases(t *testing.T) {
 		if err != nil {
 			panic(err)
 		}
+
 		t.Cleanup(func() {
 			err = os.Chmod(path.Join(dir, "test", ".uploads"), 0o700)
 			if err != nil {
@@ -1758,6 +1824,7 @@ func TestNegativeCases(t *testing.T) {
 		dir := t.TempDir()
 
 		filePath := path.Join(dir, "file.txt")
+
 		err := os.WriteFile(filePath, []byte("some dummy file content"), 0o644) //nolint: gosec
 		if err != nil {
 			panic(err)
@@ -1783,6 +1850,7 @@ func TestNegativeCases(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
+
 		path := builder.String()
 		ok := common.DirExists(path)
 		So(ok, ShouldBeFalse)
@@ -1798,12 +1866,14 @@ func TestHardLink(t *testing.T) {
 			if err != nil {
 				panic(err)
 			}
+
 			randomDir = "/tmp/" + randSeq(int(nBig.Int64()))
 
 			if _, err := os.Stat(randomDir); os.IsNotExist(err) {
 				break
 			}
 		}
+
 		defer os.RemoveAll(randomDir)
 
 		err := local.ValidateHardLink(randomDir)
@@ -1813,6 +1883,7 @@ func TestHardLink(t *testing.T) {
 		dir := t.TempDir()
 
 		filePath := path.Join(dir, "file.txt")
+
 		err := os.WriteFile(filePath, []byte("some dummy file content"), 0o644) //nolint: gosec
 		if err != nil {
 			panic(err)
@@ -1912,6 +1983,7 @@ func TestGarbageCollectForImageStore(t *testing.T) {
 			So(err, ShouldBeNil)
 
 			manifestDigest := image.ManifestDescriptor.Digest
+
 			err = os.Remove(path.Join(dir, repoName, "blobs",
 				manifestDigest.Algorithm().String(), manifestDigest.Encoded()))
 			if err != nil {
@@ -2005,6 +2077,7 @@ func TestGarbageCollectForImageStore(t *testing.T) {
 			So(err, ShouldBeNil)
 
 			cosignSig := CreateRandomImage()
+
 			So(err, ShouldBeNil)
 
 			err = WriteImageToFileSystem(cosignSig, repoName, cosignTag, storeController)
@@ -2016,9 +2089,11 @@ func TestGarbageCollectForImageStore(t *testing.T) {
 
 			manifestDigest := godigest.FromBytes(manifestBlob)
 			sbomTag := fmt.Sprintf("sha256-%s.%s", manifestDigest.Encoded(), "sbom")
+
 			So(err, ShouldBeNil)
 
 			sbomImg := CreateRandomImage()
+
 			So(err, ShouldBeNil)
 
 			err = WriteImageToFileSystem(sbomImg, repoName, sbomTag, storeController)
@@ -2265,9 +2340,11 @@ func TestGarbageCollectErrors(t *testing.T) {
 		buflen := buf.Len()
 		digest := godigest.FromBytes(content)
 		So(digest, ShouldNotBeNil)
+
 		blob, err := imgStore.PutBlobChunkStreamed(repoName, upload, buf)
 		So(err, ShouldBeNil)
 		So(blob, ShouldEqual, buflen)
+
 		bdgst1 := digest
 		bsize1 := len(content)
 
@@ -2315,6 +2392,7 @@ func TestGarbageCollectErrors(t *testing.T) {
 				manifest.SchemaVersion = 2
 				content, err = json.Marshal(manifest)
 				So(err, ShouldBeNil)
+
 				digest = godigest.FromBytes(content)
 				So(digest, ShouldNotBeNil)
 				_, _, err = imgStore.PutImageManifest(repoName, digest.String(), ispec.MediaTypeImageManifest, content)
@@ -2330,6 +2408,7 @@ func TestGarbageCollectErrors(t *testing.T) {
 			// upload index image
 			indexContent, err := json.Marshal(index)
 			So(err, ShouldBeNil)
+
 			indexDigest := godigest.FromBytes(indexContent)
 			So(indexDigest, ShouldNotBeNil)
 
@@ -2380,6 +2459,7 @@ func TestGarbageCollectErrors(t *testing.T) {
 			manifest.SchemaVersion = 2
 			content, err = json.Marshal(manifest)
 			So(err, ShouldBeNil)
+
 			digest = godigest.FromBytes(content)
 			So(digest, ShouldNotBeNil)
 
@@ -2438,6 +2518,7 @@ func TestGarbageCollectErrors(t *testing.T) {
 			manifest.SchemaVersion = 2
 			content, err = json.Marshal(manifest)
 			So(err, ShouldBeNil)
+
 			digest = godigest.FromBytes(content)
 			So(digest, ShouldNotBeNil)
 
@@ -2819,6 +2900,7 @@ func TestPutBlobChunkStreamed(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		var reader io.Reader
+
 		blobPath := imgStore.BlobUploadPath("test", uuid)
 		err = os.Chmod(blobPath, 0o000)
 		So(err, ShouldBeNil)

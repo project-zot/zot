@@ -207,8 +207,10 @@ func TestDynamoDBError(t *testing.T) {
 
 		_, err = cacheDriver.GetBlob(godigest.FromString("str"))
 		So(err, ShouldNotBeNil)
+
 		found := cacheDriver.HasBlob(godigest.FromString("str"), "path")
 		So(found, ShouldBeFalse)
+
 		_, err = cacheDriver.GetDuplicateBlob(godigest.FromString("str"))
 		So(err, ShouldNotBeNil)
 		err = cacheDriver.DeleteBlob(godigest.FromString("str"), "path")
