@@ -2,7 +2,6 @@ package ociutils_test
 
 import (
 	"context"
-
 	"errors"
 	"testing"
 

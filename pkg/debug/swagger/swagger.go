@@ -13,7 +13,6 @@ import (
 
 	"zotregistry.dev/zot/pkg/api/config"
 	"zotregistry.dev/zot/pkg/log" //nolint:goimports
-
 	// as required by swaggo.
 	_ "zotregistry.dev/zot/swagger"
 )
