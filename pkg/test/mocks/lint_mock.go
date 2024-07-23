@@ -2,7 +2,6 @@ package mocks
 
 import (
 	godigest "github.com/opencontainers/go-digest"
-
 	storageTypes "zotregistry.dev/zot/pkg/storage/types"
 )
 

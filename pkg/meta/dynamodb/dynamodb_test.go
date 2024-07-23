@@ -16,7 +16,6 @@ import (
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/rs/zerolog"
 	. "github.com/smartystreets/goconvey/convey"
-
 	"zotregistry.dev/zot/pkg/extensions/imagetrust"
 	"zotregistry.dev/zot/pkg/log"
 	mdynamodb "zotregistry.dev/zot/pkg/meta/dynamodb"

@@ -21,7 +21,6 @@ import (
 	"github.com/sigstore/sigstore/pkg/cryptoutils"
 	sigstoreSigs "github.com/sigstore/sigstore/pkg/signature"
 	"github.com/sigstore/sigstore/pkg/signature/options"
-
 	zerr "zotregistry.dev/zot/errors"
 )
 

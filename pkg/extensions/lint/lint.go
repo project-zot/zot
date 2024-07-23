@@ -9,7 +9,6 @@ import (
 
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
-
 	zerr "zotregistry.dev/zot/errors"
 	"zotregistry.dev/zot/pkg/extensions/config"
 	"zotregistry.dev/zot/pkg/log"

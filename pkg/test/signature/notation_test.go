@@ -12,7 +12,6 @@ import (
 
 	notconfig "github.com/notaryproject/notation-go/config"
 	. "github.com/smartystreets/goconvey/convey"
-
 	"zotregistry.dev/zot/pkg/api"
 	"zotregistry.dev/zot/pkg/api/config"
 	tcommon "zotregistry.dev/zot/pkg/test/common"

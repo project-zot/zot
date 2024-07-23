@@ -6,7 +6,6 @@ import (
 	"time"
 
 	distspec "github.com/opencontainers/distribution-spec/specs-go"
-
 	extconf "zotregistry.dev/zot/pkg/extensions/config"
 	storageConstants "zotregistry.dev/zot/pkg/storage/constants"
 )

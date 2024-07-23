@@ -15,7 +15,6 @@ import (
 	godigest "github.com/opencontainers/go-digest"
 	"github.com/rs/zerolog"
 	. "github.com/smartystreets/goconvey/convey"
-
 	"zotregistry.dev/zot/pkg/extensions/monitoring"
 	"zotregistry.dev/zot/pkg/log"
 	"zotregistry.dev/zot/pkg/storage"

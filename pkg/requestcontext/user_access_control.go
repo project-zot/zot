@@ -5,7 +5,6 @@ import (
 	"net/http"
 
 	glob "github.com/bmatcuk/doublestar/v4" //nolint:gci
-
 	"zotregistry.dev/zot/errors"
 	"zotregistry.dev/zot/pkg/api/constants"
 )

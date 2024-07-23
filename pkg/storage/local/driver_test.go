@@ -8,7 +8,6 @@ import (
 
 	storagedriver "github.com/docker/distribution/registry/storage/driver"
 	. "github.com/smartystreets/goconvey/convey"
-
 	storageConstants "zotregistry.dev/zot/pkg/storage/constants"
 	"zotregistry.dev/zot/pkg/storage/local"
 )

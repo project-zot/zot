@@ -16,7 +16,6 @@ import (
 	"strings"
 
 	"github.com/gorilla/mux"
-
 	"zotregistry.dev/zot/pkg/api/config"
 	registryConst "zotregistry.dev/zot/pkg/api/constants"
 	zcommon "zotregistry.dev/zot/pkg/common"

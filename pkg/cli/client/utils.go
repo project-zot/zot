@@ -15,7 +15,6 @@ import (
 
 	"github.com/briandowns/spinner"
 	"github.com/spf13/cobra"
-
 	zerr "zotregistry.dev/zot/errors"
 	"zotregistry.dev/zot/pkg/api/constants"
 )

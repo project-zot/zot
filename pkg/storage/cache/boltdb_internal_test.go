@@ -7,7 +7,6 @@ import (
 	"github.com/opencontainers/go-digest"
 	. "github.com/smartystreets/goconvey/convey"
 	"go.etcd.io/bbolt"
-
 	"zotregistry.dev/zot/pkg/storage/constants"
 )
 

@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	. "github.com/smartystreets/goconvey/convey"
-
 	. "zotregistry.dev/zot/pkg/cli/client"
 	gql_gen "zotregistry.dev/zot/pkg/extensions/search/gql_generated"
 )

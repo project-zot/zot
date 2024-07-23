@@ -18,7 +18,6 @@ import (
 	. "github.com/smartystreets/goconvey/convey"
 	"github.com/smartystreets/goconvey/convey/reporting"
 	"gopkg.in/resty.v1"
-
 	"zotregistry.dev/zot/pkg/api"
 	"zotregistry.dev/zot/pkg/api/constants"
 	"zotregistry.dev/zot/pkg/compliance"

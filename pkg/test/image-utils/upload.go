@@ -9,7 +9,6 @@ import (
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"gopkg.in/resty.v1"
-
 	tcommon "zotregistry.dev/zot/pkg/test/common"
 	"zotregistry.dev/zot/pkg/test/inject"
 )

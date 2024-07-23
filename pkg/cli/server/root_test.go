@@ -10,7 +10,6 @@ import (
 	"time"
 
 	. "github.com/smartystreets/goconvey/convey"
-
 	"zotregistry.dev/zot/pkg/api"
 	"zotregistry.dev/zot/pkg/api/config"
 	cli "zotregistry.dev/zot/pkg/cli/server"

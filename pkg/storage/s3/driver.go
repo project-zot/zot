@@ -7,7 +7,6 @@ import (
 	// Add s3 support.
 	"github.com/docker/distribution/registry/storage/driver"
 	_ "github.com/docker/distribution/registry/storage/driver/s3-aws"
-
 	storageConstants "zotregistry.dev/zot/pkg/storage/constants"
 )
 

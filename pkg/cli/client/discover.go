@@ -8,7 +8,6 @@ import (
 	"fmt"
 
 	distext "github.com/opencontainers/distribution-spec/specs-go/v1/extensions"
-
 	zerr "zotregistry.dev/zot/errors"
 	"zotregistry.dev/zot/pkg/api/constants"
 	zcommon "zotregistry.dev/zot/pkg/common"

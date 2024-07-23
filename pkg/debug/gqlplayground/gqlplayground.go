@@ -9,7 +9,6 @@ import (
 	"net/http"
 
 	"github.com/gorilla/mux"
-
 	"zotregistry.dev/zot/pkg/api/constants"
 	debugCst "zotregistry.dev/zot/pkg/debug/constants"
 	"zotregistry.dev/zot/pkg/log"

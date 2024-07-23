@@ -14,7 +14,6 @@ import (
 
 	jsoniter "github.com/json-iterator/go"
 	"github.com/spf13/cobra"
-
 	zerr "zotregistry.dev/zot/errors"
 )
 

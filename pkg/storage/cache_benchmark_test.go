@@ -7,7 +7,6 @@ import (
 	"time"
 
 	godigest "github.com/opencontainers/go-digest"
-
 	"zotregistry.dev/zot/pkg/log"
 	"zotregistry.dev/zot/pkg/storage"
 	"zotregistry.dev/zot/pkg/storage/cache"

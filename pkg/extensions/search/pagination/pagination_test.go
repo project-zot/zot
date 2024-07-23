@@ -7,7 +7,6 @@ import (
 	"time"
 
 	. "github.com/smartystreets/goconvey/convey"
-
 	"zotregistry.dev/zot/pkg/extensions/search/gql_generated"
 	"zotregistry.dev/zot/pkg/extensions/search/pagination"
 )

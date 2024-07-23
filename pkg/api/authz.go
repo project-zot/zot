@@ -6,7 +6,6 @@ import (
 
 	glob "github.com/bmatcuk/doublestar/v4"
 	"github.com/gorilla/mux"
-
 	"zotregistry.dev/zot/pkg/api/config"
 	"zotregistry.dev/zot/pkg/api/constants"
 	"zotregistry.dev/zot/pkg/common"

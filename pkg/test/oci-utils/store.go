@@ -2,7 +2,6 @@ package ociutils
 
 import (
 	godigest "github.com/opencontainers/go-digest"
-
 	"zotregistry.dev/zot/pkg/extensions/monitoring"
 	zLog "zotregistry.dev/zot/pkg/log"
 	"zotregistry.dev/zot/pkg/storage"

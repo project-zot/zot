@@ -14,7 +14,6 @@ import (
 	guuid "github.com/gofrs/uuid"
 	. "github.com/smartystreets/goconvey/convey"
 	"go.etcd.io/bbolt"
-
 	"zotregistry.dev/zot/pkg/log"
 	"zotregistry.dev/zot/pkg/meta/boltdb"
 	mdynamodb "zotregistry.dev/zot/pkg/meta/dynamodb"

@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/containers/common/pkg/retry"
-
 	zerr "zotregistry.dev/zot/errors"
 	"zotregistry.dev/zot/pkg/common"
 	"zotregistry.dev/zot/pkg/log"

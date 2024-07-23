@@ -9,7 +9,6 @@ import (
 
 	godigest "github.com/opencontainers/go-digest"
 	"go.etcd.io/bbolt"
-
 	zerr "zotregistry.dev/zot/errors"
 	zlog "zotregistry.dev/zot/pkg/log"
 	"zotregistry.dev/zot/pkg/storage/constants"
