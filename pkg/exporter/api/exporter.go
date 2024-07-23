@@ -170,7 +170,7 @@ func GetCollector(c *Controller) *Collector {
 }
 
 func runExporter(c *Controller) {
-	exporterAddr := fmt.Sprintf(":%s", c.Config.Exporter.Port)
+	exporterAddr := ":" + c.Config.Exporter.Port
 	server := &http.Server{
 		Addr:              exporterAddr,
 		IdleTimeout:       idleTimeout,

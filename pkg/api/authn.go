@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"crypto/x509"
 	"encoding/base64"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"net"
@@ -661,7 +662,7 @@ func getRelyingPartyArgs(cfg *config.Config, provider string, log log.Logger) (
 	keyPath := cfg.HTTP.Auth.OpenID.Providers[provider].KeyPath
 	baseURL := net.JoinHostPort(cfg.HTTP.Address, port)
 
-	callback := constants.CallbackBasePath + fmt.Sprintf("/%s", provider)
+	callback := constants.CallbackBasePath + "/" + provider
 
 	var redirectURI string
 
@@ -878,7 +879,7 @@ func hashUUID(uuid string) string {
 	digester := sha256.New()
 	digester.Write([]byte(uuid))
 
-	return godigest.NewDigestFromEncoded(godigest.SHA256, fmt.Sprintf("%x", digester.Sum(nil))).Encoded()
+	return godigest.NewDigestFromEncoded(godigest.SHA256, hex.EncodeToString(digester.Sum(nil))).Encoded()
 }
 
 /*

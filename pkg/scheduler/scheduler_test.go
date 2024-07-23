@@ -266,7 +266,7 @@ func TestScheduler(t *testing.T) {
 			}
 
 			if strings.Contains(line, "executing medium") {
-				if !strings.Contains(line, fmt.Sprintf("executing medium %s", lastMediumGenerator)) {
+				if !strings.Contains(line, "executing medium "+lastMediumGenerator) {
 					samePriorityFlippedCounter++
 
 					if lastMediumGenerator == "1" {
@@ -277,7 +277,7 @@ func TestScheduler(t *testing.T) {
 				}
 			}
 
-			if !strings.Contains(line, fmt.Sprintf("executing %s", lastPriority)) {
+			if !strings.Contains(line, "executing "+lastPriority) {
 				priorityFlippedCounter++
 
 				if lastPriority == "low" {

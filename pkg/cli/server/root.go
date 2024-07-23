@@ -652,7 +652,7 @@ func applyDefaultValues(config *config.Config, viperInstance *viper.Viper, log z
 
 	// apply deleteUntagged default
 	for idx := range config.Storage.Retention.Policies {
-		if !viperInstance.IsSet("storage::retention::policies::" + fmt.Sprint(idx) + "::deleteUntagged") {
+		if !viperInstance.IsSet("storage::retention::policies::" + strconv.Itoa(idx) + "::deleteUntagged") {
 			config.Storage.Retention.Policies[idx].DeleteUntagged = &defaultVal
 		}
 	}
@@ -721,7 +721,7 @@ func applyDefaultValues(config *config.Config, viperInstance *viper.Viper, log z
 
 		// apply deleteUntagged default
 		for idx := range storageConfig.Retention.Policies {
-			deleteUntaggedKey := "storage::subpaths::" + name + "::retention::policies::" + fmt.Sprint(idx) + "::deleteUntagged"
+			deleteUntaggedKey := "storage::subpaths::" + name + "::retention::policies::" + strconv.Itoa(idx) + "::deleteUntagged"
 			if !viperInstance.IsSet(deleteUntaggedKey) {
 				storageConfig.Retention.Policies[idx].DeleteUntagged = &defaultVal
 			}

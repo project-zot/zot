@@ -1,7 +1,6 @@
 package storage
 
 import (
-	"fmt"
 	"strings"
 
 	storageTypes "zotregistry.dev/zot/pkg/storage/types"
@@ -27,7 +26,7 @@ func GetRoutePrefix(name string) string {
 		}
 	}
 
-	return fmt.Sprintf("/%s", names[0])
+	return "/" + names[0]
 }
 
 func (sc StoreController) GetImageStore(name string) storageTypes.ImageStore {

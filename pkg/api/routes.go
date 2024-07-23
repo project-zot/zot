@@ -75,10 +75,10 @@ func (rh *RouteHandler) SetupRoutes() {
 		// callback path for openID
 		for provider, relyingParty := range rh.c.RelyingParties {
 			if config.IsOauth2Supported(provider) {
-				rh.c.Router.HandleFunc(constants.CallbackBasePath+fmt.Sprintf("/%s", provider),
+				rh.c.Router.HandleFunc(constants.CallbackBasePath+"/"+provider,
 					rp.CodeExchangeHandler(rh.GithubCodeExchangeCallback(), relyingParty))
 			} else if config.IsOpenIDSupported(provider) {
-				rh.c.Router.HandleFunc(constants.CallbackBasePath+fmt.Sprintf("/%s", provider),
+				rh.c.Router.HandleFunc(constants.CallbackBasePath+"/"+provider,
 					rp.CodeExchangeHandler(rp.UserinfoCallback(rh.OpenIDCodeExchangeCallback()), relyingParty))
 			}
 		}
@@ -264,9 +264,9 @@ func (rh *RouteHandler) CheckVersionSupport(response http.ResponseWriter, reques
 		// don't send auth headers if request is coming from UI
 		if request.Header.Get(constants.SessionClientHeaderName) != constants.SessionClientHeaderValue {
 			if rh.c.Config.HTTP.Auth.Bearer != nil {
-				response.Header().Set("WWW-Authenticate", fmt.Sprintf("bearer realm=%s", rh.c.Config.HTTP.Auth.Bearer.Realm))
+				response.Header().Set("WWW-Authenticate", "bearer realm="+rh.c.Config.HTTP.Auth.Bearer.Realm)
 			} else {
-				response.Header().Set("WWW-Authenticate", fmt.Sprintf("basic realm=%s", rh.c.Config.HTTP.Realm))
+				response.Header().Set("WWW-Authenticate", "basic realm="+rh.c.Config.HTTP.Realm)
 			}
 		}
 	}
@@ -466,7 +466,7 @@ func (rh *RouteHandler) CheckManifest(response http.ResponseWriter, request *htt
 	}
 
 	response.Header().Set(constants.DistContentDigestKey, digest.String())
-	response.Header().Set("Content-Length", fmt.Sprintf("%d", len(content)))
+	response.Header().Set("Content-Length", strconv.Itoa(len(content)))
 	response.Header().Set("Content-Type", mediaType)
 	response.WriteHeader(http.StatusOK)
 }
@@ -548,7 +548,7 @@ func (rh *RouteHandler) GetManifest(response http.ResponseWriter, request *http.
 	}
 
 	response.Header().Set(constants.DistContentDigestKey, digest.String())
-	response.Header().Set("Content-Length", fmt.Sprintf("%d", len(content)))
+	response.Header().Set("Content-Length", strconv.Itoa(len(content)))
 	response.Header().Set("Content-Type", mediaType)
 	zcommon.WriteData(response, http.StatusOK, mediaType, content)
 }
@@ -991,7 +991,7 @@ func (rh *RouteHandler) CheckBlob(response http.ResponseWriter, request *http.Re
 		return
 	}
 
-	response.Header().Set("Content-Length", fmt.Sprintf("%d", blen))
+	response.Header().Set("Content-Length", strconv.FormatInt(blen, 10))
 	response.Header().Set("Accept-Ranges", "bytes")
 	response.Header().Set(constants.DistContentDigestKey, digest.String())
 	response.WriteHeader(http.StatusOK)
@@ -1139,7 +1139,7 @@ func (rh *RouteHandler) GetBlob(response http.ResponseWriter, request *http.Requ
 
 	defer repo.Close()
 
-	response.Header().Set("Content-Length", fmt.Sprintf("%d", blen))
+	response.Header().Set("Content-Length", strconv.FormatInt(blen, 10))
 
 	status := http.StatusOK
 

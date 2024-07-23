@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strconv"
 
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
@@ -41,7 +42,7 @@ func UploadImage(img Image, baseURL, repo, ref string) error {
 		digest := digestAlgorithm.FromBytes(blob).String()
 
 		resp, err = resty.R().
-			SetHeader("Content-Length", fmt.Sprintf("%d", len(blob))).
+			SetHeader("Content-Length", strconv.Itoa(len(blob))).
 			SetHeader("Content-Type", "application/octet-stream").
 			SetQueryParam("digest", digest).
 			SetBody(blob).
@@ -89,7 +90,7 @@ func UploadImage(img Image, baseURL, repo, ref string) error {
 
 	// uploading blob should get 201
 	resp, err = resty.R().
-		SetHeader("Content-Length", fmt.Sprintf("%d", len(cblob))).
+		SetHeader("Content-Length", strconv.Itoa(len(cblob))).
 		SetHeader("Content-Type", "application/octet-stream").
 		SetQueryParam("digest", cdigest.String()).
 		SetBody(cblob).
@@ -149,7 +150,7 @@ func UploadImageWithBasicAuth(img Image, baseURL, repo, ref, user, password stri
 
 		resp, err = resty.R().
 			SetBasicAuth(user, password).
-			SetHeader("Content-Length", fmt.Sprintf("%d", len(blob))).
+			SetHeader("Content-Length", strconv.Itoa(len(blob))).
 			SetHeader("Content-Type", "application/octet-stream").
 			SetQueryParam("digest", digest).
 			SetBody(blob).
@@ -191,7 +192,7 @@ func UploadImageWithBasicAuth(img Image, baseURL, repo, ref, user, password stri
 	// uploading blob should get 201
 	resp, err = resty.R().
 		SetBasicAuth(user, password).
-		SetHeader("Content-Length", fmt.Sprintf("%d", len(cblob))).
+		SetHeader("Content-Length", strconv.Itoa(len(cblob))).
 		SetHeader("Content-Type", "application/octet-stream").
 		SetQueryParam("digest", cdigest.String()).
 		SetBody(cblob).

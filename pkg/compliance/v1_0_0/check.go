@@ -38,7 +38,7 @@ func CheckWorkflows(t *testing.T, config *compliance.Config) {
 		defer outputJSONExit()
 	}
 
-	baseURL := fmt.Sprintf("http://%s", net.JoinHostPort(config.Address, config.Port))
+	baseURL := "http://" + net.JoinHostPort(config.Address, config.Port)
 
 	storageInfo := config.StorageInfo
 

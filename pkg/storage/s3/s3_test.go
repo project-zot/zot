@@ -2538,7 +2538,7 @@ func TestRebuildDedupeMockStoreDriver(t *testing.T) {
 		tdir := t.TempDir()
 		imgStore := createMockStorage(testDir, tdir, true, &StorageDriverMock{
 			StatFn: func(ctx context.Context, path string) (driver.FileInfo, error) {
-				if path == fmt.Sprintf("path/to/%s", validDigest.Encoded()) {
+				if path == "path/to/"+validDigest.Encoded() {
 					return &FileInfoMock{
 						SizeFn: func() int64 {
 							return int64(10)
@@ -2634,7 +2634,7 @@ func TestRebuildDedupeMockStoreDriver(t *testing.T) {
 
 		storageDriverMockElseBranch := &StorageDriverMock{
 			StatFn: func(ctx context.Context, path string) (driver.FileInfo, error) {
-				if path == fmt.Sprintf("path/to/%s", validDigest.Encoded()) {
+				if path == "path/to/"+validDigest.Encoded() {
 					return &FileInfoMock{
 						SizeFn: func() int64 {
 							return int64(10)

@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"os"
 	"path"
+	"strconv"
 	"time"
 
 	"github.com/phayes/freeport"
@@ -139,7 +140,7 @@ func GetFreePort() string {
 		panic(err)
 	}
 
-	return fmt.Sprint(port)
+	return strconv.Itoa(port)
 }
 
 func GetBaseURL(port string) string {

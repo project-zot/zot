@@ -2017,20 +2017,20 @@ func TestScrub(t *testing.T) {
 				panic(err)
 			}
 
-			if err := os.MkdirAll(fmt.Sprintf("%s/blobs", repo), 0o755); err != nil {
+			if err := os.MkdirAll(repo+"/blobs", 0o755); err != nil {
 				panic(err)
 			}
 
-			if _, err = os.Stat(fmt.Sprintf("%s/oci-layout", repo)); err != nil {
+			if _, err = os.Stat(repo + "/oci-layout"); err != nil {
 				content := []byte(`{"imageLayoutVersion": "1.0.0"}`)
-				if err = os.WriteFile(fmt.Sprintf("%s/oci-layout", repo), content, 0o600); err != nil {
+				if err = os.WriteFile(repo+"/oci-layout", content, 0o600); err != nil {
 					panic(err)
 				}
 			}
 
-			if _, err = os.Stat(fmt.Sprintf("%s/index.json", repo)); err != nil {
+			if _, err = os.Stat(repo + "/index.json"); err != nil {
 				content := []byte(`not a JSON content`)
-				if err = os.WriteFile(fmt.Sprintf("%s/index.json", repo), content, 0o600); err != nil {
+				if err = os.WriteFile(repo+"/index.json", content, 0o600); err != nil {
 					panic(err)
 				}
 			}

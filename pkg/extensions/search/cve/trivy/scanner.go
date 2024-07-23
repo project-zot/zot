@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -98,7 +99,7 @@ func NewScanner(storeController storage.StoreController,
 
 	// Add the schema version if the tag is not specified for backward compatibility.
 	if t, ok := dbRepositoryRef.(name.Tag); ok && t.TagStr() == "" {
-		dbRepositoryRef = t.Tag(fmt.Sprint(db.SchemaVersion))
+		dbRepositoryRef = t.Tag(strconv.Itoa(db.SchemaVersion))
 	}
 
 	var javaDBRepositoryRef name.Reference
@@ -110,7 +111,7 @@ func NewScanner(storeController storage.StoreController,
 
 		// Add the schema version if the tag is not specified for backward compatibility.
 		if t, ok := javaDBRepositoryRef.(name.Tag); ok && t.TagStr() == "" {
-			javaDBRepositoryRef = t.Tag(fmt.Sprint(javadb.SchemaVersion))
+			javaDBRepositoryRef = t.Tag(strconv.Itoa(javadb.SchemaVersion))
 		}
 	}
 

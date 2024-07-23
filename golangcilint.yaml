@@ -19,7 +19,6 @@ linters:
     - musttag
     - depguard
     - execinquery
-    - gomnd
     - inamedparam
     - intrange
 
