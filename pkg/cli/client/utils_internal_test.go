@@ -265,7 +265,7 @@ func TestDoHTTPRequest(t *testing.T) {
 						vars := mux.Vars(req)
 
 						if vars["reference"] == "indexRef" {
-							writer.Header().Add("docker-content-digest", godigest.FromString("t").String())
+							writer.Header().Add("Docker-Content-Digest", godigest.FromString("t").String())
 							_, err := writer.Write([]byte(`
 								{
 									"manifests": [
@@ -594,7 +594,7 @@ func TestDoJobErrors(t *testing.T) {
 					Route: "/v2/{name}/manifests/{reference}",
 					HandlerFunc: func(w http.ResponseWriter, r *http.Request) {
 						w.Header().Add("Content-Type", ispec.MediaTypeImageIndex)
-						w.Header().Add("docker-content-digest", godigest.FromString("t").String())
+						w.Header().Add("Docker-Content-Digest", godigest.FromString("t").String())
 
 						_, err := w.Write([]byte(""))
 						if err != nil {
@@ -609,7 +609,7 @@ func TestDoJobErrors(t *testing.T) {
 						vars := mux.Vars(req)
 
 						if vars["reference"] == "indexRef" {
-							writer.Header().Add("docker-content-digest", godigest.FromString("t").String())
+							writer.Header().Add("Docker-Content-Digest", godigest.FromString("t").String())
 
 							_, err := writer.Write([]byte(`{"manifests": [{"digest": "manifestRef"}]}`))
 							if err != nil {
@@ -618,7 +618,7 @@ func TestDoJobErrors(t *testing.T) {
 						}
 
 						if vars["reference"] == "manifestRef" {
-							writer.Header().Add("docker-content-digest", godigest.FromString("t").String())
+							writer.Header().Add("Docker-Content-Digest", godigest.FromString("t").String())
 
 							_, err := writer.Write([]byte(`{"config": {"digest": "confDigest"}}`))
 							if err != nil {

@@ -22,11 +22,11 @@ func GetHistory(history []*proto_go.History) []ispec.History {
 
 	for _, his := range history {
 		results = append(results, ispec.History{
-			Created:    ref(his.Created.AsTime()),
-			CreatedBy:  deref(his.CreatedBy, ""),
-			Author:     deref(his.Author, ""),
-			Comment:    deref(his.Comment, ""),
-			EmptyLayer: deref(his.EmptyLayer, false),
+			Created:    ref(his.GetCreated().AsTime()),
+			CreatedBy:  his.GetCreatedBy(),
+			Author:     his.GetAuthor(),
+			Comment:    his.GetComment(),
+			EmptyLayer: his.GetEmptyLayer(),
 		})
 	}
 
@@ -34,79 +34,75 @@ func GetHistory(history []*proto_go.History) []ispec.History {
 }
 
 func GetImageArtifactType(imageMeta *proto_go.ImageMeta) string {
-	switch imageMeta.MediaType {
+	switch imageMeta.GetMediaType() {
 	case ispec.MediaTypeImageManifest:
-		manifestArtifactType := deref(imageMeta.Manifests[0].Manifest.ArtifactType, "")
+		manifestArtifactType := imageMeta.GetManifests()[0].GetManifest().GetArtifactType()
 		if manifestArtifactType != "" {
 			return manifestArtifactType
 		}
 
-		return imageMeta.Manifests[0].Manifest.Config.MediaType
+		return imageMeta.GetManifests()[0].GetManifest().GetConfig().GetMediaType()
 	case ispec.MediaTypeImageIndex:
-		return deref(imageMeta.Index.Index.ArtifactType, "")
+		return imageMeta.GetIndex().GetIndex().GetArtifactType()
 	default:
 		return ""
 	}
 }
 
 func GetImageManifestSize(imageMeta *proto_go.ImageMeta) int64 {
-	switch imageMeta.MediaType {
+	switch imageMeta.GetMediaType() {
 	case ispec.MediaTypeImageManifest:
-		return imageMeta.Manifests[0].Size
+		return imageMeta.GetManifests()[0].GetSize()
 	case ispec.MediaTypeImageIndex:
-		return imageMeta.Index.Size
+		return imageMeta.GetIndex().GetSize()
 	default:
 		return 0
 	}
 }
 
 func GetImageDigest(imageMeta *proto_go.ImageMeta) godigest.Digest {
-	switch imageMeta.MediaType {
+	switch imageMeta.GetMediaType() {
 	case ispec.MediaTypeImageManifest:
-		return godigest.Digest(imageMeta.Manifests[0].Digest)
+		return godigest.Digest(imageMeta.GetManifests()[0].GetDigest())
 	case ispec.MediaTypeImageIndex:
-		return godigest.Digest(imageMeta.Index.Digest)
+		return godigest.Digest(imageMeta.GetIndex().GetDigest())
 	default:
 		return ""
 	}
 }
 
 func GetImageDigestStr(imageMeta *proto_go.ImageMeta) string {
-	switch imageMeta.MediaType {
+	switch imageMeta.GetMediaType() {
 	case ispec.MediaTypeImageManifest:
-		return imageMeta.Manifests[0].Digest
+		return imageMeta.GetManifests()[0].GetDigest()
 	case ispec.MediaTypeImageIndex:
-		return imageMeta.Index.Digest
+		return imageMeta.GetIndex().GetDigest()
 	default:
 		return ""
 	}
 }
 
 func GetImageAnnotations(imageMeta *proto_go.ImageMeta) map[string]string {
-	switch imageMeta.MediaType {
+	switch imageMeta.GetMediaType() {
 	case ispec.MediaTypeImageManifest:
-		return imageMeta.Manifests[0].Manifest.Annotations
+		return imageMeta.GetManifests()[0].GetManifest().GetAnnotations()
 	case ispec.MediaTypeImageIndex:
-		return imageMeta.Index.Index.Annotations
+		return imageMeta.GetIndex().GetIndex().GetAnnotations()
 	default:
 		return map[string]string{}
 	}
 }
 
 func GetImageSubject(imageMeta *proto_go.ImageMeta) *ispec.Descriptor {
-	switch imageMeta.MediaType {
+	switch imageMeta.GetMediaType() {
 	case ispec.MediaTypeImageManifest:
-		if imageMeta.Manifests[0].Manifest.Subject == nil {
+		if imageMeta.GetManifests()[0].GetManifest().GetSubject() == nil {
 			return nil
 		}
 
-		return GetDescriptorRef(imageMeta.Manifests[0].Manifest.Subject)
+		return GetDescriptorRef(imageMeta.GetManifests()[0].GetManifest().GetSubject())
 	case ispec.MediaTypeImageIndex:
-		if imageMeta.Index.Index.Subject == nil {
-			return nil
-		}
-
-		return GetDescriptorRef(imageMeta.Index.Index.Subject)
+		return GetDescriptorRef(imageMeta.GetIndex().GetIndex().GetSubject())
 	default:
 		return nil
 	}
@@ -117,17 +113,17 @@ func GetDescriptorRef(descriptor *proto_go.Descriptor) *ispec.Descriptor {
 		return nil
 	}
 
-	platform := GetPlatformRef(descriptor.Platform)
+	platform := GetPlatformRef(descriptor.GetPlatform())
 
 	return &ispec.Descriptor{
-		MediaType:    descriptor.MediaType,
-		Digest:       godigest.Digest(descriptor.Digest),
-		Size:         descriptor.Size,
-		URLs:         descriptor.URLs,
-		Data:         descriptor.Data,
+		MediaType:    descriptor.GetMediaType(),
+		Digest:       godigest.Digest(descriptor.GetDigest()),
+		Size:         descriptor.GetSize(),
+		URLs:         descriptor.GetURLs(),
+		Data:         descriptor.GetData(),
 		Platform:     platform,
-		ArtifactType: deref(descriptor.ArtifactType, ""),
-		Annotations:  descriptor.Annotations,
+		ArtifactType: descriptor.GetArtifactType(),
+		Annotations:  descriptor.GetAnnotations(),
 	}
 }
 
@@ -137,11 +133,11 @@ func GetPlatform(platform *proto_go.Platform) ispec.Platform {
 	}
 
 	return ispec.Platform{
-		Architecture: platform.Architecture,
-		OS:           platform.OS,
-		OSVersion:    deref(platform.OSVersion, ""),
-		OSFeatures:   platform.OSFeatures,
-		Variant:      deref(platform.Variant, ""),
+		Architecture: platform.GetArchitecture(),
+		OS:           platform.GetOS(),
+		OSVersion:    platform.GetOSVersion(),
+		OSFeatures:   platform.GetOSFeatures(),
+		Variant:      platform.GetVariant(),
 	}
 }
 
@@ -151,11 +147,11 @@ func GetPlatformRef(platform *proto_go.Platform) *ispec.Platform {
 	}
 
 	return &ispec.Platform{
-		Architecture: platform.Architecture,
-		OS:           platform.OS,
-		OSVersion:    deref(platform.OSVersion, ""),
-		OSFeatures:   platform.OSFeatures,
-		Variant:      deref(platform.Variant, ""),
+		Architecture: platform.GetArchitecture(),
+		OS:           platform.GetOS(),
+		OSVersion:    platform.GetOSVersion(),
+		OSFeatures:   platform.GetOSFeatures(),
+		Variant:      platform.GetVariant(),
 	}
 }
 
@@ -164,9 +160,9 @@ func GetLayers(descriptors []*proto_go.Descriptor) []ispec.Descriptor {
 
 	for _, desc := range descriptors {
 		results = append(results, ispec.Descriptor{
-			MediaType: desc.MediaType,
-			Digest:    godigest.Digest(desc.Digest),
-			Size:      desc.Size,
+			MediaType: desc.GetMediaType(),
+			Digest:    godigest.Digest(desc.GetDigest()),
+			Size:      desc.GetSize(),
 		})
 	}
 
@@ -179,9 +175,9 @@ func GetSubject(subj *proto_go.Descriptor) *ispec.Descriptor {
 	}
 
 	return &ispec.Descriptor{
-		MediaType: subj.MediaType,
-		Digest:    godigest.Digest(subj.Digest),
-		Size:      subj.Size,
+		MediaType: subj.GetMediaType(),
+		Digest:    godigest.Digest(subj.GetDigest()),
+		Size:      subj.GetSize(),
 	}
 }
 
@@ -191,13 +187,13 @@ func GetReferrers(refs map[string]*proto_go.ReferrersInfo) map[string][]mTypes.R
 	for digest, ref := range refs {
 		referrers := []mTypes.ReferrerInfo{}
 
-		for _, dbRef := range ref.List {
+		for _, dbRef := range ref.GetList() {
 			referrers = append(referrers, mTypes.ReferrerInfo{
-				Digest:       dbRef.Digest,
-				MediaType:    dbRef.MediaType,
-				ArtifactType: dbRef.ArtifactType,
-				Size:         int(dbRef.Size),
-				Annotations:  dbRef.Annotations,
+				Digest:       dbRef.GetDigest(),
+				MediaType:    dbRef.GetMediaType(),
+				ArtifactType: dbRef.GetArtifactType(),
+				Size:         int(dbRef.GetSize()), // int64 to int32, need to review this later
+				Annotations:  dbRef.GetAnnotations(),
 			})
 		}
 
@@ -214,13 +210,13 @@ func GetImageReferrers(refs *proto_go.ReferrersInfo) []mTypes.ReferrerInfo {
 
 	results := []mTypes.ReferrerInfo{}
 
-	for _, dbRef := range refs.List {
+	for _, dbRef := range refs.GetList() {
 		results = append(results, mTypes.ReferrerInfo{
-			Digest:       dbRef.Digest,
-			MediaType:    dbRef.MediaType,
-			ArtifactType: dbRef.ArtifactType,
-			Size:         int(dbRef.Size),
-			Annotations:  dbRef.Annotations,
+			Digest:       dbRef.GetDigest(),
+			MediaType:    dbRef.GetMediaType(),
+			ArtifactType: dbRef.GetArtifactType(),
+			Size:         int(dbRef.GetSize()), // int64 to int32, need to review this later
+			Annotations:  dbRef.GetAnnotations(),
 		})
 	}
 
@@ -233,8 +229,8 @@ func GetSignatures(sigs map[string]*proto_go.ManifestSignatures) map[string]mTyp
 	for digest, dbSignatures := range sigs {
 		imageSignatures := mTypes.ManifestSignatures{}
 
-		for signatureName, signatureInfo := range dbSignatures.Map {
-			imageSignatures[signatureName] = GetSignaturesInfo(signatureInfo.List)
+		for signatureName, signatureInfo := range dbSignatures.GetMap() {
+			imageSignatures[signatureName] = GetSignaturesInfo(signatureInfo.GetList())
 		}
 
 		results[digest] = imageSignatures
@@ -250,8 +246,8 @@ func GetImageSignatures(sigs *proto_go.ManifestSignatures) mTypes.ManifestSignat
 
 	results := mTypes.ManifestSignatures{}
 
-	for signatureName, signatureInfo := range sigs.Map {
-		results[signatureName] = GetSignaturesInfo(signatureInfo.List)
+	for signatureName, signatureInfo := range sigs.GetMap() {
+		results[signatureName] = GetSignaturesInfo(signatureInfo.GetList())
 	}
 
 	return results
@@ -262,8 +258,8 @@ func GetSignaturesInfo(sigsInfo []*proto_go.SignatureInfo) []mTypes.SignatureInf
 
 	for _, siginfo := range sigsInfo {
 		results = append(results, mTypes.SignatureInfo{
-			SignatureManifestDigest: siginfo.SignatureManifestDigest,
-			LayersInfo:              GetLayersInfo(siginfo.LayersInfo),
+			SignatureManifestDigest: siginfo.GetSignatureManifestDigest(),
+			LayersInfo:              GetLayersInfo(siginfo.GetLayersInfo()),
 		})
 	}
 
@@ -276,15 +272,15 @@ func GetLayersInfo(layersInfo []*proto_go.LayersInfo) []mTypes.LayerInfo {
 	for _, layerInfo := range layersInfo {
 		date := time.Time{}
 
-		if layerInfo.Date != nil {
-			date = layerInfo.Date.AsTime()
+		if layerInfo.GetDate() != nil {
+			date = layerInfo.GetDate().AsTime()
 		}
 
 		results = append(results, mTypes.LayerInfo{
-			LayerDigest:  layerInfo.LayerDigest,
-			LayerContent: layerInfo.LayerContent,
-			SignatureKey: layerInfo.SignatureKey,
-			Signer:       layerInfo.Signer,
+			LayerDigest:  layerInfo.GetLayerDigest(),
+			LayerContent: layerInfo.GetLayerContent(),
+			SignatureKey: layerInfo.GetSignatureKey(),
+			Signer:       layerInfo.GetSigner(),
 			Date:         date,
 		})
 	}
@@ -298,10 +294,10 @@ func GetStatisticsMap(stats map[mTypes.ImageDigest]*proto_go.DescriptorStatistic
 
 	for digest, stat := range stats {
 		results[digest] = mTypes.DescriptorStatistics{
-			DownloadCount:     int(stat.DownloadCount),
-			LastPullTimestamp: stat.LastPullTimestamp.AsTime(),
-			PushTimestamp:     stat.PushTimestamp.AsTime(),
-			PushedBy:          stat.PushedBy,
+			DownloadCount:     int(stat.GetDownloadCount()),
+			LastPullTimestamp: stat.GetLastPullTimestamp().AsTime(),
+			PushTimestamp:     stat.GetPushTimestamp().AsTime(),
+			PushedBy:          stat.GetPushedBy(),
 		}
 	}
 
@@ -314,10 +310,10 @@ func GetImageStatistics(stats *proto_go.DescriptorStatistics) mTypes.DescriptorS
 	}
 
 	return mTypes.DescriptorStatistics{
-		DownloadCount:     int(stats.DownloadCount),
-		LastPullTimestamp: stats.LastPullTimestamp.AsTime(),
-		PushTimestamp:     stats.PushTimestamp.AsTime(),
-		PushedBy:          stats.PushedBy,
+		DownloadCount:     int(stats.GetDownloadCount()),
+		LastPullTimestamp: stats.GetLastPullTimestamp().AsTime(),
+		PushTimestamp:     stats.GetPushTimestamp().AsTime(),
+		PushedBy:          stats.GetPushedBy(),
 	}
 }
 
@@ -354,8 +350,8 @@ func GetTags(tags map[mTypes.Tag]*proto_go.TagDescriptor) map[mTypes.Tag]mTypes.
 
 	for tag, tagDescriptor := range tags {
 		resultMap[tag] = mTypes.Descriptor{
-			Digest:    tagDescriptor.Digest,
-			MediaType: tagDescriptor.MediaType,
+			Digest:    tagDescriptor.GetDigest(),
+			MediaType: tagDescriptor.GetMediaType(),
 		}
 	}
 
@@ -393,19 +389,19 @@ func GetFullImageMetaFromProto(tag string, protoRepoMeta *proto_go.RepoMeta, pro
 	imageDigest := imageMeta.Digest.String()
 
 	return mTypes.FullImageMeta{
-		Repo:         protoRepoMeta.Name,
+		Repo:         protoRepoMeta.GetName(),
 		Tag:          tag,
 		MediaType:    imageMeta.MediaType,
 		Digest:       imageMeta.Digest,
 		Size:         imageMeta.Size,
 		Index:        imageMeta.Index,
 		Manifests:    GetFullManifestData(protoRepoMeta, imageMeta.Manifests),
-		IsStarred:    protoRepoMeta.IsStarred,
-		IsBookmarked: protoRepoMeta.IsBookmarked,
+		IsStarred:    protoRepoMeta.GetIsStarred(),
+		IsBookmarked: protoRepoMeta.GetIsBookmarked(),
 
-		Referrers:  GetImageReferrers(protoRepoMeta.Referrers[imageDigest]),
-		Statistics: GetImageStatistics(protoRepoMeta.Statistics[imageDigest]),
-		Signatures: GetImageSignatures(protoRepoMeta.Signatures[imageDigest]),
+		Referrers:  GetImageReferrers(protoRepoMeta.GetReferrers()[imageDigest]),
+		Statistics: GetImageStatistics(protoRepoMeta.GetStatistics()[imageDigest]),
+		Signatures: GetImageSignatures(protoRepoMeta.GetSignatures()[imageDigest]),
 	}
 }
 
@@ -420,9 +416,9 @@ func GetFullManifestData(protoRepoMeta *proto_go.RepoMeta, manifestData []mTypes
 	for i := range manifestData {
 		results = append(results, mTypes.FullManifestMeta{
 			ManifestMeta: manifestData[i],
-			Referrers:    GetImageReferrers(protoRepoMeta.Referrers[manifestData[i].Digest.String()]),
-			Statistics:   GetImageStatistics(protoRepoMeta.Statistics[manifestData[i].Digest.String()]),
-			Signatures:   GetImageSignatures(protoRepoMeta.Signatures[manifestData[i].Digest.String()]),
+			Referrers:    GetImageReferrers(protoRepoMeta.GetReferrers()[manifestData[i].Digest.String()]),
+			Statistics:   GetImageStatistics(protoRepoMeta.GetStatistics()[manifestData[i].Digest.String()]),
+			Signatures:   GetImageSignatures(protoRepoMeta.GetSignatures()[manifestData[i].Digest.String()]),
 		})
 	}
 
@@ -436,27 +432,27 @@ func GetRepoMeta(protoRepoMeta *proto_go.RepoMeta) mTypes.RepoMeta {
 
 	repoDownloads := int32(0)
 
-	for _, descriptor := range protoRepoMeta.Tags {
-		if statistic := protoRepoMeta.Statistics[descriptor.Digest]; statistic != nil {
-			repoDownloads += statistic.DownloadCount
+	for _, descriptor := range protoRepoMeta.GetTags() {
+		if statistic := protoRepoMeta.GetStatistics()[descriptor.GetDigest()]; statistic != nil {
+			repoDownloads += statistic.GetDownloadCount()
 		}
 	}
 
 	return mTypes.RepoMeta{
-		Name:             protoRepoMeta.Name,
-		Tags:             GetTags(protoRepoMeta.Tags),
-		Rank:             int(protoRepoMeta.Rank),
-		Size:             protoRepoMeta.Size,
-		Platforms:        GetPlatforms(protoRepoMeta.Platforms),
-		Vendors:          protoRepoMeta.Vendors,
-		IsStarred:        protoRepoMeta.IsStarred,
-		IsBookmarked:     protoRepoMeta.IsBookmarked,
-		StarCount:        int(protoRepoMeta.Stars),
+		Name:             protoRepoMeta.GetName(),
+		Tags:             GetTags(protoRepoMeta.GetTags()),
+		Rank:             int(protoRepoMeta.GetRank()),
+		Size:             protoRepoMeta.GetSize(),
+		Platforms:        GetPlatforms(protoRepoMeta.GetPlatforms()),
+		Vendors:          protoRepoMeta.GetVendors(),
+		IsStarred:        protoRepoMeta.GetIsStarred(),
+		IsBookmarked:     protoRepoMeta.GetIsBookmarked(),
+		StarCount:        int(protoRepoMeta.GetStars()),
 		DownloadCount:    int(repoDownloads),
-		LastUpdatedImage: GetLastUpdatedImage(protoRepoMeta.LastUpdatedImage),
-		Statistics:       GetStatisticsMap(protoRepoMeta.Statistics),
-		Signatures:       GetSignatures(protoRepoMeta.Signatures),
-		Referrers:        GetReferrers(protoRepoMeta.Referrers),
+		LastUpdatedImage: GetLastUpdatedImage(protoRepoMeta.GetLastUpdatedImage()),
+		Statistics:       GetStatisticsMap(protoRepoMeta.GetStatistics()),
+		Signatures:       GetSignatures(protoRepoMeta.GetSignatures()),
+		Referrers:        GetReferrers(protoRepoMeta.GetReferrers()),
 	}
 }
 
@@ -482,7 +478,7 @@ func AddProtoPlatforms(platforms []*proto_go.Platform, newPlatforms []*proto_go.
 
 func ContainsProtoPlatform(platforms []*proto_go.Platform, platform *proto_go.Platform) bool {
 	for i := range platforms {
-		if platforms[i].OS == platform.OS && platforms[i].Architecture == platform.Architecture {
+		if platforms[i].GetOS() == platform.GetOS() && platforms[i].GetArchitecture() == platform.GetArchitecture() {
 			return true
 		}
 	}
@@ -507,11 +503,11 @@ func GetLastUpdatedImage(protoLastUpdated *proto_go.RepoLastUpdatedImage) *mType
 
 	return &mTypes.LastUpdatedImage{
 		Descriptor: mTypes.Descriptor{
-			Digest:    protoLastUpdated.Digest,
-			MediaType: protoLastUpdated.MediaType,
+			Digest:    protoLastUpdated.GetDigest(),
+			MediaType: protoLastUpdated.GetMediaType(),
 		},
-		Tag:         protoLastUpdated.Tag,
-		LastUpdated: GetTime(protoLastUpdated.LastUpdated),
+		Tag:         protoLastUpdated.GetTag(),
+		LastUpdated: GetTime(protoLastUpdated.GetLastUpdated()),
 	}
 }
 
@@ -521,24 +517,24 @@ func GetImageMeta(dbImageMeta *proto_go.ImageMeta) mTypes.ImageMeta {
 	}
 
 	imageMeta := mTypes.ImageMeta{
-		MediaType: dbImageMeta.MediaType,
+		MediaType: dbImageMeta.GetMediaType(),
 		Size:      GetImageManifestSize(dbImageMeta),
 		Digest:    GetImageDigest(dbImageMeta),
 	}
 
-	if dbImageMeta.MediaType == ispec.MediaTypeImageIndex {
-		manifests := make([]ispec.Descriptor, 0, len(dbImageMeta.Manifests))
+	if dbImageMeta.GetMediaType() == ispec.MediaTypeImageIndex {
+		manifests := make([]ispec.Descriptor, 0, len(dbImageMeta.GetManifests()))
 
-		for _, manifest := range deref(dbImageMeta.Index, proto_go.IndexMeta{}).Index.Manifests {
+		for _, manifest := range dbImageMeta.GetIndex().GetIndex().GetManifests() {
 			manifests = append(manifests, ispec.Descriptor{
-				MediaType: manifest.MediaType,
-				Digest:    godigest.Digest(manifest.Digest),
-				Size:      manifest.Size,
+				MediaType: manifest.GetMediaType(),
+				Digest:    godigest.Digest(manifest.GetDigest()),
+				Size:      manifest.GetSize(),
 			})
 		}
 
 		imageMeta.Index = &ispec.Index{
-			Versioned:    specs.Versioned{SchemaVersion: int(dbImageMeta.Index.Index.Versioned.GetSchemaVersion())},
+			Versioned:    specs.Versioned{SchemaVersion: int(dbImageMeta.GetIndex().GetIndex().Versioned.GetSchemaVersion())},
 			MediaType:    ispec.MediaTypeImageIndex,
 			Manifests:    manifests,
 			Subject:      GetImageSubject(dbImageMeta),
@@ -547,45 +543,45 @@ func GetImageMeta(dbImageMeta *proto_go.ImageMeta) mTypes.ImageMeta {
 		}
 	}
 
-	manifestDataList := make([]mTypes.ManifestMeta, 0, len(dbImageMeta.Manifests))
+	manifestDataList := make([]mTypes.ManifestMeta, 0, len(dbImageMeta.GetManifests()))
 
-	for _, manifest := range dbImageMeta.Manifests {
+	for _, manifest := range dbImageMeta.GetManifests() {
 		manifestDataList = append(manifestDataList, mTypes.ManifestMeta{
-			Size:   manifest.Size,
-			Digest: godigest.Digest(manifest.Digest),
+			Size:   manifest.GetSize(),
+			Digest: godigest.Digest(manifest.GetDigest()),
 			Manifest: ispec.Manifest{
-				Versioned:    specs.Versioned{SchemaVersion: int(manifest.Manifest.Versioned.GetSchemaVersion())},
-				MediaType:    deref(manifest.Manifest.MediaType, ""),
-				ArtifactType: deref(manifest.Manifest.ArtifactType, ""),
+				Versioned:    specs.Versioned{SchemaVersion: int(manifest.GetManifest().GetVersioned().GetSchemaVersion())},
+				MediaType:    manifest.GetManifest().GetMediaType(),
+				ArtifactType: manifest.GetManifest().GetArtifactType(),
 				Config: ispec.Descriptor{
-					MediaType: manifest.Manifest.Config.MediaType,
-					Size:      manifest.Manifest.Config.Size,
-					Digest:    godigest.Digest(manifest.Manifest.Config.Digest),
+					MediaType: manifest.GetManifest().GetConfig().GetMediaType(),
+					Size:      manifest.GetManifest().GetConfig().GetSize(),
+					Digest:    godigest.Digest(manifest.GetManifest().GetConfig().GetDigest()),
 				},
-				Layers:      GetLayers(manifest.Manifest.Layers),
-				Subject:     GetSubject(manifest.Manifest.Subject),
-				Annotations: manifest.Manifest.Annotations,
+				Layers:      GetLayers(manifest.GetManifest().GetLayers()),
+				Subject:     GetSubject(manifest.GetManifest().GetSubject()),
+				Annotations: manifest.GetManifest().GetAnnotations(),
 			},
 			Config: ispec.Image{
-				Created:  GetTime(manifest.Config.Created),
-				Author:   deref(manifest.Config.Author, ""),
-				Platform: GetPlatform(manifest.Config.Platform),
+				Created:  GetTime(manifest.GetConfig().GetCreated()),
+				Author:   manifest.GetConfig().GetAuthor(),
+				Platform: GetPlatform(manifest.GetConfig().GetPlatform()),
 				Config: ispec.ImageConfig{
-					User:         manifest.Config.Config.User,
-					ExposedPorts: GetExposedPorts(manifest.Config.Config.ExposedPorts),
-					Env:          manifest.Config.Config.Env,
-					Entrypoint:   manifest.Config.Config.Entrypoint,
-					Cmd:          manifest.Config.Config.Cmd,
-					Volumes:      GetConfigVolumes(manifest.Config.Config.Volumes),
-					WorkingDir:   deref(manifest.Config.Config.WorkingDir, ""),
-					Labels:       manifest.Config.Config.Labels,
-					StopSignal:   deref(manifest.Config.Config.StopSignal, ""),
+					User:         manifest.GetConfig().GetConfig().GetUser(),
+					ExposedPorts: GetExposedPorts(manifest.GetConfig().GetConfig().GetExposedPorts()),
+					Env:          manifest.GetConfig().GetConfig().GetEnv(),
+					Entrypoint:   manifest.GetConfig().GetConfig().GetEntrypoint(),
+					Cmd:          manifest.GetConfig().GetConfig().GetCmd(),
+					Volumes:      GetConfigVolumes(manifest.GetConfig().GetConfig().GetVolumes()),
+					WorkingDir:   manifest.GetConfig().GetConfig().GetWorkingDir(),
+					Labels:       manifest.GetConfig().GetConfig().GetLabels(),
+					StopSignal:   manifest.GetConfig().GetConfig().GetStopSignal(),
 				},
 				RootFS: ispec.RootFS{
-					Type:    manifest.Config.RootFS.Type,
-					DiffIDs: GetDiffIDs(manifest.Config.RootFS.DiffIDs),
+					Type:    manifest.GetConfig().GetRootFS().GetType(),
+					DiffIDs: GetDiffIDs(manifest.GetConfig().GetRootFS().GetDiffIDs()),
 				},
-				History: GetHistory(manifest.Config.History),
+				History: GetHistory(manifest.GetConfig().GetHistory()),
 			},
 		})
 	}
