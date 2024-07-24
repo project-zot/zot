@@ -25,6 +25,7 @@ func MockOIDCRun() (*mockoidc.MockOIDC, error) {
 			// stateVal := req.Form.Get("state")
 			header := req.Header.Get("Authorization")
 			parts := strings.SplitN(header, " ", 2) //nolint:mnd
+
 			if header != "" {
 				if strings.ToLower(parts[0]) == "bearer" {
 					req.Header.Set("Authorization", strings.Join([]string{"Bearer", parts[1]}, " "))

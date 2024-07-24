@@ -48,10 +48,12 @@ func TestTLSWithAuth(t *testing.T) {
 
 		resty.SetTLSClientConfig(&tls.Config{RootCAs: caCertPool, MinVersion: tls.VersionTLS12})
 		defer func() { resty.SetTLSClientConfig(nil) }()
+
 		conf := config.New()
 		conf.HTTP.Port = SecurePort1
 		username, seedUser := test.GenerateRandomString()
 		password, seedPass := test.GenerateRandomString()
+
 		htpasswdPath := test.MakeHtpasswdFileFromString(test.GetCredString(username, password))
 		defer os.Remove(htpasswdPath)
 
@@ -75,6 +77,7 @@ func TestTLSWithAuth(t *testing.T) {
 		ctlr := api.NewController(conf)
 		ctlr.Log.Info().Int64("seedUser", seedUser).Int64("seedPass", seedPass).Msg("random seed for username & password")
 		ctlr.Config.Storage.RootDirectory = t.TempDir()
+
 		cm := test.NewControllerManager(ctlr)
 		cm.StartAndWait(conf.HTTP.Port)
 		defer cm.StopServer()
@@ -101,10 +104,12 @@ func TestTLSWithAuth(t *testing.T) {
 			So(imageBuff.String(), ShouldContainSubstring, "scheme not provided")
 
 			args = []string{"list", "--config", "imagetest"}
+
 			configPath = makeConfigFile(
 				fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s%s%s","showspinner":false}]}`,
 					BaseSecureURL1, constants.RoutePrefix, constants.ExtCatalogPrefix))
 			defer os.Remove(configPath)
+
 			imageCmd = client.NewImageCommand(client.NewSearchService())
 			imageBuff = bytes.NewBufferString("")
 			imageCmd.SetOut(imageBuff)
@@ -140,6 +145,7 @@ func TestTLSWithoutAuth(t *testing.T) {
 
 		resty.SetTLSClientConfig(&tls.Config{RootCAs: caCertPool, MinVersion: tls.VersionTLS12})
 		defer func() { resty.SetTLSClientConfig(nil) }()
+
 		conf := config.New()
 		conf.HTTP.Port = SecurePort1
 		conf.HTTP.TLS = &config.TLSConfig{
@@ -194,6 +200,7 @@ func TestTLSBadCerts(t *testing.T) {
 
 		resty.SetTLSClientConfig(&tls.Config{RootCAs: caCertPool, MinVersion: tls.VersionTLS12})
 		defer func() { resty.SetTLSClientConfig(nil) }()
+
 		conf := config.New()
 		conf.HTTP.Port = SecurePort3
 		conf.HTTP.TLS = &config.TLSConfig{
@@ -204,6 +211,7 @@ func TestTLSBadCerts(t *testing.T) {
 
 		ctlr := api.NewController(conf)
 		ctlr.Config.Storage.RootDirectory = t.TempDir()
+
 		cm := test.NewControllerManager(ctlr)
 		cm.StartAndWait(conf.HTTP.Port)
 		defer cm.StopServer()

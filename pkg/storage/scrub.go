@@ -207,7 +207,6 @@ func scrubManifest(
 			}
 
 			layersToScrub, err := scrubManifest(man, imgStore, imageName, tag, buf, scrubbedManifests)
-
 			if err == nil {
 				layers = append(layers, layersToScrub...)
 			}
@@ -238,7 +237,6 @@ func scrubManifest(
 			}
 
 			layersToScrub, err := scrubManifest(*idx.Subject, imgStore, imageName, tag, buf, scrubbedManifests)
-
 			if err == nil {
 				layers = append(layers, layersToScrub...)
 			}
@@ -272,7 +270,6 @@ func scrubManifest(
 			}
 
 			layersToScrub, err := scrubManifest(*man.Subject, imgStore, imageName, tag, buf, scrubbedManifests)
-
 			if err == nil {
 				layers = append(layers, layersToScrub...)
 			}

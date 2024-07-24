@@ -295,7 +295,7 @@ func getTempRootDirFromImageReference(imageReference types.ImageReference, repo,
 	if strings.HasSuffix(imageReference.StringWithinTransport(), reference) {
 		tmpRootDir = strings.ReplaceAll(imageReference.StringWithinTransport(), fmt.Sprintf("%s:%s", repo, reference), "")
 	} else {
-		tmpRootDir = strings.ReplaceAll(imageReference.StringWithinTransport(), fmt.Sprintf("%s:", repo), "")
+		tmpRootDir = strings.ReplaceAll(imageReference.StringWithinTransport(), repo+":", "")
 	}
 
 	return tmpRootDir

@@ -35,26 +35,33 @@ import (
 func TestSearchImageCmd(t *testing.T) {
 	Convey("Test image help", t, func() {
 		args := []string{"--help"}
+
 		configPath := makeConfigFile("")
 		defer os.Remove(configPath)
+
 		cmd := NewImageCommand(new(mockService))
 		buff := bytes.NewBufferString("")
 		cmd.SetOut(buff)
 		cmd.SetErr(buff)
 		cmd.SetArgs(args)
 		err := cmd.Execute()
+
 		So(buff.String(), ShouldContainSubstring, "Usage")
 		So(err, ShouldBeNil)
+
 		Convey("with the shorthand", func() {
 			args[0] = "-h"
+
 			configPath := makeConfigFile("")
 			defer os.Remove(configPath)
+
 			cmd := NewImageCommand(new(mockService))
 			buff := bytes.NewBufferString("")
 			cmd.SetOut(buff)
 			cmd.SetErr(buff)
 			cmd.SetArgs(args)
 			err := cmd.Execute()
+
 			So(buff.String(), ShouldContainSubstring, "Usage")
 			So(err, ShouldBeNil)
 		})
@@ -62,8 +69,10 @@ func TestSearchImageCmd(t *testing.T) {
 
 	Convey("Test image no url", t, func() {
 		args := []string{"name", "dummyIdRandom", "--config", "imagetest"}
+
 		configPath := makeConfigFile(`{"configs":[{"_name":"imagetest","showspinner":false}]}`)
 		defer os.Remove(configPath)
+
 		cmd := NewImageCommand(new(mockService))
 		buff := bytes.NewBufferString("")
 		cmd.SetOut(buff)
@@ -97,6 +106,7 @@ func TestSearchImageCmd(t *testing.T) {
 		if err != nil {
 			panic(err)
 		}
+
 		err = os.Setenv("HOME", home)
 		if err != nil {
 			log.Fatal(err)
@@ -105,8 +115,10 @@ func TestSearchImageCmd(t *testing.T) {
 
 	Convey("Test image no params", t, func() {
 		args := []string{"--url", "someUrl"}
+
 		configPath := makeConfigFile(`{"configs":[{"_name":"imagetest","showspinner":false}]}`)
 		defer os.Remove(configPath)
+
 		cmd := NewImageCommand(new(mockService))
 		buff := bytes.NewBufferString("")
 		cmd.SetOut(buff)
@@ -118,8 +130,10 @@ func TestSearchImageCmd(t *testing.T) {
 
 	Convey("Test image invalid url", t, func() {
 		args := []string{"name", "dummyImageName", "--url", "invalidUrl"}
+
 		configPath := makeConfigFile(`{"configs":[{"_name":"imagetest","showspinner":false}]}`)
 		defer os.Remove(configPath)
+
 		cmd := NewImageCommand(new(searchService))
 		buff := bytes.NewBufferString("")
 		cmd.SetOut(buff)
@@ -133,8 +147,10 @@ func TestSearchImageCmd(t *testing.T) {
 
 	Convey("Test image invalid url port", t, func() {
 		args := []string{"name", "dummyImageName", "--url", "http://localhost:99999"}
+
 		configPath := makeConfigFile(`{"configs":[{"_name":"imagetest","showspinner":false}]}`)
 		defer os.Remove(configPath)
+
 		cmd := NewImageCommand(new(searchService))
 		buff := bytes.NewBufferString("")
 		cmd.SetOut(buff)
@@ -146,8 +162,10 @@ func TestSearchImageCmd(t *testing.T) {
 
 		Convey("without flags", func() {
 			args := []string{"list", "--url", "http://localhost:99999"}
+
 			configPath := makeConfigFile(`{"configs":[{"_name":"imagetest","showspinner":false}]}`)
 			defer os.Remove(configPath)
+
 			cmd := NewImageCommand(new(searchService))
 			buff := bytes.NewBufferString("")
 			cmd.SetOut(buff)
@@ -161,8 +179,10 @@ func TestSearchImageCmd(t *testing.T) {
 
 	Convey("Test image unreachable", t, func() {
 		args := []string{"name", "dummyImageName", "--url", "http://localhost:9999"}
+
 		configPath := makeConfigFile(`{"configs":[{"_name":"imagetest","showspinner":false}]}`)
 		defer os.Remove(configPath)
+
 		cmd := NewImageCommand(new(searchService))
 		buff := bytes.NewBufferString("")
 		cmd.SetOut(buff)
@@ -174,8 +194,10 @@ func TestSearchImageCmd(t *testing.T) {
 
 	Convey("Test image url from config", t, func() {
 		args := []string{"name", "dummyImageName", "--config", "imagetest"}
+
 		configPath := makeConfigFile(`{"configs":[{"_name":"imagetest","url":"https://test-url.com","showspinner":false}]}`)
 		defer os.Remove(configPath)
+
 		cmd := NewImageCommand(new(mockService))
 		buff := bytes.NewBufferString("")
 		cmd.SetOut(buff)
@@ -191,8 +213,10 @@ func TestSearchImageCmd(t *testing.T) {
 
 	Convey("Test image by name", t, func() {
 		args := []string{"name", "dummyImageName", "--url", "http://127.0.0.1:8080"}
+
 		configPath := makeConfigFile(`{"configs":[{"_name":"imagetest","showspinner":false}]}`)
 		defer os.Remove(configPath)
+
 		imageCmd := NewImageCommand(new(mockService))
 		buff := &bytes.Buffer{}
 		imageCmd.SetOut(buff)
@@ -233,8 +257,10 @@ func TestListRepos(t *testing.T) {
 
 	Convey("Test listing repositories with debug flag", t, func() {
 		args := []string{"list", "--config", "config-test", "--debug"}
+
 		configPath := makeConfigFile(`{"configs":[{"_name":"config-test","url":"https://test-url.com","showspinner":false}]}`)
 		defer os.Remove(configPath)
+
 		cmd := NewRepoCommand(new(searchService))
 
 		buff := bytes.NewBufferString("")
@@ -272,6 +298,7 @@ func TestListRepos(t *testing.T) {
 		if err != nil {
 			panic(err)
 		}
+
 		err = os.Setenv("HOME", home)
 		if err != nil {
 			log.Fatal(err)
@@ -280,9 +307,11 @@ func TestListRepos(t *testing.T) {
 
 	Convey("Test listing repositories error", t, func() {
 		args := []string{"list", "--config", "config-test"}
+
 		configPath := makeConfigFile(`{"configs":[{"_name":"config-test",
         	"url":"https://invalid.invalid","showspinner":false}]}`)
 		defer os.Remove(configPath)
+
 		cmd := NewRepoCommand(new(searchService))
 		buff := bytes.NewBufferString("")
 		cmd.SetOut(buff)
@@ -294,8 +323,10 @@ func TestListRepos(t *testing.T) {
 
 	Convey("Test unable to get config value", t, func() {
 		args := []string{"list", "--config", "config-test-nonexistent"}
+
 		configPath := makeConfigFile(`{"configs":[{"_name":"config-test","url":"https://test-url.com","showspinner":false}]}`)
 		defer os.Remove(configPath)
+
 		cmd := NewRepoCommand(new(mockService))
 		buff := bytes.NewBufferString("")
 		cmd.SetOut(buff)
@@ -307,8 +338,10 @@ func TestListRepos(t *testing.T) {
 
 	Convey("Test error - no url provided", t, func() {
 		args := []string{"list", "--config", "config-test"}
+
 		configPath := makeConfigFile(`{"configs":[{"_name":"config-test","url":"","showspinner":false}]}`)
 		defer os.Remove(configPath)
+
 		cmd := NewRepoCommand(new(mockService))
 		buff := bytes.NewBufferString("")
 		cmd.SetOut(buff)
@@ -320,9 +353,11 @@ func TestListRepos(t *testing.T) {
 
 	Convey("Test error - spinner config invalid", t, func() {
 		args := []string{"list", "--config", "config-test"}
+
 		configPath := makeConfigFile(`{"configs":[{"_name":"config-test",
        		"url":"https://test-url.com","showspinner":invalid}]}`)
 		defer os.Remove(configPath)
+
 		cmd := NewRepoCommand(new(mockService))
 		buff := bytes.NewBufferString("")
 		cmd.SetOut(buff)
@@ -334,9 +369,11 @@ func TestListRepos(t *testing.T) {
 
 	Convey("Test error - verifyTLSConfig fails", t, func() {
 		args := []string{"list", "--config", "config-test"}
+
 		configPath := makeConfigFile(`{"configs":[{"_name":"config-test",
         	"verify-tls":"invalid", "url":"https://test-url.com","showspinner":false}]}`)
 		defer os.Remove(configPath)
+
 		cmd := NewRepoCommand(new(mockService))
 		buff := bytes.NewBufferString("")
 		cmd.SetOut(buff)
@@ -350,8 +387,10 @@ func TestListRepos(t *testing.T) {
 func TestOutputFormat(t *testing.T) {
 	Convey("Test text", t, func() {
 		args := []string{"name", "dummyImageName", "--config", "imagetest", "-f", "text"}
+
 		configPath := makeConfigFile(`{"configs":[{"_name":"imagetest","url":"https://test-url.com","showspinner":false}]}`)
 		defer os.Remove(configPath)
+
 		cmd := NewImageCommand(new(mockService))
 		buff := bytes.NewBufferString("")
 		cmd.SetOut(buff)
@@ -367,8 +406,10 @@ func TestOutputFormat(t *testing.T) {
 
 	Convey("Test json", t, func() {
 		args := []string{"name", "dummyImageName", "--config", "imagetest", "-f", "json"}
+
 		configPath := makeConfigFile(`{"configs":[{"_name":"imagetest","url":"https://test-url.com","showspinner":false}]}`)
 		defer os.Remove(configPath)
+
 		cmd := NewImageCommand(new(mockService))
 		buff := bytes.NewBufferString("")
 		cmd.SetOut(buff)
@@ -396,8 +437,10 @@ func TestOutputFormat(t *testing.T) {
 
 	Convey("Test yaml", t, func() {
 		args := []string{"name", "dummyImageName", "--config", "imagetest", "-f", "yaml"}
+
 		configPath := makeConfigFile(`{"configs":[{"_name":"imagetest","url":"https://test-url.com","showspinner":false}]}`)
 		defer os.Remove(configPath)
+
 		cmd := NewImageCommand(new(mockService))
 		buff := bytes.NewBufferString("")
 		cmd.SetOut(buff)
@@ -430,11 +473,13 @@ func TestOutputFormat(t *testing.T) {
 
 		Convey("Test yml", func() {
 			args := []string{"name", "dummyImageName", "--config", "imagetest", "-f", "yml"}
+
 			configPath := makeConfigFile(
 				`{"configs":[{"_name":"imagetest",` +
 					`"url":"https://test-url.com","showspinner":false}]}`,
 			)
 			defer os.Remove(configPath)
+
 			cmd := NewImageCommand(new(mockService))
 			buff := bytes.NewBufferString("")
 			cmd.SetOut(buff)
@@ -468,8 +513,10 @@ func TestOutputFormat(t *testing.T) {
 
 	Convey("Test invalid", t, func() {
 		args := []string{"name", "dummyImageName", "--config", "imagetest", "-f", "random"}
+
 		configPath := makeConfigFile(`{"configs":[{"_name":"imagetest","url":"https://test-url.com","showspinner":false}]}`)
 		defer os.Remove(configPath)
+
 		cmd := NewImageCommand(new(mockService))
 		buff := bytes.NewBufferString("")
 		cmd.SetOut(buff)
@@ -778,7 +825,6 @@ func TestImagesCommandGQL(t *testing.T) {
 			configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s","showspinner":false}]}`,
 				baseURL))
 			defer os.Remove(configPath)
-
 			args := []string{"cve", "repo:vuln", "--config", "imagetest"}
 			cmd := NewImageCommand(mockService{})
 			buff := bytes.NewBufferString("")
@@ -796,9 +842,11 @@ func TestImagesCommandGQL(t *testing.T) {
 
 		Convey("CVE errors", func() {
 			count := 0
+
 			configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s","showspinner":false}]}`,
 				baseURL))
 			defer os.Remove(configPath)
+
 			args := []string{"cve", "repo:vuln", "--config", "imagetest"}
 			cmd := NewImageCommand(mockService{
 				getCveByImageGQLFn: func(ctx context.Context, config SearchConfig, username, password,
@@ -920,7 +968,6 @@ func TestImageCommandREST(t *testing.T) {
 			configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s","showspinner":false}]}`,
 				baseURL))
 			defer os.Remove(configPath)
-
 			args := []string{"base", "repo:derived", "--config", "imagetest"}
 			cmd := NewImageCommand(NewSearchService())
 			buff := bytes.NewBufferString("")
@@ -949,7 +996,6 @@ func TestImageCommandREST(t *testing.T) {
 			configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s","showspinner":false}]}`,
 				baseURL))
 			defer os.Remove(configPath)
-
 			args := []string{"digest", image.DigestStr(), "--config", "imagetest"}
 			cmd := NewImageCommand(NewSearchService())
 			buff := bytes.NewBufferString("")
@@ -969,7 +1015,6 @@ func TestImageCommandREST(t *testing.T) {
 			configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s","showspinner":false}]}`,
 				baseURL))
 			defer os.Remove(configPath)
-
 			args := []string{"list", "--config", "imagetest"}
 			cmd := NewImageCommand(NewSearchService())
 			buff := bytes.NewBufferString("")
@@ -994,7 +1039,6 @@ func TestImageCommandREST(t *testing.T) {
 			configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s","showspinner":false}]}`,
 				baseURL))
 			defer os.Remove(configPath)
-
 			args := []string{"name", "repo:img", "--config", "imagetest"}
 			cmd := NewImageCommand(NewSearchService())
 			buff := bytes.NewBufferString("")
@@ -1011,11 +1055,12 @@ func TestImageCommandREST(t *testing.T) {
 			vulnImage := CreateDefaultVulnerableImage()
 			err := UploadImage(vulnImage, baseURL, "repo", "vuln")
 			So(err, ShouldBeNil)
+			args := []string{"cve", "repo:vuln", "--config", "imagetest"}
 
 			configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s","showspinner":false}]}`,
 				baseURL))
-			args := []string{"cve", "repo:vuln", "--config", "imagetest"}
 			defer os.Remove(configPath)
+
 			cmd := NewImageCommand(mockService{})
 			buff := bytes.NewBufferString("")
 			cmd.SetOut(buff)

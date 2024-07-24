@@ -149,8 +149,10 @@ func TestGetContentByLocalRepo(t *testing.T) {
 		for _, test := range testCases {
 			cm := NewContentManager(test.content, log.Logger{})
 			actualResult := cm.getContentByLocalRepo(test.repo)
+
 			if test.expected == -1 {
 				var tnil *syncconf.Content = nil
+
 				So(actualResult, ShouldEqual, tnil)
 			} else {
 				So(actualResult, ShouldEqual, &test.content[test.expected])
@@ -239,6 +241,7 @@ func TestFilterTags(t *testing.T) {
 			cm := NewContentManager(test.content, log.NewLogger("debug", ""))
 			actualResult, err := cm.FilterTags(test.repo, test.tags)
 			So(actualResult, ShouldResemble, test.filteredTags)
+
 			if test.err {
 				So(err, ShouldNotBeNil)
 			} else {

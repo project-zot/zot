@@ -39,7 +39,6 @@ func loadPerHostCerts(caCertPool *x509.CertPool, host string) *tls.Config {
 
 	if DirExists(clientCertsDir) {
 		tlsConfig, err := GetTLSConfig(clientCertsDir, caCertPool)
-
 		if err == nil {
 			return tlsConfig
 		}
@@ -49,7 +48,6 @@ func loadPerHostCerts(caCertPool *x509.CertPool, host string) *tls.Config {
 	clientCertsDir = filepath.Join(certsPath, host)
 	if DirExists(clientCertsDir) {
 		tlsConfig, err := GetTLSConfig(clientCertsDir, caCertPool)
-
 		if err == nil {
 			return tlsConfig
 		}

@@ -63,6 +63,7 @@ func TestInjectSyncUtils(t *testing.T) {
 
 		injected = inject.InjectFailure(0)
 		_, err = getPolicyContext(log.NewLogger("debug", ""))
+
 		if injected {
 			So(err, ShouldNotBeNil)
 		} else {
@@ -76,6 +77,7 @@ func TestInjectSyncUtils(t *testing.T) {
 
 		ols := NewOciLayoutStorage(storage.StoreController{DefaultStore: imageStore})
 		_, err = ols.GetImageReference(testImage, testImageTag)
+
 		if injected {
 			So(err, ShouldNotBeNil)
 		} else {

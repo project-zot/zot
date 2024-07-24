@@ -209,7 +209,6 @@ func (cloud *CertificateAWSStorage) recreateSecret(secretInputParam *secretsmana
 
 	for i := 0; i < maxAttempts; i++ {
 		_, err = cloud.secretsManagerClient.CreateSecret(context.Background(), secretInputParam)
-
 		if err == nil {
 			return nil
 		}
@@ -493,7 +492,6 @@ func (cloud *CertificateAWSStorage) StoreCertificate(
 	}
 
 	_, err := cloud.secretsManagerClient.CreateSecret(context.Background(), secretInputParam)
-
 	if err != nil && IsResourceExistsException(err) {
 		return nil
 	}
@@ -539,6 +537,7 @@ func parseAndValidateCertificateContent(certificateContent []byte) ([]*x509.Cert
 			if err != nil {
 				return []*x509.Certificate{}, false, fmt.Errorf("%w: %w", zerr.ErrInvalidCertificateContent, err)
 			}
+
 			certs = append(certs, cert)
 			block, rest = pem.Decode(rest)
 		}

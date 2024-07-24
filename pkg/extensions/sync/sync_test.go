@@ -491,7 +491,7 @@ func TestOnDemand(t *testing.T) {
 			So(err, ShouldBeNil)
 
 			// sign using cosign
-			err = signature.SignImageUsingCosign(fmt.Sprintf("remote-repo@%s", manifestDigest.String()), port, false)
+			err = signature.SignImageUsingCosign("remote-repo@"+manifestDigest.String(), port, false)
 			So(err, ShouldBeNil)
 
 			// add cosign sbom
@@ -562,8 +562,8 @@ func TestOnDemand(t *testing.T) {
 				},
 				// include self url, should be ignored
 				URLs: []string{
-					fmt.Sprintf("http://%s", hostname), destBaseURL,
-					srcBaseURL, fmt.Sprintf("http://localhost:%s", destPort),
+					"http://" + hostname, destBaseURL,
+					srcBaseURL, "http://localhost:" + destPort,
 				},
 				TLSVerify: &tlsVerify,
 				CertDir:   "",
@@ -711,8 +711,8 @@ func TestOnDemand(t *testing.T) {
 				},
 				// include self url, should be ignored
 				URLs: []string{
-					fmt.Sprintf("http://%s", hostname), destBaseURL,
-					srcBaseURL, fmt.Sprintf("http://localhost:%s", destPort),
+					"http://" + hostname, destBaseURL,
+					srcBaseURL, "http://localhost:" + destPort,
 				},
 				TLSVerify: &tlsVerify,
 				CertDir:   "",
@@ -826,7 +826,7 @@ func TestOnDemandWithScaleOutCluster(t *testing.T) {
 		baseURLs := []string{srcBaseURL, dctrl1BaseURL, dctrl2BaseURL}
 
 		for clientIdx, client := range clients {
-			resp, err := client.R().Get(fmt.Sprintf("%s/v2/", baseURLs[clientIdx]))
+			resp, err := client.R().Get(baseURLs[clientIdx] + "/v2/")
 			So(err, ShouldBeNil)
 			So(resp, ShouldNotBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
@@ -993,7 +993,7 @@ func TestOnDemandWithScaleOutClusterWithReposNotAddedForSync(t *testing.T) {
 		baseURLs := []string{srcBaseURL, dctrl1BaseURL, dctrl2BaseURL}
 
 		for clientIdx, client := range clients {
-			resp, err := client.R().Get(fmt.Sprintf("%s/v2/", baseURLs[clientIdx]))
+			resp, err := client.R().Get(baseURLs[clientIdx] + "/v2/")
 			So(err, ShouldBeNil)
 			So(resp, ShouldNotBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
@@ -2577,7 +2577,7 @@ func TestBearerAuth(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		resp, err = srcClient.R().
-			SetHeader("Authorization", fmt.Sprintf("Bearer %s", goodToken.AccessToken)).
+			SetHeader("Authorization", "Bearer "+goodToken.AccessToken).
 			Get(srcBaseURL + "/v2/")
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
@@ -2601,7 +2601,7 @@ func TestBearerAuth(t *testing.T) {
 		err = json.Unmarshal(resp.Body(), &goodToken)
 		So(err, ShouldBeNil)
 
-		resp, err = srcClient.R().SetHeader("Authorization", fmt.Sprintf("Bearer %s", goodToken.AccessToken)).
+		resp, err = srcClient.R().SetHeader("Authorization", "Bearer "+goodToken.AccessToken).
 			Get(srcBaseURL + "/v2/" + testImage + "/tags/list")
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
@@ -2719,7 +2719,7 @@ func TestBearerAuth(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		resp, err = srcClient.R().
-			SetHeader("Authorization", fmt.Sprintf("Bearer %s", goodToken.AccessToken)).
+			SetHeader("Authorization", "Bearer "+goodToken.AccessToken).
 			Get(srcBaseURL + "/v2/")
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
@@ -2743,7 +2743,7 @@ func TestBearerAuth(t *testing.T) {
 		err = json.Unmarshal(resp.Body(), &goodToken)
 		So(err, ShouldBeNil)
 
-		resp, err = srcClient.R().SetHeader("Authorization", fmt.Sprintf("Bearer %s", goodToken.AccessToken)).
+		resp, err = srcClient.R().SetHeader("Authorization", "Bearer "+goodToken.AccessToken).
 			Get(srcBaseURL + "/v2/" + testImage + "/tags/list")
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)

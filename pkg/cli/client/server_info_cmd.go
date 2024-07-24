@@ -67,7 +67,7 @@ func GetServerStatus(config SearchConfig) error {
 		switch {
 		case errors.Is(err, zerr.ErrUnauthorizedAccess):
 			serverInfo.Status = StatusUnknown
-			serverInfo.ErrorMsg = fmt.Sprintf("unauthorised access, %s", getCredentialsSuggestion(username))
+			serverInfo.ErrorMsg = "unauthorised access, " + getCredentialsSuggestion(username)
 		case errors.Is(err, zerr.ErrBadHTTPStatusCode), errors.Is(err, zerr.ErrURLNotFound):
 			serverInfo.Status = StatusOffline
 			serverInfo.ErrorMsg = fmt.Sprintf("%s: request at %s failed", zerr.ErrAPINotSupported.Error(),
@@ -165,7 +165,7 @@ func (si *ServerInfo) ToText() (string, error) {
 
 		output = serverStatus
 	} else {
-		serverStatus := fmt.Sprintf("Server Status: %s", si.Status)
+		serverStatus := "Server Status: " + si.Status
 		serverInfo := fmt.Sprintf("Server Version: %s\n"+
 			"Dist Spec Version: %s\n"+
 			"Built with: %s",

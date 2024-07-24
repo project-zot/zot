@@ -111,15 +111,19 @@ func TestHandlers(t *testing.T) {
 
 			response := httptest.NewRecorder()
 			extensions.PutBookmark(response, request, mockmetaDB, log)
+
 			res := response.Result()
-			So(res.StatusCode, ShouldEqual, http.StatusNotFound)
 			defer res.Body.Close()
+
+			So(res.StatusCode, ShouldEqual, http.StatusNotFound)
 
 			response = httptest.NewRecorder()
 			extensions.PutStar(response, request, mockmetaDB, log)
+
 			res = response.Result()
-			So(res.StatusCode, ShouldEqual, http.StatusNotFound)
 			defer res.Body.Close()
+
+			So(res.StatusCode, ShouldEqual, http.StatusNotFound)
 		})
 
 		Convey("ErrUserDataNotAllowed", func() {
@@ -137,15 +141,19 @@ func TestHandlers(t *testing.T) {
 
 			response := httptest.NewRecorder()
 			extensions.PutBookmark(response, request, mockmetaDB, log)
+
 			res := response.Result()
-			So(res.StatusCode, ShouldEqual, http.StatusForbidden)
 			defer res.Body.Close()
+
+			So(res.StatusCode, ShouldEqual, http.StatusForbidden)
 
 			response = httptest.NewRecorder()
 			extensions.PutStar(response, request, mockmetaDB, log)
+
 			res = response.Result()
-			So(res.StatusCode, ShouldEqual, http.StatusForbidden)
 			defer res.Body.Close()
+
+			So(res.StatusCode, ShouldEqual, http.StatusForbidden)
 		})
 
 		Convey("ErrUnexpectedError", func() {
@@ -162,15 +170,19 @@ func TestHandlers(t *testing.T) {
 			}
 			response := httptest.NewRecorder()
 			extensions.PutBookmark(response, request, mockmetaDB, log)
+
 			res := response.Result()
-			So(res.StatusCode, ShouldEqual, http.StatusInternalServerError)
 			defer res.Body.Close()
+
+			So(res.StatusCode, ShouldEqual, http.StatusInternalServerError)
 
 			response = httptest.NewRecorder()
 			extensions.PutStar(response, request, mockmetaDB, log)
+
 			res = response.Result()
-			So(res.StatusCode, ShouldEqual, http.StatusInternalServerError)
 			defer res.Body.Close()
+
+			So(res.StatusCode, ShouldEqual, http.StatusInternalServerError)
 		})
 	})
 }

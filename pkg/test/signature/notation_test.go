@@ -17,7 +17,7 @@ import (
 	"zotregistry.dev/zot/pkg/api/config"
 	tcommon "zotregistry.dev/zot/pkg/test/common"
 	. "zotregistry.dev/zot/pkg/test/image-utils"
-	signature "zotregistry.dev/zot/pkg/test/signature"
+	"zotregistry.dev/zot/pkg/test/signature"
 )
 
 func TestLoadNotationSigningkeys(t *testing.T) {
@@ -427,7 +427,7 @@ func TestGenerateNotationCerts(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		certName := "cert-test"
-		trustStorePath := path.Join(notationDir, fmt.Sprintf("truststore/x509/ca/%s", certName))
+		trustStorePath := path.Join(notationDir, "truststore/x509/ca/"+certName)
 		err = os.MkdirAll(trustStorePath, 0o755)
 		So(err, ShouldBeNil)
 		err = os.Chmod(path.Join(notationDir, "truststore/x509"), 0o000)

@@ -218,8 +218,8 @@ func getSubStore(cfg *config.Config, subPaths map[string]config.StorageConfig,
 
 func compareImageStore(root1, root2 string) bool {
 	isSameFile, err := config.SameFile(root1, root2)
-	// This error is path error that means either of root directory doesn't exist, in that case do string match
 	if err != nil {
+		// This error is path error that means either of root directory doesn't exist, in that case do string match
 		return strings.EqualFold(root1, root2)
 	}
 

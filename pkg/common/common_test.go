@@ -98,9 +98,10 @@ func TestCommon(t *testing.T) {
 
 	Convey("Test GetIPFromHostName with valid hostname", t, func() {
 		addrs, err := common.GetIPFromHostName("github.com")
+
+		// we can't check the actual addresses here as they can change
 		So(err, ShouldBeNil)
 		So(addrs, ShouldNotBeEmpty)
-		// we can't check the actual addresses here as they can change
 	})
 
 	Convey("Test GetIPFromHostName with non-existent hostname", t, func() {

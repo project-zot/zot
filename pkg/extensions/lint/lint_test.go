@@ -240,7 +240,7 @@ func TestVerifyMandatoryAnnotations(t *testing.T) {
 
 		// upload image config blob
 		resp, err = resty.R().
-			Post(fmt.Sprintf("%s/v2/zot-test/blobs/uploads/", baseURL))
+			Post(baseURL + "/v2/zot-test/blobs/uploads/")
 		So(err, ShouldBeNil)
 		loc := test.Location(baseURL, resp)
 
@@ -325,7 +325,7 @@ func TestVerifyMandatoryAnnotations(t *testing.T) {
 
 		// upload image config blob
 		_, err = resty.R().
-			Post(fmt.Sprintf("%s/v2/zot-test/blobs/uploads/", baseURL))
+			Post(baseURL + "/v2/zot-test/blobs/uploads/")
 		So(err, ShouldBeNil)
 		loc := test.Location(baseURL, resp)
 

@@ -80,7 +80,6 @@ func (lc *LDAPClient) Connect() error {
 			}
 			if lc.ClientCertificates != nil && len(lc.ClientCertificates) > 0 {
 				config.Certificates = lc.ClientCertificates
-				// config.BuildNameToCertificate()
 			}
 
 			l, err = ldap.DialTLS("tcp", address, config) //nolint:staticcheck

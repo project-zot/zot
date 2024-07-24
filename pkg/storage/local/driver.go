@@ -210,8 +210,7 @@ func (driver *Driver) Walk(path string, walkFn storagedriver.WalkFn) error {
 		}
 
 		err = walkFn(fileInfo)
-		//nolint: gocritic
-		if err == nil && fileInfo.IsDir() {
+		if err == nil && fileInfo.IsDir() { //nolint: gocritic
 			if err := driver.Walk(child, walkFn); err != nil {
 				return err
 			}

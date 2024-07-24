@@ -1521,7 +1521,6 @@ func (dwr *DynamoDB) ToggleBookmarkRepo(ctx context.Context, repo string) (
 
 func (dwr *DynamoDB) GetBookmarkedRepos(ctx context.Context) ([]string, error) {
 	userMeta, err := dwr.GetUserData(ctx)
-
 	if errors.Is(err, zerr.ErrUserDataNotFound) || errors.Is(err, zerr.ErrUserDataNotAllowed) {
 		return []string{}, nil
 	}
@@ -1636,7 +1635,6 @@ func (dwr *DynamoDB) ToggleStarRepo(ctx context.Context, repo string) (
 
 func (dwr *DynamoDB) GetStarredRepos(ctx context.Context) ([]string, error) {
 	userMeta, err := dwr.GetUserData(ctx)
-
 	if errors.Is(err, zerr.ErrUserDataNotFound) || errors.Is(err, zerr.ErrUserDataNotAllowed) {
 		return []string{}, nil
 	}

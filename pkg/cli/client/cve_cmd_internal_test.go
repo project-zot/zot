@@ -47,36 +47,44 @@ func TestSearchCVECmd(t *testing.T) {
 
 	Convey("Test CVE help", t, func() {
 		args := []string{"--help"}
+
 		configPath := makeConfigFile("")
 		defer os.Remove(configPath)
+
 		cmd := NewCVECommand(new(mockService))
 		buff := bytes.NewBufferString("")
 		cmd.SetOut(buff)
 		cmd.SetErr(buff)
 		cmd.SetArgs(args)
 		err := cmd.Execute()
+
 		So(buff.String(), ShouldContainSubstring, "Usage")
 		So(err, ShouldBeNil)
 	})
 
 	Convey("Test CVE help - with the shorthand", t, func() {
 		args := []string{"-h"}
+
 		configPath := makeConfigFile("")
 		defer os.Remove(configPath)
+
 		cmd := NewCVECommand(new(mockService))
 		buff := bytes.NewBufferString("")
 		cmd.SetOut(buff)
 		cmd.SetErr(buff)
 		cmd.SetArgs(args)
 		err := cmd.Execute()
+
 		So(buff.String(), ShouldContainSubstring, "Usage")
 		So(err, ShouldBeNil)
 	})
 
 	Convey("Test CVE no url", t, func() {
 		args := []string{"affected", "CVE-cveIdRandom", "--config", "cvetest"}
+
 		configPath := makeConfigFile(`{"configs":[{"_name":"cvetest","showspinner":false}]}`)
 		defer os.Remove(configPath)
+
 		cmd := NewCVECommand(new(mockService))
 		buff := bytes.NewBufferString("")
 		cmd.SetOut(buff)
@@ -89,8 +97,10 @@ func TestSearchCVECmd(t *testing.T) {
 
 	Convey("Test CVE invalid url", t, func() {
 		args := []string{"list", "dummyImageName:tag", "--url", "invalidUrl"}
+
 		configPath := makeConfigFile(`{"configs":[{"_name":"cvetest","showspinner":false}]}`)
 		defer os.Remove(configPath)
+
 		cmd := NewCVECommand(new(searchService))
 		buff := bytes.NewBufferString("")
 		cmd.SetOut(buff)
@@ -104,8 +114,10 @@ func TestSearchCVECmd(t *testing.T) {
 
 	Convey("Test CVE invalid url port", t, func() {
 		args := []string{"list", "dummyImageName:tag", "--url", "http://localhost:99999"}
+
 		configPath := makeConfigFile(`{"configs":[{"_name":"cvetest","showspinner":false}]}`)
 		defer os.Remove(configPath)
+
 		cmd := NewCVECommand(new(searchService))
 		buff := bytes.NewBufferString("")
 		cmd.SetOut(buff)
@@ -118,8 +130,10 @@ func TestSearchCVECmd(t *testing.T) {
 
 	Convey("Test CVE unreachable", t, func() {
 		args := []string{"list", "dummyImageName:tag", "--url", "http://localhost:9999"}
+
 		configPath := makeConfigFile(`{"configs":[{"_name":"cvetest","showspinner":false}]}`)
 		defer os.Remove(configPath)
+
 		cmd := NewCVECommand(new(searchService))
 		buff := bytes.NewBufferString("")
 		cmd.SetOut(buff)
@@ -131,8 +145,10 @@ func TestSearchCVECmd(t *testing.T) {
 
 	Convey("Test CVE url from config", t, func() {
 		args := []string{"list", "dummyImageName:tag", "--config", "cvetest"}
+
 		configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"cvetest","url":"%s","showspinner":false}]}`, baseURL))
 		defer os.Remove(configPath)
+
 		cmd := NewCVECommand(new(mockService))
 		buff := bytes.NewBufferString("")
 		cmd.SetOut(buff)
@@ -161,8 +177,10 @@ func TestSearchCVECmd(t *testing.T) {
 
 	Convey("Test debug flag", t, func() {
 		args := []string{"list", "dummyImageName:tag", "--debug", "--config", "cvetest"}
+
 		configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"cvetest","url":"%s","showspinner":false}]}`, baseURL))
 		defer os.Remove(configPath)
+
 		cmd := NewCVECommand(new(searchService))
 		buff := bytes.NewBufferString("")
 		cmd.SetOut(buff)
@@ -177,8 +195,10 @@ func TestSearchCVECmd(t *testing.T) {
 
 	Convey("Test CVE by name and CVE ID - long option", t, func() {
 		args := []string{"affected", "CVE-CVEID", "--repo", "dummyImageName", "--url", baseURL}
+
 		configPath := makeConfigFile(`{"configs":[{"_name":"cvetest","showspinner":false}]}`)
 		defer os.Remove(configPath)
+
 		cveCmd := NewCVECommand(new(mockService))
 		buff := bytes.NewBufferString("")
 		cveCmd.SetOut(buff)
@@ -195,8 +215,10 @@ func TestSearchCVECmd(t *testing.T) {
 	Convey("Test CVE by name and CVE ID - using shorthand", t, func() {
 		args := []string{"affected", "CVE-CVEID", "--repo", "dummyImageName", "--url", baseURL}
 		buff := bytes.NewBufferString("")
+
 		configPath := makeConfigFile(`{"configs":[{"_name":"cvetest","showspinner":false}]}`)
 		defer os.Remove(configPath)
+
 		cveCmd := NewCVECommand(new(mockService))
 		cveCmd.SetOut(buff)
 		cveCmd.SetErr(buff)
@@ -211,8 +233,10 @@ func TestSearchCVECmd(t *testing.T) {
 
 	Convey("Test CVE by image name - in text format", t, func() {
 		args := []string{"list", "dummyImageName:tag", "--url", baseURL}
+
 		configPath := makeConfigFile(`{"configs":[{"_name":"cvetest","showspinner":false}]}`)
 		defer os.Remove(configPath)
+
 		cveCmd := NewCVECommand(new(mockService))
 		buff := bytes.NewBufferString("")
 		cveCmd.SetOut(buff)
@@ -241,8 +265,10 @@ func TestSearchCVECmd(t *testing.T) {
 
 	Convey("Test CVE by image name - in text format - in verbose mode", t, func() {
 		args := []string{"list", "dummyImageName:tag", "--url", baseURL, "--verbose"}
+
 		configPath := makeConfigFile(`{"configs":[{"_name":"cvetest","showspinner":false}]}`)
 		defer os.Remove(configPath)
+
 		cveCmd := NewCVECommand(new(mockService))
 		buff := bytes.NewBufferString("")
 		cveCmd.SetOut(buff)
@@ -278,8 +304,10 @@ func TestSearchCVECmd(t *testing.T) {
 
 	Convey("Test CVE by image name - in json format", t, func() {
 		args := []string{"list", "dummyImageName:tag", "--url", baseURL, "-f", "json"}
+
 		configPath := makeConfigFile(`{"configs":[{"_name":"cvetest","showspinner":false}]}`)
 		defer os.Remove(configPath)
+
 		cveCmd := NewCVECommand(new(mockService))
 		buff := bytes.NewBufferString("")
 		cveCmd.SetOut(buff)
@@ -298,8 +326,10 @@ func TestSearchCVECmd(t *testing.T) {
 
 	Convey("Test CVE by image name - in yaml format", t, func() {
 		args := []string{"list", "dummyImageName:tag", "--url", baseURL, "-f", "yaml"}
+
 		configPath := makeConfigFile(`{"configs":[{"_name":"cvetest","showspinner":false}]}`)
 		defer os.Remove(configPath)
+
 		cveCmd := NewCVECommand(new(mockService))
 		buff := bytes.NewBufferString("")
 		cveCmd.SetOut(buff)
@@ -316,24 +346,30 @@ func TestSearchCVECmd(t *testing.T) {
 	})
 	Convey("Test CVE by image name - invalid format", t, func() {
 		args := []string{"list", "dummyImageName:tag", "--url", baseURL, "-f", "random"}
+
 		configPath := makeConfigFile(`{"configs":[{"_name":"cvetest","showspinner":false}]}`)
 		defer os.Remove(configPath)
+
 		cveCmd := NewCVECommand(new(mockService))
 		buff := bytes.NewBufferString("")
 		cveCmd.SetOut(buff)
 		cveCmd.SetErr(buff)
 		cveCmd.SetArgs(args)
 		err := cveCmd.Execute()
+
 		space := regexp.MustCompile(`\s+`)
 		str := space.ReplaceAllString(buff.String(), " ")
+
 		So(err, ShouldNotBeNil)
 		So(strings.TrimSpace(str), ShouldContainSubstring, zerr.ErrInvalidOutputFormat.Error())
 	})
 
 	Convey("Test images by CVE ID - positive", t, func() {
 		args := []string{"affected", "CVE-CVEID", "--repo", "anImage", "--url", baseURL}
+
 		configPath := makeConfigFile(`{"configs":[{"_name":"cvetest","showspinner":false}]}`)
 		defer os.Remove(configPath)
+
 		cveCmd := NewCVECommand(new(mockService))
 		buff := bytes.NewBufferString("")
 		cveCmd.SetOut(buff)
@@ -342,14 +378,17 @@ func TestSearchCVECmd(t *testing.T) {
 		err := cveCmd.Execute()
 		space := regexp.MustCompile(`\s+`)
 		str := space.ReplaceAllString(buff.String(), " ")
+
 		So(strings.TrimSpace(str), ShouldContainSubstring, "REPOSITORY TAG OS/ARCH DIGEST SIGNED SIZE anImage tag os/arch 6e2f80bf false 123kB") //nolint:lll
 		So(err, ShouldBeNil)
 	})
 
 	Convey("Test images by CVE ID - positive with retries", t, func() {
 		args := []string{"affected", "CVE-CVEID", "--repo", "anImage", "--url", baseURL}
+
 		configPath := makeConfigFile(`{"configs":[{"_name":"cvetest","showspinner":false}]}`)
 		defer os.Remove(configPath)
+
 		mockService := mockServiceForRetry{succeedOn: 2} // CVE info will be provided in 2nd attempt
 		cveCmd := NewCVECommand(&mockService)
 		buff := bytes.NewBufferString("")
@@ -369,8 +408,10 @@ func TestSearchCVECmd(t *testing.T) {
 
 	Convey("Test images by CVE ID - failed after retries", t, func() {
 		args := []string{"affected", "CVE-CVEID", "--url", baseURL}
+
 		configPath := makeConfigFile(`{"configs":[{"_name":"cvetest","showspinner":false}]}`)
 		defer os.Remove(configPath)
+
 		mockService := mockServiceForRetry{succeedOn: -1} // CVE info will be unavailable on all retries
 		cveCmd := NewCVECommand(&mockService)
 		buff := bytes.NewBufferString("")
@@ -390,8 +431,10 @@ func TestSearchCVECmd(t *testing.T) {
 
 	Convey("Test images by CVE ID - invalid CVE ID", t, func() {
 		args := []string{"affected", "CVE-invalidCVEID", "--config", "cvetest"}
+
 		configPath := makeConfigFile(`{"configs":[{"_name":"cvetest","showspinner":false}]}`)
 		defer os.Remove(configPath)
+
 		cveCmd := NewCVECommand(new(mockService))
 		buff := bytes.NewBufferString("")
 		cveCmd.SetOut(buff)
@@ -403,8 +446,10 @@ func TestSearchCVECmd(t *testing.T) {
 
 	Convey("Test images by CVE ID - invalid url", t, func() {
 		args := []string{"affected", "CVE-CVEID", "--url", "invalidURL"}
+
 		configPath := makeConfigFile(`{"configs":[{"_name":"cvetest","showspinner":false}]}`)
 		defer os.Remove(configPath)
+
 		cveCmd := NewCVECommand(NewSearchService())
 		buff := bytes.NewBufferString("")
 		cveCmd.SetOut(buff)
@@ -418,8 +463,10 @@ func TestSearchCVECmd(t *testing.T) {
 
 	Convey("Test fixed tags by and image name CVE ID - positive", t, func() {
 		args := []string{"fixed", "fixedImage", "CVE-CVEID", "--url", baseURL}
+
 		configPath := makeConfigFile(`{"configs":[{"_name":"cvetest","showspinner":false}]}`)
 		defer os.Remove(configPath)
+
 		cveCmd := NewCVECommand(new(mockService))
 		buff := bytes.NewBufferString("")
 		cveCmd.SetOut(buff)
@@ -428,14 +475,17 @@ func TestSearchCVECmd(t *testing.T) {
 		err := cveCmd.Execute()
 		space := regexp.MustCompile(`\s+`)
 		str := space.ReplaceAllString(buff.String(), " ")
+
 		So(err, ShouldBeNil)
 		So(strings.TrimSpace(str), ShouldEqual, "REPOSITORY TAG OS/ARCH DIGEST SIGNED SIZE fixedImage tag os/arch 6e2f80bf false 123kB") //nolint:lll
 	})
 
 	Convey("Test fixed tags by and image name CVE ID - invalid image name", t, func() {
 		args := []string{"affected", "CVE-CVEID", "--image", "invalidImageName", "--config", "cvetest"}
+
 		configPath := makeConfigFile(`{"configs":[{"_name":"cvetest","showspinner":false}]}`)
 		defer os.Remove(configPath)
+
 		cveCmd := NewCVECommand(NewSearchService())
 		buff := bytes.NewBufferString("")
 		cveCmd.SetOut(buff)
@@ -487,10 +537,12 @@ func TestCVECommandGQL(t *testing.T) {
 
 		Convey("cveid db download wait", func() {
 			count := 0
+			args := []string{"affected", "CVE-12345", "--config", "cvetest"}
+
 			configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"cvetest","url":"%s","showspinner":false}]}`,
 				baseURL))
-			args := []string{"affected", "CVE-12345", "--config", "cvetest"}
 			defer os.Remove(configPath)
+
 			cmd := NewCVECommand(mockService{
 				getTagsForCVEGQLFn: func(ctx context.Context, config SearchConfig, username, password,
 					imageName, cveID string) (*zcommon.ImagesForCve, error,
@@ -534,10 +586,12 @@ func TestCVECommandGQL(t *testing.T) {
 
 		Convey("fixed db download wait", func() {
 			count := 0
+			args := []string{"fixed", "repo", "CVE-2222", "--config", "cvetest"}
+
 			configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"cvetest","url":"%s","showspinner":false}]}`,
 				baseURL))
-			args := []string{"fixed", "repo", "CVE-2222", "--config", "cvetest"}
 			defer os.Remove(configPath)
+
 			cmd := NewCVECommand(mockService{
 				getFixedTagsForCVEGQLFn: func(ctx context.Context, config SearchConfig, username, password,
 					imageName, cveID string) (*zcommon.ImageListWithCVEFixedResponse, error,
@@ -571,8 +625,10 @@ func TestCVECommandGQL(t *testing.T) {
 			cmd.SetOut(buff)
 			cmd.SetErr(buff)
 			cmd.SetArgs(args)
+
 			err := cmd.Execute()
 			So(err, ShouldBeNil)
+
 			space := regexp.MustCompile(`\s+`)
 			str := space.ReplaceAllString(buff.String(), " ")
 			actual := strings.TrimSpace(str)
@@ -582,10 +638,12 @@ func TestCVECommandGQL(t *testing.T) {
 
 		Convey("image db download wait", func() {
 			count := 0
+			args := []string{"list", "repo:vuln", "--config", "cvetest"}
+
 			configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"cvetest","url":"%s","showspinner":false}]}`,
 				baseURL))
-			args := []string{"list", "repo:vuln", "--config", "cvetest"}
 			defer os.Remove(configPath)
+
 			cmd := NewCVECommand(mockService{
 				getCveByImageGQLFn: func(ctx context.Context, config SearchConfig, username, password,
 					imageName, searchedCVE string) (*cveResult, error,

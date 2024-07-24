@@ -1061,6 +1061,7 @@ func TestGetReferrersGQL(t *testing.T) {
 		conf.Extensions.Search.CVE = nil
 
 		ctlr := api.NewController(conf)
+
 		ctlrManager := NewControllerManager(ctlr)
 		ctlrManager.StartAndWait(port)
 		defer ctlrManager.StopServer()
@@ -1339,6 +1340,7 @@ func TestExpandedRepoInfo(t *testing.T) {
 		for _, m := range responseStruct.ImageSummaries {
 			if m.Manifests[0].Digest == testManifestDigest.String() {
 				found = true
+
 				So(m.IsSigned, ShouldEqual, false)
 			}
 		}
@@ -1367,6 +1369,7 @@ func TestExpandedRepoInfo(t *testing.T) {
 				So(m.IsSigned, ShouldEqual, true)
 			}
 		}
+
 		So(found, ShouldEqual, true)
 
 		query = `{
@@ -1408,9 +1411,11 @@ func TestExpandedRepoInfo(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		found = false
+
 		for _, m := range responseStruct.ImageSummaries {
 			if m.Manifests[0].Digest == testManifestDigest.String() {
 				found = true
+
 				So(m.IsSigned, ShouldEqual, false)
 			}
 		}
@@ -1433,6 +1438,7 @@ func TestExpandedRepoInfo(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		found = false
+
 		for _, m := range responseStruct.ImageSummaries {
 			if m.Manifests[0].Digest == testManifestDigest.String() {
 				found = true
@@ -1719,6 +1725,7 @@ func TestExpandedRepoInfo(t *testing.T) {
 		So(found, ShouldBeTrue)
 
 		found = false
+
 		for _, is := range responseStruct.ImageSummaries {
 			if is.Tag == "2.0.0" {
 				found = true
@@ -2759,6 +2766,7 @@ func TestBaseImageList(t *testing.T) {
 
 		err = json.Unmarshal(resp.Body(), responseStruct)
 		So(err, ShouldBeNil)
+
 		for _, err := range responseStruct.Errors {
 			result := strings.Contains(err.Message, "no reference provided")
 			if result {
@@ -3350,6 +3358,7 @@ func TestGlobalSearch(t *testing.T) {
 		// stdout and a file
 		logFile, err := os.CreateTemp(t.TempDir(), "zot-log*.txt")
 		So(err, ShouldBeNil)
+
 		logPath := logFile.Name()
 		defer os.Remove(logPath)
 
@@ -3544,6 +3553,7 @@ func TestGlobalSearch(t *testing.T) {
 
 		newestImageMap := make(map[string]zcommon.ImageSummary)
 		actualRepoMap := make(map[string]zcommon.RepoSummary)
+
 		for _, repo := range responseStruct.Repos {
 			newestImageMap[repo.Name] = repo.NewestImage
 			actualRepoMap[repo.Name] = repo
@@ -3824,6 +3834,7 @@ func TestGlobalSearch(t *testing.T) {
 		So(len(results.Repos), ShouldEqual, 0)
 
 		expectedRepos = []string{"repo1", "repo2", "repo3", "repo4", "repo6"}
+
 		for _, image := range results.Images {
 			So(image.Tag, ShouldEqual, "tag2")
 			So(image.RepoName, ShouldBeIn, expectedRepos)
@@ -3840,6 +3851,7 @@ func TestGlobalSearch(t *testing.T) {
 		So(len(results.Repos), ShouldEqual, 0)
 
 		expectedRepos = []string{"repo2", "repo4"}
+
 		for _, image := range results.Images {
 			So(image.Tag, ShouldContainSubstring, "multi")
 			So(image.RepoName, ShouldBeIn, expectedRepos)
@@ -4749,7 +4761,7 @@ func RunMetaDBIndexTests(baseURL, port string) {
 		responseImage := responseImages[0]
 		So(len(responseImage.Manifests), ShouldEqual, 3)
 
-		err = signature.SignImageUsingCosign(fmt.Sprintf("repo@%s", multiarchImage.DigestStr()), port, false)
+		err = signature.SignImageUsingCosign("repo@"+multiarchImage.DigestStr(), port, false)
 		So(err, ShouldBeNil)
 
 		resp, err = resty.R().Get(baseURL + graphqlQueryPrefix + "?query=" + url.QueryEscape(query))

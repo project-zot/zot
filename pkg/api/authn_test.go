@@ -90,6 +90,7 @@ func TestAPIKeys(t *testing.T) {
 		username, seedUser := test.GenerateRandomString()
 		password, seedPass := test.GenerateRandomString()
 		htpasswdPath := test.MakeHtpasswdFileFromString(test.GetCredString(username, password))
+
 		defer os.Remove(htpasswdPath)
 
 		mockOIDCServer, err := authutils.MockOIDCRun()
@@ -846,6 +847,7 @@ func TestAPIKeysOpenDBError(t *testing.T) {
 		username, seedUser := test.GenerateRandomString()
 		password, seedPass := test.GenerateRandomString()
 		htpasswdPath := test.MakeHtpasswdFileFromString(test.GetCredString(username, password))
+
 		defer os.Remove(htpasswdPath)
 
 		mockOIDCServer, err := authutils.MockOIDCRun()

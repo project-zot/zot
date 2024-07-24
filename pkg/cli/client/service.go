@@ -113,8 +113,8 @@ func (service searchService) getDerivedImageListGQL(ctx context.Context, config 
 		}`, derivedImage, Flag2SortCriteria(config.SortBy))
 
 	result := &common.DerivedImageListResponse{}
-	err := service.makeGraphQLQuery(ctx, config, username, password, query, result)
 
+	err := service.makeGraphQLQuery(ctx, config, username, password, query, result)
 	if errResult := checkResultGraphQLQuery(ctx, err, result.Errors); errResult != nil {
 		return nil, errResult
 	}
@@ -261,8 +261,8 @@ func (service searchService) getBaseImageListGQL(ctx context.Context, config Sea
 		}`, baseImage, Flag2SortCriteria(config.SortBy))
 
 	result := &common.BaseImageListResponse{}
-	err := service.makeGraphQLQuery(ctx, config, username, password, query, result)
 
+	err := service.makeGraphQLQuery(ctx, config, username, password, query, result)
 	if errResult := checkResultGraphQLQuery(ctx, err, result.Errors); errResult != nil {
 		return nil, errResult
 	}
@@ -298,7 +298,6 @@ func (service searchService) getImagesGQL(ctx context.Context, config SearchConf
 	result := &common.ImageListResponse{}
 
 	err := service.makeGraphQLQuery(ctx, config, username, password, query, result)
-
 	if errResult := checkResultGraphQLQuery(ctx, err, result.Errors); errResult != nil {
 		return nil, errResult
 	}
@@ -334,7 +333,6 @@ func (service searchService) getImagesForDigestGQL(ctx context.Context, config S
 	result := &common.ImagesForDigest{}
 
 	err := service.makeGraphQLQuery(ctx, config, username, password, query, result)
-
 	if errResult := checkResultGraphQLQuery(ctx, err, result.Errors); errResult != nil {
 		return nil, errResult
 	}
@@ -361,7 +359,6 @@ func (service searchService) getCveByImageGQL(ctx context.Context, config Search
 	result := &cveResult{}
 
 	err := service.makeGraphQLQuery(ctx, config, username, password, query, result)
-
 	if errResult := checkResultGraphQLQuery(ctx, err, result.Errors); errResult != nil {
 		return nil, errResult
 	}
@@ -398,7 +395,6 @@ func (service searchService) getTagsForCVEGQL(ctx context.Context, config Search
 	result := &common.ImagesForCve{}
 
 	err := service.makeGraphQLQuery(ctx, config, username, password, query, result)
-
 	if errResult := checkResultGraphQLQuery(ctx, err, result.Errors); errResult != nil {
 		return nil, errResult
 	}
@@ -448,7 +444,6 @@ func (service searchService) getFixedTagsForCVEGQL(ctx context.Context, config S
 	result := &common.ImageListWithCVEFixedResponse{}
 
 	err := service.makeGraphQLQuery(ctx, config, username, password, query, result)
-
 	if errResult := checkResultGraphQLQuery(ctx, err, result.Errors); errResult != nil {
 		return nil, errResult
 	}
@@ -470,6 +465,7 @@ func (service searchService) getReferrers(ctx context.Context, config SearchConf
 	}
 
 	referrerResp := &ispec.Index{}
+
 	_, err = makeGETRequest(ctx, referrersEndpoint, username, password, config.VerifyTLS,
 		config.Debug, &referrerResp, config.ResultWriter)
 	if err != nil {
@@ -577,6 +573,7 @@ func getImage(ctx context.Context, config SearchConfig, username, password, imag
 	}
 
 	tagList := &tagListResp{}
+
 	_, err = makeGETRequest(ctx, tagListEndpoint, username, password, config.VerifyTLS,
 		config.Debug, &tagList, config.ResultWriter)
 	if err != nil {

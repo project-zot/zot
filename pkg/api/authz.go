@@ -311,9 +311,10 @@ func DistSpecAuthzHandler(ctlr *Controller) mux.MiddlewareFunc {
 				// if we get a reference (tag)
 				if ok {
 					is := ctlr.StoreController.GetImageStore(resource)
+
 					tags, err := is.GetImageTags(resource)
-					// if repo exists and request's tag exists then action is UPDATE
 					if err == nil && common.Contains(tags, reference) && reference != "latest" {
+						// if repo exists and request's tag exists then action is UPDATE
 						action = constants.UpdatePermission
 					}
 				}

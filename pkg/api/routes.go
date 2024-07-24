@@ -608,8 +608,8 @@ func (rh *RouteHandler) GetReferrers(response http.ResponseWriter, request *http
 	}
 
 	digestStr, ok := vars["digest"]
-	digest, err := godigest.Parse(digestStr)
 
+	digest, err := godigest.Parse(digestStr)
 	if !ok || digestStr == "" || err != nil {
 		response.WriteHeader(http.StatusBadRequest)
 
@@ -1176,8 +1176,8 @@ func (rh *RouteHandler) DeleteBlob(response http.ResponseWriter, request *http.R
 	}
 
 	digestStr, ok := vars["digest"]
-	digest, err := godigest.Parse(digestStr)
 
+	digest, err := godigest.Parse(digestStr)
 	if !ok || digestStr == "" || err != nil {
 		response.WriteHeader(http.StatusNotFound)
 

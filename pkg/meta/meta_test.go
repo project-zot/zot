@@ -48,11 +48,12 @@ func getManifestDigest(md mTypes.ManifestMeta) string { return md.Digest.String(
 func TestBoltDB(t *testing.T) {
 	Convey("BoltDB creation", t, func() {
 		boltDBParams := boltdb.DBParameters{RootDir: t.TempDir()}
+
 		repoDBPath := path.Join(boltDBParams.RootDir, "meta.db")
+		defer os.Remove(repoDBPath)
 
 		boltDriver, err := boltdb.GetBoltDriver(boltDBParams)
 		So(err, ShouldBeNil)
-		defer os.Remove(repoDBPath)
 
 		log := log.NewLogger("debug", "")
 
@@ -506,6 +507,7 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 			So(err, ShouldBeNil)
 			So(imgMulti.AsImageMeta(), ShouldEqual, retrievedImgMultiData)
 
+			//nolint:wsl
 			// set subject on multiarch
 		})
 
@@ -1378,8 +1380,8 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 				ShouldResemble, "digest")
 
 			imageMeta, err := metaDB.GetImageMeta(image1.Digest)
-
 			fullImageMeta := convert.GetFullImageMeta(tag1, repoMeta, imageMeta)
+
 			So(err, ShouldBeNil)
 			So(fullImageMeta.Signatures["cosign"][0].SignatureManifestDigest, ShouldResemble, "digesttag")
 			So(fullImageMeta.Signatures["cosign"][0].LayersInfo[0].LayerDigest, ShouldResemble, "layer-digest")
@@ -1503,7 +1505,7 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 				certificateContent, err := os.ReadFile(path.Join(
 					tdir,
 					"notation/localkeys",
-					fmt.Sprintf("%s.crt", keyName),
+					keyName+".crt",
 				))
 				So(err, ShouldBeNil)
 				So(certificateContent, ShouldNotBeNil)
@@ -1602,7 +1604,9 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 				image3 = CreateRandomImage()
 				ctx    = context.Background()
 			)
+
 			_ = repo3
+
 			Convey("Search all repos", func() {
 				err := metaDB.SetRepoReference(ctx, repo1, tag1, image1.AsImageMeta())
 				So(err, ShouldBeNil)
@@ -1688,6 +1692,7 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 				repoMetaList, err := metaDB.SearchRepos(ctx, "repo") //nolint: contextcheck
 				So(err, ShouldBeNil)
 				So(len(repoMetaList), ShouldEqual, 2)
+
 				for _, k := range repoMetaList {
 					So(k.Name, ShouldBeIn, []string{repo1, repo2})
 				}

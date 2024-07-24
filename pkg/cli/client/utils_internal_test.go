@@ -63,7 +63,7 @@ func StartTestHTTPServer(routes HTTPRoutes, port string) *http.Server {
 	}
 
 	server := &http.Server{ //nolint:gosec
-		Addr:    fmt.Sprintf(":%s", port),
+		Addr:    ":" + port,
 		Handler: mux,
 	}
 
@@ -81,6 +81,7 @@ func StartTestHTTPServer(routes HTTPRoutes, port string) *http.Server {
 func TestDoHTTPRequest(t *testing.T) {
 	Convey("doHTTPRequest nil result pointer", t, func() {
 		port := test.GetFreePort()
+
 		server := StartTestHTTPServer(nil, port)
 		defer server.Close()
 
@@ -105,6 +106,7 @@ func TestDoHTTPRequest(t *testing.T) {
 				AllowedMethods: []string{http.MethodGet},
 			},
 		}, port)
+
 		defer server.Close()
 
 		url := fmt.Sprintf("http://127.0.0.1:%s/test", port)

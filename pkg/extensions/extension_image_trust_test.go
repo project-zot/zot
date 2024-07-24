@@ -180,6 +180,7 @@ func RunSignatureUploadAndVerificationTests(t *testing.T, cacheDriverParams map[
 
 		conf := config.New()
 		conf.HTTP.Port = port
+
 		if cacheDriverParams != nil {
 			conf.Storage.CacheDriver = cacheDriverParams
 		}
@@ -252,7 +253,7 @@ func RunSignatureUploadAndVerificationTests(t *testing.T, cacheDriverParams map[
 			options.KeyOpts{KeyRef: path.Join(keyDir, "cosign.key"), PassFunc: generate.GetPass},
 			options.SignOptions{
 				Registry:          options.RegistryOptions{AllowInsecure: true},
-				AnnotationOptions: options.AnnotationOptions{Annotations: []string{fmt.Sprintf("tag=%s", tag)}},
+				AnnotationOptions: options.AnnotationOptions{Annotations: []string{"tag=" + tag}},
 				Upload:            true,
 			},
 			[]string{fmt.Sprintf("localhost:%s/%s@%s", port, repo, image.DigestStr())})
@@ -300,6 +301,7 @@ func RunSignatureUploadAndVerificationTests(t *testing.T, cacheDriverParams map[
 
 		conf := config.New()
 		conf.HTTP.Port = port
+
 		if cacheDriverParams != nil {
 			conf.Storage.CacheDriver = cacheDriverParams
 		}
@@ -354,7 +356,7 @@ func RunSignatureUploadAndVerificationTests(t *testing.T, cacheDriverParams map[
 		So(err, ShouldBeNil)
 
 		// upload the certificate
-		certificateContent, err := os.ReadFile(path.Join(rootDir, "notation/localkeys", fmt.Sprintf("%s.crt", certName)))
+		certificateContent, err := os.ReadFile(path.Join(rootDir, "notation/localkeys", certName+".crt"))
 		So(err, ShouldBeNil)
 		So(certificateContent, ShouldNotBeNil)
 
@@ -403,6 +405,7 @@ func RunSignatureUploadAndVerificationTests(t *testing.T, cacheDriverParams map[
 
 		conf := config.New()
 		conf.HTTP.Port = port
+
 		if cacheDriverParams != nil {
 			conf.Storage.CacheDriver = cacheDriverParams
 		}
@@ -487,7 +490,7 @@ func RunSignatureUploadAndVerificationTests(t *testing.T, cacheDriverParams map[
 		So(err, ShouldBeNil)
 
 		// upload the certificate
-		certificateContent, err := os.ReadFile(path.Join(rootDir, "notation/localkeys", fmt.Sprintf("%s.crt", certName)))
+		certificateContent, err := os.ReadFile(path.Join(rootDir, "notation/localkeys", certName+".crt"))
 		So(err, ShouldBeNil)
 		So(certificateContent, ShouldNotBeNil)
 
@@ -565,6 +568,7 @@ func RunSignatureUploadAndVerificationTests(t *testing.T, cacheDriverParams map[
 
 		conf := config.New()
 		conf.HTTP.Port = port
+
 		if cacheDriverParams != nil {
 			conf.Storage.CacheDriver = cacheDriverParams
 		}
@@ -667,7 +671,7 @@ func RunSignatureUploadAndVerificationTests(t *testing.T, cacheDriverParams map[
 			options.KeyOpts{KeyRef: path.Join(keyDir, "cosign.key"), PassFunc: generate.GetPass},
 			options.SignOptions{
 				Registry:          options.RegistryOptions{AllowInsecure: true},
-				AnnotationOptions: options.AnnotationOptions{Annotations: []string{fmt.Sprintf("tag=%s", tag)}},
+				AnnotationOptions: options.AnnotationOptions{Annotations: []string{"tag=" + tag}},
 				Upload:            true,
 			},
 			[]string{fmt.Sprintf("localhost:%s/%s@%s", port, repo, image.DigestStr())})
@@ -730,6 +734,7 @@ func RunSignatureUploadAndVerificationTests(t *testing.T, cacheDriverParams map[
 		globalDir := t.TempDir()
 		port := test.GetFreePort()
 		testCreds := test.GetCredString("admin", "admin") + "\n" + test.GetCredString("test", "test")
+
 		htpasswdPath := test.MakeHtpasswdFileFromString(testCreds)
 		defer os.Remove(htpasswdPath)
 
@@ -742,6 +747,7 @@ func RunSignatureUploadAndVerificationTests(t *testing.T, cacheDriverParams map[
 				Actions: []string{},
 			},
 		}
+
 		if cacheDriverParams != nil {
 			conf.Storage.CacheDriver = cacheDriverParams
 		}
@@ -826,6 +832,7 @@ func RunSignatureUploadAndVerificationTests(t *testing.T, cacheDriverParams map[
 
 		conf := config.New()
 		conf.HTTP.Port = port
+
 		if cacheDriverParams != nil {
 			conf.Storage.CacheDriver = cacheDriverParams
 		}
@@ -930,6 +937,7 @@ func RunSignatureUploadAndVerificationTests(t *testing.T, cacheDriverParams map[
 
 		conf := config.New()
 		conf.HTTP.Port = port
+
 		if cacheDriverParams != nil {
 			conf.Storage.CacheDriver = cacheDriverParams
 		}
@@ -986,6 +994,7 @@ func RunSignatureUploadAndVerificationTests(t *testing.T, cacheDriverParams map[
 
 		// Make sure the write to disk fails
 		So(os.Chmod(globalDir, 0o000), ShouldBeNil)
+
 		defer func() {
 			So(os.Chmod(globalDir, 0o755), ShouldBeNil)
 		}()
