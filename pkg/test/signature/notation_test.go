@@ -135,7 +135,9 @@ func TestSignWithNotation(t *testing.T) {
 	Convey("not enough permissions to access notation/localkeys dir", t, func() {
 		cwd, err := os.Getwd()
 		So(err, ShouldBeNil)
+
 		defer func() { _ = os.Chdir(cwd) }()
+
 		tdir := t.TempDir()
 		_ = os.Chdir(tdir)
 
@@ -160,7 +162,9 @@ func TestSignWithNotation(t *testing.T) {
 	Convey("error parsing reference", t, func() {
 		cwd, err := os.Getwd()
 		So(err, ShouldBeNil)
+
 		defer func() { _ = os.Chdir(cwd) }()
+
 		tdir := t.TempDir()
 		_ = os.Chdir(tdir)
 
@@ -179,7 +183,9 @@ func TestSignWithNotation(t *testing.T) {
 	Convey("error signing", t, func() {
 		cwd, err := os.Getwd()
 		So(err, ShouldBeNil)
+
 		defer func() { _ = os.Chdir(cwd) }()
+
 		tdir := t.TempDir()
 		_ = os.Chdir(tdir)
 
@@ -205,7 +211,9 @@ func TestVerifyWithNotation(t *testing.T) {
 	Convey("error parsing reference", t, func() {
 		cwd, err := os.Getwd()
 		So(err, ShouldBeNil)
+
 		defer func() { _ = os.Chdir(cwd) }()
+
 		tdir := t.TempDir()
 		_ = os.Chdir(tdir)
 
@@ -224,7 +232,9 @@ func TestVerifyWithNotation(t *testing.T) {
 	Convey("error trying to get manifest", t, func() {
 		cwd, err := os.Getwd()
 		So(err, ShouldBeNil)
+
 		defer func() { _ = os.Chdir(cwd) }()
+
 		tdir := t.TempDir()
 		_ = os.Chdir(tdir)
 
@@ -287,7 +297,9 @@ func TestListNotarySignatures(t *testing.T) {
 	Convey("error parsing reference", t, func() {
 		cwd, err := os.Getwd()
 		So(err, ShouldBeNil)
+
 		defer func() { _ = os.Chdir(cwd) }()
+
 		tdir := t.TempDir()
 		_ = os.Chdir(tdir)
 
@@ -298,7 +310,9 @@ func TestListNotarySignatures(t *testing.T) {
 	Convey("error trying to get manifest", t, func() {
 		cwd, err := os.Getwd()
 		So(err, ShouldBeNil)
+
 		defer func() { _ = os.Chdir(cwd) }()
+
 		tdir := t.TempDir()
 		_ = os.Chdir(tdir)
 

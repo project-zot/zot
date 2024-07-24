@@ -885,6 +885,7 @@ func RunSignatureUploadAndVerificationTests(t *testing.T, cacheDriverParams map[
 
 		ctlrManager := test.NewControllerManager(ctlr)
 		ctlrManager.StartAndWait(port)
+
 		defer ctlrManager.StopServer()
 
 		strQuery := fmt.Sprintf(imageQuery, repo, tag)

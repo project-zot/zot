@@ -412,6 +412,7 @@ func TestOnDemand(t *testing.T) {
 			sctlr, newSrcBaseURL, srcDir, _, srcClient := makeUpstreamServer(t, false, false)
 			scm := test.NewControllerManager(sctlr)
 			scm.StartAndWait(sctlr.Config.HTTP.Port)
+
 			defer scm.StopServer()
 
 			// remove remote testImage
@@ -943,6 +944,7 @@ func TestOnDemandWithScaleOutClusterWithReposNotAddedForSync(t *testing.T) {
 		sctlr, srcBaseURL, _, _, srcClient := makeUpstreamServer(t, false, false)
 		scm := test.NewControllerManager(sctlr)
 		scm.StartAndWait(sctlr.Config.HTTP.Port)
+
 		defer scm.StopServer()
 
 		// sync config for both downstreams.
@@ -1461,6 +1463,7 @@ func TestDockerImagesAreSkipped(t *testing.T) {
 			indexManifest.Manifests = make([]ispec.Descriptor, 4)
 
 			var indexManifestIdx int
+
 			for idx, manifestDesc := range newIndex.Manifests {
 				if manifestDesc.MediaType == ispec.MediaTypeImageIndex {
 					indexManifestContent, err := os.ReadFile(path.Join(srcDir, indexRepoName, "blobs/sha256",
@@ -2424,8 +2427,10 @@ func TestTLS(t *testing.T) {
 		scm.StartAndWait(sctlr.Config.HTTP.Port)
 		defer scm.StopServer()
 
-		var srcIndex ispec.Index
-		var destIndex ispec.Index
+		var (
+			srcIndex ispec.Index
+			destIndex ispec.Index
+		)
 
 		srcBuf, err := os.ReadFile(path.Join(srcDir, testImage, "index.json"))
 		if err != nil {
@@ -2461,7 +2466,9 @@ func TestTLS(t *testing.T) {
 		}
 
 		regex := ".*"
+
 		var semver bool
+
 		tlsVerify := true
 
 		syncRegistryConfig := syncconf.RegistryConfig{
@@ -2846,8 +2853,10 @@ func TestBasicAuth(t *testing.T) {
 			dcm.StartAndWait(dctlr.Config.HTTP.Port)
 			defer dcm.StopServer()
 
-			var srcTagsList TagsList
-			var destTagsList TagsList
+			var (
+				srcTagsList TagsList
+				destTagsList TagsList
+			)
 
 			resp, _ := srcClient.R().SetBasicAuth(username, password).Get(srcBaseURL + "/v2/" + testImage + "/tags/list")
 			So(resp, ShouldNotBeNil)
@@ -2911,6 +2920,7 @@ func TestBasicAuth(t *testing.T) {
 			destConfig.Storage.RootDirectory = rootDir
 
 			regex := ".*"
+
 			var semver bool
 
 			registryName := sync.StripRegistryTransport(srcBaseURL)
@@ -4059,10 +4069,13 @@ func TestMultipleURLs(t *testing.T) {
 
 		dcm := test.NewControllerManager(dctlr)
 		dcm.StartAndWait(dctlr.Config.HTTP.Port)
+
 		defer dcm.StopServer()
 
-		var srcTagsList TagsList
-		var destTagsList TagsList
+		var (
+			srcTagsList TagsList
+			destTagsList TagsList
+		)
 
 		resp, _ := srcClient.R().Get(srcBaseURL + "/v2/" + testImage + "/tags/list")
 		So(resp, ShouldNotBeNil)
@@ -4103,6 +4116,7 @@ func TestNoURLsLeftInConfig(t *testing.T) {
 
 		regex := ".*"
 		semver := true
+
 		var tlsVerify bool
 
 		syncRegistryConfig := syncconf.RegistryConfig{
@@ -4461,6 +4475,7 @@ func TestPeriodicallySignaturesErr(t *testing.T) {
 			Convey("of type OCI artifact", func() { //nolint: dupl
 				// read manifest
 				var artifactManifest ispec.Manifest
+
 				for _, ref := range referrers.Manifests {
 					refPath := path.Join(srcDir, repoName, "blobs", string(ref.Digest.Algorithm()), ref.Digest.Encoded())
 					body, err := os.ReadFile(refPath)
@@ -5016,6 +5031,7 @@ func TestSignatures(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		var refManifest ispec.Manifest
+
 		for _, ref := range index.Manifests {
 			refPath := path.Join(srcDir, repoName, "blobs", string(ref.Digest.Algorithm()), ref.Digest.Encoded())
 			body, err := os.ReadFile(refPath)
@@ -5315,6 +5331,7 @@ func TestOnDemandRetryGoroutine(t *testing.T) {
 
 		regex := ".*"
 		semver := true
+
 		var tlsVerify bool
 
 		syncRegistryConfig := syncconf.RegistryConfig{
@@ -5392,10 +5409,12 @@ func TestOnDemandWithDigest(t *testing.T) {
 
 		scm := test.NewControllerManager(sctlr)
 		scm.StartAndWait(sctlr.Config.HTTP.Port)
+
 		defer scm.StopServer()
 
 		regex := ".*"
 		semver := true
+
 		var tlsVerify bool
 
 		syncRegistryConfig := syncconf.RegistryConfig{
@@ -5443,6 +5462,7 @@ func TestOnDemandRetryGoroutineErr(t *testing.T) {
 	Convey("Verify ondemand sync retries in background on error", t, func() {
 		regex := ".*"
 		semver := true
+
 		var tlsVerify bool
 
 		syncRegistryConfig := syncconf.RegistryConfig{
@@ -5652,6 +5672,7 @@ func TestOnDemandPullsOnce(t *testing.T) {
 
 		dcm := test.NewControllerManager(dctlr)
 		dcm.StartAndWait(dctlr.Config.HTTP.Port)
+
 		defer dcm.StopServer()
 
 		var wg goSync.WaitGroup
@@ -5666,6 +5687,7 @@ func TestOnDemandPullsOnce(t *testing.T) {
 		}(conv)
 
 		wg.Add(1)
+
 		go func(conv C) {
 			defer wg.Done()
 			resp, err := resty.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
@@ -6445,10 +6467,12 @@ func TestSyncSignaturesDiff(t *testing.T) {
 		}
 
 		// find image manifest digest (signed-repo) and upstream notary digests
-		var upstreamRefsDigests []string
-		var downstreamRefsDigests []string
+		var (
+			upstreamRefsDigests []string
+			downstreamRefsDigests []string
+			manifestDigest string
+		)
 
-		var manifestDigest string
 		for _, manifestDesc := range srcIndex.Manifests {
 			if manifestDesc.Annotations[ispec.AnnotationRefName] == testImageTag {
 				manifestDigest = string(manifestDesc.Digest)
@@ -6818,8 +6842,9 @@ func TestSyncImageIndex(t *testing.T) {
 		defer scm.StopServer()
 
 		regex := ".*"
-		var semver bool
 		tlsVerify := false
+
+		var semver bool
 
 		syncRegistryConfig := syncconf.RegistryConfig{
 			Content: []syncconf.Content{

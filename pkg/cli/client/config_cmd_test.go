@@ -53,6 +53,7 @@ func TestConfigCmdBasics(t *testing.T) {
 
 	Convey("Test config no args", t, func() {
 		args := []string{}
+
 		configPath := makeConfigFile("showspinner = false")
 		defer os.Remove(configPath)
 
@@ -71,6 +72,7 @@ func TestConfigCmdBasics(t *testing.T) {
 func TestConfigCmdMain(t *testing.T) {
 	Convey("Test add config", t, func() {
 		args := []string{"add", "configtest1", "https://test-url.com"}
+
 		file := makeConfigFile("")
 		defer os.Remove(file)
 
@@ -245,12 +247,15 @@ func TestConfigCmdMain(t *testing.T) {
 	Convey("Test remove config bad permissions", t, func() {
 		args := []string{"remove", "configtest"}
 		configPath := makeConfigFile(`{"configs":[{"_name":"configtest","url":"https://test-url.com","showspinner":false}]}`)
+
 		defer func() {
 			_ = os.Chmod(configPath, 0o600)
 			os.Remove(configPath)
 		}()
+
 		err := os.Chmod(configPath, 0o400) // Read-only, so we fail only on updating the file, not reading
 		So(err, ShouldBeNil)
+
 		cmd := client.NewConfigCommand()
 		buff := bytes.NewBufferString("")
 		cmd.SetOut(buff)
@@ -263,6 +268,7 @@ func TestConfigCmdMain(t *testing.T) {
 
 	Convey("Test fetch all config", t, func() {
 		args := []string{"--list"}
+
 		configPath := makeConfigFile(`{"configs":[{"_name":"configtest","url":"https://test-url.com","showspinner":false}]}`)
 		defer os.Remove(configPath)
 
@@ -272,34 +278,43 @@ func TestConfigCmdMain(t *testing.T) {
 		cmd.SetErr(buff)
 		cmd.SetArgs(args)
 		err := cmd.Execute()
+
 		So(buff.String(), ShouldContainSubstring, "https://test-url.com")
 		So(err, ShouldBeNil)
 
 		Convey("with the shorthand", func() {
 			args := []string{"-l"}
+
 			configPath := makeConfigFile(`{"configs":[{"_name":"configtest","url":"https://test-url.com","showspinner":false}]}`)
 			defer os.Remove(configPath)
+
 			cmd := client.NewConfigCommand()
 			buff := bytes.NewBufferString("")
 			cmd.SetOut(buff)
 			cmd.SetErr(buff)
 			cmd.SetArgs(args)
+
 			err := cmd.Execute()
 			So(err, ShouldBeNil)
+
 			So(buff.String(), ShouldContainSubstring, "https://test-url.com")
 		})
 
 		Convey("From empty file", func() {
 			args := []string{"-l"}
+
 			configPath := makeConfigFile(``)
 			defer os.Remove(configPath)
+
 			cmd := client.NewConfigCommand()
 			buff := bytes.NewBufferString("")
 			cmd.SetOut(buff)
 			cmd.SetErr(buff)
 			cmd.SetArgs(args)
+
 			err := cmd.Execute()
 			So(err, ShouldBeNil)
+
 			So(strings.TrimSpace(buff.String()), ShouldEqual, "")
 		})
 	})
@@ -343,6 +358,7 @@ func TestConfigCmdMain(t *testing.T) {
 
 		Convey("From empty file", func() {
 			args := []string{"configtest", "-l"}
+
 			configPath := makeConfigFile(``)
 			defer os.Remove(configPath)
 
@@ -351,8 +367,10 @@ func TestConfigCmdMain(t *testing.T) {
 			cmd.SetOut(buff)
 			cmd.SetErr(buff)
 			cmd.SetArgs(args)
+
 			err := cmd.Execute()
 			So(err, ShouldBeNil)
+
 			So(strings.TrimSpace(buff.String()), ShouldEqual, "")
 		})
 	})
@@ -375,15 +393,19 @@ func TestConfigCmdMain(t *testing.T) {
 
 		Convey("From empty file", func() {
 			args := []string{"configtest", "url"}
+
 			configPath := makeConfigFile(``)
 			defer os.Remove(configPath)
+
 			cmd := client.NewConfigCommand()
 			buff := bytes.NewBufferString("")
 			cmd.SetOut(buff)
 			cmd.SetErr(buff)
 			cmd.SetArgs(args)
+
 			err := cmd.Execute()
 			So(err, ShouldNotBeNil)
+
 			So(buff.String(), ShouldContainSubstring, "does not exist")
 		})
 	})
@@ -420,8 +442,10 @@ func TestConfigCmdMain(t *testing.T) {
 			cmd.SetOut(buff)
 			cmd.SetErr(buff)
 			cmd.SetArgs(args)
+
 			err := cmd.Execute()
 			So(err, ShouldNotBeNil)
+
 			So(buff.String(), ShouldContainSubstring, "does not exist")
 		})
 	})
@@ -486,8 +510,10 @@ func TestConfigCmdMain(t *testing.T) {
 		cmd.SetOut(buff)
 		cmd.SetErr(buff)
 		cmd.SetArgs(args)
+
 		err := cmd.Execute()
 		So(err, ShouldNotBeNil)
+
 		So(buff.String(), ShouldContainSubstring, "cannot reset")
 	})
 
@@ -502,8 +528,10 @@ func TestConfigCmdMain(t *testing.T) {
 		cmd.SetOut(buff)
 		cmd.SetErr(buff)
 		cmd.SetArgs(args)
+
 		err := cmd.Execute()
 		So(err, ShouldNotBeNil)
+
 		So(buff.String(), ShouldContainSubstring, "cli config name already added")
 	})
 }

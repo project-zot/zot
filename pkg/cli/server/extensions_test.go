@@ -315,6 +315,7 @@ func TestValidateExtensionsConfig(t *testing.T) {
 		config := config.New()
 		tmpfile, err := os.CreateTemp("", "zot-test*.json")
 		So(err, ShouldBeNil)
+
 		defer os.Remove(tmpfile.Name())
 
 		content := []byte(`{
@@ -1655,6 +1656,7 @@ func TestOverlappingSyncRetentionConfig(t *testing.T) {
 		So(err, ShouldBeNil)
 		data, err := os.ReadFile(logPath)
 		So(err, ShouldBeNil)
+
 		defer os.Remove(logPath) // clean up
 
 		So(string(data), ShouldContainSubstring, "overlapping sync content\":{\"Prefix\":\"**")
@@ -1800,10 +1802,12 @@ func TestSyncWithRemoteStorageConfig(t *testing.T) {
 		port := GetFreePort()
 		logFile, err := os.CreateTemp("", "zot-log*.txt")
 		So(err, ShouldBeNil)
+
 		defer os.Remove(logFile.Name()) // clean up
 
 		tmpfile, err := os.CreateTemp("", "zot-test*.json")
 		So(err, ShouldBeNil)
+
 		defer os.Remove(tmpfile.Name()) // clean up
 
 		content := fmt.Sprintf(`{
@@ -1870,10 +1874,12 @@ func TestSyncWithRemoteStorageConfig(t *testing.T) {
 		port := GetFreePort()
 		logFile, err := os.CreateTemp("", "zot-log*.txt")
 		So(err, ShouldBeNil)
+
 		defer os.Remove(logFile.Name()) // clean up
 
 		tmpfile, err := os.CreateTemp("", "zot-test*.json")
 		So(err, ShouldBeNil)
+
 		defer os.Remove(tmpfile.Name()) // clean up
 
 		content := fmt.Sprintf(`{

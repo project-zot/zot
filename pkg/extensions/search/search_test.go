@@ -5564,6 +5564,7 @@ func TestMetaDBWhenDeletingImages(t *testing.T) {
 			So(err, ShouldBeNil)
 
 			manifest1Digest := godigest.FromBytes(manifest1Blob)
+
 			So(sigManifestContent.Subject, ShouldNotBeNil)
 			So(sigManifestContent.Subject.Digest.String(), ShouldEqual, manifest1Digest.String())
 
@@ -6084,6 +6085,7 @@ func TestImageSummary(t *testing.T) {
 				contains = result
 			}
 		}
+
 		So(contains, ShouldBeTrue)
 
 		t.Log("starting Test retrieve image based on image identifier")

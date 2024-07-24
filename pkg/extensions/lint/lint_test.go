@@ -61,7 +61,9 @@ func TestVerifyMandatoryAnnotations(t *testing.T) {
 		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
 		manifestBlob := resp.Body()
+
 		var manifest ispec.Manifest
+
 		err = json.Unmarshal(manifestBlob, &manifest)
 		So(err, ShouldBeNil)
 
@@ -107,7 +109,9 @@ func TestVerifyMandatoryAnnotations(t *testing.T) {
 		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
 		manifestBlob := resp.Body()
+
 		var manifest ispec.Manifest
+
 		err = json.Unmarshal(manifestBlob, &manifest)
 		So(err, ShouldBeNil)
 
@@ -153,7 +157,9 @@ func TestVerifyMandatoryAnnotations(t *testing.T) {
 		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
 		manifestBlob := resp.Body()
+
 		var manifest ispec.Manifest
+
 		err = json.Unmarshal(manifestBlob, &manifest)
 		So(err, ShouldBeNil)
 
@@ -205,7 +211,9 @@ func TestVerifyMandatoryAnnotations(t *testing.T) {
 		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
 		manifestBlob := resp.Body()
+
 		var manifest ispec.Manifest
+
 		err = json.Unmarshal(manifestBlob, &manifest)
 		So(err, ShouldBeNil)
 
@@ -222,7 +230,9 @@ func TestVerifyMandatoryAnnotations(t *testing.T) {
 		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
 		configBlob := resp.Body()
+
 		var imageConfig ispec.Image
+
 		err = json.Unmarshal(configBlob, &imageConfig)
 		So(err, ShouldBeNil)
 
@@ -291,12 +301,13 @@ func TestVerifyMandatoryAnnotations(t *testing.T) {
 		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
 		manifestBlob := resp.Body()
+
 		var manifest ispec.Manifest
+
 		err = json.Unmarshal(manifestBlob, &manifest)
 		So(err, ShouldBeNil)
 
 		manifest.Annotations = make(map[string]string)
-
 		manifest.Annotations["annotation1"] = "testFail1"
 
 		configDigest := manifest.Config.Digest
@@ -307,7 +318,9 @@ func TestVerifyMandatoryAnnotations(t *testing.T) {
 		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
 		configBlob := resp.Body()
+
 		var imageConfig ispec.Image
+
 		err = json.Unmarshal(configBlob, &imageConfig)
 		So(err, ShouldBeNil)
 
@@ -376,7 +389,9 @@ func TestVerifyMandatoryAnnotations(t *testing.T) {
 		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
 		manifestBlob := resp.Body()
+
 		var manifest ispec.Manifest
+
 		err = json.Unmarshal(manifestBlob, &manifest)
 		So(err, ShouldBeNil)
 
@@ -431,7 +446,9 @@ func TestVerifyMandatoryAnnotations(t *testing.T) {
 		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
 		manifestBlob := resp.Body()
+
 		var manifest ispec.Manifest
+
 		err = json.Unmarshal(manifestBlob, &manifest)
 		So(err, ShouldBeNil)
 

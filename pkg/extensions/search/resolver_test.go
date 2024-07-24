@@ -36,6 +36,7 @@ var ErrTestError = errors.New("TestError")
 func TestResolverGlobalSearch(t *testing.T) {
 	Convey("globalSearch", t, func() {
 		const query = "repo1"
+
 		Convey("MetaDB SearchRepos error", func() {
 			mockMetaDB := mocks.MetaDBMock{
 				SearchReposFn: func(ctx context.Context, searchText string,
