@@ -38,7 +38,7 @@ import (
 	apiErr "zotregistry.dev/zot/pkg/api/errors"
 	zcommon "zotregistry.dev/zot/pkg/common"
 	gqlPlayground "zotregistry.dev/zot/pkg/debug/gqlplayground"
-	pprof "zotregistry.dev/zot/pkg/debug/pprof"
+	"zotregistry.dev/zot/pkg/debug/pprof"
 	debug "zotregistry.dev/zot/pkg/debug/swagger"
 	ext "zotregistry.dev/zot/pkg/extensions"
 	syncConstants "zotregistry.dev/zot/pkg/extensions/sync/constants"
@@ -648,7 +648,7 @@ func (rh *RouteHandler) GetReferrers(response http.ResponseWriter, request *http
 
 	if len(artifactTypes) > 0 {
 		// currently, the only filter supported and on this end-point
-		response.Header().Set("OCI-Filters-Applied", "artifactType")
+		response.Header().Set("OCI-Filters-Applied", "artifactType") //nolint:canonicalheader
 	}
 
 	zcommon.WriteData(response, http.StatusOK, ispec.MediaTypeImageIndex, out)

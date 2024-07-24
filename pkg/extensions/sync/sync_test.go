@@ -15,6 +15,7 @@ import (
 	"os"
 	"path"
 	"reflect"
+	"strconv"
 	"strings"
 	goSync "sync"
 	"testing"
@@ -6152,7 +6153,7 @@ func TestSyncWithDiffDigest(t *testing.T) {
 		loc := resp.Header().Get("Location")
 
 		resp, err = resty.R().
-			SetHeader("Content-Length", fmt.Sprintf("%d", len(blob))).
+			SetHeader("Content-Length", strconv.Itoa(len(blob))).
 			SetHeader("Content-Type", "application/octet-stream").
 			SetQueryParam("digest", digest.String()).
 			SetBody(blob).
@@ -6955,7 +6956,7 @@ func pushRepo(url, repoName string) godigest.Digest {
 
 	resp, err = resty.R().
 		SetContentLength(true).
-		SetHeader("Content-Length", fmt.Sprintf("%d", len(cblob))).
+		SetHeader("Content-Length", strconv.Itoa(len(cblob))).
 		SetHeader("Content-Type", "application/octet-stream").
 		SetQueryParam("digest", cdigest.String()).
 		SetBody(cblob).
@@ -6984,7 +6985,7 @@ func pushRepo(url, repoName string) godigest.Digest {
 
 	resp, err = resty.R().
 		SetContentLength(true).
-		SetHeader("Content-Length", fmt.Sprintf("%d", len(cblob))).
+		SetHeader("Content-Length", strconv.Itoa(len(cblob))).
 		SetHeader("Content-Type", "application/octet-stream").
 		SetQueryParam("digest", cdigest.String()).
 		SetBody(cblob).
@@ -7153,7 +7154,7 @@ func pushBlob(url string, repoName string, buf []byte) godigest.Digest {
 	digest := godigest.FromBytes(buf)
 	resp, err = resty.R().
 		SetContentLength(true).
-		SetHeader("Content-Length", fmt.Sprintf("%d", len(buf))).
+		SetHeader("Content-Length", strconv.Itoa(len(buf))).
 		SetHeader("Content-Type", "application/octet-stream").
 		SetQueryParam("digest", digest.String()).
 		SetBody(buf).

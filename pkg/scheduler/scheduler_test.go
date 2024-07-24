@@ -76,7 +76,7 @@ func (g *generator) Next() (scheduler.Task, error) {
 	g.index++
 
 	if g.step%11 == 0 {
-		return nil, nil
+		return nil, nil //nolint:nilnil
 	}
 
 	if g.step%13 == 0 {

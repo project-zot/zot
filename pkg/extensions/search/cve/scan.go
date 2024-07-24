@@ -142,7 +142,7 @@ func (gen *scanTaskGenerator) Next() (scheduler.Task, error) {
 
 		gen.done = true
 
-		return nil, nil
+		return nil, nil //nolint:nilnil
 	}
 
 	// Since imageMeta will always contain just un-scanned images we can pick

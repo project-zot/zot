@@ -6369,10 +6369,14 @@ func TestParallelRequests(t *testing.T) {
 	testImagesController := ociutils.GetDefaultStoreController(testImagesDir, ctlr.Log)
 
 	err := WriteImageToFileSystem(CreateRandomImage(), "zot-test", "0.0.1", testImagesController)
-	assert.Equal(t, err, nil, "Error should be nil")
+	if err != nil {
+		t.Errorf("Error should be nil: %v", err)
+	}
 
 	err = WriteImageToFileSystem(CreateRandomImage(), "zot-cve-test", "0.0.1", testImagesController)
-	assert.Equal(t, err, nil, "Error should be nil")
+	if err != nil {
+		t.Errorf("Error should be nil: %v", err)
+	}
 
 	cm := test.NewControllerManager(ctlr)
 	cm.StartAndWait(port)

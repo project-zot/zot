@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"path"
+	"strconv"
 	"testing"
 
 	godigest "github.com/opencontainers/go-digest"
@@ -245,7 +246,7 @@ func TestVerifyMandatoryAnnotations(t *testing.T) {
 
 		_, err = resty.R().
 			SetContentLength(true).
-			SetHeader("Content-Length", fmt.Sprintf("%d", len(configContent))).
+			SetHeader("Content-Length", strconv.Itoa(len(configContent))).
 			SetHeader("Content-Type", "application/octet-stream").
 			SetQueryParam("digest", configBlobDigestRaw.String()).
 			SetBody(configContent).
@@ -330,7 +331,7 @@ func TestVerifyMandatoryAnnotations(t *testing.T) {
 
 		_, err = resty.R().
 			SetContentLength(true).
-			SetHeader("Content-Length", fmt.Sprintf("%d", len(configContent))).
+			SetHeader("Content-Length", strconv.Itoa(len(configContent))).
 			SetHeader("Content-Type", "application/octet-stream").
 			SetQueryParam("digest", configBlobDigestRaw.String()).
 			SetBody(configContent).

@@ -147,7 +147,7 @@ func (gen *SessionCleanup) Next() (scheduler.Task, error) {
 	if len(sessions) == 0 {
 		gen.done = true
 
-		return nil, nil
+		return nil, nil //nolint:nilnil
 	}
 
 	return &CleanTask{sessions: sessions}, nil

@@ -112,12 +112,12 @@ func DateRef(year int, month time.Month, day, hour, min, sec, nsec int, loc *tim
 
 func RandomDateRef(loc *time.Location) *time.Time {
 	var (
-		year  = 1990 + mathRand.Intn(30)          //nolint: gosec,gomnd
-		month = time.Month(1 + mathRand.Intn(10)) //nolint: gosec,gomnd
-		day   = 1 + mathRand.Intn(5)              //nolint: gosec,gomnd
-		hour  = 1 + mathRand.Intn(22)             //nolint: gosec,gomnd
-		min   = 1 + mathRand.Intn(58)             //nolint: gosec,gomnd
-		sec   = 1 + mathRand.Intn(58)             //nolint: gosec,gomnd
+		year  = 1990 + mathRand.Intn(30)          //nolint: gosec,mnd
+		month = time.Month(1 + mathRand.Intn(10)) //nolint: gosec,mnd
+		day   = 1 + mathRand.Intn(5)              //nolint: gosec,mnd
+		hour  = 1 + mathRand.Intn(22)             //nolint: gosec,mnd
+		min   = 1 + mathRand.Intn(58)             //nolint: gosec,mnd
+		sec   = 1 + mathRand.Intn(58)             //nolint: gosec,mnd
 		nsec  = 1
 	)
 

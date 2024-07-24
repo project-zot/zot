@@ -99,7 +99,7 @@ func GetServerStatus(config SearchConfig) error {
 		serverInfo.ErrorMsg = fmt.Sprintf("%s%s endpoint is not available", constants.RoutePrefix, constants.ExtMgmt)
 	case errors.Is(err, zerr.ErrUnauthorizedAccess):
 		serverInfo.Status = StatusOnline
-		serverInfo.ErrorMsg = fmt.Sprintf("unauthorised access, %s", getCredentialsSuggestion(username))
+		serverInfo.ErrorMsg = "unauthorised access, " + getCredentialsSuggestion(username)
 	case errors.Is(err, zerr.ErrBadHTTPStatusCode):
 		serverInfo.Status = StatusOnline
 		serverInfo.ErrorMsg = fmt.Sprintf("%s: request at %s failed", zerr.ErrAPINotSupported.Error(),

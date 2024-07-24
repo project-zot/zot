@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path"
@@ -45,7 +46,7 @@ const (
 	host = "127.0.0.1:45117"
 )
 
-var ErrTestError = fmt.Errorf("testError")
+var ErrTestError = errors.New("testError")
 
 func TestInjectSyncUtils(t *testing.T) {
 	Convey("Inject errors in utils functions", t, func() {

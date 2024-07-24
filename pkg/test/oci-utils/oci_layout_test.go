@@ -5,6 +5,7 @@ package ociutils_test
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path"
@@ -28,10 +29,10 @@ import (
 	. "zotregistry.dev/zot/pkg/test/image-utils"
 	"zotregistry.dev/zot/pkg/test/mocks"
 	ociutils "zotregistry.dev/zot/pkg/test/oci-utils"
-	signature "zotregistry.dev/zot/pkg/test/signature"
+	"zotregistry.dev/zot/pkg/test/signature"
 )
 
-var ErrTestError = fmt.Errorf("testError")
+var ErrTestError = errors.New("testError")
 
 func TestBaseOciLayoutUtils(t *testing.T) {
 	Convey("GetImageManifestSize fail", t, func() {

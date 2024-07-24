@@ -683,7 +683,7 @@ func getRelyingPartyArgs(cfg *config.Config, provider string, log log.Logger) (
 		rp.WithVerifierOpts(rp.WithIssuedAtOffset(issuedAtOffset)),
 	}
 
-	key := securecookie.GenerateRandomKey(32) //nolint: gomnd
+	key := securecookie.GenerateRandomKey(32) //nolint:mnd
 
 	cookieHandler := httphelper.NewCookieHandler(key, key, httphelper.WithMaxAge(relyingPartyCookieMaxAge))
 	options = append(options, rp.WithCookieHandler(cookieHandler))
@@ -742,7 +742,7 @@ func getUsernamePasswordBasicAuth(request *http.Request) (string, string, error)
 		return "", "", zerr.ErrParsingAuthHeader
 	}
 
-	splitStr := strings.SplitN(basicAuth, " ", 2) //nolint: gomnd
+	splitStr := strings.SplitN(basicAuth, " ", 2) //nolint:mnd
 	if len(splitStr) != 2 || strings.ToLower(splitStr[0]) != "basic" {
 		return "", "", zerr.ErrParsingAuthHeader
 	}
@@ -752,8 +752,8 @@ func getUsernamePasswordBasicAuth(request *http.Request) (string, string, error)
 		return "", "", err
 	}
 
-	pair := strings.SplitN(string(decodedStr), ":", 2) //nolint: gomnd
-	if len(pair) != 2 {                                //nolint: gomnd
+	pair := strings.SplitN(string(decodedStr), ":", 2) //nolint:mnd
+	if len(pair) != 2 {                                //nolint:mnd
 		return "", "", zerr.ErrParsingAuthHeader
 	}
 

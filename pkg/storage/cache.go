@@ -10,7 +10,7 @@ import (
 
 func CreateCacheDatabaseDriver(storageConfig config.StorageConfig, log zlog.Logger) (cache.Cache, error) {
 	if !storageConfig.Dedupe && storageConfig.StorageDriver == nil {
-		return nil, nil
+		return nil, nil //nolint:nilnil
 	}
 
 	// local cache
@@ -29,13 +29,13 @@ func CreateCacheDatabaseDriver(storageConfig config.StorageConfig, log zlog.Logg
 		if !ok {
 			log.Warn().Msg("remote cache driver name missing!")
 
-			return nil, nil
+			return nil, nil //nolint:nilnil
 		}
 
 		if name != constants.DynamoDBDriverName {
 			log.Warn().Str("driver", name).Msg("remote cache driver unsupported!")
 
-			return nil, nil
+			return nil, nil //nolint:nilnil
 		}
 
 		// dynamodb
@@ -47,7 +47,7 @@ func CreateCacheDatabaseDriver(storageConfig config.StorageConfig, log zlog.Logg
 		return Create("dynamodb", dynamoParams, log)
 	}
 
-	return nil, nil
+	return nil, nil //nolint:nilnil
 }
 
 func Create(dbtype string, parameters interface{}, log zlog.Logger) (cache.Cache, error) {

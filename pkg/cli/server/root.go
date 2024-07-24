@@ -620,7 +620,7 @@ func applyDefaultValues(config *config.Config, viperInstance *viper.Viper, log z
 			}
 
 			if config.Extensions.Scrub.Interval == 0 {
-				config.Extensions.Scrub.Interval = 24 * time.Hour //nolint: gomnd
+				config.Extensions.Scrub.Interval = 24 * time.Hour //nolint:mnd
 			}
 		}
 
@@ -722,7 +722,9 @@ func applyDefaultValues(config *config.Config, viperInstance *viper.Viper, log z
 
 		// apply deleteUntagged default
 		for idx := range storageConfig.Retention.Policies {
-			deleteUntaggedKey := "storage::subpaths::" + name + "::retention::policies::" + strconv.Itoa(idx) + "::deleteUntagged"
+			deleteUntaggedKey := fmt.Sprintf("storage::subpaths::%s::retention::policies::%d::deleteUntagged",
+				name, idx,
+			)
 			if !viperInstance.IsSet(deleteUntaggedKey) {
 				storageConfig.Retention.Policies[idx].DeleteUntagged = &defaultVal
 			}

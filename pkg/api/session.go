@@ -89,8 +89,7 @@ func SessionLogger(ctlr *Controller) mux.MiddlewareFunc {
 			clientIP := request.RemoteAddr
 			method := request.Method
 			headers := map[string][]string{}
-			log := logger.Info()
-
+			log := logger.Info() //nolint:zerologlint
 			for key, value := range request.Header {
 				if key == "Authorization" { // anonymize from logs
 					s := strings.SplitN(value[0], " ", 2) //nolint:mnd

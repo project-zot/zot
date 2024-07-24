@@ -6,6 +6,7 @@ package extensions_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -42,7 +43,7 @@ import (
 type errReader int
 
 func (errReader) Read(p []byte) (int, error) {
-	return 0, fmt.Errorf("test error") //nolint:goerr113
+	return 0, errors.New("test error") //nolint:goerr113
 }
 
 func TestSignatureHandlers(t *testing.T) {

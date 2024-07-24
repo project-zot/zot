@@ -12,7 +12,7 @@ import (
 
 func MockOIDCRun() (*mockoidc.MockOIDC, error) {
 	// Create a fresh RSA Private Key for token signing
-	rsaKey, _ := rsa.GenerateKey(rand.Reader, 2048) //nolint: gomnd
+	rsaKey, _ := rsa.GenerateKey(rand.Reader, 2048) //nolint:mnd
 
 	// Create an unstarted MockOIDC server
 	mockServer, _ := mockoidc.NewServer(rsaKey)
@@ -24,8 +24,7 @@ func MockOIDCRun() (*mockoidc.MockOIDC, error) {
 		return http.HandlerFunc(func(response http.ResponseWriter, req *http.Request) {
 			// stateVal := req.Form.Get("state")
 			header := req.Header.Get("Authorization")
-			parts := strings.SplitN(header, " ", 2) //nolint: gomnd
-
+			parts := strings.SplitN(header, " ", 2) //nolint:mnd
 			if header != "" {
 				if strings.ToLower(parts[0]) == "bearer" {
 					req.Header.Set("Authorization", strings.Join([]string{"Bearer", parts[1]}, " "))

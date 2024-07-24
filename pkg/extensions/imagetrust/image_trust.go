@@ -18,7 +18,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws/session"
 	smanager "github.com/aws/aws-sdk-go/service/secretsmanager"
 	"github.com/aws/aws-secretsmanager-caching-go/secretcache"
-	smithy "github.com/aws/smithy-go"
+	"github.com/aws/smithy-go"
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 
@@ -225,7 +225,7 @@ func (gen *sigValidityTaskGenerator) Next() (scheduler.Task, error) {
 
 		gen.log.Info().Msg("finished generating tasks for updating signatures validity")
 
-		return nil, nil
+		return nil, nil //nolint:nilnil
 	}
 
 	return NewValidityTask(gen.metaDB, gen.repos[gen.repoIndex], gen.log), nil

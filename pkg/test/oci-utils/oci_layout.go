@@ -407,7 +407,7 @@ func (olu BaseOciLayoutUtils) GetExpandedRepoInfo(repoName string) (common.RepoI
 		isSigned := olu.CheckManifestSignature(repoName, man.Digest)
 
 		manifestSize := olu.GetImageManifestSize(repoName, man.Digest)
-		olu.Log.Debug().Msg(fmt.Sprintf("%v", man.Digest.String()))
+		olu.Log.Debug().Msg(man.Digest.String())
 		configSize := manifest.Config.Size
 
 		repoBlob2Size[man.Digest.String()] = manifestSize

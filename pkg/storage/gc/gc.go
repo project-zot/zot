@@ -787,7 +787,7 @@ func (gen *GCTaskGenerator) Next() (scheduler.Task, error) {
 	if repo == "" {
 		gen.done = true
 
-		return nil, nil
+		return nil, nil //nolint:nilnil
 	}
 
 	gen.lastRepo = repo

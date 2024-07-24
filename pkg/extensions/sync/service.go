@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
 
 	"github.com/containers/common/pkg/retry"
 	"github.com/containers/image/v5/copy"
@@ -247,7 +248,7 @@ func (service *BaseService) GetNextRepo(lastRepo string) (string, error) {
 			if targetIdx != service.clusterConfig.Proxy.LocalMemberClusterSocketIndex {
 				service.log.Debug().
 					Str(constants.RepositoryLogKey, lastRepo).
-					Str("targetMemberIndex", fmt.Sprintf("%d", targetIdx)).
+					Str("targetMemberIndex", strconv.FormatUint(targetIdx, 10)).
 					Str("targetMember", targetMember).
 					Msg("skipping sync of repo not managed by local instance")
 

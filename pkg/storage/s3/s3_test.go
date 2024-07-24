@@ -3587,7 +3587,7 @@ func TestS3DedupeErr(t *testing.T) {
 				return errS3
 			},
 			StatFn: func(ctx context.Context, path string) (driver.FileInfo, error) {
-				return nil, nil
+				return nil, nil //nolint:nilnil
 			},
 		})
 
@@ -3603,7 +3603,7 @@ func TestS3DedupeErr(t *testing.T) {
 		tdir := t.TempDir()
 		imgStore = createMockStorage(testDir, tdir, true, &StorageDriverMock{
 			StatFn: func(ctx context.Context, path string) (driver.FileInfo, error) {
-				return nil, nil
+				return nil, nil //nolint:nilnil
 			},
 		})
 
@@ -3622,7 +3622,7 @@ func TestS3DedupeErr(t *testing.T) {
 				return errS3
 			},
 			StatFn: func(ctx context.Context, path string) (driver.FileInfo, error) {
-				return nil, nil
+				return nil, nil //nolint:nilnil
 			},
 		})
 

@@ -4,6 +4,7 @@ run:
 linters:
   enable-all: true
   disable:
+    - gomnd
     - funlen
     - gocognit
     - paralleltest
@@ -21,6 +22,10 @@ linters:
     - execinquery
     - inamedparam
     - intrange
+    - promlinter
+    - protogetter
+    - contextcheck # needs to revisit: https://github.com/project-zot/zot/pull/2556
+    - copyloopvar # needs to revisit: https://github.com/project-zot/zot/pull/2556
 
 linters-settings:
   dupl:

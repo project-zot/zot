@@ -11,6 +11,7 @@ import (
 	"os"
 	"path"
 	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -1130,7 +1131,7 @@ func uploadManifest(url string) error {
 
 	_, _ = resty.R().
 		SetContentLength(true).
-		SetHeader("Content-Length", fmt.Sprintf("%d", len(cblob))).
+		SetHeader("Content-Length", strconv.Itoa(len(cblob))).
 		SetHeader("Content-Type", "application/octet-stream").
 		SetQueryParam("digest", cdigest.String()).
 		SetBody(cblob).
@@ -1236,7 +1237,7 @@ func uploadManifestDerivedBase(url string) error {
 
 	_, _ = resty.R().
 		SetContentLength(true).
-		SetHeader("Content-Length", fmt.Sprintf("%d", len(cblob))).
+		SetHeader("Content-Length", strconv.Itoa(len(cblob))).
 		SetHeader("Content-Type", "application/octet-stream").
 		SetQueryParam("digest", cdigest.String()).
 		SetBody(cblob).
