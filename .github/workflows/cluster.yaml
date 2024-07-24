@@ -17,7 +17,7 @@ jobs:
     runs-on: ubuntu-latest-4-cores
     # services:
     #   minio:
-    #     image: minio/minio:edge-cicd
+    #     image: minio/minio:RELEASE.2024-07-16T23-46-41Z
     #     env:
     #       MINIO_ROOT_USER: minioadmin
     #       MINIO_ROOT_PASSWORD: minioadmin
@@ -53,7 +53,7 @@ jobs:
                 -v /tmp/data:/data \
                 -v /tmp/config:/root/.minio \
                 --health-cmd "curl http://localhost:9000/minio/health/live" \
-                minio/minio:edge-cicd server /data
+                minio/minio:RELEASE.2024-07-16T23-46-41Z server /data
       - name: Install py minio
         run: pip3 install minio
 
