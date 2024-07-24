@@ -108,6 +108,7 @@ func TestVerifyExtensionsConfig(t *testing.T) {
 		tmpfile, err := os.CreateTemp("", "zot-test*.json")
 		So(err, ShouldBeNil)
 		defer os.Remove(tmpfile.Name()) // clean up
+
 		content := fmt.Sprintf(`{"storage":{"rootDirectory":"%s", "storageDriver": {"name": "s3"}},
 							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
 							"auth":{"htpasswd":{"path":"test/data/htpasswd"},"failDelay":1}},
@@ -118,6 +119,7 @@ func TestVerifyExtensionsConfig(t *testing.T) {
 		err = tmpfile.Close()
 		So(err, ShouldBeNil)
 		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
+
 		So(cli.NewServerRootCmd().Execute(), ShouldNotBeNil)
 	})
 
@@ -125,6 +127,7 @@ func TestVerifyExtensionsConfig(t *testing.T) {
 		tmpfile, err := os.CreateTemp("", "zot-test*.json")
 		So(err, ShouldBeNil)
 		defer os.Remove(tmpfile.Name()) // clean up
+
 		content := fmt.Sprintf(`{"storage":{"rootDirectory":"%s"},
 							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
 							"auth":{"htpasswd":{"path":"test/data/htpasswd"},"failDelay":1}},
@@ -142,6 +145,7 @@ func TestVerifyExtensionsConfig(t *testing.T) {
 		tmpfile, err := os.CreateTemp("", "zot-test*.json")
 		So(err, ShouldBeNil)
 		defer os.Remove(tmpfile.Name()) // clean up
+
 		content := fmt.Sprintf(`{"storage":{"rootDirectory":"%s"},
 							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
 							"auth":{"htpasswd":{"path":"test/data/htpasswd"},"failDelay":1}},
@@ -152,6 +156,7 @@ func TestVerifyExtensionsConfig(t *testing.T) {
 		So(err, ShouldBeNil)
 		err = tmpfile.Close()
 		So(err, ShouldBeNil)
+
 		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
 		So(cli.NewServerRootCmd().Execute(), ShouldNotBeNil)
 	})
@@ -160,6 +165,7 @@ func TestVerifyExtensionsConfig(t *testing.T) {
 		tmpfile, err := os.CreateTemp("", "zot-test*.json")
 		So(err, ShouldBeNil)
 		defer os.Remove(tmpfile.Name()) // clean up
+
 		content := fmt.Sprintf(`{"storage":{"rootDirectory":"%s"},
 							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
 							"auth":{"htpasswd":{"path":"test/data/htpasswd"},"failDelay":1}},
@@ -171,6 +177,7 @@ func TestVerifyExtensionsConfig(t *testing.T) {
 		err = tmpfile.Close()
 		So(err, ShouldBeNil)
 		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
+
 		So(cli.NewServerRootCmd().Execute(), ShouldNotBeNil)
 	})
 
@@ -178,6 +185,7 @@ func TestVerifyExtensionsConfig(t *testing.T) {
 		tmpfile, err := os.CreateTemp("", "zot-test*.json")
 		So(err, ShouldBeNil)
 		defer os.Remove(tmpfile.Name()) // clean up
+
 		content := fmt.Sprintf(`{"storage":{"rootDirectory":"%s"},
 							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
 							"auth":{"htpasswd":{"path":"test/data/htpasswd"},"failDelay":1}},
@@ -197,6 +205,7 @@ func TestVerifyExtensionsConfig(t *testing.T) {
 		tmpfile, err := os.CreateTemp("", "zot-test*.json")
 		So(err, ShouldBeNil)
 		defer os.Remove(tmpfile.Name()) // clean up
+
 		content := fmt.Sprintf(`{"storage":{"rootDirectory":"%s"},
 							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
 							"auth":{"htpasswd":{"path":"test/data/htpasswd"},"failDelay":1}},
@@ -216,6 +225,7 @@ func TestVerifyExtensionsConfig(t *testing.T) {
 		tmpfile, err := os.CreateTemp("", "zot-test*.json")
 		So(err, ShouldBeNil)
 		defer os.Remove(tmpfile.Name()) // clean up
+
 		content := fmt.Sprintf(`{"storage":{"rootDirectory":"%s"},
 							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
 							"auth":{"htpasswd":{"path":"test/data/htpasswd"},"failDelay":1}},
@@ -226,6 +236,7 @@ func TestVerifyExtensionsConfig(t *testing.T) {
 		err = tmpfile.Close()
 		So(err, ShouldBeNil)
 		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
+
 		So(cli.NewServerRootCmd().Execute(), ShouldNotBeNil)
 	})
 }
@@ -264,9 +275,12 @@ func TestValidateExtensionsConfig(t *testing.T) {
 
 	Convey("Test missing extensions for UI to work", t, func(c C) {
 		config := config.New()
+
 		tmpfile, err := os.CreateTemp("", "zot-test*.json")
 		So(err, ShouldBeNil)
+
 		defer os.Remove(tmpfile.Name())
+
 		content := []byte(`{
 			"storage": {
 				"rootDirectory": "%/tmp/zot"
@@ -375,6 +389,7 @@ func TestServeExtensions(t *testing.T) {
 		logFile, err := os.CreateTemp("", "zot-log*.txt")
 		So(err, ShouldBeNil)
 		defer os.Remove(logFile.Name()) // clean up
+
 		tmpFile := t.TempDir()
 
 		content := fmt.Sprintf(`{
@@ -394,12 +409,14 @@ func TestServeExtensions(t *testing.T) {
 		cfgfile, err := os.CreateTemp("", "zot-test*.json")
 		So(err, ShouldBeNil)
 		defer os.Remove(cfgfile.Name()) // clean up
+
 		_, err = cfgfile.WriteString(content)
 		So(err, ShouldBeNil)
 		err = cfgfile.Close()
 		So(err, ShouldBeNil)
 
 		os.Args = []string{"cli_test", "serve", cfgfile.Name()}
+
 		go func() {
 			Convey("run", t, func() {
 				err = cli.NewServerRootCmd().Execute()
@@ -419,6 +436,7 @@ func TestServeExtensions(t *testing.T) {
 		logFile, err := os.CreateTemp("", "zot-log*.txt")
 		So(err, ShouldBeNil)
 		defer os.Remove(logFile.Name()) // clean up
+
 		tmpFile := t.TempDir()
 
 		content := fmt.Sprintf(`{
@@ -440,6 +458,7 @@ func TestServeExtensions(t *testing.T) {
 		cfgfile, err := os.CreateTemp("", "zot-test*.json")
 		So(err, ShouldBeNil)
 		defer os.Remove(cfgfile.Name()) // clean up
+
 		_, err = cfgfile.WriteString(content)
 		So(err, ShouldBeNil)
 		err = cfgfile.Close()
@@ -476,6 +495,7 @@ func testWithMetricsEnabled(t *testing.T, rootDir string, cfgContentFormat strin
 	So(err, ShouldBeNil)
 
 	defer os.Remove(cfgfile.Name()) // clean up
+
 	_, err = cfgfile.WriteString(content)
 	So(err, ShouldBeNil)
 	err = cfgfile.Close()
@@ -613,18 +633,21 @@ func TestServeMetricsExtension(t *testing.T) {
 		cfgfile, err := os.CreateTemp("", "zot-test*.json")
 		So(err, ShouldBeNil)
 		defer os.Remove(cfgfile.Name()) // clean up
+
 		_, err = cfgfile.WriteString(content)
 		So(err, ShouldBeNil)
 		err = cfgfile.Close()
 		So(err, ShouldBeNil)
 
 		os.Args = []string{"cli_test", "serve", cfgfile.Name()}
+
 		go func() {
 			Convey("run", t, func() {
 				err = cli.NewServerRootCmd().Execute()
 				So(err, ShouldBeNil)
 			})
 		}()
+
 		WaitTillServerReady(baseURL)
 
 		resp, err := resty.R().Get(baseURL + "/metrics")
@@ -685,6 +708,7 @@ func TestServeSyncExtension(t *testing.T) {
 		data, err := os.ReadFile(logPath)
 		So(err, ShouldBeNil)
 		defer os.Remove(logPath) // clean up
+
 		So(string(data), ShouldContainSubstring,
 			"\"Extensions\":{\"Search\":null,\"Sync\":{\"Enable\":true")
 	})
@@ -731,6 +755,7 @@ func TestServeSyncExtension(t *testing.T) {
 		data, err := os.ReadFile(logPath)
 		So(err, ShouldBeNil)
 		defer os.Remove(logPath) // clean up
+
 		So(string(data), ShouldContainSubstring,
 			"\"Extensions\":{\"Search\":null,\"Sync\":{\"Enable\":true")
 	})
@@ -767,6 +792,7 @@ func TestServeSyncExtension(t *testing.T) {
 		data, err := os.ReadFile(logPath)
 		So(err, ShouldBeNil)
 		defer os.Remove(logPath) // clean up
+
 		So(string(data), ShouldContainSubstring,
 			"\"Extensions\":{\"Search\":null,\"Sync\":{\"Enable\":false")
 	})
@@ -801,6 +827,7 @@ func TestServeScrubExtension(t *testing.T) {
 		data, err := os.ReadFile(logPath)
 		So(err, ShouldBeNil)
 		defer os.Remove(logPath) // clean up
+
 		dataStr := string(data)
 		So(dataStr, ShouldContainSubstring,
 			"\"Extensions\":{\"Search\":null,\"Sync\":null,\"Metrics\":null,\"Scrub\":{\"Enable\":true,\"Interval\":86400000000000},\"Lint\":null") //nolint:lll // gofumpt conflicts with lll
@@ -833,6 +860,7 @@ func TestServeScrubExtension(t *testing.T) {
 		data, err := os.ReadFile(logPath)
 		So(err, ShouldBeNil)
 		defer os.Remove(logPath) // clean up
+
 		// Even if in config we specified scrub interval=1h, the minimum interval is 2h
 		dataStr := string(data)
 		So(dataStr, ShouldContainSubstring, "\"Scrub\":{\"Enable\":true,\"Interval\":3600000000000}")
@@ -865,6 +893,7 @@ func TestServeScrubExtension(t *testing.T) {
 		data, err := os.ReadFile(logPath)
 		So(err, ShouldBeNil)
 		defer os.Remove(logPath) // clean up
+
 		dataStr := string(data)
 		So(dataStr, ShouldContainSubstring,
 			"\"Extensions\":{\"Search\":null,\"Sync\":null,\"Metrics\":null,\"Scrub\":{\"Enable\":true,\"Interval\":86400000000000},\"Lint\":null") //nolint:lll // gofumpt conflicts with lll
@@ -897,6 +926,7 @@ func TestServeScrubExtension(t *testing.T) {
 		data, err := os.ReadFile(logPath)
 		So(err, ShouldBeNil)
 		defer os.Remove(logPath) // clean up
+
 		dataStr := string(data)
 		So(dataStr, ShouldContainSubstring, "\"Scrub\":{\"Enable\":false,\"Interval\":86400000000000}")
 		So(dataStr, ShouldContainSubstring, "scrub config not provided, skipping scrub")
@@ -936,6 +966,7 @@ func TestServeLintExtension(t *testing.T) {
 		data, err := os.ReadFile(logPath)
 		So(err, ShouldBeNil)
 		defer os.Remove(logPath) // clean up
+
 		So(string(data), ShouldContainSubstring,
 			"\"Extensions\":{\"Search\":null,\"Sync\":null,\"Metrics\":null,\"Scrub\":null,\"Lint\":{\"Enable\":true,\"MandatoryAnnotations\":") //nolint:lll // gofumpt conflicts with lll
 	})
@@ -965,6 +996,7 @@ func TestServeLintExtension(t *testing.T) {
 		data, err := os.ReadFile(logPath)
 		So(err, ShouldBeNil)
 		defer os.Remove(logPath) // clean up
+
 		So(string(data), ShouldContainSubstring,
 			"\"Extensions\":{\"Search\":null,\"Sync\":null,\"Metrics\":null,\"Scrub\":null,\"Lint\":{\"Enable\":false,\"MandatoryAnnotations\":null}") //nolint:lll // gofumpt conflicts with lll
 	})
@@ -1149,6 +1181,7 @@ func TestServeSearchDisabled(t *testing.T) {
 		data, err := os.ReadFile(logPath)
 		So(err, ShouldBeNil)
 		defer os.Remove(logPath) // clean up
+
 		dataStr := string(data)
 		So(dataStr, ShouldContainSubstring,
 			`"Search":{"Enable":false,"CVE":{"UpdateInterval":10800000000000,"Trivy":null}`)
@@ -1186,6 +1219,7 @@ func TestServeMgmtExtension(t *testing.T) {
 		logPath, err := runCLIWithConfig(t.TempDir(), content)
 		So(err, ShouldBeNil)
 		defer os.Remove(logPath) // clean up
+
 		found, err := ReadLogFileAndSearchString(logPath, "setting up mgmt routes", 10*time.Second)
 
 		if !found {
@@ -1218,6 +1252,7 @@ func TestServeMgmtExtension(t *testing.T) {
 		logPath, err := runCLIWithConfig(t.TempDir(), content)
 		So(err, ShouldBeNil)
 		defer os.Remove(logPath) // clean up
+
 		found, err := ReadLogFileAndSearchString(logPath,
 			"skip enabling the mgmt route as the config prerequisites are not met", 10*time.Second)
 
@@ -1249,6 +1284,7 @@ func TestServeMgmtExtension(t *testing.T) {
 		logPath, err := runCLIWithConfig(t.TempDir(), content)
 		So(err, ShouldBeNil)
 		defer os.Remove(logPath) // clean up
+
 		found, err := ReadLogFileAndSearchString(logPath,
 			"skip enabling the mgmt route as the config prerequisites are not met", 10*time.Second)
 
@@ -1291,6 +1327,7 @@ func TestServeImageTrustExtension(t *testing.T) {
 		logPath, err := runCLIWithConfig(t.TempDir(), content)
 		So(err, ShouldBeNil)
 		defer os.Remove(logPath) // clean up
+
 		found, err := ReadLogFileAndSearchString(logPath,
 			"skip enabling the image trust routes as the config prerequisites are not met", 10*time.Second)
 
@@ -1327,6 +1364,7 @@ func TestServeImageTrustExtension(t *testing.T) {
 		logPath, err := runCLIWithConfig(t.TempDir(), content)
 		So(err, ShouldBeNil)
 		defer os.Remove(logPath) // clean up
+
 		found, err := ReadLogFileAndSearchString(logPath,
 			"skip enabling the image trust routes as the config prerequisites are not met", 10*time.Second)
 
@@ -1365,6 +1403,7 @@ func TestServeImageTrustExtension(t *testing.T) {
 		logPath, err := runCLIWithConfig(t.TempDir(), content)
 		So(err, ShouldBeNil)
 		defer os.Remove(logPath) // clean up
+
 		found, err := ReadLogFileAndSearchString(logPath,
 			"setting up image trust routes", 10*time.Second)
 
@@ -1400,6 +1439,7 @@ func TestOverlappingSyncRetentionConfig(t *testing.T) {
 		tmpfile, err := os.CreateTemp("", "zot-test*.json")
 		So(err, ShouldBeNil)
 		defer os.Remove(tmpfile.Name()) // clean up
+
 		content := `{
 			"distSpecVersion": "1.1.0",
 			"storage": {
@@ -1459,6 +1499,7 @@ func TestOverlappingSyncRetentionConfig(t *testing.T) {
 		data, err := os.ReadFile(logPath)
 		So(err, ShouldBeNil)
 		defer os.Remove(logPath) // clean up
+
 		So(string(data), ShouldNotContainSubstring, "overlapping sync content")
 	})
 
@@ -1466,6 +1507,7 @@ func TestOverlappingSyncRetentionConfig(t *testing.T) {
 		tmpfile, err := os.CreateTemp("", "zot-test*.json")
 		So(err, ShouldBeNil)
 		defer os.Remove(tmpfile.Name()) // clean up
+
 		content := `{
 			"distSpecVersion": "1.1.0",
 			"storage": {
@@ -1523,6 +1565,7 @@ func TestOverlappingSyncRetentionConfig(t *testing.T) {
 		data, err := os.ReadFile(logPath)
 		So(err, ShouldBeNil)
 		defer os.Remove(logPath) // clean up
+
 		So(string(data), ShouldContainSubstring, "overlapping sync content\":{\"Prefix\":\"infra/*")
 	})
 
@@ -1530,6 +1573,7 @@ func TestOverlappingSyncRetentionConfig(t *testing.T) {
 		tmpfile, err := os.CreateTemp("", "zot-test*.json")
 		So(err, ShouldBeNil)
 		defer os.Remove(tmpfile.Name()) // clean up
+
 		content := `{
 			"distSpecVersion": "1.1.0",
 			"storage": {
@@ -1585,6 +1629,7 @@ func TestOverlappingSyncRetentionConfig(t *testing.T) {
 		data, err := os.ReadFile(logPath)
 		So(err, ShouldBeNil)
 		defer os.Remove(logPath) // clean up
+
 		So(string(data), ShouldContainSubstring, "overlapping sync content\":{\"Prefix\":\"**")
 	})
 
@@ -1592,6 +1637,7 @@ func TestOverlappingSyncRetentionConfig(t *testing.T) {
 		tmpfile, err := os.CreateTemp("", "zot-test*.json")
 		So(err, ShouldBeNil)
 		defer os.Remove(tmpfile.Name()) // clean up
+
 		content := `{
 			"distSpecVersion": "1.1.0",
 			"storage": {
@@ -1650,6 +1696,7 @@ func TestOverlappingSyncRetentionConfig(t *testing.T) {
 		data, err := os.ReadFile(logPath)
 		So(err, ShouldBeNil)
 		defer os.Remove(logPath) // clean up
+
 		So(string(data), ShouldContainSubstring, "overlapping sync content\":{\"Prefix\":\"prod/*")
 	})
 }
@@ -1715,6 +1762,7 @@ func TestSyncWithRemoteStorageConfig(t *testing.T) {
 		data, err := os.ReadFile(logPath)
 		So(err, ShouldBeNil)
 		defer os.Remove(logPath) // clean up
+
 		So(string(data), ShouldNotContainSubstring,
 			"using both sync and remote storage features needs config.Extensions.Sync.DownloadDir to be specified")
 	})
@@ -1728,6 +1776,7 @@ func TestSyncWithRemoteStorageConfig(t *testing.T) {
 		tmpfile, err := os.CreateTemp("", "zot-test*.json")
 		So(err, ShouldBeNil)
 		defer os.Remove(tmpfile.Name()) // clean up
+
 		content := fmt.Sprintf(`{
 			"distSpecVersion": "1.1.0",
 			"storage": {
@@ -1782,6 +1831,7 @@ func TestSyncWithRemoteStorageConfig(t *testing.T) {
 		data, err := os.ReadFile(logFile.Name())
 		So(err, ShouldBeNil)
 		defer os.Remove(logFile.Name()) // clean up
+
 		So(string(data), ShouldContainSubstring,
 			"using both sync and remote storage features needs config.Extensions.Sync.DownloadDir to be specified")
 	})
@@ -1795,6 +1845,7 @@ func TestSyncWithRemoteStorageConfig(t *testing.T) {
 		tmpfile, err := os.CreateTemp("", "zot-test*.json")
 		So(err, ShouldBeNil)
 		defer os.Remove(tmpfile.Name()) // clean up
+
 		content := fmt.Sprintf(`{
 			"distSpecVersion": "1.1.0",
 			"storage": {
@@ -1853,6 +1904,7 @@ func TestSyncWithRemoteStorageConfig(t *testing.T) {
 		data, err := os.ReadFile(logFile.Name())
 		So(err, ShouldBeNil)
 		defer os.Remove(logFile.Name()) // clean up
+
 		So(string(data), ShouldContainSubstring,
 			"using both sync and remote storage features needs config.Extensions.Sync.DownloadDir to be specified")
 	})

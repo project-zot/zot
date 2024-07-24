@@ -90,9 +90,10 @@ func TestExtensionMetrics(t *testing.T) {
 		conf := config.New()
 		conf.HTTP.Port = port
 
+		var disabled bool
+
 		conf.Storage.RootDirectory = t.TempDir()
 		conf.Extensions = &extconf.ExtensionConfig{}
-		var disabled bool
 		conf.Extensions.Metrics = &extconf.MetricsConfig{BaseConfig: extconf.BaseConfig{Enable: &disabled}}
 
 		ctlr := api.NewController(conf)
@@ -169,6 +170,7 @@ func TestMetricsAuthentication(t *testing.T) {
 		metricsuser := generateRandomString()
 		metricspass := generateRandomString()
 		content := test.GetCredString(username, password) + "\n" + test.GetCredString(metricsuser, metricspass)
+
 		htpasswdPath := test.MakeHtpasswdFileFromString(content)
 		defer os.Remove(htpasswdPath)
 
@@ -233,6 +235,7 @@ func TestMetricsAuthorization(t *testing.T) {
 		metricsuser := generateRandomString()
 		metricspass := generateRandomString()
 		content := test.GetCredString(username, password) + "\n" + test.GetCredString(metricsuser, metricspass)
+
 		htpasswdPath := test.MakeHtpasswdFileFromString(content)
 		defer os.Remove(htpasswdPath)
 

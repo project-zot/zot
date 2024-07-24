@@ -304,8 +304,10 @@ func TestOnDemand(t *testing.T) {
 			dcm.StartAndWait(dctlr.Config.HTTP.Port)
 			defer dcm.StopServer()
 
-			var srcTagsList TagsList
-			var destTagsList TagsList
+			var (
+				srcTagsList  TagsList
+				destTagsList TagsList
+			)
 
 			resp, _ := srcClient.R().Get(srcBaseURL + "/v2/" + testImage + "/tags/list")
 			So(resp, ShouldNotBeNil)
@@ -768,6 +770,7 @@ func TestOnDemand(t *testing.T) {
 func TestOnDemandWithScaleOutCluster(t *testing.T) {
 	Convey("Given 2 downstream zots and one upstream, test that the cluster can sync images", t, func() {
 		sctlr, srcBaseURL, _, _, srcClient := makeUpstreamServer(t, false, false)
+
 		scm := test.NewControllerManager(sctlr)
 		scm.StartAndWait(sctlr.Config.HTTP.Port)
 		defer scm.StopServer()
@@ -1468,8 +1471,11 @@ func TestDockerImagesAreSkipped(t *testing.T) {
 				}
 			}
 
-			var configBlobDigest godigest.Digest
-			var indexManifestContent []byte
+			var (
+				configBlobDigest     godigest.Digest
+				indexManifestContent []byte
+			)
+
 			for idx, manifestDesc := range newIndex.Manifests {
 				if manifestDesc.MediaType == ispec.MediaTypeImageManifest {
 					manifestContent, err := os.ReadFile(path.Join(srcDir, indexRepoName, "blobs/sha256",
@@ -1878,6 +1884,7 @@ func TestPermsDenied(t *testing.T) {
 
 		regex := ".*"
 		semver := true
+
 		var tlsVerify bool
 
 		syncRegistryConfig := syncconf.RegistryConfig{
@@ -2426,6 +2433,7 @@ func TestTLS(t *testing.T) {
 		destClientCertDir := t.TempDir()
 
 		destFilePath := path.Join(destClientCertDir, "ca.crt")
+
 		err = test.CopyFile(CACert, destFilePath)
 		if err != nil {
 			panic(err)
@@ -2557,8 +2565,10 @@ func TestBearerAuth(t *testing.T) {
 		dcm.StartAndWait(dctlr.Config.HTTP.Port)
 		defer dcm.StopServer()
 
-		var srcTagsList TagsList
-		var destTagsList TagsList
+		var (
+			srcTagsList  TagsList
+			destTagsList TagsList
+		)
 
 		resp, err := srcClient.R().Get(srcBaseURL + "/v2/")
 		So(err, ShouldBeNil)
@@ -3127,6 +3137,7 @@ func TestBadURL(t *testing.T) {
 		updateDuration, _ := time.ParseDuration("1h")
 
 		regex := ".*"
+
 		var semver bool
 		var tlsVerify bool
 
@@ -4097,8 +4108,10 @@ func TestPeriodicallySignaturesErr(t *testing.T) {
 		defer scm.StopServer()
 
 		// create repo, push and sign it
-		repoName := testSignedImage
 		var digest godigest.Digest
+
+		repoName := testSignedImage
+
 		So(func() { digest = pushRepo(srcBaseURL, repoName) }, ShouldNotPanic)
 
 		splittedURL := strings.SplitAfter(srcBaseURL, ":")
@@ -4262,6 +4275,7 @@ func TestPeriodicallySignaturesErr(t *testing.T) {
 
 			// read manifest
 			var artifactManifest ispec.Manifest
+
 			for _, ref := range referrers.Manifests {
 				refPath := path.Join(srcDir, repoName, "blobs", string(ref.Digest.Algorithm()), ref.Digest.Encoded())
 				body, err := os.ReadFile(refPath)
@@ -4336,6 +4350,7 @@ func TestPeriodicallySignaturesErr(t *testing.T) {
 			Convey("of type OCI image", func() { //nolint: dupl
 				// read manifest
 				var artifactManifest ispec.Manifest
+
 				for _, ref := range referrers.Manifests {
 					refPath := path.Join(srcDir, repoName, "blobs", string(ref.Digest.Algorithm()), ref.Digest.Encoded())
 					body, err := os.ReadFile(refPath)
@@ -4520,8 +4535,9 @@ func TestSignatures(t *testing.T) {
 		defer scm.StopServer()
 
 		// create repo, push and sign it
-		repoName := testSignedImage
 		var digest godigest.Digest
+
+		repoName := testSignedImage
 		So(func() { digest = pushRepo(srcBaseURL, repoName) }, ShouldNotPanic)
 
 		splittedURL := strings.SplitAfter(srcBaseURL, ":")
@@ -5041,8 +5057,9 @@ func TestSignatures(t *testing.T) {
 		defer scm.StopServer()
 
 		// create repo, push and sign it
-		repoName := testSignedImage
 		var digest godigest.Digest
+
+		repoName := testSignedImage
 		So(func() { digest = pushRepo(srcBaseURL, repoName) }, ShouldNotPanic)
 
 		splittedURL := strings.SplitAfter(srcBaseURL, ":")
@@ -5645,8 +5662,9 @@ func TestSignaturesOnDemand(t *testing.T) {
 		defer scm.StopServer()
 
 		// create repo, push and sign it
-		repoName := testSignedImage
 		var digest godigest.Digest
+
+		repoName := testSignedImage
 		So(func() { digest = pushRepo(srcBaseURL, repoName) }, ShouldNotPanic)
 
 		splittedURL := strings.SplitAfter(srcBaseURL, ":")
@@ -5767,8 +5785,9 @@ func TestSignaturesOnDemand(t *testing.T) {
 		defer scm.StopServer()
 
 		// create repo, push and sign it
-		repoName := testSignedImage
 		var digest godigest.Digest
+
+		repoName := testSignedImage
 		So(func() { digest = pushRepo(srcBaseURL, repoName) }, ShouldNotPanic)
 
 		splittedURL := strings.SplitAfter(srcBaseURL, ":")
@@ -5875,8 +5894,9 @@ func TestOnlySignaturesOnDemand(t *testing.T) {
 		defer scm.StopServer()
 
 		// create repo, push and sign it
-		repoName := testSignedImage
 		var digest godigest.Digest
+
+		repoName := testSignedImage
 		So(func() { digest = pushRepo(srcBaseURL, repoName) }, ShouldNotPanic)
 
 		splittedURL := strings.SplitAfter(srcBaseURL, ":")
@@ -6219,8 +6239,9 @@ func TestSyncSignaturesDiff(t *testing.T) {
 		defer scm.StopServer()
 
 		// create repo, push and sign it
-		repoName := testSignedImage
 		var digest godigest.Digest
+
+		repoName := testSignedImage
 		So(func() { digest = pushRepo(srcBaseURL, repoName) }, ShouldNotPanic)
 
 		splittedURL := strings.SplitAfter(srcBaseURL, ":")
@@ -6313,8 +6334,10 @@ func TestSyncSignaturesDiff(t *testing.T) {
 
 		// now add new signatures to upstream and let sync detect that upstream signatures changed and pull them
 		So(os.RemoveAll(tdir), ShouldBeNil)
+
 		tdir = t.TempDir()
 		defer os.RemoveAll(tdir)
+
 		_ = os.Chdir(tdir)
 		generateKeyPairs(tdir)
 		So(func() { signImage(tdir, srcPort, repoName, digest) }, ShouldNotPanic)

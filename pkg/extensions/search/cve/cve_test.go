@@ -422,6 +422,7 @@ func TestCVESearchDisabled(t *testing.T) {
 		conf.HTTP.Port = port
 		username, seedUser := test.GenerateRandomString()
 		password, seedPass := test.GenerateRandomString()
+
 		htpasswdPath := test.MakeHtpasswdFileFromString(test.GetCredString(username, password))
 		defer os.Remove(htpasswdPath)
 
@@ -490,6 +491,7 @@ func TestCVESearch(t *testing.T) {
 		conf.HTTP.Port = port
 		username, seedUser := test.GenerateRandomString()
 		password, seedPass := test.GenerateRandomString()
+
 		htpasswdPath := test.MakeHtpasswdFileFromString(test.GetCredString(username, password))
 		defer os.Remove(htpasswdPath)
 
@@ -559,15 +561,17 @@ func TestCVESearch(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 401)
-		var apiErr apiErr.Error
-		err = json.Unmarshal(resp.Body(), &apiErr)
+
+		var apiError apiErr.Error
+
+		err = json.Unmarshal(resp.Body(), &apiError)
 		So(err, ShouldBeNil)
 
 		resp, err = resty.R().Get(baseURL + constants.FullSearchPrefix)
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 401)
-		err = json.Unmarshal(resp.Body(), &apiErr)
+		err = json.Unmarshal(resp.Body(), &apiError)
 		So(err, ShouldBeNil)
 
 		// with creds, should get expected status code
@@ -745,16 +749,18 @@ func TestCVESearch(t *testing.T) {
 
 func TestCVEStruct(t *testing.T) { //nolint:gocyclo
 	Convey("Unit test the CVE struct", t, func() {
-		const repo1 = "repo1"
-		const repo2 = "repo2"
-		const repo3 = "repo3"
-		const repo4 = "repo4"
-		const repo5 = "repo5"
-		const repo6 = "repo6"
-		const repo7 = "repo7"
-		const repo8 = "repo8"
-		const repo100 = "repo100"
-		const repoMultiarch = "repoIndex"
+		const (
+			repo1         = "repo1"
+			repo2         = "repo2"
+			repo3         = "repo3"
+			repo4         = "repo4"
+			repo5         = "repo5"
+			repo6         = "repo6"
+			repo7         = "repo7"
+			repo8         = "repo8"
+			repo100       = "repo100"
+			repoMultiarch = "repoIndex"
+		)
 
 		params := boltdb.DBParameters{
 			RootDir: t.TempDir(),

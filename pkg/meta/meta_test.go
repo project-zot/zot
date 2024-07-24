@@ -506,9 +506,6 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 			retrievedImgMultiData, err := metaDB.GetImageMeta(imgMulti.Digest())
 			So(err, ShouldBeNil)
 			So(imgMulti.AsImageMeta(), ShouldEqual, retrievedImgMultiData)
-
-			//nolint:wsl
-			// set subject on multiarch
 		})
 
 		Convey("GetFullImageMeta", func() {

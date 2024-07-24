@@ -937,6 +937,7 @@ func TestGetReferrersGQL(t *testing.T) {
 		ctlr := api.NewController(conf)
 		ctlrManager := NewControllerManager(ctlr)
 		ctlrManager.StartAndWait(port)
+
 		defer ctlrManager.StopServer()
 
 		// =======================
@@ -1254,6 +1255,7 @@ func TestExpandedRepoInfo(t *testing.T) {
 		ctlr := api.NewController(conf)
 		ctlrManager := NewControllerManager(ctlr)
 		ctlrManager.StartAndWait(port)
+
 		defer ctlrManager.StopServer()
 
 		annotations := make(map[string]string)
@@ -1337,6 +1339,7 @@ func TestExpandedRepoInfo(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		found := false
+
 		for _, m := range responseStruct.ImageSummaries {
 			if m.Manifests[0].Digest == testManifestDigest.String() {
 				found = true
@@ -1363,6 +1366,7 @@ func TestExpandedRepoInfo(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		found = false
+
 		for _, m := range responseStruct.ImageSummaries {
 			if m.Manifests[0].Digest == testManifestDigest.String() {
 				found = true
@@ -1445,6 +1449,7 @@ func TestExpandedRepoInfo(t *testing.T) {
 				So(m.IsSigned, ShouldEqual, true)
 			}
 		}
+
 		So(found, ShouldEqual, true)
 
 		manifestDigest := uploadedImage.ManifestDescriptor.Digest
@@ -1480,6 +1485,7 @@ func TestExpandedRepoInfo(t *testing.T) {
 		ctlr := api.NewController(conf)
 		ctlrManager := NewControllerManager(ctlr)
 		ctlrManager.StartAndWait(port)
+
 		defer ctlrManager.StopServer()
 
 		image := CreateImageWith().RandomLayers(1, 20).DefaultConfig().Build()
@@ -1715,6 +1721,7 @@ func TestExpandedRepoInfo(t *testing.T) {
 		So(len(responseStruct.Summary.Platforms), ShouldNotEqual, 5)
 
 		found := false
+
 		for _, is := range responseStruct.ImageSummaries {
 			if is.Tag == "1.0.0" {
 				found = true
@@ -2120,6 +2127,7 @@ func TestDerivedImageList(t *testing.T) {
 
 		err = json.Unmarshal(resp.Body(), responseStruct)
 		So(err, ShouldBeNil)
+
 		for _, err := range responseStruct.Errors {
 			result := strings.Contains(err.Message, "no reference provided")
 			if result {
@@ -3140,6 +3148,7 @@ func TestGlobalSearch(t *testing.T) {
 
 		allExpectedRepoInfoMap := make(map[string]zcommon.RepoInfo)
 		allExpectedImageSummaryMap := make(map[string]zcommon.ImageSummary)
+
 		for _, repo := range repos {
 			repoInfo, err := olu.GetExpandedRepoInfo(repo)
 			So(err, ShouldBeNil)
@@ -3211,6 +3220,7 @@ func TestGlobalSearch(t *testing.T) {
 
 		newestImageMap := make(map[string]zcommon.ImageSummary)
 		actualRepoMap := make(map[string]zcommon.RepoSummary)
+
 		for _, repo := range responseStruct.Repos {
 			newestImageMap[repo.Name] = repo.NewestImage
 			actualRepoMap[repo.Name] = repo
@@ -3486,6 +3496,7 @@ func TestGlobalSearch(t *testing.T) {
 
 		allExpectedRepoInfoMap := make(map[string]zcommon.RepoInfo)
 		allExpectedImageSummaryMap := make(map[string]zcommon.ImageSummary)
+
 		for _, repo := range repos {
 			repoInfo, err := olu.GetExpandedRepoInfo(repo)
 			So(err, ShouldBeNil)
@@ -3582,6 +3593,7 @@ func TestGlobalSearch(t *testing.T) {
 
 			// RepoInfo object does not provide vulnerability information so we need to check differently
 			t.Logf("Found vulnerability summary %v", repoSummary.NewestImage.Vulnerabilities)
+
 			if repoName == "repo1" { //nolint:goconst
 				So(repoSummary.NewestImage.Vulnerabilities.Count, ShouldEqual, 4)
 				// There are 4 vulnerabilities in the data used in tests
@@ -3810,6 +3822,7 @@ func TestGlobalSearch(t *testing.T) {
 		So(len(results.Repos), ShouldEqual, 0)
 
 		expectedRepos := []string{"repo1", "repo2", "repo3", "repo4", "repo5"}
+
 		for _, image := range results.Images {
 			So(image.Tag, ShouldEqual, "tag1")
 			So(image.RepoName, ShouldBeIn, expectedRepos)
@@ -3822,6 +3835,7 @@ func TestGlobalSearch(t *testing.T) {
 		So(len(results.Repos), ShouldEqual, 0)
 
 		expectedRepos = []string{"repo2", "repo4"}
+
 		for _, image := range results.Images {
 			So(image.Tag, ShouldEqual, "tag-multi")
 			So(image.RepoName, ShouldBeIn, expectedRepos)
@@ -3838,6 +3852,7 @@ func TestGlobalSearch(t *testing.T) {
 		for _, image := range results.Images {
 			So(image.Tag, ShouldEqual, "tag2")
 			So(image.RepoName, ShouldBeIn, expectedRepos)
+
 			if image.RepoName == "repo6" {
 				So(len(image.Manifests), ShouldEqual, 3)
 			} else {
@@ -3864,6 +3879,7 @@ func TestGlobalSearch(t *testing.T) {
 		So(len(results.Repos), ShouldEqual, 0)
 
 		expectedRepos = []string{"repo1", "repo2", "repo3", "repo4", "repo5", "repo6"}
+
 		for _, image := range results.Images {
 			So(image.Tag, ShouldContainSubstring, "tag")
 			So(image.RepoName, ShouldBeIn, expectedRepos)
@@ -5514,6 +5530,7 @@ func TestMetaDBWhenDeletingImages(t *testing.T) {
 			for _, manifest := range indexContent.Manifests {
 				manifestBlob, _, _, err := storage.GetImageManifest(repo, manifest.Digest.String())
 				So(err, ShouldBeNil)
+
 				var manifestContent ispec.Manifest
 
 				err = json.Unmarshal(manifestBlob, &manifestContent)
@@ -6226,6 +6243,7 @@ func TestImageSummary(t *testing.T) {
 		tagTarget := "latest"
 		err := UploadImage(image, baseURL, repoName, tagTarget)
 		So(err, ShouldBeNil)
+
 		var (
 			imgSummaryResponse zcommon.ImageSummaryResult
 			strQuery           string

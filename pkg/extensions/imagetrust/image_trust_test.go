@@ -280,11 +280,14 @@ func TestVerifySignatures(t *testing.T) {
 			So(err, ShouldBeNil)
 
 			var index ispec.Index
+
 			err = json.Unmarshal(indexContent, &index)
 			So(err, ShouldBeNil)
 
-			var rawSignature []byte
-			var sigKey string
+			var (
+				rawSignature []byte
+				sigKey string
+			)
 
 			for _, manifest := range index.Manifests {
 				if manifest.Digest != image.Digest() {
@@ -460,11 +463,14 @@ func TestVerifySignatures(t *testing.T) {
 			So(err, ShouldBeNil)
 
 			var index ispec.Index
+
 			err = json.Unmarshal(indexContent, &index)
 			So(err, ShouldBeNil)
 
-			var rawSignature []byte
-			var sigKey string
+			var (
+				rawSignature []byte
+				sigKey string
+			)
 
 			for _, manifest := range index.Manifests {
 				if manifest.Digest != image.Digest() {
@@ -1182,6 +1188,7 @@ func RunVerificationTests(t *testing.T, dbDriverParams map[string]interface{}) {
 		rootDir := t.TempDir()
 		logFile, err := os.CreateTemp(t.TempDir(), "zot-log*.txt")
 		So(err, ShouldBeNil)
+
 		logPath := logFile.Name()
 		defer os.Remove(logPath)
 
@@ -1256,11 +1263,14 @@ func RunVerificationTests(t *testing.T, dbDriverParams map[string]interface{}) {
 			So(err, ShouldBeNil)
 
 			var index ispec.Index
+
 			err = json.Unmarshal(indexContent, &index)
 			So(err, ShouldBeNil)
 
-			var rawSignature []byte
-			var sigKey string
+			var (
+				rawSignature []byte
+				sigKey string
+			)
 
 			for _, manifest := range index.Manifests {
 				if manifest.Digest != image.Digest() {
@@ -1347,8 +1357,10 @@ func RunVerificationTests(t *testing.T, dbDriverParams map[string]interface{}) {
 			err = json.Unmarshal(indexContent, &index)
 			So(err, ShouldBeNil)
 
-			var rawSignature []byte
-			var sigKey string
+			var (
+				rawSignature []byte
+				sigKey string
+			)
 
 			for _, manifest := range index.Manifests {
 				blobContent, err := ctlr.StoreController.DefaultStore.GetBlobContent(repo, manifest.Digest)
@@ -1360,6 +1372,7 @@ func RunVerificationTests(t *testing.T, dbDriverParams map[string]interface{}) {
 				So(err, ShouldBeNil)
 
 				t.Logf("Processing manifest %v", notationSig)
+
 				if notationSig.Config.MediaType != notreg.ArtifactTypeNotation ||
 					notationSig.Subject.Digest != image.Digest() {
 					continue
