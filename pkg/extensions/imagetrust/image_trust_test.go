@@ -286,7 +286,7 @@ func TestVerifySignatures(t *testing.T) {
 
 			var (
 				rawSignature []byte
-				sigKey string
+				sigKey       string
 			)
 
 			for _, manifest := range index.Manifests {
@@ -469,7 +469,7 @@ func TestVerifySignatures(t *testing.T) {
 
 			var (
 				rawSignature []byte
-				sigKey string
+				sigKey       string
 			)
 
 			for _, manifest := range index.Manifests {
@@ -1269,7 +1269,7 @@ func RunVerificationTests(t *testing.T, dbDriverParams map[string]interface{}) {
 
 			var (
 				rawSignature []byte
-				sigKey string
+				sigKey       string
 			)
 
 			for _, manifest := range index.Manifests {
@@ -1359,7 +1359,7 @@ func RunVerificationTests(t *testing.T, dbDriverParams map[string]interface{}) {
 
 			var (
 				rawSignature []byte
-				sigKey string
+				sigKey       string
 			)
 
 			for _, manifest := range index.Manifests {

@@ -268,6 +268,7 @@ func TestOnDemand(t *testing.T) {
 		sctlr, srcBaseURL, _, _, srcClient := makeUpstreamServer(t, false, false)
 		scm := test.NewControllerManager(sctlr)
 		scm.StartAndWait(sctlr.Config.HTTP.Port)
+
 		defer scm.StopServer()
 
 		var tlsVerify bool
@@ -1005,6 +1006,7 @@ func TestOnDemandWithScaleOutClusterWithReposNotAddedForSync(t *testing.T) {
 		// storage for each downstream should not have image data at the start.
 		destDirs := []string{destDir1, destDir2}
 		images := []string{testImage, testCveImage}
+
 		for _, image := range images {
 			for _, destDir := range destDirs {
 				_, err := os.Stat(path.Join(destDir, image))
@@ -1631,8 +1633,10 @@ func TestPeriodically(t *testing.T) {
 		dcm.StartAndWait(dctlr.Config.HTTP.Port)
 		defer dcm.StopServer()
 
-		var srcTagsList TagsList
-		var destTagsList TagsList
+		var (
+			srcTagsList TagsList
+			destTagsList TagsList
+		)
 
 		resp, _ := srcClient.R().Get(srcBaseURL + "/v2/" + testImage + "/tags/list")
 		So(resp, ShouldNotBeNil)
@@ -1762,6 +1766,7 @@ func TestPeriodically(t *testing.T) {
 func TestPeriodicallyWithScaleOutCluster(t *testing.T) {
 	Convey("Given a zot cluster with periodic sync enabled, test that instances sync only managed repos", t, func() {
 		updateDuration, _ := time.ParseDuration("30m")
+
 		const zotAlpineTestImageName = "zot-alpine-test"
 
 		sctlr, srcBaseURL, _, _, _ := makeUpstreamServer(t, false, false)
@@ -2249,11 +2254,13 @@ func TestMandatoryAnnotations(t *testing.T) {
 
 		scm := test.NewControllerManager(sctlr)
 		scm.StartAndWait(sctlr.Config.HTTP.Port)
+
 		defer scm.StopServer()
 
 		regex := ".*"
-		var semver bool
 		tlsVerify := false
+
+		var semver bool
 
 		syncRegistryConfig := syncconf.RegistryConfig{
 			Content: []syncconf.Content{
@@ -2440,12 +2447,14 @@ func TestTLS(t *testing.T) {
 		}
 
 		destFilePath = path.Join(destClientCertDir, "client.cert")
+
 		err = test.CopyFile(ClientCert, destFilePath)
 		if err != nil {
 			panic(err)
 		}
 
 		destFilePath = path.Join(destClientCertDir, "client.key")
+
 		err = test.CopyFile(ClientKey, destFilePath)
 		if err != nil {
 			panic(err)
@@ -2481,19 +2490,23 @@ func TestTLS(t *testing.T) {
 
 		dcm := test.NewControllerManager(dctlr)
 		dcm.StartAndWait(dctlr.Config.HTTP.Port)
+
 		defer dcm.StopServer()
 
 		// wait till ready
 		for {
 			destBuf, _ := os.ReadFile(path.Join(destDir, testImage, "index.json"))
 			_ = json.Unmarshal(destBuf, &destIndex)
+
 			time.Sleep(500 * time.Millisecond)
+
 			if len(destIndex.Manifests) > 0 {
 				break
 			}
 		}
 
 		var found bool
+
 		for _, manifest := range srcIndex.Manifests {
 			if reflect.DeepEqual(manifest.Annotations, destIndex.Manifests[0].Annotations) {
 				found = true
@@ -2709,8 +2722,10 @@ func TestBearerAuth(t *testing.T) {
 		dcm.StartAndWait(dctlr.Config.HTTP.Port)
 		defer dcm.StopServer()
 
-		var srcTagsList TagsList
-		var destTagsList TagsList
+		var (
+			srcTagsList TagsList
+			destTagsList TagsList
+		)
 
 		resp, err := srcClient.R().Get(srcBaseURL + "/v2/")
 		So(err, ShouldBeNil)
@@ -2979,8 +2994,11 @@ func TestBasicAuth(t *testing.T) {
 			}()
 
 			regex := ".*"
-			var semver bool
-			var tlsVerify bool
+
+			var (
+				semver bool
+				tlsVerify bool
+			)
 
 			syncRegistryConfig := syncconf.RegistryConfig{
 				Content: []syncconf.Content{
@@ -3138,8 +3156,10 @@ func TestBadURL(t *testing.T) {
 
 		regex := ".*"
 
-		var semver bool
-		var tlsVerify bool
+		var (
+			semver bool
+			tlsVerify bool
+		)
 
 		syncRegistryConfig := syncconf.RegistryConfig{
 			Content: []syncconf.Content{
@@ -3379,12 +3399,14 @@ func TestInvalidCerts(t *testing.T) {
 
 		scm := test.NewControllerManager(sctlr)
 		scm.StartAndWait(sctlr.Config.HTTP.Port)
+
 		defer scm.StopServer()
 
 		// copy client certs, use them in sync config
 		clientCertDir := t.TempDir()
 
 		destFilePath := path.Join(clientCertDir, "ca.crt")
+
 		err := test.CopyFile(CACert, destFilePath)
 		if err != nil {
 			panic(err)
@@ -3402,12 +3424,14 @@ func TestInvalidCerts(t *testing.T) {
 		}
 
 		destFilePath = path.Join(clientCertDir, "client.cert")
+
 		err = test.CopyFile(ClientCert, destFilePath)
 		if err != nil {
 			panic(err)
 		}
 
 		destFilePath = path.Join(clientCertDir, "client.key")
+
 		err = test.CopyFile(ClientKey, destFilePath)
 		if err != nil {
 			panic(err)
@@ -3452,6 +3476,7 @@ func TestCertsWithWrongPerms(t *testing.T) {
 		clientCertDir := t.TempDir()
 
 		destFilePath := path.Join(clientCertDir, "ca.crt")
+
 		err := test.CopyFile(CACert, destFilePath)
 		if err != nil {
 			panic(err)
@@ -3461,12 +3486,14 @@ func TestCertsWithWrongPerms(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		destFilePath = path.Join(clientCertDir, "client.cert")
+
 		err = test.CopyFile(ClientCert, destFilePath)
 		if err != nil {
 			panic(err)
 		}
 
 		destFilePath = path.Join(clientCertDir, "client.key")
+
 		err = test.CopyFile(ClientKey, destFilePath)
 		if err != nil {
 			panic(err)
@@ -3536,8 +3563,10 @@ func TestInvalidUrl(t *testing.T) {
 	Convey("Verify sync invalid url", t, func() {
 		updateDuration, _ := time.ParseDuration("30m")
 		regex := ".*"
-		var semver bool
-		var tlsVerify bool
+		var (
+			semver bool
+			tlsVerify bool
+		)
 
 		syncRegistryConfig := syncconf.RegistryConfig{
 			Content: []syncconf.Content{
@@ -3567,6 +3596,7 @@ func TestInvalidUrl(t *testing.T) {
 
 		dcm := test.NewControllerManager(dctlr)
 		dcm.StartAndWait(dctlr.Config.HTTP.Port)
+
 		defer dcm.StopServer()
 
 		resp, err := destClient.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
@@ -3586,8 +3616,11 @@ func TestInvalidTags(t *testing.T) {
 		defer scm.StopServer()
 
 		regex := ".*"
-		var semver bool
-		var tlsVerify bool
+
+		var (
+			semver bool
+			tlsVerify bool
+		)
 
 		syncRegistryConfig := syncconf.RegistryConfig{
 			Content: []syncconf.Content{
@@ -3657,8 +3690,11 @@ func TestSubPaths(t *testing.T) {
 		defer scm.StopServer()
 
 		regex := ".*"
-		var semver bool
-		var tlsVerify bool
+
+		var (
+			semver bool
+			tlsVerify bool
+		)
 
 		syncRegistryConfig := syncconf.RegistryConfig{
 			Content: []syncconf.Content{
@@ -3775,6 +3811,7 @@ func TestOnDemandRepoErr(t *testing.T) {
 
 		dcm := test.NewControllerManager(dctlr)
 		dcm.StartAndWait(dctlr.Config.HTTP.Port)
+
 		defer dcm.StopServer()
 
 		resp, err := resty.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
@@ -3793,8 +3830,11 @@ func TestOnDemandContentFiltering(t *testing.T) {
 
 		Convey("Test image is filtered out by content", func() {
 			regex := ".*"
-			var semver bool
-			var tlsVerify bool
+
+			var (
+				semver bool
+				tlsVerify bool
+			)
 
 			syncRegistryConfig := syncconf.RegistryConfig{
 				Content: []syncconf.Content{
@@ -3823,6 +3863,7 @@ func TestOnDemandContentFiltering(t *testing.T) {
 
 			dcm := test.NewControllerManager(dctlr)
 			dcm.StartAndWait(dctlr.Config.HTTP.Port)
+
 			defer dcm.StopServer()
 
 			resp, err := resty.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
@@ -3833,6 +3874,7 @@ func TestOnDemandContentFiltering(t *testing.T) {
 		Convey("Test image is not filtered out by content", func() {
 			regex := ".*"
 			semver := true
+
 			var tlsVerify bool
 
 			syncRegistryConfig := syncconf.RegistryConfig{
@@ -3988,6 +4030,7 @@ func TestMultipleURLs(t *testing.T) {
 
 		regex := ".*"
 		semver := true
+
 		var tlsVerify bool
 
 		syncRegistryConfig := syncconf.RegistryConfig{
@@ -4129,8 +4172,11 @@ func TestPeriodicallySignaturesErr(t *testing.T) {
 		So(func() { signImage(tdir, srcPort, repoName, digest) }, ShouldNotPanic)
 
 		regex := ".*"
-		var semver bool
-		var tlsVerify bool
+		
+		var (
+			semver bool
+			tlsVerify bool
+		)
 
 		syncRegistryConfig := syncconf.RegistryConfig{
 			Content: []syncconf.Content{
@@ -4177,8 +4223,10 @@ func TestPeriodicallySignaturesErr(t *testing.T) {
 			So(err, ShouldBeNil)
 
 			dctlr, destBaseURL, _, _ := makeDownstreamServer(t, false, syncConfig)
+
 			dcm := test.NewControllerManager(dctlr)
 			dcm.StartAndWait(dctlr.Config.HTTP.Port)
+
 			defer dcm.StopServer()
 
 			found, err := test.ReadLogFileAndSearchString(dctlr.Config.Log.Output,
@@ -4614,8 +4662,12 @@ func TestSignatures(t *testing.T) {
 		So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
 
 		regex := ".*"
-		var semver bool
-		var tlsVerify bool
+		
+		var (
+			semver bool
+			tlsVerify bool
+		)
+		
 		onlySigned := true
 
 		syncRegistryConfig := syncconf.RegistryConfig{
@@ -5070,8 +5122,12 @@ func TestSignatures(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		regex := ".*"
-		var semver bool
-		var tlsVerify bool
+
+		var (
+			semver bool
+			tlsVerify bool
+		)
+
 		onlySigned := true
 
 		syncRegistryConfig := syncconf.RegistryConfig{
@@ -5505,6 +5561,7 @@ func TestOnDemandMultipleImage(t *testing.T) {
 		populatedDirs := make(map[string]bool)
 
 		done := make(chan bool)
+
 		go func() {
 			/* watch .sync local cache, make sure just one .sync/subdir is populated with image
 			the channel from ondemand should prevent spawning multiple go routines for the same image*/
@@ -5600,6 +5657,7 @@ func TestOnDemandPullsOnce(t *testing.T) {
 		var wg goSync.WaitGroup
 
 		wg.Add(1)
+
 		go func(conv C) {
 			defer wg.Done()
 			resp, err := resty.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
@@ -5865,6 +5923,7 @@ func TestSignaturesOnDemand(t *testing.T) {
 		}
 
 		resp, err = resty.R().Get(destBaseURL + "/v2/" + testSignedImage + "/manifests/" + testImageTag)
+
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
@@ -6236,6 +6295,7 @@ func TestSyncSignaturesDiff(t *testing.T) {
 
 		scm := test.NewControllerManager(sctlr)
 		scm.StartAndWait(sctlr.Config.HTTP.Port)
+
 		defer scm.StopServer()
 
 		// create repo, push and sign it
@@ -6259,8 +6319,10 @@ func TestSyncSignaturesDiff(t *testing.T) {
 		So(func() { signImage(tdir, srcPort, repoName, digest) }, ShouldNotPanic)
 
 		regex := ".*"
-		var semver bool
-		var tlsVerify bool
+		var (
+			semver bool
+			tlsVerify bool
+		)
 
 		syncRegistryConfig := syncconf.RegistryConfig{
 			Content: []syncconf.Content{
