@@ -73,6 +73,7 @@ func TestHandlers(t *testing.T) {
 		extensions.PutStar(response, request, mockmetaDB, log)
 		res := response.Result()
 		So(res.StatusCode, ShouldEqual, http.StatusBadRequest)
+
 		defer res.Body.Close()
 
 		extensions.PutBookmark(response, request, mockmetaDB, log)

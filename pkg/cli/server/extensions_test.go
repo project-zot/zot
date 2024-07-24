@@ -62,6 +62,7 @@ func TestVerifyExtensionsConfig(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
+
 		So(cli.NewServerRootCmd().Execute(), ShouldNotBeNil)
 
 		content = fmt.Sprintf(`{
@@ -101,6 +102,7 @@ func TestVerifyExtensionsConfig(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
+
 		So(cli.NewServerRootCmd().Execute(), ShouldNotBeNil)
 	})
 
@@ -137,7 +139,9 @@ func TestVerifyExtensionsConfig(t *testing.T) {
 		So(err, ShouldBeNil)
 		err = tmpfile.Close()
 		So(err, ShouldBeNil)
+
 		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
+
 		So(cli.NewServerRootCmd().Execute(), ShouldBeNil)
 	})
 
@@ -158,6 +162,7 @@ func TestVerifyExtensionsConfig(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
+
 		So(cli.NewServerRootCmd().Execute(), ShouldNotBeNil)
 	})
 
@@ -246,7 +251,9 @@ func TestValidateExtensionsConfig(t *testing.T) {
 		config := config.New()
 		tmpfile, err := os.CreateTemp("", "zot-test*.json")
 		So(err, ShouldBeNil)
+
 		defer os.Remove(tmpfile.Name())
+
 		content := []byte(`{
 			"storage": {
 				"rootDirectory": "%/tmp/zot"
@@ -340,6 +347,7 @@ func TestValidateExtensionsConfig(t *testing.T) {
 		config := config.New()
 		tmpfile, err := os.CreateTemp("", "zot-test*.json")
 		So(err, ShouldBeNil)
+
 		defer os.Remove(tmpfile.Name())
 
 		content := []byte(`{
@@ -388,6 +396,7 @@ func TestServeExtensions(t *testing.T) {
 		baseURL := GetBaseURL(port)
 		logFile, err := os.CreateTemp("", "zot-log*.txt")
 		So(err, ShouldBeNil)
+
 		defer os.Remove(logFile.Name()) // clean up
 
 		tmpFile := t.TempDir()
@@ -425,7 +434,9 @@ func TestServeExtensions(t *testing.T) {
 		}()
 
 		WaitTillServerReady(baseURL)
+
 		data, err := os.ReadFile(logFile.Name())
+
 		So(err, ShouldBeNil)
 		So(string(data), ShouldContainSubstring, "\"Extensions\":null")
 	})
@@ -435,6 +446,7 @@ func TestServeExtensions(t *testing.T) {
 		baseURL := GetBaseURL(port)
 		logFile, err := os.CreateTemp("", "zot-log*.txt")
 		So(err, ShouldBeNil)
+
 		defer os.Remove(logFile.Name()) // clean up
 
 		tmpFile := t.TempDir()
@@ -609,6 +621,7 @@ func TestServeMetricsExtension(t *testing.T) {
 		logFile, err := os.CreateTemp("", "zot-log*.txt")
 		So(err, ShouldBeNil)
 		tmpFile := t.TempDir()
+
 		defer os.Remove(logFile.Name()) // clean up
 
 		content := fmt.Sprintf(`{
@@ -707,6 +720,7 @@ func TestServeSyncExtension(t *testing.T) {
 		So(err, ShouldBeNil)
 		data, err := os.ReadFile(logPath)
 		So(err, ShouldBeNil)
+
 		defer os.Remove(logPath) // clean up
 
 		So(string(data), ShouldContainSubstring,
@@ -754,6 +768,7 @@ func TestServeSyncExtension(t *testing.T) {
 		So(err, ShouldBeNil)
 		data, err := os.ReadFile(logPath)
 		So(err, ShouldBeNil)
+
 		defer os.Remove(logPath) // clean up
 
 		So(string(data), ShouldContainSubstring,
@@ -791,6 +806,7 @@ func TestServeSyncExtension(t *testing.T) {
 		So(err, ShouldBeNil)
 		data, err := os.ReadFile(logPath)
 		So(err, ShouldBeNil)
+
 		defer os.Remove(logPath) // clean up
 
 		So(string(data), ShouldContainSubstring,
@@ -826,6 +842,7 @@ func TestServeScrubExtension(t *testing.T) {
 		So(err, ShouldBeNil)
 		data, err := os.ReadFile(logPath)
 		So(err, ShouldBeNil)
+
 		defer os.Remove(logPath) // clean up
 
 		dataStr := string(data)
@@ -859,6 +876,7 @@ func TestServeScrubExtension(t *testing.T) {
 		So(err, ShouldBeNil)
 		data, err := os.ReadFile(logPath)
 		So(err, ShouldBeNil)
+
 		defer os.Remove(logPath) // clean up
 
 		// Even if in config we specified scrub interval=1h, the minimum interval is 2h
@@ -892,6 +910,7 @@ func TestServeScrubExtension(t *testing.T) {
 		So(err, ShouldBeNil)
 		data, err := os.ReadFile(logPath)
 		So(err, ShouldBeNil)
+
 		defer os.Remove(logPath) // clean up
 
 		dataStr := string(data)
@@ -925,6 +944,7 @@ func TestServeScrubExtension(t *testing.T) {
 		So(err, ShouldBeNil)
 		data, err := os.ReadFile(logPath)
 		So(err, ShouldBeNil)
+
 		defer os.Remove(logPath) // clean up
 
 		dataStr := string(data)
@@ -965,6 +985,7 @@ func TestServeLintExtension(t *testing.T) {
 		So(err, ShouldBeNil)
 		data, err := os.ReadFile(logPath)
 		So(err, ShouldBeNil)
+
 		defer os.Remove(logPath) // clean up
 
 		So(string(data), ShouldContainSubstring,
@@ -995,6 +1016,7 @@ func TestServeLintExtension(t *testing.T) {
 		So(err, ShouldBeNil)
 		data, err := os.ReadFile(logPath)
 		So(err, ShouldBeNil)
+
 		defer os.Remove(logPath) // clean up
 
 		So(string(data), ShouldContainSubstring,
@@ -1077,7 +1099,9 @@ func TestServeSearchEnabledCVE(t *testing.T) {
 		tempDir := t.TempDir()
 		logPath, err := runCLIWithConfig(tempDir, content)
 		So(err, ShouldBeNil)
+
 		defer os.Remove(logPath) // clean up
+
 		// to avoid data race when multiple go routines write to trivy DB instance.
 		WaitTillTrivyDBDownloadStarted(tempDir)
 
@@ -1132,6 +1156,7 @@ func TestServeSearchEnabledNoCVE(t *testing.T) {
 		tempDir := t.TempDir()
 		logPath, err := runCLIWithConfig(tempDir, content)
 		So(err, ShouldBeNil)
+
 		defer os.Remove(logPath) // clean up
 
 		substring := `"Extensions":{"Search":{"Enable":true,"CVE":null}` //nolint:lll // gofumpt conflicts with lll
@@ -1180,6 +1205,7 @@ func TestServeSearchDisabled(t *testing.T) {
 		So(err, ShouldBeNil)
 		data, err := os.ReadFile(logPath)
 		So(err, ShouldBeNil)
+
 		defer os.Remove(logPath) // clean up
 
 		dataStr := string(data)
@@ -1498,6 +1524,7 @@ func TestOverlappingSyncRetentionConfig(t *testing.T) {
 		So(err, ShouldBeNil)
 		data, err := os.ReadFile(logPath)
 		So(err, ShouldBeNil)
+
 		defer os.Remove(logPath) // clean up
 
 		So(string(data), ShouldNotContainSubstring, "overlapping sync content")
@@ -1695,6 +1722,7 @@ func TestOverlappingSyncRetentionConfig(t *testing.T) {
 		So(err, ShouldBeNil)
 		data, err := os.ReadFile(logPath)
 		So(err, ShouldBeNil)
+
 		defer os.Remove(logPath) // clean up
 
 		So(string(data), ShouldContainSubstring, "overlapping sync content\":{\"Prefix\":\"prod/*")
@@ -1761,6 +1789,7 @@ func TestSyncWithRemoteStorageConfig(t *testing.T) {
 
 		data, err := os.ReadFile(logPath)
 		So(err, ShouldBeNil)
+
 		defer os.Remove(logPath) // clean up
 
 		So(string(data), ShouldNotContainSubstring,
@@ -1830,6 +1859,7 @@ func TestSyncWithRemoteStorageConfig(t *testing.T) {
 
 		data, err := os.ReadFile(logFile.Name())
 		So(err, ShouldBeNil)
+
 		defer os.Remove(logFile.Name()) // clean up
 
 		So(string(data), ShouldContainSubstring,

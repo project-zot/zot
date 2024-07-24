@@ -681,6 +681,7 @@ func TestRepoListWithNewestImage(t *testing.T) {
 		// stdout and a file
 		logFile, err := os.CreateTemp(t.TempDir(), "zot-log*.txt")
 		So(err, ShouldBeNil)
+
 		logPath := logFile.Name()
 		defer os.Remove(logPath)
 
@@ -813,6 +814,7 @@ func TestGetReferrersGQL(t *testing.T) {
 		ctlr := api.NewController(conf)
 		ctlrManager := NewControllerManager(ctlr)
 		ctlrManager.StartAndWait(port)
+
 		defer ctlrManager.StopServer()
 
 		// =======================
@@ -1347,6 +1349,7 @@ func TestExpandedRepoInfo(t *testing.T) {
 				So(m.IsSigned, ShouldEqual, false)
 			}
 		}
+
 		So(found, ShouldEqual, true)
 
 		err = signature.SignImageUsingCosign("zot-cve-test:0.0.1", port, false)
@@ -1423,6 +1426,7 @@ func TestExpandedRepoInfo(t *testing.T) {
 				So(m.IsSigned, ShouldEqual, false)
 			}
 		}
+
 		So(found, ShouldEqual, true)
 
 		err = signature.SignImageUsingCosign("zot-test@"+testManifestDigest.String(), port, false)
@@ -1729,6 +1733,7 @@ func TestExpandedRepoInfo(t *testing.T) {
 				So(len(is.Manifests), ShouldEqual, 2)
 			}
 		}
+
 		So(found, ShouldBeTrue)
 
 		found = false
@@ -1740,6 +1745,7 @@ func TestExpandedRepoInfo(t *testing.T) {
 				So(len(is.Manifests), ShouldEqual, 3)
 			}
 		}
+
 		So(found, ShouldBeTrue)
 	})
 }
@@ -2134,6 +2140,7 @@ func TestDerivedImageList(t *testing.T) {
 				contains = result
 			}
 		}
+
 		So(contains, ShouldBeTrue)
 	})
 }
@@ -2781,6 +2788,7 @@ func TestBaseImageList(t *testing.T) {
 				contains = result
 			}
 		}
+
 		So(contains, ShouldBeTrue)
 	})
 }
@@ -3153,6 +3161,7 @@ func TestGlobalSearch(t *testing.T) {
 			repoInfo, err := olu.GetExpandedRepoInfo(repo)
 			So(err, ShouldBeNil)
 			allExpectedRepoInfoMap[repo] = repoInfo
+
 			for _, image := range repoInfo.ImageSummaries {
 				imageName := fmt.Sprintf("%s:%s", repo, image.Tag)
 				allExpectedImageSummaryMap[imageName] = image
@@ -3501,6 +3510,7 @@ func TestGlobalSearch(t *testing.T) {
 			repoInfo, err := olu.GetExpandedRepoInfo(repo)
 			So(err, ShouldBeNil)
 			allExpectedRepoInfoMap[repo] = repoInfo
+
 			for _, image := range repoInfo.ImageSummaries {
 				imageName := fmt.Sprintf("%s:%s", repo, image.Tag)
 				allExpectedImageSummaryMap[imageName] = image
@@ -4180,11 +4190,14 @@ func TestImageList(t *testing.T) {
 
 		buf, _, _, err := imageStore.GetImageManifest(repos[0], tags[0])
 		So(err, ShouldBeNil)
+
 		var imageManifest ispec.Manifest
+
 		err = json.Unmarshal(buf, &imageManifest)
 		So(err, ShouldBeNil)
 
 		var imageConfigInfo ispec.Image
+
 		imageConfigBuf, err := imageStore.GetBlobContent(repos[0], imageManifest.Config.Digest)
 		So(err, ShouldBeNil)
 		err = json.Unmarshal(imageConfigBuf, &imageConfigInfo)
@@ -5549,6 +5562,7 @@ func TestMetaDBWhenDeletingImages(t *testing.T) {
 			// check notation signature
 			manifest1Blob, err := json.Marshal(image1.Manifest)
 			So(err, ShouldBeNil)
+
 			manifest1Digest := godigest.FromBytes(manifest1Blob)
 			So(sigManifestContent.Subject, ShouldNotBeNil)
 			So(sigManifestContent.Subject.Digest.String(), ShouldEqual, manifest1Digest.String())
@@ -5773,6 +5787,7 @@ func TestSearchSize(t *testing.T) {
 		configSize := uploadedImage.ConfigDescriptor.Size
 		manifestSize := uploadedImage.ManifestDescriptor.Size
 		layersSize := int64(0)
+
 		for _, l := range uploadedImage.Layers {
 			layersSize += int64(len(l))
 		}
@@ -6054,6 +6069,7 @@ func TestImageSummary(t *testing.T) {
 		contains := false
 
 		resp, err = resty.R().Get(targetURL)
+
 		So(resp, ShouldNotBeNil)
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
@@ -6061,6 +6077,7 @@ func TestImageSummary(t *testing.T) {
 
 		err = json.Unmarshal(resp.Body(), &imgSummaryResponse)
 		So(err, ShouldBeNil)
+
 		for _, err := range imgSummaryResponse.Errors {
 			result := strings.Contains(err.Message, "no reference provided")
 			if result {

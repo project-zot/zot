@@ -1634,7 +1634,7 @@ func TestPeriodically(t *testing.T) {
 		defer dcm.StopServer()
 
 		var (
-			srcTagsList TagsList
+			srcTagsList  TagsList
 			destTagsList TagsList
 		)
 
@@ -2723,7 +2723,7 @@ func TestBearerAuth(t *testing.T) {
 		defer dcm.StopServer()
 
 		var (
-			srcTagsList TagsList
+			srcTagsList  TagsList
 			destTagsList TagsList
 		)
 
@@ -2996,7 +2996,7 @@ func TestBasicAuth(t *testing.T) {
 			regex := ".*"
 
 			var (
-				semver bool
+				semver    bool
 				tlsVerify bool
 			)
 
@@ -3157,7 +3157,7 @@ func TestBadURL(t *testing.T) {
 		regex := ".*"
 
 		var (
-			semver bool
+			semver    bool
 			tlsVerify bool
 		)
 
@@ -3564,7 +3564,7 @@ func TestInvalidUrl(t *testing.T) {
 		updateDuration, _ := time.ParseDuration("30m")
 		regex := ".*"
 		var (
-			semver bool
+			semver    bool
 			tlsVerify bool
 		)
 
@@ -3618,7 +3618,7 @@ func TestInvalidTags(t *testing.T) {
 		regex := ".*"
 
 		var (
-			semver bool
+			semver    bool
 			tlsVerify bool
 		)
 
@@ -3692,7 +3692,7 @@ func TestSubPaths(t *testing.T) {
 		regex := ".*"
 
 		var (
-			semver bool
+			semver    bool
 			tlsVerify bool
 		)
 
@@ -3832,7 +3832,7 @@ func TestOnDemandContentFiltering(t *testing.T) {
 			regex := ".*"
 
 			var (
-				semver bool
+				semver    bool
 				tlsVerify bool
 			)
 
@@ -4172,9 +4172,9 @@ func TestPeriodicallySignaturesErr(t *testing.T) {
 		So(func() { signImage(tdir, srcPort, repoName, digest) }, ShouldNotPanic)
 
 		regex := ".*"
-		
+
 		var (
-			semver bool
+			semver    bool
 			tlsVerify bool
 		)
 
@@ -4662,12 +4662,12 @@ func TestSignatures(t *testing.T) {
 		So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
 
 		regex := ".*"
-		
+
 		var (
-			semver bool
+			semver    bool
 			tlsVerify bool
 		)
-		
+
 		onlySigned := true
 
 		syncRegistryConfig := syncconf.RegistryConfig{
@@ -5124,7 +5124,7 @@ func TestSignatures(t *testing.T) {
 		regex := ".*"
 
 		var (
-			semver bool
+			semver    bool
 			tlsVerify bool
 		)
 
@@ -6320,7 +6320,7 @@ func TestSyncSignaturesDiff(t *testing.T) {
 
 		regex := ".*"
 		var (
-			semver bool
+			semver    bool
 			tlsVerify bool
 		)
 

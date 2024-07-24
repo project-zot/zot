@@ -590,14 +590,17 @@ func TestCVESearch(t *testing.T) {
 		var cveResult CveResult
 		contains := false
 		resp, _ = resty.R().SetBasicAuth(username, password).Get(baseURL + constants.FullSearchPrefix + "?query={CVEListForImage(image:\"zot-test\"){Tag%20CVEList{Id%20Description%20Severity%20PackageList{Name%20InstalledVersion%20FixedVersion}}}}")
+
 		err = json.Unmarshal(resp.Body(), &cveResult)
 		So(err, ShouldBeNil)
+
 		for _, err := range cveResult.Errors {
 			result := strings.Contains(err.Message, "no reference provided")
 			if result {
 				contains = result
 			}
 		}
+
 		So(contains, ShouldBeTrue)
 
 		resp, _ = resty.R().SetBasicAuth(username, password).Get(baseURL + constants.FullSearchPrefix + "?query={CVEListForImage(image:\"zot-test:0.0.1\"){Tag%20CVEList{Id%20Description%20Severity%20PackageList{Name%20InstalledVersion%20FixedVersion}}}}")

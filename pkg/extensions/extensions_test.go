@@ -147,6 +147,7 @@ func TestMgmtExtension(t *testing.T) {
 
 		defer func() {
 			conf.HTTP.Auth.HTPasswd.Path = ""
+
 			os.Remove(htpasswdPath)
 		}()
 
@@ -737,6 +738,7 @@ func TestMgmtExtension(t *testing.T) {
 
 		defer func() {
 			conf.HTTP.Auth.HTPasswd.Path = ""
+
 			os.Remove(htpasswdPath)
 		}()
 

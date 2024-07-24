@@ -864,6 +864,7 @@ func RunSignatureUploadAndVerificationTests(t *testing.T, cacheDriverParams map[
 
 		// Write image
 		image := CreateRandomImage()
+
 		err = WriteImageToFileSystem(image, repo, tag, storeController)
 		So(err, ShouldBeNil)
 
