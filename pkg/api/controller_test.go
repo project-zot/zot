@@ -767,6 +767,7 @@ func TestHtpasswdFiveCreds(t *testing.T) {
 			conf := config.New()
 			conf.HTTP.Port = port
 			htpasswdPath := test.MakeHtpasswdFileFromString(credString.String())
+
 			defer os.Remove(htpasswdPath)
 			conf.HTTP.Auth = &config.AuthConfig{
 				HTPasswd: config.AuthHTPasswd{
@@ -1112,6 +1113,7 @@ func TestScaleOutRequestProxy(t *testing.T) {
 		ports := make([]string, numMembers)
 
 		clusterMembers := make([]string, numMembers)
+
 		for idx := 0; idx < numMembers; idx++ {
 			port := test.GetFreePort()
 			ports[idx] = port
@@ -1253,10 +1255,12 @@ func TestScaleOutRequestProxy(t *testing.T) {
 					So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
 					result := common.ImageTags{}
+
 					err = json.Unmarshal(resp.Body(), &result)
 					if err != nil {
 						t.Fatalf("Failed to unmarshal")
 					}
+
 					So(result.Name, ShouldEqual, repoName)
 					So(len(result.Tags), ShouldEqual, 1)
 					So(result.Tags[0], ShouldEqual, "1.0")
@@ -1304,6 +1308,7 @@ func TestScaleOutRequestProxy(t *testing.T) {
 		caCertPool := x509.NewCertPool()
 		caCertPool.AppendCertsFromPEM(caCert)
 		resty.SetTLSClientConfig(&tls.Config{RootCAs: caCertPool, MinVersion: tls.VersionTLS12})
+
 		defer func() { resty.SetTLSClientConfig(nil) }()
 
 		Convey("Both controllers should start up and respond without error", func() {
@@ -2826,13 +2831,13 @@ func (l *testLDAPServer) Search(boundDN string, req vldap.SearchRequest,
 
 func TestBasicAuthWithLDAP(t *testing.T) {
 	Convey("Make a new controller", t, func() {
-		l := newTestLDAPServer()
+		ldapServer := newTestLDAPServer()
 		port := test.GetFreePort()
 		ldapPort, err := strconv.Atoi(port)
 		So(err, ShouldBeNil)
-		l.Start(ldapPort)
+		ldapServer.Start(ldapPort)
 
-		defer l.Stop()
+		defer ldapServer.Stop()
 
 		port = test.GetFreePort()
 		baseURL := test.GetBaseURL(port)
@@ -2888,6 +2893,7 @@ func TestBasicAuthWithReloadedCredentials(t *testing.T) {
 		ldapPort, err := strconv.Atoi(test.GetFreePort())
 		So(err, ShouldBeNil)
 		l.Start(ldapPort)
+
 		defer l.Stop()
 
 		tempDir := t.TempDir()
@@ -3062,13 +3068,13 @@ func TestBasicAuthWithReloadedCredentials(t *testing.T) {
 
 func TestLDAPWithoutCreds(t *testing.T) {
 	Convey("Make a new LDAP server", t, func() {
-		l := newTestLDAPServer()
+		ldapServer := newTestLDAPServer()
 		port := test.GetFreePort()
 		ldapPort, err := strconv.Atoi(port)
 		So(err, ShouldBeNil)
-		l.Start(ldapPort)
+		ldapServer.Start(ldapPort)
 
-		defer l.Stop()
+		defer ldapServer.Stop()
 
 		Convey("Server credentials succed ldap auth", func() {
 			port = test.GetFreePort()
@@ -3146,13 +3152,13 @@ func TestLDAPWithoutCreds(t *testing.T) {
 
 func TestBasicAuthWithLDAPFromFile(t *testing.T) {
 	Convey("Make a new controller", t, func() {
-		l := newTestLDAPServer()
+		ldapServer := newTestLDAPServer()
 		port := test.GetFreePort()
 		ldapPort, err := strconv.Atoi(port)
 		So(err, ShouldBeNil)
-		l.Start(ldapPort)
+		ldapServer.Start(ldapPort)
 
-		defer l.Stop()
+		defer ldapServer.Stop()
 
 		port = test.GetFreePort()
 		baseURL := test.GetBaseURL(port)
@@ -3357,13 +3363,13 @@ func TestLDAPConfigErrors(t *testing.T) {
 
 func TestGroupsPermissionsForLDAP(t *testing.T) {
 	Convey("Make a new controller", t, func() {
-		l := newTestLDAPServer()
+		ldapServer := newTestLDAPServer()
 		port := test.GetFreePort()
 		ldapPort, err := strconv.Atoi(port)
 		So(err, ShouldBeNil)
-		l.Start(ldapPort)
+		ldapServer.Start(ldapPort)
 
-		defer l.Stop()
+		defer ldapServer.Stop()
 
 		port = test.GetFreePort()
 		baseURL := test.GetBaseURL(port)
@@ -3430,6 +3436,7 @@ func TestLDAPConfigFromFile(t *testing.T) {
 		ldapPort, err := strconv.Atoi(port)
 		So(err, ShouldBeNil)
 		l.Start(ldapPort)
+
 		defer l.Stop()
 
 		port = test.GetFreePort()
@@ -3520,13 +3527,13 @@ func TestLDAPConfigFromFile(t *testing.T) {
 
 func TestLDAPFailures(t *testing.T) {
 	Convey("Make a LDAP conn", t, func() {
-		l := newTestLDAPServer()
+		ldapServer := newTestLDAPServer()
 		port := test.GetFreePort()
 		ldapPort, err := strconv.Atoi(port)
 		So(err, ShouldBeNil)
-		l.Start(ldapPort)
+		ldapServer.Start(ldapPort)
 
-		defer l.Stop()
+		defer ldapServer.Stop()
 
 		Convey("Empty config", func() {
 			lc := &api.LDAPClient{}
@@ -3562,6 +3569,7 @@ func TestLDAPClient(t *testing.T) {
 		ldapPort, err := strconv.Atoi(port)
 		So(err, ShouldBeNil)
 		l.Start(ldapPort)
+
 		defer l.Stop()
 
 		// bad server credentials
@@ -3787,7 +3795,9 @@ func TestBearerAuth(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
 		var badToken authutils.AccessTokenResponse
+
 		err = json.Unmarshal(resp.Body(), &badToken)
 		So(err, ShouldBeNil)
 
@@ -3985,6 +3995,7 @@ func TestBearerAuthWithAllowReadAccess(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
 		var badToken authutils.AccessTokenResponse
 		err = json.Unmarshal(resp.Body(), &badToken)
 		So(err, ShouldBeNil)
@@ -5636,6 +5647,7 @@ func TestAuthorizationWithAnonymousPolicyBasicAuthAndSessionHeader(t *testing.T)
 	Convey("Make a new controller", t, func() {
 		const TestRepo = "my-repos/repo"
 		const AllRepos = "**"
+
 		port := test.GetFreePort()
 		baseURL := test.GetBaseURL(port)
 
@@ -6634,6 +6646,7 @@ func TestParallelRequests(t *testing.T) {
 
 					if run%4 == 0 {
 						readContent := 0
+
 						for {
 							nbytes, err := reader.Read(buf)
 							if err != nil {
@@ -6666,6 +6679,7 @@ func TestParallelRequests(t *testing.T) {
 								if goerrors.Is(err, io.EOF) {
 									break
 								}
+
 								panic(err)
 							}
 							// Patch request of blob
@@ -6939,7 +6953,9 @@ func TestImageSignatures(t *testing.T) {
 					fmt.Sprintf("%s/v2/%s/referrers/%s", baseURL, repoName, digest.String()))
 				So(err, ShouldBeNil)
 				So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
 				var refs ispec.Index
+
 				err = json.Unmarshal(resp.Body(), &refs)
 				So(err, ShouldBeNil)
 				So(len(refs.Manifests), ShouldEqual, 1)
@@ -6961,6 +6977,7 @@ func TestImageSignatures(t *testing.T) {
 					fmt.Sprintf("%s/v2/%s/referrers/%s", baseURL, repoName, digest.String()))
 				So(err, ShouldBeNil)
 				So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
 				var refs ispec.Index
 				err = json.Unmarshal(resp.Body(), &refs)
 				So(err, ShouldBeNil)
@@ -9799,6 +9816,7 @@ func TestSearchRoutes(t *testing.T) {
 			testString1 := test.GetCredString(user1, password1)
 
 			htpasswdPath := test.MakeHtpasswdFileFromString(testString1)
+
 			defer os.Remove(htpasswdPath)
 
 			conf.HTTP.Auth = &config.AuthConfig{
@@ -9940,6 +9958,7 @@ func TestSearchRoutes(t *testing.T) {
 			testString1 := test.GetCredString(user1, password1)
 
 			htpasswdPath := test.MakeHtpasswdFileFromString(testString1)
+
 			defer os.Remove(htpasswdPath)
 
 			conf.HTTP.Auth = &config.AuthConfig{
@@ -10008,6 +10027,7 @@ func TestSearchRoutes(t *testing.T) {
 						}`
 			resp, err := resty.R().SetBasicAuth(user1, password1).Get(baseURL + constants.FullSearchPrefix +
 				"?query=" + url.QueryEscape(query))
+
 			So(err, ShouldBeNil)
 			So(resp, ShouldNotBeNil)
 			So(resp.StatusCode(), ShouldEqual, 200)
@@ -10024,6 +10044,7 @@ func TestSearchRoutes(t *testing.T) {
 			group2 := "secondtestgroup"
 			testString1 := test.GetCredString(user1, password1)
 			htpasswdPath := test.MakeHtpasswdFileFromString(testString1)
+
 			defer os.Remove(htpasswdPath)
 			conf.HTTP.Auth = &config.AuthConfig{
 				HTPasswd: config.AuthHTPasswd{
@@ -10093,6 +10114,7 @@ func TestSearchRoutes(t *testing.T) {
 			group1 := "testgroup"
 			testString1 := test.GetCredString(user1, password1)
 			htpasswdPath := test.MakeHtpasswdFileFromString(testString1)
+
 			defer os.Remove(htpasswdPath)
 			conf.HTTP.Auth = &config.AuthConfig{
 				HTPasswd: config.AuthHTPasswd{
@@ -10163,6 +10185,7 @@ func TestSearchRoutes(t *testing.T) {
 			testString1 := test.GetCredString(user1, password1)
 
 			htpasswdPath := test.MakeHtpasswdFileFromString(testString1)
+
 			defer os.Remove(htpasswdPath)
 
 			conf.HTTP.Auth = &config.AuthConfig{
@@ -10233,6 +10256,7 @@ func TestSearchRoutes(t *testing.T) {
 			group1 := "testgroup2"
 			testString1 := test.GetCredString(user1, password1)
 			htpasswdPath := test.MakeHtpasswdFileFromString(testString1)
+
 			defer os.Remove(htpasswdPath)
 			conf.HTTP.Auth = &config.AuthConfig{
 				HTPasswd: config.AuthHTPasswd{
@@ -10288,6 +10312,7 @@ func TestSearchRoutes(t *testing.T) {
 			group1, seedGroup1 := test.GenerateRandomString()
 			user1, seedUser1 := test.GenerateRandomString()
 			password1, seedPass1 := test.GenerateRandomString()
+
 			htpasswdPath := test.MakeHtpasswdFileFromString(test.GetCredString(user1, password1))
 			defer os.Remove(htpasswdPath)
 
@@ -10418,14 +10443,14 @@ func TestDistSpecExtensions(t *testing.T) {
 		logFile, err := os.CreateTemp("", "zot-log*.txt")
 		So(err, ShouldBeNil)
 		conf.Log.Output = logFile.Name()
-		
+
 		defer os.Remove(logFile.Name()) // clean up
 
 		ctlr := makeController(conf, t.TempDir())
 
 		cm := test.NewControllerManager(ctlr)
 		cm.StartAndWait(port)
-		
+
 		defer cm.StopServer()
 
 		var extensionList distext.ExtensionList
