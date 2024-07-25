@@ -36,6 +36,7 @@ func TestConfigCmdBasics(t *testing.T) {
 
 		Convey("with the shorthand", func() {
 			args[0] = "-h"
+
 			configPath := makeConfigFile("showspinner = false")
 			defer os.Remove(configPath)
 
@@ -124,6 +125,7 @@ func TestConfigCmdMain(t *testing.T) {
 
 	Convey("Test error on home directory at new add config", t, func() {
 		args := []string{"add", "configtest1", "https://test-url.com"}
+
 		file := makeConfigFile("")
 		defer os.Remove(file)
 
@@ -153,6 +155,7 @@ func TestConfigCmdMain(t *testing.T) {
 
 	Convey("Test add config with invalid format", t, func() {
 		args := []string{"--list"}
+
 		configPath := makeConfigFile(`{"configs":{"_name":"configtest","url":"https://test-url.com","showspinner":false}}`)
 		defer os.Remove(configPath)
 
@@ -167,6 +170,7 @@ func TestConfigCmdMain(t *testing.T) {
 
 	Convey("Test add config with invalid URL", t, func() {
 		args := []string{"add", "configtest1", "test..com"}
+
 		file := makeConfigFile("")
 		defer os.Remove(file)
 
@@ -182,6 +186,7 @@ func TestConfigCmdMain(t *testing.T) {
 
 	Convey("Test remove config entry successfully", t, func() {
 		args := []string{"remove", "configtest"}
+
 		configPath := makeConfigFile(`{"configs":[{"_name":"configtest","url":"https://test-url.com","showspinner":false}]}`)
 		defer os.Remove(configPath)
 
@@ -435,8 +440,10 @@ func TestConfigCmdMain(t *testing.T) {
 
 		Convey("To an empty file", func() {
 			args := []string{"configtest", "showspinner", "false"}
+
 			configPath := makeConfigFile(``)
 			defer os.Remove(configPath)
+
 			cmd := client.NewConfigCommand()
 			buff := bytes.NewBufferString("")
 			cmd.SetOut(buff)

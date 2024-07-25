@@ -671,7 +671,7 @@ func TestServerResponseGQL(t *testing.T) {
 
 			Convey("invalid output format", func() {
 				args := []string{"name", "repo7", "--config", "imagetest", "-f", "random"}
-				
+
 				configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s","showspinner":false}]}`, url))
 				defer os.Remove(configPath)
 
