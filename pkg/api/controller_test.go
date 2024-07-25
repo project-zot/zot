@@ -6693,7 +6693,7 @@ func TestParallelRequests(t *testing.T) {
 
 					var sessionID string
 
-					sessionIDList := postResponse.Header().Values("Blob-Upload-UUID")
+					sessionIDList := postResponse.Header().Values("Blob-Upload-UUID") //nolint:canonicalheader
 					if len(sessionIDList) == 0 {
 						location := postResponse.Header().Values("Location")
 						firstLocation := location[0]
@@ -7529,7 +7529,7 @@ func TestArtifactReferences(t *testing.T) {
 				So(err, ShouldBeNil)
 				So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 				So(resp.Header().Get("Content-Type"), ShouldEqual, ispec.MediaTypeImageIndex)
-				So(resp.Header().Get("OCI-Filters-Applied"), ShouldEqual, "artifactType")
+				So(resp.Header().Get("OCI-Filters-Applied"), ShouldEqual, "artifactType") //nolint:canonicalheader
 
 				resp, err = resty.R().SetQueryParams(map[string]string{"artifactType": artifactType +
 					",otherArtType"}).Get(baseURL + fmt.Sprintf("/v2/%s/referrers/%s", repoName,
@@ -7537,7 +7537,7 @@ func TestArtifactReferences(t *testing.T) {
 				So(err, ShouldBeNil)
 				So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 				So(resp.Header().Get("Content-Type"), ShouldEqual, ispec.MediaTypeImageIndex)
-				So(resp.Header().Get("OCI-Filters-Applied"), ShouldEqual, "artifactType")
+				So(resp.Header().Get("OCI-Filters-Applied"), ShouldEqual, "artifactType") //nolint:canonicalheader
 			})
 		})
 	})
