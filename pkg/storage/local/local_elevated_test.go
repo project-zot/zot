@@ -83,6 +83,7 @@ func TestElevatedPrivilegesInvalidDedupe(t *testing.T) {
 		So(blob, ShouldEqual, buflen)
 
 		cmd := exec.Command("chattr", "+i", path.Join(dir, "dedupe2", "blobs/sha256", blobDigest1)) //nolint: gosec
+
 		_, err = cmd.Output()
 		if err != nil {
 			panic(err)
@@ -93,6 +94,7 @@ func TestElevatedPrivilegesInvalidDedupe(t *testing.T) {
 		So(blob, ShouldEqual, buflen)
 
 		cmd = exec.Command("chattr", "-i", path.Join(dir, "dedupe2", "blobs/sha256", blobDigest1)) //nolint: gosec
+
 		_, err = cmd.Output()
 		if err != nil {
 			panic(err)

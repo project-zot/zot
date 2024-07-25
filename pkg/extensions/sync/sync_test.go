@@ -7371,6 +7371,7 @@ func pushBlob(url string, repoName string, buf []byte) godigest.Digest {
 		SetQueryParam("digest", digest.String()).
 		SetBody(buf).
 		Put(loc)
+
 	if err != nil {
 		panic(err)
 	}
