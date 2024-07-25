@@ -6542,7 +6542,7 @@ func TestSyncSignaturesDiff(t *testing.T) {
 
 		// compare signatures
 		var (
-			srcIndex ispec.Index
+			srcIndex  ispec.Index
 			destIndex ispec.Index
 		)
 
@@ -7371,7 +7371,6 @@ func pushBlob(url string, repoName string, buf []byte) godigest.Digest {
 		SetQueryParam("digest", digest.String()).
 		SetBody(buf).
 		Put(loc)
-
 	if err != nil {
 		panic(err)
 	}
