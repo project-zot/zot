@@ -7364,6 +7364,7 @@ func pushBlob(url string, repoName string, buf []byte) godigest.Digest {
 	loc := test.Location(url, resp)
 
 	digest := godigest.FromBytes(buf)
+
 	resp, err = resty.R().
 		SetContentLength(true).
 		SetHeader("Content-Length", strconv.Itoa(len(buf))).
@@ -7371,7 +7372,7 @@ func pushBlob(url string, repoName string, buf []byte) godigest.Digest {
 		SetQueryParam("digest", digest.String()).
 		SetBody(buf).
 		Put(loc)
-	if err != nil { //nolint:wsl // conflicts with gofumpt
+	if err != nil {
 		panic(err)
 	}
 
