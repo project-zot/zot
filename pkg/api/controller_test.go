@@ -343,6 +343,7 @@ func TestAutoPortSelection(t *testing.T) {
 
 		logFile, err := os.CreateTemp("", "zot-log*.txt")
 		So(err, ShouldBeNil)
+
 		conf.Log.Output = logFile.Name()
 
 		defer os.Remove(logFile.Name()) // clean up
@@ -363,19 +364,24 @@ func TestAutoPortSelection(t *testing.T) {
 		scanner := bufio.NewScanner(file)
 
 		var contents bytes.Buffer
+
 		start := time.Now()
 
 		for scanner.Scan() {
 			if time.Since(start) < time.Second*30 {
 				t.Logf("Exhausted: Controller did not print the expected log within 30 seconds")
 			}
+
 			text := scanner.Text()
 			contents.WriteString(text)
+
 			if strings.Contains(text, "Port unspecified") {
 				break
 			}
+
 			t.Logf(scanner.Text())
 		}
+
 		So(scanner.Err(), ShouldBeNil)
 		So(contents.String(), ShouldContainSubstring,
 			"port is unspecified, listening on kernel chosen port",
@@ -586,6 +592,7 @@ func TestHtpasswdSingleCred(t *testing.T) {
 
 				cm := test.NewControllerManager(ctlr)
 				cm.StartAndWait(port)
+
 				defer cm.StopServer()
 
 				// with creds, should get expected status code
@@ -727,6 +734,7 @@ func TestHtpasswdTwoCreds(t *testing.T) {
 				ctlr := makeController(conf, t.TempDir())
 				cm := test.NewControllerManager(ctlr)
 				cm.StartAndWait(port)
+
 				defer cm.StopServer()
 
 				// with creds, should get expected status code
@@ -757,6 +765,7 @@ func TestHtpasswdFiveCreds(t *testing.T) {
 			"creed":   "bratton",
 		}
 		credString := strings.Builder{}
+
 		for key, val := range tests {
 			credString.WriteString(test.GetCredString(key, val) + "\n")
 		}
@@ -778,6 +787,7 @@ func TestHtpasswdFiveCreds(t *testing.T) {
 
 			cm := test.NewControllerManager(ctlr)
 			cm.StartAndWait(port)
+
 			defer cm.StopServer()
 
 			// with creds, should get expected status code
@@ -1013,7 +1023,7 @@ func TestScaleOutRequestProxy(t *testing.T) {
 	Convey("Given a zot scale out cluster in http mode with only 1 member", t, func() {
 		port := test.GetFreePort()
 		clusterMembers := make([]string, 1)
-		clusterMembers[0] = fmt.Sprintf("127.0.0.1:%s", port)
+		clusterMembers[0] = "127.0.0.1:" + port
 
 		conf := config.New()
 		conf.HTTP.Port = port
@@ -1049,6 +1059,7 @@ func TestScaleOutRequestProxy(t *testing.T) {
 				So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
 				result := common.ImageTags{}
+
 				err = json.Unmarshal(resp.Body(), &result)
 				if err != nil {
 					t.Fatalf("Failed to unmarshal")
@@ -1066,7 +1077,7 @@ func TestScaleOutRequestProxy(t *testing.T) {
 	Convey("Given a scale out http cluster with only 1 online member", t, func() {
 		port := test.GetFreePort()
 		clusterMembers := make([]string, 3)
-		clusterMembers[0] = fmt.Sprintf("127.0.0.1:%s", port)
+		clusterMembers[0] = "127.0.0.1:" + port
 		clusterMembers[1] = "127.0.0.1:1"
 		clusterMembers[2] = "127.0.0.1:2"
 
@@ -1117,7 +1128,7 @@ func TestScaleOutRequestProxy(t *testing.T) {
 		for idx := 0; idx < numMembers; idx++ {
 			port := test.GetFreePort()
 			ports[idx] = port
-			clusterMembers[idx] = fmt.Sprintf("127.0.0.1:%s", port)
+			clusterMembers[idx] = "127.0.0.1:" + port
 		}
 
 		for _, port := range ports {
@@ -1131,6 +1142,7 @@ func TestScaleOutRequestProxy(t *testing.T) {
 			ctrlr := makeController(conf, t.TempDir())
 			cm := test.NewControllerManager(ctrlr)
 			cm.StartAndWait(port)
+
 			defer cm.StopServer()
 		}
 
@@ -1181,16 +1193,19 @@ func TestScaleOutRequestProxy(t *testing.T) {
 		ports := make([]string, numMembers)
 
 		clusterMembers := make([]string, numMembers)
+
 		for idx := 0; idx < numMembers; idx++ {
 			port := test.GetFreePort()
 			ports[idx] = port
-			clusterMembers[idx] = fmt.Sprintf("127.0.0.1:%s", port)
+			clusterMembers[idx] = "127.0.0.1:" + port
 		}
 
 		caCert, err := os.ReadFile(CACert)
 		So(err, ShouldBeNil)
+
 		caCertPool := x509.NewCertPool()
 		caCertPool.AppendCertsFromPEM(caCert)
+
 		username, _ := test.GenerateRandomString()
 		password, _ := test.GenerateRandomString()
 		htpasswdPath := test.MakeHtpasswdFileFromString(test.GetCredString(username, password))
@@ -1224,6 +1239,7 @@ func TestScaleOutRequestProxy(t *testing.T) {
 			ctrlr := makeController(conf, t.TempDir())
 			cm := test.NewControllerManager(ctrlr)
 			cm.StartAndWait(port)
+
 			defer cm.StopServer()
 		}
 
@@ -1279,7 +1295,7 @@ func TestScaleOutRequestProxy(t *testing.T) {
 		for idx := 0; idx < numMembers; idx++ {
 			port := test.GetFreePort()
 			ports[idx] = port
-			clusterMembers[idx] = fmt.Sprintf("127.0.0.1:%s", port)
+			clusterMembers[idx] = "127.0.0.1:" + port
 		}
 
 		for _, port := range ports {
@@ -1300,11 +1316,13 @@ func TestScaleOutRequestProxy(t *testing.T) {
 			ctrlr := makeController(conf, t.TempDir())
 			cm := test.NewControllerManager(ctrlr)
 			cm.StartAndWait(port)
+
 			defer cm.StopServer()
 		}
 
 		caCert, err := os.ReadFile(CACert)
 		So(err, ShouldBeNil)
+
 		caCertPool := x509.NewCertPool()
 		caCertPool.AppendCertsFromPEM(caCert)
 		resty.SetTLSClientConfig(&tls.Config{RootCAs: caCertPool, MinVersion: tls.VersionTLS12})
@@ -1335,10 +1353,11 @@ func TestScaleOutRequestProxy(t *testing.T) {
 		ports := make([]string, numMembers)
 
 		clusterMembers := make([]string, numMembers)
+
 		for idx := 0; idx < numMembers; idx++ {
 			port := test.GetFreePort()
 			ports[idx] = port
-			clusterMembers[idx] = fmt.Sprintf("127.0.0.1:%s", port)
+			clusterMembers[idx] = "127.0.0.1:" + port
 		}
 
 		for _, port := range ports {
@@ -1361,11 +1380,13 @@ func TestScaleOutRequestProxy(t *testing.T) {
 
 			cm := test.NewControllerManager(ctrlr)
 			cm.StartAndWait(port)
+
 			defer cm.StopServer()
 		}
 
 		caCert, err := os.ReadFile(CACert)
 		So(err, ShouldBeNil)
+
 		caCertPool := x509.NewCertPool()
 		caCertPool.AppendCertsFromPEM(caCert)
 		resty.SetTLSClientConfig(&tls.Config{RootCAs: caCertPool, MinVersion: tls.VersionTLS12})
@@ -1396,10 +1417,11 @@ func TestScaleOutRequestProxy(t *testing.T) {
 		ports := make([]string, numMembers)
 
 		clusterMembers := make([]string, numMembers)
+
 		for idx := 0; idx < numMembers; idx++ {
 			port := test.GetFreePort()
 			ports[idx] = port
-			clusterMembers[idx] = fmt.Sprintf("127.0.0.1:%s", port)
+			clusterMembers[idx] = "127.0.0.1:" + port
 		}
 
 		for _, port := range ports {
@@ -1429,9 +1451,11 @@ func TestScaleOutRequestProxy(t *testing.T) {
 
 		caCert, err := os.ReadFile(CACert)
 		So(err, ShouldBeNil)
+
 		caCertPool := x509.NewCertPool()
 		caCertPool.AppendCertsFromPEM(caCert)
 		resty.SetTLSClientConfig(&tls.Config{RootCAs: caCertPool, MinVersion: tls.VersionTLS12})
+
 		defer func() { resty.SetTLSClientConfig(nil) }()
 
 		Convey("Both controllers should start up and respond without error", func() {
@@ -1463,6 +1487,7 @@ func TestPrintTracebackOnPanic(t *testing.T) {
 
 		logFile, err := os.CreateTemp("", "zot-log*.txt")
 		So(err, ShouldBeNil)
+
 		conf.Log.Output = logFile.Name()
 
 		defer os.Remove(logFile.Name()) // clean up
@@ -1530,7 +1555,7 @@ func TestInterruptedBlobUpload(t *testing.T) {
 			go func(ctx context.Context) {
 				for i := 0; i < 3; i++ {
 					_, _ = client.R().
-						SetHeader("Content-Length", fmt.Sprintf("%d", len(blob))).
+						SetHeader("Content-Length", strconv.Itoa(len(blob))).
 						SetHeader("Content-Type", "application/octet-stream").
 						SetQueryParam("digest", digest).
 						SetBody(blob).
@@ -1586,7 +1611,7 @@ func TestInterruptedBlobUpload(t *testing.T) {
 			go func(ctx context.Context) {
 				for i := 0; i < 3; i++ {
 					_, _ = client.R().
-						SetHeader("Content-Length", fmt.Sprintf("%d", len(blob))).
+						SetHeader("Content-Length", strconv.Itoa(len(blob))).
 						SetHeader("Content-Type", "application/octet-stream").
 						SetQueryParam("digest", digest).
 						SetBody(blob).
@@ -1645,7 +1670,7 @@ func TestInterruptedBlobUpload(t *testing.T) {
 			go func(ctx context.Context) {
 				for i := 0; i < 3; i++ {
 					_, _ = client.R().
-						SetHeader("Content-Length", fmt.Sprintf("%d", len(blob))).
+						SetHeader("Content-Length", strconv.Itoa(len(blob))).
 						SetHeader("Content-Type", "application/octet-stream").
 						SetQueryParam("digest", digest).
 						SetBody(blob).
@@ -1682,7 +1707,9 @@ func TestInterruptedBlobUpload(t *testing.T) {
 			s1, seed1 := test.GenerateRandomName()
 			s2, seed2 := test.GenerateRandomName()
 			repoName := s1 + "/" + s2
+
 			ctlr.Log.Info().Int64("seed1", seed1).Int64("seed2", seed2).Msg("random seeds for repoName")
+
 			resp, err := client.R().Post(baseURL + "/v2/" + repoName + "/blobs/uploads/")
 			So(err, ShouldBeNil)
 			So(resp, ShouldNotBeNil)
@@ -1699,7 +1726,7 @@ func TestInterruptedBlobUpload(t *testing.T) {
 			go func(ctx context.Context) {
 				for i := 0; i < 3; i++ {
 					_, _ = client.R().
-						SetHeader("Content-Length", fmt.Sprintf("%d", len(blob))).
+						SetHeader("Content-Length", strconv.Itoa(len(blob))).
 						SetHeader("Content-Type", "application/octet-stream").
 						SetQueryParam("digest", digest).
 						SetBody(blob).
@@ -1802,6 +1829,7 @@ func TestMultipleInstance(t *testing.T) {
 		subDir := t.TempDir()
 		ctlr := makeController(conf, globalDir)
 		ctlr.Log.Info().Int64("seedUser", seedUser).Int64("seedPass", seedPass).Msg("random seed for username & password")
+
 		subPathMap := make(map[string]config.StorageConfig)
 		subPathMap["/a"] = config.StorageConfig{RootDirectory: subDir}
 
@@ -1852,6 +1880,7 @@ func TestMultipleInstance(t *testing.T) {
 
 		ctlr := makeController(conf, globalDir)
 		ctlr.Log.Info().Int64("seedUser", seedUser).Int64("seedPass", seedPass).Msg("random seed for username & password")
+
 		subPathMap := make(map[string]config.StorageConfig)
 		subPathMap["/a"] = config.StorageConfig{RootDirectory: globalDir, Dedupe: true, GC: true}
 		subPathMap["/b"] = config.StorageConfig{RootDirectory: subDir, Dedupe: true, GC: true}
@@ -1884,8 +1913,10 @@ func TestTLSWithBasicAuth(t *testing.T) {
 	Convey("Make a new controller", t, func() {
 		caCert, err := os.ReadFile(CACert)
 		So(err, ShouldBeNil)
+
 		caCertPool := x509.NewCertPool()
 		caCertPool.AppendCertsFromPEM(caCert)
+
 		username, seedUser := test.GenerateRandomString()
 		password, seedPass := test.GenerateRandomString()
 
@@ -1898,6 +1929,7 @@ func TestTLSWithBasicAuth(t *testing.T) {
 		secureBaseURL := test.GetSecureBaseURL(port)
 
 		resty.SetTLSClientConfig(&tls.Config{RootCAs: caCertPool, MinVersion: tls.VersionTLS12})
+
 		defer func() { resty.SetTLSClientConfig(nil) }()
 
 		conf := config.New()
@@ -1952,8 +1984,10 @@ func TestTLSWithBasicAuthAllowReadAccess(t *testing.T) {
 	Convey("Make a new controller", t, func() {
 		caCert, err := os.ReadFile(CACert)
 		So(err, ShouldBeNil)
+
 		caCertPool := x509.NewCertPool()
 		caCertPool.AppendCertsFromPEM(caCert)
+
 		username, seedUser := test.GenerateRandomString()
 		password, seedPass := test.GenerateRandomString()
 
@@ -1966,6 +2000,7 @@ func TestTLSWithBasicAuthAllowReadAccess(t *testing.T) {
 		secureBaseURL := test.GetSecureBaseURL(port)
 
 		resty.SetTLSClientConfig(&tls.Config{RootCAs: caCertPool, MinVersion: tls.VersionTLS12})
+
 		defer func() { resty.SetTLSClientConfig(nil) }()
 
 		conf := config.New()
@@ -2248,6 +2283,7 @@ func TestMutualTLSAuthWithoutCN(t *testing.T) {
 	Convey("Make a new controller", t, func() {
 		caCert, err := os.ReadFile("../../test/data/noidentity/ca.crt")
 		So(err, ShouldBeNil)
+
 		caCertPool := x509.NewCertPool()
 		caCertPool.AppendCertsFromPEM(caCert)
 
@@ -2292,6 +2328,7 @@ func TestMutualTLSAuthWithoutCN(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		resty.SetCertificates(cert)
+
 		defer func() { resty.SetCertificates(tls.Certificate{}) }()
 
 		// with client certs but without TLS mutual auth setup should get certificate error
@@ -2304,6 +2341,7 @@ func TestTLSMutualAuth(t *testing.T) {
 	Convey("Make a new controller", t, func() {
 		caCert, err := os.ReadFile(CACert)
 		So(err, ShouldBeNil)
+
 		caCertPool := x509.NewCertPool()
 		caCertPool.AppendCertsFromPEM(caCert)
 
@@ -2312,7 +2350,9 @@ func TestTLSMutualAuth(t *testing.T) {
 		secureBaseURL := test.GetSecureBaseURL(port)
 
 		resty.SetTLSClientConfig(&tls.Config{RootCAs: caCertPool, MinVersion: tls.VersionTLS12})
+
 		defer func() { resty.SetTLSClientConfig(nil) }()
+
 		conf := config.New()
 		conf.HTTP.Port = port
 		conf.HTTP.TLS = &config.TLSConfig{
@@ -2433,6 +2473,7 @@ func TestTSLFailedReadingOfCACert(t *testing.T) {
 
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
+
 		ctlr := makeController(conf, t.TempDir())
 
 		err = ctlr.Init()
@@ -2463,6 +2504,7 @@ func TestTLSMutualAuthAllowReadAccess(t *testing.T) {
 	Convey("Make a new controller", t, func() {
 		caCert, err := os.ReadFile(CACert)
 		So(err, ShouldBeNil)
+
 		caCertPool := x509.NewCertPool()
 		caCertPool.AppendCertsFromPEM(caCert)
 
@@ -2551,8 +2593,10 @@ func TestTLSMutualAndBasicAuth(t *testing.T) {
 	Convey("Make a new controller", t, func() {
 		caCert, err := os.ReadFile(CACert)
 		So(err, ShouldBeNil)
+
 		caCertPool := x509.NewCertPool()
 		caCertPool.AppendCertsFromPEM(caCert)
+
 		username, seedUser := test.GenerateRandomString()
 		password, seedPass := test.GenerateRandomString()
 
@@ -2636,8 +2680,10 @@ func TestTLSMutualAndBasicAuthAllowReadAccess(t *testing.T) {
 	Convey("Make a new controller", t, func() {
 		caCert, err := os.ReadFile(CACert)
 		So(err, ShouldBeNil)
+
 		caCertPool := x509.NewCertPool()
 		caCertPool.AppendCertsFromPEM(caCert)
+
 		username, seedUser := test.GenerateRandomString()
 		password, seedPass := test.GenerateRandomString()
 
@@ -2705,6 +2751,7 @@ func TestTLSMutualAndBasicAuthAllowReadAccess(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		resty.SetCertificates(cert)
+
 		defer func() { resty.SetCertificates(tls.Certificate{}) }()
 
 		// with client certs but without creds, reads should succeed
@@ -2983,6 +3030,7 @@ func TestBasicAuthWithReloadedCredentials(t *testing.T) {
 			// test if the credentials don't work
 			resp, _ = resty.R().SetBasicAuth(username, password).Get(baseURL + "/v2/")
 			So(resp, ShouldNotBeNil)
+
 			if resp.StatusCode() == http.StatusOK {
 				break
 			}
@@ -3055,6 +3103,7 @@ func TestBasicAuthWithReloadedCredentials(t *testing.T) {
 			// test if the credentials don't work
 			resp, _ = resty.R().SetBasicAuth(username, password).Get(baseURL + "/v2/")
 			So(resp, ShouldNotBeNil)
+
 			if resp.StatusCode() == http.StatusOK {
 				break
 			}
@@ -3141,6 +3190,7 @@ func TestLDAPWithoutCreds(t *testing.T) {
 
 			cm := test.NewControllerManager(ctlr)
 			cm.StartAndWait(port)
+
 			defer cm.StopServer()
 
 			resp, _ := resty.R().SetBasicAuth(username, password).Get(baseURL + "/v2/")
@@ -3508,6 +3558,7 @@ func TestLDAPConfigFromFile(t *testing.T) {
 
 		server := server.NewServerRootCmd()
 		server.SetArgs([]string{"serve", configPath})
+
 		go func() {
 			err := server.Execute()
 			if err != nil {
@@ -3676,7 +3727,7 @@ func TestBearerAuth(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		resp, err = resty.R().
-			SetHeader("Authorization", fmt.Sprintf("Bearer %s", goodToken.AccessToken)).
+			SetHeader("Authorization", "Bearer "+goodToken.AccessToken).
 			Get(baseURL + "/v2/")
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
@@ -3684,14 +3735,14 @@ func TestBearerAuth(t *testing.T) {
 
 		// trigger decode error
 		resp, err = resty.R().
-			SetHeader("Authorization", fmt.Sprintf("Bearer %s", "invalidToken")).
+			SetHeader("Authorization", "Bearer "+"invalidToken").
 			Get(baseURL + "/v2/")
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
 
 		resp, err = resty.R().SetHeader("Authorization",
-			fmt.Sprintf("Bearer %s", goodToken.AccessToken)).Options(baseURL + "/v2/")
+			"Bearer "+goodToken.AccessToken).Options(baseURL + "/v2/")
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusNoContent)
@@ -3699,7 +3750,9 @@ func TestBearerAuth(t *testing.T) {
 		s1, seed1 := test.GenerateRandomName()
 		s2, seed2 := test.GenerateRandomName()
 		repoName := s1 + "/" + s2
+
 		ctlr.Log.Info().Int64("seed1", seed1).Int64("seed2", seed2).Msg("random seeds for repoName")
+
 		resp, err = resty.R().Post(baseURL + "/v2/" + repoName + "/blobs/uploads/")
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
@@ -3717,7 +3770,7 @@ func TestBearerAuth(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		resp, err = resty.R().
-			SetHeader("Authorization", fmt.Sprintf("Bearer %s", goodToken.AccessToken)).
+			SetHeader("Authorization", "Bearer "+goodToken.AccessToken).
 			Post(baseURL + "/v2/" + repoName + "/blobs/uploads/")
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
@@ -3725,7 +3778,7 @@ func TestBearerAuth(t *testing.T) {
 		loc := resp.Header().Get("Location")
 
 		resp, err = resty.R().
-			SetHeader("Content-Length", fmt.Sprintf("%d", len(blob))).
+			SetHeader("Content-Length", strconv.Itoa(len(blob))).
 			SetHeader("Content-Type", "application/octet-stream").
 			SetQueryParam("digest", digest).
 			SetBody(blob).
@@ -3746,9 +3799,9 @@ func TestBearerAuth(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		resp, err = resty.R().
-			SetHeader("Content-Length", fmt.Sprintf("%d", len(blob))).
+			SetHeader("Content-Length", strconv.Itoa(len(blob))).
 			SetHeader("Content-Type", "application/octet-stream").
-			SetHeader("Authorization", fmt.Sprintf("Bearer %s", goodToken.AccessToken)).
+			SetHeader("Authorization", "Bearer "+goodToken.AccessToken).
 			SetQueryParam("digest", digest).
 			SetBody(blob).
 			Put(baseURL + loc)
@@ -3757,7 +3810,7 @@ func TestBearerAuth(t *testing.T) {
 		So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
 
 		resp, err = resty.R().
-			SetHeader("Authorization", fmt.Sprintf("Bearer %s", goodToken.AccessToken)).
+			SetHeader("Authorization", "Bearer "+goodToken.AccessToken).
 			Get(baseURL + "/v2/" + repoName + "/tags/list")
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
@@ -3775,7 +3828,7 @@ func TestBearerAuth(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		resp, err = resty.R().
-			SetHeader("Authorization", fmt.Sprintf("Bearer %s", goodToken.AccessToken)).
+			SetHeader("Authorization", "Bearer "+goodToken.AccessToken).
 			Get(baseURL + "/v2/" + repoName + "/tags/list")
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
@@ -3802,7 +3855,7 @@ func TestBearerAuth(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		resp, err = resty.R().
-			SetHeader("Authorization", fmt.Sprintf("Bearer %s", badToken.AccessToken)).
+			SetHeader("Authorization", "Bearer "+badToken.AccessToken).
 			Post(baseURL + "/v2/" + UnauthorizedNamespace + "/blobs/uploads/")
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
@@ -3890,7 +3943,7 @@ func TestBearerAuthWithAllowReadAccess(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		resp, err = resty.R().
-			SetHeader("Authorization", fmt.Sprintf("Bearer %s", goodToken.AccessToken)).
+			SetHeader("Authorization", "Bearer "+goodToken.AccessToken).
 			Get(baseURL + "/v2/")
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
@@ -3899,7 +3952,9 @@ func TestBearerAuthWithAllowReadAccess(t *testing.T) {
 		s1, seed1 := test.GenerateRandomName()
 		s2, seed2 := test.GenerateRandomName()
 		repoName := s1 + "/" + s2
+
 		ctlr.Log.Info().Int64("seed1", seed1).Int64("seed2", seed2).Msg("random seeds for repoName")
+
 		resp, err = resty.R().Post(baseURL + "/v2/" + repoName + "/blobs/uploads/")
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
@@ -3917,7 +3972,7 @@ func TestBearerAuthWithAllowReadAccess(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		resp, err = resty.R().
-			SetHeader("Authorization", fmt.Sprintf("Bearer %s", goodToken.AccessToken)).
+			SetHeader("Authorization", "Bearer "+goodToken.AccessToken).
 			Post(baseURL + "/v2/" + repoName + "/blobs/uploads/")
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
@@ -3925,7 +3980,7 @@ func TestBearerAuthWithAllowReadAccess(t *testing.T) {
 		loc := resp.Header().Get("Location")
 
 		resp, err = resty.R().
-			SetHeader("Content-Length", fmt.Sprintf("%d", len(blob))).
+			SetHeader("Content-Length", strconv.Itoa(len(blob))).
 			SetHeader("Content-Type", "application/octet-stream").
 			SetQueryParam("digest", digest).
 			SetBody(blob).
@@ -3946,9 +4001,9 @@ func TestBearerAuthWithAllowReadAccess(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		resp, err = resty.R().
-			SetHeader("Content-Length", fmt.Sprintf("%d", len(blob))).
+			SetHeader("Content-Length", strconv.Itoa(len(blob))).
 			SetHeader("Content-Type", "application/octet-stream").
-			SetHeader("Authorization", fmt.Sprintf("Bearer %s", goodToken.AccessToken)).
+			SetHeader("Authorization", "Bearer "+goodToken.AccessToken).
 			SetQueryParam("digest", digest).
 			SetBody(blob).
 			Put(baseURL + loc)
@@ -3957,7 +4012,7 @@ func TestBearerAuthWithAllowReadAccess(t *testing.T) {
 		So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
 
 		resp, err = resty.R().
-			SetHeader("Authorization", fmt.Sprintf("Bearer %s", goodToken.AccessToken)).
+			SetHeader("Authorization", "Bearer "+goodToken.AccessToken).
 			Get(baseURL + "/v2/" + repoName + "/tags/list")
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
@@ -3975,7 +4030,7 @@ func TestBearerAuthWithAllowReadAccess(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		resp, err = resty.R().
-			SetHeader("Authorization", fmt.Sprintf("Bearer %s", goodToken.AccessToken)).
+			SetHeader("Authorization", "Bearer "+goodToken.AccessToken).
 			Get(baseURL + "/v2/" + repoName + "/tags/list")
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
@@ -4001,7 +4056,7 @@ func TestBearerAuthWithAllowReadAccess(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		resp, err = resty.R().
-			SetHeader("Authorization", fmt.Sprintf("Bearer %s", badToken.AccessToken)).
+			SetHeader("Authorization", "Bearer "+badToken.AccessToken).
 			Post(baseURL + "/v2/" + UnauthorizedNamespace + "/blobs/uploads/")
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
@@ -4097,7 +4152,7 @@ func TestOpenIDMiddleware(t *testing.T) {
 	}{
 		{
 			address:      "0.0.0.0",
-			externalURL:  fmt.Sprintf("http://%s", net.JoinHostPort(conf.HTTP.Address, conf.HTTP.Port)),
+			externalURL:  "http://" + net.JoinHostPort(conf.HTTP.Address, conf.HTTP.Port),
 			testCaseName: "with ExternalURL provided in config",
 		},
 		{
@@ -4198,6 +4253,7 @@ func TestOpenIDMiddleware(t *testing.T) {
 				cm := test.NewControllerManager(ctlr)
 
 				cm.StartServer()
+
 				defer cm.StopServer()
 				test.WaitTillServerReady(baseURL)
 
@@ -4532,6 +4588,7 @@ func TestIsOpenIDEnabled(t *testing.T) {
 			cm := test.NewControllerManager(ctlr)
 
 			cm.StartServer()
+
 			defer cm.StopServer()
 			test.WaitTillServerReady(baseURL)
 
@@ -4565,6 +4622,7 @@ func TestIsOpenIDEnabled(t *testing.T) {
 			cm := test.NewControllerManager(ctlr)
 
 			cm.StartServer()
+
 			defer cm.StopServer()
 			test.WaitTillServerReady(baseURL)
 
@@ -5174,6 +5232,7 @@ func TestAuthorization(t *testing.T) {
 
 			cm := test.NewControllerManager(ctlr)
 			cm.StartAndWait(port)
+
 			defer cm.StopServer()
 
 			client := resty.New()
@@ -5210,6 +5269,7 @@ func TestAuthorization(t *testing.T) {
 
 			cm := test.NewControllerManager(ctlr)
 			cm.StartAndWait(port)
+
 			defer cm.StopServer()
 
 			client := resty.New()
@@ -5310,8 +5370,8 @@ func TestAuthorizationMountBlob(t *testing.T) {
 			},
 		}
 
-		user1Repo := fmt.Sprintf("%s/**", username1)
-		user2Repo := fmt.Sprintf("%s/**", username2)
+		user1Repo := username1 + "/**"
+		user2Repo := username2 + "/**"
 
 		// config with all policy types, to test that the correct one is applied in each case
 		conf.HTTP.AccessControl = &config.AccessControlConfig{
@@ -5405,6 +5465,7 @@ func TestAuthorizationMountBlob(t *testing.T) {
 func TestAuthorizationWithOnlyAnonymousPolicy(t *testing.T) {
 	Convey("Make a new controller", t, func() {
 		const TestRepo = "my-repos/repo"
+
 		port := test.GetFreePort()
 		baseURL := test.GetBaseURL(port)
 
@@ -5463,7 +5524,7 @@ func TestAuthorizationWithOnlyAnonymousPolicy(t *testing.T) {
 		loc := resp.Header().Get("Location")
 
 		// uploading blob should get 201
-		resp, err = resty.R().SetHeader("Content-Length", fmt.Sprintf("%d", len(blob))).
+		resp, err = resty.R().SetHeader("Content-Length", strconv.Itoa(len(blob))).
 			SetHeader("Content-Type", "application/octet-stream").
 			SetQueryParam("digest", digest).
 			SetBody(blob).
@@ -5481,7 +5542,7 @@ func TestAuthorizationWithOnlyAnonymousPolicy(t *testing.T) {
 		loc = test.Location(baseURL, resp)
 
 		// uploading blob should get 201
-		resp, err = resty.R().SetHeader("Content-Length", fmt.Sprintf("%d", len(cblob))).
+		resp, err = resty.R().SetHeader("Content-Length", strconv.Itoa(len(cblob))).
 			SetHeader("Content-Type", "application/octet-stream").
 			SetQueryParam("digest", cdigest.String()).
 			SetBody(cblob).
@@ -5526,7 +5587,7 @@ func TestAuthorizationWithOnlyAnonymousPolicy(t *testing.T) {
 		loc = test.Location(baseURL, resp)
 		// uploading blob should get 201
 		resp, err = resty.R().
-			SetHeader("Content-Length", fmt.Sprintf("%d", len(updateBlob))).
+			SetHeader("Content-Length", strconv.Itoa(len(updateBlob))).
 			SetHeader("Content-Type", "application/octet-stream").
 			SetQueryParam("digest", string(godigest.FromBytes(updateBlob))).
 			SetBody(updateBlob).
@@ -5646,6 +5707,7 @@ func TestAuthorizationWithOnlyAnonymousPolicy(t *testing.T) {
 func TestAuthorizationWithAnonymousPolicyBasicAuthAndSessionHeader(t *testing.T) {
 	Convey("Make a new controller", t, func() {
 		const TestRepo = "my-repos/repo"
+
 		const AllRepos = "**"
 
 		port := test.GetFreePort()
@@ -5738,6 +5800,7 @@ func TestAuthorizationWithAnonymousPolicyBasicAuthAndSessionHeader(t *testing.T)
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
 		apiError = apiErr.Error{}
 		err = json.Unmarshal(resp.Body(), &apiError)
 		So(err, ShouldBeNil)
@@ -5747,6 +5810,7 @@ func TestAuthorizationWithAnonymousPolicyBasicAuthAndSessionHeader(t *testing.T)
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
 		apiError = apiErr.Error{}
 		err = json.Unmarshal(resp.Body(), &apiError)
 		So(err, ShouldBeNil)
@@ -5757,6 +5821,7 @@ func TestAuthorizationWithAnonymousPolicyBasicAuthAndSessionHeader(t *testing.T)
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
+
 		apiError = apiErr.Error{}
 		err = json.Unmarshal(resp.Body(), &apiError)
 		So(err, ShouldBeNil)
@@ -5927,6 +5992,7 @@ func TestAuthorizationWithMultiplePolicies(t *testing.T) {
 				Msg("random seed for username & password")
 			ctlr.Log.Info().Int64("seedUser2", seedUser2).Int64("seedPass2", seedPass2).
 				Msg("random seed for username & password")
+
 			ctlr.Config.Storage.RootDirectory = dir
 
 			err = WriteImageToFileSystem(CreateDefaultImage(), "zot-test", "0.0.1",
@@ -5935,6 +6001,7 @@ func TestAuthorizationWithMultiplePolicies(t *testing.T) {
 
 			cm := test.NewControllerManager(ctlr)
 			cm.StartAndWait(port)
+
 			defer cm.StopServer()
 
 			testUserClient := resty.New()
@@ -6554,6 +6621,7 @@ func TestParallelRequests(t *testing.T) {
 
 		t.Run(testcase.testCaseName, func(t *testing.T) {
 			t.Parallel()
+
 			client := resty.New()
 
 			tagResponse, err := client.R().SetBasicAuth(username, password).
@@ -6623,6 +6691,7 @@ func TestParallelRequests(t *testing.T) {
 						"response status code should not return 500")
 
 					var sessionID string
+
 					sessionIDList := postResponse.Header().Values("Blob-Upload-UUID")
 					if len(sessionIDList) == 0 {
 						location := postResponse.Header().Values("Location")
@@ -6661,8 +6730,8 @@ func TestParallelRequests(t *testing.T) {
 							patchResponse, err := client.R().
 								SetBody(buf[0:nbytes]).
 								SetHeader("Content-Type", "application/octet-stream").
-								SetHeader("Content-Length", fmt.Sprintf("%d", nbytes)).
-								SetHeader("Content-Range", fmt.Sprintf("%d", readContent)+"-"+fmt.Sprintf("%d", readContent+nbytes-1)).
+								SetHeader("Content-Length", strconv.Itoa(nbytes)).
+								SetHeader("Content-Range", strconv.Itoa(readContent)+"-"+strconv.Itoa(readContent+nbytes-1)).
 								SetBasicAuth(username, password).
 								Patch(baseURL + "/v2/" + testcase.destImageName + "/blobs/uploads/" + sessionID)
 
@@ -6818,6 +6887,7 @@ func TestImageSignatures(t *testing.T) {
 
 			// generate a keypair
 			os.Setenv("COSIGN_PASSWORD", "")
+
 			err = generate.GenerateKeyPairCmd(context.TODO(), "", "cosign", nil)
 			So(err, ShouldBeNil)
 
@@ -6838,6 +6908,7 @@ func TestImageSignatures(t *testing.T) {
 			aopts := &options.AnnotationOptions{Annotations: annotations}
 			amap, err := aopts.AnnotationsMap()
 			So(err, ShouldBeNil)
+
 			vrfy := verify.VerifyCommand{
 				RegistryOptions: options.RegistryOptions{AllowInsecure: true},
 				CheckClaims:     true,
@@ -6852,6 +6923,7 @@ func TestImageSignatures(t *testing.T) {
 			aopts = &options.AnnotationOptions{Annotations: []string{"tag=2.0"}}
 			amap, err = aopts.AnnotationsMap()
 			So(err, ShouldBeNil)
+
 			vrfy = verify.VerifyCommand{
 				RegistryOptions: options.RegistryOptions{AllowInsecure: true},
 				CheckClaims:     true,
@@ -6884,6 +6956,7 @@ func TestImageSignatures(t *testing.T) {
 			So(err, ShouldBeNil)
 
 			os.Setenv("COSIGN_PASSWORD", "")
+
 			err = generate.GenerateKeyPairCmd(context.TODO(), "", "cosign", nil)
 			So(err, ShouldBeNil)
 
@@ -6891,6 +6964,7 @@ func TestImageSignatures(t *testing.T) {
 			aopts = &options.AnnotationOptions{Annotations: []string{"tag=1.0"}}
 			amap, err = aopts.AnnotationsMap()
 			So(err, ShouldBeNil)
+
 			vrfy = verify.VerifyCommand{
 				CheckClaims:     true,
 				RegistryOptions: options.RegistryOptions{AllowInsecure: true},
@@ -7267,7 +7341,7 @@ func TestArtifactReferences(t *testing.T) {
 
 			resp, err = resty.R().
 				SetContentLength(true).
-				SetHeader("Content-Length", fmt.Sprintf("%d", len(cblob))).
+				SetHeader("Content-Length", strconv.Itoa(len(cblob))).
 				SetHeader("Content-Type", "application/octet-stream").
 				SetQueryParam("digest", cdigest.String()).
 				SetBody(cblob).
@@ -7366,7 +7440,7 @@ func TestArtifactReferences(t *testing.T) {
 
 				resp, err = resty.R().
 					SetContentLength(true).
-					SetHeader("Content-Length", fmt.Sprintf("%d", len(cblob))).
+					SetHeader("Content-Length", strconv.Itoa(len(cblob))).
 					SetHeader("Content-Type", "application/octet-stream").
 					SetQueryParam("digest", cdigest.String()).
 					SetBody(cblob).
@@ -7385,6 +7459,7 @@ func TestArtifactReferences(t *testing.T) {
 				manifest.SchemaVersion = 2
 				mcontent, err = json.Marshal(manifest)
 				So(err, ShouldBeNil)
+
 				digest = godigest.FromBytes(mcontent)
 				So(digest, ShouldNotBeNil)
 
@@ -7491,6 +7566,7 @@ func TestRouteFailures(t *testing.T) {
 		Convey("List tags", func() {
 			request, _ := http.NewRequestWithContext(context.TODO(), http.MethodGet, baseURL, nil)
 			mux.SetURLVars(request, map[string]string{})
+
 			response := httptest.NewRecorder()
 
 			rthdlr.ListTags(response, request)
@@ -8259,6 +8335,7 @@ func TestStorageCommit(t *testing.T) {
 			content := image.ManifestDescriptor.Data
 			digest := image.ManifestDescriptor.Digest
 			So(digest, ShouldNotBeNil)
+
 			resp, err = resty.R().SetHeader("Content-Type", "application/vnd.oci.image.manifest.v1+json").
 				SetBody(content).Put(baseURL + "/v2/repo7/manifests/test:1.0")
 			So(err, ShouldBeNil)
@@ -8389,6 +8466,7 @@ func TestManifestImageIndex(t *testing.T) {
 		content := img.ManifestDescriptor.Data
 		digest := img.ManifestDescriptor.Digest
 		So(digest, ShouldNotBeNil)
+
 		m1content := content
 		resp, err = resty.R().SetHeader("Content-Type", ispec.MediaTypeImageManifest).
 			SetBody(content).Put(baseURL + "/v2/index/manifests/test:1.0")
@@ -8433,7 +8511,7 @@ func TestManifestImageIndex(t *testing.T) {
 			digest = img.ManifestDescriptor.Digest
 
 			resp, err = resty.R().SetHeader("Content-Type", ispec.MediaTypeImageManifest).
-				SetBody(content).Put(baseURL + fmt.Sprintf("/v2/index/manifests/%s", digest.String()))
+				SetBody(content).Put(baseURL + "/v2/index/manifests/" + digest.String())
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
 			digestHdr := resp.Header().Get(constants.DistContentDigestKey)
@@ -8457,6 +8535,7 @@ func TestManifestImageIndex(t *testing.T) {
 
 			content, err = json.Marshal(index)
 			So(err, ShouldBeNil)
+
 			digest = godigest.FromBytes(content)
 			So(digest, ShouldNotBeNil)
 			index1dgst := digest
@@ -8467,6 +8546,7 @@ func TestManifestImageIndex(t *testing.T) {
 			digestHdr = resp.Header().Get(constants.DistContentDigestKey)
 			So(digestHdr, ShouldNotBeEmpty)
 			So(digestHdr, ShouldEqual, digest.String())
+
 			resp, err = resty.R().SetHeader("Content-Type", ispec.MediaTypeImageIndex).
 				Get(baseURL + "/v2/index/manifests/test:index1")
 			So(err, ShouldBeNil)
@@ -8485,7 +8565,7 @@ func TestManifestImageIndex(t *testing.T) {
 			m4dgst := digest
 			m4size := len(content)
 			resp, err = resty.R().SetHeader("Content-Type", ispec.MediaTypeImageManifest).
-				SetBody(content).Put(baseURL + fmt.Sprintf("/v2/index/manifests/%s", digest.String()))
+				SetBody(content).Put(baseURL + "/v2/index/manifests/" + digest.String())
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
 			digestHdr = resp.Header().Get(constants.DistContentDigestKey)
@@ -8508,8 +8588,10 @@ func TestManifestImageIndex(t *testing.T) {
 
 			content, err = json.Marshal(index)
 			So(err, ShouldBeNil)
+
 			digest = godigest.FromBytes(content)
 			So(digest, ShouldNotBeNil)
+
 			resp, err = resty.R().SetHeader("Content-Type", ispec.MediaTypeImageIndex).
 				SetBody(content).Put(baseURL + "/v2/index/manifests/test:index2")
 			So(err, ShouldBeNil)
@@ -8517,6 +8599,7 @@ func TestManifestImageIndex(t *testing.T) {
 			digestHdr = resp.Header().Get(constants.DistContentDigestKey)
 			So(digestHdr, ShouldNotBeEmpty)
 			So(digestHdr, ShouldEqual, digest.String())
+
 			resp, err = resty.R().SetHeader("Content-Type", ispec.MediaTypeImageIndex).
 				Get(baseURL + "/v2/index/manifests/test:index2")
 			So(err, ShouldBeNil)
@@ -8558,8 +8641,10 @@ func TestManifestImageIndex(t *testing.T) {
 
 				content, err = json.Marshal(index)
 				So(err, ShouldBeNil)
+
 				digest = godigest.FromBytes(content)
 				So(digest, ShouldNotBeNil)
+
 				resp, err = resty.R().SetHeader("Content-Type", ispec.MediaTypeImageIndex).
 					SetBody(content).Put(baseURL + "/v2/index/manifests/test:index3")
 				So(err, ShouldBeNil)
@@ -8582,6 +8667,7 @@ func TestManifestImageIndex(t *testing.T) {
 
 				content, err = json.Marshal(index)
 				So(err, ShouldBeNil)
+
 				digest = godigest.FromBytes(content)
 				So(digest, ShouldNotBeNil)
 				resp, err = resty.R().SetHeader("Content-Type", ispec.MediaTypeImageIndex).
@@ -8594,7 +8680,7 @@ func TestManifestImageIndex(t *testing.T) {
 			})
 
 			Convey("Deleting manifest contained by a multiarch image should not be allowed", func() {
-				resp, err = resty.R().Delete(baseURL + fmt.Sprintf("/v2/index/manifests/%s", m2dgst.String()))
+				resp, err = resty.R().Delete(baseURL + "/v2/index/manifests/" + m2dgst.String())
 				So(err, ShouldBeNil)
 				So(resp.StatusCode(), ShouldEqual, http.StatusMethodNotAllowed)
 			})
@@ -8675,8 +8761,10 @@ func TestManifestImageIndex(t *testing.T) {
 
 				content, err = json.Marshal(index)
 				So(err, ShouldBeNil)
+
 				digest = godigest.FromBytes(content)
 				So(digest, ShouldNotBeNil)
+
 				resp, err = resty.R().SetHeader("Content-Type", ispec.MediaTypeImageIndex).
 					SetBody(content).Put(baseURL + "/v2/index/manifests/test:index1")
 				So(err, ShouldBeNil)
@@ -8684,6 +8772,7 @@ func TestManifestImageIndex(t *testing.T) {
 				digestHdr = resp.Header().Get(constants.DistContentDigestKey)
 				So(digestHdr, ShouldNotBeEmpty)
 				So(digestHdr, ShouldEqual, digest.String())
+
 				resp, err = resty.R().SetHeader("Content-Type", ispec.MediaTypeImageIndex).
 					Get(baseURL + "/v2/index/manifests/test:index1")
 				So(err, ShouldBeNil)
@@ -8742,8 +8831,10 @@ func TestManifestImageIndex(t *testing.T) {
 
 					content, err = json.Marshal(index)
 					So(err, ShouldBeNil)
+
 					digest = godigest.FromBytes(content)
 					So(digest, ShouldNotBeNil)
+
 					resp, err = resty.R().SetHeader("Content-Type", ispec.MediaTypeImageIndex).
 						SetBody(content).Put(baseURL + "/v2/index/manifests/test:1.0")
 					So(err, ShouldBeNil)
@@ -8862,6 +8953,7 @@ func TestPullRange(t *testing.T) {
 		resp, err = resty.R().Get(loc)
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusNoContent)
+
 		content := []byte("0123456789")
 		digest := godigest.FromBytes(content)
 		So(digest, ShouldNotBeNil)
@@ -8874,6 +8966,7 @@ func TestPullRange(t *testing.T) {
 		So(blobLoc, ShouldNotBeEmpty)
 		So(resp.Header().Get("Content-Length"), ShouldEqual, "0")
 		So(resp.Header().Get(constants.DistContentDigestKey), ShouldNotBeEmpty)
+
 		blobLoc = baseURL + blobLoc
 
 		Convey("Range is supported using 'bytes'", func() {
@@ -8887,19 +8980,19 @@ func TestPullRange(t *testing.T) {
 			resp, err = resty.R().SetHeader("Range", "bytes=0-").Get(blobLoc)
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusPartialContent)
-			So(resp.Header().Get("Content-Length"), ShouldEqual, fmt.Sprintf("%d", len(content)))
+			So(resp.Header().Get("Content-Length"), ShouldEqual, strconv.Itoa(len(content)))
 			So(resp.Body(), ShouldResemble, content)
 
 			resp, err = resty.R().SetHeader("Range", "bytes=0-100").Get(blobLoc)
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusPartialContent)
-			So(resp.Header().Get("Content-Length"), ShouldEqual, fmt.Sprintf("%d", len(content)))
+			So(resp.Header().Get("Content-Length"), ShouldEqual, strconv.Itoa(len(content)))
 			So(resp.Body(), ShouldResemble, content)
 
 			resp, err = resty.R().SetHeader("Range", "bytes=0-10").Get(blobLoc)
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusPartialContent)
-			So(resp.Header().Get("Content-Length"), ShouldEqual, fmt.Sprintf("%d", len(content)))
+			So(resp.Header().Get("Content-Length"), ShouldEqual, strconv.Itoa(len(content)))
 			So(resp.Body(), ShouldResemble, content)
 
 			resp, err = resty.R().SetHeader("Range", "bytes=0-0").Get(blobLoc)
@@ -9026,6 +9119,7 @@ func TestInjectInterruptedImageManifest(t *testing.T) {
 			resp, err = resty.R().Get(loc)
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusNoContent)
+
 			content := []byte("this is a dummy blob")
 			digest := godigest.FromBytes(content)
 			So(digest, ShouldNotBeNil)
@@ -9048,7 +9142,7 @@ func TestInjectInterruptedImageManifest(t *testing.T) {
 
 			resp, err = resty.R().
 				SetContentLength(true).
-				SetHeader("Content-Length", fmt.Sprintf("%d", len(cblob))).
+				SetHeader("Content-Length", strconv.Itoa(len(cblob))).
 				SetHeader("Content-Type", "application/octet-stream").
 				SetQueryParam("digest", cdigest.String()).
 				SetBody(cblob).
@@ -9074,6 +9168,7 @@ func TestInjectInterruptedImageManifest(t *testing.T) {
 			manifest.SchemaVersion = 2
 			content, err = json.Marshal(manifest)
 			So(err, ShouldBeNil)
+
 			digest = godigest.FromBytes(content)
 			So(digest, ShouldNotBeNil)
 
@@ -9084,6 +9179,7 @@ func TestInjectInterruptedImageManifest(t *testing.T) {
 				request, _ := http.NewRequestWithContext(context.TODO(), http.MethodPut, baseURL, bytes.NewReader(content))
 				request = mux.SetURLVars(request, map[string]string{"name": "repotest", "reference": "1.0"})
 				request.Header.Set("Content-Type", "application/vnd.oci.image.manifest.v1+json")
+
 				response := httptest.NewRecorder()
 
 				rthdlr.UpdateManifest(response, request)
@@ -9136,6 +9232,7 @@ func TestInjectTooManyOpenFiles(t *testing.T) {
 		resp, err = resty.R().Get(loc)
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusNoContent)
+
 		content := []byte("this is a dummy blob")
 		digest := godigest.FromBytes(content)
 		So(digest, ShouldNotBeNil)
@@ -9150,7 +9247,8 @@ func TestInjectTooManyOpenFiles(t *testing.T) {
 			q.Add("digest", digest.String())
 			request.URL.RawQuery = q.Encode()
 			request.Header.Set("Content-Type", "application/octet-stream")
-			request.Header.Set("Content-Length", fmt.Sprintf("%d", len(content)))
+			request.Header.Set("Content-Length", strconv.Itoa(len(content)))
+
 			response := httptest.NewRecorder()
 
 			rthdlr.UpdateBlobUpload(response, request)
@@ -9182,7 +9280,7 @@ func TestInjectTooManyOpenFiles(t *testing.T) {
 
 		resp, err = resty.R().
 			SetContentLength(true).
-			SetHeader("Content-Length", fmt.Sprintf("%d", len(cblob))).
+			SetHeader("Content-Length", strconv.Itoa(len(cblob))).
 			SetHeader("Content-Type", "application/octet-stream").
 			SetQueryParam("digest", cdigest.String()).
 			SetBody(cblob).
@@ -9208,6 +9306,7 @@ func TestInjectTooManyOpenFiles(t *testing.T) {
 		manifest.SchemaVersion = 2
 		content, err = json.Marshal(manifest)
 		So(err, ShouldBeNil)
+
 		digest = godigest.FromBytes(content)
 		So(digest, ShouldNotBeNil)
 
@@ -9219,6 +9318,7 @@ func TestInjectTooManyOpenFiles(t *testing.T) {
 			request, _ := http.NewRequestWithContext(context.TODO(), http.MethodPut, baseURL, bytes.NewReader(content))
 			request = mux.SetURLVars(request, map[string]string{"name": "repotest", "reference": "1.0"})
 			request.Header.Set("Content-Type", "application/vnd.oci.image.manifest.v1+json")
+
 			response := httptest.NewRecorder()
 
 			rthdlr.UpdateManifest(response, request)
@@ -9239,6 +9339,7 @@ func TestInjectTooManyOpenFiles(t *testing.T) {
 			request, _ := http.NewRequestWithContext(context.TODO(), http.MethodPut, baseURL, bytes.NewReader(content))
 			request = mux.SetURLVars(request, map[string]string{"name": "repotest", "reference": "1.0"})
 			request.Header.Set("Content-Type", "application/vnd.oci.image.manifest.v1+json")
+
 			response := httptest.NewRecorder()
 
 			rthdlr.UpdateManifest(response, request)
@@ -9260,6 +9361,7 @@ func TestInjectTooManyOpenFiles(t *testing.T) {
 			request, _ := http.NewRequestWithContext(context.TODO(), http.MethodPut, baseURL, bytes.NewReader(content))
 			request = mux.SetURLVars(request, map[string]string{"name": "repotest", "reference": "1.0"})
 			request.Header.Set("Content-Type", "application/vnd.oci.image.manifest.v1+json")
+
 			response := httptest.NewRecorder()
 
 			rthdlr.UpdateManifest(response, request)
@@ -9288,6 +9390,7 @@ func TestInjectTooManyOpenFiles(t *testing.T) {
 			indexFile := path.Join(dir, "repotest", "index.json")
 			_, err = os.Stat(indexFile)
 			So(err, ShouldBeNil)
+
 			indexContent := []byte(`not a JSON content`)
 			err = os.WriteFile(indexFile, indexContent, 0o600)
 			So(err, ShouldBeNil)
@@ -9379,18 +9482,21 @@ func TestGCSignaturesAndUntaggedManifestsWithMetaDB(t *testing.T) {
 
 			cwd, err := os.Getwd()
 			So(err, ShouldBeNil)
+
 			defer func() { _ = os.Chdir(cwd) }()
+
 			tdir := t.TempDir()
 			_ = os.Chdir(tdir)
 
 			// generate a keypair
 			os.Setenv("COSIGN_PASSWORD", "")
+
 			err = generate.GenerateKeyPairCmd(ctx, "", "cosign", nil)
 			So(err, ShouldBeNil)
 
 			image := fmt.Sprintf("localhost:%s/%s@%s", port, repoName, digest.String())
 
-			annotations := []string{fmt.Sprintf("tag=%s", tag)}
+			annotations := []string{"tag=" + tag}
 
 			// sign the image
 			err = sign.SignCmd(&options.RootOptions{Verbose: true, Timeout: 1 * time.Minute},
@@ -9633,6 +9739,7 @@ func TestGCSignaturesAndUntaggedManifestsWithMetaDB(t *testing.T) {
 
 			content, err := json.Marshal(index)
 			So(err, ShouldBeNil)
+
 			indexDigest := godigest.FromBytes(content)
 			So(indexDigest, ShouldNotBeNil)
 
@@ -9674,6 +9781,7 @@ func TestPeriodicGC(t *testing.T) {
 
 		logFile, err := os.CreateTemp("", "zot-log*.txt")
 		So(err, ShouldBeNil)
+
 		conf.Log.Output = logFile.Name()
 
 		defer os.Remove(logFile.Name()) // clean up
@@ -9702,9 +9810,9 @@ func TestPeriodicGC(t *testing.T) {
 		So(string(data), ShouldContainSubstring,
 			"\"GC\":true,\"Commit\":false,\"GCDelay\":1000000000,\"GCInterval\":3600000000000")
 		So(string(data), ShouldContainSubstring,
-			fmt.Sprintf("executing GC of orphaned blobs for %s", path.Join(ctlr.StoreController.DefaultStore.RootDir(), repoName))) //nolint:lll
+			"executing GC of orphaned blobs for "+path.Join(ctlr.StoreController.DefaultStore.RootDir(), repoName)) //nolint:lll
 		So(string(data), ShouldContainSubstring,
-			fmt.Sprintf("GC successfully completed for %s", path.Join(ctlr.StoreController.DefaultStore.RootDir(), repoName))) //nolint:lll
+			"GC successfully completed for "+path.Join(ctlr.StoreController.DefaultStore.RootDir(), repoName)) //nolint:lll
 	})
 
 	Convey("Periodic GC enabled for substore", t, func() {
@@ -9714,6 +9822,7 @@ func TestPeriodicGC(t *testing.T) {
 
 		logFile, err := os.CreateTemp("", "zot-log*.txt")
 		So(err, ShouldBeNil)
+
 		conf.Log.Output = logFile.Name()
 
 		defer os.Remove(logFile.Name()) // clean up
@@ -9762,6 +9871,7 @@ func TestPeriodicGC(t *testing.T) {
 
 		logFile, err := os.CreateTemp("", "zot-log*.txt")
 		So(err, ShouldBeNil)
+
 		conf.Log.Output = logFile.Name()
 
 		defer os.Remove(logFile.Name()) // clean up
@@ -9868,6 +9978,7 @@ func TestSearchRoutes(t *testing.T) {
 
 			cm := test.NewControllerManager(ctlr)
 			cm.StartAndWait(port)
+
 			defer cm.StopServer()
 
 			img := CreateImageWith().RandomLayers(1, 10000).DefaultConfig().Build()
@@ -10006,6 +10117,7 @@ func TestSearchRoutes(t *testing.T) {
 
 			cm := test.NewControllerManager(ctlr)
 			cm.StartAndWait(port)
+
 			defer cm.StopServer()
 
 			img := CreateRandomImage()
@@ -10293,6 +10405,7 @@ func TestSearchRoutes(t *testing.T) {
 
 			cm := test.NewControllerManager(ctlr)
 			cm.StartAndWait(port)
+
 			defer cm.StopServer()
 
 			img := CreateRandomImage()
@@ -10359,6 +10472,7 @@ func TestSearchRoutes(t *testing.T) {
 
 			cm := test.NewControllerManager(ctlr)
 			cm.StartAndWait(port)
+
 			defer cm.StopServer()
 
 			img := CreateRandomImage()
@@ -10392,6 +10506,7 @@ func TestDistSpecExtensions(t *testing.T) {
 
 		logFile, err := os.CreateTemp("", "zot-log*.txt")
 		So(err, ShouldBeNil)
+
 		conf.Log.Output = logFile.Name()
 
 		defer os.Remove(logFile.Name()) // clean up
@@ -10442,6 +10557,7 @@ func TestDistSpecExtensions(t *testing.T) {
 
 		logFile, err := os.CreateTemp("", "zot-log*.txt")
 		So(err, ShouldBeNil)
+
 		conf.Log.Output = logFile.Name()
 
 		defer os.Remove(logFile.Name()) // clean up
@@ -10488,6 +10604,7 @@ func TestDistSpecExtensions(t *testing.T) {
 
 		logFile, err := os.CreateTemp("", "zot-log*.txt")
 		So(err, ShouldBeNil)
+
 		conf.Log.Output = logFile.Name()
 
 		defer os.Remove(logFile.Name()) // clean up
@@ -10521,6 +10638,7 @@ func TestDistSpecExtensions(t *testing.T) {
 
 		logFile, err := os.CreateTemp("", "zot-log*.txt")
 		So(err, ShouldBeNil)
+
 		conf.Log.Output = logFile.Name()
 
 		defer os.Remove(logFile.Name()) // clean up
@@ -10533,6 +10651,7 @@ func TestDistSpecExtensions(t *testing.T) {
 		defer cm.StopServer()
 
 		var extensionList distext.ExtensionList
+
 		resp, err := resty.R().Get(baseURL + constants.RoutePrefix + constants.ExtOciDiscoverPrefix)
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
@@ -10780,7 +10899,7 @@ func RunAuthorizationWithMultiplePoliciesTests(t *testing.T, userClient *resty.C
 
 	// uploading blob should get 201
 	resp, err = userClient.R().
-		SetHeader("Content-Length", fmt.Sprintf("%d", len(blob))).
+		SetHeader("Content-Length", strconv.Itoa(len(blob))).
 		SetHeader("Content-Type", "application/octet-stream").
 		SetQueryParam("digest", digest).
 		SetBody(blob).
@@ -10951,7 +11070,7 @@ func RunAuthorizationTests(t *testing.T, client *resty.Client, baseURL, user str
 
 		// uploading blob should get 201
 		resp, err = client.R().
-			SetHeader("Content-Length", fmt.Sprintf("%d", len(blob))).
+			SetHeader("Content-Length", strconv.Itoa(len(blob))).
 			SetHeader("Content-Type", "application/octet-stream").
 			SetQueryParam("digest", digest).
 			SetBody(blob).
@@ -11032,7 +11151,7 @@ func RunAuthorizationTests(t *testing.T, client *resty.Client, baseURL, user str
 
 		// uploading blob should get 201
 		resp, err = client.R().
-			SetHeader("Content-Length", fmt.Sprintf("%d", len(blob))).
+			SetHeader("Content-Length", strconv.Itoa(len(blob))).
 			SetHeader("Content-Type", "application/octet-stream").
 			SetQueryParam("digest", digest).
 			SetBody(blob).
@@ -11180,7 +11299,7 @@ func RunAuthorizationTests(t *testing.T, client *resty.Client, baseURL, user str
 
 		// uploading blob should get 201
 		resp, err = client.R().
-			SetHeader("Content-Length", fmt.Sprintf("%d", len(cblob))).
+			SetHeader("Content-Length", strconv.Itoa(len(cblob))).
 			SetHeader("Content-Type", "application/octet-stream").
 			SetQueryParam("digest", cdigest.String()).
 			SetBody(cblob).
@@ -11200,7 +11319,7 @@ func RunAuthorizationTests(t *testing.T, client *resty.Client, baseURL, user str
 
 		// uploading blob should get 201
 		resp, err = client.R().
-			SetHeader("Content-Length", fmt.Sprintf("%d", len(updateBlob))).
+			SetHeader("Content-Length", strconv.Itoa(len(updateBlob))).
 			SetHeader("Content-Type", "application/octet-stream").
 			SetQueryParam("digest", string(godigest.FromBytes(updateBlob))).
 			SetBody(updateBlob).
@@ -11346,7 +11465,7 @@ func RunAuthorizationTests(t *testing.T, client *resty.Client, baseURL, user str
 
 		// uploading blob should get 201
 		resp, err = client.R().
-			SetHeader("Content-Length", fmt.Sprintf("%d", len(blob))).
+			SetHeader("Content-Length", strconv.Itoa(len(blob))).
 			SetHeader("Content-Type", "application/octet-stream").
 			SetQueryParam("digest", digest).
 			SetBody(blob).
