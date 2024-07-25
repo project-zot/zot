@@ -840,6 +840,7 @@ func TestOnDemandWithScaleOutCluster(t *testing.T) {
 		// storage for each downstream should not have image data at the start.
 		destDirs := []string{destDir1, destDir2}
 		images := []string{testImage, testCveImage}
+
 		for _, image := range images {
 			for _, destDir := range destDirs {
 				_, err := os.Stat(path.Join(destDir, image))
@@ -1107,6 +1108,7 @@ func TestSyncReferenceInLoop(t *testing.T) {
 
 		dcm := test.NewControllerManager(dctlr)
 		dcm.StartAndWait(dctlr.Config.HTTP.Port)
+
 		defer dcm.StopServer()
 
 		// we will push references in loop: image A -> sbom A -> oci artifact A -> sbom A (same sbom as before)
@@ -1272,6 +1274,7 @@ func TestSyncWithNonDistributableBlob(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		dcm.StartAndWait(dctlr.Config.HTTP.Port)
+
 		defer dcm.StopServer()
 
 		time.Sleep(3 * time.Second)
@@ -1601,6 +1604,7 @@ func TestPeriodically(t *testing.T) {
 
 		regex := ".*"
 		semver := true
+
 		var tlsVerify bool
 
 		maxRetries := 1
@@ -1634,6 +1638,7 @@ func TestPeriodically(t *testing.T) {
 
 		dcm := test.NewControllerManager(dctlr)
 		dcm.StartAndWait(dctlr.Config.HTTP.Port)
+
 		defer dcm.StopServer()
 
 		var (
@@ -1712,8 +1717,10 @@ func TestPeriodically(t *testing.T) {
 			dcm.StartAndWait(dctlr.Config.HTTP.Port)
 			defer dcm.StopServer()
 
-			var srcTagsList TagsList
-			var destTagsList TagsList
+			var (
+				srcTagsList TagsList
+				destTagsList TagsList
+			)
 
 			resp, err := srcClient.R().Get(srcBaseURL + "/v2/" + testImage + "/tags/list")
 			So(err, ShouldBeNil)
@@ -1833,6 +1840,7 @@ func TestPeriodicallyWithScaleOutCluster(t *testing.T) {
 
 		dcm := test.NewControllerManager(dctlr)
 		dcm.StartAndWait(dctlr.Config.HTTP.Port)
+
 		defer dcm.StopServer()
 
 		// downstream should not have any of the images in its storage.
@@ -1856,6 +1864,7 @@ func TestPeriodicallyWithScaleOutCluster(t *testing.T) {
 				So(err, ShouldBeNil)
 
 				var destTagsList TagsList
+
 				err = json.Unmarshal(resp.Body(), &destTagsList)
 				So(err, ShouldBeNil)
 
@@ -1989,6 +1998,7 @@ func TestConfigReloader(t *testing.T) {
 		duration, _ := time.ParseDuration("3s")
 
 		var tlsVerify bool
+
 		defaultVal := true
 
 		syncRegistryConfig := syncconf.RegistryConfig{
@@ -2386,6 +2396,7 @@ func TestBadTLS(t *testing.T) {
 
 		dcm := test.NewControllerManager(dctlr)
 		dcm.StartAndWait(dctlr.Config.HTTP.Port)
+
 		defer dcm.StopServer()
 
 		found, err := test.ReadLogFileAndSearchString(dctlr.Config.Log.Output,
@@ -2583,6 +2594,7 @@ func TestBearerAuth(t *testing.T) {
 
 		dcm := test.NewControllerManager(dctlr)
 		dcm.StartAndWait(dctlr.Config.HTTP.Port)
+
 		defer dcm.StopServer()
 
 		var (
@@ -2602,7 +2614,9 @@ func TestBearerAuth(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
 		var goodToken authutils.AccessTokenResponse
+
 		err = json.Unmarshal(resp.Body(), &goodToken)
 		So(err, ShouldBeNil)
 
@@ -2727,6 +2741,7 @@ func TestBearerAuth(t *testing.T) {
 
 		dcm := test.NewControllerManager(dctlr)
 		dcm.StartAndWait(dctlr.Config.HTTP.Port)
+
 		defer dcm.StopServer()
 
 		var (
@@ -3106,8 +3121,10 @@ func TestBasicAuth(t *testing.T) {
 			dcm.StartAndWait(dctlr.Config.HTTP.Port)
 			defer dcm.StopServer()
 
-			var srcTagsList TagsList
-			var destTagsList TagsList
+			var (
+				srcTagsList  TagsList
+				destTagsList TagsList
+			)
 
 			resp, _ := srcClient.R().SetBasicAuth(username, password).Get(srcBaseURL + "/v2/" + testImage + "/tags/list")
 			So(resp, ShouldNotBeNil)
@@ -3198,6 +3215,7 @@ func TestBadURL(t *testing.T) {
 
 		dcm := test.NewControllerManager(dctlr)
 		dcm.StartAndWait(dctlr.Config.HTTP.Port)
+		
 		defer dcm.StopServer()
 
 		resp, err := destClient.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
@@ -3244,6 +3262,7 @@ func TestNoImagesByRegex(t *testing.T) {
 
 		dcm := test.NewControllerManager(dctlr)
 		dcm.StartAndWait(dctlr.Config.HTTP.Port)
+
 		defer dcm.StopServer()
 
 		resp, err := destClient.R().Get(destBaseURL + constants.RoutePrefix + testImage + "/manifests/" + testImageTag)
@@ -3256,6 +3275,7 @@ func TestNoImagesByRegex(t *testing.T) {
 		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
 		var catalog catalog
+
 		err = json.Unmarshal(resp.Body(), &catalog)
 		if err != nil {
 			panic(err)
@@ -3304,6 +3324,7 @@ func TestInvalidRegex(t *testing.T) {
 
 		dcm := test.NewControllerManager(dctlr)
 		dcm.StartAndWait(dctlr.Config.HTTP.Port)
+
 		defer dcm.StopServer()
 
 		found, err := test.ReadLogFileAndSearchString(dctlr.Config.Log.Output,
@@ -3349,6 +3370,7 @@ func TestNotSemver(t *testing.T) {
 		So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
 
 		semver := true
+
 		var tlsVerify bool
 
 		syncRegistryConfig := syncconf.RegistryConfig{
@@ -3376,6 +3398,7 @@ func TestNotSemver(t *testing.T) {
 
 		dcm := test.NewControllerManager(dctlr)
 		dcm.StartAndWait(dctlr.Config.HTTP.Port)
+
 		defer dcm.StopServer()
 
 		var destTagsList TagsList
@@ -3471,6 +3494,7 @@ func TestInvalidCerts(t *testing.T) {
 		dctlr, destBaseURL, _, destClient := makeDownstreamServer(t, false, syncConfig)
 		dcm := test.NewControllerManager(dctlr)
 		dcm.StartAndWait(dctlr.Config.HTTP.Port)
+
 		defer dcm.StopServer()
 
 		resp, err := destClient.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
@@ -3547,6 +3571,7 @@ func TestCertsWithWrongPerms(t *testing.T) {
 
 		dcm := test.NewControllerManager(dctlr)
 		dcm.StartAndWait(dctlr.Config.HTTP.Port)
+
 		defer dcm.StopServer()
 
 		resp, err := destClient.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
@@ -3660,6 +3685,7 @@ func TestInvalidTags(t *testing.T) {
 
 		dcm := test.NewControllerManager(dctlr)
 		dcm.StartAndWait(dctlr.Config.HTTP.Port)
+
 		defer dcm.StopServer()
 
 		resp, err := destClient.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + "invalid:tag")
@@ -3759,6 +3785,7 @@ func TestSubPaths(t *testing.T) {
 
 		dcm := test.NewControllerManager(dctlr)
 		dcm.StartAndWait(destPort)
+
 		defer dcm.StopServer()
 
 		var destTagsList TagsList
@@ -3933,8 +3960,10 @@ func TestConfigRules(t *testing.T) {
 
 		Convey("Test periodically sync is disabled when pollInterval is not set", func() {
 			regex := ".*"
-			var semver bool
-			var tlsVerify bool
+			var (
+				semver bool
+				tlsVerify bool
+			)
 
 			syncRegistryConfig := syncconf.RegistryConfig{
 				Content: []syncconf.Content{
@@ -3972,6 +4001,7 @@ func TestConfigRules(t *testing.T) {
 
 		Convey("Test periodically sync is disabled when content is not set", func() {
 			var tlsVerify bool
+
 			updateDuration, _ := time.ParseDuration("30m")
 
 			syncRegistryConfig := syncconf.RegistryConfig{
@@ -4145,6 +4175,7 @@ func TestNoURLsLeftInConfig(t *testing.T) {
 
 		dcm := test.NewControllerManager(dctlr)
 		dcm.StartAndWait(dctlr.Config.HTTP.Port)
+
 		defer dcm.StopServer()
 
 		resp, err := destClient.R().Get(destBaseURL + "/v2/" + testImage + "/tags/list")
@@ -4713,6 +4744,7 @@ func TestSignatures(t *testing.T) {
 
 		dcm := test.NewControllerManager(dctlr)
 		dcm.StartAndWait(dctlr.Config.HTTP.Port)
+
 		defer dcm.StopServer()
 
 		// wait for sync
@@ -5174,6 +5206,7 @@ func TestSignatures(t *testing.T) {
 
 		dcm := test.NewControllerManager(dctlr)
 		dcm.StartAndWait(dctlr.Config.HTTP.Port)
+
 		defer dcm.StopServer()
 
 		// wait for sync
@@ -5284,6 +5317,7 @@ func TestSyncedSignaturesMetaDB(t *testing.T) {
 
 		dcm := test.NewControllerManager(dctlr)
 		dcm.StartAndWait(dctlr.Config.HTTP.Port)
+
 		defer dcm.StopServer()
 
 		// Trigger SyncOnDemand
@@ -5365,6 +5399,7 @@ func TestOnDemandRetryGoroutine(t *testing.T) {
 
 		dcm := test.NewControllerManager(dctlr)
 		dcm.StartAndWait(dctlr.Config.HTTP.Port)
+
 		defer dcm.StopServer()
 
 		resp, err := destClient.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
@@ -5443,6 +5478,7 @@ func TestOnDemandWithDigest(t *testing.T) {
 
 		dcm := test.NewControllerManager(dctlr)
 		dcm.StartAndWait(dctlr.Config.HTTP.Port)
+
 		defer dcm.StopServer()
 
 		// get manifest digest from source
@@ -5496,6 +5532,7 @@ func TestOnDemandRetryGoroutineErr(t *testing.T) {
 
 		dcm := test.NewControllerManager(dctlr)
 		dcm.StartAndWait(dctlr.Config.HTTP.Port)
+
 		defer dcm.StopServer()
 
 		resp, err := destClient.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
@@ -5571,6 +5608,7 @@ func TestOnDemandMultipleImage(t *testing.T) {
 
 		dcm := test.NewControllerManager(dctlr)
 		dcm.StartAndWait(dctlr.Config.HTTP.Port)
+
 		defer dcm.StopServer()
 
 		callsNo := 5
@@ -5644,6 +5682,7 @@ func TestOnDemandPullsOnce(t *testing.T) {
 
 		regex := ".*"
 		semver := true
+
 		var tlsVerify bool
 
 		syncRegistryConfig := syncconf.RegistryConfig{
@@ -5780,6 +5819,7 @@ func TestSignaturesOnDemand(t *testing.T) {
 
 		dcm := test.NewControllerManager(dctlr)
 		dcm.StartAndWait(dctlr.Config.HTTP.Port)
+
 		defer dcm.StopServer()
 
 		// sync on demand
@@ -6016,6 +6056,7 @@ func TestOnlySignaturesOnDemand(t *testing.T) {
 
 		dcm := test.NewControllerManager(dctlr)
 		dcm.StartAndWait(dctlr.Config.HTTP.Port)
+
 		defer dcm.StopServer()
 
 		// sync on demand
@@ -6286,6 +6327,7 @@ func TestSyncWithDiffDigest(t *testing.T) {
 		So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
 
 		dcm.StartServer()
+
 		defer dcm.StopServer()
 
 		test.WaitTillServerReady(destBaseURL)
@@ -6373,6 +6415,7 @@ func TestSyncSignaturesDiff(t *testing.T) {
 
 		dcm := test.NewControllerManager(dctlr)
 		dcm.StartAndWait(dctlr.Config.HTTP.Port)
+
 		defer dcm.StopServer()
 
 		// wait for sync
@@ -6595,6 +6638,7 @@ func TestOnlySignedFlag(t *testing.T) {
 
 		dcm := test.NewControllerManager(dctlr)
 		dcm.StartAndWait(dctlr.Config.HTTP.Port)
+
 		defer dcm.StopServer()
 
 		found, err := test.ReadLogFileAndSearchString(dctlr.Config.Log.Output,
@@ -6630,6 +6674,7 @@ func TestOnlySignedFlag(t *testing.T) {
 
 		dcm := test.NewControllerManager(dctlr)
 		dcm.StartAndWait(dctlr.Config.HTTP.Port)
+
 		defer dcm.StopServer()
 
 		resp, err := client.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
@@ -7227,6 +7272,7 @@ func pushRepo(url, repoName string) godigest.Digest {
 	// put OCI reference artifact mediaType artifact
 	_, err = resty.R().SetHeader("Content-Type", ispec.MediaTypeImageManifest).
 		SetBody(content).Put(url + fmt.Sprintf("/v2/%s/manifests/%s", repoName, adigest.String()))
+
 	if err != nil {
 		panic(err)
 	}
