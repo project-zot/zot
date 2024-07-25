@@ -55,7 +55,9 @@ func TestAuditLogMessages(t *testing.T) {
 		username, seedUser := test.GenerateRandomString()
 		password, seedPass := test.GenerateRandomString()
 		htpasswdPath := test.MakeHtpasswdFileFromString(test.GetCredString(username, password))
+
 		defer os.Remove(htpasswdPath)
+
 		conf.HTTP.Auth = &config.AuthConfig{
 			HTPasswd: config.AuthHTPasswd{
 				Path: htpasswdPath,
@@ -110,6 +112,7 @@ func TestAuditLogMessages(t *testing.T) {
 				}
 
 				var auditLog AuditLog
+
 				err = json.Unmarshal(byteValue, &auditLog)
 				if err != nil {
 					panic(err)
@@ -134,6 +137,7 @@ func TestAuditLogMessages(t *testing.T) {
 
 				// wait until the file is populated
 				byteValue, _ := io.ReadAll(auditFile)
+
 				for {
 					if len(byteValue) != 0 {
 						break

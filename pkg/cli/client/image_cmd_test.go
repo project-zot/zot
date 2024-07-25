@@ -671,8 +671,10 @@ func TestServerResponseGQL(t *testing.T) {
 
 			Convey("invalid output format", func() {
 				args := []string{"name", "repo7", "--config", "imagetest", "-f", "random"}
+				
 				configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s","showspinner":false}]}`, url))
 				defer os.Remove(configPath)
+
 				cmd := client.NewImageCommand(client.NewSearchService())
 				buff := bytes.NewBufferString("")
 				cmd.SetOut(buff)
@@ -686,8 +688,10 @@ func TestServerResponseGQL(t *testing.T) {
 
 		Convey("Test image by digest", func() {
 			args := []string{"digest", "51e18f50", "--config", "imagetest"}
+
 			configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s","showspinner":false}]}`, url))
 			defer os.Remove(configPath)
+
 			cmd := client.NewImageCommand(client.NewSearchService())
 			buff := bytes.NewBufferString("")
 			cmd.SetOut(buff)

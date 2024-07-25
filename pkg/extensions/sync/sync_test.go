@@ -434,8 +434,10 @@ func TestOnDemand(t *testing.T) {
 			dcm.StartAndWait(dctlr.Config.HTTP.Port)
 			defer dcm.StopServer()
 
-			var srcTagsList TagsList
-			var destTagsList TagsList
+			var (
+				srcTagsList TagsList
+				destTagsList TagsList
+			)
 
 			resp, _ := srcClient.R().Get(srcBaseURL + "/v2/" + testImage + "/tags/list")
 			So(resp, ShouldNotBeNil)
@@ -775,6 +777,7 @@ func TestOnDemandWithScaleOutCluster(t *testing.T) {
 
 		scm := test.NewControllerManager(sctlr)
 		scm.StartAndWait(sctlr.Config.HTTP.Port)
+
 		defer scm.StopServer()
 
 		// sync config for both downstreams.
@@ -1078,6 +1081,7 @@ func TestSyncReferenceInLoop(t *testing.T) {
 
 		scm := test.NewControllerManager(sctlr)
 		scm.StartAndWait(sctlr.Config.HTTP.Port)
+
 		defer scm.StopServer()
 
 		var tlsVerify bool
@@ -1223,6 +1227,7 @@ func TestSyncWithNonDistributableBlob(t *testing.T) {
 
 		scm := test.NewControllerManager(sctlr)
 		scm.StartAndWait(sctlr.Config.HTTP.Port)
+
 		defer scm.StopServer()
 
 		var tlsVerify bool
@@ -1299,6 +1304,7 @@ func TestDockerImagesAreSkipped(t *testing.T) {
 
 		scm := test.NewControllerManager(sctlr)
 		scm.StartAndWait(sctlr.Config.HTTP.Port)
+
 		defer scm.StopServer()
 
 		var tlsVerify bool
@@ -1600,6 +1606,7 @@ func TestPeriodically(t *testing.T) {
 
 		scm := test.NewControllerManager(sctlr)
 		scm.StartAndWait(sctlr.Config.HTTP.Port)
+
 		defer scm.StopServer()
 
 		regex := ".*"
@@ -1718,7 +1725,7 @@ func TestPeriodically(t *testing.T) {
 			defer dcm.StopServer()
 
 			var (
-				srcTagsList TagsList
+				srcTagsList  TagsList
 				destTagsList TagsList
 			)
 
@@ -1783,6 +1790,7 @@ func TestPeriodicallyWithScaleOutCluster(t *testing.T) {
 
 		scm := test.NewControllerManager(sctlr)
 		scm.StartAndWait(sctlr.Config.HTTP.Port)
+
 		defer scm.StopServer()
 
 		// upload additional image to the upstream.
@@ -1897,6 +1905,7 @@ func TestPermsDenied(t *testing.T) {
 
 		scm := test.NewControllerManager(sctlr)
 		scm.StartAndWait(sctlr.Config.HTTP.Port)
+
 		defer scm.StopServer()
 
 		regex := ".*"
@@ -1993,6 +2002,7 @@ func TestConfigReloader(t *testing.T) {
 
 		scm := test.NewControllerManager(sctlr)
 		scm.StartAndWait(sctlr.Config.HTTP.Port)
+
 		defer scm.StopServer()
 
 		duration, _ := time.ParseDuration("3s")
@@ -2364,6 +2374,7 @@ func TestBadTLS(t *testing.T) {
 
 		scm := test.NewControllerManager(sctlr)
 		scm.StartAndWait(sctlr.Config.HTTP.Port)
+
 		defer scm.StopServer()
 
 		regex := ".*"
@@ -2436,6 +2447,7 @@ func TestTLS(t *testing.T) {
 
 		scm := test.NewControllerManager(sctlr)
 		scm.StartAndWait(sctlr.Config.HTTP.Port)
+
 		defer scm.StopServer()
 
 		var (
@@ -2563,6 +2575,7 @@ func TestBearerAuth(t *testing.T) {
 
 		scm := test.NewControllerManager(sctlr)
 		scm.StartAndWait(sctlr.Config.HTTP.Port)
+
 		defer scm.StopServer()
 
 		registryName := sync.StripRegistryTransport(srcBaseURL)
@@ -2710,6 +2723,7 @@ func TestBearerAuth(t *testing.T) {
 
 		scm := test.NewControllerManager(sctlr)
 		scm.StartAndWait(sctlr.Config.HTTP.Port)
+
 		defer scm.StopServer()
 
 		registryName := sync.StripRegistryTransport(srcBaseURL)
@@ -2761,7 +2775,9 @@ func TestBearerAuth(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
 		var goodToken authutils.AccessTokenResponse
+
 		err = json.Unmarshal(resp.Body(), &goodToken)
 		So(err, ShouldBeNil)
 
@@ -2975,6 +2991,7 @@ func TestBasicAuth(t *testing.T) {
 			dctlr := api.NewController(destConfig)
 			dcm := test.NewControllerManager(dctlr)
 			dcm.StartAndWait(destPort)
+
 			defer dcm.StopServer()
 
 			found, err := test.ReadLogFileAndSearchString(dctlr.Config.Log.Output,
@@ -3215,7 +3232,7 @@ func TestBadURL(t *testing.T) {
 
 		dcm := test.NewControllerManager(dctlr)
 		dcm.StartAndWait(dctlr.Config.HTTP.Port)
-		
+
 		defer dcm.StopServer()
 
 		resp, err := destClient.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
@@ -3232,6 +3249,7 @@ func TestNoImagesByRegex(t *testing.T) {
 
 		scm := test.NewControllerManager(sctlr)
 		scm.StartAndWait(sctlr.Config.HTTP.Port)
+
 		defer scm.StopServer()
 
 		regex := "9.9.9"
@@ -3293,9 +3311,11 @@ func TestInvalidRegex(t *testing.T) {
 
 		scm := test.NewControllerManager(sctlr)
 		scm.StartAndWait(sctlr.Config.HTTP.Port)
+		
 		defer scm.StopServer()
 
 		regex := "["
+		
 		var tlsVerify bool
 
 		syncRegistryConfig := syncconf.RegistryConfig{
@@ -3352,6 +3372,7 @@ func TestNotSemver(t *testing.T) {
 
 		scm := test.NewControllerManager(sctlr)
 		scm.StartAndWait(sctlr.Config.HTTP.Port)
+
 		defer scm.StopServer()
 
 		// get manifest so we can update it with a semver non compliant tag
@@ -3412,6 +3433,7 @@ func TestNotSemver(t *testing.T) {
 			if err != nil {
 				panic(err)
 			}
+
 			if len(destTagsList.Tags) > 0 {
 				break
 			}
@@ -3648,6 +3670,7 @@ func TestInvalidTags(t *testing.T) {
 
 		scm := test.NewControllerManager(sctlr)
 		scm.StartAndWait(sctlr.Config.HTTP.Port)
+
 		defer scm.StopServer()
 
 		regex := ".*"
@@ -3723,6 +3746,7 @@ func TestSubPaths(t *testing.T) {
 
 		scm := test.NewControllerManager(sctlr)
 		scm.StartAndWait(srcPort)
+
 		defer scm.StopServer()
 
 		regex := ".*"
@@ -3863,6 +3887,7 @@ func TestOnDemandContentFiltering(t *testing.T) {
 
 		scm := test.NewControllerManager(sctlr)
 		scm.StartAndWait(sctlr.Config.HTTP.Port)
+
 		defer scm.StopServer()
 
 		Convey("Test image is filtered out by content", func() {
@@ -3956,12 +3981,14 @@ func TestConfigRules(t *testing.T) {
 
 		scm := test.NewControllerManager(sctlr)
 		scm.StartAndWait(sctlr.Config.HTTP.Port)
+
 		defer scm.StopServer()
 
 		Convey("Test periodically sync is disabled when pollInterval is not set", func() {
 			regex := ".*"
+
 			var (
-				semver bool
+				semver    bool
 				tlsVerify bool
 			)
 
@@ -4066,6 +4093,7 @@ func TestMultipleURLs(t *testing.T) {
 
 		scm := test.NewControllerManager(sctlr)
 		scm.StartAndWait(sctlr.Config.HTTP.Port)
+
 		defer scm.StopServer()
 
 		regex := ".*"
@@ -4193,6 +4221,7 @@ func TestPeriodicallySignaturesErr(t *testing.T) {
 
 		scm := test.NewControllerManager(sctlr)
 		scm.StartAndWait(sctlr.Config.HTTP.Port)
+
 		defer scm.StopServer()
 
 		// create repo, push and sign it
@@ -4626,6 +4655,7 @@ func TestSignatures(t *testing.T) {
 
 		scm := test.NewControllerManager(sctlr)
 		scm.StartAndWait(sctlr.Config.HTTP.Port)
+
 		defer scm.StopServer()
 
 		// create repo, push and sign it
@@ -5154,6 +5184,7 @@ func TestSignatures(t *testing.T) {
 
 		scm := test.NewControllerManager(sctlr)
 		scm.StartAndWait(sctlr.Config.HTTP.Port)
+
 		defer scm.StopServer()
 
 		// create repo, push and sign it
@@ -5268,6 +5299,7 @@ func TestSyncedSignaturesMetaDB(t *testing.T) {
 
 		scm := test.NewControllerManager(sctlr)
 		scm.StartAndWait(sctlr.Config.HTTP.Port)
+
 		defer scm.StopServer()
 
 		// Push an image
@@ -5678,6 +5710,7 @@ func TestOnDemandPullsOnce(t *testing.T) {
 
 		scm := test.NewControllerManager(sctlr)
 		scm.StartAndWait(sctlr.Config.HTTP.Port)
+
 		defer scm.StopServer()
 
 		regex := ".*"
@@ -5735,6 +5768,7 @@ func TestOnDemandPullsOnce(t *testing.T) {
 		}(conv)
 
 		wg.Add(1)
+
 		go func(conv C) {
 			defer wg.Done()
 			resp, err := resty.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
@@ -5778,6 +5812,7 @@ func TestSignaturesOnDemand(t *testing.T) {
 
 		scm := test.NewControllerManager(sctlr)
 		scm.StartAndWait(sctlr.Config.HTTP.Port)
+
 		defer scm.StopServer()
 
 		// create repo, push and sign it
@@ -5902,6 +5937,7 @@ func TestSignaturesOnDemand(t *testing.T) {
 
 		scm := test.NewControllerManager(sctlr)
 		scm.StartAndWait(sctlr.Config.HTTP.Port)
+
 		defer scm.StopServer()
 
 		// create repo, push and sign it
@@ -6012,12 +6048,14 @@ func TestOnlySignaturesOnDemand(t *testing.T) {
 
 		scm := test.NewControllerManager(sctlr)
 		scm.StartAndWait(sctlr.Config.HTTP.Port)
+
 		defer scm.StopServer()
 
 		// create repo, push and sign it
 		var digest godigest.Digest
 
 		repoName := testSignedImage
+
 		So(func() { digest = pushRepo(srcBaseURL, repoName) }, ShouldNotPanic)
 
 		splittedURL := strings.SplitAfter(srcBaseURL, ":")
@@ -6127,6 +6165,7 @@ func TestSyncOnlyDiff(t *testing.T) {
 
 		scm := test.NewControllerManager(sctlr)
 		scm.StartAndWait(sctlr.Config.HTTP.Port)
+
 		defer scm.StopServer()
 
 		var tlsVerify bool
@@ -6213,6 +6252,7 @@ func TestSyncWithDiffDigest(t *testing.T) {
 
 		scm := test.NewControllerManager(sctlr)
 		scm.StartAndWait(sctlr.Config.HTTP.Port)
+
 		defer scm.StopServer()
 
 		var tlsVerify bool
@@ -6366,6 +6406,7 @@ func TestSyncSignaturesDiff(t *testing.T) {
 		var digest godigest.Digest
 
 		repoName := testSignedImage
+
 		So(func() { digest = pushRepo(srcBaseURL, repoName) }, ShouldNotPanic)
 
 		splittedURL := strings.SplitAfter(srcBaseURL, ":")
@@ -6741,6 +6782,7 @@ func TestSyncWithDestination(t *testing.T) {
 
 		scm := test.NewControllerManager(sctlr)
 		scm.StartAndWait(sctlr.Config.HTTP.Port)
+
 		defer scm.StopServer()
 
 		splittedURL := strings.SplitAfter(srcBaseURL, ":")
@@ -6884,6 +6926,7 @@ func TestSyncImageIndex(t *testing.T) {
 
 		scm := test.NewControllerManager(sctlr)
 		scm.StartAndWait(sctlr.Config.HTTP.Port)
+
 		defer scm.StopServer()
 
 		regex := ".*"
@@ -7315,6 +7358,7 @@ func pushBlob(url string, repoName string, buf []byte) godigest.Digest {
 		SetQueryParam("digest", digest.String()).
 		SetBody(buf).
 		Put(loc)
+
 	if err != nil {
 		panic(err)
 	}

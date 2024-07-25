@@ -1592,6 +1592,7 @@ func TestOverlappingSyncRetentionConfig(t *testing.T) {
 		So(err, ShouldBeNil)
 		data, err := os.ReadFile(logPath)
 		So(err, ShouldBeNil)
+
 		defer os.Remove(logPath) // clean up
 
 		So(string(data), ShouldContainSubstring, "overlapping sync content\":{\"Prefix\":\"infra/*")
