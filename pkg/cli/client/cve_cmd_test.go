@@ -188,8 +188,10 @@ func TestNegativeServerResponse(t *testing.T) {
 		}
 
 		args := []string{"fixed", "zot-cve-test", "CVE-2019-9923", "--config", "cvetest"}
+
 		configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"cvetest","url":"%s","showspinner":false}]}`, url))
 		defer os.Remove(configPath)
+
 		cveCmd := client.NewCVECommand(client.NewSearchService())
 		buff := bytes.NewBufferString("")
 		cveCmd.SetOut(buff)
@@ -385,8 +387,10 @@ func TestCVEDiffList(t *testing.T) {
 
 	Convey("Test CVE by image name - GQL - positive", t, func() {
 		args := []string{"diff", "repo:image", "repo:base-image", "--config", "cvetest"}
+
 		configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"cvetest","url":"%s","showspinner":false}]}`, url))
 		defer os.Remove(configPath)
+
 		cveCmd := client.NewCVECommand(client.NewSearchService())
 		buff := bytes.NewBufferString("")
 		cveCmd.SetOut(buff)
@@ -404,8 +408,10 @@ func TestCVEDiffList(t *testing.T) {
 
 	Convey("Errors", t, func() {
 		// args := []string{"diff", "repo:image", "repo:base-image", "--config", "cvetest"}
+
 		configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"cvetest","url":"%s","showspinner":false}]}`, url))
 		defer os.Remove(configPath)
+
 		cveCmd := client.NewCVECommand(client.NewSearchService())
 
 		Convey("Set wrong number of params", func() {
@@ -814,10 +820,13 @@ func TestServerCVEResponse(t *testing.T) {
 		cveCmd.SetOut(buff)
 		cveCmd.SetErr(buff)
 		cveCmd.SetArgs(args)
+
 		err := cveCmd.Execute()
-		space := regexp.MustCompile(`\s+`)
-		str := space.ReplaceAllString(buff.String(), " ")
 		So(err, ShouldBeNil)
+
+		space := regexp.MustCompile(`\s+`)
+
+		str := space.ReplaceAllString(buff.String(), " ")
 		So(strings.TrimSpace(str), ShouldEqual,
 			"REPOSITORY TAG OS/ARCH DIGEST SIGNED SIZE zot-cve-test 0.0.1 linux/amd64 db573b01 false 854B")
 	})
@@ -842,8 +851,10 @@ func TestServerCVEResponse(t *testing.T) {
 
 	Convey("Test CVE by name and CVE ID - GQL - invalid cli output format", t, func() {
 		args := []string{"affected", "CVE-2019-9923", "--repo", "zot-cve-test", "-f", "random", "--config", "cvetest"}
+
 		configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"cvetest","url":"%s","showspinner":false}]}`, url))
 		defer os.Remove(configPath)
+
 		cveCmd := client.NewCVECommand(client.NewSearchService())
 		buff := bytes.NewBufferString("")
 		cveCmd.SetOut(buff)

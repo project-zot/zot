@@ -45,8 +45,10 @@ func TestReferrerCLI(t *testing.T) {
 		}
 		ctlr := api.NewController(conf)
 		ctlr.Config.Storage.RootDirectory = rootDir
+
 		cm := test.NewControllerManager(ctlr)
 		cm.StartAndWait(conf.HTTP.Port)
+
 		defer cm.StopServer()
 
 		repo := repoName

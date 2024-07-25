@@ -193,6 +193,7 @@ func TestSignature(t *testing.T) {
 		ctlr.Config.Storage.RootDirectory = currentDir
 		cm := test.NewControllerManager(ctlr)
 		cm.StartAndWait(conf.HTTP.Port)
+
 		defer cm.StopServer()
 
 		err = UploadImage(CreateDefaultImage(), url, repoName, "0.0.1")
@@ -552,14 +553,17 @@ func TestServerResponseGQL(t *testing.T) {
 		defer cm.StopServer()
 
 		err := uploadManifest(url)
+
 		t.Logf("%s", ctlr.Config.Storage.RootDirectory)
 		So(err, ShouldBeNil)
 
 		Convey("Test all images config url", func() {
 			t.Logf("%s", ctlr.Config.Storage.RootDirectory)
 			args := []string{"list", "--config", "imagetest"}
+
 			configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s","showspinner":false}]}`, url))
 			defer os.Remove(configPath)
+
 			cmd := client.NewImageCommand(client.NewSearchService())
 			buff := &bytes.Buffer{}
 			cmd.SetOut(buff)
@@ -575,8 +579,10 @@ func TestServerResponseGQL(t *testing.T) {
 			So(actual, ShouldContainSubstring, "repo7 test:1.0 linux/amd64 51e18f50 false 528B")
 			Convey("Test all images invalid output format", func() {
 				args := []string{"list", "--config", "imagetest", "-f", "random"}
+
 				configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s","showspinner":false}]}`, url))
 				defer os.Remove(configPath)
+
 				cmd := client.NewImageCommand(client.NewSearchService())
 				buff := bytes.NewBufferString("")
 				cmd.SetOut(buff)
@@ -590,8 +596,10 @@ func TestServerResponseGQL(t *testing.T) {
 
 		Convey("Test all images verbose", func() {
 			args := []string{"list", "--config", "imagetest", "--verbose"}
+
 			configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s","showspinner":false}]}`, url))
 			defer os.Remove(configPath)
+
 			cmd := client.NewImageCommand(client.NewSearchService())
 			buff := bytes.NewBufferString("")
 			cmd.SetOut(buff)
@@ -615,8 +623,10 @@ func TestServerResponseGQL(t *testing.T) {
 
 		Convey("Test all images with debug flag", func() {
 			args := []string{"list", "--config", "imagetest", "--debug"}
+
 			configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s","showspinner":false}]}`, url))
 			defer os.Remove(configPath)
+
 			cmd := client.NewImageCommand(client.NewSearchService())
 			buff := bytes.NewBufferString("")
 			cmd.SetOut(buff)
@@ -638,17 +648,22 @@ func TestServerResponseGQL(t *testing.T) {
 
 		Convey("Test image by name config url", func() {
 			args := []string{"name", "repo7", "--config", "imagetest"}
+
 			configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s","showspinner":false}]}`, url))
 			defer os.Remove(configPath)
+
 			cmd := client.NewImageCommand(client.NewSearchService())
 			buff := bytes.NewBufferString("")
 			cmd.SetOut(buff)
 			cmd.SetErr(buff)
 			cmd.SetArgs(args)
+
 			err := cmd.Execute()
 			So(err, ShouldBeNil)
+
 			space := regexp.MustCompile(`\s+`)
 			str := space.ReplaceAllString(buff.String(), " ")
+
 			actual := strings.TrimSpace(str)
 			So(actual, ShouldContainSubstring, "REPOSITORY TAG OS/ARCH DIGEST SIGNED SIZE")
 			So(actual, ShouldContainSubstring, "repo7 test:2.0 linux/amd64 51e18f50 false 528B")
@@ -1061,8 +1076,10 @@ func TestImagesSortFlag(t *testing.T) {
 		cmd.SetOut(buff)
 		cmd.SetErr(buff)
 		cmd.SetArgs(args)
+
 		err = cmd.Execute()
 		So(err, ShouldBeNil)
+
 		str = buff.String()
 		So(strings.Index(str, "b-repo"), ShouldBeLessThan, strings.Index(str, "a-repo"))
 
@@ -1071,9 +1088,11 @@ func TestImagesSortFlag(t *testing.T) {
 		cmd.SetOut(buff)
 		cmd.SetErr(buff)
 		cmd.SetArgs(args)
+
 		err = cmd.Execute()
-		str = buff.String()
 		So(err, ShouldBeNil)
+
+		str = buff.String()
 		So(strings.Index(str, "b-repo"), ShouldBeLessThan, strings.Index(str, "a-repo"))
 	})
 }
