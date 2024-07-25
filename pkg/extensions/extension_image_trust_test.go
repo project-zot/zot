@@ -870,7 +870,6 @@ func RunSignatureUploadAndVerificationTests(t *testing.T, cacheDriverParams map[
 
 		// Write signature
 		sig := CreateImageWith().RandomLayers(1, 2).RandomConfig().Build()
-		So(err, ShouldBeNil)
 
 		ref, err := signature.GetCosignSignatureTagForManifest(image.Manifest)
 		So(err, ShouldBeNil)

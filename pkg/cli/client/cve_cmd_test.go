@@ -397,7 +397,9 @@ func TestCVEDiffList(t *testing.T) {
 		cveCmd.SetErr(buff)
 		cveCmd.SetArgs(args)
 		err = cveCmd.Execute()
+
 		fmt.Println(buff.String())
+
 		space := regexp.MustCompile(`\s+`)
 		str := space.ReplaceAllString(buff.String(), " ")
 		str = strings.TrimSpace(str)
@@ -407,8 +409,6 @@ func TestCVEDiffList(t *testing.T) {
 	})
 
 	Convey("Errors", t, func() {
-		// args := []string{"diff", "repo:image", "repo:base-image", "--config", "cvetest"}
-
 		configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"cvetest","url":"%s","showspinner":false}]}`, url))
 		defer os.Remove(configPath)
 
@@ -598,11 +598,15 @@ func TestServerCVEResponse(t *testing.T) {
 		cveCmd.SetOut(buff)
 		cveCmd.SetErr(buff)
 		cveCmd.SetArgs(args)
+
 		err = cveCmd.Execute()
+		So(err, ShouldBeNil)
+
 		space := regexp.MustCompile(`\s+`)
+
 		str := space.ReplaceAllString(buff.String(), " ")
 		str = strings.TrimSpace(str)
-		So(err, ShouldBeNil)
+
 		So(str, ShouldContainSubstring, "ID SEVERITY TITLE")
 		So(str, ShouldContainSubstring, "CVE-2")
 		So(str, ShouldNotContainSubstring, "CVE-1")
@@ -686,11 +690,14 @@ func TestServerCVEResponse(t *testing.T) {
 		cveCmd.SetOut(buff)
 		cveCmd.SetErr(buff)
 		cveCmd.SetArgs(args)
+
 		err := cveCmd.Execute()
+		So(err, ShouldBeNil)
+
 		space := regexp.MustCompile(`\s+`)
 		str := space.ReplaceAllString(buff.String(), " ")
 		str = strings.TrimSpace(str)
-		So(err, ShouldBeNil)
+
 		So(str, ShouldEqual, "REPOSITORY TAG OS/ARCH DIGEST SIGNED SIZE zot-cve-test 0.0.1 linux/amd64 db573b01 false 854B")
 	})
 
@@ -705,11 +712,14 @@ func TestServerCVEResponse(t *testing.T) {
 		cveCmd.SetOut(buff)
 		cveCmd.SetErr(buff)
 		cveCmd.SetArgs(args)
+
 		err := cveCmd.Execute()
+		So(err, ShouldBeNil)
+
 		space := regexp.MustCompile(`\s+`)
 		str := space.ReplaceAllString(buff.String(), " ")
 		str = strings.TrimSpace(str)
-		So(err, ShouldBeNil)
+
 		So(str, ShouldNotContainSubstring, "REPOSITORY TAG OS/ARCH DIGEST SIGNED SIZE")
 	})
 
@@ -782,11 +792,14 @@ func TestServerCVEResponse(t *testing.T) {
 		cveCmd.SetOut(buff)
 		cveCmd.SetErr(buff)
 		cveCmd.SetArgs(args)
+
 		err := cveCmd.Execute()
+		So(err, ShouldNotBeNil)
+
 		space := regexp.MustCompile(`\s+`)
 		str := space.ReplaceAllString(buff.String(), " ")
 		str = strings.TrimSpace(str)
-		So(err, ShouldNotBeNil)
+
 		So(strings.TrimSpace(str), ShouldNotContainSubstring, "REPOSITORY TAG OS/ARCH DIGEST SIGNED SIZE")
 	})
 
@@ -801,11 +814,14 @@ func TestServerCVEResponse(t *testing.T) {
 		cveCmd.SetOut(buff)
 		cveCmd.SetErr(buff)
 		cveCmd.SetArgs(args)
+
 		err := cveCmd.Execute()
+		So(err, ShouldNotBeNil)
+
 		space := regexp.MustCompile(`\s+`)
 		str := space.ReplaceAllString(buff.String(), " ")
 		str = strings.TrimSpace(str)
-		So(err, ShouldNotBeNil)
+
 		So(strings.TrimSpace(str), ShouldNotContainSubstring, "REPOSITORY TAG OS/ARCH DIGEST SIGNED SIZE")
 	})
 
@@ -842,10 +858,13 @@ func TestServerCVEResponse(t *testing.T) {
 		cveCmd.SetOut(buff)
 		cveCmd.SetErr(buff)
 		cveCmd.SetArgs(args)
+
 		err := cveCmd.Execute()
-		space := regexp.MustCompile(`\s+`)
-		str := space.ReplaceAllString(buff.String(), " ")
 		So(err, ShouldBeNil)
+
+		space := regexp.MustCompile(`\s+`)
+
+		str := space.ReplaceAllString(buff.String(), " ")
 		So(strings.TrimSpace(str), ShouldNotContainSubstring, "REPOSITORY TAG OS/ARCH SIGNED SIZE")
 	})
 

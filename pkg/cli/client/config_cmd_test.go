@@ -206,6 +206,7 @@ func TestConfigCmdMain(t *testing.T) {
 
 	Convey("Test remove missing config entry", t, func() {
 		args := []string{"remove", "configtest"}
+
 		configPath := makeConfigFile(`{"configs":[]`)
 		defer os.Remove(configPath)
 
@@ -221,6 +222,7 @@ func TestConfigCmdMain(t *testing.T) {
 
 	Convey("Test remove bad config file content", t, func() {
 		args := []string{"remove", "configtest"}
+
 		configPath := makeConfigFile(`{"asdf":[]`)
 		defer os.Remove(configPath)
 
@@ -236,6 +238,7 @@ func TestConfigCmdMain(t *testing.T) {
 
 	Convey("Test remove bad config file entry", t, func() {
 		args := []string{"remove", "configtest"}
+
 		configPath := makeConfigFile(`{"configs":[asdad]`)
 		defer os.Remove(configPath)
 

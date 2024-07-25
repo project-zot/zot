@@ -435,7 +435,7 @@ func TestOnDemand(t *testing.T) {
 			defer dcm.StopServer()
 
 			var (
-				srcTagsList TagsList
+				srcTagsList  TagsList
 				destTagsList TagsList
 			)
 
@@ -3253,6 +3253,7 @@ func TestNoImagesByRegex(t *testing.T) {
 		defer scm.StopServer()
 
 		regex := "9.9.9"
+
 		var tlsVerify bool
 
 		syncRegistryConfig := syncconf.RegistryConfig{
@@ -3311,11 +3312,11 @@ func TestInvalidRegex(t *testing.T) {
 
 		scm := test.NewControllerManager(sctlr)
 		scm.StartAndWait(sctlr.Config.HTTP.Port)
-		
+
 		defer scm.StopServer()
 
 		regex := "["
-		
+
 		var tlsVerify bool
 
 		syncRegistryConfig := syncconf.RegistryConfig{
@@ -5191,6 +5192,7 @@ func TestSignatures(t *testing.T) {
 		var digest godigest.Digest
 
 		repoName := testSignedImage
+
 		So(func() { digest = pushRepo(srcBaseURL, repoName) }, ShouldNotPanic)
 
 		splittedURL := strings.SplitAfter(srcBaseURL, ":")
@@ -5573,9 +5575,11 @@ func TestOnDemandRetryGoroutineErr(t *testing.T) {
 
 		found, err := test.ReadLogFileAndSearchString(dctlr.Config.Log.Output,
 			"failed to copy image", 15*time.Second)
+
 		if err != nil {
 			panic(err)
 		}
+
 		if !found {
 			data, err := os.ReadFile(dctlr.Config.Log.Output)
 			So(err, ShouldBeNil)
@@ -5690,6 +5694,7 @@ func TestOnDemandMultipleImage(t *testing.T) {
 
 				break
 			}
+
 			time.Sleep(500 * time.Millisecond)
 		}
 
@@ -5819,6 +5824,7 @@ func TestSignaturesOnDemand(t *testing.T) {
 		var digest godigest.Digest
 
 		repoName := testSignedImage
+
 		So(func() { digest = pushRepo(srcBaseURL, repoName) }, ShouldNotPanic)
 
 		splittedURL := strings.SplitAfter(srcBaseURL, ":")
@@ -7315,7 +7321,6 @@ func pushRepo(url, repoName string) godigest.Digest {
 	// put OCI reference artifact mediaType artifact
 	_, err = resty.R().SetHeader("Content-Type", ispec.MediaTypeImageManifest).
 		SetBody(content).Put(url + fmt.Sprintf("/v2/%s/manifests/%s", repoName, adigest.String()))
-
 	if err != nil {
 		panic(err)
 	}
@@ -7358,7 +7363,6 @@ func pushBlob(url string, repoName string, buf []byte) godigest.Digest {
 		SetQueryParam("digest", digest.String()).
 		SetBody(buf).
 		Put(loc)
-
 	if err != nil {
 		panic(err)
 	}

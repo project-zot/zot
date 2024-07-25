@@ -825,7 +825,9 @@ func TestServerResponse(t *testing.T) {
 			buff := &bytes.Buffer{}
 			searchConfig.ResultWriter = buff
 			searchConfig.Verbose = true
+
 			defer func() { searchConfig.Verbose = false }()
+
 			err := client.SearchAllImages(searchConfig)
 			So(err, ShouldBeNil)
 
