@@ -734,11 +734,14 @@ func TestServerCVEResponse(t *testing.T) {
 		cveCmd.SetOut(buff)
 		cveCmd.SetErr(buff)
 		cveCmd.SetArgs(args)
+
 		err := cveCmd.Execute()
+		So(err, ShouldBeNil)
+
 		space := regexp.MustCompile(`\s+`)
+
 		str := space.ReplaceAllString(buff.String(), " ")
 		str = strings.TrimSpace(str)
-		So(err, ShouldBeNil)
 		So(str, ShouldEqual, "")
 	})
 

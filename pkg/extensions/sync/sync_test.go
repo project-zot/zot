@@ -2428,7 +2428,7 @@ func TestTLS(t *testing.T) {
 		defer scm.StopServer()
 
 		var (
-			srcIndex ispec.Index
+			srcIndex  ispec.Index
 			destIndex ispec.Index
 		)
 
@@ -2854,7 +2854,7 @@ func TestBasicAuth(t *testing.T) {
 			defer dcm.StopServer()
 
 			var (
-				srcTagsList TagsList
+				srcTagsList  TagsList
 				destTagsList TagsList
 			)
 
@@ -4073,7 +4073,7 @@ func TestMultipleURLs(t *testing.T) {
 		defer dcm.StopServer()
 
 		var (
-			srcTagsList TagsList
+			srcTagsList  TagsList
 			destTagsList TagsList
 		)
 
@@ -6468,9 +6468,9 @@ func TestSyncSignaturesDiff(t *testing.T) {
 
 		// find image manifest digest (signed-repo) and upstream notary digests
 		var (
-			upstreamRefsDigests []string
+			upstreamRefsDigests   []string
 			downstreamRefsDigests []string
-			manifestDigest string
+			manifestDigest        string
 		)
 
 		for _, manifestDesc := range srcIndex.Manifests {
