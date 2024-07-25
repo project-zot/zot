@@ -2378,8 +2378,9 @@ func TestBadTLS(t *testing.T) {
 		defer scm.StopServer()
 
 		regex := ".*"
-		var semver bool
 		tlsVerify := true
+
+		var semver bool
 
 		syncRegistryConfig := syncconf.RegistryConfig{
 			Content: []syncconf.Content{
@@ -3621,6 +3622,7 @@ func TestInvalidUrl(t *testing.T) {
 	Convey("Verify sync invalid url", t, func() {
 		updateDuration, _ := time.ParseDuration("30m")
 		regex := ".*"
+
 		var (
 			semver    bool
 			tlsVerify bool
@@ -4663,6 +4665,7 @@ func TestSignatures(t *testing.T) {
 		var digest godigest.Digest
 
 		repoName := testSignedImage
+
 		So(func() { digest = pushRepo(srcBaseURL, repoName) }, ShouldNotPanic)
 
 		splittedURL := strings.SplitAfter(srcBaseURL, ":")
@@ -4902,6 +4905,7 @@ func TestSignatures(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		var artifactManifest ispec.Manifest
+
 		for _, ref := range referrers.Manifests {
 			refPath := path.Join(srcDir, repoName, "blobs", string(ref.Digest.Algorithm()), ref.Digest.Encoded())
 			body, err := os.ReadFile(refPath)
@@ -5575,7 +5579,6 @@ func TestOnDemandRetryGoroutineErr(t *testing.T) {
 
 		found, err := test.ReadLogFileAndSearchString(dctlr.Config.Log.Output,
 			"failed to copy image", 15*time.Second)
-
 		if err != nil {
 			panic(err)
 		}
@@ -5950,6 +5953,7 @@ func TestSignaturesOnDemand(t *testing.T) {
 		var digest godigest.Digest
 
 		repoName := testSignedImage
+
 		So(func() { digest = pushRepo(srcBaseURL, repoName) }, ShouldNotPanic)
 
 		splittedURL := strings.SplitAfter(srcBaseURL, ":")
@@ -6430,6 +6434,7 @@ func TestSyncSignaturesDiff(t *testing.T) {
 		So(func() { signImage(tdir, srcPort, repoName, digest) }, ShouldNotPanic)
 
 		regex := ".*"
+
 		var (
 			semver    bool
 			tlsVerify bool
@@ -6531,12 +6536,15 @@ func TestSyncSignaturesDiff(t *testing.T) {
 			KeyRef:          path.Join(tdir, "cosign.pub"),
 			IgnoreTlog:      true,
 		}
+
 		err = vrfy.Exec(context.TODO(), []string{fmt.Sprintf("localhost:%s/%s:%s", destPort, repoName, testImageTag)})
 		So(err, ShouldBeNil)
 
 		// compare signatures
-		var srcIndex ispec.Index
-		var destIndex ispec.Index
+		var (
+			srcIndex ispec.Index
+			destIndex ispec.Index
+		)
 
 		srcBuf, err := os.ReadFile(path.Join(srcDir, repoName, "index.json"))
 		if err != nil {
@@ -7363,6 +7371,7 @@ func pushBlob(url string, repoName string, buf []byte) godigest.Digest {
 		SetQueryParam("digest", digest.String()).
 		SetBody(buf).
 		Put(loc)
+
 	if err != nil {
 		panic(err)
 	}
