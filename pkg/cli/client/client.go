@@ -307,7 +307,7 @@ func fetchImageIndexStruct(ctx context.Context, job *httpJob) (*imageStruct, err
 		return nil, err
 	}
 
-	indexDigest := header.Get("docker-content-digest")
+	indexDigest := header.Get("Docker-Content-Digest")
 
 	indexSize, err := strconv.ParseInt(header.Get("Content-Length"), 10, 64)
 	if err != nil {
@@ -398,7 +398,7 @@ func fetchManifestStruct(ctx context.Context, repo, manifestReference string, se
 		return common.ManifestSummary{}, err
 	}
 
-	manifestDigest := header.Get("docker-content-digest")
+	manifestDigest := header.Get("Docker-Content-Digest")
 	configDigest := manifestResp.Config.Digest.String()
 
 	configContent, err := fetchConfig(ctx, repo, configDigest, searchConf, username, password)
