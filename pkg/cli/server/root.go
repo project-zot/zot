@@ -262,7 +262,8 @@ func validateCacheConfig(cfg *config.Config, log zlog.Logger) error {
 		}
 
 		// unsupported cache driver
-		if cfg.Storage.CacheDriver["name"] != storageConstants.DynamoDBDriverName {
+		if cfg.Storage.CacheDriver["name"] != storageConstants.DynamoDBDriverName &&
+			cfg.Storage.CacheDriver["name"] != storageConstants.RedisDriverName {
 			log.Error().Err(zerr.ErrBadConfig).
 				Interface("cacheDriver", cfg.Storage.CacheDriver["name"]).Msg("invalid cache config, unsupported cache driver")
 
@@ -272,8 +273,8 @@ func validateCacheConfig(cfg *config.Config, log zlog.Logger) error {
 
 	if !cfg.Storage.RemoteCache && cfg.Storage.CacheDriver != nil {
 		log.Warn().Err(zerr.ErrBadConfig).Str("directory", cfg.Storage.RootDirectory).
-			Msg("invalid cache config, remoteCache set to false but cacheDriver config (remote caching) provided for directory" +
-				"will ignore and use local caching")
+			Msg("invalid cache config, remoteCache set to false but cacheDriver config (remote caching) provided for " +
+				"directory will ignore and use local caching")
 	}
 
 	// subpaths
