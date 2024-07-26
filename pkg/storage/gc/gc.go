@@ -87,13 +87,13 @@ func (gc GarbageCollect) CleanRepo(ctx context.Context, repo string) error {
 		errMessage := "failed to run GC for " + path.Join(gc.imgStore.RootDir(), repo)
 		gc.log.Error().Err(err).Str("module", "gc").Msg(errMessage)
 		gc.log.Info().Str("module", "gc").
-			Msg("GC unsuccessfully completed for " + path.Join(gc.imgStore.RootDir(), repo))
+			Msg("gc unsuccessfully completed for " + path.Join(gc.imgStore.RootDir(), repo))
 
 		return err
 	}
 
 	gc.log.Info().Str("module", "gc").
-		Msg("GC successfully completed for " + path.Join(gc.imgStore.RootDir(), repo))
+		Msg("gc successfully completed for " + path.Join(gc.imgStore.RootDir(), repo))
 
 	return nil
 }
