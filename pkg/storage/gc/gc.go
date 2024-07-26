@@ -81,7 +81,7 @@ It also gc untagged manifests.
 */
 func (gc GarbageCollect) CleanRepo(ctx context.Context, repo string) error {
 	gc.log.Info().Str("module", "gc").
-		Msg("executing GC of orphaned blobs for " + path.Join(gc.imgStore.RootDir(), repo))
+		Msg("executing gc of orphaned blobs for " + path.Join(gc.imgStore.RootDir(), repo))
 
 	if err := gc.cleanRepo(ctx, repo); err != nil {
 		errMessage := "failed to run GC for " + path.Join(gc.imgStore.RootDir(), repo)

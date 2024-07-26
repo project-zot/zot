@@ -9811,9 +9811,9 @@ func TestPeriodicGC(t *testing.T) {
 		So(string(data), ShouldContainSubstring,
 			"\"GC\":true,\"Commit\":false,\"GCDelay\":1000000000,\"GCInterval\":3600000000000")
 		So(string(data), ShouldContainSubstring,
-			"executing GC of orphaned blobs for "+path.Join(ctlr.StoreController.DefaultStore.RootDir(), repoName)) //nolint:lll
+			"executing gc of orphaned blobs for "+path.Join(ctlr.StoreController.DefaultStore.RootDir(), repoName)) //nolint:lll
 		So(string(data), ShouldContainSubstring,
-			"GC successfully completed for "+path.Join(ctlr.StoreController.DefaultStore.RootDir(), repoName)) //nolint:lll
+			"gc successfully completed for "+path.Join(ctlr.StoreController.DefaultStore.RootDir(), repoName)) //nolint:lll
 	})
 
 	Convey("Periodic GC enabled for substore", t, func() {
