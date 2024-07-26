@@ -734,6 +734,12 @@ const docTemplate = `{
                         "name": "reference",
                         "in": "path",
                         "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "manifest digest",
+                        "name": "digest",
+                        "in": "query"
                     }
                 ],
                 "responses": {

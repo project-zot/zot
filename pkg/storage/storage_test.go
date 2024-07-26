@@ -455,19 +455,19 @@ func TestStorageAPIs(t *testing.T) {
 
 						Convey("Bad image manifest", func() {
 							_, _, err = imgStore.PutImageManifest("test", digest.String(), "application/json",
-								manifestBuf)
+								manifestBuf, "")
 							So(err, ShouldNotBeNil)
 
 							_, _, err = imgStore.PutImageManifest("test", digest.String(), ispec.MediaTypeImageManifest,
-								[]byte{})
+								[]byte{}, "")
 							So(err, ShouldNotBeNil)
 
 							_, _, err = imgStore.PutImageManifest("test", digest.String(), ispec.MediaTypeImageManifest,
-								[]byte(`{"test":true}`))
+								[]byte(`{"test":true}`), "")
 							So(err, ShouldNotBeNil)
 
 							_, _, err = imgStore.PutImageManifest("test", digest.String(), ispec.MediaTypeImageManifest,
-								manifestBuf)
+								manifestBuf, "")
 							So(err, ShouldNotBeNil)
 
 							_, _, _, err = imgStore.GetImageManifest("test", digest.String())
@@ -514,20 +514,20 @@ func TestStorageAPIs(t *testing.T) {
 							badMb, err := json.Marshal(manifest)
 							So(err, ShouldBeNil)
 
-							_, _, err = imgStore.PutImageManifest("test", "1.0", ispec.MediaTypeImageManifest, badMb)
+							_, _, err = imgStore.PutImageManifest("test", "1.0", ispec.MediaTypeImageManifest, badMb, "")
 							So(err, ShouldNotBeNil)
 
-							_, _, err = imgStore.PutImageManifest("test", "1.0", ispec.MediaTypeImageManifest, manifestBuf)
+							_, _, err = imgStore.PutImageManifest("test", "1.0", ispec.MediaTypeImageManifest, manifestBuf, "")
 							So(err, ShouldBeNil)
 
 							// same manifest for coverage
-							_, _, err = imgStore.PutImageManifest("test", "1.0", ispec.MediaTypeImageManifest, manifestBuf)
+							_, _, err = imgStore.PutImageManifest("test", "1.0", ispec.MediaTypeImageManifest, manifestBuf, "")
 							So(err, ShouldBeNil)
 
-							_, _, err = imgStore.PutImageManifest("test", "2.0", ispec.MediaTypeImageManifest, manifestBuf)
+							_, _, err = imgStore.PutImageManifest("test", "2.0", ispec.MediaTypeImageManifest, manifestBuf, "")
 							So(err, ShouldBeNil)
 
-							_, _, err = imgStore.PutImageManifest("test", "3.0", ispec.MediaTypeImageManifest, manifestBuf)
+							_, _, err = imgStore.PutImageManifest("test", "3.0", ispec.MediaTypeImageManifest, manifestBuf, "")
 							So(err, ShouldBeNil)
 
 							_, err = imgStore.GetImageTags("inexistent")
@@ -683,11 +683,11 @@ func TestStorageAPIs(t *testing.T) {
 
 						Convey("Bad image manifest", func() {
 							_, _, err = imgStore.PutImageManifest("test", digest.String(),
-								ispec.MediaTypeImageManifest, manifestBuf)
+								ispec.MediaTypeImageManifest, manifestBuf, "")
 							So(err, ShouldNotBeNil)
 
 							_, _, err = imgStore.PutImageManifest("test", digest.String(),
-								ispec.MediaTypeImageManifest, []byte("bad json"))
+								ispec.MediaTypeImageManifest, []byte("bad json"), "")
 							So(err, ShouldNotBeNil)
 
 							_, _, _, err = imgStore.GetImageManifest("test", digest.String())
@@ -722,12 +722,12 @@ func TestStorageAPIs(t *testing.T) {
 							So(err, ShouldBeNil)
 							digest := godigest.FromBytes(manifestBuf)
 							_, _, err = imgStore.PutImageManifest("test", digest.String(),
-								ispec.MediaTypeImageManifest, manifestBuf)
+								ispec.MediaTypeImageManifest, manifestBuf, "")
 							So(err, ShouldBeNil)
 
 							// same manifest for coverage
 							_, _, err = imgStore.PutImageManifest("test", digest.String(),
-								ispec.MediaTypeImageManifest, manifestBuf)
+								ispec.MediaTypeImageManifest, manifestBuf, "")
 							So(err, ShouldBeNil)
 
 							_, _, _, err = imgStore.GetImageManifest("test", digest.String())
@@ -819,7 +819,7 @@ func TestStorageAPIs(t *testing.T) {
 					So(err, ShouldBeNil)
 
 					digest = godigest.FromBytes(manifestBuf)
-					_, _, err = imgStore.PutImageManifest("replace", "1.0", ispec.MediaTypeImageManifest, manifestBuf)
+					_, _, err = imgStore.PutImageManifest("replace", "1.0", ispec.MediaTypeImageManifest, manifestBuf, "")
 					So(err, ShouldBeNil)
 
 					_, _, _, err = imgStore.GetImageManifest("replace", digest.String())
@@ -870,7 +870,7 @@ func TestStorageAPIs(t *testing.T) {
 					manifestBuf, err = json.Marshal(manifest)
 					So(err, ShouldBeNil)
 					_ = godigest.FromBytes(manifestBuf)
-					_, _, err = imgStore.PutImageManifest("replace", "1.0", ispec.MediaTypeImageManifest, manifestBuf)
+					_, _, err = imgStore.PutImageManifest("replace", "1.0", ispec.MediaTypeImageManifest, manifestBuf, "")
 					So(err, ShouldBeNil)
 				})
 
@@ -987,7 +987,7 @@ func TestMandatoryAnnotations(t *testing.T) {
 				So(err, ShouldBeNil)
 
 				Convey("Missing mandatory annotations", func() {
-					_, _, err = imgStore.PutImageManifest("test", "1.0.0", ispec.MediaTypeImageManifest, manifestBuf)
+					_, _, err = imgStore.PutImageManifest("test", "1.0.0", ispec.MediaTypeImageManifest, manifestBuf, "")
 					So(err, ShouldNotBeNil)
 				})
 
@@ -1017,7 +1017,7 @@ func TestMandatoryAnnotations(t *testing.T) {
 							}, driver, cacheDriver)
 					}
 
-					_, _, err = imgStore.PutImageManifest("test", "1.0.0", ispec.MediaTypeImageManifest, manifestBuf)
+					_, _, err = imgStore.PutImageManifest("test", "1.0.0", ispec.MediaTypeImageManifest, manifestBuf, "")
 					So(err, ShouldNotBeNil)
 				})
 			})
@@ -1174,7 +1174,7 @@ func TestDeleteBlobsInUse(t *testing.T) {
 				manifestBuf, err := json.Marshal(manifest)
 				So(err, ShouldBeNil)
 
-				manifestDigest, _, err := imgStore.PutImageManifest("repo", tag, ispec.MediaTypeImageManifest, manifestBuf)
+				manifestDigest, _, err := imgStore.PutImageManifest("repo", tag, ispec.MediaTypeImageManifest, manifestBuf, "")
 				So(err, ShouldBeNil)
 
 				Convey("Try to delete blob currently in use", func() {
@@ -1296,7 +1296,7 @@ func TestDeleteBlobsInUse(t *testing.T) {
 					So(err, ShouldBeNil)
 					digest = godigest.FromBytes(content)
 					So(digest, ShouldNotBeNil)
-					_, _, err = imgStore.PutImageManifest(repoName, digest.String(), ispec.MediaTypeImageManifest, content)
+					_, _, err = imgStore.PutImageManifest(repoName, digest.String(), ispec.MediaTypeImageManifest, content, "")
 					So(err, ShouldBeNil)
 
 					index.Manifests = append(index.Manifests, ispec.Descriptor{
@@ -1312,7 +1312,8 @@ func TestDeleteBlobsInUse(t *testing.T) {
 				indexDigest := godigest.FromBytes(indexContent)
 				So(indexDigest, ShouldNotBeNil)
 
-				indexManifestDigest, _, err := imgStore.PutImageManifest(repoName, "index", ispec.MediaTypeImageIndex, indexContent)
+				indexManifestDigest, _, err := imgStore.PutImageManifest(repoName, "index", ispec.MediaTypeImageIndex,
+					indexContent, "")
 				So(err, ShouldBeNil)
 
 				Convey("Try to delete manifest being referenced by image index", func() {
@@ -1718,7 +1719,7 @@ func TestGarbageCollectImageManifest(t *testing.T) {
 					So(err, ShouldBeNil)
 					digest := godigest.FromBytes(manifestBuf)
 
-					_, _, err = imgStore.PutImageManifest(repoName, tag, ispec.MediaTypeImageManifest, manifestBuf)
+					_, _, err = imgStore.PutImageManifest(repoName, tag, ispec.MediaTypeImageManifest, manifestBuf, "")
 					So(err, ShouldBeNil)
 
 					err = gc.CleanRepo(ctx, repoName)
@@ -1762,7 +1763,7 @@ func TestGarbageCollectImageManifest(t *testing.T) {
 
 					// push artifact manifest
 					_, _, err = imgStore.PutImageManifest(repoName, artifactDigest.String(),
-						ispec.MediaTypeImageManifest, artifactManifestBuf)
+						ispec.MediaTypeImageManifest, artifactManifestBuf, "")
 					So(err, ShouldBeNil)
 
 					err = gc.CleanRepo(ctx, repoName)
@@ -1908,7 +1909,7 @@ func TestGarbageCollectImageManifest(t *testing.T) {
 					So(err, ShouldBeNil)
 					digest := godigest.FromBytes(manifestBuf)
 
-					_, _, err = imgStore.PutImageManifest(repoName, tag, ispec.MediaTypeImageManifest, manifestBuf)
+					_, _, err = imgStore.PutImageManifest(repoName, tag, ispec.MediaTypeImageManifest, manifestBuf, "")
 					So(err, ShouldBeNil)
 
 					// put artifact referencing above image
@@ -1949,7 +1950,7 @@ func TestGarbageCollectImageManifest(t *testing.T) {
 
 					// push artifact manifest
 					_, _, err = imgStore.PutImageManifest(repoName, artifactDigest.String(),
-						ispec.MediaTypeImageManifest, artifactManifestBuf)
+						ispec.MediaTypeImageManifest, artifactManifestBuf, "")
 					So(err, ShouldBeNil)
 
 					// push artifact manifest pointing to artifact above
@@ -1965,7 +1966,7 @@ func TestGarbageCollectImageManifest(t *testing.T) {
 
 					artifactOfArtifactManifestDigest := godigest.FromBytes(artifactManifestBuf)
 					_, _, err = imgStore.PutImageManifest(repoName, artifactOfArtifactManifestDigest.String(),
-						ispec.MediaTypeImageManifest, artifactManifestBuf)
+						ispec.MediaTypeImageManifest, artifactManifestBuf, "")
 					So(err, ShouldBeNil)
 
 					// push orphan artifact (missing subject)
@@ -1983,7 +1984,7 @@ func TestGarbageCollectImageManifest(t *testing.T) {
 
 					// push orphan artifact manifest
 					_, _, err = imgStore.PutImageManifest(repoName, orphanArtifactManifestDigest.String(),
-						ispec.MediaTypeImageManifest, artifactManifestBuf)
+						ispec.MediaTypeImageManifest, artifactManifestBuf, "")
 					So(err, ShouldBeNil)
 
 					err = gc.CleanRepo(ctx, repoName)
@@ -2040,7 +2041,7 @@ func TestGarbageCollectImageManifest(t *testing.T) {
 
 					Convey("Garbage collect - don't gc manifests/blobs which are referenced by another image", func() {
 						// upload same image with another tag
-						_, _, err = imgStore.PutImageManifest(repoName, "2.0", ispec.MediaTypeImageManifest, manifestBuf)
+						_, _, err = imgStore.PutImageManifest(repoName, "2.0", ispec.MediaTypeImageManifest, manifestBuf, "")
 						So(err, ShouldBeNil)
 
 						err = imgStore.DeleteImageManifest(repoName, tag, false)
@@ -2166,7 +2167,7 @@ func TestGarbageCollectImageManifest(t *testing.T) {
 					manifestBuf, err := json.Marshal(manifest)
 					So(err, ShouldBeNil)
 
-					_, _, err = imgStore.PutImageManifest(repo1Name, tag, ispec.MediaTypeImageManifest, manifestBuf)
+					_, _, err = imgStore.PutImageManifest(repo1Name, tag, ispec.MediaTypeImageManifest, manifestBuf, "")
 					So(err, ShouldBeNil)
 
 					// sleep so past GC timeout
@@ -2229,7 +2230,7 @@ func TestGarbageCollectImageManifest(t *testing.T) {
 					manifestBuf, err = json.Marshal(manifest)
 					So(err, ShouldBeNil)
 
-					_, _, err = imgStore.PutImageManifest(repo2Name, tag, ispec.MediaTypeImageManifest, manifestBuf)
+					_, _, err = imgStore.PutImageManifest(repo2Name, tag, ispec.MediaTypeImageManifest, manifestBuf, "")
 					So(err, ShouldBeNil)
 
 					hasBlob, _, err = imgStore.CheckBlob(repo2Name, bdigest)
@@ -2286,7 +2287,7 @@ func TestGarbageCollectImageManifest(t *testing.T) {
 					So(err, ShouldBeNil)
 					digest := godigest.FromBytes(manifestBuf)
 
-					_, _, err = imgStore.PutImageManifest(repo2Name, tag, ispec.MediaTypeImageManifest, manifestBuf)
+					_, _, err = imgStore.PutImageManifest(repo2Name, tag, ispec.MediaTypeImageManifest, manifestBuf, "")
 					So(err, ShouldBeNil)
 
 					err = gc.CleanRepo(ctx, repo2Name)
@@ -2395,7 +2396,7 @@ func TestGarbageCollectImageIndex(t *testing.T) {
 
 					// push artifact manifest referencing index image
 					_, _, err = imgStore.PutImageManifest(repoName, artifactDigest.String(),
-						ispec.MediaTypeImageManifest, artifactManifestBuf)
+						ispec.MediaTypeImageManifest, artifactManifestBuf, "")
 					So(err, ShouldBeNil)
 
 					artifactManifest.Subject = &ispec.Descriptor{
@@ -2411,7 +2412,7 @@ func TestGarbageCollectImageIndex(t *testing.T) {
 
 					// push artifact manifest referencing a manifest from index image
 					_, _, err = imgStore.PutImageManifest(repoName, artifactManifestDigest.String(),
-						ispec.MediaTypeImageManifest, artifactManifestBuf)
+						ispec.MediaTypeImageManifest, artifactManifestBuf, "")
 					So(err, ShouldBeNil)
 
 					err = gc.CleanRepo(ctx, repoName)
@@ -2550,7 +2551,7 @@ func TestGarbageCollectImageIndex(t *testing.T) {
 
 					// push artifact manifest
 					_, _, err = imgStore.PutImageManifest(repoName, artifactDigest.String(),
-						ispec.MediaTypeImageManifest, artifactManifestBuf)
+						ispec.MediaTypeImageManifest, artifactManifestBuf, "")
 					So(err, ShouldBeNil)
 
 					artifactManifest.Subject = &ispec.Descriptor{
@@ -2567,7 +2568,7 @@ func TestGarbageCollectImageIndex(t *testing.T) {
 
 					// push artifact manifest referencing a manifest from index image
 					_, _, err = imgStore.PutImageManifest(repoName, artifactManifestIndexDigest.String(),
-						ispec.MediaTypeImageManifest, artifactManifestIndexBuf)
+						ispec.MediaTypeImageManifest, artifactManifestIndexBuf, "")
 					So(err, ShouldBeNil)
 
 					// push artifact manifest pointing to artifact above
@@ -2583,7 +2584,7 @@ func TestGarbageCollectImageIndex(t *testing.T) {
 
 					artifactOfArtifactManifestDigest := godigest.FromBytes(artifactManifestBuf)
 					_, _, err = imgStore.PutImageManifest(repoName, artifactOfArtifactManifestDigest.String(),
-						ispec.MediaTypeImageManifest, artifactManifestBuf)
+						ispec.MediaTypeImageManifest, artifactManifestBuf, "")
 					So(err, ShouldBeNil)
 
 					// push orphan artifact (missing subject)
@@ -2601,7 +2602,7 @@ func TestGarbageCollectImageIndex(t *testing.T) {
 
 					// push orphan artifact manifest
 					_, _, err = imgStore.PutImageManifest(repoName, orphanArtifactManifestDigest.String(),
-						ispec.MediaTypeImageManifest, artifactManifestBuf)
+						ispec.MediaTypeImageManifest, artifactManifestBuf, "")
 					So(err, ShouldBeNil)
 
 					hasBlob, _, err := imgStore.CheckBlob(repoName, bdgst)
@@ -2858,7 +2859,7 @@ func TestGarbageCollectChainedImageIndexes(t *testing.T) {
 					So(err, ShouldBeNil)
 					digest = godigest.FromBytes(content)
 					So(digest, ShouldNotBeNil)
-					_, _, err = imgStore.PutImageManifest(repoName, digest.String(), ispec.MediaTypeImageManifest, content)
+					_, _, err = imgStore.PutImageManifest(repoName, digest.String(), ispec.MediaTypeImageManifest, content, "")
 					So(err, ShouldBeNil)
 
 					index.Manifests = append(index.Manifests, ispec.Descriptor{
@@ -2894,7 +2895,7 @@ func TestGarbageCollectChainedImageIndexes(t *testing.T) {
 
 					// push artifact manifest
 					_, _, err = imgStore.PutImageManifest(repoName, artifactDigest.String(),
-						ispec.MediaTypeImageManifest, artifactManifestBuf)
+						ispec.MediaTypeImageManifest, artifactManifestBuf, "")
 					So(err, ShouldBeNil)
 				}
 
@@ -2940,7 +2941,7 @@ func TestGarbageCollectChainedImageIndexes(t *testing.T) {
 					So(err, ShouldBeNil)
 					digest := godigest.FromBytes(content)
 					So(digest, ShouldNotBeNil)
-					_, _, err = imgStore.PutImageManifest(repoName, digest.String(), ispec.MediaTypeImageManifest, content)
+					_, _, err = imgStore.PutImageManifest(repoName, digest.String(), ispec.MediaTypeImageManifest, content, "")
 					So(err, ShouldBeNil)
 
 					innerIndex.Manifests = append(innerIndex.Manifests, ispec.Descriptor{
@@ -2957,7 +2958,7 @@ func TestGarbageCollectChainedImageIndexes(t *testing.T) {
 				So(innerIndexDigest, ShouldNotBeNil)
 
 				_, _, err = imgStore.PutImageManifest(repoName, innerIndexDigest.String(),
-					ispec.MediaTypeImageIndex, innerIndexContent)
+					ispec.MediaTypeImageIndex, innerIndexContent, "")
 				So(err, ShouldBeNil)
 
 				// add inner index into  root index
@@ -2974,7 +2975,7 @@ func TestGarbageCollectChainedImageIndexes(t *testing.T) {
 				indexDigest := godigest.FromBytes(indexContent)
 				So(indexDigest, ShouldNotBeNil)
 
-				_, _, err = imgStore.PutImageManifest(repoName, "1.0", ispec.MediaTypeImageIndex, indexContent)
+				_, _, err = imgStore.PutImageManifest(repoName, "1.0", ispec.MediaTypeImageIndex, indexContent, "")
 				So(err, ShouldBeNil)
 
 				artifactManifest := ispec.Manifest{
@@ -3003,7 +3004,7 @@ func TestGarbageCollectChainedImageIndexes(t *testing.T) {
 
 				// push artifact manifest
 				_, _, err = imgStore.PutImageManifest(repoName, artifactDigest.String(),
-					ispec.MediaTypeImageManifest, artifactManifestBuf)
+					ispec.MediaTypeImageManifest, artifactManifestBuf, "")
 				So(err, ShouldBeNil)
 
 				artifactManifest.Subject = &ispec.Descriptor{
@@ -3020,7 +3021,7 @@ func TestGarbageCollectChainedImageIndexes(t *testing.T) {
 
 				// push artifact manifest referencing a manifest from index image
 				_, _, err = imgStore.PutImageManifest(repoName, artifactManifestIndexDigest.String(),
-					ispec.MediaTypeImageManifest, artifactManifestIndexBuf)
+					ispec.MediaTypeImageManifest, artifactManifestIndexBuf, "")
 				So(err, ShouldBeNil)
 
 				artifactManifest.Subject = &ispec.Descriptor{
@@ -3037,7 +3038,7 @@ func TestGarbageCollectChainedImageIndexes(t *testing.T) {
 
 				// push artifact manifest referencing a manifest from index image
 				_, _, err = imgStore.PutImageManifest(repoName, artifactManifestInnerIndexDigest.String(),
-					ispec.MediaTypeImageManifest, artifactManifestInnerIndexBuf)
+					ispec.MediaTypeImageManifest, artifactManifestInnerIndexBuf, "")
 				So(err, ShouldBeNil)
 
 				// push artifact manifest pointing to artifact above
@@ -3054,7 +3055,7 @@ func TestGarbageCollectChainedImageIndexes(t *testing.T) {
 
 				artifactOfArtifactManifestDigest := godigest.FromBytes(artifactManifestBuf)
 				_, _, err = imgStore.PutImageManifest(repoName, artifactOfArtifactManifestDigest.String(),
-					ispec.MediaTypeImageManifest, artifactManifestBuf)
+					ispec.MediaTypeImageManifest, artifactManifestBuf, "")
 				So(err, ShouldBeNil)
 
 				// push orphan artifact (missing subject)
@@ -3072,7 +3073,7 @@ func TestGarbageCollectChainedImageIndexes(t *testing.T) {
 
 				// push orphan artifact manifest
 				_, _, err = imgStore.PutImageManifest(repoName, orphanArtifactManifestDigest.String(),
-					ispec.MediaTypeImageManifest, artifactManifestBuf)
+					ispec.MediaTypeImageManifest, artifactManifestBuf, "")
 				So(err, ShouldBeNil)
 
 				hasBlob, _, err := imgStore.CheckBlob(repoName, bdgst)
@@ -3243,7 +3244,7 @@ func pushRandomImageIndex(imgStore storageTypes.ImageStore, repoName string,
 		So(err, ShouldBeNil)
 		digest = godigest.FromBytes(content)
 		So(digest, ShouldNotBeNil)
-		_, _, err = imgStore.PutImageManifest(repoName, digest.String(), ispec.MediaTypeImageManifest, content)
+		_, _, err = imgStore.PutImageManifest(repoName, digest.String(), ispec.MediaTypeImageManifest, content, "")
 		So(err, ShouldBeNil)
 
 		index.Manifests = append(index.Manifests, ispec.Descriptor{
@@ -3259,7 +3260,7 @@ func pushRandomImageIndex(imgStore storageTypes.ImageStore, repoName string,
 	indexDigest := godigest.FromBytes(indexContent)
 	So(indexDigest, ShouldNotBeNil)
 
-	_, _, err = imgStore.PutImageManifest(repoName, "1.0", ispec.MediaTypeImageIndex, indexContent)
+	_, _, err = imgStore.PutImageManifest(repoName, "1.0", ispec.MediaTypeImageIndex, indexContent, "")
 	So(err, ShouldBeNil)
 
 	return bdgst, digest, indexDigest, int64(len(indexContent))

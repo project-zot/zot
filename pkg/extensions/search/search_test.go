@@ -4552,8 +4552,8 @@ func TestMetaDBWhenSigningImages(t *testing.T) {
 			Convey("imageIsSignature fails", func() {
 				// make image store ignore the wrong format of the input
 				ctlr.StoreController.DefaultStore = mocks.MockedImageStore{
-					PutImageManifestFn: func(repo, reference, mediaType string, body []byte) (godigest.Digest,
-						godigest.Digest, error,
+					PutImageManifestFn: func(repo, reference, mediaType string, body []byte,
+						expectedDigest godigest.Digest) (godigest.Digest, godigest.Digest, error,
 					) {
 						return "", "", nil
 					},
@@ -5632,8 +5632,8 @@ func TestMetaDBWhenDeletingImages(t *testing.T) {
 
 			Convey("imageIsSignature fails", func() {
 				ctlr.StoreController.DefaultStore = mocks.MockedImageStore{
-					PutImageManifestFn: func(repo, reference, mediaType string, body []byte) (godigest.Digest,
-						godigest.Digest, error,
+					PutImageManifestFn: func(repo, reference, mediaType string, body []byte,
+						expectedDigest godigest.Digest) (godigest.Digest, godigest.Digest, error,
 					) {
 						return "", "", nil
 					},
@@ -5658,8 +5658,8 @@ func TestMetaDBWhenDeletingImages(t *testing.T) {
 
 						return configBlob, nil
 					},
-					PutImageManifestFn: func(repo, reference, mediaType string, body []byte) (godigest.Digest,
-						godigest.Digest, error,
+					PutImageManifestFn: func(repo, reference, mediaType string, body []byte,
+						expectedDigest godigest.Digest) (godigest.Digest, godigest.Digest, error,
 					) {
 						return "", "", nil
 					},
@@ -5688,8 +5688,8 @@ func TestMetaDBWhenDeletingImages(t *testing.T) {
 
 						return configBlob, nil
 					},
-					PutImageManifestFn: func(repo, reference, mediaType string, body []byte) (godigest.Digest,
-						godigest.Digest, error,
+					PutImageManifestFn: func(repo, reference, mediaType string, body []byte,
+						expectedDigest godigest.Digest) (godigest.Digest, godigest.Digest, error,
 					) {
 						return "", "", ErrTestError
 					},

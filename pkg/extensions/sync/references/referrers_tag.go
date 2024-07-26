@@ -85,7 +85,9 @@ func (ref TagReferences) SyncReferences(ctx context.Context, localRepo, remoteRe
 		return refsDigests, err
 	}
 
-	skipTagRefs, err := ref.canSkipReferences(localRepo, subjectDigestStr, string(godigest.FromBytes(indexContent)))
+	indexDigest := godigest.FromBytes(indexContent)
+
+	skipTagRefs, err := ref.canSkipReferences(localRepo, subjectDigestStr, indexDigest.String())
 	if err != nil {
 		ref.log.Error().Err(err).Str("repository", localRepo).Str("subject", subjectDigestStr).
 			Msg("couldn't check if the upstream index with referrers tag for image can be skipped")
@@ -131,7 +133,7 @@ func (ref TagReferences) SyncReferences(ctx context.Context, localRepo, remoteRe
 
 	referrersTag := getReferrersTagFromSubjectDigest(subjectDigestStr)
 
-	_, _, err = imageStore.PutImageManifest(localRepo, referrersTag, index.MediaType, indexContent)
+	_, _, err = imageStore.PutImageManifest(localRepo, referrersTag, index.MediaType, indexContent, indexDigest)
 	if err != nil {
 		ref.log.Error().Str("errorType", common.TypeOf(err)).
 			Str("repository", localRepo).Str("subject", subjectDigestStr).

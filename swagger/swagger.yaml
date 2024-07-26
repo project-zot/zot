@@ -780,6 +780,10 @@ paths:
         name: reference
         required: true
         type: string
+      - description: manifest digest
+        in: query
+        name: digest
+        type: string
       produces:
       - application/json
       responses:

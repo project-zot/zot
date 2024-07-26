@@ -113,7 +113,7 @@ func (registry *DestinationRegistry) CommitImage(imageReference types.ImageRefer
 	// is image manifest
 	switch mediaType {
 	case ispec.MediaTypeImageManifest:
-		if err := registry.copyManifest(repo, manifestBlob, reference, tempImageStore); err != nil {
+		if err := registry.copyManifest(repo, manifestBlob, reference, manifestDigest, tempImageStore); err != nil {
 			if errors.Is(err, zerr.ErrImageLintAnnotations) {
 				registry.log.Error().Str("errorType", common.TypeOf(err)).
 					Err(err).Msg("couldn't upload manifest because of missing annotations")
@@ -148,7 +148,7 @@ func (registry *DestinationRegistry) CommitImage(imageReference types.ImageRefer
 				return err
 			}
 
-			if err := registry.copyManifest(repo, manifestBuf, manifest.Digest.String(),
+			if err := registry.copyManifest(repo, manifestBuf, manifest.Digest.String(), manifest.Digest,
 				tempImageStore); err != nil {
 				if errors.Is(err, zerr.ErrImageLintAnnotations) {
 					registry.log.Error().Str("errorType", common.TypeOf(err)).
@@ -161,7 +161,7 @@ func (registry *DestinationRegistry) CommitImage(imageReference types.ImageRefer
 			}
 		}
 
-		_, _, err = imageStore.PutImageManifest(repo, reference, mediaType, manifestBlob)
+		_, _, err = imageStore.PutImageManifest(repo, reference, mediaType, manifestBlob, manifestDigest)
 		if err != nil {
 			registry.log.Error().Str("errorType", common.TypeOf(err)).Str("repo", repo).Str("reference", reference).
 				Err(err).Msg("couldn't upload manifest")
@@ -193,7 +193,7 @@ func (registry *DestinationRegistry) CleanupImage(imageReference types.ImageRefe
 }
 
 func (registry *DestinationRegistry) copyManifest(repo string, manifestContent []byte, reference string,
-	tempImageStore storageTypes.ImageStore,
+	manifestDigest digest.Digest, tempImageStore storageTypes.ImageStore,
 ) error {
 	imageStore := registry.storeController.GetImageStore(repo)
 
@@ -226,7 +226,7 @@ func (registry *DestinationRegistry) copyManifest(repo string, manifestContent [
 	}
 
 	digest, _, err := imageStore.PutImageManifest(repo, reference,
-		ispec.MediaTypeImageManifest, manifestContent)
+		ispec.MediaTypeImageManifest, manifestContent, manifestDigest)
 	if err != nil {
 		registry.log.Error().Str("errorType", common.TypeOf(err)).
 			Err(err).Msg("couldn't upload manifest")

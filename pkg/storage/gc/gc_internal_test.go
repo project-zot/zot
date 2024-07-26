@@ -121,7 +121,7 @@ func TestGarbageCollectManifestErrors(t *testing.T) {
 
 		manifestDigest := godigest.FromBytes(body)
 
-		_, _, err = imgStore.PutImageManifest(repoName, "1.0", ispec.MediaTypeImageManifest, body)
+		_, _, err = imgStore.PutImageManifest(repoName, "1.0", ispec.MediaTypeImageManifest, body, "")
 		So(err, ShouldBeNil)
 
 		Convey("trigger GetIndex error in GetReferencedBlobs", func() {
@@ -236,7 +236,7 @@ func TestGarbageCollectIndexErrors(t *testing.T) {
 			So(err, ShouldBeNil)
 			digest = godigest.FromBytes(content)
 			So(digest, ShouldNotBeNil)
-			_, _, err = imgStore.PutImageManifest(repoName, digest.String(), ispec.MediaTypeImageManifest, content)
+			_, _, err = imgStore.PutImageManifest(repoName, digest.String(), ispec.MediaTypeImageManifest, content, "")
 			So(err, ShouldBeNil)
 
 			index.Manifests = append(index.Manifests, ispec.Descriptor{
@@ -252,7 +252,7 @@ func TestGarbageCollectIndexErrors(t *testing.T) {
 		indexDigest := godigest.FromBytes(indexContent)
 		So(indexDigest, ShouldNotBeNil)
 
-		_, _, err = imgStore.PutImageManifest(repoName, "1.0", ispec.MediaTypeImageIndex, indexContent)
+		_, _, err = imgStore.PutImageManifest(repoName, "1.0", ispec.MediaTypeImageIndex, indexContent, "")
 		So(err, ShouldBeNil)
 
 		index, err = common.GetIndex(imgStore, repoName, log)

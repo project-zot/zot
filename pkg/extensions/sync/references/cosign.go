@@ -135,7 +135,7 @@ func (ref CosignReference) SyncReferences(ctx context.Context, localRepo, remote
 
 		// push manifest
 		referenceDigest, _, err := imageStore.PutImageManifest(localRepo, cosignTag,
-			ispec.MediaTypeImageManifest, manifestBuf)
+			ispec.MediaTypeImageManifest, manifestBuf, digest)
 		if err != nil {
 			ref.log.Error().Str("errorType", common.TypeOf(err)).
 				Str("repository", localRepo).Str("subject", subjectDigestStr).

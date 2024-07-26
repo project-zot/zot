@@ -52,7 +52,8 @@ func WriteImageToFileSystem(image Image, repoName, ref string, storeController s
 		return err
 	}
 
-	_, _, err = store.PutImageManifest(repoName, ref, ispec.MediaTypeImageManifest, manifestBlob)
+	// we should revisit the posibility of supporting a non-canonical manifest digest in this function
+	_, _, err = store.PutImageManifest(repoName, ref, ispec.MediaTypeImageManifest, manifestBlob, "")
 	if err != nil {
 		return err
 	}
@@ -82,8 +83,9 @@ func WriteMultiArchImageToFileSystem(multiarchImage MultiarchImage, repoName, re
 		return err
 	}
 
+	// we should revisit the posibility of supporting a non-canonical manifest digest in this function
 	_, _, err = store.PutImageManifest(repoName, ref, ispec.MediaTypeImageIndex,
-		indexBlob)
+		indexBlob, "")
 
 	return err
 }
