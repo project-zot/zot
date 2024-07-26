@@ -389,11 +389,3 @@ func ref[T any](input T) *T {
 
 	return &ref
 }
-
-func deref[T any](pointer *T, defaultVal T) T {
-	if pointer != nil {
-		return *pointer
-	}
-
-	return defaultVal
-}
