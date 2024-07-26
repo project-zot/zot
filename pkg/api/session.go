@@ -90,7 +90,7 @@ func SessionLogger(ctlr *Controller) mux.MiddlewareFunc {
 			method := request.Method
 			headers := map[string][]string{}
 			log := logger.Info() //nolint: zerologlint // false positive, the Msg call is below
-      
+
 			for key, value := range request.Header {
 				if key == "Authorization" { // anonymize from logs
 					s := strings.SplitN(value[0], " ", 2) //nolint:mnd
