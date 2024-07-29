@@ -175,8 +175,8 @@ func SetupImageTrustExtension(conf *config.Config, metaDB mTypes.MetaDB, log log
 	if conf.Storage.RemoteCache {
 		endpoint, _ := conf.Storage.CacheDriver["endpoint"].(string)
 		region, _ := conf.Storage.CacheDriver["region"].(string)
-		imgTrustStore, err = imagetrust.NewAWSImageTrustStore(region, endpoint)
 
+		imgTrustStore, err = imagetrust.NewAWSImageTrustStore(region, endpoint)
 		if err != nil {
 			return err
 		}

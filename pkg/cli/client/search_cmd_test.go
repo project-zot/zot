@@ -45,8 +45,10 @@ func TestReferrerCLI(t *testing.T) {
 		}
 		ctlr := api.NewController(conf)
 		ctlr.Config.Storage.RootDirectory = rootDir
+
 		cm := test.NewControllerManager(ctlr)
 		cm.StartAndWait(conf.HTTP.Port)
+
 		defer cm.StopServer()
 
 		repo := repoName
@@ -144,6 +146,7 @@ func TestReferrerCLI(t *testing.T) {
 		ctlr.Config.Storage.RootDirectory = rootDir
 		cm := test.NewControllerManager(ctlr)
 		cm.StartAndWait(conf.HTTP.Port)
+
 		defer cm.StopServer()
 
 		repo := repoName
@@ -239,6 +242,7 @@ func TestFormatsReferrersCLI(t *testing.T) {
 		ctlr.Config.Storage.RootDirectory = rootDir
 		cm := test.NewControllerManager(ctlr)
 		cm.StartAndWait(conf.HTTP.Port)
+
 		defer cm.StopServer()
 
 		repo := repoName
@@ -443,6 +447,7 @@ func TestSearchCLI(t *testing.T) {
 		ctlr.Config.Storage.RootDirectory = rootDir
 		cm := test.NewControllerManager(ctlr)
 		cm.StartAndWait(conf.HTTP.Port)
+
 		defer cm.StopServer()
 
 		const (
@@ -557,6 +562,7 @@ func TestFormatsSearchCLI(t *testing.T) {
 		ctlr.Config.Storage.RootDirectory = rootDir
 		cm := test.NewControllerManager(ctlr)
 		cm.StartAndWait(conf.HTTP.Port)
+
 		defer cm.StopServer()
 
 		const (

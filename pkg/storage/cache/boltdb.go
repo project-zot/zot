@@ -50,7 +50,7 @@ func NewBoltDBCache(parameters interface{}, log zlog.Logger) (*BoltDBDriver, err
 		FreelistType: bbolt.FreelistArrayType,
 	}
 
-	cacheDB, err := bbolt.Open(dbPath, 0o600, dbOpts) //nolint:gomnd
+	cacheDB, err := bbolt.Open(dbPath, 0o600, dbOpts) //nolint:mnd
 	if err != nil {
 		if strings.Contains(err.Error(), "timeout") {
 			err := fmt.Errorf("%w: %w, path '%s'", zerr.ErrTimeout, zerr.ErrDatabaseFileAlreadyInUse, dbPath)

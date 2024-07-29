@@ -143,7 +143,7 @@ func printImageTableHeader(writer io.Writer, verbose bool, maxImageNameLen, maxT
 		table.SetColMinWidth(colLayersIndex, layersWidth)
 	}
 
-	row := make([]string, 8) //nolint:gomnd
+	row := make([]string, 8) //nolint:mnd
 
 	// adding spaces so that repository and tag columns are aligned
 	// in case the name/tag are fully shown and too long

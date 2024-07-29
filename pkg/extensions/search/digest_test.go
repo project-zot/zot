@@ -201,6 +201,7 @@ func TestDigestSearchHTTP(t *testing.T) {
 		So(resp, ShouldNotBeNil)
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
+
 		var responseStruct2 ImgResponseForDigest
 
 		err = json.Unmarshal(resp.Body(), &responseStruct2)

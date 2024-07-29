@@ -32,7 +32,7 @@ type Blob struct {
 }
 
 func (d *DynamoDBDriver) NewTable(tableName string) error {
-	//nolint:gomnd
+	//nolint:mnd
 	_, err := d.client.CreateTable(context.TODO(), &dynamodb.CreateTableInput{
 		TableName: &tableName,
 		AttributeDefinitions: []types.AttributeDefinition{

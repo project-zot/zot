@@ -66,7 +66,6 @@ func (lc *LDAPClient) Connect() error {
 				}
 
 				err = l.StartTLS(config)
-
 				if err != nil {
 					lc.Log.Error().Err(err).Str("address", address).Msg("failed to establish a TLS connection")
 
@@ -81,8 +80,8 @@ func (lc *LDAPClient) Connect() error {
 			}
 			if lc.ClientCertificates != nil && len(lc.ClientCertificates) > 0 {
 				config.Certificates = lc.ClientCertificates
-				// config.BuildNameToCertificate()
 			}
+
 			l, err = ldap.DialTLS("tcp", address, config) //nolint:staticcheck
 			if err != nil {
 				lc.Log.Error().Err(err).Str("address", address).Msg("failed to establish a TLS connection")
@@ -226,6 +225,7 @@ func (lc *LDAPClient) Authenticate(username, password string) (bool, map[string]
 		userAttributes := search.Entries[0].Attributes[0]
 		userGroups = userAttributes.Values
 	}
+
 	user := map[string]string{}
 
 	for _, attr := range lc.Attributes {

@@ -37,7 +37,9 @@ func TestGetExensionsDisabled(t *testing.T) {
 
 		logFile, err := os.CreateTemp("", "zot-log*.txt")
 		So(err, ShouldBeNil)
+
 		conf.Log.Output = logFile.Name()
+
 		defer os.Remove(logFile.Name()) // clean up
 
 		ctlr := makeController(conf, t.TempDir())

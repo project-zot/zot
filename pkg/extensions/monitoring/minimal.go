@@ -439,6 +439,7 @@ func (ms *metricServer) HistogramObserve(hv *HistogramValue) {
 		cachedH := ms.cache.Histograms[index]
 		cachedH.Count++
 		cachedH.Sum += hv.Sum
+
 		for _, fvalue := range GetBuckets(hv.Name) {
 			if hv.Sum <= fvalue {
 				cachedH.Buckets[ms.bucketsF2S[fvalue]]++
@@ -478,6 +479,7 @@ func IncHTTPConnRequests(ms MetricServer, lvs ...string) {
 
 func ObserveHTTPRepoLatency(ms MetricServer, path string, latency time.Duration) {
 	var lvs []string
+
 	match := re.FindStringSubmatch(path)
 
 	if len(match) > 1 {

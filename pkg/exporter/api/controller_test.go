@@ -93,6 +93,7 @@ func TestNewExporter(t *testing.T) {
 	Convey("Make an exporter controller", t, func() {
 		exporterConfig := api.DefaultConfig()
 		So(exporterConfig, ShouldNotBeNil)
+
 		exporterPort := GetFreePort()
 		serverPort := GetFreePort()
 		exporterConfig.Exporter.Port = exporterPort
@@ -131,6 +132,7 @@ func TestNewExporter(t *testing.T) {
 			Convey("When zot server is running", func() {
 				servercConfig := zotcfg.New()
 				So(servercConfig, ShouldNotBeNil)
+
 				baseURL := fmt.Sprintf(BaseURL, serverPort)
 				servercConfig.HTTP.Port = serverPort
 				servercConfig.BinaryType = "minimal"
@@ -140,6 +142,7 @@ func TestNewExporter(t *testing.T) {
 				So(serverController, ShouldNotBeNil)
 
 				dir := t.TempDir()
+
 				serverController.Config.Storage.RootDirectory = dir
 				go func(ctrl *zotapi.Controller) {
 					if err := ctrl.Init(); err != nil {
@@ -151,6 +154,7 @@ func TestNewExporter(t *testing.T) {
 						panic(err)
 					}
 				}(serverController)
+
 				defer func(ctrl *zotapi.Controller) {
 					_ = ctrl.Server.Shutdown(context.TODO())
 				}(serverController)
@@ -160,6 +164,7 @@ func TestNewExporter(t *testing.T) {
 					if err == nil {
 						break
 					}
+
 					time.Sleep(SleepTime)
 				}
 
@@ -223,10 +228,12 @@ func TestNewExporter(t *testing.T) {
 					if err != nil {
 						panic(err)
 					}
+
 					reqsSize := int(nBig.Int64())
 					for i := 0; i < reqsSize; i++ {
 						monitoring.IncDownloadCounter(serverController.Metrics, "dummyrepo")
 					}
+
 					time.Sleep(SleepTime)
 
 					go func() {
@@ -303,16 +310,19 @@ func TestNewExporter(t *testing.T) {
 				})
 				Convey("Collecting data: Test that concurent Summary observation requests works properly", func() {
 					var latencySum float64
+
 					nBig, err := rand.Int(rand.Reader, big.NewInt(1000))
 					if err != nil {
 						panic(err)
 					}
+
 					reqsSize := int(nBig.Int64())
 					for i := 0; i < reqsSize; i++ {
 						latency := getRandomLatency()
 						latencySum += latency.Seconds()
 						monitoring.ObserveHTTPRepoLatency(serverController.Metrics, "/v2/dummyrepo/manifests/testreference", latency)
 					}
+
 					time.Sleep(SleepTime)
 
 					go func() {
@@ -372,6 +382,7 @@ func TestNewExporter(t *testing.T) {
 
 						err = pmMetric.Write(&metric)
 						So(err, ShouldBeNil)
+
 						if latency.Seconds() < fvalue {
 							So(*metric.Counter.Value, ShouldEqual, 1)
 						} else {
@@ -415,6 +426,7 @@ func TestNewExporter(t *testing.T) {
 
 						err = pmMetric.Write(&metric)
 						So(err, ShouldBeNil)
+
 						if latency.Seconds() < fvalue {
 							So(*metric.Counter.Value, ShouldEqual, 1)
 						} else {
@@ -440,9 +452,11 @@ func TestNewExporter(t *testing.T) {
 							latency = time.Duration(pvalue*float64(time.Second)) +
 								getRandomLatencyN(int64(dBuckets[0]*float64(time.Second)))
 						}
+
 						latencySum += latency.Seconds()
 						monitoring.ObserveHTTPMethodLatency(serverController.Metrics, "GET", latency)
 					}
+
 					time.Sleep(SleepTime)
 
 					go func() {
@@ -489,11 +503,14 @@ func TestNewExporter(t *testing.T) {
 					if err != nil {
 						panic(err)
 					}
+
 					workersSize := int(nBig.Int64())
 					for i := 0; i < workersSize; i++ {
 						wg.Add(1)
+
 						go func() {
 							defer wg.Done()
+
 							m := serverController.Metrics.ReceiveMetrics()
 							json := jsoniter.ConfigCompatibleWithStandardLibrary
 
@@ -503,6 +520,7 @@ func TestNewExporter(t *testing.T) {
 							}
 						}()
 					}
+
 					wg.Wait()
 				})
 				Convey("Negative testing: Increment a counter that does not exist", func() {

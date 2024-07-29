@@ -39,7 +39,7 @@ func (remote SyncRemote) GetImageReference(repo string, tag string) (types.Image
 		return remote.GetImageReferenceFn(repo, tag)
 	}
 
-	return nil, nil
+	return nil, nil //nolint:nilnil
 }
 
 func (remote SyncRemote) GetContext() *types.SystemContext {

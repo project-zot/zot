@@ -466,6 +466,7 @@ func Pull(
 	} else {
 		// Push blob given size
 		var err error
+
 		manifestHash, repos, err = pushMonolithImage(workdir, url, trepo, repos, config, client)
 		if err != nil {
 			return err
@@ -684,6 +685,7 @@ func Perf(
 	log.Printf("Starting tests ...\n")
 
 	var err error
+
 	zbError := false
 
 	// get host ips from command line to make requests from
@@ -724,6 +726,7 @@ func Perf(
 				}
 			}()
 		}
+
 		wg.Wait()
 
 		summary.total = time.Since(start)
@@ -757,7 +760,7 @@ func Perf(
 			log.Fatal(err) // file closed on exit
 		}
 
-		if err := os.WriteFile(fmt.Sprintf("%s.json", outFmt), jsonOut, defaultFilePerms); err != nil {
+		if err := os.WriteFile(outFmt+".json", jsonOut, defaultFilePerms); err != nil {
 			log.Fatal(err)
 		}
 	}
@@ -788,7 +791,7 @@ func getRandomClientIPs(auth string, url string, ips []string) (*resty.Client, e
 		ip := ips[nBig.Int64()]
 
 		// set ip in transport
-		localAddr, err := net.ResolveTCPAddr("tcp", fmt.Sprintf("%s:0", ip))
+		localAddr, err := net.ResolveTCPAddr("tcp", ip+":0")
 		if err != nil {
 			return nil, err
 		}

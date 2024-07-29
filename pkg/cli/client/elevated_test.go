@@ -26,6 +26,7 @@ import (
 func TestElevatedPrivilegesTLSNewControllerPrivilegedCert(t *testing.T) {
 	Convey("Privileged certs - Make a new controller", t, func() {
 		cmd := exec.Command("mkdir", "-p", "/etc/containers/certs.d/127.0.0.1:8089/") //nolint: gosec
+
 		_, err := cmd.Output()
 		if err != nil {
 			panic(err)
@@ -41,6 +42,7 @@ func TestElevatedPrivilegesTLSNewControllerPrivilegedCert(t *testing.T) {
 
 		for _, file := range clientGlob {
 			cmd = exec.Command("cp", file, "/etc/containers/certs.d/127.0.0.1:8089/")
+
 			res, err := cmd.CombinedOutput()
 			if err != nil {
 				panic(string(res))
@@ -49,6 +51,7 @@ func TestElevatedPrivilegesTLSNewControllerPrivilegedCert(t *testing.T) {
 
 		for _, file := range caGlob {
 			cmd = exec.Command("cp", file, "/etc/containers/certs.d/127.0.0.1:8089/")
+
 			res, err := cmd.CombinedOutput()
 			if err != nil {
 				panic(string(res))
@@ -59,6 +62,7 @@ func TestElevatedPrivilegesTLSNewControllerPrivilegedCert(t *testing.T) {
 
 		for _, file := range allGlob {
 			cmd = exec.Command("chmod", "a=rwx", file)
+
 			res, err := cmd.CombinedOutput()
 			if err != nil {
 				panic(string(res))
@@ -73,7 +77,9 @@ func TestElevatedPrivilegesTLSNewControllerPrivilegedCert(t *testing.T) {
 		caCertPool.AppendCertsFromPEM(caCert)
 
 		resty.SetTLSClientConfig(&tls.Config{RootCAs: caCertPool, MinVersion: tls.VersionTLS12})
+
 		defer func() { resty.SetTLSClientConfig(nil) }()
+
 		conf := config.New()
 		conf.HTTP.Port = SecurePort2
 		conf.HTTP.TLS = &config.TLSConfig{
@@ -84,14 +90,17 @@ func TestElevatedPrivilegesTLSNewControllerPrivilegedCert(t *testing.T) {
 
 		ctlr := api.NewController(conf)
 		ctlr.Config.Storage.RootDirectory = t.TempDir()
+
 		cm := test.NewControllerManager(ctlr)
 		cm.StartAndWait(conf.HTTP.Port)
+
 		defer cm.StopServer()
 
 		Convey("Certs in privileged path", func() {
 			configPath := makeConfigFile(
 				fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s%s%s","showspinner":false}]}`,
 					BaseSecureURL2, constants.RoutePrefix, constants.ExtCatalogPrefix))
+
 			defer os.Remove(configPath)
 
 			args := []string{"list", "--config", "imagetest"}
@@ -100,6 +109,7 @@ func TestElevatedPrivilegesTLSNewControllerPrivilegedCert(t *testing.T) {
 			imageCmd.SetOut(imageBuff)
 			imageCmd.SetErr(imageBuff)
 			imageCmd.SetArgs(args)
+
 			err := imageCmd.Execute()
 			So(err, ShouldBeNil)
 		})

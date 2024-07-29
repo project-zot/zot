@@ -52,6 +52,7 @@ func TestStressTooManyOpenFiles(t *testing.T) {
 			if err != nil {
 				t.Logf("error when reading zot log file:\n%s\n", err)
 			}
+
 			t.Logf("\n\n Zot log file content:\n%s\n", string(data))
 			os.Remove(logFile.Name())
 		}()
@@ -67,6 +68,7 @@ func TestStressTooManyOpenFiles(t *testing.T) {
 			if err != nil {
 				t.Logf("error when listing storage files:\n%s\n", err)
 			}
+
 			t.Logf("Listing Storage root FS:\n%s\n", out)
 		}()
 
@@ -94,6 +96,7 @@ func TestStressTooManyOpenFiles(t *testing.T) {
 
 		cfgfile, err := os.CreateTemp("", "zot-test*.json")
 		So(err, ShouldBeNil)
+
 		defer os.Remove(cfgfile.Name()) // clean up
 		_, err = cfgfile.WriteString(content)
 		So(err, ShouldBeNil)
@@ -104,10 +107,12 @@ func TestStressTooManyOpenFiles(t *testing.T) {
 			"copy", "--format=oci", "--insecure-policy", "--dest-tls-verify=false",
 			"docker://public.ecr.aws/zomato/alpine:3.11.3", fmt.Sprintf("oci:%s:alpine", dir),
 		}
+
 		out, err := exec.Command("skopeo", skopeoArgs...).Output()
 		if err != nil {
 			t.Logf("\nerror on skopeo copy:\n%s\n", err)
 		}
+
 		So(err, ShouldBeNil)
 		t.Logf("\nCopy test image locally:\n%s\n", out)
 
@@ -122,6 +127,7 @@ func TestStressTooManyOpenFiles(t *testing.T) {
 				worker(i, port, dir)
 			}()
 		}
+
 		wg.Wait()
 
 		_, err = setMaxOpenFilesLimit(initialLimit)
@@ -142,6 +148,7 @@ func TestStressTooManyOpenFiles(t *testing.T) {
 			if err != nil {
 				t.Logf("error when reading zot scrub file:\n%s\n", err)
 			}
+
 			t.Logf("\n\n Zot scrub file content:\n%s\n", string(data))
 			os.Remove(scrubFile.Name())
 		}()
@@ -170,6 +177,7 @@ func worker(id int, zotPort, rootDir string) {
 			"copy", "--format=oci", "--insecure-policy", "--dest-tls-verify=false",
 			sourceImg, destImg,
 		}
+
 		err := exec.Command("skopeo", skopeoArgs...).Run()
 		if err != nil { //nolint: wsl
 			continue // we expect clients to receive errors due to FD limit reached on server

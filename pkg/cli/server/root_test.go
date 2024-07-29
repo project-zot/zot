@@ -122,12 +122,15 @@ func TestVerify(t *testing.T) {
 	Convey("Test verify bad config", t, func(c C) {
 		tmpfile, err := os.CreateTemp("", "zot-test*.json")
 		So(err, ShouldBeNil)
+
 		defer os.Remove(tmpfile.Name()) // clean up
+
 		content := []byte(`{"log":{}}`)
 		_, err = tmpfile.Write(content)
 		So(err, ShouldBeNil)
 		err = tmpfile.Close()
 		So(err, ShouldBeNil)
+
 		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
 		err = cli.NewServerRootCmd().Execute()
 		So(err, ShouldNotBeNil)
@@ -136,7 +139,9 @@ func TestVerify(t *testing.T) {
 	Convey("Test verify config with no extension", t, func(c C) {
 		tmpfile, err := os.CreateTemp("", "zot-test*")
 		So(err, ShouldBeNil)
+
 		defer os.Remove(tmpfile.Name()) // clean up
+
 		content := []byte(`{"distSpecVersion":"1.1.0","storage":{"rootDirectory":"/tmp/zot"},
 							"http":{"address":"127.0.0.1","port":"8080","realm":"zot"},
 							"log":{"level":"debug"}}`)
@@ -144,6 +149,7 @@ func TestVerify(t *testing.T) {
 		So(err, ShouldBeNil)
 		err = tmpfile.Close()
 		So(err, ShouldBeNil)
+
 		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
 		err = cli.NewServerRootCmd().Execute()
 		So(err, ShouldBeNil)
@@ -152,7 +158,9 @@ func TestVerify(t *testing.T) {
 	Convey("Test verify config with dotted config name", t, func(c C) {
 		tmpfile, err := os.CreateTemp("", ".zot-test*")
 		So(err, ShouldBeNil)
+
 		defer os.Remove(tmpfile.Name()) // clean up
+
 		content := []byte(`
 distspecversion: 1.1.0
 http:
@@ -168,6 +176,7 @@ storage:
 		So(err, ShouldBeNil)
 		err = tmpfile.Close()
 		So(err, ShouldBeNil)
+
 		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
 		err = cli.NewServerRootCmd().Execute()
 		So(err, ShouldBeNil)
@@ -566,7 +575,9 @@ storage:
 	Convey("Test verify with bad gc retention repo patterns", t, func(c C) {
 		tmpfile, err := os.CreateTemp("", "zot-test*.json")
 		So(err, ShouldBeNil)
+
 		defer os.Remove(tmpfile.Name()) // clean up
+
 		content := []byte(`{
 			"distSpecVersion": "1.1.0",
 			"storage": {
@@ -607,14 +618,18 @@ storage:
 		So(err, ShouldBeNil)
 		err = tmpfile.Close()
 		So(err, ShouldBeNil)
+
 		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
+
 		So(cli.NewServerRootCmd().Execute(), ShouldNotBeNil)
 	})
 
 	Convey("Test verify with bad gc image retention tag regex", t, func(c C) {
 		tmpfile, err := os.CreateTemp("", "zot-test*.json")
 		So(err, ShouldBeNil)
+
 		defer os.Remove(tmpfile.Name()) // clean up
+
 		content := []byte(`{
 			"distSpecVersion": "1.1.0",
 			"storage": {
@@ -647,7 +662,9 @@ storage:
 		So(err, ShouldBeNil)
 		err = tmpfile.Close()
 		So(err, ShouldBeNil)
+
 		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
+
 		So(cli.NewServerRootCmd().Execute(), ShouldNotBeNil)
 	})
 
@@ -710,7 +727,9 @@ storage:
 	Convey("Test verify storage driver different than s3", t, func(c C) {
 		tmpfile, err := os.CreateTemp("", "zot-test*.json")
 		So(err, ShouldBeNil)
+
 		defer os.Remove(tmpfile.Name()) // clean up
+
 		content := []byte(`{"storage":{"rootDirectory":"/tmp/zot", "storageDriver": {"name": "gcs"}},
 							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
 							"auth":{"htpasswd":{"path":"test/data/htpasswd"},"failDelay":1}}}`)
@@ -718,6 +737,7 @@ storage:
 		So(err, ShouldBeNil)
 		err = tmpfile.Close()
 		So(err, ShouldBeNil)
+
 		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
 		err = cli.NewServerRootCmd().Execute()
 		So(err, ShouldNotBeNil)
@@ -726,7 +746,9 @@ storage:
 	Convey("Test verify subpath storage driver different than s3", t, func(c C) {
 		tmpfile, err := os.CreateTemp("", "zot-test*.json")
 		So(err, ShouldBeNil)
+
 		defer os.Remove(tmpfile.Name()) // clean up
+
 		content := []byte(`{"storage":{"rootDirectory":"/tmp/zot", "storageDriver": {"name": "s3"},
 							"subPaths": {"/a": {"rootDirectory": "/zot-a","storageDriver": {"name": "gcs"}}}},
 							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
@@ -735,6 +757,7 @@ storage:
 		So(err, ShouldBeNil)
 		err = tmpfile.Close()
 		So(err, ShouldBeNil)
+
 		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
 		err = cli.NewServerRootCmd().Execute()
 		So(err, ShouldNotBeNil)
@@ -743,13 +766,16 @@ storage:
 	Convey("Test verify subpath storage config", t, func(c C) {
 		tmpfile, err := os.CreateTemp("", "zot-test*.json")
 		So(err, ShouldBeNil)
+
 		defer os.Remove(tmpfile.Name()) // clean up
+
 		content := []byte(`{"storage":{"rootDirectory":"/tmp/zot",
 							"subPaths": {"/a": {"rootDirectory": "/zot-a"},"/b": {"rootDirectory": "/zot-a"}}},
 							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
 							"auth":{"htpasswd":{"path":"test/data/htpasswd"},"failDelay":1}}}`)
 		err = os.WriteFile(tmpfile.Name(), content, 0o0600)
 		So(err, ShouldBeNil)
+
 		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
 		err = cli.NewServerRootCmd().Execute()
 		So(err, ShouldBeNil)
@@ -762,6 +788,7 @@ storage:
 							"auth":{"htpasswd":{"path":"test/data/htpasswd"},"failDelay":1}}}`)
 		err = os.WriteFile(tmpfile.Name(), content, 0o0600)
 		So(err, ShouldBeNil)
+
 		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
 		err = cli.NewServerRootCmd().Execute()
 		So(err, ShouldNotBeNil)
@@ -773,6 +800,7 @@ storage:
 							"auth":{"htpasswd":{"path":"test/data/htpasswd"},"failDelay":1}}}`)
 		err = os.WriteFile(tmpfile.Name(), content, 0o0600)
 		So(err, ShouldBeNil)
+
 		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
 		err = cli.NewServerRootCmd().Execute()
 		So(err, ShouldNotBeNil)
@@ -784,6 +812,7 @@ storage:
 							"auth":{"htpasswd":{"path":"test/data/htpasswd"},"failDelay":1}}}`)
 		err = os.WriteFile(tmpfile.Name(), content, 0o0600)
 		So(err, ShouldBeNil)
+
 		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
 		err = cli.NewServerRootCmd().Execute()
 		So(err, ShouldNotBeNil)
@@ -795,6 +824,7 @@ storage:
 							"auth":{"htpasswd":{"path":"test/data/htpasswd"},"failDelay":1}}}`)
 		err = os.WriteFile(tmpfile.Name(), content, 0o0600)
 		So(err, ShouldBeNil)
+
 		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
 		err = cli.NewServerRootCmd().Execute()
 		So(err, ShouldNotBeNil)
@@ -806,6 +836,7 @@ storage:
 							"auth":{"htpasswd":{"path":"test/data/htpasswd"},"failDelay":1}}}`)
 		err = os.WriteFile(tmpfile.Name(), content, 0o0600)
 		So(err, ShouldBeNil)
+
 		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
 		err = cli.NewServerRootCmd().Execute()
 		So(err, ShouldNotBeNil)
@@ -817,6 +848,7 @@ storage:
 							"auth":{"htpasswd":{"path":"test/data/htpasswd"},"failDelay":1}}}`)
 		err = os.WriteFile(tmpfile.Name(), content, 0o0600)
 		So(err, ShouldBeNil)
+
 		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
 		err = cli.NewServerRootCmd().Execute()
 		So(err, ShouldNotBeNil)
@@ -825,7 +857,9 @@ storage:
 	Convey("Test verify w/ authorization and w/o authentication", t, func(c C) {
 		tmpfile, err := os.CreateTemp("", "zot-test*.json")
 		So(err, ShouldBeNil)
+
 		defer os.Remove(tmpfile.Name()) // clean up
+
 		content := []byte(`{"storage":{"rootDirectory":"/tmp/zot"},
 		 					"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
 							 "accessControl":{"repositories":{},"adminPolicy":{"users":["admin"],
@@ -834,6 +868,7 @@ storage:
 		So(err, ShouldBeNil)
 		err = tmpfile.Close()
 		So(err, ShouldBeNil)
+
 		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
 		err = cli.NewServerRootCmd().Execute()
 		So(err, ShouldNotBeNil)
@@ -842,7 +877,9 @@ storage:
 	Convey("Test verify w/ authorization and w/ authentication", t, func(c C) {
 		tmpfile, err := os.CreateTemp("", "zot-test*.json")
 		So(err, ShouldBeNil)
+
 		defer os.Remove(tmpfile.Name()) // clean up
+
 		content := []byte(`{"storage":{"rootDirectory":"/tmp/zot"},
 							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
 							"auth":{"htpasswd":{"path":"test/data/htpasswd"},"failDelay":1},
@@ -852,6 +889,7 @@ storage:
 		So(err, ShouldBeNil)
 		err = tmpfile.Close()
 		So(err, ShouldBeNil)
+
 		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
 		err = cli.NewServerRootCmd().Execute()
 		So(err, ShouldBeNil)
@@ -860,7 +898,9 @@ storage:
 	Convey("Test verify anonymous authorization", t, func(c C) {
 		tmpfile, err := os.CreateTemp("", "zot-test*.json")
 		So(err, ShouldBeNil)
+
 		defer os.Remove(tmpfile.Name()) // clean up
+
 		content := []byte(`{"storage":{"rootDirectory":"/tmp/zot"},
 		 					"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
 							 "accessControl":{"repositories":{"**":{"anonymousPolicy": ["read", "create"]},
@@ -870,6 +910,7 @@ storage:
 		So(err, ShouldBeNil)
 		err = tmpfile.Close()
 		So(err, ShouldBeNil)
+
 		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
 		err = cli.NewServerRootCmd().Execute()
 		So(err, ShouldBeNil)
@@ -878,7 +919,9 @@ storage:
 	Convey("Test verify admin policy authz is not allowed if no authn is configured", t, func(c C) {
 		tmpfile, err := os.CreateTemp("", "zot-test*.json")
 		So(err, ShouldBeNil)
+
 		defer os.Remove(tmpfile.Name()) // clean up
+
 		content := []byte(`{"storage":{"rootDirectory":"/tmp/zot"},
 		 					"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
 								"accessControl":{
@@ -896,6 +939,7 @@ storage:
 		So(err, ShouldBeNil)
 		err = tmpfile.Close()
 		So(err, ShouldBeNil)
+
 		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
 		err = cli.NewServerRootCmd().Execute()
 		So(err, ShouldNotBeNil)
@@ -904,7 +948,9 @@ storage:
 	Convey("Test verify default policy authz is not allowed if no authn is configured", t, func(c C) {
 		tmpfile, err := os.CreateTemp("", "zot-test*.json")
 		So(err, ShouldBeNil)
+
 		defer os.Remove(tmpfile.Name()) // clean up
+
 		content := []byte(`{"storage":{"rootDirectory":"/tmp/zot"},
 							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
 								"accessControl":{
@@ -918,6 +964,7 @@ storage:
 		So(err, ShouldBeNil)
 		err = tmpfile.Close()
 		So(err, ShouldBeNil)
+
 		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
 		err = cli.NewServerRootCmd().Execute()
 		So(err, ShouldNotBeNil)
@@ -926,7 +973,9 @@ storage:
 	Convey("Test verify authz per user policies fail if no authn is configured", t, func(c C) {
 		tmpfile, err := os.CreateTemp("", "zot-test*.json")
 		So(err, ShouldBeNil)
+
 		defer os.Remove(tmpfile.Name()) // clean up
+
 		content := []byte(`{"storage":{"rootDirectory":"/tmp/zot"},
 							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
 								"accessControl":{
@@ -945,6 +994,7 @@ storage:
 		So(err, ShouldBeNil)
 		err = tmpfile.Close()
 		So(err, ShouldBeNil)
+
 		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
 		err = cli.NewServerRootCmd().Execute()
 		So(err, ShouldNotBeNil)
@@ -953,7 +1003,9 @@ storage:
 	Convey("Test verify w/ sync and w/o filesystem storage", t, func(c C) {
 		tmpfile, err := os.CreateTemp("", "zot-test*.json")
 		So(err, ShouldBeNil)
+
 		defer os.Remove(tmpfile.Name()) // clean up
+
 		content := []byte(`{"storage":{"rootDirectory":"/tmp/zot", "storageDriver": {"name": "s3"}},
 							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
 							"auth":{"htpasswd":{"path":"test/data/htpasswd"},"failDelay":1}},
@@ -963,6 +1015,7 @@ storage:
 		So(err, ShouldBeNil)
 		err = tmpfile.Close()
 		So(err, ShouldBeNil)
+
 		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
 		err = cli.NewServerRootCmd().Execute()
 		So(err, ShouldNotBeNil)
@@ -971,7 +1024,9 @@ storage:
 	Convey("Test verify w/ sync and w/ filesystem storage", t, func(c C) {
 		tmpfile, err := os.CreateTemp("", "zot-test*.json")
 		So(err, ShouldBeNil)
+
 		defer os.Remove(tmpfile.Name()) // clean up
+
 		content := []byte(`{"storage":{"rootDirectory":"/tmp/zot"},
 							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
 							"auth":{"htpasswd":{"path":"test/data/htpasswd"},"failDelay":1}},
@@ -981,6 +1036,7 @@ storage:
 		So(err, ShouldBeNil)
 		err = tmpfile.Close()
 		So(err, ShouldBeNil)
+
 		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
 		err = cli.NewServerRootCmd().Execute()
 		So(err, ShouldBeNil)
@@ -989,7 +1045,9 @@ storage:
 	Convey("Test verify with bad sync prefixes", t, func(c C) {
 		tmpfile, err := os.CreateTemp("", "zot-test*.json")
 		So(err, ShouldBeNil)
+
 		defer os.Remove(tmpfile.Name()) // clean up
+
 		content := []byte(`{"storage":{"rootDirectory":"/tmp/zot"},
 							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
 							"auth":{"htpasswd":{"path":"test/data/htpasswd"},"failDelay":1}},
@@ -1000,6 +1058,7 @@ storage:
 		So(err, ShouldBeNil)
 		err = tmpfile.Close()
 		So(err, ShouldBeNil)
+
 		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
 		err = cli.NewServerRootCmd().Execute()
 		So(err, ShouldNotBeNil)
@@ -1008,7 +1067,9 @@ storage:
 	Convey("Test verify with bad sync content config", t, func(c C) {
 		tmpfile, err := os.CreateTemp("", "zot-test*.json")
 		So(err, ShouldBeNil)
+
 		defer os.Remove(tmpfile.Name()) // clean up
+
 		content := []byte(`{"storage":{"rootDirectory":"/tmp/zot"},
 							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
 							"auth":{"htpasswd":{"path":"test/data/htpasswd"},"failDelay":1}},
@@ -1019,6 +1080,7 @@ storage:
 		So(err, ShouldBeNil)
 		err = tmpfile.Close()
 		So(err, ShouldBeNil)
+
 		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
 		err = cli.NewServerRootCmd().Execute()
 		So(err, ShouldNotBeNil)
@@ -1027,7 +1089,9 @@ storage:
 	Convey("Test verify with good sync content config", t, func(c C) {
 		tmpfile, err := os.CreateTemp("", "zot-test*.json")
 		So(err, ShouldBeNil)
+
 		defer os.Remove(tmpfile.Name()) // clean up
+
 		content := []byte(`{"storage":{"rootDirectory":"/tmp/zot"},
 							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
 							"auth":{"htpasswd":{"path":"test/data/htpasswd"},"failDelay":1}},
@@ -1038,6 +1102,7 @@ storage:
 		So(err, ShouldBeNil)
 		err = tmpfile.Close()
 		So(err, ShouldBeNil)
+
 		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
 		err = cli.NewServerRootCmd().Execute()
 		So(err, ShouldBeNil)
@@ -1046,7 +1111,9 @@ storage:
 	Convey("Test verify with bad authorization repo patterns", t, func(c C) {
 		tmpfile, err := os.CreateTemp("", "zot-test*.json")
 		So(err, ShouldBeNil)
+
 		defer os.Remove(tmpfile.Name()) // clean up
+
 		content := []byte(`{"storage":{"rootDirectory":"/tmp/zot"},
 							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
 							"auth":{"htpasswd":{"path":"test/data/htpasswd"},"failDelay":1},
@@ -1055,6 +1122,7 @@ storage:
 		So(err, ShouldBeNil)
 		err = tmpfile.Close()
 		So(err, ShouldBeNil)
+
 		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
 		err = cli.NewServerRootCmd().Execute()
 		So(err, ShouldNotBeNil)
@@ -1063,7 +1131,9 @@ storage:
 	Convey("Test verify sync config default tls value", t, func(c C) {
 		tmpfile, err := os.CreateTemp("", "zot-test*.json")
 		So(err, ShouldBeNil)
+
 		defer os.Remove(tmpfile.Name()) // clean up
+
 		content := []byte(`{"storage":{"rootDirectory":"/tmp/zot"},
 							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
 							"auth":{"htpasswd":{"path":"test/data/htpasswd"},"failDelay":1}},
@@ -1074,6 +1144,7 @@ storage:
 		So(err, ShouldBeNil)
 		err = tmpfile.Close()
 		So(err, ShouldBeNil)
+
 		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
 		err = cli.NewServerRootCmd().Execute()
 		So(err, ShouldBeNil)
@@ -1082,7 +1153,9 @@ storage:
 	Convey("Test verify sync without retry options", t, func(c C) {
 		tmpfile, err := os.CreateTemp("", "zot-test*.json")
 		So(err, ShouldBeNil)
+
 		defer os.Remove(tmpfile.Name()) // clean up
+
 		content := []byte(`{"storage":{"rootDirectory":"/tmp/zot"},
 							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
 							"auth":{"htpasswd":{"path":"test/data/htpasswd"},"failDelay":1}},
@@ -1092,6 +1165,7 @@ storage:
 		So(err, ShouldBeNil)
 		err = tmpfile.Close()
 		So(err, ShouldBeNil)
+
 		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
 		err = cli.NewServerRootCmd().Execute()
 		So(err, ShouldNotBeNil)
@@ -1100,7 +1174,9 @@ storage:
 	Convey("Test verify config with unknown keys", t, func(c C) {
 		tmpfile, err := os.CreateTemp("", "zot-test*.json")
 		So(err, ShouldBeNil)
+
 		defer os.Remove(tmpfile.Name()) // clean up
+
 		content := []byte(`{"distSpecVersion": "1.0.0", "storage": {"rootDirectory": "/tmp/zot"},
 							"http": {"url": "127.0.0.1", "port": "8080"},
 							"log": {"level": "debug"}}`)
@@ -1108,6 +1184,7 @@ storage:
 		So(err, ShouldBeNil)
 		err = tmpfile.Close()
 		So(err, ShouldBeNil)
+
 		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
 		err = cli.NewServerRootCmd().Execute()
 		So(err, ShouldNotBeNil)
@@ -1116,7 +1193,9 @@ storage:
 	Convey("Test verify openid config with missing parameter", t, func(c C) {
 		tmpfile, err := os.CreateTemp("", "zot-test*.json")
 		So(err, ShouldBeNil)
+
 		defer os.Remove(tmpfile.Name()) // clean up
+
 		content := []byte(`{"distSpecVersion":"1.1.0","storage":{"rootDirectory":"/tmp/zot"},
 							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
 							"auth":{"openid":{"providers":{"oidc":{"issuer":"http://127.0.0.1:5556/dex"}}}}},
@@ -1125,6 +1204,7 @@ storage:
 		So(err, ShouldBeNil)
 		err = tmpfile.Close()
 		So(err, ShouldBeNil)
+
 		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
 		err = cli.NewServerRootCmd().Execute()
 		So(err, ShouldNotBeNil)
@@ -1133,7 +1213,9 @@ storage:
 	Convey("Test verify oauth2 config with missing parameter", t, func(c C) {
 		tmpfile, err := os.CreateTemp("", "zot-test*.json")
 		So(err, ShouldBeNil)
+
 		defer os.Remove(tmpfile.Name()) // clean up
+
 		content := []byte(`{"distSpecVersion":"1.1.0","storage":{"rootDirectory":"/tmp/zot"},
 							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
 							"auth":{"openid":{"providers":{"github":{"clientid":"client_id"}}}}},
@@ -1142,6 +1224,7 @@ storage:
 		So(err, ShouldBeNil)
 		err = tmpfile.Close()
 		So(err, ShouldBeNil)
+
 		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
 		err = cli.NewServerRootCmd().Execute()
 		So(err, ShouldNotBeNil)
@@ -1150,7 +1233,9 @@ storage:
 	Convey("Test verify openid config with unsupported provider", t, func(c C) {
 		tmpfile, err := os.CreateTemp("", "zot-test*.json")
 		So(err, ShouldBeNil)
+
 		defer os.Remove(tmpfile.Name()) // clean up
+
 		content := []byte(`{"distSpecVersion":"1.1.0","storage":{"rootDirectory":"/tmp/zot"},
 							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
 							"auth":{"openid":{"providers":{"unsupported":{"issuer":"http://127.0.0.1:5556/dex"}}}}},
@@ -1159,6 +1244,7 @@ storage:
 		So(err, ShouldBeNil)
 		err = tmpfile.Close()
 		So(err, ShouldBeNil)
+
 		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
 		err = cli.NewServerRootCmd().Execute()
 		So(err, ShouldNotBeNil)
@@ -1167,7 +1253,9 @@ storage:
 	Convey("Test verify openid config without apikey extension enabled", t, func(c C) {
 		tmpfile, err := os.CreateTemp("", "zot-test*.json")
 		So(err, ShouldBeNil)
+
 		defer os.Remove(tmpfile.Name()) // clean up
+
 		content := []byte(`{"distSpecVersion":"1.1.0","storage":{"rootDirectory":"/tmp/zot"},
 							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
 							"auth":{"openid":{"providers":{"oidc":{"issuer":"http://127.0.0.1:5556/dex",
@@ -1177,6 +1265,7 @@ storage:
 		So(err, ShouldBeNil)
 		err = tmpfile.Close()
 		So(err, ShouldBeNil)
+
 		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
 		err = cli.NewServerRootCmd().Execute()
 		So(err, ShouldBeNil)
@@ -1185,7 +1274,9 @@ storage:
 	Convey("Test verify config with missing basedn key", t, func(c C) {
 		tmpfile, err := os.CreateTemp("", "zot-test*.json")
 		So(err, ShouldBeNil)
+
 		defer os.Remove(tmpfile.Name()) // clean up
+
 		content := []byte(`{"distSpecVersion": "1.0.0", "storage": {"rootDirectory": "/tmp/zot"},
 							"http": {"auth": {"ldap": {"address": "ldap", "userattribute": "uid"}},
 							"address": "127.0.0.1", "port": "8080"},
@@ -1194,6 +1285,7 @@ storage:
 		So(err, ShouldBeNil)
 		err = tmpfile.Close()
 		So(err, ShouldBeNil)
+
 		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
 		err = cli.NewServerRootCmd().Execute()
 		So(err, ShouldNotBeNil)
@@ -1202,7 +1294,9 @@ storage:
 	Convey("Test verify config with missing address key", t, func(c C) {
 		tmpfile, err := os.CreateTemp("", "zot-test*.json")
 		So(err, ShouldBeNil)
+
 		defer os.Remove(tmpfile.Name()) // clean up
+
 		content := []byte(`{"distSpecVersion": "1.0.0", "storage": {"rootDirectory": "/tmp/zot"},
 							"http": {"auth": {"ldap": {"basedn": "ou=Users,dc=example,dc=org", "userattribute": "uid"}},
 							"address": "127.0.0.1", "port": "8080"},
@@ -1211,6 +1305,7 @@ storage:
 		So(err, ShouldBeNil)
 		err = tmpfile.Close()
 		So(err, ShouldBeNil)
+
 		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
 		err = cli.NewServerRootCmd().Execute()
 		So(err, ShouldNotBeNil)
@@ -1219,7 +1314,9 @@ storage:
 	Convey("Test verify config with missing userattribute key", t, func(c C) {
 		tmpfile, err := os.CreateTemp("", "zot-test*.json")
 		So(err, ShouldBeNil)
+
 		defer os.Remove(tmpfile.Name()) // clean up
+
 		content := []byte(`{"distSpecVersion": "1.0.0", "storage": {"rootDirectory": "/tmp/zot"},
 							"http": {"auth": {"ldap": {"basedn": "ou=Users,dc=example,dc=org", "address": "ldap"}},
 							"address": "127.0.0.1", "port": "8080"},
@@ -1228,6 +1325,7 @@ storage:
 		So(err, ShouldBeNil)
 		err = tmpfile.Close()
 		So(err, ShouldBeNil)
+
 		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
 		err = cli.NewServerRootCmd().Execute()
 		So(err, ShouldNotBeNil)
@@ -1236,7 +1334,9 @@ storage:
 	Convey("Test verify good config", t, func(c C) {
 		tmpfile, err := os.CreateTemp("", "zot-test*.json")
 		So(err, ShouldBeNil)
+
 		defer os.Remove(tmpfile.Name()) // clean up
+
 		content := []byte(`{"distSpecVersion": "1.0.0", "storage": {"rootDirectory": "/tmp/zot"},
 							"http": {"address": "127.0.0.1", "port": "8080"},
 							"log": {"level": "debug"}}`)
@@ -1244,6 +1344,7 @@ storage:
 		So(err, ShouldBeNil)
 		err = tmpfile.Close()
 		So(err, ShouldBeNil)
+
 		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
 		err = cli.NewServerRootCmd().Execute()
 		So(err, ShouldBeNil)
@@ -1446,6 +1547,7 @@ func TestApiKeyConfig(t *testing.T) {
 		config := config.New()
 		tmpfile, err := os.CreateTemp("", "zot-test*.json")
 		So(err, ShouldBeNil)
+
 		defer os.Remove(tmpfile.Name())
 
 		content := []byte(`{"distSpecVersion":"1.1.0","storage":{"rootDirectory":"/tmp/zot"},
@@ -1466,6 +1568,7 @@ func TestApiKeyConfig(t *testing.T) {
 		config := config.New()
 		tmpfile, err := os.CreateTemp("", "zot-test*.json")
 		So(err, ShouldBeNil)
+
 		defer os.Remove(tmpfile.Name())
 
 		content := []byte(`{"distSpecVersion":"1.1.0","storage":{"rootDirectory":"/tmp/zot"},
@@ -1484,6 +1587,7 @@ func TestApiKeyConfig(t *testing.T) {
 		config := config.New()
 		tmpfile, err := os.CreateTemp("", "zot-test*.json")
 		So(err, ShouldBeNil)
+
 		defer os.Remove(tmpfile.Name())
 
 		content := []byte(`{"distSpecVersion":"1.1.0","storage":{"rootDirectory":"/tmp/zot"},
@@ -1527,6 +1631,7 @@ func TestServeAPIKey(t *testing.T) {
 		So(err, ShouldBeNil)
 		data, err := os.ReadFile(logPath)
 		So(err, ShouldBeNil)
+
 		defer os.Remove(logPath) // clean up
 		So(string(data), ShouldContainSubstring, "\"APIKey\":true")
 	})
@@ -1553,6 +1658,7 @@ func TestServeAPIKey(t *testing.T) {
 		So(err, ShouldBeNil)
 		data, err := os.ReadFile(logPath)
 		So(err, ShouldBeNil)
+
 		defer os.Remove(logPath) // clean up
 		So(string(data), ShouldContainSubstring, "\"APIKey\":false")
 	})
@@ -1568,7 +1674,9 @@ func TestLoadConfig(t *testing.T) {
 		config := config.New()
 		tmpfile, err := os.CreateTemp("", "zot-test*.json")
 		So(err, ShouldBeNil)
+
 		defer os.Remove(tmpfile.Name())
+
 		content := []byte(`{"storage":{"rootDirectory":"/tmp/zot",
 							"subPaths": {"/a": {"rootDirectory": "/tmp/zot","dedupe":"true","gc":"true","gcDelay":"1s","gcInterval":"1s"},
 							"/b": {"rootDirectory": "/zot-a","dedupe":"true","gc":"true","gcDelay":"1s"}}},
@@ -1634,6 +1742,7 @@ func TestLoadConfig(t *testing.T) {
 		config := config.New()
 		tmpfile, err := os.CreateTemp("", "zot-test*.json")
 		So(err, ShouldBeNil)
+
 		defer os.Remove(tmpfile.Name())
 
 		content := []byte(`{"storage":{"rootDirectory":"/tmp/zot",
@@ -1812,12 +1921,15 @@ func TestScrub(t *testing.T) {
 		Convey("bad config", func(c C) {
 			tmpfile, err := os.CreateTemp("", "zot-test*.json")
 			So(err, ShouldBeNil)
+
 			defer os.Remove(tmpfile.Name()) // clean up
+
 			content := []byte(`{"log":{}}`)
 			_, err = tmpfile.Write(content)
 			So(err, ShouldBeNil)
 			err = tmpfile.Close()
 			So(err, ShouldBeNil)
+
 			os.Args = []string{"cli_test", "scrub", tmpfile.Name()}
 			err = cli.NewServerRootCmd().Execute()
 			So(err, ShouldNotBeNil)
@@ -1837,7 +1949,9 @@ func TestScrub(t *testing.T) {
 
 			tmpfile, err := os.CreateTemp("", "zot-test*.json")
 			So(err, ShouldBeNil)
+
 			defer os.Remove(tmpfile.Name()) // clean up
+
 			content := []byte(fmt.Sprintf(`{
 				"storage": {
 					"rootDirectory": "%s"
@@ -1867,7 +1981,9 @@ func TestScrub(t *testing.T) {
 
 			tmpfile, err := os.CreateTemp("", "zot-test*.json")
 			So(err, ShouldBeNil)
+
 			defer os.Remove(tmpfile.Name()) // clean up
+
 			content := []byte(fmt.Sprintf(`{
 				"storage": {
 					"rootDirectory": ""
@@ -1884,6 +2000,7 @@ func TestScrub(t *testing.T) {
 			So(err, ShouldBeNil)
 			err = tmpfile.Close()
 			So(err, ShouldBeNil)
+
 			os.Args = []string{"cli_test", "scrub", tmpfile.Name()}
 			err = cli.NewServerRootCmd().Execute()
 			So(err, ShouldNotBeNil)
@@ -1901,27 +2018,29 @@ func TestScrub(t *testing.T) {
 				panic(err)
 			}
 
-			if err := os.MkdirAll(fmt.Sprintf("%s/blobs", repo), 0o755); err != nil {
+			if err := os.MkdirAll(repo+"/blobs", 0o755); err != nil {
 				panic(err)
 			}
 
-			if _, err = os.Stat(fmt.Sprintf("%s/oci-layout", repo)); err != nil {
+			if _, err = os.Stat(repo + "/oci-layout"); err != nil {
 				content := []byte(`{"imageLayoutVersion": "1.0.0"}`)
-				if err = os.WriteFile(fmt.Sprintf("%s/oci-layout", repo), content, 0o600); err != nil {
+				if err = os.WriteFile(repo+"/oci-layout", content, 0o600); err != nil {
 					panic(err)
 				}
 			}
 
-			if _, err = os.Stat(fmt.Sprintf("%s/index.json", repo)); err != nil {
+			if _, err = os.Stat(repo + "/index.json"); err != nil {
 				content := []byte(`not a JSON content`)
-				if err = os.WriteFile(fmt.Sprintf("%s/index.json", repo), content, 0o600); err != nil {
+				if err = os.WriteFile(repo+"/index.json", content, 0o600); err != nil {
 					panic(err)
 				}
 			}
 
 			tmpfile, err := os.CreateTemp("", "zot-test*.json")
 			So(err, ShouldBeNil)
+
 			defer os.Remove(tmpfile.Name()) // clean up
+
 			content := []byte(fmt.Sprintf(`{
 				"storage": {
 					"rootDirectory": "%s"

@@ -114,7 +114,7 @@ func (gen *TaskGenerator) Next() (scheduler.Task, error) {
 	defer gen.lock.Unlock()
 
 	if time.Since(gen.lastTaskTime) <= gen.waitTime {
-		return nil, nil
+		return nil, nil //nolint:nilnil
 	}
 
 	if err := gen.Service.SetNextAvailableURL(); err != nil {
@@ -136,7 +136,7 @@ func (gen *TaskGenerator) Next() (scheduler.Task, error) {
 		gen.log.Info().Str("component", "sync").Msg("finished syncing all repositories")
 		gen.done = true
 
-		return nil, nil
+		return nil, nil //nolint:nilnil
 	}
 
 	gen.lastRepo = repo

@@ -2,7 +2,7 @@ package ociutils_test
 
 import (
 	"context"
-	"fmt"
+	"errors"
 	"testing"
 
 	. "github.com/smartystreets/goconvey/convey"
@@ -13,7 +13,7 @@ import (
 	ociutils "zotregistry.dev/zot/pkg/test/oci-utils"
 )
 
-var ErrTestFail = fmt.Errorf("fail")
+var ErrTestFail = errors.New("fail")
 
 func TestInitializeMetaDBErrors(t *testing.T) {
 	ctx := context.Background()

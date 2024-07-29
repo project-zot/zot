@@ -438,7 +438,7 @@ func parseAuthHeader(resp *http.Response) (challengeParams, error) {
 		elem := strings.ReplaceAll(elem, "\"", "")
 
 		elemSplit := strings.Split(elem, "=")
-		if len(elemSplit) != 2 { //nolint: gomnd
+		if len(elemSplit) != 2 { //nolint:mnd
 			return params, zerr.ErrParsingAuthHeader
 		}
 

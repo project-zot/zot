@@ -5,7 +5,6 @@ package scrub_test
 
 import (
 	"context"
-	"fmt"
 	"os"
 	"path"
 	"testing"
@@ -289,7 +288,7 @@ func TestRunScrubRepo(t *testing.T) {
 		data, err := os.ReadFile(logFile.Name())
 		So(err, ShouldBeNil)
 		So(string(data), ShouldContainSubstring,
-			fmt.Sprintf("failed to run scrub for %s", imgStore.RootDir()))
+			"failed to run scrub for "+imgStore.RootDir())
 		So(os.Chmod(path.Join(dir, repoName), 0o755), ShouldBeNil)
 	})
 }

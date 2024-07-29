@@ -450,7 +450,7 @@ func fetchManifestStruct(ctx context.Context, repo, manifestReference string, se
 		layers = append(
 			layers,
 			common.LayerSummary{
-				Size:   fmt.Sprintf("%v", entry.Size),
+				Size:   strconv.FormatInt(entry.Size, 10),
 				Digest: entry.Digest.String(),
 			},
 		)

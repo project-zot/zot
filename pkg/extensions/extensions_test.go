@@ -5,7 +5,6 @@ package extensions_test
 
 import (
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"net/url"
 	"os"
@@ -51,6 +50,7 @@ func TestEnableExtension(t *testing.T) {
 		So(err, ShouldBeNil)
 		conf.Log.Level = "info"
 		conf.Log.Output = logFile.Name()
+
 		defer os.Remove(logFile.Name()) // cleanup
 
 		ctlr := api.NewController(conf)
@@ -87,6 +87,7 @@ func TestMetricsExtension(t *testing.T) {
 		}
 		conf.Log.Level = "info"
 		conf.Log.Output = logFile.Name()
+
 		defer os.Remove(logFile.Name()) // cleanup
 
 		ctlr := api.NewController(conf)
@@ -146,6 +147,7 @@ func TestMgmtExtension(t *testing.T) {
 
 		defer func() {
 			conf.HTTP.Auth.HTPasswd.Path = ""
+
 			os.Remove(htpasswdPath)
 		}()
 
@@ -177,6 +179,7 @@ func TestMgmtExtension(t *testing.T) {
 		found, err := test.ReadLogFileAndSearchString(logFile.Name(),
 			"setting up mgmt routes", mgmtReadyTimeout)
 		So(err, ShouldBeNil)
+
 		defer func() {
 			if !found {
 				data, err := os.ReadFile(logFile.Name())
@@ -363,6 +366,7 @@ func TestMgmtExtension(t *testing.T) {
 
 		defer func() {
 			conf.HTTP.Auth.HTPasswd.Path = ""
+
 			os.Remove(htpasswdPath)
 		}()
 
@@ -448,6 +452,7 @@ func TestMgmtExtension(t *testing.T) {
 
 		defer func() {
 			conf.HTTP.Auth.HTPasswd.Path = ""
+
 			os.Remove(htpasswdPath)
 		}()
 
@@ -733,6 +738,7 @@ func TestMgmtExtension(t *testing.T) {
 
 		defer func() {
 			conf.HTTP.Auth.HTPasswd.Path = ""
+
 			os.Remove(htpasswdPath)
 		}()
 
@@ -865,6 +871,7 @@ func TestMgmtWithBearer(t *testing.T) {
 	Convey("Make a new controller", t, func() {
 		authorizedNamespace := "allowedrepo"
 		unauthorizedNamespace := "notallowedrepo"
+
 		authTestServer := authutils.MakeAuthTestServer(ServerKey, unauthorizedNamespace)
 		defer authTestServer.Close()
 
@@ -915,19 +922,21 @@ func TestMgmtWithBearer(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
 		var goodToken authutils.AccessTokenResponse
+
 		err = json.Unmarshal(resp.Body(), &goodToken)
 		So(err, ShouldBeNil)
 
 		resp, err = resty.R().
-			SetHeader("Authorization", fmt.Sprintf("Bearer %s", goodToken.AccessToken)).
+			SetHeader("Authorization", "Bearer "+goodToken.AccessToken).
 			Get(baseURL + "/v2/")
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
 		resp, err = resty.R().SetHeader("Authorization",
-			fmt.Sprintf("Bearer %s", goodToken.AccessToken)).Options(baseURL + "/v2/")
+			"Bearer "+goodToken.AccessToken).Options(baseURL + "/v2/")
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusNoContent)
@@ -949,7 +958,7 @@ func TestMgmtWithBearer(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		resp, err = resty.R().
-			SetHeader("Authorization", fmt.Sprintf("Bearer %s", goodToken.AccessToken)).
+			SetHeader("Authorization", "Bearer "+goodToken.AccessToken).
 			Post(baseURL + "/v2/" + authorizedNamespace + "/blobs/uploads/")
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
@@ -969,12 +978,14 @@ func TestMgmtWithBearer(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
 		var badToken authutils.AccessTokenResponse
+
 		err = json.Unmarshal(resp.Body(), &badToken)
 		So(err, ShouldBeNil)
 
 		resp, err = resty.R().
-			SetHeader("Authorization", fmt.Sprintf("Bearer %s", badToken.AccessToken)).
+			SetHeader("Authorization", "Bearer "+badToken.AccessToken).
 			Post(baseURL + "/v2/" + unauthorizedNamespace + "/blobs/uploads/")
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)

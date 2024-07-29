@@ -31,6 +31,7 @@ func TestUIExtension(t *testing.T) {
 		// stdout and a file
 		logFile, err := os.CreateTemp(t.TempDir(), "zot-log*.txt")
 		So(err, ShouldBeNil)
+
 		logPath := logFile.Name()
 		defer os.Remove(logPath)
 

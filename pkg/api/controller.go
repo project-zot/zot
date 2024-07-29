@@ -96,6 +96,7 @@ func NewController(appConfig *config.Config) *Controller {
 			Str("clusterMember", memberSocket).
 			Str("clusterMemberIndex", strconv.Itoa(memberSocketIdx)).Logger()
 	}
+
 	controller.Config = appConfig
 	controller.Log = logger
 

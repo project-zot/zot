@@ -42,6 +42,7 @@ func TestUserData(t *testing.T) {
 
 		content := test.GetCredString(adminUser, adminPassword) +
 			test.GetCredString(simpleUser, simpleUserPassword)
+
 		htpasswdPath := test.MakeHtpasswdFileFromString(content)
 		defer os.Remove(htpasswdPath)
 
@@ -604,6 +605,7 @@ func TestGlobalSearchWithUserPrefFiltering(t *testing.T) {
 
 		simpleUser := "simpleUser"
 		simpleUserPassword := "simpleUserPass"
+
 		htpasswdPath := test.MakeHtpasswdFileFromString(test.GetCredString(simpleUser, simpleUserPassword))
 		defer os.Remove(htpasswdPath)
 
@@ -798,6 +800,7 @@ func TestExpandedRepoInfoWithUserPrefs(t *testing.T) {
 
 		simpleUser := "simpleUser"
 		simpleUserPassword := "simpleUserPass"
+
 		htpasswdPath := test.MakeHtpasswdFileFromString(test.GetCredString(simpleUser, simpleUserPassword))
 		defer os.Remove(htpasswdPath)
 

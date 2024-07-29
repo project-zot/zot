@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"path"
+	"strconv"
 	"testing"
 
 	godigest "github.com/opencontainers/go-digest"
@@ -60,7 +61,9 @@ func TestVerifyMandatoryAnnotations(t *testing.T) {
 		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
 		manifestBlob := resp.Body()
+
 		var manifest ispec.Manifest
+
 		err = json.Unmarshal(manifestBlob, &manifest)
 		So(err, ShouldBeNil)
 
@@ -106,7 +109,9 @@ func TestVerifyMandatoryAnnotations(t *testing.T) {
 		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
 		manifestBlob := resp.Body()
+
 		var manifest ispec.Manifest
+
 		err = json.Unmarshal(manifestBlob, &manifest)
 		So(err, ShouldBeNil)
 
@@ -152,7 +157,9 @@ func TestVerifyMandatoryAnnotations(t *testing.T) {
 		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
 		manifestBlob := resp.Body()
+
 		var manifest ispec.Manifest
+
 		err = json.Unmarshal(manifestBlob, &manifest)
 		So(err, ShouldBeNil)
 
@@ -204,7 +211,9 @@ func TestVerifyMandatoryAnnotations(t *testing.T) {
 		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
 		manifestBlob := resp.Body()
+
 		var manifest ispec.Manifest
+
 		err = json.Unmarshal(manifestBlob, &manifest)
 		So(err, ShouldBeNil)
 
@@ -221,7 +230,9 @@ func TestVerifyMandatoryAnnotations(t *testing.T) {
 		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
 		configBlob := resp.Body()
+
 		var imageConfig ispec.Image
+
 		err = json.Unmarshal(configBlob, &imageConfig)
 		So(err, ShouldBeNil)
 
@@ -239,13 +250,13 @@ func TestVerifyMandatoryAnnotations(t *testing.T) {
 
 		// upload image config blob
 		resp, err = resty.R().
-			Post(fmt.Sprintf("%s/v2/zot-test/blobs/uploads/", baseURL))
+			Post(baseURL + "/v2/zot-test/blobs/uploads/")
 		So(err, ShouldBeNil)
 		loc := test.Location(baseURL, resp)
 
 		_, err = resty.R().
 			SetContentLength(true).
-			SetHeader("Content-Length", fmt.Sprintf("%d", len(configContent))).
+			SetHeader("Content-Length", strconv.Itoa(len(configContent))).
 			SetHeader("Content-Type", "application/octet-stream").
 			SetQueryParam("digest", configBlobDigestRaw.String()).
 			SetBody(configContent).
@@ -290,12 +301,13 @@ func TestVerifyMandatoryAnnotations(t *testing.T) {
 		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
 		manifestBlob := resp.Body()
+
 		var manifest ispec.Manifest
+
 		err = json.Unmarshal(manifestBlob, &manifest)
 		So(err, ShouldBeNil)
 
 		manifest.Annotations = make(map[string]string)
-
 		manifest.Annotations["annotation1"] = "testFail1"
 
 		configDigest := manifest.Config.Digest
@@ -306,7 +318,9 @@ func TestVerifyMandatoryAnnotations(t *testing.T) {
 		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
 		configBlob := resp.Body()
+
 		var imageConfig ispec.Image
+
 		err = json.Unmarshal(configBlob, &imageConfig)
 		So(err, ShouldBeNil)
 
@@ -324,13 +338,13 @@ func TestVerifyMandatoryAnnotations(t *testing.T) {
 
 		// upload image config blob
 		_, err = resty.R().
-			Post(fmt.Sprintf("%s/v2/zot-test/blobs/uploads/", baseURL))
+			Post(baseURL + "/v2/zot-test/blobs/uploads/")
 		So(err, ShouldBeNil)
 		loc := test.Location(baseURL, resp)
 
 		_, err = resty.R().
 			SetContentLength(true).
-			SetHeader("Content-Length", fmt.Sprintf("%d", len(configContent))).
+			SetHeader("Content-Length", strconv.Itoa(len(configContent))).
 			SetHeader("Content-Type", "application/octet-stream").
 			SetQueryParam("digest", configBlobDigestRaw.String()).
 			SetBody(configContent).
@@ -375,7 +389,9 @@ func TestVerifyMandatoryAnnotations(t *testing.T) {
 		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
 		manifestBlob := resp.Body()
+
 		var manifest ispec.Manifest
+
 		err = json.Unmarshal(manifestBlob, &manifest)
 		So(err, ShouldBeNil)
 
@@ -430,7 +446,9 @@ func TestVerifyMandatoryAnnotations(t *testing.T) {
 		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
 		manifestBlob := resp.Body()
+
 		var manifest ispec.Manifest
+
 		err = json.Unmarshal(manifestBlob, &manifest)
 		So(err, ShouldBeNil)
 

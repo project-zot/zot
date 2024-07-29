@@ -46,10 +46,12 @@ func TestCommon(t *testing.T) {
 	Convey("test dirExists()", t, func() {
 		exists := common.DirExists("testdir")
 		So(exists, ShouldBeFalse)
+
 		tempDir := t.TempDir()
 
 		file, err := os.Create(path.Join(tempDir, "file.txt"))
 		So(err, ShouldBeNil)
+
 		isDir := common.DirExists(file.Name())
 		So(isDir, ShouldBeFalse)
 	})
@@ -75,6 +77,7 @@ func TestCommon(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(localSockets, ShouldNotBeEmpty)
 		So(localSockets, ShouldContain, "127.0.0.1:8765")
+
 		for _, socket := range localSockets {
 			lastColonIndex := strings.LastIndex(socket, ":")
 			So(socket[lastColonIndex+1:], ShouldEqual, "8765")
@@ -86,6 +89,7 @@ func TestCommon(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(localSockets, ShouldNotBeEmpty)
 		So(localSockets, ShouldContain, "[::1]:8766")
+
 		for _, socket := range localSockets {
 			lastColonIndex := strings.LastIndex(socket, ":")
 			So(socket[lastColonIndex+1:], ShouldEqual, "8766")
@@ -94,9 +98,10 @@ func TestCommon(t *testing.T) {
 
 	Convey("Test GetIPFromHostName with valid hostname", t, func() {
 		addrs, err := common.GetIPFromHostName("github.com")
+
+		// we can't check the actual addresses here as they can change
 		So(err, ShouldBeNil)
 		So(addrs, ShouldNotBeEmpty)
-		// we can't check the actual addresses here as they can change
 	})
 
 	Convey("Test GetIPFromHostName with non-existent hostname", t, func() {

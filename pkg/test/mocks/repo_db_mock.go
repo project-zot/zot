@@ -252,7 +252,7 @@ func (sdm MetaDBMock) GetUserAPIKeys(ctx context.Context) ([]mTypes.APIKeyDetail
 		return sdm.GetUserAPIKeysFn(ctx)
 	}
 
-	return nil, nil
+	return nil, nil //nolint:nilnil
 }
 
 func (sdm MetaDBMock) AddUserAPIKey(ctx context.Context, hashedKey string, apiKeyDetails *mTypes.APIKeyDetails) error {

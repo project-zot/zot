@@ -136,6 +136,7 @@ func (scheduler *Scheduler) poolWorker(ctx context.Context) {
 					scheduler.tasksLock.Lock()
 					scheduler.tasksDoWork++
 					scheduler.tasksLock.Unlock()
+
 					workStart = time.Now()
 				}
 
@@ -148,6 +149,7 @@ func (scheduler *Scheduler) poolWorker(ctx context.Context) {
 					scheduler.tasksLock.Lock()
 					scheduler.tasksDoWork--
 					scheduler.tasksLock.Unlock()
+
 					workDuration = time.Since(workStart)
 					monitoring.ObserveWorkersTasksDuration(scheduler.metricServer, task.Name(), workDuration)
 				}
@@ -201,6 +203,7 @@ func (scheduler *Scheduler) metricsWorker() {
 
 			monitoring.SetSchedulerGenerators(scheduler.metricServer, genMap)
 			monitoring.SetSchedulerTasksQueue(scheduler.metricServer, tasksMap)
+
 			workersMap := make(map[string]int)
 
 			scheduler.tasksLock.Lock()
@@ -523,7 +526,7 @@ func (gen *generator) getState() State {
 func (gen *generator) getRanking() float64 {
 	// take into account the priority, but also how many tasks of
 	// a specific generator were executed in the current generator run
-	return math.Pow(10, float64(gen.priority)) / (1 + float64(gen.taskCount)) //nolint:gomnd
+	return math.Pow(10, float64(gen.priority)) / (1 + float64(gen.taskCount)) //nolint:mnd
 }
 
 func (scheduler *Scheduler) SubmitGenerator(taskGenerator TaskGenerator, interval time.Duration, priority Priority) {

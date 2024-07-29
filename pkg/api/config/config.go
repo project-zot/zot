@@ -306,6 +306,7 @@ func DeepCopy(src, dst interface{}) error {
 	if err != nil {
 		return err
 	}
+
 	err = json.Unmarshal(bytes, dst)
 
 	return err

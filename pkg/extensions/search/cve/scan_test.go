@@ -47,6 +47,7 @@ func TestScanGeneratorWithMockedData(t *testing.T) { //nolint: gocyclo
 
 		logFile, err := os.CreateTemp(t.TempDir(), "zot-log*.txt")
 		logPath := logFile.Name()
+
 		So(err, ShouldBeNil)
 
 		defer os.Remove(logFile.Name()) // clean up
@@ -484,6 +485,7 @@ func TestScanGeneratorWithRealData(t *testing.T) {
 
 		logFile, err := os.CreateTemp(t.TempDir(), "zot-log*.txt")
 		logPath := logFile.Name()
+
 		So(err, ShouldBeNil)
 
 		defer os.Remove(logFile.Name()) // clean up

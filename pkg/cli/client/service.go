@@ -113,8 +113,8 @@ func (service searchService) getDerivedImageListGQL(ctx context.Context, config 
 		}`, derivedImage, Flag2SortCriteria(config.SortBy))
 
 	result := &common.DerivedImageListResponse{}
-	err := service.makeGraphQLQuery(ctx, config, username, password, query, result)
 
+	err := service.makeGraphQLQuery(ctx, config, username, password, query, result)
 	if errResult := checkResultGraphQLQuery(ctx, err, result.Errors); errResult != nil {
 		return nil, errResult
 	}
@@ -261,8 +261,8 @@ func (service searchService) getBaseImageListGQL(ctx context.Context, config Sea
 		}`, baseImage, Flag2SortCriteria(config.SortBy))
 
 	result := &common.BaseImageListResponse{}
-	err := service.makeGraphQLQuery(ctx, config, username, password, query, result)
 
+	err := service.makeGraphQLQuery(ctx, config, username, password, query, result)
 	if errResult := checkResultGraphQLQuery(ctx, err, result.Errors); errResult != nil {
 		return nil, errResult
 	}
@@ -298,7 +298,6 @@ func (service searchService) getImagesGQL(ctx context.Context, config SearchConf
 	result := &common.ImageListResponse{}
 
 	err := service.makeGraphQLQuery(ctx, config, username, password, query, result)
-
 	if errResult := checkResultGraphQLQuery(ctx, err, result.Errors); errResult != nil {
 		return nil, errResult
 	}
@@ -334,7 +333,6 @@ func (service searchService) getImagesForDigestGQL(ctx context.Context, config S
 	result := &common.ImagesForDigest{}
 
 	err := service.makeGraphQLQuery(ctx, config, username, password, query, result)
-
 	if errResult := checkResultGraphQLQuery(ctx, err, result.Errors); errResult != nil {
 		return nil, errResult
 	}
@@ -361,7 +359,6 @@ func (service searchService) getCveByImageGQL(ctx context.Context, config Search
 	result := &cveResult{}
 
 	err := service.makeGraphQLQuery(ctx, config, username, password, query, result)
-
 	if errResult := checkResultGraphQLQuery(ctx, err, result.Errors); errResult != nil {
 		return nil, errResult
 	}
@@ -398,7 +395,6 @@ func (service searchService) getTagsForCVEGQL(ctx context.Context, config Search
 	result := &common.ImagesForCve{}
 
 	err := service.makeGraphQLQuery(ctx, config, username, password, query, result)
-
 	if errResult := checkResultGraphQLQuery(ctx, err, result.Errors); errResult != nil {
 		return nil, errResult
 	}
@@ -448,7 +444,6 @@ func (service searchService) getFixedTagsForCVEGQL(ctx context.Context, config S
 	result := &common.ImageListWithCVEFixedResponse{}
 
 	err := service.makeGraphQLQuery(ctx, config, username, password, query, result)
-
 	if errResult := checkResultGraphQLQuery(ctx, err, result.Errors); errResult != nil {
 		return nil, errResult
 	}
@@ -470,9 +465,9 @@ func (service searchService) getReferrers(ctx context.Context, config SearchConf
 	}
 
 	referrerResp := &ispec.Index{}
+
 	_, err = makeGETRequest(ctx, referrersEndpoint, username, password, config.VerifyTLS,
 		config.Debug, &referrerResp, config.ResultWriter)
-
 	if err != nil {
 		if common.IsContextDone(ctx) {
 			return referrersResult{}, nil
@@ -578,9 +573,9 @@ func getImage(ctx context.Context, config SearchConfig, username, password, imag
 	}
 
 	tagList := &tagListResp{}
+
 	_, err = makeGETRequest(ctx, tagListEndpoint, username, password, config.VerifyTLS,
 		config.Debug, &tagList, config.ResultWriter)
-
 	if err != nil {
 		if common.IsContextDone(ctx) {
 			return
@@ -881,7 +876,7 @@ func (cve cveResult) stringPlainText() string {
 		id := ellipsize(cveListItem.ID, cveIDWidth, ellipsis)
 		title := ellipsize(cveListItem.Title, cveTitleWidth, ellipsis)
 		severity := ellipsize(cveListItem.Severity, cveSeverityWidth, ellipsis)
-		row := make([]string, 3) //nolint:gomnd
+		row := make([]string, 3) //nolint:mnd
 		row[colCVEIDIndex] = id
 		row[colCVESeverityIndex] = severity
 		row[colCVETitleIndex] = title
@@ -1236,7 +1231,7 @@ func addManifestToTable(table *tablewriter.Table, imageName, tagName string, man
 	imgSize, _ := strconv.ParseUint(manifest.Size, 10, 64)
 	size := ellipsize(strings.ReplaceAll(humanize.Bytes(imgSize), " ", ""), sizeWidth, ellipsis)
 	isSigned := manifest.IsSigned
-	row := make([]string, 8) //nolint:gomnd
+	row := make([]string, 8) //nolint:mnd
 
 	row[colImageNameIndex] = imageName
 	row[colTagIndex] = tagName
@@ -1264,7 +1259,7 @@ func addManifestToTable(table *tablewriter.Table, imageName, tagName string, man
 
 			layerDigestStr := ellipsize(layerDigest.Encoded(), digestWidth, "")
 
-			layerRow := make([]string, 8) //nolint:gomnd
+			layerRow := make([]string, 8) //nolint:mnd
 			layerRow[colImageNameIndex] = ""
 			layerRow[colTagIndex] = ""
 			layerRow[colDigestIndex] = ""

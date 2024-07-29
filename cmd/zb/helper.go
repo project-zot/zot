@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"os"
 	"path"
+	"strconv"
 	"sync"
 	"time"
 
@@ -368,9 +369,8 @@ func pushMonolithImage(workdir, url, trepo string, repos []string, config testCo
 	resp, err = client.R().
 		SetContentLength(true).
 		SetQueryParam("digest", digest.String()).
-		SetHeader("Content-Length", fmt.Sprintf("%d", size)).
+		SetHeader("Content-Length", strconv.Itoa(size)).
 		SetHeader("Content-Type", "application/octet-stream").SetBody(fhandle).Put(loc)
-
 	if err != nil {
 		return nil, repos, err
 	}
@@ -385,7 +385,6 @@ func pushMonolithImage(workdir, url, trepo string, repos []string, config testCo
 	// upload image config blob
 	resp, err = client.R().
 		Post(fmt.Sprintf("%s/v2/%s/blobs/uploads/", url, repo))
-
 	if err != nil {
 		return nil, repos, err
 	}
@@ -399,14 +398,14 @@ func pushMonolithImage(workdir, url, trepo string, repos []string, config testCo
 
 	loc = getLocation(url, resp)
 	cblob, cdigest := getImageConfig()
+
 	resp, err = client.R().
 		SetContentLength(true).
-		SetHeader("Content-Length", fmt.Sprintf("%d", len(cblob))).
+		SetHeader("Content-Length", strconv.Itoa(len(cblob))).
 		SetHeader("Content-Type", "application/octet-stream").
 		SetQueryParam("digest", cdigest.String()).
 		SetBody(cblob).
 		Put(loc)
-
 	if err != nil {
 		return nil, repos, err
 	}
@@ -450,7 +449,6 @@ func pushMonolithImage(workdir, url, trepo string, repos []string, config testCo
 		SetHeader("Content-Type", "application/vnd.oci.image.manifest.v1+json").
 		SetBody(content).
 		Put(fmt.Sprintf("%s/v2/%s/manifests/%s", url, repo, manifestTag))
-
 	if err != nil {
 		return nil, repos, err
 	}
@@ -551,7 +549,7 @@ func pushMonolithAndCollect(workdir, url, trepo string, count int,
 
 		resp, err = client.R().
 			SetContentLength(true).
-			SetHeader("Content-Length", fmt.Sprintf("%d", size)).
+			SetHeader("Content-Length", strconv.Itoa(size)).
 			SetHeader("Content-Type", "application/octet-stream").
 			SetQueryParam("digest", digest.String()).
 			SetBody(fhandle).
@@ -597,7 +595,7 @@ func pushMonolithAndCollect(workdir, url, trepo string, count int,
 		cblob, cdigest := getImageConfig()
 		resp, err = client.R().
 			SetContentLength(true).
-			SetHeader("Content-Length", fmt.Sprintf("%d", len(cblob))).
+			SetHeader("Content-Length", strconv.Itoa(len(cblob))).
 			SetHeader("Content-Type", "application/octet-stream").
 			SetQueryParam("digest", cdigest.String()).
 			SetBody(cblob).
@@ -780,7 +778,7 @@ func pushChunkAndCollect(workdir, url, trepo string, count int,
 		// finish upload
 		resp, err = client.R().
 			SetContentLength(true).
-			SetHeader("Content-Length", fmt.Sprintf("%d", size)).
+			SetHeader("Content-Length", strconv.Itoa(size)).
 			SetHeader("Content-Type", "application/octet-stream").
 			SetQueryParam("digest", digest.String()).
 			Put(loc)
@@ -823,12 +821,12 @@ func pushChunkAndCollect(workdir, url, trepo string, count int,
 
 		loc = getLocation(url, resp)
 		cblob, cdigest := getImageConfig()
+
 		resp, err = client.R().
 			SetContentLength(true).
 			SetHeader("Content-Type", "application/octet-stream").
 			SetBody(fhandle).
 			Patch(loc)
-
 		if err != nil {
 			isConnFail = true
 
@@ -871,7 +869,7 @@ func pushChunkAndCollect(workdir, url, trepo string, count int,
 		// finish upload
 		resp, err = client.R().
 			SetContentLength(true).
-			SetHeader("Content-Length", fmt.Sprintf("%d", len(cblob))).
+			SetHeader("Content-Length", strconv.Itoa(len(cblob))).
 			SetHeader("Content-Type", "application/octet-stream").
 			SetQueryParam("digest", cdigest.String()).
 			Put(loc)

@@ -31,6 +31,7 @@ func TestProfilingAuthz(t *testing.T) {
 		testCreds := test.GetCredString(adminUsername, adminPassword) +
 			test.GetCredString(username, password)
 		htpasswdPath := test.MakeHtpasswdFileFromString(testCreds)
+
 		defer os.Remove(htpasswdPath)
 
 		conf := config.New()
@@ -41,6 +42,7 @@ func TestProfilingAuthz(t *testing.T) {
 			ctlr := api.NewController(conf)
 			cm := test.NewControllerManager(ctlr)
 			cm.StartAndWait(port)
+
 			defer cm.StopServer()
 
 			// unauthenticated clients should have access to /v2/
@@ -103,6 +105,7 @@ func TestProfilingAuthz(t *testing.T) {
 			ctlr.Log.Info().Int64("seedUser", seedUser).Int64("seedPass", seedPass).Msg("random seed for username & password")
 			cm := test.NewControllerManager(ctlr)
 			cm.StartAndWait(port)
+
 			defer cm.StopServer()
 
 			// unauthenticated clients should not have access to /v2/
@@ -160,6 +163,7 @@ func TestProfilingAuthz(t *testing.T) {
 			ctlr := api.NewController(conf)
 			cm := test.NewControllerManager(ctlr)
 			cm.StartAndWait(port)
+
 			defer cm.StopServer()
 
 			// unauthenticated clients should have access to /v2/

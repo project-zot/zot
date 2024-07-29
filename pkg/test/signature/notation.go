@@ -84,12 +84,12 @@ func GenerateNotationCerts(tdir string, certName string) error {
 		return err
 	}
 
-	if err := tcommon.WriteFileWithPermission(keyPath, keyPEM, 0o600, false); err != nil { //nolint:gomnd
+	if err := tcommon.WriteFileWithPermission(keyPath, keyPEM, 0o600, false); err != nil { //nolint:mnd
 		return fmt.Errorf("failed to write key file: %w", err)
 	}
 
 	// write self-signed certificate
-	if err := tcommon.WriteFileWithPermission(certPath, certBytes, 0o644, false); err != nil { //nolint:gomnd
+	if err := tcommon.WriteFileWithPermission(certPath, certBytes, 0o644, false); err != nil { //nolint:mnd
 		return fmt.Errorf("failed to write certificate file: %w", err)
 	}
 
@@ -114,13 +114,13 @@ func GenerateNotationCerts(tdir string, certName string) error {
 	signingKeys.Keys = append(signingKeys.Keys, keySuite)
 
 	// Add to the trust store
-	trustStorePath := path.Join(tdir, fmt.Sprintf("notation/truststore/x509/ca/%s", certName))
+	trustStorePath := path.Join(tdir, "notation/truststore/x509/ca/"+certName)
 
 	if _, err := os.Stat(filepath.Join(trustStorePath, filepath.Base(certPath))); err == nil {
 		return ErrAlreadyExists
 	}
 
-	if err := os.MkdirAll(trustStorePath, 0o755); err != nil { //nolint:gomnd
+	if err := os.MkdirAll(trustStorePath, 0o755); err != nil { //nolint:mnd
 		return fmt.Errorf("GenerateNotationCerts os.MkdirAll failed: %w", err)
 	}
 

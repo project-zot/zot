@@ -7,7 +7,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io/fs"
 	"net/http"
 	"net/http/httptest"
@@ -91,6 +90,7 @@ func TestAPIKeys(t *testing.T) {
 		username, seedUser := test.GenerateRandomString()
 		password, seedPass := test.GenerateRandomString()
 		htpasswdPath := test.MakeHtpasswdFileFromString(test.GetCredString(username, password))
+
 		defer os.Remove(htpasswdPath)
 
 		mockOIDCServer, err := authutils.MockOIDCRun()
@@ -847,6 +847,7 @@ func TestAPIKeysOpenDBError(t *testing.T) {
 		username, seedUser := test.GenerateRandomString()
 		password, seedPass := test.GenerateRandomString()
 		htpasswdPath := test.MakeHtpasswdFileFromString(test.GetCredString(username, password))
+
 		defer os.Remove(htpasswdPath)
 
 		mockOIDCServer, err := authutils.MockOIDCRun()
@@ -1107,7 +1108,7 @@ func (gen *mockUUIDGenerator) NewV4() (
 type errReader int
 
 func (errReader) Read(p []byte) (int, error) {
-	return 0, fmt.Errorf("test error") //nolint:goerr113
+	return 0, errors.New("test error") //nolint:goerr113
 }
 
 type badDirInfo struct {

@@ -38,7 +38,7 @@ import (
 	apiErr "zotregistry.dev/zot/pkg/api/errors"
 	zcommon "zotregistry.dev/zot/pkg/common"
 	gqlPlayground "zotregistry.dev/zot/pkg/debug/gqlplayground"
-	pprof "zotregistry.dev/zot/pkg/debug/pprof"
+	"zotregistry.dev/zot/pkg/debug/pprof"
 	debug "zotregistry.dev/zot/pkg/debug/swagger"
 	ext "zotregistry.dev/zot/pkg/extensions"
 	syncConstants "zotregistry.dev/zot/pkg/extensions/sync/constants"
@@ -76,10 +76,10 @@ func (rh *RouteHandler) SetupRoutes() {
 		// callback path for openID
 		for provider, relyingParty := range rh.c.RelyingParties {
 			if config.IsOauth2Supported(provider) {
-				rh.c.Router.HandleFunc(constants.CallbackBasePath+fmt.Sprintf("/%s", provider),
+				rh.c.Router.HandleFunc(constants.CallbackBasePath+"/"+provider,
 					rp.CodeExchangeHandler(rh.GithubCodeExchangeCallback(), relyingParty))
 			} else if config.IsOpenIDSupported(provider) {
-				rh.c.Router.HandleFunc(constants.CallbackBasePath+fmt.Sprintf("/%s", provider),
+				rh.c.Router.HandleFunc(constants.CallbackBasePath+"/"+provider,
 					rp.CodeExchangeHandler(rp.UserinfoCallback(rh.OpenIDCodeExchangeCallback()), relyingParty))
 			}
 		}
@@ -265,9 +265,9 @@ func (rh *RouteHandler) CheckVersionSupport(response http.ResponseWriter, reques
 		// don't send auth headers if request is coming from UI
 		if request.Header.Get(constants.SessionClientHeaderName) != constants.SessionClientHeaderValue {
 			if rh.c.Config.HTTP.Auth.Bearer != nil {
-				response.Header().Set("WWW-Authenticate", fmt.Sprintf("bearer realm=%s", rh.c.Config.HTTP.Auth.Bearer.Realm))
+				response.Header().Set("WWW-Authenticate", "bearer realm="+rh.c.Config.HTTP.Auth.Bearer.Realm)
 			} else {
-				response.Header().Set("WWW-Authenticate", fmt.Sprintf("basic realm=%s", rh.c.Config.HTTP.Realm))
+				response.Header().Set("WWW-Authenticate", "basic realm="+rh.c.Config.HTTP.Realm)
 			}
 		}
 	}
@@ -458,6 +458,7 @@ func (rh *RouteHandler) CheckManifest(response http.ResponseWriter, request *htt
 			zcommon.WriteJSON(response, http.StatusNotFound, apiErr.NewErrorList(e))
 		} else {
 			rh.c.Log.Error().Err(err).Msg("unexpected error")
+
 			e := apiErr.NewError(apiErr.MANIFEST_INVALID).AddDetail(details)
 			zcommon.WriteJSON(response, http.StatusInternalServerError, apiErr.NewErrorList(e))
 		}
@@ -466,7 +467,7 @@ func (rh *RouteHandler) CheckManifest(response http.ResponseWriter, request *htt
 	}
 
 	response.Header().Set(constants.DistContentDigestKey, digest.String())
-	response.Header().Set("Content-Length", fmt.Sprintf("%d", len(content)))
+	response.Header().Set("Content-Length", strconv.Itoa(len(content)))
 	response.Header().Set("Content-Type", mediaType)
 	response.WriteHeader(http.StatusOK)
 }
@@ -548,7 +549,7 @@ func (rh *RouteHandler) GetManifest(response http.ResponseWriter, request *http.
 	}
 
 	response.Header().Set(constants.DistContentDigestKey, digest.String())
-	response.Header().Set("Content-Length", fmt.Sprintf("%d", len(content)))
+	response.Header().Set("Content-Length", strconv.Itoa(len(content)))
 	response.Header().Set("Content-Type", mediaType)
 	zcommon.WriteData(response, http.StatusOK, mediaType, content)
 }
@@ -607,8 +608,8 @@ func (rh *RouteHandler) GetReferrers(response http.ResponseWriter, request *http
 	}
 
 	digestStr, ok := vars["digest"]
-	digest, err := godigest.Parse(digestStr)
 
+	digest, err := godigest.Parse(digestStr)
 	if !ok || digestStr == "" || err != nil {
 		response.WriteHeader(http.StatusBadRequest)
 
@@ -647,7 +648,7 @@ func (rh *RouteHandler) GetReferrers(response http.ResponseWriter, request *http
 
 	if len(artifactTypes) > 0 {
 		// currently, the only filter supported and on this end-point
-		response.Header().Set("OCI-Filters-Applied", "artifactType")
+		response.Header().Set("OCI-Filters-Applied", "artifactType") //nolint:canonicalheader
 	}
 
 	zcommon.WriteData(response, http.StatusOK, ispec.MediaTypeImageIndex, out)
@@ -991,7 +992,7 @@ func (rh *RouteHandler) CheckBlob(response http.ResponseWriter, request *http.Re
 		return
 	}
 
-	response.Header().Set("Content-Length", fmt.Sprintf("%d", blen))
+	response.Header().Set("Content-Length", strconv.FormatInt(blen, 10))
 	response.Header().Set("Accept-Ranges", "bytes")
 	response.Header().Set(constants.DistContentDigestKey, digest.String())
 	response.WriteHeader(http.StatusOK)
@@ -1018,6 +1019,7 @@ func parseRangeHeader(contentRange string) (int64, int64, error) {
 	}
 
 	var from int64
+
 	to := int64(-1)
 
 	rangeFrom := paramsMap["rangeFrom"]
@@ -1135,9 +1137,10 @@ func (rh *RouteHandler) GetBlob(response http.ResponseWriter, request *http.Requ
 
 		return
 	}
+
 	defer repo.Close()
 
-	response.Header().Set("Content-Length", fmt.Sprintf("%d", blen))
+	response.Header().Set("Content-Length", strconv.FormatInt(blen, 10))
 
 	status := http.StatusOK
 
@@ -1173,8 +1176,8 @@ func (rh *RouteHandler) DeleteBlob(response http.ResponseWriter, request *http.R
 	}
 
 	digestStr, ok := vars["digest"]
-	digest, err := godigest.Parse(digestStr)
 
+	digest, err := godigest.Parse(digestStr)
 	if !ok || digestStr == "" || err != nil {
 		response.WriteHeader(http.StatusNotFound)
 
@@ -1330,6 +1333,7 @@ func (rh *RouteHandler) CreateBlobUpload(response http.ResponseWriter, request *
 		contentLength, err := strconv.ParseInt(request.Header.Get("Content-Length"), 10, 64)
 		if err != nil || contentLength <= 0 {
 			rh.c.Log.Warn().Str("actual", request.Header.Get("Content-Length")).Msg("invalid content length")
+
 			details := map[string]string{"digest": digest.String()}
 
 			if err != nil {
@@ -1337,6 +1341,7 @@ func (rh *RouteHandler) CreateBlobUpload(response http.ResponseWriter, request *
 			} else {
 				details["Content-Length"] = request.Header.Get("Content-Length")
 			}
+
 			e := apiErr.NewError(apiErr.BLOB_UPLOAD_INVALID).AddDetail(details)
 			zcommon.WriteJSON(response, http.StatusBadRequest, apiErr.NewErrorList(e))
 
@@ -1491,7 +1496,6 @@ func (rh *RouteHandler) PatchBlobUpload(response http.ResponseWriter, request *h
 		clen, err = imgStore.PutBlobChunkStreamed(name, sessionID, request.Body)
 	} else {
 		// chunked blob upload
-
 		var contentLength int64
 
 		if contentLength, err = strconv.ParseInt(request.Header.Get("Content-Length"), 10, 64); err != nil {
@@ -1533,6 +1537,7 @@ func (rh *RouteHandler) PatchBlobUpload(response http.ResponseWriter, request *h
 				rh.c.Log.Error().Err(err).Str("blobUpload", sessionID).Str("repository", name).
 					Msg("couldn't remove blobUpload in repo")
 			}
+
 			response.WriteHeader(http.StatusInternalServerError)
 		}
 
@@ -1655,6 +1660,7 @@ func (rh *RouteHandler) UpdateBlobUpload(response http.ResponseWriter, request *
 					rh.c.Log.Error().Err(err).Str("blobUpload", sessionID).Str("repository", name).
 						Msg("failed to remove blobUpload in repo")
 				}
+
 				response.WriteHeader(http.StatusInternalServerError)
 			}
 

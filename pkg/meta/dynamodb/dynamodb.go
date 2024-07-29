@@ -1415,6 +1415,7 @@ func (dwr *DynamoDB) RemoveRepoReference(repo, reference string, manifestDigest 
 	} else {
 		// find all tags pointing to this digest
 		tags := []string{}
+
 		for tag, desc := range protoRepoMeta.Tags {
 			if desc.Digest == reference {
 				tags = append(tags, tag)
@@ -1454,6 +1455,7 @@ func (dwr *DynamoDB) RemoveRepoReference(repo, reference string, manifestDigest 
 	if err != nil {
 		return err
 	}
+
 	err = dwr.setProtoRepoMeta(repo, protoRepoMeta) //nolint: contextcheck
 
 	return err
@@ -1519,7 +1521,6 @@ func (dwr *DynamoDB) ToggleBookmarkRepo(ctx context.Context, repo string) (
 
 func (dwr *DynamoDB) GetBookmarkedRepos(ctx context.Context) ([]string, error) {
 	userMeta, err := dwr.GetUserData(ctx)
-
 	if errors.Is(err, zerr.ErrUserDataNotFound) || errors.Is(err, zerr.ErrUserDataNotAllowed) {
 		return []string{}, nil
 	}
@@ -1634,7 +1635,6 @@ func (dwr *DynamoDB) ToggleStarRepo(ctx context.Context, repo string) (
 
 func (dwr *DynamoDB) GetStarredRepos(ctx context.Context) ([]string, error) {
 	userMeta, err := dwr.GetUserData(ctx)
-
 	if errors.Is(err, zerr.ErrUserDataNotFound) || errors.Is(err, zerr.ErrUserDataNotAllowed) {
 		return []string{}, nil
 	}
@@ -2179,7 +2179,6 @@ func (dwr *DynamoDB) createVersionTable() error {
 			TableName:        aws.String(dwr.VersionTablename),
 			UpdateExpression: aws.String("SET #V = :Version"),
 		})
-
 		if err != nil {
 			return err
 		}

@@ -36,6 +36,7 @@ func generateData() map[godigest.Digest]string {
 			rs, _ := test.GenerateRandomString()
 			randomString += rs
 		}
+
 		digest := godigest.FromString(randomString)
 		dataMap[digest] = randomString
 	}

@@ -19,7 +19,7 @@ import (
 	awshttp "github.com/aws/aws-sdk-go-v2/aws/transport/http"
 	"github.com/aws/aws-sdk-go-v2/service/secretsmanager"
 	"github.com/aws/aws-sdk-go-v2/service/secretsmanager/types"
-	smithy "github.com/aws/smithy-go"
+	"github.com/aws/smithy-go"
 	smithyhttp "github.com/aws/smithy-go/transport/http"
 	guuid "github.com/gofrs/uuid"
 	"github.com/notaryproject/notation-go"
@@ -267,7 +267,7 @@ func TestVerifySignatures(t *testing.T) {
 				options.KeyOpts{KeyRef: path.Join(cosignDir, "cosign.key"), PassFunc: generate.GetPass},
 				options.SignOptions{
 					Registry:          options.RegistryOptions{AllowInsecure: true},
-					AnnotationOptions: options.AnnotationOptions{Annotations: []string{fmt.Sprintf("tag=%s", tag)}},
+					AnnotationOptions: options.AnnotationOptions{Annotations: []string{"tag=" + tag}},
 					Upload:            true,
 				},
 				[]string{fmt.Sprintf("localhost:%s/%s@%s", port, repo, image.DigestStr())})
@@ -280,11 +280,14 @@ func TestVerifySignatures(t *testing.T) {
 			So(err, ShouldBeNil)
 
 			var index ispec.Index
+
 			err = json.Unmarshal(indexContent, &index)
 			So(err, ShouldBeNil)
 
-			var rawSignature []byte
-			var sigKey string
+			var (
+				rawSignature []byte
+				sigKey       string
+			)
 
 			for _, manifest := range index.Manifests {
 				if manifest.Digest != image.Digest() {
@@ -460,11 +463,14 @@ func TestVerifySignatures(t *testing.T) {
 			So(err, ShouldBeNil)
 
 			var index ispec.Index
+
 			err = json.Unmarshal(indexContent, &index)
 			So(err, ShouldBeNil)
 
-			var rawSignature []byte
-			var sigKey string
+			var (
+				rawSignature []byte
+				sigKey       string
+			)
 
 			for _, manifest := range index.Manifests {
 				if manifest.Digest != image.Digest() {
@@ -1182,6 +1188,7 @@ func RunVerificationTests(t *testing.T, dbDriverParams map[string]interface{}) {
 		rootDir := t.TempDir()
 		logFile, err := os.CreateTemp(t.TempDir(), "zot-log*.txt")
 		So(err, ShouldBeNil)
+
 		logPath := logFile.Name()
 		defer os.Remove(logPath)
 
@@ -1246,7 +1253,7 @@ func RunVerificationTests(t *testing.T, dbDriverParams map[string]interface{}) {
 				options.KeyOpts{KeyRef: path.Join(keyDir, "cosign.key"), PassFunc: generate.GetPass},
 				options.SignOptions{
 					Registry:          options.RegistryOptions{AllowInsecure: true},
-					AnnotationOptions: options.AnnotationOptions{Annotations: []string{fmt.Sprintf("tag=%s", tag)}},
+					AnnotationOptions: options.AnnotationOptions{Annotations: []string{"tag=" + tag}},
 					Upload:            true,
 				},
 				[]string{fmt.Sprintf("localhost:%s/%s@%s", port, repo, image.DigestStr())})
@@ -1256,11 +1263,14 @@ func RunVerificationTests(t *testing.T, dbDriverParams map[string]interface{}) {
 			So(err, ShouldBeNil)
 
 			var index ispec.Index
+
 			err = json.Unmarshal(indexContent, &index)
 			So(err, ShouldBeNil)
 
-			var rawSignature []byte
-			var sigKey string
+			var (
+				rawSignature []byte
+				sigKey       string
+			)
 
 			for _, manifest := range index.Manifests {
 				if manifest.Digest != image.Digest() {
@@ -1347,8 +1357,10 @@ func RunVerificationTests(t *testing.T, dbDriverParams map[string]interface{}) {
 			err = json.Unmarshal(indexContent, &index)
 			So(err, ShouldBeNil)
 
-			var rawSignature []byte
-			var sigKey string
+			var (
+				rawSignature []byte
+				sigKey       string
+			)
 
 			for _, manifest := range index.Manifests {
 				blobContent, err := ctlr.StoreController.DefaultStore.GetBlobContent(repo, manifest.Digest)
@@ -1360,6 +1372,7 @@ func RunVerificationTests(t *testing.T, dbDriverParams map[string]interface{}) {
 				So(err, ShouldBeNil)
 
 				t.Logf("Processing manifest %v", notationSig)
+
 				if notationSig.Config.MediaType != notreg.ArtifactTypeNotation ||
 					notationSig.Subject.Digest != image.Digest() {
 					continue
@@ -1379,8 +1392,8 @@ func RunVerificationTests(t *testing.T, dbDriverParams map[string]interface{}) {
 
 			certificateContent, err := os.ReadFile(
 				path.Join(notationDir,
-					fmt.Sprintf("notation/truststore/x509/ca/%s", certName),
-					fmt.Sprintf("%s.crt", certName),
+					"notation/truststore/x509/ca/"+certName,
+					certName+".crt",
 				),
 			)
 			So(err, ShouldBeNil)

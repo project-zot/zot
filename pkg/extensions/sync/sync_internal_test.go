@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path"
@@ -45,7 +46,7 @@ const (
 	host = "127.0.0.1:45117"
 )
 
-var ErrTestError = fmt.Errorf("testError")
+var ErrTestError = errors.New("testError")
 
 func TestInjectSyncUtils(t *testing.T) {
 	Convey("Inject errors in utils functions", t, func() {
@@ -62,6 +63,7 @@ func TestInjectSyncUtils(t *testing.T) {
 
 		injected = inject.InjectFailure(0)
 		_, err = getPolicyContext(log.NewLogger("debug", ""))
+
 		if injected {
 			So(err, ShouldNotBeNil)
 		} else {
@@ -75,6 +77,7 @@ func TestInjectSyncUtils(t *testing.T) {
 
 		ols := NewOciLayoutStorage(storage.StoreController{DefaultStore: imageStore})
 		_, err = ols.GetImageReference(testImage, testImageTag)
+
 		if injected {
 			So(err, ShouldNotBeNil)
 		} else {

@@ -87,6 +87,7 @@ func TestConfigReloader(t *testing.T) {
 		// So(err, ShouldBeNil)
 
 		os.Args = []string{"cli_test", "serve", cfgfile.Name()}
+
 		go func() {
 			err = cli.NewServerRootCmd().Execute()
 			So(err, ShouldBeNil)
@@ -203,6 +204,7 @@ func TestConfigReloader(t *testing.T) {
 		// So(err, ShouldBeNil)
 
 		os.Args = []string{"cli_test", "serve", cfgfile.Name()}
+
 		go func() {
 			err = cli.NewServerRootCmd().Execute()
 			So(err, ShouldBeNil)
@@ -321,6 +323,7 @@ func TestConfigReloader(t *testing.T) {
 		// So(err, ShouldBeNil)
 
 		os.Args = []string{"cli_test", "serve", cfgfile.Name()}
+
 		go func() {
 			err = cli.NewServerRootCmd().Execute()
 			So(err, ShouldBeNil)
@@ -443,6 +446,7 @@ func TestConfigReloader(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		os.Args = []string{"cli_test", "serve", cfgfile.Name()}
+
 		go func() {
 			err = cli.NewServerRootCmd().Execute()
 			So(err, ShouldBeNil)
@@ -568,6 +572,7 @@ func TestConfigReloader(t *testing.T) {
 		// So(err, ShouldBeNil)
 
 		os.Args = []string{"cli_test", "serve", cfgfile.Name()}
+
 		go func() {
 			err = cli.NewServerRootCmd().Execute()
 			So(err, ShouldBeNil)

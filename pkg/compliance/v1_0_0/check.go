@@ -39,7 +39,7 @@ func CheckWorkflows(t *testing.T, config *compliance.Config) {
 		defer outputJSONExit()
 	}
 
-	baseURL := fmt.Sprintf("http://%s", net.JoinHostPort(config.Address, config.Port))
+	baseURL := "http://" + net.JoinHostPort(config.Address, config.Port)
 
 	storageInfo := config.StorageInfo
 
@@ -62,6 +62,7 @@ func CheckWorkflows(t *testing.T, config *compliance.Config) {
 			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 			So(resp.String(), ShouldNotBeEmpty)
 			So(resp.Header().Get("Content-Type"), ShouldEqual, constants.DefaultMediaType)
+
 			var repoList api.RepositoryList
 			err = json.Unmarshal(resp.Body(), &repoList)
 			So(err, ShouldBeNil)
@@ -84,6 +85,7 @@ func CheckWorkflows(t *testing.T, config *compliance.Config) {
 			So(resp.String(), ShouldNotBeEmpty)
 			result, ok := resp.Result().(*api.RepositoryList)
 			So(ok, ShouldBeTrue)
+
 			if !config.Compliance {
 				// stricter check for zot ci/cd
 				So(len(result.Repositories), ShouldBeGreaterThan, 0)
@@ -107,6 +109,7 @@ func CheckWorkflows(t *testing.T, config *compliance.Config) {
 
 			resp, err = resty.R().Get(baseURL + "/v2/repo1/tags/list")
 			So(err, ShouldBeNil)
+
 			if !config.Compliance {
 				// stricter check for zot ci/cd
 				So(resp.StatusCode(), ShouldEqual, http.StatusOK)
@@ -128,6 +131,7 @@ func CheckWorkflows(t *testing.T, config *compliance.Config) {
 
 			resp, err = resty.R().Get(baseURL + "/v2/repo2/tags/list")
 			So(err, ShouldBeNil)
+
 			if !config.Compliance {
 				// stricter check for zot ci/cd
 				So(resp.StatusCode(), ShouldEqual, http.StatusOK)
@@ -138,6 +142,7 @@ func CheckWorkflows(t *testing.T, config *compliance.Config) {
 			content := []byte("this is a blob1")
 			digest := godigest.FromBytes(content)
 			So(digest, ShouldNotBeNil)
+
 			resp, err = resty.R().Put(loc)
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusBadRequest)
@@ -221,6 +226,7 @@ func CheckWorkflows(t *testing.T, config *compliance.Config) {
 
 			resp, err = resty.R().Get(baseURL + "/v2/repo10/repo20/repo30/tags/list")
 			So(err, ShouldBeNil)
+
 			if !config.Compliance {
 				// stricter check for zot ci/cd
 				So(resp.StatusCode(), ShouldEqual, http.StatusOK)
@@ -231,6 +237,7 @@ func CheckWorkflows(t *testing.T, config *compliance.Config) {
 			content := []byte("this is a blob3")
 			digest := godigest.FromBytes(content)
 			So(digest, ShouldNotBeNil)
+
 			resp, err = resty.R().Put(loc)
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusBadRequest)
@@ -271,6 +278,7 @@ func CheckWorkflows(t *testing.T, config *compliance.Config) {
 			So(loc, ShouldNotBeEmpty)
 
 			var buf bytes.Buffer
+
 			chunk1 := []byte("this is the first chunk1")
 			nbytes, err := buf.Write(chunk1)
 			So(nbytes, ShouldEqual, len(chunk1))
@@ -315,6 +323,7 @@ func CheckWorkflows(t *testing.T, config *compliance.Config) {
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
 			blobLoc := test.Location(baseURL, resp)
+
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
 			So(blobLoc, ShouldNotBeEmpty)
@@ -339,6 +348,7 @@ func CheckWorkflows(t *testing.T, config *compliance.Config) {
 			So(loc, ShouldNotBeEmpty)
 
 			var buf bytes.Buffer
+
 			chunk1 := []byte("this is the first chunk2")
 			nbytes, err := buf.Write(chunk1)
 			So(nbytes, ShouldEqual, len(chunk1))
@@ -383,6 +393,7 @@ func CheckWorkflows(t *testing.T, config *compliance.Config) {
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
 			blobLoc := test.Location(baseURL, resp)
+
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
 			So(blobLoc, ShouldNotBeEmpty)
@@ -466,6 +477,7 @@ func CheckWorkflows(t *testing.T, config *compliance.Config) {
 			resp, err = resty.R().Get(loc)
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusNoContent)
+
 			content := []byte("this is a blob5")
 			digest := godigest.FromBytes(content)
 			So(digest, ShouldNotBeNil)
@@ -606,9 +618,11 @@ func CheckWorkflows(t *testing.T, config *compliance.Config) {
 			if strings.HasPrefix(nextURL, "<") || strings.HasPrefix(nextURL, "\"") {
 				nextURL = nextURL[1:]
 			}
+
 			if strings.HasSuffix(nextURL, ">") || strings.HasSuffix(nextURL, "\"") {
 				nextURL = nextURL[:len(nextURL)-1]
 			}
+
 			nextURL = baseURL + nextURL
 
 			resp, err = resty.R().Get(nextURL)

@@ -154,6 +154,7 @@ func TestCVEPagination(t *testing.T) {
 				So(cveSummary.CriticalCount, ShouldEqual, 1)
 				So(cveSummary.MaxSeverity, ShouldEqual, "CRITICAL")
 				previousSeverity := 4
+
 				for _, cve := range cves {
 					So(severityToInt[cve.Severity], ShouldBeLessThanOrEqualTo, previousSeverity)
 					previousSeverity = severityToInt[cve.Severity]
@@ -173,6 +174,7 @@ func TestCVEPagination(t *testing.T) {
 				So(cveSummary.CriticalCount, ShouldEqual, 6)
 				So(cveSummary.MaxSeverity, ShouldEqual, "CRITICAL")
 				previousSeverity = 4
+
 				for _, cve := range cves {
 					So(severityToInt[cve.Severity], ShouldBeLessThanOrEqualTo, previousSeverity)
 					previousSeverity = severityToInt[cve.Severity]
@@ -198,6 +200,7 @@ func TestCVEPagination(t *testing.T) {
 				So(cveSummary.HighCount, ShouldEqual, 1)
 				So(cveSummary.CriticalCount, ShouldEqual, 1)
 				So(cveSummary.MaxSeverity, ShouldEqual, "CRITICAL")
+
 				for i, cve := range cves {
 					So(cve.ID, ShouldEqual, cveIds[i])
 				}
@@ -216,6 +219,7 @@ func TestCVEPagination(t *testing.T) {
 				So(cveSummary.HighCount, ShouldEqual, 6)
 				So(cveSummary.CriticalCount, ShouldEqual, 6)
 				So(cveSummary.MaxSeverity, ShouldEqual, "CRITICAL")
+
 				for i, cve := range cves {
 					So(cve.ID, ShouldEqual, cveIds[i])
 				}
@@ -234,6 +238,7 @@ func TestCVEPagination(t *testing.T) {
 				So(cveSummary.HighCount, ShouldEqual, 6)
 				So(cveSummary.CriticalCount, ShouldEqual, 6)
 				So(cveSummary.MaxSeverity, ShouldEqual, "CRITICAL")
+
 				for i, cve := range cves {
 					So(cve.ID, ShouldEqual, cveIds[i])
 				}
@@ -252,6 +257,7 @@ func TestCVEPagination(t *testing.T) {
 				So(cveSummary.CriticalCount, ShouldEqual, 6)
 				So(cveSummary.MaxSeverity, ShouldEqual, "CRITICAL")
 				previousSeverity := 4
+
 				for _, cve := range cves {
 					So(severityToInt[cve.Severity], ShouldBeLessThanOrEqualTo, previousSeverity)
 					previousSeverity = severityToInt[cve.Severity]
@@ -323,6 +329,7 @@ func TestCVEPagination(t *testing.T) {
 				So(cveSummary.CriticalCount, ShouldEqual, 1)
 				So(cveSummary.MaxSeverity, ShouldEqual, "CRITICAL")
 				previousSeverity := 4
+
 				for _, cve := range cves {
 					So(severityToInt[cve.Severity], ShouldBeLessThanOrEqualTo, previousSeverity)
 					previousSeverity = severityToInt[cve.Severity]
@@ -346,6 +353,7 @@ func TestCVEPagination(t *testing.T) {
 				So(cveSummary.HighCount, ShouldEqual, 6)
 				So(cveSummary.CriticalCount, ShouldEqual, 6)
 				So(cveSummary.MaxSeverity, ShouldEqual, "CRITICAL")
+
 				for i, cve := range cves {
 					So(cve.ID, ShouldEqual, cveIds[i+20])
 				}
@@ -410,6 +418,7 @@ func TestCVEPagination(t *testing.T) {
 				So(cveSummary.CriticalCount, ShouldEqual, 1)
 				So(cveSummary.MaxSeverity, ShouldEqual, "CRITICAL")
 				previousSeverity := 4
+
 				for _, cve := range cves {
 					So(severityToInt[cve.Severity], ShouldBeLessThanOrEqualTo, previousSeverity)
 					previousSeverity = severityToInt[cve.Severity]

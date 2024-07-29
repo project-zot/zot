@@ -4,7 +4,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	tskip "zotregistry.dev/zot/pkg/test/skip"
 )
@@ -17,7 +17,7 @@ func TestSkipS3(t *testing.T) {
 	if len(envVal) > 0 {
 		defer os.Setenv(envName, envVal)
 		err := os.Unsetenv(envName)
-		assert.Equal(t, err, nil, "Error should be nil")
+		require.NoError(t, err, "Error should be nil")
 	}
 
 	tskip.SkipS3(t)
@@ -30,7 +30,7 @@ func TestSkipDynamo(t *testing.T) {
 	if len(envVal) > 0 {
 		defer os.Setenv(envName, envVal)
 		err := os.Unsetenv(envName)
-		assert.Equal(t, err, nil, "Error should be nil")
+		require.NoError(t, err, "Error should be nil")
 	}
 
 	tskip.SkipDynamo(t)

@@ -348,6 +348,7 @@ func RunParseStorageTests(rootDir string, metaDB mTypes.MetaDB, log log.Logger) 
 
 		storeController := storage.StoreController{DefaultStore: imageStore}
 		manifests := []ispec.Manifest{}
+
 		for i := 0; i < 3; i++ {
 			image := CreateRandomImage() //nolint:staticcheck
 
@@ -389,6 +390,7 @@ func RunParseStorageTests(rootDir string, metaDB mTypes.MetaDB, log log.Logger) 
 				}
 			}
 		}
+
 		buf, err = json.Marshal(index)
 		So(err, ShouldBeNil)
 
@@ -429,6 +431,7 @@ func RunParseStorageTests(rootDir string, metaDB mTypes.MetaDB, log log.Logger) 
 
 		// add mock cosign signature without pushing the signed image
 		image = CreateRandomImage()
+
 		So(err, ShouldBeNil)
 
 		signatureTag, err := signature.GetCosignSignatureTagForManifest(image.Manifest)

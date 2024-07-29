@@ -590,6 +590,7 @@ func applyDefaultValues(config *config.Config, viperInstance *viper.Viper, log z
 					defaultDBDownloadURL := "ghcr.io/aquasecurity/trivy-db"
 					log.Info().Str("url", defaultDBDownloadURL).Str("component", "config").
 						Msg("using default trivy-db download URL.")
+
 					config.Extensions.Search.CVE.Trivy.DBRepository = defaultDBDownloadURL
 				}
 
@@ -597,6 +598,7 @@ func applyDefaultValues(config *config.Config, viperInstance *viper.Viper, log z
 					defaultJavaDBDownloadURL := "ghcr.io/aquasecurity/trivy-java-db"
 					log.Info().Str("url", defaultJavaDBDownloadURL).Str("component", "config").
 						Msg("using default trivy-java-db download URL.")
+
 					config.Extensions.Search.CVE.Trivy.JavaDBRepository = defaultJavaDBDownloadURL
 				}
 			}
@@ -618,7 +620,7 @@ func applyDefaultValues(config *config.Config, viperInstance *viper.Viper, log z
 			}
 
 			if config.Extensions.Scrub.Interval == 0 {
-				config.Extensions.Scrub.Interval = 24 * time.Hour //nolint: gomnd
+				config.Extensions.Scrub.Interval = 24 * time.Hour //nolint:mnd
 			}
 		}
 
@@ -651,7 +653,7 @@ func applyDefaultValues(config *config.Config, viperInstance *viper.Viper, log z
 
 	// apply deleteUntagged default
 	for idx := range config.Storage.Retention.Policies {
-		if !viperInstance.IsSet("storage::retention::policies::" + fmt.Sprint(idx) + "::deleteUntagged") {
+		if !viperInstance.IsSet("storage::retention::policies::" + strconv.Itoa(idx) + "::deleteUntagged") {
 			config.Storage.Retention.Policies[idx].DeleteUntagged = &defaultVal
 		}
 	}
@@ -720,7 +722,9 @@ func applyDefaultValues(config *config.Config, viperInstance *viper.Viper, log z
 
 		// apply deleteUntagged default
 		for idx := range storageConfig.Retention.Policies {
-			deleteUntaggedKey := "storage::subpaths::" + name + "::retention::policies::" + fmt.Sprint(idx) + "::deleteUntagged"
+			deleteUntaggedKey := fmt.Sprintf("storage::subpaths::%s::retention::policies::%d::deleteUntagged",
+				name, idx,
+			)
 			if !viperInstance.IsSet(deleteUntaggedKey) {
 				storageConfig.Retention.Policies[idx].DeleteUntagged = &defaultVal
 			}

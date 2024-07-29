@@ -2,6 +2,7 @@ package imagestore
 
 import (
 	"context"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -224,7 +225,7 @@ func (is *ImageStore) ValidateRepo(name string) (bool, error) {
 		return false, zerr.ErrRepoNotFound
 	}
 
-	//nolint:gomnd
+	//nolint:mnd
 	if len(files) < 2 {
 		return false, zerr.ErrRepoBadVersion
 	}
@@ -951,7 +952,7 @@ func (is *ImageStore) FullBlobUpload(repo string, body io.Reader, dstDigest godi
 		return "", -1, err
 	}
 
-	srcDigest := godigest.NewDigestFromEncoded(dstDigestAlgorithm, fmt.Sprintf("%x", digester.Sum(nil)))
+	srcDigest := godigest.NewDigestFromEncoded(dstDigestAlgorithm, hex.EncodeToString(digester.Sum(nil)))
 	if srcDigest != dstDigest {
 		is.log.Error().Str("srcDigest", srcDigest.String()).
 			Str("dstDigest", dstDigest.String()).Msg("actual digest not equal to expected digest")
@@ -1125,7 +1126,7 @@ func (is *ImageStore) GetAllDedupeReposCandidates(digest godigest.Digest) ([]str
 	}
 
 	if is.cache == nil {
-		return nil, nil
+		return nil, nil //nolint:nilnil
 	}
 
 	is.RLock(&lockLatency)
@@ -1996,7 +1997,7 @@ func (is *ImageStore) PopulateStorageMetrics(interval time.Duration, sch *schedu
 		ImgStore: is,
 		Metrics:  is.metrics,
 		Log:      is.log,
-		MaxDelay: 15, //nolint:gomnd
+		MaxDelay: 15, //nolint:mnd
 	}
 
 	sch.SubmitGenerator(generator, interval, scheduler.HighPriority)

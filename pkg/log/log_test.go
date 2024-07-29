@@ -55,7 +55,9 @@ func TestAuditLogMessages(t *testing.T) {
 		username, seedUser := test.GenerateRandomString()
 		password, seedPass := test.GenerateRandomString()
 		htpasswdPath := test.MakeHtpasswdFileFromString(test.GetCredString(username, password))
+
 		defer os.Remove(htpasswdPath)
+
 		conf.HTTP.Auth = &config.AuthConfig{
 			HTPasswd: config.AuthHTPasswd{
 				Path: htpasswdPath,
@@ -98,15 +100,19 @@ func TestAuditLogMessages(t *testing.T) {
 
 				// wait until the file is populated
 				byteValue, _ := io.ReadAll(auditFile)
+
 				for {
 					if len(byteValue) != 0 {
 						break
 					}
+
 					time.Sleep(100 * time.Millisecond)
+
 					byteValue, _ = io.ReadAll(auditFile)
 				}
 
 				var auditLog AuditLog
+
 				err = json.Unmarshal(byteValue, &auditLog)
 				if err != nil {
 					panic(err)
@@ -131,15 +137,19 @@ func TestAuditLogMessages(t *testing.T) {
 
 				// wait until the file is populated
 				byteValue, _ := io.ReadAll(auditFile)
+
 				for {
 					if len(byteValue) != 0 {
 						break
 					}
+
 					time.Sleep(100 * time.Millisecond)
+
 					byteValue, _ = io.ReadAll(auditFile)
 				}
 
 				var auditLog AuditLog
+
 				err = json.Unmarshal(byteValue, &auditLog)
 				if err != nil {
 					panic(err)
@@ -166,11 +176,14 @@ func TestAuditLogMessages(t *testing.T) {
 
 				// wait until the file is populated
 				byteValue, _ = io.ReadAll(auditFile)
+
 				for {
 					if len(byteValue) != 0 {
 						break
 					}
+
 					time.Sleep(100 * time.Millisecond)
+
 					byteValue, _ = io.ReadAll(auditFile)
 				}
 
@@ -194,11 +207,14 @@ func TestAuditLogMessages(t *testing.T) {
 
 				// wait until the file is populated
 				byteValue, _ = io.ReadAll(auditFile)
+
 				for {
 					if len(byteValue) != 0 {
 						break
 					}
+
 					time.Sleep(100 * time.Millisecond)
+
 					byteValue, _ = io.ReadAll(auditFile)
 				}
 
@@ -227,15 +243,19 @@ func TestAuditLogMessages(t *testing.T) {
 
 				// wait until the file is populated
 				byteValue, _ := io.ReadAll(auditFile)
+
 				for {
 					if len(byteValue) != 0 {
 						break
 					}
+
 					time.Sleep(100 * time.Millisecond)
+
 					byteValue, _ = io.ReadAll(auditFile)
 				}
 
 				var auditLog AuditLog
+
 				err = json.Unmarshal(byteValue, &auditLog)
 				if err != nil {
 					panic(err)
@@ -257,16 +277,20 @@ func TestAuditLogMessages(t *testing.T) {
 				resp, err = resty.R().SetBasicAuth(username, password).
 					SetHeader("Content-Type", "application/octet-stream").
 					SetHeader("Content-Range", contentRange).SetBody(chunk).Patch(loc)
+
 				So(err, ShouldBeNil)
 				So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
 
 				// wait until the file is populated
 				byteValue, _ = io.ReadAll(auditFile)
+
 				for {
 					if len(byteValue) != 0 {
 						break
 					}
+
 					time.Sleep(100 * time.Millisecond)
+
 					byteValue, _ = io.ReadAll(auditFile)
 				}
 

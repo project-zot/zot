@@ -15,14 +15,14 @@ import (
 
 // Scrub Extension for repo...
 func RunScrubRepo(ctx context.Context, imgStore storageTypes.ImageStore, repo string, log log.Logger) error {
-	execMsg := fmt.Sprintf("executing scrub to check manifest/blob integrity for %s", path.Join(imgStore.RootDir(), repo))
+	execMsg := "executing scrub to check manifest/blob integrity for " + path.Join(imgStore.RootDir(), repo)
 	log.Info().Msg(execMsg)
 
 	results, err := storage.CheckRepo(ctx, repo, imgStore)
 	if err != nil {
-		errMessage := fmt.Sprintf("failed to run scrub for %s", path.Join(imgStore.RootDir(), repo))
+		errMessage := "failed to run scrub for " + path.Join(imgStore.RootDir(), repo)
 		log.Error().Err(err).Msg(errMessage)
-		log.Info().Msg(fmt.Sprintf("scrub unsuccessfully completed for %s", path.Join(imgStore.RootDir(), repo)))
+		log.Info().Msg("scrub unsuccessfully completed for " + path.Join(imgStore.RootDir(), repo))
 
 		return err
 	}
@@ -47,7 +47,7 @@ func RunScrubRepo(ctx context.Context, imgStore storageTypes.ImageStore, repo st
 		}
 	}
 
-	log.Info().Msg(fmt.Sprintf("scrub successfully completed for %s", path.Join(imgStore.RootDir(), repo)))
+	log.Info().Msg("scrub successfully completed for " + path.Join(imgStore.RootDir(), repo))
 
 	return nil
 }

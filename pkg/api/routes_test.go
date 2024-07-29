@@ -47,12 +47,14 @@ func TestRoutes(t *testing.T) {
 		username, seedUser := test.GenerateRandomString()
 		password, seedPass := test.GenerateRandomString()
 		htpasswdPath := test.MakeHtpasswdFileFromString(test.GetCredString(username, password))
+
 		defer os.Remove(htpasswdPath)
 
 		mockOIDCServer, err := mockoidc.Run()
 		if err != nil {
 			panic(err)
 		}
+
 		defer func() {
 			err := mockOIDCServer.Shutdown()
 			if err != nil {
@@ -305,6 +307,7 @@ func TestRoutes(t *testing.T) {
 				ctlr.StoreController.DefaultStore = ism
 				request, _ := http.NewRequestWithContext(context.Background(), http.MethodDelete, baseURL, nil)
 				request = mux.SetURLVars(request, urlVars)
+
 				for k, v := range headers {
 					request.Header.Add(k, v)
 				}

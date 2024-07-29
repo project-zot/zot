@@ -161,6 +161,7 @@ func TestCVEConvert(t *testing.T) {
 
 		Convey("Add CVE Summary to RepoSummary", func() {
 			var repoSummary *gql_generated.RepoSummary
+
 			So(repoSummary, ShouldBeNil)
 
 			updateRepoSummaryVulnerabilities(ctx,

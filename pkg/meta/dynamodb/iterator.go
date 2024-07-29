@@ -59,7 +59,7 @@ func (dii *BaseAttributesIterator) First(ctx context.Context) (types.AttributeVa
 	}
 
 	if len(scanOutput.Items) == 0 {
-		return nil, nil
+		return nil, nil //nolint:nilnil
 	}
 
 	dii.itemBuffer = scanOutput.Items
@@ -72,7 +72,7 @@ func (dii *BaseAttributesIterator) First(ctx context.Context) (types.AttributeVa
 func (dii *BaseAttributesIterator) Next(ctx context.Context) (types.AttributeValue, error) {
 	if len(dii.itemBuffer) <= dii.currentItemIndex {
 		if dii.lastEvaluatedKey == nil {
-			return nil, nil
+			return nil, nil //nolint:nilnil
 		}
 
 		scanOutput, err := dii.Client.Scan(ctx, &dynamodb.ScanInput{
@@ -85,7 +85,7 @@ func (dii *BaseAttributesIterator) Next(ctx context.Context) (types.AttributeVal
 
 		// all items have been scanned
 		if len(scanOutput.Items) == 0 {
-			return nil, nil
+			return nil, nil //nolint:nilnil
 		}
 
 		dii.itemBuffer = scanOutput.Items

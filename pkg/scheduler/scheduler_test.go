@@ -71,11 +71,12 @@ func (g *generator) Next() (scheduler.Task, error) {
 	if g.step > g.limit {
 		g.done = true
 	}
+
 	g.step++
 	g.index++
 
 	if g.step%11 == 0 {
-		return nil, nil
+		return nil, nil //nolint:nilnil
 	}
 
 	if g.step%13 == 0 {
@@ -266,8 +267,9 @@ func TestScheduler(t *testing.T) {
 			}
 
 			if strings.Contains(line, "executing medium") {
-				if !strings.Contains(line, fmt.Sprintf("executing medium %s", lastMediumGenerator)) {
+				if !strings.Contains(line, "executing medium "+lastMediumGenerator) {
 					samePriorityFlippedCounter++
+
 					if lastMediumGenerator == "1" {
 						lastMediumGenerator = "2"
 					} else {
@@ -276,8 +278,9 @@ func TestScheduler(t *testing.T) {
 				}
 			}
 
-			if !strings.Contains(line, fmt.Sprintf("executing %s", lastPriority)) {
+			if !strings.Contains(line, "executing "+lastPriority) {
 				priorityFlippedCounter++
+
 				if lastPriority == "low" {
 					lastPriority = "medium"
 				} else {
@@ -436,6 +439,7 @@ func TestGetNumWorkers(t *testing.T) {
 		logger := log.NewLogger("debug", "logFile")
 		metrics := monitoring.NewMetricsServer(true, logger)
 		sch := scheduler.NewScheduler(config.New(), metrics, logger)
+
 		defer os.Remove("logFile")
 		So(sch.NumWorkers, ShouldEqual, runtime.NumCPU()*4)
 	})
@@ -446,6 +450,7 @@ func TestGetNumWorkers(t *testing.T) {
 		logger := log.NewLogger("debug", "logFile")
 		metrics := monitoring.NewMetricsServer(true, logger)
 		sch := scheduler.NewScheduler(cfg, metrics, logger)
+
 		defer os.Remove("logFile")
 		So(sch.NumWorkers, ShouldEqual, 3)
 	})

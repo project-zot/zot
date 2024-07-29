@@ -36,6 +36,7 @@ var ErrTestError = errors.New("TestError")
 func TestResolverGlobalSearch(t *testing.T) {
 	Convey("globalSearch", t, func() {
 		const query = "repo1"
+
 		Convey("MetaDB SearchRepos error", func() {
 			mockMetaDB := mocks.MetaDBMock{
 				SearchReposFn: func(ctx context.Context, searchText string,
@@ -77,6 +78,7 @@ func TestResolverGlobalSearch(t *testing.T) {
 					return []mTypes.FullImageMeta{}, ErrTestError
 				},
 			}
+
 			const query = "repo1:1.0.1"
 			mockCve := mocks.CveInfoMock{}
 
@@ -292,6 +294,7 @@ func TestRepoListWithNewestImage(t *testing.T) {
 					}, nil
 				},
 			}
+
 			Convey("MetaDB missing requestedPage", func() {
 				responseContext := graphql.WithResponseContext(context.Background(), graphql.DefaultErrorPresenter,
 					graphql.DefaultRecover)
@@ -560,6 +563,7 @@ func TestGetImageSummaryError(t *testing.T) {
 func TestImageListError(t *testing.T) {
 	Convey("getImageList", t, func() {
 		testLogger := log.NewLogger("debug", "/dev/null")
+
 		Convey("no page requested, SearchRepoFn returns error", func() {
 			mockMetaDB := mocks.MetaDBMock{
 				FilterTagsFn: func(ctx context.Context, filterRepoTag mTypes.FilterRepoTagFunc, filterFunc mTypes.FilterFunc,

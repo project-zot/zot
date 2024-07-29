@@ -220,8 +220,8 @@ func IncDownloadCounter(ms MetricServer, repo string) {
 func SetStorageUsage(ms MetricServer, rootDir, repo string) {
 	ms.ForceSendMetric(func() {
 		dir := path.Join(rootDir, repo)
-		repoSize, err := GetDirSize(dir)
 
+		repoSize, err := GetDirSize(dir)
 		if err == nil {
 			repoStorageBytes.WithLabelValues(repo).Set(float64(repoSize))
 		}
