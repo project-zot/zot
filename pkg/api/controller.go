@@ -15,7 +15,7 @@ import (
 	"time"
 
 	"github.com/gorilla/mux"
-	"github.com/zitadel/oidc/pkg/client/rp"
+	"github.com/zitadel/oidc/v3/pkg/client/rp"
 
 	"zotregistry.dev/zot/errors"
 	"zotregistry.dev/zot/pkg/api/config"

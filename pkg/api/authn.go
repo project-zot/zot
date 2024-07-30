@@ -25,9 +25,9 @@ import (
 	"github.com/gorilla/securecookie"
 	"github.com/gorilla/sessions"
 	godigest "github.com/opencontainers/go-digest"
-	"github.com/zitadel/oidc/pkg/client/rp"
-	httphelper "github.com/zitadel/oidc/pkg/http"
-	"github.com/zitadel/oidc/pkg/oidc"
+	"github.com/zitadel/oidc/v3/pkg/client/rp"
+	httphelper "github.com/zitadel/oidc/v3/pkg/http"
+	"github.com/zitadel/oidc/v3/pkg/oidc"
 	"golang.org/x/crypto/bcrypt"
 	"golang.org/x/oauth2"
 	githubOAuth "golang.org/x/oauth2/github"
@@ -334,7 +334,7 @@ func (amw *AuthnMiddleware) tryAuthnHandlers(ctlr *Controller) mux.MiddlewareFun
 
 		for provider := range ctlr.Config.HTTP.Auth.OpenID.Providers {
 			if config.IsOpenIDSupported(provider) {
-				rp := NewRelyingPartyOIDC(ctlr.Config, provider, ctlr.Log)
+				rp := NewRelyingPartyOIDC(context.TODO(), ctlr.Config, provider, ctlr.Log)
 				ctlr.RelyingParties[provider] = rp
 			} else if config.IsOauth2Supported(provider) {
 				rp := NewRelyingPartyGithub(ctlr.Config, provider, ctlr.Log)
@@ -610,10 +610,10 @@ func (rh *RouteHandler) AuthURLHandler() http.HandlerFunc {
 	}
 }
 
-func NewRelyingPartyOIDC(config *config.Config, provider string, log log.Logger) rp.RelyingParty {
+func NewRelyingPartyOIDC(ctx context.Context, config *config.Config, provider string, log log.Logger) rp.RelyingParty {
 	issuer, clientID, clientSecret, redirectURI, scopes, options := getRelyingPartyArgs(config, provider, log)
 
-	relyingParty, err := rp.NewRelyingPartyOIDC(issuer, clientID, clientSecret, redirectURI, scopes, options...)
+	relyingParty, err := rp.NewRelyingPartyOIDC(ctx, issuer, clientID, clientSecret, redirectURI, scopes, options...)
 	if err != nil {
 		log.Panic().Err(err).Str("issuer", issuer).Str("redirectURI", redirectURI).Strs("scopes", scopes).
 			Msg("failed to get new relying party oicd")
