@@ -17,9 +17,9 @@ import (
 	"time"
 
 	// Add s3 support.
-	"github.com/docker/distribution/registry/storage/driver"
-	"github.com/docker/distribution/registry/storage/driver/factory"
-	_ "github.com/docker/distribution/registry/storage/driver/s3-aws"
+	"github.com/distribution/distribution/v3/registry/storage/driver"
+	"github.com/distribution/distribution/v3/registry/storage/driver/factory"
+	_ "github.com/distribution/distribution/v3/registry/storage/driver/s3-aws"
 	guuid "github.com/gofrs/uuid"
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
@@ -77,11 +77,12 @@ func createObjectsStore(rootDir string, cacheDir string) (
 		"secretkey":      "minioadmin",
 		"secure":         false,
 		"skipverify":     false,
+		"forcepathstyle": true,
 	}
 
 	storeName := fmt.Sprintf("%v", storageDriverParams["name"])
 
-	store, err := factory.Create(storeName, storageDriverParams)
+	store, err := factory.Create(context.Background(), storeName, storageDriverParams)
 	if err != nil {
 		panic(err)
 	}

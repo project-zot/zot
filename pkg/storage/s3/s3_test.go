@@ -8,15 +8,16 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"path"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/docker/distribution/registry/storage/driver"
-	"github.com/docker/distribution/registry/storage/driver/factory"
-	_ "github.com/docker/distribution/registry/storage/driver/s3-aws"
+	"github.com/distribution/distribution/v3/registry/storage/driver"
+	"github.com/distribution/distribution/v3/registry/storage/driver/factory"
+	_ "github.com/distribution/distribution/v3/registry/storage/driver/s3-aws"
 	guuid "github.com/gofrs/uuid"
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
@@ -103,11 +104,12 @@ func createStoreDriver(rootDir string) driver.StorageDriver {
 		"secretkey":      "minioadmin",
 		"secure":         false,
 		"skipverify":     false,
+		"forcepathstyle": true,
 	}
 
 	storeName := fmt.Sprintf("%v", storageDriverParams["name"])
 
-	store, err := factory.Create(storeName, storageDriverParams)
+	store, err := factory.Create(context.Background(), storeName, storageDriverParams)
 	if err != nil {
 		panic(err)
 	}
@@ -185,9 +187,9 @@ func createObjectsStoreDynamo(rootDir string, cacheDir string, dedupe bool, tabl
 }
 
 func runAndGetScheduler() *scheduler.Scheduler {
-	logger := log.Logger{}
-	metrics := monitoring.NewMetricsServer(false, logger)
-	taskScheduler := scheduler.NewScheduler(config.New(), metrics, logger)
+	log := log.Logger{}
+	metrics := monitoring.NewMetricsServer(false, log)
+	taskScheduler := scheduler.NewScheduler(config.New(), metrics, log)
 	taskScheduler.RateLimit = 50 * time.Millisecond
 
 	taskScheduler.RunScheduler()
@@ -240,7 +242,7 @@ func (f *FileWriterMock) Size() int64 {
 	return int64(fileWriterSize)
 }
 
-func (f *FileWriterMock) Cancel() error {
+func (f *FileWriterMock) Cancel(_ context.Context) error {
 	if f != nil && f.CancelFn != nil {
 		return f.CancelFn()
 	}
@@ -248,7 +250,7 @@ func (f *FileWriterMock) Cancel() error {
 	return nil
 }
 
-func (f *FileWriterMock) Commit() error {
+func (f *FileWriterMock) Commit(_ context.Context) error {
 	if f != nil && f.CommitFn != nil {
 		return f.CommitFn()
 	}
@@ -273,16 +275,25 @@ func (f *FileWriterMock) Close() error {
 }
 
 type StorageDriverMock struct {
-	NameFn       func() string
-	GetContentFn func(ctx context.Context, path string) ([]byte, error)
-	PutContentFn func(ctx context.Context, path string, content []byte) error
-	ReaderFn     func(ctx context.Context, path string, offset int64) (io.ReadCloser, error)
-	WriterFn     func(ctx context.Context, path string, isAppend bool) (driver.FileWriter, error)
-	StatFn       func(ctx context.Context, path string) (driver.FileInfo, error)
-	ListFn       func(ctx context.Context, path string) ([]string, error)
-	MoveFn       func(ctx context.Context, sourcePath, destPath string) error
-	DeleteFn     func(ctx context.Context, path string) error
-	WalkFn       func(ctx context.Context, path string, f driver.WalkFn) error
+	NameFn        func() string
+	GetContentFn  func(ctx context.Context, path string) ([]byte, error)
+	PutContentFn  func(ctx context.Context, path string, content []byte) error
+	ReaderFn      func(ctx context.Context, path string, offset int64) (io.ReadCloser, error)
+	WriterFn      func(ctx context.Context, path string, isAppend bool) (driver.FileWriter, error)
+	StatFn        func(ctx context.Context, path string) (driver.FileInfo, error)
+	ListFn        func(ctx context.Context, path string) ([]string, error)
+	MoveFn        func(ctx context.Context, sourcePath, destPath string) error
+	DeleteFn      func(ctx context.Context, path string) error
+	WalkFn        func(ctx context.Context, path string, f driver.WalkFn, options ...func(*driver.WalkOptions)) error
+	RedirectURLFn func(r *http.Request, path string) (string, error)
+}
+
+func (s *StorageDriverMock) RedirectURL(r *http.Request, path string) (string, error) {
+	if s != nil && s.RedirectURLFn != nil {
+		return s.RedirectURLFn(r, path)
+	}
+
+	return "", nil
 }
 
 func (s *StorageDriverMock) Name() string {
@@ -361,9 +372,11 @@ func (s *StorageDriverMock) URLFor(ctx context.Context, path string, options map
 	return "", nil
 }
 
-func (s *StorageDriverMock) Walk(ctx context.Context, path string, f driver.WalkFn) error {
+func (s *StorageDriverMock) Walk(ctx context.Context, path string, f driver.WalkFn,
+	options ...func(*driver.WalkOptions),
+) error {
 	if s != nil && s.WalkFn != nil {
-		return s.WalkFn(ctx, path, f)
+		return s.WalkFn(ctx, path, f, options...)
 	}
 
 	return nil
@@ -801,7 +814,7 @@ func TestNegativeCasesObjectsStorage(t *testing.T) {
 				ReaderFn: func(ctx context.Context, path string, offset int64) (io.ReadCloser, error) {
 					return io.NopCloser(strings.NewReader("")), errS3
 				},
-				WalkFn: func(ctx context.Context, path string, f driver.WalkFn) error {
+				WalkFn: func(ctx context.Context, path string, f driver.WalkFn, options ...func(*driver.WalkOptions)) error {
 					return errS3
 				},
 				StatFn: func(ctx context.Context, path string) (driver.FileInfo, error) {
@@ -871,7 +884,7 @@ func TestNegativeCasesObjectsStorage(t *testing.T) {
 
 		Convey("Test GetRepositories", func(c C) {
 			imgStore = createMockStorage(testDir, tdir, false, &StorageDriverMock{
-				WalkFn: func(ctx context.Context, path string, f driver.WalkFn) error {
+				WalkFn: func(ctx context.Context, path string, f driver.WalkFn, options ...func(*driver.WalkOptions)) error {
 					return f(new(FileInfoMock))
 				},
 			})
@@ -1979,9 +1992,9 @@ func TestRebuildDedupeIndex(t *testing.T) {
 
 		Convey("Intrerrupt rebuilding and restart, checking idempotency", func() {
 			for i := 0; i < 10; i++ {
-				logger := log.Logger{}
-				metrics := monitoring.NewMetricsServer(false, logger)
-				taskScheduler := scheduler.NewScheduler(config.New(), metrics, logger)
+				log := log.Logger{}
+				metrics := monitoring.NewMetricsServer(false, log)
+				taskScheduler := scheduler.NewScheduler(config.New(), metrics, log)
 				taskScheduler.RateLimit = 1 * time.Millisecond
 
 				taskScheduler.RunScheduler()
@@ -2021,9 +2034,9 @@ func TestRebuildDedupeIndex(t *testing.T) {
 
 			// now from dedupe false to true
 			for i := 0; i < 10; i++ {
-				logger := log.Logger{}
-				metrics := monitoring.NewMetricsServer(false, logger)
-				taskScheduler := scheduler.NewScheduler(config.New(), metrics, logger)
+				log := log.Logger{}
+				metrics := monitoring.NewMetricsServer(false, log)
+				taskScheduler := scheduler.NewScheduler(config.New(), metrics, log)
 				taskScheduler.RateLimit = 1 * time.Millisecond
 
 				taskScheduler.RunScheduler()
@@ -2199,7 +2212,7 @@ func TestNextRepositoryMockStoreDriver(t *testing.T) {
 			ListFn: func(ctx context.Context, path string) ([]string, error) {
 				return []string{}, nil
 			},
-			WalkFn: func(ctx context.Context, path string, walkFn driver.WalkFn) error {
+			WalkFn: func(ctx context.Context, path string, walkFn driver.WalkFn, options ...func(*driver.WalkOptions)) error {
 				return driver.PathNotFoundError{}
 			},
 		})
@@ -2227,7 +2240,7 @@ func TestRebuildDedupeMockStoreDriver(t *testing.T) {
 			StatFn: func(ctx context.Context, path string) (driver.FileInfo, error) {
 				return &FileInfoMock{}, errS3
 			},
-			WalkFn: func(ctx context.Context, path string, walkFn driver.WalkFn) error {
+			WalkFn: func(ctx context.Context, path string, walkFn driver.WalkFn, options ...func(*driver.WalkOptions)) error {
 				return walkFn(&FileInfoMock{
 					IsDirFn: func() bool {
 						return false
@@ -2263,7 +2276,7 @@ func TestRebuildDedupeMockStoreDriver(t *testing.T) {
 					},
 				}, nil
 			},
-			WalkFn: func(ctx context.Context, path string, walkFn driver.WalkFn) error {
+			WalkFn: func(ctx context.Context, path string, walkFn driver.WalkFn, options ...func(*driver.WalkOptions)) error {
 				_ = walkFn(&FileInfoMock{
 					IsDirFn: func() bool {
 						return false
@@ -2312,7 +2325,7 @@ func TestRebuildDedupeMockStoreDriver(t *testing.T) {
 					},
 				}, nil
 			},
-			WalkFn: func(ctx context.Context, path string, walkFn driver.WalkFn) error {
+			WalkFn: func(ctx context.Context, path string, walkFn driver.WalkFn, options ...func(*driver.WalkOptions)) error {
 				_ = walkFn(&FileInfoMock{
 					IsDirFn: func() bool {
 						return false
@@ -2361,7 +2374,7 @@ func TestRebuildDedupeMockStoreDriver(t *testing.T) {
 					},
 				}, errS3
 			},
-			WalkFn: func(ctx context.Context, path string, walkFn driver.WalkFn) error {
+			WalkFn: func(ctx context.Context, path string, walkFn driver.WalkFn, options ...func(*driver.WalkOptions)) error {
 				_ = walkFn(&FileInfoMock{
 					IsDirFn: func() bool {
 						return false
@@ -2406,7 +2419,7 @@ func TestRebuildDedupeMockStoreDriver(t *testing.T) {
 						},
 					}, errS3
 				},
-				WalkFn: func(ctx context.Context, path string, walkFn driver.WalkFn) error {
+				WalkFn: func(ctx context.Context, path string, walkFn driver.WalkFn, options ...func(*driver.WalkOptions)) error {
 					_ = walkFn(&FileInfoMock{
 						IsDirFn: func() bool {
 							return false
@@ -2454,7 +2467,7 @@ func TestRebuildDedupeMockStoreDriver(t *testing.T) {
 					},
 				}, nil
 			},
-			WalkFn: func(ctx context.Context, path string, walkFn driver.WalkFn) error {
+			WalkFn: func(ctx context.Context, path string, walkFn driver.WalkFn, options ...func(*driver.WalkOptions)) error {
 				_ = walkFn(&FileInfoMock{
 					IsDirFn: func() bool {
 						return false
@@ -2505,7 +2518,7 @@ func TestRebuildDedupeMockStoreDriver(t *testing.T) {
 					},
 				}, nil
 			},
-			WalkFn: func(ctx context.Context, path string, walkFn driver.WalkFn) error {
+			WalkFn: func(ctx context.Context, path string, walkFn driver.WalkFn, options ...func(*driver.WalkOptions)) error {
 				_ = walkFn(&FileInfoMock{
 					IsDirFn: func() bool {
 						return false
@@ -2553,7 +2566,7 @@ func TestRebuildDedupeMockStoreDriver(t *testing.T) {
 					},
 				}, errS3
 			},
-			WalkFn: func(ctx context.Context, path string, walkFn driver.WalkFn) error {
+			WalkFn: func(ctx context.Context, path string, walkFn driver.WalkFn, options ...func(*driver.WalkOptions)) error {
 				_ = walkFn(&FileInfoMock{
 					IsDirFn: func() bool {
 						return false
@@ -2585,7 +2598,7 @@ func TestRebuildDedupeMockStoreDriver(t *testing.T) {
 	Convey("Trigger getNextDigestWithBlobPaths err", t, func() {
 		tdir := t.TempDir()
 		imgStore := createMockStorage(testDir, tdir, true, &StorageDriverMock{
-			WalkFn: func(ctx context.Context, path string, f driver.WalkFn) error {
+			WalkFn: func(ctx context.Context, path string, f driver.WalkFn, options ...func(*driver.WalkOptions)) error {
 				return errS3
 			},
 		})
@@ -2611,7 +2624,7 @@ func TestRebuildDedupeMockStoreDriver(t *testing.T) {
 					},
 				}, nil
 			},
-			WalkFn: func(ctx context.Context, path string, walkFn driver.WalkFn) error {
+			WalkFn: func(ctx context.Context, path string, walkFn driver.WalkFn, options ...func(*driver.WalkOptions)) error {
 				_ = walkFn(&FileInfoMock{
 					IsDirFn: func() bool {
 						return false
@@ -2649,7 +2662,7 @@ func TestRebuildDedupeMockStoreDriver(t *testing.T) {
 					},
 				}, nil
 			},
-			WalkFn: func(ctx context.Context, path string, walkFn driver.WalkFn) error {
+			WalkFn: func(ctx context.Context, path string, walkFn driver.WalkFn, options ...func(*driver.WalkOptions)) error {
 				_ = walkFn(&FileInfoMock{
 					IsDirFn: func() bool {
 						return false

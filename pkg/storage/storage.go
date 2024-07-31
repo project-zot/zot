@@ -1,11 +1,12 @@
 package storage
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"strings"
 
-	"github.com/docker/distribution/registry/storage/driver/factory"
+	"github.com/distribution/distribution/v3/registry/storage/driver/factory"
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 
@@ -61,14 +62,27 @@ func New(config *config.Config, linter common.Lint, metrics monitoring.MetricSer
 		)
 	} else {
 		storeName := fmt.Sprintf("%v", config.Storage.StorageDriver["name"])
-		if storeName != constants.S3StorageDriverName {
+		switch storeName {
+		case constants.S3StorageDriverName:
+			// backward compatibility for s3 storage driver
+			// if regionendpoint is provided, forcepathstyle should be set to true
+			// ref: https://github.com/distribution/distribution/pull/4291
+			if _, ok := config.Storage.StorageDriver["regionendpoint"]; ok {
+				if _, ok = config.Storage.StorageDriver["forcepathstyle"]; !ok {
+					log.Warn().
+						Msg("DEPRECATED: automatically setting forcepathstyle to true for s3 storage driver.") //nolint: check-logs
+					config.Storage.StorageDriver["forcepathstyle"] = true
+				}
+			}
+		default:
 			log.Error().Err(zerr.ErrBadConfig).Str("storageDriver", storeName).
 				Msg("unsupported storage driver")
 
 			return storeController, fmt.Errorf("storageDriver '%s' unsupported storage driver: %w", storeName, zerr.ErrBadConfig)
 		}
+
 		// Init a Storager from connection string.
-		store, err := factory.Create(storeName, config.Storage.StorageDriver)
+		store, err := factory.Create(context.Background(), storeName, config.Storage.StorageDriver)
 		if err != nil {
 			log.Error().Err(err).Str("rootDir", config.Storage.RootDirectory).Msg("failed to create s3 service")
 
@@ -175,7 +189,19 @@ func getSubStore(cfg *config.Config, subPaths map[string]config.StorageConfig,
 			}
 		} else {
 			storeName := fmt.Sprintf("%v", storageConfig.StorageDriver["name"])
-			if storeName != constants.S3StorageDriverName {
+			switch storeName {
+			case constants.S3StorageDriverName:
+				// backward compatibility for s3 storage driver
+				// if regionendpoint is provided, forcepathstyle should be set to true
+				// ref: https://github.com/distribution/distribution/pull/4291
+				if _, ok := storageConfig.StorageDriver["regionendpoint"]; ok {
+					if _, ok = storageConfig.StorageDriver["forcepathstyle"]; !ok {
+						log.Warn().
+							Msg("DEPRECATED: automatically setting forcepathstyle to true for s3 storage driver.") //nolint: check-logs
+						storageConfig.StorageDriver["forcepathstyle"] = true
+					}
+				}
+			default:
 				log.Error().Err(zerr.ErrBadConfig).Str("storageDriver", storeName).
 					Msg("unsupported storage driver")
 
@@ -183,7 +209,7 @@ func getSubStore(cfg *config.Config, subPaths map[string]config.StorageConfig,
 			}
 
 			// Init a Storager from connection string.
-			store, err := factory.Create(storeName, storageConfig.StorageDriver)
+			store, err := factory.Create(context.Background(), storeName, storageConfig.StorageDriver)
 			if err != nil {
 				log.Error().Err(err).Str("rootDir", storageConfig.RootDirectory).Msg("failed to create s3 service")
 
