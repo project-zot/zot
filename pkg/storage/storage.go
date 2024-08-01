@@ -62,19 +62,7 @@ func New(config *config.Config, linter common.Lint, metrics monitoring.MetricSer
 		)
 	} else {
 		storeName := fmt.Sprintf("%v", config.Storage.StorageDriver["name"])
-		switch storeName {
-		case constants.S3StorageDriverName:
-			// backward compatibility for s3 storage driver
-			// if regionendpoint is provided, forcepathstyle should be set to true
-			// ref: https://github.com/distribution/distribution/pull/4291
-			if _, ok := config.Storage.StorageDriver["regionendpoint"]; ok {
-				if _, ok = config.Storage.StorageDriver["forcepathstyle"]; !ok {
-					log.Warn().
-						Msg("DEPRECATED: automatically setting forcepathstyle to true for s3 storage driver.") //nolint: check-logs
-					config.Storage.StorageDriver["forcepathstyle"] = true
-				}
-			}
-		default:
+		if storeName != constants.S3StorageDriverName {
 			log.Error().Err(zerr.ErrBadConfig).Str("storageDriver", storeName).
 				Msg("unsupported storage driver")
 
@@ -189,19 +177,7 @@ func getSubStore(cfg *config.Config, subPaths map[string]config.StorageConfig,
 			}
 		} else {
 			storeName := fmt.Sprintf("%v", storageConfig.StorageDriver["name"])
-			switch storeName {
-			case constants.S3StorageDriverName:
-				// backward compatibility for s3 storage driver
-				// if regionendpoint is provided, forcepathstyle should be set to true
-				// ref: https://github.com/distribution/distribution/pull/4291
-				if _, ok := storageConfig.StorageDriver["regionendpoint"]; ok {
-					if _, ok = storageConfig.StorageDriver["forcepathstyle"]; !ok {
-						log.Warn().
-							Msg("DEPRECATED: automatically setting forcepathstyle to true for s3 storage driver.") //nolint: check-logs
-						storageConfig.StorageDriver["forcepathstyle"] = true
-					}
-				}
-			default:
+			if storeName != constants.S3StorageDriverName {
 				log.Error().Err(zerr.ErrBadConfig).Str("storageDriver", storeName).
 					Msg("unsupported storage driver")
 

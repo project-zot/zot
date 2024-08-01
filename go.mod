@@ -41,7 +41,7 @@ require (
 	github.com/notaryproject/notation-core-go v1.0.3
 	github.com/notaryproject/notation-go v1.1.1
 	github.com/olekukonko/tablewriter v0.0.5
-	github.com/opencontainers/distribution-spec/specs-go v0.0.0-20240718171242-11b8e3fba7d2
+	github.com/opencontainers/distribution-spec/specs-go v0.0.0-20240201174943-0f98d91a0afe
 	github.com/opencontainers/go-digest v1.0.0
 	github.com/opencontainers/image-spec v1.1.0
 	github.com/phayes/freeport v0.0.0-20220201140144-74d24b5ae9f5
