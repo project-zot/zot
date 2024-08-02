@@ -668,16 +668,32 @@ func applyDefaultValues(config *config.Config, viperInstance *viper.Viper, log z
 		config.Storage.RemoteCache = true
 	}
 
-	// s3 dedup=false, check for previous dedupe usage and set to true if cachedb found
-	if !config.Storage.Dedupe && config.Storage.StorageDriver != nil {
-		cacheDir, _ := config.Storage.StorageDriver["rootdirectory"].(string)
-		cachePath := path.Join(cacheDir, storageConstants.BoltdbName+storageConstants.DBExtensionName)
+	if config.Storage.StorageDriver != nil {
+		// s3 dedup=false, check for previous dedupe usage and set to true if cachedb found
+		if !config.Storage.Dedupe {
+			cacheDir, _ := config.Storage.StorageDriver["rootdirectory"].(string)
+			cachePath := path.Join(cacheDir, storageConstants.BoltdbName+storageConstants.DBExtensionName)
 
-		if _, err := os.Stat(cachePath); err == nil {
-			log.Info().Str("component", "config").Msg("dedupe set to false for s3 driver but used to be true.")
-			log.Info().Str("cache path", cachePath).Msg("found cache database")
+			if _, err := os.Stat(cachePath); err == nil {
+				log.Info().Str("component", "config").Msg("dedupe set to false for s3 driver but used to be true.")
+				log.Info().Str("cache path", cachePath).Msg("found cache database")
 
-			config.Storage.RemoteCache = false
+				config.Storage.RemoteCache = false
+			}
+		}
+
+		// backward compatibility for s3 storage driver
+		// if regionendpoint is provided, forcepathstyle should be set to true
+		// ref: https://github.com/distribution/distribution/pull/4291
+		if config.Storage.StorageDriver["name"] == storageConstants.S3StorageDriverName {
+			_, hasRegionEndpoint := config.Storage.StorageDriver["regionendpoint"]
+			_, hasForcePathStyle := config.Storage.StorageDriver["forcepathstyle"]
+
+			if hasRegionEndpoint && !hasForcePathStyle {
+				log.Warn().
+					Msg("deprecated: automatically setting forcepathstyle to true for s3 storage driver.")
+				config.Storage.StorageDriver["forcepathstyle"] = true
+			}
 		}
 	}
 

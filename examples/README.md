@@ -751,6 +751,7 @@ The following AWS policy is required by zot for push and pull. Make sure to repl
             "rootdirectory": "/zot",  # this is a prefix that is applied to all S3 keys to allow you to segment data in your bucket if necessary.
             "region": "us-east-2",
             "bucket": "zot-storage",
+            "forcepathstyle": true,
             "secure": true,
             "skipverify": false,
             "accesskey": "<YOUR_ACCESS_KEY_ID>",

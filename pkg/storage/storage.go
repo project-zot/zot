@@ -1,11 +1,12 @@
 package storage
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"strings"
 
-	"github.com/docker/distribution/registry/storage/driver/factory"
+	"github.com/distribution/distribution/v3/registry/storage/driver/factory"
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 
@@ -67,8 +68,9 @@ func New(config *config.Config, linter common.Lint, metrics monitoring.MetricSer
 
 			return storeController, fmt.Errorf("storageDriver '%s' unsupported storage driver: %w", storeName, zerr.ErrBadConfig)
 		}
+
 		// Init a Storager from connection string.
-		store, err := factory.Create(storeName, config.Storage.StorageDriver)
+		store, err := factory.Create(context.Background(), storeName, config.Storage.StorageDriver)
 		if err != nil {
 			log.Error().Err(err).Str("rootDir", config.Storage.RootDirectory).Msg("failed to create s3 service")
 
@@ -183,7 +185,7 @@ func getSubStore(cfg *config.Config, subPaths map[string]config.StorageConfig,
 			}
 
 			// Init a Storager from connection string.
-			store, err := factory.Create(storeName, storageConfig.StorageDriver)
+			store, err := factory.Create(context.Background(), storeName, storageConfig.StorageDriver)
 			if err != nil {
 				log.Error().Err(err).Str("rootDir", storageConfig.RootDirectory).Msg("failed to create s3 service")
 

@@ -9,6 +9,7 @@
             "region": "us-east-2",
             "regionendpoint": "localhost:4566",
             "bucket": "zot-storage",
+            "forcepathstyle": true,
             "secure": false,
             "skipverify": false
         },
