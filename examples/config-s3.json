@@ -8,6 +8,7 @@
             "rootdirectory": "/zot",
             "region": "us-east-2",
             "bucket": "zot-storage",
+            "forcepathstyle": true,
             "secure": true,
             "skipverify": false
         },
@@ -26,6 +27,7 @@
                     "rootdirectory": "/zot-a",
                     "region": "us-east-2",
                     "bucket": "zot-storage",
+                    "forcepathstyle": true,
                     "secure": true,
                     "skipverify": false
                 }
@@ -39,6 +41,7 @@
                     "rootdirectory": "/zot-b",
                     "region": "us-east-2",
                     "bucket": "zot-storage",
+                    "forcepathstyle": true,
                     "secure": true,
                     "skipverify": false
                 }
@@ -52,6 +55,7 @@
                     "rootdirectory": "/zot-c",
                     "region": "us-east-2",
                     "bucket": "zot-storage",
+                    "forcepathstyle": true,
                     "secure": false,
                     "skipverify": false
                 },
