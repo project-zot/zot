@@ -1,0 +1,25 @@
+{
+    "distSpecVersion": "1.1.0",
+    "storage": {
+        "rootDirectory": "/tmp/zot/azure",
+        "gc": true,
+        "gcDelay": "4m",
+        "gcInterval": "1s",
+        "storageDriver": {
+            "name": "azure",
+            "rootdirectory": "/zot",
+            "container": "zot-storage",
+            "accountname": "zot-storage",
+            "accountkey": "azurite",
+            "serviceurl": "http://localhost:10000"
+        }
+    },
+    "http": {
+        "address": "127.0.0.1",
+        "port": "8080"
+    },
+    "log": {
+        "level": "debug",
+        "output": "/tmp/gc-bench-s3.log"
+    }
+}

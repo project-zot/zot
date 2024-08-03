@@ -41,6 +41,10 @@ var testCases = []struct {
 	storageType  string
 }{
 	{
+		testCaseName: "AzureAPIs",
+		storageType:  storageConstants.AzureBlobStorageDriverName,
+	},
+	{
 		testCaseName: "S3APIs",
 		storageType:  storageConstants.S3StorageDriverName,
 	},
@@ -65,7 +69,9 @@ func TestGarbageCollectAndRetention(t *testing.T) {
 
 			var metaDB mTypes.MetaDB
 
-			if testcase.storageType == storageConstants.S3StorageDriverName {
+			switch testcase.storageType {
+			case storageConstants.AzureBlobStorageDriverName:
+			case storageConstants.S3StorageDriverName:
 				tskip.SkipDynamo(t)
 				tskip.SkipS3(t)
 
@@ -134,7 +140,7 @@ func TestGarbageCollectAndRetention(t *testing.T) {
 				}
 
 				imgStore = s3.NewImageStore(rootDir, cacheDir, true, false, log, metrics, nil, store, nil)
-			} else {
+			default:
 				// Create temporary directory
 				rootDir := t.TempDir()
 

@@ -1,0 +1,34 @@
+{
+    "distSpecVersion": "1.1.0",
+    "storage": {
+        "rootDirectory": "/tmp/zot/s3",
+        "gc": true,
+        "gcDelay": "4m",
+        "gcInterval": "1s",
+        "retention": {
+            "delay": "4m",
+            "policies": [
+                {
+                    "repositories": ["**"],
+                    "deleteReferrers": true
+                }
+            ]
+        },
+        "storageDriver": {
+            "name": "s3",
+            "rootdirectory": "/zot",
+            "container": "zot-storage",
+            "accountname": "zot-storage",
+            "accountkey": "azurite",
+            "serviceurl": "http://localhost:10000"
+        }
+    },
+    "http": {
+        "address": "127.0.0.1",
+        "port": "8080"
+    },
+    "log": {
+        "level": "debug",
+        "output": "/tmp/gc-referrers-bench-s3.log"
+    }
+}

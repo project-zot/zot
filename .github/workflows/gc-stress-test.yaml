@@ -109,7 +109,7 @@ jobs:
         run: |
             python3 - <<'EOF'
             from minio import Minio
-
+            
             try:
                 minio = Minio(
                     'localhost:9000',
@@ -119,7 +119,7 @@ jobs:
                 )
             except Exception as ex:
                 raise
-
+            
             minio.make_bucket('zot-storage')
             print(f'{minio.list_buckets()}')
             EOF
@@ -132,9 +132,9 @@ jobs:
             ./bin/zot-linux-amd64 serve test/gc-stress/config-gc-referrers-bench-s3-minio.json &
             sleep 10
             bin/zb-linux-amd64 -c 10 -n 100 -o ci-cd http://localhost:8080
-
+            
             killall -r zot-*
-
+            
             # clean zot storage
             sudo rm -rf /tmp/zot
         env:
@@ -184,7 +184,7 @@ jobs:
         run: |
             python3 - <<'EOF'
             from minio import Minio
-
+            
             try:
                 minio = Minio(
                     'localhost:9000',
@@ -194,7 +194,7 @@ jobs:
                 )
             except Exception as ex:
                 raise
-
+            
             minio.make_bucket('zot-storage')
             print(f'{minio.list_buckets()}')
             EOF
@@ -207,9 +207,9 @@ jobs:
             ./bin/zot-linux-amd64 serve test/gc-stress/config-gc-bench-s3-minio.json &
             sleep 10
             bin/zb-linux-amd64 -c 10 -n 100 -o ci-cd http://localhost:8080
-
+            
             killall -r zot-*
-
+            
             # clean zot storage
             sudo rm -rf /tmp/zot
         env:
@@ -223,3 +223,97 @@ jobs:
           cat /tmp/gc-bench-s3.log
           exit 1
       - uses: ./.github/actions/teardown-localstack
+  gc-referrers-stress-azure-blob:
+    name: GC(with referrers) on azure-blob(azurite) with short interval
+    runs-on: ubuntu-latest-8-cores
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          cache: false
+          go-version: 1.22.x
+      - name: Setup azurite service
+        run: |
+            docker run -d -p 10000:10000 -p 10001:10001 -p 10002:10002 --name azurite \
+                -v /tmp/data:/data \
+                -e "AZURITE_ACCOUNTS=zot-storage:azurite" \
+                mcr.microsoft.com/azure-storage/azurite:3.31.0 azurite-blob --blobHost 0.0.0.0
+
+      - name: Wait for azurite to come up
+        run: |
+            sleep 10
+            az storage container create --name zot-storage
+        env:
+          # https://github.com/Azure/Azurite/blob/main/README.md#usage-with-azure-storage-sdks-or-tools
+          AZURE_STORAGE_CONNECTION_STRING: DefaultEndpointsProtocol=http;AccountName=zot-storage;AccountKey=azuriteazurite;BlobEndpoint=http://localhost:10000/zot-storage;
+
+      - name: Run zb
+        id: bench
+        run: |
+            make binary
+            make bench
+            ./bin/zot-linux-amd64 serve test/gc-stress/config-gc-referrers-bench-azure-blob-minio.json &
+            sleep 10
+            bin/zb-linux-amd64 -c 10 -n 100 -o ci-cd http://localhost:8080
+            
+            killall -r zot-*
+            
+            # clean zot storage
+            sudo rm -rf /tmp/zot
+        env:
+          AWS_ACCESS_KEY_ID: fake
+          AWS_SECRET_ACCESS_KEY: fake
+        continue-on-error: true
+
+      - name: Check on failures
+        if: steps.bench.outcome != 'success'
+        run: |
+          cat /tmp/gc-referrers-bench-azure-blob.log
+          exit 1
+  gc-stress-azure-blob:
+    name: GC(without referrers) on azure-blob(azurite) with short interval
+    runs-on: ubuntu-latest-8-cores
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          cache: false
+          go-version: 1.22.x
+      - name: Setup azurite service
+        run: |
+            docker run -d -p 10000:10000 -p 10001:10001 -p 10002:10002 --name azurite \
+                -v /tmp/data:/data \
+                -e "AZURITE_ACCOUNTS=zot-storage:azurite" \
+                mcr.microsoft.com/azure-storage/azurite:3.31.0 azurite-blob --blobHost 0.0.0.0
+
+      - name: Wait for azurite to come up
+        run: |
+            sleep 10
+            az storage container create --name zot-storage
+        env:
+          # https://github.com/Azure/Azurite/blob/main/README.md#usage-with-azure-storage-sdks-or-tools
+          AZURE_STORAGE_CONNECTION_STRING: DefaultEndpointsProtocol=http;AccountName=zot-storage;AccountKey=azuriteazurite;BlobEndpoint=http://localhost:10000/zot-storage;
+
+      - name: Run zb
+        id: bench
+        run: |
+            make binary
+            make bench
+            ./bin/zot-linux-amd64 serve test/gc-stress/config-gc-bench-azure-blob-minio.json &
+            sleep 10
+            bin/zb-linux-amd64 -c 10 -n 100 -o ci-cd http://localhost:8080
+            
+            killall -r zot-*
+            
+            # clean zot storage
+            sudo rm -rf /tmp/zot
+        env:
+          AWS_ACCESS_KEY_ID: fake
+          AWS_SECRET_ACCESS_KEY: fake
+        continue-on-error: true
+
+      - name: Check on failures
+        if: steps.bench.outcome != 'success'
+        run: |
+          cat /tmp/gc-bench-azure-blob.log
+          exit 1
