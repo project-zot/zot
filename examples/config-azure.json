@@ -1,7 +1,9 @@
 {
-    "distSpecVersion": "1.1.0-dev",
+    "distSpecVersion": "1.1.0",
     "storage": {
         "rootDirectory": "/tmp/zot",
+        "dedupe": false,
+        "remoteCache": false,
         "storageDriver": {
             "name": "azure",
             "rootdirectory": "/zot",
@@ -13,6 +15,8 @@
         "subPaths": {
             "/a": {
                 "rootDirectory": "/tmp/zot1",
+                "dedupe": false,
+                "remoteCache": false,
                 "storageDriver": {
                     "name": "azure",
                     "rootdirectory": "/zot-a",
@@ -24,6 +28,8 @@
             },
             "/b": {
                 "rootDirectory": "/tmp/zot2",
+                "dedupe": false,
+                "remoteCache": false,
                 "storageDriver": {
                     "name": "azure",
                     "rootdirectory": "/zot-b",
@@ -35,6 +41,8 @@
             },
             "/c": {
                 "rootDirectory": "/tmp/zot3",
+                "dedupe": false,
+                "remoteCache": false,
                 "storageDriver": {
                     "name": "azure",
                     "rootdirectory": "/zot-c",
