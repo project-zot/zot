@@ -152,36 +152,6 @@ func createObjectsStoreTable(_ string, _ string, _ bool, _ string) (
 	storageTypes.ImageStore,
 	error,
 ) {
-	/*
-		store := createStoreDriver(rootDir)
-
-		log := log.Logger{Logger: zerolog.New(os.Stdout)}
-		metrics := monitoring.NewMetricsServer(false, log)
-
-		var cacheDriver cache.Cache
-
-		// from pkg/cli/server/root.go/applyDefaultValues, s3 magic
-		tableName = strings.ReplaceAll(tableName, "/", "")
-
-		cacheDriver, _ = storage.Create("dynamodb", cache.DynamoDBDriverParameters{
-			Endpoint:  os.Getenv("DYNAMODBMOCK_ENDPOINT"),
-			Region:    s3Region,
-			TableName: tableName,
-		}, log)
-
-		//nolint:errcheck
-		cacheDriverDynamo, _ := cacheDriver.(*cache.DynamoDBDriver)
-
-		err := cacheDriverDynamo.NewTable(tableName)
-		if err != nil {
-			panic(err)
-		}
-
-		il := azure.NewImageStore(rootDir, cacheDir, dedupe, false, log, metrics, nil, store, cacheDriver)
-
-		return store, il, err
-	*/
-
 	panic("TODO: implement this")
 }
 
