@@ -6,3 +6,7 @@ runs:
     - shell: bash
       if: always()
       run: localstack stop
+
+    - shell: bash
+      if: always()
+      run: docker rm -f azurite
