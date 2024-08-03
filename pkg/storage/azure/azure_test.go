@@ -98,7 +98,7 @@ func createStoreDriver(rootDir string) driver.StorageDriver {
 		"name":        storageConstants.AzureBlobStorageDriverName,
 		"container":   "zot-storage",
 		"accountname": zotStorageTest,
-		"accountkey":  "azurite",
+		"accountkey":  "YXp1cml0ZQo=",
 		"serviceurl":  endpoint,
 	}
 
@@ -656,7 +656,7 @@ func TestNegativeCasesObjectsStorage(t *testing.T) {
 							"name":        storageConstants.AzureBlobStorageDriverName,
 							"container":   "zot-storage",
 							"accountname": bucket,
-							"accountkey":  "azurite",
+							"accountkey":  "YXp1cml0ZQo=",
 							"serviceurl":  endpoint,
 						},
 						RemoteCache: false,
