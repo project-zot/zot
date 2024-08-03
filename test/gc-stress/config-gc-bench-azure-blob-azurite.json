@@ -8,8 +8,8 @@
         "storageDriver": {
             "name": "azure",
             "rootdirectory": "/zot",
-            "container": "zot-storage",
-            "accountname": "zot-storage",
+            "container": "zot-storage-test",
+            "accountname": "zot-storage-test",
             "accountkey": "YXp1cml0ZQo=",
             "serviceurl": "http://localhost:10000"
         }

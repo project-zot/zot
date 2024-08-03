@@ -23,8 +23,6 @@ import (
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/rs/zerolog"
 	. "github.com/smartystreets/goconvey/convey"
-	"gopkg.in/resty.v1"
-
 	zerr "zotregistry.dev/zot/errors"
 	"zotregistry.dev/zot/pkg/api"
 	"zotregistry.dev/zot/pkg/api/config"
@@ -91,12 +89,11 @@ func createMockStorageWithMockCache(rootDir string, dedupe bool, store driver.St
 }
 
 func createStoreDriver(rootDir string) driver.StorageDriver {
-	bucket := zotStorageTest
 	endpoint := os.Getenv("AZURE_BLOB_MOCK_ENDPOINT")
 	storageDriverParams := map[string]interface{}{
 		"rootDir":     rootDir,
 		"name":        storageConstants.AzureBlobStorageDriverName,
-		"container":   "zot-storage",
+		"container":   zotStorageTest,
 		"accountname": zotStorageTest,
 		"accountkey":  "YXp1cml0ZQo=",
 		"serviceurl":  endpoint,
@@ -105,12 +102,6 @@ func createStoreDriver(rootDir string) driver.StorageDriver {
 	storeName := fmt.Sprintf("%v", storageDriverParams["name"])
 
 	store, err := factory.Create(context.Background(), storeName, storageDriverParams)
-	if err != nil {
-		panic(err)
-	}
-
-	// create bucket if it doesn't exists
-	_, err = resty.R().Put("http://" + endpoint + "/" + bucket)
 	if err != nil {
 		panic(err)
 	}
@@ -639,7 +630,6 @@ func TestNegativeCasesObjectsStorage(t *testing.T) {
 		})
 
 		Convey("Unable to create subpath cache db", func(c C) {
-			bucket := zotStorageTest
 			endpoint := os.Getenv("AZURE_BLOB_MOCK_ENDPOINT")
 
 			storageDriverParams := config.GlobalStorageConfig{
@@ -654,8 +644,8 @@ func TestNegativeCasesObjectsStorage(t *testing.T) {
 						RootDirectory: t.TempDir(),
 						StorageDriver: map[string]interface{}{
 							"name":        storageConstants.AzureBlobStorageDriverName,
-							"container":   "zot-storage",
-							"accountname": bucket,
+							"container":   zotStorageTest,
+							"accountname": zotStorageTest,
 							"accountkey":  "YXp1cml0ZQo=",
 							"serviceurl":  endpoint,
 						},

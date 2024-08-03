@@ -283,16 +283,16 @@ jobs:
         run: |
             docker run -d -p 10000:10000 -p 10001:10001 -p 10002:10002 --name azurite \
                 -v /tmp/data:/data \
-                -e "AZURITE_ACCOUNTS=zot-storage:azurite" \
+                -e "AZURITE_ACCOUNTS=zot-storage-test:azurite" \
                 mcr.microsoft.com/azure-storage/azurite:3.31.0 azurite-blob --blobHost 0.0.0.0
 
       - name: Wait for azurite to come up
         run: |
             sleep 10
-            az storage container create --name zot-storage
+            az storage container create --name zot-storage-test
         env:
           # https://github.com/Azure/Azurite/blob/main/README.md#usage-with-azure-storage-sdks-or-tools
-          AZURE_STORAGE_CONNECTION_STRING: DefaultEndpointsProtocol=http;AccountName=zot-storage;AccountKey=azurite;BlobEndpoint=http://127.0.0.1:10000/zot-storage;
+          AZURE_STORAGE_CONNECTION_STRING: DefaultEndpointsProtocol=http;AccountName=zot-storage-test;AccountKey=YXp1cml0ZQo=;BlobEndpoint=http://127.0.0.1:10000/zot-storage-test;
 
       - name: Run zb
         id: bench

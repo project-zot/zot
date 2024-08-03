@@ -44,7 +44,7 @@ jobs:
         env:
           S3MOCK_ENDPOINT: localhost:4566
           DYNAMODBMOCK_ENDPOINT: http://localhost:4566
-          AZURE_BLOB_MOCK_ENDPOINT: http://localhost:10000
+          AZURE_BLOB_MOCK_ENDPOINT: http://localhost:10000/
           AWS_ACCESS_KEY_ID: fake
           AWS_SECRET_ACCESS_KEY: fake
       - name: upload coverage
@@ -84,7 +84,7 @@ jobs:
         env:
           S3MOCK_ENDPOINT: localhost:4566
           DYNAMODBMOCK_ENDPOINT: http://localhost:4566
-          AZURE_BLOB_MOCK_ENDPOINT: http://localhost:10000
+          AZURE_BLOB_MOCK_ENDPOINT: http://localhost:10000/
           AWS_ACCESS_KEY_ID: fake
           AWS_SECRET_ACCESS_KEY: fake
       - name: upload coverage
