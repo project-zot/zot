@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -213,12 +214,12 @@ func TestRoutes(t *testing.T) {
 		})
 
 		Convey("UpdateManifest ", func() {
-			testUpdateManifest := func(urlVars map[string]string, ism *mocks.MockedImageStore) int {
+			testUpdateManifest := func(urlVars map[string]string, contentType string, ism *mocks.MockedImageStore) int {
 				ctlr.StoreController.DefaultStore = ism
 				str := []byte("test")
 				request, _ := http.NewRequestWithContext(context.TODO(), http.MethodPut, baseURL, bytes.NewBuffer(str))
 				request = mux.SetURLVars(request, urlVars)
-				request.Header.Add("Content-Type", ispec.MediaTypeImageManifest)
+				request.Header.Add("Content-Type", contentType)
 				response := httptest.NewRecorder()
 
 				rthdlr.UpdateManifest(response, request)
@@ -228,12 +229,14 @@ func TestRoutes(t *testing.T) {
 
 				return resp.StatusCode
 			}
+			contentType := ispec.MediaTypeImageManifest
 			// repo not found
 			statusCode := testUpdateManifest(
 				map[string]string{
 					"name":      "test",
 					"reference": "reference",
 				},
+				contentType,
 				&mocks.MockedImageStore{
 					PutImageManifestFn: func(repo, reference, mediaType string, body []byte) (godigest.Digest,
 						godigest.Digest, error,
@@ -248,7 +251,7 @@ func TestRoutes(t *testing.T) {
 					"name":      "test",
 					"reference": "reference",
 				},
-
+				contentType,
 				&mocks.MockedImageStore{
 					PutImageManifestFn: func(repo, reference, mediaType string, body []byte) (godigest.Digest,
 						godigest.Digest, error,
@@ -263,6 +266,7 @@ func TestRoutes(t *testing.T) {
 					"name":      "test",
 					"reference": "reference",
 				},
+				contentType,
 				&mocks.MockedImageStore{
 					PutImageManifestFn: func(repo, reference, mediaType string, body []byte) (godigest.Digest,
 						godigest.Digest, error,
@@ -277,6 +281,7 @@ func TestRoutes(t *testing.T) {
 					"name":      "test",
 					"reference": "reference",
 				},
+				contentType,
 				&mocks.MockedImageStore{
 					PutImageManifestFn: func(repo, reference, mediaType string, body []byte) (godigest.Digest,
 						godigest.Digest, error,
@@ -292,6 +297,7 @@ func TestRoutes(t *testing.T) {
 					"name":      "test",
 					"reference": "reference",
 				},
+				contentType,
 				&mocks.MockedImageStore{
 					PutImageManifestFn: func(repo, reference, mediaType string, body []byte) (godigest.Digest,
 						godigest.Digest, error,
@@ -299,6 +305,24 @@ func TestRoutes(t *testing.T) {
 						return "", "", zerr.ErrRepoBadVersion
 					},
 				})
+			So(statusCode, ShouldEqual, http.StatusInternalServerError)
+
+			// multiple parameters in "Content-Type" header
+			contentType = fmt.Sprintf("%s; %s", ispec.MediaTypeImageManifest, "chartset=utf-8")
+			statusCode = testUpdateManifest(
+				map[string]string{
+					"name":      "test",
+					"reference": "reference",
+				},
+				contentType,
+				&mocks.MockedImageStore{
+					PutImageManifestFn: func(repo, reference, mediaType string, body []byte) (godigest.Digest,
+						godigest.Digest, error,
+					) {
+						return "", "", nil
+					},
+				})
+			So(statusCode, ShouldNotEqual, http.StatusUnsupportedMediaType)
 			So(statusCode, ShouldEqual, http.StatusInternalServerError)
 		})
 
