@@ -24,7 +24,6 @@
             },
             "/b": {
                 "rootDirectory": "/tmp/zot2",
-                "remoteCache": false,
                 "storageDriver": {
                     "name": "azure",
                     "rootdirectory": "/zot-b",
@@ -36,7 +35,6 @@
             },
             "/c": {
                 "rootDirectory": "/tmp/zot3",
-                "remoteCache": true,
                 "storageDriver": {
                     "name": "azure",
                     "rootdirectory": "/zot-c",
