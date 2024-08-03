@@ -252,7 +252,7 @@ jobs:
         run: |
             make binary
             make bench
-            ./bin/zot-linux-amd64 serve test/gc-stress/config-gc-referrers-bench-azure-blob-minio.json &
+            ./bin/zot-linux-amd64 serve test/gc-stress/config-gc-referrers-bench-azure-blob-azurite.json &
             sleep 10
             bin/zb-linux-amd64 -c 10 -n 100 -o ci-cd http://localhost:8080
             
@@ -299,7 +299,7 @@ jobs:
         run: |
             make binary
             make bench
-            ./bin/zot-linux-amd64 serve test/gc-stress/config-gc-bench-azure-blob-minio.json &
+            ./bin/zot-linux-amd64 serve test/gc-stress/config-gc-referrers-bench-azure-blob-azurite.json &
             sleep 10
             bin/zb-linux-amd64 -c 10 -n 100 -o ci-cd http://localhost:8080
             
@@ -307,9 +307,6 @@ jobs:
             
             # clean zot storage
             sudo rm -rf /tmp/zot
-        env:
-          AWS_ACCESS_KEY_ID: fake
-          AWS_SECRET_ACCESS_KEY: fake
         continue-on-error: true
 
       - name: Check on failures

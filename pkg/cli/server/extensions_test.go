@@ -40,6 +40,7 @@ func TestVerifyExtensionsConfig(t *testing.T) {
 					"rootdirectory":"/zot",
 					"region":"us-east-2",
 					"bucket":"zot-storage",
+					"forcepathstyle":true,
 					"secure":true,
 					"skipverify":false
 				}
@@ -79,6 +80,7 @@ func TestVerifyExtensionsConfig(t *testing.T) {
 							"rootdirectory":"/zot-a",
 							"region":"us-east-2",
 							"bucket":"zot-storage",
+							"forcepathstyle":true,
 							"secure":true,
 							"skipverify":false
 						}
@@ -1897,6 +1899,7 @@ func TestSyncWithRemoteStorageConfig(t *testing.T) {
 							"rootdirectory":"/zot-a",
 							"region":"us-east-2",
 							"bucket":"zot-storage",
+							"forcepathstyle":true,
 							"secure":true,
 							"skipverify":true
 						}
