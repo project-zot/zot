@@ -292,7 +292,7 @@ jobs:
             az storage container create --name zot-storage
         env:
           # https://github.com/Azure/Azurite/blob/main/README.md#usage-with-azure-storage-sdks-or-tools
-          AZURE_STORAGE_CONNECTION_STRING: DefaultEndpointsProtocol=http;AccountName=zot-storage;AccountKey=azurite;BlobEndpoint=http://localhost:10000/zot-storage;
+          AZURE_STORAGE_CONNECTION_STRING: DefaultEndpointsProtocol=http;AccountName=zot-storage;AccountKey=azurite;BlobEndpoint=http://127.0.0.1:10000/zot-storage;
 
       - name: Run zb
         id: bench
