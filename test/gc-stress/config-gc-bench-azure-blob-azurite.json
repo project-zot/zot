@@ -10,7 +10,7 @@
             "rootdirectory": "/zot",
             "container": "zot-storage",
             "accountname": "zot-storage",
-            "accountkey": "azurite",
+            "accountkey": "YXp1cml0ZQo=",
             "serviceurl": "http://localhost:10000"
         }
     },
