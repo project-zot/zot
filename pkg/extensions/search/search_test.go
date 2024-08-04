@@ -42,6 +42,7 @@ import (
 	"zotregistry.dev/zot/pkg/storage/local"
 	storageTypes "zotregistry.dev/zot/pkg/storage/types"
 	. "zotregistry.dev/zot/pkg/test/common"
+	test "zotregistry.dev/zot/pkg/test/common"
 	. "zotregistry.dev/zot/pkg/test/image-utils"
 	"zotregistry.dev/zot/pkg/test/mocks"
 	ociutils "zotregistry.dev/zot/pkg/test/oci-utils"
@@ -58,6 +59,14 @@ var (
 	ErrTestError   = errors.New("test error")
 	ErrPutManifest = errors.New("can't put manifest")
 )
+
+func makeController(conf *config.Config, dir string) *api.Controller {
+	ctlr := api.NewController(conf)
+
+	ctlr.Config.Storage.RootDirectory = dir
+
+	return ctlr
+}
 
 func readFileAndSearchString(filePath string, stringToMatch string, timeout time.Duration) (bool, error) {
 	ctx, cancelFunc := context.WithTimeout(context.Background(), timeout)
@@ -3903,6 +3912,118 @@ func TestGlobalSearch(t *testing.T) {
 		results = result.GlobalSearch
 		So(len(results.Images), ShouldEqual, 0)
 		So(len(results.Repos), ShouldEqual, 0)
+	})
+}
+
+func TestGlobalSearchWithScaleOutProxyLocalStorage(t *testing.T) {
+
+	// When there are 2 zot instances, the same GlobalSearch query should
+	// return aggregated data from both instances when both instances are queried.
+	Convey("In a local scale-out cluster with 2 members, should return correct data for GlobalSearch", t, func() {
+		numMembers := 2
+		ports := make([]string, numMembers)
+
+		clusterMembers := make([]string, numMembers)
+		for idx := 0; idx < numMembers; idx++ {
+			port := test.GetFreePort()
+			ports[idx] = port
+			clusterMembers[idx] = fmt.Sprintf("127.0.0.1:%s", port)
+		}
+
+		for _, port := range ports {
+			conf := config.New()
+			conf.HTTP.Port = port
+			conf.Cluster = &config.ClusterConfig{
+				Members: clusterMembers,
+				HashKey: "loremipsumdolors",
+			}
+			defaultVal := true
+			conf.Extensions = &extconf.ExtensionConfig{
+				Search: &extconf.SearchConfig{BaseConfig: extconf.BaseConfig{Enable: &defaultVal}, CVE: nil},
+			}
+
+			ctrlr := makeController(conf, t.TempDir())
+			cm := test.NewControllerManager(ctrlr)
+			cm.StartAndWait(port)
+			defer cm.StopServer()
+		}
+
+		for _, port := range ports {
+			resp, err := resty.R().Get(test.GetBaseURL(port) + "/v2/")
+			So(err, ShouldBeNil)
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+		}
+
+		reposToTest := []string{"alpine", "ubuntu", "debian", "bash"}
+		for _, repoName := range reposToTest {
+			img := CreateRandomImage()
+
+			err := UploadImage(img, test.GetBaseURL(ports[0]), repoName, "1.0")
+			So(err, ShouldBeNil)
+		}
+
+		for _, port := range ports {
+			query := `{GlobalSearch(query:""){
+					Page {
+						TotalCount
+						ItemCount
+					}
+					Repos {
+						Name
+					}
+				}
+			}`
+
+			baseURL := test.GetBaseURL(port)
+			resp, err := resty.R().Get(baseURL + graphqlQueryPrefix + "?query=" + url.QueryEscape(query))
+			So(resp, ShouldNotBeNil)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, 200)
+
+			responseStruct := &zcommon.GlobalSearchResultResp{}
+
+			err = json.Unmarshal(resp.Body(), responseStruct)
+			So(err, ShouldBeNil)
+			So(len(responseStruct.Repos), ShouldEqual, 4)
+			So(responseStruct.Page.ItemCount, ShouldEqual, 4)
+			So(responseStruct.Page.TotalCount, ShouldEqual, 4)
+		}
+
+		// Test the pagination behaviour
+		// TODO: This is incorrect as the output will collect across instances and sum it all up.
+		for _, port := range ports {
+			query := `{GlobalSearch(query:"", requestedPage:{
+						limit:1
+						offset:0
+						sortBy: DOWNLOADS
+					}){
+						Page {
+							TotalCount
+							ItemCount
+						}
+						Repos {
+							Name
+						}
+				}
+			}`
+
+			baseURL := test.GetBaseURL(port)
+			resp, err := resty.R().Get(baseURL + graphqlQueryPrefix + "?query=" + url.QueryEscape(query))
+			So(resp, ShouldNotBeNil)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, 200)
+
+			responseStruct := &zcommon.GlobalSearchResultResp{}
+
+			err = json.Unmarshal(resp.Body(), responseStruct)
+			So(err, ShouldBeNil)
+			// Length should actually be 1 - currently, we have 1 + 1.
+			So(len(responseStruct.Repos), ShouldEqual, 2)
+			// Item count should actually be 1 - currently we have 1 + 1.
+			So(responseStruct.Page.ItemCount, ShouldEqual, 2)
+			So(responseStruct.Page.TotalCount, ShouldEqual, 4)
+		}
 	})
 }
 

@@ -15,16 +15,16 @@ type RepoInfo struct {
 }
 
 type RepoSummary struct {
-	Name          string       `json:"name"`
-	LastUpdated   time.Time    `json:"lastUpdated"`
-	Size          string       `json:"size"`
-	Platforms     []Platform   `json:"platforms"`
-	Vendors       []string     `json:"vendors"`
-	IsStarred     bool         `json:"isStarred"`
-	IsBookmarked  bool         `json:"isBookmarked"`
-	StarCount     int          `json:"starCount"`
-	DownloadCount int          `json:"downloadCount"`
-	NewestImage   ImageSummary `json:"newestImage"`
+	Name          string       `json:"Name"`          //nolint:tagliatelle // graphQL schema
+	LastUpdated   time.Time    `json:"LastUpdated"`   //nolint:tagliatelle // graphQL schema
+	Size          string       `json:"Size"`          //nolint:tagliatelle // graphQL schema
+	Platforms     []Platform   `json:"Platforms"`     //nolint:tagliatelle // graphQL schema
+	Vendors       []string     `json:"Vendors"`       //nolint:tagliatelle // graphQL schema
+	IsStarred     bool         `json:"IsStarred"`     //nolint:tagliatelle // graphQL schema
+	IsBookmarked  bool         `json:"IsBookmarked"`  //nolint:tagliatelle // graphQL schema
+	StarCount     int          `json:"StarCount"`     //nolint:tagliatelle // graphQL schema
+	DownloadCount int          `json:"DownloadCount"` //nolint:tagliatelle // graphQL schema
+	NewestImage   ImageSummary `json:"NewestImage"`   //nolint:tagliatelle // graphQL schema
 }
 
 type PaginatedImagesResult struct {
@@ -33,83 +33,83 @@ type PaginatedImagesResult struct {
 }
 
 type ImageSummary struct {
-	RepoName        string                    `json:"repoName"`
-	Tag             string                    `json:"tag"`
-	Digest          string                    `json:"digest"`
-	MediaType       string                    `json:"mediaType"`
-	Manifests       []ManifestSummary         `json:"manifests"`
-	Size            string                    `json:"size"`
-	DownloadCount   int                       `json:"downloadCount"`
-	LastUpdated     time.Time                 `json:"lastUpdated"`
-	Description     string                    `json:"description"`
-	IsSigned        bool                      `json:"isSigned"`
-	Licenses        string                    `json:"licenses"`
-	Labels          string                    `json:"labels"`
-	Title           string                    `json:"title"`
-	Source          string                    `json:"source"`
-	Documentation   string                    `json:"documentation"`
-	Authors         string                    `json:"authors"`
-	Vendor          string                    `json:"vendor"`
-	Vulnerabilities ImageVulnerabilitySummary `json:"vulnerabilities"`
-	Referrers       []Referrer                `json:"referrers"`
-	SignatureInfo   []SignatureSummary        `json:"signatureInfo"`
+	RepoName        string                    `json:"RepoName"`        //nolint:tagliatelle // graphQL schema
+	Tag             string                    `json:"Tag"`             //nolint:tagliatelle // graphQL schema
+	Digest          string                    `json:"Digest"`          //nolint:tagliatelle // graphQL schema
+	MediaType       string                    `json:"MediaType"`       //nolint:tagliatelle // graphQL schema
+	Manifests       []ManifestSummary         `json:"Manifests"`       //nolint:tagliatelle // graphQL schema
+	Size            string                    `json:"Size"`            //nolint:tagliatelle // graphQL schema
+	DownloadCount   int                       `json:"DownloadCount"`   //nolint:tagliatelle // graphQL schema
+	LastUpdated     time.Time                 `json:"LastUpdated"`     //nolint:tagliatelle // graphQL schema
+	Description     string                    `json:"Description"`     //nolint:tagliatelle // graphQL schema
+	IsSigned        bool                      `json:"IsSigned"`        //nolint:tagliatelle // graphQL schema
+	Licenses        string                    `json:"Licenses"`        //nolint:tagliatelle // graphQL schema
+	Labels          string                    `json:"Labels"`          //nolint:tagliatelle // graphQL schema
+	Title           string                    `json:"Title"`           //nolint:tagliatelle // graphQL schema
+	Source          string                    `json:"Source"`          //nolint:tagliatelle // graphQL schema
+	Documentation   string                    `json:"Documentation"`   //nolint:tagliatelle // graphQL schema
+	Authors         string                    `json:"Authors"`         //nolint:tagliatelle // graphQL schema
+	Vendor          string                    `json:"Vendor"`          //nolint:tagliatelle // graphQL schema
+	Vulnerabilities ImageVulnerabilitySummary `json:"Vulnerabilities"` //nolint:tagliatelle // graphQL schema
+	Referrers       []Referrer                `json:"Referrers"`       //nolint:tagliatelle // graphQL schema
+	SignatureInfo   []SignatureSummary        `json:"SignatureInfo"`   //nolint:tagliatelle // graphQL schema
 }
 
 type ManifestSummary struct {
-	Digest          string                    `json:"digest"`
-	ConfigDigest    string                    `json:"configDigest"`
-	LastUpdated     time.Time                 `json:"lastUpdated"`
-	Size            string                    `json:"size"`
-	Platform        Platform                  `json:"platform"`
-	IsSigned        bool                      `json:"isSigned"`
-	DownloadCount   int                       `json:"downloadCount"`
-	Layers          []LayerSummary            `json:"layers"`
-	History         []LayerHistory            `json:"history"`
-	Vulnerabilities ImageVulnerabilitySummary `json:"vulnerabilities"`
-	Referrers       []Referrer                `json:"referrers"`
-	ArtifactType    string                    `json:"artifactType"`
-	SignatureInfo   []SignatureSummary        `json:"signatureInfo"`
+	Digest          string                    `json:"Digest"`          //nolint:tagliatelle // graphQL schema
+	ConfigDigest    string                    `json:"ConfigDigest"`    //nolint:tagliatelle // graphQL schema
+	LastUpdated     time.Time                 `json:"LastUpdated"`     //nolint:tagliatelle // graphQL schema
+	Size            string                    `json:"Size"`            //nolint:tagliatelle // graphQL schema
+	Platform        Platform                  `json:"Platform"`        //nolint:tagliatelle // graphQL schema
+	IsSigned        bool                      `json:"IsSigned"`        //nolint:tagliatelle // graphQL schema
+	DownloadCount   int                       `json:"DownloadCount"`   //nolint:tagliatelle // graphQL schema
+	Layers          []LayerSummary            `json:"Layers"`          //nolint:tagliatelle // graphQL schema
+	History         []LayerHistory            `json:"History"`         //nolint:tagliatelle // graphQL schema
+	Vulnerabilities ImageVulnerabilitySummary `json:"Vulnerabilities"` //nolint:tagliatelle // graphQL schema
+	Referrers       []Referrer                `json:"Referrers"`       //nolint:tagliatelle // graphQL schema
+	ArtifactType    string                    `json:"ArtifactType"`    //nolint:tagliatelle // graphQL schema
+	SignatureInfo   []SignatureSummary        `json:"SignatureInfo"`   //nolint:tagliatelle // graphQL schema
 }
 
 type SignatureSummary struct {
-	Tool      string `json:"tool"`
-	IsTrusted bool   `json:"isTrusted"`
-	Author    string `json:"author"`
+	Tool      string `json:"Tool"`      //nolint:tagliatelle // graphQL schema
+	IsTrusted bool   `json:"IsTrusted"` //nolint:tagliatelle // graphQL schema
+	Author    string `json:"Author"`    //nolint:tagliatelle // graphQL schema
 }
 
 type Platform struct {
-	Os      string `json:"os"`
-	Arch    string `json:"arch"`
-	Variant string `json:"variant"`
+	Os      string `json:"Os"`      //nolint:tagliatelle // graphQL schema
+	Arch    string `json:"Arch"`    //nolint:tagliatelle // graphQL schema
+	Variant string `json:"Variant"` //nolint:tagliatelle // graphQL schema
 }
 
 type ImageVulnerabilitySummary struct {
-	MaxSeverity   string `json:"maxSeverity"`
-	UnknownCount  int    `json:"unknownCount"`
-	LowCount      int    `json:"lowCount"`
-	MediumCount   int    `json:"mediumCount"`
-	HighCount     int    `json:"highCount"`
-	CriticalCount int    `json:"criticalCount"`
-	Count         int    `json:"count"`
+	MaxSeverity   string `json:"MaxSeverity"`   //nolint:tagliatelle // graphQL schema
+	UnknownCount  int    `json:"UnknownCount"`  //nolint:tagliatelle // graphQL schema
+	LowCount      int    `json:"LowCount"`      //nolint:tagliatelle // graphQL schema
+	MediumCount   int    `json:"MediumCount"`   //nolint:tagliatelle // graphQL schema
+	HighCount     int    `json:"HighCount"`     //nolint:tagliatelle // graphQL schema
+	CriticalCount int    `json:"CriticalCount"` //nolint:tagliatelle // graphQL schema
+	Count         int    `json:"Count"`         //nolint:tagliatelle // graphQL schema
 }
 
 type LayerSummary struct {
-	Size   string `json:"size"`
-	Digest string `json:"digest"`
-	Score  int    `json:"score"`
+	Size   string `json:"Size"`   //nolint:tagliatelle // graphQL schema
+	Digest string `json:"Digest"` //nolint:tagliatelle // graphQL schema
+	Score  int    `json:"Score"`  //nolint:tagliatelle // graphQL schema
 }
 
 type LayerHistory struct {
-	Layer              LayerSummary       `json:"layer"`
-	HistoryDescription HistoryDescription `json:"historyDescription"`
+	Layer              LayerSummary       `json:"Layer"`              //nolint:tagliatelle // graphQL schema
+	HistoryDescription HistoryDescription `json:"HistoryDescription"` //nolint:tagliatelle // graphQL schema
 }
 
 type HistoryDescription struct {
-	Created    time.Time `json:"created"`
-	CreatedBy  string    `json:"createdBy"`
-	Author     string    `json:"author"`
-	Comment    string    `json:"comment"`
-	EmptyLayer bool      `json:"emptyLayer"`
+	Created    time.Time `json:"Created"`    //nolint:tagliatelle // graphQL schema
+	CreatedBy  string    `json:"CreatedBy"`  //nolint:tagliatelle // graphQL schema
+	Author     string    `json:"Author"`     //nolint:tagliatelle // graphQL schema
+	Comment    string    `json:"Comment"`    //nolint:tagliatelle // graphQL schema
+	EmptyLayer bool      `json:"EmptyLayer"` //nolint:tagliatelle // graphQL schema
 }
 
 type OsArch struct {
@@ -214,14 +214,14 @@ type GlobalSearchResultResp struct {
 }
 
 type GlobalSearchResult struct {
-	GlobalSearch `json:"globalSearch"`
+	GlobalSearch `json:"GlobalSearch"` //nolint:tagliatelle // graphQL schema
 }
 
 type GlobalSearch struct {
-	Images []ImageSummary `json:"images"`
-	Repos  []RepoSummary  `json:"repos"`
-	Layers []LayerSummary `json:"layers"`
-	Page   PageInfo       `json:"page"`
+	Images []ImageSummary `json:"Images"` //nolint:tagliatelle // graphQL schema
+	Repos  []RepoSummary  `json:"Repos"`  //nolint:tagliatelle // graphQL schema
+	Layers []LayerSummary `json:"Layers"` //nolint:tagliatelle // graphQL schema
+	Page   PageInfo       `json:"Page"`   //nolint:tagliatelle // graphQL schema
 }
 
 type ExpandedRepoInfo struct {
