@@ -29,8 +29,8 @@ import (
 	"github.com/opencontainers/distribution-spec/specs-go/v1/extensions"
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
-	"github.com/zitadel/oidc/pkg/client/rp"
-	"github.com/zitadel/oidc/pkg/oidc"
+	"github.com/zitadel/oidc/v3/pkg/client/rp"
+	"github.com/zitadel/oidc/v3/pkg/oidc"
 
 	zerr "zotregistry.dev/zot/errors"
 	"zotregistry.dev/zot/pkg/api/config"
@@ -1873,9 +1873,9 @@ func (rh *RouteHandler) Logout(response http.ResponseWriter, request *http.Reque
 }
 
 // github Oauth2 CodeExchange callback.
-func (rh *RouteHandler) GithubCodeExchangeCallback() rp.CodeExchangeCallback {
+func (rh *RouteHandler) GithubCodeExchangeCallback() rp.CodeExchangeCallback[*oidc.IDTokenClaims] {
 	return func(w http.ResponseWriter, r *http.Request,
-		tokens *oidc.Tokens, state string, relyingParty rp.RelyingParty,
+		tokens *oidc.Tokens[*oidc.IDTokenClaims], state string, relyingParty rp.RelyingParty,
 	) {
 		ctx := r.Context()
 
@@ -1908,11 +1908,14 @@ func (rh *RouteHandler) GithubCodeExchangeCallback() rp.CodeExchangeCallback {
 }
 
 // Openid CodeExchange callback.
-func (rh *RouteHandler) OpenIDCodeExchangeCallback() rp.CodeExchangeUserinfoCallback {
-	return func(w http.ResponseWriter, r *http.Request, tokens *oidc.Tokens, state string,
-		relyingParty rp.RelyingParty, info oidc.UserInfo,
+func (rh *RouteHandler) OpenIDCodeExchangeCallback() rp.CodeExchangeUserinfoCallback[
+	*oidc.IDTokenClaims,
+	*oidc.UserInfo,
+] {
+	return func(w http.ResponseWriter, r *http.Request, tokens *oidc.Tokens[*oidc.IDTokenClaims], state string,
+		relyingParty rp.RelyingParty, info *oidc.UserInfo,
 	) {
-		email := info.GetEmail()
+		email := info.UserInfoEmail.Email
 		if email == "" {
 			rh.c.Log.Error().Msg("failed to set user record for empty email value")
 			w.WriteHeader(http.StatusUnauthorized)
@@ -1922,7 +1925,7 @@ func (rh *RouteHandler) OpenIDCodeExchangeCallback() rp.CodeExchangeUserinfoCall
 
 		var groups []string
 
-		val, ok := info.GetClaim("groups").([]interface{})
+		val, ok := info.Claims["groups"].([]interface{})
 		if !ok {
 			rh.c.Log.Info().Msgf("failed to find any 'groups' claim for user %s", email)
 		}

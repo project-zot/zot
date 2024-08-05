@@ -4068,6 +4068,7 @@ func TestBearerAuthWithAllowReadAccess(t *testing.T) {
 func TestNewRelyingPartyOIDC(t *testing.T) {
 	Convey("Test NewRelyingPartyOIDC", t, func() {
 		conf := config.New()
+		ctx := context.Background()
 
 		mockOIDCServer, err := authutils.MockOIDCRun()
 		if err != nil {
@@ -4098,7 +4099,7 @@ func TestNewRelyingPartyOIDC(t *testing.T) {
 		}
 
 		Convey("provider not found in config", func() {
-			So(func() { _ = api.NewRelyingPartyOIDC(conf, "notDex", log.NewLogger("debug", "")) }, ShouldPanic)
+			So(func() { _ = api.NewRelyingPartyOIDC(ctx, conf, "notDex", log.NewLogger("debug", "")) }, ShouldPanic)
 		})
 
 		Convey("key path not found on disk", func() {
@@ -4106,7 +4107,7 @@ func TestNewRelyingPartyOIDC(t *testing.T) {
 			oidcProviderCfg.KeyPath = "path/to/file"
 			conf.HTTP.Auth.OpenID.Providers["oidc"] = oidcProviderCfg
 
-			So(func() { _ = api.NewRelyingPartyOIDC(conf, "oidc", log.NewLogger("debug", "")) }, ShouldPanic)
+			So(func() { _ = api.NewRelyingPartyOIDC(ctx, conf, "oidc", log.NewLogger("debug", "")) }, ShouldPanic)
 		})
 
 		Convey("https callback", func() {
@@ -4115,7 +4116,7 @@ func TestNewRelyingPartyOIDC(t *testing.T) {
 				Key:  ServerKey,
 			}
 
-			rp := api.NewRelyingPartyOIDC(conf, "oidc", log.NewLogger("debug", ""))
+			rp := api.NewRelyingPartyOIDC(ctx, conf, "oidc", log.NewLogger("debug", ""))
 			So(rp, ShouldNotBeNil)
 		})
 
@@ -4124,7 +4125,7 @@ func TestNewRelyingPartyOIDC(t *testing.T) {
 			oidcProvider.ClientSecret = ""
 			conf.HTTP.Auth.OpenID.Providers["oidc"] = oidcProvider
 
-			rp := api.NewRelyingPartyOIDC(conf, "oidc", log.NewLogger("debug", ""))
+			rp := api.NewRelyingPartyOIDC(ctx, conf, "oidc", log.NewLogger("debug", ""))
 			So(rp, ShouldNotBeNil)
 		})
 
@@ -4133,7 +4134,7 @@ func TestNewRelyingPartyOIDC(t *testing.T) {
 			oidcProvider.Issuer = ""
 			conf.HTTP.Auth.OpenID.Providers["oidc"] = oidcProvider
 
-			So(func() { _ = api.NewRelyingPartyOIDC(conf, "oidc", log.NewLogger("debug", "")) }, ShouldPanic)
+			So(func() { _ = api.NewRelyingPartyOIDC(ctx, conf, "oidc", log.NewLogger("debug", "")) }, ShouldPanic)
 		})
 	})
 }

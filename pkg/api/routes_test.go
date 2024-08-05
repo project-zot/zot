@@ -19,8 +19,8 @@ import (
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/project-zot/mockoidc"
 	. "github.com/smartystreets/goconvey/convey"
-	"github.com/zitadel/oidc/pkg/client/rp"
-	"github.com/zitadel/oidc/pkg/oidc"
+	"github.com/zitadel/oidc/v3/pkg/client/rp"
+	"github.com/zitadel/oidc/v3/pkg/oidc"
 	"golang.org/x/oauth2"
 
 	zerr "zotregistry.dev/zot/errors"
@@ -105,7 +105,7 @@ func TestRoutes(t *testing.T) {
 			request, _ := http.NewRequestWithContext(ctx, http.MethodGet, baseURL, nil)
 			response := httptest.NewRecorder()
 
-			tokens := &oidc.Tokens{}
+			tokens := &oidc.Tokens[*oidc.IDTokenClaims]{}
 			relyingParty, err := rp.NewRelyingPartyOAuth(&oauth2.Config{})
 			So(err, ShouldBeNil)
 
