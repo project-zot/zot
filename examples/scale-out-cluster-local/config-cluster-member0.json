@@ -1,0 +1,31 @@
+{
+  "distSpecVersion": "1.1.0",
+  "storage": {
+    "rootDirectory": "/tmp/zot0",
+    "dedupe": false
+  },
+  "http": {
+    "address": "127.0.0.1",
+    "port": "9000"
+  },
+  "log": {
+    "level": "debug"
+  },
+  "cluster": {
+    "members": [
+      "127.0.0.1:9000",
+      "127.0.0.1:9001"
+    ],
+    "hashKey": "loremipsumdolors"
+  },
+  "extensions": {
+    "search": {
+      "cve": {
+        "updateInterval": "2h"
+      }
+    },
+    "ui": {
+      "enable": true
+    }
+  }
+}
