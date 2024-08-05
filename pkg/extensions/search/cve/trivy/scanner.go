@@ -46,8 +46,8 @@ func getNewScanOptions(dir string, dbRepositoryRef, javaDBRepositoryRef name.Ref
 			Scanners:    types.Scanners{types.VulnerabilityScanner},
 			OfflineScan: true,
 		},
-		VulnerabilityOptions: flag.VulnerabilityOptions{
-			VulnType: []string{types.VulnTypeOS, types.VulnTypeLibrary},
+		PackageOptions: flag.PackageOptions{
+			PkgTypes: []string{types.PkgTypeOS, types.PkgTypeLibrary},
 		},
 		DBOptions: flag.DBOptions{
 			DBRepository:     dbRepositoryRef,
