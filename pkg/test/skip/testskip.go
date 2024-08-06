@@ -20,3 +20,11 @@ func SkipDynamo(t *testing.T) {
 		t.Skip("Skipping testing without AWS DynamoDB mock server")
 	}
 }
+
+func SkipAzureBlob(t *testing.T) {
+	t.Helper()
+
+	if os.Getenv("AZURE_BLOB_MOCK_ENDPOINT") == "" {
+		t.Skip("Skipping testing without Azure Blob mock server")
+	}
+}

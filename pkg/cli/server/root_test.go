@@ -197,6 +197,7 @@ storage:
 					"rootdirectory":"/zot",
 					"region":"us-east-2",
 					"bucket":"zot-storage",
+					"forcepathstyle":true,
 					"secure":true,
 					"skipverify":false
 				}
@@ -235,6 +236,7 @@ storage:
 							"rootdirectory":"/zot-a",
 							"region":"us-east-2",
 							"bucket":"zot-storage",
+							"forcepathstyle":true,
 							"secure":true,
 							"skipverify":false
 						}
@@ -278,6 +280,7 @@ storage:
 					"rootdirectory":"/zot",
 					"region":"us-east-2",
 					"bucket":"zot-storage",
+					"forcepathstyle":true,
 					"secure":true,
 					"skipverify":false
 				}
@@ -347,6 +350,7 @@ storage:
 				  "rootdirectory":"/zot",
 				  "region":"us-east-2",
 				  "bucket":"zot-storage",
+				  "forcepathstyle":true,
 				  "secure":true,
 				  "skipverify":false
 			   }
@@ -387,6 +391,7 @@ storage:
 				  "rootdirectory":"/zot",
 				  "region":"us-east-2",
 				  "bucket":"zot-storage",
+				  "forcepathstyle":true,
 				  "secure":true,
 				  "skipverify":false
 			   }
@@ -427,6 +432,7 @@ storage:
 						"rootdirectory":"/zot",
 						"region":"us-east-2",
 						"bucket":"zot-storage",
+						"forcepathstyle":true,
 						"secure":true,
 						"skipverify":false
 					 }
@@ -508,6 +514,7 @@ storage:
 						"rootdirectory":"/zot",
 						"region":"us-east-2",
 						"bucket":"zot-storage",
+						"forcepathstyle":true,
 						"secure":true,
 						"skipverify":false
 					 }

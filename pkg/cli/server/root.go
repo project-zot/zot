@@ -401,8 +401,10 @@ func validateConfiguration(config *config.Config, log zlog.Logger) error {
 	}
 
 	if len(config.Storage.StorageDriver) != 0 {
-		// enforce s3 driver in case of using storage driver
-		if config.Storage.StorageDriver["name"] != storageConstants.S3StorageDriverName {
+		switch config.Storage.StorageDriver["name"] {
+		case storageConstants.S3StorageDriverName:
+		case storageConstants.AzureBlobStorageDriverName:
+		default:
 			log.Error().Err(zerr.ErrBadConfig).Interface("cacheDriver", config.Storage.StorageDriver["name"]).
 				Msg("unsupported storage driver")
 
@@ -425,14 +427,17 @@ func validateConfiguration(config *config.Config, log zlog.Logger) error {
 
 			for route, storageConfig := range subPaths {
 				if len(storageConfig.StorageDriver) != 0 {
-					if storageConfig.StorageDriver["name"] != storageConstants.S3StorageDriverName {
+					switch storageConfig.StorageDriver["name"] {
+					case storageConstants.S3StorageDriverName:
+					case storageConstants.AzureBlobStorageDriverName:
+					default:
 						log.Error().Err(zerr.ErrBadConfig).Str("subpath", route).Interface("storageDriver",
 							storageConfig.StorageDriver["name"]).Msg("unsupported storage driver")
 
 						return zerr.ErrBadConfig
 					}
 
-					// enforce tmpDir in case sync + s3
+					// enforce tmpDir in case sync + blob storage
 					if config.Extensions != nil && config.Extensions.Sync != nil && config.Extensions.Sync.DownloadDir == "" {
 						log.Error().Err(zerr.ErrBadConfig).
 							Msg("using both sync and remote storage features needs config.Extensions.Sync.DownloadDir to be specified")
