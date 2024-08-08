@@ -10,7 +10,6 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
-	"sync"
 	"time"
 	"unicode/utf8"
 
@@ -42,7 +41,7 @@ const (
 type ImageStore struct {
 	rootDir     string
 	storeDriver storageTypes.Driver
-	lock        *sync.RWMutex
+	lock        *ImageStoreLock
 	log         zlog.Logger
 	metrics     monitoring.MetricServer
 	cache       storageTypes.Cache
@@ -80,7 +79,7 @@ func NewImageStore(rootDir string, cacheDir string, dedupe, commit bool, log zlo
 	imgStore := &ImageStore{
 		rootDir:     rootDir,
 		storeDriver: storeDriver,
-		lock:        &sync.RWMutex{},
+		lock:        NewImageStoreLock(),
 		log:         log,
 		metrics:     metrics,
 		dedupe:      dedupe,
@@ -120,6 +119,40 @@ func (is *ImageStore) Lock(lockStart *time.Time) {
 // Unlock write-unlock.
 func (is *ImageStore) Unlock(lockStart *time.Time) {
 	is.lock.Unlock()
+
+	lockEnd := time.Now()
+	// includes time spent in acquiring and holding a lock
+	latency := lockEnd.Sub(*lockStart)
+	monitoring.ObserveStorageLockLatency(is.metrics, latency, is.RootDir(), storageConstants.RWLOCK) // histogram
+}
+
+// RLock read-lock for specific repo
+func (is *ImageStore) RLockRepo(repo string, lockStart *time.Time) {
+	*lockStart = time.Now()
+
+	is.lock.RLockRepo(repo)
+}
+
+// RUnlock read-unlock for specific repo.
+func (is *ImageStore) RUnlockRepo(repo string, lockStart *time.Time) {
+	is.lock.RUnlockRepo(repo)
+
+	lockEnd := time.Now()
+	// includes time spent in acquiring and holding a lock
+	latency := lockEnd.Sub(*lockStart)
+	monitoring.ObserveStorageLockLatency(is.metrics, latency, is.RootDir(), storageConstants.RLOCK) // histogram
+}
+
+// Lock write-lock for specific repo..
+func (is *ImageStore) LockRepo(repo string, lockStart *time.Time) {
+	*lockStart = time.Now()
+
+	is.lock.LockRepo(repo)
+}
+
+// Unlock write-unlock for specific repo..
+func (is *ImageStore) UnlockRepo(repo string, lockStart *time.Time) {
+	is.lock.UnlockRepo(repo)
 
 	lockEnd := time.Now()
 	// includes time spent in acquiring and holding a lock
@@ -203,8 +236,8 @@ func (is *ImageStore) initRepo(name string) error {
 func (is *ImageStore) InitRepo(name string) error {
 	var lockLatency time.Time
 
-	is.Lock(&lockLatency)
-	defer is.Unlock(&lockLatency)
+	is.LockRepo(name, &lockLatency)
+	defer is.UnlockRepo(name, &lockLatency)
 
 	return is.initRepo(name)
 }
@@ -478,8 +511,8 @@ func (is *ImageStore) GetImageTags(repo string) ([]string, error) {
 		return nil, zerr.ErrRepoNotFound
 	}
 
-	is.RLock(&lockLatency)
-	defer is.RUnlock(&lockLatency)
+	is.RLockRepo(repo, &lockLatency)
+	defer is.RUnlockRepo(repo, &lockLatency)
 
 	index, err := common.GetIndex(is, repo, is.log)
 	if err != nil {
@@ -500,9 +533,9 @@ func (is *ImageStore) GetImageManifest(repo, reference string) ([]byte, godigest
 
 	var err error
 
-	is.RLock(&lockLatency)
+	is.RLockRepo(repo, &lockLatency)
 	defer func() {
-		is.RUnlock(&lockLatency)
+		is.RUnlockRepo(repo, &lockLatency)
 
 		if err == nil {
 			monitoring.IncDownloadCounter(is.metrics, repo)
@@ -552,9 +585,9 @@ func (is *ImageStore) PutImageManifest(repo, reference, mediaType string, //noli
 
 	var err error
 
-	is.Lock(&lockLatency)
+	is.LockRepo(repo, &lockLatency)
 	defer func() {
-		is.Unlock(&lockLatency)
+		is.UnlockRepo(repo, &lockLatency)
 
 		if err == nil {
 			if is.storeDriver.Name() == storageConstants.LocalStorageDriverName {
@@ -694,8 +727,8 @@ func (is *ImageStore) DeleteImageManifest(repo, reference string, detectCollisio
 
 	var lockLatency time.Time
 
-	is.Lock(&lockLatency)
-	defer is.Unlock(&lockLatency)
+	is.LockRepo(repo, &lockLatency)
+	defer is.UnlockRepo(repo, &lockLatency)
 
 	err := is.deleteImageManifest(repo, reference, detectCollisions)
 	if err != nil {
@@ -1020,8 +1053,8 @@ func (is *ImageStore) FinishBlobUpload(repo, uuid string, body io.Reader, dstDig
 
 	var lockLatency time.Time
 
-	is.Lock(&lockLatency)
-	defer is.Unlock(&lockLatency)
+	is.LockRepo(repo, &lockLatency)
+	defer is.UnlockRepo(repo, &lockLatency)
 
 	if is.dedupe && fmt.Sprintf("%v", is.cache) != fmt.Sprintf("%v", nil) {
 		err = is.DedupeBlob(src, dstDigest, repo, dst)
@@ -1100,8 +1133,8 @@ func (is *ImageStore) FullBlobUpload(repo string, body io.Reader, dstDigest godi
 
 	var lockLatency time.Time
 
-	is.Lock(&lockLatency)
-	defer is.Unlock(&lockLatency)
+	is.LockRepo(repo, &lockLatency)
+	defer is.UnlockRepo(repo, &lockLatency)
 
 	dst := is.BlobPath(repo, dstDigest)
 
@@ -1303,11 +1336,11 @@ func (is *ImageStore) CheckBlob(repo string, digest godigest.Digest) (bool, int6
 	blobPath := is.BlobPath(repo, digest)
 
 	if is.dedupe && fmt.Sprintf("%v", is.cache) != fmt.Sprintf("%v", nil) {
-		is.Lock(&lockLatency)
-		defer is.Unlock(&lockLatency)
+		is.LockRepo(repo, &lockLatency)
+		defer is.UnlockRepo(repo, &lockLatency)
 	} else {
-		is.RLock(&lockLatency)
-		defer is.RUnlock(&lockLatency)
+		is.RLockRepo(repo, &lockLatency)
+		defer is.RUnlockRepo(repo, &lockLatency)
 	}
 
 	binfo, err := is.storeDriver.Stat(blobPath)
@@ -1439,8 +1472,8 @@ func (is *ImageStore) GetBlobPartial(repo string, digest godigest.Digest, mediaT
 		return nil, -1, -1, err
 	}
 
-	is.RLock(&lockLatency)
-	defer is.RUnlock(&lockLatency)
+	is.RLockRepo(repo, &lockLatency)
+	defer is.RUnlockRepo(repo, &lockLatency)
 
 	binfo, err := is.originalBlobInfo(repo, digest)
 	if err != nil {
@@ -1516,8 +1549,8 @@ func (is *ImageStore) GetBlob(repo string, digest godigest.Digest, mediaType str
 		return nil, -1, err
 	}
 
-	is.RLock(&lockLatency)
-	defer is.RUnlock(&lockLatency)
+	is.LockRepo(repo, &lockLatency)
+	defer is.UnlockRepo(repo, &lockLatency)
 
 	binfo, err := is.originalBlobInfo(repo, digest)
 	if err != nil {
@@ -1593,8 +1626,8 @@ func (is *ImageStore) GetReferrers(repo string, gdigest godigest.Digest, artifac
 ) (ispec.Index, error) {
 	var lockLatency time.Time
 
-	is.RLock(&lockLatency)
-	defer is.RUnlock(&lockLatency)
+	is.RLockRepo(repo, &lockLatency)
+	defer is.RUnlockRepo(repo, &lockLatency)
 
 	return common.GetReferrers(is, repo, gdigest, artifactTypes, is.log)
 }
@@ -1667,8 +1700,8 @@ func (is *ImageStore) DeleteBlob(repo string, digest godigest.Digest) error {
 		return err
 	}
 
-	is.Lock(&lockLatency)
-	defer is.Unlock(&lockLatency)
+	is.LockRepo(repo, &lockLatency)
+	defer is.UnlockRepo(repo, &lockLatency)
 
 	return is.deleteBlob(repo, digest)
 }
