@@ -839,6 +839,12 @@ func LoadConfiguration(config *config.Config, configPath string) error {
 		return err
 	}
 
+	if err := loadSessionKeys(config); err != nil {
+		log.Error().Err(err).Msg("failed to read sessionKeysFile")
+
+		return err
+	}
+
 	// defaults
 	applyDefaultValues(config, viperInstance, log)
 
@@ -849,6 +855,26 @@ func LoadConfiguration(config *config.Config, configPath string) error {
 
 	// update distSpecVersion
 	updateDistSpecVersion(config, log)
+
+	return nil
+}
+
+func loadSessionKeys(conf *config.Config) error {
+	if conf.HTTP.Auth != nil && conf.HTTP.Auth.SessionKeysFile != "" {
+		var sessionKeys config.SessionKeys
+
+		if err := readSecretFile(conf.HTTP.Auth.SessionKeysFile, &sessionKeys, false); err != nil {
+			return err
+		}
+
+		if sessionKeys.HashKey != "" {
+			conf.HTTP.Auth.SessionHashKey = []byte(sessionKeys.HashKey)
+		}
+
+		if sessionKeys.EncryptKey != "" {
+			conf.HTTP.Auth.SessionEncryptKey = []byte(sessionKeys.EncryptKey)
+		}
+	}
 
 	return nil
 }
@@ -864,8 +890,9 @@ func updateLDAPConfig(conf *config.Config) error {
 		return nil
 	}
 
-	newLDAPCredentials, err := readLDAPCredentials(conf.HTTP.Auth.LDAP.CredentialsFile)
-	if err != nil {
+	var newLDAPCredentials config.LDAPCredentials
+
+	if err := readSecretFile(conf.HTTP.Auth.LDAP.CredentialsFile, &newLDAPCredentials, true); err != nil {
 		return err
 	}
 
@@ -875,48 +902,46 @@ func updateLDAPConfig(conf *config.Config) error {
 	return nil
 }
 
-func readLDAPCredentials(ldapConfigPath string) (config.LDAPCredentials, error) {
+func readSecretFile(path string, v any, checkUnsetFields bool) error { //nolint: varnamelen
 	viperInstance := viper.NewWithOptions(viper.KeyDelimiter("::"))
 
-	viperInstance.SetConfigFile(ldapConfigPath)
+	viperInstance.SetConfigFile(path)
 
 	if err := viperInstance.ReadInConfig(); err != nil {
-		log.Error().Err(err).Msg("failed to read configuration")
+		log.Error().Err(err).Str("path", path).Msg("failed to read secret file configuration")
 
-		return config.LDAPCredentials{}, errors.Join(zerr.ErrBadConfig, err)
+		return errors.Join(zerr.ErrBadConfig, err)
 	}
 
-	var ldapCredentials config.LDAPCredentials
-
 	metaData := &mapstructure.Metadata{}
-	if err := viperInstance.Unmarshal(&ldapCredentials, metadataConfig(metaData)); err != nil {
-		log.Error().Err(err).Msg("failed to unmarshal ldap credentials config")
+	if err := viperInstance.Unmarshal(v, metadataConfig(metaData)); err != nil {
+		log.Error().Err(err).Str("path", path).Msg("failed to unmarshal secret file config")
 
-		return config.LDAPCredentials{}, errors.Join(zerr.ErrBadConfig, err)
+		return errors.Join(zerr.ErrBadConfig, err)
 	}
 
 	if len(metaData.Keys) == 0 {
-		log.Error().Err(zerr.ErrBadConfig).
-			Msg("failed to load ldap credentials config due to the absence of any key:value pair")
+		log.Error().Err(zerr.ErrBadConfig).Str("path", path).
+			Msg("failed to load secret file due to the absence of any key:value pair")
 
-		return config.LDAPCredentials{}, zerr.ErrBadConfig
+		return zerr.ErrBadConfig
 	}
 
 	if len(metaData.Unused) > 0 {
-		log.Error().Err(zerr.ErrBadConfig).Strs("keys", metaData.Unused).
-			Msg("failed to load ldap credentials config due to unknown keys")
+		log.Error().Err(zerr.ErrBadConfig).Str("path", path).Strs("keys", metaData.Unused).
+			Msg("failed to load secret file due to unknown keys")
 
-		return config.LDAPCredentials{}, zerr.ErrBadConfig
+		return zerr.ErrBadConfig
 	}
 
-	if len(metaData.Unset) > 0 {
+	if checkUnsetFields && len(metaData.Unset) > 0 {
 		log.Error().Err(zerr.ErrBadConfig).Strs("keys", metaData.Unset).
 			Msg("failed to load ldap credentials config due to unset keys")
 
-		return config.LDAPCredentials{}, zerr.ErrBadConfig
+		return zerr.ErrBadConfig
 	}
 
-	return ldapCredentials, nil
+	return nil
 }
 
 func authzContainsOnlyAnonymousPolicy(cfg *config.Config) bool {

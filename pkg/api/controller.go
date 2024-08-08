@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/gorilla/mux"
+	"github.com/gorilla/securecookie"
 	"github.com/zitadel/oidc/v3/pkg/client/rp"
 
 	"zotregistry.dev/zot/errors"
@@ -308,7 +309,14 @@ func (c *Controller) InitImageStore() error {
 func (c *Controller) initCookieStore() error {
 	// setup sessions cookie store used to preserve logged in user in web sessions
 	if c.Config.IsBasicAuthnEnabled() {
-		cookieStore, err := NewCookieStore(c.StoreController)
+		if c.Config.HTTP.Auth.SessionHashKey == nil {
+			c.Log.Warn().Msg("hashKey is not set in config, generating a random one")
+
+			c.Config.HTTP.Auth.SessionHashKey = securecookie.GenerateRandomKey(64) //nolint: gomnd
+		}
+
+		cookieStore, err := NewCookieStore(c.StoreController, c.Config.HTTP.Auth.SessionHashKey,
+			c.Config.HTTP.Auth.SessionEncryptKey)
 		if err != nil {
 			return err
 		}

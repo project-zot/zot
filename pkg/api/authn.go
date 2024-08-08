@@ -22,7 +22,6 @@ import (
 	"github.com/google/go-github/v52/github"
 	"github.com/google/uuid"
 	"github.com/gorilla/mux"
-	"github.com/gorilla/securecookie"
 	"github.com/gorilla/sessions"
 	godigest "github.com/opencontainers/go-digest"
 	"github.com/zitadel/oidc/v3/pkg/client/rp"
@@ -334,10 +333,12 @@ func (amw *AuthnMiddleware) tryAuthnHandlers(ctlr *Controller) mux.MiddlewareFun
 
 		for provider := range ctlr.Config.HTTP.Auth.OpenID.Providers {
 			if config.IsOpenIDSupported(provider) {
-				rp := NewRelyingPartyOIDC(context.TODO(), ctlr.Config, provider, ctlr.Log)
+				rp := NewRelyingPartyOIDC(context.TODO(), ctlr.Config, provider, ctlr.Config.HTTP.Auth.SessionHashKey,
+					ctlr.Config.HTTP.Auth.SessionEncryptKey, ctlr.Log)
 				ctlr.RelyingParties[provider] = rp
 			} else if config.IsOauth2Supported(provider) {
-				rp := NewRelyingPartyGithub(ctlr.Config, provider, ctlr.Log)
+				rp := NewRelyingPartyGithub(ctlr.Config, provider, ctlr.Config.HTTP.Auth.SessionHashKey,
+					ctlr.Config.HTTP.Auth.SessionEncryptKey, ctlr.Log)
 				ctlr.RelyingParties[provider] = rp
 			}
 		}
@@ -610,20 +611,25 @@ func (rh *RouteHandler) AuthURLHandler() http.HandlerFunc {
 	}
 }
 
-func NewRelyingPartyOIDC(ctx context.Context, config *config.Config, provider string, log log.Logger) rp.RelyingParty {
-	issuer, clientID, clientSecret, redirectURI, scopes, options := getRelyingPartyArgs(config, provider, log)
+func NewRelyingPartyOIDC(ctx context.Context, config *config.Config, provider string,
+	hashKey, encryptKey []byte, log log.Logger,
+) rp.RelyingParty {
+	issuer, clientID, clientSecret, redirectURI, scopes, options := getRelyingPartyArgs(config,
+		provider, hashKey, encryptKey, log)
 
 	relyingParty, err := rp.NewRelyingPartyOIDC(ctx, issuer, clientID, clientSecret, redirectURI, scopes, options...)
 	if err != nil {
 		log.Panic().Err(err).Str("issuer", issuer).Str("redirectURI", redirectURI).Strs("scopes", scopes).
-			Msg("failed to get new relying party oicd")
+			Msg("failed to initialize new relying party oidc")
 	}
 
 	return relyingParty
 }
 
-func NewRelyingPartyGithub(config *config.Config, provider string, log log.Logger) rp.RelyingParty {
-	_, clientID, clientSecret, redirectURI, scopes, options := getRelyingPartyArgs(config, provider, log)
+func NewRelyingPartyGithub(config *config.Config, provider string, hashKey, encryptKey []byte, log log.Logger,
+) rp.RelyingParty {
+	_, clientID, clientSecret, redirectURI, scopes,
+		options := getRelyingPartyArgs(config, provider, hashKey, encryptKey, log)
 
 	rpConfig := &oauth2.Config{
 		ClientID:     clientID,
@@ -636,13 +642,13 @@ func NewRelyingPartyGithub(config *config.Config, provider string, log log.Logge
 	relyingParty, err := rp.NewRelyingPartyOAuth(rpConfig, options...)
 	if err != nil {
 		log.Panic().Err(err).Str("redirectURI", redirectURI).Strs("scopes", scopes).
-			Msg("failed to get new relying party oauth")
+			Msg("failed to initialize new relying party oauth")
 	}
 
 	return relyingParty
 }
 
-func getRelyingPartyArgs(cfg *config.Config, provider string, log log.Logger) (
+func getRelyingPartyArgs(cfg *config.Config, provider string, hashKey, encryptKey []byte, log log.Logger) (
 	string, string, string, string, []string, []rp.Option,
 ) {
 	if _, ok := cfg.HTTP.Auth.OpenID.Providers[provider]; !ok {
@@ -683,9 +689,8 @@ func getRelyingPartyArgs(cfg *config.Config, provider string, log log.Logger) (
 		rp.WithVerifierOpts(rp.WithIssuedAtOffset(issuedAtOffset)),
 	}
 
-	key := securecookie.GenerateRandomKey(32) //nolint:mnd
+	cookieHandler := httphelper.NewCookieHandler(hashKey, encryptKey, httphelper.WithMaxAge(relyingPartyCookieMaxAge))
 
-	cookieHandler := httphelper.NewCookieHandler(key, key, httphelper.WithMaxAge(relyingPartyCookieMaxAge))
 	options = append(options, rp.WithCookieHandler(cookieHandler))
 
 	if clientSecret == "" {
@@ -839,14 +844,14 @@ func OAuth2Callback(ctlr *Controller, w http.ResponseWriter, r *http.Request, st
 	stateOrigin, ok := stateCookie.Values["state"].(string)
 	if !ok {
 		ctlr.Log.Error().Err(zerr.ErrInvalidStateCookie).Str("component", "openID").
-			Msg(": failed to get 'state' cookie from request")
+			Msg("failed to get 'state' cookie from request")
 
 		return "", zerr.ErrInvalidStateCookie
 	}
 
 	if stateOrigin != state {
 		ctlr.Log.Error().Err(zerr.ErrInvalidStateCookie).Str("component", "openID").
-			Msg(": 'state' cookie differs from the actual one")
+			Msg("'state' cookie differs from the actual one")
 
 		return "", zerr.ErrInvalidStateCookie
 	}

@@ -2272,7 +2272,7 @@ func TestAuthnErrors(t *testing.T) {
 		}
 
 		So(func() {
-			api.NewRelyingPartyGithub(conf, "prov", log.NewLogger("debug", ""))
+			api.NewRelyingPartyGithub(conf, "prov", nil, nil, log.NewLogger("debug", ""))
 		}, ShouldPanic)
 
 		err = os.Chmod(tmpFile, 0o644)
@@ -4099,7 +4099,7 @@ func TestNewRelyingPartyOIDC(t *testing.T) {
 		}
 
 		Convey("provider not found in config", func() {
-			So(func() { _ = api.NewRelyingPartyOIDC(ctx, conf, "notDex", log.NewLogger("debug", "")) }, ShouldPanic)
+			So(func() { _ = api.NewRelyingPartyOIDC(ctx, conf, "notDex", nil, nil, log.NewLogger("debug", "")) }, ShouldPanic)
 		})
 
 		Convey("key path not found on disk", func() {
@@ -4107,7 +4107,7 @@ func TestNewRelyingPartyOIDC(t *testing.T) {
 			oidcProviderCfg.KeyPath = "path/to/file"
 			conf.HTTP.Auth.OpenID.Providers["oidc"] = oidcProviderCfg
 
-			So(func() { _ = api.NewRelyingPartyOIDC(ctx, conf, "oidc", log.NewLogger("debug", "")) }, ShouldPanic)
+			So(func() { _ = api.NewRelyingPartyOIDC(ctx, conf, "oidc", nil, nil, log.NewLogger("debug", "")) }, ShouldPanic)
 		})
 
 		Convey("https callback", func() {
@@ -4116,7 +4116,7 @@ func TestNewRelyingPartyOIDC(t *testing.T) {
 				Key:  ServerKey,
 			}
 
-			rp := api.NewRelyingPartyOIDC(ctx, conf, "oidc", log.NewLogger("debug", ""))
+			rp := api.NewRelyingPartyOIDC(ctx, conf, "oidc", nil, nil, log.NewLogger("debug", ""))
 			So(rp, ShouldNotBeNil)
 		})
 
@@ -4125,7 +4125,7 @@ func TestNewRelyingPartyOIDC(t *testing.T) {
 			oidcProvider.ClientSecret = ""
 			conf.HTTP.Auth.OpenID.Providers["oidc"] = oidcProvider
 
-			rp := api.NewRelyingPartyOIDC(ctx, conf, "oidc", log.NewLogger("debug", ""))
+			rp := api.NewRelyingPartyOIDC(ctx, conf, "oidc", nil, nil, log.NewLogger("debug", ""))
 			So(rp, ShouldNotBeNil)
 		})
 
@@ -4134,7 +4134,7 @@ func TestNewRelyingPartyOIDC(t *testing.T) {
 			oidcProvider.Issuer = ""
 			conf.HTTP.Auth.OpenID.Providers["oidc"] = oidcProvider
 
-			So(func() { _ = api.NewRelyingPartyOIDC(ctx, conf, "oidc", log.NewLogger("debug", "")) }, ShouldPanic)
+			So(func() { _ = api.NewRelyingPartyOIDC(ctx, conf, "oidc", nil, nil, log.NewLogger("debug", "")) }, ShouldPanic)
 		})
 	})
 }
@@ -4148,9 +4148,10 @@ func TestOpenIDMiddleware(t *testing.T) {
 	conf.HTTP.Port = port
 
 	testCases := []struct {
-		testCaseName string
-		address      string
-		externalURL  string
+		testCaseName   string
+		address        string
+		externalURL    string
+		useSessionKeys bool
 	}{
 		{
 			address:      "0.0.0.0",
@@ -4161,6 +4162,12 @@ func TestOpenIDMiddleware(t *testing.T) {
 			address:      "127.0.0.1",
 			externalURL:  "",
 			testCaseName: "without ExternalURL provided in config",
+		},
+		{
+			address:        "127.0.0.1",
+			externalURL:    "",
+			testCaseName:   "without ExternalURL provided in config and session keys for cookies",
+			useSessionKeys: true,
 		},
 	}
 
@@ -4246,6 +4253,11 @@ func TestOpenIDMiddleware(t *testing.T) {
 
 	for _, testcase := range testCases {
 		t.Run(testcase.testCaseName, func(t *testing.T) {
+			if testcase.useSessionKeys {
+				ctlr.Config.HTTP.Auth.SessionHashKey = []byte("3lrioGLGO2RfG9Y7HQGgWa3ayBjMLw2auMXqEWcSXjQKc9SoQ3fKTIbO+toPYa7e")
+				ctlr.Config.HTTP.Auth.SessionEncryptKey = []byte("KOzt01JrDz2uC//UBC5ZikxQw4owfmI8")
+			}
+
 			Convey("make controller", t, func() {
 				dir := t.TempDir()
 
