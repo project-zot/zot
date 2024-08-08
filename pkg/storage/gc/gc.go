@@ -101,62 +101,61 @@ func (gc GarbageCollect) CleanRepo(ctx context.Context, repo string) error {
 }
 
 func (gc GarbageCollect) cleanRepo(ctx context.Context, repo string) error {
-	var lockLatency time.Time
-
 	dir := path.Join(gc.imgStore.RootDir(), repo)
 	if !gc.imgStore.DirExists(dir) {
 		return zerr.ErrRepoNotFound
 	}
 
-	gc.imgStore.Lock(&lockLatency)
-	defer gc.imgStore.Unlock(&lockLatency)
+	err := gc.imgStore.WithRepoLock(repo, func() error {
+		/* this index (which represents the index.json of this repo) is the root point from which we
+		search for dangling manifests/blobs
+		so this index is passed by reference in all functions that modifies it
 
-	/* this index (which represents the index.json of this repo) is the root point from which we
-	search for dangling manifests/blobs
-	so this index is passed by reference in all functions that modifies it
+		Instead of removing manifests one by one with storage APIs we just remove manifests descriptors
+		from index.Manifests[] list and update repo's index.json afterwards.
 
-	Instead of removing manifests one by one with storage APIs we just remove manifests descriptors
-	from index.Manifests[] list and update repo's index.json afterwards.
+		After updating repo's index.json we clean all unreferenced blobs (manifests included).
+		*/
+		index, err := common.GetIndex(gc.imgStore, repo, gc.log)
+		if err != nil {
+			gc.log.Error().Err(err).Str("module", "gc").Str("repository", repo).Msg("failed to read index.json in repo")
 
-	After updating repo's index.json we clean all unreferenced blobs (manifests included).
-	*/
-	index, err := common.GetIndex(gc.imgStore, repo, gc.log)
-	if err != nil {
-		gc.log.Error().Err(err).Str("module", "gc").Str("repository", repo).Msg("failed to read index.json in repo")
-
-		return err
-	}
-
-	// apply tags retention
-	if err := gc.removeTagsPerRetentionPolicy(ctx, repo, &index); err != nil {
-		return err
-	}
-
-	// gc referrers manifests with missing subject and untagged manifests
-	if err := gc.removeManifestsPerRepoPolicy(ctx, repo, &index); err != nil {
-		return err
-	}
-
-	// update repos's index.json in storage
-	if !gc.opts.ImageRetention.DryRun {
-		/* this will update the index.json with manifests deleted above
-		and the manifests blobs will be removed by gc.removeUnreferencedBlobs()*/
-		if err := gc.imgStore.PutIndexContent(repo, index); err != nil {
 			return err
 		}
-	}
 
-	// gc unreferenced blobs
-	if err := gc.removeUnreferencedBlobs(repo, gc.opts.Delay, gc.log); err != nil {
-		return err
-	}
+		// apply tags retention
+		if err := gc.removeTagsPerRetentionPolicy(ctx, repo, &index); err != nil {
+			return err
+		}
 
-	// gc old blob uploads
-	if err := gc.removeBlobUploads(repo, gc.opts.Delay); err != nil {
-		return err
-	}
+		// gc referrers manifests with missing subject and untagged manifests
+		if err := gc.removeManifestsPerRepoPolicy(ctx, repo, &index); err != nil {
+			return err
+		}
 
-	return nil
+		// update repos's index.json in storage
+		if !gc.opts.ImageRetention.DryRun {
+			/* this will update the index.json with manifests deleted above
+			and the manifests blobs will be removed by gc.removeUnreferencedBlobs()*/
+			if err := gc.imgStore.PutIndexContent(repo, index); err != nil {
+				return err
+			}
+		}
+
+		// gc unreferenced blobs
+		if err := gc.removeUnreferencedBlobs(repo, gc.opts.Delay, gc.log); err != nil {
+			return err
+		}
+
+		// gc old blob uploads
+		if err := gc.removeBlobUploads(repo, gc.opts.Delay); err != nil {
+			return err
+		}
+
+		return nil
+	})
+
+	return err
 }
 
 func (gc GarbageCollect) removeManifestsPerRepoPolicy(ctx context.Context, repo string, index *ispec.Index) error {
