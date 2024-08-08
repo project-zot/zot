@@ -109,8 +109,8 @@ func ParseRepo(repo string, metaDB mTypes.MetaDB, storeController stypes.StoreCo
 
 	var lockLatency time.Time
 
-	imageStore.RLock(&lockLatency)
-	defer imageStore.RUnlock(&lockLatency)
+	imageStore.RLockRepo(repo, &lockLatency)
+	defer imageStore.RUnlockRepo(repo, &lockLatency)
 
 	indexBlob, err := imageStore.GetIndexContent(repo)
 	if err != nil {
@@ -223,8 +223,8 @@ func getCosignSignatureLayersInfo(
 
 	var lockLatency time.Time
 
-	imageStore.RLock(&lockLatency)
-	defer imageStore.RUnlock(&lockLatency)
+	imageStore.RLockRepo(repo, &lockLatency)
+	defer imageStore.RUnlockRepo(repo, &lockLatency)
 
 	for _, layer := range manifestContent.Layers {
 		layerContent, err := imageStore.GetBlobContent(repo, layer.Digest)
@@ -280,8 +280,8 @@ func getNotationSignatureLayersInfo(
 
 	var lockLatency time.Time
 
-	imageStore.RLock(&lockLatency)
-	defer imageStore.RUnlock(&lockLatency)
+	imageStore.RLockRepo(repo, &lockLatency)
+	defer imageStore.RUnlockRepo(repo, &lockLatency)
 
 	layerContent, err := imageStore.GetBlobContent(repo, layer)
 	if err != nil {
