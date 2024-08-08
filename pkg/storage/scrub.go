@@ -134,8 +134,8 @@ func checkImage(
 ) ([]ispec.Descriptor, error) {
 	var lockLatency time.Time
 
-	imgStore.RLock(&lockLatency)
-	defer imgStore.RUnlock(&lockLatency)
+	imgStore.RLockRepo(imageName, &lockLatency)
+	defer imgStore.RUnlockRepo(imageName, &lockLatency)
 
 	manifestContent, err := imgStore.GetBlobContent(imageName, manifest.Digest)
 	if err != nil {
@@ -149,8 +149,8 @@ func checkImage(
 func getIndex(imageName string, imgStore storageTypes.ImageStore) ([]byte, error) {
 	var lockLatency time.Time
 
-	imgStore.RLock(&lockLatency)
-	defer imgStore.RUnlock(&lockLatency)
+	imgStore.RLockRepo(imageName, &lockLatency)
+	defer imgStore.RUnlockRepo(imageName, &lockLatency)
 
 	// check image structure / layout
 	ok, err := imgStore.ValidateRepo(imageName)

@@ -82,6 +82,18 @@ func (is MockedImageStore) RUnlock(t *time.Time) {
 func (is MockedImageStore) RLock(t *time.Time) {
 }
 
+func (is MockedImageStore) LockRepo(repo string, t *time.Time) {
+}
+
+func (is MockedImageStore) UnlockRepo(repo string, t *time.Time) {
+}
+
+func (is MockedImageStore) RUnlockRepo(repo string, t *time.Time) {
+}
+
+func (is MockedImageStore) RLockRepo(repo string, t *time.Time) {
+}
+
 func (is MockedImageStore) Name() string {
 	if is.NameFn != nil {
 		return is.NameFn()
