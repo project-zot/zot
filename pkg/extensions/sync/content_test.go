@@ -1,7 +1,7 @@
 //go:build sync
 // +build sync
 
-package sync
+package sync //nolint: testpackage
 
 import (
 	"testing"

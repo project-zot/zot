@@ -102,17 +102,15 @@ func getLocalIPs() ([]string, error) {
 	return localIPs, nil
 }
 
-func getIPFromHostName(host string) ([]string, error) {
+func getIPFromHostName(host string) ([]net.IP, error) {
 	addrs, err := net.LookupIP(host)
 	if err != nil {
-		return []string{}, err
+		return []net.IP{}, err
 	}
 
-	ips := make([]string, 0, len(addrs))
+	ips := make([]net.IP, 0, len(addrs))
 
-	for _, ip := range addrs {
-		ips = append(ips, ip.String())
-	}
+	ips = append(ips, addrs...)
 
 	return ips, nil
 }
@@ -163,7 +161,8 @@ func removeSelfURLs(config *config.Config, registryConfig *syncconf.RegistryConf
 		for _, localIP := range localIPs {
 			// if ip resolved from hostname/dns is equal with any local ip
 			for _, ip := range ips {
-				if net.JoinHostPort(ip, url.Port()) == net.JoinHostPort(localIP, port) {
+				if (ip.IsLoopback() && (url.Port() == port)) ||
+					(net.JoinHostPort(ip.String(), url.Port()) == net.JoinHostPort(localIP, port)) {
 					registryConfig.URLs = append(registryConfig.URLs[:idx], registryConfig.URLs[idx+1:]...)
 
 					removed = true
