@@ -24,10 +24,9 @@ type ImageStore interface { //nolint:interfacebloat
 	Name() string
 	DirExists(d string) bool
 	RootDir() string
-	RLock(*time.Time)
-	RUnlock(*time.Time)
-	Lock(*time.Time)
-	Unlock(*time.Time)
+	WithRepoReadLock(repo string, wrappedFunc func() error) error
+	WithRepoLock(repo string, wrappedFunc func() error) error
+	ObserveLockLatency(latency time.Duration, lockType string)
 	InitRepo(name string) error
 	ValidateRepo(name string) (bool, error)
 	GetRepositories() ([]string, error)

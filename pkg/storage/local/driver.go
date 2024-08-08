@@ -189,7 +189,13 @@ func (driver *Driver) WriteFile(filepath string, content []byte) (int, error) {
 func (driver *Driver) Walk(path string, walkFn storagedriver.WalkFn) error {
 	children, err := driver.List(path)
 	if err != nil {
-		return err
+		switch errors.As(err, &storagedriver.PathNotFoundError{}) {
+		case true:
+			// repository was removed in between listing and enumeration. Ignore it.
+			return nil
+		default:
+			return err
+		}
 	}
 
 	sort.Stable(sort.StringSlice(children))
