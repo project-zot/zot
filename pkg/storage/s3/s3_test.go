@@ -21,7 +21,6 @@ import (
 	guuid "github.com/gofrs/uuid"
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
-	"github.com/rs/zerolog"
 	. "github.com/smartystreets/goconvey/convey"
 	"gopkg.in/resty.v1"
 
@@ -60,7 +59,7 @@ func cleanupStorage(store driver.StorageDriver, name string) {
 
 func createMockStorage(rootDir string, cacheDir string, dedupe bool, store driver.StorageDriver,
 ) storageTypes.ImageStore {
-	log := log.Logger{Logger: zerolog.New(os.Stdout)}
+	log := log.NewLogger("debug", "")
 	metrics := monitoring.NewMetricsServer(true, log)
 
 	var cacheDriver storageTypes.Cache
@@ -83,7 +82,7 @@ func createMockStorage(rootDir string, cacheDir string, dedupe bool, store drive
 func createMockStorageWithMockCache(rootDir string, dedupe bool, store driver.StorageDriver,
 	cacheDriver storageTypes.Cache,
 ) storageTypes.ImageStore {
-	log := log.Logger{Logger: zerolog.New(os.Stdout)}
+	log := log.NewLogger("debug", "")
 	metrics := monitoring.NewMetricsServer(false, log)
 
 	il := s3.NewImageStore(rootDir, "", dedupe, false, log, metrics, nil, store, cacheDriver, nil)
@@ -130,7 +129,7 @@ func createObjectsStore(rootDir string, cacheDir string, dedupe bool) (
 ) {
 	store := createStoreDriver(rootDir)
 
-	log := log.Logger{Logger: zerolog.New(os.Stdout)}
+	log := log.NewLogger("debug", "")
 	metrics := monitoring.NewMetricsServer(false, log)
 
 	var cacheDriver storageTypes.Cache
@@ -159,7 +158,7 @@ func createObjectsStoreDynamo(rootDir string, cacheDir string, dedupe bool, tabl
 ) {
 	store := createStoreDriver(rootDir)
 
-	log := log.Logger{Logger: zerolog.New(os.Stdout)}
+	log := log.NewLogger("debug", "")
 	metrics := monitoring.NewMetricsServer(false, log)
 
 	var cacheDriver storageTypes.Cache
@@ -3793,10 +3792,13 @@ func TestS3DedupeErr(t *testing.T) {
 		digest := godigest.NewDigestFromEncoded(godigest.SHA256,
 			"7173b809ca12ec5dee4506cd86be934c4596dd234ee82c0662eac04a8c2c71dc")
 
-		err := imgStore.DedupeBlob("/src/dst", digest, "", "/repo1/dst1")
+		path1 := "/repo1/dst1/blobs/" + digest.Algorithm().String() + "/" + digest.Encoded()
+		path2 := "/repo2/dst2/blobs/" + digest.Algorithm().String() + "/" + digest.Encoded()
+
+		err := imgStore.DedupeBlob("/src/dst", digest, "", path1)
 		So(err, ShouldBeNil)
 
-		err = imgStore.DedupeBlob("/src/dst", digest, "", "/repo2/dst2")
+		err = imgStore.DedupeBlob("/src/dst", digest, "", path2)
 		So(err, ShouldBeNil)
 
 		// copy cache db to the new imagestore
@@ -3951,11 +3953,15 @@ func TestInjectDedupe(t *testing.T) {
 				return &FileInfoMock{}, errS3
 			},
 		})
-		err := imgStore.DedupeBlob("blob", "digest", "", "newblob")
+
+		digest := godigest.FromString("content")
+		path := "newblob/blobs/" + digest.Algorithm().String() + "/" + digest.Encoded()
+
+		err := imgStore.DedupeBlob("blob", digest, "", path)
 		So(err, ShouldBeNil)
 
 		injected := inject.InjectFailure(0)
-		err = imgStore.DedupeBlob("blob", "digest", "", "newblob")
+		err = imgStore.DedupeBlob("blob", digest, "", path)
 
 		if injected {
 			So(err, ShouldNotBeNil)
@@ -3964,7 +3970,7 @@ func TestInjectDedupe(t *testing.T) {
 		}
 
 		injected = inject.InjectFailure(1)
-		err = imgStore.DedupeBlob("blob", "digest", "", "newblob")
+		err = imgStore.DedupeBlob("blob", digest, "", path)
 
 		if injected {
 			So(err, ShouldNotBeNil)
