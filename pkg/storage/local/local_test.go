@@ -2046,11 +2046,7 @@ func TestGarbageCollectForImageStore(t *testing.T) {
 		})
 
 		Convey("Garbage collect - the manifest which the reference points to can be found", func() {
-			logFile, _ := os.CreateTemp("", "zot-log*.txt")
-
-			defer os.Remove(logFile.Name()) // clean up
-
-			log := zlog.NewLogger("debug", logFile.Name())
+			log := zlog.NewLogger("debug", "")
 			audit := zlog.NewAuditLogger("debug", "")
 
 			metrics := monitoring.NewMetricsServer(false, log)
