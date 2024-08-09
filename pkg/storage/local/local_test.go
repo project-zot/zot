@@ -1970,7 +1970,7 @@ func TestGarbageCollectForImageStore(t *testing.T) {
 			}, log)
 
 			imgStore := local.NewImageStore(dir, true, true, log, metrics, nil, cacheDriver)
-			repoName := "gc-all-repos-short"
+			repoName := "gc-all-repos-short" //nolint:goconst // test data
 
 			gc := gc.NewGarbageCollect(imgStore, mocks.MetaDBMock{}, gc.Options{
 				Delay:          1 * time.Second,
@@ -2046,11 +2046,7 @@ func TestGarbageCollectForImageStore(t *testing.T) {
 		})
 
 		Convey("Garbage collect - the manifest which the reference points to can be found", func() {
-			logFile, _ := os.CreateTemp("", "zot-log*.txt")
-
-			defer os.Remove(logFile.Name()) // clean up
-
-			log := zlog.NewLogger("debug", logFile.Name())
+			log := zlog.NewLogger("debug", "")
 			audit := zlog.NewAuditLogger("debug", "")
 
 			metrics := monitoring.NewMetricsServer(false, log)
@@ -2120,6 +2116,78 @@ func TestGarbageCollectForImageStore(t *testing.T) {
 
 			err = gc.CleanRepo(ctx, repoName)
 			So(err, ShouldBeNil)
+		})
+
+		Convey("Garbage collect error - not enough permissions to access blob upload", func() {
+			logFile, _ := os.CreateTemp("", "zot-log*.txt")
+
+			defer os.Remove(logFile.Name()) // clean up
+
+			log := zlog.NewLogger("debug", logFile.Name())
+			audit := zlog.NewAuditLogger("debug", "")
+
+			metrics := monitoring.NewMetricsServer(false, log)
+			cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
+				RootDir:     dir,
+				Name:        "cache",
+				UseRelPaths: true,
+			}, log)
+
+			imgStore := local.NewImageStore(dir, true, true, log, metrics, nil, cacheDriver)
+			repoName := "gc-all-repos-short"
+
+			gc := gc.NewGarbageCollect(imgStore, mocks.MetaDBMock{}, gc.Options{
+				Delay:          1 * time.Second,
+				ImageRetention: DeleteReferrers,
+			}, audit, log)
+
+			blobUploadID, err := imgStore.NewBlobUpload(repoName)
+			So(err, ShouldBeNil)
+
+			err = gc.CleanRepo(ctx, repoName)
+			So(err, ShouldBeNil)
+
+			// Blob upload is recent it should still be there
+			isPresent, _, _, err := imgStore.StatBlobUpload(repoName, blobUploadID)
+			So(err, ShouldBeNil)
+			So(isPresent, ShouldBeTrue)
+
+			So(os.Chmod(imgStore.BlobUploadPath(repoName, blobUploadID), 0o000), ShouldBeNil)
+
+			err = gc.CleanRepo(ctx, repoName)
+			So(err, ShouldBeNil)
+
+			// Blob upload is recent it should still be there
+			isPresent, _, _, err = imgStore.StatBlobUpload(repoName, blobUploadID)
+			So(err, ShouldBeNil)
+			So(isPresent, ShouldBeTrue)
+
+			time.Sleep(1002 * time.Millisecond)
+
+			// GC should fail because of bad permissions
+			err = gc.CleanRepo(ctx, repoName)
+			So(err, ShouldNotBeNil)
+
+			// Blob uploads should not be GCed as there was an error
+			isPresent, _, _, err = imgStore.StatBlobUpload(repoName, blobUploadID)
+			So(err, ShouldBeNil)
+			So(isPresent, ShouldBeTrue)
+
+			So(os.Chmod(imgStore.BlobUploadPath(repoName, blobUploadID), 0o777), ShouldBeNil)
+
+			// GC should no longer error
+			err = gc.CleanRepo(ctx, repoName)
+			So(err, ShouldBeNil)
+
+			// Blob uploads should have correctly been GCed
+			isPresent, _, _, err = imgStore.StatBlobUpload(repoName, blobUploadID)
+			So(err, ShouldNotBeNil)
+			So(isPresent, ShouldBeFalse)
+
+			data, err := os.ReadFile(logFile.Name())
+			So(err, ShouldBeNil)
+			So(string(data), ShouldContainSubstring,
+				"failed to run GC for "+path.Join(imgStore.RootDir(), repoName))
 		})
 	})
 }
