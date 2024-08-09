@@ -26,6 +26,10 @@ type ImageStore interface { //nolint:interfacebloat
 	RUnlock(*time.Time)
 	Lock(*time.Time)
 	Unlock(*time.Time)
+	RLockRepo(repo string, lockStart *time.Time)
+	RUnlockRepo(repo string, lockStart *time.Time)
+	LockRepo(repo string, lockStart *time.Time)
+	UnlockRepo(repo string, lockStart *time.Time)
 	InitRepo(name string) error
 	ValidateRepo(name string) (bool, error)
 	GetRepositories() ([]string, error)
