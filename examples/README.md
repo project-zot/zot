@@ -370,6 +370,36 @@ Using that cookie on subsequent calls will authenticate them, asumming the cooki
 In case of using filesystem storage sessions are saved in zot's root directory.
 In case of using cloud storage sessions are saved in memory.
 
+
+### Securing session based login
+
+In order to secure session cookies used in session based authentication process you need to set the path to a file containg keys used to hash and encrypt the cookies:
+
+`sessionKeysFile`
+
+```
+    "auth": {
+      "htpasswd": {
+        "path": "test/data/htpasswd"
+      },
+      "sessionKeysFile": "/home/user/keys",
+      "apikey": true,
+    }
+```
+
+```
+user@host:~/zot$ cat ../keys  | jq
+{
+  "hashKey": "my-very-secret",
+  "encryptKey": "another-secret"
+}
+```
+
+- hashKey  -  used to authenticate the cookie value using HMAC. It is recommended to use a key with exactly 32 or 64 bytes. 
+- encryptKey - this is optional, used to encrypt the cookie value. If set, the length must correspond to the block size of the encryption algorithm. For AES, used by default, valid lengths are 16, 24, or 32 bytes to select AES-128, AES-192, or AES-256.
+
+If at least hashKey is not set zot will create a random one which on zot restarts it will invalidate all currently valid cookies and their sessions, requiring all users to login again.
+
 #### API keys
 
 zot allows authentication for REST API calls using your API key as an alternative to your password.
