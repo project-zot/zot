@@ -1,6 +1,7 @@
 package gc_test
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"os"
@@ -32,7 +33,9 @@ import (
 )
 
 const (
-	region = "us-east-2"
+	region        = "us-east-2"
+	s3TestName    = "S3APIs"
+	localTestName = "LocalAPIs"
 )
 
 //nolint:gochecknoglobals
@@ -41,17 +44,17 @@ var testCases = []struct {
 	storageType  string
 }{
 	{
-		testCaseName: "S3APIs",
+		testCaseName: s3TestName,
 		storageType:  storageConstants.S3StorageDriverName,
 	},
 	{
-		testCaseName: "LocalAPIs",
+		testCaseName: localTestName,
 		storageType:  storageConstants.LocalStorageDriverName,
 	},
 }
 
 func TestGarbageCollectAndRetention(t *testing.T) {
-	log := zlog.NewLogger("info", "/dev/null")
+	log := zlog.NewLogger("debug", "")
 	audit := zlog.NewAuditLogger("debug", "/dev/null")
 
 	metrics := monitoring.NewMetricsServer(false, log)
@@ -886,6 +889,105 @@ func TestGarbageCollectAndRetention(t *testing.T) {
 
 					err := gc.CleanRepo(ctx, "gc-test1")
 					So(err, ShouldNotBeNil)
+				})
+
+				Convey("should gc only stale blob uploads", func() {
+					gcDelay := 1 * time.Second
+					repoName := "gc-test1"
+
+					gc := gc.NewGarbageCollect(imgStore, metaDB, gc.Options{
+						Delay: gcDelay,
+						ImageRetention: config.ImageRetention{
+							Delay: storageConstants.DefaultRetentionDelay,
+							Policies: []config.RetentionPolicy{
+								{
+									Repositories:    []string{"**"},
+									DeleteReferrers: true,
+									DeleteUntagged:  &trueVal,
+									KeepTags: []config.KeepTagsPolicy{
+										{},
+									},
+								},
+							},
+						},
+					}, audit, log)
+
+					blobUploadID, err := imgStore.NewBlobUpload(repoName)
+					So(err, ShouldBeNil)
+
+					content := []byte("test-data3")
+					buf := bytes.NewBuffer(content)
+					_, err = imgStore.PutBlobChunkStreamed(repoName, blobUploadID, buf)
+					So(err, ShouldBeNil)
+
+					// Blob upload should be there
+					uploads, err := imgStore.ListBlobUploads(repoName)
+					So(err, ShouldBeNil)
+
+					if testcase.testCaseName == s3TestName {
+						// Remote sorage is written to only after the blob upload is finished,
+						// there should be no space used by blob uploads
+						So(uploads, ShouldEqual, []string{})
+					} else {
+						// Local storage is used right away
+						So(uploads, ShouldEqual, []string{blobUploadID})
+					}
+
+					isPresent, _, _, err := imgStore.StatBlobUpload(repoName, blobUploadID)
+
+					if testcase.testCaseName == s3TestName {
+						// Remote sorage is written to only after the blob upload is finished,
+						// there should be no space used by blob uploads
+						So(err, ShouldNotBeNil)
+						So(isPresent, ShouldBeFalse)
+					} else {
+						// Local storage is used right away
+						So(err, ShouldBeNil)
+						So(isPresent, ShouldBeTrue)
+					}
+
+					err = gc.CleanRepo(ctx, repoName)
+					So(err, ShouldBeNil)
+
+					// Blob upload is recent it should still be there
+					uploads, err = imgStore.ListBlobUploads(repoName)
+					So(err, ShouldBeNil)
+
+					if testcase.testCaseName == s3TestName {
+						// Remote sorage is written to only after the blob upload is finished,
+						// there should be no space used by blob uploads
+						So(uploads, ShouldEqual, []string{})
+					} else {
+						// Local storage is used right away
+						So(uploads, ShouldEqual, []string{blobUploadID})
+					}
+
+					isPresent, _, _, err = imgStore.StatBlobUpload(repoName, blobUploadID)
+
+					if testcase.testCaseName == s3TestName {
+						// Remote sorage is written to only after the blob upload is finished,
+						// there should be no space used by blob uploads
+						So(err, ShouldNotBeNil)
+						So(isPresent, ShouldBeFalse)
+					} else {
+						// Local storage is used right away
+						So(err, ShouldBeNil)
+						So(isPresent, ShouldBeTrue)
+					}
+
+					time.Sleep(gcDelay + 1*time.Second)
+
+					err = gc.CleanRepo(ctx, repoName)
+					So(err, ShouldBeNil)
+
+					// Blob uploads should be GCed
+					uploads, err = imgStore.ListBlobUploads(repoName)
+					So(err, ShouldBeNil)
+					So(uploads, ShouldBeEmpty)
+
+					isPresent, _, _, err = imgStore.StatBlobUpload(repoName, blobUploadID)
+					So(err, ShouldNotBeNil)
+					So(isPresent, ShouldBeFalse)
 				})
 			})
 		})

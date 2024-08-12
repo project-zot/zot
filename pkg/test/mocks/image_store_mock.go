@@ -25,6 +25,8 @@ type MockedImageStore struct {
 		godigest.Digest, error)
 	DeleteImageManifestFn  func(repo string, reference string, detectCollision bool) error
 	BlobUploadPathFn       func(repo string, uuid string) string
+	StatBlobUploadFn       func(repo string, uuid string) (bool, int64, time.Time, error)
+	ListBlobUploadsFn      func(repo string) ([]string, error)
 	NewBlobUploadFn        func(repo string) (string, error)
 	GetBlobUploadFn        func(repo string, uuid string) (int64, error)
 	BlobUploadInfoFn       func(repo string, uuid string) (int64, error)
@@ -179,6 +181,22 @@ func (is MockedImageStore) DeleteImageManifest(name string, reference string, de
 	}
 
 	return nil
+}
+
+func (is MockedImageStore) ListBlobUploads(repo string) ([]string, error) {
+	if is.ListBlobUploadsFn != nil {
+		return is.ListBlobUploadsFn(repo)
+	}
+
+	return []string{}, nil
+}
+
+func (is MockedImageStore) StatBlobUpload(repo string, uuid string) (bool, int64, time.Time, error) {
+	if is.StatBlobUploadFn != nil {
+		return is.StatBlobUploadFn(repo, uuid)
+	}
+
+	return true, 0, time.Time{}, nil
 }
 
 func (is MockedImageStore) NewBlobUpload(repo string) (string, error) {

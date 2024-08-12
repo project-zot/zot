@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math/rand"
 	"path"
+	"strconv"
 	"strings"
 	"time"
 
@@ -146,6 +147,11 @@ func (gc GarbageCollect) cleanRepo(ctx context.Context, repo string) error {
 
 	// gc unreferenced blobs
 	if err := gc.removeUnreferencedBlobs(repo, gc.opts.Delay, gc.log); err != nil {
+		return err
+	}
+
+	// gc old blob uploads
+	if err := gc.removeBlobUploads(repo, gc.opts.Delay); err != nil {
 		return err
 	}
 
@@ -544,6 +550,52 @@ func (gc GarbageCollect) identifyManifestsReferencedInIndex(index ispec.Index, r
 	}
 
 	return nil
+}
+
+// removeBlobUploads gc all temporary uploads which are past their gc delay.
+func (gc GarbageCollect) removeBlobUploads(repo string, delay time.Duration) error {
+	gc.log.Debug().Str("module", "gc").Str("repository", repo).Msg("cleaning unclaimed blob uploads")
+
+	if dir := path.Join(gc.imgStore.RootDir(), repo); !gc.imgStore.DirExists(dir) {
+		// The repository was already cleaned up by a different codepath
+		return nil
+	}
+
+	blobUploads, err := gc.imgStore.ListBlobUploads(repo)
+	if err != nil {
+		gc.log.Error().Err(err).Str("module", "gc").Str("repository", repo).Msg("failed to get list of blob uploads")
+
+		return err
+	}
+
+	var aggregatedErr error
+
+	for _, uuid := range blobUploads {
+		_, size, modtime, err := gc.imgStore.StatBlobUpload(repo, uuid)
+		if err != nil {
+			gc.log.Error().Err(err).Str("module", "gc").Str("repository", repo).Str("blobUpload", uuid).
+				Msg("failed to stat blob upload")
+
+			aggregatedErr = errors.Join(aggregatedErr, err)
+
+			continue
+		}
+
+		if modtime.Add(delay).After(time.Now()) {
+			// Do not delete blob uploads which have been updated recently
+			continue
+		}
+
+		err = gc.imgStore.DeleteBlobUpload(repo, uuid)
+		if err != nil {
+			gc.log.Error().Err(err).Str("module", "gc").Str("repository", repo).Str("blobUpload", uuid).
+				Str("size", strconv.FormatInt(size, 10)).Str("modified", modtime.String()).Msg("failed to delete blob upload")
+
+			aggregatedErr = errors.Join(aggregatedErr, err)
+		}
+	}
+
+	return aggregatedErr
 }
 
 // removeUnreferencedBlobs gc all blobs which are not referenced by any manifest found in repo's index.json.

@@ -691,6 +691,42 @@ func (is *ImageStore) BlobUploadPath(repo, uuid string) string {
 	return blobUploadPath
 }
 
+/*
+ListBlobUploads returns all blob uploads present in the repository. The caller function MUST lock from outside.
+*/
+func (is *ImageStore) ListBlobUploads(repo string) ([]string, error) {
+	blobUploadPaths, err := is.storeDriver.List(path.Join(is.RootDir(), repo, storageConstants.BlobUploadDir))
+	if err != nil {
+		if errors.As(err, &driver.PathNotFoundError{}) {
+			// blobs uploads folder does not exist
+			return []string{}, nil
+		}
+
+		is.log.Debug().Str("repository", repo).Msg("failed to list .uploads/ dir")
+	}
+
+	blobUploads := []string{}
+	for _, blobUploadPath := range blobUploadPaths {
+		blobUploads = append(blobUploads, path.Base(blobUploadPath))
+	}
+
+	return blobUploads, err
+}
+
+// StatBlobUpload verifies if a blob upload is present inside a repository. The caller function MUST lock from outside.
+func (is *ImageStore) StatBlobUpload(repo, uuid string) (bool, int64, time.Time, error) {
+	blobUploadPath := is.BlobUploadPath(repo, uuid)
+
+	binfo, err := is.storeDriver.Stat(blobUploadPath)
+	if err != nil {
+		is.log.Error().Err(err).Str("blobUpload", blobUploadPath).Msg("failed to stat blob upload")
+
+		return false, -1, time.Time{}, err
+	}
+
+	return true, binfo.Size(), binfo.ModTime(), nil
+}
+
 // NewBlobUpload returns the unique ID for an upload in progress.
 func (is *ImageStore) NewBlobUpload(repo string) (string, error) {
 	if err := is.InitRepo(repo); err != nil {
@@ -1572,10 +1608,7 @@ func (is *ImageStore) CleanupRepo(repo string, blobs []godigest.Digest, removeRe
 		}
 	}
 
-	blobUploads, err := is.storeDriver.List(path.Join(is.RootDir(), repo, storageConstants.BlobUploadDir))
-	if err != nil {
-		is.log.Debug().Str("repository", repo).Msg("failed to list .uploads/ dir")
-	}
+	blobUploads, _ := is.ListBlobUploads(repo)
 
 	// if removeRepo flag is true and we cleanup all blobs and there are no blobs currently being uploaded.
 	if removeRepo && count == len(blobs) && count > 0 && len(blobUploads) == 0 {
