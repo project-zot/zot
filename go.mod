@@ -66,7 +66,7 @@ require (
 	google.golang.org/protobuf v1.34.2
 	gopkg.in/resty.v1 v1.12.0
 	gopkg.in/yaml.v2 v2.4.0
-	modernc.org/sqlite v1.31.1
+	modernc.org/sqlite v1.32.0
 	oras.land/oras-go/v2 v2.5.0
 )
 
