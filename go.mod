@@ -58,11 +58,11 @@ require (
 	github.com/swaggo/http-swagger v1.3.4
 	github.com/swaggo/swag v1.16.3
 	github.com/vektah/gqlparser/v2 v2.5.16
-	github.com/zitadel/oidc/v3 v3.26.0
+	github.com/zitadel/oidc/v3 v3.27.0
 	go.etcd.io/bbolt v1.3.10
 	golang.org/x/crypto v0.25.0
 	golang.org/x/exp v0.0.0-20240719175910-8a7402abbf56
-	golang.org/x/oauth2 v0.21.0
+	golang.org/x/oauth2 v0.22.0
 	google.golang.org/protobuf v1.34.2
 	gopkg.in/resty.v1 v1.12.0
 	gopkg.in/yaml.v2 v2.4.0
