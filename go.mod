@@ -50,7 +50,7 @@ require (
 	github.com/prometheus/client_model v0.6.1
 	github.com/rs/zerolog v1.33.0
 	github.com/sigstore/cosign/v2 v2.3.0
-	github.com/sigstore/sigstore v1.8.7
+	github.com/sigstore/sigstore v1.8.8
 	github.com/smartystreets/goconvey v1.8.1
 	github.com/spf13/cobra v1.8.1
 	github.com/spf13/viper v1.19.0
@@ -62,7 +62,7 @@ require (
 	go.etcd.io/bbolt v1.3.10
 	golang.org/x/crypto v0.25.0
 	golang.org/x/exp v0.0.0-20240719175910-8a7402abbf56
-	golang.org/x/oauth2 v0.21.0
+	golang.org/x/oauth2 v0.22.0
 	google.golang.org/protobuf v1.34.2
 	gopkg.in/resty.v1 v1.12.0
 	gopkg.in/yaml.v2 v2.4.0
