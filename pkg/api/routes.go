@@ -23,7 +23,7 @@ import (
 	"time"
 
 	guuid "github.com/gofrs/uuid"
-	"github.com/google/go-github/v52/github"
+	"github.com/google/go-github/v62/github"
 	"github.com/gorilla/mux"
 	jsoniter "github.com/json-iterator/go"
 	"github.com/opencontainers/distribution-spec/specs-go/v1/extensions"

@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/didip/tollbooth/v6"
+	"github.com/didip/tollbooth/v7"
 	"github.com/gorilla/mux"
 
 	"zotregistry.dev/zot/pkg/extensions/monitoring"
