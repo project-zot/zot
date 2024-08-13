@@ -19,7 +19,7 @@ import (
 
 	"github.com/chartmuseum/auth"
 	guuid "github.com/gofrs/uuid"
-	"github.com/google/go-github/v52/github"
+	"github.com/google/go-github/v62/github"
 	"github.com/google/uuid"
 	"github.com/gorilla/mux"
 	"github.com/gorilla/sessions"

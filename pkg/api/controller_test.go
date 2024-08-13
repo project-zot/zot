@@ -26,7 +26,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/google/go-github/v52/github"
+	"github.com/google/go-github/v62/github"
 	"github.com/gorilla/mux"
 	"github.com/gorilla/securecookie"
 	"github.com/gorilla/sessions"
