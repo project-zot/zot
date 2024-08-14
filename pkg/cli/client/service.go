@@ -18,7 +18,7 @@ import (
 	"github.com/olekukonko/tablewriter"
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
-	"gopkg.in/yaml.v2"
+	"gopkg.in/yaml.v3"
 
 	zerr "zotregistry.dev/zot/errors"
 	"zotregistry.dev/zot/pkg/api/constants"
