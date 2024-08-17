@@ -102,8 +102,8 @@ func (olu BaseOciLayoutUtils) GetImageManifests(repo string) ([]ispec.Descriptor
 
 	imageStore := olu.StoreController.GetImageStore(repo)
 
-	imageStore.RLock(&lockLatency)
-	defer imageStore.RUnlock(&lockLatency)
+	imageStore.RLockRepo(repo, &lockLatency)
+	defer imageStore.RUnlockRepo(repo, &lockLatency)
 
 	buf, err := imageStore.GetIndexContent(repo)
 	if err != nil {
@@ -137,8 +137,8 @@ func (olu BaseOciLayoutUtils) GetImageBlobManifest(repo string, digest godigest.
 
 	imageStore := olu.StoreController.GetImageStore(repo)
 
-	imageStore.RLock(&lockLatency)
-	defer imageStore.RUnlock(&lockLatency)
+	imageStore.RLockRepo(repo, &lockLatency)
+	defer imageStore.RUnlockRepo(repo, &lockLatency)
 
 	blobBuf, err := imageStore.GetBlobContent(repo, digest)
 	if err != nil {
@@ -163,8 +163,8 @@ func (olu BaseOciLayoutUtils) GetImageInfo(repo string, configDigest godigest.Di
 
 	imageStore := olu.StoreController.GetImageStore(repo)
 
-	imageStore.RLock(&lockLatency)
-	defer imageStore.RUnlock(&lockLatency)
+	imageStore.RLockRepo(repo, &lockLatency)
+	defer imageStore.RUnlockRepo(repo, &lockLatency)
 
 	blobBuf, err := imageStore.GetBlobContent(repo, configDigest)
 	if err != nil {
@@ -323,8 +323,8 @@ func (olu BaseOciLayoutUtils) GetImageManifestSize(repo string, manifestDigest g
 
 	var lockLatency time.Time
 
-	imageStore.RLock(&lockLatency)
-	defer imageStore.RUnlock(&lockLatency)
+	imageStore.RLockRepo(repo, &lockLatency)
+	defer imageStore.RUnlockRepo(repo, &lockLatency)
 
 	manifestBlob, err := imageStore.GetBlobContent(repo, manifestDigest)
 	if err != nil {

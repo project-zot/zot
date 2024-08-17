@@ -71,18 +71,6 @@ func (is MockedImageStore) StatIndex(repo string) (bool, int64, time.Time, error
 	return true, 0, time.Time{}, nil
 }
 
-func (is MockedImageStore) Lock(t *time.Time) {
-}
-
-func (is MockedImageStore) Unlock(t *time.Time) {
-}
-
-func (is MockedImageStore) RUnlock(t *time.Time) {
-}
-
-func (is MockedImageStore) RLock(t *time.Time) {
-}
-
 func (is MockedImageStore) LockRepo(repo string, t *time.Time) {
 }
 
