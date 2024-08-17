@@ -1280,11 +1280,16 @@ func TestDedupeLinks(t *testing.T) {
 						path.Join(dir, "dedupe1", "blobs", "sha256", blobDigest2),
 					}
 
+					duplicateRepos := []string{
+						path.Join(dir, "dedupe1"),
+					}
+
 					// remove original blob so that it can not be statted
 					err := os.Remove(path.Join(dir, "dedupe1", "blobs", "sha256", blobDigest1))
 					So(err, ShouldBeNil)
 
-					err = imgStore.RunDedupeForDigest(context.TODO(), godigest.Digest(blobDigest1), true, duplicateBlobs)
+					err = imgStore.RunDedupeForDigest(context.TODO(), godigest.Digest(blobDigest1), true,
+						duplicateBlobs, duplicateRepos)
 					So(err, ShouldNotBeNil)
 				})
 
