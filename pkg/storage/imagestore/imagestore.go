@@ -126,7 +126,7 @@ func (is *ImageStore) Unlock(lockStart *time.Time) {
 	monitoring.ObserveStorageLockLatency(is.metrics, latency, is.RootDir(), storageConstants.RWLOCK) // histogram
 }
 
-// RLock read-lock for specific repo
+// RLock read-lock for specific repo.
 func (is *ImageStore) RLockRepo(repo string, lockStart *time.Time) {
 	*lockStart = time.Now()
 
@@ -143,14 +143,14 @@ func (is *ImageStore) RUnlockRepo(repo string, lockStart *time.Time) {
 	monitoring.ObserveStorageLockLatency(is.metrics, latency, is.RootDir(), storageConstants.RLOCK) // histogram
 }
 
-// Lock write-lock for specific repo..
+// Lock write-lock for specific repo.
 func (is *ImageStore) LockRepo(repo string, lockStart *time.Time) {
 	*lockStart = time.Now()
 
 	is.lock.LockRepo(repo)
 }
 
-// Unlock write-unlock for specific repo..
+// Unlock write-unlock for specific repo.
 func (is *ImageStore) UnlockRepo(repo string, lockStart *time.Time) {
 	is.lock.UnlockRepo(repo)
 
@@ -534,6 +534,7 @@ func (is *ImageStore) GetImageManifest(repo, reference string) ([]byte, godigest
 	var err error
 
 	is.RLockRepo(repo, &lockLatency)
+
 	defer func() {
 		is.RUnlockRepo(repo, &lockLatency)
 
@@ -586,6 +587,7 @@ func (is *ImageStore) PutImageManifest(repo, reference, mediaType string, //noli
 	var err error
 
 	is.LockRepo(repo, &lockLatency)
+
 	defer func() {
 		is.UnlockRepo(repo, &lockLatency)
 
@@ -1902,7 +1904,7 @@ func (is *ImageStore) GetAllBlobs(repo string) ([]godigest.Digest, error) {
 }
 
 func (is *ImageStore) GetNextDigestWithBlobPaths(repos []string, lastDigests []godigest.Digest,
-) (godigest.Digest, []string, error) {
+) (godigest.Digest, []string, []string, error) {
 	var lockLatency time.Time
 
 	dir := is.rootDir
@@ -1910,9 +1912,11 @@ func (is *ImageStore) GetNextDigestWithBlobPaths(repos []string, lastDigests []g
 	is.RLock(&lockLatency)
 	defer is.RUnlock(&lockLatency)
 
-	var duplicateBlobs []string
+	var duplicateBlobs, duplicateRepos []string
 
 	var digest godigest.Digest
+
+	var repo string
 
 	err := is.storeDriver.Walk(dir, func(fileInfo driver.FileInfo) error {
 		// skip blobs under .sync and .uploads
@@ -1962,6 +1966,10 @@ func (is *ImageStore) GetNextDigestWithBlobPaths(repos []string, lastDigests []g
 
 		if blobDigest == digest {
 			duplicateBlobs = append(duplicateBlobs, fileInfo.Path())
+
+			if !zcommon.Contains(duplicateRepos, repo) {
+				duplicateRepos = append(duplicateRepos, repo)
+			}
 		}
 
 		return nil
@@ -1971,10 +1979,10 @@ func (is *ImageStore) GetNextDigestWithBlobPaths(repos []string, lastDigests []g
 	var perr driver.PathNotFoundError
 
 	if errors.As(err, &perr) {
-		return digest, duplicateBlobs, nil
+		return digest, duplicateBlobs, duplicateRepos, nil
 	}
 
-	return digest, duplicateBlobs, err
+	return digest, duplicateBlobs, duplicateRepos, err
 }
 
 func (is *ImageStore) getOriginalBlobFromDisk(duplicateBlobs []string) (string, error) {
@@ -2149,7 +2157,7 @@ func (is *ImageStore) restoreDedupedBlobs(ctx context.Context, digest godigest.D
 }
 
 func (is *ImageStore) RunDedupeForDigest(ctx context.Context, digest godigest.Digest, dedupe bool,
-	duplicateBlobs []string,
+	duplicateBlobs []string, duplicateRepos []string,
 ) error {
 	var lockLatency time.Time
 

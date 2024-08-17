@@ -2279,10 +2279,11 @@ func TestRebuildDedupeMockStoreDriver(t *testing.T) {
 			},
 		})
 
-		digest, duplicateBlobs, err := imgStore.GetNextDigestWithBlobPaths([]string{"path/to"}, []godigest.Digest{})
+		digest, duplicateBlobs, duplicateRepos, err := imgStore.GetNextDigestWithBlobPaths([]string{"path/to"},
+			[]godigest.Digest{})
 		So(err, ShouldBeNil)
 
-		err = imgStore.RunDedupeForDigest(context.TODO(), digest, false, duplicateBlobs)
+		err = imgStore.RunDedupeForDigest(context.TODO(), digest, false, duplicateBlobs, duplicateRepos)
 		So(err, ShouldNotBeNil)
 	})
 
@@ -2328,10 +2329,11 @@ func TestRebuildDedupeMockStoreDriver(t *testing.T) {
 			},
 		})
 
-		digest, duplicateBlobs, err := imgStore.GetNextDigestWithBlobPaths([]string{"path/to"}, []godigest.Digest{})
+		digest, duplicateBlobs, duplicateRepos, err := imgStore.GetNextDigestWithBlobPaths([]string{"path/to"},
+			[]godigest.Digest{})
 		So(err, ShouldBeNil)
 
-		err = imgStore.RunDedupeForDigest(context.TODO(), digest, false, duplicateBlobs)
+		err = imgStore.RunDedupeForDigest(context.TODO(), digest, false, duplicateBlobs, duplicateRepos)
 		So(err, ShouldNotBeNil)
 	})
 
@@ -2377,10 +2379,11 @@ func TestRebuildDedupeMockStoreDriver(t *testing.T) {
 			},
 		})
 
-		digest, duplicateBlobs, err := imgStore.GetNextDigestWithBlobPaths([]string{"path/to"}, []godigest.Digest{})
+		digest, duplicateBlobs, duplicateRepos, err := imgStore.GetNextDigestWithBlobPaths([]string{"path/to"},
+			[]godigest.Digest{})
 		So(err, ShouldBeNil)
 
-		err = imgStore.RunDedupeForDigest(context.TODO(), digest, false, duplicateBlobs)
+		err = imgStore.RunDedupeForDigest(context.TODO(), digest, false, duplicateBlobs, duplicateRepos)
 		So(err, ShouldNotBeNil)
 	})
 
@@ -2423,10 +2426,11 @@ func TestRebuildDedupeMockStoreDriver(t *testing.T) {
 			},
 		})
 
-		digest, duplicateBlobs, err := imgStore.GetNextDigestWithBlobPaths([]string{"path/to"}, []godigest.Digest{})
+		digest, duplicateBlobs, duplicateRepos, err := imgStore.GetNextDigestWithBlobPaths([]string{"path/to"},
+			[]godigest.Digest{})
 		So(err, ShouldBeNil)
 
-		err = imgStore.RunDedupeForDigest(context.TODO(), digest, false, duplicateBlobs)
+		err = imgStore.RunDedupeForDigest(context.TODO(), digest, false, duplicateBlobs, duplicateRepos)
 		So(err, ShouldNotBeNil)
 
 		Convey("Trigger Stat() error in dedupeBlobs()", func() {
@@ -2468,10 +2472,11 @@ func TestRebuildDedupeMockStoreDriver(t *testing.T) {
 				},
 			})
 
-			digest, duplicateBlobs, err := imgStore.GetNextDigestWithBlobPaths([]string{"path/to"}, []godigest.Digest{})
+			digest, duplicateBlobs, duplicateRepos, err := imgStore.GetNextDigestWithBlobPaths([]string{"path/to"},
+				[]godigest.Digest{})
 			So(err, ShouldBeNil)
 
-			err = imgStore.RunDedupeForDigest(context.TODO(), digest, false, duplicateBlobs)
+			err = imgStore.RunDedupeForDigest(context.TODO(), digest, false, duplicateBlobs, duplicateRepos)
 			So(err, ShouldNotBeNil)
 		})
 	})
@@ -2519,10 +2524,11 @@ func TestRebuildDedupeMockStoreDriver(t *testing.T) {
 			},
 		})
 
-		digest, duplicateBlobs, err := imgStore.GetNextDigestWithBlobPaths([]string{"path/to"}, []godigest.Digest{})
+		digest, duplicateBlobs, duplicateRepos, err := imgStore.GetNextDigestWithBlobPaths([]string{"path/to"},
+			[]godigest.Digest{})
 		So(err, ShouldBeNil)
 
-		err = imgStore.RunDedupeForDigest(context.TODO(), digest, true, duplicateBlobs)
+		err = imgStore.RunDedupeForDigest(context.TODO(), digest, true, duplicateBlobs, duplicateRepos)
 		So(err, ShouldNotBeNil)
 	})
 
@@ -2567,10 +2573,11 @@ func TestRebuildDedupeMockStoreDriver(t *testing.T) {
 			},
 		})
 
-		digest, duplicateBlobs, err := imgStore.GetNextDigestWithBlobPaths([]string{"path/to"}, []godigest.Digest{})
+		digest, duplicateBlobs, duplicateRepos, err := imgStore.GetNextDigestWithBlobPaths([]string{"path/to"},
+			[]godigest.Digest{})
 		So(err, ShouldBeNil)
 
-		err = imgStore.RunDedupeForDigest(context.TODO(), digest, true, duplicateBlobs)
+		err = imgStore.RunDedupeForDigest(context.TODO(), digest, true, duplicateBlobs, duplicateRepos)
 		So(err, ShouldNotBeNil)
 	})
 
@@ -2615,10 +2622,11 @@ func TestRebuildDedupeMockStoreDriver(t *testing.T) {
 			},
 		})
 
-		digest, duplicateBlobs, err := imgStore.GetNextDigestWithBlobPaths([]string{"path/to"}, []godigest.Digest{})
+		digest, duplicateBlobs, duplicateRepos, err := imgStore.GetNextDigestWithBlobPaths([]string{"path/to"},
+			[]godigest.Digest{})
 		So(err, ShouldBeNil)
 
-		err = imgStore.RunDedupeForDigest(context.TODO(), digest, true, duplicateBlobs)
+		err = imgStore.RunDedupeForDigest(context.TODO(), digest, true, duplicateBlobs, duplicateRepos)
 		So(err, ShouldNotBeNil)
 	})
 
@@ -2630,7 +2638,7 @@ func TestRebuildDedupeMockStoreDriver(t *testing.T) {
 			},
 		})
 
-		_, _, err := imgStore.GetNextDigestWithBlobPaths([]string{"path/to"}, []godigest.Digest{})
+		_, _, _, err := imgStore.GetNextDigestWithBlobPaths([]string{"path/to"}, []godigest.Digest{})
 		So(err, ShouldNotBeNil)
 	})
 
@@ -2722,10 +2730,11 @@ func TestRebuildDedupeMockStoreDriver(t *testing.T) {
 					},
 				})
 
-			digest, duplicateBlobs, err := imgStore.GetNextDigestWithBlobPaths([]string{"path/to"}, []godigest.Digest{})
+			digest, duplicateBlobs, duplicateRepos, err := imgStore.GetNextDigestWithBlobPaths([]string{"path/to"},
+				[]godigest.Digest{})
 			So(err, ShouldBeNil)
 
-			err = imgStore.RunDedupeForDigest(context.TODO(), digest, true, duplicateBlobs)
+			err = imgStore.RunDedupeForDigest(context.TODO(), digest, true, duplicateBlobs, duplicateRepos)
 			So(err, ShouldNotBeNil)
 		})
 
@@ -2744,10 +2753,11 @@ func TestRebuildDedupeMockStoreDriver(t *testing.T) {
 					},
 				})
 
-			digest, duplicateBlobs, err := imgStore.GetNextDigestWithBlobPaths([]string{"path/to"}, []godigest.Digest{})
+			digest, duplicateBlobs, duplicateRepos, err := imgStore.GetNextDigestWithBlobPaths([]string{"path/to"},
+				[]godigest.Digest{})
 			So(err, ShouldBeNil)
 
-			err = imgStore.RunDedupeForDigest(context.TODO(), digest, true, duplicateBlobs)
+			err = imgStore.RunDedupeForDigest(context.TODO(), digest, true, duplicateBlobs, duplicateRepos)
 			So(err, ShouldNotBeNil)
 		})
 
@@ -2762,10 +2772,11 @@ func TestRebuildDedupeMockStoreDriver(t *testing.T) {
 					},
 				})
 
-			digest, duplicateBlobs, err := imgStore.GetNextDigestWithBlobPaths([]string{"path/to"}, []godigest.Digest{})
+			digest, duplicateBlobs, duplicateRepos, err := imgStore.GetNextDigestWithBlobPaths([]string{"path/to"},
+				[]godigest.Digest{})
 			So(err, ShouldBeNil)
 
-			err = imgStore.RunDedupeForDigest(context.TODO(), digest, true, duplicateBlobs)
+			err = imgStore.RunDedupeForDigest(context.TODO(), digest, true, duplicateBlobs, duplicateRepos)
 			So(err, ShouldNotBeNil)
 		})
 	})

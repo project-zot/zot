@@ -48,7 +48,7 @@ func (sl *ImageStoreLock) RLockRepo(repo string) {
 	val, _ := sl.repoLocks.LoadOrStore(repo, &sync.RWMutex{})
 
 	// lock individual repo
-	repoLock := val.(*sync.RWMutex)
+	repoLock, _ := val.(*sync.RWMutex)
 	repoLock.RLock()
 }
 
@@ -60,7 +60,7 @@ func (sl *ImageStoreLock) RUnlockRepo(repo string) {
 	}
 
 	// read-unlock individual repo
-	repoLock := val.(*sync.RWMutex)
+	repoLock, _ := val.(*sync.RWMutex)
 	repoLock.RUnlock()
 
 	// decrement the global read counter after the one for the individual repo is decremented
@@ -78,7 +78,7 @@ func (sl *ImageStoreLock) LockRepo(repo string) {
 	val, _ := sl.repoLocks.LoadOrStore(repo, &sync.RWMutex{})
 
 	// write-lock individual repo
-	repoLock := val.(*sync.RWMutex)
+	repoLock, _ := val.(*sync.RWMutex)
 	repoLock.Lock()
 }
 
@@ -90,7 +90,7 @@ func (sl *ImageStoreLock) UnlockRepo(repo string) {
 	}
 
 	// write-unlock individual repo
-	repoLock := val.(*sync.RWMutex)
+	repoLock, _ := val.(*sync.RWMutex)
 	repoLock.Unlock()
 
 	// decrement the global read counter after the individual repo was unlocked
