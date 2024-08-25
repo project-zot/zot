@@ -330,17 +330,21 @@ func RemoveManifestDescByReference(index *ispec.Index, reference string, detectC
 ) (ispec.Descriptor, error) {
 	var removedManifest ispec.Descriptor
 
-	var found bool
+	var found, foundAsTag bool                        // keep track if the manifest was found by digest or by tag
+	manifestDigestCounts := map[godigest.Digest]int{} // Keep track of the number of references for a specific digest
 
 	foundCount := 0
 
 	var outIndex ispec.Index
 
 	for _, manifest := range index.Manifests {
+		manifestDigestCounts[manifest.Digest]++
+
 		tag, ok := manifest.Annotations[ispec.AnnotationRefName]
 		if ok && tag == reference {
 			removedManifest = manifest
 			found = true
+			foundAsTag = true
 			foundCount++
 
 			continue
@@ -359,6 +363,19 @@ func RemoveManifestDescByReference(index *ispec.Index, reference string, detectC
 		return ispec.Descriptor{}, zerr.ErrManifestConflict
 	} else if !found {
 		return ispec.Descriptor{}, zerr.ErrManifestNotFound
+	}
+
+	// In case of delete by digest we remove the manifest right away from storage
+	// but in case of delete by tag we want to only remove the tag
+	// and handle the manifest based on retention rules later.
+	// If there are more than one tags with the same digest we want to keep the others.
+	// If and only if there are no other tags except the one we want to remove
+	// we need to add a new descriptor without a tag name to keep track of
+	// the manifest in index.json so it remains accessible by digest.
+	if foundAsTag && manifestDigestCounts[removedManifest.Digest] == 1 {
+		newManifest := removedManifest
+		delete(newManifest.Annotations, ispec.AnnotationRefName)
+		outIndex.Manifests = append(outIndex.Manifests, newManifest)
 	}
 
 	index.Manifests = outIndex.Manifests
@@ -515,6 +532,11 @@ func IsBlobReferencedInImageIndex(imgStore storageTypes.ImageStore, repo string,
 
 		switch desc.MediaType {
 		case ispec.MediaTypeImageIndex:
+			if digest == desc.Digest {
+				// no need to look further if we have a match
+				return true, nil
+			}
+
 			indexImage, err := GetImageIndex(imgStore, repo, desc.Digest, log)
 			if err != nil {
 				log.Error().Err(err).Str("repository", repo).Str("digest", desc.Digest.String()).
