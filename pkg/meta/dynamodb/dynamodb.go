@@ -1970,24 +1970,38 @@ func (dwr DynamoDB) DeleteUserData(ctx context.Context) error {
 	return err
 }
 
+const AwsS3BatchLimit = 100
+
 func (dwr *DynamoDB) fetchImageMetaAttributesByDigest(ctx context.Context, digests []string,
 ) ([]map[string]types.AttributeValue, error) {
-	resp, err := dwr.Client.BatchGetItem(ctx, &dynamodb.BatchGetItemInput{
-		RequestItems: map[string]types.KeysAndAttributes{
-			dwr.ImageMetaTablename: {
-				Keys: getBatchImageKeys(digests),
+	// AWS S3 as a limit (=100) on number of keys that can retrieved in one
+	// request, so break it up
+	batchedResp := []map[string]types.AttributeValue{}
+
+	for start := 0; start < len(digests); {
+		size := min(len(digests)-start, AwsS3BatchLimit)
+		end := start + size
+
+		resp, err := dwr.Client.BatchGetItem(ctx, &dynamodb.BatchGetItemInput{
+			RequestItems: map[string]types.KeysAndAttributes{
+				dwr.ImageMetaTablename: {
+					Keys: getBatchImageKeys(digests[start:end]),
+				},
 			},
-		},
-	})
-	if err != nil {
-		return nil, err
+		})
+		if err != nil {
+			return nil, err
+		}
+
+		if len(resp.Responses[dwr.ImageMetaTablename]) != size {
+			return nil, zerr.ErrImageMetaNotFound
+		}
+
+		batchedResp = append(batchedResp, resp.Responses[dwr.ImageMetaTablename]...)
+		start = end
 	}
 
-	if len(resp.Responses[dwr.ImageMetaTablename]) != len(digests) {
-		return nil, zerr.ErrImageMetaNotFound
-	}
-
-	return resp.Responses[dwr.ImageMetaTablename], nil
+	return batchedResp, nil
 }
 
 func getBatchImageKeys(digests []string) []map[string]types.AttributeValue {
