@@ -9,7 +9,7 @@ github.com/agext/levenshtein|https://github.com/agext/levenshtein/blob/v1.2.3/LI
 github.com/aliyun/credentials-go|https://github.com/aliyun/credentials-go/blob/v1.3.6/LICENSE|Apache-2.0
 github.com/cloudflare/circl|https://github.com/cloudflare/circl/blob/v1.3.9/LICENSE|BSD-3-Clause
 github.com/containerd/containerd/api|https://github.com/containerd/containerd/blob/api/v1.7.19/api/LICENSE|Apache-2.0
-github.com/containers/image/v5|https://github.com/containers/image/blob/v5.32.1/LICENSE|Apache-2.0
+github.com/containers/image/v5|https://github.com/containers/image/blob/v5.32.2/LICENSE|Apache-2.0
 github.com/dgryski/go-rendezvous|https://github.com/dgryski/go-rendezvous/blob/9f7001d12a5f/LICENSE|MIT
 github.com/docker/go-connections|https://github.com/docker/go-connections/blob/v0.5.0/LICENSE|Apache-2.0
 github.com/google/wire|https://github.com/google/wire/blob/v0.6.0/LICENSE|Apache-2.0
@@ -21,7 +21,7 @@ github.com/transparency-dev/merkle|https://github.com/transparency-dev/merkle/bl
 github.com/zitadel/oidc/v3|https://github.com/zitadel/oidc/blob/v3.27.0/LICENSE|Apache-2.0
 go.opencensus.io|https://github.com/census-instrumentation/opencensus-go/blob/v0.24.0/LICENSE|Apache-2.0
 go.opentelemetry.io/otel/sdk|https://github.com/open-telemetry/opentelemetry-go/blob/sdk/v1.28.0/sdk/LICENSE|Apache-2.0
-golang.org/x/text|https://cs.opensource.google/go/x/text/+/v0.17.0:LICENSE|BSD-3-Clause
+golang.org/x/text|https://cs.opensource.google/go/x/text/+/v0.18.0:LICENSE|BSD-3-Clause
 k8s.io/apimachinery|https://github.com/kubernetes/apimachinery/blob/v0.30.3/LICENSE|Apache-2.0
 k8s.io/apiserver|https://github.com/kubernetes/apiserver/blob/v0.30.3/LICENSE|Apache-2.0
 k8s.io/api|https://github.com/kubernetes/api/blob/v0.30.3/LICENSE|Apache-2.0
