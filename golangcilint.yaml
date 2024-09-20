@@ -26,6 +26,7 @@ linters:
     - protogetter
     - contextcheck # needs to revisit: https://github.com/project-zot/zot/pull/2556
     - copyloopvar # needs to revisit: https://github.com/project-zot/zot/pull/2556
+    - typecheck
 
 linters-settings:
   dupl:
