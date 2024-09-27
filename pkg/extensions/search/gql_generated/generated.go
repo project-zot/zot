@@ -2199,478 +2199,1198 @@ var parsedSchema = gqlparser.MustLoadSchema(sources...)
 func (ec *executionContext) field_Query_BaseImageList_args(ctx context.Context, rawArgs map[string]interface{}) (map[string]interface{}, error) {
 	var err error
 	args := map[string]interface{}{}
-	var arg0 string
-	if tmp, ok := rawArgs["image"]; ok {
-		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("image"))
-		arg0, err = ec.unmarshalNString2string(ctx, tmp)
-		if err != nil {
-			return nil, err
-		}
+	arg0, err := ec.field_Query_BaseImageList_argsImage(ctx, rawArgs)
+	if err != nil {
+		return nil, err
 	}
 	args["image"] = arg0
-	var arg1 *string
-	if tmp, ok := rawArgs["digest"]; ok {
-		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("digest"))
-		arg1, err = ec.unmarshalOString2ᚖstring(ctx, tmp)
-		if err != nil {
-			return nil, err
-		}
+	arg1, err := ec.field_Query_BaseImageList_argsDigest(ctx, rawArgs)
+	if err != nil {
+		return nil, err
 	}
 	args["digest"] = arg1
-	var arg2 *PageInput
-	if tmp, ok := rawArgs["requestedPage"]; ok {
-		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("requestedPage"))
-		arg2, err = ec.unmarshalOPageInput2ᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐPageInput(ctx, tmp)
-		if err != nil {
-			return nil, err
-		}
+	arg2, err := ec.field_Query_BaseImageList_argsRequestedPage(ctx, rawArgs)
+	if err != nil {
+		return nil, err
 	}
 	args["requestedPage"] = arg2
 	return args, nil
+}
+func (ec *executionContext) field_Query_BaseImageList_argsImage(
+	ctx context.Context,
+	rawArgs map[string]interface{},
+) (string, error) {
+	// We won't call the directive if the argument is null.
+	// Set call_argument_directives_with_null to true to call directives
+	// even if the argument is null.
+	_, ok := rawArgs["image"]
+	if !ok {
+		var zeroVal string
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("image"))
+	if tmp, ok := rawArgs["image"]; ok {
+		return ec.unmarshalNString2string(ctx, tmp)
+	}
+
+	var zeroVal string
+	return zeroVal, nil
+}
+
+func (ec *executionContext) field_Query_BaseImageList_argsDigest(
+	ctx context.Context,
+	rawArgs map[string]interface{},
+) (*string, error) {
+	// We won't call the directive if the argument is null.
+	// Set call_argument_directives_with_null to true to call directives
+	// even if the argument is null.
+	_, ok := rawArgs["digest"]
+	if !ok {
+		var zeroVal *string
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("digest"))
+	if tmp, ok := rawArgs["digest"]; ok {
+		return ec.unmarshalOString2ᚖstring(ctx, tmp)
+	}
+
+	var zeroVal *string
+	return zeroVal, nil
+}
+
+func (ec *executionContext) field_Query_BaseImageList_argsRequestedPage(
+	ctx context.Context,
+	rawArgs map[string]interface{},
+) (*PageInput, error) {
+	// We won't call the directive if the argument is null.
+	// Set call_argument_directives_with_null to true to call directives
+	// even if the argument is null.
+	_, ok := rawArgs["requestedPage"]
+	if !ok {
+		var zeroVal *PageInput
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("requestedPage"))
+	if tmp, ok := rawArgs["requestedPage"]; ok {
+		return ec.unmarshalOPageInput2ᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐPageInput(ctx, tmp)
+	}
+
+	var zeroVal *PageInput
+	return zeroVal, nil
 }
 
 func (ec *executionContext) field_Query_BookmarkedRepos_args(ctx context.Context, rawArgs map[string]interface{}) (map[string]interface{}, error) {
 	var err error
 	args := map[string]interface{}{}
-	var arg0 *PageInput
-	if tmp, ok := rawArgs["requestedPage"]; ok {
-		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("requestedPage"))
-		arg0, err = ec.unmarshalOPageInput2ᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐPageInput(ctx, tmp)
-		if err != nil {
-			return nil, err
-		}
+	arg0, err := ec.field_Query_BookmarkedRepos_argsRequestedPage(ctx, rawArgs)
+	if err != nil {
+		return nil, err
 	}
 	args["requestedPage"] = arg0
 	return args, nil
+}
+func (ec *executionContext) field_Query_BookmarkedRepos_argsRequestedPage(
+	ctx context.Context,
+	rawArgs map[string]interface{},
+) (*PageInput, error) {
+	// We won't call the directive if the argument is null.
+	// Set call_argument_directives_with_null to true to call directives
+	// even if the argument is null.
+	_, ok := rawArgs["requestedPage"]
+	if !ok {
+		var zeroVal *PageInput
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("requestedPage"))
+	if tmp, ok := rawArgs["requestedPage"]; ok {
+		return ec.unmarshalOPageInput2ᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐPageInput(ctx, tmp)
+	}
+
+	var zeroVal *PageInput
+	return zeroVal, nil
 }
 
 func (ec *executionContext) field_Query_CVEDiffListForImages_args(ctx context.Context, rawArgs map[string]interface{}) (map[string]interface{}, error) {
 	var err error
 	args := map[string]interface{}{}
-	var arg0 ImageInput
-	if tmp, ok := rawArgs["minuend"]; ok {
-		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("minuend"))
-		arg0, err = ec.unmarshalNImageInput2zotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐImageInput(ctx, tmp)
-		if err != nil {
-			return nil, err
-		}
+	arg0, err := ec.field_Query_CVEDiffListForImages_argsMinuend(ctx, rawArgs)
+	if err != nil {
+		return nil, err
 	}
 	args["minuend"] = arg0
-	var arg1 ImageInput
-	if tmp, ok := rawArgs["subtrahend"]; ok {
-		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("subtrahend"))
-		arg1, err = ec.unmarshalNImageInput2zotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐImageInput(ctx, tmp)
-		if err != nil {
-			return nil, err
-		}
+	arg1, err := ec.field_Query_CVEDiffListForImages_argsSubtrahend(ctx, rawArgs)
+	if err != nil {
+		return nil, err
 	}
 	args["subtrahend"] = arg1
-	var arg2 *PageInput
-	if tmp, ok := rawArgs["requestedPage"]; ok {
-		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("requestedPage"))
-		arg2, err = ec.unmarshalOPageInput2ᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐPageInput(ctx, tmp)
-		if err != nil {
-			return nil, err
-		}
+	arg2, err := ec.field_Query_CVEDiffListForImages_argsRequestedPage(ctx, rawArgs)
+	if err != nil {
+		return nil, err
 	}
 	args["requestedPage"] = arg2
-	var arg3 *string
-	if tmp, ok := rawArgs["searchedCVE"]; ok {
-		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("searchedCVE"))
-		arg3, err = ec.unmarshalOString2ᚖstring(ctx, tmp)
-		if err != nil {
-			return nil, err
-		}
+	arg3, err := ec.field_Query_CVEDiffListForImages_argsSearchedCve(ctx, rawArgs)
+	if err != nil {
+		return nil, err
 	}
 	args["searchedCVE"] = arg3
-	var arg4 *string
-	if tmp, ok := rawArgs["excludedCVE"]; ok {
-		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("excludedCVE"))
-		arg4, err = ec.unmarshalOString2ᚖstring(ctx, tmp)
-		if err != nil {
-			return nil, err
-		}
+	arg4, err := ec.field_Query_CVEDiffListForImages_argsExcludedCve(ctx, rawArgs)
+	if err != nil {
+		return nil, err
 	}
 	args["excludedCVE"] = arg4
 	return args, nil
+}
+func (ec *executionContext) field_Query_CVEDiffListForImages_argsMinuend(
+	ctx context.Context,
+	rawArgs map[string]interface{},
+) (ImageInput, error) {
+	// We won't call the directive if the argument is null.
+	// Set call_argument_directives_with_null to true to call directives
+	// even if the argument is null.
+	_, ok := rawArgs["minuend"]
+	if !ok {
+		var zeroVal ImageInput
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("minuend"))
+	if tmp, ok := rawArgs["minuend"]; ok {
+		return ec.unmarshalNImageInput2zotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐImageInput(ctx, tmp)
+	}
+
+	var zeroVal ImageInput
+	return zeroVal, nil
+}
+
+func (ec *executionContext) field_Query_CVEDiffListForImages_argsSubtrahend(
+	ctx context.Context,
+	rawArgs map[string]interface{},
+) (ImageInput, error) {
+	// We won't call the directive if the argument is null.
+	// Set call_argument_directives_with_null to true to call directives
+	// even if the argument is null.
+	_, ok := rawArgs["subtrahend"]
+	if !ok {
+		var zeroVal ImageInput
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("subtrahend"))
+	if tmp, ok := rawArgs["subtrahend"]; ok {
+		return ec.unmarshalNImageInput2zotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐImageInput(ctx, tmp)
+	}
+
+	var zeroVal ImageInput
+	return zeroVal, nil
+}
+
+func (ec *executionContext) field_Query_CVEDiffListForImages_argsRequestedPage(
+	ctx context.Context,
+	rawArgs map[string]interface{},
+) (*PageInput, error) {
+	// We won't call the directive if the argument is null.
+	// Set call_argument_directives_with_null to true to call directives
+	// even if the argument is null.
+	_, ok := rawArgs["requestedPage"]
+	if !ok {
+		var zeroVal *PageInput
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("requestedPage"))
+	if tmp, ok := rawArgs["requestedPage"]; ok {
+		return ec.unmarshalOPageInput2ᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐPageInput(ctx, tmp)
+	}
+
+	var zeroVal *PageInput
+	return zeroVal, nil
+}
+
+func (ec *executionContext) field_Query_CVEDiffListForImages_argsSearchedCve(
+	ctx context.Context,
+	rawArgs map[string]interface{},
+) (*string, error) {
+	// We won't call the directive if the argument is null.
+	// Set call_argument_directives_with_null to true to call directives
+	// even if the argument is null.
+	_, ok := rawArgs["searchedCVE"]
+	if !ok {
+		var zeroVal *string
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("searchedCVE"))
+	if tmp, ok := rawArgs["searchedCVE"]; ok {
+		return ec.unmarshalOString2ᚖstring(ctx, tmp)
+	}
+
+	var zeroVal *string
+	return zeroVal, nil
+}
+
+func (ec *executionContext) field_Query_CVEDiffListForImages_argsExcludedCve(
+	ctx context.Context,
+	rawArgs map[string]interface{},
+) (*string, error) {
+	// We won't call the directive if the argument is null.
+	// Set call_argument_directives_with_null to true to call directives
+	// even if the argument is null.
+	_, ok := rawArgs["excludedCVE"]
+	if !ok {
+		var zeroVal *string
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("excludedCVE"))
+	if tmp, ok := rawArgs["excludedCVE"]; ok {
+		return ec.unmarshalOString2ᚖstring(ctx, tmp)
+	}
+
+	var zeroVal *string
+	return zeroVal, nil
 }
 
 func (ec *executionContext) field_Query_CVEListForImage_args(ctx context.Context, rawArgs map[string]interface{}) (map[string]interface{}, error) {
 	var err error
 	args := map[string]interface{}{}
-	var arg0 string
-	if tmp, ok := rawArgs["image"]; ok {
-		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("image"))
-		arg0, err = ec.unmarshalNString2string(ctx, tmp)
-		if err != nil {
-			return nil, err
-		}
+	arg0, err := ec.field_Query_CVEListForImage_argsImage(ctx, rawArgs)
+	if err != nil {
+		return nil, err
 	}
 	args["image"] = arg0
-	var arg1 *PageInput
-	if tmp, ok := rawArgs["requestedPage"]; ok {
-		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("requestedPage"))
-		arg1, err = ec.unmarshalOPageInput2ᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐPageInput(ctx, tmp)
-		if err != nil {
-			return nil, err
-		}
+	arg1, err := ec.field_Query_CVEListForImage_argsRequestedPage(ctx, rawArgs)
+	if err != nil {
+		return nil, err
 	}
 	args["requestedPage"] = arg1
-	var arg2 *string
-	if tmp, ok := rawArgs["searchedCVE"]; ok {
-		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("searchedCVE"))
-		arg2, err = ec.unmarshalOString2ᚖstring(ctx, tmp)
-		if err != nil {
-			return nil, err
-		}
+	arg2, err := ec.field_Query_CVEListForImage_argsSearchedCve(ctx, rawArgs)
+	if err != nil {
+		return nil, err
 	}
 	args["searchedCVE"] = arg2
-	var arg3 *string
-	if tmp, ok := rawArgs["excludedCVE"]; ok {
-		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("excludedCVE"))
-		arg3, err = ec.unmarshalOString2ᚖstring(ctx, tmp)
-		if err != nil {
-			return nil, err
-		}
+	arg3, err := ec.field_Query_CVEListForImage_argsExcludedCve(ctx, rawArgs)
+	if err != nil {
+		return nil, err
 	}
 	args["excludedCVE"] = arg3
-	var arg4 *string
-	if tmp, ok := rawArgs["severity"]; ok {
-		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("severity"))
-		arg4, err = ec.unmarshalOString2ᚖstring(ctx, tmp)
-		if err != nil {
-			return nil, err
-		}
+	arg4, err := ec.field_Query_CVEListForImage_argsSeverity(ctx, rawArgs)
+	if err != nil {
+		return nil, err
 	}
 	args["severity"] = arg4
 	return args, nil
+}
+func (ec *executionContext) field_Query_CVEListForImage_argsImage(
+	ctx context.Context,
+	rawArgs map[string]interface{},
+) (string, error) {
+	// We won't call the directive if the argument is null.
+	// Set call_argument_directives_with_null to true to call directives
+	// even if the argument is null.
+	_, ok := rawArgs["image"]
+	if !ok {
+		var zeroVal string
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("image"))
+	if tmp, ok := rawArgs["image"]; ok {
+		return ec.unmarshalNString2string(ctx, tmp)
+	}
+
+	var zeroVal string
+	return zeroVal, nil
+}
+
+func (ec *executionContext) field_Query_CVEListForImage_argsRequestedPage(
+	ctx context.Context,
+	rawArgs map[string]interface{},
+) (*PageInput, error) {
+	// We won't call the directive if the argument is null.
+	// Set call_argument_directives_with_null to true to call directives
+	// even if the argument is null.
+	_, ok := rawArgs["requestedPage"]
+	if !ok {
+		var zeroVal *PageInput
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("requestedPage"))
+	if tmp, ok := rawArgs["requestedPage"]; ok {
+		return ec.unmarshalOPageInput2ᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐPageInput(ctx, tmp)
+	}
+
+	var zeroVal *PageInput
+	return zeroVal, nil
+}
+
+func (ec *executionContext) field_Query_CVEListForImage_argsSearchedCve(
+	ctx context.Context,
+	rawArgs map[string]interface{},
+) (*string, error) {
+	// We won't call the directive if the argument is null.
+	// Set call_argument_directives_with_null to true to call directives
+	// even if the argument is null.
+	_, ok := rawArgs["searchedCVE"]
+	if !ok {
+		var zeroVal *string
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("searchedCVE"))
+	if tmp, ok := rawArgs["searchedCVE"]; ok {
+		return ec.unmarshalOString2ᚖstring(ctx, tmp)
+	}
+
+	var zeroVal *string
+	return zeroVal, nil
+}
+
+func (ec *executionContext) field_Query_CVEListForImage_argsExcludedCve(
+	ctx context.Context,
+	rawArgs map[string]interface{},
+) (*string, error) {
+	// We won't call the directive if the argument is null.
+	// Set call_argument_directives_with_null to true to call directives
+	// even if the argument is null.
+	_, ok := rawArgs["excludedCVE"]
+	if !ok {
+		var zeroVal *string
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("excludedCVE"))
+	if tmp, ok := rawArgs["excludedCVE"]; ok {
+		return ec.unmarshalOString2ᚖstring(ctx, tmp)
+	}
+
+	var zeroVal *string
+	return zeroVal, nil
+}
+
+func (ec *executionContext) field_Query_CVEListForImage_argsSeverity(
+	ctx context.Context,
+	rawArgs map[string]interface{},
+) (*string, error) {
+	// We won't call the directive if the argument is null.
+	// Set call_argument_directives_with_null to true to call directives
+	// even if the argument is null.
+	_, ok := rawArgs["severity"]
+	if !ok {
+		var zeroVal *string
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("severity"))
+	if tmp, ok := rawArgs["severity"]; ok {
+		return ec.unmarshalOString2ᚖstring(ctx, tmp)
+	}
+
+	var zeroVal *string
+	return zeroVal, nil
 }
 
 func (ec *executionContext) field_Query_DerivedImageList_args(ctx context.Context, rawArgs map[string]interface{}) (map[string]interface{}, error) {
 	var err error
 	args := map[string]interface{}{}
-	var arg0 string
-	if tmp, ok := rawArgs["image"]; ok {
-		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("image"))
-		arg0, err = ec.unmarshalNString2string(ctx, tmp)
-		if err != nil {
-			return nil, err
-		}
+	arg0, err := ec.field_Query_DerivedImageList_argsImage(ctx, rawArgs)
+	if err != nil {
+		return nil, err
 	}
 	args["image"] = arg0
-	var arg1 *string
-	if tmp, ok := rawArgs["digest"]; ok {
-		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("digest"))
-		arg1, err = ec.unmarshalOString2ᚖstring(ctx, tmp)
-		if err != nil {
-			return nil, err
-		}
+	arg1, err := ec.field_Query_DerivedImageList_argsDigest(ctx, rawArgs)
+	if err != nil {
+		return nil, err
 	}
 	args["digest"] = arg1
-	var arg2 *PageInput
-	if tmp, ok := rawArgs["requestedPage"]; ok {
-		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("requestedPage"))
-		arg2, err = ec.unmarshalOPageInput2ᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐPageInput(ctx, tmp)
-		if err != nil {
-			return nil, err
-		}
+	arg2, err := ec.field_Query_DerivedImageList_argsRequestedPage(ctx, rawArgs)
+	if err != nil {
+		return nil, err
 	}
 	args["requestedPage"] = arg2
 	return args, nil
+}
+func (ec *executionContext) field_Query_DerivedImageList_argsImage(
+	ctx context.Context,
+	rawArgs map[string]interface{},
+) (string, error) {
+	// We won't call the directive if the argument is null.
+	// Set call_argument_directives_with_null to true to call directives
+	// even if the argument is null.
+	_, ok := rawArgs["image"]
+	if !ok {
+		var zeroVal string
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("image"))
+	if tmp, ok := rawArgs["image"]; ok {
+		return ec.unmarshalNString2string(ctx, tmp)
+	}
+
+	var zeroVal string
+	return zeroVal, nil
+}
+
+func (ec *executionContext) field_Query_DerivedImageList_argsDigest(
+	ctx context.Context,
+	rawArgs map[string]interface{},
+) (*string, error) {
+	// We won't call the directive if the argument is null.
+	// Set call_argument_directives_with_null to true to call directives
+	// even if the argument is null.
+	_, ok := rawArgs["digest"]
+	if !ok {
+		var zeroVal *string
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("digest"))
+	if tmp, ok := rawArgs["digest"]; ok {
+		return ec.unmarshalOString2ᚖstring(ctx, tmp)
+	}
+
+	var zeroVal *string
+	return zeroVal, nil
+}
+
+func (ec *executionContext) field_Query_DerivedImageList_argsRequestedPage(
+	ctx context.Context,
+	rawArgs map[string]interface{},
+) (*PageInput, error) {
+	// We won't call the directive if the argument is null.
+	// Set call_argument_directives_with_null to true to call directives
+	// even if the argument is null.
+	_, ok := rawArgs["requestedPage"]
+	if !ok {
+		var zeroVal *PageInput
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("requestedPage"))
+	if tmp, ok := rawArgs["requestedPage"]; ok {
+		return ec.unmarshalOPageInput2ᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐPageInput(ctx, tmp)
+	}
+
+	var zeroVal *PageInput
+	return zeroVal, nil
 }
 
 func (ec *executionContext) field_Query_ExpandedRepoInfo_args(ctx context.Context, rawArgs map[string]interface{}) (map[string]interface{}, error) {
 	var err error
 	args := map[string]interface{}{}
-	var arg0 string
-	if tmp, ok := rawArgs["repo"]; ok {
-		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("repo"))
-		arg0, err = ec.unmarshalNString2string(ctx, tmp)
-		if err != nil {
-			return nil, err
-		}
+	arg0, err := ec.field_Query_ExpandedRepoInfo_argsRepo(ctx, rawArgs)
+	if err != nil {
+		return nil, err
 	}
 	args["repo"] = arg0
 	return args, nil
+}
+func (ec *executionContext) field_Query_ExpandedRepoInfo_argsRepo(
+	ctx context.Context,
+	rawArgs map[string]interface{},
+) (string, error) {
+	// We won't call the directive if the argument is null.
+	// Set call_argument_directives_with_null to true to call directives
+	// even if the argument is null.
+	_, ok := rawArgs["repo"]
+	if !ok {
+		var zeroVal string
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("repo"))
+	if tmp, ok := rawArgs["repo"]; ok {
+		return ec.unmarshalNString2string(ctx, tmp)
+	}
+
+	var zeroVal string
+	return zeroVal, nil
 }
 
 func (ec *executionContext) field_Query_GlobalSearch_args(ctx context.Context, rawArgs map[string]interface{}) (map[string]interface{}, error) {
 	var err error
 	args := map[string]interface{}{}
-	var arg0 string
-	if tmp, ok := rawArgs["query"]; ok {
-		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("query"))
-		arg0, err = ec.unmarshalNString2string(ctx, tmp)
-		if err != nil {
-			return nil, err
-		}
+	arg0, err := ec.field_Query_GlobalSearch_argsQuery(ctx, rawArgs)
+	if err != nil {
+		return nil, err
 	}
 	args["query"] = arg0
-	var arg1 *Filter
-	if tmp, ok := rawArgs["filter"]; ok {
-		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("filter"))
-		arg1, err = ec.unmarshalOFilter2ᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐFilter(ctx, tmp)
-		if err != nil {
-			return nil, err
-		}
+	arg1, err := ec.field_Query_GlobalSearch_argsFilter(ctx, rawArgs)
+	if err != nil {
+		return nil, err
 	}
 	args["filter"] = arg1
-	var arg2 *PageInput
-	if tmp, ok := rawArgs["requestedPage"]; ok {
-		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("requestedPage"))
-		arg2, err = ec.unmarshalOPageInput2ᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐPageInput(ctx, tmp)
-		if err != nil {
-			return nil, err
-		}
+	arg2, err := ec.field_Query_GlobalSearch_argsRequestedPage(ctx, rawArgs)
+	if err != nil {
+		return nil, err
 	}
 	args["requestedPage"] = arg2
 	return args, nil
+}
+func (ec *executionContext) field_Query_GlobalSearch_argsQuery(
+	ctx context.Context,
+	rawArgs map[string]interface{},
+) (string, error) {
+	// We won't call the directive if the argument is null.
+	// Set call_argument_directives_with_null to true to call directives
+	// even if the argument is null.
+	_, ok := rawArgs["query"]
+	if !ok {
+		var zeroVal string
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("query"))
+	if tmp, ok := rawArgs["query"]; ok {
+		return ec.unmarshalNString2string(ctx, tmp)
+	}
+
+	var zeroVal string
+	return zeroVal, nil
+}
+
+func (ec *executionContext) field_Query_GlobalSearch_argsFilter(
+	ctx context.Context,
+	rawArgs map[string]interface{},
+) (*Filter, error) {
+	// We won't call the directive if the argument is null.
+	// Set call_argument_directives_with_null to true to call directives
+	// even if the argument is null.
+	_, ok := rawArgs["filter"]
+	if !ok {
+		var zeroVal *Filter
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("filter"))
+	if tmp, ok := rawArgs["filter"]; ok {
+		return ec.unmarshalOFilter2ᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐFilter(ctx, tmp)
+	}
+
+	var zeroVal *Filter
+	return zeroVal, nil
+}
+
+func (ec *executionContext) field_Query_GlobalSearch_argsRequestedPage(
+	ctx context.Context,
+	rawArgs map[string]interface{},
+) (*PageInput, error) {
+	// We won't call the directive if the argument is null.
+	// Set call_argument_directives_with_null to true to call directives
+	// even if the argument is null.
+	_, ok := rawArgs["requestedPage"]
+	if !ok {
+		var zeroVal *PageInput
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("requestedPage"))
+	if tmp, ok := rawArgs["requestedPage"]; ok {
+		return ec.unmarshalOPageInput2ᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐPageInput(ctx, tmp)
+	}
+
+	var zeroVal *PageInput
+	return zeroVal, nil
 }
 
 func (ec *executionContext) field_Query_ImageListForCVE_args(ctx context.Context, rawArgs map[string]interface{}) (map[string]interface{}, error) {
 	var err error
 	args := map[string]interface{}{}
-	var arg0 string
-	if tmp, ok := rawArgs["id"]; ok {
-		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("id"))
-		arg0, err = ec.unmarshalNString2string(ctx, tmp)
-		if err != nil {
-			return nil, err
-		}
+	arg0, err := ec.field_Query_ImageListForCVE_argsID(ctx, rawArgs)
+	if err != nil {
+		return nil, err
 	}
 	args["id"] = arg0
-	var arg1 *Filter
-	if tmp, ok := rawArgs["filter"]; ok {
-		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("filter"))
-		arg1, err = ec.unmarshalOFilter2ᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐFilter(ctx, tmp)
-		if err != nil {
-			return nil, err
-		}
+	arg1, err := ec.field_Query_ImageListForCVE_argsFilter(ctx, rawArgs)
+	if err != nil {
+		return nil, err
 	}
 	args["filter"] = arg1
-	var arg2 *PageInput
-	if tmp, ok := rawArgs["requestedPage"]; ok {
-		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("requestedPage"))
-		arg2, err = ec.unmarshalOPageInput2ᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐPageInput(ctx, tmp)
-		if err != nil {
-			return nil, err
-		}
+	arg2, err := ec.field_Query_ImageListForCVE_argsRequestedPage(ctx, rawArgs)
+	if err != nil {
+		return nil, err
 	}
 	args["requestedPage"] = arg2
 	return args, nil
+}
+func (ec *executionContext) field_Query_ImageListForCVE_argsID(
+	ctx context.Context,
+	rawArgs map[string]interface{},
+) (string, error) {
+	// We won't call the directive if the argument is null.
+	// Set call_argument_directives_with_null to true to call directives
+	// even if the argument is null.
+	_, ok := rawArgs["id"]
+	if !ok {
+		var zeroVal string
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("id"))
+	if tmp, ok := rawArgs["id"]; ok {
+		return ec.unmarshalNString2string(ctx, tmp)
+	}
+
+	var zeroVal string
+	return zeroVal, nil
+}
+
+func (ec *executionContext) field_Query_ImageListForCVE_argsFilter(
+	ctx context.Context,
+	rawArgs map[string]interface{},
+) (*Filter, error) {
+	// We won't call the directive if the argument is null.
+	// Set call_argument_directives_with_null to true to call directives
+	// even if the argument is null.
+	_, ok := rawArgs["filter"]
+	if !ok {
+		var zeroVal *Filter
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("filter"))
+	if tmp, ok := rawArgs["filter"]; ok {
+		return ec.unmarshalOFilter2ᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐFilter(ctx, tmp)
+	}
+
+	var zeroVal *Filter
+	return zeroVal, nil
+}
+
+func (ec *executionContext) field_Query_ImageListForCVE_argsRequestedPage(
+	ctx context.Context,
+	rawArgs map[string]interface{},
+) (*PageInput, error) {
+	// We won't call the directive if the argument is null.
+	// Set call_argument_directives_with_null to true to call directives
+	// even if the argument is null.
+	_, ok := rawArgs["requestedPage"]
+	if !ok {
+		var zeroVal *PageInput
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("requestedPage"))
+	if tmp, ok := rawArgs["requestedPage"]; ok {
+		return ec.unmarshalOPageInput2ᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐPageInput(ctx, tmp)
+	}
+
+	var zeroVal *PageInput
+	return zeroVal, nil
 }
 
 func (ec *executionContext) field_Query_ImageListForDigest_args(ctx context.Context, rawArgs map[string]interface{}) (map[string]interface{}, error) {
 	var err error
 	args := map[string]interface{}{}
-	var arg0 string
-	if tmp, ok := rawArgs["id"]; ok {
-		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("id"))
-		arg0, err = ec.unmarshalNString2string(ctx, tmp)
-		if err != nil {
-			return nil, err
-		}
+	arg0, err := ec.field_Query_ImageListForDigest_argsID(ctx, rawArgs)
+	if err != nil {
+		return nil, err
 	}
 	args["id"] = arg0
-	var arg1 *PageInput
-	if tmp, ok := rawArgs["requestedPage"]; ok {
-		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("requestedPage"))
-		arg1, err = ec.unmarshalOPageInput2ᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐPageInput(ctx, tmp)
-		if err != nil {
-			return nil, err
-		}
+	arg1, err := ec.field_Query_ImageListForDigest_argsRequestedPage(ctx, rawArgs)
+	if err != nil {
+		return nil, err
 	}
 	args["requestedPage"] = arg1
 	return args, nil
+}
+func (ec *executionContext) field_Query_ImageListForDigest_argsID(
+	ctx context.Context,
+	rawArgs map[string]interface{},
+) (string, error) {
+	// We won't call the directive if the argument is null.
+	// Set call_argument_directives_with_null to true to call directives
+	// even if the argument is null.
+	_, ok := rawArgs["id"]
+	if !ok {
+		var zeroVal string
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("id"))
+	if tmp, ok := rawArgs["id"]; ok {
+		return ec.unmarshalNString2string(ctx, tmp)
+	}
+
+	var zeroVal string
+	return zeroVal, nil
+}
+
+func (ec *executionContext) field_Query_ImageListForDigest_argsRequestedPage(
+	ctx context.Context,
+	rawArgs map[string]interface{},
+) (*PageInput, error) {
+	// We won't call the directive if the argument is null.
+	// Set call_argument_directives_with_null to true to call directives
+	// even if the argument is null.
+	_, ok := rawArgs["requestedPage"]
+	if !ok {
+		var zeroVal *PageInput
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("requestedPage"))
+	if tmp, ok := rawArgs["requestedPage"]; ok {
+		return ec.unmarshalOPageInput2ᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐPageInput(ctx, tmp)
+	}
+
+	var zeroVal *PageInput
+	return zeroVal, nil
 }
 
 func (ec *executionContext) field_Query_ImageListWithCVEFixed_args(ctx context.Context, rawArgs map[string]interface{}) (map[string]interface{}, error) {
 	var err error
 	args := map[string]interface{}{}
-	var arg0 string
-	if tmp, ok := rawArgs["id"]; ok {
-		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("id"))
-		arg0, err = ec.unmarshalNString2string(ctx, tmp)
-		if err != nil {
-			return nil, err
-		}
+	arg0, err := ec.field_Query_ImageListWithCVEFixed_argsID(ctx, rawArgs)
+	if err != nil {
+		return nil, err
 	}
 	args["id"] = arg0
-	var arg1 string
-	if tmp, ok := rawArgs["image"]; ok {
-		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("image"))
-		arg1, err = ec.unmarshalNString2string(ctx, tmp)
-		if err != nil {
-			return nil, err
-		}
+	arg1, err := ec.field_Query_ImageListWithCVEFixed_argsImage(ctx, rawArgs)
+	if err != nil {
+		return nil, err
 	}
 	args["image"] = arg1
-	var arg2 *Filter
-	if tmp, ok := rawArgs["filter"]; ok {
-		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("filter"))
-		arg2, err = ec.unmarshalOFilter2ᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐFilter(ctx, tmp)
-		if err != nil {
-			return nil, err
-		}
+	arg2, err := ec.field_Query_ImageListWithCVEFixed_argsFilter(ctx, rawArgs)
+	if err != nil {
+		return nil, err
 	}
 	args["filter"] = arg2
-	var arg3 *PageInput
-	if tmp, ok := rawArgs["requestedPage"]; ok {
-		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("requestedPage"))
-		arg3, err = ec.unmarshalOPageInput2ᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐPageInput(ctx, tmp)
-		if err != nil {
-			return nil, err
-		}
+	arg3, err := ec.field_Query_ImageListWithCVEFixed_argsRequestedPage(ctx, rawArgs)
+	if err != nil {
+		return nil, err
 	}
 	args["requestedPage"] = arg3
 	return args, nil
+}
+func (ec *executionContext) field_Query_ImageListWithCVEFixed_argsID(
+	ctx context.Context,
+	rawArgs map[string]interface{},
+) (string, error) {
+	// We won't call the directive if the argument is null.
+	// Set call_argument_directives_with_null to true to call directives
+	// even if the argument is null.
+	_, ok := rawArgs["id"]
+	if !ok {
+		var zeroVal string
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("id"))
+	if tmp, ok := rawArgs["id"]; ok {
+		return ec.unmarshalNString2string(ctx, tmp)
+	}
+
+	var zeroVal string
+	return zeroVal, nil
+}
+
+func (ec *executionContext) field_Query_ImageListWithCVEFixed_argsImage(
+	ctx context.Context,
+	rawArgs map[string]interface{},
+) (string, error) {
+	// We won't call the directive if the argument is null.
+	// Set call_argument_directives_with_null to true to call directives
+	// even if the argument is null.
+	_, ok := rawArgs["image"]
+	if !ok {
+		var zeroVal string
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("image"))
+	if tmp, ok := rawArgs["image"]; ok {
+		return ec.unmarshalNString2string(ctx, tmp)
+	}
+
+	var zeroVal string
+	return zeroVal, nil
+}
+
+func (ec *executionContext) field_Query_ImageListWithCVEFixed_argsFilter(
+	ctx context.Context,
+	rawArgs map[string]interface{},
+) (*Filter, error) {
+	// We won't call the directive if the argument is null.
+	// Set call_argument_directives_with_null to true to call directives
+	// even if the argument is null.
+	_, ok := rawArgs["filter"]
+	if !ok {
+		var zeroVal *Filter
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("filter"))
+	if tmp, ok := rawArgs["filter"]; ok {
+		return ec.unmarshalOFilter2ᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐFilter(ctx, tmp)
+	}
+
+	var zeroVal *Filter
+	return zeroVal, nil
+}
+
+func (ec *executionContext) field_Query_ImageListWithCVEFixed_argsRequestedPage(
+	ctx context.Context,
+	rawArgs map[string]interface{},
+) (*PageInput, error) {
+	// We won't call the directive if the argument is null.
+	// Set call_argument_directives_with_null to true to call directives
+	// even if the argument is null.
+	_, ok := rawArgs["requestedPage"]
+	if !ok {
+		var zeroVal *PageInput
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("requestedPage"))
+	if tmp, ok := rawArgs["requestedPage"]; ok {
+		return ec.unmarshalOPageInput2ᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐPageInput(ctx, tmp)
+	}
+
+	var zeroVal *PageInput
+	return zeroVal, nil
 }
 
 func (ec *executionContext) field_Query_ImageList_args(ctx context.Context, rawArgs map[string]interface{}) (map[string]interface{}, error) {
 	var err error
 	args := map[string]interface{}{}
-	var arg0 string
-	if tmp, ok := rawArgs["repo"]; ok {
-		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("repo"))
-		arg0, err = ec.unmarshalNString2string(ctx, tmp)
-		if err != nil {
-			return nil, err
-		}
+	arg0, err := ec.field_Query_ImageList_argsRepo(ctx, rawArgs)
+	if err != nil {
+		return nil, err
 	}
 	args["repo"] = arg0
-	var arg1 *PageInput
-	if tmp, ok := rawArgs["requestedPage"]; ok {
-		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("requestedPage"))
-		arg1, err = ec.unmarshalOPageInput2ᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐPageInput(ctx, tmp)
-		if err != nil {
-			return nil, err
-		}
+	arg1, err := ec.field_Query_ImageList_argsRequestedPage(ctx, rawArgs)
+	if err != nil {
+		return nil, err
 	}
 	args["requestedPage"] = arg1
 	return args, nil
+}
+func (ec *executionContext) field_Query_ImageList_argsRepo(
+	ctx context.Context,
+	rawArgs map[string]interface{},
+) (string, error) {
+	// We won't call the directive if the argument is null.
+	// Set call_argument_directives_with_null to true to call directives
+	// even if the argument is null.
+	_, ok := rawArgs["repo"]
+	if !ok {
+		var zeroVal string
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("repo"))
+	if tmp, ok := rawArgs["repo"]; ok {
+		return ec.unmarshalNString2string(ctx, tmp)
+	}
+
+	var zeroVal string
+	return zeroVal, nil
+}
+
+func (ec *executionContext) field_Query_ImageList_argsRequestedPage(
+	ctx context.Context,
+	rawArgs map[string]interface{},
+) (*PageInput, error) {
+	// We won't call the directive if the argument is null.
+	// Set call_argument_directives_with_null to true to call directives
+	// even if the argument is null.
+	_, ok := rawArgs["requestedPage"]
+	if !ok {
+		var zeroVal *PageInput
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("requestedPage"))
+	if tmp, ok := rawArgs["requestedPage"]; ok {
+		return ec.unmarshalOPageInput2ᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐPageInput(ctx, tmp)
+	}
+
+	var zeroVal *PageInput
+	return zeroVal, nil
 }
 
 func (ec *executionContext) field_Query_Image_args(ctx context.Context, rawArgs map[string]interface{}) (map[string]interface{}, error) {
 	var err error
 	args := map[string]interface{}{}
-	var arg0 string
-	if tmp, ok := rawArgs["image"]; ok {
-		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("image"))
-		arg0, err = ec.unmarshalNString2string(ctx, tmp)
-		if err != nil {
-			return nil, err
-		}
+	arg0, err := ec.field_Query_Image_argsImage(ctx, rawArgs)
+	if err != nil {
+		return nil, err
 	}
 	args["image"] = arg0
 	return args, nil
+}
+func (ec *executionContext) field_Query_Image_argsImage(
+	ctx context.Context,
+	rawArgs map[string]interface{},
+) (string, error) {
+	// We won't call the directive if the argument is null.
+	// Set call_argument_directives_with_null to true to call directives
+	// even if the argument is null.
+	_, ok := rawArgs["image"]
+	if !ok {
+		var zeroVal string
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("image"))
+	if tmp, ok := rawArgs["image"]; ok {
+		return ec.unmarshalNString2string(ctx, tmp)
+	}
+
+	var zeroVal string
+	return zeroVal, nil
 }
 
 func (ec *executionContext) field_Query_Referrers_args(ctx context.Context, rawArgs map[string]interface{}) (map[string]interface{}, error) {
 	var err error
 	args := map[string]interface{}{}
-	var arg0 string
-	if tmp, ok := rawArgs["repo"]; ok {
-		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("repo"))
-		arg0, err = ec.unmarshalNString2string(ctx, tmp)
-		if err != nil {
-			return nil, err
-		}
+	arg0, err := ec.field_Query_Referrers_argsRepo(ctx, rawArgs)
+	if err != nil {
+		return nil, err
 	}
 	args["repo"] = arg0
-	var arg1 string
-	if tmp, ok := rawArgs["digest"]; ok {
-		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("digest"))
-		arg1, err = ec.unmarshalNString2string(ctx, tmp)
-		if err != nil {
-			return nil, err
-		}
+	arg1, err := ec.field_Query_Referrers_argsDigest(ctx, rawArgs)
+	if err != nil {
+		return nil, err
 	}
 	args["digest"] = arg1
-	var arg2 []string
-	if tmp, ok := rawArgs["type"]; ok {
-		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("type"))
-		arg2, err = ec.unmarshalOString2ᚕstringᚄ(ctx, tmp)
-		if err != nil {
-			return nil, err
-		}
+	arg2, err := ec.field_Query_Referrers_argsType(ctx, rawArgs)
+	if err != nil {
+		return nil, err
 	}
 	args["type"] = arg2
 	return args, nil
+}
+func (ec *executionContext) field_Query_Referrers_argsRepo(
+	ctx context.Context,
+	rawArgs map[string]interface{},
+) (string, error) {
+	// We won't call the directive if the argument is null.
+	// Set call_argument_directives_with_null to true to call directives
+	// even if the argument is null.
+	_, ok := rawArgs["repo"]
+	if !ok {
+		var zeroVal string
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("repo"))
+	if tmp, ok := rawArgs["repo"]; ok {
+		return ec.unmarshalNString2string(ctx, tmp)
+	}
+
+	var zeroVal string
+	return zeroVal, nil
+}
+
+func (ec *executionContext) field_Query_Referrers_argsDigest(
+	ctx context.Context,
+	rawArgs map[string]interface{},
+) (string, error) {
+	// We won't call the directive if the argument is null.
+	// Set call_argument_directives_with_null to true to call directives
+	// even if the argument is null.
+	_, ok := rawArgs["digest"]
+	if !ok {
+		var zeroVal string
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("digest"))
+	if tmp, ok := rawArgs["digest"]; ok {
+		return ec.unmarshalNString2string(ctx, tmp)
+	}
+
+	var zeroVal string
+	return zeroVal, nil
+}
+
+func (ec *executionContext) field_Query_Referrers_argsType(
+	ctx context.Context,
+	rawArgs map[string]interface{},
+) ([]string, error) {
+	// We won't call the directive if the argument is null.
+	// Set call_argument_directives_with_null to true to call directives
+	// even if the argument is null.
+	_, ok := rawArgs["type"]
+	if !ok {
+		var zeroVal []string
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("type"))
+	if tmp, ok := rawArgs["type"]; ok {
+		return ec.unmarshalOString2ᚕstringᚄ(ctx, tmp)
+	}
+
+	var zeroVal []string
+	return zeroVal, nil
 }
 
 func (ec *executionContext) field_Query_RepoListWithNewestImage_args(ctx context.Context, rawArgs map[string]interface{}) (map[string]interface{}, error) {
 	var err error
 	args := map[string]interface{}{}
-	var arg0 *PageInput
-	if tmp, ok := rawArgs["requestedPage"]; ok {
-		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("requestedPage"))
-		arg0, err = ec.unmarshalOPageInput2ᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐPageInput(ctx, tmp)
-		if err != nil {
-			return nil, err
-		}
+	arg0, err := ec.field_Query_RepoListWithNewestImage_argsRequestedPage(ctx, rawArgs)
+	if err != nil {
+		return nil, err
 	}
 	args["requestedPage"] = arg0
 	return args, nil
+}
+func (ec *executionContext) field_Query_RepoListWithNewestImage_argsRequestedPage(
+	ctx context.Context,
+	rawArgs map[string]interface{},
+) (*PageInput, error) {
+	// We won't call the directive if the argument is null.
+	// Set call_argument_directives_with_null to true to call directives
+	// even if the argument is null.
+	_, ok := rawArgs["requestedPage"]
+	if !ok {
+		var zeroVal *PageInput
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("requestedPage"))
+	if tmp, ok := rawArgs["requestedPage"]; ok {
+		return ec.unmarshalOPageInput2ᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐPageInput(ctx, tmp)
+	}
+
+	var zeroVal *PageInput
+	return zeroVal, nil
 }
 
 func (ec *executionContext) field_Query_StarredRepos_args(ctx context.Context, rawArgs map[string]interface{}) (map[string]interface{}, error) {
 	var err error
 	args := map[string]interface{}{}
-	var arg0 *PageInput
-	if tmp, ok := rawArgs["requestedPage"]; ok {
-		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("requestedPage"))
-		arg0, err = ec.unmarshalOPageInput2ᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐPageInput(ctx, tmp)
-		if err != nil {
-			return nil, err
-		}
+	arg0, err := ec.field_Query_StarredRepos_argsRequestedPage(ctx, rawArgs)
+	if err != nil {
+		return nil, err
 	}
 	args["requestedPage"] = arg0
 	return args, nil
+}
+func (ec *executionContext) field_Query_StarredRepos_argsRequestedPage(
+	ctx context.Context,
+	rawArgs map[string]interface{},
+) (*PageInput, error) {
+	// We won't call the directive if the argument is null.
+	// Set call_argument_directives_with_null to true to call directives
+	// even if the argument is null.
+	_, ok := rawArgs["requestedPage"]
+	if !ok {
+		var zeroVal *PageInput
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("requestedPage"))
+	if tmp, ok := rawArgs["requestedPage"]; ok {
+		return ec.unmarshalOPageInput2ᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐPageInput(ctx, tmp)
+	}
+
+	var zeroVal *PageInput
+	return zeroVal, nil
 }
 
 func (ec *executionContext) field_Query___type_args(ctx context.Context, rawArgs map[string]interface{}) (map[string]interface{}, error) {
 	var err error
 	args := map[string]interface{}{}
-	var arg0 string
-	if tmp, ok := rawArgs["name"]; ok {
-		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("name"))
-		arg0, err = ec.unmarshalNString2string(ctx, tmp)
-		if err != nil {
-			return nil, err
-		}
+	arg0, err := ec.field_Query___type_argsName(ctx, rawArgs)
+	if err != nil {
+		return nil, err
 	}
 	args["name"] = arg0
 	return args, nil
+}
+func (ec *executionContext) field_Query___type_argsName(
+	ctx context.Context,
+	rawArgs map[string]interface{},
+) (string, error) {
+	// We won't call the directive if the argument is null.
+	// Set call_argument_directives_with_null to true to call directives
+	// even if the argument is null.
+	_, ok := rawArgs["name"]
+	if !ok {
+		var zeroVal string
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("name"))
+	if tmp, ok := rawArgs["name"]; ok {
+		return ec.unmarshalNString2string(ctx, tmp)
+	}
+
+	var zeroVal string
+	return zeroVal, nil
 }
 
 func (ec *executionContext) field___Type_enumValues_args(ctx context.Context, rawArgs map[string]interface{}) (map[string]interface{}, error) {
 	var err error
 	args := map[string]interface{}{}
-	var arg0 bool
-	if tmp, ok := rawArgs["includeDeprecated"]; ok {
-		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("includeDeprecated"))
-		arg0, err = ec.unmarshalOBoolean2bool(ctx, tmp)
-		if err != nil {
-			return nil, err
-		}
+	arg0, err := ec.field___Type_enumValues_argsIncludeDeprecated(ctx, rawArgs)
+	if err != nil {
+		return nil, err
 	}
 	args["includeDeprecated"] = arg0
 	return args, nil
+}
+func (ec *executionContext) field___Type_enumValues_argsIncludeDeprecated(
+	ctx context.Context,
+	rawArgs map[string]interface{},
+) (bool, error) {
+	// We won't call the directive if the argument is null.
+	// Set call_argument_directives_with_null to true to call directives
+	// even if the argument is null.
+	_, ok := rawArgs["includeDeprecated"]
+	if !ok {
+		var zeroVal bool
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("includeDeprecated"))
+	if tmp, ok := rawArgs["includeDeprecated"]; ok {
+		return ec.unmarshalOBoolean2bool(ctx, tmp)
+	}
+
+	var zeroVal bool
+	return zeroVal, nil
 }
 
 func (ec *executionContext) field___Type_fields_args(ctx context.Context, rawArgs map[string]interface{}) (map[string]interface{}, error) {
 	var err error
 	args := map[string]interface{}{}
-	var arg0 bool
-	if tmp, ok := rawArgs["includeDeprecated"]; ok {
-		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("includeDeprecated"))
-		arg0, err = ec.unmarshalOBoolean2bool(ctx, tmp)
-		if err != nil {
-			return nil, err
-		}
+	arg0, err := ec.field___Type_fields_argsIncludeDeprecated(ctx, rawArgs)
+	if err != nil {
+		return nil, err
 	}
 	args["includeDeprecated"] = arg0
 	return args, nil
+}
+func (ec *executionContext) field___Type_fields_argsIncludeDeprecated(
+	ctx context.Context,
+	rawArgs map[string]interface{},
+) (bool, error) {
+	// We won't call the directive if the argument is null.
+	// Set call_argument_directives_with_null to true to call directives
+	// even if the argument is null.
+	_, ok := rawArgs["includeDeprecated"]
+	if !ok {
+		var zeroVal bool
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("includeDeprecated"))
+	if tmp, ok := rawArgs["includeDeprecated"]; ok {
+		return ec.unmarshalOBoolean2bool(ctx, tmp)
+	}
+
+	var zeroVal bool
+	return zeroVal, nil
 }
 
 // endregion ***************************** args.gotpl *****************************
