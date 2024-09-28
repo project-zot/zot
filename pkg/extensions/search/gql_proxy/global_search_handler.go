@@ -96,7 +96,7 @@ func HandleGlobalSearchResult(
 		)
 	}
 
-	responseBody, err := json.Marshal(collatedResult)
+	responseBody, err := json.MarshalIndent(collatedResult, "", "    ")
 	if err != nil {
 		log.Error().
 			Str(LoggerFieldOperation, HandlerOperation).
@@ -105,6 +105,8 @@ func HandleGlobalSearchResult(
 
 		return
 	}
+
+	response.Header().Set("Content-Type", "application/json")
 
 	_, err = response.Write(responseBody)
 	if err != nil {

@@ -2,7 +2,9 @@ package gqlproxy
 
 import (
 	"net/http"
-	"strings"
+
+	"github.com/vektah/gqlparser/v2"
+	"github.com/vektah/gqlparser/v2/ast"
 
 	"zotregistry.dev/zot/pkg/api/config"
 	"zotregistry.dev/zot/pkg/api/constants"
@@ -14,7 +16,11 @@ import (
 // Requests are only proxied in local cluster mode as in this mode, each instance holds only the
 // metadata for the images that it serves, however, in shared storage mode,
 // all the instances have access to all the metadata so any can respond.
-func GqlProxyRequestHandler(config *config.Config, log log.Logger) func(handler http.Handler) http.Handler {
+func GqlProxyRequestHandler(
+	config *config.Config,
+	log log.Logger,
+	gqlSchema *ast.Schema,
+) func(handler http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 			// If not running in cluster mode, no op.
@@ -37,28 +43,40 @@ func GqlProxyRequestHandler(config *config.Config, log log.Logger) func(handler 
 				return
 			}
 
-			// General Structure for GQL Requests
-			// Query String contains the full GraphQL Request (it's NOT JSON)
-			// e.g. {(query:"", requestedPage: {limit:3 offset:0 sortBy: DOWNLOADS} )
-			// {Page {TotalCount ItemCount} Repos {Name LastUpdated Size Platforms { Os Arch }
-			// IsStarred IsBookmarked NewestImage { Tag Vulnerabilities {MaxSeverity Count}
-			// Description IsSigned SignGlobalSearchatureInfo { Tool IsTrusted Author } Licenses Vendor Labels }
-			// StarCount DownloadCount}}}
-
-			// General Payload Structure for GQL Response
-			/*
-				{
-					"errors": [CUSTOM_ERRORS_HERE],
-					"data": {
-						"NameOfQuery": {CUSTOM_SCHEMA_HERE}
-					}
-				}
-			*/
-
 			query := request.URL.Query().Get("query")
 
-			operation, ok := computeGqlOperation(query)
-			if !ok {
+			// Load the query using gqlparser.
+			// This helps to read the Operation correctly which is in turn used to
+			// dynamically hand-off the processing to the appropriate handler.
+			processedGql, errList := gqlparser.LoadQuery(gqlSchema, query)
+
+			if len(errList) != 0 {
+				for _, err := range errList {
+					log.Error().Str("query", query).Err(err).Msg(err.Message)
+				}
+				http.Error(response, "Failed to process GQL request", http.StatusInternalServerError)
+
+				return
+			}
+
+			// Look at the first operation in the query.
+			// TODO: for completeness, this should support multiple
+			// operations at once.
+			operation := ""
+			for _, op := range processedGql.Operations {
+				for _, ss := range op.SelectionSet {
+					switch ss := ss.(type) {
+					case *ast.Field:
+						operation = ss.Name
+					default:
+						log.Error().Str("query", query).Msg("Unsupported type")
+					}
+
+					break
+				}
+			}
+
+			if operation == "" {
 				log.Error().Str("query", query).Msg("Failed to compute operation from query")
 				http.Error(response, "Failed to process GQL request", http.StatusInternalServerError)
 
@@ -79,17 +97,4 @@ func GqlProxyRequestHandler(config *config.Config, log log.Logger) func(handler 
 			}
 		})
 	}
-}
-
-// Naively compute which operation is requested for GQL.
-// TODO: Need to replace this with better custom GQL parsing
-// or a parsing library that can conver the GQL query to
-// a struct where operations data and schema are available for reading.
-func computeGqlOperation(request string) (string, bool) {
-	openParenthesisIndex := strings.Index(request, "(")
-	if openParenthesisIndex == -1 {
-		return "", false
-	}
-
-	return request[1:openParenthesisIndex], true
 }

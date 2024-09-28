@@ -92,17 +92,18 @@ func SetupSearchRoutes(conf *config.Config, router *mux.Router, storeController 
 	}
 
 	resConfig := search.GetResolverConfig(log, storeController, metaDB, cveInfo)
+	executableSchema := gql_generated.NewExecutableSchema(resConfig)
 
 	allowedMethods := zcommon.AllowedMethods(http.MethodGet, http.MethodPost)
 
-	gqlProxy := gqlproxy.GqlProxyRequestHandler(conf, log)
+	gqlProxy := gqlproxy.GqlProxyRequestHandler(conf, log, executableSchema.Schema())
 
 	extRouter := router.PathPrefix(constants.ExtSearchPrefix).Subrouter()
 	extRouter.Use(zcommon.CORSHeadersMiddleware(conf.HTTP.AllowOrigin))
 	extRouter.Use(zcommon.ACHeadersMiddleware(conf, allowedMethods...))
 	extRouter.Use(zcommon.AddExtensionSecurityHeaders())
 	extRouter.Methods(allowedMethods...).
-		Handler(gqlProxy(gqlHandler.NewDefaultServer(gql_generated.NewExecutableSchema(resConfig))))
+		Handler(gqlProxy(gqlHandler.NewDefaultServer(executableSchema)))
 
 	log.Info().Msg("finished setting up search routes")
 }
