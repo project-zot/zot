@@ -33,6 +33,7 @@ jobs:
           sleep 5
           # Check if zot server is running
           cat /proc/$(cat zot.PID)/status | grep State || exit 1
+          curl -k --connect-timeout 3 --max-time 5 --retry 60 --retry-delay 1 --retry-max-time 180 --retry-connrefused https://localhost:8080/v2/
 
           # zot server is running: proceed to testing
           ./test/scripts/tls_scan.sh

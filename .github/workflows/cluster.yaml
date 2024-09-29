@@ -103,7 +103,7 @@ jobs:
             ./bin/zot-linux-amd64 serve test/cluster/config-minio1.json &
             ./bin/zot-linux-amd64 serve test/cluster/config-minio2.json &
             ./bin/zot-linux-amd64 serve test/cluster/config-minio3.json &
-            sleep 10
+            sleep 20
             # run tests
             skopeo --debug copy --format=oci --dest-tls-verify=false docker://ghcr.io/project-zot/golang:1.20 docker://localhost:8080/golang:1.20
             skopeo --debug copy --src-tls-verify=false docker://localhost:8080/golang:1.20 oci:golang:1.20
@@ -131,7 +131,7 @@ jobs:
             ./bin/zot-linux-amd64 serve test/cluster/config-minio1.json &
             ./bin/zot-linux-amd64 serve test/cluster/config-minio2.json &
             ./bin/zot-linux-amd64 serve test/cluster/config-minio3.json &
-            sleep 10
+            sleep 20
             # run zb with --src-cidr
             bin/zb-linux-amd64 -c 10 -n 50 -o ci-cd --src-cidr 127.0.0.0/8 http://localhost:8080
 
@@ -149,7 +149,7 @@ jobs:
             ./bin/zot-linux-amd64 serve test/cluster/config-minio1.json &
             ./bin/zot-linux-amd64 serve test/cluster/config-minio2.json &
             ./bin/zot-linux-amd64 serve test/cluster/config-minio3.json &
-            sleep 10
+            sleep 20
             # run zb with --src-ips
             bin/zb-linux-amd64 -c 10 -n 50 -o ci-cd --src-ips 127.0.0.2,127.0.0.3,127.0.0.4,127.0.0.5,127.0.0.6,127.0.12.5,127.0.12.6 http://localhost:8080
 

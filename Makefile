@@ -236,7 +236,7 @@ $(TESTDATA): check-skopeo
 .PHONY: run-bench
 run-bench: binary bench
 	bin/zot-$(OS)-$(ARCH) serve examples/config-bench.json & echo $$! > zot.PID
-	sleep 5
+	curl --connect-timeout 3 --max-time 5 --retry 60 --retry-delay 1 --retry-max-time 180 --retry-connrefused http://localhost:8080/v2/
 	bin/zb-$(OS)-$(ARCH) -c 10 -n 100 -o $(BENCH_OUTPUT) http://localhost:8080
 	@if [ -e zot.PID ]; then \
 		kill -TERM $$(cat zot.PID) || true; \
