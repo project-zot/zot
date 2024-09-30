@@ -92,10 +92,14 @@ jobs:
       - name: Prepare configuration files
         run: |
             cp test/cluster/config-minio.json test/cluster/config-minio1.json
-            sed -i 's/8081/8082/g' test/cluster/config-minio.json
+            sed -i 's/8081/8081/g' test/cluster/config-minio1.json
+            sed -i 's/\/tmp\/zot/\/tmp\/zot1/g' test/cluster/config-minio1.json
             cp test/cluster/config-minio.json test/cluster/config-minio2.json
-            sed -i 's/8082/8083/g' test/cluster/config-minio.json
+            sed -i 's/8081/8082/g' test/cluster/config-minio2.json
+            sed -i 's/\/tmp\/zot/\/tmp\/zot2/g' test/cluster/config-minio2.json
             cp test/cluster/config-minio.json test/cluster/config-minio3.json
+            sed -i 's/8081/8083/g' test/cluster/config-minio3.json
+            sed -i 's/\/tmp\/zot/\/tmp\/zot3/g' test/cluster/config-minio3.json
 
       - name: Run push-pull tests
         run: |
