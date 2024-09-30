@@ -14,7 +14,7 @@ permissions: read-all
 jobs:
   client-tools:
     name: Stateless zot with shared reliable storage
-    runs-on: ubuntu-latest-4-cores
+    runs-on: ubuntu-latest
     # services:
     #   minio:
     #     image: minio/minio:RELEASE.2024-07-16T23-46-41Z
