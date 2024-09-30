@@ -46,8 +46,9 @@ func getNewScanOptions(dir string, dbRepositoryRef, javaDBRepositoryRef name.Ref
 			Scanners:    types.Scanners{types.VulnerabilityScanner},
 			OfflineScan: true,
 		},
-		VulnerabilityOptions: flag.VulnerabilityOptions{
-			VulnType: []string{types.VulnTypeOS, types.VulnTypeLibrary},
+		PackageOptions: flag.PackageOptions{
+			PkgRelationships: fanalTypes.Relationships,
+			PkgTypes:         []string{types.PkgTypeOS, types.PkgTypeLibrary},
 		},
 		DBOptions: flag.DBOptions{
 			DBRepository:     dbRepositoryRef,
@@ -613,7 +614,7 @@ func (scanner Scanner) checkDBPresence() error {
 	result := true
 
 	if scanner.storeController.DefaultStore != nil {
-		dbDir := path.Join(scanner.storeController.DefaultStore.RootDir(), "_trivy")
+		dbDir := path.Join(scanner.storeController.DefaultStore.RootDir(), "_trivy", "db")
 		if _, err := os.Stat(metadata.Path(dbDir)); err != nil {
 			result = false
 		}
@@ -621,7 +622,7 @@ func (scanner Scanner) checkDBPresence() error {
 
 	if scanner.storeController.SubStore != nil {
 		for _, storage := range scanner.storeController.SubStore {
-			dbDir := path.Join(storage.RootDir(), "_trivy")
+			dbDir := path.Join(storage.RootDir(), "_trivy", "db")
 
 			if _, err := os.Stat(metadata.Path(dbDir)); err != nil {
 				result = false
