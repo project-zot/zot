@@ -45,6 +45,12 @@ jobs:
           # install haproxy
           sudo apt-get install haproxy
 
+      - name: Build binaries
+        run: |
+          cd $GITHUB_WORKSPACE
+          make binary
+          make bench
+
       - name: Setup minio service
         run: |
             docker run -d -p 9000:9000 --name minio \
@@ -92,14 +98,29 @@ jobs:
       - name: Prepare configuration files
         run: |
             cp test/cluster/config-minio.json test/cluster/config-minio1.json
-            sed -i 's/8081/8082/g' test/cluster/config-minio.json
+            sed -i 's/8081/8081/g' test/cluster/config-minio1.json
+            sed -i 's/\/tmp\/zot/\/tmp\/zot1/g' test/cluster/config-minio1.json
             cp test/cluster/config-minio.json test/cluster/config-minio2.json
-            sed -i 's/8082/8083/g' test/cluster/config-minio.json
+            sed -i 's/8081/8082/g' test/cluster/config-minio2.json
+            sed -i 's/\/tmp\/zot/\/tmp\/zot2/g' test/cluster/config-minio2.json
             cp test/cluster/config-minio.json test/cluster/config-minio3.json
+            sed -i 's/8081/8083/g' test/cluster/config-minio3.json
+            sed -i 's/\/tmp\/zot/\/tmp\/zot3/g' test/cluster/config-minio3.json
+
+      - name: Free up disk space
+        uses: jlumbroso/free-disk-space@main
+        with:
+          # This might remove tools that are actually needed, if set to "true" but frees about 6 GB
+          tool-cache: true
+          # All of these default to true, but feel free to set to "false" if necessary for your workflow
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: true
+          swap-storage: true
 
       - name: Run push-pull tests
         run: |
-            make binary
             ./bin/zot-linux-amd64 serve test/cluster/config-minio1.json &
             ./bin/zot-linux-amd64 serve test/cluster/config-minio2.json &
             ./bin/zot-linux-amd64 serve test/cluster/config-minio3.json &
@@ -127,7 +148,6 @@ jobs:
 
       - name: Run benchmark with --src-cidr arg
         run: |
-            make bench
             ./bin/zot-linux-amd64 serve test/cluster/config-minio1.json &
             ./bin/zot-linux-amd64 serve test/cluster/config-minio2.json &
             ./bin/zot-linux-amd64 serve test/cluster/config-minio3.json &
@@ -145,7 +165,6 @@ jobs:
 
       - name: Run benchmark with --src-ips arg
         run: |
-            make bench
             ./bin/zot-linux-amd64 serve test/cluster/config-minio1.json &
             ./bin/zot-linux-amd64 serve test/cluster/config-minio2.json &
             ./bin/zot-linux-amd64 serve test/cluster/config-minio3.json &

@@ -30,6 +30,7 @@ ZUI_REPO_OWNER := project-zot
 ZUI_REPO_NAME := zui
 SWAGGER_VERSION := v1.16.2
 STACKER := $(TOOLSDIR)/bin/stacker
+STACKER_VERSION := v0.40.5
 BATS := $(TOOLSDIR)/bin/bats
 TESTDATA := $(TOP_LEVEL)/test/data
 OS ?= $(shell go env GOOS)
@@ -535,7 +536,7 @@ fuzz-all:
 
 $(STACKER): check-linux
 	mkdir -p $(TOOLSDIR)/bin; \
-	curl -fsSL https://github.com/project-stacker/stacker/releases/latest/download/stacker -o $@; \
+	curl -fsSL https://github.com/project-stacker/stacker/releases/download/$(STACKER_VERSION)/stacker -o $@; \
 	chmod +x $@
 
 $(COSIGN):
