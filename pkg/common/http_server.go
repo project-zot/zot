@@ -148,3 +148,10 @@ func QueryHasParams(values url.Values, params []string) bool {
 
 	return true
 }
+
+func GetContentType(r *http.Request) string {
+	contentType := r.Header.Get("Content-Type")
+	contentTypeParams := strings.Split(contentType, ";")
+
+	return contentTypeParams[0]
+}
