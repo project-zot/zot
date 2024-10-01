@@ -7,7 +7,9 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -123,14 +125,14 @@ func (httpClient *Client) SetConfig(config Config) error {
 	}
 
 	if config.CertDir != "" {
+		clientCert, clientKey, rootCA, err := getCertFiles(config.CertDir, httpClient.log)
 		// only configure the default cert file names if the CertDir was specified.
-		clientOpts.CertOptions = common.HTTPClientCertOptions{
-			// filepath is the recommended library to use for joining paths
-			// taking into account the underlying OS.
-			// ref: https://stackoverflow.com/a/39182128
-			ClientCertFile: filepath.Join(config.CertDir, common.ClientCertFilename),
-			ClientKeyFile:  filepath.Join(config.CertDir, common.ClientKeyFilename),
-			RootCaCertFile: filepath.Join(config.CertDir, common.CaCertFilename),
+		if err == nil {
+			clientOpts.CertOptions = common.HTTPClientCertOptions{
+				ClientCertFile: clientCert,
+				ClientKeyFile:  clientKey,
+				RootCaCertFile: rootCA,
+			}
 		}
 	}
 
@@ -479,4 +481,60 @@ func needsRetryWithUpdatedScope(err error, resp *http.Response) (bool, challenge
 	}
 
 	return false, params
+}
+
+func getCertFiles(dir string, log log.Logger) (string, string, string, error) {
+	var clientCert, clientKey, rootCA string
+
+	files, err := os.ReadDir(dir)
+	if err != nil {
+		log.Error().Err(err).Str("dir", dir).Msg("failed to read sync extension certDir")
+
+		return "", "", "", err
+	}
+
+	for _, file := range files {
+		fullPath := filepath.Join(dir, file.Name())
+		if strings.HasSuffix(file.Name(), ".crt") {
+			rootCA = fullPath
+		}
+
+		if base, ok := strings.CutSuffix(file.Name(), ".cert"); ok {
+			clientCert = filepath.Join(dir, file.Name())
+			keyFile := base + ".key"
+			clientKey = filepath.Join(dir, keyFile)
+
+			if !hasFile(files, keyFile) {
+				log.Error().Err(zerr.ErrMissingCertificate).Str("dir", dir).
+					Str("missing key", keyFile).Str("certificate", clientCert).Msg("missing key for client certificate")
+
+				return "", "", "", zerr.ErrMissingCertificate
+			}
+
+			break
+		}
+
+		if base, ok := strings.CutSuffix(file.Name(), ".key"); ok {
+			clientKey = filepath.Join(dir, file.Name())
+			certFile := base + ".cert"
+			clientCert = filepath.Join(dir, certFile)
+
+			if !hasFile(files, certFile) {
+				log.Error().Err(zerr.ErrMissingCertificate).Str("dir", dir).
+					Str("key", clientKey).Str("missing certificate", certFile).Msg("missing client certificate for key")
+
+				return "", "", "", zerr.ErrMissingCertificate
+			}
+
+			break
+		}
+	}
+
+	return clientCert, clientKey, rootCA, nil
+}
+
+func hasFile(files []os.DirEntry, name string) bool {
+	return slices.ContainsFunc(files, func(f os.DirEntry) bool {
+		return f.Name() == name
+	})
 }
