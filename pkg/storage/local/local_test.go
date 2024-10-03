@@ -1239,11 +1239,11 @@ func TestDedupeLinks(t *testing.T) {
 			manifestBuf, err = json.Marshal(manifest)
 			So(err, ShouldBeNil)
 
-			digest = godigest.FromBytes(manifestBuf)
+			manifestDigest2 := godigest.FromBytes(manifestBuf)
 			_, _, err = imgStore.PutImageManifest("dedupe2", "1.0", ispec.MediaTypeImageManifest, manifestBuf)
 			So(err, ShouldBeNil)
 
-			_, _, _, err = imgStore.GetImageManifest("dedupe2", digest.String())
+			_, _, _, err = imgStore.GetImageManifest("dedupe2", manifestDigest2.String())
 			So(err, ShouldBeNil)
 
 			// verify that dedupe with hard links happened
@@ -1267,6 +1267,15 @@ func TestDedupeLinks(t *testing.T) {
 					err = imgStore.DeleteBlob("dedupe1", godigest.NewDigestFromEncoded(godigest.SHA256, blobDigest1))
 					So(err, ShouldBeNil)
 
+					// only the tag was removed, but not the digest, this call should error
+					err = imgStore.DeleteBlob("dedupe2", godigest.NewDigestFromEncoded(godigest.SHA256, blobDigest2))
+					So(err, ShouldNotBeNil)
+
+					// Delete the manifest
+					err = imgStore.DeleteImageManifest("dedupe2", manifestDigest2.String(), false)
+					So(err, ShouldBeNil)
+
+					// The call should succeed
 					err = imgStore.DeleteBlob("dedupe2", godigest.NewDigestFromEncoded(godigest.SHA256, blobDigest2))
 					So(err, ShouldBeNil)
 				})
@@ -1422,6 +1431,15 @@ func TestDedupeLinks(t *testing.T) {
 				err = imgStore.DeleteBlob("dedupe1", godigest.NewDigestFromEncoded(godigest.SHA256, blobDigest1))
 				So(err, ShouldBeNil)
 
+				// only the tag was removed, but not the digest, this call should error
+				err = imgStore.DeleteBlob("dedupe2", godigest.NewDigestFromEncoded(godigest.SHA256, blobDigest2))
+				So(err, ShouldNotBeNil)
+
+				// Delete the manifest
+				err = imgStore.DeleteImageManifest("dedupe2", manifestDigest2.String(), false)
+				So(err, ShouldBeNil)
+
+				// The call should succeed
 				err = imgStore.DeleteBlob("dedupe2", godigest.NewDigestFromEncoded(godigest.SHA256, blobDigest2))
 				So(err, ShouldBeNil)
 			})

@@ -25,25 +25,27 @@ import (
 	"zotregistry.dev/zot/pkg/common"
 )
 
-func makeHTTPGetRequest(url string, resultPtr interface{}, client *resty.Client) error {
+func makeHTTPGetRequest(url string, resultPtr interface{}, client *resty.Client) (http.Header, error) {
 	resp, err := client.R().Get(url)
 	if err != nil {
-		return err
+		return http.Header{}, err
 	}
+
+	header := resp.Header()
 
 	if resp.StatusCode() != http.StatusOK {
 		log.Printf("unable to make GET request on %s, response status code: %d", url, resp.StatusCode())
 
-		return fmt.Errorf("%w: Expected: %d, Got: %d, Body: '%s'", zerr.ErrBadHTTPStatusCode, http.StatusOK,
+		return header, fmt.Errorf("%w: Expected: %d, Got: %d, Body: '%s'", zerr.ErrBadHTTPStatusCode, http.StatusOK,
 			resp.StatusCode(), string(resp.Body()))
 	}
 
 	err = json.Unmarshal(resp.Body(), resultPtr)
 	if err != nil {
-		return err
+		return header, err
 	}
 
-	return nil
+	return header, nil
 }
 
 func makeHTTPDeleteRequest(url string, client *resty.Client) error {
@@ -67,7 +69,7 @@ func deleteTestRepo(repos []string, url string, client *resty.Client) error {
 		var tags common.ImageTags
 
 		// get tags
-		err := makeHTTPGetRequest(fmt.Sprintf("%s/v2/%s/tags/list", url, repo), &tags, client)
+		_, err := makeHTTPGetRequest(fmt.Sprintf("%s/v2/%s/tags/list", url, repo), &tags, client)
 		if err != nil {
 			return err
 		}
@@ -76,13 +78,15 @@ func deleteTestRepo(repos []string, url string, client *resty.Client) error {
 			var manifest ispec.Manifest
 
 			// first get tag manifest to get containing blobs
-			err := makeHTTPGetRequest(fmt.Sprintf("%s/v2/%s/manifests/%s", url, repo, tag), &manifest, client)
+			header, err := makeHTTPGetRequest(fmt.Sprintf("%s/v2/%s/manifests/%s", url, repo, tag), &manifest, client)
 			if err != nil {
 				return err
 			}
 
+			manifestDigest := header.Get("Docker-Content-Digest")
+
 			// delete manifest so that we don't trigger BlobInUse error
-			err = makeHTTPDeleteRequest(fmt.Sprintf("%s/v2/%s/manifests/%s", url, repo, tag), client)
+			err = makeHTTPDeleteRequest(fmt.Sprintf("%s/v2/%s/manifests/%s", url, repo, manifestDigest), client)
 			if err != nil {
 				return err
 			}

@@ -1307,12 +1307,12 @@ func TestS3Dedupe(t *testing.T) {
 		manifestBuf, err = json.Marshal(manifest)
 		So(err, ShouldBeNil)
 
-		digest = godigest.FromBytes(manifestBuf)
+		manifestDigest2 := godigest.FromBytes(manifestBuf)
 		_, _, err = imgStore.PutImageManifest("dedupe2", "1.0", ispec.MediaTypeImageManifest,
 			manifestBuf)
 		So(err, ShouldBeNil)
 
-		_, _, _, err = imgStore.GetImageManifest("dedupe2", digest.String())
+		_, _, _, err = imgStore.GetImageManifest("dedupe2", manifestDigest2.String())
 		So(err, ShouldBeNil)
 
 		fi1, err := storeDriver.Stat(context.Background(), path.Join(testDir, "dedupe1", "blobs", "sha256",
@@ -1336,10 +1336,19 @@ func TestS3Dedupe(t *testing.T) {
 			err = imgStore.DeleteImageManifest("dedupe1", manifestDigest.String(), false)
 			So(err, ShouldBeNil)
 
+			// delete tag, but not manifest
 			err = imgStore.DeleteImageManifest("dedupe2", "1.0", false)
 			So(err, ShouldBeNil)
 
+			// delete should succeed as the manifest was deleted
 			err = imgStore.DeleteBlob("dedupe1", blobDigest1)
+			So(err, ShouldBeNil)
+
+			// delete should fail, as the blob is referenced by an untagged manifest
+			err = imgStore.DeleteBlob("dedupe2", blobDigest2)
+			So(err, ShouldEqual, zerr.ErrBlobReferenced)
+
+			err = imgStore.DeleteImageManifest("dedupe2", manifestDigest2.String(), false)
 			So(err, ShouldBeNil)
 
 			err = imgStore.DeleteBlob("dedupe2", blobDigest2)
@@ -1351,7 +1360,7 @@ func TestS3Dedupe(t *testing.T) {
 			err = imgStore.DeleteImageManifest("dedupe1", manifestDigest.String(), false)
 			So(err, ShouldBeNil)
 
-			err = imgStore.DeleteImageManifest("dedupe2", "1.0", false)
+			err = imgStore.DeleteImageManifest("dedupe2", manifestDigest2.String(), false)
 			So(err, ShouldBeNil)
 
 			// if we delete blob1, the content should be moved to blob2
@@ -1470,12 +1479,12 @@ func TestS3Dedupe(t *testing.T) {
 			manifestBuf, err = json.Marshal(manifest)
 			So(err, ShouldBeNil)
 
-			digest = godigest.FromBytes(manifestBuf)
+			manifestDigest3 := godigest.FromBytes(manifestBuf)
 			_, _, err = imgStore.PutImageManifest("dedupe3", "1.0", ispec.MediaTypeImageManifest,
 				manifestBuf)
 			So(err, ShouldBeNil)
 
-			_, _, _, err = imgStore.GetImageManifest("dedupe3", digest.String())
+			_, _, _, err = imgStore.GetImageManifest("dedupe3", manifestDigest3.String())
 			So(err, ShouldBeNil)
 
 			fi1, err := storeDriver.Stat(context.Background(), path.Join(testDir, "dedupe1", "blobs", "sha256",
@@ -1500,10 +1509,10 @@ func TestS3Dedupe(t *testing.T) {
 				err = imgStore.DeleteImageManifest("dedupe1", manifestDigest.String(), false)
 				So(err, ShouldBeNil)
 
-				err = imgStore.DeleteImageManifest("dedupe2", "1.0", false)
+				err = imgStore.DeleteImageManifest("dedupe2", manifestDigest2.String(), false)
 				So(err, ShouldBeNil)
 
-				err = imgStore.DeleteImageManifest("dedupe3", "1.0", false)
+				err = imgStore.DeleteImageManifest("dedupe3", manifestDigest3.String(), false)
 				So(err, ShouldBeNil)
 
 				err = imgStore.DeleteBlob("dedupe1", blobDigest1)
@@ -1715,12 +1724,12 @@ func TestS3Dedupe(t *testing.T) {
 		manifestBuf, err = json.Marshal(manifest)
 		So(err, ShouldBeNil)
 
-		digest = godigest.FromBytes(manifestBuf)
+		manifestDigest2 := godigest.FromBytes(manifestBuf)
 		_, _, err = imgStore.PutImageManifest("dedupe2", "1.0", ispec.MediaTypeImageManifest,
 			manifestBuf)
 		So(err, ShouldBeNil)
 
-		_, _, _, err = imgStore.GetImageManifest("dedupe2", digest.String())
+		_, _, _, err = imgStore.GetImageManifest("dedupe2", manifestDigest2.String())
 		So(err, ShouldBeNil)
 
 		fi1, err := storeDriver.Stat(context.Background(), path.Join(testDir, "dedupe1", "blobs", "sha256",
@@ -1744,10 +1753,19 @@ func TestS3Dedupe(t *testing.T) {
 			err = imgStore.DeleteImageManifest("dedupe1", manifestDigest.String(), false)
 			So(err, ShouldBeNil)
 
+			// delete tag, but not manifest
 			err = imgStore.DeleteImageManifest("dedupe2", "1.0", false)
 			So(err, ShouldBeNil)
 
+			// Delete should succeed as the manifest was deleted
 			err = imgStore.DeleteBlob("dedupe1", blobDigest1)
+			So(err, ShouldBeNil)
+
+			// Delete should fail, as the blob is referenced by an untagged manifest
+			err = imgStore.DeleteBlob("dedupe2", blobDigest2)
+			So(err, ShouldEqual, zerr.ErrBlobReferenced)
+
+			err = imgStore.DeleteImageManifest("dedupe2", manifestDigest2.String(), false)
 			So(err, ShouldBeNil)
 
 			err = imgStore.DeleteBlob("dedupe2", blobDigest2)
@@ -1790,10 +1808,19 @@ func TestS3Dedupe(t *testing.T) {
 				err = imgStore.DeleteImageManifest("dedupe1", manifestDigest.String(), false)
 				So(err, ShouldBeNil)
 
+				// delete tag, but not manifest
 				err = imgStore.DeleteImageManifest("dedupe2", "1.0", false)
 				So(err, ShouldBeNil)
 
+				// delete should succeed as the manifest was deleted
 				err = imgStore.DeleteBlob("dedupe1", blobDigest1)
+				So(err, ShouldBeNil)
+
+				// delete should fail, as the blob is referenced by an untagged manifest
+				err = imgStore.DeleteBlob("dedupe2", blobDigest2)
+				So(err, ShouldEqual, zerr.ErrBlobReferenced)
+
+				err = imgStore.DeleteImageManifest("dedupe2", manifestDigest2.String(), false)
 				So(err, ShouldBeNil)
 
 				err = imgStore.DeleteBlob("dedupe2", blobDigest2)
@@ -1832,7 +1859,7 @@ func TestS3Dedupe(t *testing.T) {
 			err = imgStore.DeleteImageManifest("dedupe1", manifestDigest.String(), false)
 			So(err, ShouldBeNil)
 
-			err = imgStore.DeleteImageManifest("dedupe2", "1.0", false)
+			err = imgStore.DeleteImageManifest("dedupe2", manifestDigest2.String(), false)
 			So(err, ShouldBeNil)
 
 			err = imgStore.DeleteBlob("dedupe1", blobDigest1)

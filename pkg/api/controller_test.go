@@ -35,6 +35,7 @@ import (
 	notreg "github.com/notaryproject/notation-go/registry"
 	distext "github.com/opencontainers/distribution-spec/specs-go/v1/extensions"
 	godigest "github.com/opencontainers/go-digest"
+	"github.com/opencontainers/image-spec/specs-go"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/project-zot/mockoidc"
 	"github.com/sigstore/cosign/v2/cmd/cosign/cli/generate"
@@ -8328,7 +8329,7 @@ func TestStorageCommit(t *testing.T) {
 
 		defer cm.StopServer()
 
-		Convey("Manifests", func() {
+		Convey("Manifest deletion deletes all tags", func() {
 			_, _ = Print("\nManifests")
 
 			// check a non-existent manifest
@@ -8374,6 +8375,7 @@ func TestStorageCommit(t *testing.T) {
 			err = UploadImage(image, baseURL, repoName, "test:2.0")
 			So(err, ShouldBeNil)
 
+			// update tag to match the other manifest
 			resp, err = resty.R().SetHeader("Content-Type", "application/vnd.oci.image.manifest.v1+json").
 				SetBody(content).Put(baseURL + "/v2/repo7/manifests/test:2.0")
 			So(err, ShouldBeNil)
@@ -8405,10 +8407,35 @@ func TestStorageCommit(t *testing.T) {
 			resp, err = resty.R().Delete(baseURL + "/v2/repo7/manifests/test:1.0")
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
+
+			// the manifest should still be present in storage
+			_, err = os.Stat(path.Join(dir, "repo7", "blobs", digest.Algorithm().String(),
+				digest.Encoded()))
+			So(err, ShouldBeNil)
+
+			// the index should not longer contain this tag
+			tags, err := readTagsFromStorage(dir, "repo7", digest)
+			So(err, ShouldBeNil)
+			So(tags, ShouldNotContain, "test:1.0")
+			So(tags, ShouldContain, "test:1.0.1")
+			So(tags, ShouldContain, "test:2.0")
+			So(len(tags), ShouldEqual, 2)
+
 			// delete manifest by digest (1.0 deleted but 1.0.1 has same reference)
 			resp, err = resty.R().Delete(baseURL + "/v2/repo7/manifests/" + digest.String())
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
+
+			// the manifest should be removed from storage
+			_, err = os.Stat(path.Join(dir, "repo7", "blobs", digest.Algorithm().String(),
+				digest.Encoded()))
+			So(err, ShouldNotBeNil)
+
+			// the index should not longer contain this manifest
+			tags, err = readTagsFromStorage(dir, "repo7", digest)
+			So(err, ShouldBeNil)
+			So(len(tags), ShouldEqual, 0)
+
 			// delete manifest by digest
 			resp, err = resty.R().Delete(baseURL + "/v2/repo7/manifests/" + digest.String())
 			So(err, ShouldBeNil)
@@ -8441,6 +8468,1167 @@ func TestStorageCommit(t *testing.T) {
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
 			So(resp.Body(), ShouldNotBeEmpty)
+		})
+
+		Convey("Deleting all tags does not remove the manifest", func() {
+			_, _ = Print("\nManifests")
+
+			// check a non-existent manifest
+			resp, err := resty.R().SetHeader("Content-Type", "application/vnd.oci.image.manifest.v1+json").
+				Head(baseURL + "/v2/unknown/manifests/test:1.0")
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
+
+			image := CreateImageWith().RandomLayers(1, 2).DefaultConfig().Build()
+
+			repoName := "repo7"
+			err = UploadImage(image, baseURL, repoName, "test:1.0")
+			So(err, ShouldBeNil)
+
+			_, err = os.Stat(path.Join(dir, "repo7"))
+			So(err, ShouldBeNil)
+
+			content := image.ManifestDescriptor.Data
+			digest := image.ManifestDescriptor.Digest
+			So(digest, ShouldNotBeNil)
+
+			resp, err = resty.R().SetHeader("Content-Type", "application/vnd.oci.image.manifest.v1+json").
+				SetBody(content).Put(baseURL + "/v2/repo7/manifests/test:1.0")
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
+			digestHdr := resp.Header().Get(constants.DistContentDigestKey)
+			So(digestHdr, ShouldNotBeEmpty)
+			So(digestHdr, ShouldEqual, digest.String())
+
+			resp, err = resty.R().SetHeader("Content-Type", "application/vnd.oci.image.manifest.v1+json").
+				SetBody(content).Put(baseURL + "/v2/repo7/manifests/test:1.0.1")
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
+			digestHdr = resp.Header().Get(constants.DistContentDigestKey)
+			So(digestHdr, ShouldNotBeEmpty)
+			So(digestHdr, ShouldEqual, digest.String())
+
+			err = UploadImage(image, baseURL, repoName, "test:1.0.1")
+			So(err, ShouldBeNil)
+
+			image = CreateImageWith().RandomLayers(1, 1).DefaultConfig().Build()
+
+			err = UploadImage(image, baseURL, repoName, "test:2.0")
+			So(err, ShouldBeNil)
+
+			// update tag to match the other manifest
+			resp, err = resty.R().SetHeader("Content-Type", "application/vnd.oci.image.manifest.v1+json").
+				SetBody(content).Put(baseURL + "/v2/repo7/manifests/test:2.0")
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
+			digestHdr = resp.Header().Get(constants.DistContentDigestKey)
+			So(digestHdr, ShouldNotBeEmpty)
+			So(digestHdr, ShouldEqual, digest.String())
+
+			// check/get by tag
+			resp, err = resty.R().Head(baseURL + "/v2/repo7/manifests/test:1.0")
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+			So(resp.Header().Get("Content-Type"), ShouldNotBeEmpty)
+			resp, err = resty.R().Get(baseURL + "/v2/repo7/manifests/test:1.0")
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+			So(resp.Body(), ShouldNotBeEmpty)
+			// check/get by reference
+			resp, err = resty.R().Head(baseURL + "/v2/repo7/manifests/" + digest.String())
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+			So(resp.Header().Get("Content-Type"), ShouldNotBeEmpty)
+			resp, err = resty.R().Get(baseURL + "/v2/repo7/manifests/" + digest.String())
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+			So(resp.Body(), ShouldNotBeEmpty)
+
+			// delete manifest by tag should pass
+			resp, err = resty.R().Delete(baseURL + "/v2/repo7/manifests/test:1.0")
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
+
+			// the manifest should still be present in storage
+			_, err = os.Stat(path.Join(dir, "repo7", "blobs", digest.Algorithm().String(),
+				digest.Encoded()))
+			So(err, ShouldBeNil)
+
+			// the index should not longer contain this tag
+			tags, err := readTagsFromStorage(dir, "repo7", digest)
+			So(err, ShouldBeNil)
+			So(tags, ShouldNotContain, "test:1.0")
+			So(tags, ShouldContain, "test:1.0.1")
+			So(tags, ShouldContain, "test:2.0")
+			So(len(tags), ShouldEqual, 2)
+
+			// delete manifest by tag should pass
+			resp, err = resty.R().Delete(baseURL + "/v2/repo7/manifests/test:1.0.1")
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
+
+			// the manifest should still be present in storage
+			_, err = os.Stat(path.Join(dir, "repo7", "blobs", digest.Algorithm().String(),
+				digest.Encoded()))
+			So(err, ShouldBeNil)
+
+			// the index should not longer contain this manifest
+			tags, err = readTagsFromStorage(dir, "repo7", digest)
+			So(err, ShouldBeNil)
+			So(tags, ShouldNotContain, "test:1.0")
+			So(tags, ShouldNotContain, "test:1.0.1")
+			So(tags, ShouldContain, "test:2.0")
+			So(len(tags), ShouldEqual, 1)
+
+			// delete manifest by tag should pass
+			resp, err = resty.R().Delete(baseURL + "/v2/repo7/manifests/test:2.0")
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
+
+			// the manifest should still be present in storage
+			_, err = os.Stat(path.Join(dir, "repo7", "blobs", digest.Algorithm().String(),
+				digest.Encoded()))
+			So(err, ShouldBeNil)
+
+			// the index should contain this manifest without any tags
+			tags, err = readTagsFromStorage(dir, "repo7", digest)
+			So(err, ShouldBeNil)
+			So(tags, ShouldContain, "")
+			So(len(tags), ShouldEqual, 1)
+
+			// check/get by tag
+			resp, err = resty.R().Head(baseURL + "/v2/repo7/manifests/test:1.0")
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
+			resp, err = resty.R().Get(baseURL + "/v2/repo7/manifests/test:1.0")
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
+			So(resp.Body(), ShouldNotBeEmpty)
+			resp, err = resty.R().Head(baseURL + "/v2/repo7/manifests/test:2.0")
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
+			resp, err = resty.R().Get(baseURL + "/v2/repo7/manifests/test:2.0")
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
+			So(resp.Body(), ShouldNotBeEmpty)
+			// check/get by reference
+			resp, err = resty.R().Head(baseURL + "/v2/repo7/manifests/" + digest.String())
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+			resp, err = resty.R().Get(baseURL + "/v2/repo7/manifests/" + digest.String())
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+			So(resp.Body(), ShouldNotBeEmpty)
+
+			// if the only index entry is for the empty name,
+			// adding a new tag would replace that index entry
+			// instead of having 2 entries
+			err = UploadImage(image, baseURL, repoName, "test:2.0.1")
+			So(err, ShouldBeNil)
+
+			// update tag to match the other manifest
+			resp, err = resty.R().SetHeader("Content-Type", "application/vnd.oci.image.manifest.v1+json").
+				SetBody(content).Put(baseURL + "/v2/repo7/manifests/test:2.0.1")
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
+			digestHdr = resp.Header().Get(constants.DistContentDigestKey)
+			So(digestHdr, ShouldNotBeEmpty)
+			So(digestHdr, ShouldEqual, digest.String())
+
+			// the index should not longer contain this tag
+			tags, err = readTagsFromStorage(dir, "repo7", digest)
+			So(err, ShouldBeNil)
+			So(tags, ShouldContain, "test:2.0.1")
+			So(len(tags), ShouldEqual, 1)
+
+			// delete manifest by tag should pass
+			resp, err = resty.R().Delete(baseURL + "/v2/repo7/manifests/test:2.0.1")
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
+
+			// the manifest should still be present in storage
+			_, err = os.Stat(path.Join(dir, "repo7", "blobs", digest.Algorithm().String(),
+				digest.Encoded()))
+			So(err, ShouldBeNil)
+
+			// the index should contain this manifest without any tags
+			tags, err = readTagsFromStorage(dir, "repo7", digest)
+			So(err, ShouldBeNil)
+			So(tags, ShouldContain, "")
+			So(len(tags), ShouldEqual, 1)
+
+			resp, err = resty.R().Head(baseURL + "/v2/repo7/manifests/" + digest.String())
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+		})
+	})
+}
+
+func TestMultiarchImage(t *testing.T) {
+	Convey("Make a new controller", t, func() {
+		port := test.GetFreePort()
+		baseURL := test.GetBaseURL(port)
+		conf := config.New()
+		conf.HTTP.Port = port
+
+		dir := t.TempDir()
+		ctlr := makeController(conf, dir)
+
+		cm := test.NewControllerManager(ctlr)
+		cm.StartAndWait(port)
+
+		defer cm.StopServer()
+
+		Convey("Manifests used within an index should not be deletable", func() {
+			repoName := "multiarch" //nolint:goconst
+
+			image1 := CreateRandomImage()
+			image2 := CreateRandomImage()
+			multiImage := CreateMultiarchWith().Images([]Image{image1, image2}).Build()
+
+			err := UploadMultiarchImage(multiImage, baseURL, repoName, "index1")
+			So(err, ShouldBeNil)
+
+			// add another tag for one of the manifests
+			manifestBlob, err := json.Marshal(image2.Manifest)
+			So(err, ShouldBeNil)
+
+			resp, err := resty.R().SetHeader("Content-Type", ispec.MediaTypeImageManifest).
+				SetBody(manifestBlob).Put(baseURL + "/v2/" + repoName + "/manifests/manifest2")
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
+
+			resp, err = resty.R().Head(baseURL + "/v2/" + repoName + "/manifests/index1")
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+			resp, err = resty.R().Head(baseURL + "/v2/" + repoName + "/manifests/manifest2")
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+			resp, err = resty.R().Head(baseURL + "/v2/" + repoName + "/manifests/" + image1.DigestStr())
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+			resp, err = resty.R().Head(baseURL + "/v2/" + repoName + "/manifests/" + image2.DigestStr())
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+			// the repo should contain this index with a tag
+			tags, err := readTagsFromStorage(dir, repoName, multiImage.Digest())
+			So(err, ShouldBeNil)
+			So(tags, ShouldContain, "index1")
+			So(len(tags), ShouldEqual, 1)
+
+			// the index should contain this manifest without any tags
+			tags, err = readTagsFromStorage(dir, repoName, image1.Digest())
+			So(err, ShouldBeNil)
+			So(tags, ShouldContain, "")
+			So(len(tags), ShouldEqual, 1)
+
+			// the index should contain this manifest without any tags
+			tags, err = readTagsFromStorage(dir, repoName, image2.Digest())
+			So(err, ShouldBeNil)
+			So(tags, ShouldContain, "manifest2")
+			So(len(tags), ShouldEqual, 1)
+
+			// delete manifest by digest should fail
+			resp, err = resty.R().Delete(baseURL + "/v2/" + repoName + "/manifests/" + image1.DigestStr())
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusMethodNotAllowed)
+
+			resp, err = resty.R().Delete(baseURL + "/v2/" + repoName + "/manifests/" + image2.DigestStr())
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusMethodNotAllowed)
+
+			tags, err = readTagsFromStorage(dir, repoName, image2.Digest())
+			So(err, ShouldBeNil)
+			So(tags, ShouldContain, "manifest2")
+			So(len(tags), ShouldEqual, 1)
+
+			// delete manifest tag should work
+			resp, err = resty.R().Delete(baseURL + "/v2/" + repoName + "/manifests/manifest2")
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
+
+			tags, err = readTagsFromStorage(dir, repoName, image2.Digest())
+			So(err, ShouldBeNil)
+			So(tags, ShouldContain, "")
+			So(len(tags), ShouldEqual, 1)
+
+			// the manifest should not be removed from storage
+			_, err = os.Stat(path.Join(dir, repoName, "blobs", string(image2.Digest().Algorithm()),
+				image2.Digest().Encoded()))
+			So(err, ShouldBeNil)
+
+			// delete tag of index should pass, but the index should be there
+			resp, err = resty.R().Delete(baseURL + "/v2/" + repoName + "/manifests/index1")
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
+
+			// the index should not be removed from storage
+			_, err = os.Stat(path.Join(dir, repoName, "blobs", string(multiImage.Digest().Algorithm()),
+				multiImage.Digest().Encoded()))
+			So(err, ShouldBeNil)
+
+			// The index should not be available by tag
+			resp, err = resty.R().Head(baseURL + "/v2/" + repoName + "/manifests/index1")
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
+
+			// The index should still be available by digest
+			resp, err = resty.R().Head(baseURL + "/v2/" + repoName + "/manifests/" + multiImage.DigestStr())
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+			// the repo should contain this index without a tag
+			tags, err = readTagsFromStorage(dir, repoName, multiImage.Digest())
+			So(err, ShouldBeNil)
+			So(tags, ShouldContain, "")
+			So(len(tags), ShouldEqual, 1)
+
+			// the index should contain this manifest without any tags
+			tags, err = readTagsFromStorage(dir, repoName, image1.Digest())
+			So(err, ShouldBeNil)
+			So(tags, ShouldContain, "")
+			So(len(tags), ShouldEqual, 1)
+
+			// the index should contain this manifest without any tags
+			tags, err = readTagsFromStorage(dir, repoName, image2.Digest())
+			So(err, ShouldBeNil)
+			So(tags, ShouldContain, "")
+			So(len(tags), ShouldEqual, 1)
+
+			// add another tag
+			indexBlob, err := json.Marshal(multiImage.Index)
+			So(err, ShouldBeNil)
+
+			resp, err = resty.R().SetHeader("Content-Type", ispec.MediaTypeImageIndex).
+				SetBody(indexBlob).Put(baseURL + "/v2/" + repoName + "/manifests/index2")
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
+
+			// the repo should contain this index with just the new tag
+			tags, err = readTagsFromStorage(dir, repoName, multiImage.Digest())
+			So(err, ShouldBeNil)
+			So(tags, ShouldContain, "index2")
+			So(len(tags), ShouldEqual, 1)
+
+			// delete tag of index should pass, but the index should be there
+			resp, err = resty.R().Delete(baseURL + "/v2/" + repoName + "/manifests/index2")
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
+
+			// the repo should contain this index without a tag
+			tags, err = readTagsFromStorage(dir, repoName, multiImage.Digest())
+			So(err, ShouldBeNil)
+			So(tags, ShouldContain, "")
+			So(len(tags), ShouldEqual, 1)
+
+			// delete index by digest
+			resp, err = resty.R().Delete(baseURL + "/v2/" + repoName + "/manifests/" + multiImage.DigestStr())
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
+
+			// the index should not be available by digest
+			resp, err = resty.R().Head(baseURL + "/v2/" + repoName + "/manifests/" + multiImage.DigestStr())
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
+
+			// the index should be removed from storage
+			_, err = os.Stat(path.Join(dir, repoName, "blobs", string(multiImage.Digest().Algorithm()),
+				multiImage.Digest().Encoded()))
+			So(err, ShouldNotBeNil)
+
+			// the repo should contain this index without a tag
+			tags, err = readTagsFromStorage(dir, repoName, multiImage.Digest())
+			So(err, ShouldBeNil)
+			So(len(tags), ShouldEqual, 0)
+
+			resp, err = resty.R().Head(baseURL + "/v2/" + repoName + "/manifests/" + image1.DigestStr())
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+			resp, err = resty.R().Head(baseURL + "/v2/" + repoName + "/manifests/" + image2.DigestStr())
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+			// the manifest should not be removed from storage
+			_, err = os.Stat(path.Join(dir, repoName, "blobs", string(image1.Digest().Algorithm()),
+				image1.Digest().Encoded()))
+			So(err, ShouldBeNil)
+
+			// the manifest should not be removed from storage
+			_, err = os.Stat(path.Join(dir, repoName, "blobs", string(image2.Digest().Algorithm()),
+				image2.Digest().Encoded()))
+			So(err, ShouldBeNil)
+
+			// the index should contain this manifest without any tags
+			tags, err = readTagsFromStorage(dir, repoName, image1.Digest())
+			So(err, ShouldBeNil)
+			So(tags, ShouldContain, "")
+			So(len(tags), ShouldEqual, 1)
+
+			// the index should contain this manifest without any tags
+			tags, err = readTagsFromStorage(dir, repoName, image2.Digest())
+			So(err, ShouldBeNil)
+			So(tags, ShouldContain, "")
+			So(len(tags), ShouldEqual, 1)
+
+			// delete manifest should succeed
+			resp, err = resty.R().Delete(baseURL + "/v2/" + repoName + "/manifests/" + image1.DigestStr())
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
+
+			resp, err = resty.R().Delete(baseURL + "/v2/" + repoName + "/manifests/" + image2.DigestStr())
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
+
+			resp, err = resty.R().Head(baseURL + "/v2/" + repoName + "/manifests/" + image1.DigestStr())
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
+
+			resp, err = resty.R().Head(baseURL + "/v2/" + repoName + "/manifests/" + image2.DigestStr())
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
+
+			tags, err = readTagsFromStorage(dir, repoName, image1.Digest())
+			So(err, ShouldBeNil)
+			So(len(tags), ShouldEqual, 0)
+
+			tags, err = readTagsFromStorage(dir, repoName, image2.Digest())
+			So(err, ShouldBeNil)
+			So(len(tags), ShouldEqual, 0)
+
+			// the manifest should be removed from storage
+			_, err = os.Stat(path.Join(dir, repoName, "blobs", string(image1.Digest().Algorithm()),
+				image1.Digest().Encoded()))
+			So(err, ShouldNotBeNil)
+
+			// the manifest should be removed from storage
+			_, err = os.Stat(path.Join(dir, repoName, "blobs", string(image2.Digest().Algorithm()),
+				image2.Digest().Encoded()))
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("Manifests used within multiple indexes should not be deletable", func() {
+			repoName := "multiarch"
+
+			image1 := CreateRandomImage()
+			image2 := CreateRandomImage()
+			image3 := CreateRandomImage()
+			multiImage1 := CreateMultiarchWith().Images([]Image{image1, image2}).Build()
+			multiImage2 := CreateMultiarchWith().Images([]Image{image2, image3}).Build()
+
+			err := UploadMultiarchImage(multiImage1, baseURL, repoName, "index1")
+			So(err, ShouldBeNil)
+
+			err = UploadMultiarchImage(multiImage2, baseURL, repoName, "index2")
+			So(err, ShouldBeNil)
+
+			// add another tag for one of the indexes
+			indexBlob, err := json.Marshal(multiImage2.Index)
+			So(err, ShouldBeNil)
+
+			resp, err := resty.R().SetHeader("Content-Type", ispec.MediaTypeImageIndex).
+				SetBody(indexBlob).Put(baseURL + "/v2/" + repoName + "/manifests/index22")
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
+
+			resp, err = resty.R().Head(baseURL + "/v2/" + repoName + "/manifests/index1")
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+			resp, err = resty.R().Head(baseURL + "/v2/" + repoName + "/manifests/index2")
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+			resp, err = resty.R().Head(baseURL + "/v2/" + repoName + "/manifests/index22")
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+			resp, err = resty.R().Head(baseURL + "/v2/" + repoName + "/manifests/" + image1.DigestStr())
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+			resp, err = resty.R().Head(baseURL + "/v2/" + repoName + "/manifests/" + image2.DigestStr())
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+			// the repo should contain this index with a tag
+			tags, err := readTagsFromStorage(dir, repoName, multiImage1.Digest())
+			So(err, ShouldBeNil)
+			So(tags, ShouldContain, "index1")
+			So(len(tags), ShouldEqual, 1)
+
+			// the repo should contain this index with multiple tags
+			tags, err = readTagsFromStorage(dir, repoName, multiImage2.Digest())
+			So(err, ShouldBeNil)
+			So(tags, ShouldContain, "index2")
+			So(tags, ShouldContain, "index22")
+			So(len(tags), ShouldEqual, 2)
+
+			// the index should contain this manifest without any tags
+			tags, err = readTagsFromStorage(dir, repoName, image1.Digest())
+			So(err, ShouldBeNil)
+			So(tags, ShouldContain, "")
+			So(len(tags), ShouldEqual, 1)
+
+			// the index should contain this manifest without any tags
+			tags, err = readTagsFromStorage(dir, repoName, image2.Digest())
+			So(err, ShouldBeNil)
+			So(tags, ShouldContain, "")
+			So(len(tags), ShouldEqual, 1)
+
+			// the index should contain this manifest without any tags
+			tags, err = readTagsFromStorage(dir, repoName, image3.Digest())
+			So(err, ShouldBeNil)
+			So(tags, ShouldContain, "")
+			So(len(tags), ShouldEqual, 1)
+
+			// delete manifest by digest should fail
+			resp, err = resty.R().Delete(baseURL + "/v2/" + repoName + "/manifests/" + image2.DigestStr())
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusMethodNotAllowed)
+
+			tags, err = readTagsFromStorage(dir, repoName, image2.Digest())
+			So(err, ShouldBeNil)
+			So(tags, ShouldContain, "")
+			So(len(tags), ShouldEqual, 1)
+
+			// the manifest should not be removed from storage
+			_, err = os.Stat(path.Join(dir, repoName, "blobs", string(image2.Digest().Algorithm()),
+				image2.Digest().Encoded()))
+			So(err, ShouldBeNil)
+
+			// delete tag of index should pass, but the index should be there
+			resp, err = resty.R().Delete(baseURL + "/v2/" + repoName + "/manifests/index2")
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
+
+			// the index should not be removed from storage
+			_, err = os.Stat(path.Join(dir, repoName, "blobs", string(multiImage2.Digest().Algorithm()),
+				multiImage2.Digest().Encoded()))
+			So(err, ShouldBeNil)
+
+			// The index should not be available by tag
+			resp, err = resty.R().Head(baseURL + "/v2/" + repoName + "/manifests/index2")
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
+
+			// The index should still be available by digest and the other tag
+			resp, err = resty.R().Head(baseURL + "/v2/" + repoName + "/manifests/index22")
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+			resp, err = resty.R().Head(baseURL + "/v2/" + repoName + "/manifests/" + multiImage2.DigestStr())
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+			// the repo should contain this index with just 1 tag
+			tags, err = readTagsFromStorage(dir, repoName, multiImage2.Digest())
+			So(err, ShouldBeNil)
+			So(tags, ShouldContain, "index22")
+			So(len(tags), ShouldEqual, 1)
+
+			// the index should contain this manifest without any tags
+			tags, err = readTagsFromStorage(dir, repoName, image1.Digest())
+			So(err, ShouldBeNil)
+			So(tags, ShouldContain, "")
+			So(len(tags), ShouldEqual, 1)
+
+			// the index should contain this manifest without any tags
+			tags, err = readTagsFromStorage(dir, repoName, image2.Digest())
+			So(err, ShouldBeNil)
+			So(tags, ShouldContain, "")
+			So(len(tags), ShouldEqual, 1)
+
+			// the index should contain this manifest without any tags
+			tags, err = readTagsFromStorage(dir, repoName, image3.Digest())
+			So(err, ShouldBeNil)
+			So(tags, ShouldContain, "")
+			So(len(tags), ShouldEqual, 1)
+
+			// add another tag
+			resp, err = resty.R().SetHeader("Content-Type", ispec.MediaTypeImageIndex).
+				SetBody(indexBlob).Put(baseURL + "/v2/" + repoName + "/manifests/index222")
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
+
+			// the repo should contain this index with both old and new tags
+			tags, err = readTagsFromStorage(dir, repoName, multiImage2.Digest())
+			So(err, ShouldBeNil)
+			So(tags, ShouldContain, "index22")
+			So(tags, ShouldContain, "index222")
+			So(len(tags), ShouldEqual, 2)
+
+			// delete manifest by digest should fail
+			resp, err = resty.R().Delete(baseURL + "/v2/" + repoName + "/manifests/" + image2.DigestStr())
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusMethodNotAllowed)
+
+			// delete 1st index by digest
+			resp, err = resty.R().Delete(baseURL + "/v2/" + repoName + "/manifests/" + multiImage1.DigestStr())
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
+
+			// the index should not be available by digest
+			resp, err = resty.R().Head(baseURL + "/v2/" + repoName + "/manifests/" + multiImage1.DigestStr())
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
+
+			// the index should be removed from storage
+			_, err = os.Stat(path.Join(dir, repoName, "blobs", string(multiImage1.Digest().Algorithm()),
+				multiImage1.Digest().Encoded()))
+			So(err, ShouldNotBeNil)
+
+			// the repo should contain this index without a tag
+			tags, err = readTagsFromStorage(dir, repoName, multiImage1.Digest())
+			So(err, ShouldBeNil)
+			So(len(tags), ShouldEqual, 0)
+
+			// the repo should contain this index with 2 tags
+			tags, err = readTagsFromStorage(dir, repoName, multiImage2.Digest())
+			So(err, ShouldBeNil)
+			So(tags, ShouldContain, "index22")
+			So(tags, ShouldContain, "index222")
+			So(len(tags), ShouldEqual, 2)
+
+			resp, err = resty.R().Head(baseURL + "/v2/" + repoName + "/manifests/" + image1.DigestStr())
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+			resp, err = resty.R().Head(baseURL + "/v2/" + repoName + "/manifests/" + image2.DigestStr())
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+			resp, err = resty.R().Head(baseURL + "/v2/" + repoName + "/manifests/" + image3.DigestStr())
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+			resp, err = resty.R().Head(baseURL + "/v2/" + repoName + "/manifests/" + multiImage2.DigestStr())
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+			// the manifest should not be removed from storage
+			_, err = os.Stat(path.Join(dir, repoName, "blobs", string(image2.Digest().Algorithm()),
+				image2.Digest().Encoded()))
+			So(err, ShouldBeNil)
+
+			// the index should contain this manifest without any tags
+			tags, err = readTagsFromStorage(dir, repoName, image2.Digest())
+			So(err, ShouldBeNil)
+			So(tags, ShouldContain, "")
+			So(len(tags), ShouldEqual, 1)
+
+			// delete manifest should succeed for only 1 manifest
+			resp, err = resty.R().Delete(baseURL + "/v2/" + repoName + "/manifests/" + image1.DigestStr())
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
+
+			// this manifest is referenced by the other index
+			resp, err = resty.R().Delete(baseURL + "/v2/" + repoName + "/manifests/" + image2.DigestStr())
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusMethodNotAllowed)
+
+			// this manifest is referenced by the other index
+			resp, err = resty.R().Delete(baseURL + "/v2/" + repoName + "/manifests/" + image3.DigestStr())
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusMethodNotAllowed)
+
+			tags, err = readTagsFromStorage(dir, repoName, image1.Digest())
+			So(err, ShouldBeNil)
+			So(len(tags), ShouldEqual, 0)
+
+			tags, err = readTagsFromStorage(dir, repoName, image2.Digest())
+			So(err, ShouldBeNil)
+			So(len(tags), ShouldEqual, 1)
+
+			tags, err = readTagsFromStorage(dir, repoName, image3.Digest())
+			So(err, ShouldBeNil)
+			So(len(tags), ShouldEqual, 1)
+
+			// the manifest should be removed from storage
+			_, err = os.Stat(path.Join(dir, repoName, "blobs", string(image1.Digest().Algorithm()),
+				image1.Digest().Encoded()))
+			So(err, ShouldNotBeNil)
+
+			// the manifest should not be removed from storage
+			_, err = os.Stat(path.Join(dir, repoName, "blobs", string(image2.Digest().Algorithm()),
+				image2.Digest().Encoded()))
+			So(err, ShouldBeNil)
+
+			// delete 2nd index by digest
+			resp, err = resty.R().Delete(baseURL + "/v2/" + repoName + "/manifests/" + multiImage2.DigestStr())
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
+
+			// the repo should not contain this index
+			tags, err = readTagsFromStorage(dir, repoName, multiImage2.Digest())
+			So(err, ShouldBeNil)
+			So(len(tags), ShouldEqual, 0)
+
+			// the index should be removed from storage
+			_, err = os.Stat(path.Join(dir, repoName, "blobs", string(multiImage2.Digest().Algorithm()),
+				multiImage2.Digest().Encoded()))
+			So(err, ShouldNotBeNil)
+
+			// delete manifest should succeed
+			resp, err = resty.R().Delete(baseURL + "/v2/" + repoName + "/manifests/" + image2.DigestStr())
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
+
+			resp, err = resty.R().Delete(baseURL + "/v2/" + repoName + "/manifests/" + image3.DigestStr())
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
+
+			resp, err = resty.R().Head(baseURL + "/v2/" + repoName + "/manifests/" + image2.DigestStr())
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
+
+			resp, err = resty.R().Head(baseURL + "/v2/" + repoName + "/manifests/" + image3.DigestStr())
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
+
+			tags, err = readTagsFromStorage(dir, repoName, image2.Digest())
+			So(err, ShouldBeNil)
+			So(len(tags), ShouldEqual, 0)
+
+			tags, err = readTagsFromStorage(dir, repoName, image3.Digest())
+			So(err, ShouldBeNil)
+			So(len(tags), ShouldEqual, 0)
+
+			// the manifest should be removed from storage
+			_, err = os.Stat(path.Join(dir, repoName, "blobs", string(image2.Digest().Algorithm()),
+				image2.Digest().Encoded()))
+			So(err, ShouldNotBeNil)
+
+			// the manifest should be removed from storage
+			_, err = os.Stat(path.Join(dir, repoName, "blobs", string(image3.Digest().Algorithm()),
+				image3.Digest().Encoded()))
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("Indexes referenced within other indexes should not be deleted", func() {
+			repoName := "multiarch"
+
+			image1 := CreateRandomImage()
+			image2 := CreateRandomImage()
+			index1 := CreateMultiarchWith().Images([]Image{image1}).Build()
+			index2 := CreateMultiarchWith().Images([]Image{image2}).Build()
+
+			err := UploadMultiarchImage(index1, baseURL, repoName, "index1")
+			So(err, ShouldBeNil)
+
+			err = UploadMultiarchImage(index2, baseURL, repoName, index2.Digest().String())
+			So(err, ShouldBeNil)
+
+			rootIndex := ispec.Index{
+				Versioned: specs.Versioned{SchemaVersion: 2},
+				MediaType: ispec.MediaTypeImageIndex,
+				Manifests: []ispec.Descriptor{
+					{
+						Digest:    index1.IndexDescriptor.Digest,
+						Size:      index1.IndexDescriptor.Size,
+						MediaType: ispec.MediaTypeImageIndex,
+					},
+					{
+						Digest:    index2.IndexDescriptor.Digest,
+						Size:      index2.IndexDescriptor.Size,
+						MediaType: ispec.MediaTypeImageIndex,
+					},
+				},
+			}
+
+			indexBlob, err := json.Marshal(rootIndex)
+			So(err, ShouldBeNil)
+
+			rootIndexDigest := godigest.FromBytes(indexBlob)
+
+			resp, err := resty.R().
+				SetHeader("Content-type", ispec.MediaTypeImageIndex).
+				SetBody(indexBlob).
+				Put(baseURL + "/v2/" + repoName + "/manifests/root")
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
+
+			resp, err = resty.R().Head(baseURL + "/v2/" + repoName + "/manifests/index1")
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+			resp, err = resty.R().Head(baseURL + "/v2/" + repoName + "/manifests/root")
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+			resp, err = resty.R().Get(baseURL + "/v2/" + repoName + "/manifests/index1")
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+			resp, err = resty.R().Get(baseURL + "/v2/" + repoName + "/manifests/root")
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+			So(resp.Body(), ShouldNotBeEmpty)
+			So(resp.Header().Get("Content-Type"), ShouldNotBeEmpty)
+
+			resp, err = resty.R().Head(baseURL + "/v2/" + repoName + "/manifests/" + index1.DigestStr())
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+			resp, err = resty.R().Head(baseURL + "/v2/" + repoName + "/manifests/" + index2.DigestStr())
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+			resp, err = resty.R().Head(baseURL + "/v2/" + repoName + "/manifests/" + rootIndexDigest.String())
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+			resp, err = resty.R().Get(baseURL + "/v2/" + repoName + "/manifests/" + rootIndexDigest.String())
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+			So(resp.Body(), ShouldNotBeEmpty)
+			So(resp.Header().Get("Content-Type"), ShouldNotBeEmpty)
+
+			// the repo should contain this index with a tag
+			tags, err := readTagsFromStorage(dir, repoName, index1.Digest())
+			So(err, ShouldBeNil)
+			So(tags, ShouldContain, "index1")
+			So(len(tags), ShouldEqual, 1)
+
+			// the repo should contain this index with a tag
+			tags, err = readTagsFromStorage(dir, repoName, index2.Digest())
+			So(err, ShouldBeNil)
+			So(tags, ShouldContain, "")
+			So(len(tags), ShouldEqual, 1)
+
+			// the repo should contain this index with a tag
+			tags, err = readTagsFromStorage(dir, repoName, rootIndexDigest)
+			So(err, ShouldBeNil)
+			So(tags, ShouldContain, "root")
+			So(len(tags), ShouldEqual, 1)
+
+			// the index should contain this manifest without any tags
+			tags, err = readTagsFromStorage(dir, repoName, image1.Digest())
+			So(err, ShouldBeNil)
+			So(tags, ShouldContain, "")
+			So(len(tags), ShouldEqual, 1)
+
+			// the index should contain this manifest without any tags
+			tags, err = readTagsFromStorage(dir, repoName, image2.Digest())
+			So(err, ShouldBeNil)
+			So(tags, ShouldContain, "")
+			So(len(tags), ShouldEqual, 1)
+
+			// delete manifest by digest should fail
+			resp, err = resty.R().Delete(baseURL + "/v2/" + repoName + "/manifests/" + image1.DigestStr())
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusMethodNotAllowed)
+
+			tags, err = readTagsFromStorage(dir, repoName, image1.Digest())
+			So(err, ShouldBeNil)
+			So(tags, ShouldContain, "")
+			So(len(tags), ShouldEqual, 1)
+
+			_, err = os.Stat(path.Join(dir, repoName, "blobs", string(image1.Digest().Algorithm()),
+				image1.Digest().Encoded()))
+			So(err, ShouldBeNil)
+
+			// delete index by digest should fail as it is referenced in the root index
+			resp, err = resty.R().Delete(baseURL + "/v2/" + repoName + "/manifests/" + index1.DigestStr())
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusMethodNotAllowed)
+
+			tags, err = readTagsFromStorage(dir, repoName, index1.Digest())
+			So(err, ShouldBeNil)
+			So(tags, ShouldContain, "index1")
+			So(len(tags), ShouldEqual, 1)
+
+			_, err = os.Stat(path.Join(dir, repoName, "blobs", string(index1.Digest().Algorithm()),
+				index1.Digest().Encoded()))
+			So(err, ShouldBeNil)
+
+			// delete index by digest should fail as it is referenced in the root index
+			resp, err = resty.R().Delete(baseURL + "/v2/" + repoName + "/manifests/" + index2.DigestStr())
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusMethodNotAllowed)
+
+			tags, err = readTagsFromStorage(dir, repoName, index2.Digest())
+			So(err, ShouldBeNil)
+			So(tags, ShouldContain, "")
+			So(len(tags), ShouldEqual, 1)
+
+			_, err = os.Stat(path.Join(dir, repoName, "blobs", string(index2.Digest().Algorithm()),
+				index2.Digest().Encoded()))
+			So(err, ShouldBeNil)
+
+			// delete tag of referenced index should pass, but the index should be there
+			resp, err = resty.R().Delete(baseURL + "/v2/" + repoName + "/manifests/index1")
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
+
+			// the index should not be removed from storage
+			_, err = os.Stat(path.Join(dir, repoName, "blobs", string(index1.Digest().Algorithm()),
+				index1.Digest().Encoded()))
+			So(err, ShouldBeNil)
+
+			// The index should not be available by tag
+			resp, err = resty.R().Head(baseURL + "/v2/" + repoName + "/manifests/index1")
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
+
+			// The index should still be available by digest
+			resp, err = resty.R().Head(baseURL + "/v2/" + repoName + "/manifests/" + index1.DigestStr())
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+			// the repo should contain this index with just 1 tag
+			tags, err = readTagsFromStorage(dir, repoName, index1.Digest())
+			So(err, ShouldBeNil)
+			So(tags, ShouldContain, "")
+			So(len(tags), ShouldEqual, 1)
+
+			// the index should contain this manifest without any tags
+			tags, err = readTagsFromStorage(dir, repoName, index2.Digest())
+			So(err, ShouldBeNil)
+			So(tags, ShouldContain, "")
+			So(len(tags), ShouldEqual, 1)
+
+			// the index should contain this manifest without any tags
+			tags, err = readTagsFromStorage(dir, repoName, rootIndexDigest)
+			So(err, ShouldBeNil)
+			So(tags, ShouldContain, "root")
+			So(len(tags), ShouldEqual, 1)
+
+			// the index should contain this manifest without any tags
+			tags, err = readTagsFromStorage(dir, repoName, image1.Digest())
+			So(err, ShouldBeNil)
+			So(tags, ShouldContain, "")
+			So(len(tags), ShouldEqual, 1)
+
+			// the index should contain this manifest without any tags
+			tags, err = readTagsFromStorage(dir, repoName, image2.Digest())
+			So(err, ShouldBeNil)
+			So(tags, ShouldContain, "")
+			So(len(tags), ShouldEqual, 1)
+
+			// add another tag to the second index
+			index2Blob, err := json.Marshal(index2.Index)
+			So(err, ShouldBeNil)
+
+			resp, err = resty.R().SetHeader("Content-Type", ispec.MediaTypeImageIndex).
+				SetBody(index2Blob).Put(baseURL + "/v2/" + repoName + "/manifests/index2")
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
+
+			// the index should contain this manifest with a single tag
+			tags, err = readTagsFromStorage(dir, repoName, index2.Digest())
+			So(err, ShouldBeNil)
+			So(tags, ShouldContain, "index2")
+			So(len(tags), ShouldEqual, 1)
+
+			// delete tag of referenced index should pass, but the index should be there
+			resp, err = resty.R().Delete(baseURL + "/v2/" + repoName + "/manifests/index2")
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
+
+			// the index should not be removed from storage
+			_, err = os.Stat(path.Join(dir, repoName, "blobs", string(index2.Digest().Algorithm()),
+				index2.Digest().Encoded()))
+			So(err, ShouldBeNil)
+
+			// The index should not be available by tag
+			resp, err = resty.R().Head(baseURL + "/v2/" + repoName + "/manifests/index2")
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
+
+			// The index should still be available by digest
+			resp, err = resty.R().Head(baseURL + "/v2/" + repoName + "/manifests/" + index2.DigestStr())
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+			// the index should contain this manifest with a single tag
+			tags, err = readTagsFromStorage(dir, repoName, index2.Digest())
+			So(err, ShouldBeNil)
+			So(tags, ShouldContain, "")
+			So(len(tags), ShouldEqual, 1)
+
+			// delete manifest by digest should fail
+			resp, err = resty.R().Delete(baseURL + "/v2/" + repoName + "/manifests/" + index2.DigestStr())
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusMethodNotAllowed)
+
+			// add another tag to the root index
+			resp, err = resty.R().SetHeader("Content-Type", ispec.MediaTypeImageIndex).
+				SetBody(indexBlob).Put(baseURL + "/v2/" + repoName + "/manifests/root2")
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
+
+			// the repo should contain this index with both old and new tags
+			tags, err = readTagsFromStorage(dir, repoName, rootIndexDigest)
+			So(err, ShouldBeNil)
+			So(tags, ShouldContain, "root")
+			So(tags, ShouldContain, "root2")
+			So(len(tags), ShouldEqual, 2)
+
+			// delete 1st root tag
+			resp, err = resty.R().Delete(baseURL + "/v2/" + repoName + "/manifests/root")
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
+
+			// the repo should contain this index with only the new tag
+			tags, err = readTagsFromStorage(dir, repoName, rootIndexDigest)
+			So(err, ShouldBeNil)
+			So(tags, ShouldContain, "root2")
+			So(len(tags), ShouldEqual, 1)
+
+			// the index should be available by digest
+			resp, err = resty.R().Get(baseURL + "/v2/" + repoName + "/manifests/" + rootIndexDigest.String())
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+			So(resp.Body(), ShouldNotBeEmpty)
+			So(resp.Header().Get("Content-Type"), ShouldNotBeEmpty)
+
+			// delete root index by digest
+			resp, err = resty.R().Delete(baseURL + "/v2/" + repoName + "/manifests/" + rootIndexDigest.String())
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
+
+			// the index should not be available by digest
+			resp, err = resty.R().Head(baseURL + "/v2/" + repoName + "/manifests/" + rootIndexDigest.String())
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
+
+			// the index should be removed from storage
+			_, err = os.Stat(path.Join(dir, repoName, "blobs", string(rootIndexDigest.Algorithm()),
+				rootIndexDigest.Encoded()))
+			So(err, ShouldNotBeNil)
+
+			// the repo should not contain this root index
+			tags, err = readTagsFromStorage(dir, repoName, rootIndexDigest)
+			So(err, ShouldBeNil)
+			So(len(tags), ShouldEqual, 0)
+
+			// the repo should contain this index with no tags
+			tags, err = readTagsFromStorage(dir, repoName, index1.Digest())
+			So(err, ShouldBeNil)
+			So(tags, ShouldContain, "")
+			So(len(tags), ShouldEqual, 1)
+
+			// the repo should contain this index with no tags
+			tags, err = readTagsFromStorage(dir, repoName, index2.Digest())
+			So(err, ShouldBeNil)
+			So(tags, ShouldContain, "")
+			So(len(tags), ShouldEqual, 1)
+
+			// the index should not be removed from storage
+			_, err = os.Stat(path.Join(dir, repoName, "blobs", string(index1.Digest().Algorithm()),
+				index1.Digest().Encoded()))
+			So(err, ShouldBeNil)
+
+			// the index should not be removed from storage
+			_, err = os.Stat(path.Join(dir, repoName, "blobs", string(index2.Digest().Algorithm()),
+				index2.Digest().Encoded()))
+			So(err, ShouldBeNil)
+
+			// the single arch images should continue to be available and we should not be allowed to delete them
+			resp, err = resty.R().Head(baseURL + "/v2/" + repoName + "/manifests/" + image1.DigestStr())
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+			resp, err = resty.R().Head(baseURL + "/v2/" + repoName + "/manifests/" + image2.DigestStr())
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+			// the manifest should not be removed from storage
+			_, err = os.Stat(path.Join(dir, repoName, "blobs", string(image1.Digest().Algorithm()),
+				image1.Digest().Encoded()))
+			So(err, ShouldBeNil)
+
+			// the manifest should not be removed from storage
+			_, err = os.Stat(path.Join(dir, repoName, "blobs", string(image2.Digest().Algorithm()),
+				image2.Digest().Encoded()))
+			So(err, ShouldBeNil)
+
+			// delete index1 by digest
+			resp, err = resty.R().Delete(baseURL + "/v2/" + repoName + "/manifests/" + index1.Digest().String())
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
+
+			// the index should not be available by digest
+			resp, err = resty.R().Head(baseURL + "/v2/" + repoName + "/manifests/" + index1.Digest().String())
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
+
+			// the index should be removed from storage
+			_, err = os.Stat(path.Join(dir, repoName, "blobs", string(index1.Digest().Algorithm()),
+				index1.Digest().Encoded()))
+			So(err, ShouldNotBeNil)
+
+			// the repo should not contain this index
+			tags, err = readTagsFromStorage(dir, repoName, index1.Digest())
+			So(err, ShouldBeNil)
+			So(len(tags), ShouldEqual, 0)
+
+			// delete manifest should succeed for only 1 manifest
+			resp, err = resty.R().Delete(baseURL + "/v2/" + repoName + "/manifests/" + image1.DigestStr())
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
+
+			// this manifest is referenced by the other index
+			resp, err = resty.R().Delete(baseURL + "/v2/" + repoName + "/manifests/" + image2.DigestStr())
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusMethodNotAllowed)
+
+			tags, err = readTagsFromStorage(dir, repoName, image1.Digest())
+			So(err, ShouldBeNil)
+			So(len(tags), ShouldEqual, 0)
+
+			tags, err = readTagsFromStorage(dir, repoName, image2.Digest())
+			So(err, ShouldBeNil)
+			So(tags, ShouldContain, "")
+			So(len(tags), ShouldEqual, 1)
+
+			// the manifest should be removed from storage
+			_, err = os.Stat(path.Join(dir, repoName, "blobs", string(image1.Digest().Algorithm()),
+				image1.Digest().Encoded()))
+			So(err, ShouldNotBeNil)
+
+			// the manifest should not be removed from storage
+			_, err = os.Stat(path.Join(dir, repoName, "blobs", string(image2.Digest().Algorithm()),
+				image2.Digest().Encoded()))
+			So(err, ShouldBeNil)
+
+			// delete 2nd index by digest
+			resp, err = resty.R().Delete(baseURL + "/v2/" + repoName + "/manifests/" + index2.DigestStr())
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
+
+			// the repo should not contain this index
+			tags, err = readTagsFromStorage(dir, repoName, index2.Digest())
+			So(err, ShouldBeNil)
+			So(len(tags), ShouldEqual, 0)
+
+			// the index should be removed from storage
+			_, err = os.Stat(path.Join(dir, repoName, "blobs", string(index2.Digest().Algorithm()),
+				index2.Digest().Encoded()))
+			So(err, ShouldNotBeNil)
+
+			// delete manifest should succeed
+			resp, err = resty.R().Delete(baseURL + "/v2/" + repoName + "/manifests/" + image2.DigestStr())
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
+
+			resp, err = resty.R().Head(baseURL + "/v2/" + repoName + "/manifests/" + image2.DigestStr())
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
+
+			tags, err = readTagsFromStorage(dir, repoName, image2.Digest())
+			So(err, ShouldBeNil)
+			So(len(tags), ShouldEqual, 0)
+
+			// the manifest should be removed from storage
+			_, err = os.Stat(path.Join(dir, repoName, "blobs", string(image2.Digest().Algorithm()),
+				image2.Digest().Encoded()))
+			So(err, ShouldNotBeNil)
 		})
 	})
 }
@@ -8710,6 +9898,9 @@ func TestManifestImageIndex(t *testing.T) {
 				So(resp.Body(), ShouldNotBeEmpty)
 				resp, err = resty.R().Delete(baseURL + "/v2/index/manifests/test:index1")
 				So(err, ShouldBeNil)
+				// Manifest is in use, tag is deleted, but manifest is not
+				So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
+				So(resp.Body(), ShouldBeEmpty)
 				resp, err = resty.R().SetHeader("Content-Type", ispec.MediaTypeImageIndex).
 					Get(baseURL + "/v2/index/manifests/test:index1")
 				So(err, ShouldBeNil)
@@ -11768,4 +12959,35 @@ func getNumberOfSessions(rootDir string) (int, error) {
 	}
 
 	return sessionsNo, nil
+}
+
+func readTagsFromStorage(rootDir, repoName string, digest godigest.Digest) ([]string, error) {
+	result := []string{}
+
+	indexJSONBuf, err := os.ReadFile(path.Join(rootDir, repoName, "index.json"))
+	if err != nil {
+		return result, err
+	}
+
+	var indexJSON ispec.Index
+
+	err = json.Unmarshal(indexJSONBuf, &indexJSON)
+	if err != nil {
+		return result, err
+	}
+
+	for _, desc := range indexJSON.Manifests {
+		if desc.Digest != digest {
+			continue
+		}
+
+		name := desc.Annotations[ispec.AnnotationRefName]
+		// There is a special case where there is an entry in
+		// the index.json without tags, in this case name is an empty string
+		// Also we should not have duplicates
+		// Do these checks in the actual test cases, not here
+		result = append(result, name)
+	}
+
+	return result, nil
 }
