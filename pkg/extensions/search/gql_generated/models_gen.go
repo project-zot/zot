@@ -147,6 +147,10 @@ type ImageSummary struct {
 	Size *string `json:"Size,omitempty"`
 	// Number of downloads of the manifest of this image
 	DownloadCount *int `json:"DownloadCount,omitempty"`
+	// Last time the image manifest was pulled
+	LastPullTimestamp *time.Time `json:"LastPullTimestamp,omitempty"`
+	// Timestamp when the image was pushed to the registry
+	PushTimestamp *time.Time `json:"PushTimestamp,omitempty"`
 	// Timestamp of the last modification done to the image (from config or the last updated layer)
 	LastUpdated *time.Time `json:"LastUpdated,omitempty"`
 	// Human-readable description of the software packaged in the image

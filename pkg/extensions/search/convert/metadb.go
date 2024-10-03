@@ -498,17 +498,19 @@ func ImageManifest2ImageSummary(ctx context.Context, fullImageMeta mTypes.FullIm
 	manifest := fullImageMeta.Manifests[0]
 
 	var (
-		repoName       = fullImageMeta.Repo
-		tag            = fullImageMeta.Tag
-		configDigest   = manifest.Manifest.Config.Digest.String()
-		configSize     = manifest.Manifest.Config.Size
-		manifestDigest = manifest.Digest.String()
-		manifestSize   = manifest.Size
-		mediaType      = manifest.Manifest.MediaType
-		artifactType   = zcommon.GetManifestArtifactType(fullImageMeta.Manifests[0].Manifest)
-		platform       = getPlatform(manifest.Config.Platform)
-		downloadCount  = fullImageMeta.Statistics.DownloadCount
-		isSigned       = isImageSigned(fullImageMeta.Signatures)
+		repoName          = fullImageMeta.Repo
+		tag               = fullImageMeta.Tag
+		configDigest      = manifest.Manifest.Config.Digest.String()
+		configSize        = manifest.Manifest.Config.Size
+		manifestDigest    = manifest.Digest.String()
+		manifestSize      = manifest.Size
+		mediaType         = manifest.Manifest.MediaType
+		artifactType      = zcommon.GetManifestArtifactType(fullImageMeta.Manifests[0].Manifest)
+		platform          = getPlatform(manifest.Config.Platform)
+		downloadCount     = fullImageMeta.Statistics.DownloadCount
+		isSigned          = isImageSigned(fullImageMeta.Signatures)
+		lastPullTimestamp = fullImageMeta.Statistics.LastPullTimestamp
+		pushTimestamp     = fullImageMeta.Statistics.PushTimestamp
 	)
 
 	imageSize, imageBlobsMap := getImageBlobsInfo(manifestDigest, manifestSize, configDigest, configSize,
@@ -551,25 +553,27 @@ func ImageManifest2ImageSummary(ctx context.Context, fullImageMeta mTypes.FullIm
 	}
 
 	imageSummary := gql_generated.ImageSummary{
-		RepoName:      &repoName,
-		Tag:           &tag,
-		Digest:        &manifestDigest,
-		MediaType:     &mediaType,
-		Manifests:     []*gql_generated.ManifestSummary{&manifestSummary},
-		LastUpdated:   imageLastUpdated,
-		IsSigned:      &isSigned,
-		SignatureInfo: signaturesInfo,
-		Size:          &imageSizeStr,
-		DownloadCount: &downloadCount,
-		Description:   &annotations.Description,
-		Title:         &annotations.Title,
-		Documentation: &annotations.Documentation,
-		Licenses:      &annotations.Licenses,
-		Labels:        &annotations.Labels,
-		Source:        &annotations.Source,
-		Vendor:        &annotations.Vendor,
-		Authors:       &authors,
-		Referrers:     manifestSummary.Referrers,
+		RepoName:          &repoName,
+		Tag:               &tag,
+		Digest:            &manifestDigest,
+		MediaType:         &mediaType,
+		Manifests:         []*gql_generated.ManifestSummary{&manifestSummary},
+		LastUpdated:       imageLastUpdated,
+		IsSigned:          &isSigned,
+		SignatureInfo:     signaturesInfo,
+		Size:              &imageSizeStr,
+		DownloadCount:     &downloadCount,
+		LastPullTimestamp: &lastPullTimestamp,
+		PushTimestamp:     &pushTimestamp,
+		Description:       &annotations.Description,
+		Title:             &annotations.Title,
+		Documentation:     &annotations.Documentation,
+		Licenses:          &annotations.Licenses,
+		Labels:            &annotations.Labels,
+		Source:            &annotations.Source,
+		Vendor:            &annotations.Vendor,
+		Authors:           &authors,
+		Referrers:         manifestSummary.Referrers,
 	}
 
 	return &imageSummary, imageBlobsMap, nil

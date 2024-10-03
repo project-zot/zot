@@ -97,27 +97,29 @@ type ComplexityRoot struct {
 	}
 
 	ImageSummary struct {
-		Authors         func(childComplexity int) int
-		Description     func(childComplexity int) int
-		Digest          func(childComplexity int) int
-		Documentation   func(childComplexity int) int
-		DownloadCount   func(childComplexity int) int
-		IsDeletable     func(childComplexity int) int
-		IsSigned        func(childComplexity int) int
-		Labels          func(childComplexity int) int
-		LastUpdated     func(childComplexity int) int
-		Licenses        func(childComplexity int) int
-		Manifests       func(childComplexity int) int
-		MediaType       func(childComplexity int) int
-		Referrers       func(childComplexity int) int
-		RepoName        func(childComplexity int) int
-		SignatureInfo   func(childComplexity int) int
-		Size            func(childComplexity int) int
-		Source          func(childComplexity int) int
-		Tag             func(childComplexity int) int
-		Title           func(childComplexity int) int
-		Vendor          func(childComplexity int) int
-		Vulnerabilities func(childComplexity int) int
+		Authors           func(childComplexity int) int
+		Description       func(childComplexity int) int
+		Digest            func(childComplexity int) int
+		Documentation     func(childComplexity int) int
+		DownloadCount     func(childComplexity int) int
+		IsDeletable       func(childComplexity int) int
+		IsSigned          func(childComplexity int) int
+		Labels            func(childComplexity int) int
+		LastPullTimestamp func(childComplexity int) int
+		LastUpdated       func(childComplexity int) int
+		Licenses          func(childComplexity int) int
+		Manifests         func(childComplexity int) int
+		MediaType         func(childComplexity int) int
+		PushTimestamp     func(childComplexity int) int
+		Referrers         func(childComplexity int) int
+		RepoName          func(childComplexity int) int
+		SignatureInfo     func(childComplexity int) int
+		Size              func(childComplexity int) int
+		Source            func(childComplexity int) int
+		Tag               func(childComplexity int) int
+		Title             func(childComplexity int) int
+		Vendor            func(childComplexity int) int
+		Vulnerabilities   func(childComplexity int) int
 	}
 
 	ImageVulnerabilitySummary struct {
@@ -538,6 +540,13 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 
 		return e.complexity.ImageSummary.Labels(childComplexity), true
 
+	case "ImageSummary.LastPullTimestamp":
+		if e.complexity.ImageSummary.LastPullTimestamp == nil {
+			break
+		}
+
+		return e.complexity.ImageSummary.LastPullTimestamp(childComplexity), true
+
 	case "ImageSummary.LastUpdated":
 		if e.complexity.ImageSummary.LastUpdated == nil {
 			break
@@ -565,6 +574,13 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 		}
 
 		return e.complexity.ImageSummary.MediaType(childComplexity), true
+
+	case "ImageSummary.PushTimestamp":
+		if e.complexity.ImageSummary.PushTimestamp == nil {
+			break
+		}
+
+		return e.complexity.ImageSummary.PushTimestamp(childComplexity), true
 
 	case "ImageSummary.Referrers":
 		if e.complexity.ImageSummary.Referrers == nil {
@@ -1508,6 +1524,14 @@ type ImageSummary {
     Number of downloads of the manifest of this image
     """
     DownloadCount: Int
+    """
+    Last time the image manifest was pulled
+    """
+    LastPullTimestamp: Time
+    """
+	Timestamp when the image was pushed to the registry
+    """
+    PushTimestamp: Time
     """
     Timestamp of the last modification done to the image (from config or the last updated layer)
     """
@@ -4303,6 +4327,10 @@ func (ec *executionContext) fieldContext_GlobalSearchResult_Images(_ context.Con
 				return ec.fieldContext_ImageSummary_Size(ctx, field)
 			case "DownloadCount":
 				return ec.fieldContext_ImageSummary_DownloadCount(ctx, field)
+			case "LastPullTimestamp":
+				return ec.fieldContext_ImageSummary_LastPullTimestamp(ctx, field)
+			case "PushTimestamp":
+				return ec.fieldContext_ImageSummary_PushTimestamp(ctx, field)
 			case "LastUpdated":
 				return ec.fieldContext_ImageSummary_LastUpdated(ctx, field)
 			case "Description":
@@ -5141,6 +5169,88 @@ func (ec *executionContext) fieldContext_ImageSummary_DownloadCount(_ context.Co
 		IsResolver: false,
 		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
 			return nil, errors.New("field of type Int does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _ImageSummary_LastPullTimestamp(ctx context.Context, field graphql.CollectedField, obj *ImageSummary) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_ImageSummary_LastPullTimestamp(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.LastPullTimestamp, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		return graphql.Null
+	}
+	res := resTmp.(*time.Time)
+	fc.Result = res
+	return ec.marshalOTime2ᚖtimeᚐTime(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_ImageSummary_LastPullTimestamp(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "ImageSummary",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Time does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _ImageSummary_PushTimestamp(ctx context.Context, field graphql.CollectedField, obj *ImageSummary) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_ImageSummary_PushTimestamp(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.PushTimestamp, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		return graphql.Null
+	}
+	res := resTmp.(*time.Time)
+	fc.Result = res
+	return ec.marshalOTime2ᚖtimeᚐTime(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_ImageSummary_PushTimestamp(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "ImageSummary",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Time does not have child fields")
 		},
 	}
 	return fc, nil
@@ -7164,6 +7274,10 @@ func (ec *executionContext) fieldContext_PaginatedImagesResult_Results(_ context
 				return ec.fieldContext_ImageSummary_Size(ctx, field)
 			case "DownloadCount":
 				return ec.fieldContext_ImageSummary_DownloadCount(ctx, field)
+			case "LastPullTimestamp":
+				return ec.fieldContext_ImageSummary_LastPullTimestamp(ctx, field)
+			case "PushTimestamp":
+				return ec.fieldContext_ImageSummary_PushTimestamp(ctx, field)
 			case "LastUpdated":
 				return ec.fieldContext_ImageSummary_LastUpdated(ctx, field)
 			case "Description":
@@ -8134,6 +8248,10 @@ func (ec *executionContext) fieldContext_Query_Image(ctx context.Context, field 
 				return ec.fieldContext_ImageSummary_Size(ctx, field)
 			case "DownloadCount":
 				return ec.fieldContext_ImageSummary_DownloadCount(ctx, field)
+			case "LastPullTimestamp":
+				return ec.fieldContext_ImageSummary_LastPullTimestamp(ctx, field)
+			case "PushTimestamp":
+				return ec.fieldContext_ImageSummary_PushTimestamp(ctx, field)
 			case "LastUpdated":
 				return ec.fieldContext_ImageSummary_LastUpdated(ctx, field)
 			case "Description":
@@ -8762,6 +8880,10 @@ func (ec *executionContext) fieldContext_RepoInfo_Images(_ context.Context, fiel
 				return ec.fieldContext_ImageSummary_Size(ctx, field)
 			case "DownloadCount":
 				return ec.fieldContext_ImageSummary_DownloadCount(ctx, field)
+			case "LastPullTimestamp":
+				return ec.fieldContext_ImageSummary_LastPullTimestamp(ctx, field)
+			case "PushTimestamp":
+				return ec.fieldContext_ImageSummary_PushTimestamp(ctx, field)
 			case "LastUpdated":
 				return ec.fieldContext_ImageSummary_LastUpdated(ctx, field)
 			case "Description":
@@ -9123,6 +9245,10 @@ func (ec *executionContext) fieldContext_RepoSummary_NewestImage(_ context.Conte
 				return ec.fieldContext_ImageSummary_Size(ctx, field)
 			case "DownloadCount":
 				return ec.fieldContext_ImageSummary_DownloadCount(ctx, field)
+			case "LastPullTimestamp":
+				return ec.fieldContext_ImageSummary_LastPullTimestamp(ctx, field)
+			case "PushTimestamp":
+				return ec.fieldContext_ImageSummary_PushTimestamp(ctx, field)
 			case "LastUpdated":
 				return ec.fieldContext_ImageSummary_LastUpdated(ctx, field)
 			case "Description":
@@ -11780,6 +11906,10 @@ func (ec *executionContext) _ImageSummary(ctx context.Context, sel ast.Selection
 			out.Values[i] = ec._ImageSummary_Size(ctx, field, obj)
 		case "DownloadCount":
 			out.Values[i] = ec._ImageSummary_DownloadCount(ctx, field, obj)
+		case "LastPullTimestamp":
+			out.Values[i] = ec._ImageSummary_LastPullTimestamp(ctx, field, obj)
+		case "PushTimestamp":
+			out.Values[i] = ec._ImageSummary_PushTimestamp(ctx, field, obj)
 		case "LastUpdated":
 			out.Values[i] = ec._ImageSummary_LastUpdated(ctx, field, obj)
 		case "Description":
