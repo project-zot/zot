@@ -205,6 +205,14 @@ type ImageSummary {
     """
     DownloadCount: Int
     """
+    Last time the image manifest was pulled
+    """
+    LastPullTimestamp: Time
+    """
+	Timestamp when the image was pushed to the registry
+    """
+    PushTimestamp: Time
+    """
     Timestamp of the last modification done to the image (from config or the last updated layer)
     """
     LastUpdated: Time
