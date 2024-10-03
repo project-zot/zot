@@ -118,7 +118,7 @@ func TestCommon(t *testing.T) {
 	})
 
 	Convey("Test AreSocketsEqual with equal IPv6 sockets", t, func() {
-		result, err := common.AreSocketsEqual("[::1]:9000", "[0000:0000:0000:0000:0000:0000:0000:00001]:9000")
+		result, err := common.AreSocketsEqual("[::1]:9000", "[0000:0000:0000:0000:0000:0000:0000:0001]:9000")
 		So(err, ShouldBeNil)
 		So(result, ShouldBeTrue)
 	})
