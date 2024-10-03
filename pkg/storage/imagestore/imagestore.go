@@ -1912,7 +1912,7 @@ func (is *ImageStore) dedupeBlobs(ctx context.Context, digest godigest.Digest, d
 				}
 
 				// cache original blob
-				if ok := is.cache.HasBlob(digest, originalBlob); !ok {
+				if _, err := is.cache.GetBlob(digest); err != nil {
 					if err := is.cache.PutBlob(digest, originalBlob); err != nil {
 						return err
 					}
