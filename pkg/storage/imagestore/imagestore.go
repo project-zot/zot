@@ -1634,6 +1634,11 @@ func (is *ImageStore) CleanupRepo(repo string, blobs []godigest.Digest, removeRe
 		}
 	}
 
+	// finally update metrics
+	if is.storeDriver.Name() == storageConstants.LocalStorageDriverName {
+		monitoring.SetStorageUsage(is.metrics, is.rootDir, repo)
+	}
+
 	return count, nil
 }
 
