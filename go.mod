@@ -1,8 +1,7 @@
 module zotregistry.dev/zot
 
 go 1.22.7
-
-toolchain go1.22.8
+toolchain go1.23.2
 
 require (
 	github.com/99designs/gqlgen v0.17.55
@@ -34,7 +33,7 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/mux v1.8.2-0.20240619235004-db9d1d0073d2
 	github.com/gorilla/securecookie v1.1.2
-	github.com/gorilla/sessions v1.3.0
+	github.com/gorilla/sessions v1.4.0
 	github.com/hashicorp/golang-lru/v2 v2.0.7
 	github.com/json-iterator/go v1.1.12
 	github.com/migueleliasweb/go-github-mock v1.0.1
