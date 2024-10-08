@@ -136,9 +136,9 @@ func (registry *DestinationRegistry) CommitImage(imageReference types.ImageRefer
 		}
 
 		for _, manifest := range indexManifest.Manifests {
-			tempImageStore.RLock(&lockLatency)
+			tempImageStore.RLockRepo(repo, &lockLatency)
 			manifestBuf, err := tempImageStore.GetBlobContent(repo, manifest.Digest)
-			tempImageStore.RUnlock(&lockLatency)
+			tempImageStore.RUnlockRepo(repo, &lockLatency)
 
 			if err != nil {
 				registry.log.Error().Str("errorType", common.TypeOf(err)).

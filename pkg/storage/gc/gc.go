@@ -107,8 +107,8 @@ func (gc GarbageCollect) cleanRepo(ctx context.Context, repo string) error {
 		return zerr.ErrRepoNotFound
 	}
 
-	gc.imgStore.Lock(&lockLatency)
-	defer gc.imgStore.Unlock(&lockLatency)
+	gc.imgStore.LockRepo(repo, &lockLatency)
+	defer gc.imgStore.UnlockRepo(repo, &lockLatency)
 
 	/* this index (which represents the index.json of this repo) is the root point from which we
 	search for dangling manifests/blobs

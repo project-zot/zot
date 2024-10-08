@@ -12,7 +12,6 @@ import (
 	"path"
 	"slices"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
@@ -888,33 +887,6 @@ func TestStorageAPIs(t *testing.T) {
 					_ = godigest.FromBytes(manifestBuf)
 					_, _, err = imgStore.PutImageManifest("replace", "1.0", ispec.MediaTypeImageManifest, manifestBuf)
 					So(err, ShouldBeNil)
-				})
-
-				Convey("Locks", func() {
-					// in parallel, a mix of read and write locks - mainly for coverage
-					var wg sync.WaitGroup
-					for i := 0; i < 1000; i++ {
-						wg.Add(2)
-
-						go func() {
-							var lockLatency time.Time
-
-							defer wg.Done()
-							imgStore.Lock(&lockLatency)
-							func() {}()
-							imgStore.Unlock(&lockLatency)
-						}()
-						go func() {
-							var lockLatency time.Time
-
-							defer wg.Done()
-							imgStore.RLock(&lockLatency)
-							func() {}()
-							imgStore.RUnlock(&lockLatency)
-						}()
-					}
-
-					wg.Wait()
 				})
 			})
 		})

@@ -489,9 +489,9 @@ func TestDedupeGeneratorErrors(t *testing.T) {
 				return []string{"repo1", "repo2"}, nil
 			},
 			GetNextDigestWithBlobPathsFn: func(repos []string, lastDigests []godigest.Digest) (
-				godigest.Digest, []string, error,
+				godigest.Digest, []string, []string, error,
 			) {
-				return "sha256:123", []string{}, ErrTestError
+				return "sha256:123", []string{}, []string{}, ErrTestError
 			},
 		}
 

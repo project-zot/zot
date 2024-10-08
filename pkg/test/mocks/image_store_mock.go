@@ -51,8 +51,9 @@ type MockedImageStore struct {
 	RunGCPeriodicallyFn  func(interval time.Duration, sch *scheduler.Scheduler)
 	RunDedupeBlobsFn     func(interval time.Duration, sch *scheduler.Scheduler)
 	RunDedupeForDigestFn func(ctx context.Context, digest godigest.Digest, dedupe bool,
-		duplicateBlobs []string) error
-	GetNextDigestWithBlobPathsFn  func(repos []string, lastDigests []godigest.Digest) (godigest.Digest, []string, error)
+		duplicateBlobs []string, duplicateRepos []string) error
+	GetNextDigestWithBlobPathsFn func(repos []string, lastDigests []godigest.Digest,
+	) (godigest.Digest, []string, []string, error)
 	GetAllBlobsFn                 func(repo string) ([]godigest.Digest, error)
 	CleanupRepoFn                 func(repo string, blobs []godigest.Digest, removeRepo bool) (int, error)
 	PutIndexContentFn             func(repo string, index ispec.Index) error
@@ -70,16 +71,16 @@ func (is MockedImageStore) StatIndex(repo string) (bool, int64, time.Time, error
 	return true, 0, time.Time{}, nil
 }
 
-func (is MockedImageStore) Lock(t *time.Time) {
+func (is MockedImageStore) LockRepo(repo string, t *time.Time) {
 }
 
-func (is MockedImageStore) Unlock(t *time.Time) {
+func (is MockedImageStore) UnlockRepo(repo string, t *time.Time) {
 }
 
-func (is MockedImageStore) RUnlock(t *time.Time) {
+func (is MockedImageStore) RUnlockRepo(repo string, t *time.Time) {
 }
 
-func (is MockedImageStore) RLock(t *time.Time) {
+func (is MockedImageStore) RLockRepo(repo string, t *time.Time) {
 }
 
 func (is MockedImageStore) Name() string {
@@ -391,22 +392,22 @@ func (is MockedImageStore) RunDedupeBlobs(interval time.Duration, sch *scheduler
 }
 
 func (is MockedImageStore) RunDedupeForDigest(ctx context.Context, digest godigest.Digest, dedupe bool,
-	duplicateBlobs []string,
+	duplicateBlobs []string, duplicateRepos []string,
 ) error {
 	if is.RunDedupeForDigestFn != nil {
-		return is.RunDedupeForDigestFn(ctx, digest, dedupe, duplicateBlobs)
+		return is.RunDedupeForDigestFn(ctx, digest, dedupe, duplicateBlobs, duplicateRepos)
 	}
 
 	return nil
 }
 
 func (is MockedImageStore) GetNextDigestWithBlobPaths(repos []string, lastDigests []godigest.Digest,
-) (godigest.Digest, []string, error) {
+) (godigest.Digest, []string, []string, error) {
 	if is.GetNextDigestWithBlobPathsFn != nil {
 		return is.GetNextDigestWithBlobPathsFn(repos, lastDigests)
 	}
 
-	return "", []string{}, nil
+	return "", []string{}, []string{}, nil
 }
 
 func (is MockedImageStore) CleanupRepo(repo string, blobs []godigest.Digest, removeRepo bool) (int, error) {
