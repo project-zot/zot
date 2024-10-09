@@ -11,6 +11,7 @@ import (
 
 	zerr "zotregistry.dev/zot/errors"
 	zcommon "zotregistry.dev/zot/pkg/common"
+	"zotregistry.dev/zot/pkg/compat"
 	"zotregistry.dev/zot/pkg/log"
 	"zotregistry.dev/zot/pkg/meta/convert"
 	mTypes "zotregistry.dev/zot/pkg/meta/types"
@@ -309,8 +310,7 @@ func SetImageMetaFromInput(ctx context.Context, repo, reference, mediaType strin
 ) error {
 	var imageMeta mTypes.ImageMeta
 
-	switch mediaType {
-	case ispec.MediaTypeImageManifest:
+	if mediaType == ispec.MediaTypeImageManifest || compat.IsCompatibleManifestMediaType(mediaType) { //nolint:gocritic,lll // mixing checking mechanisms
 		manifestContent := ispec.Manifest{}
 		configContent := ispec.Image{}
 
@@ -367,7 +367,7 @@ func SetImageMetaFromInput(ctx context.Context, repo, reference, mediaType strin
 		}
 
 		imageMeta = convert.GetImageManifestMeta(manifestContent, configContent, int64(len(blob)), digest)
-	case ispec.MediaTypeImageIndex:
+	} else if mediaType == ispec.MediaTypeImageIndex || compat.IsCompatibleManifestListMediaType(mediaType) {
 		indexContent := ispec.Index{}
 
 		err := json.Unmarshal(blob, &indexContent)
@@ -376,7 +376,7 @@ func SetImageMetaFromInput(ctx context.Context, repo, reference, mediaType strin
 		}
 
 		imageMeta = convert.GetImageIndexMeta(indexContent, int64(len(blob)), digest)
-	default:
+	} else {
 		return nil
 	}
 

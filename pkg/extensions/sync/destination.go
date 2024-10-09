@@ -304,5 +304,5 @@ func getTempRootDirFromImageReference(imageReference types.ImageReference, repo,
 func getImageStore(rootDir string, log log.Logger) storageTypes.ImageStore {
 	metrics := monitoring.NewMetricsServer(false, log)
 
-	return local.NewImageStore(rootDir, false, false, log, metrics, nil, nil)
+	return local.NewImageStore(rootDir, false, false, log, metrics, nil, nil, nil)
 }

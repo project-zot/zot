@@ -433,7 +433,7 @@ func TestExtractImageDetails(t *testing.T) {
 		dir := t.TempDir()
 		testLogger := log.NewLogger("debug", "")
 		imageStore := local.NewImageStore(dir, false, false,
-			testLogger, monitoring.NewMetricsServer(false, testLogger), nil, nil)
+			testLogger, monitoring.NewMetricsServer(false, testLogger), nil, nil, nil)
 
 		storeController := storage.StoreController{
 			DefaultStore: imageStore,
@@ -457,7 +457,7 @@ func TestExtractImageDetails(t *testing.T) {
 		dir := t.TempDir()
 		testLogger := log.NewLogger("debug", "")
 		imageStore := local.NewImageStore(dir, false, false,
-			testLogger, monitoring.NewMetricsServer(false, testLogger), nil, nil)
+			testLogger, monitoring.NewMetricsServer(false, testLogger), nil, nil, nil)
 
 		storeController := storage.StoreController{
 			DefaultStore: imageStore,
@@ -477,7 +477,7 @@ func TestExtractImageDetails(t *testing.T) {
 		dir := t.TempDir()
 		testLogger := log.NewLogger("debug", "")
 		imageStore := local.NewImageStore(dir, false, false,
-			testLogger, monitoring.NewMetricsServer(false, testLogger), nil, nil)
+			testLogger, monitoring.NewMetricsServer(false, testLogger), nil, nil, nil)
 
 		storeController := storage.StoreController{
 			DefaultStore: imageStore,

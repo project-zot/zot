@@ -102,7 +102,7 @@ func createObjectsStore(rootDir string, cacheDir string) (
 		UseRelPaths: false,
 	}, log)
 
-	il := s3.NewImageStore(rootDir, cacheDir, true, false, log, metrics, nil, store, cacheDriver)
+	il := s3.NewImageStore(rootDir, cacheDir, true, false, log, metrics, nil, store, cacheDriver, nil)
 
 	return store, il, err
 }
@@ -167,7 +167,7 @@ func TestGetAllDedupeReposCandidates(t *testing.T) {
 
 				driver := local.New(true)
 
-				imgStore = imagestore.NewImageStore(dir, dir, true, true, log, metrics, nil, driver, cacheDriver)
+				imgStore = imagestore.NewImageStore(dir, dir, true, true, log, metrics, nil, driver, cacheDriver, nil)
 			}
 
 			Convey("Push repos with deduped blobs", t, func(c C) {
@@ -237,7 +237,7 @@ func TestStorageAPIs(t *testing.T) {
 
 				driver := local.New(true)
 
-				imgStore = imagestore.NewImageStore(dir, dir, true, true, log, metrics, nil, driver, cacheDriver)
+				imgStore = imagestore.NewImageStore(dir, dir, true, true, log, metrics, nil, driver, cacheDriver, nil)
 			}
 
 			Convey("Repo layout", t, func(c C) {
@@ -952,7 +952,7 @@ func TestMandatoryAnnotations(t *testing.T) {
 						LintFn: func(repo string, manifestDigest godigest.Digest, imageStore storageTypes.ImageStore) (bool, error) {
 							return false, nil
 						},
-					}, driver, nil)
+					}, driver, nil, nil)
 
 				defer cleanupStorage(store, testDir)
 			} else {
@@ -968,7 +968,7 @@ func TestMandatoryAnnotations(t *testing.T) {
 						LintFn: func(repo string, manifestDigest godigest.Digest, imageStore storageTypes.ImageStore) (bool, error) {
 							return false, nil
 						},
-					}, driver, cacheDriver)
+					}, driver, cacheDriver, nil)
 			}
 
 			Convey("Setup manifest", t, func() {
@@ -1022,7 +1022,7 @@ func TestMandatoryAnnotations(t *testing.T) {
 									//nolint: goerr113
 									return false, errors.New("linter error")
 								},
-							}, driver, nil)
+							}, driver, nil, nil)
 					} else {
 						cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
 							RootDir:     tdir,
@@ -1036,7 +1036,7 @@ func TestMandatoryAnnotations(t *testing.T) {
 									//nolint: goerr113
 									return false, errors.New("linter error")
 								},
-							}, driver, cacheDriver)
+							}, driver, cacheDriver, nil)
 					}
 
 					_, _, err = imgStore.PutImageManifest("test", "1.0.0", ispec.MediaTypeImageManifest, manifestBuf)
@@ -1150,7 +1150,7 @@ func TestDeleteBlobsInUse(t *testing.T) {
 				}, log)
 				driver := local.New(true)
 				imgStore = imagestore.NewImageStore(tdir, tdir, true,
-					true, log, metrics, nil, driver, cacheDriver)
+					true, log, metrics, nil, driver, cacheDriver, nil)
 			}
 
 			Convey("Setup manifest", t, func() {
@@ -1458,7 +1458,7 @@ func TestReuploadCorruptedBlob(t *testing.T) {
 				}, log)
 				driver = local.New(true)
 				imgStore = imagestore.NewImageStore(tdir, tdir, true,
-					true, log, metrics, nil, driver, cacheDriver)
+					true, log, metrics, nil, driver, cacheDriver, nil)
 			}
 
 			Convey("Test errors paths", t, func() {
@@ -1604,11 +1604,14 @@ func TestStorageHandler(t *testing.T) {
 				driver := local.New(true)
 
 				// Create ImageStore
-				firstStore = imagestore.NewImageStore(firstRootDir, firstRootDir, false, false, log, metrics, nil, driver, nil)
+				firstStore = imagestore.NewImageStore(firstRootDir, firstRootDir, false, false,
+					log, metrics, nil, driver, nil, nil)
 
-				secondStore = imagestore.NewImageStore(secondRootDir, secondRootDir, false, false, log, metrics, nil, driver, nil)
+				secondStore = imagestore.NewImageStore(secondRootDir, secondRootDir, false, false,
+					log, metrics, nil, driver, nil, nil)
 
-				thirdStore = imagestore.NewImageStore(thirdRootDir, thirdRootDir, false, false, log, metrics, nil, driver, nil)
+				thirdStore = imagestore.NewImageStore(thirdRootDir, thirdRootDir, false, false, log,
+					metrics, nil, driver, nil, nil)
 			}
 
 			Convey("Test storage handler", t, func() {
@@ -1693,7 +1696,7 @@ func TestGarbageCollectImageManifest(t *testing.T) {
 
 						driver := local.New(true)
 
-						imgStore = imagestore.NewImageStore(dir, dir, true, true, log, metrics, nil, driver, cacheDriver)
+						imgStore = imagestore.NewImageStore(dir, dir, true, true, log, metrics, nil, driver, cacheDriver, nil)
 					}
 
 					gc := gc.NewGarbageCollect(imgStore, mocks.MetaDBMock{}, gc.Options{
@@ -1865,7 +1868,7 @@ func TestGarbageCollectImageManifest(t *testing.T) {
 						driver := local.New(true)
 
 						imgStore = imagestore.NewImageStore(dir, dir, true,
-							true, log, metrics, nil, driver, cacheDriver)
+							true, log, metrics, nil, driver, cacheDriver, nil)
 					}
 
 					gc := gc.NewGarbageCollect(imgStore, mocks.MetaDBMock{}, gc.Options{
@@ -2150,7 +2153,7 @@ func TestGarbageCollectImageManifest(t *testing.T) {
 
 						driver := local.New(true)
 
-						imgStore = imagestore.NewImageStore(dir, dir, true, true, log, metrics, nil, driver, cacheDriver)
+						imgStore = imagestore.NewImageStore(dir, dir, true, true, log, metrics, nil, driver, cacheDriver, nil)
 					}
 
 					gc := gc.NewGarbageCollect(imgStore, mocks.MetaDBMock{}, gc.Options{
@@ -2395,7 +2398,7 @@ func TestGarbageCollectImageIndex(t *testing.T) {
 
 						driver := local.New(true)
 
-						imgStore = imagestore.NewImageStore(dir, dir, true, true, log, metrics, nil, driver, cacheDriver)
+						imgStore = imagestore.NewImageStore(dir, dir, true, true, log, metrics, nil, driver, cacheDriver, nil)
 					}
 
 					gc := gc.NewGarbageCollect(imgStore, mocks.MetaDBMock{}, gc.Options{
@@ -2524,7 +2527,7 @@ func TestGarbageCollectImageIndex(t *testing.T) {
 
 						driver := local.New(true)
 
-						imgStore = imagestore.NewImageStore(dir, dir, true, true, log, metrics, nil, driver, cacheDriver)
+						imgStore = imagestore.NewImageStore(dir, dir, true, true, log, metrics, nil, driver, cacheDriver, nil)
 					}
 
 					gc := gc.NewGarbageCollect(imgStore, mocks.MetaDBMock{}, gc.Options{
@@ -2812,7 +2815,7 @@ func TestGarbageCollectChainedImageIndexes(t *testing.T) {
 
 					driver := local.New(true)
 
-					imgStore = imagestore.NewImageStore(dir, dir, true, true, log, metrics, nil, driver, cacheDriver)
+					imgStore = imagestore.NewImageStore(dir, dir, true, true, log, metrics, nil, driver, cacheDriver, nil)
 				}
 
 				gc := gc.NewGarbageCollect(imgStore, mocks.MetaDBMock{}, gc.Options{
