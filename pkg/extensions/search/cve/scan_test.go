@@ -505,7 +505,7 @@ func TestScanGeneratorWithRealData(t *testing.T) {
 
 		metrics := monitoring.NewMetricsServer(true, logger)
 		imageStore := local.NewImageStore(rootDir, false, false,
-			logger, metrics, nil, nil)
+			logger, metrics, nil, nil, nil)
 		storeController := storage.StoreController{DefaultStore: imageStore}
 
 		image := CreateRandomVulnerableImage()

@@ -359,3 +359,16 @@ EOF
     [ "$status" -eq 0 ]
     [ $(echo "${lines[-1]}" | jq '.manifests | length') -eq 0 ]
 }
+
+@test "push docker image" {
+    zot_port=`cat ${BATS_FILE_TMPDIR}/zot.port`
+    cat > Dockerfile <<EOF
+    FROM public.ecr.aws/docker/library/busybox:latest
+    RUN echo "hello world" > /testfile
+EOF
+    docker build -f Dockerfile . -t localhost:${zot_port}/test
+    run docker push localhost:${zot_port}/test
+    [ "$status" -eq 1 ]
+    run docker pull localhost:${zot_port}/test
+    [ "$status" -eq 1 ]
+}

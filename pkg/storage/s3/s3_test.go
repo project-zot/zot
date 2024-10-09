@@ -75,7 +75,7 @@ func createMockStorage(rootDir string, cacheDir string, dedupe bool, store drive
 		}, log)
 	}
 
-	il := s3.NewImageStore(rootDir, cacheDir, dedupe, false, log, metrics, nil, store, cacheDriver)
+	il := s3.NewImageStore(rootDir, cacheDir, dedupe, false, log, metrics, nil, store, cacheDriver, nil)
 
 	return il
 }
@@ -86,7 +86,7 @@ func createMockStorageWithMockCache(rootDir string, dedupe bool, store driver.St
 	log := log.Logger{Logger: zerolog.New(os.Stdout)}
 	metrics := monitoring.NewMetricsServer(false, log)
 
-	il := s3.NewImageStore(rootDir, "", dedupe, false, log, metrics, nil, store, cacheDriver)
+	il := s3.NewImageStore(rootDir, "", dedupe, false, log, metrics, nil, store, cacheDriver, nil)
 
 	return il
 }
@@ -147,7 +147,7 @@ func createObjectsStore(rootDir string, cacheDir string, dedupe bool) (
 		}, log)
 	}
 
-	il := s3.NewImageStore(rootDir, cacheDir, dedupe, false, log, metrics, nil, store, cacheDriver)
+	il := s3.NewImageStore(rootDir, cacheDir, dedupe, false, log, metrics, nil, store, cacheDriver, nil)
 
 	return store, il, err
 }
@@ -181,7 +181,7 @@ func createObjectsStoreDynamo(rootDir string, cacheDir string, dedupe bool, tabl
 		panic(err)
 	}
 
-	il := s3.NewImageStore(rootDir, cacheDir, dedupe, false, log, metrics, nil, store, cacheDriver)
+	il := s3.NewImageStore(rootDir, cacheDir, dedupe, false, log, metrics, nil, store, cacheDriver, nil)
 
 	return store, il, err
 }

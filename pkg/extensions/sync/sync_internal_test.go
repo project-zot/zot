@@ -72,7 +72,7 @@ func TestInjectSyncUtils(t *testing.T) {
 
 		log := log.Logger{Logger: zerolog.New(os.Stdout)}
 		metrics := monitoring.NewMetricsServer(false, log)
-		imageStore := local.NewImageStore(t.TempDir(), false, false, log, metrics, nil, nil)
+		imageStore := local.NewImageStore(t.TempDir(), false, false, log, metrics, nil, nil, nil)
 		injected = inject.InjectFailure(0)
 
 		ols := NewOciLayoutStorage(storage.StoreController{DefaultStore: imageStore})
@@ -216,7 +216,7 @@ func TestDestinationRegistry(t *testing.T) {
 			UseRelPaths: true,
 		}, log)
 
-		syncImgStore := local.NewImageStore(dir, true, true, log, metrics, nil, cacheDriver)
+		syncImgStore := local.NewImageStore(dir, true, true, log, metrics, nil, cacheDriver, nil)
 		repoName := "repo"
 
 		storeController := storage.StoreController{DefaultStore: syncImgStore}
@@ -334,7 +334,7 @@ func TestDestinationRegistry(t *testing.T) {
 				MandatoryAnnotations: []string{"annot1"},
 			}, log)
 
-			syncImgStore := local.NewImageStore(dir, true, true, log, metrics, linter, cacheDriver)
+			syncImgStore := local.NewImageStore(dir, true, true, log, metrics, linter, cacheDriver, nil)
 			repoName := "repo"
 
 			storeController := storage.StoreController{DefaultStore: syncImgStore}
