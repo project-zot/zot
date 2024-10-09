@@ -17,6 +17,7 @@ import (
 	imeta "github.com/opencontainers/image-spec/specs-go"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 
+	docker "github.com/distribution/distribution/v3/manifest/schema2"
 	zerr "zotregistry.dev/zot/errors"
 	zcommon "zotregistry.dev/zot/pkg/common"
 	"zotregistry.dev/zot/pkg/extensions/monitoring"
@@ -797,7 +798,8 @@ func getBlobDescriptorFromManifest(imgStore storageTypes.ImageStore, repo string
 
 func IsSupportedMediaType(mediaType string) bool {
 	return mediaType == ispec.MediaTypeImageIndex ||
-		mediaType == ispec.MediaTypeImageManifest
+		mediaType == ispec.MediaTypeImageManifest ||
+		mediaType == docker.MediaTypeManifest
 }
 
 func IsNonDistributable(mediaType string) bool {
