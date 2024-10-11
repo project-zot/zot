@@ -3,6 +3,7 @@ package gc_test
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path"
@@ -12,6 +13,9 @@ import (
 	"github.com/distribution/distribution/v3/registry/storage/driver/factory"
 	_ "github.com/distribution/distribution/v3/registry/storage/driver/s3-aws"
 	guuid "github.com/gofrs/uuid"
+	godigest "github.com/opencontainers/go-digest"
+	"github.com/opencontainers/image-spec/specs-go"
+	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	. "github.com/smartystreets/goconvey/convey"
 	"gopkg.in/resty.v1"
 
@@ -184,6 +188,10 @@ func TestGarbageCollectAndRetention(t *testing.T) {
 				err = WriteImageToFileSystem(gcTest3, "gc-test3", "0.0.1", storeController)
 				So(err, ShouldBeNil)
 
+				gcTest4 := CreateRandomMultiarch()
+				err = WriteMultiArchImageToFileSystem(gcTest4, "gc-test4", "0.0.1", storeController)
+				So(err, ShouldBeNil)
+
 				// referrers
 				ref1 := CreateRandomImageWith().Subject(gcTest1.DescriptorRef()).Build()
 				err = WriteImageToFileSystem(ref1, "gc-test1", ref1.DigestStr(), storeController)
@@ -195,6 +203,10 @@ func TestGarbageCollectAndRetention(t *testing.T) {
 
 				ref3 := CreateRandomImageWith().Subject(gcTest3.DescriptorRef()).Build()
 				err = WriteImageToFileSystem(ref3, "gc-test3", ref3.DigestStr(), storeController)
+				So(err, ShouldBeNil)
+
+				ref4 := CreateMultiarchWith().RandomImages(3).Subject(gcTest4.DescriptorRef()).Build()
+				err = WriteMultiArchImageToFileSystem(ref4, "gc-test4", ref4.DigestStr(), storeController)
 				So(err, ShouldBeNil)
 
 				// referrers pointing to referrers
@@ -210,6 +222,10 @@ func TestGarbageCollectAndRetention(t *testing.T) {
 				err = WriteImageToFileSystem(refOfRef3, "gc-test3", refOfRef3.DigestStr(), storeController)
 				So(err, ShouldBeNil)
 
+				refOfRef4 := CreateMultiarchWith().RandomImages(3).Subject(ref4.DescriptorRef()).Build()
+				err = WriteMultiArchImageToFileSystem(refOfRef4, "gc-test4", refOfRef4.DigestStr(), storeController)
+				So(err, ShouldBeNil)
+
 				// untagged images
 				gcUntagged1 := CreateRandomImage()
 				err = WriteImageToFileSystem(gcUntagged1, "gc-test1", gcUntagged1.DigestStr(), storeController)
@@ -221,6 +237,10 @@ func TestGarbageCollectAndRetention(t *testing.T) {
 
 				gcUntagged3 := CreateRandomImage()
 				err = WriteImageToFileSystem(gcUntagged3, "gc-test3", gcUntagged3.DigestStr(), storeController)
+				So(err, ShouldBeNil)
+
+				gcUntagged4 := CreateRandomMultiarch()
+				err = WriteMultiArchImageToFileSystem(gcUntagged4, "gc-test4", gcUntagged4.DigestStr(), storeController)
 				So(err, ShouldBeNil)
 
 				// for image retention testing
@@ -237,6 +257,10 @@ func TestGarbageCollectAndRetention(t *testing.T) {
 				err = WriteImageToFileSystem(gcOld3, "retention", "0.0.3", storeController)
 				So(err, ShouldBeNil)
 
+				gcOld4 := CreateRandomMultiarch()
+				err = WriteMultiArchImageToFileSystem(gcOld4, "retention", "0.0.7", storeController)
+				So(err, ShouldBeNil)
+
 				// new images
 				gcNew1 := CreateRandomImage()
 				err = WriteImageToFileSystem(gcNew1, "retention", "0.0.4", storeController)
@@ -248,6 +272,10 @@ func TestGarbageCollectAndRetention(t *testing.T) {
 
 				gcNew3 := CreateRandomImage()
 				err = WriteImageToFileSystem(gcNew3, "retention", "0.0.6", storeController)
+				So(err, ShouldBeNil)
+
+				gcNew4 := CreateRandomMultiarch()
+				err = WriteMultiArchImageToFileSystem(gcNew4, "retention", "0.0.8", storeController)
 				So(err, ShouldBeNil)
 
 				err = meta.ParseStorage(metaDB, storeController, log) //nolint: contextcheck
@@ -269,6 +297,10 @@ func TestGarbageCollectAndRetention(t *testing.T) {
 				gcOld3Stats.PushTimestamp = time.Now().Add(-12 * 24 * time.Hour)
 				gcOld3Stats.LastPullTimestamp = time.Now().Add(-12 * 24 * time.Hour)
 
+				gcOld4Stats := retentionMeta.Statistics[gcOld4.DigestStr()]
+				gcOld4Stats.PushTimestamp = time.Now().Add(-13 * 24 * time.Hour)
+				gcOld4Stats.LastPullTimestamp = time.Now().Add(-13 * 24 * time.Hour)
+
 				gcNew1Stats := retentionMeta.Statistics[gcNew1.DigestStr()]
 				gcNew1Stats.PushTimestamp = time.Now().Add(-1 * 24 * time.Hour)
 				gcNew1Stats.LastPullTimestamp = time.Now().Add(-1 * 24 * time.Hour)
@@ -281,13 +313,19 @@ func TestGarbageCollectAndRetention(t *testing.T) {
 				gcNew3Stats.PushTimestamp = time.Now().Add(-3 * 24 * time.Hour)
 				gcNew3Stats.LastPullTimestamp = time.Now().Add(-2 * 24 * time.Hour)
 
+				gcNew4Stats := retentionMeta.Statistics[gcNew4.DigestStr()]
+				gcNew4Stats.PushTimestamp = time.Now().Add(-4 * 24 * time.Hour)
+				gcNew4Stats.LastPullTimestamp = time.Now().Add(-4 * 24 * time.Hour)
+
 				retentionMeta.Statistics[gcOld1.DigestStr()] = gcOld1Stats
 				retentionMeta.Statistics[gcOld2.DigestStr()] = gcOld2Stats
 				retentionMeta.Statistics[gcOld3.DigestStr()] = gcOld3Stats
+				retentionMeta.Statistics[gcOld4.DigestStr()] = gcOld4Stats
 
 				retentionMeta.Statistics[gcNew1.DigestStr()] = gcNew1Stats
 				retentionMeta.Statistics[gcNew2.DigestStr()] = gcNew2Stats
 				retentionMeta.Statistics[gcNew3.DigestStr()] = gcNew3Stats
+				retentionMeta.Statistics[gcNew4.DigestStr()] = gcNew4Stats
 
 				// update repo meta
 				err = metaDB.SetRepoMeta("retention", retentionMeta)
@@ -320,6 +358,9 @@ func TestGarbageCollectAndRetention(t *testing.T) {
 					err = gc.CleanRepo(ctx, "gc-test3")
 					So(err, ShouldBeNil)
 
+					err = gc.CleanRepo(ctx, "gc-test4")
+					So(err, ShouldBeNil)
+
 					err = gc.CleanRepo(ctx, "retention")
 					So(err, ShouldBeNil)
 
@@ -359,6 +400,18 @@ func TestGarbageCollectAndRetention(t *testing.T) {
 					_, _, _, err = imgStore.GetImageManifest("gc-test3", refOfRef3.DigestStr())
 					So(err, ShouldBeNil)
 
+					_, _, _, err = imgStore.GetImageManifest("gc-test4", gcTest4.DigestStr())
+					So(err, ShouldBeNil)
+
+					_, _, _, err = imgStore.GetImageManifest("gc-test4", gcUntagged4.DigestStr())
+					So(err, ShouldBeNil)
+
+					_, _, _, err = imgStore.GetImageManifest("gc-test4", ref4.DigestStr())
+					So(err, ShouldBeNil)
+
+					_, _, _, err = imgStore.GetImageManifest("gc-test4", refOfRef4.DigestStr())
+					So(err, ShouldBeNil)
+
 					_, _, _, err = imgStore.GetImageManifest("retention", "0.0.1")
 					So(err, ShouldBeNil)
 
@@ -375,6 +428,12 @@ func TestGarbageCollectAndRetention(t *testing.T) {
 					So(err, ShouldBeNil)
 
 					_, _, _, err = imgStore.GetImageManifest("retention", "0.0.6")
+					So(err, ShouldBeNil)
+
+					_, _, _, err = imgStore.GetImageManifest("retention", "0.0.7")
+					So(err, ShouldBeNil)
+
+					_, _, _, err = imgStore.GetImageManifest("retention", "0.0.8")
 					So(err, ShouldBeNil)
 				})
 
@@ -403,6 +462,9 @@ func TestGarbageCollectAndRetention(t *testing.T) {
 					err = gc.CleanRepo(ctx, "gc-test3")
 					So(err, ShouldBeNil)
 
+					err = gc.CleanRepo(ctx, "gc-test4")
+					So(err, ShouldBeNil)
+
 					err = gc.CleanRepo(ctx, "retention")
 					So(err, ShouldBeNil)
 
@@ -440,6 +502,18 @@ func TestGarbageCollectAndRetention(t *testing.T) {
 					So(err, ShouldBeNil)
 
 					_, _, _, err = imgStore.GetImageManifest("gc-test3", refOfRef3.DigestStr())
+					So(err, ShouldBeNil)
+
+					_, _, _, err = imgStore.GetImageManifest("gc-test4", gcTest4.DigestStr())
+					So(err, ShouldBeNil)
+
+					_, _, _, err = imgStore.GetImageManifest("gc-test4", gcUntagged4.DigestStr())
+					So(err, ShouldNotBeNil)
+
+					_, _, _, err = imgStore.GetImageManifest("gc-test4", ref4.DigestStr())
+					So(err, ShouldBeNil)
+
+					_, _, _, err = imgStore.GetImageManifest("gc-test4", refOfRef4.DigestStr())
 					So(err, ShouldBeNil)
 				})
 
@@ -485,6 +559,7 @@ func TestGarbageCollectAndRetention(t *testing.T) {
 					So(repos, ShouldNotContain, "gc-test1")
 					So(repos, ShouldContain, "gc-test2")
 					So(repos, ShouldContain, "gc-test3")
+					So(repos, ShouldContain, "gc-test4")
 					So(repos, ShouldContain, "retention")
 				})
 
@@ -527,6 +602,7 @@ func TestGarbageCollectAndRetention(t *testing.T) {
 					So(repos, ShouldContain, "gc-test1")
 					So(repos, ShouldContain, "gc-test2")
 					So(repos, ShouldContain, "gc-test3")
+					So(repos, ShouldContain, "gc-test4")
 					So(repos, ShouldContain, "retention")
 
 					tags, err := imgStore.GetImageTags("gc-test1")
@@ -587,6 +663,12 @@ func TestGarbageCollectAndRetention(t *testing.T) {
 
 					_, _, _, err = imgStore.GetImageManifest("retention", "0.0.6")
 					So(err, ShouldBeNil)
+
+					_, _, _, err = imgStore.GetImageManifest("retention", "0.0.7")
+					So(err, ShouldBeNil)
+
+					_, _, _, err = imgStore.GetImageManifest("retention", "0.0.8")
+					So(err, ShouldBeNil)
 				})
 
 				Convey("retain new tags", func() {
@@ -622,10 +704,12 @@ func TestGarbageCollectAndRetention(t *testing.T) {
 					So(tags, ShouldContain, "0.0.4")
 					So(tags, ShouldContain, "0.0.5")
 					So(tags, ShouldContain, "0.0.6")
+					So(tags, ShouldContain, "0.0.8")
 
 					So(tags, ShouldNotContain, "0.0.1")
 					So(tags, ShouldNotContain, "0.0.2")
 					So(tags, ShouldNotContain, "0.0.3")
+					So(tags, ShouldNotContain, "0.0.7")
 				})
 
 				Convey("retain 3 most recently pushed images", func() {
@@ -662,6 +746,8 @@ func TestGarbageCollectAndRetention(t *testing.T) {
 					So(tags, ShouldNotContain, "0.0.1")
 					So(tags, ShouldNotContain, "0.0.2")
 					So(tags, ShouldNotContain, "0.0.3")
+					So(tags, ShouldNotContain, "0.0.7")
+					So(tags, ShouldNotContain, "0.0.8")
 				})
 
 				Convey("retain 3 most recently pulled images", func() {
@@ -698,6 +784,8 @@ func TestGarbageCollectAndRetention(t *testing.T) {
 					So(tags, ShouldNotContain, "0.0.1")
 					So(tags, ShouldNotContain, "0.0.2")
 					So(tags, ShouldNotContain, "0.0.3")
+					So(tags, ShouldNotContain, "0.0.7")
+					So(tags, ShouldNotContain, "0.0.8")
 				})
 
 				Convey("retain 3 most recently pulled OR 4 most recently pushed images", func() {
@@ -728,13 +816,15 @@ func TestGarbageCollectAndRetention(t *testing.T) {
 					tags, err := imgStore.GetImageTags("retention")
 					So(err, ShouldBeNil)
 
-					So(tags, ShouldContain, "0.0.1")
 					So(tags, ShouldContain, "0.0.4")
 					So(tags, ShouldContain, "0.0.5")
 					So(tags, ShouldContain, "0.0.6")
+					So(tags, ShouldContain, "0.0.8")
 
+					So(tags, ShouldNotContain, "0.0.1")
 					So(tags, ShouldNotContain, "0.0.2")
 					So(tags, ShouldNotContain, "0.0.3")
+					So(tags, ShouldNotContain, "0.0.7")
 				})
 
 				Convey("test if first match rule logic works", func() {
@@ -778,6 +868,8 @@ func TestGarbageCollectAndRetention(t *testing.T) {
 					So(tags, ShouldNotContain, "0.0.3")
 					So(tags, ShouldNotContain, "0.0.5")
 					So(tags, ShouldNotContain, "0.0.6")
+					So(tags, ShouldNotContain, "0.0.7")
+					So(tags, ShouldNotContain, "0.0.8")
 				})
 
 				Convey("gc - do not match any repo", func() {
@@ -817,7 +909,7 @@ func TestGarbageCollectAndRetention(t *testing.T) {
 
 				Convey("remove one tag because it didn't match, preserve tags without statistics in metaDB", func() {
 					// add new tag in retention repo which can not be found in metaDB, should be always retained
-					err = WriteImageToFileSystem(CreateRandomImage(), "retention", "0.0.7", storeController)
+					err = WriteImageToFileSystem(CreateRandomImage(), "retention", "0.0.9", storeController)
 					So(err, ShouldBeNil)
 
 					gc := gc.NewGarbageCollect(imgStore, metaDB, gc.Options{
@@ -831,7 +923,7 @@ func TestGarbageCollectAndRetention(t *testing.T) {
 									DeleteUntagged:  &trueVal,
 									KeepTags: []config.KeepTagsPolicy{
 										{
-											Patterns: []string{"0.0.[1-5]"},
+											Patterns: []string{"0.0.[1-5]", "0.0.7"},
 										},
 									},
 								},
@@ -861,6 +953,12 @@ func TestGarbageCollectAndRetention(t *testing.T) {
 					So(err, ShouldNotBeNil)
 
 					_, _, _, err = imgStore.GetImageManifest("retention", "0.0.7")
+					So(err, ShouldBeNil)
+
+					_, _, _, err = imgStore.GetImageManifest("retention", "0.0.8")
+					So(err, ShouldNotBeNil)
+
+					_, _, _, err = imgStore.GetImageManifest("retention", "0.0.9")
 					So(err, ShouldBeNil)
 				})
 
@@ -992,4 +1090,368 @@ func TestGarbageCollectAndRetention(t *testing.T) {
 			})
 		})
 	}
+}
+
+func TestGarbageCollectDeletion(t *testing.T) {
+	Convey("setup store", t, func() {
+		log := zlog.NewLogger("debug", "")
+		audit := zlog.NewAuditLogger("debug", "/dev/null")
+
+		metrics := monitoring.NewMetricsServer(false, log)
+
+		trueVal := true
+
+		// Create temporary directory
+		rootDir := t.TempDir()
+
+		// Create ImageStore
+		imgStore := local.NewImageStore(rootDir, false, false, log, metrics, nil, nil)
+
+		// init metaDB
+		params := boltdb.DBParameters{
+			RootDir: rootDir,
+		}
+
+		boltDriver, err := boltdb.GetBoltDriver(params)
+		So(err, ShouldBeNil)
+
+		metaDB, err := boltdb.New(boltDriver, log)
+		So(err, ShouldBeNil)
+
+		storeController := storage.StoreController{}
+		storeController.DefaultStore = imgStore
+
+		ctx := context.Background()
+
+		repoName := "multiarch"
+		blobsDir := path.Join(rootDir, repoName, "blobs")
+
+		Convey("Create test data", func() {
+			image1 := CreateRandomImage()
+			image2 := CreateRandomImage()
+			image3 := CreateRandomImage()
+			bottomIndex1 := CreateMultiarchWith().Images([]Image{image1, image2}).Build()
+			bottomIndex2 := CreateMultiarchWith().Images([]Image{image3}).Build()
+
+			err = WriteImageToFileSystem(image2, repoName, "manifest2", storeController)
+			So(err, ShouldBeNil)
+
+			err = WriteMultiArchImageToFileSystem(bottomIndex1, repoName, bottomIndex1.Digest().String(), storeController)
+			So(err, ShouldBeNil)
+
+			err = WriteMultiArchImageToFileSystem(bottomIndex2, repoName, "bottomIndex2", storeController)
+			So(err, ShouldBeNil)
+
+			topIndex := ispec.Index{
+				Versioned: specs.Versioned{SchemaVersion: 2},
+				MediaType: ispec.MediaTypeImageIndex,
+				Manifests: []ispec.Descriptor{
+					{
+						Digest:    bottomIndex1.IndexDescriptor.Digest,
+						Size:      bottomIndex1.IndexDescriptor.Size,
+						MediaType: ispec.MediaTypeImageIndex,
+					},
+					{
+						Digest:    bottomIndex2.IndexDescriptor.Digest,
+						Size:      bottomIndex2.IndexDescriptor.Size,
+						MediaType: ispec.MediaTypeImageIndex,
+					},
+				},
+			}
+
+			topIndexBlob, err := json.Marshal(topIndex)
+			So(err, ShouldBeNil)
+
+			rootIndexDigest, _, err := imgStore.PutImageManifest(repoName, "topindex", ispec.MediaTypeImageIndex,
+				topIndexBlob)
+			So(err, ShouldBeNil)
+
+			bottomIndex1Digest := bottomIndex1.IndexDescriptor.Digest
+			bottomIndex2Digest := bottomIndex2.IndexDescriptor.Digest
+			manifest1Digest := image1.Digest()
+			manifest2Digest := image2.Digest()
+			manifest3Digest := image3.Digest()
+
+			err = meta.ParseStorage(metaDB, storeController, log) //nolint: contextcheck
+			So(err, ShouldBeNil)
+
+			Convey("gc untagged manifests should not do anything, as all images refer to one another", func() {
+				gc := gc.NewGarbageCollect(imgStore, metaDB, gc.Options{
+					Delay: 1 * time.Millisecond,
+					ImageRetention: config.ImageRetention{
+						Delay: 1 * time.Millisecond,
+						Policies: []config.RetentionPolicy{
+							{
+								Repositories:    []string{"**"},
+								DeleteReferrers: true,
+								DeleteUntagged:  &trueVal,
+								KeepTags:        []config.KeepTagsPolicy{},
+							},
+						},
+					},
+				}, audit, log)
+
+				err = gc.CleanRepo(ctx, repoName)
+				So(err, ShouldBeNil)
+
+				// All indexes and manifests refer to one another, so none should be missing
+				tags, err := readTagsFromStorage(rootDir, repoName, manifest1Digest)
+				So(err, ShouldBeNil)
+				So(tags, ShouldContain, "")
+				So(len(tags), ShouldEqual, 1)
+
+				_, err = os.Stat(path.Join(blobsDir, manifest1Digest.Algorithm().String(), manifest1Digest.Encoded()))
+				So(err, ShouldBeNil)
+
+				tags, err = readTagsFromStorage(rootDir, repoName, manifest2Digest)
+				So(err, ShouldBeNil)
+				So(tags, ShouldContain, "manifest2")
+				So(len(tags), ShouldEqual, 1)
+
+				_, err = os.Stat(path.Join(blobsDir, manifest2Digest.Algorithm().String(), manifest2Digest.Encoded()))
+				So(err, ShouldBeNil)
+
+				tags, err = readTagsFromStorage(rootDir, repoName, manifest3Digest)
+				So(err, ShouldBeNil)
+				So(tags, ShouldContain, "")
+				So(len(tags), ShouldEqual, 1)
+
+				_, err = os.Stat(path.Join(blobsDir, manifest3Digest.Algorithm().String(), manifest3Digest.Encoded()))
+				So(err, ShouldBeNil)
+
+				tags, err = readTagsFromStorage(rootDir, repoName, bottomIndex1Digest)
+				So(err, ShouldBeNil)
+				So(tags, ShouldContain, "")
+				So(len(tags), ShouldEqual, 1)
+
+				_, err = os.Stat(path.Join(blobsDir, bottomIndex1Digest.Algorithm().String(), bottomIndex1Digest.Encoded()))
+				So(err, ShouldBeNil)
+
+				tags, err = readTagsFromStorage(rootDir, repoName, bottomIndex2Digest)
+				So(err, ShouldBeNil)
+				So(tags, ShouldContain, "bottomIndex2")
+				So(len(tags), ShouldEqual, 1)
+
+				_, err = os.Stat(path.Join(blobsDir, bottomIndex2Digest.Algorithm().String(), bottomIndex2Digest.Encoded()))
+				So(err, ShouldBeNil)
+
+				tags, err = readTagsFromStorage(rootDir, repoName, rootIndexDigest)
+				So(err, ShouldBeNil)
+				So(tags, ShouldContain, "topindex")
+				So(len(tags), ShouldEqual, 1)
+
+				_, err = os.Stat(path.Join(blobsDir, rootIndexDigest.Algorithm().String(), rootIndexDigest.Encoded()))
+				So(err, ShouldBeNil)
+			})
+
+			Convey("gc untagged manifests after deleting the tag of the top index", func() {
+				gc := gc.NewGarbageCollect(imgStore, metaDB, gc.Options{
+					Delay: 1 * time.Millisecond,
+					ImageRetention: config.ImageRetention{
+						Delay: 1 * time.Millisecond,
+						Policies: []config.RetentionPolicy{
+							{
+								Repositories:    []string{"**"},
+								DeleteReferrers: true,
+								DeleteUntagged:  &trueVal,
+								KeepTags:        []config.KeepTagsPolicy{},
+							},
+						},
+					},
+				}, audit, log)
+
+				err = deleteTagInStorage(rootDir, repoName, "topindex")
+
+				err = gc.CleanRepo(ctx, repoName)
+				So(err, ShouldBeNil)
+
+				// manifest1, bottomIndex1 and topIndex are untagged, so manifest1 should be deleted
+				tags, err := readTagsFromStorage(rootDir, repoName, manifest1Digest)
+				So(err, ShouldBeNil)
+				So(len(tags), ShouldEqual, 0)
+
+				_, err = os.Stat(path.Join(blobsDir, manifest1Digest.Algorithm().String(), manifest1Digest.Encoded()))
+				So(err, ShouldNotBeNil)
+
+				// manifest2 is has a tag, so it should not be deleted
+				tags, err = readTagsFromStorage(rootDir, repoName, manifest2Digest)
+				So(err, ShouldBeNil)
+				So(tags, ShouldContain, "manifest2")
+				So(len(tags), ShouldEqual, 1)
+
+				_, err = os.Stat(path.Join(blobsDir, manifest2Digest.Algorithm().String(), manifest2Digest.Encoded()))
+				So(err, ShouldBeNil)
+
+				// manifest3 is referenced by tagged bottomIndex2, so it should not be deleted
+				tags, err = readTagsFromStorage(rootDir, repoName, manifest3Digest)
+				So(err, ShouldBeNil)
+				So(tags, ShouldContain, "")
+				So(len(tags), ShouldEqual, 1)
+
+				_, err = os.Stat(path.Join(blobsDir, manifest3Digest.Algorithm().String(), manifest3Digest.Encoded()))
+				So(err, ShouldBeNil)
+
+				// bottomIndex1 and topIndex are untagged, so bottomIndex1 should be deleted
+				tags, err = readTagsFromStorage(rootDir, repoName, bottomIndex1Digest)
+				So(err, ShouldBeNil)
+				So(len(tags), ShouldEqual, 0)
+
+				_, err = os.Stat(path.Join(blobsDir, bottomIndex1Digest.Algorithm().String(), bottomIndex1Digest.Encoded()))
+				So(err, ShouldNotBeNil)
+
+				// bottomIndex2 is has a tag, so it should not be deleted
+				tags, err = readTagsFromStorage(rootDir, repoName, bottomIndex2Digest)
+				So(err, ShouldBeNil)
+				So(tags, ShouldContain, "bottomIndex2")
+				So(len(tags), ShouldEqual, 1)
+
+				_, err = os.Stat(path.Join(blobsDir, bottomIndex2Digest.Algorithm().String(), bottomIndex2Digest.Encoded()))
+				So(err, ShouldBeNil)
+
+				// topIndex is untagged, so it should be deleted
+				tags, err = readTagsFromStorage(rootDir, repoName, rootIndexDigest)
+				So(err, ShouldBeNil)
+				So(len(tags), ShouldEqual, 0)
+
+				_, err = os.Stat(path.Join(blobsDir, rootIndexDigest.Algorithm().String(), rootIndexDigest.Encoded()))
+				So(err, ShouldNotBeNil)
+			})
+
+			Convey("gc unmatching tags", func() {
+				gc := gc.NewGarbageCollect(imgStore, metaDB, gc.Options{
+					Delay: 1 * time.Millisecond,
+					ImageRetention: config.ImageRetention{
+						Delay: 1 * time.Millisecond,
+						Policies: []config.RetentionPolicy{
+							{
+								Repositories:    []string{"**"},
+								DeleteReferrers: true,
+								DeleteUntagged:  &trueVal,
+								KeepTags: []config.KeepTagsPolicy{
+									{
+										Patterns: []string{"manifest2"},
+									},
+								},
+							},
+						},
+					},
+				}, audit, log)
+
+				err = gc.CleanRepo(ctx, repoName)
+				So(err, ShouldBeNil)
+
+				// manifest1, bottomIndex1 and topIndex are untagged or don't have matching tags
+				tags, err := readTagsFromStorage(rootDir, repoName, manifest1Digest)
+				So(err, ShouldBeNil)
+				So(len(tags), ShouldEqual, 0)
+
+				_, err = os.Stat(path.Join(blobsDir, manifest1Digest.Algorithm().String(), manifest1Digest.Encoded()))
+				So(err, ShouldNotBeNil)
+
+				// manifest2 has a matching tag, so it should not be deleted
+				tags, err = readTagsFromStorage(rootDir, repoName, manifest2Digest)
+				So(err, ShouldBeNil)
+				So(tags, ShouldContain, "manifest2")
+				So(len(tags), ShouldEqual, 1)
+
+				_, err = os.Stat(path.Join(blobsDir, manifest2Digest.Algorithm().String(), manifest2Digest.Encoded()))
+				So(err, ShouldBeNil)
+
+				// manifest3, bottomIndex2 and topIndex are untagged or don't have matching tags
+				tags, err = readTagsFromStorage(rootDir, repoName, manifest3Digest)
+				So(err, ShouldBeNil)
+				So(len(tags), ShouldEqual, 0)
+
+				_, err = os.Stat(path.Join(blobsDir, manifest3Digest.Algorithm().String(), manifest3Digest.Encoded()))
+				So(err, ShouldNotBeNil)
+
+				// bottomIndex1 and topIndex are untagged, so bottomIndex1 should be deleted
+				tags, err = readTagsFromStorage(rootDir, repoName, bottomIndex1Digest)
+				So(err, ShouldBeNil)
+				So(len(tags), ShouldEqual, 0)
+
+				_, err = os.Stat(path.Join(blobsDir, bottomIndex1Digest.Algorithm().String(), bottomIndex1Digest.Encoded()))
+				So(err, ShouldNotBeNil)
+
+				// bottomIndex2 and topIndex are untagged, so bottomIndex1 should be deleted
+				tags, err = readTagsFromStorage(rootDir, repoName, bottomIndex2Digest)
+				So(err, ShouldBeNil)
+				So(len(tags), ShouldEqual, 0)
+
+				_, err = os.Stat(path.Join(blobsDir, bottomIndex2Digest.Algorithm().String(), bottomIndex2Digest.Encoded()))
+				So(err, ShouldNotBeNil)
+
+				// topIndex is untagged, so it should be deleted
+				tags, err = readTagsFromStorage(rootDir, repoName, rootIndexDigest)
+				So(err, ShouldBeNil)
+				So(len(tags), ShouldEqual, 0)
+
+				_, err = os.Stat(path.Join(blobsDir, rootIndexDigest.Algorithm().String(), rootIndexDigest.Encoded()))
+				So(err, ShouldNotBeNil)
+			})
+		})
+	})
+}
+
+func deleteTagInStorage(rootDir, repoName, tag string) error {
+	indexJSONBuf, err := os.ReadFile(path.Join(rootDir, repoName, "index.json"))
+	if err != nil {
+		return err
+	}
+
+	var indexJSON ispec.Index
+
+	err = json.Unmarshal(indexJSONBuf, &indexJSON)
+	if err != nil {
+		return err
+	}
+
+	for _, desc := range indexJSON.Manifests {
+		if desc.Annotations[ispec.AnnotationRefName] == tag {
+			delete(desc.Annotations, ispec.AnnotationRefName)
+		}
+	}
+
+	indexJSONBuf, err = json.Marshal(indexJSON)
+	if err != nil {
+		return err
+	}
+
+	err = os.WriteFile(path.Join(rootDir, repoName, "index.json"), indexJSONBuf, 0o600)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func readTagsFromStorage(rootDir, repoName string, digest godigest.Digest) ([]string, error) {
+	result := []string{}
+
+	indexJSONBuf, err := os.ReadFile(path.Join(rootDir, repoName, "index.json"))
+	if err != nil {
+		return result, err
+	}
+
+	var indexJSON ispec.Index
+
+	err = json.Unmarshal(indexJSONBuf, &indexJSON)
+	if err != nil {
+		return result, err
+	}
+
+	for _, desc := range indexJSON.Manifests {
+		if desc.Digest != digest {
+			continue
+		}
+
+		name := desc.Annotations[ispec.AnnotationRefName]
+		// There is a special case where there is an entry in
+		// the index.json without tags, in this case name is an empty string
+		// Also we should not have duplicates
+		// Do these checks in the actual test cases, not here
+		result = append(result, name)
+	}
+
+	return result, nil
 }
