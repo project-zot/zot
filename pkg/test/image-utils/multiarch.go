@@ -37,6 +37,14 @@ func (mi *MultiarchImage) DigestStr() string {
 	return mi.Digest().String()
 }
 
+func (mi *MultiarchImage) DescriptorRef() *ispec.Descriptor {
+	return &ispec.Descriptor{
+		MediaType: mi.IndexDescriptor.MediaType,
+		Digest:    mi.IndexDescriptor.Digest,
+		Size:      mi.IndexDescriptor.Size,
+	}
+}
+
 func (mi *MultiarchImage) DigestForAlgorithm(digestAlgorithm godigest.Algorithm) godigest.Digest {
 	blob, err := json.Marshal(mi.Index)
 	if err != nil {
