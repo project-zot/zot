@@ -1804,17 +1804,28 @@ func (is *ImageStore) GetNextDigestWithBlobPaths(repos []string, lastDigests []g
 
 		if fileInfo.IsDir() {
 			// skip repositories not found in repos
-			repo := path.Base(fileInfo.Path())
-			if !zcommon.Contains(repos, repo) && repo != ispec.ImageBlobsDir {
-				candidateAlgorithm := godigest.Algorithm(repo)
-
-				if !candidateAlgorithm.Available() {
-					return driver.ErrSkipDir
-				}
+			baseName := path.Base(fileInfo.Path())
+			if zcommon.Contains(repos, baseName) || baseName == ispec.ImageBlobsDir {
+				return nil
 			}
+
+			candidateAlgorithm := godigest.Algorithm(baseName)
+
+			if !candidateAlgorithm.Available() {
+				return driver.ErrSkipDir
+			}
+
+			return nil
 		}
 
-		digestHash := path.Base(fileInfo.Path())
+		baseName := path.Base(fileInfo.Path())
+
+		skippedFiles := []string{ispec.ImageLayoutFile, ispec.ImageIndexFile, "meta.db", "cache.db"}
+		if zcommon.Contains(skippedFiles, baseName) {
+			return nil
+		}
+
+		digestHash := baseName
 		digestAlgorithm := godigest.Algorithm(path.Base(path.Dir(fileInfo.Path())))
 
 		blobDigest := godigest.NewDigestFromEncoded(digestAlgorithm, digestHash)
