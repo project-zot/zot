@@ -528,3 +528,12 @@ func IsOauth2Supported(provider string) bool {
 
 	return false
 }
+
+func (c *Config) IsClusteringEnabled() bool {
+	return c.Cluster != nil
+}
+
+func (c *Config) IsSharedStorageEnabled() bool {
+	return c.Storage.RemoteCache &&
+		c.Storage.StorageDriver != nil && c.Storage.CacheDriver != nil
+}
