@@ -1350,7 +1350,7 @@ func TestCVEStruct(t *testing.T) { //nolint:gocyclo
 
 		// Tag is not found
 		cveList, cveSummary, pageInfo, err = cveInfo.GetCVEListForImage(ctx, "repo-with-bad-tag-digest", "tag", "", "", "", pageInput)
-		So(err, ShouldEqual, zerr.ErrImageMetaNotFound)
+		So(err, ShouldWrap, zerr.ErrImageMetaNotFound)
 		So(len(cveList), ShouldEqual, 0)
 		So(pageInfo.ItemCount, ShouldEqual, 0)
 		So(pageInfo.TotalCount, ShouldEqual, 0)

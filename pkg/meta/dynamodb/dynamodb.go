@@ -224,6 +224,45 @@ func (dwr *DynamoDB) GetProtoImageMeta(ctx context.Context, digest godigest.Dige
 	return imageMeta, nil
 }
 
+func (dwr *DynamoDB) getAllContainedMeta(ctx context.Context, imageIndexData *proto_go.ImageMeta,
+) ([]*proto_go.ImageMeta, []*proto_go.ManifestMeta, error) {
+	manifestDataList := make([]*proto_go.ManifestMeta, 0, len(imageIndexData.Index.Index.Manifests))
+	imageMetaList := make([]*proto_go.ImageMeta, 0, len(imageIndexData.Index.Index.Manifests))
+
+	manifestDigests := make([]string, 0, len(imageIndexData.Index.Index.Manifests))
+	for i := range imageIndexData.Index.Index.Manifests {
+		manifestDigests = append(manifestDigests, imageIndexData.Index.Index.Manifests[i].Digest)
+	}
+
+	manifestsAttributes, err := dwr.fetchImageMetaAttributesByDigest(ctx, manifestDigests)
+	if err != nil {
+		return imageMetaList, manifestDataList, err
+	}
+
+	for _, manifestAttribute := range manifestsAttributes {
+		imageManifestData, err := getProtoImageMetaFromAttribute(manifestAttribute["ImageMeta"])
+		if err != nil {
+			return imageMetaList, manifestDataList, err
+		}
+
+		switch imageManifestData.MediaType {
+		case ispec.MediaTypeImageManifest:
+			imageMetaList = append(imageMetaList, imageManifestData)
+			manifestDataList = append(manifestDataList, imageManifestData.Manifests[0])
+		case ispec.MediaTypeImageIndex:
+			partialImageDataList, partialManifestDataList, err := dwr.getAllContainedMeta(ctx, imageManifestData)
+			if err != nil {
+				return imageMetaList, manifestDataList, err
+			}
+
+			imageMetaList = append(imageMetaList, partialImageDataList...)
+			manifestDataList = append(manifestDataList, partialManifestDataList...)
+		}
+	}
+
+	return imageMetaList, manifestDataList, nil
+}
+
 func (dwr *DynamoDB) setProtoRepoMeta(repo string, repoMeta *proto_go.RepoMeta) error {
 	repoMeta.Name = repo
 
@@ -640,17 +679,9 @@ func (dwr *DynamoDB) SearchTags(ctx context.Context, searchText string) ([]mType
 					fmt.Errorf("error fetching manifest meta for manifest with digest %s %w", indexDigest, err)
 			}
 
-			manifestDataList := make([]*proto_go.ManifestMeta, 0, len(imageIndexData.Index.Index.Manifests))
-
-			for _, manifest := range imageIndexData.Index.Index.Manifests {
-				manifestDigest := godigest.Digest(manifest.Digest)
-
-				imageManifestData, err := dwr.GetProtoImageMeta(ctx, manifestDigest)
-				if err != nil {
-					return []mTypes.FullImageMeta{}, err
-				}
-
-				manifestDataList = append(manifestDataList, imageManifestData.Manifests[0])
+			_, manifestDataList, err := dwr.getAllContainedMeta(ctx, imageIndexData)
+			if err != nil {
+				return []mTypes.FullImageMeta{}, err
 			}
 
 			imageIndexData.Manifests = manifestDataList
@@ -739,16 +770,14 @@ func (dwr *DynamoDB) FilterTags(ctx context.Context, filterRepoTag mTypes.Filter
 				imageIndexMeta := mConvert.GetImageMeta(protoImageIndexMeta)
 				matchedManifests := []*proto_go.ManifestMeta{}
 
-				for _, manifest := range protoImageIndexMeta.Index.Index.Manifests {
-					manifestDigest := manifest.Digest
+				imageManifestDataList, _, err := dwr.getAllContainedMeta(context.Background(), protoImageIndexMeta)
+				if err != nil {
+					viewError = errors.Join(viewError, err)
 
-					imageManifestData, err := dwr.GetProtoImageMeta(ctx, godigest.Digest(manifestDigest))
-					if err != nil {
-						viewError = errors.Join(viewError, err)
+					continue
+				}
 
-						continue
-					}
-
+				for _, imageManifestData := range imageManifestDataList {
 					imageMeta := mConvert.GetImageMeta(imageManifestData)
 					partialImageMeta := common.GetPartialImageMeta(imageIndexMeta, imageMeta)
 
@@ -868,15 +897,9 @@ func (dwr *DynamoDB) GetFullImageMeta(ctx context.Context, repo string, tag stri
 	}
 
 	if protoImageMeta.MediaType == ispec.MediaTypeImageIndex {
-		manifestDataList := make([]*proto_go.ManifestMeta, 0, len(protoImageMeta.Index.Index.Manifests))
-
-		for _, manifest := range protoImageMeta.Index.Index.Manifests {
-			imageManifestData, err := dwr.GetProtoImageMeta(ctx, godigest.Digest(manifest.Digest))
-			if err != nil {
-				return mTypes.FullImageMeta{}, err
-			}
-
-			manifestDataList = append(manifestDataList, imageManifestData.Manifests[0])
+		_, manifestDataList, err := dwr.getAllContainedMeta(ctx, protoImageMeta)
+		if err != nil {
+			return mTypes.FullImageMeta{}, err
 		}
 
 		protoImageMeta.Manifests = manifestDataList
@@ -901,17 +924,9 @@ func (dwr *DynamoDB) GetImageMeta(digest godigest.Digest) (mTypes.ImageMeta, err
 	}
 
 	if protoImageMeta.MediaType == ispec.MediaTypeImageIndex {
-		manifestDataList := make([]*proto_go.ManifestMeta, 0, len(protoImageMeta.Index.Index.Manifests))
-
-		for _, manifest := range protoImageMeta.Index.Index.Manifests {
-			manifestDigest := godigest.Digest(manifest.Digest)
-
-			imageManifestData, err := dwr.GetProtoImageMeta(context.Background(), manifestDigest)
-			if err != nil {
-				return mTypes.ImageMeta{}, err
-			}
-
-			manifestDataList = append(manifestDataList, imageManifestData.Manifests[0])
+		_, manifestDataList, err := dwr.getAllContainedMeta(context.Background(), protoImageMeta)
+		if err != nil {
+			return mTypes.ImageMeta{}, err
 		}
 
 		protoImageMeta.Manifests = manifestDataList
@@ -1330,25 +1345,9 @@ func (dwr *DynamoDB) FilterImageMeta(ctx context.Context, digests []string,
 		}
 
 		if protoImageMeta.MediaType == ispec.MediaTypeImageIndex {
-			manifestDataList := make([]*proto_go.ManifestMeta, 0, len(protoImageMeta.Index.Index.Manifests))
-
-			indexDigests := make([]string, 0, len(protoImageMeta.Index.Index.Manifests))
-			for i := range protoImageMeta.Index.Index.Manifests {
-				indexDigests = append(indexDigests, protoImageMeta.Index.Index.Manifests[i].Digest)
-			}
-
-			manifestsAttributes, err := dwr.fetchImageMetaAttributesByDigest(ctx, indexDigests)
+			_, manifestDataList, err := dwr.getAllContainedMeta(context.Background(), protoImageMeta)
 			if err != nil {
 				return nil, err
-			}
-
-			for _, manifestAttribute := range manifestsAttributes {
-				imageManifestData, err := getProtoImageMetaFromAttribute(manifestAttribute["ImageMeta"])
-				if err != nil {
-					return nil, err
-				}
-
-				manifestDataList = append(manifestDataList, imageManifestData.Manifests[0])
 			}
 
 			protoImageMeta.Manifests = manifestDataList
@@ -2001,7 +2000,32 @@ func (dwr *DynamoDB) fetchImageMetaAttributesByDigest(ctx context.Context, diges
 		start = end
 	}
 
-	return batchedResp, nil
+	// Order the responses based on initial digest order
+	// as BatchGetItem does not guarantee the key order is respected
+	orderedResp := []map[string]types.AttributeValue{}
+	respMap := map[string]map[string]types.AttributeValue{}
+
+	for _, item := range batchedResp {
+		var digest string
+
+		err := attributevalue.Unmarshal(item["TableKey"], &digest)
+		if err != nil {
+			return nil, err
+		}
+
+		respMap[digest] = item
+	}
+
+	for _, digest := range digests {
+		imageMeta, ok := respMap[digest]
+		if !ok {
+			return nil, fmt.Errorf("%w for digest %s", zerr.ErrImageMetaNotFound, digest)
+		}
+
+		orderedResp = append(orderedResp, imageMeta)
+	}
+
+	return orderedResp, nil
 }
 
 func getBatchImageKeys(digests []string) []map[string]types.AttributeValue {

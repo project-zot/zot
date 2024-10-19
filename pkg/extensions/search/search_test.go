@@ -3005,7 +3005,7 @@ func TestGlobalSearchImageAuthor(t *testing.T) {
 	})
 }
 
-func TestGlobalSearch(t *testing.T) {
+func TestGlobalSearch(t *testing.T) { //nolint: gocyclo
 	Convey("Test searching for repos with vulnerabitity scanning disabled", t, func() {
 		subpath := "/a"
 
@@ -3903,6 +3903,328 @@ func TestGlobalSearch(t *testing.T) {
 		results = result.GlobalSearch
 		So(len(results.Images), ShouldEqual, 0)
 		So(len(results.Repos), ShouldEqual, 0)
+	})
+
+	Convey("test nested indexes", t, func() {
+		log := log.NewLogger("debug", "")
+		rootDir := t.TempDir()
+		port := GetFreePort()
+		baseURL := GetBaseURL(port)
+		conf := config.New()
+		conf.HTTP.Port = port
+		conf.Storage.RootDirectory = rootDir
+		defaultVal := true
+		conf.Extensions = &extconf.ExtensionConfig{
+			Search: &extconf.SearchConfig{BaseConfig: extconf.BaseConfig{Enable: &defaultVal}},
+		}
+		conf.Extensions.Search.CVE = nil
+
+		ctlr := api.NewController(conf)
+		ctlrManager := NewControllerManager(ctlr)
+
+		storeCtlr := ociutils.GetDefaultStoreController(rootDir, log)
+
+		// nested manifest/indexes:
+		// image111 -> multiArchBottom11 -> multiArchMiddle1 -> multiArchTop
+		// image112 -> multiArchBottom11 -> multiArchMiddle1 -> multiArchTop
+		// image121 -> multiArchBottom12 -> multiArchMiddle1 -> multiArchTop
+		// image122 -> multiArchBottom12 -> multiArchMiddle1 -> multiArchTop
+		// image211 -> multiArchBottom21 -> multiArchMiddle2 -> multiArchTop
+		// image212 -> multiArchBottom21 -> multiArchMiddle2 -> multiArchTop
+		// image31 -> multiArchMiddle3 -> multiArchTop
+		// image32 -> multiArchMiddle3 -> multiArchTop
+
+		repoName := "nested"
+
+		image111 := CreateRandomImage()
+		image112 := CreateRandomImage()
+		multiArchBottom11 := CreateMultiarchWith().Images([]Image{image111, image112}).Build()
+		err := WriteMultiArchImageToFileSystem(multiArchBottom11, repoName, multiArchBottom11.Digest().String(), storeCtlr)
+		So(err, ShouldBeNil)
+
+		image121 := CreateRandomImage()
+		image122 := CreateRandomImage()
+		multiArchBottom12 := CreateMultiarchWith().Images([]Image{image121, image122}).Build()
+		err = WriteMultiArchImageToFileSystem(multiArchBottom12, repoName, multiArchBottom12.Digest().String(), storeCtlr)
+		So(err, ShouldBeNil)
+
+		indexMultiArchMiddle1 := ispec.Index{
+			Versioned: specs.Versioned{SchemaVersion: 2},
+			MediaType: ispec.MediaTypeImageIndex,
+			Manifests: []ispec.Descriptor{
+				{
+					Digest:    multiArchBottom11.IndexDescriptor.Digest,
+					Size:      multiArchBottom11.IndexDescriptor.Size,
+					MediaType: ispec.MediaTypeImageIndex,
+				},
+				{
+					Digest:    multiArchBottom12.IndexDescriptor.Digest,
+					Size:      multiArchBottom12.IndexDescriptor.Size,
+					MediaType: ispec.MediaTypeImageIndex,
+				},
+			},
+		}
+
+		indexMultiArchMiddle1Blob, err := json.Marshal(indexMultiArchMiddle1)
+		So(err, ShouldBeNil)
+
+		indexMultiArchMiddle1Digest, _, err := storeCtlr.GetDefaultImageStore().PutImageManifest(repoName,
+			"multiArchMiddle1", ispec.MediaTypeImageIndex, indexMultiArchMiddle1Blob)
+		So(err, ShouldBeNil)
+
+		image211 := CreateRandomImage()
+		image212 := CreateRandomImage()
+		multiArchBottom21 := CreateMultiarchWith().Images([]Image{image211, image212}).Build()
+		err = WriteMultiArchImageToFileSystem(multiArchBottom21, repoName, multiArchBottom21.Digest().String(), storeCtlr)
+		So(err, ShouldBeNil)
+
+		indexMultiArchMiddle2 := ispec.Index{
+			Versioned: specs.Versioned{SchemaVersion: 2},
+			MediaType: ispec.MediaTypeImageIndex,
+			Manifests: []ispec.Descriptor{
+				{
+					Digest:    multiArchBottom21.IndexDescriptor.Digest,
+					Size:      multiArchBottom21.IndexDescriptor.Size,
+					MediaType: ispec.MediaTypeImageIndex,
+				},
+			},
+		}
+
+		indexMultiArchMiddle2Blob, err := json.Marshal(indexMultiArchMiddle2)
+		So(err, ShouldBeNil)
+
+		indexMultiArchMiddle2Digest, _, err := storeCtlr.GetDefaultImageStore().PutImageManifest(repoName,
+			"multiArchMiddle2", ispec.MediaTypeImageIndex, indexMultiArchMiddle2Blob)
+		So(err, ShouldBeNil)
+
+		image31 := CreateRandomImage()
+		image32 := CreateRandomImage()
+		multiArchBottom3 := CreateMultiarchWith().Images([]Image{image31, image32}).Build()
+		err = WriteMultiArchImageToFileSystem(multiArchBottom3, repoName, multiArchBottom3.Digest().String(), storeCtlr)
+		So(err, ShouldBeNil)
+
+		indexMultiArchTop := ispec.Index{
+			Versioned: specs.Versioned{SchemaVersion: 2},
+			MediaType: ispec.MediaTypeImageIndex,
+			Manifests: []ispec.Descriptor{
+				{
+					Digest:    indexMultiArchMiddle1Digest,
+					Size:      int64(len(indexMultiArchMiddle1Blob)),
+					MediaType: ispec.MediaTypeImageIndex,
+				},
+				{
+					Digest:    indexMultiArchMiddle2Digest,
+					Size:      int64(len(indexMultiArchMiddle2Blob)),
+					MediaType: ispec.MediaTypeImageIndex,
+				},
+				{
+					Digest:    multiArchBottom3.IndexDescriptor.Digest,
+					Size:      multiArchBottom3.IndexDescriptor.Size,
+					MediaType: ispec.MediaTypeImageIndex,
+				},
+			},
+		}
+
+		indexMultiArchTopBlob, err := json.Marshal(indexMultiArchTop)
+		So(err, ShouldBeNil)
+
+		_, _, err = storeCtlr.GetDefaultImageStore().PutImageManifest(repoName, "multiArchTop", ispec.MediaTypeImageIndex,
+			indexMultiArchTopBlob)
+		So(err, ShouldBeNil)
+
+		ctlrManager.StartAndWait(port)
+		defer ctlrManager.StopServer()
+
+		// Search for a specific tag cross-repo and return single arch images
+		results := GlobalSearchGQL(":multiArch", baseURL).GlobalSearch
+		So(len(results.Images), ShouldEqual, 3)
+		So(len(results.Repos), ShouldEqual, 0)
+
+		for _, image := range results.Images {
+			So(image.RepoName, ShouldEqual, repoName)
+
+			switch image.Tag {
+			case "multiArchMiddle1":
+				So(len(image.Manifests), ShouldEqual, 4)
+			case "multiArchMiddle2":
+				So(len(image.Manifests), ShouldEqual, 2)
+			case "multiArchTop":
+				So(len(image.Manifests), ShouldEqual, 8)
+			}
+		}
+	})
+
+	Convey("test nested indexes", t, func() {
+		log := log.NewLogger("debug", "")
+		rootDir := t.TempDir()
+		port := GetFreePort()
+		baseURL := GetBaseURL(port)
+		conf := config.New()
+		conf.HTTP.Port = port
+		conf.Storage.RootDirectory = rootDir
+		defaultVal := true
+
+		updateDuration, _ := time.ParseDuration("1h")
+		trivyConfig := &extconf.TrivyConfig{
+			DBRepository: "ghcr.io/project-zot/trivy-db",
+		}
+		cveConfig := &extconf.CVEConfig{
+			UpdateInterval: updateDuration,
+			Trivy:          trivyConfig,
+		}
+		searchConfig := &extconf.SearchConfig{
+			BaseConfig: extconf.BaseConfig{Enable: &defaultVal},
+			CVE:        cveConfig,
+		}
+		conf.Extensions = &extconf.ExtensionConfig{
+			Search: searchConfig,
+		}
+
+		storeCtlr := ociutils.GetDefaultStoreController(rootDir, log)
+
+		// nested manifest/indexes:
+		// image111 -> multiArchBottom11 -> multiArchMiddle1 -> multiArchTop
+		// image112 -> multiArchBottom11 -> multiArchMiddle1 -> multiArchTop
+		// image121 -> multiArchBottom12 -> multiArchMiddle1 -> multiArchTop
+		// image122 -> multiArchBottom12 -> multiArchMiddle1 -> multiArchTop
+		// image211 -> multiArchBottom21 -> multiArchMiddle2 -> multiArchTop
+		// image212 -> multiArchBottom21 -> multiArchMiddle2 -> multiArchTop
+		// image31 -> multiArchMiddle3 -> multiArchTop
+		// image32 -> multiArchMiddle3 -> multiArchTop
+
+		repoName := "nested"
+
+		image111 := CreateRandomImage()
+		image112 := CreateRandomImage()
+		multiArchBottom11 := CreateMultiarchWith().Images([]Image{image111, image112}).Build()
+		err := WriteMultiArchImageToFileSystem(multiArchBottom11, repoName, multiArchBottom11.Digest().String(), storeCtlr)
+		So(err, ShouldBeNil)
+
+		image121 := CreateRandomImage()
+		image122 := CreateRandomImage()
+		multiArchBottom12 := CreateMultiarchWith().Images([]Image{image121, image122}).Build()
+		err = WriteMultiArchImageToFileSystem(multiArchBottom12, repoName, multiArchBottom12.Digest().String(), storeCtlr)
+		So(err, ShouldBeNil)
+
+		indexMultiArchMiddle1 := ispec.Index{
+			Versioned: specs.Versioned{SchemaVersion: 2},
+			MediaType: ispec.MediaTypeImageIndex,
+			Manifests: []ispec.Descriptor{
+				{
+					Digest:    multiArchBottom11.IndexDescriptor.Digest,
+					Size:      multiArchBottom11.IndexDescriptor.Size,
+					MediaType: ispec.MediaTypeImageIndex,
+				},
+				{
+					Digest:    multiArchBottom12.IndexDescriptor.Digest,
+					Size:      multiArchBottom12.IndexDescriptor.Size,
+					MediaType: ispec.MediaTypeImageIndex,
+				},
+			},
+		}
+
+		indexMultiArchMiddle1Blob, err := json.Marshal(indexMultiArchMiddle1)
+		So(err, ShouldBeNil)
+
+		indexMultiArchMiddle1Digest, _, err := storeCtlr.GetDefaultImageStore().PutImageManifest(repoName,
+			"multiArchMiddle1", ispec.MediaTypeImageIndex, indexMultiArchMiddle1Blob)
+		So(err, ShouldBeNil)
+
+		image211 := CreateRandomImage()
+		image212 := CreateRandomImage()
+		multiArchBottom21 := CreateMultiarchWith().Images([]Image{image211, image212}).Build()
+		err = WriteMultiArchImageToFileSystem(multiArchBottom21, repoName, multiArchBottom21.Digest().String(), storeCtlr)
+		So(err, ShouldBeNil)
+
+		indexMultiArchMiddle2 := ispec.Index{
+			Versioned: specs.Versioned{SchemaVersion: 2},
+			MediaType: ispec.MediaTypeImageIndex,
+			Manifests: []ispec.Descriptor{
+				{
+					Digest:    multiArchBottom21.IndexDescriptor.Digest,
+					Size:      multiArchBottom21.IndexDescriptor.Size,
+					MediaType: ispec.MediaTypeImageIndex,
+				},
+			},
+		}
+
+		indexMultiArchMiddle2Blob, err := json.Marshal(indexMultiArchMiddle2)
+		So(err, ShouldBeNil)
+
+		indexMultiArchMiddle2Digest, _, err := storeCtlr.GetDefaultImageStore().PutImageManifest(repoName,
+			"multiArchMiddle2", ispec.MediaTypeImageIndex, indexMultiArchMiddle2Blob)
+		So(err, ShouldBeNil)
+
+		image31 := CreateRandomImage()
+		image32 := CreateRandomImage()
+		multiArchBottom3 := CreateMultiarchWith().Images([]Image{image31, image32}).Build()
+		err = WriteMultiArchImageToFileSystem(multiArchBottom3, repoName, multiArchBottom3.Digest().String(), storeCtlr)
+		So(err, ShouldBeNil)
+
+		indexMultiArchTop := ispec.Index{
+			Versioned: specs.Versioned{SchemaVersion: 2},
+			MediaType: ispec.MediaTypeImageIndex,
+			Manifests: []ispec.Descriptor{
+				{
+					Digest:    indexMultiArchMiddle1Digest,
+					Size:      int64(len(indexMultiArchMiddle1Blob)),
+					MediaType: ispec.MediaTypeImageIndex,
+				},
+				{
+					Digest:    indexMultiArchMiddle2Digest,
+					Size:      int64(len(indexMultiArchMiddle2Blob)),
+					MediaType: ispec.MediaTypeImageIndex,
+				},
+				{
+					Digest:    multiArchBottom3.IndexDescriptor.Digest,
+					Size:      multiArchBottom3.IndexDescriptor.Size,
+					MediaType: ispec.MediaTypeImageIndex,
+				},
+			},
+		}
+
+		indexMultiArchTopBlob, err := json.Marshal(indexMultiArchTop)
+		So(err, ShouldBeNil)
+
+		_, _, err = storeCtlr.GetDefaultImageStore().PutImageManifest(repoName, "multiArchTop", ispec.MediaTypeImageIndex,
+			indexMultiArchTopBlob)
+		So(err, ShouldBeNil)
+
+		ctlr := api.NewController(conf)
+
+		if err := ctlr.Init(); err != nil {
+			panic(err)
+		}
+
+		ctlr.CveScanner = getMockCveScanner(ctlr.MetaDB)
+
+		go func() {
+			if err := ctlr.Run(); !errors.Is(err, http.ErrServerClosed) {
+				panic(err)
+			}
+		}()
+
+		defer ctlr.Shutdown()
+
+		WaitTillServerReady(baseURL)
+
+		// Search for a specific tag cross-repo and return single arch images
+		results := GlobalSearchGQL(":multiArch", baseURL).GlobalSearch
+		So(len(results.Images), ShouldEqual, 3)
+		So(len(results.Repos), ShouldEqual, 0)
+
+		for _, image := range results.Images {
+			So(image.RepoName, ShouldEqual, repoName)
+
+			switch image.Tag {
+			case "multiArchMiddle1":
+				So(len(image.Manifests), ShouldEqual, 4)
+			case "multiArchMiddle2":
+				So(len(image.Manifests), ShouldEqual, 2)
+			case "multiArchTop":
+				So(len(image.Manifests), ShouldEqual, 8)
+			}
+		}
 	})
 }
 

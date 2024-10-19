@@ -960,7 +960,9 @@ func globalSearch(ctx context.Context, query string, metaDB mTypes.MetaDB, filte
 		pageInput := getPageInput(requestedPage)
 
 		expectedTag := strings.TrimPrefix(query, `:`)
-		matchTagName := func(repoName, actualTag string) bool { return strings.Contains(actualTag, expectedTag) }
+		matchTagName := func(repoName, actualTag string) bool {
+			return strings.Contains(strings.ToLower(actualTag), expectedTag)
+		}
 
 		fullImageMetaList, err := metaDB.FilterTags(ctx, matchTagName, mTypes.AcceptAllImageMeta)
 		if err != nil {

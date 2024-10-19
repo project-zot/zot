@@ -400,15 +400,9 @@ func (bdw *BoltDB) FilterImageMeta(ctx context.Context, digests []string,
 			}
 
 			if protoImageMeta.MediaType == ispec.MediaTypeImageIndex {
-				manifestDataList := make([]*proto_go.ManifestMeta, 0, len(protoImageMeta.Index.Index.Manifests))
-
-				for _, manifest := range protoImageMeta.Index.Index.Manifests {
-					imageManifestData, err := getProtoImageMeta(imageBuck, manifest.Digest)
-					if err != nil {
-						return err
-					}
-
-					manifestDataList = append(manifestDataList, imageManifestData.Manifests[0])
+				_, manifestDataList, err := getAllContainedMeta(imageBuck, protoImageMeta)
+				if err != nil {
+					return err
 				}
 
 				protoImageMeta.Manifests = manifestDataList
@@ -474,7 +468,7 @@ func getProtoImageMeta(imageBuck *bbolt.Bucket, digest string) (*proto_go.ImageM
 	imageMetaBlob := imageBuck.Get([]byte(digest))
 
 	if len(imageMetaBlob) == 0 {
-		return nil, zerr.ErrImageMetaNotFound
+		return nil, fmt.Errorf("%w for digest %s", zerr.ErrImageMetaNotFound, digest)
 	}
 
 	imageMeta := proto_go.ImageMeta{}
@@ -485,6 +479,35 @@ func getProtoImageMeta(imageBuck *bbolt.Bucket, digest string) (*proto_go.ImageM
 	}
 
 	return &imageMeta, nil
+}
+
+func getAllContainedMeta(imageBuck *bbolt.Bucket, imageIndexData *proto_go.ImageMeta,
+) ([]*proto_go.ImageMeta, []*proto_go.ManifestMeta, error) {
+	manifestDataList := make([]*proto_go.ManifestMeta, 0, len(imageIndexData.Index.Index.Manifests))
+	imageMetaList := make([]*proto_go.ImageMeta, 0, len(imageIndexData.Index.Index.Manifests))
+
+	for _, manifest := range imageIndexData.Index.Index.Manifests {
+		imageManifestData, err := getProtoImageMeta(imageBuck, manifest.Digest)
+		if err != nil {
+			return imageMetaList, manifestDataList, err
+		}
+
+		switch imageManifestData.MediaType {
+		case ispec.MediaTypeImageManifest:
+			imageMetaList = append(imageMetaList, imageManifestData)
+			manifestDataList = append(manifestDataList, imageManifestData.Manifests[0])
+		case ispec.MediaTypeImageIndex:
+			partialImageDataList, partialManifestDataList, err := getAllContainedMeta(imageBuck, imageManifestData)
+			if err != nil {
+				return imageMetaList, manifestDataList, err
+			}
+
+			imageMetaList = append(imageMetaList, partialImageDataList...)
+			manifestDataList = append(manifestDataList, partialManifestDataList...)
+		}
+	}
+
+	return imageMetaList, manifestDataList, nil
 }
 
 func (bdw *BoltDB) SearchTags(ctx context.Context, searchText string,
@@ -552,15 +575,9 @@ func (bdw *BoltDB) SearchTags(ctx context.Context, searchText string,
 						indexDigest, err)
 				}
 
-				manifestDataList := make([]*proto_go.ManifestMeta, 0, len(imageIndexData.Index.Index.Manifests))
-
-				for _, manifest := range imageIndexData.Index.Index.Manifests {
-					imageManifestData, err := getProtoImageMeta(imageBuck, manifest.Digest)
-					if err != nil {
-						return err
-					}
-
-					manifestDataList = append(manifestDataList, imageManifestData.Manifests[0])
+				_, manifestDataList, err := getAllContainedMeta(imageBuck, imageIndexData)
+				if err != nil {
+					return err
 				}
 
 				imageIndexData.Manifests = manifestDataList
@@ -649,16 +666,14 @@ func (bdw *BoltDB) FilterTags(ctx context.Context, filterRepoTag mTypes.FilterRe
 					imageIndexMeta := mConvert.GetImageMeta(protoImageIndexMeta)
 					matchedManifests := []*proto_go.ManifestMeta{}
 
-					for _, manifest := range protoImageIndexMeta.Index.Index.Manifests {
-						manifestDigest := manifest.Digest
+					imageManifestDataList, _, err := getAllContainedMeta(imageMetaBuck, protoImageIndexMeta)
+					if err != nil {
+						viewError = errors.Join(viewError, err)
 
-						imageManifestData, err := getProtoImageMeta(imageMetaBuck, manifestDigest)
-						if err != nil {
-							viewError = errors.Join(viewError, err)
+						continue
+					}
 
-							continue
-						}
-
+					for _, imageManifestData := range imageManifestDataList {
 						imageMeta := mConvert.GetImageMeta(imageManifestData)
 						partialImageMeta := common.GetPartialImageMeta(imageIndexMeta, imageMeta)
 
@@ -798,15 +813,9 @@ func (bdw *BoltDB) GetFullImageMeta(ctx context.Context, repo string, tag string
 		}
 
 		if protoImageMeta.MediaType == ispec.MediaTypeImageIndex {
-			manifestDataList := make([]*proto_go.ManifestMeta, 0, len(protoImageMeta.Index.Index.Manifests))
-
-			for _, manifest := range protoImageMeta.Index.Index.Manifests {
-				imageManifestData, err := getProtoImageMeta(imageBuck, manifest.Digest)
-				if err != nil {
-					return err
-				}
-
-				manifestDataList = append(manifestDataList, imageManifestData.Manifests[0])
+			_, manifestDataList, err := getAllContainedMeta(imageBuck, protoImageMeta)
+			if err != nil {
+				return err
 			}
 
 			protoImageMeta.Manifests = manifestDataList
@@ -830,15 +839,9 @@ func (bdw *BoltDB) GetImageMeta(digest godigest.Digest) (mTypes.ImageMeta, error
 		}
 
 		if protoImageMeta.MediaType == ispec.MediaTypeImageIndex {
-			manifestDataList := make([]*proto_go.ManifestMeta, 0, len(protoImageMeta.Index.Index.Manifests))
-
-			for _, manifest := range protoImageMeta.Index.Index.Manifests {
-				imageManifestData, err := getProtoImageMeta(imageBuck, manifest.Digest)
-				if err != nil {
-					return err
-				}
-
-				manifestDataList = append(manifestDataList, imageManifestData.Manifests[0])
+			_, manifestDataList, err := getAllContainedMeta(imageBuck, protoImageMeta)
+			if err != nil {
+				return err
 			}
 
 			protoImageMeta.Manifests = manifestDataList
