@@ -2123,7 +2123,7 @@ func (dwr *DynamoDB) deleteTable(tableName string) error {
 }
 
 func (dwr *DynamoDB) waitTableToBeCreated(tableName string) error {
-	const maxWaitTime = 20 * time.Second
+	const maxWaitTime = 120 * time.Second
 
 	waiter := dynamodb.NewTableExistsWaiter(dwr.Client)
 
