@@ -58,7 +58,7 @@ require (
 	github.com/spf13/viper v1.19.0
 	github.com/stretchr/testify v1.9.0
 	github.com/swaggo/http-swagger v1.3.4
-	github.com/swaggo/swag v1.16.3
+	github.com/swaggo/swag v1.16.4
 	github.com/vektah/gqlparser/v2 v2.5.17
 	github.com/zitadel/oidc/v3 v3.30.0
 	go.etcd.io/bbolt v1.3.11
