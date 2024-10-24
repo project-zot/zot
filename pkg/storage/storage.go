@@ -58,7 +58,7 @@ func New(config *config.Config, linter common.Lint, metrics monitoring.MetricSer
 		//nolint:typecheck,contextcheck
 		rootDir := config.Storage.RootDirectory
 		defaultStore = local.NewImageStore(rootDir,
-			config.Storage.Dedupe, config.Storage.Commit, log, metrics, linter, cacheDriver,
+			config.Storage.Dedupe, config.Storage.Commit, log, metrics, linter, cacheDriver, config.HTTP.Compat,
 		)
 	} else {
 		storeName := fmt.Sprintf("%v", config.Storage.StorageDriver["name"])
@@ -92,7 +92,7 @@ func New(config *config.Config, linter common.Lint, metrics monitoring.MetricSer
 		// false positive lint - linter does not implement Lint method
 		//nolint: typecheck,contextcheck
 		defaultStore = s3.NewImageStore(rootDir, config.Storage.RootDirectory,
-			config.Storage.Dedupe, config.Storage.Commit, log, metrics, linter, store, cacheDriver)
+			config.Storage.Dedupe, config.Storage.Commit, log, metrics, linter, store, cacheDriver, config.HTTP.Compat)
 	}
 
 	storeController.DefaultStore = defaultStore
@@ -170,7 +170,7 @@ func getSubStore(cfg *config.Config, subPaths map[string]config.StorageConfig,
 
 				rootDir := storageConfig.RootDirectory
 				imgStoreMap[storageConfig.RootDirectory] = local.NewImageStore(rootDir,
-					storageConfig.Dedupe, storageConfig.Commit, log, metrics, linter, cacheDriver,
+					storageConfig.Dedupe, storageConfig.Commit, log, metrics, linter, cacheDriver, cfg.HTTP.Compat,
 				)
 
 				subImageStore[route] = imgStoreMap[storageConfig.RootDirectory]
@@ -210,7 +210,7 @@ func getSubStore(cfg *config.Config, subPaths map[string]config.StorageConfig,
 			// false positive lint - linter does not implement Lint method
 			//nolint: typecheck
 			subImageStore[route] = s3.NewImageStore(rootDir, storageConfig.RootDirectory,
-				storageConfig.Dedupe, storageConfig.Commit, log, metrics, linter, store, cacheDriver,
+				storageConfig.Dedupe, storageConfig.Commit, log, metrics, linter, store, cacheDriver, cfg.HTTP.Compat,
 			)
 		}
 	}

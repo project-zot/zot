@@ -49,7 +49,7 @@ func TestLocalCheckAllBlobsIntegrity(t *testing.T) {
 			UseRelPaths: true,
 		}, log)
 		driver := local.New(true)
-		imgStore := local.NewImageStore(tdir, true, true, log, metrics, nil, cacheDriver)
+		imgStore := local.NewImageStore(tdir, true, true, log, metrics, nil, cacheDriver, nil)
 
 		RunCheckAllBlobsIntegrityTests(t, imgStore, driver, log)
 	})

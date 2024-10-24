@@ -21,6 +21,7 @@ import (
 
 	zerr "zotregistry.dev/zot/errors"
 	zcommon "zotregistry.dev/zot/pkg/common"
+	"zotregistry.dev/zot/pkg/compat"
 	"zotregistry.dev/zot/pkg/extensions/monitoring"
 	syncConstants "zotregistry.dev/zot/pkg/extensions/sync/constants"
 	zlog "zotregistry.dev/zot/pkg/log"
@@ -49,6 +50,7 @@ type ImageStore struct {
 	dedupe      bool
 	linter      common.Lint
 	commit      bool
+	compat      []compat.MediaCompatibility
 }
 
 func (is *ImageStore) Name() string {
@@ -67,7 +69,8 @@ func (is *ImageStore) DirExists(d string) bool {
 // see https://github.com/docker/docker.github.io/tree/master/registry/storage-drivers
 // Use the last argument to properly set a cache database, or it will default to boltDB local storage.
 func NewImageStore(rootDir string, cacheDir string, dedupe, commit bool, log zlog.Logger,
-	metrics monitoring.MetricServer, linter common.Lint, storeDriver storageTypes.Driver, cacheDriver cache.Cache,
+	metrics monitoring.MetricServer, linter common.Lint, storeDriver storageTypes.Driver,
+	cacheDriver cache.Cache, compat []compat.MediaCompatibility,
 ) storageTypes.ImageStore {
 	if err := storeDriver.EnsureDir(rootDir); err != nil {
 		log.Error().Err(err).Str("rootDir", rootDir).Msg("failed to create root dir")
@@ -85,6 +88,7 @@ func NewImageStore(rootDir string, cacheDir string, dedupe, commit bool, log zlo
 		linter:      linter,
 		commit:      commit,
 		cache:       cacheDriver,
+		compat:      compat,
 	}
 
 	return imgStore
@@ -490,7 +494,7 @@ func (is *ImageStore) PutImageManifest(repo, reference, mediaType string, //noli
 		refIsDigest = false
 	}
 
-	err = common.ValidateManifest(is, repo, reference, mediaType, body, is.log)
+	err = common.ValidateManifest(is, repo, reference, mediaType, body, is.compat, is.log)
 	if err != nil {
 		return mDigest, "", err
 	}

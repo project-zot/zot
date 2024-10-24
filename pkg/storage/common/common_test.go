@@ -37,7 +37,7 @@ func TestValidateManifest(t *testing.T) {
 			Name:        "cache",
 			UseRelPaths: true,
 		}, log)
-		imgStore := local.NewImageStore(dir, true, true, log, metrics, nil, cacheDriver)
+		imgStore := local.NewImageStore(dir, true, true, log, metrics, nil, cacheDriver, nil)
 
 		content := []byte("this is a blob")
 		digest := godigest.FromBytes(content)
@@ -180,7 +180,7 @@ func TestGetReferrersErrors(t *testing.T) {
 			UseRelPaths: true,
 		}, log)
 
-		imgStore := local.NewImageStore(dir, false, true, log, metrics, nil, cacheDriver)
+		imgStore := local.NewImageStore(dir, false, true, log, metrics, nil, cacheDriver, nil)
 
 		artifactType := "application/vnd.example.icecream.v1"
 		validDigest := godigest.FromBytes([]byte("blob"))
@@ -401,7 +401,7 @@ func TestGetBlobDescriptorFromRepo(t *testing.T) {
 
 	driver := local.New(true)
 	imgStore := imagestore.NewImageStore(tdir, tdir, true,
-		true, log, metrics, nil, driver, cacheDriver)
+		true, log, metrics, nil, driver, cacheDriver, nil)
 
 	repoName := "zot-test"
 

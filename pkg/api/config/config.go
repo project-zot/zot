@@ -7,6 +7,7 @@ import (
 
 	distspec "github.com/opencontainers/distribution-spec/specs-go"
 
+	"zotregistry.dev/zot/pkg/compat"
 	extconf "zotregistry.dev/zot/pkg/extensions/config"
 	storageConstants "zotregistry.dev/zot/pkg/storage/constants"
 )
@@ -122,7 +123,8 @@ type HTTPConfig struct {
 	Auth          *AuthConfig
 	AccessControl *AccessControlConfig `mapstructure:"accessControl,omitempty"`
 	Realm         string
-	Ratelimit     *RatelimitConfig `mapstructure:",omitempty"`
+	Ratelimit     *RatelimitConfig            `mapstructure:",omitempty"`
+	Compat        []compat.MediaCompatibility `mapstructure:",omitempty"`
 }
 
 type SchedulerConfig struct {
