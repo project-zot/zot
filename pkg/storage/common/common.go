@@ -549,9 +549,10 @@ func IsBlobReferencedInImageIndex(imgStore storageTypes.ImageStore, repo string,
 		case ispec.MediaTypeImageManifest:
 			found, _ = isBlobReferencedInImageManifest(imgStore, repo, digest, desc.Digest, log)
 		default:
-			log.Warn().Str("mediatype", desc.MediaType).Msg("unknown media-type")
 			// should return true for digests found in index.json even if we don't know it's mediatype
 			if digest == desc.Digest {
+				log.Debug().Str("mediatype", desc.MediaType).Str("digest", digest.String()).
+					Msg("unexpected media-type found in image index manifest list")
 				found = true
 			}
 		}
