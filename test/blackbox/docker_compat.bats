@@ -72,10 +72,23 @@ function teardown_file() {
     FROM public.ecr.aws/docker/library/busybox:latest
     RUN echo "hello world" > /testfile
 EOF
-    docker build -f Dockerfile . -t localhost:${zot_port}/test
-    run docker push localhost:${zot_port}/test
+    docker build -f Dockerfile . -t localhost:${zot_port}/test:latest
+    run docker push localhost:${zot_port}/test:latest
     [ "$status" -eq 0 ]
     [ $(cat ${zot_root_dir}/test/index.json | jq .manifests[0].mediaType)  = '"application/vnd.docker.distribution.manifest.v2+json"' ]
-    run docker pull localhost:${zot_port}/test
+    run docker pull localhost:${zot_port}/test:latest
+    [ "$status" -eq 0 ]
+    # inspect and trigger a CVE scan
+    run skopeo inspect --tls-verify=false docker://localhost:${zot_port}/test:latest
+    [ "$status" -eq 0 ]
+    # delete
+    run skopeo delete --tls-verify=false docker://localhost:${zot_port}/test:latest
+    [ "$status" -eq 0 ]
+    run skopeo inspect --tls-verify=false docker://localhost:${zot_port}/test:latest
+    [ "$status" -ne 0 ]
+    # re-push
+    run docker push localhost:${zot_port}/test:latest
+    [ "$status" -eq 0 ]
+    run skopeo inspect --tls-verify=false docker://localhost:${zot_port}/test:latest
     [ "$status" -eq 0 ]
 }

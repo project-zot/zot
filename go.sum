@@ -605,8 +605,8 @@ github.com/digitorus/timestamp v0.0.0-20231217203849-220c5c2851b7 h1:lxmTCgmHE1G
 github.com/digitorus/timestamp v0.0.0-20231217203849-220c5c2851b7/go.mod h1:GvWntX9qiTlOud0WkQ6ewFm0LPy5JUR1Xo0Ngbd1w6Y=
 github.com/dimchansky/utfbom v1.1.1 h1:vV6w1AhK4VMnhBno/TPVCoK9U/LP0PkLCS9tbxHdi/U=
 github.com/dimchansky/utfbom v1.1.1/go.mod h1:SxdoEBH5qIqFocHMyGOXVAybYJdr71b1Q/j0mACtrfE=
-github.com/distribution/distribution/v3 v3.0.0-beta.1.0.20240729175644-f0bd0f689923 h1:j3L5ly19rMyoy+okWyeMdf9+X8NyU3ZuIje8Hc6B+IA=
-github.com/distribution/distribution/v3 v3.0.0-beta.1.0.20240729175644-f0bd0f689923/go.mod h1:3PKHxunRSv4DqZ1Q9HgsocS2/PBIHFfm0ICBKkJQE1g=
+github.com/distribution/distribution/v3 v3.0.0-beta.1.0.20241007110747-0ab7f326e651 h1:IznKfIVhvCjhopIrrvaXrTMloRCkfJGmYiDANR6dBwo=
+github.com/distribution/distribution/v3 v3.0.0-beta.1.0.20241007110747-0ab7f326e651/go.mod h1:Unn8+BXBntRw4BZHI7UVY9wJ7yGW/xtOspXPxo6hFIs=
 github.com/distribution/reference v0.6.0 h1:0IXCQ5g4/QMHHkarYzh5l+u8T3t73zM5QvfrDyIgxBk=
 github.com/distribution/reference v0.6.0/go.mod h1:BbU0aIcezP1/5jX/8MP0YiH4SdvB5Y4f/wlDRiLyi3E=
 github.com/dlclark/regexp2 v1.4.0/go.mod h1:2pZnwuY/m+8K6iRw6wQdMtk+rH5tNGR1i55kozfMjCc=

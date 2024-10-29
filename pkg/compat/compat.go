@@ -3,6 +3,7 @@ package compat
 import (
 	dockerList "github.com/distribution/distribution/v3/manifest/manifestlist"
 	docker "github.com/distribution/distribution/v3/manifest/schema2"
+	v1 "github.com/opencontainers/image-spec/specs-go/v1"
 )
 
 // MediaCompatibility determines non-OCI media-compatilibility.
@@ -40,4 +41,25 @@ func IsCompatibleManifestListMediaType(mediatype string) bool {
 	}
 
 	return false
+}
+
+func Validate(body []byte, mediaType string) ([]v1.Descriptor, error) {
+	switch mediaType {
+	case docker.MediaTypeManifest:
+		var dm *docker.DeserializedManifest
+
+		if err := dm.UnmarshalJSON(body); err != nil {
+			return nil, err
+		}
+
+		return dm.References(), nil
+	case dockerList.MediaTypeManifestList:
+		var dm dockerList.DeserializedManifestList
+
+		if err := dm.UnmarshalJSON(body); err != nil {
+			return nil, err
+		}
+	}
+
+	return nil, nil
 }
