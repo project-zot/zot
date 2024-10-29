@@ -4,6 +4,8 @@ import (
 	dockerList "github.com/distribution/distribution/v3/manifest/manifestlist"
 	docker "github.com/distribution/distribution/v3/manifest/schema2"
 	v1 "github.com/opencontainers/image-spec/specs-go/v1"
+
+	"zotregistry.dev/zot/errors"
 )
 
 // MediaCompatibility determines non-OCI media-compatilibility.
@@ -46,20 +48,22 @@ func IsCompatibleManifestListMediaType(mediatype string) bool {
 func Validate(body []byte, mediaType string) ([]v1.Descriptor, error) {
 	switch mediaType {
 	case docker.MediaTypeManifest:
-		var dm *docker.DeserializedManifest
+		var desm docker.DeserializedManifest
 
-		if err := dm.UnmarshalJSON(body); err != nil {
+		if err := desm.UnmarshalJSON(body); err != nil {
 			return nil, err
 		}
 
-		return dm.References(), nil
+		return desm.References(), nil
 	case dockerList.MediaTypeManifestList:
-		var dm dockerList.DeserializedManifestList
+		var desm dockerList.DeserializedManifestList
 
-		if err := dm.UnmarshalJSON(body); err != nil {
+		if err := desm.UnmarshalJSON(body); err != nil {
 			return nil, err
 		}
+
+		return desm.References(), nil
 	}
 
-	return nil, nil
+	return nil, errors.ErrMediaTypeNotSupported
 }

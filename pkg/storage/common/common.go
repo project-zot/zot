@@ -151,6 +151,23 @@ func ValidateManifest(imgStore storageTypes.ImageStore, repo, reference, mediaTy
 				return zerr.ErrBadManifest
 			}
 		}
+	default:
+		// non-OCI compatible
+		descriptors, err := compat.Validate(body, mediaType)
+		if err != nil {
+			log.Error().Err(err).Msg("failed to unmarshal JSON")
+
+			return zerr.ErrBadManifest
+		}
+
+		for _, desc := range descriptors {
+			if ok, _, _, err := imgStore.StatBlob(repo, desc.Digest); !ok || err != nil {
+				log.Error().Err(err).Str("digest", desc.Digest.String()).
+					Msg("failed to stat non-OCI descriptor due to missing blob")
+
+				return zerr.ErrBadManifest
+			}
+		}
 	}
 
 	return nil
