@@ -17,7 +17,8 @@ RUN echo '{\n\
     },\n\
     "http": {\n\
         "address": "0.0.0.0",\n\
-        "port": "5000"\n\
+        "port": "5000",\n\
+        "compat": ["docker2s2"]\n\
     },\n\
     "log": {\n\
         "level": "debug"\n\
