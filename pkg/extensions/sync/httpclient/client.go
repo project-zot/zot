@@ -115,9 +115,11 @@ func (httpClient *Client) SetConfig(config Config) error {
 
 	httpClient.url = clientURL
 
+	// we want TLS enabled if the upstream registry URL is an HTTPS URL
+	tlsEnabled := clientURL.Scheme == "https"
+
 	clientOpts := common.HTTPClientOptions{
-		// we want TLS enabled when verifyTLS is true.
-		TLSEnabled: config.TLSVerify,
+		TLSEnabled: tlsEnabled,
 		VerifyTLS:  config.TLSVerify,
 		Host:       clientURL.Host,
 	}
