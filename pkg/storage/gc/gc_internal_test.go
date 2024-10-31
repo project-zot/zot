@@ -47,7 +47,7 @@ func TestGarbageCollectManifestErrors(t *testing.T) {
 			Name:        "cache",
 			UseRelPaths: true,
 		}, log)
-		imgStore := local.NewImageStore(dir, true, true, log, metrics, nil, cacheDriver)
+		imgStore := local.NewImageStore(dir, true, true, log, metrics, nil, cacheDriver, nil)
 
 		gc := NewGarbageCollect(imgStore, mocks.MetaDBMock{}, Options{
 			Delay: storageConstants.DefaultGCDelay,
@@ -171,7 +171,7 @@ func TestGarbageCollectIndexErrors(t *testing.T) {
 			Name:        "cache",
 			UseRelPaths: true,
 		}, log)
-		imgStore := local.NewImageStore(dir, true, true, log, metrics, nil, cacheDriver)
+		imgStore := local.NewImageStore(dir, true, true, log, metrics, nil, cacheDriver, nil)
 
 		gc := NewGarbageCollect(imgStore, mocks.MetaDBMock{}, Options{
 			Delay: storageConstants.DefaultGCDelay,

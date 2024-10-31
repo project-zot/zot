@@ -11,6 +11,8 @@ import (
 	"strings"
 	"time"
 
+	dockerList "github.com/distribution/distribution/v3/manifest/manifestlist"
+	docker "github.com/distribution/distribution/v3/manifest/schema2"
 	"github.com/distribution/distribution/v3/registry/storage/driver"
 	godigest "github.com/opencontainers/go-digest"
 	"github.com/opencontainers/image-spec/schema"
@@ -19,6 +21,7 @@ import (
 
 	zerr "zotregistry.dev/zot/errors"
 	zcommon "zotregistry.dev/zot/pkg/common"
+	"zotregistry.dev/zot/pkg/compat"
 	"zotregistry.dev/zot/pkg/extensions/monitoring"
 	zlog "zotregistry.dev/zot/pkg/log"
 	"zotregistry.dev/zot/pkg/scheduler"
@@ -62,10 +65,10 @@ func GetManifestDescByReference(index ispec.Index, reference string) (ispec.Desc
 }
 
 func ValidateManifest(imgStore storageTypes.ImageStore, repo, reference, mediaType string, body []byte,
-	log zlog.Logger,
+	compats []compat.MediaCompatibility, log zlog.Logger,
 ) error {
 	// validate the manifest
-	if !IsSupportedMediaType(mediaType) {
+	if !IsSupportedMediaType(compats, mediaType) {
 		log.Debug().Interface("actual", mediaType).
 			Msg("bad manifest media type")
 
@@ -144,6 +147,23 @@ func ValidateManifest(imgStore storageTypes.ImageStore, repo, reference, mediaTy
 			if ok, _, _, err := imgStore.StatBlob(repo, manifest.Digest); !ok || err != nil {
 				log.Error().Err(err).Str("digest", manifest.Digest.String()).
 					Msg("failed to stat manifest due to missing manifest blob")
+
+				return zerr.ErrBadManifest
+			}
+		}
+	default:
+		// non-OCI compatible
+		descriptors, err := compat.Validate(body, mediaType)
+		if err != nil {
+			log.Error().Err(err).Msg("failed to unmarshal JSON")
+
+			return zerr.ErrBadManifest
+		}
+
+		for _, desc := range descriptors {
+			if ok, _, _, err := imgStore.StatBlob(repo, desc.Digest); !ok || err != nil {
+				log.Error().Err(err).Str("digest", desc.Digest.String()).
+					Msg("failed to stat non-OCI descriptor due to missing blob")
 
 				return zerr.ErrBadManifest
 			}
@@ -796,7 +816,15 @@ func getBlobDescriptorFromManifest(imgStore storageTypes.ImageStore, repo string
 	return ispec.Descriptor{}, zerr.ErrBlobNotFound
 }
 
-func IsSupportedMediaType(mediaType string) bool {
+func IsSupportedMediaType(compats []compat.MediaCompatibility, mediaType string) bool {
+	// check for some supported legacy formats if configured
+	for _, comp := range compats {
+		if comp == compat.DockerManifestV2SchemaV2 &&
+			(mediaType == docker.MediaTypeManifest || mediaType == dockerList.MediaTypeManifestList) {
+			return true
+		}
+	}
+
 	return mediaType == ispec.MediaTypeImageIndex ||
 		mediaType == ispec.MediaTypeImageManifest
 }

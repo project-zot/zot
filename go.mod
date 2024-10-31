@@ -22,7 +22,7 @@ require (
 	github.com/containers/image/v5 v5.32.2
 	github.com/dchest/siphash v1.2.3
 	github.com/didip/tollbooth/v7 v7.0.2
-	github.com/distribution/distribution/v3 v3.0.0-beta.1.0.20240729175644-f0bd0f689923
+	github.com/distribution/distribution/v3 v3.0.0-beta.1.0.20241007110747-0ab7f326e651
 	github.com/dustin/go-humanize v1.0.1
 	github.com/fsnotify/fsnotify v1.7.0
 	github.com/go-ldap/ldap/v3 v3.4.8

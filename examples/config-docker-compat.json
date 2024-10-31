@@ -1,0 +1,14 @@
+{
+    "distSpecVersion": "1.1.0",
+    "storage": {
+        "rootDirectory": "/tmp/zot"
+    },
+    "http": {
+        "address": "127.0.0.1",
+        "port": "8080",
+        "compat": ["docker2s2"]
+    },
+    "log": {
+        "level": "debug"
+    }
+}

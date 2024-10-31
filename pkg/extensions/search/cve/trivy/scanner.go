@@ -26,6 +26,7 @@ import (
 
 	zerr "zotregistry.dev/zot/errors"
 	zcommon "zotregistry.dev/zot/pkg/common"
+	"zotregistry.dev/zot/pkg/compat"
 	cvecache "zotregistry.dev/zot/pkg/extensions/search/cve/cache"
 	cvemodel "zotregistry.dev/zot/pkg/extensions/search/cve/model"
 	"zotregistry.dev/zot/pkg/log"
@@ -243,22 +244,23 @@ func (scanner Scanner) IsImageFormatScannable(repo, ref string) (bool, error) {
 func (scanner Scanner) IsImageMediaScannable(repo, digestStr, mediaType string) (bool, error) {
 	image := repo + "@" + digestStr
 
-	switch mediaType {
-	case ispec.MediaTypeImageManifest:
+	if mediaType == ispec.MediaTypeImageManifest || //nolint:gocritic // not converting to switch-case
+		compat.IsCompatibleManifestMediaType(mediaType) {
 		ok, err := scanner.isManifestScanable(digestStr)
 		if err != nil {
 			return ok, fmt.Errorf("image '%s' %w", image, err)
 		}
 
 		return ok, nil
-	case ispec.MediaTypeImageIndex:
+	} else if mediaType == ispec.MediaTypeImageIndex ||
+		compat.IsCompatibleManifestListMediaType(mediaType) {
 		ok, err := scanner.isIndexScannable(digestStr)
 		if err != nil {
 			return ok, fmt.Errorf("image '%s' %w", image, err)
 		}
 
 		return ok, nil
-	default:
+	} else {
 		return false, nil
 	}
 }
@@ -379,10 +381,11 @@ func (scanner Scanner) ScanImage(ctx context.Context, image string) (map[string]
 		err      error
 	)
 
-	switch mediaType {
-	case ispec.MediaTypeImageIndex:
+	if mediaType == ispec.MediaTypeImageIndex ||
+		compat.IsCompatibleManifestListMediaType(mediaType) {
 		cveIDMap, err = scanner.scanIndex(ctx, repo, digest)
-	default:
+	} else if mediaType == ispec.MediaTypeImageManifest ||
+		compat.IsCompatibleManifestMediaType(mediaType) {
 		cveIDMap, err = scanner.scanManifest(ctx, repo, digest)
 	}
 

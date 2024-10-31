@@ -200,7 +200,7 @@ func RunSignatureUploadAndVerificationTests(t *testing.T, cacheDriverParams map[
 		logger.Logger = logger.Output(writers)
 
 		imageStore := local.NewImageStore(globalDir, false, false,
-			logger, monitoring.NewMetricsServer(false, logger), nil, nil)
+			logger, monitoring.NewMetricsServer(false, logger), nil, nil, nil)
 
 		storeController := storage.StoreController{
 			DefaultStore: imageStore,
@@ -321,7 +321,7 @@ func RunSignatureUploadAndVerificationTests(t *testing.T, cacheDriverParams map[
 		logger.Logger = logger.Output(writers)
 
 		imageStore := local.NewImageStore(globalDir, false, false,
-			logger, monitoring.NewMetricsServer(false, logger), nil, nil)
+			logger, monitoring.NewMetricsServer(false, logger), nil, nil, nil)
 
 		storeController := storage.StoreController{
 			DefaultStore: imageStore,
@@ -429,7 +429,7 @@ func RunSignatureUploadAndVerificationTests(t *testing.T, cacheDriverParams map[
 		logger.Logger = logger.Output(writers)
 
 		imageStore := local.NewImageStore(globalDir, false, false,
-			logger, monitoring.NewMetricsServer(false, logger), nil, nil)
+			logger, monitoring.NewMetricsServer(false, logger), nil, nil, nil)
 
 		storeController := storage.StoreController{
 			DefaultStore: imageStore,
@@ -592,7 +592,7 @@ func RunSignatureUploadAndVerificationTests(t *testing.T, cacheDriverParams map[
 		logger.Logger = logger.Output(writers)
 
 		imageStore := local.NewImageStore(globalDir, false, false,
-			logger, monitoring.NewMetricsServer(false, logger), nil, nil)
+			logger, monitoring.NewMetricsServer(false, logger), nil, nil, nil)
 
 		storeController := storage.StoreController{
 			DefaultStore: imageStore,
@@ -856,7 +856,7 @@ func RunSignatureUploadAndVerificationTests(t *testing.T, cacheDriverParams map[
 		logger.Logger = logger.Output(writers)
 
 		imageStore := local.NewImageStore(globalDir, false, false,
-			logger, monitoring.NewMetricsServer(false, logger), nil, nil)
+			logger, monitoring.NewMetricsServer(false, logger), nil, nil, nil)
 
 		storeController := storage.StoreController{
 			DefaultStore: imageStore,

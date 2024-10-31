@@ -17,6 +17,7 @@ import (
 	zerr "zotregistry.dev/zot/errors"
 	"zotregistry.dev/zot/pkg/api/config"
 	zcommon "zotregistry.dev/zot/pkg/common"
+	"zotregistry.dev/zot/pkg/compat"
 	zlog "zotregistry.dev/zot/pkg/log"
 	mTypes "zotregistry.dev/zot/pkg/meta/types"
 	"zotregistry.dev/zot/pkg/retention"
@@ -219,8 +220,7 @@ func (gc GarbageCollect) removeIndexReferrers(repo string, rootIndex *ispec.Inde
 	var err error
 
 	for _, desc := range index.Manifests {
-		switch desc.MediaType {
-		case ispec.MediaTypeImageIndex:
+		if (desc.MediaType == ispec.MediaTypeImageIndex) || compat.IsCompatibleManifestListMediaType(desc.MediaType) {
 			indexImage, err := common.GetImageIndex(gc.imgStore, repo, desc.Digest, gc.log)
 			if err != nil {
 				gc.log.Error().Err(err).Str("module", "gc").Str("repository", repo).Str("digest", desc.Digest.String()).
@@ -249,7 +249,7 @@ func (gc GarbageCollect) removeIndexReferrers(repo string, rootIndex *ispec.Inde
 			if gced {
 				count++
 			}
-		case ispec.MediaTypeImageManifest:
+		} else if (desc.MediaType == ispec.MediaTypeImageManifest) || compat.IsCompatibleManifestMediaType(desc.MediaType) {
 			image, err := common.GetImageManifest(gc.imgStore, repo, desc.Digest, gc.log)
 			if err != nil {
 				gc.log.Error().Err(err).Str("module", "gc").Str("repo", repo).Str("digest", desc.Digest.String()).
@@ -513,8 +513,7 @@ func (gc GarbageCollect) identifyManifestsReferencedInIndex(index ispec.Index, r
 	referenced map[godigest.Digest]bool,
 ) error {
 	for _, desc := range index.Manifests {
-		switch desc.MediaType {
-		case ispec.MediaTypeImageIndex:
+		if (desc.MediaType == ispec.MediaTypeImageIndex) || compat.IsCompatibleManifestListMediaType(desc.MediaType) {
 			indexImage, err := common.GetImageIndex(gc.imgStore, repo, desc.Digest, gc.log)
 			if err != nil {
 				gc.log.Error().Err(err).Str("module", "gc").Str("repository", repo).
@@ -534,7 +533,7 @@ func (gc GarbageCollect) identifyManifestsReferencedInIndex(index ispec.Index, r
 			if err := gc.identifyManifestsReferencedInIndex(indexImage, repo, referenced); err != nil {
 				return err
 			}
-		case ispec.MediaTypeImageManifest:
+		} else if (desc.MediaType == ispec.MediaTypeImageManifest) || compat.IsCompatibleManifestMediaType(desc.MediaType) {
 			image, err := common.GetImageManifest(gc.imgStore, repo, desc.Digest, gc.log)
 			if err != nil {
 				gc.log.Error().Err(err).Str("module", "gc").Str("repo", repo).
@@ -675,15 +674,14 @@ func (gc GarbageCollect) removeUnreferencedBlobs(repo string, delay time.Duratio
 func (gc GarbageCollect) addIndexBlobsToReferences(repo string, index ispec.Index, refBlobs map[string]bool,
 ) error {
 	for _, desc := range index.Manifests {
-		switch desc.MediaType {
-		case ispec.MediaTypeImageIndex:
+		if (desc.MediaType == ispec.MediaTypeImageIndex) || compat.IsCompatibleManifestListMediaType(desc.MediaType) {
 			if err := gc.addImageIndexBlobsToReferences(repo, desc.Digest, refBlobs); err != nil {
 				gc.log.Error().Err(err).Str("module", "gc").Str("repository", repo).
 					Str("digest", desc.Digest.String()).Msg("failed to read blobs in multiarch(index) image")
 
 				return err
 			}
-		case ispec.MediaTypeImageManifest:
+		} else if (desc.MediaType == ispec.MediaTypeImageManifest) || compat.IsCompatibleManifestMediaType(desc.MediaType) {
 			if err := gc.addImageManifestBlobsToReferences(repo, desc.Digest, refBlobs); err != nil {
 				gc.log.Error().Err(err).Str("module", "gc").Str("repository", repo).
 					Str("digest", desc.Digest.String()).Msg("failed to read blobs in image manifest")
