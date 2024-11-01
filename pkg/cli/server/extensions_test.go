@@ -1070,7 +1070,7 @@ func TestServeSearchEnabled(t *testing.T) {
 	})
 }
 
-func TestServeSearchEnabledCVE(t *testing.T) {
+func TestServeSearchEnabledDefaultCVEDB(t *testing.T) {
 	oldArgs := os.Args
 
 	defer func() { os.Args = oldArgs }()
