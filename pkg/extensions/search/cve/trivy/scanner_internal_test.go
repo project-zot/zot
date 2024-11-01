@@ -319,7 +319,7 @@ func TestImageScannable(t *testing.T) {
 	storeController.DefaultStore = store
 
 	scanner := NewScanner(storeController, metaDB, "ghcr.io/project-zot/trivy-db",
-		"ghcr.io/aquasecurity/trivy-java-db", log)
+		"ghcr.io/project-zot/trivy-java-db", log)
 
 	Convey("Valid image should be scannable", t, func() {
 		result, err := scanner.IsImageFormatScannable("repo1", "valid")
@@ -352,8 +352,8 @@ func TestImageScannable(t *testing.T) {
 	})
 }
 
-func TestDefaultTrivyDBUrl(t *testing.T) {
-	Convey("Test trivy DB download from default location", t, func() {
+func TestTrivyDBUrl(t *testing.T) {
+	Convey("Test trivy DB download", t, func() {
 		// Create temporary directory
 		rootDir := t.TempDir()
 
@@ -385,8 +385,11 @@ func TestDefaultTrivyDBUrl(t *testing.T) {
 		err = meta.ParseStorage(metaDB, storeController, log)
 		So(err, ShouldBeNil)
 
-		scanner := NewScanner(storeController, metaDB, "ghcr.io/aquasecurity/trivy-db",
-			"ghcr.io/aquasecurity/trivy-java-db", log)
+		// Ideally we would want to also test the default urls
+		// But we are getting `response status code 429: toomanyrequests` from
+		// `ghcr.io/aquasecurity/trivy-db` and `ghcr.io/aquasecurity/trivy-java-db`
+		scanner := NewScanner(storeController, metaDB, "ghcr.io/project-zot/trivy-db",
+			"ghcr.io/project-zot/trivy-java-db", log)
 
 		ctx := context.Background()
 
