@@ -152,7 +152,7 @@ func syncBlob(ctx context.Context, client *client.Client, imageStore storageType
 ) error {
 	var resultPtr interface{}
 
-	body, _, statusCode, err := client.MakeGetRequest(ctx, resultPtr, "", "v2", remoteRepo, "blobs", digest.String())
+	body, _, statusCode, err := client.MakeGetRequest(ctx, resultPtr, "", "", "v2", remoteRepo, "blobs", digest.String())
 	if err != nil {
 		if statusCode != http.StatusOK {
 			log.Info().Str("repo", remoteRepo).Str("digest", digest.String()).Msg("couldn't get remote blob")

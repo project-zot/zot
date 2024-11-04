@@ -1359,8 +1359,10 @@ func TestRoutes(t *testing.T) {
 					"session_id": "test",
 				},
 				&mocks.MockedImageStore{
-					GetRepositoriesFn: func() ([]string, error) {
-						return []string{}, ErrUnexpectedError
+					GetNextRepositoriesFn: func(lastRepo string, maxEntries int,
+						fn storageTypes.FilterRepoFunc,
+					) ([]string, bool, error) {
+						return []string{}, false, ErrUnexpectedError
 					},
 				},
 			)
@@ -1374,8 +1376,10 @@ func TestRoutes(t *testing.T) {
 					"session_id": "test",
 				},
 				&mocks.MockedImageStore{
-					GetRepositoriesFn: func() ([]string, error) {
-						return []string{}, ErrUnexpectedError
+					GetNextRepositoriesFn: func(lastRepo string, maxEntries int,
+						fn storageTypes.FilterRepoFunc,
+					) ([]string, bool, error) {
+						return []string{}, false, ErrUnexpectedError
 					},
 				},
 			)
@@ -1384,19 +1388,25 @@ func TestRoutes(t *testing.T) {
 
 		Convey("ListRepositories with Authz", func() {
 			ctlr.StoreController.DefaultStore = &mocks.MockedImageStore{
-				GetRepositoriesFn: func() ([]string, error) {
-					return []string{"repo"}, nil
+				GetNextRepositoriesFn: func(lastRepo string, maxEntries int,
+					fn storageTypes.FilterRepoFunc,
+				) ([]string, bool, error) {
+					return []string{"repo"}, false, nil
 				},
 			}
 			ctlr.StoreController.SubStore = map[string]storageTypes.ImageStore{
 				"test1": &mocks.MockedImageStore{
-					GetRepositoriesFn: func() ([]string, error) {
-						return []string{"repo1"}, nil
+					GetNextRepositoriesFn: func(lastRepo string, maxEntries int,
+						fn storageTypes.FilterRepoFunc,
+					) ([]string, bool, error) {
+						return []string{"repo1"}, false, nil
 					},
 				},
 				"test2": &mocks.MockedImageStore{
-					GetRepositoriesFn: func() ([]string, error) {
-						return []string{"repo2"}, nil
+					GetNextRepositoriesFn: func(lastRepo string, maxEntries int,
+						fn storageTypes.FilterRepoFunc,
+					) ([]string, bool, error) {
+						return []string{"repo2"}, false, nil
 					},
 				},
 			}

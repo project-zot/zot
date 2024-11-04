@@ -159,7 +159,7 @@ func (ref OciReferences) SyncReferences(ctx context.Context, localRepo, remoteRe
 func (ref OciReferences) getIndex(ctx context.Context, repo, subjectDigestStr string) (ispec.Index, error) {
 	var index ispec.Index
 
-	_, _, statusCode, err := ref.client.MakeGetRequest(ctx, &index, ispec.MediaTypeImageIndex,
+	_, _, statusCode, err := ref.client.MakeGetRequest(ctx, &index, ispec.MediaTypeImageIndex, "",
 		"v2", repo, "referrers", subjectDigestStr)
 	if err != nil {
 		if statusCode == http.StatusNotFound {
@@ -182,7 +182,7 @@ func syncManifest(ctx context.Context, client *client.Client, imageStore storage
 
 	var refDigest godigest.Digest
 
-	OCIRefBuf, _, statusCode, err := client.MakeGetRequest(ctx, &manifest, ispec.MediaTypeImageManifest,
+	OCIRefBuf, _, statusCode, err := client.MakeGetRequest(ctx, &manifest, ispec.MediaTypeImageManifest, "",
 		"v2", remoteRepo, "manifests", desc.Digest.String())
 	if err != nil {
 		if statusCode == http.StatusNotFound {

@@ -47,6 +47,7 @@ import (
 	mTypes "zotregistry.dev/zot/pkg/meta/types"
 	zreg "zotregistry.dev/zot/pkg/regexp"
 	reqCtx "zotregistry.dev/zot/pkg/requestcontext"
+	"zotregistry.dev/zot/pkg/storage"
 	storageCommon "zotregistry.dev/zot/pkg/storage/common"
 	storageTypes "zotregistry.dev/zot/pkg/storage/types"
 	"zotregistry.dev/zot/pkg/test/inject"
@@ -1763,6 +1764,81 @@ type RepositoryList struct {
 	Repositories []string `json:"repositories"`
 }
 
+func (rh *RouteHandler) listStorageRepositories(lastEntry string, maxEntries int,
+	userAc *reqCtx.UserAccessControl,
+) ([]string, bool, error) {
+	var moreEntries bool
+
+	var err error
+
+	var repos []string
+
+	remainder := maxEntries
+
+	combineRepoList := make([]string, 0)
+
+	subStore := rh.c.StoreController.SubStore
+
+	subPaths := make([]string, 0)
+	for subPath := range subStore {
+		subPaths = append(subPaths, subPath)
+	}
+
+	sort.Strings(subPaths)
+
+	storePath := rh.c.StoreController.GetStorePath(lastEntry)
+	if storePath == storage.DefaultStorePath {
+		singleStore := rh.c.StoreController.DefaultStore
+
+		repos, moreEntries, err = singleStore.GetNextRepositories(lastEntry, remainder, AuthzFilterFunc(userAc))
+		if err != nil {
+			return repos, false, err
+		}
+
+		remainder = maxEntries - len(repos)
+
+		if moreEntries && remainder <= 0 && len(repos) > 0 {
+			// maxEntries has been hit
+			lastEntry = repos[len(repos)-1]
+		} else {
+			// reset for the next substores
+			lastEntry = ""
+		}
+
+		combineRepoList = append(combineRepoList, repos...)
+	}
+
+	for _, subPath := range subPaths {
+		imgStore := subStore[subPath]
+
+		if lastEntry != "" && subPath != storePath {
+			continue
+		}
+
+		if remainder > 0 || maxEntries == -1 {
+			repos, moreEntries, err = imgStore.GetNextRepositories(lastEntry, remainder, AuthzFilterFunc(userAc))
+			if err != nil {
+				return combineRepoList, false, err
+			}
+
+			// compute remainder
+			remainder -= len(repos)
+
+			if moreEntries && remainder <= 0 && len(repos) > 0 {
+				// maxEntries has been hit
+				lastEntry = repos[len(repos)-1]
+			} else {
+				// reset for the next substores
+				lastEntry = ""
+			}
+
+			combineRepoList = append(combineRepoList, repos...)
+		}
+	}
+
+	return combineRepoList, moreEntries, nil
+}
+
 // ListRepositories godoc
 // @Summary List image repositories
 // @Description List all image repositories
@@ -1776,34 +1852,15 @@ func (rh *RouteHandler) ListRepositories(response http.ResponseWriter, request *
 		return
 	}
 
-	combineRepoList := make([]string, 0)
+	q := request.URL.Query()
 
-	subStore := rh.c.StoreController.SubStore
+	lastEntry := q.Get("last")
 
-	for _, imgStore := range subStore {
-		repos, err := imgStore.GetRepositories()
-		if err != nil {
-			response.WriteHeader(http.StatusInternalServerError)
-
-			return
-		}
-
-		combineRepoList = append(combineRepoList, repos...)
+	maxEntries, err := strconv.Atoi(q.Get("n"))
+	if err != nil {
+		maxEntries = -1
 	}
 
-	singleStore := rh.c.StoreController.DefaultStore
-	if singleStore != nil {
-		repos, err := singleStore.GetRepositories()
-		if err != nil {
-			response.WriteHeader(http.StatusInternalServerError)
-
-			return
-		}
-
-		combineRepoList = append(combineRepoList, repos...)
-	}
-
-	repos := make([]string, 0)
 	// authz context
 	userAc, err := reqCtx.UserAcFromContext(request.Context())
 	if err != nil {
@@ -1812,14 +1869,23 @@ func (rh *RouteHandler) ListRepositories(response http.ResponseWriter, request *
 		return
 	}
 
-	if userAc != nil {
-		for _, r := range combineRepoList {
-			if userAc.Can(constants.ReadPermission, r) {
-				repos = append(repos, r)
-			}
-		}
-	} else {
-		repos = combineRepoList
+	repos, moreEntries, err := rh.listStorageRepositories(lastEntry, maxEntries, userAc)
+	if err != nil {
+		response.WriteHeader(http.StatusInternalServerError)
+
+		return
+	}
+
+	if moreEntries && len(repos) > 0 {
+		lastRepo := repos[len(repos)-1]
+
+		response.Header().Set(
+			"Link",
+			fmt.Sprintf("</v2/_catalog?n=%d&last=%s>; rel=\"next\"",
+				maxEntries,
+				lastRepo,
+			),
+		)
 	}
 
 	is := RepositoryList{Repositories: repos}

@@ -151,7 +151,7 @@ func (ref TagReferences) getIndex(
 ) (ispec.Index, []byte, error) {
 	var index ispec.Index
 
-	content, _, statusCode, err := ref.client.MakeGetRequest(ctx, &index, ispec.MediaTypeImageIndex,
+	content, _, statusCode, err := ref.client.MakeGetRequest(ctx, &index, ispec.MediaTypeImageIndex, "",
 		"v2", repo, "manifests", getReferrersTagFromSubjectDigest(subjectDigestStr))
 	if err != nil {
 		if statusCode == http.StatusNotFound {
