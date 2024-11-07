@@ -4670,7 +4670,7 @@ func TestSignatures(t *testing.T) {
 
 		splittedURL := strings.SplitAfter(srcBaseURL, ":")
 		srcPort := splittedURL[len(splittedURL)-1]
-		t.Logf(srcPort)
+		t.Logf("%s", srcPort)
 		cwd, err := os.Getwd()
 		So(err, ShouldBeNil)
 
@@ -5201,7 +5201,7 @@ func TestSignatures(t *testing.T) {
 
 		splittedURL := strings.SplitAfter(srcBaseURL, ":")
 		srcPort := splittedURL[len(splittedURL)-1]
-		t.Logf(srcPort)
+		t.Logf("%s", srcPort)
 
 		err := signature.SignImageUsingCosign(fmt.Sprintf("%s@%s", repoName, digest.String()), srcPort, true)
 		So(err, ShouldBeNil)

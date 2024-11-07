@@ -78,7 +78,7 @@ func NewController(appConfig *config.Config) *Controller {
 			panic("failed to get member socket")
 		}
 
-		if memberSocket == "" {
+		if memberSocketIdx < 0 || memberSocket == "" {
 			// there is a misconfiguration if the memberSocket cannot be identified
 			logger.Error().
 				Str("members", strings.Join(appConfig.Cluster.Members, ",")).

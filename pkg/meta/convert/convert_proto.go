@@ -23,8 +23,8 @@ func GetProtoRepoMeta(repo mTypes.RepoMeta) *proto_go.RepoMeta {
 		Vendors:          repo.Vendors,
 		Platforms:        GetProtoPlatforms(repo.Platforms),
 		LastUpdatedImage: GetProtoLastUpdatedImage(repo.LastUpdatedImage),
-		Stars:            int32(repo.StarCount),
-		Downloads:        int32(repo.DownloadCount),
+		Stars:            int32(repo.StarCount),     //nolint:gosec // ignore overflow
+		Downloads:        int32(repo.DownloadCount), //nolint:gosec // ignore overflow
 	}
 }
 
@@ -65,7 +65,7 @@ func GetProtoManifestMeta(manifestContent ispec.Manifest, configContent ispec.Im
 		Digest: digest,
 		Size:   size,
 		Manifest: &proto_go.Manifest{
-			Versioned: &proto_go.Versioned{SchemaVersion: int32(manifestContent.SchemaVersion)},
+			Versioned: &proto_go.Versioned{SchemaVersion: int32(manifestContent.SchemaVersion)}, //nolint:gosec,lll // ignore overflow
 			Config: &proto_go.Descriptor{
 				Digest:    manifestContent.Config.Digest.String(),
 				Size:      manifestContent.Config.Size,
@@ -108,7 +108,7 @@ func GetProtoImageIndexMeta(indexContent ispec.Index, size int64, digest string)
 			Size:   size,
 			Digest: digest,
 			Index: &proto_go.Index{
-				Versioned:    &proto_go.Versioned{SchemaVersion: int32(indexContent.Versioned.SchemaVersion)},
+				Versioned:    &proto_go.Versioned{SchemaVersion: int32(indexContent.Versioned.SchemaVersion)}, //nolint:gosec,lll // ignore overflow
 				MediaType:    ref(ispec.MediaTypeImageIndex),
 				ArtifactType: ref(common.GetIndexArtifactType(indexContent)),
 				Manifests:    getProtoManifestList(indexContent.Manifests),
@@ -125,7 +125,7 @@ func GetProtoStatistics(stats map[mTypes.ImageDigest]mTypes.DescriptorStatistics
 
 	for digest, stat := range stats {
 		results[digest] = &proto_go.DescriptorStatistics{
-			DownloadCount:     int32(stat.DownloadCount),
+			DownloadCount:     int32(stat.DownloadCount), //nolint:gosec // ignore overflow
 			LastPullTimestamp: timestamppb.New(stat.LastPullTimestamp),
 			PushTimestamp:     timestamppb.New(stat.PushTimestamp),
 			PushedBy:          stat.PushedBy,

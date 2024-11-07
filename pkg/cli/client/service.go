@@ -962,7 +962,7 @@ func (ref referrersResult) stringPlainText(maxArtifactTypeLen int) (string, erro
 	for _, referrer := range ref {
 		artifactType := ellipsize(referrer.ArtifactType, maxArtifactTypeLen, ellipsis)
 		// digest := ellipsize(godigest.Digest(referrer.Digest).Encoded(), digestWidth, "")
-		size := ellipsize(humanize.Bytes(uint64(referrer.Size)), sizeWidth, ellipsis)
+		size := ellipsize(humanize.Bytes(uint64(referrer.Size)), sizeWidth, ellipsis) //nolint:gosec,lll // refererrer.Size should >= 0
 
 		row := make([]string, refRowWidth)
 		row[refArtifactTypeIndex] = artifactType
@@ -1042,7 +1042,7 @@ func (repo repoStruct) stringPlainText(repoMaxLen, maxTimeLen int, verbose bool)
 
 	row := make([]string, repoRowWidth)
 	row[repoNameIndex] = repoName
-	row[repoSizeIndex] = ellipsize(strings.ReplaceAll(humanize.Bytes(uint64(repoSize)), " ", ""), sizeWidth, ellipsis)
+	row[repoSizeIndex] = ellipsize(strings.ReplaceAll(humanize.Bytes(uint64(repoSize)), " ", ""), sizeWidth, ellipsis) //nolint:gosec,lll // ignore overflow
 	row[repoLastUpdatedIndex] = repoLastUpdated.String()
 	row[repoDownloadsIndex] = strconv.Itoa(repoDownloads)
 	row[repoStarsIndex] = strconv.Itoa(repoStars)
@@ -1335,15 +1335,15 @@ func combineServerAndEndpointURL(serverURL, endPoint string) (string, error) {
 	return newURL.String(), nil
 }
 
-func ellipsize(text string, max int, trailing string) string {
+func ellipsize(text string, maxLength int, trailing string) string {
 	text = strings.TrimSpace(text)
-	if len(text) <= max {
+	if len(text) <= maxLength {
 		return text
 	}
 
 	chopLength := len(trailing)
 
-	return text[:max-chopLength] + trailing
+	return text[:maxLength-chopLength] + trailing
 }
 
 func getImageTableWriter(writer io.Writer) *tablewriter.Table {

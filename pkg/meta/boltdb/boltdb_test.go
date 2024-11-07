@@ -647,7 +647,7 @@ func TestWrapperErrors(t *testing.T) {
 
 		Convey("DeleteUserData", func() {
 			userAc = reqCtx.NewUserAccessControl()
-			ctx = userAc.DeriveContext(context.Background())
+			ctx = userAc.DeriveContext(context.Background()) //nolint:fatcontext // test code
 
 			err = boltdbWrapper.DeleteUserData(ctx)
 			So(err, ShouldNotBeNil)
@@ -667,7 +667,7 @@ func TestWrapperErrors(t *testing.T) {
 
 		Convey("GetUserGroups and SetUserGroups", func() {
 			userAc = reqCtx.NewUserAccessControl()
-			ctx = userAc.DeriveContext(context.Background())
+			ctx = userAc.DeriveContext(context.Background()) //nolint:fatcontext // test code
 
 			_, err := boltdbWrapper.GetUserGroups(ctx)
 			So(err, ShouldNotBeNil)

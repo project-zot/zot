@@ -381,7 +381,7 @@ func TestAutoPortSelection(t *testing.T) {
 				break
 			}
 
-			t.Logf(scanner.Text())
+			t.Logf("%s", scanner.Text())
 		}
 
 		So(scanner.Err(), ShouldBeNil)
