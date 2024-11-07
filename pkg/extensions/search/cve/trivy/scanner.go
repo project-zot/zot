@@ -52,10 +52,10 @@ func getNewScanOptions(dir string, dbRepositoryRef, javaDBRepositoryRef name.Ref
 			PkgTypes:         []string{types.PkgTypeOS, types.PkgTypeLibrary},
 		},
 		DBOptions: flag.DBOptions{
-			DBRepository:     dbRepositoryRef,
-			JavaDBRepository: javaDBRepositoryRef,
-			SkipDBUpdate:     true,
-			SkipJavaDBUpdate: true,
+			DBRepositories:     []name.Reference{dbRepositoryRef},
+			JavaDBRepositories: []name.Reference{javaDBRepositoryRef},
+			SkipDBUpdate:       true,
+			SkipJavaDBUpdate:   true,
 		},
 		ReportOptions: flag.ReportOptions{
 			Format: "table",
@@ -586,7 +586,10 @@ func (scanner Scanner) updateDB(ctx context.Context, dbDir string) error {
 
 	scanner.log.Debug().Str("dbDir", dbDir).Msg("started downloading trivy-db to destination dir")
 
-	err := operation.DownloadDB(ctx, "dev", dbDir, scanner.dbRepositoryRef, false, false, registryOpts)
+	dbRefs := []name.Reference{scanner.dbRepositoryRef}
+	javaDBRefs := []name.Reference{scanner.javaDBRepositoryRef}
+
+	err := operation.DownloadDB(ctx, "dev", dbDir, dbRefs, false, false, registryOpts)
 	if err != nil {
 		scanner.log.Error().Err(err).Str("dbDir", dbDir).
 			Str("dbRepository", scanner.dbRepositoryRef.String()).
@@ -596,7 +599,7 @@ func (scanner Scanner) updateDB(ctx context.Context, dbDir string) error {
 	}
 
 	if scanner.javaDBRepositoryRef != nil {
-		javadb.Init(dbDir, scanner.javaDBRepositoryRef, false, false, registryOpts)
+		javadb.Init(dbDir, javaDBRefs, false, false, registryOpts)
 
 		if err := javadb.Update(); err != nil {
 			scanner.log.Error().Err(err).Str("dbDir", dbDir).
