@@ -30,8 +30,8 @@ import (
 	. "zotregistry.dev/zot/pkg/test/common"
 )
 
-func getRandomLatencyN(max int64) time.Duration {
-	nBig, err := rand.Int(rand.Reader, big.NewInt(max))
+func getRandomLatencyN(maxLatency int64) time.Duration {
+	nBig, err := rand.Int(rand.Reader, big.NewInt(maxLatency))
 	if err != nil {
 		panic(err)
 	}

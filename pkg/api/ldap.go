@@ -61,7 +61,7 @@ func (lc *LDAPClient) Connect() error {
 					RootCAs:            lc.ClientCAs,
 				}
 
-				if lc.ClientCertificates != nil && len(lc.ClientCertificates) > 0 {
+				if len(lc.ClientCertificates) > 0 {
 					config.Certificates = lc.ClientCertificates
 				}
 
@@ -78,7 +78,7 @@ func (lc *LDAPClient) Connect() error {
 				ServerName:         lc.ServerName,
 				RootCAs:            lc.ClientCAs,
 			}
-			if lc.ClientCertificates != nil && len(lc.ClientCertificates) > 0 {
+			if len(lc.ClientCertificates) > 0 {
 				config.Certificates = lc.ClientCertificates
 			}
 

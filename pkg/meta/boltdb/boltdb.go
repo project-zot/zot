@@ -451,7 +451,7 @@ func (bdw *BoltDB) SearchRepos(ctx context.Context, searchText string,
 				continue
 			}
 
-			protoRepoMeta.Rank = int32(rank)
+			protoRepoMeta.Rank = int32(rank) //nolint:gosec // ignore overflow
 			protoRepoMeta.IsStarred = zcommon.Contains(userStars, protoRepoMeta.Name)
 			protoRepoMeta.IsBookmarked = zcommon.Contains(userBookmarks, protoRepoMeta.Name)
 

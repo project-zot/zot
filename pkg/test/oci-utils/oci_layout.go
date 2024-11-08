@@ -107,7 +107,7 @@ func (olu BaseOciLayoutUtils) GetImageManifests(repo string) ([]ispec.Descriptor
 
 	buf, err := imageStore.GetIndexContent(repo)
 	if err != nil {
-		if goerrors.Is(zerr.ErrRepoNotFound, err) {
+		if goerrors.Is(err, zerr.ErrRepoNotFound) {
 			olu.Log.Error().Err(err).Msg("failed to get index.json contents because the file is missing")
 
 			return nil, zerr.ErrRepoNotFound

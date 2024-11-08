@@ -92,36 +92,36 @@ func GetDefaultConfig() ispec.Image {
 
 func DefaultTimeRef() *time.Time {
 	var (
-		year  = 2010
-		month = time.Month(1)
-		day   = 1
-		hour  = 1
-		min   = 1
-		sec   = 1
-		nsec  = 0
+		year   = 2010
+		month  = time.Month(1)
+		day    = 1
+		hour   = 1
+		minute = 1
+		sec    = 1
+		nsec   = 0
 	)
 
-	return DateRef(year, month, day, hour, min, sec, nsec, time.UTC)
+	return DateRef(year, month, day, hour, minute, sec, nsec, time.UTC)
 }
 
-func DateRef(year int, month time.Month, day, hour, min, sec, nsec int, loc *time.Location) *time.Time {
-	date := time.Date(year, month, day, hour, min, sec, nsec, loc)
+func DateRef(year int, month time.Month, day, hour, minute, sec, nsec int, loc *time.Location) *time.Time {
+	date := time.Date(year, month, day, hour, minute, sec, nsec, loc)
 
 	return &date
 }
 
 func RandomDateRef(loc *time.Location) *time.Time {
 	var (
-		year  = 1990 + mathRand.Intn(30)          //nolint: gosec,mnd
-		month = time.Month(1 + mathRand.Intn(10)) //nolint: gosec,mnd
-		day   = 1 + mathRand.Intn(5)              //nolint: gosec,mnd
-		hour  = 1 + mathRand.Intn(22)             //nolint: gosec,mnd
-		min   = 1 + mathRand.Intn(58)             //nolint: gosec,mnd
-		sec   = 1 + mathRand.Intn(58)             //nolint: gosec,mnd
-		nsec  = 1
+		year   = 1990 + mathRand.Intn(30)          //nolint: gosec,mnd
+		month  = time.Month(1 + mathRand.Intn(10)) //nolint: gosec,mnd
+		day    = 1 + mathRand.Intn(5)              //nolint: gosec,mnd
+		hour   = 1 + mathRand.Intn(22)             //nolint: gosec,mnd
+		minute = 1 + mathRand.Intn(58)             //nolint: gosec,mnd
+		sec    = 1 + mathRand.Intn(58)             //nolint: gosec,mnd
+		nsec   = 1
 	)
 
-	return DateRef(year, month, day, hour, min, sec, nsec, time.UTC)
+	return DateRef(year, month, day, hour, minute, sec, nsec, time.UTC)
 }
 
 func GetDefaultVulnConfig() ispec.Image {
