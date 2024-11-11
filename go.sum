@@ -1501,8 +1501,8 @@ github.com/vbatts/tar-split v0.11.5 h1:3bHCTIheBm1qFTcgh9oPu+nNBtX+XJIupG/vacinC
 github.com/vbatts/tar-split v0.11.5/go.mod h1:yZbwRsSeGjusneWgA781EKej9HF8vme8okylkAeNKLk=
 github.com/vbauerster/mpb/v8 v8.7.5 h1:hUF3zaNsuaBBwzEFoCvfuX3cpesQXZC0Phm/JcHZQ+c=
 github.com/vbauerster/mpb/v8 v8.7.5/go.mod h1:bRCnR7K+mj5WXKsy0NWB6Or+wctYGvVwKn6huwvxKa0=
-github.com/vektah/gqlparser/v2 v2.5.18 h1:zSND3GtutylAQ1JpWnTHcqtaRZjl+y3NROeW8vuNo6Y=
-github.com/vektah/gqlparser/v2 v2.5.18/go.mod h1:6HLzf7JKv9Fi3APymudztFQNmLXR5qJeEo6BOFcXVfc=
+github.com/vektah/gqlparser/v2 v2.5.19 h1:bhCPCX1D4WWzCDvkPl4+TP1N8/kLrWnp43egplt7iSg=
+github.com/vektah/gqlparser/v2 v2.5.19/go.mod h1:y7kvl5bBlDeuWIvLtA9849ncyvx6/lj06RsMrEjVy3U=
 github.com/veraison/go-cose v1.2.1 h1:Gj4x20D0YP79J2+cK3anjGEMwIkg2xX+TKVVGUXwNAc=
 github.com/veraison/go-cose v1.2.1/go.mod h1:t6V8WJzHm1PD5HNsuDjW3KLv577uWb6UTzbZGvdQHD8=
 github.com/vmihailenco/msgpack/v4 v4.3.12/go.mod h1:gborTTJjAo/GWTqqRjrLCn9pgNN+NXzzngzBKDPIqw4=
