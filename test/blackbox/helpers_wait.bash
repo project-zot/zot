@@ -13,7 +13,7 @@ function wait_str() {
     local search_term="$2"
     local wait_time="${3:-2m}"
 
-    (timeout $wait_time tail -F -n0 "$filepath" &) | grep -q "$search_term" && return 0
+    (timeout $wait_time tail -F -n +1 "$filepath" &) | grep -q "$search_term" && return 0
 
     echo "timeout of $wait_time reached. unable to find '$search_term' in '$filepath'"
 
