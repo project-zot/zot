@@ -3,7 +3,7 @@ module zotregistry.dev/zot
 go 1.23.2
 
 require (
-	github.com/99designs/gqlgen v0.17.55
+	github.com/99designs/gqlgen v0.17.57
 	github.com/Masterminds/semver v1.5.0
 	github.com/aquasecurity/trivy v0.57.1
 	github.com/aquasecurity/trivy-db v0.0.0-20240910133327-7e0f4d2ed4c1
@@ -258,6 +258,7 @@ require (
 	github.com/go-piv/piv-go v1.11.0 // indirect
 	github.com/go-pkgz/expirable-cache/v3 v3.0.0 // indirect
 	github.com/go-redis/redis/v8 v8.11.5 // indirect
+	github.com/go-viper/mapstructure/v2 v2.2.1 // indirect
 	github.com/gobwas/glob v0.2.3 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/golang-jwt/jwt v3.2.2+incompatible // indirect
@@ -440,7 +441,7 @@ require (
 	github.com/transparency-dev/merkle v0.0.2 // indirect
 	github.com/twitchtv/twirp v8.1.3+incompatible // indirect
 	github.com/ulikunitz/xz v0.5.12 // indirect
-	github.com/urfave/cli/v2 v2.27.4 // indirect
+	github.com/urfave/cli/v2 v2.27.5 // indirect
 	github.com/vbatts/tar-split v0.11.6 // indirect
 	github.com/vbauerster/mpb/v8 v8.8.3 // indirect
 	github.com/veraison/go-cose v1.2.1 // indirect
