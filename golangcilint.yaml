@@ -27,6 +27,7 @@ linters:
     - contextcheck # needs to revisit: https://github.com/project-zot/zot/pull/2556
     - copyloopvar # needs to revisit: https://github.com/project-zot/zot/pull/2556
     - typecheck
+    - exportloopref
 
 linters-settings:
   dupl:

@@ -99,7 +99,7 @@ func SetupSearchRoutes(conf *config.Config, router *mux.Router, storeController 
 	extRouter.Use(zcommon.ACHeadersMiddleware(conf, allowedMethods...))
 	extRouter.Use(zcommon.AddExtensionSecurityHeaders())
 	extRouter.Methods(allowedMethods...).
-		Handler(gqlHandler.NewDefaultServer(gql_generated.NewExecutableSchema(resConfig)))
+		Handler(gqlHandler.NewDefaultServer(gql_generated.NewExecutableSchema(resConfig))) //nolint: staticcheck
 
 	log.Info().Msg("finished setting up search routes")
 }
