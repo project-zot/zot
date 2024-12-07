@@ -37,15 +37,23 @@ jobs:
           # install cri-o (for crictl)
           OS=xUbuntu_22.04
           CRIO_VERSION=1.26
-          echo "deb https://download.opensuse.org/repositories/devel:/kubic:/libcontainers:/stable/$OS/ /"|sudo tee /etc/apt/sources.list.d/devel:kubic:libcontainers:stable.list
-          echo "deb https://download.opensuse.org/repositories/devel:/kubic:/libcontainers:/stable:/cri-o:/$CRIO_VERSION/$OS/ /"|sudo tee /etc/apt/sources.list.d/devel:kubic:libcontainers:stable:cri-o:$CRIO_VERSION.list
-          curl -L https://download.opensuse.org/repositories/devel:/kubic:/libcontainers:/stable:/cri-o:/$CRIO_VERSION/$OS/Release.key | sudo apt-key add -
-          curl -L https://download.opensuse.org/repositories/devel:/kubic:/libcontainers:/stable/$OS/Release.key | sudo apt-key add -
+          curl -fsSL https://download.opensuse.org/repositories/isv:/kubernetes:/addons:/cri-o:/prerelease:/main:/build/deb/Release.key | sudo gpg --dearmor -o /etc/apt/keyrings/cri-o-apt-keyring.gpg
+          echo "deb [signed-by=/etc/apt/keyrings/cri-o-apt-keyring.gpg] https://download.opensuse.org/repositories/isv:/kubernetes:/addons:/cri-o:/prerelease:/main:/build/deb/ /" | sudo tee /etc/apt/sources.list.d/cri-o.list
           sudo apt update
-          sudo apt install -y cri-o cri-o-runc
+          sudo apt install -y cri-o runc
           sudo systemctl enable crio.service
           sudo systemctl start crio.service
           sudo chmod 0777 /var/run/crio/crio.sock
+          # install docker
+          # Add Docker's official GPG key:
+          sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+          sudo chmod a+r /etc/apt/keyrings/docker.asc
+          echo \
+          "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu \
+           $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | \
+          sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+          sudo apt update
+          sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
           # install dex
           git clone https://github.com/dexidp/dex.git
           cd dex/
