@@ -2,7 +2,7 @@
 # Change WARN to IGNORE to ignore rule or FAIL to fail if rule matches
 # Only the rule identifiers are used - the names are just for info
 # You can add your own messages to each rule by appending them after a tab on each line.
-10003	WARN	(Vulnerable JS Library (Powered by Retire.js))
+10003	WARN	(Vulnerable JS Library)
 10009	WARN	(In Page Banner Information Leak)
 10010	WARN	(Cookie No HttpOnly Flag)
 10011	WARN	(Cookie Without Secure Flag)
