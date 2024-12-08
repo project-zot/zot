@@ -265,6 +265,89 @@ func (is *ImageStore) ValidateRepo(name string) (bool, error) {
 	return true, nil
 }
 
+func (is *ImageStore) GetNextRepositories(lastRepo string, maxEntries int, filterFn storageTypes.FilterRepoFunc,
+) ([]string, bool, error) {
+	var lockLatency time.Time
+
+	dir := is.rootDir
+
+	is.RLock(&lockLatency)
+	defer is.RUnlock(&lockLatency)
+
+	stores := make([]string, 0)
+
+	moreEntries := false
+	entries := 0
+	found := false
+	err := is.storeDriver.Walk(dir, func(fileInfo driver.FileInfo) error {
+		if entries == maxEntries {
+			moreEntries = true
+
+			return io.EOF
+		}
+
+		if !fileInfo.IsDir() {
+			return nil
+		}
+
+		// skip .sync and .uploads dirs no need to try to validate them
+		if strings.HasSuffix(fileInfo.Path(), syncConstants.SyncBlobUploadDir) ||
+			strings.HasSuffix(fileInfo.Path(), ispec.ImageBlobsDir) ||
+			strings.HasSuffix(fileInfo.Path(), storageConstants.BlobUploadDir) {
+			return driver.ErrSkipDir
+		}
+
+		rel, err := filepath.Rel(is.rootDir, fileInfo.Path())
+		if err != nil {
+			return nil //nolint:nilerr // ignore paths that are not under root dir
+		}
+
+		if ok, err := is.ValidateRepo(rel); !ok || err != nil {
+			return nil //nolint:nilerr // ignore invalid repos
+		}
+
+		if lastRepo == rel {
+			found = true
+
+			return nil
+		}
+
+		if lastRepo == "" {
+			found = true
+		}
+
+		ok, err := filterFn(rel)
+		if err != nil {
+			return err
+		}
+
+		if found && ok {
+			entries++
+
+			stores = append(stores, rel)
+		}
+
+		return nil
+	})
+
+	// if the root directory is not yet created then return an empty slice of repositories
+
+	driverErr := &driver.Error{}
+
+	if errors.As(err, &driver.PathNotFoundError{}) {
+		is.log.Debug().Msg("empty rootDir")
+
+		return stores, false, nil
+	}
+
+	if errors.Is(err, io.EOF) ||
+		(errors.As(err, driverErr) && errors.Is(driverErr.Detail, io.EOF)) {
+		return stores, moreEntries, nil
+	}
+
+	return stores, moreEntries, err
+}
+
 // GetRepositories returns a list of all the repositories under this store.
 func (is *ImageStore) GetRepositories() ([]string, error) {
 	var lockLatency time.Time

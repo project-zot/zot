@@ -177,9 +177,9 @@ func (httpClient *Client) Ping() bool {
 	return false
 }
 
-func (httpClient *Client) MakeGetRequest(ctx context.Context, resultPtr interface{}, mediaType string,
+func (httpClient *Client) MakeGetRequest(ctx context.Context, resultPtr interface{}, mediaType string, rawQuery string,
 	route ...string,
-) ([]byte, string, int, error) {
+) ([]byte, http.Header, int, error) {
 	httpClient.lock.RLock()
 	defer httpClient.lock.RUnlock()
 
@@ -192,11 +192,12 @@ func (httpClient *Client) MakeGetRequest(ctx context.Context, resultPtr interfac
 		// we know that the second route argument is always the repo name.
 		// need it for caching tokens, it's not used in requests made to authz server.
 		if idx == 1 {
-			namespace = path
+			namespace = strings.Trim(path, "/")
 		}
 	}
 
-	url.RawQuery = url.Query().Encode()
+	url.RawQuery = rawQuery
+
 	//nolint: bodyclose,contextcheck
 	resp, body, err := httpClient.makeAndDoRequest(http.MethodGet, mediaType, namespace, url.String())
 	if err != nil {
@@ -204,11 +205,11 @@ func (httpClient *Client) MakeGetRequest(ctx context.Context, resultPtr interfac
 			Str("errorType", common.TypeOf(err)).
 			Msg("failed to make request")
 
-		return nil, "", -1, err
+		return nil, nil, -1, err
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, "", resp.StatusCode, errors.New(string(body)) //nolint:goerr113
+		return nil, nil, resp.StatusCode, errors.New(string(body)) //nolint:goerr113
 	}
 
 	// read blob
@@ -216,7 +217,7 @@ func (httpClient *Client) MakeGetRequest(ctx context.Context, resultPtr interfac
 		err = json.Unmarshal(body, &resultPtr)
 	}
 
-	return body, resp.Header.Get("Content-Type"), resp.StatusCode, err
+	return body, resp.Header, resp.StatusCode, err
 }
 
 func (httpClient *Client) getAuthType(resp *http.Response) {

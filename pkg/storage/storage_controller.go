@@ -7,8 +7,9 @@ import (
 )
 
 const (
-	CosignType   = "cosign"
-	NotationType = "notation"
+	CosignType       = "cosign"
+	NotationType     = "notation"
+	DefaultStorePath = "/"
 )
 
 type StoreController struct {
@@ -27,6 +28,21 @@ func GetRoutePrefix(name string) string {
 	}
 
 	return "/" + names[0]
+}
+
+func (sc StoreController) GetStorePath(name string) string {
+	if sc.SubStore != nil && name != "" {
+		subStorePath := GetRoutePrefix(name)
+
+		_, ok := sc.SubStore[subStorePath]
+		if !ok {
+			return DefaultStorePath
+		}
+
+		return subStorePath
+	}
+
+	return DefaultStorePath
 }
 
 func (sc StoreController) GetImageStore(name string) storageTypes.ImageStore {

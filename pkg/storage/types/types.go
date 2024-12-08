@@ -12,6 +12,8 @@ import (
 	"zotregistry.dev/zot/pkg/scheduler"
 )
 
+type FilterRepoFunc func(repo string) (bool, error)
+
 type StoreController interface {
 	GetImageStore(name string) ImageStore
 	GetDefaultImageStore() ImageStore
@@ -30,6 +32,7 @@ type ImageStore interface { //nolint:interfacebloat
 	ValidateRepo(name string) (bool, error)
 	GetRepositories() ([]string, error)
 	GetNextRepository(repo string) (string, error)
+	GetNextRepositories(repo string, maxEntries int, fn FilterRepoFunc) ([]string, bool, error)
 	GetImageTags(repo string) ([]string, error)
 	GetImageManifest(repo, reference string) ([]byte, godigest.Digest, string, error)
 	PutImageManifest(repo, reference, mediaType string, body []byte) (godigest.Digest, godigest.Digest, error)
