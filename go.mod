@@ -3,7 +3,7 @@ module zotregistry.dev/zot
 go 1.23.2
 
 require (
-	github.com/99designs/gqlgen v0.17.57
+	github.com/99designs/gqlgen v0.17.58
 	github.com/Masterminds/semver v1.5.0
 	github.com/aquasecurity/trivy v0.57.1
 	github.com/aquasecurity/trivy-db v0.0.0-20240910133327-7e0f4d2ed4c1
