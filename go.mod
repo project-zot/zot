@@ -50,7 +50,7 @@ require (
 	github.com/prometheus/client_model v0.6.1
 	github.com/rs/zerolog v1.33.0
 	github.com/sigstore/cosign/v2 v2.4.1
-	github.com/sigstore/sigstore v1.8.10
+	github.com/sigstore/sigstore v1.8.11
 	github.com/smartystreets/goconvey v1.8.1
 	github.com/spf13/cobra v1.8.1
 	github.com/spf13/viper v1.19.0

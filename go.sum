@@ -1418,8 +1418,8 @@ github.com/sigstore/protobuf-specs v0.3.2 h1:nCVARCN+fHjlNCk3ThNXwrZRqIommIeNKWw
 github.com/sigstore/protobuf-specs v0.3.2/go.mod h1:RZ0uOdJR4OB3tLQeAyWoJFbNCBFrPQdcokntde4zRBA=
 github.com/sigstore/rekor v1.3.6 h1:QvpMMJVWAp69a3CHzdrLelqEqpTM3ByQRt5B5Kspbi8=
 github.com/sigstore/rekor v1.3.6/go.mod h1:JDTSNNMdQ/PxdsS49DJkJ+pRJCO/83nbR5p3aZQteXc=
-github.com/sigstore/sigstore v1.8.10 h1:r4t+TYzJlG9JdFxMy+um9GZhZ2N1hBTyTex0AHEZxFs=
-github.com/sigstore/sigstore v1.8.10/go.mod h1:BekjqxS5ZtHNJC4u3Q3Stvfx2eyisbW/lUZzmPU2u4A=
+github.com/sigstore/sigstore v1.8.11 h1:tEqeQqbT+awtM87ec9KEeSUxT/AFvJNawneYJyAkFrQ=
+github.com/sigstore/sigstore v1.8.11/go.mod h1:fdrFQosxCQ4wTL5H1NrZcQkqQ72AQbPjtpcL2QOGKV0=
 github.com/sigstore/sigstore-go v0.6.1 h1:tGkkv1oDIER+QYU5MrjqlttQOVDWfSkmYwMqkJhB/cg=
 github.com/sigstore/sigstore-go v0.6.1/go.mod h1:Xe5GHmUeACRFbomUWzVkf/xYCn8xVifb9DgqJrV2dIw=
 github.com/sigstore/sigstore/pkg/signature/kms/aws v1.8.8 h1:2zHmUvaYCwV6LVeTo+OAkTm8ykOGzA9uFlAjwDPAUWM=
