@@ -50,6 +50,7 @@ jobs:
           cd $GITHUB_WORKSPACE
           make binary
           make bench
+          make $PWD/hack/tools/bin/oras
 
       - name: Setup minio service
         run: |
@@ -130,6 +131,7 @@ jobs:
             skopeo --debug copy --src-tls-verify=false docker://localhost:8080/golang:1.20 oci:golang:1.20
             echo "{\"name\":\"foo\",\"value\":\"bar\"}" > config.json
             echo "hello world" > artifact.txt
+            export PATH=$PATH:$PWD/hack/tools/bin
             oras push --plain-http localhost:8080/hello-artifact:v2 \
                 --config config.json:application/vnd.acme.rocket.config.v1+json \
                     artifact.txt:text/plain -d -v

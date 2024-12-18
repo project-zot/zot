@@ -244,7 +244,7 @@ function teardown_file() {
     # attach signature
     echo "{\"artifact\": \"\", \"signature\": \"pat hancock\"}" > ${BATS_FILE_TMPDIR}/signature.json
     start=`date +%s`
-    run oras attach --plain-http 127.0.0.1:8080/alpine:1 --image-spec v1.1-image --artifact-type 'signature/example' ${BATS_FILE_TMPDIR}/signature.json:application/json
+    run oras attach --disable-path-validation --plain-http 127.0.0.1:8080/alpine:1 --artifact-type 'signature/example' ${BATS_FILE_TMPDIR}/signature.json:application/json
     [ "$status" -eq 0 ]
     end=`date +%s`
     runtime=$((end-start))
@@ -253,7 +253,7 @@ function teardown_file() {
     # attach sbom
     echo "{\"version\": \"0.0.0.0\", \"artifact\": \"'127.0.0.1:8080/alpine:1'\", \"contents\": \"good\"}" > ${BATS_FILE_TMPDIR}/sbom.json
     start=`date +%s`
-    run oras attach --plain-http 127.0.0.1:8080/alpine:1 --image-spec v1.1-image --artifact-type 'sbom/example' ${BATS_FILE_TMPDIR}/sbom.json:application/json
+    run oras attach --disable-path-validation --plain-http 127.0.0.1:8080/alpine:1 --artifact-type 'sbom/example' ${BATS_FILE_TMPDIR}/sbom.json:application/json
     [ "$status" -eq 0 ]
     end=`date +%s`
     runtime=$((end-start))

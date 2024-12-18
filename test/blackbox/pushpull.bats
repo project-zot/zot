@@ -149,17 +149,17 @@ function teardown_file() {
     zot_port=`cat ${BATS_FILE_TMPDIR}/zot.port`
     # attach signature
     echo "{\"artifact\": \"\", \"signature\": \"pat hancock\"}" > ${BATS_FILE_TMPDIR}/signature.json
-    run oras attach --plain-http 127.0.0.1:${zot_port}/golang:1.20 --image-spec v1.1-image --artifact-type 'signature/example' ${BATS_FILE_TMPDIR}/signature.json:application/json
+    run oras attach --disable-path-validation --plain-http 127.0.0.1:${zot_port}/golang:1.20 --artifact-type 'signature/example' ${BATS_FILE_TMPDIR}/signature.json:application/json
     [ "$status" -eq 0 ]
     # attach sbom
     echo "{\"version\": \"0.0.0.0\", \"artifact\": \"'127.0.0.1:${zot_port}/golang:1.20'\", \"contents\": \"good\"}" > ${BATS_FILE_TMPDIR}/sbom.json
-    run oras attach --plain-http 127.0.0.1:${zot_port}/golang:1.20 --image-spec v1.1-image --artifact-type 'sbom/example' ${BATS_FILE_TMPDIR}/sbom.json:application/json
+    run oras attach --disable-path-validation --plain-http 127.0.0.1:${zot_port}/golang:1.20 --artifact-type 'sbom/example' ${BATS_FILE_TMPDIR}/sbom.json:application/json
     [ "$status" -eq 0 ]
 }
 
 @test "discover oras artifacts" {
     zot_port=`cat ${BATS_FILE_TMPDIR}/zot.port`
-    run oras discover --plain-http -o json 127.0.0.1:${zot_port}/golang:1.20
+    run oras discover --plain-http --format json 127.0.0.1:${zot_port}/golang:1.20
     [ "$status" -eq 0 ]
     [ $(echo "$output" | jq -r ".manifests | length") -eq 2 ]
 }
