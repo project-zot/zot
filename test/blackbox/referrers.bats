@@ -80,7 +80,7 @@ EOF
     [ "$status" -eq 0 ]
     [ $(echo "${lines[-1]}" | jq '.repositories[]') = '"golang"' ]
 
-    run oras attach --plain-http --image-spec v1.1-image --artifact-type image.artifact/type 127.0.0.1:${zot_port}/golang:1.20 ${IMAGE_MANIFEST_REFERRER}
+    run oras attach --disable-path-validation --plain-http --artifact-type image.artifact/type 127.0.0.1:${zot_port}/golang:1.20 ${IMAGE_MANIFEST_REFERRER}
     [ "$status" -eq 0 ]
 
     MANIFEST_DIGEST=$(skopeo inspect --tls-verify=false docker://localhost:${zot_port}/golang:1.20 | jq -r '.Digest')

@@ -106,19 +106,19 @@ function teardown_file() {
     zot_port=`cat ${BATS_FILE_TMPDIR}/zot.port`
     # attach signature to image
     echo "{\"artifact\": \"\", \"signature\": \"pat hancock\"}" > signature.json
-    run oras attach --plain-http 127.0.0.1:${zot_port}/golang:1.20 --image-spec v1.1-image --artifact-type 'signature/example' ./signature.json:application/json
+    run oras attach --disable-path-validation --plain-http 127.0.0.1:${zot_port}/golang:1.20 --artifact-type 'signature/example' ./signature.json:application/json
     [ "$status" -eq 0 ]
     # attach sbom to image
     echo "{\"version\": \"0.0.0.0\", \"artifact\": \"'127.0.0.1:${zot_port}/golang:1.20'\", \"contents\": \"good\"}" > sbom.json
-    run oras attach --plain-http 127.0.0.1:${zot_port}/golang:1.20 --image-spec v1.1-image --artifact-type 'sbom/example' ./sbom.json:application/json
+    run oras attach --disable-path-validation --plain-http 127.0.0.1:${zot_port}/golang:1.20 --artifact-type 'sbom/example' ./sbom.json:application/json
     [ "$status" -eq 0 ]
 
     # attach signature to index image
-    run oras attach --plain-http 127.0.0.1:${zot_port}/busybox:latest --image-spec v1.1-image --artifact-type 'signature/example' ./signature.json:application/json
+    run oras attach --disable-path-validation --plain-http 127.0.0.1:${zot_port}/busybox:latest --artifact-type 'signature/example' ./signature.json:application/json
     [ "$status" -eq 0 ]
     # attach sbom to index image
     echo "{\"version\": \"0.0.0.0\", \"artifact\": \"'127.0.0.1:${zot_port}/golang:1.20'\", \"contents\": \"good\"}" > sbom.json
-    run oras attach --plain-http 127.0.0.1:${zot_port}/busybox:latest --image-spec v1.1-image --artifact-type 'sbom/example' ./sbom.json:application/json
+    run oras attach --disable-path-validation --plain-http 127.0.0.1:${zot_port}/busybox:latest --artifact-type 'sbom/example' ./sbom.json:application/json
     [ "$status" -eq 0 ]
 }
 
