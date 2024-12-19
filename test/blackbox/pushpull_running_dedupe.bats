@@ -263,7 +263,7 @@ function teardown_file() {
 
 @test "discover oras artifacts - dedupe running" {
     start=`date +%s`
-    run oras discover --plain-http -o json 127.0.0.1:8080/alpine:1
+    run oras discover --plain-http --format json 127.0.0.1:8080/alpine:1
     [ "$status" -eq 0 ]
     end=`date +%s`
     runtime=$((end-start))
