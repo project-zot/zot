@@ -40,8 +40,16 @@ jobs:
       packages: write
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            Makefile
+          sparse-checkout-cone-mode: false
       - name: Copy trivy-db using oras cli
         run: |
+          # setup oras
+          make $PWD/hack/tools/bin/oras
+          export PATH=$PATH:$PWD/hack/tools/bin
           oras login -u ${{ github.actor }} -p ${{ secrets.GITHUB_TOKEN }} ghcr.io
           oras copy ghcr.io/aquasecurity/trivy-db:2 ghcr.io/${{ github.repository_owner }}/trivy-db:2
           oras copy ghcr.io/aquasecurity/trivy-db:latest ghcr.io/${{ github.repository_owner }}/trivy-db:latest
