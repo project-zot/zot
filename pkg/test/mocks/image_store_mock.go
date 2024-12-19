@@ -9,19 +9,21 @@ import (
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 
 	"zotregistry.dev/zot/pkg/scheduler"
+	storageTypes "zotregistry.dev/zot/pkg/storage/types"
 )
 
 type MockedImageStore struct {
-	NameFn              func() string
-	DirExistsFn         func(d string) bool
-	RootDirFn           func() string
-	InitRepoFn          func(name string) error
-	ValidateRepoFn      func(name string) (bool, error)
-	GetRepositoriesFn   func() ([]string, error)
-	GetNextRepositoryFn func(repo string) (string, error)
-	GetImageTagsFn      func(repo string) ([]string, error)
-	GetImageManifestFn  func(repo string, reference string) ([]byte, godigest.Digest, string, error)
-	PutImageManifestFn  func(repo string, reference string, mediaType string, body []byte) (godigest.Digest,
+	NameFn                func() string
+	DirExistsFn           func(d string) bool
+	RootDirFn             func() string
+	InitRepoFn            func(name string) error
+	ValidateRepoFn        func(name string) (bool, error)
+	GetRepositoriesFn     func() ([]string, error)
+	GetNextRepositoryFn   func(repo string) (string, error)
+	GetNextRepositoriesFn func(lastRepo string, maxEntries int, fn storageTypes.FilterRepoFunc) ([]string, bool, error)
+	GetImageTagsFn        func(repo string) ([]string, error)
+	GetImageManifestFn    func(repo string, reference string) ([]byte, godigest.Digest, string, error)
+	PutImageManifestFn    func(repo string, reference string, mediaType string, body []byte) (godigest.Digest,
 		godigest.Digest, error)
 	DeleteImageManifestFn  func(repo string, reference string, detectCollision bool) error
 	BlobUploadPathFn       func(repo string, uuid string) string
@@ -136,6 +138,16 @@ func (is MockedImageStore) GetNextRepository(repo string) (string, error) {
 	}
 
 	return "", nil
+}
+
+func (is MockedImageStore) GetNextRepositories(lastRepo string, maxEntries int,
+	fn storageTypes.FilterRepoFunc,
+) ([]string, bool, error) {
+	if is.GetNextRepositoriesFn != nil {
+		return is.GetNextRepositoriesFn(lastRepo, maxEntries, fn)
+	}
+
+	return []string{}, false, nil
 }
 
 func (is MockedImageStore) GetImageManifest(repo string, reference string) ([]byte, godigest.Digest, string, error) {

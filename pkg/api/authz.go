@@ -12,6 +12,7 @@ import (
 	"zotregistry.dev/zot/pkg/common"
 	"zotregistry.dev/zot/pkg/log"
 	reqCtx "zotregistry.dev/zot/pkg/requestcontext"
+	storageTypes "zotregistry.dev/zot/pkg/storage/types"
 )
 
 const (
@@ -19,6 +20,20 @@ const (
 	BEARER = "Bearer"
 	OPENID = "OpenID"
 )
+
+func AuthzFilterFunc(userAc *reqCtx.UserAccessControl) storageTypes.FilterRepoFunc {
+	return func(repo string) (bool, error) {
+		if userAc == nil {
+			return true, nil
+		}
+
+		if userAc.Can(constants.ReadPermission, repo) {
+			return true, nil
+		}
+
+		return false, nil
+	}
+}
 
 // AccessController authorizes users to act on resources.
 type AccessController struct {

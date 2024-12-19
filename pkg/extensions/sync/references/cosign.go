@@ -172,7 +172,7 @@ func (ref CosignReference) SyncReferences(ctx context.Context, localRepo, remote
 func (ref CosignReference) getManifest(ctx context.Context, repo, cosignTag string) (*ispec.Manifest, []byte, error) {
 	var cosignManifest ispec.Manifest
 
-	body, _, statusCode, err := ref.client.MakeGetRequest(ctx, &cosignManifest, ispec.MediaTypeImageManifest,
+	body, _, statusCode, err := ref.client.MakeGetRequest(ctx, &cosignManifest, ispec.MediaTypeImageManifest, "",
 		"v2", repo, "manifests", cosignTag)
 	if err != nil {
 		if statusCode == http.StatusNotFound {

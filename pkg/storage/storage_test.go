@@ -283,6 +283,14 @@ func TestStorageAPIs(t *testing.T) {
 					repos, err := imgStore.GetRepositories()
 					So(err, ShouldBeNil)
 					So(repos, ShouldNotBeEmpty)
+
+					repos, more, err := imgStore.GetNextRepositories("", -1, func(repo string) (bool, error) {
+						return true, nil
+					})
+
+					So(more, ShouldBeFalse)
+					So(err, ShouldBeNil)
+					So(repos, ShouldNotBeEmpty)
 				})
 
 				Convey("Get image tags", func() {
@@ -563,6 +571,21 @@ func TestStorageAPIs(t *testing.T) {
 							So(err, ShouldBeNil)
 							So(len(repos), ShouldEqual, 1)
 							So(repos[0], ShouldEqual, "test")
+
+							repos, more, err := imgStore.GetNextRepositories("", -1, func(repo string) (bool, error) {
+								return true, nil
+							})
+							So(err, ShouldBeNil)
+							So(more, ShouldBeFalse)
+							So(len(repos), ShouldEqual, 1)
+							So(repos[0], ShouldEqual, "test")
+
+							repos, more, err = imgStore.GetNextRepositories("", -1, func(repo string) (bool, error) {
+								return false, nil
+							})
+							So(err, ShouldBeNil)
+							So(more, ShouldBeFalse)
+							So(len(repos), ShouldEqual, 0)
 
 							// We deleted only one tag, make sure blob should not be removed.
 							hasBlob, _, err = imgStore.CheckBlob("test", digest)
