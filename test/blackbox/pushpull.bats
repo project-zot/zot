@@ -248,6 +248,19 @@ function teardown_file() {
         fi
     done
     [ "$found" -eq 1 ]
+
+    run regctl repo ls --limit 2 localhost:${zot_port}
+    [ "$status" -eq 0 ]
+    echo "$output"
+    [ $(echo "$output" | wc -l) -eq 2 ]
+    [ "${lines[-2]}" == "busybox" ]
+    [ "${lines[-1]}" == "golang" ]
+
+    run regctl repo ls --last busybox --limit 1 localhost:${zot_port}
+    [ "$status" -eq 0 ]
+    echo "$output"
+    [ $(echo "$output" | wc -l) -eq 1 ]
+    [ "${lines[-1]}" == "golang" ]
 }
 
 @test "list image tags with regclient" {

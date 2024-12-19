@@ -6,6 +6,7 @@ package sync
 import (
 	"context"
 	"fmt"
+	"net/url"
 	"strings"
 
 	"github.com/containers/image/v5/docker"
@@ -50,13 +51,37 @@ func (registry *RemoteRegistry) GetContext() *types.SystemContext {
 func (registry *RemoteRegistry) GetRepositories(ctx context.Context) ([]string, error) {
 	var catalog catalog
 
-	_, _, _, err := registry.client.MakeGetRequest(ctx, &catalog, "application/json", //nolint: dogsled
+	_, header, _, err := registry.client.MakeGetRequest(ctx, &catalog, "application/json", "", //nolint: dogsled
 		constants.RoutePrefix, constants.ExtCatalogPrefix)
 	if err != nil {
 		return []string{}, err
 	}
 
-	return catalog.Repositories, nil
+	var repos []string
+
+	repos = append(repos, catalog.Repositories...)
+
+	link := header.Get("Link")
+	for link != "" {
+		linkURLPart, _, _ := strings.Cut(link, ";")
+
+		linkURL, err := url.Parse(strings.Trim(linkURLPart, "<>"))
+		if err != nil {
+			return catalog.Repositories, err
+		}
+
+		_, header, _, err := registry.client.MakeGetRequest(ctx, &catalog, "application/json",
+			linkURL.RawQuery, constants.RoutePrefix, constants.ExtCatalogPrefix) //nolint: dogsled
+		if err != nil {
+			return repos, err
+		}
+
+		repos = append(repos, catalog.Repositories...)
+
+		link = header.Get("Link")
+	}
+
+	return repos, nil
 }
 
 func (registry *RemoteRegistry) GetDockerRemoteRepo(repo string) string {
