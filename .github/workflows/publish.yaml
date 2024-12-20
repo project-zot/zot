@@ -9,7 +9,7 @@ permissions: read-all
 jobs:
   push-singlearch-image:
     name: Push single arch OCI images to GitHub Packages
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     permissions:
       contents: read
       packages: write
@@ -87,7 +87,7 @@ jobs:
   push-multiarch-image:
     name: Push multiarch OCI images to GitHub Packages
     needs: push-singlearch-image
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     permissions:
       contents: read
       packages: write
@@ -117,7 +117,7 @@ jobs:
   test-image:
     name: Test OCI images published to GitHub Packages
     needs: push-multiarch-image
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     permissions:
       packages: read
     steps:
@@ -203,7 +203,7 @@ jobs:
   scan-image:
     name: Run Trivy scan on OCI images published to GitHub Packages
     needs: push-singlearch-image
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     permissions:
       security-events: write
       packages: read
@@ -244,7 +244,7 @@ jobs:
   scan-multiarch-image:
     name: Run Trivy scan on OCI multiarch images published to GitHub Packages
     needs: push-multiarch-image
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     permissions:
       security-events: write
       packages: read
@@ -285,7 +285,7 @@ jobs:
     permissions:
       contents: write
       packages: write
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
         with:
