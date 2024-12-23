@@ -8,7 +8,7 @@ require (
 	github.com/aquasecurity/trivy v0.58.0
 	github.com/aquasecurity/trivy-db v0.0.0-20241120092622-333d808d7e45
 	github.com/aws/aws-sdk-go v1.55.5
-	github.com/aws/aws-sdk-go-v2 v1.32.6
+	github.com/aws/aws-sdk-go-v2 v1.32.7
 	github.com/aws/aws-sdk-go-v2/config v1.28.6
 	github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue v1.15.21
 	github.com/aws/aws-sdk-go-v2/service/dynamodb v1.38.0
