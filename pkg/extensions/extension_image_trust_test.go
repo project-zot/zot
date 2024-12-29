@@ -139,7 +139,7 @@ func TestSignatureUploadAndVerificationAWS(t *testing.T) {
 		repoBlobsInfoTablename := "repoBlobsInfoTable" + uuid.String()
 
 		cacheDriverParams := map[string]interface{}{
-			"name":                   "dynamoDB",
+			"name":                   "dynamodb",
 			"endpoint":               os.Getenv("DYNAMODBMOCK_ENDPOINT"),
 			"region":                 "us-east-2",
 			"cacheTablename":         cacheTablename,
