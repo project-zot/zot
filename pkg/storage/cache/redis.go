@@ -38,7 +38,9 @@ func NewRedisCache(parameters interface{}, log zlog.Logger) (*RedisDriver, error
 
 	connOpts, err := redis.ParseURL(properParameters.URL)
 	if err != nil {
-		log.Error().Err(err).Str("directory", properParameters.URL).Msg("failed to connect to redis")
+		log.Error().Err(err).Str("directory", properParameters.URL).Msg("failed to parse redis URL")
+
+		return nil, err
 	}
 
 	cacheDB := redis.NewClient(connOpts)
@@ -49,6 +51,8 @@ func NewRedisCache(parameters interface{}, log zlog.Logger) (*RedisDriver, error
 		return nil, err
 	}
 
+	// note for integration with local storage we need relative paths
+	// while for integration with s3 storage we need absolute paths
 	driver := &RedisDriver{
 		db:          cacheDB,
 		log:         log,
@@ -69,6 +73,11 @@ func (d *RedisDriver) UsesRelativePaths() bool {
 
 func (d *RedisDriver) Name() string {
 	return "redis"
+}
+
+// SetClient is supposed to be used only for testing purposes.
+func (d *RedisDriver) SetClient(client redis.UniversalClient) {
+	d.db = client
 }
 
 func (d *RedisDriver) PutBlob(digest godigest.Digest, path string) error {
@@ -104,9 +113,9 @@ func (d *RedisDriver) PutBlob(digest godigest.Digest, path string) error {
 			// add the key value pair [digest, path] to blobs:origin if not
 			// exist already. the path becomes the canonical blob we do this in
 			// a transaction to make sure that if something is in the set, then
-			// it is guaranteed to always have a path note that there is a
-			// race, but the worst case is that a different origin path that is
-			// still valid is used.
+			// it is guaranteed to always have a path
+			// note that there is a race, but the worst case is that a different
+			// origin path that is still valid is used.
 			if err := txrp.HSet(ctx, join(constants.BlobsCache, constants.OriginalBucket),
 				digest.String(), path).Err(); err != nil {
 				d.log.Error().Err(err).Str("hset", join(constants.BlobsCache, constants.OriginalBucket)).
@@ -116,7 +125,7 @@ func (d *RedisDriver) PutBlob(digest godigest.Digest, path string) error {
 			}
 		}
 		// add path to the set of paths which the digest represents
-		if err := d.db.SAdd(ctx, join(constants.BlobsCache, constants.DuplicatesBucket,
+		if err := txrp.SAdd(ctx, join(constants.BlobsCache, constants.DuplicatesBucket,
 			digest.String()), path).Err(); err != nil {
 			d.log.Error().Err(err).Str("sadd", join(constants.BlobsCache, constants.DuplicatesBucket, digest.String())).
 				Str("value", path).Msg("unable to put record")
@@ -150,11 +159,62 @@ func (d *RedisDriver) GetBlob(digest godigest.Digest) (string, error) {
 	return path, nil
 }
 
-func (d *RedisDriver) HasBlob(digest godigest.Digest, blob string) bool {
+func (d *RedisDriver) GetAllBlobs(digest godigest.Digest) ([]string, error) {
+	blobPaths := []string{}
+
+	ctx := context.TODO()
+
+	originalPath, err := d.db.HGet(ctx, join(constants.BlobsCache, constants.OriginalBucket), digest.String()).Result()
+	if err != nil {
+		if goerrors.Is(err, redis.Nil) {
+			return nil, zerr.ErrCacheMiss
+		}
+
+		d.log.Error().Err(err).Str("hget", join(constants.BlobsCache, constants.OriginalBucket)).
+			Str("digest", digest.String()).Msg("unable to get record")
+
+		return nil, err
+	}
+
+	blobPaths = append(blobPaths, originalPath)
+
+	// see if we are in the set
+	duplicateBlobPaths, err := d.db.SMembers(ctx, join(constants.BlobsCache, constants.DuplicatesBucket,
+		digest.String())).Result()
+	if err != nil {
+		d.log.Error().Err(err).Str("smembers", join(constants.BlobsCache, constants.DuplicatesBucket, digest.String())).
+			Str("digest", digest.String()).Msg("unable to get record")
+
+		return nil, err
+	}
+
+	for _, item := range duplicateBlobPaths {
+		if item != originalPath {
+			blobPaths = append(blobPaths, item)
+		}
+	}
+
+	return blobPaths, nil
+}
+
+func (d *RedisDriver) HasBlob(digest godigest.Digest, path string) bool {
+	var err error
+
+	if d.useRelPaths {
+		path, err = filepath.Rel(d.rootDir, path)
+		if err != nil {
+			d.log.Error().Err(err).Str("path", path).Msg("failed to get relative path")
+		}
+	}
+
+	if len(path) == 0 {
+		return false
+	}
+
 	ctx := context.TODO()
 	// see if we are in the set
 	exists, err := d.db.SIsMember(ctx, join(constants.BlobsCache, constants.DuplicatesBucket,
-		digest.String()), blob).Result()
+		digest.String()), path).Result()
 	if err != nil {
 		d.log.Error().Err(err).Str("sismember", join(constants.BlobsCache, constants.DuplicatesBucket, digest.String())).
 			Str("digest", digest.String()).Msg("unable to get record")

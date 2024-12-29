@@ -11,6 +11,7 @@ type Cache interface {
 	// Retrieves the blob matching provided digest.
 	GetBlob(digest godigest.Digest) (string, error)
 
+	// Retrieves all blobs matching provided digest.
 	GetAllBlobs(digest godigest.Digest) ([]string, error)
 
 	// Uploads blob to cachedb.
