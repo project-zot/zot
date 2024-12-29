@@ -1065,6 +1065,7 @@ func TestAWSTrustStore(t *testing.T) {
 			panic(err)
 		}
 
+		cacheTablename := "BlobTable" + uuid.String()
 		repoMetaTablename := "RepoMetadataTable" + uuid.String()
 		versionTablename := "Version" + uuid.String()
 		userDataTablename := "UserDataTable" + uuid.String()
@@ -1073,9 +1074,10 @@ func TestAWSTrustStore(t *testing.T) {
 		repoBlobsInfoTablename := "repoBlobsInfoTable" + uuid.String()
 
 		dynamoDBDriverParams := map[string]interface{}{
-			"name":                   "dynamoDB",
+			"name":                   "dynamodb",
 			"endpoint":               os.Getenv("DYNAMODBMOCK_ENDPOINT"),
 			"region":                 "us-east-2",
+			"cachetablename":         cacheTablename,
 			"repometatablename":      repoMetaTablename,
 			"imagemetatablename":     imageMetaTablename,
 			"repoblobsinfotablename": repoBlobsInfoTablename,

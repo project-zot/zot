@@ -226,7 +226,7 @@ func TestCreateCacheDatabaseDriver(t *testing.T) {
 }
 
 func TestCreateMetaDBDriver(t *testing.T) {
-	Convey("Test CreateCacheDatabaseDriver dynamo", t, func() {
+	Convey("Test create MetaDB dynamo", t, func() {
 		log := log.NewLogger("debug", "")
 		dir := t.TempDir()
 		conf := config.New()
@@ -253,11 +253,26 @@ func TestCreateMetaDBDriver(t *testing.T) {
 			"userdatatablename":      "UserDatatable",
 		}
 
+		metaDB, err := meta.New(conf.Storage.StorageConfig, log)
+		So(err, ShouldNotBeNil)
+		So(metaDB, ShouldBeNil)
+
+		conf.Storage.CacheDriver = map[string]interface{}{
+			"name":                   "dynamodb",
+			"endpoint":               "http://localhost:4566",
+			"region":                 "us-east-2",
+			"cachetablename":         "BlobTable",
+			"repometatablename":      "RepoMetadataTable",
+			"imageMetaTablename":     "ZotImageMetaTable",
+			"repoBlobsInfoTablename": "ZotRepoBlobsInfoTable",
+			"userdatatablename":      "UserDatatable",
+		}
+
 		testFunc := func() { _, _ = meta.New(conf.Storage.StorageConfig, log) }
 		So(testFunc, ShouldPanic)
 
 		conf.Storage.CacheDriver = map[string]interface{}{
-			"name":                   "dummy",
+			"name":                   "dynamodb",
 			"endpoint":               "http://localhost:4566",
 			"region":                 "us-east-2",
 			"cachetablename":         "",
@@ -272,7 +287,7 @@ func TestCreateMetaDBDriver(t *testing.T) {
 		So(testFunc, ShouldPanic)
 
 		conf.Storage.CacheDriver = map[string]interface{}{
-			"name":                   "dummy",
+			"name":                   "dynamodb",
 			"endpoint":               "http://localhost:4566",
 			"region":                 "us-east-2",
 			"cachetablename":         "test",
@@ -288,7 +303,7 @@ func TestCreateMetaDBDriver(t *testing.T) {
 		So(testFunc, ShouldNotPanic)
 	})
 
-	Convey("Test CreateCacheDatabaseDriver bolt", t, func() {
+	Convey("Test create MetaDB bolt", t, func() {
 		log := log.NewLogger("debug", "")
 		dir := t.TempDir()
 		conf := config.New()

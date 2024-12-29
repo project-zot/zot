@@ -6838,7 +6838,7 @@ func TestReadUploadDeleteDynamoDB(t *testing.T) {
 	repoBlobsTablename := "RepoBlobs" + uuid.String()
 
 	cacheDriverParams := map[string]interface{}{
-		"name":                   "dynamoDB",
+		"name":                   "dynamodb",
 		"endpoint":               os.Getenv("DYNAMODBMOCK_ENDPOINT"),
 		"region":                 "us-east-2",
 		"cachetablename":         cacheTablename,
