@@ -57,7 +57,7 @@ require (
 	github.com/stretchr/testify v1.10.0
 	github.com/swaggo/http-swagger v1.3.4
 	github.com/swaggo/swag v1.16.4
-	github.com/vektah/gqlparser/v2 v2.5.20
+	github.com/vektah/gqlparser/v2 v2.5.21
 	github.com/zitadel/oidc/v3 v3.33.1
 	go.etcd.io/bbolt v1.3.11
 	golang.org/x/crypto v0.31.0
