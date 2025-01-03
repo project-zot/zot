@@ -5,8 +5,8 @@ go 1.23
 require (
 	github.com/99designs/gqlgen v0.17.61
 	github.com/Masterminds/semver v1.5.0
-	github.com/aquasecurity/trivy v0.58.0
-	github.com/aquasecurity/trivy-db v0.0.0-20241120092622-333d808d7e45
+	github.com/aquasecurity/trivy v0.58.1
+	github.com/aquasecurity/trivy-db v0.0.0-20241209111357-8c398f13db0e
 	github.com/aws/aws-sdk-go v1.55.5
 	github.com/aws/aws-sdk-go-v2 v1.32.7
 	github.com/aws/aws-sdk-go-v2/config v1.28.7
@@ -25,7 +25,7 @@ require (
 	github.com/distribution/distribution/v3 v3.0.0-rc.2
 	github.com/dustin/go-humanize v1.0.1
 	github.com/fsnotify/fsnotify v1.8.0
-	github.com/go-ldap/ldap/v3 v3.4.9
+	github.com/go-ldap/ldap/v3 v3.4.10
 	github.com/gofrs/uuid v4.4.0+incompatible
 	github.com/google/go-containerregistry v0.20.2
 	github.com/google/go-github/v62 v62.0.0
@@ -57,7 +57,7 @@ require (
 	github.com/stretchr/testify v1.10.0
 	github.com/swaggo/http-swagger v1.3.4
 	github.com/swaggo/swag v1.16.4
-	github.com/vektah/gqlparser/v2 v2.5.20
+	github.com/vektah/gqlparser/v2 v2.5.21
 	github.com/zitadel/oidc/v3 v3.33.1
 	go.etcd.io/bbolt v1.3.11
 	golang.org/x/crypto v0.31.0
@@ -102,7 +102,7 @@ require (
 	github.com/Azure/go-ntlmssp v0.0.0-20221128193559-754e69321358 // indirect
 	github.com/AzureAD/microsoft-authentication-library-for-go v1.2.2 // indirect
 	github.com/BurntSushi/toml v1.4.0 // indirect
-	github.com/CycloneDX/cyclonedx-go v0.9.1 // indirect
+	github.com/CycloneDX/cyclonedx-go v0.9.2 // indirect
 	github.com/DataDog/zstd v1.5.5 // indirect
 	github.com/GoogleCloudPlatform/docker-credential-gcr v2.0.5+incompatible // indirect
 	github.com/GoogleCloudPlatform/opentelemetry-operations-go/detectors/gcp v1.24.1 // indirect
