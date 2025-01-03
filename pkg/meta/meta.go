@@ -39,7 +39,7 @@ func New(storageConfig config.StorageConfig, log log.Logger) (mTypes.MetaDB, err
 				return nil, err
 			}
 
-			return Create(sconstants.RedisDriverName, client, &redisdb.RedisDB{Client: client}, log) //nolint:contextcheck
+			return Create(sconstants.RedisDriverName, client, nil, log) //nolint:contextcheck
 		}
 
 		// this behavior is also mentioned in the configuration validation logic inside the cli package
