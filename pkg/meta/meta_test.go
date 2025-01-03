@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/alicebob/miniredis/v2"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	guuid "github.com/gofrs/uuid"
 	"github.com/notaryproject/notation-core-go/signature/jws"
@@ -18,8 +19,10 @@ import (
 	"github.com/notaryproject/notation-go/signer"
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
+	"github.com/redis/go-redis/v9"
 	. "github.com/smartystreets/goconvey/convey"
 
+	zerr "zotregistry.dev/zot/errors"
 	zcommon "zotregistry.dev/zot/pkg/common"
 	"zotregistry.dev/zot/pkg/extensions/imagetrust"
 	"zotregistry.dev/zot/pkg/extensions/search/convert"
@@ -28,6 +31,7 @@ import (
 	"zotregistry.dev/zot/pkg/meta/boltdb"
 	"zotregistry.dev/zot/pkg/meta/common"
 	mdynamodb "zotregistry.dev/zot/pkg/meta/dynamodb"
+	"zotregistry.dev/zot/pkg/meta/redisdb"
 	mTypes "zotregistry.dev/zot/pkg/meta/types"
 	reqCtx "zotregistry.dev/zot/pkg/requestcontext"
 	tCommon "zotregistry.dev/zot/pkg/test/common"
@@ -161,6 +165,35 @@ func TestDynamoDBWrapper(t *testing.T) {
 		}
 
 		RunMetaDBTests(t, dynamoDriver, resetDynamoDBTables)
+	})
+}
+
+func TestRedisDB(t *testing.T) {
+	miniRedis := miniredis.RunT(t)
+
+	Convey("RedisDB Wrapper", t, func() {
+		rootDir := t.TempDir()
+		log := log.NewLogger("debug", "")
+
+		redisDriver, err := redisdb.GetRedisClient("redis://" + miniRedis.Addr())
+		So(err, ShouldBeNil)
+
+		metaDB, err := redisdb.New(redisDriver, log)
+		So(metaDB, ShouldNotBeNil)
+		So(err, ShouldBeNil)
+
+		imgTrustStore, err := imagetrust.NewLocalImageTrustStore(rootDir)
+		So(err, ShouldBeNil)
+
+		metaDB.SetImageTrustStore(imgTrustStore)
+
+		defer func() {
+			metaDB.ResetDB() //nolint: errcheck
+			os.RemoveAll(path.Join(rootDir, "_cosign"))
+			os.RemoveAll(path.Join(rootDir, "_notation"))
+		}()
+
+		RunMetaDBTests(t, metaDB)
 	})
 }
 
@@ -376,6 +409,12 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 
 				err = metaDB.SetUserData(ctx, userProfileSrc)
 				So(err, ShouldNotBeNil)
+
+				err = metaDB.SetUserGroups(ctx, []string{"group1", "groups2"})
+				So(err, ShouldNotBeNil)
+
+				err = metaDB.DeleteUserData(ctx)
+				So(err, ShouldNotBeNil)
 			})
 
 			Convey("Test API keys operations with empty userid", func() {
@@ -410,6 +449,12 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 				So(err, ShouldNotBeNil)
 
 				err = metaDB.SetUserData(ctx, userProfileSrc)
+				So(err, ShouldNotBeNil)
+
+				err = metaDB.SetUserGroups(ctx, []string{"group1", "groups2"})
+				So(err, ShouldNotBeNil)
+
+				err = metaDB.DeleteUserData(ctx)
 				So(err, ShouldNotBeNil)
 			})
 
@@ -973,6 +1018,65 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 			repoMeta, err = metaDB.GetRepoMeta(ctx, repo1)
 			So(err, ShouldBeNil)
 			So(repoMeta.StarCount, ShouldEqual, 3)
+		})
+
+		Convey("Test bookmarked/starred behavior when user context is not present/invalid", func() {
+			// Context has no user access control data
+			ctx := context.Background()
+
+			toggleState, err := metaDB.ToggleBookmarkRepo(ctx, repo)
+			So(err, ShouldNotBeNil)
+			So(toggleState, ShouldEqual, mTypes.NotChanged)
+
+			toggleState, err = metaDB.ToggleStarRepo(ctx, repo)
+			So(err, ShouldNotBeNil)
+			So(toggleState, ShouldEqual, mTypes.NotChanged)
+
+			// Context has invalid user access control data
+			var invalid struct{}
+
+			key := reqCtx.GetContextKey()
+			ctx = context.WithValue(context.Background(), key, invalid)
+
+			toggleState, err = metaDB.ToggleBookmarkRepo(ctx, repo)
+			So(err, ShouldNotBeNil)
+			So(toggleState, ShouldEqual, mTypes.NotChanged)
+
+			toggleState, err = metaDB.ToggleStarRepo(ctx, repo)
+			So(err, ShouldNotBeNil)
+			So(toggleState, ShouldEqual, mTypes.NotChanged)
+
+			// Context has user access control data, but it is not completely initialized
+			userAc := reqCtx.NewUserAccessControl()
+			ctx = userAc.DeriveContext(context.Background())
+
+			toggleState, err = metaDB.ToggleBookmarkRepo(ctx, repo)
+			So(err, ShouldNotBeNil)
+			So(toggleState, ShouldEqual, mTypes.NotChanged)
+
+			toggleState, err = metaDB.ToggleStarRepo(ctx, repo)
+			So(err, ShouldNotBeNil)
+			So(toggleState, ShouldEqual, mTypes.NotChanged)
+
+			// Context has user access control data with all fields initialized
+			userAc.SetUsername("user1")
+			userAc.SetGlobPatterns("read", map[string]bool{
+				repo: true,
+			})
+
+			ctx = userAc.DeriveContext(context.Background())
+
+			toggleState, err = metaDB.ToggleBookmarkRepo(ctx, repo)
+			So(err, ShouldBeNil)
+			So(toggleState, ShouldEqual, mTypes.Added)
+
+			toggleState, err = metaDB.ToggleBookmarkRepo(ctx, repo)
+			So(err, ShouldBeNil)
+			So(toggleState, ShouldEqual, mTypes.Removed)
+
+			toggleState, err = metaDB.ToggleStarRepo(ctx, repo)
+			So(err, ShouldEqual, zerr.ErrRepoMetaNotFound)
+			So(toggleState, ShouldEqual, mTypes.NotChanged)
 		})
 
 		Convey("Test repo stars for user", func() {
@@ -1616,9 +1720,20 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 				So(err, ShouldBeNil)
 				So(len(repoMetaList), ShouldEqual, 2)
 
-				So(repoMetaList[0].Tags[tag1].Digest, ShouldResemble, image1.DigestStr())
-				So(repoMetaList[0].Tags[tag2].Digest, ShouldResemble, image2.DigestStr())
-				So(repoMetaList[1].Tags[tag3].Digest, ShouldResemble, image3.DigestStr())
+				repos := map[string]map[string]string{}
+				for _, repoMeta := range repoMetaList {
+					if _, exists := repos[repoMeta.Name]; !exists {
+						repos[repoMeta.Name] = map[string]string{}
+					}
+
+					for tag, descriptor := range repoMeta.Tags {
+						repos[repoMeta.Name][tag] = descriptor.Digest
+					}
+				}
+
+				So(repos[repo1][tag1], ShouldEqual, image1.DigestStr())
+				So(repos[repo1][tag2], ShouldEqual, image2.DigestStr())
+				So(repos[repo2][tag3], ShouldEqual, image3.DigestStr())
 			})
 
 			Convey("Search a repo by name", func() {
@@ -2574,6 +2689,37 @@ func TestCreateBoltDB(t *testing.T) {
 		log := log.NewLogger("debug", "")
 
 		_, err := meta.Create("boltdb", nil, mdynamodb.DBDriverParameters{}, log)
+		So(err, ShouldNotBeNil)
+	})
+}
+
+func TestCreateRedisDB(t *testing.T) {
+	Convey("Create", t, func() {
+		miniRedis := miniredis.RunT(t)
+
+		log := log.NewLogger("debug", "")
+		So(log, ShouldNotBeNil)
+
+		redisDriver, err := redisdb.GetRedisClient("redis://" + miniRedis.Addr())
+		So(err, ShouldBeNil)
+
+		metaDB, err := meta.Create("redis", redisDriver, nil, log)
+		So(metaDB, ShouldNotBeNil)
+		So(err, ShouldBeNil)
+	})
+
+	Convey("fails", t, func() {
+		log := log.NewLogger("debug", "")
+
+		_, err := meta.Create("redis", nil, mdynamodb.DBDriverParameters{}, log)
+		So(err, ShouldNotBeNil)
+
+		// Redis client will not be responding
+		redisURL := "redis://127.0.0.1:" + tCommon.GetFreePort() // must not match miniRedis.Addr()
+		connOpts, _ := redis.ParseURL(redisURL)
+		cacheDB := redis.NewClient(connOpts)
+
+		_, err = meta.Create("redis", cacheDB, nil, log)
 		So(err, ShouldNotBeNil)
 	})
 }

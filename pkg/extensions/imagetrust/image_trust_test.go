@@ -16,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/alicebob/miniredis/v2"
 	awshttp "github.com/aws/aws-sdk-go-v2/aws/transport/http"
 	"github.com/aws/aws-sdk-go-v2/service/secretsmanager"
 	"github.com/aws/aws-sdk-go-v2/service/secretsmanager/types"
@@ -647,6 +648,25 @@ func TestLocalTrustStore(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		var dbDriverParams map[string]interface{}
+
+		RunUploadTests(t, *imageTrustStore)
+		RunVerificationTests(t, dbDriverParams)
+	})
+}
+
+func TestLocalTrustStoreRedis(t *testing.T) {
+	miniRedis := miniredis.RunT(t)
+
+	Convey("test local storage and redis", t, func() {
+		rootDir := t.TempDir()
+
+		imageTrustStore, err := imagetrust.NewLocalImageTrustStore(rootDir)
+		So(err, ShouldBeNil)
+
+		dbDriverParams := map[string]interface{}{
+			"name": "redis",
+			"url":  "redis://" + miniRedis.Addr(),
+		}
 
 		RunUploadTests(t, *imageTrustStore)
 		RunVerificationTests(t, dbDriverParams)

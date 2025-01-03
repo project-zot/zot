@@ -3,21 +3,25 @@ package version_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path"
 	"testing"
 
+	"github.com/alicebob/miniredis/v2"
 	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 	"github.com/aws/aws-sdk-go/aws"
 	guuid "github.com/gofrs/uuid"
+	"github.com/redis/go-redis/v9"
 	. "github.com/smartystreets/goconvey/convey"
 	"go.etcd.io/bbolt"
 
 	"zotregistry.dev/zot/pkg/log"
 	"zotregistry.dev/zot/pkg/meta/boltdb"
 	mdynamodb "zotregistry.dev/zot/pkg/meta/dynamodb"
+	"zotregistry.dev/zot/pkg/meta/redisdb"
 	"zotregistry.dev/zot/pkg/meta/version"
 	tskip "zotregistry.dev/zot/pkg/test/skip"
 )
@@ -210,4 +214,173 @@ func setDynamoDBVersion(client *dynamodb.Client, versTable, vers string) error {
 	})
 
 	return err
+}
+
+func TestVersioningRedisDB(t *testing.T) {
+	miniRedis := miniredis.RunT(t)
+
+	Convey("Tests", t, func() {
+		opts, err := redis.ParseURL("redis://" + miniRedis.Addr())
+		So(err, ShouldBeNil)
+
+		client := redis.NewClient(opts)
+		defer dumpRedisKeys(t, client) // Troubleshoot test failures
+
+		log := log.NewLogger("debug", "")
+		metaDB, err := redisdb.New(client, log)
+		So(err, ShouldBeNil)
+
+		So(metaDB.ResetDB(), ShouldBeNil)
+
+		ctx := context.Background()
+
+		Convey("empty initial version triggers setting the default", func() {
+			// Check no value is initially set
+			actualVersion, err := client.Get(ctx, redisdb.VersionBucket).Result()
+			So(err, ShouldEqual, redis.Nil)
+			So(actualVersion, ShouldEqual, "")
+
+			err = metaDB.PatchDB()
+			So(err, ShouldBeNil)
+
+			// Check default version is added in the DB
+			actualVersion, err = client.Get(ctx, redisdb.VersionBucket).Result()
+			So(err, ShouldBeNil)
+			So(actualVersion, ShouldEqual, version.CurrentVersion)
+		})
+
+		Convey("initial version with a bad value raises an error", func() {
+			// Set invalid initial value
+			err = client.Set(ctx, redisdb.VersionBucket, "VInvalid", 0).Err()
+			So(err, ShouldBeNil)
+
+			// Check error when attempting to patch
+			err = metaDB.PatchDB()
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("skip iterating patches", func() {
+			// Initialize DB version
+			metaDB.Version = version.Version1
+
+			// Patches have errors so we can check bad upgrade logic
+			metaDB.Patches = []func(client redis.UniversalClient) error{
+				func(client redis.UniversalClient) error { // V1 to V2
+					return ErrTestError
+				},
+				func(client redis.UniversalClient) error { // V2 to V3
+					return ErrTestError
+				},
+			}
+
+			// No patch should be applied for V1 so no error is expected
+			err = metaDB.PatchDB()
+			So(err, ShouldBeNil)
+		})
+
+		Convey("iterate over patches without any errors", func() {
+			// Initialize DB version with a lower version
+			metaDB.Version = version.Version1
+
+			err = metaDB.PatchDB()
+			So(err, ShouldBeNil)
+
+			// Now change to a newer DB version and apply patches
+			metaDB.Version = version.Version3
+
+			metaDB.Patches = []func(redis.UniversalClient) error{
+				func(client redis.UniversalClient) error { // V1 to V2
+					return nil
+				},
+				func(client redis.UniversalClient) error { // V2 to V3
+					return nil
+				},
+			}
+
+			err = metaDB.PatchDB()
+			So(err, ShouldBeNil)
+		})
+
+		Convey("iterate over patches with errors", func() {
+			// initialize DB version with a lower version
+			metaDB.Version = version.Version1
+
+			err = metaDB.PatchDB()
+			So(err, ShouldBeNil)
+
+			// now change to a newer DB version and apply patches
+			metaDB.Version = version.Version3
+
+			metaDB.Patches = []func(client redis.UniversalClient) error{
+				func(client redis.UniversalClient) error { // V1 to V2
+					return nil
+				},
+				func(client redis.UniversalClient) error { // V2 to V3
+					return ErrTestError
+				},
+			}
+
+			err = metaDB.PatchDB()
+			So(err, ShouldNotBeNil)
+		})
+	})
+}
+
+func dumpRedisKeys(t *testing.T, client redis.UniversalClient) {
+	t.Helper()
+
+	// Retrieve all keys
+	keys, err := client.Keys(context.Background(), "*").Result()
+	if err != nil {
+		t.Log("Error retrieving keys:", err)
+
+		return
+	}
+
+	// Print the keys
+	t.Log("Keys in Redis:")
+
+	for _, key := range keys {
+		keyType, err := client.Type(context.Background(), key).Result()
+		if err != nil {
+			t.Logf("Error retrieving type for key %s: %v\n", key, err)
+
+			continue
+		}
+
+		var value string
+
+		switch keyType {
+		case "string":
+			value, err = client.Get(context.Background(), key).Result()
+		case "list":
+			values, err := client.LRange(context.Background(), key, 0, -1).Result()
+			if err == nil {
+				value = fmt.Sprintf("%v", values)
+			}
+		case "hash":
+			values, err := client.HGetAll(context.Background(), key).Result()
+			if err == nil {
+				value = fmt.Sprintf("%v", values)
+			}
+		case "set":
+			values, err := client.SMembers(context.Background(), key).Result()
+			if err == nil {
+				value = fmt.Sprintf("%v", values)
+			}
+		case "zset":
+			values, err := client.ZRange(context.Background(), key, 0, -1).Result()
+			if err == nil {
+				value = fmt.Sprintf("%v", values)
+			}
+		default:
+			value = "Unsupported type"
+		}
+
+		if err != nil {
+			t.Logf("Error retrieving value for key %s: %v\n", key, err)
+		} else {
+			t.Logf("Key: %s, Type: %s, Value: %s\n", key, keyType, value)
+		}
+	}
 }

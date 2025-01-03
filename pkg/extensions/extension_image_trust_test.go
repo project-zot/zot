@@ -17,6 +17,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/alicebob/miniredis/v2"
 	guuid "github.com/gofrs/uuid"
 	"github.com/sigstore/cosign/v2/cmd/cosign/cli/generate"
 	"github.com/sigstore/cosign/v2/cmd/cosign/cli/options"
@@ -118,6 +119,19 @@ func TestSignaturesAllowedMethodsHeader(t *testing.T) {
 func TestSignatureUploadAndVerificationLocal(t *testing.T) {
 	Convey("test with local storage", t, func() {
 		var cacheDriverParams map[string]interface{}
+
+		RunSignatureUploadAndVerificationTests(t, cacheDriverParams)
+	})
+}
+
+func TestSignatureUploadAndVerificationRedis(t *testing.T) {
+	Convey("test with local storage and redis metadb", t, func() {
+		miniRedis := miniredis.RunT(t)
+
+		cacheDriverParams := map[string]interface{}{
+			"name": "redis",
+			"url":  "redis://" + miniRedis.Addr(),
+		}
 
 		RunSignatureUploadAndVerificationTests(t, cacheDriverParams)
 	})
