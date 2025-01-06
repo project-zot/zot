@@ -1730,23 +1730,29 @@ func (dwr DynamoDB) GetUserAPIKeys(ctx context.Context) ([]mTypes.APIKeyDetails,
 		return nil, fmt.Errorf("failed to get userData for identity %s %w", userid, err)
 	}
 
+	changed := false
+
 	for hashedKey, apiKeyDetails := range userData.APIKeys {
 		// if expiresAt is not nil value
 		if !apiKeyDetails.ExpirationDate.Equal(time.Time{}) && time.Now().After(apiKeyDetails.ExpirationDate) {
 			apiKeyDetails.IsExpired = true
+
+			changed = true
 		}
 
 		userData.APIKeys[hashedKey] = apiKeyDetails
 
-		err = dwr.SetUserData(ctx, userData)
-		if err != nil {
-			return nil, err
-		}
-
 		apiKeys = append(apiKeys, apiKeyDetails)
 	}
 
-	return apiKeys, nil
+	if !changed {
+		// return early, no need to make a call to update key expiry in the DB
+		return apiKeys, nil
+	}
+
+	err = dwr.SetUserData(ctx, userData)
+
+	return apiKeys, err
 }
 
 func (dwr DynamoDB) AddUserAPIKey(ctx context.Context, hashedKey string, apiKeyDetails *mTypes.APIKeyDetails) error {
