@@ -129,6 +129,7 @@ var (
 	ErrMissingAuthHeader              = errors.New("required authorization header is missing")
 	ErrUserAPIKeyNotFound             = errors.New("user info for given API key hash not found")
 	ErrUserSessionNotFound            = errors.New("user session for given ID not found")
+	ErrInvalidMetaDBVersion           = errors.New("unrecognized version meta")
 	ErrBucketDoesNotExist             = errors.New("bucket does not exist")
 	ErrOpenIDProviderDoesNotExist     = errors.New("openid provider does not exist in given config")
 	ErrHashKeyNotCreated              = errors.New("cookiestore generated random hash key is nil, aborting")
