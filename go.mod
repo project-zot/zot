@@ -3,7 +3,7 @@ module zotregistry.dev/zot
 go 1.23
 
 require (
-	github.com/99designs/gqlgen v0.17.61
+	github.com/99designs/gqlgen v0.17.62
 	github.com/Masterminds/semver v1.5.0
 	github.com/aquasecurity/trivy v0.58.1
 	github.com/aquasecurity/trivy-db v0.0.0-20241209111357-8c398f13db0e
@@ -58,11 +58,11 @@ require (
 	github.com/swaggo/http-swagger v1.3.4
 	github.com/swaggo/swag v1.16.4
 	github.com/vektah/gqlparser/v2 v2.5.21
-	github.com/zitadel/oidc/v3 v3.33.1
+	github.com/zitadel/oidc/v3 v3.34.0
 	go.etcd.io/bbolt v1.3.11
 	golang.org/x/crypto v0.31.0
 	golang.org/x/exp v0.0.0-20241009180824-f66d83c29e7c
-	golang.org/x/oauth2 v0.24.0
+	golang.org/x/oauth2 v0.25.0
 	google.golang.org/protobuf v1.36.1
 	gopkg.in/resty.v1 v1.12.0
 	gopkg.in/yaml.v3 v3.0.1
