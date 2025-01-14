@@ -61,6 +61,9 @@ func GetLatestImageDigests(repoMetaList []RepoMeta) []string {
 type MetaDB interface { //nolint:interfacebloat
 	UserDB
 
+	// SetImageMeta sets ImageMeta for a given image in the database
+	// should NEVER be used in production as both GetImageMeta and SetImageMeta
+	// should be locked for the duration of the entire transaction at a higher level in the app
 	SetImageMeta(digest godigest.Digest, imageMeta ImageMeta) error
 
 	// SetRepoReference sets the given image data to the repo metadata.
@@ -109,7 +112,9 @@ type MetaDB interface { //nolint:interfacebloat
 	// DecrementRepoStars subtracts 1 from the star count of an image
 	DecrementRepoStars(repo string) error
 
-	// SetRepoMeta returns RepoMetadata of a repo from the database
+	// SetRepoMeta sets RepoMetadata for a given repo in the database
+	// should NEVER be used in production as both GetRepoMeta and SetRepoMeta
+	// should be locked for the duration of the entire transaction at a higher level in the app
 	SetRepoMeta(repo string, repoMeta RepoMeta) error
 
 	// DeleteRepoMeta
@@ -169,6 +174,9 @@ type UserDB interface { //nolint:interfacebloat
 	// UserDB profile/api key CRUD
 	GetUserData(ctx context.Context) (UserData, error)
 
+	// SetUserData sets UserData for a given user in the database
+	// SetUserData should NEVER be used in production as both GetUserData and SetUserData
+	// should be locked for the duration of the entire transaction at a higher level in the app
 	SetUserData(ctx context.Context, userData UserData) error
 
 	SetUserGroups(ctx context.Context, groups []string) error
