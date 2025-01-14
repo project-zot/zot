@@ -1,7 +1,10 @@
 package meta
 
 import (
+	"fmt"
+
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
+	"github.com/redis/go-redis/v9"
 	"go.etcd.io/bbolt"
 
 	"zotregistry.dev/zot/errors"
@@ -9,19 +12,45 @@ import (
 	"zotregistry.dev/zot/pkg/log"
 	"zotregistry.dev/zot/pkg/meta/boltdb"
 	mdynamodb "zotregistry.dev/zot/pkg/meta/dynamodb"
+	"zotregistry.dev/zot/pkg/meta/redisdb"
 	mTypes "zotregistry.dev/zot/pkg/meta/types"
+	sconstants "zotregistry.dev/zot/pkg/storage/constants"
 )
 
 func New(storageConfig config.StorageConfig, log log.Logger) (mTypes.MetaDB, error) {
 	if storageConfig.RemoteCache {
-		dynamoParams := getDynamoParams(storageConfig.CacheDriver, log)
+		if storageConfig.CacheDriver["name"] == sconstants.DynamoDBDriverName {
+			dynamoParams := getDynamoParams(storageConfig.CacheDriver, log)
 
-		client, err := mdynamodb.GetDynamoClient(dynamoParams)
-		if err != nil {
-			return nil, err
+			client, err := mdynamodb.GetDynamoClient(dynamoParams)
+			if err != nil {
+				return nil, err
+			}
+
+			return Create(sconstants.DynamoDBDriverName, client, dynamoParams, log) //nolint:contextcheck
 		}
 
-		return Create("dynamodb", client, dynamoParams, log) //nolint:contextcheck
+		if storageConfig.CacheDriver["name"] == sconstants.RedisDriverName {
+			// go-redis supports connecting via the redis uri specification (more convenient than parameter parsing)
+			redisURL := getRedisURL(storageConfig.CacheDriver, log)
+
+			client, err := redisdb.GetRedisClient(redisURL)
+			if err != nil { //nolint:wsl
+				return nil, err
+			}
+
+			return Create(sconstants.RedisDriverName, client, nil, log) //nolint:contextcheck
+		}
+
+		// this behavior is also mentioned in the configuration validation logic inside the cli package
+		return nil, fmt.Errorf("%w: cachedriver %s and remotecache %t", errors.ErrBadConfig,
+			storageConfig.CacheDriver["name"], storageConfig.RemoteCache)
+	}
+
+	if driverName, ok := storageConfig.CacheDriver["name"]; ok && driverName != sconstants.BoltdbName {
+		// this behavior is also mentioned in the configuration validation logic inside the cli package
+		log.Warn().Interface("cachedriver", driverName).Bool("remotecache", storageConfig.RemoteCache).
+			Msg("unsupported cachedriver for remotecache disabled, will default to boltdb")
 	}
 
 	params := boltdb.DBParameters{}
@@ -50,6 +79,18 @@ func Create(dbtype string, dbDriver, parameters interface{}, log log.Logger, //n
 			}
 
 			return boltdb.New(properDriver, log)
+		}
+	case "redis":
+		{
+			properDriver, ok := dbDriver.(*redis.Client)
+			if !ok {
+				log.Error().Err(errors.ErrTypeAssertionFailed).
+					Msgf("failed to cast type, expected type '%T' but got '%T'", &redis.Client{}, dbDriver)
+
+				return nil, errors.ErrTypeAssertionFailed
+			}
+
+			return redisdb.New(properDriver, log)
 		}
 	case "dynamodb":
 		{
@@ -120,6 +161,16 @@ func getDynamoParams(cacheDriverConfig map[string]interface{}, log log.Logger) m
 		APIKeyTablename:        apiKeyTablename,
 		VersionTablename:       versionTablename,
 	}
+}
+
+func getRedisURL(cacheDriverConfig map[string]interface{}, log log.Logger) string {
+	url, ok := toStringIfOk(cacheDriverConfig, "url", log)
+
+	if !ok {
+		log.Panic().Msg("redis parameters are not specified correctly, can't proceed")
+	}
+
+	return url
 }
 
 func toStringIfOk(cacheDriverConfig map[string]interface{}, param string, log log.Logger) (string, bool) {

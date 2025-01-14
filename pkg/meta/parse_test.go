@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/alicebob/miniredis/v2"
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	. "github.com/smartystreets/goconvey/convey"
@@ -21,6 +22,7 @@ import (
 	"zotregistry.dev/zot/pkg/meta"
 	"zotregistry.dev/zot/pkg/meta/boltdb"
 	"zotregistry.dev/zot/pkg/meta/dynamodb"
+	"zotregistry.dev/zot/pkg/meta/redisdb"
 	mTypes "zotregistry.dev/zot/pkg/meta/types"
 	"zotregistry.dev/zot/pkg/storage"
 	"zotregistry.dev/zot/pkg/storage/local"
@@ -296,6 +298,24 @@ func TestParseStorageWithBoltDB(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		metaDB, err := boltdb.New(boltDB, log)
+		So(err, ShouldBeNil)
+
+		RunParseStorageTests(rootDir, metaDB, log)
+	})
+}
+
+func TestParseStorageWithRedisDB(t *testing.T) {
+	Convey("Redis", t, func() {
+		miniRedis := miniredis.RunT(t)
+
+		rootDir := t.TempDir()
+		log := log.NewLogger("debug", "")
+
+		redisDriver, err := redisdb.GetRedisClient("redis://" + miniRedis.Addr())
+		So(err, ShouldBeNil)
+
+		metaDB, err := redisdb.New(redisDriver, log)
+		So(metaDB, ShouldNotBeNil)
 		So(err, ShouldBeNil)
 
 		RunParseStorageTests(rootDir, metaDB, log)
