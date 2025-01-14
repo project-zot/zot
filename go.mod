@@ -31,6 +31,7 @@ require (
 	github.com/fsnotify/fsnotify v1.8.0
 	github.com/go-ldap/ldap/v3 v3.4.10
 	github.com/go-redis/redismock/v9 v9.2.0
+	github.com/go-redsync/redsync/v4 v4.13.0
 	github.com/gofrs/uuid v4.4.0+incompatible
 	github.com/google/go-containerregistry v0.20.3
 	github.com/google/go-github/v62 v62.0.0
@@ -274,6 +275,7 @@ require (
 	github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da // indirect
 	github.com/golang/protobuf v1.5.4 // indirect
 	github.com/golang/snappy v0.0.4 // indirect
+	github.com/gomodule/redigo v2.0.0+incompatible // indirect
 	github.com/google/btree v1.1.2 // indirect
 	github.com/google/certificate-transparency-go v1.2.1 // indirect
 	github.com/google/gnostic-models v0.6.9-0.20230804172637-c7be7c783f49 // indirect

@@ -9,4 +9,5 @@ const (
 	UserDataBucket      = "zot:UserData"
 	VersionBucket       = "zot:Version"
 	UserAPIKeysBucket   = "zot:UserAPIKeys" //nolint: gosec // these are not hardcoded credentials
+	LockBuck            = "zot:Locks"
 )

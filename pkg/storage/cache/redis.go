@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/go-redsync/redsync/v4"
+	gors "github.com/go-redsync/redsync/v4/redis/goredis/v9"
 	godigest "github.com/opencontainers/go-digest"
 	"github.com/redis/go-redis/v9"
 
@@ -18,7 +20,8 @@ type RedisDriver struct {
 	rootDir     string
 	db          redis.UniversalClient
 	log         zlog.Logger
-	useRelPaths bool // whether or not to use relative paths, should be true for filesystem and false for s3
+	useRelPaths bool             // whether or not to use relative paths, should be true for filesystem and false for s3
+	rs          *redsync.Redsync // used for locks, at the moment we are locking only for calls writing to the DB
 }
 
 type RedisDriverParameters struct {
@@ -51,6 +54,9 @@ func NewRedisCache(parameters interface{}, log zlog.Logger) (*RedisDriver, error
 		return nil, err
 	}
 
+	// Create an instance of redisync to be used to obtain locks
+	pool := gors.NewPool(cacheDB)
+
 	// note for integration with local storage we need relative paths
 	// while for integration with s3 storage we need absolute paths
 	driver := &RedisDriver{
@@ -58,6 +64,7 @@ func NewRedisCache(parameters interface{}, log zlog.Logger) (*RedisDriver, error
 		log:         log,
 		rootDir:     properParameters.RootDir,
 		useRelPaths: properParameters.UseRelPaths,
+		rs:          redsync.New(pool),
 	}
 
 	return driver, nil
@@ -101,6 +108,19 @@ func (d *RedisDriver) PutBlob(digest godigest.Digest, path string) error {
 	if len(path) == 0 {
 		return zerr.ErrEmptyValue
 	}
+
+	lock := d.rs.NewMutex(digest.String())
+	err = lock.Lock()
+	if err != nil {
+		d.log.Error().Err(err).Str("digest", digest.String()).Msg("failed to acquire redis lock")
+
+		return err
+	}
+
+	defer func() {
+		_, err := lock.Unlock()
+		d.log.Error().Err(err).Str("digest", digest.String()).Msg("failed to release redis lock")
+	}()
 
 	// see if the blob digest exists.
 	exists, err := d.db.HExists(ctx, join(constants.BlobsCache, constants.OriginalBucket), digest.String()).Result()
@@ -254,6 +274,19 @@ func (d *RedisDriver) DeleteBlob(digest godigest.Digest, path string) error {
 			d.log.Error().Err(err).Str("path", path).Msg("failed to get relative path")
 		}
 	}
+
+	lock := d.rs.NewMutex(digest.String())
+	err = lock.Lock()
+	if err != nil {
+		d.log.Error().Err(err).Str("digest", digest.String()).Msg("failed to acquire redis lock")
+
+		return err
+	}
+
+	defer func() {
+		_, err := lock.Unlock()
+		d.log.Error().Err(err).Str("digest", digest.String()).Msg("failed to release redis lock")
+	}()
 
 	pathSet := join(constants.BlobsCache, constants.DuplicatesBucket, digest.String())
 
