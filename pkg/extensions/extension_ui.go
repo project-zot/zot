@@ -40,6 +40,9 @@ func addUISecurityHeaders(h http.Handler) http.HandlerFunc { //nolint:varnamelen
 		w.Header().Set("Permissions-Policy", permissionsPolicy)
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("X-Frame-Options", "DENY")
+		w.Header().Set("Cross-Origin-Resource-Policy", "same-origin")
+		w.Header().Set("Cross-Origin-Embedder-Policy", "require-corp")
+		w.Header().Set("Cross-Origin-Opener-Policy", "same-origin")
 
 		cspDirectives := []string{
 			"default-src 'none'",
