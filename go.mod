@@ -38,8 +38,8 @@ require (
 	github.com/migueleliasweb/go-github-mock v1.1.0
 	github.com/mitchellh/mapstructure v1.5.0
 	github.com/nmcclain/ldap v0.0.0-20210720162743-7f8d1e44eeba
-	github.com/notaryproject/notation-core-go v1.1.0
-	github.com/notaryproject/notation-go v1.2.1
+	github.com/notaryproject/notation-core-go v1.2.0
+	github.com/notaryproject/notation-go v1.3.0
 	github.com/olekukonko/tablewriter v0.0.5
 	github.com/opencontainers/distribution-spec/specs-go v0.0.0-20240201174943-0f98d91a0afe
 	github.com/opencontainers/go-digest v1.0.0
@@ -368,7 +368,7 @@ require (
 	github.com/ncruces/go-strftime v0.1.9 // indirect
 	github.com/nmcclain/asn1-ber v0.0.0-20170104154839-2661553a0484 // indirect
 	github.com/notaryproject/notation-plugin-framework-go v1.0.0 // indirect
-	github.com/notaryproject/tspclient-go v0.2.0 // indirect
+	github.com/notaryproject/tspclient-go v1.0.0 // indirect
 	github.com/nozzle/throttler v0.0.0-20180817012639-2ea982251481 // indirect
 	github.com/oklog/ulid v1.3.1 // indirect
 	github.com/oleiade/reflections v1.1.0 // indirect
@@ -447,7 +447,7 @@ require (
 	github.com/urfave/cli/v2 v2.27.5 // indirect
 	github.com/vbatts/tar-split v0.11.6 // indirect
 	github.com/vbauerster/mpb/v8 v8.8.3 // indirect
-	github.com/veraison/go-cose v1.2.1 // indirect
+	github.com/veraison/go-cose v1.3.0 // indirect
 	github.com/vmihailenco/msgpack/v5 v5.4.1 // indirect
 	github.com/vmihailenco/tagparser/v2 v2.0.0 // indirect
 	github.com/x448/float16 v0.8.4 // indirect
