@@ -1662,7 +1662,7 @@ func (bdw *BoltDB) SetUserGroups(ctx context.Context, groups []string) error {
 			return err
 		}
 
-		userData.Groups = append(userData.Groups, groups...)
+		userData.Groups = groups
 
 		err = bdw.setUserData(userid, tx, userData)
 
