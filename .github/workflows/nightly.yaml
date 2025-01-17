@@ -196,6 +196,7 @@ jobs:
           password: ${{ github.token }}
       - name: Run tests
         run: |
+            sudo ./scripts/enable_userns.sh
             ./examples/kind/kind-ci.sh
 
   cloud-scale-out:
