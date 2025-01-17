@@ -1569,7 +1569,7 @@ func (bdw *BoltDB) PatchDB() error {
 	}
 
 	if version.GetVersionIndex(DBVersion) == -1 {
-		return fmt.Errorf("DB has broken format, no version found %w", err)
+		return fmt.Errorf("%w: %s could not identify patches", zerr.ErrInvalidMetaDBVersion, DBVersion)
 	}
 
 	for patchIndex, patch := range bdw.Patches {
