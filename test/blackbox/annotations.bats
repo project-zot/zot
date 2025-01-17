@@ -105,23 +105,19 @@ function teardown_file() {
     [ $(echo "${lines[-1]}" | jq '.data.ImageList.Results[0].Licenses') = '"GPLv2"' ]
 }
 
-# Disable because of stacker errors on Ubuntu 24.04.1:
-## entering private mount namespace failed: Permission denied
-# parent read(): No error information
-# error: exit status 1
-# @test "build image with stacker and specify annotations" {
-#     zot_port=`cat ${BATS_FILE_TMPDIR}/zot.port`
-#     run stacker --oci-dir ${BATS_FILE_TMPDIR}/stackeroci --stacker-dir ${BATS_FILE_TMPDIR}/.stacker --roots-dir ${BATS_FILE_TMPDIR}/roots build -f ${BATS_FILE_TMPDIR}/stacker.yaml --substitute IMAGE_NAME="ghcr.io/project-zot/golang" --substitute IMAGE_TAG="1.20" --substitute DESCRIPTION="mydesc" --substitute VENDOR="CentOs" --substitute LICENSES="GPLv2" --substitute COMMIT= --substitute OS=$OS --substitute ARCH=$ARCH
-#     [ "$status" -eq 0 ]
-#     run stacker --oci-dir ${BATS_FILE_TMPDIR}/stackeroci --stacker-dir ${BATS_FILE_TMPDIR}/.stacker --roots-dir ${BATS_FILE_TMPDIR}/roots publish -f ${BATS_FILE_TMPDIR}/stacker.yaml --substitute IMAGE_NAME="ghcr.io/project-zot/golang" --substitute IMAGE_TAG="1.20" --substitute DESCRIPTION="mydesc" --substitute VENDOR="CentOs" --substitute LICENSES="GPLv2" --url docker://127.0.0.1:${zot_port} --tag 1.20 --skip-tls
-#     [ "$status" -eq 0 ]
-#     run curl -X POST -H "Content-Type: application/json" --data '{ "query": "{ ImageList(repo: \"ghcr.io/project-zot/golang\") { Results { RepoName Tag Manifests {Digest ConfigDigest Size Layers { Size Digest }} Vendor Licenses Description }}}"}' http://localhost:${zot_port}/v2/_zot/ext/search
-#     [ "$status" -eq 0 ]
-#     [ $(echo "${lines[-1]}" | jq '.data.ImageList.Results[0].RepoName') = '"ghcr.io/project-zot/golang"' ]
-#     [ $(echo "${lines[-1]}" | jq '.data.ImageList.Results[0].Description') = '"mydesc"' ]
-#     [ $(echo "${lines[-1]}" | jq '.data.ImageList.Results[0].Vendor') = '"CentOs"' ]
-#     [ $(echo "${lines[-1]}" | jq '.data.ImageList.Results[0].Licenses') = '"GPLv2"' ]
-# }
+@test "build image with stacker and specify annotations" {
+    zot_port=`cat ${BATS_FILE_TMPDIR}/zot.port`
+    run stacker --oci-dir ${BATS_FILE_TMPDIR}/stackeroci --stacker-dir ${BATS_FILE_TMPDIR}/.stacker --roots-dir ${BATS_FILE_TMPDIR}/roots build -f ${BATS_FILE_TMPDIR}/stacker.yaml --substitute IMAGE_NAME="ghcr.io/project-zot/golang" --substitute IMAGE_TAG="1.20" --substitute DESCRIPTION="mydesc" --substitute VENDOR="CentOs" --substitute LICENSES="GPLv2" --substitute COMMIT= --substitute OS=$OS --substitute ARCH=$ARCH
+    [ "$status" -eq 0 ]
+    run stacker --oci-dir ${BATS_FILE_TMPDIR}/stackeroci --stacker-dir ${BATS_FILE_TMPDIR}/.stacker --roots-dir ${BATS_FILE_TMPDIR}/roots publish -f ${BATS_FILE_TMPDIR}/stacker.yaml --substitute IMAGE_NAME="ghcr.io/project-zot/golang" --substitute IMAGE_TAG="1.20" --substitute DESCRIPTION="mydesc" --substitute VENDOR="CentOs" --substitute LICENSES="GPLv2" --url docker://127.0.0.1:${zot_port} --tag 1.20 --skip-tls
+    [ "$status" -eq 0 ]
+    run curl -X POST -H "Content-Type: application/json" --data '{ "query": "{ ImageList(repo: \"ghcr.io/project-zot/golang\") { Results { RepoName Tag Manifests {Digest ConfigDigest Size Layers { Size Digest }} Vendor Licenses Description }}}"}' http://localhost:${zot_port}/v2/_zot/ext/search
+    [ "$status" -eq 0 ]
+    [ $(echo "${lines[-1]}" | jq '.data.ImageList.Results[0].RepoName') = '"ghcr.io/project-zot/golang"' ]
+    [ $(echo "${lines[-1]}" | jq '.data.ImageList.Results[0].Description') = '"mydesc"' ]
+    [ $(echo "${lines[-1]}" | jq '.data.ImageList.Results[0].Vendor') = '"CentOs"' ]
+    [ $(echo "${lines[-1]}" | jq '.data.ImageList.Results[0].Licenses') = '"GPLv2"' ]
+}
 
 @test "sign/verify with cosign (only tag-based signatures)" {
     zot_port=`cat ${BATS_FILE_TMPDIR}/zot.port`
