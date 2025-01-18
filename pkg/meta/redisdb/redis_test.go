@@ -29,11 +29,13 @@ func TestRedisMocked(t *testing.T) {
 
 		mock.ExpectPing().SetVal("PONG")
 
-		metaDB, err := redisdb.New(client, log)
+		params := redisdb.DBDriverParameters{KeyPrefix: "zot"}
+
+		metaDB, err := redisdb.New(client, params, log)
 		So(err, ShouldBeNil)
 
 		Convey("GetAllRepoNames HGetAll error", func() {
-			mock.ExpectHGetAll(redisdb.RepoMetaBuck).
+			mock.ExpectHGetAll(metaDB.RepoMetaKey).
 				SetErr(ErrTestError)
 
 			repoNames, err := metaDB.GetAllRepoNames()
@@ -42,7 +44,7 @@ func TestRedisMocked(t *testing.T) {
 		})
 
 		Convey("GetAllRepoNames HGetAll succeeds", func() {
-			mock.ExpectHGetAll(redisdb.RepoMetaBuck).SetVal(
+			mock.ExpectHGetAll(metaDB.RepoMetaKey).SetVal(
 				map[string]string{
 					"repo1": "meta1",
 					"repo2": "meta2",
@@ -70,7 +72,9 @@ func TestRedisRepoMeta(t *testing.T) {
 		client := redis.NewClient(opts)
 		defer DumpKeys(t, client) // Troubleshoot test failures
 
-		metaDB, err := redisdb.New(client, log)
+		params := redisdb.DBDriverParameters{KeyPrefix: "zot"}
+
+		metaDB, err := redisdb.New(client, params, log)
 		So(err, ShouldBeNil)
 
 		Convey("Test repoMeta ops", func() {
