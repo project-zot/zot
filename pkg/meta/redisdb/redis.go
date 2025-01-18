@@ -28,22 +28,49 @@ import (
 	reqCtx "zotregistry.dev/zot/pkg/requestcontext"
 )
 
+const (
+	ImageMetaBucket       = "ImageMeta"
+	RepoMetaBucket        = "RepoMeta"
+	RepoBlobsBucket       = "RepoBlobsMeta"
+	RepoLastUpdatedBucket = "RepoLastUpdated"
+	UserDataBucket        = "UserData"
+	VersionBucket         = "Version"
+	UserAPIKeysBucket     = "UserAPIKeys"
+	LocksBucket           = "Locks"
+)
+
 type RedisDB struct {
-	Client        redis.UniversalClient
-	imgTrustStore mTypes.ImageTrustStore
-	Patches       []func(client redis.UniversalClient) error
-	Version       string
-	Log           log.Logger
-	RS            *redsync.Redsync
+	Client             redis.UniversalClient
+	imgTrustStore      mTypes.ImageTrustStore
+	Patches            []func(client redis.UniversalClient) error
+	Version            string
+	Log                log.Logger
+	RS                 *redsync.Redsync
+	ImageMetaKey       string
+	RepoMetaKey        string
+	RepoBlobsKey       string
+	RepoLastUpdatedKey string
+	UserDataKey        string
+	VersionKey         string
+	UserAPIKeysKey     string
+	LocksKey           string
 }
 
-func New(client redis.UniversalClient, log log.Logger) (*RedisDB, error) {
+func New(client redis.UniversalClient, params DBDriverParameters, log log.Logger) (*RedisDB, error) {
 	redisWrapper := RedisDB{
-		Client:        client,
-		Log:           log,
-		Patches:       version.GetRedisDBPatches(),
-		Version:       version.CurrentVersion,
-		imgTrustStore: nil,
+		Client:             client,
+		Log:                log,
+		Patches:            version.GetRedisDBPatches(),
+		Version:            version.CurrentVersion,
+		imgTrustStore:      nil,
+		ImageMetaKey:       join(params.KeyPrefix, ImageMetaBucket),
+		RepoMetaKey:        join(params.KeyPrefix, RepoMetaBucket),
+		RepoBlobsKey:       join(params.KeyPrefix, RepoBlobsBucket),
+		RepoLastUpdatedKey: join(params.KeyPrefix, RepoLastUpdatedBucket),
+		UserDataKey:        join(params.KeyPrefix, UserDataBucket),
+		VersionKey:         join(params.KeyPrefix, VersionBucket),
+		UserAPIKeysKey:     join(params.KeyPrefix, UserAPIKeysBucket),
+		LocksKey:           join(params.KeyPrefix, LocksBucket),
 	}
 
 	if err := client.Ping(context.Background()).Err(); err != nil {
@@ -64,15 +91,6 @@ func New(client redis.UniversalClient, log log.Logger) (*RedisDB, error) {
 	redisWrapper.RS = redsync.New(pool)
 
 	return &redisWrapper, nil
-}
-
-func GetRedisClient(url string) (redis.UniversalClient, error) {
-	opts, err := redis.ParseURL(url)
-	if err != nil {
-		return nil, err
-	}
-
-	return redis.NewClient(opts), nil
 }
 
 // GetStarredRepos returns starred repos and takes current user in consideration.
@@ -110,7 +128,7 @@ func (rc *RedisDB) ToggleStarRepo(ctx context.Context, repo string) (mTypes.Togg
 
 	var res mTypes.ToggleState
 
-	err = rc.withRSLocks(ctx, []string{getRepoLockKey(repo), getUserLockKey(userid)}, func() error {
+	err = rc.withRSLocks(ctx, []string{rc.getRepoLockKey(repo), rc.getUserLockKey(userid)}, func() error {
 		userData, err := rc.GetUserData(ctx)
 		if err != nil && !errors.Is(err, zerr.ErrUserDataNotFound) {
 			res = mTypes.NotChanged
@@ -159,15 +177,15 @@ func (rc *RedisDB) ToggleStarRepo(ctx context.Context, repo string) (mTypes.Togg
 		}
 
 		_, err = rc.Client.TxPipelined(ctx, func(txrp redis.Pipeliner) error {
-			if err = txrp.HSet(ctx, UserDataBucket, userid, userDataBlob).Err(); err != nil {
-				rc.Log.Error().Err(err).Str("hset", UserDataBucket).Str("userid", userid).
+			if err = txrp.HSet(ctx, rc.UserDataKey, userid, userDataBlob).Err(); err != nil {
+				rc.Log.Error().Err(err).Str("hset", rc.UserDataKey).Str("userid", userid).
 					Msg("failed to set user data record")
 
 				return fmt.Errorf("failed to set user data for identity %s: %w", userid, err)
 			}
 
-			if err := txrp.HSet(ctx, RepoMetaBuck, repo, repoMetaBlob).Err(); err != nil {
-				rc.Log.Error().Err(err).Str("hset", RepoMetaBuck).Str("repo", repo).
+			if err := txrp.HSet(ctx, rc.RepoMetaKey, repo, repoMetaBlob).Err(); err != nil {
+				rc.Log.Error().Err(err).Str("hset", rc.RepoMetaKey).Str("repo", repo).
 					Msg("failed to put repo meta record")
 
 				return fmt.Errorf("failed to set repometa for repo %s: %w", repo, err)
@@ -197,7 +215,7 @@ func (rc *RedisDB) ToggleBookmarkRepo(ctx context.Context, repo string) (mTypes.
 
 	var res mTypes.ToggleState
 
-	err = rc.withRSLocks(ctx, []string{getUserLockKey(userid)}, func() error {
+	err = rc.withRSLocks(ctx, []string{rc.getUserLockKey(userid)}, func() error {
 		userData, err := rc.GetUserData(ctx)
 		if err != nil && !errors.Is(err, zerr.ErrUserDataNotFound) {
 			res = mTypes.NotChanged
@@ -224,9 +242,9 @@ func (rc *RedisDB) ToggleBookmarkRepo(ctx context.Context, repo string) (mTypes.
 			return err
 		}
 
-		err = rc.Client.HSet(ctx, UserDataBucket, userid, userDataBlob).Err()
+		err = rc.Client.HSet(ctx, rc.UserDataKey, userid, userDataBlob).Err()
 		if err != nil {
-			rc.Log.Error().Err(err).Str("hset", UserDataBucket).Str("userid", userid).
+			rc.Log.Error().Err(err).Str("hset", rc.UserDataKey).Str("userid", userid).
 				Msg("failed to set user data record")
 
 			res = mTypes.NotChanged
@@ -255,9 +273,9 @@ func (rc *RedisDB) GetUserData(ctx context.Context) (mTypes.UserData, error) {
 
 	userid := userAc.GetUsername()
 
-	userDataBlob, err := rc.Client.HGet(ctx, UserDataBucket, userid).Bytes()
+	userDataBlob, err := rc.Client.HGet(ctx, rc.UserDataKey, userid).Bytes()
 	if err != nil && !errors.Is(err, redis.Nil) {
-		rc.Log.Error().Err(err).Str("hget", UserDataBucket).Str("userid", userid).
+		rc.Log.Error().Err(err).Str("hget", rc.UserDataKey).Str("userid", userid).
 			Msg("failed to get user data record")
 
 		return mTypes.UserData{}, fmt.Errorf("failed to get user data record for identity %s: %w", userid, err)
@@ -291,10 +309,10 @@ func (rc *RedisDB) SetUserData(ctx context.Context, userData mTypes.UserData) er
 		return err
 	}
 
-	err = rc.withRSLocks(ctx, []string{getUserLockKey(userid)}, func() error {
-		err = rc.Client.HSet(ctx, UserDataBucket, userid, userDataBlob).Err()
+	err = rc.withRSLocks(ctx, []string{rc.getUserLockKey(userid)}, func() error {
+		err = rc.Client.HSet(ctx, rc.UserDataKey, userid, userDataBlob).Err()
 		if err != nil {
-			rc.Log.Error().Err(err).Str("hset", UserDataBucket).Str("userid", userid).
+			rc.Log.Error().Err(err).Str("hset", rc.UserDataKey).Str("userid", userid).
 				Msg("failed to set user data record")
 
 			return fmt.Errorf("failed to set user data for identity %s: %w", userid, err)
@@ -318,7 +336,7 @@ func (rc *RedisDB) SetUserGroups(ctx context.Context, groups []string) error {
 
 	userid := userAc.GetUsername()
 
-	err = rc.withRSLocks(ctx, []string{getUserLockKey(userid)}, func() error {
+	err = rc.withRSLocks(ctx, []string{rc.getUserLockKey(userid)}, func() error {
 		userData, err := rc.GetUserData(ctx)
 		if err != nil && !errors.Is(err, zerr.ErrUserDataNotFound) {
 			return err
@@ -331,9 +349,9 @@ func (rc *RedisDB) SetUserGroups(ctx context.Context, groups []string) error {
 			return err
 		}
 
-		err = rc.Client.HSet(ctx, UserDataBucket, userid, userDataBlob).Err()
+		err = rc.Client.HSet(ctx, rc.UserDataKey, userid, userDataBlob).Err()
 		if err != nil {
-			rc.Log.Error().Err(err).Str("hset", UserDataBucket).Str("userid", userid).
+			rc.Log.Error().Err(err).Str("hset", rc.UserDataKey).Str("userid", userid).
 				Msg("failed to set user data record")
 
 			return fmt.Errorf("failed to set user data for identity %s: %w", userid, err)
@@ -363,15 +381,15 @@ func (rc *RedisDB) DeleteUserData(ctx context.Context) error {
 
 	userid := userAc.GetUsername()
 
-	err = rc.withRSLocks(ctx, []string{getUserLockKey(userid)}, func() error {
+	err = rc.withRSLocks(ctx, []string{rc.getUserLockKey(userid)}, func() error {
 		_, err = rc.GetUserData(ctx)
 		if err != nil && errors.Is(err, zerr.ErrUserDataNotFound) {
 			return zerr.ErrBucketDoesNotExist
 		}
 
-		err = rc.Client.HDel(ctx, UserDataBucket, userid).Err()
+		err = rc.Client.HDel(ctx, rc.UserDataKey, userid).Err()
 		if err != nil {
-			rc.Log.Error().Err(err).Str("hdel", UserDataBucket).Str("userid", userid).
+			rc.Log.Error().Err(err).Str("hdel", rc.UserDataKey).Str("userid", userid).
 				Msg("failed to delete user data record")
 
 			return fmt.Errorf("failed to delete user data for identity %s: %w", userid, err)
@@ -386,9 +404,9 @@ func (rc *RedisDB) DeleteUserData(ctx context.Context) error {
 func (rc *RedisDB) GetUserAPIKeyInfo(hashedKey string) (string, error) {
 	ctx := context.Background()
 
-	userid, err := rc.Client.HGet(ctx, UserAPIKeysBucket, hashedKey).Result()
+	userid, err := rc.Client.HGet(ctx, rc.UserAPIKeysKey, hashedKey).Result()
 	if err != nil && !errors.Is(err, redis.Nil) {
-		rc.Log.Error().Err(err).Str("hget", UserAPIKeysBucket).Str("userid", userid).
+		rc.Log.Error().Err(err).Str("hget", rc.UserAPIKeysKey).Str("userid", userid).
 			Msg("failed to get api key record")
 
 		return userid, fmt.Errorf("failed to get api key record for identity %s: %w", userid, err)
@@ -416,7 +434,7 @@ func (rc *RedisDB) GetUserAPIKeys(ctx context.Context) ([]mTypes.APIKeyDetails, 
 	userid := userAc.GetUsername()
 
 	// Lock used because getting API keys also updates their expired flag in the DB
-	err = rc.withRSLocks(ctx, []string{getUserLockKey(userid)}, func() error {
+	err = rc.withRSLocks(ctx, []string{rc.getUserLockKey(userid)}, func() error {
 		userData, err := rc.GetUserData(ctx)
 		if err != nil && !errors.Is(err, zerr.ErrUserDataNotFound) {
 			return err
@@ -447,9 +465,9 @@ func (rc *RedisDB) GetUserAPIKeys(ctx context.Context) ([]mTypes.APIKeyDetails, 
 			return err
 		}
 
-		err = rc.Client.HSet(ctx, UserDataBucket, userid, userDataBlob).Err()
+		err = rc.Client.HSet(ctx, rc.UserDataKey, userid, userDataBlob).Err()
 		if err != nil {
-			rc.Log.Error().Err(err).Str("hset", UserDataBucket).Str("userid", userid).
+			rc.Log.Error().Err(err).Str("hset", rc.UserDataKey).Str("userid", userid).
 				Msg("failed to set user data record")
 
 			return fmt.Errorf("failed to set user data for identity %s: %w", userid, err)
@@ -473,7 +491,7 @@ func (rc *RedisDB) AddUserAPIKey(ctx context.Context, hashedKey string, apiKeyDe
 
 	userid := userAc.GetUsername()
 
-	err = rc.withRSLocks(ctx, []string{getUserLockKey(userid)}, func() error {
+	err = rc.withRSLocks(ctx, []string{rc.getUserLockKey(userid)}, func() error {
 		userData, err := rc.GetUserData(ctx)
 		if err != nil && !errors.Is(err, zerr.ErrUserDataNotFound) {
 			return err
@@ -491,15 +509,15 @@ func (rc *RedisDB) AddUserAPIKey(ctx context.Context, hashedKey string, apiKeyDe
 		}
 
 		_, err = rc.Client.TxPipelined(ctx, func(txrp redis.Pipeliner) error {
-			if err := txrp.HSet(ctx, UserDataBucket, userid, userDataBlob).Err(); err != nil {
-				rc.Log.Error().Err(err).Str("hset", UserDataBucket).Str("userid", userid).
+			if err := txrp.HSet(ctx, rc.UserDataKey, userid, userDataBlob).Err(); err != nil {
+				rc.Log.Error().Err(err).Str("hset", rc.UserDataKey).Str("userid", userid).
 					Msg("failed to set user data record")
 
 				return fmt.Errorf("failed to set user data for identity %s: %w", userid, err)
 			}
 
-			if err := txrp.HSet(ctx, UserAPIKeysBucket, hashedKey, userid).Err(); err != nil {
-				rc.Log.Error().Err(err).Str("hset", UserAPIKeysBucket).Str("userid", userid).
+			if err := txrp.HSet(ctx, rc.UserAPIKeysKey, hashedKey, userid).Err(); err != nil {
+				rc.Log.Error().Err(err).Str("hset", rc.UserAPIKeysKey).Str("userid", userid).
 					Msg("failed to set api key record")
 
 				return fmt.Errorf("failed to set api key for identity %s: %w", userid, err)
@@ -529,7 +547,7 @@ func (rc *RedisDB) IsAPIKeyExpired(ctx context.Context, hashedKey string) (bool,
 	var isExpired bool
 
 	// Lock used because getting API keys also updates their expired flag in the DB
-	err = rc.withRSLocks(ctx, []string{getUserLockKey(userid)}, func() error {
+	err = rc.withRSLocks(ctx, []string{rc.getUserLockKey(userid)}, func() error {
 		userData, err := rc.GetUserData(ctx)
 		if err != nil && !errors.Is(err, zerr.ErrUserDataNotFound) {
 			return err
@@ -555,9 +573,9 @@ func (rc *RedisDB) IsAPIKeyExpired(ctx context.Context, hashedKey string) (bool,
 			return err
 		}
 
-		err = rc.Client.HSet(ctx, UserDataBucket, userid, userDataBlob).Err()
+		err = rc.Client.HSet(ctx, rc.UserDataKey, userid, userDataBlob).Err()
 		if err != nil {
-			rc.Log.Error().Err(err).Str("hset", UserDataBucket).Str("userid", userid).
+			rc.Log.Error().Err(err).Str("hset", rc.UserDataKey).Str("userid", userid).
 				Msg("failed to set user data record")
 
 			return fmt.Errorf("failed to set user data for identity %s: %w", userid, err)
@@ -581,7 +599,7 @@ func (rc *RedisDB) UpdateUserAPIKeyLastUsed(ctx context.Context, hashedKey strin
 
 	userid := userAc.GetUsername()
 
-	err = rc.withRSLocks(ctx, []string{getUserLockKey(userid)}, func() error {
+	err = rc.withRSLocks(ctx, []string{rc.getUserLockKey(userid)}, func() error {
 		userData, err := rc.GetUserData(ctx)
 		if err != nil && !errors.Is(err, zerr.ErrUserDataNotFound) {
 			return err
@@ -597,9 +615,9 @@ func (rc *RedisDB) UpdateUserAPIKeyLastUsed(ctx context.Context, hashedKey strin
 			return err
 		}
 
-		err = rc.Client.HSet(ctx, UserDataBucket, userid, userDataBlob).Err()
+		err = rc.Client.HSet(ctx, rc.UserDataKey, userid, userDataBlob).Err()
 		if err != nil {
-			rc.Log.Error().Err(err).Str("hset", UserDataBucket).Str("userid", userid).
+			rc.Log.Error().Err(err).Str("hset", rc.UserDataKey).Str("userid", userid).
 				Msg("failed to set user data record")
 
 			return fmt.Errorf("failed to set user data for identity %s: %w", userid, err)
@@ -623,7 +641,7 @@ func (rc *RedisDB) DeleteUserAPIKey(ctx context.Context, keyID string) error {
 
 	userid := userAc.GetUsername()
 
-	err = rc.withRSLocks(ctx, []string{getUserLockKey(userid)}, func() error {
+	err = rc.withRSLocks(ctx, []string{rc.getUserLockKey(userid)}, func() error {
 		userData, err := rc.GetUserData(ctx)
 		if err != nil {
 			return err
@@ -642,15 +660,15 @@ func (rc *RedisDB) DeleteUserAPIKey(ctx context.Context, keyID string) error {
 			}
 
 			_, err = rc.Client.TxPipelined(ctx, func(txrp redis.Pipeliner) error {
-				if err = txrp.HSet(ctx, UserDataBucket, userid, userDataBlob).Err(); err != nil {
-					rc.Log.Error().Err(err).Str("hset", UserDataBucket).Str("userid", userid).
+				if err = txrp.HSet(ctx, rc.UserDataKey, userid, userDataBlob).Err(); err != nil {
+					rc.Log.Error().Err(err).Str("hset", rc.UserDataKey).Str("userid", userid).
 						Msg("failed to set user data record")
 
 					return fmt.Errorf("failed to set user data for identity %s: %w", userid, err)
 				}
 
-				if err = txrp.HDel(ctx, UserAPIKeysBucket, hash).Err(); err != nil {
-					rc.Log.Error().Err(err).Str("hdel", UserAPIKeysBucket).Str("userid", userid).
+				if err = txrp.HDel(ctx, rc.UserAPIKeysKey, hash).Err(); err != nil {
+					rc.Log.Error().Err(err).Str("hdel", rc.UserAPIKeysKey).Str("userid", userid).
 						Msg("failed to delete api key record")
 
 					return fmt.Errorf("failed to delete api key record for identity %s: %w", userid, err)
@@ -687,10 +705,10 @@ func (rc *RedisDB) SetImageMeta(digest godigest.Digest, imageMeta mTypes.ImageMe
 		return fmt.Errorf("failed to calculate blob for manifest with digest %s %w", digest, err)
 	}
 
-	err = rc.withRSLocks(ctx, []string{getImageLockKey(digest.String())}, func() error {
-		err = rc.Client.HSet(ctx, ImageMetaBuck, digest.String(), pImageMetaBlob).Err()
+	err = rc.withRSLocks(ctx, []string{rc.getImageLockKey(digest.String())}, func() error {
+		err = rc.Client.HSet(ctx, rc.ImageMetaKey, digest.String(), pImageMetaBlob).Err()
 		if err != nil {
-			rc.Log.Error().Err(err).Str("hset", ImageMetaBuck).Str("digest", digest.String()).
+			rc.Log.Error().Err(err).Str("hset", rc.ImageMetaKey).Str("digest", digest.String()).
 				Msg("failed to set image meta record")
 
 			return fmt.Errorf("failed to set image meta record for digest %s: %w", digest.String(), err)
@@ -725,10 +743,11 @@ func (rc *RedisDB) SetRepoReference(ctx context.Context, repo string,
 		return err
 	}
 
-	err = rc.withRSLocks(ctx, []string{getImageLockKey(imageMeta.Digest.String()), getRepoLockKey(repo)}, func() error {
-		err := rc.Client.HSet(ctx, ImageMetaBuck, imageMeta.Digest.String(), imageMetaBlob).Err()
+	locks := []string{rc.getImageLockKey(imageMeta.Digest.String()), rc.getRepoLockKey(repo)}
+	err = rc.withRSLocks(ctx, locks, func() error {
+		err := rc.Client.HSet(ctx, rc.ImageMetaKey, imageMeta.Digest.String(), imageMetaBlob).Err()
 		if err != nil {
-			rc.Log.Error().Err(err).Str("hset", ImageMetaBuck).Str("digest", imageMeta.Digest.String()).
+			rc.Log.Error().Err(err).Str("hset", rc.ImageMetaKey).Str("digest", imageMeta.Digest.String()).
 				Msg("failed to set image meta record")
 
 			return fmt.Errorf("failed to set image meta record for digest %s: %w", imageMeta.Digest.String(), err)
@@ -803,9 +822,9 @@ func (rc *RedisDB) SetRepoReference(ctx context.Context, repo string,
 		}
 
 		// 4. Blobs
-		repoBlobsBytes, err := rc.Client.HGet(ctx, RepoBlobsBuck, repo).Bytes()
+		repoBlobsBytes, err := rc.Client.HGet(ctx, rc.RepoBlobsKey, repo).Bytes()
 		if err != nil && !errors.Is(err, redis.Nil) {
-			rc.Log.Error().Err(err).Str("hget", RepoBlobsBuck).Str("repo", repo).
+			rc.Log.Error().Err(err).Str("hget", rc.RepoBlobsKey).Str("repo", repo).
 				Msg("failed to get repo blobs record")
 
 			return fmt.Errorf("failed to get repo blobs record for repo %s: %w", repo, err)
@@ -835,22 +854,22 @@ func (rc *RedisDB) SetRepoReference(ctx context.Context, repo string,
 		}
 
 		_, err = rc.Client.TxPipelined(ctx, func(txrp redis.Pipeliner) error {
-			if err := txrp.HSet(ctx, RepoLastUpdatedBuck, repo, protoTimeBlob).Err(); err != nil {
-				rc.Log.Error().Err(err).Str("hset", RepoLastUpdatedBuck).Str("repo", repo).
+			if err := txrp.HSet(ctx, rc.RepoLastUpdatedKey, repo, protoTimeBlob).Err(); err != nil {
+				rc.Log.Error().Err(err).Str("hset", rc.RepoLastUpdatedKey).Str("repo", repo).
 					Msg("failed to put repo last updated timestamp")
 
 				return fmt.Errorf("failed to put repo last updated record for repo %s: %w", repo, err)
 			}
 
-			if err := txrp.HSet(ctx, RepoBlobsBuck, repo, repoBlobsBytes).Err(); err != nil {
-				rc.Log.Error().Err(err).Str("hset", RepoBlobsBuck).Str("repo", repo).
+			if err := txrp.HSet(ctx, rc.RepoBlobsKey, repo, repoBlobsBytes).Err(); err != nil {
+				rc.Log.Error().Err(err).Str("hset", rc.RepoBlobsKey).Str("repo", repo).
 					Msg("failed to put repo blobs record")
 
 				return fmt.Errorf("failed to set repo blobs record for repo %s: %w", repo, err)
 			}
 
-			if err := txrp.HSet(ctx, RepoMetaBuck, repo, repoMetaBlob).Err(); err != nil {
-				rc.Log.Error().Err(err).Str("hset", RepoMetaBuck).Str("repo", repo).
+			if err := txrp.HSet(ctx, rc.RepoMetaKey, repo, repoMetaBlob).Err(); err != nil {
+				rc.Log.Error().Err(err).Str("hset", rc.RepoMetaKey).Str("repo", repo).
 					Msg("failed to put repo meta record")
 
 				return fmt.Errorf("failed to put repometa record for repo %s: %w", repo, err)
@@ -869,9 +888,9 @@ func (rc *RedisDB) SetRepoReference(ctx context.Context, repo string,
 func (rc *RedisDB) SearchRepos(ctx context.Context, searchText string) ([]mTypes.RepoMeta, error) {
 	foundRepos := []mTypes.RepoMeta{}
 
-	repoMetaEntries, err := rc.Client.HGetAll(ctx, RepoMetaBuck).Result()
+	repoMetaEntries, err := rc.Client.HGetAll(ctx, rc.RepoMetaKey).Result()
 	if err != nil {
-		rc.Log.Error().Err(err).Str("hgetall", RepoMetaBuck).Msg("failed to get all repo meta records")
+		rc.Log.Error().Err(err).Str("hgetall", rc.RepoMetaKey).Msg("failed to get all repo meta records")
 
 		return foundRepos, fmt.Errorf("failed to get all repo meta records: %w", err)
 	}
@@ -920,9 +939,9 @@ func (rc *RedisDB) SearchTags(ctx context.Context, searchText string) ([]mTypes.
 		return images, fmt.Errorf("failed to parse search text, invalid format %w", err)
 	}
 
-	repoMetaEntries, err := rc.Client.HGetAll(ctx, RepoMetaBuck).Result()
+	repoMetaEntries, err := rc.Client.HGetAll(ctx, rc.RepoMetaKey).Result()
 	if err != nil {
-		rc.Log.Error().Err(err).Str("hgetall", RepoMetaBuck).Msg("failed to get all repo meta records")
+		rc.Log.Error().Err(err).Str("hgetall", rc.RepoMetaKey).Msg("failed to get all repo meta records")
 
 		return images, fmt.Errorf("failed to get all repo meta records: %w", err)
 	}
@@ -1002,9 +1021,9 @@ func (rc *RedisDB) FilterTags(ctx context.Context, filterRepoTag mTypes.FilterRe
 ) ([]mTypes.FullImageMeta, error) {
 	images := []mTypes.FullImageMeta{}
 
-	repoMetaEntries, err := rc.Client.HGetAll(ctx, RepoMetaBuck).Result()
+	repoMetaEntries, err := rc.Client.HGetAll(ctx, rc.RepoMetaKey).Result()
 	if err != nil {
-		rc.Log.Error().Err(err).Str("hgetall", RepoMetaBuck).Msg("failed to get all repo meta records")
+		rc.Log.Error().Err(err).Str("hgetall", rc.RepoMetaKey).Msg("failed to get all repo meta records")
 
 		return images, fmt.Errorf("failed to get all repo meta records: %w", err)
 	}
@@ -1102,9 +1121,9 @@ func (rc *RedisDB) FilterRepos(ctx context.Context, acceptName mTypes.FilterRepo
 ) ([]mTypes.RepoMeta, error) {
 	foundRepos := []mTypes.RepoMeta{}
 
-	repoMetaEntries, err := rc.Client.HGetAll(ctx, RepoMetaBuck).Result()
+	repoMetaEntries, err := rc.Client.HGetAll(ctx, rc.RepoMetaKey).Result()
 	if err != nil {
-		rc.Log.Error().Err(err).Str("hgetall", RepoMetaBuck).Msg("failed to get all repo meta records")
+		rc.Log.Error().Err(err).Str("hgetall", rc.RepoMetaKey).Msg("failed to get all repo meta records")
 
 		return foundRepos, fmt.Errorf("failed to get all repo meta records: %w", err)
 	}
@@ -1223,9 +1242,9 @@ func (rc *RedisDB) GetMultipleRepoMeta(ctx context.Context, filter func(repoMeta
 ) {
 	foundRepos := []mTypes.RepoMeta{}
 
-	repoMetaEntries, err := rc.Client.HGetAll(ctx, RepoMetaBuck).Result()
+	repoMetaEntries, err := rc.Client.HGetAll(ctx, rc.RepoMetaKey).Result()
 	if err != nil {
-		rc.Log.Error().Err(err).Str("hgetall", RepoMetaBuck).Msg("failed to get all repo meta records")
+		rc.Log.Error().Err(err).Str("hgetall", rc.RepoMetaKey).Msg("failed to get all repo meta records")
 
 		return foundRepos, fmt.Errorf("failed to get all repometa records: %w", err)
 	}
@@ -1259,7 +1278,7 @@ func (rc *RedisDB) AddManifestSignature(repo string, signedManifestDigest godige
 ) error {
 	ctx := context.Background()
 
-	err := rc.withRSLocks(ctx, []string{getRepoLockKey(repo)}, func() error {
+	err := rc.withRSLocks(ctx, []string{rc.getRepoLockKey(repo)}, func() error {
 		protoRepoMeta, err := rc.getProtoRepoMeta(ctx, repo)
 		if err != nil && !errors.Is(err, zerr.ErrRepoMetaNotFound) {
 			return err
@@ -1294,8 +1313,8 @@ func (rc *RedisDB) AddManifestSignature(repo string, signedManifestDigest godige
 				return err
 			}
 
-			if err := rc.Client.HSet(ctx, RepoMetaBuck, repo, repoMetaBlob).Err(); err != nil {
-				rc.Log.Error().Err(err).Str("hset", RepoMetaBuck).Str("repo", repo).
+			if err := rc.Client.HSet(ctx, rc.RepoMetaKey, repo, repoMetaBlob).Err(); err != nil {
+				rc.Log.Error().Err(err).Str("hset", rc.RepoMetaKey).Str("repo", repo).
 					Msg("failed to put repo meta record")
 
 				return fmt.Errorf("failed to put repometa record for repo %s: %w", repo, err)
@@ -1361,9 +1380,9 @@ func (rc *RedisDB) AddManifestSignature(repo string, signedManifestDigest godige
 			return err
 		}
 
-		err = rc.Client.HSet(ctx, RepoMetaBuck, repo, repoMetaBlob).Err()
+		err = rc.Client.HSet(ctx, rc.RepoMetaKey, repo, repoMetaBlob).Err()
 		if err != nil {
-			rc.Log.Error().Err(err).Str("hset", RepoMetaBuck).Str("repo", repo).
+			rc.Log.Error().Err(err).Str("hset", rc.RepoMetaKey).Str("repo", repo).
 				Msg("failed to put repo meta record")
 
 			return fmt.Errorf("failed to put repometa record for repo %s: %w", repo, err)
@@ -1381,7 +1400,7 @@ func (rc *RedisDB) DeleteSignature(repo string, signedManifestDigest godigest.Di
 ) error {
 	ctx := context.Background()
 
-	err := rc.withRSLocks(ctx, []string{getRepoLockKey(repo)}, func() error {
+	err := rc.withRSLocks(ctx, []string{rc.getRepoLockKey(repo)}, func() error {
 		protoRepoMeta, err := rc.getProtoRepoMeta(ctx, repo)
 		if err != nil {
 			return err
@@ -1410,9 +1429,9 @@ func (rc *RedisDB) DeleteSignature(repo string, signedManifestDigest godigest.Di
 			return err
 		}
 
-		err = rc.Client.HSet(ctx, RepoMetaBuck, repo, repoMetaBlob).Err()
+		err = rc.Client.HSet(ctx, rc.RepoMetaKey, repo, repoMetaBlob).Err()
 		if err != nil {
-			rc.Log.Error().Err(err).Str("hset", RepoMetaBuck).Str("repo", repo).
+			rc.Log.Error().Err(err).Str("hset", rc.RepoMetaKey).Str("repo", repo).
 				Msg("failed to put repo meta record")
 
 			return fmt.Errorf("failed to put repometa record for repo %s: %w", repo, err)
@@ -1432,7 +1451,7 @@ func (rc *RedisDB) UpdateSignaturesValidity(ctx context.Context, repo string, ma
 		return nil
 	}
 
-	err := rc.withRSLocks(ctx, []string{getRepoLockKey(repo)}, func() error {
+	err := rc.withRSLocks(ctx, []string{rc.getRepoLockKey(repo)}, func() error {
 		// get ManifestData of signed manifest
 		protoImageMeta, err := rc.getProtoImageMeta(ctx, manifestDigest.String())
 		if err != nil {
@@ -1494,9 +1513,9 @@ func (rc *RedisDB) UpdateSignaturesValidity(ctx context.Context, repo string, ma
 			return err
 		}
 
-		err = rc.Client.HSet(ctx, RepoMetaBuck, repo, repoMetaBlob).Err()
+		err = rc.Client.HSet(ctx, rc.RepoMetaKey, repo, repoMetaBlob).Err()
 		if err != nil {
-			rc.Log.Error().Err(err).Str("hset", RepoMetaBuck).Str("repo", repo).
+			rc.Log.Error().Err(err).Str("hset", rc.RepoMetaKey).Str("repo", repo).
 				Msg("failed to put repo meta record")
 
 			return fmt.Errorf("failed to put repometa record for repo %s: %w", repo, err)
@@ -1512,7 +1531,7 @@ func (rc *RedisDB) UpdateSignaturesValidity(ctx context.Context, repo string, ma
 func (rc *RedisDB) IncrementRepoStars(repo string) error {
 	ctx := context.Background()
 
-	err := rc.withRSLocks(ctx, []string{getRepoLockKey(repo)}, func() error {
+	err := rc.withRSLocks(ctx, []string{rc.getRepoLockKey(repo)}, func() error {
 		protoRepoMeta, err := rc.getProtoRepoMeta(ctx, repo)
 		if err != nil {
 			return err
@@ -1525,9 +1544,9 @@ func (rc *RedisDB) IncrementRepoStars(repo string) error {
 			return err
 		}
 
-		err = rc.Client.HSet(ctx, RepoMetaBuck, repo, repoMetaBlob).Err()
+		err = rc.Client.HSet(ctx, rc.RepoMetaKey, repo, repoMetaBlob).Err()
 		if err != nil {
-			rc.Log.Error().Err(err).Str("hset", RepoMetaBuck).Str("repo", repo).
+			rc.Log.Error().Err(err).Str("hset", rc.RepoMetaKey).Str("repo", repo).
 				Msg("failed to put repo meta record")
 
 			return fmt.Errorf("failed to put repometa record for repo %s: %w", repo, err)
@@ -1543,7 +1562,7 @@ func (rc *RedisDB) IncrementRepoStars(repo string) error {
 func (rc *RedisDB) DecrementRepoStars(repo string) error {
 	ctx := context.Background()
 
-	err := rc.withRSLocks(ctx, []string{getRepoLockKey(repo)}, func() error {
+	err := rc.withRSLocks(ctx, []string{rc.getRepoLockKey(repo)}, func() error {
 		protoRepoMeta, err := rc.getProtoRepoMeta(ctx, repo)
 		if err != nil {
 			return err
@@ -1560,9 +1579,9 @@ func (rc *RedisDB) DecrementRepoStars(repo string) error {
 			return err
 		}
 
-		err = rc.Client.HSet(ctx, RepoMetaBuck, repo, repoMetaBlob).Err()
+		err = rc.Client.HSet(ctx, rc.RepoMetaKey, repo, repoMetaBlob).Err()
 		if err != nil {
-			rc.Log.Error().Err(err).Str("hset", RepoMetaBuck).Str("repo", repo).
+			rc.Log.Error().Err(err).Str("hset", rc.RepoMetaKey).Str("repo", repo).
 				Msg("failed to put repo meta record")
 
 			return fmt.Errorf("failed to put repometa record for repo %s: %w", repo, err)
@@ -1594,17 +1613,17 @@ func (rc *RedisDB) SetRepoMeta(repo string, repoMeta mTypes.RepoMeta) error {
 
 	ctx := context.Background()
 
-	err = rc.withRSLocks(ctx, []string{getRepoLockKey(repo)}, func() error {
+	err = rc.withRSLocks(ctx, []string{rc.getRepoLockKey(repo)}, func() error {
 		_, err := rc.Client.TxPipelined(ctx, func(txrp redis.Pipeliner) error {
-			if err := txrp.HSet(ctx, RepoMetaBuck, repo, repoMetaBlob).Err(); err != nil {
-				rc.Log.Error().Err(err).Str("hset", RepoMetaBuck).Str("repo", repo).
+			if err := txrp.HSet(ctx, rc.RepoMetaKey, repo, repoMetaBlob).Err(); err != nil {
+				rc.Log.Error().Err(err).Str("hset", rc.RepoMetaKey).Str("repo", repo).
 					Msg("failed to put repo meta record")
 
 				return fmt.Errorf("failed to put repometa record for repo %s: %w", repo, err)
 			}
 
-			if err := txrp.HSet(ctx, RepoLastUpdatedBuck, repo, protoTimeBlob).Err(); err != nil {
-				rc.Log.Error().Err(err).Str("hset", RepoLastUpdatedBuck).Str("repo", repo).
+			if err := txrp.HSet(ctx, rc.RepoLastUpdatedKey, repo, protoTimeBlob).Err(); err != nil {
+				rc.Log.Error().Err(err).Str("hset", rc.RepoLastUpdatedKey).Str("repo", repo).
 					Msg("failed to put repo last updated timestamp")
 
 				return fmt.Errorf("failed to put repo last updated record for repo %s: %w", repo, err)
@@ -1622,24 +1641,24 @@ func (rc *RedisDB) SetRepoMeta(repo string, repoMeta mTypes.RepoMeta) error {
 func (rc *RedisDB) DeleteRepoMeta(repo string) error {
 	ctx := context.Background()
 
-	err := rc.withRSLocks(ctx, []string{getRepoLockKey(repo)}, func() error {
+	err := rc.withRSLocks(ctx, []string{rc.getRepoLockKey(repo)}, func() error {
 		_, err := rc.Client.TxPipelined(ctx, func(txrp redis.Pipeliner) error {
-			if err := txrp.HDel(ctx, RepoMetaBuck, repo).Err(); err != nil {
-				rc.Log.Error().Err(err).Str("hdel", RepoMetaBuck).Str("repo", repo).
+			if err := txrp.HDel(ctx, rc.RepoMetaKey, repo).Err(); err != nil {
+				rc.Log.Error().Err(err).Str("hdel", rc.RepoMetaKey).Str("repo", repo).
 					Msg("failed to delete repo meta record")
 
 				return fmt.Errorf("failed to delete repometa record for repo %s: %w", repo, err)
 			}
 
-			if err := txrp.HDel(ctx, RepoBlobsBuck, repo).Err(); err != nil {
-				rc.Log.Error().Err(err).Str("hdel", RepoBlobsBuck).Str("repo", repo).
+			if err := txrp.HDel(ctx, rc.RepoBlobsKey, repo).Err(); err != nil {
+				rc.Log.Error().Err(err).Str("hdel", rc.RepoBlobsKey).Str("repo", repo).
 					Msg("failed to put repo blobs record")
 
 				return fmt.Errorf("failed to delete repo blobs record for repo %s: %w", repo, err)
 			}
 
-			if err := txrp.HDel(ctx, RepoLastUpdatedBuck, repo).Err(); err != nil {
-				rc.Log.Error().Err(err).Str("hdel", RepoLastUpdatedBuck).Str("repo", repo).
+			if err := txrp.HDel(ctx, rc.RepoLastUpdatedKey, repo).Err(); err != nil {
+				rc.Log.Error().Err(err).Str("hdel", rc.RepoLastUpdatedKey).Str("repo", repo).
 					Msg("failed to put repo last updated timestamp")
 
 				return fmt.Errorf("failed to delete repo last updated record for repo %s: %w", repo, err)
@@ -1690,7 +1709,7 @@ func (rc *RedisDB) GetReferrersInfo(repo string, referredDigest godigest.Digest,
 func (rc *RedisDB) UpdateStatsOnDownload(repo string, reference string) error {
 	ctx := context.Background()
 
-	err := rc.withRSLocks(ctx, []string{getRepoLockKey(repo)}, func() error {
+	err := rc.withRSLocks(ctx, []string{rc.getRepoLockKey(repo)}, func() error {
 		protoRepoMeta, err := rc.getProtoRepoMeta(ctx, repo)
 		if err != nil {
 			return err
@@ -1722,9 +1741,9 @@ func (rc *RedisDB) UpdateStatsOnDownload(repo string, reference string) error {
 			return err
 		}
 
-		err = rc.Client.HSet(ctx, RepoMetaBuck, repo, repoMetaBlob).Err()
+		err = rc.Client.HSet(ctx, rc.RepoMetaKey, repo, repoMetaBlob).Err()
 		if err != nil {
-			rc.Log.Error().Err(err).Str("hset", RepoMetaBuck).Str("repo", repo).
+			rc.Log.Error().Err(err).Str("hset", rc.RepoMetaKey).Str("repo", repo).
 				Msg("failed to put repo meta record")
 
 			return fmt.Errorf("failed to put repometa record for repo %s: %w", repo, err)
@@ -1774,7 +1793,8 @@ if there are no tags pointing to the digest, otherwise it's noop.
 func (rc *RedisDB) RemoveRepoReference(repo, reference string, manifestDigest godigest.Digest) error {
 	ctx := context.Background()
 
-	err := rc.withRSLocks(ctx, []string{getImageLockKey(manifestDigest.String()), getRepoLockKey(repo)}, func() error {
+	locks := []string{rc.getImageLockKey(manifestDigest.String()), rc.getRepoLockKey(repo)}
+	err := rc.withRSLocks(ctx, locks, func() error {
 		protoRepoMeta, err := rc.getProtoRepoMeta(ctx, repo)
 		if err != nil {
 			if errors.Is(err, zerr.ErrRepoMetaNotFound) {
@@ -1848,9 +1868,9 @@ func (rc *RedisDB) RemoveRepoReference(repo, reference string, manifestDigest go
 			delete(protoRepoMeta.Referrers, manifestDigest.String())
 		}
 
-		repoBlobsBytes, err := rc.Client.HGet(ctx, RepoBlobsBuck, repo).Bytes()
+		repoBlobsBytes, err := rc.Client.HGet(ctx, rc.RepoBlobsKey, repo).Bytes()
 		if err != nil && !errors.Is(err, redis.Nil) {
-			rc.Log.Error().Err(err).Str("hget", RepoBlobsBuck).Str("repo", repo).
+			rc.Log.Error().Err(err).Str("hget", rc.RepoBlobsKey).Str("repo", repo).
 				Msg("failed to get repo blobs record")
 
 			return fmt.Errorf("failed to get repo blobs record for repo %s: %w", repo, err)
@@ -1880,22 +1900,22 @@ func (rc *RedisDB) RemoveRepoReference(repo, reference string, manifestDigest go
 		}
 
 		_, err = rc.Client.TxPipelined(ctx, func(txrp redis.Pipeliner) error {
-			if err := txrp.HSet(ctx, RepoLastUpdatedBuck, repo, protoTimeBlob).Err(); err != nil {
-				rc.Log.Error().Err(err).Str("hset", RepoLastUpdatedBuck).Str("repo", repo).
+			if err := txrp.HSet(ctx, rc.RepoLastUpdatedKey, repo, protoTimeBlob).Err(); err != nil {
+				rc.Log.Error().Err(err).Str("hset", rc.RepoLastUpdatedKey).Str("repo", repo).
 					Msg("failed to put repo last updated timestamp")
 
 				return fmt.Errorf("failed to put repo last updated record for repo %s: %w", repo, err)
 			}
 
-			if err := txrp.HSet(ctx, RepoBlobsBuck, repo, repoBlobsBytes).Err(); err != nil {
-				rc.Log.Error().Err(err).Str("hset", RepoBlobsBuck).Str("repo", repo).
+			if err := txrp.HSet(ctx, rc.RepoBlobsKey, repo, repoBlobsBytes).Err(); err != nil {
+				rc.Log.Error().Err(err).Str("hset", rc.RepoBlobsKey).Str("repo", repo).
 					Msg("failed to put repo blobs record")
 
 				return fmt.Errorf("failed to set repo blobs record for repo %s: %w", repo, err)
 			}
 
-			if err := txrp.HSet(ctx, RepoMetaBuck, repo, repoMetaBlob).Err(); err != nil {
-				rc.Log.Error().Err(err).Str("hset", RepoMetaBuck).Str("repo", repo).
+			if err := txrp.HSet(ctx, rc.RepoMetaKey, repo, repoMetaBlob).Err(); err != nil {
+				rc.Log.Error().Err(err).Str("hset", rc.RepoMetaKey).Str("repo", repo).
 					Msg("failed to put repo meta record")
 
 				return fmt.Errorf("failed to put repometa record for repo %s: %w", repo, err)
@@ -1915,7 +1935,7 @@ func (rc *RedisDB) RemoveRepoReference(repo, reference string, manifestDigest go
 func (rc *RedisDB) ResetRepoReferences(repo string) error {
 	ctx := context.Background()
 
-	err := rc.withRSLocks(ctx, []string{getRepoLockKey(repo)}, func() error {
+	err := rc.withRSLocks(ctx, []string{rc.getRepoLockKey(repo)}, func() error {
 		protoRepoMeta, err := rc.getProtoRepoMeta(ctx, repo)
 		if err != nil && !errors.Is(err, zerr.ErrRepoMetaNotFound) {
 			return err
@@ -1933,8 +1953,8 @@ func (rc *RedisDB) ResetRepoReferences(repo string) error {
 			return err
 		}
 
-		if err := rc.Client.HSet(ctx, RepoMetaBuck, repo, repoMetaBlob).Err(); err != nil {
-			rc.Log.Error().Err(err).Str("hset", RepoMetaBuck).Str("repo", repo).
+		if err := rc.Client.HSet(ctx, rc.RepoMetaKey, repo, repoMetaBlob).Err(); err != nil {
+			rc.Log.Error().Err(err).Str("hset", rc.RepoMetaKey).Str("repo", repo).
 				Msg("failed to put repo meta record")
 
 			return fmt.Errorf("failed to put repometa record for repo %s: %w", repo, err)
@@ -1949,9 +1969,9 @@ func (rc *RedisDB) ResetRepoReferences(repo string) error {
 func (rc *RedisDB) GetRepoLastUpdated(repo string) time.Time {
 	ctx := context.Background()
 
-	lastUpdatedBlob, err := rc.Client.HGet(ctx, RepoLastUpdatedBuck, repo).Bytes()
+	lastUpdatedBlob, err := rc.Client.HGet(ctx, rc.RepoLastUpdatedKey, repo).Bytes()
 	if err != nil {
-		rc.Log.Error().Err(err).Str("hget", RepoLastUpdatedBuck).Str("repo", repo).
+		rc.Log.Error().Err(err).Str("hget", rc.RepoLastUpdatedKey).Str("repo", repo).
 			Msg("failed to get repo last updated timestamp")
 
 		return time.Time{}
@@ -1977,9 +1997,9 @@ func (rc *RedisDB) GetAllRepoNames() ([]string, error) {
 	foundRepos := []string{}
 	ctx := context.Background()
 
-	repoMetaEntries, err := rc.Client.HGetAll(ctx, RepoMetaBuck).Result()
+	repoMetaEntries, err := rc.Client.HGetAll(ctx, rc.RepoMetaKey).Result()
 	if err != nil {
-		rc.Log.Error().Err(err).Str("hgetall", RepoMetaBuck).Msg("failed to get all repo meta records")
+		rc.Log.Error().Err(err).Str("hgetall", rc.RepoMetaKey).Msg("failed to get all repo meta records")
 
 		return foundRepos, fmt.Errorf("failed to get all repometa records %w", err)
 	}
@@ -1998,44 +2018,44 @@ func (rc *RedisDB) ResetDB() error {
 	ctx := context.Background()
 
 	_, err := rc.Client.TxPipelined(ctx, func(txrp redis.Pipeliner) error {
-		if err := txrp.Del(ctx, RepoMetaBuck).Err(); err != nil {
-			rc.Log.Error().Err(err).Str("del", RepoMetaBuck).Msg("failed to delete repo meta bucket")
+		if err := txrp.Del(ctx, rc.RepoMetaKey).Err(); err != nil {
+			rc.Log.Error().Err(err).Str("del", rc.RepoMetaKey).Msg("failed to delete repo meta bucket")
 
 			return fmt.Errorf("failed to delete repo meta bucket: %w", err)
 		}
 
-		if err := txrp.Del(ctx, ImageMetaBuck).Err(); err != nil {
-			rc.Log.Error().Err(err).Str("del", ImageMetaBuck).Msg("failed to delete image meta bucket")
+		if err := txrp.Del(ctx, rc.ImageMetaKey).Err(); err != nil {
+			rc.Log.Error().Err(err).Str("del", rc.ImageMetaKey).Msg("failed to delete image meta bucket")
 
 			return fmt.Errorf("failed to delete image meta bucket: %w", err)
 		}
 
-		if err := txrp.Del(ctx, RepoBlobsBuck).Err(); err != nil {
-			rc.Log.Error().Err(err).Str("del", RepoBlobsBuck).Msg("failed to delete repo blobs bucket")
+		if err := txrp.Del(ctx, rc.RepoBlobsKey).Err(); err != nil {
+			rc.Log.Error().Err(err).Str("del", rc.RepoBlobsKey).Msg("failed to delete repo blobs bucket")
 
 			return fmt.Errorf("failed to delete repo blobs bucket: %w", err)
 		}
 
-		if err := txrp.Del(ctx, RepoLastUpdatedBuck).Err(); err != nil {
-			rc.Log.Error().Err(err).Str("del", RepoLastUpdatedBuck).Msg("failed to delete repo last updated bucket")
+		if err := txrp.Del(ctx, rc.RepoLastUpdatedKey).Err(); err != nil {
+			rc.Log.Error().Err(err).Str("del", rc.RepoLastUpdatedKey).Msg("failed to delete repo last updated bucket")
 
 			return fmt.Errorf("failed to delete repo last updated bucket: %w", err)
 		}
 
-		if err := txrp.Del(ctx, UserDataBucket).Err(); err != nil {
-			rc.Log.Error().Err(err).Str("del", UserDataBucket).Msg("failed to delete user data bucket")
+		if err := txrp.Del(ctx, rc.UserDataKey).Err(); err != nil {
+			rc.Log.Error().Err(err).Str("del", rc.UserDataKey).Msg("failed to delete user data bucket")
 
 			return fmt.Errorf("failed to delete user data bucket: %w", err)
 		}
 
-		if err := txrp.Del(ctx, UserAPIKeysBucket).Err(); err != nil {
-			rc.Log.Error().Err(err).Str("del", UserAPIKeysBucket).Msg("failed to delete user api key bucket")
+		if err := txrp.Del(ctx, rc.UserAPIKeysKey).Err(); err != nil {
+			rc.Log.Error().Err(err).Str("del", rc.UserAPIKeysKey).Msg("failed to delete user api key bucket")
 
 			return fmt.Errorf("failed to delete user api key bucket: %w", err)
 		}
 
-		if err := txrp.Del(ctx, VersionBucket).Err(); err != nil {
-			rc.Log.Error().Err(err).Str("del", VersionBucket).Msg("failed to delete version bucket")
+		if err := txrp.Del(ctx, rc.VersionKey).Err(); err != nil {
+			rc.Log.Error().Err(err).Str("del", rc.VersionKey).Msg("failed to delete version bucket")
 
 			return fmt.Errorf("failed to delete version bucket: %w", err)
 		}
@@ -2049,20 +2069,20 @@ func (rc *RedisDB) ResetDB() error {
 func (rc *RedisDB) PatchDB() error {
 	ctx := context.Background()
 
-	err := rc.withRSLocks(ctx, []string{getVersionLockKey()}, func() error {
+	err := rc.withRSLocks(ctx, []string{rc.getVersionLockKey()}, func() error {
 		var DBVersion string
 
-		DBVersion, err := rc.Client.Get(ctx, VersionBucket).Result()
+		DBVersion, err := rc.Client.Get(ctx, rc.VersionKey).Result()
 		if err != nil {
 			if !errors.Is(err, redis.Nil) {
-				rc.Log.Error().Err(err).Str("get", VersionBucket).Msg("failed to get db version")
+				rc.Log.Error().Err(err).Str("get", rc.VersionKey).Msg("failed to get db version")
 
 				return fmt.Errorf("patching the database failed, can't read db version: %w", err)
 			}
 
 			// this is a new DB, we need to initialize the version
-			if err := rc.Client.Set(ctx, VersionBucket, rc.Version, 0).Err(); err != nil {
-				rc.Log.Error().Err(err).Str("set", VersionBucket).
+			if err := rc.Client.Set(ctx, rc.VersionKey, rc.Version, 0).Err(); err != nil {
+				rc.Log.Error().Err(err).Str("set", rc.VersionKey).
 					Str("value", version.CurrentVersion).Msg("failed to set db version")
 
 				return fmt.Errorf("patching the database failed, can't set db version: %w", err)
@@ -2114,9 +2134,9 @@ func (rc *RedisDB) getUserBookmarksAndStarsNoError(ctx context.Context) ([]strin
 }
 
 func (rc *RedisDB) getProtoImageMeta(ctx context.Context, digest string) (*proto_go.ImageMeta, error) {
-	imageMetaBlob, err := rc.Client.HGet(ctx, ImageMetaBuck, digest).Bytes()
+	imageMetaBlob, err := rc.Client.HGet(ctx, rc.ImageMetaKey, digest).Bytes()
 	if err != nil && !errors.Is(err, redis.Nil) {
-		rc.Log.Error().Err(err).Str("hget", ImageMetaBuck).Str("digest", digest).
+		rc.Log.Error().Err(err).Str("hget", rc.ImageMetaKey).Str("digest", digest).
 			Msg("failed to get image meta record")
 
 		return nil, fmt.Errorf("failed to get image meta record for digest %s: %w", digest, err)
@@ -2166,9 +2186,9 @@ func (rc *RedisDB) getAllContainedMeta(ctx context.Context, imageIndexData *prot
 }
 
 func (rc *RedisDB) getProtoRepoMeta(ctx context.Context, repo string) (*proto_go.RepoMeta, error) {
-	repoMetaBlob, err := rc.Client.HGet(ctx, RepoMetaBuck, repo).Bytes()
+	repoMetaBlob, err := rc.Client.HGet(ctx, rc.RepoMetaKey, repo).Bytes()
 	if err != nil && !errors.Is(err, redis.Nil) {
-		rc.Log.Error().Err(err).Str("hget", RepoMetaBuck).Str("repo", repo).
+		rc.Log.Error().Err(err).Str("hget", rc.RepoMetaKey).Str("repo", repo).
 			Msg("failed to get repo meta record")
 
 		return nil, fmt.Errorf("failed to get repo meta record for repo %s: %w", repo, err)
@@ -2194,6 +2214,22 @@ func (rc *RedisDB) withRSLocks(ctx context.Context, lockNames []string, wrappedF
 	}
 
 	return wrappedFunc()
+}
+
+func (rc *RedisDB) getRepoLockKey(name string) string {
+	return strings.Join([]string{rc.LocksKey, "Repo", name}, ":")
+}
+
+func (rc *RedisDB) getImageLockKey(name string) string {
+	return strings.Join([]string{rc.LocksKey, "Image", name}, ":")
+}
+
+func (rc *RedisDB) getUserLockKey(name string) string {
+	return strings.Join([]string{rc.LocksKey, "User", name}, ":")
+}
+
+func (rc *RedisDB) getVersionLockKey() string {
+	return strings.Join([]string{rc.LocksKey, "Version"}, ":")
 }
 
 // unmarshalProtoRepoMeta will unmarshal the repoMeta blob and initialize nil maps. If the blob is empty
@@ -2254,18 +2290,6 @@ func unmarshalProtoRepoBlobs(repo string, repoBlobsBytes []byte) (*proto_go.Repo
 	return repoBlobs, nil
 }
 
-func getRepoLockKey(name string) string {
-	return strings.Join([]string{LockBuck, "Repo", name}, ":")
-}
-
-func getImageLockKey(name string) string {
-	return strings.Join([]string{LockBuck, "Image", name}, ":")
-}
-
-func getUserLockKey(name string) string {
-	return strings.Join([]string{LockBuck, "User", name}, ":")
-}
-
-func getVersionLockKey() string {
-	return strings.Join([]string{LockBuck, "Version"}, ":")
+func join(xs ...string) string {
+	return strings.Join(xs, ":")
 }

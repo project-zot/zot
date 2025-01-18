@@ -6,7 +6,8 @@
         "rootDirectory": "/tmp/zot",
         "cacheDriver": {
             "name": "redis",
-            "url": "redis://localhost:6379"
+            "url": "redis://localhost:6379",
+            "keyprefix": "zot"
         },
         "storageDriver": {
             "name": "s3",

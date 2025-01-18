@@ -12,17 +12,16 @@ import (
 	"time"
 
 	"github.com/alicebob/miniredis/v2"
-	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	guuid "github.com/gofrs/uuid"
 	"github.com/notaryproject/notation-core-go/signature/jws"
 	"github.com/notaryproject/notation-go"
 	"github.com/notaryproject/notation-go/signer"
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
-	"github.com/redis/go-redis/v9"
 	. "github.com/smartystreets/goconvey/convey"
 
 	zerr "zotregistry.dev/zot/errors"
+	"zotregistry.dev/zot/pkg/api/config"
 	zcommon "zotregistry.dev/zot/pkg/common"
 	"zotregistry.dev/zot/pkg/extensions/imagetrust"
 	"zotregistry.dev/zot/pkg/extensions/search/convert"
@@ -175,10 +174,15 @@ func TestRedisDB(t *testing.T) {
 		rootDir := t.TempDir()
 		log := log.NewLogger("debug", "")
 
-		redisDriver, err := redisdb.GetRedisClient("redis://" + miniRedis.Addr())
+		params := redisdb.DBDriverParameters{
+			KeyPrefix: "zot",
+			URL:       "redis://" + miniRedis.Addr(),
+		}
+
+		redisDriver, err := redisdb.GetRedisClient(params)
 		So(err, ShouldBeNil)
 
-		metaDB, err := redisdb.New(redisDriver, log)
+		metaDB, err := redisdb.New(redisDriver, params, log)
 		So(metaDB, ShouldNotBeNil)
 		So(err, ShouldBeNil)
 
@@ -2629,97 +2633,123 @@ func TestRelevanceSorting(t *testing.T) {
 	})
 }
 
-func TestCreateDynamo(t *testing.T) {
-	tskip.SkipDynamo(t)
-
-	Convey("Create", t, func() {
-		dynamoDBDriverParams := mdynamodb.DBDriverParameters{
-			Endpoint:               os.Getenv("DYNAMODBMOCK_ENDPOINT"),
-			RepoMetaTablename:      "RepoMetadataTable",
-			RepoBlobsInfoTablename: "RepoBlobs",
-			ImageMetaTablename:     "ImageMeta",
-			UserDataTablename:      "UserDataTable",
-			APIKeyTablename:        "ApiKeyTable",
-			VersionTablename:       "Version",
-			Region:                 "us-east-2",
-		}
-
-		client, err := mdynamodb.GetDynamoClient(dynamoDBDriverParams)
-		So(err, ShouldBeNil)
-
-		log := log.NewLogger("debug", "")
-
-		metaDB, err := meta.Create("dynamodb", client, dynamoDBDriverParams, log)
-		So(metaDB, ShouldNotBeNil)
-		So(err, ShouldBeNil)
-	})
-
-	Convey("Fails", t, func() {
-		log := log.NewLogger("debug", "")
-
-		_, err := meta.Create("dynamodb", nil, boltdb.DBParameters{RootDir: "root"}, log)
-		So(err, ShouldNotBeNil)
-
-		_, err = meta.Create("dynamodb", &dynamodb.Client{}, "bad", log)
-		So(err, ShouldNotBeNil)
-
-		metaDB, err := meta.Create("random", nil, boltdb.DBParameters{RootDir: "root"}, log)
-		So(metaDB, ShouldBeNil)
-		So(err, ShouldNotBeNil)
-	})
-}
-
 func TestCreateBoltDB(t *testing.T) {
-	Convey("Create", t, func() {
+	Convey("New() succeeds", t, func() {
 		rootDir := t.TempDir()
-		params := boltdb.DBParameters{
-			RootDir: rootDir,
-		}
-		boltDriver, err := boltdb.GetBoltDriver(params)
-		So(err, ShouldBeNil)
 
-		log := log.NewLogger("debug", "")
-
-		metaDB, err := meta.Create("boltdb", boltDriver, params, log)
-		So(metaDB, ShouldNotBeNil)
-		So(err, ShouldBeNil)
-	})
-
-	Convey("fails", t, func() {
-		log := log.NewLogger("debug", "")
-
-		_, err := meta.Create("boltdb", nil, mdynamodb.DBDriverParameters{}, log)
-		So(err, ShouldNotBeNil)
-	})
-}
-
-func TestCreateRedisDB(t *testing.T) {
-	Convey("Create", t, func() {
-		miniRedis := miniredis.RunT(t)
+		conf := config.New()
+		conf.Storage.RootDirectory = rootDir
 
 		log := log.NewLogger("debug", "")
 		So(log, ShouldNotBeNil)
 
-		redisDriver, err := redisdb.GetRedisClient("redis://" + miniRedis.Addr())
+		Convey("Test New() with unspecified driver", func() {
+			conf.Storage.CacheDriver = map[string]interface{}{}
+		})
+
+		Convey("Test New() with bad driver", func() {
+			// we default to bolt in case of misconfiguration
+			conf.Storage.CacheDriver = map[string]interface{}{"name": "somedriver"}
+		})
+
+		Convey("Test New() with specified driver", func() {
+			conf.Storage.CacheDriver = map[string]interface{}{"name": "cache"}
+		})
+
+		repoDBPath := path.Join(rootDir, "meta.db")
+		defer os.Remove(repoDBPath)
+
+		metaDB, err := meta.New(conf.Storage.StorageConfig, log)
+		So(err, ShouldBeNil)
+		So(metaDB, ShouldNotBeNil)
+
+		err = os.Chmod(repoDBPath, 0o200)
 		So(err, ShouldBeNil)
 
-		metaDB, err := meta.Create("redis", redisDriver, nil, log)
-		So(metaDB, ShouldNotBeNil)
+		metaDB, err = meta.New(conf.Storage.StorageConfig, log)
+		So(err, ShouldNotBeNil)
+		So(metaDB, ShouldBeNil)
+
+		err = os.Chmod(repoDBPath, 0o600)
 		So(err, ShouldBeNil)
 	})
+}
 
-	Convey("fails", t, func() {
+func TestCreateRedisDB(t *testing.T) {
+	Convey("Test New()", t, func() {
+		conf := config.New()
+		conf.Storage.RemoteCache = true
+
 		log := log.NewLogger("debug", "")
+		So(log, ShouldNotBeNil)
 
-		_, err := meta.Create("redis", nil, mdynamodb.DBDriverParameters{}, log)
-		So(err, ShouldNotBeNil)
+		Convey("Succeeds with default key prefix", func() {
+			miniRedis := miniredis.RunT(t)
 
-		// Redis client will not be responding
-		redisURL := "redis://127.0.0.1:" + tCommon.GetFreePort() // must not match miniRedis.Addr()
-		connOpts, _ := redis.ParseURL(redisURL)
-		cacheDB := redis.NewClient(connOpts)
+			cacheDriverParams := map[string]interface{}{
+				"name": "redis",
+				"url":  "redis://" + miniRedis.Addr(),
+			}
 
-		_, err = meta.Create("redis", cacheDB, nil, log)
-		So(err, ShouldNotBeNil)
+			conf.Storage.CacheDriver = cacheDriverParams
+
+			metaDB, err := meta.New(conf.Storage.StorageConfig, log)
+			So(err, ShouldBeNil)
+			So(metaDB, ShouldNotBeNil)
+		})
+
+		Convey("Succeeds with specific key prefix", func() {
+			miniRedis := miniredis.RunT(t)
+
+			cacheDriverParams := map[string]interface{}{
+				"name": "redis",
+				"url":  "redis://" + miniRedis.Addr(),
+				"key":  "keyPrefix",
+			}
+
+			conf.Storage.CacheDriver = cacheDriverParams
+
+			metaDB, err := meta.New(conf.Storage.StorageConfig, log)
+			So(err, ShouldBeNil)
+			So(metaDB, ShouldNotBeNil)
+		})
+
+		Convey("Fails on Ping()", func() {
+			// Redis client will not be responding
+			cacheDriverParams := map[string]interface{}{
+				"name": "redis",
+				"url":  "redis://127.0.0.1:" + tCommon.GetFreePort(),
+			}
+
+			conf.Storage.CacheDriver = cacheDriverParams
+
+			_, err := meta.New(conf.Storage.StorageConfig, log)
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("Fail on invalid parameters", func() {
+			// Bad key types
+			cacheDriverParams := map[string]interface{}{
+				"name":      "redis",
+				"url":       "redis://127.0.0.1:" + tCommon.GetFreePort(),
+				"keyprefix": true,
+			}
+
+			conf.Storage.CacheDriver = cacheDriverParams
+
+			testFunc := func() { _, _ = meta.New(conf.Storage.StorageConfig, log) }
+			So(testFunc, ShouldPanic)
+
+			cacheDriverParams = map[string]interface{}{
+				"name":      "redis",
+				"url":       false,
+				"keyprefix": "zot",
+			}
+
+			conf.Storage.CacheDriver = cacheDriverParams
+
+			testFunc = func() { _, _ = meta.New(conf.Storage.StorageConfig, log) }
+			So(testFunc, ShouldPanic)
+		})
 	})
 }

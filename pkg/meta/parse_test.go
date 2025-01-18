@@ -311,10 +311,15 @@ func TestParseStorageWithRedisDB(t *testing.T) {
 		rootDir := t.TempDir()
 		log := log.NewLogger("debug", "")
 
-		redisDriver, err := redisdb.GetRedisClient("redis://" + miniRedis.Addr())
+		params := redisdb.DBDriverParameters{
+			KeyPrefix: "zot",
+			URL:       "redis://" + miniRedis.Addr(),
+		}
+
+		redisDriver, err := redisdb.GetRedisClient(params)
 		So(err, ShouldBeNil)
 
-		metaDB, err := redisdb.New(redisDriver, log)
+		metaDB, err := redisdb.New(redisDriver, params, log)
 		So(metaDB, ShouldNotBeNil)
 		So(err, ShouldBeNil)
 

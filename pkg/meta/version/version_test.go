@@ -227,7 +227,10 @@ func TestVersioningRedisDB(t *testing.T) {
 		defer dumpRedisKeys(t, client) // Troubleshoot test failures
 
 		log := log.NewLogger("debug", "")
-		metaDB, err := redisdb.New(client, log)
+
+		params := redisdb.DBDriverParameters{KeyPrefix: "zot"}
+
+		metaDB, err := redisdb.New(client, params, log)
 		So(err, ShouldBeNil)
 
 		So(metaDB.ResetDB(), ShouldBeNil)
@@ -236,7 +239,7 @@ func TestVersioningRedisDB(t *testing.T) {
 
 		Convey("empty initial version triggers setting the default", func() {
 			// Check no value is initially set
-			actualVersion, err := client.Get(ctx, redisdb.VersionBucket).Result()
+			actualVersion, err := client.Get(ctx, metaDB.VersionKey).Result()
 			So(err, ShouldEqual, redis.Nil)
 			So(actualVersion, ShouldEqual, "")
 
@@ -244,14 +247,14 @@ func TestVersioningRedisDB(t *testing.T) {
 			So(err, ShouldBeNil)
 
 			// Check default version is added in the DB
-			actualVersion, err = client.Get(ctx, redisdb.VersionBucket).Result()
+			actualVersion, err = client.Get(ctx, metaDB.VersionKey).Result()
 			So(err, ShouldBeNil)
 			So(actualVersion, ShouldEqual, version.CurrentVersion)
 		})
 
 		Convey("initial version with a bad value raises an error", func() {
 			// Set invalid initial value
-			err = client.Set(ctx, redisdb.VersionBucket, "VInvalid", 0).Err()
+			err = client.Set(ctx, metaDB.VersionKey, "VInvalid", 0).Err()
 			So(err, ShouldBeNil)
 
 			// Check error when attempting to patch

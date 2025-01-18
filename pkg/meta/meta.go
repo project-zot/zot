@@ -3,10 +3,6 @@ package meta
 import (
 	"fmt"
 
-	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
-	"github.com/redis/go-redis/v9"
-	"go.etcd.io/bbolt"
-
 	"zotregistry.dev/zot/errors"
 	"zotregistry.dev/zot/pkg/api/config"
 	"zotregistry.dev/zot/pkg/log"
@@ -27,19 +23,18 @@ func New(storageConfig config.StorageConfig, log log.Logger) (mTypes.MetaDB, err
 				return nil, err
 			}
 
-			return Create(sconstants.DynamoDBDriverName, client, dynamoParams, log) //nolint:contextcheck
+			return mdynamodb.New(client, dynamoParams, log) //nolint:contextcheck
 		}
 
 		if storageConfig.CacheDriver["name"] == sconstants.RedisDriverName {
-			// go-redis supports connecting via the redis uri specification (more convenient than parameter parsing)
-			redisURL := getRedisURL(storageConfig.CacheDriver, log)
+			redisParams := getRedisParams(storageConfig.CacheDriver, log)
 
-			client, err := redisdb.GetRedisClient(redisURL)
+			client, err := redisdb.GetRedisClient(redisParams)
 			if err != nil { //nolint:wsl
 				return nil, err
 			}
 
-			return Create(sconstants.RedisDriverName, client, nil, log) //nolint:contextcheck
+			return redisdb.New(client, redisParams, log) //nolint:contextcheck
 		}
 
 		// this behavior is also mentioned in the configuration validation logic inside the cli package
@@ -61,90 +56,34 @@ func New(storageConfig config.StorageConfig, log log.Logger) (mTypes.MetaDB, err
 		return nil, err
 	}
 
-	return Create("boltdb", driver, params, log) //nolint:contextcheck
-}
-
-func Create(dbtype string, dbDriver, parameters interface{}, log log.Logger, //nolint:contextcheck
-) (mTypes.MetaDB, error,
-) {
-	switch dbtype {
-	case "boltdb":
-		{
-			properDriver, ok := dbDriver.(*bbolt.DB)
-			if !ok {
-				log.Error().Err(errors.ErrTypeAssertionFailed).
-					Msgf("failed to cast type, expected type '%T' but got '%T'", &bbolt.DB{}, dbDriver)
-
-				return nil, errors.ErrTypeAssertionFailed
-			}
-
-			return boltdb.New(properDriver, log)
-		}
-	case "redis":
-		{
-			properDriver, ok := dbDriver.(*redis.Client)
-			if !ok {
-				log.Error().Err(errors.ErrTypeAssertionFailed).
-					Msgf("failed to cast type, expected type '%T' but got '%T'", &redis.Client{}, dbDriver)
-
-				return nil, errors.ErrTypeAssertionFailed
-			}
-
-			return redisdb.New(properDriver, log)
-		}
-	case "dynamodb":
-		{
-			properDriver, ok := dbDriver.(*dynamodb.Client)
-			if !ok {
-				log.Error().Err(errors.ErrTypeAssertionFailed).
-					Msgf("failed to cast type, expected type '%T' but got '%T'", &dynamodb.Client{}, dbDriver)
-
-				return nil, errors.ErrTypeAssertionFailed
-			}
-
-			properParameters, ok := parameters.(mdynamodb.DBDriverParameters)
-			if !ok {
-				log.Error().Err(errors.ErrTypeAssertionFailed).
-					Msgf("failed to cast type, expected type '%T' but got '%T'", mdynamodb.DBDriverParameters{},
-						parameters)
-
-				return nil, errors.ErrTypeAssertionFailed
-			}
-
-			return mdynamodb.New(properDriver, properParameters, log)
-		}
-	default:
-		{
-			return nil, errors.ErrBadConfig
-		}
-	}
+	return boltdb.New(driver, log) //nolint:contextcheck
 }
 
 func getDynamoParams(cacheDriverConfig map[string]interface{}, log log.Logger) mdynamodb.DBDriverParameters {
 	allParametersOk := true
 
-	endpoint, ok := toStringIfOk(cacheDriverConfig, "endpoint", log)
+	endpoint, ok := toStringIfOk(cacheDriverConfig, "endpoint", "", log)
 	allParametersOk = allParametersOk && ok
 
-	region, ok := toStringIfOk(cacheDriverConfig, "region", log)
+	region, ok := toStringIfOk(cacheDriverConfig, "region", "", log)
 	allParametersOk = allParametersOk && ok
 
-	repoMetaTablename, ok := toStringIfOk(cacheDriverConfig, "repometatablename", log)
+	repoMetaTablename, ok := toStringIfOk(cacheDriverConfig, "repometatablename", "", log)
 	allParametersOk = allParametersOk && ok
 
-	repoBlobsInfoTablename, ok := toStringIfOk(cacheDriverConfig, "repoblobsinfotablename", log)
+	repoBlobsInfoTablename, ok := toStringIfOk(cacheDriverConfig, "repoblobsinfotablename", "", log)
 	allParametersOk = allParametersOk && ok
 
-	imageMetaTablename, ok := toStringIfOk(cacheDriverConfig, "imagemetatablename", log)
+	imageMetaTablename, ok := toStringIfOk(cacheDriverConfig, "imagemetatablename", "", log)
 	allParametersOk = allParametersOk && ok
 
-	apiKeyTablename, ok := toStringIfOk(cacheDriverConfig, "apikeytablename", log)
+	apiKeyTablename, ok := toStringIfOk(cacheDriverConfig, "apikeytablename", "", log)
 	allParametersOk = allParametersOk && ok
 
-	versionTablename, ok := toStringIfOk(cacheDriverConfig, "versiontablename", log)
+	versionTablename, ok := toStringIfOk(cacheDriverConfig, "versiontablename", "", log)
 	allParametersOk = allParametersOk && ok
 
-	userDataTablename, ok := toStringIfOk(cacheDriverConfig, "userdatatablename", log)
+	userDataTablename, ok := toStringIfOk(cacheDriverConfig, "userdatatablename", "", log)
 	allParametersOk = allParametersOk && ok
 
 	if !allParametersOk {
@@ -163,20 +102,38 @@ func getDynamoParams(cacheDriverConfig map[string]interface{}, log log.Logger) m
 	}
 }
 
-func getRedisURL(cacheDriverConfig map[string]interface{}, log log.Logger) string {
-	url, ok := toStringIfOk(cacheDriverConfig, "url", log)
+func getRedisParams(cacheDriverConfig map[string]interface{}, log log.Logger) redisdb.DBDriverParameters {
+	url, ok := toStringIfOk(cacheDriverConfig, "url", "", log)
 
 	if !ok {
 		log.Panic().Msg("redis parameters are not specified correctly, can't proceed")
 	}
 
-	return url
-}
-
-func toStringIfOk(cacheDriverConfig map[string]interface{}, param string, log log.Logger) (string, bool) {
-	val, ok := cacheDriverConfig[param]
+	keyPrefix, ok := toStringIfOk(cacheDriverConfig, "keyprefix", "zot", log)
 
 	if !ok {
+		log.Panic().Msg("redis parameters are not specified correctly, can't proceed")
+	}
+
+	return redisdb.DBDriverParameters{
+		URL:       url,
+		KeyPrefix: keyPrefix,
+	}
+}
+
+func toStringIfOk(cacheDriverConfig map[string]interface{},
+	param string,
+	defaultVal string,
+	log log.Logger,
+) (string, bool) {
+	val, ok := cacheDriverConfig[param]
+
+	if !ok && defaultVal != "" {
+		log.Info().Str("field", param).Str("default", defaultVal).
+			Msg("field is not present in CacheDriver config, using default value")
+
+		return defaultVal, true
+	} else if !ok {
 		log.Error().Str("field", param).Msg("failed to parse CacheDriver config, field is not present")
 
 		return "", false

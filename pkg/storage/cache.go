@@ -54,6 +54,7 @@ func CreateCacheDatabaseDriver(storageConfig config.StorageConfig, log zlog.Logg
 			redisParams := cache.RedisDriverParameters{}
 			redisParams.RootDir = storageConfig.RootDirectory
 			redisParams.URL, _ = storageConfig.CacheDriver["url"].(string)
+			redisParams.KeyPrefix, _ = storageConfig.CacheDriver["keyprefix"].(string)
 			redisParams.UseRelPaths = getUseRelPaths(&storageConfig)
 
 			return Create(name, redisParams, log)

@@ -72,4 +72,13 @@ func TestCache(t *testing.T) {
 		So(err, ShouldNotBeNil)
 		So(err, ShouldEqual, errors.ErrEmptyValue)
 	})
+
+	Convey("Invalid cache driver dbtype", t, func() {
+		log := log.NewLogger("debug", "")
+		So(log, ShouldNotBeNil)
+
+		cacheDriver, err := storage.Create("sometype", map[string]interface{}{}, log)
+		So(err, ShouldEqual, errors.ErrBadConfig)
+		So(cacheDriver, ShouldBeNil)
+	})
 }
