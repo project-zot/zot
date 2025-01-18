@@ -160,12 +160,12 @@ func (httpClient *Client) Ping() bool {
 	defer cancel()
 
 	//nolint: bodyclose
-	resp, _, err := httpClient.get(ctx, pingURL.String(), false)
+	resp, _, err := httpClient.get(ctx, pingURL.String(), "", false)
 	if err != nil {
 		return false
 	}
 
-	httpClient.getAuthType(resp)
+	httpClient.authType = getAuthType(resp)
 
 	if resp.StatusCode >= http.StatusOK && resp.StatusCode <= http.StatusForbidden {
 		return true
@@ -220,21 +220,6 @@ func (httpClient *Client) MakeGetRequest(ctx context.Context, resultPtr interfac
 	return body, resp.Header, resp.StatusCode, err
 }
 
-func (httpClient *Client) getAuthType(resp *http.Response) {
-	authHeader := resp.Header.Get("www-authenticate")
-
-	authHeaderLower := strings.ToLower(authHeader)
-
-	//nolint: gocritic
-	if strings.Contains(authHeaderLower, "bearer") {
-		httpClient.authType = tokenAuth
-	} else if strings.Contains(authHeaderLower, "basic") {
-		httpClient.authType = basicAuth
-	} else {
-		httpClient.authType = noneAuth
-	}
-}
-
 func (httpClient *Client) setupAuth(req *http.Request, namespace string) error {
 	if httpClient.authType == tokenAuth {
 		token, err := httpClient.getToken(req.URL.String(), namespace)
@@ -254,13 +239,19 @@ func (httpClient *Client) setupAuth(req *http.Request, namespace string) error {
 	return nil
 }
 
-func (httpClient *Client) get(ctx context.Context, url string, setAuth bool) (*http.Response, []byte, error) {
+func (httpClient *Client) get(ctx context.Context, url string, mediaType string,
+	setBasicAuth bool,
+) (*http.Response, []byte, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil) //nolint
 	if err != nil {
 		return nil, nil, err
 	}
 
-	if setAuth && httpClient.config.Username != "" && httpClient.config.Password != "" {
+	if mediaType != "" {
+		req.Header.Set("Accept", mediaType)
+	}
+
+	if setBasicAuth && httpClient.config.Username != "" && httpClient.config.Password != "" {
 		req.SetBasicAuth(httpClient.config.Username, httpClient.config.Password)
 	}
 
@@ -298,7 +289,16 @@ func (httpClient *Client) makeAndDoRequest(method, mediaType, namespace, urlStr 
 		return nil, nil, err
 	}
 
-	if err := httpClient.setupAuth(req, namespace); err != nil {
+	err = httpClient.setupAuth(req, namespace)
+	if err != nil {
+		// harbor catalog requests return basicAuth by default, even if bearer is used on the rest of endpoints.
+		if errors.Is(err, zerr.ErrReceivedUnexpectedAuthHeader) {
+			httpClient.log.Err(err).Msg("expected bearer auth header, received basic, retrying with basic auth...")
+
+			// try with basic auth
+			return httpClient.get(context.Background(), urlStr, mediaType, true)
+		}
+
 		return nil, nil, err
 	}
 
@@ -311,25 +311,27 @@ func (httpClient *Client) makeAndDoRequest(method, mediaType, namespace, urlStr 
 		return nil, nil, err
 	}
 
-	// let's retry one time if we get an insufficient_scope error
-	if ok, challengeParams := needsRetryWithUpdatedScope(err, resp); ok {
-		var tokenURL *url.URL
+	if httpClient.authType == tokenAuth {
+		// let's retry one time if we get an insufficient_scope error
+		if ok, challengeParams := needsRetryWithUpdatedScope(err, resp); ok {
+			var tokenURL *url.URL
 
-		var token *bearerToken
+			var token *bearerToken
 
-		tokenURL, err = getTokenURLFromChallengeParams(challengeParams, httpClient.config.Username)
-		if err != nil {
-			return nil, nil, err
+			tokenURL, err = getTokenURLFromChallengeParams(challengeParams, httpClient.config.Username)
+			if err != nil {
+				return nil, nil, err
+			}
+
+			token, err = httpClient.getTokenFromURL(tokenURL.String(), namespace)
+			if err != nil {
+				return nil, nil, err
+			}
+
+			req.Header.Set("Authorization", "Bearer "+token.Token)
+
+			resp, body, err = httpClient.doRequest(req)
 		}
-
-		token, err = httpClient.getTokenFromURL(tokenURL.String(), namespace)
-		if err != nil {
-			return nil, nil, err
-		}
-
-		req.Header.Set("Authorization", "Bearer "+token.Token)
-
-		resp, body, err = httpClient.doRequest(req)
 	}
 
 	return resp, body, err
@@ -337,7 +339,7 @@ func (httpClient *Client) makeAndDoRequest(method, mediaType, namespace, urlStr 
 
 func (httpClient *Client) getTokenFromURL(urlStr, namespace string) (*bearerToken, error) {
 	//nolint: bodyclose
-	resp, body, err := httpClient.get(context.Background(), urlStr, true)
+	resp, body, err := httpClient.get(context.Background(), urlStr, "", true)
 	if err != nil {
 		return nil, err
 	}
@@ -366,12 +368,12 @@ func (httpClient *Client) getToken(urlStr, namespace string) (*bearerToken, erro
 	}
 
 	//nolint: bodyclose
-	resp, _, err := httpClient.get(context.Background(), urlStr, false)
+	resp, _, err := httpClient.get(context.Background(), urlStr, "", false)
 	if err != nil {
 		return nil, err
 	}
 
-	challengeParams, err := parseAuthHeader(resp)
+	challengeParams, err := parseBearerAuthHeader(resp)
 	if err != nil {
 		return nil, err
 	}
@@ -382,6 +384,21 @@ func (httpClient *Client) getToken(urlStr, namespace string) (*bearerToken, erro
 	}
 
 	return httpClient.getTokenFromURL(tokenURL.String(), namespace)
+}
+
+func getAuthType(resp *http.Response) authType {
+	authHeader := resp.Header.Get("www-authenticate")
+
+	authHeaderLower := strings.ToLower(authHeader)
+
+	//nolint: gocritic
+	if strings.Contains(authHeaderLower, "bearer") {
+		return tokenAuth
+	} else if strings.Contains(authHeaderLower, "basic") {
+		return basicAuth
+	} else {
+		return noneAuth
+	}
 }
 
 func newBearerToken(blob []byte) (*bearerToken, error) {
@@ -426,7 +443,7 @@ func getTokenURLFromChallengeParams(params challengeParams, account string) (*ur
 	return parsedRealm, nil
 }
 
-func parseAuthHeader(resp *http.Response) (challengeParams, error) {
+func parseBearerAuthHeader(resp *http.Response) (challengeParams, error) {
 	authHeader := resp.Header.Get("www-authenticate")
 
 	authHeaderSlice := strings.Split(authHeader, ",")
@@ -434,6 +451,11 @@ func parseAuthHeader(resp *http.Response) (challengeParams, error) {
 	params := challengeParams{}
 
 	for _, elem := range authHeaderSlice {
+		// expected bearer auth header
+		if strings.Contains(strings.ToLower(elem), "basic") {
+			return params, zerr.ErrReceivedUnexpectedAuthHeader
+		}
+
 		if strings.Contains(strings.ToLower(elem), "bearer") {
 			elem = strings.Split(elem, " ")[1]
 		}
@@ -469,7 +491,7 @@ func parseAuthHeader(resp *http.Response) (challengeParams, error) {
 func needsRetryWithUpdatedScope(err error, resp *http.Response) (bool, challengeParams) {
 	params := challengeParams{}
 	if err == nil && resp.StatusCode == http.StatusUnauthorized {
-		params, err = parseAuthHeader(resp)
+		params, err = parseBearerAuthHeader(resp)
 		if err != nil {
 			return false, params
 		}
