@@ -13,6 +13,7 @@ import (
 	"time"
 
 	zerr "zotregistry.dev/zot/errors"
+	"zotregistry.dev/zot/pkg/api/constants"
 	"zotregistry.dev/zot/pkg/common"
 	"zotregistry.dev/zot/pkg/log"
 )
@@ -165,7 +166,7 @@ func (httpClient *Client) Ping() bool {
 		return false
 	}
 
-	httpClient.getAuthType(resp)
+	httpClient.authType = getAuthType(resp)
 
 	if resp.StatusCode >= http.StatusOK && resp.StatusCode <= http.StatusForbidden {
 		return true
@@ -218,21 +219,6 @@ func (httpClient *Client) MakeGetRequest(ctx context.Context, resultPtr interfac
 	}
 
 	return body, resp.Header, resp.StatusCode, err
-}
-
-func (httpClient *Client) getAuthType(resp *http.Response) {
-	authHeader := resp.Header.Get("www-authenticate")
-
-	authHeaderLower := strings.ToLower(authHeader)
-
-	//nolint: gocritic
-	if strings.Contains(authHeaderLower, "bearer") {
-		httpClient.authType = tokenAuth
-	} else if strings.Contains(authHeaderLower, "basic") {
-		httpClient.authType = basicAuth
-	} else {
-		httpClient.authType = noneAuth
-	}
 }
 
 func (httpClient *Client) setupAuth(req *http.Request, namespace string) error {
@@ -298,7 +284,15 @@ func (httpClient *Client) makeAndDoRequest(method, mediaType, namespace, urlStr 
 		return nil, nil, err
 	}
 
-	if err := httpClient.setupAuth(req, namespace); err != nil {
+	err = httpClient.setupAuth(req, namespace)
+	if err != nil {
+		// harbor catalog requests return basicAuth by default, even if bearer is used on the rest of endpoints.
+		if errors.Is(err, zerr.ErrUnexpectedAuthHeader) &&
+			strings.Contains(urlStr, constants.ExtCatalogPrefix) {
+			// try with basic auth
+			return httpClient.get(context.Background(), urlStr, true)
+		}
+
 		return nil, nil, err
 	}
 
@@ -371,7 +365,7 @@ func (httpClient *Client) getToken(urlStr, namespace string) (*bearerToken, erro
 		return nil, err
 	}
 
-	challengeParams, err := parseAuthHeader(resp)
+	challengeParams, err := parseBearerAuthHeader(resp)
 	if err != nil {
 		return nil, err
 	}
@@ -382,6 +376,21 @@ func (httpClient *Client) getToken(urlStr, namespace string) (*bearerToken, erro
 	}
 
 	return httpClient.getTokenFromURL(tokenURL.String(), namespace)
+}
+
+func getAuthType(resp *http.Response) authType {
+	authHeader := resp.Header.Get("www-authenticate")
+
+	authHeaderLower := strings.ToLower(authHeader)
+
+	//nolint: gocritic
+	if strings.Contains(authHeaderLower, "bearer") {
+		return tokenAuth
+	} else if strings.Contains(authHeaderLower, "basic") {
+		return basicAuth
+	} else {
+		return noneAuth
+	}
 }
 
 func newBearerToken(blob []byte) (*bearerToken, error) {
@@ -426,7 +435,7 @@ func getTokenURLFromChallengeParams(params challengeParams, account string) (*ur
 	return parsedRealm, nil
 }
 
-func parseAuthHeader(resp *http.Response) (challengeParams, error) {
+func parseBearerAuthHeader(resp *http.Response) (challengeParams, error) {
 	authHeader := resp.Header.Get("www-authenticate")
 
 	authHeaderSlice := strings.Split(authHeader, ",")
@@ -434,6 +443,10 @@ func parseAuthHeader(resp *http.Response) (challengeParams, error) {
 	params := challengeParams{}
 
 	for _, elem := range authHeaderSlice {
+		if strings.Contains(strings.ToLower(elem), "basic") {
+			return params, zerr.ErrUnexpectedAuthHeader
+		}
+
 		if strings.Contains(strings.ToLower(elem), "bearer") {
 			elem = strings.Split(elem, " ")[1]
 		}
@@ -469,7 +482,7 @@ func parseAuthHeader(resp *http.Response) (challengeParams, error) {
 func needsRetryWithUpdatedScope(err error, resp *http.Response) (bool, challengeParams) {
 	params := challengeParams{}
 	if err == nil && resp.StatusCode == http.StatusUnauthorized {
-		params, err = parseAuthHeader(resp)
+		params, err = parseBearerAuthHeader(resp)
 		if err != nil {
 			return false, params
 		}
