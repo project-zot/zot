@@ -1,0 +1,29 @@
+{
+    "distSpecVersion": "1.1.0",
+    "storage": {
+        "rootDirectory": "/tmp/zot",
+        "gc": true,
+        "dedupe": false,
+        "cacheDriver": {
+            "name": "redis",
+            "url": "redis://localhost:6379"
+        },
+        "storageDriver": {
+            "name": "s3",
+            "rootdirectory": "/zot",
+            "region": "us-east-2",
+            "bucket": "zot-storage",
+            "regionendpoint": "http://localhost:9000",
+            "secure": false,
+            "skipverify": false
+        }
+    },
+    "http": {
+        "address": "127.0.0.1",
+        "port": "8081"
+    },
+    "log": {
+        "level": "debug",
+        "output": "/dev/null"
+    }
+}

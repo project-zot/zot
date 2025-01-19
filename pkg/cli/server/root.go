@@ -257,7 +257,9 @@ func validateCacheConfig(cfg *config.Config, log zlog.Logger) error {
 
 	if cfg.Storage.CacheDriver != nil && cfg.Storage.RemoteCache {
 		// local storage with remote database
-		if cfg.Storage.StorageDriver == nil {
+		// redis is supported with both local and S3 storage, while dynamodb is only supported with S3
+		// redis is only supported with local storage in a non-clustering scenario with a single zot instance,
+		if cfg.Storage.StorageDriver == nil && cfg.Storage.CacheDriver["name"] != storageConstants.RedisDriverName {
 			msg := "invalid database config, cannot have local storage driver with remote database!"
 			log.Error().Err(zerr.ErrBadConfig).Msg(msg)
 
@@ -265,7 +267,8 @@ func validateCacheConfig(cfg *config.Config, log zlog.Logger) error {
 		}
 
 		// unsupported database driver
-		if cfg.Storage.CacheDriver["name"] != storageConstants.DynamoDBDriverName {
+		if cfg.Storage.CacheDriver["name"] != storageConstants.DynamoDBDriverName &&
+			cfg.Storage.CacheDriver["name"] != storageConstants.RedisDriverName {
 			msg := "invalid database config, unsupported database driver"
 			log.Error().Err(zerr.ErrBadConfig).Interface("cacheDriver", cfg.Storage.CacheDriver["name"]).Msg(msg)
 
