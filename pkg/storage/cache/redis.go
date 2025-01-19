@@ -26,8 +26,8 @@ type RedisDriver struct {
 }
 
 type RedisDriverParameters struct {
+	Client      redis.UniversalClient
 	RootDir     string
-	URL         string // https://github.com/redis/redis-specifications/blob/master/uri/redis.txt
 	UseRelPaths bool
 	KeyPrefix   string
 }
@@ -41,19 +41,12 @@ func NewRedisCache(parameters interface{}, log zlog.Logger) (*RedisDriver, error
 		return nil, zerr.ErrTypeAssertionFailed
 	}
 
-	connOpts, err := redis.ParseURL(properParameters.URL)
-	if err != nil {
-		log.Error().Err(err).Str("directory", properParameters.URL).Msg("failed to parse redis URL")
-
-		return nil, err
-	}
-
 	keyPrefix := properParameters.KeyPrefix
 	if len(keyPrefix) == 0 {
 		keyPrefix = "zot"
 	}
 
-	cacheDB := redis.NewClient(connOpts)
+	cacheDB := properParameters.Client
 
 	if _, err := cacheDB.Ping(context.Background()).Result(); err != nil {
 		log.Error().Err(err).Msg("failed to ping redis cache")
@@ -126,8 +119,9 @@ func (d *RedisDriver) PutBlob(digest godigest.Digest, path string) error {
 	}
 
 	defer func() {
-		_, err := lock.Unlock()
-		d.log.Error().Err(err).Str("digest", digest.String()).Msg("failed to release redis lock")
+		if _, err := lock.Unlock(); err != nil {
+			d.log.Error().Err(err).Str("digest", digest.String()).Msg("failed to release redis lock")
+		}
 	}()
 
 	// see if the blob digest exists.
@@ -292,8 +286,9 @@ func (d *RedisDriver) DeleteBlob(digest godigest.Digest, path string) error {
 	}
 
 	defer func() {
-		_, err := lock.Unlock()
-		d.log.Error().Err(err).Str("digest", digest.String()).Msg("failed to release redis lock")
+		if _, err := lock.Unlock(); err != nil {
+			d.log.Error().Err(err).Str("digest", digest.String()).Msg("failed to release redis lock")
+		}
 	}()
 
 	pathSet := d.join(constants.BlobsCache, constants.DuplicatesBucket, digest.String())

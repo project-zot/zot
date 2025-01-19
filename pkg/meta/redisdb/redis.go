@@ -56,6 +56,10 @@ type RedisDB struct {
 	LocksKey           string
 }
 
+type DBDriverParameters struct {
+	KeyPrefix string
+}
+
 func New(client redis.UniversalClient, params DBDriverParameters, log log.Logger) (*RedisDB, error) {
 	redisWrapper := RedisDB{
 		Client:             client,
@@ -2208,8 +2212,9 @@ func (rc *RedisDB) withRSLocks(ctx context.Context, lockNames []string, wrappedF
 		}
 
 		defer func() {
-			_, err := lock.UnlockContext(ctx)
-			rc.Log.Error().Err(err).Str("lockName", lockName).Msg("failed to release redis lock")
+			if _, err := lock.UnlockContext(ctx); err != nil {
+				rc.Log.Error().Err(err).Str("lockName", lockName).Msg("failed to release redis lock")
+			}
 		}()
 	}
 
