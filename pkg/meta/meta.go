@@ -5,6 +5,7 @@ import (
 
 	"zotregistry.dev/zot/errors"
 	"zotregistry.dev/zot/pkg/api/config"
+	"zotregistry.dev/zot/pkg/common"
 	"zotregistry.dev/zot/pkg/log"
 	"zotregistry.dev/zot/pkg/meta/boltdb"
 	mdynamodb "zotregistry.dev/zot/pkg/meta/dynamodb"
@@ -29,7 +30,7 @@ func New(storageConfig config.StorageConfig, log log.Logger) (mTypes.MetaDB, err
 		if storageConfig.CacheDriver["name"] == sconstants.RedisDriverName {
 			redisParams := getRedisParams(storageConfig.CacheDriver, log)
 
-			client, err := redisdb.GetRedisClient(redisParams)
+			client, err := common.GetRedisClient(storageConfig.CacheDriver, log)
 			if err != nil { //nolint:wsl
 				return nil, err
 			}
@@ -103,20 +104,12 @@ func getDynamoParams(cacheDriverConfig map[string]interface{}, log log.Logger) m
 }
 
 func getRedisParams(cacheDriverConfig map[string]interface{}, log log.Logger) redisdb.DBDriverParameters {
-	url, ok := toStringIfOk(cacheDriverConfig, "url", "", log)
-
-	if !ok {
-		log.Panic().Msg("redis parameters are not specified correctly, can't proceed")
-	}
-
 	keyPrefix, ok := toStringIfOk(cacheDriverConfig, "keyprefix", "zot", log)
-
 	if !ok {
 		log.Panic().Msg("redis parameters are not specified correctly, can't proceed")
 	}
 
 	return redisdb.DBDriverParameters{
-		URL:       url,
 		KeyPrefix: keyPrefix,
 	}
 }
@@ -140,7 +133,6 @@ func toStringIfOk(cacheDriverConfig map[string]interface{},
 	}
 
 	str, ok := val.(string)
-
 	if !ok {
 		log.Error().Str("parameter", param).Msg("failed to parse CacheDriver config, parameter isn't a string")
 
@@ -153,5 +145,5 @@ func toStringIfOk(cacheDriverConfig map[string]interface{},
 		return "", false
 	}
 
-	return str, ok
+	return str, true
 }

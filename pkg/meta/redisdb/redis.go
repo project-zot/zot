@@ -56,6 +56,10 @@ type RedisDB struct {
 	LocksKey           string
 }
 
+type DBDriverParameters struct {
+	KeyPrefix string
+}
+
 func New(client redis.UniversalClient, params DBDriverParameters, log log.Logger) (*RedisDB, error) {
 	redisWrapper := RedisDB{
 		Client:             client,

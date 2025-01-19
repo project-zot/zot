@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"path"
 	"testing"
+	"time"
 
 	"github.com/alicebob/miniredis/v2"
 	"github.com/go-redis/redismock/v9"
@@ -34,13 +35,11 @@ func TestRedisCache(t *testing.T) {
 		So(cacheDriver, ShouldBeNil)
 		So(err, ShouldNotBeNil)
 
-		cacheDriver, err = storage.Create("redis",
-			cache.RedisDriverParameters{dir, "failBadAddress", true, "zot"}, log)
-		So(cacheDriver, ShouldBeNil)
-		So(err, ShouldNotBeNil)
+		connOpts, _ := redis.ParseURL("redis://" + miniRedis.Addr())
+		client := redis.NewClient(connOpts)
 
 		cacheDriver, err = storage.Create("redis",
-			cache.RedisDriverParameters{dir, "redis://" + miniRedis.Addr(), true, "zot"}, log)
+			cache.RedisDriverParameters{client, dir, true, "zot"}, log)
 		So(cacheDriver, ShouldNotBeNil)
 		So(err, ShouldBeNil)
 
@@ -81,9 +80,13 @@ func TestRedisCache(t *testing.T) {
 		So(err, ShouldNotBeNil)
 		So(err, ShouldEqual, zerr.ErrEmptyValue)
 
-		cacheDriver, _ = storage.Create("redis",
-			cache.RedisDriverParameters{t.TempDir(), "redis://" + miniRedis.Addr() + "/5", false, "zot"}, log)
+		connOpts, _ = redis.ParseURL("redis://" + miniRedis.Addr() + "/5")
+		client = redis.NewClient(connOpts)
+
+		cacheDriver, err = storage.Create("redis",
+			cache.RedisDriverParameters{client, t.TempDir(), false, "zot"}, log)
 		So(cacheDriver, ShouldNotBeNil)
+		So(err, ShouldBeNil)
 
 		err = cacheDriver.PutBlob("key1", "originalBlobPath")
 		So(err, ShouldBeNil)
@@ -149,8 +152,11 @@ func TestRedisCache(t *testing.T) {
 		log := log.NewLogger("debug", "")
 		So(log, ShouldNotBeNil)
 
+		connOpts, _ := redis.ParseURL("redis://" + miniRedis.Addr())
+		client := redis.NewClient(connOpts)
+
 		cacheDriver, err := storage.Create("redis",
-			cache.RedisDriverParameters{dir, "redis://" + miniRedis.Addr(), true, "zot"}, log)
+			cache.RedisDriverParameters{client, dir, true, "zot"}, log)
 		So(cacheDriver, ShouldNotBeNil)
 		So(err, ShouldBeNil)
 
@@ -198,13 +204,15 @@ func TestRedisCacheError(t *testing.T) {
 	Convey("Make a new cache", t, func() {
 		dir := t.TempDir()
 		redisURL := "redis://127.0.0.1:" + test.GetFreePort()
+		connOpts, _ := redis.ParseURL(redisURL)
+		brokenClient := redis.NewClient(connOpts)
 
 		log := log.NewLogger("debug", "")
 		So(log, ShouldNotBeNil)
 
 		// redis server is not running
 		cacheDriver, err := storage.Create("redis",
-			cache.RedisDriverParameters{dir, redisURL, true, "zot"}, log)
+			cache.RedisDriverParameters{brokenClient, dir, true, "zot"}, log)
 		So(err, ShouldNotBeNil)
 		So(cacheDriver, ShouldBeNil)
 	})
@@ -216,17 +224,20 @@ func TestRedisCacheError(t *testing.T) {
 		log := log.NewLogger("debug", "")
 		So(log, ShouldNotBeNil)
 
+		connOpts, _ := redis.ParseURL("redis://" + miniRedis.Addr())
+		workingClient := redis.NewClient(connOpts)
+
 		redisURL := "redis://127.0.0.1:" + test.GetFreePort() // must not match miniRedis.Addr()
-		connOpts, _ := redis.ParseURL(redisURL)
-		cacheDB := redis.NewClient(connOpts)
+		connOpts, _ = redis.ParseURL(redisURL)
+		brokenClient := redis.NewClient(connOpts)
 
 		cacheDriver, err := cache.NewRedisCache(
-			cache.RedisDriverParameters{dir, "redis://" + miniRedis.Addr(), false, "zot"}, log)
+			cache.RedisDriverParameters{workingClient, dir, false, "zot"}, log)
 		So(cacheDriver, ShouldNotBeNil)
 		So(err, ShouldBeNil)
 
 		// replace the working driver with the broken one
-		cacheDriver.SetClient(cacheDB)
+		cacheDriver.SetClient(brokenClient)
 
 		err = cacheDriver.PutBlob("key", "val")
 		So(err, ShouldNotBeNil)
@@ -247,7 +258,6 @@ func TestRedisCacheError(t *testing.T) {
 
 func TestRedisMocked(t *testing.T) {
 	Convey("Redis tests using mocks", t, func() {
-		miniRedis := miniredis.RunT(t)
 		dir := t.TempDir()
 
 		log := log.NewLogger("debug", "")
@@ -256,20 +266,16 @@ func TestRedisMocked(t *testing.T) {
 		tests := []cache.RedisDriverParameters{
 			{
 				RootDir:     dir,
-				URL:         "redis://" + miniRedis.Addr(),
 				UseRelPaths: true,
 			}, {
 				RootDir:     dir,
-				URL:         "redis://" + miniRedis.Addr(),
 				UseRelPaths: false,
 			}, {
 				RootDir:     dir,
-				URL:         "redis://" + miniRedis.Addr(),
 				UseRelPaths: true,
 				KeyPrefix:   "someprefix",
 			}, {
 				RootDir:     dir,
-				URL:         "redis://" + miniRedis.Addr(),
 				UseRelPaths: true,
 				KeyPrefix:   "zot",
 			},
@@ -277,10 +283,6 @@ func TestRedisMocked(t *testing.T) {
 
 		for i, redisDriverParams := range tests {
 			testID := fmt.Sprintf(" %d", i)
-
-			cacheDriver, err := cache.NewRedisCache(redisDriverParams, log)
-			So(cacheDriver, ShouldNotBeNil)
-			So(err, ShouldBeNil)
 
 			keyPrefix := redisDriverParams.KeyPrefix
 			if len(keyPrefix) == 0 {
@@ -299,42 +301,59 @@ func TestRedisMocked(t *testing.T) {
 			Convey("PutBlob HExists error"+testID, func() {
 				// initialize mock client
 				cacheDB, mock := redismock.NewClientMock()
+				redisDriverParams.Client = cacheDB
 
-				// replace the working driver with the mock
-				cacheDriver.SetClient(cacheDB)
+				mock.ExpectPing().SetVal("OK")
+				cacheDriver, err := cache.NewRedisCache(redisDriverParams, log)
+				So(cacheDriver, ShouldNotBeNil)
+				So(err, ShouldBeNil)
 
+				mock.Regexp().ExpectSetNX(keyPrefix+"locks:key", `.*`, 8*time.Second).SetVal(true)
 				mock.ExpectHExists(keyPrefix+constants.BlobsCache+":"+constants.OriginalBucket, "key").
 					SetErr(ErrTestError)
 
 				err = cacheDriver.PutBlob("key", path.Join(dir, "val"))
 				So(err, ShouldEqual, ErrTestError)
+
+				err = mock.ExpectationsWereMet()
+				So(err, ShouldBeNil)
 			})
 
 			Convey("PutBlob HSet error"+testID, func() {
 				// initialize mock client
 				cacheDB, mock := redismock.NewClientMock()
+				redisDriverParams.Client = cacheDB
 
-				// replace the working driver with the mock
-				cacheDriver.SetClient(cacheDB)
+				mock.ExpectPing().SetVal("OK")
+				cacheDriver, err := cache.NewRedisCache(redisDriverParams, log)
+				So(cacheDriver, ShouldNotBeNil)
+				So(err, ShouldBeNil)
 
+				mock.Regexp().ExpectSetNX(keyPrefix+"locks:key", `.*`, 8*time.Second).SetVal(true)
 				mock.ExpectHExists(keyPrefix+constants.BlobsCache+":"+constants.OriginalBucket, "key").
 					SetVal(false)
 				mock.ExpectTxPipeline()
 				mock.ExpectHSet(keyPrefix+constants.BlobsCache+":"+constants.OriginalBucket, "key",
 					path.Join(pathPrefix, "val")).SetErr(ErrTestError)
-				mock.ExpectTxPipelineExec()
 
 				err = cacheDriver.PutBlob("key", path.Join(dir, "val"))
 				So(err, ShouldEqual, ErrTestError)
+
+				err = mock.ExpectationsWereMet()
+				So(err, ShouldBeNil)
 			})
 
 			Convey("PutBlob SAdd error"+testID, func() {
 				// initialize mock client
 				cacheDB, mock := redismock.NewClientMock()
+				redisDriverParams.Client = cacheDB
 
-				// replace the working driver with the mock
-				cacheDriver.SetClient(cacheDB)
+				mock.ExpectPing().SetVal("OK")
+				cacheDriver, err := cache.NewRedisCache(redisDriverParams, log)
+				So(cacheDriver, ShouldNotBeNil)
+				So(err, ShouldBeNil)
 
+				mock.Regexp().ExpectSetNX(keyPrefix+"locks:key", `.*`, 8*time.Second).SetVal(true)
 				mock.ExpectHExists(keyPrefix+constants.BlobsCache+":"+constants.OriginalBucket, "key").
 					SetVal(false)
 				mock.ExpectTxPipeline()
@@ -342,19 +361,25 @@ func TestRedisMocked(t *testing.T) {
 					path.Join(pathPrefix, "val")).SetVal(1)
 				mock.ExpectSAdd(keyPrefix+constants.BlobsCache+":"+constants.DuplicatesBucket+":key",
 					path.Join(pathPrefix, "val")).SetErr(ErrTestError)
-				mock.ExpectTxPipelineExec()
 
 				err = cacheDriver.PutBlob("key", path.Join(dir, "val"))
 				So(err, ShouldEqual, ErrTestError)
+
+				err = mock.ExpectationsWereMet()
+				So(err, ShouldBeNil)
 			})
 
 			Convey("PutBlob succeeds original bucket is created"+testID, func() {
 				// initialize mock client
 				cacheDB, mock := redismock.NewClientMock()
+				redisDriverParams.Client = cacheDB
 
-				// replace the working driver with the mock
-				cacheDriver.SetClient(cacheDB)
+				mock.ExpectPing().SetVal("OK")
+				cacheDriver, err := cache.NewRedisCache(redisDriverParams, log)
+				So(cacheDriver, ShouldNotBeNil)
+				So(err, ShouldBeNil)
 
+				mock.Regexp().ExpectSetNX(keyPrefix+"locks:key", `.*`, 8*time.Second).SetVal(true)
 				mock.ExpectHExists(keyPrefix+constants.BlobsCache+":"+constants.OriginalBucket, "key").
 					SetVal(false)
 				mock.ExpectTxPipeline()
@@ -366,15 +391,22 @@ func TestRedisMocked(t *testing.T) {
 
 				err = cacheDriver.PutBlob("key", path.Join(dir, "val"))
 				So(err, ShouldBeNil)
+
+				err = mock.ExpectationsWereMet()
+				So(err, ShouldBeNil)
 			})
 
 			Convey("PutBlob succeeds original bucket is reused"+testID, func() {
 				// initialize mock client
 				cacheDB, mock := redismock.NewClientMock()
+				redisDriverParams.Client = cacheDB
 
-				// replace the working driver with the mock
-				cacheDriver.SetClient(cacheDB)
+				mock.ExpectPing().SetVal("OK")
+				cacheDriver, err := cache.NewRedisCache(redisDriverParams, log)
+				So(cacheDriver, ShouldNotBeNil)
+				So(err, ShouldBeNil)
 
+				mock.Regexp().ExpectSetNX(keyPrefix+"locks:key", `.*`, 8*time.Second).SetVal(true)
 				mock.ExpectHExists(keyPrefix+constants.BlobsCache+":"+constants.OriginalBucket, "key").
 					SetVal(true)
 				mock.ExpectTxPipeline()
@@ -384,14 +416,20 @@ func TestRedisMocked(t *testing.T) {
 
 				err = cacheDriver.PutBlob("key", path.Join(dir, "val"))
 				So(err, ShouldBeNil)
+
+				err = mock.ExpectationsWereMet()
+				So(err, ShouldBeNil)
 			})
 
 			Convey("SMembers error in GetAllBlobs"+testID, func() {
 				// initialize mock client
 				cacheDB, mock := redismock.NewClientMock()
+				redisDriverParams.Client = cacheDB
 
-				// replace the working driver with the mock
-				cacheDriver.SetClient(cacheDB)
+				mock.ExpectPing().SetVal("OK")
+				cacheDriver, err := cache.NewRedisCache(redisDriverParams, log)
+				So(cacheDriver, ShouldNotBeNil)
+				So(err, ShouldBeNil)
 
 				mock.ExpectHGet(keyPrefix+constants.BlobsCache+":"+constants.OriginalBucket, "key").
 					SetVal(path.Join(pathPrefix, "val"))
@@ -400,15 +438,22 @@ func TestRedisMocked(t *testing.T) {
 
 				_, err = cacheDriver.GetAllBlobs("key")
 				So(err, ShouldEqual, ErrTestError)
+
+				err = mock.ExpectationsWereMet()
+				So(err, ShouldBeNil)
 			})
 
 			Convey("GetAllBlobs succeeds"+testID, func() {
 				// initialize mock client
 				cacheDB, mock := redismock.NewClientMock()
+				redisDriverParams.Client = cacheDB
 
-				// replace the working driver with the mock
-				cacheDriver.SetClient(cacheDB)
+				mock.ExpectPing().SetVal("OK")
+				cacheDriver, err := cache.NewRedisCache(redisDriverParams, log)
+				So(cacheDriver, ShouldNotBeNil)
+				So(err, ShouldBeNil)
 
+				mock.Regexp().ExpectSetNX(keyPrefix+"locks:key", `.*`, 8*time.Second).SetVal(true)
 				mock.ExpectHExists(keyPrefix+constants.BlobsCache+":"+constants.OriginalBucket, "key").
 					SetVal(false)
 				mock.ExpectTxPipeline()
@@ -421,6 +466,7 @@ func TestRedisMocked(t *testing.T) {
 				err = cacheDriver.PutBlob("key", path.Join(dir, "val1"))
 				So(err, ShouldBeNil)
 
+				mock.Regexp().ExpectSetNX(keyPrefix+"locks:key", `.*`, 8*time.Second).SetVal(true)
 				mock.ExpectHExists(keyPrefix+constants.BlobsCache+":"+constants.OriginalBucket, "key").
 					SetVal(false)
 				mock.ExpectTxPipeline()
@@ -441,14 +487,20 @@ func TestRedisMocked(t *testing.T) {
 				allBlobs, err := cacheDriver.GetAllBlobs("key")
 				So(err, ShouldBeNil)
 				So(allBlobs, ShouldResemble, []string{path.Join(pathPrefix, "val1"), path.Join(pathPrefix, "val2")})
+
+				err = mock.ExpectationsWereMet()
+				So(err, ShouldBeNil)
 			})
 
 			Convey("HasBlob HExists returns error"+testID, func() {
 				// initialize mock client
 				cacheDB, mock := redismock.NewClientMock()
+				redisDriverParams.Client = cacheDB
 
-				// replace the working driver with the mock
-				cacheDriver.SetClient(cacheDB)
+				mock.ExpectPing().SetVal("OK")
+				cacheDriver, err := cache.NewRedisCache(redisDriverParams, log)
+				So(cacheDriver, ShouldNotBeNil)
+				So(err, ShouldBeNil)
 
 				mock.ExpectSIsMember(keyPrefix+constants.BlobsCache+":"+constants.DuplicatesBucket+":key",
 					path.Join(pathPrefix, "val")).SetVal(true)
@@ -457,28 +509,40 @@ func TestRedisMocked(t *testing.T) {
 
 				ok := cacheDriver.HasBlob("key", path.Join(dir, "val"))
 				So(ok, ShouldBeFalse)
+
+				err = mock.ExpectationsWereMet()
+				So(err, ShouldBeNil)
 			})
 
 			Convey("HasBlob SIsMember returns error"+testID, func() {
 				// initialize mock client
 				cacheDB, mock := redismock.NewClientMock()
+				redisDriverParams.Client = cacheDB
 
-				// replace the working driver with the mock
-				cacheDriver.SetClient(cacheDB)
+				mock.ExpectPing().SetVal("OK")
+				cacheDriver, err := cache.NewRedisCache(redisDriverParams, log)
+				So(cacheDriver, ShouldNotBeNil)
+				So(err, ShouldBeNil)
 
 				mock.ExpectSIsMember(keyPrefix+constants.BlobsCache+":"+constants.DuplicatesBucket+":key",
 					path.Join(pathPrefix, "val")).SetErr(ErrTestError)
 
 				ok := cacheDriver.HasBlob("key", path.Join(dir, "val"))
 				So(ok, ShouldBeFalse)
+
+				err = mock.ExpectationsWereMet()
+				So(err, ShouldBeNil)
 			})
 
 			Convey("HasBlob HExists returns false"+testID, func() {
 				// initialize mock client
 				cacheDB, mock := redismock.NewClientMock()
+				redisDriverParams.Client = cacheDB
 
-				// replace the working driver with the mock
-				cacheDriver.SetClient(cacheDB)
+				mock.ExpectPing().SetVal("OK")
+				cacheDriver, err := cache.NewRedisCache(redisDriverParams, log)
+				So(cacheDriver, ShouldNotBeNil)
+				So(err, ShouldBeNil)
 
 				mock.ExpectSIsMember(keyPrefix+constants.BlobsCache+":"+constants.DuplicatesBucket+":key",
 					path.Join(pathPrefix, "val")).SetVal(true)
@@ -487,16 +551,23 @@ func TestRedisMocked(t *testing.T) {
 
 				ok := cacheDriver.HasBlob("key", path.Join(dir, "val"))
 				So(ok, ShouldBeFalse)
+
+				err = mock.ExpectationsWereMet()
+				So(err, ShouldBeNil)
 			})
 
 			Convey("DeleteBlob tests"+testID, func() {
 				// initialize mock client
 				cacheDB, mock := redismock.NewClientMock()
+				redisDriverParams.Client = cacheDB
 
-				// replace the working driver with the mock
-				cacheDriver.SetClient(cacheDB)
+				mock.ExpectPing().SetVal("OK")
+				cacheDriver, err := cache.NewRedisCache(redisDriverParams, log)
+				So(cacheDriver, ShouldNotBeNil)
+				So(err, ShouldBeNil)
 
 				// Create entry for 1st path
+				mock.Regexp().ExpectSetNX(keyPrefix+"locks:key", `.*`, 8*time.Second).SetVal(true)
 				mock.ExpectHExists(keyPrefix+constants.BlobsCache+":"+constants.OriginalBucket, "key").
 					SetVal(false)
 				mock.ExpectTxPipeline()
@@ -512,6 +583,7 @@ func TestRedisMocked(t *testing.T) {
 				Convey("DeleteBlob error in HDel"+testID, func() {
 					// If the 2nd path does not exist, HDel is callled
 					// Error switching to new path
+					mock.Regexp().ExpectSetNX(keyPrefix+"locks:key", `.*`, 8*time.Second).SetVal(true)
 					mock.ExpectSRem(keyPrefix+constants.BlobsCache+":"+constants.DuplicatesBucket+":key",
 						path.Join(pathPrefix, "val1")).SetVal(1)
 					mock.ExpectHGet(keyPrefix+constants.BlobsCache+":"+constants.OriginalBucket, "key").
@@ -529,6 +601,7 @@ func TestRedisMocked(t *testing.T) {
 				Convey("DeleteBlob succeeds in deleting all data for original blob"+testID, func() {
 					// If the 2nd path does not exist, HDel is callled
 					// Error switching to new path
+					mock.Regexp().ExpectSetNX(keyPrefix+"locks:key", `.*`, 8*time.Second).SetVal(true)
 					mock.ExpectSRem(keyPrefix+constants.BlobsCache+":"+constants.DuplicatesBucket+":key",
 						path.Join(pathPrefix, "val1")).SetVal(1)
 					mock.ExpectHGet(keyPrefix+constants.BlobsCache+":"+constants.OriginalBucket, "key").
@@ -545,6 +618,7 @@ func TestRedisMocked(t *testing.T) {
 
 				Convey("DeleteBlob error in SRandMember"+testID, func() {
 					// Create entry for 2nd path
+					mock.Regexp().ExpectSetNX(keyPrefix+"locks:key", `.*`, 8*time.Second).SetVal(true)
 					mock.ExpectHExists(keyPrefix+constants.BlobsCache+":"+constants.OriginalBucket, "key").
 						SetVal(false)
 					mock.ExpectTxPipeline()
@@ -558,6 +632,7 @@ func TestRedisMocked(t *testing.T) {
 					So(err, ShouldBeNil)
 
 					// Error switching to new path
+					mock.Regexp().ExpectSetNX(keyPrefix+"locks:key", `.*`, 8*time.Second).SetVal(true)
 					mock.ExpectSRem(keyPrefix+constants.BlobsCache+":"+constants.DuplicatesBucket+":key",
 						path.Join(pathPrefix, "val1")).SetVal(1)
 					mock.ExpectHGet(keyPrefix+constants.BlobsCache+":"+constants.OriginalBucket, "key").
@@ -572,6 +647,7 @@ func TestRedisMocked(t *testing.T) {
 
 				Convey("DeleteBlob error in HSet"+testID, func() {
 					// Create entry for 2nd path
+					mock.Regexp().ExpectSetNX(keyPrefix+"locks:key", `.*`, 8*time.Second).SetVal(true)
 					mock.ExpectHExists(keyPrefix+constants.BlobsCache+":"+constants.OriginalBucket, "key").
 						SetVal(false)
 					mock.ExpectTxPipeline()
@@ -585,6 +661,7 @@ func TestRedisMocked(t *testing.T) {
 					So(err, ShouldBeNil)
 
 					// Error switching to new path
+					mock.Regexp().ExpectSetNX(keyPrefix+"locks:key", `.*`, 8*time.Second).SetVal(true)
 					mock.ExpectSRem(keyPrefix+constants.BlobsCache+":"+constants.DuplicatesBucket+":key",
 						path.Join(pathPrefix, "val1")).SetVal(1)
 					mock.ExpectHGet(keyPrefix+constants.BlobsCache+":"+constants.OriginalBucket, "key").
@@ -600,6 +677,7 @@ func TestRedisMocked(t *testing.T) {
 
 				Convey("DeleteBlob succeeds in switching original blob path"+testID, func() {
 					// Create entry for 2nd path
+					mock.Regexp().ExpectSetNX(keyPrefix+"locks:key", `.*`, 8*time.Second).SetVal(true)
 					mock.ExpectHExists(keyPrefix+constants.BlobsCache+":"+constants.OriginalBucket, "key").
 						SetVal(false)
 					mock.ExpectTxPipeline()
@@ -612,7 +690,7 @@ func TestRedisMocked(t *testing.T) {
 					err = cacheDriver.PutBlob("key", path.Join(dir, "val2"))
 					So(err, ShouldBeNil)
 
-					// Error switching to new path
+					mock.Regexp().ExpectSetNX(keyPrefix+"locks:key", `.*`, 8*time.Second).SetVal(true)
 					mock.ExpectSRem(keyPrefix+constants.BlobsCache+":"+constants.DuplicatesBucket+":key",
 						path.Join(pathPrefix, "val1")).SetVal(1)
 					mock.ExpectHGet(keyPrefix+constants.BlobsCache+":"+constants.OriginalBucket, "key").
@@ -625,6 +703,9 @@ func TestRedisMocked(t *testing.T) {
 					err = cacheDriver.DeleteBlob("key", path.Join(dir, "val1"))
 					So(err, ShouldBeNil)
 				})
+
+				err = mock.ExpectationsWereMet()
+				So(err, ShouldBeNil)
 			})
 		}
 	})

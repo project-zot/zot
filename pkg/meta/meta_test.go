@@ -174,12 +174,10 @@ func TestRedisDB(t *testing.T) {
 		rootDir := t.TempDir()
 		log := log.NewLogger("debug", "")
 
-		params := redisdb.DBDriverParameters{
-			KeyPrefix: "zot",
-			URL:       "redis://" + miniRedis.Addr(),
-		}
+		params := redisdb.DBDriverParameters{KeyPrefix: "zot"}
+		driverConfig := map[string]interface{}{"url": "redis://" + miniRedis.Addr()}
 
-		redisDriver, err := redisdb.GetRedisClient(params)
+		redisDriver, err := zcommon.GetRedisClient(driverConfig, log)
 		So(err, ShouldBeNil)
 
 		metaDB, err := redisdb.New(redisDriver, params, log)
@@ -2748,8 +2746,8 @@ func TestCreateRedisDB(t *testing.T) {
 
 			conf.Storage.CacheDriver = cacheDriverParams
 
-			testFunc = func() { _, _ = meta.New(conf.Storage.StorageConfig, log) }
-			So(testFunc, ShouldPanic)
+			_, err := meta.New(conf.Storage.StorageConfig, log)
+			So(err, ShouldNotBeNil)
 		})
 	})
 }

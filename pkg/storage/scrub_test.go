@@ -18,6 +18,7 @@ import (
 	. "github.com/smartystreets/goconvey/convey"
 
 	zerr "zotregistry.dev/zot/errors"
+	zcommon "zotregistry.dev/zot/pkg/common"
 	"zotregistry.dev/zot/pkg/extensions/monitoring"
 	"zotregistry.dev/zot/pkg/log"
 	"zotregistry.dev/zot/pkg/storage"
@@ -63,9 +64,12 @@ func TestRedisCheckAllBlobsIntegrity(t *testing.T) {
 		log := log.NewLogger("debug", "")
 
 		metrics := monitoring.NewMetricsServer(false, log)
+
+		client, _ := zcommon.GetRedisClient(map[string]interface{}{"url": "redis://" + miniRedis.Addr()}, log)
+
 		cacheDriver, _ := storage.Create("redis", cache.RedisDriverParameters{
+			Client:      client,
 			RootDir:     tdir,
-			URL:         "redis://" + miniRedis.Addr(),
 			UseRelPaths: false,
 		}, log)
 		driver := local.New(true)

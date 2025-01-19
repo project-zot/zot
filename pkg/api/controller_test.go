@@ -372,8 +372,9 @@ func TestCreateMetaDBDriver(t *testing.T) {
 			"name": "redis",
 		}
 
-		testFunc := func() { _, _ = meta.New(conf.Storage.StorageConfig, log) }
-		So(testFunc, ShouldPanic)
+		metaDB, err = meta.New(conf.Storage.StorageConfig, log)
+		So(err, ShouldNotBeNil)
+		So(metaDB, ShouldBeNil)
 
 		conf.Storage.CacheDriver = map[string]interface{}{
 			"name": "redis",
