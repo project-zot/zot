@@ -5,6 +5,7 @@ package meta_test
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path"
@@ -17,6 +18,7 @@ import (
 	"github.com/notaryproject/notation-go"
 	"github.com/notaryproject/notation-go/signer"
 	godigest "github.com/opencontainers/go-digest"
+	"github.com/opencontainers/image-spec/specs-go"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	. "github.com/smartystreets/goconvey/convey"
 
@@ -199,7 +201,7 @@ func TestRedisDB(t *testing.T) {
 	})
 }
 
-func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func() error) { //nolint: thelper
+func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func() error) { //nolint: thelper,gocyclo
 	ctx := context.Background()
 
 	Convey("Test MetaDB Interface implementation", func() {
@@ -870,9 +872,21 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 			var (
 				repo1 = "repo1"
 				repo2 = "repo2"
+				repo3 = "repo3"
 				tag1  = "0.0.1"
 				tag2  = "0.0.2"
+				tag3  = "0.0.3"
 			)
+
+			userAc := reqCtx.NewUserAccessControl()
+			userAc.SetUsername("username")
+			userAc.SetGlobPatterns("read", map[string]bool{
+				repo1: true,
+				repo2: true,
+				repo3: false,
+			})
+
+			ctx := userAc.DeriveContext(context.Background())
 
 			image1 := CreateImageWith().
 				RandomLayers(2, 10).
@@ -888,6 +902,13 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 				Build()
 			imageMeta2 := image2.AsImageMeta()
 
+			image3 := CreateImageWith().
+				LayerBlobs(image1.Layers).
+				ImageConfig(ispec.Image{Platform: ispec.Platform{OS: "os3", Architecture: "arch3"}}).
+				Annotations(map[string]string{ispec.AnnotationVendor: "vendor3"}).
+				Build()
+			imageMeta3 := image3.AsImageMeta()
+
 			err := metaDB.SetRepoReference(ctx, repo1, tag1, imageMeta1)
 			So(err, ShouldBeNil)
 
@@ -897,8 +918,19 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 			err = metaDB.SetRepoReference(ctx, repo2, tag2, imageMeta2)
 			So(err, ShouldBeNil)
 
+			err = metaDB.SetRepoReference(ctx, repo3, tag3, imageMeta3)
+			So(err, ShouldBeNil)
+
 			Convey("Get all RepoMeta", func() {
 				repoMetaSlice, err := metaDB.GetMultipleRepoMeta(context.TODO(), func(repoMeta mTypes.RepoMeta) bool {
+					return true
+				})
+				So(err, ShouldBeNil)
+				So(len(repoMetaSlice), ShouldEqual, 3)
+			})
+
+			Convey("Get all RepoMeta for user with restricted permissions", func() {
+				repoMetaSlice, err := metaDB.GetMultipleRepoMeta(ctx, func(repoMeta mTypes.RepoMeta) bool {
 					return true
 				})
 				So(err, ShouldBeNil)
@@ -1738,6 +1770,37 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 				So(repos[repo2][tag3], ShouldEqual, image3.DigestStr())
 			})
 
+			Convey("Search repos including empty ones", func() {
+				err := metaDB.SetRepoReference(ctx, repo1, tag1, image1.AsImageMeta())
+				So(err, ShouldBeNil)
+				err = metaDB.SetRepoReference(ctx, repo1, tag2, image2.AsImageMeta())
+				So(err, ShouldBeNil)
+				// We need to add a new reference and then remove it in order to obtain the empty repo
+				err = metaDB.SetRepoReference(ctx, repo2, tag3, image3.AsImageMeta())
+				So(err, ShouldBeNil)
+				err = metaDB.RemoveRepoReference(repo2, tag3, image3.Digest())
+				So(err, ShouldBeNil)
+
+				repoMetaList, err := metaDB.SearchRepos(ctx, "")
+				So(err, ShouldBeNil)
+				So(len(repoMetaList), ShouldEqual, 1) // Empty repos are not returned
+
+				repos := map[string]map[string]string{}
+				for _, repoMeta := range repoMetaList {
+					if _, exists := repos[repoMeta.Name]; !exists {
+						repos[repoMeta.Name] = map[string]string{}
+					}
+
+					for tag, descriptor := range repoMeta.Tags {
+						repos[repoMeta.Name][tag] = descriptor.Digest
+					}
+				}
+
+				So(repos[repo1][tag1], ShouldEqual, image1.DigestStr())
+				So(repos[repo1][tag2], ShouldEqual, image2.DigestStr())
+				So(len(repos[repo2]), ShouldEqual, 0)
+			})
+
 			Convey("Search a repo by name", func() {
 				err := metaDB.SetRepoReference(ctx, repo1, tag1, image1.AsImageMeta())
 				So(err, ShouldBeNil)
@@ -2413,11 +2476,25 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 
 		Convey("FilterRepos", func() {
 			repo := "repoFilter"
+			repoUnmatched := "repoExcluded"
 			tag1 := "tag1"
 			tag2 := "tag22"
+			tag3 := "tag3"
+			tag4 := "tag44"
+
+			userAc := reqCtx.NewUserAccessControl()
+			userAc.SetUsername("username")
+			userAc.SetGlobPatterns("read", map[string]bool{
+				repo:          true,
+				repoUnmatched: false,
+			})
+
+			ctx := userAc.DeriveContext(context.Background())
 
 			image := CreateImageWith().DefaultLayers().PlatformConfig("image-platform", "image-os").Build()
 			err := metaDB.SetRepoReference(ctx, repo, tag1, image.AsImageMeta())
+			So(err, ShouldBeNil)
+			err = metaDB.SetRepoReference(ctx, repoUnmatched, tag3, image.AsImageMeta())
 			So(err, ShouldBeNil)
 
 			multiarch := CreateMultiarchWith().
@@ -2433,9 +2510,11 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 
 			err = metaDB.SetRepoReference(ctx, repo, tag2, multiarch.AsImageMeta())
 			So(err, ShouldBeNil)
+			err = metaDB.SetRepoReference(ctx, repoUnmatched, tag4, multiarch.AsImageMeta())
+			So(err, ShouldBeNil)
 
 			//nolint: contextcheck
-			repoMetaList, err := metaDB.FilterRepos(context.Background(), mTypes.AcceptAllRepoNames,
+			repoMetaList, err := metaDB.FilterRepos(ctx, mTypes.AcceptAllRepoNames,
 				mTypes.AcceptAllRepoMeta)
 			So(err, ShouldBeNil)
 			So(len(repoMetaList), ShouldEqual, 1)
@@ -2606,6 +2685,186 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 			So(repos, ShouldNotContain, repo1)
 			So(repos, ShouldNotContain, repo2)
 			So(repos, ShouldNotContain, repo3)
+		})
+
+		Convey("Test Nested Indexes", func() {
+			// nested manifest/indexes:
+			// image111 -> multiArchBottom11 -> multiArchMiddle1 -> multiArchTop
+			// image112 -> multiArchBottom11 -> multiArchMiddle1 -> multiArchTop
+			// image121 -> multiArchBottom12 -> multiArchMiddle1 -> multiArchTop
+			// image122 -> multiArchBottom12 -> multiArchMiddle1 -> multiArchTop
+			// image211 -> multiArchBottom21 -> multiArchMiddle2 -> multiArchTop
+			// image212 -> multiArchBottom21 -> multiArchMiddle2 -> multiArchTop
+			// image31 -> multiArchMiddle3 -> multiArchTop
+			// image32 -> multiArchMiddle3 -> multiArchTop
+			repoName := "nested"
+
+			image111 := CreateRandomImage()
+			image112 := CreateRandomImage()
+			multiArchBottom11 := CreateMultiarchWith().Images([]Image{image111, image112}).Build()
+
+			err := metaDB.SetRepoReference(ctx, repoName, image111.DigestStr(), image111.AsImageMeta())
+			So(err, ShouldBeNil)
+			err = metaDB.SetRepoReference(ctx, repoName, image112.DigestStr(), image112.AsImageMeta())
+			So(err, ShouldBeNil)
+			err = metaDB.SetRepoReference(ctx, repoName, multiArchBottom11.DigestStr(), multiArchBottom11.AsImageMeta())
+			So(err, ShouldBeNil)
+
+			image121 := CreateRandomImage()
+			image122 := CreateRandomImage()
+			multiArchBottom12 := CreateMultiarchWith().Images([]Image{image121, image122}).Build()
+
+			err = metaDB.SetRepoReference(ctx, repoName, image121.DigestStr(), image121.AsImageMeta())
+			So(err, ShouldBeNil)
+			err = metaDB.SetRepoReference(ctx, repoName, image122.DigestStr(), image122.AsImageMeta())
+			So(err, ShouldBeNil)
+			err = metaDB.SetRepoReference(ctx, repoName, multiArchBottom12.DigestStr(), multiArchBottom12.AsImageMeta())
+			So(err, ShouldBeNil)
+
+			indexMultiArchMiddle1 := ispec.Index{
+				Versioned: specs.Versioned{SchemaVersion: 2},
+				MediaType: ispec.MediaTypeImageIndex,
+				Manifests: []ispec.Descriptor{
+					{
+						Digest:    multiArchBottom11.IndexDescriptor.Digest,
+						Size:      multiArchBottom11.IndexDescriptor.Size,
+						MediaType: ispec.MediaTypeImageIndex,
+					},
+					{
+						Digest:    multiArchBottom12.IndexDescriptor.Digest,
+						Size:      multiArchBottom12.IndexDescriptor.Size,
+						MediaType: ispec.MediaTypeImageIndex,
+					},
+				},
+			}
+
+			indexMultiArchMiddle1Blob, err := json.Marshal(indexMultiArchMiddle1)
+			So(err, ShouldBeNil)
+			indexMultiArchMiddle1Digest := godigest.FromBytes(indexMultiArchMiddle1Blob)
+
+			indexMultiArchMiddle1Meta := mTypes.ImageMeta{
+				MediaType: ispec.MediaTypeImageIndex,
+				Digest:    indexMultiArchMiddle1Digest,
+				Size:      int64(len(indexMultiArchMiddle1Blob)),
+				Index:     &indexMultiArchMiddle1,
+			}
+
+			err = metaDB.SetRepoReference(ctx, repoName, "multiArchMiddle1", indexMultiArchMiddle1Meta)
+			So(err, ShouldBeNil)
+
+			image211 := CreateRandomImage()
+			image212 := CreateRandomImage()
+			multiArchBottom21 := CreateMultiarchWith().Images([]Image{image211, image212}).Build()
+
+			err = metaDB.SetRepoReference(ctx, repoName, image211.DigestStr(), image211.AsImageMeta())
+			So(err, ShouldBeNil)
+			err = metaDB.SetRepoReference(ctx, repoName, image212.DigestStr(), image212.AsImageMeta())
+			So(err, ShouldBeNil)
+			err = metaDB.SetRepoReference(ctx, repoName, multiArchBottom21.DigestStr(), multiArchBottom21.AsImageMeta())
+			So(err, ShouldBeNil)
+
+			indexMultiArchMiddle2 := ispec.Index{
+				Versioned: specs.Versioned{SchemaVersion: 2},
+				MediaType: ispec.MediaTypeImageIndex,
+				Manifests: []ispec.Descriptor{
+					{
+						Digest:    multiArchBottom21.IndexDescriptor.Digest,
+						Size:      multiArchBottom21.IndexDescriptor.Size,
+						MediaType: ispec.MediaTypeImageIndex,
+					},
+				},
+			}
+
+			indexMultiArchMiddle2Blob, err := json.Marshal(indexMultiArchMiddle2)
+			So(err, ShouldBeNil)
+
+			indexMultiArchMiddle2Digest := godigest.FromBytes(indexMultiArchMiddle2Blob)
+
+			indexMultiArchMiddle2Meta := mTypes.ImageMeta{
+				MediaType: ispec.MediaTypeImageIndex,
+				Digest:    indexMultiArchMiddle2Digest,
+				Size:      int64(len(indexMultiArchMiddle2Blob)),
+				Index:     &indexMultiArchMiddle2,
+			}
+
+			err = metaDB.SetRepoReference(ctx, repoName, "multiArchMiddle2", indexMultiArchMiddle2Meta)
+			So(err, ShouldBeNil)
+
+			image31 := CreateRandomImage()
+			image32 := CreateRandomImage()
+			multiArchBottom3 := CreateMultiarchWith().Images([]Image{image31, image32}).Build()
+
+			err = metaDB.SetRepoReference(ctx, repoName, image31.DigestStr(), image31.AsImageMeta())
+			So(err, ShouldBeNil)
+			err = metaDB.SetRepoReference(ctx, repoName, image32.DigestStr(), image32.AsImageMeta())
+			So(err, ShouldBeNil)
+			err = metaDB.SetRepoReference(ctx, repoName, multiArchBottom3.DigestStr(), multiArchBottom3.AsImageMeta())
+			So(err, ShouldBeNil)
+
+			indexMultiArchTop := ispec.Index{
+				Versioned: specs.Versioned{SchemaVersion: 2},
+				MediaType: ispec.MediaTypeImageIndex,
+				Manifests: []ispec.Descriptor{
+					{
+						Digest:    indexMultiArchMiddle1Digest,
+						Size:      int64(len(indexMultiArchMiddle1Blob)),
+						MediaType: ispec.MediaTypeImageIndex,
+					},
+					{
+						Digest:    indexMultiArchMiddle2Digest,
+						Size:      int64(len(indexMultiArchMiddle2Blob)),
+						MediaType: ispec.MediaTypeImageIndex,
+					},
+					{
+						Digest:    multiArchBottom3.IndexDescriptor.Digest,
+						Size:      multiArchBottom3.IndexDescriptor.Size,
+						MediaType: ispec.MediaTypeImageIndex,
+					},
+				},
+			}
+
+			indexMultiArchTopBlob, err := json.Marshal(indexMultiArchTop)
+			So(err, ShouldBeNil)
+
+			indexMultiArchTopBlobDigest := godigest.FromBytes(indexMultiArchTopBlob)
+
+			indexMultiArchTopMeta := mTypes.ImageMeta{
+				MediaType: ispec.MediaTypeImageIndex,
+				Digest:    indexMultiArchTopBlobDigest,
+				Size:      int64(len(indexMultiArchTopBlob)),
+				Index:     &indexMultiArchTop,
+			}
+
+			err = metaDB.SetRepoReference(ctx, repoName, "multiArchTop", indexMultiArchTopMeta)
+			So(err, ShouldBeNil)
+
+			Convey("Test searchTags", func() {
+				fullImageMetaList, err := metaDB.SearchTags(ctx, repoName+":"+"multiArch")
+				So(err, ShouldBeNil)
+
+				So(len(fullImageMetaList), ShouldEqual, 3)
+
+				tags := map[string][]string{}
+
+				for _, imageMeta := range fullImageMetaList {
+					So(imageMeta.MediaType, ShouldEqual, ispec.MediaTypeImageIndex)
+
+					digests := []string{}
+					for _, manifest := range imageMeta.Manifests {
+						digests = append(digests, manifest.Digest.String())
+					}
+
+					tags[imageMeta.Tag] = digests
+				}
+
+				So(tags, ShouldContainKey, "multiArchMiddle1")
+				So(tags, ShouldContainKey, "multiArchMiddle2")
+				So(tags, ShouldContainKey, "multiArchTop")
+
+				So(len(tags["multiArchMiddle1"]), ShouldEqual, 4)
+				So(len(tags["multiArchMiddle2"]), ShouldEqual, 2)
+				So(len(tags["multiArchTop"]), ShouldEqual, 8)
+			})
 		})
 	})
 }

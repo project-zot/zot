@@ -6,18 +6,37 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/alicebob/miniredis/v2"
 	"github.com/go-redis/redismock/v9"
+	godigest "github.com/opencontainers/go-digest"
+	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/redis/go-redis/v9"
 	. "github.com/smartystreets/goconvey/convey"
+	"google.golang.org/protobuf/proto"
 
 	"zotregistry.dev/zot/pkg/log"
+	proto_go "zotregistry.dev/zot/pkg/meta/proto/gen"
 	"zotregistry.dev/zot/pkg/meta/redisdb"
 	mTypes "zotregistry.dev/zot/pkg/meta/types"
+	reqCtx "zotregistry.dev/zot/pkg/requestcontext"
+	test "zotregistry.dev/zot/pkg/test/common"
+	. "zotregistry.dev/zot/pkg/test/image-utils"
 )
 
+const keyPrefix = "zot"
+
 var ErrTestError = errors.New("TestError")
+
+type imgTrustStore struct{}
+
+func (its imgTrustStore) VerifySignature(
+	signatureType string, rawSignature []byte, sigKey string, manifestDigest godigest.Digest, imageMeta mTypes.ImageMeta,
+	repo string,
+) (mTypes.Author, mTypes.ExpiryDate, mTypes.Validity, error) {
+	return "", time.Time{}, false, nil
+}
 
 func TestRedisMocked(t *testing.T) {
 	Convey("Test redis metadb implementation", t, func() {
@@ -41,6 +60,9 @@ func TestRedisMocked(t *testing.T) {
 			repoNames, err := metaDB.GetAllRepoNames()
 			So(errors.Is(err, ErrTestError), ShouldEqual, true)
 			So(len(repoNames), ShouldEqual, 0)
+
+			err = mock.ExpectationsWereMet()
+			So(err, ShouldBeNil)
 		})
 
 		Convey("GetAllRepoNames HGetAll succeeds", func() {
@@ -55,6 +77,149 @@ func TestRedisMocked(t *testing.T) {
 			repoNames, err := metaDB.GetAllRepoNames()
 			So(err, ShouldBeNil)
 			So(len(repoNames), ShouldEqual, 3)
+
+			err = mock.ExpectationsWereMet()
+			So(err, ShouldBeNil)
+		})
+
+		Convey("ResetDB Del RepoMetaKey error", func() {
+			mock.ExpectTxPipeline()
+			mock.ExpectDel(metaDB.RepoMetaKey).SetErr(ErrTestError)
+
+			err := metaDB.ResetDB()
+			So(err, ShouldNotBeNil)
+
+			err = mock.ExpectationsWereMet()
+			So(err, ShouldBeNil)
+		})
+
+		Convey("ResetDB Del ImageMetaKey error", func() {
+			mock.ExpectTxPipeline()
+			mock.ExpectDel(metaDB.RepoMetaKey).SetVal(0)
+			mock.ExpectDel(metaDB.ImageMetaKey).SetErr(ErrTestError)
+
+			err := metaDB.ResetDB()
+			So(err, ShouldNotBeNil)
+
+			err = mock.ExpectationsWereMet()
+			So(err, ShouldBeNil)
+		})
+
+		Convey("ResetDB Del RepoBlobsKey error", func() {
+			mock.ExpectTxPipeline()
+			mock.ExpectDel(metaDB.RepoMetaKey).SetVal(0)
+			mock.ExpectDel(metaDB.ImageMetaKey).SetVal(0)
+			mock.ExpectDel(metaDB.RepoBlobsKey).SetErr(ErrTestError)
+
+			err := metaDB.ResetDB()
+			So(err, ShouldNotBeNil)
+
+			err = mock.ExpectationsWereMet()
+			So(err, ShouldBeNil)
+		})
+
+		Convey("ResetDB Del RepoLastUpdatedKey error", func() {
+			mock.ExpectTxPipeline()
+			mock.ExpectDel(metaDB.RepoMetaKey).SetVal(0)
+			mock.ExpectDel(metaDB.ImageMetaKey).SetVal(0)
+			mock.ExpectDel(metaDB.RepoBlobsKey).SetVal(0)
+			mock.ExpectDel(metaDB.RepoLastUpdatedKey).SetErr(ErrTestError)
+
+			err := metaDB.ResetDB()
+			So(err, ShouldNotBeNil)
+
+			err = mock.ExpectationsWereMet()
+			So(err, ShouldBeNil)
+		})
+
+		Convey("ResetDB Del UserDataKey error", func() {
+			mock.ExpectTxPipeline()
+			mock.ExpectDel(metaDB.RepoMetaKey).SetVal(0)
+			mock.ExpectDel(metaDB.ImageMetaKey).SetVal(0)
+			mock.ExpectDel(metaDB.RepoBlobsKey).SetVal(0)
+			mock.ExpectDel(metaDB.RepoLastUpdatedKey).SetVal(0)
+			mock.ExpectDel(metaDB.UserDataKey).SetErr(ErrTestError)
+
+			err := metaDB.ResetDB()
+			So(err, ShouldNotBeNil)
+
+			err = mock.ExpectationsWereMet()
+			So(err, ShouldBeNil)
+		})
+
+		Convey("ResetDB Del UserAPIKeysKey error", func() {
+			mock.ExpectTxPipeline()
+			mock.ExpectDel(metaDB.RepoMetaKey).SetVal(0)
+			mock.ExpectDel(metaDB.ImageMetaKey).SetVal(0)
+			mock.ExpectDel(metaDB.RepoBlobsKey).SetVal(0)
+			mock.ExpectDel(metaDB.RepoLastUpdatedKey).SetVal(0)
+			mock.ExpectDel(metaDB.UserDataKey).SetVal(0)
+			mock.ExpectDel(metaDB.UserAPIKeysKey).SetErr(ErrTestError)
+
+			err := metaDB.ResetDB()
+			So(err, ShouldNotBeNil)
+
+			err = mock.ExpectationsWereMet()
+			So(err, ShouldBeNil)
+		})
+
+		Convey("ResetDB Del VersionKey error", func() {
+			mock.ExpectTxPipeline()
+			mock.ExpectDel(metaDB.RepoMetaKey).SetVal(0)
+			mock.ExpectDel(metaDB.ImageMetaKey).SetVal(0)
+			mock.ExpectDel(metaDB.RepoBlobsKey).SetVal(0)
+			mock.ExpectDel(metaDB.RepoLastUpdatedKey).SetVal(0)
+			mock.ExpectDel(metaDB.UserDataKey).SetVal(0)
+			mock.ExpectDel(metaDB.UserAPIKeysKey).SetVal(0)
+			mock.ExpectDel(metaDB.VersionKey).SetErr(ErrTestError)
+
+			err := metaDB.ResetDB()
+			So(err, ShouldNotBeNil)
+
+			err = mock.ExpectationsWereMet()
+			So(err, ShouldBeNil)
+		})
+
+		Convey("DeleteRepoMeta Del RepoMetaKey error", func() {
+			mock.Regexp().ExpectSetNX(metaDB.LocksKey+":Repo:repo", `.*`, 8*time.Second).
+				SetVal(true)
+			mock.ExpectTxPipeline()
+			mock.ExpectHDel(metaDB.RepoMetaKey, "repo").SetErr(ErrTestError)
+
+			err := metaDB.DeleteRepoMeta("repo")
+			So(err, ShouldNotBeNil)
+
+			err = mock.ExpectationsWereMet()
+			So(err, ShouldBeNil)
+		})
+
+		Convey("DeleteRepoMeta Del RepoBlobsKey error", func() {
+			mock.Regexp().ExpectSetNX(metaDB.LocksKey+":Repo:repo", `.*`, 8*time.Second).
+				SetVal(true)
+			mock.ExpectTxPipeline()
+			mock.ExpectHDel(metaDB.RepoMetaKey, "repo").SetVal(0)
+			mock.ExpectHDel(metaDB.RepoBlobsKey, "repo").SetErr(ErrTestError)
+
+			err := metaDB.DeleteRepoMeta("repo")
+			So(err, ShouldNotBeNil)
+
+			err = mock.ExpectationsWereMet()
+			So(err, ShouldBeNil)
+		})
+
+		Convey("DeleteRepoMeta Del RepoLastUpdatedKey error", func() {
+			mock.Regexp().ExpectSetNX(metaDB.LocksKey+":Repo:repo", `.*`, 8*time.Second).
+				SetVal(true)
+			mock.ExpectTxPipeline()
+			mock.ExpectHDel(metaDB.RepoMetaKey, "repo").SetVal(0)
+			mock.ExpectHDel(metaDB.RepoBlobsKey, "repo").SetVal(0)
+			mock.ExpectHDel(metaDB.RepoLastUpdatedKey, "repo").SetErr(ErrTestError)
+
+			err := metaDB.DeleteRepoMeta("repo")
+			So(err, ShouldNotBeNil)
+
+			err = mock.ExpectationsWereMet()
+			So(err, ShouldBeNil)
 		})
 	})
 }
@@ -226,6 +391,1085 @@ func TestRedisRepoMeta(t *testing.T) {
 			So(repoMeta.StarCount, ShouldEqual, 0)
 		})
 	})
+}
+
+func TestRedisUnreachable(t *testing.T) {
+	Convey("Redis unreachable", t, func() {
+		miniRedis := miniredis.RunT(t)
+
+		log := log.NewLogger("debug", "")
+		So(log, ShouldNotBeNil)
+
+		connOpts, err := redis.ParseURL("redis://" + miniRedis.Addr())
+		So(err, ShouldBeNil)
+		workingClient := redis.NewClient(connOpts)
+
+		params := redisdb.DBDriverParameters{KeyPrefix: "zot"}
+
+		metaDB, err := redisdb.New(workingClient, params, log)
+		So(err, ShouldBeNil)
+		So(metaDB, ShouldNotBeNil)
+
+		connOpts, err = redis.ParseURL("redis://127.0.0.1:" + test.GetFreePort())
+		So(err, ShouldBeNil)
+		brokenClient := redis.NewClient(connOpts)
+
+		// Replace connection with the unreachable server
+		metaDB.Client = brokenClient
+
+		metaDB.SetImageTrustStore(imgTrustStore{})
+
+		userAc := reqCtx.NewUserAccessControl()
+		userAc.SetUsername("test")
+
+		ctx := userAc.DeriveContext(context.Background())
+
+		repo := "repo"
+		reference := "tag"
+		digest := godigest.FromString("SomeString")
+		image := CreateDefaultImage()
+		imageMeta := image.AsImageMeta()
+
+		err = metaDB.SetImageMeta(digest, imageMeta)
+		So(err, ShouldNotBeNil)
+
+		err = metaDB.SetRepoReference(ctx, repo, reference, imageMeta)
+		So(err, ShouldNotBeNil)
+
+		_, err = metaDB.SearchRepos(ctx, repo)
+		So(err, ShouldNotBeNil)
+
+		_, err = metaDB.SearchTags(ctx, repo+":"+reference)
+		So(err, ShouldNotBeNil)
+
+		_, err = metaDB.FilterTags(ctx, mTypes.AcceptAllRepoTag, mTypes.AcceptAllImageMeta)
+		So(err, ShouldNotBeNil)
+
+		_, err = metaDB.FilterRepos(ctx, mTypes.AcceptAllRepoNames, mTypes.AcceptAllRepoMeta)
+		So(err, ShouldNotBeNil)
+
+		_, err = metaDB.GetRepoMeta(ctx, repo)
+		So(err, ShouldNotBeNil)
+
+		_, err = metaDB.GetFullImageMeta(ctx, repo, reference)
+		So(err, ShouldNotBeNil)
+
+		_, err = metaDB.GetImageMeta(digest)
+		So(err, ShouldNotBeNil)
+
+		_, err = metaDB.GetMultipleRepoMeta(ctx, func(repoMeta mTypes.RepoMeta) bool { return true })
+		So(err, ShouldNotBeNil)
+
+		err = metaDB.AddManifestSignature(repo, digest, mTypes.SignatureMetadata{})
+		So(err, ShouldNotBeNil)
+
+		err = metaDB.DeleteSignature(repo, digest, mTypes.SignatureMetadata{})
+		So(err, ShouldNotBeNil)
+
+		err = metaDB.UpdateSignaturesValidity(ctx, repo, digest)
+		So(err, ShouldNotBeNil)
+
+		err = metaDB.IncrementRepoStars(repo)
+		So(err, ShouldNotBeNil)
+
+		err = metaDB.DecrementRepoStars(repo)
+		So(err, ShouldNotBeNil)
+
+		err = metaDB.SetRepoMeta(repo, mTypes.RepoMeta{})
+		So(err, ShouldNotBeNil)
+
+		err = metaDB.DeleteRepoMeta(repo)
+		So(err, ShouldNotBeNil)
+
+		_, err = metaDB.GetReferrersInfo(repo, digest, []string{})
+		So(err, ShouldNotBeNil)
+
+		err = metaDB.UpdateStatsOnDownload(repo, reference)
+		So(err, ShouldNotBeNil)
+
+		_, err = metaDB.FilterImageMeta(ctx, []string{digest.String()})
+		So(err, ShouldNotBeNil)
+
+		err = metaDB.RemoveRepoReference(repo, reference, digest)
+		So(err, ShouldNotBeNil)
+
+		err = metaDB.ResetRepoReferences(repo)
+		So(err, ShouldNotBeNil)
+
+		t := metaDB.GetRepoLastUpdated(repo)
+		So(t, ShouldEqual, time.Time{})
+
+		_, err = metaDB.GetAllRepoNames()
+		So(err, ShouldNotBeNil)
+
+		err = metaDB.ResetDB()
+		So(err, ShouldNotBeNil)
+
+		err = metaDB.PatchDB()
+		So(err, ShouldNotBeNil)
+
+		_, err = metaDB.GetStarredRepos(ctx)
+		So(err, ShouldNotBeNil)
+
+		_, err = metaDB.GetBookmarkedRepos(ctx)
+		So(err, ShouldNotBeNil)
+
+		_, err = metaDB.ToggleStarRepo(ctx, repo)
+		So(err, ShouldNotBeNil)
+
+		_, err = metaDB.ToggleBookmarkRepo(ctx, repo)
+		So(err, ShouldNotBeNil)
+
+		_, err = metaDB.GetUserData(ctx)
+		So(err, ShouldNotBeNil)
+
+		err = metaDB.SetUserData(ctx, mTypes.UserData{})
+		So(err, ShouldNotBeNil)
+
+		err = metaDB.SetUserGroups(ctx, []string{})
+		So(err, ShouldNotBeNil)
+
+		_, err = metaDB.GetUserGroups(ctx)
+		So(err, ShouldNotBeNil)
+
+		err = metaDB.DeleteUserData(ctx)
+		So(err, ShouldNotBeNil)
+
+		_, err = metaDB.GetUserAPIKeyInfo("hash")
+		So(err, ShouldNotBeNil)
+
+		_, err = metaDB.GetUserAPIKeys(ctx)
+		So(err, ShouldNotBeNil)
+
+		err = metaDB.AddUserAPIKey(ctx, "hash", &mTypes.APIKeyDetails{})
+		So(err, ShouldNotBeNil)
+
+		_, err = metaDB.IsAPIKeyExpired(ctx, "hash")
+		So(err, ShouldNotBeNil)
+
+		err = metaDB.UpdateUserAPIKeyLastUsed(ctx, "hash")
+		So(err, ShouldNotBeNil)
+
+		err = metaDB.DeleteUserAPIKey(ctx, "test")
+		So(err, ShouldNotBeNil)
+	})
+}
+
+func TestWrapperErrors(t *testing.T) {
+	image := CreateDefaultImage()
+	imageMeta := image.AsImageMeta()
+	multiarchImageMeta := CreateMultiarchWith().Images([]Image{image}).Build().AsImageMeta()
+
+	badProtoBlob := []byte("bad-repo-meta")
+
+	goodRepoMetaBlob, err := proto.Marshal(&proto_go.RepoMeta{Name: "repo"})
+	if err != nil {
+		t.FailNow()
+	}
+
+	Convey("Errors", t, func() {
+		miniRedis := miniredis.RunT(t)
+
+		log := log.NewLogger("debug", "")
+		So(log, ShouldNotBeNil)
+
+		opts, err := redis.ParseURL("redis://" + miniRedis.Addr())
+		So(err, ShouldBeNil)
+
+		client := redis.NewClient(opts)
+		params := redisdb.DBDriverParameters{KeyPrefix: keyPrefix}
+
+		metaDB, err := redisdb.New(client, params, log)
+		So(metaDB, ShouldNotBeNil)
+		So(err, ShouldBeNil)
+
+		metaDB.SetImageTrustStore(imgTrustStore{})
+
+		userAc := reqCtx.NewUserAccessControl()
+		userAc.SetUsername("test")
+
+		ctx := userAc.DeriveContext(context.Background())
+
+		Convey("RemoveRepoReference", func() {
+			Convey("getProtoRepoMeta errors", func() {
+				err := setRepoMeta("repo", badProtoBlob, client)
+				So(err, ShouldBeNil)
+
+				err = metaDB.RemoveRepoReference("repo", "ref", imageMeta.Digest)
+				So(err, ShouldNotBeNil)
+			})
+
+			Convey("getProtoImageMeta errors", func() {
+				err := metaDB.SetRepoMeta("repo", mTypes.RepoMeta{
+					Name: "repo",
+					Tags: map[mTypes.Tag]mTypes.Descriptor{
+						"tag": {
+							MediaType: ispec.MediaTypeImageManifest,
+							Digest:    imageMeta.Digest.String(),
+						},
+					},
+				})
+				So(err, ShouldBeNil)
+
+				err = setImageMeta(imageMeta.Digest, badProtoBlob, client)
+				So(err, ShouldBeNil)
+
+				err = metaDB.RemoveRepoReference("repo", "ref", imageMeta.Digest)
+				So(err, ShouldNotBeNil)
+			})
+
+			Convey("unmarshalProtoRepoBlobs errors", func() {
+				err := metaDB.SetRepoReference(ctx, "repo", "tag", imageMeta)
+				So(err, ShouldBeNil)
+
+				err = setRepoBlobInfo("repo", badProtoBlob, client)
+				So(err, ShouldBeNil)
+
+				err = metaDB.RemoveRepoReference("repo", "ref", imageMeta.Digest)
+				So(err, ShouldNotBeNil)
+			})
+		})
+
+		Convey("UpdateSignaturesValidity", func() {
+			metaDB.SetImageTrustStore(imgTrustStore{})
+
+			digest := image.Digest()
+
+			ctx := context.Background()
+
+			Convey("image meta blob not found", func() {
+				err := metaDB.UpdateSignaturesValidity(ctx, "repo", digest)
+				So(err, ShouldBeNil)
+			})
+
+			Convey("image meta unmarshal fail", func() {
+				err := setImageMeta(digest, badProtoBlob, client)
+				So(err, ShouldBeNil)
+
+				err = metaDB.UpdateSignaturesValidity(ctx, "repo", digest)
+				So(err, ShouldNotBeNil)
+			})
+
+			Convey("repo meta blob not found", func() {
+				err := metaDB.SetImageMeta(digest, imageMeta)
+				So(err, ShouldBeNil)
+
+				err = metaDB.UpdateSignaturesValidity(ctx, "repo", digest)
+				So(err, ShouldNotBeNil)
+			})
+
+			Convey("repo meta unmarshal fail", func() {
+				err := metaDB.SetImageMeta(digest, imageMeta)
+				So(err, ShouldBeNil)
+
+				err = setRepoMeta("repo", badProtoBlob, client)
+				So(err, ShouldBeNil)
+
+				err = metaDB.UpdateSignaturesValidity(ctx, "repo", digest)
+				So(err, ShouldNotBeNil)
+			})
+		})
+
+		Convey("GetRepoLastUpdated", func() {
+			Convey("bad blob in db", func() {
+				err := setRepoLastUpdated("repo", []byte("bad-blob"), client)
+				So(err, ShouldBeNil)
+
+				lastUpdated := metaDB.GetRepoLastUpdated("repo")
+				So(lastUpdated, ShouldEqual, time.Time{})
+			})
+
+			Convey("empty blob in db", func() {
+				err := setRepoLastUpdated("repo", []byte(""), client)
+				So(err, ShouldBeNil)
+
+				lastUpdated := metaDB.GetRepoLastUpdated("repo")
+				So(lastUpdated, ShouldEqual, time.Time{})
+			})
+		})
+
+		Convey("UpdateStatsOnDownload", func() {
+			Convey("repo meta not found", func() {
+				err = metaDB.UpdateStatsOnDownload("repo", "ref")
+				So(err, ShouldNotBeNil)
+			})
+
+			Convey("unmarshalProtoRepoMeta error", func() {
+				err := setRepoMeta("repo", badProtoBlob, client)
+				So(err, ShouldBeNil)
+
+				err = metaDB.UpdateStatsOnDownload("repo", "ref")
+				So(err, ShouldNotBeNil)
+			})
+
+			Convey("ref is tag and tag is not found", func() {
+				err := metaDB.SetRepoReference(ctx, "repo", "tag", imageMeta)
+				So(err, ShouldBeNil)
+
+				err = metaDB.UpdateStatsOnDownload("repo", "not-found-tag")
+				So(err, ShouldNotBeNil)
+			})
+
+			Convey("digest not found in statistics", func() {
+				err := metaDB.SetRepoReference(ctx, "repo", "tag", imageMeta)
+				So(err, ShouldBeNil)
+
+				err = metaDB.UpdateStatsOnDownload("repo", godigest.FromString("not-found").String())
+				So(err, ShouldNotBeNil)
+			})
+		})
+
+		Convey("GetReferrersInfo", func() {
+			Convey("unmarshalProtoRepoMeta error", func() {
+				err := setRepoMeta("repo", badProtoBlob, client)
+				So(err, ShouldBeNil)
+
+				_, err = metaDB.GetReferrersInfo("repo", "refDig", []string{})
+				So(err, ShouldNotBeNil)
+			})
+		})
+
+		Convey("ResetRepoReferences", func() {
+			Convey("unmarshalProtoRepoMeta error", func() {
+				err := setRepoMeta("repo", badProtoBlob, client)
+				So(err, ShouldBeNil)
+
+				err = metaDB.ResetRepoReferences("repo")
+				So(err, ShouldNotBeNil)
+			})
+		})
+
+		Convey("DecrementRepoStars", func() {
+			Convey("unmarshalProtoRepoMeta error", func() {
+				err := setRepoMeta("repo", badProtoBlob, client)
+				So(err, ShouldBeNil)
+
+				err = metaDB.DecrementRepoStars("repo")
+				So(err, ShouldNotBeNil)
+			})
+		})
+
+		Convey("IncrementRepoStars", func() {
+			Convey("unmarshalProtoRepoMeta error", func() {
+				err := setRepoMeta("repo", badProtoBlob, client)
+				So(err, ShouldBeNil)
+
+				err = metaDB.IncrementRepoStars("repo")
+				So(err, ShouldNotBeNil)
+			})
+		})
+
+		Convey("DeleteSignature", func() {
+			Convey("repo meta not found", func() {
+				err = metaDB.DeleteSignature("repo", godigest.FromString("dig"), mTypes.SignatureMetadata{})
+				So(err, ShouldNotBeNil)
+			})
+
+			Convey("unmarshalProtoRepoMeta error", func() {
+				err := setRepoMeta("repo", badProtoBlob, client)
+				So(err, ShouldBeNil)
+
+				err = metaDB.DeleteSignature("repo", godigest.FromString("dig"), mTypes.SignatureMetadata{})
+				So(err, ShouldNotBeNil)
+			})
+		})
+
+		Convey("AddManifestSignature", func() {
+			Convey("unmarshalProtoRepoMeta error", func() {
+				err := setRepoMeta("repo", badProtoBlob, client)
+				So(err, ShouldBeNil)
+
+				err = metaDB.AddManifestSignature("repo", godigest.FromString("dig"), mTypes.SignatureMetadata{})
+				So(err, ShouldNotBeNil)
+			})
+		})
+
+		Convey("GetMultipleRepoMeta", func() {
+			Convey("unmarshalProtoRepoMeta error", func() {
+				err := setRepoMeta("repo", badProtoBlob, client)
+				So(err, ShouldBeNil)
+
+				_, err = metaDB.GetMultipleRepoMeta(ctx, func(repoMeta mTypes.RepoMeta) bool { return true })
+				So(err, ShouldNotBeNil)
+			})
+		})
+
+		Convey("GetImageMeta", func() {
+			Convey("malformed image manifest", func() {
+				badImageDigest := godigest.FromString("bad-image-manifest")
+
+				err = setImageMeta(badImageDigest, badProtoBlob, client)
+				So(err, ShouldBeNil)
+
+				_, err := metaDB.GetImageMeta(badImageDigest)
+				So(err, ShouldNotBeNil)
+			})
+
+			Convey("good image index, malformed inside manifest", func() {
+				goodIndexBadManifestDigest := godigest.FromString("good-index-bad-manifests")
+
+				err = metaDB.SetImageMeta(goodIndexBadManifestDigest, multiarchImageMeta)
+				So(err, ShouldBeNil)
+
+				err = setImageMeta(image.Digest(), badProtoBlob, client)
+				So(err, ShouldBeNil)
+
+				_, err := metaDB.GetImageMeta(image.Digest())
+				So(err, ShouldNotBeNil)
+			})
+		})
+
+		Convey("GetFullImageMeta", func() {
+			Convey("repo meta not found", func() {
+				_, err := metaDB.GetFullImageMeta(ctx, "repo", "tag")
+				So(err, ShouldNotBeNil)
+			})
+
+			Convey("unmarshalProtoRepoMeta fails", func() {
+				err := setRepoMeta("repo", badProtoBlob, client)
+				So(err, ShouldBeNil)
+
+				_, err = metaDB.GetFullImageMeta(ctx, "repo", "tag")
+				So(err, ShouldNotBeNil)
+			})
+
+			Convey("tag not found", func() {
+				err := setRepoMeta("repo", goodRepoMetaBlob, client)
+				So(err, ShouldBeNil)
+
+				_, err = metaDB.GetFullImageMeta(ctx, "repo", "tag-not-found")
+				So(err, ShouldNotBeNil)
+			})
+
+			Convey("getProtoImageMeta fails", func() {
+				err := metaDB.SetRepoMeta("repo", mTypes.RepoMeta{
+					Name: "repo",
+					Tags: map[mTypes.Tag]mTypes.Descriptor{
+						"tag": {
+							MediaType: ispec.MediaTypeImageManifest,
+							Digest:    godigest.FromString("not-found").String(),
+						},
+					},
+				})
+				So(err, ShouldBeNil)
+
+				_, err = metaDB.GetFullImageMeta(ctx, "repo", "tag")
+				So(err, ShouldNotBeNil)
+			})
+
+			Convey("image is index, fail to get manifests", func() {
+				err := metaDB.SetImageMeta(multiarchImageMeta.Digest, multiarchImageMeta)
+				So(err, ShouldBeNil)
+
+				err = metaDB.SetRepoMeta("repo", mTypes.RepoMeta{
+					Name: "repo",
+					Tags: map[mTypes.Tag]mTypes.Descriptor{
+						"tag": {
+							MediaType: ispec.MediaTypeImageIndex,
+							Digest:    multiarchImageMeta.Digest.String(),
+						},
+					},
+				})
+				So(err, ShouldBeNil)
+
+				_, err = metaDB.GetFullImageMeta(ctx, "repo", "tag")
+				So(err, ShouldNotBeNil)
+			})
+		})
+
+		Convey("FilterRepos", func() {
+			err := setRepoMeta("repo", badProtoBlob, client)
+			So(err, ShouldBeNil)
+
+			_, err = metaDB.FilterRepos(ctx, mTypes.AcceptAllRepoNames, mTypes.AcceptAllRepoMeta)
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("SearchTags", func() {
+			Convey("unmarshalProtoRepoMeta fails", func() {
+				err := setRepoMeta("repo", badProtoBlob, client)
+				So(err, ShouldBeNil)
+
+				// manifests are missing
+				_, err = metaDB.SearchTags(ctx, "repo:")
+				So(err, ShouldNotBeNil)
+			})
+
+			Convey("found repo meta", func() {
+				Convey("bad image manifest", func() {
+					badImageDigest := godigest.FromString("bad-image-manifest")
+					err := metaDB.SetRepoMeta("repo", mTypes.RepoMeta{
+						Name: "repo",
+						Tags: map[mTypes.Tag]mTypes.Descriptor{
+							"bad-image-manifest": {
+								MediaType: ispec.MediaTypeImageManifest,
+								Digest:    badImageDigest.String(),
+							},
+						},
+					})
+					So(err, ShouldBeNil)
+
+					err = setImageMeta(badImageDigest, badProtoBlob, client)
+					So(err, ShouldBeNil)
+
+					_, err = metaDB.SearchTags(ctx, "repo:")
+					So(err, ShouldNotBeNil)
+				})
+				Convey("bad image index", func() {
+					badIndexDigest := godigest.FromString("bad-image-manifest")
+					err := metaDB.SetRepoMeta("repo", mTypes.RepoMeta{
+						Name: "repo",
+						Tags: map[mTypes.Tag]mTypes.Descriptor{
+							"bad-image-index": {
+								MediaType: ispec.MediaTypeImageIndex,
+								Digest:    badIndexDigest.String(),
+							},
+						},
+					})
+					So(err, ShouldBeNil)
+
+					err = setImageMeta(badIndexDigest, badProtoBlob, client)
+					So(err, ShouldBeNil)
+
+					_, err = metaDB.SearchTags(ctx, "repo:")
+					So(err, ShouldNotBeNil)
+				})
+				Convey("good image index, bad inside manifest", func() {
+					goodIndexBadManifestDigest := godigest.FromString("good-index-bad-manifests")
+					err := metaDB.SetRepoMeta("repo", mTypes.RepoMeta{
+						Name: "repo",
+						Tags: map[mTypes.Tag]mTypes.Descriptor{
+							"good-index-bad-manifests": {
+								MediaType: ispec.MediaTypeImageIndex,
+								Digest:    goodIndexBadManifestDigest.String(),
+							},
+						},
+					})
+					So(err, ShouldBeNil)
+
+					err = metaDB.SetImageMeta(goodIndexBadManifestDigest, multiarchImageMeta)
+					So(err, ShouldBeNil)
+
+					err = setImageMeta(image.Digest(), badProtoBlob, client)
+					So(err, ShouldBeNil)
+
+					_, err = metaDB.SearchTags(ctx, "repo:")
+					So(err, ShouldNotBeNil)
+				})
+				Convey("bad media type", func() {
+					err := metaDB.SetRepoMeta("repo", mTypes.RepoMeta{
+						Name: "repo",
+						Tags: map[mTypes.Tag]mTypes.Descriptor{
+							"mad-media-type": {
+								MediaType: "bad media type",
+								Digest:    godigest.FromString("dig").String(),
+							},
+						},
+					})
+					So(err, ShouldBeNil)
+
+					_, err = metaDB.SearchTags(ctx, "repo:")
+					So(err, ShouldBeNil)
+				})
+			})
+		})
+
+		Convey("FilterTags", func() {
+			Convey("unmarshalProtoRepoMeta fails", func() {
+				err := setRepoMeta("repo", badProtoBlob, client)
+				So(err, ShouldBeNil)
+
+				_, err = metaDB.FilterTags(ctx, mTypes.AcceptAllRepoTag, mTypes.AcceptAllImageMeta)
+				So(err, ShouldNotBeNil)
+			})
+
+			Convey("bad media Type fails", func() {
+				err := metaDB.SetRepoMeta("repo", mTypes.RepoMeta{
+					Name: "repo",
+					Tags: map[mTypes.Tag]mTypes.Descriptor{
+						"bad-repo-meta": {
+							MediaType: "bad media type",
+							Digest:    godigest.FromString("dig").String(),
+						},
+					},
+				})
+				So(err, ShouldBeNil)
+
+				_, err = metaDB.FilterTags(ctx, mTypes.AcceptAllRepoTag, mTypes.AcceptAllImageMeta)
+				So(err, ShouldBeNil)
+			})
+		})
+
+		Convey("SearchRepos", func() {
+			Convey("unmarshalProtoRepoMeta fails", func() {
+				err := setRepoMeta("repo", badProtoBlob, client)
+				So(err, ShouldBeNil)
+
+				// manifests are missing
+				_, err = metaDB.SearchRepos(ctx, "repo")
+				So(err, ShouldNotBeNil)
+			})
+		})
+
+		Convey("FilterImageMeta", func() {
+			Convey("MediaType ImageIndex, getProtoImageMeta fails", func() {
+				err := metaDB.SetImageMeta(multiarchImageMeta.Digest, multiarchImageMeta)
+				So(err, ShouldBeNil)
+
+				err = setImageMeta(image.Digest(), badProtoBlob, client)
+				So(err, ShouldBeNil)
+
+				// manifests are missing
+				_, err = metaDB.FilterImageMeta(ctx, []string{multiarchImageMeta.Digest.String()})
+				So(err, ShouldNotBeNil)
+			})
+		})
+
+		Convey("SetRepoReference", func() {
+			Convey("getProtoRepoMeta errors", func() {
+				err := setRepoMeta("repo", badProtoBlob, client)
+				So(err, ShouldBeNil)
+
+				err = metaDB.SetRepoReference(ctx, "repo", "tag", imageMeta)
+				So(err, ShouldNotBeNil)
+			})
+
+			Convey("unmarshalProtoRepoBlobs errors", func() {
+				err := setRepoMeta("repo", goodRepoMetaBlob, client)
+				So(err, ShouldBeNil)
+
+				err = setRepoBlobInfo("repo", badProtoBlob, client)
+				So(err, ShouldBeNil)
+
+				err = metaDB.SetRepoReference(ctx, "repo", "tag", imageMeta)
+				So(err, ShouldNotBeNil)
+			})
+		})
+
+		Convey("AddUserAPIKey", func() {
+			// no userid found
+			userAc := reqCtx.NewUserAccessControl()
+			ctx := userAc.DeriveContext(context.Background())
+
+			err = metaDB.AddUserAPIKey(ctx, "", &mTypes.APIKeyDetails{})
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("UpdateUserAPIKey", func() {
+			// no userid found
+			userAc := reqCtx.NewUserAccessControl()
+			ctx := userAc.DeriveContext(context.Background())
+
+			err = metaDB.UpdateUserAPIKeyLastUsed(ctx, "") //nolint: contextcheck
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("DeleteUserAPIKey", func() {
+			err = metaDB.SetUserData(ctx, mTypes.UserData{})
+			So(err, ShouldBeNil)
+
+			err = metaDB.AddUserAPIKey(ctx, "hashedKey", &mTypes.APIKeyDetails{})
+			So(err, ShouldBeNil)
+
+			Convey("userdata not found", func() {
+				userAc := reqCtx.NewUserAccessControl()
+				userAc.SetUsername("test")
+				ctx := userAc.DeriveContext(context.Background())
+
+				err := metaDB.DeleteUserData(ctx)
+				So(err, ShouldBeNil)
+
+				err = metaDB.DeleteUserAPIKey(ctx, "")
+				So(err, ShouldNotBeNil)
+			})
+
+			userAc := reqCtx.NewUserAccessControl()
+			ctx := userAc.DeriveContext(context.Background())
+
+			err = metaDB.DeleteUserAPIKey(ctx, "test") //nolint: contextcheck
+			So(err, ShouldNotBeNil)
+
+			err = deleteUserDataBucket(client)
+			So(err, ShouldBeNil)
+
+			err = metaDB.DeleteUserAPIKey(ctx, "") //nolint: contextcheck
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("GetUserAPIKeyInfo", func() {
+			err = deleteUserAPIKeysBucket(client)
+			So(err, ShouldBeNil)
+
+			_, err = metaDB.GetUserAPIKeyInfo("")
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("GetUserData", func() {
+			err = setUserData("test", []byte("dsa8"), client)
+			So(err, ShouldBeNil)
+
+			_, err = metaDB.GetUserData(ctx)
+			So(err, ShouldNotBeNil)
+
+			err = deleteUserAPIKeysBucket(client)
+			So(err, ShouldBeNil)
+
+			_, err = metaDB.GetUserData(ctx)
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("SetUserData", func() {
+			userAc := reqCtx.NewUserAccessControl()
+			ctx := userAc.DeriveContext(context.Background())
+
+			err = metaDB.SetUserData(ctx, mTypes.UserData{})
+			So(err, ShouldNotBeNil)
+
+			err = deleteUserDataBucket(client)
+			So(err, ShouldBeNil)
+
+			userAc = reqCtx.NewUserAccessControl()
+			userAc.SetUsername("test")
+			ctx = userAc.DeriveContext(context.Background())
+
+			err = metaDB.SetUserData(ctx, mTypes.UserData{}) //nolint: contextcheck
+			So(err, ShouldBeNil)
+		})
+
+		Convey("DeleteUserData", func() {
+			userAc = reqCtx.NewUserAccessControl()
+			ctx = userAc.DeriveContext(context.Background()) //nolint:fatcontext // test code
+
+			err = metaDB.DeleteUserData(ctx)
+			So(err, ShouldNotBeNil)
+
+			err = deleteUserDataBucket(client)
+			So(err, ShouldBeNil)
+
+			userAc = reqCtx.NewUserAccessControl()
+			userAc.SetUsername("test")
+			ctx = userAc.DeriveContext(context.Background())
+
+			err = metaDB.DeleteUserData(ctx)
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("GetUserGroups and SetUserGroups", func() {
+			userAc = reqCtx.NewUserAccessControl()
+			ctx = userAc.DeriveContext(context.Background()) //nolint:fatcontext // test code
+
+			_, err := metaDB.GetUserGroups(ctx)
+			So(err, ShouldNotBeNil)
+
+			err = metaDB.SetUserGroups(ctx, []string{})
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("ToggleStarRepo bad context errors", func() {
+			uacKey := reqCtx.GetContextKey()
+			ctx := context.WithValue(context.Background(), uacKey, "bad context")
+
+			_, err := metaDB.ToggleStarRepo(ctx, "repo")
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("ToggleStarRepo, no repoMeta found", func() {
+			userAc := reqCtx.NewUserAccessControl()
+			userAc.SetUsername("username")
+			userAc.SetGlobPatterns("read", map[string]bool{
+				"repo": true,
+			})
+
+			ctx := userAc.DeriveContext(context.Background())
+
+			err = setRepoMeta("repo", []byte("bad repo"), client)
+			So(err, ShouldBeNil)
+
+			_, err = metaDB.ToggleStarRepo(ctx, "repo")
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("ToggleStarRepo bad UserData found", func() {
+			userAc := reqCtx.NewUserAccessControl()
+			userAc.SetUsername("username")
+			userAc.SetGlobPatterns("read", map[string]bool{
+				"repo": true,
+			})
+
+			ctx := userAc.DeriveContext(context.Background())
+
+			err = setUserData("username", []byte("dsa8"), client)
+			So(err, ShouldBeNil)
+
+			_, err = metaDB.ToggleStarRepo(ctx, "repo")
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("ToggleStarRepo, bad repoMeta found", func() {
+			userAc := reqCtx.NewUserAccessControl()
+			userAc.SetUsername("username")
+			userAc.SetGlobPatterns("read", map[string]bool{
+				"repo": true,
+			})
+
+			ctx := userAc.DeriveContext(context.Background())
+
+			_, err = metaDB.ToggleStarRepo(ctx, "repo")
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("ToggleBookmarkRepo bad context errors", func() {
+			uacKey := reqCtx.GetContextKey()
+			ctx := context.WithValue(context.Background(), uacKey, "bad context")
+
+			_, err := metaDB.ToggleBookmarkRepo(ctx, "repo")
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("ToggleBookmarkRepo bad UserData found", func() {
+			userAc := reqCtx.NewUserAccessControl()
+			userAc.SetUsername("username")
+			userAc.SetGlobPatterns("read", map[string]bool{
+				"repo": true,
+			})
+
+			ctx := userAc.DeriveContext(context.Background())
+
+			err = setUserData("username", []byte("dsa8"), client)
+			So(err, ShouldBeNil)
+
+			_, err = metaDB.ToggleBookmarkRepo(ctx, "repo")
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("GetUserData bad context errors", func() {
+			uacKey := reqCtx.GetContextKey()
+			ctx := context.WithValue(context.Background(), uacKey, "bad context")
+
+			_, err := metaDB.GetUserData(ctx)
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("SetUserData bad context errors", func() {
+			uacKey := reqCtx.GetContextKey()
+			ctx := context.WithValue(context.Background(), uacKey, "bad context")
+
+			err := metaDB.SetUserData(ctx, mTypes.UserData{})
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("GetUserGroups bad context errors", func() {
+			_, err := metaDB.GetUserGroups(ctx)
+			So(err, ShouldNotBeNil)
+
+			uacKey := reqCtx.GetContextKey()
+			ctx := context.WithValue(context.Background(), uacKey, "bad context")
+
+			_, err = metaDB.GetUserGroups(ctx) //nolint: contextcheck
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("SetUserGroups bad context errors", func() {
+			uacKey := reqCtx.GetContextKey()
+			ctx := context.WithValue(context.Background(), uacKey, "bad context")
+
+			err := metaDB.SetUserGroups(ctx, []string{})
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("SetUserGroups bad UserData found", func() {
+			userAc := reqCtx.NewUserAccessControl()
+			userAc.SetUsername("username")
+			userAc.SetGlobPatterns("read", map[string]bool{
+				"repo": true,
+			})
+
+			ctx := userAc.DeriveContext(context.Background())
+
+			err = setUserData("username", []byte("dsa8"), client)
+			So(err, ShouldBeNil)
+
+			err = metaDB.SetUserGroups(ctx, []string{})
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("AddUserAPIKey bad context errors", func() {
+			uacKey := reqCtx.GetContextKey()
+			ctx := context.WithValue(context.Background(), uacKey, "bad context")
+
+			err := metaDB.AddUserAPIKey(ctx, "", &mTypes.APIKeyDetails{})
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("AddUserAPIKey bad UserData found", func() {
+			userAc := reqCtx.NewUserAccessControl()
+			userAc.SetUsername("username")
+			userAc.SetGlobPatterns("read", map[string]bool{
+				"repo": true,
+			})
+
+			ctx := userAc.DeriveContext(context.Background())
+
+			err = setUserData("username", []byte("dsa8"), client)
+			So(err, ShouldBeNil)
+
+			err = metaDB.AddUserAPIKey(ctx, "", &mTypes.APIKeyDetails{})
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("DeleteUserAPIKey bad context errors", func() {
+			uacKey := reqCtx.GetContextKey()
+			ctx := context.WithValue(context.Background(), uacKey, "bad context")
+
+			err := metaDB.DeleteUserAPIKey(ctx, "")
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("GetUserAPIKeys bad UserData found", func() {
+			userAc := reqCtx.NewUserAccessControl()
+			userAc.SetUsername("username")
+			userAc.SetGlobPatterns("read", map[string]bool{
+				"repo": true,
+			})
+
+			ctx := userAc.DeriveContext(context.Background())
+
+			err = setUserData("username", []byte("dsa8"), client)
+			So(err, ShouldBeNil)
+
+			_, err = metaDB.GetUserAPIKeys(ctx)
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("IsAPIKeyExpired bad UserData found", func() {
+			userAc := reqCtx.NewUserAccessControl()
+			userAc.SetUsername("username")
+			userAc.SetGlobPatterns("read", map[string]bool{
+				"repo": true,
+			})
+
+			ctx := userAc.DeriveContext(context.Background())
+
+			err = setUserData("username", []byte("dsa8"), client)
+			So(err, ShouldBeNil)
+
+			_, err = metaDB.IsAPIKeyExpired(ctx, "")
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("UpdateUserAPIKeyLastUsed bad context errors", func() {
+			uacKey := reqCtx.GetContextKey()
+			ctx := context.WithValue(context.Background(), uacKey, "bad context")
+
+			err := metaDB.UpdateUserAPIKeyLastUsed(ctx, "")
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("UpdateUserAPIKeyLastUsed bad UserData found", func() {
+			userAc := reqCtx.NewUserAccessControl()
+			userAc.SetUsername("username")
+			userAc.SetGlobPatterns("read", map[string]bool{
+				"repo": true,
+			})
+
+			ctx := userAc.DeriveContext(context.Background())
+
+			err = setUserData("username", []byte("dsa8"), client)
+			So(err, ShouldBeNil)
+
+			err = metaDB.UpdateUserAPIKeyLastUsed(ctx, "")
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("DeleteUserData bad context errors", func() {
+			uacKey := reqCtx.GetContextKey()
+			ctx := context.WithValue(context.Background(), uacKey, "bad context")
+
+			err := metaDB.DeleteUserData(ctx)
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("GetStarredRepos bad context errors", func() {
+			uacKey := reqCtx.GetContextKey()
+			ctx := context.WithValue(context.Background(), uacKey, "bad context")
+
+			_, err := metaDB.GetStarredRepos(ctx)
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("GetBookmarkedRepos bad context errors", func() {
+			uacKey := reqCtx.GetContextKey()
+			ctx := context.WithValue(context.Background(), uacKey, "bad context")
+
+			_, err := metaDB.GetBookmarkedRepos(ctx)
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("GetUserRepoMeta unmarshal error", func() {
+			userAc := reqCtx.NewUserAccessControl()
+			userAc.SetUsername("username")
+			userAc.SetGlobPatterns("read", map[string]bool{
+				"repo": true,
+			})
+
+			ctx := userAc.DeriveContext(context.Background())
+
+			err = setRepoMeta("repo", []byte("bad repo"), client)
+			So(err, ShouldBeNil)
+
+			_, err := metaDB.GetRepoMeta(ctx, "repo")
+			So(err, ShouldNotBeNil)
+		})
+	})
+}
+
+func setRepoMeta(repo string, blob []byte, client *redis.Client) error { //nolint: unparam
+	ctx := context.Background()
+	key := keyPrefix + ":" + redisdb.RepoMetaBucket
+
+	return client.HSet(ctx, key, repo, blob).Err()
+}
+
+func setRepoLastUpdated(repo string, blob []byte, client *redis.Client) error {
+	ctx := context.Background()
+	key := keyPrefix + ":" + redisdb.RepoLastUpdatedBucket
+
+	return client.HSet(ctx, key, repo, blob).Err()
+}
+
+func setImageMeta(digest godigest.Digest, blob []byte, client *redis.Client) error {
+	ctx := context.Background()
+	key := keyPrefix + ":" + redisdb.ImageMetaBucket
+
+	return client.HSet(ctx, key, digest.String(), blob).Err()
+}
+
+func setRepoBlobInfo(repo string, blob []byte, client *redis.Client) error {
+	ctx := context.Background()
+	key := keyPrefix + ":" + redisdb.RepoBlobsBucket
+
+	return client.HSet(ctx, key, repo, blob).Err()
+}
+
+func setUserData(userID string, blob []byte, client *redis.Client) error {
+	ctx := context.Background()
+	key := keyPrefix + ":" + redisdb.UserDataBucket
+
+	return client.HSet(ctx, key, userID, blob).Err()
+}
+
+func deleteUserDataBucket(client *redis.Client) error {
+	ctx := context.Background()
+	key := keyPrefix + ":" + redisdb.UserDataBucket
+
+	return client.Del(ctx, key).Err()
+}
+
+func deleteUserAPIKeysBucket(client *redis.Client) error {
+	ctx := context.Background()
+	key := keyPrefix + ":" + redisdb.UserAPIKeysBucket
+
+	return client.Del(ctx, key).Err()
 }
 
 func DumpKeys(t *testing.T, client redis.UniversalClient) {

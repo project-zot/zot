@@ -264,7 +264,8 @@ func (rc *RedisDB) ToggleBookmarkRepo(ctx context.Context, repo string) (mTypes.
 
 // UserDB profile/api key CRUD.
 func (rc *RedisDB) GetUserData(ctx context.Context) (mTypes.UserData, error) {
-	var userData mTypes.UserData
+	userData := mTypes.UserData{}
+	userData.APIKeys = make(map[string]mTypes.APIKeyDetails)
 
 	userAc, err := reqCtx.UserAcFromContext(ctx)
 	if err != nil {
@@ -282,7 +283,7 @@ func (rc *RedisDB) GetUserData(ctx context.Context) (mTypes.UserData, error) {
 		rc.Log.Error().Err(err).Str("hget", rc.UserDataKey).Str("userid", userid).
 			Msg("failed to get user data record")
 
-		return mTypes.UserData{}, fmt.Errorf("failed to get user data record for identity %s: %w", userid, err)
+		return userData, fmt.Errorf("failed to get user data record for identity %s: %w", userid, err)
 	}
 
 	if errors.Is(err, redis.Nil) {
@@ -290,6 +291,11 @@ func (rc *RedisDB) GetUserData(ctx context.Context) (mTypes.UserData, error) {
 	}
 
 	err = json.Unmarshal(userDataBlob, &userData)
+
+	if userData.APIKeys == nil {
+		// Unmarshal may have reset the value
+		userData.APIKeys = make(map[string]mTypes.APIKeyDetails)
+	}
 
 	return userData, err
 }
@@ -499,10 +505,6 @@ func (rc *RedisDB) AddUserAPIKey(ctx context.Context, hashedKey string, apiKeyDe
 		userData, err := rc.GetUserData(ctx)
 		if err != nil && !errors.Is(err, zerr.ErrUserDataNotFound) {
 			return err
-		}
-
-		if userData.APIKeys == nil {
-			userData.APIKeys = make(map[string]mTypes.APIKeyDetails)
 		}
 
 		userData.APIKeys[hashedKey] = *apiKeyDetails
