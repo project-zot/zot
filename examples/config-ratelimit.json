@@ -6,12 +6,12 @@
     "http": {
         "address": "127.0.0.1",
         "port": "8080",
-        "Ratelimit": {
-            "Rate": 10,
-            "Methods": [
+        "ratelimit": {
+            "rate": 10,
+            "methods": [
                 {
-                    "Method": "GET",
-                    "Rate": 5
+                    "method": "GET",
+                    "rate": 5
                 }
             ]
         }
