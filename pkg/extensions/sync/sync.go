@@ -13,6 +13,7 @@ import (
 	"github.com/containers/image/v5/types"
 	"github.com/opencontainers/go-digest"
 
+	syncconf "zotregistry.dev/zot/pkg/extensions/config/sync"
 	"zotregistry.dev/zot/pkg/log"
 	"zotregistry.dev/zot/pkg/scheduler"
 )
@@ -48,6 +49,22 @@ type Registry interface {
 	GetContext() *types.SystemContext
 }
 
+// The CredentialHelper interface should be implemented by registries that use temporary tokens.
+// This interface defines methods to:
+// - Check if the credentials for a registry are still valid.
+// - Retrieve credentials for the specified registry URLs.
+// - Refresh credentials for a given registry URL.
+type CredentialHelper interface {
+	// Validates whether the credentials for the specified registry URL have expired.
+	AreCredentialsValid(url string) bool
+
+	// Retrieves credentials for the provided list of registry URLs.
+	GetCredentials(urls []string) (syncconf.CredentialsFile, error)
+
+	// Refreshes credentials for the specified registry URL.
+	RefreshCredentials(url string) (syncconf.Credentials, error)
+}
+
 /*
 Temporary oci layout, sync first pulls an image to this oci layout (using oci:// transport)
 then moves them into ImageStore.
@@ -68,6 +85,9 @@ type Remote interface {
 	// In the case of public dockerhub images 'library' namespace is added to the repo names of images
 	// eg: alpine -> library/alpine
 	GetDockerRemoteRepo(repo string) string
+	// SetUpstreamAuthConfig sets the upstream credentials used when the credential helper is set.
+	// This method refreshes the authentication configuration with the provided username and password.
+	SetUpstreamAuthConfig(username, password string)
 }
 
 // Local registry.

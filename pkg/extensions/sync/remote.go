@@ -44,6 +44,13 @@ func NewRemoteRegistry(client *client.Client, logger log.Logger) Remote {
 	return registry
 }
 
+func (registry *RemoteRegistry) SetUpstreamAuthConfig(username, password string) {
+	registry.context.DockerAuthConfig = &types.DockerAuthConfig{
+		Username: username,
+		Password: password,
+	}
+}
+
 func (registry *RemoteRegistry) GetContext() *types.SystemContext {
 	return registry.context
 }
