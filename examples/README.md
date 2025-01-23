@@ -900,6 +900,36 @@ The following AWS policy is required by zot for caching blobs. Make sure to repl
   ]
 }
 
+### Redis
+
+Redis is an alternative to BoltDB (which cannot be shared by multiple zot instances) and DynamoDB (requires access to AWS).
+Redis can be set up using a configuration similar to the one below:
+
+```json
+    "storage": {
+        "rootDirectory": "/tmp/zot",
+        "remoteCache": true,
+        "cacheDriver": {
+            "name": "redis",
+            "url": "redis://localhost:6379",
+            "keyprefix": "zot"
+        }
+    }
+```
+
+The "name" setting selects the Redis driver implementation.
+The "keyprefix" is a string prepended to all Redis keys created by this zot instance.
+The "url" setting points to the Redis server (or servers in the case of a Redis cluster).
+More details on how this is parsed are available at:
+- https://github.com/redis/go-redis/blob/v9.7.0/options.go#L247
+- https://github.com/redis/go-redis/blob/v9.7.0/osscluster.go#L144
+
+If the "url" setting is missing, the parameters need to be passed individually as keys in the same "cacheDriver" map.
+The keys are the same as the attributes that would otherwise be included in the "url".
+Note that at this time the library we import only supports "url" parsing in the case of a Redis single instance, or cluster configuration.
+In the case of a Redis Sentinel setup, you would need to add each key manually in the "cacheDriver" map and make sure to specify
+a "master_name" key, see https://github.com/redis/go-redis/blob/v9.7.0/universal.go#L240
+
 ## Sync
 
 Enable and configure sync with:

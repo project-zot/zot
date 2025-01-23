@@ -1,0 +1,68 @@
+{
+    "distSpecVersion": "1.1.0",
+    "storage": {
+        "dedupe": true,
+        "gc": true,
+        "rootDirectory": "/tmp/zot",
+        "cacheDriver": {
+            "name": "redis",
+            "keyprefix": "zot",
+            "addr": ["host1:6379", "host2:6379", "host3:6379"],
+            "client_name": "client",
+            "db": 1,
+            "protocol": 3,
+            "username": "user1",
+            "password": "pass1",
+            "sentinel_username": "user2",
+            "sentinel_password": "pass2",
+            "max_retries": 3,
+            "min_retry_backoff": "5s",
+            "max_retry_backoff": "5s",
+            "dial_timeout": "5s",
+            "read_timeout": "5s",
+            "write_timeout": "5s",
+            "context_timeout_enabled": false,
+            "pool_fifo": false,
+            "pool_size": 3,
+            "pool_timeout": "5s",
+            "min_idle_conns": 1,
+            "max_idle_conns": 3,
+            "max_active_conns": 3,
+            "conn_max_idle_time": "5s",
+            "conn_max_lifetime": "5s",
+            "max_redirects": 3,
+            "read_only": false,
+            "route_by_latency": false,
+            "route_randomly": false,
+            "master_name": "zotmeta",
+            "disable_identity": false,
+            "identity_suffix": "zotmeta",
+            "unstable_resp3": false
+        },
+        "storageDriver": {
+            "name": "s3",
+            "rootdirectory": "/zot",
+            "region": "us-east-2",
+            "regionendpoint": "localhost:4566",
+            "bucket": "zot-storage",
+            "forcepathstyle": true,
+            "secure": false,
+            "skipverify": false
+        }
+    },
+    "http": {
+        "address": "0.0.0.0",
+        "port": "8484"
+    },
+    "log": {
+        "level": "debug"
+    },
+    "extensions": {
+      "ui": {
+        "enable": true
+      },
+      "search": {
+        "enable": true
+      }
+    }
+}
