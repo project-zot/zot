@@ -1148,6 +1148,16 @@ func validateSync(config *config.Config, log zlog.Logger) error {
 						}
 					}
 
+					if content.Tags != nil && content.Tags.ExcludeRegex != nil {
+						_, err := regexp.Compile(*content.Tags.ExcludeRegex)
+						if err != nil {
+							msg := "sync content excludeRegex could not be compiled"
+							log.Error().Err(glob.ErrBadPattern).Str("excludeRegex", *content.Tags.ExcludeRegex).Msg(msg)
+
+							return fmt.Errorf("%w: %s: %s", zerr.ErrBadConfig, msg, *content.Tags.ExcludeRegex)
+						}
+					}
+
 					if content.StripPrefix && !strings.Contains(content.Prefix, "/*") && content.Destination == "/" {
 						msg := "can not use stripPrefix true and destination '/' without using glob patterns in prefix"
 						log.Error().Err(zerr.ErrBadConfig).

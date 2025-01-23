@@ -63,6 +63,13 @@ func (cm ContentManager) FilterTags(repo string, tags []string) ([]string, error
 			}
 		}
 
+		if content.Tags.ExcludeRegex != nil {
+			tags, err = excludeTagsByRegex(tags, *content.Tags.ExcludeRegex, cm.log)
+			if err != nil {
+				return []string{}, err
+			}
+		}
+
 		if content.Tags.Semver != nil && *content.Tags.Semver {
 			tags = filterTagsBySemver(tags, cm.log)
 		}
@@ -233,6 +240,32 @@ func filterTagsByRegex(tags []string, regex string, log log.Logger) ([]string, e
 
 	for _, tag := range tags {
 		if tagReg.MatchString(tag) {
+			filteredTags = append(filteredTags, tag)
+		}
+	}
+
+	return filteredTags, nil
+}
+
+// excludeTagsByRegex filter-out images by tag regex given in the config.
+func excludeTagsByRegex(tags []string, regex string, log log.Logger) ([]string, error) {
+	if len(tags) == 0 || regex == "" {
+		return tags, nil
+	}
+
+	filteredTags := make([]string, 0, len(tags))
+
+	log.Info().Str("excludeRegex", regex).Msg("filtering out tags using regex")
+
+	tagReg, err := regexp.Compile(regex)
+	if err != nil {
+		log.Error().Err(err).Str("excludeRegex", regex).Msg("failed to compile regex")
+
+		return filteredTags, err
+	}
+
+	for _, tag := range tags {
+		if !tagReg.MatchString(tag) {
 			filteredTags = append(filteredTags, tag)
 		}
 	}
