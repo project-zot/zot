@@ -2132,9 +2132,11 @@ func (dwr *DynamoDB) createTable(tableName string) error {
 		},
 		BillingMode: types.BillingModePayPerRequest,
 	})
-
-	if err != nil && !strings.Contains(err.Error(), "Table already exists") {
-		return err
+	if err != nil {
+		inUseException := new(types.ResourceInUseException)
+		if !errors.As(err, &inUseException) {
+			return err
+		}
 	}
 
 	return dwr.waitTableToBeCreated(tableName)
@@ -2190,7 +2192,8 @@ func (dwr *DynamoDB) createVersionTable() error {
 		BillingMode: types.BillingModePayPerRequest,
 	})
 	if err != nil {
-		if strings.Contains(err.Error(), "Table already exists") {
+		inUseException := new(types.ResourceInUseException)
+		if errors.As(err, &inUseException) {
 			return nil
 		}
 
