@@ -3,7 +3,7 @@ package storage
 import (
 	zerr "zotregistry.dev/zot/errors"
 	"zotregistry.dev/zot/pkg/api/config"
-	"zotregistry.dev/zot/pkg/common"
+	rediscfg "zotregistry.dev/zot/pkg/api/config/redis"
 	zlog "zotregistry.dev/zot/pkg/log"
 	"zotregistry.dev/zot/pkg/storage/cache"
 	"zotregistry.dev/zot/pkg/storage/constants"
@@ -52,7 +52,7 @@ func CreateCacheDatabaseDriver(storageConfig config.StorageConfig, log zlog.Logg
 
 		if name == constants.RedisDriverName {
 			// redis
-			client, err := common.GetRedisClient(storageConfig.CacheDriver, log)
+			client, err := rediscfg.GetRedisClient(storageConfig.CacheDriver, log)
 			if err != nil {
 				return nil, err
 			}

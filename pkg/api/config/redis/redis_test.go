@@ -1,4 +1,4 @@
-package common_test
+package rediscfg_test
 
 import (
 	"os"
@@ -10,8 +10,8 @@ import (
 	. "github.com/smartystreets/goconvey/convey"
 
 	"zotregistry.dev/zot/pkg/api/config"
+	rediscfg "zotregistry.dev/zot/pkg/api/config/redis"
 	"zotregistry.dev/zot/pkg/cli/server"
-	"zotregistry.dev/zot/pkg/common"
 	"zotregistry.dev/zot/pkg/log"
 )
 
@@ -24,38 +24,38 @@ func TestRedisOptions(t *testing.T) {
 			// Errors
 			config := map[string]interface{}{"url": false}
 
-			clientIntf, err := common.GetRedisClient(config, log)
+			clientIntf, err := rediscfg.GetRedisClient(config, log)
 			So(err, ShouldNotBeNil)
 			So(clientIntf, ShouldBeNil)
 
 			config = map[string]interface{}{"url": ""}
 
-			clientIntf, err = common.GetRedisClient(config, log)
+			clientIntf, err = rediscfg.GetRedisClient(config, log)
 			So(err, ShouldNotBeNil)
 			So(clientIntf, ShouldBeNil)
 
 			config = map[string]interface{}{"url": "qwerty@localhost:6379/1?dial_timeout=5s"}
 
-			clientIntf, err = common.GetRedisClient(config, log)
+			clientIntf, err = rediscfg.GetRedisClient(config, log)
 			So(err, ShouldNotBeNil)
 			So(clientIntf, ShouldBeNil)
 
 			config = map[string]interface{}{"url": "http://:qwerty@localhost:6379/1?dial_timeout=5s"}
 
-			clientIntf, err = common.GetRedisClient(config, log)
+			clientIntf, err = rediscfg.GetRedisClient(config, log)
 			So(err, ShouldNotBeNil)
 			So(clientIntf, ShouldBeNil)
 
 			config = map[string]interface{}{"url": "http://localhost:6379/1?addr=host2:6379&addr=host1:6379"}
 
-			clientIntf, err = common.GetRedisClient(config, log)
+			clientIntf, err = rediscfg.GetRedisClient(config, log)
 			So(err, ShouldNotBeNil)
 			So(clientIntf, ShouldBeNil)
 
 			// Success
 			config = map[string]interface{}{"url": "redis://user:password@localhost:6379/1?dial_timeout=5s"}
 
-			clientIntf, err = common.GetRedisClient(config, log)
+			clientIntf, err = rediscfg.GetRedisClient(config, log)
 			So(err, ShouldBeNil)
 			So(clientIntf, ShouldNotBeNil)
 
@@ -64,7 +64,7 @@ func TestRedisOptions(t *testing.T) {
 
 			config = map[string]interface{}{"url": "redis://user:password@host1:6379?addr=host2:6379&addr=host1:6379"}
 
-			clientIntf, err = common.GetRedisClient(config, log)
+			clientIntf, err = rediscfg.GetRedisClient(config, log)
 			So(err, ShouldBeNil)
 			So(clientIntf, ShouldNotBeNil)
 
@@ -76,7 +76,7 @@ func TestRedisOptions(t *testing.T) {
 			config := map[string]interface{}{}
 
 			// All attributes will have zero values
-			options := common.ParseRedisUniversalOptions(config, log)
+			options := rediscfg.ParseRedisUniversalOptions(config, log)
 			So(options, ShouldNotBeNil)
 			So(options.Addrs, ShouldEqual, []string(nil))
 			So(options.DB, ShouldEqual, 0)
@@ -110,7 +110,7 @@ func TestRedisOptions(t *testing.T) {
 			So(options.IdentitySuffix, ShouldEqual, "")
 			So(options.UnstableResp3, ShouldEqual, false)
 
-			clientIntf, err := common.GetRedisClient(config, log)
+			clientIntf, err := rediscfg.GetRedisClient(config, log)
 			So(err, ShouldBeNil)
 			So(clientIntf, ShouldNotBeNil)
 
@@ -158,7 +158,7 @@ func TestRedisOptions(t *testing.T) {
 			}
 
 			// All attribute values are taken from config
-			options := common.ParseRedisUniversalOptions(config, log)
+			options := rediscfg.ParseRedisUniversalOptions(config, log)
 			So(options, ShouldNotBeNil)
 			So(options.Addrs, ShouldEqual, []string{"a.repo:26379", "b.repo:26379", "c.repo:26379"})
 			So(options.DB, ShouldEqual, 1)
@@ -192,7 +192,7 @@ func TestRedisOptions(t *testing.T) {
 			So(options.IdentitySuffix, ShouldEqual, "test")
 			So(options.UnstableResp3, ShouldEqual, true)
 
-			clientIntf, err := common.GetRedisClient(config, log)
+			clientIntf, err := rediscfg.GetRedisClient(config, log)
 			So(err, ShouldBeNil)
 			So(clientIntf, ShouldNotBeNil)
 
@@ -236,7 +236,7 @@ func TestRedisOptions(t *testing.T) {
 			}
 
 			// All attributes remain with default values
-			options := common.ParseRedisUniversalOptions(config, log)
+			options := rediscfg.ParseRedisUniversalOptions(config, log)
 			So(options, ShouldNotBeNil)
 			So(options.Addrs, ShouldEqual, []string(nil))
 			So(options.DB, ShouldEqual, 0)
@@ -270,7 +270,7 @@ func TestRedisOptions(t *testing.T) {
 			So(options.IdentitySuffix, ShouldEqual, "")
 			So(options.UnstableResp3, ShouldEqual, false)
 
-			clientIntf, err := common.GetRedisClient(config, log)
+			clientIntf, err := rediscfg.GetRedisClient(config, log)
 			So(err, ShouldBeNil)
 			So(clientIntf, ShouldNotBeNil)
 
@@ -320,7 +320,7 @@ func TestRedisOptions(t *testing.T) {
 			err = server.LoadConfiguration(conf, configPath)
 			So(err, ShouldBeNil)
 
-			options := common.ParseRedisUniversalOptions(conf.Storage.CacheDriver, log)
+			options := rediscfg.ParseRedisUniversalOptions(conf.Storage.CacheDriver, log)
 			So(options, ShouldNotBeNil)
 			So(options.Addrs, ShouldEqual, []string{"a.repo:26379", "b.repo:26379", "c.repo:26379"})
 			So(options.DB, ShouldEqual, 1)
@@ -329,7 +329,7 @@ func TestRedisOptions(t *testing.T) {
 			So(options.Password, ShouldEqual, "**secret**")
 			So(options.DialTimeout, ShouldEqual, 5*time.Second)
 
-			clientIntf, err := common.GetRedisClient(conf.Storage.CacheDriver, log)
+			clientIntf, err := rediscfg.GetRedisClient(conf.Storage.CacheDriver, log)
 			So(err, ShouldBeNil)
 			So(clientIntf, ShouldNotBeNil)
 

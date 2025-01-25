@@ -24,6 +24,7 @@ import (
 
 	zerr "zotregistry.dev/zot/errors"
 	"zotregistry.dev/zot/pkg/api/config"
+	rediscfg "zotregistry.dev/zot/pkg/api/config/redis"
 	zcommon "zotregistry.dev/zot/pkg/common"
 	"zotregistry.dev/zot/pkg/extensions/imagetrust"
 	"zotregistry.dev/zot/pkg/extensions/search/convert"
@@ -179,7 +180,7 @@ func TestRedisDB(t *testing.T) {
 		params := redisdb.DBDriverParameters{KeyPrefix: "zot"}
 		driverConfig := map[string]interface{}{"url": "redis://" + miniRedis.Addr()}
 
-		redisDriver, err := zcommon.GetRedisClient(driverConfig, log)
+		redisDriver, err := rediscfg.GetRedisClient(driverConfig, log)
 		So(err, ShouldBeNil)
 
 		metaDB, err := redisdb.New(redisDriver, params, log)

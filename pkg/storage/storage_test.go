@@ -29,7 +29,7 @@ import (
 
 	zerr "zotregistry.dev/zot/errors"
 	"zotregistry.dev/zot/pkg/api/config"
-	zcommon "zotregistry.dev/zot/pkg/common"
+	rediscfg "zotregistry.dev/zot/pkg/api/config/redis"
 	"zotregistry.dev/zot/pkg/extensions/monitoring"
 	zlog "zotregistry.dev/zot/pkg/log"
 	"zotregistry.dev/zot/pkg/storage"
@@ -88,7 +88,7 @@ func createObjectsStore(options createObjectStoreOpts) (
 	}
 
 	if options.cacheType == storageConstants.RedisDriverName {
-		client, _ := zcommon.GetRedisClient(map[string]interface{}{"url": options.miniRedisAddr}, log)
+		client, _ := rediscfg.GetRedisClient(map[string]interface{}{"url": options.miniRedisAddr}, log)
 
 		cacheDriver, _ = storage.Create("redis", cache.RedisDriverParameters{
 			Client:      client,

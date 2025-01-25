@@ -5,7 +5,7 @@ import (
 
 	"zotregistry.dev/zot/errors"
 	"zotregistry.dev/zot/pkg/api/config"
-	"zotregistry.dev/zot/pkg/common"
+	rediscfg "zotregistry.dev/zot/pkg/api/config/redis"
 	"zotregistry.dev/zot/pkg/log"
 	"zotregistry.dev/zot/pkg/meta/boltdb"
 	mdynamodb "zotregistry.dev/zot/pkg/meta/dynamodb"
@@ -30,7 +30,7 @@ func New(storageConfig config.StorageConfig, log log.Logger) (mTypes.MetaDB, err
 		if storageConfig.CacheDriver["name"] == sconstants.RedisDriverName {
 			redisParams := getRedisParams(storageConfig.CacheDriver, log)
 
-			client, err := common.GetRedisClient(storageConfig.CacheDriver, log)
+			client, err := rediscfg.GetRedisClient(storageConfig.CacheDriver, log)
 			if err != nil { //nolint:wsl
 				return nil, err
 			}
