@@ -41,6 +41,12 @@
 						},
 						{
 							"prefix": "/repo3/**"
+						},
+						{
+							"prefix": "/repo4/**",
+							"tags": {
+								"excludeRegex": ".*-(amd64|arm64)$"
+							}
 						}
 					]
 				},

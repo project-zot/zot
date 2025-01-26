@@ -43,6 +43,7 @@ type Content struct {
 }
 
 type Tags struct {
-	Regex  *string
-	Semver *bool
+	Regex        *string
+	ExcludeRegex *string
+	Semver       *bool
 }

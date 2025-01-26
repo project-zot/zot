@@ -170,6 +170,7 @@ func TestGetContentByLocalRepo(t *testing.T) {
 func TestFilterTags(t *testing.T) {
 	allTagsRegex := ".*"
 	badRegex := "[*"
+	excludeArchRegex := ".*(x86_64|aarch64|amd64|arm64)$"
 	semverFalse := false
 	semverTrue := true
 	testCases := []struct {
@@ -233,6 +234,33 @@ func TestFilterTags(t *testing.T) {
 			tags:         []string{},
 			filteredTags: []string{},
 			err:          false,
+		},
+		{
+			repo: "alpine",
+			content: []syncconf.Content{
+				{Prefix: "**", Tags: &syncconf.Tags{ExcludeRegex: &allTagsRegex}},
+			},
+			tags:         []string{"v1", "v2", "v3"},
+			filteredTags: []string{},
+			err:          false,
+		},
+		{
+			repo: "alpine",
+			content: []syncconf.Content{
+				{Prefix: "**", Tags: &syncconf.Tags{ExcludeRegex: &excludeArchRegex}},
+			},
+			tags:         []string{"v1", "v2-x86_64", "v3-aarch64"},
+			filteredTags: []string{"v1"},
+			err:          false,
+		},
+		{
+			repo: "repo",
+			content: []syncconf.Content{
+				{Prefix: "repo*", Tags: &syncconf.Tags{ExcludeRegex: &badRegex}},
+			},
+			tags:         []string{"latest", "v2.0.1"},
+			filteredTags: []string{},
+			err:          true,
 		},
 	}
 
