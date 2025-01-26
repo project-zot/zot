@@ -63,7 +63,7 @@ func createMockStorage(rootDir string, cacheDir string, dedupe bool, store drive
 	log := log.Logger{Logger: zerolog.New(os.Stdout)}
 	metrics := monitoring.NewMetricsServer(true, log)
 
-	var cacheDriver cache.Cache
+	var cacheDriver storageTypes.Cache
 
 	// from pkg/cli/server/root.go/applyDefaultValues, s3 magic
 	if _, err := os.Stat(path.Join(cacheDir,
@@ -81,7 +81,7 @@ func createMockStorage(rootDir string, cacheDir string, dedupe bool, store drive
 }
 
 func createMockStorageWithMockCache(rootDir string, dedupe bool, store driver.StorageDriver,
-	cacheDriver cache.Cache,
+	cacheDriver storageTypes.Cache,
 ) storageTypes.ImageStore {
 	log := log.Logger{Logger: zerolog.New(os.Stdout)}
 	metrics := monitoring.NewMetricsServer(false, log)
@@ -133,7 +133,7 @@ func createObjectsStore(rootDir string, cacheDir string, dedupe bool) (
 	log := log.Logger{Logger: zerolog.New(os.Stdout)}
 	metrics := monitoring.NewMetricsServer(false, log)
 
-	var cacheDriver cache.Cache
+	var cacheDriver storageTypes.Cache
 
 	var err error
 
@@ -162,7 +162,7 @@ func createObjectsStoreDynamo(rootDir string, cacheDir string, dedupe bool, tabl
 	log := log.Logger{Logger: zerolog.New(os.Stdout)}
 	metrics := monitoring.NewMetricsServer(false, log)
 
-	var cacheDriver cache.Cache
+	var cacheDriver storageTypes.Cache
 
 	// from pkg/cli/server/root.go/applyDefaultValues, s3 magic
 	tableName = strings.ReplaceAll(tableName, "/", "")

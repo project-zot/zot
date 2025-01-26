@@ -1,4 +1,4 @@
-package cache
+package types
 
 import (
 	godigest "github.com/opencontainers/go-digest"

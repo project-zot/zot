@@ -7,9 +7,10 @@ import (
 	zlog "zotregistry.dev/zot/pkg/log"
 	"zotregistry.dev/zot/pkg/storage/cache"
 	"zotregistry.dev/zot/pkg/storage/constants"
+	storageTypes "zotregistry.dev/zot/pkg/storage/types"
 )
 
-func CreateCacheDatabaseDriver(storageConfig config.StorageConfig, log zlog.Logger) (cache.Cache, error) {
+func CreateCacheDatabaseDriver(storageConfig config.StorageConfig, log zlog.Logger) (storageTypes.Cache, error) {
 	if !storageConfig.Dedupe && storageConfig.StorageDriver == nil {
 		return nil, nil //nolint:nilnil
 	}
@@ -70,7 +71,7 @@ func CreateCacheDatabaseDriver(storageConfig config.StorageConfig, log zlog.Logg
 	return nil, nil //nolint:nilnil
 }
 
-func Create(dbtype string, parameters interface{}, log zlog.Logger) (cache.Cache, error) {
+func Create(dbtype string, parameters interface{}, log zlog.Logger) (storageTypes.Cache, error) {
 	switch dbtype {
 	case "boltdb":
 		{

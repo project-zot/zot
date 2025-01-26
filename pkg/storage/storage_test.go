@@ -72,10 +72,10 @@ type createObjectStoreOpts struct {
 }
 
 func createObjectsStore(options createObjectStoreOpts) (
-	storageTypes.Driver, storageTypes.ImageStore, cache.Cache, error,
+	storageTypes.Driver, storageTypes.ImageStore, storageTypes.Cache, error,
 ) {
 	var (
-		cacheDriver cache.Cache
+		cacheDriver storageTypes.Cache
 		useRelPaths bool
 	)
 
@@ -1043,7 +1043,7 @@ func TestMandatoryAnnotations(t *testing.T) {
 				testDir = path.Join("/oci-repo-test", uuid.String())
 				opts.rootDir = testDir
 
-				var cacheDriver cache.Cache
+				var cacheDriver storageTypes.Cache
 				store, _, cacheDriver, _ = createObjectsStore(opts)
 
 				imgStore = imagestore.NewImageStore(testDir, cacheDir, false, false, log, metrics,
@@ -1055,7 +1055,7 @@ func TestMandatoryAnnotations(t *testing.T) {
 
 				defer cleanupStorage(store, testDir)
 			} else {
-				var cacheDriver cache.Cache
+				var cacheDriver storageTypes.Cache
 				store, _, cacheDriver, _ = createObjectsStore(opts)
 
 				imgStore = imagestore.NewImageStore(cacheDir, cacheDir, true, true, log, metrics,
@@ -1118,7 +1118,7 @@ func TestMandatoryAnnotations(t *testing.T) {
 								},
 							}, store, nil, nil)
 					} else {
-						var cacheDriver cache.Cache
+						var cacheDriver storageTypes.Cache
 						store, _, cacheDriver, _ = createObjectsStore(opts)
 
 						imgStore = imagestore.NewImageStore(cacheDir, cacheDir, true, true, log, metrics,

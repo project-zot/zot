@@ -9,7 +9,6 @@ import (
 	"zotregistry.dev/zot/pkg/compat"
 	"zotregistry.dev/zot/pkg/extensions/monitoring"
 	zlog "zotregistry.dev/zot/pkg/log"
-	"zotregistry.dev/zot/pkg/storage/cache"
 	common "zotregistry.dev/zot/pkg/storage/common"
 	"zotregistry.dev/zot/pkg/storage/imagestore"
 	storageTypes "zotregistry.dev/zot/pkg/storage/types"
@@ -20,7 +19,7 @@ import (
 // Use the last argument to properly set a cache database, or it will default to boltDB local storage.
 func NewImageStore(rootDir string, cacheDir string, dedupe, commit bool, log zlog.Logger,
 	metrics monitoring.MetricServer, linter common.Lint, store driver.StorageDriver,
-	cacheDriver cache.Cache, compat []compat.MediaCompatibility,
+	cacheDriver storageTypes.Cache, compat []compat.MediaCompatibility,
 ) storageTypes.ImageStore {
 	return imagestore.NewImageStore(
 		rootDir,
