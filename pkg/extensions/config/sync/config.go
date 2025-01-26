@@ -23,15 +23,16 @@ type Config struct {
 }
 
 type RegistryConfig struct {
-	URLs         []string
-	PollInterval time.Duration
-	Content      []Content
-	TLSVerify    *bool
-	OnDemand     bool
-	CertDir      string
-	MaxRetries   *int
-	RetryDelay   *time.Duration
-	OnlySigned   *bool
+	URLs             []string
+	PollInterval     time.Duration
+	Content          []Content
+	TLSVerify        *bool
+	OnDemand         bool
+	CertDir          string
+	MaxRetries       *int
+	RetryDelay       *time.Duration
+	OnlySigned       *bool
+	CredentialHelper string
 }
 
 type Content struct {

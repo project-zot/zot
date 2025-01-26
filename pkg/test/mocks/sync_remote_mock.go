@@ -75,3 +75,6 @@ func (remote SyncRemote) GetManifestContent(imageReference types.ImageReference)
 
 	return nil, "", "", nil
 }
+
+func (remote SyncRemote) SetUpstreamAuthConfig(username, password string) {
+}

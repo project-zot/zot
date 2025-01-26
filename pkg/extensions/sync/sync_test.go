@@ -7045,6 +7045,29 @@ func TestSyncImageIndex(t *testing.T) {
 	})
 }
 
+func TestECRCredentialsHelper(t *testing.T) {
+	Convey("Test ECR Credentials Helper", t, func() {
+		// use getMockECRCredentials for testing purposes
+		credentialHelper := sync.NewECRCredentialHelper(log.NewLogger("debug", ""), sync.GetMockECRCredentials)
+		url := "https://mockAccount.dkr.ecr.mockRegion.amazonaws.com"
+		remoteAddress := sync.StripRegistryTransport(url)
+
+		Convey("Test Credentials Retrieval & Validity", func() {
+			creds, err := credentialHelper.GetCredentials([]string{url})
+			So(err, ShouldBeNil)
+			So(creds, ShouldNotBeNil)
+			So(creds[remoteAddress].Username, ShouldEqual, "mockUsername")
+			So(creds[remoteAddress].Password, ShouldEqual, "mockPassword")
+			So(credentialHelper.AreCredentialsValid(remoteAddress), ShouldBeTrue)
+		})
+
+		Convey("Test Credentials Refresh", func() {
+			_, err := credentialHelper.RefreshCredentials(remoteAddress)
+			So(err, ShouldBeNil)
+		})
+	})
+}
+
 func generateKeyPairs(tdir string) {
 	// generate a keypair
 	os.Setenv("COSIGN_PASSWORD", "")

@@ -27,19 +27,20 @@ import (
 )
 
 type BaseService struct {
-	config          syncconf.RegistryConfig
-	credentials     syncconf.CredentialsFile
-	clusterConfig   *config.ClusterConfig
-	remote          Remote
-	destination     Destination
-	retryOptions    *retry.RetryOptions
-	contentManager  ContentManager
-	storeController storage.StoreController
-	metaDB          mTypes.MetaDB
-	repositories    []string
-	references      references.References
-	client          *client.Client
-	log             log.Logger
+	config           syncconf.RegistryConfig
+	credentials      syncconf.CredentialsFile
+	credentialHelper CredentialHelper
+	clusterConfig    *config.ClusterConfig
+	remote           Remote
+	destination      Destination
+	retryOptions     *retry.RetryOptions
+	contentManager   ContentManager
+	storeController  storage.StoreController
+	metaDB           mTypes.MetaDB
+	repositories     []string
+	references       references.References
+	client           *client.Client
+	log              log.Logger
 }
 
 func New(
@@ -60,15 +61,39 @@ func New(
 	var err error
 
 	var credentialsFile syncconf.CredentialsFile
-	if credentialsFilepath != "" {
+
+	if service.config.CredentialHelper == "" && credentialsFilepath != "" {
+		// Only load credentials from file if CredentialHelper is not set
+		log.Info().Msgf("using file-based credentials because CredentialHelper is not set")
+
 		credentialsFile, err = getFileCredentials(credentialsFilepath)
 		if err != nil {
-			log.Error().Str("errortype", common.TypeOf(err)).Str("path", credentialsFilepath).
-				Err(err).Msg("couldn't get registry credentials from configured path")
+			log.Error().
+				Str("errortype", common.TypeOf(err)).
+				Str("path", credentialsFilepath).
+				Err(err).
+				Msg("couldn't get registry credentials from configured path")
+		}
+		service.credentialHelper = nil
+		service.credentials = credentialsFile
+	} else if service.config.CredentialHelper != "" {
+		log.Info().Msgf("using credentials helper, because CredentialHelper is set to %s", service.config.CredentialHelper)
+
+		switch service.config.CredentialHelper {
+		case "ecr":
+			// Logic to fetch credentials for ECR
+			log.Info().Msg("fetch the credentials using AWS ECR Auth Token.")
+			service.credentialHelper = NewECRCredentialHelper(log, GetECRCredentials)
+
+			creds, err := service.credentialHelper.GetCredentials(service.config.URLs)
+			if err != nil {
+				log.Error().Err(err).Msg("failed to retrieve credentials using ECR credentials helper.")
+			}
+			service.credentials = creds
+		default:
+			log.Warn().Msgf("unsupported CredentialHelper: %s", service.config.CredentialHelper)
 		}
 	}
-
-	service.credentials = credentialsFile
 
 	// load the cluster config into the object
 	// can be nil if the user did not configure cluster config
@@ -102,7 +127,6 @@ func New(
 
 	service.retryOptions = retryOptions
 	service.storeController = storeController
-
 	// try to set next client.
 	if err := service.SetNextAvailableClient(); err != nil {
 		// if it's a ping issue, it will be retried
@@ -126,9 +150,51 @@ func New(
 	return service, nil
 }
 
+// refreshRegistryTemporaryCredentials refreshes the temporary credentials for the registry if necessary.
+// It checks whether a CredentialHelper is configured and if the current credentials have expired.
+// If the credentials are expired, it attempts to refresh them and updates the service configuration.
+func (service *BaseService) refreshRegistryTemporaryCredentials() error {
+	// Exit early if no CredentialHelper is configured.
+	if service.config.CredentialHelper == "" {
+		return nil
+	}
+
+	// Strip the transport protocol (e.g., https:// or http://) from the remote address.
+	remoteAddress := StripRegistryTransport(service.client.GetHostname())
+
+	// Exit early if the credentials are valid.
+	if service.credentialHelper.AreCredentialsValid(remoteAddress) {
+		return nil
+	}
+
+	// Attempt to refresh the credentials using the CredentialHelper.
+	credentials, err := service.credentialHelper.RefreshCredentials(remoteAddress)
+	if err != nil {
+		service.log.Error().
+			Err(err).
+			Str("url", remoteAddress).
+			Msg("failed to refresh the credentials")
+
+		return err
+	}
+
+	service.log.Info().
+		Str("url", remoteAddress).
+		Msg("refreshing the upstream remote registry credentials")
+
+	// Update the service's credentials map with the new set of credentials.
+	service.credentials[remoteAddress] = credentials
+
+	// Set the upstream authentication context using the refreshed credentials.
+	service.remote.SetUpstreamAuthConfig(credentials.Username, credentials.Password)
+
+	// Return nil to indicate the operation completed successfully.
+	return nil
+}
+
 func (service *BaseService) SetNextAvailableClient() error {
 	if service.client != nil && service.client.Ping() {
-		return nil
+		return service.refreshRegistryTemporaryCredentials()
 	}
 
 	found := false
