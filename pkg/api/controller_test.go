@@ -160,12 +160,23 @@ func TestCreateCacheDatabaseDriver(t *testing.T) {
 
 		log := log.NewLogger("debug", "")
 
-		// fail create db, no perm
 		dir := t.TempDir()
 		conf := config.New()
 		conf.Storage.RootDirectory = dir
 		conf.Storage.Dedupe = true
 		conf.Storage.RemoteCache = true
+
+		// test error on invalid redis client config
+		conf.Storage.CacheDriver = map[string]interface{}{
+			"name": "redis",
+			"url":  false,
+		}
+
+		driver, err := storage.CreateCacheDatabaseDriver(conf.Storage.StorageConfig, log)
+		So(err, ShouldNotBeNil)
+		So(driver, ShouldBeNil)
+
+		// test valid redis client config
 		conf.Storage.CacheDriver = map[string]interface{}{
 			"name": "redis",
 			"url":  "redis://" + miniRedis.Addr(),
@@ -178,7 +189,7 @@ func TestCreateCacheDatabaseDriver(t *testing.T) {
 			"url":           "us-east-2",
 		}
 
-		driver, err := storage.CreateCacheDatabaseDriver(conf.Storage.StorageConfig, log)
+		driver, err = storage.CreateCacheDatabaseDriver(conf.Storage.StorageConfig, log)
 		So(err, ShouldBeNil)
 		So(driver, ShouldNotBeNil)
 		So(driver.Name(), ShouldEqual, "redis")

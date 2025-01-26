@@ -43,26 +43,15 @@ func CreateCacheDatabaseDriver(storageConfig config.StorageConfig, log zlog.Logg
 
 		if name == constants.DynamoDBDriverName {
 			// dynamodb
-			dynamoParams := cache.DynamoDBDriverParameters{}
-			dynamoParams.Endpoint, _ = storageConfig.CacheDriver["endpoint"].(string)
-			dynamoParams.Region, _ = storageConfig.CacheDriver["region"].(string)
-			dynamoParams.TableName, _ = storageConfig.CacheDriver["cachetablename"].(string)
-
-			return Create(name, dynamoParams, log)
+			return Create(name, getDynamoParams(&storageConfig), log)
 		}
 
 		if name == constants.RedisDriverName {
 			// redis
-			client, err := rediscfg.GetRedisClient(storageConfig.CacheDriver, log)
+			redisParams, err := getRedisParams(&storageConfig, log)
 			if err != nil {
 				return nil, err
 			}
-
-			redisParams := cache.RedisDriverParameters{}
-			redisParams.RootDir = storageConfig.RootDirectory
-			redisParams.Client = client
-			redisParams.KeyPrefix, _ = storageConfig.CacheDriver["keyprefix"].(string)
-			redisParams.UseRelPaths = getUseRelPaths(&storageConfig)
 
 			return Create(name, redisParams, log)
 		}
@@ -95,4 +84,29 @@ func Create(dbtype string, parameters interface{}, log zlog.Logger) (storageType
 func getUseRelPaths(storageConfig *config.StorageConfig) bool {
 	// In case of local storage we use rel paths, in case of S3 we don't
 	return storageConfig.StorageDriver == nil
+}
+
+func getDynamoParams(storageConfig *config.StorageConfig) cache.DynamoDBDriverParameters {
+	dynamoParams := cache.DynamoDBDriverParameters{}
+	dynamoParams.Endpoint, _ = storageConfig.CacheDriver["endpoint"].(string)
+	dynamoParams.Region, _ = storageConfig.CacheDriver["region"].(string)
+	dynamoParams.TableName, _ = storageConfig.CacheDriver["cachetablename"].(string)
+
+	return dynamoParams
+}
+
+func getRedisParams(storageConfig *config.StorageConfig, log zlog.Logger) (cache.RedisDriverParameters, error) {
+	redisParams := cache.RedisDriverParameters{}
+
+	client, err := rediscfg.GetRedisClient(storageConfig.CacheDriver, log)
+	if err != nil {
+		return redisParams, err
+	}
+
+	redisParams.RootDir = storageConfig.RootDirectory
+	redisParams.Client = client
+	redisParams.KeyPrefix, _ = storageConfig.CacheDriver["keyprefix"].(string)
+	redisParams.UseRelPaths = getUseRelPaths(storageConfig)
+
+	return redisParams, nil
 }
