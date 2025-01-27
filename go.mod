@@ -67,7 +67,7 @@ require (
 	google.golang.org/protobuf v1.36.2
 	gopkg.in/resty.v1 v1.12.0
 	gopkg.in/yaml.v3 v3.0.1
-	modernc.org/sqlite v1.34.4
+	modernc.org/sqlite v1.34.5
 	oras.land/oras-go/v2 v2.5.0
 )
 
@@ -529,12 +529,9 @@ require (
 	k8s.io/kube-openapi v0.0.0-20240730131305-7a9a4e85957e // indirect
 	k8s.io/kubectl v0.31.2 // indirect
 	k8s.io/utils v0.0.0-20240711033017-18e509b52bc8 // indirect
-	modernc.org/gc/v3 v3.0.0-20240722195230-4a140ff9c08e // indirect
 	modernc.org/libc v1.55.7 // indirect
 	modernc.org/mathutil v1.6.0 // indirect
 	modernc.org/memory v1.8.0 // indirect
-	modernc.org/strutil v1.2.0 // indirect
-	modernc.org/token v1.1.0 // indirect
 	mvdan.cc/sh/v3 v3.10.0 // indirect
 	oras.land/oras-go v1.2.6 // indirect
 	sigs.k8s.io/json v0.0.0-20221116044647-bc3834ca7abd // indirect
