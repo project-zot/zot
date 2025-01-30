@@ -90,6 +90,7 @@ var (
 	LDAPBaseDN       = "ou=" + username          //nolint: gochecknoglobals
 	LDAPBindDN       = "cn=reader," + LDAPBaseDN //nolint: gochecknoglobals
 	LDAPBindPassword = "ldappass"                //nolint: gochecknoglobals
+	LDAPUserAttr     = "uid"                     //nolint: gochecknoglobals
 )
 
 func TestNew(t *testing.T) {
@@ -2974,6 +2975,13 @@ func (l *testLDAPServer) Search(boundDN string, req vldap.SearchRequest,
 		}, nil
 	}
 
+	if req.Filter == "(&(uid=locked-user)((!(nsaccountlock=TRUE))))" {
+		return vldap.ServerSearchResult{
+			Entries:    []*vldap.Entry{},
+			ResultCode: vldap.LDAPResultSuccess,
+		}, nil
+	}
+
 	check := fmt.Sprintf("(uid=%s)", username)
 
 	if check == req.Filter {
@@ -3769,13 +3777,14 @@ func TestLDAPClient(t *testing.T) {
 
 		// bad user credentials with anonymous authentication
 		lClient = &api.LDAPClient{
-			Host:         LDAPAddress,
-			Port:         ldapPort,
-			BindDN:       LDAPBindDN,
-			BindPassword: LDAPBindPassword,
-			Base:         LDAPBaseDN,
-			UserFilter:   "(uid=%s)",
-			SkipTLS:      true,
+			Host:          LDAPAddress,
+			Port:          ldapPort,
+			BindDN:        LDAPBindDN,
+			BindPassword:  LDAPBindPassword,
+			Base:          LDAPBaseDN,
+			UserAttribute: LDAPUserAttr,
+			UserFilter:    "",
+			SkipTLS:       true,
 		}
 
 		_, _, _, err = lClient.Authenticate("fail-user-bind", "")
@@ -3783,16 +3792,32 @@ func TestLDAPClient(t *testing.T) {
 
 		// bad user credentials with anonymous authentication
 		lClient = &api.LDAPClient{
-			Host:         LDAPAddress,
-			Port:         ldapPort,
-			BindDN:       LDAPBindDN,
-			BindPassword: LDAPBindPassword,
-			Base:         LDAPBaseDN,
-			UserFilter:   "(uid=%s)",
-			SkipTLS:      true,
+			Host:          LDAPAddress,
+			Port:          ldapPort,
+			BindDN:        LDAPBindDN,
+			BindPassword:  LDAPBindPassword,
+			Base:          LDAPBaseDN,
+			UserAttribute: LDAPUserAttr,
+			UserFilter:    "",
+			SkipTLS:       true,
 		}
 
 		_, _, _, err = lClient.Authenticate("fail-user-bind", "pass")
+		So(err, ShouldNotBeNil)
+
+		// user filtered by additional filter (disabled account in FreeIPA)
+		lClient = &api.LDAPClient{
+			Host:          LDAPAddress,
+			Port:          ldapPort,
+			BindDN:        LDAPBindDN,
+			BindPassword:  LDAPBindPassword,
+			Base:          LDAPBaseDN,
+			UserAttribute: LDAPUserAttr,
+			UserFilter:    "(!(nsaccountlock=TRUE))",
+			SkipTLS:       true,
+		}
+
+		_, _, _, err = lClient.Authenticate("locked-user", "pass")
 		So(err, ShouldNotBeNil)
 	})
 }

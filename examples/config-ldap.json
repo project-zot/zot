@@ -19,6 +19,7 @@
           "startTLS": false,
           "baseDN":"ou=Users,dc=example,dc=org",
           "userAttribute": "uid",
+          "userFilter": "(!(nsaccountlock=TRUE))",
           "userGroupAttribute": "memberOf",
           "skipVerify": true,
           "subtreeSearch": true
