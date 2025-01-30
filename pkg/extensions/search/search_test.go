@@ -18,6 +18,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/alicebob/miniredis/v2"
 	guuid "github.com/gofrs/uuid"
 	regTypes "github.com/google/go-containerregistry/pkg/v1/types"
 	notreg "github.com/notaryproject/notation-go/registry"
@@ -3905,7 +3906,7 @@ func TestGlobalSearch(t *testing.T) { //nolint: gocyclo
 		So(len(results.Repos), ShouldEqual, 0)
 	})
 
-	Convey("test nested indexes", t, func() {
+	Convey("test nested indexes CVE scanning disabled", t, func() {
 		log := log.NewLogger("debug", "")
 		rootDir := t.TempDir()
 		port := GetFreePort()
@@ -3913,6 +3914,20 @@ func TestGlobalSearch(t *testing.T) { //nolint: gocyclo
 		conf := config.New()
 		conf.HTTP.Port = port
 		conf.Storage.RootDirectory = rootDir
+
+		Convey("test with boltdb", func() {
+			conf.Storage.CacheDriver = nil
+		})
+
+		Convey("test with redis", func() {
+			miniRedis := miniredis.RunT(t)
+
+			conf.Storage.CacheDriver = map[string]interface{}{
+				"name": "redis",
+				"url":  "redis://" + miniRedis.Addr(),
+			}
+		})
+
 		defaultVal := true
 		conf.Extensions = &extconf.ExtensionConfig{
 			Search: &extconf.SearchConfig{BaseConfig: extconf.BaseConfig{Enable: &defaultVal}},
@@ -4054,7 +4069,7 @@ func TestGlobalSearch(t *testing.T) { //nolint: gocyclo
 		}
 	})
 
-	Convey("test nested indexes", t, func() {
+	Convey("test nested indexes CVE scanning enabled", t, func() {
 		log := log.NewLogger("debug", "")
 		rootDir := t.TempDir()
 		port := GetFreePort()
@@ -4062,6 +4077,20 @@ func TestGlobalSearch(t *testing.T) { //nolint: gocyclo
 		conf := config.New()
 		conf.HTTP.Port = port
 		conf.Storage.RootDirectory = rootDir
+
+		Convey("test with boltdb", func() {
+			conf.Storage.CacheDriver = nil
+		})
+
+		Convey("test with redis", func() {
+			miniRedis := miniredis.RunT(t)
+
+			conf.Storage.CacheDriver = map[string]interface{}{
+				"name": "redis",
+				"url":  "redis://" + miniRedis.Addr(),
+			}
+		})
+
 		defaultVal := true
 
 		updateDuration, _ := time.ParseDuration("1h")
@@ -6838,7 +6867,7 @@ func TestReadUploadDeleteDynamoDB(t *testing.T) {
 	repoBlobsTablename := "RepoBlobs" + uuid.String()
 
 	cacheDriverParams := map[string]interface{}{
-		"name":                   "dynamoDB",
+		"name":                   "dynamodb",
 		"endpoint":               os.Getenv("DYNAMODBMOCK_ENDPOINT"),
 		"region":                 "us-east-2",
 		"cachetablename":         cacheTablename,

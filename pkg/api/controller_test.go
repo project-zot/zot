@@ -26,6 +26,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/alicebob/miniredis/v2"
 	"github.com/google/go-github/v62/github"
 	"github.com/gorilla/mux"
 	"github.com/gorilla/securecookie"
@@ -154,6 +155,55 @@ func TestCreateCacheDatabaseDriver(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(driver, ShouldBeNil)
 	})
+	Convey("Test CreateCacheDatabaseDriver redisdb", t, func() {
+		miniRedis := miniredis.RunT(t)
+
+		log := log.NewLogger("debug", "")
+
+		dir := t.TempDir()
+		conf := config.New()
+		conf.Storage.RootDirectory = dir
+		conf.Storage.Dedupe = true
+		conf.Storage.RemoteCache = true
+
+		// test error on invalid redis client config
+		conf.Storage.CacheDriver = map[string]interface{}{
+			"name": "redis",
+			"url":  false,
+		}
+
+		driver, err := storage.CreateCacheDatabaseDriver(conf.Storage.StorageConfig, log)
+		So(err, ShouldNotBeNil)
+		So(driver, ShouldBeNil)
+
+		// test valid redis client config
+		conf.Storage.CacheDriver = map[string]interface{}{
+			"name": "redis",
+			"url":  "redis://" + miniRedis.Addr(),
+		}
+
+		// test initialization for S3 storage
+		conf.Storage.StorageDriver = map[string]interface{}{
+			"name":          "s3",
+			"rootdirectory": "/zot",
+			"url":           "us-east-2",
+		}
+
+		driver, err = storage.CreateCacheDatabaseDriver(conf.Storage.StorageConfig, log)
+		So(err, ShouldBeNil)
+		So(driver, ShouldNotBeNil)
+		So(driver.Name(), ShouldEqual, "redis")
+		So(driver.UsesRelativePaths(), ShouldEqual, false)
+
+		// test initialization for local storage
+		conf.Storage.StorageDriver = nil
+
+		driver, err = storage.CreateCacheDatabaseDriver(conf.Storage.StorageConfig, log)
+		So(err, ShouldBeNil)
+		So(driver, ShouldNotBeNil)
+		So(driver.Name(), ShouldEqual, "redis")
+		So(driver.UsesRelativePaths(), ShouldEqual, true)
+	})
 	tskip.SkipDynamo(t)
 	tskip.SkipS3(t)
 	Convey("Test CreateCacheDatabaseDriver dynamodb", t, func() {
@@ -226,7 +276,7 @@ func TestCreateCacheDatabaseDriver(t *testing.T) {
 }
 
 func TestCreateMetaDBDriver(t *testing.T) {
-	Convey("Test CreateCacheDatabaseDriver dynamo", t, func() {
+	Convey("Test create MetaDB dynamo", t, func() {
 		log := log.NewLogger("debug", "")
 		dir := t.TempDir()
 		conf := config.New()
@@ -253,11 +303,26 @@ func TestCreateMetaDBDriver(t *testing.T) {
 			"userdatatablename":      "UserDatatable",
 		}
 
+		metaDB, err := meta.New(conf.Storage.StorageConfig, log)
+		So(err, ShouldNotBeNil)
+		So(metaDB, ShouldBeNil)
+
+		conf.Storage.CacheDriver = map[string]interface{}{
+			"name":                   "dynamodb",
+			"endpoint":               "http://localhost:4566",
+			"region":                 "us-east-2",
+			"cachetablename":         "BlobTable",
+			"repometatablename":      "RepoMetadataTable",
+			"imageMetaTablename":     "ZotImageMetaTable",
+			"repoBlobsInfoTablename": "ZotRepoBlobsInfoTable",
+			"userdatatablename":      "UserDatatable",
+		}
+
 		testFunc := func() { _, _ = meta.New(conf.Storage.StorageConfig, log) }
 		So(testFunc, ShouldPanic)
 
 		conf.Storage.CacheDriver = map[string]interface{}{
-			"name":                   "dummy",
+			"name":                   "dynamodb",
 			"endpoint":               "http://localhost:4566",
 			"region":                 "us-east-2",
 			"cachetablename":         "",
@@ -272,7 +337,7 @@ func TestCreateMetaDBDriver(t *testing.T) {
 		So(testFunc, ShouldPanic)
 
 		conf.Storage.CacheDriver = map[string]interface{}{
-			"name":                   "dummy",
+			"name":                   "dynamodb",
 			"endpoint":               "http://localhost:4566",
 			"region":                 "us-east-2",
 			"cachetablename":         "test",
@@ -288,7 +353,60 @@ func TestCreateMetaDBDriver(t *testing.T) {
 		So(testFunc, ShouldNotPanic)
 	})
 
-	Convey("Test CreateCacheDatabaseDriver bolt", t, func() {
+	Convey("Test create MetaDB redis", t, func() {
+		miniRedis := miniredis.RunT(t)
+
+		log := log.NewLogger("debug", "")
+		dir := t.TempDir()
+		conf := config.New()
+		conf.Storage.RootDirectory = dir
+		conf.Storage.Dedupe = true
+		conf.Storage.RemoteCache = true
+		conf.Storage.StorageDriver = map[string]interface{}{
+			"name":          "s3",
+			"rootdirectory": "/zot",
+			"region":        "us-east-2",
+			"bucket":        "zot-storage",
+			"secure":        true,
+			"skipverify":    false,
+		}
+
+		conf.Storage.CacheDriver = map[string]interface{}{
+			"name": "dummy",
+		}
+
+		metaDB, err := meta.New(conf.Storage.StorageConfig, log)
+		So(err, ShouldNotBeNil)
+		So(metaDB, ShouldBeNil)
+
+		conf.Storage.CacheDriver = map[string]interface{}{
+			"name": "redis",
+		}
+
+		metaDB, err = meta.New(conf.Storage.StorageConfig, log)
+		So(err, ShouldNotBeNil)
+		So(metaDB, ShouldBeNil)
+
+		conf.Storage.CacheDriver = map[string]interface{}{
+			"name": "redis",
+			"url":  "url",
+		}
+
+		metaDB, err = meta.New(conf.Storage.StorageConfig, log)
+		So(err, ShouldNotBeNil)
+		So(metaDB, ShouldBeNil)
+
+		conf.Storage.CacheDriver = map[string]interface{}{
+			"name": "redis",
+			"url":  "redis://" + miniRedis.Addr(),
+		}
+
+		metaDB, err = meta.New(conf.Storage.StorageConfig, log)
+		So(err, ShouldBeNil)
+		So(metaDB, ShouldNotBeNil)
+	})
+
+	Convey("Test create MetaDB bolt", t, func() {
 		log := log.NewLogger("debug", "")
 		dir := t.TempDir()
 		conf := config.New()

@@ -12,20 +12,9 @@ on:
 permissions: read-all
 
 jobs:
-  client-tools:
-    name: Stateless zot with shared reliable storage
+  minio-bolt:
+    name: Stateless zot with minio and boltdb
     runs-on: ubuntu-latest
-    # services:
-    #   minio:
-    #     image: minio/minio:RELEASE.2024-07-16T23-46-41Z
-    #     env:
-    #       MINIO_ROOT_USER: minioadmin
-    #       MINIO_ROOT_PASSWORD: minioadmin
-    #     ports:
-    #       - 9000:9000
-    #     volumes:
-    #       - /tmp/data:/data
-    #     options: --name=minio --health-cmd "curl http://localhost:9000/minio/health/live"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -101,12 +90,15 @@ jobs:
             cp test/cluster/config-minio.json test/cluster/config-minio1.json
             sed -i 's/8081/8081/g' test/cluster/config-minio1.json
             sed -i 's/\/tmp\/zot/\/tmp\/zot1/g' test/cluster/config-minio1.json
+            sed -i 's/\/dev\/null/\/tmp\/zot1.log/g' test/cluster/config-minio1.json
             cp test/cluster/config-minio.json test/cluster/config-minio2.json
             sed -i 's/8081/8082/g' test/cluster/config-minio2.json
             sed -i 's/\/tmp\/zot/\/tmp\/zot2/g' test/cluster/config-minio2.json
+            sed -i 's/\/dev\/null/\/tmp\/zot2.log/g' test/cluster/config-minio2.json
             cp test/cluster/config-minio.json test/cluster/config-minio3.json
             sed -i 's/8081/8083/g' test/cluster/config-minio3.json
             sed -i 's/\/tmp\/zot/\/tmp\/zot3/g' test/cluster/config-minio3.json
+            sed -i 's/\/dev\/null/\/tmp\/zot3.log/g' test/cluster/config-minio3.json
 
       - name: Free up disk space
         uses: jlumbroso/free-disk-space@main
@@ -125,7 +117,13 @@ jobs:
             ./bin/zot-linux-amd64 serve test/cluster/config-minio1.json &
             ./bin/zot-linux-amd64 serve test/cluster/config-minio2.json &
             ./bin/zot-linux-amd64 serve test/cluster/config-minio3.json &
-            sleep 20
+            sleep 10
+
+            # ensure the instances are online
+            curl --connect-timeout 3 --max-time 5 --retry 60 --retry-delay 1 --retry-max-time 120 --retry-connrefused http://localhost:8081/v2/
+            curl --connect-timeout 3 --max-time 5 --retry 60 --retry-delay 1 --retry-max-time 120 --retry-connrefused http://localhost:8082/v2/
+            curl --connect-timeout 3 --max-time 5 --retry 60 --retry-delay 1 --retry-max-time 120 --retry-connrefused http://localhost:8083/v2/
+
             # run tests
             skopeo --debug copy --format=oci --dest-tls-verify=false docker://ghcr.io/project-zot/golang:1.20 docker://localhost:8080/golang:1.20
             skopeo --debug copy --src-tls-verify=false docker://localhost:8080/golang:1.20 oci:golang:1.20
@@ -139,45 +137,104 @@ jobs:
             oras pull --plain-http localhost:8080/hello-artifact:v2 -d -v
             grep -q "hello world" artifact.txt  # should print "hello world"
             if [ $? -ne 0 ]; then \
-              killall -r zot-*; \
+              killall --wait -r zot-*; \
               exit 1; \
             fi
 
-            killall -r zot-*
+            echo "killing zot instances"
+            killall --wait -r zot-*
+
+            # archive logs
+            zip logs-push-pull-bolt.zip /tmp/*.log -r
+
+            # clean zot storage
+            sudo rm -rf /tmp/data/zot-storage/zot
+            # clean zot cache and metadb
+            sudo rm -rf /tmp/zot*/
+            # clean zot logs
+            rm /tmp/*.log
         env:
           AWS_ACCESS_KEY_ID: minioadmin
           AWS_SECRET_ACCESS_KEY: minioadmin
+
+      - name: Upload zot logs for push-pull tests
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: logs-push-pull-bolt
+          path: logs-push-pull-bolt.zip
+          if-no-files-found: error
 
       - name: Run benchmark with --src-cidr arg
         run: |
             ./bin/zot-linux-amd64 serve test/cluster/config-minio1.json &
             ./bin/zot-linux-amd64 serve test/cluster/config-minio2.json &
             ./bin/zot-linux-amd64 serve test/cluster/config-minio3.json &
-            sleep 20
+            sleep 10
+
+            # ensure the instances are online
+            curl --connect-timeout 3 --max-time 5 --retry 60 --retry-delay 1 --retry-max-time 120 --retry-connrefused http://localhost:8081/v2/
+            curl --connect-timeout 3 --max-time 5 --retry 60 --retry-delay 1 --retry-max-time 120 --retry-connrefused http://localhost:8082/v2/
+            curl --connect-timeout 3 --max-time 5 --retry 60 --retry-delay 1 --retry-max-time 120 --retry-connrefused http://localhost:8083/v2/
+
             # run zb with --src-cidr
             bin/zb-linux-amd64 -c 10 -n 50 -o ci-cd --src-cidr 127.0.0.0/8 http://localhost:8080
 
-            killall -r zot-*
+            echo "killing zot instances"
+            killall --wait -r zot-*
+
+            # archive logs
+            zip logs-src-cidr-bolt.zip /tmp/*.log -r
 
             # clean zot storage
             sudo rm -rf /tmp/data/zot-storage/zot
+            # clean zot cache and metadb
+            sudo rm -rf /tmp/zot*/
+            # clean zot logs
+            rm /tmp/*.log
         env:
           AWS_ACCESS_KEY_ID: minioadmin
           AWS_SECRET_ACCESS_KEY: minioadmin
+
+      - name: Upload zot logs for cidr tests
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: logs-src-cidr-bolt
+          path: logs-src-cidr-bolt.zip
+          if-no-files-found: error
 
       - name: Run benchmark with --src-ips arg
         run: |
             ./bin/zot-linux-amd64 serve test/cluster/config-minio1.json &
             ./bin/zot-linux-amd64 serve test/cluster/config-minio2.json &
             ./bin/zot-linux-amd64 serve test/cluster/config-minio3.json &
-            sleep 20
+            sleep 10
+
+            # ensure the instances are online
+            curl --connect-timeout 3 --max-time 5 --retry 60 --retry-delay 1 --retry-max-time 120 --retry-connrefused http://localhost:8081/v2/
+            curl --connect-timeout 3 --max-time 5 --retry 60 --retry-delay 1 --retry-max-time 120 --retry-connrefused http://localhost:8082/v2/
+            curl --connect-timeout 3 --max-time 5 --retry 60 --retry-delay 1 --retry-max-time 120 --retry-connrefused http://localhost:8083/v2/
+
             # run zb with --src-ips
             bin/zb-linux-amd64 -c 10 -n 50 -o ci-cd --src-ips 127.0.0.2,127.0.0.3,127.0.0.4,127.0.0.5,127.0.0.6,127.0.12.5,127.0.12.6 http://localhost:8080
 
-            killall -r zot-*
+            echo "killing zot instances"
+            killall --wait -r zot-*
+
+            # archive logs
+            zip logs-src-ips-bolt.zip /tmp/*.log -r
         env:
           AWS_ACCESS_KEY_ID: minioadmin
           AWS_SECRET_ACCESS_KEY: minioadmin
+
+      - name: Upload zot logs for src-ips tests
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: logs-src-ips-bolt
+          path: logs-src-ips-bolt.zip
+          if-no-files-found: error
 
       # Download previous benchmark result from cache (if exists)
       - name: Download previous benchmark data
@@ -185,6 +242,259 @@ jobs:
         with:
           path: ./cache
           key: ${{ runner.os }}-gen1-benchmark-stateless-cluster
+      # Run `github-action-benchmark` action
+      - name: Store benchmark result
+        uses: benchmark-action/github-action-benchmark@v1.20.4
+        with:
+          # What benchmark tool the output.txt came from
+          tool: 'customBiggerIsBetter'
+          # Where the output from the benchmark tool is stored
+          output-file-path: ci-cd.json
+          # Where the previous data file is stored
+          external-data-json-path: ./cache/benchmark-data.json
+          # Workflow will fail when an alert happens
+          fail-on-alert: true
+      # Upload the updated cache file for the next job by actions/cache
+
+  minio-redis:
+    name: Stateless zot with minio and redis
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          cache: false
+          go-version: 1.23.x
+      - name: Install dependencies
+        run: |
+          cd $GITHUB_WORKSPACE
+          go install github.com/swaggo/swag/cmd/swag@v1.16.2
+          go mod download
+          sudo apt-get update
+          sudo apt-get -y install rpm uidmap
+          # install skopeo
+          sudo apt-get -y install skopeo
+
+          # install haproxy
+          sudo apt-get install haproxy
+
+      - name: Build binaries
+        run: |
+          cd $GITHUB_WORKSPACE
+          make binary
+          make bench
+          make $PWD/hack/tools/bin/oras
+
+      - name: Setup minio service
+        run: |
+            docker run -d -p 9000:9000 --name minio \
+                -e "MINIO_ACCESS_KEY=minioadmin" \
+                -e "MINIO_SECRET_KEY=minioadmin" \
+                -v /tmp/data:/data \
+                -v /tmp/config:/root/.minio \
+                --health-cmd "curl http://localhost:9000/minio/health/live" \
+                minio/minio:RELEASE.2024-07-16T23-46-41Z server /data
+      - name: Install py minio
+        run: pip3 install minio
+
+      - name: Wait for minio to come up
+        run: |
+          curl --connect-timeout 5 \
+            --max-time 120 \
+            --retry 12 \
+            --retry-max-time 120 \
+            'http://localhost:9000/minio/health/live'
+
+      - name: Setup redis service
+        run: |
+            docker run -d -p 6379:6379 --name redis \
+                --health-cmd "redis-cli ping" \
+                --health-interval 10s \
+                --health-timeout 5s \
+                --health-retries 5 \
+                redis:7.4.2
+
+      - name: Create minio bucket
+        run: |
+            python3 - <<'EOF'
+            from minio import Minio
+
+            try:
+                minio = Minio(
+                    'localhost:9000',
+                    access_key='minioadmin',
+                    secret_key='minioadmin',
+                    secure=False
+                )
+            except Exception as ex:
+                raise
+
+            minio.make_bucket('zot-storage')
+            print(f'{minio.list_buckets()}')
+            EOF
+
+      - name: Run haproxy
+        run: |
+            sudo haproxy -d -f examples/cluster/haproxy.cfg -D
+            sleep 10
+
+      - name: Prepare configuration files
+        run: |
+            cp test/cluster/config-minio-redis.json test/cluster/config-minio1.json
+            sed -i 's/8081/8081/g' test/cluster/config-minio1.json
+            sed -i 's/\/tmp\/zot/\/tmp\/zot1/g' test/cluster/config-minio1.json
+            sed -i 's/\/dev\/null/\/tmp\/zot1.log/g' test/cluster/config-minio1.json
+            cp test/cluster/config-minio-redis.json test/cluster/config-minio2.json
+            sed -i 's/8081/8082/g' test/cluster/config-minio2.json
+            sed -i 's/\/tmp\/zot/\/tmp\/zot2/g' test/cluster/config-minio2.json
+            sed -i 's/\/dev\/null/\/tmp\/zot2.log/g' test/cluster/config-minio2.json
+            cp test/cluster/config-minio-redis.json test/cluster/config-minio3.json
+            sed -i 's/8081/8083/g' test/cluster/config-minio3.json
+            sed -i 's/\/tmp\/zot/\/tmp\/zot3/g' test/cluster/config-minio3.json
+            sed -i 's/\/dev\/null/\/tmp\/zot3.log/g' test/cluster/config-minio3.json
+
+      - name: Free up disk space
+        uses: jlumbroso/free-disk-space@main
+        with:
+          # This might remove tools that are actually needed, if set to "true" but frees about 6 GB
+          tool-cache: true
+          # All of these default to true, but feel free to set to "false" if necessary for your workflow
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: true
+          swap-storage: true
+
+      - name: Run push-pull tests
+        run: |
+            ./bin/zot-linux-amd64 serve test/cluster/config-minio1.json &
+            ./bin/zot-linux-amd64 serve test/cluster/config-minio2.json &
+            ./bin/zot-linux-amd64 serve test/cluster/config-minio3.json &
+            sleep 10
+
+            # ensure the instances are online
+            curl --connect-timeout 3 --max-time 5 --retry 60 --retry-delay 1 --retry-max-time 120 --retry-connrefused http://localhost:8081/v2/
+            curl --connect-timeout 3 --max-time 5 --retry 60 --retry-delay 1 --retry-max-time 120 --retry-connrefused http://localhost:8082/v2/
+            curl --connect-timeout 3 --max-time 5 --retry 60 --retry-delay 1 --retry-max-time 120 --retry-connrefused http://localhost:8083/v2/
+
+            # run tests
+            skopeo --debug copy --format=oci --dest-tls-verify=false docker://ghcr.io/project-zot/golang:1.20 docker://localhost:8080/golang:1.20
+            skopeo --debug copy --src-tls-verify=false docker://localhost:8080/golang:1.20 oci:golang:1.20
+            echo "{\"name\":\"foo\",\"value\":\"bar\"}" > config.json
+            echo "hello world" > artifact.txt
+            export PATH=$PATH:$PWD/hack/tools/bin
+            oras push --plain-http localhost:8080/hello-artifact:v2 \
+                --config config.json:application/vnd.acme.rocket.config.v1+json \
+                    artifact.txt:text/plain -d -v
+            rm -f artifact.txt # first delete the file
+            oras pull --plain-http localhost:8080/hello-artifact:v2 -d -v
+            grep -q "hello world" artifact.txt  # should print "hello world"
+            if [ $? -ne 0 ]; then \
+              killall --wait -r zot-*; \
+              exit 1; \
+            fi
+
+            echo "killing zot instances"
+            killall --wait -r zot-*
+
+            # archive logs
+            zip logs-push-pull-redis.zip /tmp/*.log -r
+
+            # clean zot storage
+            sudo rm -rf /tmp/data/zot-storage/zot
+            # clean zot cache and metadb
+            docker exec redis redis-cli FLUSHDB
+            # clean zot logs
+            rm /tmp/*.log
+        env:
+          AWS_ACCESS_KEY_ID: minioadmin
+          AWS_SECRET_ACCESS_KEY: minioadmin
+
+      - name: Upload zot logs for push-pull tests
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: logs-push-pull-redis
+          path: logs-push-pull-redis.zip
+          if-no-files-found: error
+
+      - name: Run benchmark with --src-cidr arg
+        run: |
+            ./bin/zot-linux-amd64 serve test/cluster/config-minio1.json &
+            ./bin/zot-linux-amd64 serve test/cluster/config-minio2.json &
+            ./bin/zot-linux-amd64 serve test/cluster/config-minio3.json &
+            sleep 10
+
+            # ensure the instances are online
+            curl --connect-timeout 3 --max-time 5 --retry 60 --retry-delay 1 --retry-max-time 120 --retry-connrefused http://localhost:8081/v2/
+            curl --connect-timeout 3 --max-time 5 --retry 60 --retry-delay 1 --retry-max-time 120 --retry-connrefused http://localhost:8082/v2/
+            curl --connect-timeout 3 --max-time 5 --retry 60 --retry-delay 1 --retry-max-time 120 --retry-connrefused http://localhost:8083/v2/
+
+            # run zb with --src-cidr
+            bin/zb-linux-amd64 -c 10 -n 50 -o ci-cd --src-cidr 127.0.0.0/8 http://localhost:8080
+
+            echo "killing zot instances"
+            killall --wait -r zot-*
+
+            # archive logs
+            zip logs-src-cidr-redis.zip /tmp/*.log -r
+
+            # clean zot storage
+            sudo rm -rf /tmp/data/zot-storage/zot
+            # clean zot cache and metadb
+            docker exec redis redis-cli FLUSHDB
+            # clean zot logs
+            rm /tmp/*.log
+        env:
+          AWS_ACCESS_KEY_ID: minioadmin
+          AWS_SECRET_ACCESS_KEY: minioadmin
+
+      - name: Upload zot logs for cidr tests
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: logs-src-cidr-redis
+          path: logs-src-cidr-redis.zip
+          if-no-files-found: error
+
+      - name: Run benchmark with --src-ips arg
+        run: |
+            ./bin/zot-linux-amd64 serve test/cluster/config-minio1.json &
+            ./bin/zot-linux-amd64 serve test/cluster/config-minio2.json &
+            ./bin/zot-linux-amd64 serve test/cluster/config-minio3.json &
+            sleep 10
+
+            # ensure the instances are online
+            curl --connect-timeout 3 --max-time 5 --retry 60 --retry-delay 1 --retry-max-time 120 --retry-connrefused http://localhost:8081/v2/
+            curl --connect-timeout 3 --max-time 5 --retry 60 --retry-delay 1 --retry-max-time 120 --retry-connrefused http://localhost:8082/v2/
+            curl --connect-timeout 3 --max-time 5 --retry 60 --retry-delay 1 --retry-max-time 120 --retry-connrefused http://localhost:8083/v2/
+
+            # run zb with --src-ips
+            bin/zb-linux-amd64 -c 10 -n 50 -o ci-cd --src-ips 127.0.0.2,127.0.0.3,127.0.0.4,127.0.0.5,127.0.0.6,127.0.12.5,127.0.12.6 http://localhost:8080
+
+            echo "killing zot instances"
+            killall --wait -r zot-*
+
+            # archive logs
+            zip logs-src-ips-redis.zip /tmp/*.log -r
+        env:
+          AWS_ACCESS_KEY_ID: minioadmin
+          AWS_SECRET_ACCESS_KEY: minioadmin
+
+      - name: Upload zot logs for src-ips tests
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: logs-src-ips-redis
+          path: logs-src-ips-redis.zip
+          if-no-files-found: error
+
+      # Download previous benchmark result from cache (if exists)
+      - name: Download previous benchmark data
+        uses: actions/cache@v4
+        with:
+          path: ./cache
+          key: ${{ runner.os }}-gen1-benchmark-stateless-cluster-redis
       # Run `github-action-benchmark` action
       - name: Store benchmark result
         uses: benchmark-action/github-action-benchmark@v1.20.4

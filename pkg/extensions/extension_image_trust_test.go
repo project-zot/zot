@@ -17,6 +17,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/alicebob/miniredis/v2"
 	guuid "github.com/gofrs/uuid"
 	"github.com/sigstore/cosign/v2/cmd/cosign/cli/generate"
 	"github.com/sigstore/cosign/v2/cmd/cosign/cli/options"
@@ -123,6 +124,19 @@ func TestSignatureUploadAndVerificationLocal(t *testing.T) {
 	})
 }
 
+func TestSignatureUploadAndVerificationRedis(t *testing.T) {
+	Convey("test with local storage and redis metadb", t, func() {
+		miniRedis := miniredis.RunT(t)
+
+		cacheDriverParams := map[string]interface{}{
+			"name": "redis",
+			"url":  "redis://" + miniRedis.Addr(),
+		}
+
+		RunSignatureUploadAndVerificationTests(t, cacheDriverParams)
+	})
+}
+
 func TestSignatureUploadAndVerificationAWS(t *testing.T) {
 	tskip.SkipDynamo(t)
 
@@ -139,7 +153,7 @@ func TestSignatureUploadAndVerificationAWS(t *testing.T) {
 		repoBlobsInfoTablename := "repoBlobsInfoTable" + uuid.String()
 
 		cacheDriverParams := map[string]interface{}{
-			"name":                   "dynamoDB",
+			"name":                   "dynamodb",
 			"endpoint":               os.Getenv("DYNAMODBMOCK_ENDPOINT"),
 			"region":                 "us-east-2",
 			"cacheTablename":         cacheTablename,

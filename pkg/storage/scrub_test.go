@@ -11,20 +11,21 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/distribution/distribution/v3/registry/storage/driver"
+	"github.com/alicebob/miniredis/v2"
 	guuid "github.com/gofrs/uuid"
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	. "github.com/smartystreets/goconvey/convey"
 
 	zerr "zotregistry.dev/zot/errors"
+	rediscfg "zotregistry.dev/zot/pkg/api/config/redis"
 	"zotregistry.dev/zot/pkg/extensions/monitoring"
 	"zotregistry.dev/zot/pkg/log"
 	"zotregistry.dev/zot/pkg/storage"
 	"zotregistry.dev/zot/pkg/storage/cache"
 	common "zotregistry.dev/zot/pkg/storage/common"
+	storageConstants "zotregistry.dev/zot/pkg/storage/constants"
 	"zotregistry.dev/zot/pkg/storage/local"
-	"zotregistry.dev/zot/pkg/storage/s3"
 	storageTypes "zotregistry.dev/zot/pkg/storage/types"
 	. "zotregistry.dev/zot/pkg/test/image-utils"
 	"zotregistry.dev/zot/pkg/test/mocks"
@@ -55,6 +56,29 @@ func TestLocalCheckAllBlobsIntegrity(t *testing.T) {
 	})
 }
 
+func TestRedisCheckAllBlobsIntegrity(t *testing.T) {
+	miniRedis := miniredis.RunT(t)
+
+	Convey("test with local storage", t, func() {
+		tdir := t.TempDir()
+		log := log.NewLogger("debug", "")
+
+		metrics := monitoring.NewMetricsServer(false, log)
+
+		client, _ := rediscfg.GetRedisClient(map[string]interface{}{"url": "redis://" + miniRedis.Addr()}, log)
+
+		cacheDriver, _ := storage.Create("redis", cache.RedisDriverParameters{
+			Client:      client,
+			RootDir:     tdir,
+			UseRelPaths: false,
+		}, log)
+		driver := local.New(true)
+		imgStore := local.NewImageStore(tdir, true, true, log, metrics, nil, cacheDriver, nil)
+
+		RunCheckAllBlobsIntegrityTests(t, imgStore, driver, log)
+	})
+}
+
 func TestS3CheckAllBlobsIntegrity(t *testing.T) {
 	tskip.SkipS3(t)
 
@@ -68,11 +92,15 @@ func TestS3CheckAllBlobsIntegrity(t *testing.T) {
 		tdir := t.TempDir()
 		log := log.NewLogger("debug", "")
 
-		var store driver.StorageDriver
-		store, imgStore, _ := createObjectsStore(testDir, tdir)
-		defer cleanupStorage(store, testDir)
+		opts := createObjectStoreOpts{
+			rootDir:     testDir,
+			cacheDir:    tdir,
+			cacheType:   storageConstants.BoltdbName,
+			storageType: storageConstants.S3StorageDriverName,
+		}
 
-		driver := s3.New(store)
+		driver, imgStore, _, _ := createObjectsStore(opts)
+		defer cleanupStorage(driver, testDir)
 
 		RunCheckAllBlobsIntegrityTests(t, imgStore, driver, log)
 	})

@@ -27,7 +27,6 @@ import (
 	zlog "zotregistry.dev/zot/pkg/log"
 	zreg "zotregistry.dev/zot/pkg/regexp"
 	"zotregistry.dev/zot/pkg/scheduler"
-	"zotregistry.dev/zot/pkg/storage/cache"
 	common "zotregistry.dev/zot/pkg/storage/common"
 	storageConstants "zotregistry.dev/zot/pkg/storage/constants"
 	storageTypes "zotregistry.dev/zot/pkg/storage/types"
@@ -46,7 +45,7 @@ type ImageStore struct {
 	lock        *sync.RWMutex
 	log         zlog.Logger
 	metrics     monitoring.MetricServer
-	cache       cache.Cache
+	cache       storageTypes.Cache
 	dedupe      bool
 	linter      common.Lint
 	commit      bool
@@ -70,7 +69,7 @@ func (is *ImageStore) DirExists(d string) bool {
 // Use the last argument to properly set a cache database, or it will default to boltDB local storage.
 func NewImageStore(rootDir string, cacheDir string, dedupe, commit bool, log zlog.Logger,
 	metrics monitoring.MetricServer, linter common.Lint, storeDriver storageTypes.Driver,
-	cacheDriver cache.Cache, compat []compat.MediaCompatibility,
+	cacheDriver storageTypes.Cache, compat []compat.MediaCompatibility,
 ) storageTypes.ImageStore {
 	if err := storeDriver.EnsureDir(rootDir); err != nil {
 		log.Error().Err(err).Str("rootDir", rootDir).Msg("failed to create root dir")

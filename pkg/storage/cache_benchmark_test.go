@@ -11,6 +11,7 @@ import (
 	"zotregistry.dev/zot/pkg/log"
 	"zotregistry.dev/zot/pkg/storage"
 	"zotregistry.dev/zot/pkg/storage/cache"
+	storageTypes "zotregistry.dev/zot/pkg/storage/types"
 	test "zotregistry.dev/zot/pkg/test/common"
 )
 
@@ -44,31 +45,31 @@ func generateData() map[godigest.Digest]string {
 	return dataMap
 }
 
-func helperPutAll(cache cache.Cache, testData map[godigest.Digest]string) {
+func helperPutAll(cache storageTypes.Cache, testData map[godigest.Digest]string) {
 	for digest, path := range testData {
 		_ = cache.PutBlob(digest, path)
 	}
 }
 
-func helperDeleteAll(cache cache.Cache, testData map[godigest.Digest]string) {
+func helperDeleteAll(cache storageTypes.Cache, testData map[godigest.Digest]string) {
 	for digest, path := range testData {
 		_ = cache.DeleteBlob(digest, path)
 	}
 }
 
-func helperHasAll(cache cache.Cache, testData map[godigest.Digest]string) {
+func helperHasAll(cache storageTypes.Cache, testData map[godigest.Digest]string) {
 	for digest, path := range testData {
 		_ = cache.HasBlob(digest, path)
 	}
 }
 
-func helperGetAll(cache cache.Cache, testData map[godigest.Digest]string) {
+func helperGetAll(cache storageTypes.Cache, testData map[godigest.Digest]string) {
 	for digest := range testData {
 		_, _ = cache.GetBlob(digest)
 	}
 }
 
-func helperMix(cache cache.Cache, testData map[godigest.Digest]string, digestSlice []godigest.Digest) {
+func helperMix(cache storageTypes.Cache, testData map[godigest.Digest]string, digestSlice []godigest.Digest) {
 	// The test data contains datasetSize entries by default, and each set of operations uses 5 entries
 	for i := 0; i < 1000; i++ {
 		_ = cache.PutBlob(digestSlice[i*5], testData[digestSlice[i*5]])

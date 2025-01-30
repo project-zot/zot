@@ -16,19 +16,20 @@ import (
 	"testing"
 	"time"
 
-	// Add s3 support.
-	"github.com/distribution/distribution/v3/registry/storage/driver"
+	"github.com/alicebob/miniredis/v2"
 	"github.com/distribution/distribution/v3/registry/storage/driver/factory"
 	_ "github.com/distribution/distribution/v3/registry/storage/driver/s3-aws"
 	guuid "github.com/gofrs/uuid"
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
+	"github.com/redis/go-redis/v9"
 	"github.com/rs/zerolog"
 	. "github.com/smartystreets/goconvey/convey"
 	"gopkg.in/resty.v1"
 
 	zerr "zotregistry.dev/zot/errors"
 	"zotregistry.dev/zot/pkg/api/config"
+	rediscfg "zotregistry.dev/zot/pkg/api/config/redis"
 	"zotregistry.dev/zot/pkg/extensions/monitoring"
 	zlog "zotregistry.dev/zot/pkg/log"
 	"zotregistry.dev/zot/pkg/storage"
@@ -58,17 +59,65 @@ var DeleteReferrers = config.ImageRetention{ //nolint: gochecknoglobals
 	},
 }
 
-func cleanupStorage(store driver.StorageDriver, name string) {
-	_ = store.Delete(context.Background(), name)
+func cleanupStorage(store storageTypes.Driver, name string) {
+	_ = store.Delete(name)
 }
 
-func createObjectsStore(rootDir string, cacheDir string) (
-	driver.StorageDriver, storageTypes.ImageStore, error,
+type createObjectStoreOpts struct {
+	storageType   string
+	rootDir       string
+	cacheDir      string
+	cacheType     string
+	miniRedisAddr string
+}
+
+func createObjectsStore(options createObjectStoreOpts) (
+	storageTypes.Driver, storageTypes.ImageStore, storageTypes.Cache, error,
 ) {
+	var (
+		cacheDriver storageTypes.Cache
+		useRelPaths bool
+	)
+
+	log := zlog.Logger{Logger: zerolog.New(os.Stdout)}
+
+	if options.storageType == storageConstants.S3StorageDriverName {
+		useRelPaths = false
+	} else {
+		useRelPaths = true
+	}
+
+	if options.cacheType == storageConstants.RedisDriverName {
+		client, _ := rediscfg.GetRedisClient(map[string]interface{}{"url": options.miniRedisAddr}, log)
+
+		cacheDriver, _ = storage.Create("redis", cache.RedisDriverParameters{
+			Client:      client,
+			RootDir:     options.cacheDir,
+			UseRelPaths: useRelPaths,
+		}, log)
+	} else {
+		cacheDriver, _ = storage.Create("boltdb", cache.BoltDBDriverParameters{
+			RootDir:     options.cacheDir,
+			Name:        "cache",
+			UseRelPaths: useRelPaths,
+		}, log)
+	}
+
+	metrics := monitoring.NewMetricsServer(false, log)
+
+	if options.storageType != storageConstants.S3StorageDriverName {
+		storeDriver := local.New(true)
+
+		imgStore := imagestore.NewImageStore(options.rootDir, options.cacheDir, true,
+			true, log, metrics, nil, storeDriver, cacheDriver, nil)
+
+		return storeDriver, imgStore, cacheDriver, nil
+	}
+
 	bucket := "zot-storage-test"
 	endpoint := os.Getenv("S3MOCK_ENDPOINT")
 	storageDriverParams := map[string]interface{}{
-		"rootDir":        rootDir,
+		"rootDir":        options.rootDir,
 		"name":           "s3",
 		"region":         "us-east-2",
 		"bucket":         bucket,
@@ -82,7 +131,7 @@ func createObjectsStore(rootDir string, cacheDir string) (
 
 	storeName := fmt.Sprintf("%v", storageDriverParams["name"])
 
-	store, err := factory.Create(context.Background(), storeName, storageDriverParams)
+	s3Driver, err := factory.Create(context.Background(), storeName, storageDriverParams)
 	if err != nil {
 		panic(err)
 	}
@@ -93,32 +142,37 @@ func createObjectsStore(rootDir string, cacheDir string) (
 		panic(err)
 	}
 
-	log := zlog.Logger{Logger: zerolog.New(os.Stdout)}
-	metrics := monitoring.NewMetricsServer(false, log)
+	imgStore := s3.NewImageStore(options.rootDir, options.cacheDir, true, false, log,
+		metrics, nil, s3Driver, cacheDriver, nil)
 
-	cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
-		RootDir:     cacheDir,
-		Name:        "cache",
-		UseRelPaths: false,
-	}, log)
-
-	il := s3.NewImageStore(rootDir, cacheDir, true, false, log, metrics, nil, store, cacheDriver, nil)
-
-	return store, il, err
+	return s3.New(s3Driver), imgStore, cacheDriver, err
 }
 
 //nolint:gochecknoglobals
 var testCases = []struct {
 	testCaseName string
 	storageType  string
+	cacheType    string
 }{
 	{
-		testCaseName: "S3APIs",
+		testCaseName: "S3APIs_BoltDB",
 		storageType:  storageConstants.S3StorageDriverName,
+		cacheType:    storageConstants.BoltdbName,
 	},
 	{
-		testCaseName: "FileSystemAPIs",
+		testCaseName: "FileSystemAPIs_BoltDB",
 		storageType:  storageConstants.LocalStorageDriverName,
+		cacheType:    storageConstants.BoltdbName,
+	},
+	{
+		testCaseName: "S3APIs_Redis",
+		storageType:  storageConstants.S3StorageDriverName,
+		cacheType:    storageConstants.RedisDriverName,
+	},
+	{
+		testCaseName: "FileSystemAPIs_Redis",
+		storageType:  storageConstants.LocalStorageDriverName,
+		cacheType:    storageConstants.RedisDriverName,
 	},
 }
 
@@ -140,6 +194,21 @@ func TestGetAllDedupeReposCandidates(t *testing.T) {
 		t.Run(testcase.testCaseName, func(t *testing.T) {
 			var imgStore storageTypes.ImageStore
 
+			cacheDir := t.TempDir()
+
+			opts := createObjectStoreOpts{
+				rootDir:     cacheDir,
+				cacheDir:    cacheDir,
+				cacheType:   testcase.cacheType,
+				storageType: testcase.storageType,
+			}
+
+			if testcase.cacheType == storageConstants.RedisDriverName {
+				miniRedis := miniredis.RunT(t)
+				opts.miniRedisAddr = "redis://" + miniRedis.Addr()
+				defer DumpKeys(t, opts.miniRedisAddr)
+			}
+
 			if testcase.storageType == storageConstants.S3StorageDriverName {
 				tskip.SkipS3(t)
 
@@ -149,25 +218,13 @@ func TestGetAllDedupeReposCandidates(t *testing.T) {
 				}
 
 				testDir := path.Join("/oci-repo-test", uuid.String())
-				tdir := t.TempDir()
+				opts.rootDir = testDir
 
-				var store driver.StorageDriver
-				store, imgStore, _ = createObjectsStore(testDir, tdir)
+				var store storageTypes.Driver
+				store, imgStore, _, _ = createObjectsStore(opts)
 				defer cleanupStorage(store, testDir)
 			} else {
-				dir := t.TempDir()
-
-				log := zlog.Logger{Logger: zerolog.New(os.Stdout)}
-				metrics := monitoring.NewMetricsServer(false, log)
-				cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
-					RootDir:     dir,
-					Name:        "cache",
-					UseRelPaths: true,
-				}, log)
-
-				driver := local.New(true)
-
-				imgStore = imagestore.NewImageStore(dir, dir, true, true, log, metrics, nil, driver, cacheDriver, nil)
+				_, imgStore, _, _ = createObjectsStore(opts)
 			}
 
 			Convey("Push repos with deduped blobs", t, func(c C) {
@@ -210,6 +267,21 @@ func TestStorageAPIs(t *testing.T) {
 		t.Run(testcase.testCaseName, func(t *testing.T) {
 			var imgStore storageTypes.ImageStore
 
+			cacheDir := t.TempDir()
+
+			opts := createObjectStoreOpts{
+				rootDir:     cacheDir,
+				cacheDir:    cacheDir,
+				cacheType:   testcase.cacheType,
+				storageType: testcase.storageType,
+			}
+
+			if testcase.cacheType == storageConstants.RedisDriverName {
+				miniRedis := miniredis.RunT(t)
+				opts.miniRedisAddr = "redis://" + miniRedis.Addr()
+				defer DumpKeys(t, opts.miniRedisAddr)
+			}
+
 			if testcase.storageType == storageConstants.S3StorageDriverName {
 				tskip.SkipS3(t)
 
@@ -219,25 +291,13 @@ func TestStorageAPIs(t *testing.T) {
 				}
 
 				testDir := path.Join("/oci-repo-test", uuid.String())
-				tdir := t.TempDir()
+				opts.rootDir = testDir
 
-				var store driver.StorageDriver
-				store, imgStore, _ = createObjectsStore(testDir, tdir)
+				var store storageTypes.Driver
+				store, imgStore, _, _ = createObjectsStore(opts)
 				defer cleanupStorage(store, testDir)
 			} else {
-				dir := t.TempDir()
-
-				log := zlog.Logger{Logger: zerolog.New(os.Stdout)}
-				metrics := monitoring.NewMetricsServer(false, log)
-				cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
-					RootDir:     dir,
-					Name:        "cache",
-					UseRelPaths: true,
-				}, log)
-
-				driver := local.New(true)
-
-				imgStore = imagestore.NewImageStore(dir, dir, true, true, log, metrics, nil, driver, cacheDriver, nil)
+				_, imgStore, _, _ = createObjectsStore(opts)
 			}
 
 			Convey("Repo layout", t, func(c C) {
@@ -948,14 +1008,29 @@ func TestMandatoryAnnotations(t *testing.T) {
 	for _, testcase := range testCases {
 		testcase := testcase
 		t.Run(testcase.testCaseName, func(t *testing.T) {
-			var imgStore storageTypes.ImageStore
-
-			var testDir, tdir string
-
-			var store driver.StorageDriver
+			var (
+				imgStore storageTypes.ImageStore
+				store    storageTypes.Driver
+				testDir  string
+			)
 
 			log := zlog.Logger{Logger: zerolog.New(os.Stdout)}
 			metrics := monitoring.NewMetricsServer(false, log)
+
+			cacheDir := t.TempDir()
+
+			opts := createObjectStoreOpts{
+				rootDir:     cacheDir,
+				cacheDir:    cacheDir,
+				cacheType:   testcase.cacheType,
+				storageType: testcase.storageType,
+			}
+
+			if testcase.cacheType == storageConstants.RedisDriverName {
+				miniRedis := miniredis.RunT(t)
+				opts.miniRedisAddr = "redis://" + miniRedis.Addr()
+				defer DumpKeys(t, opts.miniRedisAddr)
+			}
 
 			if testcase.storageType == storageConstants.S3StorageDriverName {
 				tskip.SkipS3(t)
@@ -966,32 +1041,29 @@ func TestMandatoryAnnotations(t *testing.T) {
 				}
 
 				testDir = path.Join("/oci-repo-test", uuid.String())
-				tdir = t.TempDir()
+				opts.rootDir = testDir
 
-				store, _, _ = createObjectsStore(testDir, tdir)
-				driver := s3.New(store)
-				imgStore = imagestore.NewImageStore(testDir, tdir, false, false, log, metrics,
+				var cacheDriver storageTypes.Cache
+				store, _, cacheDriver, _ = createObjectsStore(opts)
+
+				imgStore = imagestore.NewImageStore(testDir, cacheDir, false, false, log, metrics,
 					&mocks.MockedLint{
 						LintFn: func(repo string, manifestDigest godigest.Digest, imageStore storageTypes.ImageStore) (bool, error) {
 							return false, nil
 						},
-					}, driver, nil, nil)
+					}, store, cacheDriver, nil)
 
 				defer cleanupStorage(store, testDir)
 			} else {
-				tdir = t.TempDir()
-				cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
-					RootDir:     tdir,
-					Name:        "cache",
-					UseRelPaths: true,
-				}, log)
-				driver := local.New(true)
-				imgStore = imagestore.NewImageStore(tdir, tdir, true,
-					true, log, metrics, &mocks.MockedLint{
+				var cacheDriver storageTypes.Cache
+				store, _, cacheDriver, _ = createObjectsStore(opts)
+
+				imgStore = imagestore.NewImageStore(cacheDir, cacheDir, true, true, log, metrics,
+					&mocks.MockedLint{
 						LintFn: func(repo string, manifestDigest godigest.Digest, imageStore storageTypes.ImageStore) (bool, error) {
 							return false, nil
 						},
-					}, driver, cacheDriver, nil)
+					}, store, cacheDriver, nil)
 			}
 
 			Convey("Setup manifest", t, func() {
@@ -1038,28 +1110,24 @@ func TestMandatoryAnnotations(t *testing.T) {
 
 				Convey("Error on mandatory annotations", func() {
 					if testcase.storageType == storageConstants.S3StorageDriverName {
-						driver := s3.New(store)
-						imgStore = imagestore.NewImageStore(testDir, tdir, false, false, log, metrics,
+						imgStore = imagestore.NewImageStore(testDir, cacheDir, false, false, log, metrics,
 							&mocks.MockedLint{
 								LintFn: func(repo string, manifestDigest godigest.Digest, imageStore storageTypes.ImageStore) (bool, error) {
 									//nolint: goerr113
 									return false, errors.New("linter error")
 								},
-							}, driver, nil, nil)
+							}, store, nil, nil)
 					} else {
-						cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
-							RootDir:     tdir,
-							Name:        "cache",
-							UseRelPaths: true,
-						}, log)
-						driver := local.New(true)
-						imgStore = imagestore.NewImageStore(tdir, tdir, true,
-							true, log, metrics, &mocks.MockedLint{
+						var cacheDriver storageTypes.Cache
+						store, _, cacheDriver, _ = createObjectsStore(opts)
+
+						imgStore = imagestore.NewImageStore(cacheDir, cacheDir, true, true, log, metrics,
+							&mocks.MockedLint{
 								LintFn: func(repo string, manifestDigest godigest.Digest, imageStore storageTypes.ImageStore) (bool, error) {
 									//nolint: goerr113
 									return false, errors.New("linter error")
 								},
-							}, driver, cacheDriver, nil)
+							}, store, cacheDriver, nil)
 					}
 
 					_, _, err = imgStore.PutImageManifest("test", "1.0.0", ispec.MediaTypeImageManifest, manifestBuf)
@@ -1143,12 +1211,22 @@ func TestDeleteBlobsInUse(t *testing.T) {
 		t.Run(testcase.testCaseName, func(t *testing.T) {
 			var imgStore storageTypes.ImageStore
 
-			var testDir, tdir string
-
-			var store driver.StorageDriver
-
 			log := zlog.Logger{Logger: zerolog.New(os.Stdout)}
-			metrics := monitoring.NewMetricsServer(false, log)
+
+			cacheDir := t.TempDir()
+
+			opts := createObjectStoreOpts{
+				rootDir:     cacheDir,
+				cacheDir:    cacheDir,
+				cacheType:   testcase.cacheType,
+				storageType: testcase.storageType,
+			}
+
+			if testcase.cacheType == storageConstants.RedisDriverName {
+				miniRedis := miniredis.RunT(t)
+				opts.miniRedisAddr = "redis://" + miniRedis.Addr()
+				defer DumpKeys(t, opts.miniRedisAddr)
+			}
 
 			if testcase.storageType == storageConstants.S3StorageDriverName {
 				tskip.SkipS3(t)
@@ -1158,22 +1236,15 @@ func TestDeleteBlobsInUse(t *testing.T) {
 					panic(err)
 				}
 
-				testDir = path.Join("/oci-repo-test", uuid.String())
-				tdir = t.TempDir()
+				testDir := path.Join("/oci-repo-test", uuid.String())
+				opts.rootDir = testDir
 
-				store, imgStore, _ = createObjectsStore(testDir, tdir)
+				var store storageTypes.Driver
+				store, imgStore, _, _ = createObjectsStore(opts)
 
 				defer cleanupStorage(store, testDir)
 			} else {
-				tdir = t.TempDir()
-				cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
-					RootDir:     tdir,
-					Name:        "cache",
-					UseRelPaths: true,
-				}, log)
-				driver := local.New(true)
-				imgStore = imagestore.NewImageStore(tdir, tdir, true,
-					true, log, metrics, nil, driver, cacheDriver, nil)
+				_, imgStore, _, _ = createObjectsStore(opts)
 			}
 
 			Convey("Setup manifest", t, func() {
@@ -1447,16 +1518,25 @@ func TestReuploadCorruptedBlob(t *testing.T) {
 	for _, testcase := range testCases {
 		testcase := testcase
 		t.Run(testcase.testCaseName, func(t *testing.T) {
-			var imgStore storageTypes.ImageStore
+			var (
+				imgStore storageTypes.ImageStore
+				driver   storageTypes.Driver
+			)
 
-			var testDir, tdir string
+			cacheDir := t.TempDir()
 
-			var store driver.StorageDriver
+			opts := createObjectStoreOpts{
+				rootDir:     cacheDir,
+				cacheDir:    cacheDir,
+				cacheType:   testcase.cacheType,
+				storageType: testcase.storageType,
+			}
 
-			var driver storageTypes.Driver
-
-			log := zlog.Logger{Logger: zerolog.New(os.Stdout)}
-			metrics := monitoring.NewMetricsServer(false, log)
+			if testcase.cacheType == storageConstants.RedisDriverName {
+				miniRedis := miniredis.RunT(t)
+				opts.miniRedisAddr = "redis://" + miniRedis.Addr()
+				defer DumpKeys(t, opts.miniRedisAddr)
+			}
 
 			if testcase.storageType == storageConstants.S3StorageDriverName {
 				tskip.SkipS3(t)
@@ -1466,22 +1546,13 @@ func TestReuploadCorruptedBlob(t *testing.T) {
 					panic(err)
 				}
 
-				testDir = path.Join("/oci-repo-test", uuid.String())
-				tdir = t.TempDir()
+				testDir := path.Join("/oci-repo-test", uuid.String())
+				opts.rootDir = testDir
 
-				store, imgStore, _ = createObjectsStore(testDir, tdir)
-				driver = s3.New(store)
-				defer cleanupStorage(store, testDir)
+				driver, imgStore, _, _ = createObjectsStore(opts)
+				defer cleanupStorage(driver, testDir)
 			} else {
-				tdir = t.TempDir()
-				cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
-					RootDir:     tdir,
-					Name:        "cache",
-					UseRelPaths: true,
-				}, log)
-				driver = local.New(true)
-				imgStore = imagestore.NewImageStore(tdir, tdir, true,
-					true, log, metrics, nil, driver, cacheDriver, nil)
+				driver, imgStore, _, _ = createObjectsStore(opts)
 			}
 
 			Convey("Test errors paths", t, func() {
@@ -1582,59 +1653,73 @@ func TestStorageHandler(t *testing.T) {
 	for _, testcase := range testCases {
 		testcase := testcase
 		t.Run(testcase.testCaseName, func(t *testing.T) {
-			var firstStore storageTypes.ImageStore
+			var (
+				firstStore    storageTypes.ImageStore
+				secondStore   storageTypes.ImageStore
+				thirdStore    storageTypes.ImageStore
+				firstRootDir  string
+				secondRootDir string
+				thirdRootDir  string
+			)
 
-			var secondStore storageTypes.ImageStore
+			opts := createObjectStoreOpts{
+				cacheType:   testcase.cacheType,
+				storageType: testcase.storageType,
+			}
 
-			var thirdStore storageTypes.ImageStore
-
-			var firstRootDir string
-
-			var secondRootDir string
-
-			var thirdRootDir string
+			if testcase.cacheType == storageConstants.RedisDriverName {
+				miniRedis := miniredis.RunT(t)
+				opts.miniRedisAddr = "redis://" + miniRedis.Addr()
+				defer DumpKeys(t, opts.miniRedisAddr)
+			}
 
 			if testcase.storageType == storageConstants.S3StorageDriverName {
 				tskip.SkipS3(t)
 
-				var firstStorageDriver driver.StorageDriver
-
-				var secondStorageDriver driver.StorageDriver
-
-				var thirdStorageDriver driver.StorageDriver
+				var (
+					firstStorageDriver  storageTypes.Driver
+					secondStorageDriver storageTypes.Driver
+					thirdStorageDriver  storageTypes.Driver
+				)
 
 				firstRootDir = "/util_test1"
-				firstStorageDriver, firstStore, _ = createObjectsStore(firstRootDir, t.TempDir())
+				opts.rootDir = firstRootDir
+				opts.cacheDir = t.TempDir()
+
+				firstStorageDriver, firstStore, _, _ = createObjectsStore(opts)
 				defer cleanupStorage(firstStorageDriver, firstRootDir)
 
 				secondRootDir = "/util_test2"
-				secondStorageDriver, secondStore, _ = createObjectsStore(secondRootDir, t.TempDir())
+				opts.rootDir = secondRootDir
+				opts.cacheDir = t.TempDir()
+
+				secondStorageDriver, secondStore, _, _ = createObjectsStore(opts)
 				defer cleanupStorage(secondStorageDriver, secondRootDir)
 
 				thirdRootDir = "/util_test3"
-				thirdStorageDriver, thirdStore, _ = createObjectsStore(thirdRootDir, t.TempDir())
+				opts.rootDir = thirdRootDir
+				opts.cacheDir = t.TempDir()
+
+				thirdStorageDriver, thirdStore, _, _ = createObjectsStore(opts)
 				defer cleanupStorage(thirdStorageDriver, thirdRootDir)
 			} else {
-				// Create temporary directory
 				firstRootDir = t.TempDir()
+				opts.rootDir = firstRootDir
+				opts.cacheDir = firstRootDir
+
+				_, firstStore, _, _ = createObjectsStore(opts)
+
 				secondRootDir = t.TempDir()
+				opts.rootDir = secondRootDir
+				opts.cacheDir = secondRootDir
+
+				_, secondStore, _, _ = createObjectsStore(opts)
+
 				thirdRootDir = t.TempDir()
+				opts.rootDir = thirdRootDir
+				opts.cacheDir = thirdRootDir
 
-				log := zlog.NewLogger("debug", "")
-
-				metrics := monitoring.NewMetricsServer(false, log)
-
-				driver := local.New(true)
-
-				// Create ImageStore
-				firstStore = imagestore.NewImageStore(firstRootDir, firstRootDir, false, false,
-					log, metrics, nil, driver, nil, nil)
-
-				secondStore = imagestore.NewImageStore(secondRootDir, secondRootDir, false, false,
-					log, metrics, nil, driver, nil, nil)
-
-				thirdStore = imagestore.NewImageStore(thirdRootDir, thirdRootDir, false, false, log,
-					metrics, nil, driver, nil, nil)
+				_, thirdStore, _, _ = createObjectsStore(opts)
 			}
 
 			Convey("Test storage handler", t, func() {
@@ -1685,12 +1770,25 @@ func TestGarbageCollectImageManifest(t *testing.T) {
 			log := zlog.NewLogger("debug", "")
 			audit := zlog.NewAuditLogger("debug", "")
 
-			metrics := monitoring.NewMetricsServer(false, log)
-
 			ctx := context.Background()
 
 			//nolint: contextcheck
 			Convey("Repo layout", t, func(c C) {
+				cacheDir := t.TempDir()
+
+				opts := createObjectStoreOpts{
+					rootDir:     cacheDir,
+					cacheDir:    cacheDir,
+					cacheType:   testcase.cacheType,
+					storageType: testcase.storageType,
+				}
+
+				if testcase.cacheType == storageConstants.RedisDriverName {
+					miniRedis := miniredis.RunT(t)
+					opts.miniRedisAddr = "redis://" + miniRedis.Addr()
+					defer DumpKeys(t, opts.miniRedisAddr)
+				}
+
 				Convey("Garbage collect with default/long delay", func() {
 					var imgStore storageTypes.ImageStore
 
@@ -1703,23 +1801,13 @@ func TestGarbageCollectImageManifest(t *testing.T) {
 						}
 
 						testDir := path.Join("/oci-repo-test", uuid.String())
-						tdir := t.TempDir()
+						opts.rootDir = testDir
 
-						var store driver.StorageDriver
-						store, imgStore, _ = createObjectsStore(testDir, tdir)
+						var store storageTypes.Driver
+						store, imgStore, _, _ = createObjectsStore(opts)
 						defer cleanupStorage(store, testDir)
 					} else {
-						dir := t.TempDir()
-
-						cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
-							RootDir:     dir,
-							Name:        "cache",
-							UseRelPaths: true,
-						}, log)
-
-						driver := local.New(true)
-
-						imgStore = imagestore.NewImageStore(dir, dir, true, true, log, metrics, nil, driver, cacheDriver, nil)
+						_, imgStore, _, _ = createObjectsStore(opts)
 					}
 
 					gc := gc.NewGarbageCollect(imgStore, mocks.MetaDBMock{}, gc.Options{
@@ -1874,24 +1962,13 @@ func TestGarbageCollectImageManifest(t *testing.T) {
 						}
 
 						testDir := path.Join("/oci-repo-test", uuid.String())
-						tdir := t.TempDir()
+						opts.rootDir = testDir
 
-						var store driver.StorageDriver
-						store, imgStore, _ = createObjectsStore(testDir, tdir)
+						var store storageTypes.Driver
+						store, imgStore, _, _ = createObjectsStore(opts)
 						defer cleanupStorage(store, testDir)
 					} else {
-						dir := t.TempDir()
-
-						cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
-							RootDir:     dir,
-							Name:        "cache",
-							UseRelPaths: true,
-						}, log)
-
-						driver := local.New(true)
-
-						imgStore = imagestore.NewImageStore(dir, dir, true,
-							true, log, metrics, nil, driver, cacheDriver, nil)
+						_, imgStore, _, _ = createObjectsStore(opts)
 					}
 
 					gc := gc.NewGarbageCollect(imgStore, mocks.MetaDBMock{}, gc.Options{
@@ -2160,23 +2237,13 @@ func TestGarbageCollectImageManifest(t *testing.T) {
 						}
 
 						testDir := path.Join("/oci-repo-test", uuid.String())
-						tdir := t.TempDir()
+						opts.rootDir = testDir
 
-						var store driver.StorageDriver
-						store, imgStore, _ = createObjectsStore(testDir, tdir)
+						var store storageTypes.Driver
+						store, imgStore, _, _ = createObjectsStore(opts)
 						defer cleanupStorage(store, testDir)
 					} else {
-						dir := t.TempDir()
-
-						cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
-							RootDir:     dir,
-							Name:        "cache",
-							UseRelPaths: true,
-						}, log)
-
-						driver := local.New(true)
-
-						imgStore = imagestore.NewImageStore(dir, dir, true, true, log, metrics, nil, driver, cacheDriver, nil)
+						_, imgStore, _, _ = createObjectsStore(opts)
 					}
 
 					gc := gc.NewGarbageCollect(imgStore, mocks.MetaDBMock{}, gc.Options{
@@ -2387,12 +2454,25 @@ func TestGarbageCollectImageIndex(t *testing.T) {
 			log := zlog.NewLogger("debug", "")
 			audit := zlog.NewAuditLogger("debug", "")
 
-			metrics := monitoring.NewMetricsServer(false, log)
-
 			ctx := context.Background()
 
 			//nolint: contextcheck
 			Convey("Repo layout", t, func(c C) {
+				cacheDir := t.TempDir()
+
+				opts := createObjectStoreOpts{
+					rootDir:     cacheDir,
+					cacheDir:    cacheDir,
+					cacheType:   testcase.cacheType,
+					storageType: testcase.storageType,
+				}
+
+				if testcase.cacheType == storageConstants.RedisDriverName {
+					miniRedis := miniredis.RunT(t)
+					opts.miniRedisAddr = "redis://" + miniRedis.Addr()
+					defer DumpKeys(t, opts.miniRedisAddr)
+				}
+
 				Convey("Garbage collect with default/long delay", func() {
 					var imgStore storageTypes.ImageStore
 
@@ -2405,23 +2485,13 @@ func TestGarbageCollectImageIndex(t *testing.T) {
 						}
 
 						testDir := path.Join("/oci-repo-test", uuid.String())
-						tdir := t.TempDir()
+						opts.rootDir = testDir
 
-						var store driver.StorageDriver
-						store, imgStore, _ = createObjectsStore(testDir, tdir)
+						var store storageTypes.Driver
+						store, imgStore, _, _ = createObjectsStore(opts)
 						defer cleanupStorage(store, testDir)
 					} else {
-						dir := t.TempDir()
-
-						cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
-							RootDir:     dir,
-							Name:        "cache",
-							UseRelPaths: true,
-						}, log)
-
-						driver := local.New(true)
-
-						imgStore = imagestore.NewImageStore(dir, dir, true, true, log, metrics, nil, driver, cacheDriver, nil)
+						_, imgStore, _, _ = createObjectsStore(opts)
 					}
 
 					gc := gc.NewGarbageCollect(imgStore, mocks.MetaDBMock{}, gc.Options{
@@ -2534,23 +2604,13 @@ func TestGarbageCollectImageIndex(t *testing.T) {
 						}
 
 						testDir := path.Join("/oci-repo-test", uuid.String())
-						tdir := t.TempDir()
+						opts.rootDir = testDir
 
-						var store driver.StorageDriver
-						store, imgStore, _ = createObjectsStore(testDir, tdir)
+						var store storageTypes.Driver
+						store, imgStore, _, _ = createObjectsStore(opts)
 						defer cleanupStorage(store, testDir)
 					} else {
-						dir := t.TempDir()
-
-						cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
-							RootDir:     dir,
-							Name:        "cache",
-							UseRelPaths: true,
-						}, log)
-
-						driver := local.New(true)
-
-						imgStore = imagestore.NewImageStore(dir, dir, true, true, log, metrics, nil, driver, cacheDriver, nil)
+						_, imgStore, _, _ = createObjectsStore(opts)
 					}
 
 					gc := gc.NewGarbageCollect(imgStore, mocks.MetaDBMock{}, gc.Options{
@@ -2802,8 +2862,6 @@ func TestGarbageCollectChainedImageIndexes(t *testing.T) {
 			log := zlog.NewLogger("debug", "")
 			audit := zlog.NewAuditLogger("debug", "")
 
-			metrics := monitoring.NewMetricsServer(false, log)
-
 			ctx := context.Background()
 
 			//nolint: contextcheck
@@ -2812,6 +2870,21 @@ func TestGarbageCollectChainedImageIndexes(t *testing.T) {
 
 				gcDelay := 5 * time.Second
 				imageRetentionDelay := 5 * time.Second
+
+				cacheDir := t.TempDir()
+
+				opts := createObjectStoreOpts{
+					rootDir:     cacheDir,
+					cacheDir:    cacheDir,
+					cacheType:   testcase.cacheType,
+					storageType: testcase.storageType,
+				}
+
+				if testcase.cacheType == storageConstants.RedisDriverName {
+					miniRedis := miniredis.RunT(t)
+					opts.miniRedisAddr = "redis://" + miniRedis.Addr()
+					defer DumpKeys(t, opts.miniRedisAddr)
+				}
 
 				if testcase.storageType == storageConstants.S3StorageDriverName {
 					tskip.SkipS3(t)
@@ -2822,23 +2895,13 @@ func TestGarbageCollectChainedImageIndexes(t *testing.T) {
 					}
 
 					testDir := path.Join("/oci-repo-test", uuid.String())
-					tdir := t.TempDir()
+					opts.rootDir = testDir
 
-					var store driver.StorageDriver
-					store, imgStore, _ = createObjectsStore(testDir, tdir)
+					var store storageTypes.Driver
+					store, imgStore, _, _ = createObjectsStore(opts)
 					defer cleanupStorage(store, testDir)
 				} else {
-					dir := t.TempDir()
-
-					cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
-						RootDir:     dir,
-						Name:        "cache",
-						UseRelPaths: true,
-					}, log)
-
-					driver := local.New(true)
-
-					imgStore = imagestore.NewImageStore(dir, dir, true, true, log, metrics, nil, driver, cacheDriver, nil)
+					_, imgStore, _, _ = createObjectsStore(opts)
 				}
 
 				gc := gc.NewGarbageCollect(imgStore, mocks.MetaDBMock{}, gc.Options{
@@ -3346,4 +3409,71 @@ func pushRandomImageIndex(imgStore storageTypes.ImageStore, repoName string,
 	So(err, ShouldBeNil)
 
 	return bdgst, digest, indexDigest, int64(len(indexContent))
+}
+
+func DumpKeys(t *testing.T, redisURL string) {
+	t.Helper()
+
+	// Initialize redis client
+	connOpts, err := redis.ParseURL(redisURL)
+	if err != nil {
+		return
+	}
+
+	client := redis.NewClient(connOpts)
+
+	// Retrieve all keys
+	keys, err := client.Keys(context.Background(), "*").Result()
+	if err != nil {
+		t.Log("Error retrieving keys:", err)
+
+		return
+	}
+
+	// Print the keys
+	t.Log("Keys in Redis:")
+
+	for _, key := range keys {
+		keyType, err := client.Type(context.Background(), key).Result()
+		if err != nil {
+			t.Logf("Error retrieving type for key %s: %v\n", key, err)
+
+			continue
+		}
+
+		var value string
+
+		switch keyType {
+		case "string":
+			value, err = client.Get(context.Background(), key).Result()
+		case "list":
+			values, err := client.LRange(context.Background(), key, 0, -1).Result()
+			if err == nil {
+				value = fmt.Sprintf("%v", values)
+			}
+		case "hash":
+			values, err := client.HGetAll(context.Background(), key).Result()
+			if err == nil {
+				value = fmt.Sprintf("%v", values)
+			}
+		case "set":
+			values, err := client.SMembers(context.Background(), key).Result()
+			if err == nil {
+				value = fmt.Sprintf("%v", values)
+			}
+		case "zset":
+			values, err := client.ZRange(context.Background(), key, 0, -1).Result()
+			if err == nil {
+				value = fmt.Sprintf("%v", values)
+			}
+		default:
+			value = "Unsupported type"
+		}
+
+		if err != nil {
+			t.Logf("Error retrieving value for key %s: %v\n", key, err)
+		} else {
+			t.Logf("Key: %s, Type: %s, Value: %s\n", key, keyType, value)
+		}
+	}
 }

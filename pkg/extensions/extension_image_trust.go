@@ -19,6 +19,7 @@ import (
 	"zotregistry.dev/zot/pkg/log"
 	mTypes "zotregistry.dev/zot/pkg/meta/types"
 	"zotregistry.dev/zot/pkg/scheduler"
+	sconstants "zotregistry.dev/zot/pkg/storage/constants"
 )
 
 func IsBuiltWithImageTrustExtension() bool {
@@ -172,7 +173,11 @@ func SetupImageTrustExtension(conf *config.Config, metaDB mTypes.MetaDB, log log
 
 	var err error
 
-	if conf.Storage.RemoteCache {
+	if conf.Storage.RemoteCache && conf.Storage.CacheDriver["name"] == sconstants.DynamoDBDriverName {
+		// AWS secrets manager
+		// In case of AWS let's assume if dynamodDB is used, the AWS secrets manager is also used
+		// we use the CacheDriver settings as opposed to the storage settings because we want to
+		// be able to use S3/minio and redis in the same configuration
 		endpoint, _ := conf.Storage.CacheDriver["endpoint"].(string)
 		region, _ := conf.Storage.CacheDriver["region"].(string)
 
@@ -181,6 +186,7 @@ func SetupImageTrustExtension(conf *config.Config, metaDB mTypes.MetaDB, log log
 			return err
 		}
 	} else {
+		// Store secrets on the local disk
 		imgTrustStore, err = imagetrust.NewLocalImageTrustStore(conf.Storage.RootDirectory)
 		if err != nil {
 			return err

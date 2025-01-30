@@ -11,16 +11,19 @@ import (
 	"testing"
 	"time"
 
+	"github.com/alicebob/miniredis/v2"
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	. "github.com/smartystreets/goconvey/convey"
 
+	rediscfg "zotregistry.dev/zot/pkg/api/config/redis"
 	zcommon "zotregistry.dev/zot/pkg/common"
 	"zotregistry.dev/zot/pkg/extensions/monitoring"
 	"zotregistry.dev/zot/pkg/log"
 	"zotregistry.dev/zot/pkg/meta"
 	"zotregistry.dev/zot/pkg/meta/boltdb"
 	"zotregistry.dev/zot/pkg/meta/dynamodb"
+	"zotregistry.dev/zot/pkg/meta/redis"
 	mTypes "zotregistry.dev/zot/pkg/meta/types"
 	"zotregistry.dev/zot/pkg/storage"
 	"zotregistry.dev/zot/pkg/storage/local"
@@ -296,6 +299,27 @@ func TestParseStorageWithBoltDB(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		metaDB, err := boltdb.New(boltDB, log)
+		So(err, ShouldBeNil)
+
+		RunParseStorageTests(rootDir, metaDB, log)
+	})
+}
+
+func TestParseStorageWithRedisDB(t *testing.T) {
+	Convey("Redis", t, func() {
+		miniRedis := miniredis.RunT(t)
+
+		rootDir := t.TempDir()
+		log := log.NewLogger("debug", "")
+
+		params := redis.DBDriverParameters{KeyPrefix: "zot"}
+		driverConfig := map[string]interface{}{"url": "redis://" + miniRedis.Addr()}
+
+		redisDriver, err := rediscfg.GetRedisClient(driverConfig, log)
+		So(err, ShouldBeNil)
+
+		metaDB, err := redis.New(redisDriver, params, log)
+		So(metaDB, ShouldNotBeNil)
 		So(err, ShouldBeNil)
 
 		RunParseStorageTests(rootDir, metaDB, log)
