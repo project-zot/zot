@@ -1,4 +1,4 @@
-package redisdb_test
+package redis_test
 
 import (
 	"context"
@@ -12,13 +12,13 @@ import (
 	"github.com/go-redis/redismock/v9"
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
-	"github.com/redis/go-redis/v9"
+	goredis "github.com/redis/go-redis/v9"
 	. "github.com/smartystreets/goconvey/convey"
 	"google.golang.org/protobuf/proto"
 
 	"zotregistry.dev/zot/pkg/log"
 	proto_go "zotregistry.dev/zot/pkg/meta/proto/gen"
-	"zotregistry.dev/zot/pkg/meta/redisdb"
+	"zotregistry.dev/zot/pkg/meta/redis"
 	mTypes "zotregistry.dev/zot/pkg/meta/types"
 	reqCtx "zotregistry.dev/zot/pkg/requestcontext"
 	test "zotregistry.dev/zot/pkg/test/common"
@@ -48,9 +48,9 @@ func TestRedisMocked(t *testing.T) {
 
 		mock.ExpectPing().SetVal("PONG")
 
-		params := redisdb.DBDriverParameters{KeyPrefix: "zot"}
+		params := redis.DBDriverParameters{KeyPrefix: "zot"}
 
-		metaDB, err := redisdb.New(client, params, log)
+		metaDB, err := redis.New(client, params, log)
 		So(err, ShouldBeNil)
 
 		Convey("GetAllRepoNames HGetAll error", func() {
@@ -231,15 +231,15 @@ func TestRedisRepoMeta(t *testing.T) {
 		log := log.NewLogger("debug", "")
 		So(log, ShouldNotBeNil)
 
-		opts, err := redis.ParseURL("redis://" + miniRedis.Addr())
+		opts, err := goredis.ParseURL("redis://" + miniRedis.Addr())
 		So(err, ShouldBeNil)
 
-		client := redis.NewClient(opts)
+		client := goredis.NewClient(opts)
 		defer DumpKeys(t, client) // Troubleshoot test failures
 
-		params := redisdb.DBDriverParameters{KeyPrefix: "zot"}
+		params := redis.DBDriverParameters{KeyPrefix: "zot"}
 
-		metaDB, err := redisdb.New(client, params, log)
+		metaDB, err := redis.New(client, params, log)
 		So(err, ShouldBeNil)
 
 		Convey("Test repoMeta ops", func() {
@@ -400,19 +400,19 @@ func TestRedisUnreachable(t *testing.T) {
 		log := log.NewLogger("debug", "")
 		So(log, ShouldNotBeNil)
 
-		connOpts, err := redis.ParseURL("redis://" + miniRedis.Addr())
+		connOpts, err := goredis.ParseURL("redis://" + miniRedis.Addr())
 		So(err, ShouldBeNil)
-		workingClient := redis.NewClient(connOpts)
+		workingClient := goredis.NewClient(connOpts)
 
-		params := redisdb.DBDriverParameters{KeyPrefix: "zot"}
+		params := redis.DBDriverParameters{KeyPrefix: "zot"}
 
-		metaDB, err := redisdb.New(workingClient, params, log)
+		metaDB, err := redis.New(workingClient, params, log)
 		So(err, ShouldBeNil)
 		So(metaDB, ShouldNotBeNil)
 
-		connOpts, err = redis.ParseURL("redis://127.0.0.1:" + test.GetFreePort())
+		connOpts, err = goredis.ParseURL("redis://127.0.0.1:" + test.GetFreePort())
 		So(err, ShouldBeNil)
-		brokenClient := redis.NewClient(connOpts)
+		brokenClient := goredis.NewClient(connOpts)
 
 		// Replace connection with the unreachable server
 		metaDB.Client = brokenClient
@@ -573,13 +573,13 @@ func TestWrapperErrors(t *testing.T) {
 		log := log.NewLogger("debug", "")
 		So(log, ShouldNotBeNil)
 
-		opts, err := redis.ParseURL("redis://" + miniRedis.Addr())
+		opts, err := goredis.ParseURL("redis://" + miniRedis.Addr())
 		So(err, ShouldBeNil)
 
-		client := redis.NewClient(opts)
-		params := redisdb.DBDriverParameters{KeyPrefix: keyPrefix}
+		client := goredis.NewClient(opts)
+		params := redis.DBDriverParameters{KeyPrefix: keyPrefix}
 
-		metaDB, err := redisdb.New(client, params, log)
+		metaDB, err := redis.New(client, params, log)
 		So(metaDB, ShouldNotBeNil)
 		So(err, ShouldBeNil)
 
@@ -1423,56 +1423,56 @@ func TestWrapperErrors(t *testing.T) {
 	})
 }
 
-func setRepoMeta(repo string, blob []byte, client *redis.Client) error { //nolint: unparam
+func setRepoMeta(repo string, blob []byte, client *goredis.Client) error { //nolint: unparam
 	ctx := context.Background()
-	key := keyPrefix + ":" + redisdb.RepoMetaBucket
+	key := keyPrefix + ":" + redis.RepoMetaBucket
 
 	return client.HSet(ctx, key, repo, blob).Err()
 }
 
-func setRepoLastUpdated(repo string, blob []byte, client *redis.Client) error {
+func setRepoLastUpdated(repo string, blob []byte, client *goredis.Client) error {
 	ctx := context.Background()
-	key := keyPrefix + ":" + redisdb.RepoLastUpdatedBucket
+	key := keyPrefix + ":" + redis.RepoLastUpdatedBucket
 
 	return client.HSet(ctx, key, repo, blob).Err()
 }
 
-func setImageMeta(digest godigest.Digest, blob []byte, client *redis.Client) error {
+func setImageMeta(digest godigest.Digest, blob []byte, client *goredis.Client) error {
 	ctx := context.Background()
-	key := keyPrefix + ":" + redisdb.ImageMetaBucket
+	key := keyPrefix + ":" + redis.ImageMetaBucket
 
 	return client.HSet(ctx, key, digest.String(), blob).Err()
 }
 
-func setRepoBlobInfo(repo string, blob []byte, client *redis.Client) error {
+func setRepoBlobInfo(repo string, blob []byte, client *goredis.Client) error {
 	ctx := context.Background()
-	key := keyPrefix + ":" + redisdb.RepoBlobsBucket
+	key := keyPrefix + ":" + redis.RepoBlobsBucket
 
 	return client.HSet(ctx, key, repo, blob).Err()
 }
 
-func setUserData(userID string, blob []byte, client *redis.Client) error {
+func setUserData(userID string, blob []byte, client *goredis.Client) error {
 	ctx := context.Background()
-	key := keyPrefix + ":" + redisdb.UserDataBucket
+	key := keyPrefix + ":" + redis.UserDataBucket
 
 	return client.HSet(ctx, key, userID, blob).Err()
 }
 
-func deleteUserDataBucket(client *redis.Client) error {
+func deleteUserDataBucket(client *goredis.Client) error {
 	ctx := context.Background()
-	key := keyPrefix + ":" + redisdb.UserDataBucket
+	key := keyPrefix + ":" + redis.UserDataBucket
 
 	return client.Del(ctx, key).Err()
 }
 
-func deleteUserAPIKeysBucket(client *redis.Client) error {
+func deleteUserAPIKeysBucket(client *goredis.Client) error {
 	ctx := context.Background()
-	key := keyPrefix + ":" + redisdb.UserAPIKeysBucket
+	key := keyPrefix + ":" + redis.UserAPIKeysBucket
 
 	return client.Del(ctx, key).Err()
 }
 
-func DumpKeys(t *testing.T, client redis.UniversalClient) {
+func DumpKeys(t *testing.T, client goredis.UniversalClient) {
 	t.Helper()
 
 	// Retrieve all keys

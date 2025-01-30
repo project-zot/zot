@@ -9,7 +9,7 @@ import (
 	"zotregistry.dev/zot/pkg/log"
 	"zotregistry.dev/zot/pkg/meta/boltdb"
 	mdynamodb "zotregistry.dev/zot/pkg/meta/dynamodb"
-	"zotregistry.dev/zot/pkg/meta/redisdb"
+	"zotregistry.dev/zot/pkg/meta/redis"
 	mTypes "zotregistry.dev/zot/pkg/meta/types"
 	sconstants "zotregistry.dev/zot/pkg/storage/constants"
 )
@@ -35,7 +35,7 @@ func New(storageConfig config.StorageConfig, log log.Logger) (mTypes.MetaDB, err
 				return nil, err
 			}
 
-			return redisdb.New(client, redisParams, log) //nolint:contextcheck
+			return redis.New(client, redisParams, log) //nolint:contextcheck
 		}
 
 		// this behavior is also mentioned in the configuration validation logic inside the cli package
@@ -103,13 +103,13 @@ func getDynamoParams(cacheDriverConfig map[string]interface{}, log log.Logger) m
 	}
 }
 
-func getRedisParams(cacheDriverConfig map[string]interface{}, log log.Logger) redisdb.DBDriverParameters {
+func getRedisParams(cacheDriverConfig map[string]interface{}, log log.Logger) redis.DBDriverParameters {
 	keyPrefix, ok := toStringIfOk(cacheDriverConfig, "keyprefix", "zot", log)
 	if !ok {
 		log.Panic().Msg("redis parameters are not specified correctly, can't proceed")
 	}
 
-	return redisdb.DBDriverParameters{
+	return redis.DBDriverParameters{
 		KeyPrefix: keyPrefix,
 	}
 }

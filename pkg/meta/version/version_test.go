@@ -14,14 +14,14 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 	"github.com/aws/aws-sdk-go/aws"
 	guuid "github.com/gofrs/uuid"
-	"github.com/redis/go-redis/v9"
+	goredis "github.com/redis/go-redis/v9"
 	. "github.com/smartystreets/goconvey/convey"
 	"go.etcd.io/bbolt"
 
 	"zotregistry.dev/zot/pkg/log"
 	"zotregistry.dev/zot/pkg/meta/boltdb"
 	mdynamodb "zotregistry.dev/zot/pkg/meta/dynamodb"
-	"zotregistry.dev/zot/pkg/meta/redisdb"
+	"zotregistry.dev/zot/pkg/meta/redis"
 	"zotregistry.dev/zot/pkg/meta/version"
 	tskip "zotregistry.dev/zot/pkg/test/skip"
 )
@@ -220,17 +220,17 @@ func TestVersioningRedisDB(t *testing.T) {
 	miniRedis := miniredis.RunT(t)
 
 	Convey("Tests", t, func() {
-		opts, err := redis.ParseURL("redis://" + miniRedis.Addr())
+		opts, err := goredis.ParseURL("redis://" + miniRedis.Addr())
 		So(err, ShouldBeNil)
 
-		client := redis.NewClient(opts)
+		client := goredis.NewClient(opts)
 		defer dumpRedisKeys(t, client) // Troubleshoot test failures
 
 		log := log.NewLogger("debug", "")
 
-		params := redisdb.DBDriverParameters{KeyPrefix: "zot"}
+		params := redis.DBDriverParameters{KeyPrefix: "zot"}
 
-		metaDB, err := redisdb.New(client, params, log)
+		metaDB, err := redis.New(client, params, log)
 		So(err, ShouldBeNil)
 
 		So(metaDB.ResetDB(), ShouldBeNil)
@@ -240,7 +240,7 @@ func TestVersioningRedisDB(t *testing.T) {
 		Convey("empty initial version triggers setting the default", func() {
 			// Check no value is initially set
 			actualVersion, err := client.Get(ctx, metaDB.VersionKey).Result()
-			So(err, ShouldEqual, redis.Nil)
+			So(err, ShouldEqual, goredis.Nil)
 			So(actualVersion, ShouldEqual, "")
 
 			err = metaDB.PatchDB()
@@ -267,11 +267,11 @@ func TestVersioningRedisDB(t *testing.T) {
 			metaDB.Version = version.Version1
 
 			// Patches have errors so we can check bad upgrade logic
-			metaDB.Patches = []func(client redis.UniversalClient) error{
-				func(client redis.UniversalClient) error { // V1 to V2
+			metaDB.Patches = []func(client goredis.UniversalClient) error{
+				func(client goredis.UniversalClient) error { // V1 to V2
 					return ErrTestError
 				},
-				func(client redis.UniversalClient) error { // V2 to V3
+				func(client goredis.UniversalClient) error { // V2 to V3
 					return ErrTestError
 				},
 			}
@@ -291,11 +291,11 @@ func TestVersioningRedisDB(t *testing.T) {
 			// Now change to a newer DB version and apply patches
 			metaDB.Version = version.Version3
 
-			metaDB.Patches = []func(redis.UniversalClient) error{
-				func(client redis.UniversalClient) error { // V1 to V2
+			metaDB.Patches = []func(goredis.UniversalClient) error{
+				func(client goredis.UniversalClient) error { // V1 to V2
 					return nil
 				},
-				func(client redis.UniversalClient) error { // V2 to V3
+				func(client goredis.UniversalClient) error { // V2 to V3
 					return nil
 				},
 			}
@@ -314,11 +314,11 @@ func TestVersioningRedisDB(t *testing.T) {
 			// now change to a newer DB version and apply patches
 			metaDB.Version = version.Version3
 
-			metaDB.Patches = []func(client redis.UniversalClient) error{
-				func(client redis.UniversalClient) error { // V1 to V2
+			metaDB.Patches = []func(client goredis.UniversalClient) error{
+				func(client goredis.UniversalClient) error { // V1 to V2
 					return nil
 				},
-				func(client redis.UniversalClient) error { // V2 to V3
+				func(client goredis.UniversalClient) error { // V2 to V3
 					return ErrTestError
 				},
 			}
@@ -329,7 +329,7 @@ func TestVersioningRedisDB(t *testing.T) {
 	})
 }
 
-func dumpRedisKeys(t *testing.T, client redis.UniversalClient) {
+func dumpRedisKeys(t *testing.T, client goredis.UniversalClient) {
 	t.Helper()
 
 	// Retrieve all keys

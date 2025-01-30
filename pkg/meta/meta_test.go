@@ -33,7 +33,7 @@ import (
 	"zotregistry.dev/zot/pkg/meta/boltdb"
 	"zotregistry.dev/zot/pkg/meta/common"
 	mdynamodb "zotregistry.dev/zot/pkg/meta/dynamodb"
-	"zotregistry.dev/zot/pkg/meta/redisdb"
+	"zotregistry.dev/zot/pkg/meta/redis"
 	mTypes "zotregistry.dev/zot/pkg/meta/types"
 	reqCtx "zotregistry.dev/zot/pkg/requestcontext"
 	tCommon "zotregistry.dev/zot/pkg/test/common"
@@ -177,13 +177,13 @@ func TestRedisDB(t *testing.T) {
 		rootDir := t.TempDir()
 		log := log.NewLogger("debug", "")
 
-		params := redisdb.DBDriverParameters{KeyPrefix: "zot"}
+		params := redis.DBDriverParameters{KeyPrefix: "zot"}
 		driverConfig := map[string]interface{}{"url": "redis://" + miniRedis.Addr()}
 
 		redisDriver, err := rediscfg.GetRedisClient(driverConfig, log)
 		So(err, ShouldBeNil)
 
-		metaDB, err := redisdb.New(redisDriver, params, log)
+		metaDB, err := redis.New(redisDriver, params, log)
 		So(metaDB, ShouldNotBeNil)
 		So(err, ShouldBeNil)
 
