@@ -50,6 +50,7 @@ type Controller struct {
 	SyncOnDemand    SyncOnDemand
 	RelyingParties  map[string]rp.RelyingParty
 	CookieStore     *CookieStore
+	HTPasswd        *HTPasswd
 	LDAPClient      *LDAPClient
 	taskScheduler   *scheduler.Scheduler
 	// runtime params
@@ -100,6 +101,7 @@ func NewController(appConfig *config.Config) *Controller {
 
 	controller.Config = appConfig
 	controller.Log = logger
+	controller.HTPasswd = NewHTPasswd(logger)
 
 	if appConfig.Log.Audit != "" {
 		audit := log.NewAuditLogger(appConfig.Log.Level, appConfig.Log.Audit)
@@ -362,7 +364,14 @@ func (c *Controller) LoadNewConfig(newConfig *config.Config) {
 	c.Config.HTTP.AccessControl = newConfig.HTTP.AccessControl
 
 	if c.Config.HTTP.Auth != nil {
+		c.Config.HTTP.Auth.HTPasswd = newConfig.HTTP.Auth.HTPasswd
 		c.Config.HTTP.Auth.LDAP = newConfig.HTTP.Auth.LDAP
+
+		if c.Config.HTTP.Auth.HTPasswd.Path == "" {
+			c.HTPasswd.Clear()
+		} else {
+			_ = c.HTPasswd.Reload(c.Config.HTTP.Auth.HTPasswd.Path)
+		}
 
 		if c.LDAPClient != nil {
 			c.LDAPClient.lock.Lock()
