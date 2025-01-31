@@ -1,7 +1,6 @@
 package api
 
 import (
-	"bufio"
 	"context"
 	"crypto/sha256"
 	"crypto/x509"
@@ -27,7 +26,6 @@ import (
 	"github.com/zitadel/oidc/v3/pkg/client/rp"
 	httphelper "github.com/zitadel/oidc/v3/pkg/http"
 	"github.com/zitadel/oidc/v3/pkg/oidc"
-	"golang.org/x/crypto/bcrypt"
 	"golang.org/x/oauth2"
 	githubOAuth "golang.org/x/oauth2/github"
 
@@ -47,13 +45,16 @@ const (
 )
 
 type AuthnMiddleware struct {
-	credMap    map[string]string
+	htpasswd   *HTPasswd
 	ldapClient *LDAPClient
 	log        log.Logger
 }
 
 func AuthHandler(ctlr *Controller) mux.MiddlewareFunc {
-	authnMiddleware := &AuthnMiddleware{log: ctlr.Log}
+	authnMiddleware := &AuthnMiddleware{
+		htpasswd: ctlr.HTPasswd,
+		log:      ctlr.Log,
+	}
 
 	if ctlr.Config.IsBearerAuthEnabled() {
 		return bearerAuthHandler(ctlr)
@@ -110,40 +111,38 @@ func (amw *AuthnMiddleware) basicAuthn(ctlr *Controller, userAc *reqCtx.UserAcce
 		return false, nil
 	}
 
-	passphraseHash, ok := amw.credMap[identity]
-	if ok {
-		// first, HTTPPassword authN (which is local)
-		if err := bcrypt.CompareHashAndPassword([]byte(passphraseHash), []byte(passphrase)); err == nil {
-			// Process request
-			var groups []string
+	// first, HTTPPassword authN (which is local)
+	htOk, _ := amw.htpasswd.Authenticate(identity, passphrase)
+	if htOk {
+		// Process request
+		var groups []string
 
-			if ctlr.Config.HTTP.AccessControl != nil {
-				ac := NewAccessController(ctlr.Config)
-				groups = ac.getUserGroups(identity)
-			}
+		if ctlr.Config.HTTP.AccessControl != nil {
+			ac := NewAccessController(ctlr.Config)
+			groups = ac.getUserGroups(identity)
+		}
 
-			userAc.SetUsername(identity)
-			userAc.AddGroups(groups)
-			userAc.SaveOnRequest(request)
+		userAc.SetUsername(identity)
+		userAc.AddGroups(groups)
+		userAc.SaveOnRequest(request)
 
-			// saved logged session only if the request comes from web (has UI session header value)
-			if hasSessionHeader(request) {
-				if err := saveUserLoggedSession(cookieStore, response, request, identity, ctlr.Log); err != nil {
-					return false, err
-				}
-			}
-
-			// we have already populated the request context with userAc
-			if err := ctlr.MetaDB.SetUserGroups(request.Context(), groups); err != nil {
-				ctlr.Log.Error().Err(err).Str("identity", identity).Msg("failed to update user profile")
-
+		// saved logged session only if the request comes from web (has UI session header value)
+		if hasSessionHeader(request) {
+			if err := saveUserLoggedSession(cookieStore, response, request, identity, ctlr.Log); err != nil {
 				return false, err
 			}
-
-			ctlr.Log.Info().Str("identity", identity).Msgf("user profile successfully set")
-
-			return true, nil
 		}
+
+		// we have already populated the request context with userAc
+		if err := ctlr.MetaDB.SetUserGroups(request.Context(), groups); err != nil {
+			ctlr.Log.Error().Err(err).Str("identity", identity).Msg("failed to update user profile")
+
+			return false, err
+		}
+
+		ctlr.Log.Info().Str("identity", identity).Msgf("user profile successfully set")
+
+		return true, nil
 	}
 
 	// next, LDAP if configured (network-based which can lose connectivity)
@@ -255,8 +254,6 @@ func (amw *AuthnMiddleware) tryAuthnHandlers(ctlr *Controller) mux.MiddlewareFun
 		return noPasswdAuth(ctlr)
 	}
 
-	amw.credMap = make(map[string]string)
-
 	delay := ctlr.Config.HTTP.Auth.FailDelay
 
 	// ldap and htpasswd based authN
@@ -310,21 +307,10 @@ func (amw *AuthnMiddleware) tryAuthnHandlers(ctlr *Controller) mux.MiddlewareFun
 	}
 
 	if ctlr.Config.IsHtpasswdAuthEnabled() {
-		credsFile, err := os.Open(ctlr.Config.HTTP.Auth.HTPasswd.Path)
+		err := amw.htpasswd.Reload(ctlr.Config.HTTP.Auth.HTPasswd.Path)
 		if err != nil {
 			amw.log.Panic().Err(err).Str("credsFile", ctlr.Config.HTTP.Auth.HTPasswd.Path).
 				Msg("failed to open creds-file")
-		}
-		defer credsFile.Close()
-
-		scanner := bufio.NewScanner(credsFile)
-
-		for scanner.Scan() {
-			line := scanner.Text()
-			if strings.Contains(line, ":") {
-				tokens := strings.Split(scanner.Text(), ":")
-				amw.credMap[tokens[0]] = tokens[1]
-			}
 		}
 	}
 

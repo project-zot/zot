@@ -57,13 +57,18 @@ func newServeCmd(conf *config.Config) *cobra.Command {
 
 			ctlr := api.NewController(conf)
 
+			htpasswdPath := ""
 			ldapCredentials := ""
+
+			if conf.HTTP.Auth != nil {
+				htpasswdPath = conf.HTTP.Auth.HTPasswd.Path
+			}
 
 			if conf.HTTP.Auth != nil && conf.HTTP.Auth.LDAP != nil {
 				ldapCredentials = conf.HTTP.Auth.LDAP.CredentialsFile
 			}
 			// config reloader
-			hotReloader, err := NewHotReloader(ctlr, args[0], ldapCredentials)
+			hotReloader, err := NewHotReloader(ctlr, args[0], htpasswdPath, ldapCredentials)
 			if err != nil {
 				ctlr.Log.Error().Err(err).Msg("failed to create a new hot reloader")
 
