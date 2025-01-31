@@ -29,7 +29,8 @@ type LDAPClient struct {
 	UserGroupAttribute string // e.g. "memberOf"
 	Host               string
 	ServerName         string
-	UserFilter         string // e.g. "(uid=%s)"
+	UserFilter         string // e.g. "(!(nsaccountlock=TRUE))"
+	UserAttribute      string // e.g. "uid"
 	Conn               *ldap.Conn
 	ClientCertificates []tls.Certificate // Adding client certificates
 	ClientCAs          *x509.CertPool
@@ -187,7 +188,7 @@ func (lc *LDAPClient) Authenticate(username, password string) (bool, map[string]
 	searchRequest := ldap.NewSearchRequest(
 		lc.Base,
 		searchScope, ldap.NeverDerefAliases, 0, 0, false,
-		fmt.Sprintf(lc.UserFilter, username),
+		lc.userFilter(username),
 		attributes,
 		nil,
 	)
@@ -241,4 +242,14 @@ func (lc *LDAPClient) Authenticate(username, password string) (bool, map[string]
 	}
 
 	return true, user, userGroups, nil
+}
+
+func (lc *LDAPClient) userFilter(username string) string {
+	filter := fmt.Sprintf("(%s=%s)", lc.UserAttribute, ldap.EscapeFilter(username))
+
+	if lc.UserFilter != "" {
+		filter = fmt.Sprintf("(&(%s)(%s))", filter, lc.UserFilter)
+	}
+
+	return filter
 }

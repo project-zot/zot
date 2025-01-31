@@ -175,6 +175,7 @@ type LDAPConfig struct {
 	UserGroupAttribute string
 	BaseDN             string
 	UserAttribute      string
+	UserFilter         string
 	CACert             string
 }
 
