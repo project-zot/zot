@@ -13,9 +13,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/containers/image/v5/types"
-	"github.com/opencontainers/go-digest"
+	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
+	"github.com/regclient/regclient/types/ref"
 
 	zerr "zotregistry.dev/zot/errors"
 	"zotregistry.dev/zot/pkg/common"
@@ -52,7 +52,8 @@ func NewDestinationRegistry(
 	}
 }
 
-func (registry *DestinationRegistry) CanSkipImage(repo, tag string, imageDigest digest.Digest) (bool, error) {
+// Check if image is already synced.
+func (registry *DestinationRegistry) CanSkipImage(repo, tag string, digest godigest.Digest) (bool, error) {
 	// check image already synced
 	imageStore := registry.storeController.GetImageStore(repo)
 
@@ -68,10 +69,10 @@ func (registry *DestinationRegistry) CanSkipImage(repo, tag string, imageDigest 
 		return false, err
 	}
 
-	if localImageManifestDigest != imageDigest {
+	if localImageManifestDigest != digest {
 		registry.log.Info().Str("repo", repo).Str("reference", tag).
 			Str("localDigest", localImageManifestDigest.String()).
-			Str("remoteDigest", imageDigest.String()).
+			Str("remoteDigest", digest.String()).
 			Msg("remote image digest changed, syncing again")
 
 		return false, nil
@@ -80,54 +81,147 @@ func (registry *DestinationRegistry) CanSkipImage(repo, tag string, imageDigest 
 	return true, nil
 }
 
-func (registry *DestinationRegistry) GetContext() *types.SystemContext {
-	return registry.tempStorage.GetContext()
-}
-
-func (registry *DestinationRegistry) GetImageReference(repo, reference string) (types.ImageReference, error) {
+func (registry *DestinationRegistry) GetImageReference(repo, reference string) (ref.Ref, error) {
 	return registry.tempStorage.GetImageReference(repo, reference)
 }
 
 // finalize a syncing image.
-func (registry *DestinationRegistry) CommitImage(imageReference types.ImageReference, repo, reference string) error {
-	imageStore := registry.storeController.GetImageStore(repo)
-
-	tempImageStore := getImageStoreFromImageReference(imageReference, repo, reference, registry.log)
+func (registry *DestinationRegistry) CommitAll(repo string, imageReference ref.Ref) error {
+	tempImageStore := getImageStoreFromImageReference(repo, imageReference, registry.log)
 
 	defer os.RemoveAll(tempImageStore.RootDir())
 
-	registry.log.Info().Str("syncTempDir", path.Join(tempImageStore.RootDir(), repo)).Str("reference", reference).
+	registry.log.Info().Str("syncTempDir", path.Join(tempImageStore.RootDir(), repo)).Str("repository", repo).
 		Msg("pushing synced local image to local registry")
 
-	var lockLatency time.Time
-
-	manifestBlob, manifestDigest, mediaType, err := tempImageStore.GetImageManifest(repo, reference)
+	index, err := storageCommon.GetIndex(tempImageStore, repo, registry.log)
 	if err != nil {
 		registry.log.Error().Str("errorType", common.TypeOf(err)).
-			Err(err).Str("dir", path.Join(tempImageStore.RootDir(), repo)).Str("repo", repo).Str("reference", reference).
-			Msg("couldn't find synced manifest in temporary sync dir")
+			Err(err).Str("dir", path.Join(tempImageStore.RootDir(), repo)).Str("repo", repo).
+			Msg("failed to get repo index from temp sync dir")
 
 		return err
 	}
 
-	// is image manifest
-	switch mediaType {
-	case ispec.MediaTypeImageManifest:
-		if err := registry.copyManifest(repo, manifestBlob, reference, tempImageStore); err != nil {
+	seen := []godigest.Digest{}
+
+	for _, desc := range index.Manifests {
+		reference := GetDescriptorReference(desc)
+
+		if err := registry.copyManifest(repo, desc, reference, tempImageStore, seen); err != nil {
 			if errors.Is(err, zerr.ErrImageLintAnnotations) {
 				registry.log.Error().Str("errorType", common.TypeOf(err)).
-					Err(err).Msg("couldn't upload manifest because of missing annotations")
+					Err(err).Msg("failed to upload manifest because of missing annotations")
 
 				return nil
 			}
 
 			return err
 		}
+	}
+
+	return nil
+}
+
+func (registry *DestinationRegistry) CleanupImage(imageReference ref.Ref, repo string) error {
+	var err error
+
+	dir := strings.TrimSuffix(imageReference.Path, repo)
+	if _, err = os.Stat(dir); err == nil {
+		if err := os.RemoveAll(strings.TrimSuffix(imageReference.Path, repo)); err != nil {
+			registry.log.Error().Err(err).Msg("failed to cleanup image from temp storage")
+
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (registry *DestinationRegistry) copyManifest(repo string, desc ispec.Descriptor,
+	reference string, tempImageStore storageTypes.ImageStore, seen []godigest.Digest,
+) error {
+	var lockLatency time.Time
+
+	var err error
+
+	// seen
+	if common.Contains(seen, desc.Digest) {
+		return nil
+	}
+
+	seen = append(seen, desc.Digest)
+
+	imageStore := registry.storeController.GetImageStore(repo)
+
+	manifestContent := desc.Data
+	if manifestContent == nil {
+		manifestContent, _, _, err = tempImageStore.GetImageManifest(repo, reference)
+		if err != nil {
+			registry.log.Error().Str("errorType", common.TypeOf(err)).
+				Err(err).Str("dir", path.Join(tempImageStore.RootDir(), repo)).Str("repo", repo).Str("reference", reference).
+				Msg("failed to get manifest from temporary sync dir")
+
+			return err
+		}
+	}
+
+	// is image manifest
+	switch desc.MediaType {
+	case ispec.MediaTypeImageManifest:
+		var manifest ispec.Manifest
+
+		if err := json.Unmarshal(manifestContent, &manifest); err != nil {
+			registry.log.Error().Str("errorType", common.TypeOf(err)).
+				Err(err).Str("dir", path.Join(tempImageStore.RootDir(), repo)).
+				Msg("invalid JSON")
+
+			return err
+		}
+
+		for _, blob := range manifest.Layers {
+			if storageCommon.IsNonDistributable(blob.MediaType) {
+				continue
+			}
+
+			err := registry.copyBlob(repo, blob.Digest, blob.MediaType, tempImageStore)
+			if err != nil {
+				return err
+			}
+		}
+
+		err := registry.copyBlob(repo, manifest.Config.Digest, manifest.Config.MediaType, tempImageStore)
+		if err != nil {
+			return err
+		}
+
+		digest, _, err := imageStore.PutImageManifest(repo, reference,
+			ispec.MediaTypeImageManifest, manifestContent)
+		if err != nil {
+			registry.log.Error().Str("errorType", common.TypeOf(err)).
+				Err(err).Msg("couldn't upload manifest")
+
+			return err
+		}
+
+		if registry.metaDB != nil {
+			err = meta.SetImageMetaFromInput(context.Background(), repo, reference, ispec.MediaTypeImageManifest,
+				digest, manifestContent, imageStore, registry.metaDB, registry.log)
+			if err != nil {
+				registry.log.Error().Str("errorType", common.TypeOf(err)).
+					Err(err).Msg("couldn't set metadata from input")
+
+				return err
+			}
+
+			registry.log.Debug().Str("repo", repo).Str("reference", reference).Msg("successfully set metadata for image")
+		}
+
 	case ispec.MediaTypeImageIndex:
 		// is image index
 		var indexManifest ispec.Index
 
-		if err := json.Unmarshal(manifestBlob, &indexManifest); err != nil {
+		if err := json.Unmarshal(manifestContent, &indexManifest); err != nil {
 			registry.log.Error().Str("errorType", common.TypeOf(err)).
 				Err(err).Str("dir", path.Join(tempImageStore.RootDir(), repo)).
 				Msg("invalid JSON")
@@ -136,6 +230,8 @@ func (registry *DestinationRegistry) CommitImage(imageReference types.ImageRefer
 		}
 
 		for _, manifest := range indexManifest.Manifests {
+			reference := GetDescriptorReference(manifest)
+
 			tempImageStore.RLock(&lockLatency)
 			manifestBuf, err := tempImageStore.GetBlobContent(repo, manifest.Digest)
 			tempImageStore.RUnlock(&lockLatency)
@@ -143,16 +239,18 @@ func (registry *DestinationRegistry) CommitImage(imageReference types.ImageRefer
 			if err != nil {
 				registry.log.Error().Str("errorType", common.TypeOf(err)).
 					Err(err).Str("dir", path.Join(tempImageStore.RootDir(), repo)).Str("digest", manifest.Digest.String()).
-					Msg("couldn't find manifest which is part of an image index")
+					Msg("failed find manifest which is part of an image index")
 
 				return err
 			}
 
-			if err := registry.copyManifest(repo, manifestBuf, manifest.Digest.String(),
-				tempImageStore); err != nil {
+			manifest.Data = manifestBuf
+
+			if err := registry.copyManifest(repo, manifest, reference,
+				tempImageStore, seen); err != nil {
 				if errors.Is(err, zerr.ErrImageLintAnnotations) {
 					registry.log.Error().Str("errorType", common.TypeOf(err)).
-						Err(err).Msg("couldn't upload manifest because of missing annotations")
+						Err(err).Msg("failed to upload manifest because of missing annotations")
 
 					return nil
 				}
@@ -161,97 +259,31 @@ func (registry *DestinationRegistry) CommitImage(imageReference types.ImageRefer
 			}
 		}
 
-		_, _, err = imageStore.PutImageManifest(repo, reference, mediaType, manifestBlob)
+		_, _, err := imageStore.PutImageManifest(repo, reference, desc.MediaType, manifestContent)
 		if err != nil {
 			registry.log.Error().Str("errorType", common.TypeOf(err)).Str("repo", repo).Str("reference", reference).
-				Err(err).Msg("couldn't upload manifest")
+				Err(err).Msg("failed to upload manifest")
 
 			return err
 		}
 
 		if registry.metaDB != nil {
-			err = meta.SetImageMetaFromInput(context.Background(), repo, reference, mediaType,
-				manifestDigest, manifestBlob, imageStore, registry.metaDB, registry.log)
+			err = meta.SetImageMetaFromInput(context.Background(), repo, reference, desc.MediaType,
+				desc.Digest, manifestContent, imageStore, registry.metaDB, registry.log)
 			if err != nil {
-				return fmt.Errorf("failed to set metadata for image '%s %s': %w", repo, reference, err)
+				return fmt.Errorf("metaDB: failed to set metadata for image '%s %s': %w", repo, reference, err)
 			}
 
-			registry.log.Debug().Str("repo", repo).Str("reference", reference).Str("component", "metadb").
-				Msg("successfully set metadata for image")
+			registry.log.Debug().Str("repo", repo).Str("reference", reference).
+				Msg("metaDB: successfully set metadata for image")
 		}
-	}
-
-	registry.log.Info().Str("image", fmt.Sprintf("%s:%s", repo, reference)).Msg("successfully synced image")
-
-	return nil
-}
-
-func (registry *DestinationRegistry) CleanupImage(imageReference types.ImageReference, repo, reference string) error {
-	tmpDir := getTempRootDirFromImageReference(imageReference, repo, reference)
-
-	return os.RemoveAll(tmpDir)
-}
-
-func (registry *DestinationRegistry) copyManifest(repo string, manifestContent []byte, reference string,
-	tempImageStore storageTypes.ImageStore,
-) error {
-	imageStore := registry.storeController.GetImageStore(repo)
-
-	var manifest ispec.Manifest
-
-	var err error
-
-	if err := json.Unmarshal(manifestContent, &manifest); err != nil {
-		registry.log.Error().Str("errorType", common.TypeOf(err)).
-			Err(err).Str("dir", path.Join(tempImageStore.RootDir(), repo)).
-			Msg("invalid JSON")
-
-		return err
-	}
-
-	for _, blob := range manifest.Layers {
-		if storageCommon.IsNonDistributable(blob.MediaType) {
-			continue
-		}
-
-		err = registry.copyBlob(repo, blob.Digest, blob.MediaType, tempImageStore)
-		if err != nil {
-			return err
-		}
-	}
-
-	err = registry.copyBlob(repo, manifest.Config.Digest, manifest.Config.MediaType, tempImageStore)
-	if err != nil {
-		return err
-	}
-
-	digest, _, err := imageStore.PutImageManifest(repo, reference,
-		ispec.MediaTypeImageManifest, manifestContent)
-	if err != nil {
-		registry.log.Error().Str("errorType", common.TypeOf(err)).
-			Err(err).Msg("couldn't upload manifest")
-
-		return err
-	}
-
-	if registry.metaDB != nil {
-		err = meta.SetImageMetaFromInput(context.Background(), repo, reference, ispec.MediaTypeImageManifest,
-			digest, manifestContent, imageStore, registry.metaDB, registry.log)
-		if err != nil {
-			registry.log.Error().Str("errorType", common.TypeOf(err)).
-				Err(err).Msg("couldn't set metadata from input")
-
-			return err
-		}
-
-		registry.log.Debug().Str("repo", repo).Str("reference", reference).Msg("successfully set metadata for image")
 	}
 
 	return nil
 }
 
 // Copy a blob from one image store to another image store.
-func (registry *DestinationRegistry) copyBlob(repo string, blobDigest digest.Digest, blobMediaType string,
+func (registry *DestinationRegistry) copyBlob(repo string, blobDigest godigest.Digest, blobMediaType string,
 	tempImageStore storageTypes.ImageStore,
 ) error {
 	imageStore := registry.storeController.GetImageStore(repo)
@@ -282,23 +314,10 @@ func (registry *DestinationRegistry) copyBlob(repo string, blobDigest digest.Dig
 }
 
 // use only with local imageReferences.
-func getImageStoreFromImageReference(imageReference types.ImageReference, repo, reference string, log log.Logger,
-) storageTypes.ImageStore {
-	tmpRootDir := getTempRootDirFromImageReference(imageReference, repo, reference)
+func getImageStoreFromImageReference(repo string, imageReference ref.Ref, log log.Logger) storageTypes.ImageStore {
+	sessionRootDir := strings.TrimSuffix(imageReference.Path, repo)
 
-	return getImageStore(tmpRootDir, log)
-}
-
-func getTempRootDirFromImageReference(imageReference types.ImageReference, repo, reference string) string {
-	var tmpRootDir string
-
-	if strings.HasSuffix(imageReference.StringWithinTransport(), reference) {
-		tmpRootDir = strings.ReplaceAll(imageReference.StringWithinTransport(), fmt.Sprintf("%s:%s", repo, reference), "")
-	} else {
-		tmpRootDir = strings.ReplaceAll(imageReference.StringWithinTransport(), repo+":", "")
-	}
-
-	return tmpRootDir
+	return getImageStore(sessionRootDir, log)
 }
 
 func getImageStore(rootDir string, log log.Logger) storageTypes.ImageStore {
