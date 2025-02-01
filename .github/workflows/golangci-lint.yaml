@@ -31,7 +31,7 @@ jobs:
 
           # Optional: golangci-lint command line arguments.
           # args: --issues-exit-code=0
-          args: --config ./golangcilint.yaml --build-tags debug,needprivileges,sync,scrub,search,userprefs,metrics,containers_image_openpgp,lint,mgmt,imagetrust ./cmd/... ./pkg/...
+          args: --config ./golangcilint.yaml --build-tags debug,needprivileges,sync,scrub,search,userprefs,metrics,lint,mgmt,imagetrust ./cmd/... ./pkg/...
 
           # Optional: show only new issues if it's a pull request. The default value is `false`.
           # only-new-issues: true
