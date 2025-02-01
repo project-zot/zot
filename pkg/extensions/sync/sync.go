@@ -9,9 +9,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/containers/common/pkg/retry"
-	"github.com/containers/image/v5/types"
-	"github.com/opencontainers/go-digest"
+	godigest "github.com/opencontainers/go-digest"
+	ispec "github.com/opencontainers/image-spec/specs-go/v1"
+	"github.com/regclient/regclient/types/ref"
 
 	syncconf "zotregistry.dev/zot/pkg/extensions/config/sync"
 	"zotregistry.dev/zot/pkg/log"
@@ -30,23 +30,17 @@ type Service interface {
 	SyncRepo(ctx context.Context, repo string) error // used by periodically sync
 	// Sync an image (repo:tag || repo:digest) into ImageStore.
 	SyncImage(ctx context.Context, repo, reference string) error // used by sync on demand
-	// Sync a single reference for an image.
-	SyncReference(ctx context.Context, repo string, subjectDigestStr string,
-		referenceType string) error // used by sync on demand
 	// Remove all internal catalog entries.
 	ResetCatalog() // used by scheduler to empty out the catalog after a sync periodically roundtrip finishes
-	// Sync supports multiple urls per registry, before a sync repo/image/ref 'ping' each url.
-	SetNextAvailableURL() error // used by all sync methods
-	// Returns retry options from registry config.
-	GetRetryOptions() *retry.Options // used by sync on demand to retry in background
+	/* Returns if service has retry option set.
+	Is used by ondemand to decide if it retries pulling an image in background or not. */
+	CanRetryOnError() bool // used by sync on demand to retry in background
 }
 
 // Local and remote registries must implement this interface.
 type Registry interface {
 	// Get temporary ImageReference, is used by functions in containers/image package
-	GetImageReference(repo string, tag string) (types.ImageReference, error)
-	// Get local oci layout context, is used by functions in containers/image package
-	GetContext() *types.SystemContext
+	GetImageReference(repo string, tag string) (ref.Ref, error)
 }
 
 // The CredentialHelper interface should be implemented by registries that use temporary tokens.
@@ -76,29 +70,25 @@ type OciLayoutStorage interface {
 // Remote registry.
 type Remote interface {
 	Registry
+	// Get host name
+	GetHostName() string
 	// Get a list of repos (catalog)
 	GetRepositories(ctx context.Context) ([]string, error)
 	// Get a list of tags given a repo
-	GetRepoTags(repo string) ([]string, error)
-	// Get manifest content, mediaType, digest given an ImageReference
-	GetManifestContent(imageReference types.ImageReference) ([]byte, string, digest.Digest, error)
-	// In the case of public dockerhub images 'library' namespace is added to the repo names of images
-	// eg: alpine -> library/alpine
-	GetDockerRemoteRepo(repo string) string
-	// SetUpstreamAuthConfig sets the upstream credentials used when the credential helper is set.
-	// This method refreshes the authentication configuration with the provided username and password.
-	SetUpstreamAuthConfig(username, password string)
+	GetTags(ctx context.Context, repo string) ([]string, error)
+	// Get manifest content, mediaType, descriptor given an image(if remote image is docker type then convert it to OCI)
+	GetOCIManifest(ctx context.Context, repo, reference string) ([]byte, ispec.Descriptor, bool, error)
 }
 
 // Local registry.
 type Destination interface {
 	Registry
-	// Check if an image is already synced
-	CanSkipImage(repo, tag string, imageDigest digest.Digest) (bool, error)
-	// CommitImage moves a synced repo/ref from temporary oci layout to ImageStore
-	CommitImage(imageReference types.ImageReference, repo, tag string) error
+	// Check if descriptors are already synced
+	CanSkipImage(repo string, tag string, digest godigest.Digest) (bool, error)
+	// CommitAll moves a synced repo and all its manifests from temporary oci layout to ImageStore
+	CommitAll(repo string, imageReference ref.Ref) error
 	// Removes image reference, used when copy.Image() errors out
-	CleanupImage(imageReference types.ImageReference, repo, reference string) error
+	CleanupImage(imageReference ref.Ref, repo string) error
 }
 
 type TaskGenerator struct {
@@ -135,12 +125,6 @@ func (gen *TaskGenerator) Next() (scheduler.Task, error) {
 
 	if time.Since(gen.lastTaskTime) <= gen.waitTime {
 		return nil, nil //nolint:nilnil
-	}
-
-	if err := gen.Service.SetNextAvailableURL(); err != nil {
-		gen.increaseWaitTime()
-
-		return nil, err
 	}
 
 	repo, err := gen.Service.GetNextRepo(gen.lastRepo)
