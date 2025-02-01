@@ -1,7 +1,7 @@
 //go:build sync
 // +build sync
 
-package sync
+package sync_test //nolint: testpackage
 
 import (
 	"testing"
@@ -9,6 +9,7 @@ import (
 	. "github.com/smartystreets/goconvey/convey"
 
 	syncconf "zotregistry.dev/zot/pkg/extensions/config/sync"
+	"zotregistry.dev/zot/pkg/extensions/sync"
 	"zotregistry.dev/zot/pkg/log"
 )
 
@@ -67,7 +68,7 @@ func TestContentManager(t *testing.T) {
 
 	Convey("Test GetRepoDestination()", t, func() {
 		for _, test := range testCases {
-			cm := NewContentManager([]syncconf.Content{test.content}, log.Logger{})
+			cm := sync.NewContentManager([]syncconf.Content{test.content}, log.Logger{})
 			actualResult := cm.GetRepoDestination(test.expected)
 			So(actualResult, ShouldEqual, test.repo)
 		}
@@ -76,7 +77,7 @@ func TestContentManager(t *testing.T) {
 	// this is the inverse function of getRepoDestination()
 	Convey("Test GetRepoSource()", t, func() {
 		for _, test := range testCases {
-			cm := NewContentManager([]syncconf.Content{test.content}, log.Logger{})
+			cm := sync.NewContentManager([]syncconf.Content{test.content}, log.Logger{})
 			actualResult := cm.GetRepoSource(test.repo)
 			So(actualResult, ShouldEqual, test.expected)
 		}
@@ -84,7 +85,7 @@ func TestContentManager(t *testing.T) {
 
 	Convey("Test MatchesContent() error", t, func() {
 		content := syncconf.Content{Prefix: "[repo%^&"}
-		cm := NewContentManager([]syncconf.Content{content}, log.Logger{})
+		cm := sync.NewContentManager([]syncconf.Content{content}, log.Logger{})
 		So(cm.MatchesContent("repo"), ShouldEqual, false)
 	})
 }
@@ -147,8 +148,8 @@ func TestGetContentByLocalRepo(t *testing.T) {
 
 	Convey("Test getContentByLocalRepo()", t, func() {
 		for _, test := range testCases {
-			cm := NewContentManager(test.content, log.Logger{})
-			actualResult := cm.getContentByLocalRepo(test.repo)
+			cm := sync.NewContentManager(test.content, log.Logger{})
+			actualResult := cm.GetContentByLocalRepo(test.repo)
 
 			if test.expected == -1 {
 				var tnil *syncconf.Content = nil
@@ -162,8 +163,8 @@ func TestGetContentByLocalRepo(t *testing.T) {
 
 	Convey("Test getContentByLocalRepo() error", t, func() {
 		content := syncconf.Content{Prefix: "[repo%^&"}
-		cm := NewContentManager([]syncconf.Content{content}, log.Logger{})
-		So(cm.getContentByLocalRepo("repo"), ShouldBeNil)
+		cm := sync.NewContentManager([]syncconf.Content{content}, log.Logger{})
+		So(cm.GetContentByLocalRepo("repo"), ShouldBeNil)
 	})
 }
 
@@ -266,7 +267,7 @@ func TestFilterTags(t *testing.T) {
 
 	Convey("Test FilterTags()", t, func() {
 		for _, test := range testCases {
-			cm := NewContentManager(test.content, log.NewLogger("debug", ""))
+			cm := sync.NewContentManager(test.content, log.NewLogger("debug", ""))
 			actualResult, err := cm.FilterTags(test.repo, test.tags)
 			So(actualResult, ShouldResemble, test.filteredTags)
 

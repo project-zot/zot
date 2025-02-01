@@ -259,7 +259,7 @@ func CheckIsImageSignature(repoName string, manifestBlob []byte, reference strin
 		return true, CosignType, manifestContent.Subject.Digest, nil
 	}
 
-	if tag := reference; zcommon.IsCosignTag(reference) {
+	if tag := reference; zcommon.IsCosignSignature(reference) {
 		prefixLen := len("sha256-")
 		digestLen := 64
 		signedImageManifestDigestEncoded := tag[prefixLen : prefixLen+digestLen]

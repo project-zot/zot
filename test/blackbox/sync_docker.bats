@@ -234,7 +234,7 @@ function teardown_file() {
     [ $(echo "${lines[-1]}" | jq '.repositories[1]') = '"kube-apiserver"' ]
     run curl http://127.0.0.1:${zot_port}/v2/kube-apiserver/tags/list
     [ "$status" -eq 0 ]
-    [ $(echo "${lines[-1]}" | jq '.tags[]') = '"v1.26.0"' ]
+    [ $(echo "${lines[-1]}" | jq '.tags[1]') = '"v1.26.0"' ]
 }
 
 @test "sync k8s image on demand" {

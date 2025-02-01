@@ -51,7 +51,7 @@ func (cm ContentManager) MatchesContent(repo string) bool {
 
 // FilterTags filters a repo tags based on content config rules (semver, regex).
 func (cm ContentManager) FilterTags(repo string, tags []string) ([]string, error) {
-	content := cm.getContentByLocalRepo(repo)
+	content := cm.GetContentByLocalRepo(repo)
 
 	var err error
 	// filter based on tags rules
@@ -97,7 +97,7 @@ the remote name of a repo given a local repo.
 - used by on demand sync.
 */
 func (cm ContentManager) GetRepoSource(repo string) string {
-	content := cm.getContentByLocalRepo(repo)
+	content := cm.GetContentByLocalRepo(repo)
 	if content == nil {
 		return ""
 	}
@@ -133,7 +133,7 @@ func (cm ContentManager) getContentByUpstreamRepo(repo string) *syncconf.Content
 	return nil
 }
 
-func (cm ContentManager) getContentByLocalRepo(repo string) *syncconf.Content {
+func (cm ContentManager) GetContentByLocalRepo(repo string) *syncconf.Content {
 	contentID := -1
 	repo = strings.Trim(repo, "/")
 

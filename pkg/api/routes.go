@@ -41,7 +41,6 @@ import (
 	"zotregistry.dev/zot/pkg/debug/pprof"
 	debug "zotregistry.dev/zot/pkg/debug/swagger"
 	ext "zotregistry.dev/zot/pkg/extensions"
-	syncConstants "zotregistry.dev/zot/pkg/extensions/sync/constants"
 	"zotregistry.dev/zot/pkg/log"
 	"zotregistry.dev/zot/pkg/meta"
 	mTypes "zotregistry.dev/zot/pkg/meta/types"
@@ -569,8 +568,7 @@ func getReferrers(ctx context.Context, routeHandler *RouteHandler,
 			routeHandler.c.Log.Info().Str("repository", name).Str("reference", digest.String()).
 				Msg("referrers not found, trying to get reference by syncing on demand")
 
-			if errSync := routeHandler.c.SyncOnDemand.SyncReference(ctx, name, digest.String(),
-				syncConstants.OCI); errSync != nil {
+			if errSync := routeHandler.c.SyncOnDemand.SyncImage(ctx, name, digest.String()); errSync != nil {
 				routeHandler.c.Log.Err(errSync).Str("repository", name).Str("reference", digest.String()).
 					Msg("failed to sync OCI reference for image")
 			}
