@@ -7,6 +7,7 @@ import (
 	v1 "github.com/opencontainers/image-spec/specs-go/v1"
 
 	zcommon "zotregistry.dev/zot/pkg/common"
+	"zotregistry.dev/zot/pkg/compat"
 	"zotregistry.dev/zot/pkg/log"
 	mTypes "zotregistry.dev/zot/pkg/meta/types"
 	"zotregistry.dev/zot/pkg/storage"
@@ -117,7 +118,8 @@ func OnGetManifest(name, reference, mediaType string, body []byte,
 		return nil
 	}
 
-	if !(mediaType == v1.MediaTypeImageManifest || mediaType == v1.MediaTypeImageIndex) {
+	if !(mediaType == v1.MediaTypeImageManifest || mediaType == v1.MediaTypeImageIndex ||
+		compat.IsCompatibleManifestMediaType(mediaType) || compat.IsCompatibleManifestListMediaType(mediaType)) {
 		return nil
 	}
 
