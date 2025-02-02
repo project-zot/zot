@@ -45,6 +45,20 @@ func IsCompatibleManifestListMediaType(mediatype string) bool {
 	return false
 }
 
+func CompatibleConfigMediaTypes() []string {
+	return []string{docker.MediaTypeImageConfig}
+}
+
+func IsCompatibleConfigMediaType(mediatype string) bool {
+	for _, mt := range CompatibleConfigMediaTypes() {
+		if mt == mediatype {
+			return true
+		}
+	}
+
+	return false
+}
+
 func Validate(body []byte, mediaType string) ([]v1.Descriptor, error) {
 	switch mediaType {
 	case docker.MediaTypeManifest:
