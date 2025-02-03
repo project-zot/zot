@@ -321,7 +321,8 @@ func SetImageMetaFromInput(ctx context.Context, repo, reference, mediaType strin
 			return err
 		}
 
-		if manifestContent.Config.MediaType == ispec.MediaTypeImageConfig {
+		if manifestContent.Config.MediaType == ispec.MediaTypeImageConfig ||
+			compat.IsCompatibleConfigMediaType(manifestContent.Config.MediaType) {
 			configBlob, err := imageStore.GetBlobContent(repo, manifestContent.Config.Digest)
 			if err != nil {
 				return err

@@ -1749,6 +1749,257 @@ func TestExpandedRepoInfo(t *testing.T) {
 
 		So(found, ShouldBeTrue)
 	})
+
+	Convey("Test expanded repo info for docker media type", t, func() {
+		subpath := "/a"
+		rootDir := t.TempDir()
+		subRootDir := t.TempDir()
+		port := GetFreePort()
+		baseURL := GetBaseURL(port)
+		conf := config.New()
+		conf.HTTP.Port = port
+		conf.Storage.RootDirectory = rootDir
+		conf.Storage.GC = false
+		conf.Storage.SubPaths = make(map[string]config.StorageConfig)
+		conf.Storage.SubPaths[subpath] = config.StorageConfig{RootDirectory: subRootDir}
+		defaultVal := true
+		conf.Extensions = &extconf.ExtensionConfig{
+			Search: &extconf.SearchConfig{BaseConfig: extconf.BaseConfig{Enable: &defaultVal}},
+		}
+
+		conf.Extensions.Search.CVE = nil
+
+		ctlr := api.NewController(conf)
+		ctlrManager := NewControllerManager(ctlr)
+		ctlrManager.StartAndWait(port)
+
+		defer ctlrManager.StopServer()
+
+		annotations := make(map[string]string)
+		annotations["org.opencontainers.image.vendor"] = "zot"
+
+		configBlob, err := json.Marshal(GetDefaultConfig())
+		So(err, ShouldBeNil)
+
+		uploadedImage := CreateImageWith().RandomLayers(1, 100).
+			CustomConfigBlob(configBlob, "application/vnd.docker.container.image.v1+json").
+			Annotations(annotations).Build()
+
+		err = UploadImage(uploadedImage, baseURL, "zot-cve-test", "0.0.1")
+		So(err, ShouldBeNil)
+
+		err = UploadImage(uploadedImage, baseURL, "a/zot-cve-test", "0.0.1")
+		So(err, ShouldBeNil)
+
+		err = UploadImage(uploadedImage, baseURL, "zot-test", "0.0.1")
+		So(err, ShouldBeNil)
+
+		err = UploadImage(uploadedImage, baseURL, "a/zot-test", "0.0.1")
+		So(err, ShouldBeNil)
+
+		log := log.NewLogger("debug", "")
+		metrics := monitoring.NewMetricsServer(false, log)
+		testStorage := local.NewImageStore(rootDir, false, false, log, metrics, nil, nil, nil)
+
+		resp, err := resty.R().Get(baseURL + "/v2/")
+		So(resp, ShouldNotBeNil)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, 200)
+
+		resp, err = resty.R().Get(baseURL + graphqlQueryPrefix)
+		So(resp, ShouldNotBeNil)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, 422)
+
+		query := `{
+			ExpandedRepoInfo(repo:"zot-cve-test"){
+				Summary {
+					Name LastUpdated Size
+					}
+				}
+			}`
+
+		resp, err = resty.R().Get(baseURL + graphqlQueryPrefix + "?query=" + url.QueryEscape(query))
+		So(resp, ShouldNotBeNil)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, 200)
+
+		responseStruct := &zcommon.ExpandedRepoInfoResp{}
+
+		err = json.Unmarshal(resp.Body(), responseStruct)
+		So(err, ShouldBeNil)
+		So(responseStruct.Summary, ShouldNotBeEmpty)
+		So(responseStruct.Summary.Name, ShouldEqual, "zot-cve-test")
+
+		query = `{
+			ExpandedRepoInfo(repo:"zot-cve-test"){
+				Images {
+					Tag
+					Manifests {
+						Digest
+						Layers {Size Digest}
+						Platform {Os Arch}
+					}
+					IsSigned
+				}
+			}
+		}`
+
+		resp, err = resty.R().Get(baseURL + graphqlQueryPrefix + "?query=" + url.QueryEscape(query))
+		So(resp, ShouldNotBeNil)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, 200)
+
+		responseStruct = &zcommon.ExpandedRepoInfoResp{}
+
+		err = json.Unmarshal(resp.Body(), responseStruct)
+		So(err, ShouldBeNil)
+		So(len(responseStruct.ImageSummaries), ShouldNotEqual, 0)
+		So(len(responseStruct.ImageSummaries[0].Manifests[0].Layers), ShouldNotEqual, 0)
+
+		_, testManifestDigest, _, err := testStorage.GetImageManifest("zot-cve-test", "0.0.1")
+		So(err, ShouldBeNil)
+
+		found := false
+
+		for _, imageSummary := range responseStruct.ImageSummaries {
+			if imageSummary.Manifests[0].Digest == testManifestDigest.String() {
+				found = true
+
+				So(imageSummary.IsSigned, ShouldEqual, false)
+				So(imageSummary.Manifests[0].Platform.Os, ShouldEqual, "linux")
+				So(imageSummary.Manifests[0].Platform.Arch, ShouldEqual, "amd64")
+			}
+		}
+
+		So(found, ShouldEqual, true)
+
+		err = signature.SignImageUsingCosign("zot-cve-test:0.0.1", port, false)
+		So(err, ShouldBeNil)
+
+		resp, err = resty.R().Get(baseURL + graphqlQueryPrefix + "?query=" + url.QueryEscape(query))
+		So(resp, ShouldNotBeNil)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, 200)
+
+		err = json.Unmarshal(resp.Body(), responseStruct)
+		So(err, ShouldBeNil)
+		So(len(responseStruct.ImageSummaries), ShouldNotEqual, 0)
+		So(len(responseStruct.ImageSummaries[0].Manifests[0].Layers), ShouldNotEqual, 0)
+
+		_, testManifestDigest, _, err = testStorage.GetImageManifest("zot-cve-test", "0.0.1")
+		So(err, ShouldBeNil)
+
+		found = false
+
+		for _, imageSummary := range responseStruct.ImageSummaries {
+			if imageSummary.Manifests[0].Digest == testManifestDigest.String() {
+				found = true
+
+				So(imageSummary.IsSigned, ShouldEqual, true)
+				So(imageSummary.Manifests[0].Platform.Os, ShouldEqual, "linux")
+				So(imageSummary.Manifests[0].Platform.Arch, ShouldEqual, "amd64")
+			}
+		}
+
+		So(found, ShouldEqual, true)
+
+		query = `{
+			ExpandedRepoInfo(repo:""){
+				Images {
+					Tag
+					}
+				}
+			}`
+
+		resp, err = resty.R().Get(baseURL + graphqlQueryPrefix + "?query=" + url.QueryEscape(query))
+		So(resp, ShouldNotBeNil)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, 200)
+
+		query = `{
+			ExpandedRepoInfo(repo:"zot-test"){
+				Images {
+					RepoName
+					Tag IsSigned
+					Manifests{
+						Digest
+						Layers {Size Digest}
+						Platform {Os Arch}
+					}
+				}
+			}
+		}`
+		resp, err = resty.R().Get(baseURL + graphqlQueryPrefix + "?query=" + url.QueryEscape(query))
+		So(resp, ShouldNotBeNil)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, 200)
+
+		err = json.Unmarshal(resp.Body(), responseStruct)
+		So(err, ShouldBeNil)
+		So(len(responseStruct.ImageSummaries), ShouldNotEqual, 0)
+		So(len(responseStruct.ImageSummaries[0].Manifests[0].Layers), ShouldNotEqual, 0)
+
+		_, testManifestDigest, _, err = testStorage.GetImageManifest("zot-test", "0.0.1")
+		So(err, ShouldBeNil)
+
+		found = false
+
+		for _, imageSummary := range responseStruct.ImageSummaries {
+			if imageSummary.Manifests[0].Digest == testManifestDigest.String() {
+				found = true
+
+				So(imageSummary.IsSigned, ShouldEqual, false)
+				So(imageSummary.Manifests[0].Platform.Os, ShouldEqual, "linux")
+				So(imageSummary.Manifests[0].Platform.Arch, ShouldEqual, "amd64")
+			}
+		}
+
+		So(found, ShouldEqual, true)
+
+		err = signature.SignImageUsingCosign("zot-test@"+testManifestDigest.String(), port, false)
+		So(err, ShouldBeNil)
+
+		resp, err = resty.R().Get(baseURL + graphqlQueryPrefix + "/query?query=" + url.QueryEscape(query))
+		So(resp, ShouldNotBeNil)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, 200)
+
+		err = json.Unmarshal(resp.Body(), responseStruct)
+		So(err, ShouldBeNil)
+		So(len(responseStruct.ImageSummaries), ShouldNotEqual, 0)
+		So(len(responseStruct.ImageSummaries[0].Manifests[0].Layers), ShouldNotEqual, 0)
+
+		_, testManifestDigest, _, err = testStorage.GetImageManifest("zot-test", "0.0.1")
+		So(err, ShouldBeNil)
+
+		found = false
+
+		for _, imageSummary := range responseStruct.ImageSummaries {
+			if imageSummary.Manifests[0].Digest == testManifestDigest.String() {
+				found = true
+
+				So(imageSummary.IsSigned, ShouldEqual, true)
+				So(imageSummary.Manifests[0].Platform.Os, ShouldEqual, "linux")
+				So(imageSummary.Manifests[0].Platform.Arch, ShouldEqual, "amd64")
+			}
+		}
+
+		So(found, ShouldEqual, true)
+
+		manifestDigest := uploadedImage.ManifestDescriptor.Digest
+
+		err = os.Remove(path.Join(rootDir, "zot-test/blobs/sha256", manifestDigest.Encoded()))
+		So(err, ShouldBeNil)
+
+		resp, err = resty.R().Get(baseURL + graphqlQueryPrefix + "?query=" + url.QueryEscape(query))
+		So(resp, ShouldNotBeNil)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, 200)
+
+		err = json.Unmarshal(resp.Body(), responseStruct)
+		So(err, ShouldBeNil)
+	})
 }
 
 func TestDerivedImageList(t *testing.T) {

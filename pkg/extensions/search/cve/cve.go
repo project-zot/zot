@@ -331,7 +331,8 @@ func getConfigAndDigest(metaDB mTypes.MetaDB, manifestDigestStr string) (ispec.I
 	}
 
 	// we'll fail the execution if the config is not compatible with ispec.Image because we can't scan this type of images.
-	if manifestData.Manifests[0].Manifest.Config.MediaType != ispec.MediaTypeImageConfig {
+	configMediaType := manifestData.Manifests[0].Manifest.Config.MediaType
+	if configMediaType != ispec.MediaTypeImageConfig && !compat.IsCompatibleConfigMediaType(configMediaType) {
 		return ispec.Image{}, "", zerr.ErrUnexpectedMediaType
 	}
 
