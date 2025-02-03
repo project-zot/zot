@@ -13,6 +13,6 @@ do
     do
         echo "Fuzzing $func in $file"
         parentDir=$(dirname $file)
-        go test $parentDir -run=$func -fuzz=$func$ -fuzztime=${fuzzTime}s -tags sync,metrics,search,scrub,containers_image_openpgp | grep -oP -x '^(?:(?!\blevel\b).)*$'
+        go test $parentDir -run=$func -fuzz=$func$ -fuzztime=${fuzzTime}s -tags sync,metrics,search,scrub | grep -oP -x '^(?:(?!\blevel\b).)*$'
     done
 done
