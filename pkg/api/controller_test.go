@@ -225,6 +225,30 @@ func TestCreateCacheDatabaseDriver(t *testing.T) {
 		}
 
 		endpoint := os.Getenv("DYNAMODBMOCK_ENDPOINT")
+
+		// missing cachetablename key
+		conf.Storage.CacheDriver = map[string]interface{}{
+			"name":     "dynamodb",
+			"endpoint": endpoint,
+			"region":   "us-east-2",
+		}
+
+		driver, err := storage.CreateCacheDatabaseDriver(conf.Storage.StorageConfig, log)
+		So(err, ShouldNotBeNil)
+		So(driver, ShouldBeNil)
+
+		// invalid cachetablename type
+		conf.Storage.CacheDriver = map[string]interface{}{
+			"name":           "dynamodb",
+			"endpoint":       endpoint,
+			"region":         "us-east-2",
+			"cachetablename": false,
+		}
+
+		driver, err = storage.CreateCacheDatabaseDriver(conf.Storage.StorageConfig, log)
+		So(err, ShouldNotBeNil)
+		So(driver, ShouldBeNil)
+
 		conf.Storage.CacheDriver = map[string]interface{}{
 			"name":                   "dynamodb",
 			"endpoint":               endpoint,
@@ -237,7 +261,7 @@ func TestCreateCacheDatabaseDriver(t *testing.T) {
 			"versiontablename":       "Version",
 		}
 
-		driver, err := storage.CreateCacheDatabaseDriver(conf.Storage.StorageConfig, log)
+		driver, err = storage.CreateCacheDatabaseDriver(conf.Storage.StorageConfig, log)
 		So(err, ShouldBeNil)
 		So(driver, ShouldNotBeNil)
 
