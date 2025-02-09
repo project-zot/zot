@@ -1,6 +1,8 @@
 package storage
 
 import (
+	"fmt"
+
 	zerr "zotregistry.dev/zot/errors"
 	"zotregistry.dev/zot/pkg/api/config"
 	rediscfg "zotregistry.dev/zot/pkg/api/config/redis"
@@ -43,7 +45,12 @@ func CreateCacheDatabaseDriver(storageConfig config.StorageConfig, log zlog.Logg
 
 		if name == constants.DynamoDBDriverName {
 			// dynamodb
-			return Create(name, getDynamoParams(&storageConfig), log)
+			dynamoParams, err := getDynamoParams(&storageConfig)
+			if err != nil {
+				return nil, err
+			}
+
+			return Create(name, dynamoParams, log)
 		}
 
 		if name == constants.RedisDriverName {
@@ -86,13 +93,23 @@ func getUseRelPaths(storageConfig *config.StorageConfig) bool {
 	return storageConfig.StorageDriver == nil
 }
 
-func getDynamoParams(storageConfig *config.StorageConfig) cache.DynamoDBDriverParameters {
+func getDynamoParams(storageConfig *config.StorageConfig) (cache.DynamoDBDriverParameters, error) {
 	dynamoParams := cache.DynamoDBDriverParameters{}
 	dynamoParams.Endpoint, _ = storageConfig.CacheDriver["endpoint"].(string)
 	dynamoParams.Region, _ = storageConfig.CacheDriver["region"].(string)
 	dynamoParams.TableName, _ = storageConfig.CacheDriver["cachetablename"].(string)
 
-	return dynamoParams
+	cachetable, ok := storageConfig.CacheDriver["cachetablename"]
+	if !ok {
+		return dynamoParams, fmt.Errorf("%w: cachetablename key is mandatory for dynamodb cache driver", zerr.ErrBadConfig)
+	}
+
+	dynamoParams.TableName, ok = cachetable.(string)
+	if !ok {
+		return dynamoParams, fmt.Errorf("%w: failed to cast cachetablename %s to string type", zerr.ErrBadConfig, cachetable)
+	}
+
+	return dynamoParams, nil
 }
 
 func getRedisParams(storageConfig *config.StorageConfig, log zlog.Logger) (cache.RedisDriverParameters, error) {

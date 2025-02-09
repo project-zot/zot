@@ -65,7 +65,7 @@ func NewDynamoDBCache(parameters interface{}, log zlog.Logger) (*DynamoDBDriver,
 	properParameters, ok := parameters.(DynamoDBDriverParameters)
 	if !ok {
 		log.Error().Err(zerr.ErrTypeAssertionFailed).Msgf("failed to cast type, expected type '%T' but got '%T'",
-			BoltDBDriverParameters{}, parameters)
+			DynamoDBDriverParameters{}, parameters)
 
 		return nil, zerr.ErrTypeAssertionFailed
 	}
