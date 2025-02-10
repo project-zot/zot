@@ -1,12 +1,13 @@
 module zotregistry.dev/zot
 
 go 1.23.4
+toolchain go1.23.6
 
 require (
 	github.com/99designs/gqlgen v0.17.64
 	github.com/Masterminds/semver v1.5.0
 	github.com/alicebob/miniredis/v2 v2.34.0
-	github.com/aquasecurity/trivy v0.59.0
+	github.com/aquasecurity/trivy v0.59.1
 	github.com/aquasecurity/trivy-db v0.0.0-20241209111357-8c398f13db0e
 	github.com/aws/aws-sdk-go v1.55.6
 	github.com/aws/aws-sdk-go-v2 v1.36.0
