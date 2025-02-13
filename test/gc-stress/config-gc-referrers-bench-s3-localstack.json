@@ -29,10 +29,10 @@
             "region": "us-east-2",
             "cacheTablename": "BlobTable",
             "repoMetaTablename": "RepoMetadataTable",
-            "indexDataTablename": "IndexDataTable",
-            "manifestDataTablename": "ManifestDataTable",
-            "apikeytablename": "ApiKeyDataTable",
-            "userdatatablename": "UserDataTable",
+            "imageMetaTablename": "ImageMetaTable",
+            "repoBlobsInfoTablename": "RepoBlobsInfoTable",
+            "apiKeyTablename": "ApiKeyDataTable",
+            "userDataTablename": "UserDataTable",
             "versionTablename": "VersionTable"
         }
     },

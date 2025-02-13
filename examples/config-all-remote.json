@@ -21,6 +21,8 @@
             "repoMetaTablename": "ZotRepoMetadataTable",
             "imageMetaTablename": "ZotImageMetaTable",
             "repoBlobsInfoTablename": "ZotRepoBlobsInfoTable",
+            "userDataTablename": "ZotUserDataTable",
+            "apiKeyTablename": "ZotApiKeyTable",
             "versionTablename": "ZotVersion"
         }
     },
