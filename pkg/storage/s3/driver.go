@@ -3,6 +3,7 @@ package s3
 import (
 	"context"
 	"io"
+	"net/http"
 
 	// Add s3 support.
 	"github.com/distribution/distribution/v3/registry/storage/driver"
@@ -33,6 +34,10 @@ func (driver *Driver) DirExists(path string) bool {
 	}
 
 	return false
+}
+
+func (driver *Driver) URLFor(r *http.Request, path string) (string, error) {
+	return driver.store.RedirectURL(r, path)
 }
 
 func (driver *Driver) Reader(path string, offset int64) (io.ReadCloser, error) {

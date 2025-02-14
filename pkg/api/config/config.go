@@ -34,6 +34,7 @@ type StorageConfig struct {
 	Retention     ImageRetention
 	StorageDriver map[string]interface{} `mapstructure:",omitempty"`
 	CacheDriver   map[string]interface{} `mapstructure:",omitempty"`
+	Redirect      bool
 }
 
 type ImageRetention struct {
