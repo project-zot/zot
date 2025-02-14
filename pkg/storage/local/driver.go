@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"net/http"
 	"os"
 	"path"
 	"sort"
@@ -56,6 +57,10 @@ func (driver *Driver) DirExists(path string) bool {
 	}
 
 	return true
+}
+
+func (driver *Driver) URLFor(_ *http.Request, _ string) (string, error) {
+	return "", zerr.ErrBlobRedirectURLNotSupported
 }
 
 func (driver *Driver) Reader(path string, offset int64) (io.ReadCloser, error) {
