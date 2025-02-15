@@ -125,7 +125,7 @@ func New(
 
 	service.storeController = storeController
 
-	err = service.initClient()
+	err = service.init()
 	if err != nil {
 		log.Err(err).Msg("failed to initialize sync client")
 
@@ -135,11 +135,11 @@ func New(
 	return service, nil
 }
 
-func (service *BaseService) initClient() error {
+func (service *BaseService) init() error {
 	service.clientLock.Lock()
 	defer service.clientLock.Unlock()
 
-	client, hosts, err := getRegClient(service.config, service.credentials)
+	client, hosts, err := newClient(service.config, service.credentials)
 	if err != nil {
 		service.log.Err(err).Msg("failed to parse sync config urls")
 
@@ -193,7 +193,7 @@ func (service *BaseService) refreshRegistryTemporaryCredentials() error {
 	}
 
 	// Reinitialize regclient with new credentials
-	return service.initClient()
+	return service.init()
 }
 
 func (service *BaseService) CanRetryOnError() bool {
@@ -646,7 +646,7 @@ func getTLSConfigOption(url *url.URL, tlsVerify *bool) config.TLSConf {
 	return tls
 }
 
-func getRegClient(opts syncconf.RegistryConfig, credentials syncconf.CredentialsFile,
+func newClient(opts syncconf.RegistryConfig, credentials syncconf.CredentialsFile,
 ) (*regclient.RegClient, []config.Host, error) {
 	urls, err := parseRegistryURLs(opts.URLs)
 	if err != nil {
