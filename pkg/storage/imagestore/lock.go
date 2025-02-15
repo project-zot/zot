@@ -1,6 +1,7 @@
 package imagestore
 
 import (
+	"fmt"
 	"sync"
 )
 
@@ -27,7 +28,7 @@ func (sl *ImageStoreLock) RUnlockRepo(repo string) {
 	val, ok := sl.repoLocks.Load(repo)
 	if !ok {
 		// somehow the unlock is called for repo that was not locked
-		return
+		panic(fmt.Sprintf("failed to find lock for repo %s in %v", repo, sl.repoLocks))
 	}
 
 	// read-unlock individual repo
@@ -47,7 +48,7 @@ func (sl *ImageStoreLock) UnlockRepo(repo string) {
 	val, ok := sl.repoLocks.Load(repo)
 	if !ok {
 		// somehow the unlock is called for a repo that was not locked
-		return
+		panic(fmt.Sprintf("failed to find lock for repo %s in %v", repo, sl.repoLocks))
 	}
 
 	// write-unlock individual repo
