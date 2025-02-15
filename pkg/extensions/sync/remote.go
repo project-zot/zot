@@ -126,7 +126,9 @@ func (registry *RemoteRegistry) GetOCIManifest(ctx context.Context, repo, refere
 		buf, desc, err = convertDockerManifestToOCI(ctx, man, imageReference, registry.client)
 		isConverted = true
 	case mediatype.Docker2ManifestList:
-		buf, desc, err = convertDockerListToOCI(ctx, man, imageReference, registry.client)
+		seen := []godigest.Digest{}
+
+		buf, desc, err = convertDockerListToOCI(ctx, man, imageReference, seen, registry.client)
 		isConverted = true
 	case mediatype.OCI1Manifest, mediatype.OCI1ManifestList:
 		buf, err = man.MarshalJSON()
@@ -154,12 +156,17 @@ func (registry *RemoteRegistry) GetTags(ctx context.Context, repo string) ([]str
 	return tl.GetTags()
 }
 
-func convertDockerListToOCI(ctx context.Context, man manifest.Manifest, imageReference ref.Ref,
+func convertDockerListToOCI(ctx context.Context, man manifest.Manifest, imageReference ref.Ref, seen []godigest.Digest,
 	regclient *regclient.RegClient,
 ) (
 	[]byte, ispec.Descriptor, error,
 ) {
 	var index ispec.Index
+
+	// seen
+	if common.Contains(seen, man.GetDescriptor().Digest) {
+		return nil, ispec.Descriptor{}, nil
+	}
 
 	index.SchemaVersion = 2
 	index.Manifests = []ispec.Descriptor{}
@@ -191,8 +198,21 @@ func convertDockerListToOCI(ctx context.Context, man manifest.Manifest, imageRef
 
 		regclient.Close(ctx, manEntry.GetRef())
 
-		_, desc, err := convertDockerManifestToOCI(ctx, manEntry, ref, regclient)
-		if err != nil {
+		var desc ispec.Descriptor
+
+		switch manEntry.GetDescriptor().MediaType {
+		case mediatype.Docker2Manifest:
+			_, desc, err = convertDockerManifestToOCI(ctx, manEntry, ref, regclient)
+			if err != nil {
+				return nil, ispec.Descriptor{}, err
+			}
+
+		case mediatype.Docker2ManifestList:
+			_, desc, err = convertDockerListToOCI(ctx, manEntry, ref, seen, regclient)
+			if err != nil {
+				return nil, ispec.Descriptor{}, err
+			}
+		default:
 			return nil, ispec.Descriptor{}, err
 		}
 
