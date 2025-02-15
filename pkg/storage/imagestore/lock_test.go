@@ -34,6 +34,7 @@ func TestStorageLocks(t *testing.T) {
 	Convey("Locks", t, func() {
 		// in parallel, a mix of read and write locks - mainly for coverage
 		var wg sync.WaitGroup
+
 		for i := 0; i < 1000; i++ {
 			repo := "repo" + strconv.Itoa(i%10)
 
