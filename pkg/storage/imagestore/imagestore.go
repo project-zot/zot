@@ -10,7 +10,6 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
-	"sync"
 	"time"
 	"unicode/utf8"
 
@@ -42,7 +41,7 @@ const (
 type ImageStore struct {
 	rootDir     string
 	storeDriver storageTypes.Driver
-	lock        *sync.RWMutex
+	lock        *ImageStoreLock
 	log         zlog.Logger
 	metrics     monitoring.MetricServer
 	cache       storageTypes.Cache
@@ -80,7 +79,7 @@ func NewImageStore(rootDir string, cacheDir string, dedupe, commit bool, log zlo
 	imgStore := &ImageStore{
 		rootDir:     rootDir,
 		storeDriver: storeDriver,
-		lock:        &sync.RWMutex{},
+		lock:        NewImageStoreLock(),
 		log:         log,
 		metrics:     metrics,
 		dedupe:      dedupe,
@@ -93,16 +92,16 @@ func NewImageStore(rootDir string, cacheDir string, dedupe, commit bool, log zlo
 	return imgStore
 }
 
-// RLock read-lock.
-func (is *ImageStore) RLock(lockStart *time.Time) {
+// RLock read-lock for specific repo.
+func (is *ImageStore) RLockRepo(repo string, lockStart *time.Time) {
 	*lockStart = time.Now()
 
-	is.lock.RLock()
+	is.lock.RLockRepo(repo)
 }
 
-// RUnlock read-unlock.
-func (is *ImageStore) RUnlock(lockStart *time.Time) {
-	is.lock.RUnlock()
+// RUnlock read-unlock for specific repo.
+func (is *ImageStore) RUnlockRepo(repo string, lockStart *time.Time) {
+	is.lock.RUnlockRepo(repo)
 
 	lockEnd := time.Now()
 	// includes time spent in acquiring and holding a lock
@@ -110,16 +109,16 @@ func (is *ImageStore) RUnlock(lockStart *time.Time) {
 	monitoring.ObserveStorageLockLatency(is.metrics, latency, is.RootDir(), storageConstants.RLOCK) // histogram
 }
 
-// Lock write-lock.
-func (is *ImageStore) Lock(lockStart *time.Time) {
+// Lock write-lock for specific repo.
+func (is *ImageStore) LockRepo(repo string, lockStart *time.Time) {
 	*lockStart = time.Now()
 
-	is.lock.Lock()
+	is.lock.LockRepo(repo)
 }
 
-// Unlock write-unlock.
-func (is *ImageStore) Unlock(lockStart *time.Time) {
-	is.lock.Unlock()
+// Unlock write-unlock for specific repo.
+func (is *ImageStore) UnlockRepo(repo string, lockStart *time.Time) {
+	is.lock.UnlockRepo(repo)
 
 	lockEnd := time.Now()
 	// includes time spent in acquiring and holding a lock
@@ -203,8 +202,8 @@ func (is *ImageStore) initRepo(name string) error {
 func (is *ImageStore) InitRepo(name string) error {
 	var lockLatency time.Time
 
-	is.Lock(&lockLatency)
-	defer is.Unlock(&lockLatency)
+	is.LockRepo(name, &lockLatency)
+	defer is.UnlockRepo(name, &lockLatency)
 
 	return is.initRepo(name)
 }
@@ -266,12 +265,11 @@ func (is *ImageStore) ValidateRepo(name string) (bool, error) {
 
 func (is *ImageStore) GetNextRepositories(lastRepo string, maxEntries int, filterFn storageTypes.FilterRepoFunc,
 ) ([]string, bool, error) {
-	var lockLatency time.Time
-
+	// Ideally this function would lock while walking in order to avoid concurrency issues
+	// but we can't lock everything as we don't have a valid list of all repositories
+	// let's assume the result of this function is a best effort and some repos may be
+	// added or removed by the time it returns
 	dir := is.rootDir
-
-	is.RLock(&lockLatency)
-	defer is.RUnlock(&lockLatency)
 
 	stores := make([]string, 0)
 
@@ -349,12 +347,11 @@ func (is *ImageStore) GetNextRepositories(lastRepo string, maxEntries int, filte
 
 // GetRepositories returns a list of all the repositories under this store.
 func (is *ImageStore) GetRepositories() ([]string, error) {
-	var lockLatency time.Time
-
+	// Ideally this function would lock while walking in order to avoid concurrency issues
+	// but we can't lock everything as we don't have a valid list of all repositories
+	// let's assume the result of this function is a best effort and some repos may be
+	// added or removed by the time it returns
 	dir := is.rootDir
-
-	is.RLock(&lockLatency)
-	defer is.RUnlock(&lockLatency)
 
 	stores := make([]string, 0)
 
@@ -379,7 +376,9 @@ func (is *ImageStore) GetRepositories() ([]string, error) {
 			return nil //nolint:nilerr // ignore invalid repos
 		}
 
-		stores = append(stores, rel)
+		if !zcommon.Contains(stores, rel) {
+			stores = append(stores, rel)
+		}
 
 		return nil
 	})
@@ -395,12 +394,11 @@ func (is *ImageStore) GetRepositories() ([]string, error) {
 
 // GetNextRepository returns next repository under this store.
 func (is *ImageStore) GetNextRepository(repo string) (string, error) {
-	var lockLatency time.Time
-
+	// Ideally this function would lock while walking in order to avoid concurrency issues
+	// but we can't lock everything as we don't have a valid list of all repositories
+	// let's assume the result of this function is a best effort and some repos may be
+	// added or removed by the time it returns
 	dir := is.rootDir
-
-	is.RLock(&lockLatency)
-	defer is.RUnlock(&lockLatency)
 
 	_, err := is.storeDriver.List(dir)
 	if err != nil {
@@ -478,8 +476,8 @@ func (is *ImageStore) GetImageTags(repo string) ([]string, error) {
 		return nil, zerr.ErrRepoNotFound
 	}
 
-	is.RLock(&lockLatency)
-	defer is.RUnlock(&lockLatency)
+	is.RLockRepo(repo, &lockLatency)
+	defer is.RUnlockRepo(repo, &lockLatency)
 
 	index, err := common.GetIndex(is, repo, is.log)
 	if err != nil {
@@ -500,9 +498,10 @@ func (is *ImageStore) GetImageManifest(repo, reference string) ([]byte, godigest
 
 	var err error
 
-	is.RLock(&lockLatency)
+	is.RLockRepo(repo, &lockLatency)
+
 	defer func() {
-		is.RUnlock(&lockLatency)
+		is.RUnlockRepo(repo, &lockLatency)
 
 		if err == nil {
 			monitoring.IncDownloadCounter(is.metrics, repo)
@@ -552,9 +551,10 @@ func (is *ImageStore) PutImageManifest(repo, reference, mediaType string, //noli
 
 	var err error
 
-	is.Lock(&lockLatency)
+	is.LockRepo(repo, &lockLatency)
+
 	defer func() {
-		is.Unlock(&lockLatency)
+		is.UnlockRepo(repo, &lockLatency)
 
 		if err == nil {
 			if is.storeDriver.Name() == storageConstants.LocalStorageDriverName {
@@ -694,8 +694,8 @@ func (is *ImageStore) DeleteImageManifest(repo, reference string, detectCollisio
 
 	var lockLatency time.Time
 
-	is.Lock(&lockLatency)
-	defer is.Unlock(&lockLatency)
+	is.LockRepo(repo, &lockLatency)
+	defer is.UnlockRepo(repo, &lockLatency)
 
 	err := is.deleteImageManifest(repo, reference, detectCollisions)
 	if err != nil {
@@ -1020,8 +1020,8 @@ func (is *ImageStore) FinishBlobUpload(repo, uuid string, body io.Reader, dstDig
 
 	var lockLatency time.Time
 
-	is.Lock(&lockLatency)
-	defer is.Unlock(&lockLatency)
+	is.LockRepo(repo, &lockLatency)
+	defer is.UnlockRepo(repo, &lockLatency)
 
 	if is.dedupe && fmt.Sprintf("%v", is.cache) != fmt.Sprintf("%v", nil) {
 		err = is.DedupeBlob(src, dstDigest, repo, dst)
@@ -1100,8 +1100,8 @@ func (is *ImageStore) FullBlobUpload(repo string, body io.Reader, dstDigest godi
 
 	var lockLatency time.Time
 
-	is.Lock(&lockLatency)
-	defer is.Unlock(&lockLatency)
+	is.LockRepo(repo, &lockLatency)
+	defer is.UnlockRepo(repo, &lockLatency)
 
 	dst := is.BlobPath(repo, dstDigest)
 
@@ -1125,35 +1125,57 @@ func (is *ImageStore) FullBlobUpload(repo string, body io.Reader, dstDigest godi
 }
 
 func (is *ImageStore) DedupeBlob(src string, dstDigest godigest.Digest, dstRepo string, dst string) error {
-retry:
-	is.log.Debug().Str("src", src).Str("dstDigest", dstDigest.String()).Str("dst", dst).Msg("dedupe begin")
-
-	dstRecord, err := is.cache.GetBlob(dstDigest)
-	if err := inject.Error(err); err != nil && !errors.Is(err, zerr.ErrCacheMiss) {
-		is.log.Error().Err(err).Str("blobPath", dst).Str("component", "dedupe").Msg("failed to lookup blob record")
+	dedupeRepoCandidates, err := is.GetAllDedupeReposCandidates(dstDigest)
+	if err != nil && !errors.Is(err, zerr.ErrCacheMiss) {
+		is.log.Error().Err(err).Str("dstDigest", dstDigest.String()).Str("dst", dst).
+			Str("component", "dedupe").Msg("failed to lookup dedupe candidates")
 
 		return err
 	}
 
-	if dstRecord == "" {
-		// cache record doesn't exist, so first disk and cache entry for this digest
-		if err := is.cache.PutBlob(dstDigest, dst); err != nil {
-			is.log.Error().Err(err).Str("blobPath", dst).Str("component", "dedupe").
-				Msg("failed to insert blob record")
+	for _, repo := range dedupeRepoCandidates {
+		if repo == dstRepo {
+			continue
+		}
+
+		var lockLatency time.Time
+
+		is.LockRepo(repo, &lockLatency)
+		defer is.UnlockRepo(repo, &lockLatency)
+	}
+
+	for {
+		is.log.Debug().Str("src", src).Str("dstDigest", dstDigest.String()).Str("dst", dst).Msg("dedupe begin")
+
+		dstRecord, err := is.cache.GetBlob(dstDigest)
+		if err := inject.Error(err); err != nil && !errors.Is(err, zerr.ErrCacheMiss) {
+			is.log.Error().Err(err).Str("blobPath", dst).Str("component", "dedupe").Msg("failed to lookup blob record")
 
 			return err
 		}
 
-		// move the blob from uploads to final dest
-		if err := is.storeDriver.Move(src, dst); err != nil {
-			is.log.Error().Err(err).Str("src", src).Str("dst", dst).Str("component", "dedupe").
-				Msg("failed to rename blob")
+		if dstRecord == "" {
+			// cache record doesn't exist, so first disk and cache entry for this digest
+			if err := is.cache.PutBlob(dstDigest, dst); err != nil {
+				is.log.Error().Err(err).Str("blobPath", dst).Str("component", "dedupe").
+					Msg("failed to insert blob record")
 
-			return err
+				return err
+			}
+
+			// move the blob from uploads to final dest
+			if err := is.storeDriver.Move(src, dst); err != nil {
+				is.log.Error().Err(err).Str("src", src).Str("dst", dst).Str("component", "dedupe").
+					Msg("failed to rename blob")
+
+				return err
+			}
+
+			is.log.Debug().Str("src", src).Str("dst", dst).Str("component", "dedupe").Msg("rename")
+
+			return nil
 		}
 
-		is.log.Debug().Str("src", src).Str("dst", dst).Str("component", "dedupe").Msg("rename")
-	} else {
 		// cache record exists, but due to GC and upgrades from older versions,
 		// disk content and cache records may go out of sync
 		if is.cache.UsesRelativePaths() {
@@ -1173,7 +1195,7 @@ retry:
 				return err
 			}
 
-			goto retry
+			continue
 		}
 
 		// prevent overwrite original blob
@@ -1219,9 +1241,9 @@ retry:
 		}
 
 		is.log.Debug().Str("src", src).Str("component", "dedupe").Msg("remove")
-	}
 
-	return nil
+		return nil
+	}
 }
 
 // DeleteBlobUpload deletes an existing blob upload that is currently in progress.
@@ -1254,25 +1276,21 @@ func (is *ImageStore) BlobPath(repo string, digest godigest.Digest) string {
 }
 
 func (is *ImageStore) GetAllDedupeReposCandidates(digest godigest.Digest) ([]string, error) {
-	var lockLatency time.Time
+	repos := []string{}
 
+	// Does not need to lock storage as all information is read from is.cache
 	if err := digest.Validate(); err != nil {
-		return nil, err
+		return repos, err
 	}
 
 	if is.cache == nil {
-		return nil, nil //nolint:nilnil
+		return repos, nil //nolint:nilnil
 	}
-
-	is.RLock(&lockLatency)
-	defer is.RUnlock(&lockLatency)
 
 	blobsPaths, err := is.cache.GetAllBlobs(digest)
 	if err != nil {
-		return nil, err
+		return repos, err
 	}
-
-	repos := []string{}
 
 	for _, blobPath := range blobsPaths {
 		// these can be both full paths or relative paths depending on the cache options
@@ -1303,11 +1321,11 @@ func (is *ImageStore) CheckBlob(repo string, digest godigest.Digest) (bool, int6
 	blobPath := is.BlobPath(repo, digest)
 
 	if is.dedupe && fmt.Sprintf("%v", is.cache) != fmt.Sprintf("%v", nil) {
-		is.Lock(&lockLatency)
-		defer is.Unlock(&lockLatency)
+		is.LockRepo(repo, &lockLatency)
+		defer is.UnlockRepo(repo, &lockLatency)
 	} else {
-		is.RLock(&lockLatency)
-		defer is.RUnlock(&lockLatency)
+		is.RLockRepo(repo, &lockLatency)
+		defer is.RUnlockRepo(repo, &lockLatency)
 	}
 
 	binfo, err := is.storeDriver.Stat(blobPath)
@@ -1439,8 +1457,8 @@ func (is *ImageStore) GetBlobPartial(repo string, digest godigest.Digest, mediaT
 		return nil, -1, -1, err
 	}
 
-	is.RLock(&lockLatency)
-	defer is.RUnlock(&lockLatency)
+	is.RLockRepo(repo, &lockLatency)
+	defer is.RUnlockRepo(repo, &lockLatency)
 
 	binfo, err := is.originalBlobInfo(repo, digest)
 	if err != nil {
@@ -1516,8 +1534,8 @@ func (is *ImageStore) GetBlob(repo string, digest godigest.Digest, mediaType str
 		return nil, -1, err
 	}
 
-	is.RLock(&lockLatency)
-	defer is.RUnlock(&lockLatency)
+	is.LockRepo(repo, &lockLatency)
+	defer is.UnlockRepo(repo, &lockLatency)
 
 	binfo, err := is.originalBlobInfo(repo, digest)
 	if err != nil {
@@ -1593,8 +1611,8 @@ func (is *ImageStore) GetReferrers(repo string, gdigest godigest.Digest, artifac
 ) (ispec.Index, error) {
 	var lockLatency time.Time
 
-	is.RLock(&lockLatency)
-	defer is.RUnlock(&lockLatency)
+	is.RLockRepo(repo, &lockLatency)
+	defer is.RUnlockRepo(repo, &lockLatency)
 
 	return common.GetReferrers(is, repo, gdigest, artifactTypes, is.log)
 }
@@ -1667,8 +1685,8 @@ func (is *ImageStore) DeleteBlob(repo string, digest godigest.Digest) error {
 		return err
 	}
 
-	is.Lock(&lockLatency)
-	defer is.Unlock(&lockLatency)
+	is.LockRepo(repo, &lockLatency)
+	defer is.UnlockRepo(repo, &lockLatency)
 
 	return is.deleteBlob(repo, digest)
 }
@@ -1744,6 +1762,26 @@ func (is *ImageStore) deleteBlob(repo string, digest godigest.Digest) error {
 	}
 
 	if fmt.Sprintf("%v", is.cache) != fmt.Sprintf("%v", nil) {
+		// Need to lock the other repositories in order to run restore in case the blob was deduped
+		dedupeRepoCandidates, err := is.GetAllDedupeReposCandidates(digest)
+		if err != nil && !errors.Is(err, zerr.ErrCacheMiss) {
+			is.log.Error().Err(err).Str("repository", repo).Str("digest", digest.String()).
+				Str("component", "dedupe").Msg("failed to lookup dedupe candidates")
+
+			return err
+		}
+
+		for _, dedupeRepoCandidate := range dedupeRepoCandidates {
+			if dedupeRepoCandidate == repo {
+				continue
+			}
+
+			var lockLatency time.Time
+
+			is.LockRepo(dedupeRepoCandidate, &lockLatency)
+			defer is.UnlockRepo(dedupeRepoCandidate, &lockLatency)
+		}
+
 		dstRecord, err := is.cache.GetBlob(digest)
 		if err != nil && !errors.Is(err, zerr.ErrCacheMiss) {
 			is.log.Error().Err(err).Str("blobPath", dstRecord).Str("component", "dedupe").
@@ -1868,16 +1906,18 @@ func (is *ImageStore) GetAllBlobs(repo string) ([]godigest.Digest, error) {
 	return ret, nil
 }
 
-func (is *ImageStore) GetNextDigestWithBlobPaths(repos []string, lastDigests []godigest.Digest,
-) (godigest.Digest, []string, error) {
+func (is *ImageStore) GetNextDigestWithBlobPaths(allRepos []string, lastDigests []godigest.Digest,
+) (godigest.Digest, []string, []string, error) {
 	var lockLatency time.Time
 
 	dir := is.rootDir
 
-	is.RLock(&lockLatency)
-	defer is.RUnlock(&lockLatency)
+	for _, repo := range allRepos {
+		is.RLockRepo(repo, &lockLatency)
+		defer is.RUnlockRepo(repo, &lockLatency)
+	}
 
-	var duplicateBlobs []string
+	var duplicateBlobs, duplicateRepos []string
 
 	var digest godigest.Digest
 
@@ -1891,7 +1931,7 @@ func (is *ImageStore) GetNextDigestWithBlobPaths(repos []string, lastDigests []g
 		if fileInfo.IsDir() {
 			// skip repositories not found in repos
 			baseName := path.Base(fileInfo.Path())
-			if zcommon.Contains(repos, baseName) || baseName == ispec.ImageBlobsDir {
+			if zcommon.Contains(allRepos, baseName) || baseName == ispec.ImageBlobsDir {
 				return nil
 			}
 
@@ -1929,6 +1969,16 @@ func (is *ImageStore) GetNextDigestWithBlobPaths(repos []string, lastDigests []g
 
 		if blobDigest == digest {
 			duplicateBlobs = append(duplicateBlobs, fileInfo.Path())
+
+			// the path is always under root dir because the walk function walks the root dir
+			rel, _ := filepath.Rel(is.rootDir, fileInfo.Path())
+
+			// for example rel si foo/bar/baz/blobs/sha256/1234...
+			// we need to extract foo/bar/baz
+			repo := path.Dir(path.Dir(path.Dir(rel)))
+			if !zcommon.Contains(duplicateRepos, repo) {
+				duplicateRepos = append(duplicateRepos, repo)
+			}
 		}
 
 		return nil
@@ -1938,10 +1988,10 @@ func (is *ImageStore) GetNextDigestWithBlobPaths(repos []string, lastDigests []g
 	var perr driver.PathNotFoundError
 
 	if errors.As(err, &perr) {
-		return digest, duplicateBlobs, nil
+		return digest, duplicateBlobs, duplicateRepos, nil
 	}
 
-	return digest, duplicateBlobs, err
+	return digest, duplicateBlobs, duplicateRepos, err
 }
 
 func (is *ImageStore) getOriginalBlobFromDisk(duplicateBlobs []string) (string, error) {
@@ -2116,12 +2166,14 @@ func (is *ImageStore) restoreDedupedBlobs(ctx context.Context, digest godigest.D
 }
 
 func (is *ImageStore) RunDedupeForDigest(ctx context.Context, digest godigest.Digest, dedupe bool,
-	duplicateBlobs []string,
+	duplicateBlobs []string, duplicateRepos []string,
 ) error {
 	var lockLatency time.Time
 
-	is.Lock(&lockLatency)
-	defer is.Unlock(&lockLatency)
+	for _, repo := range duplicateRepos {
+		is.LockRepo(repo, &lockLatency)
+		defer is.UnlockRepo(repo, &lockLatency)
+	}
 
 	if dedupe {
 		return is.dedupeBlobs(ctx, digest, duplicateBlobs)

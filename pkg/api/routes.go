@@ -958,8 +958,8 @@ func (rh *RouteHandler) CheckBlob(response http.ResponseWriter, request *http.Re
 	} else {
 		var lockLatency time.Time
 
-		imgStore.RLock(&lockLatency)
-		defer imgStore.RUnlock(&lockLatency)
+		imgStore.RLockRepo(name, &lockLatency)
+		defer imgStore.RUnlockRepo(name, &lockLatency)
 
 		ok, blen, _, err = imgStore.StatBlob(name, digest)
 	}
