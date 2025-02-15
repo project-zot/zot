@@ -37,6 +37,14 @@ jobs:
             sudo rm -rf /tmp/zot
         continue-on-error: true
 
+      - name: Upload zot logs
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: gc-referrers-bench-local
+          path: /tmp/gc-referrers-bench-local.log
+          if-no-files-found: error
+
       - name: Check on failures
         if: steps.bench.outcome != 'success'
         run: |
@@ -67,6 +75,14 @@ jobs:
             # clean zot storage
             sudo rm -rf /tmp/zot
         continue-on-error: true
+
+      - name: Upload zot logs
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: gc-bench-local
+          path: /tmp/gc-bench-local.log
+          if-no-files-found: error
 
       - name: Check on failures
         if: steps.bench.outcome != 'success'
@@ -142,11 +158,20 @@ jobs:
           AWS_SECRET_ACCESS_KEY: fake
         continue-on-error: true
 
+      - name: Upload zot logs
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: gc-referrers-bench-s3
+          path: /tmp/gc-referrers-bench-s3.log
+          if-no-files-found: error
+
       - name: Check on failures
         if: steps.bench.outcome != 'success'
         run: |
           cat /tmp/gc-referrers-bench-s3.log
           exit 1
+
       - uses: ./.github/actions/teardown-localstack
 
   gc-stress-s3:
@@ -217,9 +242,18 @@ jobs:
           AWS_SECRET_ACCESS_KEY: fake
         continue-on-error: true
 
+      - name: Upload zot logs
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: gc-bench-s3
+          path: /tmp/gc-bench-s3.log
+          if-no-files-found: error
+
       - name: Check on failures
         if: steps.bench.outcome != 'success'
         run: |
           cat /tmp/gc-bench-s3.log
           exit 1
+
       - uses: ./.github/actions/teardown-localstack
