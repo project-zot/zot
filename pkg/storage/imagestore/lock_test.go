@@ -29,7 +29,7 @@ func TestStorageLocks(t *testing.T) {
 		UseRelPaths: true,
 	}, log)
 
-	imgStore := local.NewImageStore(dir, true, true, log, metrics, nil, cacheDriver)
+	imgStore := local.NewImageStore(dir, true, true, log, metrics, nil, cacheDriver, nil)
 
 	Convey("Locks", t, func() {
 		// in parallel, a mix of read and write locks - mainly for coverage

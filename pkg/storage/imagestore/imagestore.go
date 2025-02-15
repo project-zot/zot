@@ -265,12 +265,11 @@ func (is *ImageStore) ValidateRepo(name string) (bool, error) {
 
 func (is *ImageStore) GetNextRepositories(lastRepo string, maxEntries int, filterFn storageTypes.FilterRepoFunc,
 ) ([]string, bool, error) {
-	var lockLatency time.Time
-
+	// Ideally this function would lock while walking in order to avoid concurrency issues
+	// but we can't lock everything as we don't have a valid list of all repositories
+	// let's assume the result of this function is a best effort and some repos may be
+	// added or removed by the time it returns
 	dir := is.rootDir
-
-	is.RLock(&lockLatency)
-	defer is.RUnlock(&lockLatency)
 
 	stores := make([]string, 0)
 
@@ -1255,6 +1254,7 @@ func (is *ImageStore) BlobPath(repo string, digest godigest.Digest) string {
 }
 
 func (is *ImageStore) GetAllDedupeReposCandidates(digest godigest.Digest) ([]string, error) {
+	// Does not need to lock storage as all information is read from is.cache
 	if err := digest.Validate(); err != nil {
 		return nil, err
 	}
@@ -1928,6 +1928,11 @@ func (is *ImageStore) GetNextDigestWithBlobPaths(allRepos []string, lastDigests 
 		if blobDigest == digest {
 			duplicateBlobs = append(duplicateBlobs, fileInfo.Path())
 
+			// the path is always under root dir because the walk function walks the root dir
+			rel, _ := filepath.Rel(is.rootDir, fileInfo.Path())
+
+			// for example rel si foo/bar/baz/blobs/sha256/1234...
+			// we need to extract foo/bar/baz
 			repo := path.Dir(path.Dir(path.Dir(rel)))
 			if !zcommon.Contains(duplicateRepos, repo) {
 				duplicateRepos = append(duplicateRepos, repo)
