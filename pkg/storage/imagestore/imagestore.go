@@ -1125,35 +1125,57 @@ func (is *ImageStore) FullBlobUpload(repo string, body io.Reader, dstDigest godi
 }
 
 func (is *ImageStore) DedupeBlob(src string, dstDigest godigest.Digest, dstRepo string, dst string) error {
-retry:
-	is.log.Debug().Str("src", src).Str("dstDigest", dstDigest.String()).Str("dst", dst).Msg("dedupe begin")
-
-	dstRecord, err := is.cache.GetBlob(dstDigest)
-	if err := inject.Error(err); err != nil && !errors.Is(err, zerr.ErrCacheMiss) {
-		is.log.Error().Err(err).Str("blobPath", dst).Str("component", "dedupe").Msg("failed to lookup blob record")
+	dedupeRepoCandidates, err := is.GetAllDedupeReposCandidates(dstDigest)
+	if err != nil && !errors.Is(err, zerr.ErrCacheMiss) {
+		is.log.Error().Err(err).Str("dstDigest", dstDigest.String()).Str("dst", dst).
+			Str("component", "dedupe").Msg("failed to lookup dedupe candidates")
 
 		return err
 	}
 
-	if dstRecord == "" {
-		// cache record doesn't exist, so first disk and cache entry for this digest
-		if err := is.cache.PutBlob(dstDigest, dst); err != nil {
-			is.log.Error().Err(err).Str("blobPath", dst).Str("component", "dedupe").
-				Msg("failed to insert blob record")
+	for _, repo := range dedupeRepoCandidates {
+		if repo == dstRepo {
+			continue
+		}
+
+		var lockLatency time.Time
+
+		is.LockRepo(repo, &lockLatency)
+		defer is.UnlockRepo(repo, &lockLatency)
+	}
+
+	for {
+		is.log.Debug().Str("src", src).Str("dstDigest", dstDigest.String()).Str("dst", dst).Msg("dedupe begin")
+
+		dstRecord, err := is.cache.GetBlob(dstDigest)
+		if err := inject.Error(err); err != nil && !errors.Is(err, zerr.ErrCacheMiss) {
+			is.log.Error().Err(err).Str("blobPath", dst).Str("component", "dedupe").Msg("failed to lookup blob record")
 
 			return err
 		}
 
-		// move the blob from uploads to final dest
-		if err := is.storeDriver.Move(src, dst); err != nil {
-			is.log.Error().Err(err).Str("src", src).Str("dst", dst).Str("component", "dedupe").
-				Msg("failed to rename blob")
+		if dstRecord == "" {
+			// cache record doesn't exist, so first disk and cache entry for this digest
+			if err := is.cache.PutBlob(dstDigest, dst); err != nil {
+				is.log.Error().Err(err).Str("blobPath", dst).Str("component", "dedupe").
+					Msg("failed to insert blob record")
 
-			return err
+				return err
+			}
+
+			// move the blob from uploads to final dest
+			if err := is.storeDriver.Move(src, dst); err != nil {
+				is.log.Error().Err(err).Str("src", src).Str("dst", dst).Str("component", "dedupe").
+					Msg("failed to rename blob")
+
+				return err
+			}
+
+			is.log.Debug().Str("src", src).Str("dst", dst).Str("component", "dedupe").Msg("rename")
+
+			return nil
 		}
 
-		is.log.Debug().Str("src", src).Str("dst", dst).Str("component", "dedupe").Msg("rename")
-	} else {
 		// cache record exists, but due to GC and upgrades from older versions,
 		// disk content and cache records may go out of sync
 		if is.cache.UsesRelativePaths() {
@@ -1173,7 +1195,7 @@ retry:
 				return err
 			}
 
-			goto retry
+			continue
 		}
 
 		// prevent overwrite original blob
@@ -1219,9 +1241,9 @@ retry:
 		}
 
 		is.log.Debug().Str("src", src).Str("component", "dedupe").Msg("remove")
-	}
 
-	return nil
+		return nil
+	}
 }
 
 // DeleteBlobUpload deletes an existing blob upload that is currently in progress.
@@ -1254,21 +1276,21 @@ func (is *ImageStore) BlobPath(repo string, digest godigest.Digest) string {
 }
 
 func (is *ImageStore) GetAllDedupeReposCandidates(digest godigest.Digest) ([]string, error) {
+	repos := []string{}
+
 	// Does not need to lock storage as all information is read from is.cache
 	if err := digest.Validate(); err != nil {
-		return nil, err
+		return repos, err
 	}
 
 	if is.cache == nil {
-		return nil, nil //nolint:nilnil
+		return repos, nil //nolint:nilnil
 	}
 
 	blobsPaths, err := is.cache.GetAllBlobs(digest)
 	if err != nil {
-		return nil, err
+		return repos, err
 	}
-
-	repos := []string{}
 
 	for _, blobPath := range blobsPaths {
 		// these can be both full paths or relative paths depending on the cache options
@@ -1740,6 +1762,26 @@ func (is *ImageStore) deleteBlob(repo string, digest godigest.Digest) error {
 	}
 
 	if fmt.Sprintf("%v", is.cache) != fmt.Sprintf("%v", nil) {
+		// Need to lock the other repositories in order to run restore in case the blob was deduped
+		dedupeRepoCandidates, err := is.GetAllDedupeReposCandidates(digest)
+		if err != nil && !errors.Is(err, zerr.ErrCacheMiss) {
+			is.log.Error().Err(err).Str("repository", repo).Str("digest", digest.String()).
+				Str("component", "dedupe").Msg("failed to lookup dedupe candidates")
+
+			return err
+		}
+
+		for _, dedupeRepoCandidate := range dedupeRepoCandidates {
+			if dedupeRepoCandidate == repo {
+				continue
+			}
+
+			var lockLatency time.Time
+
+			is.LockRepo(dedupeRepoCandidate, &lockLatency)
+			defer is.UnlockRepo(dedupeRepoCandidate, &lockLatency)
+		}
+
 		dstRecord, err := is.cache.GetBlob(digest)
 		if err != nil && !errors.Is(err, zerr.ErrCacheMiss) {
 			is.log.Error().Err(err).Str("blobPath", dstRecord).Str("component", "dedupe").

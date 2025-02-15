@@ -3962,11 +3962,15 @@ func TestInjectDedupe(t *testing.T) {
 				return &FileInfoMock{}, errS3
 			},
 		})
-		err := imgStore.DedupeBlob("blob", "digest", "", "newblob")
+
+		digest := godigest.FromString("content")
+		path := "newblob/blobs/" + digest.Algorithm().String() + "/" + digest.Encoded()
+
+		err := imgStore.DedupeBlob("blob", digest, "", path)
 		So(err, ShouldBeNil)
 
 		injected := inject.InjectFailure(0)
-		err = imgStore.DedupeBlob("blob", "digest", "", "newblob")
+		err = imgStore.DedupeBlob("blob", digest, "", path)
 
 		if injected {
 			So(err, ShouldNotBeNil)
@@ -3975,7 +3979,7 @@ func TestInjectDedupe(t *testing.T) {
 		}
 
 		injected = inject.InjectFailure(1)
-		err = imgStore.DedupeBlob("blob", "digest", "", "newblob")
+		err = imgStore.DedupeBlob("blob", digest, "", path)
 
 		if injected {
 			So(err, ShouldNotBeNil)
