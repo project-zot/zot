@@ -11,6 +11,7 @@ import (
 
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
+	"github.com/regclient/regclient/types/descriptor"
 	"github.com/regclient/regclient/types/ref"
 
 	syncconf "zotregistry.dev/zot/pkg/extensions/config/sync"
@@ -78,6 +79,7 @@ type Remote interface {
 	GetTags(ctx context.Context, repo string) ([]string, error)
 	// Get manifest content, mediaType, descriptor given an image(if remote image is docker type then convert it to OCI)
 	GetOCIManifest(ctx context.Context, repo, reference string) ([]byte, ispec.Descriptor, bool, error)
+	GetManifest(ctx context.Context, repo, reference string) ([]byte, descriptor.Descriptor, error)
 }
 
 // Local registry.
