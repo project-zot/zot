@@ -113,6 +113,8 @@ swaggercheck: swagger
 
 .PHONY: build-metadata
 build-metadata: $(if $(findstring ui,$(BUILD_LABELS)), ui)
+	# do not allow empty $(BUILD_TAGS) (at least add containers_image_openpgp that doesn't affect package import & files listing)
+	$(eval BUILD_TAGS=$(if $(BUILD_LABELS),$(BUILD_LABELS),containers_image_openpgp))
 	echo "Imports: \n"
 	go list -tags $(BUILD_TAGS) -f '{{ join .Imports "\n" }}' ./... | sort -u
 	echo "\n Files: \n"
