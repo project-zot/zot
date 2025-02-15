@@ -1121,12 +1121,21 @@ func validateGCRules(retention config.ImageRetention, log zlog.Logger) error {
 func validateSync(config *config.Config, log zlog.Logger) error {
 	// check glob patterns in sync config are compilable
 	if config.Extensions != nil && config.Extensions.Sync != nil {
-		for id, regCfg := range config.Extensions.Sync.Registries {
+		for regID, regCfg := range config.Extensions.Sync.Registries {
 			// check retry options are configured for sync
 			if regCfg.MaxRetries != nil && regCfg.RetryDelay == nil {
 				msg := "retryDelay is required when using maxRetries"
-				log.Error().Err(zerr.ErrBadConfig).Int("id", id).Interface("extensions.sync.registries[id]",
-					config.Extensions.Sync.Registries[id]).Msg(msg)
+				log.Error().Err(zerr.ErrBadConfig).Int("id", regID).Interface("extensions.sync.registries[id]",
+					config.Extensions.Sync.Registries[regID]).Msg(msg)
+
+				return fmt.Errorf("%w: %s", zerr.ErrBadConfig, msg)
+			}
+
+			// check preserveDigest without compat
+			if regCfg.PreserveDigest && !config.IsCompatEnabled() {
+				msg := "can not use PreserveDigest option without enabling http.Compat"
+				log.Error().Err(zerr.ErrBadConfig).Int("id", regID).Interface("extensions.sync.registries[id]",
+					config.Extensions.Sync.Registries[regID]).Msg(msg)
 
 				return fmt.Errorf("%w: %s", zerr.ErrBadConfig, msg)
 			}

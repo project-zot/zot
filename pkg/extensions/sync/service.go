@@ -13,6 +13,7 @@ import (
 	"sync"
 
 	godigest "github.com/opencontainers/go-digest"
+	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/regclient/regclient"
 	"github.com/regclient/regclient/config"
 	"github.com/regclient/regclient/mod"
@@ -417,6 +418,10 @@ func (service *BaseService) syncTagAndReferrers(ctx context.Context, localRepo, 
 
 	var tags []string
 
+	var isConverted bool
+
+	var remoteDigest godigest.Digest
+
 	remoteImageRef, err := service.remote.GetImageReference(remoteRepo, tag)
 	if err != nil {
 		service.log.Error().Err(err).Str("errortype", common.TypeOf(err)).
@@ -427,12 +432,28 @@ func (service *BaseService) syncTagAndReferrers(ctx context.Context, localRepo, 
 
 	defer service.rc.Close(ctx, remoteImageRef)
 
-	_, remoteManifestDesc, isConverted, err := service.remote.GetOCIManifest(ctx, remoteRepo, tag)
-	if err != nil {
-		service.log.Error().Err(err).Str("repository", remoteRepo).Str("reference", tag).
-			Msg("failed to get upstream image manifest details")
+	if !service.config.PreserveDigest {
+		var remoteManifestDesc ispec.Descriptor
 
-		return err
+		_, remoteManifestDesc, isConverted, err = service.remote.GetOCIManifest(ctx, remoteRepo, tag)
+		if err != nil {
+			service.log.Error().Err(err).Str("repository", remoteRepo).Str("reference", tag).
+				Msg("failed to get upstream image manifest details")
+
+			return err
+		}
+
+		remoteDigest = remoteManifestDesc.Digest
+	} else {
+		_, remoteManifestDesc, err := service.remote.GetManifest(ctx, remoteRepo, tag)
+		if err != nil {
+			service.log.Error().Err(err).Str("repository", remoteRepo).Str("reference", tag).
+				Msg("failed to get upstream image manifest details")
+
+			return err
+		}
+
+		remoteDigest = remoteManifestDesc.Digest
 	}
 
 	// if onlySigned flag true in config and the image is not itself a signature
@@ -455,8 +476,8 @@ func (service *BaseService) syncTagAndReferrers(ctx context.Context, localRepo, 
 		}
 
 		// verify repo contains a cosign signature for this manifest
-		hasCosignSignature := common.Contains(tags, fmt.Sprintf("%s-%s.sig", remoteManifestDesc.Digest.Algorithm(),
-			remoteManifestDesc.Digest.Encoded()))
+		hasCosignSignature := common.Contains(tags, fmt.Sprintf("%s-%s.sig", remoteDigest.Algorithm(),
+			remoteDigest.Encoded()))
 
 		isSigned := hasSignatureReferrers(referrers) || hasCosignSignature
 		if !isSigned {
@@ -482,7 +503,7 @@ func (service *BaseService) syncTagAndReferrers(ctx context.Context, localRepo, 
 	defer service.destination.CleanupImage(localImageRef, localRepo) //nolint: errcheck
 
 	// first sync image
-	_, err = service.syncReference(ctx, localRepo, remoteImageRef, localImageRef, remoteManifestDesc.Digest, false)
+	_, err = service.syncReference(ctx, localRepo, remoteImageRef, localImageRef, remoteDigest, false)
 	if err != nil {
 		return err
 	}
@@ -490,7 +511,7 @@ func (service *BaseService) syncTagAndReferrers(ctx context.Context, localRepo, 
 	_ = service.syncAllReferrers(ctx, tags, localRepo, remoteRepo, localImageRef, remoteImageRef)
 
 	// convert image to oci if needed
-	if isConverted {
+	if isConverted && !service.config.PreserveDigest {
 		localImageRef, err = mod.Apply(ctx, service.rc, localImageRef,
 			mod.WithRefTgt(localImageRef),
 			mod.WithManifestToOCI(),

@@ -86,17 +86,11 @@ func (registry *RemoteRegistry) GetImageReference(repo, reference string) (ref.R
 	return imageRef, nil
 }
 
-func (registry *RemoteRegistry) GetOCIManifest(ctx context.Context, repo, reference string,
-) ([]byte, ispec.Descriptor, bool, error) {
-	var isConverted bool
-
-	var buf []byte
-
-	var desc ispec.Descriptor
-
+func (registry *RemoteRegistry) getManifest(ctx context.Context, repo, reference string,
+) (manifest.Manifest, ref.Ref, error) {
 	imageReference, err := registry.GetImageReference(repo, reference)
 	if err != nil {
-		return nil, ispec.Descriptor{}, false, err
+		return nil, imageReference, err
 	}
 
 	/// check what error it gives when not found
@@ -109,16 +103,44 @@ func (registry *RemoteRegistry) GetOCIManifest(ctx context.Context, repo, refere
 				Str("repository", repo).Str("reference", reference).
 				Err(err).Msg("failed to get manifest: unauthorized")
 
-			return nil, ispec.Descriptor{}, false, zerr.ErrUnauthorizedAccess
+			return nil, imageReference, zerr.ErrUnauthorizedAccess
 		} else if errors.Is(err, errs.ErrNotFound) {
 			registry.log.Info().Str("errorType", common.TypeOf(err)).
 				Str("repository", repo).Str("reference", reference).
 				Err(err).Msg("failed to find manifest")
 
-			return nil, ispec.Descriptor{}, false, zerr.ErrManifestNotFound
+			return nil, imageReference, zerr.ErrManifestNotFound
 		}
 
-		return nil, ispec.Descriptor{}, false, err
+		return nil, imageReference, err
+	}
+
+	return man, imageReference, nil
+}
+
+func (registry *RemoteRegistry) GetManifest(ctx context.Context, repo, reference string,
+) ([]byte, descriptor.Descriptor, error) {
+	man, _, err := registry.getManifest(ctx, repo, reference)
+	if err != nil {
+		return nil, descriptor.Descriptor{}, err
+	}
+
+	buf, err := man.MarshalJSON()
+
+	return buf, man.GetDescriptor(), err
+}
+
+func (registry *RemoteRegistry) GetOCIManifest(ctx context.Context, repo, reference string,
+) ([]byte, ispec.Descriptor, bool, error) {
+	var isConverted bool
+
+	var buf []byte
+
+	var desc ispec.Descriptor
+
+	man, imageReference, err := registry.getManifest(ctx, repo, reference)
+	if err != nil {
+		return buf, desc, isConverted, err
 	}
 
 	switch man.GetDescriptor().MediaType {
@@ -288,17 +310,6 @@ func convertDockerManifestToOCI(ctx context.Context, man manifest.Manifest, imag
 	if err != nil {
 		return nil, ispec.Descriptor{}, err
 	}
-
-	// var ociConfig ispec.Image
-
-	// if err := json.Unmarshal(configBuf, &ociConfig); err != nil {
-	// 	return nil, ispec.Descriptor{}, err
-	// }
-
-	// ociConfigContent, err := json.Marshal(ociConfig)
-	// if err != nil {
-	// 	return nil, ispec.Descriptor{}, err
-	// }
 
 	// convert config and manifest mediatype
 	ociManifest.Config.Size = int64(len(configBuf))
