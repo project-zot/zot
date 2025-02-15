@@ -15,6 +15,7 @@ import (
 
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
+	"github.com/regclient/regclient/types/mediatype"
 	"github.com/regclient/regclient/types/ref"
 
 	zerr "zotregistry.dev/zot/errors"
@@ -168,7 +169,7 @@ func (registry *DestinationRegistry) copyManifest(repo string, desc ispec.Descri
 
 	// is image manifest
 	switch desc.MediaType {
-	case ispec.MediaTypeImageManifest:
+	case ispec.MediaTypeImageManifest, mediatype.Docker2Manifest:
 		var manifest ispec.Manifest
 
 		if err := json.Unmarshal(manifestContent, &manifest); err != nil {
@@ -196,7 +197,7 @@ func (registry *DestinationRegistry) copyManifest(repo string, desc ispec.Descri
 		}
 
 		digest, _, err := imageStore.PutImageManifest(repo, reference,
-			ispec.MediaTypeImageManifest, manifestContent)
+			desc.MediaType, manifestContent)
 		if err != nil {
 			registry.log.Error().Str("errorType", common.TypeOf(err)).
 				Err(err).Msg("couldn't upload manifest")
@@ -205,7 +206,7 @@ func (registry *DestinationRegistry) copyManifest(repo string, desc ispec.Descri
 		}
 
 		if registry.metaDB != nil {
-			err = meta.SetImageMetaFromInput(context.Background(), repo, reference, ispec.MediaTypeImageManifest,
+			err = meta.SetImageMetaFromInput(context.Background(), repo, reference, desc.MediaType,
 				digest, manifestContent, imageStore, registry.metaDB, registry.log)
 			if err != nil {
 				registry.log.Error().Str("errorType", common.TypeOf(err)).
@@ -217,7 +218,7 @@ func (registry *DestinationRegistry) copyManifest(repo string, desc ispec.Descri
 			registry.log.Debug().Str("repo", repo).Str("reference", reference).Msg("successfully set metadata for image")
 		}
 
-	case ispec.MediaTypeImageIndex:
+	case ispec.MediaTypeImageIndex, mediatype.Docker2ManifestList:
 		// is image index
 		var indexManifest ispec.Index
 
