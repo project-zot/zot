@@ -60,7 +60,7 @@ require (
 	github.com/sigstore/sigstore v1.8.12
 	github.com/smartystreets/goconvey v1.8.1
 	github.com/spf13/cast v1.7.1
-	github.com/spf13/cobra v1.8.1
+	github.com/spf13/cobra v1.9.1
 	github.com/spf13/viper v1.19.0
 	github.com/stretchr/testify v1.10.0
 	github.com/swaggo/http-swagger v1.3.4
