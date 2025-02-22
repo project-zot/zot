@@ -15,9 +15,9 @@ import (
 
 	godigest "github.com/opencontainers/go-digest"
 	//nolint:golint,stylecheck,revive
+	"github.com/go-resty/resty/v2"
 	. "github.com/smartystreets/goconvey/convey"
 	"github.com/smartystreets/goconvey/convey/reporting"
-	"gopkg.in/resty.v1"
 
 	"zotregistry.dev/zot/pkg/api"
 	"zotregistry.dev/zot/pkg/api/constants"

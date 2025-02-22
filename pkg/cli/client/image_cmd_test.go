@@ -16,13 +16,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-resty/resty/v2"
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/sigstore/cosign/v2/cmd/cosign/cli/generate"
 	"github.com/sigstore/cosign/v2/cmd/cosign/cli/options"
 	"github.com/sigstore/cosign/v2/cmd/cosign/cli/sign"
 	. "github.com/smartystreets/goconvey/convey"
-	"gopkg.in/resty.v1"
 
 	"zotregistry.dev/zot/pkg/api"
 	"zotregistry.dev/zot/pkg/api/config"

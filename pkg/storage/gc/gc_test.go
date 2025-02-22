@@ -12,12 +12,12 @@ import (
 
 	"github.com/distribution/distribution/v3/registry/storage/driver/factory"
 	_ "github.com/distribution/distribution/v3/registry/storage/driver/s3-aws"
+	"github.com/go-resty/resty/v2"
 	guuid "github.com/gofrs/uuid"
 	godigest "github.com/opencontainers/go-digest"
 	"github.com/opencontainers/image-spec/specs-go"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	. "github.com/smartystreets/goconvey/convey"
-	"gopkg.in/resty.v1"
 
 	"zotregistry.dev/zot/pkg/api/config"
 	"zotregistry.dev/zot/pkg/extensions/monitoring"

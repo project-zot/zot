@@ -11,8 +11,8 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/go-resty/resty/v2"
 	"github.com/phayes/freeport"
-	"gopkg.in/resty.v1"
 )
 
 const (

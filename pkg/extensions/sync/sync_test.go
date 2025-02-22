@@ -22,6 +22,7 @@ import (
 	"time"
 
 	dockerManifest "github.com/containers/image/v5/manifest"
+	"github.com/go-resty/resty/v2"
 	notreg "github.com/notaryproject/notation-go/registry"
 	godigest "github.com/opencontainers/go-digest"
 	"github.com/opencontainers/image-spec/specs-go"
@@ -33,7 +34,6 @@ import (
 	"github.com/sigstore/cosign/v2/cmd/cosign/cli/verify"
 	"github.com/sigstore/cosign/v2/pkg/oci/remote"
 	. "github.com/smartystreets/goconvey/convey"
-	"gopkg.in/resty.v1"
 
 	"zotregistry.dev/zot/pkg/api"
 	"zotregistry.dev/zot/pkg/api/config"

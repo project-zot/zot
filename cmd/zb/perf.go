@@ -17,9 +17,9 @@ import (
 	"text/tabwriter"
 	"time"
 
+	"github.com/go-resty/resty/v2"
 	jsoniter "github.com/json-iterator/go"
 	godigest "github.com/opencontainers/go-digest"
-	"gopkg.in/resty.v1"
 
 	"zotregistry.dev/zot/pkg/api/constants"
 )

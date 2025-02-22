@@ -27,6 +27,7 @@ import (
 	"time"
 
 	"github.com/alicebob/miniredis/v2"
+	"github.com/go-resty/resty/v2"
 	"github.com/google/go-github/v62/github"
 	"github.com/gorilla/mux"
 	"github.com/gorilla/securecookie"
@@ -48,7 +49,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.etcd.io/bbolt"
-	"gopkg.in/resty.v1"
 
 	"zotregistry.dev/zot/errors"
 	"zotregistry.dev/zot/pkg/api"

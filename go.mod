@@ -32,6 +32,7 @@ require (
 	github.com/go-ldap/ldap/v3 v3.4.10
 	github.com/go-redis/redismock/v9 v9.2.0
 	github.com/go-redsync/redsync/v4 v4.13.0
+	github.com/go-resty/resty/v2 v2.16.5
 	github.com/gofrs/uuid v4.4.0+incompatible
 	github.com/google/go-containerregistry v0.20.3
 	github.com/google/go-github/v62 v62.0.0
@@ -72,7 +73,6 @@ require (
 	golang.org/x/exp v0.0.0-20250106191152-7588d65b2ba8
 	golang.org/x/oauth2 v0.25.0
 	google.golang.org/protobuf v1.36.5
-	gopkg.in/resty.v1 v1.12.0
 	gopkg.in/yaml.v3 v3.0.1
 	modernc.org/sqlite v1.34.5
 	oras.land/oras-go/v2 v2.5.0

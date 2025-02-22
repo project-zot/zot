@@ -15,10 +15,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-resty/resty/v2"
 	guuid "github.com/gofrs/uuid"
 	"github.com/project-zot/mockoidc"
 	. "github.com/smartystreets/goconvey/convey"
-	"gopkg.in/resty.v1"
 
 	"zotregistry.dev/zot/pkg/api"
 	"zotregistry.dev/zot/pkg/api/config"
