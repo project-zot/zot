@@ -119,11 +119,12 @@ func pullAndCollect(url string, repos []string, manifestItem manifestStruct,
 	func() {
 		start := time.Now()
 
-		var isConnFail, isErr bool
-
-		var statusCode int
-
-		var latency time.Duration
+		var (
+			isConnFail, isErr bool
+			statusCode        int
+			latency           time.Duration
+			err               error
+		)
 
 		defer func() {
 			// send a stats record
@@ -132,6 +133,7 @@ func pullAndCollect(url string, repos []string, manifestItem manifestStruct,
 				statusCode: statusCode,
 				isConnFail: isConnFail,
 				isErr:      isErr,
+				err:        err,
 			}
 		}()
 
@@ -144,8 +146,10 @@ func pullAndCollect(url string, repos []string, manifestItem manifestStruct,
 		for repo, manifestTag := range manifestHash {
 			manifestLoc := fmt.Sprintf("%s/v2/%s/manifests/%s", url, repo, manifestTag)
 
+			var resp *resty.Response
+
 			// check manifest
-			resp, err := client.R().
+			resp, err = client.R().
 				SetHeader("Content-Type", "application/vnd.oci.image.manifest.v1+json").
 				Head(manifestLoc)
 
@@ -261,7 +265,7 @@ func pullAndCollect(url string, repos []string, manifestItem manifestStruct,
 				blobLoc := fmt.Sprintf("%s/v2/%s/blobs/%s", url, repo, blobDigest)
 
 				// check blob
-				resp, err := client.R().Head(blobLoc)
+				resp, err = client.R().Head(blobLoc)
 
 				latency = time.Since(start)
 
@@ -476,11 +480,12 @@ func pushMonolithAndCollect(workdir, url, trepo string, count int,
 	func() {
 		start := time.Now()
 
-		var isConnFail, isErr bool
-
-		var statusCode int
-
-		var latency time.Duration
+		var (
+			isConnFail, isErr bool
+			statusCode        int
+			latency           time.Duration
+			err               error
+		)
 
 		defer func() {
 			// send a stats record
@@ -489,6 +494,7 @@ func pushMonolithAndCollect(workdir, url, trepo string, count int,
 				statusCode: statusCode,
 				isConnFail: isConnFail,
 				isErr:      isErr,
+				err:        err,
 			}
 		}()
 
@@ -680,11 +686,12 @@ func pushChunkAndCollect(workdir, url, trepo string, count int,
 	func() {
 		start := time.Now()
 
-		var isConnFail, isErr bool
-
-		var statusCode int
-
-		var latency time.Duration
+		var (
+			isConnFail, isErr bool
+			statusCode        int
+			latency           time.Duration
+			err               error
+		)
 
 		defer func() {
 			// send a stats record
@@ -693,6 +700,7 @@ func pushChunkAndCollect(workdir, url, trepo string, count int,
 				statusCode: statusCode,
 				isConnFail: isConnFail,
 				isErr:      isErr,
+				err:        err,
 			}
 		}()
 
