@@ -1,0 +1,33 @@
+{
+    "distSpecVersion": "1.1.0",
+    "storage": {
+        "rootDirectory": "/tmp/zot"
+    },
+    "http": {
+        "address": "127.0.0.1",
+        "port": "8080",
+        "compat": [
+            "docker2s2"
+        ]
+    },
+    "log": {
+        "level": "debug"
+    },
+    "extensions": {
+        "sync": {
+            "enable": true,
+            "credentialsFile": "./examples/sync-auth-filepath.json",
+            "registries": [
+                {
+                    "urls": [
+                        "https://index.docker.io"
+                    ],
+                    "onDemand": true,
+                    "tlsVerify": true,
+                    "retryDelay": "5m",
+                    "preserveDigest": true
+                }
+            ]
+        }
+    }
+}

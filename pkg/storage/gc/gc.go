@@ -322,7 +322,7 @@ func (gc GarbageCollect) removeReferrer(repo string, index *ispec.Index, manifes
 	// cosign
 	tag, ok := getDescriptorTag(manifestDesc)
 	if ok {
-		if isCosignTag(tag) {
+		if zcommon.IsCosignTag(tag) {
 			subjectDigest := getSubjectFromCosignTag(tag)
 			referenced := isManifestReferencedInIndex(index, subjectDigest)
 
@@ -783,16 +783,6 @@ func getDescriptorTag(desc ispec.Descriptor) (string, bool) {
 	tag, ok := desc.Annotations[ispec.AnnotationRefName]
 
 	return tag, ok
-}
-
-// this function will check if tag is a cosign tag (signature or sbom).
-func isCosignTag(tag string) bool {
-	if strings.HasPrefix(tag, "sha256-") &&
-		(strings.HasSuffix(tag, cosignSignatureTagSuffix) || strings.HasSuffix(tag, SBOMTagSuffix)) {
-		return true
-	}
-
-	return false
 }
 
 /*
