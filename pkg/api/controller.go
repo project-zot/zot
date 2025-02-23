@@ -50,6 +50,8 @@ type Controller struct {
 	SyncOnDemand    SyncOnDemand
 	RelyingParties  map[string]rp.RelyingParty
 	CookieStore     *CookieStore
+	HTPasswd        *HTPasswd
+	HTPasswdWatcher *HTPasswdWatcher
 	LDAPClient      *LDAPClient
 	taskScheduler   *scheduler.Scheduler
 	// runtime params
@@ -98,8 +100,17 @@ func NewController(appConfig *config.Config) *Controller {
 			Str("clusterMemberIndex", strconv.Itoa(memberSocketIdx)).Logger()
 	}
 
+	htp := NewHTPasswd(logger)
+
+	htw, err := NewHTPasswdWatcher(htp, "")
+	if err != nil {
+		logger.Panic().Err(err).Msg("failed to create htpasswd watcher")
+	}
+
 	controller.Config = appConfig
 	controller.Log = logger
+	controller.HTPasswd = htp
+	controller.HTPasswdWatcher = htw
 
 	if appConfig.Log.Audit != "" {
 		audit := log.NewAuditLogger(appConfig.Log.Level, appConfig.Log.Audit)
@@ -283,6 +294,13 @@ func (c *Controller) Init() error {
 
 	c.InitCVEInfo()
 
+	if c.Config.IsHtpasswdAuthEnabled() {
+		err := c.HTPasswdWatcher.ChangeFile(c.Config.HTTP.Auth.HTPasswd.Path)
+		if err != nil {
+			return err
+		}
+	}
+
 	return nil
 }
 
@@ -362,7 +380,13 @@ func (c *Controller) LoadNewConfig(newConfig *config.Config) {
 	c.Config.HTTP.AccessControl = newConfig.HTTP.AccessControl
 
 	if c.Config.HTTP.Auth != nil {
+		c.Config.HTTP.Auth.HTPasswd = newConfig.HTTP.Auth.HTPasswd
 		c.Config.HTTP.Auth.LDAP = newConfig.HTTP.Auth.LDAP
+
+		err := c.HTPasswdWatcher.ChangeFile(c.Config.HTTP.Auth.HTPasswd.Path)
+		if err != nil {
+			c.Log.Error().Err(err).Msg("failed to change watched htpasswd file")
+		}
 
 		if c.LDAPClient != nil {
 			c.LDAPClient.lock.Lock()
@@ -370,6 +394,8 @@ func (c *Controller) LoadNewConfig(newConfig *config.Config) {
 			c.LDAPClient.BindPassword = newConfig.HTTP.Auth.LDAP.BindPassword()
 			c.LDAPClient.lock.Unlock()
 		}
+	} else {
+		_ = c.HTPasswdWatcher.ChangeFile("")
 	}
 
 	// reload periodical gc config
