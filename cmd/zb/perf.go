@@ -126,7 +126,8 @@ type statsSummary struct {
 	statusHist           map[string]int
 	rps                  float32
 	mixedSize, mixedType bool
-	errors               int
+	errorCount           int
+	errors               []error
 }
 
 func newStatsSummary(name string) statsSummary {
@@ -147,11 +148,16 @@ type statsRecord struct {
 	statusCode int
 	isConnFail bool
 	isErr      bool
+	err        error
 }
 
 func updateStats(summary *statsSummary, record statsRecord) {
 	if record.isConnFail || record.isErr {
-		summary.errors++
+		summary.errorCount++
+	}
+
+	if record.err != nil {
+		summary.errors = append(summary.errors, record.err)
 	}
 
 	if summary.min < 0 || record.latency < summary.min {
@@ -208,9 +214,14 @@ func printStats(requests int, summary *statsSummary, outFmt string) {
 	log.Printf("============\n")
 	log.Printf("Test name:\t%s", summary.name)
 	log.Printf("Time taken for tests:\t%v", summary.total)
-	log.Printf("Complete requests:\t%v", requests-summary.errors)
-	log.Printf("Failed requests:\t%v", summary.errors)
 	log.Printf("Requests per second:\t%v", summary.rps)
+	log.Printf("Complete requests:\t%v", requests-summary.errorCount)
+	log.Printf("Failed requests:\t%v", summary.errorCount)
+
+	for _, err := range summary.errors {
+		log.Printf("Failure error:\t%v", err)
+	}
+
 	log.Printf("\n")
 
 	if summary.mixedSize {
@@ -306,6 +317,8 @@ func GetCatalog(
 
 			var latency time.Duration
 
+			var err error
+
 			defer func() {
 				// send a stats record
 				statsCh <- statsRecord{
@@ -313,6 +326,7 @@ func GetCatalog(
 					statusCode: statusCode,
 					isConnFail: isConnFail,
 					isErr:      isErr,
+					err:        err,
 				}
 			}()
 
@@ -749,7 +763,7 @@ func Perf(
 
 		printStats(requests, &summary, outFmt)
 
-		if summary.errors != 0 && !zbError {
+		if summary.errorCount != 0 && !zbError {
 			zbError = true
 		}
 	}
