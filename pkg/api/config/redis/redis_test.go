@@ -1,6 +1,8 @@
 package rediscfg_test
 
 import (
+	"context"
+	"io"
 	"os"
 	"path"
 	"testing"
@@ -14,6 +16,25 @@ import (
 	"zotregistry.dev/zot/pkg/cli/server"
 	"zotregistry.dev/zot/pkg/log"
 )
+
+func TestRedisLogger(t *testing.T) {
+	Convey("Print using Redis logger", t, func() {
+		logFile, err := os.CreateTemp(t.TempDir(), "zot-log*.txt")
+		So(err, ShouldBeNil)
+
+		logger := log.NewLogger("debug", logFile.Name())
+		writers := io.MultiWriter(os.Stdout, logFile)
+		logger.Logger = logger.Output(writers)
+
+		rlog := rediscfg.RedisLogger{logger}
+		rlog.Printf(context.Background(), "this is a rest string")
+
+		content, err := os.ReadFile(logFile.Name())
+		So(err, ShouldBeNil)
+
+		So(string(content), ShouldContainSubstring, "this is a rest string")
+	})
+}
 
 func TestRedisOptions(t *testing.T) {
 	Convey("Test redis initialization", t, func() {

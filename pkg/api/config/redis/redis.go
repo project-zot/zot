@@ -16,16 +16,16 @@ import (
 
 var once sync.Once //nolint: gochecknoglobals // redis.SetLogger modifies an unprotected global variable
 
-type redisLogger struct {
-	log log.Logger
+type RedisLogger struct {
+	Log log.Logger
 }
 
-func (r redisLogger) Printf(ctx context.Context, format string, v ...interface{}) {
-	r.log.Debug().Msgf(format, v...)
+func (r RedisLogger) Printf(ctx context.Context, format string, v ...interface{}) {
+	r.Log.Debug().Msgf(format, v...)
 }
 
 func GetRedisClient(redisConfig map[string]interface{}, log log.Logger) (redis.UniversalClient, error) {
-	once.Do(func() { redis.SetLogger(redisLogger{log}) }) // call redis.SetLogger only once
+	once.Do(func() { redis.SetLogger(RedisLogger{log}) }) // call redis.SetLogger only once
 
 	// go-redis supports connecting via the redis uri specification (more convenient than parameter parsing)
 	// Note failover/Sentinel cannot be configured via URL parsing at the moment

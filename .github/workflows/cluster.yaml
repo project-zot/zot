@@ -254,6 +254,8 @@ jobs:
           external-data-json-path: ./cache/benchmark-data.json
           # Workflow will fail when an alert happens
           fail-on-alert: true
+          # Show data in the job summary
+          summary-always: true
       # Upload the updated cache file for the next job by actions/cache
 
   minio-redis:
@@ -507,4 +509,6 @@ jobs:
           external-data-json-path: ./cache/benchmark-data.json
           # Workflow will fail when an alert happens
           fail-on-alert: true
+          # Show data in the job summary
+          summary-always: true
       # Upload the updated cache file for the next job by actions/cache
