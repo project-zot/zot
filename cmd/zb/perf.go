@@ -127,7 +127,7 @@ type statsSummary struct {
 	rps                  float32
 	mixedSize, mixedType bool
 	errorCount           int
-	errors               []error
+	errors               map[string]int
 }
 
 func newStatsSummary(name string) statsSummary {
@@ -157,7 +157,7 @@ func updateStats(summary *statsSummary, record statsRecord) {
 	}
 
 	if record.err != nil {
-		summary.errors = append(summary.errors, record.err)
+		summary.errors[record.err.Error()] += 1
 	}
 
 	if summary.min < 0 || record.latency < summary.min {
@@ -218,8 +218,8 @@ func printStats(requests int, summary *statsSummary, outFmt string) {
 	log.Printf("Complete requests:\t%v", requests-summary.errorCount)
 	log.Printf("Failed requests:\t%v", summary.errorCount)
 
-	for _, err := range summary.errors {
-		log.Printf("Failure error:\t%v", err)
+	for errStr, count := range summary.errors {
+		log.Printf("Error %s count:\t%d", errStr, count)
 	}
 
 	log.Printf("\n")
