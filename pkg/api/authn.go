@@ -454,7 +454,7 @@ func bearerAuthHandler(ctlr *Controller) mux.MiddlewareFunc {
 				}
 			}
 
-			err = authorizer.Authorize(header, requestedAccess)
+			err := authorizer.Authorize(header, requestedAccess)
 			if err != nil {
 				var challenge *authChallenge
 				if errors.As(err, &challenge) {
