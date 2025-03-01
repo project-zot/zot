@@ -33,6 +33,7 @@ require (
 	github.com/go-redis/redismock/v9 v9.2.0
 	github.com/go-redsync/redsync/v4 v4.13.0
 	github.com/gofrs/uuid v4.4.0+incompatible
+	github.com/golang-jwt/jwt/v5 v5.2.1
 	github.com/google/go-containerregistry v0.20.3
 	github.com/google/go-github/v62 v62.0.0
 	github.com/google/uuid v1.6.0
@@ -273,7 +274,6 @@ require (
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/golang-jwt/jwt v3.2.2+incompatible // indirect
 	github.com/golang-jwt/jwt/v4 v4.5.1 // indirect
-	github.com/golang-jwt/jwt/v5 v5.2.1 // indirect
 	github.com/golang/groupcache v0.0.0-20241129210726-2c02b8208cf8 // indirect
 	github.com/golang/protobuf v1.5.4 // indirect
 	github.com/golang/snappy v0.0.4 // indirect
