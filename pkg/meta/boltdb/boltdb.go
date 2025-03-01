@@ -17,6 +17,7 @@ import (
 	zerr "zotregistry.dev/zot/errors"
 	"zotregistry.dev/zot/pkg/api/constants"
 	zcommon "zotregistry.dev/zot/pkg/common"
+	"zotregistry.dev/zot/pkg/compat"
 	"zotregistry.dev/zot/pkg/log"
 	"zotregistry.dev/zot/pkg/meta/common"
 	mConvert "zotregistry.dev/zot/pkg/meta/convert"
@@ -142,13 +143,13 @@ func (bdw *BoltDB) SetImageMeta(digest godigest.Digest, imageMeta mTypes.ImageMe
 
 		protoImageMeta := &proto_go.ImageMeta{}
 
-		switch imageMeta.MediaType {
-		case ispec.MediaTypeImageManifest:
+		if imageMeta.MediaType == ispec.MediaTypeImageManifest ||
+			compat.IsCompatibleManifestMediaType(imageMeta.MediaType) {
 			manifest := imageMeta.Manifests[0]
-
 			protoImageMeta = mConvert.GetProtoImageManifestData(manifest.Manifest, manifest.Config,
 				manifest.Size, manifest.Digest.String())
-		case ispec.MediaTypeImageIndex:
+		} else if imageMeta.MediaType == ispec.MediaTypeImageIndex ||
+			compat.IsCompatibleManifestListMediaType(imageMeta.MediaType) {
 			protoImageMeta = mConvert.GetProtoImageIndexMeta(*imageMeta.Index, imageMeta.Size, imageMeta.Digest.String())
 		}
 
@@ -399,7 +400,8 @@ func (bdw *BoltDB) FilterImageMeta(ctx context.Context, digests []string,
 				return err
 			}
 
-			if protoImageMeta.MediaType == ispec.MediaTypeImageIndex {
+			if protoImageMeta.MediaType == ispec.MediaTypeImageIndex ||
+				compat.IsCompatibleManifestListMediaType(protoImageMeta.MediaType) {
 				_, manifestDataList, err := getAllContainedMeta(imageBuck, protoImageMeta)
 				if err != nil {
 					return err
@@ -487,16 +489,26 @@ func getAllContainedMeta(imageBuck *bbolt.Bucket, imageIndexData *proto_go.Image
 	imageMetaList := make([]*proto_go.ImageMeta, 0, len(imageIndexData.Index.Index.Manifests))
 
 	for _, manifest := range imageIndexData.Index.Index.Manifests {
+		if manifest.MediaType != ispec.MediaTypeImageManifest &&
+			manifest.MediaType != ispec.MediaTypeImageIndex &&
+			!compat.IsCompatibleManifestMediaType(manifest.MediaType) &&
+			!compat.IsCompatibleManifestListMediaType(manifest.MediaType) {
+			// filter out unexpected media types from the manifest lists,
+			// this could be the case of buildkit cache entries for example
+			continue
+		}
+
 		imageManifestData, err := getProtoImageMeta(imageBuck, manifest.Digest)
 		if err != nil {
 			return imageMetaList, manifestDataList, err
 		}
 
-		switch imageManifestData.MediaType {
-		case ispec.MediaTypeImageManifest:
+		if imageManifestData.MediaType == ispec.MediaTypeImageManifest ||
+			compat.IsCompatibleManifestMediaType(imageManifestData.MediaType) {
 			imageMetaList = append(imageMetaList, imageManifestData)
 			manifestDataList = append(manifestDataList, imageManifestData.Manifests[0])
-		case ispec.MediaTypeImageIndex:
+		} else if imageManifestData.MediaType == ispec.MediaTypeImageIndex ||
+			compat.IsCompatibleManifestListMediaType(imageManifestData.MediaType) {
 			partialImageDataList, partialManifestDataList, err := getAllContainedMeta(imageBuck, imageManifestData)
 			if err != nil {
 				return imageMetaList, manifestDataList, err
@@ -555,8 +567,8 @@ func (bdw *BoltDB) SearchTags(ctx context.Context, searchText string,
 
 			var protoImageMeta *proto_go.ImageMeta
 
-			switch descriptor.MediaType {
-			case ispec.MediaTypeImageManifest:
+			if descriptor.MediaType == ispec.MediaTypeImageManifest || //nolint:gocritic
+				compat.IsCompatibleManifestMediaType(descriptor.MediaType) {
 				manifestDigest := descriptor.Digest
 
 				imageManifestData, err := getProtoImageMeta(imageBuck, manifestDigest)
@@ -566,7 +578,8 @@ func (bdw *BoltDB) SearchTags(ctx context.Context, searchText string,
 				}
 
 				protoImageMeta = imageManifestData
-			case ispec.MediaTypeImageIndex:
+			} else if descriptor.MediaType == ispec.MediaTypeImageIndex ||
+				compat.IsCompatibleManifestListMediaType(descriptor.MediaType) {
 				indexDigest := descriptor.Digest
 
 				imageIndexData, err := getProtoImageMeta(imageBuck, indexDigest)
@@ -583,7 +596,7 @@ func (bdw *BoltDB) SearchTags(ctx context.Context, searchText string,
 				imageIndexData.Manifests = manifestDataList
 
 				protoImageMeta = imageIndexData
-			default:
+			} else {
 				bdw.Log.Error().Str("mediaType", descriptor.MediaType).Msg("unsupported media type")
 
 				continue
@@ -637,8 +650,8 @@ func (bdw *BoltDB) FilterTags(ctx context.Context, filterRepoTag mTypes.FilterRe
 					continue
 				}
 
-				switch descriptor.MediaType {
-				case ispec.MediaTypeImageManifest:
+				if descriptor.MediaType == ispec.MediaTypeImageManifest || //nolint:gocritic
+					compat.IsCompatibleManifestMediaType(descriptor.MediaType) {
 					manifestDigest := descriptor.Digest
 
 					imageManifestData, err := getProtoImageMeta(imageMetaBuck, manifestDigest)
@@ -653,7 +666,8 @@ func (bdw *BoltDB) FilterTags(ctx context.Context, filterRepoTag mTypes.FilterRe
 					if filterFunc(repoMeta, imageMeta) {
 						images = append(images, mConvert.GetFullImageMetaFromProto(tag, protoRepoMeta, imageManifestData))
 					}
-				case ispec.MediaTypeImageIndex:
+				} else if descriptor.MediaType == ispec.MediaTypeImageIndex ||
+					compat.IsCompatibleManifestListMediaType(descriptor.MediaType) {
 					indexDigest := descriptor.Digest
 
 					protoImageIndexMeta, err := getProtoImageMeta(imageMetaBuck, indexDigest)
@@ -687,7 +701,7 @@ func (bdw *BoltDB) FilterTags(ctx context.Context, filterRepoTag mTypes.FilterRe
 
 						images = append(images, mConvert.GetFullImageMetaFromProto(tag, protoRepoMeta, protoImageIndexMeta))
 					}
-				default:
+				} else {
 					bdw.Log.Error().Str("mediaType", descriptor.MediaType).Msg("unsupported media type")
 
 					continue
@@ -812,7 +826,8 @@ func (bdw *BoltDB) GetFullImageMeta(ctx context.Context, repo string, tag string
 			return err
 		}
 
-		if protoImageMeta.MediaType == ispec.MediaTypeImageIndex {
+		if protoImageMeta.MediaType == ispec.MediaTypeImageIndex ||
+			compat.IsCompatibleManifestListMediaType(protoImageMeta.MediaType) {
 			_, manifestDataList, err := getAllContainedMeta(imageBuck, protoImageMeta)
 			if err != nil {
 				return err
@@ -838,7 +853,8 @@ func (bdw *BoltDB) GetImageMeta(digest godigest.Digest) (mTypes.ImageMeta, error
 			return err
 		}
 
-		if protoImageMeta.MediaType == ispec.MediaTypeImageIndex {
+		if protoImageMeta.MediaType == ispec.MediaTypeImageIndex ||
+			compat.IsCompatibleManifestListMediaType(protoImageMeta.MediaType) {
 			_, manifestDataList, err := getAllContainedMeta(imageBuck, protoImageMeta)
 			if err != nil {
 				return err

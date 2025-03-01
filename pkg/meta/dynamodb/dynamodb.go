@@ -19,6 +19,7 @@ import (
 	zerr "zotregistry.dev/zot/errors"
 	"zotregistry.dev/zot/pkg/api/constants"
 	zcommon "zotregistry.dev/zot/pkg/common"
+	"zotregistry.dev/zot/pkg/compat"
 	"zotregistry.dev/zot/pkg/log"
 	"zotregistry.dev/zot/pkg/meta/common"
 	mConvert "zotregistry.dev/zot/pkg/meta/convert"
@@ -228,10 +229,19 @@ func (dwr *DynamoDB) getAllContainedMeta(ctx context.Context, imageIndexData *pr
 ) ([]*proto_go.ImageMeta, []*proto_go.ManifestMeta, error) {
 	manifestDataList := make([]*proto_go.ManifestMeta, 0, len(imageIndexData.Index.Index.Manifests))
 	imageMetaList := make([]*proto_go.ImageMeta, 0, len(imageIndexData.Index.Index.Manifests))
-
 	manifestDigests := make([]string, 0, len(imageIndexData.Index.Index.Manifests))
-	for i := range imageIndexData.Index.Index.Manifests {
-		manifestDigests = append(manifestDigests, imageIndexData.Index.Index.Manifests[i].Digest)
+
+	for _, manifest := range imageIndexData.Index.Index.Manifests {
+		if manifest.MediaType != ispec.MediaTypeImageManifest &&
+			manifest.MediaType != ispec.MediaTypeImageIndex &&
+			!compat.IsCompatibleManifestMediaType(manifest.MediaType) &&
+			!compat.IsCompatibleManifestListMediaType(manifest.MediaType) {
+			// filter out unexpected media types from the manifest lists,
+			// this could be the case of buildkit cache entries for example
+			continue
+		}
+
+		manifestDigests = append(manifestDigests, manifest.Digest)
 	}
 
 	manifestsAttributes, err := dwr.fetchImageMetaAttributesByDigest(ctx, manifestDigests)
@@ -245,11 +255,12 @@ func (dwr *DynamoDB) getAllContainedMeta(ctx context.Context, imageIndexData *pr
 			return imageMetaList, manifestDataList, err
 		}
 
-		switch imageManifestData.MediaType {
-		case ispec.MediaTypeImageManifest:
+		if imageManifestData.MediaType == ispec.MediaTypeImageManifest ||
+			compat.IsCompatibleManifestMediaType(imageManifestData.MediaType) {
 			imageMetaList = append(imageMetaList, imageManifestData)
 			manifestDataList = append(manifestDataList, imageManifestData.Manifests[0])
-		case ispec.MediaTypeImageIndex:
+		} else if imageManifestData.MediaType == ispec.MediaTypeImageIndex ||
+			compat.IsCompatibleManifestListMediaType(imageManifestData.MediaType) {
 			partialImageDataList, partialManifestDataList, err := dwr.getAllContainedMeta(ctx, imageManifestData)
 			if err != nil {
 				return imageMetaList, manifestDataList, err
@@ -659,8 +670,8 @@ func (dwr *DynamoDB) SearchTags(ctx context.Context, searchText string) ([]mType
 
 		var protoImageMeta *proto_go.ImageMeta
 
-		switch descriptor.MediaType {
-		case ispec.MediaTypeImageManifest:
+		if descriptor.MediaType == ispec.MediaTypeImageManifest || //nolint:gocritic
+			compat.IsCompatibleManifestMediaType(descriptor.MediaType) {
 			manifestDigest := descriptor.Digest
 
 			imageManifestData, err := dwr.GetProtoImageMeta(ctx, godigest.Digest(manifestDigest))
@@ -670,7 +681,8 @@ func (dwr *DynamoDB) SearchTags(ctx context.Context, searchText string) ([]mType
 			}
 
 			protoImageMeta = imageManifestData
-		case ispec.MediaTypeImageIndex:
+		} else if descriptor.MediaType == ispec.MediaTypeImageIndex ||
+			compat.IsCompatibleManifestListMediaType(descriptor.MediaType) {
 			indexDigest := godigest.Digest(descriptor.Digest)
 
 			imageIndexData, err := dwr.GetProtoImageMeta(ctx, indexDigest)
@@ -687,7 +699,7 @@ func (dwr *DynamoDB) SearchTags(ctx context.Context, searchText string) ([]mType
 			imageIndexData.Manifests = manifestDataList
 
 			protoImageMeta = imageIndexData
-		default:
+		} else {
 			dwr.Log.Error().Str("mediaType", descriptor.MediaType).Msg("unsupported media type")
 
 			continue
@@ -741,8 +753,8 @@ func (dwr *DynamoDB) FilterTags(ctx context.Context, filterRepoTag mTypes.Filter
 				continue
 			}
 
-			switch descriptor.MediaType {
-			case ispec.MediaTypeImageManifest:
+			if descriptor.MediaType == ispec.MediaTypeImageManifest || //nolint:gocritic
+				compat.IsCompatibleManifestMediaType(descriptor.MediaType) {
 				manifestDigest := descriptor.Digest
 
 				imageManifestData, err := dwr.GetProtoImageMeta(ctx, godigest.Digest(manifestDigest))
@@ -757,7 +769,8 @@ func (dwr *DynamoDB) FilterTags(ctx context.Context, filterRepoTag mTypes.Filter
 				if filterFunc(repoMeta, imageMeta) {
 					images = append(images, mConvert.GetFullImageMetaFromProto(tag, protoRepoMeta, imageManifestData))
 				}
-			case ispec.MediaTypeImageIndex:
+			} else if descriptor.MediaType == ispec.MediaTypeImageIndex ||
+				compat.IsCompatibleManifestListMediaType(descriptor.MediaType) {
 				indexDigest := descriptor.Digest
 
 				protoImageIndexMeta, err := dwr.GetProtoImageMeta(ctx, godigest.Digest(indexDigest))
@@ -791,7 +804,7 @@ func (dwr *DynamoDB) FilterTags(ctx context.Context, filterRepoTag mTypes.Filter
 
 					images = append(images, mConvert.GetFullImageMetaFromProto(tag, protoRepoMeta, protoImageIndexMeta))
 				}
-			default:
+			} else {
 				dwr.Log.Error().Str("mediaType", descriptor.MediaType).Msg("unsupported media type")
 
 				continue
@@ -896,7 +909,8 @@ func (dwr *DynamoDB) GetFullImageMeta(ctx context.Context, repo string, tag stri
 		return mTypes.FullImageMeta{}, err
 	}
 
-	if protoImageMeta.MediaType == ispec.MediaTypeImageIndex {
+	if protoImageMeta.MediaType == ispec.MediaTypeImageIndex ||
+		compat.IsCompatibleManifestListMediaType(protoImageMeta.MediaType) {
 		_, manifestDataList, err := dwr.getAllContainedMeta(ctx, protoImageMeta)
 		if err != nil {
 			return mTypes.FullImageMeta{}, err
@@ -923,7 +937,8 @@ func (dwr *DynamoDB) GetImageMeta(digest godigest.Digest) (mTypes.ImageMeta, err
 		return mTypes.ImageMeta{}, err
 	}
 
-	if protoImageMeta.MediaType == ispec.MediaTypeImageIndex {
+	if protoImageMeta.MediaType == ispec.MediaTypeImageIndex ||
+		compat.IsCompatibleManifestListMediaType(protoImageMeta.MediaType) {
 		_, manifestDataList, err := dwr.getAllContainedMeta(context.Background(), protoImageMeta)
 		if err != nil {
 			return mTypes.ImageMeta{}, err
@@ -1344,7 +1359,8 @@ func (dwr *DynamoDB) FilterImageMeta(ctx context.Context, digests []string,
 			return nil, err
 		}
 
-		if protoImageMeta.MediaType == ispec.MediaTypeImageIndex {
+		if protoImageMeta.MediaType == ispec.MediaTypeImageIndex ||
+			compat.IsCompatibleManifestListMediaType(protoImageMeta.MediaType) {
 			_, manifestDataList, err := dwr.getAllContainedMeta(context.Background(), protoImageMeta)
 			if err != nil {
 				return nil, err
