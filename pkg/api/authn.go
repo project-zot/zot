@@ -2,21 +2,21 @@ package api
 
 import (
 	"context"
+	"crypto"
 	"crypto/sha256"
 	"crypto/x509"
 	"encoding/base64"
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"github.com/golang-jwt/jwt/v5"
 	"net"
 	"net/http"
 	"os"
-	"regexp"
 	"strconv"
 	"strings"
 	"time"
 
-	"github.com/chartmuseum/auth"
 	guuid "github.com/gofrs/uuid"
 	"github.com/google/go-github/v62/github"
 	"github.com/google/uuid"
@@ -39,9 +39,8 @@ import (
 )
 
 const (
-	bearerAuthDefaultAccessEntryType = "repository"
-	issuedAtOffset                   = 5 * time.Second
-	relyingPartyCookieMaxAge         = 120
+	issuedAtOffset           = 5 * time.Second
+	relyingPartyCookieMaxAge = 120
 )
 
 type AuthnMiddleware struct {
@@ -404,16 +403,16 @@ func (amw *AuthnMiddleware) tryAuthnHandlers(ctlr *Controller) mux.MiddlewareFun
 }
 
 func bearerAuthHandler(ctlr *Controller) mux.MiddlewareFunc {
-	authorizer, err := auth.NewAuthorizer(&auth.AuthorizerOptions{
-		Realm:                 ctlr.Config.HTTP.Auth.Bearer.Realm,
-		Service:               ctlr.Config.HTTP.Auth.Bearer.Service,
-		PublicKeyPath:         ctlr.Config.HTTP.Auth.Bearer.Cert,
-		AccessEntryType:       bearerAuthDefaultAccessEntryType,
-		EmptyDefaultNamespace: true,
-	})
+	pubKey, err := loadPublicKeyFromFile(ctlr.Config.HTTP.Auth.Bearer.Cert)
 	if err != nil {
-		ctlr.Log.Panic().Err(err).Msg("failed to create bearer authorizer")
+		ctlr.Log.Panic().Err(err).Msg("failed to load signing key for bearer authentication")
 	}
+
+	authorizer := newBearerAuthorizer(
+		ctlr.Config.HTTP.Auth.Bearer.Realm,
+		ctlr.Config.HTTP.Auth.Bearer.Service,
+		pubKey,
+	)
 
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
@@ -425,8 +424,6 @@ func bearerAuthHandler(ctlr *Controller) mux.MiddlewareFunc {
 			}
 
 			acCtrlr := NewAccessController(ctlr.Config)
-			vars := mux.Vars(request)
-			name := vars["name"]
 
 			// we want to bypass auth for mgmt route
 			isMgmtRequested := request.RequestURI == constants.FullMgmt
@@ -439,67 +436,39 @@ func bearerAuthHandler(ctlr *Controller) mux.MiddlewareFunc {
 				return
 			}
 
-			action := auth.PullAction
-			if m := request.Method; m != http.MethodGet && m != http.MethodHead {
-				action = auth.PushAction
+			var requestedAccess *resourceAction
+			if request.RequestURI != "/v2/" {
+				// if this is not the base route, the requested repository/action must be authorized
+				vars := mux.Vars(request)
+				name := vars["name"]
+
+				action := "pull"
+				if m := request.Method; m != http.MethodGet && m != http.MethodHead {
+					action = "push"
+				}
+
+				requestedAccess = &resourceAction{
+					Type:   "repository",
+					Name:   name,
+					Action: action,
+				}
 			}
 
-			var permissions *auth.Permission
-
-			// Empty scope should be allowed according to the distribution auth spec
-			// This is only necessary for the bearer auth type
-			if request.RequestURI == "/v2/" && authorizer.Type == auth.BearerAuthAuthorizerType {
-				if header == "" {
-					// first request that clients make (without any header)
-					WWWAuthenticateHeader := fmt.Sprintf("Bearer realm=\"%s\",service=\"%s\",scope=\"\"",
-						authorizer.Realm, authorizer.Service)
-
-					permissions = &auth.Permission{
-						// challenge for the client to use to authenticate to /v2/
-						WWWAuthenticateHeader: WWWAuthenticateHeader,
-						Allowed:               false,
-					}
-				} else {
-					// subsequent requests with token on /v2/
-					bearerTokenMatch := regexp.MustCompile("(?i)bearer (.*)")
-
-					signedString := bearerTokenMatch.ReplaceAllString(header, "$1")
-
-					// If the token is valid, our job is done
-					// Since this is the /v2 base path and we didn't pass a scope to the auth header in the previous step
-					// there is no access check to enforce
-					_, err := authorizer.TokenDecoder.DecodeToken(signedString)
-					if err != nil {
-						ctlr.Log.Error().Err(err).Msg("failed to parse Authorization header")
-						response.Header().Set("Content-Type", "application/json")
-						zcommon.WriteJSON(response, http.StatusUnauthorized, apiErr.NewError(apiErr.UNSUPPORTED))
-
-						return
-					}
-
-					permissions = &auth.Permission{
-						Allowed: true,
-					}
-				}
-			} else {
-				var err error
-
-				// subsequent requests with token on /v2/<resource>/
-				permissions, err = authorizer.Authorize(header, action, name)
-				if err != nil {
-					ctlr.Log.Error().Err(err).Msg("failed to parse Authorization header")
+			err = authorizer.Authorize(header, requestedAccess)
+			if err != nil {
+				var challenge *authChallenge
+				if errors.As(err, &challenge) {
+					ctlr.Log.Debug().Err(challenge.err).Msg("bearer token authorization failed")
 					response.Header().Set("Content-Type", "application/json")
-					zcommon.WriteJSON(response, http.StatusInternalServerError, apiErr.NewError(apiErr.UNSUPPORTED))
+					response.Header().Set("WWW-Authenticate", challenge.Header())
+					zcommon.WriteJSON(response, http.StatusUnauthorized, apiErr.NewError(apiErr.UNAUTHORIZED))
 
 					return
 				}
-			}
 
-			if !permissions.Allowed {
+				ctlr.Log.Error().Err(err).Msg("failed to parse Authorization header")
 				response.Header().Set("Content-Type", "application/json")
-				response.Header().Set("WWW-Authenticate", permissions.WWWAuthenticateHeader)
-
-				zcommon.WriteJSON(response, http.StatusUnauthorized, apiErr.NewError(apiErr.UNAUTHORIZED))
+				zcommon.WriteJSON(response, http.StatusUnauthorized, apiErr.NewError(apiErr.UNSUPPORTED))
 
 				return
 			}
@@ -931,4 +900,37 @@ func GenerateAPIKey(uuidGenerator guuid.Generator, log log.Logger,
 	}
 
 	return apiKey, apiKeyID.String(), err
+}
+
+func loadPublicKeyFromFile(path string) (crypto.PublicKey, error) {
+	d, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read certificate file %s: %w", path, err)
+	}
+
+	rsaKey, err := jwt.ParseRSAPublicKeyFromPEM(d)
+	if err == nil {
+		return rsaKey, nil
+	}
+	if !errors.Is(err, jwt.ErrNotRSAPublicKey) {
+		return nil, err
+	}
+
+	ecKey, err := jwt.ParseECPublicKeyFromPEM(d)
+	if err == nil {
+		return ecKey, nil
+	}
+	if !errors.Is(err, jwt.ErrNotECPublicKey) {
+		return nil, err
+	}
+
+	edKey, err := jwt.ParseEdPublicKeyFromPEM(d)
+	if err == nil {
+		return edKey, nil
+	}
+	if !errors.Is(err, jwt.ErrNotEdPublicKey) {
+		return nil, err
+	}
+
+	return nil, errors.New("invalid public key given")
 }
