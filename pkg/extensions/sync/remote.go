@@ -145,12 +145,10 @@ func (registry *RemoteRegistry) GetOCIManifest(ctx context.Context, repo, refere
 
 	switch man.GetDescriptor().MediaType {
 	case mediatype.Docker2Manifest:
-		buf, desc, err = convertDockerManifestToOCI(ctx, man, imageReference, registry.client)
+		buf, desc, err = convertDockerManifestToOCI(ctx, man, man.GetDescriptor(), imageReference, registry.client)
 		isConverted = true
 	case mediatype.Docker2ManifestList:
-		seen := []godigest.Digest{}
-
-		buf, desc, err = convertDockerListToOCI(ctx, man, imageReference, seen, registry.client)
+		buf, desc, err = convertDockerListToOCI(ctx, man, imageReference, registry.client)
 		isConverted = true
 	case mediatype.OCI1Manifest, mediatype.OCI1ManifestList:
 		buf, err = man.MarshalJSON()
@@ -178,17 +176,12 @@ func (registry *RemoteRegistry) GetTags(ctx context.Context, repo string) ([]str
 	return tl.GetTags()
 }
 
-func convertDockerListToOCI(ctx context.Context, man manifest.Manifest, imageReference ref.Ref, seen []godigest.Digest,
+func convertDockerListToOCI(ctx context.Context, man manifest.Manifest, imageReference ref.Ref,
 	regclient *regclient.RegClient,
 ) (
 	[]byte, ispec.Descriptor, error,
 ) {
 	var index ispec.Index
-
-	// seen
-	if common.Contains(seen, man.GetDescriptor().Digest) {
-		return nil, ispec.Descriptor{}, nil
-	}
 
 	index.SchemaVersion = 2
 	index.Manifests = []ispec.Descriptor{}
@@ -224,13 +217,13 @@ func convertDockerListToOCI(ctx context.Context, man manifest.Manifest, imageRef
 
 		switch manEntry.GetDescriptor().MediaType {
 		case mediatype.Docker2Manifest:
-			_, desc, err = convertDockerManifestToOCI(ctx, manEntry, ref, regclient)
+			_, desc, err = convertDockerManifestToOCI(ctx, manEntry, manDesc, ref, regclient)
 			if err != nil {
 				return nil, ispec.Descriptor{}, err
 			}
 
 		case mediatype.Docker2ManifestList:
-			_, desc, err = convertDockerListToOCI(ctx, manEntry, ref, seen, regclient)
+			_, desc, err = convertDockerListToOCI(ctx, manEntry, ref, regclient)
 			if err != nil {
 				return nil, ispec.Descriptor{}, err
 			}
@@ -238,27 +231,10 @@ func convertDockerListToOCI(ctx context.Context, man manifest.Manifest, imageRef
 			return nil, ispec.Descriptor{}, err
 		}
 
-		// copy desc platform from docker desc
-		if manDesc.Platform != nil {
-			desc.Platform = &ispec.Platform{
-				Architecture: manDesc.Platform.Architecture,
-				OS:           manDesc.Platform.OS,
-				OSVersion:    manDesc.Platform.OSVersion,
-				OSFeatures:   manDesc.Platform.OSFeatures,
-				Variant:      manDesc.Platform.Variant,
-			}
-		}
-
 		index.Manifests = append(index.Manifests, desc)
 	}
 
 	index.Annotations = ociIndex.Annotations
-	index.ArtifactType = ociIndex.ArtifactType
-
-	if ociIndex.Subject != nil {
-		subject := toOCIDescriptor(*ociIndex.Subject)
-		index.Subject = &subject
-	}
 
 	indexBuf, err := json.Marshal(index)
 	if err != nil {
@@ -274,8 +250,8 @@ func convertDockerListToOCI(ctx context.Context, man manifest.Manifest, imageRef
 	return indexBuf, indexDesc, nil
 }
 
-func convertDockerManifestToOCI(ctx context.Context, man manifest.Manifest, imageReference ref.Ref,
-	regclient *regclient.RegClient,
+func convertDockerManifestToOCI(ctx context.Context, man manifest.Manifest, desc descriptor.Descriptor,
+	imageReference ref.Ref, regclient *regclient.RegClient,
 ) (
 	[]byte, ispec.Descriptor, error,
 ) {
@@ -286,12 +262,12 @@ func convertDockerManifestToOCI(ctx context.Context, man manifest.Manifest, imag
 
 	var ociManifest ispec.Manifest
 
-	manifest, err := man.RawBody()
+	manifestBuf, err := man.RawBody()
 	if err != nil {
 		return nil, ispec.Descriptor{}, zerr.ErrMediaTypeNotSupported
 	}
 
-	if err := json.Unmarshal(manifest, &ociManifest); err != nil {
+	if err := json.Unmarshal(manifestBuf, &ociManifest); err != nil {
 		return nil, ispec.Descriptor{}, err
 	}
 
@@ -328,16 +304,16 @@ func convertDockerManifestToOCI(ctx context.Context, man manifest.Manifest, imag
 		ociManifest.Layers = append(ociManifest.Layers, toOCIDescriptor(layerDesc))
 	}
 
-	manifestBuf, err := json.Marshal(ociManifest)
+	ociManifestBuf, err := json.Marshal(ociManifest)
 	if err != nil {
 		return nil, ispec.Descriptor{}, err
 	}
 
-	manifestDesc := toOCIDescriptor(man.GetDescriptor())
+	manifestDesc := toOCIDescriptor(desc)
 
 	manifestDesc.MediaType = ispec.MediaTypeImageManifest
-	manifestDesc.Digest = godigest.FromBytes(manifestBuf)
-	manifestDesc.Size = int64(len(manifestBuf))
+	manifestDesc.Digest = godigest.FromBytes(ociManifestBuf)
+	manifestDesc.Size = int64(len(ociManifestBuf))
 
 	return manifestBuf, manifestDesc, nil
 }

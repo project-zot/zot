@@ -1563,7 +1563,7 @@ func TestDockerImages(t *testing.T) {
 			// create an image index on upstream
 			multiarchImage := CreateMultiarchWith().Images(
 				[]Image{
-					CreateRandomImage(),
+					CreateImageWith().RandomLayers(1, 10).RandomConfig().Annotations(map[string]string{"annot1": "example"}).Build(),
 					CreateRandomImage(),
 					CreateRandomImage(),
 					CreateRandomImage(),
@@ -1636,15 +1636,78 @@ func convertLocalOciImageToDocker(rootDir string, repo string) error {
 		return err
 	}
 
-	/* first find multiarch manifest in index.json
-	so that we can update both multiarch manifest and index.json at the same time*/
-	var indexManifest ispec.Index
-	indexManifest.Manifests = make([]ispec.Descriptor, 4)
+	// key: oci manifest digest, value: docker manifest digest
+	convertedManifestDigests := make(map[godigest.Digest]struct {
+		Digest godigest.Digest
+		Size   int64
+	})
 
-	var indexManifestIdx int
+	convertManifestBlob := func(manifestDesc ispec.Descriptor) (godigest.Digest, int64, error) {
+		manifestContent, err := os.ReadFile(path.Join(rootDir, repo, "blobs/sha256",
+			manifestDesc.Digest.Encoded()))
+		if err != nil {
+			return "", -1, err
+		}
+
+		var manifest ispec.Manifest
+
+		err = json.Unmarshal(manifestContent, &manifest)
+		if err != nil {
+			return "", -1, err
+		}
+
+		manifest.MediaType = dockerManifestMediaType
+		manifest.Config.MediaType = dockerManifestConfigMediaType
+
+		for idx := range manifest.Layers {
+			manifest.Layers[idx].MediaType = dockerLayerMediaType
+		}
+
+		manifestBuf, err := json.Marshal(manifest)
+		if err != nil {
+			return "", -1, err
+		}
+
+		manifestDigest := godigest.FromBytes(manifestBuf)
+
+		// write modified manifest, remove old one
+		err = os.WriteFile(path.Join(rootDir, repo, "blobs/sha256", manifestDigest.Encoded()),
+			manifestBuf, storageConstants.DefaultFilePerms)
+		if err != nil {
+			return "", -1, err
+		}
+
+		err = os.Remove(path.Join(rootDir, repo, "blobs/sha256", manifestDesc.Digest.Encoded()))
+		if err != nil {
+			return "", -1, err
+		}
+
+		convertedManifestDigests[manifestDesc.Digest] = struct {
+			Digest godigest.Digest
+			Size   int64
+		}{
+			Digest: manifestDigest,
+			Size:   int64(len(manifestBuf)),
+		}
+
+		return manifestDigest, int64(len(manifestBuf)), nil
+	}
 
 	for idx, manifestDesc := range newIndex.Manifests {
-		if manifestDesc.MediaType == ispec.MediaTypeImageIndex {
+		switch manifestDesc.MediaType {
+		case ispec.MediaTypeImageManifest:
+			manifestDigest, manifestSize, err := convertManifestBlob(manifestDesc)
+			if err != nil {
+				return err
+			}
+
+			// update new index.json
+			newIndex.Manifests[idx].MediaType = dockerManifestMediaType
+			newIndex.Manifests[idx].Digest = manifestDigest
+			newIndex.Manifests[idx].Size = manifestSize
+		case ispec.MediaTypeImageIndex:
+			var indexManifest ispec.Index
+
 			indexManifestContent, err := os.ReadFile(path.Join(rootDir, repo, "blobs/sha256",
 				manifestDesc.Digest.Encoded()))
 			if err != nil {
@@ -1656,75 +1719,45 @@ func convertLocalOciImageToDocker(rootDir string, repo string) error {
 				return err
 			}
 
-			indexManifestIdx = idx
+			for idx, manifestDesc := range indexManifest.Manifests {
+				indexManifest.Manifests[idx].MediaType = dockerManifestMediaType
+
+				if res, ok := convertedManifestDigests[manifestDesc.Digest]; ok {
+					indexManifest.Manifests[idx].Digest = res.Digest
+					indexManifest.Manifests[idx].Size = res.Size
+				} else {
+					manifestDigest, manifestSize, err := convertManifestBlob(manifestDesc)
+					if err != nil {
+						return err
+					}
+
+					indexManifest.Manifests[idx].Digest = manifestDigest
+					indexManifest.Manifests[idx].Size = manifestSize
+				}
+			}
+
+			// write index manifest
+			indexManifest.MediaType = dockerIndexManifestMediaType
+
+			// write converted multi arch manifest
+			indexManifestContent, err = json.Marshal(indexManifest)
+			if err != nil {
+				return err
+			}
+
+			err = os.WriteFile(path.Join(rootDir, repo, "blobs/sha256",
+				godigest.FromBytes(indexManifestContent).Encoded()), indexManifestContent, storageConstants.DefaultFilePerms)
+			if err != nil {
+				return err
+			}
+
+			// update index.json
+			newIndex.Manifests[idx].MediaType = dockerIndexManifestMediaType
+			newIndex.Manifests[idx].Digest = godigest.FromBytes(indexManifestContent)
 		}
 	}
 
-	var indexManifestContent []byte
-
-	for idx, manifestDesc := range newIndex.Manifests {
-		if manifestDesc.MediaType == ispec.MediaTypeImageManifest {
-			manifestContent, err := os.ReadFile(path.Join(rootDir, repo, "blobs/sha256",
-				manifestDesc.Digest.Encoded()))
-			if err != nil {
-				return err
-			}
-
-			var manifest ispec.Manifest
-
-			err = json.Unmarshal(manifestContent, &manifest)
-			if err != nil {
-				return err
-			}
-
-			manifest.MediaType = dockerManifestMediaType
-			manifest.Config.MediaType = dockerManifestConfigMediaType
-			newIndex.Manifests[idx].MediaType = dockerManifestMediaType
-			indexManifest.Manifests[idx].MediaType = dockerManifestMediaType
-
-			for idx := range manifest.Layers {
-				manifest.Layers[idx].MediaType = dockerLayerMediaType
-			}
-
-			manifestBuf, err := json.Marshal(manifest)
-			if err != nil {
-				return err
-			}
-
-			manifestDigest := godigest.FromBytes(manifestBuf)
-			newIndex.Manifests[idx].Digest = manifestDigest
-			indexManifest.Manifests[idx].Digest = manifestDigest
-
-			// write modified manifest, remove old one
-			err = os.WriteFile(path.Join(rootDir, repo, "blobs/sha256", manifestDigest.Encoded()),
-				manifestBuf, storageConstants.DefaultFilePerms)
-			if err != nil {
-				return err
-			}
-
-			err = os.Remove(path.Join(rootDir, repo, "blobs/sha256", manifestDesc.Digest.Encoded()))
-			if err != nil {
-				return err
-			}
-		}
-
-		indexManifest.MediaType = dockerIndexManifestMediaType
-		// write converted multi arch manifest
-		indexManifestContent, err = json.Marshal(indexManifest)
-		if err != nil {
-			return err
-		}
-
-		err = os.WriteFile(path.Join(rootDir, repo, "blobs/sha256",
-			godigest.FromBytes(indexManifestContent).Encoded()), indexManifestContent, storageConstants.DefaultFilePerms)
-		if err != nil {
-			return err
-		}
-	}
-
-	newIndex.Manifests[indexManifestIdx].MediaType = dockerIndexManifestMediaType
-	newIndex.Manifests[indexManifestIdx].Digest = godigest.FromBytes(indexManifestContent)
-
+	// write index.json
 	indexBuf, err := json.Marshal(newIndex)
 	if err != nil {
 		return err
@@ -7287,10 +7320,8 @@ func TestSyncImageIndex(t *testing.T) {
 		})
 
 		Convey("index referencing other index", func() {
-			rootMultiarchImage := CreateMultiarchWith().Images(
+			childOfChildMultiarchImage := CreateMultiarchWith().Images(
 				[]Image{
-					CreateRandomImage(),
-					CreateRandomImage(),
 					CreateRandomImage(),
 					CreateRandomImage(),
 				},
@@ -7305,8 +7336,10 @@ func TestSyncImageIndex(t *testing.T) {
 				},
 			).Build()
 
-			childOfChildMultiarchImage := CreateMultiarchWith().Images(
+			rootMultiarchImage := CreateMultiarchWith().Images(
 				[]Image{
+					CreateRandomImage(),
+					CreateRandomImage(),
 					CreateRandomImage(),
 					CreateRandomImage(),
 				},
@@ -7438,6 +7471,145 @@ func TestSyncImageIndex(t *testing.T) {
 				So(err, ShouldBeNil)
 
 				resp, err := resty.R().SetHeader("Content-Type", ispec.MediaTypeImageIndex).
+					Get(srcBaseURL + "/v2/index/manifests/childofchild")
+				So(err, ShouldBeNil)
+				So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+				So(resp.Body(), ShouldNotBeEmpty)
+				So(resp.Header().Get("Content-Type"), ShouldNotBeEmpty)
+
+				var childOfChildIndex ispec.Index
+				err = json.Unmarshal(resp.Body(), &childOfChildIndex)
+				So(err, ShouldBeNil)
+
+				So(reflect.DeepEqual(rootIndex, rootMultiarchImage.Index), ShouldEqual, true)
+				So(reflect.DeepEqual(childIndex, childMultiarchImage.Index), ShouldEqual, true)
+				So(reflect.DeepEqual(childOfChildIndex, childOfChildMultiarchImage.Index), ShouldEqual, true)
+			})
+		})
+
+		Convey("index referencing same manifest", func() {
+			commonRef := CreateRandomImage()
+
+			childOfChildMultiarchImage := CreateMultiarchWith().Images(
+				[]Image{
+					commonRef,
+					CreateRandomImage(),
+				},
+			).Build()
+
+			childMultiarchImage := CreateMultiarchWith().Images(
+				[]Image{
+					CreateRandomImage(),
+					CreateRandomImage(),
+					commonRef,
+					CreateRandomImage(),
+				},
+			).Subject(childOfChildMultiarchImage.DescriptorRef()).Build()
+
+			rootMultiarchImage := CreateMultiarchWith().Images(
+				[]Image{
+					CreateRandomImage(),
+					commonRef,
+					CreateRandomImage(),
+					commonRef,
+				},
+			).Subject(childMultiarchImage.DescriptorRef()).Build()
+
+			err := UploadMultiarchImage(childOfChildMultiarchImage, srcBaseURL, "index", "childofchild")
+			So(err, ShouldBeNil)
+
+			err = UploadMultiarchImage(childMultiarchImage, srcBaseURL, "index", "child")
+			So(err, ShouldBeNil)
+
+			err = UploadMultiarchImage(rootMultiarchImage, srcBaseURL, "index", "root")
+			So(err, ShouldBeNil)
+
+			Convey("sync periodically", func() {
+				// start downstream server
+				dctlr, destBaseURL, _, _ := makeDownstreamServer(t, false, syncConfig)
+
+				dcm := test.NewControllerManager(dctlr)
+				dcm.StartAndWait(dctlr.Config.HTTP.Port)
+				defer dcm.StopServer()
+
+				// give it time to set up sync
+				t.Logf("waitsync(%s, %s)", dctlr.Config.Storage.RootDirectory, "index")
+				waitSync(dctlr.Config.Storage.RootDirectory, "index")
+
+				resp, err := resty.R().SetHeader("Content-Type", ispec.MediaTypeImageIndex).
+					Get(destBaseURL + "/v2/index/manifests/root")
+				So(err, ShouldBeNil)
+				So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+				So(resp.Body(), ShouldNotBeEmpty)
+				So(resp.Header().Get("Content-Type"), ShouldNotBeEmpty)
+
+				var rootIndex ispec.Index
+				err = json.Unmarshal(resp.Body(), &rootIndex)
+				So(err, ShouldBeNil)
+
+				resp, err = resty.R().SetHeader("Content-Type", ispec.MediaTypeImageIndex).
+					Get(destBaseURL + "/v2/index/manifests/child")
+				So(err, ShouldBeNil)
+				So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+				So(resp.Body(), ShouldNotBeEmpty)
+				So(resp.Header().Get("Content-Type"), ShouldNotBeEmpty)
+
+				var childIndex ispec.Index
+				err = json.Unmarshal(resp.Body(), &childIndex)
+				So(err, ShouldBeNil)
+
+				resp, err = resty.R().SetHeader("Content-Type", ispec.MediaTypeImageIndex).
+					Get(srcBaseURL + "/v2/index/manifests/childofchild")
+				So(err, ShouldBeNil)
+				So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+				So(resp.Body(), ShouldNotBeEmpty)
+				So(resp.Header().Get("Content-Type"), ShouldNotBeEmpty)
+
+				var childOfChildIndex ispec.Index
+				err = json.Unmarshal(resp.Body(), &childOfChildIndex)
+				So(err, ShouldBeNil)
+
+				So(reflect.DeepEqual(rootIndex, rootMultiarchImage.Index), ShouldEqual, true)
+				So(reflect.DeepEqual(childIndex, childMultiarchImage.Index), ShouldEqual, true)
+				So(reflect.DeepEqual(childOfChildIndex, childOfChildMultiarchImage.Index), ShouldEqual, true)
+
+				waitSyncFinish(dctlr.Config.Log.Output)
+			})
+
+			Convey("sync on demand", func() {
+				// start downstream server
+				syncConfig.Registries[0].OnDemand = true
+				syncConfig.Registries[0].PollInterval = 0
+
+				dctlr, destBaseURL, _, _ := makeDownstreamServer(t, false, syncConfig)
+
+				dcm := test.NewControllerManager(dctlr)
+				dcm.StartAndWait(dctlr.Config.HTTP.Port)
+				defer dcm.StopServer()
+
+				resp, err := resty.R().SetHeader("Content-Type", ispec.MediaTypeImageIndex).
+					Get(destBaseURL + "/v2/index/manifests/root")
+				So(err, ShouldBeNil)
+				So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+				So(resp.Body(), ShouldNotBeEmpty)
+				So(resp.Header().Get("Content-Type"), ShouldNotBeEmpty)
+
+				var rootIndex ispec.Index
+				err = json.Unmarshal(resp.Body(), &rootIndex)
+				So(err, ShouldBeNil)
+
+				resp, err = resty.R().SetHeader("Content-Type", ispec.MediaTypeImageIndex).
+					Get(destBaseURL + "/v2/index/manifests/child")
+				So(err, ShouldBeNil)
+				So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+				So(resp.Body(), ShouldNotBeEmpty)
+				So(resp.Header().Get("Content-Type"), ShouldNotBeEmpty)
+
+				var childIndex ispec.Index
+				err = json.Unmarshal(resp.Body(), &childIndex)
+				So(err, ShouldBeNil)
+
+				resp, err = resty.R().SetHeader("Content-Type", ispec.MediaTypeImageIndex).
 					Get(srcBaseURL + "/v2/index/manifests/childofchild")
 				So(err, ShouldBeNil)
 				So(resp.StatusCode(), ShouldEqual, http.StatusOK)

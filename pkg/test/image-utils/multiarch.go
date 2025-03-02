@@ -39,9 +39,12 @@ func (mi *MultiarchImage) DigestStr() string {
 
 func (mi *MultiarchImage) DescriptorRef() *ispec.Descriptor {
 	return &ispec.Descriptor{
-		MediaType: mi.IndexDescriptor.MediaType,
-		Digest:    mi.IndexDescriptor.Digest,
-		Size:      mi.IndexDescriptor.Size,
+		MediaType:    mi.IndexDescriptor.MediaType,
+		Digest:       mi.IndexDescriptor.Digest,
+		Size:         mi.IndexDescriptor.Size,
+		Platform:     mi.IndexDescriptor.Platform,
+		Annotations:  mi.IndexDescriptor.Annotations,
+		ArtifactType: mi.IndexDescriptor.ArtifactType,
 	}
 }
 
@@ -165,9 +168,12 @@ func (mb *BaseMultiarchBuilder) Build() MultiarchImage {
 
 	for i := range manifests {
 		manifests[i] = ispec.Descriptor{
-			Digest:    mb.images[i].ManifestDescriptor.Digest,
-			Size:      mb.images[i].ManifestDescriptor.Size,
-			MediaType: ispec.MediaTypeImageManifest,
+			Digest:       mb.images[i].ManifestDescriptor.Digest,
+			Size:         mb.images[i].ManifestDescriptor.Size,
+			MediaType:    ispec.MediaTypeImageManifest,
+			Platform:     mb.images[i].ManifestDescriptor.Platform,
+			Annotations:  mb.images[i].ManifestDescriptor.Annotations,
+			ArtifactType: mb.images[i].ManifestDescriptor.ArtifactType,
 		}
 	}
 

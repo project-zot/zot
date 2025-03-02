@@ -156,6 +156,18 @@ func TestDestinationRegistry(t *testing.T) {
 			So(err, ShouldBeNil)
 		})
 
+		Convey("CleanupImage()", func() {
+			ok, err := registry.CanSkipImage(repoName, "1.0", indexDigest)
+			So(ok, ShouldBeFalse)
+			So(err, ShouldBeNil)
+
+			err = registry.CommitAll(repoName, imageReference)
+			So(err, ShouldBeNil)
+
+			err = registry.CleanupImage(imageReference, repoName)
+			So(err, ShouldBeNil)
+		})
+
 		Convey("trigger GetImageManifest error in CommitImage()", func() {
 			err = os.Chmod(imgStore.BlobPath(repoName, indexDigest), 0o000)
 			So(err, ShouldBeNil)
