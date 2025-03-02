@@ -691,6 +691,7 @@ func newClient(opts syncconf.RegistryConfig, credentials syncconf.CredentialsFil
 	hostConfig.Name = mainHost
 	hostConfig.Hostname = mainHost
 	hostConfig.Mirrors = mirrorsHosts
+	hostConfig.RepoAuth = true
 
 	// set TLS configuration
 	tls := getTLSConfigOption(urls[0], opts.TLSVerify)
