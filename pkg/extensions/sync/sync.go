@@ -79,6 +79,7 @@ type Remote interface {
 	GetTags(ctx context.Context, repo string) ([]string, error)
 	// Get manifest content, mediaType, descriptor given an image(if remote image is docker type then convert it to OCI)
 	GetOCIManifest(ctx context.Context, repo, reference string) ([]byte, ispec.Descriptor, bool, error)
+	// Get Manifest as is on the remote (doesn't convert to OCI)
 	GetManifest(ctx context.Context, repo, reference string) ([]byte, descriptor.Descriptor, error)
 }
 

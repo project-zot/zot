@@ -11,7 +11,6 @@ import (
 	"os"
 	"path"
 	"strings"
-	"time"
 
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
@@ -142,8 +141,6 @@ func (registry *DestinationRegistry) CleanupImage(imageReference ref.Ref, repo s
 func (registry *DestinationRegistry) copyManifest(repo string, desc ispec.Descriptor,
 	reference string, tempImageStore storageTypes.ImageStore, seen *[]godigest.Digest,
 ) error {
-	var lockLatency time.Time
-
 	var err error
 
 	// seen
@@ -233,10 +230,7 @@ func (registry *DestinationRegistry) copyManifest(repo string, desc ispec.Descri
 		for _, manifest := range indexManifest.Manifests {
 			reference := GetDescriptorReference(manifest)
 
-			tempImageStore.RLock(&lockLatency)
 			manifestBuf, err := tempImageStore.GetBlobContent(repo, manifest.Digest)
-			tempImageStore.RUnlock(&lockLatency)
-
 			if err != nil {
 				registry.log.Error().Str("errorType", common.TypeOf(err)).
 					Err(err).Str("dir", path.Join(tempImageStore.RootDir(), repo)).Str("digest", manifest.Digest.String()).
