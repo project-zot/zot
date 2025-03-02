@@ -534,11 +534,19 @@ func GetImageMeta(dbImageMeta *proto_go.ImageMeta) mTypes.ImageMeta {
 		manifests := make([]ispec.Descriptor, 0, len(dbImageMeta.GetManifests()))
 
 		for _, manifest := range dbImageMeta.GetIndex().GetIndex().GetManifests() {
-			manifests = append(manifests, ispec.Descriptor{
-				MediaType: manifest.GetMediaType(),
-				Digest:    godigest.Digest(manifest.GetDigest()),
-				Size:      manifest.GetSize(),
-			})
+			desc := ispec.Descriptor{
+				MediaType:   manifest.GetMediaType(),
+				Digest:      godigest.Digest(manifest.GetDigest()),
+				Size:        manifest.GetSize(),
+				Annotations: manifest.Annotations,
+			}
+
+			if manifest.Platform != nil {
+				platform := GetPlatform(manifest.Platform)
+				desc.Platform = &platform
+			}
+
+			manifests = append(manifests, desc)
 		}
 
 		imageMeta.Index = &ispec.Index{
