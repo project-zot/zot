@@ -7,9 +7,6 @@ import (
 	"context"
 	"errors"
 	"sync"
-	"time"
-
-	"github.com/containers/common/pkg/retry"
 
 	zerr "zotregistry.dev/zot/errors"
 	"zotregistry.dev/zot/pkg/common"
@@ -83,49 +80,16 @@ func (onDemand *BaseOnDemand) SyncImage(ctx context.Context, repo, reference str
 	return err
 }
 
-func (onDemand *BaseOnDemand) SyncReference(ctx context.Context, repo string,
-	subjectDigestStr string, referenceType string,
-) error {
-	var err error
-
-	for _, service := range onDemand.services {
-		err = service.SetNextAvailableURL()
-		if err != nil {
-			return err
-		}
-
-		err = service.SyncReference(ctx, repo, subjectDigestStr, referenceType)
-		if err != nil {
-			continue
-		} else {
-			return nil
-		}
-	}
-
-	return err
-}
-
 func (onDemand *BaseOnDemand) syncImage(ctx context.Context, repo, reference string, syncResult chan error) {
 	var err error
 	for serviceID, service := range onDemand.services {
-		err = service.SetNextAvailableURL()
-
-		isPingErr := errors.Is(err, zerr.ErrSyncPingRegistry)
-		if err != nil && !isPingErr {
-			syncResult <- err
-
-			return
-		}
-
-		// no need to try to sync inline if there is a ping error, we want to retry in background
-		if !isPingErr {
-			err = service.SyncImage(ctx, repo, reference)
-		}
-
-		if err != nil || isPingErr {
+		err = service.SyncImage(ctx, repo, reference)
+		if err != nil {
 			if errors.Is(err, zerr.ErrManifestNotFound) ||
 				errors.Is(err, zerr.ErrSyncImageFilteredOut) ||
-				errors.Is(err, zerr.ErrSyncImageNotSigned) {
+				errors.Is(err, zerr.ErrSyncImageNotSigned) ||
+				// some public registries may return 401 for not found.
+				errors.Is(err, zerr.ErrUnauthorizedAccess) {
 				continue
 			}
 
@@ -141,9 +105,7 @@ func (onDemand *BaseOnDemand) syncImage(ctx context.Context, repo, reference str
 				continue
 			}
 
-			retryOptions := service.GetRetryOptions()
-
-			if retryOptions.MaxRetry > 0 {
+			if service.CanRetryOnError() {
 				// retry in background
 				go func(service Service) {
 					// remove image after syncing
@@ -154,18 +116,12 @@ func (onDemand *BaseOnDemand) syncImage(ctx context.Context, repo, reference str
 					}()
 
 					onDemand.log.Info().Str("repo", repo).Str(reference, "reference").Str("err", err.Error()).
-						Str("component", "sync").Msg("starting routine to copy image, because of error")
+						Msg("sync routine: starting routine to copy image, because of error")
 
-					time.Sleep(retryOptions.Delay)
-
-					// retrying in background, can't use the same context which should be cancelled by now.
-					if err = retry.RetryIfNecessary(context.Background(), func() error {
-						err := service.SyncImage(context.Background(), repo, reference)
-
-						return err
-					}, retryOptions); err != nil {
+					err := service.SyncImage(context.Background(), repo, reference)
+					if err != nil {
 						onDemand.log.Error().Str("errorType", common.TypeOf(err)).Str("repo", repo).Str("reference", reference).
-							Err(err).Str("component", "sync").Msg("failed to copy image")
+							Err(err).Msg("sync routine: error while copying image")
 					}
 				}(service)
 			}
