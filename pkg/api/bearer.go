@@ -2,11 +2,13 @@ package api
 
 import (
 	"crypto"
-	"errors"
 	"fmt"
-	"github.com/golang-jwt/jwt/v5"
 	"regexp"
 	"slices"
+
+	"github.com/golang-jwt/jwt/v5"
+
+	zerr "zotregistry.dev/zot/errors"
 )
 
 var bearerTokenMatch = regexp.MustCompile("(?i)bearer (.*)")
@@ -33,19 +35,19 @@ type claimsWithAccess struct {
 	jwt.RegisteredClaims
 }
 
-type authChallenge struct {
+type authChallengeError struct {
 	err            error
 	realm          string
 	service        string
 	resourceAction *resourceAction
 }
 
-func (c authChallenge) Error() string {
+func (c authChallengeError) Error() string {
 	return c.err.Error()
 }
 
 // Header constructs an appropriate value for the WWW-Authenticate header to be returned to the client.
-func (c authChallenge) Header() string {
+func (c authChallengeError) Header() string {
 	if c.resourceAction == nil {
 		// no access was requested, so return an empty scope
 		return fmt.Sprintf("Bearer realm=\"%s\",service=\"%s\",scope=\"\"",
@@ -72,9 +74,9 @@ func newBearerAuthorizer(realm string, service string, key crypto.PublicKey) bea
 
 // Authorize verifies whether the bearer token in the given Authorization header is valid, and whether it has sufficient
 // scope for the requested resource action. If an authorization error occurs (e.g. no token is given or the token has
-// insufficient scope), an authChallenge is returned as the error.
+// insufficient scope), an authChallengeError is returned as the error.
 func (a *bearerAuthorizer) Authorize(header string, requested *resourceAction) error {
-	challenge := &authChallenge{
+	challenge := &authChallengeError{
 		realm:          a.realm,
 		service:        a.service,
 		resourceAction: requested,
@@ -86,11 +88,12 @@ func (a *bearerAuthorizer) Authorize(header string, requested *resourceAction) e
 	}
 
 	signedString := bearerTokenMatch.ReplaceAllString(header, "$1")
+
 	token, err := jwt.ParseWithClaims(signedString, &claimsWithAccess{}, func(token *jwt.Token) (interface{}, error) {
 		return a.key, nil
 	})
 	if err != nil {
-		return err
+		return fmt.Errorf("%w: %w", zerr.ErrInvalidBearerToken, err)
 	}
 
 	if requested == nil {
@@ -100,14 +103,25 @@ func (a *bearerAuthorizer) Authorize(header string, requested *resourceAction) e
 
 	claims, ok := token.Claims.(*claimsWithAccess)
 	if !ok {
-		return errors.New("invalid claims type in token")
+		return fmt.Errorf("%w: invalid claims type", zerr.ErrInvalidBearerToken)
 	}
 
 	// check whether the requested access is allowed by the scope of the token
 	for _, allowed := range claims.Access {
-		if allowed.Type == requested.Type && allowed.Name == requested.Name && slices.Contains(allowed.Actions, requested.Action) {
-			return nil
+		if allowed.Type != requested.Type {
+			continue
 		}
+
+		if allowed.Name != requested.Name {
+			continue
+		}
+
+		if !slices.Contains(allowed.Actions, requested.Action) {
+			continue
+		}
+
+		// requested action is allowed, so don't return an error
+		return nil
 	}
 
 	return challenge

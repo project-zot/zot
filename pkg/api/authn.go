@@ -9,7 +9,6 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"github.com/golang-jwt/jwt/v5"
 	"net"
 	"net/http"
 	"os"
@@ -18,6 +17,7 @@ import (
 	"time"
 
 	guuid "github.com/gofrs/uuid"
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/go-github/v62/github"
 	"github.com/google/uuid"
 	"github.com/gorilla/mux"
@@ -437,6 +437,7 @@ func bearerAuthHandler(ctlr *Controller) mux.MiddlewareFunc {
 			}
 
 			var requestedAccess *resourceAction
+
 			if request.RequestURI != "/v2/" {
 				// if this is not the base route, the requested repository/action must be authorized
 				vars := mux.Vars(request)
@@ -456,7 +457,7 @@ func bearerAuthHandler(ctlr *Controller) mux.MiddlewareFunc {
 
 			err := authorizer.Authorize(header, requestedAccess)
 			if err != nil {
-				var challenge *authChallenge
+				var challenge *authChallengeError
 				if errors.As(err, &challenge) {
 					ctlr.Log.Debug().Err(challenge.err).Msg("bearer token authorization failed")
 					response.Header().Set("Content-Type", "application/json")
@@ -903,34 +904,37 @@ func GenerateAPIKey(uuidGenerator guuid.Generator, log log.Logger,
 }
 
 func loadPublicKeyFromFile(path string) (crypto.PublicKey, error) {
-	d, err := os.ReadFile(path)
+	publicKeyBytes, err := os.ReadFile(path)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read certificate file %s: %w", path, err)
+		return nil, fmt.Errorf("%w: %w, path %s", zerr.ErrCouldNotLoadPublicKey, err, path)
 	}
 
-	rsaKey, err := jwt.ParseRSAPublicKeyFromPEM(d)
+	rsaKey, err := jwt.ParseRSAPublicKeyFromPEM(publicKeyBytes)
 	if err == nil {
 		return rsaKey, nil
 	}
+
 	if !errors.Is(err, jwt.ErrNotRSAPublicKey) {
 		return nil, err
 	}
 
-	ecKey, err := jwt.ParseECPublicKeyFromPEM(d)
+	ecKey, err := jwt.ParseECPublicKeyFromPEM(publicKeyBytes)
 	if err == nil {
 		return ecKey, nil
 	}
+
 	if !errors.Is(err, jwt.ErrNotECPublicKey) {
 		return nil, err
 	}
 
-	edKey, err := jwt.ParseEdPublicKeyFromPEM(d)
+	edKey, err := jwt.ParseEdPublicKeyFromPEM(publicKeyBytes)
 	if err == nil {
 		return edKey, nil
 	}
+
 	if !errors.Is(err, jwt.ErrNotEdPublicKey) {
 		return nil, err
 	}
 
-	return nil, errors.New("invalid public key given")
+	return nil, fmt.Errorf("%w: no valid public key found in file %s", zerr.ErrCouldNotLoadPublicKey, path)
 }
