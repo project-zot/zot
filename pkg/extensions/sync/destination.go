@@ -104,7 +104,7 @@ func (registry *DestinationRegistry) CommitAll(repo string, imageReference ref.R
 		return err
 	}
 
-	seen := []godigest.Digest{}
+	seen := &[]godigest.Digest{}
 
 	for _, desc := range index.Manifests {
 		reference := GetDescriptorReference(desc)
@@ -140,18 +140,18 @@ func (registry *DestinationRegistry) CleanupImage(imageReference ref.Ref, repo s
 }
 
 func (registry *DestinationRegistry) copyManifest(repo string, desc ispec.Descriptor,
-	reference string, tempImageStore storageTypes.ImageStore, seen []godigest.Digest,
+	reference string, tempImageStore storageTypes.ImageStore, seen *[]godigest.Digest,
 ) error {
 	var lockLatency time.Time
 
 	var err error
 
 	// seen
-	if common.Contains(seen, desc.Digest) {
+	if common.Contains(*seen, desc.Digest) {
 		return nil
 	}
 
-	seen = append(seen, desc.Digest)
+	*seen = append(*seen, desc.Digest)
 
 	imageStore := registry.storeController.GetImageStore(repo)
 
