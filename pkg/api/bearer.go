@@ -13,6 +13,19 @@ import (
 
 var bearerTokenMatch = regexp.MustCompile("(?i)bearer (.*)")
 
+var allowedSigningAlgorithms = []string{
+	"EdDSA",
+	"RS256",
+	"RS384",
+	"RS512",
+	"ES256",
+	"ES384",
+	"ES512",
+	"PS256",
+	"PS384",
+	"PS512",
+}
+
 // ResourceAccess is a single entry in the private 'access' claim specified by the distribution token authentication
 // specification.
 type ResourceAccess struct {
@@ -91,7 +104,7 @@ func (a *bearerAuthorizer) Authorize(header string, requested *resourceAction) e
 
 	token, err := jwt.ParseWithClaims(signedString, &ClaimsWithAccess{}, func(token *jwt.Token) (interface{}, error) {
 		return a.key, nil
-	})
+	}, jwt.WithValidMethods(allowedSigningAlgorithms))
 	if err != nil {
 		return fmt.Errorf("%w: %w", zerr.ErrInvalidBearerToken, err)
 	}
