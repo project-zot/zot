@@ -6,6 +6,7 @@ package extensions_test
 import (
 	"encoding/json"
 	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"os"
 	"testing"
@@ -868,160 +869,181 @@ func TestMgmtExtension(t *testing.T) {
 }
 
 func TestMgmtWithBearer(t *testing.T) {
-	Convey("Make a new controller", t, func() {
-		authorizedNamespace := "allowedrepo"
-		unauthorizedNamespace := "notallowedrepo"
+	testCases := []struct {
+		name                    string
+		useLegacyAuthTestServer bool
+	}{
+		{
+			name:                    "new authentication test server",
+			useLegacyAuthTestServer: false,
+		},
+		{
+			name:                    "legacy authentication test server",
+			useLegacyAuthTestServer: true,
+		},
+	}
 
-		authTestServer := authutils.MakeAuthTestServer(ServerKey, unauthorizedNamespace)
-		defer authTestServer.Close()
+	for _, testCase := range testCases {
+		Convey("Make a new controller with "+testCase.name, t, func() {
+			authorizedNamespace := "allowedrepo"
+			unauthorizedNamespace := "notallowedrepo"
 
-		port := test.GetFreePort()
-		baseURL := test.GetBaseURL(port)
+			var authTestServer *httptest.Server
+			if testCase.useLegacyAuthTestServer {
+				authTestServer = authutils.MakeAuthTestServerLegacy(ServerKey, unauthorizedNamespace)
+			} else {
+				authTestServer = authutils.MakeAuthTestServer(ServerKey, "RS256", unauthorizedNamespace)
+			}
+			defer authTestServer.Close()
 
-		conf := config.New()
-		conf.HTTP.Port = port
+			port := test.GetFreePort()
+			baseURL := test.GetBaseURL(port)
 
-		aurl, err := url.Parse(authTestServer.URL)
-		So(err, ShouldBeNil)
+			conf := config.New()
+			conf.HTTP.Port = port
 
-		conf.HTTP.Auth = &config.AuthConfig{
-			Bearer: &config.BearerConfig{
-				Cert:    ServerCert,
-				Realm:   authTestServer.URL + "/auth/token",
-				Service: aurl.Host,
-			},
-		}
+			aurl, err := url.Parse(authTestServer.URL)
+			So(err, ShouldBeNil)
 
-		defaultValue := true
+			conf.HTTP.Auth = &config.AuthConfig{
+				Bearer: &config.BearerConfig{
+					Cert:    ServerCert,
+					Realm:   authTestServer.URL + "/auth/token",
+					Service: aurl.Host,
+				},
+			}
 
-		conf.Extensions = &extconf.ExtensionConfig{}
-		conf.Extensions.Search = &extconf.SearchConfig{}
-		conf.Extensions.Search.Enable = &defaultValue
-		conf.Extensions.Search.CVE = nil
-		conf.Extensions.UI = &extconf.UIConfig{}
-		conf.Extensions.UI.Enable = &defaultValue
+			defaultValue := true
 
-		conf.Storage.RootDirectory = t.TempDir()
+			conf.Extensions = &extconf.ExtensionConfig{}
+			conf.Extensions.Search = &extconf.SearchConfig{}
+			conf.Extensions.Search.Enable = &defaultValue
+			conf.Extensions.Search.CVE = nil
+			conf.Extensions.UI = &extconf.UIConfig{}
+			conf.Extensions.UI.Enable = &defaultValue
 
-		ctlr := api.NewController(conf)
+			conf.Storage.RootDirectory = t.TempDir()
 
-		cm := test.NewControllerManager(ctlr)
-		cm.StartAndWait(port)
-		defer cm.StopServer()
+			ctlr := api.NewController(conf)
 
-		resp, err := resty.R().Get(baseURL + "/v2/")
-		So(err, ShouldBeNil)
-		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
+			cm := test.NewControllerManager(ctlr)
+			cm.StartAndWait(port)
+			defer cm.StopServer()
 
-		authorizationHeader := authutils.ParseBearerAuthHeader(resp.Header().Get("WWW-Authenticate"))
-		resp, err = resty.R().
-			SetQueryParam("service", authorizationHeader.Service).
-			SetQueryParam("scope", authorizationHeader.Scope).
-			Get(authorizationHeader.Realm)
-		So(err, ShouldBeNil)
-		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+			resp, err := resty.R().Get(baseURL + "/v2/")
+			So(err, ShouldBeNil)
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
 
-		var goodToken authutils.AccessTokenResponse
+			authorizationHeader := authutils.ParseBearerAuthHeader(resp.Header().Get("WWW-Authenticate"))
+			resp, err = resty.R().
+				SetQueryParam("service", authorizationHeader.Service).
+				SetQueryParam("scope", authorizationHeader.Scope).
+				Get(authorizationHeader.Realm)
+			So(err, ShouldBeNil)
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
-		err = json.Unmarshal(resp.Body(), &goodToken)
-		So(err, ShouldBeNil)
+			var goodToken authutils.AccessTokenResponse
 
-		resp, err = resty.R().
-			SetHeader("Authorization", "Bearer "+goodToken.AccessToken).
-			Get(baseURL + "/v2/")
-		So(err, ShouldBeNil)
-		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+			err = json.Unmarshal(resp.Body(), &goodToken)
+			So(err, ShouldBeNil)
 
-		resp, err = resty.R().SetHeader("Authorization",
-			"Bearer "+goodToken.AccessToken).Options(baseURL + "/v2/")
-		So(err, ShouldBeNil)
-		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, http.StatusNoContent)
+			resp, err = resty.R().
+				SetHeader("Authorization", "Bearer "+goodToken.AccessToken).
+				Get(baseURL + "/v2/")
+			So(err, ShouldBeNil)
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
-		resp, err = resty.R().Post(baseURL + "/v2/" + authorizedNamespace + "/blobs/uploads/")
-		So(err, ShouldBeNil)
-		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
+			resp, err = resty.R().SetHeader("Authorization",
+				"Bearer "+goodToken.AccessToken).Options(baseURL + "/v2/")
+			So(err, ShouldBeNil)
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusNoContent)
 
-		authorizationHeader = authutils.ParseBearerAuthHeader(resp.Header().Get("WWW-Authenticate"))
-		resp, err = resty.R().
-			SetQueryParam("service", authorizationHeader.Service).
-			SetQueryParam("scope", authorizationHeader.Scope).
-			Get(authorizationHeader.Realm)
-		So(err, ShouldBeNil)
-		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
-		err = json.Unmarshal(resp.Body(), &goodToken)
-		So(err, ShouldBeNil)
+			resp, err = resty.R().Post(baseURL + "/v2/" + authorizedNamespace + "/blobs/uploads/")
+			So(err, ShouldBeNil)
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
 
-		resp, err = resty.R().
-			SetHeader("Authorization", "Bearer "+goodToken.AccessToken).
-			Post(baseURL + "/v2/" + authorizedNamespace + "/blobs/uploads/")
-		So(err, ShouldBeNil)
-		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
+			authorizationHeader = authutils.ParseBearerAuthHeader(resp.Header().Get("WWW-Authenticate"))
+			resp, err = resty.R().
+				SetQueryParam("service", authorizationHeader.Service).
+				SetQueryParam("scope", authorizationHeader.Scope).
+				Get(authorizationHeader.Realm)
+			So(err, ShouldBeNil)
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+			err = json.Unmarshal(resp.Body(), &goodToken)
+			So(err, ShouldBeNil)
 
-		resp, err = resty.R().
-			Post(baseURL + "/v2/" + unauthorizedNamespace + "/blobs/uploads/")
-		So(err, ShouldBeNil)
-		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
+			resp, err = resty.R().
+				SetHeader("Authorization", "Bearer "+goodToken.AccessToken).
+				Post(baseURL + "/v2/" + authorizedNamespace + "/blobs/uploads/")
+			So(err, ShouldBeNil)
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
 
-		authorizationHeader = authutils.ParseBearerAuthHeader(resp.Header().Get("WWW-Authenticate"))
-		resp, err = resty.R().
-			SetQueryParam("service", authorizationHeader.Service).
-			SetQueryParam("scope", authorizationHeader.Scope).
-			Get(authorizationHeader.Realm)
-		So(err, ShouldBeNil)
-		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+			resp, err = resty.R().
+				Post(baseURL + "/v2/" + unauthorizedNamespace + "/blobs/uploads/")
+			So(err, ShouldBeNil)
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
 
-		var badToken authutils.AccessTokenResponse
+			authorizationHeader = authutils.ParseBearerAuthHeader(resp.Header().Get("WWW-Authenticate"))
+			resp, err = resty.R().
+				SetQueryParam("service", authorizationHeader.Service).
+				SetQueryParam("scope", authorizationHeader.Scope).
+				Get(authorizationHeader.Realm)
+			So(err, ShouldBeNil)
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
-		err = json.Unmarshal(resp.Body(), &badToken)
-		So(err, ShouldBeNil)
+			var badToken authutils.AccessTokenResponse
 
-		resp, err = resty.R().
-			SetHeader("Authorization", "Bearer "+badToken.AccessToken).
-			Post(baseURL + "/v2/" + unauthorizedNamespace + "/blobs/uploads/")
-		So(err, ShouldBeNil)
-		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
+			err = json.Unmarshal(resp.Body(), &badToken)
+			So(err, ShouldBeNil)
 
-		// test mgmt route
-		resp, err = resty.R().Get(baseURL + constants.FullMgmt)
-		So(err, ShouldBeNil)
-		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+			resp, err = resty.R().
+				SetHeader("Authorization", "Bearer "+badToken.AccessToken).
+				Post(baseURL + "/v2/" + unauthorizedNamespace + "/blobs/uploads/")
+			So(err, ShouldBeNil)
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
 
-		mgmtResp := extensions.StrippedConfig{}
-		err = json.Unmarshal(resp.Body(), &mgmtResp)
-		So(err, ShouldBeNil)
-		So(mgmtResp.DistSpecVersion, ShouldResemble, conf.DistSpecVersion)
-		So(mgmtResp.HTTP.Auth.Bearer, ShouldNotBeNil)
-		So(mgmtResp.HTTP.Auth.Bearer.Realm, ShouldEqual, conf.HTTP.Auth.Bearer.Realm)
-		So(mgmtResp.HTTP.Auth.Bearer.Service, ShouldEqual, conf.HTTP.Auth.Bearer.Service)
-		So(mgmtResp.HTTP.Auth.HTPasswd, ShouldBeNil)
-		So(mgmtResp.HTTP.Auth.LDAP, ShouldBeNil)
-		So(mgmtResp.HTTP.Auth.APIKey, ShouldBeFalse)
+			// test mgmt route
+			resp, err = resty.R().Get(baseURL + constants.FullMgmt)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
-		resp, err = resty.R().SetBasicAuth("", "").Get(baseURL + constants.FullMgmt)
-		So(err, ShouldBeNil)
-		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+			mgmtResp := extensions.StrippedConfig{}
+			err = json.Unmarshal(resp.Body(), &mgmtResp)
+			So(err, ShouldBeNil)
+			So(mgmtResp.DistSpecVersion, ShouldResemble, conf.DistSpecVersion)
+			So(mgmtResp.HTTP.Auth.Bearer, ShouldNotBeNil)
+			So(mgmtResp.HTTP.Auth.Bearer.Realm, ShouldEqual, conf.HTTP.Auth.Bearer.Realm)
+			So(mgmtResp.HTTP.Auth.Bearer.Service, ShouldEqual, conf.HTTP.Auth.Bearer.Service)
+			So(mgmtResp.HTTP.Auth.HTPasswd, ShouldBeNil)
+			So(mgmtResp.HTTP.Auth.LDAP, ShouldBeNil)
+			So(mgmtResp.HTTP.Auth.APIKey, ShouldBeFalse)
 
-		mgmtResp = extensions.StrippedConfig{}
-		err = json.Unmarshal(resp.Body(), &mgmtResp)
-		So(err, ShouldBeNil)
-		So(mgmtResp.DistSpecVersion, ShouldResemble, conf.DistSpecVersion)
-		So(mgmtResp.HTTP.Auth.Bearer, ShouldNotBeNil)
-		So(mgmtResp.HTTP.Auth.Bearer.Realm, ShouldEqual, conf.HTTP.Auth.Bearer.Realm)
-		So(mgmtResp.HTTP.Auth.Bearer.Service, ShouldEqual, conf.HTTP.Auth.Bearer.Service)
-		So(mgmtResp.HTTP.Auth.HTPasswd, ShouldBeNil)
-		So(mgmtResp.HTTP.Auth.LDAP, ShouldBeNil)
-		So(mgmtResp.HTTP.Auth.APIKey, ShouldBeFalse)
-	})
+			resp, err = resty.R().SetBasicAuth("", "").Get(baseURL + constants.FullMgmt)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+			mgmtResp = extensions.StrippedConfig{}
+			err = json.Unmarshal(resp.Body(), &mgmtResp)
+			So(err, ShouldBeNil)
+			So(mgmtResp.DistSpecVersion, ShouldResemble, conf.DistSpecVersion)
+			So(mgmtResp.HTTP.Auth.Bearer, ShouldNotBeNil)
+			So(mgmtResp.HTTP.Auth.Bearer.Realm, ShouldEqual, conf.HTTP.Auth.Bearer.Realm)
+			So(mgmtResp.HTTP.Auth.Bearer.Service, ShouldEqual, conf.HTTP.Auth.Bearer.Service)
+			So(mgmtResp.HTTP.Auth.HTPasswd, ShouldBeNil)
+			So(mgmtResp.HTTP.Auth.LDAP, ShouldBeNil)
+			So(mgmtResp.HTTP.Auth.APIKey, ShouldBeFalse)
+		})
+	}
 }
 
 func TestAllowedMethodsHeaderMgmt(t *testing.T) {
