@@ -3,13 +3,14 @@ package api_test
 import (
 	"crypto/rand"
 	"crypto/rsa"
-	"github.com/golang-jwt/jwt/v5"
 	"testing"
 	"time"
+
+	"github.com/golang-jwt/jwt/v5"
+	. "github.com/smartystreets/goconvey/convey"
+
 	zerr "zotregistry.dev/zot/errors"
 	"zotregistry.dev/zot/pkg/api"
-
-	. "github.com/smartystreets/goconvey/convey"
 )
 
 func TestBearerAuthorizer(t *testing.T) {
@@ -58,49 +59,49 @@ func TestBearerAuthorizer(t *testing.T) {
 			authHeader := "Bearer " + token
 
 			Convey("Unauthorized type", func() {
-				r := &api.ResourceAction{
+				requested := &api.ResourceAction{
 					Type:   "registry",
 					Name:   "catalog",
 					Action: "*",
 				}
 
-				err := authorizer.Authorize(authHeader, r)
+				err := authorizer.Authorize(authHeader, requested)
 				So(err, ShouldHaveSameTypeAs, &api.AuthChallengeError{})
 				So(err, ShouldBeError, zerr.ErrInsufficientScope)
 			})
 
 			Convey("Unauthorized name", func() {
-				r := &api.ResourceAction{
+				requested := &api.ResourceAction{
 					Type:   "repository",
 					Name:   "unauthorized-repository",
 					Action: "pull",
 				}
 
-				err := authorizer.Authorize(authHeader, r)
+				err := authorizer.Authorize(authHeader, requested)
 				So(err, ShouldHaveSameTypeAs, &api.AuthChallengeError{})
 				So(err, ShouldBeError, zerr.ErrInsufficientScope)
 			})
 
 			Convey("Unauthorized action", func() {
-				r := &api.ResourceAction{
+				requested := &api.ResourceAction{
 					Type:   "repository",
 					Name:   "authorized-repository",
 					Action: "push",
 				}
 
-				err := authorizer.Authorize(authHeader, r)
+				err := authorizer.Authorize(authHeader, requested)
 				So(err, ShouldHaveSameTypeAs, &api.AuthChallengeError{})
 				So(err, ShouldBeError, zerr.ErrInsufficientScope)
 			})
 
 			Convey("Successful authorization with requested access", func() {
-				r := &api.ResourceAction{
+				requested := &api.ResourceAction{
 					Type:   "repository",
 					Name:   "authorized-repository",
 					Action: "pull",
 				}
 
-				err := authorizer.Authorize(authHeader, r)
+				err := authorizer.Authorize(authHeader, requested)
 				So(err, ShouldBeNil)
 			})
 
