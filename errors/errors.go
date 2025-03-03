@@ -176,5 +176,5 @@ var (
 	ErrAmbiguousInput                 = errors.New("input is not specific enough")
 	ErrReceivedUnexpectedAuthHeader   = errors.New("received unexpected www-authenticate header")
 	ErrInvalidBearerToken             = errors.New("invalid bearer token given")
-	ErrCouldNotLoadPublicKey          = errors.New("failed to load public key")
+	ErrCouldNotLoadCertificate        = errors.New("failed to load certificate")
 )
