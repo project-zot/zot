@@ -13,19 +13,6 @@ import (
 
 var bearerTokenMatch = regexp.MustCompile("(?i)bearer (.*)")
 
-var allowedSigningAlgorithms = []string{
-	"EdDSA",
-	"RS256",
-	"RS384",
-	"RS512",
-	"ES256",
-	"ES384",
-	"ES512",
-	"PS256",
-	"PS384",
-	"PS512",
-}
-
 // ResourceAccess is a single entry in the private 'access' claim specified by the distribution token authentication
 // specification.
 type ResourceAccess struct {
@@ -98,6 +85,7 @@ func (a *BearerAuthorizer) Authorize(header string, requested *ResourceAction) e
 	if header == "" {
 		// if no bearer token is set in the authorization header, return the authentication challenge
 		challenge.err = zerr.ErrNoBearerToken
+
 		return challenge
 	}
 
@@ -105,7 +93,7 @@ func (a *BearerAuthorizer) Authorize(header string, requested *ResourceAction) e
 
 	token, err := jwt.ParseWithClaims(signedString, &ClaimsWithAccess{}, func(token *jwt.Token) (interface{}, error) {
 		return a.key, nil
-	}, jwt.WithValidMethods(allowedSigningAlgorithms))
+	}, jwt.WithValidMethods(a.allowedSigningAlgorithms()))
 	if err != nil {
 		return fmt.Errorf("%w: %w", zerr.ErrInvalidBearerToken, err)
 	}
@@ -139,5 +127,10 @@ func (a *BearerAuthorizer) Authorize(header string, requested *ResourceAction) e
 	}
 
 	challenge.err = zerr.ErrInsufficientScope
+
 	return challenge
+}
+
+func (a *BearerAuthorizer) allowedSigningAlgorithms() []string {
+	return []string{"EdDSA", "RS256", "RS384", "RS512", "ES256", "ES384", "ES512", "PS256", "PS384", "PS512"}
 }
