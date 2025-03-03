@@ -10,6 +10,12 @@ import (
 
 func TestBearerServer(t *testing.T) {
 	Convey("test MakeAuthTestServer() no serve key", t, func() {
-		So(func() { auth.MakeAuthTestServer("", "") }, ShouldPanic)
+		So(func() { auth.MakeAuthTestServer("", "", "") }, ShouldPanic)
+	})
+}
+
+func TestBearerServerLegacy(t *testing.T) {
+	Convey("test MakeAuthTestServerLegacy() no serve key", t, func() {
+		So(func() { auth.MakeAuthTestServerLegacy("", "") }, ShouldPanic)
 	})
 }

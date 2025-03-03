@@ -13,9 +13,9 @@ import (
 
 var bearerTokenMatch = regexp.MustCompile("(?i)bearer (.*)")
 
-// resourceAccess is a single entry in the private 'access' claim specified by the distribution token authentication
+// ResourceAccess is a single entry in the private 'access' claim specified by the distribution token authentication
 // specification.
-type resourceAccess struct {
+type ResourceAccess struct {
 	Type    string   `json:"type"`
 	Name    string   `json:"name"`
 	Actions []string `json:"actions"`
@@ -27,11 +27,11 @@ type resourceAction struct {
 	Action string `json:"action"`
 }
 
-// claimsWithAccess is a claim set containing the private 'access' claim specified by the distribution token
+// ClaimsWithAccess is a claim set containing the private 'access' claim specified by the distribution token
 // authentication specification, in addition to the standard registered claims.
 // https://distribution.github.io/distribution/spec/auth/jwt/
-type claimsWithAccess struct {
-	Access []resourceAccess `json:"access"`
+type ClaimsWithAccess struct {
+	Access []ResourceAccess `json:"access"`
 	jwt.RegisteredClaims
 }
 
@@ -89,7 +89,7 @@ func (a *bearerAuthorizer) Authorize(header string, requested *resourceAction) e
 
 	signedString := bearerTokenMatch.ReplaceAllString(header, "$1")
 
-	token, err := jwt.ParseWithClaims(signedString, &claimsWithAccess{}, func(token *jwt.Token) (interface{}, error) {
+	token, err := jwt.ParseWithClaims(signedString, &ClaimsWithAccess{}, func(token *jwt.Token) (interface{}, error) {
 		return a.key, nil
 	})
 	if err != nil {
@@ -101,7 +101,7 @@ func (a *bearerAuthorizer) Authorize(header string, requested *resourceAction) e
 		return nil
 	}
 
-	claims, ok := token.Claims.(*claimsWithAccess)
+	claims, ok := token.Claims.(*ClaimsWithAccess)
 	if !ok {
 		return fmt.Errorf("%w: invalid claims type", zerr.ErrInvalidBearerToken)
 	}
