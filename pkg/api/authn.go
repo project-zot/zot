@@ -2,11 +2,11 @@ package api
 
 import (
 	"context"
-	"crypto"
 	"crypto/sha256"
 	"crypto/x509"
 	"encoding/base64"
 	"encoding/hex"
+	"encoding/pem"
 	"errors"
 	"fmt"
 	"net"
@@ -17,7 +17,6 @@ import (
 	"time"
 
 	guuid "github.com/gofrs/uuid"
-	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/go-github/v62/github"
 	"github.com/google/uuid"
 	"github.com/gorilla/mux"
@@ -403,15 +402,15 @@ func (amw *AuthnMiddleware) tryAuthnHandlers(ctlr *Controller) mux.MiddlewareFun
 }
 
 func bearerAuthHandler(ctlr *Controller) mux.MiddlewareFunc {
-	pubKey, err := loadPublicKeyFromFile(ctlr.Config.HTTP.Auth.Bearer.Cert)
+	certificate, err := loadCertificateFromFile(ctlr.Config.HTTP.Auth.Bearer.Cert)
 	if err != nil {
-		ctlr.Log.Panic().Err(err).Msg("failed to load signing key for bearer authentication")
+		ctlr.Log.Panic().Err(err).Msg("failed to load certificate for bearer authentication")
 	}
 
 	authorizer := newBearerAuthorizer(
 		ctlr.Config.HTTP.Auth.Bearer.Realm,
 		ctlr.Config.HTTP.Auth.Bearer.Service,
-		pubKey,
+		certificate.PublicKey,
 	)
 
 	return func(next http.Handler) http.Handler {
@@ -903,38 +902,21 @@ func GenerateAPIKey(uuidGenerator guuid.Generator, log log.Logger,
 	return apiKey, apiKeyID.String(), err
 }
 
-func loadPublicKeyFromFile(path string) (crypto.PublicKey, error) {
-	publicKeyBytes, err := os.ReadFile(path)
+func loadCertificateFromFile(path string) (*x509.Certificate, error) {
+	rawCert, err := os.ReadFile(path)
 	if err != nil {
-		return nil, fmt.Errorf("%w: %w, path %s", zerr.ErrCouldNotLoadPublicKey, err, path)
+		return nil, fmt.Errorf("%w: %w, path %s", zerr.ErrCouldNotLoadCertificate, err, path)
 	}
 
-	rsaKey, err := jwt.ParseRSAPublicKeyFromPEM(publicKeyBytes)
-	if err == nil {
-		return rsaKey, nil
+	block, _ := pem.Decode(rawCert)
+	if block == nil {
+		return nil, fmt.Errorf("%w: no valid PEM data found", zerr.ErrCouldNotLoadCertificate)
 	}
 
-	if !errors.Is(err, jwt.ErrNotRSAPublicKey) {
-		return nil, err
+	cert, err := x509.ParseCertificate(block.Bytes)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %w", zerr.ErrCouldNotLoadCertificate, err)
 	}
 
-	ecKey, err := jwt.ParseECPublicKeyFromPEM(publicKeyBytes)
-	if err == nil {
-		return ecKey, nil
-	}
-
-	if !errors.Is(err, jwt.ErrNotECPublicKey) {
-		return nil, err
-	}
-
-	edKey, err := jwt.ParseEdPublicKeyFromPEM(publicKeyBytes)
-	if err == nil {
-		return edKey, nil
-	}
-
-	if !errors.Is(err, jwt.ErrNotEdPublicKey) {
-		return nil, err
-	}
-
-	return nil, fmt.Errorf("%w: no valid public key found in file %s", zerr.ErrCouldNotLoadPublicKey, path)
+	return cert, nil
 }
