@@ -34,7 +34,7 @@ type ResourceAccess struct {
 	Actions []string `json:"actions"`
 }
 
-type resourceAction struct {
+type ResourceAction struct {
 	Type   string `json:"type"`
 	Name   string `json:"name"`
 	Action string `json:"action"`
@@ -48,19 +48,19 @@ type ClaimsWithAccess struct {
 	jwt.RegisteredClaims
 }
 
-type authChallengeError struct {
+type AuthChallengeError struct {
 	err            error
 	realm          string
 	service        string
-	resourceAction *resourceAction
+	resourceAction *ResourceAction
 }
 
-func (c authChallengeError) Error() string {
+func (c AuthChallengeError) Error() string {
 	return c.err.Error()
 }
 
 // Header constructs an appropriate value for the WWW-Authenticate header to be returned to the client.
-func (c authChallengeError) Header() string {
+func (c AuthChallengeError) Header() string {
 	if c.resourceAction == nil {
 		// no access was requested, so return an empty scope
 		return fmt.Sprintf("Bearer realm=\"%s\",service=\"%s\",scope=\"\"",
@@ -71,14 +71,14 @@ func (c authChallengeError) Header() string {
 		c.realm, c.service, c.resourceAction.Type, c.resourceAction.Name, c.resourceAction.Action)
 }
 
-type bearerAuthorizer struct {
+type BearerAuthorizer struct {
 	realm   string
 	service string
 	key     crypto.PublicKey
 }
 
-func newBearerAuthorizer(realm string, service string, key crypto.PublicKey) bearerAuthorizer {
-	return bearerAuthorizer{
+func NewBearerAuthorizer(realm string, service string, key crypto.PublicKey) BearerAuthorizer {
+	return BearerAuthorizer{
 		realm:   realm,
 		service: service,
 		key:     key,
@@ -87,9 +87,9 @@ func newBearerAuthorizer(realm string, service string, key crypto.PublicKey) bea
 
 // Authorize verifies whether the bearer token in the given Authorization header is valid, and whether it has sufficient
 // scope for the requested resource action. If an authorization error occurs (e.g. no token is given or the token has
-// insufficient scope), an authChallengeError is returned as the error.
-func (a *bearerAuthorizer) Authorize(header string, requested *resourceAction) error {
-	challenge := &authChallengeError{
+// insufficient scope), an AuthChallengeError is returned as the error.
+func (a *BearerAuthorizer) Authorize(header string, requested *ResourceAction) error {
+	challenge := &AuthChallengeError{
 		realm:          a.realm,
 		service:        a.service,
 		resourceAction: requested,
@@ -97,6 +97,7 @@ func (a *bearerAuthorizer) Authorize(header string, requested *resourceAction) e
 
 	if header == "" {
 		// if no bearer token is set in the authorization header, return the authentication challenge
+		challenge.err = zerr.ErrNoBearerToken
 		return challenge
 	}
 
@@ -137,5 +138,6 @@ func (a *bearerAuthorizer) Authorize(header string, requested *resourceAction) e
 		return nil
 	}
 
+	challenge.err = zerr.ErrInsufficientScope
 	return challenge
 }
