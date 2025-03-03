@@ -2405,6 +2405,59 @@ func TestAuthnErrors(t *testing.T) {
 		So(err, ShouldBeNil)
 	})
 
+	Convey("Bearer auth invalid PEM data", t, func() {
+		port := test.GetFreePort()
+		conf := config.New()
+		conf.HTTP.Port = port
+		tmpDir := t.TempDir()
+		tmpFile := path.Join(tmpDir, "invalid-server.cert")
+
+		err := os.WriteFile(tmpFile, []byte("invalid"), 0o000)
+		So(err, ShouldBeNil)
+
+		conf.HTTP.Auth.Bearer = &config.BearerConfig{
+			Realm:   "realm",
+			Service: "service",
+			Cert:    tmpFile,
+		}
+
+		ctlr := makeController(conf, t.TempDir())
+
+		So(func() {
+			api.AuthHandler(ctlr)
+		}, ShouldPanic)
+
+		err = os.Chmod(tmpFile, 0o644)
+		So(err, ShouldBeNil)
+	})
+
+	Convey("Bearer auth invalid certificate", t, func() {
+		port := test.GetFreePort()
+		conf := config.New()
+		conf.HTTP.Port = port
+		tmpDir := t.TempDir()
+		tmpFile := path.Join(tmpDir, "invalid-server.cert")
+
+		// 'invalid' encoded as PEM
+		err := os.WriteFile(tmpFile, []byte("-----BEGIN CERTIFICATE-----\naW52YWxpZA==\n-----END CERTIFICATE-----"), 0o000)
+		So(err, ShouldBeNil)
+
+		conf.HTTP.Auth.Bearer = &config.BearerConfig{
+			Realm:   "realm",
+			Service: "service",
+			Cert:    tmpFile,
+		}
+
+		ctlr := makeController(conf, t.TempDir())
+
+		So(func() {
+			api.AuthHandler(ctlr)
+		}, ShouldPanic)
+
+		err = os.Chmod(tmpFile, 0o644)
+		So(err, ShouldBeNil)
+	})
+
 	Convey("NewRelyingPartyGithub fail", t, func() {
 		port := test.GetFreePort()
 		conf := config.New()

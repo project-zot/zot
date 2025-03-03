@@ -407,7 +407,7 @@ func bearerAuthHandler(ctlr *Controller) mux.MiddlewareFunc {
 		ctlr.Log.Panic().Err(err).Msg("failed to load certificate for bearer authentication")
 	}
 
-	authorizer := newBearerAuthorizer(
+	authorizer := NewBearerAuthorizer(
 		ctlr.Config.HTTP.Auth.Bearer.Realm,
 		ctlr.Config.HTTP.Auth.Bearer.Service,
 		certificate.PublicKey,
@@ -435,7 +435,7 @@ func bearerAuthHandler(ctlr *Controller) mux.MiddlewareFunc {
 				return
 			}
 
-			var requestedAccess *resourceAction
+			var requestedAccess *ResourceAction
 
 			if request.RequestURI != "/v2/" {
 				// if this is not the base route, the requested repository/action must be authorized
@@ -447,7 +447,7 @@ func bearerAuthHandler(ctlr *Controller) mux.MiddlewareFunc {
 					action = "push"
 				}
 
-				requestedAccess = &resourceAction{
+				requestedAccess = &ResourceAction{
 					Type:   "repository",
 					Name:   name,
 					Action: action,
@@ -456,9 +456,9 @@ func bearerAuthHandler(ctlr *Controller) mux.MiddlewareFunc {
 
 			err := authorizer.Authorize(header, requestedAccess)
 			if err != nil {
-				var challenge *authChallengeError
+				var challenge *AuthChallengeError
 				if errors.As(err, &challenge) {
-					ctlr.Log.Debug().Err(challenge.err).Msg("bearer token authorization failed")
+					ctlr.Log.Debug().Err(challenge).Msg("bearer token authorization failed")
 					response.Header().Set("Content-Type", "application/json")
 					response.Header().Set("WWW-Authenticate", challenge.Header())
 					zcommon.WriteJSON(response, http.StatusUnauthorized, apiErr.NewError(apiErr.UNAUTHORIZED))
