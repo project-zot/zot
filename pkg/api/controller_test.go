@@ -2314,6 +2314,11 @@ func TestAuthnErrors(t *testing.T) {
 		err := os.WriteFile(tmpFile, []byte("test"), 0o000)
 		So(err, ShouldBeNil)
 
+		defer func() {
+			err := os.Chmod(tmpFile, 0o644)
+			So(err, ShouldBeNil)
+		}()
+
 		conf.HTTP.Auth.LDAP = (&config.LDAPConfig{
 			Insecure:      true,
 			Address:       LDAPAddress,
@@ -2328,9 +2333,6 @@ func TestAuthnErrors(t *testing.T) {
 		So(func() {
 			api.AuthHandler(ctlr)
 		}, ShouldPanic)
-
-		err = os.Chmod(tmpFile, 0o644)
-		So(err, ShouldBeNil)
 	})
 
 	Convey("ldap CA certs is empty", t, func() {
@@ -2391,6 +2393,11 @@ func TestAuthnErrors(t *testing.T) {
 		err := os.WriteFile(tmpFile, []byte("test"), 0o000)
 		So(err, ShouldBeNil)
 
+		defer func() {
+			err := os.Chmod(tmpFile, 0o644)
+			So(err, ShouldBeNil)
+		}()
+
 		conf.HTTP.Auth.HTPasswd = config.AuthHTPasswd{
 			Path: tmpFile,
 		}
@@ -2400,9 +2407,6 @@ func TestAuthnErrors(t *testing.T) {
 		So(func() {
 			api.AuthHandler(ctlr)
 		}, ShouldPanic)
-
-		err = os.Chmod(tmpFile, 0o644)
-		So(err, ShouldBeNil)
 	})
 
 	Convey("Bearer auth invalid PEM data", t, func() {
@@ -2415,6 +2419,11 @@ func TestAuthnErrors(t *testing.T) {
 		err := os.WriteFile(tmpFile, []byte("invalid"), 0o000)
 		So(err, ShouldBeNil)
 
+		defer func() {
+			err := os.Chmod(tmpFile, 0o644)
+			So(err, ShouldBeNil)
+		}()
+
 		conf.HTTP.Auth.Bearer = &config.BearerConfig{
 			Realm:   "realm",
 			Service: "service",
@@ -2426,9 +2435,6 @@ func TestAuthnErrors(t *testing.T) {
 		So(func() {
 			api.AuthHandler(ctlr)
 		}, ShouldPanic)
-
-		err = os.Chmod(tmpFile, 0o644)
-		So(err, ShouldBeNil)
 	})
 
 	Convey("Bearer auth invalid certificate", t, func() {
@@ -2442,6 +2448,11 @@ func TestAuthnErrors(t *testing.T) {
 		err := os.WriteFile(tmpFile, []byte("-----BEGIN CERTIFICATE-----\naW52YWxpZA==\n-----END CERTIFICATE-----"), 0o000)
 		So(err, ShouldBeNil)
 
+		defer func() {
+			err := os.Chmod(tmpFile, 0o644)
+			So(err, ShouldBeNil)
+		}()
+
 		conf.HTTP.Auth.Bearer = &config.BearerConfig{
 			Realm:   "realm",
 			Service: "service",
@@ -2453,9 +2464,6 @@ func TestAuthnErrors(t *testing.T) {
 		So(func() {
 			api.AuthHandler(ctlr)
 		}, ShouldPanic)
-
-		err = os.Chmod(tmpFile, 0o644)
-		So(err, ShouldBeNil)
 	})
 
 	Convey("NewRelyingPartyGithub fail", t, func() {
@@ -2468,6 +2476,11 @@ func TestAuthnErrors(t *testing.T) {
 		err := os.WriteFile(tmpFile, []byte("test"), 0o000)
 		So(err, ShouldBeNil)
 
+		defer func() {
+			err := os.Chmod(tmpFile, 0o644)
+			So(err, ShouldBeNil)
+		}()
+
 		conf.HTTP.Auth.HTPasswd = config.AuthHTPasswd{
 			Path: tmpFile,
 		}
@@ -2475,9 +2488,6 @@ func TestAuthnErrors(t *testing.T) {
 		So(func() {
 			api.NewRelyingPartyGithub(conf, "prov", nil, nil, log.NewLogger("debug", ""))
 		}, ShouldPanic)
-
-		err = os.Chmod(tmpFile, 0o644)
-		So(err, ShouldBeNil)
 	})
 }
 
