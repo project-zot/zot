@@ -2,6 +2,7 @@
 
 set -xe
 
+# RSA
 openssl req \
     -newkey rsa:2048 \
     -nodes \
@@ -45,3 +46,78 @@ openssl x509 \
     -CAkey ca.key \
     -CAcreateserial \
     -out client.cert
+
+# ECDSA
+openssl ecparam \
+    -name prime256v1 \
+    -genkey \
+    -noout \
+    -out ca-ecdsa.key
+
+openssl req \
+    -new \
+    -key ca-ecdsa.key \
+    -nodes \
+    -days 3650 \
+    -x509 \
+    -out ca-ecdsa.crt \
+    -subj "/CN=*"
+
+openssl ecparam \
+    -name prime256v1 \
+    -genkey \
+    -noout \
+    -out server-ecdsa.key
+
+openssl req \
+    -new \
+    -key server-ecdsa.key \
+    -nodes \
+    -out server-ecdsa.csr \
+    -subj "/OU=TestServer/CN=*"
+
+openssl x509 \
+    -req \
+    -days 3650 \
+    -sha256 \
+    -in server-ecdsa.csr \
+    -CA ca-ecdsa.crt \
+    -CAkey ca-ecdsa.key \
+    -CAcreateserial \
+    -out server-ecdsa.cert \
+    -extfile <(echo subjectAltName = IP:127.0.0.1)
+
+# ED25519
+openssl genpkey \
+    -algorithm ed25519 \
+    -out ca-ed25519.key
+
+openssl req \
+    -new \
+    -key ca-ed25519.key \
+    -nodes \
+    -days 3650 \
+    -x509 \
+    -out ca-ed25519.crt \
+    -subj "/CN=*"
+
+openssl genpkey \
+    -algorithm ed25519 \
+    -out server-ed25519.key
+
+openssl req \
+    -new \
+    -key server-ed25519.key \
+    -nodes \
+    -out server-ed25519.csr \
+    -subj "/OU=TestServer/CN=*"
+
+openssl x509 \
+    -req \
+    -days 3650 \
+    -in server-ed25519.csr \
+    -CA ca-ed25519.crt \
+    -CAkey ca-ed25519.key \
+    -CAcreateserial \
+    -out server-ed25519.cert \
+    -extfile <(echo subjectAltName = IP:127.0.0.1)
