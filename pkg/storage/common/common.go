@@ -876,9 +876,6 @@ type DedupeTaskGenerator struct {
 	ImgStore storageTypes.ImageStore
 	// storage dedupe value
 	Dedupe bool
-	// store blobs paths grouped by digest
-	digest         godigest.Digest
-	duplicateBlobs []string
 	/* store processed digest, used for iterating duplicateBlobs one by one
 	and generating a task for each unprocessed one*/
 	lastDigests []godigest.Digest
@@ -917,7 +914,7 @@ func (gen *DedupeTaskGenerator) Next() (scheduler.Task, error) {
 	}
 
 	// get all blobs from storage.imageStore and group them by digest
-	gen.digest, gen.duplicateBlobs, err = gen.ImgStore.GetNextDigestWithBlobPaths(gen.repos, gen.lastDigests)
+	digest, duplicateBlobs, err := gen.ImgStore.GetNextDigestWithBlobPaths(gen.repos, gen.lastDigests)
 	if err != nil {
 		gen.Log.Error().Err(err).Str("component", "dedupe").Msg("failed to get next digest")
 
@@ -925,7 +922,7 @@ func (gen *DedupeTaskGenerator) Next() (scheduler.Task, error) {
 	}
 
 	// if no digests left, then mark the task generator as done
-	if gen.digest == "" {
+	if digest == "" {
 		gen.Log.Info().Str("component", "dedupe").Msg("no digests left, finished")
 
 		gen.done = true
@@ -934,10 +931,10 @@ func (gen *DedupeTaskGenerator) Next() (scheduler.Task, error) {
 	}
 
 	// mark digest as processed before running its task
-	gen.lastDigests = append(gen.lastDigests, gen.digest)
+	gen.lastDigests = append(gen.lastDigests, digest)
 
 	// generate rebuild dedupe task for this digest
-	return newDedupeTask(gen.ImgStore, gen.digest, gen.Dedupe, gen.duplicateBlobs, gen.Log), nil
+	return newDedupeTask(gen.ImgStore, digest, gen.Dedupe, duplicateBlobs, gen.Log), nil
 }
 
 func (gen *DedupeTaskGenerator) IsDone() bool {
@@ -950,9 +947,7 @@ func (gen *DedupeTaskGenerator) IsReady() bool {
 
 func (gen *DedupeTaskGenerator) Reset() {
 	gen.lastDigests = []godigest.Digest{}
-	gen.duplicateBlobs = []string{}
 	gen.repos = []string{}
-	gen.digest = ""
 	gen.done = false
 }
 
