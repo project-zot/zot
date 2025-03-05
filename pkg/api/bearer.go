@@ -93,7 +93,7 @@ func (a *BearerAuthorizer) Authorize(header string, requested *ResourceAction) e
 
 	token, err := jwt.ParseWithClaims(signedString, &ClaimsWithAccess{}, func(token *jwt.Token) (interface{}, error) {
 		return a.key, nil
-	}, jwt.WithValidMethods(a.allowedSigningAlgorithms()))
+	}, jwt.WithValidMethods(a.allowedSigningAlgorithms()), jwt.WithIssuedAt())
 	if err != nil {
 		return fmt.Errorf("%w: %w", zerr.ErrInvalidBearerToken, err)
 	}
