@@ -265,7 +265,7 @@
 [8.458937, "i", "\r"]
 [8.459588, "o", "\r\n"]
 [8.471366, "o", "go mod tidy\r\n"]
-[8.971283, "o", "env CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o bin/zot-linux-amd64 -buildmode=pie -tags extended,containers_image_openpgp -v -trimpath -ldflags \"-X zotregistry.dev/zot/pkg/api/config.Commit=v1.4.0-rc3-1-ge583c2f -X zotregistry.dev/zot/pkg/api/config.BinaryType=extended -X zotregistry.dev/zot/pkg/api/config.GoVersion=go1.17.7 -s -w\" ./cmd/zot\r\n"]
+[8.971283, "o", "env CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o bin/zot-linux-amd64 -buildmode=pie -tags extended -v -trimpath -ldflags \"-X zotregistry.dev/zot/pkg/api/config.Commit=v1.4.0-rc3-1-ge583c2f -X zotregistry.dev/zot/pkg/api/config.BinaryType=extended -X zotregistry.dev/zot/pkg/api/config.GoVersion=go1.17.7 -s -w\" ./cmd/zot\r\n"]
 [11.652118, "o", "\u001b[32m$ \u001b[39m"]
 [12.657831, "i", "l"]
 [12.658095, "o", "l"]
