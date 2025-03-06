@@ -175,4 +175,8 @@ var (
 	ErrImageNotFound                  = errors.New("image not found")
 	ErrAmbiguousInput                 = errors.New("input is not specific enough")
 	ErrReceivedUnexpectedAuthHeader   = errors.New("received unexpected www-authenticate header")
+	ErrNoBearerToken                  = errors.New("no bearer token given")
+	ErrInvalidBearerToken             = errors.New("invalid bearer token given")
+	ErrInsufficientScope              = errors.New("bearer token does not have sufficient scope")
+	ErrCouldNotLoadCertificate        = errors.New("failed to load certificate")
 )
