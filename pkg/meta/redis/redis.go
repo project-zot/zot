@@ -2168,6 +2168,12 @@ func (rc *RedisDB) getAllContainedMeta(ctx context.Context, imageIndexData *prot
 	imageMetaList := make([]*proto_go.ImageMeta, 0, len(imageIndexData.Index.Index.Manifests))
 
 	for _, manifest := range imageIndexData.Index.Index.Manifests {
+		if manifest.MediaType != ispec.MediaTypeImageManifest && manifest.MediaType != ispec.MediaTypeImageIndex {
+			// filter out unexpected media types from the manifest lists,
+			// this could be the case of buildkit cache entries for example
+			continue
+		}
+
 		imageManifestData, err := rc.getProtoImageMeta(ctx, manifest.Digest)
 		if err != nil {
 			return imageMetaList, manifestDataList, err

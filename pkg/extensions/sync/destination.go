@@ -11,7 +11,6 @@ import (
 	"os"
 	"path"
 	"strings"
-	"time"
 
 	"github.com/containers/image/v5/types"
 	"github.com/opencontainers/go-digest"
@@ -99,8 +98,6 @@ func (registry *DestinationRegistry) CommitImage(imageReference types.ImageRefer
 	registry.log.Info().Str("syncTempDir", path.Join(tempImageStore.RootDir(), repo)).Str("reference", reference).
 		Msg("pushing synced local image to local registry")
 
-	var lockLatency time.Time
-
 	manifestBlob, manifestDigest, mediaType, err := tempImageStore.GetImageManifest(repo, reference)
 	if err != nil {
 		registry.log.Error().Str("errorType", common.TypeOf(err)).
@@ -136,10 +133,14 @@ func (registry *DestinationRegistry) CommitImage(imageReference types.ImageRefer
 		}
 
 		for _, manifest := range indexManifest.Manifests {
-			tempImageStore.RLock(&lockLatency)
-			manifestBuf, err := tempImageStore.GetBlobContent(repo, manifest.Digest)
-			tempImageStore.RUnlock(&lockLatency)
+			var manifestBuf []byte
 
+			err := tempImageStore.WithRepoReadLock(repo, func() error {
+				var err error
+				manifestBuf, err = tempImageStore.GetBlobContent(repo, manifest.Digest)
+
+				return err
+			})
 			if err != nil {
 				registry.log.Error().Str("errorType", common.TypeOf(err)).
 					Err(err).Str("dir", path.Join(tempImageStore.RootDir(), repo)).Str("digest", manifest.Digest.String()).
