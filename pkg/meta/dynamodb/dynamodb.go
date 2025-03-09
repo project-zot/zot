@@ -228,10 +228,16 @@ func (dwr *DynamoDB) getAllContainedMeta(ctx context.Context, imageIndexData *pr
 ) ([]*proto_go.ImageMeta, []*proto_go.ManifestMeta, error) {
 	manifestDataList := make([]*proto_go.ManifestMeta, 0, len(imageIndexData.Index.Index.Manifests))
 	imageMetaList := make([]*proto_go.ImageMeta, 0, len(imageIndexData.Index.Index.Manifests))
-
 	manifestDigests := make([]string, 0, len(imageIndexData.Index.Index.Manifests))
-	for i := range imageIndexData.Index.Index.Manifests {
-		manifestDigests = append(manifestDigests, imageIndexData.Index.Index.Manifests[i].Digest)
+
+	for _, manifest := range imageIndexData.Index.Index.Manifests {
+		if manifest.MediaType != ispec.MediaTypeImageManifest && manifest.MediaType != ispec.MediaTypeImageIndex {
+			// filter out unexpected media types from the manifest lists,
+			// this could be the case of buildkit cache entries for example
+			continue
+		}
+
+		manifestDigests = append(manifestDigests, manifest.Digest)
 	}
 
 	manifestsAttributes, err := dwr.fetchImageMetaAttributesByDigest(ctx, manifestDigests)
