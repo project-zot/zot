@@ -71,7 +71,7 @@ require (
 	go.etcd.io/bbolt v1.4.0
 	golang.org/x/crypto v0.33.0
 	golang.org/x/exp v0.0.0-20250106191152-7588d65b2ba8
-	golang.org/x/oauth2 v0.26.0
+	golang.org/x/oauth2 v0.28.0
 	google.golang.org/protobuf v1.36.5
 	gopkg.in/resty.v1 v1.12.0
 	gopkg.in/yaml.v3 v3.0.1
