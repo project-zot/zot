@@ -60,6 +60,7 @@ var (
 	ErrBadBlob                        = errors.New("bad blob")
 	ErrBadBlobDigest                  = errors.New("bad blob digest")
 	ErrBlobReferenced                 = errors.New("blob referenced by manifest")
+	ErrBlobRedirectURLNotSupported    = errors.New("blob redirect url not supported")
 	ErrManifestReferenced             = errors.New("manifest referenced by index image")
 	ErrUnknownCode                    = errors.New("unknown error code")
 	ErrBadCACert                      = errors.New("invalid tls ca cert")
