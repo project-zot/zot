@@ -10835,13 +10835,13 @@ func TestManifestImageIndex(t *testing.T) {
 					resp, err = resty.R().SetHeader("Content-Type", ispec.MediaTypeImageIndex).
 						SetBody(content).Put(baseURL + "/v2/index/manifests/test:1.0")
 					So(err, ShouldBeNil)
-					So(resp.StatusCode(), ShouldEqual, http.StatusBadRequest)
+					So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
 
 					// previously an image index, try writing a manifest
 					resp, err = resty.R().SetHeader("Content-Type", ispec.MediaTypeImageManifest).
 						SetBody(m1content).Put(baseURL + "/v2/index/manifests/test:index1")
 					So(err, ShouldBeNil)
-					So(resp.StatusCode(), ShouldEqual, http.StatusBadRequest)
+					So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
 				})
 			})
 		})

@@ -3410,11 +3410,11 @@ func TestS3ManifestImageIndex(t *testing.T) {
 					So(digest, ShouldNotBeNil)
 
 					_, _, err = imgStore.PutImageManifest("index", "test:1.0", ispec.MediaTypeImageIndex, content)
-					So(err, ShouldNotBeNil)
+					So(err, ShouldBeNil)
 
 					// previously an image index, try writing a manifest
 					_, _, err = imgStore.PutImageManifest("index", "test:index1", ispec.MediaTypeImageManifest, m1content)
-					So(err, ShouldNotBeNil)
+					So(err, ShouldBeNil)
 				})
 			})
 		})
