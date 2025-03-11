@@ -9,6 +9,7 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"zotregistry.dev/zot/pkg/common"
+	"zotregistry.dev/zot/pkg/compat"
 	proto_go "zotregistry.dev/zot/pkg/meta/proto/gen"
 	mTypes "zotregistry.dev/zot/pkg/meta/types"
 )
@@ -362,10 +363,17 @@ func GetManifests(descriptors []ispec.Descriptor) []mTypes.ManifestMeta {
 	manifestList := []mTypes.ManifestMeta{}
 
 	for _, manifest := range descriptors {
-		manifestList = append(manifestList, mTypes.ManifestMeta{
-			Digest: manifest.Digest,
-			Size:   manifest.Size,
-		})
+		mediaType := manifest.MediaType
+
+		// let's filter out unexpected media types from the manifest lists,
+		// this could be the case of buildkit cache entries for example
+		if mediaType == ispec.MediaTypeImageManifest || compat.IsCompatibleManifestMediaType(mediaType) ||
+			mediaType == ispec.MediaTypeImageIndex || compat.IsCompatibleManifestListMediaType(mediaType) {
+			manifestList = append(manifestList, mTypes.ManifestMeta{
+				Digest: manifest.Digest,
+				Size:   manifest.Size,
+			})
+		}
 	}
 
 	return manifestList

@@ -19,6 +19,7 @@ import (
 	zerr "zotregistry.dev/zot/errors"
 	"zotregistry.dev/zot/pkg/api/constants"
 	zcommon "zotregistry.dev/zot/pkg/common"
+	"zotregistry.dev/zot/pkg/compat"
 	"zotregistry.dev/zot/pkg/log"
 	"zotregistry.dev/zot/pkg/meta/common"
 	mConvert "zotregistry.dev/zot/pkg/meta/convert"
@@ -696,13 +697,13 @@ func (rc *RedisDB) SetImageMeta(digest godigest.Digest, imageMeta mTypes.ImageMe
 	protoImageMeta := &proto_go.ImageMeta{}
 	ctx := context.Background()
 
-	switch imageMeta.MediaType {
-	case ispec.MediaTypeImageManifest:
+	if imageMeta.MediaType == ispec.MediaTypeImageManifest ||
+		compat.IsCompatibleManifestMediaType(imageMeta.MediaType) {
 		manifest := imageMeta.Manifests[0]
-
 		protoImageMeta = mConvert.GetProtoImageManifestData(manifest.Manifest, manifest.Config,
 			manifest.Size, manifest.Digest.String())
-	case ispec.MediaTypeImageIndex:
+	} else if imageMeta.MediaType == ispec.MediaTypeImageIndex ||
+		compat.IsCompatibleManifestListMediaType(imageMeta.MediaType) {
 		protoImageMeta = mConvert.GetProtoImageIndexMeta(*imageMeta.Index, imageMeta.Size, imageMeta.Digest.String())
 	}
 
@@ -980,8 +981,8 @@ func (rc *RedisDB) SearchTags(ctx context.Context, searchText string) ([]mTypes.
 
 			var protoImageMeta *proto_go.ImageMeta
 
-			switch descriptor.MediaType {
-			case ispec.MediaTypeImageManifest:
+			if descriptor.MediaType == ispec.MediaTypeImageManifest || //nolint:gocritic
+				compat.IsCompatibleManifestMediaType(descriptor.MediaType) {
 				manifestDigest := descriptor.Digest
 
 				imageManifestData, err := rc.getProtoImageMeta(ctx, manifestDigest)
@@ -991,7 +992,8 @@ func (rc *RedisDB) SearchTags(ctx context.Context, searchText string) ([]mTypes.
 				}
 
 				protoImageMeta = imageManifestData
-			case ispec.MediaTypeImageIndex:
+			} else if descriptor.MediaType == ispec.MediaTypeImageIndex ||
+				compat.IsCompatibleManifestListMediaType(descriptor.MediaType) {
 				indexDigest := descriptor.Digest
 
 				imageIndexData, err := rc.getProtoImageMeta(ctx, indexDigest)
@@ -1008,7 +1010,7 @@ func (rc *RedisDB) SearchTags(ctx context.Context, searchText string) ([]mTypes.
 				imageIndexData.Manifests = manifestDataList
 
 				protoImageMeta = imageIndexData
-			default:
+			} else {
 				rc.Log.Error().Str("mediaType", descriptor.MediaType).Msg("unsupported media type")
 
 				continue
@@ -1060,8 +1062,8 @@ func (rc *RedisDB) FilterTags(ctx context.Context, filterRepoTag mTypes.FilterRe
 				continue
 			}
 
-			switch descriptor.MediaType {
-			case ispec.MediaTypeImageManifest:
+			if descriptor.MediaType == ispec.MediaTypeImageManifest || //nolint:gocritic
+				compat.IsCompatibleManifestMediaType(descriptor.MediaType) {
 				manifestDigest := descriptor.Digest
 
 				imageManifestData, err := rc.getProtoImageMeta(ctx, manifestDigest)
@@ -1076,7 +1078,8 @@ func (rc *RedisDB) FilterTags(ctx context.Context, filterRepoTag mTypes.FilterRe
 				if filterFunc(repoMeta, imageMeta) {
 					images = append(images, mConvert.GetFullImageMetaFromProto(tag, protoRepoMeta, imageManifestData))
 				}
-			case ispec.MediaTypeImageIndex:
+			} else if descriptor.MediaType == ispec.MediaTypeImageIndex ||
+				compat.IsCompatibleManifestListMediaType(descriptor.MediaType) {
 				indexDigest := descriptor.Digest
 
 				protoImageIndexMeta, err := rc.getProtoImageMeta(ctx, indexDigest)
@@ -1110,7 +1113,7 @@ func (rc *RedisDB) FilterTags(ctx context.Context, filterRepoTag mTypes.FilterRe
 
 					images = append(images, mConvert.GetFullImageMetaFromProto(tag, protoRepoMeta, protoImageIndexMeta))
 				}
-			default:
+			} else {
 				rc.Log.Error().Str("mediaType", descriptor.MediaType).Msg("unsupported media type")
 
 				continue
@@ -1206,7 +1209,8 @@ func (rc *RedisDB) GetFullImageMeta(ctx context.Context, repo string, tag string
 		return mConvert.GetFullImageMetaFromProto(tag, protoRepoMeta, protoImageMeta), err
 	}
 
-	if protoImageMeta.MediaType == ispec.MediaTypeImageIndex {
+	if protoImageMeta.MediaType == ispec.MediaTypeImageIndex ||
+		compat.IsCompatibleManifestListMediaType(protoImageMeta.MediaType) {
 		_, manifestDataList, err := rc.getAllContainedMeta(ctx, protoImageMeta)
 		if err != nil {
 			return mConvert.GetFullImageMetaFromProto(tag, protoRepoMeta, protoImageMeta), err
@@ -1228,7 +1232,8 @@ func (rc *RedisDB) GetImageMeta(digest godigest.Digest) (mTypes.ImageMeta, error
 		return imageMeta, err
 	}
 
-	if protoImageMeta.MediaType == ispec.MediaTypeImageIndex {
+	if protoImageMeta.MediaType == ispec.MediaTypeImageIndex ||
+		compat.IsCompatibleManifestListMediaType(protoImageMeta.MediaType) {
 		_, manifestDataList, err := rc.getAllContainedMeta(ctx, protoImageMeta)
 		if err != nil {
 			return imageMeta, err
@@ -1773,7 +1778,8 @@ func (rc *RedisDB) FilterImageMeta(ctx context.Context,
 			return imageMetaMap, err
 		}
 
-		if protoImageMeta.MediaType == ispec.MediaTypeImageIndex {
+		if protoImageMeta.MediaType == ispec.MediaTypeImageIndex ||
+			compat.IsCompatibleManifestListMediaType(protoImageMeta.MediaType) {
 			_, manifestDataList, err := rc.getAllContainedMeta(ctx, protoImageMeta)
 			if err != nil {
 				return imageMetaMap, err
@@ -2168,16 +2174,26 @@ func (rc *RedisDB) getAllContainedMeta(ctx context.Context, imageIndexData *prot
 	imageMetaList := make([]*proto_go.ImageMeta, 0, len(imageIndexData.Index.Index.Manifests))
 
 	for _, manifest := range imageIndexData.Index.Index.Manifests {
+		if manifest.MediaType != ispec.MediaTypeImageManifest &&
+			manifest.MediaType != ispec.MediaTypeImageIndex &&
+			!compat.IsCompatibleManifestMediaType(manifest.MediaType) &&
+			!compat.IsCompatibleManifestListMediaType(manifest.MediaType) {
+			// filter out unexpected media types from the manifest lists,
+			// this could be the case of buildkit cache entries for example
+			continue
+		}
+
 		imageManifestData, err := rc.getProtoImageMeta(ctx, manifest.Digest)
 		if err != nil {
 			return imageMetaList, manifestDataList, err
 		}
 
-		switch imageManifestData.MediaType {
-		case ispec.MediaTypeImageManifest:
+		if imageManifestData.MediaType == ispec.MediaTypeImageManifest ||
+			compat.IsCompatibleManifestMediaType(imageManifestData.MediaType) {
 			imageMetaList = append(imageMetaList, imageManifestData)
 			manifestDataList = append(manifestDataList, imageManifestData.Manifests[0])
-		case ispec.MediaTypeImageIndex:
+		} else if imageManifestData.MediaType == ispec.MediaTypeImageIndex ||
+			compat.IsCompatibleManifestListMediaType(imageManifestData.MediaType) {
 			partialImageDataList, partialManifestDataList, err := rc.getAllContainedMeta(ctx, imageManifestData)
 			if err != nil {
 				return imageMetaList, manifestDataList, err

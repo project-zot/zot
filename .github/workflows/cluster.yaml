@@ -140,7 +140,13 @@ jobs:
               killall --wait -r zot-*; \
               exit 1; \
             fi
+        env:
+          AWS_ACCESS_KEY_ID: minioadmin
+          AWS_SECRET_ACCESS_KEY: minioadmin
 
+      - name: Kill zot and collect logs for push-pull tests
+        if: always()
+        run: |
             echo "killing zot instances"
             killall --wait -r zot-*
 
@@ -153,9 +159,6 @@ jobs:
             sudo rm -rf /tmp/zot*/
             # clean zot logs
             rm /tmp/*.log
-        env:
-          AWS_ACCESS_KEY_ID: minioadmin
-          AWS_SECRET_ACCESS_KEY: minioadmin
 
       - name: Upload zot logs for push-pull tests
         uses: actions/upload-artifact@v4
@@ -179,7 +182,13 @@ jobs:
 
             # run zb with --src-cidr
             bin/zb-linux-amd64 -c 10 -n 50 -o ci-cd --src-cidr 127.0.0.0/8 http://localhost:8080
+        env:
+          AWS_ACCESS_KEY_ID: minioadmin
+          AWS_SECRET_ACCESS_KEY: minioadmin
 
+      - name: Kill zot and collect logs for cidr tests
+        if: always()
+        run: |
             echo "killing zot instances"
             killall --wait -r zot-*
 
@@ -192,9 +201,6 @@ jobs:
             sudo rm -rf /tmp/zot*/
             # clean zot logs
             rm /tmp/*.log
-        env:
-          AWS_ACCESS_KEY_ID: minioadmin
-          AWS_SECRET_ACCESS_KEY: minioadmin
 
       - name: Upload zot logs for cidr tests
         uses: actions/upload-artifact@v4
@@ -218,15 +224,18 @@ jobs:
 
             # run zb with --src-ips
             bin/zb-linux-amd64 -c 10 -n 50 -o ci-cd --src-ips 127.0.0.2,127.0.0.3,127.0.0.4,127.0.0.5,127.0.0.6,127.0.12.5,127.0.12.6 http://localhost:8080
+        env:
+          AWS_ACCESS_KEY_ID: minioadmin
+          AWS_SECRET_ACCESS_KEY: minioadmin
 
+      - name: Kill zot and collect logs for src-ips tests
+        if: always()
+        run: |
             echo "killing zot instances"
             killall --wait -r zot-*
 
             # archive logs
             zip logs-src-ips-bolt.zip /tmp/*.log -r
-        env:
-          AWS_ACCESS_KEY_ID: minioadmin
-          AWS_SECRET_ACCESS_KEY: minioadmin
 
       - name: Upload zot logs for src-ips tests
         uses: actions/upload-artifact@v4
@@ -395,7 +404,13 @@ jobs:
               killall --wait -r zot-*; \
               exit 1; \
             fi
+        env:
+          AWS_ACCESS_KEY_ID: minioadmin
+          AWS_SECRET_ACCESS_KEY: minioadmin
 
+      - name: Kill zot and collect logs for push-pull tests
+        if: always()
+        run: |
             echo "killing zot instances"
             killall --wait -r zot-*
 
@@ -408,9 +423,6 @@ jobs:
             docker exec redis redis-cli FLUSHDB
             # clean zot logs
             rm /tmp/*.log
-        env:
-          AWS_ACCESS_KEY_ID: minioadmin
-          AWS_SECRET_ACCESS_KEY: minioadmin
 
       - name: Upload zot logs for push-pull tests
         uses: actions/upload-artifact@v4
@@ -434,7 +446,13 @@ jobs:
 
             # run zb with --src-cidr
             bin/zb-linux-amd64 -c 10 -n 50 -o ci-cd --src-cidr 127.0.0.0/8 http://localhost:8080
+        env:
+          AWS_ACCESS_KEY_ID: minioadmin
+          AWS_SECRET_ACCESS_KEY: minioadmin
 
+      - name: Kill zot and collect logs for cidr tests
+        if: always()
+        run: |
             echo "killing zot instances"
             killall --wait -r zot-*
 
@@ -447,9 +465,6 @@ jobs:
             docker exec redis redis-cli FLUSHDB
             # clean zot logs
             rm /tmp/*.log
-        env:
-          AWS_ACCESS_KEY_ID: minioadmin
-          AWS_SECRET_ACCESS_KEY: minioadmin
 
       - name: Upload zot logs for cidr tests
         uses: actions/upload-artifact@v4
@@ -473,15 +488,18 @@ jobs:
 
             # run zb with --src-ips
             bin/zb-linux-amd64 -c 10 -n 50 -o ci-cd --src-ips 127.0.0.2,127.0.0.3,127.0.0.4,127.0.0.5,127.0.0.6,127.0.12.5,127.0.12.6 http://localhost:8080
+        env:
+          AWS_ACCESS_KEY_ID: minioadmin
+          AWS_SECRET_ACCESS_KEY: minioadmin
 
+      - name: Kill zot and collect logs for src-ips tests
+        if: always()
+        run: |
             echo "killing zot instances"
             killall --wait -r zot-*
 
             # archive logs
             zip logs-src-ips-redis.zip /tmp/*.log -r
-        env:
-          AWS_ACCESS_KEY_ID: minioadmin
-          AWS_SECRET_ACCESS_KEY: minioadmin
 
       - name: Upload zot logs for src-ips tests
         uses: actions/upload-artifact@v4
