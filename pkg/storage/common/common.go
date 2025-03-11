@@ -250,15 +250,9 @@ func CheckIfIndexNeedsUpdate(index *ispec.Index, desc *ispec.Descriptor,
 
 			// changing media-type is disallowed!
 			if manifest.MediaType != desc.MediaType {
-				err := zerr.ErrBadManifest
-				log.Error().Err(err).
+				log.Info().
 					Str("old mediaType", manifest.MediaType).
-					Str("new mediaType", desc.MediaType).Msg("cannot change media-type")
-
-				reason := fmt.Sprintf("changing manifest media-type from \"%s\" to \"%s\" is disallowed",
-					manifest.MediaType, desc.MediaType)
-
-				return false, "", zerr.NewError(err).AddDetail("reason", reason)
+					Str("new mediaType", desc.MediaType).Msg("media-type changed")
 			}
 
 			oldDesc := *desc
