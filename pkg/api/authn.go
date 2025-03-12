@@ -587,12 +587,24 @@ func NewRelyingPartyGithub(config *config.Config, provider string, hashKey, encr
 	_, clientID, clientSecret, redirectURI, scopes,
 		options := getRelyingPartyArgs(config, provider, hashKey, encryptKey, log)
 
+	var endpoint oauth2.Endpoint
+
+	// Use custom endpoints if provided, otherwise fallback to GitHub's endpoints
+	if provider := config.HTTP.Auth.OpenID.Providers[provider]; provider.AuthUrl != "" && provider.TokenUrl != "" {
+		endpoint = oauth2.Endpoint{
+			AuthURL:  provider.AuthUrl,
+			TokenURL: provider.TokenUrl,
+		}
+	} else {
+		endpoint = githubOAuth.Endpoint
+	}
+
 	rpConfig := &oauth2.Config{
 		ClientID:     clientID,
 		ClientSecret: clientSecret,
 		RedirectURL:  redirectURI,
 		Scopes:       scopes,
-		Endpoint:     githubOAuth.Endpoint,
+		Endpoint:     endpoint,
 	}
 
 	relyingParty, err := rp.NewRelyingPartyOAuth(rpConfig, options...)
