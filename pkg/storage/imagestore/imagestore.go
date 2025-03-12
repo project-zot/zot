@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
 	"path"
 	"path/filepath"
 	"strings"
@@ -1533,6 +1534,23 @@ func (is *ImageStore) GetBlob(repo string, digest godigest.Digest, mediaType str
 
 	// The caller function is responsible for calling Close()
 	return blobReadCloser, binfo.Size(), nil
+}
+
+func (is *ImageStore) GetBlobURL(request *http.Request, repo string, digest godigest.Digest, mediaType string) (string, error) {
+	var lockLatency time.Time
+
+	if err := digest.Validate(); err != nil {
+		return "", err
+	}
+
+	is.RLock(&lockLatency)
+	defer is.RUnlock(&lockLatency)
+
+	binfo, err := is.originalBlobInfo(repo, digest)
+	if err != nil {
+		return "", err
+	}
+	return is.storeDriver.URLFor(request, binfo.Path())
 }
 
 // GetBlobContent returns blob contents, the caller function MUST lock from outside.
