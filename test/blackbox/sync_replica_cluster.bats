@@ -48,7 +48,7 @@ function setup_file() {
 
     cat >${zot_sync_one_config_file} <<EOF
 {
-    "distSpecVersion": "1.1.0",
+    "distSpecVersion": "1.1.1",
     "storage": {
         "rootDirectory": "${zot_sync_one_root_dir}"
     },
@@ -84,7 +84,7 @@ EOF
 
     cat >${zot_sync_two_config_file} <<EOF
 {
-    "distSpecVersion": "1.1.0",
+    "distSpecVersion": "1.1.1",
     "storage": {
         "rootDirectory": "${zot_sync_two_root_dir}"
     },

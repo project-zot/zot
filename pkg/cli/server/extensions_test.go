@@ -1468,7 +1468,7 @@ func TestOverlappingSyncRetentionConfig(t *testing.T) {
 		defer os.Remove(tmpfile.Name()) // clean up
 
 		content := `{
-			"distSpecVersion": "1.1.0",
+			"distSpecVersion": "1.1.1",
 			"storage": {
 				"rootDirectory": "%s",
 				"gc": true,
@@ -1537,7 +1537,7 @@ func TestOverlappingSyncRetentionConfig(t *testing.T) {
 		defer os.Remove(tmpfile.Name()) // clean up
 
 		content := `{
-			"distSpecVersion": "1.1.0",
+			"distSpecVersion": "1.1.1",
 			"storage": {
 				"rootDirectory": "%s",
 				"gc": true,
@@ -1604,7 +1604,7 @@ func TestOverlappingSyncRetentionConfig(t *testing.T) {
 		defer os.Remove(tmpfile.Name()) // clean up
 
 		content := `{
-			"distSpecVersion": "1.1.0",
+			"distSpecVersion": "1.1.1",
 			"storage": {
 				"rootDirectory": "%s",
 				"gc": true,
@@ -1669,7 +1669,7 @@ func TestOverlappingSyncRetentionConfig(t *testing.T) {
 		defer os.Remove(tmpfile.Name()) // clean up
 
 		content := `{
-			"distSpecVersion": "1.1.0",
+			"distSpecVersion": "1.1.1",
 			"storage": {
 				"rootDirectory": "%s",
 				"gc": true,
@@ -1743,7 +1743,7 @@ func TestSyncWithRemoteStorageConfig(t *testing.T) {
 		defer os.Remove(tmpfile.Name()) // clean up
 
 		content := `{
-			"distSpecVersion": "1.1.0",
+			"distSpecVersion": "1.1.1",
 			"storage": {
 				"rootDirectory": "%s",
 				"dedupe": false,
@@ -1812,7 +1812,7 @@ func TestSyncWithRemoteStorageConfig(t *testing.T) {
 		defer os.Remove(tmpfile.Name()) // clean up
 
 		content := fmt.Sprintf(`{
-			"distSpecVersion": "1.1.0",
+			"distSpecVersion": "1.1.1",
 			"storage": {
 				"rootDirectory": "%s",
 				"dedupe": false,
@@ -1884,7 +1884,7 @@ func TestSyncWithRemoteStorageConfig(t *testing.T) {
 		defer os.Remove(tmpfile.Name()) // clean up
 
 		content := fmt.Sprintf(`{
-			"distSpecVersion": "1.1.0",
+			"distSpecVersion": "1.1.1",
 			"storage": {
 				"rootDirectory": "%s",
 				"subPaths":{

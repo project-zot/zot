@@ -301,7 +301,7 @@ func TestRedisOptions(t *testing.T) {
 
 		Convey("Test redis options from json", func(c C) {
 			fileContent := []byte(`{
-				"distSpecVersion": "1.1.0",
+				"distSpecVersion": "1.1.1",
 				"storage": {
 					"remoteCache": true,
 					"cacheDriver": {

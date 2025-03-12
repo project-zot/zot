@@ -25,7 +25,7 @@ function setup_file() {
 
     cat > ${zot_config_file_dedupe}<<EOF
 {
-    "distSpecVersion": "1.1.0",
+    "distSpecVersion": "1.1.1",
     "storage": {
         "rootDirectory": "${zot_root_dir}",
         "dedupe": true,
@@ -59,7 +59,7 @@ EOF
 
     cat > ${zot_config_file_nodedupe}<<EOF
 {
-    "distSpecVersion": "1.1.0",
+    "distSpecVersion": "1.1.1",
     "storage": {
         "rootDirectory": "${zot_root_dir}",
         "dedupe": false,
