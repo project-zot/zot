@@ -103,7 +103,7 @@ func TestValidateManifest(t *testing.T) {
 
 			So(errors.As(err, &internalErr), ShouldBeTrue)
 			So(internalErr.GetDetails(), ShouldContainKey, "jsonSchemaValidation")
-			So(internalErr.GetDetails()["jsonSchemaValidation"], ShouldEqual, "[schemaVersion: Must be less than or equal to 2]")
+			So(internalErr.GetDetails()["jsonSchemaValidation"], ShouldContainSubstring, "must be <= 2 but found 999")
 		})
 
 		Convey("bad config blob", func() {
@@ -155,6 +155,25 @@ func TestValidateManifest(t *testing.T) {
 						Size:      int64(len(content)),
 					},
 				},
+			}
+
+			manifest.SchemaVersion = 2
+
+			body, err := json.Marshal(manifest)
+			So(err, ShouldBeNil)
+
+			_, _, err = imgStore.PutImageManifest("test", "1.0", ispec.MediaTypeImageManifest, body)
+			So(err, ShouldBeNil)
+		})
+
+		Convey("manifest with empty layers should not error", func() {
+			manifest := ispec.Manifest{
+				Config: ispec.Descriptor{
+					MediaType: ispec.MediaTypeImageConfig,
+					Digest:    cdigest,
+					Size:      int64(len(cblob)),
+				},
+				Layers: []ispec.Descriptor{},
 			}
 
 			manifest.SchemaVersion = 2

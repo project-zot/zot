@@ -45,7 +45,7 @@ metadata:
 data:
   zot_config.json: |
     {
-      "distSpecVersion":"1.0.1",
+      "distSpecVersion":"1.1.1",
       "storage": {
           "rootDirectory": "/var/lib/registry"
       },
@@ -85,7 +85,7 @@ data:
     }
   zot_minimal.json: |
     {
-      "distSpecVersion":"1.0.1",
+      "distSpecVersion":"1.1.1",
       "storage": {
           "rootDirectory": "/var/lib/registry"
       },

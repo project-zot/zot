@@ -1,5 +1,5 @@
 {
-  "distSpecVersion": "1.1.0",
+  "distSpecVersion": "1.1.1",
     "storage": {
       "rootDirectory": "/data"
     },

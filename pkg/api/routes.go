@@ -1,5 +1,5 @@
 // @title Open Container Initiative Distribution Specification
-// @version v1.1.0
+// @version v1.1.1
 // @description APIs for Open Container Initiative Distribution Specification
 
 // @license.name Apache 2.0

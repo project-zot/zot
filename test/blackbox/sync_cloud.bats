@@ -56,7 +56,7 @@ function setup_file() {
 
     cat >${zot_sync_per_config_file} <<EOF
 {
-    "distSpecVersion": "1.1.0",
+    "distSpecVersion": "1.1.1",
     "storage": {
         "rootDirectory": "${zot_sync_per_root_dir}",
         "dedupe": false,
@@ -103,7 +103,7 @@ EOF
 
     cat >${zot_sync_ondemand_config_file} <<EOF
 {
-    "distSpecVersion": "1.1.0",
+    "distSpecVersion": "1.1.1",
     "storage": {
         "rootDirectory": "${zot_sync_ondemand_root_dir}",
         "dedupe": false,
@@ -148,7 +148,7 @@ EOF
 EOF
     cat >${zot_minimal_config_file} <<EOF
 {
-    "distSpecVersion": "1.1.0",
+    "distSpecVersion": "1.1.1",
     "storage": {
         "rootDirectory": "${zot_minimal_root_dir}"
     },

@@ -32,7 +32,7 @@ function setup_file() {
     mkdir -p ${oci_data_dir}
     cat > ${zot_config_file}<<EOF
 {
-    "distSpecVersion": "1.1.0",
+    "distSpecVersion": "1.1.1",
     "storage": {
         "rootDirectory": "${zot_root_dir}",
         "gc": true,

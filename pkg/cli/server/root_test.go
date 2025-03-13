@@ -90,7 +90,7 @@ func TestServe(t *testing.T) {
 
 			// missing storage config should result in an error in Controller.Init()
 			content := []byte(`{
-				"distSpecVersion": "1.1.0",
+				"distSpecVersion": "1.1.1",
 				"http": {
 					"address":"127.0.0.1",
 					"port":"8080"
@@ -142,7 +142,7 @@ func TestVerify(t *testing.T) {
 
 		defer os.Remove(tmpfile.Name()) // clean up
 
-		content := []byte(`{"distSpecVersion":"1.1.0","storage":{"rootDirectory":"/tmp/zot"},
+		content := []byte(`{"distSpecVersion":"1.1.1","storage":{"rootDirectory":"/tmp/zot"},
 							"http":{"address":"127.0.0.1","port":"8080","realm":"zot"},
 							"log":{"level":"debug"}}`)
 		_, err = tmpfile.Write(content)
@@ -162,7 +162,7 @@ func TestVerify(t *testing.T) {
 		defer os.Remove(tmpfile.Name()) // clean up
 
 		content := []byte(`
-distspecversion: 1.1.0
+distspecversion: 1.1.1
 http:
   address: 127.0.0.1
   port: 8080
@@ -579,7 +579,7 @@ storage:
 		defer os.Remove(tmpfile.Name()) // clean up
 
 		content := []byte(`{
-			"distSpecVersion": "1.1.0",
+			"distSpecVersion": "1.1.1",
 			"storage": {
 				"rootDirectory": "/tmp/zot",
 				"gc": true,
@@ -631,7 +631,7 @@ storage:
 		defer os.Remove(tmpfile.Name()) // clean up
 
 		content := []byte(`{
-			"distSpecVersion": "1.1.0",
+			"distSpecVersion": "1.1.1",
 			"storage": {
 				"rootDirectory": "/tmp/zot",
 				"gc": true,
@@ -1196,7 +1196,7 @@ storage:
 
 		defer os.Remove(tmpfile.Name()) // clean up
 
-		content := []byte(`{"distSpecVersion":"1.1.0","storage":{"rootDirectory":"/tmp/zot"},
+		content := []byte(`{"distSpecVersion":"1.1.1","storage":{"rootDirectory":"/tmp/zot"},
 							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
 							"auth":{"openid":{"providers":{"oidc":{"issuer":"http://127.0.0.1:5556/dex"}}}}},
 							"log":{"level":"debug"}}`)
@@ -1216,7 +1216,7 @@ storage:
 
 		defer os.Remove(tmpfile.Name()) // clean up
 
-		content := []byte(`{"distSpecVersion":"1.1.0","storage":{"rootDirectory":"/tmp/zot"},
+		content := []byte(`{"distSpecVersion":"1.1.1","storage":{"rootDirectory":"/tmp/zot"},
 							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
 							"auth":{"openid":{"providers":{"github":{"clientid":"client_id"}}}}},
 							"log":{"level":"debug"}}`)
@@ -1236,7 +1236,7 @@ storage:
 
 		defer os.Remove(tmpfile.Name()) // clean up
 
-		content := []byte(`{"distSpecVersion":"1.1.0","storage":{"rootDirectory":"/tmp/zot"},
+		content := []byte(`{"distSpecVersion":"1.1.1","storage":{"rootDirectory":"/tmp/zot"},
 							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
 							"auth":{"openid":{"providers":{"unsupported":{"issuer":"http://127.0.0.1:5556/dex"}}}}},
 							"log":{"level":"debug"}}`)
@@ -1256,7 +1256,7 @@ storage:
 
 		defer os.Remove(tmpfile.Name()) // clean up
 
-		content := []byte(`{"distSpecVersion":"1.1.0","storage":{"rootDirectory":"/tmp/zot"},
+		content := []byte(`{"distSpecVersion":"1.1.1","storage":{"rootDirectory":"/tmp/zot"},
 							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
 							"auth":{"openid":{"providers":{"oidc":{"issuer":"http://127.0.0.1:5556/dex",
 							"clientid":"client_id","scopes":["openid"]}}}}},
@@ -1369,7 +1369,7 @@ storage:
 		err = tmpCredsFile.Close()
 		So(err, ShouldBeNil)
 
-		content = []byte(fmt.Sprintf(`{ "distSpecVersion": "1.1.0-dev", 
+		content = []byte(fmt.Sprintf(`{ "distSpecVersion": "1.1.1",
 			"storage": { "rootDirectory": "/tmp/zot" }, "http": { "address": "127.0.0.1", "port": "8080", 
 			"auth":{"htpasswd":{"path":"test/data/htpasswd"}, "sessionKeysFile": "%s", 
 			"failDelay": 5 } }, "log": { "level": "debug" } }`,
@@ -1404,7 +1404,7 @@ storage:
 		err = tmpCredsFile.Close()
 		So(err, ShouldBeNil)
 
-		content = []byte(fmt.Sprintf(`{ "distSpecVersion": "1.1.0-dev", 
+		content = []byte(fmt.Sprintf(`{ "distSpecVersion": "1.1.1",
 			"storage": { "rootDirectory": "/tmp/zot" }, "http": { "address": "127.0.0.1", "port": "8080", 
 			"auth":{"htpasswd":{"path":"test/data/htpasswd"}, "sessionKeysFile": "%s", 
 			"failDelay": 5 } }, "log": { "level": "debug" } }`,
@@ -1440,7 +1440,7 @@ storage:
 		err = tmpCredsFile.Close()
 		So(err, ShouldBeNil)
 
-		content = []byte(fmt.Sprintf(`{ "distSpecVersion": "1.1.0-dev", 
+		content = []byte(fmt.Sprintf(`{ "distSpecVersion": "1.1.1",
 			"storage": { "rootDirectory": "/tmp/zot" }, "http": { "address": "127.0.0.1", "port": "8080", 
 			"auth": { "ldap": { "credentialsFile": "%v", "address": "ldap.example.org", "port": 389, 
 			"startTLS": false, "baseDN": "ou=Users,dc=example,dc=org", 
@@ -1478,7 +1478,7 @@ storage:
 		err = tmpCredsFile.Close()
 		So(err, ShouldBeNil)
 
-		content = []byte(fmt.Sprintf(`{ "distSpecVersion": "1.1.0-dev", 
+		content = []byte(fmt.Sprintf(`{ "distSpecVersion": "1.1.1",
 			"storage": { "rootDirectory": "/tmp/zot" }, "http": { "address": "127.0.0.1", "port": "8080", 
 			"auth": { "ldap": { "credentialsFile": "%v", "address": "ldap.example.org", "port": 389, 
 			"startTLS": false, "baseDN": "ou=Users,dc=example,dc=org", 
@@ -1518,7 +1518,7 @@ storage:
 		err = tmpCredsFile.Close()
 		So(err, ShouldBeNil)
 
-		content = []byte(fmt.Sprintf(`{ "distSpecVersion": "1.1.0-dev", 
+		content = []byte(fmt.Sprintf(`{ "distSpecVersion": "1.1.1",
 			"storage": { "rootDirectory": "/tmp/zot" }, "http": { "address": "127.0.0.1", "port": "8080", 
 			"auth": { "ldap": { "credentialsFile": "%v", "address": "ldap.example.org", "port": 389, 
 			"startTLS": false, "baseDN": "ou=Users,dc=example,dc=org", 
@@ -1555,7 +1555,7 @@ storage:
 		err = tmpCredsFile.Close()
 		So(err, ShouldBeNil)
 
-		content = []byte(fmt.Sprintf(`{ "distSpecVersion": "1.1.0-dev", 
+		content = []byte(fmt.Sprintf(`{ "distSpecVersion": "1.1.1",
 			"storage": { "rootDirectory": "/tmp/zot" }, "http": { "address": "127.0.0.1", "port": "8080", 
 			"auth": { "ldap": { "credentialsFile": "%v", "address": "ldap.example.org", "port": 389, 
 			"startTLS": false, "baseDN": "ou=Users,dc=example,dc=org", 
@@ -1592,7 +1592,7 @@ storage:
 		err = tmpCredsFile.Close()
 		So(err, ShouldBeNil)
 
-		content = []byte(fmt.Sprintf(`{ "distSpecVersion": "1.1.0-dev", 
+		content = []byte(fmt.Sprintf(`{ "distSpecVersion": "1.1.1",
 			"storage": { "rootDirectory": "/tmp/zot" }, "http": { "address": "127.0.0.1", "port": "8080", 
 			"auth": { "ldap": { "credentialsFile": "%v", "address": "ldap.example.org", "port": 389, 
 			"startTLS": false, "baseDN": "ou=Users,dc=example,dc=org", 
@@ -1621,7 +1621,7 @@ func TestApiKeyConfig(t *testing.T) {
 
 		defer os.Remove(tmpfile.Name())
 
-		content := []byte(`{"distSpecVersion":"1.1.0","storage":{"rootDirectory":"/tmp/zot"},
+		content := []byte(`{"distSpecVersion":"1.1.1","storage":{"rootDirectory":"/tmp/zot"},
 							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
 							"auth":{"openid":{"providers":{"oidc":{"issuer":"http://127.0.0.1:5556/dex",
 							"clientid":"client_id","scopes":["openid"]}}}}},
@@ -1642,7 +1642,7 @@ func TestApiKeyConfig(t *testing.T) {
 
 		defer os.Remove(tmpfile.Name())
 
-		content := []byte(`{"distSpecVersion":"1.1.0","storage":{"rootDirectory":"/tmp/zot"},
+		content := []byte(`{"distSpecVersion":"1.1.1","storage":{"rootDirectory":"/tmp/zot"},
 							"http":{"address":"127.0.0.1","port":"8080","realm":"zot"},
 							"log":{"level":"debug"}}`)
 
@@ -1661,7 +1661,7 @@ func TestApiKeyConfig(t *testing.T) {
 
 		defer os.Remove(tmpfile.Name())
 
-		content := []byte(`{"distSpecVersion":"1.1.0","storage":{"rootDirectory":"/tmp/zot"},
+		content := []byte(`{"distSpecVersion":"1.1.1","storage":{"rootDirectory":"/tmp/zot"},
 							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
 							"auth":{"htpasswd":{"path":"test/data/htpasswd"}}},
 							"log":{"level":"debug"}}`)

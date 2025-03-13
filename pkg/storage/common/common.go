@@ -18,6 +18,7 @@ import (
 	"github.com/opencontainers/image-spec/schema"
 	imeta "github.com/opencontainers/image-spec/specs-go"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
+	"github.com/santhosh-tekuri/jsonschema/v5"
 
 	zerr "zotregistry.dev/zot/errors"
 	zcommon "zotregistry.dev/zot/pkg/common"
@@ -30,7 +31,7 @@ import (
 )
 
 const (
-	manifestWithEmptyLayersErrMsg = "layers: Array must have at least 1 items"
+	manifestWithEmptyLayersErrMsg = "layers/minItems: minimum 1 items required, but found 0 items"
 	cosignSignatureTagSuffix      = "sig"
 )
 
@@ -848,9 +849,9 @@ func ValidateImageIndexSchema(buf []byte) error {
 }
 
 func IsEmptyLayersError(err error) bool {
-	var validationErr schema.ValidationError
+	var validationErr *jsonschema.ValidationError
 	if errors.As(err, &validationErr) {
-		if len(validationErr.Errs) == 1 && strings.Contains(err.Error(), manifestWithEmptyLayersErrMsg) {
+		if len(validationErr.Causes) == 1 && strings.Contains(err.Error(), manifestWithEmptyLayersErrMsg) {
 			return true
 		} else {
 			return false

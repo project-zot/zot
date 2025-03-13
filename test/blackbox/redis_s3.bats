@@ -38,7 +38,7 @@ function setup_file() {
 
     cat >${zot_sync_ondemand_config_file} <<EOF
 {
-    "distSpecVersion": "1.1.0",
+    "distSpecVersion": "1.1.1",
     "storage": {
         "dedupe": true,
         "gc": true,
