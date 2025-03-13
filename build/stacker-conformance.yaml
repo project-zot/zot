@@ -58,8 +58,6 @@ build:
       dest: /etc/zot
   entrypoint:
     - /usr/bin/zot-linux-amd64
-  volumes:
-    - /var/lib/registry
   cmd:
     - serve
     - /etc/zot/config.json
