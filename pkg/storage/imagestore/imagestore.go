@@ -10,7 +10,6 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
-	"sync"
 	"time"
 	"unicode/utf8"
 
@@ -42,7 +41,7 @@ const (
 type ImageStore struct {
 	rootDir     string
 	storeDriver storageTypes.Driver
-	lock        *sync.RWMutex
+	lock        *ImageStoreLock
 	log         zlog.Logger
 	metrics     monitoring.MetricServer
 	cache       storageTypes.Cache
@@ -80,7 +79,6 @@ func NewImageStore(rootDir string, cacheDir string, dedupe, commit bool, log zlo
 	imgStore := &ImageStore{
 		rootDir:     rootDir,
 		storeDriver: storeDriver,
-		lock:        &sync.RWMutex{},
 		log:         log,
 		metrics:     metrics,
 		dedupe:      dedupe,
@@ -90,41 +88,23 @@ func NewImageStore(rootDir string, cacheDir string, dedupe, commit bool, log zlo
 		compat:      compat,
 	}
 
+	imgStore.lock = NewImageStoreLock(imgStore)
+
 	return imgStore
 }
 
-// RLock read-lock.
-func (is *ImageStore) RLock(lockStart *time.Time) {
-	*lockStart = time.Now()
-
-	is.lock.RLock()
+// Read-lock for specific repo.
+func (is *ImageStore) WithRepoReadLock(repo string, wrappedFunc func() error) error {
+	return is.lock.WithRepoReadLock(repo, wrappedFunc)
 }
 
-// RUnlock read-unlock.
-func (is *ImageStore) RUnlock(lockStart *time.Time) {
-	is.lock.RUnlock()
-
-	lockEnd := time.Now()
-	// includes time spent in acquiring and holding a lock
-	latency := lockEnd.Sub(*lockStart)
-	monitoring.ObserveStorageLockLatency(is.metrics, latency, is.RootDir(), storageConstants.RLOCK) // histogram
+// Read/Write-lock for specific repo.
+func (is *ImageStore) WithRepoLock(repo string, wrappedFunc func() error) error {
+	return is.lock.WithRepoLock(repo, wrappedFunc)
 }
 
-// Lock write-lock.
-func (is *ImageStore) Lock(lockStart *time.Time) {
-	*lockStart = time.Now()
-
-	is.lock.Lock()
-}
-
-// Unlock write-unlock.
-func (is *ImageStore) Unlock(lockStart *time.Time) {
-	is.lock.Unlock()
-
-	lockEnd := time.Now()
-	// includes time spent in acquiring and holding a lock
-	latency := lockEnd.Sub(*lockStart)
-	monitoring.ObserveStorageLockLatency(is.metrics, latency, is.RootDir(), storageConstants.RWLOCK) // histogram
+func (is *ImageStore) ObserveLockLatency(latency time.Duration, lockType string) {
+	monitoring.ObserveStorageLockLatency(is.metrics, latency, is.RootDir(), lockType) // histogram
 }
 
 func (is *ImageStore) initRepo(name string) error {
@@ -201,12 +181,9 @@ func (is *ImageStore) initRepo(name string) error {
 
 // InitRepo creates an image repository under this store.
 func (is *ImageStore) InitRepo(name string) error {
-	var lockLatency time.Time
-
-	is.Lock(&lockLatency)
-	defer is.Unlock(&lockLatency)
-
-	return is.initRepo(name)
+	return is.WithRepoLock(name, func() error {
+		return is.initRepo(name)
+	})
 }
 
 // ValidateRepo validates that the repository layout is complaint with the OCI repo layout.
@@ -266,12 +243,11 @@ func (is *ImageStore) ValidateRepo(name string) (bool, error) {
 
 func (is *ImageStore) GetNextRepositories(lastRepo string, maxEntries int, filterFn storageTypes.FilterRepoFunc,
 ) ([]string, bool, error) {
-	var lockLatency time.Time
-
+	// Ideally this function would lock while walking in order to avoid concurrency issues
+	// but we can't lock everything as we don't have a valid list of all repositories
+	// let's assume the result of this function is a best effort and some repos may be
+	// added or removed by the time it returns
 	dir := is.rootDir
-
-	is.RLock(&lockLatency)
-	defer is.RUnlock(&lockLatency)
 
 	stores := make([]string, 0)
 
@@ -349,12 +325,11 @@ func (is *ImageStore) GetNextRepositories(lastRepo string, maxEntries int, filte
 
 // GetRepositories returns a list of all the repositories under this store.
 func (is *ImageStore) GetRepositories() ([]string, error) {
-	var lockLatency time.Time
-
+	// Ideally this function would lock while walking in order to avoid concurrency issues
+	// but we can't lock everything as we don't have a valid list of all repositories
+	// let's assume the result of this function is a best effort and some repos may be
+	// added or removed by the time it returns
 	dir := is.rootDir
-
-	is.RLock(&lockLatency)
-	defer is.RUnlock(&lockLatency)
 
 	stores := make([]string, 0)
 
@@ -379,7 +354,9 @@ func (is *ImageStore) GetRepositories() ([]string, error) {
 			return nil //nolint:nilerr // ignore invalid repos
 		}
 
-		stores = append(stores, rel)
+		if !zcommon.Contains(stores, rel) {
+			stores = append(stores, rel)
+		}
 
 		return nil
 	})
@@ -395,12 +372,11 @@ func (is *ImageStore) GetRepositories() ([]string, error) {
 
 // GetNextRepository returns next repository under this store.
 func (is *ImageStore) GetNextRepository(repo string) (string, error) {
-	var lockLatency time.Time
-
+	// Ideally this function would lock while walking in order to avoid concurrency issues
+	// but we can't lock everything as we don't have a valid list of all repositories
+	// let's assume the result of this function is a best effort and some repos may be
+	// added or removed by the time it returns
 	dir := is.rootDir
-
-	is.RLock(&lockLatency)
-	defer is.RUnlock(&lockLatency)
 
 	_, err := is.storeDriver.List(dir)
 	if err != nil {
@@ -471,71 +447,76 @@ func (is *ImageStore) GetNextRepository(repo string) (string, error) {
 
 // GetImageTags returns a list of image tags available in the specified repository.
 func (is *ImageStore) GetImageTags(repo string) ([]string, error) {
-	var lockLatency time.Time
+	tagList := []string{}
 
-	dir := path.Join(is.rootDir, repo)
-	if fi, err := is.storeDriver.Stat(dir); err != nil || !fi.IsDir() {
-		return nil, zerr.ErrRepoNotFound
-	}
+	err := is.lock.WithRepoReadLock(repo, func() error {
+		dir := path.Join(is.rootDir, repo)
+		if fi, err := is.storeDriver.Stat(dir); err != nil || !fi.IsDir() {
+			return zerr.ErrRepoNotFound
+		}
 
-	is.RLock(&lockLatency)
-	defer is.RUnlock(&lockLatency)
+		index, err := common.GetIndex(is, repo, is.log)
+		if err != nil {
+			return err
+		}
 
-	index, err := common.GetIndex(is, repo, is.log)
-	if err != nil {
-		return nil, err
-	}
+		tagList = common.GetTagsByIndex(index)
 
-	return common.GetTagsByIndex(index), nil
+		return nil
+	})
+
+	return tagList, err
 }
 
 // GetImageManifest returns the image manifest of an image in the specific repository.
 func (is *ImageStore) GetImageManifest(repo, reference string) ([]byte, godigest.Digest, string, error) {
-	dir := path.Join(is.rootDir, repo)
-	if fi, err := is.storeDriver.Stat(dir); err != nil || !fi.IsDir() {
-		return nil, "", "", zerr.ErrRepoNotFound
-	}
+	var (
+		manifestDesc ispec.Descriptor
+		buf          []byte
+	)
 
-	var lockLatency time.Time
-
-	var err error
-
-	is.RLock(&lockLatency)
-	defer func() {
-		is.RUnlock(&lockLatency)
-
-		if err == nil {
-			monitoring.IncDownloadCounter(is.metrics, repo)
-		}
-	}()
-
-	index, err := common.GetIndex(is, repo, is.log)
-	if err != nil {
-		return nil, "", "", err
-	}
-
-	manifestDesc, found := common.GetManifestDescByReference(index, reference)
-	if !found {
-		return nil, "", "", zerr.ErrManifestNotFound
-	}
-
-	buf, err := is.GetBlobContent(repo, manifestDesc.Digest)
-	if err != nil {
-		if errors.Is(err, zerr.ErrBlobNotFound) {
-			return nil, "", "", zerr.ErrManifestNotFound
+	err := is.lock.WithRepoReadLock(repo, func() error {
+		dir := path.Join(is.rootDir, repo)
+		if fi, err := is.storeDriver.Stat(dir); err != nil || !fi.IsDir() {
+			return zerr.ErrRepoNotFound
 		}
 
-		return nil, "", "", err
+		index, err := common.GetIndex(is, repo, is.log)
+		if err != nil {
+			return err
+		}
+
+		var found bool
+		manifestDesc, found = common.GetManifestDescByReference(index, reference)
+
+		if !found {
+			return zerr.ErrManifestNotFound
+		}
+
+		buf, err = is.GetBlobContent(repo, manifestDesc.Digest)
+		if err != nil {
+			if errors.Is(err, zerr.ErrBlobNotFound) {
+				return zerr.ErrManifestNotFound
+			}
+
+			return err
+		}
+
+		var manifest ispec.Manifest
+		if err := json.Unmarshal(buf, &manifest); err != nil {
+			is.log.Error().Err(err).Str("dir", dir).Msg("invalid JSON")
+
+			return err
+		}
+
+		return nil
+	})
+
+	if err == nil {
+		monitoring.IncDownloadCounter(is.metrics, repo)
 	}
 
-	var manifest ispec.Manifest
-	if err := json.Unmarshal(buf, &manifest); err != nil {
-		is.log.Error().Err(err).Str("dir", dir).Msg("invalid JSON")
-
-		return nil, "", "", err
-	}
-
-	return buf, manifestDesc.Digest, manifestDesc.MediaType, nil
+	return buf, manifestDesc.Digest, manifestDesc.MediaType, err
 }
 
 // PutImageManifest adds an image manifest to the repository.
@@ -548,22 +529,7 @@ func (is *ImageStore) PutImageManifest(repo, reference, mediaType string, //noli
 		return "", "", err
 	}
 
-	var lockLatency time.Time
-
 	var err error
-
-	is.Lock(&lockLatency)
-	defer func() {
-		is.Unlock(&lockLatency)
-
-		if err == nil {
-			if is.storeDriver.Name() == storageConstants.LocalStorageDriverName {
-				monitoring.SetStorageUsage(is.metrics, is.rootDir, repo)
-			}
-
-			monitoring.IncUploadCounter(is.metrics, repo)
-		}
-	}()
 
 	refIsDigest := true
 
@@ -576,133 +542,156 @@ func (is *ImageStore) PutImageManifest(repo, reference, mediaType string, //noli
 		refIsDigest = false
 	}
 
-	err = common.ValidateManifest(is, repo, reference, mediaType, body, is.compat, is.log)
-	if err != nil {
-		return mDigest, "", err
-	}
-
-	index, err := common.GetIndex(is, repo, is.log)
-	if err != nil {
-		return "", "", err
-	}
-
-	// create a new descriptor
-	desc := ispec.Descriptor{
-		MediaType: mediaType, Size: int64(len(body)), Digest: mDigest,
-	}
-
-	if !refIsDigest {
-		desc.Annotations = map[string]string{ispec.AnnotationRefName: reference}
-	}
-
 	var subjectDigest godigest.Digest
 
-	artifactType := ""
-
-	if mediaType == ispec.MediaTypeImageManifest {
-		var manifest ispec.Manifest
-
-		err := json.Unmarshal(body, &manifest)
+	err = is.WithRepoLock(repo, func() error {
+		err = common.ValidateManifest(is, repo, reference, mediaType, body, is.compat, is.log)
 		if err != nil {
-			return "", "", err
+			return err
 		}
 
-		if manifest.Subject != nil {
-			subjectDigest = manifest.Subject.Digest
-		}
-
-		artifactType = zcommon.GetManifestArtifactType(manifest)
-	} else if mediaType == ispec.MediaTypeImageIndex {
-		var index ispec.Index
-
-		err := json.Unmarshal(body, &index)
+		index, err := common.GetIndex(is, repo, is.log)
 		if err != nil {
-			return "", "", err
+			mDigest = ""
+
+			return err
 		}
 
-		if index.Subject != nil {
-			subjectDigest = index.Subject.Digest
+		// create a new descriptor
+		desc := ispec.Descriptor{
+			MediaType: mediaType, Size: int64(len(body)), Digest: mDigest,
 		}
 
-		artifactType = zcommon.GetIndexArtifactType(index)
-	}
-
-	updateIndex, oldDgst, err := common.CheckIfIndexNeedsUpdate(&index, &desc, is.log)
-	if err != nil {
-		return "", "", err
-	}
-
-	if !updateIndex {
-		return mDigest, subjectDigest, nil
-	}
-
-	// write manifest to "blobs"
-	dir := path.Join(is.rootDir, repo, ispec.ImageBlobsDir, mDigest.Algorithm().String())
-	manifestPath := path.Join(dir, mDigest.Encoded())
-
-	binfo, err := is.storeDriver.Stat(manifestPath)
-	if err != nil || binfo.Size() != desc.Size {
-		// The blob isn't already there, or it is corrupted, and needs a correction
-		if _, err = is.storeDriver.WriteFile(manifestPath, body); err != nil {
-			is.log.Error().Err(err).Str("file", manifestPath).Msg("failed to write")
-
-			return "", "", err
+		if !refIsDigest {
+			desc.Annotations = map[string]string{ispec.AnnotationRefName: reference}
 		}
-	}
 
-	err = common.UpdateIndexWithPrunedImageManifests(is, &index, repo, desc, oldDgst, is.log)
-	if err != nil {
-		return "", "", err
-	}
+		artifactType := ""
 
-	// now update "index.json"
-	for midx, manifest := range index.Manifests {
-		_, ok := manifest.Annotations[ispec.AnnotationRefName]
-		if !ok && manifest.Digest.String() == desc.Digest.String() {
-			// matching descriptor does not have a tag, we need to remove it and add the new descriptor
-			index.Manifests = append(index.Manifests[:midx], index.Manifests[midx+1:]...)
+		if mediaType == ispec.MediaTypeImageManifest {
+			var manifest ispec.Manifest
+
+			err := json.Unmarshal(body, &manifest)
+			if err != nil {
+				mDigest = ""
+
+				return err
+			}
+
+			if manifest.Subject != nil {
+				subjectDigest = manifest.Subject.Digest
+			}
+
+			artifactType = zcommon.GetManifestArtifactType(manifest)
+		} else if mediaType == ispec.MediaTypeImageIndex {
+			var index ispec.Index
+
+			err := json.Unmarshal(body, &index)
+			if err != nil {
+				mDigest = ""
+
+				return err
+			}
+
+			if index.Subject != nil {
+				subjectDigest = index.Subject.Digest
+			}
+
+			artifactType = zcommon.GetIndexArtifactType(index)
 		}
+
+		updateIndex, oldDgst, err := common.CheckIfIndexNeedsUpdate(&index, &desc, is.log)
+		if err != nil {
+			mDigest = ""
+			subjectDigest = ""
+
+			return err
+		}
+
+		if !updateIndex {
+			return nil
+		}
+
+		// write manifest to "blobs"
+		dir := path.Join(is.rootDir, repo, ispec.ImageBlobsDir, mDigest.Algorithm().String())
+		manifestPath := path.Join(dir, mDigest.Encoded())
+
+		binfo, err := is.storeDriver.Stat(manifestPath)
+		if err != nil || binfo.Size() != desc.Size {
+			// The blob isn't already there, or it is corrupted, and needs a correction
+			if _, err = is.storeDriver.WriteFile(manifestPath, body); err != nil {
+				is.log.Error().Err(err).Str("file", manifestPath).Msg("failed to write")
+				mDigest = ""
+				subjectDigest = ""
+
+				return err
+			}
+		}
+
+		err = common.UpdateIndexWithPrunedImageManifests(is, &index, repo, desc, oldDgst, is.log)
+		if err != nil {
+			mDigest = ""
+			subjectDigest = ""
+
+			return err
+		}
+
+		// now update "index.json"
+		for midx, manifest := range index.Manifests {
+			_, ok := manifest.Annotations[ispec.AnnotationRefName]
+			if !ok && manifest.Digest.String() == desc.Digest.String() {
+				// matching descriptor does not have a tag, we need to remove it and add the new descriptor
+				index.Manifests = append(index.Manifests[:midx], index.Manifests[midx+1:]...)
+			}
+		}
+
+		index.Manifests = append(index.Manifests, desc)
+
+		// update the descriptors artifact type in order to check for signatures when applying the linter
+		desc.ArtifactType = artifactType
+
+		// apply linter only on images, not signatures
+		pass, err := common.ApplyLinter(is, is.linter, repo, desc)
+		if !pass {
+			is.log.Error().Err(err).Str("repository", repo).Str("reference", reference).
+				Msg("linter didn't pass")
+			mDigest = ""
+			subjectDigest = ""
+
+			return err
+		}
+
+		if err := is.PutIndexContent(repo, index); err != nil {
+			mDigest = ""
+			subjectDigest = ""
+
+			return err
+		}
+
+		return nil
+	})
+
+	if err == nil {
+		if is.storeDriver.Name() == storageConstants.LocalStorageDriverName {
+			monitoring.SetStorageUsage(is.metrics, is.rootDir, repo)
+		}
+
+		monitoring.IncUploadCounter(is.metrics, repo)
 	}
 
-	index.Manifests = append(index.Manifests, desc)
-
-	// update the descriptors artifact type in order to check for signatures when applying the linter
-	desc.ArtifactType = artifactType
-
-	// apply linter only on images, not signatures
-	pass, err := common.ApplyLinter(is, is.linter, repo, desc)
-	if !pass {
-		is.log.Error().Err(err).Str("repository", repo).Str("reference", reference).
-			Msg("linter didn't pass")
-
-		return "", "", err
-	}
-
-	if err := is.PutIndexContent(repo, index); err != nil {
-		return "", "", err
-	}
-
-	return mDigest, subjectDigest, nil
+	return mDigest, subjectDigest, err
 }
 
 // DeleteImageManifest deletes the image manifest from the repository.
 func (is *ImageStore) DeleteImageManifest(repo, reference string, detectCollisions bool) error {
-	dir := path.Join(is.rootDir, repo)
-	if fi, err := is.storeDriver.Stat(dir); err != nil || !fi.IsDir() {
-		return zerr.ErrRepoNotFound
-	}
+	return is.WithRepoLock(repo, func() error {
+		dir := path.Join(is.rootDir, repo)
+		if fi, err := is.storeDriver.Stat(dir); err != nil || !fi.IsDir() {
+			return zerr.ErrRepoNotFound
+		}
 
-	var lockLatency time.Time
-
-	is.Lock(&lockLatency)
-	defer is.Unlock(&lockLatency)
-
-	err := is.deleteImageManifest(repo, reference, detectCollisions)
-	if err != nil {
-		return err
-	}
-
-	return nil
+		return is.deleteImageManifest(repo, reference, detectCollisions)
+	})
 }
 
 func (is *ImageStore) deleteImageManifest(repo, reference string, detectCollisions bool) error {
@@ -770,16 +759,17 @@ func (is *ImageStore) deleteImageManifest(repo, reference string, detectCollisio
 	}
 
 	if toDelete {
-		p := path.Join(dir, ispec.ImageBlobsDir, manifestDesc.Digest.Algorithm().String(),
-			manifestDesc.Digest.Encoded())
+		err = is.lock.WithDigestLock(manifestDesc.Digest, func() error {
+			p := path.Join(dir, ispec.ImageBlobsDir, manifestDesc.Digest.Algorithm().String(),
+				manifestDesc.Digest.Encoded())
 
-		err = is.storeDriver.Delete(p)
-		if err != nil {
-			return err
-		}
+			return is.storeDriver.Delete(p)
+		})
+	} else {
+		err = nil
 	}
 
-	return nil
+	return err
 }
 
 // BlobUploadPath returns the upload path for a blob in this store.
@@ -1008,39 +998,35 @@ func (is *ImageStore) FinishBlobUpload(repo, uuid string, body io.Reader, dstDig
 	}
 
 	dir := path.Join(is.rootDir, repo, ispec.ImageBlobsDir, dstDigest.Algorithm().String())
-
-	err = is.storeDriver.EnsureDir(dir)
-	if err != nil {
-		is.log.Error().Str("directory", dir).Err(err).Msg("failed to create dir")
-
-		return err
-	}
-
 	dst := is.BlobPath(repo, dstDigest)
 
-	var lockLatency time.Time
-
-	is.Lock(&lockLatency)
-	defer is.Unlock(&lockLatency)
-
-	if is.dedupe && fmt.Sprintf("%v", is.cache) != fmt.Sprintf("%v", nil) {
-		err = is.DedupeBlob(src, dstDigest, repo, dst)
-		if err := inject.Error(err); err != nil {
-			is.log.Error().Err(err).Str("src", src).Str("dstDigest", dstDigest.String()).
-				Str("dst", dst).Msg("failed to dedupe blob")
+	return is.WithRepoLock(repo, func() error {
+		err = is.storeDriver.EnsureDir(dir)
+		if err != nil {
+			is.log.Error().Str("directory", dir).Err(err).Msg("failed to create dir")
 
 			return err
 		}
-	} else {
-		if err := is.storeDriver.Move(src, dst); err != nil {
-			is.log.Error().Err(err).Str("src", src).Str("dstDigest", dstDigest.String()).
-				Str("dst", dst).Msg("failed to finish blob")
 
-			return err
+		if is.dedupe && fmt.Sprintf("%v", is.cache) != fmt.Sprintf("%v", nil) {
+			err = is.DedupeBlob(src, dstDigest, repo, dst)
+			if err := inject.Error(err); err != nil {
+				is.log.Error().Err(err).Str("src", src).Str("dstDigest", dstDigest.String()).
+					Str("dst", dst).Msg("failed to dedupe blob")
+
+				return err
+			}
+		} else {
+			if err := is.storeDriver.Move(src, dst); err != nil {
+				is.log.Error().Err(err).Str("src", src).Str("dstDigest", dstDigest.String()).
+					Str("dst", dst).Msg("failed to finish blob")
+
+				return err
+			}
 		}
-	}
 
-	return nil
+		return nil
+	})
 }
 
 // FullBlobUpload handles a full blob upload, and no partial session is created.
@@ -1096,132 +1082,145 @@ func (is *ImageStore) FullBlobUpload(repo string, body io.Reader, dstDigest godi
 	}
 
 	dir := path.Join(is.rootDir, repo, ispec.ImageBlobsDir, dstDigestAlgorithm.String())
-	_ = is.storeDriver.EnsureDir(dir)
-
-	var lockLatency time.Time
-
-	is.Lock(&lockLatency)
-	defer is.Unlock(&lockLatency)
-
 	dst := is.BlobPath(repo, dstDigest)
 
-	if is.dedupe && fmt.Sprintf("%v", is.cache) != fmt.Sprintf("%v", nil) {
-		if err := is.DedupeBlob(src, dstDigest, repo, dst); err != nil {
-			is.log.Error().Err(err).Str("src", src).Str("dstDigest", dstDigest.String()).
-				Str("dst", dst).Msg("failed to dedupe blob")
+	err = is.WithRepoLock(repo, func() error {
+		err = is.storeDriver.EnsureDir(dir)
+		if err != nil {
+			is.log.Error().Str("directory", dir).Err(err).Msg("failed to create dir")
 
-			return "", -1, err
+			return err
 		}
-	} else {
-		if err := is.storeDriver.Move(src, dst); err != nil {
-			is.log.Error().Err(err).Str("src", src).Str("dstDigest", dstDigest.String()).
-				Str("dst", dst).Msg("failed to finish blob")
 
-			return "", -1, err
+		if is.dedupe && fmt.Sprintf("%v", is.cache) != fmt.Sprintf("%v", nil) {
+			if err := is.DedupeBlob(src, dstDigest, repo, dst); err != nil {
+				is.log.Error().Err(err).Str("src", src).Str("dstDigest", dstDigest.String()).
+					Str("dst", dst).Msg("failed to dedupe blob")
+
+				return err
+			}
+		} else {
+			if err := is.storeDriver.Move(src, dst); err != nil {
+				is.log.Error().Err(err).Str("src", src).Str("dstDigest", dstDigest.String()).
+					Str("dst", dst).Msg("failed to finish blob")
+
+				return err
+			}
 		}
+
+		return nil
+	})
+	if err != nil {
+		return "", -1, err
 	}
 
 	return uuid, nbytes, nil
 }
 
 func (is *ImageStore) DedupeBlob(src string, dstDigest godigest.Digest, dstRepo string, dst string) error {
-retry:
-	is.log.Debug().Str("src", src).Str("dstDigest", dstDigest.String()).Str("dst", dst).Msg("dedupe begin")
+	// Need to lock all duplicate blobs
+	return is.lock.WithDigestLock(dstDigest, func() error {
+		for {
+			is.log.Debug().Str("src", src).Str("dstDigest", dstDigest.String()).Str("dst", dst).Msg("dedupe begin")
 
-	dstRecord, err := is.cache.GetBlob(dstDigest)
-	if err := inject.Error(err); err != nil && !errors.Is(err, zerr.ErrCacheMiss) {
-		is.log.Error().Err(err).Str("blobPath", dst).Str("component", "dedupe").Msg("failed to lookup blob record")
-
-		return err
-	}
-
-	if dstRecord == "" {
-		// cache record doesn't exist, so first disk and cache entry for this digest
-		if err := is.cache.PutBlob(dstDigest, dst); err != nil {
-			is.log.Error().Err(err).Str("blobPath", dst).Str("component", "dedupe").
-				Msg("failed to insert blob record")
-
-			return err
-		}
-
-		// move the blob from uploads to final dest
-		if err := is.storeDriver.Move(src, dst); err != nil {
-			is.log.Error().Err(err).Str("src", src).Str("dst", dst).Str("component", "dedupe").
-				Msg("failed to rename blob")
-
-			return err
-		}
-
-		is.log.Debug().Str("src", src).Str("dst", dst).Str("component", "dedupe").Msg("rename")
-	} else {
-		// cache record exists, but due to GC and upgrades from older versions,
-		// disk content and cache records may go out of sync
-		if is.cache.UsesRelativePaths() {
-			dstRecord = path.Join(is.rootDir, dstRecord)
-		}
-
-		blobInfo, err := is.storeDriver.Stat(dstRecord)
-		if err != nil {
-			is.log.Error().Err(err).Str("blobPath", dstRecord).Str("component", "dedupe").Msg("failed to stat")
-			// the actual blob on disk may have been removed by GC, so sync the cache
-			err := is.cache.DeleteBlob(dstDigest, dstRecord)
-			if err = inject.Error(err); err != nil {
-				//nolint:lll
-				is.log.Error().Err(err).Str("dstDigest", dstDigest.String()).Str("dst", dst).
-					Str("component", "dedupe").Msg("failed to delete blob record")
+			dstRecord, err := is.cache.GetBlob(dstDigest)
+			if err := inject.Error(err); err != nil && !errors.Is(err, zerr.ErrCacheMiss) {
+				is.log.Error().Err(err).Str("blobPath", dst).Str("component", "dedupe").Msg("failed to lookup blob record")
 
 				return err
 			}
 
-			goto retry
-		}
+			if dstRecord == "" {
+				// cache record doesn't exist, so first disk and cache entry for this digest
+				if err := is.cache.PutBlob(dstDigest, dst); err != nil {
+					is.log.Error().Err(err).Str("blobPath", dst).Str("component", "dedupe").
+						Msg("failed to insert blob record")
 
-		// prevent overwrite original blob
-		if !is.storeDriver.SameFile(dst, dstRecord) {
-			if err := is.storeDriver.Link(dstRecord, dst); err != nil {
-				is.log.Error().Err(err).Str("blobPath", dstRecord).Str("component", "dedupe").
-					Msg("failed to link blobs")
+					return err
+				}
 
-				return err
+				// move the blob from uploads to final dest
+				if err := is.storeDriver.Move(src, dst); err != nil {
+					is.log.Error().Err(err).Str("src", src).Str("dst", dst).Str("component", "dedupe").
+						Msg("failed to rename blob")
+
+					return err
+				}
+
+				is.log.Debug().Str("src", src).Str("dst", dst).Str("component", "dedupe").Msg("rename")
+
+				return nil
 			}
 
-			if err := is.cache.PutBlob(dstDigest, dst); err != nil {
-				is.log.Error().Err(err).Str("blobPath", dst).Str("component", "dedupe").
-					Msg("failed to insert blob record")
-
-				return err
+			// cache record exists, but due to GC and upgrades from older versions,
+			// disk content and cache records may go out of sync
+			if is.cache.UsesRelativePaths() {
+				dstRecord = path.Join(is.rootDir, dstRecord)
 			}
-		} else {
-			// if it's same file then it was already uploaded, check if blob is corrupted
-			if desc, err := common.GetBlobDescriptorFromRepo(is, dstRepo, dstDigest, is.log); err == nil {
-				// blob corrupted, replace content
-				if desc.Size != blobInfo.Size() {
-					if err := is.storeDriver.Move(src, dst); err != nil {
-						is.log.Error().Err(err).Str("src", src).Str("dst", dst).Str("component", "dedupe").
-							Msg("failed to rename blob")
 
-						return err
+			blobInfo, err := is.storeDriver.Stat(dstRecord)
+			if err != nil {
+				is.log.Error().Err(err).Str("blobPath", dstRecord).Str("component", "dedupe").Msg("failed to stat")
+				// the actual blob on disk may have been removed by GC, so sync the cache
+				err := is.cache.DeleteBlob(dstDigest, dstRecord)
+				if err = inject.Error(err); err != nil {
+					//nolint:lll
+					is.log.Error().Err(err).Str("dstDigest", dstDigest.String()).Str("dst", dst).
+						Str("component", "dedupe").Msg("failed to delete blob record")
+
+					return err
+				}
+
+				continue
+			}
+
+			// prevent overwrite original blob
+			if !is.storeDriver.SameFile(dst, dstRecord) {
+				if err := is.storeDriver.Link(dstRecord, dst); err != nil {
+					is.log.Error().Err(err).Str("blobPath", dstRecord).Str("component", "dedupe").
+						Msg("failed to link blobs")
+
+					return err
+				}
+
+				if err := is.cache.PutBlob(dstDigest, dst); err != nil {
+					is.log.Error().Err(err).Str("blobPath", dst).Str("component", "dedupe").
+						Msg("failed to insert blob record")
+
+					return err
+				}
+			} else {
+				// if it's same file then it was already uploaded, check if blob is corrupted
+				if desc, err := common.GetBlobDescriptorFromRepo(is, dstRepo, dstDigest, is.log); err == nil {
+					// blob corrupted, replace content
+					if desc.Size != blobInfo.Size() {
+						if err := is.storeDriver.Move(src, dst); err != nil {
+							is.log.Error().Err(err).Str("src", src).Str("dst", dst).Str("component", "dedupe").
+								Msg("failed to rename blob")
+
+							return err
+						}
+
+						is.log.Debug().Str("src", src).Str("component", "dedupe").Msg("remove")
+
+						return nil
 					}
-
-					is.log.Debug().Str("src", src).Str("component", "dedupe").Msg("remove")
-
-					return nil
 				}
 			}
+
+			// remove temp blobupload
+			if err := is.storeDriver.Delete(src); err != nil {
+				is.log.Error().Err(err).Str("src", src).Str("component", "dedupe").
+					Msg("failed to remove blob")
+
+				return err
+			}
+
+			is.log.Debug().Str("src", src).Str("component", "dedupe").Msg("remove")
+
+			return nil
 		}
-
-		// remove temp blobupload
-		if err := is.storeDriver.Delete(src); err != nil {
-			is.log.Error().Err(err).Str("src", src).Str("component", "dedupe").
-				Msg("failed to remove blob")
-
-			return err
-		}
-
-		is.log.Debug().Str("src", src).Str("component", "dedupe").Msg("remove")
-	}
-
-	return nil
+	})
 }
 
 // DeleteBlobUpload deletes an existing blob upload that is currently in progress.
@@ -1254,25 +1253,21 @@ func (is *ImageStore) BlobPath(repo string, digest godigest.Digest) string {
 }
 
 func (is *ImageStore) GetAllDedupeReposCandidates(digest godigest.Digest) ([]string, error) {
-	var lockLatency time.Time
+	repos := []string{}
 
+	// Does not need to lock storage as all information is read from is.cache
 	if err := digest.Validate(); err != nil {
-		return nil, err
+		return repos, err
 	}
 
 	if is.cache == nil {
-		return nil, nil //nolint:nilnil
+		return repos, nil //nolint:nilnil
 	}
-
-	is.RLock(&lockLatency)
-	defer is.RUnlock(&lockLatency)
 
 	blobsPaths, err := is.cache.GetAllBlobs(digest)
 	if err != nil {
-		return nil, err
+		return repos, err
 	}
-
-	repos := []string{}
 
 	for _, blobPath := range blobsPaths {
 		// these can be both full paths or relative paths depending on the cache options
@@ -1294,62 +1289,77 @@ func (is *ImageStore) GetAllDedupeReposCandidates(digest godigest.Digest) ([]str
 If the blob is not found but it's found in cache then it will be copied over.
 */
 func (is *ImageStore) CheckBlob(repo string, digest godigest.Digest) (bool, int64, error) {
-	var lockLatency time.Time
+	var (
+		err      error
+		blobSize int64
+	)
+
+	blobSize = -1  // by default invalid size
+	found := false // by default not found
 
 	if err := digest.Validate(); err != nil {
 		return false, -1, err
 	}
 
-	blobPath := is.BlobPath(repo, digest)
+	innerFunc := func() error {
+		return is.lock.WithDigestLock(digest, func() error {
+			blobPath := is.BlobPath(repo, digest)
+
+			binfo, err := is.storeDriver.Stat(blobPath)
+			if err == nil && binfo.Size() > 0 {
+				// try to find blob size in blob descriptors, if blob can not be found
+				desc, err := common.GetBlobDescriptorFromRepo(is, repo, digest, is.log)
+				if err != nil || desc.Size == binfo.Size() {
+					// blob not found in descriptors, can not compare, just return
+					is.log.Debug().Str("blob path", blobPath).Msg("blob path found")
+
+					blobSize = binfo.Size()
+					found = true
+
+					return nil //nolint:nilerr
+				}
+
+				if desc.Size != binfo.Size() {
+					is.log.Debug().Str("blob path", blobPath).Msg("blob path found, but it's corrupted")
+
+					return zerr.ErrBlobNotFound
+				}
+			}
+
+			// Otherwise is a 'deduped' blob (empty file)
+			// Check blobs in cache
+			dstRecord, err := is.checkCacheBlob(digest)
+			if err != nil {
+				is.log.Warn().Err(err).Str("digest", digest.String()).Msg("not found in cache")
+
+				return zerr.ErrBlobNotFound
+			}
+
+			blobSize, err = is.copyBlob(repo, blobPath, dstRecord)
+			if err != nil {
+				return zerr.ErrBlobNotFound
+			}
+
+			// put deduped blob in cache
+			if err := is.cache.PutBlob(digest, blobPath); err != nil {
+				is.log.Error().Err(err).Str("blobPath", blobPath).Str("component", "dedupe").Msg("failed to insert blob record")
+
+				return err
+			}
+
+			found = true
+
+			return nil
+		})
+	}
 
 	if is.dedupe && fmt.Sprintf("%v", is.cache) != fmt.Sprintf("%v", nil) {
-		is.Lock(&lockLatency)
-		defer is.Unlock(&lockLatency)
+		err = is.lock.WithRepoLock(repo, innerFunc)
 	} else {
-		is.RLock(&lockLatency)
-		defer is.RUnlock(&lockLatency)
+		err = is.lock.WithRepoReadLock(repo, innerFunc)
 	}
 
-	binfo, err := is.storeDriver.Stat(blobPath)
-	if err == nil && binfo.Size() > 0 {
-		// try to find blob size in blob descriptors, if blob can not be found
-		desc, err := common.GetBlobDescriptorFromRepo(is, repo, digest, is.log)
-		if err != nil || desc.Size == binfo.Size() {
-			// blob not found in descriptors, can not compare, just return
-			is.log.Debug().Str("blob path", blobPath).Msg("blob path found")
-
-			return true, binfo.Size(), nil //nolint: nilerr
-		}
-
-		if desc.Size != binfo.Size() {
-			is.log.Debug().Str("blob path", blobPath).Msg("blob path found, but it's corrupted")
-
-			return false, -1, zerr.ErrBlobNotFound
-		}
-	}
-	// otherwise is a 'deduped' blob (empty file)
-
-	// Check blobs in cache
-	dstRecord, err := is.checkCacheBlob(digest)
-	if err != nil {
-		is.log.Warn().Err(err).Str("digest", digest.String()).Msg("not found in cache")
-
-		return false, -1, zerr.ErrBlobNotFound
-	}
-
-	blobSize, err := is.copyBlob(repo, blobPath, dstRecord)
-	if err != nil {
-		return false, -1, zerr.ErrBlobNotFound
-	}
-
-	// put deduped blob in cache
-	if err := is.cache.PutBlob(digest, blobPath); err != nil {
-		is.log.Error().Err(err).Str("blobPath", blobPath).Str("component", "dedupe").Msg("failed to insert blob record")
-
-		return false, -1, err
-	}
-
-	return true, blobSize, nil
+	return found, blobSize, err
 }
 
 // StatBlob verifies if a blob is present inside a repository. The caller function MUST lock from outside.
@@ -1433,42 +1443,54 @@ func (is *ImageStore) copyBlob(repo string, blobPath, dstRecord string) (int64, 
 // blob selector instead of directly downloading the blob.
 func (is *ImageStore) GetBlobPartial(repo string, digest godigest.Digest, mediaType string, from, to int64,
 ) (io.ReadCloser, int64, int64, error) {
-	var lockLatency time.Time
+	var (
+		err            error
+		blobReadCloser io.ReadCloser
+		blobSize       int64
+		segmentSize    int64
+	)
+
+	blobSize = -1
+	segmentSize = -1
 
 	if err := digest.Validate(); err != nil {
-		return nil, -1, -1, err
+		return nil, segmentSize, blobSize, err
 	}
 
-	is.RLock(&lockLatency)
-	defer is.RUnlock(&lockLatency)
+	err = is.lock.WithRepoReadLock(repo, func() error {
+		binfo, err := is.originalBlobInfo(repo, digest)
+		if err != nil {
+			return err
+		}
 
-	binfo, err := is.originalBlobInfo(repo, digest)
-	if err != nil {
-		return nil, -1, -1, err
-	}
+		end := to
 
-	end := to
+		if to < 0 || to >= binfo.Size() {
+			end = binfo.Size() - 1
+		}
 
-	if to < 0 || to >= binfo.Size() {
-		end = binfo.Size() - 1
-	}
+		blobHandle, err := is.storeDriver.Reader(binfo.Path(), from)
+		if err != nil {
+			is.log.Error().Err(err).Str("blob", binfo.Path()).Msg("failed to open blob")
 
-	blobHandle, err := is.storeDriver.Reader(binfo.Path(), from)
-	if err != nil {
-		is.log.Error().Err(err).Str("blob", binfo.Path()).Msg("failed to open blob")
+			return err
+		}
 
-		return nil, -1, -1, err
-	}
+		blobReadCloser, err = newBlobStream(blobHandle, from, end)
+		if err != nil {
+			is.log.Error().Err(err).Str("blob", binfo.Path()).Msg("failed to open blob stream")
 
-	blobReadCloser, err := newBlobStream(blobHandle, from, end)
-	if err != nil {
-		is.log.Error().Err(err).Str("blob", binfo.Path()).Msg("failed to open blob stream")
+			return err
+		}
 
-		return nil, -1, -1, err
-	}
+		blobSize = binfo.Size()
+		segmentSize = end - from + 1
+
+		return nil
+	})
 
 	// The caller function is responsible for calling Close()
-	return blobReadCloser, end - from + 1, binfo.Size(), nil
+	return blobReadCloser, segmentSize, blobSize, err
 }
 
 /*
@@ -1477,6 +1499,8 @@ func (is *ImageStore) GetBlobPartial(repo string, digest godigest.Digest, mediaT
 
 On the storage, original blobs are those with contents, and duplicates one are just empty files.
 This function helps handling this situation, by using this one you can make sure you always get the original blob.
+
+The caller function MUST lock the repo from outside.
 */
 func (is *ImageStore) originalBlobInfo(repo string, digest godigest.Digest) (driver.FileInfo, error) {
 	blobPath := is.BlobPath(repo, digest)
@@ -1510,29 +1534,40 @@ func (is *ImageStore) originalBlobInfo(repo string, digest godigest.Digest) (dri
 // GetBlob returns a stream to read the blob.
 // blob selector instead of directly downloading the blob.
 func (is *ImageStore) GetBlob(repo string, digest godigest.Digest, mediaType string) (io.ReadCloser, int64, error) {
-	var lockLatency time.Time
+	var (
+		blobReadCloser io.ReadCloser
+		blobSize       int64
+	)
+
+	blobSize = -1
 
 	if err := digest.Validate(); err != nil {
 		return nil, -1, err
 	}
 
-	is.RLock(&lockLatency)
-	defer is.RUnlock(&lockLatency)
+	err := is.lock.WithRepoReadLock(repo, func() error {
+		binfo, err := is.originalBlobInfo(repo, digest)
+		if err != nil {
+			return err
+		}
 
-	binfo, err := is.originalBlobInfo(repo, digest)
+		blobSize = binfo.Size()
+
+		blobReadCloser, err = is.storeDriver.Reader(binfo.Path(), 0)
+		if err != nil {
+			is.log.Error().Err(err).Str("blob", binfo.Path()).Msg("failed to open blob")
+
+			return err
+		}
+
+		return nil
+	})
 	if err != nil {
-		return nil, -1, err
-	}
-
-	blobReadCloser, err := is.storeDriver.Reader(binfo.Path(), 0)
-	if err != nil {
-		is.log.Error().Err(err).Str("blob", binfo.Path()).Msg("failed to open blob")
-
 		return nil, -1, err
 	}
 
 	// The caller function is responsible for calling Close()
-	return blobReadCloser, binfo.Size(), nil
+	return blobReadCloser, blobSize, nil
 }
 
 // GetBlobContent returns blob contents, the caller function MUST lock from outside.
@@ -1591,12 +1626,16 @@ func (is *ImageStore) VerifyBlobDigestValue(repo string, digest godigest.Digest)
 
 func (is *ImageStore) GetReferrers(repo string, gdigest godigest.Digest, artifactTypes []string,
 ) (ispec.Index, error) {
-	var lockLatency time.Time
+	var index ispec.Index
 
-	is.RLock(&lockLatency)
-	defer is.RUnlock(&lockLatency)
+	err := is.lock.WithRepoReadLock(repo, func() error {
+		var err error
+		index, err = common.GetReferrers(is, repo, gdigest, artifactTypes, is.log)
 
-	return common.GetReferrers(is, repo, gdigest, artifactTypes, is.log)
+		return err
+	})
+
+	return index, err
 }
 
 // GetIndexContent returns index.json contents, the caller function MUST lock from outside.
@@ -1638,6 +1677,8 @@ func (is *ImageStore) StatIndex(repo string) (bool, int64, time.Time, error) {
 	return true, fileInfo.Size(), fileInfo.ModTime(), nil
 }
 
+// PutIndexContent writes the index to storage
+// the caller function MUST lock from outside.
 func (is *ImageStore) PutIndexContent(repo string, index ispec.Index) error {
 	dir := path.Join(is.rootDir, repo)
 
@@ -1661,16 +1702,13 @@ func (is *ImageStore) PutIndexContent(repo string, index ispec.Index) error {
 
 // DeleteBlob removes the blob from the repository.
 func (is *ImageStore) DeleteBlob(repo string, digest godigest.Digest) error {
-	var lockLatency time.Time
-
 	if err := digest.Validate(); err != nil {
 		return err
 	}
 
-	is.Lock(&lockLatency)
-	defer is.Unlock(&lockLatency)
-
-	return is.deleteBlob(repo, digest)
+	return is.WithRepoLock(repo, func() error {
+		return is.deleteBlob(repo, digest)
+	})
 }
 
 /*
@@ -1728,6 +1766,10 @@ func (is *ImageStore) CleanupRepo(repo string, blobs []godigest.Digest, removeRe
 	return count, nil
 }
 
+/*
+deleteBlob removes a blob from the repository
+the caller function MUST lock the repo from outside.
+*/
 func (is *ImageStore) deleteBlob(repo string, digest godigest.Digest) error {
 	blobPath := is.BlobPath(repo, digest)
 
@@ -1743,7 +1785,19 @@ func (is *ImageStore) deleteBlob(repo string, digest godigest.Digest) error {
 		return zerr.ErrBlobReferenced
 	}
 
-	if fmt.Sprintf("%v", is.cache) != fmt.Sprintf("%v", nil) {
+	if fmt.Sprintf("%v", is.cache) == fmt.Sprintf("%v", nil) {
+		// no cache/dedupe, simply delete the blob and return
+		err := is.storeDriver.Delete(blobPath)
+		if err != nil {
+			is.log.Error().Err(err).Str("blobPath", blobPath).Msg("failed to remove blob path")
+		}
+
+		return err
+	}
+
+	// the cache driver is set, take the dedupe logic into account
+	// need to lock the other repositories in order to run restore in case the blob was deduped
+	return is.lock.WithDigestLock(digest, func() error {
 		dstRecord, err := is.cache.GetBlob(digest)
 		if err != nil && !errors.Is(err, zerr.ErrCacheMiss) {
 			is.log.Error().Err(err).Str("blobPath", dstRecord).Str("component", "dedupe").
@@ -1762,9 +1816,11 @@ func (is *ImageStore) deleteBlob(repo string, digest godigest.Digest) error {
 			}
 		}
 
+		movedBlob := false
+
 		// if the deleted blob is one with content
 		if dstRecord == blobPath {
-			// get next candidate
+			// get next candidate, previous call to DeleteBlob has updated the DB with the new record
 			dstRecord, err := is.cache.GetBlob(digest)
 			if err != nil && !errors.Is(err, zerr.ErrCacheMiss) {
 				is.log.Error().Err(err).Str("blobPath", dstRecord).Str("component", "dedupe").
@@ -1788,24 +1844,28 @@ func (is *ImageStore) deleteBlob(repo string, digest godigest.Digest) error {
 				if binfo.Size() == 0 {
 					if err := is.storeDriver.Move(blobPath, dstRecord); err != nil {
 						is.log.Error().Err(err).Str("blobPath", blobPath).Str("component", "dedupe").
-							Msg("failed to remove blob path")
+							Msg("failed to move blob path")
 
 						return err
 					}
-				}
 
-				return nil
+					movedBlob = true
+				}
 			}
 		}
-	}
 
-	if err := is.storeDriver.Delete(blobPath); err != nil {
-		is.log.Error().Err(err).Str("blobPath", blobPath).Msg("failed to remove blob path")
+		if movedBlob {
+			// If the blob was already moved do not call the delete function
+			return nil
+		}
+
+		err = is.storeDriver.Delete(blobPath)
+		if err != nil {
+			is.log.Error().Err(err).Str("blobPath", blobPath).Msg("failed to remove blob path")
+		}
 
 		return err
-	}
-
-	return nil
+	})
 }
 
 func getBlobDigest(imgStore *ImageStore, path string, digestAlgorithm godigest.Algorithm,
@@ -1825,6 +1885,10 @@ func getBlobDigest(imgStore *ImageStore, path string, digestAlgorithm godigest.A
 	return digest, nil
 }
 
+/*
+GetAllBlobs returns all blob digests found in the repo
+the caller function MUST lock the repo from outside.
+*/
 func (is *ImageStore) GetAllBlobs(repo string) ([]godigest.Digest, error) {
 	blobsDir := path.Join(is.rootDir, repo, ispec.ImageBlobsDir)
 
@@ -1868,14 +1932,14 @@ func (is *ImageStore) GetAllBlobs(repo string) ([]godigest.Digest, error) {
 	return ret, nil
 }
 
-func (is *ImageStore) GetNextDigestWithBlobPaths(repos []string, lastDigests []godigest.Digest,
+func (is *ImageStore) GetNextDigestWithBlobPaths(allRepos []string, lastDigests []godigest.Digest,
 ) (godigest.Digest, []string, error) {
-	var lockLatency time.Time
-
+	// Ideally this function would lock while walking in order to avoid potential concurrency issues.
+	// That has limitted benefits as the results would be used in the caller function anyway,
+	// we don't read the blob content or use the cache driver in this function.
+	// Let's assume the result of this function is a best effort and some repos or blobs may be
+	// added or removed by the time it returns
 	dir := is.rootDir
-
-	is.RLock(&lockLatency)
-	defer is.RUnlock(&lockLatency)
 
 	var duplicateBlobs []string
 
@@ -1891,7 +1955,7 @@ func (is *ImageStore) GetNextDigestWithBlobPaths(repos []string, lastDigests []g
 		if fileInfo.IsDir() {
 			// skip repositories not found in repos
 			baseName := path.Base(fileInfo.Path())
-			if zcommon.Contains(repos, baseName) || baseName == ispec.ImageBlobsDir {
+			if zcommon.Contains(allRepos, baseName) || baseName == ispec.ImageBlobsDir {
 				return nil
 			}
 
@@ -2118,16 +2182,13 @@ func (is *ImageStore) restoreDedupedBlobs(ctx context.Context, digest godigest.D
 func (is *ImageStore) RunDedupeForDigest(ctx context.Context, digest godigest.Digest, dedupe bool,
 	duplicateBlobs []string,
 ) error {
-	var lockLatency time.Time
+	return is.lock.WithDigestLock(digest, func() error {
+		if dedupe {
+			return is.dedupeBlobs(ctx, digest, duplicateBlobs)
+		}
 
-	is.Lock(&lockLatency)
-	defer is.Unlock(&lockLatency)
-
-	if dedupe {
-		return is.dedupeBlobs(ctx, digest, duplicateBlobs)
-	}
-
-	return is.restoreDedupedBlobs(ctx, digest, duplicateBlobs)
+		return is.restoreDedupedBlobs(ctx, digest, duplicateBlobs)
+	})
 }
 
 func (is *ImageStore) RunDedupeBlobs(interval time.Duration, sch *scheduler.Scheduler) {
