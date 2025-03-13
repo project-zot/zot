@@ -57,8 +57,6 @@ build:
       dest: /etc/zot
   entrypoint:
     - /usr/local/bin/zot-${{OS}}-${{ARCH}}${{EXT:}}
-  volumes:
-    - /var/lib/registry
   cmd:
     - serve
     - /etc/zot/config.json

@@ -36,5 +36,4 @@ COPY --from=builder /go/src/github.com/project-zot/zot/bin/zot-$TARGETOS-$TARGET
 COPY --from=builder /go/src/github.com/project-zot/zot/config.json /etc/zot/config.json
 ENTRYPOINT ["/usr/bin/zot"]
 EXPOSE 5000
-VOLUME ["/var/lib/registry"]
 CMD ["serve", "/etc/zot/config.json"]
