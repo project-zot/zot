@@ -32,7 +32,6 @@ function launch_zot_server() {
     local zot_log_file="${ZOT_LOG_DIR}/zot-${zot_server_address}-${zot_server_port}.log"
 
     create_zot_cloud_redis_config_file ${zot_server_address} ${zot_server_port} ${zot_root_dir} ${zot_config_file} ${zot_log_file} ${redis_url}
-    update_zot_cluster_member_list_in_config_file ${zot_config_file} ${ZOT_CLUSTER_MEMBERS_PATCH_FILE}
     
     echo "launching zot server ${zot_server_address}:${zot_server_port}" >&3
     echo "config file: ${zot_config_file}" >&3
@@ -55,7 +54,6 @@ function setup() {
     
     # setup S3 bucket and DynamoDB tables
     setup_cloud_services
-    generate_zot_cluster_member_list ${NUM_ZOT_INSTANCES} ${ZOT_CLUSTER_MEMBERS_PATCH_FILE}
 
     for ((i=0;i<${NUM_ZOT_INSTANCES};i++)); do
         launch_zot_server 127.0.0.1 $(( 10000 + $i )) ${redis_url}
