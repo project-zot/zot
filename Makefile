@@ -496,10 +496,20 @@ run-cloud-scale-out-tests: check-blackbox-prerequisites check-awslocal binary be
 	$(BATS) $(BATS_FLAGS) test/scale-out/cloud_scale_out_no_auth.bats; \
 	$(BATS) $(BATS_FLAGS) test/scale-out/cloud_scale_out_basic_auth_tls.bats
 
+.PHONY: run-cloud-scale-out-redis-tests
+run-cloud-scale-out-redis-tests: check-blackbox-prerequisites check-awslocal binary bench test-prereq
+	echo running redis scale out bats test; \
+	$(BATS) $(BATS_FLAGS) test/scale-out/cloud_scale_out_redis.bats
+
 .PHONY: run-cloud-scale-out-high-scale-tests
 run-cloud-scale-out-high-scale-tests: check-blackbox-prerequisites check-awslocal binary bench test-prereq
 	echo running cloud scale out bats high scale test; \
 	$(BATS) $(BATS_FLAGS) test/scale-out/cloud_scale_out_basic_auth_tls_scale.bats
+
+.PHONY: run-cloud-scale-out-redis-high-scale-tests
+run-cloud-scale-out-redis-high-scale-tests: check-blackbox-prerequisites check-awslocal binary bench test-prereq
+	echo running redis scale out high scale bats test; \
+	$(BATS) $(BATS_FLAGS) test/scale-out/cloud_scale_out_redis_scale.bats
 
 .PHONY: run-blackbox-ci
 run-blackbox-ci: check-blackbox-prerequisites binary binary-minimal cli

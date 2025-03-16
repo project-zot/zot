@@ -91,36 +91,85 @@ jobs:
         env:
           AWS_ACCESS_KEY_ID: fake
           AWS_SECRET_ACCESS_KEY: fake
-      - name: Run cloud scale-out tests
-        id: scale
+
+      # DynamoDB scale-out tests
+      - name: Run cloud scale-out DynamoDB tests
+        id: dynamodb_scale
         run: |
           make run-cloud-scale-out-tests
         env:
           AWS_ACCESS_KEY_ID: fake
           AWS_SECRET_ACCESS_KEY: fake
         continue-on-error: true
-      - name: print service logs for scale-out
+      - name: Print service logs for DynamoDB scale-out
         run: |
           find /tmp/zot-ft-logs -name '*.log' -print0 | xargs -0 cat
-      - name: multi-hop detection
-        id: multihop
+      - name: Upload DynamoDB zot logs as build artifact
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: zot-scale-out-dynamodb-logs
+          path: /tmp/zot-ft-logs
+          if-no-files-found: error
+      - name: DynamoDB multi-hop detection
+        id: dynamodb_multihop
         run: |
           if find /tmp/zot-ft-logs -name '*.log' -print0 | xargs -0 cat | grep 'cannot proxy an already proxied request'; then
-            echo "detected multi-hop"
+            echo "detected multi-hop in DynamoDB tests"
             exit 1
           else
             exit 0
           fi
         continue-on-error: true
-      - name: clean up scale-out logs
+      - name: Clean up DynamoDB scale-out logs
         run: |
           rm -r /tmp/zot-ft-logs
-      - name: fail job if error
-        if: ${{ steps.scale.outcome != 'success' || steps.multihop.outcome != 'success' }}
+      - name: Fail job if DynamoDB error
+        if: ${{ steps.dynamodb_scale.outcome != 'success' || steps.dynamodb_multihop.outcome != 'success' }}
         run: |
+          echo "DynamoDB scale-out tests failed"
+          exit 1
+
+      # Redis scale-out tests
+      - name: Run cloud scale-out Redis tests
+        id: redis_scale
+        run: |
+          make run-cloud-scale-out-redis-tests
+        env:
+          AWS_ACCESS_KEY_ID: fake
+          AWS_SECRET_ACCESS_KEY: fake
+        continue-on-error: true
+      - name: Print service logs for Redis scale-out
+        run: |
+          find /tmp/zot-ft-logs/redis -name '*.log' -print0 | xargs -0 cat
+      - name: Upload Redis zot logs as build artifact
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: zot-scale-out-redis-logs
+          path: /tmp/zot-ft-logs
+          if-no-files-found: ignore
+      - name: Redis multi-hop detection
+        id: redis_multihop
+        run: |
+          if find /tmp/zot-ft-logs/redis -name '*.log' -print0 | xargs -0 cat | grep 'cannot proxy an already proxied request'; then
+            echo "detected multi-hop in Redis tests"
+            exit 1
+          else
+            exit 0
+          fi
+        continue-on-error: true
+      - name: Clean up Redis scale-out logs
+        run: |
+          rm -rf /tmp/zot-ft-logs/redis
+      - name: Fail job if Redis error
+        if: ${{ steps.redis_scale.outcome != 'success' || steps.redis_multihop.outcome != 'success' }}
+        run: |
+          echo "Redis scale-out tests failed"
           exit 1
       - name: Upload zb test results zip as build artifact
         uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: zb-cloud-scale-out-functional-results-${{ github.sha }}
           path: ./zb-results/

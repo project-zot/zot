@@ -249,6 +249,13 @@ jobs:
           AWS_ACCESS_KEY_ID: fake
           AWS_SECRET_ACCESS_KEY: fake
         continue-on-error: true
+      - name: Upload zot logs as build artifact
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: zot-scale-out-dynamodb-logs
+          path: /tmp/zot-ft-logs
+          if-no-files-found: error
       - name: print service logs
         run: |
           sudo dmesg
@@ -275,5 +282,91 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: zb-cloud-scale-out-perf-results-${{ github.sha }}
+          path: ./zb-results/
+      - uses: ./.github/actions/teardown-localstack
+
+  cloud-scale-out-redis:
+    name: s3+redis scale-out
+    runs-on: ubuntu-latest-16-cores
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          cache: false
+          go-version: 1.23.x
+      - name: Install dependencies
+        run: |
+          cd $GITHUB_WORKSPACE
+          go install github.com/swaggo/swag/cmd/swag@v1.16.2
+          go mod download
+          sudo apt-get update
+          sudo apt-get install libgpgme-dev libassuan-dev libbtrfs-dev libdevmapper-dev pkg-config rpm uidmap haproxy jq docker.io
+          # install skopeo
+          git clone -b v1.12.0 https://github.com/containers/skopeo.git
+          cd skopeo
+          make bin/skopeo
+          sudo cp bin/skopeo /usr/bin
+          skopeo -v
+          cd $GITHUB_WORKSPACE
+      - name: Log in to GitHub Docker Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install localstack
+        run: |
+          pip install --upgrade pyopenssl
+          pip install localstack==3.3.0 awscli-local[ver1] # install LocalStack cli and awslocal
+          docker pull ghcr.io/project-zot/ci-images/localstack:3.3.0  # Make sure to pull a working version of the image
+          localstack start -d                       # Start LocalStack in the background
+
+          echo "Waiting for LocalStack startup..."  # Wait 30 seconds for the LocalStack container
+          localstack wait -t 30                     # to become ready before timing out
+          echo "Startup complete"
+      - name: Run cloud scale-out Redis tests
+        id: scale
+        run: |
+          make run-cloud-scale-out-redis-high-scale-tests
+        env:
+          AWS_ACCESS_KEY_ID: fake
+          AWS_SECRET_ACCESS_KEY: fake
+        continue-on-error: true
+      - name: Upload zot logs as build artifact
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: zot-scale-out-redis-logs
+          path: /tmp/zot-ft-logs
+          if-no-files-found: error
+      - name: print service logs
+        run: |
+          sudo dmesg
+          cat /tmp/zot-ft-logs/redis-scale/*.log
+      - name: multi-hop detection
+        id: multihop
+        run: |
+          if cat /tmp/zot-ft-logs/redis/*.log | grep 'cannot proxy an already proxied request'; then
+            echo "detected multi-hop"
+            exit 1
+          else
+            exit 0
+          fi
+        continue-on-error: true
+      - name: clean up logs
+        run: |
+          rm -r /tmp/zot-ft-logs/redis
+      - name: fail job if error
+        if: ${{ steps.scale.outcome != 'success' || steps.multihop.outcome != 'success' }}
+        run: |
+          exit 1
+      - name: Upload zb test results zip as build artifact
+        if: steps.scale.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: zb-cloud-scale-out-redis-results-${{ github.sha }}
           path: ./zb-results/
       - uses: ./.github/actions/teardown-localstack

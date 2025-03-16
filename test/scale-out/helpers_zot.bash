@@ -237,6 +237,61 @@ function create_zot_cloud_base_config_file() {
 EOF
 }
 
+# generates and saves a cloud config with Redis cache and shared storage
+# given some basic parameters about the zot instance.
+function create_zot_cloud_redis_config_file() {
+    local zot_server_address=${1}
+    local zot_server_port=${2}
+    local zot_root_dir=${3}
+    local zot_config_file=${4}
+    local zot_log_file=${5}
+    local redis_url=${6}
+
+    cat > ${zot_config_file} <<EOF
+{
+    "distSpecVersion": "1.1.1",
+    "storage": {
+        "rootDirectory": "${zot_root_dir}",
+        "dedupe": true,
+        "remoteCache": true,
+        "storageDriver": {
+            "name": "s3",
+            "rootdirectory": "/zot",
+            "region": "us-east-2",
+            "regionendpoint": "localhost:4566",
+            "bucket": "zot-storage-test",
+            "secure": false,
+            "skipverify": false
+        },
+        "cacheDriver": {
+            "name": "redis",
+            "url": "${redis_url}"
+        }
+    },
+    "http": {
+        "address": "${zot_server_address}",
+        "port": "${zot_server_port}"
+    },
+    "cluster": {
+      "members": [],
+      "hashKey": "loremipsumdolors"
+    },
+    "log": {
+        "level": "debug",
+        "output": "${zot_log_file}"
+    },
+    "extensions": {
+      "ui": {
+        "enable": true
+      },
+      "search": {
+        "enable": true
+      }
+    }
+}
+EOF
+}
+
 # updates an existing zot config file that already has an HTTP config
 # to include htpasswd auth settings.
 # intended for use with create_zot_cloud_base_config_file() above.
