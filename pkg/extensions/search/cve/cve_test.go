@@ -586,7 +586,7 @@ func TestCVESearch(t *testing.T) {
 
 		resp, _ = resty.R().SetBasicAuth(username, password).Get(baseURL + constants.FullSearchPrefix)
 		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, 422)
+		So(resp.StatusCode(), ShouldEqual, 400)
 
 		var cveResult CveResult
 		contains := false
@@ -727,23 +727,23 @@ func TestCVESearch(t *testing.T) {
 		// Testing Invalid Search URL
 		resp, _ = resty.R().SetBasicAuth(username, password).Get(baseURL + constants.FullSearchPrefix + "?query={CVEListForImage(image:\"zot-test:0.0.1\"){Ta%20CVEList{Id%20Description%20Severity}}}")
 		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, 422)
+		So(resp.StatusCode(), ShouldEqual, 400)
 
 		resp, _ = resty.R().SetBasicAuth(username, password).Get(baseURL + constants.FullSearchPrefix + "?query={ImageListForCVE(tet:\"CVE-2018-20482\"){Results{RepoName%20Tag}}}")
 		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, 422)
+		So(resp.StatusCode(), ShouldEqual, 400)
 
 		resp, _ = resty.R().SetBasicAuth(username, password).Get(baseURL + constants.FullSearchPrefix + "?query={ImageistForCVE(id:\"CVE-2018-20482\"){Results{RepoName%20Tag}}}")
 		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, 422)
+		So(resp.StatusCode(), ShouldEqual, 400)
 
 		resp, _ = resty.R().SetBasicAuth(username, password).Get(baseURL + constants.FullSearchPrefix + "?query={ImageListForCVE(id:\"CVE-2018-20482\"){ame%20Tags}}")
 		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, 422)
+		So(resp.StatusCode(), ShouldEqual, 400)
 
 		resp, _ = resty.R().SetBasicAuth(username, password).Get(baseURL + constants.FullSearchPrefix + "?query={CVEListForImage(reo:\"zot-test:1.0.0\"){Tag%20CVEList{Id%20Description%20Severity}}}")
 		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, 422)
+		So(resp.StatusCode(), ShouldEqual, 400)
 
 		resp, _ = resty.R().SetBasicAuth(username, password).Get(baseURL + constants.FullSearchPrefix + "?query={ImageListForCVE(id:\"" + cveid + "\"){Results{RepoName%20Tag}}}")
 		So(resp, ShouldNotBeNil)

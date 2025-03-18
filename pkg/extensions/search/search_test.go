@@ -401,7 +401,7 @@ func TestRepoListWithNewestImage(t *testing.T) {
 		resp, err = resty.R().Get(baseURL + graphqlQueryPrefix)
 		So(resp, ShouldNotBeNil)
 		So(err, ShouldBeNil)
-		So(resp.StatusCode(), ShouldEqual, 422)
+		So(resp.StatusCode(), ShouldEqual, 400)
 
 		Convey("Test repoListWithNewestImage with pagination", func() {
 			query := `{
@@ -725,7 +725,7 @@ func TestRepoListWithNewestImage(t *testing.T) {
 		resp, err := resty.R().Get(baseURL + graphqlQueryPrefix)
 		So(resp, ShouldNotBeNil)
 		So(err, ShouldBeNil)
-		So(resp.StatusCode(), ShouldEqual, 422)
+		So(resp.StatusCode(), ShouldEqual, 400)
 
 		uploadedImage := CreateDefaultImage()
 
@@ -1291,7 +1291,7 @@ func TestExpandedRepoInfo(t *testing.T) {
 		resp, err = resty.R().Get(baseURL + graphqlQueryPrefix)
 		So(resp, ShouldNotBeNil)
 		So(err, ShouldBeNil)
-		So(resp.StatusCode(), ShouldEqual, 422)
+		So(resp.StatusCode(), ShouldEqual, 400)
 
 		query := `{
 			ExpandedRepoInfo(repo:"zot-cve-test"){
@@ -1576,7 +1576,7 @@ func TestExpandedRepoInfo(t *testing.T) {
 		resp, err = resty.R().Get(baseURL + graphqlQueryPrefix)
 		So(resp, ShouldNotBeNil)
 		So(err, ShouldBeNil)
-		So(resp.StatusCode(), ShouldEqual, 422)
+		So(resp.StatusCode(), ShouldEqual, 400)
 
 		// create test images
 		repoName := "test-repo" //nolint:goconst
@@ -1809,7 +1809,7 @@ func TestExpandedRepoInfo(t *testing.T) {
 		resp, err = resty.R().Get(baseURL + graphqlQueryPrefix)
 		So(resp, ShouldNotBeNil)
 		So(err, ShouldBeNil)
-		So(resp.StatusCode(), ShouldEqual, 422)
+		So(resp.StatusCode(), ShouldEqual, 400)
 
 		query := `{
 			ExpandedRepoInfo(repo:"zot-cve-test"){
