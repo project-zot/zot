@@ -259,11 +259,11 @@ jobs:
       - name: print service logs
         run: |
           sudo dmesg
-          cat /tmp/zot-logs/*.log
+          cat /tmp/zot-ft-logs/dynamo-scale/*.log
       - name: multi-hop detection
         id: multihop
         run: |
-          if cat /tmp/zot-logs/*.log | grep 'cannot proxy an already proxied request'; then
+          if cat /tmp/zot-ft-logs/dynamo-scale/*.log | grep 'cannot proxy an already proxied request'; then
             echo "detected multi-hop"
             exit 1
           else
@@ -272,7 +272,7 @@ jobs:
         continue-on-error: true
       - name: clean up logs
         run: |
-          rm -r /tmp/zot-logs
+          rm -r /tmp/zot-ft-logs/dynamo-scale
       - name: fail job if error
         if: ${{ steps.scale.outcome != 'success' || steps.multihop.outcome != 'success' }}
         run: |
@@ -300,7 +300,7 @@ jobs:
           go install github.com/swaggo/swag/cmd/swag@v1.16.2
           go mod download
           sudo apt-get update
-          sudo apt-get install libgpgme-dev libassuan-dev libbtrfs-dev libdevmapper-dev pkg-config rpm uidmap haproxy jq docker.io
+          sudo apt-get install libgpgme-dev libassuan-dev libbtrfs-dev libdevmapper-dev pkg-config rpm uidmap haproxy jq
           # install skopeo
           git clone -b v1.12.0 https://github.com/containers/skopeo.git
           cd skopeo
@@ -340,7 +340,7 @@ jobs:
         if: always()
         with:
           name: zot-scale-out-redis-logs
-          path: /tmp/zot-ft-logs
+          path: /tmp/zot-ft-logs/redis-scale
           if-no-files-found: error
       - name: print service logs
         run: |
@@ -349,7 +349,7 @@ jobs:
       - name: multi-hop detection
         id: multihop
         run: |
-          if cat /tmp/zot-ft-logs/redis/*.log | grep 'cannot proxy an already proxied request'; then
+          if cat /tmp/zot-ft-logs/redis-scale/*.log | grep 'cannot proxy an already proxied request'; then
             echo "detected multi-hop"
             exit 1
           else
@@ -358,7 +358,7 @@ jobs:
         continue-on-error: true
       - name: clean up logs
         run: |
-          rm -r /tmp/zot-ft-logs/redis
+          rm -r /tmp/zot-ft-logs/redis-scale
       - name: fail job if error
         if: ${{ steps.scale.outcome != 'success' || steps.multihop.outcome != 'success' }}
         run: |
