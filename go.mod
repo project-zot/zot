@@ -200,7 +200,7 @@ require (
 	github.com/cockroachdb/apd/v3 v3.2.1 // indirect
 	github.com/common-nighthawk/go-figure v0.0.0-20210622060536-734e95fb86be // indirect
 	github.com/containerd/cgroups/v3 v3.0.3 // indirect
-	github.com/containerd/containerd v1.7.25 // indirect
+	github.com/containerd/containerd v1.7.27 // indirect
 	github.com/containerd/containerd/api v1.8.0 // indirect
 	github.com/containerd/containerd/v2 v2.0.2 // indirect
 	github.com/containerd/continuity v0.4.5 // indirect
@@ -544,6 +544,6 @@ require (
 	sigs.k8s.io/release-utils v0.11.0 // indirect
 	sigs.k8s.io/structured-merge-diff/v4 v4.4.2 // indirect
 	sigs.k8s.io/yaml v1.4.0 // indirect
-	tags.cncf.io/container-device-interface v0.8.0 // indirect
+	tags.cncf.io/container-device-interface v0.8.1 // indirect
 	tags.cncf.io/container-device-interface/specs-go v0.8.0 // indirect
 )
