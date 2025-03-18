@@ -3,6 +3,7 @@
 #       extra tools that are not covered in Makefile target needs to be added in verify_prerequisites()
 
 NUM_ZOT_INSTANCES=6
+ZOT_LOG_DIR=/tmp/zot-ft-logs/dynamo-scale
 
 load helpers_zot
 load helpers_cloud
@@ -14,10 +15,10 @@ function launch_zot_server() {
     local zot_root_dir=${ZOT_ROOT_DIR}
 
     mkdir -p ${zot_root_dir}
-    mkdir -p /tmp/zot-logs
+    mkdir -p ${ZOT_LOG_DIR}
 
     local zot_config_file="${BATS_FILE_TMPDIR}/zot_config_${zot_server_address}_${zot_server_port}.json"
-    local zot_log_file="/tmp/zot-logs/zot-${zot_server_address}-${zot_server_port}.log"
+    local zot_log_file="${ZOT_LOG_DIR}/zot-${zot_server_address}-${zot_server_port}.log"
 
     create_zot_cloud_base_config_file ${zot_server_address} ${zot_server_port} ${zot_root_dir} ${zot_config_file} ${zot_log_file}
     update_zot_cluster_member_list_in_config_file ${zot_config_file} ${ZOT_CLUSTER_MEMBERS_PATCH_FILE}
