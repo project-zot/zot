@@ -1080,6 +1080,8 @@ func (rh *RouteHandler) GetBlob(response http.ResponseWriter, request *http.Requ
 
 	mediaType := request.Header.Get("Accept")
 
+	redirect := rh.c.Config.Storage.StorageConfig.Redirect
+
 	/* content range is supported for resumbale pulls */
 	partial := false
 
@@ -1108,11 +1110,16 @@ func (rh *RouteHandler) GetBlob(response http.ResponseWriter, request *http.Requ
 	}
 
 	var repo io.ReadCloser
-
+	var redirectURL string
 	var blen, bsize int64
 
 	if partial {
 		repo, blen, bsize, err = imgStore.GetBlobPartial(name, digest, mediaType, from, to)
+	} else if redirect {
+		redirectURL, err = imgStore.GetBlobURL(request, name, digest, mediaType)
+		if errors.Is(err, zerr.ErrBlobRedirectURLNotSupported) {
+			repo, blen, err = imgStore.GetBlob(name, digest, mediaType)
+		}
 	} else {
 		repo, blen, err = imgStore.GetBlob(name, digest, mediaType)
 	}
@@ -1136,6 +1143,11 @@ func (rh *RouteHandler) GetBlob(response http.ResponseWriter, request *http.Requ
 			response.WriteHeader(http.StatusInternalServerError)
 		}
 
+		return
+	}
+
+	if redirectURL != "" {
+		http.Redirect(response, request, redirectURL, http.StatusTemporaryRedirect)
 		return
 	}
 

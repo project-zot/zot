@@ -3,6 +3,7 @@ package mocks
 import (
 	"context"
 	"io"
+	"net/http"
 	"time"
 
 	godigest "github.com/opencontainers/go-digest"
@@ -44,6 +45,7 @@ type MockedImageStore struct {
 	GetBlobPartialFn       func(repo string, digest godigest.Digest, mediaType string, from, to int64,
 	) (io.ReadCloser, int64, int64, error)
 	GetBlobFn            func(repo string, digest godigest.Digest, mediaType string) (io.ReadCloser, int64, error)
+	GetBlobURLFn         func(request *http.Request, repo string, digest godigest.Digest, mediaType string) (string, error)
 	DeleteBlobFn         func(repo string, digest godigest.Digest) error
 	GetIndexContentFn    func(repo string) ([]byte, error)
 	GetBlobContentFn     func(repo string, digest godigest.Digest) ([]byte, error)
@@ -337,6 +339,15 @@ func (is MockedImageStore) GetBlob(repo string, digest godigest.Digest, mediaTyp
 	}
 
 	return io.NopCloser(&io.LimitedReader{}), 0, nil
+}
+
+func (is MockedImageStore) GetBlobURL(request *http.Request, repo string, digest godigest.Digest, mediaType string,
+) (string, error) {
+	if is.GetBlobURLFn != nil {
+		return is.GetBlobURLFn(request, repo, digest, mediaType)
+	}
+
+	return "", nil
 }
 
 func (is MockedImageStore) DeleteBlobUpload(repo string, uuid string) error {
