@@ -954,7 +954,7 @@ func TestCookiestoreCleanup(t *testing.T) {
 		err = os.Chtimes(sessionPath, changeTime, changeTime)
 		So(err, ShouldBeNil)
 
-		imgStore := local.NewImageStore(rootDir, false, false, log, metrics, nil, nil, nil)
+		imgStore := local.NewImageStore(rootDir, false, false, log, metrics, nil, nil, nil, nil)
 
 		storeController := storage.StoreController{
 			DefaultStore: imgStore,
@@ -989,7 +989,7 @@ func TestCookiestoreCleanup(t *testing.T) {
 		err = os.WriteFile(sessionPath, []byte("session"), storageConstants.DefaultFilePerms)
 		So(err, ShouldBeNil)
 
-		imgStore := local.NewImageStore(rootDir, false, false, log, metrics, nil, nil, nil)
+		imgStore := local.NewImageStore(rootDir, false, false, log, metrics, nil, nil, nil, nil)
 
 		storeController := storage.StoreController{
 			DefaultStore: imgStore,
