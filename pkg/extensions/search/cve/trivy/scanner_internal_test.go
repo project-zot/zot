@@ -16,6 +16,7 @@ import (
 
 	zerr "zotregistry.dev/zot/errors"
 	"zotregistry.dev/zot/pkg/common"
+	"zotregistry.dev/zot/pkg/extensions/events"
 	"zotregistry.dev/zot/pkg/extensions/monitoring"
 	cvecache "zotregistry.dev/zot/pkg/extensions/search/cve/cache"
 	"zotregistry.dev/zot/pkg/extensions/search/cve/model"
@@ -51,14 +52,16 @@ func TestMultipleStoragePath(t *testing.T) {
 
 		log := log.NewLogger("debug", "")
 		metrics := monitoring.NewMetricsServer(false, log)
+		recorder, err := events.NewRecorder(events.LogSink(log), log)
+		So(err, ShouldBeNil)
 
 		// Create ImageStore
 
-		firstStore := local.NewImageStore(firstRootDir, false, false, log, metrics, nil, nil, nil)
+		firstStore := local.NewImageStore(firstRootDir, false, false, log, metrics, nil, nil, nil, recorder)
 
-		secondStore := local.NewImageStore(secondRootDir, false, false, log, metrics, nil, nil, nil)
+		secondStore := local.NewImageStore(secondRootDir, false, false, log, metrics, nil, nil, nil, recorder)
 
-		thirdStore := local.NewImageStore(thirdRootDir, false, false, log, metrics, nil, nil, nil)
+		thirdStore := local.NewImageStore(thirdRootDir, false, false, log, metrics, nil, nil, nil, recorder)
 
 		storeController := storage.StoreController{}
 
@@ -172,7 +175,7 @@ func TestTrivyLibraryErrors(t *testing.T) {
 		metrics := monitoring.NewMetricsServer(false, log)
 
 		// Create ImageStore
-		store := local.NewImageStore(rootDir, false, false, log, metrics, nil, nil, nil)
+		store := local.NewImageStore(rootDir, false, false, log, metrics, nil, nil, nil, nil)
 
 		storeController := storage.StoreController{}
 		storeController.DefaultStore = store
@@ -313,7 +316,7 @@ func TestImageScannable(t *testing.T) {
 	// Continue with initializing the objects the scanner depends on
 	metrics := monitoring.NewMetricsServer(false, log)
 
-	store := local.NewImageStore(rootDir, false, false, log, metrics, nil, nil, nil)
+	store := local.NewImageStore(rootDir, false, false, log, metrics, nil, nil, nil, nil)
 
 	storeController := storage.StoreController{}
 	storeController.DefaultStore = store
@@ -367,7 +370,7 @@ func TestTrivyDBUrl(t *testing.T) {
 		metrics := monitoring.NewMetricsServer(false, log)
 
 		// Create ImageStore
-		store := local.NewImageStore(rootDir, false, false, log, metrics, nil, nil, nil)
+		store := local.NewImageStore(rootDir, false, false, log, metrics, nil, nil, nil, nil)
 
 		storeController := storage.StoreController{}
 		storeController.DefaultStore = store
