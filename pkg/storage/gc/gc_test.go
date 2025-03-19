@@ -140,13 +140,13 @@ func TestGarbageCollectAndRetention(t *testing.T) {
 					panic(err)
 				}
 
-				imgStore = s3.NewImageStore(rootDir, cacheDir, true, false, log, metrics, nil, store, nil, nil)
+				imgStore = s3.NewImageStore(rootDir, cacheDir, true, false, log, metrics, nil, store, nil, nil, nil)
 			} else {
 				// Create temporary directory
 				rootDir := t.TempDir()
 
 				// Create ImageStore
-				imgStore = local.NewImageStore(rootDir, false, false, log, metrics, nil, nil, nil)
+				imgStore = local.NewImageStore(rootDir, false, false, log, metrics, nil, nil, nil, nil)
 
 				// init metaDB
 				params := boltdb.DBParameters{
@@ -1105,7 +1105,7 @@ func TestGarbageCollectDeletion(t *testing.T) {
 		rootDir := t.TempDir()
 
 		// Create ImageStore
-		imgStore := local.NewImageStore(rootDir, false, false, log, metrics, nil, nil, nil)
+		imgStore := local.NewImageStore(rootDir, false, false, log, metrics, nil, nil, nil, nil)
 
 		// init metaDB
 		params := boltdb.DBParameters{

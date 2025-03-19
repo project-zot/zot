@@ -30,6 +30,7 @@ import (
 	zerr "zotregistry.dev/zot/errors"
 	"zotregistry.dev/zot/pkg/api/config"
 	rediscfg "zotregistry.dev/zot/pkg/api/config/redis"
+	"zotregistry.dev/zot/pkg/extensions/events"
 	"zotregistry.dev/zot/pkg/extensions/monitoring"
 	zlog "zotregistry.dev/zot/pkg/log"
 	"zotregistry.dev/zot/pkg/storage"
@@ -105,11 +106,16 @@ func createObjectsStore(options createObjectStoreOpts) (
 
 	metrics := monitoring.NewMetricsServer(false, log)
 
+	recorder, err := events.NewRecorder(events.LogSink(log), log)
+	if err != nil {
+		panic(err)
+	}
+
 	if options.storageType != storageConstants.S3StorageDriverName {
 		storeDriver := local.New(true)
 
 		imgStore := imagestore.NewImageStore(options.rootDir, options.cacheDir, true,
-			true, log, metrics, nil, storeDriver, cacheDriver, nil)
+			true, log, metrics, nil, storeDriver, cacheDriver, nil, recorder)
 
 		return storeDriver, imgStore, cacheDriver, nil
 	}
@@ -143,7 +149,7 @@ func createObjectsStore(options createObjectStoreOpts) (
 	}
 
 	imgStore := s3.NewImageStore(options.rootDir, options.cacheDir, true, false, log,
-		metrics, nil, s3Driver, cacheDriver, nil)
+		metrics, nil, s3Driver, cacheDriver, nil, recorder)
 
 	return s3.New(s3Driver), imgStore, cacheDriver, err
 }
@@ -183,7 +189,7 @@ func TestStorageNew(t *testing.T) {
 		conf.Storage.RootDirectory = "dir"
 		conf.Storage.StorageDriver = map[string]interface{}{}
 
-		_, err := storage.New(conf, nil, nil, zlog.NewLogger("debug", ""))
+		_, err := storage.New(conf, nil, nil, zlog.NewLogger("debug", ""), nil)
 		So(err, ShouldNotBeNil)
 	})
 }
@@ -1017,6 +1023,11 @@ func TestMandatoryAnnotations(t *testing.T) {
 			log := zlog.Logger{Logger: zerolog.New(os.Stdout)}
 			metrics := monitoring.NewMetricsServer(false, log)
 
+			recorder, err := events.NewRecorder(events.LogSink(log), log)
+			if err != nil {
+				panic(err)
+			}
+
 			cacheDir := t.TempDir()
 
 			opts := createObjectStoreOpts{
@@ -1051,7 +1062,7 @@ func TestMandatoryAnnotations(t *testing.T) {
 						LintFn: func(repo string, manifestDigest godigest.Digest, imageStore storageTypes.ImageStore) (bool, error) {
 							return false, nil
 						},
-					}, store, cacheDriver, nil)
+					}, store, cacheDriver, nil, recorder)
 
 				defer cleanupStorage(store, testDir)
 			} else {
@@ -1063,7 +1074,7 @@ func TestMandatoryAnnotations(t *testing.T) {
 						LintFn: func(repo string, manifestDigest godigest.Digest, imageStore storageTypes.ImageStore) (bool, error) {
 							return false, nil
 						},
-					}, store, cacheDriver, nil)
+					}, store, cacheDriver, nil, recorder)
 			}
 
 			Convey("Setup manifest", t, func() {
@@ -1116,7 +1127,7 @@ func TestMandatoryAnnotations(t *testing.T) {
 									//nolint: err113
 									return false, errors.New("linter error")
 								},
-							}, store, nil, nil)
+							}, store, nil, nil, recorder)
 					} else {
 						var cacheDriver storageTypes.Cache
 						store, _, cacheDriver, _ = createObjectsStore(opts)
@@ -1127,7 +1138,7 @@ func TestMandatoryAnnotations(t *testing.T) {
 									//nolint: err113
 									return false, errors.New("linter error")
 								},
-							}, store, cacheDriver, nil)
+							}, store, cacheDriver, nil, recorder)
 					}
 
 					_, _, err = imgStore.PutImageManifest("test", "1.0.0", ispec.MediaTypeImageManifest, manifestBuf)
@@ -1151,7 +1162,7 @@ func TestStorageSubpaths(t *testing.T) {
 			},
 		}
 
-		_, err := storage.New(config, nil, nil, zlog.NewLogger("debug", ""))
+		_, err := storage.New(config, nil, nil, zlog.NewLogger("debug", ""), nil)
 		So(err, ShouldBeNil)
 	})
 
@@ -1176,7 +1187,7 @@ func TestStorageSubpaths(t *testing.T) {
 		err := os.WriteFile(dbPath, []byte(""), 0o000)
 		So(err, ShouldBeNil)
 
-		_, err = storage.New(config, nil, nil, zlog.NewLogger("debug", ""))
+		_, err = storage.New(config, nil, nil, zlog.NewLogger("debug", ""), nil)
 		So(err, ShouldNotBeNil)
 
 		err = os.Chmod(dbPath, 0o600)
@@ -1200,7 +1211,7 @@ func TestStorageSubpaths(t *testing.T) {
 			},
 		}
 
-		_, err := storage.New(config, nil, nil, zlog.NewLogger("debug", ""))
+		_, err := storage.New(config, nil, nil, zlog.NewLogger("debug", ""), nil)
 		So(err, ShouldNotBeNil)
 	})
 }

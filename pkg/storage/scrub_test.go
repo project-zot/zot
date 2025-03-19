@@ -19,6 +19,7 @@ import (
 
 	zerr "zotregistry.dev/zot/errors"
 	rediscfg "zotregistry.dev/zot/pkg/api/config/redis"
+	"zotregistry.dev/zot/pkg/extensions/events"
 	"zotregistry.dev/zot/pkg/extensions/monitoring"
 	"zotregistry.dev/zot/pkg/log"
 	"zotregistry.dev/zot/pkg/storage"
@@ -44,13 +45,15 @@ func TestLocalCheckAllBlobsIntegrity(t *testing.T) {
 		tdir := t.TempDir()
 		log := log.NewLogger("debug", "")
 		metrics := monitoring.NewMetricsServer(false, log)
+		recorder, err := events.NewRecorder(events.LogSink(log), log)
+		So(err, ShouldBeNil)
 		cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
 			RootDir:     tdir,
 			Name:        "cache",
 			UseRelPaths: true,
 		}, log)
 		driver := local.New(true)
-		imgStore := local.NewImageStore(tdir, true, true, log, metrics, nil, cacheDriver, nil)
+		imgStore := local.NewImageStore(tdir, true, true, log, metrics, nil, cacheDriver, nil, recorder)
 
 		RunCheckAllBlobsIntegrityTests(t, imgStore, driver, log)
 	})
@@ -65,6 +68,9 @@ func TestRedisCheckAllBlobsIntegrity(t *testing.T) {
 
 		metrics := monitoring.NewMetricsServer(false, log)
 
+		recorder, err := events.NewRecorder(events.LogSink(log), log)
+		So(err, ShouldBeNil)
+
 		client, _ := rediscfg.GetRedisClient(map[string]interface{}{"url": "redis://" + miniRedis.Addr()}, log)
 
 		cacheDriver, _ := storage.Create("redis", cache.RedisDriverParameters{
@@ -73,7 +79,7 @@ func TestRedisCheckAllBlobsIntegrity(t *testing.T) {
 			UseRelPaths: false,
 		}, log)
 		driver := local.New(true)
-		imgStore := local.NewImageStore(tdir, true, true, log, metrics, nil, cacheDriver, nil)
+		imgStore := local.NewImageStore(tdir, true, true, log, metrics, nil, cacheDriver, nil, recorder)
 
 		RunCheckAllBlobsIntegrityTests(t, imgStore, driver, log)
 	})

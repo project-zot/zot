@@ -1159,7 +1159,7 @@ func TestExpandedRepoInfo(t *testing.T) {
 		ctlr := api.NewController(conf)
 
 		imageStore := local.NewImageStore(tempDir, false, false,
-			log.NewLogger("debug", ""), monitoring.NewMetricsServer(false, log.NewLogger("debug", "")), nil, nil, nil)
+			log.NewLogger("debug", ""), monitoring.NewMetricsServer(false, log.NewLogger("debug", "")), nil, nil, nil, nil)
 
 		storeController := storage.StoreController{
 			DefaultStore: imageStore,
@@ -1281,7 +1281,7 @@ func TestExpandedRepoInfo(t *testing.T) {
 
 		log := log.NewLogger("debug", "")
 		metrics := monitoring.NewMetricsServer(false, log)
-		testStorage := local.NewImageStore(rootDir, false, false, log, metrics, nil, nil, nil)
+		testStorage := local.NewImageStore(rootDir, false, false, log, metrics, nil, nil, nil, nil)
 
 		resp, err := resty.R().Get(baseURL + "/v2/")
 		So(resp, ShouldNotBeNil)
@@ -1637,7 +1637,7 @@ func TestExpandedRepoInfo(t *testing.T) {
 		ctlr := api.NewController(conf)
 
 		imageStore := local.NewImageStore(conf.Storage.RootDirectory, false, false,
-			log.NewLogger("debug", ""), monitoring.NewMetricsServer(false, log.NewLogger("debug", "")), nil, nil, nil)
+			log.NewLogger("debug", ""), monitoring.NewMetricsServer(false, log.NewLogger("debug", "")), nil, nil, nil, nil)
 
 		storeController := storage.StoreController{
 			DefaultStore: imageStore,
@@ -1799,7 +1799,7 @@ func TestExpandedRepoInfo(t *testing.T) {
 
 		log := log.NewLogger("debug", "")
 		metrics := monitoring.NewMetricsServer(false, log)
-		testStorage := local.NewImageStore(rootDir, false, false, log, metrics, nil, nil, nil)
+		testStorage := local.NewImageStore(rootDir, false, false, log, metrics, nil, nil, nil, nil)
 
 		resp, err := resty.R().Get(baseURL + "/v2/")
 		So(resp, ShouldNotBeNil)
@@ -6054,7 +6054,7 @@ func TestMetaDBWhenDeletingImages(t *testing.T) {
 			// get signatur digest
 			log := log.NewLogger("debug", "")
 			metrics := monitoring.NewMetricsServer(false, log)
-			storage := local.NewImageStore(dir, false, false, log, metrics, nil, nil, nil)
+			storage := local.NewImageStore(dir, false, false, log, metrics, nil, nil, nil, nil)
 
 			indexBlob, err := storage.GetIndexContent(repo)
 			So(err, ShouldBeNil)
@@ -6128,7 +6128,7 @@ func TestMetaDBWhenDeletingImages(t *testing.T) {
 			// get signatur digest
 			log := log.NewLogger("debug", "")
 			metrics := monitoring.NewMetricsServer(false, log)
-			storage := local.NewImageStore(dir, false, false, log, metrics, nil, nil, nil)
+			storage := local.NewImageStore(dir, false, false, log, metrics, nil, nil, nil, nil)
 
 			indexBlob, err := storage.GetIndexContent(repo)
 			So(err, ShouldBeNil)

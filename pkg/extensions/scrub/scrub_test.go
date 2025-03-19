@@ -195,7 +195,7 @@ func TestRunScrubRepo(t *testing.T) {
 			UseRelPaths: true,
 		}, log)
 		imgStore := local.NewImageStore(dir, true,
-			true, log, metrics, nil, cacheDriver, nil)
+			true, log, metrics, nil, cacheDriver, nil, nil)
 
 		srcStorageCtlr := ociutils.GetDefaultStoreController(dir, log)
 		image := CreateDefaultVulnerableImage()
@@ -231,7 +231,7 @@ func TestRunScrubRepo(t *testing.T) {
 			UseRelPaths: true,
 		}, log)
 		imgStore := local.NewImageStore(dir, true,
-			true, log, metrics, nil, cacheDriver, nil)
+			true, log, metrics, nil, cacheDriver, nil, nil)
 
 		srcStorageCtlr := ociutils.GetDefaultStoreController(dir, log)
 		image := CreateDefaultVulnerableImage()
@@ -272,7 +272,7 @@ func TestRunScrubRepo(t *testing.T) {
 			Name:        "cache",
 			UseRelPaths: true,
 		}, log)
-		imgStore := local.NewImageStore(dir, true, true, log, metrics, nil, cacheDriver, nil)
+		imgStore := local.NewImageStore(dir, true, true, log, metrics, nil, cacheDriver, nil, nil)
 
 		srcStorageCtlr := ociutils.GetDefaultStoreController(dir, log)
 		image := CreateDefaultVulnerableImage()
