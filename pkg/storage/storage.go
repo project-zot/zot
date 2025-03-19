@@ -13,6 +13,7 @@ import (
 	zerr "zotregistry.dev/zot/errors"
 	"zotregistry.dev/zot/pkg/api/config"
 	zcommon "zotregistry.dev/zot/pkg/common"
+	"zotregistry.dev/zot/pkg/extensions/events"
 	"zotregistry.dev/zot/pkg/extensions/monitoring"
 	"zotregistry.dev/zot/pkg/log"
 	common "zotregistry.dev/zot/pkg/storage/common"
@@ -23,7 +24,7 @@ import (
 )
 
 func New(config *config.Config, linter common.Lint, metrics monitoring.MetricServer,
-	log log.Logger,
+	log log.Logger, recorder events.Recorder,
 ) (StoreController, error) {
 	storeController := StoreController{}
 
@@ -58,7 +59,7 @@ func New(config *config.Config, linter common.Lint, metrics monitoring.MetricSer
 		//nolint:typecheck,contextcheck
 		rootDir := config.Storage.RootDirectory
 		defaultStore = local.NewImageStore(rootDir,
-			config.Storage.Dedupe, config.Storage.Commit, log, metrics, linter, cacheDriver, config.HTTP.Compat,
+			config.Storage.Dedupe, config.Storage.Commit, log, metrics, linter, cacheDriver, config.HTTP.Compat, recorder,
 		)
 	} else {
 		storeName := fmt.Sprintf("%v", config.Storage.StorageDriver["name"])
@@ -92,7 +93,7 @@ func New(config *config.Config, linter common.Lint, metrics monitoring.MetricSer
 		// false positive lint - linter does not implement Lint method
 		//nolint: typecheck,contextcheck
 		defaultStore = s3.NewImageStore(rootDir, config.Storage.RootDirectory,
-			config.Storage.Dedupe, config.Storage.Commit, log, metrics, linter, store, cacheDriver, config.HTTP.Compat)
+			config.Storage.Dedupe, config.Storage.Commit, log, metrics, linter, store, cacheDriver, config.HTTP.Compat, recorder)
 	}
 
 	storeController.DefaultStore = defaultStore
@@ -102,7 +103,7 @@ func New(config *config.Config, linter common.Lint, metrics monitoring.MetricSer
 			subPaths := config.Storage.SubPaths
 
 			//nolint: contextcheck
-			subImageStore, err := getSubStore(config, subPaths, linter, metrics, log)
+			subImageStore, err := getSubStore(config, subPaths, linter, metrics, log, recorder)
 			if err != nil {
 				log.Error().Err(err).Str("component", "controller").Msg("failed to get sub image store")
 
@@ -117,7 +118,7 @@ func New(config *config.Config, linter common.Lint, metrics monitoring.MetricSer
 }
 
 func getSubStore(cfg *config.Config, subPaths map[string]config.StorageConfig,
-	linter common.Lint, metrics monitoring.MetricServer, log log.Logger,
+	linter common.Lint, metrics monitoring.MetricServer, log log.Logger, recorder events.Recorder,
 ) (map[string]storageTypes.ImageStore, error) {
 	imgStoreMap := make(map[string]storageTypes.ImageStore, 0)
 
@@ -170,7 +171,7 @@ func getSubStore(cfg *config.Config, subPaths map[string]config.StorageConfig,
 
 				rootDir := storageConfig.RootDirectory
 				imgStoreMap[storageConfig.RootDirectory] = local.NewImageStore(rootDir,
-					storageConfig.Dedupe, storageConfig.Commit, log, metrics, linter, cacheDriver, cfg.HTTP.Compat,
+					storageConfig.Dedupe, storageConfig.Commit, log, metrics, linter, cacheDriver, cfg.HTTP.Compat, recorder,
 				)
 
 				subImageStore[route] = imgStoreMap[storageConfig.RootDirectory]
@@ -210,7 +211,7 @@ func getSubStore(cfg *config.Config, subPaths map[string]config.StorageConfig,
 			// false positive lint - linter does not implement Lint method
 			//nolint: typecheck
 			subImageStore[route] = s3.NewImageStore(rootDir, storageConfig.RootDirectory,
-				storageConfig.Dedupe, storageConfig.Commit, log, metrics, linter, store, cacheDriver, cfg.HTTP.Compat,
+				storageConfig.Dedupe, storageConfig.Commit, log, metrics, linter, store, cacheDriver, cfg.HTTP.Compat, recorder,
 			)
 		}
 	}
