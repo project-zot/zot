@@ -55,7 +55,7 @@ func TestDestinationRegistry(t *testing.T) {
 			UseRelPaths: true,
 		}, log)
 
-		syncImgStore := local.NewImageStore(dir, true, true, log, metrics, nil, cacheDriver, nil)
+		syncImgStore := local.NewImageStore(dir, true, true, log, metrics, nil, cacheDriver, nil, nil)
 		repoName := "repo"
 
 		storeController := storage.StoreController{DefaultStore: syncImgStore}
@@ -185,7 +185,7 @@ func TestDestinationRegistry(t *testing.T) {
 				MandatoryAnnotations: []string{"annot1"},
 			}, log)
 
-			syncImgStore := local.NewImageStore(dir, true, true, log, metrics, linter, cacheDriver, nil)
+			syncImgStore := local.NewImageStore(dir, true, true, log, metrics, linter, cacheDriver, nil, nil)
 			repoName := "repo"
 
 			storeController := storage.StoreController{DefaultStore: syncImgStore}
