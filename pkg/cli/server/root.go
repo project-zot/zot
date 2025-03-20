@@ -27,6 +27,7 @@ import (
 	"zotregistry.dev/zot/pkg/api/constants"
 	"zotregistry.dev/zot/pkg/common"
 	extconf "zotregistry.dev/zot/pkg/extensions/config"
+	eventsconf "zotregistry.dev/zot/pkg/extensions/config/events"
 	"zotregistry.dev/zot/pkg/extensions/monitoring"
 	zlog "zotregistry.dev/zot/pkg/log"
 	storageConstants "zotregistry.dev/zot/pkg/storage/constants"
@@ -820,8 +821,14 @@ func LoadConfiguration(config *config.Config, configPath string) error {
 	}
 
 	metaData := &mapstructure.Metadata{}
-	if err := viperInstance.UnmarshalExact(&config, metadataConfig(metaData)); err != nil {
-		log.Error().Err(err).Msg("failed to unmarshaling new config")
+
+	decoderOpts := []viper.DecoderConfigOption{
+		metadataConfig(metaData),
+		viper.DecodeHook(eventsconf.SinkConfigDecoderHook()),
+	}
+
+	if err := viperInstance.UnmarshalExact(&config, decoderOpts...); err != nil {
+		log.Error().Err(err).Msg("failed to unmarshal new config")
 
 		return err
 	}

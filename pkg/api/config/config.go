@@ -341,6 +341,20 @@ func (c *Config) Sanitize() *Config {
 		sanitizedConfig.HTTP.Auth.LDAP.bindPassword = "******"
 	}
 
+	if c.IsEventRecorderEnabled() {
+		for i, sink := range c.Extensions.Events.Sinks {
+			if sink.Credentials == nil {
+				continue
+			}
+
+			if err := DeepCopy(&c.Extensions.Events.Sinks[i], &sanitizedConfig.Extensions.Events.Sinks[i]); err != nil {
+				panic(err)
+			}
+
+			sanitizedConfig.Extensions.Events.Sinks[i].Credentials.Password = "******"
+		}
+	}
+
 	return sanitizedConfig
 }
 
@@ -512,7 +526,7 @@ func (c *Config) IsSyncEnabled() bool {
 	return c.Extensions != nil && c.Extensions.Sync != nil && *c.Extensions.Sync.Enable
 }
 
-func (c *Config) AreEventsEnabled() bool {
+func (c *Config) IsEventRecorderEnabled() bool {
 	return c.Extensions != nil && c.Extensions.Events != nil && *c.Extensions.Events.Enable
 }
 
