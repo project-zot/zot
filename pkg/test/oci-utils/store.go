@@ -3,7 +3,6 @@ package ociutils
 import (
 	godigest "github.com/opencontainers/go-digest"
 
-	"zotregistry.dev/zot/pkg/extensions/events"
 	"zotregistry.dev/zot/pkg/extensions/monitoring"
 	zLog "zotregistry.dev/zot/pkg/log"
 	"zotregistry.dev/zot/pkg/storage"
@@ -13,11 +12,6 @@ import (
 )
 
 func GetDefaultImageStore(rootDir string, log zLog.Logger) stypes.ImageStore {
-	recorder, err := events.NewRecorder(events.LogSink(log), log)
-	if err != nil {
-		panic(err)
-	}
-
 	return local.NewImageStore(rootDir, false, false, log,
 		monitoring.NewMetricsServer(false, log),
 		mocks.MockedLint{
@@ -25,7 +19,7 @@ func GetDefaultImageStore(rootDir string, log zLog.Logger) stypes.ImageStore {
 				return true, nil
 			},
 		},
-		mocks.CacheMock{}, nil, recorder,
+		mocks.CacheMock{}, nil, nil,
 	)
 }
 
