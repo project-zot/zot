@@ -49,6 +49,8 @@ func (r eventRecorder) publish(event *cloudevents.Event) error {
 		}
 	}
 
+	r.log.Info().Msgf("event published successfully: %s", event.Type())
+
 	return nil
 }
 
