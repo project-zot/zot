@@ -1,0 +1,28 @@
+{
+  "distSpecVersion": "1.1.0",
+  "storage": {
+    "rootDirectory": "/tmp/zot"
+  },
+  "http": {
+    "address": "127.0.0.1",
+    "port": "8080"
+  },
+  "log": {
+    "level": "debug"
+  },
+  "extensions": {
+    "events": {
+      "enable": false,
+      "sinks": [{
+          "type": "nats",
+          "address": "nats://my-server",
+          "timeout": "10s",
+          "channel": "alerts",
+          "credentials": {
+            "username": "jane.doe",
+            "password": "opensesame"
+          }
+      }]
+    }
+  }
+}
