@@ -8,13 +8,13 @@ import (
 	"zotregistry.dev/zot/pkg/log"
 )
 
-func NewRecorder(sink Sink, logger log.Logger) (Recorder, error) {
-	if sink == nil {
+func NewRecorder(logger log.Logger, sinks ...Sink) (Recorder, error) {
+	if sinks == nil {
 		return nil, zerr.ErrEventSinkIsNil
 	}
 
 	return &eventRecorder{
-		Sink: sink,
-		log:  logger,
+		sinks: sinks,
+		log:   logger,
 	}, nil
 }
