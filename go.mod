@@ -20,11 +20,10 @@ require (
 	github.com/bmatcuk/doublestar/v4 v4.8.1
 	github.com/briandowns/spinner v1.23.2
 	github.com/chartmuseum/auth v0.5.0
+	github.com/cloudevents/sdk-go/protocol/nats/v2 v2.15.2
+	github.com/cloudevents/sdk-go/v2 v2.15.2
 	github.com/containers/common v0.62.3
 	github.com/containers/image/v5 v5.34.3
-	github.com/cloudevents/sdk-go/v2 v2.15.2
-	github.com/containers/common v0.62.1
-	github.com/containers/image/v5 v5.34.2
 	github.com/dchest/siphash v1.2.3
 	github.com/didip/tollbooth/v7 v7.0.2
 	github.com/distribution/distribution/v3 v3.0.0
@@ -46,6 +45,8 @@ require (
 	github.com/json-iterator/go v1.1.12
 	github.com/migueleliasweb/go-github-mock v1.1.0
 	github.com/mitchellh/mapstructure v1.5.1-0.20231216201459-8508981c8b6c
+	github.com/nats-io/nats-server/v2 v2.11.0
+	github.com/nats-io/nats.go v1.39.1
 	github.com/nmcclain/ldap v0.0.0-20210720162743-7f8d1e44eeba
 	github.com/notaryproject/notation-core-go v1.2.0
 	github.com/notaryproject/notation-go v1.3.1
@@ -319,7 +320,7 @@ require (
 	github.com/josharian/intern v1.0.0 // indirect
 	github.com/jtolds/gls v4.20.0+incompatible // indirect
 	github.com/kevinburke/ssh_config v1.2.0 // indirect
-	github.com/klauspost/compress v1.17.11 // indirect
+	github.com/klauspost/compress v1.18.0 // indirect
 	github.com/klauspost/pgzip v1.2.6 // indirect
 	github.com/knqyf263/go-apk-version v0.0.0-20200609155635-041fdbb8563f // indirect
 	github.com/knqyf263/go-deb-version v0.0.0-20241115132648-6f4aee6ccd23 // indirect
@@ -503,11 +504,17 @@ require (
 	golang.org/x/exp v0.0.0-20250305212735-054e65f0b394 // indirect
 	golang.org/x/mod v0.24.0 // indirect
 	golang.org/x/net v0.37.0 // indirect
-	golang.org/x/sync v0.13.0 // indirect
+	golang.org/x/sync v0.13.0
 	golang.org/x/sys v0.32.0 // indirect
 	golang.org/x/term v0.31.0 // indirect
 	golang.org/x/text v0.24.0 // indirect
-	golang.org/x/time v0.10.0 // indirect
+	golang.org/x/time v0.11.0 // indirect
+	github.com/google/go-tpm v0.9.3 // indirect
+	github.com/klauspost/compress v1.18.0 // indirect
+	github.com/minio/highwayhash v1.0.3 // indirect
+	github.com/nats-io/jwt/v2 v2.7.3 // indirect
+	github.com/nats-io/nkeys v0.4.10 // indirect
+	github.com/nats-io/nuid v1.0.1 // indirect
 	golang.org/x/tools v0.31.0 // indirect
 	golang.org/x/xerrors v0.0.0-20240716161551-93cc26a95ae9 // indirect
 	google.golang.org/api v0.221.0 // indirect
