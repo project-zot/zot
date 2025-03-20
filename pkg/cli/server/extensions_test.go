@@ -1,9 +1,10 @@
-//go:build sync && scrub && metrics && search && userprefs && mgmt && imagetrust
-// +build sync,scrub,metrics,search,userprefs,mgmt,imagetrust
+//go:build sync && scrub && metrics && search && userprefs && mgmt && imagetrust && events
+// +build sync,scrub,metrics,search,userprefs,mgmt,imagetrust,events
 
 package server_test
 
 import (
+	goContext "context"
 	"fmt"
 	"net/http"
 	"os"
@@ -11,8 +12,10 @@ import (
 	"time"
 
 	. "github.com/smartystreets/goconvey/convey"
+	"golang.org/x/sync/errgroup"
 	"gopkg.in/resty.v1"
 
+	zerr "zotregistry.dev/zot/errors"
 	"zotregistry.dev/zot/pkg/api/config"
 	cli "zotregistry.dev/zot/pkg/cli/server"
 	. "zotregistry.dev/zot/pkg/test/common"
@@ -1945,4 +1948,149 @@ func TestSyncWithRemoteStorageConfig(t *testing.T) {
 		So(string(data), ShouldContainSubstring,
 			"using both sync and remote storage features needs config.Extensions.Sync.DownloadDir to be specified")
 	})
+}
+
+func TestEventsExtension(t *testing.T) {
+	oldArgs := os.Args
+
+	defer func() { os.Args = oldArgs }()
+
+	Convey("Events explicitly disabled", t, func(c C) {
+		content := `{
+					"storage": {
+						"rootDirectory": "%s"
+					},
+					"http": {
+						"address": "127.0.0.1",
+						"port": "%s"
+					},
+					"log": {
+						"level": "debug",
+						"output": "%s"
+					},
+					"extensions": {
+						"events": {
+							"enable": false
+						}
+					}
+				}`
+
+		logPath, err := runCLIWithConfig(t.TempDir(), content)
+		So(err, ShouldBeNil)
+		defer os.Remove(logPath) // clean up
+
+		found, err := ReadLogFileAndSearchString(logPath,
+			"events disabled in configuration", 10*time.Second)
+
+		if !found {
+			data, err := os.ReadFile(logPath)
+			So(err, ShouldBeNil)
+			t.Log(string(data))
+		}
+
+		So(err, ShouldBeNil)
+		So(found, ShouldBeTrue)
+	})
+
+	Convey("Unsupported event sink is an error", t, func(c C) {
+		content := `{
+					"storage": {
+						"rootDirectory": "%s"
+					},
+					"http": {
+						"address": "127.0.0.1",
+						"port": "%s"
+					},
+					"log": {
+						"level": "debug",
+						"output": "%s"
+					},
+					"extensions": {
+						"events": {
+							"enable": true,
+							"sinks": [{
+								"type": "unsupported"
+							}]
+						}
+					}
+				}`
+
+		logPath, err := runCLIWithConfigWIthoutPanic(t.TempDir(), content)
+		ShouldEqual(err, zerr.ErrUnsupportedEventSink)
+		So(err, ShouldNotBeNil)
+
+		defer os.Remove(logPath) // clean up
+	})
+}
+
+// run cli and return output.
+func runCLIWithConfigWIthoutPanic(tempDir string, config string) (string, error) {
+	port := GetFreePort()
+	baseURL := GetBaseURL(port)
+
+	logFile, err := os.CreateTemp(tempDir, "zot-log*.txt")
+	if err != nil {
+		return "", err
+	}
+
+	cfgfile, err := os.CreateTemp(tempDir, "zot-test*.json")
+	if err != nil {
+		return "", err
+	}
+
+	config = fmt.Sprintf(config, tempDir, port, logFile.Name())
+
+	_, err = cfgfile.WriteString(config)
+	if err != nil {
+		return "", err
+	}
+
+	err = cfgfile.Close()
+	if err != nil {
+		return "", err
+	}
+
+	os.Args = []string{"cli_test", "serve", cfgfile.Name()}
+
+	// Create a context with timeout
+	ctx, cancel := goContext.WithTimeout(goContext.Background(), 30*time.Second)
+	defer cancel()
+
+	// Create an errgroup with the context
+	errGroup, ctx := errgroup.WithContext(ctx)
+
+	// Start the server in a goroutine
+	errGroup.Go(func() error {
+		if err := cli.NewServerRootCmd().Execute(); err != nil {
+			return err
+		}
+
+		return nil
+	})
+
+	// Check for server readiness in another goroutine
+	errGroup.Go(func() error {
+		serverReady := make(chan bool, 1)
+
+		go func() {
+			WaitTillServerReady(baseURL)
+			serverReady <- true
+		}()
+
+		select {
+		case <-serverReady:
+			return nil // Server is ready
+		case <-ctx.Done():
+			return fmt.Errorf("timeout or cancellation waiting for server: %w", ctx.Err())
+		}
+	})
+
+	// Wait for either goroutine to complete
+	// If server fails, this will return that error
+	// If WaitTillServerReady succeeds first, we're good to go
+	if err := errGroup.Wait(); err != nil {
+		return "", err
+	}
+
+	return logFile.Name(), nil
 }
