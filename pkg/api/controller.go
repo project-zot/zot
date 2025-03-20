@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
+	goerrors "errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -263,11 +264,9 @@ func (c *Controller) Init() error {
 
 	c.Metrics = monitoring.NewMetricsServer(enabled, c.Log)
 
-	eventRecorder, err := ext.NewEventRecorder(c.Config, c.Log)
-	if err != nil {
+	if err := c.InitEventRecorder(); err != nil {
 		return err
 	}
-	c.EventRecorder = eventRecorder
 
 	if err := c.InitImageStore(); err != nil { //nolint:contextcheck
 		return err
@@ -356,6 +355,21 @@ func (c *Controller) InitMetaDB() error {
 
 		c.MetaDB = driver
 	}
+
+	return nil
+}
+
+func (c *Controller) InitEventRecorder() error {
+	if !c.Config.IsEventRecorderEnabled() {
+		return nil
+	}
+
+	eventRecorder, err := ext.NewEventRecorder(c.Config, c.Log)
+	if err != nil && !goerrors.Is(err, errors.ErrExtensionNotEnabled) {
+		return err
+	}
+
+	c.EventRecorder = eventRecorder
 
 	return nil
 }
