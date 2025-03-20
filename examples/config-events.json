@@ -12,16 +12,12 @@
   },
   "extensions": {
     "events": {
-      "enable": false,
+      "enable": true,
       "sinks": [{
           "type": "nats",
-          "address": "nats://my-server",
+          "address": "nats://127.0.0.1:4222",
           "timeout": "10s",
-          "channel": "alerts",
-          "credentials": {
-            "username": "jane.doe",
-            "password": "opensesame"
-          }
+          "channel": "alerts"
       }]
     }
   }
