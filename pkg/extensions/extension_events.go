@@ -26,6 +26,8 @@ func NewEventRecorder(config *config.Config, log log.Logger) (events.Recorder, e
 
 	sinks := make([]events.Sink, len(eventConfig.Sinks))
 
+	log.Info().Msg("setting up event sinks")
+
 	for i, sinkConfig := range eventConfig.Sinks {
 		switch sinkConfig.Type {
 		case eventsconfig.HTTP:
