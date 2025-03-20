@@ -28,7 +28,6 @@ import (
 	zerr "zotregistry.dev/zot/errors"
 	"zotregistry.dev/zot/pkg/api"
 	"zotregistry.dev/zot/pkg/api/config"
-	"zotregistry.dev/zot/pkg/extensions/events"
 	"zotregistry.dev/zot/pkg/extensions/monitoring"
 	"zotregistry.dev/zot/pkg/log"
 	"zotregistry.dev/zot/pkg/scheduler"
@@ -64,11 +63,6 @@ func createMockStorage(rootDir string, cacheDir string, dedupe bool, store drive
 	log := log.Logger{Logger: zerolog.New(os.Stdout)}
 	metrics := monitoring.NewMetricsServer(true, log)
 
-	recorder, err := events.NewRecorder(events.LogSink(log), log)
-	if err != nil {
-		panic(err)
-	}
-
 	var cacheDriver storageTypes.Cache
 
 	// from pkg/cli/server/root.go/applyDefaultValues, s3 magic
@@ -81,7 +75,7 @@ func createMockStorage(rootDir string, cacheDir string, dedupe bool, store drive
 		}, log)
 	}
 
-	il := s3.NewImageStore(rootDir, cacheDir, dedupe, false, log, metrics, nil, store, cacheDriver, nil, recorder)
+	il := s3.NewImageStore(rootDir, cacheDir, dedupe, false, log, metrics, nil, store, cacheDriver, nil, nil)
 
 	return il
 }
@@ -92,12 +86,7 @@ func createMockStorageWithMockCache(rootDir string, dedupe bool, store driver.St
 	log := log.Logger{Logger: zerolog.New(os.Stdout)}
 	metrics := monitoring.NewMetricsServer(false, log)
 
-	recorder, err := events.NewRecorder(events.LogSink(log), log)
-	if err != nil {
-		panic(err)
-	}
-
-	il := s3.NewImageStore(rootDir, "", dedupe, false, log, metrics, nil, store, cacheDriver, nil, recorder)
+	il := s3.NewImageStore(rootDir, "", dedupe, false, log, metrics, nil, store, cacheDriver, nil, nil)
 
 	return il
 }
@@ -144,15 +133,13 @@ func createObjectsStore(rootDir string, cacheDir string, dedupe bool) (
 	log := log.Logger{Logger: zerolog.New(os.Stdout)}
 	metrics := monitoring.NewMetricsServer(false, log)
 
-	recorder, err := events.NewRecorder(events.LogSink(log), log)
-	if err != nil {
-		panic(err)
-	}
-
 	var cacheDriver storageTypes.Cache
 
 	// from pkg/cli/server/root.go/applyDefaultValues, s3 magic
 	s3CacheDBPath := path.Join(cacheDir, storageConstants.BoltdbName+storageConstants.DBExtensionName)
+
+	var err error
+
 	if _, err = os.Stat(s3CacheDBPath); dedupe || (!dedupe && err == nil) {
 		cacheDriver, _ = storage.Create("boltdb", cache.BoltDBDriverParameters{
 			RootDir:     cacheDir,
@@ -161,7 +148,7 @@ func createObjectsStore(rootDir string, cacheDir string, dedupe bool) (
 		}, log)
 	}
 
-	il := s3.NewImageStore(rootDir, cacheDir, dedupe, false, log, metrics, nil, store, cacheDriver, nil, recorder)
+	il := s3.NewImageStore(rootDir, cacheDir, dedupe, false, log, metrics, nil, store, cacheDriver, nil, nil)
 
 	return store, il, err
 }
@@ -175,11 +162,6 @@ func createObjectsStoreDynamo(rootDir string, cacheDir string, dedupe bool, tabl
 
 	log := log.Logger{Logger: zerolog.New(os.Stdout)}
 	metrics := monitoring.NewMetricsServer(false, log)
-
-	recorder, err := events.NewRecorder(events.LogSink(log), log)
-	if err != nil {
-		panic(err)
-	}
 
 	var cacheDriver storageTypes.Cache
 
@@ -195,12 +177,12 @@ func createObjectsStoreDynamo(rootDir string, cacheDir string, dedupe bool, tabl
 	//nolint:errcheck
 	cacheDriverDynamo, _ := cacheDriver.(*cache.DynamoDBDriver)
 
-	err = cacheDriverDynamo.NewTable(tableName)
+	err := cacheDriverDynamo.NewTable(tableName)
 	if err != nil {
 		panic(err)
 	}
 
-	il := s3.NewImageStore(rootDir, cacheDir, dedupe, false, log, metrics, nil, store, cacheDriver, nil, recorder)
+	il := s3.NewImageStore(rootDir, cacheDir, dedupe, false, log, metrics, nil, store, cacheDriver, nil, nil)
 
 	return store, il, err
 }
