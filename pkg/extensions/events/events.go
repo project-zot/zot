@@ -23,6 +23,7 @@ func (e EventType) String() string {
 
 type Sink interface {
 	Emit(*cloudevents.Event) cloudevents.Result
+	Close() error
 }
 
 type Recorder interface {
@@ -33,11 +34,23 @@ type Recorder interface {
 }
 
 type eventRecorder struct {
-	log log.Logger
-	Sink
+	log   log.Logger
+	sinks []Sink
 }
 
 var _ Recorder = (*eventRecorder)(nil)
+
+func (r eventRecorder) publish(event *cloudevents.Event) error {
+	for _, sink := range r.sinks {
+		if response := sink.Emit(event); cloudevents.IsNACK(response) || cloudevents.IsUndelivered(response) {
+			r.log.Error().Err(response).Msg("sink returned an error")
+
+			return response
+		}
+	}
+
+	return nil
+}
 
 func (r eventRecorder) RepositoryCreated(name string) error {
 	event, err := newEventBuilder().
@@ -48,7 +61,7 @@ func (r eventRecorder) RepositoryCreated(name string) error {
 		return err
 	}
 
-	return r.Emit(event)
+	return r.publish(event)
 }
 
 func (r eventRecorder) ImageUpdated(name, reference, digest, mediaType, manifest string) error {
@@ -64,7 +77,7 @@ func (r eventRecorder) ImageUpdated(name, reference, digest, mediaType, manifest
 		return err
 	}
 
-	return r.Emit(event)
+	return r.publish(event)
 }
 
 func (r eventRecorder) ImageDeleted(name, reference, digest, mediaType string) error {
@@ -79,7 +92,7 @@ func (r eventRecorder) ImageDeleted(name, reference, digest, mediaType string) e
 		return err
 	}
 
-	return r.Emit(event)
+	return r.publish(event)
 }
 
 func (r eventRecorder) ImageLintFailed(name, reference, digest, mediaType, manifest string) error {
@@ -95,5 +108,5 @@ func (r eventRecorder) ImageLintFailed(name, reference, digest, mediaType, manif
 		return err
 	}
 
-	return r.Emit(event)
+	return r.publish(event)
 }
