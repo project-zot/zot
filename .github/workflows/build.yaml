@@ -21,7 +21,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        os: [linux, darwin, freebsd]
+        os: [linux, darwin, freebsd, windows]
         arch: [amd64, arm64]
     steps:
       - name: Check out source code
