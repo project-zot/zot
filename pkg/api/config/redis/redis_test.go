@@ -127,7 +127,7 @@ func TestRedisOptions(t *testing.T) {
 			So(options.ReadOnly, ShouldEqual, false)
 			So(options.RouteByLatency, ShouldEqual, false)
 			So(options.RouteRandomly, ShouldEqual, false)
-			So(options.DisableIndentity, ShouldEqual, false)
+			So(options.DisableIdentity, ShouldEqual, false)
 			So(options.IdentitySuffix, ShouldEqual, "")
 			So(options.UnstableResp3, ShouldEqual, false)
 
@@ -209,7 +209,7 @@ func TestRedisOptions(t *testing.T) {
 			So(options.ReadOnly, ShouldEqual, true)
 			So(options.RouteByLatency, ShouldEqual, false)
 			So(options.RouteRandomly, ShouldEqual, true)
-			So(options.DisableIndentity, ShouldEqual, false)
+			So(options.DisableIdentity, ShouldEqual, false)
 			So(options.IdentitySuffix, ShouldEqual, "test")
 			So(options.UnstableResp3, ShouldEqual, true)
 
@@ -287,7 +287,7 @@ func TestRedisOptions(t *testing.T) {
 			So(options.ReadOnly, ShouldEqual, false)
 			So(options.RouteByLatency, ShouldEqual, false)
 			So(options.RouteRandomly, ShouldEqual, false)
-			So(options.DisableIndentity, ShouldEqual, false)
+			So(options.DisableIdentity, ShouldEqual, false)
 			So(options.IdentitySuffix, ShouldEqual, "")
 			So(options.UnstableResp3, ShouldEqual, false)
 

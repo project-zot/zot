@@ -190,7 +190,7 @@ func ParseRedisUniversalOptions(redisConfig map[string]interface{}, //nolint: go
 	}
 
 	if val, ok := getBool(redisConfig, "disable_identity", log); ok {
-		opts.DisableIndentity = val
+		opts.DisableIdentity = val
 	}
 
 	if val, ok := getString(redisConfig, "identity_suffix", false, log); ok {
