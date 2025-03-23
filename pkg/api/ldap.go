@@ -223,8 +223,9 @@ func (lc *LDAPClient) Authenticate(username, password string) (bool, map[string]
 	var userGroups []string
 
 	if lc.UserGroupAttribute != "" && len(search.Entries[0].Attributes) > 0 {
-		userAttributes := search.Entries[0].Attributes[0]
-		userGroups = userAttributes.Values
+		for _, attr := range search.Entries[0].Attributes {
+			userGroups = append(userGroups, attr.Values...)
+		}
 	}
 
 	user := map[string]string{}
