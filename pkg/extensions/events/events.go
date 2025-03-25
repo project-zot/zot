@@ -1,37 +1,18 @@
+//go:build events
+// +build events
+
 package events
 
 import (
+	"crypto/tls"
+	"crypto/x509"
+	"os"
+
 	cloudevents "github.com/cloudevents/sdk-go/v2"
 
+	eventsconf "zotregistry.dev/zot/pkg/extensions/config/events"
 	"zotregistry.dev/zot/pkg/log"
 )
-
-const EventSource = "zotregistry.dev"
-
-type EventType string
-
-const (
-	ImageUpdatedEventType      EventType = "zotregistry.image.updated"
-	ImageDeletedEventType      EventType = "zotregistry.image.deleted"
-	ImageLintFailedEventType   EventType = "zotregistry.image.lint_failed"
-	RepositoryCreatedEventType EventType = "zotregistry.repository.created"
-)
-
-func (e EventType) String() string {
-	return string(e)
-}
-
-type Sink interface {
-	Emit(*cloudevents.Event) cloudevents.Result
-	Close() error
-}
-
-type Recorder interface {
-	RepositoryCreated(name string) error
-	ImageUpdated(name, reference, digest, mediaType, manifest string) error
-	ImageDeleted(name, reference, digest, mediaType string) error
-	ImageLintFailed(name, reference, digest, mediaType, manifest string) error
-}
 
 type eventRecorder struct {
 	log   log.Logger
@@ -111,4 +92,33 @@ func (r eventRecorder) ImageLintFailed(name, reference, digest, mediaType, manif
 	}
 
 	return r.publish(event)
+}
+
+func getTLSConfig(config eventsconf.SinkConfig) (*tls.Config, error) {
+	tlsConfig := &tls.Config{
+		MinVersion: tls.VersionTLS12,
+	}
+
+	if config.TLSConfig.CACertFile != "" {
+		caCert, err := os.ReadFile(config.TLSConfig.CACertFile)
+		if err != nil {
+			return nil, err
+		}
+
+		caCertPool := x509.NewCertPool()
+		if !caCertPool.AppendCertsFromPEM(caCert) {
+			return nil, err
+		}
+		tlsConfig.RootCAs = caCertPool
+	}
+
+	if config.TLSConfig.CertFile != "" && config.TLSConfig.KeyFile != "" {
+		cert, err := tls.LoadX509KeyPair(config.TLSConfig.CertFile, config.TLSConfig.KeyFile)
+		if err != nil {
+			return nil, err
+		}
+		tlsConfig.Certificates = []tls.Certificate{cert}
+	}
+
+	return tlsConfig, nil
 }

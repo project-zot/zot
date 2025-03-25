@@ -1,3 +1,6 @@
+//go:build events
+// +build events
+
 package events
 
 import (
