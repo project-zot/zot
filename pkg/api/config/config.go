@@ -100,6 +100,8 @@ type OpenIDProviderConfig struct {
 	ClientSecret string
 	KeyPath      string
 	Issuer       string
+	AuthUrl      string
+	TokenUrl     string
 	Scopes       []string
 }
 
