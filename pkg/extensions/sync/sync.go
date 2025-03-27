@@ -10,8 +10,6 @@ import (
 	"time"
 
 	godigest "github.com/opencontainers/go-digest"
-	ispec "github.com/opencontainers/image-spec/specs-go/v1"
-	"github.com/regclient/regclient/types/descriptor"
 	"github.com/regclient/regclient/types/ref"
 
 	syncconf "zotregistry.dev/zot/pkg/extensions/config/sync"
@@ -19,9 +17,8 @@ import (
 	"zotregistry.dev/zot/pkg/scheduler"
 )
 
-// below types are used by containers/image to copy images
-// types.ImageReference - describes a registry/repo:tag
-// types.SystemContext - describes a registry/oci layout config
+// below types are used by regclient to copy images
+// ref.Ref- describes a registry/repo:tag
 
 // Sync general functionalities, one service per registry config.
 type Service interface {
@@ -31,6 +28,8 @@ type Service interface {
 	SyncRepo(ctx context.Context, repo string) error // used by periodically sync
 	// Sync an image (repo:tag || repo:digest) into ImageStore.
 	SyncImage(ctx context.Context, repo, reference string) error // used by sync on demand
+	// Sync referrers for an image (repo:subjectDigestStr) into ImageStore.
+	SyncReferrers(ctx context.Context, repo string, subjectDigestStr string, referenceTypes []string) error
 	// Remove all internal catalog entries.
 	ResetCatalog() // used by scheduler to empty out the catalog after a sync periodically roundtrip finishes
 	/* Returns if service has retry option set.
@@ -40,7 +39,7 @@ type Service interface {
 
 // Local and remote registries must implement this interface.
 type Registry interface {
-	// Get temporary ImageReference, is used by functions in containers/image package
+	// Get temporary ImageReference, is used by functions in regclient package
 	GetImageReference(repo string, tag string) (ref.Ref, error)
 }
 
@@ -77,10 +76,11 @@ type Remote interface {
 	GetRepositories(ctx context.Context) ([]string, error)
 	// Get a list of tags given a repo
 	GetTags(ctx context.Context, repo string) ([]string, error)
-	// Get manifest content, mediaType, descriptor given an image(if remote image is docker type then convert it to OCI)
-	GetOCIManifest(ctx context.Context, repo, reference string) ([]byte, ispec.Descriptor, bool, error)
-	// Get Manifest as is on the remote (doesn't convert to OCI)
-	GetManifest(ctx context.Context, repo, reference string) ([]byte, descriptor.Descriptor, error)
+	/* Get oci digest for repo:tag, if docker image, convert it before returning:
+	oci digest,	original digest on the remote before converting, if it was converted and error	*/
+	GetOCIDigest(ctx context.Context, repo, tag string) (godigest.Digest, godigest.Digest, bool, error)
+	// Get remote digest for repo:tag
+	GetDigest(ctx context.Context, repo, tag string) (godigest.Digest, error)
 }
 
 // Local registry.

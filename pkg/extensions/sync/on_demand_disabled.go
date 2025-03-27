@@ -11,8 +11,8 @@ func (onDemand *BaseOnDemand) SyncImage(ctx context.Context, repo, reference str
 	return nil
 }
 
-func (onDemand *BaseOnDemand) SyncReference(ctx context.Context, repo string, subjectDigestStr string,
-	referenceType string,
+func (onDemand *BaseOnDemand) SyncReferrers(ctx context.Context, repo string,
+	subjectDigestStr string, referenceTypes []string,
 ) error {
 	return nil
 }

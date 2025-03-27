@@ -80,8 +80,104 @@ func (onDemand *BaseOnDemand) SyncImage(ctx context.Context, repo, reference str
 	return err
 }
 
+func (onDemand *BaseOnDemand) SyncReferrers(ctx context.Context, repo string,
+	subjectDigestStr string, referenceTypes []string,
+) error {
+	req := request{
+		repo:      repo,
+		reference: subjectDigestStr,
+	}
+
+	val, found := onDemand.requestStore.Load(req)
+	if found {
+		onDemand.log.Info().Str("repo", repo).Str("reference", subjectDigestStr).
+			Msg("referrers for image already demanded, waiting on channel")
+
+		syncResult, _ := val.(chan error)
+
+		err, ok := <-syncResult
+		// if channel closed exit
+		if !ok {
+			return nil
+		}
+
+		return err
+	}
+
+	syncResult := make(chan error)
+	onDemand.requestStore.Store(req, syncResult)
+
+	defer onDemand.requestStore.Delete(req)
+	defer close(syncResult)
+
+	go onDemand.syncReferrers(ctx, repo, subjectDigestStr, referenceTypes, syncResult)
+
+	err, ok := <-syncResult
+	if !ok {
+		return nil
+	}
+
+	return err
+}
+
+func (onDemand *BaseOnDemand) syncReferrers(ctx context.Context, repo, subjectDigestStr string,
+	referenceTypes []string, syncResult chan error,
+) {
+	var err error
+	for serviceID, service := range onDemand.services {
+		err = service.SyncReferrers(ctx, repo, subjectDigestStr, referenceTypes)
+		if err != nil {
+			if errors.Is(err, zerr.ErrManifestNotFound) ||
+				errors.Is(err, zerr.ErrSyncImageFilteredOut) ||
+				errors.Is(err, zerr.ErrSyncImageNotSigned) ||
+				// some public registries may return 401 for not found.
+				errors.Is(err, zerr.ErrUnauthorizedAccess) {
+				continue
+			}
+
+			req := request{
+				repo:         repo,
+				reference:    subjectDigestStr,
+				serviceID:    serviceID,
+				isBackground: true,
+			}
+
+			// if there is already a background routine, skip
+			if _, requested := onDemand.requestStore.LoadOrStore(req, struct{}{}); requested {
+				continue
+			}
+
+			if service.CanRetryOnError() {
+				// retry in background
+				go func(service Service) {
+					// remove image after syncing
+					defer func() {
+						onDemand.requestStore.Delete(req)
+						onDemand.log.Info().Str("repo", repo).Str("reference", subjectDigestStr).
+							Msg("sync routine for image exited")
+					}()
+
+					onDemand.log.Info().Str("repo", repo).Str("reference", subjectDigestStr).Str("err", err.Error()).
+						Msg("sync routine: starting routine to copy image, because of error")
+
+					err := service.SyncReferrers(context.Background(), repo, subjectDigestStr, referenceTypes)
+					if err != nil {
+						onDemand.log.Error().Str("errorType", common.TypeOf(err)).Str("repo", repo).Str("reference", subjectDigestStr).
+							Err(err).Msg("sync routine: starting routine to retry copy image due to error")
+					}
+				}(service)
+			}
+		} else {
+			break
+		}
+	}
+
+	syncResult <- err
+}
+
 func (onDemand *BaseOnDemand) syncImage(ctx context.Context, repo, reference string, syncResult chan error) {
 	var err error
+
 	for serviceID, service := range onDemand.services {
 		err = service.SyncImage(ctx, repo, reference)
 		if err != nil {
@@ -106,6 +202,8 @@ func (onDemand *BaseOnDemand) syncImage(ctx context.Context, repo, reference str
 			}
 
 			if service.CanRetryOnError() {
+				retryErr := err
+
 				// retry in background
 				go func(service Service) {
 					// remove image after syncing
@@ -115,8 +213,8 @@ func (onDemand *BaseOnDemand) syncImage(ctx context.Context, repo, reference str
 							Msg("sync routine for image exited")
 					}()
 
-					onDemand.log.Info().Str("repo", repo).Str(reference, "reference").Str("err", err.Error()).
-						Msg("sync routine: starting routine to copy image, because of error")
+					onDemand.log.Info().Str("repo", repo).Str("reference", reference).Str("err", retryErr.Error()).
+						Msg("sync routine: starting routine to retry copy image due to error")
 
 					err := service.SyncImage(context.Background(), repo, reference)
 					if err != nil {

@@ -456,6 +456,9 @@ func (rh *RouteHandler) CheckManifest(response http.ResponseWriter, request *htt
 		} else if errors.Is(err, zerr.ErrManifestNotFound) {
 			e := apiErr.NewError(apiErr.MANIFEST_UNKNOWN).AddDetail(details)
 			zcommon.WriteJSON(response, http.StatusNotFound, apiErr.NewErrorList(e))
+		} else if errors.Is(err, zerr.ErrSyncParseRemoteRepo) {
+			e := apiErr.NewError(apiErr.UNAUTHORIZED).AddDetail(details)
+			zcommon.WriteJSON(response, http.StatusForbidden, apiErr.NewErrorList(e))
 		} else {
 			rh.c.Log.Error().Err(err).Msg("unexpected error")
 
@@ -531,6 +534,9 @@ func (rh *RouteHandler) GetManifest(response http.ResponseWriter, request *http.
 			details["reference"] = reference
 			e := apiErr.NewError(apiErr.MANIFEST_UNKNOWN).AddDetail(details)
 			zcommon.WriteJSON(response, http.StatusNotFound, apiErr.NewErrorList(e))
+		} else if errors.Is(err, zerr.ErrSyncParseRemoteRepo) {
+			e := apiErr.NewError(apiErr.UNAUTHORIZED).AddDetail(details)
+			zcommon.WriteJSON(response, http.StatusForbidden, apiErr.NewErrorList(e))
 		} else {
 			rh.c.Log.Error().Err(err).Msg("unexpected error")
 			response.WriteHeader(http.StatusInternalServerError)
@@ -562,22 +568,17 @@ func getReferrers(ctx context.Context, routeHandler *RouteHandler,
 	imgStore storageTypes.ImageStore, name string, digest godigest.Digest,
 	artifactTypes []string,
 ) (ispec.Index, error) {
-	refs, err := imgStore.GetReferrers(name, digest, artifactTypes)
-	if err != nil || len(refs.Manifests) == 0 {
-		if isSyncOnDemandEnabled(*routeHandler.c) {
-			routeHandler.c.Log.Info().Str("repository", name).Str("reference", digest.String()).
-				Msg("referrers not found, trying to get reference by syncing on demand")
+	if isSyncOnDemandEnabled(*routeHandler.c) {
+		routeHandler.c.Log.Info().Str("repository", name).Str("reference", digest.String()).
+			Msg("referrers not found, trying to get reference by syncing on demand")
 
-			if errSync := routeHandler.c.SyncOnDemand.SyncImage(ctx, name, digest.String()); errSync != nil {
-				routeHandler.c.Log.Err(errSync).Str("repository", name).Str("reference", digest.String()).
-					Msg("failed to sync OCI reference for image")
-			}
-
-			refs, err = imgStore.GetReferrers(name, digest, artifactTypes)
+		if errSync := routeHandler.c.SyncOnDemand.SyncReferrers(ctx, name, digest.String(), artifactTypes); errSync != nil {
+			routeHandler.c.Log.Err(errSync).Str("repository", name).Str("reference", digest.String()).
+				Msg("failed to sync image referrers")
 		}
 	}
 
-	return refs, err
+	return imgStore.GetReferrers(name, digest, artifactTypes)
 }
 
 // GetReferrers godoc

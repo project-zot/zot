@@ -523,4 +523,5 @@ func (c *Controller) StartBackgroundTasks() {
 
 type SyncOnDemand interface {
 	SyncImage(ctx context.Context, repo, reference string) error
+	SyncReferrers(ctx context.Context, repo string, subjectDigestStr string, referenceTypes []string) error
 }
