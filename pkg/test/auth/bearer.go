@@ -34,6 +34,12 @@ func MakeAuthTestServer(serverKey, signAlg string, unauthorizedNamespace string)
 	signingMethod := jwt.GetSigningMethod(signAlg)
 
 	authTestServer := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		if request.Method != http.MethodGet {
+			response.WriteHeader(http.StatusMethodNotAllowed)
+
+			return
+		}
+
 		var access []api.ResourceAccess
 
 		scope := request.URL.Query().Get("scope")

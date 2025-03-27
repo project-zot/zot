@@ -2713,7 +2713,7 @@ func TestBearerAuth(t *testing.T) {
 			}
 
 			for {
-				resp, err = destClient.R().Get(destBaseURL + "/v2/" + testImage + "/tags/list")
+				resp, err := destClient.R().Get(destBaseURL + "/v2/" + testImage + "/tags/list")
 				if err != nil {
 					panic(err)
 				}
@@ -4517,13 +4517,6 @@ func TestPeriodicallySignaturesErr(t *testing.T) {
 				Get(destBaseURL + notaryURLPath)
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
-
-			var index ispec.Index
-
-			err = json.Unmarshal(resp.Body(), &index)
-			So(err, ShouldBeNil)
-
-			So(len(index.Manifests), ShouldEqual, 0)
 		})
 
 		Convey("Trigger error on oci ref", func() {
@@ -4602,12 +4595,6 @@ func TestPeriodicallySignaturesErr(t *testing.T) {
 				Get(destBaseURL + artifactURLPath)
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
-
-			var index ispec.Index
-
-			err = json.Unmarshal(resp.Body(), &index)
-			So(err, ShouldBeNil)
-			So(len(index.Manifests), ShouldEqual, 0)
 		})
 	})
 }
@@ -5304,8 +5291,15 @@ func TestSyncedSignaturesMetaDB(t *testing.T) {
 
 		defer dcm.StopServer()
 
-		// Trigger SyncOnDemand
+		// trigger SyncOnDemand
 		resp, err := resty.R().Get(destBaseURL + "/v2/" + repoName + "/manifests/" + tag)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+		digest := resp.Header().Get("Docker-Content-Digest")
+
+		// trigger SyncReferrers
+		resp, err = resty.R().Get(destBaseURL + "/v2/" + repoName + "/referrers/" + digest)
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
@@ -5984,7 +5978,13 @@ func TestSignaturesOnDemand(t *testing.T) {
 		}
 
 		resp, err = resty.R().Get(destBaseURL + "/v2/" + testSignedImage + "/manifests/" + testImageTag)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
+		subjectDigest := resp.Header().Get("Docker-Content-Digest")
+
+		// trigger SyncReferrers
+		resp, err = resty.R().Get(destBaseURL + "/v2/" + repoName + "/referrers/" + subjectDigest)
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
@@ -6568,7 +6568,7 @@ func TestSyncSignaturesDiff(t *testing.T) {
 		So(reflect.DeepEqual(cosignManifest, syncedCosignManifest), ShouldEqual, true)
 
 		found, err := test.ReadLogFileAndSearchString(dctlr.Config.Log.Output,
-			"skipping syncing referrer because it's already synced", 30*time.Second)
+			"skipping image because it's already synced", 30*time.Second)
 		if err != nil {
 			panic(err)
 		}
@@ -6583,7 +6583,7 @@ func TestSyncSignaturesDiff(t *testing.T) {
 		So(found, ShouldBeTrue)
 
 		found, err = test.ReadLogFileAndSearchString(dctlr.Config.Log.Output,
-			"skipping syncing referrer because it's already synced", 30*time.Second)
+			"skipping image because it's already synced", 30*time.Second)
 		if err != nil {
 			panic(err)
 		}
@@ -6800,6 +6800,8 @@ func TestSyncWithDestination(t *testing.T) {
 				dcm.StartAndWait(dctlr.Config.HTTP.Port)
 				defer dcm.StopServer()
 
+				time.Sleep(2 * time.Second)
+
 				// give it time to set up sync
 				found, err := test.ReadLogFileAndSearchString(dctlr.Config.Log.Output,
 					"finished syncing repo", 60*time.Second)
@@ -6868,6 +6870,13 @@ func TestSyncWithDestination(t *testing.T) {
 
 				splittedURL = strings.SplitAfter(destBaseURL, ":")
 				destPort := splittedURL[len(splittedURL)-1]
+
+				subjectDigest := resp.Header().Get("Docker-Content-Digest")
+
+				// trigger SyncReferrers
+				resp, err = resty.R().Get(destBaseURL + "/v2/" + testCase.expected + "/referrers/" + subjectDigest)
+				So(err, ShouldBeNil)
+				So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
 				// notation verify the synced image
 				image := fmt.Sprintf("localhost:%s/%s:%s", destPort, testCase.expected, testImageTag)
