@@ -750,8 +750,7 @@ func (rc *RedisDB) SetRepoReference(ctx context.Context, repo string,
 		return err
 	}
 
-	locks := []string{rc.getImageLockKey(imageMeta.Digest.String()), rc.getRepoLockKey(repo)}
-	err = rc.withRSLocks(ctx, locks, func() error {
+	err = rc.withRSLocks(ctx, []string{rc.getImageLockKey(imageMeta.Digest.String())}, func() error {
 		err := rc.Client.HSet(ctx, rc.ImageMetaKey, imageMeta.Digest.String(), imageMetaBlob).Err()
 		if err != nil {
 			rc.Log.Error().Err(err).Str("hset", rc.ImageMetaKey).Str("digest", imageMeta.Digest.String()).
@@ -760,6 +759,13 @@ func (rc *RedisDB) SetRepoReference(ctx context.Context, repo string,
 			return fmt.Errorf("failed to set image meta record for digest %s: %w", imageMeta.Digest.String(), err)
 		}
 
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+
+	err = rc.withRSLocks(ctx, []string{rc.getRepoLockKey(repo)}, func() error {
 		protoRepoMeta, err := rc.getProtoRepoMeta(ctx, repo)
 		if err != nil && !errors.Is(err, zerr.ErrRepoMetaNotFound) {
 			return err
@@ -1805,8 +1811,7 @@ if there are no tags pointing to the digest, otherwise it's noop.
 func (rc *RedisDB) RemoveRepoReference(repo, reference string, manifestDigest godigest.Digest) error {
 	ctx := context.Background()
 
-	locks := []string{rc.getImageLockKey(manifestDigest.String()), rc.getRepoLockKey(repo)}
-	err := rc.withRSLocks(ctx, locks, func() error {
+	err := rc.withRSLocks(ctx, []string{rc.getRepoLockKey(repo)}, func() error {
 		protoRepoMeta, err := rc.getProtoRepoMeta(ctx, repo)
 		if err != nil {
 			if errors.Is(err, zerr.ErrRepoMetaNotFound) {
