@@ -956,12 +956,12 @@ func (rh *RouteHandler) CheckBlob(response http.ResponseWriter, request *http.Re
 	if userCanMount {
 		ok, blen, err = imgStore.CheckBlob(name, digest)
 	} else {
-		var lockLatency time.Time
+		err = imgStore.WithRepoReadLock(name, func() error {
+			var err error
+			ok, blen, _, err = imgStore.StatBlob(name, digest)
 
-		imgStore.RLock(&lockLatency)
-		defer imgStore.RUnlock(&lockLatency)
-
-		ok, blen, _, err = imgStore.StatBlob(name, digest)
+			return err
+		})
 	}
 
 	if err != nil {
