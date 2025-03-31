@@ -2,7 +2,7 @@ module zotregistry.dev/zot
 
 go 1.23.5
 
-toolchain go1.23.6
+toolchain go1.24.1
 
 require (
 	github.com/99designs/gqlgen v0.17.68
@@ -71,12 +71,12 @@ require (
 	github.com/zitadel/oidc/v3 v3.36.1
 	go.etcd.io/bbolt v1.4.0
 	golang.org/x/crypto v0.36.0
-	golang.org/x/exp v0.0.0-20250106191152-7588d65b2ba8
+	golang.org/x/exp v0.0.0-20250305212735-054e65f0b394
 	golang.org/x/oauth2 v0.28.0
 	google.golang.org/protobuf v1.36.5
 	gopkg.in/resty.v1 v1.12.0
 	gopkg.in/yaml.v3 v3.0.1
-	modernc.org/sqlite v1.36.1
+	modernc.org/sqlite v1.37.0
 	oras.land/oras-go/v2 v2.5.0
 )
 
@@ -531,9 +531,9 @@ require (
 	k8s.io/kube-openapi v0.0.0-20241105132330-32ad38e42d3f // indirect
 	k8s.io/kubectl v0.32.1 // indirect
 	k8s.io/utils v0.0.0-20241104100929-3ea5e8cea738 // indirect
-	modernc.org/libc v1.61.13 // indirect
+	modernc.org/libc v1.62.1 // indirect
 	modernc.org/mathutil v1.7.1 // indirect
-	modernc.org/memory v1.8.2 // indirect
+	modernc.org/memory v1.9.1 // indirect
 	mvdan.cc/sh/v3 v3.10.0 // indirect
 	oras.land/oras-go v1.2.6 // indirect
 	sigs.k8s.io/json v0.0.0-20241010143419-9aa6b5e7a4b3 // indirect
