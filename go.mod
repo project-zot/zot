@@ -2,7 +2,7 @@ module zotregistry.dev/zot
 
 go 1.23.5
 
-toolchain go1.23.6
+toolchain go1.24.1
 
 require (
 	github.com/99designs/gqlgen v0.17.68
@@ -22,8 +22,8 @@ require (
 	github.com/bmatcuk/doublestar/v4 v4.8.1
 	github.com/briandowns/spinner v1.23.2
 	github.com/chartmuseum/auth v0.5.0
-	github.com/containers/common v0.62.1
-	github.com/containers/image/v5 v5.34.2
+	github.com/containers/common v0.62.3
+	github.com/containers/image/v5 v5.34.3
 	github.com/dchest/siphash v1.2.3
 	github.com/didip/tollbooth/v7 v7.0.2
 	github.com/distribution/distribution/v3 v3.0.0-rc.3
