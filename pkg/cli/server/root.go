@@ -15,7 +15,7 @@ import (
 	"time"
 
 	glob "github.com/bmatcuk/doublestar/v4"
-	"github.com/mitchellh/mapstructure"
+	"github.com/go-viper/mapstructure/v2"
 	distspec "github.com/opencontainers/distribution-spec/specs-go"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
