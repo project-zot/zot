@@ -5,6 +5,7 @@ linters:
     - contextcheck
     - copyloopvar
     - depguard
+    - err113
     - exhaustive
     - exhaustruct
     - forbidigo
@@ -22,6 +23,7 @@ linters:
     - revive
     - rowserrcheck
     - sqlclosecheck
+    - staticcheck
     - wrapcheck
   settings:
     cyclop:
