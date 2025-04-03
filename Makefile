@@ -324,11 +324,11 @@ check-logs:
 check: $(if $(findstring ui,$(BUILD_LABELS)), ui)
 check: ./golangcilint.yaml $(GOLINTER)
 	mkdir -p pkg/extensions/build; touch pkg/extensions/build/.empty
-	$(GOLINTER) --config ./golangcilint.yaml run --out-format=colored-line-number --build-tags containers_image_openpgp ./...
-	$(GOLINTER) --config ./golangcilint.yaml run --out-format=colored-line-number --build-tags $(BUILD_LABELS),containers_image_openpgp  ./...
-	$(GOLINTER) --config ./golangcilint.yaml run --out-format=colored-line-number --build-tags debug  ./pkg/debug/swagger/ ./pkg/debug/gqlplayground
-	$(GOLINTER) --config ./golangcilint.yaml run --out-format=colored-line-number --build-tags dev ./pkg/test/inject/
-	$(GOLINTER) --config ./golangcilint.yaml run --out-format=colored-line-number --build-tags stress ./pkg/cli/server/
+	$(GOLINTER) --config ./golangcilint.yaml run --output.text.colors --build-tags containers_image_openpgp ./...
+	$(GOLINTER) --config ./golangcilint.yaml run --output.text.colors --build-tags $(BUILD_LABELS),containers_image_openpgp  ./...
+	$(GOLINTER) --config ./golangcilint.yaml run --output.text.colors --build-tags debug  ./pkg/debug/swagger/ ./pkg/debug/gqlplayground
+	$(GOLINTER) --config ./golangcilint.yaml run --output.text.colors --build-tags dev ./pkg/test/inject/
+	$(GOLINTER) --config ./golangcilint.yaml run --output.text.colors --build-tags stress ./pkg/cli/server/
 	rm pkg/extensions/build/.empty
 
 .PHONY: swagger

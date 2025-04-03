@@ -661,7 +661,7 @@ func (service searchService) getImagesByDigest(ctx context.Context, config Searc
 		if common.IsContextDone(ctx) {
 			return
 		}
-		rch <- stringResult{"", errors.New(errBuilder.String())} //nolint: goerr113
+		rch <- stringResult{"", errors.New(errBuilder.String())} //nolint: err113
 
 		return
 	}
@@ -723,7 +723,7 @@ func checkResultGraphQLQuery(ctx context.Context, err error, resultErrors []comm
 			return nil
 		}
 
-		//nolint: goerr113
+		//nolint: err113
 		return errors.New(errBuilder.String())
 	}
 

@@ -1113,7 +1113,7 @@ func TestMandatoryAnnotations(t *testing.T) {
 						imgStore = imagestore.NewImageStore(testDir, cacheDir, false, false, log, metrics,
 							&mocks.MockedLint{
 								LintFn: func(repo string, manifestDigest godigest.Digest, imageStore storageTypes.ImageStore) (bool, error) {
-									//nolint: goerr113
+									//nolint: err113
 									return false, errors.New("linter error")
 								},
 							}, store, nil, nil)
@@ -1124,7 +1124,7 @@ func TestMandatoryAnnotations(t *testing.T) {
 						imgStore = imagestore.NewImageStore(cacheDir, cacheDir, true, true, log, metrics,
 							&mocks.MockedLint{
 								LintFn: func(repo string, manifestDigest godigest.Digest, imageStore storageTypes.ImageStore) (bool, error) {
-									//nolint: goerr113
+									//nolint: err113
 									return false, errors.New("linter error")
 								},
 							}, store, cacheDriver, nil)

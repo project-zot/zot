@@ -5,12 +5,13 @@ linters:
     - contextcheck
     - copyloopvar
     - depguard
-    - err113
     - exhaustive
     - exhaustruct
     - forbidigo
     - funlen
     - gocognit
+    - gosmopolitan
+    - iface
     - inamedparam
     - intrange
     - ireturn
@@ -20,10 +21,12 @@ linters:
     - paralleltest
     - promlinter
     - protogetter
+    - recvcheck
     - revive
     - rowserrcheck
     - sqlclosecheck
     - staticcheck
+    - usetesting
     - wrapcheck
   settings:
     cyclop:

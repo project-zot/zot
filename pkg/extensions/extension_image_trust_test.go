@@ -44,7 +44,7 @@ import (
 type errReader int
 
 func (errReader) Read(p []byte) (int, error) {
-	return 0, errors.New("test error") //nolint:goerr113
+	return 0, errors.New("test error") //nolint:err113
 }
 
 func TestSignatureHandlers(t *testing.T) {

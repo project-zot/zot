@@ -154,7 +154,7 @@ func GetSecureBaseURL(port string) string {
 func CustomRedirectPolicy(noOfRedirect int) resty.RedirectPolicy {
 	return resty.RedirectPolicyFunc(func(req *http.Request, via []*http.Request) error {
 		if len(via) >= noOfRedirect {
-			return fmt.Errorf("stopped after %d redirects", noOfRedirect) //nolint: goerr113
+			return fmt.Errorf("stopped after %d redirects", noOfRedirect) //nolint: err113
 		}
 
 		for key, val := range via[len(via)-1].Header {

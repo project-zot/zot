@@ -209,7 +209,7 @@ func (httpClient *Client) MakeGetRequest(ctx context.Context, resultPtr interfac
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, nil, resp.StatusCode, errors.New(string(body)) //nolint:goerr113
+		return nil, nil, resp.StatusCode, errors.New(string(body)) //nolint:err113
 	}
 
 	// read blob
