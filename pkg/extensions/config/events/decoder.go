@@ -10,9 +10,13 @@ import (
 
 // SinkConfigDecoderHook provides a mapstructure hook for decoding SinkConfig interfaces.
 func SinkConfigDecoderHook() mapstructure.DecodeHookFunc {
-	return func(f reflect.Type, t reflect.Type, data interface{}) (interface{}, error) {
+	return func(_ reflect.Type, target reflect.Type, data interface{}) (interface{}, error) {
 		// Only apply this hook when converting to SinkConfig
-		if t != reflect.TypeOf((*SinkConfig)(nil)).Elem() {
+		if target.Name() != "SinkConfig" {
+			return data, nil
+		}
+
+		if target != reflect.TypeOf((*SinkConfig)(nil)).Elem() {
 			return data, nil
 		}
 
