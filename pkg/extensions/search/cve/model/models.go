@@ -1,11 +1,11 @@
 package model
 
 import (
+	"slices"
 	"strings"
 	"time"
 
 	godigest "github.com/opencontainers/go-digest"
-	"golang.org/x/exp/slices"
 )
 
 type ImageCVESummary struct {

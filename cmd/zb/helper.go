@@ -349,7 +349,7 @@ func pushMonolithImage(workdir, url, trepo string, repos []string, config testCo
 	statusCode = resp.StatusCode()
 	if statusCode != http.StatusAccepted {
 		return nil, repos, fmt.Errorf("%w: Expected: %d, Got: %d, Body: '%s'", zerr.ErrBadHTTPStatusCode, http.StatusAccepted,
-			resp.StatusCode(), string(resp.Body())) //nolint: goerr113
+			resp.StatusCode(), string(resp.Body())) //nolint: err113
 	}
 
 	loc := getLocation(url, resp)

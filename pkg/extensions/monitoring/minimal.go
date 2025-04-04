@@ -448,7 +448,7 @@ func (ms *metricServer) HistogramObserve(hv *HistogramValue) {
 	}
 }
 
-//nolint:goerr113
+//nolint:err113
 func sanityChecks(name string, knownLabels []string, found bool, labelNames, labelValues []string) error {
 	if !found {
 		return fmt.Errorf("metric %s: not found", name)

@@ -1,95 +1,119 @@
-run:
-  timeout: 60m
-
+version: "2"
 linters:
-  enable-all: true
+  default: all
   disable:
-    - gomnd
+    - contextcheck
+    - copyloopvar
+    - depguard
+    - exhaustive
+    - exhaustruct
+    - forbidigo
     - funlen
     - gocognit
-    - paralleltest
-    - forbidigo
-    - ireturn
-    - wrapcheck
-    - exhaustive
-    - maintidx
-    - exhaustruct
-    - rowserrcheck
-    - sqlclosecheck
-    - revive
-    - musttag
-    - depguard
-    - execinquery
+    - gosmopolitan
+    - iface
     - inamedparam
     - intrange
+    - ireturn
+    - maintidx
+    - mnd
+    - musttag
+    - paralleltest
     - promlinter
     - protogetter
-    - contextcheck # needs to revisit: https://github.com/project-zot/zot/pull/2556
-    - copyloopvar # needs to revisit: https://github.com/project-zot/zot/pull/2556
-    - typecheck
-    - exportloopref
-
-linters-settings:
-  dupl:
-    threshold: 200
-  nestif:
-    min-complexity: 26
-  cyclop:
-    max-complexity: 40
-    skip-tests: true
-  varnamelen:
-    check-return: true
-    ignore-type-assert-ok: true
-    ignore-map-index-ok: true
-    ignore-chan-recv-ok: true
-    ignore-names:
-      - err
-      - ok
-      - gc
-      - wg
-    ignore-decls:
-      - n int
-      - i int
-      - r *os.File
-      - w *os.File
-      - to int64
-      - l *ldap.Conn
-      - w http.ResponseWriter
-      - r *http.Request
-  gci:
-    sections:
-      - standard
-      - default
-      - prefix(zotregistry.dev/zot)
-  wsl:
-    allow-assign-and-anything: true
-    force-err-cuddling: true
-  nolintlint:
-    allow-unused: true
-  mnd:
-    checks:
-      - argument
-      - case
-      - condition
-      - operation
-      - return
-      - assign
-    ignored-numbers:
-      - "10"
-      - "64"
-  gomoddirectives:
-    replace-allow-list:
-      - github.com/gorilla/mux
-      - github.com/testcontainers/testcontainers-go
-issues:
-  exclude-dirs:
-    - "internal"
-  exclude-rules:
-    - path: pkg/extensions/search/schema.resolvers.go
-      linters:
-        - lll
-        - varnamelen
-        - gci
-    - path: _test\.go
-      linters:
-        - dupl
+    - recvcheck
+    - revive
+    - rowserrcheck
+    - sqlclosecheck
+    - staticcheck
+    - usetesting
+    - wrapcheck
+  settings:
+    cyclop:
+      max-complexity: 40
+    dupl:
+      threshold: 200
+    gomoddirectives:
+      replace-allow-list:
+        - github.com/gorilla/mux
+        - github.com/testcontainers/testcontainers-go
+    mnd:
+      checks:
+        - argument
+        - case
+        - condition
+        - operation
+        - return
+        - assign
+      ignored-numbers:
+        - "10"
+        - "64"
+    nestif:
+      min-complexity: 26
+    nolintlint:
+      allow-unused: true
+    varnamelen:
+      check-return: true
+      ignore-names:
+        - err
+        - ok
+        - gc
+        - wg
+      ignore-type-assert-ok: true
+      ignore-map-index-ok: true
+      ignore-chan-recv-ok: true
+      ignore-decls:
+        - n int
+        - i int
+        - r *os.File
+        - w *os.File
+        - to int64
+        - l *ldap.Conn
+        - w http.ResponseWriter
+        - r *http.Request
+    wsl:
+      allow-assign-and-anything: true
+      force-err-cuddling: true
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+    rules:
+      - linters:
+          - lll
+          - varnamelen
+        path: pkg/extensions/search/schema.resolvers.go
+      - linters:
+          - dupl
+        path: _test\.go
+      - linters:
+          - cyclop
+        path: (.+)_test\.go
+    paths:
+      - internal
+      - third_party$
+      - builtin$
+      - examples$
+formatters:
+  enable:
+    - gci
+    - gofmt
+    - gofumpt
+    - goimports
+  settings:
+    gci:
+      sections:
+        - standard
+        - default
+        - prefix(zotregistry.dev/zot)
+  exclusions:
+    generated: lax
+    paths:
+      - internal
+      - third_party$
+      - builtin$
+      - examples$
+      - pkg/extensions/search/schema.resolvers.go

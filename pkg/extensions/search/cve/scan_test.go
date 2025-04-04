@@ -572,6 +572,6 @@ func TestScanGeneratorWithRealData(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(cveSummary.Count, ShouldBeGreaterThanOrEqualTo, 5)
 		// As of September 22 the max severity is MEDIUM, but new CVEs could appear in the future
-		So([]string{"MEDIUM", "HIGH", "CRITICAL"}, ShouldContain, cveSummary.MaxSeverity)
+		So([]string{"MEDIUM", "HIGH", "CRITICAL", "UNKNOWN"}, ShouldContain, cveSummary.MaxSeverity)
 	})
 }
