@@ -824,7 +824,12 @@ func LoadConfiguration(config *config.Config, configPath string) error {
 
 	decoderOpts := []viper.DecoderConfigOption{
 		metadataConfig(metaData),
-		viper.DecodeHook(eventsconf.SinkConfigDecoderHook()),
+		viper.DecodeHook(
+			mapstructure.ComposeDecodeHookFunc(
+				mapstructure.StringToTimeDurationHookFunc(),
+				eventsconf.SinkConfigDecoderHook(),
+			),
+		),
 	}
 
 	if err := viperInstance.UnmarshalExact(&config, decoderOpts...); err != nil {
