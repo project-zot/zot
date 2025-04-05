@@ -368,7 +368,7 @@ func RunParseStorageTests(rootDir string, metaDB mTypes.MetaDB, log log.Logger) 
 
 	Convey("Test with simple case", func() {
 		imageStore := local.NewImageStore(rootDir, false, false,
-			log, monitoring.NewMetricsServer(false, log), nil, nil, nil)
+			log, monitoring.NewMetricsServer(false, log), nil, nil, nil, nil)
 
 		storeController := storage.StoreController{DefaultStore: imageStore}
 		manifests := []ispec.Manifest{}
@@ -443,7 +443,7 @@ func RunParseStorageTests(rootDir string, metaDB mTypes.MetaDB, log log.Logger) 
 
 	Convey("Accept orphan signatures", func() {
 		imageStore := local.NewImageStore(rootDir, false, false,
-			log, monitoring.NewMetricsServer(false, log), nil, nil, nil)
+			log, monitoring.NewMetricsServer(false, log), nil, nil, nil, nil)
 
 		storeController := storage.StoreController{DefaultStore: imageStore}
 
@@ -488,7 +488,7 @@ func RunParseStorageTests(rootDir string, metaDB mTypes.MetaDB, log log.Logger) 
 
 	Convey("Check statistics after load", func() {
 		imageStore := local.NewImageStore(rootDir, false, false,
-			log, monitoring.NewMetricsServer(false, log), nil, nil, nil)
+			log, monitoring.NewMetricsServer(false, log), nil, nil, nil, nil)
 
 		storeController := storage.StoreController{DefaultStore: imageStore}
 		// add an image
@@ -529,7 +529,7 @@ func RunParseStorageTests(rootDir string, metaDB mTypes.MetaDB, log log.Logger) 
 	// make sure pushTimestamp is always populated to not interfere with retention logic
 	Convey("Always update pushTimestamp if its value is 0(time.Time{})", func() {
 		imageStore := local.NewImageStore(rootDir, false, false,
-			log, monitoring.NewMetricsServer(false, log), nil, nil, nil)
+			log, monitoring.NewMetricsServer(false, log), nil, nil, nil, nil)
 
 		storeController := storage.StoreController{DefaultStore: imageStore}
 		// add an image
