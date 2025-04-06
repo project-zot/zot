@@ -157,4 +157,42 @@ func TestConfig(t *testing.T) {
 		conf.Extensions = nil
 		So(conf.IsEventRecorderEnabled(), ShouldBeFalse)
 	})
+
+	Convey("Test IsClusteringEnabled()", t, func() {
+		conf := config.New()
+		So(conf.Cluster, ShouldBeNil)
+		So(conf.IsClusteringEnabled(), ShouldBeFalse)
+
+		conf.Cluster = &config.ClusterConfig{
+			Members: []string{
+				"127.0.0.1:9090",
+				"127.0.0.1:9001",
+			},
+			HashKey: "loremipsumdolors",
+		}
+
+		So(conf.IsClusteringEnabled(), ShouldBeTrue)
+	})
+
+	Convey("Test IsSharedStorageEnabled()", t, func() {
+		conf := config.New()
+		So(conf.Storage.RemoteCache, ShouldBeFalse)
+		So(conf.Storage.CacheDriver, ShouldBeNil)
+		So(conf.Storage.StorageDriver, ShouldBeNil)
+		So(conf.IsSharedStorageEnabled(), ShouldBeFalse)
+
+		conf.Storage.RemoteCache = true
+		So(conf.Storage.RemoteCache, ShouldBeTrue)
+		So(conf.IsSharedStorageEnabled(), ShouldBeFalse)
+
+		storageDriver := map[string]interface{}{"name": "s3"}
+		conf.Storage.StorageDriver = storageDriver
+		So(conf.Storage.StorageDriver, ShouldNotBeNil)
+		So(conf.IsSharedStorageEnabled(), ShouldBeFalse)
+
+		cacheDriver := map[string]interface{}{"name": "dynamodb"}
+		conf.Storage.CacheDriver = cacheDriver
+		So(conf.Storage.CacheDriver, ShouldNotBeNil)
+		So(conf.IsSharedStorageEnabled(), ShouldBeTrue)
+	})
 }

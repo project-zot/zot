@@ -27,6 +27,7 @@ import (
 	"zotregistry.dev/zot/pkg/log"
 	"zotregistry.dev/zot/pkg/meta"
 	mTypes "zotregistry.dev/zot/pkg/meta/types"
+	"zotregistry.dev/zot/pkg/proxy"
 	"zotregistry.dev/zot/pkg/scheduler"
 	"zotregistry.dev/zot/pkg/storage"
 	"zotregistry.dev/zot/pkg/storage/gc"
@@ -75,7 +76,7 @@ func NewController(appConfig *config.Config) *Controller {
 
 		// memberSocket is the local member's socket
 		// the index is also fetched for quick lookups during proxying
-		memberSocketIdx, memberSocket, err := GetLocalMemberClusterSocket(appConfig.Cluster.Members, localSockets)
+		memberSocketIdx, memberSocket, err := proxy.GetLocalMemberClusterSocket(appConfig.Cluster.Members, localSockets)
 		if err != nil {
 			logger.Error().Err(err).Msg("failed to get member socket")
 			panic("failed to get member socket")
