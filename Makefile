@@ -35,6 +35,7 @@ BATS := $(TOOLSDIR)/bin/bats
 TESTDATA := $(TOP_LEVEL)/test/data
 OS ?= $(shell go env GOOS)
 ARCH ?= $(shell go env GOARCH)
+GREP_BIN_PATH ?= $(shell which grep)
 
 PROTOC := $(TOOLSDIR)/bin/protoc
 PROTOC_VERSION := 24.4
