@@ -24,7 +24,7 @@ var _ Recorder = (*eventRecorder)(nil)
 func (r eventRecorder) publish(event *cloudevents.Event) error {
 	for _, sink := range r.sinks {
 		if response := sink.Emit(event); cloudevents.IsNACK(response) || cloudevents.IsUndelivered(response) {
-			r.log.Error().Err(response).Msg("sink returned an error")
+			r.log.Error().Err(response).Msg("failed to publish event")
 
 			return response
 		}
