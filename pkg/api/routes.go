@@ -457,7 +457,7 @@ func (rh *RouteHandler) CheckManifest(response http.ResponseWriter, request *htt
 			e := apiErr.NewError(apiErr.MANIFEST_UNKNOWN).AddDetail(details)
 			zcommon.WriteJSON(response, http.StatusNotFound, apiErr.NewErrorList(e))
 		} else if errors.Is(err, zerr.ErrSyncParseRemoteRepo) {
-			e := apiErr.NewError(apiErr.UNAUTHORIZED).AddDetail(details)
+			e := apiErr.NewError(apiErr.DENIED).AddDetail(details)
 			zcommon.WriteJSON(response, http.StatusForbidden, apiErr.NewErrorList(e))
 		} else {
 			rh.c.Log.Error().Err(err).Msg("unexpected error")
@@ -535,7 +535,7 @@ func (rh *RouteHandler) GetManifest(response http.ResponseWriter, request *http.
 			e := apiErr.NewError(apiErr.MANIFEST_UNKNOWN).AddDetail(details)
 			zcommon.WriteJSON(response, http.StatusNotFound, apiErr.NewErrorList(e))
 		} else if errors.Is(err, zerr.ErrSyncParseRemoteRepo) {
-			e := apiErr.NewError(apiErr.UNAUTHORIZED).AddDetail(details)
+			e := apiErr.NewError(apiErr.DENIED).AddDetail(details)
 			zcommon.WriteJSON(response, http.StatusForbidden, apiErr.NewErrorList(e))
 		} else {
 			rh.c.Log.Error().Err(err).Msg("unexpected error")
@@ -570,7 +570,7 @@ func getReferrers(ctx context.Context, routeHandler *RouteHandler,
 ) (ispec.Index, error) {
 	if isSyncOnDemandEnabled(*routeHandler.c) {
 		routeHandler.c.Log.Info().Str("repository", name).Str("reference", digest.String()).
-			Msg("referrers not found, trying to get reference by syncing on demand")
+			Msg("trying to get updated referrers by syncing on demand")
 
 		if errSync := routeHandler.c.SyncOnDemand.SyncReferrers(ctx, name, digest.String(), artifactTypes); errSync != nil {
 			routeHandler.c.Log.Err(errSync).Str("repository", name).Str("reference", digest.String()).

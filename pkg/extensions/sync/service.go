@@ -239,9 +239,9 @@ func (service *BaseService) GetNextRepo(lastRepo string) (string, error) {
 
 	if len(service.repositories) == 0 {
 		service.clientLock.RLock()
-		defer service.clientLock.RUnlock()
-
 		service.repositories, err = service.remote.GetRepositories(context.Background())
+		service.clientLock.RUnlock()
+
 		if err != nil {
 			service.log.Error().Str("errorType", common.TypeOf(err)).Str("remote registry", service.remote.GetHostName()).
 				Err(err).Msg("error while getting repositories from remote registry")
@@ -310,6 +310,9 @@ func (service *BaseService) SyncImage(ctx context.Context, repo, reference strin
 func (service *BaseService) SyncReferrers(ctx context.Context, repo string,
 	subjectDigestStr string, referenceTypes []string,
 ) error {
+	service.clientLock.RLock()
+	defer service.clientLock.RUnlock()
+
 	remoteRepo := repo
 
 	remoteURL := service.remote.GetHostName()
@@ -327,7 +330,7 @@ func (service *BaseService) SyncReferrers(ctx context.Context, repo string,
 	service.log.Info().Str("remote", remoteURL).Str("repository", repo).Str("subject", subjectDigestStr).
 		Interface("reference types", referenceTypes).Msg("syncing reference for image")
 
-	tags, err := service.getTags(ctx, remoteRepo)
+	tags, err := service.getTags(ctx, remoteRepo, false)
 	if err != nil {
 		service.log.Error().Str("errorType", common.TypeOf(err)).Str("repo", repo).
 			Err(err).Msg("error while getting tags for repo")
@@ -390,7 +393,7 @@ func (service *BaseService) SyncRepo(ctx context.Context, repo string) error {
 
 	var tags []string
 
-	tags, err = service.getTags(ctx, repo)
+	tags, err = service.getTags(ctx, repo, true)
 	if err != nil {
 		service.log.Error().Str("errorType", common.TypeOf(err)).Str("repo", repo).
 			Err(err).Msg("error while getting tags for repo")
@@ -551,7 +554,7 @@ func (service *BaseService) syncImage(ctx context.Context, localRepo, remoteRepo
 	if checkIsSigned {
 		// if need tags for checking signature (onlySigned option true) or needs for referrers
 		if len(repoTags) == 0 {
-			repoTags, err = service.getTags(ctx, remoteRepo)
+			repoTags, err = service.getTags(ctx, remoteRepo, false)
 			if err != nil {
 				service.log.Error().Str("errorType", common.TypeOf(err)).Str("repo", remoteRepo).
 					Err(err).Msg("error while getting tags for repo")
@@ -635,17 +638,24 @@ func (service *BaseService) syncImage(ctx context.Context, localRepo, remoteRepo
 	return nil
 }
 
-func (service *BaseService) getTags(ctx context.Context, repo string) ([]string, error) {
-	isValid, tags := service.tagsCache.Get(repo)
-	if !isValid {
-		tags, err := service.remote.GetTags(ctx, repo)
+func (service *BaseService) getTags(ctx context.Context, repo string, noCache bool) ([]string, error) {
+	var isValid bool
+
+	var tags []string
+
+	var err error
+
+	if !noCache {
+		isValid, tags = service.tagsCache.Get(repo)
+	}
+
+	if !isValid || noCache {
+		tags, err = service.remote.GetTags(ctx, repo)
 		if err != nil {
 			return nil, err
 		}
 
 		service.tagsCache.Set(repo, tags)
-
-		return tags, nil
 	}
 
 	return tags, nil
@@ -660,7 +670,7 @@ func (service *BaseService) syncReferrers(ctx context.Context, tags []string, lo
 	var err error
 
 	if len(tags) == 0 {
-		tags, err = service.getTags(ctx, remoteRepo)
+		tags, err = service.getTags(ctx, remoteRepo, false)
 		if err != nil {
 			service.log.Error().Str("errorType", common.TypeOf(err)).Str("repo", remoteRepo).
 				Err(err).Msg("error while getting tags for repo")

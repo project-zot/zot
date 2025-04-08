@@ -76,6 +76,8 @@ filter-valid = $(foreach ext, $(merged-extensions), $(if $(findstring $(ext),$(A
 add-extensions = $(subst $(1),$(2),$(sort $(filter-valid)))
 BUILD_LABELS = $(call add-extensions,$(space),$(comma))
 extended-name = -$(subst $(comma),$(hyphen),$(BUILD_LABELS))
+GO_CMD_TAGS := $(if $(BUILD_LABELS),-tags $(BUILD_LABELS),)
+
 
 BATS_TEST_FILE_PATH ?= replace_me
 ifeq ($(BATS_VERBOSITY),2)
@@ -113,12 +115,10 @@ swaggercheck: swagger
 
 .PHONY: build-metadata
 build-metadata: $(if $(findstring ui,$(BUILD_LABELS)), ui)
-	# do not allow empty $(BUILD_TAGS) (at least add containers_image_openpgp that doesn't affect package import & files listing)
-	$(eval BUILD_TAGS=$(if $(BUILD_LABELS),$(BUILD_LABELS),containers_image_openpgp))
 	echo "Imports: \n"
-	go list -tags $(BUILD_TAGS) -f '{{ join .Imports "\n" }}' ./... | sort -u
+	go list $(GO_CMD_TAGS) -f '{{ join .Imports "\n" }}' ./... | sort -u
 	echo "\n Files: \n"
-	go list -tags $(BUILD_TAGS) -f '{{ join .GoFiles "\n" }}' ./... | sort -u
+	go list $(GO_CMD_TAGS) -f '{{ join .GoFiles "\n" }}' ./... | sort -u
 
 .PHONY: gen-protobuf
 gen-protobuf: check-not-freebds $(PROTOC)
@@ -173,7 +173,7 @@ binary-minimal: modcheck build-metadata
 .PHONY: binary
 binary: $(if $(findstring ui,$(BUILD_LABELS)), ui)
 binary: modcheck build-metadata
-	env CGO_ENABLED=0 GOOS=$(OS) GOARCH=$(ARCH) go build -o bin/zot-$(OS)-$(ARCH)$(BIN_EXT) $(BUILDMODE_FLAGS) -tags $(BUILD_LABELS),containers_image_openpgp -v -trimpath -ldflags "-X zotregistry.dev/zot/pkg/api/config.ReleaseTag=${RELEASE_TAG} -X zotregistry.dev/zot/pkg/api/config.Commit=${COMMIT} -X zotregistry.dev/zot/pkg/api/config.BinaryType=$(extended-name) -X zotregistry.dev/zot/pkg/api/config.GoVersion=${GO_VERSION} -s -w" ./cmd/zot
+	env CGO_ENABLED=0 GOOS=$(OS) GOARCH=$(ARCH) go build -o bin/zot-$(OS)-$(ARCH)$(BIN_EXT) $(BUILDMODE_FLAGS) $(GO_CMD_TAGS) -v -trimpath -ldflags "-X zotregistry.dev/zot/pkg/api/config.ReleaseTag=${RELEASE_TAG} -X zotregistry.dev/zot/pkg/api/config.Commit=${COMMIT} -X zotregistry.dev/zot/pkg/api/config.BinaryType=$(extended-name) -X zotregistry.dev/zot/pkg/api/config.GoVersion=${GO_VERSION} -s -w" ./cmd/zot
 
 .PHONY: binary-debug
 binary-debug: $(if $(findstring ui,$(BUILD_LABELS)), ui)
@@ -186,7 +186,7 @@ cli: modcheck build-metadata
 
 .PHONY: bench
 bench: modcheck build-metadata
-	env CGO_ENABLED=0 GOOS=$(OS) GOARCH=$(ARCH) go build -o bin/zb-$(OS)-$(ARCH)$(BIN_EXT) $(BUILDMODE_FLAGS) -tags $(BUILD_LABELS) -v -trimpath -ldflags "-X zotregistry.dev/zot/pkg/api/config.Commit=${COMMIT} -X zotregistry.dev/zot/pkg/api/config.BinaryType=$(extended-name) -X zotregistry.dev/zot/pkg/api/config.GoVersion=${GO_VERSION} -s -w" ./cmd/zb
+	env CGO_ENABLED=0 GOOS=$(OS) GOARCH=$(ARCH) go build -o bin/zb-$(OS)-$(ARCH)$(BIN_EXT) $(BUILDMODE_FLAGS) $(GO_CMD_TAGS) -v -trimpath -ldflags "-X zotregistry.dev/zot/pkg/api/config.Commit=${COMMIT} -X zotregistry.dev/zot/pkg/api/config.BinaryType=$(extended-name) -X zotregistry.dev/zot/pkg/api/config.GoVersion=${GO_VERSION} -s -w" ./cmd/zb
 
 .PHONY: exporter-minimal
 exporter-minimal: EXTENSIONS=
@@ -199,7 +199,7 @@ test-prereq: check-skopeo $(TESTDATA) $(ORAS)
 .PHONY: test-extended
 test-extended: $(if $(findstring ui,$(BUILD_LABELS)), ui)
 test-extended: test-prereq
-	go test -failfast -tags $(BUILD_LABELS) -trimpath -race -timeout 20m -cover -coverpkg ./... -coverprofile=coverage-extended.txt -covermode=atomic ./...
+	go test -failfast $(GO_CMD_TAGS) -trimpath -race -timeout 20m -cover -coverpkg ./... -coverprofile=coverage-extended.txt -covermode=atomic ./...
 	rm -rf /tmp/getter*; rm -rf /tmp/trivy*
 
 .PHONY: test-minimal
@@ -353,12 +353,16 @@ update-licenses: check-linux
 check-licenses:
 # note: "printf" works for darwin instead of "echo -n"
 	go install github.com/google/go-licenses@latest
-	@for tag in "$(BUILD_LABELS)"; do \
-		echo Evaluating tag: $$tag;\
+	@for tag_set in "$(BUILD_LABELS)" ""; do \
+		echo Evaluating tag set: $$tag_set; \
 		for mod in $$(go list -m -f '{{if not (or .Indirect .Main)}}{{.Path}}{{end}}' all); do \
 			while [ x$$mod != x ]; do \
 				printf "Checking $$mod ... "; \
-				result=$$(GOFLAGS="-tags=$${tag}" go-licenses check $$mod 2>&1); \
+				if [ -n "$$tag_set" ]; then \
+					result=$$(GOFLAGS="-tags=$${tag_set}" go-licenses check $$mod 2>&1); \
+				else \
+					result=$$(go-licenses check $$mod 2>&1); \
+				fi; \
 				if [ $$? -eq 0 ]; then \
 					echo OK; \
 					break; \
@@ -374,8 +378,8 @@ check-licenses:
 					break; \
 				fi; \
 			done; \
-		 done; \
-	 done
+		done; \
+	done
 
 .PHONY: clean
 clean:
