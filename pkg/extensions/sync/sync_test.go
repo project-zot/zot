@@ -5656,6 +5656,184 @@ func TestOnDemandMultipleImage(t *testing.T) {
 	})
 }
 
+func TestOnDemandPullsReferrersOnce(t *testing.T) {
+	Convey("Verify sync on demand pulls only one time", t, func(conv C) {
+		sctlr, srcBaseURL, _, _, _ := makeUpstreamServer(t, false, false)
+
+		scm := test.NewControllerManager(sctlr)
+		scm.StartAndWait(sctlr.Config.HTTP.Port)
+
+		defer scm.StopServer()
+
+		regex := ".*"
+		semver := true
+
+		var tlsVerify bool
+
+		syncRegistryConfig := syncconf.RegistryConfig{
+			Content: []syncconf.Content{
+				{
+					Prefix: testImage,
+					Tags: &syncconf.Tags{
+						Regex:  &regex,
+						Semver: &semver,
+					},
+				},
+			},
+			URLs:       []string{srcBaseURL},
+			TLSVerify:  &tlsVerify,
+			CertDir:    "",
+			OnDemand:   true,
+			MaxRetries: &maxRetries,
+		}
+
+		defaultVal := true
+		syncConfig := &syncconf.Config{
+			Enable:     &defaultVal,
+			Registries: []syncconf.RegistryConfig{syncRegistryConfig},
+		}
+
+		// get digest for target image
+		resp, err := resty.R().Get(srcBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+		digest := resp.Header().Get("Docker-Content-Digest")
+
+		// add OCI Ref
+		_ = pushBlob(srcBaseURL, testImage, ispec.DescriptorEmptyJSON.Data)
+
+		OCIRefManifest := ispec.Manifest{
+			Versioned: specs.Versioned{
+				SchemaVersion: 2,
+			},
+			Subject: &ispec.Descriptor{
+				MediaType: ispec.MediaTypeImageManifest,
+				Digest:    godigest.Digest(digest),
+				Size:      int64(len(resp.Body())),
+			},
+			Config: ispec.Descriptor{
+				MediaType: ispec.MediaTypeEmptyJSON,
+				Digest:    ispec.DescriptorEmptyJSON.Digest,
+				Size:      2,
+			},
+			Layers: []ispec.Descriptor{
+				{
+					MediaType: ispec.MediaTypeEmptyJSON,
+					Digest:    ispec.DescriptorEmptyJSON.Digest,
+					Size:      2,
+				},
+			},
+			MediaType: ispec.MediaTypeImageManifest,
+		}
+
+		OCIRefManifestBlob, err := json.Marshal(OCIRefManifest)
+		So(err, ShouldBeNil)
+
+		refURL := srcBaseURL + "/v2/" + testImage + "/manifests/oci.ref"
+		resp, err = resty.R().
+			SetHeader("Content-type", ispec.MediaTypeImageManifest).
+			SetBody(OCIRefManifestBlob).
+			Put(refURL)
+
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
+
+		dctlr, destBaseURL, destDir, _ := makeDownstreamServer(t, false, syncConfig)
+
+		dcm := test.NewControllerManager(dctlr)
+		dcm.StartAndWait(dctlr.Config.HTTP.Port)
+
+		defer dcm.StopServer()
+
+		var wg goSync.WaitGroup
+
+		// sync image
+		resp, err = resty.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+		numConcurrentRequests := 5
+		wg.Add(numConcurrentRequests)
+
+		targetURL := destBaseURL + "/v2/" + testImage + "/referrers/" + digest
+
+		for i := 0; i < numConcurrentRequests; i++ {
+			go func(routineID int) {
+				defer wg.Done()
+				t.Logf("Goroutine %d: Sending request to %s", routineID, targetURL)
+
+				resp, err := resty.R().Get(targetURL)
+				if err != nil {
+					t.Errorf("Goroutine %d: Request failed: %v", routineID, err)
+
+					return
+				}
+
+				if resp.StatusCode() != http.StatusOK {
+					t.Errorf("Goroutine %d: Expected status %d, got %d. Body: %s",
+						routineID, http.StatusOK, resp.StatusCode(), resp.String())
+				}
+			}(i)
+		}
+
+		done := make(chan bool)
+
+		var maxLen int
+		syncBlobUploadDir := path.Join(destDir, testImage, syncConstants.SyncBlobUploadDir)
+
+		go func() {
+			for {
+				select {
+				case <-done:
+					return
+				default:
+					dirs, err := os.ReadDir(syncBlobUploadDir)
+					if err != nil {
+						continue
+					}
+					// check how many .sync/uuid/ dirs are created, if just one then on demand pulled only once
+					if len(dirs) > maxLen {
+						maxLen = len(dirs)
+					}
+				}
+			}
+		}()
+
+		wg.Wait()
+		done <- true
+
+		So(maxLen, ShouldEqual, 1)
+
+		found, err := test.ReadLogFileAndSearchString(dctlr.Config.Log.Output,
+			"referrers for image already demanded", 10*time.Second)
+		if err != nil {
+			panic(err)
+		}
+
+		if !found {
+			data, err := os.ReadFile(dctlr.Config.Log.Output)
+			So(err, ShouldBeNil)
+
+			t.Logf("downstream log: %s", string(data))
+		}
+
+		So(found, ShouldBeTrue)
+
+		// check that referrers are synced
+		resp, err = resty.R().Get(destBaseURL + "/v2/" + testImage + "/referrers/" + digest)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+		var index ispec.Index
+
+		err = json.Unmarshal(resp.Body(), &index)
+		So(err, ShouldBeNil)
+
+		So(len(index.Manifests), ShouldEqual, 1)
+	})
+}
+
 func TestOnDemandPullsOnce(t *testing.T) {
 	Convey("Verify sync on demand pulls only one time", t, func(conv C) {
 		sctlr, srcBaseURL, _, _, _ := makeUpstreamServer(t, false, false)
@@ -5702,32 +5880,29 @@ func TestOnDemandPullsOnce(t *testing.T) {
 
 		var wg goSync.WaitGroup
 
-		wg.Add(1)
+		numConcurrentRequests := 5
+		wg.Add(numConcurrentRequests)
 
-		go func(conv C) {
-			defer wg.Done()
-			resp, err := resty.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
-			conv.So(err, ShouldBeNil)
-			conv.So(resp.StatusCode(), ShouldEqual, http.StatusOK)
-		}(conv)
+		targetURL := destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag
 
-		wg.Add(1)
+		for i := 0; i < numConcurrentRequests; i++ {
+			go func(routineID int) {
+				defer wg.Done()
+				t.Logf("Goroutine %d: Sending request to %s", routineID, targetURL)
 
-		go func(conv C) {
-			defer wg.Done()
-			resp, err := resty.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
-			conv.So(err, ShouldBeNil)
-			conv.So(resp.StatusCode(), ShouldEqual, http.StatusOK)
-		}(conv)
+				resp, err := resty.R().Get(targetURL)
+				if err != nil {
+					t.Errorf("Goroutine %d: Request failed: %v", routineID, err)
 
-		wg.Add(1)
+					return
+				}
 
-		go func(conv C) {
-			defer wg.Done()
-			resp, err := resty.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
-			conv.So(err, ShouldBeNil)
-			conv.So(resp.StatusCode(), ShouldEqual, http.StatusOK)
-		}(conv)
+				if resp.StatusCode() != http.StatusOK {
+					t.Errorf("Goroutine %d: Expected status %d, got %d. Body: %s",
+						routineID, http.StatusOK, resp.StatusCode(), resp.String())
+				}
+			}(i)
+		}
 
 		done := make(chan bool)
 
@@ -5756,6 +5931,21 @@ func TestOnDemandPullsOnce(t *testing.T) {
 		done <- true
 
 		So(maxLen, ShouldEqual, 1)
+
+		found, err := test.ReadLogFileAndSearchString(dctlr.Config.Log.Output,
+			"image already demanded", 10*time.Second)
+		if err != nil {
+			panic(err)
+		}
+
+		if !found {
+			data, err := os.ReadFile(dctlr.Config.Log.Output)
+			So(err, ShouldBeNil)
+
+			t.Logf("downstream log: %s", string(data))
+		}
+
+		So(found, ShouldBeTrue)
 	})
 }
 
