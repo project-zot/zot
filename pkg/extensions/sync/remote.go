@@ -5,192 +5,364 @@ package sync
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
-	"net/url"
-	"strings"
 
-	"github.com/containers/image/v5/docker"
-	dockerReference "github.com/containers/image/v5/docker/reference"
-	"github.com/containers/image/v5/manifest"
-	"github.com/containers/image/v5/types"
-	"github.com/opencontainers/go-digest"
+	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
+	"github.com/regclient/regclient"
+	"github.com/regclient/regclient/config"
+	"github.com/regclient/regclient/types/descriptor"
+	"github.com/regclient/regclient/types/errs"
+	"github.com/regclient/regclient/types/manifest"
+	"github.com/regclient/regclient/types/mediatype"
+	"github.com/regclient/regclient/types/ref"
+	"github.com/regclient/regclient/types/repo"
 
-	"zotregistry.dev/zot/pkg/api/constants"
+	zerr "zotregistry.dev/zot/errors"
 	"zotregistry.dev/zot/pkg/common"
-	client "zotregistry.dev/zot/pkg/extensions/sync/httpclient"
 	"zotregistry.dev/zot/pkg/log"
 )
 
-type catalog struct {
-	Repositories []string `json:"repositories"`
-}
-
 type RemoteRegistry struct {
-	client  *client.Client
-	context *types.SystemContext
-	log     log.Logger
+	client      *regclient.RegClient
+	hosts       []config.Host
+	primaryHost string
+	log         log.Logger
 }
 
-func NewRemoteRegistry(client *client.Client, logger log.Logger) Remote {
+func NewRemoteRegistry(client *regclient.RegClient, hosts []config.Host, logger log.Logger) Remote {
 	registry := &RemoteRegistry{}
 
 	registry.log = logger
+	registry.hosts = hosts
 	registry.client = client
-	clientConfig := client.GetConfig()
-	registry.context = getUpstreamContext(clientConfig.CertDir, clientConfig.Username,
-		clientConfig.Password, clientConfig.TLSVerify)
+	//
+	registry.primaryHost = hosts[0].Hostname
 
 	return registry
 }
 
-func (registry *RemoteRegistry) SetUpstreamAuthConfig(username, password string) {
-	registry.context.DockerAuthConfig = &types.DockerAuthConfig{
-		Username: username,
-		Password: password,
-	}
-}
-
-func (registry *RemoteRegistry) GetContext() *types.SystemContext {
-	return registry.context
+func (registry *RemoteRegistry) GetHostName() string {
+	return registry.primaryHost
 }
 
 func (registry *RemoteRegistry) GetRepositories(ctx context.Context) ([]string, error) {
-	var catalog catalog
+	var err error
 
-	_, header, _, err := registry.client.MakeGetRequest(ctx, &catalog, "application/json", "", //nolint: dogsled
-		constants.RoutePrefix, constants.ExtCatalogPrefix)
-	if err != nil {
-		return []string{}, err
-	}
+	var repoList *repo.RepoList
 
-	var repos []string
-
-	repos = append(repos, catalog.Repositories...)
-
-	link := header.Get("Link")
-	for link != "" {
-		linkURLPart, _, _ := strings.Cut(link, ";")
-
-		linkURL, err := url.Parse(strings.Trim(linkURLPart, "<>"))
+	for _, host := range registry.hosts {
+		repoList, err = registry.client.RepoList(ctx, host.Hostname)
 		if err != nil {
-			return catalog.Repositories, err
+			registry.log.Error().Err(err).Str("remote", host.Name).Msg("failed to list repositories in remote registry")
+
+			continue
 		}
 
-		_, header, _, err := registry.client.MakeGetRequest(ctx, &catalog, "application/json",
-			linkURL.RawQuery, constants.RoutePrefix, constants.ExtCatalogPrefix) //nolint: dogsled
-		if err != nil {
-			return repos, err
-		}
-
-		repos = append(repos, catalog.Repositories...)
-
-		link = header.Get("Link")
+		return repoList.Repositories, nil
 	}
 
-	return repos, nil
+	return []string{}, err
 }
 
-func (registry *RemoteRegistry) GetDockerRemoteRepo(repo string) string {
-	dockerNamespace := "library"
-	dockerRegistry := "docker.io"
-
-	remoteHost := registry.client.GetHostname()
-
-	repoRef, err := parseRepositoryReference(fmt.Sprintf("%s/%s", remoteHost, repo))
-	if err != nil {
-		return repo
-	}
-
-	if !strings.Contains(repo, dockerNamespace) &&
-		strings.Contains(repoRef.String(), dockerNamespace) &&
-		strings.Contains(repoRef.String(), dockerRegistry) {
-		return fmt.Sprintf("%s/%s", dockerNamespace, repo)
-	}
-
-	return repo
-}
-
-func (registry *RemoteRegistry) GetImageReference(repo, reference string) (types.ImageReference, error) {
-	remoteHost := registry.client.GetHostname()
-
-	repoRef, err := parseRepositoryReference(fmt.Sprintf("%s/%s", remoteHost, repo))
-	if err != nil {
-		registry.log.Error().Str("errorType", common.TypeOf(err)).Str("repo", repo).
-			Str("reference", reference).Str("remote", remoteHost).
-			Err(err).Msg("couldn't parse repository reference")
-
-		return nil, err
-	}
-
-	var namedRepoRef dockerReference.Named
-
+func (registry *RemoteRegistry) GetImageReference(repo, reference string) (ref.Ref, error) {
 	digest, ok := parseReference(reference)
+
+	var imageRefPath string
 	if ok {
-		namedRepoRef, err = dockerReference.WithDigest(repoRef, digest)
-		if err != nil {
-			return nil, err
-		}
+		imageRefPath = fmt.Sprintf("%s/%s@%s", registry.primaryHost, repo, digest.String())
 	} else {
-		namedRepoRef, err = dockerReference.WithTag(repoRef, reference)
-		if err != nil {
-			return nil, err
-		}
+		// is tag
+		imageRefPath = fmt.Sprintf("%s/%s:%s", registry.primaryHost, repo, reference)
 	}
 
-	imageRef, err := docker.NewReference(namedRepoRef)
+	imageRef, err := ref.New(imageRefPath)
 	if err != nil {
-		registry.log.Err(err).Str("transport", docker.Transport.Name()).Str("reference", namedRepoRef.String()).
-			Msg("cannot obtain a valid image reference for given transport and reference")
-
-		return nil, err
+		return ref.Ref{}, err
 	}
+
+	if imageRef.Path != "" {
+		return ref.Ref{}, zerr.ErrSyncParseRemoteRepo
+	}
+
+	// add check for imageref to be oci
 
 	return imageRef, nil
 }
 
-func (registry *RemoteRegistry) GetManifestContent(imageReference types.ImageReference) (
-	[]byte, string, digest.Digest, error,
-) {
-	imageSource, err := imageReference.NewImageSource(context.Background(), registry.GetContext())
+func (registry *RemoteRegistry) headManifest(ctx context.Context, imageReference ref.Ref,
+) (manifest.Manifest, error) {
+	/// check what error it gives when not found
+	man, err := registry.client.ManifestGet(ctx, imageReference)
 	if err != nil {
-		return []byte{}, "", "", err
-	}
+		/* public registries may return 401 for image not found
+		they will try to check private registries as a fallback => 401 */
+		if errors.Is(err, errs.ErrHTTPUnauthorized) {
+			registry.log.Info().Str("errorType", common.TypeOf(err)).
+				Str("repository", imageReference.Repository).Str("reference", imageReference.Reference).
+				Err(err).Msg("failed to get manifest: unauthorized")
 
-	defer imageSource.Close()
+			return nil, zerr.ErrUnauthorizedAccess
+		} else if errors.Is(err, errs.ErrNotFound) {
+			registry.log.Info().Str("errorType", common.TypeOf(err)).
+				Str("repository", imageReference.Repository).Str("reference", imageReference.Reference).
+				Err(err).Msg("failed to find manifest")
 
-	manifestBuf, mediaType, err := imageSource.GetManifest(context.Background(), nil)
-	if err != nil {
-		return []byte{}, "", "", err
-	}
-
-	// if mediatype is docker then convert to OCI
-	switch mediaType {
-	case manifest.DockerV2Schema2MediaType:
-		manifestBuf, err = convertDockerManifestToOCI(imageSource, manifestBuf)
-		if err != nil {
-			return []byte{}, "", "", err
+			return nil, zerr.ErrManifestNotFound
 		}
-	case manifest.DockerV2ListMediaType:
-		manifestBuf, err = convertDockerIndexToOCI(imageSource, manifestBuf)
-		if err != nil {
-			return []byte{}, "", "", err
-		}
+
+		return nil, err
 	}
 
-	return manifestBuf, ispec.MediaTypeImageManifest, digest.FromBytes(manifestBuf), nil
+	return man, nil
 }
 
-func (registry *RemoteRegistry) GetRepoTags(repo string) ([]string, error) {
-	remoteHost := registry.client.GetHostname()
-
-	tags, err := getRepoTags(context.Background(), registry.GetContext(), remoteHost, repo)
+func (registry *RemoteRegistry) GetDigest(ctx context.Context, repo, tag string,
+) (godigest.Digest, error) {
+	imageReference, err := registry.GetImageReference(repo, tag)
 	if err != nil {
-		registry.log.Error().Str("errorType", common.TypeOf(err)).Str("repo", repo).
-			Str("remote", remoteHost).Err(err).Msg("couldn't fetch tags for repo")
+		return "", err
+	}
 
+	man, err := registry.headManifest(ctx, imageReference)
+	if err != nil {
+		return "", err
+	}
+
+	return man.GetDescriptor().Digest, err
+}
+
+// returns OCI remote digest, original remote digaest (unconverted), if it was converted.
+func (registry *RemoteRegistry) GetOCIDigest(ctx context.Context, repo, tag string,
+) (godigest.Digest, godigest.Digest, bool, error) {
+	var isConverted bool
+
+	var desc ispec.Descriptor
+
+	imageReference, err := registry.GetImageReference(repo, tag)
+	if err != nil {
+		return "", "", false, err
+	}
+
+	man, err := registry.headManifest(ctx, imageReference)
+	if err != nil {
+		return "", "", false, err
+	}
+
+	switch man.GetDescriptor().MediaType {
+	case mediatype.Docker2Manifest:
+		desc, err = convertDockerManifestToOCI(ctx, man, man.GetDescriptor(), imageReference, registry.client)
+		isConverted = true
+	case mediatype.Docker2ManifestList:
+		desc, err = convertDockerListToOCI(ctx, man, imageReference, registry.client)
+		isConverted = true
+	case mediatype.OCI1Manifest, mediatype.OCI1ManifestList:
+		desc = toOCIDescriptor(man.GetDescriptor())
+	default:
+		return "", "", false, zerr.ErrMediaTypeNotSupported
+	}
+
+	return desc.Digest, man.GetDescriptor().Digest, isConverted, err
+}
+
+func (registry *RemoteRegistry) GetTags(ctx context.Context, repo string) ([]string, error) {
+	repoRefPath := fmt.Sprintf("%s/%s", registry.primaryHost, repo)
+
+	repoReference, err := ref.New(repoRefPath)
+	if err != nil {
 		return []string{}, err
 	}
 
-	return tags, nil
+	tl, err := registry.client.TagList(ctx, repoReference)
+	if err != nil {
+		return []string{}, err
+	}
+
+	return tl.GetTags()
+}
+
+func convertDockerListToOCI(ctx context.Context, man manifest.Manifest, imageReference ref.Ref,
+	regclient *regclient.RegClient,
+) (
+	ispec.Descriptor, error,
+) {
+	var index ispec.Index
+
+	index.SchemaVersion = 2
+	index.Manifests = []ispec.Descriptor{}
+	index.MediaType = ispec.MediaTypeImageIndex
+
+	indexer, ok := man.(manifest.Indexer)
+	if !ok {
+		return ispec.Descriptor{}, zerr.ErrMediaTypeNotSupported
+	}
+
+	ociIndex, err := manifest.OCIIndexFromAny(man.GetOrig())
+	if err != nil {
+		return ispec.Descriptor{}, zerr.ErrMediaTypeNotSupported
+	}
+
+	manifests, err := indexer.GetManifestList()
+	if err != nil {
+		return ispec.Descriptor{}, zerr.ErrMediaTypeNotSupported
+	}
+
+	for _, manDesc := range manifests {
+		ref := imageReference
+		ref.Digest = manDesc.Digest.String()
+
+		manEntry, err := regclient.ManifestGet(ctx, ref)
+		if err != nil {
+			return ispec.Descriptor{}, err
+		}
+
+		regclient.Close(ctx, manEntry.GetRef())
+
+		var desc ispec.Descriptor
+
+		switch manEntry.GetDescriptor().MediaType {
+		case mediatype.Docker2Manifest:
+			desc, err = convertDockerManifestToOCI(ctx, manEntry, manDesc, ref, regclient)
+			if err != nil {
+				return ispec.Descriptor{}, err
+			}
+
+		case mediatype.Docker2ManifestList:
+			desc, err = convertDockerListToOCI(ctx, manEntry, ref, regclient)
+			if err != nil {
+				return ispec.Descriptor{}, err
+			}
+		default:
+			return ispec.Descriptor{}, err
+		}
+
+		index.Manifests = append(index.Manifests, desc)
+	}
+
+	index.Annotations = ociIndex.Annotations
+
+	indexBuf, err := json.Marshal(index)
+	if err != nil {
+		return ispec.Descriptor{}, err
+	}
+
+	indexDesc := toOCIDescriptor(man.GetDescriptor())
+
+	indexDesc.MediaType = ispec.MediaTypeImageIndex
+	indexDesc.Digest = godigest.FromBytes(indexBuf)
+	indexDesc.Size = int64(len(indexBuf))
+
+	return indexDesc, nil
+}
+
+func convertDockerManifestToOCI(ctx context.Context, man manifest.Manifest, desc descriptor.Descriptor,
+	imageReference ref.Ref, regclient *regclient.RegClient,
+) (
+	ispec.Descriptor, error,
+) {
+	imager, ok := man.(manifest.Imager)
+	if !ok {
+		return ispec.Descriptor{}, zerr.ErrMediaTypeNotSupported
+	}
+
+	var ociManifest ispec.Manifest
+
+	manifestBuf, err := man.RawBody()
+	if err != nil {
+		return ispec.Descriptor{}, zerr.ErrMediaTypeNotSupported
+	}
+
+	if err := json.Unmarshal(manifestBuf, &ociManifest); err != nil {
+		return ispec.Descriptor{}, err
+	}
+
+	configDesc, err := imager.GetConfig()
+	if err != nil {
+		return ispec.Descriptor{}, err
+	}
+
+	// get config blob
+	config, err := regclient.BlobGetOCIConfig(ctx, imageReference, configDesc)
+	if err != nil {
+		return ispec.Descriptor{}, err
+	}
+
+	configBuf, err := config.RawBody()
+	if err != nil {
+		return ispec.Descriptor{}, err
+	}
+
+	// convert config and manifest mediatype
+	ociManifest.Config.Size = int64(len(configBuf))
+	ociManifest.Config.Digest = godigest.FromBytes(configBuf)
+	ociManifest.Config.MediaType = ispec.MediaTypeImageConfig
+	ociManifest.MediaType = ispec.MediaTypeImageManifest
+
+	layersDesc, err := imager.GetLayers()
+	if err != nil {
+		return ispec.Descriptor{}, err
+	}
+
+	ociManifest.Layers = []ispec.Descriptor{}
+
+	for _, layerDesc := range layersDesc {
+		ociManifest.Layers = append(ociManifest.Layers, toOCIDescriptor(layerDesc))
+	}
+
+	ociManifestBuf, err := json.Marshal(ociManifest)
+	if err != nil {
+		return ispec.Descriptor{}, err
+	}
+
+	manifestDesc := toOCIDescriptor(desc)
+
+	manifestDesc.MediaType = ispec.MediaTypeImageManifest
+	manifestDesc.Digest = godigest.FromBytes(ociManifestBuf)
+	manifestDesc.Size = int64(len(ociManifestBuf))
+
+	return manifestDesc, nil
+}
+
+func toOCIDescriptor(desc descriptor.Descriptor) ispec.Descriptor {
+	ispecPlatform := &ispec.Platform{}
+
+	platform := desc.Platform
+	if platform != nil {
+		ispecPlatform.Architecture = platform.Architecture
+		ispecPlatform.OS = platform.OS
+		ispecPlatform.OSFeatures = platform.OSFeatures
+		ispecPlatform.OSVersion = platform.OSVersion
+		ispecPlatform.Variant = platform.Variant
+	} else {
+		ispecPlatform = nil
+	}
+
+	var mediaType string
+
+	switch desc.MediaType {
+	case mediatype.Docker2Manifest:
+		mediaType = ispec.MediaTypeImageManifest
+	case mediatype.Docker2ManifestList:
+		mediaType = ispec.MediaTypeImageIndex
+	case mediatype.Docker2ImageConfig:
+		mediaType = ispec.MediaTypeImageConfig
+	case mediatype.Docker2ForeignLayer:
+		mediaType = ispec.MediaTypeImageLayerNonDistributable //nolint: staticcheck
+	case mediatype.Docker2LayerGzip:
+		mediaType = ispec.MediaTypeImageLayerGzip
+	default:
+		mediaType = desc.MediaType
+	}
+
+	return ispec.Descriptor{
+		MediaType:    mediaType,
+		Digest:       desc.Digest,
+		Size:         desc.Size,
+		URLs:         desc.URLs,
+		Annotations:  desc.Annotations,
+		Platform:     ispecPlatform,
+		ArtifactType: desc.ArtifactType,
+	}
 }
