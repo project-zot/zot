@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	godigest "github.com/opencontainers/go-digest"
 	"github.com/regclient/regclient"
@@ -29,6 +30,8 @@ import (
 	mTypes "zotregistry.dev/zot/pkg/meta/types"
 	"zotregistry.dev/zot/pkg/storage"
 )
+
+const defaultExpireMinutes = 30 * time.Minute
 
 type BaseService struct {
 	config           syncconf.RegistryConfig
@@ -65,7 +68,7 @@ func New(
 	service.metaDB = metadb
 	service.contentManager = NewContentManager(config.Content, log)
 	service.storeController = storeController
-	service.tagsCache = newTagsCache()
+	service.tagsCache = newTagsCache(defaultExpireMinutes)
 
 	var err error
 

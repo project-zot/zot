@@ -8,8 +8,6 @@ import (
 	"time"
 )
 
-const defaultExpireMinutes = 30 * time.Minute
-
 type tagsVal struct {
 	tags     []string
 	expireAt time.Time
@@ -21,10 +19,10 @@ type tagsCache struct {
 	mu          *sync.Mutex
 }
 
-func newTagsCache() *tagsCache {
+func newTagsCache(expireAfter time.Duration) *tagsCache {
 	return &tagsCache{
 		store:       make(map[string]*tagsVal),
-		expireAfter: defaultExpireMinutes,
+		expireAfter: expireAfter,
 		mu:          new(sync.Mutex),
 	}
 }
