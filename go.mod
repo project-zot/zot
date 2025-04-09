@@ -3,7 +3,7 @@ module zotregistry.dev/zot
 go 1.24
 
 require (
-	github.com/99designs/gqlgen v0.17.68
+	github.com/99designs/gqlgen v0.17.70
 	github.com/Masterminds/semver v1.5.0
 	github.com/alicebob/miniredis/v2 v2.34.0
 	github.com/aquasecurity/trivy v0.61.0
@@ -11,10 +11,10 @@ require (
 	github.com/aws/aws-sdk-go v1.55.6
 	github.com/aws/aws-sdk-go-v2 v1.36.3
 	github.com/aws/aws-sdk-go-v2/config v1.29.13
-	github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue v1.18.8
-	github.com/aws/aws-sdk-go-v2/service/dynamodb v1.42.0
+	github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue v1.18.9
+	github.com/aws/aws-sdk-go-v2/service/dynamodb v1.42.1
 	github.com/aws/aws-sdk-go-v2/service/ecr v1.43.2
-	github.com/aws/aws-sdk-go-v2/service/secretsmanager v1.35.2
+	github.com/aws/aws-sdk-go-v2/service/secretsmanager v1.35.3
 	github.com/aws/aws-secretsmanager-caching-go v1.2.0
 	github.com/aws/smithy-go v1.22.3
 	github.com/bmatcuk/doublestar/v4 v4.8.1
@@ -26,7 +26,7 @@ require (
 	github.com/didip/tollbooth/v7 v7.0.2
 	github.com/distribution/distribution/v3 v3.0.0
 	github.com/dustin/go-humanize v1.0.1
-	github.com/fsnotify/fsnotify v1.8.0
+	github.com/fsnotify/fsnotify v1.9.0
 	github.com/go-ldap/ldap/v3 v3.4.10
 	github.com/go-redis/redismock/v9 v9.2.0
 	github.com/go-redsync/redsync/v4 v4.13.0
@@ -67,10 +67,10 @@ require (
 	github.com/swaggo/http-swagger v1.3.4
 	github.com/swaggo/swag v1.16.4
 	github.com/vektah/gqlparser/v2 v2.5.23
-	github.com/zitadel/oidc/v3 v3.36.1
+	github.com/zitadel/oidc/v3 v3.37.0
 	go.etcd.io/bbolt v1.4.0
-	golang.org/x/crypto v0.36.0
-	golang.org/x/oauth2 v0.28.0
+	golang.org/x/crypto v0.37.0
+	golang.org/x/oauth2 v0.29.0
 	google.golang.org/protobuf v1.36.6
 	gopkg.in/resty.v1 v1.12.0
 	gopkg.in/yaml.v3 v3.0.1
@@ -164,7 +164,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/internal/configsources v1.3.34 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/endpoints/v2 v2.6.34 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/ini v1.8.3 // indirect
-	github.com/aws/aws-sdk-go-v2/service/dynamodbstreams v1.25.1 // indirect
+	github.com/aws/aws-sdk-go-v2/service/dynamodbstreams v1.25.2 // indirect
 	github.com/aws/aws-sdk-go-v2/service/ebs v1.25.3 // indirect
 	github.com/aws/aws-sdk-go-v2/service/ec2 v1.207.1 // indirect
 	github.com/aws/aws-sdk-go-v2/service/ecrpublic v1.31.2 // indirect
@@ -465,8 +465,8 @@ require (
 	github.com/zclconf/go-cty v1.16.2 // indirect
 	github.com/zclconf/go-cty-yaml v1.1.0 // indirect
 	github.com/zeebo/errs v1.4.0 // indirect
-	github.com/zitadel/logging v0.6.1 // indirect
-	github.com/zitadel/schema v1.3.0 // indirect
+	github.com/zitadel/logging v0.6.2 // indirect
+	github.com/zitadel/schema v1.3.1 // indirect
 	gitlab.com/gitlab-org/api/client-go v0.123.0 // indirect
 	go.mongodb.org/mongo-driver v1.16.0 // indirect
 	go.opencensus.io v0.24.0 // indirect
@@ -500,10 +500,10 @@ require (
 	golang.org/x/exp v0.0.0-20250305212735-054e65f0b394 // indirect
 	golang.org/x/mod v0.24.0 // indirect
 	golang.org/x/net v0.37.0 // indirect
-	golang.org/x/sync v0.12.0 // indirect
-	golang.org/x/sys v0.31.0 // indirect
-	golang.org/x/term v0.30.0 // indirect
-	golang.org/x/text v0.23.0 // indirect
+	golang.org/x/sync v0.13.0 // indirect
+	golang.org/x/sys v0.32.0 // indirect
+	golang.org/x/term v0.31.0 // indirect
+	golang.org/x/text v0.24.0 // indirect
 	golang.org/x/time v0.10.0 // indirect
 	golang.org/x/tools v0.31.0 // indirect
 	golang.org/x/xerrors v0.0.0-20240716161551-93cc26a95ae9 // indirect
