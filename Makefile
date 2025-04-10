@@ -18,6 +18,7 @@ COSIGN_VERSION := 2.2.0
 HELM := $(TOOLSDIR)/bin/helm
 ORAS := $(TOOLSDIR)/bin/oras
 ORAS_VERSION := 1.2.1
+HELM_VERSION := v3.9.1
 REGCLIENT := $(TOOLSDIR)/bin/regctl
 REGCLIENT_VERSION := v0.5.7
 CRICTL := $(TOOLSDIR)/bin/crictl
@@ -259,31 +260,31 @@ check-awslocal:
 
 $(NOTATION):
 	mkdir -p $(TOOLSDIR)/bin
-	curl -Lo notation.tar.gz https://github.com/notaryproject/notation/releases/download/v$(NOTATION_VERSION)/notation_$(NOTATION_VERSION)_linux_amd64.tar.gz
+	curl -Lo notation.tar.gz https://github.com/notaryproject/notation/releases/download/v$(NOTATION_VERSION)/notation_$(NOTATION_VERSION)_$(OS)_$(ARCH).tar.gz
 	tar xvzf notation.tar.gz -C $(TOOLSDIR)/bin  notation
 	rm notation.tar.gz
 
 $(ORAS):
 	mkdir -p $(TOOLSDIR)/bin
-	curl -Lo oras.tar.gz https://github.com/oras-project/oras/releases/download/v$(ORAS_VERSION)/oras_$(ORAS_VERSION)_linux_amd64.tar.gz
+	curl -Lo oras.tar.gz https://github.com/oras-project/oras/releases/download/v$(ORAS_VERSION)/oras_$(ORAS_VERSION)_$(OS)_$(ARCH).tar.gz
 	tar xvzf oras.tar.gz -C $(TOOLSDIR)/bin  oras
 	rm oras.tar.gz
 
 $(HELM):
 	mkdir -p $(TOOLSDIR)/bin
-	curl -Lo helm.tar.gz https://get.helm.sh/helm-v3.9.1-linux-amd64.tar.gz
-	tar xvzf helm.tar.gz -C $(TOOLSDIR)/bin linux-amd64/helm  --strip-components=1
+	curl -Lo helm.tar.gz https://get.helm.sh/helm-$(HELM_VERSION)-$(OS)-$(ARCH).tar.gz
+	tar xvzf helm.tar.gz --strip-components=1 -C $(TOOLSDIR)/bin $(OS)-$(ARCH)/helm
 	rm helm.tar.gz
 
 $(REGCLIENT):
 	mkdir -p $(TOOLSDIR)/bin
-	curl -Lo regctl https://github.com/regclient/regclient/releases/download/$(REGCLIENT_VERSION)/regctl-linux-amd64
+	curl -Lo regctl https://github.com/regclient/regclient/releases/download/$(REGCLIENT_VERSION)/regctl-$(OS)-$(ARCH)
 	mv regctl $(TOOLSDIR)/bin/regctl
 	chmod +x $(TOOLSDIR)/bin/regctl
 
 $(CRICTL):
 	mkdir -p $(TOOLSDIR)/bin
-	curl -Lo crictl.tar.gz https://github.com/kubernetes-sigs/cri-tools/releases/download/$(CRICTL_VERSION)/crictl-$(CRICTL_VERSION)-linux-amd64.tar.gz
+	curl -Lo crictl.tar.gz https://github.com/kubernetes-sigs/cri-tools/releases/download/$(CRICTL_VERSION)/crictl-$(CRICTL_VERSION)-$(OS)-$(ARCH).tar.gz
 	tar xvzf crictl.tar.gz && rm crictl.tar.gz
 	mv crictl $(TOOLSDIR)/bin/crictl
 	chmod +x $(TOOLSDIR)/bin/crictl
@@ -522,7 +523,7 @@ run-cloud-scale-out-redis-high-scale-tests: check-blackbox-prerequisites check-a
 
 .PHONY: run-blackbox-ci
 run-blackbox-ci: check-blackbox-prerequisites binary binary-minimal cli
-	echo running CI bats tests concurently
+	echo running CI bats tests concurrently
 	BATS_FLAGS="$(BATS_FLAGS)" test/blackbox/ci.sh
 
 .PHONY: run-blackbox-cloud-ci
@@ -561,7 +562,7 @@ $(STACKER): check-linux
 
 $(COSIGN):
 	mkdir -p $(TOOLSDIR)/bin
-	curl -fsSL https://github.com/sigstore/cosign/releases/download/v$(COSIGN_VERSION)/cosign-linux-amd64 -o $@; \
+	curl -fsSL https://github.com/sigstore/cosign/releases/download/v$(COSIGN_VERSION)/cosign-linux-$(ARCH) -o $@; \
 	chmod +x $@
 
 # set ZUI_VERSION to empty string in order to clone zui locally and build default branch
