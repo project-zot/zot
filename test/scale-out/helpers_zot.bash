@@ -272,6 +272,10 @@ function create_zot_cloud_redis_config_file() {
         "address": "${zot_server_address}",
         "port": "${zot_server_port}"
     },
+    "cluster": {
+      "members": [],
+      "hashKey": "loremipsumdolors"
+    },
     "log": {
         "level": "debug",
         "output": "${zot_log_file}"

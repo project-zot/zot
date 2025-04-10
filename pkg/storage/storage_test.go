@@ -12,7 +12,6 @@ import (
 	"path"
 	"slices"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
@@ -23,7 +22,6 @@ import (
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/redis/go-redis/v9"
-	"github.com/rs/zerolog"
 	. "github.com/smartystreets/goconvey/convey"
 	"gopkg.in/resty.v1"
 
@@ -79,7 +77,7 @@ func createObjectsStore(options createObjectStoreOpts) (
 		useRelPaths bool
 	)
 
-	log := zlog.Logger{Logger: zerolog.New(os.Stdout)}
+	log := zlog.NewLogger("debug", "")
 
 	if options.storageType == storageConstants.S3StorageDriverName {
 		useRelPaths = false
@@ -972,33 +970,6 @@ func TestStorageAPIs(t *testing.T) {
 					_, _, err = imgStore.PutImageManifest("replace", "1.0", ispec.MediaTypeImageManifest, manifestBuf)
 					So(err, ShouldBeNil)
 				})
-
-				Convey("Locks", func() {
-					// in parallel, a mix of read and write locks - mainly for coverage
-					var wg sync.WaitGroup
-					for i := 0; i < 1000; i++ {
-						wg.Add(2)
-
-						go func() {
-							var lockLatency time.Time
-
-							defer wg.Done()
-							imgStore.Lock(&lockLatency)
-							func() {}()
-							imgStore.Unlock(&lockLatency)
-						}()
-						go func() {
-							var lockLatency time.Time
-
-							defer wg.Done()
-							imgStore.RLock(&lockLatency)
-							func() {}()
-							imgStore.RUnlock(&lockLatency)
-						}()
-					}
-
-					wg.Wait()
-				})
 			})
 		})
 	}
@@ -1014,7 +985,7 @@ func TestMandatoryAnnotations(t *testing.T) {
 				testDir  string
 			)
 
-			log := zlog.Logger{Logger: zerolog.New(os.Stdout)}
+			log := zlog.NewLogger("debug", "")
 			metrics := monitoring.NewMetricsServer(false, log)
 
 			cacheDir := t.TempDir()
@@ -1211,7 +1182,7 @@ func TestDeleteBlobsInUse(t *testing.T) {
 		t.Run(testcase.testCaseName, func(t *testing.T) {
 			var imgStore storageTypes.ImageStore
 
-			log := zlog.Logger{Logger: zerolog.New(os.Stdout)}
+			log := zlog.NewLogger("debug", "")
 
 			cacheDir := t.TempDir()
 
