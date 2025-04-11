@@ -24,25 +24,37 @@ func NewEventRecorder(config *config.Config, log log.Logger) (events.Recorder, e
 		return nil, zerr.ErrExtensionNotEnabled
 	}
 
-	sinks := make([]events.Sink, len(eventConfig.Sinks))
+	var sinks []events.Sink
 
 	log.Info().Msg("setting up event sinks")
 
-	for i, sinkConfig := range eventConfig.Sinks {
+	for _, sinkConfig := range eventConfig.Sinks {
 		switch sinkConfig.Type {
 		case eventsconfig.HTTP:
 			sink, err := events.NewHTTPSink(sinkConfig)
 			if err != nil {
 				return nil, err
 			}
-			sinks[i] = sink
+
+			sinks = append(sinks, sink)
 		case eventsconfig.NATS:
 			sink, err := events.NewNATSSink(sinkConfig)
 			if err != nil {
 				return nil, err
 			}
-			sinks[i] = sink
+
+			sinks = append(sinks, sink)
+		default:
+			log.Warn().Msgf("unsupported sink type: %s", sinkConfig.Type)
+
+			continue
 		}
+	}
+
+	if len(sinks) == 0 {
+		log.Warn().Msg("no sinks provided, skipping events extension setup")
+
+		return nil, zerr.ErrExtensionNotEnabled
 	}
 
 	return events.NewRecorder(log, sinks...)
