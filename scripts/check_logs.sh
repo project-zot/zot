@@ -1,5 +1,10 @@
 #!/bin/bash
 
+GREP_BIN=grep
+if [ ! -z "$GREP_BIN_PATH" ]; then
+  GREP_BIN=$GREP_BIN_PATH
+fi
+
 # Colors for terminal
 if test -t 1; then
     # check if it supports colors
@@ -20,25 +25,25 @@ function lintLogContainingUpperCase {
     word_char="[\.-0-9a-z ]"
     capital_word="([a-z]*[A-Z][a-zA-Z]*)"
 
-    grep --with-filename -n -P "Msg[f]?\(\"(($word_char|$exception)*)(?!$exception)($capital_word)($exclude_linter)" $1
+    $GREP_BIN --with-filename -n -P "Msg[f]?\(\"(($word_char|$exception)*)(?!$exception)($capital_word)($exclude_linter)" $1
 }
 
 # lintLogStartingWithUpperCase searched for log messages that start with an upper case letter
 function lintLogStartingWithUpperCase {
-    grep --with-filename -n "Msg[f]\?(\"[A-Z]" $1 | grep -v -P "Msg[f]?\(\"$exception($exclude_linter)"
+    $GREP_BIN --with-filename -n "Msg[f]\?(\"[A-Z]" $1 | $GREP_BIN -v -P "Msg[f]?\(\"$exception($exclude_linter)"
 }
 
 # lintLogStartingWithComponent searches for log messages that starts with a component "component:"
 function lintLogStartingWithComponent {
-    # We'll check for different functions that can generate errors or logs. If they start with 
+    # We'll check for different functions that can generate errors or logs. If they start with
     # a number words followed by ":", it's considered as starting with a component.
     # Examples: '.Msgf("component:")', '.Errorf("com ponent:")', '.Msg("com-ponent:")'
-    grep --with-filename -n -E "(Errorf|errors.New|Msg[f]?)\(\"[a-zA-Z-]+( [a-zA-Z-]+){0,1}:($exclude_linter)" $1
+    $GREP_BIN --with-filename -n -E "(Errorf|errors.New|Msg[f]?)\(\"[a-zA-Z-]+( [a-zA-Z-]+){0,1}:($exclude_linter)" $1
 }
 
 # lintErrorLogsBeggining searches for log messages that don't start with "failed to"
 function lintErrorLogsBeggining {
-    grep --with-filename -n -P "Error\(\)(?:.*)\n?.(?:.*)Msg[f]?\(\"(?!(failed to|failed due|invalid|unexpected|unsupported))($exclude_linter)" $1
+    $GREP_BIN --with-filename -n -P "Error\(\)(?:.*)\n?.(?:.*)Msg[f]?\(\"(?!(failed to|failed due|invalid|unexpected|unsupported))($exclude_linter)" $1
 }
 
 function printLintError {
@@ -55,7 +60,7 @@ function printLintError {
     fi
 }
 
-files=$(find . -name '*.go' | grep -v '_test.go')
+files=$(find . -name '*.go' | $GREP_BIN -v '_test.go')
 
 found_linting_error=false
 
@@ -67,7 +72,7 @@ do
         while IFS= read -r line; do
             printLintError "Log message should not start with a CAPITAL letter" "$(echo $line | tr -s [:space:])"
         done <<< "$lintOutput"
-    fi 
+    fi
 
     lintOutput=$(lintLogStartingWithComponent "$file")
     if [ $? -eq 0 ]; then
