@@ -82,7 +82,7 @@ func TestEvents(t *testing.T) {
 
 func TestHTTPSink(t *testing.T) {
 	Convey("emits events to http sink", t, func() {
-		var receivedEvent *cloudevents.Event
+		eventChan := make(chan *cloudevents.Event, 1)
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			event, err := cehttp.NewEventFromHTTPRequest(r)
 			if err != nil {
@@ -90,7 +90,8 @@ func TestHTTPSink(t *testing.T) {
 
 				return
 			}
-			receivedEvent = event
+
+			eventChan <- event
 
 			w.WriteHeader(http.StatusOK)
 		}))
@@ -111,29 +112,33 @@ func TestHTTPSink(t *testing.T) {
 		Convey("repository created", func() {
 			err = recorder.RepositoryCreated("test")
 			So(err, ShouldBeNil)
-			So(receivedEvent, ShouldNotBeNil)
-			So(receivedEvent.Type(), ShouldEqual, events.RepositoryCreatedEventType.String())
+			e := getEvent(t, eventChan)
+			So(e, ShouldNotBeNil)
+			So(e.Type(), ShouldEqual, events.RepositoryCreatedEventType.String())
 		})
 
 		Convey("image updated", func() {
 			err = recorder.ImageUpdated("test", "v1", "", string(types.OCIManifestSchema1), "")
 			So(err, ShouldBeNil)
-			So(receivedEvent, ShouldNotBeNil)
-			So(receivedEvent.Type(), ShouldEqual, events.ImageUpdatedEventType.String())
+			e := getEvent(t, eventChan)
+			So(e, ShouldNotBeNil)
+			So(e.Type(), ShouldEqual, events.ImageUpdatedEventType.String())
 		})
 
 		Convey("image deleted", func() {
 			err = recorder.ImageDeleted("test", "v1", "", string(types.OCIManifestSchema1))
 			So(err, ShouldBeNil)
-			So(receivedEvent, ShouldNotBeNil)
-			So(receivedEvent.Type(), ShouldEqual, events.ImageDeletedEventType.String())
+			e := getEvent(t, eventChan)
+			So(e, ShouldNotBeNil)
+			So(e.Type(), ShouldEqual, events.ImageDeletedEventType.String())
 		})
 
 		Convey("image lint failed", func() {
 			err = recorder.ImageLintFailed("test", "v1", "", string(types.OCIManifestSchema1), "")
-
-			So(receivedEvent, ShouldNotBeNil)
-			So(receivedEvent.Type(), ShouldEqual, events.ImageLintFailedEventType.String())
+			So(err, ShouldBeNil)
+			e := getEvent(t, eventChan)
+			So(e, ShouldNotBeNil)
+			So(e.Type(), ShouldEqual, events.ImageLintFailedEventType.String())
 		})
 	})
 }
@@ -143,7 +148,7 @@ func TestNATSSink(t *testing.T) {
 		natsServer, natsURL := setupTestNATSServer()
 		defer natsServer.Shutdown()
 
-		var receivedEvent *cloudevents.Event
+		eventChan := make(chan *cloudevents.Event, 1)
 		testChannel := "test-events"
 
 		nc, err := nats.Connect(natsURL)
@@ -163,7 +168,7 @@ func TestNATSSink(t *testing.T) {
 			}
 
 			if err := event.UnmarshalJSON(msg.Data); err == nil {
-				receivedEvent = &event
+				eventChan <- &event
 			}
 
 			_ = msg.Respond([]byte("OK"))
@@ -185,47 +190,36 @@ func TestNATSSink(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		Convey("repository created", func() {
-			receivedEvent = nil
 			err = recorder.RepositoryCreated("test")
-
-			time.Sleep(100 * time.Millisecond)
-
 			So(err, ShouldBeNil)
-			So(receivedEvent, ShouldNotBeNil)
-			So(receivedEvent.Type(), ShouldEqual, events.RepositoryCreatedEventType.String())
+			e := getEvent(t, eventChan)
+			So(e, ShouldNotBeNil)
+			So(e.Type(), ShouldEqual, events.RepositoryCreatedEventType.String())
 		})
 
 		Convey("image updated", func() {
-			receivedEvent = nil
 			err = recorder.ImageUpdated("test", "v1", "", string(types.OCIManifestSchema1), "")
-
-			time.Sleep(100 * time.Millisecond)
-
 			So(err, ShouldBeNil)
-			So(receivedEvent, ShouldNotBeNil)
-			So(receivedEvent.Type(), ShouldEqual, events.ImageUpdatedEventType.String())
+
+			e := getEvent(t, eventChan)
+			So(e, ShouldNotBeNil)
+			So(e.Type(), ShouldEqual, events.ImageUpdatedEventType.String())
 		})
 
 		Convey("image deleted", func() {
-			receivedEvent = nil
 			err = recorder.ImageDeleted("test", "v1", "", string(types.OCIManifestSchema1))
-
-			time.Sleep(100 * time.Millisecond)
-
 			So(err, ShouldBeNil)
-			So(receivedEvent, ShouldNotBeNil)
-			So(receivedEvent.Type(), ShouldEqual, events.ImageDeletedEventType.String())
+			e := getEvent(t, eventChan)
+			So(e, ShouldNotBeNil)
+			So(e.Type(), ShouldEqual, events.ImageDeletedEventType.String())
 		})
 
 		Convey("image lint failed", func() {
-			receivedEvent = nil
 			err = recorder.ImageLintFailed("test", "v1", "", string(types.OCIManifestSchema1), "")
-
-			time.Sleep(100 * time.Millisecond)
-
 			So(err, ShouldBeNil)
-			So(receivedEvent, ShouldNotBeNil)
-			So(receivedEvent.Type(), ShouldEqual, events.ImageLintFailedEventType.String())
+			e := getEvent(t, eventChan)
+			So(e, ShouldNotBeNil)
+			So(e.Type(), ShouldEqual, events.ImageLintFailedEventType.String())
 		})
 	})
 }
@@ -251,4 +245,14 @@ func setupTestNATSServer() (*server.Server, string) {
 	}
 
 	return natsServer, natsServer.ClientURL()
+}
+
+func getEvent(t *testing.T, c chan *cloudevents.Event) *cloudevents.Event {
+	var e *cloudevents.Event
+	select {
+	case e = <-c:
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for event")
+	}
+	return e
 }
