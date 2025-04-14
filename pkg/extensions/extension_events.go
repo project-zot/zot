@@ -13,14 +13,16 @@ import (
 
 func NewEventRecorder(config *config.Config, log log.Logger) (events.Recorder, error) {
 	if !config.IsEventRecorderEnabled() {
-		log.Warn().Msg("events disabled in configuration")
+		log.Info().Msg("events disabled in configuration")
 
 		return nil, zerr.ErrExtensionNotEnabled
 	}
 
 	eventConfig := config.Extensions.Events
 
-	if len(eventConfig.Sinks) == 0 {
+	if eventConfig.Sinks == nil || len(eventConfig.Sinks) == 0 {
+		log.Info().Msg("no sinks provided, skipping events extension setup")
+
 		return nil, zerr.ErrExtensionNotEnabled
 	}
 
