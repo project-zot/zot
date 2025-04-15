@@ -360,10 +360,6 @@ func (c *Controller) InitMetaDB() error {
 }
 
 func (c *Controller) InitEventRecorder() error {
-	if !c.Config.IsEventRecorderEnabled() {
-		return nil
-	}
-
 	eventRecorder, err := ext.NewEventRecorder(c.Config, c.Log)
 	if err != nil && !goerrors.Is(err, errors.ErrExtensionNotEnabled) {
 		return err
