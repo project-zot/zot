@@ -512,6 +512,10 @@ func (c *Config) IsSyncEnabled() bool {
 	return c.Extensions != nil && c.Extensions.Sync != nil && *c.Extensions.Sync.Enable
 }
 
+func (c *Config) IsCompatEnabled() bool {
+	return len(c.HTTP.Compat) > 0
+}
+
 func IsOpenIDSupported(provider string) bool {
 	for _, supportedProvider := range openIDSupportedProviders {
 		if supportedProvider == provider {

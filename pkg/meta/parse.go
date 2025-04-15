@@ -404,7 +404,7 @@ func isSignature(reference string, manifestContent ispec.Manifest) (bool, string
 		return true, CosignType, manifestContent.Subject.Digest
 	}
 
-	if tag := reference; zcommon.IsCosignTag(reference) {
+	if tag := reference; zcommon.IsCosignSignature(reference) {
 		prefixLen := len("sha256-")
 		digestLen := 64
 		signedImageManifestDigestEncoded := tag[prefixLen : prefixLen+digestLen]

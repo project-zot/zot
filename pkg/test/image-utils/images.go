@@ -532,6 +532,7 @@ func (ib *BaseImageBuilder) Build() Image {
 		Digest:    ib.digestAlgorithm.FromBytes(manifestBlob),
 		Size:      int64(len(manifestBlob)),
 		Data:      manifestBlob,
+		Platform:  &ib.config.Platform,
 	}
 
 	return img

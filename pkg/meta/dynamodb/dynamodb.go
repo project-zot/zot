@@ -1280,7 +1280,7 @@ func (dwr *DynamoDB) AddManifestSignature(repo string, signedManifestDigest godi
 				LayersInfo:              mConvert.GetProtoLayersInfo(sigMeta.LayersInfo),
 			}
 
-			if zcommon.IsCosignTag(sigMeta.SignatureTag) {
+			if zcommon.IsCosignSignature(sigMeta.SignatureTag) {
 				// the entry for "sha256-{digest}.sig" signatures should be overwritten if
 				// it exists or added on the first position if it doesn't exist
 				if len(signatureSlice.GetList()) == 0 {

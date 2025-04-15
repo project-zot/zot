@@ -6069,7 +6069,7 @@ func TestMetaDBWhenDeletingImages(t *testing.T) {
 			for _, manifest := range indexContent.Manifests {
 				tag := manifest.Annotations[ispec.AnnotationRefName]
 
-				if zcommon.IsCosignTag(tag) {
+				if zcommon.IsCosignSignature(tag) {
 					signatureTag = tag
 				}
 			}

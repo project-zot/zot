@@ -73,8 +73,23 @@
 					],
 					"onDemand": true,
 					"tlsVerify": true,
-					"maxRetries": 6,
-					"retryDelay": "5m"
+					"maxRetries": 5,
+					"retryDelay": "30s"
+				},
+				{
+					"urls": [
+						"https://demo.goharbor.io"
+					],
+					"pollInterval": "12h",
+					"content": [
+						{
+							"prefix": "zot/**"
+						}
+					],
+					"onDemand": true,
+					"tlsVerify": true,
+					"maxRetries": 5,
+					"retryDelay": "1m"
 				}
 			]
 		}

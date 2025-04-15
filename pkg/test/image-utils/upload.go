@@ -22,6 +22,10 @@ var (
 )
 
 func UploadImage(img Image, baseURL, repo, ref string) error {
+	if ref == "" {
+		ref = img.DigestStr()
+	}
+
 	digestAlgorithm := img.digestAlgorithm
 
 	if digestAlgorithm == "" {

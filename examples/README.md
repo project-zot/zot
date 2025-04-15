@@ -961,7 +961,7 @@ Configure each registry sync:
 				"onDemand": false,                  # pull any image which the local registry doesn't have
 				"pollInterval": "6h",               # polling interval, if not set then periodically polling will not run
 				"tlsVerify": true,                  # whether or not to verify tls (default is true)
-				"certDir": "/home/user/certs",      # use certificates at certDir path, if not specified then use the default certs dir
+				"certDir": "/home/user/certs",      # use certificates at certDir path similar to Docker's /etc/docker/certs.d., if not specified then use the default certs dir,
 				"maxRetries": 5,                    # maxRetries in case of temporary errors (default: no retries)
 				"retryDelay": "10m",                # delay between retries, retry options are applied for both on demand and periodically sync and retryDelay is mandatory when using maxRetries.
 				"onlySigned": true,                 # sync only signed images (either notary or cosign)
@@ -1015,5 +1015,16 @@ Configure each registry sync:
 		]
 		}
 ```
-
 Prefixes can be strings that exactly match repositories or they can be [glob](https://en.wikipedia.org/wiki/Glob_(programming)) patterns.
+
+### Sync's certDir option
+
+sync uses the same logic for reading cert directory as docker: https://docs.docker.com/engine/security/certificates/#understand-the-configuration
+sync can also read the certificates directly under certDir:
+ - ca.crt - public pem cert of registry. Root CA that signed the registry certificate, in PEM.
+ - client.cert - public pem cert for client (mTLS)
+ - client.key - public key cert for client (mTLS)
+
+### Sync's credentials
+
+Besides sync-auth.json file, zot also reads and uses docker credentials by default: https://docs.docker.com/reference/cli/docker/login/#description

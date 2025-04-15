@@ -32,10 +32,20 @@ const (
 	ArtifactTypeCosign   = "application/vnd.dev.cosign.artifact.sig.v1+json"
 )
 
-var cosignTagRule = regexp.MustCompile(`sha256\-.+\.sig`)
+var cosignSignatureTagRule = regexp.MustCompile(`sha256\-.+\.sig`)
+
+var cosignSBOMTagRule = regexp.MustCompile(`sha256\-.+\.sbom`)
+
+func IsCosignSignature(tag string) bool {
+	return cosignSignatureTagRule.MatchString(tag)
+}
+
+func IsCosignSBOM(tag string) bool {
+	return cosignSBOMTagRule.MatchString(tag)
+}
 
 func IsCosignTag(tag string) bool {
-	return cosignTagRule.MatchString(tag)
+	return IsCosignSignature(tag) || IsCosignSBOM(tag)
 }
 
 func Contains[T comparable](elems []T, v T) bool {

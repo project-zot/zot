@@ -2,7 +2,7 @@
 
 set -x
 
-export GOFLAGS="-tags=debug,imagetrust,lint,metrics,mgmt,profile,scrub,search,sync,ui,userprefs,containers_image_openpgp"
+export GOFLAGS="-tags=debug,imagetrust,lint,metrics,mgmt,profile,scrub,search,sync,ui,userprefs"
 echo "Module | License URL | License" > THIRD-PARTY-LICENSES.md
 echo "---|---|---" >> THIRD-PARTY-LICENSES.md;
 
