@@ -15,7 +15,6 @@ import (
 	"golang.org/x/sync/errgroup"
 	"gopkg.in/resty.v1"
 
-	zerr "zotregistry.dev/zot/errors"
 	"zotregistry.dev/zot/pkg/api/config"
 	cli "zotregistry.dev/zot/pkg/cli/server"
 	. "zotregistry.dev/zot/pkg/test/common"
@@ -1957,23 +1956,23 @@ func TestEventsExtension(t *testing.T) {
 
 	Convey("Events explicitly disabled", t, func(c C) {
 		content := `{
-					"storage": {
-						"rootDirectory": "%s"
-					},
-					"http": {
-						"address": "127.0.0.1",
-						"port": "%s"
-					},
-					"log": {
-						"level": "debug",
-						"output": "%s"
-					},
-					"extensions": {
-						"events": {
-							"enable": false
-						}
+				"storage": {
+					"rootDirectory": "%s"
+				},
+				"http": {
+					"address": "127.0.0.1",
+					"port": "%s"
+				},
+				"log": {
+					"level": "debug",
+					"output": "%s"
+				},
+				"extensions": {
+					"events": {
+						"enable": false
 					}
-				}`
+				}
+			}`
 
 		logPath, err := runCLIWithConfig(t.TempDir(), content)
 		So(err, ShouldBeNil)
@@ -1992,7 +1991,7 @@ func TestEventsExtension(t *testing.T) {
 		So(found, ShouldBeTrue)
 	})
 
-	Convey("Unsupported event sink is an error", t, func(c C) {
+	Convey("Unsupported event sink", t, func(c C) {
 		content := `{
 					"storage": {
 						"rootDirectory": "%s"
@@ -2015,11 +2014,20 @@ func TestEventsExtension(t *testing.T) {
 					}
 				}`
 
-		logPath, err := runCLIWithConfigWIthoutPanic(t.TempDir(), content)
-		ShouldEqual(err, zerr.ErrUnsupportedEventSink)
-		So(err, ShouldNotBeNil)
-
+		logPath, err := runCLIWithConfig(t.TempDir(), content)
 		defer os.Remove(logPath) // clean up
+
+		found, err := ReadLogFileAndSearchString(logPath,
+			"skipping unsupported sink type: unsupported", 10*time.Second)
+		So(err, ShouldBeNil)
+
+		if !found {
+			data, err := os.ReadFile(logPath)
+			So(err, ShouldBeNil)
+			t.Log(string(data))
+		}
+
+		So(found, ShouldBeTrue)
 	})
 }
 

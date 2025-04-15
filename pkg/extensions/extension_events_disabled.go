@@ -11,6 +11,12 @@ import (
 )
 
 func NewEventRecorder(config *config.Config, log log.Logger) (events.Recorder, error) {
+	if !config.IsEventRecorderEnabled() {
+		log.Info().Msg("events disabled in configuration")
+
+		return nil, zerr.ErrExtensionNotEnabled
+	}
+
 	log.Warn().Msg("skipping setting up events because given zot binary doesn't include this feature, " +
 		"please build a binary that does so")
 

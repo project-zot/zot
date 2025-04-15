@@ -47,9 +47,7 @@ func NewEventRecorder(config *config.Config, log log.Logger) (events.Recorder, e
 
 			sinks = append(sinks, sink)
 		default:
-			log.Warn().Msgf("unsupported sink type: %s", sinkConfig.Type)
-
-			continue
+			log.Warn().Msgf("skipping unsupported sink type: %s", sinkConfig.Type)
 		}
 	}
 
