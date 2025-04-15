@@ -23,6 +23,8 @@ func (e EventType) String() string {
 }
 
 type Recorder interface {
+	Close() error
+
 	RepositoryCreated(name string) error
 	ImageUpdated(name, reference, digest, mediaType, manifest string) error
 	ImageDeleted(name, reference, digest, mediaType string) error
