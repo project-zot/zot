@@ -6,6 +6,7 @@ package events
 import (
 	"crypto/tls"
 	"crypto/x509"
+	"errors"
 	"os"
 
 	cloudevents "github.com/cloudevents/sdk-go/v2"
@@ -20,6 +21,22 @@ type eventRecorder struct {
 }
 
 var _ Recorder = (*eventRecorder)(nil)
+
+func (r eventRecorder) Close() error {
+	return r.closeSinks()
+}
+
+func (r eventRecorder) closeSinks() error {
+	var retErr error
+
+	for _, sink := range r.sinks {
+		if err := sink.Close(); err != nil {
+			retErr = errors.Join(retErr, err)
+		}
+	}
+
+	return retErr
+}
 
 func (r eventRecorder) publish(event *cloudevents.Event) error {
 	for _, sink := range r.sinks {

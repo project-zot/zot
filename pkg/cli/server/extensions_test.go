@@ -4,7 +4,6 @@
 package server_test
 
 import (
-	goContext "context"
 	"fmt"
 	"net/http"
 	"os"
@@ -12,7 +11,6 @@ import (
 	"time"
 
 	. "github.com/smartystreets/goconvey/convey"
-	"golang.org/x/sync/errgroup"
 	"gopkg.in/resty.v1"
 
 	"zotregistry.dev/zot/pkg/api/config"
@@ -2015,6 +2013,7 @@ func TestEventsExtension(t *testing.T) {
 				}`
 
 		logPath, err := runCLIWithConfig(t.TempDir(), content)
+		So(err, ShouldBeNil)
 		defer os.Remove(logPath) // clean up
 
 		found, err := ReadLogFileAndSearchString(logPath,
@@ -2029,76 +2028,4 @@ func TestEventsExtension(t *testing.T) {
 
 		So(found, ShouldBeTrue)
 	})
-}
-
-// run cli and return output.
-func runCLIWithConfigWIthoutPanic(tempDir string, config string) (string, error) {
-	port := GetFreePort()
-	baseURL := GetBaseURL(port)
-
-	logFile, err := os.CreateTemp(tempDir, "zot-log*.txt")
-	if err != nil {
-		return "", err
-	}
-
-	cfgfile, err := os.CreateTemp(tempDir, "zot-test*.json")
-	if err != nil {
-		return "", err
-	}
-
-	config = fmt.Sprintf(config, tempDir, port, logFile.Name())
-
-	_, err = cfgfile.WriteString(config)
-	if err != nil {
-		return "", err
-	}
-
-	err = cfgfile.Close()
-	if err != nil {
-		return "", err
-	}
-
-	os.Args = []string{"cli_test", "serve", cfgfile.Name()}
-
-	// Create a context with timeout
-	ctx, cancel := goContext.WithTimeout(goContext.Background(), 30*time.Second)
-	defer cancel()
-
-	// Create an errgroup with the context
-	errGroup, ctx := errgroup.WithContext(ctx)
-
-	// Start the server in a goroutine
-	errGroup.Go(func() error {
-		if err := cli.NewServerRootCmd().Execute(); err != nil {
-			return err
-		}
-
-		return nil
-	})
-
-	// Check for server readiness in another goroutine
-	errGroup.Go(func() error {
-		serverReady := make(chan bool, 1)
-
-		go func() {
-			WaitTillServerReady(baseURL)
-			serverReady <- true
-		}()
-
-		select {
-		case <-serverReady:
-			return nil // Server is ready
-		case <-ctx.Done():
-			return fmt.Errorf("timeout or cancellation waiting for server: %w", ctx.Err())
-		}
-	})
-
-	// Wait for either goroutine to complete
-	// If server fails, this will return that error
-	// If WaitTillServerReady succeeds first, we're good to go
-	if err := errGroup.Wait(); err != nil {
-		return "", err
-	}
-
-	return logFile.Name(), nil
 }
