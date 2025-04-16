@@ -148,7 +148,7 @@ var (
 	ErrSyncPingRegistry                 = errors.New("unable to ping any registry URLs")
 	ErrSyncImageNotSigned               = errors.New("synced image is not signed")
 	ErrSyncImageFilteredOut             = errors.New("image is filtered out by sync config")
-	ErrSyncParseRemoteRepo            = errors.New("failed to parse remote repo")
+	ErrSyncParseRemoteRepo              = errors.New("failed to parse remote repo")
 	ErrInvalidTruststoreType            = errors.New("invalid signature truststore type")
 	ErrInvalidTruststoreName            = errors.New("invalid signature truststore name")
 	ErrInvalidCertificateContent        = errors.New("invalid signature certificate content")

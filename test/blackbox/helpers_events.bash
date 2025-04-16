@@ -27,6 +27,9 @@ function wait_event_on_subject() {
         nats sub ${subject} --user jane.joe --password opensesame \
         --server nats://127.0.0.1:${port} --count=${count} --wait=5s --raw --dump=/data
 
+    # give client a chance to startup
+    sleep 2
+
     return $?
 }
 
