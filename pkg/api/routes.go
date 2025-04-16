@@ -2004,6 +2004,7 @@ func (rh *RouteHandler) OpenIDCodeExchangeCallback() rp.CodeExchangeUserinfoCall
 		if !ok {
 			rh.c.Log.Info().Msgf("failed to find any 'groups' claim for user %s in IDTokenClaimsToken", email)
 		}
+
 		for _, group := range val {
 			groups = append(groups, fmt.Sprint(group))
 		}
