@@ -117,6 +117,40 @@ func TestRoutes(t *testing.T) {
 			So(resp.StatusCode, ShouldEqual, http.StatusUnauthorized)
 		})
 
+		Convey("Test OpenIDCodeExchangeCallback", func() {
+			callback := rthdlr.OpenIDCodeExchangeCallback()
+			ctx := context.TODO()
+
+			request, _ := http.NewRequestWithContext(ctx, http.MethodGet, baseURL, nil)
+			response := httptest.NewRecorder()
+
+			tokens := &oidc.Tokens[*oidc.IDTokenClaims]{
+				IDTokenClaims: &oidc.IDTokenClaims{
+					Claims: map[string]any{
+						"groups": []interface{}{"group1", "group3"},
+					},
+				},
+			}
+			relyingParty, err := rp.NewRelyingPartyOAuth(&oauth2.Config{})
+			So(err, ShouldBeNil)
+
+			userinfo := &oidc.UserInfo{
+				Subject: "sub",
+				Claims: map[string]any{
+					"email":  "test@test.com",
+					"groups": []interface{}{"group1", "group2"},
+				},
+				UserInfoEmail: oidc.UserInfoEmail{Email: "test@test.com"},
+			}
+
+			callback(response, request, tokens, "state", relyingParty, userinfo)
+
+			resp := response.Result()
+			defer resp.Body.Close()
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode, ShouldEqual, http.StatusUnauthorized)
+		})
+
 		Convey("Test OAuth2Callback errors", func() {
 			ctx := context.TODO()
 

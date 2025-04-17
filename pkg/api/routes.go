@@ -17,6 +17,7 @@ import (
 	"net/url"
 	"path"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -1992,12 +1993,24 @@ func (rh *RouteHandler) OpenIDCodeExchangeCallback() rp.CodeExchangeUserinfoCall
 
 		val, ok := info.Claims["groups"].([]interface{})
 		if !ok {
-			rh.c.Log.Info().Msgf("failed to find any 'groups' claim for user %s", email)
+			rh.c.Log.Info().Msgf("failed to find any 'groups' claim for user %s in UserInfo", email)
 		}
 
 		for _, group := range val {
 			groups = append(groups, fmt.Sprint(group))
 		}
+
+		val, ok = tokens.IDTokenClaims.Claims["groups"].([]interface{})
+		if !ok {
+			rh.c.Log.Info().Msgf("failed to find any 'groups' claim for user %s in IDTokenClaimsToken", email)
+		}
+
+		for _, group := range val {
+			groups = append(groups, fmt.Sprint(group))
+		}
+
+		slices.Sort(groups)
+		groups = slices.Compact(groups)
 
 		callbackUI, err := OAuth2Callback(rh.c, w, r, state, email, groups)
 		if err != nil {
