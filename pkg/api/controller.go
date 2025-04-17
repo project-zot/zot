@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
+	goerrors "errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -21,6 +22,7 @@ import (
 	"zotregistry.dev/zot/pkg/common"
 	ext "zotregistry.dev/zot/pkg/extensions"
 	extconf "zotregistry.dev/zot/pkg/extensions/config"
+	"zotregistry.dev/zot/pkg/extensions/events"
 	"zotregistry.dev/zot/pkg/extensions/monitoring"
 	"zotregistry.dev/zot/pkg/log"
 	"zotregistry.dev/zot/pkg/meta"
@@ -44,6 +46,7 @@ type Controller struct {
 	Audit           *log.Logger
 	Server          *http.Server
 	Metrics         monitoring.MetricServer
+	EventRecorder   events.Recorder
 	CveScanner      ext.CveScanner
 	SyncOnDemand    SyncOnDemand
 	RelyingParties  map[string]rp.RelyingParty
@@ -261,6 +264,10 @@ func (c *Controller) Init() error {
 
 	c.Metrics = monitoring.NewMetricsServer(enabled, c.Log)
 
+	if err := c.InitEventRecorder(); err != nil {
+		return err
+	}
+
 	if err := c.InitImageStore(); err != nil { //nolint:contextcheck
 		return err
 	}
@@ -291,7 +298,7 @@ func (c *Controller) InitCVEInfo() {
 func (c *Controller) InitImageStore() error {
 	linter := ext.GetLinter(c.Config, c.Log)
 
-	storeController, err := storage.New(c.Config, linter, c.Metrics, c.Log)
+	storeController, err := storage.New(c.Config, linter, c.Metrics, c.Log, c.EventRecorder)
 	if err != nil {
 		return err
 	}
@@ -348,6 +355,17 @@ func (c *Controller) InitMetaDB() error {
 
 		c.MetaDB = driver
 	}
+
+	return nil
+}
+
+func (c *Controller) InitEventRecorder() error {
+	eventRecorder, err := ext.NewEventRecorder(c.Config, c.Log)
+	if err != nil && !goerrors.Is(err, errors.ErrExtensionNotEnabled) {
+		return err
+	}
+
+	c.EventRecorder = eventRecorder
 
 	return nil
 }

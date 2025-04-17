@@ -1,5 +1,5 @@
-//go:build sync && scrub && metrics && search && userprefs && mgmt && imagetrust
-// +build sync,scrub,metrics,search,userprefs,mgmt,imagetrust
+//go:build sync && scrub && metrics && search && userprefs && mgmt && imagetrust && events
+// +build sync,scrub,metrics,search,userprefs,mgmt,imagetrust,events
 
 package server_test
 
@@ -1944,5 +1944,88 @@ func TestSyncWithRemoteStorageConfig(t *testing.T) {
 
 		So(string(data), ShouldContainSubstring,
 			"using both sync and remote storage features needs config.Extensions.Sync.DownloadDir to be specified")
+	})
+}
+
+func TestEventsExtension(t *testing.T) {
+	oldArgs := os.Args
+
+	defer func() { os.Args = oldArgs }()
+
+	Convey("Events explicitly disabled", t, func(c C) {
+		content := `{
+				"storage": {
+					"rootDirectory": "%s"
+				},
+				"http": {
+					"address": "127.0.0.1",
+					"port": "%s"
+				},
+				"log": {
+					"level": "debug",
+					"output": "%s"
+				},
+				"extensions": {
+					"events": {
+						"enable": false
+					}
+				}
+			}`
+
+		logPath, err := runCLIWithConfig(t.TempDir(), content)
+		So(err, ShouldBeNil)
+		defer os.Remove(logPath) // clean up
+
+		found, err := ReadLogFileAndSearchString(logPath,
+			"events disabled in configuration", 10*time.Second)
+
+		if !found {
+			data, err := os.ReadFile(logPath)
+			So(err, ShouldBeNil)
+			t.Log(string(data))
+		}
+
+		So(err, ShouldBeNil)
+		So(found, ShouldBeTrue)
+	})
+
+	Convey("Unsupported event sink", t, func(c C) {
+		content := `{
+					"storage": {
+						"rootDirectory": "%s"
+					},
+					"http": {
+						"address": "127.0.0.1",
+						"port": "%s"
+					},
+					"log": {
+						"level": "debug",
+						"output": "%s"
+					},
+					"extensions": {
+						"events": {
+							"enable": true,
+							"sinks": [{
+								"type": "unsupported"
+							}]
+						}
+					}
+				}`
+
+		logPath, err := runCLIWithConfig(t.TempDir(), content)
+		So(err, ShouldBeNil)
+		defer os.Remove(logPath) // clean up
+
+		found, err := ReadLogFileAndSearchString(logPath,
+			"skipping unsupported sink type: unsupported", 10*time.Second)
+		So(err, ShouldBeNil)
+
+		if !found {
+			data, err := os.ReadFile(logPath)
+			So(err, ShouldBeNil)
+			t.Log(string(data))
+		}
+
+		So(found, ShouldBeTrue)
 	})
 }
