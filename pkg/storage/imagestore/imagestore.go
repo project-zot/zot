@@ -200,9 +200,9 @@ func (is *ImageStore) initRepo(name string) error {
 
 		if is.events != nil {
 			if err := is.events.RepositoryCreated(name); err != nil {
+				// Only log the error as we do not want
+				// downstream issues to propagate through the image store.
 				is.log.Error().Err(err).Str("name", name).Msg("failed to emit event")
-
-				return err
 			}
 		}
 	}
@@ -688,10 +688,10 @@ func (is *ImageStore) PutImageManifest(repo, reference, mediaType string, //noli
 
 		if is.events != nil {
 			if err := is.events.ImageLintFailed(repo, reference, mDigest.String(), mediaType, string(body)); err != nil {
+				// Only log the error as we do not want
+				// downstream issues to propagate through the image store.
 				is.log.Error().Err(err).Str("repository", repo).Str("reference", reference).
 					Msg("failed to emit event")
-
-				return "", "", err
 			}
 		}
 
@@ -704,10 +704,10 @@ func (is *ImageStore) PutImageManifest(repo, reference, mediaType string, //noli
 
 	if is.events != nil {
 		if err := is.events.ImageUpdated(repo, reference, mDigest.String(), mediaType, string(body)); err != nil {
+			// Only log the error as we do not want
+			// downstream issues to propagate through the image store.
 			is.log.Error().Err(err).Str("repository", repo).Str("reference", reference).
 				Msg("failed to emit event")
-
-			return "", "", err
 		}
 	}
 
@@ -810,10 +810,10 @@ func (is *ImageStore) deleteImageManifest(repo, reference string, detectCollisio
 
 	if is.events != nil {
 		if err := is.events.ImageDeleted(repo, reference, manifestDesc.Digest.String(), manifestDesc.MediaType); err != nil {
+			// Only log the error as we do not want
+			// downstream issues to propagate through the image store.
 			is.log.Error().Err(err).Str("repository", repo).Str("reference", reference).
 				Msg("failed to emit event")
-
-			return err
 		}
 	}
 

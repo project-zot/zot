@@ -10,11 +10,6 @@ function nats_server_stop() {
   docker rm -f ${cname}
 }
 
-function log_output() {
-    local zot_log_file=${BATS_FILE_TMPDIR}/zot/zot-log.json
-    cat ${zot_log_file} | jq ' .["message"] '
-}
-
 function wait_event_on_subject() {
     local subject="$1"
     local port="$2"
