@@ -331,14 +331,36 @@ func (c *Config) Sanitize() *Config {
 		panic(err)
 	}
 
-	if c.HTTP.Auth != nil && c.HTTP.Auth.LDAP != nil && c.HTTP.Auth.LDAP.bindPassword != "" {
-		sanitizedConfig.HTTP.Auth.LDAP = &LDAPConfig{}
+	// Sanitize HTTP config
+	if c.HTTP.Auth != nil {
+		// Sanitize LDAP bind password
+		if c.HTTP.Auth.LDAP != nil && c.HTTP.Auth.LDAP.bindPassword != "" {
+			sanitizedConfig.HTTP.Auth.LDAP = &LDAPConfig{}
 
-		if err := DeepCopy(c.HTTP.Auth.LDAP, sanitizedConfig.HTTP.Auth.LDAP); err != nil {
-			panic(err)
+			if err := DeepCopy(c.HTTP.Auth.LDAP, sanitizedConfig.HTTP.Auth.LDAP); err != nil {
+				panic(err)
+			}
+
+			sanitizedConfig.HTTP.Auth.LDAP.bindPassword = "******"
 		}
 
-		sanitizedConfig.HTTP.Auth.LDAP.bindPassword = "******"
+		// Sanitize OpenID client secrets
+		if c.HTTP.Auth.OpenID != nil {
+			sanitizedConfig.HTTP.Auth.OpenID = &OpenIDConfig{
+				Providers: make(map[string]OpenIDProviderConfig),
+			}
+
+			for provider, config := range c.HTTP.Auth.OpenID.Providers {
+				sanitizedConfig.HTTP.Auth.OpenID.Providers[provider] = OpenIDProviderConfig{
+					Name:         config.Name,
+					ClientID:     config.ClientID,
+					ClientSecret: "******",
+					KeyPath:      config.KeyPath,
+					Issuer:       config.Issuer,
+					Scopes:       config.Scopes,
+				}
+			}
+		}
 	}
 
 	return sanitizedConfig
