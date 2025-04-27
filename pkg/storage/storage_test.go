@@ -414,10 +414,10 @@ func TestStorageAPIs(t *testing.T) {
 					So(len(digests), ShouldEqual, 2)
 				})
 
-				Convey("Full blob upload sha384", func() {
-					body := []byte("this blob will be hashed using sha384")
+				Convey("Full blob upload blake3", func() {
+					body := []byte("this blob will be hashed using blake3")
 					buf := bytes.NewBuffer(body)
-					digest := godigest.SHA384.FromBytes(body)
+					digest := godigest.Blake3.FromBytes(body)
 					upload, n, err := imgStore.FullBlobUpload("test", buf, digest)
 					So(err, ShouldBeNil)
 					So(n, ShouldEqual, len(body))
