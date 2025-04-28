@@ -58,7 +58,7 @@ require (
 	github.com/rs/zerolog v1.34.0
 	github.com/santhosh-tekuri/jsonschema/v5 v5.3.1
 	github.com/sigstore/cosign/v2 v2.5.0
-	github.com/sigstore/sigstore v1.9.3
+	github.com/sigstore/sigstore v1.9.4
 	github.com/smartystreets/goconvey v1.8.1
 	github.com/spf13/cast v1.7.1
 	github.com/spf13/cobra v1.9.1
@@ -209,7 +209,7 @@ require (
 	github.com/containerd/ttrpc v1.2.7 // indirect
 	github.com/containerd/typeurl/v2 v2.2.3 // indirect
 	github.com/containers/storage v1.57.2 // indirect
-	github.com/coreos/go-oidc/v3 v3.13.0 // indirect
+	github.com/coreos/go-oidc/v3 v3.14.1 // indirect
 	github.com/cpuguy83/go-md2man/v2 v2.0.6 // indirect
 	github.com/cyberphone/json-canonicalization v0.0.0-20231217050601-ba74d44ecf5f // indirect
 	github.com/cyphar/filepath-securejoin v0.4.1 // indirect
