@@ -4526,7 +4526,7 @@ func TestGlobalSearchWithScaleOutProxyLocalStorage(t *testing.T) {
 
 		clusterMembers := make([]string, numMembers)
 
-		for idx := 0; idx < numMembers; idx++ {
+		for idx := range numMembers {
 			port := test.GetFreePort()
 			ports[idx] = port
 			clusterMembers[idx] = "127.0.0.1:" + port
@@ -4625,6 +4625,39 @@ func TestGlobalSearchWithScaleOutProxyLocalStorage(t *testing.T) {
 			// Item count should actually be 1 - currently we have 1 + 1.
 			So(responseStruct.Page.ItemCount, ShouldEqual, 2)
 			So(responseStruct.Page.TotalCount, ShouldEqual, 4)
+		}
+
+		// Test query behaviour with repo query
+		for _, port := range ports {
+			query := `
+			{
+				GlobalSearch(query:"debian") {
+					Page {
+						TotalCount
+						ItemCount
+					}
+					Repos {
+						Name
+					}
+				}
+			}`
+
+			baseURL := test.GetBaseURL(port)
+			resp, err := resty.R().Get(baseURL + graphqlQueryPrefix + "?query=" + url.QueryEscape(query))
+			So(resp, ShouldNotBeNil)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, 200)
+
+			responseStruct := &zcommon.GlobalSearchResultResp{}
+
+			err = json.Unmarshal(resp.Body(), responseStruct)
+			So(err, ShouldBeNil)
+
+			// Since a filter has been applied for 'debian', there should only be one entry.
+			So(len(responseStruct.Repos), ShouldEqual, 1)
+
+			So(responseStruct.Page.ItemCount, ShouldEqual, 1)
+			So(responseStruct.Page.TotalCount, ShouldEqual, 1)
 		}
 	})
 }
@@ -4997,6 +5030,84 @@ func TestImageList(t *testing.T) {
 
 			So(len(responseStruct.Results), ShouldEqual, limit)
 		})
+	})
+}
+
+func TestImageListWithScaleOutProxyLocalStorage(t *testing.T) {
+	// When there are 2 zot instances, the same ImageList query should
+	// return the correct data when both instances are queried.
+	Convey("In a local scale-out cluster with 2 members, should return correct data for ImageList", t, func() {
+		numMembers := 2
+		ports := make([]string, numMembers)
+
+		clusterMembers := make([]string, numMembers)
+
+		for idx := range numMembers {
+			port := test.GetFreePort()
+			ports[idx] = port
+			clusterMembers[idx] = "127.0.0.1:" + port
+		}
+
+		for _, port := range ports {
+			conf := config.New()
+			conf.HTTP.Port = port
+			conf.Cluster = &config.ClusterConfig{
+				Members: clusterMembers,
+				HashKey: "loremipsumdolors",
+			}
+			defaultVal := true
+			conf.Extensions = &extconf.ExtensionConfig{
+				Search: &extconf.SearchConfig{BaseConfig: extconf.BaseConfig{Enable: &defaultVal}, CVE: nil},
+			}
+
+			ctrlr := makeController(conf, t.TempDir())
+			cm := test.NewControllerManager(ctrlr)
+			cm.StartAndWait(port)
+
+			defer cm.StopServer()
+		}
+
+		for _, port := range ports {
+			resp, err := resty.R().Get(test.GetBaseURL(port) + "/v2/")
+			So(err, ShouldBeNil)
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+		}
+
+		reposToTest := []string{"alpine", "ubuntu", "debian", "bash"}
+		for _, repoName := range reposToTest {
+			img := CreateRandomImage()
+
+			err := UploadImage(img, test.GetBaseURL(ports[0]), repoName, "1.0")
+			So(err, ShouldBeNil)
+		}
+
+		for _, repoName := range reposToTest {
+			for _, port := range ports {
+				query := fmt.Sprintf(`{
+					ImageList(repo:"%s"){
+						Results {
+							RepoName
+							Tag
+						}
+					}
+				}`, repoName)
+
+				baseURL := test.GetBaseURL(port)
+				resp, err := resty.R().Get(baseURL + graphqlQueryPrefix + "?query=" + url.QueryEscape(query))
+				So(resp, ShouldNotBeNil)
+				So(err, ShouldBeNil)
+				So(resp.StatusCode(), ShouldEqual, 200)
+
+				responseStruct := &zcommon.ImageListResponse{}
+
+				err = json.Unmarshal(resp.Body(), responseStruct)
+				So(err, ShouldBeNil)
+				So(len(responseStruct.Results), ShouldEqual, 1)
+				So(responseStruct.Results[0].RepoName, ShouldEqual, repoName)
+				So(responseStruct.Results[0].Tag, ShouldEqual, "1.0")
+			}
+		}
 	})
 }
 

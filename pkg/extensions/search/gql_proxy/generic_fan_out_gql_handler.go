@@ -9,7 +9,7 @@ import (
 	"zotregistry.dev/zot/pkg/proxy"
 )
 
-func fanOutGqlHandler(config *config.Config, response http.ResponseWriter, request *http.Request) {
+func fanOutGqlHandler(config *config.Config, _ map[string]string, response http.ResponseWriter, request *http.Request) {
 	// Proxy to all members including self in order to get the data as calling next() won't return the
 	// aggregated data to this handler.
 	finalMap := map[string]any{}

@@ -11,7 +11,7 @@ import (
 	"zotregistry.dev/zot/pkg/log"
 )
 
-type GqlScaleOutHandlerFunc func(*config.Config, http.ResponseWriter, *http.Request)
+type GqlScaleOutHandlerFunc func(*config.Config, map[string]string, http.ResponseWriter, *http.Request)
 
 // Returns a wrapped handler that can handle request proxying for GQL
 // queries when running in cluster mode without shared storage (each instance has its own metadata).
@@ -32,6 +32,7 @@ func GqlProxyRequestHandler(
 	// that the operation needs to use.
 	proxyFunctionalityMap := map[string]GqlScaleOutHandlerFunc{
 		"GlobalSearch": fanOutGqlHandler,
+		"ImageList":    repoProxyOnceGqlHandler,
 	}
 
 	return func(next http.Handler) http.Handler {
@@ -75,12 +76,17 @@ func GqlProxyRequestHandler(
 
 			// Look at the first operation in the query.
 			operation := ""
+			gqlQueryArgs := map[string]string{}
 
 			for _, op := range processedGql.Operations {
 				for _, ss := range op.SelectionSet {
 					switch ss := ss.(type) {
 					case *ast.Field:
 						operation = ss.Name
+
+						for _, queryArg := range ss.Arguments {
+							gqlQueryArgs[queryArg.Name] = queryArg.Value.Raw
+						}
 					default:
 						log.Error().Str("query", query).Msg("unsupported type")
 					}
@@ -106,7 +112,7 @@ func GqlProxyRequestHandler(
 			}
 
 			// invoke the handler
-			handler(config, response, request)
+			handler(config, gqlQueryArgs, response, request)
 		})
 	}
 }
