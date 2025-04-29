@@ -69,6 +69,74 @@ func makeController(conf *config.Config, dir string) *api.Controller {
 	return ctlr
 }
 
+func setupTestPairScaleOutLocalStorageCluster(
+	t *testing.T,
+	reposToPreLoad []string,
+) ([]string, []*test.ControllerManager) {
+	t.Helper()
+	numMembers := 2
+	ports := make([]string, numMembers)
+
+	clusterMembers := make([]string, numMembers)
+
+	for idx := range numMembers {
+		port := test.GetFreePort()
+		ports[idx] = port
+		clusterMembers[idx] = "127.0.0.1:" + port
+	}
+
+	testCMs := []*test.ControllerManager{}
+
+	for _, port := range ports {
+		conf := config.New()
+		conf.HTTP.Port = port
+		conf.Cluster = &config.ClusterConfig{
+			Members: clusterMembers,
+			HashKey: "loremipsumdolors",
+		}
+		defaultVal := true
+		conf.Extensions = &extconf.ExtensionConfig{
+			Search: &extconf.SearchConfig{BaseConfig: extconf.BaseConfig{Enable: &defaultVal}, CVE: nil},
+		}
+
+		ctrlr := makeController(conf, t.TempDir())
+		cm := test.NewControllerManager(ctrlr)
+		cm.StartAndWait(port)
+
+		testCMs = append(testCMs, &cm)
+	}
+
+	for _, port := range ports {
+		resp, err := resty.R().Get(test.GetBaseURL(port) + "/v2/")
+		if err != nil {
+			t.Errorf("failed to make a request to test instance error=%s", err.Error())
+		}
+
+		if resp == nil {
+			t.Error("got unexpected nil response from test instance")
+		}
+
+		if resp.StatusCode() != http.StatusOK {
+			t.Errorf(
+				"expected status 200 from test instance, but got %d with body %s",
+				resp.StatusCode(),
+				resp.Body(),
+			)
+		}
+	}
+
+	for _, repoName := range reposToPreLoad {
+		img := CreateRandomImage()
+
+		err := UploadImage(img, test.GetBaseURL(ports[0]), repoName, "1.0")
+		if err != nil {
+			t.Errorf("failed to upload image to test instance error=%s", err.Error())
+		}
+	}
+
+	return ports, testCMs
+}
+
 func readFileAndSearchString(filePath string, stringToMatch string, timeout time.Duration) (bool, error) {
 	ctx, cancelFunc := context.WithTimeout(context.Background(), timeout)
 	defer cancelFunc()
@@ -2014,52 +2082,14 @@ func TestExpandedRepoInfo(t *testing.T) {
 func TestExpandedRepoInfoWithScaleOutProxyLocalStorage(t *testing.T) {
 	// When there are 2 zot instances, the same ExpandedRepoInfo query should
 	// return the correct data when both instances are queried.
-	Convey("In a local scale-out cluster with 2 members, should return correct data for ExpandedRepoInfo", t, func() {
-		numMembers := 2
-		ports := make([]string, numMembers)
+	reposToTest := []string{"alpine", "ubuntu", "debian", "bash"}
 
-		clusterMembers := make([]string, numMembers)
+	ports, testCMs := setupTestPairScaleOutLocalStorageCluster(t, reposToTest)
+	for _, cm := range testCMs {
+		defer cm.StopServer()
+	}
 
-		for idx := range numMembers {
-			port := test.GetFreePort()
-			ports[idx] = port
-			clusterMembers[idx] = "127.0.0.1:" + port
-		}
-
-		for _, port := range ports {
-			conf := config.New()
-			conf.HTTP.Port = port
-			conf.Cluster = &config.ClusterConfig{
-				Members: clusterMembers,
-				HashKey: "loremipsumdolors",
-			}
-			defaultVal := true
-			conf.Extensions = &extconf.ExtensionConfig{
-				Search: &extconf.SearchConfig{BaseConfig: extconf.BaseConfig{Enable: &defaultVal}, CVE: nil},
-			}
-
-			ctrlr := makeController(conf, t.TempDir())
-			cm := test.NewControllerManager(ctrlr)
-			cm.StartAndWait(port)
-
-			defer cm.StopServer()
-		}
-
-		for _, port := range ports {
-			resp, err := resty.R().Get(test.GetBaseURL(port) + "/v2/")
-			So(err, ShouldBeNil)
-			So(resp, ShouldNotBeNil)
-			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
-		}
-
-		reposToTest := []string{"alpine", "ubuntu", "debian", "bash"}
-		for _, repoName := range reposToTest {
-			img := CreateRandomImage()
-
-			err := UploadImage(img, test.GetBaseURL(ports[0]), repoName, "1.0")
-			So(err, ShouldBeNil)
-		}
-
+	Convey("In a local scale-out cluster, response should contain correct data for ExpandedRepoInfo", t, func() {
 		for _, repoName := range reposToTest {
 			for _, port := range ports {
 				query := fmt.Sprintf(`{
@@ -2083,6 +2113,31 @@ func TestExpandedRepoInfoWithScaleOutProxyLocalStorage(t *testing.T) {
 				So(len(responseStruct.ImageSummaries), ShouldEqual, 1)
 				So(responseStruct.ImageSummaries[0].Tag, ShouldEqual, "1.0")
 			}
+		}
+	})
+
+	Convey("In a local scale-out cluster, response should contain an error when the repo does not exist", t, func() {
+		for _, port := range ports {
+			query := `{
+			ExpandedRepoInfo(repo:"unknown"){
+					Images {
+						Tag
+					}
+				}
+			}`
+
+			baseURL := test.GetBaseURL(port)
+			resp, err := resty.R().Get(baseURL + graphqlQueryPrefix + "?query=" + url.QueryEscape(query))
+			So(resp, ShouldNotBeNil)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, 200)
+
+			responseStruct := &zcommon.ExpandedRepoInfoResp{}
+
+			err = json.Unmarshal(resp.Body(), responseStruct)
+			So(err, ShouldBeNil)
+			So(len(responseStruct.Errors), ShouldEqual, 1)
+			So(responseStruct.Errors[0].Message, ShouldEqual, "repo metadata not found for given repo name")
 		}
 	})
 }
@@ -4596,54 +4651,18 @@ func TestGlobalSearch(t *testing.T) { //nolint: gocyclo
 func TestGlobalSearchWithScaleOutProxyLocalStorage(t *testing.T) {
 	// When there are 2 zot instances, the same GlobalSearch query should
 	// return aggregated data from both instances when both instances are queried.
-	Convey("In a local scale-out cluster with 2 members, should return correct data for GlobalSearch", t, func() {
-		numMembers := 2
-		ports := make([]string, numMembers)
+	reposToTest := []string{"alpine", "ubuntu", "debian", "bash"}
 
-		clusterMembers := make([]string, numMembers)
+	ports, testCMs := setupTestPairScaleOutLocalStorageCluster(t, reposToTest)
+	for _, cm := range testCMs {
+		defer cm.StopServer()
+	}
 
-		for idx := range numMembers {
-			port := test.GetFreePort()
-			ports[idx] = port
-			clusterMembers[idx] = "127.0.0.1:" + port
-		}
-
+	Convey("In a local scale-out cluster, response should contain correct data for GlobalSearch", t, func() {
 		for _, port := range ports {
-			conf := config.New()
-			conf.HTTP.Port = port
-			conf.Cluster = &config.ClusterConfig{
-				Members: clusterMembers,
-				HashKey: "loremipsumdolors",
-			}
-			defaultVal := true
-			conf.Extensions = &extconf.ExtensionConfig{
-				Search: &extconf.SearchConfig{BaseConfig: extconf.BaseConfig{Enable: &defaultVal}, CVE: nil},
-			}
-
-			ctrlr := makeController(conf, t.TempDir())
-			cm := test.NewControllerManager(ctrlr)
-			cm.StartAndWait(port)
-
-			defer cm.StopServer()
-		}
-
-		for _, port := range ports {
-			resp, err := resty.R().Get(test.GetBaseURL(port) + "/v2/")
-			So(err, ShouldBeNil)
-			So(resp, ShouldNotBeNil)
-			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
-		}
-
-		reposToTest := []string{"alpine", "ubuntu", "debian", "bash"}
-		for _, repoName := range reposToTest {
-			img := CreateRandomImage()
-
-			err := UploadImage(img, test.GetBaseURL(ports[0]), repoName, "1.0")
-			So(err, ShouldBeNil)
-		}
-
-		for _, port := range ports {
-			query := `{GlobalSearch(query:""){
+			query := `
+			{
+				GlobalSearch(query:""){
 					Page {
 						TotalCount
 						ItemCount
@@ -4668,10 +4687,14 @@ func TestGlobalSearchWithScaleOutProxyLocalStorage(t *testing.T) {
 			So(responseStruct.Page.ItemCount, ShouldEqual, 4)
 			So(responseStruct.Page.TotalCount, ShouldEqual, 4)
 		}
+	})
 
-		// Test the pagination behaviour
+	Convey("In a local scale-out cluster, response to GlobalSearch should paginate incorrectly", t, func() {
+		// Since pagination doesn't currently work, this is expected
 		for _, port := range ports {
-			query := `{GlobalSearch(query:"", requestedPage:{
+			query := `
+			{
+				GlobalSearch(query:"", requestedPage:{
 						limit:1
 						offset:0
 						sortBy: DOWNLOADS
@@ -4702,8 +4725,9 @@ func TestGlobalSearchWithScaleOutProxyLocalStorage(t *testing.T) {
 			So(responseStruct.Page.ItemCount, ShouldEqual, 2)
 			So(responseStruct.Page.TotalCount, ShouldEqual, 4)
 		}
+	})
 
-		// Test query behaviour with repo query
+	Convey("In a local scale-out cluster, response to GlobalSearch with repo query should be correct", t, func() {
 		for _, port := range ports {
 			query := `
 			{
@@ -5112,52 +5136,14 @@ func TestImageList(t *testing.T) {
 func TestImageListWithScaleOutProxyLocalStorage(t *testing.T) {
 	// When there are 2 zot instances, the same ImageList query should
 	// return the correct data when both instances are queried.
-	Convey("In a local scale-out cluster with 2 members, should return correct data for ImageList", t, func() {
-		numMembers := 2
-		ports := make([]string, numMembers)
+	reposToTest := []string{"alpine", "ubuntu", "debian", "bash"}
 
-		clusterMembers := make([]string, numMembers)
+	ports, testCMs := setupTestPairScaleOutLocalStorageCluster(t, reposToTest)
+	for _, cm := range testCMs {
+		defer cm.StopServer()
+	}
 
-		for idx := range numMembers {
-			port := test.GetFreePort()
-			ports[idx] = port
-			clusterMembers[idx] = "127.0.0.1:" + port
-		}
-
-		for _, port := range ports {
-			conf := config.New()
-			conf.HTTP.Port = port
-			conf.Cluster = &config.ClusterConfig{
-				Members: clusterMembers,
-				HashKey: "loremipsumdolors",
-			}
-			defaultVal := true
-			conf.Extensions = &extconf.ExtensionConfig{
-				Search: &extconf.SearchConfig{BaseConfig: extconf.BaseConfig{Enable: &defaultVal}, CVE: nil},
-			}
-
-			ctrlr := makeController(conf, t.TempDir())
-			cm := test.NewControllerManager(ctrlr)
-			cm.StartAndWait(port)
-
-			defer cm.StopServer()
-		}
-
-		for _, port := range ports {
-			resp, err := resty.R().Get(test.GetBaseURL(port) + "/v2/")
-			So(err, ShouldBeNil)
-			So(resp, ShouldNotBeNil)
-			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
-		}
-
-		reposToTest := []string{"alpine", "ubuntu", "debian", "bash"}
-		for _, repoName := range reposToTest {
-			img := CreateRandomImage()
-
-			err := UploadImage(img, test.GetBaseURL(ports[0]), repoName, "1.0")
-			So(err, ShouldBeNil)
-		}
-
+	Convey("In a local scale-out cluster, response should contain correct data for ImageList", t, func() {
 		for _, repoName := range reposToTest {
 			for _, port := range ports {
 				query := fmt.Sprintf(`{
@@ -5183,6 +5169,32 @@ func TestImageListWithScaleOutProxyLocalStorage(t *testing.T) {
 				So(responseStruct.Results[0].RepoName, ShouldEqual, repoName)
 				So(responseStruct.Results[0].Tag, ShouldEqual, "1.0")
 			}
+		}
+	})
+
+	Convey("In a local scale-out cluster, response should contain an error when the repo does not exist", t, func() {
+		for _, port := range ports {
+			query := `{
+			ImageList(repo:"unknown"){
+					Results {
+						RepoName
+						Tag
+					}
+				}
+			}`
+
+			baseURL := test.GetBaseURL(port)
+			resp, err := resty.R().Get(baseURL + graphqlQueryPrefix + "?query=" + url.QueryEscape(query))
+			So(resp, ShouldNotBeNil)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, 200)
+
+			responseStruct := &zcommon.ImageListResponse{}
+
+			err = json.Unmarshal(resp.Body(), responseStruct)
+			So(err, ShouldBeNil)
+			So(len(responseStruct.Errors), ShouldEqual, 0)
+			So(len(responseStruct.Results), ShouldEqual, 0)
 		}
 	})
 }

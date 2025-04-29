@@ -70,7 +70,7 @@ func GqlProxyRequestHandler(
 					log.Error().Str("query", query).Err(err).Msg(err.Message)
 				}
 
-				http.Error(response, "Failed to process GQL request", http.StatusInternalServerError)
+				http.Error(response, "Failed to process GQL request", http.StatusBadRequest)
 
 				return
 			}
