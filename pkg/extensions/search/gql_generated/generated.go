@@ -269,7 +269,7 @@ func (e *executableSchema) Schema() *ast.Schema {
 	return parsedSchema
 }
 
-func (e *executableSchema) Complexity(typeName, field string, childComplexity int, rawArgs map[string]any) (int, bool) {
+func (e *executableSchema) Complexity(ctx context.Context, typeName, field string, childComplexity int, rawArgs map[string]any) (int, bool) {
 	ec := executionContext{nil, e, 0, 0, nil}
 	_ = ec
 	switch typeName + "." + field {
@@ -902,7 +902,7 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 			break
 		}
 
-		args, err := ec.field_Query_BaseImageList_args(context.TODO(), rawArgs)
+		args, err := ec.field_Query_BaseImageList_args(ctx, rawArgs)
 		if err != nil {
 			return 0, false
 		}
@@ -914,7 +914,7 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 			break
 		}
 
-		args, err := ec.field_Query_BookmarkedRepos_args(context.TODO(), rawArgs)
+		args, err := ec.field_Query_BookmarkedRepos_args(ctx, rawArgs)
 		if err != nil {
 			return 0, false
 		}
@@ -926,7 +926,7 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 			break
 		}
 
-		args, err := ec.field_Query_CVEDiffListForImages_args(context.TODO(), rawArgs)
+		args, err := ec.field_Query_CVEDiffListForImages_args(ctx, rawArgs)
 		if err != nil {
 			return 0, false
 		}
@@ -938,7 +938,7 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 			break
 		}
 
-		args, err := ec.field_Query_CVEListForImage_args(context.TODO(), rawArgs)
+		args, err := ec.field_Query_CVEListForImage_args(ctx, rawArgs)
 		if err != nil {
 			return 0, false
 		}
@@ -950,7 +950,7 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 			break
 		}
 
-		args, err := ec.field_Query_DerivedImageList_args(context.TODO(), rawArgs)
+		args, err := ec.field_Query_DerivedImageList_args(ctx, rawArgs)
 		if err != nil {
 			return 0, false
 		}
@@ -962,7 +962,7 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 			break
 		}
 
-		args, err := ec.field_Query_ExpandedRepoInfo_args(context.TODO(), rawArgs)
+		args, err := ec.field_Query_ExpandedRepoInfo_args(ctx, rawArgs)
 		if err != nil {
 			return 0, false
 		}
@@ -974,7 +974,7 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 			break
 		}
 
-		args, err := ec.field_Query_GlobalSearch_args(context.TODO(), rawArgs)
+		args, err := ec.field_Query_GlobalSearch_args(ctx, rawArgs)
 		if err != nil {
 			return 0, false
 		}
@@ -986,7 +986,7 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 			break
 		}
 
-		args, err := ec.field_Query_Image_args(context.TODO(), rawArgs)
+		args, err := ec.field_Query_Image_args(ctx, rawArgs)
 		if err != nil {
 			return 0, false
 		}
@@ -998,7 +998,7 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 			break
 		}
 
-		args, err := ec.field_Query_ImageList_args(context.TODO(), rawArgs)
+		args, err := ec.field_Query_ImageList_args(ctx, rawArgs)
 		if err != nil {
 			return 0, false
 		}
@@ -1010,7 +1010,7 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 			break
 		}
 
-		args, err := ec.field_Query_ImageListForCVE_args(context.TODO(), rawArgs)
+		args, err := ec.field_Query_ImageListForCVE_args(ctx, rawArgs)
 		if err != nil {
 			return 0, false
 		}
@@ -1022,7 +1022,7 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 			break
 		}
 
-		args, err := ec.field_Query_ImageListForDigest_args(context.TODO(), rawArgs)
+		args, err := ec.field_Query_ImageListForDigest_args(ctx, rawArgs)
 		if err != nil {
 			return 0, false
 		}
@@ -1034,7 +1034,7 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 			break
 		}
 
-		args, err := ec.field_Query_ImageListWithCVEFixed_args(context.TODO(), rawArgs)
+		args, err := ec.field_Query_ImageListWithCVEFixed_args(ctx, rawArgs)
 		if err != nil {
 			return 0, false
 		}
@@ -1046,7 +1046,7 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 			break
 		}
 
-		args, err := ec.field_Query_Referrers_args(context.TODO(), rawArgs)
+		args, err := ec.field_Query_Referrers_args(ctx, rawArgs)
 		if err != nil {
 			return 0, false
 		}
@@ -1058,7 +1058,7 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 			break
 		}
 
-		args, err := ec.field_Query_RepoListWithNewestImage_args(context.TODO(), rawArgs)
+		args, err := ec.field_Query_RepoListWithNewestImage_args(ctx, rawArgs)
 		if err != nil {
 			return 0, false
 		}
@@ -1070,7 +1070,7 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 			break
 		}
 
-		args, err := ec.field_Query_StarredRepos_args(context.TODO(), rawArgs)
+		args, err := ec.field_Query_StarredRepos_args(ctx, rawArgs)
 		if err != nil {
 			return 0, false
 		}
