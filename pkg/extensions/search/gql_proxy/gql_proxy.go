@@ -31,8 +31,9 @@ func GqlProxyRequestHandler(
 	// When a GQL query is updated or a new one added, a change may be required here depending on the type of handler
 	// that the operation needs to use.
 	proxyFunctionalityMap := map[string]GqlScaleOutHandlerFunc{
-		"GlobalSearch": fanOutGqlHandler,
-		"ImageList":    repoProxyOnceGqlHandler,
+		"GlobalSearch":     fanOutGqlHandler,
+		"ImageList":        repoProxyOnceGqlHandler,
+		"ExpandedRepoInfo": repoProxyOnceGqlHandler,
 	}
 
 	return func(next http.Handler) http.Handler {

@@ -2011,6 +2011,82 @@ func TestExpandedRepoInfo(t *testing.T) {
 	})
 }
 
+func TestExpandedRepoInfoWithScaleOutProxyLocalStorage(t *testing.T) {
+	// When there are 2 zot instances, the same ExpandedRepoInfo query should
+	// return the correct data when both instances are queried.
+	Convey("In a local scale-out cluster with 2 members, should return correct data for ExpandedRepoInfo", t, func() {
+		numMembers := 2
+		ports := make([]string, numMembers)
+
+		clusterMembers := make([]string, numMembers)
+
+		for idx := range numMembers {
+			port := test.GetFreePort()
+			ports[idx] = port
+			clusterMembers[idx] = "127.0.0.1:" + port
+		}
+
+		for _, port := range ports {
+			conf := config.New()
+			conf.HTTP.Port = port
+			conf.Cluster = &config.ClusterConfig{
+				Members: clusterMembers,
+				HashKey: "loremipsumdolors",
+			}
+			defaultVal := true
+			conf.Extensions = &extconf.ExtensionConfig{
+				Search: &extconf.SearchConfig{BaseConfig: extconf.BaseConfig{Enable: &defaultVal}, CVE: nil},
+			}
+
+			ctrlr := makeController(conf, t.TempDir())
+			cm := test.NewControllerManager(ctrlr)
+			cm.StartAndWait(port)
+
+			defer cm.StopServer()
+		}
+
+		for _, port := range ports {
+			resp, err := resty.R().Get(test.GetBaseURL(port) + "/v2/")
+			So(err, ShouldBeNil)
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+		}
+
+		reposToTest := []string{"alpine", "ubuntu", "debian", "bash"}
+		for _, repoName := range reposToTest {
+			img := CreateRandomImage()
+
+			err := UploadImage(img, test.GetBaseURL(ports[0]), repoName, "1.0")
+			So(err, ShouldBeNil)
+		}
+
+		for _, repoName := range reposToTest {
+			for _, port := range ports {
+				query := fmt.Sprintf(`{
+					ExpandedRepoInfo(repo:"%s"){
+						Images {
+							Tag
+						}
+					}
+				}`, repoName)
+
+				baseURL := test.GetBaseURL(port)
+				resp, err := resty.R().Get(baseURL + graphqlQueryPrefix + "?query=" + url.QueryEscape(query))
+				So(resp, ShouldNotBeNil)
+				So(err, ShouldBeNil)
+				So(resp.StatusCode(), ShouldEqual, 200)
+
+				responseStruct := &zcommon.ExpandedRepoInfoResp{}
+
+				err = json.Unmarshal(resp.Body(), responseStruct)
+				So(err, ShouldBeNil)
+				So(len(responseStruct.ImageSummaries), ShouldEqual, 1)
+				So(responseStruct.ImageSummaries[0].Tag, ShouldEqual, "1.0")
+			}
+		}
+	})
+}
+
 func TestDerivedImageList(t *testing.T) {
 	rootDir := t.TempDir()
 
