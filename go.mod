@@ -3,16 +3,16 @@ module zotregistry.dev/zot
 go 1.24
 
 require (
-	github.com/99designs/gqlgen v0.17.70
+	github.com/99designs/gqlgen v0.17.72
 	github.com/Masterminds/semver v1.5.0
 	github.com/alicebob/miniredis/v2 v2.34.0
 	github.com/aquasecurity/trivy v0.61.1
 	github.com/aquasecurity/trivy-db v0.0.0-20250227071930-8bd8a9b89e2d
-	github.com/aws/aws-sdk-go v1.55.6
+	github.com/aws/aws-sdk-go v1.55.7
 	github.com/aws/aws-sdk-go-v2 v1.36.3
 	github.com/aws/aws-sdk-go-v2/config v1.29.14
-	github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue v1.18.12
-	github.com/aws/aws-sdk-go-v2/service/dynamodb v1.42.4
+	github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue v1.18.13
+	github.com/aws/aws-sdk-go-v2/service/dynamodb v1.43.0
 	github.com/aws/aws-sdk-go-v2/service/ecr v1.43.3
 	github.com/aws/aws-sdk-go-v2/service/secretsmanager v1.35.4
 	github.com/aws/aws-secretsmanager-caching-go v1.2.0
@@ -44,7 +44,7 @@ require (
 	github.com/mitchellh/mapstructure v1.5.1-0.20231216201459-8508981c8b6c
 	github.com/nmcclain/ldap v0.0.0-20210720162743-7f8d1e44eeba
 	github.com/notaryproject/notation-core-go v1.3.0
-	github.com/notaryproject/notation-go v1.3.1
+	github.com/notaryproject/notation-go v1.3.2
 	github.com/olekukonko/tablewriter v0.0.5
 	github.com/opencontainers/distribution-spec/specs-go v0.0.0-20250123160558-a139cc423184
 	github.com/opencontainers/go-digest v1.0.0
@@ -54,11 +54,11 @@ require (
 	github.com/prometheus/client_golang v1.22.0
 	github.com/prometheus/client_model v0.6.2
 	github.com/redis/go-redis/v9 v9.7.3
-	github.com/regclient/regclient v0.8.2
+	github.com/regclient/regclient v0.8.3
 	github.com/rs/zerolog v1.34.0
 	github.com/santhosh-tekuri/jsonschema/v5 v5.3.1
 	github.com/sigstore/cosign/v2 v2.5.0
-	github.com/sigstore/sigstore v1.9.3
+	github.com/sigstore/sigstore v1.9.4
 	github.com/smartystreets/goconvey v1.8.1
 	github.com/spf13/cast v1.7.1
 	github.com/spf13/cobra v1.9.1
@@ -108,7 +108,7 @@ require (
 	github.com/Azure/go-autorest/tracing v0.6.0 // indirect
 	github.com/Azure/go-ntlmssp v0.0.0-20221128193559-754e69321358 // indirect
 	github.com/AzureAD/microsoft-authentication-library-for-go v1.3.3 // indirect
-	github.com/BurntSushi/toml v1.4.0 // indirect
+	github.com/BurntSushi/toml v1.5.0 // indirect
 	github.com/CycloneDX/cyclonedx-go v0.9.2 // indirect
 	github.com/DataDog/zstd v1.5.5 // indirect
 	github.com/GoogleCloudPlatform/docker-credential-gcr v2.0.5+incompatible // indirect
@@ -194,7 +194,7 @@ require (
 	github.com/cncf/xds/go v0.0.0-20241223141626-cff3c89139a3 // indirect
 	github.com/cockroachdb/apd/v3 v3.2.1 // indirect
 	github.com/common-nighthawk/go-figure v0.0.0-20210622060536-734e95fb86be // indirect
-	github.com/containerd/cgroups/v3 v3.0.3 // indirect
+	github.com/containerd/cgroups/v3 v3.0.5 // indirect
 	github.com/containerd/containerd v1.7.27 // indirect
 	github.com/containerd/containerd/api v1.8.0 // indirect
 	github.com/containerd/containerd/v2 v2.0.4 // indirect
@@ -208,8 +208,8 @@ require (
 	github.com/containerd/stargz-snapshotter/estargz v0.16.3 // indirect
 	github.com/containerd/ttrpc v1.2.7 // indirect
 	github.com/containerd/typeurl/v2 v2.2.3 // indirect
-	github.com/containers/storage v1.57.2 // indirect
-	github.com/coreos/go-oidc/v3 v3.13.0 // indirect
+	github.com/containers/storage v1.58.0 // indirect
+	github.com/coreos/go-oidc/v3 v3.14.1 // indirect
 	github.com/cpuguy83/go-md2man/v2 v2.0.6 // indirect
 	github.com/cyberphone/json-canonicalization v0.0.0-20231217050601-ba74d44ecf5f // indirect
 	github.com/cyphar/filepath-securejoin v0.4.1 // indirect
@@ -352,7 +352,7 @@ require (
 	github.com/moby/sys/mountinfo v0.7.2 // indirect
 	github.com/moby/sys/sequential v0.6.0 // indirect
 	github.com/moby/sys/signal v0.7.1 // indirect
-	github.com/moby/sys/user v0.3.0 // indirect
+	github.com/moby/sys/user v0.4.0 // indirect
 	github.com/moby/sys/userns v0.1.0 // indirect
 	github.com/moby/term v0.5.2 // indirect
 	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
@@ -373,8 +373,8 @@ require (
 	github.com/onsi/ginkgo/v2 v2.22.2 // indirect
 	github.com/onsi/gomega v1.36.2 // indirect
 	github.com/open-policy-agent/opa v1.2.0 // indirect
-	github.com/opencontainers/runtime-spec v1.2.0 // indirect
-	github.com/opencontainers/selinux v1.11.1 // indirect
+	github.com/opencontainers/runtime-spec v1.2.1 // indirect
+	github.com/opencontainers/selinux v1.12.0 // indirect
 	github.com/opentracing/opentracing-go v1.2.0 // indirect
 	github.com/openvex/discovery v0.1.1-0.20240802171711-7c54efc57553 // indirect
 	github.com/openvex/go-vex v0.2.5 // indirect
@@ -440,7 +440,7 @@ require (
 	github.com/twitchtv/twirp v8.1.3+incompatible // indirect
 	github.com/ulikunitz/xz v0.5.12 // indirect
 	github.com/urfave/cli/v2 v2.27.6 // indirect
-	github.com/vbatts/tar-split v0.11.7 // indirect
+	github.com/vbatts/tar-split v0.12.1 // indirect
 	github.com/veraison/go-cose v1.3.0 // indirect
 	github.com/vmihailenco/msgpack/v5 v5.4.1 // indirect
 	github.com/vmihailenco/tagparser/v2 v2.0.0 // indirect
@@ -491,13 +491,13 @@ require (
 	go.uber.org/zap v1.27.0 // indirect
 	golang.org/x/exp v0.0.0-20250305212735-054e65f0b394 // indirect
 	golang.org/x/mod v0.24.0 // indirect
-	golang.org/x/net v0.38.0 // indirect
+	golang.org/x/net v0.39.0 // indirect
 	golang.org/x/sync v0.13.0 // indirect
 	golang.org/x/sys v0.32.0 // indirect
 	golang.org/x/term v0.31.0 // indirect
 	golang.org/x/text v0.24.0 // indirect
 	golang.org/x/time v0.11.0 // indirect
-	golang.org/x/tools v0.31.0 // indirect
+	golang.org/x/tools v0.32.0 // indirect
 	golang.org/x/xerrors v0.0.0-20240716161551-93cc26a95ae9 // indirect
 	google.golang.org/api v0.227.0 // indirect
 	google.golang.org/genproto v0.0.0-20250303144028-a0af3efb3deb // indirect
