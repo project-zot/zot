@@ -14,6 +14,7 @@ import (
 	"time"
 
 	godigest "github.com/opencontainers/go-digest"
+	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/regclient/regclient"
 	"github.com/regclient/regclient/config"
 	"github.com/regclient/regclient/mod"
@@ -449,22 +450,83 @@ func (service *BaseService) SyncRepo(ctx context.Context, repo string) error {
 	return nil
 }
 
-// shouldIncludeArchitecture determines if an architecture should be included in the sync
-// based on the configured architectures (if any)
-func (service *BaseService) shouldIncludeArchitecture(arch string) bool {
-	// If no architectures are configured, include all architectures
-	if len(service.config.Architectures) == 0 {
+// shouldIncludePlatform determines if a platform should be included in the sync
+// based on the configured platforms or architectures
+func (service *BaseService) shouldIncludePlatform(platform *ispec.Platform) bool {
+	// Get platform specifications from the configuration
+	var platformSpecs []string
+
+	// Check if we have platform specifications
+	if len(service.config.Platforms) > 0 {
+		platformSpecs = service.config.Platforms
+	} else if len(service.config.Architectures) > 0 {
+		// Fall back to architectures for backward compatibility
+		platformSpecs = service.config.Architectures
+	} else {
+		// If no platforms or architectures are configured, include all
 		return true
 	}
 
-	// Check if the architecture is in the configured list
-	for _, configArch := range service.config.Architectures {
-		if configArch == arch {
-			return true
+	// If platform is nil, include it
+	if platform == nil || len(platformSpecs) == 0 {
+		return true
+	}
+
+	for _, spec := range platformSpecs {
+		parts := strings.Split(spec, "/")
+		if len(parts) == 2 {
+			// OS/Arch format
+			specOS := parts[0]
+			specArch := parts[1]
+
+			// Check if OS matches (if specified)
+			if specOS != "" && specOS != platform.OS {
+				continue
+			}
+
+			// Check if architecture matches
+			if specArch != "" && specArch != platform.Architecture {
+				continue
+			}
+		} else if len(parts) == 1 {
+			// Arch only format
+			if parts[0] != platform.Architecture {
+				continue
+			}
 		}
+
+		// If we got here, it's a match
+		return true
 	}
 
 	return false
+}
+
+// shouldIncludeArchitecture determines if an architecture should be included in the sync
+// based on the configured architectures (if any)
+// DEPRECATED: Use shouldIncludePlatform instead
+func (service *BaseService) shouldIncludeArchitecture(arch string) bool {
+	// If no architectures are configured, include all architectures
+	if len(service.config.Architectures) > 0 && len(service.config.Platforms) == 0 {
+		// Check if the architecture is in the configured list
+		for _, configArch := range service.config.Architectures {
+			if configArch == arch {
+				return true
+			}
+		}
+		return false
+	}
+
+	// When using the Platforms field, we need a different check
+	if len(service.config.Platforms) > 0 {
+		platform := &ispec.Platform{
+			Architecture: arch,
+		}
+		return service.shouldIncludePlatform(platform)
+	}
+
+	// No filters configured, include all
+	return true
 }
 
 func (service *BaseService) syncRef(ctx context.Context, localRepo string, remoteImageRef, localImageRef ref.Ref,
@@ -487,16 +549,21 @@ func (service *BaseService) syncRef(ctx context.Context, localRepo string, remot
 		copyOpts = append(copyOpts, regclient.ImageWithReferrers())
 	}
 
-	// Architecture filtering - use ImageWithChildren to handle manifest lists
-	// ImageWithChildren ensures we get the complete manifest list, then we can filter architectures
+	// Platform/Architecture filtering - use ImageWithChildren to handle manifest lists
+	// ImageWithChildren ensures we get the complete manifest list, then we can filter platforms
 	copyOpts = append(copyOpts, regclient.ImageWithChildren())
 
-	// Add platform filter option if architectures are configured
-	if len(service.config.Architectures) > 0 {
+	// Log platform filtering information
+	if len(service.config.Platforms) > 0 {
+		service.log.Info().
+			Strs("platforms", service.config.Platforms).
+			Str("image", remoteImageRef.CommonName()).
+			Msg("filtering platforms during sync")
+	} else if len(service.config.Architectures) > 0 {
 		service.log.Info().
 			Strs("architectures", service.config.Architectures).
 			Str("image", remoteImageRef.CommonName()).
-			Msg("filtering architectures during sync")
+			Msg("filtering architectures during sync (deprecated)")
 	}
 
 	// check if image is already synced
@@ -541,14 +608,19 @@ func (service *BaseService) syncRef(ctx context.Context, localRepo string, remot
 				// The architecture filtering will be applied during processing before the commit stage
 				// The actual filtering happens in the destination.CommitAll method
 			} else {
-				// It's a single-arch image, just verify if we should include this architecture
+				// It's a single-arch image, verify if we should include this platform
 				if man.GetDescriptor().Platform != nil {
-					arch := man.GetDescriptor().Platform.Architecture
-					if !service.shouldIncludeArchitecture(arch) {
+					platform := man.GetDescriptor().Platform
+					if !service.shouldIncludePlatform(platform) {
+						platformDesc := platform.Architecture
+						if platform.OS != "" {
+							platformDesc = platform.OS + "/" + platform.Architecture
+						}
+
 						service.log.Info().
 							Str("remote image", remoteImageRef.CommonName()).
-							Str("architecture", arch).
-							Msg("skipping image with excluded architecture")
+							Str("platform", platformDesc).
+							Msg("skipping image with excluded platform")
 						return nil
 					}
 				}

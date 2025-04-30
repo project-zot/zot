@@ -26,8 +26,7 @@
 					"maxRetries": 3,
 					"retryDelay": "5m",
 					"onlySigned": true,
-					"architectures": ["amd64", "arm64"],
-					"platforms": ["linux/amd64", "linux/arm64"],
+					"platforms": ["linux/amd64", "linux/arm64", "windows/amd64"],
 					"content": [
 						{
 							"prefix": "/repo1/repo",
@@ -60,8 +59,7 @@
 					"pollInterval": "12h",
 					"tlsVerify": false,
 					"onDemand": false,
-					"architectures": ["amd64"],
-					"platforms": ["linux/amd64", "windows/amd64"],
+					"platforms": ["linux/amd64"],
 					"content": [
 						{
 							"prefix": "**",
@@ -79,8 +77,7 @@
 					"tlsVerify": true,
 					"maxRetries": 5,
 					"retryDelay": "30s",
-					"architectures": ["amd64", "arm64", "arm"],
-					"platforms": ["linux/amd64", "linux/arm64", "linux/arm"]
+					"architectures": ["amd64", "arm64", "arm"]
 				},
 				{
 					"urls": [
@@ -100,7 +97,7 @@
 				},
 				{
 					"urls": [
-						"https://registry5:5000"
+						"https://registry4:5000"
 					],
 					"onDemand": false,
 					"tlsVerify": true,

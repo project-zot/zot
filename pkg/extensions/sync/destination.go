@@ -30,6 +30,58 @@ import (
 	storageTypes "zotregistry.dev/zot/pkg/storage/types"
 )
 
+// Platform represents an OS/architecture combination
+type Platform struct {
+	OS           string
+	Architecture string
+}
+
+// ParsePlatform parses a platform string into a Platform struct
+// The string can be in the format "os/arch" or just "arch"
+func ParsePlatform(platform string) Platform {
+	parts := strings.Split(platform, "/")
+	if len(parts) == 2 {
+		return Platform{
+			OS:           parts[0],
+			Architecture: parts[1],
+		}
+	}
+	// If only one part, assume it's the architecture
+	return Platform{
+		OS:           "",
+		Architecture: platform,
+	}
+}
+
+// MatchesPlatform checks if the given platform matches any of the platform specifications
+// Platform specs can be in format "os/arch" or just "arch"
+func MatchesPlatform(platform *ispec.Platform, platformSpecs []string) bool {
+	if platform == nil || len(platformSpecs) == 0 {
+		return true
+	}
+
+	for _, spec := range platformSpecs {
+		specPlatform := ParsePlatform(spec)
+
+		// Check if architecture matches
+		if specPlatform.Architecture != "" &&
+			specPlatform.Architecture != platform.Architecture {
+			continue
+		}
+
+		// Check if OS matches (if specified)
+		if specPlatform.OS != "" &&
+			specPlatform.OS != platform.OS {
+			continue
+		}
+
+		// If we got here, it's a match
+		return true
+	}
+
+	return false
+}
+
 type DestinationRegistry struct {
 	storeController storage.StoreController
 	tempStorage     OciLayoutStorage
@@ -236,33 +288,46 @@ func (registry *DestinationRegistry) copyManifest(repo string, desc ispec.Descri
 			return err
 		}
 
-		// Filter manifests based on architectures if configured
+		// Filter manifests based on platforms/architectures if configured
 		var filteredManifests []ispec.Descriptor
-		if registry.config != nil && len(registry.config.Architectures) > 0 {
-			registry.log.Info().
-				Strs("architectures", registry.config.Architectures).
-				Str("repository", repo).
-				Str("reference", reference).
-				Msg("filtering manifest list by architectures")
 
+		// Determine which platform specifications to use
+		var platformSpecs []string
+		if registry.config != nil {
+			if len(registry.config.Platforms) > 0 {
+				platformSpecs = registry.config.Platforms
+				registry.log.Info().
+					Strs("platforms", registry.config.Platforms).
+					Str("repository", repo).
+					Str("reference", reference).
+					Msg("filtering manifest list by platforms")
+			} else if len(registry.config.Architectures) > 0 {
+				platformSpecs = registry.config.Architectures
+				registry.log.Info().
+					Strs("architectures", registry.config.Architectures).
+					Str("repository", repo).
+					Str("reference", reference).
+					Msg("filtering manifest list by architectures (deprecated)")
+			}
+		}
+
+		// Apply filtering if we have platform specifications
+		if len(platformSpecs) > 0 {
 			for _, manifest := range indexManifest.Manifests {
-				if manifest.Platform != nil && manifest.Platform.Architecture != "" {
-					// Check if this architecture should be included
-					shouldInclude := false
-					for _, configArch := range registry.config.Architectures {
-						if manifest.Platform.Architecture == configArch {
-							shouldInclude = true
-							break
-						}
-					}
-
-					if shouldInclude {
+				if manifest.Platform != nil {
+					// Check if this platform should be included
+					if MatchesPlatform(manifest.Platform, platformSpecs) {
 						filteredManifests = append(filteredManifests, manifest)
 					} else {
+						platformDesc := manifest.Platform.Architecture
+						if manifest.Platform.OS != "" {
+							platformDesc = manifest.Platform.OS + "/" + manifest.Platform.Architecture
+						}
+
 						registry.log.Info().
 							Str("repository", repo).
-							Str("architecture", manifest.Platform.Architecture).
-							Msg("skipping architecture during sync")
+							Str("platform", platformDesc).
+							Msg("skipping platform during sync")
 					}
 				} else {
 					// No platform info, include the manifest
@@ -275,7 +340,7 @@ func (registry *DestinationRegistry) copyManifest(repo string, desc ispec.Descri
 				registry.log.Warn().
 					Str("repository", repo).
 					Str("reference", reference).
-					Msg("no architecture matched the configured filters, manifest list might be empty")
+					Msg("no platform matched the configured filters, manifest list might be empty")
 			}
 		} else {
 			// No filtering, use all manifests
@@ -311,7 +376,8 @@ func (registry *DestinationRegistry) copyManifest(repo string, desc ispec.Descri
 		}
 
 		// If we've filtered the manifest list, we need to update it
-		if registry.config != nil && len(registry.config.Architectures) > 0 &&
+		if registry.config != nil &&
+			(len(registry.config.Architectures) > 0 || len(registry.config.Platforms) > 0) &&
 			len(filteredManifests) != len(indexManifest.Manifests) && len(filteredManifests) > 0 {
 			// Create a new index with the filtered manifests
 			indexManifest.Manifests = filteredManifests
