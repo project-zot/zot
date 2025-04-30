@@ -46,7 +46,7 @@ func ParsePlatform(platform string) Platform {
 			Architecture: parts[1],
 		}
 	}
-	// If only one part, assume it's the architecture
+	// For any other case, assume only architecture is specified
 	return Platform{
 		OS:           "",
 		Architecture: platform,

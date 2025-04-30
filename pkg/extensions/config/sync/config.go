@@ -34,7 +34,6 @@ type RegistryConfig struct {
 	OnlySigned       *bool
 	CredentialHelper string
 	PreserveDigest   bool     // sync without converting
-	Architectures    []string `mapstructure:",omitempty"` // filter architectures during sync (DEPRECATED: use Platforms instead)
 	Platforms        []string `mapstructure:",omitempty"` // filter platforms during sync (supports both "arch" and "os/arch" formats)
 }
 
