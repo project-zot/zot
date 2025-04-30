@@ -33,7 +33,8 @@ type RegistryConfig struct {
 	RetryDelay       *time.Duration
 	OnlySigned       *bool
 	CredentialHelper string
-	PreserveDigest   bool // sync without converting
+	PreserveDigest   bool     // sync without converting
+	Architectures    []string // filter architectures during sync
 }
 
 type Content struct {

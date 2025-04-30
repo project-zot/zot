@@ -19,6 +19,7 @@ import (
 
 	zerr "zotregistry.dev/zot/errors"
 	"zotregistry.dev/zot/pkg/common"
+	syncconf "zotregistry.dev/zot/pkg/extensions/config/sync"
 	"zotregistry.dev/zot/pkg/extensions/monitoring"
 	"zotregistry.dev/zot/pkg/log"
 	"zotregistry.dev/zot/pkg/meta"
@@ -34,6 +35,7 @@ type DestinationRegistry struct {
 	tempStorage     OciLayoutStorage
 	metaDB          mTypes.MetaDB
 	log             log.Logger
+	config          *syncconf.RegistryConfig // Config used for filtering architectures
 }
 
 func NewDestinationRegistry(
@@ -41,14 +43,21 @@ func NewDestinationRegistry(
 	tempStoreController storage.StoreController, // temp store controller
 	metaDB mTypes.MetaDB,
 	log log.Logger,
+	config ...*syncconf.RegistryConfig, // optional config for filtering
 ) Destination {
+	var cfg *syncconf.RegistryConfig
+	if len(config) > 0 {
+		cfg = config[0]
+	}
+
 	return &DestinationRegistry{
 		storeController: storeController,
 		tempStorage:     NewOciLayoutStorage(tempStoreController),
 		metaDB:          metaDB,
 		// first we sync from remote (using containers/image copy from docker:// to oci:) to a temp imageStore
 		// then we copy the image from tempStorage to zot's storage using ImageStore APIs
-		log: log,
+		log:    log,
+		config: cfg,
 	}
 }
 
@@ -227,7 +236,54 @@ func (registry *DestinationRegistry) copyManifest(repo string, desc ispec.Descri
 			return err
 		}
 
-		for _, manifest := range indexManifest.Manifests {
+		// Filter manifests based on architectures if configured
+		var filteredManifests []ispec.Descriptor
+		if registry.config != nil && len(registry.config.Architectures) > 0 {
+			registry.log.Info().
+				Strs("architectures", registry.config.Architectures).
+				Str("repository", repo).
+				Str("reference", reference).
+				Msg("filtering manifest list by architectures")
+
+			for _, manifest := range indexManifest.Manifests {
+				if manifest.Platform != nil && manifest.Platform.Architecture != "" {
+					// Check if this architecture should be included
+					shouldInclude := false
+					for _, configArch := range registry.config.Architectures {
+						if manifest.Platform.Architecture == configArch {
+							shouldInclude = true
+							break
+						}
+					}
+
+					if shouldInclude {
+						filteredManifests = append(filteredManifests, manifest)
+					} else {
+						registry.log.Info().
+							Str("repository", repo).
+							Str("architecture", manifest.Platform.Architecture).
+							Msg("skipping architecture during sync")
+					}
+				} else {
+					// No platform info, include the manifest
+					filteredManifests = append(filteredManifests, manifest)
+				}
+			}
+
+			// If we have no filtered manifests but had original ones, warn
+			if len(filteredManifests) == 0 && len(indexManifest.Manifests) > 0 {
+				registry.log.Warn().
+					Str("repository", repo).
+					Str("reference", reference).
+					Msg("no architecture matched the configured filters, manifest list might be empty")
+			}
+		} else {
+			// No filtering, use all manifests
+			filteredManifests = indexManifest.Manifests
+		}
+
+		// Process the filtered manifests
+		for _, manifest := range filteredManifests {
 			reference := GetDescriptorReference(manifest)
 
 			manifestBuf, err := tempImageStore.GetBlobContent(repo, manifest.Digest)
@@ -252,6 +308,24 @@ func (registry *DestinationRegistry) copyManifest(repo string, desc ispec.Descri
 
 				return err
 			}
+		}
+
+		// If we've filtered the manifest list, we need to update it
+		if registry.config != nil && len(registry.config.Architectures) > 0 &&
+			len(filteredManifests) != len(indexManifest.Manifests) && len(filteredManifests) > 0 {
+			// Create a new index with the filtered manifests
+			indexManifest.Manifests = filteredManifests
+
+			// Update the manifest content with the filtered list
+			updatedContent, err := json.Marshal(indexManifest)
+			if err != nil {
+				registry.log.Error().Str("errorType", common.TypeOf(err)).
+					Err(err).Str("repository", repo).
+					Msg("failed to marshal updated index manifest")
+				return err
+			}
+
+			manifestContent = updatedContent
 		}
 
 		_, _, err := imageStore.PutImageManifest(repo, reference, desc.MediaType, manifestContent)

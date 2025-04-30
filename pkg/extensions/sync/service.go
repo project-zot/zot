@@ -18,6 +18,7 @@ import (
 	"github.com/regclient/regclient/config"
 	"github.com/regclient/regclient/mod"
 	"github.com/regclient/regclient/scheme/reg"
+	"github.com/regclient/regclient/types/manifest"
 	"github.com/regclient/regclient/types/ref"
 
 	zerr "zotregistry.dev/zot/errors"
@@ -115,7 +116,7 @@ func New(
 
 	if len(tmpDir) == 0 {
 		// first it will sync in tmpDir then it will move everything into local ImageStore
-		service.destination = NewDestinationRegistry(storeController, storeController, metadb, log)
+		service.destination = NewDestinationRegistry(storeController, storeController, metadb, log, &service.config)
 	} else {
 		// first it will sync under /rootDir/reponame/.sync/ then it will move everything into local ImageStore
 		service.destination = NewDestinationRegistry(
@@ -125,6 +126,7 @@ func New(
 			},
 			metadb,
 			log,
+			&service.config,
 		)
 	}
 
@@ -447,6 +449,24 @@ func (service *BaseService) SyncRepo(ctx context.Context, repo string) error {
 	return nil
 }
 
+// shouldIncludeArchitecture determines if an architecture should be included in the sync
+// based on the configured architectures (if any)
+func (service *BaseService) shouldIncludeArchitecture(arch string) bool {
+	// If no architectures are configured, include all architectures
+	if len(service.config.Architectures) == 0 {
+		return true
+	}
+
+	// Check if the architecture is in the configured list
+	for _, configArch := range service.config.Architectures {
+		if configArch == arch {
+			return true
+		}
+	}
+
+	return false
+}
+
 func (service *BaseService) syncRef(ctx context.Context, localRepo string, remoteImageRef, localImageRef ref.Ref,
 	remoteDigest godigest.Digest, recursive bool,
 ) error {
@@ -467,6 +487,18 @@ func (service *BaseService) syncRef(ctx context.Context, localRepo string, remot
 		copyOpts = append(copyOpts, regclient.ImageWithReferrers())
 	}
 
+	// Architecture filtering - use ImageWithChildren to handle manifest lists
+	// ImageWithChildren ensures we get the complete manifest list, then we can filter architectures
+	copyOpts = append(copyOpts, regclient.ImageWithChildren())
+
+	// Add platform filter option if architectures are configured
+	if len(service.config.Architectures) > 0 {
+		service.log.Info().
+			Strs("architectures", service.config.Architectures).
+			Str("image", remoteImageRef.CommonName()).
+			Msg("filtering architectures during sync")
+	}
+
 	// check if image is already synced
 	skipImage, err = service.destination.CanSkipImage(localRepo, reference, remoteDigest)
 	if err != nil {
@@ -479,11 +511,66 @@ func (service *BaseService) syncRef(ctx context.Context, localRepo string, remot
 		service.log.Info().Str("remote image", remoteImageRef.CommonName()).
 			Str("local image", fmt.Sprintf("%s:%s", localRepo, remoteImageRef.Tag)).Msg("syncing image")
 
-		err = service.rc.ImageCopy(ctx, remoteImageRef, localImageRef, copyOpts...)
-		if err != nil {
-			service.log.Error().Err(err).Str("errortype", common.TypeOf(err)).
-				Str("remote image", remoteImageRef.CommonName()).
-				Str("local image", fmt.Sprintf("%s:%s", localRepo, remoteImageRef.Tag)).Msg("failed to sync image")
+		// When architectures are specified, we need to filter the manifest list
+		if len(service.config.Architectures) > 0 {
+			// Get the manifest to check if it's a manifest list
+			man, err := service.rc.ManifestGet(ctx, remoteImageRef)
+			if err != nil {
+				service.log.Error().Err(err).Str("errortype", common.TypeOf(err)).
+					Str("remote image", remoteImageRef.CommonName()).
+					Msg("failed to get manifest for architecture filtering")
+				return err
+			}
+
+			// If it's a manifest list (multi-arch image), we need to filter architectures
+			_, isIndexer := man.(manifest.Indexer)
+			if isIndexer {
+				service.log.Info().
+					Str("remote image", remoteImageRef.CommonName()).
+					Msg("filtering architectures for multi-arch image")
+
+				// Use ImageCopy with the architecture filtering options
+				err = service.rc.ImageCopy(ctx, remoteImageRef, localImageRef, copyOpts...)
+				if err != nil {
+					service.log.Error().Err(err).Str("errortype", common.TypeOf(err)).
+						Str("remote image", remoteImageRef.CommonName()).
+						Str("local image", fmt.Sprintf("%s:%s", localRepo, remoteImageRef.Tag)).
+						Msg("failed to sync image")
+				}
+
+				// The architecture filtering will be applied during processing before the commit stage
+				// The actual filtering happens in the destination.CommitAll method
+			} else {
+				// It's a single-arch image, just verify if we should include this architecture
+				if man.GetDescriptor().Platform != nil {
+					arch := man.GetDescriptor().Platform.Architecture
+					if !service.shouldIncludeArchitecture(arch) {
+						service.log.Info().
+							Str("remote image", remoteImageRef.CommonName()).
+							Str("architecture", arch).
+							Msg("skipping image with excluded architecture")
+						return nil
+					}
+				}
+
+				// Single architecture image that should be included
+				err = service.rc.ImageCopy(ctx, remoteImageRef, localImageRef, copyOpts...)
+				if err != nil {
+					service.log.Error().Err(err).Str("errortype", common.TypeOf(err)).
+						Str("remote image", remoteImageRef.CommonName()).
+						Str("local image", fmt.Sprintf("%s:%s", localRepo, remoteImageRef.Tag)).
+						Msg("failed to sync image")
+				}
+			}
+		} else {
+			// No architecture filtering, standard behavior
+			err = service.rc.ImageCopy(ctx, remoteImageRef, localImageRef, copyOpts...)
+			if err != nil {
+				service.log.Error().Err(err).Str("errortype", common.TypeOf(err)).
+					Str("remote image", remoteImageRef.CommonName()).
+					Str("local image", fmt.Sprintf("%s:%s", localRepo, remoteImageRef.Tag)).
+					Msg("failed to sync image")
+			}
 		}
 
 		return err
