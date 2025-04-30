@@ -549,9 +549,8 @@ func (service *BaseService) syncRef(ctx context.Context, localRepo string, remot
 		copyOpts = append(copyOpts, regclient.ImageWithReferrers())
 	}
 
-	// Platform/Architecture filtering - use ImageWithChildren to handle manifest lists
-	// ImageWithChildren ensures we get the complete manifest list, then we can filter platforms
-	copyOpts = append(copyOpts, regclient.ImageWithChildren())
+	// In regclient v0.8.3, we don't need a special option for manifest lists
+	// The platform filtering is already handled in our custom code below
 
 	// Log platform filtering information
 	if len(service.config.Platforms) > 0 {
@@ -610,7 +609,14 @@ func (service *BaseService) syncRef(ctx context.Context, localRepo string, remot
 			} else {
 				// It's a single-arch image, verify if we should include this platform
 				if man.GetDescriptor().Platform != nil {
-					platform := man.GetDescriptor().Platform
+					// Convert platform to ispec.Platform for compatibility with regclient v0.8.3
+					platform := &ispec.Platform{
+						Architecture: man.GetDescriptor().Platform.Architecture,
+						OS:           man.GetDescriptor().Platform.OS,
+						OSVersion:    man.GetDescriptor().Platform.OSVersion,
+						OSFeatures:   man.GetDescriptor().Platform.OSFeatures,
+						Variant:      man.GetDescriptor().Platform.Variant,
+					}
 					if !service.shouldIncludePlatform(platform) {
 						platformDesc := platform.Architecture
 						if platform.OS != "" {
