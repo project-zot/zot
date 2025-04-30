@@ -3,6 +3,7 @@ package types
 import (
 	"context"
 	"io"
+	"net/http"
 	"time"
 
 	storagedriver "github.com/distribution/distribution/v3/registry/storage/driver"
@@ -53,6 +54,7 @@ type ImageStore interface { //nolint:interfacebloat
 	CheckBlob(repo string, digest godigest.Digest) (bool, int64, error)
 	StatBlob(repo string, digest godigest.Digest) (bool, int64, time.Time, error)
 	GetBlob(repo string, digest godigest.Digest, mediaType string) (io.ReadCloser, int64, error)
+	GetBlobURL(r *http.Request, repo string, digest godigest.Digest, mediaType string) (string, error)
 	GetBlobPartial(repo string, digest godigest.Digest, mediaType string, from, to int64,
 	) (io.ReadCloser, int64, int64, error)
 	DeleteBlob(repo string, digest godigest.Digest) error
@@ -75,6 +77,7 @@ type Driver interface { //nolint:interfacebloat
 	Name() string
 	EnsureDir(path string) error
 	DirExists(path string) bool
+	URLFor(request *http.Request, path string) (string, error)
 	Reader(path string, offset int64) (io.ReadCloser, error)
 	ReadFile(path string) ([]byte, error)
 	Delete(path string) error
