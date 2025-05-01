@@ -15,6 +15,17 @@ const (
 	NATS SinkType = "nats"
 )
 
+func IsSupportedSink(sinkType SinkType) bool {
+	supportedSinks := map[SinkType]struct{}{
+		HTTP: {},
+		NATS: {},
+	}
+
+	_, ok := supportedSinks[sinkType]
+
+	return ok
+}
+
 // Config holds configuration for the events extension.
 type Config struct {
 	Enable *bool

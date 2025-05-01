@@ -4,6 +4,8 @@ import (
 	"reflect"
 
 	"github.com/mitchellh/mapstructure"
+
+	zerr "zotregistry.dev/zot/errors"
 )
 
 // SinkConfigDecoderHook provides a mapstructure hook for decoding SinkConfig interfaces.
@@ -39,6 +41,10 @@ func SinkConfigDecoderHook() mapstructure.DecodeHookFunc {
 
 		if err := decoder.Decode(dataMap); err != nil {
 			return nil, err
+		}
+
+		if !IsSupportedSink(config.Type) {
+			return nil, zerr.ErrUnsupportedEventSink
 		}
 
 		return config, nil
