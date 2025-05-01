@@ -301,13 +301,6 @@ func (registry *DestinationRegistry) copyManifest(repo string, desc ispec.Descri
 					Str("repository", repo).
 					Str("reference", reference).
 					Msg("filtering manifest list by platforms")
-			} else if len(registry.config.Architectures) > 0 {
-				platformSpecs = registry.config.Architectures
-				registry.log.Info().
-					Strs("architectures", registry.config.Architectures).
-					Str("repository", repo).
-					Str("reference", reference).
-					Msg("filtering manifest list by architectures (deprecated)")
 			}
 		}
 
@@ -377,7 +370,7 @@ func (registry *DestinationRegistry) copyManifest(repo string, desc ispec.Descri
 
 		// If we've filtered the manifest list, we need to update it
 		if registry.config != nil &&
-			(len(registry.config.Architectures) > 0 || len(registry.config.Platforms) > 0) &&
+			len(registry.config.Platforms) > 0 &&
 			len(filteredManifests) != len(indexManifest.Manifests) && len(filteredManifests) > 0 {
 			// Create a new index with the filtered manifests
 			indexManifest.Manifests = filteredManifests

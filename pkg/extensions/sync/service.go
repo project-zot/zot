@@ -451,7 +451,7 @@ func (service *BaseService) SyncRepo(ctx context.Context, repo string) error {
 }
 
 // shouldIncludePlatform determines if a platform should be included in the sync
-// based on the configured platforms or architectures
+// based on the configured platforms
 func (service *BaseService) shouldIncludePlatform(platform *ispec.Platform) bool {
 	// Get platform specifications from the configuration
 	var platformSpecs []string
@@ -459,11 +459,8 @@ func (service *BaseService) shouldIncludePlatform(platform *ispec.Platform) bool
 	// Check if we have platform specifications
 	if len(service.config.Platforms) > 0 {
 		platformSpecs = service.config.Platforms
-	} else if len(service.config.Architectures) > 0 {
-		// Fall back to architectures for backward compatibility
-		platformSpecs = service.config.Architectures
 	} else {
-		// If no platforms or architectures are configured, include all
+		// If no platforms are configured, include all
 		return true
 	}
 
@@ -503,30 +500,15 @@ func (service *BaseService) shouldIncludePlatform(platform *ispec.Platform) bool
 }
 
 // shouldIncludeArchitecture determines if an architecture should be included in the sync
-// based on the configured architectures (if any)
 // DEPRECATED: Use shouldIncludePlatform instead
 func (service *BaseService) shouldIncludeArchitecture(arch string) bool {
-	// If no architectures are configured, include all architectures
-	if len(service.config.Architectures) > 0 && len(service.config.Platforms) == 0 {
-		// Check if the architecture is in the configured list
-		for _, configArch := range service.config.Architectures {
-			if configArch == arch {
-				return true
-			}
-		}
-		return false
+	// Create a platform with just the architecture field
+	platform := &ispec.Platform{
+		Architecture: arch,
 	}
 
-	// When using the Platforms field, we need a different check
-	if len(service.config.Platforms) > 0 {
-		platform := &ispec.Platform{
-			Architecture: arch,
-		}
-		return service.shouldIncludePlatform(platform)
-	}
-
-	// No filters configured, include all
-	return true
+	// Use the platform-based filtering method
+	return service.shouldIncludePlatform(platform)
 }
 
 func (service *BaseService) syncRef(ctx context.Context, localRepo string, remoteImageRef, localImageRef ref.Ref,
@@ -558,11 +540,6 @@ func (service *BaseService) syncRef(ctx context.Context, localRepo string, remot
 			Strs("platforms", service.config.Platforms).
 			Str("image", remoteImageRef.CommonName()).
 			Msg("filtering platforms during sync")
-	} else if len(service.config.Architectures) > 0 {
-		service.log.Info().
-			Strs("architectures", service.config.Architectures).
-			Str("image", remoteImageRef.CommonName()).
-			Msg("filtering architectures during sync (deprecated)")
 	}
 
 	// check if image is already synced
@@ -577,8 +554,8 @@ func (service *BaseService) syncRef(ctx context.Context, localRepo string, remot
 		service.log.Info().Str("remote image", remoteImageRef.CommonName()).
 			Str("local image", fmt.Sprintf("%s:%s", localRepo, remoteImageRef.Tag)).Msg("syncing image")
 
-		// When architectures are specified, we need to filter the manifest list
-		if len(service.config.Architectures) > 0 {
+		// When platforms are specified, we need to filter the manifest list
+		if len(service.config.Platforms) > 0 {
 			// Get the manifest to check if it's a manifest list
 			man, err := service.rc.ManifestGet(ctx, remoteImageRef)
 			if err != nil {
@@ -593,7 +570,7 @@ func (service *BaseService) syncRef(ctx context.Context, localRepo string, remot
 			if isIndexer {
 				service.log.Info().
 					Str("remote image", remoteImageRef.CommonName()).
-					Msg("filtering architectures for multi-arch image")
+					Msg("filtering platforms for multi-arch image")
 
 				// Use ImageCopy with the architecture filtering options
 				err = service.rc.ImageCopy(ctx, remoteImageRef, localImageRef, copyOpts...)
