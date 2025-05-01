@@ -1,6 +1,17 @@
-# Test suite for platform filtering during sync operations
-# Verifies the behavior of the Architectures and Platforms fields in RegistryConfig
-# Platforms supports both architecture-only ("amd64") and OS/architecture ("linux/amd64") formats
+# Test suite for architecture and platform filtering during sync operations
+# 
+# This file tests two related filtering parameters in RegistryConfig:
+#
+# 1. "architectures": Filters by architecture only (e.g., "amd64", "arm64")
+#    Example: "architectures": ["amd64"]
+#
+# 2. "platforms": Supports both architecture-only and OS/architecture formats
+#    Example: "platforms": ["amd64"] (architecture-only format)
+#    Example: "platforms": ["linux/amd64"] (OS/architecture format)
+#
+# Both parameters allow selective syncing of multi-architecture images based on
+# the architecture and/or OS platform, reducing storage and bandwidth requirements.
+
 load helpers_zot
 load helpers_wait
 
@@ -112,7 +123,7 @@ EOF
 }
 EOF
 
-    # Create config for non-filtered registry (no architecture filter)
+    # Create config for non-filtered registry (no architecture/platform filter)
     cat >${zot_no_filter_config} <<EOF
 {
     "distSpecVersion": "1.1.1",
@@ -203,7 +214,11 @@ function teardown_file() {
     zot_stop_all
 }
 
-# Test syncing a multi-architecture image with architecture filtering
+# Group 1: Basic Filtering Tests
+# These tests verify the core functionality of architecture and platform filtering
+
+# Test 1: Basic architecture filtering (amd64 only)
+# Verifies that architecture filtering correctly syncs only the specified architectures
 @test "sync multi-architecture image with architecture filtering" {
     # Get ports for our registries
     zot_source_port=$(cat ${BATS_FILE_TMPDIR}/zot.source.port)
@@ -261,8 +276,41 @@ function teardown_file() {
     [ "$no_filter_manifests_count" -eq "$source_manifests_count" ]
 }
 
-# Test syncing a single-architecture image with architecture filtering
-@test "sync single-architecture image with architecture filtering" {
+# Test 2: Basic platform filtering (linux/amd64 only)
+# Verifies that platform filtering with OS+arch works correctly
+@test "sync multi-architecture image with platform filtering" {
+    # Get ports for our registries
+    zot_source_port=$(cat ${BATS_FILE_TMPDIR}/zot.source.port)
+    zot_platform_filter_port=$(cat ${BATS_FILE_TMPDIR}/zot.platform_filter.port)
+    zot_no_filter_port=$(cat ${BATS_FILE_TMPDIR}/zot.no_filter.port)
+    
+    # We're using the busybox image pushed in the previous test
+    
+    # Wait for sync to happen
+    run sleep 15s
+    
+    # Verify image exists in the platform-filtered registry
+    run curl http://localhost:${zot_platform_filter_port}/v2/_catalog
+    [ "$status" -eq 0 ]
+    [ $(echo "${lines[-1]}" | jq '.repositories | contains(["busybox"])') = "true" ]
+    
+    # Get manifest from platform-filtered registry
+    run curl -s http://localhost:${zot_platform_filter_port}/v2/busybox/manifests/latest -H "Accept: application/vnd.oci.image.index.v1+json"
+    [ "$status" -eq 0 ]
+    filtered_manifests_count=$(echo "${lines[-1]}" | jq '.manifests | length')
+    
+    # Count architectures in platform-filtered registry
+    linux_amd64_count=$(echo "${lines[-1]}" | jq '[.manifests[] | select(.platform.architecture == "amd64" and .platform.os == "linux")] | length')
+    other_count=$(echo "${lines[-1]}" | jq '[.manifests[] | select(.platform.architecture != "amd64" or .platform.os != "linux")] | length')
+    
+    # Verify only linux/amd64 platform was synced
+    [ "$linux_amd64_count" -eq "$filtered_manifests_count" ]
+    [ "$other_count" -eq 0 ]
+}
+
+# Test 3: Testing with single-architecture images
+# Verifies filtering behavior with non-multi-arch repositories
+@test "sync single-architecture images with filtering" {
     # Get ports for our registries
     zot_source_port=$(cat ${BATS_FILE_TMPDIR}/zot.source.port)
     zot_arch_filter_port=$(cat ${BATS_FILE_TMPDIR}/zot.arch_filter.port)
@@ -274,7 +322,7 @@ function teardown_file() {
         docker://localhost:${zot_source_port}/alpine-amd64:latest
     [ "$status" -eq 0 ]
     
-    # Push ARM64 image (assume we can find one, or use a dummy if needed)
+    # Push ARM64 image (for testing purposes, we'll also use alpine, but with a different name)
     run skopeo --insecure-policy copy --dest-tls-verify=false \
         docker://public.ecr.aws/docker/library/alpine:latest \
         docker://localhost:${zot_source_port}/alpine-arm64:latest
@@ -301,13 +349,16 @@ function teardown_file() {
     # Check if the ARM64 image was synced only to the non-filtered registry
     # This is a slight simplification since we can't guarantee the actual architecture of the alpine image,
     # but in a real environment with known architecture images, this would work correctly.
-    # We could improve this test by checking the actual architecture in the config blob.
     run curl http://localhost:${zot_no_filter_port}/v2/_catalog
     [ "$status" -eq 0 ]
     [ $(echo "${lines[-1]}" | jq '.repositories | contains(["alpine-arm64"])') = "true" ]
 }
 
-# Test syncing multiple architectures with multiple architecture filtering
+# Group 2: Multiple Architecture/Platform Filtering Tests
+# These tests verify more complex filtering scenarios with multiple architectures/platforms
+
+# Test 4: Multiple architecture filtering
+# Verifies that multiple architectures can be specified in the filter
 @test "sync with multiple architectures in filter" {
     # Get ports for our registries
     zot_source_port=$(cat ${BATS_FILE_TMPDIR}/zot.source.port)
@@ -382,29 +433,109 @@ EOF
     [ "$total_arch_count" -eq "$total_manifest_count" ]
 }
 
-# Test on-demand sync with architecture filtering
+# Test 5: Multiple platform filtering
+# Verifies that multiple platforms can be specified in the filter
+@test "sync with multiple platforms in filter" {
+    # Get ports for our registries
+    zot_source_port=$(cat ${BATS_FILE_TMPDIR}/zot.source.port)
+    
+    # Create a new registry with both amd64 and arm64 platform filters
+    local zot_multi_platform_filter_dir=${BATS_FILE_TMPDIR}/zot-multi-platform-filter
+    local zot_multi_platform_filter_config=${BATS_FILE_TMPDIR}/zot_multi_platform_filter_config.json
+    mkdir -p ${zot_multi_platform_filter_dir}
+    
+    zot_multi_platform_filter_port=$(get_free_port)
+    echo ${zot_multi_platform_filter_port} > ${BATS_FILE_TMPDIR}/zot.multi_platform_filter.port
+    
+    # Create config for multi-platform filtered registry (with amd64 and arm64)
+    cat >${zot_multi_platform_filter_config} <<EOF
+{
+    "distSpecVersion": "1.1.1",
+    "storage": {
+        "rootDirectory": "${zot_multi_platform_filter_dir}"
+    },
+    "http": {
+        "address": "0.0.0.0",
+        "port": "${zot_multi_platform_filter_port}"
+    },
+    "log": {
+        "level": "debug"
+    },
+    "extensions": {
+        "sync": {
+            "registries": [
+                {
+                    "urls": [
+                        "http://localhost:${zot_source_port}"
+                    ],
+                    "onDemand": false,
+                    "tlsVerify": false,
+                    "PollInterval": "10s",
+                    "platforms": ["amd64", "linux/arm64"],
+                    "content": [
+                        {
+                            "prefix": "**"
+                        }
+                    ]
+                }
+            ]
+        }
+    }
+}
+EOF
+
+    zot_serve ${ZOT_PATH} ${zot_multi_platform_filter_config}
+    wait_zot_reachable ${zot_multi_platform_filter_port}
+    
+    # Wait for sync to happen
+    run sleep 15s
+    
+    # Get manifest from multi-platform filtered registry
+    run curl -s http://localhost:${zot_multi_platform_filter_port}/v2/busybox/manifests/latest -H "Accept: application/vnd.oci.image.index.v1+json"
+    [ "$status" -eq 0 ]
+    
+    # Check that both amd64 and arm64 architectures are present in the manifest list
+    amd64_count=$(echo "${lines[-1]}" | jq '[.manifests[] | select(.platform.architecture == "amd64")] | length')
+    arm64_count=$(echo "${lines[-1]}" | jq '[.manifests[] | select(.platform.architecture == "arm64")] | length')
+    
+    # Verify both amd64 and arm64 architectures are included
+    [ "$amd64_count" -gt 0 ]
+    [ "$arm64_count" -gt 0 ]
+    
+    # Check no other architectures are included
+    total_arch_count=$(( amd64_count + arm64_count ))
+    total_manifest_count=$(echo "${lines[-1]}" | jq '.manifests | length')
+    
+    [ "$total_arch_count" -eq "$total_manifest_count" ]
+}
+
+# Group 3: On-Demand Sync Tests
+# These tests verify that filtering works correctly with on-demand sync configurations
+
+# Test 6: On-demand sync with architecture filtering
+# Verifies that architecture filtering works with on-demand sync
 @test "on-demand sync with architecture filtering" {
     # Get ports for our registries
     zot_source_port=$(cat ${BATS_FILE_TMPDIR}/zot.source.port)
     
     # Create a new on-demand registry with architecture filter
-    local zot_ondemand_filter_dir=${BATS_FILE_TMPDIR}/zot-ondemand-filter
-    local zot_ondemand_filter_config=${BATS_FILE_TMPDIR}/zot_ondemand_filter_config.json
-    mkdir -p ${zot_ondemand_filter_dir}
+    local zot_ondemand_arch_filter_dir=${BATS_FILE_TMPDIR}/zot-ondemand-arch-filter
+    local zot_ondemand_arch_filter_config=${BATS_FILE_TMPDIR}/zot_ondemand_arch_filter_config.json
+    mkdir -p ${zot_ondemand_arch_filter_dir}
     
-    zot_ondemand_filter_port=$(get_free_port)
-    echo ${zot_ondemand_filter_port} > ${BATS_FILE_TMPDIR}/zot.ondemand_filter.port
+    zot_ondemand_arch_filter_port=$(get_free_port)
+    echo ${zot_ondemand_arch_filter_port} > ${BATS_FILE_TMPDIR}/zot.ondemand_arch_filter.port
     
     # Create config for on-demand architecture filtered registry (with amd64 only)
-    cat >${zot_ondemand_filter_config} <<EOF
+    cat >${zot_ondemand_arch_filter_config} <<EOF
 {
     "distSpecVersion": "1.1.1",
     "storage": {
-        "rootDirectory": "${zot_ondemand_filter_dir}"
+        "rootDirectory": "${zot_ondemand_arch_filter_dir}"
     },
     "http": {
         "address": "0.0.0.0",
-        "port": "${zot_ondemand_filter_port}"
+        "port": "${zot_ondemand_arch_filter_port}"
     },
     "log": {
         "level": "debug"
@@ -431,18 +562,18 @@ EOF
 }
 EOF
 
-    zot_serve ${ZOT_PATH} ${zot_ondemand_filter_config}
-    wait_zot_reachable ${zot_ondemand_filter_port}
+    zot_serve ${ZOT_PATH} ${zot_ondemand_arch_filter_config}
+    wait_zot_reachable ${zot_ondemand_arch_filter_port}
     
     # Trigger on-demand sync by requesting the manifest
-    run curl http://localhost:${zot_ondemand_filter_port}/v2/busybox/manifests/latest
+    run curl http://localhost:${zot_ondemand_arch_filter_port}/v2/busybox/manifests/latest
     [ "$status" -eq 0 ]
     
     # Wait a moment for the sync to complete
     run sleep 5s
     
     # Get manifest from on-demand filtered registry
-    run curl -s http://localhost:${zot_ondemand_filter_port}/v2/busybox/manifests/latest -H "Accept: application/vnd.oci.image.index.v1+json"
+    run curl -s http://localhost:${zot_ondemand_arch_filter_port}/v2/busybox/manifests/latest -H "Accept: application/vnd.oci.image.index.v1+json"
     [ "$status" -eq 0 ]
     
     # Count architectures
@@ -454,16 +585,92 @@ EOF
     [ "$arm64_count" -eq 0 ]
 }
 
-# Test syncing with OS/architecture platform filtering
+# Test 7: On-demand sync with platform filtering
+# Verifies that platform filtering works with on-demand sync
+@test "on-demand sync with platform filtering" {
+    # Get ports for our registries
+    zot_source_port=$(cat ${BATS_FILE_TMPDIR}/zot.source.port)
+    
+    # Create a new on-demand registry with platform filter
+    local zot_ondemand_platform_filter_dir=${BATS_FILE_TMPDIR}/zot-ondemand-platform-filter
+    local zot_ondemand_platform_filter_config=${BATS_FILE_TMPDIR}/zot_ondemand_platform_filter_config.json
+    mkdir -p ${zot_ondemand_platform_filter_dir}
+    
+    zot_ondemand_platform_filter_port=$(get_free_port)
+    echo ${zot_ondemand_platform_filter_port} > ${BATS_FILE_TMPDIR}/zot.ondemand_platform_filter.port
+    
+    # Create config for on-demand platform filtered registry (with amd64 only)
+    cat >${zot_ondemand_platform_filter_config} <<EOF
+{
+    "distSpecVersion": "1.1.1",
+    "storage": {
+        "rootDirectory": "${zot_ondemand_platform_filter_dir}"
+    },
+    "http": {
+        "address": "0.0.0.0",
+        "port": "${zot_ondemand_platform_filter_port}"
+    },
+    "log": {
+        "level": "debug"
+    },
+    "extensions": {
+        "sync": {
+            "registries": [
+                {
+                    "urls": [
+                        "http://localhost:${zot_source_port}"
+                    ],
+                    "onDemand": true,
+                    "tlsVerify": false,
+                    "platforms": ["amd64"],
+                    "content": [
+                        {
+                            "prefix": "**"
+                        }
+                    ]
+                }
+            ]
+        }
+    }
+}
+EOF
+
+    zot_serve ${ZOT_PATH} ${zot_ondemand_platform_filter_config}
+    wait_zot_reachable ${zot_ondemand_platform_filter_port}
+    
+    # Trigger on-demand sync by requesting the manifest
+    run curl http://localhost:${zot_ondemand_platform_filter_port}/v2/busybox/manifests/latest
+    [ "$status" -eq 0 ]
+    
+    # Wait a moment for the sync to complete
+    run sleep 5s
+    
+    # Get manifest from on-demand filtered registry
+    run curl -s http://localhost:${zot_ondemand_platform_filter_port}/v2/busybox/manifests/latest -H "Accept: application/vnd.oci.image.index.v1+json"
+    [ "$status" -eq 0 ]
+    
+    # Count architectures
+    amd64_count=$(echo "${lines[-1]}" | jq '[.manifests[] | select(.platform.architecture == "amd64")] | length')
+    arm64_count=$(echo "${lines[-1]}" | jq '[.manifests[] | select(.platform.architecture == "arm64")] | length')
+    
+    # Verify only amd64 architecture was synced to the filtered registry
+    [ "$amd64_count" -gt 0 ]
+    [ "$arm64_count" -eq 0 ]
+}
+
+# Group 4: Advanced Filtering Tests
+# These tests verify more complex filtering scenarios with OS specificity and mixed formats
+
+# Test 8: OS/architecture specific platform filtering
+# Verifies that filtering works with specific OS/architecture combinations
 @test "sync with OS/architecture platform filtering" {
     # Get ports for our registries
     zot_source_port=$(cat ${BATS_FILE_TMPDIR}/zot.source.port)
     zot_platform_filter_port=$(cat ${BATS_FILE_TMPDIR}/zot.platform_filter.port)
     
-    # Push a multi-architecture image to the source registry if not already there
     # We'll use busybox which should already be there from previous tests
     
-    # Wait for sync to happen
+    # Wait for sync to happen if needed
     run sleep 15s
     
     # Verify image exists in platform-filtered registry
@@ -484,7 +691,8 @@ EOF
     [ "$other_count" -eq 0 ]
 }
 
-# Test syncing with mixed architecture-only and OS/architecture filtering
+# Test 9: Mixed format filtering (architecture-only and OS/architecture)
+# Verifies that both architecture-only and OS/architecture formats can be used together
 @test "sync with mixed architecture and platform filtering" {
     # Get ports for our registries
     zot_source_port=$(cat ${BATS_FILE_TMPDIR}/zot.source.port)
@@ -555,7 +763,8 @@ EOF
     [ "$other_arm64_count" -eq 0 ]
 }
 
-# Test OS/architecture filtering with specific OS exclusion
+# Test 10: OS exclusion in platform filtering
+# Verifies that specifying only certain OS platforms excludes others (like Windows)
 @test "sync with OS exclusion in platform filtering" {
     # Get ports for our registries
     zot_source_port=$(cat ${BATS_FILE_TMPDIR}/zot.source.port)
@@ -568,7 +777,7 @@ EOF
     zot_os_filter_port=$(get_free_port)
     echo ${zot_os_filter_port} > ${BATS_FILE_TMPDIR}/zot.os_filter.port
     
-    # Create config for OS filtered registry
+    # Create config for OS filtered registry - only including Linux platforms
     cat >${zot_os_filter_config} <<EOF
 {
     "distSpecVersion": "1.1.1",
@@ -613,7 +822,6 @@ EOF
     
     # First, create a Windows multi-arch image if it doesn't exist yet
     # Here we'll use a windows image from MCR. If this fails, we can skip further tests.
-    # This could be improved in a real environment with a more controlled test image.
     
     # Push a Windows sample image to our source
     run skopeo --insecure-policy copy --format=oci --dest-tls-verify=false \
@@ -652,4 +860,84 @@ EOF
             fi
         fi
     fi
+}
+
+# Test 11: Using both architectures and platforms parameters together
+# Verifies that when both parameters are used, they are combined with logical OR
+@test "sync with both architectures and platforms parameters" {
+    # Get ports for our registries
+    zot_source_port=$(cat ${BATS_FILE_TMPDIR}/zot.source.port)
+    
+    # Create a new registry with both parameters
+    local zot_both_params_dir=${BATS_FILE_TMPDIR}/zot-both-params
+    local zot_both_params_config=${BATS_FILE_TMPDIR}/zot_both_params_config.json
+    mkdir -p ${zot_both_params_dir}
+    
+    zot_both_params_port=$(get_free_port)
+    echo ${zot_both_params_port} > ${BATS_FILE_TMPDIR}/zot.both_params.port
+    
+    # Create config with both architectures and platforms parameters
+    # When both are specified, they should be combined with logical OR
+    cat >${zot_both_params_config} <<EOF
+{
+    "distSpecVersion": "1.1.1",
+    "storage": {
+        "rootDirectory": "${zot_both_params_dir}"
+    },
+    "http": {
+        "address": "0.0.0.0",
+        "port": "${zot_both_params_port}"
+    },
+    "log": {
+        "level": "debug"
+    },
+    "extensions": {
+        "sync": {
+            "registries": [
+                {
+                    "urls": [
+                        "http://localhost:${zot_source_port}"
+                    ],
+                    "onDemand": false,
+                    "tlsVerify": false,
+                    "PollInterval": "10s",
+                    "architectures": ["arm64"],
+                    "platforms": ["linux/amd64"],
+                    "content": [
+                        {
+                            "prefix": "**"
+                        }
+                    ]
+                }
+            ]
+        }
+    }
+}
+EOF
+
+    zot_serve ${ZOT_PATH} ${zot_both_params_config}
+    wait_zot_reachable ${zot_both_params_port}
+    
+    # Wait for sync to happen
+    run sleep 15s
+    
+    # Get manifest from the registry with both parameters
+    run curl -s http://localhost:${zot_both_params_port}/v2/busybox/manifests/latest -H "Accept: application/vnd.oci.image.index.v1+json"
+    [ "$status" -eq 0 ]
+    
+    # Count specific architectures
+    linux_amd64_count=$(echo "${lines[-1]}" | jq '[.manifests[] | select(.platform.architecture == "amd64" and .platform.os == "linux")] | length')
+    arm64_count=$(echo "${lines[-1]}" | jq '[.manifests[] | select(.platform.architecture == "arm64")] | length')
+    other_count=$(echo "${lines[-1]}" | jq '[.manifests[] | select(.platform.architecture != "amd64" and .platform.architecture != "arm64")] | length')
+    
+    # Verify both specified architectures were synced (logical OR)
+    [ "$linux_amd64_count" -gt 0 ]
+    [ "$arm64_count" -gt 0 ]
+    [ "$other_count" -eq 0 ]
+    
+    # Verify total manifests is the sum of the two architecture counts
+    total_filtered_manifests=$(( linux_amd64_count + arm64_count ))
+    total_manifest_count=$(echo "${lines[-1]}" | jq '.manifests | length')
+    
+    [ "$total_filtered_manifests" -eq "$total_manifest_count" ]
 }
