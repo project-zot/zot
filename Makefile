@@ -562,7 +562,7 @@ $(STACKER): check-linux
 
 $(COSIGN):
 	mkdir -p $(TOOLSDIR)/bin
-	curl -fsSL https://github.com/sigstore/cosign/releases/download/v$(COSIGN_VERSION)/cosign-linux-$(ARCH) -o $@; \
+	curl -fsSL https://github.com/sigstore/cosign/releases/download/v$(COSIGN_VERSION)/cosign-$(OS)-$(ARCH) -o $@; \
 	chmod +x $@
 
 # set ZUI_VERSION to empty string in order to clone zui locally and build default branch

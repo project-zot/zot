@@ -60,6 +60,7 @@ func (r eventRecorder) RepositoryCreated(name string) {
 		Build()
 	if err != nil {
 		r.log.Warn().Err(err).Msg("failed to create event")
+
 		return
 	}
 
@@ -77,6 +78,7 @@ func (r eventRecorder) ImageUpdated(name, reference, digest, mediaType, manifest
 		Build()
 	if err != nil {
 		r.log.Warn().Err(err).Msg("failed to create event")
+
 		return
 	}
 
@@ -93,6 +95,7 @@ func (r eventRecorder) ImageDeleted(name, reference, digest, mediaType string) {
 		Build()
 	if err != nil {
 		r.log.Warn().Err(err).Msg("failed to create event")
+
 		return
 	}
 
@@ -110,6 +113,7 @@ func (r eventRecorder) ImageLintFailed(name, reference, digest, mediaType, manif
 		Build()
 	if err != nil {
 		r.log.Warn().Err(err).Msg("failed to create event")
+
 		return
 	}
 
