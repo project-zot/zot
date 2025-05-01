@@ -22,8 +22,11 @@ type eventRecorder struct {
 
 var _ Recorder = (*eventRecorder)(nil)
 
-func (r eventRecorder) Close() error {
-	return r.closeSinks()
+func (r eventRecorder) Close() {
+	err := r.closeSinks()
+	if err != nil {
+		r.log.Error().Err(err).Msg("failed to close sinks")
+	}
 }
 
 func (r eventRecorder) closeSinks() error {
@@ -38,33 +41,32 @@ func (r eventRecorder) closeSinks() error {
 	return retErr
 }
 
-func (r eventRecorder) publish(event *cloudevents.Event) error {
-	for _, sink := range r.sinks {
-		if response := sink.Emit(event); cloudevents.IsNACK(response) || cloudevents.IsUndelivered(response) {
-			r.log.Error().Err(response).Msg("failed to publish event")
-
-			return response
+func (r eventRecorder) publish(event *cloudevents.Event) {
+	go func() {
+		for _, sink := range r.sinks {
+			if response := sink.Emit(event); cloudevents.IsNACK(response) || cloudevents.IsUndelivered(response) {
+				r.log.Error().Err(response).Msg("failed to publish event")
+			}
 		}
-	}
 
-	r.log.Info().Msgf("event published successfully: %s", event.Type())
-
-	return nil
+		r.log.Info().Msgf("event published successfully: %s", event.Type())
+	}()
 }
 
-func (r eventRecorder) RepositoryCreated(name string) error {
+func (r eventRecorder) RepositoryCreated(name string) {
 	event, err := newEventBuilder().
 		WithEventType(RepositoryCreatedEventType).
 		WithDataField("name", name).
 		Build()
 	if err != nil {
-		return err
+		r.log.Warn().Err(err).Msg("failed to create event")
+		return
 	}
 
-	return r.publish(event)
+	r.publish(event)
 }
 
-func (r eventRecorder) ImageUpdated(name, reference, digest, mediaType, manifest string) error {
+func (r eventRecorder) ImageUpdated(name, reference, digest, mediaType, manifest string) {
 	event, err := newEventBuilder().
 		WithEventType(ImageUpdatedEventType).
 		WithDataField("name", name).
@@ -74,13 +76,14 @@ func (r eventRecorder) ImageUpdated(name, reference, digest, mediaType, manifest
 		WithDataField("manifest", manifest).
 		Build()
 	if err != nil {
-		return err
+		r.log.Warn().Err(err).Msg("failed to create event")
+		return
 	}
 
-	return r.publish(event)
+	r.publish(event)
 }
 
-func (r eventRecorder) ImageDeleted(name, reference, digest, mediaType string) error {
+func (r eventRecorder) ImageDeleted(name, reference, digest, mediaType string) {
 	event, err := newEventBuilder().
 		WithEventType(ImageDeletedEventType).
 		WithDataField("name", name).
@@ -89,13 +92,14 @@ func (r eventRecorder) ImageDeleted(name, reference, digest, mediaType string) e
 		WithDataField("mediaType", mediaType).
 		Build()
 	if err != nil {
-		return err
+		r.log.Warn().Err(err).Msg("failed to create event")
+		return
 	}
 
-	return r.publish(event)
+	r.publish(event)
 }
 
-func (r eventRecorder) ImageLintFailed(name, reference, digest, mediaType, manifest string) error {
+func (r eventRecorder) ImageLintFailed(name, reference, digest, mediaType, manifest string) {
 	event, err := newEventBuilder().
 		WithEventType(ImageLintFailedEventType).
 		WithDataField("name", name).
@@ -105,10 +109,11 @@ func (r eventRecorder) ImageLintFailed(name, reference, digest, mediaType, manif
 		WithDataField("manifest", manifest).
 		Build()
 	if err != nil {
-		return err
+		r.log.Warn().Err(err).Msg("failed to create event")
+		return
 	}
 
-	return r.publish(event)
+	r.publish(event)
 }
 
 func getTLSConfig(config eventsconf.SinkConfig) (*tls.Config, error) {

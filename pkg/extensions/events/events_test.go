@@ -25,11 +25,11 @@ import (
 )
 
 type mockSink struct {
-	store map[string]int
+	store chan *cloudevents.Event
 }
 
 func (s *mockSink) Emit(e *cloudevents.Event) cloudevents.Result {
-	s.store[e.Type()] += 1
+	s.store <- e
 
 	return nil
 }
@@ -42,7 +42,7 @@ var _ events.Sink = (*mockSink)(nil)
 
 func newMockSink() *mockSink {
 	return &mockSink{
-		store: make(map[string]int),
+		store: make(chan *cloudevents.Event),
 	}
 }
 
@@ -60,24 +60,24 @@ func TestEvents(t *testing.T) {
 		recorder, err := events.NewRecorder(log.NewLogger("debug", ""), sink)
 		So(err, ShouldBeNil)
 		Convey("repository created", func() {
-			err = recorder.RepositoryCreated("test")
-			So(err, ShouldBeNil)
-			So(sink.store[events.RepositoryCreatedEventType.String()], ShouldEqual, 1)
+			recorder.RepositoryCreated("test")
+			ev := <-sink.store
+			So(ev.Type(), ShouldEqual, events.RepositoryCreatedEventType.String())
 		})
 		Convey("image updated", func() {
-			err = recorder.ImageUpdated("test", "v1", "", string(types.OCIManifestSchema1), "")
-			So(err, ShouldBeNil)
-			So(sink.store[events.ImageUpdatedEventType.String()], ShouldEqual, 1)
+			recorder.ImageUpdated("test", "v1", "", string(types.OCIManifestSchema1), "")
+			ev := <-sink.store
+			So(ev.Type(), ShouldEqual, events.ImageUpdatedEventType.String())
 		})
 		Convey("image deleted", func() {
-			err = recorder.ImageDeleted("test", "v1", "", string(types.OCIManifestSchema1))
-			So(err, ShouldBeNil)
-			So(sink.store[events.ImageDeletedEventType.String()], ShouldEqual, 1)
+			recorder.ImageDeleted("test", "v1", "", string(types.OCIManifestSchema1))
+			ev := <-sink.store
+			So(ev.Type(), ShouldEqual, events.ImageDeletedEventType.String())
 		})
 		Convey("image lint failed", func() {
-			err = recorder.ImageLintFailed("test", "v1", "", string(types.OCIManifestSchema1), "")
-			So(err, ShouldBeNil)
-			So(sink.store[events.ImageLintFailedEventType.String()], ShouldEqual, 1)
+			recorder.ImageLintFailed("test", "v1", "", string(types.OCIManifestSchema1), "")
+			ev := <-sink.store
+			So(ev.Type(), ShouldEqual, events.ImageLintFailedEventType.String())
 		})
 	})
 }
@@ -112,32 +112,28 @@ func TestHTTPSinkEvents(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		Convey("repository created", func() {
-			err = recorder.RepositoryCreated("test")
-			So(err, ShouldBeNil)
+			recorder.RepositoryCreated("test")
 			e := getEvent(t, eventChan)
 			So(e, ShouldNotBeNil)
 			So(e.Type(), ShouldEqual, events.RepositoryCreatedEventType.String())
 		})
 
 		Convey("image updated", func() {
-			err = recorder.ImageUpdated("test", "v1", "", string(types.OCIManifestSchema1), "")
-			So(err, ShouldBeNil)
+			recorder.ImageUpdated("test", "v1", "", string(types.OCIManifestSchema1), "")
 			e := getEvent(t, eventChan)
 			So(e, ShouldNotBeNil)
 			So(e.Type(), ShouldEqual, events.ImageUpdatedEventType.String())
 		})
 
 		Convey("image deleted", func() {
-			err = recorder.ImageDeleted("test", "v1", "", string(types.OCIManifestSchema1))
-			So(err, ShouldBeNil)
+			recorder.ImageDeleted("test", "v1", "", string(types.OCIManifestSchema1))
 			e := getEvent(t, eventChan)
 			So(e, ShouldNotBeNil)
 			So(e.Type(), ShouldEqual, events.ImageDeletedEventType.String())
 		})
 
 		Convey("image lint failed", func() {
-			err = recorder.ImageLintFailed("test", "v1", "", string(types.OCIManifestSchema1), "")
-			So(err, ShouldBeNil)
+			recorder.ImageLintFailed("test", "v1", "", string(types.OCIManifestSchema1), "")
 			e := getEvent(t, eventChan)
 			So(e, ShouldNotBeNil)
 			So(e.Type(), ShouldEqual, events.ImageLintFailedEventType.String())
@@ -163,8 +159,7 @@ func TestNATSSinkEvents(t *testing.T) {
 			defer nc.Close()
 			So(err, ShouldBeNil)
 
-			err = recorder.RepositoryCreated("test")
-			So(err, ShouldBeNil)
+			recorder.RepositoryCreated("test")
 
 			e := getEvent(t, eventChan)
 			So(e, ShouldNotBeNil)
@@ -187,8 +182,7 @@ func TestNATSSinkEvents(t *testing.T) {
 			defer nc.Close()
 			So(err, ShouldBeNil)
 
-			err = recorder.ImageUpdated("test", "v1", "", string(types.OCIManifestSchema1), "")
-			So(err, ShouldBeNil)
+			recorder.ImageUpdated("test", "v1", "", string(types.OCIManifestSchema1), "")
 
 			e := getEvent(t, eventChan)
 			So(e, ShouldNotBeNil)
@@ -211,8 +205,7 @@ func TestNATSSinkEvents(t *testing.T) {
 			defer recorder.Close()
 			So(err, ShouldBeNil)
 
-			err = recorder.ImageDeleted("test", "v1", "", string(types.OCIManifestSchema1))
-			So(err, ShouldBeNil)
+			recorder.ImageDeleted("test", "v1", "", string(types.OCIManifestSchema1))
 
 			e := getEvent(t, eventChan)
 			So(e, ShouldNotBeNil)
@@ -235,8 +228,7 @@ func TestNATSSinkEvents(t *testing.T) {
 			defer nc.Close()
 			So(err, ShouldBeNil)
 
-			err = recorder.ImageLintFailed("test", "v1", "", string(types.OCIManifestSchema1), "")
-			So(err, ShouldBeNil)
+			recorder.ImageLintFailed("test", "v1", "", string(types.OCIManifestSchema1), "")
 
 			e := getEvent(t, eventChan)
 			So(e, ShouldNotBeNil)
