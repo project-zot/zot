@@ -508,14 +508,6 @@ require (
 	golang.org/x/text v0.24.0 // indirect
 	golang.org/x/time v0.11.0 // indirect
 	golang.org/x/tools v0.32.0 // indirect
-	golang.org/x/time v0.11.0 // indirect
-	github.com/google/go-tpm v0.9.3 // indirect
-	github.com/klauspost/compress v1.18.0 // indirect
-	github.com/minio/highwayhash v1.0.3 // indirect
-	github.com/nats-io/jwt/v2 v2.7.3 // indirect
-	github.com/nats-io/nkeys v0.4.10 // indirect
-	github.com/nats-io/nuid v1.0.1 // indirect
-	golang.org/x/tools v0.31.0 // indirect
 	golang.org/x/xerrors v0.0.0-20240716161551-93cc26a95ae9 // indirect
 	google.golang.org/api v0.227.0 // indirect
 	google.golang.org/genproto v0.0.0-20250303144028-a0af3efb3deb // indirect

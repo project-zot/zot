@@ -31,7 +31,7 @@ func NewHTTPSink(config eventsconf.SinkConfig) (*HTTPSink, error) {
 	}
 
 	// Create the basic http client
-	httpClient, err := getHTTPClientForConfig(config)
+	httpClient, err := GetHTTPClientForConfig(config)
 	if err != nil {
 		return nil, err
 	}
@@ -43,7 +43,7 @@ func NewHTTPSink(config eventsconf.SinkConfig) (*HTTPSink, error) {
 
 	if config.Credentials != nil && config.Credentials.Username != "" {
 		opts = append(opts, cehttp.WithHeader("Authorization",
-			"Basic "+basicAuth(config.Credentials.Username, config.Credentials.Password)))
+			"Basic "+BasicAuth(config.Credentials.Username, config.Credentials.Password)))
 	}
 
 	// Create CloudEvents HTTP protocol
@@ -88,7 +88,7 @@ func (s *HTTPSink) Close() error {
 	return nil
 }
 
-func getHTTPClientForConfig(config eventsconf.SinkConfig) (*http.Client, error) {
+func GetHTTPClientForConfig(config eventsconf.SinkConfig) (*http.Client, error) {
 	transport, ok := http.DefaultTransport.(*http.Transport)
 	if !ok {
 		return nil, zerr.ErrCouldNotCreateHTTPEventTransport
@@ -123,7 +123,7 @@ func getHTTPClientForConfig(config eventsconf.SinkConfig) (*http.Client, error) 
 }
 
 // Helper function for basic auth encoding.
-func basicAuth(username, password string) string {
+func BasicAuth(username, password string) string {
 	auth := username + ":" + password
 
 	return base64.StdEncoding.EncodeToString([]byte(auth))

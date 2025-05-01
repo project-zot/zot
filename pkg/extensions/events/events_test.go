@@ -82,7 +82,7 @@ func TestEvents(t *testing.T) {
 	})
 }
 
-func TestHTTPSink(t *testing.T) {
+func TestHTTPSinkEvents(t *testing.T) {
 	Convey("emits events to http sink", t, func() {
 		eventChan := make(chan *cloudevents.Event, 1)
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -145,7 +145,7 @@ func TestHTTPSink(t *testing.T) {
 	})
 }
 
-func TestNATSSink(t *testing.T) {
+func TestNATSSinkEvents(t *testing.T) {
 	Convey("emits events to nats sink", t, func() {
 		Convey("repository created", func() {
 			natsServer, natsURL := setupTestNATSServer(t)

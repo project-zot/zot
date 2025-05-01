@@ -7,6 +7,8 @@ import (
 	. "github.com/smartystreets/goconvey/convey"
 
 	"zotregistry.dev/zot/pkg/api/config"
+	extconf "zotregistry.dev/zot/pkg/extensions/config"
+	"zotregistry.dev/zot/pkg/extensions/config/events"
 )
 
 func TestConfig(t *testing.T) {
@@ -128,5 +130,31 @@ func TestConfig(t *testing.T) {
 		conf.Storage.SubPaths = subPaths
 
 		So(conf.IsRetentionEnabled(), ShouldBeTrue)
+	})
+
+	Convey("Test IsEventRecorderEnabled()", t, func() {
+		conf := config.New()
+		So(conf.IsEventRecorderEnabled(), ShouldBeFalse)
+
+		// Enable the event recorder
+		enable := true
+		conf.Extensions = &extconf.ExtensionConfig{}
+		conf.Extensions.Events = &events.Config{
+			Enable: &enable,
+		}
+
+		So(conf.IsEventRecorderEnabled(), ShouldBeTrue)
+
+		// Disabled scenario
+		disable := false
+		conf.Extensions.Events.Enable = &disable
+		So(conf.IsEventRecorderEnabled(), ShouldBeFalse)
+
+		// nil pointers
+		conf.Extensions.Events = nil
+		So(conf.IsEventRecorderEnabled(), ShouldBeFalse)
+
+		conf.Extensions = nil
+		So(conf.IsEventRecorderEnabled(), ShouldBeFalse)
 	})
 }
