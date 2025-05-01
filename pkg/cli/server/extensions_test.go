@@ -13,6 +13,7 @@ import (
 	. "github.com/smartystreets/goconvey/convey"
 	"gopkg.in/resty.v1"
 
+	zerr "zotregistry.dev/zot/errors"
 	"zotregistry.dev/zot/pkg/api/config"
 	cli "zotregistry.dev/zot/pkg/cli/server"
 	. "zotregistry.dev/zot/pkg/test/common"
@@ -2013,19 +2014,12 @@ func TestEventsExtension(t *testing.T) {
 				}`
 
 		logPath, err := runCLIWithConfig(t.TempDir(), content)
-		So(err, ShouldBeNil)
-		defer os.Remove(logPath) // clean up
-
-		found, err := ReadLogFileAndSearchString(logPath,
-			"skipping unsupported sink type: unsupported", 10*time.Second)
-		So(err, ShouldBeNil)
-
-		if !found {
-			data, err := os.ReadFile(logPath)
-			So(err, ShouldBeNil)
-			t.Log(string(data))
-		}
-
-		So(found, ShouldBeTrue)
+		defer func(p string) {
+			if p != "" {
+				os.Remove(p)
+			}
+		}(logPath) // clean up
+		So(err, ShouldNotBeNil)
+		So(err.Error(), ShouldContainSubstring, zerr.ErrUnsupportedEventSink.Error())
 	})
 }
