@@ -30,17 +30,27 @@ import (
 	storageTypes "zotregistry.dev/zot/pkg/storage/types"
 )
 
-// Platform represents an OS/architecture combination
+// Platform represents an OS/architecture/variant combination
 type Platform struct {
 	OS           string
 	Architecture string
+	Variant      string
 }
 
 // ParsePlatform parses a platform string into a Platform struct
-// The string can be in the format "os/arch" or just "arch"
+// The string can be in the following formats:
+// - "arch" (e.g., "amd64")
+// - "os/arch" (e.g., "linux/amd64")
+// - "os/arch/variant" (e.g., "linux/arm/v7")
 func ParsePlatform(platform string) Platform {
 	parts := strings.Split(platform, "/")
-	if len(parts) == 2 {
+	if len(parts) == 3 {
+		return Platform{
+			OS:           parts[0],
+			Architecture: parts[1],
+			Variant:      parts[2],
+		}
+	} else if len(parts) == 2 {
 		return Platform{
 			OS:           parts[0],
 			Architecture: parts[1],
@@ -54,7 +64,7 @@ func ParsePlatform(platform string) Platform {
 }
 
 // MatchesPlatform checks if the given platform matches any of the platform specifications
-// Platform specs can be in format "os/arch" or just "arch"
+// Platform specs can be in format "os/arch/variant", "os/arch", or just "arch"
 func MatchesPlatform(platform *ispec.Platform, platformSpecs []string) bool {
 	if platform == nil || len(platformSpecs) == 0 {
 		return true
@@ -72,6 +82,12 @@ func MatchesPlatform(platform *ispec.Platform, platformSpecs []string) bool {
 		// Check if OS matches (if specified)
 		if specPlatform.OS != "" &&
 			specPlatform.OS != platform.OS {
+			continue
+		}
+
+		// Check if variant matches (if specified)
+		if specPlatform.Variant != "" && platform.Variant != "" &&
+			specPlatform.Variant != platform.Variant {
 			continue
 		}
 
@@ -315,6 +331,9 @@ func (registry *DestinationRegistry) copyManifest(repo string, desc ispec.Descri
 						platformDesc := manifest.Platform.Architecture
 						if manifest.Platform.OS != "" {
 							platformDesc = manifest.Platform.OS + "/" + manifest.Platform.Architecture
+							if manifest.Platform.Variant != "" {
+								platformDesc += "/" + manifest.Platform.Variant
+							}
 						}
 
 						registry.log.Info().
