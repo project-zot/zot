@@ -22,6 +22,7 @@ import (
 	zerr "zotregistry.dev/zot/errors"
 	zcommon "zotregistry.dev/zot/pkg/common"
 	"zotregistry.dev/zot/pkg/compat"
+	"zotregistry.dev/zot/pkg/extensions/events"
 	"zotregistry.dev/zot/pkg/extensions/monitoring"
 	syncConstants "zotregistry.dev/zot/pkg/extensions/sync/constants"
 	zlog "zotregistry.dev/zot/pkg/log"
@@ -45,6 +46,7 @@ type ImageStore struct {
 	lock        *sync.RWMutex
 	log         zlog.Logger
 	metrics     monitoring.MetricServer
+	events      events.Recorder
 	cache       storageTypes.Cache
 	dedupe      bool
 	linter      common.Lint
@@ -69,7 +71,7 @@ func (is *ImageStore) DirExists(d string) bool {
 // Use the last argument to properly set a cache database, or it will default to boltDB local storage.
 func NewImageStore(rootDir string, cacheDir string, dedupe, commit bool, log zlog.Logger,
 	metrics monitoring.MetricServer, linter common.Lint, storeDriver storageTypes.Driver,
-	cacheDriver storageTypes.Cache, compat []compat.MediaCompatibility,
+	cacheDriver storageTypes.Cache, compat []compat.MediaCompatibility, recorder events.Recorder,
 ) storageTypes.ImageStore {
 	if err := storeDriver.EnsureDir(rootDir); err != nil {
 		log.Error().Err(err).Str("rootDir", rootDir).Msg("failed to create root dir")
@@ -88,6 +90,7 @@ func NewImageStore(rootDir string, cacheDir string, dedupe, commit bool, log zlo
 		commit:      commit,
 		cache:       cacheDriver,
 		compat:      compat,
+		events:      recorder,
 	}
 
 	return imgStore
@@ -193,6 +196,10 @@ func (is *ImageStore) initRepo(name string) error {
 			is.log.Error().Err(err).Str("file", ilPath).Msg("failed to write file")
 
 			return err
+		}
+
+		if is.events != nil {
+			is.events.RepositoryCreated(name)
 		}
 	}
 
@@ -675,11 +682,19 @@ func (is *ImageStore) PutImageManifest(repo, reference, mediaType string, //noli
 		is.log.Error().Err(err).Str("repository", repo).Str("reference", reference).
 			Msg("linter didn't pass")
 
+		if is.events != nil {
+			is.events.ImageLintFailed(repo, reference, mDigest.String(), mediaType, string(body))
+		}
+
 		return "", "", err
 	}
 
 	if err := is.PutIndexContent(repo, index); err != nil {
 		return "", "", err
+	}
+
+	if is.events != nil {
+		is.events.ImageUpdated(repo, reference, mDigest.String(), mediaType, string(body))
 	}
 
 	return mDigest, subjectDigest, nil
@@ -777,6 +792,10 @@ func (is *ImageStore) deleteImageManifest(repo, reference string, detectCollisio
 		if err != nil {
 			return err
 		}
+	}
+
+	if is.events != nil {
+		is.events.ImageDeleted(repo, reference, manifestDesc.Digest.String(), manifestDesc.MediaType)
 	}
 
 	return nil

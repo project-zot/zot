@@ -19,7 +19,7 @@ func GetDefaultImageStore(rootDir string, log zLog.Logger) stypes.ImageStore {
 				return true, nil
 			},
 		},
-		mocks.CacheMock{}, nil,
+		mocks.CacheMock{}, nil, nil,
 	)
 }
 

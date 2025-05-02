@@ -3,6 +3,7 @@ package config
 import (
 	"time"
 
+	"zotregistry.dev/zot/pkg/extensions/config/events"
 	"zotregistry.dev/zot/pkg/extensions/config/sync"
 )
 
@@ -21,6 +22,7 @@ type ExtensionConfig struct {
 	Mgmt    *MgmtConfig
 	APIKey  *APIKeyConfig
 	Trust   *ImageTrustConfig
+	Events  *events.Config
 }
 
 type ImageTrustConfig struct {
