@@ -3,7 +3,7 @@ module zotregistry.dev/zot
 go 1.24
 
 require (
-	github.com/99designs/gqlgen v0.17.72
+	github.com/99designs/gqlgen v0.17.73
 	github.com/Masterminds/semver v1.5.0
 	github.com/alicebob/miniredis/v2 v2.34.0
 	github.com/aquasecurity/trivy v0.61.1
@@ -70,7 +70,7 @@ require (
 	github.com/stretchr/testify v1.10.0
 	github.com/swaggo/http-swagger v1.3.4
 	github.com/swaggo/swag v1.16.4
-	github.com/vektah/gqlparser/v2 v2.5.25
+	github.com/vektah/gqlparser/v2 v2.5.26
 	github.com/zitadel/oidc/v3 v3.37.0
 	go.etcd.io/bbolt v1.4.0
 	golang.org/x/crypto v0.37.0
