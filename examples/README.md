@@ -362,6 +362,31 @@ In the case of running zot with openid enabled behind a proxy/load balancer http
 ```
 This config value will be used by oauth2/openid clients to redirect back to zot.
 
+### OAuth2 (GitHub) login with custom URL's (GitHub Enterprise)
+
+In the case of running zot with GitHub Enterprise, auth and token URL's should be provided.
+
+```
+  "http": {
+    "address": "0.0.0.0",
+    "port": "8080",
+    "externalUrl: "https://zot.example.com",
+    "auth": {
+      "openid": {
+        "providers": {
+          "github": {
+            "clientid": <client_id>,
+            "clientsecret": <client_secret>,
+            "authurl": <auth_url>,
+            "tokenurl": <token_url>,
+            "scopes": ["read:org", "user", "repo"]
+          }
+        }
+      }
+    }
+  }
+```
+
 ### Session based login
 
 Whenever a user logs in zot using any of the auth options available(basic auth/openid) zot will set a 'session' cookie on its response.
