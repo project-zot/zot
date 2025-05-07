@@ -25,6 +25,8 @@ CRICTL := $(TOOLSDIR)/bin/crictl
 CRICTL_VERSION := v1.26.1
 ACTION_VALIDATOR := $(TOOLSDIR)/bin/action-validator
 ACTION_VALIDATOR_VERSION := v0.5.3
+CRYPTO_TEST := $(TOOLSDIR)/bin/cryptotest
+CRYPTO_TEST_VERSION := 0.2.1
 ZUI_BUILD_PATH := ""
 ZUI_VERSION := commit-303dfb3
 ZUI_REPO_OWNER := project-zot
@@ -303,6 +305,13 @@ $(ACTION_VALIDATOR):
 	mv action-validator $(TOOLSDIR)/bin/action-validator
 	chmod +x $(TOOLSDIR)/bin/action-validator
 
+$(CRYPTO_TEST):
+	mkdir -p $(TOOLSDIR)/bin
+	curl -Lo registry-test.tar.gz https://github.com/shizhMSFT/registry-test/releases/download/v$(CRYPTO_TEST_VERSION)/registry-test_$(CRYPTO_TEST_VERSION)_linux_amd64.tar.gz
+	tar xvzf registry-test.tar.gz && rm registry-test.tar.gz
+	mv cryptotest $(TOOLSDIR)/bin/cryptotest
+	chmod +x $(TOOLSDIR)/bin/cryptotest
+
 .PHONY: check-gh-actions
 check-gh-actions: check-compatibility $(ACTION_VALIDATOR)
 	for i in $$(ls  .github/workflows/*); do $(ACTION_VALIDATOR) $$i; done
@@ -485,7 +494,7 @@ $(BATS):
 	rm -rf bats-core
 
 .PHONY: check-blackbox-prerequisites
-check-blackbox-prerequisites: check-linux check-skopeo $(BATS) $(REGCLIENT) $(ORAS) $(HELM) $(CRICTL) $(NOTATION) $(COSIGN) $(STACKER)
+check-blackbox-prerequisites: check-linux check-skopeo $(BATS) $(REGCLIENT) $(ORAS) $(HELM) $(CRICTL) $(NOTATION) $(COSIGN) $(STACKER) $(CRYPTO_TEST)
 	which skopeo && skopeo --version; \
 	which stacker && stacker --version; \
 	which regctl && regctl version; \

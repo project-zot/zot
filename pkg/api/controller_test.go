@@ -13577,11 +13577,11 @@ func TestSupportedDigestAlgorithms(t *testing.T) {
 		verifyReturnedManifestDigest(t, client, baseURL, name, expectedDigestStr, expectedDigestStr)
 	})
 
-	Convey("Test SHA384 single-arch image", t, func() {
-		image := CreateImageWithDigestAlgorithm(godigest.SHA384).
+	Convey("Test BLAKE3 single-arch image", t, func() {
+		image := CreateImageWithDigestAlgorithm(godigest.Blake3).
 			RandomLayers(1, 10).DefaultConfig().Build()
 
-		name := "algo-sha384"
+		name := "algo-blake3"
 		tag := "singlearch"
 
 		err := UploadImage(image, baseURL, name, tag)
@@ -13663,15 +13663,15 @@ func TestSupportedDigestAlgorithms(t *testing.T) {
 			subImage2.ManifestDescriptor.Digest.String(), subImage2.ManifestDescriptor.Digest.String())
 	})
 
-	Convey("Test SHA384 multi-arch image", t, func() {
-		subImage1 := CreateImageWithDigestAlgorithm(godigest.SHA384).RandomLayers(1, 10).
+	Convey("Test BLAKE3 multi-arch image", t, func() {
+		subImage1 := CreateImageWithDigestAlgorithm(godigest.Blake3).RandomLayers(1, 10).
 			DefaultConfig().Build()
-		subImage2 := CreateImageWithDigestAlgorithm(godigest.SHA384).RandomLayers(1, 10).
+		subImage2 := CreateImageWithDigestAlgorithm(godigest.Blake3).RandomLayers(1, 10).
 			DefaultConfig().Build()
-		multiarch := CreateMultiarchWithDigestAlgorithm(godigest.SHA384).
+		multiarch := CreateMultiarchWithDigestAlgorithm(godigest.Blake3).
 			Images([]Image{subImage1, subImage2}).Build()
 
-		name := "algo-sha384"
+		name := "algo-blake3"
 		tag := "multiarch"
 
 		err := UploadMultiarchImage(multiarch, baseURL, name, tag)
