@@ -19,6 +19,7 @@ import (
 
 	zerr "zotregistry.dev/zot/errors"
 	"zotregistry.dev/zot/pkg/common"
+	syncconf "zotregistry.dev/zot/pkg/extensions/config/sync"
 	"zotregistry.dev/zot/pkg/extensions/monitoring"
 	"zotregistry.dev/zot/pkg/log"
 	"zotregistry.dev/zot/pkg/meta"
@@ -29,11 +30,80 @@ import (
 	storageTypes "zotregistry.dev/zot/pkg/storage/types"
 )
 
+// Platform represents an OS/architecture/variant combination
+type Platform struct {
+	OS           string
+	Architecture string
+	Variant      string
+}
+
+// ParsePlatform parses a platform string into a Platform struct
+// The string can be in the following formats:
+// - "arch" (e.g., "amd64")
+// - "os/arch" (e.g., "linux/amd64")
+// - "os/arch/variant" (e.g., "linux/arm/v7")
+func ParsePlatform(platform string) Platform {
+	parts := strings.Split(platform, "/")
+	if len(parts) == 3 {
+		return Platform{
+			OS:           parts[0],
+			Architecture: parts[1],
+			Variant:      parts[2],
+		}
+	} else if len(parts) == 2 {
+		return Platform{
+			OS:           parts[0],
+			Architecture: parts[1],
+		}
+	}
+	// For any other case, assume only architecture is specified
+	return Platform{
+		OS:           "",
+		Architecture: platform,
+	}
+}
+
+// MatchesPlatform checks if the given platform matches any of the platform specifications
+// Platform specs can be in format "os/arch/variant", "os/arch", or just "arch"
+func MatchesPlatform(platform *ispec.Platform, platformSpecs []string) bool {
+	if platform == nil || len(platformSpecs) == 0 {
+		return true
+	}
+
+	for _, spec := range platformSpecs {
+		specPlatform := ParsePlatform(spec)
+
+		// Check if architecture matches
+		if specPlatform.Architecture != "" &&
+			specPlatform.Architecture != platform.Architecture {
+			continue
+		}
+
+		// Check if OS matches (if specified)
+		if specPlatform.OS != "" &&
+			specPlatform.OS != platform.OS {
+			continue
+		}
+
+		// Check if variant matches (if specified)
+		if specPlatform.Variant != "" && platform.Variant != "" &&
+			specPlatform.Variant != platform.Variant {
+			continue
+		}
+
+		// If we got here, it's a match
+		return true
+	}
+
+	return false
+}
+
 type DestinationRegistry struct {
 	storeController storage.StoreController
 	tempStorage     OciLayoutStorage
 	metaDB          mTypes.MetaDB
 	log             log.Logger
+	config          *syncconf.RegistryConfig // Config used for filtering architectures
 }
 
 func NewDestinationRegistry(
@@ -41,14 +111,21 @@ func NewDestinationRegistry(
 	tempStoreController storage.StoreController, // temp store controller
 	metaDB mTypes.MetaDB,
 	log log.Logger,
+	config ...*syncconf.RegistryConfig, // optional config for filtering
 ) Destination {
+	var cfg *syncconf.RegistryConfig
+	if len(config) > 0 {
+		cfg = config[0]
+	}
+
 	return &DestinationRegistry{
 		storeController: storeController,
 		tempStorage:     NewOciLayoutStorage(tempStoreController),
 		metaDB:          metaDB,
 		// first we sync from remote (using containers/image copy from docker:// to oci:) to a temp imageStore
 		// then we copy the image from tempStorage to zot's storage using ImageStore APIs
-		log: log,
+		log:    log,
+		config: cfg,
 	}
 }
 
@@ -227,7 +304,63 @@ func (registry *DestinationRegistry) copyManifest(repo string, desc ispec.Descri
 			return err
 		}
 
-		for _, manifest := range indexManifest.Manifests {
+		// Filter manifests based on platforms/architectures if configured
+		var filteredManifests []ispec.Descriptor
+
+		// Determine which platform specifications to use
+		var platformSpecs []string
+		if registry.config != nil {
+			if len(registry.config.Platforms) > 0 {
+				platformSpecs = registry.config.Platforms
+				registry.log.Info().
+					Strs("platforms", registry.config.Platforms).
+					Str("repository", repo).
+					Str("reference", reference).
+					Msg("filtering manifest list by platforms")
+			}
+		}
+
+		// Apply filtering if we have platform specifications
+		if len(platformSpecs) > 0 {
+			for _, manifest := range indexManifest.Manifests {
+				if manifest.Platform != nil {
+					// Check if this platform should be included
+					if MatchesPlatform(manifest.Platform, platformSpecs) {
+						filteredManifests = append(filteredManifests, manifest)
+					} else {
+						platformDesc := manifest.Platform.Architecture
+						if manifest.Platform.OS != "" {
+							platformDesc = manifest.Platform.OS + "/" + manifest.Platform.Architecture
+							if manifest.Platform.Variant != "" {
+								platformDesc += "/" + manifest.Platform.Variant
+							}
+						}
+
+						registry.log.Info().
+							Str("repository", repo).
+							Str("platform", platformDesc).
+							Msg("skipping platform during sync")
+					}
+				} else {
+					// No platform info, include the manifest
+					filteredManifests = append(filteredManifests, manifest)
+				}
+			}
+
+			// If we have no filtered manifests but had original ones, warn
+			if len(filteredManifests) == 0 && len(indexManifest.Manifests) > 0 {
+				registry.log.Warn().
+					Str("repository", repo).
+					Str("reference", reference).
+					Msg("no platform matched the configured filters, manifest list might be empty")
+			}
+		} else {
+			// No filtering, use all manifests
+			filteredManifests = indexManifest.Manifests
+		}
+
+		// Process the filtered manifests
+		for _, manifest := range filteredManifests {
 			reference := GetDescriptorReference(manifest)
 
 			manifestBuf, err := tempImageStore.GetBlobContent(repo, manifest.Digest)
@@ -252,6 +385,25 @@ func (registry *DestinationRegistry) copyManifest(repo string, desc ispec.Descri
 
 				return err
 			}
+		}
+
+		// If we've filtered the manifest list, we need to update it
+		if registry.config != nil &&
+			len(registry.config.Platforms) > 0 &&
+			len(filteredManifests) != len(indexManifest.Manifests) && len(filteredManifests) > 0 {
+			// Create a new index with the filtered manifests
+			indexManifest.Manifests = filteredManifests
+
+			// Update the manifest content with the filtered list
+			updatedContent, err := json.Marshal(indexManifest)
+			if err != nil {
+				registry.log.Error().Str("errorType", common.TypeOf(err)).
+					Err(err).Str("repository", repo).
+					Msg("failed to marshal updated index manifest")
+				return err
+			}
+
+			manifestContent = updatedContent
 		}
 
 		_, _, err := imageStore.PutImageManifest(repo, reference, desc.MediaType, manifestContent)
