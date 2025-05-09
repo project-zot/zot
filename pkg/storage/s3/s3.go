@@ -7,6 +7,7 @@ import (
 	_ "github.com/distribution/distribution/v3/registry/storage/driver/s3-aws"
 
 	"zotregistry.dev/zot/pkg/compat"
+	"zotregistry.dev/zot/pkg/extensions/events"
 	"zotregistry.dev/zot/pkg/extensions/monitoring"
 	zlog "zotregistry.dev/zot/pkg/log"
 	common "zotregistry.dev/zot/pkg/storage/common"
@@ -19,7 +20,7 @@ import (
 // Use the last argument to properly set a cache database, or it will default to boltDB local storage.
 func NewImageStore(rootDir string, cacheDir string, dedupe, commit bool, log zlog.Logger,
 	metrics monitoring.MetricServer, linter common.Lint, store driver.StorageDriver,
-	cacheDriver storageTypes.Cache, compat []compat.MediaCompatibility,
+	cacheDriver storageTypes.Cache, compat []compat.MediaCompatibility, recorder events.Recorder,
 ) storageTypes.ImageStore {
 	return imagestore.NewImageStore(
 		rootDir,
@@ -32,5 +33,6 @@ func NewImageStore(rootDir string, cacheDir string, dedupe, commit bool, log zlo
 		New(store),
 		cacheDriver,
 		compat,
+		recorder,
 	)
 }

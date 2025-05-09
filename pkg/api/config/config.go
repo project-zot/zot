@@ -341,6 +341,20 @@ func (c *Config) Sanitize() *Config {
 		sanitizedConfig.HTTP.Auth.LDAP.bindPassword = "******"
 	}
 
+	if c.IsEventRecorderEnabled() {
+		for i, sink := range c.Extensions.Events.Sinks {
+			if sink.Credentials == nil {
+				continue
+			}
+
+			if err := DeepCopy(&c.Extensions.Events.Sinks[i], &sanitizedConfig.Extensions.Events.Sinks[i]); err != nil {
+				panic(err)
+			}
+
+			sanitizedConfig.Extensions.Events.Sinks[i].Credentials.Password = "******"
+		}
+	}
+
 	return sanitizedConfig
 }
 
@@ -514,6 +528,10 @@ func (c *Config) IsSyncEnabled() bool {
 
 func (c *Config) IsCompatEnabled() bool {
 	return len(c.HTTP.Compat) > 0
+}
+
+func (c *Config) IsEventRecorderEnabled() bool {
+	return c.Extensions != nil && c.Extensions.Events != nil && *c.Extensions.Events.Enable
 }
 
 func IsOpenIDSupported(provider string) bool {

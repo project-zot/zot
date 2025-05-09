@@ -50,7 +50,7 @@ func TestLocalCheckAllBlobsIntegrity(t *testing.T) {
 			UseRelPaths: true,
 		}, log)
 		driver := local.New(true)
-		imgStore := local.NewImageStore(tdir, true, true, log, metrics, nil, cacheDriver, nil)
+		imgStore := local.NewImageStore(tdir, true, true, log, metrics, nil, cacheDriver, nil, nil)
 
 		RunCheckAllBlobsIntegrityTests(t, imgStore, driver, log)
 	})
@@ -73,7 +73,7 @@ func TestRedisCheckAllBlobsIntegrity(t *testing.T) {
 			UseRelPaths: false,
 		}, log)
 		driver := local.New(true)
-		imgStore := local.NewImageStore(tdir, true, true, log, metrics, nil, cacheDriver, nil)
+		imgStore := local.NewImageStore(tdir, true, true, log, metrics, nil, cacheDriver, nil, nil)
 
 		RunCheckAllBlobsIntegrityTests(t, imgStore, driver, log)
 	})

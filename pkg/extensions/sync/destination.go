@@ -470,5 +470,5 @@ func getImageStoreFromImageReference(repo string, imageReference ref.Ref, log lo
 func getImageStore(rootDir string, log log.Logger) storageTypes.ImageStore {
 	metrics := monitoring.NewMetricsServer(false, log)
 
-	return local.NewImageStore(rootDir, false, false, log, metrics, nil, nil, nil)
+	return local.NewImageStore(rootDir, false, false, log, metrics, nil, nil, nil, nil)
 }

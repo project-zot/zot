@@ -2413,12 +2413,19 @@ func runCLIWithConfig(tempDir string, config string) (string, error) {
 
 	os.Args = []string{"cli_test", "serve", cfgfile.Name()}
 
+	// Run CLI in a goroutine, but handle errors via a channel
+	errCh := make(chan error, 1)
 	go func() {
-		err = cli.NewServerRootCmd().Execute()
-		if err != nil {
-			panic(err)
-		}
+		errCh <- cli.NewServerRootCmd().Execute()
 	}()
+
+	select {
+	case err := <-errCh:
+		if err != nil {
+			return "", err
+		}
+	case <-time.After(250 * time.Millisecond): // No startup error
+	}
 
 	WaitTillServerReady(baseURL)
 

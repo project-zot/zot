@@ -75,7 +75,7 @@ func createMockStorage(rootDir string, cacheDir string, dedupe bool, store drive
 		}, log)
 	}
 
-	il := s3.NewImageStore(rootDir, cacheDir, dedupe, false, log, metrics, nil, store, cacheDriver, nil)
+	il := s3.NewImageStore(rootDir, cacheDir, dedupe, false, log, metrics, nil, store, cacheDriver, nil, nil)
 
 	return il
 }
@@ -86,7 +86,7 @@ func createMockStorageWithMockCache(rootDir string, dedupe bool, store driver.St
 	log := log.Logger{Logger: zerolog.New(os.Stdout)}
 	metrics := monitoring.NewMetricsServer(false, log)
 
-	il := s3.NewImageStore(rootDir, "", dedupe, false, log, metrics, nil, store, cacheDriver, nil)
+	il := s3.NewImageStore(rootDir, "", dedupe, false, log, metrics, nil, store, cacheDriver, nil, nil)
 
 	return il
 }
@@ -135,10 +135,11 @@ func createObjectsStore(rootDir string, cacheDir string, dedupe bool) (
 
 	var cacheDriver storageTypes.Cache
 
-	var err error
-
 	// from pkg/cli/server/root.go/applyDefaultValues, s3 magic
 	s3CacheDBPath := path.Join(cacheDir, storageConstants.BoltdbName+storageConstants.DBExtensionName)
+
+	var err error
+
 	if _, err = os.Stat(s3CacheDBPath); dedupe || (!dedupe && err == nil) {
 		cacheDriver, _ = storage.Create("boltdb", cache.BoltDBDriverParameters{
 			RootDir:     cacheDir,
@@ -147,7 +148,7 @@ func createObjectsStore(rootDir string, cacheDir string, dedupe bool) (
 		}, log)
 	}
 
-	il := s3.NewImageStore(rootDir, cacheDir, dedupe, false, log, metrics, nil, store, cacheDriver, nil)
+	il := s3.NewImageStore(rootDir, cacheDir, dedupe, false, log, metrics, nil, store, cacheDriver, nil, nil)
 
 	return store, il, err
 }
@@ -181,7 +182,7 @@ func createObjectsStoreDynamo(rootDir string, cacheDir string, dedupe bool, tabl
 		panic(err)
 	}
 
-	il := s3.NewImageStore(rootDir, cacheDir, dedupe, false, log, metrics, nil, store, cacheDriver, nil)
+	il := s3.NewImageStore(rootDir, cacheDir, dedupe, false, log, metrics, nil, store, cacheDriver, nil, nil)
 
 	return store, il, err
 }
