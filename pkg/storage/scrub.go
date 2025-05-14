@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"github.com/olekukonko/tablewriter"
+	"github.com/olekukonko/tablewriter/renderer"
+	"github.com/olekukonko/tablewriter/tw"
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 
@@ -356,24 +358,36 @@ func newScrubImageResult(imageName, tag, status, affectedBlob, err string) Scrub
 }
 
 func getScrubTableWriter(writer io.Writer) *tablewriter.Table {
-	table := tablewriter.NewWriter(writer)
-
-	table.SetAutoWrapText(false)
-	table.SetAutoFormatHeaders(true)
-	table.SetHeaderAlignment(tablewriter.ALIGN_LEFT)
-	table.SetAlignment(tablewriter.ALIGN_LEFT)
-	table.SetCenterSeparator("")
-	table.SetColumnSeparator("")
-	table.SetRowSeparator("")
-	table.SetHeaderLine(false)
-	table.SetBorder(false)
-	table.SetTablePadding("  ")
-	table.SetNoWhiteSpace(true)
-	table.SetColMinWidth(colImageNameIndex, imageNameWidth)
-	table.SetColMinWidth(colTagIndex, tagWidth)
-	table.SetColMinWidth(colStatusIndex, statusWidth)
-	table.SetColMinWidth(colErrorIndex, affectedBlobWidth)
-	table.SetColMinWidth(colErrorIndex, errorWidth)
+	table := tablewriter.NewTable(writer,
+		tablewriter.WithRenderer(renderer.NewBlueprint(tw.Rendition{
+			Settings: tw.Settings{
+				Separators: tw.Separators{BetweenRows: tw.On},
+			},
+		})),
+		tablewriter.WithConfig(tablewriter.Config{
+			Header: tw.CellConfig{
+				Formatting: tw.CellFormatting{
+					AutoFormat: true,
+					Alignment:  tw.AlignLeft,
+				},
+			},
+			Row: tw.CellConfig{
+				Formatting: tw.CellFormatting{
+					AutoWrap:  tw.WrapNormal, // Wrap long content
+					Alignment: tw.AlignLeft,  // Left-align rows
+				},
+				Padding: tw.CellPadding{
+					Global: tw.Padding{Left: "  ", Right: "  ", Top: "  ", Bottom: "  "}},
+				ColMaxWidths: tw.CellWidth{PerColumn: tw.Mapper[int, int]{
+					colImageNameIndex: imageNameWidth,
+					colTagIndex: tagWidth,
+					colStatusIndex: statusWidth,
+					colAffectedBlobIndex: affectedBlobWidth,
+					colErrorIndex: errorWidth,
+				}},
+			},
+		}),
+	)
 
 	return table
 }
@@ -399,11 +413,6 @@ func printImageResult(imageResult ScrubImageResult) string {
 	var builder strings.Builder
 
 	table := getScrubTableWriter(&builder)
-	table.SetColMinWidth(colImageNameIndex, imageNameWidth)
-	table.SetColMinWidth(colTagIndex, tagWidth)
-	table.SetColMinWidth(colStatusIndex, statusWidth)
-	table.SetColMinWidth(colAffectedBlobIndex, affectedBlobWidth)
-	table.SetColMinWidth(colErrorIndex, errorWidth)
 
 	row := make([]string, tableCols)
 
