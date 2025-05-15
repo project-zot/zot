@@ -1308,203 +1308,83 @@ func TestSyncWithNonDistributableBlob(t *testing.T) {
 }
 
 func TestDockerImagesAreSkipped(t *testing.T) {
-	Convey("Verify docker images are skipped when they are already synced", t, func() {
-		updateDuration, _ := time.ParseDuration("30m")
+	testCases := []struct {
+		name           string
+		preserveDigest bool
+	}{
+		{
+			name:           "preserveDigest and compat docker2s2 enabled",
+			preserveDigest: true,
+		},
+		// {
+		// 	name:           "preserve digest and compat docker2s2 disabled",
+		// 	preserveDigest: false,
+		// },
+	}
 
-		sctlr, srcBaseURL, srcDir, _, _ := makeUpstreamServer(t, false, false)
+	for _, testCase := range testCases {
+		Convey("Verify docker images are skipped when they are already synced, preserveDigest: "+testCase.name, t, func() {
+			updateDuration, _ := time.ParseDuration("30m")
 
-		scm := test.NewControllerManager(sctlr)
-		scm.StartAndWait(sctlr.Config.HTTP.Port)
+			sctlr, srcBaseURL, srcDir, _, _ := makeUpstreamServer(t, false, false)
 
-		defer scm.StopServer()
+			scm := test.NewControllerManager(sctlr)
+			scm.StartAndWait(sctlr.Config.HTTP.Port)
 
-		var tlsVerify bool
+			defer scm.StopServer()
 
-		maxRetries := 1
-		delay := 1 * time.Second
+			var tlsVerify bool
 
-		indexRepoName := "index"
+			maxRetries := 1
+			delay := 1 * time.Second
 
-		syncRegistryConfig := syncconf.RegistryConfig{
-			Content: []syncconf.Content{
-				{
-					Prefix: testImage,
+			indexRepoName := "index"
+
+			syncRegistryConfig := syncconf.RegistryConfig{
+				Content: []syncconf.Content{
+					{
+						Prefix: testImage,
+					},
+					{
+						Prefix: indexRepoName,
+					},
 				},
-				{
-					Prefix: indexRepoName,
-				},
-			},
-			URLs:         []string{srcBaseURL},
-			PollInterval: updateDuration,
-			TLSVerify:    &tlsVerify,
-			CertDir:      "",
-			MaxRetries:   &maxRetries,
-			OnDemand:     true,
-			RetryDelay:   &delay,
-		}
-
-		defaultVal := true
-		syncConfig := &syncconf.Config{
-			Enable:     &defaultVal,
-			Registries: []syncconf.RegistryConfig{syncRegistryConfig},
-		}
-
-		dctlr, destBaseURL, destDir, _ := makeDownstreamServer(t, false, syncConfig)
-
-		Convey("skipping already synced docker image", func() {
-			// because we can not store images in docker format, modify the test image so that it has docker mediatype
-			indexContent, err := os.ReadFile(path.Join(srcDir, testImage, "index.json"))
-			So(err, ShouldBeNil)
-			So(indexContent, ShouldNotBeNil)
-
-			var index ispec.Index
-			err = json.Unmarshal(indexContent, &index)
-			So(err, ShouldBeNil)
-
-			var configBlobDigest godigest.Digest
-
-			for idx, manifestDesc := range index.Manifests {
-				manifestContent, err := os.ReadFile(path.Join(srcDir, testImage, "blobs/sha256", manifestDesc.Digest.Encoded()))
-				So(err, ShouldBeNil)
-
-				var manifest ispec.Manifest
-
-				err = json.Unmarshal(manifestContent, &manifest)
-				So(err, ShouldBeNil)
-
-				configBlobDigest = manifest.Config.Digest
-
-				manifest.MediaType = dockerManifestMediaType
-				manifest.Config.MediaType = dockerManifestConfigMediaType
-				index.Manifests[idx].MediaType = dockerManifestMediaType
-
-				for idx := range manifest.Layers {
-					manifest.Layers[idx].MediaType = dockerLayerMediaType
-				}
-
-				manifestBuf, err := json.Marshal(manifest)
-				So(err, ShouldBeNil)
-
-				manifestDigest := godigest.FromBytes(manifestBuf)
-				index.Manifests[idx].Digest = manifestDigest
-
-				// write modified manifest, remove old one
-				err = os.WriteFile(path.Join(srcDir, testImage, "blobs/sha256", manifestDigest.Encoded()),
-					manifestBuf, storageConstants.DefaultFilePerms)
-				So(err, ShouldBeNil)
-
-				err = os.Remove(path.Join(srcDir, testImage, "blobs/sha256", manifestDesc.Digest.Encoded()))
-				So(err, ShouldBeNil)
+				URLs:           []string{srcBaseURL},
+				PollInterval:   updateDuration,
+				TLSVerify:      &tlsVerify,
+				CertDir:        "",
+				MaxRetries:     &maxRetries,
+				OnDemand:       true,
+				RetryDelay:     &delay,
+				PreserveDigest: testCase.preserveDigest,
 			}
 
-			indexBuf, err := json.Marshal(index)
-			So(err, ShouldBeNil)
-
-			err = os.WriteFile(path.Join(srcDir, testImage, "index.json"), indexBuf, storageConstants.DefaultFilePerms)
-			So(err, ShouldBeNil)
-
-			dcm := test.NewControllerManager(dctlr)
-			dcm.StartAndWait(dctlr.Config.HTTP.Port)
-			defer dcm.StopServer()
-
-			resp, err := resty.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
-			So(err, ShouldBeNil)
-			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
-
-			// now it should be skipped
-			resp, err = resty.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
-			So(err, ShouldBeNil)
-			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
-
-			found, err := test.ReadLogFileAndSearchString(dctlr.Config.Log.Output,
-				"skipping image because it's already synced", 20*time.Second)
-			if err != nil {
-				panic(err)
+			defaultVal := true
+			syncConfig := &syncconf.Config{
+				Enable:     &defaultVal,
+				Registries: []syncconf.RegistryConfig{syncRegistryConfig},
 			}
 
-			if !found {
-				data, err := os.ReadFile(dctlr.Config.Log.Output)
-				So(err, ShouldBeNil)
+			dctlr, destBaseURL, destDir, _ := makeDownstreamServer(t, false, syncConfig)
 
-				t.Logf("downstream log: %s", string(data))
+			if testCase.preserveDigest {
+				dctlr.Config.HTTP.Compat = append(dctlr.Config.HTTP.Compat, "docker2s2")
 			}
 
-			So(found, ShouldBeTrue)
+			Convey("skipping already synced docker image", func() {
+				// because we can not store images in docker format, modify the test image so that it has docker mediatype
+				indexContent, err := os.ReadFile(path.Join(srcDir, testImage, "index.json"))
+				So(err, ShouldBeNil)
+				So(indexContent, ShouldNotBeNil)
 
-			Convey("trigger config blob upstream error", func() {
-				// remove synced image
-				err := os.RemoveAll(path.Join(destDir, testImage))
+				var index ispec.Index
+				err = json.Unmarshal(indexContent, &index)
 				So(err, ShouldBeNil)
 
-				err = os.Chmod(path.Join(srcDir, testImage, "blobs/sha256", configBlobDigest.Encoded()), 0o000)
-				So(err, ShouldBeNil)
+				var configBlobDigest godigest.Digest
 
-				resp, err = resty.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
-				So(err, ShouldBeNil)
-				So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
-			})
-		})
-
-		Convey("skipping already synced multiarch docker image", func() {
-			// create an image index on upstream
-			multiarchImage := CreateMultiarchWith().Images(
-				[]Image{
-					CreateRandomImage(),
-					CreateRandomImage(),
-					CreateRandomImage(),
-					CreateRandomImage(),
-				},
-			).Build()
-
-			// upload the previously defined images
-			err := UploadMultiarchImage(multiarchImage, srcBaseURL, indexRepoName, "latest")
-			So(err, ShouldBeNil)
-
-			resp, err := resty.R().SetHeader("Content-Type", ispec.MediaTypeImageIndex).
-				Get(srcBaseURL + "/v2/index/manifests/latest")
-			So(err, ShouldBeNil)
-			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
-			So(resp.Body(), ShouldNotBeEmpty)
-			So(resp.Header().Get("Content-Type"), ShouldNotBeEmpty)
-
-			// 'convert' oci multi arch image to docker multi arch
-
-			indexContent, err := os.ReadFile(path.Join(srcDir, indexRepoName, "index.json"))
-			So(err, ShouldBeNil)
-			So(indexContent, ShouldNotBeNil)
-
-			var newIndex ispec.Index
-			err = json.Unmarshal(indexContent, &newIndex)
-			So(err, ShouldBeNil)
-
-			/* first find multiarch manifest in index.json
-			so that we can update both multiarch manifest and index.json at the same time*/
-			var indexManifest ispec.Index
-			indexManifest.Manifests = make([]ispec.Descriptor, 4)
-
-			var indexManifestIdx int
-
-			for idx, manifestDesc := range newIndex.Manifests {
-				if manifestDesc.MediaType == ispec.MediaTypeImageIndex {
-					indexManifestContent, err := os.ReadFile(path.Join(srcDir, indexRepoName, "blobs/sha256",
-						manifestDesc.Digest.Encoded()))
-					So(err, ShouldBeNil)
-
-					err = json.Unmarshal(indexManifestContent, &indexManifest)
-					So(err, ShouldBeNil)
-					indexManifestIdx = idx
-				}
-			}
-
-			var (
-				configBlobDigest     godigest.Digest
-				indexManifestContent []byte
-			)
-
-			for idx, manifestDesc := range newIndex.Manifests {
-				if manifestDesc.MediaType == ispec.MediaTypeImageManifest {
-					manifestContent, err := os.ReadFile(path.Join(srcDir, indexRepoName, "blobs/sha256",
-						manifestDesc.Digest.Encoded()))
+				for idx, manifestDesc := range index.Manifests {
+					manifestContent, err := os.ReadFile(path.Join(srcDir, testImage, "blobs/sha256", manifestDesc.Digest.Encoded()))
 					So(err, ShouldBeNil)
 
 					var manifest ispec.Manifest
@@ -1516,8 +1396,7 @@ func TestDockerImagesAreSkipped(t *testing.T) {
 
 					manifest.MediaType = dockerManifestMediaType
 					manifest.Config.MediaType = dockerManifestConfigMediaType
-					newIndex.Manifests[idx].MediaType = dockerManifestMediaType
-					indexManifest.Manifests[idx].MediaType = dockerManifestMediaType
+					index.Manifests[idx].MediaType = dockerManifestMediaType
 
 					for idx := range manifest.Layers {
 						manifest.Layers[idx].MediaType = dockerLayerMediaType
@@ -1527,86 +1406,237 @@ func TestDockerImagesAreSkipped(t *testing.T) {
 					So(err, ShouldBeNil)
 
 					manifestDigest := godigest.FromBytes(manifestBuf)
-					newIndex.Manifests[idx].Digest = manifestDigest
-					indexManifest.Manifests[idx].Digest = manifestDigest
+					index.Manifests[idx].Digest = manifestDigest
 
 					// write modified manifest, remove old one
-					err = os.WriteFile(path.Join(srcDir, indexRepoName, "blobs/sha256", manifestDigest.Encoded()),
+					err = os.WriteFile(path.Join(srcDir, testImage, "blobs/sha256", manifestDigest.Encoded()),
 						manifestBuf, storageConstants.DefaultFilePerms)
 					So(err, ShouldBeNil)
 
-					err = os.Remove(path.Join(srcDir, indexRepoName, "blobs/sha256", manifestDesc.Digest.Encoded()))
+					err = os.Remove(path.Join(srcDir, testImage, "blobs/sha256", manifestDesc.Digest.Encoded()))
 					So(err, ShouldBeNil)
 				}
 
-				indexManifest.MediaType = dockerIndexManifestMediaType
-				// write converted multi arch manifest
-				indexManifestContent, err = json.Marshal(indexManifest)
+				indexBuf, err := json.Marshal(index)
 				So(err, ShouldBeNil)
 
-				err = os.WriteFile(path.Join(srcDir, indexRepoName, "blobs/sha256",
-					godigest.FromBytes(indexManifestContent).Encoded()), indexManifestContent, storageConstants.DefaultFilePerms)
-				So(err, ShouldBeNil)
-			}
-
-			newIndex.Manifests[indexManifestIdx].MediaType = dockerIndexManifestMediaType
-			newIndex.Manifests[indexManifestIdx].Digest = godigest.FromBytes(indexManifestContent)
-
-			indexBuf, err := json.Marshal(newIndex)
-			So(err, ShouldBeNil)
-
-			err = os.WriteFile(path.Join(srcDir, indexRepoName, "index.json"), indexBuf, storageConstants.DefaultFilePerms)
-			So(err, ShouldBeNil)
-
-			dcm := test.NewControllerManager(dctlr)
-			dcm.StartAndWait(dctlr.Config.HTTP.Port)
-			defer dcm.StopServer()
-
-			// sync
-			resp, err = resty.R().SetHeader("Content-Type", ispec.MediaTypeImageIndex).
-				Get(destBaseURL + "/v2/" + indexRepoName + "/manifests/" + "latest")
-			So(err, ShouldBeNil)
-			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
-			So(resp.Body(), ShouldNotBeEmpty)
-			So(resp.Header().Get("Content-Type"), ShouldNotBeEmpty)
-
-			// sync again, should skip
-			resp, err = resty.R().SetHeader("Content-Type", ispec.MediaTypeImageIndex).
-				Get(destBaseURL + "/v2/" + indexRepoName + "/manifests/" + "latest")
-			So(err, ShouldBeNil)
-			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
-			So(resp.Body(), ShouldNotBeEmpty)
-			So(resp.Header().Get("Content-Type"), ShouldNotBeEmpty)
-
-			found, err := test.ReadLogFileAndSearchString(dctlr.Config.Log.Output,
-				"skipping image because it's already synced", 20*time.Second)
-			if err != nil {
-				panic(err)
-			}
-
-			if !found {
-				data, err := os.ReadFile(dctlr.Config.Log.Output)
+				err = os.WriteFile(path.Join(srcDir, testImage, "index.json"), indexBuf, storageConstants.DefaultFilePerms)
 				So(err, ShouldBeNil)
 
-				t.Logf("downstream log: %s", string(data))
-			}
+				dcm := test.NewControllerManager(dctlr)
+				dcm.StartAndWait(dctlr.Config.HTTP.Port)
+				defer dcm.StopServer()
 
-			So(found, ShouldBeTrue)
-
-			Convey("trigger config blob upstream error", func() {
-				// remove synced image
-				err := os.RemoveAll(path.Join(destDir, indexRepoName))
+				resp, err := resty.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
 				So(err, ShouldBeNil)
+				So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
-				err = os.Chmod(path.Join(srcDir, indexRepoName, "blobs/sha256", configBlobDigest.Encoded()), 0o000)
+				// now it should be skipped
+				resp, err = resty.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
 				So(err, ShouldBeNil)
+				So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
-				resp, err = resty.R().Get(destBaseURL + "/v2/" + indexRepoName + "/manifests/" + "latest")
+				found, err := test.ReadLogFileAndSearchString(dctlr.Config.Log.Output,
+					"skipping image because it's already synced", 20*time.Second)
+				if err != nil {
+					panic(err)
+				}
+
+				if !found {
+					data, err := os.ReadFile(dctlr.Config.Log.Output)
+					So(err, ShouldBeNil)
+
+					t.Logf("downstream log: %s", string(data))
+				}
+
+				So(found, ShouldBeTrue)
+
+				// trigger not found
+				resp, err = resty.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + "1.9")
 				So(err, ShouldBeNil)
 				So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
+
+				Convey("trigger config blob upstream error", func() {
+					// remove synced image
+					err := os.RemoveAll(path.Join(destDir, testImage))
+					So(err, ShouldBeNil)
+
+					err = os.Chmod(path.Join(srcDir, testImage, "blobs/sha256", configBlobDigest.Encoded()), 0o000)
+					So(err, ShouldBeNil)
+
+					resp, err = resty.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
+					So(err, ShouldBeNil)
+					So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
+				})
+			})
+
+			Convey("skipping already synced multiarch docker image", func() {
+				// create an image index on upstream
+				multiarchImage := CreateMultiarchWith().Images(
+					[]Image{
+						CreateRandomImage(),
+						CreateRandomImage(),
+						CreateRandomImage(),
+						CreateRandomImage(),
+					},
+				).Build()
+
+				// upload the previously defined images
+				err := UploadMultiarchImage(multiarchImage, srcBaseURL, indexRepoName, "latest")
+				So(err, ShouldBeNil)
+
+				resp, err := resty.R().SetHeader("Content-Type", ispec.MediaTypeImageIndex).
+					Get(srcBaseURL + "/v2/index/manifests/latest")
+				So(err, ShouldBeNil)
+				So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+				So(resp.Body(), ShouldNotBeEmpty)
+				So(resp.Header().Get("Content-Type"), ShouldNotBeEmpty)
+
+				// 'convert' oci multi arch image to docker multi arch
+				indexContent, err := os.ReadFile(path.Join(srcDir, indexRepoName, "index.json"))
+				So(err, ShouldBeNil)
+				So(indexContent, ShouldNotBeNil)
+
+				var newIndex ispec.Index
+				err = json.Unmarshal(indexContent, &newIndex)
+				So(err, ShouldBeNil)
+
+				/* first find multiarch manifest in index.json
+				so that we can update both multiarch manifest and index.json at the same time*/
+				var indexManifest ispec.Index
+				indexManifest.Manifests = make([]ispec.Descriptor, 4)
+
+				var indexManifestIdx int
+
+				for idx, manifestDesc := range newIndex.Manifests {
+					if manifestDesc.MediaType == ispec.MediaTypeImageIndex {
+						indexManifestContent, err := os.ReadFile(path.Join(srcDir, indexRepoName, "blobs/sha256",
+							manifestDesc.Digest.Encoded()))
+						So(err, ShouldBeNil)
+
+						err = json.Unmarshal(indexManifestContent, &indexManifest)
+						So(err, ShouldBeNil)
+						indexManifestIdx = idx
+					}
+				}
+
+				var (
+					configBlobDigest     godigest.Digest
+					indexManifestContent []byte
+				)
+
+				for idx, manifestDesc := range newIndex.Manifests {
+					if manifestDesc.MediaType == ispec.MediaTypeImageManifest {
+						manifestContent, err := os.ReadFile(path.Join(srcDir, indexRepoName, "blobs/sha256",
+							manifestDesc.Digest.Encoded()))
+						So(err, ShouldBeNil)
+
+						var manifest ispec.Manifest
+
+						err = json.Unmarshal(manifestContent, &manifest)
+						So(err, ShouldBeNil)
+
+						configBlobDigest = manifest.Config.Digest
+
+						manifest.MediaType = dockerManifestMediaType
+						manifest.Config.MediaType = dockerManifestConfigMediaType
+						newIndex.Manifests[idx].MediaType = dockerManifestMediaType
+						indexManifest.Manifests[idx].MediaType = dockerManifestMediaType
+
+						for idx := range manifest.Layers {
+							manifest.Layers[idx].MediaType = dockerLayerMediaType
+						}
+
+						manifestBuf, err := json.Marshal(manifest)
+						So(err, ShouldBeNil)
+
+						manifestDigest := godigest.FromBytes(manifestBuf)
+						newIndex.Manifests[idx].Digest = manifestDigest
+						indexManifest.Manifests[idx].Digest = manifestDigest
+
+						// write modified manifest, remove old one
+						err = os.WriteFile(path.Join(srcDir, indexRepoName, "blobs/sha256", manifestDigest.Encoded()),
+							manifestBuf, storageConstants.DefaultFilePerms)
+						So(err, ShouldBeNil)
+
+						err = os.Remove(path.Join(srcDir, indexRepoName, "blobs/sha256", manifestDesc.Digest.Encoded()))
+						So(err, ShouldBeNil)
+					}
+
+					indexManifest.MediaType = dockerIndexManifestMediaType
+					// write converted multi arch manifest
+					indexManifestContent, err = json.Marshal(indexManifest)
+					So(err, ShouldBeNil)
+
+					err = os.WriteFile(path.Join(srcDir, indexRepoName, "blobs/sha256",
+						godigest.FromBytes(indexManifestContent).Encoded()), indexManifestContent, storageConstants.DefaultFilePerms)
+					So(err, ShouldBeNil)
+				}
+
+				newIndex.Manifests[indexManifestIdx].MediaType = dockerIndexManifestMediaType
+				newIndex.Manifests[indexManifestIdx].Digest = godigest.FromBytes(indexManifestContent)
+
+				indexBuf, err := json.Marshal(newIndex)
+				So(err, ShouldBeNil)
+
+				err = os.WriteFile(path.Join(srcDir, indexRepoName, "index.json"), indexBuf, storageConstants.DefaultFilePerms)
+				So(err, ShouldBeNil)
+
+				dcm := test.NewControllerManager(dctlr)
+				dcm.StartAndWait(dctlr.Config.HTTP.Port)
+				defer dcm.StopServer()
+
+				// sync
+				resp, err = resty.R().SetHeader("Content-Type", ispec.MediaTypeImageIndex).
+					Get(destBaseURL + "/v2/" + indexRepoName + "/manifests/" + "latest")
+				So(err, ShouldBeNil)
+				So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+				So(resp.Body(), ShouldNotBeEmpty)
+				So(resp.Header().Get("Content-Type"), ShouldNotBeEmpty)
+
+				// sync again, should skip
+				resp, err = resty.R().SetHeader("Content-Type", ispec.MediaTypeImageIndex).
+					Get(destBaseURL + "/v2/" + indexRepoName + "/manifests/" + "latest")
+				So(err, ShouldBeNil)
+				So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+				So(resp.Body(), ShouldNotBeEmpty)
+				So(resp.Header().Get("Content-Type"), ShouldNotBeEmpty)
+
+				found, err := test.ReadLogFileAndSearchString(dctlr.Config.Log.Output,
+					"skipping image because it's already synced", 20*time.Second)
+				if err != nil {
+					panic(err)
+				}
+
+				if !found {
+					data, err := os.ReadFile(dctlr.Config.Log.Output)
+					So(err, ShouldBeNil)
+
+					t.Logf("downstream log: %s", string(data))
+				}
+
+				So(found, ShouldBeTrue)
+
+				// trigger not found
+				resp, err = resty.R().Get(destBaseURL + "/v2/" + indexRepoName + "/manifests/" + "1.9")
+				So(err, ShouldBeNil)
+				So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
+
+				Convey("trigger config blob upstream error", func() {
+					// remove synced image
+					err := os.RemoveAll(path.Join(destDir, indexRepoName))
+					So(err, ShouldBeNil)
+
+					err = os.Chmod(path.Join(srcDir, indexRepoName, "blobs/sha256", configBlobDigest.Encoded()), 0o000)
+					So(err, ShouldBeNil)
+
+					resp, err = resty.R().Get(destBaseURL + "/v2/" + indexRepoName + "/manifests/" + "latest")
+					So(err, ShouldBeNil)
+					So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
+				})
 			})
 		})
-	})
+	}
 }
 
 func TestPeriodically(t *testing.T) {

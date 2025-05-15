@@ -95,6 +95,33 @@ func (registry *RemoteRegistry) GetImageReference(repo, reference string) (ref.R
 func (registry *RemoteRegistry) headManifest(ctx context.Context, imageReference ref.Ref,
 ) (manifest.Manifest, error) {
 	/// check what error it gives when not found
+	man, err := registry.client.ManifestHead(ctx, imageReference)
+	if err != nil {
+		/* public registries may return 401 for image not found
+		they will try to check private registries as a fallback => 401 */
+		if errors.Is(err, errs.ErrHTTPUnauthorized) {
+			registry.log.Info().Str("errorType", common.TypeOf(err)).
+				Str("repository", imageReference.Repository).Str("reference", imageReference.Reference).
+				Err(err).Msg("failed to get manifest: unauthorized")
+
+			return nil, zerr.ErrUnauthorizedAccess
+		} else if errors.Is(err, errs.ErrNotFound) {
+			registry.log.Info().Str("errorType", common.TypeOf(err)).
+				Str("repository", imageReference.Repository).Str("reference", imageReference.Reference).
+				Err(err).Msg("failed to find manifest")
+
+			return nil, zerr.ErrManifestNotFound
+		}
+
+		return nil, err
+	}
+
+	return man, nil
+}
+
+func (registry *RemoteRegistry) getManifest(ctx context.Context, imageReference ref.Ref,
+) (manifest.Manifest, error) {
+	/// check what error it gives when not found
 	man, err := registry.client.ManifestGet(ctx, imageReference)
 	if err != nil {
 		/* public registries may return 401 for image not found
@@ -134,7 +161,7 @@ func (registry *RemoteRegistry) GetDigest(ctx context.Context, repo, tag string,
 	return man.GetDescriptor().Digest, err
 }
 
-// returns OCI remote digest, original remote digaest (unconverted), if it was converted.
+// returns OCI remote digest, original remote digest (unconverted), if it was converted.
 func (registry *RemoteRegistry) GetOCIDigest(ctx context.Context, repo, tag string,
 ) (godigest.Digest, godigest.Digest, bool, error) {
 	var isConverted bool
@@ -146,7 +173,7 @@ func (registry *RemoteRegistry) GetOCIDigest(ctx context.Context, repo, tag stri
 		return "", "", false, err
 	}
 
-	man, err := registry.headManifest(ctx, imageReference)
+	man, err := registry.getManifest(ctx, imageReference)
 	if err != nil {
 		return "", "", false, err
 	}

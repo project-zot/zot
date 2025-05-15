@@ -496,16 +496,16 @@ func (service *BaseService) syncRef(ctx context.Context, localRepo string, remot
 }
 
 // get "would be" digest of image after synced.
-func (service *BaseService) getLocalStoredImageDigest(ctx context.Context, repo, tag string,
+func (service *BaseService) computeLocalStoredImageDigest(ctx context.Context, repo, tag string,
 ) (godigest.Digest, godigest.Digest, bool, error) {
 	var err error
 
-	var convertedDigest, remoteDigest godigest.Digest
+	var localDigest, remoteDigest godigest.Digest
 
 	var isConverted bool
 
 	if !service.config.PreserveDigest {
-		convertedDigest, remoteDigest, isConverted, err = service.remote.GetOCIDigest(ctx, repo, tag)
+		localDigest, remoteDigest, isConverted, err = service.remote.GetOCIDigest(ctx, repo, tag)
 		if err != nil {
 			service.log.Error().Err(err).Str("repository", repo).Str("reference", tag).
 				Msg("failed to get upstream image manifest details")
@@ -520,9 +520,12 @@ func (service *BaseService) getLocalStoredImageDigest(ctx context.Context, repo,
 
 			return "", "", false, err
 		}
+
+		// preserve digest is true, so the local digest is same as remote
+		localDigest = remoteDigest
 	}
 
-	return convertedDigest, remoteDigest, isConverted, nil
+	return localDigest, remoteDigest, isConverted, nil
 }
 
 func (service *BaseService) syncImage(ctx context.Context, localRepo, remoteRepo, tag string,
@@ -543,7 +546,7 @@ func (service *BaseService) syncImage(ctx context.Context, localRepo, remoteRepo
 		return err
 	}
 
-	localDigest, remoteDigest, isConverted, err = service.getLocalStoredImageDigest(ctx, remoteRepo, tag)
+	localDigest, remoteDigest, isConverted, err = service.computeLocalStoredImageDigest(ctx, remoteRepo, tag)
 	if err != nil {
 		return err
 	}
