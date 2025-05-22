@@ -23,6 +23,7 @@ type ExtensionConfig struct {
 	APIKey  *APIKeyConfig
 	Trust   *ImageTrustConfig
 	Events  *events.Config
+	MCP     *MCPConfig
 }
 
 type ImageTrustConfig struct {
@@ -36,6 +37,10 @@ type APIKeyConfig struct {
 }
 
 type MgmtConfig struct {
+	BaseConfig `mapstructure:",squash"`
+}
+
+type MCPConfig struct {
 	BaseConfig `mapstructure:",squash"`
 }
 

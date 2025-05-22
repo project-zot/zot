@@ -33,4 +33,9 @@ const (
 	UserPrefs     = "/userprefs"
 	ExtUserPrefs  = ExtPrefix + UserPrefs
 	FullUserPrefs = RoutePrefix + ExtUserPrefs
+
+	// mcp extension.
+	MCP     = "/mcp"
+	ExtMCP  = ExtPrefix + MCP
+	FullMCP = RoutePrefix + ExtMCP
 )
