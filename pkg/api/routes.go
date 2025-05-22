@@ -212,7 +212,6 @@ func (rh *RouteHandler) SetupRoutes() {
 		rh.c.Log)
 	ext.SetupImageTrustRoutes(rh.c.Config, prefixedRouter, rh.c.MetaDB, rh.c.Log)
 	ext.SetupMgmtRoutes(rh.c.Config, prefixedRouter, rh.c.Log)
-	ext.SetupMCPRoutes(rh.c.Config, prefixedRouter, rh.c.StoreController, rh.c.MetaDB, rh.c.Log)
 	ext.SetupUserPreferencesRoutes(rh.c.Config, prefixedRouter, rh.c.MetaDB, rh.c.Log)
 	// last should always be UI because it will setup a http.FileServer and paths will be resolved by this FileServer.
 	ext.SetupUIRoutes(rh.c.Config, rh.c.Router, rh.c.Log)

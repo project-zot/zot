@@ -36,10 +36,6 @@ func GetExtensions(config *config.Config) distext.ExtensionList {
 		endpoints = append(endpoints, constants.FullMgmt)
 	}
 
-	if config.IsMCPEnabled() && IsBuiltWithMCPExtension() {
-		endpoints = append(endpoints, constants.FullMCP)
-	}
-
 	if len(endpoints) > 0 {
 		extensions = append(extensions, distext.Extension{
 			Name:        constants.BaseExtension,
