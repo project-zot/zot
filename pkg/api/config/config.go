@@ -496,10 +496,6 @@ func (c *Config) IsMgmtEnabled() bool {
 	return c.IsSearchEnabled()
 }
 
-func (c *Config) IsMCPEnabled() bool {
-	return c.Extensions != nil && c.Extensions.MCP != nil && *c.Extensions.MCP.Enable
-}
-
 func (c *Config) IsImageTrustEnabled() bool {
 	return c.Extensions != nil && c.Extensions.Trust != nil && *c.Extensions.Trust.Enable
 }
