@@ -44,7 +44,7 @@ require (
 	github.com/json-iterator/go v1.1.12
 	github.com/migueleliasweb/go-github-mock v1.3.0
 	github.com/mitchellh/mapstructure v1.5.1-0.20231216201459-8508981c8b6c
-	github.com/nats-io/nats-server/v2 v2.11.3
+	github.com/nats-io/nats-server/v2 v2.11.4
 	github.com/nats-io/nats.go v1.42.0
 	github.com/nmcclain/ldap v0.0.0-20210720162743-7f8d1e44eeba
 	github.com/notaryproject/notation-core-go v1.3.0
@@ -284,7 +284,7 @@ require (
 	github.com/google/go-github/v55 v55.0.0 // indirect
 	github.com/google/go-github/v71 v71.0.0 // indirect
 	github.com/google/go-querystring v1.1.0 // indirect
-	github.com/google/go-tpm v0.9.4 // indirect
+	github.com/google/go-tpm v0.9.5 // indirect
 	github.com/google/licenseclassifier/v2 v2.0.0 // indirect
 	github.com/google/s2a-go v0.1.9 // indirect
 	github.com/google/shlex v0.0.0-20191202100458-e7afc7fbc510 // indirect
