@@ -129,6 +129,10 @@ func (ac *AccessController) can(userAc *reqCtx.UserAccessControl, action, reposi
 		}
 	}
 
+	if !can {
+		ac.Log.Info().Str("repo", repository).Str("user", username).Str("action", action).Msg("AUDIT: Permission denied")
+	}
+
 	return can
 }
 
