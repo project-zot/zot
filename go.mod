@@ -79,7 +79,7 @@ require (
 	gopkg.in/resty.v1 v1.12.0
 	gopkg.in/yaml.v3 v3.0.1
 	k8s.io/apimachinery v0.33.0
-	modernc.org/sqlite v1.37.0
+	modernc.org/sqlite v1.37.1
 	oras.land/oras-go/v2 v2.6.0
 )
 
@@ -499,13 +499,13 @@ require (
 	go.uber.org/zap v1.27.0 // indirect
 	golang.org/x/exp v0.0.0-20250408133849-7e4ce0ab07d0 // indirect
 	golang.org/x/mod v0.24.0 // indirect
-	golang.org/x/net v0.39.0 // indirect
+	golang.org/x/net v0.40.0 // indirect
 	golang.org/x/sync v0.14.0 // indirect
 	golang.org/x/sys v0.33.0 // indirect
 	golang.org/x/term v0.32.0 // indirect
 	golang.org/x/text v0.25.0 // indirect
 	golang.org/x/time v0.11.0 // indirect
-	golang.org/x/tools v0.32.0 // indirect
+	golang.org/x/tools v0.33.0 // indirect
 	golang.org/x/xerrors v0.0.0-20240716161551-93cc26a95ae9 // indirect
 	google.golang.org/api v0.228.0 // indirect
 	google.golang.org/genproto v0.0.0-20250303144028-a0af3efb3deb // indirect
@@ -528,9 +528,9 @@ require (
 	k8s.io/kube-openapi v0.0.0-20250318190949-c8a335a9a2ff // indirect
 	k8s.io/kubectl v0.33.0 // indirect
 	k8s.io/utils v0.0.0-20241210054802-24370beab758 // indirect
-	modernc.org/libc v1.62.1 // indirect
+	modernc.org/libc v1.65.7 // indirect
 	modernc.org/mathutil v1.7.1 // indirect
-	modernc.org/memory v1.9.1 // indirect
+	modernc.org/memory v1.11.0 // indirect
 	mvdan.cc/sh/v3 v3.11.0 // indirect
 	oras.land/oras-go v1.2.6 // indirect
 	sigs.k8s.io/json v0.0.0-20241010143419-9aa6b5e7a4b3 // indirect
