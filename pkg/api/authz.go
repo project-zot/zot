@@ -39,19 +39,22 @@ func AuthzFilterFunc(userAc *reqCtx.UserAccessControl) storageTypes.FilterRepoFu
 type AccessController struct {
 	Config *config.AccessControlConfig
 	Log    log.Logger
+	Audit  *log.Logger
 }
 
-func NewAccessController(conf *config.Config) *AccessController {
+func NewAccessController(conf *config.Config, audit *log.Logger) *AccessController {
 	if conf.HTTP.AccessControl == nil {
 		return &AccessController{
 			Config: &config.AccessControlConfig{},
 			Log:    log.NewLogger(conf.Log.Level, conf.Log.Output),
+			Audit:  audit,
 		}
 	}
 
 	return &AccessController{
 		Config: conf.HTTP.AccessControl,
 		Log:    log.NewLogger(conf.Log.Level, conf.Log.Output),
+		Audit:  audit,
 	}
 }
 
@@ -127,6 +130,10 @@ func (ac *AccessController) can(userAc *reqCtx.UserAccessControl, action, reposi
 		if ac.isAdmin(username, userGroups) && common.Contains(ac.Config.AdminPolicy.Actions, action) {
 			can = true
 		}
+	}
+
+	if !can && ac.Audit != nil {
+		ac.Audit.Info().Str("component", "authz").Str("object", repository).Str("subject", username).Str("action", action).Msg("permission denied")
 	}
 
 	return can
@@ -266,7 +273,7 @@ func BaseAuthzHandler(ctlr *Controller) mux.MiddlewareFunc {
 				return
 			}
 
-			aCtlr := NewAccessController(ctlr.Config)
+			aCtlr := NewAccessController(ctlr.Config, ctlr.Audit)
 
 			// get access control context made in authn.go
 			userAc, err := reqCtx.UserAcFromContext(request.Context())
@@ -305,7 +312,7 @@ func DistSpecAuthzHandler(ctlr *Controller) mux.MiddlewareFunc {
 			resource := vars["name"]
 			reference, ok := vars["reference"]
 
-			acCtrlr := NewAccessController(ctlr.Config)
+			acCtrlr := NewAccessController(ctlr.Config, ctlr.Audit)
 
 			// get userAc built in authn and previous authz middlewares
 			userAc, err := reqCtx.UserAcFromContext(request.Context())
@@ -341,6 +348,9 @@ func DistSpecAuthzHandler(ctlr *Controller) mux.MiddlewareFunc {
 
 			can := acCtrlr.can(userAc, action, resource) //nolint:contextcheck
 			if !can {
+				if ctlr.Audit != nil {
+					ctlr.Audit.Info()
+				}
 				common.AuthzFail(response, request, userAc.GetUsername(), ctlr.Config.HTTP.Realm, ctlr.Config.HTTP.Auth.FailDelay)
 			} else {
 				next.ServeHTTP(response, request) //nolint:contextcheck
