@@ -43,6 +43,7 @@ import (
 	"zotregistry.dev/zot/pkg/storage/local"
 	storageTypes "zotregistry.dev/zot/pkg/storage/types"
 	. "zotregistry.dev/zot/pkg/test/common"
+	test "zotregistry.dev/zot/pkg/test/common"
 	. "zotregistry.dev/zot/pkg/test/image-utils"
 	"zotregistry.dev/zot/pkg/test/mocks"
 	ociutils "zotregistry.dev/zot/pkg/test/oci-utils"
@@ -59,6 +60,149 @@ var (
 	ErrTestError   = errors.New("test error")
 	ErrPutManifest = errors.New("can't put manifest")
 )
+
+func makeController(conf *config.Config, dir string) *api.Controller {
+	ctlr := api.NewController(conf)
+
+	ctlr.Config.Storage.RootDirectory = dir
+
+	return ctlr
+}
+
+func setupTestPairScaleOutLocalStorageCluster(
+	t *testing.T,
+	reposToPreLoad []string,
+	enableCVE bool,
+) ([]string, []*test.ControllerManager) {
+	t.Helper()
+	numMembers := 2
+	ports := make([]string, numMembers)
+
+	clusterMembers := make([]string, numMembers)
+
+	for idx := range numMembers {
+		port := test.GetFreePort()
+		ports[idx] = port
+		clusterMembers[idx] = "127.0.0.1:" + port
+	}
+
+	testCMs := []*test.ControllerManager{}
+
+	// This setup includes 2 fixed mocked scanner results based on image name.
+	// The given image names can be used if a CVE scan output is needed.
+	cveProviders := []func(image string) map[string]cvemodel.CVE{}
+
+	if enableCVE {
+		// The reason for splitting the CVE behaviour between 2 mocked scanners
+		// is because the test should ensure that the data came from the expected instance
+		// and not because both instances had access to the same CVE mock data.
+		// The first provider only returns CVEs for debian-vuln:1.0
+		// and any hash digest for this repo.
+		// This provider will be attached to member index 0.
+		cveProviders = append(cveProviders, func(image string) map[string]cvemodel.CVE {
+			if strings.Contains(image, "debian-vuln") {
+				return map[string]cvemodel.CVE{
+					"CVE1": {
+						ID:          "CVE1",
+						Severity:    "MEDIUM",
+						Title:       "CVE1",
+						Description: "Description CVE1",
+					},
+					"CVE2": {
+						ID:          "CVE2",
+						Severity:    "MEDIUM",
+						Title:       "CVE2",
+						Description: "Description CVE2",
+					},
+				}
+			}
+
+			return map[string]cvemodel.CVE{}
+		})
+
+		// The second provider only returns CVEs for ubuntu-vuln:1.0.
+		// This provider will be attached to member index 1.
+		cveProviders = append(cveProviders, func(image string) map[string]cvemodel.CVE {
+			if image == "ubuntu-vuln:1.0" {
+				return map[string]cvemodel.CVE{
+					"CVE3": {
+						ID:          "CVE3",
+						Severity:    "MEDIUM",
+						Title:       "CVE3",
+						Description: "Description CVE3",
+					},
+					"CVE4": {
+						ID:          "CVE4",
+						Severity:    "MEDIUM",
+						Title:       "CVE4",
+						Description: "Description CVE4",
+					},
+				}
+			}
+
+			return map[string]cvemodel.CVE{}
+		})
+	}
+
+	var cveConf *extconf.CVEConfig = nil
+
+	if enableCVE {
+		cveConf = &extconf.CVEConfig{
+			UpdateInterval: 2 * time.Hour,
+			Trivy: &extconf.TrivyConfig{
+				DBRepository: "ghcr.io/project-zot/trivy-db",
+			},
+		}
+	}
+
+	for idx, port := range ports {
+		ctrlTempDir := t.TempDir()
+
+		conf := config.New()
+		conf.HTTP.Port = port
+		conf.Cluster = &config.ClusterConfig{
+			Members: clusterMembers,
+			HashKey: "loremipsumdolors",
+		}
+		defaultVal := true
+		conf.Extensions = &extconf.ExtensionConfig{
+			Search: &extconf.SearchConfig{BaseConfig: extconf.BaseConfig{Enable: &defaultVal}, CVE: cveConf},
+		}
+
+		ctrlr := makeController(conf, ctrlTempDir)
+		ctrlrMgr := test.NewControllerManager(ctrlr)
+
+		// Controller init and Run are called manually because
+		// we want to replace the CVE Scanner after the Init().
+		err := ctrlr.Init()
+		if err != nil {
+			t.Errorf("failed to init controller. error=%s", err)
+		}
+
+		if enableCVE {
+			ctrlr.CveScanner = createMockCveScannerWithCveProvider(ctrlr.MetaDB, cveProviders[idx])
+		}
+
+		go func() {
+			ctrlrMgr.RunServer()
+		}()
+
+		WaitTillServerReady(GetBaseURL(port))
+
+		testCMs = append(testCMs, &ctrlrMgr)
+	}
+
+	for _, repoName := range reposToPreLoad {
+		img := CreateRandomImage()
+
+		err := UploadImage(img, test.GetBaseURL(ports[0]), repoName, "1.0")
+		if err != nil {
+			t.Errorf("failed to upload image to test instance error=%s", err.Error())
+		}
+	}
+
+	return ports, testCMs
+}
 
 func readFileAndSearchString(filePath string, stringToMatch string, timeout time.Duration) (bool, error) {
 	ctx, cancelFunc := context.WithTimeout(context.Background(), timeout)
@@ -221,6 +365,71 @@ func uploadNewRepoTag(tag string, repoName string, baseURL string, layers [][]by
 	return err
 }
 
+func createMockCveScannerWithCveProvider(
+	metaDB mTypes.MetaDB,
+	cveProvider func(string) map[string]cvemodel.CVE,
+) cveinfo.Scanner {
+	scanner := mocks.CveScannerMock{
+		ScanImageFn: func(ctx context.Context, image string) (map[string]cvemodel.CVE, error) {
+			return cveProvider(image), nil
+		},
+		GetCachedResultFn: func(digestStr string) map[string]cvemodel.CVE {
+			return cveProvider(digestStr)
+		},
+		IsResultCachedFn: func(digestStr string) bool {
+			return true
+		},
+		IsImageFormatScannableFn: func(repo string, reference string) (bool, error) {
+			// Almost same logic compared to actual Trivy specific implementation
+			imageDir := repo
+			inputTag := reference
+
+			repoMeta, err := metaDB.GetRepoMeta(context.Background(), imageDir)
+			if err != nil {
+				return false, err
+			}
+
+			manifestDigestStr := reference
+
+			if zcommon.IsTag(reference) {
+				var ok bool
+
+				descriptor, ok := repoMeta.Tags[inputTag]
+				if !ok {
+					return false, zerr.ErrTagMetaNotFound
+				}
+
+				manifestDigestStr = descriptor.Digest
+			}
+
+			manifestDigest, err := godigest.Parse(manifestDigestStr)
+			if err != nil {
+				return false, err
+			}
+
+			manifestData, err := metaDB.GetImageMeta(manifestDigest)
+			if err != nil {
+				return false, err
+			}
+
+			for _, imageLayer := range manifestData.Manifests[0].Manifest.Layers {
+				switch imageLayer.MediaType {
+				case ispec.MediaTypeImageLayerGzip, ispec.MediaTypeImageLayer, string(regTypes.DockerLayer):
+
+					return true, nil
+				default:
+
+					return false, zerr.ErrScanNotSupported
+				}
+			}
+
+			return false, nil
+		},
+	}
+
+	return scanner
+}
+
 func getMockCveScanner(metaDB mTypes.MetaDB) cveinfo.Scanner {
 	// MetaDB loaded with initial data, mock the scanner
 	// Setup test CVE data in mock scanner
@@ -293,65 +502,7 @@ func getMockCveScanner(metaDB mTypes.MetaDB) cveinfo.Scanner {
 		return map[string]cvemodel.CVE{}
 	}
 
-	scanner := mocks.CveScannerMock{
-		ScanImageFn: func(ctx context.Context, image string) (map[string]cvemodel.CVE, error) {
-			return getCveResults(image), nil
-		},
-		GetCachedResultFn: func(digestStr string) map[string]cvemodel.CVE {
-			return getCveResults(digestStr)
-		},
-		IsResultCachedFn: func(digestStr string) bool {
-			return true
-		},
-		IsImageFormatScannableFn: func(repo string, reference string) (bool, error) {
-			// Almost same logic compared to actual Trivy specific implementation
-			imageDir := repo
-			inputTag := reference
-
-			repoMeta, err := metaDB.GetRepoMeta(context.Background(), imageDir)
-			if err != nil {
-				return false, err
-			}
-
-			manifestDigestStr := reference
-
-			if zcommon.IsTag(reference) {
-				var ok bool
-
-				descriptor, ok := repoMeta.Tags[inputTag]
-				if !ok {
-					return false, zerr.ErrTagMetaNotFound
-				}
-
-				manifestDigestStr = descriptor.Digest
-			}
-
-			manifestDigest, err := godigest.Parse(manifestDigestStr)
-			if err != nil {
-				return false, err
-			}
-
-			manifestData, err := metaDB.GetImageMeta(manifestDigest)
-			if err != nil {
-				return false, err
-			}
-
-			for _, imageLayer := range manifestData.Manifests[0].Manifest.Layers {
-				switch imageLayer.MediaType {
-				case ispec.MediaTypeImageLayerGzip, ispec.MediaTypeImageLayer, string(regTypes.DockerLayer):
-
-					return true, nil
-				default:
-
-					return false, zerr.ErrScanNotSupported
-				}
-			}
-
-			return false, nil
-		},
-	}
-
-	return &scanner
+	return createMockCveScannerWithCveProvider(metaDB, getCveResults)
 }
 
 func TestRepoListWithNewestImage(t *testing.T) {
@@ -1999,6 +2150,69 @@ func TestExpandedRepoInfo(t *testing.T) {
 
 		err = json.Unmarshal(resp.Body(), responseStruct)
 		So(err, ShouldBeNil)
+	})
+}
+
+func TestExpandedRepoInfoWithScaleOutProxyLocalStorage(t *testing.T) {
+	// When there are 2 zot instances, the same ExpandedRepoInfo query should
+	// return the correct data when both instances are queried.
+	reposToTest := []string{"alpine", "ubuntu", "debian", "bash"}
+
+	ports, testCMs := setupTestPairScaleOutLocalStorageCluster(t, reposToTest, false)
+	for _, cm := range testCMs {
+		defer cm.StopServer()
+	}
+
+	Convey("In a local scale-out cluster, response should contain correct data for ExpandedRepoInfo", t, func() {
+		for _, repoName := range reposToTest {
+			for _, port := range ports {
+				query := fmt.Sprintf(`{
+					ExpandedRepoInfo(repo:"%s"){
+						Images {
+							Tag
+						}
+					}
+				}`, repoName)
+
+				baseURL := test.GetBaseURL(port)
+				resp, err := resty.R().Get(baseURL + graphqlQueryPrefix + "?query=" + url.QueryEscape(query))
+				So(resp, ShouldNotBeNil)
+				So(err, ShouldBeNil)
+				So(resp.StatusCode(), ShouldEqual, 200)
+
+				responseStruct := &zcommon.ExpandedRepoInfoResp{}
+
+				err = json.Unmarshal(resp.Body(), responseStruct)
+				So(err, ShouldBeNil)
+				So(len(responseStruct.ImageSummaries), ShouldEqual, 1)
+				So(responseStruct.ImageSummaries[0].Tag, ShouldEqual, "1.0")
+			}
+		}
+	})
+
+	Convey("In a local scale-out cluster, response should contain an error when the repo does not exist", t, func() {
+		for _, port := range ports {
+			query := `{
+			ExpandedRepoInfo(repo:"unknown"){
+					Images {
+						Tag
+					}
+				}
+			}`
+
+			baseURL := test.GetBaseURL(port)
+			resp, err := resty.R().Get(baseURL + graphqlQueryPrefix + "?query=" + url.QueryEscape(query))
+			So(resp, ShouldNotBeNil)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, 200)
+
+			responseStruct := &zcommon.ExpandedRepoInfoResp{}
+
+			err = json.Unmarshal(resp.Body(), responseStruct)
+			So(err, ShouldBeNil)
+			So(len(responseStruct.Errors), ShouldEqual, 1)
+			So(responseStruct.Errors[0].Message, ShouldEqual, "repo metadata not found for given repo name")
+		}
 	})
 }
 
@@ -4508,6 +4722,120 @@ func TestGlobalSearch(t *testing.T) { //nolint: gocyclo
 	})
 }
 
+func TestGlobalSearchWithScaleOutProxyLocalStorage(t *testing.T) {
+	// When there are 2 zot instances, the same GlobalSearch query should
+	// return aggregated data from both instances when both instances are queried.
+	reposToTest := []string{"alpine", "ubuntu", "debian", "bash"}
+
+	ports, testCMs := setupTestPairScaleOutLocalStorageCluster(t, reposToTest, false)
+	for _, cm := range testCMs {
+		defer cm.StopServer()
+	}
+
+	Convey("In a local scale-out cluster, response should contain correct data for GlobalSearch", t, func() {
+		for _, port := range ports {
+			query := `
+			{
+				GlobalSearch(query:""){
+					Page {
+						TotalCount
+						ItemCount
+					}
+					Repos {
+						Name
+					}
+				}
+			}`
+
+			baseURL := test.GetBaseURL(port)
+			resp, err := resty.R().Get(baseURL + graphqlQueryPrefix + "?query=" + url.QueryEscape(query))
+			So(resp, ShouldNotBeNil)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, 200)
+
+			responseStruct := &zcommon.GlobalSearchResultResp{}
+
+			err = json.Unmarshal(resp.Body(), responseStruct)
+			So(err, ShouldBeNil)
+			So(len(responseStruct.Repos), ShouldEqual, 4)
+			So(responseStruct.Page.ItemCount, ShouldEqual, 4)
+			So(responseStruct.Page.TotalCount, ShouldEqual, 4)
+		}
+	})
+
+	Convey("In a local scale-out cluster, response to GlobalSearch should paginate incorrectly", t, func() {
+		// Since pagination doesn't currently work, this is expected
+		for _, port := range ports {
+			query := `
+			{
+				GlobalSearch(query:"", requestedPage:{
+						limit:1
+						offset:0
+						sortBy: DOWNLOADS
+					}){
+						Page {
+							TotalCount
+							ItemCount
+						}
+						Repos {
+							Name
+						}
+				}
+			}`
+
+			baseURL := test.GetBaseURL(port)
+			resp, err := resty.R().Get(baseURL + graphqlQueryPrefix + "?query=" + url.QueryEscape(query))
+			So(resp, ShouldNotBeNil)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, 200)
+
+			responseStruct := &zcommon.GlobalSearchResultResp{}
+
+			err = json.Unmarshal(resp.Body(), responseStruct)
+			So(err, ShouldBeNil)
+			// Length should actually be 1 - currently, we have 1 + 1.
+			So(len(responseStruct.Repos), ShouldEqual, 2)
+			// Item count should actually be 1 - currently we have 1 + 1.
+			So(responseStruct.Page.ItemCount, ShouldEqual, 2)
+			So(responseStruct.Page.TotalCount, ShouldEqual, 4)
+		}
+	})
+
+	Convey("In a local scale-out cluster, response to GlobalSearch with repo query should be correct", t, func() {
+		for _, port := range ports {
+			query := `
+			{
+				GlobalSearch(query:"debian") {
+					Page {
+						TotalCount
+						ItemCount
+					}
+					Repos {
+						Name
+					}
+				}
+			}`
+
+			baseURL := test.GetBaseURL(port)
+			resp, err := resty.R().Get(baseURL + graphqlQueryPrefix + "?query=" + url.QueryEscape(query))
+			So(resp, ShouldNotBeNil)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, 200)
+
+			responseStruct := &zcommon.GlobalSearchResultResp{}
+
+			err = json.Unmarshal(resp.Body(), responseStruct)
+			So(err, ShouldBeNil)
+
+			// Since a filter has been applied for 'debian', there should only be one entry.
+			So(len(responseStruct.Repos), ShouldEqual, 1)
+
+			So(responseStruct.Page.ItemCount, ShouldEqual, 1)
+			So(responseStruct.Page.TotalCount, ShouldEqual, 1)
+		}
+	})
+}
+
 func TestCleaningFilteringParamsGlobalSearch(t *testing.T) {
 	Convey("Test cleaning filtering parameters for global search", t, func() {
 		dir := t.TempDir()
@@ -4867,7 +5195,7 @@ func TestImageList(t *testing.T) {
 
 			resp, err := resty.R().Get(baseURL + graphqlQueryPrefix + "?query=" + url.QueryEscape(query))
 			So(err, ShouldBeNil)
-			So(resp.StatusCode(), ShouldEqual, 200)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 			So(resp, ShouldNotBeNil)
 
 			var responseStruct zcommon.ImageListResponse
@@ -4876,6 +5204,230 @@ func TestImageList(t *testing.T) {
 
 			So(len(responseStruct.Results), ShouldEqual, limit)
 		})
+	})
+}
+
+func TestGqlWithInvalidQueriesWithScaleOutProxyLocalStorage(t *testing.T) {
+	// When there are 2 zot instances, the same invalid GQL queries should
+	// return an error when both instances are queried.
+	ports, testCMs := setupTestPairScaleOutLocalStorageCluster(t, []string{}, false)
+	for _, cm := range testCMs {
+		defer cm.StopServer()
+	}
+
+	Convey("In a local scale-out cluster, response should be an error if no operation specified", t, func() {
+		for _, port := range ports {
+			query := `{
+					(repo:"sample"){
+						Results {
+							RepoName
+							Tag
+						}
+					}
+				}`
+
+			baseURL := test.GetBaseURL(port)
+			resp, err := resty.R().Get(baseURL + graphqlQueryPrefix + "?query=" + url.QueryEscape(query))
+			So(resp, ShouldNotBeNil)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusBadRequest)
+			So(string(resp.Body()), ShouldEqual, "failed to process GQL request\n")
+		}
+	})
+
+	Convey("In a local scale-out cluster, response should be an error if operation is unsupported", t, func() {
+		for _, port := range ports {
+			query := `{
+					CVEDiffListForImages(
+						minuend:{Repo:"alpine",Tag:"latest"},
+						subtrahend:{Repo:"alpine",Tag:"latest"}
+					){
+						CVEList {
+							Id
+						}
+					}
+				}`
+
+			baseURL := test.GetBaseURL(port)
+			resp, err := resty.R().Get(baseURL + graphqlQueryPrefix + "?query=" + url.QueryEscape(query))
+			So(resp, ShouldNotBeNil)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusBadRequest)
+			So(string(resp.Body()), ShouldEqual, "query is not supported or has different arguments\n")
+		}
+	})
+}
+
+func TestImageListWithScaleOutProxyLocalStorage(t *testing.T) {
+	// When there are 2 zot instances, the same ImageList query should
+	// return the correct data when both instances are queried.
+	reposToTest := []string{"alpine", "ubuntu", "debian", "bash"}
+
+	ports, testCMs := setupTestPairScaleOutLocalStorageCluster(t, reposToTest, false)
+	for _, cm := range testCMs {
+		defer cm.StopServer()
+	}
+
+	Convey("In a local scale-out cluster, response should contain correct data for ImageList", t, func() {
+		for _, repoName := range reposToTest {
+			for _, port := range ports {
+				query := fmt.Sprintf(`{
+					ImageList(repo:"%s"){
+						Results {
+							RepoName
+							Tag
+						}
+					}
+				}`, repoName)
+
+				baseURL := test.GetBaseURL(port)
+				resp, err := resty.R().Get(baseURL + graphqlQueryPrefix + "?query=" + url.QueryEscape(query))
+				So(resp, ShouldNotBeNil)
+				So(err, ShouldBeNil)
+				So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+				responseStruct := &zcommon.ImageListResponse{}
+
+				err = json.Unmarshal(resp.Body(), responseStruct)
+				So(err, ShouldBeNil)
+				So(len(responseStruct.Results), ShouldEqual, 1)
+				So(responseStruct.Results[0].RepoName, ShouldEqual, repoName)
+				So(responseStruct.Results[0].Tag, ShouldEqual, "1.0")
+			}
+		}
+	})
+
+	Convey("In a local scale-out cluster, response should contain an error when the repo does not exist", t, func() {
+		for _, port := range ports {
+			query := `{
+			ImageList(repo:"unknown"){
+					Results {
+						RepoName
+						Tag
+					}
+				}
+			}`
+
+			baseURL := test.GetBaseURL(port)
+			resp, err := resty.R().Get(baseURL + graphqlQueryPrefix + "?query=" + url.QueryEscape(query))
+			So(resp, ShouldNotBeNil)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+			responseStruct := &zcommon.ImageListResponse{}
+
+			err = json.Unmarshal(resp.Body(), responseStruct)
+			So(err, ShouldBeNil)
+			So(len(responseStruct.Errors), ShouldEqual, 0)
+			So(len(responseStruct.Results), ShouldEqual, 0)
+		}
+	})
+
+	Convey("In a local scale-out cluster, response should contain an error when the repo is not specified", t, func() {
+		for _, port := range ports {
+			query := `{
+			ImageList(){
+					Results {
+						RepoName
+						Tag
+					}
+				}
+			}`
+
+			baseURL := test.GetBaseURL(port)
+			resp, err := resty.R().Get(baseURL + graphqlQueryPrefix + "?query=" + url.QueryEscape(query))
+			So(resp, ShouldNotBeNil)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusBadRequest)
+			So(string(resp.Body()), ShouldEqual, "failed to process GQL request\n")
+		}
+	})
+}
+
+func TestCVEListForImageWithScaleOutProxyLocalStorage(t *testing.T) {
+	ports, testCMs := setupTestPairScaleOutLocalStorageCluster(t, []string{"debian-vuln", "ubuntu-vuln"}, true)
+	for _, cm := range testCMs {
+		defer cm.StopServer()
+	}
+
+	// This is an additional image for testing with the Hash Digest value
+	customImage := CreateDefaultImage()
+	customImageDigest := customImage.DigestStr()
+
+	err := UploadImage(customImage, GetBaseURL(ports[0]), "debian-vuln", "1.1")
+	if err != nil {
+		t.Errorf("failed to upload custom test image due to error. error=%s", err)
+	}
+
+	// debian-vuln goes to instance 1
+	// ubuntu-vuln goes to instance 2
+	testData := []struct {
+		refName       string
+		tag           string
+		cvesToInclude []string
+		cvesToExclude []string
+	}{
+		{"debian-vuln:1.0", "1.0", []string{"CVE1", "CVE2"}, []string{"CVE3", "CVE4"}},
+		{"ubuntu-vuln:1.0", "1.0", []string{"CVE3", "CVE4"}, []string{"CVE1", "CVE2"}},
+		{"debian-vuln@" + customImageDigest, customImageDigest, []string{"CVE1", "CVE2"}, []string{"CVE3", "CVE4"}},
+	}
+
+	for _, sample := range testData {
+		t.Run(sample.refName, func(t *testing.T) {
+			Convey("In a local scale-out cluster, response should contain correct data for CVEListForImage", t, func() {
+				for _, port := range ports {
+					query := fmt.Sprintf(`{
+							CVEListForImage(image:"%s"){
+								Tag
+								CVEList {
+									Id
+								}
+							}
+						}`, sample.refName)
+
+					baseURL := test.GetBaseURL(port)
+					resp, err := resty.R().Get(baseURL + graphqlQueryPrefix + "?query=" + url.QueryEscape(query))
+					So(resp, ShouldNotBeNil)
+					So(err, ShouldBeNil)
+					So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+					responseContents := string(resp.Body())
+
+					So(responseContents, ShouldContainSubstring, sample.tag)
+
+					for _, cveId := range sample.cvesToInclude {
+						So(responseContents, ShouldContainSubstring, cveId)
+					}
+
+					for _, cveId := range sample.cvesToExclude {
+						So(responseContents, ShouldNotContainSubstring, cveId)
+					}
+				}
+			})
+		})
+	}
+
+	Convey("In a local scale-out cluster, response should be an error if image name is not valid", t, func() {
+		for _, port := range ports {
+			query := `{
+							CVEListForImage(image:"invalidarg"){
+								Tag
+								CVEList {
+									Id
+								}
+							}
+					}`
+
+			baseURL := test.GetBaseURL(port)
+			resp, err := resty.R().Get(baseURL + graphqlQueryPrefix + "?query=" + url.QueryEscape(query))
+			So(resp, ShouldNotBeNil)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusBadRequest)
+
+			responseContents := string(resp.Body())
+
+			So(responseContents, ShouldContainSubstring, "invalid image reference format")
+		}
 	})
 }
 
