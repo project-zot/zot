@@ -179,7 +179,7 @@ var (
 	ErrNoBearerToken                    = errors.New("no bearer token given")
 	ErrInvalidBearerToken               = errors.New("invalid bearer token given")
 	ErrInsufficientScope                = errors.New("bearer token does not have sufficient scope")
-	ErrCouldNotLoadCertificate          = errors.New("failed to load certificate")
+	ErrCouldNotLoadPublicKey            = errors.New("failed to load certificate")
 	ErrEventTypeEmpty                   = errors.New("event type empty")
 	ErrEventSinkIsNil                   = errors.New("event sink is nil")
 	ErrUnsupportedEventSink             = errors.New("event sink is not supported")

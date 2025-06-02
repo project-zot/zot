@@ -19,6 +19,16 @@ openssl req \
     -out server.csr \
     -subj "/OU=TestServer/CN=*"
 
+openssl rsa \
+    -in server.key \
+    -pubout \
+    -out server-public.key
+
+openssl rsa \
+    -in server.key \
+    -RSAPublicKey_out \
+    -out server-public-pkcs1.key
+
 openssl x509 \
     -req \
     -days 3650 \
@@ -76,6 +86,11 @@ openssl req \
     -out server-ecdsa.csr \
     -subj "/OU=TestServer/CN=*"
 
+openssl ec \
+    -in server-ecdsa.key \
+    -pubout \
+    -out server-public-ecdsa.key
+
 openssl x509 \
     -req \
     -days 3650 \
@@ -111,6 +126,11 @@ openssl req \
     -nodes \
     -out server-ed25519.csr \
     -subj "/OU=TestServer/CN=*"
+
+openssl pkey \
+    -in server-ed25519.key \
+    -pubout \
+    -out server-public-ed25519.key
 
 openssl x509 \
     -req \

@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"crypto"
 	"crypto/sha256"
 	"crypto/x509"
 	"encoding/base64"
@@ -402,15 +403,17 @@ func (amw *AuthnMiddleware) tryAuthnHandlers(ctlr *Controller) mux.MiddlewareFun
 }
 
 func bearerAuthHandler(ctlr *Controller) mux.MiddlewareFunc {
-	certificate, err := loadCertificateFromFile(ctlr.Config.HTTP.Auth.Bearer.Cert)
+	// although the configuration option is called 'cert', this function will also parse a public key directly
+	// see https://github.com/project-zot/zot/issues/3173 for info
+	publicKey, err := loadPublicKeyFromFile(ctlr.Config.HTTP.Auth.Bearer.Cert)
 	if err != nil {
-		ctlr.Log.Panic().Err(err).Msg("failed to load certificate for bearer authentication")
+		ctlr.Log.Panic().Err(err).Msg("failed to load public key for bearer authentication")
 	}
 
 	authorizer := NewBearerAuthorizer(
 		ctlr.Config.HTTP.Auth.Bearer.Realm,
 		ctlr.Config.HTTP.Auth.Bearer.Service,
-		certificate.PublicKey,
+		publicKey,
 	)
 
 	return func(next http.Handler) http.Handler {
@@ -902,21 +905,30 @@ func GenerateAPIKey(uuidGenerator guuid.Generator, log log.Logger,
 	return apiKey, apiKeyID.String(), err
 }
 
-func loadCertificateFromFile(path string) (*x509.Certificate, error) {
-	rawCert, err := os.ReadFile(path)
+func loadPublicKeyFromFile(path string) (crypto.PublicKey, error) {
+	raw, err := os.ReadFile(path)
 	if err != nil {
-		return nil, fmt.Errorf("%w: %w, path %s", zerr.ErrCouldNotLoadCertificate, err, path)
+		return nil, fmt.Errorf("%w: %w, path %s", zerr.ErrCouldNotLoadPublicKey, err, path)
 	}
 
-	block, _ := pem.Decode(rawCert)
+	block, _ := pem.Decode(raw)
 	if block == nil {
-		return nil, fmt.Errorf("%w: no valid PEM data found", zerr.ErrCouldNotLoadCertificate)
+		return nil, fmt.Errorf("%w: no valid PEM data found", zerr.ErrCouldNotLoadPublicKey)
 	}
 
-	cert, err := x509.ParseCertificate(block.Bytes)
-	if err != nil {
-		return nil, fmt.Errorf("%w: %w", zerr.ErrCouldNotLoadCertificate, err)
+	pemBytes := block.Bytes
+
+	if cert, err := x509.ParseCertificate(pemBytes); err == nil {
+		return cert.PublicKey, nil
 	}
 
-	return cert, nil
+	if key, err := x509.ParsePKIXPublicKey(pemBytes); err == nil {
+		return key, nil
+	}
+
+	if key, err := x509.ParsePKCS1PublicKey(pemBytes); err == nil {
+		return key, nil
+	}
+
+	return nil, fmt.Errorf("%w: no valid x509 certificate or public key found", zerr.ErrCouldNotLoadPublicKey)
 }
