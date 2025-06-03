@@ -4,6 +4,7 @@
 
 load helpers_zot
 load helpers_metrics
+load helpers_dist
 
 function verify_prerequisites() {
     if [ ! $(command -v curl) ]; then
@@ -106,5 +107,10 @@ function teardown_file() {
 @test "authorized request: metrics enabled" {
     zot_port=`cat ${BATS_FILE_TMPDIR}/zot.port`
     run metrics_route_check ${zot_port} "-u ${METRICS_USER}:${METRICS_PASS}" 200
+    [ "$status" -eq 0 ]
+# anonymous policy: /v2/ endpoint should be available
+# 200 - http.StatusOK
+    zot_port=`cat ${BATS_FILE_TMPDIR}/zot.port`
+    run dist_route_check ${zot_port} "" 200
     [ "$status" -eq 0 ]
 }
