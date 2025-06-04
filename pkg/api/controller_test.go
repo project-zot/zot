@@ -77,11 +77,15 @@ import (
 const (
 	ServerCert             = "../../test/data/server.cert"
 	ServerKey              = "../../test/data/server.key"
+	ServerPublicKey        = "../../test/data/server-public.key"
+	ServerPublicKeyPKCS1   = "../../test/data/server-public-pkcs1.key"
 	CACert                 = "../../test/data/ca.crt"
 	ServerCertECDSA        = "../../test/data/server-ecdsa.cert"
 	ServerKeyECDSA         = "../../test/data/server-ecdsa.key"
+	ServerPublicKeyECDSA   = "../../test/data/server-public-ecdsa.key"
 	ServerCertED25519      = "../../test/data/server-ed25519.cert"
 	ServerKeyED25519       = "../../test/data/server-ed25519.key"
+	ServerPublicKeyED25519 = "../../test/data/server-public-ed25519.key"
 	UnauthorizedNamespace  = "fortknox/notallowed"
 	AuthorizationNamespace = "authz/image"
 	LDAPAddress            = "127.0.0.1"
@@ -3921,21 +3925,45 @@ func TestBearerAuthMultipleAlgorithms(t *testing.T) {
 		alg  string
 	}{
 		{
-			"RSA signing key",
+			"RSA signing key using certificate",
 			ServerKey,
 			ServerCert,
 			"RS256",
 		},
 		{
-			"ECDSA signing key",
+			"RSA signing key using public key",
+			ServerKey,
+			ServerPublicKey,
+			"RS256",
+		},
+		{
+			"RSA signing key using public key in PKCS1 format",
+			ServerKey,
+			ServerPublicKeyPKCS1,
+			"RS256",
+		},
+		{
+			"ECDSA signing key using certificate",
 			ServerKeyECDSA,
 			ServerCertECDSA,
 			"ES256",
 		},
 		{
-			"ED25519 signing key",
+			"ECDSA signing key using public key",
+			ServerKeyECDSA,
+			ServerPublicKeyECDSA,
+			"ES256",
+		},
+		{
+			"ED25519 signing key using certificate",
 			ServerKeyED25519,
 			ServerCertED25519,
+			"EdDSA",
+		},
+		{
+			"ED25519 signing key using public key",
+			ServerKeyED25519,
+			ServerPublicKeyED25519,
 			"EdDSA",
 		},
 	}
