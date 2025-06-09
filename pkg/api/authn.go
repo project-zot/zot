@@ -117,7 +117,7 @@ func (amw *AuthnMiddleware) basicAuthn(ctlr *Controller, userAc *reqCtx.UserAcce
 		var groups []string
 
 		if ctlr.Config.HTTP.AccessControl != nil {
-			ac := NewAccessController(ctlr.Config)
+			ac := NewAccessController(ctlr.Config, ctlr.Audit)
 			groups = ac.getUserGroups(identity)
 		}
 
@@ -152,7 +152,7 @@ func (amw *AuthnMiddleware) basicAuthn(ctlr *Controller, userAc *reqCtx.UserAcce
 			var groups []string
 
 			if ctlr.Config.HTTP.AccessControl != nil {
-				ac := NewAccessController(ctlr.Config)
+				ac := NewAccessController(ctlr.Config, ctlr.Audit)
 				groups = ac.getUserGroups(identity)
 			}
 
@@ -425,7 +425,7 @@ func bearerAuthHandler(ctlr *Controller) mux.MiddlewareFunc {
 				return
 			}
 
-			acCtrlr := NewAccessController(ctlr.Config)
+			acCtrlr := NewAccessController(ctlr.Config, ctlr.Audit)
 
 			// we want to bypass auth for mgmt route
 			isMgmtRequested := request.RequestURI == constants.FullMgmt
