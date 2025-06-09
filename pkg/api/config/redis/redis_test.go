@@ -217,7 +217,7 @@ func TestRedisOptions(t *testing.T) {
 			So(err, ShouldBeNil)
 			So(clientIntf, ShouldNotBeNil)
 
-			_, ok := clientIntf.(*redis.Client)
+			_, ok := clientIntf.(*redis.ClusterClient)
 			So(ok, ShouldBeTrue)
 		})
 

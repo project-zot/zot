@@ -44,8 +44,10 @@ func getNewScanOptions(dir string, dbRepositoryRef, javaDBRepositoryRef name.Ref
 			CacheDir: dir,
 		},
 		ScanOptions: flag.ScanOptions{
-			Scanners:    types.Scanners{types.VulnerabilityScanner},
-			OfflineScan: true,
+			Scanners:         types.Scanners{types.VulnerabilityScanner},
+			SkipVersionCheck: true,
+			DisableTelemetry: true,
+			OfflineScan:      true,
 		},
 		PackageOptions: flag.PackageOptions{
 			PkgRelationships: fanalTypes.Relationships,
