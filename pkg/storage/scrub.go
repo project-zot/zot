@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/olekukonko/tablewriter"
+	"github.com/olekukonko/tablewriter/tw"
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 
@@ -28,7 +29,7 @@ const (
 	imageNameWidth    = 32
 	tagWidth          = 24
 	statusWidth       = 8
-	affectedBlobWidth = 24
+	affectedBlobWidth = 64
 	errorWidth        = 8
 )
 
@@ -356,33 +357,54 @@ func newScrubImageResult(imageName, tag, status, affectedBlob, err string) Scrub
 }
 
 func getScrubTableWriter(writer io.Writer) *tablewriter.Table {
+	symbols := tw.NewSymbolCustom("Spaces").
+		WithRow("").
+		WithColumn(" ").
+		WithTopLeft("").
+		WithTopMid("").
+		WithTopRight("").
+		WithMidLeft("").
+		WithCenter("").
+		WithMidRight("").
+		WithBottomLeft("").
+		WithBottomMid("").
+		WithBottomRight("")
+
 	table := tablewriter.NewWriter(writer)
 
-	table.SetAutoWrapText(false)
-	table.SetAutoFormatHeaders(true)
-	table.SetHeaderAlignment(tablewriter.ALIGN_LEFT)
-	table.SetAlignment(tablewriter.ALIGN_LEFT)
-	table.SetCenterSeparator("")
-	table.SetColumnSeparator("")
-	table.SetRowSeparator("")
-	table.SetHeaderLine(false)
-	table.SetBorder(false)
-	table.SetTablePadding("  ")
-	table.SetNoWhiteSpace(true)
-	table.SetColMinWidth(colImageNameIndex, imageNameWidth)
-	table.SetColMinWidth(colTagIndex, tagWidth)
-	table.SetColMinWidth(colStatusIndex, statusWidth)
-	table.SetColMinWidth(colErrorIndex, affectedBlobWidth)
-	table.SetColMinWidth(colErrorIndex, errorWidth)
+	// Configure table using the new builder pattern
+	table.Options(
+		tablewriter.WithRendition(tw.Rendition{
+			Borders: tw.Border{
+				Left:   tw.Off,
+				Right:  tw.Off,
+				Top:    tw.Off,
+				Bottom: tw.Off,
+			},
+			Symbols: symbols,
+			Settings: tw.Settings{
+				Separators: tw.Separators{
+					ShowHeader:     tw.Off,
+					ShowFooter:     tw.Off,
+					BetweenRows:    tw.Off,
+					BetweenColumns: tw.On,
+				},
+			},
+		}),
+		tablewriter.WithPadding(tw.Padding{
+			Left:  "",
+			Right: "",
+		}),
+		tablewriter.WithHeaderAlignment(tw.AlignLeft),
+		tablewriter.WithRowAlignment(tw.AlignLeft),
+	)
 
 	return table
 }
 
 const tableCols = 5
 
-func printScrubTableHeader(writer io.Writer) {
-	table := getScrubTableWriter(writer)
-
+func printScrubTableHeader(table *tablewriter.Table) {
 	row := make([]string, tableCols)
 
 	row[colImageNameIndex] = "REPOSITORY"
@@ -391,42 +413,46 @@ func printScrubTableHeader(writer io.Writer) {
 	row[colAffectedBlobIndex] = "AFFECTED BLOB"
 	row[colErrorIndex] = "ERROR"
 
-	table.Append(row)
-	table.Render()
-}
-
-func printImageResult(imageResult ScrubImageResult) string {
-	var builder strings.Builder
-
-	table := getScrubTableWriter(&builder)
-	table.SetColMinWidth(colImageNameIndex, imageNameWidth)
-	table.SetColMinWidth(colTagIndex, tagWidth)
-	table.SetColMinWidth(colStatusIndex, statusWidth)
-	table.SetColMinWidth(colAffectedBlobIndex, affectedBlobWidth)
-	table.SetColMinWidth(colErrorIndex, errorWidth)
-
-	row := make([]string, tableCols)
-
-	row[colImageNameIndex] = imageResult.ImageName
-	row[colTagIndex] = imageResult.Tag
-	row[colStatusIndex] = imageResult.Status
-	row[colAffectedBlobIndex] = imageResult.AffectedBlob
-	row[colErrorIndex] = imageResult.Error
-
-	table.Append(row)
-	table.Render()
-
-	return builder.String()
+	table.Append(row) //nolint:errcheck
 }
 
 func (results ScrubResults) PrintScrubResults(resultWriter io.Writer) {
 	var builder strings.Builder
 
-	printScrubTableHeader(&builder)
-	fmt.Fprint(resultWriter, builder.String())
+	table := getScrubTableWriter(&builder)
+	printScrubTableHeader(table)
 
-	for _, res := range results.ScrubResults {
-		imageResult := printImageResult(res)
-		fmt.Fprint(resultWriter, imageResult)
+	imageNameLen := len("REPOSITORY")
+	tagLen := len("TAG")
+	errorLen := len("ERROR")
+
+	for _, imageResult := range results.ScrubResults {
+		imageNameLen = max(imageNameLen, len(imageResult.ImageName))
+		tagLen = max(tagLen, len(imageResult.Tag))
+		errorLen = max(errorLen, len(imageResult.Error))
+
+		row := make([]string, tableCols)
+		row[colImageNameIndex] = imageResult.ImageName
+		row[colTagIndex] = imageResult.Tag
+		row[colStatusIndex] = imageResult.Status
+		row[colAffectedBlobIndex] = imageResult.AffectedBlob
+		row[colErrorIndex] = imageResult.Error
+
+		table.Append(row) //nolint:errcheck
 	}
+
+	imageNameLen = min(imageNameLen, imageNameWidth)
+	tagLen = min(tagLen, tagWidth)
+
+	table.Options(
+		tablewriter.WithColumnWidths(tw.NewMapper[int, int]().
+			Set(colImageNameIndex, imageNameLen).
+			Set(colTagIndex, tagLen).
+			Set(colStatusIndex, statusWidth).
+			Set(colAffectedBlobIndex, affectedBlobWidth).
+			Set(colErrorIndex, errorLen)),
+	)
+
+	table.Render() //nolint:errcheck
+	fmt.Fprint(resultWriter, builder.String())
 }

@@ -14,6 +14,8 @@ import (
 	"time"
 
 	"github.com/briandowns/spinner"
+	"github.com/olekukonko/tablewriter"
+	"github.com/olekukonko/tablewriter/tw"
 	"github.com/spf13/cobra"
 
 	zerr "zotregistry.dev/zot/errors"
@@ -128,47 +130,82 @@ type stringResult struct {
 
 type printHeader func(writer io.Writer, verbose bool, maxImageNameLen, maxTagLen, maxPlatformLen int)
 
+func getCommonTableWriter(writer io.Writer) *tablewriter.Table {
+	table := tablewriter.NewWriter(writer)
+
+	symbols := tw.NewSymbolCustom("Spaces").
+		WithRow("").
+		WithColumn(" ").
+		WithTopLeft("").
+		WithTopMid("").
+		WithTopRight("").
+		WithMidLeft("").
+		WithCenter("").
+		WithMidRight("").
+		WithBottomLeft("").
+		WithBottomMid("").
+		WithBottomRight("")
+
+	table.Options(
+		tablewriter.WithRendition(tw.Rendition{
+			Borders: tw.Border{
+				Left:   tw.Off,
+				Right:  tw.Off,
+				Top:    tw.Off,
+				Bottom: tw.Off,
+			},
+			Symbols: symbols,
+			Settings: tw.Settings{
+				Separators: tw.Separators{
+					ShowHeader:     tw.Off,
+					ShowFooter:     tw.Off,
+					BetweenRows:    tw.Off,
+					BetweenColumns: tw.On,
+				},
+			},
+		}),
+		tablewriter.WithPadding(tw.Padding{
+			Left:  "",
+			Right: "",
+		}),
+		tablewriter.WithHeaderAlignment(tw.AlignLeft),
+		tablewriter.WithRowAlignment(tw.AlignLeft),
+	)
+
+	return table
+}
+
 func printImageTableHeader(writer io.Writer, verbose bool, maxImageNameLen, maxTagLen, maxPlatformLen int) {
-	table := getImageTableWriter(writer)
+	tagLen := max(len("TAG"), maxTagLen, tagWidth)
+	imageNameLen := max(len("REPOSITORY"), maxImageNameLen, imageNameWidth)
+	platformLen := max(len("OS/ARCH"), maxPlatformLen, platformWidth)
+	configLen := configWidth
+	layersLen := layersWidth
 
-	table.SetColMinWidth(colImageNameIndex, imageNameWidth)
-	table.SetColMinWidth(colTagIndex, tagWidth)
-	table.SetColMinWidth(colPlatformIndex, platformWidth)
-	table.SetColMinWidth(colDigestIndex, digestWidth)
-	table.SetColMinWidth(colSizeIndex, sizeWidth)
-	table.SetColMinWidth(colIsSignedIndex, isSignedWidth)
-
-	if verbose {
-		table.SetColMinWidth(colConfigIndex, configWidth)
-		table.SetColMinWidth(colLayersIndex, layersWidth)
+	if !verbose {
+		// Ths hides the columns effectively, 0 links the neighboring columns together
+		configLen = 1
+		layersLen = 1
 	}
+
+	table := getCommonTableWriter(writer)
+	table.Options(
+		tablewriter.WithColumnWidths(tw.NewMapper[int, int]().
+			Set(colImageNameIndex, imageNameLen).
+			Set(colTagIndex, tagLen).
+			Set(colPlatformIndex, platformLen).
+			Set(colDigestIndex, digestWidth).
+			Set(colSizeIndex, sizeWidth).
+			Set(colIsSignedIndex, isSignedWidth).
+			Set(colConfigIndex, configLen).
+			Set(colLayersIndex, layersLen)),
+	)
 
 	row := make([]string, 8) //nolint:mnd
 
-	// adding spaces so that repository and tag columns are aligned
-	// in case the name/tag are fully shown and too long
-	var offset string
-	if maxImageNameLen > len("REPOSITORY") {
-		offset = strings.Repeat(" ", maxImageNameLen-len("REPOSITORY"))
-		row[colImageNameIndex] = "REPOSITORY" + offset
-	} else {
-		row[colImageNameIndex] = "REPOSITORY"
-	}
-
-	if maxTagLen > len("TAG") {
-		offset = strings.Repeat(" ", maxTagLen-len("TAG"))
-		row[colTagIndex] = "TAG" + offset
-	} else {
-		row[colTagIndex] = "TAG"
-	}
-
-	if maxPlatformLen > len("OS/ARCH") {
-		offset = strings.Repeat(" ", maxPlatformLen-len("OS/ARCH"))
-		row[colPlatformIndex] = "OS/ARCH" + offset
-	} else {
-		row[colPlatformIndex] = "OS/ARCH"
-	}
-
+	row[colImageNameIndex] = "REPOSITORY"
+	row[colTagIndex] = "TAG"
+	row[colPlatformIndex] = "OS/ARCH"
 	row[colDigestIndex] = "DIGEST"
 	row[colSizeIndex] = sizeColumn
 	row[colIsSignedIndex] = "SIGNED"
@@ -178,8 +215,8 @@ func printImageTableHeader(writer io.Writer, verbose bool, maxImageNameLen, maxT
 		row[colLayersIndex] = "LAYERS"
 	}
 
-	table.Append(row)
-	table.Render()
+	table.Append(row) //nolint:errcheck
+	table.Render()    //nolint:errcheck
 }
 
 func printCVETableHeader(writer io.Writer) {
@@ -189,8 +226,8 @@ func printCVETableHeader(writer io.Writer) {
 		"VULNERABLE PACKAGE", "PATH", "INSTALL-VER", "FIXED-VER",
 	}
 
-	table.Append(columnHeadingsRow)
-	table.Render()
+	table.Append(columnHeadingsRow) //nolint:errcheck
+	table.Render()                  //nolint:errcheck
 }
 
 func printReferrersTableHeader(config SearchConfig, writer io.Writer, maxArtifactTypeLen int) {
@@ -198,11 +235,13 @@ func printReferrersTableHeader(config SearchConfig, writer io.Writer, maxArtifac
 		return
 	}
 
-	table := getReferrersTableWriter(writer)
-
-	table.SetColMinWidth(refArtifactTypeIndex, maxArtifactTypeLen)
-	table.SetColMinWidth(refDigestIndex, digestWidth)
-	table.SetColMinWidth(refSizeIndex, sizeWidth)
+	table := getCommonTableWriter(writer)
+	table.Options(
+		tablewriter.WithColumnWidths(tw.NewMapper[int, int]().
+			Set(refArtifactTypeIndex, maxArtifactTypeLen).
+			Set(refDigestIndex, digestWidth).
+			Set(refSizeIndex, sizeWidth)),
+	)
 
 	row := make([]string, refRowWidth)
 
@@ -220,22 +259,21 @@ func printReferrersTableHeader(config SearchConfig, writer io.Writer, maxArtifac
 	row[refDigestIndex] = "DIGEST"
 	row[refSizeIndex] = sizeColumn
 
-	table.Append(row)
-	table.Render()
+	table.Append(row) //nolint:errcheck
+	table.Render()    //nolint:errcheck
 }
 
 func printRepoTableHeader(writer io.Writer, repoMaxLen, maxTimeLen int, verbose bool) {
-	table := getRepoTableWriter(writer)
-
-	table.SetColMinWidth(repoNameIndex, repoMaxLen)
-	table.SetColMinWidth(repoSizeIndex, sizeWidth)
-	table.SetColMinWidth(repoLastUpdatedIndex, maxTimeLen)
-	table.SetColMinWidth(repoDownloadsIndex, sizeWidth)
-	table.SetColMinWidth(repoStarsIndex, sizeWidth)
-
-	if verbose {
-		table.SetColMinWidth(repoPlatformsIndex, platformWidth)
-	}
+	table := getCommonTableWriter(writer)
+	table.Options(
+		tablewriter.WithColumnWidths(tw.NewMapper[int, int]().
+			Set(repoNameIndex, repoMaxLen).
+			Set(repoSizeIndex, sizeWidth).
+			Set(repoLastUpdatedIndex, maxTimeLen).
+			Set(repoDownloadsIndex, downloadsWidth).
+			Set(repoStarsIndex, signedWidth).
+			Set(repoPlatformsIndex, platformWidth)),
+	)
 
 	row := make([]string, repoRowWidth)
 
@@ -265,8 +303,8 @@ func printRepoTableHeader(writer io.Writer, repoMaxLen, maxTimeLen int, verbose 
 		row[repoPlatformsIndex] = "PLATFORMS"
 	}
 
-	table.Append(row)
-	table.Render()
+	table.Append(row) //nolint:errcheck
+	table.Render()    //nolint:errcheck
 }
 
 func printReferrersResult(config SearchConfig, referrersList referrersResult, maxArtifactTypeLen int) error {
