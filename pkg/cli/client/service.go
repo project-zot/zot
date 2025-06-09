@@ -16,6 +16,7 @@ import (
 	"github.com/dustin/go-humanize"
 	jsoniter "github.com/json-iterator/go"
 	"github.com/olekukonko/tablewriter"
+	"github.com/olekukonko/tablewriter/tw"
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"gopkg.in/yaml.v3"
@@ -881,15 +882,15 @@ func (cve cveResult) stringPlainText() string {
 		row[colCVESeverityIndex] = severity
 		row[colCVETitleIndex] = title
 
-		table.Append(row)
+		table.Append(row) //nolint:errcheck
 
 		for _, pkg := range cveListItem.PackageList {
 			pkgRow := generateTableRowForVulnerablePackage(pkg)
-			table.Append(pkgRow)
+			table.Append(pkgRow) //nolint:errcheck
 		}
 	}
 
-	table.Render()
+	table.Render() //nolint:errcheck
 
 	return builder.String()
 }
@@ -953,26 +954,38 @@ func (ref referrersResult) string(format string, maxArtifactTypeLen int) (string
 func (ref referrersResult) stringPlainText(maxArtifactTypeLen int) (string, error) {
 	var builder strings.Builder
 
-	table := getImageTableWriter(&builder)
-
-	table.SetColMinWidth(refArtifactTypeIndex, maxArtifactTypeLen)
-	table.SetColMinWidth(refDigestIndex, digestWidth)
-	table.SetColMinWidth(refSizeIndex, sizeWidth)
+	maxDigestWidth := digestWidth
+	rows := [][]string{}
 
 	for _, referrer := range ref {
 		artifactType := ellipsize(referrer.ArtifactType, maxArtifactTypeLen, ellipsis)
-		// digest := ellipsize(godigest.Digest(referrer.Digest).Encoded(), digestWidth, "")
 		size := ellipsize(humanize.Bytes(uint64(referrer.Size)), sizeWidth, ellipsis) //nolint:gosec,lll // refererrer.Size should >= 0
+
+		if len(referrer.Digest) > maxDigestWidth {
+			maxDigestWidth = len(referrer.Digest)
+		}
 
 		row := make([]string, refRowWidth)
 		row[refArtifactTypeIndex] = artifactType
 		row[refDigestIndex] = referrer.Digest
 		row[refSizeIndex] = size
 
-		table.Append(row)
+		rows = append(rows, row) //nolint:errcheck
 	}
 
-	table.Render()
+	table := getCommonTableWriter(&builder)
+	table.Options(
+		tablewriter.WithColumnWidths(tw.NewMapper[int, int]().
+			Set(refArtifactTypeIndex, maxArtifactTypeLen).
+			Set(refDigestIndex, maxDigestWidth).
+			Set(refSizeIndex, sizeWidth)),
+	)
+
+	for _, row := range rows {
+		table.Append(row) //nolint:errcheck
+	}
+
+	table.Render() //nolint:errcheck
 
 	return builder.String(), nil
 }
@@ -1017,17 +1030,16 @@ func (repo repoStruct) string(format string, maxImgNameLen, maxTimeLen int, verb
 func (repo repoStruct) stringPlainText(repoMaxLen, maxTimeLen int, verbose bool) (string, error) {
 	var builder strings.Builder
 
-	table := getImageTableWriter(&builder)
-
-	table.SetColMinWidth(repoNameIndex, repoMaxLen)
-	table.SetColMinWidth(repoSizeIndex, sizeWidth)
-	table.SetColMinWidth(repoLastUpdatedIndex, maxTimeLen)
-	table.SetColMinWidth(repoDownloadsIndex, downloadsWidth)
-	table.SetColMinWidth(repoStarsIndex, signedWidth)
-
-	if verbose {
-		table.SetColMinWidth(repoPlatformsIndex, platformWidth)
-	}
+	table := getCommonTableWriter(&builder)
+	table.Options(
+		tablewriter.WithColumnWidths(tw.NewMapper[int, int]().
+			Set(repoNameIndex, repoMaxLen).
+			Set(repoSizeIndex, sizeWidth).
+			Set(repoLastUpdatedIndex, maxTimeLen).
+			Set(repoDownloadsIndex, downloadsWidth).
+			Set(repoStarsIndex, signedWidth).
+			Set(repoPlatformsIndex, platformWidth)),
+	)
 
 	repoSize, err := strconv.Atoi(repo.Size)
 	if err != nil {
@@ -1052,7 +1064,7 @@ func (repo repoStruct) stringPlainText(repoMaxLen, maxTimeLen int, verbose bool)
 		repoPlatforms = repoPlatforms[1:]
 	}
 
-	table.Append(row)
+	table.Append(row) //nolint:errcheck
 
 	if verbose {
 		for _, platform := range repoPlatforms {
@@ -1060,11 +1072,11 @@ func (repo repoStruct) stringPlainText(repoMaxLen, maxTimeLen int, verbose bool)
 
 			row[repoPlatformsIndex] = getPlatformStr(platform)
 
-			table.Append(row)
+			table.Append(row) //nolint:errcheck
 		}
 	}
 
-	table.Render()
+	table.Render() //nolint:errcheck
 
 	return builder.String(), nil
 }
@@ -1109,19 +1121,18 @@ func (img imageStruct) string(format string, maxImgNameLen, maxTagLen, maxPlatfo
 func (img imageStruct) stringPlainText(maxImgNameLen, maxTagLen, maxPlatformLen int, verbose bool) (string, error) {
 	var builder strings.Builder
 
-	table := getImageTableWriter(&builder)
-
-	table.SetColMinWidth(colImageNameIndex, maxImgNameLen)
-	table.SetColMinWidth(colTagIndex, maxTagLen)
-	table.SetColMinWidth(colPlatformIndex, platformWidth)
-	table.SetColMinWidth(colDigestIndex, digestWidth)
-	table.SetColMinWidth(colSizeIndex, sizeWidth)
-	table.SetColMinWidth(colIsSignedIndex, isSignedWidth)
-
-	if verbose {
-		table.SetColMinWidth(colConfigIndex, configWidth)
-		table.SetColMinWidth(colLayersIndex, layersWidth)
-	}
+	table := getCommonTableWriter(&builder)
+	table.Options(
+		tablewriter.WithColumnWidths(tw.NewMapper[int, int]().
+			Set(colImageNameIndex, maxImgNameLen).
+			Set(colTagIndex, maxTagLen).
+			Set(colPlatformIndex, platformWidth).
+			Set(colDigestIndex, digestWidth).
+			Set(colSizeIndex, sizeWidth).
+			Set(colIsSignedIndex, isSignedWidth).
+			Set(colConfigIndex, configWidth).
+			Set(colLayersIndex, layersWidth)),
+	)
 
 	var imageName, tagName string
 
@@ -1154,7 +1165,7 @@ func (img imageStruct) stringPlainText(maxImgNameLen, maxTagLen, maxPlatformLen 
 		return "", err
 	}
 
-	table.Render()
+	table.Render() //nolint:errcheck
 
 	return builder.String(), nil
 }
@@ -1194,7 +1205,7 @@ func addImageIndexToTable(table *tablewriter.Table, img *imageStruct, maxPlatfor
 		row[colLayersIndex] = ""
 	}
 
-	table.Append(row)
+	table.Append(row) //nolint:errcheck
 
 	for i := range img.Manifests {
 		err := addManifestToTable(table, "", "", &img.Manifests[i], maxPlatformLen, verbose)
@@ -1245,7 +1256,7 @@ func addManifestToTable(table *tablewriter.Table, imageName, tagName string, man
 		row[colLayersIndex] = ""
 	}
 
-	table.Append(row)
+	table.Append(row) //nolint:errcheck
 
 	if verbose {
 		for _, entry := range manifest.Layers {
@@ -1268,7 +1279,7 @@ func addManifestToTable(table *tablewriter.Table, imageName, tagName string, man
 			layerRow[colConfigIndex] = ""
 			layerRow[colLayersIndex] = layerDigestStr
 
-			table.Append(layerRow)
+			table.Append(layerRow) //nolint:errcheck
 		}
 	}
 
@@ -1346,81 +1357,18 @@ func ellipsize(text string, maxLength int, trailing string) string {
 	return text[:maxLength-chopLength] + trailing
 }
 
-func getImageTableWriter(writer io.Writer) *tablewriter.Table {
-	table := tablewriter.NewWriter(writer)
-
-	table.SetAutoWrapText(false)
-	table.SetAutoFormatHeaders(true)
-	table.SetHeaderAlignment(tablewriter.ALIGN_LEFT)
-	table.SetAlignment(tablewriter.ALIGN_LEFT)
-	table.SetCenterSeparator("")
-	table.SetColumnSeparator("")
-	table.SetRowSeparator("")
-	table.SetHeaderLine(false)
-	table.SetBorder(false)
-	table.SetTablePadding("  ")
-	table.SetNoWhiteSpace(true)
-
-	return table
-}
-
 func getCVETableWriter(writer io.Writer) *tablewriter.Table {
-	table := tablewriter.NewWriter(writer)
-
-	table.SetAutoWrapText(false)
-	table.SetAutoFormatHeaders(true)
-	table.SetHeaderAlignment(tablewriter.ALIGN_LEFT)
-	table.SetAlignment(tablewriter.ALIGN_LEFT)
-	table.SetCenterSeparator("")
-	table.SetColumnSeparator("")
-	table.SetRowSeparator("")
-	table.SetHeaderLine(false)
-	table.SetBorder(false)
-	table.SetTablePadding("  ")
-	table.SetNoWhiteSpace(true)
-	table.SetColMinWidth(colCVEIDIndex, cveIDWidth)
-	table.SetColMinWidth(colCVESeverityIndex, cveSeverityWidth)
-	table.SetColMinWidth(colCVETitleIndex, cveTitleWidth)
-	table.SetColMinWidth(colCVEVulnPkgNameIndex, cveVulnPkgNameWidth)
-	table.SetColMinWidth(colCVEVulnPkgPathIndex, cveVulnPkgPathWidth)
-	table.SetColMinWidth(colCVEVulnPkgInstalledVerIndex, cveVulnPkgInstalledVerWidth)
-	table.SetColMinWidth(colCVEVulnPkgFixedVerIndex, cveVulnPkgFixedVerWidth)
-
-	return table
-}
-
-func getReferrersTableWriter(writer io.Writer) *tablewriter.Table {
-	table := tablewriter.NewWriter(writer)
-
-	table.SetAutoWrapText(false)
-	table.SetAutoFormatHeaders(true)
-	table.SetHeaderAlignment(tablewriter.ALIGN_LEFT)
-	table.SetAlignment(tablewriter.ALIGN_LEFT)
-	table.SetCenterSeparator("")
-	table.SetColumnSeparator("")
-	table.SetRowSeparator("")
-	table.SetHeaderLine(false)
-	table.SetBorder(false)
-	table.SetTablePadding("  ")
-	table.SetNoWhiteSpace(true)
-
-	return table
-}
-
-func getRepoTableWriter(writer io.Writer) *tablewriter.Table {
-	table := tablewriter.NewWriter(writer)
-
-	table.SetAutoWrapText(false)
-	table.SetAutoFormatHeaders(true)
-	table.SetHeaderAlignment(tablewriter.ALIGN_LEFT)
-	table.SetAlignment(tablewriter.ALIGN_LEFT)
-	table.SetCenterSeparator("")
-	table.SetColumnSeparator("")
-	table.SetRowSeparator("")
-	table.SetHeaderLine(false)
-	table.SetBorder(false)
-	table.SetTablePadding("  ")
-	table.SetNoWhiteSpace(true)
+	table := getCommonTableWriter(writer)
+	table.Options(
+		tablewriter.WithColumnWidths(tw.NewMapper[int, int]().
+			Set(colCVEIDIndex, cveIDWidth).
+			Set(colCVESeverityIndex, cveSeverityWidth).
+			Set(colCVETitleIndex, cveTitleWidth).
+			Set(colCVEVulnPkgNameIndex, cveVulnPkgNameWidth).
+			Set(colCVEVulnPkgPathIndex, cveVulnPkgPathWidth).
+			Set(colCVEVulnPkgInstalledVerIndex, cveVulnPkgInstalledVerWidth).
+			Set(colCVEVulnPkgFixedVerIndex, cveVulnPkgFixedVerWidth)),
+	)
 
 	return table
 }
@@ -1472,7 +1420,7 @@ const (
 	imageNameWidth   = 10
 	tagWidth         = 8
 	digestWidth      = 8
-	platformWidth    = 14
+	platformWidth    = 16
 	sizeWidth        = 10
 	isSignedWidth    = 8
 	downloadsWidth   = 10
