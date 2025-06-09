@@ -3,7 +3,7 @@ module zotregistry.dev/zot
 go 1.24.2
 
 require (
-	github.com/99designs/gqlgen v0.17.73
+	github.com/99designs/gqlgen v0.17.74
 	github.com/Masterminds/semver v1.5.0
 	github.com/alicebob/miniredis/v2 v2.34.0
 	github.com/aquasecurity/trivy v0.63.0
@@ -11,10 +11,10 @@ require (
 	github.com/aws/aws-sdk-go v1.55.7
 	github.com/aws/aws-sdk-go-v2 v1.36.3
 	github.com/aws/aws-sdk-go-v2/config v1.29.14
-	github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue v1.19.0
-	github.com/aws/aws-sdk-go-v2/service/dynamodb v1.43.1
+	github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue v1.19.1
+	github.com/aws/aws-sdk-go-v2/service/dynamodb v1.43.2
 	github.com/aws/aws-sdk-go-v2/service/ecr v1.44.0
-	github.com/aws/aws-sdk-go-v2/service/secretsmanager v1.35.4
+	github.com/aws/aws-sdk-go-v2/service/secretsmanager v1.35.5
 	github.com/aws/aws-secretsmanager-caching-go v1.2.0
 	github.com/aws/smithy-go v1.22.3
 	github.com/bmatcuk/doublestar/v4 v4.8.1
@@ -45,7 +45,7 @@ require (
 	github.com/migueleliasweb/go-github-mock v1.3.0
 	github.com/mitchellh/mapstructure v1.5.1-0.20231216201459-8508981c8b6c
 	github.com/nats-io/nats-server/v2 v2.11.4
-	github.com/nats-io/nats.go v1.42.0
+	github.com/nats-io/nats.go v1.43.0
 	github.com/nmcclain/ldap v0.0.0-20210720162743-7f8d1e44eeba
 	github.com/notaryproject/notation-core-go v1.3.0
 	github.com/notaryproject/notation-go v1.3.2
@@ -57,7 +57,7 @@ require (
 	github.com/project-zot/mockoidc v0.0.0-20240610203808-d69d9e02020a
 	github.com/prometheus/client_golang v1.22.0
 	github.com/prometheus/client_model v0.6.2
-	github.com/redis/go-redis/v9 v9.9.0
+	github.com/redis/go-redis/v9 v9.10.0
 	github.com/regclient/regclient v0.8.3
 	github.com/rs/zerolog v1.34.0
 	github.com/santhosh-tekuri/jsonschema/v5 v5.3.1
@@ -73,7 +73,7 @@ require (
 	github.com/vektah/gqlparser/v2 v2.5.27
 	github.com/zitadel/oidc/v3 v3.38.1
 	go.etcd.io/bbolt v1.4.0
-	golang.org/x/crypto v0.38.0
+	golang.org/x/crypto v0.39.0
 	golang.org/x/oauth2 v0.30.0
 	google.golang.org/protobuf v1.36.6
 	gopkg.in/resty.v1 v1.12.0
@@ -167,7 +167,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/internal/configsources v1.3.34 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/endpoints/v2 v2.6.34 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/ini v1.8.3 // indirect
-	github.com/aws/aws-sdk-go-v2/service/dynamodbstreams v1.25.3 // indirect
+	github.com/aws/aws-sdk-go-v2/service/dynamodbstreams v1.25.4 // indirect
 	github.com/aws/aws-sdk-go-v2/service/ebs v1.25.3 // indirect
 	github.com/aws/aws-sdk-go-v2/service/ec2 v1.218.0 // indirect
 	github.com/aws/aws-sdk-go-v2/service/ecrpublic v1.31.2 // indirect
@@ -497,12 +497,12 @@ require (
 	go.uber.org/multierr v1.11.0 // indirect
 	go.uber.org/zap v1.27.0 // indirect
 	golang.org/x/exp v0.0.0-20250408133849-7e4ce0ab07d0 // indirect
-	golang.org/x/mod v0.24.0 // indirect
+	golang.org/x/mod v0.25.0 // indirect
 	golang.org/x/net v0.40.0 // indirect
-	golang.org/x/sync v0.14.0 // indirect
+	golang.org/x/sync v0.15.0 // indirect
 	golang.org/x/sys v0.33.0 // indirect
 	golang.org/x/term v0.32.0 // indirect
-	golang.org/x/text v0.25.0 // indirect
+	golang.org/x/text v0.26.0 // indirect
 	golang.org/x/time v0.11.0 // indirect
 	golang.org/x/tools v0.33.0 // indirect
 	golang.org/x/xerrors v0.0.0-20240716161551-93cc26a95ae9 // indirect
