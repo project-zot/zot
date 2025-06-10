@@ -63,6 +63,34 @@ func TestHTTPSink(t *testing.T) {
 		So(sink, ShouldNotBeNil)
 	})
 
+	Convey("NewHTTPSink handles token auth config", t, func() {
+		cfg := eventsconf.SinkConfig{
+			Type:    eventsconf.HTTP,
+			Address: "http://localhost",
+			Credentials: &eventsconf.Credentials{
+				Token: "thisisamocktoken",
+			},
+		}
+
+		sink, err := events.NewHTTPSink(cfg)
+		So(err, ShouldBeNil)
+		So(sink, ShouldNotBeNil)
+	})
+
+	Convey("NewHTTPSink handles custom headers config", t, func() {
+		cfg := eventsconf.SinkConfig{
+			Type:    eventsconf.HTTP,
+			Address: "http://localhost",
+			Headers: map[string]string{
+				"X-Tenant-ID": "tenant-abc123",
+			},
+		}
+
+		sink, err := events.NewHTTPSink(cfg)
+		So(err, ShouldBeNil)
+		So(sink, ShouldNotBeNil)
+	})
+
 	Convey("GetHTTPClientForConfig returns error for invalid proxy", t, func() {
 		badProxy := "://bad-url"
 		cfg := eventsconf.SinkConfig{
