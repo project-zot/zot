@@ -98,7 +98,51 @@ func (p policyManager) getRules(tagPolicy config.KeepTagsPolicy) []types.Rule {
 	return rules
 }
 
-func (p policyManager) GetRetainedTags(ctx context.Context, repoMeta mTypes.RepoMeta, index ispec.Index) []string {
+// GetRetainedTagsFromIndex uses only index information to match tags against patterns and determine
+// a list of tags to be retained. This function is to be used only in case MetaDB information is not available,
+// if the DB is not instantiated.
+func (p policyManager) GetRetainedTagsFromIndex(ctx context.Context, repo string, index ispec.Index) []string {
+	candidates := GetCandidatesFromIndex(index)
+	retainTags := make([]string, 0)
+
+	// group all tags by tag policy
+	grouped := p.groupCandidatesByTagPolicy(repo, candidates)
+
+	for _, candidates := range grouped {
+		if zcommon.IsContextDone(ctx) {
+			return nil
+		}
+
+		for _, retainCandidate := range candidates.candidates {
+			// there may be duplicates
+			if !zcommon.Contains(retainTags, retainCandidate.Tag) {
+				reason := fmt.Sprintf(retainedStrFormat, retainCandidate.RetainedBy)
+
+				logAction(repo, "keep", reason, retainCandidate, p.config.DryRun, &p.log)
+
+				retainTags = append(retainTags, retainCandidate.Tag)
+			}
+		}
+	}
+
+	// log tags which will be removed
+	for _, candidate := range candidates {
+		if !zcommon.Contains(retainTags, candidate.Tag) {
+			logAction(repo, "delete", filteredByTagNames, candidate, p.config.DryRun, &p.log)
+
+			if p.auditLog != nil {
+				logAction(repo, "delete", filteredByTagNames, candidate, p.config.DryRun, p.auditLog)
+			}
+		}
+	}
+
+	return retainTags
+}
+
+// GetRetainedTagsFromMetaDB uses MetaDB information to apply retention rules and obtain a list of tags to be retained.
+func (p policyManager) GetRetainedTagsFromMetaDB(ctx context.Context, repoMeta mTypes.RepoMeta,
+	index ispec.Index,
+) []string {
 	repo := repoMeta.Name
 
 	matchedByName := make([]string, 0)

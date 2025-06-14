@@ -22,7 +22,8 @@ type PolicyManager interface {
 	HasDeleteReferrer(repo string) bool
 	HasDeleteUntagged(repo string) bool
 	HasTagRetention(repo string) bool
-	GetRetainedTags(ctx context.Context, repoMeta mTypes.RepoMeta, index ispec.Index) []string
+	GetRetainedTagsFromIndex(ctx context.Context, repo string, index ispec.Index) []string
+	GetRetainedTagsFromMetaDB(ctx context.Context, repoMeta mTypes.RepoMeta, index ispec.Index) []string
 }
 
 type Rule interface {

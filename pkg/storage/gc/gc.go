@@ -363,15 +363,21 @@ func (gc GarbageCollect) removeTagsPerRetentionPolicy(ctx context.Context, repo 
 		return nil
 	}
 
-	repoMeta, err := gc.metaDB.GetRepoMeta(ctx, repo)
-	if err != nil {
-		gc.log.Error().Err(err).Str("module", "gc").Str("repository", repo).
-			Msg("failed to get repoMeta")
+	var retainTags []string
 
-		return err
+	if gc.metaDB != nil {
+		repoMeta, err := gc.metaDB.GetRepoMeta(ctx, repo)
+		if err != nil {
+			gc.log.Error().Err(err).Str("module", "gc").Str("repository", repo).
+				Msg("failed to get repoMeta")
+
+			return err
+		}
+
+		retainTags = gc.policyMgr.GetRetainedTagsFromMetaDB(ctx, repoMeta, *index)
+	} else {
+		retainTags = gc.policyMgr.GetRetainedTagsFromIndex(ctx, repo, *index)
 	}
-
-	retainTags := gc.policyMgr.GetRetainedTags(ctx, repoMeta, *index)
 
 	// remove
 	for _, desc := range index.Manifests {
