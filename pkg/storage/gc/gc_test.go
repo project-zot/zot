@@ -57,7 +57,7 @@ var testCases = []struct {
 	},
 }
 
-func TestGarbageCollectAndRetention(t *testing.T) {
+func TestGarbageCollectAndRetentionMetaDB(t *testing.T) {
 	log := zlog.NewLogger("debug", "")
 	audit := zlog.NewAuditLogger("debug", "/dev/null")
 
@@ -626,6 +626,61 @@ func TestGarbageCollectAndRetention(t *testing.T) {
 											Patterns: []string{"0.0.*"},
 										},
 									},
+								},
+							},
+						},
+					}, audit, log)
+
+					err = gc.CleanRepo(ctx, "retention")
+					So(err, ShouldBeNil)
+
+					_, _, _, err = imgStore.GetImageManifest("gc-test1", "0.0.1")
+					So(err, ShouldBeNil)
+
+					_, _, _, err = imgStore.GetImageManifest("gc-test1", "0.0.2")
+					So(err, ShouldBeNil)
+
+					_, _, _, err = imgStore.GetImageManifest("gc-test2", "0.0.1")
+					So(err, ShouldBeNil)
+
+					_, _, _, err = imgStore.GetImageManifest("gc-test3", "0.0.1")
+					So(err, ShouldBeNil)
+
+					_, _, _, err = imgStore.GetImageManifest("retention", "0.0.1")
+					So(err, ShouldBeNil)
+
+					_, _, _, err = imgStore.GetImageManifest("retention", "0.0.2")
+					So(err, ShouldBeNil)
+
+					_, _, _, err = imgStore.GetImageManifest("retention", "0.0.3")
+					So(err, ShouldBeNil)
+
+					_, _, _, err = imgStore.GetImageManifest("retention", "0.0.4")
+					So(err, ShouldBeNil)
+
+					_, _, _, err = imgStore.GetImageManifest("retention", "0.0.5")
+					So(err, ShouldBeNil)
+
+					_, _, _, err = imgStore.GetImageManifest("retention", "0.0.6")
+					So(err, ShouldBeNil)
+
+					_, _, _, err = imgStore.GetImageManifest("retention", "0.0.7")
+					So(err, ShouldBeNil)
+
+					_, _, _, err = imgStore.GetImageManifest("retention", "0.0.8")
+					So(err, ShouldBeNil)
+				})
+
+				Convey("retain all tags if keeptags is not specified", func() {
+					gc := gc.NewGarbageCollect(imgStore, metaDB, gc.Options{
+						Delay: storageConstants.DefaultGCDelay,
+						ImageRetention: config.ImageRetention{
+							Delay: storageConstants.DefaultRetentionDelay,
+							Policies: []config.RetentionPolicy{
+								{
+									Repositories:    []string{"**"},
+									DeleteReferrers: true,
+									DeleteUntagged:  &trueVal,
 								},
 							},
 						},
@@ -1454,4 +1509,822 @@ func readTagsFromStorage(rootDir, repoName string, digest godigest.Digest) ([]st
 	}
 
 	return result, nil
+}
+
+func TestGarbageCollectAndRetentionNoMetaDB(t *testing.T) {
+	log := zlog.NewLogger("debug", "")
+	audit := zlog.NewAuditLogger("debug", "/dev/null")
+
+	metrics := monitoring.NewMetricsServer(false, log)
+
+	trueVal := true
+
+	for _, testcase := range testCases {
+		testcase := testcase
+		t.Run(testcase.testCaseName, func(t *testing.T) {
+			var imgStore storageTypes.ImageStore
+
+			var metaDB mTypes.MetaDB
+			metaDB = nil
+
+			if testcase.storageType == storageConstants.S3StorageDriverName {
+				tskip.SkipDynamo(t)
+				tskip.SkipS3(t)
+
+				uuid, err := guuid.NewV4()
+				if err != nil {
+					panic(err)
+				}
+
+				rootDir := path.Join("/oci-repo-test", uuid.String())
+				cacheDir := t.TempDir()
+
+				bucket := "zot-storage-test"
+
+				storageDriverParams := map[string]interface{}{
+					"rootDir":        rootDir,
+					"name":           "s3",
+					"region":         region,
+					"bucket":         bucket,
+					"regionendpoint": os.Getenv("S3MOCK_ENDPOINT"),
+					"accesskey":      "minioadmin",
+					"secretkey":      "minioadmin",
+					"secure":         false,
+					"skipverify":     false,
+					"forcepathstyle": true,
+				}
+
+				storeName := fmt.Sprintf("%v", storageDriverParams["name"])
+
+				store, err := factory.Create(context.Background(), storeName, storageDriverParams)
+				if err != nil {
+					panic(err)
+				}
+
+				defer store.Delete(context.Background(), rootDir) //nolint: errcheck
+
+				// create bucket if it doesn't exists
+				_, err = resty.R().Put("http://" + os.Getenv("S3MOCK_ENDPOINT") + "/" + bucket)
+				if err != nil {
+					panic(err)
+				}
+
+				imgStore = s3.NewImageStore(rootDir, cacheDir, true, false, log, metrics, nil, store, nil, nil, nil)
+			} else {
+				// Create temporary directory
+				rootDir := t.TempDir()
+
+				// Create ImageStore
+				imgStore = local.NewImageStore(rootDir, false, false, log, metrics, nil, nil, nil, nil)
+			}
+
+			storeController := storage.StoreController{}
+			storeController.DefaultStore = imgStore
+
+			ctx := context.Background()
+
+			Convey("setup gc images", t, func() {
+				// for gc testing
+				// basic images
+				gcTest1 := CreateRandomImage()
+				err := WriteImageToFileSystem(gcTest1, "gc-test1", "0.0.1", storeController)
+				So(err, ShouldBeNil)
+
+				// also add same image(same digest) with another tag
+				err = WriteImageToFileSystem(gcTest1, "gc-test1", "0.0.2", storeController)
+				So(err, ShouldBeNil)
+
+				gcTest2 := CreateRandomImage()
+				err = WriteImageToFileSystem(gcTest2, "gc-test2", "0.0.1", storeController)
+				So(err, ShouldBeNil)
+
+				gcTest3 := CreateRandomImage()
+				err = WriteImageToFileSystem(gcTest3, "gc-test3", "0.0.1", storeController)
+				So(err, ShouldBeNil)
+
+				gcTest4 := CreateRandomMultiarch()
+				err = WriteMultiArchImageToFileSystem(gcTest4, "gc-test4", "0.0.1", storeController)
+				So(err, ShouldBeNil)
+
+				// referrers
+				ref1 := CreateRandomImageWith().Subject(gcTest1.DescriptorRef()).Build()
+				err = WriteImageToFileSystem(ref1, "gc-test1", ref1.DigestStr(), storeController)
+				So(err, ShouldBeNil)
+
+				ref2 := CreateRandomImageWith().Subject(gcTest2.DescriptorRef()).Build()
+				err = WriteImageToFileSystem(ref2, "gc-test2", ref2.DigestStr(), storeController)
+				So(err, ShouldBeNil)
+
+				ref3 := CreateRandomImageWith().Subject(gcTest3.DescriptorRef()).Build()
+				err = WriteImageToFileSystem(ref3, "gc-test3", ref3.DigestStr(), storeController)
+				So(err, ShouldBeNil)
+
+				ref4 := CreateMultiarchWith().RandomImages(3).Subject(gcTest4.DescriptorRef()).Build()
+				err = WriteMultiArchImageToFileSystem(ref4, "gc-test4", ref4.DigestStr(), storeController)
+				So(err, ShouldBeNil)
+
+				// referrers pointing to referrers
+				refOfRef1 := CreateRandomImageWith().Subject(ref1.DescriptorRef()).Build()
+				err = WriteImageToFileSystem(refOfRef1, "gc-test1", refOfRef1.DigestStr(), storeController)
+				So(err, ShouldBeNil)
+
+				refOfRef2 := CreateRandomImageWith().Subject(ref2.DescriptorRef()).Build()
+				err = WriteImageToFileSystem(refOfRef2, "gc-test2", refOfRef2.DigestStr(), storeController)
+				So(err, ShouldBeNil)
+
+				refOfRef3 := CreateRandomImageWith().Subject(ref3.DescriptorRef()).Build()
+				err = WriteImageToFileSystem(refOfRef3, "gc-test3", refOfRef3.DigestStr(), storeController)
+				So(err, ShouldBeNil)
+
+				refOfRef4 := CreateMultiarchWith().RandomImages(3).Subject(ref4.DescriptorRef()).Build()
+				err = WriteMultiArchImageToFileSystem(refOfRef4, "gc-test4", refOfRef4.DigestStr(), storeController)
+				So(err, ShouldBeNil)
+
+				// untagged images
+				gcUntagged1 := CreateRandomImage()
+				err = WriteImageToFileSystem(gcUntagged1, "gc-test1", gcUntagged1.DigestStr(), storeController)
+				So(err, ShouldBeNil)
+
+				gcUntagged2 := CreateRandomImage()
+				err = WriteImageToFileSystem(gcUntagged2, "gc-test2", gcUntagged2.DigestStr(), storeController)
+				So(err, ShouldBeNil)
+
+				gcUntagged3 := CreateRandomImage()
+				err = WriteImageToFileSystem(gcUntagged3, "gc-test3", gcUntagged3.DigestStr(), storeController)
+				So(err, ShouldBeNil)
+
+				gcUntagged4 := CreateRandomMultiarch()
+				err = WriteMultiArchImageToFileSystem(gcUntagged4, "gc-test4", gcUntagged4.DigestStr(), storeController)
+				So(err, ShouldBeNil)
+
+				// for image retention testing
+				// old images
+				gcOld1 := CreateRandomImage()
+				err = WriteImageToFileSystem(gcOld1, "retention", "0.0.1", storeController)
+				So(err, ShouldBeNil)
+
+				gcOld2 := CreateRandomImage()
+				err = WriteImageToFileSystem(gcOld2, "retention", "0.0.2", storeController)
+				So(err, ShouldBeNil)
+
+				gcOld3 := CreateRandomImage()
+				err = WriteImageToFileSystem(gcOld3, "retention", "0.0.3", storeController)
+				So(err, ShouldBeNil)
+
+				gcOld4 := CreateRandomMultiarch()
+				err = WriteMultiArchImageToFileSystem(gcOld4, "retention", "0.0.7", storeController)
+				So(err, ShouldBeNil)
+
+				// new images
+				gcNew1 := CreateRandomImage()
+				err = WriteImageToFileSystem(gcNew1, "retention", "0.0.4", storeController)
+				So(err, ShouldBeNil)
+
+				gcNew2 := CreateRandomImage()
+				err = WriteImageToFileSystem(gcNew2, "retention", "0.0.5", storeController)
+				So(err, ShouldBeNil)
+
+				gcNew3 := CreateRandomImage()
+				err = WriteImageToFileSystem(gcNew3, "retention", "0.0.6", storeController)
+				So(err, ShouldBeNil)
+
+				gcNew4 := CreateRandomMultiarch()
+				err = WriteMultiArchImageToFileSystem(gcNew4, "retention", "0.0.8", storeController)
+				So(err, ShouldBeNil)
+
+				Convey("should not gc anything", func() {
+					gc := gc.NewGarbageCollect(imgStore, metaDB, gc.Options{
+						Delay: storageConstants.DefaultGCDelay,
+						ImageRetention: config.ImageRetention{
+							Delay: storageConstants.DefaultRetentionDelay,
+							Policies: []config.RetentionPolicy{
+								{
+									Repositories:    []string{"**"},
+									DeleteReferrers: true,
+									DeleteUntagged:  &trueVal,
+									KeepTags: []config.KeepTagsPolicy{
+										{},
+									},
+								},
+							},
+						},
+					}, audit, log)
+
+					err := gc.CleanRepo(ctx, "gc-test1")
+					So(err, ShouldBeNil)
+
+					err = gc.CleanRepo(ctx, "gc-test2")
+					So(err, ShouldBeNil)
+
+					err = gc.CleanRepo(ctx, "gc-test3")
+					So(err, ShouldBeNil)
+
+					err = gc.CleanRepo(ctx, "gc-test4")
+					So(err, ShouldBeNil)
+
+					err = gc.CleanRepo(ctx, "retention")
+					So(err, ShouldBeNil)
+
+					_, _, _, err = imgStore.GetImageManifest("gc-test1", gcTest1.DigestStr())
+					So(err, ShouldBeNil)
+
+					_, _, _, err = imgStore.GetImageManifest("gc-test1", gcUntagged1.DigestStr())
+					So(err, ShouldBeNil)
+
+					_, _, _, err = imgStore.GetImageManifest("gc-test1", ref1.DigestStr())
+					So(err, ShouldBeNil)
+
+					_, _, _, err = imgStore.GetImageManifest("gc-test1", refOfRef1.DigestStr())
+					So(err, ShouldBeNil)
+
+					_, _, _, err = imgStore.GetImageManifest("gc-test2", gcTest2.DigestStr())
+					So(err, ShouldBeNil)
+
+					_, _, _, err = imgStore.GetImageManifest("gc-test2", gcUntagged2.DigestStr())
+					So(err, ShouldBeNil)
+
+					_, _, _, err = imgStore.GetImageManifest("gc-test2", ref2.DigestStr())
+					So(err, ShouldBeNil)
+
+					_, _, _, err = imgStore.GetImageManifest("gc-test2", refOfRef2.DigestStr())
+					So(err, ShouldBeNil)
+
+					_, _, _, err = imgStore.GetImageManifest("gc-test3", gcTest3.DigestStr())
+					So(err, ShouldBeNil)
+
+					_, _, _, err = imgStore.GetImageManifest("gc-test3", gcUntagged3.DigestStr())
+					So(err, ShouldBeNil)
+
+					_, _, _, err = imgStore.GetImageManifest("gc-test3", ref3.DigestStr())
+					So(err, ShouldBeNil)
+
+					_, _, _, err = imgStore.GetImageManifest("gc-test3", refOfRef3.DigestStr())
+					So(err, ShouldBeNil)
+
+					_, _, _, err = imgStore.GetImageManifest("gc-test4", gcTest4.DigestStr())
+					So(err, ShouldBeNil)
+
+					_, _, _, err = imgStore.GetImageManifest("gc-test4", gcUntagged4.DigestStr())
+					So(err, ShouldBeNil)
+
+					_, _, _, err = imgStore.GetImageManifest("gc-test4", ref4.DigestStr())
+					So(err, ShouldBeNil)
+
+					_, _, _, err = imgStore.GetImageManifest("gc-test4", refOfRef4.DigestStr())
+					So(err, ShouldBeNil)
+
+					_, _, _, err = imgStore.GetImageManifest("retention", "0.0.1")
+					So(err, ShouldBeNil)
+
+					_, _, _, err = imgStore.GetImageManifest("retention", "0.0.2")
+					So(err, ShouldBeNil)
+
+					_, _, _, err = imgStore.GetImageManifest("retention", "0.0.3")
+					So(err, ShouldBeNil)
+
+					_, _, _, err = imgStore.GetImageManifest("retention", "0.0.4")
+					So(err, ShouldBeNil)
+
+					_, _, _, err = imgStore.GetImageManifest("retention", "0.0.5")
+					So(err, ShouldBeNil)
+
+					_, _, _, err = imgStore.GetImageManifest("retention", "0.0.6")
+					So(err, ShouldBeNil)
+
+					_, _, _, err = imgStore.GetImageManifest("retention", "0.0.7")
+					So(err, ShouldBeNil)
+
+					_, _, _, err = imgStore.GetImageManifest("retention", "0.0.8")
+					So(err, ShouldBeNil)
+				})
+
+				Convey("gc untagged manifests", func() {
+					gc := gc.NewGarbageCollect(imgStore, metaDB, gc.Options{
+						Delay: storageConstants.DefaultGCDelay,
+						ImageRetention: config.ImageRetention{
+							Delay: 1 * time.Millisecond,
+							Policies: []config.RetentionPolicy{
+								{
+									Repositories:    []string{"**"},
+									DeleteReferrers: true,
+									DeleteUntagged:  &trueVal,
+									KeepTags:        []config.KeepTagsPolicy{},
+								},
+							},
+						},
+					}, audit, log)
+
+					err := gc.CleanRepo(ctx, "gc-test1")
+					So(err, ShouldBeNil)
+
+					err = gc.CleanRepo(ctx, "gc-test2")
+					So(err, ShouldBeNil)
+
+					err = gc.CleanRepo(ctx, "gc-test3")
+					So(err, ShouldBeNil)
+
+					err = gc.CleanRepo(ctx, "gc-test4")
+					So(err, ShouldBeNil)
+
+					err = gc.CleanRepo(ctx, "retention")
+					So(err, ShouldBeNil)
+
+					_, _, _, err = imgStore.GetImageManifest("gc-test1", gcTest1.DigestStr())
+					So(err, ShouldBeNil)
+
+					_, _, _, err = imgStore.GetImageManifest("gc-test1", gcUntagged1.DigestStr())
+					So(err, ShouldNotBeNil)
+
+					_, _, _, err = imgStore.GetImageManifest("gc-test1", ref1.DigestStr())
+					So(err, ShouldBeNil)
+
+					_, _, _, err = imgStore.GetImageManifest("gc-test1", refOfRef1.DigestStr())
+					So(err, ShouldBeNil)
+
+					_, _, _, err = imgStore.GetImageManifest("gc-test2", gcTest2.DigestStr())
+					So(err, ShouldBeNil)
+
+					_, _, _, err = imgStore.GetImageManifest("gc-test2", gcUntagged2.DigestStr())
+					So(err, ShouldNotBeNil)
+
+					_, _, _, err = imgStore.GetImageManifest("gc-test2", ref2.DigestStr())
+					So(err, ShouldBeNil)
+
+					_, _, _, err = imgStore.GetImageManifest("gc-test2", refOfRef2.DigestStr())
+					So(err, ShouldBeNil)
+
+					_, _, _, err = imgStore.GetImageManifest("gc-test3", gcTest3.DigestStr())
+					So(err, ShouldBeNil)
+
+					_, _, _, err = imgStore.GetImageManifest("gc-test3", gcUntagged3.DigestStr())
+					So(err, ShouldNotBeNil)
+
+					_, _, _, err = imgStore.GetImageManifest("gc-test3", ref3.DigestStr())
+					So(err, ShouldBeNil)
+
+					_, _, _, err = imgStore.GetImageManifest("gc-test3", refOfRef3.DigestStr())
+					So(err, ShouldBeNil)
+
+					_, _, _, err = imgStore.GetImageManifest("gc-test4", gcTest4.DigestStr())
+					So(err, ShouldBeNil)
+
+					_, _, _, err = imgStore.GetImageManifest("gc-test4", gcUntagged4.DigestStr())
+					So(err, ShouldNotBeNil)
+
+					_, _, _, err = imgStore.GetImageManifest("gc-test4", ref4.DigestStr())
+					So(err, ShouldBeNil)
+
+					_, _, _, err = imgStore.GetImageManifest("gc-test4", refOfRef4.DigestStr())
+					So(err, ShouldBeNil)
+				})
+
+				Convey("gc all tags, untagged, and afterwards referrers", func() {
+					gc := gc.NewGarbageCollect(imgStore, metaDB, gc.Options{
+						Delay: 1 * time.Millisecond,
+						ImageRetention: config.ImageRetention{
+							Delay: 1 * time.Millisecond,
+							Policies: []config.RetentionPolicy{
+								{
+									Repositories:    []string{"gc-test1"},
+									DeleteReferrers: true,
+									DeleteUntagged:  &trueVal,
+									KeepTags: []config.KeepTagsPolicy{
+										{
+											Patterns: []string{"v1"}, // should not match any tag
+										},
+									},
+								},
+							},
+						},
+					}, audit, log)
+
+					err := gc.CleanRepo(ctx, "gc-test1")
+					So(err, ShouldBeNil)
+
+					_, _, _, err = imgStore.GetImageManifest("gc-test1", gcUntagged1.DigestStr())
+					So(err, ShouldNotBeNil)
+
+					// although we have two tags both should be deleted
+					_, _, _, err = imgStore.GetImageManifest("gc-test1", gcTest1.DigestStr())
+					So(err, ShouldNotBeNil)
+
+					_, _, _, err = imgStore.GetImageManifest("gc-test1", ref1.DigestStr())
+					So(err, ShouldNotBeNil)
+
+					_, _, _, err = imgStore.GetImageManifest("gc-test1", refOfRef1.DigestStr())
+					So(err, ShouldNotBeNil)
+
+					// now repo should get gc'ed
+					repos, err := imgStore.GetRepositories()
+					So(err, ShouldBeNil)
+					So(repos, ShouldNotContain, "gc-test1")
+					So(repos, ShouldContain, "gc-test2")
+					So(repos, ShouldContain, "gc-test3")
+					So(repos, ShouldContain, "gc-test4")
+					So(repos, ShouldContain, "retention")
+				})
+
+				Convey("gc with dry-run all tags, untagged, and afterwards referrers", func() {
+					gc := gc.NewGarbageCollect(imgStore, metaDB, gc.Options{
+						Delay: 1 * time.Millisecond,
+						ImageRetention: config.ImageRetention{
+							Delay:  1 * time.Millisecond,
+							DryRun: true,
+							Policies: []config.RetentionPolicy{
+								{
+									Repositories:    []string{"gc-test1"},
+									DeleteReferrers: true,
+									DeleteUntagged:  &trueVal,
+									KeepTags: []config.KeepTagsPolicy{
+										{
+											Patterns: []string{"v1"}, // should not match any tag
+										},
+									},
+								},
+							},
+						},
+					}, audit, log)
+
+					err := gc.CleanRepo(ctx, "gc-test1")
+					So(err, ShouldBeNil)
+
+					_, _, _, err = imgStore.GetImageManifest("gc-test1", gcUntagged1.DigestStr())
+					So(err, ShouldBeNil)
+
+					_, _, _, err = imgStore.GetImageManifest("gc-test1", ref1.DigestStr())
+					So(err, ShouldBeNil)
+
+					_, _, _, err = imgStore.GetImageManifest("gc-test1", refOfRef1.DigestStr())
+					So(err, ShouldBeNil)
+
+					// now repo should not be gc'ed
+					repos, err := imgStore.GetRepositories()
+					So(err, ShouldBeNil)
+					So(repos, ShouldContain, "gc-test1")
+					So(repos, ShouldContain, "gc-test2")
+					So(repos, ShouldContain, "gc-test3")
+					So(repos, ShouldContain, "gc-test4")
+					So(repos, ShouldContain, "retention")
+
+					tags, err := imgStore.GetImageTags("gc-test1")
+					So(err, ShouldBeNil)
+					So(tags, ShouldContain, "0.0.1")
+					So(tags, ShouldContain, "0.0.2")
+				})
+
+				Convey("all tags matches for retention", func() {
+					gc := gc.NewGarbageCollect(imgStore, metaDB, gc.Options{
+						Delay: storageConstants.DefaultGCDelay,
+						ImageRetention: config.ImageRetention{
+							Delay: storageConstants.DefaultRetentionDelay,
+							Policies: []config.RetentionPolicy{
+								{
+									Repositories:    []string{"**"},
+									DeleteReferrers: true,
+									DeleteUntagged:  &trueVal,
+									KeepTags: []config.KeepTagsPolicy{
+										{
+											Patterns: []string{"0.0.*"},
+										},
+									},
+								},
+							},
+						},
+					}, audit, log)
+
+					err = gc.CleanRepo(ctx, "retention")
+					So(err, ShouldBeNil)
+
+					_, _, _, err = imgStore.GetImageManifest("gc-test1", "0.0.1")
+					So(err, ShouldBeNil)
+
+					_, _, _, err = imgStore.GetImageManifest("gc-test1", "0.0.2")
+					So(err, ShouldBeNil)
+
+					_, _, _, err = imgStore.GetImageManifest("gc-test2", "0.0.1")
+					So(err, ShouldBeNil)
+
+					_, _, _, err = imgStore.GetImageManifest("gc-test3", "0.0.1")
+					So(err, ShouldBeNil)
+
+					_, _, _, err = imgStore.GetImageManifest("retention", "0.0.1")
+					So(err, ShouldBeNil)
+
+					_, _, _, err = imgStore.GetImageManifest("retention", "0.0.2")
+					So(err, ShouldBeNil)
+
+					_, _, _, err = imgStore.GetImageManifest("retention", "0.0.3")
+					So(err, ShouldBeNil)
+
+					_, _, _, err = imgStore.GetImageManifest("retention", "0.0.4")
+					So(err, ShouldBeNil)
+
+					_, _, _, err = imgStore.GetImageManifest("retention", "0.0.5")
+					So(err, ShouldBeNil)
+
+					_, _, _, err = imgStore.GetImageManifest("retention", "0.0.6")
+					So(err, ShouldBeNil)
+
+					_, _, _, err = imgStore.GetImageManifest("retention", "0.0.7")
+					So(err, ShouldBeNil)
+
+					_, _, _, err = imgStore.GetImageManifest("retention", "0.0.8")
+					So(err, ShouldBeNil)
+				})
+
+				Convey("retain all tags if keeptags is not specified", func() {
+					gc := gc.NewGarbageCollect(imgStore, metaDB, gc.Options{
+						Delay: storageConstants.DefaultGCDelay,
+						ImageRetention: config.ImageRetention{
+							Delay: storageConstants.DefaultRetentionDelay,
+							Policies: []config.RetentionPolicy{
+								{
+									Repositories:    []string{"**"},
+									DeleteReferrers: true,
+									DeleteUntagged:  &trueVal,
+								},
+							},
+						},
+					}, audit, log)
+
+					err = gc.CleanRepo(ctx, "retention")
+					So(err, ShouldBeNil)
+
+					_, _, _, err = imgStore.GetImageManifest("gc-test1", "0.0.1")
+					So(err, ShouldBeNil)
+
+					_, _, _, err = imgStore.GetImageManifest("gc-test1", "0.0.2")
+					So(err, ShouldBeNil)
+
+					_, _, _, err = imgStore.GetImageManifest("gc-test2", "0.0.1")
+					So(err, ShouldBeNil)
+
+					_, _, _, err = imgStore.GetImageManifest("gc-test3", "0.0.1")
+					So(err, ShouldBeNil)
+
+					_, _, _, err = imgStore.GetImageManifest("retention", "0.0.1")
+					So(err, ShouldBeNil)
+
+					_, _, _, err = imgStore.GetImageManifest("retention", "0.0.2")
+					So(err, ShouldBeNil)
+
+					_, _, _, err = imgStore.GetImageManifest("retention", "0.0.3")
+					So(err, ShouldBeNil)
+
+					_, _, _, err = imgStore.GetImageManifest("retention", "0.0.4")
+					So(err, ShouldBeNil)
+
+					_, _, _, err = imgStore.GetImageManifest("retention", "0.0.5")
+					So(err, ShouldBeNil)
+
+					_, _, _, err = imgStore.GetImageManifest("retention", "0.0.6")
+					So(err, ShouldBeNil)
+
+					_, _, _, err = imgStore.GetImageManifest("retention", "0.0.7")
+					So(err, ShouldBeNil)
+
+					_, _, _, err = imgStore.GetImageManifest("retention", "0.0.8")
+					So(err, ShouldBeNil)
+				})
+
+				Convey("retain a subset of all tags based on patterns only", func() {
+					gc := gc.NewGarbageCollect(imgStore, metaDB, gc.Options{
+						Delay: storageConstants.DefaultGCDelay,
+						ImageRetention: config.ImageRetention{
+							Delay: storageConstants.DefaultRetentionDelay,
+							Policies: []config.RetentionPolicy{
+								{
+									Repositories:    []string{"**"},
+									DeleteReferrers: true,
+									DeleteUntagged:  &trueVal,
+									KeepTags: []config.KeepTagsPolicy{
+										{
+											Patterns: []string{"0.0.1"},
+										},
+									},
+								},
+							},
+						},
+					}, audit, log)
+
+					err = gc.CleanRepo(ctx, "retention")
+					So(err, ShouldBeNil)
+
+					tags, err := imgStore.GetImageTags("retention")
+					So(err, ShouldBeNil)
+					t.Log(tags)
+
+					So(tags, ShouldContain, "0.0.1")
+					So(tags, ShouldNotContain, "0.0.2")
+					So(tags, ShouldNotContain, "0.0.3")
+					So(tags, ShouldNotContain, "0.0.4")
+					So(tags, ShouldNotContain, "0.0.5")
+					So(tags, ShouldNotContain, "0.0.6")
+					So(tags, ShouldNotContain, "0.0.7")
+					So(tags, ShouldNotContain, "0.0.8")
+				})
+
+				Convey("retain a subset of all tags based on patterns only using multiple rules", func() {
+					gc := gc.NewGarbageCollect(imgStore, metaDB, gc.Options{
+						Delay: storageConstants.DefaultGCDelay,
+						ImageRetention: config.ImageRetention{
+							Delay: storageConstants.DefaultRetentionDelay,
+							Policies: []config.RetentionPolicy{
+								{
+									Repositories:    []string{"**"},
+									DeleteReferrers: true,
+									DeleteUntagged:  &trueVal,
+									KeepTags: []config.KeepTagsPolicy{
+										{
+											Patterns: []string{"0.0.1"},
+										},
+										{
+											Patterns: []string{"0.0.2"},
+										},
+									},
+								},
+							},
+						},
+					}, audit, log)
+
+					err = gc.CleanRepo(ctx, "retention")
+					So(err, ShouldBeNil)
+
+					tags, err := imgStore.GetImageTags("retention")
+					So(err, ShouldBeNil)
+					t.Log(tags)
+
+					So(tags, ShouldContain, "0.0.1")
+					So(tags, ShouldContain, "0.0.2")
+					So(tags, ShouldNotContain, "0.0.3")
+					So(tags, ShouldNotContain, "0.0.4")
+					So(tags, ShouldNotContain, "0.0.5")
+					So(tags, ShouldNotContain, "0.0.6")
+					So(tags, ShouldNotContain, "0.0.7")
+					So(tags, ShouldNotContain, "0.0.8")
+				})
+
+				Convey("gc - do not match any repo", func() {
+					gc := gc.NewGarbageCollect(imgStore, metaDB, gc.Options{
+						Delay: 1 * time.Millisecond,
+						ImageRetention: config.ImageRetention{
+							Delay: 1 * time.Millisecond,
+							Policies: []config.RetentionPolicy{
+								{
+									Repositories:    []string{"no-match"},
+									DeleteReferrers: true,
+									DeleteUntagged:  &trueVal,
+								},
+							},
+						},
+					}, audit, log)
+
+					err := gc.CleanRepo(ctx, "gc-test1")
+					So(err, ShouldBeNil)
+
+					_, _, _, err = imgStore.GetImageManifest("gc-test1", gcUntagged1.DigestStr())
+					So(err, ShouldBeNil)
+
+					_, _, _, err = imgStore.GetImageManifest("gc-test1", ref1.DigestStr())
+					So(err, ShouldBeNil)
+
+					_, _, _, err = imgStore.GetImageManifest("gc-test1", refOfRef1.DigestStr())
+					So(err, ShouldBeNil)
+
+					repos, err := imgStore.GetRepositories()
+					So(err, ShouldBeNil)
+					So(repos, ShouldContain, "gc-test1")
+					So(repos, ShouldContain, "gc-test2")
+					So(repos, ShouldContain, "gc-test3")
+					So(repos, ShouldContain, "retention")
+				})
+
+				Convey("gc with context done", func() {
+					gc := gc.NewGarbageCollect(imgStore, metaDB, gc.Options{
+						Delay: storageConstants.DefaultGCDelay,
+						ImageRetention: config.ImageRetention{
+							Delay: 1 * time.Millisecond,
+							Policies: []config.RetentionPolicy{
+								{
+									Repositories:    []string{"**"},
+									DeleteReferrers: true,
+									DeleteUntagged:  &trueVal,
+									KeepTags: []config.KeepTagsPolicy{
+										{
+											Patterns: []string{"0.0.*"},
+										},
+									},
+								},
+							},
+						},
+					}, audit, log)
+
+					ctx, cancel := context.WithCancel(ctx)
+					cancel()
+
+					err := gc.CleanRepo(ctx, "gc-test1")
+					So(err, ShouldNotBeNil)
+				})
+
+				Convey("should gc only stale blob uploads", func() {
+					gcDelay := 1 * time.Second
+					repoName := "gc-test1"
+
+					gc := gc.NewGarbageCollect(imgStore, metaDB, gc.Options{
+						Delay: gcDelay,
+						ImageRetention: config.ImageRetention{
+							Delay: storageConstants.DefaultRetentionDelay,
+							Policies: []config.RetentionPolicy{
+								{
+									Repositories:    []string{"**"},
+									DeleteReferrers: true,
+									DeleteUntagged:  &trueVal,
+									KeepTags: []config.KeepTagsPolicy{
+										{},
+									},
+								},
+							},
+						},
+					}, audit, log)
+
+					blobUploadID, err := imgStore.NewBlobUpload(repoName)
+					So(err, ShouldBeNil)
+
+					content := []byte("test-data3")
+					buf := bytes.NewBuffer(content)
+					_, err = imgStore.PutBlobChunkStreamed(repoName, blobUploadID, buf)
+					So(err, ShouldBeNil)
+
+					// Blob upload should be there
+					uploads, err := imgStore.ListBlobUploads(repoName)
+					So(err, ShouldBeNil)
+
+					if testcase.testCaseName == s3TestName {
+						// Remote sorage is written to only after the blob upload is finished,
+						// there should be no space used by blob uploads
+						So(uploads, ShouldEqual, []string{})
+					} else {
+						// Local storage is used right away
+						So(uploads, ShouldEqual, []string{blobUploadID})
+					}
+
+					isPresent, _, _, err := imgStore.StatBlobUpload(repoName, blobUploadID)
+
+					if testcase.testCaseName == s3TestName {
+						// Remote sorage is written to only after the blob upload is finished,
+						// there should be no space used by blob uploads
+						So(err, ShouldNotBeNil)
+						So(isPresent, ShouldBeFalse)
+					} else {
+						// Local storage is used right away
+						So(err, ShouldBeNil)
+						So(isPresent, ShouldBeTrue)
+					}
+
+					err = gc.CleanRepo(ctx, repoName)
+					So(err, ShouldBeNil)
+
+					// Blob upload is recent it should still be there
+					uploads, err = imgStore.ListBlobUploads(repoName)
+					So(err, ShouldBeNil)
+
+					if testcase.testCaseName == s3TestName {
+						// Remote sorage is written to only after the blob upload is finished,
+						// there should be no space used by blob uploads
+						So(uploads, ShouldEqual, []string{})
+					} else {
+						// Local storage is used right away
+						So(uploads, ShouldEqual, []string{blobUploadID})
+					}
+
+					isPresent, _, _, err = imgStore.StatBlobUpload(repoName, blobUploadID)
+
+					if testcase.testCaseName == s3TestName {
+						// Remote sorage is written to only after the blob upload is finished,
+						// there should be no space used by blob uploads
+						So(err, ShouldNotBeNil)
+						So(isPresent, ShouldBeFalse)
+					} else {
+						// Local storage is used right away
+						So(err, ShouldBeNil)
+						So(isPresent, ShouldBeTrue)
+					}
+
+					time.Sleep(gcDelay + 1*time.Second)
+
+					err = gc.CleanRepo(ctx, repoName)
+					So(err, ShouldBeNil)
+
+					// Blob uploads should be GCed
+					uploads, err = imgStore.ListBlobUploads(repoName)
+					So(err, ShouldBeNil)
+					So(uploads, ShouldBeEmpty)
+
+					isPresent, _, _, err = imgStore.StatBlobUpload(repoName, blobUploadID)
+					So(err, ShouldNotBeNil)
+					So(isPresent, ShouldBeFalse)
+				})
+			})
+		})
+	}
 }
