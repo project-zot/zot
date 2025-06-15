@@ -41,9 +41,20 @@ func NewHTTPSink(config eventsconf.SinkConfig) (*HTTPSink, error) {
 		cehttp.WithClient(*httpClient),
 	}
 
-	if config.Credentials != nil && config.Credentials.Username != "" {
-		opts = append(opts, cehttp.WithHeader("Authorization",
-			"Basic "+BasicAuth(config.Credentials.Username, config.Credentials.Password)))
+	if config.Credentials != nil {
+		if config.Credentials.Username != "" {
+			opts = append(opts, cehttp.WithHeader("Authorization",
+				"Basic "+BasicAuth(config.Credentials.Username, config.Credentials.Password)))
+		} else if config.Credentials.Token != "" {
+			opts = append(opts, cehttp.WithHeader("Authorization",
+				"Bearer "+config.Credentials.Token))
+		}
+	}
+
+	if config.Headers != nil {
+		for key, value := range config.Headers {
+			opts = append(opts, cehttp.WithHeader(key, value))
+		}
 	}
 
 	// Create CloudEvents HTTP protocol
