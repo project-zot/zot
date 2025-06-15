@@ -40,12 +40,14 @@ type SinkConfig struct {
 	Channel string
 	Timeout time.Duration
 	Proxy   *string
+	Headers map[string]string
 }
 
 type Credentials struct {
 	Username string
 	Password string
 	File     *string
+	Token    string
 }
 
 type TLSConfig struct {
