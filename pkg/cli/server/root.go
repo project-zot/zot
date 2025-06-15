@@ -112,6 +112,9 @@ func newScrubCmd(conf *config.Config) *cobra.Command {
 				return nil
 			}
 
+			// Do not show usage on errors which are not related to cummand line arguments
+			cmd.SilenceUsage = true
+
 			// checking if the server is  already running
 			req, err := http.NewRequestWithContext(context.Background(),
 				http.MethodGet,
