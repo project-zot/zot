@@ -5,7 +5,7 @@ go 1.24.2
 require (
 	github.com/99designs/gqlgen v0.17.74
 	github.com/Masterminds/semver v1.5.0
-	github.com/alicebob/miniredis/v2 v2.34.0
+	github.com/alicebob/miniredis/v2 v2.35.0
 	github.com/aquasecurity/trivy v0.63.0
 	github.com/aquasecurity/trivy-db v0.0.0-20250529093513-a12dfc204b6e
 	github.com/aws/aws-sdk-go v1.55.7
@@ -146,7 +146,6 @@ require (
 	github.com/alibabacloud-go/tea-utils v1.4.5 // indirect
 	github.com/alibabacloud-go/tea-utils/v2 v2.0.6 // indirect
 	github.com/alibabacloud-go/tea-xml v1.1.3 // indirect
-	github.com/alicebob/gopher-json v0.0.0-20230218143504-906a9b012302 // indirect
 	github.com/aliyun/credentials-go v1.3.6 // indirect
 	github.com/anchore/go-struct-converter v0.0.0-20230627203149-c72ef8859ca9 // indirect
 	github.com/apparentlymart/go-cidr v1.1.0 // indirect
