@@ -36,8 +36,7 @@ linters:
       threshold: 200
     gomoddirectives:
       replace-allow-list:
-        - github.com/gorilla/mux
-        - github.com/testcontainers/testcontainers-go
+        - github.com/docker/docker
     mnd:
       checks:
         - argument
