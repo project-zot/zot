@@ -71,7 +71,7 @@ require (
 	github.com/swaggo/http-swagger v1.3.4
 	github.com/swaggo/swag v1.16.4
 	github.com/vektah/gqlparser/v2 v2.5.27
-	github.com/zitadel/oidc/v3 v3.38.1
+	github.com/zitadel/oidc/v3 v3.39.0
 	go.etcd.io/bbolt v1.4.0
 	golang.org/x/crypto v0.39.0
 	golang.org/x/oauth2 v0.30.0
