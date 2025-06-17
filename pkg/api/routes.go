@@ -213,6 +213,8 @@ func (rh *RouteHandler) SetupRoutes() {
 	ext.SetupImageTrustRoutes(rh.c.Config, prefixedRouter, rh.c.MetaDB, rh.c.Log)
 	ext.SetupMgmtRoutes(rh.c.Config, prefixedRouter, rh.c.Log)
 	ext.SetupUserPreferencesRoutes(rh.c.Config, prefixedRouter, rh.c.MetaDB, rh.c.Log)
+	// Add MCP endpoint setup
+	ext.SetupMCPRoutes(rh.c.Config, prefixedRouter, rh.c.Log)
 	// last should always be UI because it will setup a http.FileServer and paths will be resolved by this FileServer.
 	ext.SetupUIRoutes(rh.c.Config, rh.c.Router, rh.c.Log)
 }
@@ -1639,7 +1641,7 @@ func (rh *RouteHandler) UpdateBlobUpload(response http.ResponseWriter, request *
 		}
 
 		_, err = imgStore.PutBlobChunk(name, sessionID, from, to, request.Body)
-		if err != nil { //nolint:dupl
+		if err != nil {
 			details := zerr.GetDetails(err)
 			if errors.Is(err, zerr.ErrBadUploadRange) { //nolint:gocritic // errorslint conflicts with gocritic:IfElseChain
 				details["session_id"] = sessionID
