@@ -9,14 +9,14 @@ require (
 	github.com/aquasecurity/trivy v0.63.0
 	github.com/aquasecurity/trivy-db v0.0.0-20250529093513-a12dfc204b6e
 	github.com/aws/aws-sdk-go v1.55.7
-	github.com/aws/aws-sdk-go-v2 v1.36.4
+	github.com/aws/aws-sdk-go-v2 v1.36.5
 	github.com/aws/aws-sdk-go-v2/config v1.29.16
 	github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue v1.19.1
 	github.com/aws/aws-sdk-go-v2/service/dynamodb v1.43.3
 	github.com/aws/aws-sdk-go-v2/service/ecr v1.44.0
 	github.com/aws/aws-sdk-go-v2/service/secretsmanager v1.35.6
 	github.com/aws/aws-secretsmanager-caching-go v1.2.0
-	github.com/aws/smithy-go v1.22.3
+	github.com/aws/smithy-go v1.22.4
 	github.com/bmatcuk/doublestar/v4 v4.8.1
 	github.com/briandowns/spinner v1.23.2
 	github.com/chartmuseum/auth v0.5.0
