@@ -79,7 +79,7 @@ require (
 	gopkg.in/resty.v1 v1.12.0
 	gopkg.in/yaml.v3 v3.0.1
 	k8s.io/apimachinery v0.33.1
-	modernc.org/sqlite v1.37.1
+	modernc.org/sqlite v1.38.0
 	oras.land/oras-go/v2 v2.6.0
 )
 
@@ -528,7 +528,7 @@ require (
 	k8s.io/kube-openapi v0.0.0-20250318190949-c8a335a9a2ff // indirect
 	k8s.io/kubectl v0.33.1 // indirect
 	k8s.io/utils v0.0.0-20241210054802-24370beab758 // indirect
-	modernc.org/libc v1.65.7 // indirect
+	modernc.org/libc v1.65.10 // indirect
 	modernc.org/mathutil v1.7.1 // indirect
 	modernc.org/memory v1.11.0 // indirect
 	mvdan.cc/sh/v3 v3.11.0 // indirect
