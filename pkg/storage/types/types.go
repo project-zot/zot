@@ -71,6 +71,24 @@ type ImageStore interface { //nolint:interfacebloat
 	GetAllDedupeReposCandidates(digest godigest.Digest) ([]string, error)
 }
 
+type BlobStore interface { //nolint:interfacebloat
+	Name() string
+	DirExists(d string) bool
+	RootDir() string
+	RLock(*time.Time)
+	RUnlock(*time.Time)
+	Lock(*time.Time)
+	Unlock(*time.Time)
+	ListBlobs() ([]string, error)
+	BlobPath(repo string, digest godigest.Digest) string
+	CheckBlob(repo string, digest godigest.Digest) (bool, int64, error)
+	StatBlob(repo string, digest godigest.Digest) (bool, int64, time.Time, error)
+	GetBlob(repo string, digest godigest.Digest, mediaType string) (io.ReadCloser, int64, error)
+	DeleteBlob(repo string, digest godigest.Digest) error
+	GetAllBlobs(repo string) ([]godigest.Digest, error)
+	VerifyBlobDigestValue(repo string, digest godigest.Digest) error
+}
+
 type Driver interface { //nolint:interfacebloat
 	Name() string
 	EnsureDir(path string) error

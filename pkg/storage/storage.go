@@ -48,6 +48,7 @@ func New(config *config.Config, linter common.Lint, metrics monitoring.MetricSer
 	}
 
 	var defaultStore storageTypes.ImageStore
+	var defaultBlobStore storageTypes.BlobStore
 
 	if config.Storage.StorageDriver == nil {
 		cacheDriver, err := CreateCacheDatabaseDriver(config.Storage.StorageConfig, log)
@@ -61,6 +62,8 @@ func New(config *config.Config, linter common.Lint, metrics monitoring.MetricSer
 		defaultStore = local.NewImageStore(rootDir,
 			config.Storage.Dedupe, config.Storage.Commit, log, metrics, linter, cacheDriver, config.HTTP.Compat, recorder,
 		)
+
+		defaultBlobStore = local.NewBlobStore(rootDir, config.Storage.Dedupe, log, metrics, linter, cacheDriver)
 	} else {
 		storeName := fmt.Sprintf("%v", config.Storage.StorageDriver["name"])
 		if storeName != constants.S3StorageDriverName {
