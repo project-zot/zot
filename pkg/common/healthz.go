@@ -18,11 +18,13 @@ type Healthz struct {
 	Endpoint string
 	Log      log.Logger
 	ready    bool
+	started  bool
 }
 
 func NewHealthzServer(appConfig *config.Config, logger log.Logger) *Healthz {
 	var healthz Healthz
 	healthz.ready = false
+	healthz.started = false
 	healthz.Log = logger
 
 	if appConfig.HTTP.HealthPort == "" {
@@ -42,11 +44,15 @@ func (h *Healthz) livez(req *http.Request) error {
 }
 
 func (h *Healthz) readyz(req *http.Request) error {
-	return nil
+	if h.ready {
+		return nil
+	}
+
+	return errNotReady
 }
 
 func (h *Healthz) startupz(req *http.Request) error {
-	if h.ready {
+	if h.started {
 		return nil
 	}
 
@@ -55,7 +61,12 @@ func (h *Healthz) startupz(req *http.Request) error {
 
 func (h *Healthz) Ready() {
 	h.ready = true
-	h.Log.Debug().Msg("startup completed")
+	h.Log.Debug().Msg("ready")
+}
+
+func (h *Healthz) Started() {
+	h.started = true
+	h.Log.Debug().Msg("started")
 }
 
 func (h *Healthz) Run() {

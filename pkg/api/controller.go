@@ -283,6 +283,7 @@ func (c *Controller) Init() error {
 	}
 
 	c.InitCVEInfo()
+	c.Healthz.Started()
 
 	if c.Config.IsHtpasswdAuthEnabled() {
 		err := c.HTPasswdWatcher.ChangeFile(c.Config.HTTP.Auth.HTPasswd.Path)
