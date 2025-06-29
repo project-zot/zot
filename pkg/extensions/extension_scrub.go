@@ -28,18 +28,26 @@ func EnableScrubExtension(config *config.Config, log log.Logger, storeController
 			log.Warn().Msg("scrub interval set to too-short interval < 2h, changing scrub duration to 2 hours and continuing.") //nolint:lll // gofumpt conflicts with lll
 		}
 
+		processedRepos := make(map[string]struct{})
+
 		generator := &taskGenerator{
-			imgStore: storeController.DefaultStore,
-			log:      log,
+			imgStore:       storeController.DefaultStore,
+			log:            log,
+			processedRepos: processedRepos,
 		}
+
 		sch.SubmitGenerator(generator, config.Extensions.Scrub.Interval, scheduler.LowPriority)
 
 		if config.Storage.SubPaths != nil {
 			for route := range config.Storage.SubPaths {
+				processedRepos := make(map[string]struct{})
+
 				generator := &taskGenerator{
-					imgStore: storeController.SubStore[route],
-					log:      log,
+					imgStore:       storeController.SubStore[route],
+					log:            log,
+					processedRepos: processedRepos,
 				}
+
 				sch.SubmitGenerator(generator, config.Extensions.Scrub.Interval, scheduler.LowPriority)
 			}
 		}
@@ -49,10 +57,10 @@ func EnableScrubExtension(config *config.Config, log log.Logger, storeController
 }
 
 type taskGenerator struct {
-	imgStore storageTypes.ImageStore
-	log      log.Logger
-	lastRepo string
-	done     bool
+	imgStore       storageTypes.ImageStore
+	log            log.Logger
+	processedRepos map[string]struct{}
+	done           bool
 }
 
 func (gen *taskGenerator) Name() string {
@@ -60,7 +68,7 @@ func (gen *taskGenerator) Name() string {
 }
 
 func (gen *taskGenerator) Next() (scheduler.Task, error) {
-	repo, err := gen.imgStore.GetNextRepository(gen.lastRepo)
+	repo, err := gen.imgStore.GetNextRepository(gen.processedRepos)
 	if err != nil {
 		return nil, err
 	}
@@ -71,7 +79,7 @@ func (gen *taskGenerator) Next() (scheduler.Task, error) {
 		return nil, nil //nolint:nilnil
 	}
 
-	gen.lastRepo = repo
+	gen.processedRepos[repo] = struct{}{}
 
 	return scrub.NewTask(gen.imgStore, repo, gen.log), nil
 }
@@ -85,6 +93,6 @@ func (gen *taskGenerator) IsReady() bool {
 }
 
 func (gen *taskGenerator) Reset() {
-	gen.lastRepo = ""
+	gen.processedRepos = make(map[string]struct{})
 	gen.done = false
 }
