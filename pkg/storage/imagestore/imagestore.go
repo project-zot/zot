@@ -422,6 +422,11 @@ func (is *ImageStore) GetNextRepository(repo string) (string, error) {
 		return "", err
 	}
 
+	ok, err := is.ValidateRepo(repo)
+	if !ok || err != nil {
+		repo = "" // the last repo may have been deleted in the meantime
+	}
+
 	found := false
 	store := ""
 	err = is.storeDriver.Walk(dir, func(fileInfo driver.FileInfo) error {

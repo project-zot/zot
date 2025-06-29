@@ -2929,6 +2929,7 @@ func TestGetNextRepository(t *testing.T) {
 	imgStore := local.NewImageStore(dir, true, true, log, metrics, nil, cacheDriver, nil, nil)
 	firstRepoName := "repo1"
 	secondRepoName := "repo2"
+	missingRepoName := "repo3"
 
 	srcStorageCtlr := storage.StoreController{DefaultStore: imgStore}
 	image := CreateDefaultImage()
@@ -2954,6 +2955,12 @@ func TestGetNextRepository(t *testing.T) {
 	Convey("Return second repository", t, func() {
 		secondRepo, err := imgStore.GetNextRepository(firstRepoName)
 		So(secondRepo, ShouldEqual, secondRepoName)
+		So(err, ShouldBeNil)
+	})
+
+	Convey("Return first repository last repo is non-existent", t, func() {
+		secondRepo, err := imgStore.GetNextRepository(missingRepoName)
+		So(secondRepo, ShouldEqual, firstRepoName)
 		So(err, ShouldBeNil)
 	})
 
