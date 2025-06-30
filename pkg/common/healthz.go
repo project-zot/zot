@@ -2,9 +2,7 @@ package common
 
 import (
 	"errors"
-	"fmt"
 	"net/http"
-	"time"
 
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 
@@ -15,28 +13,24 @@ import (
 var errNotReady = errors.New("not ready yet")
 
 type Healthz struct {
-	Endpoint string
-	Log      log.Logger
-	ready    bool
-	started  bool
+	log     log.Logger
+	ready   bool
+	started bool
+	Handler *healthz.Handler
 }
 
 func NewHealthzServer(appConfig *config.Config, logger log.Logger) *Healthz {
-	var healthz Healthz
-	healthz.ready = false
-	healthz.started = false
-	healthz.Log = logger
+	var health Healthz
+	health.ready = false
+	health.started = false
+	health.log = logger
+	health.Handler = &healthz.Handler{Checks: map[string]healthz.Checker{
+		"livez":    health.livez,
+		"readyz":   health.readyz,
+		"startupz": health.startupz,
+	}}
 
-	if appConfig.HTTP.HealthPort == "" {
-		logger.Info().Msg("health port is not configured, not starting healthz server")
-
-		return &healthz
-	}
-	healthz.Endpoint = fmt.Sprintf("%s:%s", appConfig.HTTP.Address, appConfig.HTTP.HealthPort)
-
-	go healthz.Run()
-
-	return &healthz
+	return &health
 }
 
 func (h *Healthz) livez(req *http.Request) error {
@@ -61,31 +55,10 @@ func (h *Healthz) startupz(req *http.Request) error {
 
 func (h *Healthz) Ready() {
 	h.ready = true
-	h.Log.Debug().Msg("ready")
+	h.log.Debug().Msg("ready")
 }
 
 func (h *Healthz) Started() {
 	h.started = true
-	h.Log.Debug().Msg("started")
-}
-
-func (h *Healthz) Run() {
-	handler := &healthz.Handler{Checks: map[string]healthz.Checker{
-		"livez":    h.livez,
-		"readyz":   h.readyz,
-		"startupz": h.startupz,
-	}}
-
-	server := &http.Server{
-		Addr:         h.Endpoint,
-		Handler:      handler,
-		ReadTimeout:  10 * time.Second,
-		WriteTimeout: 10 * time.Second,
-		IdleTimeout:  60 * time.Second,
-	}
-
-	err := server.ListenAndServe()
-	if err != nil {
-		h.Log.Error().Err(err).Msg("failed to start healthz server")
-	}
+	h.log.Debug().Msg("started")
 }

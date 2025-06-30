@@ -118,7 +118,6 @@ type HTTPConfig struct {
 	Address       string
 	ExternalURL   string `mapstructure:",omitempty"`
 	Port          string
-	HealthPort    string
 	AllowOrigin   string // comma separated
 	TLS           *TLSConfig
 	Auth          *AuthConfig
@@ -287,7 +286,7 @@ func New() *Config {
 				Retention:  ImageRetention{},
 			},
 		},
-		HTTP: HTTPConfig{Address: "127.0.0.1", Port: "8080", HealthPort: "8086", Auth: &AuthConfig{FailDelay: 0}},
+		HTTP: HTTPConfig{Address: "127.0.0.1", Port: "8080", Auth: &AuthConfig{FailDelay: 0}},
 		Log:  &LogConfig{Level: "debug"},
 	}
 }

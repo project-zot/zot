@@ -65,6 +65,11 @@ func NewRouteHandler(c *Controller) *RouteHandler {
 }
 
 func (rh *RouteHandler) SetupRoutes() {
+	// health endpoints get added first
+	rh.c.Router.Path("/livez").Handler(rh.c.Healthz.Handler)
+	rh.c.Router.Path("/readyz").Handler(rh.c.Healthz.Handler)
+	rh.c.Router.Path("/startupz").Handler(rh.c.Healthz.Handler)
+
 	// first get Auth middleware in order to first setup openid/ldap/htpasswd, before oidc provider routes are setup
 	authHandler := AuthHandler(rh.c)
 
