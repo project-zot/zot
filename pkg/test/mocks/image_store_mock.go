@@ -19,7 +19,7 @@ type MockedImageStore struct {
 	InitRepoFn            func(name string) error
 	ValidateRepoFn        func(name string) (bool, error)
 	GetRepositoriesFn     func() ([]string, error)
-	GetNextRepositoryFn   func(repo string) (string, error)
+	GetNextRepositoryFn   func(processedRepos map[string]struct{}) (string, error)
 	GetNextRepositoriesFn func(lastRepo string, maxEntries int, fn storageTypes.FilterRepoFunc) ([]string, bool, error)
 	GetImageTagsFn        func(repo string) ([]string, error)
 	GetImageManifestFn    func(repo string, reference string) ([]byte, godigest.Digest, string, error)
@@ -132,9 +132,9 @@ func (is MockedImageStore) GetRepositories() ([]string, error) {
 	return []string{}, nil
 }
 
-func (is MockedImageStore) GetNextRepository(repo string) (string, error) {
+func (is MockedImageStore) GetNextRepository(processedRepos map[string]struct{}) (string, error) {
 	if is.GetNextRepositoryFn != nil {
-		return is.GetNextRepositoryFn(repo)
+		return is.GetNextRepositoryFn(processedRepos)
 	}
 
 	return "", nil

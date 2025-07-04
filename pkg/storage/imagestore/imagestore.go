@@ -401,7 +401,7 @@ func (is *ImageStore) GetRepositories() ([]string, error) {
 }
 
 // GetNextRepository returns next repository under this store.
-func (is *ImageStore) GetNextRepository(repo string) (string, error) {
+func (is *ImageStore) GetNextRepository(processedRepos map[string]struct{}) (string, error) {
 	var lockLatency time.Time
 
 	dir := is.rootDir
@@ -422,7 +422,6 @@ func (is *ImageStore) GetNextRepository(repo string) (string, error) {
 		return "", err
 	}
 
-	found := false
 	store := ""
 	err = is.storeDriver.Walk(dir, func(fileInfo driver.FileInfo) error {
 		if !fileInfo.IsDir() {
@@ -434,28 +433,18 @@ func (is *ImageStore) GetNextRepository(repo string) (string, error) {
 			return nil //nolint:nilerr // ignore paths not relative to root dir
 		}
 
+		if _, ok := processedRepos[rel]; ok {
+			return nil // repo already processed
+		}
+
 		ok, err := is.ValidateRepo(rel)
 		if !ok || err != nil {
 			return nil //nolint:nilerr // ignore invalid repos
 		}
 
-		if repo == "" && ok && err == nil {
-			store = rel
+		store = rel
 
-			return io.EOF
-		}
-
-		if found {
-			store = rel
-
-			return io.EOF
-		}
-
-		if rel == repo {
-			found = true
-		}
-
-		return nil
+		return io.EOF
 	})
 
 	driverErr := &driver.Error{}
@@ -2160,12 +2149,7 @@ func (is *ImageStore) RunDedupeBlobs(interval time.Duration, sch *scheduler.Sche
 }
 
 func (is *ImageStore) PopulateStorageMetrics(interval time.Duration, sch *scheduler.Scheduler) {
-	generator := &common.StorageMetricsInitGenerator{
-		ImgStore: is,
-		Metrics:  is.metrics,
-		Log:      is.log,
-		MaxDelay: 15, //nolint:mnd
-	}
+	generator := common.NewStorageMetricsInitGenerator(is, is.metrics, is.log)
 
 	sch.SubmitGenerator(generator, interval, scheduler.HighPriority)
 }

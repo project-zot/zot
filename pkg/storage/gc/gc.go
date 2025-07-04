@@ -67,9 +67,12 @@ CleanImageStorePeriodically runs a periodic garbage collect on the ImageStore pr
 given an interval and a Scheduler.
 */
 func (gc GarbageCollect) CleanImageStorePeriodically(interval time.Duration, sch *scheduler.Scheduler) {
+	processedRepos := make(map[string]struct{})
+
 	generator := &GCTaskGenerator{
-		imgStore: gc.imgStore,
-		gc:       gc,
+		imgStore:       gc.imgStore,
+		gc:             gc,
+		processedRepos: processedRepos,
 	}
 
 	sch.SubmitGenerator(generator, interval, scheduler.MediumPriority)
@@ -798,12 +801,12 @@ and it will execute garbage collection for each repository by creating a task
 for each repository and pushing it to the task scheduler.
 */
 type GCTaskGenerator struct {
-	imgStore types.ImageStore
-	gc       GarbageCollect
-	lastRepo string
-	nextRun  time.Time
-	done     bool
-	rand     *rand.Rand
+	imgStore       types.ImageStore
+	gc             GarbageCollect
+	processedRepos map[string]struct{}
+	nextRun        time.Time
+	done           bool
+	rand           *rand.Rand
 }
 
 func (gen *GCTaskGenerator) getRandomDelay() int {
@@ -817,7 +820,7 @@ func (gen *GCTaskGenerator) Name() string {
 }
 
 func (gen *GCTaskGenerator) Next() (scheduler.Task, error) {
-	if gen.lastRepo == "" && gen.nextRun.IsZero() {
+	if len(gen.processedRepos) == 0 && gen.nextRun.IsZero() {
 		gen.rand = rand.New(rand.NewSource(time.Now().UTC().UnixNano())) //nolint: gosec
 	}
 
@@ -825,7 +828,7 @@ func (gen *GCTaskGenerator) Next() (scheduler.Task, error) {
 
 	gen.nextRun = time.Now().Add(time.Duration(delay) * time.Second)
 
-	repo, err := gen.imgStore.GetNextRepository(gen.lastRepo)
+	repo, err := gen.imgStore.GetNextRepository(gen.processedRepos)
 	if err != nil {
 		return nil, err
 	}
@@ -836,7 +839,7 @@ func (gen *GCTaskGenerator) Next() (scheduler.Task, error) {
 		return nil, nil //nolint:nilnil
 	}
 
-	gen.lastRepo = repo
+	gen.processedRepos[repo] = struct{}{}
 
 	return NewGCTask(gen.imgStore, gen.gc, repo), nil
 }
@@ -850,7 +853,7 @@ func (gen *GCTaskGenerator) IsReady() bool {
 }
 
 func (gen *GCTaskGenerator) Reset() {
-	gen.lastRepo = ""
+	gen.processedRepos = make(map[string]struct{})
 	gen.done = false
 	gen.nextRun = time.Time{}
 }

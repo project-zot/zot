@@ -563,6 +563,73 @@ func TestGarbageCollectAndRetentionMetaDB(t *testing.T) {
 					So(repos, ShouldContain, "retention")
 				})
 
+				Convey("gc all tags, untagged, and afterwards referrers using GetNextRepository()", func() {
+					gc := gc.NewGarbageCollect(imgStore, metaDB, gc.Options{
+						Delay: 1 * time.Millisecond,
+						ImageRetention: config.ImageRetention{
+							Delay: 1 * time.Millisecond,
+							Policies: []config.RetentionPolicy{
+								{
+									Repositories:    []string{"gc-test1", "gc-test3"},
+									DeleteReferrers: true,
+									DeleteUntagged:  &trueVal,
+									KeepTags: []config.KeepTagsPolicy{
+										{
+											Patterns: []string{"v1"}, // should not match any tag
+										},
+									},
+								},
+							},
+						},
+					}, audit, log)
+
+					processedRepos := make(map[string]struct{})
+					expectedRepos := []string{"gc-test1", "gc-test2", "gc-test3", "gc-test4", "retention"}
+
+					for i := range 10 {
+						t.Logf("index %d, processed repos %v", i, processedRepos)
+
+						// we need to check if GetNextRepository returns each repository just once, and empty string afterwards
+						repo, err := imgStore.GetNextRepository(processedRepos)
+						t.Logf("index %d, repo '%s'", i, repo)
+						So(err, ShouldBeNil)
+
+						if i >= 5 {
+							So(repo, ShouldEqual, "")
+
+							continue
+						} else {
+							So(repo, ShouldEqual, expectedRepos[i])
+						}
+
+						processedRepos[repo] = struct{}{}
+
+						// run cleanRepo, this should not impact the list of calls necessary for
+						// GetNextRepository to iterate through every repo
+						err = gc.CleanRepo(ctx, repo)
+						So(err, ShouldBeNil)
+					}
+
+					// verify one more time the returned values
+					So(len(processedRepos), ShouldEqual, len(expectedRepos))
+
+					for _, repo := range expectedRepos {
+						So(processedRepos, ShouldContainKey, repo)
+					}
+
+					_, _, _, err = imgStore.GetImageManifest("gc-test1", gcUntagged1.DigestStr())
+					So(err, ShouldNotBeNil)
+
+					// now repos should get gc'ed
+					repos, err := imgStore.GetRepositories()
+					So(err, ShouldBeNil)
+					So(repos, ShouldNotContain, "gc-test1")
+					So(repos, ShouldContain, "gc-test2")
+					So(repos, ShouldNotContain, "gc-test3")
+					So(repos, ShouldContain, "gc-test4")
+					So(repos, ShouldContain, "retention")
+				})
+
 				Convey("gc with dry-run all tags, untagged, and afterwards referrers", func() {
 					gc := gc.NewGarbageCollect(imgStore, metaDB, gc.Options{
 						Delay: 1 * time.Millisecond,
@@ -1920,6 +1987,73 @@ func TestGarbageCollectAndRetentionNoMetaDB(t *testing.T) {
 					So(repos, ShouldNotContain, "gc-test1")
 					So(repos, ShouldContain, "gc-test2")
 					So(repos, ShouldContain, "gc-test3")
+					So(repos, ShouldContain, "gc-test4")
+					So(repos, ShouldContain, "retention")
+				})
+
+				Convey("gc all tags, untagged, and afterwards referrers using GetNextRepository()", func() {
+					gc := gc.NewGarbageCollect(imgStore, metaDB, gc.Options{
+						Delay: 1 * time.Millisecond,
+						ImageRetention: config.ImageRetention{
+							Delay: 1 * time.Millisecond,
+							Policies: []config.RetentionPolicy{
+								{
+									Repositories:    []string{"gc-test1", "gc-test3"},
+									DeleteReferrers: true,
+									DeleteUntagged:  &trueVal,
+									KeepTags: []config.KeepTagsPolicy{
+										{
+											Patterns: []string{"v1"}, // should not match any tag
+										},
+									},
+								},
+							},
+						},
+					}, audit, log)
+
+					processedRepos := make(map[string]struct{})
+					expectedRepos := []string{"gc-test1", "gc-test2", "gc-test3", "gc-test4", "retention"}
+
+					for i := range 10 {
+						t.Logf("index %d, processed repos %v", i, processedRepos)
+
+						// we need to check if GetNextRepository returns each repository just once, and empty string afterwards
+						repo, err := imgStore.GetNextRepository(processedRepos)
+						t.Logf("index %d, repo '%s'", i, repo)
+						So(err, ShouldBeNil)
+
+						if i >= 5 {
+							So(repo, ShouldEqual, "")
+
+							continue
+						} else {
+							So(repo, ShouldEqual, expectedRepos[i])
+						}
+
+						processedRepos[repo] = struct{}{}
+
+						// run cleanRepo, this should not impact the list of calls necessary for
+						// GetNextRepository to iterate through every repo
+						err = gc.CleanRepo(ctx, repo)
+						So(err, ShouldBeNil)
+					}
+
+					// verify one more time the returned values
+					So(len(processedRepos), ShouldEqual, len(expectedRepos))
+
+					for _, repo := range expectedRepos {
+						So(processedRepos, ShouldContainKey, repo)
+					}
+
+					_, _, _, err = imgStore.GetImageManifest("gc-test1", gcUntagged1.DigestStr())
+					So(err, ShouldNotBeNil)
+
+					// now repos should get gc'ed
+					repos, err := imgStore.GetRepositories()
+					So(err, ShouldBeNil)
+					So(repos, ShouldNotContain, "gc-test1")
+					So(repos, ShouldContain, "gc-test2")
+					So(repos, ShouldNotContain, "gc-test3")
 					So(repos, ShouldContain, "gc-test4")
 					So(repos, ShouldContain, "retention")
 				})

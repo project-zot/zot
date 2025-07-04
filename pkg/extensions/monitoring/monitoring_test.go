@@ -467,12 +467,13 @@ func TestPopulateStorageMetrics(t *testing.T) {
 		sch := scheduler.NewScheduler(conf, metrics, ctlr.Log)
 		sch.RunScheduler()
 
-		generator := &common.StorageMetricsInitGenerator{
-			ImgStore: ctlr.StoreController.DefaultStore,
-			Metrics:  ctlr.Metrics,
-			Log:      ctlr.Log,
-			MaxDelay: 1, // maximum delay between jobs (each job computes repo's storage size)
-		}
+		generator := common.NewStorageMetricsInitGenerator(
+			ctlr.StoreController.DefaultStore,
+			ctlr.Metrics,
+			ctlr.Log,
+		)
+
+		generator.MaxDelay = 1 // maximum delay between jobs (each job computes repo's storage size)
 
 		sch.SubmitGenerator(generator, time.Duration(0), scheduler.LowPriority)
 

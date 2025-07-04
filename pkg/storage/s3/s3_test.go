@@ -2245,7 +2245,9 @@ func TestNextRepositoryMockStoreDriver(t *testing.T) {
 			},
 		})
 
-		nextRepository, err := imgStore.GetNextRepository("testRepo")
+		processedRepos := make(map[string]struct{}, 0)
+		processedRepos["testRepo"] = struct{}{}
+		nextRepository, err := imgStore.GetNextRepository(processedRepos)
 		So(err, ShouldBeNil)
 		So(nextRepository, ShouldEqual, "")
 	})

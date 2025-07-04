@@ -2929,6 +2929,7 @@ func TestGetNextRepository(t *testing.T) {
 	imgStore := local.NewImageStore(dir, true, true, log, metrics, nil, cacheDriver, nil, nil)
 	firstRepoName := "repo1"
 	secondRepoName := "repo2"
+	missingRepoName := "repo3"
 
 	srcStorageCtlr := storage.StoreController{DefaultStore: imgStore}
 	image := CreateDefaultImage()
@@ -2946,21 +2947,44 @@ func TestGetNextRepository(t *testing.T) {
 	}
 
 	Convey("Return first repository", t, func() {
-		firstRepo, err := imgStore.GetNextRepository("")
-		So(firstRepo, ShouldEqual, firstRepoName)
+		processedRepos := make(map[string]struct{}, 0)
+		repo, err := imgStore.GetNextRepository(processedRepos)
+		So(repo, ShouldEqual, firstRepoName)
 		So(err, ShouldBeNil)
 	})
 
 	Convey("Return second repository", t, func() {
-		secondRepo, err := imgStore.GetNextRepository(firstRepoName)
-		So(secondRepo, ShouldEqual, secondRepoName)
+		processedRepos := make(map[string]struct{}, 0)
+		processedRepos[firstRepoName] = struct{}{}
+		repo, err := imgStore.GetNextRepository(processedRepos)
+		So(repo, ShouldEqual, secondRepoName)
+		So(err, ShouldBeNil)
+	})
+
+	Convey("Return valid repository for missing", t, func() {
+		processedRepos := make(map[string]struct{}, 0)
+		processedRepos[missingRepoName] = struct{}{}
+		processedRepos[firstRepoName] = struct{}{}
+		repo, err := imgStore.GetNextRepository(processedRepos)
+		So(repo, ShouldEqual, secondRepoName)
+		So(err, ShouldBeNil)
+	})
+
+	Convey("Return empty repository if all were processed", t, func() {
+		processedRepos := make(map[string]struct{}, 0)
+		processedRepos[firstRepoName] = struct{}{}
+		processedRepos[secondRepoName] = struct{}{}
+		repo, err := imgStore.GetNextRepository(processedRepos)
+		So(repo, ShouldEqual, "")
 		So(err, ShouldBeNil)
 	})
 
 	Convey("Return error", t, func() {
+		processedRepos := make(map[string]struct{}, 0)
+		processedRepos[firstRepoName] = struct{}{}
 		err := os.Chmod(imgStore.RootDir(), 0o000)
 		So(err, ShouldBeNil)
-		_, err = imgStore.GetNextRepository(firstRepoName)
+		_, err = imgStore.GetNextRepository(processedRepos)
 		So(err, ShouldNotBeNil)
 		err = os.Chmod(imgStore.RootDir(), 0o755)
 		So(err, ShouldBeNil)

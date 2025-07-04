@@ -988,15 +988,28 @@ func (dt *dedupeTask) Name() string {
 	return "DedupeTask"
 }
 
+func NewStorageMetricsInitGenerator(imgStore storageTypes.ImageStore, metrics monitoring.MetricServer, log zlog.Logger,
+) *StorageMetricsInitGenerator {
+	processedRepos := make(map[string]struct{})
+
+	return &StorageMetricsInitGenerator{
+		ImgStore:       imgStore,
+		Metrics:        metrics,
+		Log:            log,
+		processedRepos: processedRepos,
+		MaxDelay:       15, //nolint:mnd
+	}
+}
+
 type StorageMetricsInitGenerator struct {
-	ImgStore storageTypes.ImageStore
-	done     bool
-	Metrics  monitoring.MetricServer
-	lastRepo string
-	nextRun  time.Time
-	rand     *rand.Rand
-	Log      zlog.Logger
-	MaxDelay int
+	ImgStore       storageTypes.ImageStore
+	done           bool
+	Metrics        monitoring.MetricServer
+	processedRepos map[string]struct{}
+	nextRun        time.Time
+	rand           *rand.Rand
+	Log            zlog.Logger
+	MaxDelay       int
 }
 
 func (gen *StorageMetricsInitGenerator) Name() string {
@@ -1004,7 +1017,7 @@ func (gen *StorageMetricsInitGenerator) Name() string {
 }
 
 func (gen *StorageMetricsInitGenerator) Next() (scheduler.Task, error) {
-	if gen.lastRepo == "" && gen.nextRun.IsZero() {
+	if len(gen.processedRepos) == 0 && gen.nextRun.IsZero() {
 		gen.rand = rand.New(rand.NewSource(time.Now().UTC().UnixNano())) //nolint: gosec
 	}
 
@@ -1012,7 +1025,7 @@ func (gen *StorageMetricsInitGenerator) Next() (scheduler.Task, error) {
 
 	gen.nextRun = time.Now().Add(time.Duration(delay) * time.Second)
 
-	repo, err := gen.ImgStore.GetNextRepository(gen.lastRepo)
+	repo, err := gen.ImgStore.GetNextRepository(gen.processedRepos)
 	if err != nil {
 		return nil, err
 	}
@@ -1025,7 +1038,7 @@ func (gen *StorageMetricsInitGenerator) Next() (scheduler.Task, error) {
 		return nil, nil //nolint:nilnil
 	}
 
-	gen.lastRepo = repo
+	gen.processedRepos[repo] = struct{}{}
 
 	return NewStorageMetricsTask(gen.ImgStore, gen.Metrics, repo, gen.Log), nil
 }
@@ -1039,7 +1052,7 @@ func (gen *StorageMetricsInitGenerator) IsReady() bool {
 }
 
 func (gen *StorageMetricsInitGenerator) Reset() {
-	gen.lastRepo = ""
+	gen.processedRepos = make(map[string]struct{})
 	gen.done = false
 	gen.nextRun = time.Time{}
 }
