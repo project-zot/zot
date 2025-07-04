@@ -55,6 +55,7 @@ type Controller struct {
 	HTPasswdWatcher *HTPasswdWatcher
 	LDAPClient      *LDAPClient
 	taskScheduler   *scheduler.Scheduler
+	Healthz         *common.Healthz
 	// runtime params
 	chosenPort int // kernel-chosen port
 }
@@ -63,6 +64,7 @@ func NewController(appConfig *config.Config) *Controller {
 	var controller Controller
 
 	logger := log.NewLogger(appConfig.Log.Level, appConfig.Log.Output)
+	controller.Healthz = common.NewHealthzServer(appConfig, logger)
 
 	if appConfig.Cluster != nil {
 		// we need the set of local sockets (IP address:port) for identifying
@@ -241,8 +243,12 @@ func (c *Controller) Run() error {
 			server.TLSConfig.ClientCAs = caCertPool
 		}
 
+		c.Healthz.Ready()
+
 		return server.ServeTLS(listener, c.Config.HTTP.TLS.Cert, c.Config.HTTP.TLS.Key)
 	}
+
+	c.Healthz.Ready()
 
 	return server.Serve(listener)
 }
@@ -277,6 +283,7 @@ func (c *Controller) Init() error {
 	}
 
 	c.InitCVEInfo()
+	c.Healthz.Started()
 
 	if c.Config.IsHtpasswdAuthEnabled() {
 		err := c.HTPasswdWatcher.ChangeFile(c.Config.HTTP.Auth.HTPasswd.Path)
