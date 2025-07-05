@@ -14,6 +14,14 @@ function setup() {
     # Setup zot server
     local zot_root_dir=${BATS_FILE_TMPDIR}/zot
     local zot_config_file=${BATS_FILE_TMPDIR}/zot_config.json
+    local zot_openid_credentials_file=${BATS_FILE_TMPDIR}/openid_credentials.json
+
+    cat > ${zot_openid_credentials_file}<<EOF
+{
+    "clientid": "zot-client",
+    "clientsecret": "ZXhhbXBsZS1hcHAtc2VjcmV0"
+}
+EOF
 
     echo ${zot_root_dir} >&3
 
@@ -57,8 +65,7 @@ function setup() {
                 "providers": {
                     "oidc": {
                         "issuer": "http://127.0.0.1:5556/dex",
-                        "clientid": "zot-client",
-                        "clientsecret": "ZXhhbXBsZS1hcHAtc2VjcmV0",
+                        "credentialsfile": "${zot_openid_credentials_file}",
                         "scopes": ["openid", "email", "groups"]
                     }
                 }

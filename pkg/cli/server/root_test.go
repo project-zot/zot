@@ -1232,7 +1232,7 @@ storage:
 		So(err, ShouldNotBeNil)
 	})
 
-	Convey("Test verify oauth2 config with missing parameter", t, func(c C) {
+	Convey("Test verify oauth2 config with missing parameter scopes", t, func(c C) {
 		tmpfile, err := os.CreateTemp("", "zot-test*.json")
 		So(err, ShouldBeNil)
 
@@ -1241,6 +1241,26 @@ storage:
 		content := []byte(`{"distSpecVersion":"1.1.1","storage":{"rootDirectory":"/tmp/zot"},
 							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
 							"auth":{"openid":{"providers":{"github":{"clientid":"client_id"}}}}},
+							"log":{"level":"debug"}}`)
+		_, err = tmpfile.Write(content)
+		So(err, ShouldBeNil)
+		err = tmpfile.Close()
+		So(err, ShouldBeNil)
+
+		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
+		err = cli.NewServerRootCmd().Execute()
+		So(err, ShouldNotBeNil)
+	})
+
+	Convey("Test verify oauth2 config with missing parameter clientid", t, func(c C) {
+		tmpfile, err := os.CreateTemp("", "zot-test*.json")
+		So(err, ShouldBeNil)
+
+		defer os.Remove(tmpfile.Name()) // clean up
+
+		content := []byte(`{"distSpecVersion":"1.1.1","storage":{"rootDirectory":"/tmp/zot"},
+							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
+							"auth":{"openid":{"providers":{"github":{"scopes":["openid"]}}}}},
 							"log":{"level":"debug"}}`)
 		_, err = tmpfile.Write(content)
 		So(err, ShouldBeNil)
@@ -1278,11 +1298,27 @@ storage:
 
 		defer os.Remove(tmpfile.Name()) // clean up
 
-		content := []byte(`{"distSpecVersion":"1.1.1","storage":{"rootDirectory":"/tmp/zot"},
-							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
-							"auth":{"openid":{"providers":{"oidc":{"issuer":"http://127.0.0.1:5556/dex",
-							"clientid":"client_id","scopes":["openid"]}}}}},
-							"log":{"level":"debug"}}`)
+		tmpCredsFile, err := os.CreateTemp("", "zot-cred*.json")
+		So(err, ShouldBeNil)
+		defer os.Remove(tmpCredsFile.Name())
+
+		content := []byte(`{
+			"clientid":"client-id",
+			"clientsecret":"client-secret"
+		}`)
+
+		_, err = tmpCredsFile.Write(content)
+		So(err, ShouldBeNil)
+		err = tmpCredsFile.Close()
+		So(err, ShouldBeNil)
+
+		content = []byte(fmt.Sprintf(`{"distSpecVersion":"1.1.1","storage":{"rootDirectory":"/tmp/zot"},
+			"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
+			"auth":{"openid":{"providers":{"oidc":{"issuer":"http://127.0.0.1:5556/dex",
+			"credentialsFile":"%s","scopes":["openid"]}}}}},
+			"log":{"level":"debug"}}`,
+			tmpCredsFile.Name()),
+		)
 		_, err = tmpfile.Write(content)
 		So(err, ShouldBeNil)
 		err = tmpfile.Close()
@@ -1641,13 +1677,31 @@ func TestApiKeyConfig(t *testing.T) {
 		tmpfile, err := os.CreateTemp("", "zot-test*.json")
 		So(err, ShouldBeNil)
 
+		defer os.Remove(tmpfile.Name()) // clean up
+
+		tmpCredsFile, err := os.CreateTemp("", "zot-cred*.json")
+		So(err, ShouldBeNil)
+		defer os.Remove(tmpCredsFile.Name())
+
+		content := []byte(`{
+			"clientid":"client-id",
+			"clientsecret":"client-secret"
+		}`)
+
+		_, err = tmpCredsFile.Write(content)
+		So(err, ShouldBeNil)
+		err = tmpCredsFile.Close()
+		So(err, ShouldBeNil)
+
 		defer os.Remove(tmpfile.Name())
 
-		content := []byte(`{"distSpecVersion":"1.1.1","storage":{"rootDirectory":"/tmp/zot"},
-							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
-							"auth":{"openid":{"providers":{"oidc":{"issuer":"http://127.0.0.1:5556/dex",
-							"clientid":"client_id","scopes":["openid"]}}}}},
-							"log":{"level":"debug"}}`)
+		content = []byte(fmt.Sprintf(`{"distSpecVersion":"1.1.1","storage":{"rootDirectory":"/tmp/zot"},
+			"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
+			"auth":{"openid":{"providers":{"oidc":{"issuer":"http://127.0.0.1:5556/dex",
+			"credentialsFile":"%s","scopes":["openid"]}}}}},
+			"log":{"level":"debug"}}`,
+			tmpCredsFile.Name()),
+		)
 
 		err = os.WriteFile(tmpfile.Name(), content, 0o0600)
 		So(err, ShouldBeNil)
