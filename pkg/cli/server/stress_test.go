@@ -193,7 +193,7 @@ func worker(id int, zotPort, rootDir string) {
 	}
 }
 
-func setMaxOpenFilesLimit(limit uint64) (uint64, error) {
+func setMaxOpenFilesLimit(limit test.RlimT) (test.RlimT, error) {
 	var rLimit syscall.Rlimit
 
 	err := syscall.Getrlimit(syscall.RLIMIT_NOFILE, &rLimit)
