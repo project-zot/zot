@@ -49,7 +49,7 @@ require (
 	github.com/nmcclain/ldap v0.0.0-20210720162743-7f8d1e44eeba
 	github.com/notaryproject/notation-core-go v1.3.0
 	github.com/notaryproject/notation-go v1.3.2
-	github.com/olekukonko/tablewriter v1.0.7
+	github.com/olekukonko/tablewriter v1.0.8
 	github.com/opencontainers/distribution-spec/specs-go v0.0.0-20250123160558-a139cc423184
 	github.com/opencontainers/go-digest v1.0.0
 	github.com/opencontainers/image-spec v1.1.1
