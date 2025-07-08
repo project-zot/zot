@@ -71,11 +71,13 @@ func TestRoutes(t *testing.T) {
 			},
 			OpenID: &config.OpenIDConfig{
 				Providers: map[string]config.OpenIDProviderConfig{
-					"oidc": *(&config.OpenIDProviderConfig{
-						KeyPath: "",
-						Issuer:  mockOIDCConfig.Issuer,
-						Scopes:  []string{"openid", "email"},
-					}).SetClientID(mockOIDCConfig.ClientID).SetClientSecret(mockOIDCConfig.ClientSecret),
+					"oidc": {
+						ClientID:     mockOIDCConfig.ClientID,
+						ClientSecret: mockOIDCConfig.ClientSecret,
+						KeyPath:      "",
+						Issuer:       mockOIDCConfig.Issuer,
+						Scopes:       []string{"openid", "email"},
+					},
 				},
 			},
 			APIKey: defaultVal,

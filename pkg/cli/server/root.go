@@ -481,7 +481,7 @@ func validateOpenIDConfig(cfg *config.Config, log zlog.Logger) error {
 		for provider, providerConfig := range cfg.HTTP.Auth.OpenID.Providers {
 			//nolint: gocritic
 			if config.IsOpenIDSupported(provider) {
-				if providerConfig.ClientID() == "" || providerConfig.Issuer == "" ||
+				if providerConfig.ClientID == "" || providerConfig.Issuer == "" ||
 					len(providerConfig.Scopes) == 0 {
 					msg := "OpenID provider config requires clientid, issuer and scopes parameters"
 					log.Error().Err(zerr.ErrBadConfig).Msg(msg)
@@ -489,7 +489,7 @@ func validateOpenIDConfig(cfg *config.Config, log zlog.Logger) error {
 					return fmt.Errorf("%w: %s", zerr.ErrBadConfig, msg)
 				}
 			} else if config.IsOauth2Supported(provider) {
-				if providerConfig.ClientID() == "" || len(providerConfig.Scopes) == 0 {
+				if providerConfig.ClientID == "" || len(providerConfig.Scopes) == 0 {
 					msg := "OAuth2 provider config requires clientid and scopes parameters"
 					log.Error().Err(zerr.ErrBadConfig).Msg(msg)
 
@@ -938,16 +938,21 @@ func updateOpenIDConfig(conf *config.Config) error {
 	}
 
 	for name, provider := range conf.HTTP.Auth.OpenID.Providers {
-		var newOpenIDCredentials config.OpenIDCredentials
+		if provider.CredentialsFile != "" {
+			var newOpenIDCredentials config.OpenIDCredentials
 
-		if err := readSecretFile(provider.CredentialsFile, &newOpenIDCredentials, true); err != nil {
-			return err
+			if err := readSecretFile(provider.CredentialsFile, &newOpenIDCredentials, true); err != nil {
+				return err
+			}
+
+			provider.ClientID = newOpenIDCredentials.ClientID
+			provider.ClientSecret = newOpenIDCredentials.ClientSecret
+
+			conf.HTTP.Auth.OpenID.Providers[name] = provider
+		} else {
+			log.Warn().Str("provider", name).
+				Msg("deprecated: use the new OpenID provider credentialsfile instead of clientid and clientsecret.")
 		}
-
-		provider.SetClientID(newOpenIDCredentials.ClientID)
-		provider.SetClientSecret(newOpenIDCredentials.ClientSecret)
-
-		conf.HTTP.Auth.OpenID.Providers[name] = provider
 	}
 
 	return nil

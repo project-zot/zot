@@ -114,11 +114,13 @@ func TestAPIKeys(t *testing.T) {
 			},
 			OpenID: &config.OpenIDConfig{
 				Providers: map[string]config.OpenIDProviderConfig{
-					"oidc": *(&config.OpenIDProviderConfig{
-						KeyPath: "",
-						Issuer:  mockOIDCConfig.Issuer,
-						Scopes:  []string{"openid", "email", "groups"},
-					}).SetClientID(mockOIDCConfig.ClientID).SetClientSecret(mockOIDCConfig.ClientSecret),
+					"oidc": {
+						ClientID:     mockOIDCConfig.ClientID,
+						ClientSecret: mockOIDCConfig.ClientSecret,
+						KeyPath:      "",
+						Issuer:       mockOIDCConfig.Issuer,
+						Scopes:       []string{"openid", "email", "groups"},
+					},
 				},
 			},
 			APIKey: defaultVal,
@@ -870,11 +872,13 @@ func TestAPIKeysOpenDBError(t *testing.T) {
 
 			OpenID: &config.OpenIDConfig{
 				Providers: map[string]config.OpenIDProviderConfig{
-					"oidc": *(&config.OpenIDProviderConfig{
-						KeyPath: "",
-						Issuer:  mockOIDCConfig.Issuer,
-						Scopes:  []string{"openid", "email"},
-					}).SetClientID(mockOIDCConfig.ClientID).SetClientSecret(mockOIDCConfig.ClientSecret),
+					"oidc": {
+						ClientID:     mockOIDCConfig.ClientID,
+						ClientSecret: mockOIDCConfig.ClientSecret,
+						KeyPath:      "",
+						Issuer:       mockOIDCConfig.Issuer,
+						Scopes:       []string{"openid", "email"},
+					},
 				},
 			},
 

@@ -670,9 +670,11 @@ func TestMgmtExtension(t *testing.T) {
 		conf.HTTP.Auth.Bearer = nil
 
 		openIDProviders := make(map[string]config.OpenIDProviderConfig)
-		openIDProviders["oidc"] = *(&config.OpenIDProviderConfig{
-			Issuer: mockOIDCConfig.Issuer,
-		}).SetClientID(mockOIDCConfig.ClientID).SetClientSecret(mockOIDCConfig.ClientSecret)
+		openIDProviders["oidc"] = config.OpenIDProviderConfig{
+			ClientID:     mockOIDCConfig.ClientID,
+			ClientSecret: mockOIDCConfig.ClientSecret,
+			Issuer:       mockOIDCConfig.Issuer,
+		}
 
 		conf.HTTP.Auth.OpenID = &config.OpenIDConfig{
 			Providers: openIDProviders,

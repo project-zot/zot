@@ -102,31 +102,11 @@ type OpenIDCredentials struct {
 type OpenIDProviderConfig struct {
 	CredentialsFile string
 	Name            string
-	clientID        string `json:"-"`
-	clientSecret    string `json:"-"`
+	ClientID        string
+	ClientSecret    string
 	KeyPath         string
 	Issuer          string
 	Scopes          []string
-}
-
-func (openIDProviderConfig *OpenIDProviderConfig) ClientID() string {
-	return openIDProviderConfig.clientID
-}
-
-func (openIDProviderConfig *OpenIDProviderConfig) SetClientID(clientID string) *OpenIDProviderConfig {
-	openIDProviderConfig.clientID = clientID
-
-	return openIDProviderConfig
-}
-
-func (openIDProviderConfig *OpenIDProviderConfig) ClientSecret() string {
-	return openIDProviderConfig.clientSecret
-}
-
-func (openIDProviderConfig *OpenIDProviderConfig) SetClientSecret(clientSecret string) *OpenIDProviderConfig {
-	openIDProviderConfig.clientSecret = clientSecret
-
-	return openIDProviderConfig
 }
 
 type MethodRatelimitConfig struct {
@@ -379,8 +359,8 @@ func (c *Config) Sanitize() *Config {
 			for provider, config := range c.HTTP.Auth.OpenID.Providers {
 				sanitizedConfig.HTTP.Auth.OpenID.Providers[provider] = OpenIDProviderConfig{
 					Name:         config.Name,
-					clientID:     config.ClientID(),
-					clientSecret: "******",
+					ClientID:     config.ClientID,
+					ClientSecret: "******",
 					KeyPath:      config.KeyPath,
 					Issuer:       config.Issuer,
 					Scopes:       config.Scopes,
@@ -484,12 +464,12 @@ func (c *Config) IsBasicAuthnEnabled() bool {
 func isOpenIDAuthProviderEnabled(config *Config, provider string) bool {
 	if providerConfig, ok := config.HTTP.Auth.OpenID.Providers[provider]; ok {
 		if IsOpenIDSupported(provider) {
-			if providerConfig.ClientID() != "" || providerConfig.Issuer != "" ||
+			if providerConfig.ClientID != "" || providerConfig.Issuer != "" ||
 				len(providerConfig.Scopes) > 0 {
 				return true
 			}
 		} else if IsOauth2Supported(provider) {
-			if providerConfig.ClientID() != "" || len(providerConfig.Scopes) > 0 {
+			if providerConfig.ClientID != "" || len(providerConfig.Scopes) > 0 {
 				return true
 			}
 		}

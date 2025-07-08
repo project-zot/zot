@@ -615,8 +615,8 @@ func getRelyingPartyArgs(cfg *config.Config, provider string, hashKey, encryptKe
 	}
 
 	providerConfig := cfg.HTTP.Auth.OpenID.Providers[provider]
-	clientID := providerConfig.ClientID()
-	clientSecret := providerConfig.ClientSecret()
+	clientID := providerConfig.ClientID
+	clientSecret := providerConfig.ClientSecret
 
 	scopes := providerConfig.Scopes
 	// openid scope must be the first one in list

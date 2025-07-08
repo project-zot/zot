@@ -648,11 +648,13 @@ func TestObjectStorageController(t *testing.T) {
 		conf.HTTP.Auth = &config.AuthConfig{
 			OpenID: &config.OpenIDConfig{
 				Providers: map[string]config.OpenIDProviderConfig{
-					"oidc": *(&config.OpenIDProviderConfig{
-						KeyPath: "",
-						Issuer:  mockOIDCConfig.Issuer,
-						Scopes:  []string{"openid", "email"},
-					}).SetClientID(mockOIDCConfig.ClientID).SetClientSecret(mockOIDCConfig.ClientSecret),
+					"oidc": {
+						ClientID:     mockOIDCConfig.ClientID,
+						ClientSecret: mockOIDCConfig.ClientSecret,
+						KeyPath:      "",
+						Issuer:       mockOIDCConfig.Issuer,
+						Scopes:       []string{"openid", "email"},
+					},
 				},
 			},
 		}
@@ -4473,11 +4475,13 @@ func TestNewRelyingPartyOIDC(t *testing.T) {
 		conf.HTTP.Auth = &config.AuthConfig{
 			OpenID: &config.OpenIDConfig{
 				Providers: map[string]config.OpenIDProviderConfig{
-					"oidc": *(&config.OpenIDProviderConfig{
-						KeyPath: "",
-						Issuer:  mockOIDCConfig.Issuer,
-						Scopes:  []string{"openid", "email"},
-					}).SetClientID(mockOIDCConfig.ClientID).SetClientSecret(mockOIDCConfig.ClientSecret),
+					"oidc": {
+						ClientID:     mockOIDCConfig.ClientID,
+						ClientSecret: mockOIDCConfig.ClientSecret,
+						KeyPath:      "",
+						Issuer:       mockOIDCConfig.Issuer,
+						Scopes:       []string{"openid", "email"},
+					},
 				},
 			},
 		}
@@ -4506,7 +4510,7 @@ func TestNewRelyingPartyOIDC(t *testing.T) {
 
 		Convey("no client secret in config", func() {
 			oidcProvider := conf.HTTP.Auth.OpenID.Providers["oidc"]
-			oidcProvider.SetClientSecret("")
+			oidcProvider.ClientSecret = ""
 			conf.HTTP.Auth.OpenID.Providers["oidc"] = oidcProvider
 
 			rp := api.NewRelyingPartyOIDC(ctx, conf, "oidc", nil, nil, log.NewLogger("debug", ""))
@@ -4599,17 +4603,21 @@ func TestOpenIDMiddleware(t *testing.T) {
 		}).SetBindDN(LDAPBindDN).SetBindPassword(LDAPBindPassword),
 		OpenID: &config.OpenIDConfig{
 			Providers: map[string]config.OpenIDProviderConfig{
-				"oidc": *(&config.OpenIDProviderConfig{
-					KeyPath: "",
-					Issuer:  mockOIDCConfig.Issuer,
-					Scopes:  []string{"openid", "email"},
-				}).SetClientID(mockOIDCConfig.ClientID).SetClientSecret(mockOIDCConfig.ClientSecret),
+				"oidc": {
+					ClientID:     mockOIDCConfig.ClientID,
+					ClientSecret: mockOIDCConfig.ClientSecret,
+					KeyPath:      "",
+					Issuer:       mockOIDCConfig.Issuer,
+					Scopes:       []string{"openid", "email"},
+				},
 				// just for the constructor coverage
-				"github": *(&config.OpenIDProviderConfig{
-					KeyPath: "",
-					Issuer:  mockOIDCConfig.Issuer,
-					Scopes:  []string{"openid", "email"},
-				}).SetClientID(mockOIDCConfig.ClientID).SetClientSecret(mockOIDCConfig.ClientSecret),
+				"github": {
+					ClientID:     mockOIDCConfig.ClientID,
+					ClientSecret: mockOIDCConfig.ClientSecret,
+					KeyPath:      "",
+					Issuer:       mockOIDCConfig.Issuer,
+					Scopes:       []string{"openid", "email"},
+				},
 			},
 		},
 	}
@@ -4964,11 +4972,13 @@ func TestIsOpenIDEnabled(t *testing.T) {
 			conf.HTTP.Auth = &config.AuthConfig{
 				OpenID: &config.OpenIDConfig{
 					Providers: map[string]config.OpenIDProviderConfig{
-						"github": *(&config.OpenIDProviderConfig{
-							KeyPath: "",
-							Issuer:  mockOIDCConfig.Issuer,
-							Scopes:  []string{"email", "groups"},
-						}).SetClientID(mockOIDCConfig.ClientID).SetClientSecret(mockOIDCConfig.ClientSecret),
+						"github": {
+							ClientID:     mockOIDCConfig.ClientID,
+							ClientSecret: mockOIDCConfig.ClientSecret,
+							KeyPath:      "",
+							Issuer:       mockOIDCConfig.Issuer,
+							Scopes:       []string{"email", "groups"},
+						},
 					},
 				},
 			}
@@ -4996,11 +5006,13 @@ func TestIsOpenIDEnabled(t *testing.T) {
 			conf.HTTP.Auth = &config.AuthConfig{
 				OpenID: &config.OpenIDConfig{
 					Providers: map[string]config.OpenIDProviderConfig{
-						"invalidProvider": *(&config.OpenIDProviderConfig{
-							KeyPath: "",
-							Issuer:  mockOIDCConfig.Issuer,
-							Scopes:  []string{"email", "groups"},
-						}).SetClientID(mockOIDCConfig.ClientID).SetClientSecret(mockOIDCConfig.ClientSecret),
+						"invalidProvider": {
+							ClientID:     mockOIDCConfig.ClientID,
+							ClientSecret: mockOIDCConfig.ClientSecret,
+							KeyPath:      "",
+							Issuer:       mockOIDCConfig.Issuer,
+							Scopes:       []string{"email", "groups"},
+						},
 					},
 				},
 			}
@@ -5084,11 +5096,13 @@ func TestAuthnSessionErrors(t *testing.T) {
 			}).SetBindDN(LDAPBindDN).SetBindPassword(LDAPBindPassword),
 			OpenID: &config.OpenIDConfig{
 				Providers: map[string]config.OpenIDProviderConfig{
-					"oidc": *(&config.OpenIDProviderConfig{
-						KeyPath: "",
-						Issuer:  mockOIDCConfig.Issuer,
-						Scopes:  []string{"email", "groups"},
-					}).SetClientID(mockOIDCConfig.ClientID).SetClientSecret(mockOIDCConfig.ClientSecret),
+					"oidc": {
+						ClientID:     mockOIDCConfig.ClientID,
+						ClientSecret: mockOIDCConfig.ClientSecret,
+						KeyPath:      "",
+						Issuer:       mockOIDCConfig.Issuer,
+						Scopes:       []string{"email", "groups"},
+					},
 				},
 			},
 		}
@@ -5467,11 +5481,13 @@ func TestAuthnMetaDBErrors(t *testing.T) {
 			},
 			OpenID: &config.OpenIDConfig{
 				Providers: map[string]config.OpenIDProviderConfig{
-					"oidc": *(&config.OpenIDProviderConfig{
-						KeyPath: "",
-						Issuer:  mockOIDCConfig.Issuer,
-						Scopes:  []string{"openid", "email"},
-					}).SetClientID(mockOIDCConfig.ClientID).SetClientSecret(mockOIDCConfig.ClientSecret),
+					"oidc": {
+						ClientID:     mockOIDCConfig.ClientID,
+						ClientSecret: mockOIDCConfig.ClientSecret,
+						KeyPath:      "",
+						Issuer:       mockOIDCConfig.Issuer,
+						Scopes:       []string{"openid", "email"},
+					},
 				},
 			},
 		}
@@ -5597,11 +5613,13 @@ func TestAuthorization(t *testing.T) {
 			conf.HTTP.Auth = &config.AuthConfig{
 				OpenID: &config.OpenIDConfig{
 					Providers: map[string]config.OpenIDProviderConfig{
-						"oidc": *(&config.OpenIDProviderConfig{
-							KeyPath: "",
-							Issuer:  mockOIDCConfig.Issuer,
-							Scopes:  []string{"openid", "email"},
-						}).SetClientID(mockOIDCConfig.ClientID).SetClientSecret(mockOIDCConfig.ClientSecret),
+						"oidc": {
+							ClientID:     mockOIDCConfig.ClientID,
+							ClientSecret: mockOIDCConfig.ClientSecret,
+							KeyPath:      "",
+							Issuer:       mockOIDCConfig.Issuer,
+							Scopes:       []string{"openid", "email"},
+						},
 					},
 				},
 			}
@@ -6360,11 +6378,13 @@ func TestAuthorizationWithMultiplePolicies(t *testing.T) {
 			conf.HTTP.Auth = &config.AuthConfig{
 				OpenID: &config.OpenIDConfig{
 					Providers: map[string]config.OpenIDProviderConfig{
-						"oidc": *(&config.OpenIDProviderConfig{
-							KeyPath: "",
-							Issuer:  mockOIDCConfig.Issuer,
-							Scopes:  []string{"openid", "email"},
-						}).SetClientID(mockOIDCConfig.ClientID).SetClientSecret(mockOIDCConfig.ClientSecret),
+						"oidc": {
+							ClientID:     mockOIDCConfig.ClientID,
+							ClientSecret: mockOIDCConfig.ClientSecret,
+							KeyPath:      "",
+							Issuer:       mockOIDCConfig.Issuer,
+							Scopes:       []string{"openid", "email"},
+						},
 					},
 				},
 			}
