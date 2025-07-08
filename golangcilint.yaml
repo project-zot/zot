@@ -34,9 +34,6 @@ linters:
       max-complexity: 40
     dupl:
       threshold: 200
-    gomoddirectives:
-      replace-allow-list:
-        - github.com/docker/docker
     mnd:
       checks:
         - argument
