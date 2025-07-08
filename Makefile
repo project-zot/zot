@@ -123,7 +123,7 @@ build-metadata: $(if $(findstring ui,$(BUILD_LABELS)), ui)
 	go list $(GO_CMD_TAGS) -f '{{ join .GoFiles "\n" }}' ./... | sort -u
 
 .PHONY: gen-protobuf
-gen-protobuf: check-not-freebds $(PROTOC)
+gen-protobuf: $(PROTOC)
 	$(PROTOC) --experimental_allow_proto3_optional \
 		--proto_path=$(TOP_LEVEL)/pkg/meta/proto \
 		--go_out=$(TOP_LEVEL)/pkg/meta/proto \
@@ -610,12 +610,6 @@ ui:
 check-linux:
 ifneq ($(shell go env GOOS),linux)
 	$(error makefile target can be run only on linux)
-endif
-
-.PHONY: check-not-freebds
-check-not-freebds:
-ifeq ($(shell go env GOOS),freebsd)
-  $(error makefile target can't be run on freebsd)
 endif
 
 .PHONY: check-compatibility
