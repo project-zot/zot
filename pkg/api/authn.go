@@ -614,18 +614,19 @@ func getRelyingPartyArgs(cfg *config.Config, provider string, hashKey, encryptKe
 		log.Panic().Err(zerr.ErrOpenIDProviderDoesNotExist).Str("provider", provider).Msg("")
 	}
 
-	clientID := cfg.HTTP.Auth.OpenID.Providers[provider].ClientID
-	clientSecret := cfg.HTTP.Auth.OpenID.Providers[provider].ClientSecret
+	providerConfig := cfg.HTTP.Auth.OpenID.Providers[provider]
+	clientID := providerConfig.ClientID
+	clientSecret := providerConfig.ClientSecret
 
-	scopes := cfg.HTTP.Auth.OpenID.Providers[provider].Scopes
+	scopes := providerConfig.Scopes
 	// openid scope must be the first one in list
 	if !zcommon.Contains(scopes, oidc.ScopeOpenID) && config.IsOpenIDSupported(provider) {
 		scopes = append([]string{oidc.ScopeOpenID}, scopes...)
 	}
 
 	port := cfg.HTTP.Port
-	issuer := cfg.HTTP.Auth.OpenID.Providers[provider].Issuer
-	keyPath := cfg.HTTP.Auth.OpenID.Providers[provider].KeyPath
+	issuer := providerConfig.Issuer
+	keyPath := providerConfig.KeyPath
 	baseURL := net.JoinHostPort(cfg.HTTP.Address, port)
 
 	callback := constants.CallbackBasePath + "/" + provider

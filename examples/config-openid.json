@@ -18,28 +18,24 @@
       "openid": {
         "providers": {
           "github": {
-            "clientid": "client_id",
-            "clientsecret": "client_secret",
+            "credentialsFile": "examples/config-openid-github-credentials.json",
             "keypath": "",
             "scopes": ["read:org", "user", "repo"]
           },
           "google": {
+            "credentialsFile": "examples/config-openid-google-credentials.json",
             "issuer": "https://accounts.google.com",
-            "clientid": "client_id",
-            "clientsecret": "client_secret",
             "scopes": ["openid", "email"]
           },
           "gitlab": {
             "issuer": "https://gitlab.com",
-            "clientid": "client_id",
-            "clientsecret": "client_secret",
+            "credentialsFile": "examples/config-openid-gitlab-credentials.json",
             "scopes": ["openid", "read_api", "read_user", "profile", "email"]
           },
           "oidc": {
             "name": "Corporate SSO",
             "issuer": "http://127.0.0.1:5556/dex",
-            "clientid": "client_id",
-            "clientsecret": "client_secret",
+            "credentialsFile": "examples/config-openid-oidc-credentials.json",
             "scopes": ["openid", "user", "email", "groups"]
           }
         }

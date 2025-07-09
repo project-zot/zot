@@ -94,13 +94,19 @@ type OpenIDConfig struct {
 	Providers map[string]OpenIDProviderConfig
 }
 
-type OpenIDProviderConfig struct {
-	Name         string
+type OpenIDCredentials struct {
 	ClientID     string
 	ClientSecret string
-	KeyPath      string
-	Issuer       string
-	Scopes       []string
+}
+
+type OpenIDProviderConfig struct {
+	CredentialsFile string
+	Name            string
+	ClientID        string
+	ClientSecret    string
+	KeyPath         string
+	Issuer          string
+	Scopes          []string
 }
 
 type MethodRatelimitConfig struct {

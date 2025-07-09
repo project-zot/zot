@@ -863,6 +863,12 @@ func LoadConfiguration(config *config.Config, configPath string) error {
 		return err
 	}
 
+	if err := updateOpenIDConfig(config); err != nil {
+		log.Error().Err(err).Msg("failed to read openid provider config file(s)")
+
+		return err
+	}
+
 	if err := loadSessionKeys(config); err != nil {
 		log.Error().Err(err).Msg("failed to read sessionKeysFile")
 
@@ -922,6 +928,32 @@ func updateLDAPConfig(conf *config.Config) error {
 
 	conf.HTTP.Auth.LDAP.SetBindDN(newLDAPCredentials.BindDN)
 	conf.HTTP.Auth.LDAP.SetBindPassword(newLDAPCredentials.BindPassword)
+
+	return nil
+}
+
+func updateOpenIDConfig(conf *config.Config) error {
+	if conf.HTTP.Auth == nil || conf.HTTP.Auth.OpenID == nil {
+		return nil
+	}
+
+	for name, provider := range conf.HTTP.Auth.OpenID.Providers {
+		if provider.CredentialsFile != "" {
+			var newOpenIDCredentials config.OpenIDCredentials
+
+			if err := readSecretFile(provider.CredentialsFile, &newOpenIDCredentials, true); err != nil {
+				return err
+			}
+
+			provider.ClientID = newOpenIDCredentials.ClientID
+			provider.ClientSecret = newOpenIDCredentials.ClientSecret
+
+			conf.HTTP.Auth.OpenID.Providers[name] = provider
+		} else {
+			log.Warn().Str("provider", name).
+				Msg("deprecated: use the new OpenID provider credentialsfile instead of clientid and clientsecret.")
+		}
+	}
 
 	return nil
 }
