@@ -15,7 +15,8 @@ RUN make COMMIT=$COMMIT OS=$TARGETOS ARCH=$TARGETARCH clean bench
 # ---
 # Stage 2: Final image with nothing but certs, binary, and default config file
 # ---
-FROM gcr.io/distroless/base-debian12 AS final
+ARG BASE_IMAGE
+FROM BASE_IMAGE AS final
 ARG TARGETOS
 ARG TARGETARCH
 COPY --from=builder /go/src/github.com/project-zot/zot/bin/zb-$TARGETOS-$TARGETARCH /usr/bin/zb
