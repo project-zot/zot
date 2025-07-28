@@ -2274,3 +2274,7 @@ func (dwr *DynamoDB) getDBVersion() (string, error) {
 
 	return version, nil
 }
+
+func (dwr *DynamoDB) Close() error {
+	return nil
+}

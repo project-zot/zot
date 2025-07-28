@@ -2102,3 +2102,10 @@ func resetBucket(transaction *bbolt.Tx, bucketName string) error {
 
 	return err
 }
+
+func (bdw *BoltDB) Close() error {
+	err := bdw.DB.Close()
+	bdw.DB = nil
+
+	return err
+}

@@ -2321,3 +2321,10 @@ func unmarshalProtoRepoBlobs(repo string, repoBlobsBytes []byte) (*proto_go.Repo
 func join(xs ...string) string {
 	return strings.Join(xs, ":")
 }
+
+func (rc *RedisDB) Close() error {
+	err := rc.Client.Close()
+	rc.Client = nil
+
+	return err
+}

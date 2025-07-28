@@ -103,6 +103,8 @@ type MetaDBMock struct {
 	GetAllRepoNamesFn func() ([]string, error)
 
 	ResetDBFn func() error
+
+	CloseFn func() error
 }
 
 func (sdm MetaDBMock) DeleteRepoMeta(repo string) error {
@@ -457,6 +459,14 @@ func (sdm MetaDBMock) GetFullImageMeta(ctx context.Context, repo string, tag str
 func (sdm MetaDBMock) ResetRepoReferences(repo string) error {
 	if sdm.ResetRepoReferencesFn != nil {
 		return sdm.ResetRepoReferencesFn(repo)
+	}
+
+	return nil
+}
+
+func (sdm MetaDBMock) Close() error {
+	if sdm.CloseFn != nil {
+		return sdm.CloseFn()
 	}
 
 	return nil
