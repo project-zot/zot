@@ -455,11 +455,17 @@ func (c *Controller) LoadNewConfig(newConfig *config.Config) {
 }
 
 func (c *Controller) Shutdown() {
+	// stop all background tasks
 	c.StopBackgroundTasks()
 
 	if c.Server != nil {
 		ctx := context.Background()
 		_ = c.Server.Shutdown(ctx)
+	}
+
+	// close metadb
+	if c.MetaDB != nil {
+		c.MetaDB.Close()
 	}
 }
 

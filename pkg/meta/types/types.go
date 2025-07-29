@@ -156,6 +156,9 @@ type MetaDB interface { //nolint:interfacebloat
 	ImageTrustStore() ImageTrustStore
 
 	SetImageTrustStore(imgTrustStore ImageTrustStore)
+
+	// Close will close the db
+	Close() error
 }
 
 type UserDB interface { //nolint:interfacebloat

@@ -147,3 +147,7 @@ func toStringIfOk(cacheDriverConfig map[string]interface{},
 
 	return str, true
 }
+
+func Close(metadb mTypes.MetaDB) error {
+	return metadb.Close()
+}
