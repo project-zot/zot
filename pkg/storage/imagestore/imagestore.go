@@ -943,7 +943,9 @@ func (is *ImageStore) PutBlobChunk(repo, uuid string, from, to int64,
 
 	defer file.Close()
 
-	if from != file.Size() {
+	fsize := file.Size()
+
+	if from != fsize {
 		is.log.Error().Int64("expected", from).Int64("actual", file.Size()).
 			Msg("invalid range start for blob upload")
 
@@ -952,7 +954,7 @@ func (is *ImageStore) PutBlobChunk(repo, uuid string, from, to int64,
 
 	n, err := io.Copy(file, body)
 
-	return n, err
+	return n + fsize, err
 }
 
 // BlobUploadInfo returns the current blob size in bytes.
