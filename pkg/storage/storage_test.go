@@ -493,7 +493,7 @@ func TestStorageAPIs(t *testing.T) {
 
 						bupload, err = imgStore.PutBlobChunk("test", upload, int64(firstChunkLen), int64(buflen), secondChunkBuf)
 						So(err, ShouldBeNil)
-						So(bupload, ShouldEqual, secondChunkLen)
+						So(bupload, ShouldEqual, int64(firstChunkLen+secondChunkLen))
 
 						err = imgStore.FinishBlobUpload("test", upload, buf, digest)
 						So(err, ShouldBeNil)
