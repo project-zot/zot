@@ -15,7 +15,7 @@ jobs:
       packages: write
     strategy:
       matrix:
-        os: [linux, darwin, freebsd]
+        os: [linux, freebsd]
         arch: [amd64, arm64]
     steps:
       - name: Setup base image
@@ -225,7 +225,7 @@ jobs:
       packages: read
     strategy:
       matrix:
-        os: [linux, darwin, freebsd]
+        os: [linux, freebsd]
         arch: [amd64, arm64]
     steps:
       - name: Log in to GitHub Docker Registry
