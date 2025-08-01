@@ -37,6 +37,7 @@ jobs:
       - name: Build and push zot container image
         uses: project-stacker/stacker-build-push-action@main
         with:
+          version: v1.1.0-rc3
           file: 'build/stacker.yaml'
           build-args: |
             RELEASE_TAG=${{ github.event.release.tag_name }}
@@ -52,6 +53,7 @@ jobs:
       - name: Build and push zot-minimal container image
         uses: project-stacker/stacker-build-push-action@main
         with:
+          version: v1.1.0-rc3
           file: 'build/stacker-minimal.yaml'
           build-args: |
             RELEASE_TAG=${{ github.event.release.tag_name }}
@@ -68,6 +70,7 @@ jobs:
       - name: Build and push zot-exporter container image
         uses: project-stacker/stacker-build-push-action@main
         with:
+          version: v1.1.0-rc3
           file: 'build/stacker-zxp.yaml'
           build-args: |
             RELEASE_TAG=${{ github.event.release.tag_name }}
@@ -83,6 +86,7 @@ jobs:
       - name: Build and push zb container image
         uses: project-stacker/stacker-build-push-action@main
         with:
+          version: v1.1.0-rc3
           file: 'build/stacker-zb.yaml'
           build-args: |
             RELEASE_TAG=${{ github.event.release.tag_name }}
