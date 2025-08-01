@@ -3,7 +3,7 @@
     "source_repos": [
         "zb-linux-amd64",
         "zb-linux-arm64",
-        "zb-darwin-amd64",
-        "zb-darwin-arm64"
+        "zb-freebsd-amd64",
+        "zb-freebsd-arm64"
     ]
 }
