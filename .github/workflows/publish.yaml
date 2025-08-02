@@ -21,7 +21,7 @@ jobs:
       - name: Setup base image
         run: |
           if [ ${{ matrix.os }} = 'freebsd' ]; then
-            echo "BASE_IMAGE=freebsd/freebsd-runtime:14.3" >> "$GITHUB_ENV"
+            echo "BASE_IMAGE=freebsd/freebsd-static:14.3" >> "$GITHUB_ENV"
           else
             ARCH=${{ matrix.arch }}
             echo "BASE_IMAGE=gcr.io/distroless/base-debian12:latest-${ARCH}" >> "$GITHUB_ENV"

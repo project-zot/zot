@@ -64,7 +64,7 @@ BUILDMODE_FLAGS := -buildmode=pie
 BASE_IMAGE=gcr.io/distroless/base-debian12:latest-$(ARCH)
 ifeq ($(OS),freebsd)
 	BUILDMODE_FLAGS=
-	BASE_IMAGE=freebsd/freebsd-runtime:14.3
+	BASE_IMAGE=freebsd/freebsd-static:14.3
 endif
 BIN_EXT :=
 ifeq ($(OS),windows)
