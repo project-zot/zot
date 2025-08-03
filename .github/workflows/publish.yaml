@@ -15,9 +15,17 @@ jobs:
       packages: write
     strategy:
       matrix:
-        os: [linux, darwin]
+        os: [linux, freebsd]
         arch: [amd64, arm64]
     steps:
+      - name: Setup base image
+        run: |
+          if [ ${{ matrix.os }} = 'freebsd' ]; then
+            echo "BASE_IMAGE=freebsd/freebsd-static:14.3" >> "$GITHUB_ENV"
+          else
+            ARCH=${{ matrix.arch }}
+            echo "BASE_IMAGE=gcr.io/distroless/base-debian12:latest-${ARCH}" >> "$GITHUB_ENV"
+          fi
       - name: Check out the repo
         uses: actions/checkout@v4
       - name: Log in to GitHub Docker Registry
@@ -29,6 +37,7 @@ jobs:
       - name: Build and push zot container image
         uses: project-stacker/stacker-build-push-action@main
         with:
+          version: v1.1.0-rc3
           file: 'build/stacker.yaml'
           build-args: |
             RELEASE_TAG=${{ github.event.release.tag_name }}
@@ -36,6 +45,7 @@ jobs:
             OS=${{ matrix.os }}
             ARCH=${{ matrix.arch }}
             REPO_NAME=zot-${{ matrix.os }}-${{ matrix.arch }}
+            BASE_IMAGE=${{ env.BASE_IMAGE }}
           url: docker://ghcr.io/${{ github.repository_owner }}
           tags: ${{ github.event.release.tag_name }} latest
           username: ${{ github.actor }}
@@ -43,6 +53,7 @@ jobs:
       - name: Build and push zot-minimal container image
         uses: project-stacker/stacker-build-push-action@main
         with:
+          version: v1.1.0-rc3
           file: 'build/stacker-minimal.yaml'
           build-args: |
             RELEASE_TAG=${{ github.event.release.tag_name }}
@@ -51,6 +62,7 @@ jobs:
             ARCH=${{ matrix.arch }}
             EXT=-minimal
             REPO_NAME=zot-minimal-${{ matrix.os }}-${{ matrix.arch }}
+            BASE_IMAGE=${{ env.BASE_IMAGE }}
           url: docker://ghcr.io/${{ github.repository_owner }}
           tags: ${{ github.event.release.tag_name }} latest
           username: ${{ github.actor }}
@@ -58,6 +70,7 @@ jobs:
       - name: Build and push zot-exporter container image
         uses: project-stacker/stacker-build-push-action@main
         with:
+          version: v1.1.0-rc3
           file: 'build/stacker-zxp.yaml'
           build-args: |
             RELEASE_TAG=${{ github.event.release.tag_name }}
@@ -65,6 +78,7 @@ jobs:
             OS=${{ matrix.os }}
             ARCH=${{ matrix.arch }}
             REPO_NAME=zxp-${{ matrix.os }}-${{ matrix.arch }}
+            BASE_IMAGE=${{ env.BASE_IMAGE }}
           url: docker://ghcr.io/${{ github.repository_owner }}
           tags: ${{ github.event.release.tag_name }} latest
           username: ${{ github.actor }}
@@ -72,6 +86,7 @@ jobs:
       - name: Build and push zb container image
         uses: project-stacker/stacker-build-push-action@main
         with:
+          version: v1.1.0-rc3
           file: 'build/stacker-zb.yaml'
           build-args: |
             RELEASE_TAG=${{ github.event.release.tag_name }}
@@ -79,6 +94,7 @@ jobs:
             OS=${{ matrix.os }}
             ARCH=${{ matrix.arch }}
             REPO_NAME=zb-${{ matrix.os }}-${{ matrix.arch }}
+            BASE_IMAGE=${{ env.BASE_IMAGE }}
           url: docker://ghcr.io/${{ github.repository_owner }}
           tags: ${{ github.event.release.tag_name }} latest
           username: ${{ github.actor }}
@@ -209,7 +225,7 @@ jobs:
       packages: read
     strategy:
       matrix:
-        os: [linux, darwin]
+        os: [linux, freebsd]
         arch: [amd64, arm64]
     steps:
       - name: Log in to GitHub Docker Registry

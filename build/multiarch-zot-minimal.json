@@ -3,7 +3,7 @@
     "source_repos": [
         "zot-minimal-linux-amd64",
         "zot-minimal-linux-arm64",
-        "zot-minimal-darwin-amd64",
-        "zot-minimal-darwin-arm64"
+        "zot-minimal-freebsd-amd64",
+        "zot-minimal-freebsd-arm64"
     ]
 }

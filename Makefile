@@ -31,7 +31,7 @@ ZUI_REPO_OWNER := project-zot
 ZUI_REPO_NAME := zui
 SWAGGER_VERSION := v1.16.2
 STACKER := $(TOOLSDIR)/bin/stacker
-STACKER_VERSION := v0.40.5
+STACKER_VERSION := v1.1.0-rc3
 BATS := $(TOOLSDIR)/bin/bats
 TESTDATA := $(TOP_LEVEL)/test/data
 OS ?= $(shell go env GOOS)
@@ -61,8 +61,10 @@ UI_DEPENDENCIES := search,mgmt,userprefs
 # freebsd is not supported for pie builds if CGO is disabled
 # see supported platforms at https://cs.opensource.google/go/go/+/master:src/internal/platform/supported.go;l=222-231;drc=d7fcb5cf80953f1d63246f1ae9defa60c5ce2d76
 BUILDMODE_FLAGS := -buildmode=pie
+BASE_IMAGE=gcr.io/distroless/base-debian12:latest-$(ARCH)
 ifeq ($(OS),freebsd)
 	BUILDMODE_FLAGS=
+	BASE_IMAGE=freebsd/freebsd-static:14.3
 endif
 BIN_EXT :=
 ifeq ($(OS),windows)
@@ -440,7 +442,9 @@ verify-gql-committed:
 
 .PHONY: binary-container
 binary-container:
-	${CONTAINER_RUNTIME} build ${BUILD_ARGS} -f build/Dockerfile -t zot-build:latest .
+	${CONTAINER_RUNTIME} build ${BUILD_ARGS} \
+		--build-arg BASE_IMAGE=$(BASE_IMAGE) \
+		-f build/Dockerfile -t zot-build:latest .
 
 .PHONY: run-container
 run-container:
@@ -449,7 +453,9 @@ run-container:
 
 .PHONY: binary-minimal-container
 binary-minimal-container:
-	${CONTAINER_RUNTIME} build ${BUILD_ARGS} -f build/Dockerfile-minimal -t zot-minimal:latest .
+	${CONTAINER_RUNTIME} build ${BUILD_ARGS} \
+		--build-arg BASE_IMAGE=$(BASE_IMAGE) \
+		-f build/Dockerfile-minimal -t zot-minimal:latest .
 
 .PHONY: run-minimal-container
 run-minimal-container:
@@ -458,7 +464,9 @@ run-minimal-container:
 
 .PHONY: binary-exporter-container
 binary-exporter-container:
-	${CONTAINER_RUNTIME} build ${BUILD_ARGS} -f build/Dockerfile-zxp -t zxp:latest .
+	${CONTAINER_RUNTIME} build ${BUILD_ARGS} \
+		--build-arg BASE_IMAGE=$(BASE_IMAGE) \
+		-f build/Dockerfile-zxp -t zxp:latest .
 
 .PHONY: run-exporter-container
 run-exporter-container:
@@ -472,11 +480,14 @@ oci-image: $(STACKER)
 		--substitute ARCH=$(ARCH) \
 		--substitute OS=$(OS) \
 		--substitute RELEASE_TAG=$(RELEASE_TAG) \
-		--substitute REPO_NAME=zot-$(OS)-$(ARCH)
+		--substitute REPO_NAME=zot-$(OS)-$(ARCH) \
+		--substitute BASE_IMAGE=$(BASE_IMAGE)
 
 .PHONY: docker-image
 docker-image:
-	${CONTAINER_RUNTIME} buildx build --platform $(OS)/$(ARCH) -f build/Dockerfile .
+	${CONTAINER_RUNTIME} buildx build --platform $(OS)/$(ARCH) \
+		--build-arg BASE_IMAGE=$(BASE_IMAGE) \
+		-f build/Dockerfile .
 
 $(BATS):
 	rm -rf bats-core; \
