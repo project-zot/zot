@@ -198,7 +198,7 @@ func (scanner Scanner) runTrivy(ctx context.Context, opts flag.Options) (types.R
 		return types.Report{}, err
 	}
 
-	runner, err := artifact.NewRunner(ctx, opts)
+	runner, err := artifact.NewRunner(ctx, opts, artifact.TargetContainerImage)
 	if err != nil {
 		return types.Report{}, err
 	}
