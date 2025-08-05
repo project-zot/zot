@@ -2223,1090 +2223,336 @@ var parsedSchema = gqlparser.MustLoadSchema(sources...)
 func (ec *executionContext) field_Query_BaseImageList_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
 	var err error
 	args := map[string]any{}
-	arg0, err := ec.field_Query_BaseImageList_argsImage(ctx, rawArgs)
+	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "image", ec.unmarshalNString2string)
 	if err != nil {
 		return nil, err
 	}
 	args["image"] = arg0
-	arg1, err := ec.field_Query_BaseImageList_argsDigest(ctx, rawArgs)
+	arg1, err := graphql.ProcessArgField(ctx, rawArgs, "digest", ec.unmarshalOString2ᚖstring)
 	if err != nil {
 		return nil, err
 	}
 	args["digest"] = arg1
-	arg2, err := ec.field_Query_BaseImageList_argsRequestedPage(ctx, rawArgs)
+	arg2, err := graphql.ProcessArgField(ctx, rawArgs, "requestedPage", ec.unmarshalOPageInput2ᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐPageInput)
 	if err != nil {
 		return nil, err
 	}
 	args["requestedPage"] = arg2
 	return args, nil
 }
-func (ec *executionContext) field_Query_BaseImageList_argsImage(
-	ctx context.Context,
-	rawArgs map[string]any,
-) (string, error) {
-	if _, ok := rawArgs["image"]; !ok {
-		var zeroVal string
-		return zeroVal, nil
-	}
-
-	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("image"))
-	if tmp, ok := rawArgs["image"]; ok {
-		return ec.unmarshalNString2string(ctx, tmp)
-	}
-
-	var zeroVal string
-	return zeroVal, nil
-}
-
-func (ec *executionContext) field_Query_BaseImageList_argsDigest(
-	ctx context.Context,
-	rawArgs map[string]any,
-) (*string, error) {
-	if _, ok := rawArgs["digest"]; !ok {
-		var zeroVal *string
-		return zeroVal, nil
-	}
-
-	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("digest"))
-	if tmp, ok := rawArgs["digest"]; ok {
-		return ec.unmarshalOString2ᚖstring(ctx, tmp)
-	}
-
-	var zeroVal *string
-	return zeroVal, nil
-}
-
-func (ec *executionContext) field_Query_BaseImageList_argsRequestedPage(
-	ctx context.Context,
-	rawArgs map[string]any,
-) (*PageInput, error) {
-	if _, ok := rawArgs["requestedPage"]; !ok {
-		var zeroVal *PageInput
-		return zeroVal, nil
-	}
-
-	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("requestedPage"))
-	if tmp, ok := rawArgs["requestedPage"]; ok {
-		return ec.unmarshalOPageInput2ᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐPageInput(ctx, tmp)
-	}
-
-	var zeroVal *PageInput
-	return zeroVal, nil
-}
 
 func (ec *executionContext) field_Query_BookmarkedRepos_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
 	var err error
 	args := map[string]any{}
-	arg0, err := ec.field_Query_BookmarkedRepos_argsRequestedPage(ctx, rawArgs)
+	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "requestedPage", ec.unmarshalOPageInput2ᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐPageInput)
 	if err != nil {
 		return nil, err
 	}
 	args["requestedPage"] = arg0
 	return args, nil
 }
-func (ec *executionContext) field_Query_BookmarkedRepos_argsRequestedPage(
-	ctx context.Context,
-	rawArgs map[string]any,
-) (*PageInput, error) {
-	if _, ok := rawArgs["requestedPage"]; !ok {
-		var zeroVal *PageInput
-		return zeroVal, nil
-	}
-
-	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("requestedPage"))
-	if tmp, ok := rawArgs["requestedPage"]; ok {
-		return ec.unmarshalOPageInput2ᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐPageInput(ctx, tmp)
-	}
-
-	var zeroVal *PageInput
-	return zeroVal, nil
-}
 
 func (ec *executionContext) field_Query_CVEDiffListForImages_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
 	var err error
 	args := map[string]any{}
-	arg0, err := ec.field_Query_CVEDiffListForImages_argsMinuend(ctx, rawArgs)
+	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "minuend", ec.unmarshalNImageInput2zotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐImageInput)
 	if err != nil {
 		return nil, err
 	}
 	args["minuend"] = arg0
-	arg1, err := ec.field_Query_CVEDiffListForImages_argsSubtrahend(ctx, rawArgs)
+	arg1, err := graphql.ProcessArgField(ctx, rawArgs, "subtrahend", ec.unmarshalNImageInput2zotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐImageInput)
 	if err != nil {
 		return nil, err
 	}
 	args["subtrahend"] = arg1
-	arg2, err := ec.field_Query_CVEDiffListForImages_argsRequestedPage(ctx, rawArgs)
+	arg2, err := graphql.ProcessArgField(ctx, rawArgs, "requestedPage", ec.unmarshalOPageInput2ᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐPageInput)
 	if err != nil {
 		return nil, err
 	}
 	args["requestedPage"] = arg2
-	arg3, err := ec.field_Query_CVEDiffListForImages_argsSearchedCve(ctx, rawArgs)
+	arg3, err := graphql.ProcessArgField(ctx, rawArgs, "searchedCVE", ec.unmarshalOString2ᚖstring)
 	if err != nil {
 		return nil, err
 	}
 	args["searchedCVE"] = arg3
-	arg4, err := ec.field_Query_CVEDiffListForImages_argsExcludedCve(ctx, rawArgs)
+	arg4, err := graphql.ProcessArgField(ctx, rawArgs, "excludedCVE", ec.unmarshalOString2ᚖstring)
 	if err != nil {
 		return nil, err
 	}
 	args["excludedCVE"] = arg4
 	return args, nil
 }
-func (ec *executionContext) field_Query_CVEDiffListForImages_argsMinuend(
-	ctx context.Context,
-	rawArgs map[string]any,
-) (ImageInput, error) {
-	if _, ok := rawArgs["minuend"]; !ok {
-		var zeroVal ImageInput
-		return zeroVal, nil
-	}
-
-	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("minuend"))
-	if tmp, ok := rawArgs["minuend"]; ok {
-		return ec.unmarshalNImageInput2zotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐImageInput(ctx, tmp)
-	}
-
-	var zeroVal ImageInput
-	return zeroVal, nil
-}
-
-func (ec *executionContext) field_Query_CVEDiffListForImages_argsSubtrahend(
-	ctx context.Context,
-	rawArgs map[string]any,
-) (ImageInput, error) {
-	if _, ok := rawArgs["subtrahend"]; !ok {
-		var zeroVal ImageInput
-		return zeroVal, nil
-	}
-
-	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("subtrahend"))
-	if tmp, ok := rawArgs["subtrahend"]; ok {
-		return ec.unmarshalNImageInput2zotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐImageInput(ctx, tmp)
-	}
-
-	var zeroVal ImageInput
-	return zeroVal, nil
-}
-
-func (ec *executionContext) field_Query_CVEDiffListForImages_argsRequestedPage(
-	ctx context.Context,
-	rawArgs map[string]any,
-) (*PageInput, error) {
-	if _, ok := rawArgs["requestedPage"]; !ok {
-		var zeroVal *PageInput
-		return zeroVal, nil
-	}
-
-	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("requestedPage"))
-	if tmp, ok := rawArgs["requestedPage"]; ok {
-		return ec.unmarshalOPageInput2ᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐPageInput(ctx, tmp)
-	}
-
-	var zeroVal *PageInput
-	return zeroVal, nil
-}
-
-func (ec *executionContext) field_Query_CVEDiffListForImages_argsSearchedCve(
-	ctx context.Context,
-	rawArgs map[string]any,
-) (*string, error) {
-	if _, ok := rawArgs["searchedCVE"]; !ok {
-		var zeroVal *string
-		return zeroVal, nil
-	}
-
-	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("searchedCVE"))
-	if tmp, ok := rawArgs["searchedCVE"]; ok {
-		return ec.unmarshalOString2ᚖstring(ctx, tmp)
-	}
-
-	var zeroVal *string
-	return zeroVal, nil
-}
-
-func (ec *executionContext) field_Query_CVEDiffListForImages_argsExcludedCve(
-	ctx context.Context,
-	rawArgs map[string]any,
-) (*string, error) {
-	if _, ok := rawArgs["excludedCVE"]; !ok {
-		var zeroVal *string
-		return zeroVal, nil
-	}
-
-	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("excludedCVE"))
-	if tmp, ok := rawArgs["excludedCVE"]; ok {
-		return ec.unmarshalOString2ᚖstring(ctx, tmp)
-	}
-
-	var zeroVal *string
-	return zeroVal, nil
-}
 
 func (ec *executionContext) field_Query_CVEListForImage_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
 	var err error
 	args := map[string]any{}
-	arg0, err := ec.field_Query_CVEListForImage_argsImage(ctx, rawArgs)
+	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "image", ec.unmarshalNString2string)
 	if err != nil {
 		return nil, err
 	}
 	args["image"] = arg0
-	arg1, err := ec.field_Query_CVEListForImage_argsRequestedPage(ctx, rawArgs)
+	arg1, err := graphql.ProcessArgField(ctx, rawArgs, "requestedPage", ec.unmarshalOPageInput2ᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐPageInput)
 	if err != nil {
 		return nil, err
 	}
 	args["requestedPage"] = arg1
-	arg2, err := ec.field_Query_CVEListForImage_argsSearchedCve(ctx, rawArgs)
+	arg2, err := graphql.ProcessArgField(ctx, rawArgs, "searchedCVE", ec.unmarshalOString2ᚖstring)
 	if err != nil {
 		return nil, err
 	}
 	args["searchedCVE"] = arg2
-	arg3, err := ec.field_Query_CVEListForImage_argsExcludedCve(ctx, rawArgs)
+	arg3, err := graphql.ProcessArgField(ctx, rawArgs, "excludedCVE", ec.unmarshalOString2ᚖstring)
 	if err != nil {
 		return nil, err
 	}
 	args["excludedCVE"] = arg3
-	arg4, err := ec.field_Query_CVEListForImage_argsSeverity(ctx, rawArgs)
+	arg4, err := graphql.ProcessArgField(ctx, rawArgs, "severity", ec.unmarshalOString2ᚖstring)
 	if err != nil {
 		return nil, err
 	}
 	args["severity"] = arg4
 	return args, nil
 }
-func (ec *executionContext) field_Query_CVEListForImage_argsImage(
-	ctx context.Context,
-	rawArgs map[string]any,
-) (string, error) {
-	if _, ok := rawArgs["image"]; !ok {
-		var zeroVal string
-		return zeroVal, nil
-	}
-
-	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("image"))
-	if tmp, ok := rawArgs["image"]; ok {
-		return ec.unmarshalNString2string(ctx, tmp)
-	}
-
-	var zeroVal string
-	return zeroVal, nil
-}
-
-func (ec *executionContext) field_Query_CVEListForImage_argsRequestedPage(
-	ctx context.Context,
-	rawArgs map[string]any,
-) (*PageInput, error) {
-	if _, ok := rawArgs["requestedPage"]; !ok {
-		var zeroVal *PageInput
-		return zeroVal, nil
-	}
-
-	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("requestedPage"))
-	if tmp, ok := rawArgs["requestedPage"]; ok {
-		return ec.unmarshalOPageInput2ᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐPageInput(ctx, tmp)
-	}
-
-	var zeroVal *PageInput
-	return zeroVal, nil
-}
-
-func (ec *executionContext) field_Query_CVEListForImage_argsSearchedCve(
-	ctx context.Context,
-	rawArgs map[string]any,
-) (*string, error) {
-	if _, ok := rawArgs["searchedCVE"]; !ok {
-		var zeroVal *string
-		return zeroVal, nil
-	}
-
-	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("searchedCVE"))
-	if tmp, ok := rawArgs["searchedCVE"]; ok {
-		return ec.unmarshalOString2ᚖstring(ctx, tmp)
-	}
-
-	var zeroVal *string
-	return zeroVal, nil
-}
-
-func (ec *executionContext) field_Query_CVEListForImage_argsExcludedCve(
-	ctx context.Context,
-	rawArgs map[string]any,
-) (*string, error) {
-	if _, ok := rawArgs["excludedCVE"]; !ok {
-		var zeroVal *string
-		return zeroVal, nil
-	}
-
-	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("excludedCVE"))
-	if tmp, ok := rawArgs["excludedCVE"]; ok {
-		return ec.unmarshalOString2ᚖstring(ctx, tmp)
-	}
-
-	var zeroVal *string
-	return zeroVal, nil
-}
-
-func (ec *executionContext) field_Query_CVEListForImage_argsSeverity(
-	ctx context.Context,
-	rawArgs map[string]any,
-) (*string, error) {
-	if _, ok := rawArgs["severity"]; !ok {
-		var zeroVal *string
-		return zeroVal, nil
-	}
-
-	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("severity"))
-	if tmp, ok := rawArgs["severity"]; ok {
-		return ec.unmarshalOString2ᚖstring(ctx, tmp)
-	}
-
-	var zeroVal *string
-	return zeroVal, nil
-}
 
 func (ec *executionContext) field_Query_DerivedImageList_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
 	var err error
 	args := map[string]any{}
-	arg0, err := ec.field_Query_DerivedImageList_argsImage(ctx, rawArgs)
+	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "image", ec.unmarshalNString2string)
 	if err != nil {
 		return nil, err
 	}
 	args["image"] = arg0
-	arg1, err := ec.field_Query_DerivedImageList_argsDigest(ctx, rawArgs)
+	arg1, err := graphql.ProcessArgField(ctx, rawArgs, "digest", ec.unmarshalOString2ᚖstring)
 	if err != nil {
 		return nil, err
 	}
 	args["digest"] = arg1
-	arg2, err := ec.field_Query_DerivedImageList_argsRequestedPage(ctx, rawArgs)
+	arg2, err := graphql.ProcessArgField(ctx, rawArgs, "requestedPage", ec.unmarshalOPageInput2ᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐPageInput)
 	if err != nil {
 		return nil, err
 	}
 	args["requestedPage"] = arg2
 	return args, nil
 }
-func (ec *executionContext) field_Query_DerivedImageList_argsImage(
-	ctx context.Context,
-	rawArgs map[string]any,
-) (string, error) {
-	if _, ok := rawArgs["image"]; !ok {
-		var zeroVal string
-		return zeroVal, nil
-	}
-
-	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("image"))
-	if tmp, ok := rawArgs["image"]; ok {
-		return ec.unmarshalNString2string(ctx, tmp)
-	}
-
-	var zeroVal string
-	return zeroVal, nil
-}
-
-func (ec *executionContext) field_Query_DerivedImageList_argsDigest(
-	ctx context.Context,
-	rawArgs map[string]any,
-) (*string, error) {
-	if _, ok := rawArgs["digest"]; !ok {
-		var zeroVal *string
-		return zeroVal, nil
-	}
-
-	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("digest"))
-	if tmp, ok := rawArgs["digest"]; ok {
-		return ec.unmarshalOString2ᚖstring(ctx, tmp)
-	}
-
-	var zeroVal *string
-	return zeroVal, nil
-}
-
-func (ec *executionContext) field_Query_DerivedImageList_argsRequestedPage(
-	ctx context.Context,
-	rawArgs map[string]any,
-) (*PageInput, error) {
-	if _, ok := rawArgs["requestedPage"]; !ok {
-		var zeroVal *PageInput
-		return zeroVal, nil
-	}
-
-	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("requestedPage"))
-	if tmp, ok := rawArgs["requestedPage"]; ok {
-		return ec.unmarshalOPageInput2ᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐPageInput(ctx, tmp)
-	}
-
-	var zeroVal *PageInput
-	return zeroVal, nil
-}
 
 func (ec *executionContext) field_Query_ExpandedRepoInfo_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
 	var err error
 	args := map[string]any{}
-	arg0, err := ec.field_Query_ExpandedRepoInfo_argsRepo(ctx, rawArgs)
+	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "repo", ec.unmarshalNString2string)
 	if err != nil {
 		return nil, err
 	}
 	args["repo"] = arg0
 	return args, nil
 }
-func (ec *executionContext) field_Query_ExpandedRepoInfo_argsRepo(
-	ctx context.Context,
-	rawArgs map[string]any,
-) (string, error) {
-	if _, ok := rawArgs["repo"]; !ok {
-		var zeroVal string
-		return zeroVal, nil
-	}
-
-	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("repo"))
-	if tmp, ok := rawArgs["repo"]; ok {
-		return ec.unmarshalNString2string(ctx, tmp)
-	}
-
-	var zeroVal string
-	return zeroVal, nil
-}
 
 func (ec *executionContext) field_Query_GlobalSearch_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
 	var err error
 	args := map[string]any{}
-	arg0, err := ec.field_Query_GlobalSearch_argsQuery(ctx, rawArgs)
+	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "query", ec.unmarshalNString2string)
 	if err != nil {
 		return nil, err
 	}
 	args["query"] = arg0
-	arg1, err := ec.field_Query_GlobalSearch_argsFilter(ctx, rawArgs)
+	arg1, err := graphql.ProcessArgField(ctx, rawArgs, "filter", ec.unmarshalOFilter2ᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐFilter)
 	if err != nil {
 		return nil, err
 	}
 	args["filter"] = arg1
-	arg2, err := ec.field_Query_GlobalSearch_argsRequestedPage(ctx, rawArgs)
+	arg2, err := graphql.ProcessArgField(ctx, rawArgs, "requestedPage", ec.unmarshalOPageInput2ᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐPageInput)
 	if err != nil {
 		return nil, err
 	}
 	args["requestedPage"] = arg2
 	return args, nil
-}
-func (ec *executionContext) field_Query_GlobalSearch_argsQuery(
-	ctx context.Context,
-	rawArgs map[string]any,
-) (string, error) {
-	if _, ok := rawArgs["query"]; !ok {
-		var zeroVal string
-		return zeroVal, nil
-	}
-
-	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("query"))
-	if tmp, ok := rawArgs["query"]; ok {
-		return ec.unmarshalNString2string(ctx, tmp)
-	}
-
-	var zeroVal string
-	return zeroVal, nil
-}
-
-func (ec *executionContext) field_Query_GlobalSearch_argsFilter(
-	ctx context.Context,
-	rawArgs map[string]any,
-) (*Filter, error) {
-	if _, ok := rawArgs["filter"]; !ok {
-		var zeroVal *Filter
-		return zeroVal, nil
-	}
-
-	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("filter"))
-	if tmp, ok := rawArgs["filter"]; ok {
-		return ec.unmarshalOFilter2ᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐFilter(ctx, tmp)
-	}
-
-	var zeroVal *Filter
-	return zeroVal, nil
-}
-
-func (ec *executionContext) field_Query_GlobalSearch_argsRequestedPage(
-	ctx context.Context,
-	rawArgs map[string]any,
-) (*PageInput, error) {
-	if _, ok := rawArgs["requestedPage"]; !ok {
-		var zeroVal *PageInput
-		return zeroVal, nil
-	}
-
-	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("requestedPage"))
-	if tmp, ok := rawArgs["requestedPage"]; ok {
-		return ec.unmarshalOPageInput2ᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐPageInput(ctx, tmp)
-	}
-
-	var zeroVal *PageInput
-	return zeroVal, nil
 }
 
 func (ec *executionContext) field_Query_ImageListForCVE_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
 	var err error
 	args := map[string]any{}
-	arg0, err := ec.field_Query_ImageListForCVE_argsID(ctx, rawArgs)
+	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "id", ec.unmarshalNString2string)
 	if err != nil {
 		return nil, err
 	}
 	args["id"] = arg0
-	arg1, err := ec.field_Query_ImageListForCVE_argsFilter(ctx, rawArgs)
+	arg1, err := graphql.ProcessArgField(ctx, rawArgs, "filter", ec.unmarshalOFilter2ᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐFilter)
 	if err != nil {
 		return nil, err
 	}
 	args["filter"] = arg1
-	arg2, err := ec.field_Query_ImageListForCVE_argsRequestedPage(ctx, rawArgs)
+	arg2, err := graphql.ProcessArgField(ctx, rawArgs, "requestedPage", ec.unmarshalOPageInput2ᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐPageInput)
 	if err != nil {
 		return nil, err
 	}
 	args["requestedPage"] = arg2
 	return args, nil
 }
-func (ec *executionContext) field_Query_ImageListForCVE_argsID(
-	ctx context.Context,
-	rawArgs map[string]any,
-) (string, error) {
-	if _, ok := rawArgs["id"]; !ok {
-		var zeroVal string
-		return zeroVal, nil
-	}
-
-	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("id"))
-	if tmp, ok := rawArgs["id"]; ok {
-		return ec.unmarshalNString2string(ctx, tmp)
-	}
-
-	var zeroVal string
-	return zeroVal, nil
-}
-
-func (ec *executionContext) field_Query_ImageListForCVE_argsFilter(
-	ctx context.Context,
-	rawArgs map[string]any,
-) (*Filter, error) {
-	if _, ok := rawArgs["filter"]; !ok {
-		var zeroVal *Filter
-		return zeroVal, nil
-	}
-
-	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("filter"))
-	if tmp, ok := rawArgs["filter"]; ok {
-		return ec.unmarshalOFilter2ᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐFilter(ctx, tmp)
-	}
-
-	var zeroVal *Filter
-	return zeroVal, nil
-}
-
-func (ec *executionContext) field_Query_ImageListForCVE_argsRequestedPage(
-	ctx context.Context,
-	rawArgs map[string]any,
-) (*PageInput, error) {
-	if _, ok := rawArgs["requestedPage"]; !ok {
-		var zeroVal *PageInput
-		return zeroVal, nil
-	}
-
-	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("requestedPage"))
-	if tmp, ok := rawArgs["requestedPage"]; ok {
-		return ec.unmarshalOPageInput2ᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐPageInput(ctx, tmp)
-	}
-
-	var zeroVal *PageInput
-	return zeroVal, nil
-}
 
 func (ec *executionContext) field_Query_ImageListForDigest_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
 	var err error
 	args := map[string]any{}
-	arg0, err := ec.field_Query_ImageListForDigest_argsID(ctx, rawArgs)
+	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "id", ec.unmarshalNString2string)
 	if err != nil {
 		return nil, err
 	}
 	args["id"] = arg0
-	arg1, err := ec.field_Query_ImageListForDigest_argsRequestedPage(ctx, rawArgs)
+	arg1, err := graphql.ProcessArgField(ctx, rawArgs, "requestedPage", ec.unmarshalOPageInput2ᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐPageInput)
 	if err != nil {
 		return nil, err
 	}
 	args["requestedPage"] = arg1
 	return args, nil
 }
-func (ec *executionContext) field_Query_ImageListForDigest_argsID(
-	ctx context.Context,
-	rawArgs map[string]any,
-) (string, error) {
-	if _, ok := rawArgs["id"]; !ok {
-		var zeroVal string
-		return zeroVal, nil
-	}
-
-	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("id"))
-	if tmp, ok := rawArgs["id"]; ok {
-		return ec.unmarshalNString2string(ctx, tmp)
-	}
-
-	var zeroVal string
-	return zeroVal, nil
-}
-
-func (ec *executionContext) field_Query_ImageListForDigest_argsRequestedPage(
-	ctx context.Context,
-	rawArgs map[string]any,
-) (*PageInput, error) {
-	if _, ok := rawArgs["requestedPage"]; !ok {
-		var zeroVal *PageInput
-		return zeroVal, nil
-	}
-
-	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("requestedPage"))
-	if tmp, ok := rawArgs["requestedPage"]; ok {
-		return ec.unmarshalOPageInput2ᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐPageInput(ctx, tmp)
-	}
-
-	var zeroVal *PageInput
-	return zeroVal, nil
-}
 
 func (ec *executionContext) field_Query_ImageListWithCVEFixed_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
 	var err error
 	args := map[string]any{}
-	arg0, err := ec.field_Query_ImageListWithCVEFixed_argsID(ctx, rawArgs)
+	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "id", ec.unmarshalNString2string)
 	if err != nil {
 		return nil, err
 	}
 	args["id"] = arg0
-	arg1, err := ec.field_Query_ImageListWithCVEFixed_argsImage(ctx, rawArgs)
+	arg1, err := graphql.ProcessArgField(ctx, rawArgs, "image", ec.unmarshalNString2string)
 	if err != nil {
 		return nil, err
 	}
 	args["image"] = arg1
-	arg2, err := ec.field_Query_ImageListWithCVEFixed_argsFilter(ctx, rawArgs)
+	arg2, err := graphql.ProcessArgField(ctx, rawArgs, "filter", ec.unmarshalOFilter2ᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐFilter)
 	if err != nil {
 		return nil, err
 	}
 	args["filter"] = arg2
-	arg3, err := ec.field_Query_ImageListWithCVEFixed_argsRequestedPage(ctx, rawArgs)
+	arg3, err := graphql.ProcessArgField(ctx, rawArgs, "requestedPage", ec.unmarshalOPageInput2ᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐPageInput)
 	if err != nil {
 		return nil, err
 	}
 	args["requestedPage"] = arg3
 	return args, nil
 }
-func (ec *executionContext) field_Query_ImageListWithCVEFixed_argsID(
-	ctx context.Context,
-	rawArgs map[string]any,
-) (string, error) {
-	if _, ok := rawArgs["id"]; !ok {
-		var zeroVal string
-		return zeroVal, nil
-	}
-
-	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("id"))
-	if tmp, ok := rawArgs["id"]; ok {
-		return ec.unmarshalNString2string(ctx, tmp)
-	}
-
-	var zeroVal string
-	return zeroVal, nil
-}
-
-func (ec *executionContext) field_Query_ImageListWithCVEFixed_argsImage(
-	ctx context.Context,
-	rawArgs map[string]any,
-) (string, error) {
-	if _, ok := rawArgs["image"]; !ok {
-		var zeroVal string
-		return zeroVal, nil
-	}
-
-	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("image"))
-	if tmp, ok := rawArgs["image"]; ok {
-		return ec.unmarshalNString2string(ctx, tmp)
-	}
-
-	var zeroVal string
-	return zeroVal, nil
-}
-
-func (ec *executionContext) field_Query_ImageListWithCVEFixed_argsFilter(
-	ctx context.Context,
-	rawArgs map[string]any,
-) (*Filter, error) {
-	if _, ok := rawArgs["filter"]; !ok {
-		var zeroVal *Filter
-		return zeroVal, nil
-	}
-
-	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("filter"))
-	if tmp, ok := rawArgs["filter"]; ok {
-		return ec.unmarshalOFilter2ᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐFilter(ctx, tmp)
-	}
-
-	var zeroVal *Filter
-	return zeroVal, nil
-}
-
-func (ec *executionContext) field_Query_ImageListWithCVEFixed_argsRequestedPage(
-	ctx context.Context,
-	rawArgs map[string]any,
-) (*PageInput, error) {
-	if _, ok := rawArgs["requestedPage"]; !ok {
-		var zeroVal *PageInput
-		return zeroVal, nil
-	}
-
-	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("requestedPage"))
-	if tmp, ok := rawArgs["requestedPage"]; ok {
-		return ec.unmarshalOPageInput2ᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐPageInput(ctx, tmp)
-	}
-
-	var zeroVal *PageInput
-	return zeroVal, nil
-}
 
 func (ec *executionContext) field_Query_ImageList_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
 	var err error
 	args := map[string]any{}
-	arg0, err := ec.field_Query_ImageList_argsRepo(ctx, rawArgs)
+	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "repo", ec.unmarshalNString2string)
 	if err != nil {
 		return nil, err
 	}
 	args["repo"] = arg0
-	arg1, err := ec.field_Query_ImageList_argsRequestedPage(ctx, rawArgs)
+	arg1, err := graphql.ProcessArgField(ctx, rawArgs, "requestedPage", ec.unmarshalOPageInput2ᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐPageInput)
 	if err != nil {
 		return nil, err
 	}
 	args["requestedPage"] = arg1
 	return args, nil
 }
-func (ec *executionContext) field_Query_ImageList_argsRepo(
-	ctx context.Context,
-	rawArgs map[string]any,
-) (string, error) {
-	if _, ok := rawArgs["repo"]; !ok {
-		var zeroVal string
-		return zeroVal, nil
-	}
-
-	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("repo"))
-	if tmp, ok := rawArgs["repo"]; ok {
-		return ec.unmarshalNString2string(ctx, tmp)
-	}
-
-	var zeroVal string
-	return zeroVal, nil
-}
-
-func (ec *executionContext) field_Query_ImageList_argsRequestedPage(
-	ctx context.Context,
-	rawArgs map[string]any,
-) (*PageInput, error) {
-	if _, ok := rawArgs["requestedPage"]; !ok {
-		var zeroVal *PageInput
-		return zeroVal, nil
-	}
-
-	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("requestedPage"))
-	if tmp, ok := rawArgs["requestedPage"]; ok {
-		return ec.unmarshalOPageInput2ᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐPageInput(ctx, tmp)
-	}
-
-	var zeroVal *PageInput
-	return zeroVal, nil
-}
 
 func (ec *executionContext) field_Query_Image_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
 	var err error
 	args := map[string]any{}
-	arg0, err := ec.field_Query_Image_argsImage(ctx, rawArgs)
+	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "image", ec.unmarshalNString2string)
 	if err != nil {
 		return nil, err
 	}
 	args["image"] = arg0
 	return args, nil
 }
-func (ec *executionContext) field_Query_Image_argsImage(
-	ctx context.Context,
-	rawArgs map[string]any,
-) (string, error) {
-	if _, ok := rawArgs["image"]; !ok {
-		var zeroVal string
-		return zeroVal, nil
-	}
-
-	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("image"))
-	if tmp, ok := rawArgs["image"]; ok {
-		return ec.unmarshalNString2string(ctx, tmp)
-	}
-
-	var zeroVal string
-	return zeroVal, nil
-}
 
 func (ec *executionContext) field_Query_Referrers_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
 	var err error
 	args := map[string]any{}
-	arg0, err := ec.field_Query_Referrers_argsRepo(ctx, rawArgs)
+	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "repo", ec.unmarshalNString2string)
 	if err != nil {
 		return nil, err
 	}
 	args["repo"] = arg0
-	arg1, err := ec.field_Query_Referrers_argsDigest(ctx, rawArgs)
+	arg1, err := graphql.ProcessArgField(ctx, rawArgs, "digest", ec.unmarshalNString2string)
 	if err != nil {
 		return nil, err
 	}
 	args["digest"] = arg1
-	arg2, err := ec.field_Query_Referrers_argsType(ctx, rawArgs)
+	arg2, err := graphql.ProcessArgField(ctx, rawArgs, "type", ec.unmarshalOString2ᚕstringᚄ)
 	if err != nil {
 		return nil, err
 	}
 	args["type"] = arg2
 	return args, nil
 }
-func (ec *executionContext) field_Query_Referrers_argsRepo(
-	ctx context.Context,
-	rawArgs map[string]any,
-) (string, error) {
-	if _, ok := rawArgs["repo"]; !ok {
-		var zeroVal string
-		return zeroVal, nil
-	}
-
-	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("repo"))
-	if tmp, ok := rawArgs["repo"]; ok {
-		return ec.unmarshalNString2string(ctx, tmp)
-	}
-
-	var zeroVal string
-	return zeroVal, nil
-}
-
-func (ec *executionContext) field_Query_Referrers_argsDigest(
-	ctx context.Context,
-	rawArgs map[string]any,
-) (string, error) {
-	if _, ok := rawArgs["digest"]; !ok {
-		var zeroVal string
-		return zeroVal, nil
-	}
-
-	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("digest"))
-	if tmp, ok := rawArgs["digest"]; ok {
-		return ec.unmarshalNString2string(ctx, tmp)
-	}
-
-	var zeroVal string
-	return zeroVal, nil
-}
-
-func (ec *executionContext) field_Query_Referrers_argsType(
-	ctx context.Context,
-	rawArgs map[string]any,
-) ([]string, error) {
-	if _, ok := rawArgs["type"]; !ok {
-		var zeroVal []string
-		return zeroVal, nil
-	}
-
-	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("type"))
-	if tmp, ok := rawArgs["type"]; ok {
-		return ec.unmarshalOString2ᚕstringᚄ(ctx, tmp)
-	}
-
-	var zeroVal []string
-	return zeroVal, nil
-}
 
 func (ec *executionContext) field_Query_RepoListWithNewestImage_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
 	var err error
 	args := map[string]any{}
-	arg0, err := ec.field_Query_RepoListWithNewestImage_argsRequestedPage(ctx, rawArgs)
+	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "requestedPage", ec.unmarshalOPageInput2ᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐPageInput)
 	if err != nil {
 		return nil, err
 	}
 	args["requestedPage"] = arg0
 	return args, nil
-}
-func (ec *executionContext) field_Query_RepoListWithNewestImage_argsRequestedPage(
-	ctx context.Context,
-	rawArgs map[string]any,
-) (*PageInput, error) {
-	if _, ok := rawArgs["requestedPage"]; !ok {
-		var zeroVal *PageInput
-		return zeroVal, nil
-	}
-
-	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("requestedPage"))
-	if tmp, ok := rawArgs["requestedPage"]; ok {
-		return ec.unmarshalOPageInput2ᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐPageInput(ctx, tmp)
-	}
-
-	var zeroVal *PageInput
-	return zeroVal, nil
 }
 
 func (ec *executionContext) field_Query_StarredRepos_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
 	var err error
 	args := map[string]any{}
-	arg0, err := ec.field_Query_StarredRepos_argsRequestedPage(ctx, rawArgs)
+	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "requestedPage", ec.unmarshalOPageInput2ᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐPageInput)
 	if err != nil {
 		return nil, err
 	}
 	args["requestedPage"] = arg0
 	return args, nil
 }
-func (ec *executionContext) field_Query_StarredRepos_argsRequestedPage(
-	ctx context.Context,
-	rawArgs map[string]any,
-) (*PageInput, error) {
-	if _, ok := rawArgs["requestedPage"]; !ok {
-		var zeroVal *PageInput
-		return zeroVal, nil
-	}
-
-	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("requestedPage"))
-	if tmp, ok := rawArgs["requestedPage"]; ok {
-		return ec.unmarshalOPageInput2ᚖzotregistryᚗdevᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐPageInput(ctx, tmp)
-	}
-
-	var zeroVal *PageInput
-	return zeroVal, nil
-}
 
 func (ec *executionContext) field_Query___type_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
 	var err error
 	args := map[string]any{}
-	arg0, err := ec.field_Query___type_argsName(ctx, rawArgs)
+	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "name", ec.unmarshalNString2string)
 	if err != nil {
 		return nil, err
 	}
 	args["name"] = arg0
 	return args, nil
 }
-func (ec *executionContext) field_Query___type_argsName(
-	ctx context.Context,
-	rawArgs map[string]any,
-) (string, error) {
-	if _, ok := rawArgs["name"]; !ok {
-		var zeroVal string
-		return zeroVal, nil
-	}
-
-	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("name"))
-	if tmp, ok := rawArgs["name"]; ok {
-		return ec.unmarshalNString2string(ctx, tmp)
-	}
-
-	var zeroVal string
-	return zeroVal, nil
-}
 
 func (ec *executionContext) field___Directive_args_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
 	var err error
 	args := map[string]any{}
-	arg0, err := ec.field___Directive_args_argsIncludeDeprecated(ctx, rawArgs)
+	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "includeDeprecated", ec.unmarshalOBoolean2ᚖbool)
 	if err != nil {
 		return nil, err
 	}
 	args["includeDeprecated"] = arg0
 	return args, nil
-}
-func (ec *executionContext) field___Directive_args_argsIncludeDeprecated(
-	ctx context.Context,
-	rawArgs map[string]any,
-) (*bool, error) {
-	if _, ok := rawArgs["includeDeprecated"]; !ok {
-		var zeroVal *bool
-		return zeroVal, nil
-	}
-
-	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("includeDeprecated"))
-	if tmp, ok := rawArgs["includeDeprecated"]; ok {
-		return ec.unmarshalOBoolean2ᚖbool(ctx, tmp)
-	}
-
-	var zeroVal *bool
-	return zeroVal, nil
 }
 
 func (ec *executionContext) field___Field_args_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
 	var err error
 	args := map[string]any{}
-	arg0, err := ec.field___Field_args_argsIncludeDeprecated(ctx, rawArgs)
+	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "includeDeprecated", ec.unmarshalOBoolean2ᚖbool)
 	if err != nil {
 		return nil, err
 	}
 	args["includeDeprecated"] = arg0
 	return args, nil
-}
-func (ec *executionContext) field___Field_args_argsIncludeDeprecated(
-	ctx context.Context,
-	rawArgs map[string]any,
-) (*bool, error) {
-	if _, ok := rawArgs["includeDeprecated"]; !ok {
-		var zeroVal *bool
-		return zeroVal, nil
-	}
-
-	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("includeDeprecated"))
-	if tmp, ok := rawArgs["includeDeprecated"]; ok {
-		return ec.unmarshalOBoolean2ᚖbool(ctx, tmp)
-	}
-
-	var zeroVal *bool
-	return zeroVal, nil
 }
 
 func (ec *executionContext) field___Type_enumValues_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
 	var err error
 	args := map[string]any{}
-	arg0, err := ec.field___Type_enumValues_argsIncludeDeprecated(ctx, rawArgs)
+	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "includeDeprecated", ec.unmarshalOBoolean2bool)
 	if err != nil {
 		return nil, err
 	}
 	args["includeDeprecated"] = arg0
 	return args, nil
-}
-func (ec *executionContext) field___Type_enumValues_argsIncludeDeprecated(
-	ctx context.Context,
-	rawArgs map[string]any,
-) (bool, error) {
-	if _, ok := rawArgs["includeDeprecated"]; !ok {
-		var zeroVal bool
-		return zeroVal, nil
-	}
-
-	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("includeDeprecated"))
-	if tmp, ok := rawArgs["includeDeprecated"]; ok {
-		return ec.unmarshalOBoolean2bool(ctx, tmp)
-	}
-
-	var zeroVal bool
-	return zeroVal, nil
 }
 
 func (ec *executionContext) field___Type_fields_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
 	var err error
 	args := map[string]any{}
-	arg0, err := ec.field___Type_fields_argsIncludeDeprecated(ctx, rawArgs)
+	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "includeDeprecated", ec.unmarshalOBoolean2bool)
 	if err != nil {
 		return nil, err
 	}
 	args["includeDeprecated"] = arg0
 	return args, nil
-}
-func (ec *executionContext) field___Type_fields_argsIncludeDeprecated(
-	ctx context.Context,
-	rawArgs map[string]any,
-) (bool, error) {
-	if _, ok := rawArgs["includeDeprecated"]; !ok {
-		var zeroVal bool
-		return zeroVal, nil
-	}
-
-	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("includeDeprecated"))
-	if tmp, ok := rawArgs["includeDeprecated"]; ok {
-		return ec.unmarshalOBoolean2bool(ctx, tmp)
-	}
-
-	var zeroVal bool
-	return zeroVal, nil
 }
 
 // endregion ***************************** args.gotpl *****************************
