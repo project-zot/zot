@@ -14,7 +14,7 @@ permissions: read-all
 jobs:
   gc-referrers-stress-local:
     name: GC(with referrers) on filesystem with short interval
-    runs-on: ubuntu-latest-8-cores
+    runs-on: oracle-vm-8cpu-32gb-x86-64
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -53,7 +53,7 @@ jobs:
 
   gc-stress-local:
     name: GC(without referrers) on filesystem with short interval
-    runs-on: ubuntu-latest-8-cores
+    runs-on: oracle-vm-8cpu-32gb-x86-64
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -92,7 +92,7 @@ jobs:
 
   gc-referrers-stress-s3:
     name: GC(with referrers) on S3(minio) with short interval
-    runs-on: ubuntu-latest-8-cores
+    runs-on: oracle-vm-8cpu-32gb-x86-64
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -176,7 +176,7 @@ jobs:
 
   gc-stress-s3:
     name: GC(without referrers) on S3(minio) with short interval
-    runs-on: ubuntu-latest-8-cores
+    runs-on: oracle-vm-8cpu-32gb-x86-64
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5

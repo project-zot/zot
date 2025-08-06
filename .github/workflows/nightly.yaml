@@ -84,7 +84,7 @@ jobs:
 
   gc-referrers-stress-s3:
     name: GC(with referrers) on S3(localstack) with short interval
-    runs-on: ubuntu-latest-16-cores
+    runs-on: oracle-vm-16cpu-64gb-x86-64
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -121,7 +121,7 @@ jobs:
 
   gc-stress-s3:
     name: GC(without referrers) on S3(localstack) with short interval
-    runs-on: ubuntu-latest-16-cores
+    runs-on: oracle-vm-16cpu-64gb-x86-64
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -170,7 +170,7 @@ jobs:
 
   kind-setup:
     name: Prometheus setup
-    runs-on: ubuntu-latest-8-cores
+    runs-on: oracle-vm-8cpu-32gb-x86-64
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -201,7 +201,7 @@ jobs:
 
   cloud-scale-out:
     name: s3+dynamodb scale-out
-    runs-on: ubuntu-latest-16-cores
+    runs-on: oracle-vm-16cpu-64gb-x86-64
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -287,7 +287,7 @@ jobs:
 
   cloud-scale-out-redis:
     name: s3+redis scale-out
-    runs-on: ubuntu-latest-16-cores
+    runs-on: oracle-vm-16cpu-64gb-x86-64
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
