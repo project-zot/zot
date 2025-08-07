@@ -296,6 +296,8 @@ EOF
 
 @test "pull manifest with docker client" {
     zot_port=`cat ${BATS_FILE_TMPDIR}/zot.port`
+    run docker login -u "" -p "" -- localhost:{zot_port}
+    [ "$status" -eq 0 ]
     run docker pull localhost:${zot_port}/test-regclient
     [ "$status" -eq 0 ]
 }
