@@ -21,8 +21,19 @@ jobs:
         with:
           cache: false
           go-version: 1.23.x
+      - name: Install deps
+        run: |
+          sudo usermod -aG docker $USER
       - name: Install dependencies
         run: |
+          systemctl status docker
+          docker info
+          podman info
+          id
+          cat /etc/subgid
+          cat /etc/subuid
+          cat /etc/passwd
+          cat /etc/group
           cd $GITHUB_WORKSPACE
           go install github.com/swaggo/swag/cmd/swag@v1.16.2
           go mod download
@@ -54,6 +65,7 @@ jobs:
           sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
           sudo apt update
           sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+          sudo chmod 0777 /var/run/docker.sock
           # install dex
           git clone https://github.com/dexidp/dex.git
           cd dex/
