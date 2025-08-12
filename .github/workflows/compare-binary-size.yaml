@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-latest
     name: compare-with-main
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v5
       - uses: actions/setup-go@v5
         with:
           cache: false

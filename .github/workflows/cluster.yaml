@@ -16,7 +16,7 @@ jobs:
     name: Stateless zot with minio and boltdb
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: actions/setup-go@v5
         with:
           cache: false
@@ -271,7 +271,7 @@ jobs:
     name: Stateless zot with minio and redis
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: actions/setup-go@v5
         with:
           cache: false
