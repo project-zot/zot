@@ -29,6 +29,9 @@ function setup_file() {
     if ! $(verify_prerequisites); then
         exit 1
     fi
+
+    run mkdir -p ${HOME}/.config/notation
+
     # Download test data to folder common for the entire suite, not just this file
     skopeo --insecure-policy copy --format=oci docker://ghcr.io/project-zot/golang:1.20 oci:${TEST_DATA_DIR}/golang:1.20
     # Setup zot server
@@ -230,7 +233,7 @@ function teardown_file() {
     run notation cert generate-test "notation-sign-test"
     [ "$status" -eq 0 ]
 
-    local trust_policy_file=${HOME}/.config/notation/trustpolicy.json
+    local trust_policy_file=./trustpolicy.json
 
     cat >${trust_policy_file} <<EOF
 {
@@ -251,6 +254,8 @@ function teardown_file() {
 }
 EOF
 
+    run notation policy import ${trust_policy_file}
+    [ "$status" -eq 0 ]
     run notation sign --key "notation-sign-test" --insecure-registry localhost:${zot_port}/annotations:latest
     [ "$status" -eq 0 ]
     run notation verify --insecure-registry localhost:${zot_port}/annotations:latest
@@ -269,7 +274,7 @@ EOF
     run notation cert generate-test "notation-sign-test-experimental"
     [ "$status" -eq 0 ]
 
-    local trust_policy_file=${HOME}/.config/notation/trustpolicy.json
+    local trust_policy_file=./trustpolicy.json
 
     cat >${trust_policy_file} <<EOF
 {
@@ -289,7 +294,8 @@ EOF
     ]
 }
 EOF
-
+    run notation policy import ${trust_policy_file}
+    [ "$status" -eq 0 ]
     export NOTATION_EXPERIMENTAL=1
     run notation sign --allow-referrers-api --key "notation-sign-test-experimental" --insecure-registry localhost:${zot_port}/annotations:latest
     [ "$status" -eq 0 ]
