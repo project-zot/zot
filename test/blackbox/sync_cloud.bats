@@ -30,6 +30,9 @@ function setup_file() {
         exit 1
     fi
 
+    rm -rf ${HOME}/.config/notation
+    mkdir -p ${HOME}/.config/notation
+
     # Download test data to folder common for the entire suite, not just this file
     skopeo --insecure-policy copy --format=oci docker://ghcr.io/project-zot/golang:1.20 oci:${TEST_DATA_DIR}/golang:1.20
     # Setup zot server
