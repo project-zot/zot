@@ -21,6 +21,8 @@ function verify_prerequisites() {
 }
 
 function setup_file() {
+    which notation
+
     rm -rf ${HOME}/.config/notation
     mkdir -p ${HOME}/.config/notation
 

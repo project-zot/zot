@@ -1,4 +1,5 @@
 export GO111MODULE=on
+SHELL := /bin/bash
 TOP_LEVEL=$(shell git rev-parse --show-toplevel)
 COMMIT_HASH=$(shell git describe --always --tags --long)
 RELEASE_TAG=$(shell git describe --tags --abbrev=0)
@@ -12,7 +13,7 @@ STACKER := $(shell which stacker)
 GOLINTER := $(TOOLSDIR)/bin/golangci-lint
 GOLINTER_VERSION := v2.1.0
 NOTATION := $(TOOLSDIR)/bin/notation
-NOTATION_VERSION := 1.0.0
+NOTATION_VERSION := 1.3.2
 COSIGN := $(TOOLSDIR)/bin/cosign
 COSIGN_VERSION := 2.2.0
 HELM := $(TOOLSDIR)/bin/helm
@@ -84,6 +85,7 @@ GO_CMD_TAGS := $(if $(BUILD_LABELS),-tags $(BUILD_LABELS),)
 
 
 BATS_TEST_FILE_PATH ?= replace_me
+BATS_VERBOSITY := 2
 ifeq ($(BATS_VERBOSITY),2)
 	BATS_FLAGS = --trace --verbose-run --show-output-of-passing-tests --print-output-on-failure
 else ifeq ($(BATS_VERBOSITY),1)
