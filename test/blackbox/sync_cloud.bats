@@ -21,6 +21,9 @@ function verify_prerequisites() {
 }
 
 function setup_file() {
+    rm -rf ${HOME}/.config/notation
+    mkdir -p ${HOME}/.config/notation
+
     export COSIGN_PASSWORD=""
     export COSIGN_OCI_EXPERIMENTAL=1
     export COSIGN_EXPERIMENTAL=1

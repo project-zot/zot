@@ -24,6 +24,9 @@ function verify_prerequisites {
 }
 
 function setup_file() {
+    rm -rf ${HOME}/.config/notation
+    mkdir -p ${HOME}/.config/notation
+
     export COSIGN_PASSWORD=""
     # Verify prerequisites are available
     if ! $(verify_prerequisites); then
