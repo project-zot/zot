@@ -296,7 +296,7 @@ function teardown_file() {
     echo "${trust_policy_file}"
     echo "HOME=${HOME}"
 
-    cat >"${trust_policy_file}" <<EOF
+    cat <<EOF >"${trust_policy_file}"
 {
     "version": "1.0",
     "trustPolicies": [
