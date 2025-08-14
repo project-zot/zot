@@ -1,4 +1,5 @@
 export GO111MODULE=on
+SHELL := /bin/bash
 TOP_LEVEL=$(shell git rev-parse --show-toplevel)
 COMMIT_HASH=$(shell git describe --always --tags --long)
 RELEASE_TAG=$(shell git describe --tags --abbrev=0)
@@ -7,7 +8,6 @@ COMMIT ?= $(if $(shell git status --porcelain --untracked-files=no),$(COMMIT_HAS
 CONTAINER_RUNTIME := $(shell command -v podman 2> /dev/null || echo docker)
 TMPDIR := $(shell mktemp -d)
 TOOLSDIR := $(shell pwd)/hack/tools
-SHELL := /bin/bash
 PATH := bin:$(TOOLSDIR)/bin:$(PATH)
 STACKER := $(shell which stacker)
 GOLINTER := $(TOOLSDIR)/bin/golangci-lint
