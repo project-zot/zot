@@ -293,6 +293,9 @@ function teardown_file() {
 
     local trust_policy_file="${HOME}"/.config/notation/trustpolicy.json
 
+    echo "${trust_policy_file}"
+    echo "HOME=${HOME}"
+
     cat >${trust_policy_file} <<EOF
 {
     "version": "1.0",
