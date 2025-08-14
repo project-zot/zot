@@ -23,8 +23,8 @@ function verify_prerequisites() {
 function setup_file() {
     which notation
 
-    rm -rf ${HOME}/.config/notation
-    mkdir -p ${HOME}/.config/notation
+    rm -rf "${HOME}"/.config/notation
+    mkdir -p "${HOME}"/.config/notation
 
     export COSIGN_PASSWORD=""
     export COSIGN_OCI_EXPERIMENTAL=1
@@ -156,7 +156,7 @@ EOF
 
 function teardown_file() {
     zot_stop_all
-    run rm -rf ${HOME}/.config/notation
+    run rm -rf "${HOME}"/.config/notation
 }
 
 # sync image
@@ -291,7 +291,7 @@ function teardown_file() {
     run notation cert generate-test "notation-sign-sync-test"
     [ "$status" -eq 0 ]
 
-    local trust_policy_file=${HOME}/.config/notation/trustpolicy.json
+    local trust_policy_file="${HOME}"/.config/notation/trustpolicy.json
 
     cat >${trust_policy_file} <<EOF
 {
