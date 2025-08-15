@@ -84,6 +84,7 @@ GO_CMD_TAGS := $(if $(BUILD_LABELS),-tags $(BUILD_LABELS),)
 
 
 BATS_TEST_FILE_PATH ?= replace_me
+BATS_VERBOSITY := 2
 ifeq ($(BATS_VERBOSITY),2)
 	BATS_FLAGS = --trace --verbose-run --show-output-of-passing-tests --print-output-on-failure
 else ifeq ($(BATS_VERBOSITY),1)
