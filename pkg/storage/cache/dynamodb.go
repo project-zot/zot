@@ -166,7 +166,7 @@ func (d *DynamoDBDriver) GetAllBlobs(digest godigest.Digest) ([]string, error) {
 
 	_ = attributevalue.UnmarshalMap(resp.Item, &out)
 
-	blobPaths = append(blobPaths, out.OriginalBlobPath)
+	//blobPaths = append(blobPaths, out.OriginalBlobPath)
 
 	for _, item := range out.DuplicateBlobPath {
 		if item != out.OriginalBlobPath {

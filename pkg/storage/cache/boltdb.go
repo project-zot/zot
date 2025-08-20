@@ -195,7 +195,7 @@ func (d *BoltDBDriver) GetAllBlobs(digest godigest.Digest) ([]string, error) {
 			blobPath.Write(d.getOne(origin))
 			originBlob := blobPath.String()
 
-			blobPaths = append(blobPaths, originBlob)
+			//blobPaths = append(blobPaths, originBlob)
 
 			deduped := bucket.Bucket([]byte(constants.DuplicatesBucket))
 			if deduped != nil {

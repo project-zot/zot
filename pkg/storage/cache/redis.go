@@ -198,7 +198,7 @@ func (d *RedisDriver) GetAllBlobs(digest godigest.Digest) ([]string, error) {
 		return nil, err
 	}
 
-	blobPaths = append(blobPaths, originalPath)
+	//blobPaths = append(blobPaths, originalPath)
 
 	// see if we are in the set
 	duplicateBlobPaths, err := d.db.SMembers(ctx, d.join(constants.BlobsCache, constants.DuplicatesBucket,

@@ -1155,6 +1155,13 @@ retry:
 
 		// cache record doesn't exist, so first disk and cache entry for this digest
 		if err := is.cache.PutBlob(dstDigest, bdst); err != nil {
+			is.log.Error().Err(err).Str("blobPath", bdst).Str("component", "dedupe").
+				Msg("failed to insert blob record")
+
+			return err
+		}
+
+		if err := is.cache.PutBlob(dstDigest, dst); err != nil {
 			is.log.Error().Err(err).Str("blobPath", dst).Str("component", "dedupe").
 				Msg("failed to insert blob record")
 
