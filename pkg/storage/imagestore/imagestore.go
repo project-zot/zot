@@ -29,6 +29,7 @@ import (
 	zreg "zotregistry.dev/zot/pkg/regexp"
 	"zotregistry.dev/zot/pkg/scheduler"
 	common "zotregistry.dev/zot/pkg/storage/common"
+	"zotregistry.dev/zot/pkg/storage/constants"
 	storageConstants "zotregistry.dev/zot/pkg/storage/constants"
 	storageTypes "zotregistry.dev/zot/pkg/storage/types"
 	"zotregistry.dev/zot/pkg/test/inject"
@@ -1138,6 +1139,12 @@ func (is *ImageStore) DedupeBlob(src string, dstDigest godigest.Digest, dstRepo 
 retry:
 	is.log.Debug().Str("src", src).Str("dstDigest", dstDigest.String()).Str("dst", dst).Msg("dedupe begin")
 
+	if err := dstDigest.Validate(); err != nil {
+		is.log.Error().Err(err).Str("dstDigest", dstDigest.String()).Msg("failed to validate digest")
+
+		return err
+	}
+
 	dstRecord, err := is.cache.GetBlob(dstDigest)
 	if err := inject.Error(err); err != nil && !errors.Is(err, zerr.ErrCacheMiss) {
 		is.log.Error().Err(err).Str("blobPath", dst).Str("component", "dedupe").Msg("failed to lookup blob record")
@@ -1146,7 +1153,20 @@ retry:
 	}
 
 	if dstRecord == "" {
+		// cache record doesn't exist, so make a master copy in the hidden global blobs dir
+		bdir := path.Join(is.rootDir, constants.GlobalBlobsDir, dstDigest.Algorithm().String())
+		_ = is.storeDriver.EnsureDir(bdir)
+
+		bdst := path.Join(bdir, dstDigest.Encoded())
+
 		// cache record doesn't exist, so first disk and cache entry for this digest
+		if err := is.cache.PutBlob(dstDigest, bdst); err != nil {
+			is.log.Error().Err(err).Str("blobPath", bdst).Str("component", "dedupe").
+				Msg("failed to insert blob record")
+
+			return err
+		}
+
 		if err := is.cache.PutBlob(dstDigest, dst); err != nil {
 			is.log.Error().Err(err).Str("blobPath", dst).Str("component", "dedupe").
 				Msg("failed to insert blob record")
@@ -1155,9 +1175,16 @@ retry:
 		}
 
 		// move the blob from uploads to final dest
-		if err := is.storeDriver.Move(src, dst); err != nil {
+		if err := is.storeDriver.Move(src, bdst); err != nil {
 			is.log.Error().Err(err).Str("src", src).Str("dst", dst).Str("component", "dedupe").
 				Msg("failed to rename blob")
+
+			return err
+		}
+
+		if err := is.storeDriver.Link(bdst, dst); err != nil {
+			is.log.Error().Err(err).Str("blobPath", dstRecord).Str("component", "dedupe").
+				Msg("failed to link blobs")
 
 			return err
 		}
