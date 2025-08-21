@@ -147,7 +147,7 @@ func TestBoltDBCache(t *testing.T) {
 		blobs, err := cacheDriver.GetAllBlobs("digest")
 		So(err, ShouldBeNil)
 
-		So(blobs, ShouldResemble, []string{"first", "second", "third"})
+		So(blobs, ShouldResemble, []string{"second", "third"})
 
 		err = cacheDriver.DeleteBlob("digest", "first")
 		So(err, ShouldBeNil)

@@ -1139,6 +1139,12 @@ func (is *ImageStore) DedupeBlob(src string, dstDigest godigest.Digest, dstRepo 
 retry:
 	is.log.Debug().Str("src", src).Str("dstDigest", dstDigest.String()).Str("dst", dst).Msg("dedupe begin")
 
+	if err := dstDigest.Validate(); err != nil {
+		is.log.Error().Err(err).Str("dstDigest", dstDigest.String()).Msg("failed to validate digest")
+
+		return err
+	}
+
 	dstRecord, err := is.cache.GetBlob(dstDigest)
 	if err := inject.Error(err); err != nil && !errors.Is(err, zerr.ErrCacheMiss) {
 		is.log.Error().Err(err).Str("blobPath", dst).Str("component", "dedupe").Msg("failed to lookup blob record")
