@@ -29,6 +29,7 @@ import (
 	zreg "zotregistry.dev/zot/pkg/regexp"
 	"zotregistry.dev/zot/pkg/scheduler"
 	common "zotregistry.dev/zot/pkg/storage/common"
+	"zotregistry.dev/zot/pkg/storage/constants"
 	storageConstants "zotregistry.dev/zot/pkg/storage/constants"
 	storageTypes "zotregistry.dev/zot/pkg/storage/types"
 	"zotregistry.dev/zot/pkg/test/inject"
@@ -93,6 +94,15 @@ func NewImageStore(rootDir string, cacheDir string, dedupe, commit bool, log zlo
 		events:      recorder,
 	}
 
+	if dedupe {
+		var lockLatency time.Time
+
+		imgStore.Lock(&lockLatency)
+		defer imgStore.Unlock(&lockLatency)
+
+		imgStore.initRepo(constants.GlobalBlobsRepo)
+	}
+
 	return imgStore
 }
 
@@ -132,18 +142,6 @@ func (is *ImageStore) Unlock(lockStart *time.Time) {
 
 func (is *ImageStore) initRepo(name string) error {
 	repoDir := path.Join(is.rootDir, name)
-
-	if !utf8.ValidString(name) {
-		is.log.Error().Msg("invalid UTF-8 input")
-
-		return zerr.ErrInvalidRepositoryName
-	}
-
-	if !zreg.FullNameRegexp.MatchString(name) {
-		is.log.Error().Str("repository", name).Msg("invalid repository name")
-
-		return zerr.ErrInvalidRepositoryName
-	}
 
 	// create "blobs" subdir
 	err := is.storeDriver.EnsureDir(path.Join(repoDir, ispec.ImageBlobsDir))
@@ -208,6 +206,19 @@ func (is *ImageStore) initRepo(name string) error {
 
 // InitRepo creates an image repository under this store.
 func (is *ImageStore) InitRepo(name string) error {
+
+	if !utf8.ValidString(name) {
+		is.log.Error().Msg("invalid UTF-8 input")
+
+		return zerr.ErrInvalidRepositoryName
+	}
+
+	if !zreg.FullNameRegexp.MatchString(name) {
+		is.log.Error().Str("repository", name).Msg("invalid repository name")
+
+		return zerr.ErrInvalidRepositoryName
+	}
+
 	var lockLatency time.Time
 
 	is.Lock(&lockLatency)
@@ -1017,6 +1028,40 @@ func (is *ImageStore) FinishBlobUpload(repo, uuid string, body io.Reader, dstDig
 		return zerr.ErrBadBlobDigest
 	}
 
+	var lockLatency time.Time
+
+	// if dedupe is enabled, first write to the global blob repo
+	if is.dedupe && fmt.Sprintf("%v", is.cache) != fmt.Sprintf("%v", nil) {
+		is.Lock(&lockLatency)
+
+		bdir := path.Join(is.rootDir, constants.GlobalBlobsRepo, ispec.ImageBlobsDir, dstDigest.Algorithm().String())
+		_ = is.storeDriver.EnsureDir(bdir)
+
+		bdst := is.BlobPath(constants.GlobalBlobsRepo, dstDigest)
+
+		// FIXME: this can be improved further by stat'ing the blob first
+		if err := is.storeDriver.Link(src, bdst); err != nil {
+			is.Unlock(&lockLatency)
+
+			is.log.Error().Err(err).Str("src", src).Str("dstDigest", dstDigest.String()).
+				Str("dst", bdst).Msg("failed to finish blob")
+
+			return err
+		}
+
+		// cache record doesn't exist, so first disk and cache entry for this digest
+		if err := is.cache.PutBlob(dstDigest, bdst); err != nil {
+			is.Unlock(&lockLatency)
+
+			is.log.Error().Err(err).Str("blobPath", bdst).Str("component", "dedupe").
+				Msg("failed to insert blob record")
+
+			return err
+		}
+
+		is.Unlock(&lockLatency)
+	}
+
 	dir := path.Join(is.rootDir, repo, ispec.ImageBlobsDir, dstDigest.Algorithm().String())
 
 	err = is.storeDriver.EnsureDir(dir)
@@ -1027,8 +1072,6 @@ func (is *ImageStore) FinishBlobUpload(repo, uuid string, body io.Reader, dstDig
 	}
 
 	dst := is.BlobPath(repo, dstDigest)
-
-	var lockLatency time.Time
 
 	is.Lock(&lockLatency)
 	defer is.Unlock(&lockLatency)
@@ -1105,10 +1148,42 @@ func (is *ImageStore) FullBlobUpload(repo string, body io.Reader, dstDigest godi
 		return "", -1, zerr.ErrBadBlobDigest
 	}
 
+	var lockLatency time.Time
+
+	// if dedupe is enabled, first write to the global blob repo
+	if is.dedupe && fmt.Sprintf("%v", is.cache) != fmt.Sprintf("%v", nil) {
+		is.Lock(&lockLatency)
+
+		bdir := path.Join(is.rootDir, constants.GlobalBlobsRepo, ispec.ImageBlobsDir, dstDigestAlgorithm.String())
+		_ = is.storeDriver.EnsureDir(bdir)
+
+		bdst := is.BlobPath(constants.GlobalBlobsRepo, dstDigest)
+
+		// FIXME: this can be improved further by stat'ing the blob first
+		if err := is.storeDriver.Link(src, bdst); err != nil {
+			is.Unlock(&lockLatency)
+
+			is.log.Error().Err(err).Str("src", src).Str("dstDigest", dstDigest.String()).
+				Str("dst", bdst).Msg("failed to finish blob")
+
+			return "", -1, err
+		}
+
+		// cache record doesn't exist, so first disk and cache entry for this digest
+		if err := is.cache.PutBlob(dstDigest, bdst); err != nil {
+			is.Unlock(&lockLatency)
+
+			is.log.Error().Err(err).Str("blobPath", bdst).Str("component", "dedupe").
+				Msg("failed to insert blob record")
+
+			return "", -1, err
+		}
+
+		is.Unlock(&lockLatency)
+	}
+
 	dir := path.Join(is.rootDir, repo, ispec.ImageBlobsDir, dstDigestAlgorithm.String())
 	_ = is.storeDriver.EnsureDir(dir)
-
-	var lockLatency time.Time
 
 	is.Lock(&lockLatency)
 	defer is.Unlock(&lockLatency)
@@ -1145,7 +1220,7 @@ retry:
 		return err
 	}
 
-	if dstRecord == "" {
+	if dstRecord == "" { // FIXME: this path should never be taken now!
 		// cache record doesn't exist, so first disk and cache entry for this digest
 		if err := is.cache.PutBlob(dstDigest, dst); err != nil {
 			is.log.Error().Err(err).Str("blobPath", dst).Str("component", "dedupe").
