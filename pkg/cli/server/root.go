@@ -325,6 +325,46 @@ func validateCacheConfig(cfg *config.Config, log zlog.Logger) error {
 	return nil
 }
 
+func validateRemoteSessionStoreConfig(cfg *config.Config, log zlog.Logger) error {
+	// it is okay for the session driver config to be nil
+	// this is backwards compatible for older configs
+	if cfg.Extensions.UI.SessionDriver == nil {
+		return nil
+	}
+
+	sessionDriverName, ok := cfg.Extensions.UI.SessionDriver["name"]
+	if !ok {
+		msg := "must provide session driver name!"
+		log.Error().Err(zerr.ErrBadConfig).Msg(msg)
+
+		return fmt.Errorf("%w: %s", zerr.ErrBadConfig, msg)
+	}
+
+	allowedDriverNames := []string{
+		storageConstants.RedisDriverName,
+		storageConstants.LocalStorageDriverName,
+	}
+
+	isValidDriver := false
+
+	for _, allowedDriverName := range allowedDriverNames {
+		if allowedDriverName == sessionDriverName {
+			isValidDriver = true
+
+			break
+		}
+	}
+
+	if !isValidDriver {
+		msg := fmt.Sprintf("session store driver %s is not allowed!", sessionDriverName)
+		log.Error().Err(zerr.ErrBadConfig).Msg(msg)
+
+		return fmt.Errorf("%w: %s", zerr.ErrBadConfig, msg)
+	}
+
+	return nil
+}
+
 func validateExtensionsConfig(cfg *config.Config, log zlog.Logger) error {
 	if cfg.Extensions != nil && cfg.Extensions.Mgmt != nil {
 		log.Warn().Msg("mgmt extensions configuration option has been made redundant and will be ignored.")
@@ -343,6 +383,11 @@ func validateExtensionsConfig(cfg *config.Config, log zlog.Logger) error {
 			log.Error().Err(zerr.ErrBadConfig).Msg(msg)
 
 			return fmt.Errorf("%w: %s", zerr.ErrBadConfig, msg)
+		}
+
+		err := validateRemoteSessionStoreConfig(cfg, log)
+		if err != nil {
+			return err
 		}
 	}
 

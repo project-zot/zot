@@ -4,8 +4,14 @@
     "rootDirectory": "/tmp/zot"
   },
   "http": {
-    "address": "0.0.0.0",
-    "port": "8080"
+    "address": "127.0.0.1",
+    "port": "8080",
+    "realm": "zot",
+    "auth": {
+      "htpasswd": {
+        "path": "/tmp/zotpasswd"
+      }
+    }
   },
   "log": {
     "level": "debug"
@@ -19,7 +25,9 @@
     "ui": {
       "enable": true,
       "sessionDriver": {
-          "name": "local"
+          "name": "redis",
+          "url": "redis://localhost:6379",
+          "keyprefix": "zotsession"
       }
     }
   }
