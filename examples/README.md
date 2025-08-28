@@ -370,6 +370,45 @@ Using that cookie on subsequent calls will authenticate them, asumming the cooki
 In case of using filesystem storage sessions are saved in zot's root directory.
 In case of using cloud storage sessions are saved in memory.
 
+Note: By default, the session driver config would be local for file system or in-memory. The session driver name for this is `local`. An example config is shown below, but the config can be omitted as it is a default.
+
+```
+    "auth": {
+      "htpasswd": {
+        "path": "test/data/htpasswd"
+      },
+      "sessionDriver": {
+        "name": "local"
+      }
+    }
+```
+
+Note: This `sessionDriver` config is optional if a local session storage is desired.
+
+#### Remote Session Storage Driver
+
+Redis and Redis-compatible storage drivers can also be used for cases where session storage is required to be kept separately from zot or multiple zot instances need to share the session information.
+
+This can be configured in the `auth` section of the configuration as shown below:
+
+`sessionDriver`
+
+```
+    "auth": {
+      "htpasswd": {
+        "path": "test/data/htpasswd"
+      },
+      "sessionDriver": {
+        "name": "redis",
+        "url": "redis://localhost:6379",
+        "keyprefix": "zotsession"
+      }
+    }
+```
+
+The `redis` driver configuration options are the same as those in the [Redis Cache Driver](#redis) section. If the `redis` session driver is being used along with a `redis` cache driver and both configurations point to the same Redis instance, there will be two independent connections used.
+
+Note: The `redis` session driver cannot be specified along with configuration for the SessionKeysFile.
 
 ### Securing session based login
 
