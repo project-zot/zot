@@ -11,6 +11,7 @@ import (
 
 	. "github.com/smartystreets/goconvey/convey"
 
+	zerr "zotregistry.dev/zot/errors"
 	"zotregistry.dev/zot/pkg/api"
 	"zotregistry.dev/zot/pkg/api/config"
 	cli "zotregistry.dev/zot/pkg/cli/server"
@@ -570,6 +571,139 @@ storage:
 		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
 		err = cli.NewServerRootCmd().Execute()
 		So(err, ShouldBeNil)
+	})
+
+	Convey("Test remote session storage config", t, func(c C) {
+		tmpfile, err := os.CreateTemp("", "zot-test*.json")
+		So(err, ShouldBeNil)
+
+		defer os.Remove(tmpfile.Name())
+
+		testCases := []struct {
+			name    string
+			config  []byte
+			isValid bool
+			errMsg  string
+		}{
+			{
+				"Should fail verify if session storage is enabled, but no config provided",
+				[]byte(`{
+					"storage":{
+						"rootDirectory":"/tmp/zot",
+						"remoteSessionCache": true
+					},
+					"http":{
+						"address":"127.0.0.1",
+						"port":"8080",
+						"realm":"zot",
+						"auth":{
+							"htpasswd":{
+								"path":"test/data/htpasswd"
+							},
+							"failDelay":1
+						}
+					}
+				}`),
+				false,
+				zerr.ErrBadConfig.Error() +
+					": must provide session driver settings if remote session cache is enabled!",
+			},
+			{
+				"Should fail verify if session storage is enabled, but invalid driver provided",
+				[]byte(`{
+					"storage":{
+						"rootDirectory":"/tmp/zot",
+						"remoteSessionCache": true,
+						"sessionDriver":{
+							"name": "badDriver"
+						}
+					},
+					"http":{
+						"address":"127.0.0.1",
+						"port":"8080",
+						"realm":"zot",
+						"auth":{
+							"htpasswd":{
+								"path":"test/data/htpasswd"
+							},
+							"failDelay":1
+						}
+					}
+				}`),
+				false,
+				zerr.ErrBadConfig.Error() +
+					": remote session store driver badDriver is not allowed!",
+			},
+			{
+				"Should fail verify if session storage is enabled, but driver name is not provided",
+				[]byte(`{
+					"storage":{
+						"rootDirectory":"/tmp/zot",
+						"remoteSessionCache": true,
+						"sessionDriver":{
+							"url": "redis://localhost"
+						}
+					},
+					"http":{
+						"address":"127.0.0.1",
+						"port":"8080",
+						"realm":"zot",
+						"auth":{
+							"htpasswd":{
+								"path":"test/data/htpasswd"
+							},
+							"failDelay":1
+						}
+					}
+				}`),
+				false,
+				zerr.ErrBadConfig.Error() +
+					": must provide session driver name if remote session cache is enabled!",
+			},
+			{
+				"Should be successful if remote session cache config is valid",
+				[]byte(`{
+					"storage":{
+						"rootDirectory":"/tmp/zot",
+						"remoteSessionCache": true,
+						"sessionDriver":{
+							"name": "redis",
+							"url": "redis://localhost"
+						}
+					},
+					"http":{
+						"address":"127.0.0.1",
+						"port":"8080",
+						"realm":"zot",
+						"auth":{
+							"htpasswd":{
+								"path":"test/data/htpasswd"
+							},
+							"failDelay":1
+						}
+					}
+				}`),
+				true,
+				"",
+			},
+		}
+
+		for _, testCase := range testCases {
+			Convey(testCase.name, func() {
+				err = os.WriteFile(tmpfile.Name(), testCase.config, 0o0600)
+				So(err, ShouldBeNil)
+
+				os.Args = []string{"cli_test", "verify", tmpfile.Name()}
+				err = cli.NewServerRootCmd().Execute()
+
+				if testCase.isValid {
+					So(err, ShouldBeNil)
+				} else {
+					So(err, ShouldNotBeNil)
+					So(err.Error(), ShouldEqual, testCase.errMsg)
+				}
+			})
+		}
 	})
 
 	Convey("Test verify with bad gc retention repo patterns", t, func(c C) {

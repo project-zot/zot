@@ -24,16 +24,18 @@ var (
 )
 
 type StorageConfig struct {
-	RootDirectory string
-	Dedupe        bool
-	RemoteCache   bool
-	GC            bool
-	Commit        bool
-	GCDelay       time.Duration // applied for blobs
-	GCInterval    time.Duration
-	Retention     ImageRetention
-	StorageDriver map[string]interface{} `mapstructure:",omitempty"`
-	CacheDriver   map[string]interface{} `mapstructure:",omitempty"`
+	RootDirectory      string
+	Dedupe             bool
+	RemoteCache        bool
+	RemoteSessionCache bool
+	GC                 bool
+	Commit             bool
+	GCDelay            time.Duration // applied for blobs
+	GCInterval         time.Duration
+	Retention          ImageRetention
+	StorageDriver      map[string]interface{} `mapstructure:",omitempty"`
+	CacheDriver        map[string]interface{} `mapstructure:",omitempty"`
+	SessionDriver      map[string]interface{} `mapstructure:",omitempty"`
 }
 
 type ImageRetention struct {
