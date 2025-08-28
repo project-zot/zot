@@ -29,7 +29,6 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Tag and push golang to ghcr
         run: |
-          docker trust inspect golang:${{ matrix.golang_version }}
           docker pull golang:${{ matrix.golang_version }}
           docker tag golang:${{ matrix.golang_version }} ghcr.io/${{ github.repository_owner }}/golang:${{ matrix.golang_version }}
           docker push ghcr.io/${{ github.repository_owner }}/golang:${{ matrix.golang_version }}
