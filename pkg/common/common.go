@@ -13,6 +13,8 @@ import (
 	"syscall"
 	"time"
 	"unicode/utf8"
+
+	zerr "zotregistry.dev/zot/errors"
 )
 
 const (
@@ -245,4 +247,23 @@ func AreSocketsEqual(socketA string, socketB string) (bool, error) {
 	}
 
 	return (hostAIP.Equal(hostBIP) && (portA == portB)), nil
+}
+
+func StrValueFromMapOrDefault(configMap map[string]any, param string, defaultVal string) (string, error) {
+	val, ok := configMap[param]
+
+	if !ok {
+		return defaultVal, nil
+	}
+
+	str, ok := val.(string)
+	if !ok {
+		return "", fmt.Errorf("%w: %s", zerr.ErrFieldValueIsNotAString, param)
+	}
+
+	if str == "" {
+		return "", fmt.Errorf("%w: %s", zerr.ErrFieldValueIsEmpty, param)
+	}
+
+	return str, nil
 }

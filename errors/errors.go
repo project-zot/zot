@@ -186,4 +186,6 @@ var (
 	ErrInvalidEventSinkType             = errors.New("invalid sink type")
 	ErrEventSinkAddressEmpty            = errors.New("address field cannot be empty")
 	ErrCouldNotCreateHTTPEventTransport = errors.New("default transport is not *http.Transport")
+	ErrFieldValueIsEmpty                = errors.New("value of field is empty")
+	ErrFieldValueIsNotAString           = errors.New("value of field is not a string")
 )

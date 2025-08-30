@@ -170,4 +170,36 @@ func TestCommon(t *testing.T) {
 		So(err, ShouldNotBeNil)
 		So(result, ShouldBeFalse)
 	})
+
+	Convey("StrValueFromMapOrDefault with missing key", t, func() {
+		testMap := map[string]any{"test": "value"}
+
+		result, err := common.StrValueFromMapOrDefault(testMap, "missing", "12344")
+		So(err, ShouldBeNil)
+		So(result, ShouldEqual, "12344")
+	})
+
+	Convey("StrValueFromMapOrDefault with empty value", t, func() {
+		testMap := map[string]any{"test": ""}
+
+		_, err := common.StrValueFromMapOrDefault(testMap, "test", "12344")
+		So(err, ShouldNotBeNil)
+		So(err.Error(), ShouldEqual, "value of field is empty: test")
+	})
+
+	Convey("StrValueFromMapOrDefault with non-string value", t, func() {
+		testMap := map[string]any{"test": 123}
+
+		_, err := common.StrValueFromMapOrDefault(testMap, "test", "12344")
+		So(err, ShouldNotBeNil)
+		So(err.Error(), ShouldEqual, "value of field is not a string: test")
+	})
+
+	Convey("StrValueFromMapOrDefault with valid string value", t, func() {
+		testMap := map[string]any{"test": "example"}
+
+		result, err := common.StrValueFromMapOrDefault(testMap, "test", "12344")
+		So(err, ShouldBeNil)
+		So(result, ShouldEqual, "example")
+	})
 }
