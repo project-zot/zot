@@ -61,6 +61,8 @@ func (onDemand *BaseOnDemand) SyncImage(ctx context.Context, repo, reference str
 			return nil
 		}
 
+		close(syncResult)
+
 		return err
 	}
 
@@ -68,7 +70,6 @@ func (onDemand *BaseOnDemand) SyncImage(ctx context.Context, repo, reference str
 	onDemand.requestStore.Store(req, syncResult)
 
 	defer onDemand.requestStore.Delete(req)
-	defer close(syncResult)
 
 	go onDemand.syncImage(ctx, repo, reference, syncResult)
 
@@ -76,6 +77,8 @@ func (onDemand *BaseOnDemand) SyncImage(ctx context.Context, repo, reference str
 	if !ok {
 		return nil
 	}
+
+	close(syncResult)
 
 	return err
 }
@@ -101,6 +104,8 @@ func (onDemand *BaseOnDemand) SyncReferrers(ctx context.Context, repo string,
 			return nil
 		}
 
+		close(syncResult)
+
 		return err
 	}
 
@@ -108,7 +113,6 @@ func (onDemand *BaseOnDemand) SyncReferrers(ctx context.Context, repo string,
 	onDemand.requestStore.Store(req, syncResult)
 
 	defer onDemand.requestStore.Delete(req)
-	defer close(syncResult)
 
 	go onDemand.syncReferrers(ctx, repo, subjectDigestStr, referenceTypes, syncResult)
 
@@ -116,6 +120,8 @@ func (onDemand *BaseOnDemand) SyncReferrers(ctx context.Context, repo string,
 	if !ok {
 		return nil
 	}
+
+	close(syncResult)
 
 	return err
 }
