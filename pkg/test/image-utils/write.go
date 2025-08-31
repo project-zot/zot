@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 
 	godigest "github.com/opencontainers/go-digest"
-	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 
 	stypes "zotregistry.dev/zot/pkg/storage/types"
 )
@@ -52,7 +51,7 @@ func WriteImageToFileSystem(image Image, repoName, ref string, storeController s
 		return err
 	}
 
-	_, _, err = store.PutImageManifest(repoName, ref, ispec.MediaTypeImageManifest, manifestBlob)
+	_, _, err = store.PutImageManifest(repoName, ref, image.Manifest.MediaType, manifestBlob)
 	if err != nil {
 		return err
 	}
@@ -82,7 +81,7 @@ func WriteMultiArchImageToFileSystem(multiarchImage MultiarchImage, repoName, re
 		return err
 	}
 
-	_, _, err = store.PutImageManifest(repoName, ref, ispec.MediaTypeImageIndex,
+	_, _, err = store.PutImageManifest(repoName, ref, multiarchImage.Index.MediaType,
 		indexBlob)
 
 	return err

@@ -485,7 +485,8 @@ func (gc GarbageCollect) removeUntaggedManifests(repo string, index *ispec.Index
 		}
 
 		// remove untagged images
-		if desc.MediaType == ispec.MediaTypeImageManifest || desc.MediaType == ispec.MediaTypeImageIndex {
+		if desc.MediaType == ispec.MediaTypeImageManifest || compat.IsCompatibleManifestMediaType(desc.MediaType) ||
+			desc.MediaType == ispec.MediaTypeImageIndex || compat.IsCompatibleManifestListMediaType(desc.MediaType) {
 			_, ok := getDescriptorTag(desc)
 			if !ok {
 				gced, err = gc.gcManifest(repo, index, desc, "", "", gc.opts.ImageRetention.Delay)

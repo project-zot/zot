@@ -20,6 +20,7 @@ import (
 	"gopkg.in/resty.v1"
 
 	"zotregistry.dev/zot/pkg/api/config"
+	"zotregistry.dev/zot/pkg/compat"
 	"zotregistry.dev/zot/pkg/extensions/monitoring"
 	zlog "zotregistry.dev/zot/pkg/log"
 	"zotregistry.dev/zot/pkg/meta"
@@ -71,6 +72,7 @@ func TestGarbageCollectAndRetentionMetaDB(t *testing.T) {
 			var imgStore storageTypes.ImageStore
 
 			var metaDB mTypes.MetaDB
+			compat := []compat.MediaCompatibility{compat.DockerManifestV2SchemaV2}
 
 			if testcase.storageType == storageConstants.S3StorageDriverName {
 				tskip.SkipDynamo(t)
@@ -140,13 +142,13 @@ func TestGarbageCollectAndRetentionMetaDB(t *testing.T) {
 					panic(err)
 				}
 
-				imgStore = s3.NewImageStore(rootDir, cacheDir, true, false, log, metrics, nil, store, nil, nil, nil)
+				imgStore = s3.NewImageStore(rootDir, cacheDir, true, false, log, metrics, nil, store, nil, compat, nil)
 			} else {
 				// Create temporary directory
 				rootDir := t.TempDir()
 
 				// Create ImageStore
-				imgStore = local.NewImageStore(rootDir, false, false, log, metrics, nil, nil, nil, nil)
+				imgStore = local.NewImageStore(rootDir, false, false, log, metrics, nil, nil, compat, nil)
 
 				// init metaDB
 				params := boltdb.DBParameters{
@@ -241,6 +243,15 @@ func TestGarbageCollectAndRetentionMetaDB(t *testing.T) {
 
 				gcUntagged4 := CreateRandomMultiarch()
 				err = WriteMultiArchImageToFileSystem(gcUntagged4, "gc-test4", gcUntagged4.DigestStr(), storeController)
+				So(err, ShouldBeNil)
+
+				// docker images
+				gcDocker1 := CreateRandomImage().AsDockerImage()
+				err = WriteImageToFileSystem(gcDocker1, "gc-docker1", "0.0.1", storeController)
+				So(err, ShouldBeNil)
+
+				gcDocker2 := CreateRandomMultiarch().AsDockerImage()
+				err = WriteMultiArchImageToFileSystem(gcDocker2, "gc-docker2", "0.0.1", storeController)
 				So(err, ShouldBeNil)
 
 				// for image retention testing
@@ -361,6 +372,12 @@ func TestGarbageCollectAndRetentionMetaDB(t *testing.T) {
 					err = gc.CleanRepo(ctx, "gc-test4")
 					So(err, ShouldBeNil)
 
+					err = gc.CleanRepo(ctx, "gc-docker1")
+					So(err, ShouldBeNil)
+
+					err = gc.CleanRepo(ctx, "gc-docker2")
+					So(err, ShouldBeNil)
+
 					err = gc.CleanRepo(ctx, "retention")
 					So(err, ShouldBeNil)
 
@@ -410,6 +427,12 @@ func TestGarbageCollectAndRetentionMetaDB(t *testing.T) {
 					So(err, ShouldBeNil)
 
 					_, _, _, err = imgStore.GetImageManifest("gc-test4", refOfRef4.DigestStr())
+					So(err, ShouldBeNil)
+
+					_, _, _, err = imgStore.GetImageManifest("gc-docker1", gcDocker1.DigestStr())
+					So(err, ShouldBeNil)
+
+					_, _, _, err = imgStore.GetImageManifest("gc-docker2", gcDocker2.DigestStr())
 					So(err, ShouldBeNil)
 
 					_, _, _, err = imgStore.GetImageManifest("retention", "0.0.1")
@@ -465,6 +488,12 @@ func TestGarbageCollectAndRetentionMetaDB(t *testing.T) {
 					err = gc.CleanRepo(ctx, "gc-test4")
 					So(err, ShouldBeNil)
 
+					err = gc.CleanRepo(ctx, "gc-docker1")
+					So(err, ShouldBeNil)
+
+					err = gc.CleanRepo(ctx, "gc-docker2")
+					So(err, ShouldBeNil)
+
 					err = gc.CleanRepo(ctx, "retention")
 					So(err, ShouldBeNil)
 
@@ -515,6 +544,12 @@ func TestGarbageCollectAndRetentionMetaDB(t *testing.T) {
 
 					_, _, _, err = imgStore.GetImageManifest("gc-test4", refOfRef4.DigestStr())
 					So(err, ShouldBeNil)
+
+					_, _, _, err = imgStore.GetImageManifest("gc-docker1", gcDocker1.DigestStr())
+					So(err, ShouldBeNil)
+
+					_, _, _, err = imgStore.GetImageManifest("gc-docker2", gcDocker2.DigestStr())
+					So(err, ShouldBeNil)
 				})
 
 				Convey("gc all tags, untagged, and afterwards referrers", func() {
@@ -560,6 +595,50 @@ func TestGarbageCollectAndRetentionMetaDB(t *testing.T) {
 					So(repos, ShouldContain, "gc-test2")
 					So(repos, ShouldContain, "gc-test3")
 					So(repos, ShouldContain, "gc-test4")
+					So(repos, ShouldContain, "gc-docker1")
+					So(repos, ShouldContain, "gc-docker2")
+					So(repos, ShouldContain, "retention")
+				})
+
+				Convey("gc all tags for docker repo", func() {
+					gc := gc.NewGarbageCollect(imgStore, metaDB, gc.Options{
+						Delay: 1 * time.Millisecond,
+						ImageRetention: config.ImageRetention{
+							Delay: 1 * time.Millisecond,
+							Policies: []config.RetentionPolicy{
+								{
+									Repositories:    []string{"gc-docker*"},
+									DeleteReferrers: true,
+									DeleteUntagged:  &trueVal,
+									KeepTags: []config.KeepTagsPolicy{
+										{
+											Patterns: []string{"v1"}, // should not match any tag
+										},
+									},
+								},
+							},
+						},
+					}, audit, log)
+
+					err := gc.CleanRepo(ctx, "gc-docker1")
+					So(err, ShouldBeNil)
+					err = gc.CleanRepo(ctx, "gc-docker2")
+					So(err, ShouldBeNil)
+
+					_, _, _, err = imgStore.GetImageManifest("gc-docker1", gcDocker1.DigestStr())
+					So(err, ShouldNotBeNil)
+					_, _, _, err = imgStore.GetImageManifest("gc-docker2", gcDocker2.DigestStr())
+					So(err, ShouldNotBeNil)
+
+					// now repo should get gc'ed
+					repos, err := imgStore.GetRepositories()
+					So(err, ShouldBeNil)
+					So(repos, ShouldContain, "gc-test1")
+					So(repos, ShouldContain, "gc-test2")
+					So(repos, ShouldContain, "gc-test3")
+					So(repos, ShouldContain, "gc-test4")
+					So(repos, ShouldNotContain, "gc-docker1")
+					So(repos, ShouldNotContain, "gc-docker2")
 					So(repos, ShouldContain, "retention")
 				})
 
@@ -584,9 +663,9 @@ func TestGarbageCollectAndRetentionMetaDB(t *testing.T) {
 					}, audit, log)
 
 					processedRepos := make(map[string]struct{})
-					expectedRepos := []string{"gc-test1", "gc-test2", "gc-test3", "gc-test4", "retention"}
+					expectedRepos := []string{"gc-docker1", "gc-docker2", "gc-test1", "gc-test2", "gc-test3", "gc-test4", "retention"}
 
-					for i := range 10 {
+					for i := range 2 * len(expectedRepos) {
 						t.Logf("index %d, processed repos %v", i, processedRepos)
 
 						// we need to check if GetNextRepository returns each repository just once, and empty string afterwards
@@ -594,7 +673,7 @@ func TestGarbageCollectAndRetentionMetaDB(t *testing.T) {
 						t.Logf("index %d, repo '%s'", i, repo)
 						So(err, ShouldBeNil)
 
-						if i >= 5 {
+						if i >= len(expectedRepos) {
 							So(repo, ShouldEqual, "")
 
 							continue
@@ -627,6 +706,8 @@ func TestGarbageCollectAndRetentionMetaDB(t *testing.T) {
 					So(repos, ShouldContain, "gc-test2")
 					So(repos, ShouldNotContain, "gc-test3")
 					So(repos, ShouldContain, "gc-test4")
+					So(repos, ShouldContain, "gc-docker1")
+					So(repos, ShouldContain, "gc-docker2")
 					So(repos, ShouldContain, "retention")
 				})
 
@@ -670,6 +751,8 @@ func TestGarbageCollectAndRetentionMetaDB(t *testing.T) {
 					So(repos, ShouldContain, "gc-test2")
 					So(repos, ShouldContain, "gc-test3")
 					So(repos, ShouldContain, "gc-test4")
+					So(repos, ShouldContain, "gc-docker1")
+					So(repos, ShouldContain, "gc-docker2")
 					So(repos, ShouldContain, "retention")
 
 					tags, err := imgStore.GetImageTags("gc-test1")
@@ -711,6 +794,12 @@ func TestGarbageCollectAndRetentionMetaDB(t *testing.T) {
 					So(err, ShouldBeNil)
 
 					_, _, _, err = imgStore.GetImageManifest("gc-test3", "0.0.1")
+					So(err, ShouldBeNil)
+
+					_, _, _, err = imgStore.GetImageManifest("gc-docker1", "0.0.1")
+					So(err, ShouldBeNil)
+
+					_, _, _, err = imgStore.GetImageManifest("gc-docker2", "0.0.1")
 					So(err, ShouldBeNil)
 
 					_, _, _, err = imgStore.GetImageManifest("retention", "0.0.1")
@@ -766,6 +855,12 @@ func TestGarbageCollectAndRetentionMetaDB(t *testing.T) {
 					So(err, ShouldBeNil)
 
 					_, _, _, err = imgStore.GetImageManifest("gc-test3", "0.0.1")
+					So(err, ShouldBeNil)
+
+					_, _, _, err = imgStore.GetImageManifest("gc-docker1", "0.0.1")
+					So(err, ShouldBeNil)
+
+					_, _, _, err = imgStore.GetImageManifest("gc-docker2", "0.0.1")
 					So(err, ShouldBeNil)
 
 					_, _, _, err = imgStore.GetImageManifest("retention", "0.0.1")
@@ -1026,6 +1121,8 @@ func TestGarbageCollectAndRetentionMetaDB(t *testing.T) {
 					So(repos, ShouldContain, "gc-test1")
 					So(repos, ShouldContain, "gc-test2")
 					So(repos, ShouldContain, "gc-test3")
+					So(repos, ShouldContain, "gc-docker1")
+					So(repos, ShouldContain, "gc-docker2")
 					So(repos, ShouldContain, "retention")
 				})
 
