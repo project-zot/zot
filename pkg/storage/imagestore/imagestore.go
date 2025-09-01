@@ -29,6 +29,7 @@ import (
 	zreg "zotregistry.dev/zot/pkg/regexp"
 	"zotregistry.dev/zot/pkg/scheduler"
 	common "zotregistry.dev/zot/pkg/storage/common"
+	"zotregistry.dev/zot/pkg/storage/constants"
 	storageConstants "zotregistry.dev/zot/pkg/storage/constants"
 	storageTypes "zotregistry.dev/zot/pkg/storage/types"
 	"zotregistry.dev/zot/pkg/test/inject"
@@ -93,6 +94,12 @@ func NewImageStore(rootDir string, cacheDir string, dedupe, commit bool, log zlo
 		events:      recorder,
 	}
 
+	if dedupe {
+		// create the global blobs repo which will serve as the master copy for
+		// all blobs
+		imgStore.initRepo(constants.GlobalBlobsRepo)
+	}
+
 	return imgStore
 }
 
@@ -132,18 +139,6 @@ func (is *ImageStore) Unlock(lockStart *time.Time) {
 
 func (is *ImageStore) initRepo(name string) error {
 	repoDir := path.Join(is.rootDir, name)
-
-	if !utf8.ValidString(name) {
-		is.log.Error().Msg("invalid UTF-8 input")
-
-		return zerr.ErrInvalidRepositoryName
-	}
-
-	if !zreg.FullNameRegexp.MatchString(name) {
-		is.log.Error().Str("repository", name).Msg("invalid repository name")
-
-		return zerr.ErrInvalidRepositoryName
-	}
 
 	// create "blobs" subdir
 	err := is.storeDriver.EnsureDir(path.Join(repoDir, ispec.ImageBlobsDir))
@@ -208,6 +203,19 @@ func (is *ImageStore) initRepo(name string) error {
 
 // InitRepo creates an image repository under this store.
 func (is *ImageStore) InitRepo(name string) error {
+	// validate input repo name
+	if !utf8.ValidString(name) {
+		is.log.Error().Msg("invalid UTF-8 input")
+
+		return zerr.ErrInvalidRepositoryName
+	}
+
+	if !zreg.FullNameRegexp.MatchString(name) {
+		is.log.Error().Str("repository", name).Msg("invalid repository name")
+
+		return zerr.ErrInvalidRepositoryName
+	}
+
 	var lockLatency time.Time
 
 	is.Lock(&lockLatency)
