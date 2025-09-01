@@ -3,6 +3,7 @@ package image
 import (
 	"encoding/json"
 
+	dockerList "github.com/distribution/distribution/v3/manifest/manifestlist"
 	godigest "github.com/opencontainers/go-digest"
 	"github.com/opencontainers/image-spec/specs-go"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
@@ -73,6 +74,34 @@ func (mi MultiarchImage) AsImageMeta() mTypes.ImageMeta {
 		Index:     &index,
 		Manifests: manifests,
 	}
+}
+
+func (mi MultiarchImage) AsDockerImage() MultiarchImage {
+	for i := range mi.Images {
+		mi.Images[i] = mi.Images[i].AsDockerImage()
+	}
+
+	mi.Index.MediaType = dockerList.MediaTypeManifestList
+	for i := range mi.Index.Manifests {
+		mi.Index.Manifests[i].Digest = mi.Images[i].ManifestDescriptor.Digest
+		mi.Index.Manifests[i].Size = mi.Images[i].ManifestDescriptor.Size
+		mi.Index.Manifests[i].MediaType = mi.Images[i].ManifestDescriptor.MediaType
+	}
+
+	indexBlob, err := json.Marshal(mi.Index)
+	if err != nil {
+		panic("unreachable: ispec.Index should always be marshable")
+	}
+
+	mi.IndexDescriptor.MediaType = dockerList.MediaTypeManifestList
+	mi.IndexDescriptor = ispec.Descriptor{
+		MediaType: dockerList.MediaTypeManifestList,
+		Digest:    mi.digestAlgorithm.FromBytes(indexBlob),
+		Size:      int64(len(indexBlob)),
+		Data:      indexBlob,
+	}
+
+	return mi
 }
 
 type ImagesBuilder interface {

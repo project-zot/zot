@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"testing"
 
+	docker "github.com/distribution/distribution/v3/manifest/schema2"
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	. "github.com/smartystreets/goconvey/convey"
@@ -194,6 +195,22 @@ func TestImageMethods(t *testing.T) {
 			So(manifestDigest, ShouldResemble, descriptor.Digest)
 			So(manifestSize, ShouldEqual, descriptor.Size)
 			So(ispec.MediaTypeImageManifest, ShouldResemble, descriptor.MediaType)
+		})
+	})
+}
+
+func TestConvertImageToDocker(t *testing.T) {
+	Convey("AsDockerImage", t, func() {
+		Convey("DefaultImage", func() {
+			img := CreateDefaultImage()
+			dockerImage := img.AsDockerImage()
+
+			So(dockerImage.Manifest.MediaType, ShouldEqual, docker.MediaTypeManifest)
+			So(dockerImage.ConfigDescriptor.MediaType, ShouldEqual, docker.MediaTypeImageConfig)
+
+			for _, layer := range dockerImage.Manifest.Layers {
+				So(layer.MediaType, ShouldEqual, docker.MediaTypeLayer)
+			}
 		})
 	})
 }

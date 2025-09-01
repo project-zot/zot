@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"time"
 
+	docker "github.com/distribution/distribution/v3/manifest/schema2"
 	godigest "github.com/opencontainers/go-digest"
 	"github.com/opencontainers/image-spec/specs-go"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
@@ -171,6 +172,35 @@ func (img Image) AsImageMeta() mTypes.ImageMeta {
 			},
 		},
 	}
+}
+
+func (img Image) AsDockerImage() Image {
+	// Convert manifest media type
+	img.Manifest.MediaType = docker.MediaTypeManifest
+
+	// Convert config media type
+	img.Manifest.Config.MediaType = docker.MediaTypeImageConfig
+	img.ConfigDescriptor.MediaType = docker.MediaTypeImageConfig
+
+	// Convert layer media types
+	for i := range img.Manifest.Layers {
+		img.Manifest.Layers[i].MediaType = docker.MediaTypeLayer
+	}
+
+	manifestBlob, err := json.Marshal(img.Manifest)
+	if err != nil {
+		panic("unreachable: ispec.Manifest should always be marshable")
+	}
+
+	img.ManifestDescriptor = ispec.Descriptor{
+		MediaType: docker.MediaTypeImageConfig,
+		Digest:    img.digestAlgorithm.FromBytes(manifestBlob),
+		Size:      int64(len(manifestBlob)),
+		Data:      manifestBlob,
+		Platform:  img.ConfigDescriptor.Platform,
+	}
+
+	return img
 }
 
 type Layer struct {
