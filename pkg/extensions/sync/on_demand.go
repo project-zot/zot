@@ -55,11 +55,7 @@ func (onDemand *BaseOnDemand) SyncImage(ctx context.Context, repo, reference str
 
 		syncResult, _ := val.(chan error)
 
-		err, ok := <-syncResult
-		// if channel closed exit
-		if !ok {
-			return nil
-		}
+		err := <-syncResult
 
 		return err
 	}
@@ -68,14 +64,10 @@ func (onDemand *BaseOnDemand) SyncImage(ctx context.Context, repo, reference str
 	onDemand.requestStore.Store(req, syncResult)
 
 	defer onDemand.requestStore.Delete(req)
-	defer close(syncResult)
 
 	go onDemand.syncImage(ctx, repo, reference, syncResult)
 
-	err, ok := <-syncResult
-	if !ok {
-		return nil
-	}
+	err := <-syncResult
 
 	return err
 }
@@ -95,11 +87,7 @@ func (onDemand *BaseOnDemand) SyncReferrers(ctx context.Context, repo string,
 
 		syncResult, _ := val.(chan error)
 
-		err, ok := <-syncResult
-		// if channel closed exit
-		if !ok {
-			return nil
-		}
+		err := <-syncResult
 
 		return err
 	}
@@ -108,14 +96,10 @@ func (onDemand *BaseOnDemand) SyncReferrers(ctx context.Context, repo string,
 	onDemand.requestStore.Store(req, syncResult)
 
 	defer onDemand.requestStore.Delete(req)
-	defer close(syncResult)
 
 	go onDemand.syncReferrers(ctx, repo, subjectDigestStr, referenceTypes, syncResult)
 
-	err, ok := <-syncResult
-	if !ok {
-		return nil
-	}
+	err := <-syncResult
 
 	return err
 }
@@ -123,6 +107,8 @@ func (onDemand *BaseOnDemand) SyncReferrers(ctx context.Context, repo string,
 func (onDemand *BaseOnDemand) syncReferrers(ctx context.Context, repo, subjectDigestStr string,
 	referenceTypes []string, syncResult chan error,
 ) {
+	defer close(syncResult)
+
 	var err error
 	for serviceID, service := range onDemand.services {
 		err = service.SyncReferrers(ctx, repo, subjectDigestStr, referenceTypes)
@@ -176,6 +162,8 @@ func (onDemand *BaseOnDemand) syncReferrers(ctx context.Context, repo, subjectDi
 }
 
 func (onDemand *BaseOnDemand) syncImage(ctx context.Context, repo, reference string, syncResult chan error) {
+	defer close(syncResult)
+
 	var err error
 
 	for serviceID, service := range onDemand.services {
