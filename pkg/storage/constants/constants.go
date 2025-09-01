@@ -25,4 +25,5 @@ const (
 	DefaultGCInterval       = 1 * time.Hour
 	S3StorageDriverName     = "s3"
 	LocalStorageDriverName  = "local"
+	GlobalBlobsRepo         = "_blobstore"
 )

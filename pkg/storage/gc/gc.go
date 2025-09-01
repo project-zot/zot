@@ -26,6 +26,7 @@ import (
 	"zotregistry.dev/zot/v2/pkg/scheduler"
 	"zotregistry.dev/zot/v2/pkg/storage"
 	common "zotregistry.dev/zot/v2/pkg/storage/common"
+	"zotregistry.dev/zot/v2/pkg/storage/constants"
 	"zotregistry.dev/zot/v2/pkg/storage/types"
 )
 
@@ -104,6 +105,16 @@ func (gc GarbageCollect) CleanRepo(ctx context.Context, repo string) error {
 		gc.log.Error().Err(err).Str("module", "gc").Msg(errMessage)
 		gc.log.Info().Str("module", "gc").
 			Msg("gc unsuccessfully completed for " + path.Join(gc.imgStore.RootDir(), repo))
+
+		return err
+	}
+
+	// also run gc for global repo
+	if err := gc.cleanRepo(ctx, constants.GlobalBlobsRepo); err != nil {
+		errMessage := "failed to run GC for " + path.Join(gc.imgStore.RootDir(), constants.GlobalBlobsRepo)
+		gc.log.Error().Err(err).Str("module", "gc").Msg(errMessage)
+		gc.log.Info().Str("module", "gc").
+			Msg("gc unsuccessfully completed for " + path.Join(gc.imgStore.RootDir(), constants.GlobalBlobsRepo))
 
 		return err
 	}
