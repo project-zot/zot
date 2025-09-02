@@ -97,7 +97,9 @@ func NewImageStore(rootDir string, cacheDir string, dedupe, commit bool, log zlo
 	if dedupe {
 		// create the global blobs repo which will serve as the master copy for
 		// all blobs
-		imgStore.initRepo(constants.GlobalBlobsRepo)
+		if err := imgStore.initRepo(constants.GlobalBlobsRepo); err != nil {
+			log.Fatal().Err(err).Str("rootDir", rootDir).Msg("failed to create global blobs repo")
+		}
 	}
 
 	return imgStore
@@ -1160,8 +1162,10 @@ retry:
 		// digest in the global blobs repo
 		gdst := is.BlobPath(constants.GlobalBlobsRepo, dstDigest)
 
+		is.log.Debug().Str("src", src).Str("dst", dst).Str("gdst", gdst).Str("component", "dedupe").Msg("first time")
+
 		if err := is.cache.PutBlob(dstDigest, gdst); err != nil {
-			is.log.Error().Err(err).Str("blobPath", dst).Str("component", "dedupe").
+			is.log.Error().Err(err).Str("blobPath", gdst).Str("component", "dedupe").
 				Msg("failed to insert blob record")
 
 			return err
@@ -1169,7 +1173,7 @@ retry:
 
 		// move the blob from uploads to final dest
 		if err := is.storeDriver.Move(src, gdst); err != nil {
-			is.log.Error().Err(err).Str("src", src).Str("dst", dst).Str("component", "dedupe").
+			is.log.Error().Err(err).Str("src", src).Str("dst", gdst).Str("component", "dedupe").
 				Msg("failed to rename blob")
 
 			return err
@@ -1177,14 +1181,9 @@ retry:
 
 		blobUploadRemoved = true
 
-		dstRecord, err = is.cache.GetBlob(dstDigest)
-		if err := inject.Error(err); err != nil && !errors.Is(err, zerr.ErrCacheMiss) {
-			is.log.Error().Err(err).Str("blobPath", dst).Str("component", "dedupe").Msg("failed to lookup blob record")
+		dstRecord = gdst
 
-			return err
-		}
-
-		is.log.Debug().Str("src", src).Str("dst", dst).Str("component", "dedupe").Msg("rename")
+		is.log.Debug().Str("src", src).Str("dst", dst).Str("dstRecord", dstRecord).Str("component", "dedupe").Msg("rename")
 	}
 
 	// cache record exists, but due to GC and upgrades from older versions,
