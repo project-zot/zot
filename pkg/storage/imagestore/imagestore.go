@@ -1168,30 +1168,52 @@ func (is *ImageStore) DedupeBlob(src string, dstDigest godigest.Digest, dstRepo 
 			return err
 		}
 
+		if dst == "" {
+			return zerr.ErrEmptyValue
+		}
+
+		if err := dstDigest.Validate(); err != nil {
+			// FIXME: this seems incorrect
+			return nil
+		}
+
+		blobUploadRemoved := false
+
 		if dstRecord == "" {
-			// cache record doesn't exist, so first disk and cache entry for this digest
-			if err := is.cache.PutBlob(dstDigest, dst); err != nil {
-				is.log.Error().Err(err).Str("blobPath", dst).Str("component", "dedupe").
+			// cache record doesn't exist, so first disk and cache entry for this
+			// digest in the global blobs repo
+			gdst := is.BlobPath(constants.GlobalBlobsRepo, dstDigest)
+
+			is.log.Debug().Str("src", src).Str("dst", dst).Str("gdst", gdst).Str("component", "dedupe").Msg("first time")
+
+			if err := is.cache.PutBlob(dstDigest, gdst); err != nil {
+				is.log.Error().Err(err).Str("blobPath", gdst).Str("component", "dedupe").
 					Msg("failed to insert blob record")
 
 				return err
 			}
 
 			// move the blob from uploads to final dest
-			if err := is.storeDriver.Move(src, dst); err != nil {
-				is.log.Error().Err(err).Str("src", src).Str("dst", dst).Str("component", "dedupe").
+			if err := is.storeDriver.Move(src, gdst); err != nil {
+				is.log.Error().Err(err).Str("src", src).Str("dst", gdst).Str("component", "dedupe").
 					Msg("failed to rename blob")
 
 				return err
 			}
 
-			is.log.Debug().Str("src", src).Str("dst", dst).Str("component", "dedupe").Msg("rename")
+			blobUploadRemoved = true
 
-			return nil
+			dstRecord = path.Join(constants.GlobalBlobsRepo, ispec.ImageBlobsDir, dstDigest.Algorithm().String(), dstDigest.Encoded())
+			if !is.cache.UsesRelativePaths() {
+				dstRecord = path.Join(is.rootDir, dstRecord)
+			}
+
+			is.log.Debug().Str("src", src).Str("dst", dst).Str("dstRecord", dstRecord).Str("component", "dedupe").Msg("rename")
 		}
 
 		// cache record exists, but due to GC and upgrades from older versions,
 		// disk content and cache records may go out of sync
+		is.log.Debug().Bool("relpath?", is.cache.UsesRelativePaths()).Msg("check this")
 		if is.cache.UsesRelativePaths() {
 			dstRecord = path.Join(is.rootDir, dstRecord)
 		}
@@ -1208,7 +1230,6 @@ func (is *ImageStore) DedupeBlob(src string, dstDigest godigest.Digest, dstRepo 
 
 				return err
 			}
-
 			continue
 		}
 
@@ -1246,12 +1267,14 @@ func (is *ImageStore) DedupeBlob(src string, dstDigest godigest.Digest, dstRepo 
 			}
 		}
 
-		// remove temp blobupload
-		if err := is.storeDriver.Delete(src); err != nil {
-			is.log.Error().Err(err).Str("src", src).Str("component", "dedupe").
-				Msg("failed to remove blob")
+		if !blobUploadRemoved {
+			// remove temp blobupload
+			if err := is.storeDriver.Delete(src); err != nil {
+				is.log.Error().Err(err).Str("src", src).Str("component", "dedupe").
+					Msg("failed to remove blob")
 
-			return err
+				return err
+			}
 		}
 
 		is.log.Debug().Str("src", src).Str("component", "dedupe").Msg("remove")
