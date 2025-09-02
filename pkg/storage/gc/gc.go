@@ -406,6 +406,11 @@ func (gc GarbageCollect) removeTagsPerRetentionPolicy(ctx context.Context, repo 
 		return nil
 	}
 
+	// skip the global blobs repo
+	if repo == constants.GlobalBlobsRepo {
+		return nil
+	}
+
 	var retainTags []string
 
 	if gc.metaDB != nil {
