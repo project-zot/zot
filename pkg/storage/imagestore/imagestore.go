@@ -1153,9 +1153,14 @@ retry:
 		return err
 	}
 
+	blobUploadRemoved := false
+
 	if dstRecord == "" {
-		// cache record doesn't exist, so first disk and cache entry for this digest
-		if err := is.cache.PutBlob(dstDigest, dst); err != nil {
+		// cache record doesn't exist, so first disk and cache entry for this
+		// digest in the global blobs repo
+		gdst := is.BlobPath(constants.GlobalBlobsRepo, dstDigest)
+
+		if err := is.cache.PutBlob(dstDigest, gdst); err != nil {
 			is.log.Error().Err(err).Str("blobPath", dst).Str("component", "dedupe").
 				Msg("failed to insert blob record")
 
@@ -1163,71 +1168,82 @@ retry:
 		}
 
 		// move the blob from uploads to final dest
-		if err := is.storeDriver.Move(src, dst); err != nil {
+		if err := is.storeDriver.Move(src, gdst); err != nil {
 			is.log.Error().Err(err).Str("src", src).Str("dst", dst).Str("component", "dedupe").
 				Msg("failed to rename blob")
 
 			return err
 		}
 
+		blobUploadRemoved = true
+
+		dstRecord, err = is.cache.GetBlob(dstDigest)
+		if err := inject.Error(err); err != nil && !errors.Is(err, zerr.ErrCacheMiss) {
+			is.log.Error().Err(err).Str("blobPath", dst).Str("component", "dedupe").Msg("failed to lookup blob record")
+
+			return err
+		}
+
 		is.log.Debug().Str("src", src).Str("dst", dst).Str("component", "dedupe").Msg("rename")
+	}
+
+	// cache record exists, but due to GC and upgrades from older versions,
+	// disk content and cache records may go out of sync
+	if is.cache.UsesRelativePaths() {
+		dstRecord = path.Join(is.rootDir, dstRecord)
+	}
+
+	blobInfo, err := is.storeDriver.Stat(dstRecord)
+	if err != nil {
+		is.log.Error().Err(err).Str("blobPath", dstRecord).Str("component", "dedupe").Msg("failed to stat")
+		// the actual blob on disk may have been removed by GC, so sync the cache
+		err := is.cache.DeleteBlob(dstDigest, dstRecord)
+		if err = inject.Error(err); err != nil {
+			//nolint:lll
+			is.log.Error().Err(err).Str("dstDigest", dstDigest.String()).Str("dst", dst).
+				Str("component", "dedupe").Msg("failed to delete blob record")
+
+			return err
+		}
+
+		goto retry
+	}
+
+	// prevent overwrite original blob
+	if !is.storeDriver.SameFile(dst, dstRecord) {
+		if err := is.storeDriver.Link(dstRecord, dst); err != nil {
+			is.log.Error().Err(err).Str("blobPath", dstRecord).Str("component", "dedupe").
+				Msg("failed to link blobs")
+
+			return err
+		}
+
+		if err := is.cache.PutBlob(dstDigest, dst); err != nil {
+			is.log.Error().Err(err).Str("blobPath", dst).Str("component", "dedupe").
+				Msg("failed to insert blob record")
+
+			return err
+		}
 	} else {
-		// cache record exists, but due to GC and upgrades from older versions,
-		// disk content and cache records may go out of sync
-		if is.cache.UsesRelativePaths() {
-			dstRecord = path.Join(is.rootDir, dstRecord)
-		}
+		// if it's same file then it was already uploaded, check if blob is corrupted
+		if desc, err := common.GetBlobDescriptorFromRepo(is, dstRepo, dstDigest, is.log); err == nil {
+			// blob corrupted, replace content
+			if desc.Size != blobInfo.Size() {
+				if err := is.storeDriver.Move(src, dst); err != nil {
+					is.log.Error().Err(err).Str("src", src).Str("dst", dst).Str("component", "dedupe").
+						Msg("failed to rename blob")
 
-		blobInfo, err := is.storeDriver.Stat(dstRecord)
-		if err != nil {
-			is.log.Error().Err(err).Str("blobPath", dstRecord).Str("component", "dedupe").Msg("failed to stat")
-			// the actual blob on disk may have been removed by GC, so sync the cache
-			err := is.cache.DeleteBlob(dstDigest, dstRecord)
-			if err = inject.Error(err); err != nil {
-				//nolint:lll
-				is.log.Error().Err(err).Str("dstDigest", dstDigest.String()).Str("dst", dst).
-					Str("component", "dedupe").Msg("failed to delete blob record")
-
-				return err
-			}
-
-			goto retry
-		}
-
-		// prevent overwrite original blob
-		if !is.storeDriver.SameFile(dst, dstRecord) {
-			if err := is.storeDriver.Link(dstRecord, dst); err != nil {
-				is.log.Error().Err(err).Str("blobPath", dstRecord).Str("component", "dedupe").
-					Msg("failed to link blobs")
-
-				return err
-			}
-
-			if err := is.cache.PutBlob(dstDigest, dst); err != nil {
-				is.log.Error().Err(err).Str("blobPath", dst).Str("component", "dedupe").
-					Msg("failed to insert blob record")
-
-				return err
-			}
-		} else {
-			// if it's same file then it was already uploaded, check if blob is corrupted
-			if desc, err := common.GetBlobDescriptorFromRepo(is, dstRepo, dstDigest, is.log); err == nil {
-				// blob corrupted, replace content
-				if desc.Size != blobInfo.Size() {
-					if err := is.storeDriver.Move(src, dst); err != nil {
-						is.log.Error().Err(err).Str("src", src).Str("dst", dst).Str("component", "dedupe").
-							Msg("failed to rename blob")
-
-						return err
-					}
-
-					is.log.Debug().Str("src", src).Str("component", "dedupe").Msg("remove")
-
-					return nil
+					return err
 				}
+
+				is.log.Debug().Str("src", src).Str("component", "dedupe").Msg("remove")
+
+				return nil
 			}
 		}
+	}
 
+	if !blobUploadRemoved {
 		// remove temp blobupload
 		if err := is.storeDriver.Delete(src); err != nil {
 			is.log.Error().Err(err).Str("src", src).Str("component", "dedupe").
@@ -1235,9 +1251,9 @@ retry:
 
 			return err
 		}
-
-		is.log.Debug().Str("src", src).Str("component", "dedupe").Msg("remove")
 	}
+
+	is.log.Debug().Str("src", src).Str("component", "dedupe").Msg("remove")
 
 	return nil
 }
