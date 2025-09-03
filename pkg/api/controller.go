@@ -490,7 +490,7 @@ func (c *Controller) StartBackgroundTasks() {
 	}
 
 	// Enable running dedupe blobs both ways (dedupe or restore deduped blobs)
-	c.StoreController.DefaultStore.RunDedupeBlobs(time.Duration(0), c.taskScheduler)
+	//	c.StoreController.DefaultStore.RunDedupeBlobs(time.Duration(0), c.taskScheduler)
 
 	// Enable extensions if extension config is provided for DefaultStore
 	if c.Config != nil && c.Config.Extensions != nil {
@@ -523,7 +523,7 @@ func (c *Controller) StartBackgroundTasks() {
 			// Enable running dedupe blobs both ways (dedupe or restore deduped blobs) for subpaths
 			substore := c.StoreController.SubStore[route]
 			if substore != nil {
-				substore.RunDedupeBlobs(time.Duration(0), c.taskScheduler)
+				//substore.RunDedupeBlobs(time.Duration(0), c.taskScheduler)
 
 				if c.Config.IsMetricsEnabled() && c.Config.Storage.StorageDriver == nil {
 					substore.PopulateStorageMetrics(time.Duration(0), c.taskScheduler)
