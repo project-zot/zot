@@ -23,17 +23,20 @@ type Config struct {
 }
 
 type RegistryConfig struct {
-	URLs             []string
-	PollInterval     time.Duration
-	Content          []Content
-	TLSVerify        *bool
-	OnDemand         bool
-	CertDir          string
-	MaxRetries       *int
-	RetryDelay       *time.Duration
-	OnlySigned       *bool
-	CredentialHelper string
-	PreserveDigest   bool // sync without converting
+	URLs               []string
+	PollInterval       time.Duration
+	Content            []Content
+	TLSVerify          *bool
+	OnDemand           bool
+	CertDir            string
+	MaxRetries         *int
+	RetryDelay         *time.Duration
+	OnlySigned         *bool
+	CredentialHelper   string
+	PreserveDigest     bool   // sync without converting
+	ClientLogs         bool   // creates regclient log/slog logger
+	ClientLogsLevel    string // defines regclient log/slog logger level
+	ConcurrentRequests int64  // reqclient active requests
 }
 
 type Content struct {
