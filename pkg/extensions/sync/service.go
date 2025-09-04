@@ -881,7 +881,7 @@ func newClient(opts syncconf.RegistryConfig, credentials syncconf.CredentialsFil
 	}
 
 	if opts.ClientLogs {
-		ho := &slog.HandlerOptions{AddSource: true}
+		handlerOpts := &slog.HandlerOptions{AddSource: true}
 
 		if opts.ClientLogsLevel != "" {
 			lvl := slog.Level(0)
@@ -891,10 +891,10 @@ func newClient(opts syncconf.RegistryConfig, credentials syncconf.CredentialsFil
 				return nil, nil, err
 			}
 
-			ho.Level = lvl
+			handlerOpts.Level = lvl
 		}
 
-		clientOpts = append(clientOpts, regclient.WithSlog(slog.New(slog.NewJSONHandler(os.Stdout, ho))))
+		clientOpts = append(clientOpts, regclient.WithSlog(slog.New(slog.NewJSONHandler(os.Stdout, handlerOpts))))
 	}
 
 	client := regclient.New(clientOpts...)
