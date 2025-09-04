@@ -109,8 +109,17 @@ func (gc GarbageCollect) CleanRepo(ctx context.Context, repo string) error {
 		return err
 	}
 
+	// also run gc for global repo
+	// gc unreferenced blobs
+	// FIXME: also keep cache in sync
+	// FIXME: we don't have dedupe flag here!
+	if _, _, _, err := gc.imgStore.StatIndex(constants.GlobalBlobsRepo); err == nil {
+		if err := gc.removeUnreferencedBlobs(constants.GlobalBlobsRepo, gc.opts.Delay, gc.log); err != nil {
+			return err
+		}
+	}
+
 	/*
-		// also run gc for global repo
 		if err := gc.cleanRepo(ctx, constants.GlobalBlobsRepo); err != nil {
 			errMessage := "failed to run GC for " + path.Join(gc.imgStore.RootDir(), constants.GlobalBlobsRepo)
 			gc.log.Error().Err(err).Str("module", "gc").Msg(errMessage)
