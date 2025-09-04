@@ -1148,6 +1148,10 @@ func (is *ImageStore) DedupeBlob(src string, dstDigest godigest.Digest, dstRepo 
 retry:
 	is.log.Debug().Str("src", src).Str("dstDigest", dstDigest.String()).Str("dst", dst).Msg("dedupe begin")
 
+	if dst == "" {
+		return zerr.ErrEmptyValue
+	}
+
 	dstRecord, err := is.cache.GetBlob(dstDigest)
 	if err := inject.Error(err); err != nil && !errors.Is(err, zerr.ErrCacheMiss) {
 		is.log.Error().Err(err).Str("blobPath", dst).Str("component", "dedupe").Msg("failed to lookup blob record")
@@ -1181,13 +1185,17 @@ retry:
 
 		blobUploadRemoved = true
 
-		dstRecord = gdst
+		dstRecord = path.Join(constants.GlobalBlobsRepo, ispec.ImageBlobsDir, dstDigest.Algorithm().String(), dstDigest.Encoded())
+		if !is.cache.UsesRelativePaths() {
+			dstRecord = path.Join(is.rootDir, dstRecord)
+		}
 
 		is.log.Debug().Str("src", src).Str("dst", dst).Str("dstRecord", dstRecord).Str("component", "dedupe").Msg("rename")
 	}
 
 	// cache record exists, but due to GC and upgrades from older versions,
 	// disk content and cache records may go out of sync
+	is.log.Debug().Bool("relpath?", is.cache.UsesRelativePaths()).Msg("check this")
 	if is.cache.UsesRelativePaths() {
 		dstRecord = path.Join(is.rootDir, dstRecord)
 	}
