@@ -25,6 +25,7 @@ import (
 	"zotregistry.dev/zot/pkg/scheduler"
 	"zotregistry.dev/zot/pkg/storage"
 	common "zotregistry.dev/zot/pkg/storage/common"
+	"zotregistry.dev/zot/pkg/storage/constants"
 	"zotregistry.dev/zot/pkg/storage/types"
 )
 
@@ -96,6 +97,24 @@ func (gc GarbageCollect) CleanRepo(ctx context.Context, repo string) error {
 
 		return err
 	}
+
+	// also run gc for global repo
+	// gc unreferenced blobs
+	// FIXME: also keep cache in sync
+	if err := gc.removeUnreferencedBlobs(constants.GlobalBlobsRepo, gc.opts.Delay, gc.log); err != nil {
+		return err
+	}
+
+	/*
+		if err := gc.cleanRepo(ctx, constants.GlobalBlobsRepo); err != nil {
+			errMessage := "failed to run GC for " + path.Join(gc.imgStore.RootDir(), constants.GlobalBlobsRepo)
+			gc.log.Error().Err(err).Str("module", "gc").Msg(errMessage)
+			gc.log.Info().Str("module", "gc").
+				Msg("gc unsuccessfully completed for " + path.Join(gc.imgStore.RootDir(), constants.GlobalBlobsRepo))
+
+			return err
+		}
+	*/
 
 	gc.log.Info().Str("module", "gc").
 		Msg("gc successfully completed for " + path.Join(gc.imgStore.RootDir(), repo))
@@ -363,6 +382,11 @@ func (gc GarbageCollect) removeReferrer(repo string, index *ispec.Index, manifes
 
 func (gc GarbageCollect) removeTagsPerRetentionPolicy(ctx context.Context, repo string, index *ispec.Index) error {
 	if !gc.policyMgr.HasTagRetention(repo) {
+		return nil
+	}
+
+	// skip the global blobs repo
+	if repo == constants.GlobalBlobsRepo {
 		return nil
 	}
 
