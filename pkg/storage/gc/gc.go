@@ -109,15 +109,17 @@ func (gc GarbageCollect) CleanRepo(ctx context.Context, repo string) error {
 		return err
 	}
 
-	// also run gc for global repo
-	if err := gc.cleanRepo(ctx, constants.GlobalBlobsRepo); err != nil {
-		errMessage := "failed to run GC for " + path.Join(gc.imgStore.RootDir(), constants.GlobalBlobsRepo)
-		gc.log.Error().Err(err).Str("module", "gc").Msg(errMessage)
-		gc.log.Info().Str("module", "gc").
-			Msg("gc unsuccessfully completed for " + path.Join(gc.imgStore.RootDir(), constants.GlobalBlobsRepo))
+	/*
+		// also run gc for global repo
+		if err := gc.cleanRepo(ctx, constants.GlobalBlobsRepo); err != nil {
+			errMessage := "failed to run GC for " + path.Join(gc.imgStore.RootDir(), constants.GlobalBlobsRepo)
+			gc.log.Error().Err(err).Str("module", "gc").Msg(errMessage)
+			gc.log.Info().Str("module", "gc").
+				Msg("gc unsuccessfully completed for " + path.Join(gc.imgStore.RootDir(), constants.GlobalBlobsRepo))
 
-		return err
-	}
+			return err
+		}
+	*/
 
 	gc.log.Info().Str("module", "gc").
 		Msg("gc successfully completed for " + path.Join(gc.imgStore.RootDir(), repo))

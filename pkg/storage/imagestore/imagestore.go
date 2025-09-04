@@ -1768,7 +1768,7 @@ func (is *ImageStore) CleanupRepo(repo string, blobs []godigest.Digest, removeRe
 	blobUploads, _ := is.ListBlobUploads(repo)
 
 	// if removeRepo flag is true and we cleanup all blobs and there are no blobs currently being uploaded.
-	if removeRepo && count == len(blobs) && count > 0 && len(blobUploads) == 0 {
+	if removeRepo && count == len(blobs) && count > 0 && len(blobUploads) == 0 && repo != storageConstants.GlobalBlobsRepo {
 		is.log.Info().Str("repository", repo).Msg("removed all blobs, removing repo")
 
 		if err := is.storeDriver.Delete(path.Join(is.rootDir, repo)); err != nil {
