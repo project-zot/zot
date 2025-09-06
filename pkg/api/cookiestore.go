@@ -12,7 +12,12 @@ import (
 	"time"
 
 	"github.com/gorilla/sessions"
+	"github.com/rbcervilla/redisstore/v9"
 
+	"zotregistry.dev/zot/errors"
+	rediscfg "zotregistry.dev/zot/pkg/api/config/redis"
+	extcfg "zotregistry.dev/zot/pkg/extensions/config"
+	"zotregistry.dev/zot/pkg/log"
 	"zotregistry.dev/zot/pkg/scheduler"
 	"zotregistry.dev/zot/pkg/storage"
 	storageConstants "zotregistry.dev/zot/pkg/storage/constants"
@@ -36,7 +41,13 @@ func (c *CookieStore) RunSessionCleaner(sch *scheduler.Scheduler) {
 	}
 }
 
-func NewCookieStore(storeController storage.StoreController, hashKey, encryptKey []byte) (*CookieStore, error) {
+func NewCookieStore(
+	uiConfig *extcfg.UIConfig,
+	storeController storage.StoreController,
+	log log.Logger,
+	hashKey,
+	encryptKey []byte,
+) (*CookieStore, error) {
 	// To store custom types in our cookies
 	// we must first register them using gob.Register
 	gob.Register(map[string]interface{}{})
@@ -47,24 +58,62 @@ func NewCookieStore(storeController storage.StoreController, hashKey, encryptKey
 
 	var needsCleanup bool
 
-	if storeController.DefaultStore.Name() == storageConstants.LocalStorageDriverName {
-		sessionsDir = path.Join(storeController.DefaultStore.RootDir(), "_sessions")
-		if err := os.MkdirAll(sessionsDir, storageConstants.DefaultDirPerms); err != nil {
-			return &CookieStore{}, err
+	if uiConfig == nil || !uiConfig.RemoteSessionStore {
+		// If the remote session cache is not set/false, behave the normal way for file system cookie store
+		// and memory cookie store.
+		if storeController.DefaultStore.Name() == storageConstants.LocalStorageDriverName {
+			sessionsDir = path.Join(storeController.DefaultStore.RootDir(), "_sessions")
+			if err := os.MkdirAll(sessionsDir, storageConstants.DefaultDirPerms); err != nil {
+				return &CookieStore{}, err
+			}
+
+			localStore := sessions.NewFilesystemStore(sessionsDir, hashKey, encryptKey)
+
+			localStore.MaxAge(cookiesMaxAge)
+
+			store = localStore
+			needsCleanup = true
+		} else {
+			memStore := sessions.NewCookieStore(hashKey, encryptKey)
+
+			memStore.MaxAge(cookiesMaxAge)
+
+			store = memStore
 		}
-
-		localStore := sessions.NewFilesystemStore(sessionsDir, hashKey, encryptKey)
-
-		localStore.MaxAge(cookiesMaxAge)
-
-		store = localStore
-		needsCleanup = true
 	} else {
-		memStore := sessions.NewCookieStore(hashKey, encryptKey)
+		switch uiConfig.RemoteSessionDriver["name"] {
+		case storageConstants.RedisDriverName:
+			{
+				prefix, ok := rediscfg.GetString(uiConfig.RemoteSessionDriver, "keyprefix", false, log)
+				if !ok {
+					prefix = "zotsession"
+				}
 
-		memStore.MaxAge(cookiesMaxAge)
+				client, err := rediscfg.GetRedisClient(uiConfig.RemoteSessionDriver, log)
+				if err != nil {
+					return nil, err
+				}
 
-		store = memStore
+				redisStore, err := redisstore.NewRedisStore(context.Background(), client)
+				if err != nil {
+					return nil, err
+				}
+
+				redisStore.KeyPrefix(prefix)
+				redisStore.Options(sessions.Options{
+					MaxAge: cookiesMaxAge,
+					Path:   "/",
+				})
+
+				store = redisStore
+			}
+		default:
+			return nil, fmt.Errorf(
+				"%w: sessiondriver %s not supported",
+				errors.ErrBadConfig,
+				uiConfig.RemoteSessionDriver["name"],
+			)
+		}
 	}
 
 	return &CookieStore{

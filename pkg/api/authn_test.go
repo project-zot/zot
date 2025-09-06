@@ -15,11 +15,14 @@ import (
 	"testing"
 	"time"
 
+	"github.com/alicebob/miniredis/v2"
 	guuid "github.com/gofrs/uuid"
+	godigest "github.com/opencontainers/go-digest"
 	"github.com/project-zot/mockoidc"
 	. "github.com/smartystreets/goconvey/convey"
 	"gopkg.in/resty.v1"
 
+	zerr "zotregistry.dev/zot/errors"
 	"zotregistry.dev/zot/pkg/api"
 	"zotregistry.dev/zot/pkg/api/config"
 	"zotregistry.dev/zot/pkg/api/constants"
@@ -960,7 +963,9 @@ func TestCookiestoreCleanup(t *testing.T) {
 			DefaultStore: imgStore,
 		}
 
-		cookieStore, err := api.NewCookieStore(storeController, nil, nil)
+		uiCfg := extconf.UIConfig{}
+
+		cookieStore, err := api.NewCookieStore(&uiCfg, storeController, log, nil, nil)
 		So(err, ShouldBeNil)
 
 		cookieStore.RunSessionCleaner(taskScheduler)
@@ -995,7 +1000,9 @@ func TestCookiestoreCleanup(t *testing.T) {
 			DefaultStore: imgStore,
 		}
 
-		cookieStore, err := api.NewCookieStore(storeController, []byte("secret"), nil)
+		uiCfg := extconf.UIConfig{}
+
+		cookieStore, err := api.NewCookieStore(&uiCfg, storeController, log, []byte("secret"), nil)
 		So(err, ShouldBeNil)
 
 		err = os.Chmod(rootDir, 0o000)
@@ -1083,6 +1090,125 @@ func TestCookiestoreCleanup(t *testing.T) {
 			So(api.IsExpiredSession(dirEntry), ShouldBeTrue)
 		})
 	})
+}
+
+func TestRedisCookieStore(t *testing.T) {
+	log := log.Logger{}
+
+	testRedis := miniredis.RunT(t)
+
+	storeController := storage.StoreController{
+		DefaultStore: &mocks.MockedImageStore{
+			GetImageManifestFn: func(repo string, reference string) ([]byte, godigest.Digest, string, error) {
+				return []byte{}, "", "", zerr.ErrRepoBadVersion
+			},
+		},
+	}
+
+	trueBool := true
+
+	testCases := []struct {
+		testName         string
+		shouldErrBeNil   bool
+		expectedErrStr   string
+		inputUIExtConfig *extconf.UIConfig
+	}{
+		{
+			"Cookie store creation should fail if the driver is unsupported",
+			false,
+			"invalid server config: sessiondriver unknowndriver not supported",
+			&extconf.UIConfig{
+				BaseConfig: extconf.BaseConfig{
+					Enable: &trueBool,
+				},
+				RemoteSessionStore: true,
+				RemoteSessionDriver: map[string]any{
+					"name": "unknowndriver",
+				},
+			},
+		},
+		{
+			"Cookie store creation should not fail if the keyPrefix for Redis is not a string",
+			true,
+			"",
+			&extconf.UIConfig{
+				BaseConfig: extconf.BaseConfig{
+					Enable: &trueBool,
+				},
+				RemoteSessionStore: true,
+				RemoteSessionDriver: map[string]any{
+					"name":      "redis",
+					"keyprefix": 8,
+					"url":       "redis://" + testRedis.Addr(),
+				},
+			},
+		},
+		{
+			"Cookie store creation should not fail if the UI Extension Config is nil",
+			true,
+			"",
+			nil,
+		},
+		{
+			"Cookie store creation and use should succeed with valid configuration",
+			true,
+			"",
+			&extconf.UIConfig{
+				BaseConfig: extconf.BaseConfig{
+					Enable: &trueBool,
+				},
+				RemoteSessionStore: true,
+				RemoteSessionDriver: map[string]any{
+					"name": "redis",
+					"url":  "redis://" + testRedis.Addr(),
+				},
+			},
+		},
+		{
+			"Cookie store creation should fail if the url for Redis is incorrect",
+			false,
+			"dial tcp: lookup unknown on 127.0.0.53:53: server misbehaving",
+			&extconf.UIConfig{
+				BaseConfig: extconf.BaseConfig{
+					Enable: &trueBool,
+				},
+				RemoteSessionStore: true,
+				RemoteSessionDriver: map[string]any{
+					"name": "redis",
+					"url":  "redis://unknown:1000",
+				},
+			},
+		},
+		{
+			"Cookie store creation should fail if the url for Redis has an invalid value",
+			false,
+			"invalid server config: cachedriver map[name:redis url:%!s(int=100)] has invalid value for url",
+			&extconf.UIConfig{
+				BaseConfig: extconf.BaseConfig{
+					Enable: &trueBool,
+				},
+				RemoteSessionStore: true,
+				RemoteSessionDriver: map[string]any{
+					"name": "redis",
+					"url":  100,
+				},
+			},
+		},
+	}
+
+	for _, testCase := range testCases {
+		Convey(testCase.testName, t, func() {
+			cookieStore, err := api.NewCookieStore(testCase.inputUIExtConfig, storeController, log, nil, nil)
+			if testCase.shouldErrBeNil {
+				So(err, ShouldBeNil)
+				So(cookieStore, ShouldNotBeNil)
+			} else {
+				So(err, ShouldNotBeNil)
+				So(err.Error(), ShouldEqual, testCase.expectedErrStr)
+				So(cookieStore, ShouldBeNil)
+			}
+		})
+	}
 }
 
 type mockUUIDGenerator struct {

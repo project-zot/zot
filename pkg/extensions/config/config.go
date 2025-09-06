@@ -75,5 +75,7 @@ type ScrubConfig struct {
 }
 
 type UIConfig struct {
-	BaseConfig `mapstructure:",squash"`
+	BaseConfig          `mapstructure:",squash"`
+	RemoteSessionStore  bool
+	RemoteSessionDriver map[string]interface{} `mapstructure:",omitempty"`
 }
