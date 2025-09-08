@@ -19,7 +19,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v6
         with:
           go-version: 1.23.x
       - name: Install dependencies
@@ -70,7 +70,7 @@ jobs:
     steps:
       - name: Check out source code
         uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v6
         with:
           go-version: 1.23.x
       - name: Install dependencies
@@ -87,7 +87,7 @@ jobs:
     runs-on: oracle-vm-16cpu-64gb-x86-64
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v6
         with:
           cache: false
           go-version: 1.23.x
@@ -124,7 +124,7 @@ jobs:
     runs-on: oracle-vm-16cpu-64gb-x86-64
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v6
         with:
           cache: false
           go-version: 1.23.x
@@ -173,7 +173,7 @@ jobs:
     runs-on: oracle-vm-8cpu-32gb-x86-64
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v6
         with:
           go-version: 1.23.x
       - name: Install dependencies
@@ -204,7 +204,7 @@ jobs:
     runs-on: oracle-vm-16cpu-64gb-x86-64
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v6
         with:
           cache: false
           go-version: 1.23.x
@@ -290,7 +290,7 @@ jobs:
     runs-on: oracle-vm-16cpu-64gb-x86-64
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v6
         with:
           cache: false
           go-version: 1.23.x
