@@ -14,7 +14,7 @@ jobs:
       - uses: actions/setup-go@v6
         with:
           cache: false
-          go-version: 1.23.x
+          go-version: 1.24.x
       - name: Checkout zot (main branch)
         run: |
           mkdir -p $GITHUB_WORKSPACE/zot_main

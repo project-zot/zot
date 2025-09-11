@@ -18,7 +18,7 @@ jobs:
       - uses: actions/setup-go@v6
         with:
           cache: false
-          go-version: '1.23'
+          go-version: 1.24.x
       - uses: actions/checkout@v4
       - name: Run linter with GH action
         uses: golangci/golangci-lint-action@v8
