@@ -19,9 +19,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v6
         with:
-          go-version: 1.23.x
+          go-version: 1.24.x
       - name: Install dependencies
         run: |
           cd $GITHUB_WORKSPACE
@@ -41,7 +41,7 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ github.token }}
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: '3.11'
       - name: Install localstack
@@ -70,9 +70,9 @@ jobs:
     steps:
       - name: Check out source code
         uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v6
         with:
-          go-version: 1.23.x
+          go-version: 1.24.x
       - name: Install dependencies
         run: |
           cd $GITHUB_WORKSPACE
@@ -87,10 +87,10 @@ jobs:
     runs-on: oracle-vm-16cpu-64gb-x86-64
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v6
         with:
           cache: false
-          go-version: 1.23.x
+          go-version: 1.24.x
       - uses: ./.github/actions/setup-localstack
 
       - name: Run zb
@@ -124,10 +124,10 @@ jobs:
     runs-on: oracle-vm-16cpu-64gb-x86-64
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v6
         with:
           cache: false
-          go-version: 1.23.x
+          go-version: 1.24.x
       - uses: ./.github/actions/setup-localstack
 
       - name: Run zb
@@ -173,9 +173,9 @@ jobs:
     runs-on: oracle-vm-8cpu-32gb-x86-64
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v6
         with:
-          go-version: 1.23.x
+          go-version: 1.24.x
       - name: Install dependencies
         run: |
           cd $GITHUB_WORKSPACE
@@ -204,10 +204,10 @@ jobs:
     runs-on: oracle-vm-16cpu-64gb-x86-64
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v6
         with:
           cache: false
-          go-version: 1.23.x
+          go-version: 1.24.x
       - name: Install dependencies
         run: |
           cd $GITHUB_WORKSPACE
@@ -228,7 +228,7 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ github.token }}
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: '3.11'
       - name: Install localstack
@@ -290,10 +290,10 @@ jobs:
     runs-on: oracle-vm-16cpu-64gb-x86-64
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v6
         with:
           cache: false
-          go-version: 1.23.x
+          go-version: 1.24.x
       - name: Install dependencies
         run: |
           cd $GITHUB_WORKSPACE
@@ -314,7 +314,7 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ github.token }}
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: '3.11'
       - name: Install localstack

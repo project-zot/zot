@@ -22,10 +22,10 @@ jobs:
         flavor: [zot-linux-amd64-minimal, zot-linux-amd64]
     steps:
       - name: Install go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           cache: false
-          go-version: 1.23.x
+          go-version: 1.24.x
       - name: Checkout
         uses: actions/checkout@v4
       - name: Build zot
