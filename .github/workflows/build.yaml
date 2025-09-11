@@ -27,7 +27,7 @@ jobs:
       - name: Check out source code
         uses: actions/checkout@v4
       - name: Install go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           cache: false
           go-version: 1.23.x
