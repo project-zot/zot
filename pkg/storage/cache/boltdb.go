@@ -255,6 +255,8 @@ func (d *BoltDBDriver) GetBlob(digest godigest.Digest) (string, error) {
 }
 
 func (d *BoltDBDriver) HasBlob(digest godigest.Digest, blob string) bool {
+	d.log.Debug().Str("digest", digest.String()).Str("blob", "blob").Msg("deleting blob from cache")
+
 	if err := d.db.View(func(tx *bbolt.Tx) error {
 		root := tx.Bucket([]byte(constants.BlobsCache))
 		if root == nil {
@@ -342,6 +344,8 @@ func (d *BoltDBDriver) DeleteBlob(digest godigest.Digest, path string) error {
 			return err
 		}
 
+		d.log.Debug().Str("digest", digest.String()).Str("path", path).Msg("deleted from dedupe bucket")
+
 		origin := bucket.Bucket([]byte(constants.OriginalBucket))
 		if origin != nil {
 			originBlob := d.getOne(origin)
@@ -353,6 +357,8 @@ func (d *BoltDBDriver) DeleteBlob(digest godigest.Digest, path string) error {
 					return err
 				}
 
+				d.log.Debug().Str("digest", digest.String()).Str("path", path).Msg("deleted from original bucket")
+
 				// move next candidate to origin bucket, next GetKey will return this one and storage will move the content here
 				dedupedBlob := d.getOne(deduped)
 				if dedupedBlob != nil {
@@ -363,6 +369,8 @@ func (d *BoltDBDriver) DeleteBlob(digest godigest.Digest, path string) error {
 						return err
 					}
 				}
+
+				d.log.Debug().Str("digest", digest.String()).Str("path", string(dedupedBlob)).Msg("replaced blob")
 			}
 		}
 

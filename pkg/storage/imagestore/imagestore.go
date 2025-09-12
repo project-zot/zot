@@ -1798,6 +1798,7 @@ func (is *ImageStore) deleteBlob(repo string, digest godigest.Digest) error {
 
 	// first check if this blob is not currently in use
 	if ok, _ := common.IsBlobReferenced(is, repo, digest, is.log); ok {
+		is.log.Debug().Str("repo", repo).Str("digest", digest.String()).Str("blobPath", blobPath).Msg("blob is referenced")
 		return zerr.ErrBlobReferenced
 	}
 
@@ -1822,6 +1823,8 @@ func (is *ImageStore) deleteBlob(repo string, digest godigest.Digest) error {
 
 		// if the deleted blob is one with content
 		if dstRecord == blobPath {
+			is.log.Debug().Str("dstRecord", dstRecord).Str("blobPath", blobPath).Msg("deleted blob is one with content")
+
 			// get next candidate
 			dstRecord, err := is.cache.GetBlob(digest)
 			if err != nil && !errors.Is(err, zerr.ErrCacheMiss) {
@@ -1833,6 +1836,8 @@ func (is *ImageStore) deleteBlob(repo string, digest godigest.Digest) error {
 
 			// if we have a new candidate move the blob content to it
 			if dstRecord != "" {
+				is.log.Debug().Str("dstRecord", dstRecord).Str("blobPath", blobPath).Msg("new replacement blob")
+
 				/* check to see if we need to move the content from original blob to duplicate one
 				(in case of filesystem, this should not be needed */
 				binfo, err := is.storeDriver.Stat(dstRecord)
