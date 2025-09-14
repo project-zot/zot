@@ -346,6 +346,12 @@ func (d *BoltDBDriver) DeleteBlob(digest godigest.Digest, path string) error {
 
 		d.log.Debug().Str("digest", digest.String()).Str("path", path).Msg("deleted from dedupe bucket")
 
+		dedupedBlob := d.getOne(deduped)
+		if dedupedBlob != nil {
+			d.log.Debug().Str("digest", digest.String()).Str("path", path).Msg("more in dedupe bucket, leaving original alone")
+			return nil
+		}
+
 		origin := bucket.Bucket([]byte(constants.OriginalBucket))
 		if origin != nil {
 			originBlob := d.getOne(origin)
