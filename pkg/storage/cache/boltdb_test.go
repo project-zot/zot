@@ -92,7 +92,7 @@ func TestBoltDBCache(t *testing.T) {
 		So(val, ShouldEqual, "duplicateBlobPath")
 		So(err, ShouldBeNil)
 
-		err = cacheDriver.DeleteBlob("key1", "duplicateBlobPath")
+		err = cacheDriver.DeleteBlob("key1", "originalBlobPath")
 		So(err, ShouldBeNil)
 
 		// should be empty
