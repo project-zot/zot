@@ -253,7 +253,12 @@ func (d *DynamoDBDriver) DeleteBlob(digest godigest.Digest, path string) error {
 		return err
 	}
 
-	originBlob, _ := d.GetBlob(digest)
+	originBlob, _ := d.GetDuplicateBlob(digest)
+	if originBlob != "" {
+		return nil
+	}
+
+	originBlob, _ = d.GetBlob(digest)
 	// if original blob is the one deleted
 	if originBlob == path {
 		// move duplicate blob to original, storage will move content here
