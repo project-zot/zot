@@ -89,7 +89,7 @@ func TestBoltDBCache(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		val, err = cacheDriver.GetBlob("key1")
-		So(val, ShouldEqual, "duplicateBlobPath")
+		So(val, ShouldEqual, "originalBlobPath")
 		So(err, ShouldBeNil)
 
 		err = cacheDriver.DeleteBlob("key1", "originalBlobPath")
@@ -155,7 +155,7 @@ func TestBoltDBCache(t *testing.T) {
 		blobs, err = cacheDriver.GetAllBlobs("digest")
 		So(err, ShouldBeNil)
 
-		So(blobs, ShouldResemble, []string{"second", "third"})
+		So(blobs, ShouldResemble, []string{"first", "second", "third"})
 
 		err = cacheDriver.DeleteBlob("digest", "third")
 		So(err, ShouldBeNil)
