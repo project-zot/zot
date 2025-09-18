@@ -33,7 +33,9 @@ type RegistryConfig struct {
 	RetryDelay       *time.Duration
 	OnlySigned       *bool
 	CredentialHelper string
-	PreserveDigest   bool // sync without converting
+	PreserveDigest   bool   // sync without converting
+	ClientLogs       bool   // creates regclient log/slog logger
+	ClientLogsLevel  string // defines regclient log/slog logger level
 }
 
 type Content struct {

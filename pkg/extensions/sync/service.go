@@ -7,7 +7,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/url"
+	"os"
 	"strconv"
 	"strings"
 	"sync"
@@ -146,7 +148,7 @@ func (service *BaseService) init() error {
 
 	client, hosts, err := newClient(service.config, service.credentials)
 	if err != nil {
-		service.log.Err(err).Msg("failed to parse sync config urls")
+		service.log.Err(err).Msg("failed to create registry client")
 
 		return err
 	}
@@ -870,12 +872,31 @@ func newClient(opts syncconf.RegistryConfig, credentials syncconf.CredentialsFil
 		regOpts = append(regOpts, reg.WithDelay(*opts.RetryDelay, *opts.RetryDelay))
 	}
 
-	client := regclient.New(
+	clientOpts := []regclient.Opt{
 		regclient.WithDockerCerts(),
 		regclient.WithDockerCreds(),
 		regclient.WithRegOpts(regOpts...),
 		regclient.WithConfigHost(hostConfigOpts...),
-	)
+	}
+
+	if opts.ClientLogs {
+		handlerOpts := &slog.HandlerOptions{AddSource: true}
+
+		if opts.ClientLogsLevel != "" {
+			lvl := slog.Level(0)
+
+			err = lvl.UnmarshalText([]byte(opts.ClientLogsLevel))
+			if err != nil {
+				return nil, nil, err
+			}
+
+			handlerOpts.Level = lvl
+		}
+
+		clientOpts = append(clientOpts, regclient.WithSlog(slog.New(slog.NewJSONHandler(os.Stdout, handlerOpts))))
+	}
+
+	client := regclient.New(clientOpts...)
 
 	return client, hostConfigOpts, nil
 }
