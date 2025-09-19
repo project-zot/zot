@@ -229,6 +229,7 @@ func TestGetAllDedupeReposCandidates(t *testing.T) {
 
 			Convey("Push repos with deduped blobs", t, func(c C) {
 				repoNames := []string{
+					storageConstants.GlobalBlobsRepo,
 					"first",
 					"second",
 					"repo/a",
@@ -245,6 +246,9 @@ func TestGetAllDedupeReposCandidates(t *testing.T) {
 				image := CreateRandomImage()
 
 				for _, repoName := range repoNames {
+					if repoName == storageConstants.GlobalBlobsRepo {
+						continue
+					}
 					err := WriteImageToFileSystem(image, repoName, tag, storeController)
 					So(err, ShouldBeNil)
 				}
