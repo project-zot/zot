@@ -75,5 +75,6 @@ type ScrubConfig struct {
 }
 
 type UIConfig struct {
-	BaseConfig `mapstructure:",squash"`
+	BaseConfig    `mapstructure:",squash"`
+	SessionDriver map[string]interface{} `mapstructure:",omitempty"`
 }

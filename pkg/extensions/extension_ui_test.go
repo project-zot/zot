@@ -51,7 +51,11 @@ func TestUIExtension(t *testing.T) {
 		ctlrManager := test.NewControllerManager(ctlr)
 		ctlrManager.StartAndWait(port)
 
-		found, err := test.ReadLogFileAndSearchString(logPath, "\"UI\":{\"Enable\":true}", 2*time.Minute)
+		found, err := test.ReadLogFileAndSearchString(
+			logPath,
+			"\"UI\":{\"Enable\":true,\"SessionDriver\":null}",
+			2*time.Minute,
+		)
 		So(found, ShouldBeTrue)
 		So(err, ShouldBeNil)
 

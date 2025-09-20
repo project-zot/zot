@@ -324,8 +324,21 @@ func (c *Controller) initCookieStore() error {
 			c.Config.HTTP.Auth.SessionHashKey = securecookie.GenerateRandomKey(64) //nolint: gomnd
 		}
 
-		cookieStore, err := NewCookieStore(c.StoreController, c.Config.HTTP.Auth.SessionHashKey,
-			c.Config.HTTP.Auth.SessionEncryptKey)
+		extensionsConfig := c.Config.Extensions
+
+		var uiExtConf *extconf.UIConfig = nil
+
+		if extensionsConfig != nil {
+			uiExtConf = extensionsConfig.UI
+		}
+
+		cookieStore, err := NewCookieStore(
+			uiExtConf,
+			c.StoreController,
+			c.Log,
+			c.Config.HTTP.Auth.SessionHashKey,
+			c.Config.HTTP.Auth.SessionEncryptKey,
+		)
 		if err != nil {
 			return err
 		}

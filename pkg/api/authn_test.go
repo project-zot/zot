@@ -15,11 +15,14 @@ import (
 	"testing"
 	"time"
 
+	"github.com/alicebob/miniredis/v2"
 	guuid "github.com/gofrs/uuid"
+	godigest "github.com/opencontainers/go-digest"
 	"github.com/project-zot/mockoidc"
 	. "github.com/smartystreets/goconvey/convey"
 	"gopkg.in/resty.v1"
 
+	zerr "zotregistry.dev/zot/errors"
 	"zotregistry.dev/zot/pkg/api"
 	"zotregistry.dev/zot/pkg/api/config"
 	"zotregistry.dev/zot/pkg/api/constants"
@@ -934,45 +937,65 @@ func TestCookiestoreCleanup(t *testing.T) {
 	log := log.Logger{}
 	metrics := monitoring.NewMetricsServer(true, log)
 
-	Convey("Test cookiestore cleanup works", t, func() {
-		taskScheduler := scheduler.NewScheduler(config.New(), metrics, log)
-		taskScheduler.RateLimit = 50 * time.Millisecond
-		taskScheduler.RunScheduler()
+	uiCfgTestCases := []struct {
+		name string
+		cfg  extconf.UIConfig
+	}{
+		{
+			"empty UI config",
+			extconf.UIConfig{},
+		},
+		{
+			"local session driver",
+			extconf.UIConfig{
+				SessionDriver: map[string]any{
+					"name": "local",
+				},
+			},
+		},
+	}
 
-		rootDir := t.TempDir()
+	for _, testCase := range uiCfgTestCases {
+		Convey("Test cookiestore cleanup works with "+testCase.name, t, func() {
+			taskScheduler := scheduler.NewScheduler(config.New(), metrics, log)
+			taskScheduler.RateLimit = 50 * time.Millisecond
+			taskScheduler.RunScheduler()
 
-		err := os.MkdirAll(path.Join(rootDir, "_sessions"), storageConstants.DefaultDirPerms)
-		So(err, ShouldBeNil)
+			rootDir := t.TempDir()
 
-		sessionPath := path.Join(rootDir, "_sessions", "session_1234")
+			err := os.MkdirAll(path.Join(rootDir, "_sessions"), storageConstants.DefaultDirPerms)
+			So(err, ShouldBeNil)
 
-		err = os.WriteFile(sessionPath, []byte("session"), storageConstants.DefaultFilePerms)
-		So(err, ShouldBeNil)
+			sessionPath := path.Join(rootDir, "_sessions", "session_1234")
 
-		changeTime := time.Now().Add(-4 * time.Hour)
+			err = os.WriteFile(sessionPath, []byte("session"), storageConstants.DefaultFilePerms)
+			So(err, ShouldBeNil)
 
-		err = os.Chtimes(sessionPath, changeTime, changeTime)
-		So(err, ShouldBeNil)
+			changeTime := time.Now().Add(-4 * time.Hour)
 
-		imgStore := local.NewImageStore(rootDir, false, false, log, metrics, nil, nil, nil, nil)
+			err = os.Chtimes(sessionPath, changeTime, changeTime)
+			So(err, ShouldBeNil)
 
-		storeController := storage.StoreController{
-			DefaultStore: imgStore,
-		}
+			imgStore := local.NewImageStore(rootDir, false, false, log, metrics, nil, nil, nil, nil)
 
-		cookieStore, err := api.NewCookieStore(storeController, nil, nil)
-		So(err, ShouldBeNil)
+			storeController := storage.StoreController{
+				DefaultStore: imgStore,
+			}
 
-		cookieStore.RunSessionCleaner(taskScheduler)
+			cookieStore, err := api.NewCookieStore(&testCase.cfg, storeController, log, nil, nil)
+			So(err, ShouldBeNil)
 
-		time.Sleep(2 * time.Second)
+			cookieStore.RunSessionCleaner(taskScheduler)
 
-		taskScheduler.Shutdown()
+			time.Sleep(2 * time.Second)
 
-		// make sure session is removed
-		_, err = os.Stat(sessionPath)
-		So(err, ShouldNotBeNil)
-	})
+			taskScheduler.Shutdown()
+
+			// make sure session is removed
+			_, err = os.Stat(sessionPath)
+			So(err, ShouldNotBeNil)
+		})
+	}
 
 	Convey("Test cookiestore cleanup without permissions on rootDir", t, func() {
 		taskScheduler := scheduler.NewScheduler(config.New(), metrics, log)
@@ -995,7 +1018,9 @@ func TestCookiestoreCleanup(t *testing.T) {
 			DefaultStore: imgStore,
 		}
 
-		cookieStore, err := api.NewCookieStore(storeController, []byte("secret"), nil)
+		uiCfg := extconf.UIConfig{}
+
+		cookieStore, err := api.NewCookieStore(&uiCfg, storeController, log, []byte("secret"), nil)
 		So(err, ShouldBeNil)
 
 		err = os.Chmod(rootDir, 0o000)
@@ -1083,6 +1108,133 @@ func TestCookiestoreCleanup(t *testing.T) {
 			So(api.IsExpiredSession(dirEntry), ShouldBeTrue)
 		})
 	})
+}
+
+func TestRedisCookieStore(t *testing.T) {
+	log := log.Logger{}
+
+	testRedis := miniredis.RunT(t)
+
+	storeController := storage.StoreController{
+		DefaultStore: &mocks.MockedImageStore{
+			GetImageManifestFn: func(repo string, reference string) ([]byte, godigest.Digest, string, error) {
+				return []byte{}, "", "", zerr.ErrRepoBadVersion
+			},
+		},
+	}
+
+	trueBool := true
+
+	testCases := []struct {
+		testName         string
+		shouldErrBeNil   bool
+		expectedErrStr   string
+		inputUIExtConfig *extconf.UIConfig
+	}{
+		{
+			"Cookie store creation should not fail if the driver is local",
+			true,
+			"",
+			&extconf.UIConfig{
+				BaseConfig: extconf.BaseConfig{
+					Enable: &trueBool,
+				},
+				SessionDriver: map[string]any{
+					"name": "local",
+				},
+			},
+		},
+		{
+			"Cookie store creation should fail if the driver is unsupported",
+			false,
+			"invalid server config: sessiondriver unknowndriver not supported",
+			&extconf.UIConfig{
+				BaseConfig: extconf.BaseConfig{
+					Enable: &trueBool,
+				},
+				SessionDriver: map[string]any{
+					"name": "unknowndriver",
+				},
+			},
+		},
+		{
+			"Cookie store creation should not fail if the keyPrefix for Redis is not a string",
+			true,
+			"",
+			&extconf.UIConfig{
+				BaseConfig: extconf.BaseConfig{
+					Enable: &trueBool,
+				},
+				SessionDriver: map[string]any{
+					"name":      "redis",
+					"keyprefix": 8,
+					"url":       "redis://" + testRedis.Addr(),
+				},
+			},
+		},
+		{
+			"Cookie store creation should not fail if the UI Extension Config is nil",
+			true,
+			"",
+			nil,
+		},
+		{
+			"Cookie store creation and use should succeed with valid configuration",
+			true,
+			"",
+			&extconf.UIConfig{
+				BaseConfig: extconf.BaseConfig{
+					Enable: &trueBool,
+				},
+				SessionDriver: map[string]any{
+					"name": "redis",
+					"url":  "redis://" + testRedis.Addr(),
+				},
+			},
+		},
+		{
+			"Cookie store creation should fail if the url for Redis is incorrect",
+			false,
+			"dial tcp: lookup unknown on 127.0.0.53:53: server misbehaving",
+			&extconf.UIConfig{
+				BaseConfig: extconf.BaseConfig{
+					Enable: &trueBool,
+				},
+				SessionDriver: map[string]any{
+					"name": "redis",
+					"url":  "redis://unknown:1000",
+				},
+			},
+		},
+		{
+			"Cookie store creation should fail if the url for Redis has an invalid value",
+			false,
+			"invalid server config: cachedriver map[name:redis url:%!s(int=100)] has invalid value for url",
+			&extconf.UIConfig{
+				BaseConfig: extconf.BaseConfig{
+					Enable: &trueBool,
+				},
+				SessionDriver: map[string]any{
+					"name": "redis",
+					"url":  100,
+				},
+			},
+		},
+	}
+
+	for _, testCase := range testCases {
+		Convey(testCase.testName, t, func() {
+			cookieStore, err := api.NewCookieStore(testCase.inputUIExtConfig, storeController, log, nil, nil)
+			if testCase.shouldErrBeNil {
+				So(err, ShouldBeNil)
+				So(cookieStore, ShouldNotBeNil)
+			} else {
+				So(err, ShouldNotBeNil)
+				So(err.Error(), ShouldEqual, testCase.expectedErrStr)
+				So(cookieStore, ShouldBeNil)
+			}
+		})
+	}
 }
 
 type mockUUIDGenerator struct {
