@@ -689,7 +689,7 @@ func TestRepoListWithNewestImage(t *testing.T) {
 		writers := io.MultiWriter(os.Stdout, logFile)
 
 		ctlr := api.NewController(conf)
-		ctlr.Log.Logger = ctlr.Log.Output(writers)
+		ctlr.Log = log.NewLoggerWithWriter("debug", writers)
 
 		if err := ctlr.Init(); err != nil {
 			panic(err)
@@ -3636,7 +3636,7 @@ func TestGlobalSearch(t *testing.T) { //nolint: gocyclo
 		writers := io.MultiWriter(os.Stdout, logFile)
 
 		ctlr := api.NewController(conf)
-		ctlr.Log.Logger = ctlr.Log.Output(writers)
+		ctlr.Log = log.NewLoggerWithWriter("debug", writers)
 
 		if err := ctlr.Init(); err != nil {
 			panic(err)

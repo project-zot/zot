@@ -68,7 +68,7 @@ func TestContentManager(t *testing.T) {
 
 	Convey("Test GetRepoDestination()", t, func() {
 		for _, test := range testCases {
-			cm := sync.NewContentManager([]syncconf.Content{test.content}, log.Logger{})
+			cm := sync.NewContentManager([]syncconf.Content{test.content}, log.NewLogger("debug", ""))
 			actualResult := cm.GetRepoDestination(test.expected)
 			So(actualResult, ShouldEqual, test.repo)
 		}
@@ -77,7 +77,7 @@ func TestContentManager(t *testing.T) {
 	// this is the inverse function of getRepoDestination()
 	Convey("Test GetRepoSource()", t, func() {
 		for _, test := range testCases {
-			cm := sync.NewContentManager([]syncconf.Content{test.content}, log.Logger{})
+			cm := sync.NewContentManager([]syncconf.Content{test.content}, log.NewLogger("debug", ""))
 			actualResult := cm.GetRepoSource(test.repo)
 			So(actualResult, ShouldEqual, test.expected)
 		}
@@ -85,7 +85,7 @@ func TestContentManager(t *testing.T) {
 
 	Convey("Test MatchesContent() error", t, func() {
 		content := syncconf.Content{Prefix: "[repo%^&"}
-		cm := sync.NewContentManager([]syncconf.Content{content}, log.Logger{})
+		cm := sync.NewContentManager([]syncconf.Content{content}, log.NewLogger("debug", ""))
 		So(cm.MatchesContent("repo"), ShouldEqual, false)
 	})
 }
@@ -148,7 +148,7 @@ func TestGetContentByLocalRepo(t *testing.T) {
 
 	Convey("Test getContentByLocalRepo()", t, func() {
 		for _, test := range testCases {
-			cm := sync.NewContentManager(test.content, log.Logger{})
+			cm := sync.NewContentManager(test.content, log.NewLogger("debug", ""))
 			actualResult := cm.GetContentByLocalRepo(test.repo)
 
 			if test.expected == -1 {
@@ -163,7 +163,7 @@ func TestGetContentByLocalRepo(t *testing.T) {
 
 	Convey("Test getContentByLocalRepo() error", t, func() {
 		content := syncconf.Content{Prefix: "[repo%^&"}
-		cm := sync.NewContentManager([]syncconf.Content{content}, log.Logger{})
+		cm := sync.NewContentManager([]syncconf.Content{content}, log.NewLogger("debug", ""))
 		So(cm.GetContentByLocalRepo("repo"), ShouldBeNil)
 	})
 }

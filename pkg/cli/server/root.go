@@ -32,8 +32,6 @@ import (
 	storageConstants "zotregistry.dev/zot/pkg/storage/constants"
 )
 
-var logger = zlog.NewLogger("info", "") // Global logger for configuration validation
-
 // metadataConfig reports metadata after parsing, which we use to track
 // errors.
 func metadataConfig(md *mapstructure.Metadata) viper.DecoderConfigOption {
@@ -52,7 +50,7 @@ func newServeCmd(conf *config.Config) *cobra.Command {
 		Args:    cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			logger := zlog.NewLogger("info", "")
-			
+
 			if len(args) > 0 {
 				if err := LoadConfiguration(conf, args[0]); err != nil {
 					return err
@@ -104,7 +102,7 @@ func newScrubCmd(conf *config.Config) *cobra.Command {
 		Long:    "`scrub` checks manifest/blob integrity",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			logger := zlog.NewLogger("info", "")
-			
+
 			if len(args) > 0 {
 				if err := LoadConfiguration(conf, args[0]); err != nil {
 					return err
@@ -171,7 +169,7 @@ func newVerifyCmd(conf *config.Config) *cobra.Command {
 		Long:    "`verify` validates a zot config file",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			logger := zlog.NewLogger("info", "")
-			
+
 			if len(args) > 0 {
 				cmd.SilenceUsage = true
 
@@ -202,7 +200,7 @@ func NewServerRootCmd() *cobra.Command {
 		Long:  "`zot`",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			logger := zlog.NewLogger("info", "")
-			
+
 			if showVersion {
 				logger.Info().Str("distribution-spec", distspec.Version).Str("commit", config.Commit).
 					Str("binary-type", config.BinaryType).Str("go version", config.GoVersion).Msg("version")
@@ -227,7 +225,7 @@ func NewServerRootCmd() *cobra.Command {
 	return rootCmd
 }
 
-func validateStorageConfig(cfg *config.Config, log zlog.Logger) error {
+func validateStorageConfig(cfg *config.Config, logger zlog.Logger) error {
 	expConfigMap := make(map[string]config.StorageConfig, 0)
 
 	defaultRootDir := cfg.Storage.RootDirectory
@@ -257,7 +255,7 @@ func validateStorageConfig(cfg *config.Config, log zlog.Logger) error {
 	return nil
 }
 
-func validateCacheConfig(cfg *config.Config, log zlog.Logger) error {
+func validateCacheConfig(cfg *config.Config, logger zlog.Logger) error {
 	// global
 	// dedupe true, remote storage, remoteCache true, but no cacheDriver (remote)
 	//nolint: lll
@@ -334,7 +332,7 @@ func validateCacheConfig(cfg *config.Config, log zlog.Logger) error {
 	return nil
 }
 
-func validateExtensionsConfig(cfg *config.Config, log zlog.Logger) error {
+func validateExtensionsConfig(cfg *config.Config, logger zlog.Logger) error {
 	if cfg.Extensions != nil && cfg.Extensions.Mgmt != nil {
 		logger.Warn().Msg("mgmt extensions configuration option has been made redundant and will be ignored.")
 	}
@@ -378,43 +376,43 @@ func validateExtensionsConfig(cfg *config.Config, log zlog.Logger) error {
 	return nil
 }
 
-func validateConfiguration(config *config.Config, log zlog.Logger) error {
-	if err := validateHTTP(config, log); err != nil {
+func validateConfiguration(config *config.Config, logger zlog.Logger) error {
+	if err := validateHTTP(config, logger); err != nil {
 		return err
 	}
 
-	if err := validateGC(config, log); err != nil {
+	if err := validateGC(config, logger); err != nil {
 		return err
 	}
 
-	if err := validateLDAP(config, log); err != nil {
+	if err := validateLDAP(config, logger); err != nil {
 		return err
 	}
 
-	if err := validateOpenIDConfig(config, log); err != nil {
+	if err := validateOpenIDConfig(config, logger); err != nil {
 		return err
 	}
 
-	if err := validateSync(config, log); err != nil {
+	if err := validateSync(config, logger); err != nil {
 		return err
 	}
 
-	if err := validateStorageConfig(config, log); err != nil {
+	if err := validateStorageConfig(config, logger); err != nil {
 		return err
 	}
 
-	if err := validateCacheConfig(config, log); err != nil {
+	if err := validateCacheConfig(config, logger); err != nil {
 		return err
 	}
 
-	if err := validateExtensionsConfig(config, log); err != nil {
+	if err := validateExtensionsConfig(config, logger); err != nil {
 		return err
 	}
 
 	// check authorization config, it should have basic auth enabled or ldap, api keys or OpenID
 	if config.HTTP.AccessControl != nil {
 		// checking for anonymous policy only authorization config: no users, no policies but anonymous policy
-		if err := validateAuthzPolicies(config, log); err != nil {
+		if err := validateAuthzPolicies(config, logger); err != nil {
 			return err
 		}
 	}
@@ -478,14 +476,14 @@ func validateConfiguration(config *config.Config, log zlog.Logger) error {
 	}
 
 	// check validity of scale out cluster config
-	if err := validateClusterConfig(config, log); err != nil {
+	if err := validateClusterConfig(config, logger); err != nil {
 		return err
 	}
 
 	return nil
 }
 
-func validateOpenIDConfig(cfg *config.Config, log zlog.Logger) error {
+func validateOpenIDConfig(cfg *config.Config, logger zlog.Logger) error {
 	if cfg.HTTP.Auth != nil && cfg.HTTP.Auth.OpenID != nil {
 		for provider, providerConfig := range cfg.HTTP.Auth.OpenID.Providers {
 			//nolint: gocritic
@@ -516,7 +514,7 @@ func validateOpenIDConfig(cfg *config.Config, log zlog.Logger) error {
 	return nil
 }
 
-func validateAuthzPolicies(config *config.Config, log zlog.Logger) error {
+func validateAuthzPolicies(config *config.Config, logger zlog.Logger) error {
 	if (config.HTTP.Auth == nil || (config.HTTP.Auth.HTPasswd.Path == "" && config.HTTP.Auth.LDAP == nil &&
 		config.HTTP.Auth.OpenID == nil)) && !authzContainsOnlyAnonymousPolicy(config) {
 		msg := "access control config requires one of httpasswd, ldap or openid authentication " +
@@ -530,7 +528,7 @@ func validateAuthzPolicies(config *config.Config, log zlog.Logger) error {
 }
 
 //nolint:gocyclo,cyclop,nestif
-func applyDefaultValues(config *config.Config, viperInstance *viper.Viper, log zlog.Logger) {
+func applyDefaultValues(config *config.Config, viperInstance *viper.Viper, logger zlog.Logger) {
 	defaultVal := true
 
 	if config.Extensions == nil && viperInstance.Get("extensions") != nil {
@@ -777,7 +775,7 @@ func applyDefaultValues(config *config.Config, viperInstance *viper.Viper, log z
 	}
 }
 
-func updateDistSpecVersion(config *config.Config, log zlog.Logger) {
+func updateDistSpecVersion(config *config.Config, logger zlog.Logger) {
 	if config.DistSpecVersion == distspec.Version {
 		return
 	}
@@ -789,6 +787,8 @@ func updateDistSpecVersion(config *config.Config, log zlog.Logger) {
 }
 
 func LoadConfiguration(config *config.Config, configPath string) error {
+	logger := zlog.NewLogger("info", "")
+
 	// Default is dot (.) but because we allow glob patterns in authz
 	// we need another key delimiter.
 	viperInstance := viper.NewWithOptions(viper.KeyDelimiter("::"))
@@ -943,6 +943,8 @@ func updateLDAPConfig(conf *config.Config) error {
 }
 
 func updateOpenIDConfig(conf *config.Config) error {
+	logger := zlog.NewLogger("info", "")
+
 	if conf.HTTP.Auth == nil || conf.HTTP.Auth.OpenID == nil {
 		return nil
 	}
@@ -969,6 +971,8 @@ func updateOpenIDConfig(conf *config.Config) error {
 }
 
 func readSecretFile(path string, v any, checkUnsetFields bool) error { //nolint: varnamelen
+	logger := zlog.NewLogger("info", "")
+
 	viperInstance := viper.NewWithOptions(viper.KeyDelimiter("::"))
 
 	viperInstance.SetConfigFile(path)
@@ -1011,6 +1015,8 @@ func readSecretFile(path string, v any, checkUnsetFields bool) error { //nolint:
 }
 
 func authzContainsOnlyAnonymousPolicy(cfg *config.Config) bool {
+	logger := zlog.NewLogger("info", "")
+
 	adminPolicy := cfg.HTTP.AccessControl.AdminPolicy
 	anonymousPolicyPresent := false
 
@@ -1050,7 +1056,7 @@ func authzContainsOnlyAnonymousPolicy(cfg *config.Config) bool {
 	return anonymousPolicyPresent
 }
 
-func validateLDAP(config *config.Config, log zlog.Logger) error {
+func validateLDAP(config *config.Config, logger zlog.Logger) error {
 	// LDAP mandatory configuration
 	if config.HTTP.Auth != nil && config.HTTP.Auth.LDAP != nil {
 		ldap := config.HTTP.Auth.LDAP
@@ -1079,7 +1085,7 @@ func validateLDAP(config *config.Config, log zlog.Logger) error {
 	return nil
 }
 
-func validateHTTP(config *config.Config, log zlog.Logger) error {
+func validateHTTP(config *config.Config, logger zlog.Logger) error {
 	if config.HTTP.Port != "" {
 		port, err := strconv.ParseInt(config.HTTP.Port, 10, 64)
 		if err != nil || (port < 0 || port > 65535) {
@@ -1092,7 +1098,7 @@ func validateHTTP(config *config.Config, log zlog.Logger) error {
 	return nil
 }
 
-func validateGC(config *config.Config, log zlog.Logger) error {
+func validateGC(config *config.Config, logger zlog.Logger) error {
 	// enforce GC params
 	if config.Storage.GCDelay < 0 {
 		logger.Error().Err(zerr.ErrBadConfig).Dur("delay", config.Storage.GCDelay).
@@ -1122,7 +1128,7 @@ func validateGC(config *config.Config, log zlog.Logger) error {
 		}
 	}
 
-	if err := validateGCRules(config.Storage.Retention, log); err != nil {
+	if err := validateGCRules(config.Storage.Retention, logger); err != nil {
 		return err
 	}
 
@@ -1138,7 +1144,7 @@ func validateGC(config *config.Config, log zlog.Logger) error {
 				zerr.ErrBadConfig, subPath.GCDelay)
 		}
 
-		if err := validateGCRules(subPath.Retention, log); err != nil {
+		if err := validateGCRules(subPath.Retention, logger); err != nil {
 			return err
 		}
 	}
@@ -1146,7 +1152,7 @@ func validateGC(config *config.Config, log zlog.Logger) error {
 	return nil
 }
 
-func validateGCRules(retention config.ImageRetention, log zlog.Logger) error {
+func validateGCRules(retention config.ImageRetention, logger zlog.Logger) error {
 	for _, policy := range retention.Policies {
 		for _, pattern := range policy.Repositories {
 			if ok := glob.ValidatePattern(pattern); !ok {
@@ -1175,7 +1181,7 @@ func validateGCRules(retention config.ImageRetention, log zlog.Logger) error {
 	return nil
 }
 
-func validateSync(config *config.Config, log zlog.Logger) error {
+func validateSync(config *config.Config, logger zlog.Logger) error {
 	// check glob patterns in sync config are compilable
 	if config.Extensions != nil && config.Extensions.Sync != nil {
 		for regID, regCfg := range config.Extensions.Sync.Registries {
@@ -1236,7 +1242,7 @@ func validateSync(config *config.Config, log zlog.Logger) error {
 					}
 
 					// check sync config doesn't overlap with retention config
-					validateRetentionSyncOverlaps(config, content, regCfg.URLs, log)
+					validateRetentionSyncOverlaps(config, content, regCfg.URLs, logger)
 				}
 			}
 		}
@@ -1245,7 +1251,7 @@ func validateSync(config *config.Config, log zlog.Logger) error {
 	return nil
 }
 
-func validateClusterConfig(config *config.Config, log zlog.Logger) error {
+func validateClusterConfig(config *config.Config, logger zlog.Logger) error {
 	if config.Cluster != nil {
 		if len(config.Cluster.Members) == 0 {
 			msg := "cannot have 0 members in a scale out cluster"

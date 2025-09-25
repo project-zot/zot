@@ -187,7 +187,7 @@ func createObjectsStoreDynamo(rootDir string, cacheDir string, dedupe bool, tabl
 }
 
 func runAndGetScheduler() *scheduler.Scheduler {
-	log := log.Logger{}
+	log := log.NewLogger("debug", "")
 	metrics := monitoring.NewMetricsServer(false, log)
 	taskScheduler := scheduler.NewScheduler(config.New(), metrics, log)
 	taskScheduler.RateLimit = 50 * time.Millisecond
@@ -2019,7 +2019,7 @@ func TestRebuildDedupeIndex(t *testing.T) {
 
 		Convey("Intrerrupt rebuilding and restart, checking idempotency", func() {
 			for i := 0; i < 10; i++ {
-				log := log.Logger{}
+				log := log.NewLogger("debug", "")
 				metrics := monitoring.NewMetricsServer(false, log)
 				taskScheduler := scheduler.NewScheduler(config.New(), metrics, log)
 				taskScheduler.RateLimit = 1 * time.Millisecond
@@ -2061,7 +2061,7 @@ func TestRebuildDedupeIndex(t *testing.T) {
 
 			// now from dedupe false to true
 			for i := 0; i < 10; i++ {
-				log := log.Logger{}
+				log := log.NewLogger("debug", "")
 				metrics := monitoring.NewMetricsServer(false, log)
 				taskScheduler := scheduler.NewScheduler(config.New(), metrics, log)
 				taskScheduler.RateLimit = 1 * time.Millisecond

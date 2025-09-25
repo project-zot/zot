@@ -82,7 +82,7 @@ func TestNegativeServerResponse(t *testing.T) {
 		writers := io.MultiWriter(os.Stdout, logFile)
 
 		ctlr := api.NewController(conf)
-		ctlr.Log.Logger = ctlr.Log.Output(writers)
+		ctlr.Log = log.NewLoggerWithWriter("info", writers)
 
 		cm := test.NewControllerManager(ctlr)
 		cm.StartAndWait(conf.HTTP.Port)
@@ -163,7 +163,7 @@ func TestNegativeServerResponse(t *testing.T) {
 		writers := io.MultiWriter(os.Stdout, logFile)
 
 		ctlr := api.NewController(conf)
-		ctlr.Log.Logger = ctlr.Log.Output(writers)
+		ctlr.Log = log.NewLoggerWithWriter("info", writers)
 
 		if err := ctlr.Init(); err != nil {
 			panic(err)
@@ -238,7 +238,7 @@ func TestCVEDiffList(t *testing.T) {
 	writers := io.MultiWriter(os.Stdout, logFile)
 
 	ctlr := api.NewController(conf)
-	ctlr.Log.Logger = ctlr.Log.Output(writers)
+	ctlr.Log = log.NewLoggerWithWriter("info", writers)
 
 	if err := ctlr.Init(); err != nil {
 		panic(err)
@@ -513,7 +513,7 @@ func TestServerCVEResponse(t *testing.T) {
 	writers := io.MultiWriter(os.Stdout, logFile)
 
 	ctlr := api.NewController(conf)
-	ctlr.Log.Logger = ctlr.Log.Output(writers)
+	ctlr.Log = log.NewLoggerWithWriter("info", writers)
 
 	if err := ctlr.Init(); err != nil {
 		panic(err)

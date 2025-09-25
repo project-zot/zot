@@ -38,7 +38,7 @@ func TestService(t *testing.T) {
 			URLs: []string{"http://localhost"},
 		}
 
-		service, err := New(conf, "", nil, os.TempDir(), storage.StoreController{}, mocks.MetaDBMock{}, log.Logger{})
+		service, err := New(conf, "", nil, os.TempDir(), storage.StoreController{}, mocks.MetaDBMock{}, log.NewLogger("debug", ""))
 		So(err, ShouldBeNil)
 
 		err = service.SyncRepo(context.Background(), "repo")

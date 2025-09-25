@@ -4,184 +4,201 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log"
 	"log/slog"
 	"os"
 	"runtime"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
+
+	"zotregistry.dev/zot/errors"
 )
 
-const defaultPerms = 0o0600
-
-//nolint:gochecknoglobals
-var loggerSetTimeFormat sync.Once
+const (
+	defaultPerms = 0o0600
+	messageKey   = "message"
+)
 
 // Logger extends slog's Logger with zerolog-compatible API.
 type Logger struct {
 	*slog.Logger
-	ctx context.Context
 }
 
-// Event represents a log event, mimicking zerolog.Event
+// Event represents a log event, mimicking zerolog.Event.
 type Event struct {
-	logger   *Logger
-	level    slog.Level
-	attrs    []slog.Attr
-	isPanic  bool
+	logger  *Logger
+	level   slog.Level
+	attrs   []slog.Attr
+	isPanic bool
 }
 
-// Info returns an event for info level logging
+// Info returns an event for info level logging.
 func (l Logger) Info() *Event {
 	return &Event{logger: &l, level: slog.LevelInfo, attrs: []slog.Attr{}}
 }
 
-// Debug returns an event for debug level logging
+// Debug returns an event for debug level logging.
 func (l Logger) Debug() *Event {
 	return &Event{logger: &l, level: slog.LevelDebug, attrs: []slog.Attr{}}
 }
 
-// Error returns an event for error level logging
+// Error returns an event for error level logging.
 func (l Logger) Error() *Event {
 	return &Event{logger: &l, level: slog.LevelError, attrs: []slog.Attr{}}
 }
 
-// Warn returns an event for warn level logging
+// Warn returns an event for warn level logging.
 func (l Logger) Warn() *Event {
 	return &Event{logger: &l, level: slog.LevelWarn, attrs: []slog.Attr{}}
 }
 
-// Panic returns an event for panic level logging (maps to error + panic)
+// Panic returns an event for panic level logging (maps to error + panic).
 func (l Logger) Panic() *Event {
 	return &Event{logger: &l, level: slog.LevelError, attrs: []slog.Attr{}, isPanic: true}
 }
 
-// Fatal returns an event for fatal level logging (maps to error + panic)
+// Fatal returns an event for fatal level logging (maps to error + panic).
 func (l Logger) Fatal() *Event {
 	return &Event{logger: &l, level: slog.LevelError, attrs: []slog.Attr{}, isPanic: true}
 }
 
-// Err logs an error directly on the logger (convenience method)
+// Err logs an error directly on the logger (convenience method).
 func (l Logger) Err(err error) *Event {
 	event := l.Error()
 	if err != nil {
 		event.attrs = append(event.attrs, slog.String("error", err.Error()))
 	}
+
 	return event
 }
 
-// With returns a logger with additional context
+// With returns a logger with additional context.
 func (l Logger) With() *Event {
 	return &Event{logger: &l, level: slog.LevelInfo, attrs: []slog.Attr{}}
 }
 
-// Logger returns the logger from an event (for method chaining)
+// Logger returns the logger from an event (for method chaining).
 func (e *Event) Logger() Logger {
 	// Create a new logger with the accumulated attributes
 	handler := e.logger.Handler()
 	if len(e.attrs) > 0 {
 		handler = handler.WithAttrs(e.attrs)
 	}
-	return Logger{Logger: slog.New(handler), ctx: e.logger.ctx}
+
+	return Logger{Logger: slog.New(handler)}
 }
 
-// Str adds a string field to the event
+// Str adds a string field to the event.
 func (e *Event) Str(key, val string) *Event {
 	e.attrs = append(e.attrs, slog.String(key, val))
+
 	return e
 }
 
-// Int adds an int field to the event
+// Int adds an int field to the event.
 func (e *Event) Int(key string, val int) *Event {
 	e.attrs = append(e.attrs, slog.Int(key, val))
+
 	return e
 }
 
-// Int64 adds an int64 field to the event
+// Int64 adds an int64 field to the event.
 func (e *Event) Int64(key string, val int64) *Event {
 	e.attrs = append(e.attrs, slog.Int64(key, val))
+
 	return e
 }
 
-// Uint64 adds a uint64 field to the event
+// Uint64 adds a uint64 field to the event.
 func (e *Event) Uint64(key string, val uint64) *Event {
 	e.attrs = append(e.attrs, slog.Uint64(key, val))
+
 	return e
 }
 
-// Bool adds a bool field to the event
+// Bool adds a bool field to the event.
 func (e *Event) Bool(key string, val bool) *Event {
 	e.attrs = append(e.attrs, slog.Bool(key, val))
+
 	return e
 }
 
-// Err adds an error field to the event
+// Err adds an error field to the event.
 func (e *Event) Err(err error) *Event {
 	if err != nil {
 		e.attrs = append(e.attrs, slog.String("error", err.Error()))
 	}
+
 	return e
 }
 
-// Interface adds any interface field to the event
+// Interface adds any interface field to the event.
 func (e *Event) Interface(key string, val interface{}) *Event {
 	e.attrs = append(e.attrs, slog.Any(key, val))
+
 	return e
 }
 
-// Any adds any interface field to the event (alias for Interface)
+// Any adds any interface field to the event (alias for Interface).
 func (e *Event) Any(key string, val interface{}) *Event {
 	return e.Interface(key, val)
 }
 
-// Strs adds a slice of strings field to the event
+// Strs adds a slice of strings field to the event.
 func (e *Event) Strs(key string, vals []string) *Event {
 	e.attrs = append(e.attrs, slog.Any(key, vals))
+
 	return e
 }
 
-// IPAddr adds an IP address field to the event
+// IPAddr adds an IP address field to the event.
 func (e *Event) IPAddr(key string, ip interface{}) *Event {
 	e.attrs = append(e.attrs, slog.String(key, fmt.Sprintf("%v", ip)))
+
 	return e
 }
 
-// RawJSON adds a raw JSON field to the event
+// RawJSON adds a raw JSON field to the event.
 func (e *Event) RawJSON(key string, data []byte) *Event {
 	e.attrs = append(e.attrs, slog.String(key, string(data)))
+
 	return e
 }
 
-// Dur adds a duration field to the event
+// Dur adds a duration field to the event.
 func (e *Event) Dur(key string, d time.Duration) *Event {
 	e.attrs = append(e.attrs, slog.Duration(key, d))
+
 	return e
 }
 
-// NewTestLogger creates a logger for testing purposes (replaces zerolog.New(os.Stdout))
+// NewTestLogger creates a logger for testing purposes (replaces zerolog.New(os.Stdout)).
 func NewTestLogger() Logger {
 	return NewLogger("debug", "")
 }
 
-// NewTestLoggerPtr creates a pointer to a logger for testing purposes
+// NewTestLoggerPtr creates a pointer to a logger for testing purposes.
 func NewTestLoggerPtr() *Logger {
 	logger := NewLogger("debug", "")
+
 	return &logger
 }
 
-// Msgf logs the event with a formatted message
+// Msgf logs the event with a formatted message.
 func (e *Event) Msgf(format string, args ...interface{}) {
 	msg := fmt.Sprintf(format, args...)
-	e.logger.LogAttrs(e.logger.ctx, e.level, msg, e.attrs...)
+	e.logger.LogAttrs(nil, e.level, msg, e.attrs...)
+
 	if e.isPanic {
 		panic(msg)
 	}
 }
 
-// Msg logs the event with a simple message
+// Msg logs the event with a simple message.
 func (e *Event) Msg(msg string) {
-	e.logger.LogAttrs(e.logger.ctx, e.level, msg, e.attrs...)
+	e.logger.LogAttrs(nil, e.level, msg, e.attrs...)
+
 	if e.isPanic {
 		panic(msg)
 	}
@@ -189,9 +206,14 @@ func (e *Event) Msg(msg string) {
 
 func (l Logger) Println(v ...interface{}) {
 	l.Error().Msg("panic recovered") //nolint: check-logs
+	log.Println(v...)
 }
 
-// parseLevel converts string level to slog.Level
+func (l Logger) Printf(format string, a ...interface{}) {
+	log.Printf(format, a...)
+}
+
+// parseLevel converts string level to slog.Level.
 func parseLevel(level string) (slog.Level, error) {
 	switch strings.ToLower(level) {
 	case "debug":
@@ -203,7 +225,7 @@ func parseLevel(level string) (slog.Level, error) {
 	case "error":
 		return slog.LevelError, nil
 	default:
-		return slog.LevelInfo, nil
+		return slog.LevelInfo, errors.ErrBadConfig
 	}
 }
 
@@ -229,30 +251,35 @@ func NewLogger(level, output string) Logger {
 	// Create JSON handler with RFC3339Nano time format
 	opts := &slog.HandlerOptions{
 		Level: lvl,
-		ReplaceAttr: func(groups []string, a slog.Attr) slog.Attr {
+		ReplaceAttr: func(groups []string, attr slog.Attr) slog.Attr {
 			// Format timestamp as RFC3339Nano to match zerolog
-			if a.Key == slog.TimeKey {
-				return slog.String("time", a.Value.Time().Format(time.RFC3339Nano))
+			if attr.Key == slog.TimeKey {
+				return slog.String("time", attr.Value.Time().Format(time.RFC3339Nano))
 			}
 			// Rename the level field to match zerolog
-			if a.Key == slog.LevelKey {
-				return slog.String("level", strings.ToLower(a.Value.String()))
+			if attr.Key == slog.LevelKey {
+				return slog.String("level", strings.ToLower(attr.Value.String()))
 			}
-			return a
+			// Rename "msg" to "message" to match zerolog
+			if attr.Key == slog.MessageKey {
+				attr.Key = messageKey
+			}
+
+			return attr
 		},
 	}
 
 	handler := slog.NewJSONHandler(writer, opts)
-	
+
 	// Add caller info handler wrapper
 	callerHandler := &CallerHandler{handler: handler}
-	
+
 	// Add goroutine hook handler wrapper
 	goroutineHandler := &GoroutineHandler{handler: callerHandler}
 
 	logger := slog.New(goroutineHandler)
-	
-	return Logger{Logger: logger, ctx: context.Background()}
+
+	return Logger{Logger: logger}
 }
 
 func NewAuditLogger(level, output string) *Logger {
@@ -277,23 +304,69 @@ func NewAuditLogger(level, output string) *Logger {
 	// Create JSON handler with RFC3339Nano time format for audit logs
 	opts := &slog.HandlerOptions{
 		Level: lvl,
-		ReplaceAttr: func(groups []string, a slog.Attr) slog.Attr {
+		ReplaceAttr: func(groups []string, attr slog.Attr) slog.Attr {
 			// Format timestamp as RFC3339Nano to match zerolog
-			if a.Key == slog.TimeKey {
-				return slog.String("time", a.Value.Time().Format(time.RFC3339Nano))
+			if attr.Key == slog.TimeKey {
+				return slog.String("time", attr.Value.Time().Format(time.RFC3339Nano))
 			}
 			// Rename the level field to match zerolog
-			if a.Key == slog.LevelKey {
-				return slog.String("level", strings.ToLower(a.Value.String()))
+			if attr.Key == slog.LevelKey {
+				return slog.String("level", strings.ToLower(attr.Value.String()))
 			}
-			return a
+			// Rename "msg" to "message" to match zerolog
+			if attr.Key == slog.MessageKey {
+				attr.Key = messageKey
+			}
+
+			return attr
 		},
 	}
 
 	handler := slog.NewJSONHandler(writer, opts)
 	logger := slog.New(handler)
-	
-	return &Logger{Logger: logger, ctx: context.Background()}
+
+	return &Logger{Logger: logger}
+}
+
+func NewLoggerWithWriter(level string, writer io.Writer) Logger {
+	// Parse log level
+	lvl, err := parseLevel(level)
+	if err != nil {
+		panic(err)
+	}
+
+	// Create JSON handler with RFC3339Nano time format
+	opts := &slog.HandlerOptions{
+		Level: lvl,
+		ReplaceAttr: func(groups []string, attr slog.Attr) slog.Attr {
+			// Format timestamp as RFC3339Nano to match zerolog
+			if attr.Key == slog.TimeKey {
+				return slog.String("time", attr.Value.Time().Format(time.RFC3339Nano))
+			}
+			// Rename the level field to match zerolog
+			if attr.Key == slog.LevelKey {
+				return slog.String("level", strings.ToLower(attr.Value.String()))
+			}
+			// Rename "msg" to "message" to match zerolog
+			if attr.Key == slog.MessageKey {
+				attr.Key = messageKey
+			}
+
+			return attr
+		},
+	}
+
+	handler := slog.NewJSONHandler(writer, opts)
+
+	// Add caller info handler wrapper
+	callerHandler := &CallerHandler{handler: handler}
+
+	// Add goroutine hook handler wrapper
+	goroutineHandler := &GoroutineHandler{handler: callerHandler}
+
+	logger := slog.New(goroutineHandler)
+
+	return Logger{Logger: logger}
 }
 
 // GoroutineID adds goroutine-id to logs to help debug concurrency issues.
@@ -310,7 +383,7 @@ func GoroutineID() int {
 	return id
 }
 
-// CallerHandler adds caller information to log records
+// CallerHandler adds caller information to log records.
 type CallerHandler struct {
 	handler slog.Handler
 }
@@ -324,11 +397,14 @@ func (h *CallerHandler) Handle(ctx context.Context, record slog.Record) error {
 	if pc, file, line, ok := runtime.Caller(5); ok { // Adjust stack depth as needed
 		frame := runtime.CallersFrames([]uintptr{pc})
 		f, _ := frame.Next()
+
 		record.Add("caller", fmt.Sprintf("%s:%d", file, line))
+
 		if f.Function != "" {
 			record.Add("func", f.Function)
 		}
 	}
+
 	return h.handler.Handle(ctx, record)
 }
 
@@ -340,7 +416,7 @@ func (h *CallerHandler) WithGroup(name string) slog.Handler {
 	return &CallerHandler{handler: h.handler.WithGroup(name)}
 }
 
-// GoroutineHandler adds goroutine ID to log records
+// GoroutineHandler adds goroutine ID to log records.
 type GoroutineHandler struct {
 	handler slog.Handler
 }
@@ -352,6 +428,7 @@ func (h *GoroutineHandler) Enabled(ctx context.Context, level slog.Level) bool {
 func (h *GoroutineHandler) Handle(ctx context.Context, record slog.Record) error {
 	// Add goroutine ID
 	record.Add("goroutine", GoroutineID())
+
 	return h.handler.Handle(ctx, record)
 }
 

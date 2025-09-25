@@ -931,7 +931,7 @@ func TestAPIKeysGeneratorErrors(t *testing.T) {
 }
 
 func TestCookiestoreCleanup(t *testing.T) {
-	log := log.Logger{}
+	log := log.NewLogger("debug", "")
 	metrics := monitoring.NewMetricsServer(true, log)
 
 	Convey("Test cookiestore cleanup works", t, func() {

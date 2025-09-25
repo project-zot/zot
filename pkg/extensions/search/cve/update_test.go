@@ -33,9 +33,8 @@ func TestCVEDBGenerator(t *testing.T) {
 
 		defer os.Remove(logFile.Name()) // clean up
 
-		logger := log.NewLogger("debug", logPath)
 		writers := io.MultiWriter(os.Stdout, logFile)
-		logger.Logger = logger.Output(writers)
+		logger := log.NewLoggerWithWriter("debug", writers)
 
 		cfg := config.New()
 		cfg.Scheduler = &config.SchedulerConfig{NumWorkers: 3}

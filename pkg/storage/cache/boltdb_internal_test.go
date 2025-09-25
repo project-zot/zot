@@ -1,6 +1,7 @@
 package cache
 
 import (
+	"io"
 	"path/filepath"
 	"testing"
 
@@ -8,6 +9,7 @@ import (
 	. "github.com/smartystreets/goconvey/convey"
 	"go.etcd.io/bbolt"
 
+	"zotregistry.dev/zot/pkg/log"
 	"zotregistry.dev/zot/pkg/storage/constants"
 )
 
@@ -19,7 +21,8 @@ func TestBoltDriverErrors(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		driver := BoltDBDriver{
-			db: boltDB,
+			db:  boltDB,
+			log: log.NewLoggerWithWriter("debug", io.Discard),
 		}
 
 		Convey("Empty boltdb", func() {

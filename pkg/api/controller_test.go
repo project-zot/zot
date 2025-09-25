@@ -3810,27 +3810,29 @@ func TestLDAPFailures(t *testing.T) {
 		defer ldapServer.Stop()
 
 		Convey("Empty config", func() {
-			lc := &api.LDAPClient{}
-			err := lc.Connect()
+			lclient := &api.LDAPClient{Log: log.NewLogger("debug", "")}
+			err := lclient.Connect()
 			So(err, ShouldNotBeNil)
 		})
 
 		Convey("Basic connectivity config", func() {
-			lc := &api.LDAPClient{
+			lclient := &api.LDAPClient{
 				Host: LDAPAddress,
 				Port: ldapPort,
+				Log:  log.NewLogger("debug", ""),
 			}
-			err := lc.Connect()
+			err := lclient.Connect()
 			So(err, ShouldNotBeNil)
 		})
 
 		Convey("Basic TLS connectivity config", func() {
-			lc := &api.LDAPClient{
+			lclient := &api.LDAPClient{
 				Host:   LDAPAddress,
 				Port:   ldapPort,
 				UseSSL: true,
+				Log:    log.NewLogger("debug", ""),
 			}
-			err := lc.Connect()
+			err := lclient.Connect()
 			So(err, ShouldNotBeNil)
 		})
 	})
@@ -3853,6 +3855,7 @@ func TestLDAPClient(t *testing.T) {
 			BindDN:       "bad-user",
 			BindPassword: "bad-pass",
 			SkipTLS:      true,
+			Log:          log.NewLogger("debug", ""),
 		}
 
 		_, _, _, err = lClient.Authenticate("bad-user", "bad-pass")
@@ -3865,6 +3868,7 @@ func TestLDAPClient(t *testing.T) {
 			BindDN:       "bad-user",
 			BindPassword: "",
 			SkipTLS:      true,
+			Log:          log.NewLogger("debug", ""),
 		}
 
 		_, _, _, err = lClient.Authenticate("user", "")
@@ -3880,6 +3884,7 @@ func TestLDAPClient(t *testing.T) {
 			UserAttribute: LDAPUserAttr,
 			UserFilter:    "",
 			SkipTLS:       true,
+			Log:           log.NewLogger("debug", ""),
 		}
 
 		_, _, _, err = lClient.Authenticate("fail-user-bind", "")
@@ -3895,6 +3900,7 @@ func TestLDAPClient(t *testing.T) {
 			UserAttribute: LDAPUserAttr,
 			UserFilter:    "",
 			SkipTLS:       true,
+			Log:           log.NewLogger("debug", ""),
 		}
 
 		_, _, _, err = lClient.Authenticate("fail-user-bind", "pass")
@@ -3910,6 +3916,7 @@ func TestLDAPClient(t *testing.T) {
 			UserAttribute: LDAPUserAttr,
 			UserFilter:    "(!(nsaccountlock=TRUE))",
 			SkipTLS:       true,
+			Log:           log.NewLogger("debug", ""),
 		}
 
 		_, _, _, err = lClient.Authenticate("locked-user", "pass")
@@ -12747,7 +12754,7 @@ func TestGetGithubUserInfo(t *testing.T) {
 
 		client := github.NewClient(mockedHTTPClient)
 
-		_, _, err := api.GetGithubUserInfo(context.Background(), client, log.Logger{})
+		_, _, err := api.GetGithubUserInfo(context.Background(), client, log.NewLogger("debug", ""))
 		So(err, ShouldBeNil)
 	})
 
@@ -12767,7 +12774,7 @@ func TestGetGithubUserInfo(t *testing.T) {
 
 		client := github.NewClient(mockedHTTPClient)
 
-		_, _, err := api.GetGithubUserInfo(context.Background(), client, log.Logger{})
+		_, _, err := api.GetGithubUserInfo(context.Background(), client, log.NewLogger("debug", ""))
 		So(err, ShouldNotBeNil)
 	})
 
@@ -12796,7 +12803,7 @@ func TestGetGithubUserInfo(t *testing.T) {
 
 		client := github.NewClient(mockedHTTPClient)
 
-		_, _, err := api.GetGithubUserInfo(context.Background(), client, log.Logger{})
+		_, _, err := api.GetGithubUserInfo(context.Background(), client, log.NewLogger("debug", ""))
 		So(err, ShouldNotBeNil)
 	})
 }

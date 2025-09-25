@@ -22,9 +22,8 @@ func TestRedisLogger(t *testing.T) {
 		logFile, err := os.CreateTemp(t.TempDir(), "zot-log*.txt")
 		So(err, ShouldBeNil)
 
-		logger := log.NewLogger("debug", logFile.Name())
 		writers := io.MultiWriter(os.Stdout, logFile)
-		logger.Logger = logger.Output(writers)
+		logger := log.NewLoggerWithWriter("debug", writers)
 
 		rlog := rediscfg.RedisLogger{logger}
 		rlog.Printf(context.Background(), "this is a rest string")

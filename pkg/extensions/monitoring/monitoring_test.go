@@ -20,6 +20,7 @@ import (
 	"zotregistry.dev/zot/pkg/api/config"
 	extconf "zotregistry.dev/zot/pkg/extensions/config"
 	"zotregistry.dev/zot/pkg/extensions/monitoring"
+	"zotregistry.dev/zot/pkg/log"
 	"zotregistry.dev/zot/pkg/scheduler"
 	common "zotregistry.dev/zot/pkg/storage/common"
 	test "zotregistry.dev/zot/pkg/test/common"
@@ -450,7 +451,7 @@ func TestPopulateStorageMetrics(t *testing.T) {
 
 		ctlr := api.NewController(conf)
 		So(ctlr, ShouldNotBeNil)
-		ctlr.Log.Logger = ctlr.Log.Output(writers)
+		ctlr.Log = log.NewLoggerWithWriter("debug", writers)
 
 		cm := test.NewControllerManager(ctlr)
 		cm.StartAndWait(port)

@@ -456,7 +456,7 @@ func TestCVESearchDisabled(t *testing.T) {
 
 		ctlr := api.NewController(conf)
 		ctlr.Log.Info().Int64("seedUser", seedUser).Int64("seedPass", seedPass).Msg("random seed for username & password")
-		ctlr.Log.Logger = ctlr.Log.Output(writers)
+		ctlr.Log = log.NewLoggerWithWriter("debug", writers)
 		ctrlManager := test.NewControllerManager(ctlr)
 
 		ctrlManager.StartAndWait(port)
@@ -534,7 +534,7 @@ func TestCVESearch(t *testing.T) {
 		writers := io.MultiWriter(os.Stdout, logFile)
 
 		ctlr := api.NewController(conf)
-		ctlr.Log.Logger = ctlr.Log.Output(writers)
+		ctlr.Log = log.NewLoggerWithWriter("debug", writers)
 		ctlr.Log.Info().Int64("seedUser", seedUser).Int64("seedPass", seedPass).Msg("random seed for username & password")
 		ctrlManager := test.NewControllerManager(ctlr)
 
@@ -1764,7 +1764,7 @@ func TestFixedTagsWithIndex(t *testing.T) {
 		writers := io.MultiWriter(os.Stdout, logFile)
 
 		ctlr := api.NewController(conf)
-		ctlr.Log.Logger = ctlr.Log.Output(writers)
+		ctlr.Log = log.NewLoggerWithWriter("debug", writers)
 
 		cm := test.NewControllerManager(ctlr)
 		cm.StartAndWait(port)
