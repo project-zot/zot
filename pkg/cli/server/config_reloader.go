@@ -7,7 +7,6 @@ import (
 	"syscall"
 
 	"github.com/fsnotify/fsnotify"
-	"github.com/rs/zerolog/log"
 
 	"zotregistry.dev/zot/pkg/api"
 	"zotregistry.dev/zot/pkg/api/config"
@@ -72,13 +71,13 @@ func (hr *HotReloader) Start() {
 				// watch for events
 				case event := <-hr.watcher.Events:
 					if event.Op == fsnotify.Write {
-						log.Info().Msg("config file changed, trying to reload config")
+						logger.Info().Msg("config file changed, trying to reload config")
 
 						newConfig := config.New()
 
 						err := LoadConfiguration(newConfig, hr.configPath)
 						if err != nil {
-							log.Error().Err(err).Msg("failed to reload config, retry writing it.")
+							logger.Error().Err(err).Msg("failed to reload config, retry writing it.")
 
 							continue
 						}
@@ -87,12 +86,12 @@ func (hr *HotReloader) Start() {
 							hr.ctlr.Config.HTTP.Auth.LDAP.CredentialsFile != newConfig.HTTP.Auth.LDAP.CredentialsFile {
 							err = hr.watcher.Remove(hr.ctlr.Config.HTTP.Auth.LDAP.CredentialsFile)
 							if err != nil && !errors.Is(err, fsnotify.ErrNonExistentWatch) {
-								log.Error().Err(err).Msg("failed to remove old watch for the credentials file")
+								logger.Error().Err(err).Msg("failed to remove old watch for the credentials file")
 							}
 
 							err = hr.watcher.Add(newConfig.HTTP.Auth.LDAP.CredentialsFile)
 							if err != nil {
-								log.Panic().Err(err).Str("ldap-credentials-file", newConfig.HTTP.Auth.LDAP.CredentialsFile).
+								logger.Panic().Err(err).Str("ldap-credentials-file", newConfig.HTTP.Auth.LDAP.CredentialsFile).
 									Msg("failed to watch ldap credentials file")
 							}
 						}
@@ -108,18 +107,18 @@ func (hr *HotReloader) Start() {
 					}
 				// watch for errors
 				case err := <-hr.watcher.Errors:
-					log.Panic().Err(err).Str("config", hr.configPath).Msg("fsnotfy error while watching config")
+					logger.Panic().Err(err).Str("config", hr.configPath).Msg("fsnotfy error while watching config")
 				}
 			}
 		}()
 
 		if err := hr.watcher.Add(hr.configPath); err != nil {
-			log.Panic().Err(err).Str("config", hr.configPath).Msg("failed to add config file to fsnotity watcher")
+			logger.Panic().Err(err).Str("config", hr.configPath).Msg("failed to add config file to fsnotity watcher")
 		}
 
 		if hr.ldapCredentialsPath != "" {
 			if err := hr.watcher.Add(hr.ldapCredentialsPath); err != nil {
-				log.Panic().Err(err).Str("ldap-credentials", hr.ldapCredentialsPath).
+				logger.Panic().Err(err).Str("ldap-credentials", hr.ldapCredentialsPath).
 					Msg("failed to add ldap-credentials to fsnotity watcher")
 			}
 		}

@@ -23,7 +23,6 @@ import (
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/redis/go-redis/v9"
-	"github.com/rs/zerolog"
 	. "github.com/smartystreets/goconvey/convey"
 	"gopkg.in/resty.v1"
 
@@ -79,7 +78,7 @@ func createObjectsStore(options createObjectStoreOpts) (
 		useRelPaths bool
 	)
 
-	log := zlog.Logger{Logger: zerolog.New(os.Stdout)}
+	log := zlog.NewTestLogger()
 
 	if options.storageType == storageConstants.S3StorageDriverName {
 		useRelPaths = false
@@ -1014,7 +1013,7 @@ func TestMandatoryAnnotations(t *testing.T) {
 				testDir  string
 			)
 
-			log := zlog.Logger{Logger: zerolog.New(os.Stdout)}
+			log := zlog.NewTestLogger()
 			metrics := monitoring.NewMetricsServer(false, log)
 
 			cacheDir := t.TempDir()
@@ -1211,7 +1210,7 @@ func TestDeleteBlobsInUse(t *testing.T) {
 		t.Run(testcase.testCaseName, func(t *testing.T) {
 			var imgStore storageTypes.ImageStore
 
-			log := zlog.Logger{Logger: zerolog.New(os.Stdout)}
+			log := zlog.NewTestLogger()
 
 			cacheDir := t.TempDir()
 

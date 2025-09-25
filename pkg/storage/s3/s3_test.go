@@ -21,7 +21,6 @@ import (
 	guuid "github.com/gofrs/uuid"
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
-	"github.com/rs/zerolog"
 	. "github.com/smartystreets/goconvey/convey"
 	"gopkg.in/resty.v1"
 
@@ -60,7 +59,7 @@ func cleanupStorage(store driver.StorageDriver, name string) {
 
 func createMockStorage(rootDir string, cacheDir string, dedupe bool, store driver.StorageDriver,
 ) storageTypes.ImageStore {
-	log := log.Logger{Logger: zerolog.New(os.Stdout)}
+	log := log.NewTestLogger()
 	metrics := monitoring.NewMetricsServer(true, log)
 
 	var cacheDriver storageTypes.Cache
@@ -83,7 +82,7 @@ func createMockStorage(rootDir string, cacheDir string, dedupe bool, store drive
 func createMockStorageWithMockCache(rootDir string, dedupe bool, store driver.StorageDriver,
 	cacheDriver storageTypes.Cache,
 ) storageTypes.ImageStore {
-	log := log.Logger{Logger: zerolog.New(os.Stdout)}
+	log := log.NewTestLogger()
 	metrics := monitoring.NewMetricsServer(false, log)
 
 	il := s3.NewImageStore(rootDir, "", dedupe, false, log, metrics, nil, store, cacheDriver, nil, nil)
@@ -130,7 +129,7 @@ func createObjectsStore(rootDir string, cacheDir string, dedupe bool) (
 ) {
 	store := createStoreDriver(rootDir)
 
-	log := log.Logger{Logger: zerolog.New(os.Stdout)}
+	log := log.NewTestLogger()
 	metrics := monitoring.NewMetricsServer(false, log)
 
 	var cacheDriver storageTypes.Cache
@@ -160,7 +159,7 @@ func createObjectsStoreDynamo(rootDir string, cacheDir string, dedupe bool, tabl
 ) {
 	store := createStoreDriver(rootDir)
 
-	log := log.Logger{Logger: zerolog.New(os.Stdout)}
+	log := log.NewTestLogger()
 	metrics := monitoring.NewMetricsServer(false, log)
 
 	var cacheDriver storageTypes.Cache

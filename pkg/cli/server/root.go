@@ -17,7 +17,6 @@ import (
 	glob "github.com/bmatcuk/doublestar/v4"
 	"github.com/go-viper/mapstructure/v2"
 	distspec "github.com/opencontainers/distribution-spec/specs-go"
-	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
@@ -32,6 +31,8 @@ import (
 	zlog "zotregistry.dev/zot/pkg/log"
 	storageConstants "zotregistry.dev/zot/pkg/storage/constants"
 )
+
+var logger = zlog.NewLogger("info", "") // Global logger for configuration validation
 
 // metadataConfig reports metadata after parsing, which we use to track
 // errors.
@@ -50,6 +51,8 @@ func newServeCmd(conf *config.Config) *cobra.Command {
 		Long:    "`serve` stores and distributes OCI images",
 		Args:    cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			logger := zlog.NewLogger("info", "")
+			
 			if len(args) > 0 {
 				if err := LoadConfiguration(conf, args[0]); err != nil {
 					return err
@@ -82,7 +85,7 @@ func newServeCmd(conf *config.Config) *cobra.Command {
 			initShutDownRoutine(ctlr)
 
 			if err := ctlr.Run(); err != nil {
-				log.Error().Err(err).Msg("failed to start controller, exiting")
+				logger.Error().Err(err).Msg("failed to start controller, exiting")
 			}
 
 			return nil
@@ -100,6 +103,8 @@ func newScrubCmd(conf *config.Config) *cobra.Command {
 		Short:   "`scrub` checks manifest/blob integrity",
 		Long:    "`scrub` checks manifest/blob integrity",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			logger := zlog.NewLogger("info", "")
+			
 			if len(args) > 0 {
 				if err := LoadConfiguration(conf, args[0]); err != nil {
 					return err
@@ -121,7 +126,7 @@ func newScrubCmd(conf *config.Config) *cobra.Command {
 				fmt.Sprintf("http://%s/v2", net.JoinHostPort(conf.HTTP.Address, conf.HTTP.Port)),
 				nil)
 			if err != nil {
-				log.Error().Err(err).Msg("failed to create a new http request")
+				logger.Error().Err(err).Msg("failed to create a new http request")
 
 				return err
 			}
@@ -129,7 +134,7 @@ func newScrubCmd(conf *config.Config) *cobra.Command {
 			response, err := http.DefaultClient.Do(req)
 			if err == nil {
 				response.Body.Close()
-				log.Warn().Err(zerr.ErrServerIsRunning).
+				logger.Warn().Err(zerr.ErrServerIsRunning).
 					Msg("server is running, in order to perform the scrub command the server should be shut down")
 
 				return zerr.ErrServerIsRunning
@@ -165,16 +170,18 @@ func newVerifyCmd(conf *config.Config) *cobra.Command {
 		Short:   "`verify` validates a zot config file",
 		Long:    "`verify` validates a zot config file",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			logger := zlog.NewLogger("info", "")
+			
 			if len(args) > 0 {
 				cmd.SilenceUsage = true
 
 				if err := LoadConfiguration(conf, args[0]); err != nil {
-					log.Error().Str("config", args[0]).Msg("invalid config file")
+					logger.Error().Str("config", args[0]).Msg("invalid config file")
 
 					return err
 				}
 
-				log.Info().Str("config", args[0]).Msg("config file is valid")
+				logger.Info().Str("config", args[0]).Msg("config file is valid")
 			}
 
 			return nil
@@ -194,8 +201,10 @@ func NewServerRootCmd() *cobra.Command {
 		Short: "`zot`",
 		Long:  "`zot`",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			logger := zlog.NewLogger("info", "")
+			
 			if showVersion {
-				log.Info().Str("distribution-spec", distspec.Version).Str("commit", config.Commit).
+				logger.Info().Str("distribution-spec", distspec.Version).Str("commit", config.Commit).
 					Str("binary-type", config.BinaryType).Str("go version", config.GoVersion).Msg("version")
 			} else {
 				_ = cmd.Usage()
@@ -226,7 +235,7 @@ func validateStorageConfig(cfg *config.Config, log zlog.Logger) error {
 	for _, storageConfig := range cfg.Storage.SubPaths {
 		if strings.EqualFold(defaultRootDir, storageConfig.RootDirectory) {
 			msg := "invalid storage config, storage subpaths cannot use default storage root directory"
-			log.Error().Err(zerr.ErrBadConfig).Msg(msg)
+			logger.Error().Err(zerr.ErrBadConfig).Msg(msg)
 
 			return fmt.Errorf("%w: %s", zerr.ErrBadConfig, msg)
 		}
@@ -236,7 +245,7 @@ func validateStorageConfig(cfg *config.Config, log zlog.Logger) error {
 			equal := expConfig.ParamsEqual(storageConfig)
 			if !equal {
 				msg := "invalid storage config, storage config with same root directory should have same parameters"
-				log.Error().Err(zerr.ErrBadConfig).Msg(msg)
+				logger.Error().Err(zerr.ErrBadConfig).Msg(msg)
 
 				return fmt.Errorf("%w: %s", zerr.ErrBadConfig, msg)
 			}
@@ -254,7 +263,7 @@ func validateCacheConfig(cfg *config.Config, log zlog.Logger) error {
 	//nolint: lll
 	if cfg.Storage.Dedupe && cfg.Storage.StorageDriver != nil && cfg.Storage.RemoteCache && cfg.Storage.CacheDriver == nil {
 		msg := "invalid database config, dedupe set to true with remote storage and database, but no remote database configured"
-		log.Error().Err(zerr.ErrBadConfig).Msg(msg)
+		logger.Error().Err(zerr.ErrBadConfig).Msg(msg)
 
 		return fmt.Errorf("%w: %s", zerr.ErrBadConfig, msg)
 	}
@@ -265,7 +274,7 @@ func validateCacheConfig(cfg *config.Config, log zlog.Logger) error {
 		// redis is only supported with local storage in a non-clustering scenario with a single zot instance,
 		if cfg.Storage.StorageDriver == nil && cfg.Storage.CacheDriver["name"] != storageConstants.RedisDriverName {
 			msg := "invalid database config, cannot have local storage driver with remote database!"
-			log.Error().Err(zerr.ErrBadConfig).Msg(msg)
+			logger.Error().Err(zerr.ErrBadConfig).Msg(msg)
 
 			return fmt.Errorf("%w: %s", zerr.ErrBadConfig, msg)
 		}
@@ -274,14 +283,14 @@ func validateCacheConfig(cfg *config.Config, log zlog.Logger) error {
 		if cfg.Storage.CacheDriver["name"] != storageConstants.DynamoDBDriverName &&
 			cfg.Storage.CacheDriver["name"] != storageConstants.RedisDriverName {
 			msg := "invalid database config, unsupported database driver"
-			log.Error().Err(zerr.ErrBadConfig).Interface("cacheDriver", cfg.Storage.CacheDriver["name"]).Msg(msg)
+			logger.Error().Err(zerr.ErrBadConfig).Interface("cacheDriver", cfg.Storage.CacheDriver["name"]).Msg(msg)
 
 			return fmt.Errorf("%w: %s", zerr.ErrBadConfig, msg)
 		}
 	}
 
 	if !cfg.Storage.RemoteCache && cfg.Storage.CacheDriver != nil {
-		log.Warn().Err(zerr.ErrBadConfig).Str("directory", cfg.Storage.RootDirectory).
+		logger.Warn().Err(zerr.ErrBadConfig).Str("directory", cfg.Storage.RootDirectory).
 			Msg("invalid database config, remoteCache set to false but cacheDriver config (remote database)" +
 				" provided for directory will ignore and use local database")
 	}
@@ -292,7 +301,7 @@ func validateCacheConfig(cfg *config.Config, log zlog.Logger) error {
 		//nolint: lll
 		if subPath.Dedupe && subPath.StorageDriver != nil && subPath.RemoteCache && subPath.CacheDriver == nil {
 			msg := "invalid database config, dedupe set to true with remote storage and database, but no remote database configured!"
-			log.Error().Err(zerr.ErrBadConfig).Msg(msg)
+			logger.Error().Err(zerr.ErrBadConfig).Msg(msg)
 
 			return fmt.Errorf("%w: %s", zerr.ErrBadConfig, msg)
 		}
@@ -301,7 +310,7 @@ func validateCacheConfig(cfg *config.Config, log zlog.Logger) error {
 			// local storage with remote caching
 			if subPath.StorageDriver == nil {
 				msg := "invalid database config, cannot have local storage driver with remote database!"
-				log.Error().Err(zerr.ErrBadConfig).Msg(msg)
+				logger.Error().Err(zerr.ErrBadConfig).Msg(msg)
 
 				return fmt.Errorf("%w: %s", zerr.ErrBadConfig, msg)
 			}
@@ -309,14 +318,14 @@ func validateCacheConfig(cfg *config.Config, log zlog.Logger) error {
 			// unsupported cache driver
 			if subPath.CacheDriver["name"] != storageConstants.DynamoDBDriverName {
 				msg := "invalid database config, unsupported database driver"
-				log.Error().Err(zerr.ErrBadConfig).Interface("cacheDriver", cfg.Storage.CacheDriver["name"]).Msg(msg)
+				logger.Error().Err(zerr.ErrBadConfig).Interface("cacheDriver", cfg.Storage.CacheDriver["name"]).Msg(msg)
 
 				return fmt.Errorf("%w: %s", zerr.ErrBadConfig, msg)
 			}
 		}
 
 		if !subPath.RemoteCache && subPath.CacheDriver != nil {
-			log.Warn().Err(zerr.ErrBadConfig).Str("directory", cfg.Storage.RootDirectory).
+			logger.Warn().Err(zerr.ErrBadConfig).Str("directory", cfg.Storage.RootDirectory).
 				Msg("invalid database config, remoteCache set to false but cacheDriver config (remote database)" +
 					"provided for directory, will ignore and use local database")
 		}
@@ -327,11 +336,11 @@ func validateCacheConfig(cfg *config.Config, log zlog.Logger) error {
 
 func validateExtensionsConfig(cfg *config.Config, log zlog.Logger) error {
 	if cfg.Extensions != nil && cfg.Extensions.Mgmt != nil {
-		log.Warn().Msg("mgmt extensions configuration option has been made redundant and will be ignored.")
+		logger.Warn().Msg("mgmt extensions configuration option has been made redundant and will be ignored.")
 	}
 
 	if cfg.Extensions != nil && cfg.Extensions.APIKey != nil {
-		log.Warn().Msg("apikey extension configuration will be ignored as API keys " +
+		logger.Warn().Msg("apikey extension configuration will be ignored as API keys " +
 			"are now configurable in the HTTP settings.")
 	}
 
@@ -340,7 +349,7 @@ func validateExtensionsConfig(cfg *config.Config, log zlog.Logger) error {
 		// but those are both enabled by having the search and ui extensions enabled
 		if cfg.Extensions.Search == nil || !*cfg.Extensions.Search.Enable {
 			msg := "failed to enable ui, search extension must be enabled"
-			log.Error().Err(zerr.ErrBadConfig).Msg(msg)
+			logger.Error().Err(zerr.ErrBadConfig).Msg(msg)
 
 			return fmt.Errorf("%w: %s", zerr.ErrBadConfig, msg)
 		}
@@ -350,7 +359,7 @@ func validateExtensionsConfig(cfg *config.Config, log zlog.Logger) error {
 	if cfg.Storage.StorageDriver != nil && cfg.Extensions != nil && cfg.Extensions.Search != nil &&
 		cfg.Extensions.Search.Enable != nil && *cfg.Extensions.Search.Enable && cfg.Extensions.Search.CVE != nil {
 		msg := "failed to enable cve scanning due to incompatibility with remote storage, please disable cve"
-		log.Error().Err(zerr.ErrBadConfig).Msg(msg)
+		logger.Error().Err(zerr.ErrBadConfig).Msg(msg)
 
 		return fmt.Errorf("%w: %s", zerr.ErrBadConfig, msg)
 	}
@@ -360,7 +369,7 @@ func validateExtensionsConfig(cfg *config.Config, log zlog.Logger) error {
 		if subPath.StorageDriver != nil && cfg.Extensions != nil && cfg.Extensions.Search != nil &&
 			cfg.Extensions.Search.Enable != nil && *cfg.Extensions.Search.Enable && cfg.Extensions.Search.CVE != nil {
 			msg := "failed to enable cve scanning due to incompatibility with remote storage, please disable cve"
-			log.Error().Err(zerr.ErrBadConfig).Msg(msg)
+			logger.Error().Err(zerr.ErrBadConfig).Msg(msg)
 
 			return fmt.Errorf("%w: %s", zerr.ErrBadConfig, msg)
 		}
@@ -414,7 +423,7 @@ func validateConfiguration(config *config.Config, log zlog.Logger) error {
 		// enforce s3 driver in case of using storage driver
 		if config.Storage.StorageDriver["name"] != storageConstants.S3StorageDriverName {
 			msg := "unsupported storage driver"
-			log.Error().Err(zerr.ErrBadConfig).Interface("cacheDriver", config.Storage.StorageDriver["name"]).Msg(msg)
+			logger.Error().Err(zerr.ErrBadConfig).Interface("cacheDriver", config.Storage.StorageDriver["name"]).Msg(msg)
 
 			return fmt.Errorf("%w: %s", zerr.ErrBadConfig, msg)
 		}
@@ -422,7 +431,7 @@ func validateConfiguration(config *config.Config, log zlog.Logger) error {
 		// enforce tmpDir in case sync + s3
 		if config.Extensions != nil && config.Extensions.Sync != nil && config.Extensions.Sync.DownloadDir == "" {
 			msg := "using both sync and remote storage features needs config.Extensions.Sync.DownloadDir to be specified"
-			log.Error().Err(zerr.ErrBadConfig).Msg(msg)
+			logger.Error().Err(zerr.ErrBadConfig).Msg(msg)
 
 			return fmt.Errorf("%w: %s", zerr.ErrBadConfig, msg)
 		}
@@ -437,7 +446,7 @@ func validateConfiguration(config *config.Config, log zlog.Logger) error {
 				if len(storageConfig.StorageDriver) != 0 {
 					if storageConfig.StorageDriver["name"] != storageConstants.S3StorageDriverName {
 						msg := "unsupported storage driver"
-						log.Error().Err(zerr.ErrBadConfig).Str("subpath", route).Interface("storageDriver",
+						logger.Error().Err(zerr.ErrBadConfig).Str("subpath", route).Interface("storageDriver",
 							storageConfig.StorageDriver["name"]).Msg(msg)
 
 						return fmt.Errorf("%w: %s", zerr.ErrBadConfig, msg)
@@ -446,7 +455,7 @@ func validateConfiguration(config *config.Config, log zlog.Logger) error {
 					// enforce tmpDir in case sync + s3
 					if config.Extensions != nil && config.Extensions.Sync != nil && config.Extensions.Sync.DownloadDir == "" {
 						msg := "using both sync and remote storage features needs config.Extensions.Sync.DownloadDir to be specified"
-						log.Error().Err(zerr.ErrBadConfig).Msg(msg)
+						logger.Error().Err(zerr.ErrBadConfig).Msg(msg)
 
 						return fmt.Errorf("%w: %s", zerr.ErrBadConfig, msg)
 					}
@@ -461,7 +470,7 @@ func validateConfiguration(config *config.Config, log zlog.Logger) error {
 			ok := glob.ValidatePattern(pattern)
 			if !ok {
 				msg := "failed to compile authorization pattern"
-				log.Error().Err(glob.ErrBadPattern).Str("pattern", pattern).Msg(msg)
+				logger.Error().Err(glob.ErrBadPattern).Str("pattern", pattern).Msg(msg)
 
 				return fmt.Errorf("%w: %s", glob.ErrBadPattern, msg)
 			}
@@ -484,20 +493,20 @@ func validateOpenIDConfig(cfg *config.Config, log zlog.Logger) error {
 				if providerConfig.ClientID == "" || providerConfig.Issuer == "" ||
 					len(providerConfig.Scopes) == 0 {
 					msg := "OpenID provider config requires clientid, issuer and scopes parameters"
-					log.Error().Err(zerr.ErrBadConfig).Msg(msg)
+					logger.Error().Err(zerr.ErrBadConfig).Msg(msg)
 
 					return fmt.Errorf("%w: %s", zerr.ErrBadConfig, msg)
 				}
 			} else if config.IsOauth2Supported(provider) {
 				if providerConfig.ClientID == "" || len(providerConfig.Scopes) == 0 {
 					msg := "OAuth2 provider config requires clientid and scopes parameters"
-					log.Error().Err(zerr.ErrBadConfig).Msg(msg)
+					logger.Error().Err(zerr.ErrBadConfig).Msg(msg)
 
 					return fmt.Errorf("%w: %s", zerr.ErrBadConfig, msg)
 				}
 			} else {
 				msg := "unsupported openid/oauth2 provider"
-				log.Error().Err(zerr.ErrBadConfig).Msg(msg)
+				logger.Error().Err(zerr.ErrBadConfig).Msg(msg)
 
 				return fmt.Errorf("%w: %s", zerr.ErrBadConfig, msg)
 			}
@@ -512,7 +521,7 @@ func validateAuthzPolicies(config *config.Config, log zlog.Logger) error {
 		config.HTTP.Auth.OpenID == nil)) && !authzContainsOnlyAnonymousPolicy(config) {
 		msg := "access control config requires one of httpasswd, ldap or openid authentication " +
 			"or using only 'anonymousPolicy' policies"
-		log.Error().Err(zerr.ErrBadConfig).Msg(msg)
+		logger.Error().Err(zerr.ErrBadConfig).Msg(msg)
 
 		return fmt.Errorf("%w: %s", zerr.ErrBadConfig, msg)
 	}
@@ -589,7 +598,7 @@ func applyDefaultValues(config *config.Config, viperInstance *viper.Viper, log z
 				if config.Extensions.Search.CVE.UpdateInterval < defaultUpdateInterval {
 					config.Extensions.Search.CVE.UpdateInterval = defaultUpdateInterval
 
-					log.Warn().Msg("cve update interval set to too-short interval < 2h, " +
+					logger.Warn().Msg("cve update interval set to too-short interval < 2h, " +
 						"changing update duration to 2 hours and continuing.")
 				}
 
@@ -599,7 +608,7 @@ func applyDefaultValues(config *config.Config, viperInstance *viper.Viper, log z
 
 				if config.Extensions.Search.CVE.Trivy.DBRepository == "" {
 					defaultDBDownloadURL := "ghcr.io/aquasecurity/trivy-db"
-					log.Info().Str("url", defaultDBDownloadURL).Str("component", "config").
+					logger.Info().Str("url", defaultDBDownloadURL).Str("component", "config").
 						Msg("using default trivy-db download URL.")
 
 					config.Extensions.Search.CVE.Trivy.DBRepository = defaultDBDownloadURL
@@ -607,7 +616,7 @@ func applyDefaultValues(config *config.Config, viperInstance *viper.Viper, log z
 
 				if config.Extensions.Search.CVE.Trivy.JavaDBRepository == "" {
 					defaultJavaDBDownloadURL := "ghcr.io/aquasecurity/trivy-java-db"
-					log.Info().Str("url", defaultJavaDBDownloadURL).Str("component", "config").
+					logger.Info().Str("url", defaultJavaDBDownloadURL).Str("component", "config").
 						Msg("using default trivy-java-db download URL.")
 
 					config.Extensions.Search.CVE.Trivy.JavaDBRepository = defaultJavaDBDownloadURL
@@ -687,8 +696,8 @@ func applyDefaultValues(config *config.Config, viperInstance *viper.Viper, log z
 			cachePath := path.Join(cacheDir, storageConstants.BoltdbName+storageConstants.DBExtensionName)
 
 			if _, err := os.Stat(cachePath); err == nil {
-				log.Info().Str("component", "config").Msg("dedupe set to false for s3 driver but used to be true.")
-				log.Info().Str("cache path", cachePath).Msg("found cache database")
+				logger.Info().Str("component", "config").Msg("dedupe set to false for s3 driver but used to be true.")
+				logger.Info().Str("cache path", cachePath).Msg("found cache database")
 
 				config.Storage.RemoteCache = false
 			}
@@ -702,7 +711,7 @@ func applyDefaultValues(config *config.Config, viperInstance *viper.Viper, log z
 			_, hasForcePathStyle := config.Storage.StorageDriver["forcepathstyle"]
 
 			if hasRegionEndpoint && !hasForcePathStyle {
-				log.Warn().
+				logger.Warn().
 					Msg("deprecated: automatically setting forcepathstyle to true for s3 storage driver.")
 				config.Storage.StorageDriver["forcepathstyle"] = true
 			}
@@ -723,8 +732,8 @@ func applyDefaultValues(config *config.Config, viperInstance *viper.Viper, log z
 			subpathCachePath := path.Join(subpathCacheDir, storageConstants.BoltdbName+storageConstants.DBExtensionName)
 
 			if _, err := os.Stat(subpathCachePath); err == nil {
-				log.Info().Str("component", "config").Msg("dedupe set to false for s3 driver but used to be true. ")
-				log.Info().Str("cache path", subpathCachePath).Msg("found cache database")
+				logger.Info().Str("component", "config").Msg("dedupe set to false for s3 driver but used to be true. ")
+				logger.Info().Str("cache path", subpathCachePath).Msg("found cache database")
 
 				storageConfig.RemoteCache = false
 			}
@@ -773,7 +782,7 @@ func updateDistSpecVersion(config *config.Config, log zlog.Logger) {
 		return
 	}
 
-	log.Warn().Str("config version", config.DistSpecVersion).Str("supported version", distspec.Version).
+	logger.Warn().Str("config version", config.DistSpecVersion).Str("supported version", distspec.Version).
 		Msg("config dist-spec version differs from version actually used")
 
 	config.DistSpecVersion = distspec.Version
@@ -795,7 +804,7 @@ func LoadConfiguration(config *config.Config, configPath string) error {
 
 	switch ext {
 	case "":
-		log.Info().Str("path", configPath).Msg("config file with no extension, trying all supported config types")
+		logger.Info().Str("path", configPath).Msg("config file with no extension, trying all supported config types")
 
 		var err error
 
@@ -810,7 +819,7 @@ func LoadConfiguration(config *config.Config, configPath string) error {
 		}
 
 		if err != nil {
-			log.Error().Err(err).Str("path", configPath).Msg("failed to read configuration, tried all supported config types")
+			logger.Error().Err(err).Str("path", configPath).Msg("failed to read configuration, tried all supported config types")
 
 			return err
 		}
@@ -818,7 +827,7 @@ func LoadConfiguration(config *config.Config, configPath string) error {
 		viperInstance.SetConfigFile(configPath)
 
 		if err := viperInstance.ReadInConfig(); err != nil {
-			log.Error().Err(err).Str("path", configPath).Msg("failed to read configuration")
+			logger.Error().Err(err).Str("path", configPath).Msg("failed to read configuration")
 
 			return err
 		}
@@ -837,7 +846,7 @@ func LoadConfiguration(config *config.Config, configPath string) error {
 	}
 
 	if err := viperInstance.UnmarshalExact(&config, decoderOpts...); err != nil {
-		log.Error().Err(err).Msg("failed to unmarshal new config")
+		logger.Error().Err(err).Msg("failed to unmarshal new config")
 
 		return err
 	}
@@ -846,32 +855,32 @@ func LoadConfiguration(config *config.Config, configPath string) error {
 
 	if len(metaData.Keys) == 0 {
 		msg := "failed to load config due to the absence of any key:value pair"
-		log.Error().Err(zerr.ErrBadConfig).Msg(msg)
+		logger.Error().Err(zerr.ErrBadConfig).Msg(msg)
 
 		return fmt.Errorf("%w: %s", zerr.ErrBadConfig, msg)
 	}
 
 	if len(metaData.Unused) > 0 {
 		msg := "failed to load config due to unknown keys"
-		log.Error().Err(zerr.ErrBadConfig).Strs("keys", metaData.Unused).Msg(msg)
+		logger.Error().Err(zerr.ErrBadConfig).Strs("keys", metaData.Unused).Msg(msg)
 
 		return fmt.Errorf("%w: %s", zerr.ErrBadConfig, msg)
 	}
 
 	if err := updateLDAPConfig(config); err != nil {
-		log.Error().Err(err).Msg("failed to read ldap config file")
+		logger.Error().Err(err).Msg("failed to read ldap config file")
 
 		return err
 	}
 
 	if err := updateOpenIDConfig(config); err != nil {
-		log.Error().Err(err).Msg("failed to read openid provider config file(s)")
+		logger.Error().Err(err).Msg("failed to read openid provider config file(s)")
 
 		return err
 	}
 
 	if err := loadSessionKeys(config); err != nil {
-		log.Error().Err(err).Msg("failed to read sessionKeysFile")
+		logger.Error().Err(err).Msg("failed to read sessionKeysFile")
 
 		return err
 	}
@@ -951,7 +960,7 @@ func updateOpenIDConfig(conf *config.Config) error {
 
 			conf.HTTP.Auth.OpenID.Providers[name] = provider
 		} else {
-			log.Warn().Str("provider", name).
+			logger.Warn().Str("provider", name).
 				Msg("deprecated: use the new OpenID provider credentialsfile instead of clientid and clientsecret.")
 		}
 	}
@@ -965,35 +974,35 @@ func readSecretFile(path string, v any, checkUnsetFields bool) error { //nolint:
 	viperInstance.SetConfigFile(path)
 
 	if err := viperInstance.ReadInConfig(); err != nil {
-		log.Error().Err(err).Str("path", path).Msg("failed to read secret file configuration")
+		logger.Error().Err(err).Str("path", path).Msg("failed to read secret file configuration")
 
 		return errors.Join(zerr.ErrBadConfig, err)
 	}
 
 	metaData := &mapstructure.Metadata{}
 	if err := viperInstance.Unmarshal(v, metadataConfig(metaData)); err != nil {
-		log.Error().Err(err).Str("path", path).Msg("failed to unmarshal secret file config")
+		logger.Error().Err(err).Str("path", path).Msg("failed to unmarshal secret file config")
 
 		return errors.Join(zerr.ErrBadConfig, err)
 	}
 
 	if len(metaData.Keys) == 0 {
 		msg := "failed to load secret file due to the absence of any key:value pair"
-		log.Error().Err(zerr.ErrBadConfig).Str("path", path).Msg(msg)
+		logger.Error().Err(zerr.ErrBadConfig).Str("path", path).Msg(msg)
 
 		return fmt.Errorf("%w: %s", zerr.ErrBadConfig, msg)
 	}
 
 	if len(metaData.Unused) > 0 {
 		msg := "failed to load secret file due to unknown keys"
-		log.Error().Err(zerr.ErrBadConfig).Str("path", path).Strs("keys", metaData.Unused).Msg(msg)
+		logger.Error().Err(zerr.ErrBadConfig).Str("path", path).Strs("keys", metaData.Unused).Msg(msg)
 
 		return fmt.Errorf("%w: %s", zerr.ErrBadConfig, msg)
 	}
 
 	if checkUnsetFields && len(metaData.Unset) > 0 {
 		msg := "failed to load secret file due to unset keys"
-		log.Error().Err(zerr.ErrBadConfig).Strs("keys", metaData.Unset).Msg(msg)
+		logger.Error().Err(zerr.ErrBadConfig).Strs("keys", metaData.Unset).Msg(msg)
 
 		return fmt.Errorf("%w: %s", zerr.ErrBadConfig, msg)
 	}
@@ -1005,31 +1014,31 @@ func authzContainsOnlyAnonymousPolicy(cfg *config.Config) bool {
 	adminPolicy := cfg.HTTP.AccessControl.AdminPolicy
 	anonymousPolicyPresent := false
 
-	log.Info().Msg("checking if anonymous authorization is the only type of authorization policy configured")
+	logger.Info().Msg("checking if anonymous authorization is the only type of authorization policy configured")
 
 	if len(adminPolicy.Actions)+len(adminPolicy.Users) > 0 {
-		log.Info().Msg("admin policy detected, anonymous authorization is not the only authorization policy configured")
+		logger.Info().Msg("admin policy detected, anonymous authorization is not the only authorization policy configured")
 
 		return false
 	}
 
 	for _, repository := range cfg.HTTP.AccessControl.Repositories {
 		if len(repository.DefaultPolicy) > 0 {
-			log.Info().Interface("repository", repository).
+			logger.Info().Interface("repository", repository).
 				Msg("default policy detected, anonymous authorization is not the only authorization policy configured")
 
 			return false
 		}
 
 		if len(repository.AnonymousPolicy) > 0 {
-			log.Info().Msg("anonymous authorization detected")
+			logger.Info().Msg("anonymous authorization detected")
 
 			anonymousPolicyPresent = true
 		}
 
 		for _, policy := range repository.Policies {
 			if len(policy.Actions)+len(policy.Users) > 0 {
-				log.Info().Interface("repository", repository).
+				logger.Info().Interface("repository", repository).
 					Msg("repository with non-empty policy detected, " +
 						"anonymous authorization is not the only authorization policy configured")
 
@@ -1047,21 +1056,21 @@ func validateLDAP(config *config.Config, log zlog.Logger) error {
 		ldap := config.HTTP.Auth.LDAP
 		if ldap.UserAttribute == "" {
 			msg := "invalid LDAP configuration, missing mandatory key: userAttribute"
-			log.Error().Str("userAttribute", ldap.UserAttribute).Msg(msg)
+			logger.Error().Str("userAttribute", ldap.UserAttribute).Msg(msg)
 
 			return fmt.Errorf("%w: %s", zerr.ErrLDAPConfig, msg)
 		}
 
 		if ldap.Address == "" {
 			msg := "invalid LDAP configuration, missing mandatory key: address"
-			log.Error().Str("address", ldap.Address).Msg(msg)
+			logger.Error().Str("address", ldap.Address).Msg(msg)
 
 			return fmt.Errorf("%w: %s", zerr.ErrLDAPConfig, msg)
 		}
 
 		if ldap.BaseDN == "" {
 			msg := "invalid LDAP configuration, missing mandatory key: basedn"
-			log.Error().Str("basedn", ldap.BaseDN).Msg(msg)
+			logger.Error().Str("basedn", ldap.BaseDN).Msg(msg)
 
 			return fmt.Errorf("%w: %s", zerr.ErrLDAPConfig, msg)
 		}
@@ -1074,7 +1083,7 @@ func validateHTTP(config *config.Config, log zlog.Logger) error {
 	if config.HTTP.Port != "" {
 		port, err := strconv.ParseInt(config.HTTP.Port, 10, 64)
 		if err != nil || (port < 0 || port > 65535) {
-			log.Error().Str("port", config.HTTP.Port).Msg("invalid port")
+			logger.Error().Str("port", config.HTTP.Port).Msg("invalid port")
 
 			return fmt.Errorf("%w: invalid port %s", zerr.ErrBadConfig, config.HTTP.Port)
 		}
@@ -1086,7 +1095,7 @@ func validateHTTP(config *config.Config, log zlog.Logger) error {
 func validateGC(config *config.Config, log zlog.Logger) error {
 	// enforce GC params
 	if config.Storage.GCDelay < 0 {
-		log.Error().Err(zerr.ErrBadConfig).Dur("delay", config.Storage.GCDelay).
+		logger.Error().Err(zerr.ErrBadConfig).Dur("delay", config.Storage.GCDelay).
 			Msg("invalid garbage-collect delay specified")
 
 		return fmt.Errorf("%w: invalid garbage-collect delay specified %s",
@@ -1094,7 +1103,7 @@ func validateGC(config *config.Config, log zlog.Logger) error {
 	}
 
 	if config.Storage.GCInterval < 0 {
-		log.Error().Err(zerr.ErrBadConfig).Dur("interval", config.Storage.GCInterval).
+		logger.Error().Err(zerr.ErrBadConfig).Dur("interval", config.Storage.GCInterval).
 			Msg("invalid garbage-collect interval specified")
 
 		return fmt.Errorf("%w: invalid garbage-collect interval specified %s",
@@ -1103,12 +1112,12 @@ func validateGC(config *config.Config, log zlog.Logger) error {
 
 	if !config.Storage.GC {
 		if config.Storage.GCDelay != 0 {
-			log.Warn().Err(zerr.ErrBadConfig).
+			logger.Warn().Err(zerr.ErrBadConfig).
 				Msg("garbage-collect delay specified without enabling garbage-collect, will be ignored")
 		}
 
 		if config.Storage.GCInterval != 0 {
-			log.Warn().Err(zerr.ErrBadConfig).
+			logger.Warn().Err(zerr.ErrBadConfig).
 				Msg("periodic garbage-collect interval specified without enabling garbage-collect, will be ignored")
 		}
 	}
@@ -1120,7 +1129,7 @@ func validateGC(config *config.Config, log zlog.Logger) error {
 	// subpaths
 	for name, subPath := range config.Storage.SubPaths {
 		if subPath.GC && subPath.GCDelay <= 0 {
-			log.Error().Err(zerr.ErrBadConfig).
+			logger.Error().Err(zerr.ErrBadConfig).
 				Str("subPath", name).
 				Interface("gcDelay", subPath.GCDelay).
 				Msg("invalid GC delay configuration - cannot be negative or zero")
@@ -1141,7 +1150,7 @@ func validateGCRules(retention config.ImageRetention, log zlog.Logger) error {
 	for _, policy := range retention.Policies {
 		for _, pattern := range policy.Repositories {
 			if ok := glob.ValidatePattern(pattern); !ok {
-				log.Error().Err(glob.ErrBadPattern).Str("pattern", pattern).
+				logger.Error().Err(glob.ErrBadPattern).Str("pattern", pattern).
 					Msg("retention repo glob pattern could not be compiled")
 
 				return fmt.Errorf("%w: retention repo glob pattern could not be compiled: %s",
@@ -1153,7 +1162,7 @@ func validateGCRules(retention config.ImageRetention, log zlog.Logger) error {
 			for _, regex := range tagRule.Patterns {
 				_, err := regexp.Compile(regex)
 				if err != nil {
-					log.Error().Err(glob.ErrBadPattern).Str("regex", regex).
+					logger.Error().Err(glob.ErrBadPattern).Str("regex", regex).
 						Msg("retention tag regex could not be compiled")
 
 					return fmt.Errorf("%w: retention tag regex could not be compiled: %s",
@@ -1173,7 +1182,7 @@ func validateSync(config *config.Config, log zlog.Logger) error {
 			// check retry options are configured for sync
 			if regCfg.MaxRetries != nil && regCfg.RetryDelay == nil {
 				msg := "retryDelay is required when using maxRetries"
-				log.Error().Err(zerr.ErrBadConfig).Int("id", regID).Interface("extensions.sync.registries[id]",
+				logger.Error().Err(zerr.ErrBadConfig).Int("id", regID).Interface("extensions.sync.registries[id]",
 					config.Extensions.Sync.Registries[regID]).Msg(msg)
 
 				return fmt.Errorf("%w: %s", zerr.ErrBadConfig, msg)
@@ -1182,7 +1191,7 @@ func validateSync(config *config.Config, log zlog.Logger) error {
 			// check preserveDigest without compat
 			if regCfg.PreserveDigest && !config.IsCompatEnabled() {
 				msg := "can not use PreserveDigest option without enabling http.Compat"
-				log.Error().Err(zerr.ErrBadConfig).Int("id", regID).Interface("extensions.sync.registries[id]",
+				logger.Error().Err(zerr.ErrBadConfig).Int("id", regID).Interface("extensions.sync.registries[id]",
 					config.Extensions.Sync.Registries[regID]).Msg(msg)
 
 				return fmt.Errorf("%w: %s", zerr.ErrBadConfig, msg)
@@ -1193,7 +1202,7 @@ func validateSync(config *config.Config, log zlog.Logger) error {
 					ok := glob.ValidatePattern(content.Prefix)
 					if !ok {
 						msg := "sync prefix could not be compiled"
-						log.Error().Err(glob.ErrBadPattern).Str("prefix", content.Prefix).Msg(msg)
+						logger.Error().Err(glob.ErrBadPattern).Str("prefix", content.Prefix).Msg(msg)
 
 						return fmt.Errorf("%w: %s: %s", zerr.ErrBadConfig, msg, content.Prefix)
 					}
@@ -1202,7 +1211,7 @@ func validateSync(config *config.Config, log zlog.Logger) error {
 						_, err := regexp.Compile(*content.Tags.Regex)
 						if err != nil {
 							msg := "sync content regex could not be compiled"
-							log.Error().Err(glob.ErrBadPattern).Str("regex", *content.Tags.Regex).Msg(msg)
+							logger.Error().Err(glob.ErrBadPattern).Str("regex", *content.Tags.Regex).Msg(msg)
 
 							return fmt.Errorf("%w: %s: %s", zerr.ErrBadConfig, msg, *content.Tags.Regex)
 						}
@@ -1212,7 +1221,7 @@ func validateSync(config *config.Config, log zlog.Logger) error {
 						_, err := regexp.Compile(*content.Tags.ExcludeRegex)
 						if err != nil {
 							msg := "sync content excludeRegex could not be compiled"
-							log.Error().Err(glob.ErrBadPattern).Str("excludeRegex", *content.Tags.ExcludeRegex).Msg(msg)
+							logger.Error().Err(glob.ErrBadPattern).Str("excludeRegex", *content.Tags.ExcludeRegex).Msg(msg)
 
 							return fmt.Errorf("%w: %s: %s", zerr.ErrBadConfig, msg, *content.Tags.ExcludeRegex)
 						}
@@ -1220,7 +1229,7 @@ func validateSync(config *config.Config, log zlog.Logger) error {
 
 					if content.StripPrefix && !strings.Contains(content.Prefix, "/*") && content.Destination == "/" {
 						msg := "can not use stripPrefix true and destination '/' without using glob patterns in prefix"
-						log.Error().Err(zerr.ErrBadConfig).
+						logger.Error().Err(zerr.ErrBadConfig).
 							Interface("sync content", content).Str("component", "sync").Msg(msg)
 
 						return fmt.Errorf("%w: %s", zerr.ErrBadConfig, msg)
@@ -1240,7 +1249,7 @@ func validateClusterConfig(config *config.Config, log zlog.Logger) error {
 	if config.Cluster != nil {
 		if len(config.Cluster.Members) == 0 {
 			msg := "cannot have 0 members in a scale out cluster"
-			log.Error().Err(zerr.ErrBadConfig).Msg(msg)
+			logger.Error().Err(zerr.ErrBadConfig).Msg(msg)
 
 			return fmt.Errorf("%w: %s", zerr.ErrBadConfig, msg)
 		}
@@ -1250,7 +1259,7 @@ func validateClusterConfig(config *config.Config, log zlog.Logger) error {
 		allowedHashKeyLength := 16
 		if len(config.Cluster.HashKey) != allowedHashKeyLength {
 			msg := fmt.Sprintf("hashKey for scale out cluster must have %d characters", allowedHashKeyLength)
-			log.Error().Err(zerr.ErrBadConfig).
+			logger.Error().Err(zerr.ErrBadConfig).
 				Str("hashkey", config.Cluster.HashKey).
 				Msg(msg)
 

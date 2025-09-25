@@ -9,7 +9,6 @@ import (
 
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
-	"github.com/rs/zerolog"
 	. "github.com/smartystreets/goconvey/convey"
 
 	zerr "zotregistry.dev/zot/errors"
@@ -30,7 +29,7 @@ func TestValidateManifest(t *testing.T) {
 	Convey("Make manifest", t, func(c C) {
 		dir := t.TempDir()
 
-		log := log.Logger{Logger: zerolog.New(os.Stdout)}
+		log := log.NewTestLogger()
 		metrics := monitoring.NewMetricsServer(false, log)
 		cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
 			RootDir:     dir,
@@ -191,7 +190,7 @@ func TestGetReferrersErrors(t *testing.T) {
 	Convey("make storage", t, func(c C) {
 		dir := t.TempDir()
 
-		log := log.Logger{Logger: zerolog.New(os.Stdout)}
+		log := log.NewTestLogger()
 		metrics := monitoring.NewMetricsServer(false, log)
 		cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
 			RootDir:     dir,
@@ -371,7 +370,7 @@ func TestGetReferrersErrors(t *testing.T) {
 }
 
 func TestGetImageIndexErrors(t *testing.T) {
-	log := log.Logger{Logger: zerolog.New(os.Stdout)}
+	log := log.NewTestLogger()
 
 	Convey("Trigger invalid digest error", t, func(c C) {
 		imgStore := &mocks.MockedImageStore{}
@@ -408,7 +407,7 @@ func TestGetImageIndexErrors(t *testing.T) {
 }
 
 func TestGetBlobDescriptorFromRepo(t *testing.T) {
-	log := log.Logger{Logger: zerolog.New(os.Stdout)}
+	log := log.NewTestLogger()
 	metrics := monitoring.NewMetricsServer(false, log)
 
 	tdir := t.TempDir()
@@ -498,7 +497,7 @@ func TestIsSignature(t *testing.T) {
 }
 
 func TestDedupeGeneratorErrors(t *testing.T) {
-	log := log.Logger{Logger: zerolog.New(os.Stdout)}
+	log := log.NewTestLogger()
 
 	// Ideally this would be covered by the end-to-end test,
 	// but the coverage for the error is unpredictable, prone to race conditions

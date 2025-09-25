@@ -107,7 +107,7 @@ func NewScheduler(cfg *config.Config, ms monitoring.MetricServer, logC log.Logge
 		tasksLock:      new(sync.Mutex),
 		generators:     generatorPQ,
 		generatorsLock: new(sync.Mutex),
-		log:            log.Logger{Logger: sublogger},
+		log:            sublogger,
 		// default value
 		metricServer: ms,
 		RateLimit:    rateLimit,

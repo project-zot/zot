@@ -21,7 +21,6 @@ import (
 	godigest "github.com/opencontainers/go-digest"
 	imeta "github.com/opencontainers/image-spec/specs-go"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
-	"github.com/rs/zerolog"
 	. "github.com/smartystreets/goconvey/convey"
 
 	zerr "zotregistry.dev/zot/errors"
@@ -75,7 +74,7 @@ func runAndGetScheduler() *scheduler.Scheduler {
 func TestStorageFSAPIs(t *testing.T) {
 	dir := t.TempDir()
 
-	log := zlog.Logger{Logger: zerolog.New(os.Stdout)}
+	log := zlog.NewTestLogger()
 	metrics := monitoring.NewMetricsServer(false, log)
 	cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
 		RootDir:     dir,
@@ -209,7 +208,7 @@ func FuzzNewBlobUpload(f *testing.F) {
 		defer os.RemoveAll(dir)
 		t.Logf("Input argument is %s", data)
 
-		log := zlog.Logger{Logger: zerolog.New(os.Stdout)}
+		log := zlog.NewTestLogger()
 		metrics := monitoring.NewMetricsServer(false, log)
 		cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
 			RootDir:     dir,
@@ -236,7 +235,7 @@ func FuzzPutBlobChunk(f *testing.F) {
 		defer os.RemoveAll(dir)
 		t.Logf("Input argument is %s", data)
 
-		log := zlog.Logger{Logger: zerolog.New(os.Stdout)}
+		log := zlog.NewTestLogger()
 
 		metrics := monitoring.NewMetricsServer(false, log)
 		cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
@@ -273,7 +272,7 @@ func FuzzPutBlobChunkStreamed(f *testing.F) {
 		defer os.RemoveAll(dir)
 		t.Logf("Input argument is %s", data)
 
-		log := zlog.Logger{Logger: zerolog.New(os.Stdout)}
+		log := zlog.NewTestLogger()
 		metrics := monitoring.NewMetricsServer(false, log)
 		cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
 			RootDir:     dir,
@@ -306,7 +305,7 @@ func FuzzGetBlobUpload(f *testing.F) {
 	f.Fuzz(func(t *testing.T, data1 string, data2 string) {
 		dir := t.TempDir()
 		defer os.RemoveAll(dir)
-		log := zlog.Logger{Logger: zerolog.New(os.Stdout)}
+		log := zlog.NewTestLogger()
 		metrics := monitoring.NewMetricsServer(false, log)
 		cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
 			RootDir:     dir,
@@ -329,7 +328,7 @@ func FuzzGetBlobUpload(f *testing.F) {
 
 func FuzzTestPutGetImageManifest(f *testing.F) {
 	f.Fuzz(func(t *testing.T, data []byte) {
-		log := &zlog.Logger{Logger: zerolog.New(os.Stdout)}
+		log := zlog.NewTestLoggerPtr()
 		metrics := monitoring.NewMetricsServer(false, *log)
 
 		dir := t.TempDir()
@@ -385,7 +384,7 @@ func FuzzTestPutGetImageManifest(f *testing.F) {
 
 func FuzzTestPutDeleteImageManifest(f *testing.F) {
 	f.Fuzz(func(t *testing.T, data []byte) {
-		log := &zlog.Logger{Logger: zerolog.New(os.Stdout)}
+		log := zlog.NewTestLoggerPtr()
 		metrics := monitoring.NewMetricsServer(false, *log)
 
 		dir := t.TempDir()
@@ -446,7 +445,7 @@ func FuzzTestPutDeleteImageManifest(f *testing.F) {
 // no integration with PutImageManifest, just throw fuzz data.
 func FuzzTestDeleteImageManifest(f *testing.F) {
 	f.Fuzz(func(t *testing.T, data []byte) {
-		log := &zlog.Logger{Logger: zerolog.New(os.Stdout)}
+		log := zlog.NewTestLoggerPtr()
 		metrics := monitoring.NewMetricsServer(false, *log)
 
 		dir := t.TempDir()
@@ -483,7 +482,7 @@ func FuzzDirExists(f *testing.F) {
 
 func FuzzInitRepo(f *testing.F) {
 	f.Fuzz(func(t *testing.T, data string) {
-		log := &zlog.Logger{Logger: zerolog.New(os.Stdout)}
+		log := zlog.NewTestLoggerPtr()
 		metrics := monitoring.NewMetricsServer(false, *log)
 
 		dir := t.TempDir()
@@ -509,7 +508,7 @@ func FuzzInitRepo(f *testing.F) {
 
 func FuzzInitValidateRepo(f *testing.F) {
 	f.Fuzz(func(t *testing.T, data string) {
-		log := &zlog.Logger{Logger: zerolog.New(os.Stdout)}
+		log := zlog.NewTestLoggerPtr()
 		metrics := monitoring.NewMetricsServer(false, *log)
 
 		dir := t.TempDir()
@@ -544,7 +543,7 @@ func FuzzInitValidateRepo(f *testing.F) {
 
 func FuzzGetImageTags(f *testing.F) {
 	f.Fuzz(func(t *testing.T, data string) {
-		log := &zlog.Logger{Logger: zerolog.New(os.Stdout)}
+		log := zlog.NewTestLoggerPtr()
 		metrics := monitoring.NewMetricsServer(false, *log)
 
 		dir := t.TempDir()
@@ -570,7 +569,7 @@ func FuzzGetImageTags(f *testing.F) {
 
 func FuzzBlobUploadPath(f *testing.F) {
 	f.Fuzz(func(t *testing.T, repo, uuid string) {
-		log := &zlog.Logger{Logger: zerolog.New(os.Stdout)}
+		log := zlog.NewTestLoggerPtr()
 		metrics := monitoring.NewMetricsServer(false, *log)
 
 		dir := t.TempDir()
@@ -589,7 +588,7 @@ func FuzzBlobUploadPath(f *testing.F) {
 
 func FuzzBlobUploadInfo(f *testing.F) {
 	f.Fuzz(func(t *testing.T, data string, uuid string) {
-		log := &zlog.Logger{Logger: zerolog.New(os.Stdout)}
+		log := zlog.NewTestLoggerPtr()
 		metrics := monitoring.NewMetricsServer(false, *log)
 
 		dir := t.TempDir()
@@ -619,7 +618,7 @@ func FuzzTestGetImageManifest(f *testing.F) {
 		dir := t.TempDir()
 		defer os.RemoveAll(dir)
 
-		log := zlog.Logger{Logger: zerolog.New(os.Stdout)}
+		log := zlog.NewTestLogger()
 		metrics := monitoring.NewMetricsServer(false, log)
 		cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
 			RootDir:     dir,
@@ -648,7 +647,7 @@ func FuzzFinishBlobUpload(f *testing.F) {
 		dir := t.TempDir()
 		defer os.RemoveAll(dir)
 
-		log := zlog.Logger{Logger: zerolog.New(os.Stdout)}
+		log := zlog.NewTestLogger()
 		metrics := monitoring.NewMetricsServer(false, log)
 		cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
 			RootDir:     dir,
@@ -695,7 +694,7 @@ func FuzzFinishBlobUpload(f *testing.F) {
 
 func FuzzFullBlobUpload(f *testing.F) {
 	f.Fuzz(func(t *testing.T, data []byte) {
-		log := &zlog.Logger{Logger: zerolog.New(os.Stdout)}
+		log := zlog.NewTestLoggerPtr()
 		metrics := monitoring.NewMetricsServer(false, *log)
 		repoName := "test"
 
@@ -727,7 +726,7 @@ func FuzzFullBlobUpload(f *testing.F) {
 
 func TestStorageCacheErrors(t *testing.T) {
 	Convey("get error in DedupeBlob() when cache.Put() deduped blob", t, func() {
-		log := zlog.Logger{Logger: zerolog.New(os.Stdout)}
+		log := zlog.NewTestLogger()
 		metrics := monitoring.NewMetricsServer(false, log)
 
 		dir := t.TempDir()
@@ -769,7 +768,7 @@ func TestStorageCacheErrors(t *testing.T) {
 
 func FuzzDedupeBlob(f *testing.F) {
 	f.Fuzz(func(t *testing.T, data string) {
-		log := &zlog.Logger{Logger: zerolog.New(os.Stdout)}
+		log := zlog.NewTestLoggerPtr()
 		metrics := monitoring.NewMetricsServer(false, *log)
 
 		dir := t.TempDir()
@@ -809,7 +808,7 @@ func FuzzDedupeBlob(f *testing.F) {
 
 func FuzzDeleteBlobUpload(f *testing.F) {
 	f.Fuzz(func(t *testing.T, data string) {
-		log := &zlog.Logger{Logger: zerolog.New(os.Stdout)}
+		log := zlog.NewTestLoggerPtr()
 		metrics := monitoring.NewMetricsServer(false, *log)
 		repoName := data
 
@@ -841,7 +840,7 @@ func FuzzDeleteBlobUpload(f *testing.F) {
 
 func FuzzBlobPath(f *testing.F) {
 	f.Fuzz(func(t *testing.T, data string) {
-		log := &zlog.Logger{Logger: zerolog.New(os.Stdout)}
+		log := zlog.NewTestLoggerPtr()
 		metrics := monitoring.NewMetricsServer(false, *log)
 		repoName := data
 
@@ -862,7 +861,7 @@ func FuzzBlobPath(f *testing.F) {
 
 func FuzzCheckBlob(f *testing.F) {
 	f.Fuzz(func(t *testing.T, data string) {
-		log := &zlog.Logger{Logger: zerolog.New(os.Stdout)}
+		log := zlog.NewTestLoggerPtr()
 		metrics := monitoring.NewMetricsServer(false, *log)
 		repoName := data
 
@@ -895,7 +894,7 @@ func FuzzCheckBlob(f *testing.F) {
 
 func FuzzGetBlob(f *testing.F) {
 	f.Fuzz(func(t *testing.T, data string) {
-		log := &zlog.Logger{Logger: zerolog.New(os.Stdout)}
+		log := zlog.NewTestLoggerPtr()
 		metrics := monitoring.NewMetricsServer(false, *log)
 		repoName := data
 
@@ -936,7 +935,7 @@ func FuzzGetBlob(f *testing.F) {
 
 func FuzzDeleteBlob(f *testing.F) {
 	f.Fuzz(func(t *testing.T, data string) {
-		log := &zlog.Logger{Logger: zerolog.New(os.Stdout)}
+		log := zlog.NewTestLoggerPtr()
 		metrics := monitoring.NewMetricsServer(false, *log)
 		repoName := data
 
@@ -973,7 +972,7 @@ func FuzzDeleteBlob(f *testing.F) {
 
 func FuzzGetIndexContent(f *testing.F) {
 	f.Fuzz(func(t *testing.T, data string) {
-		log := &zlog.Logger{Logger: zerolog.New(os.Stdout)}
+		log := zlog.NewTestLoggerPtr()
 		metrics := monitoring.NewMetricsServer(false, *log)
 		repoName := data
 
@@ -1010,7 +1009,7 @@ func FuzzGetIndexContent(f *testing.F) {
 
 func FuzzGetBlobContent(f *testing.F) {
 	f.Fuzz(func(t *testing.T, data string) {
-		log := &zlog.Logger{Logger: zerolog.New(os.Stdout)}
+		log := zlog.NewTestLoggerPtr()
 		metrics := monitoring.NewMetricsServer(false, *log)
 		repoName := data
 
@@ -1088,7 +1087,7 @@ func TestDedupeLinks(t *testing.T) {
 		},
 	}
 
-	log := zlog.Logger{Logger: zerolog.New(os.Stdout)}
+	log := zlog.NewTestLogger()
 	metrics := monitoring.NewMetricsServer(false, log)
 
 	for _, testCase := range testCases {
@@ -1485,7 +1484,7 @@ func TestDedupe(t *testing.T) {
 		Convey("Valid ImageStore", func() {
 			dir := t.TempDir()
 
-			log := zlog.Logger{Logger: zerolog.New(os.Stdout)}
+			log := zlog.NewTestLogger()
 			metrics := monitoring.NewMetricsServer(false, log)
 			cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
 				RootDir:     dir,
@@ -1505,7 +1504,7 @@ func TestNegativeCases(t *testing.T) {
 	Convey("Invalid root dir", t, func(c C) {
 		dir := t.TempDir()
 
-		log := zlog.Logger{Logger: zerolog.New(os.Stdout)}
+		log := zlog.NewTestLogger()
 		metrics := monitoring.NewMetricsServer(false, log)
 		cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
 			RootDir:     dir,
@@ -1529,7 +1528,7 @@ func TestNegativeCases(t *testing.T) {
 	Convey("Invalid init repo", t, func(c C) {
 		dir := t.TempDir()
 
-		log := zlog.Logger{Logger: zerolog.New(os.Stdout)}
+		log := zlog.NewTestLogger()
 		metrics := monitoring.NewMetricsServer(false, log)
 		cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
 			RootDir:     dir,
@@ -1579,7 +1578,7 @@ func TestNegativeCases(t *testing.T) {
 	Convey("Invalid validate repo", t, func(c C) {
 		dir := t.TempDir()
 
-		log := zlog.Logger{Logger: zerolog.New(os.Stdout)}
+		log := zlog.NewTestLogger()
 		metrics := monitoring.NewMetricsServer(false, log)
 		cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
 			RootDir:     dir,
@@ -1693,7 +1692,7 @@ func TestNegativeCases(t *testing.T) {
 	Convey("Invalid get image tags", t, func(c C) {
 		dir := t.TempDir()
 
-		log := zlog.Logger{Logger: zerolog.New(os.Stdout)}
+		log := zlog.NewTestLogger()
 		metrics := monitoring.NewMetricsServer(false, log)
 		cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
 			RootDir:     dir,
@@ -1720,7 +1719,7 @@ func TestNegativeCases(t *testing.T) {
 	Convey("Invalid get image manifest", t, func(c C) {
 		dir := t.TempDir()
 
-		log := zlog.Logger{Logger: zerolog.New(os.Stdout)}
+		log := zlog.NewTestLogger()
 		metrics := monitoring.NewMetricsServer(false, log)
 		cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
 			RootDir:     dir,
@@ -1768,7 +1767,7 @@ func TestNegativeCases(t *testing.T) {
 	Convey("Invalid new blob upload", t, func(c C) {
 		dir := t.TempDir()
 
-		log := zlog.Logger{Logger: zerolog.New(os.Stdout)}
+		log := zlog.NewTestLogger()
 		metrics := monitoring.NewMetricsServer(false, log)
 		cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
 			RootDir:     dir,
@@ -1946,7 +1945,7 @@ func TestInjectWriteFile(t *testing.T) {
 	Convey("writeFile without commit", t, func() {
 		dir := t.TempDir()
 
-		log := zlog.Logger{Logger: zerolog.New(os.Stdout)}
+		log := zlog.NewTestLogger()
 		metrics := monitoring.NewMetricsServer(false, log)
 		cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
 			RootDir:     dir,
@@ -2646,7 +2645,7 @@ func TestInitRepo(t *testing.T) {
 	Convey("Get error when creating BlobUploadDir subdir on initRepo", t, func() {
 		dir := t.TempDir()
 
-		log := zlog.Logger{Logger: zerolog.New(os.Stdout)}
+		log := zlog.NewTestLogger()
 		metrics := monitoring.NewMetricsServer(false, log)
 		cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
 			RootDir:     dir,
@@ -2668,7 +2667,7 @@ func TestValidateRepo(t *testing.T) {
 	Convey("Get error when unable to read directory", t, func() {
 		dir := t.TempDir()
 
-		log := zlog.Logger{Logger: zerolog.New(os.Stdout)}
+		log := zlog.NewTestLogger()
 		metrics := monitoring.NewMetricsServer(false, log)
 		cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
 			RootDir:     dir,
@@ -2688,7 +2687,7 @@ func TestValidateRepo(t *testing.T) {
 	Convey("Get error when repo name is not compliant with repo spec", t, func() {
 		dir := t.TempDir()
 
-		log := zlog.Logger{Logger: zerolog.New(os.Stdout)}
+		log := zlog.NewTestLogger()
 		metrics := monitoring.NewMetricsServer(false, log)
 		cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
 			RootDir:     dir,
@@ -2733,7 +2732,7 @@ func TestGetRepositories(t *testing.T) {
 	Convey("Verify errors and repos returned by GetRepositories()", t, func() {
 		dir := t.TempDir()
 
-		log := zlog.Logger{Logger: zerolog.New(os.Stdout)}
+		log := zlog.NewTestLogger()
 		metrics := monitoring.NewMetricsServer(false, log)
 		cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
 			RootDir:     dir,
@@ -2828,7 +2827,7 @@ func TestGetRepositories(t *testing.T) {
 	Convey("Verify GetRepositories() doesn't return '.' when having an oci layout as root directory ", t, func() {
 		dir := t.TempDir()
 
-		log := zlog.Logger{Logger: zerolog.New(os.Stdout)}
+		log := zlog.NewTestLogger()
 		metrics := monitoring.NewMetricsServer(false, log)
 		cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
 			RootDir:     dir,
@@ -2874,7 +2873,7 @@ func TestGetRepositories(t *testing.T) {
 		err := os.Mkdir(rootDir, 0o755)
 		So(err, ShouldBeNil)
 
-		log := zlog.Logger{Logger: zerolog.New(os.Stdout)}
+		log := zlog.NewTestLogger()
 		metrics := monitoring.NewMetricsServer(false, log)
 		cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
 			RootDir:     rootDir,
@@ -2918,7 +2917,7 @@ func TestGetRepositories(t *testing.T) {
 
 func TestGetNextRepository(t *testing.T) {
 	dir := t.TempDir()
-	log := zlog.Logger{Logger: zerolog.New(os.Stdout)}
+	log := zlog.NewTestLogger()
 	metrics := monitoring.NewMetricsServer(false, log)
 	cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
 		RootDir:     dir,
@@ -2995,7 +2994,7 @@ func TestPutBlobChunkStreamed(t *testing.T) {
 	Convey("Get error on opening file", t, func() {
 		dir := t.TempDir()
 
-		log := zlog.Logger{Logger: zerolog.New(os.Stdout)}
+		log := zlog.NewTestLogger()
 		metrics := monitoring.NewMetricsServer(false, log)
 		cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
 			RootDir:     dir,
@@ -3023,7 +3022,7 @@ func TestPullRange(t *testing.T) {
 	Convey("Repo layout", t, func(c C) {
 		dir := t.TempDir()
 
-		log := zlog.Logger{Logger: zerolog.New(os.Stdout)}
+		log := zlog.NewTestLogger()
 		metrics := monitoring.NewMetricsServer(false, log)
 
 		Convey("Negative cases", func() {
@@ -3073,7 +3072,7 @@ func TestPullRange(t *testing.T) {
 func TestStatIndex(t *testing.T) {
 	Convey("NewImageStore", t, func() {
 		dir := t.TempDir()
-		log := zlog.Logger{Logger: zerolog.New(os.Stdout)}
+		log := zlog.NewTestLogger()
 		metrics := monitoring.NewMetricsServer(false, log)
 		imgStore := local.NewImageStore(dir, true, true, log, metrics, nil, nil, nil, nil)
 
@@ -3091,7 +3090,7 @@ func TestStatIndex(t *testing.T) {
 func TestStorageDriverErr(t *testing.T) {
 	dir := t.TempDir()
 
-	log := zlog.Logger{Logger: zerolog.New(os.Stdout)}
+	log := zlog.NewTestLogger()
 	metrics := monitoring.NewMetricsServer(false, log)
 	cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
 		RootDir:     dir,

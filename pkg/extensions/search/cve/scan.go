@@ -19,7 +19,7 @@ func NewScanTaskGenerator(
 	sublogger := logC.With().Str("component", "cve").Logger()
 
 	return &scanTaskGenerator{
-		log:        log.Logger{Logger: sublogger},
+		log:        sublogger,
 		metaDB:     metaDB,
 		scanner:    scanner,
 		lock:       &sync.Mutex{},

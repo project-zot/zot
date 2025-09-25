@@ -5,10 +5,10 @@ package client
 
 import (
 	distspec "github.com/opencontainers/distribution-spec/specs-go"
-	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 
 	"zotregistry.dev/zot/pkg/api/config"
+	"zotregistry.dev/zot/pkg/log"
 )
 
 // "zli" - client-side cli.
@@ -21,7 +21,8 @@ func NewCliRootCmd() *cobra.Command {
 		Long:  "`zli`",
 		Run: func(cmd *cobra.Command, args []string) {
 			if showVersion {
-				log.Info().Str("distribution-spec", distspec.Version).Str("commit", config.Commit).
+				logger := log.NewLogger("info", "")
+				logger.Info().Str("distribution-spec", distspec.Version).Str("commit", config.Commit).
 					Str("binary-type", config.BinaryType).Str("go version", config.GoVersion).Msg("version")
 			} else {
 				_ = cmd.Usage()

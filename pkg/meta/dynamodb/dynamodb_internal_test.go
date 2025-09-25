@@ -9,7 +9,6 @@ import (
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	guuid "github.com/gofrs/uuid"
-	"github.com/rs/zerolog"
 	. "github.com/smartystreets/goconvey/convey"
 
 	"zotregistry.dev/zot/pkg/log"
@@ -59,7 +58,7 @@ func TestWrapperErrors(t *testing.T) {
 			UserDataTablename: userDataTablename,
 			APIKeyTablename:   apiKeyTablename,
 			Patches:           version.GetDynamoDBPatches(),
-			Log:               log.Logger{Logger: zerolog.New(os.Stdout)},
+			Log:               log.NewTestLogger(),
 		}
 
 		// The table creation should fail as the endpoint is not configured correctly
@@ -94,7 +93,7 @@ func TestWrapperErrors(t *testing.T) {
 			VersionTablename:  versionTablename,
 			UserDataTablename: userDataTablename,
 			Patches:           version.GetDynamoDBPatches(),
-			Log:               log.Logger{Logger: zerolog.New(os.Stdout)},
+			Log:               log.NewTestLogger(),
 		}
 
 		// The tables were not created so delete calls fail, but dynamoWrapper should not error
