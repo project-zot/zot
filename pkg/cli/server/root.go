@@ -648,6 +648,7 @@ func applyDefaultValues(config *config.Config, viperInstance *viper.Viper, log z
 		}
 	}
 
+	// set default values in case GC is disabled
 	if !config.Storage.GC {
 		if viperInstance.Get("storage::gcdelay") == nil {
 			config.Storage.GCDelay = 0
