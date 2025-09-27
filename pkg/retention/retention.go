@@ -54,8 +54,8 @@ func (p policyManager) HasDeleteUntagged(repo string) bool {
 		return true
 	}
 
-	// default
-	return false
+	// by default zot deletes untagged manifests if the config does not contain retention settings and gc is enabled
+	return true
 }
 
 func (p policyManager) HasDeleteReferrer(repo string) bool {

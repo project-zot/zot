@@ -1108,7 +1108,7 @@ func TestGarbageCollectAndRetentionMetaDB(t *testing.T) {
 					So(err, ShouldBeNil)
 
 					_, _, _, err = imgStore.GetImageManifest("gc-test1", gcUntagged1.DigestStr())
-					So(err, ShouldBeNil)
+					So(err, ShouldNotBeNil)
 
 					_, _, _, err = imgStore.GetImageManifest("gc-test1", ref1.DigestStr())
 					So(err, ShouldBeNil)
@@ -1319,6 +1319,7 @@ func TestGarbageCollectDeletion(t *testing.T) {
 		metrics := monitoring.NewMetricsServer(false, log)
 
 		trueVal := true
+		falseVal := false
 
 		// Create temporary directory
 		rootDir := t.TempDir()
@@ -1534,6 +1535,80 @@ func TestGarbageCollectDeletion(t *testing.T) {
 
 				_, err = os.Stat(path.Join(blobsDir, rootIndexDigest.Algorithm().String(), rootIndexDigest.Encoded()))
 				So(err, ShouldNotBeNil)
+			})
+
+			Convey("do not gc untagged manifests after deleting the tag of the top index", func() {
+				gc := gc.NewGarbageCollect(imgStore, metaDB, gc.Options{
+					Delay: 1 * time.Millisecond,
+					ImageRetention: config.ImageRetention{
+						Delay: 1 * time.Millisecond,
+						Policies: []config.RetentionPolicy{
+							{
+								Repositories:    []string{"**"},
+								DeleteReferrers: true,
+								DeleteUntagged:  &falseVal,
+								KeepTags:        []config.KeepTagsPolicy{},
+							},
+						},
+					},
+				}, audit, log)
+
+				err = deleteTagInStorage(rootDir, repoName, "topindex")
+
+				err = gc.CleanRepo(ctx, repoName)
+				So(err, ShouldBeNil)
+
+				// manifest1, bottomIndex1 and topIndex are untagged, so manifest1 should not be deleted
+				tags, err := readTagsFromStorage(rootDir, repoName, manifest1Digest)
+				So(err, ShouldBeNil)
+				So(tags, ShouldContain, "")
+				So(len(tags), ShouldEqual, 1)
+
+				_, err = os.Stat(path.Join(blobsDir, manifest1Digest.Algorithm().String(), manifest1Digest.Encoded()))
+				So(err, ShouldBeNil)
+
+				// manifest2 is has a tag, so it should not be deleted
+				tags, err = readTagsFromStorage(rootDir, repoName, manifest2Digest)
+				So(err, ShouldBeNil)
+				So(tags, ShouldContain, "manifest2")
+				So(len(tags), ShouldEqual, 1)
+
+				_, err = os.Stat(path.Join(blobsDir, manifest2Digest.Algorithm().String(), manifest2Digest.Encoded()))
+				So(err, ShouldBeNil)
+
+				// manifest3 is referenced by tagged bottomIndex2, so it should not be deleted
+				tags, err = readTagsFromStorage(rootDir, repoName, manifest3Digest)
+				So(err, ShouldBeNil)
+				So(tags, ShouldContain, "")
+				So(len(tags), ShouldEqual, 1)
+
+				_, err = os.Stat(path.Join(blobsDir, manifest3Digest.Algorithm().String(), manifest3Digest.Encoded()))
+				So(err, ShouldBeNil)
+
+				// bottomIndex1 and topIndex are untagged, so bottomIndex1 should not be deleted
+				_, err = readTagsFromStorage(rootDir, repoName, bottomIndex1Digest)
+				So(err, ShouldBeNil)
+
+				_, err = os.Stat(path.Join(blobsDir, bottomIndex1Digest.Algorithm().String(), bottomIndex1Digest.Encoded()))
+				So(err, ShouldBeNil)
+
+				// bottomIndex2 is has a tag, so it should not be deleted
+				tags, err = readTagsFromStorage(rootDir, repoName, bottomIndex2Digest)
+				So(err, ShouldBeNil)
+				So(tags, ShouldContain, "bottomIndex2")
+				So(len(tags), ShouldEqual, 1)
+
+				_, err = os.Stat(path.Join(blobsDir, bottomIndex2Digest.Algorithm().String(), bottomIndex2Digest.Encoded()))
+				So(err, ShouldBeNil)
+
+				// topIndex is untagged, so it should not be deleted
+				tags, err = readTagsFromStorage(rootDir, repoName, rootIndexDigest)
+				So(err, ShouldBeNil)
+				So(tags, ShouldContain, "")
+				So(len(tags), ShouldEqual, 1)
+
+				_, err = os.Stat(path.Join(blobsDir, rootIndexDigest.Algorithm().String(), rootIndexDigest.Encoded()))
+				So(err, ShouldBeNil)
 			})
 
 			Convey("gc unmatching tags", func() {
@@ -2414,7 +2489,7 @@ func TestGarbageCollectAndRetentionNoMetaDB(t *testing.T) {
 					So(err, ShouldBeNil)
 
 					_, _, _, err = imgStore.GetImageManifest("gc-test1", gcUntagged1.DigestStr())
-					So(err, ShouldBeNil)
+					So(err, ShouldNotBeNil)
 
 					_, _, _, err = imgStore.GetImageManifest("gc-test1", ref1.DigestStr())
 					So(err, ShouldBeNil)
