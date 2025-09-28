@@ -50,7 +50,7 @@ func TestWrapperErrors(t *testing.T) {
 		boltDriver, err := boltdb.GetBoltDriver(boltDBParams)
 		So(err, ShouldBeNil)
 
-		log := log.NewLogger("debug", "")
+		log := log.NewTestLogger()
 
 		boltdbWrapper, err := boltdb.New(boltDriver, log)
 		So(boltdbWrapper, ShouldNotBeNil)

@@ -38,7 +38,7 @@ func TestService(t *testing.T) {
 			URLs: []string{"http://localhost"},
 		}
 
-		service, err := New(conf, "", nil, os.TempDir(), storage.StoreController{}, mocks.MetaDBMock{}, log.NewLogger("debug", ""))
+		service, err := New(conf, "", nil, os.TempDir(), storage.StoreController{}, mocks.MetaDBMock{}, log.NewTestLogger())
 		So(err, ShouldBeNil)
 
 		err = service.SyncRepo(context.Background(), "repo")
@@ -50,7 +50,7 @@ func TestService(t *testing.T) {
 			URLs: []string{"http://localhost"},
 		}
 
-		service, err := New(conf, "", nil, os.TempDir(), storage.StoreController{}, mocks.MetaDBMock{}, log.Logger{})
+		service, err := New(conf, "", nil, os.TempDir(), storage.StoreController{}, mocks.MetaDBMock{}, log.NewTestLogger())
 		So(err, ShouldBeNil)
 
 		// Create a context that's already cancelled
@@ -67,7 +67,7 @@ func TestService(t *testing.T) {
 			URLs: []string{"http://localhost"},
 		}
 
-		service, err := New(conf, "", nil, os.TempDir(), storage.StoreController{}, mocks.MetaDBMock{}, log.Logger{})
+		service, err := New(conf, "", nil, os.TempDir(), storage.StoreController{}, mocks.MetaDBMock{}, log.NewTestLogger())
 		So(err, ShouldBeNil)
 
 		// Create a mock remote that returns tags so we can reach the loop
@@ -92,7 +92,7 @@ func TestService(t *testing.T) {
 			URLs: []string{"http://localhost"},
 		}
 
-		service, err := New(conf, "", nil, os.TempDir(), storage.StoreController{}, mocks.MetaDBMock{}, log.Logger{})
+		service, err := New(conf, "", nil, os.TempDir(), storage.StoreController{}, mocks.MetaDBMock{}, log.NewTestLogger())
 		So(err, ShouldBeNil)
 
 		// Create a minimal mock remote that only returns tags
@@ -129,7 +129,7 @@ func TestService(t *testing.T) {
 			OnlySigned: &onlySigned,
 		}
 
-		service, err := New(conf, "", nil, os.TempDir(), storage.StoreController{}, mocks.MetaDBMock{}, log.Logger{})
+		service, err := New(conf, "", nil, os.TempDir(), storage.StoreController{}, mocks.MetaDBMock{}, log.NewTestLogger())
 		So(err, ShouldBeNil)
 
 		// Create a mock remote that returns necessary data
@@ -168,10 +168,10 @@ func TestService(t *testing.T) {
 			RetryDelay: &retryDelay,
 		}
 
-		service, err := New(conf, "", nil, os.TempDir(), storage.StoreController{}, mocks.MetaDBMock{}, log.Logger{})
+		service, err := New(conf, "", nil, os.TempDir(), storage.StoreController{}, mocks.MetaDBMock{}, log.NewTestLogger())
 		So(err, ShouldBeNil)
 
-		onDemand := NewOnDemand(log.Logger{})
+		onDemand := NewOnDemand(log.NewTestLogger())
 		onDemand.Add(service)
 		ctx := context.Background()
 
@@ -290,7 +290,7 @@ func TestService(t *testing.T) {
 			}},
 		}
 
-		service1, err := New(conf1, "", nil, os.TempDir(), storage.StoreController{}, mocks.MetaDBMock{}, log.Logger{})
+		service1, err := New(conf1, "", nil, os.TempDir(), storage.StoreController{}, mocks.MetaDBMock{}, log.NewTestLogger())
 		So(err, ShouldBeNil)
 
 		// Create second service for normal processing
@@ -303,10 +303,10 @@ func TestService(t *testing.T) {
 			}},
 		}
 
-		service2, err := New(conf2, "", nil, os.TempDir(), storage.StoreController{}, mocks.MetaDBMock{}, log.Logger{})
+		service2, err := New(conf2, "", nil, os.TempDir(), storage.StoreController{}, mocks.MetaDBMock{}, log.NewTestLogger())
 		So(err, ShouldBeNil)
 
-		onDemand := NewOnDemand(log.Logger{})
+		onDemand := NewOnDemand(log.NewTestLogger())
 		onDemand.Add(service1) // First service will return ErrSyncImageFilteredOut
 		onDemand.Add(service2) // Second service will process normally but error on network
 
@@ -335,10 +335,10 @@ func TestService(t *testing.T) {
 				}},
 			}
 
-			service, err := New(conf, "", nil, os.TempDir(), storage.StoreController{}, mocks.MetaDBMock{}, log.Logger{})
+			service, err := New(conf, "", nil, os.TempDir(), storage.StoreController{}, mocks.MetaDBMock{}, log.NewTestLogger())
 			So(err, ShouldBeNil)
 
-			onDemand := NewOnDemand(log.Logger{})
+			onDemand := NewOnDemand(log.NewTestLogger())
 			onDemand.Add(service)
 			return service, onDemand
 		}
@@ -375,10 +375,10 @@ func TestService(t *testing.T) {
 				}},
 			}
 
-			service, err := New(conf, "", nil, os.TempDir(), storage.StoreController{}, mocks.MetaDBMock{}, log.Logger{})
+			service, err := New(conf, "", nil, os.TempDir(), storage.StoreController{}, mocks.MetaDBMock{}, log.NewTestLogger())
 			So(err, ShouldBeNil)
 
-			onDemand := NewOnDemand(log.Logger{})
+			onDemand := NewOnDemand(log.NewTestLogger())
 			onDemand.Add(service)
 			return service, onDemand, retryDelay
 		}
@@ -471,7 +471,7 @@ func TestService(t *testing.T) {
 		// This ensures the "waiting on channel" message is logged and the channel receive happens
 
 		Convey("SyncImage assured channel waiting", func() {
-			onDemand := NewOnDemand(log.Logger{})
+			onDemand := NewOnDemand(log.NewTestLogger())
 
 			// Create request and pre-populate with a channel that we control
 			req := request{
@@ -505,7 +505,7 @@ func TestService(t *testing.T) {
 		})
 
 		Convey("SyncReferrers assured channel waiting", func() {
-			onDemand := NewOnDemand(log.Logger{})
+			onDemand := NewOnDemand(log.NewTestLogger())
 
 			// Create request and pre-populate with a channel that we control
 			req := request{
@@ -544,7 +544,7 @@ func TestDestinationRegistry(t *testing.T) {
 	Convey("make StoreController", t, func() {
 		dir := t.TempDir()
 
-		log := log.NewLogger("debug", "")
+		log := log.NewTestLogger()
 		metrics := monitoring.NewMetricsServer(false, log)
 		cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
 			RootDir:     dir,

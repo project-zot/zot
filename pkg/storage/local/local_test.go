@@ -61,7 +61,7 @@ var DeleteReferrers = config.ImageRetention{ //nolint: gochecknoglobals
 var errCache = errors.New("new cache error")
 
 func runAndGetScheduler() *scheduler.Scheduler {
-	log := zlog.NewLogger("debug", "")
+	log := zlog.NewTestLogger()
 	metrics := monitoring.NewMetricsServer(true, log)
 	taskScheduler := scheduler.NewScheduler(config.New(), metrics, log)
 	taskScheduler.RateLimit = 50 * time.Millisecond
@@ -1046,7 +1046,7 @@ func FuzzGetBlobContent(f *testing.F) {
 
 func FuzzRunGCRepo(f *testing.F) {
 	f.Fuzz(func(t *testing.T, data string) {
-		log := zlog.NewLogger("debug", "")
+		log := zlog.NewTestLogger()
 		audit := zlog.NewAuditLogger("debug", "")
 
 		metrics := monitoring.NewMetricsServer(false, log)
@@ -2061,7 +2061,7 @@ func TestGarbageCollectForImageStore(t *testing.T) {
 		})
 
 		Convey("Garbage collect - the manifest which the reference points to can be found", func() {
-			log := zlog.NewLogger("debug", "")
+			log := zlog.NewTestLogger()
 			audit := zlog.NewAuditLogger("debug", "")
 
 			metrics := monitoring.NewMetricsServer(false, log)
@@ -2213,7 +2213,7 @@ func TestGarbageCollectImageUnknownManifest(t *testing.T) {
 
 		dir := t.TempDir()
 
-		log := zlog.NewLogger("debug", "")
+		log := zlog.NewTestLogger()
 		audit := zlog.NewAuditLogger("debug", "")
 
 		metrics := monitoring.NewMetricsServer(false, log)
@@ -2396,7 +2396,7 @@ func TestGarbageCollectErrors(t *testing.T) {
 
 		dir := t.TempDir()
 
-		log := zlog.NewLogger("debug", "")
+		log := zlog.NewTestLogger()
 		audit := zlog.NewAuditLogger("debug", "")
 
 		metrics := monitoring.NewMetricsServer(false, log)

@@ -49,7 +49,7 @@ func TestResolverGlobalSearch(t *testing.T) {
 				graphql.DefaultRecover)
 			mockCve := mocks.CveInfoMock{}
 			repos, images, layers, err := globalSearch(responseContext, query, mockMetaDB, &gql_generated.Filter{},
-				&gql_generated.PageInput{}, mockCve, log.NewLogger("debug", ""))
+				&gql_generated.PageInput{}, mockCve, log.NewTestLogger())
 			So(err, ShouldNotBeNil)
 			So(images, ShouldBeEmpty)
 			So(layers, ShouldBeEmpty)
@@ -65,11 +65,11 @@ func TestResolverGlobalSearch(t *testing.T) {
 				graphql.DefaultRecover)
 
 			_, _, _, err := globalSearch(responseContext, "repo", mocks.MetaDBMock{}, &gql_generated.Filter{},
-				pageInput, mocks.CveInfoMock{}, log.NewLogger("debug", ""))
+				pageInput, mocks.CveInfoMock{}, log.NewTestLogger())
 			So(err, ShouldNotBeNil)
 
 			_, _, _, err = globalSearch(responseContext, "repo:tag", mocks.MetaDBMock{}, &gql_generated.Filter{},
-				pageInput, mocks.CveInfoMock{}, log.NewLogger("debug", ""))
+				pageInput, mocks.CveInfoMock{}, log.NewTestLogger())
 			So(err, ShouldNotBeNil)
 		})
 
@@ -86,7 +86,7 @@ func TestResolverGlobalSearch(t *testing.T) {
 			responseContext := graphql.WithResponseContext(context.Background(), graphql.DefaultErrorPresenter,
 				graphql.DefaultRecover)
 			repos, images, layers, err := globalSearch(responseContext, query, mockMetaDB, &gql_generated.Filter{},
-				&gql_generated.PageInput{}, mockCve, log.NewLogger("debug", ""))
+				&gql_generated.PageInput{}, mockCve, log.NewTestLogger())
 			So(err, ShouldNotBeNil)
 			So(images, ShouldBeEmpty)
 			So(layers, ShouldBeEmpty)
@@ -106,7 +106,7 @@ func TestResolverGlobalSearch(t *testing.T) {
 
 			responseContext := graphql.WithResponseContext(ctx, graphql.DefaultErrorPresenter, graphql.DefaultRecover)
 			repos, images, layers, err := globalSearch(responseContext, query, mockMetaDB, &gql_generated.Filter{},
-				&gql_generated.PageInput{}, mocks.CveInfoMock{}, log.NewLogger("debug", ""))
+				&gql_generated.PageInput{}, mocks.CveInfoMock{}, log.NewTestLogger())
 			So(err, ShouldNotBeNil)
 			So(images, ShouldBeEmpty)
 			So(layers, ShouldBeEmpty)
@@ -119,7 +119,7 @@ func TestResolverGlobalSearch(t *testing.T) {
 
 			responseContext := graphql.WithResponseContext(ctx, graphql.DefaultErrorPresenter, graphql.DefaultRecover)
 			repos, images, layers, err := globalSearch(responseContext, query, mocks.MetaDBMock{}, &gql_generated.Filter{},
-				&gql_generated.PageInput{Limit: ref(-10)}, mocks.CveInfoMock{}, log.NewLogger("debug", ""))
+				&gql_generated.PageInput{Limit: ref(-10)}, mocks.CveInfoMock{}, log.NewTestLogger())
 			So(err, ShouldNotBeNil)
 			So(images, ShouldBeEmpty)
 			So(layers, ShouldBeEmpty)
@@ -139,7 +139,7 @@ func TestResolverGlobalSearch(t *testing.T) {
 
 			responseContext := graphql.WithResponseContext(ctx, graphql.DefaultErrorPresenter, graphql.DefaultRecover)
 			repos, images, layers, err := globalSearch(responseContext, query, mockMetaDB, &gql_generated.Filter{},
-				&gql_generated.PageInput{}, mocks.CveInfoMock{}, log.NewLogger("debug", ""))
+				&gql_generated.PageInput{}, mocks.CveInfoMock{}, log.NewTestLogger())
 			So(err, ShouldNotBeNil)
 			So(images, ShouldBeEmpty)
 			So(layers, ShouldBeEmpty)
@@ -152,7 +152,7 @@ func TestResolverGlobalSearch(t *testing.T) {
 
 			responseContext := graphql.WithResponseContext(ctx, graphql.DefaultErrorPresenter, graphql.DefaultRecover)
 			repos, images, layers, err := globalSearch(responseContext, query, mocks.MetaDBMock{}, &gql_generated.Filter{},
-				&gql_generated.PageInput{Limit: ref(-10)}, mocks.CveInfoMock{}, log.NewLogger("debug", ""))
+				&gql_generated.PageInput{Limit: ref(-10)}, mocks.CveInfoMock{}, log.NewTestLogger())
 			So(err, ShouldNotBeNil)
 			So(images, ShouldBeEmpty)
 			So(layers, ShouldBeEmpty)
@@ -165,7 +165,7 @@ func TestResolverGlobalSearch(t *testing.T) {
 
 			responseContext := graphql.WithResponseContext(ctx, graphql.DefaultErrorPresenter, graphql.DefaultRecover)
 			repos, images, layers, err := globalSearch(responseContext, query, mocks.MetaDBMock{}, &gql_generated.Filter{},
-				&gql_generated.PageInput{}, mocks.CveInfoMock{}, log.NewLogger("debug", ""))
+				&gql_generated.PageInput{}, mocks.CveInfoMock{}, log.NewTestLogger())
 			So(err, ShouldNotBeNil)
 			So(images, ShouldBeEmpty)
 			So(layers, ShouldBeEmpty)
@@ -191,7 +191,7 @@ func TestRepoListWithNewestImage(t *testing.T) {
 				Offset: ref(0),
 				SortBy: ref(gql_generated.SortCriteriaUpdateTime),
 			}
-			repos, err := repoListWithNewestImage(responseContext, mockCve, log.NewLogger("debug", ""), &pageInput, mockMetaDB)
+			repos, err := repoListWithNewestImage(responseContext, mockCve, log.NewTestLogger(), &pageInput, mockMetaDB)
 			So(err, ShouldNotBeNil)
 			So(repos.Results, ShouldBeEmpty)
 		})
@@ -204,7 +204,7 @@ func TestRepoListWithNewestImage(t *testing.T) {
 			responseContext := graphql.WithResponseContext(context.Background(), graphql.DefaultErrorPresenter,
 				graphql.DefaultRecover)
 
-			_, err := repoListWithNewestImage(responseContext, mocks.CveInfoMock{}, log.NewLogger("debug", ""),
+			_, err := repoListWithNewestImage(responseContext, mocks.CveInfoMock{}, log.NewTestLogger(),
 				pageInput, mocks.MetaDBMock{})
 			So(err, ShouldNotBeNil)
 		})
@@ -300,7 +300,7 @@ func TestRepoListWithNewestImage(t *testing.T) {
 				responseContext := graphql.WithResponseContext(context.Background(), graphql.DefaultErrorPresenter,
 					graphql.DefaultRecover)
 				mockCve := mocks.CveInfoMock{}
-				repos, err := repoListWithNewestImage(responseContext, mockCve, log.NewLogger("debug", ""), nil, mockMetaDB)
+				repos, err := repoListWithNewestImage(responseContext, mockCve, log.NewTestLogger(), nil, mockMetaDB)
 				So(err, ShouldBeNil)
 				So(repos.Results, ShouldNotBeEmpty)
 			})
@@ -317,7 +317,7 @@ func TestRepoListWithNewestImage(t *testing.T) {
 
 				mockCve := mocks.CveInfoMock{}
 				repos, err := repoListWithNewestImage(responseContext, mockCve,
-					log.NewLogger("debug", ""), &pageInput, mockMetaDB)
+					log.NewTestLogger(), &pageInput, mockMetaDB)
 				So(err, ShouldBeNil)
 				So(repos, ShouldNotBeEmpty)
 				So(len(repos.Results), ShouldEqual, 2)
@@ -330,7 +330,7 @@ func TestRepoListWithNewestImage(t *testing.T) {
 
 func TestGetFilteredPaginatedRepos(t *testing.T) {
 	ctx := context.Background()
-	log := log.NewLogger("debug", "")
+	log := log.NewTestLogger()
 
 	Convey("getFilteredPaginatedRepos", t, func() {
 		metaDB := mocks.MetaDBMock{}
@@ -368,7 +368,7 @@ func TestGetBookmarkedRepos(t *testing.T) {
 		_, err := getBookmarkedRepos(
 			responseContext,
 			mocks.CveInfoMock{},
-			log.NewLogger("debug", ""),
+			log.NewTestLogger(),
 			nil,
 			mocks.MetaDBMock{
 				GetBookmarkedReposFn: func(ctx context.Context) ([]string, error) {
@@ -387,7 +387,7 @@ func TestGetStarredRepos(t *testing.T) {
 		_, err := getStarredRepos(
 			responseContext,
 			mocks.CveInfoMock{},
-			log.NewLogger("debug", ""),
+			log.NewTestLogger(),
 			nil,
 			mocks.MetaDBMock{
 				GetStarredReposFn: func(ctx context.Context) ([]string, error) {
@@ -553,7 +553,7 @@ func TestGetImageSummaryError(t *testing.T) {
 				return nil, ErrTestError
 			},
 		}
-		log := log.NewLogger("debug", "")
+		log := log.NewTestLogger()
 
 		_, err := getImageSummary(context.Background(), "repo", "tag", nil, convert.SkipQGLField{},
 			metaDB, nil, log)
@@ -585,7 +585,7 @@ func TestImageListError(t *testing.T) {
 				graphql.DefaultRecover)
 
 			_, err := getImageList(responseContext, "test", mocks.MetaDBMock{}, mocks.CveInfoMock{},
-				&gql_generated.PageInput{Limit: ref(-1)}, log.NewLogger("debug", ""))
+				&gql_generated.PageInput{Limit: ref(-1)}, log.NewTestLogger())
 
 			So(err, ShouldNotBeNil)
 		})
@@ -640,14 +640,14 @@ func TestGetReferrers(t *testing.T) {
 		referredDigest := godigest.FromString("t").String()
 
 		Convey("referredDigest is empty", func() {
-			testLogger := log.NewLogger("debug", "")
+			testLogger := log.NewTestLogger()
 
 			_, err := getReferrers(mocks.MetaDBMock{}, "test", "", nil, testLogger)
 			So(err, ShouldNotBeNil)
 		})
 
 		Convey("GetReferrers returns error", func() {
-			testLogger := log.NewLogger("debug", "")
+			testLogger := log.NewTestLogger()
 			mockedStore := mocks.MetaDBMock{
 				GetReferrersInfoFn: func(repo string, referredDigest godigest.Digest, artifactTypes []string,
 				) ([]mTypes.ReferrerInfo, error) {
@@ -660,7 +660,7 @@ func TestGetReferrers(t *testing.T) {
 		})
 
 		Convey("GetReferrers return index of descriptors", func() {
-			testLogger := log.NewLogger("debug", "")
+			testLogger := log.NewTestLogger()
 			referrerDescriptor := ispec.Descriptor{
 				MediaType:    ispec.MediaTypeImageManifest,
 				ArtifactType: "com.artifact.test",
@@ -698,7 +698,7 @@ func TestGetReferrers(t *testing.T) {
 
 func TestQueryResolverErrors(t *testing.T) {
 	Convey("Errors", t, func() {
-		log := log.NewLogger("debug", "")
+		log := log.NewTestLogger()
 		ctx := graphql.WithResponseContext(context.Background(), graphql.DefaultErrorPresenter,
 			graphql.DefaultRecover)
 
@@ -1039,7 +1039,7 @@ func TestQueryResolverErrors(t *testing.T) {
 
 func TestCVEResolvers(t *testing.T) { //nolint:gocyclo
 	ctx := context.Background()
-	log := log.NewLogger("debug", "")
+	log := log.NewTestLogger()
 	LINUX := "linux"
 	AMD := "amd"
 	ARM := "arm64"
@@ -2418,7 +2418,7 @@ func TestMockedBaseImageList(t *testing.T) {
 
 		mockCve := mocks.CveInfoMock{}
 		images, err := baseImageList(responseContext, "repo1:1.0.2", nil, mockMetaDB, &gql_generated.PageInput{},
-			mockCve, log.NewLogger("debug", ""))
+			mockCve, log.NewTestLogger())
 		So(err, ShouldNotBeNil)
 		So(images.Results, ShouldBeEmpty)
 	})
@@ -2445,7 +2445,7 @@ func TestMockedBaseImageList(t *testing.T) {
 					return map[string]mTypes.ImageMeta{image.DigestStr(): image.AsImageMeta()}, nil
 				},
 			},
-			pageInput, mocks.CveInfoMock{}, log.NewLogger("debug", ""))
+			pageInput, mocks.CveInfoMock{}, log.NewTestLogger())
 		So(err, ShouldNotBeNil)
 	})
 
@@ -2475,7 +2475,7 @@ func TestMockedBaseImageList(t *testing.T) {
 
 		mockCve := mocks.CveInfoMock{}
 		images, err := baseImageList(responseContext, "repo1:1.0.2", nil, mockMetaDB, &gql_generated.PageInput{},
-			mockCve, log.NewLogger("debug", ""))
+			mockCve, log.NewTestLogger())
 		So(err, ShouldBeNil)
 		So(images.Results, ShouldBeEmpty)
 	})
@@ -2550,7 +2550,7 @@ func TestMockedBaseImageList(t *testing.T) {
 
 		Convey("valid baseImageList, results not affected by pageInput", func() {
 			images, err := baseImageList(responseContext, "repo1:1.0.2", nil, mockMetaDB,
-				&gql_generated.PageInput{}, mockCve, log.NewLogger("debug", ""))
+				&gql_generated.PageInput{}, mockCve, log.NewTestLogger())
 			So(err, ShouldBeNil)
 			So(images.Results, ShouldNotBeEmpty)
 			So(len(images.Results), ShouldEqual, 2)
@@ -2570,7 +2570,7 @@ func TestMockedBaseImageList(t *testing.T) {
 			}
 
 			images, err := baseImageList(responseContext, "repo1:1.0.2", nil, mockMetaDB,
-				&pageInput, mockCve, log.NewLogger("debug", ""))
+				&pageInput, mockCve, log.NewTestLogger())
 			So(err, ShouldBeNil)
 			So(images.Results, ShouldNotBeEmpty)
 			So(len(images.Results), ShouldEqual, limit)
@@ -2642,14 +2642,14 @@ func TestMockedBaseImageList(t *testing.T) {
 
 		mockCve := mocks.CveInfoMock{}
 		images, err := baseImageList(responseContext, "repo1:1.0.2", nil, mockMetaDB, &gql_generated.PageInput{},
-			mockCve, log.NewLogger("debug", ""))
+			mockCve, log.NewTestLogger())
 		So(err, ShouldBeNil)
 		So(images.Results, ShouldBeEmpty)
 	})
 }
 
 func TestExpandedRepoInfoErrors(t *testing.T) {
-	log := log.NewLogger("debug", "")
+	log := log.NewTestLogger()
 
 	Convey("Access error", t, func() {
 		userAc := reqCtx.NewUserAccessControl()

@@ -282,7 +282,7 @@ func TestPaginatedConvert(t *testing.T) {
 		t.FailNow()
 	}
 
-	metaDB, err := boltdb.New(driver, log.NewLogger("debug", ""))
+	metaDB, err := boltdb.New(driver, log.NewTestLogger())
 	if err != nil {
 		t.FailNow()
 	}
@@ -585,7 +585,7 @@ func TestIndexAnnotations(t *testing.T) {
 			t.FailNow()
 		}
 
-		metaDB, err := boltdb.New(driver, log.NewLogger("debug", ""))
+		metaDB, err := boltdb.New(driver, log.NewTestLogger())
 		So(err, ShouldBeNil)
 
 		defaultCreatedTime := *DefaultTimeRef()
@@ -840,7 +840,7 @@ func TestIndexAnnotations(t *testing.T) {
 
 func TestConvertErrors(t *testing.T) {
 	ctx := context.Background()
-	log := log.NewLogger("debug", "")
+	log := log.NewTestLogger()
 
 	Convey("Errors", t, func() {
 		Convey("RepoMeta2ExpandedRepoInfo", func() {

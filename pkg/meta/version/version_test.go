@@ -35,7 +35,7 @@ func TestVersioningBoltDB(t *testing.T) {
 		boltDriver, err := boltdb.GetBoltDriver(boltDBParams)
 		So(err, ShouldBeNil)
 
-		log := log.NewLogger("debug", "")
+		log := log.NewTestLogger()
 
 		boltdbWrapper, err := boltdb.New(boltDriver, log)
 
@@ -142,7 +142,7 @@ func TestVersioningDynamoDB(t *testing.T) {
 		dynamoClient, err := mdynamodb.GetDynamoClient(params)
 		So(err, ShouldBeNil)
 
-		log := log.NewLogger("debug", "")
+		log := log.NewTestLogger()
 
 		dynamoWrapper, err := mdynamodb.New(dynamoClient, params, log)
 		So(err, ShouldBeNil)
@@ -226,7 +226,7 @@ func TestVersioningRedisDB(t *testing.T) {
 		client := goredis.NewClient(opts)
 		defer dumpRedisKeys(t, client) // Troubleshoot test failures
 
-		log := log.NewLogger("debug", "")
+		log := log.NewTestLogger()
 
 		params := redis.DBDriverParameters{KeyPrefix: "zot"}
 

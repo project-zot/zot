@@ -29,7 +29,7 @@ func TestCVEPagination(t *testing.T) {
 		boltDriver, err := boltdb.GetBoltDriver(params)
 		So(err, ShouldBeNil)
 
-		metaDB, err := boltdb.New(boltDriver, log.NewLogger("debug", ""))
+		metaDB, err := boltdb.New(boltDriver, log.NewTestLogger())
 		So(err, ShouldBeNil)
 
 		// Create metadb data for scannable image with vulnerabilities
@@ -103,7 +103,7 @@ func TestCVEPagination(t *testing.T) {
 			},
 		}
 
-		log := log.NewLogger("debug", "")
+		log := log.NewTestLogger()
 		cveInfo := cveinfo.BaseCveInfo{Log: log, Scanner: scanner, MetaDB: metaDB}
 
 		ctx := context.Background()

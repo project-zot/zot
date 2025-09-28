@@ -16,7 +16,7 @@ func TestCache(t *testing.T) {
 	Convey("Make a new cache", t, func() {
 		dir := t.TempDir()
 
-		log := log.NewLogger("debug", "")
+		log := log.NewTestLogger()
 		So(log, ShouldNotBeNil)
 
 		_, err := storage.Create("boltdb", "failTypeAssertion", log)
@@ -74,7 +74,7 @@ func TestCache(t *testing.T) {
 	})
 
 	Convey("Invalid cache driver dbtype", t, func() {
-		log := log.NewLogger("debug", "")
+		log := log.NewTestLogger()
 		So(log, ShouldNotBeNil)
 
 		cacheDriver, err := storage.Create("sometype", map[string]interface{}{}, log)

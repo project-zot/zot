@@ -46,7 +46,7 @@ func TestIterator(t *testing.T) {
 	userDataTablename := "UserDataTable" + uuid.String()
 	apiKeyTablename := "ApiKeyTable" + uuid.String()
 
-	log := log.NewLogger("debug", "")
+	log := log.NewTestLogger()
 
 	Convey("TestIterator", t, func() {
 		params := mdynamodb.DBDriverParameters{
@@ -151,7 +151,7 @@ func TestWrapperErrors(t *testing.T) {
 	imageMetaTablename := "ImageMeta" + uuid.String()
 	repoBlobsTablename := "RepoBlobs" + uuid.String()
 
-	log := log.NewLogger("debug", "")
+	log := log.NewTestLogger()
 	testDigest := godigest.FromString("str")
 	image := CreateDefaultImage()
 	multi := CreateMultiarchWith().Images([]Image{image}).Build()

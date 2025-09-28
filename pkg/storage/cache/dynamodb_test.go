@@ -17,7 +17,7 @@ import (
 func TestDynamoDB(t *testing.T) {
 	tskip.SkipDynamo(t)
 	Convey("Test dynamoDB", t, func(c C) {
-		log := log.NewLogger("debug", "")
+		log := log.NewTestLogger()
 		dir := t.TempDir()
 
 		// bad params
@@ -146,7 +146,7 @@ func TestDynamoDB(t *testing.T) {
 	})
 
 	Convey("Test dynamoDB", t, func(c C) {
-		log := log.NewLogger("debug", "")
+		log := log.NewTestLogger()
 
 		cacheDriver, err := storage.Create("dynamodb", cache.DynamoDBDriverParameters{
 			Endpoint:  os.Getenv("DYNAMODBMOCK_ENDPOINT"),
@@ -191,7 +191,7 @@ func TestDynamoDB(t *testing.T) {
 func TestDynamoDBError(t *testing.T) {
 	tskip.SkipDynamo(t)
 	Convey("Test dynamoDB", t, func(c C) {
-		log := log.NewLogger("debug", "")
+		log := log.NewTestLogger()
 
 		cacheDriver, err := cache.NewDynamoDBCache(cache.DynamoDBDriverParameters{
 			Endpoint:  os.Getenv("DYNAMODBMOCK_ENDPOINT"),

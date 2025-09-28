@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"log"
 	"log/slog"
 	"os"
 	"runtime"
@@ -16,8 +15,9 @@ import (
 )
 
 const (
-	defaultPerms = 0o0600
-	messageKey   = "message"
+	defaultPerms         = 0o0600
+	messageKey           = "message"
+	callerSkipFrameCount = 5
 )
 
 // Logger extends slog's Logger with zerolog-compatible API.
@@ -204,15 +204,6 @@ func (e *Event) Msg(msg string) {
 	}
 }
 
-func (l Logger) Println(v ...interface{}) {
-	l.Error().Msg("panic recovered") //nolint: check-logs
-	log.Println(v...)
-}
-
-func (l Logger) Printf(format string, a ...interface{}) {
-	log.Printf(format, a...)
-}
-
 // parseLevel converts string level to slog.Level.
 func parseLevel(level string) (slog.Level, error) {
 	switch strings.ToLower(level) {
@@ -230,12 +221,6 @@ func parseLevel(level string) (slog.Level, error) {
 }
 
 func NewLogger(level, output string) Logger {
-	// Parse log level
-	lvl, err := parseLevel(level)
-	if err != nil {
-		panic(err)
-	}
-
 	// Determine output writer
 	var writer io.Writer
 	if output == "" {
@@ -248,38 +233,7 @@ func NewLogger(level, output string) Logger {
 		writer = file
 	}
 
-	// Create JSON handler with RFC3339Nano time format
-	opts := &slog.HandlerOptions{
-		Level: lvl,
-		ReplaceAttr: func(groups []string, attr slog.Attr) slog.Attr {
-			// Format timestamp as RFC3339Nano to match zerolog
-			if attr.Key == slog.TimeKey {
-				return slog.String("time", attr.Value.Time().Format(time.RFC3339Nano))
-			}
-			// Rename the level field to match zerolog
-			if attr.Key == slog.LevelKey {
-				return slog.String("level", strings.ToLower(attr.Value.String()))
-			}
-			// Rename "msg" to "message" to match zerolog
-			if attr.Key == slog.MessageKey {
-				attr.Key = messageKey
-			}
-
-			return attr
-		},
-	}
-
-	handler := slog.NewJSONHandler(writer, opts)
-
-	// Add caller info handler wrapper
-	callerHandler := &CallerHandler{handler: handler}
-
-	// Add goroutine hook handler wrapper
-	goroutineHandler := &GoroutineHandler{handler: callerHandler}
-
-	logger := slog.New(goroutineHandler)
-
-	return Logger{Logger: logger}
+	return NewLoggerWithWriter(level, writer)
 }
 
 func NewAuditLogger(level, output string) *Logger {
@@ -301,40 +255,12 @@ func NewAuditLogger(level, output string) *Logger {
 		writer = auditFile
 	}
 
-	// Create JSON handler with RFC3339Nano time format for audit logs
-	opts := &slog.HandlerOptions{
-		Level: lvl,
-		ReplaceAttr: func(groups []string, attr slog.Attr) slog.Attr {
-			// Format timestamp as RFC3339Nano to match zerolog
-			if attr.Key == slog.TimeKey {
-				return slog.String("time", attr.Value.Time().Format(time.RFC3339Nano))
-			}
-			// Rename the level field to match zerolog
-			if attr.Key == slog.LevelKey {
-				return slog.String("level", strings.ToLower(attr.Value.String()))
-			}
-			// Rename "msg" to "message" to match zerolog
-			if attr.Key == slog.MessageKey {
-				attr.Key = messageKey
-			}
-
-			return attr
-		},
-	}
-
-	handler := slog.NewJSONHandler(writer, opts)
-	logger := slog.New(handler)
+	logger := slog.New(defaultJSONHandler(lvl, writer))
 
 	return &Logger{Logger: logger}
 }
 
-func NewLoggerWithWriter(level string, writer io.Writer) Logger {
-	// Parse log level
-	lvl, err := parseLevel(level)
-	if err != nil {
-		panic(err)
-	}
-
+func defaultJSONHandler(lvl slog.Leveler, writer io.Writer) *slog.JSONHandler {
 	// Create JSON handler with RFC3339Nano time format
 	opts := &slog.HandlerOptions{
 		Level: lvl,
@@ -358,8 +284,18 @@ func NewLoggerWithWriter(level string, writer io.Writer) Logger {
 
 	handler := slog.NewJSONHandler(writer, opts)
 
+	return handler
+}
+
+func NewLoggerWithWriter(level string, writer io.Writer) Logger {
+	// Parse log level
+	lvl, err := parseLevel(level)
+	if err != nil {
+		panic(err)
+	}
+
 	// Add caller info handler wrapper
-	callerHandler := &CallerHandler{handler: handler}
+	callerHandler := &CallerHandler{handler: defaultJSONHandler(lvl, writer)}
 
 	// Add goroutine hook handler wrapper
 	goroutineHandler := &GoroutineHandler{handler: callerHandler}
@@ -394,7 +330,7 @@ func (h *CallerHandler) Enabled(ctx context.Context, level slog.Level) bool {
 
 func (h *CallerHandler) Handle(ctx context.Context, record slog.Record) error {
 	// Add caller information
-	if pc, file, line, ok := runtime.Caller(5); ok { // Adjust stack depth as needed
+	if pc, file, line, ok := runtime.Caller(callerSkipFrameCount); ok { // Adjust stack depth as needed
 		frame := runtime.CallersFrames([]uintptr{pc})
 		f, _ := frame.Next()
 

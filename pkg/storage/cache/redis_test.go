@@ -28,7 +28,7 @@ func TestRedisCache(t *testing.T) {
 	Convey("Make a new cache", t, func() {
 		dir := t.TempDir()
 
-		log := log.NewLogger("debug", "")
+		log := log.NewTestLogger()
 		So(log, ShouldNotBeNil)
 
 		cacheDriver, err := storage.Create("redis", "failTypeAssertion", log)
@@ -149,7 +149,7 @@ func TestRedisCache(t *testing.T) {
 	Convey("Test cache.GetAllBlos()", t, func() {
 		dir := t.TempDir()
 
-		log := log.NewLogger("debug", "")
+		log := log.NewTestLogger()
 		So(log, ShouldNotBeNil)
 
 		connOpts, _ := redis.ParseURL("redis://" + miniRedis.Addr())
@@ -207,7 +207,7 @@ func TestRedisCacheError(t *testing.T) {
 		connOpts, _ := redis.ParseURL(redisURL)
 		brokenClient := redis.NewClient(connOpts)
 
-		log := log.NewLogger("debug", "")
+		log := log.NewTestLogger()
 		So(log, ShouldNotBeNil)
 
 		// redis server is not running
@@ -221,7 +221,7 @@ func TestRedisCacheError(t *testing.T) {
 		miniRedis := miniredis.RunT(t)
 		dir := t.TempDir()
 
-		log := log.NewLogger("debug", "")
+		log := log.NewTestLogger()
 		So(log, ShouldNotBeNil)
 
 		connOpts, _ := redis.ParseURL("redis://" + miniRedis.Addr())
@@ -260,7 +260,7 @@ func TestRedisMocked(t *testing.T) {
 	Convey("Redis tests using mocks", t, func() {
 		dir := t.TempDir()
 
-		log := log.NewLogger("debug", "")
+		log := log.NewTestLogger()
 		So(log, ShouldNotBeNil)
 
 		tests := []cache.RedisDriverParameters{

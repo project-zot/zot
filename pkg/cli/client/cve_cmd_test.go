@@ -50,7 +50,7 @@ func TestNegativeServerResponse(t *testing.T) {
 
 		dir := t.TempDir()
 
-		srcStorageCtlr := ociutils.GetDefaultStoreController(dir, log.NewLogger("debug", ""))
+		srcStorageCtlr := ociutils.GetDefaultStoreController(dir, log.NewTestLogger())
 		err := WriteImageToFileSystem(CreateDefaultVulnerableImage(), "zot-cve-test", "0.0.1", srcStorageCtlr)
 		So(err, ShouldBeNil)
 
@@ -119,7 +119,7 @@ func TestNegativeServerResponse(t *testing.T) {
 		dir := t.TempDir()
 
 		imageStore := local.NewImageStore(dir, false, false,
-			log.NewLogger("debug", ""), monitoring.NewMetricsServer(false, log.NewLogger("debug", "")), nil, nil, nil, nil)
+			log.NewTestLogger(), monitoring.NewMetricsServer(false, log.NewTestLogger()), nil, nil, nil, nil)
 
 		storeController := storage.StoreController{
 			DefaultStore: imageStore,

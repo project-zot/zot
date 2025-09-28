@@ -139,7 +139,7 @@ func TestNew(t *testing.T) {
 
 func TestCreateCacheDatabaseDriver(t *testing.T) {
 	Convey("Test CreateCacheDatabaseDriver boltdb", t, func() {
-		log := log.NewLogger("debug", "")
+		log := log.NewTestLogger()
 
 		// fail create db, no perm
 		dir := t.TempDir()
@@ -167,7 +167,7 @@ func TestCreateCacheDatabaseDriver(t *testing.T) {
 	Convey("Test CreateCacheDatabaseDriver redisdb", t, func() {
 		miniRedis := miniredis.RunT(t)
 
-		log := log.NewLogger("debug", "")
+		log := log.NewTestLogger()
 
 		dir := t.TempDir()
 		conf := config.New()
@@ -216,7 +216,7 @@ func TestCreateCacheDatabaseDriver(t *testing.T) {
 	tskip.SkipDynamo(t)
 	tskip.SkipS3(t)
 	Convey("Test CreateCacheDatabaseDriver dynamodb", t, func() {
-		log := log.NewLogger("debug", "")
+		log := log.NewTestLogger()
 		dir := t.TempDir()
 		// good config
 		conf := config.New()
@@ -310,7 +310,7 @@ func TestCreateCacheDatabaseDriver(t *testing.T) {
 
 func TestCreateMetaDBDriver(t *testing.T) {
 	Convey("Test create MetaDB dynamo", t, func() {
-		log := log.NewLogger("debug", "")
+		log := log.NewTestLogger()
 		dir := t.TempDir()
 		conf := config.New()
 		conf.Storage.RootDirectory = dir
@@ -389,7 +389,7 @@ func TestCreateMetaDBDriver(t *testing.T) {
 	Convey("Test create MetaDB redis", t, func() {
 		miniRedis := miniredis.RunT(t)
 
-		log := log.NewLogger("debug", "")
+		log := log.NewTestLogger()
 		dir := t.TempDir()
 		conf := config.New()
 		conf.Storage.RootDirectory = dir
@@ -440,7 +440,7 @@ func TestCreateMetaDBDriver(t *testing.T) {
 	})
 
 	Convey("Test create MetaDB bolt", t, func() {
-		log := log.NewLogger("debug", "")
+		log := log.NewTestLogger()
 		dir := t.TempDir()
 		conf := config.New()
 		conf.Storage.RootDirectory = dir
@@ -2490,7 +2490,7 @@ func TestAuthnErrors(t *testing.T) {
 		}
 
 		So(func() {
-			api.NewRelyingPartyGithub(conf, "prov", nil, nil, log.NewLogger("debug", ""))
+			api.NewRelyingPartyGithub(conf, "prov", nil, nil, log.NewTestLogger())
 		}, ShouldPanic)
 	})
 }
@@ -3810,7 +3810,7 @@ func TestLDAPFailures(t *testing.T) {
 		defer ldapServer.Stop()
 
 		Convey("Empty config", func() {
-			lclient := &api.LDAPClient{Log: log.NewLogger("debug", "")}
+			lclient := &api.LDAPClient{Log: log.NewTestLogger()}
 			err := lclient.Connect()
 			So(err, ShouldNotBeNil)
 		})
@@ -3819,7 +3819,7 @@ func TestLDAPFailures(t *testing.T) {
 			lclient := &api.LDAPClient{
 				Host: LDAPAddress,
 				Port: ldapPort,
-				Log:  log.NewLogger("debug", ""),
+				Log:  log.NewTestLogger(),
 			}
 			err := lclient.Connect()
 			So(err, ShouldNotBeNil)
@@ -3830,7 +3830,7 @@ func TestLDAPFailures(t *testing.T) {
 				Host:   LDAPAddress,
 				Port:   ldapPort,
 				UseSSL: true,
-				Log:    log.NewLogger("debug", ""),
+				Log:    log.NewTestLogger(),
 			}
 			err := lclient.Connect()
 			So(err, ShouldNotBeNil)
@@ -3855,7 +3855,7 @@ func TestLDAPClient(t *testing.T) {
 			BindDN:       "bad-user",
 			BindPassword: "bad-pass",
 			SkipTLS:      true,
-			Log:          log.NewLogger("debug", ""),
+			Log:          log.NewTestLogger(),
 		}
 
 		_, _, _, err = lClient.Authenticate("bad-user", "bad-pass")
@@ -3868,7 +3868,7 @@ func TestLDAPClient(t *testing.T) {
 			BindDN:       "bad-user",
 			BindPassword: "",
 			SkipTLS:      true,
-			Log:          log.NewLogger("debug", ""),
+			Log:          log.NewTestLogger(),
 		}
 
 		_, _, _, err = lClient.Authenticate("user", "")
@@ -3884,7 +3884,7 @@ func TestLDAPClient(t *testing.T) {
 			UserAttribute: LDAPUserAttr,
 			UserFilter:    "",
 			SkipTLS:       true,
-			Log:           log.NewLogger("debug", ""),
+			Log:           log.NewTestLogger(),
 		}
 
 		_, _, _, err = lClient.Authenticate("fail-user-bind", "")
@@ -3900,7 +3900,7 @@ func TestLDAPClient(t *testing.T) {
 			UserAttribute: LDAPUserAttr,
 			UserFilter:    "",
 			SkipTLS:       true,
-			Log:           log.NewLogger("debug", ""),
+			Log:           log.NewTestLogger(),
 		}
 
 		_, _, _, err = lClient.Authenticate("fail-user-bind", "pass")
@@ -3916,7 +3916,7 @@ func TestLDAPClient(t *testing.T) {
 			UserAttribute: LDAPUserAttr,
 			UserFilter:    "(!(nsaccountlock=TRUE))",
 			SkipTLS:       true,
-			Log:           log.NewLogger("debug", ""),
+			Log:           log.NewTestLogger(),
 		}
 
 		_, _, _, err = lClient.Authenticate("locked-user", "pass")
@@ -4494,7 +4494,7 @@ func TestNewRelyingPartyOIDC(t *testing.T) {
 		}
 
 		Convey("provider not found in config", func() {
-			So(func() { _ = api.NewRelyingPartyOIDC(ctx, conf, "notDex", nil, nil, log.NewLogger("debug", "")) }, ShouldPanic)
+			So(func() { _ = api.NewRelyingPartyOIDC(ctx, conf, "notDex", nil, nil, log.NewTestLogger()) }, ShouldPanic)
 		})
 
 		Convey("key path not found on disk", func() {
@@ -4502,7 +4502,7 @@ func TestNewRelyingPartyOIDC(t *testing.T) {
 			oidcProviderCfg.KeyPath = "path/to/file"
 			conf.HTTP.Auth.OpenID.Providers["oidc"] = oidcProviderCfg
 
-			So(func() { _ = api.NewRelyingPartyOIDC(ctx, conf, "oidc", nil, nil, log.NewLogger("debug", "")) }, ShouldPanic)
+			So(func() { _ = api.NewRelyingPartyOIDC(ctx, conf, "oidc", nil, nil, log.NewTestLogger()) }, ShouldPanic)
 		})
 
 		Convey("https callback", func() {
@@ -4511,7 +4511,7 @@ func TestNewRelyingPartyOIDC(t *testing.T) {
 				Key:  ServerKey,
 			}
 
-			rp := api.NewRelyingPartyOIDC(ctx, conf, "oidc", nil, nil, log.NewLogger("debug", ""))
+			rp := api.NewRelyingPartyOIDC(ctx, conf, "oidc", nil, nil, log.NewTestLogger())
 			So(rp, ShouldNotBeNil)
 		})
 
@@ -4520,7 +4520,7 @@ func TestNewRelyingPartyOIDC(t *testing.T) {
 			oidcProvider.ClientSecret = ""
 			conf.HTTP.Auth.OpenID.Providers["oidc"] = oidcProvider
 
-			rp := api.NewRelyingPartyOIDC(ctx, conf, "oidc", nil, nil, log.NewLogger("debug", ""))
+			rp := api.NewRelyingPartyOIDC(ctx, conf, "oidc", nil, nil, log.NewTestLogger())
 			So(rp, ShouldNotBeNil)
 		})
 
@@ -4529,7 +4529,7 @@ func TestNewRelyingPartyOIDC(t *testing.T) {
 			oidcProvider.Issuer = ""
 			conf.HTTP.Auth.OpenID.Providers["oidc"] = oidcProvider
 
-			So(func() { _ = api.NewRelyingPartyOIDC(ctx, conf, "oidc", nil, nil, log.NewLogger("debug", "")) }, ShouldPanic)
+			So(func() { _ = api.NewRelyingPartyOIDC(ctx, conf, "oidc", nil, nil, log.NewTestLogger()) }, ShouldPanic)
 		})
 	})
 }
@@ -12754,7 +12754,7 @@ func TestGetGithubUserInfo(t *testing.T) {
 
 		client := github.NewClient(mockedHTTPClient)
 
-		_, _, err := api.GetGithubUserInfo(context.Background(), client, log.NewLogger("debug", ""))
+		_, _, err := api.GetGithubUserInfo(context.Background(), client, log.NewTestLogger())
 		So(err, ShouldBeNil)
 	})
 
@@ -12774,7 +12774,7 @@ func TestGetGithubUserInfo(t *testing.T) {
 
 		client := github.NewClient(mockedHTTPClient)
 
-		_, _, err := api.GetGithubUserInfo(context.Background(), client, log.NewLogger("debug", ""))
+		_, _, err := api.GetGithubUserInfo(context.Background(), client, log.NewTestLogger())
 		So(err, ShouldNotBeNil)
 	})
 
@@ -12803,7 +12803,7 @@ func TestGetGithubUserInfo(t *testing.T) {
 
 		client := github.NewClient(mockedHTTPClient)
 
-		_, _, err := api.GetGithubUserInfo(context.Background(), client, log.NewLogger("debug", ""))
+		_, _, err := api.GetGithubUserInfo(context.Background(), client, log.NewTestLogger())
 		So(err, ShouldNotBeNil)
 	})
 }

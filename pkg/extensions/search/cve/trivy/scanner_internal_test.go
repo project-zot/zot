@@ -49,7 +49,7 @@ func TestMultipleStoragePath(t *testing.T) {
 		secondRootDir := t.TempDir()
 		thirdRootDir := t.TempDir()
 
-		log := log.NewLogger("debug", "")
+		log := log.NewTestLogger()
 		metrics := monitoring.NewMetricsServer(false, log)
 
 		// Create ImageStore
@@ -168,7 +168,7 @@ func TestTrivyLibraryErrors(t *testing.T) {
 		// Create temporary directory
 		rootDir := t.TempDir()
 
-		log := log.NewLogger("debug", "")
+		log := log.NewTestLogger()
 		metrics := monitoring.NewMetricsServer(false, log)
 
 		// Create ImageStore
@@ -261,7 +261,7 @@ func TestImageScannable(t *testing.T) {
 		panic(err)
 	}
 
-	log := log.NewLogger("debug", "")
+	log := log.NewTestLogger()
 
 	metaDB, err := boltdb.New(boltDriver, log)
 	if err != nil {
@@ -363,7 +363,7 @@ func TestTrivyDBUrl(t *testing.T) {
 		err = test.CopyFiles("../../../../../test/data/zot-cve-java-test", path.Join(rootDir, "zot-cve-java-test"))
 		So(err, ShouldBeNil)
 
-		log := log.NewLogger("debug", "")
+		log := log.NewTestLogger()
 		metrics := monitoring.NewMetricsServer(false, log)
 
 		// Create ImageStore
@@ -426,7 +426,7 @@ func TestIsIndexScanable(t *testing.T) {
 		storeController.DefaultStore = &imagestore.ImageStore{}
 
 		metaDB := &boltdb.BoltDB{}
-		log := log.NewLogger("debug", "")
+		log := log.NewTestLogger()
 
 		Convey("Find index in cache", func() {
 			scanner := Scanner{
@@ -451,7 +451,7 @@ func TestIsIndexScannableErrors(t *testing.T) {
 		storeController.DefaultStore = mocks.MockedImageStore{}
 
 		metaDB := mocks.MetaDBMock{}
-		log := log.NewLogger("debug", "")
+		log := log.NewTestLogger()
 
 		Convey("all manifests of a index are not scannable", func() {
 			unscannableLayer := []Layer{{MediaType: "unscannable-layer-type", Digest: godigest.FromString("123")}}

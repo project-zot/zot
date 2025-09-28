@@ -59,7 +59,7 @@ var testCases = []struct {
 }
 
 func TestGarbageCollectAndRetentionMetaDB(t *testing.T) {
-	log := zlog.NewLogger("debug", "")
+	log := zlog.NewTestLogger()
 	audit := zlog.NewAuditLogger("debug", "/dev/null")
 
 	metrics := monitoring.NewMetricsServer(false, log)
@@ -1313,7 +1313,7 @@ func TestGarbageCollectAndRetentionMetaDB(t *testing.T) {
 
 func TestGarbageCollectDeletion(t *testing.T) {
 	Convey("setup store", t, func() {
-		log := zlog.NewLogger("debug", "")
+		log := zlog.NewTestLogger()
 		audit := zlog.NewAuditLogger("debug", "/dev/null")
 
 		metrics := monitoring.NewMetricsServer(false, log)
@@ -1751,7 +1751,7 @@ func readTagsFromStorage(rootDir, repoName string, digest godigest.Digest) ([]st
 }
 
 func TestGarbageCollectAndRetentionNoMetaDB(t *testing.T) {
-	log := zlog.NewLogger("debug", "")
+	log := zlog.NewTestLogger()
 	audit := zlog.NewAuditLogger("debug", "/dev/null")
 
 	metrics := monitoring.NewMetricsServer(false, log)

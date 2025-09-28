@@ -182,7 +182,7 @@ func TestStorageNew(t *testing.T) {
 		conf.Storage.RootDirectory = "dir"
 		conf.Storage.StorageDriver = map[string]interface{}{}
 
-		_, err := storage.New(conf, nil, nil, zlog.NewLogger("debug", ""), nil)
+		_, err := storage.New(conf, nil, nil, zlog.NewTestLogger(), nil)
 		So(err, ShouldNotBeNil)
 	})
 }
@@ -1150,7 +1150,7 @@ func TestStorageSubpaths(t *testing.T) {
 			},
 		}
 
-		_, err := storage.New(config, nil, nil, zlog.NewLogger("debug", ""), nil)
+		_, err := storage.New(config, nil, nil, zlog.NewTestLogger(), nil)
 		So(err, ShouldBeNil)
 	})
 
@@ -1175,7 +1175,7 @@ func TestStorageSubpaths(t *testing.T) {
 		err := os.WriteFile(dbPath, []byte(""), 0o000)
 		So(err, ShouldBeNil)
 
-		_, err = storage.New(config, nil, nil, zlog.NewLogger("debug", ""), nil)
+		_, err = storage.New(config, nil, nil, zlog.NewTestLogger(), nil)
 		So(err, ShouldNotBeNil)
 
 		err = os.Chmod(dbPath, 0o600)
@@ -1199,7 +1199,7 @@ func TestStorageSubpaths(t *testing.T) {
 			},
 		}
 
-		_, err := storage.New(config, nil, nil, zlog.NewLogger("debug", ""), nil)
+		_, err := storage.New(config, nil, nil, zlog.NewTestLogger(), nil)
 		So(err, ShouldNotBeNil)
 	})
 }
@@ -1766,7 +1766,7 @@ func TestGarbageCollectImageManifest(t *testing.T) {
 	for _, testcase := range testCases {
 		testcase := testcase
 		t.Run(testcase.testCaseName, func(t *testing.T) {
-			log := zlog.NewLogger("debug", "")
+			log := zlog.NewTestLogger()
 			audit := zlog.NewAuditLogger("debug", "")
 
 			ctx := context.Background()
@@ -2450,7 +2450,7 @@ func TestGarbageCollectImageIndex(t *testing.T) {
 	for _, testcase := range testCases {
 		testcase := testcase
 		t.Run(testcase.testCaseName, func(t *testing.T) {
-			log := zlog.NewLogger("debug", "")
+			log := zlog.NewTestLogger()
 			audit := zlog.NewAuditLogger("debug", "")
 
 			ctx := context.Background()
@@ -2858,7 +2858,7 @@ func TestGarbageCollectChainedImageIndexes(t *testing.T) {
 	for _, testcase := range testCases {
 		testcase := testcase
 		t.Run(testcase.testCaseName, func(t *testing.T) {
-			log := zlog.NewLogger("debug", "")
+			log := zlog.NewTestLogger()
 			audit := zlog.NewAuditLogger("debug", "")
 
 			ctx := context.Background()

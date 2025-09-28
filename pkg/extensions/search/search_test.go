@@ -1159,7 +1159,7 @@ func TestExpandedRepoInfo(t *testing.T) {
 		ctlr := api.NewController(conf)
 
 		imageStore := local.NewImageStore(tempDir, false, false,
-			log.NewLogger("debug", ""), monitoring.NewMetricsServer(false, log.NewLogger("debug", "")), nil, nil, nil, nil)
+			log.NewTestLogger(), monitoring.NewMetricsServer(false, log.NewTestLogger()), nil, nil, nil, nil)
 
 		storeController := storage.StoreController{
 			DefaultStore: imageStore,
@@ -1279,7 +1279,7 @@ func TestExpandedRepoInfo(t *testing.T) {
 		err = UploadImage(uploadedImage, baseURL, "a/zot-test", "0.0.1")
 		So(err, ShouldBeNil)
 
-		log := log.NewLogger("debug", "")
+		log := log.NewTestLogger()
 		metrics := monitoring.NewMetricsServer(false, log)
 		testStorage := local.NewImageStore(rootDir, false, false, log, metrics, nil, nil, nil, nil)
 
@@ -1637,7 +1637,7 @@ func TestExpandedRepoInfo(t *testing.T) {
 		ctlr := api.NewController(conf)
 
 		imageStore := local.NewImageStore(conf.Storage.RootDirectory, false, false,
-			log.NewLogger("debug", ""), monitoring.NewMetricsServer(false, log.NewLogger("debug", "")), nil, nil, nil, nil)
+			log.NewTestLogger(), monitoring.NewMetricsServer(false, log.NewTestLogger()), nil, nil, nil, nil)
 
 		storeController := storage.StoreController{
 			DefaultStore: imageStore,
@@ -1797,7 +1797,7 @@ func TestExpandedRepoInfo(t *testing.T) {
 		err = UploadImage(uploadedImage, baseURL, "a/zot-test", "0.0.1")
 		So(err, ShouldBeNil)
 
-		log := log.NewLogger("debug", "")
+		log := log.NewTestLogger()
 		metrics := monitoring.NewMetricsServer(false, log)
 		testStorage := local.NewImageStore(rootDir, false, false, log, metrics, nil, nil, nil, nil)
 
@@ -2453,7 +2453,7 @@ func TestGetImageManifest(t *testing.T) {
 		storeController := storage.StoreController{
 			DefaultStore: mockImageStore,
 		}
-		olu := ociutils.NewBaseOciLayoutUtils(storeController, log.NewLogger("debug", ""))
+		olu := ociutils.NewBaseOciLayoutUtils(storeController, log.NewTestLogger())
 
 		_, _, err := olu.GetImageManifest("nonexistent-repo", "latest")
 		So(err, ShouldNotBeNil)
@@ -2469,7 +2469,7 @@ func TestGetImageManifest(t *testing.T) {
 		storeController := storage.StoreController{
 			DefaultStore: mockImageStore,
 		}
-		olu := ociutils.NewBaseOciLayoutUtils(storeController, log.NewLogger("debug", ""))
+		olu := ociutils.NewBaseOciLayoutUtils(storeController, log.NewTestLogger())
 
 		_, _, err := olu.GetImageManifest("test-repo", "latest") //nolint:goconst
 		So(err, ShouldNotBeNil)
@@ -3103,7 +3103,7 @@ func TestGetRepositories(t *testing.T) {
 			DefaultStore: mockImageStore,
 			SubStore:     map[string]storageTypes.ImageStore{"test": mockImageStore},
 		}
-		olu := ociutils.NewBaseOciLayoutUtils(storeController, log.NewLogger("debug", ""))
+		olu := ociutils.NewBaseOciLayoutUtils(storeController, log.NewTestLogger())
 
 		repoList, err := olu.GetRepositories()
 		So(repoList, ShouldBeEmpty)
@@ -3113,7 +3113,7 @@ func TestGetRepositories(t *testing.T) {
 			DefaultStore: mocks.MockedImageStore{},
 			SubStore:     map[string]storageTypes.ImageStore{"test": mockImageStore},
 		}
-		olu = ociutils.NewBaseOciLayoutUtils(storeController, log.NewLogger("debug", ""))
+		olu = ociutils.NewBaseOciLayoutUtils(storeController, log.NewTestLogger())
 
 		repoList, err = olu.GetRepositories()
 		So(repoList, ShouldBeEmpty)
@@ -3400,7 +3400,7 @@ func TestGlobalSearch(t *testing.T) { //nolint: gocyclo
 		err = UploadImage(image3, baseURL, "repo2", "1.0.0")
 		So(err, ShouldBeNil)
 
-		olu := ociutils.NewBaseOciLayoutUtils(ctlr.StoreController, log.NewLogger("debug", ""))
+		olu := ociutils.NewBaseOciLayoutUtils(ctlr.StoreController, log.NewTestLogger())
 
 		// Initialize the objects containing the expected data
 		repos, err := olu.GetRepositories()
@@ -3749,7 +3749,7 @@ func TestGlobalSearch(t *testing.T) { //nolint: gocyclo
 		err = UploadImage(image3, baseURL, "repo2", "1.0.0")
 		So(err, ShouldBeNil)
 
-		olu := ociutils.NewBaseOciLayoutUtils(ctlr.StoreController, log.NewLogger("debug", ""))
+		olu := ociutils.NewBaseOciLayoutUtils(ctlr.StoreController, log.NewTestLogger())
 
 		// Initialize the objects containing the expected data
 		repos, err := olu.GetRepositories()
@@ -3950,7 +3950,7 @@ func TestGlobalSearch(t *testing.T) { //nolint: gocyclo
 	})
 
 	Convey("global searching by digest", t, func() {
-		log := log.NewLogger("debug", "")
+		log := log.NewTestLogger()
 		rootDir := t.TempDir()
 		port := GetFreePort()
 		baseURL := GetBaseURL(port)
@@ -4015,7 +4015,7 @@ func TestGlobalSearch(t *testing.T) { //nolint: gocyclo
 	})
 
 	Convey("global searching by tag cross repo", t, func() {
-		log := log.NewLogger("debug", "")
+		log := log.NewTestLogger()
 		rootDir := t.TempDir()
 		port := GetFreePort()
 		baseURL := GetBaseURL(port)
@@ -4158,7 +4158,7 @@ func TestGlobalSearch(t *testing.T) { //nolint: gocyclo
 	})
 
 	Convey("test nested indexes CVE scanning disabled", t, func() {
-		log := log.NewLogger("debug", "")
+		log := log.NewTestLogger()
 		rootDir := t.TempDir()
 		port := GetFreePort()
 		baseURL := GetBaseURL(port)
@@ -4321,7 +4321,7 @@ func TestGlobalSearch(t *testing.T) { //nolint: gocyclo
 	})
 
 	Convey("test nested indexes CVE scanning enabled", t, func() {
-		log := log.NewLogger("debug", "")
+		log := log.NewTestLogger()
 		rootDir := t.TempDir()
 		port := GetFreePort()
 		baseURL := GetBaseURL(port)
@@ -6052,7 +6052,7 @@ func TestMetaDBWhenDeletingImages(t *testing.T) {
 			So(responseStruct.Images[0].IsSigned, ShouldBeTrue)
 
 			// get signatur digest
-			log := log.NewLogger("debug", "")
+			log := log.NewTestLogger()
 			metrics := monitoring.NewMetricsServer(false, log)
 			storage := local.NewImageStore(dir, false, false, log, metrics, nil, nil, nil, nil)
 
@@ -6126,7 +6126,7 @@ func TestMetaDBWhenDeletingImages(t *testing.T) {
 			So(responseStruct.Images[0].IsSigned, ShouldBeTrue)
 
 			// get signatur digest
-			log := log.NewLogger("debug", "")
+			log := log.NewTestLogger()
 			metrics := monitoring.NewMetricsServer(false, log)
 			storage := local.NewImageStore(dir, false, false, log, metrics, nil, nil, nil, nil)
 

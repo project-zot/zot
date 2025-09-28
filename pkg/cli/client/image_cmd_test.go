@@ -900,7 +900,7 @@ func TestServerResponseGQLWithoutPermissions(t *testing.T) {
 
 		dir := t.TempDir()
 
-		srcStorageCtlr := ociutils.GetDefaultStoreController(dir, zlog.NewLogger("debug", ""))
+		srcStorageCtlr := ociutils.GetDefaultStoreController(dir, zlog.NewTestLogger())
 		err := WriteImageToFileSystem(CreateDefaultImage(), "zot-test", "0.0.1", srcStorageCtlr)
 		So(err, ShouldBeNil)
 

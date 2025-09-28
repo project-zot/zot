@@ -66,7 +66,7 @@ func TestScanGeneratorWithMockedData(t *testing.T) { //nolint: gocyclo
 		boltDriver, err := boltdb.GetBoltDriver(params)
 		So(err, ShouldBeNil)
 
-		metaDB, err := boltdb.New(boltDriver, log.NewLogger("debug", ""))
+		metaDB, err := boltdb.New(boltDriver, log.NewTestLogger())
 		So(err, ShouldBeNil)
 
 		// Refactor Idea: We can use InitializeTestMetaDB

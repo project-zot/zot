@@ -49,7 +49,7 @@ func (errReader) Read(p []byte) (int, error) {
 
 func TestSignatureHandlers(t *testing.T) {
 	conf := config.New()
-	log := log.NewLogger("debug", "")
+	log := log.NewTestLogger()
 
 	trust := extensions.ImageTrust{
 		Conf: conf,

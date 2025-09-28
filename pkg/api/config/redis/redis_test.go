@@ -37,7 +37,7 @@ func TestRedisLogger(t *testing.T) {
 
 func TestRedisOptions(t *testing.T) {
 	Convey("Test redis initialization", t, func() {
-		log := log.NewLogger("debug", "")
+		log := log.NewTestLogger()
 		So(log, ShouldNotBeNil)
 
 		Convey("Test redis url parsing", func() {

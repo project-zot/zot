@@ -14,7 +14,7 @@ func Test(t *testing.T) {
 	Convey("Test redis metadb key generation", t, func() {
 		miniRedis := miniredis.RunT(t)
 
-		log := log.NewLogger("debug", "")
+		log := log.NewTestLogger()
 		So(log, ShouldNotBeNil)
 
 		opts, err := redis.ParseURL("redis://" + miniRedis.Addr())

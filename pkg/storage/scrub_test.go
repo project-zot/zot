@@ -42,7 +42,7 @@ var errUnexpectedError = errors.New("unexpected err")
 func TestLocalCheckAllBlobsIntegrity(t *testing.T) {
 	Convey("test with local storage", t, func() {
 		tdir := t.TempDir()
-		log := log.NewLogger("debug", "")
+		log := log.NewTestLogger()
 		metrics := monitoring.NewMetricsServer(false, log)
 		cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
 			RootDir:     tdir,
@@ -61,7 +61,7 @@ func TestRedisCheckAllBlobsIntegrity(t *testing.T) {
 
 	Convey("test with local storage", t, func() {
 		tdir := t.TempDir()
-		log := log.NewLogger("debug", "")
+		log := log.NewTestLogger()
 
 		metrics := monitoring.NewMetricsServer(false, log)
 
@@ -90,7 +90,7 @@ func TestS3CheckAllBlobsIntegrity(t *testing.T) {
 
 		testDir := path.Join("/oci-repo-test", uuid.String())
 		tdir := t.TempDir()
-		log := log.NewLogger("debug", "")
+		log := log.NewTestLogger()
 
 		opts := createObjectStoreOpts{
 			rootDir:     testDir,

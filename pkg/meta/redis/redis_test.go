@@ -40,7 +40,7 @@ func (its imgTrustStore) VerifySignature(
 
 func TestRedisMocked(t *testing.T) {
 	Convey("Test redis metadb implementation", t, func() {
-		log := log.NewLogger("debug", "")
+		log := log.NewTestLogger()
 		So(log, ShouldNotBeNil)
 
 		client, mock := redismock.NewClientMock()
@@ -228,7 +228,7 @@ func TestRedisRepoMeta(t *testing.T) {
 	miniRedis := miniredis.RunT(t)
 
 	Convey("Test repometa implementation", t, func() {
-		log := log.NewLogger("debug", "")
+		log := log.NewTestLogger()
 		So(log, ShouldNotBeNil)
 
 		opts, err := goredis.ParseURL("redis://" + miniRedis.Addr())
@@ -397,7 +397,7 @@ func TestRedisUnreachable(t *testing.T) {
 	Convey("Redis unreachable", t, func() {
 		miniRedis := miniredis.RunT(t)
 
-		log := log.NewLogger("debug", "")
+		log := log.NewTestLogger()
 		So(log, ShouldNotBeNil)
 
 		connOpts, err := goredis.ParseURL("redis://" + miniRedis.Addr())
@@ -570,7 +570,7 @@ func TestWrapperErrors(t *testing.T) {
 	Convey("Errors", t, func() {
 		miniRedis := miniredis.RunT(t)
 
-		log := log.NewLogger("debug", "")
+		log := log.NewTestLogger()
 		So(log, ShouldNotBeNil)
 
 		opts, err := goredis.ParseURL("redis://" + miniRedis.Addr())

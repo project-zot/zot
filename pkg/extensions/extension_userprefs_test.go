@@ -63,7 +63,7 @@ func TestAllowedMethodsHeaderUserPrefs(t *testing.T) {
 func TestHandlers(t *testing.T) {
 	const UserprefsBaseURL = "http://127.0.0.1:8080/v2/_zot/ext/userprefs"
 
-	log := log.NewLogger("debug", "")
+	log := log.NewTestLogger()
 	mockmetaDB := mocks.MetaDBMock{}
 
 	Convey("No repo in request", t, func() {
