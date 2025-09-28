@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sort"
 	"testing"
 	"time"
 
@@ -2664,6 +2665,135 @@ func TestExpandedRepoInfoErrors(t *testing.T) {
 
 		_, err := expandedRepoInfo(responseContext, "repo", mocks.MetaDBMock{}, mocks.CveInfoMock{}, log)
 		So(err, ShouldBeNil)
+	})
+}
+
+func TestImageSummarySort(t *testing.T) {
+	Convey("Test sorting ImageSummary", t, func() {
+		Convey("Swap elements at valid indices", func() {
+			// Create test data with different timestamps
+			time1 := time.Date(2023, 1, 1, 12, 0, 0, 0, time.UTC)
+			time2 := time.Date(2023, 1, 2, 12, 0, 0, 0, time.UTC)
+			time3 := time.Date(2023, 1, 3, 12, 0, 0, 0, time.UTC)
+
+			image1 := &gql_generated.ImageSummary{
+				Tag:         ref("tag1"),
+				LastUpdated: &time1,
+			}
+			image2 := &gql_generated.ImageSummary{
+				Tag:         ref("tag2"),
+				LastUpdated: &time2,
+			}
+			image3 := &gql_generated.ImageSummary{
+				Tag:         ref("tag3"),
+				LastUpdated: &time3,
+			}
+
+			// Create timeSlice with test data
+			timeSliceData := timeSlice{image1, image2, image3}
+
+			// Verify initial order
+			So(*timeSliceData[0].Tag, ShouldEqual, "tag1")
+			So(*timeSliceData[1].Tag, ShouldEqual, "tag2")
+			So(*timeSliceData[2].Tag, ShouldEqual, "tag3")
+
+			// Swap elements at indices 0 and 2
+			timeSliceData.Swap(0, 2)
+
+			// Verify elements are swapped
+			So(*timeSliceData[0].Tag, ShouldEqual, "tag3")
+			So(*timeSliceData[1].Tag, ShouldEqual, "tag2")
+			So(*timeSliceData[2].Tag, ShouldEqual, "tag1")
+
+			// Swap elements at indices 1 and 2
+			timeSliceData.Swap(1, 2)
+
+			// Verify elements are swapped again
+			So(*timeSliceData[0].Tag, ShouldEqual, "tag3")
+			So(*timeSliceData[1].Tag, ShouldEqual, "tag1")
+			So(*timeSliceData[2].Tag, ShouldEqual, "tag2")
+		})
+
+		Convey("Swap elements at same index (no-op)", func() {
+			time1 := time.Date(2023, 1, 1, 12, 0, 0, 0, time.UTC)
+			time2 := time.Date(2023, 1, 2, 12, 0, 0, 0, time.UTC)
+
+			image1 := &gql_generated.ImageSummary{
+				Tag:         ref("tag1"),
+				LastUpdated: &time1,
+			}
+			image2 := &gql_generated.ImageSummary{
+				Tag:         ref("tag2"),
+				LastUpdated: &time2,
+			}
+
+			timeSliceData := timeSlice{image1, image2}
+
+			// Swap element with itself
+			timeSliceData.Swap(0, 0)
+
+			// Verify no change
+			So(*timeSliceData[0].Tag, ShouldEqual, "tag1")
+			So(*timeSliceData[1].Tag, ShouldEqual, "tag2")
+		})
+
+		Convey("Swap with single element slice", func() {
+			time1 := time.Date(2023, 1, 1, 12, 0, 0, 0, time.UTC)
+
+			image1 := &gql_generated.ImageSummary{
+				Tag:         ref("tag1"),
+				LastUpdated: &time1,
+			}
+
+			timeSliceData := timeSlice{image1}
+
+			// Swap single element with itself
+			timeSliceData.Swap(0, 0)
+
+			// Verify no change
+			So(*timeSliceData[0].Tag, ShouldEqual, "tag1")
+		})
+
+		Convey("Swap with empty slice", func() {
+			timeSliceData := timeSlice{}
+
+			// Verify slice is empty
+			// Note: Calling Swap on empty slice would panic, which is expected behavior
+			// The Swap method doesn't check bounds, so it's the caller's responsibility
+			// to ensure valid indices. This is consistent with Go's standard library behavior.
+			So(len(timeSliceData), ShouldEqual, 0)
+		})
+
+		Convey("Integration test with sort.Sort", func() {
+			// Create test data with unsorted timestamps
+			time1 := time.Date(2023, 1, 1, 12, 0, 0, 0, time.UTC)
+			time2 := time.Date(2023, 1, 3, 12, 0, 0, 0, time.UTC) // Latest
+			time3 := time.Date(2023, 1, 2, 12, 0, 0, 0, time.UTC)
+
+			image1 := &gql_generated.ImageSummary{
+				Tag:         ref("tag1"),
+				LastUpdated: &time1,
+			}
+			image2 := &gql_generated.ImageSummary{
+				Tag:         ref("tag2"),
+				LastUpdated: &time2,
+			}
+			image3 := &gql_generated.ImageSummary{
+				Tag:         ref("tag3"),
+				LastUpdated: &time3,
+			}
+
+			// Create timeSlice with unsorted data
+			timeSliceData := timeSlice{image1, image2, image3}
+
+			// Sort using sort.Sort (which will call Swap internally)
+			sort.Sort(timeSliceData)
+
+			// Verify sorted order (newest first due to Less implementation)
+			So(*timeSliceData[0].Tag, ShouldEqual, "tag2") // Latest time
+			So(*timeSliceData[1].Tag, ShouldEqual, "tag3") // Middle time
+			So(*timeSliceData[2].Tag, ShouldEqual, "tag1") // Oldest time
+		})
 	})
 }
 
