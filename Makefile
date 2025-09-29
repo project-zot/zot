@@ -26,7 +26,7 @@ CRICTL_VERSION := v1.26.1
 ACTION_VALIDATOR := $(TOOLSDIR)/bin/action-validator
 ACTION_VALIDATOR_VERSION := v0.5.3
 ZUI_BUILD_PATH := ""
-ZUI_VERSION := commit-d25abda
+ZUI_VERSION := commit-731b639
 ZUI_REPO_OWNER := project-zot
 ZUI_REPO_NAME := zui
 SWAGGER_VERSION := v1.16.2
@@ -321,7 +321,7 @@ $(GOLINTER):
 	$(GOLINTER) version
 
 .PHONY: check-logs
-check-logs: 
+check-logs:
 	@./scripts/check_logs.sh
 
 .PHONY: check
