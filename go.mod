@@ -21,7 +21,7 @@ require (
 	github.com/briandowns/spinner v1.23.2
 	github.com/chartmuseum/auth v0.5.0
 	github.com/cloudevents/sdk-go/protocol/nats/v2 v2.16.1
-	github.com/cloudevents/sdk-go/v2 v2.16.1
+	github.com/cloudevents/sdk-go/v2 v2.16.2
 	github.com/containers/image/v5 v5.36.2
 	github.com/dchest/siphash v1.2.3
 	github.com/didip/tollbooth/v7 v7.0.2
