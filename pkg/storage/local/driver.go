@@ -359,8 +359,15 @@ func (fi fileInfo) IsDir() bool {
 	return fi.FileInfo.IsDir()
 }
 
+// fileInternal defines the interface for file operations (internal).
+type fileInternal interface {
+	io.WriteCloser
+	Sync() error
+	Name() string
+}
+
 type fileWriter struct {
-	file      *os.File
+	file      fileInternal
 	size      int64
 	bw        *bufio.Writer
 	closed    bool
@@ -369,13 +376,18 @@ type fileWriter struct {
 	commit    bool
 }
 
-func newFileWriter(file *os.File, size int64, commit bool) *fileWriter {
+func newFileWriter(file fileInternal, size int64, commit bool) *fileWriter {
 	return &fileWriter{
 		file:   file,
 		size:   size,
 		commit: commit,
 		bw:     bufio.NewWriter(file),
 	}
+}
+
+// NewFileWriter creates a new fileWriter for testing purposes.
+func NewFileWriter(file fileInternal, size int64, commit bool) *fileWriter {
+	return newFileWriter(file, size, commit)
 }
 
 func (fw *fileWriter) Write(buf []byte) (int, error) {
