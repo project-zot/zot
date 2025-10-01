@@ -174,5 +174,6 @@ func TestBoltDBCache(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		//So(blobs, ShouldResemble, []string{"second"})
+		So(blobs, ShouldResemble, []string{"first", "second"})
 	})
 }
