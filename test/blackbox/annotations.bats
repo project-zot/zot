@@ -230,9 +230,9 @@ function teardown_file() {
     run notation cert generate-test "notation-sign-test"
     [ "$status" -eq 0 ]
 
-    local trust_policy_file=${HOME}/.config/notation/trustpolicy.json
+    local trust_policy_file=/tmp/trustpolicy.json
 
-    cat >${trust_policy_file} <<EOF
+    cat <<EOF >"${trust_policy_file}"
 {
     "version": "1.0",
     "trustPolicies": [
@@ -250,16 +250,17 @@ function teardown_file() {
     ]
 }
 EOF
-
-    run notation sign --key "notation-sign-test" --insecure-registry localhost:${zot_port}/annotations:latest
+    run notation policy import --force "${trust_policy_file}"
     [ "$status" -eq 0 ]
-    run notation verify --insecure-registry localhost:${zot_port}/annotations:latest
+    run notation sign --debug --verbose --force-referrers-tag=true --key "notation-sign-test" --insecure-registry localhost:${zot_port}/annotations:latest
+    [ "$status" -eq 0 ]
+    run notation verify --debug --verbose --insecure-registry localhost:${zot_port}/annotations:latest
     [ "$status" -eq 0 ]
     run notation list --insecure-registry localhost:${zot_port}/annotations:latest
     [ "$status" -eq 0 ]
 }
 
-@test "sign/verify with notation( NOTATION_EXPERIMENTAL=1 and --allow-referrers-api )" {
+@test "sign/verify with notation using referrers api" {
     zot_port=`cat ${BATS_FILE_TMPDIR}/zot.port`
     run curl -X POST -H "Content-Type: application/json" --data '{ "query": "{ ImageList(repo: \"annotations\") { Results { RepoName Tag Manifests {Digest ConfigDigest Size Layers { Size Digest }} Vendor Licenses }}}"}' http://localhost:${zot_port}/v2/_zot/ext/search
     [ "$status" -eq 0 ]
@@ -269,9 +270,9 @@ EOF
     run notation cert generate-test "notation-sign-test-experimental"
     [ "$status" -eq 0 ]
 
-    local trust_policy_file=${HOME}/.config/notation/trustpolicy.json
+    local trust_policy_file=/tmp/trustpolicy.json
 
-    cat >${trust_policy_file} <<EOF
+    cat <<EOF >"${trust_policy_file}"
 {
     "version": "1.0",
     "trustPolicies": [
@@ -290,12 +291,12 @@ EOF
 }
 EOF
 
-    export NOTATION_EXPERIMENTAL=1
-    run notation sign --allow-referrers-api --key "notation-sign-test-experimental" --insecure-registry localhost:${zot_port}/annotations:latest
+    run notation policy import --force "${trust_policy_file}"
     [ "$status" -eq 0 ]
-    run notation verify --allow-referrers-api --insecure-registry localhost:${zot_port}/annotations:latest
+    run notation sign --debug --verbose --force-referrers-tag=false --key "notation-sign-test-experimental" --insecure-registry localhost:${zot_port}/annotations:latest
     [ "$status" -eq 0 ]
-    run notation list --allow-referrers-api --insecure-registry localhost:${zot_port}/annotations:latest
+    run notation verify --debug --verbose --insecure-registry localhost:${zot_port}/annotations:latest
     [ "$status" -eq 0 ]
-    unset NOTATION_EXPERIMENTAL
+    run notation list --insecure-registry localhost:${zot_port}/annotations:latest
+    [ "$status" -eq 0 ]
 }
