@@ -1148,6 +1148,85 @@ func TestFileWriterWrite(t *testing.T) {
 	})
 }
 
+func TestList(t *testing.T) {
+	Convey("Test List operations", t, func() {
+		driver := local.New(true)
+		rootDir := t.TempDir()
+
+		Convey("Test successful listing with empty directory", func() {
+			keys, err := driver.List(rootDir)
+			So(err, ShouldBeNil)
+			So(len(keys), ShouldEqual, 0)
+		})
+
+		Convey("Test successful listing with files and directories", func() {
+			// Create test directory structure
+			testDir := path.Join(rootDir, "testdir")
+			err := os.Mkdir(testDir, 0o755)
+			So(err, ShouldBeNil)
+
+			// Create subdirectory
+			subDir := path.Join(testDir, "subdir")
+			err = os.Mkdir(subDir, 0o755)
+			So(err, ShouldBeNil)
+
+			// Create files
+			_, err = os.Create(path.Join(testDir, "file1.txt"))
+			So(err, ShouldBeNil)
+			_, err = os.Create(path.Join(testDir, "file2.txt"))
+			So(err, ShouldBeNil)
+			_, err = os.Create(path.Join(subDir, "file3.txt"))
+			So(err, ShouldBeNil)
+
+			// List directory content
+			keys, err := driver.List(testDir)
+			So(err, ShouldBeNil)
+			So(len(keys), ShouldEqual, 3)
+
+			// Verify paths are properly constructed
+			expectedPaths := []string{
+				path.Join(testDir, "subdir"),
+				path.Join(testDir, "file1.txt"),
+				path.Join(testDir, "file2.txt"),
+			}
+
+			for _, expectedPath := range expectedPaths {
+				So(keys, ShouldContain, expectedPath)
+			}
+		})
+
+		Convey("Test listing non-existent directory", func() {
+			nonExistentDir := path.Join(rootDir, "nonexistent")
+			_, err := driver.List(nonExistentDir)
+			So(err, ShouldNotBeNil)
+
+			var pathNotFoundErr storagedriver.PathNotFoundError
+
+			So(errors.As(err, &pathNotFoundErr), ShouldBeTrue)
+			So(pathNotFoundErr.Path, ShouldEqual, nonExistentDir)
+		})
+
+		Convey("Test List() with os.ReadDir error triggering formatErr", func() {
+			// Use an invalid path that will cause os.ReadDir to fail with a non-IsNotExist error
+			invalidPath := string([]byte{0x00}) // Null byte in path is invalid on most systems
+
+			_, err := driver.List(invalidPath)
+			So(err, ShouldNotBeNil)
+
+			// Should not be a PathNotFoundError since it's not an IsNotExist error
+			var pathNotFoundErr storagedriver.PathNotFoundError
+
+			So(errors.As(err, &pathNotFoundErr), ShouldBeFalse)
+
+			// Should be a formatted error
+			var storageErr storagedriver.Error
+
+			So(errors.As(err, &storageErr), ShouldBeTrue)
+			So(storageErr.DriverName, ShouldEqual, "local")
+		})
+	})
+}
+
 func TestSameFile(t *testing.T) {
 	Convey("Test SameFile operations", t, func() {
 		driver := local.New(true)

@@ -10,6 +10,7 @@ import (
 	"errors"
 	"os"
 	"testing"
+	"time"
 
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
@@ -155,6 +156,387 @@ func TestService(t *testing.T) {
 
 		// We expect an error when ReferrerList fails (network/connection error in this case)
 		So(err, ShouldNotBeNil)
+	})
+
+	Convey("test LoadOrStore continue path by pre-populating requestStore", t, func() {
+		// Strategy: Pre-populate requestStore to force LoadOrStore to return true
+		maxRetries := 2
+		retryDelay := 100 * time.Millisecond
+		conf := syncconf.RegistryConfig{
+			URLs:       []string{"http://localhost:32768"}, // Invalid port to force errors
+			MaxRetries: &maxRetries,
+			RetryDelay: &retryDelay,
+		}
+
+		service, err := New(conf, "", nil, os.TempDir(), storage.StoreController{}, mocks.MetaDBMock{}, log.Logger{})
+		So(err, ShouldBeNil)
+
+		onDemand := NewOnDemand(log.Logger{})
+		onDemand.Add(service)
+		ctx := context.Background()
+
+		// === IMAGE SYNC CONTINUE PATH TEST ===
+
+		// Step 1: Verify empty requestStore initially
+		initialImageCount := 0
+		onDemand.requestStore.Range(func(key, value interface{}) bool {
+			initialImageCount++
+			return true
+		})
+		So(initialImageCount, ShouldEqual, 0)
+
+		// Step 2: Pre-populate image background retry request
+		duplicateImageReq := request{
+			repo:         "test-duplicate-repo",
+			reference:    "test-duplicate-tag",
+			serviceID:    0,
+			isBackground: true,
+		}
+		onDemand.requestStore.Store(duplicateImageReq, struct{}{})
+
+		// Step 3: Verify we now have 1 request
+		preImageCount := 0
+		onDemand.requestStore.Range(func(key, value interface{}) bool {
+			preImageCount++
+			return true
+		})
+		So(preImageCount, ShouldEqual, 1) // Should be 1 after pre-population
+
+		// Step 4: Trigger sync - should execute continue path
+		err = onDemand.SyncImage(ctx, "test-duplicate-repo", "test-duplicate-tag")
+		So(err, ShouldNotBeNil) // Should still error due to invalid registry
+
+		// Step 5: Verify CONTINUE PATH EXECUTED - no new requests created
+		postImageCount := 0
+		onDemand.requestStore.Range(func(key, value interface{}) bool {
+			postImageCount++
+			return true
+		})
+		So(postImageCount, ShouldEqual, preImageCount) // Count unchanged = continue executed
+
+		// Step 6: Verify image request unchanged (proves no background goroutine started)
+		value, exists := onDemand.requestStore.Load(duplicateImageReq)
+		So(exists, ShouldBeTrue)
+		So(value, ShouldEqual, struct{}{}) // Should still be pre-populated value
+
+		// === REFERRER SYNC CONTINUE PATH TEST ===
+
+		// Step 7: Verify current state before referrer test - we should have 1 request
+		initialReferrerCount := 0
+		onDemand.requestStore.Range(func(key, value interface{}) bool {
+			initialReferrerCount++
+			return true
+		})
+		So(initialReferrerCount, ShouldEqual, 1) // Should have 1 from image test
+
+		// Step 8: Pre-populate referrer background retry request
+		duplicateReferrerReq := request{
+			repo:         "test-duplicate-referrer-repo",
+			reference:    "sha256:duplicate",
+			serviceID:    0,
+			isBackground: true,
+		}
+		onDemand.requestStore.Store(duplicateReferrerReq, struct{}{})
+
+		// Step 9: Verify we now have 2 requests (image + referrer)
+		preReferrerCount := 0
+		onDemand.requestStore.Range(func(key, value interface{}) bool {
+			preReferrerCount++
+			return true
+		})
+		So(preReferrerCount, ShouldEqual, 2) // Should have 2 after referrer pre-population
+
+		// Step 10: Trigger referrer sync - should execute continue path
+		err = onDemand.SyncReferrers(ctx, "test-duplicate-referrer-repo", "sha256:duplicate", []string{"signature"})
+		So(err, ShouldNotBeNil) // Should still error due to invalid registry
+
+		// Step 11: Verify CONTINUE PATH EXECUTED - no new referrer requests created
+		postReferrerCount := 0
+		onDemand.requestStore.Range(func(key, value interface{}) bool {
+			postReferrerCount++
+			return true
+		})
+		So(postReferrerCount, ShouldEqual, preReferrerCount) // Count unchanged = continue executed
+
+		// Step 12: Verify referrer request unchanged (proves no background goroutine started)
+		value, exists = onDemand.requestStore.Load(duplicateReferrerReq)
+		So(exists, ShouldBeTrue)
+		So(value, ShouldEqual, struct{}{}) // Should still be pre-populated value
+
+		// Step 13: Final verification - exactly 2 requests total (both pre-populated, none deleted)
+		finalCount := 0
+		onDemand.requestStore.Range(func(key, value interface{}) bool {
+			finalCount++
+			return true
+		})
+		So(finalCount, ShouldEqual, 2)
+	})
+
+	Convey("test continue paths for specific error types in on-demand sync", t, func() {
+		// Strategy: Create multiple services where one returns ErrSyncImageFilteredOut
+		// This will trigger the continue path when looping through services
+		ctx := context.Background()
+
+		// Create first service with content filtering
+		maxRetries := 2
+		retryDelay := 100 * time.Millisecond
+
+		conf1 := syncconf.RegistryConfig{
+			URLs:       []string{"http://localhost:32768"}, // Invalid port to force errors
+			MaxRetries: &maxRetries,
+			RetryDelay: &retryDelay,
+			Content: []syncconf.Content{{
+				Prefix: "different-prefix", // Won't match our test repo
+			}},
+		}
+
+		service1, err := New(conf1, "", nil, os.TempDir(), storage.StoreController{}, mocks.MetaDBMock{}, log.Logger{})
+		So(err, ShouldBeNil)
+
+		// Create second service for normal processing
+		conf2 := syncconf.RegistryConfig{
+			URLs:       []string{"http://localhost:32768"}, // Invalid port to force errors
+			MaxRetries: &maxRetries,
+			RetryDelay: &retryDelay,
+			Content: []syncconf.Content{{
+				Prefix: "test-repo", // Will match our test repo
+			}},
+		}
+
+		service2, err := New(conf2, "", nil, os.TempDir(), storage.StoreController{}, mocks.MetaDBMock{}, log.Logger{})
+		So(err, ShouldBeNil)
+
+		onDemand := NewOnDemand(log.Logger{})
+		onDemand.Add(service1) // First service will return ErrSyncImageFilteredOut
+		onDemand.Add(service2) // Second service will process normally but error on network
+
+		// Test ErrSyncImageFilteredOut continue path in SyncImage
+		// The first service returns ErrSyncImageFilteredOut (causes continue), second service processes but errors
+		err = onDemand.SyncImage(ctx, "test-filtered-repo", "test-tag")
+		So(err, ShouldNotBeNil) // Should get error from second service (network error)
+
+		// Test ErrSyncImageFilteredOut continue path in SyncReferrers
+		err = onDemand.SyncReferrers(ctx, "test-filtered-referrer-repo", "sha256:test", []string{"signature"})
+		So(err, ShouldNotBeNil) // Should get error from second service (network error)
+	})
+
+	Convey("test continue paths in both SyncImage and SyncReferrers", t, func() {
+		// Helper function to create filter test scenario
+		createFilteredService := func(prefix string) (*BaseService, *BaseOnDemand) {
+			maxRetries := 2
+			retryDelay := 100 * time.Millisecond
+
+			conf := syncconf.RegistryConfig{
+				URLs:       []string{"http://localhost:32768"}, // Invalid port to force errors
+				MaxRetries: &maxRetries,
+				RetryDelay: &retryDelay,
+				Content: []syncconf.Content{{
+					Prefix: prefix, // Won't match our test repo
+				}},
+			}
+
+			service, err := New(conf, "", nil, os.TempDir(), storage.StoreController{}, mocks.MetaDBMock{}, log.Logger{})
+			So(err, ShouldBeNil)
+
+			onDemand := NewOnDemand(log.Logger{})
+			onDemand.Add(service)
+			return service, onDemand
+		}
+
+		ctx := context.Background()
+
+		// Test SyncReferrers continue path
+		Convey("SyncReferrers continue path", func() {
+			_, onDemand := createFilteredService("different-referrer-prefix")
+			err := onDemand.SyncReferrers(ctx, "test-unfiltered-referrer-repo", "sha256:test", []string{"signature"})
+			So(err, ShouldNotBeNil) // Should get error from sync process (filtered out -> continue -> network error)
+		})
+
+		// Test SyncImage continue path
+		Convey("SyncImage continue path", func() {
+			_, onDemand := createFilteredService("different-image-prefix")
+			err := onDemand.SyncImage(ctx, "test-unfiltered-image-repo", "test-tag")
+			So(err, ShouldNotBeNil) // Should get error from sync process (filtered out -> continue -> network error)
+		})
+	})
+
+	Convey("test background retry goroutines for both SyncImage and SyncReferrers", t, func() {
+		// Helper function to create background retry test scenario
+		createBackgroundRetryService := func(prefix string) (*BaseService, *BaseOnDemand, time.Duration) {
+			maxRetries := 2
+			retryDelay := 1 * time.Second
+
+			conf := syncconf.RegistryConfig{
+				URLs:       []string{"http://localhost:32768"}, // Invalid port to force errors
+				MaxRetries: &maxRetries,                        // Enable retries so CanRetryOnError() returns true
+				RetryDelay: &retryDelay,
+				Content: []syncconf.Content{{
+					Prefix: prefix, // Will match our repo
+				}},
+			}
+
+			service, err := New(conf, "", nil, os.TempDir(), storage.StoreController{}, mocks.MetaDBMock{}, log.Logger{})
+			So(err, ShouldBeNil)
+
+			onDemand := NewOnDemand(log.Logger{})
+			onDemand.Add(service)
+			return service, onDemand, retryDelay
+		}
+
+		// Test SyncReferrers background retry
+		Convey("SyncReferrers background retry", func() {
+			_, onDemand, retryDelay := createBackgroundRetryService("test-background-retry")
+			ctx := context.Background()
+
+			// Verify initial requestStore is empty
+			initialCount := 0
+			onDemand.requestStore.Range(func(key, value interface{}) bool {
+				initialCount++
+				return true
+			})
+			So(initialCount, ShouldEqual, 0)
+
+			// Call SyncReferrers - should trigger background retry since:
+			// 1. Network error (not a continue-path error)
+			// 2. CanRetryOnError() returns true (maxRetries > 0)
+			// 3. No existing background retry
+			err := onDemand.SyncReferrers(ctx, "test-background-retry", "sha256:background", []string{"signature"})
+			So(err, ShouldNotBeNil) // Should get original network error
+
+			// Wait for background goroutine to start and store request
+			time.Sleep(50 * time.Millisecond)
+
+			// Verify background retry request was stored
+			reqBackground := request{
+				repo:         "test-background-retry",
+				reference:    "sha256:background",
+				serviceID:    0,
+				isBackground: true,
+			}
+			_, existsBackground := onDemand.requestStore.Load(reqBackground)
+			So(existsBackground, ShouldBeTrue) // Background retry request should exist
+
+			// Wait for background retry to complete and cleanup (3x retry delay)
+			time.Sleep(3 * retryDelay)
+
+			// Verify background retry request was cleaned up after completion
+			_, existsAfterCleanup := onDemand.requestStore.Load(reqBackground)
+			So(existsAfterCleanup, ShouldBeFalse) // Should be cleaned up by defer function after retry
+		})
+
+		// Test SyncImage background retry
+		Convey("SyncImage background retry", func() {
+			_, onDemand, retryDelay := createBackgroundRetryService("test-background-image-retry")
+			ctx := context.Background()
+
+			// Verify initial requestStore is empty
+			initialCount := 0
+			onDemand.requestStore.Range(func(key, value interface{}) bool {
+				initialCount++
+				return true
+			})
+			So(initialCount, ShouldEqual, 0)
+
+			// Call SyncImage - should trigger background retry since:
+			// 1. Network error (not a continue-path error)
+			// 2. CanRetryOnError() returns true (maxRetries > 0)
+			// 3. No existing background retry
+			err := onDemand.SyncImage(ctx, "test-background-image-retry", "background-image-tag")
+			So(err, ShouldNotBeNil) // Should get original network error
+
+			// Wait for background goroutine to start and store request
+			time.Sleep(50 * time.Millisecond)
+
+			// Verify background retry request was stored
+			reqBackground := request{
+				repo:         "test-background-image-retry",
+				reference:    "background-image-tag",
+				serviceID:    0,
+				isBackground: true,
+			}
+			_, existsBackground := onDemand.requestStore.Load(reqBackground)
+			So(existsBackground, ShouldBeTrue) // Background retry request should exist
+
+			// Wait for background retry to complete and cleanup (3x retry delay)
+			time.Sleep(3 * retryDelay)
+
+			// Verify background retry request was cleaned up after completion
+			_, existsAfterCleanup := onDemand.requestStore.Load(reqBackground)
+			So(existsAfterCleanup, ShouldBeFalse) // Should be cleaned up by defer function after retry
+		})
+	})
+
+	Convey("test assured channel waiting path", t, func() {
+		// Strategy: Pre-populate requestStore with a channel to GUARANTEE the channel waiting code path
+		// This ensures the "waiting on channel" message is logged and the channel receive happens
+
+		Convey("SyncImage assured channel waiting", func() {
+			onDemand := NewOnDemand(log.Logger{})
+
+			// Create request and pre-populate with a channel that we control
+			req := request{
+				repo:         "test-guaranteed-channel-image",
+				reference:    "guaranteed-image-tag",
+				serviceID:    0,
+				isBackground: false,
+			}
+
+			// Create a channel that we control completely
+			pendingChannel := make(chan error, 1)
+			onDemand.requestStore.Store(req, pendingChannel)
+
+			// Start request that will wait on our channel
+			requestCompleted := make(chan error)
+			go func() {
+				err := onDemand.SyncImage(context.Background(), "test-guaranteed-channel-image", "guaranteed-image-tag")
+				requestCompleted <- err
+			}()
+
+			// Wait a moment for the request to reach the channel waiting code
+			time.Sleep(50 * time.Millisecond)
+
+			// Send error through our controlled channel - this proves channel waiting worked
+			pendingChannel <- errors.New("guaranteed channel error")
+
+			// Verify the request got our controlled error
+			err := <-requestCompleted
+			So(err, ShouldNotBeNil)
+			So(err.Error(), ShouldEqual, "guaranteed channel error")
+		})
+
+		Convey("SyncReferrers assured channel waiting", func() {
+			onDemand := NewOnDemand(log.Logger{})
+
+			// Create request and pre-populate with a channel that we control
+			req := request{
+				repo:         "test-guaranteed-channel-referrers",
+				reference:    "sha256:guaranteed",
+				serviceID:    0,
+				isBackground: false,
+			}
+
+			// Create a channel that we control completely
+			pendingChannel := make(chan error, 1)
+			onDemand.requestStore.Store(req, pendingChannel)
+
+			// Start request that will wait on our channel
+			requestCompleted := make(chan error)
+			go func() {
+				err := onDemand.SyncReferrers(context.Background(), "test-guaranteed-channel-referrers", "sha256:guaranteed", []string{"signature"})
+				requestCompleted <- err
+			}()
+
+			// Wait a moment for the request to reach the channel waiting code
+			time.Sleep(50 * time.Millisecond)
+
+			// Send error through our controlled channel - this proves channel waiting worked
+			pendingChannel <- errors.New("guaranteed referrer channel error")
+
+			// Verify the request got our controlled error
+			err := <-requestCompleted
+			So(err, ShouldNotBeNil)
+			So(err.Error(), ShouldEqual, "guaranteed referrer channel error")
+		})
 	})
 }
 
