@@ -229,7 +229,7 @@ func (driver *Driver) Walk(path string, walkFn storagedriver.WalkFn) error {
 }
 
 func (driver *Driver) List(fullpath string) ([]string, error) {
-	dir, err := os.Open(fullpath)
+	entries, err := os.ReadDir(fullpath)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, storagedriver.PathNotFoundError{Path: fullpath}
@@ -238,16 +238,9 @@ func (driver *Driver) List(fullpath string) ([]string, error) {
 		return nil, driver.formatErr(err)
 	}
 
-	defer dir.Close()
-
-	fileNames, err := dir.Readdirnames(0)
-	if err != nil {
-		return nil, driver.formatErr(err)
-	}
-
-	keys := make([]string, 0, len(fileNames))
-	for _, fileName := range fileNames {
-		keys = append(keys, path.Join(fullpath, fileName))
+	keys := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		keys = append(keys, path.Join(fullpath, entry.Name()))
 	}
 
 	return keys, nil
