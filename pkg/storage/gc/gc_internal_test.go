@@ -37,7 +37,7 @@ func TestGarbageCollectManifestErrors(t *testing.T) {
 	Convey("Make imagestore and upload manifest", t, func(c C) {
 		dir := t.TempDir()
 
-		log := zlog.NewLogger("debug", "")
+		log := zlog.NewTestLogger()
 		audit := zlog.NewAuditLogger("debug", "")
 
 		metrics := monitoring.NewMetricsServer(false, log)
@@ -162,7 +162,7 @@ func TestGarbageCollectIndexErrors(t *testing.T) {
 	Convey("Make imagestore and upload manifest", t, func(c C) {
 		dir := t.TempDir()
 
-		log := zlog.NewLogger("debug", "")
+		log := zlog.NewTestLogger()
 		audit := zlog.NewAuditLogger("debug", "")
 
 		metrics := monitoring.NewMetricsServer(false, log)
@@ -285,7 +285,7 @@ func TestGarbageCollectWithMockedImageStore(t *testing.T) {
 	ctx := context.Background()
 
 	Convey("Cover gc error paths", t, func(c C) {
-		log := zlog.NewLogger("debug", "")
+		log := zlog.NewTestLogger()
 		audit := zlog.NewAuditLogger("debug", "")
 
 		gcOptions := Options{

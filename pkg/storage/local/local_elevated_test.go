@@ -13,7 +13,6 @@ import (
 	"testing"
 
 	godigest "github.com/opencontainers/go-digest"
-	"github.com/rs/zerolog"
 	. "github.com/smartystreets/goconvey/convey"
 
 	"zotregistry.dev/zot/pkg/extensions/monitoring"
@@ -27,7 +26,7 @@ func TestElevatedPrivilegesInvalidDedupe(t *testing.T) {
 	Convey("Invalid dedupe scenarios", t, func() {
 		dir := t.TempDir()
 
-		log := log.Logger{Logger: zerolog.New(os.Stdout)}
+		log := log.NewTestLogger()
 		metrics := monitoring.NewMetricsServer(false, log)
 
 		cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{

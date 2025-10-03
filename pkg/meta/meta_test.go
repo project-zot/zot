@@ -61,7 +61,7 @@ func TestBoltDB(t *testing.T) {
 		boltDriver, err := boltdb.GetBoltDriver(boltDBParams)
 		So(err, ShouldBeNil)
 
-		log := log.NewLogger("debug", "")
+		log := log.NewTestLogger()
 
 		metaDB, err := boltdb.New(boltDriver, log)
 		So(metaDB, ShouldNotBeNil)
@@ -82,7 +82,7 @@ func TestBoltDB(t *testing.T) {
 		boltDriver, err := boltdb.GetBoltDriver(boltDBParams)
 		So(err, ShouldBeNil)
 
-		log := log.NewLogger("debug", "")
+		log := log.NewTestLogger()
 
 		imgTrustStore, err := imagetrust.NewLocalImageTrustStore(boltDBParams.RootDir)
 		So(err, ShouldBeNil)
@@ -134,7 +134,7 @@ func TestDynamoDBWrapper(t *testing.T) {
 		dynamoClient, err := mdynamodb.GetDynamoClient(dynamoDBDriverParams)
 		So(err, ShouldBeNil)
 
-		log := log.NewLogger("debug", "")
+		log := log.NewTestLogger()
 
 		dynamoDriver, err := mdynamodb.New(dynamoClient, dynamoDBDriverParams, log)
 		So(dynamoDriver, ShouldNotBeNil)
@@ -175,7 +175,7 @@ func TestRedisDB(t *testing.T) {
 
 	Convey("RedisDB Wrapper", t, func() {
 		rootDir := t.TempDir()
-		log := log.NewLogger("debug", "")
+		log := log.NewTestLogger()
 
 		params := redis.DBDriverParameters{KeyPrefix: "zot"}
 		driverConfig := map[string]interface{}{"url": "redis://" + miniRedis.Addr()}
@@ -2898,7 +2898,7 @@ func TestCreateBoltDB(t *testing.T) {
 		conf := config.New()
 		conf.Storage.RootDirectory = rootDir
 
-		log := log.NewLogger("debug", "")
+		log := log.NewTestLogger()
 		So(log, ShouldNotBeNil)
 
 		Convey("Test New() with unspecified driver", func() {
@@ -2938,7 +2938,7 @@ func TestCreateRedisDB(t *testing.T) {
 		conf := config.New()
 		conf.Storage.RemoteCache = true
 
-		log := log.NewLogger("debug", "")
+		log := log.NewTestLogger()
 		So(log, ShouldNotBeNil)
 
 		Convey("Succeeds with default key prefix", func() {

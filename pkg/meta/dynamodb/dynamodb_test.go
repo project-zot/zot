@@ -14,7 +14,6 @@ import (
 	guuid "github.com/gofrs/uuid"
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
-	"github.com/rs/zerolog"
 	. "github.com/smartystreets/goconvey/convey"
 
 	"zotregistry.dev/zot/pkg/extensions/imagetrust"
@@ -47,7 +46,7 @@ func TestIterator(t *testing.T) {
 	userDataTablename := "UserDataTable" + uuid.String()
 	apiKeyTablename := "ApiKeyTable" + uuid.String()
 
-	log := log.NewLogger("debug", "")
+	log := log.NewTestLogger()
 
 	Convey("TestIterator", t, func() {
 		params := mdynamodb.DBDriverParameters{
@@ -124,7 +123,7 @@ func TestIteratorErrors(t *testing.T) {
 			"RepoMetadataTable",
 			"RepoMeta",
 			1,
-			log.Logger{Logger: zerolog.New(os.Stdout)},
+			log.NewTestLogger(),
 		)
 
 		_, err = repoMetaAttributeIterator.First(context.Background())
@@ -152,7 +151,7 @@ func TestWrapperErrors(t *testing.T) {
 	imageMetaTablename := "ImageMeta" + uuid.String()
 	repoBlobsTablename := "RepoBlobs" + uuid.String()
 
-	log := log.NewLogger("debug", "")
+	log := log.NewTestLogger()
 	testDigest := godigest.FromString("str")
 	image := CreateDefaultImage()
 	multi := CreateMultiarchWith().Images([]Image{image}).Build()

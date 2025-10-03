@@ -525,7 +525,7 @@ func TestChangingRepoState(t *testing.T) {
 	ctlr := api.NewController(conf)
 
 	img := CreateRandomImage()
-	storeCtlr := GetDefaultStoreController(conf.Storage.RootDirectory, log.NewLogger("debug", ""))
+	storeCtlr := GetDefaultStoreController(conf.Storage.RootDirectory, log.NewTestLogger())
 
 	err := WriteImageToFileSystem(img, accesibleRepo, "tag", storeCtlr)
 	if err != nil {

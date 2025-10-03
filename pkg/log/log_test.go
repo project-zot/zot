@@ -16,7 +16,6 @@ import (
 	"time"
 
 	godigest "github.com/opencontainers/go-digest"
-	"github.com/rs/zerolog"
 	. "github.com/smartystreets/goconvey/convey"
 	"gopkg.in/resty.v1"
 
@@ -321,7 +320,7 @@ func TestLogErrors(t *testing.T) {
 		err := os.WriteFile(logPath, []byte{}, 0o000)
 		So(err, ShouldBeNil)
 		So(func() {
-			_ = log.NewLogger(zerolog.DebugLevel.String(), logPath)
+			_ = log.NewLogger("debug", logPath)
 		}, ShouldPanic)
 	})
 }
@@ -337,7 +336,7 @@ func TestNewAuditLogger(t *testing.T) {
 		err := os.WriteFile(logPath, []byte{}, 0o000)
 		So(err, ShouldBeNil)
 		So(func() {
-			_ = log.NewAuditLogger(zerolog.DebugLevel.String(), logPath)
+			_ = log.NewAuditLogger("debug", logPath)
 		}, ShouldPanic)
 	})
 }

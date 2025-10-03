@@ -1665,7 +1665,7 @@ func TestWriteDataFromReader(t *testing.T) {
 	Convey("", t, func() {
 		response := httptest.NewRecorder()
 		api.WriteDataFromReader(response, 200, 100, ispec.MediaTypeImageManifest, readerThatFails{},
-			log.NewLogger("debug", ""))
+			log.NewTestLogger())
 
 		So(response.Code, ShouldEqual, 200)
 	})

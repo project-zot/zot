@@ -85,7 +85,7 @@ func testSetup(t *testing.T) (string, error) {
 		return "", err
 	}
 
-	testStorageCtrl := ociutils.GetDefaultStoreController(dir, log.NewLogger("debug", ""))
+	testStorageCtrl := ociutils.GetDefaultStoreController(dir, log.NewTestLogger())
 
 	err = WriteImageToFileSystem(CreateRandomVulnerableImage(), "zot-test", "0.0.1", testStorageCtrl)
 	if err != nil {
@@ -314,7 +314,7 @@ func makeTestFile(fileName, content string) error {
 
 func TestImageFormat(t *testing.T) {
 	Convey("Test valid image", t, func() {
-		log := log.NewLogger("debug", "")
+		log := log.NewTestLogger()
 		imgDir := "../../../../test/data"
 		dbDir := t.TempDir()
 
@@ -382,7 +382,7 @@ func TestImageFormat(t *testing.T) {
 	})
 
 	Convey("isIndexScanable", t, func() {
-		log := log.NewLogger("debug", "")
+		log := log.NewTestLogger()
 
 		metaDB := &mocks.MetaDBMock{
 			GetRepoMetaFn: func(ctx context.Context, repo string) (mTypes.RepoMeta, error) {
@@ -456,7 +456,7 @@ func TestCVESearchDisabled(t *testing.T) {
 
 		ctlr := api.NewController(conf)
 		ctlr.Log.Info().Int64("seedUser", seedUser).Int64("seedPass", seedPass).Msg("random seed for username & password")
-		ctlr.Log.Logger = ctlr.Log.Output(writers)
+		ctlr.Log = log.NewLoggerWithWriter("debug", writers)
 		ctrlManager := test.NewControllerManager(ctlr)
 
 		ctrlManager.StartAndWait(port)
@@ -534,7 +534,7 @@ func TestCVESearch(t *testing.T) {
 		writers := io.MultiWriter(os.Stdout, logFile)
 
 		ctlr := api.NewController(conf)
-		ctlr.Log.Logger = ctlr.Log.Output(writers)
+		ctlr.Log = log.NewLoggerWithWriter("debug", writers)
 		ctlr.Log.Info().Int64("seedUser", seedUser).Int64("seedPass", seedPass).Msg("random seed for username & password")
 		ctrlManager := test.NewControllerManager(ctlr)
 
@@ -772,7 +772,7 @@ func TestCVEStruct(t *testing.T) { //nolint:gocyclo
 		boltDriver, err := boltdb.GetBoltDriver(params)
 		So(err, ShouldBeNil)
 
-		metaDB, err := boltdb.New(boltDriver, log.NewLogger("debug", ""))
+		metaDB, err := boltdb.New(boltDriver, log.NewTestLogger())
 		So(err, ShouldBeNil)
 
 		// Create metadb data for scannable image with vulnerabilities
@@ -925,7 +925,7 @@ func TestCVEStruct(t *testing.T) { //nolint:gocyclo
 		indexM3Name := "repoIndex@" + indexM3Digest
 		imageMap[indexM3Name] = indexM3Digest
 
-		log := log.NewLogger("debug", "")
+		log := log.NewTestLogger()
 
 		// Initialize a test CVE cache
 		cache := cvecache.NewCveCache(100, log)
@@ -1764,7 +1764,7 @@ func TestFixedTagsWithIndex(t *testing.T) {
 		writers := io.MultiWriter(os.Stdout, logFile)
 
 		ctlr := api.NewController(conf)
-		ctlr.Log.Logger = ctlr.Log.Output(writers)
+		ctlr.Log = log.NewLoggerWithWriter("debug", writers)
 
 		cm := test.NewControllerManager(ctlr)
 		cm.StartAndWait(port)
@@ -1841,7 +1841,7 @@ func TestGetCVESummaryForImageMediaErrors(t *testing.T) {
 		storeController.DefaultStore = mocks.MockedImageStore{}
 
 		metaDB := mocks.MetaDBMock{}
-		log := log.NewLogger("debug", "")
+		log := log.NewTestLogger()
 
 		Convey("IsImageMediaScannable returns false", func() {
 			scanner := mocks.CveScannerMock{

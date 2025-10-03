@@ -43,7 +43,7 @@ func TestBaseOciLayoutUtils(t *testing.T) {
 		}
 
 		storeController := storage.StoreController{DefaultStore: mockStoreController}
-		olu := ociutils.NewBaseOciLayoutUtils(storeController, log.NewLogger("debug", ""))
+		olu := ociutils.NewBaseOciLayoutUtils(storeController, log.NewTestLogger())
 
 		size := olu.GetImageManifestSize("", "")
 		So(size, ShouldBeZeroValue)
@@ -57,7 +57,7 @@ func TestBaseOciLayoutUtils(t *testing.T) {
 		}
 
 		storeController := storage.StoreController{DefaultStore: mockStoreController}
-		olu := ociutils.NewBaseOciLayoutUtils(storeController, log.NewLogger("debug", ""))
+		olu := ociutils.NewBaseOciLayoutUtils(storeController, log.NewTestLogger())
 
 		size := olu.GetImageConfigSize("", "")
 		So(size, ShouldBeZeroValue)
@@ -95,7 +95,7 @@ func TestBaseOciLayoutUtils(t *testing.T) {
 		}
 
 		storeController := storage.StoreController{DefaultStore: mockStoreController}
-		olu := ociutils.NewBaseOciLayoutUtils(storeController, log.NewLogger("debug", ""))
+		olu := ociutils.NewBaseOciLayoutUtils(storeController, log.NewTestLogger())
 
 		size := olu.GetImageConfigSize("", "")
 		So(size, ShouldBeZeroValue)
@@ -109,7 +109,7 @@ func TestBaseOciLayoutUtils(t *testing.T) {
 		}
 
 		storeController := storage.StoreController{DefaultStore: mockStoreController}
-		olu := ociutils.NewBaseOciLayoutUtils(storeController, log.NewLogger("debug", ""))
+		olu := ociutils.NewBaseOciLayoutUtils(storeController, log.NewTestLogger())
 
 		_, err := olu.GetRepoLastUpdated("")
 		So(err, ShouldNotBeNil)
@@ -135,7 +135,7 @@ func TestBaseOciLayoutUtils(t *testing.T) {
 		}
 
 		storeController := storage.StoreController{DefaultStore: mockStoreController}
-		olu := ociutils.NewBaseOciLayoutUtils(storeController, log.NewLogger("debug", ""))
+		olu := ociutils.NewBaseOciLayoutUtils(storeController, log.NewTestLogger())
 
 		_, err = olu.GetImageTagsWithTimestamp("rep")
 		So(err, ShouldNotBeNil)
@@ -179,7 +179,7 @@ func TestBaseOciLayoutUtils(t *testing.T) {
 		}
 
 		storeController := storage.StoreController{DefaultStore: mockStoreController}
-		olu := ociutils.NewBaseOciLayoutUtils(storeController, log.NewLogger("debug", ""))
+		olu := ociutils.NewBaseOciLayoutUtils(storeController, log.NewTestLogger())
 
 		_, err = olu.GetImageTagsWithTimestamp("repo")
 		So(err, ShouldNotBeNil)
@@ -222,7 +222,7 @@ func TestBaseOciLayoutUtils(t *testing.T) {
 		}
 
 		storeController := storage.StoreController{DefaultStore: mockStoreController}
-		olu := ociutils.NewBaseOciLayoutUtils(storeController, log.NewLogger("debug", ""))
+		olu := ociutils.NewBaseOciLayoutUtils(storeController, log.NewTestLogger())
 
 		_, err = olu.GetExpandedRepoInfo("rep")
 		So(err, ShouldNotBeNil)
@@ -235,7 +235,7 @@ func TestBaseOciLayoutUtils(t *testing.T) {
 		}
 
 		storeController = storage.StoreController{DefaultStore: mockStoreController}
-		olu = ociutils.NewBaseOciLayoutUtils(storeController, log.NewLogger("debug", ""))
+		olu = ociutils.NewBaseOciLayoutUtils(storeController, log.NewTestLogger())
 
 		_, err = olu.GetExpandedRepoInfo("rep")
 		So(err, ShouldNotBeNil)
@@ -252,7 +252,7 @@ func TestBaseOciLayoutUtils(t *testing.T) {
 		}
 
 		storeController = storage.StoreController{DefaultStore: mockStoreController}
-		olu = ociutils.NewBaseOciLayoutUtils(storeController, log.NewLogger("debug", ""))
+		olu = ociutils.NewBaseOciLayoutUtils(storeController, log.NewTestLogger())
 
 		_, err = olu.GetExpandedRepoInfo("rep")
 		So(err, ShouldBeNil)
@@ -266,7 +266,7 @@ func TestBaseOciLayoutUtils(t *testing.T) {
 		}
 
 		storeController := storage.StoreController{DefaultStore: mockStoreController}
-		olu := ociutils.NewBaseOciLayoutUtils(storeController, log.NewLogger("debug", ""))
+		olu := ociutils.NewBaseOciLayoutUtils(storeController, log.NewTestLogger())
 
 		_, err := olu.GetImageInfo("", "")
 		So(err, ShouldNotBeNil)
@@ -284,7 +284,7 @@ func TestBaseOciLayoutUtils(t *testing.T) {
 		}
 
 		storeController := storage.StoreController{DefaultStore: mockStoreController}
-		olu := ociutils.NewBaseOciLayoutUtils(storeController, log.NewLogger("debug", ""))
+		olu := ociutils.NewBaseOciLayoutUtils(storeController, log.NewTestLogger())
 
 		check := olu.CheckManifestSignature("rep", godigest.FromString(""))
 		So(check, ShouldBeFalse)
@@ -318,7 +318,7 @@ func TestBaseOciLayoutUtils(t *testing.T) {
 		err := UploadImage(image, baseURL, repo, tag)
 		So(err, ShouldBeNil)
 
-		olu = ociutils.NewBaseOciLayoutUtils(ctlr.StoreController, log.NewLogger("debug", ""))
+		olu = ociutils.NewBaseOciLayoutUtils(ctlr.StoreController, log.NewTestLogger())
 		manifestList, err := olu.GetImageManifests(repo)
 		So(err, ShouldBeNil)
 		So(len(manifestList), ShouldEqual, 1)
@@ -364,7 +364,7 @@ func TestBaseOciLayoutUtils(t *testing.T) {
 		err := UploadImage(image, baseURL, repo, tag)
 		So(err, ShouldBeNil)
 
-		olu := ociutils.NewBaseOciLayoutUtils(ctlr.StoreController, log.NewLogger("debug", ""))
+		olu := ociutils.NewBaseOciLayoutUtils(ctlr.StoreController, log.NewTestLogger())
 		manifestList, err := olu.GetImageManifests(repo)
 		So(err, ShouldBeNil)
 		So(len(manifestList), ShouldEqual, 1)
@@ -411,7 +411,7 @@ func TestBaseOciLayoutUtils(t *testing.T) {
 		err := UploadImage(image, baseURL, repo, tag)
 		So(err, ShouldBeNil)
 
-		olu := ociutils.NewBaseOciLayoutUtils(ctlr.StoreController, log.NewLogger("debug", ""))
+		olu := ociutils.NewBaseOciLayoutUtils(ctlr.StoreController, log.NewTestLogger())
 		manifestList, err := olu.GetImageManifests(repo)
 		So(err, ShouldBeNil)
 		So(len(manifestList), ShouldEqual, 1)
@@ -431,7 +431,7 @@ func TestBaseOciLayoutUtils(t *testing.T) {
 func TestExtractImageDetails(t *testing.T) {
 	Convey("extractImageDetails good workflow", t, func() {
 		dir := t.TempDir()
-		testLogger := log.NewLogger("debug", "")
+		testLogger := log.NewTestLogger()
 		imageStore := local.NewImageStore(dir, false, false,
 			testLogger, monitoring.NewMetricsServer(false, testLogger), nil, nil, nil, nil)
 
@@ -455,7 +455,7 @@ func TestExtractImageDetails(t *testing.T) {
 
 	Convey("extractImageDetails bad ispec.ImageManifest", t, func() {
 		dir := t.TempDir()
-		testLogger := log.NewLogger("debug", "")
+		testLogger := log.NewTestLogger()
 		imageStore := local.NewImageStore(dir, false, false,
 			testLogger, monitoring.NewMetricsServer(false, testLogger), nil, nil, nil, nil)
 
@@ -475,7 +475,7 @@ func TestExtractImageDetails(t *testing.T) {
 
 	Convey("extractImageDetails bad imageConfig", t, func() {
 		dir := t.TempDir()
-		testLogger := log.NewLogger("debug", "")
+		testLogger := log.NewTestLogger()
 		imageStore := local.NewImageStore(dir, false, false,
 			testLogger, monitoring.NewMetricsServer(false, testLogger), nil, nil, nil, nil)
 

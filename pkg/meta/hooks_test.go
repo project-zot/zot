@@ -24,7 +24,7 @@ func TestOnUpdateManifest(t *testing.T) {
 	Convey("On UpdateManifest", t, func() {
 		rootDir := t.TempDir()
 		storeController := storage.StoreController{}
-		log := log.NewLogger("debug", "")
+		log := log.NewTestLogger()
 		metrics := monitoring.NewMetricsServer(false, log)
 		storeController.DefaultStore = local.NewImageStore(rootDir, true, true, log, metrics, nil, nil, nil, nil)
 
@@ -58,7 +58,7 @@ func TestUpdateErrors(t *testing.T) {
 		imageStore := mocks.MockedImageStore{}
 		storeController := storage.StoreController{DefaultStore: &imageStore}
 		metaDB := mocks.MetaDBMock{}
-		log := log.NewLogger("debug", "")
+		log := log.NewTestLogger()
 
 		Convey("IsReferrersTag true update", func() {
 			err := meta.OnUpdateManifest(context.Background(), "repo", "sha256-123", "digest", "media", []byte("bad"),

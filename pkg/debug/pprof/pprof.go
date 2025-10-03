@@ -95,7 +95,7 @@ func SetupPprofRoutes(conf *config.Config, router *mux.Router, authFunc mux.Midd
 			})
 
 			if err := indexTmplExecute(w, profiles); err != nil {
-				log.Print(err)
+				log.Error().Err(err).Msg("unexpected failure")
 			}
 		}))
 }

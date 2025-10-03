@@ -98,7 +98,7 @@ func NewController(appConfig *config.Config) *Controller {
 		}
 		appConfig.Cluster.Proxy = internalProxyConfig
 
-		logger.Logger = logger.Logger.With().
+		logger = logger.With().
 			Str("clusterMember", memberSocket).
 			Str("clusterMemberIndex", strconv.Itoa(memberSocketIdx)).Logger()
 	}

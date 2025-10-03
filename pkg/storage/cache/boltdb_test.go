@@ -16,7 +16,7 @@ func TestBoltDBCache(t *testing.T) {
 	Convey("Make a new cache", t, func() {
 		dir := t.TempDir()
 
-		log := log.NewLogger("debug", "")
+		log := log.NewTestLogger()
 		So(log, ShouldNotBeNil)
 
 		_, err := storage.Create("boltdb", "failTypeAssertion", log)
@@ -126,7 +126,7 @@ func TestBoltDBCache(t *testing.T) {
 	Convey("Test cache.GetAllBlos()", t, func() {
 		dir := t.TempDir()
 
-		log := log.NewLogger("debug", "")
+		log := log.NewTestLogger()
 		So(log, ShouldNotBeNil)
 
 		_, err := storage.Create("boltdb", "failTypeAssertion", log)

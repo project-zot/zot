@@ -54,7 +54,7 @@ func TestParseStorageErrors(t *testing.T) {
 		metaDB := mocks.MetaDBMock{}
 
 		// sync repo fail
-		err := meta.ParseStorage(metaDB, storeController, log.NewLogger("debug", ""))
+		err := meta.ParseStorage(metaDB, storeController, log.NewTestLogger())
 		So(err, ShouldBeNil)
 
 		Convey("getAllRepos errors", func() {
@@ -75,14 +75,14 @@ func TestParseStorageErrors(t *testing.T) {
 				},
 			}
 
-			err := meta.ParseStorage(metaDB, storeController, log.NewLogger("debug", ""))
+			err := meta.ParseStorage(metaDB, storeController, log.NewTestLogger())
 			So(err, ShouldNotBeNil)
 		})
 
 		Convey("metaDB.GetAllRepoNames errors", func() {
 			metaDB.GetAllRepoNamesFn = func() ([]string, error) { return nil, ErrTestError }
 
-			err := meta.ParseStorage(metaDB, storeController, log.NewLogger("debug", ""))
+			err := meta.ParseStorage(metaDB, storeController, log.NewTestLogger())
 			So(err, ShouldNotBeNil)
 		})
 
@@ -95,7 +95,7 @@ func TestParseStorageErrors(t *testing.T) {
 			metaDB.GetAllRepoNamesFn = func() ([]string, error) { return []string{"deleted"}, nil }
 			metaDB.DeleteRepoMetaFn = func(repo string) error { return ErrTestError }
 
-			err := meta.ParseStorage(metaDB, storeController, log.NewLogger("debug", ""))
+			err := meta.ParseStorage(metaDB, storeController, log.NewTestLogger())
 			So(err, ShouldNotBeNil)
 		})
 
@@ -109,7 +109,7 @@ func TestParseStorageErrors(t *testing.T) {
 
 			storeController := storage.StoreController{DefaultStore: imageStore1}
 
-			err := meta.ParseStorage(metaDB, storeController, log.NewLogger("debug", ""))
+			err := meta.ParseStorage(metaDB, storeController, log.NewTestLogger())
 			So(err, ShouldBeNil)
 		})
 	})
@@ -118,7 +118,7 @@ func TestParseStorageErrors(t *testing.T) {
 		imageStore := mocks.MockedImageStore{}
 		storeController := storage.StoreController{DefaultStore: &imageStore}
 		metaDB := mocks.MetaDBMock{}
-		log := log.NewLogger("debug", "")
+		log := log.NewTestLogger()
 
 		Convey("imageStore.GetIndexContent errors", func() {
 			imageStore.GetIndexContentFn = func(repo string) ([]byte, error) {
@@ -221,7 +221,7 @@ func TestParseStorageErrors(t *testing.T) {
 	Convey("SetImageMetaFromInput errors", t, func() {
 		mockImageStore := mocks.MockedImageStore{}
 		mockedMetaDB := mocks.MetaDBMock{}
-		log := log.NewLogger("debug", "")
+		log := log.NewTestLogger()
 
 		Convey("Image Manifest errors", func() {
 			Convey("Get Config blob error", func() {
@@ -310,7 +310,7 @@ func TestParseStorageWithRedisDB(t *testing.T) {
 		miniRedis := miniredis.RunT(t)
 
 		rootDir := t.TempDir()
-		log := log.NewLogger("debug", "")
+		log := log.NewTestLogger()
 
 		params := redis.DBDriverParameters{KeyPrefix: "zot"}
 		driverConfig := map[string]interface{}{"url": "redis://" + miniRedis.Addr()}
@@ -660,7 +660,7 @@ func RunParseStorageTests(rootDir string, metaDB mTypes.MetaDB, log log.Logger) 
 func TestGetSignatureLayersInfo(t *testing.T) {
 	Convey("wrong signature type", t, func() {
 		layers, err := meta.GetSignatureLayersInfo("repo", "tag", "123", "wrong signature type", []byte{},
-			nil, log.NewLogger("debug", ""))
+			nil, log.NewTestLogger())
 		So(err, ShouldBeNil)
 		So(layers, ShouldBeEmpty)
 	})
@@ -673,7 +673,7 @@ func TestGetSignatureLayersInfo(t *testing.T) {
 		notationIndexBlob, err := json.Marshal(notationIndex)
 		So(err, ShouldBeNil)
 		layers, err := meta.GetSignatureLayersInfo("repo", "tag", "123", zcommon.NotationSignature, notationIndexBlob,
-			nil, log.NewLogger("debug", ""))
+			nil, log.NewTestLogger())
 		So(err, ShouldBeNil)
 		So(layers, ShouldBeEmpty)
 	})
@@ -686,7 +686,7 @@ func TestGetSignatureLayersInfo(t *testing.T) {
 		image := CreateRandomImage()
 
 		layers, err := meta.GetSignatureLayersInfo("repo", "tag", "123", zcommon.CosignSignature,
-			image.ManifestDescriptor.Data, mockImageStore, log.NewLogger("debug", ""))
+			image.ManifestDescriptor.Data, mockImageStore, log.NewTestLogger())
 		So(err, ShouldNotBeNil)
 		So(layers, ShouldBeEmpty)
 	})
@@ -696,7 +696,7 @@ func TestGetSignatureLayersInfo(t *testing.T) {
 		image := CreateImageWith().RandomLayers(3, 10).RandomConfig().Build()
 
 		layers, err := meta.GetSignatureLayersInfo("repo", "tag", "123", zcommon.NotationSignature,
-			image.ManifestDescriptor.Data, mockImageStore, log.NewLogger("debug", ""))
+			image.ManifestDescriptor.Data, mockImageStore, log.NewTestLogger())
 		So(err, ShouldNotBeNil)
 		So(layers, ShouldBeEmpty)
 	})
@@ -709,18 +709,18 @@ func TestGetSignatureLayersInfo(t *testing.T) {
 		image := CreateImageWith().RandomLayers(1, 10).RandomConfig().Build()
 
 		layers, err := meta.GetSignatureLayersInfo("repo", "tag", "123", zcommon.NotationSignature,
-			image.ManifestDescriptor.Data, mockImageStore, log.NewLogger("debug", ""))
+			image.ManifestDescriptor.Data, mockImageStore, log.NewTestLogger())
 		So(err, ShouldNotBeNil)
 		So(layers, ShouldBeEmpty)
 	})
 
 	Convey("error while unmarshaling manifest content", t, func() {
 		_, err := meta.GetSignatureLayersInfo("repo", "tag", "123", zcommon.CosignSignature, []byte("bad manifest"),
-			nil, log.NewLogger("debug", ""))
+			nil, log.NewTestLogger())
 		So(err, ShouldNotBeNil)
 
 		_, err = meta.GetSignatureLayersInfo("repo", "tag", "123", zcommon.NotationSignature, []byte("bad manifest"),
-			nil, log.NewLogger("debug", ""))
+			nil, log.NewTestLogger())
 		So(err, ShouldNotBeNil)
 	})
 }

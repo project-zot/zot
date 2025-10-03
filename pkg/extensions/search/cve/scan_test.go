@@ -52,9 +52,8 @@ func TestScanGeneratorWithMockedData(t *testing.T) { //nolint: gocyclo
 
 		defer os.Remove(logFile.Name()) // clean up
 
-		logger := log.NewLogger("debug", logPath)
 		writers := io.MultiWriter(os.Stdout, logFile)
-		logger.Logger = logger.Output(writers)
+		logger := log.NewLoggerWithWriter("debug", writers)
 
 		cfg := config.New()
 		cfg.Scheduler = &config.SchedulerConfig{NumWorkers: 3}
@@ -67,7 +66,7 @@ func TestScanGeneratorWithMockedData(t *testing.T) { //nolint: gocyclo
 		boltDriver, err := boltdb.GetBoltDriver(params)
 		So(err, ShouldBeNil)
 
-		metaDB, err := boltdb.New(boltDriver, log.NewLogger("debug", ""))
+		metaDB, err := boltdb.New(boltDriver, log.NewTestLogger())
 		So(err, ShouldBeNil)
 
 		// Refactor Idea: We can use InitializeTestMetaDB
@@ -490,9 +489,8 @@ func TestScanGeneratorWithRealData(t *testing.T) {
 
 		defer os.Remove(logFile.Name()) // clean up
 
-		logger := log.NewLogger("debug", logPath)
 		writers := io.MultiWriter(os.Stdout, logFile)
-		logger.Logger = logger.Output(writers)
+		logger := log.NewLoggerWithWriter("debug", writers)
 
 		cfg := config.New()
 		cfg.Scheduler = &config.SchedulerConfig{NumWorkers: 3}

@@ -41,6 +41,7 @@ import (
 	zcommon "zotregistry.dev/zot/pkg/common"
 	extconf "zotregistry.dev/zot/pkg/extensions/config"
 	"zotregistry.dev/zot/pkg/extensions/imagetrust"
+	"zotregistry.dev/zot/pkg/log"
 	test "zotregistry.dev/zot/pkg/test/common"
 	. "zotregistry.dev/zot/pkg/test/image-utils"
 	"zotregistry.dev/zot/pkg/test/mocks"
@@ -1234,7 +1235,7 @@ func RunVerificationTests(t *testing.T, dbDriverParams map[string]interface{}) {
 		conf.Extensions.Trust.Notation = defaultValue
 
 		ctlr := api.NewController(conf)
-		ctlr.Log.Logger = ctlr.Log.Output(writers)
+		ctlr.Log = log.NewLoggerWithWriter("debug", writers)
 		ctlr.Config.Storage.RootDirectory = rootDir
 
 		cm := test.NewControllerManager(ctlr)

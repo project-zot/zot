@@ -49,7 +49,7 @@ func (errReader) Read(p []byte) (int, error) {
 
 func TestSignatureHandlers(t *testing.T) {
 	conf := config.New()
-	log := log.NewLogger("debug", "")
+	log := log.NewTestLogger()
 
 	trust := extensions.ImageTrust{
 		Conf: conf,
@@ -209,9 +209,8 @@ func RunSignatureUploadAndVerificationTests(t *testing.T, cacheDriverParams map[
 		defer os.Remove(logFile.Name()) // cleanup
 		So(err, ShouldBeNil)
 
-		logger := log.NewLogger("debug", logFile.Name())
 		writers := io.MultiWriter(os.Stdout, logFile)
-		logger.Logger = logger.Output(writers)
+		logger := log.NewLoggerWithWriter("debug", writers)
 
 		imageStore := local.NewImageStore(globalDir, false, false,
 			logger, monitoring.NewMetricsServer(false, logger), nil, nil, nil, nil)
@@ -225,7 +224,7 @@ func RunSignatureUploadAndVerificationTests(t *testing.T, cacheDriverParams map[
 		So(err, ShouldBeNil)
 
 		ctlr := api.NewController(conf)
-		ctlr.Log.Logger = ctlr.Log.Output(writers)
+		ctlr.Log = log.NewLoggerWithWriter("debug", writers)
 
 		ctlr.Config.Storage.RootDirectory = globalDir
 
@@ -330,9 +329,8 @@ func RunSignatureUploadAndVerificationTests(t *testing.T, cacheDriverParams map[
 		defer os.Remove(logFile.Name()) // cleanup
 		So(err, ShouldBeNil)
 
-		logger := log.NewLogger("debug", logFile.Name())
 		writers := io.MultiWriter(os.Stdout, logFile)
-		logger.Logger = logger.Output(writers)
+		logger := log.NewLoggerWithWriter("debug", writers)
 
 		imageStore := local.NewImageStore(globalDir, false, false,
 			logger, monitoring.NewMetricsServer(false, logger), nil, nil, nil, nil)
@@ -346,7 +344,7 @@ func RunSignatureUploadAndVerificationTests(t *testing.T, cacheDriverParams map[
 		So(err, ShouldBeNil)
 
 		ctlr := api.NewController(conf)
-		ctlr.Log.Logger = ctlr.Log.Output(writers)
+		ctlr.Log = log.NewLoggerWithWriter("debug", writers)
 
 		ctlr.Config.Storage.RootDirectory = globalDir
 
@@ -438,9 +436,8 @@ func RunSignatureUploadAndVerificationTests(t *testing.T, cacheDriverParams map[
 		defer os.Remove(logFile.Name()) // cleanup
 		So(err, ShouldBeNil)
 
-		logger := log.NewLogger("debug", logFile.Name())
 		writers := io.MultiWriter(os.Stdout, logFile)
-		logger.Logger = logger.Output(writers)
+		logger := log.NewLoggerWithWriter("debug", writers)
 
 		imageStore := local.NewImageStore(globalDir, false, false,
 			logger, monitoring.NewMetricsServer(false, logger), nil, nil, nil, nil)
@@ -454,7 +451,7 @@ func RunSignatureUploadAndVerificationTests(t *testing.T, cacheDriverParams map[
 		So(err, ShouldBeNil)
 
 		ctlr := api.NewController(conf)
-		ctlr.Log.Logger = ctlr.Log.Output(writers)
+		ctlr.Log = log.NewLoggerWithWriter("debug", writers)
 
 		ctlr.Config.Storage.RootDirectory = globalDir
 
@@ -601,9 +598,8 @@ func RunSignatureUploadAndVerificationTests(t *testing.T, cacheDriverParams map[
 		defer os.Remove(logFile.Name()) // cleanup
 		So(err, ShouldBeNil)
 
-		logger := log.NewLogger("debug", logFile.Name())
 		writers := io.MultiWriter(os.Stdout, logFile)
-		logger.Logger = logger.Output(writers)
+		logger := log.NewLoggerWithWriter("debug", writers)
 
 		imageStore := local.NewImageStore(globalDir, false, false,
 			logger, monitoring.NewMetricsServer(false, logger), nil, nil, nil, nil)
@@ -617,7 +613,7 @@ func RunSignatureUploadAndVerificationTests(t *testing.T, cacheDriverParams map[
 		So(err, ShouldBeNil)
 
 		ctlr := api.NewController(conf)
-		ctlr.Log.Logger = ctlr.Log.Output(writers)
+		ctlr.Log = log.NewLoggerWithWriter("debug", writers)
 
 		ctlr.Config.Storage.RootDirectory = globalDir
 
@@ -779,12 +775,10 @@ func RunSignatureUploadAndVerificationTests(t *testing.T, cacheDriverParams map[
 		defer os.Remove(logFile.Name()) // cleanup
 		So(err, ShouldBeNil)
 
-		logger := log.NewLogger("debug", logFile.Name())
 		writers := io.MultiWriter(os.Stdout, logFile)
-		logger.Logger = logger.Output(writers)
 
 		ctlr := api.NewController(conf)
-		ctlr.Log.Logger = ctlr.Log.Output(writers)
+		ctlr.Log = log.NewLoggerWithWriter("debug", writers)
 
 		ctlr.Config.Storage.RootDirectory = globalDir
 
@@ -865,9 +859,8 @@ func RunSignatureUploadAndVerificationTests(t *testing.T, cacheDriverParams map[
 		defer os.Remove(logFile.Name()) // cleanup
 		So(err, ShouldBeNil)
 
-		logger := log.NewLogger("debug", logFile.Name())
 		writers := io.MultiWriter(os.Stdout, logFile)
-		logger.Logger = logger.Output(writers)
+		logger := log.NewLoggerWithWriter("debug", writers)
 
 		imageStore := local.NewImageStore(globalDir, false, false,
 			logger, monitoring.NewMetricsServer(false, logger), nil, nil, nil, nil)
@@ -892,7 +885,7 @@ func RunSignatureUploadAndVerificationTests(t *testing.T, cacheDriverParams map[
 		So(err, ShouldBeNil)
 
 		ctlr := api.NewController(conf)
-		ctlr.Log.Logger = ctlr.Log.Output(writers)
+		ctlr.Log = log.NewLoggerWithWriter("debug", writers)
 
 		ctlr.Config.Storage.RootDirectory = globalDir
 

@@ -16,6 +16,7 @@ import (
 	"zotregistry.dev/zot/pkg/api"
 	"zotregistry.dev/zot/pkg/api/config"
 	extconf "zotregistry.dev/zot/pkg/extensions/config"
+	"zotregistry.dev/zot/pkg/log"
 	test "zotregistry.dev/zot/pkg/test/common"
 	. "zotregistry.dev/zot/pkg/test/image-utils"
 )
@@ -46,7 +47,7 @@ func TestUIExtension(t *testing.T) {
 		conf.Storage.RootDirectory = t.TempDir()
 
 		ctlr := api.NewController(conf)
-		ctlr.Log.Logger = ctlr.Log.Output(writers)
+		ctlr.Log = log.NewLoggerWithWriter("debug", writers)
 
 		ctlrManager := test.NewControllerManager(ctlr)
 		ctlrManager.StartAndWait(port)

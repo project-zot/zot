@@ -149,7 +149,7 @@ func makeUpstreamServer(
 	srcConfig.Storage.GC = false
 
 	srcDir := t.TempDir()
-	srcStorageCtrl := ociutils.GetDefaultStoreController(srcDir, log.NewLogger("debug", ""))
+	srcStorageCtrl := ociutils.GetDefaultStoreController(srcDir, log.NewTestLogger())
 
 	err := WriteImageToFileSystem(CreateDefaultImage(), "zot-test", "0.0.1", srcStorageCtrl)
 	if err != nil {
@@ -3828,7 +3828,7 @@ func TestSubPaths(t *testing.T) {
 		srcDir := t.TempDir()
 
 		subpath := "/subpath"
-		srcStorageCtlr := ociutils.GetDefaultStoreController(path.Join(srcDir, subpath), log.NewLogger("debug", ""))
+		srcStorageCtlr := ociutils.GetDefaultStoreController(path.Join(srcDir, subpath), log.NewTestLogger())
 
 		err := WriteImageToFileSystem(CreateDefaultImage(), "zot-test", "0.0.1", srcStorageCtlr)
 		So(err, ShouldBeNil)
@@ -5360,7 +5360,7 @@ func TestOnDemandRetryGoroutine(t *testing.T) {
 
 		srcDir := t.TempDir()
 
-		srcStorageCtlr := ociutils.GetDefaultStoreController(srcDir, log.NewLogger("debug", ""))
+		srcStorageCtlr := ociutils.GetDefaultStoreController(srcDir, log.NewTestLogger())
 
 		err := WriteImageToFileSystem(CreateDefaultImage(), "zot-test", "0.0.1", srcStorageCtlr)
 		So(err, ShouldBeNil)
@@ -5583,7 +5583,7 @@ func TestOnDemandMultipleImage(t *testing.T) {
 
 		srcDir := t.TempDir()
 
-		srcStorageCtlr := ociutils.GetDefaultStoreController(srcDir, log.NewLogger("debug", ""))
+		srcStorageCtlr := ociutils.GetDefaultStoreController(srcDir, log.NewTestLogger())
 
 		err := WriteImageToFileSystem(CreateDefaultImage(), "zot-test", "0.0.1", srcStorageCtlr)
 		So(err, ShouldBeNil)
@@ -6379,7 +6379,7 @@ func TestSyncOnlyDiff(t *testing.T) {
 		destDir := t.TempDir()
 
 		// copy images so we have them before syncing, sync should not pull them again
-		destStorageCtrl := ociutils.GetDefaultStoreController(destDir, log.NewLogger("debug", ""))
+		destStorageCtrl := ociutils.GetDefaultStoreController(destDir, log.NewTestLogger())
 
 		err := WriteImageToFileSystem(CreateDefaultImage(), "zot-test", "0.0.1", destStorageCtrl)
 		So(err, ShouldBeNil)
@@ -6467,7 +6467,7 @@ func TestSyncWithDiffDigest(t *testing.T) {
 		destDir := t.TempDir()
 
 		// copy images so we have them before syncing, sync should not pull them again
-		srcStorageCtlr := ociutils.GetDefaultStoreController(destDir, log.NewLogger("debug", ""))
+		srcStorageCtlr := ociutils.GetDefaultStoreController(destDir, log.NewTestLogger())
 
 		// both default images are present in both upstream and downstream
 		image := CreateDefaultImage()
@@ -7405,7 +7405,7 @@ func TestSyncImageIndex(t *testing.T) {
 func TestECRCredentialsHelper(t *testing.T) {
 	Convey("Test ECR Credentials Helper", t, func() {
 		// use getMockECRCredentials for testing purposes
-		credentialHelper := sync.NewECRCredentialHelper(log.NewLogger("debug", ""), sync.GetMockECRCredentials)
+		credentialHelper := sync.NewECRCredentialHelper(log.NewTestLogger(), sync.GetMockECRCredentials)
 		url := "https://mockAccount.dkr.ecr.mockRegion.amazonaws.com"
 		remoteAddress := sync.StripRegistryTransport(url)
 

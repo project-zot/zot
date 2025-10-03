@@ -166,7 +166,7 @@ func TestVulnerableLayer(t *testing.T) {
 
 		tempDir := t.TempDir()
 
-		log := log.NewLogger("debug", "")
+		log := log.NewTestLogger()
 		imageStore := local.NewImageStore(tempDir, false, false,
 			log, monitoring.NewMetricsServer(false, log), nil, nil, nil, nil)
 
@@ -237,7 +237,7 @@ func TestVulnerableLayer(t *testing.T) {
 
 		tempDir := t.TempDir()
 
-		log := log.NewLogger("debug", "")
+		log := log.NewTestLogger()
 		imageStore := local.NewImageStore(tempDir, false, false,
 			log, monitoring.NewMetricsServer(false, log), nil, nil, nil, nil)
 
@@ -291,7 +291,7 @@ func TestScannerErrors(t *testing.T) {
 	Convey("Errors", t, func() {
 		storeController := storage.StoreController{}
 		metaDB := mocks.MetaDBMock{}
-		log := log.NewLogger("debug", "")
+		log := log.NewTestLogger()
 
 		Convey("IsImageFormatScannable", func() {
 			storeController.DefaultStore = mocks.MockedImageStore{}

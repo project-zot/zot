@@ -63,7 +63,7 @@ func TestScrubExtension(t *testing.T) {
 
 		ctlr := api.NewController(conf)
 
-		srcStorageCtlr := ociutils.GetDefaultStoreController(dir, log.NewLogger("debug", ""))
+		srcStorageCtlr := ociutils.GetDefaultStoreController(dir, log.NewTestLogger())
 		err = WriteImageToFileSystem(CreateDefaultVulnerableImage(), repoName, "0.0.1", srcStorageCtlr)
 		So(err, ShouldBeNil)
 
@@ -105,7 +105,7 @@ func TestScrubExtension(t *testing.T) {
 
 		ctlr := api.NewController(conf)
 
-		srcStorageCtlr := ociutils.GetDefaultStoreController(dir, log.NewLogger("debug", ""))
+		srcStorageCtlr := ociutils.GetDefaultStoreController(dir, log.NewTestLogger())
 		image := CreateDefaultVulnerableImage()
 		err = WriteImageToFileSystem(image, repoName, "0.0.1", srcStorageCtlr)
 		So(err, ShouldBeNil)
@@ -155,7 +155,7 @@ func TestScrubExtension(t *testing.T) {
 
 		ctlr := api.NewController(conf)
 
-		srcStorageCtlr := ociutils.GetDefaultStoreController(dir, log.NewLogger("debug", ""))
+		srcStorageCtlr := ociutils.GetDefaultStoreController(dir, log.NewTestLogger())
 		image := CreateDefaultVulnerableImage()
 
 		err = WriteImageToFileSystem(image, repoName, "0.0.1", srcStorageCtlr)

@@ -5,12 +5,12 @@ package cli
 
 import (
 	"github.com/go-viper/mapstructure/v2"
-	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
 	zerr "zotregistry.dev/zot/errors"
 	"zotregistry.dev/zot/pkg/exporter/api"
+	"zotregistry.dev/zot/pkg/log"
 )
 
 // metadataConfig reports metadata after parsing, which we use to track
@@ -59,21 +59,23 @@ func NewExporterCmd() *cobra.Command {
 func loadConfiguration(config *api.Config, configPath string) {
 	viper.SetConfigFile(configPath)
 
+	logger := log.NewLogger("info", "")
+
 	if err := viper.ReadInConfig(); err != nil {
-		log.Panic().Err(err).Str("config", configPath).Msg("failed to read configuration")
+		logger.Panic().Err(err).Str("config", configPath).Msg("failed to read configuration")
 	}
 
 	metaData := &mapstructure.Metadata{}
 	if err := viper.Unmarshal(&config, metadataConfig(metaData)); err != nil {
-		log.Panic().Err(err).Str("config", configPath).Msg("failed to unmarshal config")
+		logger.Panic().Err(err).Str("config", configPath).Msg("failed to unmarshal config")
 	}
 
 	if len(metaData.Keys) == 0 {
-		log.Panic().Err(zerr.ErrBadConfig).Str("config", configPath).Msg("bad configuration")
+		logger.Panic().Err(zerr.ErrBadConfig).Str("config", configPath).Msg("bad configuration")
 	}
 
 	if len(metaData.Unused) > 0 {
-		log.Panic().Err(zerr.ErrBadConfig).Interface("unknown fields", metaData.Unused).
+		logger.Panic().Err(zerr.ErrBadConfig).Interface("unknown fields", metaData.Unused).
 			Str("config", configPath).Msg("bad configuration")
 	}
 }

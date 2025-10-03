@@ -903,7 +903,7 @@ func TestAPIKeysOpenDBError(t *testing.T) {
 
 func TestAPIKeysGeneratorErrors(t *testing.T) {
 	Convey("Test API keys - unable to generate API keys and API Key IDs", t, func() {
-		log := log.NewLogger("debug", "")
+		log := log.NewTestLogger()
 
 		apiKey, apiKeyID, err := api.GenerateAPIKey(guuid.DefaultGenerator, log)
 		So(err, ShouldBeNil)
@@ -931,7 +931,7 @@ func TestAPIKeysGeneratorErrors(t *testing.T) {
 }
 
 func TestCookiestoreCleanup(t *testing.T) {
-	log := log.Logger{}
+	log := log.NewTestLogger()
 	metrics := monitoring.NewMetricsServer(true, log)
 
 	Convey("Test cookiestore cleanup works", t, func() {

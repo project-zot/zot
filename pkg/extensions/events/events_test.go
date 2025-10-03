@@ -48,7 +48,7 @@ func newMockSink() *mockSink {
 
 func TestEventSinkMissing(t *testing.T) {
 	Convey("missing sink", t, func() {
-		_, err := events.NewRecorder(log.NewLogger("debug", ""))
+		_, err := events.NewRecorder(log.NewTestLogger())
 		So(err, ShouldNotBeNil)
 		So(err, ShouldEqual, zerr.ErrEventSinkIsNil)
 	})
@@ -57,7 +57,7 @@ func TestEventSinkMissing(t *testing.T) {
 func TestEvents(t *testing.T) {
 	Convey("emits events", t, func() {
 		sink := newMockSink()
-		recorder, err := events.NewRecorder(log.NewLogger("debug", ""), sink)
+		recorder, err := events.NewRecorder(log.NewTestLogger(), sink)
 		So(err, ShouldBeNil)
 		Convey("repository created", func() {
 			recorder.RepositoryCreated("test")
@@ -108,7 +108,7 @@ func TestHTTPSinkEvents(t *testing.T) {
 		sink, err := events.NewHTTPSink(config)
 		So(err, ShouldBeNil)
 
-		recorder, err := events.NewRecorder(log.NewLogger("debug", ""), sink)
+		recorder, err := events.NewRecorder(log.NewTestLogger(), sink)
 		So(err, ShouldBeNil)
 
 		Convey("repository created", func() {
@@ -276,7 +276,7 @@ func createRecorder(t *testing.T, natsURL, testChannel string) (events.Recorder,
 		return nil, err
 	}
 
-	recorder, err := events.NewRecorder(log.NewLogger("debug", ""), sink)
+	recorder, err := events.NewRecorder(log.NewTestLogger(), sink)
 	if err != nil {
 		return nil, err
 	}

@@ -29,7 +29,7 @@ func TestCVEConvert(t *testing.T) {
 		boltDB, err := boltdb.GetBoltDriver(params)
 		So(err, ShouldBeNil)
 
-		metaDB, err := boltdb.New(boltDB, log.NewLogger("debug", ""))
+		metaDB, err := boltdb.New(boltDB, log.NewTestLogger())
 		So(err, ShouldBeNil)
 
 		image := CreateImageWith().

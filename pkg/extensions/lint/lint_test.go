@@ -481,15 +481,15 @@ func TestVerifyMandatoryAnnotationsFunction(t *testing.T) {
 
 		dir := t.TempDir()
 
-		testStoreCtlr := ociutils.GetDefaultStoreController(dir, log.NewLogger("debug", ""))
+		testStoreCtlr := ociutils.GetDefaultStoreController(dir, log.NewTestLogger())
 		err := WriteImageToFileSystem(CreateRandomImage(), "zot-test", "0.0.1", testStoreCtlr)
 		So(err, ShouldBeNil)
 
 		var index ispec.Index
 
-		linter := lint.NewLinter(lintConfig, log.NewLogger("debug", ""))
+		linter := lint.NewLinter(lintConfig, log.NewTestLogger())
 		imgStore := local.NewImageStore(dir, false, false,
-			log.NewLogger("debug", ""), monitoring.NewMetricsServer(false, log.NewLogger("debug", "")), linter, nil, nil, nil)
+			log.NewTestLogger(), monitoring.NewMetricsServer(false, log.NewTestLogger()), linter, nil, nil, nil)
 
 		indexContent, err := imgStore.GetIndexContent("zot-test")
 		So(err, ShouldBeNil)
@@ -513,15 +513,15 @@ func TestVerifyMandatoryAnnotationsFunction(t *testing.T) {
 
 		dir := t.TempDir()
 
-		testStoreCtlr := ociutils.GetDefaultStoreController(dir, log.NewLogger("debug", ""))
+		testStoreCtlr := ociutils.GetDefaultStoreController(dir, log.NewTestLogger())
 		err := WriteImageToFileSystem(CreateRandomImage(), "zot-test", "0.0.1", testStoreCtlr)
 		So(err, ShouldBeNil)
 
 		var index ispec.Index
 
-		linter := lint.NewLinter(lintConfig, log.NewLogger("debug", ""))
+		linter := lint.NewLinter(lintConfig, log.NewTestLogger())
 		imgStore := local.NewImageStore(dir, false, false,
-			log.NewLogger("debug", ""), monitoring.NewMetricsServer(false, log.NewLogger("debug", "")), linter, nil, nil, nil)
+			log.NewTestLogger(), monitoring.NewMetricsServer(false, log.NewTestLogger()), linter, nil, nil, nil)
 
 		indexContent, err := imgStore.GetIndexContent("zot-test")
 		So(err, ShouldBeNil)
@@ -545,7 +545,7 @@ func TestVerifyMandatoryAnnotationsFunction(t *testing.T) {
 
 		dir := t.TempDir()
 
-		testStoreCtlr := ociutils.GetDefaultStoreController(dir, log.NewLogger("debug", ""))
+		testStoreCtlr := ociutils.GetDefaultStoreController(dir, log.NewTestLogger())
 		err := WriteImageToFileSystem(CreateRandomImage(), "zot-test", "0.0.1", testStoreCtlr)
 		So(err, ShouldBeNil)
 
@@ -589,9 +589,9 @@ func TestVerifyMandatoryAnnotationsFunction(t *testing.T) {
 
 		index.Manifests = append(index.Manifests, manifestDesc)
 
-		linter := lint.NewLinter(lintConfig, log.NewLogger("debug", ""))
+		linter := lint.NewLinter(lintConfig, log.NewTestLogger())
 		imgStore := local.NewImageStore(dir, false, false,
-			log.NewLogger("debug", ""), monitoring.NewMetricsServer(false, log.NewLogger("debug", "")), linter, nil, nil, nil)
+			log.NewTestLogger(), monitoring.NewMetricsServer(false, log.NewTestLogger()), linter, nil, nil, nil)
 
 		pass, err := linter.CheckMandatoryAnnotations("zot-test", digest, imgStore)
 		So(err, ShouldBeNil)
@@ -608,7 +608,7 @@ func TestVerifyMandatoryAnnotationsFunction(t *testing.T) {
 
 		dir := t.TempDir()
 
-		testStoreCtlr := ociutils.GetDefaultStoreController(dir, log.NewLogger("debug", ""))
+		testStoreCtlr := ociutils.GetDefaultStoreController(dir, log.NewTestLogger())
 		err := WriteImageToFileSystem(CreateRandomImage(), "zot-test", "0.0.1", testStoreCtlr)
 		So(err, ShouldBeNil)
 
@@ -651,9 +651,9 @@ func TestVerifyMandatoryAnnotationsFunction(t *testing.T) {
 
 		index.Manifests = append(index.Manifests, manifestDesc)
 
-		linter := lint.NewLinter(lintConfig, log.NewLogger("debug", ""))
+		linter := lint.NewLinter(lintConfig, log.NewTestLogger())
 		imgStore := local.NewImageStore(dir, false, false,
-			log.NewLogger("debug", ""), monitoring.NewMetricsServer(false, log.NewLogger("debug", "")), linter, nil, nil, nil)
+			log.NewTestLogger(), monitoring.NewMetricsServer(false, log.NewTestLogger()), linter, nil, nil, nil)
 
 		pass, err := linter.CheckMandatoryAnnotations("zot-test", digest, imgStore)
 		So(err, ShouldNotBeNil)
@@ -670,7 +670,7 @@ func TestVerifyMandatoryAnnotationsFunction(t *testing.T) {
 
 		dir := t.TempDir()
 
-		testStoreCtlr := ociutils.GetDefaultStoreController(dir, log.NewLogger("debug", ""))
+		testStoreCtlr := ociutils.GetDefaultStoreController(dir, log.NewTestLogger())
 		err := WriteImageToFileSystem(CreateRandomImage(), "zot-test", "0.0.1", testStoreCtlr)
 		So(err, ShouldBeNil)
 
@@ -715,9 +715,9 @@ func TestVerifyMandatoryAnnotationsFunction(t *testing.T) {
 
 		index.Manifests = append(index.Manifests, manifestDesc)
 
-		linter := lint.NewLinter(lintConfig, log.NewLogger("debug", ""))
+		linter := lint.NewLinter(lintConfig, log.NewTestLogger())
 		imgStore := local.NewImageStore(dir, false, false,
-			log.NewLogger("debug", ""), monitoring.NewMetricsServer(false, log.NewLogger("debug", "")), linter, nil, nil, nil)
+			log.NewTestLogger(), monitoring.NewMetricsServer(false, log.NewTestLogger()), linter, nil, nil, nil)
 
 		pass, err := linter.CheckMandatoryAnnotations("zot-test", digest, imgStore)
 		So(err, ShouldBeNil)
@@ -734,7 +734,7 @@ func TestVerifyMandatoryAnnotationsFunction(t *testing.T) {
 
 		dir := t.TempDir()
 
-		testStoreCtlr := ociutils.GetDefaultStoreController(dir, log.NewLogger("debug", ""))
+		testStoreCtlr := ociutils.GetDefaultStoreController(dir, log.NewTestLogger())
 		err := WriteImageToFileSystem(CreateRandomImage(), "zot-test", "0.0.1", testStoreCtlr)
 		So(err, ShouldBeNil)
 
@@ -778,9 +778,9 @@ func TestVerifyMandatoryAnnotationsFunction(t *testing.T) {
 
 		index.Manifests = append(index.Manifests, manifestDesc)
 
-		linter := lint.NewLinter(lintConfig, log.NewLogger("debug", ""))
+		linter := lint.NewLinter(lintConfig, log.NewTestLogger())
 		imgStore := local.NewImageStore(dir, false, false,
-			log.NewLogger("debug", ""), monitoring.NewMetricsServer(false, log.NewLogger("debug", "")), linter, nil, nil, nil)
+			log.NewTestLogger(), monitoring.NewMetricsServer(false, log.NewTestLogger()), linter, nil, nil, nil)
 
 		err = os.Chmod(path.Join(dir, "zot-test", "blobs"), 0o000)
 		if err != nil {
@@ -807,7 +807,7 @@ func TestVerifyMandatoryAnnotationsFunction(t *testing.T) {
 
 		dir := t.TempDir()
 
-		testStoreCtlr := ociutils.GetDefaultStoreController(dir, log.NewLogger("debug", ""))
+		testStoreCtlr := ociutils.GetDefaultStoreController(dir, log.NewTestLogger())
 		err := WriteImageToFileSystem(CreateRandomImage(), "zot-test", "0.0.1", testStoreCtlr)
 		So(err, ShouldBeNil)
 
@@ -876,9 +876,9 @@ func TestVerifyMandatoryAnnotationsFunction(t *testing.T) {
 
 		index.Manifests = append(index.Manifests, manifestDesc)
 
-		linter := lint.NewLinter(lintConfig, log.NewLogger("debug", ""))
+		linter := lint.NewLinter(lintConfig, log.NewTestLogger())
 		imgStore := local.NewImageStore(dir, false, false,
-			log.NewLogger("debug", ""), monitoring.NewMetricsServer(false, log.NewLogger("debug", "")), linter, nil, nil, nil)
+			log.NewTestLogger(), monitoring.NewMetricsServer(false, log.NewTestLogger()), linter, nil, nil, nil)
 
 		err = os.Chmod(path.Join(dir, "zot-test", "blobs", "sha256", manifest.Config.Digest.Encoded()), 0o000)
 		if err != nil {
