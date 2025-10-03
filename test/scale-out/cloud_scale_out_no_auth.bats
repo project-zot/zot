@@ -8,6 +8,7 @@ ZOT_LOG_DIR=/tmp/zot-ft-logs/no-auth
 load helpers_zot
 load helpers_cloud
 load helpers_haproxy
+load ../port_helper
 
 function launch_zot_server() {
     local zot_server_address=${1}
@@ -39,16 +40,27 @@ function setup() {
 
     # setup S3 bucket and DynamoDB tables
     setup_cloud_services
-    generate_zot_cluster_member_list ${NUM_ZOT_INSTANCES} ${ZOT_CLUSTER_MEMBERS_PATCH_FILE}
 
+    # generate the free ports list
+    zot_srv_ports=()
     for ((i=0;i<${NUM_ZOT_INSTANCES};i++)); do
-        launch_zot_server 127.0.0.1 $(( 10000 + $i ))
+        port=$(get_free_port_for_service "zot${i}")
+        zot_srv_ports+=("${port}")
+    done
+
+    generate_zot_cluster_member_list ${NUM_ZOT_INSTANCES} ${ZOT_CLUSTER_MEMBERS_PATCH_FILE} "${zot_srv_ports[@]}"
+
+    for inst in "${zot_srv_ports[@]}"; do
+        launch_zot_server 127.0.0.1 ${inst}
     done
 
     # list all zot processes that were started
     ps -ef | grep ".*zot.*serve.*" | grep -v grep >&3
 
-    generate_haproxy_config ${HAPROXY_CFG_FILE} "http"
+    haproxy_port=$(get_free_port_for_service "haproxy")
+    echo ${haproxy_port} > ${BATS_FILE_TMPDIR}/haproxy.port
+
+    generate_haproxy_config ${HAPROXY_CFG_FILE} "http" ${haproxy_port} "${zot_srv_ports[@]}"
     haproxy_start ${HAPROXY_CFG_FILE}
 
     # list HAproxy processes that were started
@@ -64,6 +76,8 @@ function teardown() {
 }
 
 @test "Check for successful zb run on haproxy frontend" {
+    haproxy_port=`cat ${BATS_FILE_TMPDIR}/haproxy.port`
+
     # zb_run <test_name> <zot_address> <concurrency> <num_requests> <credentials (optional)>
-    zb_run "cloud-scale-out-no-auth-bats" "http://127.0.0.1:8000" 3 5
+    zb_run "cloud-scale-out-no-auth-bats" "http://127.0.0.1:${haproxy_port}" 3 5
 }

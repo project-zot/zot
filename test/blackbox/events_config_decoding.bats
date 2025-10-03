@@ -4,6 +4,7 @@
 
 load helpers_zot
 load helpers_events
+load ../port_helper
 
 function verify_prerequisites() {
     if [ ! $(command -v curl) ]; then
@@ -34,7 +35,7 @@ function setup_file() {
     local zot_root_dir=${BATS_FILE_TMPDIR}/zot
     local zot_config_file=${BATS_FILE_TMPDIR}/zot_config.json
     mkdir -p ${zot_root_dir}
-    zot_port=$(get_free_port)
+    zot_port=$(get_free_port_for_service "zot1")
     cat > ${zot_config_file}<<EOF
 {
     "distSpecVersion": "1.1.1",
@@ -86,7 +87,7 @@ EOF
     local zot_root_dir=${BATS_FILE_TMPDIR}/zot
     local zot_config_file=${BATS_FILE_TMPDIR}/zot_config.json
     mkdir -p ${zot_root_dir}
-    zot_port=$(get_free_port)
+    zot_port=$(get_free_port_for_service "zot2")
     cat > ${zot_config_file}<<EOF
 {
     "distSpecVersion": "1.1.1",

@@ -4,6 +4,7 @@
 
 load helpers_zot
 load helpers_events
+load ../port_helper
 
 function verify_prerequisites() {
     if [ ! $(command -v curl) ]; then
@@ -29,7 +30,7 @@ function setup_file() {
     fi
 
     # Setup nats server
-    nats_server_port=$(get_free_port)
+    nats_server_port=$(get_free_port_for_service "nats")
     nats_server_start nats_server_local ${nats_server_port}
     echo ${nats_server_port} > ${BATS_FILE_TMPDIR}/nats_server.port
 
@@ -41,7 +42,7 @@ function setup_file() {
     local oci_data_dir=${BATS_FILE_TMPDIR}/oci
     mkdir -p ${zot_root_dir}
     mkdir -p ${oci_data_dir}
-    zot_port=$(get_free_port)
+    zot_port=$(get_free_port_for_service "zot")
     echo ${zot_port} > ${BATS_FILE_TMPDIR}/zot.port
     cat > ${zot_config_file}<<EOF
 {

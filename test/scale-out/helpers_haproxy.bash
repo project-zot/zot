@@ -2,8 +2,11 @@ HAPROXY_CFG_FILE="${BATS_FILE_TMPDIR}/haproxy/haproxy-test.cfg"
 
 function generate_haproxy_server_list() {
     local num_instances=${1}
+    shift
+    local ports=("$@")
+
     for ((i=0;i<${num_instances};i++)) do
-        local port=$(( 10000 + $i ))
+        local port=${ports[$i]}
         echo "    server zot${i} 127.0.0.1:${port}"
     done
 }
@@ -28,9 +31,14 @@ function haproxy_start() {
 # generates HAproxy config for use in the test
 function generate_haproxy_config() {
     local haproxy_cfg_file="${1}"
+    shift
     local haproxy_root_dir="$(dirname ${haproxy_cfg_file})"
     # can be either http or https
-    local protocol="${2}"
+    local protocol="${1}"
+    shift
+    local haproxy_port="${1}"
+    shift
+    local zot_ports=("$@")
 
     mkdir -p ${haproxy_root_dir}
 
@@ -57,7 +65,7 @@ defaults
     timeout server  50000
 
 frontend zot
-    bind *:8000
+    bind *:${haproxy_port}
     default_backend zot-cluster
 
 backend zot-cluster
@@ -65,7 +73,7 @@ backend zot-cluster
 EOF
 
     # Populate server list
-    generate_haproxy_server_list ${NUM_ZOT_INSTANCES} >> ${haproxy_cfg_file}
+    generate_haproxy_server_list ${NUM_ZOT_INSTANCES} "${zot_ports[@]}" >> ${haproxy_cfg_file}
 
     cat ${haproxy_cfg_file} >&3
 }

@@ -1,0 +1,396 @@
+{
+  "blackbox/annotations.bats": {
+    "zot": {
+      "begin": 1300,
+      "end": 1309
+    }
+  },
+  "blackbox/anonymous_policy.bats": {
+    "zot": {
+      "begin": 1320,
+      "end": 1329
+    }
+  },
+  "blackbox/cve.bats": {
+    "zot": {
+      "begin": 1340,
+      "end": 1349
+    }
+  },
+  "blackbox/delete_images.bats": {
+    "zot": {
+      "begin": 1360,
+      "end": 1369
+    }
+  },
+  "blackbox/detect_manifest_collision.bats": {
+    "zot": {
+      "begin": 1380,
+      "end": 1389
+    }
+  },
+  "blackbox/docker_compat.bats": {
+    "zot": {
+      "begin": 1400,
+      "end": 1409
+    }
+  },
+  "blackbox/events_config_decoding.bats": {
+    "zot1": {
+      "begin": 1420,
+      "end": 1429
+    },
+    "zot2": {
+      "begin": 1440,
+      "end": 1449
+    }
+  },
+  "blackbox/events_http_lint_failure.bats": {
+    "http": {
+      "begin": 1460,
+      "end": 1469
+    },
+    "zot": {
+      "begin": 1480,
+      "end": 1489
+    }
+  },
+  "blackbox/events_http.bats": {
+    "http": {
+      "begin": 1500,
+      "end": 1509
+    },
+    "zot": {
+      "begin": 1520,
+      "end": 1529
+    }
+  },
+  "blackbox/events_nats_lint_failure.bats": {
+    "nats": {
+      "begin": 1540,
+      "end": 1549
+    },
+    "zot": {
+      "begin": 1560,
+      "end": 1569
+    }
+  },
+  "blackbox/events_nats.bats": {
+    "nats": {
+      "begin": 1580,
+      "end": 1589
+    },
+    "zot": {
+      "begin": 1600,
+      "end": 1609
+    }
+  },
+  "blackbox/events_sink_failure.bats": {
+    "http": {
+      "begin": 1620,
+      "end": 1629
+    },
+    "zot": {
+      "begin": 1640,
+      "end": 1649
+    }
+  },
+  "blackbox/garbage_collect.bats": {
+    "zot": {
+      "begin": 1660,
+      "end": 1669
+    }
+  },
+  "blackbox/metadata.bats": {
+    "zot": {
+      "begin": 1680,
+      "end": 1689
+    }
+  },
+  "blackbox/metrics_minimal.bats": {
+    "zot": {
+      "begin": 1700,
+      "end": 1709
+    }
+  },
+  "blackbox/metrics.bats": {
+    "zot": {
+      "begin": 1720,
+      "end": 1729
+    }
+  },
+  "blackbox/multiarch_index.bats": {
+    "zot": {
+      "begin": 1740,
+      "end": 1749
+    }
+  },
+  "blackbox/pushpull_authn.bats": {
+    "zot": {
+      "begin": 1760,
+      "end": 1769
+    }
+  },
+  "blackbox/pushpull_running_dedupe.bats": {
+    "zot": {
+      "begin": 1780,
+      "end": 1789
+    }
+  },
+  "blackbox/pushpull.bats": {
+    "zot": {
+      "begin": 1800,
+      "end": 1809
+    }
+  },
+  "blackbox/redis_local.bats": {
+    "redis": {
+      "begin": 1820,
+      "end": 1829
+    },
+    "zot": {
+      "begin": 1840,
+      "end": 1849
+    }
+  },
+  "blackbox/redis_s3.bats": {
+    "redis": {
+      "begin": 1860,
+      "end": 1869
+    },
+    "zot": {
+      "begin": 1880,
+      "end": 1889
+    }
+  },
+  "blackbox/referrers.bats": {
+    "zot": {
+      "begin": 1900,
+      "end": 1909
+    }
+  },
+  "blackbox/restore_s3_blobs.bats": {
+    "zot": {
+      "begin": 1920,
+      "end": 1929
+    }
+  },
+  "blackbox/scrub.bats": {
+    "zot": {
+      "begin": 1940,
+      "end": 1949
+    }
+  },
+  "blackbox/sync_cloud.bats": {
+    "zot1": {
+      "begin": 1960,
+      "end": 1969
+    },
+    "zot2": {
+      "begin": 1980,
+      "end": 1989
+    },
+    "zot3": {
+      "begin": 2000,
+      "end": 2009
+    }
+  },
+  "blackbox/sync_docker.bats": {
+    "zot": {
+      "begin": 2020,
+      "end": 2029
+    }
+  },
+  "blackbox/sync_harness.bats": {
+    "zot_sync": {
+      "begin": 2040,
+      "end": 2049
+    },
+    "zot_min": {
+      "begin": 2060,
+      "end": 2069
+    }
+  },
+  "blackbox/sync_replica_cluster.bats": {
+    "zot1": {
+      "begin": 2080,
+      "end": 2089
+    },
+    "zot2": {
+      "begin": 3000,
+      "end": 3009
+    }
+  },
+  "blackbox/sync.bats": {
+    "zot1": {
+      "begin": 3020,
+      "end": 3029
+    },
+    "zot2": {
+      "begin": 3040,
+      "end": 3049
+    },
+    "zot3": {
+      "begin": 3060,
+      "end": 3069
+    }
+  },
+  "scale-out/cloud_scale_out_basic_auth_tls_scale.bats": {
+    "zot0": {
+      "begin": 6000,
+      "end": 6009
+    },
+    "zot1": {
+      "begin": 6020,
+      "end": 6029
+    },
+    "zot2": {
+      "begin": 6040,
+      "end": 6049
+    },
+    "zot3": {
+      "begin": 6060,
+      "end": 6069
+    },
+    "zot4": {
+      "begin": 6080,
+      "end": 6089
+    },
+    "zot5": {
+      "begin": 7000,
+      "end": 7009
+    },
+    "haproxy": {
+      "begin": 8300,
+      "end": 8350
+    }
+  },
+  "scale-out/cloud_scale_out_basic_auth_tls.bats": {
+    "zot0": {
+      "begin": 7020,
+      "end": 7029
+    },
+    "zot1": {
+      "begin": 7040,
+      "end": 7049
+    },
+    "zot2": {
+      "begin": 7060,
+      "end": 7069
+    },
+    "zot3": {
+      "begin": 7080,
+      "end": 7089
+    },
+    "zot4": {
+      "begin": 11000,
+      "end": 11009
+    },
+    "zot5": {
+      "begin": 11020,
+      "end": 11029
+    },
+    "haproxy": {
+      "begin": 8400,
+      "end": 8450
+    }
+  },
+  "scale-out/cloud_scale_out_no_auth.bats": {
+    "zot0": {
+      "begin": 11040,
+      "end": 11049
+    },
+    "zot1": {
+      "begin": 11060,
+      "end": 11069
+    },
+    "zot2": {
+      "begin": 11080,
+      "end": 11089
+    },
+    "zot3": {
+      "begin": 11100,
+      "end": 11109
+    },
+    "zot4": {
+      "begin": 11120,
+      "end": 11129
+    },
+    "zot5": {
+      "begin": 11140,
+      "end": 11149
+    },
+    "haproxy": {
+      "begin": 8500,
+      "end": 8550
+    }
+  },
+  "scale-out/cloud_scale_out_redis_scale.bats": {
+    "redis": {
+      "begin": 20000,
+      "end": 20009
+    },
+    "zot0": {
+      "begin": 11160,
+      "end": 11169
+    },
+    "zot1": {
+      "begin": 11180,
+      "end": 11189
+    },
+    "zot2": {
+      "begin": 11200,
+      "end": 11209
+    },
+    "zot3": {
+      "begin": 11220,
+      "end": 11229
+    },
+    "zot4": {
+      "begin": 11240,
+      "end": 11249
+    },
+    "zot5": {
+      "begin": 11260,
+      "end": 11269
+    },
+    "haproxy": {
+      "begin": 8600,
+      "end": 8650
+    }
+  },
+  "scale-out/cloud_scale_out_redis.bats": {
+    "redis": {
+      "begin": 20020,
+      "end": 20029
+    },
+    "zot0": {
+      "begin": 11280,
+      "end": 11289
+    },
+    "zot1": {
+      "begin": 11300,
+      "end": 11309
+    },
+    "zot2": {
+      "begin": 11320,
+      "end": 11329
+    },
+    "zot3": {
+      "begin": 11340,
+      "end": 11349
+    },
+    "zot4": {
+      "begin": 11360,
+      "end": 11369
+    },
+    "zot5": {
+      "begin": 11380,
+      "end": 11389
+    },
+    "haproxy": {
+      "begin": 8700,
+      "end": 8750
+    }
+  }
+}

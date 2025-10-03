@@ -4,6 +4,7 @@
 
 load helpers_cloud
 load helpers_wait
+load ../port_helper
 
 function setup_file() {
     # Verify prerequisites are available
@@ -22,6 +23,9 @@ function setup_file() {
 
     touch ${ZOT_LOG_FILE_NODEDUPE}
     mkdir -p ${zot_root_dir}
+
+    zot_port=$(get_free_port_for_service "zot")
+    echo ${zot_port} > ${BATS_FILE_TMPDIR}/zot.port
 
     cat > ${zot_config_file_dedupe}<<EOF
 {
@@ -48,7 +52,7 @@ function setup_file() {
     },
     "http": {
         "address": "127.0.0.1",
-        "port": "8080"
+        "port": "${zot_port}"
     },
     "log": {
         "level": "debug",
@@ -76,7 +80,7 @@ EOF
     },
     "http": {
         "address": "127.0.0.1",
-        "port": "8080"
+        "port": "${zot_port}"
     },
     "log": {
         "level": "debug",
@@ -87,7 +91,7 @@ EOF
     awslocal s3 --region "us-east-2" mb s3://zot-storage
     awslocal dynamodb --region "us-east-2" create-table --table-name "BlobTable" --attribute-definitions AttributeName=Digest,AttributeType=S --key-schema AttributeName=Digest,KeyType=HASH --provisioned-throughput ReadCapacityUnits=10,WriteCapacityUnits=5
     zot_serve ${zot_config_file_dedupe}
-    wait_zot_reachable 8080
+    wait_zot_reachable ${zot_port}
 }
 
 function teardown() {
@@ -105,11 +109,12 @@ function teardown_file() {
 }
 
 @test "push 50 images with dedupe enabled" {
+    zot_port=`cat ${BATS_FILE_TMPDIR}/zot.port`
     for i in {1..50}
     do
         run skopeo --insecure-policy copy --dest-tls-verify=false \
             oci:${TEST_DATA_DIR}/alpine:1 \
-            docker://127.0.0.1:8080/alpine${i}:1
+            docker://127.0.0.1:${zot_port}/alpine${i}:1
         [ "$status" -eq 0 ]
     done
 }
@@ -142,19 +147,20 @@ function teardown_file() {
 }
 
 @test "pulling a previous deduped image should work" {
-    wait_zot_reachable 8080
+    zot_port=`cat ${BATS_FILE_TMPDIR}/zot.port`
+    wait_zot_reachable ${zot_port}
 
     # alpine1 should have original blobs already
     echo "pulling first image" >&3
     run skopeo --insecure-policy copy --src-tls-verify=false \
-        docker://127.0.0.1:8080/alpine1:1 \
+        docker://127.0.0.1:${zot_port}/alpine1:1 \
         oci:${TEST_DATA_DIR}/alpine1:1
     [ "$status" -eq 0 ]
 
     echo "pulling second image" >&3
     # alpine2 should have original blobs after restoring blobs
     run skopeo --insecure-policy copy --src-tls-verify=false \
-        docker://127.0.0.1:8080/alpine2:1 \
+        docker://127.0.0.1:${zot_port}/alpine2:1 \
         oci:${TEST_DATA_DIR}/alpine2:1
     [ "$status" -eq 0 ]
 }

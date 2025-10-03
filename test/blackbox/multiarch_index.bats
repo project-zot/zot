@@ -3,6 +3,7 @@
 #       Extra tools that are not covered in Makefile target needs to be added in verify_prerequisites()
 
 load helpers_zot
+load ../port_helper
 
 function verify_prerequisites {
     if [ ! $(command -v regctl) ]; then
@@ -24,7 +25,7 @@ function setup_file() {
     local oci_data_dir=${BATS_FILE_TMPDIR}/oci
     mkdir -p ${zot_root_dir}
     mkdir -p ${oci_data_dir}
-    zot_port=$(get_free_port)
+    zot_port=$(get_free_port_for_service "zot")
     echo ${zot_port} > ${BATS_FILE_TMPDIR}/zot.port
     cat > ${zot_config_file}<<EOF
 {

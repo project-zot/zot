@@ -4,6 +4,7 @@
 
 load helpers_zot
 load helpers_wait
+load ../port_helper
 
 function verify_prerequisites() {
     return 0
@@ -31,6 +32,11 @@ function setup_file() {
 
     local ZOT_LOG_FILE=${zot_sync_per_root_dir}/zot.log
 
+    zot_sync_per_cfg_port=$(get_free_port_for_service "zot_sync")
+    echo ${zot_sync_per_cfg_port} > ${BATS_FILE_TMPDIR}/zot_sync.port
+
+    zot_minimal_port=$(get_free_port_for_service "zot_min")
+    echo ${zot_minimal_port} > ${BATS_FILE_TMPDIR}/zot_min.port
 
     cat >${zot_sync_per_config_file} <<EOF
 {
@@ -40,7 +46,7 @@ function setup_file() {
     },
     "http": {
         "address": "0.0.0.0",
-        "port": "8081"
+        "port": "${zot_sync_per_cfg_port}"
     },
     "log": {
         "level": "debug",
@@ -51,7 +57,7 @@ function setup_file() {
             "registries": [
                 {
                     "urls": [
-                        "http://localhost:8080"
+                        "http://localhost:${zot_minimal_port}"
                     ],
                     "onDemand": false,
                     "tlsVerify": false,
@@ -76,7 +82,7 @@ EOF
     },
     "http": {
         "address": "0.0.0.0",
-        "port": "8080"
+        "port": "${zot_minimal_port}"
     },
     "log": {
         "level": "debug",
@@ -85,7 +91,7 @@ EOF
 }
 EOF
     zot_serve ${ZOT_MINIMAL_PATH} ${zot_minimal_config_file}
-    wait_zot_reachable 8080
+    wait_zot_reachable ${zot_sync_per_cfg_port}
 }
 
 function teardown_file() {
@@ -94,16 +100,19 @@ function teardown_file() {
 
 # sync zb images
 @test "run zb benchmark and let zot sync all repos" {
+    zot_sync_per_cfg_port=`cat ${BATS_FILE_TMPDIR}/zot_sync.port`
+    zot_minimal_port=`cat ${BATS_FILE_TMPDIR}/zot_min.port`
+
     local zot_sync_per_root_dir=${BATS_FILE_TMPDIR}/zot-per
     local zot_sync_per_config_file=${BATS_FILE_TMPDIR}/zot_sync_per_config.json
     local zot_minimal_root_dir=${BATS_FILE_TMPDIR}/zot-minimal
     local ZOT_LOG_FILE=${zot_sync_per_root_dir}/zot.log
 
-    zb_run "http://127.0.0.1:8080"
+    zb_run "http://127.0.0.1:${zot_sync_per_cfg_port}"
 
     # start zot sync server
     zot_serve ${ZOT_PATH} ${zot_sync_per_config_file}
-    wait_zot_reachable 8081
+    wait_zot_reachable ${zot_minimal_port}
 
     start=`date +%s`
     echo "waiting for sync to finish" >&3

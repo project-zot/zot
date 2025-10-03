@@ -4,6 +4,7 @@
 
 load helpers_zot
 load helpers_scrub
+load ../port_helper
 
 function verify_prerequisites() {
     return 0
@@ -24,7 +25,7 @@ function setup() {
     echo ${ZOT_ROOT_DIR}
     ZOT_LOG_FILE=${ZOT_ROOT_DIR}/zot-log.json
     ZOT_CONFIG_FILE=${BATS_FILE_TMPDIR}/zot_config.json
-    zot_port=$(get_free_port)
+    zot_port=$(get_free_port_for_service "zot")
     echo ${zot_port} > ${BATS_FILE_TMPDIR}/zot.port
     mkdir -p ${ZOT_ROOT_DIR}
     touch ${ZOT_LOG_FILE}

@@ -1,4 +1,5 @@
 load helpers_zot
+load ../port_helper
 
 function verify_prerequisites {
     if [ ! $(command -v curl) ]; then
@@ -26,7 +27,7 @@ function setup_file() {
     local zot_root_dir=${BATS_FILE_TMPDIR}/zot
     local zot_config_file=${BATS_FILE_TMPDIR}/zot_config.json
     local oci_data_dir=${BATS_FILE_TMPDIR}/oci
-    zot_port=$(get_free_port)
+    zot_port=$(get_free_port_for_service "zot")
     echo ${zot_port} > ${BATS_FILE_TMPDIR}/zot.port
     mkdir -p ${zot_root_dir}
     mkdir -p ${oci_data_dir}
