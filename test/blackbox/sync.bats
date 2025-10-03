@@ -286,9 +286,9 @@ function teardown_file() {
     run notation cert generate-test "notation-sign-sync-test"
     [ "$status" -eq 0 ]
 
-    local trust_policy_file=${HOME}/.config/notation/trustpolicy.json
+    local trust_policy_file=/tmp/trustpolicy.json
 
-    cat >${trust_policy_file} <<EOF
+    cat <<EOF >"${trust_policy_file}"
 {
     "version": "1.0",
     "trustPolicies": [
@@ -306,10 +306,11 @@ function teardown_file() {
     ]
 }
 EOF
-
-    run notation sign --key "notation-sign-sync-test" --insecure-registry localhost:${zot_port3}/golang:1.20
+    run notation policy import --force "${trust_policy_file}"
     [ "$status" -eq 0 ]
-    run notation verify --insecure-registry localhost:${zot_port3}/golang:1.20
+    run notation sign --debug --verbose --key "notation-sign-sync-test" --insecure-registry localhost:${zot_port3}/golang:1.20
+    [ "$status" -eq 0 ]
+    run notation verify --debug --verbose --insecure-registry localhost:${zot_port3}/golang:1.20
     [ "$status" -eq 0 ]
     run notation list --insecure-registry localhost:${zot_port3}/golang:1.20
     [ "$status" -eq 0 ]
