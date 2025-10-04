@@ -3,6 +3,7 @@
 #       Extra tools that are not covered in Makefile target needs to be added in verify_prerequisites()
 
 load helpers_zot
+load ../port_helper
 
 function verify_prerequisites() {
     if [ ! $(command -v curl) ]; then
@@ -41,9 +42,9 @@ function setup_file() {
     mkdir -p ${zot_sync_one_root_dir}
     mkdir -p ${zot_sync_two_root_dir}
 
-    zot_port1=$(get_free_port)
+    zot_port1=$(get_free_port_for_service "zot1")
     echo ${zot_port1} > ${BATS_FILE_TMPDIR}/zot.port1
-    zot_port2=$(get_free_port)
+    zot_port2=$(get_free_port_for_service "zot2")
     echo ${zot_port2} > ${BATS_FILE_TMPDIR}/zot.port2
 
     cat >${zot_sync_one_config_file} <<EOF

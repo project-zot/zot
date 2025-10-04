@@ -3,6 +3,7 @@
 #       Extra tools that are not covered in Makefile target needs to be added in verify_prerequisites()
 
 load helpers_zot
+load ../port_helper
 
 function verify_prerequisites {
     if [ ! $(command -v curl) ]; then
@@ -31,6 +32,9 @@ function setup_file() {
     local oci_data_dir=${BATS_FILE_TMPDIR}/oci
     mkdir -p ${zot_root_dir}
     mkdir -p ${oci_data_dir}
+
+    zot_port=$(get_free_port_for_service "zot")
+    echo ${zot_port} > ${BATS_FILE_TMPDIR}/zot.port
     cat > ${zot_config_file}<<EOF
 {
     "distSpecVersion": "1.1.1",
@@ -42,7 +46,7 @@ function setup_file() {
     },
     "http": {
         "address": "0.0.0.0",
-        "port": "8080"
+        "port": "${zot_port}"
     },
     "log": {
         "level": "debug",
@@ -52,7 +56,7 @@ function setup_file() {
 EOF
     git -C ${BATS_FILE_TMPDIR} clone https://github.com/project-zot/helm-charts.git
     zot_serve ${ZOT_PATH} ${zot_config_file}
-    wait_zot_reachable 8080
+    wait_zot_reachable ${zot_port}
 }
 
 function teardown() {
@@ -64,30 +68,36 @@ function teardown_file() {
     zot_stop_all
 }
 
+function get_zot_port() {
+    cat ${BATS_FILE_TMPDIR}/zot.port
+}
+
 @test "push image - dedupe not running" {
+    zot_port=$(get_zot_port)
     start=`date +%s`
     run skopeo --insecure-policy copy --dest-tls-verify=false \
         oci:${TEST_DATA_DIR}/alpine:1 \
-        docker://127.0.0.1:8080/alpine:1
+        docker://127.0.0.1:${zot_port}/alpine:1
     [ "$status" -eq 0 ]
     end=`date +%s`
 
     runtime=$((end-start))
     echo "push image exec time: $runtime sec" >&3
 
-    run curl http://127.0.0.1:8080/v2/_catalog
+    run curl http://127.0.0.1:${zot_port}/v2/_catalog
     [ "$status" -eq 0 ]
     [ $(echo "${lines[-1]}" | jq '.repositories[]') = '"alpine"' ]
-    run curl http://127.0.0.1:8080/v2/alpine/tags/list
+    run curl http://127.0.0.1:${zot_port}/v2/alpine/tags/list
     [ "$status" -eq 0 ]
     [ $(echo "${lines[-1]}" | jq '.tags[]') = '"1"' ]
 }
 
 @test "pull image - dedupe not running" {
+    zot_port=$(get_zot_port)
     local oci_data_dir=${BATS_FILE_TMPDIR}/oci
     start=`date +%s`
     run skopeo --insecure-policy copy --src-tls-verify=false \
-        docker://127.0.0.1:8080/alpine:1 \
+        docker://127.0.0.1:${zot_port}/alpine:1 \
         oci:${oci_data_dir}/alpine:1
     [ "$status" -eq 0 ]
     end=`date +%s`
@@ -100,16 +110,18 @@ function teardown_file() {
 }
 
 @test "push 50 images with dedupe disabled" {
+    zot_port=$(get_zot_port)
     for i in {1..50}
     do
         run skopeo --insecure-policy copy --dest-tls-verify=false \
             oci:${TEST_DATA_DIR}/alpine:1 \
-            docker://127.0.0.1:8080/alpine${i}:1
+            docker://127.0.0.1:${zot_port}/alpine${i}:1
         [ "$status" -eq 0 ]
     done
 }
 
 @test "restart zot with dedupe enabled" {
+    zot_port=$(get_zot_port)
     local zot_config_file=${BATS_FILE_TMPDIR}/zot_config.json
 
     # stop server
@@ -123,15 +135,16 @@ function teardown_file() {
     # sleep a bit before running wait_zot_reachable(curl)
     sleep 5
 
-    wait_zot_reachable 8080
+    wait_zot_reachable ${zot_port}
     # deduping will now run in background (task scheduler) while we push images, shouldn't interfere
 }
 
 @test "push image - dedupe running" {
+    zot_port=$(get_zot_port)
     start=`date +%s`
     run skopeo --insecure-policy copy --dest-tls-verify=false \
         oci:${TEST_DATA_DIR}/alpine:1 \
-        docker://127.0.0.1:8080/dedupe/alpine:1
+        docker://127.0.0.1:${zot_port}/dedupe/alpine:1
     [ "$status" -eq 0 ]
     end=`date +%s`
 
@@ -140,13 +153,14 @@ function teardown_file() {
 }
 
 @test "pull image - dedupe running" {
+    zot_port=$(get_zot_port)
     local oci_data_dir=${BATS_FILE_TMPDIR}/oci
 
     mkdir -p ${oci_data_dir}/dedupe/
 
     start=`date +%s`
     run skopeo --insecure-policy copy --src-tls-verify=false \
-        docker://127.0.0.1:8080/dedupe/alpine:1 \
+        docker://127.0.0.1:${zot_port}/dedupe/alpine:1 \
         oci:${oci_data_dir}/dedupe/alpine:1
     [ "$status" -eq 0 ]
     end=`date +%s`
@@ -156,13 +170,14 @@ function teardown_file() {
 }
 
 @test "pull deduped image - dedupe running" {
+    zot_port=$(get_zot_port)
     local oci_data_dir=${BATS_FILE_TMPDIR}/oci
 
     mkdir -p ${oci_data_dir}/dedupe/
 
     start=`date +%s`
     run skopeo --insecure-policy copy --src-tls-verify=false \
-        docker://127.0.0.1:8080/alpine2:1 \
+        docker://127.0.0.1:${zot_port}/alpine2:1 \
         oci:${oci_data_dir}/dedupe/alpine2:1
     [ "$status" -eq 0 ]
     end=`date +%s`
@@ -172,27 +187,29 @@ function teardown_file() {
 }
 
 @test "push image index - dedupe running" {
+    zot_port=$(get_zot_port)
     # --multi-arch below pushes an image index (containing many images) instead
     # of an image manifest (single image)
     start=`date +%s`
     run skopeo --insecure-policy copy --format=oci --dest-tls-verify=false --multi-arch=all \
         docker://public.ecr.aws/docker/library/busybox:latest \
-        docker://127.0.0.1:8080/busybox:latest
+        docker://127.0.0.1:${zot_port}/busybox:latest
     [ "$status" -eq 0 ]
     end=`date +%s`
     runtime=$((end-start))
 
     echo "push image index exec time: $runtime sec" >&3
-    run curl http://127.0.0.1:8080/v2/busybox/tags/list
+    run curl http://127.0.0.1:${zot_port}/v2/busybox/tags/list
     [ "$status" -eq 0 ]
     [ $(echo "${lines[-1]}" | jq '.tags[]') = '"latest"' ]
 }
 
 @test "pull image index - dedupe running" {
+    zot_port=$(get_zot_port)
     local oci_data_dir=${BATS_FILE_TMPDIR}/oci
     start=`date +%s`
     run skopeo --insecure-policy copy --src-tls-verify=false --multi-arch=all \
-        docker://127.0.0.1:8080/busybox:latest \
+        docker://127.0.0.1:${zot_port}/busybox:latest \
         oci:${oci_data_dir}/busybox:latest
     [ "$status" -eq 0 ]
     end=`date +%s`
@@ -203,21 +220,22 @@ function teardown_file() {
     [ "$status" -eq 0 ]
     [ $(echo "${lines[-1]}" | jq '.manifests[].annotations."org.opencontainers.image.ref.name"') = '"latest"' ]
     run skopeo --insecure-policy --override-arch=arm64 --override-os=linux copy --src-tls-verify=false --multi-arch=all \
-        docker://127.0.0.1:8080/busybox:latest \
+        docker://127.0.0.1:${zot_port}/busybox:latest \
         oci:${oci_data_dir}/busybox:latest
     [ "$status" -eq 0 ]
     run cat ${BATS_FILE_TMPDIR}/oci/busybox/index.json
     [ "$status" -eq 0 ]
     [ $(echo "${lines[-1]}" | jq '.manifests[].annotations."org.opencontainers.image.ref.name"') = '"latest"' ]
-    run curl -X DELETE http://127.0.0.1:8080/v2/busybox/manifests/latest
+    run curl -X DELETE http://127.0.0.1:${zot_port}/v2/busybox/manifests/latest
     [ "$status" -eq 0 ]
 }
 
 @test "push oras artifact - dedupe running" {
+    zot_port=$(get_zot_port)
     echo "{\"name\":\"foo\",\"value\":\"bar\"}" > config.json
     echo "hello world" > artifact.txt
     start=`date +%s`
-    run oras push --plain-http 127.0.0.1:8080/hello-artifact:v2 \
+    run oras push --plain-http 127.0.0.1:${zot_port}/hello-artifact:v2 \
         --config config.json:application/vnd.acme.rocket.config.v1+json artifact.txt:text/plain -d -v
     [ "$status" -eq 0 ]
     end=`date +%s`
@@ -229,8 +247,9 @@ function teardown_file() {
 }
 
 @test "pull oras artifact - dedupe running" {
+    zot_port=$(get_zot_port)
     start=`date +%s`
-    run oras pull --plain-http 127.0.0.1:8080/hello-artifact:v2 -d -v
+    run oras pull --plain-http 127.0.0.1:${zot_port}/hello-artifact:v2 -d -v
     [ "$status" -eq 0 ]
     end=`date +%s`
     runtime=$((end-start))
@@ -241,19 +260,20 @@ function teardown_file() {
 }
 
 @test "attach oras artifacts - dedupe running" {
+    zot_port=$(get_zot_port)
     # attach signature
     echo "{\"artifact\": \"\", \"signature\": \"pat hancock\"}" > ${BATS_FILE_TMPDIR}/signature.json
     start=`date +%s`
-    run oras attach --disable-path-validation --plain-http 127.0.0.1:8080/alpine:1 --artifact-type 'signature/example' ${BATS_FILE_TMPDIR}/signature.json:application/json
+    run oras attach --disable-path-validation --plain-http 127.0.0.1:${zot_port}/alpine:1 --artifact-type 'signature/example' ${BATS_FILE_TMPDIR}/signature.json:application/json
     [ "$status" -eq 0 ]
     end=`date +%s`
     runtime=$((end-start))
 
     echo "attach signature exec time: $runtime sec" >&3
     # attach sbom
-    echo "{\"version\": \"0.0.0.0\", \"artifact\": \"'127.0.0.1:8080/alpine:1'\", \"contents\": \"good\"}" > ${BATS_FILE_TMPDIR}/sbom.json
+    echo "{\"version\": \"0.0.0.0\", \"artifact\": \"'127.0.0.1:${zot_port}/alpine:1'\", \"contents\": \"good\"}" > ${BATS_FILE_TMPDIR}/sbom.json
     start=`date +%s`
-    run oras attach --disable-path-validation --plain-http 127.0.0.1:8080/alpine:1 --artifact-type 'sbom/example' ${BATS_FILE_TMPDIR}/sbom.json:application/json
+    run oras attach --disable-path-validation --plain-http 127.0.0.1:${zot_port}/alpine:1 --artifact-type 'sbom/example' ${BATS_FILE_TMPDIR}/sbom.json:application/json
     [ "$status" -eq 0 ]
     end=`date +%s`
     runtime=$((end-start))
@@ -262,8 +282,9 @@ function teardown_file() {
 }
 
 @test "discover oras artifacts - dedupe running" {
+    zot_port=$(get_zot_port)
     start=`date +%s`
-    run oras discover --plain-http --format json 127.0.0.1:8080/alpine:1
+    run oras discover --plain-http --format json 127.0.0.1:${zot_port}/alpine:1
     [ "$status" -eq 0 ]
     end=`date +%s`
     runtime=$((end-start))
@@ -273,11 +294,12 @@ function teardown_file() {
 }
 
 @test "push helm chart - dedupe running" {
+    zot_port=$(get_zot_port)
     run helm package ${BATS_FILE_TMPDIR}/helm-charts/charts/zot -d ${BATS_FILE_TMPDIR}
     [ "$status" -eq 0 ]
     local chart_version=$(awk '/version/{printf $2}' ${BATS_FILE_TMPDIR}/helm-charts/charts/zot/Chart.yaml)
     start=`date +%s`
-    run helm push ${BATS_FILE_TMPDIR}/zot-${chart_version}.tgz oci://localhost:8080/zot-chart
+    run helm push ${BATS_FILE_TMPDIR}/zot-${chart_version}.tgz oci://localhost:${zot_port}/zot-chart
     [ "$status" -eq 0 ]
     end=`date +%s`
     runtime=$((end-start))
@@ -286,9 +308,10 @@ function teardown_file() {
 }
 
 @test "pull helm chart - dedupe running" {
+    zot_port=$(get_zot_port)
     local chart_version=$(awk '/version/{printf $2}' ${BATS_FILE_TMPDIR}/helm-charts/charts/zot/Chart.yaml)
     start=`date +%s`
-    run helm pull oci://localhost:8080/zot-chart/zot --version ${chart_version} -d ${BATS_FILE_TMPDIR}
+    run helm pull oci://localhost:${zot_port}/zot-chart/zot --version ${chart_version} -d ${BATS_FILE_TMPDIR}
     [ "$status" -eq 0 ]
     end=`date +%s`
     runtime=$((end-start))
@@ -297,10 +320,11 @@ function teardown_file() {
 }
 
 @test "push image with regclient - dedupe running" {
-    run regctl registry set localhost:8080 --tls disabled
+    zot_port=$(get_zot_port)
+    run regctl registry set localhost:${zot_port} --tls disabled
     [ "$status" -eq 0 ]
     start=`date +%s`
-    run regctl image copy ocidir://${TEST_DATA_DIR}/alpine:1 localhost:8080/test-regclient
+    run regctl image copy ocidir://${TEST_DATA_DIR}/alpine:1 localhost:${zot_port}/test-regclient
     [ "$status" -eq 0 ]
     end=`date +%s`
     runtime=$((end-start))

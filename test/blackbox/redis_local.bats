@@ -4,6 +4,7 @@
 
 load helpers_zot
 load helpers_redis
+load ../port_helper
 
 function verify_prerequisites() {
     if [ ! $(command -v curl) ]; then
@@ -34,13 +35,13 @@ function setup_file() {
     skopeo --insecure-policy copy --format=oci docker://ghcr.io/project-zot/golang:1.20 oci:${TEST_DATA_DIR}/golang:1.20
 
     # Setup redis server
-    redis_port=$(get_free_port)
+    redis_port=$(get_free_port_for_service "redis")
     redis_start redis_server_local ${redis_port}
 
     # Setup zot server
     local zot_root_dir=${BATS_FILE_TMPDIR}/zot
     local zot_sync_ondemand_config_file=${BATS_FILE_TMPDIR}/zot_sync_ondemand_config.json
-    zot_port=$(get_free_port)
+    zot_port=$(get_free_port_for_service "zot")
     echo ${zot_port} > ${BATS_FILE_TMPDIR}/zot.port
 
     mkdir -p ${zot_root_dir}

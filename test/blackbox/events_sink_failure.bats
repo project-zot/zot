@@ -4,6 +4,7 @@
 
 load helpers_zot
 load helpers_events
+load ../port_helper
 
 function verify_prerequisites() {
     if [ ! $(command -v curl) ]; then
@@ -29,7 +30,7 @@ function setup_file() {
     fi
 
     # Setup http server
-    http_server_port=$(get_free_port)
+    http_server_port=$(get_free_port_for_service "http")
     http_event_dir="${BATS_FILE_TMPDIR}/http_events"
     http_server_start http_receiver_failure "${http_server_port}" "${http_event_dir}"
     wait_for_http_server $http_server_port
@@ -42,7 +43,7 @@ function setup_file() {
     local oci_data_dir=${BATS_FILE_TMPDIR}/oci
     mkdir -p ${zot_root_dir}
     mkdir -p ${oci_data_dir}
-    zot_port=$(get_free_port)
+    zot_port=$(get_free_port_for_service "zot")
     echo ${zot_port} > ${BATS_FILE_TMPDIR}/zot.port
     cat > ${zot_config_file}<<EOF
 {

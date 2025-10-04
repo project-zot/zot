@@ -52,20 +52,6 @@ function verify_prerequisites {
     return 0
 }
 
-function get_free_port(){
-    while true
-    do
-        random_port=$(( ((RANDOM<<15)|RANDOM) % 49152 + 10000 ))
-        status="$(nc -z 127.0.0.1 $random_port < /dev/null &>/dev/null; echo $?)"
-        if [ "${status}" != "0" ]; then
-            free_port=${random_port};
-            break;
-        fi
-    done
-
-    echo ${free_port}
-}
-
 function zot_serve() {
     local config_file=${1}
     ${ZOT_PATH} serve ${config_file} &
@@ -158,12 +144,15 @@ function create_htpasswd_file() {
 # and saves them as a JSON to a file that can be used with jq later.
 function generate_zot_cluster_member_list() {
     local num_zot_instances=${1}
-    local patch_file_path=${2}
+    shift
+    local patch_file_path=${1}
+    shift
+    local zot_ports=("$@")
     local temp_file="${BATS_FILE_TMPDIR}/jq-member-dump.json"
     echo "{\"cluster\":{\"members\":[]}}" > ${patch_file_path}
 
-    for ((i=0;i<${num_zot_instances};i++)); do
-        local member="127.0.0.1:$(( 10000 + $i ))"
+    for inst in "${zot_ports[@]}"; do
+        local member="127.0.0.1:${inst}"
         jq ".cluster.members += [\"${member}\"]" ${patch_file_path} > ${temp_file} && \
         mv ${temp_file} ${patch_file_path}
     done

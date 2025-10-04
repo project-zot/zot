@@ -1,4 +1,5 @@
 load helpers_zot
+load ../port_helper
 
 function verify_prerequisites {
     if [ ! $(command -v curl) ]; then
@@ -32,7 +33,7 @@ function setup_file() {
     local zot_root_dir=${BATS_FILE_TMPDIR}/zot
     local zot_config_file=${BATS_FILE_TMPDIR}/zot_config.json
     local zot_htpasswd_file=${BATS_FILE_TMPDIR}/zot_htpasswd
-    zot_port=$(get_free_port)
+    zot_port=$(get_free_port_for_service "zot")
     echo ${zot_port} > ${BATS_FILE_TMPDIR}/zot.port
     htpasswd -Bbn ${AUTH_USER} ${AUTH_PASS} >> ${zot_htpasswd_file}
 
