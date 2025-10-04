@@ -147,6 +147,8 @@ func (d *BoltDBDriver) PutBlob(digest godigest.Digest, path string) error {
 			return err
 		}
 
+		d.log.Debug().Str("digest", digest.String()).Str("path", path).Msg("inserted in duplicates bucket")
+
 		// create origin bucket and insert only the original blob
 		origin := bucket.Bucket([]byte(constants.OriginalBucket))
 		if origin == nil {
@@ -164,6 +166,7 @@ func (d *BoltDBDriver) PutBlob(digest godigest.Digest, path string) error {
 
 				return err
 			}
+			d.log.Debug().Str("digest", digest.String()).Str("path", path).Msg("inserted in original bucket")
 		}
 
 		return nil
@@ -255,7 +258,7 @@ func (d *BoltDBDriver) GetBlob(digest godigest.Digest) (string, error) {
 }
 
 func (d *BoltDBDriver) HasBlob(digest godigest.Digest, blob string) bool {
-	d.log.Debug().Str("digest", digest.String()).Str("blob", "blob").Msg("deleting blob from cache")
+	d.log.Debug().Str("digest", digest.String()).Str("blob", "blob").Msg("checking blob in cache")
 
 	if err := d.db.View(func(tx *bbolt.Tx) error {
 		root := tx.Bucket([]byte(constants.BlobsCache))
@@ -286,7 +289,10 @@ func (d *BoltDBDriver) HasBlob(digest godigest.Digest, blob string) bool {
 			if deduped.Get([]byte(blob)) == nil {
 				return zerr.ErrCacheMiss
 			}
+			d.log.Debug().Str("key", blob).Msg("found in dedupe bucket")
 		}
+
+		d.log.Debug().Str("key", blob).Msg("found in original bucket")
 
 		return nil
 	}); err != nil {
@@ -346,8 +352,8 @@ func (d *BoltDBDriver) DeleteBlob(digest godigest.Digest, path string) error {
 
 		d.log.Debug().Str("digest", digest.String()).Str("path", path).Msg("deleted from dedupe bucket")
 
-		dedupedBlob := d.getOne(deduped)
-		if dedupedBlob != nil {
+		dedupeBlob := d.getOne(deduped)
+		if dedupeBlob != nil {
 			d.log.Debug().Str("digest", digest.String()).Str("path", path).Msg("more in dedupe bucket, leaving original alone")
 			return nil
 		}
@@ -365,18 +371,18 @@ func (d *BoltDBDriver) DeleteBlob(digest godigest.Digest, path string) error {
 
 				d.log.Debug().Str("digest", digest.String()).Str("path", path).Msg("deleted from original bucket")
 
-				// move next candidate to origin bucket, next GetKey will return this one and storage will move the content here
-				dedupedBlob := d.getOne(deduped)
-				if dedupedBlob != nil {
-					if err := origin.Put(dedupedBlob, nil); err != nil {
-						d.log.Error().Err(err).Str("digest", digest.String()).Str("bucket", constants.OriginalBucket).Str("path", path).
-							Msg("failed to put")
+				/*
+					// move next candidate to origin bucket, next GetKey will return this one and storage will move the content here
+					dedupedBlob := d.getOne(deduped)
+					if dedupedBlob != nil {
+						if err := origin.Put(dedupedBlob, nil); err != nil {
+							d.log.Error().Err(err).Str("digest", digest.String()).Str("bucket", constants.OriginalBucket).Str("path", path).
+								Msg("failed to put")
 
-						return err
-					}
-				}
+							return err
 
-				d.log.Debug().Str("digest", digest.String()).Str("path", string(dedupedBlob)).Msg("replaced blob")
+						}
+				*/
 			}
 		}
 
