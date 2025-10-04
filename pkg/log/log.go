@@ -308,6 +308,7 @@ func NewLoggerWithWriter(level string, writer io.Writer) Logger {
 // GoroutineID adds goroutine-id to logs to help debug concurrency issues.
 func GoroutineID() int {
 	var buf [64]byte
+
 	n := runtime.Stack(buf[:], false)
 	idField := strings.Fields(strings.TrimPrefix(string(buf[:n]), "goroutine "))[0]
 
