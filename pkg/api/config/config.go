@@ -75,8 +75,9 @@ type AuthConfig struct {
 	OpenID            *OpenIDConfig
 	APIKey            bool
 	SessionKeysFile   string
-	SessionHashKey    []byte `json:"-"`
-	SessionEncryptKey []byte `json:"-"`
+	SessionHashKey    []byte         `json:"-"`
+	SessionEncryptKey []byte         `json:"-"`
+	SessionDriver     map[string]any `mapstructure:",omitempty"`
 }
 
 type BearerConfig struct {

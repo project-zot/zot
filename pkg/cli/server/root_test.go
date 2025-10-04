@@ -11,6 +11,7 @@ import (
 
 	. "github.com/smartystreets/goconvey/convey"
 
+	zerr "zotregistry.dev/zot/errors"
 	"zotregistry.dev/zot/pkg/api"
 	"zotregistry.dev/zot/pkg/api/config"
 	cli "zotregistry.dev/zot/pkg/cli/server"
@@ -570,6 +571,255 @@ storage:
 		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
 		err = cli.NewServerRootCmd().Execute()
 		So(err, ShouldBeNil)
+	})
+
+	Convey("Test session store config", t, func(c C) {
+		tmpfile, err := os.CreateTemp("", "zot-test*.json")
+		So(err, ShouldBeNil)
+
+		defer os.Remove(tmpfile.Name())
+
+		tmpSessionKeysFile, err := os.CreateTemp("/tmp", "keys-*.json")
+		So(err, ShouldBeNil)
+
+		defer os.Remove(tmpSessionKeysFile.Name())
+
+		_, err = tmpSessionKeysFile.WriteString(`{
+				"hashKey": "my-very-secret",
+				"encryptKey": "another-secret"
+			}`,
+		)
+		So(err, ShouldBeNil)
+
+		testCases := []struct {
+			name    string
+			config  []byte
+			isValid bool
+			errMsg  string
+		}{
+			{
+				"Should fail verify if session driver is enabled, but invalid driver provided",
+				[]byte(`{
+					"storage":{
+						"rootDirectory":"/tmp/zot"
+					},
+					"http":{
+						"address":"127.0.0.1",
+						"port":"8080",
+						"realm":"zot",
+						"auth":{
+							"htpasswd":{
+								"path":"test/data/htpasswd"
+							},
+							"failDelay":1,
+							"sessionDriver":{
+								"name": "badDriver"
+							}
+						}
+					},
+					"extensions":{
+						"search": {
+							"cve": {
+								"updateInterval": "2h"
+							}
+						},
+						"ui": {
+							"enable": true
+						}
+					}
+				}`),
+				false,
+				zerr.ErrBadConfig.Error() +
+					": session store driver badDriver is not allowed!",
+			},
+			{
+				"Should fail verify if session driver is enabled, but driver name is not provided",
+				[]byte(`{
+					"storage":{
+						"rootDirectory":"/tmp/zot"
+					},
+					"http":{
+						"address":"127.0.0.1",
+						"port":"8080",
+						"realm":"zot",
+						"auth":{
+							"htpasswd":{
+								"path":"test/data/htpasswd"
+							},
+							"failDelay":1,
+							"sessionDriver":{
+								"url": "redis://localhost"
+							}
+						}
+					},
+					"extensions":{
+						"search": {
+							"cve": {
+								"updateInterval": "2h"
+							}
+						},					
+						"ui": {
+							"enable": true
+						}
+					}
+				}`),
+				false,
+				zerr.ErrBadConfig.Error() + ": must provide session driver name!",
+			},
+			{
+				"Should fail verify if session driver is enabled and sessionKeysFile present",
+				[]byte(fmt.Sprintf(`{
+					"storage":{
+						"rootDirectory":"/tmp/zot"
+					},
+					"http":{
+						"address":"127.0.0.1",
+						"port":"8080",
+						"realm":"zot",
+						"auth":{
+							"htpasswd":{
+								"path":"test/data/htpasswd"
+							},
+							"failDelay":1,
+							"sessionKeysFile": "%s",
+							"sessionDriver":{
+								"name": "redis",
+								"url": "redis://localhost"
+							}
+						}
+					},
+					"extensions":{
+						"search": {
+							"cve": {
+								"updateInterval": "2h"
+							}
+						},					
+						"ui": {
+							"enable": true
+						}
+					}
+				}`, tmpSessionKeysFile.Name())),
+				false,
+				zerr.ErrBadConfig.Error() + ": session keys not supported when redis session driver is used!",
+			},
+			{
+				"Should be successful if session driver config is valid for redis",
+				[]byte(`{
+					"storage":{
+						"rootDirectory":"/tmp/zot"
+					},
+					"http":{
+						"address":"127.0.0.1",
+						"port":"8080",
+						"realm":"zot",
+						"auth":{
+							"htpasswd":{
+								"path":"test/data/htpasswd"
+							},
+							"failDelay":1,
+							"sessionDriver":{
+								"name": "redis",
+								"url": "redis://localhost"
+							}
+						}
+					},
+					"extensions":{
+						"search": {
+							"cve": {
+								"updateInterval": "2h"
+							}
+						},
+						"ui": {
+							"enable": true
+						}
+					}
+				}`),
+				true,
+				"",
+			},
+			{
+				"Should be successful if session driver config is valid for local",
+				[]byte(`{
+					"storage":{
+						"rootDirectory":"/tmp/zot"
+					},
+					"http":{
+						"address":"127.0.0.1",
+						"port":"8080",
+						"realm":"zot",
+						"auth":{
+							"htpasswd":{
+								"path":"test/data/htpasswd"
+							},
+							"failDelay":1,
+							"sessionDriver":{
+								"name": "local"
+							}
+						}
+					},
+					"extensions":{
+						"search": {
+							"cve": {
+								"updateInterval": "2h"
+							}
+						},
+						"ui": {
+							"enable": true
+						}
+					}
+				}`),
+				true,
+				"",
+			},
+			{
+				"Should be successful if session driver config is missing",
+				[]byte(`{
+					"storage":{
+						"rootDirectory":"/tmp/zot"
+					},
+					"http":{
+						"address":"127.0.0.1",
+						"port":"8080",
+						"realm":"zot",
+						"auth":{
+							"htpasswd":{
+								"path":"test/data/htpasswd"
+							},
+							"failDelay":1
+						}
+					},
+					"extensions":{
+						"search": {
+							"cve": {
+								"updateInterval": "2h"
+							}
+						},
+						"ui": {
+							"enable": true
+						}
+					}
+				}`),
+				true,
+				"",
+			},
+		}
+
+		for _, testCase := range testCases {
+			Convey(testCase.name, func() {
+				err = os.WriteFile(tmpfile.Name(), testCase.config, 0o0600)
+				So(err, ShouldBeNil)
+
+				os.Args = []string{"cli_test", "verify", tmpfile.Name()}
+				err = cli.NewServerRootCmd().Execute()
+
+				if testCase.isValid {
+					So(err, ShouldBeNil)
+				} else {
+					So(err, ShouldNotBeNil)
+					So(err.Error(), ShouldEqual, testCase.errMsg)
+				}
+			})
+		}
 	})
 
 	Convey("Test verify with bad gc retention repo patterns", t, func(c C) {

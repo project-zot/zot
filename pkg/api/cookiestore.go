@@ -12,7 +12,12 @@ import (
 	"time"
 
 	"github.com/gorilla/sessions"
+	"github.com/rbcervilla/redisstore/v9"
 
+	"zotregistry.dev/zot/errors"
+	"zotregistry.dev/zot/pkg/api/config"
+	rediscfg "zotregistry.dev/zot/pkg/api/config/redis"
+	"zotregistry.dev/zot/pkg/log"
 	"zotregistry.dev/zot/pkg/scheduler"
 	"zotregistry.dev/zot/pkg/storage"
 	storageConstants "zotregistry.dev/zot/pkg/storage/constants"
@@ -36,7 +41,11 @@ func (c *CookieStore) RunSessionCleaner(sch *scheduler.Scheduler) {
 	}
 }
 
-func NewCookieStore(storeController storage.StoreController, hashKey, encryptKey []byte) (*CookieStore, error) {
+func NewCookieStore(
+	authCfg *config.AuthConfig,
+	storeController storage.StoreController,
+	log log.Logger,
+) (*CookieStore, error) {
 	// To store custom types in our cookies
 	// we must first register them using gob.Register
 	gob.Register(map[string]interface{}{})
@@ -47,10 +56,109 @@ func NewCookieStore(storeController storage.StoreController, hashKey, encryptKey
 
 	var needsCleanup bool
 
+	if authCfg.SessionDriver == nil {
+		// If the session driver is not configured, then
+		// behave in the usual way for file system cookie store and memory cookie store.
+		createdStore, returnedSessionsDir, doesStoreNeedCleanup, err := localSessionStoreInit(
+			storeController,
+			authCfg.SessionHashKey,
+			authCfg.SessionEncryptKey,
+		)
+		if err != nil {
+			return &CookieStore{}, err
+		}
+
+		store = createdStore
+		sessionsDir = returnedSessionsDir
+		needsCleanup = doesStoreNeedCleanup
+	} else {
+		switch authCfg.SessionDriver["name"] {
+		case storageConstants.RedisDriverName:
+			{
+				prefix, ok := rediscfg.GetString(authCfg.SessionDriver, "keyprefix", false, log)
+				if !ok {
+					prefix = "zotsession"
+				}
+
+				// The redisstore library code uses a colon to separate the prefix
+				// and the actual key and is expected to be part of the prefix argument.
+				// ref: https://github.com/rbcervilla/redisstore/blob/v9.0.0/redisstore.go#L44
+				// This adds a colon to the prefix only if it is not empty.
+				if prefix != "" {
+					prefix += ":"
+				}
+
+				client, err := rediscfg.GetRedisClient(authCfg.SessionDriver, log)
+				if err != nil {
+					return nil, err
+				}
+
+				redisStore, err := redisstore.NewRedisStore(context.Background(), client)
+				if err != nil {
+					return nil, err
+				}
+
+				redisStore.KeyPrefix(prefix)
+				redisStore.Options(sessions.Options{
+					MaxAge: cookiesMaxAge,
+					Path:   "/",
+				})
+
+				store = redisStore
+			}
+		case storageConstants.LocalStorageDriverName:
+			{
+				// This behaves the same as if there was no sessionDriver config.
+				// It is also the same behaviour prior to supporting this config.
+				// This allows for a backwards compatible migration path for upgrades.
+				createdStore, sessDir, cleanupReq, err := localSessionStoreInit(
+					storeController,
+					authCfg.SessionHashKey,
+					authCfg.SessionEncryptKey,
+				)
+				if err != nil {
+					return &CookieStore{}, err
+				}
+
+				store = createdStore
+				sessionsDir = sessDir
+				needsCleanup = cleanupReq
+			}
+		default:
+			return nil, fmt.Errorf(
+				"%w: sessiondriver %s not supported",
+				errors.ErrBadConfig,
+				authCfg.SessionDriver["name"],
+			)
+		}
+	}
+
+	return &CookieStore{
+		Store:        store,
+		rootDir:      sessionsDir,
+		needsCleanup: needsCleanup,
+	}, nil
+}
+
+// Handles creation and init of a local session store.
+// This can be either in memory or on the local file system.
+// Returns a session Store, root directory for the sessions if applicable,
+// a boolean indicating whether clean up is required, and an error.
+func localSessionStoreInit(
+	storeController storage.StoreController,
+	hashKey,
+	encryptKey []byte,
+) (sessions.Store, string, bool, error) {
+	var store sessions.Store
+
+	var sessionsDir string
+
+	var needsCleanup bool
+
 	if storeController.DefaultStore.Name() == storageConstants.LocalStorageDriverName {
 		sessionsDir = path.Join(storeController.DefaultStore.RootDir(), "_sessions")
 		if err := os.MkdirAll(sessionsDir, storageConstants.DefaultDirPerms); err != nil {
-			return &CookieStore{}, err
+			return &CookieStore{}, "", false, err
 		}
 
 		localStore := sessions.NewFilesystemStore(sessionsDir, hashKey, encryptKey)
@@ -67,11 +175,7 @@ func NewCookieStore(storeController storage.StoreController, hashKey, encryptKey
 		store = memStore
 	}
 
-	return &CookieStore{
-		Store:        store,
-		rootDir:      sessionsDir,
-		needsCleanup: needsCleanup,
-	}, nil
+	return store, sessionsDir, needsCleanup, nil
 }
 
 func IsExpiredSession(dirEntry fs.DirEntry) bool {

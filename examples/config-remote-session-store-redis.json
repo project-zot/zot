@@ -1,0 +1,34 @@
+{
+  "distSpecVersion": "1.1.1",
+  "storage": {
+    "rootDirectory": "/tmp/zot"
+  },
+  "http": {
+    "address": "127.0.0.1",
+    "port": "8080",
+    "realm": "zot",
+    "auth": {
+      "htpasswd": {
+        "path": "/tmp/zotpasswd"
+      },
+      "sessionDriver": {
+        "name": "redis",
+        "url": "redis://localhost:6379",
+        "keyprefix": "zotsession"
+      }
+    }
+  },
+  "log": {
+    "level": "debug"
+  },
+  "extensions": {
+    "search": {
+      "cve": {
+        "updateInterval": "2h"
+      }
+    },
+    "ui": {
+      "enable": true
+    }
+  }
+}
