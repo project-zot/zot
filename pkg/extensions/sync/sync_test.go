@@ -814,11 +814,14 @@ func TestOnDemandWithScaleOutCluster(t *testing.T) {
 			Registries: []syncconf.RegistryConfig{syncRegistryConfig},
 		}
 
+		// Get dynamic ports for cluster members
+		clusterPorts := test.GetFreePorts(2)
+
 		// cluster config for member 1.
 		clusterCfgDownstream1 := config.ClusterConfig{
 			Members: []string{
-				"127.0.0.1:43222",
-				"127.0.0.1:43223",
+				"127.0.0.1:" + clusterPorts[0],
+				"127.0.0.1:" + clusterPorts[1],
 			},
 			HashKey: "loremipsumdolors",
 		}
@@ -827,11 +830,11 @@ func TestOnDemandWithScaleOutCluster(t *testing.T) {
 		clusterCfgDownstream2 := clusterCfgDownstream1
 
 		dctrl1, dctrl1BaseURL, destDir1, dstClient1 := makeInsecureDownstreamServerFixedPort(
-			t, "43222", syncConfig, &clusterCfgDownstream1)
+			t, clusterPorts[0], syncConfig, &clusterCfgDownstream1)
 		dctrl1Scm := test.NewControllerManager(dctrl1)
 
 		dctrl2, dctrl2BaseURL, destDir2, dstClient2 := makeInsecureDownstreamServerFixedPort(
-			t, "43223", syncConfig, &clusterCfgDownstream2)
+			t, clusterPorts[1], syncConfig, &clusterCfgDownstream2)
 		dctrl2Scm := test.NewControllerManager(dctrl2)
 
 		dctrl1Scm.StartAndWait(dctrl1.Config.HTTP.Port)
@@ -983,11 +986,14 @@ func TestOnDemandWithScaleOutClusterWithReposNotAddedForSync(t *testing.T) {
 			Registries: []syncconf.RegistryConfig{syncRegistryConfig},
 		}
 
+		// Get dynamic ports for cluster members
+		clusterPorts := test.GetFreePorts(2)
+
 		// cluster config for member 1.
 		clusterCfgDownstream1 := config.ClusterConfig{
 			Members: []string{
-				"127.0.0.1:43222",
-				"127.0.0.1:43223",
+				"127.0.0.1:" + clusterPorts[0],
+				"127.0.0.1:" + clusterPorts[1],
 			},
 			HashKey: "loremipsumdolors",
 		}
@@ -996,11 +1002,11 @@ func TestOnDemandWithScaleOutClusterWithReposNotAddedForSync(t *testing.T) {
 		clusterCfgDownstream2 := clusterCfgDownstream1
 
 		dctrl1, dctrl1BaseURL, destDir1, dstClient1 := makeInsecureDownstreamServerFixedPort(
-			t, "43222", syncConfig, &clusterCfgDownstream1)
+			t, clusterPorts[0], syncConfig, &clusterCfgDownstream1)
 		dctrl1Scm := test.NewControllerManager(dctrl1)
 
 		dctrl2, dctrl2BaseURL, destDir2, dstClient2 := makeInsecureDownstreamServerFixedPort(
-			t, "43223", syncConfig, &clusterCfgDownstream2)
+			t, clusterPorts[1], syncConfig, &clusterCfgDownstream2)
 		dctrl2Scm := test.NewControllerManager(dctrl2)
 
 		dctrl1Scm.StartAndWait(dctrl1.Config.HTTP.Port)
@@ -1878,15 +1884,20 @@ func TestPeriodicallyWithScaleOutCluster(t *testing.T) {
 		// zot-test is managed by member index 1.
 		// zot-cve-test is managed by member index 0.
 		// zot-alpine-test is managed by member index 1.
+
+		// Get dynamic ports for cluster members
+		clusterPorts := test.GetFreePorts(2)
+
 		clusterCfg := config.ClusterConfig{
 			Members: []string{
-				"127.0.0.1:100",
-				"127.0.0.1:42000",
+				"127.0.0.1:" + clusterPorts[0],
+				"127.0.0.1:" + clusterPorts[1],
 			},
 			HashKey: "loremipsumdolors",
 		}
 
-		dctlr, destBaseURL, destDir, destClient := makeInsecureDownstreamServerFixedPort(t, "42000", syncConfig, &clusterCfg)
+		dctlr, destBaseURL, destDir, destClient := makeInsecureDownstreamServerFixedPort(t,
+			clusterPorts[1], syncConfig, &clusterCfg)
 
 		dcm := test.NewControllerManager(dctlr)
 		dcm.StartAndWait(dctlr.Config.HTTP.Port)

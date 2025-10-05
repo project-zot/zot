@@ -38,7 +38,9 @@ func ACHeadersMiddleware(config *config.Config, allowedMethods ...string) mux.Mi
 			resp.Header().Set("Access-Control-Allow-Methods", allowedMethodsValue)
 			resp.Header().Set("Access-Control-Allow-Headers", "Authorization,content-type,"+constants.SessionClientHeaderName)
 
-			if config.IsBasicAuthnEnabled() {
+			// Get auth config safely
+			authConfig := config.GetAuthConfig()
+			if authConfig.IsBasicAuthnEnabled() {
 				resp.Header().Set("Access-Control-Allow-Credentials", "true")
 			}
 
@@ -73,23 +75,28 @@ func AddCORSHeaders(allowOrigin string, response http.ResponseWriter) {
 func AuthzOnlyAdminsMiddleware(conf *config.Config) mux.MiddlewareFunc {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
-			if !conf.IsBasicAuthnEnabled() {
+			// Get auth config safely
+			authConfig := conf.GetAuthConfig()
+			if !authConfig.IsBasicAuthnEnabled() {
 				next.ServeHTTP(response, request)
 
 				return
 			}
 
+			realm := conf.GetRealm()
+			failDelay := authConfig.GetFailDelay()
+
 			// get userAccessControl built in previous authn/authz middlewares
 			userAc, err := reqCtx.UserAcFromContext(request.Context())
 			if err != nil { // should not happen as this has been previously checked for errors
-				AuthzFail(response, request, userAc.GetUsername(), conf.HTTP.Realm, conf.HTTP.Auth.FailDelay)
+				AuthzFail(response, request, userAc.GetUsername(), realm, failDelay)
 
 				return
 			}
 
 			// reject non-admin access if authentication is enabled
 			if userAc != nil && !userAc.IsAdmin() {
-				AuthzFail(response, request, userAc.GetUsername(), conf.HTTP.Realm, conf.HTTP.Auth.FailDelay)
+				AuthzFail(response, request, userAc.GetUsername(), realm, failDelay)
 
 				return
 			}

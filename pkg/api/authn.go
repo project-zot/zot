@@ -55,7 +55,8 @@ func AuthHandler(ctlr *Controller) mux.MiddlewareFunc {
 		log:      ctlr.Log,
 	}
 
-	if ctlr.Config.IsBearerAuthEnabled() {
+	authConfig := ctlr.Config.GetAuthConfig()
+	if authConfig.IsBearerAuthEnabled() {
 		return bearerAuthHandler(ctlr)
 	}
 
@@ -103,6 +104,12 @@ func (amw *AuthnMiddleware) basicAuthn(ctlr *Controller, userAc *reqCtx.UserAcce
 ) (bool, error) {
 	cookieStore := ctlr.CookieStore
 
+	// Get auth config once to avoid multiple calls
+	authConfig := ctlr.Config.GetAuthConfig()
+	if authConfig == nil {
+		return false, nil
+	}
+
 	identity, passphrase, err := getUsernamePasswordBasicAuth(request)
 	if err != nil {
 		ctlr.Log.Error().Err(err).Msg("failed to parse authorization header")
@@ -116,7 +123,8 @@ func (amw *AuthnMiddleware) basicAuthn(ctlr *Controller, userAc *reqCtx.UserAcce
 		// Process request
 		var groups []string
 
-		if ctlr.Config.HTTP.AccessControl != nil {
+		accessControl := ctlr.Config.GetAccessControlConfig()
+		if accessControl != nil {
 			ac := NewAccessController(ctlr.Config)
 			groups = ac.getUserGroups(identity)
 		}
@@ -145,13 +153,14 @@ func (amw *AuthnMiddleware) basicAuthn(ctlr *Controller, userAc *reqCtx.UserAcce
 	}
 
 	// next, LDAP if configured (network-based which can lose connectivity)
-	if ctlr.Config.HTTP.Auth != nil && ctlr.Config.HTTP.Auth.LDAP != nil {
+	if authConfig.IsLdapAuthEnabled() {
 		ok, _, ldapgroups, err := amw.ldapClient.Authenticate(identity, passphrase)
 		if ok && err == nil {
 			// Process request
 			var groups []string
 
-			if ctlr.Config.HTTP.AccessControl != nil {
+			accessControl := ctlr.Config.GetAccessControlConfig()
+			if accessControl != nil {
 				ac := NewAccessController(ctlr.Config)
 				groups = ac.getUserGroups(identity)
 			}
@@ -181,7 +190,7 @@ func (amw *AuthnMiddleware) basicAuthn(ctlr *Controller, userAc *reqCtx.UserAcce
 	}
 
 	// last try API keys
-	if ctlr.Config.IsAPIKeyEnabled() {
+	if authConfig.IsAPIKeyEnabled() {
 		apiKey := passphrase
 
 		if !strings.HasPrefix(apiKey, constants.APIKeysPrefix) {
@@ -248,16 +257,20 @@ func (amw *AuthnMiddleware) basicAuthn(ctlr *Controller, userAc *reqCtx.UserAcce
 }
 
 func (amw *AuthnMiddleware) tryAuthnHandlers(ctlr *Controller) mux.MiddlewareFunc { //nolint: gocyclo
+	// Get auth config once to avoid multiple calls
+	authConfig := ctlr.Config.GetAuthConfig()
+
 	// no password based authN, if neither LDAP nor HTTP BASIC is enabled
-	if !ctlr.Config.IsBasicAuthnEnabled() {
+	if !authConfig.IsBasicAuthnEnabled() {
 		return noPasswdAuth(ctlr)
 	}
 
-	delay := ctlr.Config.HTTP.Auth.FailDelay
+	delay := authConfig.GetFailDelay()
+	realm := ctlr.Config.GetRealm()
 
 	// ldap and htpasswd based authN
-	if ctlr.Config.IsLdapAuthEnabled() {
-		ldapConfig := ctlr.Config.HTTP.Auth.LDAP
+	if authConfig.IsLdapAuthEnabled() {
+		ldapConfig := authConfig.LDAP
 
 		ctlr.LDAPClient = &LDAPClient{
 			Host:               ldapConfig.Address,
@@ -278,17 +291,17 @@ func (amw *AuthnMiddleware) tryAuthnHandlers(ctlr *Controller) mux.MiddlewareFun
 
 		amw.ldapClient = ctlr.LDAPClient
 
-		if ctlr.Config.HTTP.Auth.LDAP.CACert != "" {
-			caCert, err := os.ReadFile(ctlr.Config.HTTP.Auth.LDAP.CACert)
+		if authConfig.LDAP.CACert != "" {
+			caCert, err := os.ReadFile(authConfig.LDAP.CACert)
 			if err != nil {
-				amw.log.Panic().Err(err).Str("caCert", ctlr.Config.HTTP.Auth.LDAP.CACert).
+				amw.log.Panic().Err(err).Str("caCert", authConfig.LDAP.CACert).
 					Msg("failed to read caCert")
 			}
 
 			caCertPool := x509.NewCertPool()
 
 			if !caCertPool.AppendCertsFromPEM(caCert) {
-				amw.log.Panic().Err(zerr.ErrBadCACert).Str("caCert", ctlr.Config.HTTP.Auth.LDAP.CACert).
+				amw.log.Panic().Err(zerr.ErrBadCACert).Str("caCert", authConfig.LDAP.CACert).
 					Msg("failed to read caCert")
 			}
 
@@ -297,7 +310,7 @@ func (amw *AuthnMiddleware) tryAuthnHandlers(ctlr *Controller) mux.MiddlewareFun
 			// default to system cert pool
 			caCertPool, err := x509.SystemCertPool()
 			if err != nil {
-				amw.log.Panic().Err(zerr.ErrBadCACert).Str("caCert", ctlr.Config.HTTP.Auth.LDAP.CACert).
+				amw.log.Panic().Err(zerr.ErrBadCACert).Str("caCert", authConfig.LDAP.CACert).
 					Msg("failed to get system cert pool")
 			}
 
@@ -305,26 +318,26 @@ func (amw *AuthnMiddleware) tryAuthnHandlers(ctlr *Controller) mux.MiddlewareFun
 		}
 	}
 
-	if ctlr.Config.IsHtpasswdAuthEnabled() {
-		err := amw.htpasswd.Reload(ctlr.Config.HTTP.Auth.HTPasswd.Path)
+	if authConfig.IsHtpasswdAuthEnabled() {
+		err := amw.htpasswd.Reload(authConfig.HTPasswd.Path)
 		if err != nil {
-			amw.log.Panic().Err(err).Str("credsFile", ctlr.Config.HTTP.Auth.HTPasswd.Path).
+			amw.log.Panic().Err(err).Str("credsFile", authConfig.HTPasswd.Path).
 				Msg("failed to open creds-file")
 		}
 	}
 
 	// openid based authN
-	if ctlr.Config.IsOpenIDAuthEnabled() {
+	if authConfig.IsOpenIDAuthEnabled() {
 		ctlr.RelyingParties = make(map[string]rp.RelyingParty)
 
-		for provider := range ctlr.Config.HTTP.Auth.OpenID.Providers {
+		for provider := range authConfig.OpenID.Providers {
 			if config.IsOpenIDSupported(provider) {
-				rp := NewRelyingPartyOIDC(context.TODO(), ctlr.Config, provider, ctlr.Config.HTTP.Auth.SessionHashKey,
-					ctlr.Config.HTTP.Auth.SessionEncryptKey, ctlr.Log)
+				rp := NewRelyingPartyOIDC(context.TODO(), ctlr.Config, provider, authConfig.SessionHashKey,
+					authConfig.SessionEncryptKey, ctlr.Log)
 				ctlr.RelyingParties[provider] = rp
 			} else if config.IsOauth2Supported(provider) {
-				rp := NewRelyingPartyGithub(ctlr.Config, provider, ctlr.Config.HTTP.Auth.SessionHashKey,
-					ctlr.Config.HTTP.Auth.SessionEncryptKey, ctlr.Log)
+				rp := NewRelyingPartyGithub(ctlr.Config, provider, authConfig.SessionHashKey,
+					authConfig.SessionEncryptKey, ctlr.Log)
 				ctlr.RelyingParties[provider] = rp
 			}
 		}
@@ -340,7 +353,10 @@ func (amw *AuthnMiddleware) tryAuthnHandlers(ctlr *Controller) mux.MiddlewareFun
 			}
 
 			isMgmtRequested := request.RequestURI == constants.FullMgmt
-			allowAnonymous := ctlr.Config.HTTP.AccessControl.AnonymousPolicyExists()
+
+			// Get access control config safely
+			accessControlConfig := ctlr.Config.GetAccessControlConfig()
+			allowAnonymous := accessControlConfig != nil && accessControlConfig.AnonymousPolicyExists()
 
 			// build user access control info
 			userAc := reqCtx.NewUserAccessControl()
@@ -370,7 +386,7 @@ func (amw *AuthnMiddleware) tryAuthnHandlers(ctlr *Controller) mux.MiddlewareFun
 					if errors.Is(err, zerr.ErrUserDataNotFound) {
 						ctlr.Log.Err(err).Msg("failed to find user profile in DB")
 
-						authFail(response, request, ctlr.Config.HTTP.Realm, delay)
+						authFail(response, request, realm, delay)
 					}
 
 					response.WriteHeader(http.StatusInternalServerError)
@@ -397,22 +413,25 @@ func (amw *AuthnMiddleware) tryAuthnHandlers(ctlr *Controller) mux.MiddlewareFun
 				return
 			}
 
-			authFail(response, request, ctlr.Config.HTTP.Realm, delay)
+			authFail(response, request, realm, delay)
 		})
 	}
 }
 
 func bearerAuthHandler(ctlr *Controller) mux.MiddlewareFunc {
+	// Get auth config safely
+	authConfig := ctlr.Config.GetAuthConfig()
+
 	// although the configuration option is called 'cert', this function will also parse a public key directly
 	// see https://github.com/project-zot/zot/issues/3173 for info
-	publicKey, err := loadPublicKeyFromFile(ctlr.Config.HTTP.Auth.Bearer.Cert)
+	publicKey, err := loadPublicKeyFromFile(authConfig.Bearer.Cert)
 	if err != nil {
 		ctlr.Log.Panic().Err(err).Msg("failed to load public key for bearer authentication")
 	}
 
 	authorizer := NewBearerAuthorizer(
-		ctlr.Config.HTTP.Auth.Bearer.Realm,
-		ctlr.Config.HTTP.Auth.Bearer.Service,
+		authConfig.Bearer.Realm,
+		authConfig.Bearer.Service,
 		publicKey,
 	)
 
@@ -509,7 +528,11 @@ func noPasswdAuth(ctlr *Controller) mux.MiddlewareFunc {
 			}
 
 			if ctlr.Config.IsMTLSAuthEnabled() && userAc.IsAnonymous() {
-				authFail(response, request, ctlr.Config.HTTP.Realm, ctlr.Config.HTTP.Auth.FailDelay)
+				authConfig := ctlr.Config.GetAuthConfig()
+				failDelay := authConfig.GetFailDelay()
+				realm := ctlr.Config.GetRealm()
+
+				authFail(response, request, realm, failDelay)
 
 				return
 			}

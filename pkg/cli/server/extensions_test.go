@@ -883,7 +883,7 @@ func TestServeScrubExtension(t *testing.T) {
 
 		// Even if in config we specified scrub interval=1h, the minimum interval is 2h
 		dataStr := string(data)
-		So(dataStr, ShouldContainSubstring, "\"Scrub\":{\"Enable\":true,\"Interval\":3600000000000}")
+		So(dataStr, ShouldContainSubstring, "\"Scrub\":{\"Enable\":true,\"Interval\":7200000000000}")
 		So(dataStr, ShouldContainSubstring,
 			"scrub interval set to too-short interval < 2h, changing scrub duration to 2 hours and continuing.")
 	})

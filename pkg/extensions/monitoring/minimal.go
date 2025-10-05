@@ -49,6 +49,7 @@ type metricServer struct {
 	bucketsF2S map[float64]string // float64 to string conversion of buckets label
 	log        log.Logger
 	lock       *sync.RWMutex
+	stopChan   chan struct{} // Channel to signal shutdown
 }
 
 type MetricsInfo struct {
@@ -142,19 +143,35 @@ func (ms *metricServer) IsEnabled() bool {
 	return ms.enabled
 }
 
+// Stop gracefully shuts down the metrics server.
+func (ms *metricServer) Stop() {
+	close(ms.stopChan)
+}
+
 func (ms *metricServer) Run() {
 	sendAfter := make(chan time.Duration, 1)
 	// periodically send a notification to the metric server to check if we can disable metrics
 	go func() {
 		for {
-			t := metricsScrapeCheckInterval
-			time.Sleep(t)
-			sendAfter <- t
+			select {
+			case <-ms.stopChan:
+				return
+			default:
+				t := metricsScrapeCheckInterval
+				time.Sleep(t)
+				select {
+				case sendAfter <- t:
+				case <-ms.stopChan:
+					return
+				}
+			}
 		}
 	}()
 
 	for {
 		select {
+		case <-ms.stopChan:
+			return
 		case <-ms.cacheChan:
 			ms.lastCheck = time.Now()
 			// make a copy of cache values to prevent data race
@@ -239,6 +256,7 @@ func NewMetricsServer(enabled bool, log log.Logger) MetricServer {
 		bucketsF2S: bucketsFloat2String,
 		log:        log,
 		lock:       &sync.RWMutex{},
+		stopChan:   make(chan struct{}),
 	}
 
 	go ms.Run()

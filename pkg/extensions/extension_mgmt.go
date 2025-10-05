@@ -85,7 +85,8 @@ func (auth Auth) MarshalJSON() ([]byte, error) {
 }
 
 func SetupMgmtRoutes(conf *config.Config, router *mux.Router, log log.Logger) {
-	if !conf.IsMgmtEnabled() {
+	extensionsConfig := conf.GetExtensionsConfig()
+	if !extensionsConfig.IsSearchEnabled() {
 		log.Info().Msg("skip enabling the mgmt route as the config prerequisites are not met")
 
 		return

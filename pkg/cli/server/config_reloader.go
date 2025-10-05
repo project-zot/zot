@@ -85,9 +85,10 @@ func (hr *HotReloader) Start() {
 							continue
 						}
 
-						if hr.ctlr.Config.HTTP.Auth != nil && hr.ctlr.Config.HTTP.Auth.LDAP != nil &&
-							hr.ctlr.Config.HTTP.Auth.LDAP.CredentialsFile != newConfig.HTTP.Auth.LDAP.CredentialsFile {
-							err = hr.watcher.Remove(hr.ctlr.Config.HTTP.Auth.LDAP.CredentialsFile)
+						authConfig := hr.ctlr.Config.GetAuthConfig()
+						if authConfig.IsLdapAuthEnabled() &&
+							authConfig.LDAP.CredentialsFile != newConfig.HTTP.Auth.LDAP.CredentialsFile {
+							err = hr.watcher.Remove(authConfig.LDAP.CredentialsFile)
 							if err != nil && !errors.Is(err, fsnotify.ErrNonExistentWatch) {
 								hr.logger.Error().Err(err).Msg("failed to remove old watch for the credentials file")
 							}

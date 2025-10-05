@@ -137,6 +137,11 @@ type metricServer struct {
 	log     log.Logger
 }
 
+// Stop gracefully shuts down the metrics server (no-op for this implementation).
+func (ms *metricServer) Stop() {
+	// This is a no-op implementation for the disabled metrics server
+}
+
 func GetDefaultBuckets() []float64 {
 	return []float64{.05, .5, 1, 5, 30, 60, 600}
 }

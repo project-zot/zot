@@ -42,16 +42,20 @@ type AccessController struct {
 }
 
 func NewAccessController(conf *config.Config) *AccessController {
-	if conf.HTTP.AccessControl == nil {
+	// Get access control config safely
+	accessControlConfig := conf.GetAccessControlConfig()
+	logConfig := conf.GetLogConfig()
+
+	if accessControlConfig == nil {
 		return &AccessController{
 			Config: &config.AccessControlConfig{},
-			Log:    log.NewLogger(conf.Log.Level, conf.Log.Output),
+			Log:    log.NewLogger(logConfig.Level, logConfig.Output),
 		}
 	}
 
 	return &AccessController{
-		Config: conf.HTTP.AccessControl,
-		Log:    log.NewLogger(conf.Log.Level, conf.Log.Output),
+		Config: accessControlConfig,
+		Log:    log.NewLogger(logConfig.Level, logConfig.Output),
 	}
 }
 
@@ -117,14 +121,17 @@ func (ac *AccessController) can(userAc *reqCtx.UserAccessControl, action, reposi
 	username := userAc.GetUsername()
 
 	// check matched repo based policy
-	pg, ok := ac.Config.Repositories[longestMatchedPattern]
+	repositories := ac.Config.GetRepositories()
+	pg, ok := repositories[longestMatchedPattern]
+
 	if ok {
 		can = ac.isPermitted(userGroups, username, action, pg)
 	}
 
 	// check admins based policy
 	if !can {
-		if ac.isAdmin(username, userGroups) && common.Contains(ac.Config.AdminPolicy.Actions, action) {
+		adminPolicy := ac.Config.GetAdminPolicy()
+		if ac.isAdmin(username, userGroups) && common.Contains(adminPolicy.Actions, action) {
 			can = true
 		}
 	}
@@ -134,7 +141,8 @@ func (ac *AccessController) can(userAc *reqCtx.UserAccessControl, action, reposi
 
 // isAdmin .
 func (ac *AccessController) isAdmin(username string, userGroups []string) bool {
-	if common.Contains(ac.Config.AdminPolicy.Users, username) || ac.isAnyGroupInAdminPolicy(userGroups) {
+	adminPolicy := ac.Config.GetAdminPolicy()
+	if common.Contains(adminPolicy.Users, username) || ac.isAnyGroupInAdminPolicy(userGroups) {
 		return true
 	}
 
@@ -142,8 +150,9 @@ func (ac *AccessController) isAdmin(username string, userGroups []string) bool {
 }
 
 func (ac *AccessController) isAnyGroupInAdminPolicy(userGroups []string) bool {
+	adminPolicy := ac.Config.GetAdminPolicy()
 	for _, group := range userGroups {
-		if common.Contains(ac.Config.AdminPolicy.Groups, group) {
+		if common.Contains(adminPolicy.Groups, group) {
 			return true
 		}
 	}
@@ -154,7 +163,8 @@ func (ac *AccessController) isAnyGroupInAdminPolicy(userGroups []string) bool {
 func (ac *AccessController) getUserGroups(username string) []string {
 	var groupNames []string
 
-	for groupName, group := range ac.Config.Groups {
+	groups := ac.Config.GetGroups()
+	for groupName, group := range groups {
 		for _, user := range group.Users {
 			// find if the user is part of any groups
 			if user == username {
@@ -241,6 +251,11 @@ func (ac *AccessController) isPermitted(userGroups []string, username, action st
 func BaseAuthzHandler(ctlr *Controller) mux.MiddlewareFunc {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+			// Get configs safely
+			authConfig := ctlr.Config.GetAuthConfig()
+			realm := ctlr.Config.GetRealm()
+			failDelay := authConfig.GetFailDelay()
+
 			/* NOTE:
 			since we only do READ actions in extensions, this middleware is enough for them because
 			it populates the context with user relevant data to be processed by each individual extension
@@ -271,7 +286,7 @@ func BaseAuthzHandler(ctlr *Controller) mux.MiddlewareFunc {
 			// get access control context made in authn.go
 			userAc, err := reqCtx.UserAcFromContext(request.Context())
 			if err != nil { // should never happen
-				authFail(response, request, ctlr.Config.HTTP.Realm, ctlr.Config.HTTP.Auth.FailDelay)
+				authFail(response, request, realm, failDelay)
 
 				return
 			}
@@ -287,6 +302,11 @@ func BaseAuthzHandler(ctlr *Controller) mux.MiddlewareFunc {
 func DistSpecAuthzHandler(ctlr *Controller) mux.MiddlewareFunc {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+			// Get configs safely
+			authConfig := ctlr.Config.GetAuthConfig()
+			realm := ctlr.Config.GetRealm()
+			failDelay := authConfig.GetFailDelay()
+
 			if request.Method == http.MethodOptions {
 				next.ServeHTTP(response, request)
 
@@ -310,7 +330,7 @@ func DistSpecAuthzHandler(ctlr *Controller) mux.MiddlewareFunc {
 			// get userAc built in authn and previous authz middlewares
 			userAc, err := reqCtx.UserAcFromContext(request.Context())
 			if err != nil { // should never happen
-				authFail(response, request, ctlr.Config.HTTP.Realm, ctlr.Config.HTTP.Auth.FailDelay)
+				authFail(response, request, realm, failDelay)
 
 				return
 			}
@@ -341,7 +361,7 @@ func DistSpecAuthzHandler(ctlr *Controller) mux.MiddlewareFunc {
 
 			can := acCtrlr.can(userAc, action, resource) //nolint:contextcheck
 			if !can {
-				common.AuthzFail(response, request, userAc.GetUsername(), ctlr.Config.HTTP.Realm, ctlr.Config.HTTP.Auth.FailDelay)
+				common.AuthzFail(response, request, userAc.GetUsername(), realm, failDelay)
 			} else {
 				next.ServeHTTP(response, request) //nolint:contextcheck
 			}
@@ -352,17 +372,25 @@ func DistSpecAuthzHandler(ctlr *Controller) mux.MiddlewareFunc {
 func MetricsAuthzHandler(ctlr *Controller) mux.MiddlewareFunc {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
-			if ctlr.Config.HTTP.AccessControl == nil {
+			// Get configs safely
+			authConfig := ctlr.Config.GetAuthConfig()
+			realm := ctlr.Config.GetRealm()
+			failDelay := authConfig.GetFailDelay()
+
+			accessControlConfig := ctlr.Config.GetAccessControlConfig()
+
+			if accessControlConfig == nil {
 				// allow access to authenticated user as anonymous policy does not exist
 				next.ServeHTTP(response, request)
 
 				return
 			}
 
-			if len(ctlr.Config.HTTP.AccessControl.Metrics.Users) == 0 {
+			metricsConfig := accessControlConfig.GetMetrics()
+			if len(metricsConfig.Users) == 0 {
 				log := ctlr.Log
 				log.Warn().Msg("auth is enabled but no metrics users in accessControl: /metrics is unaccesible")
-				common.AuthzFail(response, request, "", ctlr.Config.HTTP.Realm, ctlr.Config.HTTP.Auth.FailDelay)
+				common.AuthzFail(response, request, "", realm, failDelay)
 
 				return
 			}
@@ -370,14 +398,14 @@ func MetricsAuthzHandler(ctlr *Controller) mux.MiddlewareFunc {
 			// get access control context made in authn.go
 			userAc, err := reqCtx.UserAcFromContext(request.Context())
 			if err != nil { // should never happen
-				common.AuthzFail(response, request, "", ctlr.Config.HTTP.Realm, ctlr.Config.HTTP.Auth.FailDelay)
+				common.AuthzFail(response, request, "", realm, failDelay)
 
 				return
 			}
 
 			username := userAc.GetUsername()
-			if !common.Contains(ctlr.Config.HTTP.AccessControl.Metrics.Users, username) {
-				common.AuthzFail(response, request, username, ctlr.Config.HTTP.Realm, ctlr.Config.HTTP.Auth.FailDelay)
+			if !common.Contains(metricsConfig.Users, username) {
+				common.AuthzFail(response, request, username, realm, failDelay)
 
 				return
 			}

@@ -22,11 +22,12 @@ import (
 func ClusterProxy(ctrlr *Controller) func(http.HandlerFunc) http.HandlerFunc {
 	return func(next http.HandlerFunc) http.HandlerFunc {
 		return http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
-			config := ctrlr.Config
+			// Get cluster config safely
+			clusterConfig := ctrlr.Config.GetClusterConfig()
 			logger := ctrlr.Log
 
 			// if no cluster or single-node cluster, handle locally.
-			if config.Cluster == nil || len(config.Cluster.Members) == 1 {
+			if clusterConfig == nil || len(clusterConfig.Members) == 1 {
 				next.ServeHTTP(response, request)
 
 				return
@@ -45,13 +46,13 @@ func ClusterProxy(ctrlr *Controller) func(http.HandlerFunc) http.HandlerFunc {
 
 			// the target member is the only one which should do read/write for the dist-spec APIs
 			// for the given repository.
-			targetMemberIndex, targetMember := cluster.ComputeTargetMember(config.Cluster.HashKey, config.Cluster.Members, name)
+			targetMemberIndex, targetMember := cluster.ComputeTargetMember(clusterConfig.HashKey, clusterConfig.Members, name)
 			logger.Debug().Str(constants.RepositoryLogKey, name).
 				Msg(fmt.Sprintf("target member socket: %s index: %d", targetMember, targetMemberIndex))
 
 			// if the target member is the same as the local member, the current member should handle the request.
 			// since the instances have the same config, a quick index lookup is sufficient
-			if targetMemberIndex == config.Cluster.Proxy.LocalMemberClusterSocketIndex {
+			if targetMemberIndex == clusterConfig.Proxy.LocalMemberClusterSocketIndex {
 				logger.Debug().Str(constants.RepositoryLogKey, name).Msg("handling the request locally")
 				next.ServeHTTP(response, request)
 
@@ -119,8 +120,11 @@ func proxyHTTPRequest(ctx context.Context, req *http.Request,
 ) (*http.Response, error) {
 	cloneURL := *req.URL
 
+	// Get HTTP TLS config safely
+	httpTLSConfig := ctrlr.Config.GetTLSConfig()
+
 	proxyQueryScheme := "http"
-	if ctrlr.Config.HTTP.TLS != nil {
+	if httpTLSConfig != nil {
 		proxyQueryScheme = "https"
 	}
 
@@ -142,12 +146,15 @@ func proxyHTTPRequest(ctx context.Context, req *http.Request,
 	fwdRequest.Header.Set(constants.ScaleOutHopCountHeader, "1")
 
 	clientOpts := common.HTTPClientOptions{
-		TLSEnabled: ctrlr.Config.HTTP.TLS != nil,
-		VerifyTLS:  ctrlr.Config.HTTP.TLS != nil, // for now, always verify TLS when TLS mode is enabled
+		TLSEnabled: httpTLSConfig != nil,
+		VerifyTLS:  httpTLSConfig != nil, // for now, always verify TLS when TLS mode is enabled
 		Host:       targetMember,
 	}
 
-	tlsConfig := ctrlr.Config.Cluster.TLS
+	// Get cluster config safely
+	clusterConfig := ctrlr.Config.GetClusterConfig()
+	tlsConfig := clusterConfig.TLS
+
 	if tlsConfig != nil {
 		clientOpts.CertOptions.ClientCertFile = tlsConfig.Cert
 		clientOpts.CertOptions.ClientKeyFile = tlsConfig.Key
