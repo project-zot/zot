@@ -4952,6 +4952,417 @@ func TestOpenIDMiddleware(t *testing.T) {
 	}
 }
 
+func TestOpenIDMiddlewareWithRedisSessionDriver(t *testing.T) {
+	port := test.GetFreePort()
+	baseURL := test.GetBaseURL(port)
+	defaultVal := true
+
+	conf := config.New()
+	conf.HTTP.Port = port
+
+	testCases := []struct {
+		testCaseName string
+		address      string
+		externalURL  string
+	}{
+		{
+			address:      "0.0.0.0",
+			externalURL:  "http://" + net.JoinHostPort(conf.HTTP.Address, conf.HTTP.Port),
+			testCaseName: "with ExternalURL provided in config",
+		},
+		{
+			address:      "127.0.0.1",
+			externalURL:  "",
+			testCaseName: "without ExternalURL provided in config",
+		},
+		{
+			address:      "127.0.0.1",
+			externalURL:  "",
+			testCaseName: "without ExternalURL provided in config and session keys for cookies",
+		},
+	}
+
+	// need a username different than ldap one, to test both logic
+	htpasswdUsername, seedUser := test.GenerateRandomString()
+	htpasswdPassword, seedPass := test.GenerateRandomString()
+	htpasswdPath := test.MakeHtpasswdFileFromString(test.GetCredString(htpasswdUsername, htpasswdPassword))
+
+	defer os.Remove(htpasswdPath)
+
+	ldapServer := newTestLDAPServer()
+	port = test.GetFreePort()
+
+	ldapPort, err := strconv.Atoi(port)
+	if err != nil {
+		panic(err)
+	}
+
+	ldapServer.Start(ldapPort)
+	defer ldapServer.Stop()
+
+	mockOIDCServer, err := authutils.MockOIDCRun()
+	if err != nil {
+		panic(err)
+	}
+
+	defer func() {
+		err := mockOIDCServer.Shutdown()
+		if err != nil {
+			panic(err)
+		}
+	}()
+
+	mockOIDCConfig := mockOIDCServer.Config()
+	conf.HTTP.Auth = &config.AuthConfig{
+		HTPasswd: config.AuthHTPasswd{
+			Path: htpasswdPath,
+		},
+		LDAP: (&config.LDAPConfig{
+			Insecure: true,
+			Address:  LDAPAddress,
+
+			Port:          ldapPort,
+			BaseDN:        LDAPBaseDN,
+			UserAttribute: "uid",
+		}).SetBindDN(LDAPBindDN).SetBindPassword(LDAPBindPassword),
+		OpenID: &config.OpenIDConfig{
+			Providers: map[string]config.OpenIDProviderConfig{
+				"oidc": {
+					ClientID:     mockOIDCConfig.ClientID,
+					ClientSecret: mockOIDCConfig.ClientSecret,
+					KeyPath:      "",
+					Issuer:       mockOIDCConfig.Issuer,
+					Scopes:       []string{"openid", "email"},
+				},
+				// just for the constructor coverage
+				"github": {
+					ClientID:     mockOIDCConfig.ClientID,
+					ClientSecret: mockOIDCConfig.ClientSecret,
+					KeyPath:      "",
+					Issuer:       mockOIDCConfig.Issuer,
+					Scopes:       []string{"openid", "email"},
+				},
+			},
+		},
+	}
+
+	searchConfig := &extconf.SearchConfig{
+		BaseConfig: extconf.BaseConfig{Enable: &defaultVal},
+	}
+
+	// UI is enabled because we also want to test access on the mgmt route
+	uiConfig := &extconf.UIConfig{
+		BaseConfig: extconf.BaseConfig{Enable: &defaultVal},
+	}
+
+	conf.Extensions = &extconf.ExtensionConfig{
+		Search: searchConfig,
+		UI:     uiConfig,
+	}
+
+	ctlr := api.NewController(conf)
+	ctlr.Log.Info().Int64("seedUser", seedUser).Int64("seedPass", seedPass).Msg("random seed for username & password")
+
+	for _, testcase := range testCases {
+		t.Run(testcase.testCaseName, func(t *testing.T) {
+			Convey("make controller", t, func() {
+				dir := t.TempDir()
+
+				ctlr.Config.Storage.RootDirectory = dir
+				ctlr.Config.HTTP.ExternalURL = testcase.externalURL
+				ctlr.Config.HTTP.Address = testcase.address
+
+				// Setup redis test server and config to use remote session store
+				testRedis := miniredis.RunT(t)
+
+				conf.HTTP.Auth.SessionDriver = map[string]any{
+					"name": "redis",
+					"url":  "redis://" + testRedis.Addr(),
+				}
+
+				cm := test.NewControllerManager(ctlr)
+
+				cm.StartServer()
+
+				defer cm.StopServer()
+				test.WaitTillServerReady(baseURL)
+
+				Convey("browser client requests", func() {
+					Convey("login with no provider supplied", func() {
+						client := resty.New()
+						client.SetRedirectPolicy(test.CustomRedirectPolicy(20))
+						// first login user
+						resp, err := client.R().
+							SetHeader(constants.SessionClientHeaderName, constants.SessionClientHeaderValue).
+							SetQueryParam("provider", "unknown").
+							Get(baseURL + constants.LoginPath)
+						So(err, ShouldBeNil)
+						So(resp, ShouldNotBeNil)
+						So(resp.StatusCode(), ShouldEqual, http.StatusBadRequest)
+					})
+
+					//nolint: dupl
+					Convey("make sure sessions are not used without UI header value", func() {
+						So(len(testRedis.Keys()), ShouldEqual, 0)
+
+						client := resty.New()
+
+						// without header should not create session
+						resp, err := client.R().SetBasicAuth(htpasswdUsername, htpasswdPassword).Get(baseURL + "/v2/")
+						So(err, ShouldBeNil)
+						So(resp, ShouldNotBeNil)
+						So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+						So(len(testRedis.Keys()), ShouldEqual, 0)
+
+						client.SetHeader(constants.SessionClientHeaderName, constants.SessionClientHeaderValue)
+
+						resp, err = client.R().SetBasicAuth(htpasswdUsername, htpasswdPassword).Get(baseURL + "/v2/")
+						So(err, ShouldBeNil)
+						So(resp, ShouldNotBeNil)
+						So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+						So(len(testRedis.Keys()), ShouldEqual, 1)
+
+						// set cookies
+						client.SetCookies(resp.Cookies())
+
+						// should get same cookie
+						resp, err = client.R().SetBasicAuth(htpasswdUsername, htpasswdPassword).Get(baseURL + "/v2/")
+						So(err, ShouldBeNil)
+						So(resp, ShouldNotBeNil)
+						So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+						So(len(testRedis.Keys()), ShouldEqual, 1)
+
+						resp, err = client.R().SetBasicAuth(htpasswdUsername, htpasswdPassword).
+							Get(baseURL + constants.FullMgmt)
+						So(err, ShouldBeNil)
+						So(resp, ShouldNotBeNil)
+						So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+						client.SetCookies(resp.Cookies())
+
+						// call endpoint with session, without credentials, (added to client after previous request)
+						resp, err = client.R().
+							Get(baseURL + "/v2/_catalog")
+						So(err, ShouldBeNil)
+						So(resp, ShouldNotBeNil)
+						So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+						resp, err = client.R().SetBasicAuth(htpasswdUsername, htpasswdPassword).Get(baseURL + "/v2/")
+						So(err, ShouldBeNil)
+						So(resp, ShouldNotBeNil)
+						So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+						So(len(testRedis.Keys()), ShouldEqual, 1)
+					})
+
+					Convey("login with openid and get catalog with session", func() {
+						client := resty.New()
+						client.SetRedirectPolicy(test.CustomRedirectPolicy(20))
+						client.SetHeader(constants.SessionClientHeaderName, constants.SessionClientHeaderValue)
+
+						Convey("with callback_ui value provided", func() {
+							// first login user
+							resp, err := client.R().
+								SetQueryParam("provider", "oidc").
+								SetQueryParam("callback_ui", baseURL+"/v2/").
+								Get(baseURL + constants.LoginPath)
+							So(err, ShouldBeNil)
+							So(resp, ShouldNotBeNil)
+							So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+						})
+
+						// first login user
+						resp, err := client.R().
+							SetQueryParam("provider", "oidc").
+							Get(baseURL + constants.LoginPath)
+						So(err, ShouldBeNil)
+						So(resp, ShouldNotBeNil)
+						So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
+
+						client.SetCookies(resp.Cookies())
+
+						// call endpoint with session (added to client after previous request)
+						resp, err = client.R().
+							Get(baseURL + "/v2/_catalog")
+						So(err, ShouldBeNil)
+						So(resp, ShouldNotBeNil)
+						So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+						// logout with options method for coverage
+						resp, err = client.R().
+							Options(baseURL + constants.LogoutPath)
+						So(err, ShouldBeNil)
+						So(resp, ShouldNotBeNil)
+
+						// logout user
+						resp, err = client.R().
+							Post(baseURL + constants.LogoutPath)
+						So(err, ShouldBeNil)
+						So(resp, ShouldNotBeNil)
+						So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+						// calling endpoint should fail with unauthorized access
+						resp, err = client.R().
+							Get(baseURL + "/v2/_catalog")
+						So(err, ShouldBeNil)
+						So(resp, ShouldNotBeNil)
+						So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
+					})
+
+					//nolint: dupl
+					Convey("login with basic auth(htpasswd) and get catalog with session", func() {
+						client := resty.New()
+						client.SetHeader(constants.SessionClientHeaderName, constants.SessionClientHeaderValue)
+
+						// without creds, should get access error
+						resp, err := client.R().Get(baseURL + "/v2/")
+						So(err, ShouldBeNil)
+						So(resp, ShouldNotBeNil)
+						So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
+
+						var e apiErr.Error
+
+						err = json.Unmarshal(resp.Body(), &e)
+						So(err, ShouldBeNil)
+
+						// first login user
+						// with creds, should get expected status code
+						resp, err = client.R().SetBasicAuth(htpasswdUsername, htpasswdPassword).Get(baseURL)
+						So(err, ShouldBeNil)
+						So(resp, ShouldNotBeNil)
+						So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+						resp, err = client.R().SetBasicAuth(htpasswdUsername, htpasswdPassword).Get(baseURL + "/v2/")
+						So(err, ShouldBeNil)
+						So(resp, ShouldNotBeNil)
+						So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+						resp, err = client.R().SetBasicAuth(htpasswdUsername, htpasswdPassword).
+							Get(baseURL + constants.FullMgmt)
+						So(err, ShouldBeNil)
+						So(resp, ShouldNotBeNil)
+						So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+						client.SetCookies(resp.Cookies())
+
+						// call endpoint with session, without credentials, (added to client after previous request)
+						resp, err = client.R().
+							Get(baseURL + "/v2/_catalog")
+						So(err, ShouldBeNil)
+						So(resp, ShouldNotBeNil)
+						So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+						resp, err = client.R().
+							Get(baseURL + constants.FullMgmt)
+						So(err, ShouldBeNil)
+						So(resp, ShouldNotBeNil)
+						So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+						// logout user
+						resp, err = client.R().
+							Post(baseURL + constants.LogoutPath)
+						So(err, ShouldBeNil)
+						So(resp, ShouldNotBeNil)
+						So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+						// calling endpoint should fail with unauthorized access
+						resp, err = client.R().
+							Get(baseURL + "/v2/_catalog")
+						So(err, ShouldBeNil)
+						So(resp, ShouldNotBeNil)
+						So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
+					})
+
+					//nolint: dupl
+					Convey("login with ldap and get catalog", func() {
+						client := resty.New()
+						client.SetHeader(constants.SessionClientHeaderName, constants.SessionClientHeaderValue)
+
+						// without creds, should get access error
+						resp, err := client.R().Get(baseURL + "/v2/")
+						So(err, ShouldBeNil)
+						So(resp, ShouldNotBeNil)
+						So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
+
+						var e apiErr.Error
+
+						err = json.Unmarshal(resp.Body(), &e)
+						So(err, ShouldBeNil)
+
+						// first login user
+						// with creds, should get expected status code
+						resp, err = client.R().SetBasicAuth(username, password).Get(baseURL)
+						So(err, ShouldBeNil)
+						So(resp, ShouldNotBeNil)
+						So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+						resp, err = client.R().SetBasicAuth(username, password).Get(baseURL + "/v2/")
+						So(err, ShouldBeNil)
+						So(resp, ShouldNotBeNil)
+						So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+						resp, err = client.R().SetBasicAuth(username, password).
+							Get(baseURL + constants.FullMgmt)
+						So(err, ShouldBeNil)
+						So(resp, ShouldNotBeNil)
+						So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+						client.SetCookies(resp.Cookies())
+
+						// call endpoint with session, without credentials, (added to client after previous request)
+						resp, err = client.R().
+							Get(baseURL + "/v2/_catalog")
+						So(err, ShouldBeNil)
+						So(resp, ShouldNotBeNil)
+						So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+						resp, err = client.R().
+							Get(baseURL + constants.FullMgmt)
+						So(err, ShouldBeNil)
+						So(resp, ShouldNotBeNil)
+						So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+						// logout user
+						resp, err = client.R().
+							Post(baseURL + constants.LogoutPath)
+						So(err, ShouldBeNil)
+						So(resp, ShouldNotBeNil)
+						So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+						// calling endpoint should fail with unauthorized access
+						resp, err = client.R().
+							Get(baseURL + "/v2/_catalog")
+						So(err, ShouldBeNil)
+						So(resp, ShouldNotBeNil)
+						So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
+					})
+
+					Convey("unauthenticated catalog request", func() {
+						client := resty.New()
+
+						// mgmt should work both unauthenticated and authenticated
+						resp, err := client.R().
+							Get(baseURL + constants.FullMgmt)
+						So(err, ShouldBeNil)
+						So(resp, ShouldNotBeNil)
+						So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+						// call endpoint without session
+						resp, err = client.R().
+							Get(baseURL + "/v2/_catalog")
+						So(err, ShouldBeNil)
+						So(resp, ShouldNotBeNil)
+						So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
+					})
+				})
+			})
+		})
+	}
+}
+
 func TestIsOpenIDEnabled(t *testing.T) {
 	Convey("make oidc server", t, func() {
 		port := test.GetFreePort()

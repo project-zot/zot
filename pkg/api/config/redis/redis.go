@@ -81,7 +81,7 @@ func ParseRedisUniversalOptions(redisConfig map[string]interface{}, //nolint: go
 		opts.Addrs = val
 	}
 
-	if val, ok := getString(redisConfig, "client_name", false, log); ok {
+	if val, ok := GetString(redisConfig, "client_name", false, log); ok {
 		opts.ClientName = val
 	}
 
@@ -93,19 +93,19 @@ func ParseRedisUniversalOptions(redisConfig map[string]interface{}, //nolint: go
 		opts.Protocol = val
 	}
 
-	if val, ok := getString(redisConfig, "username", false, log); ok {
+	if val, ok := GetString(redisConfig, "username", false, log); ok {
 		opts.Username = val
 	}
 
-	if val, ok := getString(redisConfig, "password", true, log); ok {
+	if val, ok := GetString(redisConfig, "password", true, log); ok {
 		opts.Password = val
 	}
 
-	if val, ok := getString(redisConfig, "sentinel_username", false, log); ok {
+	if val, ok := GetString(redisConfig, "sentinel_username", false, log); ok {
 		opts.SentinelUsername = val
 	}
 
-	if val, ok := getString(redisConfig, "sentinel_password", true, log); ok {
+	if val, ok := GetString(redisConfig, "sentinel_password", true, log); ok {
 		opts.SentinelPassword = val
 	}
 
@@ -185,7 +185,7 @@ func ParseRedisUniversalOptions(redisConfig map[string]interface{}, //nolint: go
 		opts.RouteRandomly = val
 	}
 
-	if val, ok := getString(redisConfig, "master_name", false, log); ok {
+	if val, ok := GetString(redisConfig, "master_name", false, log); ok {
 		opts.MasterName = val
 	}
 
@@ -193,7 +193,7 @@ func ParseRedisUniversalOptions(redisConfig map[string]interface{}, //nolint: go
 		opts.DisableIdentity = val
 	}
 
-	if val, ok := getString(redisConfig, "identity_suffix", false, log); ok {
+	if val, ok := GetString(redisConfig, "identity_suffix", false, log); ok {
 		opts.IdentitySuffix = val
 	}
 
@@ -246,7 +246,7 @@ func getInt(dict map[string]interface{}, key string, log log.Logger) (int, bool)
 	return ret, true
 }
 
-func getString(dict map[string]interface{}, key string, hideValue bool, log log.Logger) (string, bool) {
+func GetString(dict map[string]interface{}, key string, hideValue bool, log log.Logger) (string, bool) {
 	value, ok := dict[key]
 	if !ok {
 		return "", false

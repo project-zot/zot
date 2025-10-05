@@ -324,8 +324,7 @@ func (c *Controller) initCookieStore() error {
 			c.Config.HTTP.Auth.SessionHashKey = securecookie.GenerateRandomKey(64) //nolint: gomnd
 		}
 
-		cookieStore, err := NewCookieStore(c.StoreController, c.Config.HTTP.Auth.SessionHashKey,
-			c.Config.HTTP.Auth.SessionEncryptKey)
+		cookieStore, err := NewCookieStore(c.Config.HTTP.Auth, c.StoreController, c.Log)
 		if err != nil {
 			return err
 		}

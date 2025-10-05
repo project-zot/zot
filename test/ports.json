@@ -392,5 +392,15 @@
       "begin": 8700,
       "end": 8750
     }
+  },
+  "blackbox/redis_session_store.bats": {
+    "redis": {
+      "begin": 11400,
+      "end": 11409
+    },
+    "zot": {
+      "begin": 11420,
+      "end": 11429
+    }
   }
 }

@@ -332,6 +332,58 @@ func validateCacheConfig(cfg *config.Config, logger zlog.Logger) error {
 	return nil
 }
 
+func validateRemoteSessionStoreConfig(cfg *config.Config, logger zlog.Logger) error {
+	// it is okay for the session driver config to be nil
+	// this is backwards compatible for older configs
+	if cfg.HTTP.Auth.SessionDriver == nil {
+		return nil
+	}
+
+	sessionDriverName, ok := cfg.HTTP.Auth.SessionDriver["name"]
+	if !ok {
+		msg := "must provide session driver name!"
+		logger.Error().Err(zerr.ErrBadConfig).Msg(msg)
+
+		return fmt.Errorf("%w: %s", zerr.ErrBadConfig, msg)
+	}
+
+	allowedDriverNames := []string{
+		storageConstants.RedisDriverName,
+		storageConstants.LocalStorageDriverName,
+	}
+
+	isValidDriver := false
+
+	for _, allowedDriverName := range allowedDriverNames {
+		if allowedDriverName == sessionDriverName {
+			isValidDriver = true
+
+			break
+		}
+	}
+
+	if !isValidDriver {
+		msg := fmt.Sprintf("session store driver %s is not allowed!", sessionDriverName)
+		logger.Error().Err(zerr.ErrBadConfig).Msg(msg)
+
+		return fmt.Errorf("%w: %s", zerr.ErrBadConfig, msg)
+	}
+
+	// If the redis driver is being used, then session keys must not be configured
+	// as redis session store does not support these yet.
+
+	if sessionDriverName == storageConstants.RedisDriverName {
+		if cfg.HTTP.Auth.SessionKeysFile != "" {
+			msg := "session keys not supported when redis session driver is used!"
+			logger.Error().Err(zerr.ErrBadConfig).Msg(msg)
+
+			return fmt.Errorf("%w: %s", zerr.ErrBadConfig, msg)
+		}
+	}
+
+	return nil
+}
+
 func validateExtensionsConfig(cfg *config.Config, logger zlog.Logger) error {
 	if cfg.Extensions != nil && cfg.Extensions.Mgmt != nil {
 		logger.Warn().Msg("mgmt extensions configuration option has been made redundant and will be ignored.")
@@ -402,6 +454,10 @@ func validateConfiguration(config *config.Config, logger zlog.Logger) error {
 	}
 
 	if err := validateCacheConfig(config, logger); err != nil {
+		return err
+	}
+
+	if err := validateRemoteSessionStoreConfig(config, logger); err != nil {
 		return err
 	}
 

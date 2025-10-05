@@ -56,6 +56,7 @@ require (
 	github.com/project-zot/mockoidc v0.0.0-20240610203808-d69d9e02020a
 	github.com/prometheus/client_golang v1.23.2
 	github.com/prometheus/client_model v0.6.2
+	github.com/rbcervilla/redisstore/v9 v9.0.0
 	github.com/redis/go-redis/v9 v9.14.0
 	github.com/regclient/regclient v0.9.2
 	github.com/santhosh-tekuri/jsonschema/v5 v5.3.1
