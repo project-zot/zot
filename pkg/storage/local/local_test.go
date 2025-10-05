@@ -3212,6 +3212,33 @@ func NewRandomImgManifest(data []byte, cdigest, ldigest godigest.Digest, cblob, 
 	return &manifest, nil
 }
 
+func TestGetNextDigestWithBlobPathsPathNotFound(t *testing.T) {
+	Convey("GetNextDigestWithBlobPaths PathNotFoundError handling", t, func() {
+		dir := t.TempDir()
+		log := zlog.NewTestLogger()
+		metrics := monitoring.NewMetricsServer(false, log)
+		cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
+			RootDir:     dir,
+			Name:        "cache",
+			UseRelPaths: true,
+		}, log)
+
+		imgStore := local.NewImageStore(dir, true, true, log, metrics, nil, cacheDriver, nil, nil)
+
+		// Remove the root directory to trigger PathNotFoundError
+		err := os.RemoveAll(imgStore.RootDir())
+		So(err, ShouldBeNil)
+
+		// Call GetNextDigestWithBlobPaths - should handle PathNotFoundError gracefully
+		digest, duplicateBlobs, err := imgStore.GetNextDigestWithBlobPaths([]string{"test-repo"}, []godigest.Digest{})
+
+		// Should return empty digest, empty duplicateBlobs, and no error
+		So(digest.String(), ShouldEqual, "")
+		So(duplicateBlobs, ShouldBeEmpty)
+		So(err, ShouldBeNil)
+	})
+}
+
 func newRandomBlobForFuzz(data []byte) (godigest.Digest, []byte, error) { //nolint:unparam
 	return godigest.FromBytes(data), data, nil
 }
