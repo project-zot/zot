@@ -602,7 +602,7 @@ func TestRepoListWithNewestImage(t *testing.T) {
 
 			// Delete config blob and try.
 			err = os.Remove(path.Join(subRootDir, "a/zot-test/blobs/sha256", configDigest.Encoded()))
-			if err != nil {
+			if err != nil && !os.IsNotExist(err) {
 				panic(err)
 			}
 
@@ -614,7 +614,7 @@ func TestRepoListWithNewestImage(t *testing.T) {
 
 			err = os.Remove(path.Join(subRootDir, "a/zot-test/blobs/sha256",
 				manifestDigest.Encoded()))
-			if err != nil {
+			if err != nil && !os.IsNotExist(err) {
 				panic(err)
 			}
 
@@ -625,7 +625,7 @@ func TestRepoListWithNewestImage(t *testing.T) {
 			So(resp.StatusCode(), ShouldEqual, 200)
 
 			err = os.Remove(path.Join(rootDir, "zot-test/blobs/sha256", configDigest.Encoded()))
-			if err != nil {
+			if err != nil && !os.IsNotExist(err) {
 				panic(err)
 			}
 
@@ -637,7 +637,7 @@ func TestRepoListWithNewestImage(t *testing.T) {
 
 			// Delete manifest blob also and try
 			err = os.Remove(path.Join(rootDir, "zot-test/blobs/sha256", manifestDigest.Encoded()))
-			if err != nil {
+			if err != nil && !os.IsNotExist(err) {
 				panic(err)
 			}
 

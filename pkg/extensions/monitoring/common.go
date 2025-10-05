@@ -14,6 +14,8 @@ type MetricServer interface {
 	ForceSendMetric(interface{})
 	ReceiveMetrics() interface{}
 	IsEnabled() bool
+	// Stop gracefully shuts down the metrics server
+	Stop()
 }
 
 func GetDirSize(path string) (int64, error) {

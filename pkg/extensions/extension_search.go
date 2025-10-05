@@ -33,12 +33,14 @@ func IsBuiltWithSearchExtension() bool {
 func GetCveScanner(conf *config.Config, storeController storage.StoreController,
 	metaDB mTypes.MetaDB, log log.Logger,
 ) CveScanner {
-	if !conf.IsCveScanningEnabled() {
+	// Get extensions config safely
+	extensionsConfig := conf.GetExtensionsConfig()
+	if !extensionsConfig.IsCveScanningEnabled() {
 		return nil
 	}
 
-	dbRepository := conf.Extensions.Search.CVE.Trivy.DBRepository
-	javaDBRepository := conf.Extensions.Search.CVE.Trivy.JavaDBRepository
+	dbRepository := extensionsConfig.Search.CVE.Trivy.DBRepository
+	javaDBRepository := extensionsConfig.Search.CVE.Trivy.JavaDBRepository
 
 	return cveinfo.NewScanner(storeController, metaDB, dbRepository, javaDBRepository, log)
 }
@@ -46,8 +48,10 @@ func GetCveScanner(conf *config.Config, storeController storage.StoreController,
 func EnableSearchExtension(conf *config.Config, storeController storage.StoreController,
 	metaDB mTypes.MetaDB, taskScheduler *scheduler.Scheduler, cveScanner CveScanner, log log.Logger,
 ) {
-	if conf.IsCveScanningEnabled() {
-		updateInterval := conf.Extensions.Search.CVE.UpdateInterval
+	// Get extensions config safely
+	extensionsConfig := conf.GetExtensionsConfig()
+	if extensionsConfig.IsCveScanningEnabled() {
+		updateInterval := extensionsConfig.Search.CVE.UpdateInterval
 
 		downloadTrivyDB(updateInterval, taskScheduler, cveScanner, log)
 		startScanner(scanInterval, metaDB, taskScheduler, cveScanner, log)
@@ -75,7 +79,8 @@ func startScanner(interval time.Duration, metaDB mTypes.MetaDB, sch *scheduler.S
 func SetupSearchRoutes(conf *config.Config, router *mux.Router, storeController storage.StoreController,
 	metaDB mTypes.MetaDB, cveScanner CveScanner, log log.Logger,
 ) {
-	if !conf.IsSearchEnabled() {
+	extensionsConfig := conf.GetExtensionsConfig()
+	if !extensionsConfig.IsSearchEnabled() {
 		log.Info().Msg("skip enabling the search route as the config prerequisites are not met")
 
 		return
@@ -84,7 +89,7 @@ func SetupSearchRoutes(conf *config.Config, router *mux.Router, storeController 
 	log.Info().Msg("setting up search routes")
 
 	var cveInfo cveinfo.CveInfo
-	if conf.IsCveScanningEnabled() {
+	if extensionsConfig.IsCveScanningEnabled() {
 		cveInfo = cveinfo.NewCVEInfo(cveScanner, metaDB, log)
 	} else {
 		cveInfo = nil

@@ -21,13 +21,16 @@ import (
 func EnableSyncExtension(config *config.Config, metaDB mTypes.MetaDB,
 	storeController storage.StoreController, sch *scheduler.Scheduler, log log.Logger,
 ) (*sync.BaseOnDemand, error) {
-	if config.Extensions.Sync != nil && *config.Extensions.Sync.Enable {
+	// Get extensions config safely
+	extensionsConfig := config.GetExtensionsConfig()
+	httpConfig := config.GetHTTPConfig()
+
+	if extensionsConfig.IsSyncEnabled() {
 		onDemand := sync.NewOnDemand(log)
 
-		for _, registryConfig := range config.Extensions.Sync.Registries {
-			registryConfig := registryConfig
+		for _, registryConfig := range extensionsConfig.Sync.Registries {
 			if len(registryConfig.URLs) > 1 {
-				if err := removeSelfURLs(config, &registryConfig, log); err != nil {
+				if err := removeSelfURLs(&httpConfig, &registryConfig, log); err != nil {
 					return nil, err
 				}
 			}
@@ -45,11 +48,12 @@ func EnableSyncExtension(config *config.Config, metaDB mTypes.MetaDB,
 				continue
 			}
 
-			tmpDir := config.Extensions.Sync.DownloadDir
-			credsPath := config.Extensions.Sync.CredentialsFile
-			clusterCfg := config.Cluster
+			tmpDir := extensionsConfig.Sync.DownloadDir
+			credsPath := extensionsConfig.Sync.CredentialsFile
+			// Get cluster config safely
+			clusterConfig := config.GetClusterConfig()
 
-			service, err := sync.New(registryConfig, credsPath, clusterCfg, tmpDir, storeController, metaDB, log)
+			service, err := sync.New(registryConfig, credsPath, clusterConfig, tmpDir, storeController, metaDB, log)
 			if err != nil {
 				log.Error().Err(err).Msg("failed to initialize sync extension")
 
@@ -102,10 +106,10 @@ func getLocalIPs() ([]string, error) {
 	return localIPs, nil
 }
 
-func removeSelfURLs(config *config.Config, registryConfig *syncconf.RegistryConfig, log log.Logger) error {
+func removeSelfURLs(httpConfig *config.HTTPConfig, registryConfig *syncconf.RegistryConfig, log log.Logger) error {
 	// get IP from config
-	port := config.HTTP.Port
-	selfAddress := net.JoinHostPort(config.HTTP.Address, port)
+	port := httpConfig.Port
+	selfAddress := net.JoinHostPort(httpConfig.Address, port)
 
 	// get all local IPs from interfaces
 	localIPs, err := getLocalIPs()

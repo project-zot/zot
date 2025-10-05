@@ -7171,6 +7171,8 @@ func TestCrossRepoMount(t *testing.T) {
 		ctlr.Config.Storage.Dedupe = true
 		ctlr.Config.Storage.GC = false
 		ctlr.Config.Storage.RootDirectory = newDir
+
+		ctlr = api.NewController(ctlr.Config)
 		cm = test.NewControllerManager(ctlr) //nolint: varnamelen
 		cm.StartAndWait(port)
 

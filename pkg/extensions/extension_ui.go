@@ -63,7 +63,8 @@ func addUISecurityHeaders(h http.Handler) http.HandlerFunc { //nolint:varnamelen
 func SetupUIRoutes(conf *config.Config, router *mux.Router,
 	log log.Logger,
 ) {
-	if !conf.IsUIEnabled() {
+	extensionsConfig := conf.GetExtensionsConfig()
+	if !extensionsConfig.IsUIEnabled() {
 		log.Info().Msg("skip enabling the ui route as the config prerequisites are not met")
 
 		return

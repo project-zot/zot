@@ -1,14 +1,18 @@
 package common
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
+	"io"
 	"math/rand"
 	"net/http"
 	"net/url"
 	"os"
 	"path"
 	"strconv"
+	"strings"
+	"sync"
 	"time"
 
 	"github.com/phayes/freeport"
@@ -143,6 +147,23 @@ func GetFreePort() string {
 	return strconv.Itoa(port)
 }
 
+// GetFreePorts returns multiple unique free ports, useful for cluster tests.
+func GetFreePorts(count int) []string {
+	// Use the freeport library's GetFreePorts function which guarantees uniqueness
+	intPorts, err := freeport.GetFreePorts(count)
+	if err != nil {
+		panic(err)
+	}
+
+	// Convert to strings
+	ports := make([]string, count)
+	for i, port := range intPorts {
+		ports[i] = strconv.Itoa(port)
+	}
+
+	return ports
+}
+
 func GetBaseURL(port string) string {
 	return fmt.Sprintf(BaseURL, port)
 }
@@ -232,4 +253,79 @@ func ContainSameElements[T comparable](list1, list2 []T) bool {
 	}
 
 	return true
+}
+
+// ThreadSafeLogBuffer is a thread-safe wrapper around bytes.Buffer for concurrent log capture.
+type ThreadSafeLogBuffer struct {
+	buffer *bytes.Buffer
+	mutex  sync.RWMutex
+}
+
+// NewThreadSafeLogBuffer creates a new thread-safe log buffer.
+func NewThreadSafeLogBuffer() *ThreadSafeLogBuffer {
+	return &ThreadSafeLogBuffer{
+		buffer: &bytes.Buffer{},
+	}
+}
+
+// Write implements io.Writer interface with thread safety.
+func (tsb *ThreadSafeLogBuffer) Write(p []byte) (int, error) {
+	tsb.mutex.Lock()
+	defer tsb.mutex.Unlock()
+
+	return tsb.buffer.Write(p)
+}
+
+// String returns the buffer contents as a string with thread safety.
+func (tsb *ThreadSafeLogBuffer) String() string {
+	tsb.mutex.RLock()
+	defer tsb.mutex.RUnlock()
+
+	return tsb.buffer.String()
+}
+
+// WaitForLogMessages waits for a specific number of log messages to appear in the log buffer
+// within the given timeout. This is useful for verifying goroutine termination or other
+// asynchronous operations that log specific messages.
+//
+// Parameters:
+//   - logBuffer: A ThreadSafeLogBuffer that captures log output
+//   - message: The log message to search for (e.g., "htpasswd watcher terminating...")
+//   - minCount: Minimum number of occurrences to wait for
+//   - timeout: Maximum time to wait for the messages
+//
+// Returns:
+//   - true if at least minCount messages were found within the timeout
+//   - false if the timeout was reached before finding enough messages
+func WaitForLogMessages(logBuffer *ThreadSafeLogBuffer, message string, minCount int, timeout time.Duration) bool {
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		logOutput := logBuffer.String()
+		actualCount := strings.Count(logOutput, message)
+
+		if actualCount >= minCount {
+			return true
+		}
+
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	return false
+}
+
+// CreateLogCapturingWriter creates a multi-writer that captures log output to a thread-safe buffer
+// while also writing to the original writer (typically os.Stdout). This is useful for
+// tests that need to programmatically verify log messages.
+//
+// Parameters:
+//   - originalWriter: The original writer to continue writing to (e.g., os.Stdout)
+//
+// Returns:
+//   - A ThreadSafeLogBuffer that captures the log output
+//   - An io.Writer that writes to both the original writer and the buffer
+func CreateLogCapturingWriter(originalWriter io.Writer) (*ThreadSafeLogBuffer, io.Writer) {
+	logBuffer := NewThreadSafeLogBuffer()
+	multiWriter := io.MultiWriter(originalWriter, logBuffer)
+
+	return logBuffer, multiWriter
 }
