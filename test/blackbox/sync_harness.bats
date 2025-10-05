@@ -91,11 +91,20 @@ EOF
 }
 EOF
     zot_serve ${ZOT_MINIMAL_PATH} ${zot_minimal_config_file}
-    wait_zot_reachable ${zot_sync_per_cfg_port}
+    wait_zot_reachable ${zot_minimal_port}
 }
 
 function teardown_file() {
     zot_stop_all
+}
+
+function teardown() {
+    local zot_minimal_log_file="${BATS_FILE_TMPDIR}/zot-minimal/zot.log"
+    local zot_sync_log_file="${BATS_FILE_TMPDIR}/zot-per/zot.log"
+    echo "zot minimal logs"
+    cat ${zot_minimal_log_file}
+    echo "zot sync logs"
+    cat ${zot_sync_log_file}
 }
 
 # sync zb images
@@ -108,11 +117,11 @@ function teardown_file() {
     local zot_minimal_root_dir=${BATS_FILE_TMPDIR}/zot-minimal
     local ZOT_LOG_FILE=${zot_sync_per_root_dir}/zot.log
 
-    zb_run "http://127.0.0.1:${zot_sync_per_cfg_port}"
+    zb_run "http://127.0.0.1:${zot_minimal_port}"
 
     # start zot sync server
     zot_serve ${ZOT_PATH} ${zot_sync_per_config_file}
-    wait_zot_reachable ${zot_minimal_port}
+    wait_zot_reachable ${zot_sync_per_cfg_port}
 
     start=`date +%s`
     echo "waiting for sync to finish" >&3
