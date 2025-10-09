@@ -2,6 +2,7 @@ package config_test
 
 import (
 	"errors"
+	gosync "sync"
 	"testing"
 
 	. "github.com/smartystreets/goconvey/convey"
@@ -18,121 +19,144 @@ var (
 	errPanicRecovered                  = errors.New("panic recovered")
 )
 
+// newExtensionConfigForTest creates an ExtensionConfig with a mock mutex for testing.
+func newExtensionConfigForTest() *config.ExtensionConfig {
+	mockMutex := &gosync.RWMutex{}
+	ext := &config.ExtensionConfig{}
+	ext.SetMutex(mockMutex)
+
+	return ext
+}
+
 // Config builder functions for different extension types.
 func buildSearchConfig(enabled bool) *config.ExtensionConfig {
-	return &config.ExtensionConfig{
-		Search: &config.SearchConfig{
-			BaseConfig: config.BaseConfig{
-				Enable: &enabled,
-			},
+	ext := newExtensionConfigForTest()
+	ext.Search = &config.SearchConfig{
+		BaseConfig: config.BaseConfig{
+			Enable: &enabled,
 		},
 	}
+
+	return ext
 }
 
 func buildSearchConfigWithCVE(enabled bool) *config.ExtensionConfig {
-	return &config.ExtensionConfig{
-		Search: &config.SearchConfig{
-			BaseConfig: config.BaseConfig{
-				Enable: &enabled,
-			},
-			CVE: &config.CVEConfig{
-				Trivy: &config.TrivyConfig{},
-			},
+	ext := newExtensionConfigForTest()
+	ext.Search = &config.SearchConfig{
+		BaseConfig: config.BaseConfig{
+			Enable: &enabled,
+		},
+		CVE: &config.CVEConfig{
+			Trivy: &config.TrivyConfig{},
 		},
 	}
+
+	return ext
 }
 
 func buildEventsConfig(enabled bool) *config.ExtensionConfig {
-	return &config.ExtensionConfig{
-		Events: &events.Config{
-			Enable: &enabled,
-		},
+	ext := newExtensionConfigForTest()
+	ext.Events = &events.Config{
+		Enable: &enabled,
 	}
+
+	return ext
 }
 
 func buildSyncConfig(enabled bool) *config.ExtensionConfig {
-	return &config.ExtensionConfig{
-		Sync: &sync.Config{
-			Enable: &enabled,
-		},
+	ext := newExtensionConfigForTest()
+	ext.Sync = &sync.Config{
+		Enable: &enabled,
 	}
+
+	return ext
 }
 
 func buildScrubConfig(enabled bool) *config.ExtensionConfig {
-	return &config.ExtensionConfig{
-		Scrub: &config.ScrubConfig{
-			BaseConfig: config.BaseConfig{
-				Enable: &enabled,
-			},
+	ext := newExtensionConfigForTest()
+	ext.Scrub = &config.ScrubConfig{
+		BaseConfig: config.BaseConfig{
+			Enable: &enabled,
 		},
 	}
+
+	return ext
 }
 
 func buildMetricsConfig(enabled bool) *config.ExtensionConfig {
-	return &config.ExtensionConfig{
-		Metrics: &config.MetricsConfig{
-			BaseConfig: config.BaseConfig{
-				Enable: &enabled,
-			},
+	ext := newExtensionConfigForTest()
+	ext.Metrics = &config.MetricsConfig{
+		BaseConfig: config.BaseConfig{
+			Enable: &enabled,
+		},
+		Prometheus: &config.PrometheusConfig{
+			Path: "/metrics",
 		},
 	}
+
+	return ext
 }
 
 func buildTrustConfig(enabled bool) *config.ExtensionConfig {
-	return &config.ExtensionConfig{
-		Trust: &config.ImageTrustConfig{
-			BaseConfig: config.BaseConfig{
-				Enable: &enabled,
-			},
+	ext := newExtensionConfigForTest()
+	ext.Trust = &config.ImageTrustConfig{
+		BaseConfig: config.BaseConfig{
+			Enable: &enabled,
 		},
 	}
+
+	return ext
 }
 
 func buildUIConfig(enabled bool) *config.ExtensionConfig {
-	return &config.ExtensionConfig{
-		UI: &config.UIConfig{
-			BaseConfig: config.BaseConfig{
-				Enable: &enabled,
-			},
+	ext := newExtensionConfigForTest()
+	ext.UI = &config.UIConfig{
+		BaseConfig: config.BaseConfig{
+			Enable: &enabled,
 		},
 	}
+
+	return ext
 }
 
 func buildSearchAndUIConfig(enabled bool) *config.ExtensionConfig {
-	return &config.ExtensionConfig{
-		Search: &config.SearchConfig{
-			BaseConfig: config.BaseConfig{
-				Enable: &enabled,
-			},
-		},
-		UI: &config.UIConfig{
-			BaseConfig: config.BaseConfig{
-				Enable: &enabled,
-			},
+	ext := newExtensionConfigForTest()
+	ext.Search = &config.SearchConfig{
+		BaseConfig: config.BaseConfig{
+			Enable: &enabled,
 		},
 	}
+	ext.UI = &config.UIConfig{
+		BaseConfig: config.BaseConfig{
+			Enable: &enabled,
+		},
+	}
+
+	return ext
 }
 
 func buildTrustConfigWithCosign(enabled bool) *config.ExtensionConfig {
-	return &config.ExtensionConfig{
-		Trust: &config.ImageTrustConfig{
-			BaseConfig: config.BaseConfig{
-				Enable: &enabled,
-			},
-			Cosign: true,
+	ext := newExtensionConfigForTest()
+	ext.Trust = &config.ImageTrustConfig{
+		BaseConfig: config.BaseConfig{
+			Enable: &enabled,
 		},
+		Cosign: true,
 	}
+
+	return ext
 }
 
 func buildTrustConfigWithNotation(enabled bool) *config.ExtensionConfig {
-	return &config.ExtensionConfig{
-		Trust: &config.ImageTrustConfig{
-			BaseConfig: config.BaseConfig{
-				Enable: &enabled,
-			},
-			Notation: true,
+	ext := newExtensionConfigForTest()
+	ext.Trust = &config.ImageTrustConfig{
+		BaseConfig: config.BaseConfig{
+			Enable: &enabled,
 		},
+		Notation: true,
 	}
+
+	return ext
 }
 
 // Test helper functions to reduce code duplication
@@ -149,7 +173,7 @@ func testMethodWithNilConfig(testFunc func(*config.ExtensionConfig) bool) {
 // testMethodWithNilSubConfig tests a method when ExtensionConfig exists but the relevant sub-config is nil.
 func testMethodWithNilSubConfig(subConfigName string, testFunc func(*config.ExtensionConfig) bool) {
 	Convey("Test with ExtensionConfig but nil "+subConfigName, func() {
-		extensionConfig := &config.ExtensionConfig{}
+		extensionConfig := newExtensionConfigForTest()
 
 		So(testFunc(extensionConfig), ShouldBeFalse)
 	})
@@ -158,7 +182,7 @@ func testMethodWithNilSubConfig(subConfigName string, testFunc func(*config.Exte
 // testMethodWithNilEnable tests a method when ExtensionConfig and sub-config exist but Enable is nil.
 func testMethodWithNilEnable(subConfigName string, testFunc func(*config.ExtensionConfig) bool) {
 	Convey("Test with ExtensionConfig and "+subConfigName+" but nil Enable", func() {
-		extensionConfig := &config.ExtensionConfig{}
+		extensionConfig := newExtensionConfigForTest()
 
 		So(testFunc(extensionConfig), ShouldBeFalse)
 	})
@@ -213,7 +237,7 @@ func testSetterWithNilConfig(setterFunc interface{}) {
 // testSetterWithNilSubConfig tests a setter method when ExtensionConfig exists but the relevant sub-config is nil.
 func testSetterWithNilSubConfig(subConfigName string, setterFunc interface{}) {
 	Convey("Test with ExtensionConfig but nil "+subConfigName, func() {
-		extensionConfig := &config.ExtensionConfig{}
+		extensionConfig := newExtensionConfigForTest()
 		// Should not panic, but nothing should be set
 		switch setter := setterFunc.(type) {
 		case func(*config.ExtensionConfig, string):
@@ -235,7 +259,7 @@ func testSetterWithValidConfig(
 	validatorFunc func(*config.ExtensionConfig) bool,
 ) {
 	Convey("Test with ExtensionConfig and "+subConfigName, func() {
-		extensionConfig := &config.ExtensionConfig{}
+		extensionConfig := newExtensionConfigForTest()
 
 		switch setter := setterFunc.(type) {
 		case func(*config.ExtensionConfig, string):
@@ -311,6 +335,41 @@ func testConcurrentAccessWithConfig(
 		for err := range errors {
 			So(err, ShouldBeNil)
 		}
+	})
+}
+
+// testGetterWithNilConfig tests a getter method with nil ExtensionConfig.
+func testGetterWithNilConfig[T any](testFunc func(*config.ExtensionConfig) T, expected T) {
+	Convey("Test with nil ExtensionConfig", func() {
+		var extensionConfig *config.ExtensionConfig = nil
+
+		result := testFunc(extensionConfig)
+		So(result, ShouldEqual, expected)
+	})
+}
+
+// testGetterWithNilSubConfig tests a getter method when ExtensionConfig exists but the relevant sub-config is nil.
+func testGetterWithNilSubConfig[T any](subConfigName string, testFunc func(*config.ExtensionConfig) T, expected T) {
+	Convey("Test with ExtensionConfig but nil "+subConfigName, func() {
+		extensionConfig := newExtensionConfigForTest()
+
+		result := testFunc(extensionConfig)
+		So(result, ShouldEqual, expected)
+	})
+}
+
+// testGetterWithValidConfig tests a getter method with valid configuration.
+func testGetterWithValidConfig[T any](
+	subConfigName string,
+	testFunc func(*config.ExtensionConfig) T,
+	configBuilder func(bool) *config.ExtensionConfig,
+) {
+	Convey("Test with valid "+subConfigName+" configuration", func() {
+		enabled := true
+		extensionConfig := configBuilder(enabled)
+
+		result := testFunc(extensionConfig)
+		So(result, ShouldNotBeNil)
 	})
 }
 
@@ -451,30 +510,27 @@ func TestExtensionConfig(t *testing.T) {
 		// Create properly configured ExtensionConfigs for concurrent testing
 		searchEnabled := true
 		uiEnabled := true
-		searchConfig := &config.ExtensionConfig{
-			Search: &config.SearchConfig{
-				BaseConfig: config.BaseConfig{
-					Enable: &searchEnabled,
-				},
+		searchConfig := newExtensionConfigForTest()
+		searchConfig.Search = &config.SearchConfig{
+			BaseConfig: config.BaseConfig{
+				Enable: &searchEnabled,
 			},
 		}
-		uiConfig := &config.ExtensionConfig{
-			UI: &config.UIConfig{
-				BaseConfig: config.BaseConfig{
-					Enable: &uiEnabled,
-				},
+		uiConfig := newExtensionConfigForTest()
+		uiConfig.UI = &config.UIConfig{
+			BaseConfig: config.BaseConfig{
+				Enable: &uiEnabled,
 			},
 		}
-		searchAndUIConfig := &config.ExtensionConfig{
-			Search: &config.SearchConfig{
-				BaseConfig: config.BaseConfig{
-					Enable: &searchEnabled,
-				},
+		searchAndUIConfig := newExtensionConfigForTest()
+		searchAndUIConfig.Search = &config.SearchConfig{
+			BaseConfig: config.BaseConfig{
+				Enable: &searchEnabled,
 			},
-			UI: &config.UIConfig{
-				BaseConfig: config.BaseConfig{
-					Enable: &uiEnabled,
-				},
+		}
+		searchAndUIConfig.UI = &config.UIConfig{
+			BaseConfig: config.BaseConfig{
+				Enable: &uiEnabled,
 			},
 		}
 
@@ -500,16 +556,15 @@ func TestExtensionConfig(t *testing.T) {
 		Convey("Test mixed concurrent access to all methods", func() {
 			searchEnabled := true
 			uiEnabled := true
-			extensionConfig := &config.ExtensionConfig{
-				Search: &config.SearchConfig{
-					BaseConfig: config.BaseConfig{
-						Enable: &searchEnabled,
-					},
+			extensionConfig := newExtensionConfigForTest()
+			extensionConfig.Search = &config.SearchConfig{
+				BaseConfig: config.BaseConfig{
+					Enable: &searchEnabled,
 				},
-				UI: &config.UIConfig{
-					BaseConfig: config.BaseConfig{
-						Enable: &uiEnabled,
-					},
+			}
+			extensionConfig.UI = &config.UIConfig{
+				BaseConfig: config.BaseConfig{
+					Enable: &uiEnabled,
 				},
 			}
 
@@ -601,6 +656,34 @@ func TestExtensionConfig(t *testing.T) {
 			for err := range errors {
 				So(err, ShouldBeNil)
 			}
+		})
+
+		Convey("Test GetSearchCVEConfig()", func() {
+			testGetterWithNilConfig((*config.ExtensionConfig).GetSearchCVEConfig, nil)
+			testGetterWithNilSubConfig("Search", (*config.ExtensionConfig).GetSearchCVEConfig, nil)
+			testGetterWithValidConfig("Search", (*config.ExtensionConfig).GetSearchCVEConfig, buildSearchConfigWithCVE)
+		})
+
+		Convey("Test GetScrubInterval()", func() {
+			testGetterWithNilConfig((*config.ExtensionConfig).GetScrubInterval, 0)
+			testGetterWithNilSubConfig("Scrub", (*config.ExtensionConfig).GetScrubInterval, 0)
+			testGetterWithValidConfig("Scrub", (*config.ExtensionConfig).GetScrubInterval, buildScrubConfig)
+		})
+
+		Convey("Test GetSyncConfig()", func() {
+			testGetterWithNilConfig((*config.ExtensionConfig).GetSyncConfig, nil)
+			testGetterWithValidConfig("Sync", (*config.ExtensionConfig).GetSyncConfig, buildSyncConfig)
+		})
+
+		Convey("Test GetMetricsPrometheusConfig()", func() {
+			testGetterWithNilConfig((*config.ExtensionConfig).GetMetricsPrometheusConfig, nil)
+			testGetterWithNilSubConfig("Metrics", (*config.ExtensionConfig).GetMetricsPrometheusConfig, nil)
+			testGetterWithValidConfig("Metrics", (*config.ExtensionConfig).GetMetricsPrometheusConfig, buildMetricsConfig)
+		})
+
+		Convey("Test GetEventsConfig()", func() {
+			testGetterWithNilConfig((*config.ExtensionConfig).GetEventsConfig, nil)
+			testGetterWithValidConfig("Events", (*config.ExtensionConfig).GetEventsConfig, buildEventsConfig)
 		})
 	})
 }

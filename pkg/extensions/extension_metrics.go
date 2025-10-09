@@ -15,8 +15,9 @@ import (
 func EnableMetricsExtension(config *config.Config, log log.Logger, rootDir string) {
 	// Get extensions config safely
 	extensionsConfig := config.GetExtensionsConfig()
-	if extensionsConfig.IsMetricsEnabled() && extensionsConfig.Metrics.Prometheus != nil {
-		if extensionsConfig.Metrics.Prometheus.Path == "" {
+	if extensionsConfig.IsMetricsEnabled() {
+		prometheusConfig := extensionsConfig.GetMetricsPrometheusConfig()
+		if prometheusConfig != nil && prometheusConfig.Path == "" {
 			// Note: This modifies the config during initialization
 			extensionsConfig.SetMetricsPrometheusPath("/metrics")
 
@@ -34,10 +35,13 @@ func SetupMetricsRoutes(config *config.Config, router *mux.Router,
 
 	// Get extensions config safely
 	extensionsConfig := config.GetExtensionsConfig()
-	if extensionsConfig.IsMetricsEnabled() && extensionsConfig.Metrics.Prometheus != nil {
-		extRouter := router.PathPrefix(extensionsConfig.Metrics.Prometheus.Path).Subrouter()
-		extRouter.Use(authnFunc)
-		extRouter.Use(authzFunc)
-		extRouter.Methods("GET").Handler(promhttp.Handler())
+	if extensionsConfig.IsMetricsEnabled() {
+		prometheusConfig := extensionsConfig.GetMetricsPrometheusConfig()
+		if prometheusConfig != nil {
+			extRouter := router.PathPrefix(prometheusConfig.Path).Subrouter()
+			extRouter.Use(authnFunc)
+			extRouter.Use(authzFunc)
+			extRouter.Methods("GET").Handler(promhttp.Handler())
+		}
 	}
 }

@@ -20,8 +20,8 @@ func NewEventRecorder(config *config.Config, log log.Logger) (events.Recorder, e
 		return nil, zerr.ErrExtensionNotEnabled
 	}
 
-	eventConfig := extensionsConfig.Events
-	if eventConfig.Sinks == nil || len(eventConfig.Sinks) == 0 {
+	eventConfig := extensionsConfig.GetEventsConfig()
+	if eventConfig == nil || eventConfig.Sinks == nil || len(eventConfig.Sinks) == 0 {
 		log.Info().Msg("no sinks provided, skipping events extension setup")
 
 		return nil, zerr.ErrExtensionNotEnabled

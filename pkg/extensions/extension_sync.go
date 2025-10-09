@@ -27,8 +27,9 @@ func EnableSyncExtension(config *config.Config, metaDB mTypes.MetaDB,
 
 	if extensionsConfig.IsSyncEnabled() {
 		onDemand := sync.NewOnDemand(log)
+		syncConfig := extensionsConfig.GetSyncConfig()
 
-		for _, registryConfig := range extensionsConfig.Sync.Registries {
+		for _, registryConfig := range syncConfig.Registries {
 			if len(registryConfig.URLs) > 1 {
 				if err := removeSelfURLs(&httpConfig, &registryConfig, log); err != nil {
 					return nil, err
@@ -48,8 +49,8 @@ func EnableSyncExtension(config *config.Config, metaDB mTypes.MetaDB,
 				continue
 			}
 
-			tmpDir := extensionsConfig.Sync.DownloadDir
-			credsPath := extensionsConfig.Sync.CredentialsFile
+			tmpDir := syncConfig.DownloadDir
+			credsPath := syncConfig.CredentialsFile
 			// Get cluster config safely
 			clusterConfig := config.GetClusterConfig()
 

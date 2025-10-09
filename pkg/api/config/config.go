@@ -10,7 +10,6 @@ import (
 
 	"zotregistry.dev/zot/pkg/compat"
 	extconf "zotregistry.dev/zot/pkg/extensions/config"
-	syncconf "zotregistry.dev/zot/pkg/extensions/config/sync"
 	storageConstants "zotregistry.dev/zot/pkg/storage/constants"
 )
 
@@ -287,11 +286,23 @@ type GlobalStorageConfig struct {
 }
 
 type AccessControlConfig struct {
-	mu           sync.RWMutex
-	Repositories Repositories `json:"repositories" mapstructure:"repositories"`
+	mu           *sync.RWMutex `json:"-"` // Reference to parent Config's mutex (excluded from JSON)
+	Repositories Repositories  `json:"repositories" mapstructure:"repositories"`
 	AdminPolicy  Policy
 	Groups       Groups
 	Metrics      Metrics
+}
+
+// SetMutex sets the mutex reference for this AccessControlConfig.
+func (config *AccessControlConfig) SetMutex(mu *sync.RWMutex) {
+	if config != nil {
+		config.mu = mu
+	}
+}
+
+// IsMutexSet checks if the mutex reference is set for this AccessControlConfig.
+func (config *AccessControlConfig) IsMutexSet() bool {
+	return config != nil && config.mu != nil
 }
 
 // IsAuthzEnabled checks if authorization is enabled (access control is configured).
@@ -300,7 +311,7 @@ func (config *AccessControlConfig) IsAuthzEnabled() bool {
 }
 
 func (config *AccessControlConfig) AnonymousPolicyExists() bool {
-	if config == nil {
+	if config == nil || config.mu == nil {
 		return false
 	}
 
@@ -318,7 +329,7 @@ func (config *AccessControlConfig) AnonymousPolicyExists() bool {
 
 // ContainsOnlyAnonymousPolicy checks if the access control configuration contains only anonymous policies.
 func (config *AccessControlConfig) ContainsOnlyAnonymousPolicy() bool {
-	if config == nil {
+	if config == nil || config.mu == nil {
 		return true
 	}
 
@@ -356,7 +367,7 @@ func (config *AccessControlConfig) ContainsOnlyAnonymousPolicy() bool {
 
 // SetRepositories safely sets the repositories configuration.
 func (config *AccessControlConfig) SetRepositories(repositories Repositories) {
-	if config == nil {
+	if config == nil || config.mu == nil {
 		return
 	}
 
@@ -368,7 +379,7 @@ func (config *AccessControlConfig) SetRepositories(repositories Repositories) {
 
 // SetAdminPolicy safely sets the admin policy.
 func (config *AccessControlConfig) SetAdminPolicy(policy Policy) {
-	if config == nil {
+	if config == nil || config.mu == nil {
 		return
 	}
 
@@ -380,7 +391,7 @@ func (config *AccessControlConfig) SetAdminPolicy(policy Policy) {
 
 // SetMetrics safely sets the metrics configuration.
 func (config *AccessControlConfig) SetMetrics(metrics Metrics) {
-	if config == nil {
+	if config == nil || config.mu == nil {
 		return
 	}
 
@@ -392,7 +403,7 @@ func (config *AccessControlConfig) SetMetrics(metrics Metrics) {
 
 // SetGroups safely sets the groups configuration.
 func (config *AccessControlConfig) SetGroups(groups Groups) {
-	if config == nil {
+	if config == nil || config.mu == nil {
 		return
 	}
 
@@ -404,7 +415,7 @@ func (config *AccessControlConfig) SetGroups(groups Groups) {
 
 // GetRepositories safely gets a copy of the repositories configuration.
 func (config *AccessControlConfig) GetRepositories() Repositories {
-	if config == nil {
+	if config == nil || config.mu == nil {
 		return nil
 	}
 
@@ -422,7 +433,7 @@ func (config *AccessControlConfig) GetRepositories() Repositories {
 
 // GetAdminPolicy safely gets a copy of the admin policy.
 func (config *AccessControlConfig) GetAdminPolicy() Policy {
-	if config == nil {
+	if config == nil || config.mu == nil {
 		return Policy{}
 	}
 
@@ -434,7 +445,7 @@ func (config *AccessControlConfig) GetAdminPolicy() Policy {
 
 // GetMetrics safely gets a copy of the metrics configuration.
 func (config *AccessControlConfig) GetMetrics() Metrics {
-	if config == nil {
+	if config == nil || config.mu == nil {
 		return Metrics{}
 	}
 
@@ -446,7 +457,7 @@ func (config *AccessControlConfig) GetMetrics() Metrics {
 
 // GetGroups safely gets a copy of the groups configuration.
 func (config *AccessControlConfig) GetGroups() Groups {
-	if config == nil {
+	if config == nil || config.mu == nil {
 		return nil
 	}
 
@@ -723,129 +734,92 @@ func (c *Config) UpdateReloadableConfig(newConfig *Config) {
 	}
 
 	c.mu.Lock()
+	defer c.mu.Unlock()
 
-	// Capture values while holding the main lock
-	var (
-		newRepositories    Repositories
-		newAdminPolicy     Policy
-		newMetrics         Metrics
-		newGroups          Groups
-		newSyncConfig      *syncconf.Config
-		newSearchCVEConfig *extconf.CVEConfig
-		newScrubConfig     *extconf.ScrubConfig
-	)
-
-	if newConfig.HTTP.AccessControl != nil {
-		// Access fields directly to avoid potential deadlock from calling getter methods
-		// while holding the main Config lock
-		newRepositories = newConfig.HTTP.AccessControl.Repositories
-		newAdminPolicy = newConfig.HTTP.AccessControl.AdminPolicy
-		newMetrics = newConfig.HTTP.AccessControl.Metrics
-		newGroups = newConfig.HTTP.AccessControl.Groups
-	}
-
-	if newConfig.Extensions != nil {
-		if newConfig.Extensions.Sync != nil {
-			newSyncConfig = newConfig.Extensions.Sync
-		}
-
-		if newConfig.Extensions.Search != nil && newConfig.Extensions.Search.CVE != nil {
-			newSearchCVEConfig = newConfig.Extensions.Search.CVE
-		}
-
-		if newConfig.Extensions.Scrub != nil {
-			newScrubConfig = newConfig.Extensions.Scrub
-		}
-	}
-
-	// Update basic fields while holding the main lock
-	if c.HTTP.Auth != nil {
-		c.HTTP.Auth.HTPasswd = newConfig.HTTP.Auth.HTPasswd
-		c.HTTP.Auth.LDAP = newConfig.HTTP.Auth.LDAP
-	}
-
-	// Update storage config
+	// Update storage configuration
 	c.Storage.GC = newConfig.Storage.GC
 	c.Storage.Dedupe = newConfig.Storage.Dedupe
 	c.Storage.GCDelay = newConfig.Storage.GCDelay
 	c.Storage.GCInterval = newConfig.Storage.GCInterval
 
-	// Only if we have a metaDB already in place
+	// Only update retention if we have a metaDB already in place
 	if c.isRetentionEnabledInternal() {
 		c.Storage.Retention = newConfig.Storage.Retention
 	}
 
-	// Update subpaths
+	// Update storage subpaths configuration
 	for subPath, storageConfig := range newConfig.Storage.SubPaths {
 		subPathConfig, ok := c.Storage.SubPaths[subPath]
-		if ok {
-			subPathConfig.GC = storageConfig.GC
-			subPathConfig.Dedupe = storageConfig.Dedupe
-			subPathConfig.GCDelay = storageConfig.GCDelay
-			subPathConfig.GCInterval = storageConfig.GCInterval
-			// only if we have a metaDB already in place
-			if c.isRetentionEnabledInternal() {
-				subPathConfig.Retention = storageConfig.Retention
-			}
-			c.Storage.SubPaths[subPath] = subPathConfig
+		if !ok {
+			continue
 		}
+
+		subPathConfig.GC = storageConfig.GC
+		subPathConfig.Dedupe = storageConfig.Dedupe
+		subPathConfig.GCDelay = storageConfig.GCDelay
+		subPathConfig.GCInterval = storageConfig.GCInterval
+
+		// Only update retention if we have a metaDB already in place
+		if c.isRetentionEnabledInternal() {
+			subPathConfig.Retention = storageConfig.Retention
+		}
+
+		c.Storage.SubPaths[subPath] = subPathConfig
 	}
 
-	// Initialize ExtensionConfig if needed while holding the main lock
-	if newConfig.Extensions != nil && c.Extensions == nil {
-		c.Extensions = &extconf.ExtensionConfig{}
+	// Update authentication configuration
+	if c.HTTP.Auth != nil {
+		c.HTTP.Auth.HTPasswd = newConfig.HTTP.Auth.HTPasswd
+		c.HTTP.Auth.LDAP = newConfig.HTTP.Auth.LDAP
+		c.HTTP.Auth.APIKey = newConfig.HTTP.Auth.APIKey
+		c.HTTP.Auth.OpenID = newConfig.HTTP.Auth.OpenID
 	}
 
-	// Set ExtensionConfig to nil if new config doesn't have it
-	if newConfig.Extensions == nil {
-		c.Extensions = nil
-	}
-
-	// Initialize AccessControlConfig if needed while holding the main lock
+	// Initialize and update AccessControlConfig
 	if newConfig.HTTP.AccessControl != nil && c.HTTP.AccessControl == nil {
 		c.HTTP.AccessControl = &AccessControlConfig{}
+		c.HTTP.AccessControl.SetMutex(c.GetMutex())
 	}
 
-	// Set AccessControlConfig to nil if new config doesn't have it
 	if newConfig.HTTP.AccessControl == nil {
 		c.HTTP.AccessControl = nil
+	} else {
+		// Update AccessControlConfig fields directly
+		c.HTTP.AccessControl.Repositories = newConfig.HTTP.AccessControl.Repositories
+		c.HTTP.AccessControl.AdminPolicy = newConfig.HTTP.AccessControl.AdminPolicy
+		c.HTTP.AccessControl.Metrics = newConfig.HTTP.AccessControl.Metrics
+		c.HTTP.AccessControl.Groups = newConfig.HTTP.AccessControl.Groups
 	}
 
-	c.mu.Unlock() // Release the main lock before calling setter methods
-
-	// Now update AccessControlConfig using its own thread-safe methods
-	if newConfig.HTTP.AccessControl != nil {
-		c.HTTP.AccessControl.SetRepositories(newRepositories)
-		c.HTTP.AccessControl.SetAdminPolicy(newAdminPolicy)
-		c.HTTP.AccessControl.SetMetrics(newMetrics)
-		c.HTTP.AccessControl.SetGroups(newGroups)
+	// Initialize and update ExtensionConfig
+	if newConfig.Extensions != nil && c.Extensions == nil {
+		c.Extensions = &extconf.ExtensionConfig{}
+		c.Extensions.SetMutex(c.GetMutex())
 	}
 
-	// Now update ExtensionConfig using its own thread-safe methods
-	if newConfig.Extensions != nil && c.Extensions != nil {
-		// reload sync extension
-		if newSyncConfig != nil {
-			c.Extensions.SetSyncConfig(newSyncConfig)
-		} else {
-			// Remove sync extension if not present in new config
-			c.Extensions.SetSyncConfig(nil)
-		}
+	if newConfig.Extensions == nil {
+		c.Extensions = nil
+	} else if c.Extensions != nil {
+		// Update sync extension
+		c.Extensions.Sync = newConfig.Extensions.Sync
 
-		// reload only if search is enabled and reloaded config has search extension
-		if c.isSearchEnabledInternal() && newSearchCVEConfig != nil {
-			c.Extensions.SetSearchCVEConfig(newSearchCVEConfig)
+		// Update search extension
+		if newConfig.Extensions.Search != nil && newConfig.Extensions.Search.CVE != nil {
+			// Only update if search is enabled
+			if c.isSearchEnabledInternal() {
+				if c.Extensions.Search != nil {
+					c.Extensions.Search.CVE = newConfig.Extensions.Search.CVE
+				}
+			}
 		} else {
 			// Remove search CVE config if not present in new config
-			c.Extensions.SetSearchCVEConfig(nil)
+			if c.Extensions.Search != nil {
+				c.Extensions.Search.CVE = nil
+			}
 		}
 
-		// reload scrub extension
-		if newScrubConfig != nil {
-			c.Extensions.SetScrubConfig(newScrubConfig)
-		} else {
-			// Remove scrub extension if not present in new config
-			c.Extensions.SetScrubConfig(nil)
-		}
+		// Update scrub extension
+		c.Extensions.Scrub = newConfig.Extensions.Scrub
 	}
 }
 
@@ -873,17 +847,22 @@ func (c *Config) GetAuthConfig() *AuthConfig {
 }
 
 // GetAccessControlConfig returns the access control config if it exists
-// The returned AccessControlConfig has its own mutex for thread-safety.
+// The returned AccessControlConfig shares the parent Config's mutex for thread-safety.
 func (c *Config) GetAccessControlConfig() *AccessControlConfig {
 	if c == nil {
 		return nil
 	}
 
-	c.mu.RLock()
-	defer c.mu.RUnlock()
+	c.mu.Lock()
+	defer c.mu.Unlock()
 
 	if c.HTTP.AccessControl == nil {
 		return nil
+	}
+
+	// Ensure the mutex reference is set (thread-safe check)
+	if !c.HTTP.AccessControl.IsMutexSet() {
+		c.HTTP.AccessControl.SetMutex(c.GetMutex())
 	}
 
 	return c.HTTP.AccessControl
@@ -920,17 +899,22 @@ func (c *Config) GetStorageConfig() GlobalStorageConfig {
 }
 
 // GetExtensionsConfig returns the extensions config if it exists.
-// The returned ExtensionConfig has its own mutex for thread-safety.
+// The returned ExtensionConfig shares the parent Config's mutex for thread-safety.
 func (c *Config) GetExtensionsConfig() *extconf.ExtensionConfig {
 	if c == nil {
 		return nil
 	}
 
-	c.mu.RLock()
-	defer c.mu.RUnlock()
+	c.mu.Lock()
+	defer c.mu.Unlock()
 
 	if c.Extensions == nil {
 		return nil
+	}
+
+	// Ensure the mutex reference is set (thread-safe check)
+	if !c.Extensions.IsMutexSet() {
+		c.Extensions.SetMutex(c.GetMutex())
 	}
 
 	return c.Extensions
@@ -1072,6 +1056,15 @@ func (c *Config) IsCompatEnabled() bool {
 	defer c.mu.RUnlock()
 
 	return len(c.HTTP.Compat) > 0
+}
+
+// GetMutex returns a reference to the Config's mutex.
+func (c *Config) GetMutex() *sync.RWMutex {
+	if c != nil {
+		return &c.mu
+	}
+
+	return nil
 }
 
 // =============================================================================

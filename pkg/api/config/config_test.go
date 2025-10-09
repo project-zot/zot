@@ -1,6 +1,7 @@
 package config_test
 
 import (
+	"sync"
 	"testing"
 	"time"
 
@@ -12,6 +13,15 @@ import (
 	eventsconf "zotregistry.dev/zot/pkg/extensions/config/events"
 	syncconf "zotregistry.dev/zot/pkg/extensions/config/sync"
 )
+
+// newAccessControlConfigForTest creates an AccessControlConfig with a mock mutex for testing.
+func newAccessControlConfigForTest() *config.AccessControlConfig {
+	mockMutex := &sync.RWMutex{}
+	acc := &config.AccessControlConfig{}
+	acc.SetMutex(mockMutex)
+
+	return acc
+}
 
 func TestConfig(t *testing.T) {
 	Convey("Test config utils", t, func() {
@@ -416,11 +426,10 @@ func TestConfig(t *testing.T) {
 		})
 
 		Convey("When accessControlConfig has admin policies", func() {
-			accessControlConfig := &config.AccessControlConfig{
-				AdminPolicy: config.Policy{
-					Actions: []string{"read"},
-					Users:   []string{"admin"},
-				},
+			accessControlConfig := newAccessControlConfigForTest()
+			accessControlConfig.AdminPolicy = config.Policy{
+				Actions: []string{"read"},
+				Users:   []string{"admin"},
 			}
 
 			result := accessControlConfig.ContainsOnlyAnonymousPolicy()
@@ -428,11 +437,10 @@ func TestConfig(t *testing.T) {
 		})
 
 		Convey("When accessControlConfig has only anonymous policies", func() {
-			accessControlConfig := &config.AccessControlConfig{
-				Repositories: config.Repositories{
-					"repo1": config.PolicyGroup{
-						AnonymousPolicy: []string{"read"},
-					},
+			accessControlConfig := newAccessControlConfigForTest()
+			accessControlConfig.Repositories = config.Repositories{
+				"repo1": config.PolicyGroup{
+					AnonymousPolicy: []string{"read"},
 				},
 			}
 
@@ -441,11 +449,10 @@ func TestConfig(t *testing.T) {
 		})
 
 		Convey("When accessControlConfig has default policies", func() {
-			accessControlConfig := &config.AccessControlConfig{
-				Repositories: config.Repositories{
-					"repo1": config.PolicyGroup{
-						DefaultPolicy: []string{"read"},
-					},
+			accessControlConfig := newAccessControlConfigForTest()
+			accessControlConfig.Repositories = config.Repositories{
+				"repo1": config.PolicyGroup{
+					DefaultPolicy: []string{"read"},
 				},
 			}
 
@@ -454,14 +461,13 @@ func TestConfig(t *testing.T) {
 		})
 
 		Convey("When accessControlConfig has non-empty repository policies", func() {
-			accessControlConfig := &config.AccessControlConfig{
-				Repositories: config.Repositories{
-					"repo1": config.PolicyGroup{
-						Policies: []config.Policy{
-							{
-								Actions: []string{"read"},
-								Users:   []string{"user1"},
-							},
+			accessControlConfig := newAccessControlConfigForTest()
+			accessControlConfig.Repositories = config.Repositories{
+				"repo1": config.PolicyGroup{
+					Policies: []config.Policy{
+						{
+							Actions: []string{"read"},
+							Users:   []string{"user1"},
 						},
 					},
 				},
@@ -472,28 +478,26 @@ func TestConfig(t *testing.T) {
 		})
 
 		Convey("When accessControlConfig has empty admin policy and no repositories", func() {
-			accessControlConfig := &config.AccessControlConfig{
-				AdminPolicy: config.Policy{
-					Actions: []string{},
-					Users:   []string{},
-				},
-				Repositories: config.Repositories{},
+			accessControlConfig := newAccessControlConfigForTest()
+			accessControlConfig.AdminPolicy = config.Policy{
+				Actions: []string{},
+				Users:   []string{},
 			}
+			accessControlConfig.Repositories = config.Repositories{}
 
 			result := accessControlConfig.ContainsOnlyAnonymousPolicy()
 			So(result, ShouldBeFalse)
 		})
 
 		Convey("When accessControlConfig has empty policies in repository", func() {
-			accessControlConfig := &config.AccessControlConfig{
-				Repositories: config.Repositories{
-					"repo1": config.PolicyGroup{
-						AnonymousPolicy: []string{"read"},
-						Policies: []config.Policy{
-							{
-								Actions: []string{},
-								Users:   []string{},
-							},
+			accessControlConfig := newAccessControlConfigForTest()
+			accessControlConfig.Repositories = config.Repositories{
+				"repo1": config.PolicyGroup{
+					AnonymousPolicy: []string{"read"},
+					Policies: []config.Policy{
+						{
+							Actions: []string{},
+							Users:   []string{},
 						},
 					},
 				},
@@ -767,32 +771,30 @@ func TestConfig(t *testing.T) {
 			So(accessControlConfig.AnonymousPolicyExists(), ShouldBeFalse)
 
 			// Test with AccessControlConfig but no repositories
-			accessControlConfig = &config.AccessControlConfig{}
+			accessControlConfig = newAccessControlConfigForTest()
 			So(accessControlConfig.AnonymousPolicyExists(), ShouldBeFalse)
 
 			// Test with AccessControlConfig and repository with anonymous policy
-			accessControlConfig = &config.AccessControlConfig{
-				Repositories: config.Repositories{
-					"repo1": config.PolicyGroup{
-						AnonymousPolicy: []string{"read"},
-					},
+			accessControlConfig = newAccessControlConfigForTest()
+			accessControlConfig.Repositories = config.Repositories{
+				"repo1": config.PolicyGroup{
+					AnonymousPolicy: []string{"read"},
 				},
 			}
 			So(accessControlConfig.AnonymousPolicyExists(), ShouldBeTrue)
 
 			// Test with AccessControlConfig and repository without anonymous policy
-			accessControlConfig = &config.AccessControlConfig{
-				Repositories: config.Repositories{
-					"repo1": config.PolicyGroup{
-						DefaultPolicy: []string{"read"},
-					},
+			accessControlConfig = newAccessControlConfigForTest()
+			accessControlConfig.Repositories = config.Repositories{
+				"repo1": config.PolicyGroup{
+					DefaultPolicy: []string{"read"},
 				},
 			}
 			So(accessControlConfig.AnonymousPolicyExists(), ShouldBeFalse)
 		})
 
 		Convey("Test SetRepositories()", func() {
-			accessControlConfig := &config.AccessControlConfig{}
+			accessControlConfig := newAccessControlConfigForTest()
 			repositories := config.Repositories{
 				"repo1": config.PolicyGroup{
 					AnonymousPolicy: []string{"read"},
@@ -803,7 +805,7 @@ func TestConfig(t *testing.T) {
 		})
 
 		Convey("Test SetAdminPolicy()", func() {
-			accessControlConfig := &config.AccessControlConfig{}
+			accessControlConfig := newAccessControlConfigForTest()
 			adminPolicy := config.Policy{
 				Actions: []string{"read", "write"},
 				Users:   []string{"admin"},
@@ -813,7 +815,7 @@ func TestConfig(t *testing.T) {
 		})
 
 		Convey("Test SetMetrics()", func() {
-			accessControlConfig := &config.AccessControlConfig{}
+			accessControlConfig := newAccessControlConfigForTest()
 			metrics := config.Metrics{
 				Users: []string{"metrics-user"},
 			}
@@ -822,7 +824,7 @@ func TestConfig(t *testing.T) {
 		})
 
 		Convey("Test SetGroups()", func() {
-			accessControlConfig := &config.AccessControlConfig{}
+			accessControlConfig := newAccessControlConfigForTest()
 			groups := config.Groups{
 				"developers": config.Group{
 					Users: []string{"dev1", "dev2"},
@@ -838,9 +840,8 @@ func TestConfig(t *testing.T) {
 					AnonymousPolicy: []string{"read"},
 				},
 			}
-			accessControlConfig := &config.AccessControlConfig{
-				Repositories: repositories,
-			}
+			accessControlConfig := newAccessControlConfigForTest()
+			accessControlConfig.Repositories = repositories
 			So(accessControlConfig.GetRepositories(), ShouldResemble, repositories)
 		})
 
@@ -849,9 +850,8 @@ func TestConfig(t *testing.T) {
 				Actions: []string{"read", "write"},
 				Users:   []string{"admin"},
 			}
-			accessControlConfig := &config.AccessControlConfig{
-				AdminPolicy: adminPolicy,
-			}
+			accessControlConfig := newAccessControlConfigForTest()
+			accessControlConfig.AdminPolicy = adminPolicy
 			So(accessControlConfig.GetAdminPolicy(), ShouldResemble, adminPolicy)
 		})
 
@@ -859,9 +859,8 @@ func TestConfig(t *testing.T) {
 			metrics := config.Metrics{
 				Users: []string{"metrics-user"},
 			}
-			accessControlConfig := &config.AccessControlConfig{
-				Metrics: metrics,
-			}
+			accessControlConfig := newAccessControlConfigForTest()
+			accessControlConfig.Metrics = metrics
 			So(accessControlConfig.GetMetrics(), ShouldResemble, metrics)
 		})
 
@@ -871,9 +870,8 @@ func TestConfig(t *testing.T) {
 					Users: []string{"dev1", "dev2"},
 				},
 			}
-			accessControlConfig := &config.AccessControlConfig{
-				Groups: groups,
-			}
+			accessControlConfig := newAccessControlConfigForTest()
+			accessControlConfig.Groups = groups
 			So(accessControlConfig.GetGroups(), ShouldResemble, groups)
 		})
 	})
@@ -964,7 +962,7 @@ func TestConfig(t *testing.T) {
 				So(authConfig.IsAPIKeyEnabled(), ShouldBeFalse)
 
 				// Create new config with updated AuthConfig
-				// Note: UpdateReloadableConfig only updates HTPasswd and LDAP fields
+				// Note: UpdateReloadableConfig updates HTPasswd, LDAP, APIKey, and OpenID fields
 				newConfig := &config.Config{
 					HTTP: config.HTTPConfig{
 						Auth: &config.AuthConfig{
@@ -972,7 +970,7 @@ func TestConfig(t *testing.T) {
 							HTPasswd: config.AuthHTPasswd{
 								Path: "/etc/updated-htpasswd", // This field IS updated by UpdateReloadableConfig
 							},
-							APIKey: true, // This field is NOT updated by UpdateReloadableConfig
+							APIKey: true, // This field IS updated by UpdateReloadableConfig
 						},
 					},
 				}
@@ -992,8 +990,8 @@ func TestConfig(t *testing.T) {
 				// Should remain unchanged (not updated by UpdateReloadableConfig)
 				So(newAuthConfig.GetFailDelay(), ShouldEqual, 5)
 				So(newAuthConfig.IsHtpasswdAuthEnabled(), ShouldBeTrue) // Should be updated (new path)
-				// Should remain unchanged (not updated by UpdateReloadableConfig)
-				So(newAuthConfig.IsAPIKeyEnabled(), ShouldBeFalse)
+				// Should be updated by UpdateReloadableConfig
+				So(newAuthConfig.IsAPIKeyEnabled(), ShouldBeTrue)
 			})
 
 			Convey("Test that returned AuthConfig is isolated when config is set to nil", func() {
@@ -1034,13 +1032,13 @@ func TestConfig(t *testing.T) {
 
 		Convey("Test GetAccessControlConfig()", func() {
 			Convey("Test with non-nil AccessControl", func() {
+				testAccessControlConfig := newAccessControlConfigForTest()
+				testAccessControlConfig.AdminPolicy = config.Policy{
+					Actions: []string{"read"},
+				}
 				cfg := &config.Config{
 					HTTP: config.HTTPConfig{
-						AccessControl: &config.AccessControlConfig{
-							AdminPolicy: config.Policy{
-								Actions: []string{"read"},
-							},
-						},
+						AccessControl: testAccessControlConfig,
 					},
 				}
 				accessControlConfig := cfg.GetAccessControlConfig()
@@ -1332,22 +1330,22 @@ func TestConfig(t *testing.T) {
 		})
 
 		Convey("Test with AccessControl update", func() {
+			cfgAccessControl := newAccessControlConfigForTest()
+			cfgAccessControl.AdminPolicy = config.Policy{
+				Actions: []string{"read"},
+			}
 			cfg := &config.Config{
 				HTTP: config.HTTPConfig{
-					AccessControl: &config.AccessControlConfig{
-						AdminPolicy: config.Policy{
-							Actions: []string{"read"},
-						},
-					},
+					AccessControl: cfgAccessControl,
 				},
+			}
+			newConfigAccessControl := newAccessControlConfigForTest()
+			newConfigAccessControl.AdminPolicy = config.Policy{
+				Actions: []string{"read", "write"},
 			}
 			newConfig := &config.Config{
 				HTTP: config.HTTPConfig{
-					AccessControl: &config.AccessControlConfig{
-						AdminPolicy: config.Policy{
-							Actions: []string{"read", "write"},
-						},
-					},
+					AccessControl: newConfigAccessControl,
 				},
 			}
 			cfg.UpdateReloadableConfig(newConfig)
@@ -1793,14 +1791,14 @@ func TestConfig(t *testing.T) {
 
 		Convey("Test that old AccessControlConfig reference works when new config has nil AccessControlConfig", func() {
 			// Create initial config with AccessControlConfig
+			testAccessControlConfig := newAccessControlConfigForTest()
+			testAccessControlConfig.AdminPolicy = config.Policy{
+				Actions: []string{"read"},
+				Users:   []string{"admin"},
+			}
 			cfg := &config.Config{
 				HTTP: config.HTTPConfig{
-					AccessControl: &config.AccessControlConfig{
-						AdminPolicy: config.Policy{
-							Actions: []string{"read"},
-							Users:   []string{"admin"},
-						},
-					},
+					AccessControl: testAccessControlConfig,
 				},
 			}
 

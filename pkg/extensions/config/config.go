@@ -14,7 +14,7 @@ type BaseConfig struct {
 }
 
 type ExtensionConfig struct {
-	mu      gosync.RWMutex
+	mu      *gosync.RWMutex `json:"-"` // Reference to parent Config's mutex (excluded from JSON)
 	Search  *SearchConfig
 	Sync    *sync.Config
 	Metrics *MetricsConfig
@@ -25,6 +25,18 @@ type ExtensionConfig struct {
 	APIKey  *APIKeyConfig
 	Trust   *ImageTrustConfig
 	Events  *events.Config
+}
+
+// SetMutex sets the mutex reference for this ExtensionConfig.
+func (e *ExtensionConfig) SetMutex(mu *gosync.RWMutex) {
+	if e != nil {
+		e.mu = mu
+	}
+}
+
+// IsMutexSet checks if the mutex reference is set for this ExtensionConfig.
+func (e *ExtensionConfig) IsMutexSet() bool {
+	return e != nil && e.mu != nil
 }
 
 type ImageTrustConfig struct {
@@ -100,7 +112,7 @@ func (e *ExtensionConfig) isUIEnabledInternal() bool {
 
 // IsCveScanningEnabled checks if CVE scanning is enabled in this extensions config.
 func (e *ExtensionConfig) IsCveScanningEnabled() bool {
-	if e == nil {
+	if e == nil || e.mu == nil {
 		return false
 	}
 
@@ -113,7 +125,7 @@ func (e *ExtensionConfig) IsCveScanningEnabled() bool {
 
 // IsEventRecorderEnabled checks if event recording is enabled in this extensions config.
 func (e *ExtensionConfig) IsEventRecorderEnabled() bool {
-	if e == nil {
+	if e == nil || e.mu == nil {
 		return false
 	}
 
@@ -125,7 +137,7 @@ func (e *ExtensionConfig) IsEventRecorderEnabled() bool {
 
 // IsSearchEnabled checks if search is enabled in this extensions config.
 func (e *ExtensionConfig) IsSearchEnabled() bool {
-	if e == nil {
+	if e == nil || e.mu == nil {
 		return false
 	}
 
@@ -137,7 +149,7 @@ func (e *ExtensionConfig) IsSearchEnabled() bool {
 
 // IsSyncEnabled checks if sync is enabled in this extensions config.
 func (e *ExtensionConfig) IsSyncEnabled() bool {
-	if e == nil {
+	if e == nil || e.mu == nil {
 		return false
 	}
 
@@ -153,7 +165,7 @@ func (e *ExtensionConfig) IsSyncEnabled() bool {
 
 // IsScrubEnabled checks if scrub is enabled in this extensions config.
 func (e *ExtensionConfig) IsScrubEnabled() bool {
-	if e == nil {
+	if e == nil || e.mu == nil {
 		return false
 	}
 
@@ -165,7 +177,7 @@ func (e *ExtensionConfig) IsScrubEnabled() bool {
 
 // IsMetricsEnabled checks if metrics are enabled in this extensions config.
 func (e *ExtensionConfig) IsMetricsEnabled() bool {
-	if e == nil {
+	if e == nil || e.mu == nil {
 		return false
 	}
 
@@ -177,7 +189,7 @@ func (e *ExtensionConfig) IsMetricsEnabled() bool {
 
 // IsCosignEnabled checks if Cosign is enabled in this extensions config.
 func (e *ExtensionConfig) IsCosignEnabled() bool {
-	if e == nil {
+	if e == nil || e.mu == nil {
 		return false
 	}
 
@@ -189,7 +201,7 @@ func (e *ExtensionConfig) IsCosignEnabled() bool {
 
 // IsNotationEnabled checks if Notation is enabled in this extensions config.
 func (e *ExtensionConfig) IsNotationEnabled() bool {
-	if e == nil {
+	if e == nil || e.mu == nil {
 		return false
 	}
 
@@ -201,7 +213,7 @@ func (e *ExtensionConfig) IsNotationEnabled() bool {
 
 // IsImageTrustEnabled checks if image trust is enabled in this extensions config.
 func (e *ExtensionConfig) IsImageTrustEnabled() bool {
-	if e == nil {
+	if e == nil || e.mu == nil {
 		return false
 	}
 
@@ -213,7 +225,7 @@ func (e *ExtensionConfig) IsImageTrustEnabled() bool {
 
 // IsUIEnabled checks if UI is enabled in this extensions config.
 func (e *ExtensionConfig) IsUIEnabled() bool {
-	if e == nil {
+	if e == nil || e.mu == nil {
 		return false
 	}
 
@@ -225,7 +237,7 @@ func (e *ExtensionConfig) IsUIEnabled() bool {
 
 // AreUserPrefsEnabled checks if user preferences are enabled in this extensions config.
 func (e *ExtensionConfig) AreUserPrefsEnabled() bool {
-	if e == nil {
+	if e == nil || e.mu == nil {
 		return false
 	}
 
@@ -241,7 +253,7 @@ func (e *ExtensionConfig) AreUserPrefsEnabled() bool {
 
 // SetMetricsPrometheusPath safely sets the Prometheus path.
 func (e *ExtensionConfig) SetMetricsPrometheusPath(path string) {
-	if e == nil {
+	if e == nil || e.mu == nil {
 		return
 	}
 
@@ -255,7 +267,7 @@ func (e *ExtensionConfig) SetMetricsPrometheusPath(path string) {
 
 // SetSyncConfig safely sets the sync config.
 func (e *ExtensionConfig) SetSyncConfig(syncConfig *sync.Config) {
-	if e == nil {
+	if e == nil || e.mu == nil {
 		return
 	}
 
@@ -267,7 +279,7 @@ func (e *ExtensionConfig) SetSyncConfig(syncConfig *sync.Config) {
 
 // SetSearchCVEConfig safely sets the search CVE config.
 func (e *ExtensionConfig) SetSearchCVEConfig(cveConfig *CVEConfig) {
-	if e == nil {
+	if e == nil || e.mu == nil {
 		return
 	}
 
@@ -281,7 +293,7 @@ func (e *ExtensionConfig) SetSearchCVEConfig(cveConfig *CVEConfig) {
 
 // SetScrubConfig safely sets the scrub config.
 func (e *ExtensionConfig) SetScrubConfig(scrubConfig *ScrubConfig) {
-	if e == nil {
+	if e == nil || e.mu == nil {
 		return
 	}
 
@@ -289,4 +301,80 @@ func (e *ExtensionConfig) SetScrubConfig(scrubConfig *ScrubConfig) {
 	defer e.mu.Unlock()
 
 	e.Scrub = scrubConfig
+}
+
+// =============================================================================
+// THREAD-SAFE GETTER METHODS
+// =============================================================================
+
+// GetSearchCVEConfig safely returns the search CVE config.
+func (e *ExtensionConfig) GetSearchCVEConfig() *CVEConfig {
+	if e == nil || e.mu == nil {
+		return nil
+	}
+
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+
+	if e.Search != nil {
+		return e.Search.CVE
+	}
+
+	return nil
+}
+
+// GetScrubInterval safely returns the scrub interval.
+func (e *ExtensionConfig) GetScrubInterval() time.Duration {
+	if e == nil || e.mu == nil {
+		return 0
+	}
+
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+
+	if e.Scrub != nil {
+		return e.Scrub.Interval
+	}
+
+	return 0
+}
+
+// GetSyncConfig safely returns the sync config.
+func (e *ExtensionConfig) GetSyncConfig() *sync.Config {
+	if e == nil || e.mu == nil {
+		return nil
+	}
+
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+
+	return e.Sync
+}
+
+// GetMetricsPrometheusConfig safely returns the metrics prometheus config.
+func (e *ExtensionConfig) GetMetricsPrometheusConfig() *PrometheusConfig {
+	if e == nil || e.mu == nil {
+		return nil
+	}
+
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+
+	if e.Metrics != nil {
+		return e.Metrics.Prometheus
+	}
+
+	return nil
+}
+
+// GetEventsConfig safely returns the events config.
+func (e *ExtensionConfig) GetEventsConfig() *events.Config {
+	if e == nil || e.mu == nil {
+		return nil
+	}
+
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+
+	return e.Events
 }

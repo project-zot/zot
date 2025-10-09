@@ -39,8 +39,9 @@ func GetCveScanner(conf *config.Config, storeController storage.StoreController,
 		return nil
 	}
 
-	dbRepository := extensionsConfig.Search.CVE.Trivy.DBRepository
-	javaDBRepository := extensionsConfig.Search.CVE.Trivy.JavaDBRepository
+	cveConfig := extensionsConfig.GetSearchCVEConfig()
+	dbRepository := cveConfig.Trivy.DBRepository
+	javaDBRepository := cveConfig.Trivy.JavaDBRepository
 
 	return cveinfo.NewScanner(storeController, metaDB, dbRepository, javaDBRepository, log)
 }
@@ -51,7 +52,8 @@ func EnableSearchExtension(conf *config.Config, storeController storage.StoreCon
 	// Get extensions config safely
 	extensionsConfig := conf.GetExtensionsConfig()
 	if extensionsConfig.IsCveScanningEnabled() {
-		updateInterval := extensionsConfig.Search.CVE.UpdateInterval
+		cveConfig := extensionsConfig.GetSearchCVEConfig()
+		updateInterval := cveConfig.UpdateInterval
 
 		downloadTrivyDB(updateInterval, taskScheduler, cveScanner, log)
 		startScanner(scanInterval, metaDB, taskScheduler, cveScanner, log)

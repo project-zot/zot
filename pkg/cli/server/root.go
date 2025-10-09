@@ -964,6 +964,16 @@ func LoadConfiguration(config *config.Config, configPath string) error {
 	// defaults
 	applyDefaultValues(config, viperInstance, log)
 
+	// Ensure AccessControlConfig has the correct mutex reference
+	if config.HTTP.AccessControl != nil {
+		config.HTTP.AccessControl.SetMutex(config.GetMutex())
+	}
+
+	// Ensure ExtensionConfig has the correct mutex reference
+	if config.Extensions != nil {
+		config.Extensions.SetMutex(config.GetMutex())
+	}
+
 	// various config checks
 	if err := validateConfiguration(config, log); err != nil {
 		return err
