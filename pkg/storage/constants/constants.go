@@ -22,7 +22,6 @@ const (
 	RedisDriverName         = "redis"
 	RedisLocksBucket        = "locks"
 	DefaultGCDelay          = 1 * time.Hour
-	DefaultRetentionDelay   = 24 * time.Hour
 	DefaultGCInterval       = 1 * time.Hour
 	S3StorageDriverName     = "s3"
 	LocalStorageDriverName  = "local"

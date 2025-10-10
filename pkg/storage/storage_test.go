@@ -48,7 +48,7 @@ import (
 var trueVal bool = true //nolint: gochecknoglobals
 
 var DeleteReferrers = config.ImageRetention{ //nolint: gochecknoglobals
-	Delay: storageConstants.DefaultRetentionDelay,
+	Delay: storageConstants.DefaultGCDelay,
 	Policies: []config.RetentionPolicy{
 		{
 			Repositories:    []string{"**"},
@@ -1812,7 +1812,7 @@ func TestGarbageCollectImageManifest(t *testing.T) {
 					gc := gc.NewGarbageCollect(imgStore, mocks.MetaDBMock{}, gc.Options{
 						Delay: storageConstants.DefaultGCDelay,
 						ImageRetention: config.ImageRetention{
-							Delay: storageConstants.DefaultRetentionDelay,
+							Delay: storageConstants.DefaultGCDelay,
 							Policies: []config.RetentionPolicy{
 								{
 									Repositories:    []string{"**"},
