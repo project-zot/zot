@@ -14,10 +14,12 @@ import (
 	"time"
 
 	godigest "github.com/opencontainers/go-digest"
+	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/regclient/regclient"
 	"github.com/regclient/regclient/config"
 	"github.com/regclient/regclient/mod"
 	"github.com/regclient/regclient/scheme/reg"
+	"github.com/regclient/regclient/types/manifest"
 	"github.com/regclient/regclient/types/ref"
 
 	zerr "zotregistry.dev/zot/errors"
@@ -115,7 +117,7 @@ func New(
 
 	if len(tmpDir) == 0 {
 		// first it will sync in tmpDir then it will move everything into local ImageStore
-		service.destination = NewDestinationRegistry(storeController, storeController, metadb, log)
+		service.destination = NewDestinationRegistry(storeController, storeController, metadb, log, &service.config)
 	} else {
 		// first it will sync under /rootDir/reponame/.sync/ then it will move everything into local ImageStore
 		service.destination = NewDestinationRegistry(
@@ -125,6 +127,7 @@ func New(
 			},
 			metadb,
 			log,
+			&service.config,
 		)
 	}
 
@@ -447,6 +450,67 @@ func (service *BaseService) SyncRepo(ctx context.Context, repo string) error {
 	return nil
 }
 
+// shouldIncludePlatform determines if a platform should be included in the sync
+// based on the configured platforms
+func (service *BaseService) shouldIncludePlatform(platform *ispec.Platform) bool {
+	// Get platform specifications from the configuration
+	var platformSpecs []string
+
+	// Check if we have platform specifications
+	if len(service.config.Platforms) > 0 {
+		platformSpecs = service.config.Platforms
+	} else {
+		// If no platforms are configured, include all
+		return true
+	}
+
+	// If platform is nil, include it
+	if platform == nil || len(platformSpecs) == 0 {
+		return true
+	}
+
+	for _, spec := range platformSpecs {
+		parts := strings.Split(spec, "/")
+		if len(parts) == 2 {
+			// OS/Arch format
+			specOS := parts[0]
+			specArch := parts[1]
+
+			// Check if OS matches (if specified)
+			if specOS != "" && specOS != platform.OS {
+				continue
+			}
+
+			// Check if architecture matches
+			if specArch != "" && specArch != platform.Architecture {
+				continue
+			}
+		} else if len(parts) == 1 {
+			// Arch only format
+			if parts[0] != platform.Architecture {
+				continue
+			}
+		}
+
+		// If we got here, it's a match
+		return true
+	}
+
+	return false
+}
+
+// shouldIncludeArchitecture determines if an architecture should be included in the sync
+// DEPRECATED: Use shouldIncludePlatform instead
+func (service *BaseService) shouldIncludeArchitecture(arch string) bool {
+	// Create a platform with just the architecture field
+	platform := &ispec.Platform{
+		Architecture: arch,
+	}
+
+	// Use the platform-based filtering method
+	return service.shouldIncludePlatform(platform)
+}
+
 func (service *BaseService) syncRef(ctx context.Context, localRepo string, remoteImageRef, localImageRef ref.Ref,
 	remoteDigest godigest.Digest, recursive bool,
 ) error {
@@ -467,6 +531,17 @@ func (service *BaseService) syncRef(ctx context.Context, localRepo string, remot
 		copyOpts = append(copyOpts, regclient.ImageWithReferrers())
 	}
 
+	// In regclient v0.8.3, we don't need a special option for manifest lists
+	// The platform filtering is already handled in our custom code below
+
+	// Log platform filtering information
+	if len(service.config.Platforms) > 0 {
+		service.log.Info().
+			Strs("platforms", service.config.Platforms).
+			Str("image", remoteImageRef.CommonName()).
+			Msg("filtering platforms during sync")
+	}
+
 	// check if image is already synced
 	skipImage, err = service.destination.CanSkipImage(localRepo, reference, remoteDigest)
 	if err != nil {
@@ -479,11 +554,78 @@ func (service *BaseService) syncRef(ctx context.Context, localRepo string, remot
 		service.log.Info().Str("remote image", remoteImageRef.CommonName()).
 			Str("local image", fmt.Sprintf("%s:%s", localRepo, remoteImageRef.Tag)).Msg("syncing image")
 
-		err = service.rc.ImageCopy(ctx, remoteImageRef, localImageRef, copyOpts...)
-		if err != nil {
-			service.log.Error().Err(err).Str("errortype", common.TypeOf(err)).
-				Str("remote image", remoteImageRef.CommonName()).
-				Str("local image", fmt.Sprintf("%s:%s", localRepo, remoteImageRef.Tag)).Msg("failed to sync image")
+		// When platforms are specified, we need to filter the manifest list
+		if len(service.config.Platforms) > 0 {
+			// Get the manifest to check if it's a manifest list
+			man, err := service.rc.ManifestGet(ctx, remoteImageRef)
+			if err != nil {
+				service.log.Error().Err(err).Str("errortype", common.TypeOf(err)).
+					Str("remote image", remoteImageRef.CommonName()).
+					Msg("failed to get manifest for architecture filtering")
+				return err
+			}
+
+			// If it's a manifest list (multi-arch image), we need to filter architectures
+			_, isIndexer := man.(manifest.Indexer)
+			if isIndexer {
+				service.log.Info().
+					Str("remote image", remoteImageRef.CommonName()).
+					Msg("filtering platforms for multi-arch image")
+
+				// Use ImageCopy with the architecture filtering options
+				err = service.rc.ImageCopy(ctx, remoteImageRef, localImageRef, copyOpts...)
+				if err != nil {
+					service.log.Error().Err(err).Str("errortype", common.TypeOf(err)).
+						Str("remote image", remoteImageRef.CommonName()).
+						Str("local image", fmt.Sprintf("%s:%s", localRepo, remoteImageRef.Tag)).
+						Msg("failed to sync image")
+				}
+
+				// The architecture filtering will be applied during processing before the commit stage
+				// The actual filtering happens in the destination.CommitAll method
+			} else {
+				// It's a single-arch image, verify if we should include this platform
+				if man.GetDescriptor().Platform != nil {
+					// Convert platform to ispec.Platform for compatibility with regclient v0.8.3
+					platform := &ispec.Platform{
+						Architecture: man.GetDescriptor().Platform.Architecture,
+						OS:           man.GetDescriptor().Platform.OS,
+						OSVersion:    man.GetDescriptor().Platform.OSVersion,
+						OSFeatures:   man.GetDescriptor().Platform.OSFeatures,
+						Variant:      man.GetDescriptor().Platform.Variant,
+					}
+					if !service.shouldIncludePlatform(platform) {
+						platformDesc := platform.Architecture
+						if platform.OS != "" {
+							platformDesc = platform.OS + "/" + platform.Architecture
+						}
+
+						service.log.Info().
+							Str("remote image", remoteImageRef.CommonName()).
+							Str("platform", platformDesc).
+							Msg("skipping image with excluded platform")
+						return nil
+					}
+				}
+
+				// Single architecture image that should be included
+				err = service.rc.ImageCopy(ctx, remoteImageRef, localImageRef, copyOpts...)
+				if err != nil {
+					service.log.Error().Err(err).Str("errortype", common.TypeOf(err)).
+						Str("remote image", remoteImageRef.CommonName()).
+						Str("local image", fmt.Sprintf("%s:%s", localRepo, remoteImageRef.Tag)).
+						Msg("failed to sync image")
+				}
+			}
+		} else {
+			// No architecture filtering, standard behavior
+			err = service.rc.ImageCopy(ctx, remoteImageRef, localImageRef, copyOpts...)
+			if err != nil {
+				service.log.Error().Err(err).Str("errortype", common.TypeOf(err)).
+					Str("remote image", remoteImageRef.CommonName()).
+					Str("local image", fmt.Sprintf("%s:%s", localRepo, remoteImageRef.Tag)).
+					Msg("failed to sync image")
+			}
 		}
 
 		return err
