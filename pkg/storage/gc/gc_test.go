@@ -346,7 +346,7 @@ func TestGarbageCollectAndRetentionMetaDB(t *testing.T) {
 					gc := gc.NewGarbageCollect(imgStore, metaDB, gc.Options{
 						Delay: storageConstants.DefaultGCDelay,
 						ImageRetention: config.ImageRetention{
-							Delay: storageConstants.DefaultRetentionDelay,
+							Delay: storageConstants.DefaultGCDelay,
 							Policies: []config.RetentionPolicy{
 								{
 									Repositories:    []string{"**"},
@@ -765,7 +765,7 @@ func TestGarbageCollectAndRetentionMetaDB(t *testing.T) {
 					gc := gc.NewGarbageCollect(imgStore, metaDB, gc.Options{
 						Delay: storageConstants.DefaultGCDelay,
 						ImageRetention: config.ImageRetention{
-							Delay: storageConstants.DefaultRetentionDelay,
+							Delay: storageConstants.DefaultGCDelay,
 							Policies: []config.RetentionPolicy{
 								{
 									Repositories:    []string{"**"},
@@ -831,7 +831,7 @@ func TestGarbageCollectAndRetentionMetaDB(t *testing.T) {
 					gc := gc.NewGarbageCollect(imgStore, metaDB, gc.Options{
 						Delay: storageConstants.DefaultGCDelay,
 						ImageRetention: config.ImageRetention{
-							Delay: storageConstants.DefaultRetentionDelay,
+							Delay: storageConstants.DefaultGCDelay,
 							Policies: []config.RetentionPolicy{
 								{
 									Repositories:    []string{"**"},
@@ -894,7 +894,7 @@ func TestGarbageCollectAndRetentionMetaDB(t *testing.T) {
 					gc := gc.NewGarbageCollect(imgStore, metaDB, gc.Options{
 						Delay: storageConstants.DefaultGCDelay,
 						ImageRetention: config.ImageRetention{
-							Delay: storageConstants.DefaultRetentionDelay,
+							Delay: storageConstants.DefaultGCDelay,
 							Policies: []config.RetentionPolicy{
 								{
 									Repositories:    []string{"**"},
@@ -933,7 +933,7 @@ func TestGarbageCollectAndRetentionMetaDB(t *testing.T) {
 					gc := gc.NewGarbageCollect(imgStore, metaDB, gc.Options{
 						Delay: storageConstants.DefaultGCDelay,
 						ImageRetention: config.ImageRetention{
-							Delay: storageConstants.DefaultRetentionDelay,
+							Delay: storageConstants.DefaultGCDelay,
 							Policies: []config.RetentionPolicy{
 								{
 									Repositories:    []string{"**"},
@@ -971,7 +971,7 @@ func TestGarbageCollectAndRetentionMetaDB(t *testing.T) {
 					gc := gc.NewGarbageCollect(imgStore, metaDB, gc.Options{
 						Delay: storageConstants.DefaultGCDelay,
 						ImageRetention: config.ImageRetention{
-							Delay: storageConstants.DefaultRetentionDelay,
+							Delay: storageConstants.DefaultGCDelay,
 							Policies: []config.RetentionPolicy{
 								{
 									Repositories:    []string{"**"},
@@ -1009,7 +1009,7 @@ func TestGarbageCollectAndRetentionMetaDB(t *testing.T) {
 					gc := gc.NewGarbageCollect(imgStore, metaDB, gc.Options{
 						Delay: storageConstants.DefaultGCDelay,
 						ImageRetention: config.ImageRetention{
-							Delay: storageConstants.DefaultRetentionDelay,
+							Delay: storageConstants.DefaultGCDelay,
 							Policies: []config.RetentionPolicy{
 								{
 									Repositories:    []string{"**"},
@@ -1049,7 +1049,7 @@ func TestGarbageCollectAndRetentionMetaDB(t *testing.T) {
 					gc := gc.NewGarbageCollect(imgStore, metaDB, gc.Options{
 						Delay: storageConstants.DefaultGCDelay,
 						ImageRetention: config.ImageRetention{
-							Delay: storageConstants.DefaultRetentionDelay,
+							Delay: storageConstants.DefaultGCDelay,
 							Policies: []config.RetentionPolicy{
 								{
 									Repositories:    []string{"**"},
@@ -1134,7 +1134,7 @@ func TestGarbageCollectAndRetentionMetaDB(t *testing.T) {
 					gc := gc.NewGarbageCollect(imgStore, metaDB, gc.Options{
 						Delay: storageConstants.DefaultGCDelay,
 						ImageRetention: config.ImageRetention{
-							Delay: storageConstants.DefaultRetentionDelay,
+							Delay: storageConstants.DefaultGCDelay,
 							Policies: []config.RetentionPolicy{
 								{
 									Repositories:    []string{"**"},
@@ -1215,7 +1215,7 @@ func TestGarbageCollectAndRetentionMetaDB(t *testing.T) {
 					gc := gc.NewGarbageCollect(imgStore, metaDB, gc.Options{
 						Delay: gcDelay,
 						ImageRetention: config.ImageRetention{
-							Delay: storageConstants.DefaultRetentionDelay,
+							Delay: storageConstants.DefaultGCDelay,
 							Policies: []config.RetentionPolicy{
 								{
 									Repositories:    []string{"**"},
@@ -1935,7 +1935,7 @@ func TestGarbageCollectAndRetentionNoMetaDB(t *testing.T) {
 					gc := gc.NewGarbageCollect(imgStore, metaDB, gc.Options{
 						Delay: storageConstants.DefaultGCDelay,
 						ImageRetention: config.ImageRetention{
-							Delay: storageConstants.DefaultRetentionDelay,
+							Delay: storageConstants.DefaultGCDelay,
 							Policies: []config.RetentionPolicy{
 								{
 									Repositories:    []string{"**"},
@@ -2282,7 +2282,7 @@ func TestGarbageCollectAndRetentionNoMetaDB(t *testing.T) {
 					gc := gc.NewGarbageCollect(imgStore, metaDB, gc.Options{
 						Delay: storageConstants.DefaultGCDelay,
 						ImageRetention: config.ImageRetention{
-							Delay: storageConstants.DefaultRetentionDelay,
+							Delay: storageConstants.DefaultGCDelay,
 							Policies: []config.RetentionPolicy{
 								{
 									Repositories:    []string{"**"},
@@ -2342,7 +2342,7 @@ func TestGarbageCollectAndRetentionNoMetaDB(t *testing.T) {
 					gc := gc.NewGarbageCollect(imgStore, metaDB, gc.Options{
 						Delay: storageConstants.DefaultGCDelay,
 						ImageRetention: config.ImageRetention{
-							Delay: storageConstants.DefaultRetentionDelay,
+							Delay: storageConstants.DefaultGCDelay,
 							Policies: []config.RetentionPolicy{
 								{
 									Repositories:    []string{"**"},
@@ -2397,7 +2397,7 @@ func TestGarbageCollectAndRetentionNoMetaDB(t *testing.T) {
 					gc := gc.NewGarbageCollect(imgStore, metaDB, gc.Options{
 						Delay: storageConstants.DefaultGCDelay,
 						ImageRetention: config.ImageRetention{
-							Delay: storageConstants.DefaultRetentionDelay,
+							Delay: storageConstants.DefaultGCDelay,
 							Policies: []config.RetentionPolicy{
 								{
 									Repositories:    []string{"**"},
@@ -2434,7 +2434,7 @@ func TestGarbageCollectAndRetentionNoMetaDB(t *testing.T) {
 					gc := gc.NewGarbageCollect(imgStore, metaDB, gc.Options{
 						Delay: storageConstants.DefaultGCDelay,
 						ImageRetention: config.ImageRetention{
-							Delay: storageConstants.DefaultRetentionDelay,
+							Delay: storageConstants.DefaultGCDelay,
 							Policies: []config.RetentionPolicy{
 								{
 									Repositories:    []string{"**"},
@@ -2539,7 +2539,7 @@ func TestGarbageCollectAndRetentionNoMetaDB(t *testing.T) {
 					gc := gc.NewGarbageCollect(imgStore, metaDB, gc.Options{
 						Delay: gcDelay,
 						ImageRetention: config.ImageRetention{
-							Delay: storageConstants.DefaultRetentionDelay,
+							Delay: storageConstants.DefaultGCDelay,
 							Policies: []config.RetentionPolicy{
 								{
 									Repositories:    []string{"**"},

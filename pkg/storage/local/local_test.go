@@ -48,7 +48,7 @@ const (
 var trueVal bool = true //nolint: gochecknoglobals
 
 var DeleteReferrers = config.ImageRetention{ //nolint: gochecknoglobals
-	Delay: storageConstants.DefaultRetentionDelay,
+	Delay: storageConstants.DefaultGCDelay,
 	Policies: []config.RetentionPolicy{
 		{
 			Repositories:    []string{"**"},

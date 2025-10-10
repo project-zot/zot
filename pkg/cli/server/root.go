@@ -724,6 +724,10 @@ func applyDefaultValues(config *config.Config, viperInstance *viper.Viper, logge
 		if viperInstance.Get("storage::gcinterval") == nil {
 			config.Storage.GCInterval = 0
 		}
+	} else if !viperInstance.IsSet("storage::retention::delay") {
+		// if GC is enabled, retentionDelay is set to gcDelay by default
+		// it could be default gcDelay or the custom value set in the config file
+		config.Storage.Retention.Delay = config.Storage.GCDelay
 	}
 
 	// apply deleteUntagged default
@@ -802,7 +806,9 @@ func applyDefaultValues(config *config.Config, viperInstance *viper.Viper, logge
 
 			// and retentionDelay is not set, it is set to default value
 			if !viperInstance.IsSet("storage::subpaths::" + name + "::retention::delay") {
-				storageConfig.Retention.Delay = storageConstants.DefaultRetentionDelay
+				// retentionDelay is set to gcDelay by default
+				// it could be default gcDelay or the custom value set in the config file
+				storageConfig.Retention.Delay = storageConfig.GCDelay
 			}
 
 			// and gcInterval is not set, it is set to default value

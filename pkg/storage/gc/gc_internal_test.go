@@ -52,7 +52,7 @@ func TestGarbageCollectManifestErrors(t *testing.T) {
 		gc := NewGarbageCollect(imgStore, mocks.MetaDBMock{}, Options{
 			Delay: storageConstants.DefaultGCDelay,
 			ImageRetention: config.ImageRetention{
-				Delay: storageConstants.DefaultRetentionDelay,
+				Delay: storageConstants.DefaultGCDelay,
 				Policies: []config.RetentionPolicy{
 					{
 						Repositories:    []string{"**"},
@@ -176,7 +176,7 @@ func TestGarbageCollectIndexErrors(t *testing.T) {
 		gc := NewGarbageCollect(imgStore, mocks.MetaDBMock{}, Options{
 			Delay: storageConstants.DefaultGCDelay,
 			ImageRetention: config.ImageRetention{
-				Delay: storageConstants.DefaultRetentionDelay,
+				Delay: storageConstants.DefaultGCDelay,
 				Policies: []config.RetentionPolicy{
 					{
 						Repositories:    []string{"**"},
@@ -291,7 +291,7 @@ func TestGarbageCollectWithMockedImageStore(t *testing.T) {
 		gcOptions := Options{
 			Delay: storageConstants.DefaultGCDelay,
 			ImageRetention: config.ImageRetention{
-				Delay: storageConstants.DefaultRetentionDelay,
+				Delay: storageConstants.DefaultGCDelay,
 				Policies: []config.RetentionPolicy{
 					{
 						Repositories:    []string{"**"},
@@ -338,7 +338,7 @@ func TestGarbageCollectWithMockedImageStore(t *testing.T) {
 			gcOptions := Options{
 				Delay: storageConstants.DefaultGCDelay,
 				ImageRetention: config.ImageRetention{
-					Delay: storageConstants.DefaultRetentionDelay,
+					Delay: storageConstants.DefaultGCDelay,
 					Policies: []config.RetentionPolicy{
 						{
 							Repositories: []string{"**"},
@@ -366,7 +366,7 @@ func TestGarbageCollectWithMockedImageStore(t *testing.T) {
 			gcOptions := Options{
 				Delay: storageConstants.DefaultGCDelay,
 				ImageRetention: config.ImageRetention{
-					Delay: storageConstants.DefaultRetentionDelay,
+					Delay: storageConstants.DefaultGCDelay,
 					Policies: []config.RetentionPolicy{
 						{
 							Repositories: []string{"**"},

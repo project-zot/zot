@@ -657,7 +657,7 @@ storage:
 							"cve": {
 								"updateInterval": "2h"
 							}
-						},					
+						},
 						"ui": {
 							"enable": true
 						}
@@ -693,7 +693,7 @@ storage:
 							"cve": {
 								"updateInterval": "2h"
 							}
-						},					
+						},
 						"ui": {
 							"enable": true
 						}
@@ -2734,4 +2734,231 @@ func runCLIWithConfig(tempDir string, config string) (string, error) {
 	WaitTillServerReady(baseURL)
 
 	return logFile.Name(), nil
+}
+
+func TestRetentionDelayDefaults(t *testing.T) {
+	Convey("Test retention delay defaults to GC delay", t, func() {
+		Convey("When retention delay is not specified, it should default to GC delay", func() {
+			config := config.New()
+			tempDir := t.TempDir()
+
+			// Config with GC enabled but no retention delay specified
+			content := []byte(`{
+				"storage": {
+					"rootDirectory": "/tmp/zot",
+					"gc": true,
+					"gcDelay": "2h"
+				},
+				"http": {
+					"address": "127.0.0.1",
+					"port": "8080"
+				}
+			}`)
+			tmpfile := path.Join(tempDir, "config.json")
+			err := os.WriteFile(tmpfile, content, 0o0600)
+			So(err, ShouldBeNil)
+
+			err = cli.LoadConfiguration(config, tmpfile)
+			So(err, ShouldBeNil)
+
+			// Verify GC delay is set correctly
+			So(config.Storage.GCDelay, ShouldEqual, 2*time.Hour)
+			// Verify retention delay defaults to GC delay
+			So(config.Storage.Retention.Delay, ShouldEqual, 2*time.Hour)
+		})
+
+		Convey("When retention delay is explicitly specified, it should use that value", func() {
+			config := config.New()
+			tempDir := t.TempDir()
+
+			// Config with explicit retention delay
+			content := []byte(`{
+				"storage": {
+					"rootDirectory": "/tmp/zot",
+					"gc": true,
+					"gcDelay": "2h",
+					"retention": {
+						"delay": "3h"
+					}
+				},
+				"http": {
+					"address": "127.0.0.1",
+					"port": "8080"
+				}
+			}`)
+			tmpfile := path.Join(tempDir, "config.json")
+			err := os.WriteFile(tmpfile, content, 0o0600)
+			So(err, ShouldBeNil)
+
+			err = cli.LoadConfiguration(config, tmpfile)
+			So(err, ShouldBeNil)
+
+			// Verify GC delay is set correctly
+			So(config.Storage.GCDelay, ShouldEqual, 2*time.Hour)
+			// Verify retention delay uses explicit value
+			So(config.Storage.Retention.Delay, ShouldEqual, 3*time.Hour)
+		})
+
+		Convey("When GC is disabled, retention delay should be 0", func() {
+			config := config.New()
+			tempDir := t.TempDir()
+
+			// Config with GC disabled
+			content := []byte(`{
+				"storage": {
+					"rootDirectory": "/tmp/zot",
+					"gc": false
+				},
+				"http": {
+					"address": "127.0.0.1",
+					"port": "8080"
+				}
+			}`)
+			tmpfile := path.Join(tempDir, "config.json")
+			err := os.WriteFile(tmpfile, content, 0o0600)
+			So(err, ShouldBeNil)
+
+			err = cli.LoadConfiguration(config, tmpfile)
+			So(err, ShouldBeNil)
+
+			// Verify GC delay is 0 when GC is disabled
+			So(config.Storage.GCDelay, ShouldEqual, 0)
+			// Verify retention delay is 0 when GC is disabled
+			So(config.Storage.Retention.Delay, ShouldEqual, 0)
+		})
+
+		Convey("When GC delay is not specified, retention delay should default to default GC delay", func() {
+			config := config.New()
+			tempDir := t.TempDir()
+
+			// Config with GC enabled but no gcDelay specified
+			content := []byte(`{
+				"storage": {
+					"rootDirectory": "/tmp/zot",
+					"gc": true
+				},
+				"http": {
+					"address": "127.0.0.1",
+					"port": "8080"
+				}
+			}`)
+			tmpfile := path.Join(tempDir, "config.json")
+			err := os.WriteFile(tmpfile, content, 0o0600)
+			So(err, ShouldBeNil)
+
+			err = cli.LoadConfiguration(config, tmpfile)
+			So(err, ShouldBeNil)
+
+			// Verify GC delay defaults to default value
+			So(config.Storage.GCDelay, ShouldEqual, storageConstants.DefaultGCDelay)
+			// Verify retention delay defaults to default GC delay
+			So(config.Storage.Retention.Delay, ShouldEqual, storageConstants.DefaultGCDelay)
+		})
+	})
+
+	Convey("Test subpath retention delay defaults to subpath GC delay", t, func() {
+		Convey("When subpath retention delay is not specified, it should default to subpath GC delay", func() {
+			config := config.New()
+			tempDir := t.TempDir()
+
+			// Config with subpath GC enabled but no retention delay specified
+			content := []byte(`{
+				"storage": {
+					"rootDirectory": "/tmp/zot",
+					"subPaths": {
+						"/a": {
+							"rootDirectory": "/tmp/zot-a",
+							"gc": true,
+							"gcDelay": "30m"
+						}
+					}
+				},
+				"http": {
+					"address": "127.0.0.1",
+					"port": "8080"
+				}
+			}`)
+			tmpfile := path.Join(tempDir, "config.json")
+			err := os.WriteFile(tmpfile, content, 0o0600)
+			So(err, ShouldBeNil)
+
+			err = cli.LoadConfiguration(config, tmpfile)
+			So(err, ShouldBeNil)
+
+			// Verify subpath GC delay is set correctly
+			So(config.Storage.SubPaths["/a"].GCDelay, ShouldEqual, 30*time.Minute)
+			// Verify subpath retention delay defaults to subpath GC delay
+			So(config.Storage.SubPaths["/a"].Retention.Delay, ShouldEqual, 30*time.Minute)
+		})
+
+		Convey("When subpath retention delay is explicitly specified, it should use that value", func() {
+			config := config.New()
+			tempDir := t.TempDir()
+
+			// Config with explicit subpath retention delay
+			content := []byte(`{
+				"storage": {
+					"rootDirectory": "/tmp/zot",
+					"subPaths": {
+						"/a": {
+							"rootDirectory": "/tmp/zot-a",
+							"gc": true,
+							"gcDelay": "30m",
+							"retention": {
+								"delay": "45m"
+							}
+						}
+					}
+				},
+				"http": {
+					"address": "127.0.0.1",
+					"port": "8080"
+				}
+			}`)
+			tmpfile := path.Join(tempDir, "config.json")
+			err := os.WriteFile(tmpfile, content, 0o0600)
+			So(err, ShouldBeNil)
+
+			err = cli.LoadConfiguration(config, tmpfile)
+			So(err, ShouldBeNil)
+
+			// Verify subpath GC delay is set correctly
+			So(config.Storage.SubPaths["/a"].GCDelay, ShouldEqual, 30*time.Minute)
+			// Verify subpath retention delay uses explicit value
+			So(config.Storage.SubPaths["/a"].Retention.Delay, ShouldEqual, 45*time.Minute)
+		})
+
+		Convey("When subpath GC is not specified, retention delay should default to default GC delay", func() {
+			config := config.New()
+			tempDir := t.TempDir()
+
+			// Config with subpath but no GC settings
+			content := []byte(`{
+				"storage": {
+					"rootDirectory": "/tmp/zot",
+					"subPaths": {
+						"/a": {
+							"rootDirectory": "/tmp/zot-a",
+							"gc": true
+						}
+					}
+				},
+				"http": {
+					"address": "127.0.0.1",
+					"port": "8080"
+				}
+			}`)
+			tmpfile := path.Join(tempDir, "config.json")
+			err := os.WriteFile(tmpfile, content, 0o0600)
+			So(err, ShouldBeNil)
+
+			err = cli.LoadConfiguration(config, tmpfile)
+			So(err, ShouldBeNil)
+
+			// Verify subpath GC delay defaults to default value
+			So(config.Storage.SubPaths["/a"].GCDelay, ShouldEqual, storageConstants.DefaultGCDelay)
+			// Verify subpath retention delay defaults to default GC delay
+			So(config.Storage.SubPaths["/a"].Retention.Delay, ShouldEqual, storageConstants.DefaultGCDelay)
+		})
+	})
 }

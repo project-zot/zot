@@ -290,9 +290,7 @@ func New() *Config {
 				GC:         true,
 				GCDelay:    storageConstants.DefaultGCDelay,
 				GCInterval: storageConstants.DefaultGCInterval,
-				Retention: ImageRetention{
-					Delay: storageConstants.DefaultRetentionDelay,
-				},
+				Retention:  ImageRetention{},
 			},
 		},
 		HTTP: HTTPConfig{Address: "127.0.0.1", Port: "8080", Auth: &AuthConfig{FailDelay: 0}},
