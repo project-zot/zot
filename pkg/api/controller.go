@@ -479,15 +479,8 @@ func (c *Controller) StartBackgroundTasks() {
 	c.taskScheduler = scheduler.NewScheduler(c.Config, c.Metrics, c.Log)
 	c.taskScheduler.RunScheduler()
 
-	// Enable running garbage-collect periodically for DefaultStore
-	if c.Config.Storage.GC {
-		gc := gc.NewGarbageCollect(c.StoreController.DefaultStore, c.MetaDB, gc.Options{
-			Delay:          c.Config.Storage.GCDelay,
-			ImageRetention: c.Config.Storage.Retention,
-		}, c.Audit, c.Log)
-
-		gc.CleanImageStorePeriodically(c.Config.Storage.GCInterval, c.taskScheduler)
-	}
+	// Run GC and retention tasks
+	RunGCTasks(c.Config, c.StoreController, c.MetaDB, c.taskScheduler, c.Log, c.Audit)
 
 	// Enable running dedupe blobs both ways (dedupe or restore deduped blobs)
 	c.StoreController.DefaultStore.RunDedupeBlobs(time.Duration(0), c.taskScheduler)
@@ -504,17 +497,6 @@ func (c *Controller) StartBackgroundTasks() {
 
 	if c.Config.Storage.SubPaths != nil {
 		for route, storageConfig := range c.Config.Storage.SubPaths {
-			// Enable running garbage-collect periodically for subImageStore
-			if storageConfig.GC {
-				gc := gc.NewGarbageCollect(c.StoreController.SubStore[route], c.MetaDB,
-					gc.Options{
-						Delay:          storageConfig.GCDelay,
-						ImageRetention: storageConfig.Retention,
-					}, c.Audit, c.Log)
-
-				gc.CleanImageStorePeriodically(storageConfig.GCInterval, c.taskScheduler)
-			}
-
 			// Enable extensions if extension config is provided for subImageStore
 			if c.Config != nil && c.Config.Extensions != nil {
 				ext.EnableMetricsExtension(c.Config, c.Log, storageConfig.RootDirectory)
@@ -549,6 +531,37 @@ func (c *Controller) StartBackgroundTasks() {
 
 	// we can later move enabling the other scheduled tasks inside the call below
 	ext.EnableScheduledTasks(c.Config, c.taskScheduler, c.MetaDB, c.Log) //nolint: contextcheck
+}
+
+// RunGCTasks runs minimal GC and retention tasks without full controller.
+func RunGCTasks(conf *config.Config, storeController storage.StoreController, metaDB mTypes.MetaDB,
+	taskScheduler *scheduler.Scheduler, logger log.Logger, audit *log.Logger,
+) {
+	// Enable running garbage-collect periodically for DefaultStore
+	if conf.Storage.GC {
+		gc := gc.NewGarbageCollect(storeController.DefaultStore, metaDB, gc.Options{
+			Delay:          conf.Storage.GCDelay,
+			ImageRetention: conf.Storage.Retention,
+		}, audit, logger)
+
+		gc.CleanImageStorePeriodically(conf.Storage.GCInterval, taskScheduler)
+	}
+
+	// Handle subpaths
+	if conf.Storage.SubPaths != nil {
+		for route, storageConfig := range conf.Storage.SubPaths {
+			// Enable running garbage-collect periodically for subImageStore
+			if storageConfig.GC {
+				gc := gc.NewGarbageCollect(storeController.SubStore[route], metaDB,
+					gc.Options{
+						Delay:          storageConfig.GCDelay,
+						ImageRetention: storageConfig.Retention,
+					}, audit, logger)
+
+				gc.CleanImageStorePeriodically(storageConfig.GCInterval, taskScheduler)
+			}
+		}
+	}
 }
 
 type SyncOnDemand interface {
