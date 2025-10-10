@@ -132,23 +132,6 @@ func (d *BoltDBDriver) PutBlob(digest godigest.Digest, path string) error {
 			return err
 		}
 
-		// create nested deduped bucket where we store all the deduped blobs + original blob
-		deduped, err := bucket.CreateBucketIfNotExists([]byte(constants.DuplicatesBucket))
-		if err != nil {
-			// this is a serious failure
-			d.log.Error().Err(err).Str("bucket", constants.DuplicatesBucket).Msg("failed to create a bucket")
-
-			return err
-		}
-
-		if err := deduped.Put([]byte(path), nil); err != nil {
-			d.log.Error().Err(err).Str("bucket", constants.DuplicatesBucket).Str("value", path).Msg("failed to put record")
-
-			return err
-		}
-
-		d.log.Debug().Str("digest", digest.String()).Str("path", path).Msg("inserted in duplicates bucket")
-
 		// create origin bucket and insert only the original blob
 		origin := bucket.Bucket([]byte(constants.OriginalBucket))
 		if origin == nil {
@@ -167,7 +150,29 @@ func (d *BoltDBDriver) PutBlob(digest godigest.Digest, path string) error {
 				return err
 			}
 			d.log.Debug().Str("digest", digest.String()).Str("path", path).Msg("inserted in original bucket")
+
+			return nil
+		} else if origin.Get([]byte(path)) != nil { // idempotent
+			d.log.Debug().Str("digest", digest.String()).Str("path", path).Msg("inserted same key in original bucket")
+			return nil
 		}
+
+		// create nested deduped bucket where we store all the deduped blobs + original blob
+		deduped, err := bucket.CreateBucketIfNotExists([]byte(constants.DuplicatesBucket))
+		if err != nil {
+			// this is a serious failure
+			d.log.Error().Err(err).Str("bucket", constants.DuplicatesBucket).Msg("failed to create a bucket")
+
+			return err
+		}
+
+		if err := deduped.Put([]byte(path), nil); err != nil {
+			d.log.Error().Err(err).Str("bucket", constants.DuplicatesBucket).Str("value", path).Msg("failed to put record")
+
+			return err
+		}
+
+		d.log.Debug().Str("digest", digest.String()).Str("path", path).Msg("inserted in duplicates bucket")
 
 		return nil
 	}); err != nil {
