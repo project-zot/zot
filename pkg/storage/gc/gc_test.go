@@ -63,6 +63,7 @@ func TestGarbageCollectAndRetentionMetaDB(t *testing.T) {
 	audit := zlog.NewAuditLogger("debug", "/dev/null")
 
 	metrics := monitoring.NewMetricsServer(false, log)
+	defer metrics.Stop() // Clean up metrics server to prevent resource leaks
 
 	trueVal := true
 
@@ -1317,6 +1318,7 @@ func TestGarbageCollectDeletion(t *testing.T) {
 		audit := zlog.NewAuditLogger("debug", "/dev/null")
 
 		metrics := monitoring.NewMetricsServer(false, log)
+		defer metrics.Stop() // Clean up metrics server to prevent resource leaks
 
 		trueVal := true
 		falseVal := false
@@ -1755,6 +1757,7 @@ func TestGarbageCollectAndRetentionNoMetaDB(t *testing.T) {
 	audit := zlog.NewAuditLogger("debug", "/dev/null")
 
 	metrics := monitoring.NewMetricsServer(false, log)
+	defer metrics.Stop() // Clean up metrics server to prevent resource leaks
 
 	trueVal := true
 
