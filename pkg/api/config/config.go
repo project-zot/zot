@@ -7,10 +7,10 @@ import (
 	"time"
 
 	distspec "github.com/opencontainers/distribution-spec/specs-go"
+	"github.com/tiendc/go-deepcopy"
 
 	"zotregistry.dev/zot/v2/pkg/compat"
 	extconf "zotregistry.dev/zot/v2/pkg/extensions/config"
-	syncconf "zotregistry.dev/zot/v2/pkg/extensions/config/sync"
 	storageConstants "zotregistry.dev/zot/v2/pkg/storage/constants"
 )
 
@@ -760,73 +760,11 @@ func (c *Config) GetAuthConfig() *AuthConfig {
 		return nil
 	}
 
-	// Return a deep copy to avoid race conditions
-	authCopy := AuthConfig{
-		FailDelay:       c.HTTP.Auth.FailDelay,
-		HTPasswd:        c.HTTP.Auth.HTPasswd, // struct copy
-		APIKey:          c.HTTP.Auth.APIKey,
-		SessionKeysFile: c.HTTP.Auth.SessionKeysFile,
-	}
+	// Return a deep copy using tiendc/go-deepcopy to avoid race conditions
+	authCopy := &AuthConfig{}
+	_ = deepcopy.Copy(authCopy, c.HTTP.Auth)
 
-	// Deep copy LDAP pointer
-	if c.HTTP.Auth.LDAP != nil {
-		ldapCopy := *c.HTTP.Auth.LDAP
-		authCopy.LDAP = &ldapCopy
-	}
-
-	// Deep copy Bearer pointer
-	if c.HTTP.Auth.Bearer != nil {
-		bearerCopy := *c.HTTP.Auth.Bearer
-		authCopy.Bearer = &bearerCopy
-	}
-
-	// Deep copy OpenID pointer
-	if c.HTTP.Auth.OpenID != nil {
-		openIDCopy := OpenIDConfig{}
-		if c.HTTP.Auth.OpenID.Providers != nil {
-			openIDCopy.Providers = make(map[string]OpenIDProviderConfig)
-
-			for provider, config := range c.HTTP.Auth.OpenID.Providers {
-				providerCopy := OpenIDProviderConfig{
-					CredentialsFile: config.CredentialsFile,
-					Name:            config.Name,
-					ClientID:        config.ClientID,
-					ClientSecret:    config.ClientSecret,
-					KeyPath:         config.KeyPath,
-					Issuer:          config.Issuer,
-				}
-				// Deep copy Scopes slice
-				if config.Scopes != nil {
-					providerCopy.Scopes = make([]string, len(config.Scopes))
-					copy(providerCopy.Scopes, config.Scopes)
-				}
-				openIDCopy.Providers[provider] = providerCopy
-			}
-		}
-		authCopy.OpenID = &openIDCopy
-	}
-
-	// Deep copy SessionHashKey slice
-	if c.HTTP.Auth.SessionHashKey != nil {
-		authCopy.SessionHashKey = make([]byte, len(c.HTTP.Auth.SessionHashKey))
-		copy(authCopy.SessionHashKey, c.HTTP.Auth.SessionHashKey)
-	}
-
-	// Deep copy SessionEncryptKey slice
-	if c.HTTP.Auth.SessionEncryptKey != nil {
-		authCopy.SessionEncryptKey = make([]byte, len(c.HTTP.Auth.SessionEncryptKey))
-		copy(authCopy.SessionEncryptKey, c.HTTP.Auth.SessionEncryptKey)
-	}
-
-	// Deep copy SessionDriver map
-	if c.HTTP.Auth.SessionDriver != nil {
-		authCopy.SessionDriver = make(map[string]any)
-		for k, v := range c.HTTP.Auth.SessionDriver {
-			authCopy.SessionDriver[k] = v
-		}
-	}
-
-	return &authCopy
+	return authCopy
 }
 
 // GetAccessControlConfig returns a copy of the access control config if it exists.
@@ -842,95 +780,11 @@ func (c *Config) GetAccessControlConfig() *AccessControlConfig {
 		return nil
 	}
 
-	// Return a deep copy to avoid race conditions
-	accessControlCopy := AccessControlConfig{}
+	// Return a deep copy using tiendc/go-deepcopy to avoid race conditions
+	accessControlCopy := &AccessControlConfig{}
+	_ = deepcopy.Copy(accessControlCopy, c.HTTP.AccessControl)
 
-	// Deep copy Repositories map
-	if c.HTTP.AccessControl.Repositories != nil {
-		accessControlCopy.Repositories = make(Repositories)
-
-		for repo, policyGroup := range c.HTTP.AccessControl.Repositories {
-			policyGroupCopy := PolicyGroup{}
-
-			// Deep copy Policies slice
-			if policyGroup.Policies != nil {
-				policyGroupCopy.Policies = make([]Policy, len(policyGroup.Policies))
-				for i, policy := range policyGroup.Policies {
-					policyGroupCopy.Policies[i] = Policy{}
-
-					// Deep copy Policy slices
-					if policy.Users != nil {
-						policyGroupCopy.Policies[i].Users = make([]string, len(policy.Users))
-						copy(policyGroupCopy.Policies[i].Users, policy.Users)
-					}
-
-					if policy.Actions != nil {
-						policyGroupCopy.Policies[i].Actions = make([]string, len(policy.Actions))
-						copy(policyGroupCopy.Policies[i].Actions, policy.Actions)
-					}
-
-					if policy.Groups != nil {
-						policyGroupCopy.Policies[i].Groups = make([]string, len(policy.Groups))
-						copy(policyGroupCopy.Policies[i].Groups, policy.Groups)
-					}
-				}
-			}
-
-			// Deep copy DefaultPolicy slice
-			if policyGroup.DefaultPolicy != nil {
-				policyGroupCopy.DefaultPolicy = make([]string, len(policyGroup.DefaultPolicy))
-				copy(policyGroupCopy.DefaultPolicy, policyGroup.DefaultPolicy)
-			}
-
-			// Deep copy AnonymousPolicy slice
-			if policyGroup.AnonymousPolicy != nil {
-				policyGroupCopy.AnonymousPolicy = make([]string, len(policyGroup.AnonymousPolicy))
-				copy(policyGroupCopy.AnonymousPolicy, policyGroup.AnonymousPolicy)
-			}
-
-			accessControlCopy.Repositories[repo] = policyGroupCopy
-		}
-	}
-
-	// Deep copy AdminPolicy
-	accessControlCopy.AdminPolicy = Policy{}
-	if c.HTTP.AccessControl.AdminPolicy.Users != nil {
-		accessControlCopy.AdminPolicy.Users = make([]string, len(c.HTTP.AccessControl.AdminPolicy.Users))
-		copy(accessControlCopy.AdminPolicy.Users, c.HTTP.AccessControl.AdminPolicy.Users)
-	}
-
-	if c.HTTP.AccessControl.AdminPolicy.Actions != nil {
-		accessControlCopy.AdminPolicy.Actions = make([]string, len(c.HTTP.AccessControl.AdminPolicy.Actions))
-		copy(accessControlCopy.AdminPolicy.Actions, c.HTTP.AccessControl.AdminPolicy.Actions)
-	}
-
-	if c.HTTP.AccessControl.AdminPolicy.Groups != nil {
-		accessControlCopy.AdminPolicy.Groups = make([]string, len(c.HTTP.AccessControl.AdminPolicy.Groups))
-		copy(accessControlCopy.AdminPolicy.Groups, c.HTTP.AccessControl.AdminPolicy.Groups)
-	}
-
-	// Deep copy Groups map
-	if c.HTTP.AccessControl.Groups != nil {
-		accessControlCopy.Groups = make(Groups)
-
-		for groupName, group := range c.HTTP.AccessControl.Groups {
-			groupCopy := Group{}
-			if group.Users != nil {
-				groupCopy.Users = make([]string, len(group.Users))
-				copy(groupCopy.Users, group.Users)
-			}
-			accessControlCopy.Groups[groupName] = groupCopy
-		}
-	}
-
-	// Deep copy Metrics
-	accessControlCopy.Metrics = Metrics{}
-	if c.HTTP.AccessControl.Metrics.Users != nil {
-		accessControlCopy.Metrics.Users = make([]string, len(c.HTTP.AccessControl.Metrics.Users))
-		copy(accessControlCopy.Metrics.Users, c.HTTP.AccessControl.Metrics.Users)
-	}
-
-	return &accessControlCopy
+	return accessControlCopy
 }
 
 // GetStorageConfig returns a copy of the storage config.
@@ -942,107 +796,9 @@ func (c *Config) GetStorageConfig() GlobalStorageConfig {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 
-	// Return a deep copy to avoid race conditions
+	// Return a deep copy using tiendc/go-deepcopy to avoid race conditions
 	storageCopy := GlobalStorageConfig{}
-
-	// Deep copy embedded StorageConfig
-	storageCopy.StorageConfig = c.Storage.StorageConfig
-
-	// Deep copy slice fields in Retention
-	if c.Storage.Retention.Policies != nil {
-		storageCopy.Retention.Policies = make([]RetentionPolicy, len(c.Storage.Retention.Policies))
-		for i, policy := range c.Storage.Retention.Policies {
-			storageCopy.Retention.Policies[i] = policy
-
-			// Deep copy slice fields in RetentionPolicy
-			if policy.Repositories != nil {
-				storageCopy.Retention.Policies[i].Repositories = make([]string, len(policy.Repositories))
-				copy(storageCopy.Retention.Policies[i].Repositories, policy.Repositories)
-			}
-
-			if policy.KeepTags != nil {
-				storageCopy.Retention.Policies[i].KeepTags = make([]KeepTagsPolicy, len(policy.KeepTags))
-				for keepTagsIdx, keepTags := range policy.KeepTags {
-					storageCopy.Retention.Policies[i].KeepTags[keepTagsIdx] = keepTags
-
-					// Deep copy slice fields in KeepTagsPolicy
-					if keepTags.Patterns != nil {
-						storageCopy.Retention.Policies[i].KeepTags[keepTagsIdx].Patterns = make([]string, len(keepTags.Patterns))
-						copy(storageCopy.Retention.Policies[i].KeepTags[keepTagsIdx].Patterns, keepTags.Patterns)
-					}
-				}
-			}
-		}
-	}
-
-	// Deep copy map fields
-	if c.Storage.StorageDriver != nil {
-		storageCopy.StorageDriver = make(map[string]interface{})
-		for k, v := range c.Storage.StorageDriver {
-			storageCopy.StorageDriver[k] = v
-		}
-	}
-
-	if c.Storage.CacheDriver != nil {
-		storageCopy.CacheDriver = make(map[string]interface{})
-		for k, v := range c.Storage.CacheDriver {
-			storageCopy.CacheDriver[k] = v
-		}
-	}
-
-	// Deep copy SubPaths map
-	if c.Storage.SubPaths != nil {
-		storageCopy.SubPaths = make(map[string]StorageConfig)
-
-		for path, config := range c.Storage.SubPaths {
-			// Deep copy each StorageConfig in SubPaths
-			subPathCopy := config
-
-			// Deep copy slice fields in Retention for each SubPath
-			if config.Retention.Policies != nil {
-				subPathCopy.Retention.Policies = make([]RetentionPolicy, len(config.Retention.Policies))
-				for i, policy := range config.Retention.Policies {
-					subPathCopy.Retention.Policies[i] = policy
-
-					// Deep copy slice fields in RetentionPolicy
-					if policy.Repositories != nil {
-						subPathCopy.Retention.Policies[i].Repositories = make([]string, len(policy.Repositories))
-						copy(subPathCopy.Retention.Policies[i].Repositories, policy.Repositories)
-					}
-
-					if policy.KeepTags != nil {
-						subPathCopy.Retention.Policies[i].KeepTags = make([]KeepTagsPolicy, len(policy.KeepTags))
-						for keepTagsIdx, keepTags := range policy.KeepTags {
-							subPathCopy.Retention.Policies[i].KeepTags[keepTagsIdx] = keepTags
-
-							// Deep copy slice fields in KeepTagsPolicy
-							if keepTags.Patterns != nil {
-								subPathCopy.Retention.Policies[i].KeepTags[keepTagsIdx].Patterns = make([]string, len(keepTags.Patterns))
-								copy(subPathCopy.Retention.Policies[i].KeepTags[keepTagsIdx].Patterns, keepTags.Patterns)
-							}
-						}
-					}
-				}
-			}
-
-			// Deep copy map fields for each SubPath
-			if config.StorageDriver != nil {
-				subPathCopy.StorageDriver = make(map[string]interface{})
-				for k, v := range config.StorageDriver {
-					subPathCopy.StorageDriver[k] = v
-				}
-			}
-
-			if config.CacheDriver != nil {
-				subPathCopy.CacheDriver = make(map[string]interface{})
-				for k, v := range config.CacheDriver {
-					subPathCopy.CacheDriver[k] = v
-				}
-			}
-
-			storageCopy.SubPaths[path] = subPathCopy
-		}
-	}
+	_ = deepcopy.Copy(&storageCopy, &c.Storage)
 
 	return storageCopy
 }
@@ -1060,93 +816,11 @@ func (c *Config) GetExtensionsConfig() *extconf.ExtensionConfig {
 		return nil
 	}
 
-	// Return a deep copy to avoid race conditions
-	extensionsCopy := extconf.ExtensionConfig{}
+	// Return a deep copy using tiendc/go-deepcopy to avoid race conditions
+	extensionsCopy := &extconf.ExtensionConfig{}
+	_ = deepcopy.Copy(extensionsCopy, c.Extensions)
 
-	// Deep copy pointer fields
-	if c.Extensions.Search != nil {
-		searchCopy := *c.Extensions.Search
-
-		// Deep copy nested pointer fields in Search
-		if c.Extensions.Search.CVE != nil {
-			cveCopy := *c.Extensions.Search.CVE
-
-			if c.Extensions.Search.CVE.Trivy != nil {
-				trivyCopy := *c.Extensions.Search.CVE.Trivy
-				cveCopy.Trivy = &trivyCopy
-			}
-
-			searchCopy.CVE = &cveCopy
-		}
-
-		extensionsCopy.Search = &searchCopy
-	}
-
-	if c.Extensions.Sync != nil {
-		syncCopy := *c.Extensions.Sync
-
-		// Deep copy slice fields in Sync
-		if c.Extensions.Sync.Registries != nil {
-			syncCopy.Registries = make([]syncconf.RegistryConfig, len(c.Extensions.Sync.Registries))
-			for i, registry := range c.Extensions.Sync.Registries {
-				syncCopy.Registries[i] = registry
-				if registry.URLs != nil {
-					syncCopy.Registries[i].URLs = make([]string, len(registry.URLs))
-					copy(syncCopy.Registries[i].URLs, registry.URLs)
-				}
-			}
-		}
-
-		extensionsCopy.Sync = &syncCopy
-	}
-
-	if c.Extensions.Metrics != nil {
-		metricsCopy := *c.Extensions.Metrics
-
-		if c.Extensions.Metrics.Prometheus != nil {
-			prometheusCopy := *c.Extensions.Metrics.Prometheus
-			metricsCopy.Prometheus = &prometheusCopy
-		}
-
-		extensionsCopy.Metrics = &metricsCopy
-	}
-
-	if c.Extensions.Scrub != nil {
-		scrubCopy := *c.Extensions.Scrub
-		extensionsCopy.Scrub = &scrubCopy
-	}
-
-	if c.Extensions.Lint != nil {
-		lintCopy := *c.Extensions.Lint
-		extensionsCopy.Lint = &lintCopy
-	}
-
-	if c.Extensions.UI != nil {
-		uiCopy := *c.Extensions.UI
-		extensionsCopy.UI = &uiCopy
-	}
-
-	if c.Extensions.Mgmt != nil {
-		mgmtCopy := *c.Extensions.Mgmt
-		extensionsCopy.Mgmt = &mgmtCopy
-	}
-
-	if c.Extensions.APIKey != nil {
-		apiKeyCopy := *c.Extensions.APIKey
-		extensionsCopy.APIKey = &apiKeyCopy
-	}
-
-	if c.Extensions.Trust != nil {
-		trustCopy := *c.Extensions.Trust
-		extensionsCopy.Trust = &trustCopy
-	}
-
-	if c.Extensions.Events != nil {
-		eventsCopy := *c.Extensions.Events
-		extensionsCopy.Events = &eventsCopy
-	}
-
-	return &extensionsCopy
+	return extensionsCopy
 }
 
 // GetLogConfig returns a copy of the log config if it exists.
@@ -1181,25 +855,11 @@ func (c *Config) GetClusterConfig() *ClusterConfig {
 		return nil
 	}
 
-	// Return a deep copy to avoid race conditions
-	clusterCopy := *c.Cluster
+	// Return a deep copy using tiendc/go-deepcopy to avoid race conditions
+	clusterCopy := &ClusterConfig{}
+	_ = deepcopy.Copy(clusterCopy, c.Cluster)
 
-	// Deep copy slice fields
-	clusterCopy.Members = make([]string, len(c.Cluster.Members))
-	copy(clusterCopy.Members, c.Cluster.Members)
-
-	// Deep copy pointer fields
-	if c.Cluster.TLS != nil {
-		tlsCopy := *c.Cluster.TLS
-		clusterCopy.TLS = &tlsCopy
-	}
-
-	if c.Cluster.Proxy != nil {
-		proxyCopy := *c.Cluster.Proxy
-		clusterCopy.Proxy = &proxyCopy
-	}
-
-	return &clusterCopy
+	return clusterCopy
 }
 
 // GetSchedulerConfig returns a copy of the scheduler config if it exists.
@@ -1333,22 +993,11 @@ func (c *Config) GetRatelimit() *RatelimitConfig {
 		return nil
 	}
 
-	// Return a deep copy to avoid race conditions
-	ratelimitCopy := RatelimitConfig{}
+	// Return a deep copy using tiendc/go-deepcopy to avoid race conditions
+	ratelimitCopy := &RatelimitConfig{}
+	_ = deepcopy.Copy(ratelimitCopy, c.HTTP.Ratelimit)
 
-	// Deep copy Rate pointer
-	if c.HTTP.Ratelimit.Rate != nil {
-		rateValue := *c.HTTP.Ratelimit.Rate
-		ratelimitCopy.Rate = &rateValue
-	}
-
-	// Deep copy Methods slice
-	if c.HTTP.Ratelimit.Methods != nil {
-		ratelimitCopy.Methods = make([]MethodRatelimitConfig, len(c.HTTP.Ratelimit.Methods))
-		copy(ratelimitCopy.Methods, c.HTTP.Ratelimit.Methods)
-	}
-
-	return &ratelimitCopy
+	return ratelimitCopy
 }
 
 // =============================================================================

@@ -2053,7 +2053,7 @@ func TestConfig(t *testing.T) {
 							Users:   []string{"admin"},
 						},
 						Repositories: config.Repositories{
-							"repo1": {
+							"repo1": config.PolicyGroup{
 								DefaultPolicy: []string{"read"},
 								Policies: []config.Policy{
 									{
@@ -2078,7 +2078,7 @@ func TestConfig(t *testing.T) {
 
 			// Add a new repository to the copy
 			newRepositories := config.Repositories{
-				"repo1": {
+				"repo1": config.PolicyGroup{
 					DefaultPolicy: []string{"read"},
 					Policies: []config.Policy{
 						{
@@ -2086,7 +2086,7 @@ func TestConfig(t *testing.T) {
 						},
 					},
 				},
-				"repo2": {
+				"repo2": config.PolicyGroup{
 					DefaultPolicy: []string{"read", "write"},
 					Policies: []config.Policy{
 						{
@@ -2165,7 +2165,7 @@ func TestConfig(t *testing.T) {
 							Users:   []string{"admin"},
 						},
 						Repositories: config.Repositories{
-							"repo1": {
+							"repo1": config.PolicyGroup{
 								DefaultPolicy: []string{"read"},
 								Policies: []config.Policy{
 									{
@@ -2200,7 +2200,7 @@ func TestConfig(t *testing.T) {
 							Users:   []string{"admin", "superadmin", "user"},
 						},
 						Repositories: config.Repositories{
-							"repo1": {
+							"repo1": config.PolicyGroup{
 								DefaultPolicy: []string{"read", "write"},
 								Policies: []config.Policy{
 									{
@@ -2208,7 +2208,7 @@ func TestConfig(t *testing.T) {
 									},
 								},
 							},
-							"repo2": {
+							"repo2": config.PolicyGroup{
 								DefaultPolicy: []string{"read"},
 								Policies: []config.Policy{
 									{
