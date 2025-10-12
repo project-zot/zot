@@ -38,24 +38,39 @@ func TestBoltDBCache(t *testing.T) {
 		exists := cacheDriver.HasBlob("key", "value")
 		So(exists, ShouldBeFalse)
 
+		Print("BDB1")
+
 		err = cacheDriver.PutBlob("key", path.Join(dir, "value"))
 		So(err, ShouldBeNil)
+
+		Print("BDB2")
 
 		err = cacheDriver.PutBlob("key", "value")
 		So(err, ShouldNotBeNil)
 
+		Print("BDB3")
+
 		exists = cacheDriver.HasBlob("key", "value")
 		So(exists, ShouldBeTrue)
+
+		Print("BDB4")
 
 		val, err = cacheDriver.GetBlob("key")
 		So(err, ShouldBeNil)
 		So(val, ShouldNotBeEmpty)
 
+		Print("BDB5")
+
 		err = cacheDriver.DeleteBlob("bogusKey", "bogusValue")
 		So(err, ShouldEqual, errors.ErrCacheMiss)
 
+		Print("BDB6")
+
 		err = cacheDriver.DeleteBlob("key", "bogusValue")
-		So(err, ShouldBeNil)
+		So(err, ShouldEqual, errors.ErrCacheMiss)
+		//So(err, ShouldBeNil)
+
+		Print("BDB7")
 
 		// try to insert empty path
 		err = cacheDriver.PutBlob("key", "")
@@ -78,6 +93,8 @@ func TestBoltDBCache(t *testing.T) {
 		err = cacheDriver.DeleteBlob("key1", "duplicateBlobPath")
 		So(err, ShouldBeNil)
 
+		Print("BDB8")
+
 		val, err = cacheDriver.GetBlob("key1")
 		So(val, ShouldEqual, "originalBlobPath")
 		So(err, ShouldBeNil)
@@ -85,12 +102,18 @@ func TestBoltDBCache(t *testing.T) {
 		err = cacheDriver.PutBlob("key1", "duplicateBlobPath")
 		So(err, ShouldBeNil)
 
+		Print("BDB9")
+
 		err = cacheDriver.DeleteBlob("key1", "originalBlobPath")
 		So(err, ShouldBeNil)
+
+		Print("BDB10")
 
 		val, err = cacheDriver.GetBlob("key1")
 		So(val, ShouldEqual, "originalBlobPath")
 		So(err, ShouldBeNil)
+
+		Print("BDB11")
 
 		err = cacheDriver.DeleteBlob("key1", "duplicateBlobPath")
 		So(err, ShouldBeNil)

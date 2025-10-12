@@ -285,19 +285,21 @@ func (d *BoltDBDriver) HasBlob(digest godigest.Digest, blob string) bool {
 			return zerr.ErrCacheMiss
 		}
 
+		if origin.Get([]byte(blob)) != nil {
+			d.log.Debug().Str("key", blob).Msg("found in original bucket")
+			return nil
+		}
+
 		deduped := bucket.Bucket([]byte(constants.DuplicatesBucket))
 		if deduped == nil {
 			return zerr.ErrCacheMiss
 		}
 
-		if origin.Get([]byte(blob)) == nil {
-			if deduped.Get([]byte(blob)) == nil {
-				return zerr.ErrCacheMiss
-			}
-			d.log.Debug().Str("key", blob).Msg("found in dedupe bucket")
+		if deduped.Get([]byte(blob)) == nil {
+			return zerr.ErrCacheMiss
 		}
 
-		d.log.Debug().Str("key", blob).Msg("found in original bucket")
+		d.log.Debug().Str("key", blob).Msg("found in duplicates bucket")
 
 		return nil
 	}); err != nil {
@@ -343,30 +345,34 @@ func (d *BoltDBDriver) DeleteBlob(digest godigest.Digest, path string) error {
 			return zerr.ErrCacheMiss
 		}
 
+		// look first in the duplicates bucket
 		deduped := bucket.Bucket([]byte(constants.DuplicatesBucket))
-		if deduped == nil {
-			return zerr.ErrCacheMiss
-		}
+		if deduped != nil {
+			if deduped.Get([]byte(path)) != nil {
+				if err := deduped.Delete([]byte(path)); err != nil {
+					d.log.Error().Err(err).Str("digest", digest.String()).Str("bucket", constants.DuplicatesBucket).
+						Str("path", path).Msg("failed to delete")
 
-		if err := deduped.Delete([]byte(path)); err != nil {
-			d.log.Error().Err(err).Str("digest", digest.String()).Str("bucket", constants.DuplicatesBucket).
-				Str("path", path).Msg("failed to delete")
+					return err
+				}
 
-			return err
-		}
+				d.log.Debug().Str("digest", digest.String()).Str("path", path).Msg("deleted from dedupe bucket")
 
-		d.log.Debug().Str("digest", digest.String()).Str("path", path).Msg("deleted from dedupe bucket")
-
-		dedupeBlob := d.getOne(deduped)
-		if dedupeBlob != nil {
-			d.log.Debug().Str("digest", digest.String()).Str("path", path).Msg("more in dedupe bucket, leaving original alone")
-			return nil
+				return nil
+			}
 		}
 
 		origin := bucket.Bucket([]byte(constants.OriginalBucket))
 		if origin != nil {
-			originBlob := d.getOne(origin)
-			if originBlob != nil {
+			if origin.Get([]byte(path)) != nil {
+
+				dedupeBlob := d.getOne(deduped)
+				if dedupeBlob != nil {
+					d.log.Debug().Str("digest", digest.String()).Str("path", path).Msg("more in dedupe bucket, leaving original alone")
+
+					return nil
+				}
+
 				if err := origin.Delete([]byte(path)); err != nil {
 					d.log.Error().Err(err).Str("digest", digest.String()).Str("bucket", constants.OriginalBucket).
 						Str("path", path).Msg("failed to delete")
@@ -401,9 +407,11 @@ func (d *BoltDBDriver) DeleteBlob(digest godigest.Digest, path string) error {
 
 				return err
 			}
+
+			return nil
 		}
 
-		return nil
+		return zerr.ErrCacheMiss
 	}); err != nil {
 		return err
 	}
