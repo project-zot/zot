@@ -54,6 +54,7 @@ EOF
     git -C ${BATS_FILE_TMPDIR} clone https://github.com/project-zot/helm-charts.git
     zot_serve ${ZOT_PATH} ${zot_config_file}
     wait_zot_reachable ${zot_port}
+    log_output | jq 'contains("fips140 is currently enabled")?' | grep true
 }
 
 function teardown() {
@@ -63,6 +64,7 @@ function teardown() {
 
 function teardown_file() {
     zot_stop_all
+    unset GODEBUG
 }
 
 @test "push image" {

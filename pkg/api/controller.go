@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"crypto/fips140"
 	"crypto/tls"
 	"crypto/x509"
 	goerrors "errors"
@@ -254,6 +255,11 @@ func (c *Controller) Run() error {
 }
 
 func (c *Controller) Init() error {
+	// report if fips140 mode is enabled
+	if fips140.Enabled() {
+		c.Log.Info().Msg("fips140 is currently enabled")
+	}
+
 	// print the current configuration, but strip secrets
 	c.Log.Info().Interface("params", c.Config.Sanitize()).Msg("configuration settings")
 
