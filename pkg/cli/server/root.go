@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"crypto/fips140"
 	"errors"
 	"fmt"
 	"net"
@@ -50,6 +51,11 @@ func newServeCmd(conf *config.Config) *cobra.Command {
 		Args:    cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			logger := zlog.NewLogger("info", "")
+
+			// log early about fips140
+			if fips140.Enabled() {
+				logger.Info().Msg("fips140 is currently enabled")
+			}
 
 			if len(args) > 0 {
 				if err := LoadConfiguration(conf, args[0]); err != nil {
