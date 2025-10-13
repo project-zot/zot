@@ -7,6 +7,10 @@ SCRIPTPATH="$( cd -- "$(dirname "$0")" >/dev/null 2>&1 ; pwd -P )"
 BATS=${SCRIPTPATH}/../../hack/tools/bin/bats
 PATH=$PATH:${SCRIPTPATH}/../../hack/tools/bin
 
+# Pre-download Docker images before running tests
+echo "Setting up Docker images..."
+${SCRIPTPATH}/setup_images.sh
+
 tests=("pushpull" "pushpull_authn" "delete_images" "referrers" "metadata" "anonymous_policy"
       "annotations" "detect_manifest_collision" "cve" "sync" "sync_docker" "sync_replica_cluster"
       "scrub" "garbage_collect" "metrics" "metrics_minimal" "multiarch_index" "docker_compat" "redis_local" "redis_session_store"
