@@ -21,7 +21,10 @@ function zot_serve() {
 
 # stops all zot instances started by the test
 function zot_stop_all() {
-    kill $(cat ${BATS_FILE_TMPDIR}/zot.pid)
+    if [ -f "${BATS_FILE_TMPDIR}/zot.pid" ]; then
+        kill $(cat ${BATS_FILE_TMPDIR}/zot.pid) 2>/dev/null || true
+        rm -f ${BATS_FILE_TMPDIR}/zot.pid
+    fi
 }
 
 function wait_zot_reachable() {

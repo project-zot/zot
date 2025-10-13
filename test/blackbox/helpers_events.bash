@@ -35,11 +35,15 @@ function http_server_start() {
 
     mkdir -p "${dir}"
 
+    echo "# starting HTTP server container '${cname}' on port ${port}..." >&3
+
     docker run -d --rm --name "${cname}" \
         -p "${port}:8080" \
         -v "${dir}":/data \
-        python:3 sh -c '
-            pip install flask > /dev/null && \
+        python:3 sh -c ' \
+            echo "Installing Flask..." >&2 && \
+            pip install flask > /dev/null 2>&1 && \
+            echo "Flask installed, starting server..." >&2 && \
             echo "
 import os
 import json
@@ -98,6 +102,17 @@ def receive_event():
 app.run(host=\"0.0.0.0\", port=8080)
             " > app.py && python app.py
 '
+
+    # Give container a moment to start
+    sleep 2
+
+    # Check if container is running
+    if docker ps --format "table {{.Names}}" | grep -q "^${cname}$"; then
+        echo "# HTTP server container '${cname}' started successfully" >&3
+    else
+        echo "# WARNING: HTTP server container '${cname}' may not have started properly" >&3
+        docker logs "${cname}" 2>&1 | head -10 >&3
+    fi
 }
 
 function http_server_stop() {
@@ -107,16 +122,23 @@ function http_server_stop() {
 
 function wait_for_http_server() {
     local port="$1"
-    local timeout=10
+    local timeout=30
     local elapsed=0
+
+    echo "# waiting for HTTP server on port ${port}..." >&3
 
     while [ "$elapsed" -lt "$timeout" ]; do
         if curl --silent --fail --output /dev/null "http://127.0.0.1:${port}/reset"; then
+            echo "# HTTP server ready on port ${port} after ${elapsed}s" >&3
             return 0
         fi
         sleep 1
         elapsed=$((elapsed + 1))
+        if [ $((elapsed % 5)) -eq 0 ]; then
+            echo "# still waiting for HTTP server on port ${port}... (${elapsed}s elapsed)" >&3
+        fi
     done
 
+    echo "# HTTP server failed to start on port ${port} after ${timeout}s" >&3
     return 1
 }
