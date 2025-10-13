@@ -54,3 +54,8 @@ function zb_run() {
     local zot_address=${1}
     ${ZB_PATH} -c 10 -n 30 -o stdout ${zot_address} --skip-cleanup
 }
+
+function log_output() {
+    local zot_log_file=${BATS_FILE_TMPDIR}/zot/zot-log.json
+    cat ${zot_log_file} | jq ' .["message"] '
+}

@@ -14,11 +14,6 @@ function delete_blob() {
     ls -al ${zot_test_files}/blobs/sha256/
 }
 
-function log_output() {
-    local zot_log_file=${BATS_FILE_TMPDIR}/zot/zot-log.json
-    cat ${zot_log_file} | jq ' .["message"] '
-}
-
 function affected() {
     log_output | jq 'contains("blobs/manifest affected")?' | grep true
 }

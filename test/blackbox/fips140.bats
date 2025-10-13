@@ -29,11 +29,13 @@ function setup_file() {
     # Setup zot server
     local zot_root_dir=${BATS_FILE_TMPDIR}/zot
     local zot_config_file=${BATS_FILE_TMPDIR}/zot_config.json
+    ZOT_LOG_FILE=${zot_root_dir}/zot-log.json
     local oci_data_dir=${BATS_FILE_TMPDIR}/oci
     mkdir -p ${zot_root_dir}
     mkdir -p ${oci_data_dir}
     zot_port=$(get_free_port_for_service "zot")
     echo ${zot_port} > ${BATS_FILE_TMPDIR}/zot.port
+    touch ${ZOT_LOG_FILE}
     cat > ${zot_config_file}<<EOF
 {
     "distSpecVersion": "1.1.1",
@@ -46,7 +48,7 @@ function setup_file() {
     },
     "log": {
         "level": "debug",
-        "output": "${BATS_FILE_TMPDIR}/zot.log"
+        "output": "${ZOT_LOG_FILE}"
     }
 }
 EOF
@@ -59,7 +61,7 @@ EOF
 
 function teardown() {
     # conditionally printing on failure is possible from teardown but not from from teardown_file
-    cat ${BATS_FILE_TMPDIR}/zot.log
+    cat ${BATS_FILE_TMPDIR}/zot/zot-log.json
 }
 
 function teardown_file() {
