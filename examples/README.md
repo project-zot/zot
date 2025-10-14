@@ -1056,6 +1056,30 @@ Configure each registry sync:
 ```
 Prefixes can be strings that exactly match repositories or they can be [glob](https://en.wikipedia.org/wiki/Glob_(programming)) patterns.
 
+### Platform Filtering in Sync
+
+You can selectively sync multi-architecture images by specifying which platforms to include:
+
+```
+"platforms": ["amd64", "arm64", "linux/amd64", "linux/arm64", "linux/arm/v7"]
+```
+
+The platforms field accepts three formats:
+
+1. Architecture-only format: `"amd64"`, `"arm64"`, `"arm"`, etc.
+2. OS/Architecture format: `"linux/amd64"`, `"windows/amd64"`, etc.
+3. OS/Architecture/Variant format: `"linux/arm/v7"`, `"linux/arm/v8"`, etc.
+
+This is particularly useful for ARM architectures where variants like "v6", "v7", and "v8" are common.
+
+Example configuration with variant filtering:
+
+```json
+"platforms": ["linux/amd64", "linux/arm64", "linux/arm/v7"]
+```
+
+This would sync only manifests for Linux AMD64, Linux ARM64, and Linux ARM v7 architectures, saving bandwidth and storage by excluding other architectures and variants.
+
 ### Sync's certDir option
 
 sync uses the same logic for reading cert directory as docker: https://docs.docker.com/engine/security/certificates/#understand-the-configuration

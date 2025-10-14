@@ -33,7 +33,8 @@ type RegistryConfig struct {
 	RetryDelay       *time.Duration
 	OnlySigned       *bool
 	CredentialHelper string
-	PreserveDigest   bool // sync without converting
+	PreserveDigest   bool     // sync without converting
+	Platforms        []string `mapstructure:",omitempty"` // filter platforms during sync (supports both "arch" and "os/arch" formats)
 }
 
 type Content struct {
