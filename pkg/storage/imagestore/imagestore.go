@@ -1135,35 +1135,38 @@ func (is *ImageStore) FullBlobUpload(repo string, body io.Reader, dstDigest godi
 }
 
 func (is *ImageStore) DedupeBlob(src string, dstDigest godigest.Digest, dstRepo string, dst string) error {
-retry:
-	is.log.Debug().Str("src", src).Str("dstDigest", dstDigest.String()).Str("dst", dst).Msg("dedupe begin")
+	for {
+		is.log.Debug().Str("src", src).Str("dstDigest", dstDigest.String()).Str("dst", dst).Msg("dedupe begin")
 
-	dstRecord, err := is.cache.GetBlob(dstDigest)
-	if err := inject.Error(err); err != nil && !errors.Is(err, zerr.ErrCacheMiss) {
-		is.log.Error().Err(err).Str("blobPath", dst).Str("component", "dedupe").Msg("failed to lookup blob record")
-
-		return err
-	}
-
-	if dstRecord == "" {
-		// cache record doesn't exist, so first disk and cache entry for this digest
-		if err := is.cache.PutBlob(dstDigest, dst); err != nil {
-			is.log.Error().Err(err).Str("blobPath", dst).Str("component", "dedupe").
-				Msg("failed to insert blob record")
+		dstRecord, err := is.cache.GetBlob(dstDigest)
+		if err := inject.Error(err); err != nil && !errors.Is(err, zerr.ErrCacheMiss) {
+			is.log.Error().Err(err).Str("blobPath", dst).Str("component", "dedupe").Msg("failed to lookup blob record")
 
 			return err
 		}
 
-		// move the blob from uploads to final dest
-		if err := is.storeDriver.Move(src, dst); err != nil {
-			is.log.Error().Err(err).Str("src", src).Str("dst", dst).Str("component", "dedupe").
-				Msg("failed to rename blob")
+		if dstRecord == "" {
+			// cache record doesn't exist, so first disk and cache entry for this digest
+			if err := is.cache.PutBlob(dstDigest, dst); err != nil {
+				is.log.Error().Err(err).Str("blobPath", dst).Str("component", "dedupe").
+					Msg("failed to insert blob record")
 
-			return err
+				return err
+			}
+
+			// move the blob from uploads to final dest
+			if err := is.storeDriver.Move(src, dst); err != nil {
+				is.log.Error().Err(err).Str("src", src).Str("dst", dst).Str("component", "dedupe").
+					Msg("failed to rename blob")
+
+				return err
+			}
+
+			is.log.Debug().Str("src", src).Str("dst", dst).Str("component", "dedupe").Msg("rename")
+
+			return nil
 		}
 
-		is.log.Debug().Str("src", src).Str("dst", dst).Str("component", "dedupe").Msg("rename")
-	} else {
 		// cache record exists, but due to GC and upgrades from older versions,
 		// disk content and cache records may go out of sync
 		if is.cache.UsesRelativePaths() {
@@ -1183,7 +1186,7 @@ retry:
 				return err
 			}
 
-			goto retry
+			continue
 		}
 
 		// prevent overwrite original blob
@@ -1229,9 +1232,9 @@ retry:
 		}
 
 		is.log.Debug().Str("src", src).Str("component", "dedupe").Msg("remove")
-	}
 
-	return nil
+		return nil
+	}
 }
 
 // DeleteBlobUpload deletes an existing blob upload that is currently in progress.
