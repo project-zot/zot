@@ -39,7 +39,7 @@ func ACHeadersMiddleware(config *config.Config, allowedMethods ...string) mux.Mi
 			resp.Header().Set("Access-Control-Allow-Headers", "Authorization,content-type,"+constants.SessionClientHeaderName)
 
 			// Get auth config safely
-			authConfig := config.GetAuthConfig()
+			authConfig := config.CopyAuthConfig()
 			if authConfig.IsBasicAuthnEnabled() {
 				resp.Header().Set("Access-Control-Allow-Credentials", "true")
 			}
@@ -76,7 +76,7 @@ func AuthzOnlyAdminsMiddleware(conf *config.Config) mux.MiddlewareFunc {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 			// Get auth config safely
-			authConfig := conf.GetAuthConfig()
+			authConfig := conf.CopyAuthConfig()
 			if !authConfig.IsBasicAuthnEnabled() {
 				next.ServeHTTP(response, request)
 

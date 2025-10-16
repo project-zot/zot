@@ -22,7 +22,7 @@ func EnableSyncExtension(config *config.Config, metaDB mTypes.MetaDB,
 	storeController storage.StoreController, sch *scheduler.Scheduler, log log.Logger,
 ) (*sync.BaseOnDemand, error) {
 	// Get extensions config safely
-	extensionsConfig := config.GetExtensionsConfig()
+	extensionsConfig := config.CopyExtensionsConfig()
 	httpAddress := config.GetHTTPAddress()
 	httpPort := config.GetHTTPPort()
 
@@ -53,7 +53,7 @@ func EnableSyncExtension(config *config.Config, metaDB mTypes.MetaDB,
 			tmpDir := syncConfig.DownloadDir
 			credsPath := syncConfig.CredentialsFile
 			// Get cluster config safely
-			clusterConfig := config.GetClusterConfig()
+			clusterConfig := config.CopyClusterConfig()
 
 			service, err := sync.New(registryConfig, credsPath, clusterConfig, tmpDir, storeController, metaDB, log)
 			if err != nil {

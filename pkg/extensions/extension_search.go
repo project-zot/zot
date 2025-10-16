@@ -34,7 +34,7 @@ func GetCveScanner(conf *config.Config, storeController storage.StoreController,
 	metaDB mTypes.MetaDB, log log.Logger,
 ) CveScanner {
 	// Get extensions config safely
-	extensionsConfig := conf.GetExtensionsConfig()
+	extensionsConfig := conf.CopyExtensionsConfig()
 	if !extensionsConfig.IsCveScanningEnabled() {
 		return nil
 	}
@@ -50,7 +50,7 @@ func EnableSearchExtension(conf *config.Config, storeController storage.StoreCon
 	metaDB mTypes.MetaDB, taskScheduler *scheduler.Scheduler, cveScanner CveScanner, log log.Logger,
 ) {
 	// Get extensions config safely
-	extensionsConfig := conf.GetExtensionsConfig()
+	extensionsConfig := conf.CopyExtensionsConfig()
 	if extensionsConfig.IsCveScanningEnabled() {
 		cveConfig := extensionsConfig.GetSearchCVEConfig()
 		updateInterval := cveConfig.UpdateInterval
@@ -81,7 +81,7 @@ func startScanner(interval time.Duration, metaDB mTypes.MetaDB, sch *scheduler.S
 func SetupSearchRoutes(conf *config.Config, router *mux.Router, storeController storage.StoreController,
 	metaDB mTypes.MetaDB, cveScanner CveScanner, log log.Logger,
 ) {
-	extensionsConfig := conf.GetExtensionsConfig()
+	extensionsConfig := conf.CopyExtensionsConfig()
 	if !extensionsConfig.IsSearchEnabled() {
 		log.Info().Msg("skip enabling the search route as the config prerequisites are not met")
 

@@ -77,10 +77,6 @@ type UIConfig struct {
 	BaseConfig `mapstructure:",squash"`
 }
 
-// =============================================================================
-// INTERNAL METHODS
-// =============================================================================
-
 // isSearchEnabledInternal checks if search is enabled (internal use only).
 func (e *ExtensionConfig) isSearchEnabledInternal() bool {
 	return e != nil && e.Search != nil && e.Search.Enable != nil && *e.Search.Enable
@@ -90,10 +86,6 @@ func (e *ExtensionConfig) isSearchEnabledInternal() bool {
 func (e *ExtensionConfig) isUIEnabledInternal() bool {
 	return e != nil && e.UI != nil && e.UI.Enable != nil && *e.UI.Enable
 }
-
-// =============================================================================
-// PUBLIC METHODS
-// =============================================================================
 
 // IsCveScanningEnabled checks if CVE scanning is enabled in this extensions config.
 func (e *ExtensionConfig) IsCveScanningEnabled() bool {
@@ -116,10 +108,6 @@ func (e *ExtensionConfig) IsEventRecorderEnabled() bool {
 
 // IsSearchEnabled checks if search is enabled in this extensions config.
 func (e *ExtensionConfig) IsSearchEnabled() bool {
-	if e == nil {
-		return false
-	}
-
 	return e.isSearchEnabledInternal()
 }
 
@@ -183,10 +171,6 @@ func (e *ExtensionConfig) IsImageTrustEnabled() bool {
 
 // IsUIEnabled checks if UI is enabled in this extensions config.
 func (e *ExtensionConfig) IsUIEnabled() bool {
-	if e == nil {
-		return false
-	}
-
 	return e.isUIEnabledInternal()
 }
 
@@ -198,12 +182,6 @@ func (e *ExtensionConfig) AreUserPrefsEnabled() bool {
 
 	return e.isSearchEnabledInternal() && e.isUIEnabledInternal()
 }
-
-// =============================================================================
-
-// =============================================================================
-// GETTER METHODS
-// =============================================================================
 
 // GetSearchCVEConfig returns the search CVE config.
 func (e *ExtensionConfig) GetSearchCVEConfig() *CVEConfig {

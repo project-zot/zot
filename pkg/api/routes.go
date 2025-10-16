@@ -78,7 +78,7 @@ func (rh *RouteHandler) SetupRoutes() {
 	applyCORSHeaders := getCORSHeadersHandler(allowOrigin)
 
 	// Get auth config for OpenID checks
-	authConfig := rh.c.Config.GetAuthConfig()
+	authConfig := rh.c.Config.CopyAuthConfig()
 	if authConfig.IsOpenIDAuthEnabled() {
 		// login path for openID
 		rh.c.Router.HandleFunc(constants.LoginPath, rh.AuthURLHandler())
@@ -127,7 +127,7 @@ func (rh *RouteHandler) SetupRoutes() {
 	prefixedDistSpecRouter := prefixedRouter.NewRoute().Subrouter()
 	// authz is being enabled if AccessControl is specified
 	// if Authn is not present AccessControl will have only default policies
-	accessControlConfig := rh.c.Config.GetAccessControlConfig()
+	accessControlConfig := rh.c.Config.CopyAccessControlConfig()
 	if accessControlConfig != nil {
 		if authConfig.IsBasicAuthnEnabled() {
 			rh.c.Log.Info().Msg("access control is being enabled")
@@ -248,7 +248,7 @@ func getUIHeadersHandler(config *config.Config, allowedMethods ...string) func(h
 				"Authorization,content-type,"+constants.SessionClientHeaderName)
 
 			// Get auth config safely
-			authConfig := config.GetAuthConfig()
+			authConfig := config.CopyAuthConfig()
 			if authConfig.IsBasicAuthnEnabled() {
 				response.Header().Set("Access-Control-Allow-Credentials", "true")
 			}
@@ -276,7 +276,7 @@ func (rh *RouteHandler) CheckVersionSupport(response http.ResponseWriter, reques
 	// NOTE: compatibility workaround - return this header in "allowed-read" mode to allow for clients to
 	// work correctly
 	// Get auth config safely
-	authConfig := rh.c.Config.GetAuthConfig()
+	authConfig := rh.c.Config.CopyAuthConfig()
 	if authConfig.IsBasicAuthnEnabled() || authConfig.IsBearerAuthEnabled() {
 		// don't send auth headers if request is coming from UI
 		if request.Header.Get(constants.SessionClientHeaderName) != constants.SessionClientHeaderValue {
@@ -515,7 +515,7 @@ type ExtensionList struct {
 // @Router /v2/{name}/manifests/{reference} [get].
 func (rh *RouteHandler) GetManifest(response http.ResponseWriter, request *http.Request) {
 	// Get auth config safely
-	authConfig := rh.c.Config.GetAuthConfig()
+	authConfig := rh.c.Config.CopyAuthConfig()
 	if authConfig.IsBasicAuthnEnabled() {
 		response.Header().Set("Access-Control-Allow-Credentials", "true")
 	}
@@ -965,7 +965,7 @@ func (rh *RouteHandler) CheckBlob(response http.ResponseWriter, request *http.Re
 	}
 
 	userCanMount := true
-	accessControlConfig := rh.c.Config.GetAccessControlConfig()
+	accessControlConfig := rh.c.Config.CopyAccessControlConfig()
 
 	if accessControlConfig.IsAuthzEnabled() {
 		userCanMount, err = canMount(userAc, imgStore, digest)
@@ -1283,7 +1283,7 @@ func (rh *RouteHandler) CreateBlobUpload(response http.ResponseWriter, request *
 		}
 
 		userCanMount := true
-		accessControlConfig := rh.c.Config.GetAccessControlConfig()
+		accessControlConfig := rh.c.Config.CopyAccessControlConfig()
 
 		if accessControlConfig.IsAuthzEnabled() {
 			userCanMount, err = canMount(userAc, imgStore, mountDigest)
@@ -2343,7 +2343,7 @@ func getBlobUploadLocation(url *url.URL, name string, digest godigest.Digest) st
 }
 
 func isSyncOnDemandEnabled(ctlr Controller) bool {
-	extensionsConfig := ctlr.Config.GetExtensionsConfig()
+	extensionsConfig := ctlr.Config.CopyExtensionsConfig()
 	if extensionsConfig.IsSyncEnabled() &&
 		fmt.Sprintf("%v", ctlr.SyncOnDemand) != fmt.Sprintf("%v", nil) {
 		return true

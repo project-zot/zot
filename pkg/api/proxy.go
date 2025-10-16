@@ -23,11 +23,11 @@ func ClusterProxy(ctrlr *Controller) func(http.HandlerFunc) http.HandlerFunc {
 	return func(next http.HandlerFunc) http.HandlerFunc {
 		return http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 			// Get cluster config safely
-			clusterConfig := ctrlr.Config.GetClusterConfig()
+			clusterConfig := ctrlr.Config.CopyClusterConfig()
 			logger := ctrlr.Log
 
 			// if no cluster or single-node cluster, handle locally.
-			if clusterConfig == nil || len(clusterConfig.Members) == 1 {
+			if !clusterConfig.IsClustered() {
 				next.ServeHTTP(response, request)
 
 				return
@@ -121,7 +121,7 @@ func proxyHTTPRequest(ctx context.Context, req *http.Request,
 	cloneURL := *req.URL
 
 	// Get HTTP TLS config safely
-	httpTLSConfig := ctrlr.Config.GetTLSConfig()
+	httpTLSConfig := ctrlr.Config.CopyTLSConfig()
 
 	proxyQueryScheme := "http"
 	if httpTLSConfig != nil {
@@ -152,7 +152,7 @@ func proxyHTTPRequest(ctx context.Context, req *http.Request,
 	}
 
 	// Get cluster config safely
-	clusterConfig := ctrlr.Config.GetClusterConfig()
+	clusterConfig := ctrlr.Config.CopyClusterConfig()
 	tlsConfig := clusterConfig.TLS
 
 	if tlsConfig != nil {

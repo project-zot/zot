@@ -14,7 +14,7 @@ import (
 
 func EnableMetricsExtension(config *config.Config, log log.Logger, rootDir string) {
 	// Get extensions config safely
-	extensionsConfig := config.GetExtensionsConfig()
+	extensionsConfig := config.CopyExtensionsConfig()
 	if extensionsConfig.IsMetricsEnabled() {
 		log.Info().Msg("metrics extension enabled")
 	} else {
@@ -28,7 +28,7 @@ func SetupMetricsRoutes(config *config.Config, router *mux.Router,
 	log.Info().Msg("setting up metrics routes")
 
 	// Get extensions config safely
-	extensionsConfig := config.GetExtensionsConfig()
+	extensionsConfig := config.CopyExtensionsConfig()
 	if extensionsConfig.IsMetricsEnabled() {
 		prometheusConfig := extensionsConfig.GetMetricsPrometheusConfig()
 		if prometheusConfig != nil {

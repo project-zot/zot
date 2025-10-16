@@ -549,7 +549,7 @@ func (scheduler *Scheduler) SubmitGenerator(taskGenerator TaskGenerator, interva
 }
 
 func getNumWorkers(cfg *config.Config) int {
-	schedulerConfig := cfg.GetSchedulerConfig()
+	schedulerConfig := cfg.CopySchedulerConfig()
 	if schedulerConfig != nil && schedulerConfig.NumWorkers != 0 {
 		return schedulerConfig.NumWorkers
 	}

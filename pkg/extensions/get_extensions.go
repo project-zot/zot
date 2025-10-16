@@ -16,7 +16,7 @@ func GetExtensions(config *config.Config) distext.ExtensionList {
 	endpoints := []string{}
 	extensions := []distext.Extension{}
 
-	extensionsConfig := config.GetExtensionsConfig()
+	extensionsConfig := config.CopyExtensionsConfig()
 	if extensionsConfig.IsNotationEnabled() && IsBuiltWithImageTrustExtension() {
 		endpoints = append(endpoints, constants.FullNotation)
 	}

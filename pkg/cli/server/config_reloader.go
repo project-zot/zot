@@ -85,7 +85,7 @@ func (hr *HotReloader) Start() {
 							continue
 						}
 
-						authConfig := hr.ctlr.Config.GetAuthConfig()
+						authConfig := hr.ctlr.Config.CopyAuthConfig()
 						if authConfig.IsLdapAuthEnabled() &&
 							authConfig.LDAP.CredentialsFile != newConfig.HTTP.Auth.LDAP.CredentialsFile {
 							err = hr.watcher.Remove(authConfig.LDAP.CredentialsFile)

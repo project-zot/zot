@@ -17,7 +17,7 @@ func EnableScrubExtension(config *config.Config, log log.Logger, storeController
 	sch *scheduler.Scheduler,
 ) {
 	// Get extensions config safely
-	extensionsConfig := config.GetExtensionsConfig()
+	extensionsConfig := config.CopyExtensionsConfig()
 	if extensionsConfig.IsScrubEnabled() {
 		scrubInterval := extensionsConfig.GetScrubInterval()
 
@@ -32,7 +32,7 @@ func EnableScrubExtension(config *config.Config, log log.Logger, storeController
 		sch.SubmitGenerator(generator, scrubInterval, scheduler.LowPriority)
 
 		// Get storage config safely
-		storageConfig := config.GetStorageConfig()
+		storageConfig := config.CopyStorageConfig()
 		if storageConfig.SubPaths != nil {
 			for route := range storageConfig.SubPaths {
 				processedRepos := make(map[string]struct{})

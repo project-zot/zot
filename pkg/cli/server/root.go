@@ -229,7 +229,7 @@ func NewServerRootCmd() *cobra.Command {
 func validateStorageConfig(cfg *config.Config, logger zlog.Logger) error {
 	expConfigMap := make(map[string]config.StorageConfig, 0)
 
-	storageConfig := cfg.GetStorageConfig()
+	storageConfig := cfg.CopyStorageConfig()
 	defaultRootDir := storageConfig.RootDirectory
 
 	for _, subStorageConfig := range storageConfig.SubPaths {
@@ -259,7 +259,7 @@ func validateStorageConfig(cfg *config.Config, logger zlog.Logger) error {
 
 func validateCacheConfig(cfg *config.Config, logger zlog.Logger) error {
 	// global
-	storageConfig := cfg.GetStorageConfig()
+	storageConfig := cfg.CopyStorageConfig()
 	// dedupe true, remote storage, remoteCache true, but no cacheDriver (remote)
 	//nolint: lll
 	if storageConfig.Dedupe && storageConfig.StorageDriver != nil && storageConfig.RemoteCache && storageConfig.CacheDriver == nil {
@@ -338,7 +338,7 @@ func validateCacheConfig(cfg *config.Config, logger zlog.Logger) error {
 func validateRemoteSessionStoreConfig(cfg *config.Config, logger zlog.Logger) error {
 	// it is okay for the session driver config to be nil
 	// this is backwards compatible for older configs
-	authConfig := cfg.GetAuthConfig()
+	authConfig := cfg.CopyAuthConfig()
 	if authConfig == nil || authConfig.SessionDriver == nil {
 		return nil
 	}
@@ -389,7 +389,7 @@ func validateRemoteSessionStoreConfig(cfg *config.Config, logger zlog.Logger) er
 }
 
 func validateExtensionsConfig(cfg *config.Config, logger zlog.Logger) error {
-	extensionsConfig := cfg.GetExtensionsConfig()
+	extensionsConfig := cfg.CopyExtensionsConfig()
 	if extensionsConfig != nil && extensionsConfig.Mgmt != nil {
 		logger.Warn().Msg("mgmt extensions configuration option has been made redundant and will be ignored.")
 	}
@@ -411,7 +411,7 @@ func validateExtensionsConfig(cfg *config.Config, logger zlog.Logger) error {
 	}
 
 	//nolint:lll
-	storageConfig := cfg.GetStorageConfig()
+	storageConfig := cfg.CopyStorageConfig()
 	if storageConfig.StorageDriver != nil && extensionsConfig.IsCveScanningEnabled() {
 		msg := "failed to enable cve scanning due to incompatibility with remote storage, please disable cve"
 		logger.Error().Err(zerr.ErrBadConfig).Msg(msg)
@@ -470,7 +470,7 @@ func validateConfiguration(config *config.Config, logger zlog.Logger) error {
 	}
 
 	// check authorization config, it should have basic auth enabled or ldap, api keys or OpenID
-	accessControlConfig := config.GetAccessControlConfig()
+	accessControlConfig := config.CopyAccessControlConfig()
 	if accessControlConfig != nil {
 		// checking for anonymous policy only authorization config: no users, no policies but anonymous policy
 		if err := validateAuthzPolicies(config, logger); err != nil {
@@ -478,7 +478,7 @@ func validateConfiguration(config *config.Config, logger zlog.Logger) error {
 		}
 	}
 
-	storageConfig := config.GetStorageConfig()
+	storageConfig := config.CopyStorageConfig()
 	if len(storageConfig.StorageDriver) != 0 {
 		// enforce s3 driver in case of using storage driver
 		if storageConfig.StorageDriver["name"] != storageConstants.S3StorageDriverName {
@@ -489,7 +489,7 @@ func validateConfiguration(config *config.Config, logger zlog.Logger) error {
 		}
 
 		// enforce tmpDir in case sync + s3
-		extensionsConfig := config.GetExtensionsConfig()
+		extensionsConfig := config.CopyExtensionsConfig()
 		if extensionsConfig.IsSyncEnabled() && extensionsConfig.Sync.DownloadDir == "" {
 			msg := "using both sync and remote storage features needs config.Extensions.Sync.DownloadDir to be specified"
 			logger.Error().Err(zerr.ErrBadConfig).Msg(msg)
@@ -514,7 +514,7 @@ func validateConfiguration(config *config.Config, logger zlog.Logger) error {
 					}
 
 					// enforce tmpDir in case sync + s3
-					extensionsConfig := config.GetExtensionsConfig()
+					extensionsConfig := config.CopyExtensionsConfig()
 					if extensionsConfig.IsSyncEnabled() && extensionsConfig.Sync.DownloadDir == "" {
 						msg := "using both sync and remote storage features needs config.Extensions.Sync.DownloadDir to be specified"
 						logger.Error().Err(zerr.ErrBadConfig).Msg(msg)
@@ -548,7 +548,7 @@ func validateConfiguration(config *config.Config, logger zlog.Logger) error {
 }
 
 func validateOpenIDConfig(cfg *config.Config, logger zlog.Logger) error {
-	authConfig := cfg.GetAuthConfig()
+	authConfig := cfg.CopyAuthConfig()
 	// can't check with IsOpenIDAuthEnabled(), because it can't test invalid providers
 	if authConfig != nil && authConfig.OpenID != nil && len(authConfig.OpenID.Providers) > 0 {
 		for provider, providerConfig := range authConfig.OpenID.Providers {
@@ -581,8 +581,8 @@ func validateOpenIDConfig(cfg *config.Config, logger zlog.Logger) error {
 }
 
 func validateAuthzPolicies(config *config.Config, logger zlog.Logger) error {
-	authConfig := config.GetAuthConfig()
-	accessControlConfig := config.GetAccessControlConfig()
+	authConfig := config.CopyAuthConfig()
+	accessControlConfig := config.CopyAccessControlConfig()
 
 	logger.Info().Msg("checking if anonymous authorization is the only type of authorization policy configured")
 
@@ -1101,7 +1101,7 @@ func readSecretFile(path string, v any, checkUnsetFields bool) error { //nolint:
 
 func validateLDAP(config *config.Config, logger zlog.Logger) error {
 	// LDAP mandatory configuration
-	authConfig := config.GetAuthConfig()
+	authConfig := config.CopyAuthConfig()
 	if authConfig.IsLdapAuthEnabled() {
 		ldap := authConfig.LDAP
 		if ldap.UserAttribute == "" {
@@ -1145,7 +1145,7 @@ func validateHTTP(config *config.Config, logger zlog.Logger) error {
 
 func validateGC(config *config.Config, logger zlog.Logger) error {
 	// enforce GC params
-	storageConfig := config.GetStorageConfig()
+	storageConfig := config.CopyStorageConfig()
 	if storageConfig.GCDelay < 0 {
 		logger.Error().Err(zerr.ErrBadConfig).Dur("delay", storageConfig.GCDelay).
 			Msg("invalid garbage-collect delay specified")
@@ -1229,7 +1229,7 @@ func validateGCRules(retention config.ImageRetention, logger zlog.Logger) error 
 
 func validateSync(config *config.Config, logger zlog.Logger) error {
 	// check glob patterns in sync config are compilable
-	extensionsConfig := config.GetExtensionsConfig()
+	extensionsConfig := config.CopyExtensionsConfig()
 	// can't check with IsSyncEnabled(), because it can't test invalid sync configs
 	if extensionsConfig != nil && extensionsConfig.Sync != nil && len(extensionsConfig.Sync.Registries) > 0 {
 		for regID, regCfg := range extensionsConfig.Sync.Registries {
@@ -1300,7 +1300,7 @@ func validateSync(config *config.Config, logger zlog.Logger) error {
 }
 
 func validateClusterConfig(config *config.Config, logger zlog.Logger) error {
-	clusterConfig := config.GetClusterConfig()
+	clusterConfig := config.CopyClusterConfig()
 	if clusterConfig != nil {
 		if len(clusterConfig.Members) == 0 {
 			msg := "cannot have 0 members in a scale out cluster"

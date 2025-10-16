@@ -211,6 +211,11 @@ type ClusterConfig struct {
 	Proxy *ClusterRequestProxyConfig `json:"-" mapstructure:"-"`
 }
 
+// IsClustered returns true if the cluster configuration represents a multi-node cluster.
+func (c *ClusterConfig) IsClustered() bool {
+	return c != nil && len(c.Members) > 1
+}
+
 type ClusterRequestProxyConfig struct {
 	// holds the cluster socket (IP:port) derived from the host's
 	// interface configuration and the listening port of the HTTP server.
@@ -463,28 +468,6 @@ func (expConfig StorageConfig) ParamsEqual(actConfig StorageConfig) bool {
 		expConfig.GCDelay == actConfig.GCDelay && expConfig.GCInterval == actConfig.GCInterval
 }
 
-// =============================================================================
-// INTERNAL METHODS (non-locking, for use by other methods that already hold locks)
-// =============================================================================
-
-// isSearchEnabledInternal checks if search is enabled without acquiring a lock (internal use only).
-func (c *Config) isSearchEnabledInternal() bool {
-	if c == nil {
-		return false
-	}
-
-	return c.Extensions != nil && c.Extensions.Search != nil && *c.Extensions.Search.Enable
-}
-
-// isEventRecorderEnabledInternal checks if event recorder is enabled without acquiring a lock (internal use only).
-func (c *Config) isEventRecorderEnabledInternal() bool {
-	if c == nil {
-		return false
-	}
-
-	return c.Extensions != nil && c.Extensions.Events != nil && *c.Extensions.Events.Enable
-}
-
 // isRetentionEnabledInternal checks if retention is enabled without acquiring a lock (internal use only).
 func (c *Config) isRetentionEnabledInternal() bool {
 	if c == nil {
@@ -577,14 +560,6 @@ func isOpenIDAuthProviderEnabled(config *Config, provider string) bool {
 	return false
 }
 
-// =============================================================================
-// PUBLIC THREAD-SAFE METHODS (acquire locks)
-// =============================================================================
-
-// =============================================================================
-// CONFIGURATION MANAGEMENT METHODS
-// =============================================================================
-
 // Sanitize makes a sanitized copy of the config removing any secrets.
 func (c *Config) Sanitize() *Config {
 	if c == nil {
@@ -632,7 +607,7 @@ func (c *Config) Sanitize() *Config {
 		}
 	}
 
-	if c.isEventRecorderEnabledInternal() {
+	if c.Extensions.IsEventRecorderEnabled() {
 		for i, sink := range c.Extensions.Events.Sinks {
 			if sink.Credentials == nil {
 				continue
@@ -690,7 +665,7 @@ func (c *Config) UpdateReloadableConfig(newConfig *Config) {
 	}
 
 	// Update authentication configuration
-	if c.HTTP.Auth != nil {
+	if c.HTTP.Auth != nil && newConfig.HTTP.Auth != nil {
 		c.HTTP.Auth.HTPasswd = newConfig.HTTP.Auth.HTPasswd
 		c.HTTP.Auth.LDAP = newConfig.HTTP.Auth.LDAP
 		c.HTTP.Auth.APIKey = newConfig.HTTP.Auth.APIKey
@@ -726,7 +701,7 @@ func (c *Config) UpdateReloadableConfig(newConfig *Config) {
 		// Update search extension
 		if newConfig.Extensions.Search != nil && newConfig.Extensions.Search.CVE != nil {
 			// Only update if search is enabled
-			if c.isSearchEnabledInternal() {
+			if c.Extensions.IsSearchEnabled() {
 				if c.Extensions.Search != nil {
 					c.Extensions.Search.CVE = newConfig.Extensions.Search.CVE
 				}
@@ -743,12 +718,8 @@ func (c *Config) UpdateReloadableConfig(newConfig *Config) {
 	}
 }
 
-// =============================================================================
-// THREAD-SAFE GETTER METHODS
-// =============================================================================
-
-// GetAuthConfig returns a copy of the auth config if it exists.
-func (c *Config) GetAuthConfig() *AuthConfig {
+// CopyAuthConfig returns a copy of the auth config if it exists.
+func (c *Config) CopyAuthConfig() *AuthConfig {
 	if c == nil {
 		return nil
 	}
@@ -767,8 +738,8 @@ func (c *Config) GetAuthConfig() *AuthConfig {
 	return authCopy
 }
 
-// GetAccessControlConfig returns a copy of the access control config if it exists.
-func (c *Config) GetAccessControlConfig() *AccessControlConfig {
+// CopyAccessControlConfig returns a copy of the access control config if it exists.
+func (c *Config) CopyAccessControlConfig() *AccessControlConfig {
 	if c == nil {
 		return nil
 	}
@@ -787,8 +758,8 @@ func (c *Config) GetAccessControlConfig() *AccessControlConfig {
 	return accessControlCopy
 }
 
-// GetStorageConfig returns a copy of the storage config.
-func (c *Config) GetStorageConfig() GlobalStorageConfig {
+// CopyStorageConfig returns a copy of the storage config.
+func (c *Config) CopyStorageConfig() GlobalStorageConfig {
 	if c == nil {
 		return GlobalStorageConfig{}
 	}
@@ -803,8 +774,8 @@ func (c *Config) GetStorageConfig() GlobalStorageConfig {
 	return storageCopy
 }
 
-// GetExtensionsConfig returns a copy of the extensions config if it exists.
-func (c *Config) GetExtensionsConfig() *extconf.ExtensionConfig {
+// CopyExtensionsConfig returns a copy of the extensions config if it exists.
+func (c *Config) CopyExtensionsConfig() *extconf.ExtensionConfig {
 	if c == nil {
 		return nil
 	}
@@ -823,8 +794,8 @@ func (c *Config) GetExtensionsConfig() *extconf.ExtensionConfig {
 	return extensionsCopy
 }
 
-// GetLogConfig returns a copy of the log config if it exists.
-func (c *Config) GetLogConfig() *LogConfig {
+// CopyLogConfig returns a copy of the log config if it exists.
+func (c *Config) CopyLogConfig() *LogConfig {
 	if c == nil {
 		return nil
 	}
@@ -842,8 +813,8 @@ func (c *Config) GetLogConfig() *LogConfig {
 	return &logCopy
 }
 
-// GetClusterConfig returns a copy of the cluster config if it exists.
-func (c *Config) GetClusterConfig() *ClusterConfig {
+// CopyClusterConfig returns a copy of the cluster config if it exists.
+func (c *Config) CopyClusterConfig() *ClusterConfig {
 	if c == nil {
 		return nil
 	}
@@ -862,8 +833,8 @@ func (c *Config) GetClusterConfig() *ClusterConfig {
 	return clusterCopy
 }
 
-// GetSchedulerConfig returns a copy of the scheduler config if it exists.
-func (c *Config) GetSchedulerConfig() *SchedulerConfig {
+// CopySchedulerConfig returns a copy of the scheduler config if it exists.
+func (c *Config) CopySchedulerConfig() *SchedulerConfig {
 	if c == nil {
 		return nil
 	}
@@ -879,6 +850,45 @@ func (c *Config) GetSchedulerConfig() *SchedulerConfig {
 	schedulerCopy := *c.Scheduler
 
 	return &schedulerCopy
+}
+
+// CopyTLSConfig returns a copy of the TLS config.
+func (c *Config) CopyTLSConfig() *TLSConfig {
+	if c == nil {
+		return nil
+	}
+
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	if c.HTTP.TLS == nil {
+		return nil
+	}
+
+	// Return a copy to avoid race conditions
+	tlsCopy := *c.HTTP.TLS
+
+	return &tlsCopy
+}
+
+// CopyRatelimit returns a copy of the rate limit config.
+func (c *Config) CopyRatelimit() *RatelimitConfig {
+	if c == nil {
+		return nil
+	}
+
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	if c.HTTP.Ratelimit == nil {
+		return nil
+	}
+
+	// Return a deep copy using tiendc/go-deepcopy to avoid race conditions
+	ratelimitCopy := &RatelimitConfig{}
+	_ = deepcopy.Copy(ratelimitCopy, c.HTTP.Ratelimit)
+
+	return ratelimitCopy
 }
 
 // GetVersionInfo returns version information (read-only, safe to access directly).
@@ -903,25 +913,6 @@ func (c *Config) GetRealm() string {
 	defer c.mu.RUnlock()
 
 	return c.HTTP.Realm
-}
-
-// GetTLSConfig returns a copy of the TLS config.
-func (c *Config) GetTLSConfig() *TLSConfig {
-	if c == nil {
-		return nil
-	}
-
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-
-	if c.HTTP.TLS == nil {
-		return nil
-	}
-
-	// Return a copy to avoid race conditions
-	tlsCopy := *c.HTTP.TLS
-
-	return &tlsCopy
 }
 
 // GetCompat returns a copy of the compatibility config.
@@ -980,30 +971,6 @@ func (c *Config) GetAllowOrigin() string {
 	return c.HTTP.AllowOrigin
 }
 
-// GetRatelimit returns a copy of the rate limit config.
-func (c *Config) GetRatelimit() *RatelimitConfig {
-	if c == nil {
-		return nil
-	}
-
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-
-	if c.HTTP.Ratelimit == nil {
-		return nil
-	}
-
-	// Return a deep copy using tiendc/go-deepcopy to avoid race conditions
-	ratelimitCopy := &RatelimitConfig{}
-	_ = deepcopy.Copy(ratelimitCopy, c.HTTP.Ratelimit)
-
-	return ratelimitCopy
-}
-
-// =============================================================================
-// STATUS CHECK METHODS
-// =============================================================================
-
 // IsMTLSAuthEnabled checks if mTLS authentication is enabled.
 func (c *Config) IsMTLSAuthEnabled() bool {
 	if c == nil {
@@ -1034,27 +1001,7 @@ func (c *Config) IsRetentionEnabled() bool {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 
-	var needsMetaDB bool
-
-	for _, retentionPolicy := range c.Storage.Retention.Policies {
-		for _, tagRetentionPolicy := range retentionPolicy.KeepTags {
-			if c.isTagsRetentionEnabled(tagRetentionPolicy) {
-				needsMetaDB = true
-			}
-		}
-	}
-
-	for _, subpath := range c.Storage.SubPaths {
-		for _, retentionPolicy := range subpath.Retention.Policies {
-			for _, tagRetentionPolicy := range retentionPolicy.KeepTags {
-				if c.isTagsRetentionEnabled(tagRetentionPolicy) {
-					needsMetaDB = true
-				}
-			}
-		}
-	}
-
-	return needsMetaDB
+	return c.isRetentionEnabledInternal()
 }
 
 // IsCompatEnabled checks if compatibility mode is enabled.
@@ -1068,10 +1015,6 @@ func (c *Config) IsCompatEnabled() bool {
 
 	return len(c.HTTP.Compat) > 0
 }
-
-// =============================================================================
-// HELPER FUNCTIONS
-// =============================================================================
 
 // IsOpenIDSupported checks if the provider supports OpenID.
 func IsOpenIDSupported(provider string) bool {

@@ -393,6 +393,11 @@ func TestConfig(t *testing.T) {
 	})
 
 	Convey("Test IsRetentionEnabled()", t, func() {
+		// Test nil config
+		var nilConf *config.Config = nil
+
+		So(nilConf.IsRetentionEnabled(), ShouldBeFalse)
+
 		conf := config.New()
 		So(conf.IsRetentionEnabled(), ShouldBeFalse)
 
@@ -434,11 +439,93 @@ func TestConfig(t *testing.T) {
 		conf.Storage.SubPaths = subPaths
 
 		So(conf.IsRetentionEnabled(), ShouldBeTrue)
+
+		// Test MostRecentlyPushedCount
+		conf = config.New()
+		conf.Storage.Retention.Policies = []config.RetentionPolicy{
+			{
+				Repositories: []string{"repo"},
+				KeepTags: []config.KeepTagsPolicy{
+					{
+						Patterns:                []string{"tag"},
+						MostRecentlyPushedCount: 3,
+					},
+				},
+			},
+		}
+		So(conf.IsRetentionEnabled(), ShouldBeTrue)
+
+		// Test PulledWithin
+		conf = config.New()
+		duration := time.Hour * 24
+		conf.Storage.Retention.Policies = []config.RetentionPolicy{
+			{
+				Repositories: []string{"repo"},
+				KeepTags: []config.KeepTagsPolicy{
+					{
+						Patterns:     []string{"tag"},
+						PulledWithin: &duration,
+					},
+				},
+			},
+		}
+		So(conf.IsRetentionEnabled(), ShouldBeTrue)
+
+		// Test PushedWithin
+		conf = config.New()
+		conf.Storage.Retention.Policies = []config.RetentionPolicy{
+			{
+				Repositories: []string{"repo"},
+				KeepTags: []config.KeepTagsPolicy{
+					{
+						Patterns:     []string{"tag"},
+						PushedWithin: &duration,
+					},
+				},
+			},
+		}
+		So(conf.IsRetentionEnabled(), ShouldBeTrue)
+
+		// Test SubPaths with retention policies
+		conf = config.New()
+		conf.Storage.SubPaths = map[string]config.StorageConfig{
+			"subpath1": {
+				Retention: config.ImageRetention{
+					Policies: []config.RetentionPolicy{
+						{
+							Repositories: []string{"repo1"},
+							KeepTags: []config.KeepTagsPolicy{
+								{
+									Patterns:                []string{"latest"},
+									MostRecentlyPulledCount: 5,
+								},
+							},
+						},
+					},
+				},
+			},
+		}
+		So(conf.IsRetentionEnabled(), ShouldBeTrue)
+
+		// Test empty policies with no retention criteria
+		conf = config.New()
+		conf.Storage.Retention.Policies = []config.RetentionPolicy{
+			{
+				Repositories: []string{"repo"},
+				KeepTags: []config.KeepTagsPolicy{
+					{
+						Patterns: []string{"tag"},
+						// No retention criteria set
+					},
+				},
+			},
+		}
+		So(conf.IsRetentionEnabled(), ShouldBeFalse)
 	})
 
 	Convey("Test IsEventRecorderEnabled()", t, func() {
 		conf := config.New()
-		extensionsConfig := conf.GetExtensionsConfig()
+		extensionsConfig := conf.CopyExtensionsConfig()
 		So(extensionsConfig.IsEventRecorderEnabled(), ShouldBeFalse)
 
 		// Enable the event recorder
@@ -448,22 +535,22 @@ func TestConfig(t *testing.T) {
 			Enable: &enable,
 		}
 
-		extensionsConfig = conf.GetExtensionsConfig()
+		extensionsConfig = conf.CopyExtensionsConfig()
 		So(extensionsConfig.IsEventRecorderEnabled(), ShouldBeTrue)
 
 		// Disabled scenario
 		disable := false
 		conf.Extensions.Events.Enable = &disable
-		extensionsConfig = conf.GetExtensionsConfig()
+		extensionsConfig = conf.CopyExtensionsConfig()
 		So(extensionsConfig.IsEventRecorderEnabled(), ShouldBeFalse)
 
 		// nil pointers
 		conf.Extensions.Events = nil
-		extensionsConfig = conf.GetExtensionsConfig()
+		extensionsConfig = conf.CopyExtensionsConfig()
 		So(extensionsConfig.IsEventRecorderEnabled(), ShouldBeFalse)
 
 		conf.Extensions = nil
-		extensionsConfig = conf.GetExtensionsConfig()
+		extensionsConfig = conf.CopyExtensionsConfig()
 		So(extensionsConfig.IsEventRecorderEnabled(), ShouldBeFalse)
 	})
 
@@ -886,7 +973,7 @@ func TestConfig(t *testing.T) {
 	})
 
 	Convey("Test Config getter methods", t, func() {
-		Convey("Test GetAuthConfig()", func() {
+		Convey("Test CopyAuthConfig()", func() {
 			Convey("Test with non-nil Auth", func() {
 				cfg := &config.Config{
 					HTTP: config.HTTPConfig{
@@ -895,7 +982,7 @@ func TestConfig(t *testing.T) {
 						},
 					},
 				}
-				authConfig := cfg.GetAuthConfig()
+				authConfig := cfg.CopyAuthConfig()
 				So(authConfig, ShouldNotBeNil)
 				So(authConfig.GetFailDelay(), ShouldEqual, 5)
 			})
@@ -906,7 +993,7 @@ func TestConfig(t *testing.T) {
 						Auth: nil,
 					},
 				}
-				authConfig := cfg.GetAuthConfig()
+				authConfig := cfg.CopyAuthConfig()
 				So(authConfig, ShouldBeNil)
 			})
 
@@ -950,7 +1037,7 @@ func TestConfig(t *testing.T) {
 				}
 
 				// Get the AuthConfig reference
-				authConfig := cfg.GetAuthConfig()
+				authConfig := cfg.CopyAuthConfig()
 				So(authConfig, ShouldNotBeNil)
 				So(authConfig.GetFailDelay(), ShouldEqual, 5)
 				So(authConfig.IsHtpasswdAuthEnabled(), ShouldBeTrue)
@@ -989,7 +1076,7 @@ func TestConfig(t *testing.T) {
 				}
 
 				// Get the AuthConfig reference
-				authConfig := cfg.GetAuthConfig()
+				authConfig := cfg.CopyAuthConfig()
 				So(authConfig, ShouldNotBeNil)
 				So(authConfig.GetFailDelay(), ShouldEqual, 5)
 				So(authConfig.IsHtpasswdAuthEnabled(), ShouldBeTrue)
@@ -1013,13 +1100,13 @@ func TestConfig(t *testing.T) {
 				cfg.UpdateReloadableConfig(newConfig)
 
 				// Verify that the returned AuthConfig is not affected by the update
-				// GetAuthConfig() returns a copy, so the returned object should be isolated
+				// CopyAuthConfig() returns a copy, so the returned object should be isolated
 				So(authConfig.GetFailDelay(), ShouldEqual, 5)        // Should remain unchanged
 				So(authConfig.IsHtpasswdAuthEnabled(), ShouldBeTrue) // Should remain unchanged (old path)
 				So(authConfig.IsAPIKeyEnabled(), ShouldBeFalse)      // Should remain unchanged
 
-				// Verify that a new GetAuthConfig() call returns the updated values
-				newAuthConfig := cfg.GetAuthConfig()
+				// Verify that a new CopyAuthConfig() call returns the updated values
+				newAuthConfig := cfg.CopyAuthConfig()
 				So(newAuthConfig, ShouldNotBeNil)
 				// Should remain unchanged (not updated by UpdateReloadableConfig)
 				So(newAuthConfig.GetFailDelay(), ShouldEqual, 5)
@@ -1043,7 +1130,7 @@ func TestConfig(t *testing.T) {
 				}
 
 				// Get the AuthConfig reference
-				authConfig := cfg.GetAuthConfig()
+				authConfig := cfg.CopyAuthConfig()
 				So(authConfig, ShouldNotBeNil)
 				So(authConfig.GetFailDelay(), ShouldEqual, 5)
 				So(authConfig.IsHtpasswdAuthEnabled(), ShouldBeTrue)
@@ -1058,13 +1145,13 @@ func TestConfig(t *testing.T) {
 				So(authConfig.IsHtpasswdAuthEnabled(), ShouldBeTrue) // Should remain unchanged
 				So(authConfig.IsAPIKeyEnabled(), ShouldBeFalse)      // Should remain unchanged
 
-				// Verify that a new GetAuthConfig() call returns nil
-				newAuthConfig := cfg.GetAuthConfig()
+				// Verify that a new CopyAuthConfig() call returns nil
+				newAuthConfig := cfg.CopyAuthConfig()
 				So(newAuthConfig, ShouldBeNil) // Should be nil
 			})
 		})
 
-		Convey("Test GetAccessControlConfig()", func() {
+		Convey("Test CopyAccessControlConfig()", func() {
 			Convey("Test with non-nil AccessControl", func() {
 				testAccessControlConfig := &config.AccessControlConfig{
 					Repositories: config.Repositories{
@@ -1099,7 +1186,7 @@ func TestConfig(t *testing.T) {
 						AccessControl: testAccessControlConfig,
 					},
 				}
-				accessControlConfig := cfg.GetAccessControlConfig()
+				accessControlConfig := cfg.CopyAccessControlConfig()
 				So(accessControlConfig, ShouldNotBeNil)
 				So(accessControlConfig.IsAuthzEnabled(), ShouldBeTrue)
 
@@ -1124,12 +1211,12 @@ func TestConfig(t *testing.T) {
 						AccessControl: nil,
 					},
 				}
-				accessControlConfig := cfg.GetAccessControlConfig()
+				accessControlConfig := cfg.CopyAccessControlConfig()
 				So(accessControlConfig, ShouldBeNil)
 			})
 		})
 
-		Convey("Test GetStorageConfig()", func() {
+		Convey("Test CopyStorageConfig()", func() {
 			Convey("Test with non-nil Storage", func() {
 				cfg := &config.Config{
 					Storage: config.GlobalStorageConfig{
@@ -1139,7 +1226,7 @@ func TestConfig(t *testing.T) {
 						},
 					},
 				}
-				storageConfig := cfg.GetStorageConfig()
+				storageConfig := cfg.CopyStorageConfig()
 				So(storageConfig, ShouldNotBeNil)
 				So(storageConfig.RootDirectory, ShouldEqual, "/tmp/storage")
 				So(storageConfig.GC, ShouldBeTrue)
@@ -1149,7 +1236,7 @@ func TestConfig(t *testing.T) {
 				cfg := &config.Config{
 					Storage: config.GlobalStorageConfig{},
 				}
-				storageConfig := cfg.GetStorageConfig()
+				storageConfig := cfg.CopyStorageConfig()
 				So(storageConfig, ShouldNotBeNil) // GlobalStorageConfig is a struct, not a pointer, so it's never nil
 				So(storageConfig.RootDirectory, ShouldEqual, "")
 				So(storageConfig.GC, ShouldBeFalse)
@@ -1200,7 +1287,7 @@ func TestConfig(t *testing.T) {
 				}
 
 				// Get a copy of the storage config
-				storageConfig := cfg.GetStorageConfig()
+				storageConfig := cfg.CopyStorageConfig()
 				So(storageConfig, ShouldNotBeNil)
 
 				// Mutate the copy's fields
@@ -1242,7 +1329,7 @@ func TestConfig(t *testing.T) {
 			})
 		})
 
-		Convey("Test GetLogConfig()", func() {
+		Convey("Test CopyLogConfig()", func() {
 			Convey("Test with non-nil Log", func() {
 				cfg := &config.Config{
 					Log: &config.LogConfig{
@@ -1250,7 +1337,7 @@ func TestConfig(t *testing.T) {
 						Output: "/tmp/logs",
 					},
 				}
-				logConfig := cfg.GetLogConfig()
+				logConfig := cfg.CopyLogConfig()
 				So(logConfig, ShouldNotBeNil)
 				So(logConfig.Level, ShouldEqual, "info")
 				So(logConfig.Output, ShouldEqual, "/tmp/logs")
@@ -1260,19 +1347,19 @@ func TestConfig(t *testing.T) {
 				cfg := &config.Config{
 					Log: nil,
 				}
-				logConfig := cfg.GetLogConfig()
+				logConfig := cfg.CopyLogConfig()
 				So(logConfig, ShouldBeNil)
 			})
 		})
 
-		Convey("Test GetClusterConfig()", func() {
+		Convey("Test CopyClusterConfig()", func() {
 			Convey("Test with non-nil Cluster", func() {
 				cfg := &config.Config{
 					Cluster: &config.ClusterConfig{
 						Members: []string{"node1", "node2"},
 					},
 				}
-				clusterConfig := cfg.GetClusterConfig()
+				clusterConfig := cfg.CopyClusterConfig()
 				So(clusterConfig, ShouldNotBeNil)
 				So(len(clusterConfig.Members), ShouldEqual, 2)
 			})
@@ -1281,7 +1368,7 @@ func TestConfig(t *testing.T) {
 				cfg := &config.Config{
 					Cluster: nil,
 				}
-				clusterConfig := cfg.GetClusterConfig()
+				clusterConfig := cfg.CopyClusterConfig()
 				So(clusterConfig, ShouldBeNil)
 			})
 
@@ -1303,7 +1390,7 @@ func TestConfig(t *testing.T) {
 				}
 
 				// Get a copy of the cluster config
-				clusterConfig := cfg.GetClusterConfig()
+				clusterConfig := cfg.CopyClusterConfig()
 				So(clusterConfig, ShouldNotBeNil)
 
 				// Mutate the copy
@@ -1326,14 +1413,14 @@ func TestConfig(t *testing.T) {
 			})
 		})
 
-		Convey("Test GetSchedulerConfig()", func() {
+		Convey("Test CopySchedulerConfig()", func() {
 			Convey("Test with non-nil Scheduler", func() {
 				cfg := &config.Config{
 					Scheduler: &config.SchedulerConfig{
 						NumWorkers: 4,
 					},
 				}
-				schedulerConfig := cfg.GetSchedulerConfig()
+				schedulerConfig := cfg.CopySchedulerConfig()
 				So(schedulerConfig, ShouldNotBeNil)
 				So(schedulerConfig.NumWorkers, ShouldEqual, 4)
 			})
@@ -1342,7 +1429,7 @@ func TestConfig(t *testing.T) {
 				cfg := &config.Config{
 					Scheduler: nil,
 				}
-				schedulerConfig := cfg.GetSchedulerConfig()
+				schedulerConfig := cfg.CopySchedulerConfig()
 				So(schedulerConfig, ShouldBeNil)
 			})
 		})
@@ -1405,7 +1492,7 @@ func TestConfig(t *testing.T) {
 			})
 		})
 
-		Convey("Test GetTLSConfig()", func() {
+		Convey("Test CopyTLSConfig()", func() {
 			Convey("Test with non-empty TLS config", func() {
 				cfg := &config.Config{
 					HTTP: config.HTTPConfig{
@@ -1416,7 +1503,7 @@ func TestConfig(t *testing.T) {
 						},
 					},
 				}
-				tlsConfig := cfg.GetTLSConfig()
+				tlsConfig := cfg.CopyTLSConfig()
 				So(tlsConfig, ShouldNotBeNil)
 				So(tlsConfig.Cert, ShouldEqual, "/path/to/cert.pem")
 				So(tlsConfig.Key, ShouldEqual, "/path/to/key.pem")
@@ -1434,13 +1521,13 @@ func TestConfig(t *testing.T) {
 						TLS: nil,
 					},
 				}
-				tlsConfig := cfg.GetTLSConfig()
+				tlsConfig := cfg.CopyTLSConfig()
 				So(tlsConfig, ShouldBeNil)
 			})
 
 			Convey("Test with nil Config", func() {
 				var cfg *config.Config = nil
-				tlsConfig := cfg.GetTLSConfig()
+				tlsConfig := cfg.CopyTLSConfig()
 				So(tlsConfig, ShouldBeNil)
 			})
 		})
@@ -1579,7 +1666,7 @@ func TestConfig(t *testing.T) {
 			})
 		})
 
-		Convey("Test GetRatelimit()", func() {
+		Convey("Test CopyRatelimit()", func() {
 			Convey("Test with non-empty ratelimit config", func() {
 				rate := 100
 				cfg := &config.Config{
@@ -1599,7 +1686,7 @@ func TestConfig(t *testing.T) {
 						},
 					},
 				}
-				ratelimitConfig := cfg.GetRatelimit()
+				ratelimitConfig := cfg.CopyRatelimit()
 				So(ratelimitConfig, ShouldNotBeNil)
 				So(*ratelimitConfig.Rate, ShouldEqual, 100)
 				So(len(ratelimitConfig.Methods), ShouldEqual, 2)
@@ -1624,13 +1711,13 @@ func TestConfig(t *testing.T) {
 						Ratelimit: nil,
 					},
 				}
-				ratelimitConfig := cfg.GetRatelimit()
+				ratelimitConfig := cfg.CopyRatelimit()
 				So(ratelimitConfig, ShouldBeNil)
 			})
 
 			Convey("Test with nil Config", func() {
 				var cfg *config.Config = nil
-				ratelimitConfig := cfg.GetRatelimit()
+				ratelimitConfig := cfg.CopyRatelimit()
 				So(ratelimitConfig, ShouldBeNil)
 			})
 		})
@@ -1669,6 +1756,237 @@ func TestConfig(t *testing.T) {
 				},
 			}
 			So(cfg.IsMTLSAuthEnabled(), ShouldBeTrue)
+
+			// Test with HTPasswd enabled (should disable mTLS)
+			cfg = &config.Config{
+				HTTP: config.HTTPConfig{
+					Auth: &config.AuthConfig{
+						HTPasswd: config.AuthHTPasswd{
+							Path: "/path/to/htpasswd",
+						},
+					},
+					TLS: &config.TLSConfig{
+						Cert:   "/path/to/cert.pem",
+						Key:    "/path/to/key.pem",
+						CACert: "/path/to/ca-cert.pem",
+					},
+				},
+			}
+			So(cfg.IsMTLSAuthEnabled(), ShouldBeFalse) // Basic auth enabled, so mTLS disabled
+
+			// Test with LDAP enabled (should disable mTLS)
+			cfg = &config.Config{
+				HTTP: config.HTTPConfig{
+					Auth: &config.AuthConfig{
+						LDAP: &config.LDAPConfig{},
+					},
+					TLS: &config.TLSConfig{
+						Cert:   "/path/to/cert.pem",
+						Key:    "/path/to/key.pem",
+						CACert: "/path/to/ca-cert.pem",
+					},
+				},
+			}
+			So(cfg.IsMTLSAuthEnabled(), ShouldBeFalse) // Basic auth enabled, so mTLS disabled
+
+			// Test with API Key enabled (should disable mTLS)
+			cfg = &config.Config{
+				HTTP: config.HTTPConfig{
+					Auth: &config.AuthConfig{
+						APIKey: true,
+					},
+					TLS: &config.TLSConfig{
+						Cert:   "/path/to/cert.pem",
+						Key:    "/path/to/key.pem",
+						CACert: "/path/to/ca-cert.pem",
+					},
+				},
+			}
+			So(cfg.IsMTLSAuthEnabled(), ShouldBeFalse) // Basic auth enabled, so mTLS disabled
+
+			// Test with OpenID enabled (valid config - should disable mTLS)
+			cfg = &config.Config{
+				HTTP: config.HTTPConfig{
+					Auth: &config.AuthConfig{
+						OpenID: &config.OpenIDConfig{
+							Providers: map[string]config.OpenIDProviderConfig{
+								"google": {
+									ClientID: "client-id",
+									Issuer:   "",
+									Scopes:   []string{},
+								},
+							},
+						},
+					},
+					TLS: &config.TLSConfig{
+						Cert:   "/path/to/cert.pem",
+						Key:    "/path/to/key.pem",
+						CACert: "/path/to/ca-cert.pem",
+					},
+				},
+			}
+			So(cfg.IsMTLSAuthEnabled(), ShouldBeFalse) // Basic auth enabled, so mTLS disabled
+
+			// Test with OpenID enabled (with Issuer - should disable mTLS)
+			cfg = &config.Config{
+				HTTP: config.HTTPConfig{
+					Auth: &config.AuthConfig{
+						OpenID: &config.OpenIDConfig{
+							Providers: map[string]config.OpenIDProviderConfig{
+								"google": {
+									ClientID: "",
+									Issuer:   "https://accounts.google.com",
+									Scopes:   []string{},
+								},
+							},
+						},
+					},
+					TLS: &config.TLSConfig{
+						Cert:   "/path/to/cert.pem",
+						Key:    "/path/to/key.pem",
+						CACert: "/path/to/ca-cert.pem",
+					},
+				},
+			}
+			So(cfg.IsMTLSAuthEnabled(), ShouldBeFalse) // Basic auth enabled, so mTLS disabled
+
+			// Test with OpenID enabled (with Scopes - should disable mTLS)
+			cfg = &config.Config{
+				HTTP: config.HTTPConfig{
+					Auth: &config.AuthConfig{
+						OpenID: &config.OpenIDConfig{
+							Providers: map[string]config.OpenIDProviderConfig{
+								"google": {
+									ClientID: "",
+									Issuer:   "",
+									Scopes:   []string{"openid", "email"},
+								},
+							},
+						},
+					},
+					TLS: &config.TLSConfig{
+						Cert:   "/path/to/cert.pem",
+						Key:    "/path/to/key.pem",
+						CACert: "/path/to/ca-cert.pem",
+					},
+				},
+			}
+			So(cfg.IsMTLSAuthEnabled(), ShouldBeFalse) // Basic auth enabled, so mTLS disabled
+
+			// Test with OAuth2 provider (github) with ClientID (should disable mTLS)
+			cfg = &config.Config{
+				HTTP: config.HTTPConfig{
+					Auth: &config.AuthConfig{
+						OpenID: &config.OpenIDConfig{
+							Providers: map[string]config.OpenIDProviderConfig{
+								"github": {
+									ClientID: "github-client-id",
+									Scopes:   []string{},
+								},
+							},
+						},
+					},
+					TLS: &config.TLSConfig{
+						Cert:   "/path/to/cert.pem",
+						Key:    "/path/to/key.pem",
+						CACert: "/path/to/ca-cert.pem",
+					},
+				},
+			}
+			So(cfg.IsMTLSAuthEnabled(), ShouldBeFalse) // Basic auth enabled, so mTLS disabled
+
+			// Test with OAuth2 provider (github) with Scopes (should disable mTLS)
+			cfg = &config.Config{
+				HTTP: config.HTTPConfig{
+					Auth: &config.AuthConfig{
+						OpenID: &config.OpenIDConfig{
+							Providers: map[string]config.OpenIDProviderConfig{
+								"github": {
+									ClientID: "",
+									Scopes:   []string{"user:email"},
+								},
+							},
+						},
+					},
+					TLS: &config.TLSConfig{
+						Cert:   "/path/to/cert.pem",
+						Key:    "/path/to/key.pem",
+						CACert: "/path/to/ca-cert.pem",
+					},
+				},
+			}
+			So(cfg.IsMTLSAuthEnabled(), ShouldBeFalse) // Basic auth enabled, so mTLS disabled
+
+			// Test with OpenID but empty config (should enable mTLS)
+			cfg = &config.Config{
+				HTTP: config.HTTPConfig{
+					Auth: &config.AuthConfig{
+						OpenID: &config.OpenIDConfig{
+							Providers: map[string]config.OpenIDProviderConfig{
+								"google": {
+									ClientID: "",
+									Issuer:   "",
+									Scopes:   []string{},
+								},
+							},
+						},
+					},
+					TLS: &config.TLSConfig{
+						Cert:   "/path/to/cert.pem",
+						Key:    "/path/to/key.pem",
+						CACert: "/path/to/ca-cert.pem",
+					},
+				},
+			}
+			So(cfg.IsMTLSAuthEnabled(), ShouldBeTrue) // No basic auth, so mTLS enabled
+
+			// Test with OpenID but unsupported provider (should enable mTLS)
+			cfg = &config.Config{
+				HTTP: config.HTTPConfig{
+					Auth: &config.AuthConfig{
+						OpenID: &config.OpenIDConfig{
+							Providers: map[string]config.OpenIDProviderConfig{
+								"unsupported": {
+									ClientID: "client-id",
+									Scopes:   []string{"scope"},
+								},
+							},
+						},
+					},
+					TLS: &config.TLSConfig{
+						Cert:   "/path/to/cert.pem",
+						Key:    "/path/to/key.pem",
+						CACert: "/path/to/ca-cert.pem",
+					},
+				},
+			}
+			So(cfg.IsMTLSAuthEnabled(), ShouldBeTrue) // No basic auth, so mTLS enabled
+
+			// Test with no authentication methods (should enable mTLS)
+			cfg = &config.Config{
+				HTTP: config.HTTPConfig{
+					Auth: &config.AuthConfig{},
+					TLS: &config.TLSConfig{
+						Cert:   "/path/to/cert.pem",
+						Key:    "/path/to/key.pem",
+						CACert: "/path/to/ca-cert.pem",
+					},
+				},
+			}
+			So(cfg.IsMTLSAuthEnabled(), ShouldBeTrue) // No basic auth, so mTLS enabled
+
+			// Test with nil Auth (should enable mTLS)
+			cfg = &config.Config{
+				HTTP: config.HTTPConfig{
+					Auth: nil,
+					TLS: &config.TLSConfig{
+						Cert:   "/path/to/cert.pem",
+						Key:    "/path/to/key.pem",
+						CACert: "/path/to/ca-cert.pem",
+					},
+				},
+			}
+			So(cfg.IsMTLSAuthEnabled(), ShouldBeTrue) // No basic auth, so mTLS enabled
 		})
 
 		Convey("Test IsCompatEnabled()", func() {
@@ -1705,24 +2023,51 @@ func TestConfig(t *testing.T) {
 			// Test with supported provider
 			So(config.IsOauth2Supported("github"), ShouldBeTrue)
 		})
+
+		Convey("Test IsClustered() with nil ClusterConfig", func() {
+			var clusterConfig *config.ClusterConfig = nil
+
+			So(clusterConfig.IsClustered(), ShouldBeFalse)
+		})
+
+		Convey("Test IsClustered() with empty members", func() {
+			clusterConfig := &config.ClusterConfig{
+				Members: []string{},
+			}
+			So(clusterConfig.IsClustered(), ShouldBeFalse)
+		})
+
+		Convey("Test IsClustered() with single member", func() {
+			clusterConfig := &config.ClusterConfig{
+				Members: []string{"node1:8080"},
+			}
+			So(clusterConfig.IsClustered(), ShouldBeFalse)
+		})
+
+		Convey("Test IsClustered() with multiple members", func() {
+			clusterConfig := &config.ClusterConfig{
+				Members: []string{"node1:8080", "node2:8080"},
+			}
+			So(clusterConfig.IsClustered(), ShouldBeTrue)
+		})
 	})
 
-	Convey("Test GetExtensionsConfig methods", t, func() {
+	Convey("Test CopyExtensionsConfig methods", t, func() {
 		Convey("Test IsSearchEnabled()", func() {
 			// Test with nil Config
 			var cfg *config.Config = nil
 
-			So(cfg.GetExtensionsConfig().IsSearchEnabled(), ShouldBeFalse)
+			So(cfg.CopyExtensionsConfig().IsSearchEnabled(), ShouldBeFalse)
 
 			// Test with Config but nil Extensions
 			cfg = &config.Config{}
-			So(cfg.GetExtensionsConfig().IsSearchEnabled(), ShouldBeFalse)
+			So(cfg.CopyExtensionsConfig().IsSearchEnabled(), ShouldBeFalse)
 
 			// Test with Config and Extensions but nil Search
 			cfg = &config.Config{
 				Extensions: &extconf.ExtensionConfig{},
 			}
-			So(cfg.GetExtensionsConfig().IsSearchEnabled(), ShouldBeFalse)
+			So(cfg.CopyExtensionsConfig().IsSearchEnabled(), ShouldBeFalse)
 
 			// Test with Config and Extensions and Search but disabled
 			disabled := false
@@ -1735,7 +2080,7 @@ func TestConfig(t *testing.T) {
 					},
 				},
 			}
-			So(cfg.GetExtensionsConfig().IsSearchEnabled(), ShouldBeFalse)
+			So(cfg.CopyExtensionsConfig().IsSearchEnabled(), ShouldBeFalse)
 
 			// Test with Config and Extensions and Search enabled
 			enabled := true
@@ -1748,7 +2093,7 @@ func TestConfig(t *testing.T) {
 					},
 				},
 			}
-			So(cfg.GetExtensionsConfig().IsSearchEnabled(), ShouldBeTrue)
+			So(cfg.CopyExtensionsConfig().IsSearchEnabled(), ShouldBeTrue)
 		})
 	})
 
@@ -1758,6 +2103,37 @@ func TestConfig(t *testing.T) {
 			newConfig := &config.Config{}
 
 			So(func() { cfg.UpdateReloadableConfig(newConfig) }, ShouldNotPanic)
+		})
+
+		Convey("Test with nil newConfig.HTTP.Auth", func() {
+			// Create initial config with Auth
+			cfg := &config.Config{
+				HTTP: config.HTTPConfig{
+					Auth: &config.AuthConfig{
+						FailDelay: 5,
+						HTPasswd: config.AuthHTPasswd{
+							Path: "/etc/htpasswd",
+						},
+						APIKey: false,
+					},
+				},
+			}
+
+			// Create new config with nil Auth
+			newConfig := &config.Config{
+				HTTP: config.HTTPConfig{
+					Auth: nil, // This should not cause a panic
+				},
+			}
+
+			// This should not panic even though newConfig.HTTP.Auth is nil
+			So(func() { cfg.UpdateReloadableConfig(newConfig) }, ShouldNotPanic)
+
+			// Verify that the original Auth config remains unchanged
+			So(cfg.HTTP.Auth, ShouldNotBeNil)
+			So(cfg.HTTP.Auth.FailDelay, ShouldEqual, 5)
+			So(cfg.HTTP.Auth.HTPasswd.Path, ShouldEqual, "/etc/htpasswd")
+			So(cfg.HTTP.Auth.APIKey, ShouldBeFalse)
 		})
 
 		Convey("Test with AccessControl update", func() {
@@ -1780,7 +2156,7 @@ func TestConfig(t *testing.T) {
 				},
 			}
 			cfg.UpdateReloadableConfig(newConfig)
-			So(cfg.GetAccessControlConfig().GetAdminPolicy().Actions, ShouldResemble, []string{"read", "write"})
+			So(cfg.CopyAccessControlConfig().GetAdminPolicy().Actions, ShouldResemble, []string{"read", "write"})
 		})
 
 		Convey("Test with Extensions update", func() {
@@ -1811,7 +2187,7 @@ func TestConfig(t *testing.T) {
 			}
 			cfg.UpdateReloadableConfig(newConfig)
 			// The search should still be enabled and CVE config should be updated
-			So(cfg.GetExtensionsConfig().IsSearchEnabled(), ShouldBeTrue)
+			So(cfg.CopyExtensionsConfig().IsSearchEnabled(), ShouldBeTrue)
 		})
 
 		Convey("Test search CVE config removal when new config has nil Search.CVE", func() {
@@ -1829,7 +2205,7 @@ func TestConfig(t *testing.T) {
 					},
 				},
 			}
-			So(cfg.GetExtensionsConfig().IsSearchEnabled(), ShouldBeTrue)
+			So(cfg.CopyExtensionsConfig().IsSearchEnabled(), ShouldBeTrue)
 			So(cfg.Extensions.Search.CVE, ShouldNotBeNil)
 
 			// Create new config with Search but nil CVE
@@ -1866,7 +2242,7 @@ func TestConfig(t *testing.T) {
 					},
 				},
 			}
-			So(cfg.GetExtensionsConfig().IsSearchEnabled(), ShouldBeTrue)
+			So(cfg.CopyExtensionsConfig().IsSearchEnabled(), ShouldBeTrue)
 			So(cfg.Extensions.Search.CVE, ShouldNotBeNil)
 
 			// Create new config with Extensions but nil Search
@@ -2006,19 +2382,19 @@ func TestConfig(t *testing.T) {
 			var cfg *config.Config = nil
 
 			// Test getter methods
-			So(cfg.GetAuthConfig(), ShouldBeNil)
-			So(cfg.GetAccessControlConfig(), ShouldBeNil)
+			So(cfg.CopyAuthConfig(), ShouldBeNil)
+			So(cfg.CopyAccessControlConfig(), ShouldBeNil)
 			So(cfg.GetHTTPAddress(), ShouldEqual, "")
 			So(cfg.GetHTTPPort(), ShouldEqual, "")
 			So(cfg.GetAllowOrigin(), ShouldEqual, "")
-			So(cfg.GetTLSConfig(), ShouldBeNil)
-			So(cfg.GetRatelimit(), ShouldBeNil)
+			So(cfg.CopyTLSConfig(), ShouldBeNil)
+			So(cfg.CopyRatelimit(), ShouldBeNil)
 			So(cfg.GetCompat(), ShouldBeNil)
-			So(cfg.GetStorageConfig(), ShouldResemble, config.GlobalStorageConfig{})
-			So(cfg.GetExtensionsConfig(), ShouldBeNil)
-			So(cfg.GetLogConfig(), ShouldBeNil)
-			So(cfg.GetClusterConfig(), ShouldBeNil)
-			So(cfg.GetSchedulerConfig(), ShouldBeNil)
+			So(cfg.CopyStorageConfig(), ShouldResemble, config.GlobalStorageConfig{})
+			So(cfg.CopyExtensionsConfig(), ShouldBeNil)
+			So(cfg.CopyLogConfig(), ShouldBeNil)
+			So(cfg.CopyClusterConfig(), ShouldBeNil)
+			So(cfg.CopySchedulerConfig(), ShouldBeNil)
 
 			// Test GetVersionInfo
 			commit, binaryType, goVersion, distSpecVersion := cfg.GetVersionInfo()
@@ -2042,7 +2418,7 @@ func TestConfig(t *testing.T) {
 		})
 	})
 
-	Convey("Test AccessControlConfig copy isolation through GetAccessControlConfig()", t, func() {
+	Convey("Test AccessControlConfig copy isolation through CopyAccessControlConfig()", t, func() {
 		Convey("Test that mutations to retrieved AccessControlConfig copy do not affect original config", func() {
 			// Create a config with initial AccessControlConfig
 			cfg := &config.Config{
@@ -2067,7 +2443,7 @@ func TestConfig(t *testing.T) {
 			}
 
 			// Retrieve the AccessControlConfig (should be a copy)
-			accessControlConfig := cfg.GetAccessControlConfig()
+			accessControlConfig := cfg.CopyAccessControlConfig()
 			So(accessControlConfig, ShouldNotBeNil)
 
 			// Mutate the retrieved AccessControlConfig copy
@@ -2099,7 +2475,7 @@ func TestConfig(t *testing.T) {
 			accessControlConfig.Repositories = newRepositories
 
 			// Verify that the original config is unchanged
-			originalAccessControlConfig := cfg.GetAccessControlConfig()
+			originalAccessControlConfig := cfg.CopyAccessControlConfig()
 			So(originalAccessControlConfig, ShouldNotBeNil)
 
 			// Check that admin policy remains unchanged in original
@@ -2123,7 +2499,7 @@ func TestConfig(t *testing.T) {
 			}
 
 			// Retrieve the AccessControlConfig (should return nil)
-			accessControlConfig := cfg.GetAccessControlConfig()
+			accessControlConfig := cfg.CopyAccessControlConfig()
 			So(accessControlConfig, ShouldBeNil)
 
 			// Create a new AccessControlConfig and set it
@@ -2137,7 +2513,7 @@ func TestConfig(t *testing.T) {
 			cfg.HTTP.AccessControl = newAccessControlConfig
 
 			// Now retrieve it again and verify it works
-			retrievedConfig := cfg.GetAccessControlConfig()
+			retrievedConfig := cfg.CopyAccessControlConfig()
 			So(retrievedConfig, ShouldNotBeNil)
 
 			// Mutate the retrieved config copy
@@ -2147,7 +2523,7 @@ func TestConfig(t *testing.T) {
 			}
 
 			// Verify the original config is unchanged
-			finalConfig := cfg.GetAccessControlConfig()
+			finalConfig := cfg.CopyAccessControlConfig()
 			adminPolicy := finalConfig.GetAdminPolicy()
 			So(adminPolicy.Actions, ShouldResemble, []string{"read"})
 			So(adminPolicy.Users, ShouldResemble, []string{"admin"})
@@ -2179,7 +2555,7 @@ func TestConfig(t *testing.T) {
 			}
 
 			// Get initial reference to AccessControlConfig
-			initialAccessControlConfig := cfg.GetAccessControlConfig()
+			initialAccessControlConfig := cfg.CopyAccessControlConfig()
 			So(initialAccessControlConfig, ShouldNotBeNil)
 
 			// Verify initial state
@@ -2236,7 +2612,7 @@ func TestConfig(t *testing.T) {
 			So(updatedRepositories["repo1"].DefaultPolicy, ShouldResemble, []string{"read"})
 
 			// Verify that a new copy gets the updated data
-			newAccessControlConfig := cfg.GetAccessControlConfig()
+			newAccessControlConfig := cfg.CopyAccessControlConfig()
 			So(newAccessControlConfig, ShouldNotBeNil)
 			So(newAccessControlConfig, ShouldNotEqual, initialAccessControlConfig) // Different copy
 
@@ -2254,7 +2630,7 @@ func TestConfig(t *testing.T) {
 			}
 
 			// Get initial reference (should be nil)
-			initialAccessControlConfig := cfg.GetAccessControlConfig()
+			initialAccessControlConfig := cfg.CopyAccessControlConfig()
 			So(initialAccessControlConfig, ShouldBeNil)
 
 			// Create new config with AccessControlConfig
@@ -2273,7 +2649,7 @@ func TestConfig(t *testing.T) {
 			cfg.UpdateReloadableConfig(newConfig)
 
 			// Verify that a new reference now gets the data
-			newAccessControlConfig := cfg.GetAccessControlConfig()
+			newAccessControlConfig := cfg.CopyAccessControlConfig()
 			So(newAccessControlConfig, ShouldNotBeNil)
 
 			adminPolicy := newAccessControlConfig.GetAdminPolicy()
@@ -2295,7 +2671,7 @@ func TestConfig(t *testing.T) {
 			}
 
 			// Get initial reference
-			initialAccessControlConfig := cfg.GetAccessControlConfig()
+			initialAccessControlConfig := cfg.CopyAccessControlConfig()
 			So(initialAccessControlConfig, ShouldNotBeNil)
 
 			// Create new config with nil AccessControlConfig
@@ -2309,12 +2685,12 @@ func TestConfig(t *testing.T) {
 			cfg.UpdateReloadableConfig(newConfig)
 
 			// Verify that a new reference now returns nil
-			newAccessControlConfig := cfg.GetAccessControlConfig()
+			newAccessControlConfig := cfg.CopyAccessControlConfig()
 			So(newAccessControlConfig, ShouldBeNil)
 		})
 	})
 
-	Convey("Test ExtensionConfig copy isolation through GetExtensionsConfig()", t, func() {
+	Convey("Test ExtensionConfig copy isolation through CopyExtensionsConfig()", t, func() {
 		Convey("Test that mutations to retrieved ExtensionConfig copy do not affect original config", func() {
 			// Create a config with initial ExtensionConfig
 			enabled := true
@@ -2362,7 +2738,7 @@ func TestConfig(t *testing.T) {
 			}
 
 			// Retrieve the ExtensionConfig
-			extensionConfig := cfg.GetExtensionsConfig()
+			extensionConfig := cfg.CopyExtensionsConfig()
 			So(extensionConfig, ShouldNotBeNil)
 
 			// Mutate the retrieved ExtensionConfig copy
@@ -2401,7 +2777,7 @@ func TestConfig(t *testing.T) {
 			}
 
 			// Retrieve the ExtensionConfig (should return nil)
-			extensionConfig := cfg.GetExtensionsConfig()
+			extensionConfig := cfg.CopyExtensionsConfig()
 			So(extensionConfig, ShouldBeNil)
 
 			// Create a new ExtensionConfig and set it
@@ -2426,14 +2802,14 @@ func TestConfig(t *testing.T) {
 			cfg.Extensions = newExtensionConfig
 
 			// Now retrieve it again and verify it works
-			retrievedConfig := cfg.GetExtensionsConfig()
+			retrievedConfig := cfg.CopyExtensionsConfig()
 			So(retrievedConfig, ShouldNotBeNil)
 
 			// Mutate the retrieved config
 			retrievedConfig.Metrics.Prometheus.Path = "/new/metrics"
 
 			// Verify the changes are NOT reflected in original config
-			finalConfig := cfg.GetExtensionsConfig()
+			finalConfig := cfg.CopyExtensionsConfig()
 			So(finalConfig.Metrics.Prometheus.Path, ShouldEqual, "/metrics")
 		})
 	})
@@ -2461,7 +2837,7 @@ func TestConfig(t *testing.T) {
 			}
 
 			// Get initial reference to ExtensionConfig
-			initialExtensionConfig := cfg.GetExtensionsConfig()
+			initialExtensionConfig := cfg.CopyExtensionsConfig()
 			So(initialExtensionConfig, ShouldNotBeNil)
 
 			// Verify initial state
@@ -2519,7 +2895,7 @@ func TestConfig(t *testing.T) {
 			So(initialExtensionConfig.Scrub, ShouldBeNil)
 
 			// Verify that a new reference gets the updated data
-			newExtensionConfig := cfg.GetExtensionsConfig()
+			newExtensionConfig := cfg.CopyExtensionsConfig()
 			So(newExtensionConfig, ShouldNotBeNil)
 			So(newExtensionConfig, ShouldNotEqual, initialExtensionConfig) // Different references
 
@@ -2536,7 +2912,7 @@ func TestConfig(t *testing.T) {
 			}
 
 			// Get initial reference (should be nil)
-			initialExtensionConfig := cfg.GetExtensionsConfig()
+			initialExtensionConfig := cfg.CopyExtensionsConfig()
 			So(initialExtensionConfig, ShouldBeNil)
 
 			// Create new config with ExtensionConfig
@@ -2563,7 +2939,7 @@ func TestConfig(t *testing.T) {
 			cfg.UpdateReloadableConfig(newConfig)
 
 			// Verify that a new reference now gets the data
-			newExtensionConfig := cfg.GetExtensionsConfig()
+			newExtensionConfig := cfg.CopyExtensionsConfig()
 			So(newExtensionConfig, ShouldNotBeNil)
 
 			// Note: UpdateReloadableConfig creates an empty ExtensionConfig when going from nil to non-nil,
@@ -2587,7 +2963,7 @@ func TestConfig(t *testing.T) {
 			}
 
 			// Get initial reference
-			initialExtensionConfig := cfg.GetExtensionsConfig()
+			initialExtensionConfig := cfg.CopyExtensionsConfig()
 			So(initialExtensionConfig, ShouldNotBeNil)
 
 			// Create new config with nil ExtensionConfig
@@ -2603,7 +2979,7 @@ func TestConfig(t *testing.T) {
 			So(initialExtensionConfig.Search, ShouldNotBeNil)
 
 			// Verify that a new reference now returns nil
-			newExtensionConfig := cfg.GetExtensionsConfig()
+			newExtensionConfig := cfg.CopyExtensionsConfig()
 			So(newExtensionConfig, ShouldBeNil)
 		})
 	})

@@ -55,7 +55,7 @@ func AuthHandler(ctlr *Controller) mux.MiddlewareFunc {
 		log:      ctlr.Log,
 	}
 
-	authConfig := ctlr.Config.GetAuthConfig()
+	authConfig := ctlr.Config.CopyAuthConfig()
 	if authConfig.IsBearerAuthEnabled() {
 		return bearerAuthHandler(ctlr)
 	}
@@ -105,7 +105,7 @@ func (amw *AuthnMiddleware) basicAuthn(ctlr *Controller, userAc *reqCtx.UserAcce
 	cookieStore := ctlr.CookieStore
 
 	// Get auth config once to avoid multiple calls
-	authConfig := ctlr.Config.GetAuthConfig()
+	authConfig := ctlr.Config.CopyAuthConfig()
 	if authConfig == nil {
 		return false, nil
 	}
@@ -123,7 +123,7 @@ func (amw *AuthnMiddleware) basicAuthn(ctlr *Controller, userAc *reqCtx.UserAcce
 		// Process request
 		var groups []string
 
-		accessControl := ctlr.Config.GetAccessControlConfig()
+		accessControl := ctlr.Config.CopyAccessControlConfig()
 		if accessControl != nil {
 			ac := NewAccessController(ctlr.Config)
 			groups = ac.getUserGroups(identity)
@@ -159,7 +159,7 @@ func (amw *AuthnMiddleware) basicAuthn(ctlr *Controller, userAc *reqCtx.UserAcce
 			// Process request
 			var groups []string
 
-			accessControl := ctlr.Config.GetAccessControlConfig()
+			accessControl := ctlr.Config.CopyAccessControlConfig()
 			if accessControl != nil {
 				ac := NewAccessController(ctlr.Config)
 				groups = ac.getUserGroups(identity)
@@ -258,7 +258,7 @@ func (amw *AuthnMiddleware) basicAuthn(ctlr *Controller, userAc *reqCtx.UserAcce
 
 func (amw *AuthnMiddleware) tryAuthnHandlers(ctlr *Controller) mux.MiddlewareFunc { //nolint: gocyclo
 	// Get auth config once to avoid multiple calls
-	authConfig := ctlr.Config.GetAuthConfig()
+	authConfig := ctlr.Config.CopyAuthConfig()
 
 	// no password based authN, if neither LDAP nor HTTP BASIC is enabled
 	if !authConfig.IsBasicAuthnEnabled() {
@@ -355,7 +355,7 @@ func (amw *AuthnMiddleware) tryAuthnHandlers(ctlr *Controller) mux.MiddlewareFun
 			isMgmtRequested := request.RequestURI == constants.FullMgmt
 
 			// Get access control config safely
-			accessControlConfig := ctlr.Config.GetAccessControlConfig()
+			accessControlConfig := ctlr.Config.CopyAccessControlConfig()
 			allowAnonymous := accessControlConfig != nil && accessControlConfig.AnonymousPolicyExists()
 
 			// build user access control info
@@ -420,7 +420,7 @@ func (amw *AuthnMiddleware) tryAuthnHandlers(ctlr *Controller) mux.MiddlewareFun
 
 func bearerAuthHandler(ctlr *Controller) mux.MiddlewareFunc {
 	// Get auth config safely
-	authConfig := ctlr.Config.GetAuthConfig()
+	authConfig := ctlr.Config.CopyAuthConfig()
 
 	// although the configuration option is called 'cert', this function will also parse a public key directly
 	// see https://github.com/project-zot/zot/issues/3173 for info
@@ -528,7 +528,7 @@ func noPasswdAuth(ctlr *Controller) mux.MiddlewareFunc {
 			}
 
 			if ctlr.Config.IsMTLSAuthEnabled() && userAc.IsAnonymous() {
-				authConfig := ctlr.Config.GetAuthConfig()
+				authConfig := ctlr.Config.CopyAuthConfig()
 				failDelay := authConfig.GetFailDelay()
 				realm := ctlr.Config.GetRealm()
 

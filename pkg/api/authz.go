@@ -43,8 +43,8 @@ type AccessController struct {
 
 func NewAccessController(conf *config.Config) *AccessController {
 	// Get access control config safely
-	accessControlConfig := conf.GetAccessControlConfig()
-	logConfig := conf.GetLogConfig()
+	accessControlConfig := conf.CopyAccessControlConfig()
+	logConfig := conf.CopyLogConfig()
 
 	if accessControlConfig == nil {
 		return &AccessController{
@@ -252,7 +252,7 @@ func BaseAuthzHandler(ctlr *Controller) mux.MiddlewareFunc {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 			// Get configs safely
-			authConfig := ctlr.Config.GetAuthConfig()
+			authConfig := ctlr.Config.CopyAuthConfig()
 			realm := ctlr.Config.GetRealm()
 			failDelay := authConfig.GetFailDelay()
 
@@ -303,7 +303,7 @@ func DistSpecAuthzHandler(ctlr *Controller) mux.MiddlewareFunc {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 			// Get configs safely
-			authConfig := ctlr.Config.GetAuthConfig()
+			authConfig := ctlr.Config.CopyAuthConfig()
 			realm := ctlr.Config.GetRealm()
 			failDelay := authConfig.GetFailDelay()
 
@@ -373,11 +373,11 @@ func MetricsAuthzHandler(ctlr *Controller) mux.MiddlewareFunc {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 			// Get configs safely
-			authConfig := ctlr.Config.GetAuthConfig()
+			authConfig := ctlr.Config.CopyAuthConfig()
 			realm := ctlr.Config.GetRealm()
 			failDelay := authConfig.GetFailDelay()
 
-			accessControlConfig := ctlr.Config.GetAccessControlConfig()
+			accessControlConfig := ctlr.Config.CopyAccessControlConfig()
 
 			if accessControlConfig == nil {
 				// allow access to authenticated user as anonymous policy does not exist

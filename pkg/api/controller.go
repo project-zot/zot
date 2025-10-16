@@ -138,7 +138,7 @@ func (c *Controller) Run() error {
 	engine := mux.NewRouter()
 
 	// rate-limit HTTP requests if enabled
-	ratelimitConfig := c.Config.GetRatelimit()
+	ratelimitConfig := c.Config.CopyRatelimit()
 	if ratelimitConfig != nil {
 		if ratelimitConfig.Rate != nil {
 			engine.Use(RateLimiter(c, *ratelimitConfig.Rate))
@@ -202,7 +202,7 @@ func (c *Controller) Run() error {
 		c.chosenPort = int(chosenPort)
 	}
 
-	tlsConfig := c.Config.GetTLSConfig()
+	tlsConfig := c.Config.CopyTLSConfig()
 	if tlsConfig != nil && tlsConfig.Key != "" && tlsConfig.Cert != "" {
 		server.TLSConfig = &tls.Config{
 			CipherSuites: []uint16{
@@ -269,7 +269,7 @@ func (c *Controller) Init() error {
 	DumpRuntimeParams(c.Log)
 
 	var enabled bool
-	extensionsConfig := c.Config.GetExtensionsConfig()
+	extensionsConfig := c.Config.CopyExtensionsConfig()
 
 	if extensionsConfig.IsMetricsEnabled() {
 		enabled = true
@@ -293,7 +293,7 @@ func (c *Controller) Init() error {
 	c.Healthz.Started()
 
 	// Get auth config safely
-	authConfig := c.Config.GetAuthConfig()
+	authConfig := c.Config.CopyAuthConfig()
 	if authConfig.IsHtpasswdAuthEnabled() {
 		err := c.HTPasswdWatcher.ChangeFile(authConfig.HTPasswd.Path)
 		if err != nil {
@@ -346,13 +346,13 @@ func (c *Controller) initCookieStore() error {
 func (c *Controller) InitMetaDB() error {
 	// init metaDB if search is enabled or we need to store user profiles, api keys or signatures
 	// Get auth config safely
-	authConfig := c.Config.GetAuthConfig()
-	extensionsConfig := c.Config.GetExtensionsConfig()
+	authConfig := c.Config.CopyAuthConfig()
+	extensionsConfig := c.Config.CopyExtensionsConfig()
 
 	if extensionsConfig.IsSearchEnabled() || authConfig.IsBasicAuthnEnabled() || extensionsConfig.IsImageTrustEnabled() ||
 		c.Config.IsRetentionEnabled() {
 		// Get storage config safely
-		storageConfig := c.Config.GetStorageConfig()
+		storageConfig := c.Config.CopyStorageConfig()
 
 		driver, err := meta.New(storageConfig.StorageConfig, c.Log) //nolint:contextcheck
 		if err != nil {
@@ -396,7 +396,7 @@ func (c *Controller) LoadNewConfig(newConfig *config.Config) {
 	c.Config.UpdateReloadableConfig(newConfig)
 
 	// Operations that need to happen after config update
-	authConfig := c.Config.GetAuthConfig()
+	authConfig := c.Config.CopyAuthConfig()
 	if authConfig.IsHtpasswdAuthEnabled() {
 		err := c.HTPasswdWatcher.ChangeFile(authConfig.HTPasswd.Path)
 		if err != nil {
@@ -461,7 +461,7 @@ func (c *Controller) StartBackgroundTasks() {
 	}
 
 	// Enable running garbage-collect periodically for DefaultStore
-	storageConfig := c.Config.GetStorageConfig()
+	storageConfig := c.Config.CopyStorageConfig()
 	if storageConfig.GC {
 		gc := gc.NewGarbageCollect(c.StoreController.DefaultStore, c.MetaDB, gc.Options{
 			Delay:          storageConfig.GCDelay,
@@ -475,7 +475,7 @@ func (c *Controller) StartBackgroundTasks() {
 	c.StoreController.DefaultStore.RunDedupeBlobs(time.Duration(0), c.taskScheduler)
 
 	// Enable extensions if extension config is provided for DefaultStore
-	extensionsConfig := c.Config.GetExtensionsConfig()
+	extensionsConfig := c.Config.CopyExtensionsConfig()
 
 	// Always call EnableSearchExtension to ensure proper logging, even when search is disabled
 	ext.EnableSearchExtension(c.Config, c.StoreController, c.MetaDB, c.taskScheduler, c.CveScanner, c.Log)

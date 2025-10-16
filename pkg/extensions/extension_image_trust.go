@@ -27,7 +27,7 @@ func IsBuiltWithImageTrustExtension() bool {
 }
 
 func SetupImageTrustRoutes(conf *config.Config, router *mux.Router, metaDB mTypes.MetaDB, log log.Logger) {
-	extensionsConfig := conf.GetExtensionsConfig()
+	extensionsConfig := conf.CopyExtensionsConfig()
 	if !extensionsConfig.IsImageTrustEnabled() ||
 		(!extensionsConfig.IsCosignEnabled() && !extensionsConfig.IsNotationEnabled()) {
 		log.Info().Msg("skip enabling the image trust routes as the config prerequisites are not met")
@@ -155,7 +155,7 @@ func (trust *ImageTrust) HandleNotationCertificateUpload(response http.ResponseW
 func EnableImageTrustVerification(conf *config.Config, taskScheduler *scheduler.Scheduler,
 	metaDB mTypes.MetaDB, log log.Logger,
 ) {
-	extensionsConfig := conf.GetExtensionsConfig()
+	extensionsConfig := conf.CopyExtensionsConfig()
 	if !extensionsConfig.IsImageTrustEnabled() {
 		return
 	}
@@ -168,7 +168,7 @@ func EnableImageTrustVerification(conf *config.Config, taskScheduler *scheduler.
 }
 
 func SetupImageTrustExtension(conf *config.Config, metaDB mTypes.MetaDB, log log.Logger) error {
-	extensionsConfig := conf.GetExtensionsConfig()
+	extensionsConfig := conf.CopyExtensionsConfig()
 	if !extensionsConfig.IsImageTrustEnabled() {
 		return nil
 	}
