@@ -8,10 +8,10 @@ import (
 
 	"github.com/gorilla/mux"
 
-	"zotregistry.dev/zot/pkg/api/config"
-	zcommon "zotregistry.dev/zot/pkg/common"
-	"zotregistry.dev/zot/pkg/extensions/monitoring"
-	"zotregistry.dev/zot/pkg/log"
+	"zotregistry.dev/zot/v2/pkg/api/config"
+	zcommon "zotregistry.dev/zot/v2/pkg/common"
+	"zotregistry.dev/zot/v2/pkg/extensions/monitoring"
+	"zotregistry.dev/zot/v2/pkg/log"
 )
 
 // EnableMetricsExtension ...

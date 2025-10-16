@@ -16,12 +16,12 @@ import (
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 
-	zerr "zotregistry.dev/zot/errors"
-	"zotregistry.dev/zot/pkg/common"
-	"zotregistry.dev/zot/pkg/extensions/search/convert"
-	cvemodel "zotregistry.dev/zot/pkg/extensions/search/cve/model"
-	"zotregistry.dev/zot/pkg/log"
-	stypes "zotregistry.dev/zot/pkg/storage/types"
+	zerr "zotregistry.dev/zot/v2/errors"
+	"zotregistry.dev/zot/v2/pkg/common"
+	"zotregistry.dev/zot/v2/pkg/extensions/search/convert"
+	cvemodel "zotregistry.dev/zot/v2/pkg/extensions/search/cve/model"
+	"zotregistry.dev/zot/v2/pkg/log"
+	stypes "zotregistry.dev/zot/v2/pkg/storage/types"
 )
 
 type OciUtils interface { //nolint: interfacebloat

@@ -11,11 +11,11 @@ import (
 	. "github.com/smartystreets/goconvey/convey"
 	"gopkg.in/resty.v1"
 
-	"zotregistry.dev/zot/pkg/api"
-	"zotregistry.dev/zot/pkg/api/config"
-	"zotregistry.dev/zot/pkg/api/constants"
-	debugConstants "zotregistry.dev/zot/pkg/debug/constants"
-	test "zotregistry.dev/zot/pkg/test/common"
+	"zotregistry.dev/zot/v2/pkg/api"
+	"zotregistry.dev/zot/v2/pkg/api/config"
+	"zotregistry.dev/zot/v2/pkg/api/constants"
+	debugConstants "zotregistry.dev/zot/v2/pkg/debug/constants"
+	test "zotregistry.dev/zot/v2/pkg/test/common"
 )
 
 func TestProfilingAuthz(t *testing.T) {

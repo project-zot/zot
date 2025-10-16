@@ -11,9 +11,9 @@ import (
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	. "github.com/smartystreets/goconvey/convey"
 
-	cvemodel "zotregistry.dev/zot/pkg/extensions/search/cve/model"
-	"zotregistry.dev/zot/pkg/meta/types"
-	"zotregistry.dev/zot/pkg/test/mocks"
+	cvemodel "zotregistry.dev/zot/v2/pkg/extensions/search/cve/model"
+	"zotregistry.dev/zot/v2/pkg/meta/types"
+	"zotregistry.dev/zot/v2/pkg/test/mocks"
 )
 
 var ErrTestError = errors.New("test error")

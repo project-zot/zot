@@ -105,7 +105,7 @@ formatters:
       sections:
         - standard
         - default
-        - prefix(zotregistry.dev/zot)
+        - prefix(zotregistry.dev/zot/v2)
   exclusions:
     generated: lax
     paths:

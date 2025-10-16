@@ -7,7 +7,7 @@ import (
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/regclient/regclient/types/referrer"
 
-	"zotregistry.dev/zot/pkg/common"
+	"zotregistry.dev/zot/v2/pkg/common"
 )
 
 const (

@@ -13,10 +13,10 @@ import (
 	. "github.com/smartystreets/goconvey/convey"
 	"gopkg.in/resty.v1"
 
-	zerr "zotregistry.dev/zot/errors"
-	"zotregistry.dev/zot/pkg/api/config"
-	cli "zotregistry.dev/zot/pkg/cli/server"
-	. "zotregistry.dev/zot/pkg/test/common"
+	zerr "zotregistry.dev/zot/v2/errors"
+	"zotregistry.dev/zot/v2/pkg/api/config"
+	cli "zotregistry.dev/zot/v2/pkg/cli/server"
+	. "zotregistry.dev/zot/v2/pkg/test/common"
 )
 
 const readLogFileTimeout = 5 * time.Second

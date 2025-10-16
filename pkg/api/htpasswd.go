@@ -13,7 +13,7 @@ import (
 	"github.com/fsnotify/fsnotify"
 	"golang.org/x/crypto/bcrypt"
 
-	"zotregistry.dev/zot/pkg/log"
+	"zotregistry.dev/zot/v2/pkg/log"
 )
 
 // HTPasswd user auth store

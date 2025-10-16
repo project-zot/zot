@@ -5,7 +5,7 @@ import (
 
 	"github.com/mitchellh/mapstructure"
 
-	zerr "zotregistry.dev/zot/errors"
+	zerr "zotregistry.dev/zot/v2/errors"
 )
 
 // SinkConfigDecoderHook provides a mapstructure hook for decoding SinkConfig interfaces.

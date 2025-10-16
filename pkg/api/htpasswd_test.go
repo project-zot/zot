@@ -7,9 +7,9 @@ import (
 
 	. "github.com/smartystreets/goconvey/convey"
 
-	"zotregistry.dev/zot/pkg/api"
-	"zotregistry.dev/zot/pkg/log"
-	test "zotregistry.dev/zot/pkg/test/common"
+	"zotregistry.dev/zot/v2/pkg/api"
+	"zotregistry.dev/zot/v2/pkg/log"
+	test "zotregistry.dev/zot/v2/pkg/test/common"
 )
 
 func TestHTPasswdWatcher(t *testing.T) {

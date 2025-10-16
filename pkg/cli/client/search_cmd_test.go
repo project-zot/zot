@@ -15,13 +15,13 @@ import (
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	. "github.com/smartystreets/goconvey/convey"
 
-	"zotregistry.dev/zot/pkg/api"
-	"zotregistry.dev/zot/pkg/api/config"
-	"zotregistry.dev/zot/pkg/cli/client"
-	extconf "zotregistry.dev/zot/pkg/extensions/config"
-	test "zotregistry.dev/zot/pkg/test/common"
-	. "zotregistry.dev/zot/pkg/test/image-utils"
-	ociutils "zotregistry.dev/zot/pkg/test/oci-utils"
+	"zotregistry.dev/zot/v2/pkg/api"
+	"zotregistry.dev/zot/v2/pkg/api/config"
+	"zotregistry.dev/zot/v2/pkg/cli/client"
+	extconf "zotregistry.dev/zot/v2/pkg/extensions/config"
+	test "zotregistry.dev/zot/v2/pkg/test/common"
+	. "zotregistry.dev/zot/v2/pkg/test/image-utils"
+	ociutils "zotregistry.dev/zot/v2/pkg/test/oci-utils"
 )
 
 const (

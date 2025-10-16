@@ -8,8 +8,8 @@ import (
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 
-	"zotregistry.dev/zot/pkg/scheduler"
-	storageTypes "zotregistry.dev/zot/pkg/storage/types"
+	"zotregistry.dev/zot/v2/pkg/scheduler"
+	storageTypes "zotregistry.dev/zot/v2/pkg/storage/types"
 )
 
 type MockedImageStore struct {

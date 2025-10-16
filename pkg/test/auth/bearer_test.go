@@ -5,7 +5,7 @@ import (
 
 	. "github.com/smartystreets/goconvey/convey"
 
-	auth "zotregistry.dev/zot/pkg/test/auth"
+	auth "zotregistry.dev/zot/v2/pkg/test/auth"
 )
 
 func TestBearerServer(t *testing.T) {

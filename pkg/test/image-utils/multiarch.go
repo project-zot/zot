@@ -8,7 +8,7 @@ import (
 	"github.com/opencontainers/image-spec/specs-go"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 
-	mTypes "zotregistry.dev/zot/pkg/meta/types"
+	mTypes "zotregistry.dev/zot/v2/pkg/meta/types"
 )
 
 type MultiarchImage struct {

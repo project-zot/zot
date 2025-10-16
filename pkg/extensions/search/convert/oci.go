@@ -5,8 +5,8 @@ import (
 
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 
-	zerr "zotregistry.dev/zot/errors"
-	"zotregistry.dev/zot/pkg/extensions/search/gql_generated"
+	zerr "zotregistry.dev/zot/v2/errors"
+	"zotregistry.dev/zot/v2/pkg/extensions/search/gql_generated"
 )
 
 func getLayersSummaries(manifestContent ispec.Manifest) []*gql_generated.LayerSummary {

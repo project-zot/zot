@@ -4,10 +4,10 @@
 package extensions
 
 import (
-	zerr "zotregistry.dev/zot/errors"
-	"zotregistry.dev/zot/pkg/api/config"
-	"zotregistry.dev/zot/pkg/extensions/events"
-	"zotregistry.dev/zot/pkg/log"
+	zerr "zotregistry.dev/zot/v2/errors"
+	"zotregistry.dev/zot/v2/pkg/api/config"
+	"zotregistry.dev/zot/v2/pkg/extensions/events"
+	"zotregistry.dev/zot/v2/pkg/log"
 )
 
 func NewEventRecorder(config *config.Config, log log.Logger) (events.Recorder, error) {

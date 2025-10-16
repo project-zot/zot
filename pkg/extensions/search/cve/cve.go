@@ -9,14 +9,14 @@ import (
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 
-	zerr "zotregistry.dev/zot/errors"
-	zcommon "zotregistry.dev/zot/pkg/common"
-	"zotregistry.dev/zot/pkg/compat"
-	cvemodel "zotregistry.dev/zot/pkg/extensions/search/cve/model"
-	"zotregistry.dev/zot/pkg/extensions/search/cve/trivy"
-	"zotregistry.dev/zot/pkg/log"
-	mTypes "zotregistry.dev/zot/pkg/meta/types"
-	"zotregistry.dev/zot/pkg/storage"
+	zerr "zotregistry.dev/zot/v2/errors"
+	zcommon "zotregistry.dev/zot/v2/pkg/common"
+	"zotregistry.dev/zot/v2/pkg/compat"
+	cvemodel "zotregistry.dev/zot/v2/pkg/extensions/search/cve/model"
+	"zotregistry.dev/zot/v2/pkg/extensions/search/cve/trivy"
+	"zotregistry.dev/zot/v2/pkg/log"
+	mTypes "zotregistry.dev/zot/v2/pkg/meta/types"
+	"zotregistry.dev/zot/v2/pkg/storage"
 )
 
 type CveInfo interface {

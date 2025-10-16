@@ -20,9 +20,9 @@ import (
 	"github.com/regclient/regclient/types/ref"
 	"github.com/regclient/regclient/types/repo"
 
-	zerr "zotregistry.dev/zot/errors"
-	"zotregistry.dev/zot/pkg/common"
-	"zotregistry.dev/zot/pkg/log"
+	zerr "zotregistry.dev/zot/v2/errors"
+	"zotregistry.dev/zot/v2/pkg/common"
+	"zotregistry.dev/zot/v2/pkg/log"
 )
 
 type RemoteRegistry struct {

@@ -7,7 +7,7 @@ import (
 	"github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 
-	zerr "zotregistry.dev/zot/errors"
+	zerr "zotregistry.dev/zot/v2/errors"
 )
 
 func GetImageDirAndTag(imageName string) (string, string) {

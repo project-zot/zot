@@ -14,9 +14,9 @@ import (
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 
-	zerr "zotregistry.dev/zot/errors"
-	"zotregistry.dev/zot/pkg/common"
-	storageTypes "zotregistry.dev/zot/pkg/storage/types"
+	zerr "zotregistry.dev/zot/v2/errors"
+	"zotregistry.dev/zot/v2/pkg/common"
+	storageTypes "zotregistry.dev/zot/v2/pkg/storage/types"
 )
 
 const (

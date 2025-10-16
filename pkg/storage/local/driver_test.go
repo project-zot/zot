@@ -13,9 +13,9 @@ import (
 	storagedriver "github.com/distribution/distribution/v3/registry/storage/driver"
 	. "github.com/smartystreets/goconvey/convey"
 
-	zerr "zotregistry.dev/zot/errors"
-	storageConstants "zotregistry.dev/zot/pkg/storage/constants"
-	"zotregistry.dev/zot/pkg/storage/local"
+	zerr "zotregistry.dev/zot/v2/errors"
+	storageConstants "zotregistry.dev/zot/v2/pkg/storage/constants"
+	"zotregistry.dev/zot/v2/pkg/storage/local"
 )
 
 func TestStorageDriver(t *testing.T) {

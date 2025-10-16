@@ -12,12 +12,12 @@ import (
 	"github.com/redis/go-redis/v9"
 	. "github.com/smartystreets/goconvey/convey"
 
-	zerr "zotregistry.dev/zot/errors"
-	"zotregistry.dev/zot/pkg/log"
-	"zotregistry.dev/zot/pkg/storage"
-	"zotregistry.dev/zot/pkg/storage/cache"
-	"zotregistry.dev/zot/pkg/storage/constants"
-	test "zotregistry.dev/zot/pkg/test/common"
+	zerr "zotregistry.dev/zot/v2/errors"
+	"zotregistry.dev/zot/v2/pkg/log"
+	"zotregistry.dev/zot/v2/pkg/storage"
+	"zotregistry.dev/zot/v2/pkg/storage/cache"
+	"zotregistry.dev/zot/v2/pkg/storage/constants"
+	test "zotregistry.dev/zot/v2/pkg/test/common"
 )
 
 var ErrTestError = errors.New("TestError")

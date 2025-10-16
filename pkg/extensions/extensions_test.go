@@ -15,14 +15,14 @@ import (
 	. "github.com/smartystreets/goconvey/convey"
 	"gopkg.in/resty.v1"
 
-	"zotregistry.dev/zot/pkg/api"
-	"zotregistry.dev/zot/pkg/api/config"
-	"zotregistry.dev/zot/pkg/api/constants"
-	"zotregistry.dev/zot/pkg/extensions"
-	extconf "zotregistry.dev/zot/pkg/extensions/config"
-	syncconf "zotregistry.dev/zot/pkg/extensions/config/sync"
-	authutils "zotregistry.dev/zot/pkg/test/auth"
-	test "zotregistry.dev/zot/pkg/test/common"
+	"zotregistry.dev/zot/v2/pkg/api"
+	"zotregistry.dev/zot/v2/pkg/api/config"
+	"zotregistry.dev/zot/v2/pkg/api/constants"
+	"zotregistry.dev/zot/v2/pkg/extensions"
+	extconf "zotregistry.dev/zot/v2/pkg/extensions/config"
+	syncconf "zotregistry.dev/zot/v2/pkg/extensions/config/sync"
+	authutils "zotregistry.dev/zot/v2/pkg/test/auth"
+	test "zotregistry.dev/zot/v2/pkg/test/common"
 )
 
 const (

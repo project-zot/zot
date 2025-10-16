@@ -3,7 +3,7 @@ package mocks
 import (
 	godigest "github.com/opencontainers/go-digest"
 
-	storageTypes "zotregistry.dev/zot/pkg/storage/types"
+	storageTypes "zotregistry.dev/zot/v2/pkg/storage/types"
 )
 
 type MockedLint struct {

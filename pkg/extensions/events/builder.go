@@ -9,7 +9,7 @@ import (
 	cloudevents "github.com/cloudevents/sdk-go/v2"
 	"github.com/google/uuid"
 
-	zerr "zotregistry.dev/zot/errors"
+	zerr "zotregistry.dev/zot/v2/errors"
 )
 
 type eventBuilder struct {

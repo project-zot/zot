@@ -11,10 +11,10 @@ import (
 	"github.com/redis/go-redis/v9"
 	. "github.com/smartystreets/goconvey/convey"
 
-	"zotregistry.dev/zot/pkg/api/config"
-	rediscfg "zotregistry.dev/zot/pkg/api/config/redis"
-	"zotregistry.dev/zot/pkg/cli/server"
-	"zotregistry.dev/zot/pkg/log"
+	"zotregistry.dev/zot/v2/pkg/api/config"
+	rediscfg "zotregistry.dev/zot/v2/pkg/api/config/redis"
+	"zotregistry.dev/zot/v2/pkg/cli/server"
+	"zotregistry.dev/zot/v2/pkg/log"
 )
 
 func TestRedisLogger(t *testing.T) {

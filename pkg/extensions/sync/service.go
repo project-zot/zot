@@ -20,15 +20,15 @@ import (
 	"github.com/regclient/regclient/scheme/reg"
 	"github.com/regclient/regclient/types/ref"
 
-	zerr "zotregistry.dev/zot/errors"
-	zconfig "zotregistry.dev/zot/pkg/api/config"
-	"zotregistry.dev/zot/pkg/api/constants"
-	"zotregistry.dev/zot/pkg/cluster"
-	"zotregistry.dev/zot/pkg/common"
-	syncconf "zotregistry.dev/zot/pkg/extensions/config/sync"
-	"zotregistry.dev/zot/pkg/log"
-	mTypes "zotregistry.dev/zot/pkg/meta/types"
-	"zotregistry.dev/zot/pkg/storage"
+	zerr "zotregistry.dev/zot/v2/errors"
+	zconfig "zotregistry.dev/zot/v2/pkg/api/config"
+	"zotregistry.dev/zot/v2/pkg/api/constants"
+	"zotregistry.dev/zot/v2/pkg/cluster"
+	"zotregistry.dev/zot/v2/pkg/common"
+	syncconf "zotregistry.dev/zot/v2/pkg/extensions/config/sync"
+	"zotregistry.dev/zot/v2/pkg/log"
+	mTypes "zotregistry.dev/zot/v2/pkg/meta/types"
+	"zotregistry.dev/zot/v2/pkg/storage"
 )
 
 const defaultExpireMinutes = 30 * time.Minute

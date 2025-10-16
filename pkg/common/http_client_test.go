@@ -9,8 +9,8 @@ import (
 
 	. "github.com/smartystreets/goconvey/convey"
 
-	"zotregistry.dev/zot/pkg/common"
-	test "zotregistry.dev/zot/pkg/test/common"
+	"zotregistry.dev/zot/v2/pkg/common"
+	test "zotregistry.dev/zot/v2/pkg/test/common"
 )
 
 func TestHTTPClient(t *testing.T) {

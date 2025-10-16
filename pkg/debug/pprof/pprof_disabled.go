@@ -6,8 +6,8 @@ package pprof
 import (
 	"github.com/gorilla/mux"
 
-	"zotregistry.dev/zot/pkg/api/config"
-	"zotregistry.dev/zot/pkg/log" //nolint:goimports
+	"zotregistry.dev/zot/v2/pkg/api/config"
+	"zotregistry.dev/zot/v2/pkg/log" //nolint:goimports
 )
 
 func SetupPprofRoutes(conf *config.Config, router *mux.Router, authFunc mux.MiddlewareFunc,

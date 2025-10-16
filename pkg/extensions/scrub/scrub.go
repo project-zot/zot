@@ -8,9 +8,9 @@ import (
 	"fmt"
 	"path"
 
-	"zotregistry.dev/zot/pkg/log"
-	"zotregistry.dev/zot/pkg/storage"
-	storageTypes "zotregistry.dev/zot/pkg/storage/types"
+	"zotregistry.dev/zot/v2/pkg/log"
+	"zotregistry.dev/zot/v2/pkg/storage"
+	storageTypes "zotregistry.dev/zot/v2/pkg/storage/types"
 )
 
 // Scrub Extension for repo...

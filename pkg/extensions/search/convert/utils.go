@@ -1,9 +1,9 @@
 package convert
 
 import (
-	zcommon "zotregistry.dev/zot/pkg/common"
-	gql_gen "zotregistry.dev/zot/pkg/extensions/search/gql_generated"
-	mTypes "zotregistry.dev/zot/pkg/meta/types"
+	zcommon "zotregistry.dev/zot/v2/pkg/common"
+	gql_gen "zotregistry.dev/zot/v2/pkg/extensions/search/gql_generated"
+	mTypes "zotregistry.dev/zot/v2/pkg/meta/types"
 )
 
 func ImgSumAcceptedByFilter(imageSummary *gql_gen.ImageSummary, filter mTypes.Filter) bool {

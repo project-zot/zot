@@ -4,7 +4,7 @@
 package api
 
 import (
-	"zotregistry.dev/zot/pkg/log"
+	"zotregistry.dev/zot/v2/pkg/log"
 )
 
 type Controller struct {

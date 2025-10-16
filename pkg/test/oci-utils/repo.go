@@ -4,10 +4,10 @@ import (
 	"context"
 	"fmt"
 
-	zerr "zotregistry.dev/zot/errors"
-	mTypes "zotregistry.dev/zot/pkg/meta/types"
-	reqCtx "zotregistry.dev/zot/pkg/requestcontext"
-	imageUtil "zotregistry.dev/zot/pkg/test/image-utils"
+	zerr "zotregistry.dev/zot/v2/errors"
+	mTypes "zotregistry.dev/zot/v2/pkg/meta/types"
+	reqCtx "zotregistry.dev/zot/v2/pkg/requestcontext"
+	imageUtil "zotregistry.dev/zot/v2/pkg/test/image-utils"
 )
 
 type RepoImage struct {

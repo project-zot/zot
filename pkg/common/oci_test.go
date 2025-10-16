@@ -5,7 +5,7 @@ import (
 
 	. "github.com/smartystreets/goconvey/convey"
 
-	"zotregistry.dev/zot/pkg/common"
+	"zotregistry.dev/zot/v2/pkg/common"
 )
 
 func TestOCI(t *testing.T) {

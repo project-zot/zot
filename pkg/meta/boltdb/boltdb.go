@@ -14,17 +14,17 @@ import (
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	zerr "zotregistry.dev/zot/errors"
-	"zotregistry.dev/zot/pkg/api/constants"
-	zcommon "zotregistry.dev/zot/pkg/common"
-	"zotregistry.dev/zot/pkg/compat"
-	"zotregistry.dev/zot/pkg/log"
-	"zotregistry.dev/zot/pkg/meta/common"
-	mConvert "zotregistry.dev/zot/pkg/meta/convert"
-	proto_go "zotregistry.dev/zot/pkg/meta/proto/gen"
-	mTypes "zotregistry.dev/zot/pkg/meta/types"
-	"zotregistry.dev/zot/pkg/meta/version"
-	reqCtx "zotregistry.dev/zot/pkg/requestcontext"
+	zerr "zotregistry.dev/zot/v2/errors"
+	"zotregistry.dev/zot/v2/pkg/api/constants"
+	zcommon "zotregistry.dev/zot/v2/pkg/common"
+	"zotregistry.dev/zot/v2/pkg/compat"
+	"zotregistry.dev/zot/v2/pkg/log"
+	"zotregistry.dev/zot/v2/pkg/meta/common"
+	mConvert "zotregistry.dev/zot/v2/pkg/meta/convert"
+	proto_go "zotregistry.dev/zot/v2/pkg/meta/proto/gen"
+	mTypes "zotregistry.dev/zot/v2/pkg/meta/types"
+	"zotregistry.dev/zot/v2/pkg/meta/version"
+	reqCtx "zotregistry.dev/zot/v2/pkg/requestcontext"
 )
 
 type BoltDB struct {

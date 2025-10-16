@@ -12,9 +12,9 @@ import (
 	"github.com/opencontainers/image-spec/specs-go"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 
-	"zotregistry.dev/zot/pkg/common"
-	mTypes "zotregistry.dev/zot/pkg/meta/types"
-	storageConstants "zotregistry.dev/zot/pkg/storage/constants"
+	"zotregistry.dev/zot/v2/pkg/common"
+	mTypes "zotregistry.dev/zot/v2/pkg/meta/types"
+	storageConstants "zotregistry.dev/zot/v2/pkg/storage/constants"
 )
 
 const (

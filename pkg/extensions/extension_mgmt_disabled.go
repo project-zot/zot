@@ -6,8 +6,8 @@ package extensions
 import (
 	"github.com/gorilla/mux"
 
-	"zotregistry.dev/zot/pkg/api/config"
-	"zotregistry.dev/zot/pkg/log"
+	"zotregistry.dev/zot/v2/pkg/api/config"
+	"zotregistry.dev/zot/v2/pkg/log"
 )
 
 func IsBuiltWithMGMTExtension() bool {

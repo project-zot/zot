@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"sort"
 
-	zerr "zotregistry.dev/zot/errors"
-	"zotregistry.dev/zot/pkg/common"
-	cvemodel "zotregistry.dev/zot/pkg/extensions/search/cve/model"
+	zerr "zotregistry.dev/zot/v2/errors"
+	"zotregistry.dev/zot/v2/pkg/common"
+	cvemodel "zotregistry.dev/zot/v2/pkg/extensions/search/cve/model"
 )
 
 const (

@@ -8,10 +8,10 @@ import (
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	"zotregistry.dev/zot/pkg/common"
-	"zotregistry.dev/zot/pkg/compat"
-	proto_go "zotregistry.dev/zot/pkg/meta/proto/gen"
-	mTypes "zotregistry.dev/zot/pkg/meta/types"
+	"zotregistry.dev/zot/v2/pkg/common"
+	"zotregistry.dev/zot/v2/pkg/compat"
+	proto_go "zotregistry.dev/zot/v2/pkg/meta/proto/gen"
+	mTypes "zotregistry.dev/zot/v2/pkg/meta/types"
 )
 
 func GetHistory(history []*proto_go.History) []ispec.History {

@@ -10,9 +10,9 @@ import (
 
 	"github.com/gorilla/mux"
 
-	"zotregistry.dev/zot/pkg/api/constants"
-	"zotregistry.dev/zot/pkg/cluster"
-	"zotregistry.dev/zot/pkg/common"
+	"zotregistry.dev/zot/v2/pkg/api/constants"
+	"zotregistry.dev/zot/v2/pkg/cluster"
+	"zotregistry.dev/zot/v2/pkg/common"
 )
 
 // ClusterProxy wraps an http.HandlerFunc which requires proxying between zot instances to ensure

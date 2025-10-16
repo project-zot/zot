@@ -8,7 +8,7 @@ import (
 
 	. "github.com/smartystreets/goconvey/convey"
 
-	"zotregistry.dev/zot/pkg/api"
+	"zotregistry.dev/zot/v2/pkg/api"
 )
 
 func TestGetLocalMemberClusterSocket(t *testing.T) {

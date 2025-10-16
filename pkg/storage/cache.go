@@ -3,13 +3,13 @@ package storage
 import (
 	"fmt"
 
-	zerr "zotregistry.dev/zot/errors"
-	"zotregistry.dev/zot/pkg/api/config"
-	rediscfg "zotregistry.dev/zot/pkg/api/config/redis"
-	zlog "zotregistry.dev/zot/pkg/log"
-	"zotregistry.dev/zot/pkg/storage/cache"
-	"zotregistry.dev/zot/pkg/storage/constants"
-	storageTypes "zotregistry.dev/zot/pkg/storage/types"
+	zerr "zotregistry.dev/zot/v2/errors"
+	"zotregistry.dev/zot/v2/pkg/api/config"
+	rediscfg "zotregistry.dev/zot/v2/pkg/api/config/redis"
+	zlog "zotregistry.dev/zot/v2/pkg/log"
+	"zotregistry.dev/zot/v2/pkg/storage/cache"
+	"zotregistry.dev/zot/v2/pkg/storage/constants"
+	storageTypes "zotregistry.dev/zot/v2/pkg/storage/types"
 )
 
 func CreateCacheDatabaseDriver(storageConfig config.StorageConfig, log zlog.Logger) (storageTypes.Cache, error) {

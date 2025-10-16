@@ -14,13 +14,13 @@ import (
 	"github.com/gorilla/sessions"
 	"github.com/rbcervilla/redisstore/v9"
 
-	"zotregistry.dev/zot/errors"
-	"zotregistry.dev/zot/pkg/api/config"
-	rediscfg "zotregistry.dev/zot/pkg/api/config/redis"
-	"zotregistry.dev/zot/pkg/log"
-	"zotregistry.dev/zot/pkg/scheduler"
-	"zotregistry.dev/zot/pkg/storage"
-	storageConstants "zotregistry.dev/zot/pkg/storage/constants"
+	"zotregistry.dev/zot/v2/errors"
+	"zotregistry.dev/zot/v2/pkg/api/config"
+	rediscfg "zotregistry.dev/zot/v2/pkg/api/config/redis"
+	"zotregistry.dev/zot/v2/pkg/log"
+	"zotregistry.dev/zot/v2/pkg/scheduler"
+	"zotregistry.dev/zot/v2/pkg/storage"
+	storageConstants "zotregistry.dev/zot/v2/pkg/storage/constants"
 )
 
 const cookiesMaxAge = 7200 // 2h

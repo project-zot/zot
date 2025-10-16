@@ -8,7 +8,7 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 
-	zerr "zotregistry.dev/zot/errors"
+	zerr "zotregistry.dev/zot/v2/errors"
 )
 
 var bearerTokenMatch = regexp.MustCompile("(?i)bearer (.*)")

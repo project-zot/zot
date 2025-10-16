@@ -11,9 +11,9 @@ import (
 	godigest "github.com/opencontainers/go-digest"
 	"github.com/redis/go-redis/v9"
 
-	zerr "zotregistry.dev/zot/errors"
-	zlog "zotregistry.dev/zot/pkg/log"
-	"zotregistry.dev/zot/pkg/storage/constants"
+	zerr "zotregistry.dev/zot/v2/errors"
+	zlog "zotregistry.dev/zot/v2/pkg/log"
+	"zotregistry.dev/zot/v2/pkg/storage/constants"
 )
 
 type RedisDriver struct {

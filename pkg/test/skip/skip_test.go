@@ -6,7 +6,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	tskip "zotregistry.dev/zot/pkg/test/skip"
+	tskip "zotregistry.dev/zot/v2/pkg/test/skip"
 )
 
 // for code coverage.

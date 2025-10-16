@@ -12,8 +12,8 @@ import (
 
 	. "github.com/smartystreets/goconvey/convey"
 
-	cli "zotregistry.dev/zot/pkg/cli/server"
-	test "zotregistry.dev/zot/pkg/test/common"
+	cli "zotregistry.dev/zot/v2/pkg/cli/server"
+	test "zotregistry.dev/zot/v2/pkg/test/common"
 )
 
 func TestConfigReloader(t *testing.T) {

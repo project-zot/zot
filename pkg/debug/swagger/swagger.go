@@ -11,10 +11,10 @@ import (
 	"github.com/gorilla/mux"
 	httpSwagger "github.com/swaggo/http-swagger"
 
-	"zotregistry.dev/zot/pkg/api/config"
-	"zotregistry.dev/zot/pkg/log" //nolint:goimports
+	"zotregistry.dev/zot/v2/pkg/api/config"
+	"zotregistry.dev/zot/v2/pkg/log" //nolint:goimports
 	// as required by swaggo.
-	_ "zotregistry.dev/zot/swagger"
+	_ "zotregistry.dev/zot/v2/swagger"
 )
 
 func SetupSwaggerRoutes(conf *config.Config, router *mux.Router, authFunc mux.MiddlewareFunc,
