@@ -18,10 +18,10 @@ import (
 	. "github.com/smartystreets/goconvey/convey"
 	"k8s.io/apimachinery/pkg/util/rand"
 
-	zerr "zotregistry.dev/zot/errors"
-	eventsconf "zotregistry.dev/zot/pkg/extensions/config/events"
-	"zotregistry.dev/zot/pkg/extensions/events"
-	"zotregistry.dev/zot/pkg/log"
+	zerr "zotregistry.dev/zot/v2/errors"
+	eventsconf "zotregistry.dev/zot/v2/pkg/extensions/config/events"
+	"zotregistry.dev/zot/v2/pkg/extensions/events"
+	"zotregistry.dev/zot/v2/pkg/log"
 )
 
 type mockSink struct {

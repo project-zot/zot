@@ -12,9 +12,9 @@ import (
 	godigest "github.com/opencontainers/go-digest"
 	"github.com/regclient/regclient/types/ref"
 
-	syncconf "zotregistry.dev/zot/pkg/extensions/config/sync"
-	"zotregistry.dev/zot/pkg/log"
-	"zotregistry.dev/zot/pkg/scheduler"
+	syncconf "zotregistry.dev/zot/v2/pkg/extensions/config/sync"
+	"zotregistry.dev/zot/v2/pkg/log"
+	"zotregistry.dev/zot/v2/pkg/scheduler"
 )
 
 // below types are used by regclient to copy images

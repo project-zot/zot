@@ -8,9 +8,9 @@ import (
 
 	"github.com/fsnotify/fsnotify"
 
-	"zotregistry.dev/zot/pkg/api"
-	"zotregistry.dev/zot/pkg/api/config"
-	"zotregistry.dev/zot/pkg/log"
+	"zotregistry.dev/zot/v2/pkg/api"
+	"zotregistry.dev/zot/v2/pkg/api/config"
+	"zotregistry.dev/zot/v2/pkg/log"
 )
 
 type HotReloader struct {

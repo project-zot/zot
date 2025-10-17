@@ -8,7 +8,7 @@ import (
 	"syscall"
 	"unsafe"
 
-	"zotregistry.dev/zot/pkg/log"
+	"zotregistry.dev/zot/v2/pkg/log"
 )
 
 func getCurrentHandleCount() (uint32, error) {

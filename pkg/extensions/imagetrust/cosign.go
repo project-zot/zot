@@ -22,7 +22,7 @@ import (
 	sigstoreSigs "github.com/sigstore/sigstore/pkg/signature"
 	"github.com/sigstore/sigstore/pkg/signature/options"
 
-	zerr "zotregistry.dev/zot/errors"
+	zerr "zotregistry.dev/zot/v2/errors"
 )
 
 const cosignDirRelativePath = "_cosign"

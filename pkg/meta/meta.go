@@ -3,15 +3,15 @@ package meta
 import (
 	"fmt"
 
-	"zotregistry.dev/zot/errors"
-	"zotregistry.dev/zot/pkg/api/config"
-	rediscfg "zotregistry.dev/zot/pkg/api/config/redis"
-	"zotregistry.dev/zot/pkg/log"
-	"zotregistry.dev/zot/pkg/meta/boltdb"
-	mdynamodb "zotregistry.dev/zot/pkg/meta/dynamodb"
-	"zotregistry.dev/zot/pkg/meta/redis"
-	mTypes "zotregistry.dev/zot/pkg/meta/types"
-	sconstants "zotregistry.dev/zot/pkg/storage/constants"
+	"zotregistry.dev/zot/v2/errors"
+	"zotregistry.dev/zot/v2/pkg/api/config"
+	rediscfg "zotregistry.dev/zot/v2/pkg/api/config/redis"
+	"zotregistry.dev/zot/v2/pkg/log"
+	"zotregistry.dev/zot/v2/pkg/meta/boltdb"
+	mdynamodb "zotregistry.dev/zot/v2/pkg/meta/dynamodb"
+	"zotregistry.dev/zot/v2/pkg/meta/redis"
+	mTypes "zotregistry.dev/zot/v2/pkg/meta/types"
+	sconstants "zotregistry.dev/zot/v2/pkg/storage/constants"
 )
 
 func New(storageConfig config.StorageConfig, log log.Logger) (mTypes.MetaDB, error) {

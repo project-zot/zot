@@ -3,7 +3,7 @@ package storage
 import (
 	"strings"
 
-	storageTypes "zotregistry.dev/zot/pkg/storage/types"
+	storageTypes "zotregistry.dev/zot/v2/pkg/storage/types"
 )
 
 const (

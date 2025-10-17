@@ -12,18 +12,18 @@ import (
 
 	. "github.com/smartystreets/goconvey/convey"
 
-	"zotregistry.dev/zot/pkg/api"
-	"zotregistry.dev/zot/pkg/api/config"
-	extconf "zotregistry.dev/zot/pkg/extensions/config"
-	"zotregistry.dev/zot/pkg/extensions/monitoring"
-	"zotregistry.dev/zot/pkg/extensions/scrub"
-	"zotregistry.dev/zot/pkg/log"
-	"zotregistry.dev/zot/pkg/storage"
-	"zotregistry.dev/zot/pkg/storage/cache"
-	"zotregistry.dev/zot/pkg/storage/local"
-	test "zotregistry.dev/zot/pkg/test/common"
-	. "zotregistry.dev/zot/pkg/test/image-utils"
-	ociutils "zotregistry.dev/zot/pkg/test/oci-utils"
+	"zotregistry.dev/zot/v2/pkg/api"
+	"zotregistry.dev/zot/v2/pkg/api/config"
+	extconf "zotregistry.dev/zot/v2/pkg/extensions/config"
+	"zotregistry.dev/zot/v2/pkg/extensions/monitoring"
+	"zotregistry.dev/zot/v2/pkg/extensions/scrub"
+	"zotregistry.dev/zot/v2/pkg/log"
+	"zotregistry.dev/zot/v2/pkg/storage"
+	"zotregistry.dev/zot/v2/pkg/storage/cache"
+	"zotregistry.dev/zot/v2/pkg/storage/local"
+	test "zotregistry.dev/zot/v2/pkg/test/common"
+	. "zotregistry.dev/zot/v2/pkg/test/image-utils"
+	ociutils "zotregistry.dev/zot/v2/pkg/test/oci-utils"
 )
 
 const (

@@ -11,8 +11,8 @@ import (
 
 	cloudevents "github.com/cloudevents/sdk-go/v2"
 
-	eventsconf "zotregistry.dev/zot/pkg/extensions/config/events"
-	"zotregistry.dev/zot/pkg/log"
+	eventsconf "zotregistry.dev/zot/v2/pkg/extensions/config/events"
+	"zotregistry.dev/zot/v2/pkg/log"
 )
 
 type eventRecorder struct {

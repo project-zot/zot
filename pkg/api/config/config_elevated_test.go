@@ -9,7 +9,7 @@ import (
 
 	. "github.com/smartystreets/goconvey/convey"
 
-	"zotregistry.dev/zot/pkg/api/config"
+	"zotregistry.dev/zot/v2/pkg/api/config"
 )
 
 func TestMountConfig(t *testing.T) {

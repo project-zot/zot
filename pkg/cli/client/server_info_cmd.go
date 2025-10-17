@@ -13,8 +13,8 @@ import (
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
 
-	zerr "zotregistry.dev/zot/errors"
-	"zotregistry.dev/zot/pkg/api/constants"
+	zerr "zotregistry.dev/zot/v2/errors"
+	"zotregistry.dev/zot/v2/pkg/api/constants"
 )
 
 const (

@@ -10,10 +10,10 @@ import (
 	"github.com/gofrs/uuid"
 	"github.com/regclient/regclient/types/ref"
 
-	zerr "zotregistry.dev/zot/errors"
-	"zotregistry.dev/zot/pkg/extensions/sync/constants"
-	"zotregistry.dev/zot/pkg/storage"
-	"zotregistry.dev/zot/pkg/test/inject"
+	zerr "zotregistry.dev/zot/v2/errors"
+	"zotregistry.dev/zot/v2/pkg/extensions/sync/constants"
+	"zotregistry.dev/zot/v2/pkg/storage"
+	"zotregistry.dev/zot/v2/pkg/test/inject"
 )
 
 type OciLayoutStorageImpl struct {

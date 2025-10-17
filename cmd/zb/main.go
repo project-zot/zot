@@ -6,8 +6,8 @@ import (
 	distspec "github.com/opencontainers/distribution-spec/specs-go"
 	"github.com/spf13/cobra"
 
-	"zotregistry.dev/zot/pkg/api/config"
-	"zotregistry.dev/zot/pkg/log"
+	"zotregistry.dev/zot/v2/pkg/api/config"
+	"zotregistry.dev/zot/v2/pkg/log"
 )
 
 // "zb" - performance benchmark and stress.

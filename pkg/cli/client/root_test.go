@@ -9,7 +9,7 @@ import (
 
 	. "github.com/smartystreets/goconvey/convey"
 
-	"zotregistry.dev/zot/pkg/cli/client"
+	"zotregistry.dev/zot/v2/pkg/cli/client"
 )
 
 func TestCliUsage(t *testing.T) {

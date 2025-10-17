@@ -12,8 +12,8 @@ import (
 	cloudevents "github.com/cloudevents/sdk-go/v2"
 	cehttp "github.com/cloudevents/sdk-go/v2/protocol/http"
 
-	zerr "zotregistry.dev/zot/errors"
-	eventsconf "zotregistry.dev/zot/pkg/extensions/config/events"
+	zerr "zotregistry.dev/zot/v2/errors"
+	eventsconf "zotregistry.dev/zot/v2/pkg/extensions/config/events"
 )
 
 type HTTPSink struct {

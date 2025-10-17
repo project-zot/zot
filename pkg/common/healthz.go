@@ -6,8 +6,8 @@ import (
 
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 
-	"zotregistry.dev/zot/pkg/api/config"
-	"zotregistry.dev/zot/pkg/log"
+	"zotregistry.dev/zot/v2/pkg/api/config"
+	"zotregistry.dev/zot/v2/pkg/log"
 )
 
 var errNotReady = errors.New("not ready yet")

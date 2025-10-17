@@ -13,7 +13,7 @@ import (
 	. "github.com/smartystreets/goconvey/convey"
 	"golang.org/x/crypto/bcrypt"
 
-	tcommon "zotregistry.dev/zot/pkg/test/common"
+	tcommon "zotregistry.dev/zot/v2/pkg/test/common"
 )
 
 var ErrTestError = errors.New("ErrTestError")

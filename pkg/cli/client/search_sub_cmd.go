@@ -8,8 +8,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	zerr "zotregistry.dev/zot/errors"
-	zcommon "zotregistry.dev/zot/pkg/common"
+	zerr "zotregistry.dev/zot/v2/errors"
+	zcommon "zotregistry.dev/zot/v2/pkg/common"
 )
 
 func NewSearchSubjectCommand(searchService SearchService) *cobra.Command {

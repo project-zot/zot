@@ -19,11 +19,11 @@ import (
 	"github.com/smartystreets/goconvey/convey/reporting"
 	"gopkg.in/resty.v1"
 
-	"zotregistry.dev/zot/pkg/api"
-	"zotregistry.dev/zot/pkg/api/constants"
-	"zotregistry.dev/zot/pkg/compliance"
-	test "zotregistry.dev/zot/pkg/test/common"
-	"zotregistry.dev/zot/pkg/test/image-utils"
+	"zotregistry.dev/zot/v2/pkg/api"
+	"zotregistry.dev/zot/v2/pkg/api/constants"
+	"zotregistry.dev/zot/v2/pkg/compliance"
+	test "zotregistry.dev/zot/v2/pkg/test/common"
+	"zotregistry.dev/zot/v2/pkg/test/image-utils"
 )
 
 func CheckWorkflows(t *testing.T, config *compliance.Config) {

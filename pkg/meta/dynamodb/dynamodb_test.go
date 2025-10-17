@@ -16,13 +16,13 @@ import (
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	. "github.com/smartystreets/goconvey/convey"
 
-	"zotregistry.dev/zot/pkg/extensions/imagetrust"
-	"zotregistry.dev/zot/pkg/log"
-	mdynamodb "zotregistry.dev/zot/pkg/meta/dynamodb"
-	mTypes "zotregistry.dev/zot/pkg/meta/types"
-	reqCtx "zotregistry.dev/zot/pkg/requestcontext"
-	. "zotregistry.dev/zot/pkg/test/image-utils"
-	tskip "zotregistry.dev/zot/pkg/test/skip"
+	"zotregistry.dev/zot/v2/pkg/extensions/imagetrust"
+	"zotregistry.dev/zot/v2/pkg/log"
+	mdynamodb "zotregistry.dev/zot/v2/pkg/meta/dynamodb"
+	mTypes "zotregistry.dev/zot/v2/pkg/meta/types"
+	reqCtx "zotregistry.dev/zot/v2/pkg/requestcontext"
+	. "zotregistry.dev/zot/v2/pkg/test/image-utils"
+	tskip "zotregistry.dev/zot/v2/pkg/test/skip"
 )
 
 const badTablename = "bad tablename"

@@ -9,7 +9,7 @@ import (
 	"strings"
 	"syscall"
 
-	"zotregistry.dev/zot/pkg/log"
+	"zotregistry.dev/zot/v2/pkg/log"
 )
 
 // DumpRuntimeParams dumps important runtime state such as file and socket limits.

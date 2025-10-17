@@ -8,10 +8,10 @@ import (
 	godigest "github.com/opencontainers/go-digest"
 	. "github.com/smartystreets/goconvey/convey"
 
-	"zotregistry.dev/zot/pkg/log"
-	"zotregistry.dev/zot/pkg/storage"
-	"zotregistry.dev/zot/pkg/storage/cache"
-	tskip "zotregistry.dev/zot/pkg/test/skip"
+	"zotregistry.dev/zot/v2/pkg/log"
+	"zotregistry.dev/zot/v2/pkg/storage"
+	"zotregistry.dev/zot/v2/pkg/storage/cache"
+	tskip "zotregistry.dev/zot/v2/pkg/test/skip"
 )
 
 func TestDynamoDB(t *testing.T) {

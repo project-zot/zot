@@ -7,12 +7,12 @@ import (
 	glob "github.com/bmatcuk/doublestar/v4"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 
-	zerr "zotregistry.dev/zot/errors"
-	"zotregistry.dev/zot/pkg/api/config"
-	zcommon "zotregistry.dev/zot/pkg/common"
-	zlog "zotregistry.dev/zot/pkg/log"
-	mTypes "zotregistry.dev/zot/pkg/meta/types"
-	"zotregistry.dev/zot/pkg/retention/types"
+	zerr "zotregistry.dev/zot/v2/errors"
+	"zotregistry.dev/zot/v2/pkg/api/config"
+	zcommon "zotregistry.dev/zot/v2/pkg/common"
+	zlog "zotregistry.dev/zot/v2/pkg/log"
+	mTypes "zotregistry.dev/zot/v2/pkg/meta/types"
+	"zotregistry.dev/zot/v2/pkg/retention/types"
 )
 
 const (

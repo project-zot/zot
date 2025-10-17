@@ -3,7 +3,7 @@ package uac
 import (
 	"context"
 
-	"zotregistry.dev/zot/errors"
+	"zotregistry.dev/zot/v2/errors"
 )
 
 // request-local context key.

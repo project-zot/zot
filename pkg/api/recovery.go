@@ -7,7 +7,7 @@ import (
 
 	"github.com/gorilla/mux"
 
-	"zotregistry.dev/zot/pkg/log"
+	"zotregistry.dev/zot/v2/pkg/log"
 )
 
 type Stack struct {

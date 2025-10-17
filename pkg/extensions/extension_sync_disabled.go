@@ -4,12 +4,12 @@
 package extensions
 
 import (
-	"zotregistry.dev/zot/pkg/api/config"
-	"zotregistry.dev/zot/pkg/extensions/sync"
-	"zotregistry.dev/zot/pkg/log"
-	mTypes "zotregistry.dev/zot/pkg/meta/types"
-	"zotregistry.dev/zot/pkg/scheduler"
-	"zotregistry.dev/zot/pkg/storage"
+	"zotregistry.dev/zot/v2/pkg/api/config"
+	"zotregistry.dev/zot/v2/pkg/extensions/sync"
+	"zotregistry.dev/zot/v2/pkg/log"
+	mTypes "zotregistry.dev/zot/v2/pkg/meta/types"
+	"zotregistry.dev/zot/v2/pkg/scheduler"
+	"zotregistry.dev/zot/v2/pkg/storage"
 )
 
 // EnableSyncExtension ...

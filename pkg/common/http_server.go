@@ -10,10 +10,10 @@ import (
 	"github.com/gorilla/mux"
 	jsoniter "github.com/json-iterator/go"
 
-	"zotregistry.dev/zot/pkg/api/config"
-	"zotregistry.dev/zot/pkg/api/constants"
-	apiErr "zotregistry.dev/zot/pkg/api/errors"
-	reqCtx "zotregistry.dev/zot/pkg/requestcontext"
+	"zotregistry.dev/zot/v2/pkg/api/config"
+	"zotregistry.dev/zot/v2/pkg/api/constants"
+	apiErr "zotregistry.dev/zot/v2/pkg/api/errors"
+	reqCtx "zotregistry.dev/zot/v2/pkg/requestcontext"
 )
 
 func AllowedMethods(methods ...string) []string {

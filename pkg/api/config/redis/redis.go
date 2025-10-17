@@ -10,8 +10,8 @@ import (
 	"github.com/redis/go-redis/v9"
 	"github.com/spf13/cast"
 
-	"zotregistry.dev/zot/errors"
-	"zotregistry.dev/zot/pkg/log"
+	"zotregistry.dev/zot/v2/errors"
+	"zotregistry.dev/zot/v2/pkg/log"
 )
 
 var once sync.Once //nolint: gochecknoglobals // redis.SetLogger modifies an unprotected global variable

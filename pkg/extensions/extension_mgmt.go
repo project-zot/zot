@@ -9,10 +9,10 @@ import (
 
 	"github.com/gorilla/mux"
 
-	"zotregistry.dev/zot/pkg/api/config"
-	"zotregistry.dev/zot/pkg/api/constants"
-	zcommon "zotregistry.dev/zot/pkg/common"
-	"zotregistry.dev/zot/pkg/log"
+	"zotregistry.dev/zot/v2/pkg/api/config"
+	"zotregistry.dev/zot/v2/pkg/api/constants"
+	zcommon "zotregistry.dev/zot/v2/pkg/common"
+	"zotregistry.dev/zot/v2/pkg/log"
 )
 
 type HTPasswd struct {

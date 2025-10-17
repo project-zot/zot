@@ -14,10 +14,10 @@ import (
 
 	. "github.com/smartystreets/goconvey/convey"
 
-	"zotregistry.dev/zot/pkg/api"
-	"zotregistry.dev/zot/pkg/api/config"
-	cli "zotregistry.dev/zot/pkg/cli/server"
-	test "zotregistry.dev/zot/pkg/test/common"
+	"zotregistry.dev/zot/v2/pkg/api"
+	"zotregistry.dev/zot/v2/pkg/api/config"
+	cli "zotregistry.dev/zot/v2/pkg/cli/server"
+	test "zotregistry.dev/zot/v2/pkg/test/common"
 )
 
 const (

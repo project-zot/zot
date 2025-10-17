@@ -15,11 +15,11 @@ import (
 	godigest "github.com/opencontainers/go-digest"
 	. "github.com/smartystreets/goconvey/convey"
 
-	"zotregistry.dev/zot/pkg/extensions/monitoring"
-	"zotregistry.dev/zot/pkg/log"
-	"zotregistry.dev/zot/pkg/storage"
-	"zotregistry.dev/zot/pkg/storage/cache"
-	"zotregistry.dev/zot/pkg/storage/local"
+	"zotregistry.dev/zot/v2/pkg/extensions/monitoring"
+	"zotregistry.dev/zot/v2/pkg/log"
+	"zotregistry.dev/zot/v2/pkg/storage"
+	"zotregistry.dev/zot/v2/pkg/storage/cache"
+	"zotregistry.dev/zot/v2/pkg/storage/local"
 )
 
 func TestElevatedPrivilegesInvalidDedupe(t *testing.T) {

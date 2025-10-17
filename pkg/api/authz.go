@@ -7,12 +7,12 @@ import (
 	glob "github.com/bmatcuk/doublestar/v4"
 	"github.com/gorilla/mux"
 
-	"zotregistry.dev/zot/pkg/api/config"
-	"zotregistry.dev/zot/pkg/api/constants"
-	"zotregistry.dev/zot/pkg/common"
-	"zotregistry.dev/zot/pkg/log"
-	reqCtx "zotregistry.dev/zot/pkg/requestcontext"
-	storageTypes "zotregistry.dev/zot/pkg/storage/types"
+	"zotregistry.dev/zot/v2/pkg/api/config"
+	"zotregistry.dev/zot/v2/pkg/api/constants"
+	"zotregistry.dev/zot/v2/pkg/common"
+	"zotregistry.dev/zot/v2/pkg/log"
+	reqCtx "zotregistry.dev/zot/v2/pkg/requestcontext"
+	storageTypes "zotregistry.dev/zot/v2/pkg/storage/types"
 )
 
 const (

@@ -6,8 +6,8 @@ import (
 
 	glob "github.com/bmatcuk/doublestar/v4" //nolint:gci
 
-	"zotregistry.dev/zot/errors"
-	"zotregistry.dev/zot/pkg/api/constants"
+	"zotregistry.dev/zot/v2/errors"
+	"zotregistry.dev/zot/v2/pkg/api/constants"
 )
 
 type Key int

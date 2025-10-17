@@ -13,7 +13,7 @@ import (
 	"github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 
-	syncconf "zotregistry.dev/zot/pkg/extensions/config/sync"
+	syncconf "zotregistry.dev/zot/v2/pkg/extensions/config/sync"
 )
 
 // Get sync.FileCredentials from file.

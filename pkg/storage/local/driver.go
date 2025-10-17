@@ -14,9 +14,9 @@ import (
 
 	storagedriver "github.com/distribution/distribution/v3/registry/storage/driver"
 
-	zerr "zotregistry.dev/zot/errors"
-	storageConstants "zotregistry.dev/zot/pkg/storage/constants"
-	"zotregistry.dev/zot/pkg/test/inject"
+	zerr "zotregistry.dev/zot/v2/errors"
+	storageConstants "zotregistry.dev/zot/v2/pkg/storage/constants"
+	"zotregistry.dev/zot/v2/pkg/test/inject"
 )
 
 type Driver struct {

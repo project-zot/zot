@@ -20,14 +20,14 @@ import (
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/santhosh-tekuri/jsonschema/v5"
 
-	zerr "zotregistry.dev/zot/errors"
-	zcommon "zotregistry.dev/zot/pkg/common"
-	"zotregistry.dev/zot/pkg/compat"
-	"zotregistry.dev/zot/pkg/extensions/monitoring"
-	zlog "zotregistry.dev/zot/pkg/log"
-	"zotregistry.dev/zot/pkg/scheduler"
-	storageConstants "zotregistry.dev/zot/pkg/storage/constants"
-	storageTypes "zotregistry.dev/zot/pkg/storage/types"
+	zerr "zotregistry.dev/zot/v2/errors"
+	zcommon "zotregistry.dev/zot/v2/pkg/common"
+	"zotregistry.dev/zot/v2/pkg/compat"
+	"zotregistry.dev/zot/v2/pkg/extensions/monitoring"
+	zlog "zotregistry.dev/zot/v2/pkg/log"
+	"zotregistry.dev/zot/v2/pkg/scheduler"
+	storageConstants "zotregistry.dev/zot/v2/pkg/storage/constants"
+	storageTypes "zotregistry.dev/zot/v2/pkg/storage/types"
 )
 
 const (

@@ -10,17 +10,17 @@ import (
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 
-	zerr "zotregistry.dev/zot/errors"
-	"zotregistry.dev/zot/pkg/api/config"
-	zcommon "zotregistry.dev/zot/pkg/common"
-	"zotregistry.dev/zot/pkg/extensions/events"
-	"zotregistry.dev/zot/pkg/extensions/monitoring"
-	"zotregistry.dev/zot/pkg/log"
-	common "zotregistry.dev/zot/pkg/storage/common"
-	"zotregistry.dev/zot/pkg/storage/constants"
-	"zotregistry.dev/zot/pkg/storage/local"
-	"zotregistry.dev/zot/pkg/storage/s3"
-	storageTypes "zotregistry.dev/zot/pkg/storage/types"
+	zerr "zotregistry.dev/zot/v2/errors"
+	"zotregistry.dev/zot/v2/pkg/api/config"
+	zcommon "zotregistry.dev/zot/v2/pkg/common"
+	"zotregistry.dev/zot/v2/pkg/extensions/events"
+	"zotregistry.dev/zot/v2/pkg/extensions/monitoring"
+	"zotregistry.dev/zot/v2/pkg/log"
+	common "zotregistry.dev/zot/v2/pkg/storage/common"
+	"zotregistry.dev/zot/v2/pkg/storage/constants"
+	"zotregistry.dev/zot/v2/pkg/storage/local"
+	"zotregistry.dev/zot/v2/pkg/storage/s3"
+	storageTypes "zotregistry.dev/zot/v2/pkg/storage/types"
 )
 
 func New(config *config.Config, linter common.Lint, metrics monitoring.MetricServer,

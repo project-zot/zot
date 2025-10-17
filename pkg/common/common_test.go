@@ -9,8 +9,8 @@ import (
 	notreg "github.com/notaryproject/notation-go/registry"
 	. "github.com/smartystreets/goconvey/convey"
 
-	"zotregistry.dev/zot/pkg/api/config"
-	"zotregistry.dev/zot/pkg/common"
+	"zotregistry.dev/zot/v2/pkg/api/config"
+	"zotregistry.dev/zot/v2/pkg/common"
 )
 
 func TestCommon(t *testing.T) {

@@ -1,7 +1,7 @@
 package errors
 
 import (
-	"zotregistry.dev/zot/errors"
+	"zotregistry.dev/zot/v2/errors"
 )
 
 type Error struct {

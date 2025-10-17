@@ -10,9 +10,9 @@ import (
 	cloudevents "github.com/cloudevents/sdk-go/v2"
 	. "github.com/smartystreets/goconvey/convey"
 
-	zerr "zotregistry.dev/zot/errors"
-	eventsconf "zotregistry.dev/zot/pkg/extensions/config/events"
-	"zotregistry.dev/zot/pkg/extensions/events"
+	zerr "zotregistry.dev/zot/v2/errors"
+	eventsconf "zotregistry.dev/zot/v2/pkg/extensions/config/events"
+	"zotregistry.dev/zot/v2/pkg/extensions/events"
 )
 
 func TestHTTPSink(t *testing.T) {

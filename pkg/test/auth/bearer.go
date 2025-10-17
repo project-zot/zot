@@ -14,7 +14,7 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/mitchellh/mapstructure"
 
-	"zotregistry.dev/zot/pkg/api"
+	"zotregistry.dev/zot/v2/pkg/api"
 )
 
 type (

@@ -16,13 +16,13 @@ import (
 	. "github.com/smartystreets/goconvey/convey"
 	"google.golang.org/protobuf/proto"
 
-	"zotregistry.dev/zot/pkg/log"
-	proto_go "zotregistry.dev/zot/pkg/meta/proto/gen"
-	"zotregistry.dev/zot/pkg/meta/redis"
-	mTypes "zotregistry.dev/zot/pkg/meta/types"
-	reqCtx "zotregistry.dev/zot/pkg/requestcontext"
-	test "zotregistry.dev/zot/pkg/test/common"
-	. "zotregistry.dev/zot/pkg/test/image-utils"
+	"zotregistry.dev/zot/v2/pkg/log"
+	proto_go "zotregistry.dev/zot/v2/pkg/meta/proto/gen"
+	"zotregistry.dev/zot/v2/pkg/meta/redis"
+	mTypes "zotregistry.dev/zot/v2/pkg/meta/types"
+	reqCtx "zotregistry.dev/zot/v2/pkg/requestcontext"
+	test "zotregistry.dev/zot/v2/pkg/test/common"
+	. "zotregistry.dev/zot/v2/pkg/test/image-utils"
 )
 
 const keyPrefix = "zot"

@@ -5,7 +5,7 @@ import (
 
 	. "github.com/smartystreets/goconvey/convey"
 
-	"zotregistry.dev/zot/pkg/cluster"
+	"zotregistry.dev/zot/v2/pkg/cluster"
 )
 
 func TestComputeTargetMember(t *testing.T) {

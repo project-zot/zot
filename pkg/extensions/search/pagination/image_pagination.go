@@ -5,9 +5,9 @@ import (
 	"sort"
 	"time"
 
-	zerr "zotregistry.dev/zot/errors"
-	zcommon "zotregistry.dev/zot/pkg/common"
-	gql_gen "zotregistry.dev/zot/pkg/extensions/search/gql_generated"
+	zerr "zotregistry.dev/zot/v2/errors"
+	zcommon "zotregistry.dev/zot/v2/pkg/common"
+	gql_gen "zotregistry.dev/zot/v2/pkg/extensions/search/gql_generated"
 )
 
 type ImageSummariesPageFinder struct {

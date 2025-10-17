@@ -8,7 +8,7 @@ import (
 	"github.com/distribution/distribution/v3/registry/storage/driver"
 	_ "github.com/distribution/distribution/v3/registry/storage/driver/s3-aws"
 
-	storageConstants "zotregistry.dev/zot/pkg/storage/constants"
+	storageConstants "zotregistry.dev/zot/v2/pkg/storage/constants"
 )
 
 type Driver struct {

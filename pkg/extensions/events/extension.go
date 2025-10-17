@@ -6,8 +6,8 @@ package events
 import (
 	cloudevents "github.com/cloudevents/sdk-go/v2"
 
-	zerr "zotregistry.dev/zot/errors"
-	"zotregistry.dev/zot/pkg/log"
+	zerr "zotregistry.dev/zot/v2/errors"
+	"zotregistry.dev/zot/v2/pkg/log"
 )
 
 type Sink interface {

@@ -9,8 +9,8 @@ import (
 	. "github.com/smartystreets/goconvey/convey"
 	"go.etcd.io/bbolt"
 
-	"zotregistry.dev/zot/pkg/log"
-	"zotregistry.dev/zot/pkg/storage/constants"
+	"zotregistry.dev/zot/v2/pkg/log"
+	"zotregistry.dev/zot/v2/pkg/storage/constants"
 )
 
 func TestBoltDriverErrors(t *testing.T) {

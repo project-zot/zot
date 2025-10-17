@@ -3,8 +3,8 @@ package retention
 import (
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 
-	mTypes "zotregistry.dev/zot/pkg/meta/types"
-	"zotregistry.dev/zot/pkg/retention/types"
+	mTypes "zotregistry.dev/zot/v2/pkg/meta/types"
+	"zotregistry.dev/zot/v2/pkg/retention/types"
 )
 
 func GetCandidates(repoMeta mTypes.RepoMeta) []*types.Candidate {

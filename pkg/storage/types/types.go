@@ -9,7 +9,7 @@ import (
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 
-	"zotregistry.dev/zot/pkg/scheduler"
+	"zotregistry.dev/zot/v2/pkg/scheduler"
 )
 
 type FilterRepoFunc func(repo string) (bool, error)

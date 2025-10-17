@@ -3,8 +3,8 @@ package config
 import (
 	"time"
 
-	"zotregistry.dev/zot/pkg/extensions/config/events"
-	"zotregistry.dev/zot/pkg/extensions/config/sync"
+	"zotregistry.dev/zot/v2/pkg/extensions/config/events"
+	"zotregistry.dev/zot/v2/pkg/extensions/config/sync"
 )
 
 // BaseConfig has params applicable to all extensions.

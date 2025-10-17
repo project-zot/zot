@@ -13,12 +13,12 @@ import (
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	. "github.com/smartystreets/goconvey/convey"
 
-	cveinfo "zotregistry.dev/zot/pkg/extensions/search/cve"
-	cvemodel "zotregistry.dev/zot/pkg/extensions/search/cve/model"
-	"zotregistry.dev/zot/pkg/log"
-	"zotregistry.dev/zot/pkg/meta/boltdb"
-	. "zotregistry.dev/zot/pkg/test/image-utils"
-	"zotregistry.dev/zot/pkg/test/mocks"
+	cveinfo "zotregistry.dev/zot/v2/pkg/extensions/search/cve"
+	cvemodel "zotregistry.dev/zot/v2/pkg/extensions/search/cve/model"
+	"zotregistry.dev/zot/v2/pkg/log"
+	"zotregistry.dev/zot/v2/pkg/meta/boltdb"
+	. "zotregistry.dev/zot/v2/pkg/test/image-utils"
+	"zotregistry.dev/zot/v2/pkg/test/mocks"
 )
 
 func TestCVEPagination(t *testing.T) {

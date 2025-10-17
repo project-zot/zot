@@ -6,9 +6,9 @@ import (
 
 	. "github.com/smartystreets/goconvey/convey"
 
-	"zotregistry.dev/zot/pkg/api/config"
-	extconf "zotregistry.dev/zot/pkg/extensions/config"
-	"zotregistry.dev/zot/pkg/extensions/config/events"
+	"zotregistry.dev/zot/v2/pkg/api/config"
+	extconf "zotregistry.dev/zot/v2/pkg/extensions/config"
+	"zotregistry.dev/zot/v2/pkg/extensions/config/events"
 )
 
 func TestConfig(t *testing.T) {

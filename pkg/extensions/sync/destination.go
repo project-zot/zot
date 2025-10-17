@@ -17,16 +17,16 @@ import (
 	"github.com/regclient/regclient/types/mediatype"
 	"github.com/regclient/regclient/types/ref"
 
-	zerr "zotregistry.dev/zot/errors"
-	"zotregistry.dev/zot/pkg/common"
-	"zotregistry.dev/zot/pkg/extensions/monitoring"
-	"zotregistry.dev/zot/pkg/log"
-	"zotregistry.dev/zot/pkg/meta"
-	mTypes "zotregistry.dev/zot/pkg/meta/types"
-	"zotregistry.dev/zot/pkg/storage"
-	storageCommon "zotregistry.dev/zot/pkg/storage/common"
-	"zotregistry.dev/zot/pkg/storage/local"
-	storageTypes "zotregistry.dev/zot/pkg/storage/types"
+	zerr "zotregistry.dev/zot/v2/errors"
+	"zotregistry.dev/zot/v2/pkg/common"
+	"zotregistry.dev/zot/v2/pkg/extensions/monitoring"
+	"zotregistry.dev/zot/v2/pkg/log"
+	"zotregistry.dev/zot/v2/pkg/meta"
+	mTypes "zotregistry.dev/zot/v2/pkg/meta/types"
+	"zotregistry.dev/zot/v2/pkg/storage"
+	storageCommon "zotregistry.dev/zot/v2/pkg/storage/common"
+	"zotregistry.dev/zot/v2/pkg/storage/local"
+	storageTypes "zotregistry.dev/zot/v2/pkg/storage/types"
 )
 
 type DestinationRegistry struct {

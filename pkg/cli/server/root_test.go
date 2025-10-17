@@ -11,12 +11,12 @@ import (
 
 	. "github.com/smartystreets/goconvey/convey"
 
-	zerr "zotregistry.dev/zot/errors"
-	"zotregistry.dev/zot/pkg/api"
-	"zotregistry.dev/zot/pkg/api/config"
-	cli "zotregistry.dev/zot/pkg/cli/server"
-	storageConstants "zotregistry.dev/zot/pkg/storage/constants"
-	. "zotregistry.dev/zot/pkg/test/common"
+	zerr "zotregistry.dev/zot/v2/errors"
+	"zotregistry.dev/zot/v2/pkg/api"
+	"zotregistry.dev/zot/v2/pkg/api/config"
+	cli "zotregistry.dev/zot/v2/pkg/cli/server"
+	storageConstants "zotregistry.dev/zot/v2/pkg/storage/constants"
+	. "zotregistry.dev/zot/v2/pkg/test/common"
 )
 
 func TestServerUsage(t *testing.T) {

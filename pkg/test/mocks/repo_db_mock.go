@@ -6,7 +6,7 @@ import (
 
 	godigest "github.com/opencontainers/go-digest"
 
-	mTypes "zotregistry.dev/zot/pkg/meta/types"
+	mTypes "zotregistry.dev/zot/v2/pkg/meta/types"
 )
 
 type MetaDBMock struct {

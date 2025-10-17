@@ -20,16 +20,16 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
-	zerr "zotregistry.dev/zot/errors"
-	"zotregistry.dev/zot/pkg/api"
-	"zotregistry.dev/zot/pkg/api/config"
-	"zotregistry.dev/zot/pkg/api/constants"
-	"zotregistry.dev/zot/pkg/common"
-	extconf "zotregistry.dev/zot/pkg/extensions/config"
-	eventsconf "zotregistry.dev/zot/pkg/extensions/config/events"
-	"zotregistry.dev/zot/pkg/extensions/monitoring"
-	zlog "zotregistry.dev/zot/pkg/log"
-	storageConstants "zotregistry.dev/zot/pkg/storage/constants"
+	zerr "zotregistry.dev/zot/v2/errors"
+	"zotregistry.dev/zot/v2/pkg/api"
+	"zotregistry.dev/zot/v2/pkg/api/config"
+	"zotregistry.dev/zot/v2/pkg/api/constants"
+	"zotregistry.dev/zot/v2/pkg/common"
+	extconf "zotregistry.dev/zot/v2/pkg/extensions/config"
+	eventsconf "zotregistry.dev/zot/v2/pkg/extensions/config/events"
+	"zotregistry.dev/zot/v2/pkg/extensions/monitoring"
+	zlog "zotregistry.dev/zot/v2/pkg/log"
+	storageConstants "zotregistry.dev/zot/v2/pkg/storage/constants"
 )
 
 // metadataConfig reports metadata after parsing, which we use to track

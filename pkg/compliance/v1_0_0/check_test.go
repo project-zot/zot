@@ -9,11 +9,11 @@ import (
 
 	"gopkg.in/resty.v1"
 
-	"zotregistry.dev/zot/pkg/api"
-	"zotregistry.dev/zot/pkg/api/config"
-	"zotregistry.dev/zot/pkg/compliance"
-	"zotregistry.dev/zot/pkg/compliance/v1_0_0"
-	. "zotregistry.dev/zot/pkg/test/common"
+	"zotregistry.dev/zot/v2/pkg/api"
+	"zotregistry.dev/zot/v2/pkg/api/config"
+	"zotregistry.dev/zot/v2/pkg/compliance"
+	"zotregistry.dev/zot/v2/pkg/compliance/v1_0_0"
+	. "zotregistry.dev/zot/v2/pkg/test/common"
 )
 
 //nolint:gochecknoglobals

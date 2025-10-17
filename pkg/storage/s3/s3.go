@@ -6,13 +6,13 @@ import (
 	// Load s3 driver.
 	_ "github.com/distribution/distribution/v3/registry/storage/driver/s3-aws"
 
-	"zotregistry.dev/zot/pkg/compat"
-	"zotregistry.dev/zot/pkg/extensions/events"
-	"zotregistry.dev/zot/pkg/extensions/monitoring"
-	zlog "zotregistry.dev/zot/pkg/log"
-	common "zotregistry.dev/zot/pkg/storage/common"
-	"zotregistry.dev/zot/pkg/storage/imagestore"
-	storageTypes "zotregistry.dev/zot/pkg/storage/types"
+	"zotregistry.dev/zot/v2/pkg/compat"
+	"zotregistry.dev/zot/v2/pkg/extensions/events"
+	"zotregistry.dev/zot/v2/pkg/extensions/monitoring"
+	zlog "zotregistry.dev/zot/v2/pkg/log"
+	common "zotregistry.dev/zot/v2/pkg/storage/common"
+	"zotregistry.dev/zot/v2/pkg/storage/imagestore"
+	storageTypes "zotregistry.dev/zot/v2/pkg/storage/types"
 )
 
 // NewObjectStorage returns a new image store backed by cloud storages.

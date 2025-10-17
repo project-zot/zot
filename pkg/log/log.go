@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"zotregistry.dev/zot/errors"
+	"zotregistry.dev/zot/v2/errors"
 )
 
 const (
