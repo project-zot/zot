@@ -13,6 +13,7 @@ const (
 	DefaultMediaType             = "application/json"
 	BinaryMediaType              = "application/octet-stream"
 	DefaultMetricsExtensionRoute = "/metrics"
+	DefaultMCPExtensionRoute     = "/mcp"
 	AppNamespacePath             = "/zot"
 	CallbackBasePath             = AppNamespacePath + "/auth/callback"
 	LoginPath                    = AppNamespacePath + "/auth/login"

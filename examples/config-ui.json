@@ -18,6 +18,9 @@
     },
     "ui": {
       "enable": true
+    },
+    "mcp": {
+      "enable": true
     }
   }
 }

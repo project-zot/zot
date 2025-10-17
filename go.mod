@@ -43,6 +43,7 @@ require (
 	github.com/json-iterator/go v1.1.12
 	github.com/migueleliasweb/go-github-mock v1.4.0
 	github.com/mitchellh/mapstructure v1.5.1-0.20231216201459-8508981c8b6c
+	github.com/modelcontextprotocol/go-sdk v1.0.0
 	github.com/nats-io/nats-server/v2 v2.12.0
 	github.com/nats-io/nats.go v1.46.1
 	github.com/nmcclain/ldap v0.0.0-20210720162743-7f8d1e44eeba
@@ -285,6 +286,7 @@ require (
 	github.com/google/go-github/v73 v73.0.0 // indirect
 	github.com/google/go-querystring v1.1.0 // indirect
 	github.com/google/go-tpm v0.9.5 // indirect
+	github.com/google/jsonschema-go v0.3.0 // indirect
 	github.com/google/licenseclassifier/v2 v2.0.0 // indirect
 	github.com/google/s2a-go v0.1.9 // indirect
 	github.com/google/shlex v0.0.0-20191202100458-e7afc7fbc510 // indirect
@@ -464,6 +466,7 @@ require (
 	github.com/xlab/treeprint v1.2.0 // indirect
 	github.com/xrash/smetrics v0.0.0-20240521201337-686a1a2994c1 // indirect
 	github.com/yashtewari/glob-intersection v0.2.0 // indirect
+	github.com/yosida95/uritemplate/v3 v3.0.2 // indirect
 	github.com/yuin/gopher-lua v1.1.1 // indirect
 	github.com/zclconf/go-cty v1.16.3 // indirect
 	github.com/zclconf/go-cty-yaml v1.1.0 // indirect

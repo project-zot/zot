@@ -582,3 +582,7 @@ func IsOauth2Supported(provider string) bool {
 
 	return false
 }
+
+func (c *Config) IsMCPEnabled() bool {
+	return c.Extensions != nil && c.Extensions.MCP != nil && *c.Extensions.MCP.Enable
+}
