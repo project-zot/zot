@@ -175,8 +175,6 @@ func TestService(t *testing.T) {
 		onDemand.Add(service)
 		ctx := context.Background()
 
-		// === IMAGE SYNC CONTINUE PATH TEST ===
-
 		// Step 1: Verify empty requestStore initially
 		initialImageCount := 0
 		onDemand.requestStore.Range(func(key, value interface{}) bool {
@@ -218,8 +216,6 @@ func TestService(t *testing.T) {
 		value, exists := onDemand.requestStore.Load(duplicateImageReq)
 		So(exists, ShouldBeTrue)
 		So(value, ShouldEqual, struct{}{}) // Should still be pre-populated value
-
-		// === REFERRER SYNC CONTINUE PATH TEST ===
 
 		// Step 7: Verify current state before referrer test - we should have 1 request
 		initialReferrerCount := 0

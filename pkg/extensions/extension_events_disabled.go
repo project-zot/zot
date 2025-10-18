@@ -11,7 +11,9 @@ import (
 )
 
 func NewEventRecorder(config *config.Config, log log.Logger) (events.Recorder, error) {
-	if !config.IsEventRecorderEnabled() {
+	// Get extensions config safely
+	extensionsConfig := config.CopyExtensionsConfig()
+	if !extensionsConfig.IsEventRecorderEnabled() {
 		log.Info().Msg("events disabled in configuration")
 
 		return nil, zerr.ErrExtensionNotEnabled

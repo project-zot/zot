@@ -21,13 +21,18 @@ import (
 func EnableSyncExtension(config *config.Config, metaDB mTypes.MetaDB,
 	storeController storage.StoreController, sch *scheduler.Scheduler, log log.Logger,
 ) (*sync.BaseOnDemand, error) {
-	if config.Extensions.Sync != nil && *config.Extensions.Sync.Enable {
-		onDemand := sync.NewOnDemand(log)
+	// Get extensions config safely
+	extensionsConfig := config.CopyExtensionsConfig()
+	httpAddress := config.GetHTTPAddress()
+	httpPort := config.GetHTTPPort()
 
-		for _, registryConfig := range config.Extensions.Sync.Registries {
-			registryConfig := registryConfig
+	if extensionsConfig.IsSyncEnabled() {
+		onDemand := sync.NewOnDemand(log)
+		syncConfig := extensionsConfig.GetSyncConfig()
+
+		for _, registryConfig := range syncConfig.Registries {
 			if len(registryConfig.URLs) > 1 {
-				if err := removeSelfURLs(config, &registryConfig, log); err != nil {
+				if err := removeSelfURLs(httpAddress, httpPort, &registryConfig, log); err != nil {
 					return nil, err
 				}
 			}
@@ -45,11 +50,12 @@ func EnableSyncExtension(config *config.Config, metaDB mTypes.MetaDB,
 				continue
 			}
 
-			tmpDir := config.Extensions.Sync.DownloadDir
-			credsPath := config.Extensions.Sync.CredentialsFile
-			clusterCfg := config.Cluster
+			tmpDir := syncConfig.DownloadDir
+			credsPath := syncConfig.CredentialsFile
+			// Get cluster config safely
+			clusterConfig := config.CopyClusterConfig()
 
-			service, err := sync.New(registryConfig, credsPath, clusterCfg, tmpDir, storeController, metaDB, log)
+			service, err := sync.New(registryConfig, credsPath, clusterConfig, tmpDir, storeController, metaDB, log)
 			if err != nil {
 				log.Error().Err(err).Msg("failed to initialize sync extension")
 
@@ -102,10 +108,9 @@ func getLocalIPs() ([]string, error) {
 	return localIPs, nil
 }
 
-func removeSelfURLs(config *config.Config, registryConfig *syncconf.RegistryConfig, log log.Logger) error {
+func removeSelfURLs(httpAddress, httpPort string, registryConfig *syncconf.RegistryConfig, log log.Logger) error {
 	// get IP from config
-	port := config.HTTP.Port
-	selfAddress := net.JoinHostPort(config.HTTP.Address, port)
+	selfAddress := net.JoinHostPort(httpAddress, httpPort)
 
 	// get all local IPs from interfaces
 	localIPs, err := getLocalIPs()
@@ -148,8 +153,8 @@ func removeSelfURLs(config *config.Config, registryConfig *syncconf.RegistryConf
 		for _, localIP := range localIPs {
 			// if ip resolved from hostname/dns is equal with any local ip
 			for _, ip := range ips {
-				if (ip.IsLoopback() && (url.Port() == port)) ||
-					(net.JoinHostPort(ip.String(), url.Port()) == net.JoinHostPort(localIP, port)) {
+				if (ip.IsLoopback() && (url.Port() == httpPort)) ||
+					(net.JoinHostPort(ip.String(), url.Port()) == net.JoinHostPort(localIP, httpPort)) {
 					registryConfig.URLs = append(registryConfig.URLs[:idx], registryConfig.URLs[idx+1:]...)
 
 					removed = true

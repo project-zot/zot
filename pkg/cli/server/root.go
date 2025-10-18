@@ -202,8 +202,9 @@ func NewServerRootCmd() *cobra.Command {
 			logger := zlog.NewLogger("info", "")
 
 			if showVersion {
-				logger.Info().Str("distribution-spec", distspec.Version).Str("commit", config.Commit).
-					Str("binary-type", config.BinaryType).Str("go version", config.GoVersion).Msg("version")
+				commit, binaryType, goVersion, _ := conf.GetVersionInfo()
+				logger.Info().Str("distribution-spec", distspec.Version).Str("commit", commit).
+					Str("binary-type", binaryType).Str("go version", goVersion).Msg("version")
 			} else {
 				_ = cmd.Usage()
 				cmd.SilenceErrors = false
@@ -228,19 +229,20 @@ func NewServerRootCmd() *cobra.Command {
 func validateStorageConfig(cfg *config.Config, logger zlog.Logger) error {
 	expConfigMap := make(map[string]config.StorageConfig, 0)
 
-	defaultRootDir := cfg.Storage.RootDirectory
+	storageConfig := cfg.CopyStorageConfig()
+	defaultRootDir := storageConfig.RootDirectory
 
-	for _, storageConfig := range cfg.Storage.SubPaths {
-		if strings.EqualFold(defaultRootDir, storageConfig.RootDirectory) {
+	for _, subStorageConfig := range storageConfig.SubPaths {
+		if strings.EqualFold(defaultRootDir, subStorageConfig.RootDirectory) {
 			msg := "invalid storage config, storage subpaths cannot use default storage root directory"
 			logger.Error().Err(zerr.ErrBadConfig).Msg(msg)
 
 			return fmt.Errorf("%w: %s", zerr.ErrBadConfig, msg)
 		}
 
-		expConfig, ok := expConfigMap[storageConfig.RootDirectory]
+		expConfig, ok := expConfigMap[subStorageConfig.RootDirectory]
 		if ok {
-			equal := expConfig.ParamsEqual(storageConfig)
+			equal := expConfig.ParamsEqual(subStorageConfig)
 			if !equal {
 				msg := "invalid storage config, storage config with same root directory should have same parameters"
 				logger.Error().Err(zerr.ErrBadConfig).Msg(msg)
@@ -248,7 +250,7 @@ func validateStorageConfig(cfg *config.Config, logger zlog.Logger) error {
 				return fmt.Errorf("%w: %s", zerr.ErrBadConfig, msg)
 			}
 		} else {
-			expConfigMap[storageConfig.RootDirectory] = storageConfig
+			expConfigMap[subStorageConfig.RootDirectory] = subStorageConfig
 		}
 	}
 
@@ -257,20 +259,21 @@ func validateStorageConfig(cfg *config.Config, logger zlog.Logger) error {
 
 func validateCacheConfig(cfg *config.Config, logger zlog.Logger) error {
 	// global
+	storageConfig := cfg.CopyStorageConfig()
 	// dedupe true, remote storage, remoteCache true, but no cacheDriver (remote)
 	//nolint: lll
-	if cfg.Storage.Dedupe && cfg.Storage.StorageDriver != nil && cfg.Storage.RemoteCache && cfg.Storage.CacheDriver == nil {
+	if storageConfig.Dedupe && storageConfig.StorageDriver != nil && storageConfig.RemoteCache && storageConfig.CacheDriver == nil {
 		msg := "invalid database config, dedupe set to true with remote storage and database, but no remote database configured"
 		logger.Error().Err(zerr.ErrBadConfig).Msg(msg)
 
 		return fmt.Errorf("%w: %s", zerr.ErrBadConfig, msg)
 	}
 
-	if cfg.Storage.CacheDriver != nil && cfg.Storage.RemoteCache {
+	if storageConfig.CacheDriver != nil && storageConfig.RemoteCache {
 		// local storage with remote database
 		// redis is supported with both local and S3 storage, while dynamodb is only supported with S3
 		// redis is only supported with local storage in a non-clustering scenario with a single zot instance,
-		if cfg.Storage.StorageDriver == nil && cfg.Storage.CacheDriver["name"] != storageConstants.RedisDriverName {
+		if storageConfig.StorageDriver == nil && storageConfig.CacheDriver["name"] != storageConstants.RedisDriverName {
 			msg := "invalid database config, cannot have local storage driver with remote database!"
 			logger.Error().Err(zerr.ErrBadConfig).Msg(msg)
 
@@ -278,23 +281,23 @@ func validateCacheConfig(cfg *config.Config, logger zlog.Logger) error {
 		}
 
 		// unsupported database driver
-		if cfg.Storage.CacheDriver["name"] != storageConstants.DynamoDBDriverName &&
-			cfg.Storage.CacheDriver["name"] != storageConstants.RedisDriverName {
+		if storageConfig.CacheDriver["name"] != storageConstants.DynamoDBDriverName &&
+			storageConfig.CacheDriver["name"] != storageConstants.RedisDriverName {
 			msg := "invalid database config, unsupported database driver"
-			logger.Error().Err(zerr.ErrBadConfig).Interface("cacheDriver", cfg.Storage.CacheDriver["name"]).Msg(msg)
+			logger.Error().Err(zerr.ErrBadConfig).Interface("cacheDriver", storageConfig.CacheDriver["name"]).Msg(msg)
 
 			return fmt.Errorf("%w: %s", zerr.ErrBadConfig, msg)
 		}
 	}
 
-	if !cfg.Storage.RemoteCache && cfg.Storage.CacheDriver != nil {
-		logger.Warn().Err(zerr.ErrBadConfig).Str("directory", cfg.Storage.RootDirectory).
+	if !storageConfig.RemoteCache && storageConfig.CacheDriver != nil {
+		logger.Warn().Err(zerr.ErrBadConfig).Str("directory", storageConfig.RootDirectory).
 			Msg("invalid database config, remoteCache set to false but cacheDriver config (remote database)" +
 				" provided for directory will ignore and use local database")
 	}
 
 	// subpaths
-	for _, subPath := range cfg.Storage.SubPaths {
+	for _, subPath := range storageConfig.SubPaths {
 		// dedupe true, remote storage, remoteCache true, but no cacheDriver (remote)
 		//nolint: lll
 		if subPath.Dedupe && subPath.StorageDriver != nil && subPath.RemoteCache && subPath.CacheDriver == nil {
@@ -316,14 +319,14 @@ func validateCacheConfig(cfg *config.Config, logger zlog.Logger) error {
 			// unsupported cache driver
 			if subPath.CacheDriver["name"] != storageConstants.DynamoDBDriverName {
 				msg := "invalid database config, unsupported database driver"
-				logger.Error().Err(zerr.ErrBadConfig).Interface("cacheDriver", cfg.Storage.CacheDriver["name"]).Msg(msg)
+				logger.Error().Err(zerr.ErrBadConfig).Interface("cacheDriver", subPath.CacheDriver["name"]).Msg(msg)
 
 				return fmt.Errorf("%w: %s", zerr.ErrBadConfig, msg)
 			}
 		}
 
 		if !subPath.RemoteCache && subPath.CacheDriver != nil {
-			logger.Warn().Err(zerr.ErrBadConfig).Str("directory", cfg.Storage.RootDirectory).
+			logger.Warn().Err(zerr.ErrBadConfig).Str("directory", subPath.RootDirectory).
 				Msg("invalid database config, remoteCache set to false but cacheDriver config (remote database)" +
 					"provided for directory, will ignore and use local database")
 		}
@@ -335,11 +338,12 @@ func validateCacheConfig(cfg *config.Config, logger zlog.Logger) error {
 func validateRemoteSessionStoreConfig(cfg *config.Config, logger zlog.Logger) error {
 	// it is okay for the session driver config to be nil
 	// this is backwards compatible for older configs
-	if cfg.HTTP.Auth.SessionDriver == nil {
+	authConfig := cfg.CopyAuthConfig()
+	if authConfig == nil || authConfig.SessionDriver == nil {
 		return nil
 	}
 
-	sessionDriverName, ok := cfg.HTTP.Auth.SessionDriver["name"]
+	sessionDriverName, ok := authConfig.SessionDriver["name"]
 	if !ok {
 		msg := "must provide session driver name!"
 		logger.Error().Err(zerr.ErrBadConfig).Msg(msg)
@@ -373,7 +377,7 @@ func validateRemoteSessionStoreConfig(cfg *config.Config, logger zlog.Logger) er
 	// as redis session store does not support these yet.
 
 	if sessionDriverName == storageConstants.RedisDriverName {
-		if cfg.HTTP.Auth.SessionKeysFile != "" {
+		if authConfig.SessionKeysFile != "" {
 			msg := "session keys not supported when redis session driver is used!"
 			logger.Error().Err(zerr.ErrBadConfig).Msg(msg)
 
@@ -385,19 +389,20 @@ func validateRemoteSessionStoreConfig(cfg *config.Config, logger zlog.Logger) er
 }
 
 func validateExtensionsConfig(cfg *config.Config, logger zlog.Logger) error {
-	if cfg.Extensions != nil && cfg.Extensions.Mgmt != nil {
+	extensionsConfig := cfg.CopyExtensionsConfig()
+	if extensionsConfig != nil && extensionsConfig.Mgmt != nil {
 		logger.Warn().Msg("mgmt extensions configuration option has been made redundant and will be ignored.")
 	}
 
-	if cfg.Extensions != nil && cfg.Extensions.APIKey != nil {
+	if extensionsConfig != nil && extensionsConfig.APIKey != nil {
 		logger.Warn().Msg("apikey extension configuration will be ignored as API keys " +
 			"are now configurable in the HTTP settings.")
 	}
 
-	if cfg.Extensions != nil && cfg.Extensions.UI != nil && cfg.Extensions.UI.Enable != nil && *cfg.Extensions.UI.Enable {
+	if extensionsConfig.IsUIEnabled() {
 		// it would make sense to also check for mgmt and user prefs to be enabled,
 		// but those are both enabled by having the search and ui extensions enabled
-		if cfg.Extensions.Search == nil || !*cfg.Extensions.Search.Enable {
+		if !extensionsConfig.IsSearchEnabled() {
 			msg := "failed to enable ui, search extension must be enabled"
 			logger.Error().Err(zerr.ErrBadConfig).Msg(msg)
 
@@ -406,18 +411,17 @@ func validateExtensionsConfig(cfg *config.Config, logger zlog.Logger) error {
 	}
 
 	//nolint:lll
-	if cfg.Storage.StorageDriver != nil && cfg.Extensions != nil && cfg.Extensions.Search != nil &&
-		cfg.Extensions.Search.Enable != nil && *cfg.Extensions.Search.Enable && cfg.Extensions.Search.CVE != nil {
+	storageConfig := cfg.CopyStorageConfig()
+	if storageConfig.StorageDriver != nil && extensionsConfig.IsCveScanningEnabled() {
 		msg := "failed to enable cve scanning due to incompatibility with remote storage, please disable cve"
 		logger.Error().Err(zerr.ErrBadConfig).Msg(msg)
 
 		return fmt.Errorf("%w: %s", zerr.ErrBadConfig, msg)
 	}
 
-	for _, subPath := range cfg.Storage.SubPaths {
+	for _, subPath := range storageConfig.SubPaths {
 		//nolint:lll
-		if subPath.StorageDriver != nil && cfg.Extensions != nil && cfg.Extensions.Search != nil &&
-			cfg.Extensions.Search.Enable != nil && *cfg.Extensions.Search.Enable && cfg.Extensions.Search.CVE != nil {
+		if subPath.StorageDriver != nil && extensionsConfig.IsCveScanningEnabled() {
 			msg := "failed to enable cve scanning due to incompatibility with remote storage, please disable cve"
 			logger.Error().Err(zerr.ErrBadConfig).Msg(msg)
 
@@ -466,24 +470,27 @@ func validateConfiguration(config *config.Config, logger zlog.Logger) error {
 	}
 
 	// check authorization config, it should have basic auth enabled or ldap, api keys or OpenID
-	if config.HTTP.AccessControl != nil {
+	accessControlConfig := config.CopyAccessControlConfig()
+	if accessControlConfig != nil {
 		// checking for anonymous policy only authorization config: no users, no policies but anonymous policy
 		if err := validateAuthzPolicies(config, logger); err != nil {
 			return err
 		}
 	}
 
-	if len(config.Storage.StorageDriver) != 0 {
+	storageConfig := config.CopyStorageConfig()
+	if len(storageConfig.StorageDriver) != 0 {
 		// enforce s3 driver in case of using storage driver
-		if config.Storage.StorageDriver["name"] != storageConstants.S3StorageDriverName {
+		if storageConfig.StorageDriver["name"] != storageConstants.S3StorageDriverName {
 			msg := "unsupported storage driver"
-			logger.Error().Err(zerr.ErrBadConfig).Interface("cacheDriver", config.Storage.StorageDriver["name"]).Msg(msg)
+			logger.Error().Err(zerr.ErrBadConfig).Interface("cacheDriver", storageConfig.StorageDriver["name"]).Msg(msg)
 
 			return fmt.Errorf("%w: %s", zerr.ErrBadConfig, msg)
 		}
 
 		// enforce tmpDir in case sync + s3
-		if config.Extensions != nil && config.Extensions.Sync != nil && config.Extensions.Sync.DownloadDir == "" {
+		extensionsConfig := config.CopyExtensionsConfig()
+		if extensionsConfig.IsSyncEnabled() && extensionsConfig.Sync.DownloadDir == "" {
 			msg := "using both sync and remote storage features needs config.Extensions.Sync.DownloadDir to be specified"
 			logger.Error().Err(zerr.ErrBadConfig).Msg(msg)
 
@@ -492,22 +499,23 @@ func validateConfiguration(config *config.Config, logger zlog.Logger) error {
 	}
 
 	// enforce s3 driver on subpaths in case of using storage driver
-	if config.Storage.SubPaths != nil {
-		if len(config.Storage.SubPaths) > 0 {
-			subPaths := config.Storage.SubPaths
+	if storageConfig.SubPaths != nil {
+		if len(storageConfig.SubPaths) > 0 {
+			subPaths := storageConfig.SubPaths
 
-			for route, storageConfig := range subPaths {
-				if len(storageConfig.StorageDriver) != 0 {
-					if storageConfig.StorageDriver["name"] != storageConstants.S3StorageDriverName {
+			for route, subStorageConfig := range subPaths {
+				if len(subStorageConfig.StorageDriver) != 0 {
+					if subStorageConfig.StorageDriver["name"] != storageConstants.S3StorageDriverName {
 						msg := "unsupported storage driver"
 						logger.Error().Err(zerr.ErrBadConfig).Str("subpath", route).Interface("storageDriver",
-							storageConfig.StorageDriver["name"]).Msg(msg)
+							subStorageConfig.StorageDriver["name"]).Msg(msg)
 
 						return fmt.Errorf("%w: %s", zerr.ErrBadConfig, msg)
 					}
 
 					// enforce tmpDir in case sync + s3
-					if config.Extensions != nil && config.Extensions.Sync != nil && config.Extensions.Sync.DownloadDir == "" {
+					extensionsConfig := config.CopyExtensionsConfig()
+					if extensionsConfig.IsSyncEnabled() && extensionsConfig.Sync.DownloadDir == "" {
 						msg := "using both sync and remote storage features needs config.Extensions.Sync.DownloadDir to be specified"
 						logger.Error().Err(zerr.ErrBadConfig).Msg(msg)
 
@@ -519,8 +527,8 @@ func validateConfiguration(config *config.Config, logger zlog.Logger) error {
 	}
 
 	// check glob patterns in authz config are compilable
-	if config.HTTP.AccessControl != nil {
-		for pattern := range config.HTTP.AccessControl.Repositories {
+	if accessControlConfig != nil {
+		for pattern := range accessControlConfig.Repositories {
 			ok := glob.ValidatePattern(pattern)
 			if !ok {
 				msg := "failed to compile authorization pattern"
@@ -540,8 +548,10 @@ func validateConfiguration(config *config.Config, logger zlog.Logger) error {
 }
 
 func validateOpenIDConfig(cfg *config.Config, logger zlog.Logger) error {
-	if cfg.HTTP.Auth != nil && cfg.HTTP.Auth.OpenID != nil {
-		for provider, providerConfig := range cfg.HTTP.Auth.OpenID.Providers {
+	authConfig := cfg.CopyAuthConfig()
+	// can't check with IsOpenIDAuthEnabled(), because it can't test invalid providers
+	if authConfig != nil && authConfig.OpenID != nil && len(authConfig.OpenID.Providers) > 0 {
+		for provider, providerConfig := range authConfig.OpenID.Providers {
 			//nolint: gocritic
 			if config.IsOpenIDSupported(provider) {
 				if providerConfig.ClientID == "" || providerConfig.Issuer == "" ||
@@ -571,8 +581,12 @@ func validateOpenIDConfig(cfg *config.Config, logger zlog.Logger) error {
 }
 
 func validateAuthzPolicies(config *config.Config, logger zlog.Logger) error {
-	if (config.HTTP.Auth == nil || (config.HTTP.Auth.HTPasswd.Path == "" && config.HTTP.Auth.LDAP == nil &&
-		config.HTTP.Auth.OpenID == nil)) && !authzContainsOnlyAnonymousPolicy(config) {
+	authConfig := config.CopyAuthConfig()
+	accessControlConfig := config.CopyAccessControlConfig()
+
+	logger.Info().Msg("checking if anonymous authorization is the only type of authorization policy configured")
+
+	if !authConfig.IsBasicAuthnEnabled() && !accessControlConfig.ContainsOnlyAnonymousPolicy() {
 		msg := "access control config requires one of httpasswd, ldap or openid authentication " +
 			"or using only 'anonymousPolicy' policies"
 		logger.Error().Err(zerr.ErrBadConfig).Msg(msg)
@@ -695,6 +709,15 @@ func applyDefaultValues(config *config.Config, viperInstance *viper.Viper, logge
 
 			if config.Extensions.Scrub.Interval == 0 {
 				config.Extensions.Scrub.Interval = 24 * time.Hour //nolint:mnd
+			}
+
+			// Validate minimum scrub interval
+			minScrubInterval, _ := time.ParseDuration("2h")
+			if config.Extensions.Scrub.Interval < minScrubInterval {
+				config.Extensions.Scrub.Interval = minScrubInterval
+
+				logger.Warn().Msg("scrub interval set to too-short interval < 2h, " +
+					"changing scrub duration to 2 hours and continuing.")
 			}
 		}
 
@@ -1076,52 +1099,11 @@ func readSecretFile(path string, v any, checkUnsetFields bool) error { //nolint:
 	return nil
 }
 
-func authzContainsOnlyAnonymousPolicy(cfg *config.Config) bool {
-	logger := zlog.NewLogger("info", "")
-
-	adminPolicy := cfg.HTTP.AccessControl.AdminPolicy
-	anonymousPolicyPresent := false
-
-	logger.Info().Msg("checking if anonymous authorization is the only type of authorization policy configured")
-
-	if len(adminPolicy.Actions)+len(adminPolicy.Users) > 0 {
-		logger.Info().Msg("admin policy detected, anonymous authorization is not the only authorization policy configured")
-
-		return false
-	}
-
-	for _, repository := range cfg.HTTP.AccessControl.Repositories {
-		if len(repository.DefaultPolicy) > 0 {
-			logger.Info().Interface("repository", repository).
-				Msg("default policy detected, anonymous authorization is not the only authorization policy configured")
-
-			return false
-		}
-
-		if len(repository.AnonymousPolicy) > 0 {
-			logger.Info().Msg("anonymous authorization detected")
-
-			anonymousPolicyPresent = true
-		}
-
-		for _, policy := range repository.Policies {
-			if len(policy.Actions)+len(policy.Users) > 0 {
-				logger.Info().Interface("repository", repository).
-					Msg("repository with non-empty policy detected, " +
-						"anonymous authorization is not the only authorization policy configured")
-
-				return false
-			}
-		}
-	}
-
-	return anonymousPolicyPresent
-}
-
 func validateLDAP(config *config.Config, logger zlog.Logger) error {
 	// LDAP mandatory configuration
-	if config.HTTP.Auth != nil && config.HTTP.Auth.LDAP != nil {
-		ldap := config.HTTP.Auth.LDAP
+	authConfig := config.CopyAuthConfig()
+	if authConfig.IsLdapAuthEnabled() {
+		ldap := authConfig.LDAP
 		if ldap.UserAttribute == "" {
 			msg := "invalid LDAP configuration, missing mandatory key: userAttribute"
 			logger.Error().Str("userAttribute", ldap.UserAttribute).Msg(msg)
@@ -1148,12 +1130,13 @@ func validateLDAP(config *config.Config, logger zlog.Logger) error {
 }
 
 func validateHTTP(config *config.Config, logger zlog.Logger) error {
-	if config.HTTP.Port != "" {
-		port, err := strconv.ParseInt(config.HTTP.Port, 10, 64)
-		if err != nil || (port < 0 || port > 65535) {
-			logger.Error().Str("port", config.HTTP.Port).Msg("invalid port")
+	port := config.GetHTTPPort()
+	if port != "" {
+		portInt, err := strconv.ParseInt(port, 10, 64)
+		if err != nil || (portInt < 0 || portInt > 65535) {
+			logger.Error().Str("port", port).Msg("invalid port")
 
-			return fmt.Errorf("%w: invalid port %s", zerr.ErrBadConfig, config.HTTP.Port)
+			return fmt.Errorf("%w: invalid port %s", zerr.ErrBadConfig, port)
 		}
 	}
 
@@ -1162,40 +1145,41 @@ func validateHTTP(config *config.Config, logger zlog.Logger) error {
 
 func validateGC(config *config.Config, logger zlog.Logger) error {
 	// enforce GC params
-	if config.Storage.GCDelay < 0 {
-		logger.Error().Err(zerr.ErrBadConfig).Dur("delay", config.Storage.GCDelay).
+	storageConfig := config.CopyStorageConfig()
+	if storageConfig.GCDelay < 0 {
+		logger.Error().Err(zerr.ErrBadConfig).Dur("delay", storageConfig.GCDelay).
 			Msg("invalid garbage-collect delay specified")
 
 		return fmt.Errorf("%w: invalid garbage-collect delay specified %s",
-			zerr.ErrBadConfig, config.Storage.GCDelay)
+			zerr.ErrBadConfig, storageConfig.GCDelay)
 	}
 
-	if config.Storage.GCInterval < 0 {
-		logger.Error().Err(zerr.ErrBadConfig).Dur("interval", config.Storage.GCInterval).
+	if storageConfig.GCInterval < 0 {
+		logger.Error().Err(zerr.ErrBadConfig).Dur("interval", storageConfig.GCInterval).
 			Msg("invalid garbage-collect interval specified")
 
 		return fmt.Errorf("%w: invalid garbage-collect interval specified %s",
-			zerr.ErrBadConfig, config.Storage.GCInterval)
+			zerr.ErrBadConfig, storageConfig.GCInterval)
 	}
 
-	if !config.Storage.GC {
-		if config.Storage.GCDelay != 0 {
+	if !storageConfig.GC {
+		if storageConfig.GCDelay != 0 {
 			logger.Warn().Err(zerr.ErrBadConfig).
 				Msg("garbage-collect delay specified without enabling garbage-collect, will be ignored")
 		}
 
-		if config.Storage.GCInterval != 0 {
+		if storageConfig.GCInterval != 0 {
 			logger.Warn().Err(zerr.ErrBadConfig).
 				Msg("periodic garbage-collect interval specified without enabling garbage-collect, will be ignored")
 		}
 	}
 
-	if err := validateGCRules(config.Storage.Retention, logger); err != nil {
+	if err := validateGCRules(storageConfig.Retention, logger); err != nil {
 		return err
 	}
 
 	// subpaths
-	for name, subPath := range config.Storage.SubPaths {
+	for name, subPath := range storageConfig.SubPaths {
 		if subPath.GC && subPath.GCDelay <= 0 {
 			logger.Error().Err(zerr.ErrBadConfig).
 				Str("subPath", name).
@@ -1245,13 +1229,15 @@ func validateGCRules(retention config.ImageRetention, logger zlog.Logger) error 
 
 func validateSync(config *config.Config, logger zlog.Logger) error {
 	// check glob patterns in sync config are compilable
-	if config.Extensions != nil && config.Extensions.Sync != nil {
-		for regID, regCfg := range config.Extensions.Sync.Registries {
+	extensionsConfig := config.CopyExtensionsConfig()
+	// can't check with IsSyncEnabled(), because it can't test invalid sync configs
+	if extensionsConfig != nil && extensionsConfig.Sync != nil && len(extensionsConfig.Sync.Registries) > 0 {
+		for regID, regCfg := range extensionsConfig.Sync.Registries {
 			// check retry options are configured for sync
 			if regCfg.MaxRetries != nil && regCfg.RetryDelay == nil {
 				msg := "retryDelay is required when using maxRetries"
 				logger.Error().Err(zerr.ErrBadConfig).Int("id", regID).Interface("extensions.sync.registries[id]",
-					config.Extensions.Sync.Registries[regID]).Msg(msg)
+					extensionsConfig.Sync.Registries[regID]).Msg(msg)
 
 				return fmt.Errorf("%w: %s", zerr.ErrBadConfig, msg)
 			}
@@ -1260,7 +1246,7 @@ func validateSync(config *config.Config, logger zlog.Logger) error {
 			if regCfg.PreserveDigest && !config.IsCompatEnabled() {
 				msg := "can not use PreserveDigest option without enabling http.Compat"
 				logger.Error().Err(zerr.ErrBadConfig).Int("id", regID).Interface("extensions.sync.registries[id]",
-					config.Extensions.Sync.Registries[regID]).Msg(msg)
+					extensionsConfig.Sync.Registries[regID]).Msg(msg)
 
 				return fmt.Errorf("%w: %s", zerr.ErrBadConfig, msg)
 			}
@@ -1314,8 +1300,9 @@ func validateSync(config *config.Config, logger zlog.Logger) error {
 }
 
 func validateClusterConfig(config *config.Config, logger zlog.Logger) error {
-	if config.Cluster != nil {
-		if len(config.Cluster.Members) == 0 {
+	clusterConfig := config.CopyClusterConfig()
+	if clusterConfig != nil {
+		if len(clusterConfig.Members) == 0 {
 			msg := "cannot have 0 members in a scale out cluster"
 			logger.Error().Err(zerr.ErrBadConfig).Msg(msg)
 
@@ -1325,10 +1312,10 @@ func validateClusterConfig(config *config.Config, logger zlog.Logger) error {
 		// the allowed length is 16 as the siphash requires a 128 bit key.
 		// that translates to 16 characters * 8 bits each.
 		allowedHashKeyLength := 16
-		if len(config.Cluster.HashKey) != allowedHashKeyLength {
+		if len(clusterConfig.HashKey) != allowedHashKeyLength {
 			msg := fmt.Sprintf("hashKey for scale out cluster must have %d characters", allowedHashKeyLength)
 			logger.Error().Err(zerr.ErrBadConfig).
-				Str("hashkey", config.Cluster.HashKey).
+				Str("hashkey", clusterConfig.HashKey).
 				Msg(msg)
 
 			return fmt.Errorf("%w: %s", zerr.ErrBadConfig, msg)

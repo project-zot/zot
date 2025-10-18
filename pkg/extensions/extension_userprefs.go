@@ -29,7 +29,8 @@ func IsBuiltWithUserPrefsExtension() bool {
 func SetupUserPreferencesRoutes(conf *config.Config, router *mux.Router,
 	metaDB mTypes.MetaDB, log log.Logger,
 ) {
-	if !conf.AreUserPrefsEnabled() {
+	extensionsConfig := conf.CopyExtensionsConfig()
+	if !extensionsConfig.AreUserPrefsEnabled() {
 		log.Info().Msg("skip enabling the user preferences route as the config prerequisites are not met")
 
 		return

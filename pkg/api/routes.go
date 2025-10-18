@@ -73,9 +73,13 @@ func (rh *RouteHandler) SetupRoutes() {
 	// first get Auth middleware in order to first setup openid/ldap/htpasswd, before oidc provider routes are setup
 	authHandler := AuthHandler(rh.c)
 
-	applyCORSHeaders := getCORSHeadersHandler(rh.c.Config.HTTP.AllowOrigin)
+	// Get CORS config safely
+	allowOrigin := rh.c.Config.GetAllowOrigin()
+	applyCORSHeaders := getCORSHeadersHandler(allowOrigin)
 
-	if rh.c.Config.IsOpenIDAuthEnabled() {
+	// Get auth config for OpenID checks
+	authConfig := rh.c.Config.CopyAuthConfig()
+	if authConfig.IsOpenIDAuthEnabled() {
 		// login path for openID
 		rh.c.Router.HandleFunc(constants.LoginPath, rh.AuthURLHandler())
 
@@ -91,14 +95,15 @@ func (rh *RouteHandler) SetupRoutes() {
 		}
 	}
 
-	if rh.c.Config.IsAPIKeyEnabled() {
+	// Get auth config for API key checks
+	if authConfig.IsAPIKeyEnabled() {
 		// enable api key management urls
 		apiKeyRouter := rh.c.Router.PathPrefix(constants.APIKeyPath).Subrouter()
 		apiKeyRouter.Use(authHandler)
 		apiKeyRouter.Use(BaseAuthzHandler(rh.c))
 
 		// Always use CORSHeadersMiddleware before ACHeadersMiddleware
-		apiKeyRouter.Use(zcommon.CORSHeadersMiddleware(rh.c.Config.HTTP.AllowOrigin))
+		apiKeyRouter.Use(zcommon.CORSHeadersMiddleware(rh.c.Config.GetAllowOrigin()))
 		apiKeyRouter.Use(zcommon.ACHeadersMiddleware(rh.c.Config,
 			http.MethodGet, http.MethodPost, http.MethodDelete, http.MethodOptions))
 
@@ -109,7 +114,7 @@ func (rh *RouteHandler) SetupRoutes() {
 
 	/* on every route which may be used by UI we set OPTIONS as allowed METHOD
 	to enable preflight request from UI to backend */
-	if rh.c.Config.IsBasicAuthnEnabled() {
+	if authConfig.IsBasicAuthnEnabled() {
 		// logout path for openID
 		rh.c.Router.HandleFunc(constants.LogoutPath,
 			getUIHeadersHandler(rh.c.Config, http.MethodPost, http.MethodOptions)(applyCORSHeaders(rh.Logout))).
@@ -122,8 +127,9 @@ func (rh *RouteHandler) SetupRoutes() {
 	prefixedDistSpecRouter := prefixedRouter.NewRoute().Subrouter()
 	// authz is being enabled if AccessControl is specified
 	// if Authn is not present AccessControl will have only default policies
-	if rh.c.Config.HTTP.AccessControl != nil {
-		if rh.c.Config.IsBasicAuthnEnabled() {
+	accessControlConfig := rh.c.Config.CopyAccessControlConfig()
+	if accessControlConfig != nil {
+		if authConfig.IsBasicAuthnEnabled() {
 			rh.c.Log.Info().Msg("access control is being enabled")
 		} else {
 			rh.c.Log.Info().Msg("anonymous policy only access control is being enabled")
@@ -241,7 +247,9 @@ func getUIHeadersHandler(config *config.Config, allowedMethods ...string) func(h
 			response.Header().Set("Access-Control-Allow-Headers",
 				"Authorization,content-type,"+constants.SessionClientHeaderName)
 
-			if config.IsBasicAuthnEnabled() {
+			// Get auth config safely
+			authConfig := config.CopyAuthConfig()
+			if authConfig.IsBasicAuthnEnabled() {
 				response.Header().Set("Access-Control-Allow-Credentials", "true")
 			}
 
@@ -267,13 +275,17 @@ func (rh *RouteHandler) CheckVersionSupport(response http.ResponseWriter, reques
 	response.Header().Set(constants.DistAPIVersion, "registry/2.0")
 	// NOTE: compatibility workaround - return this header in "allowed-read" mode to allow for clients to
 	// work correctly
-	if rh.c.Config.IsBasicAuthnEnabled() || rh.c.Config.IsBearerAuthEnabled() {
+	// Get auth config safely
+	authConfig := rh.c.Config.CopyAuthConfig()
+	if authConfig.IsBasicAuthnEnabled() || authConfig.IsBearerAuthEnabled() {
 		// don't send auth headers if request is coming from UI
 		if request.Header.Get(constants.SessionClientHeaderName) != constants.SessionClientHeaderValue {
-			if rh.c.Config.HTTP.Auth.Bearer != nil {
-				response.Header().Set("WWW-Authenticate", "bearer realm="+rh.c.Config.HTTP.Auth.Bearer.Realm)
+			if authConfig.Bearer != nil {
+				realm := authConfig.Bearer.Realm
+				response.Header().Set("WWW-Authenticate", "bearer realm="+realm)
 			} else {
-				response.Header().Set("WWW-Authenticate", "basic realm="+rh.c.Config.HTTP.Realm)
+				realm := rh.c.Config.GetRealm()
+				response.Header().Set("WWW-Authenticate", "basic realm="+realm)
 			}
 		}
 	}
@@ -502,7 +514,9 @@ type ExtensionList struct {
 // @Failure 500 {string} string "internal server error"
 // @Router /v2/{name}/manifests/{reference} [get].
 func (rh *RouteHandler) GetManifest(response http.ResponseWriter, request *http.Request) {
-	if rh.c.Config.IsBasicAuthnEnabled() {
+	// Get auth config safely
+	authConfig := rh.c.Config.CopyAuthConfig()
+	if authConfig.IsBasicAuthnEnabled() {
 		response.Header().Set("Access-Control-Allow-Credentials", "true")
 	}
 
@@ -694,7 +708,9 @@ func (rh *RouteHandler) UpdateManifest(response http.ResponseWriter, request *ht
 	}
 
 	mediaType := request.Header.Get("Content-Type")
-	if !storageCommon.IsSupportedMediaType(rh.c.Config.HTTP.Compat, mediaType) {
+	compatConfig := rh.c.Config.GetCompat()
+
+	if !storageCommon.IsSupportedMediaType(compatConfig, mediaType) {
 		err := apiErr.NewError(apiErr.MANIFEST_INVALID).AddDetail(map[string]string{"mediaType": mediaType})
 		zcommon.WriteJSON(response, http.StatusUnsupportedMediaType, apiErr.NewErrorList(err))
 
@@ -949,7 +965,9 @@ func (rh *RouteHandler) CheckBlob(response http.ResponseWriter, request *http.Re
 	}
 
 	userCanMount := true
-	if rh.c.Config.IsAuthzEnabled() {
+	accessControlConfig := rh.c.Config.CopyAccessControlConfig()
+
+	if accessControlConfig.IsAuthzEnabled() {
 		userCanMount, err = canMount(userAc, imgStore, digest)
 		if err != nil {
 			rh.c.Log.Error().Err(err).Msg("unexpected error")
@@ -1265,7 +1283,9 @@ func (rh *RouteHandler) CreateBlobUpload(response http.ResponseWriter, request *
 		}
 
 		userCanMount := true
-		if rh.c.Config.IsAuthzEnabled() {
+		accessControlConfig := rh.c.Config.CopyAccessControlConfig()
+
+		if accessControlConfig.IsAuthzEnabled() {
 			userCanMount, err = canMount(userAc, imgStore, mountDigest)
 			if err != nil {
 				rh.c.Log.Error().Err(err).Msg("unexpected error")
@@ -2323,7 +2343,8 @@ func getBlobUploadLocation(url *url.URL, name string, digest godigest.Digest) st
 }
 
 func isSyncOnDemandEnabled(ctlr Controller) bool {
-	if ctlr.Config.IsSyncEnabled() &&
+	extensionsConfig := ctlr.Config.CopyExtensionsConfig()
+	if extensionsConfig.IsSyncEnabled() &&
 		fmt.Sprintf("%v", ctlr.SyncOnDemand) != fmt.Sprintf("%v", nil) {
 		return true
 	}

@@ -549,8 +549,9 @@ func (scheduler *Scheduler) SubmitGenerator(taskGenerator TaskGenerator, interva
 }
 
 func getNumWorkers(cfg *config.Config) int {
-	if cfg.Scheduler != nil && cfg.Scheduler.NumWorkers != 0 {
-		return cfg.Scheduler.NumWorkers
+	schedulerConfig := cfg.CopySchedulerConfig()
+	if schedulerConfig != nil && schedulerConfig.NumWorkers != 0 {
+		return schedulerConfig.NumWorkers
 	}
 
 	return runtime.NumCPU() * NumWorkersMultiplier

@@ -16,23 +16,24 @@ func GetExtensions(config *config.Config) distext.ExtensionList {
 	endpoints := []string{}
 	extensions := []distext.Extension{}
 
-	if config.IsNotationEnabled() && IsBuiltWithImageTrustExtension() {
+	extensionsConfig := config.CopyExtensionsConfig()
+	if extensionsConfig.IsNotationEnabled() && IsBuiltWithImageTrustExtension() {
 		endpoints = append(endpoints, constants.FullNotation)
 	}
 
-	if config.IsCosignEnabled() && IsBuiltWithImageTrustExtension() {
+	if extensionsConfig.IsCosignEnabled() && IsBuiltWithImageTrustExtension() {
 		endpoints = append(endpoints, constants.FullCosign)
 	}
 
-	if config.IsSearchEnabled() && IsBuiltWithSearchExtension() {
+	if extensionsConfig.IsSearchEnabled() && IsBuiltWithSearchExtension() {
 		endpoints = append(endpoints, constants.FullSearchPrefix)
 	}
 
-	if config.AreUserPrefsEnabled() && IsBuiltWithUserPrefsExtension() {
+	if extensionsConfig.AreUserPrefsEnabled() && IsBuiltWithUserPrefsExtension() {
 		endpoints = append(endpoints, constants.FullUserPrefs)
 	}
 
-	if config.IsMgmtEnabled() && IsBuiltWithMGMTExtension() {
+	if extensionsConfig.IsSearchEnabled() && IsBuiltWithMGMTExtension() {
 		endpoints = append(endpoints, constants.FullMgmt)
 	}
 

@@ -27,7 +27,9 @@ func IsBuiltWithImageTrustExtension() bool {
 }
 
 func SetupImageTrustRoutes(conf *config.Config, router *mux.Router, metaDB mTypes.MetaDB, log log.Logger) {
-	if !conf.IsImageTrustEnabled() || (!conf.IsCosignEnabled() && !conf.IsNotationEnabled()) {
+	extensionsConfig := conf.CopyExtensionsConfig()
+	if !extensionsConfig.IsImageTrustEnabled() ||
+		(!extensionsConfig.IsCosignEnabled() && !extensionsConfig.IsNotationEnabled()) {
 		log.Info().Msg("skip enabling the image trust routes as the config prerequisites are not met")
 
 		return
@@ -39,7 +41,7 @@ func SetupImageTrustRoutes(conf *config.Config, router *mux.Router, metaDB mType
 	trust := ImageTrust{Conf: conf, ImageTrustStore: imgTrustStore, Log: log}
 	allowedMethods := zcommon.AllowedMethods(http.MethodPost)
 
-	if conf.IsNotationEnabled() {
+	if extensionsConfig.IsNotationEnabled() {
 		log.Info().Msg("setting up notation route")
 
 		notationRouter := router.PathPrefix(constants.ExtNotation).Subrouter()
@@ -51,7 +53,7 @@ func SetupImageTrustRoutes(conf *config.Config, router *mux.Router, metaDB mType
 		notationRouter.Methods(allowedMethods...).HandlerFunc(trust.HandleNotationCertificateUpload)
 	}
 
-	if conf.IsCosignEnabled() {
+	if extensionsConfig.IsCosignEnabled() {
 		log.Info().Msg("setting up cosign route")
 
 		cosignRouter := router.PathPrefix(constants.ExtCosign).Subrouter()
@@ -153,7 +155,8 @@ func (trust *ImageTrust) HandleNotationCertificateUpload(response http.ResponseW
 func EnableImageTrustVerification(conf *config.Config, taskScheduler *scheduler.Scheduler,
 	metaDB mTypes.MetaDB, log log.Logger,
 ) {
-	if !conf.IsImageTrustEnabled() {
+	extensionsConfig := conf.CopyExtensionsConfig()
+	if !extensionsConfig.IsImageTrustEnabled() {
 		return
 	}
 
@@ -165,7 +168,8 @@ func EnableImageTrustVerification(conf *config.Config, taskScheduler *scheduler.
 }
 
 func SetupImageTrustExtension(conf *config.Config, metaDB mTypes.MetaDB, log log.Logger) error {
-	if !conf.IsImageTrustEnabled() {
+	extensionsConfig := conf.CopyExtensionsConfig()
+	if !extensionsConfig.IsImageTrustEnabled() {
 		return nil
 	}
 

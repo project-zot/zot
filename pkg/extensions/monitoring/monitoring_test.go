@@ -48,6 +48,11 @@ func TestExtensionMetrics(t *testing.T) {
 		ctlr := api.NewController(conf)
 		So(ctlr, ShouldNotBeNil)
 
+		// Write image before starting controller to avoid race condition with garbage collection
+		srcStorageCtlr := ociutils.GetDefaultStoreController(rootDir, ctlr.Log)
+		err := WriteImageToFileSystem(CreateDefaultImage(), "alpine", "0.0.1", srcStorageCtlr)
+		So(err, ShouldBeNil)
+
 		cm := test.NewControllerManager(ctlr)
 		cm.StartAndWait(port)
 		defer cm.StopServer()
@@ -63,10 +68,6 @@ func TestExtensionMetrics(t *testing.T) {
 			"/v2/alpine/blobs/uploads/299148f0-0e32-4830-90d2-a3fa744137d9", time.Millisecond)
 		monitoring.IncDownloadCounter(ctlr.Metrics, "alpine")
 		monitoring.IncUploadCounter(ctlr.Metrics, "alpine")
-
-		srcStorageCtlr := ociutils.GetDefaultStoreController(rootDir, ctlr.Log)
-		err := WriteImageToFileSystem(CreateDefaultImage(), "alpine", "0.0.1", srcStorageCtlr)
-		So(err, ShouldBeNil)
 
 		monitoring.SetStorageUsage(ctlr.Metrics, rootDir, "alpine")
 

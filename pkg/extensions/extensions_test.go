@@ -107,8 +107,7 @@ func TestMetricsExtension(t *testing.T) {
 
 		data, _ := os.ReadFile(logFile.Name())
 
-		So(string(data), ShouldContainSubstring,
-			"prometheus instrumentation path not set, changing to '/metrics'.")
+		So(string(data), ShouldContainSubstring, "metrics extension enabled")
 	})
 }
 

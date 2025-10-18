@@ -100,76 +100,129 @@ func (s *HTPasswd) Authenticate(username, passphrase string) (ok, present bool) 
 
 // HTPasswdWatcher helper which triggers htpasswd reload on file change event.
 //
-// Cannot be restarted.
+// Can be restarted by calling Run() again after Close().
 type HTPasswdWatcher struct {
 	htp      *HTPasswd
 	filePath string
 	watcher  *fsnotify.Watcher
+	ctx      context.Context //nolint:containedctx // Context is needed for watcher lifecycle management
 	cancel   context.CancelFunc
 	log      log.Logger
+	mu       sync.Mutex
 }
 
-// NewHTPasswdWatcher create and start watcher.
+// NewHTPasswdWatcher creates a new watcher instance.
 func NewHTPasswdWatcher(htp *HTPasswd, filePath string) (*HTPasswdWatcher, error) {
-	watcher, err := fsnotify.NewWatcher()
-	if err != nil {
-		return nil, err
-	}
-
-	if filePath != "" {
-		err = watcher.Add(filePath)
-		if err != nil {
-			return nil, errors.Join(err, watcher.Close())
-		}
-	}
-
-	// background event processor job context
-	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
-
 	ret := &HTPasswdWatcher{
 		htp:      htp,
 		filePath: filePath,
-		watcher:  watcher,
-		cancel:   cancel,
 		log:      htp.log,
 	}
-
-	go func() {
-		defer ret.watcher.Close() //nolint: errcheck
-
-		for {
-			select {
-			case ev := <-ret.watcher.Events:
-				if ev.Op != fsnotify.Write {
-					continue
-				}
-
-				ret.log.Info().Str("htpasswd-file", ret.filePath).Msg("htpasswd file changed, trying to reload config")
-
-				err := ret.htp.Reload(ret.filePath)
-				if err != nil {
-					ret.log.Warn().Err(err).Str("htpasswd-file", ret.filePath).Msg("failed to reload file")
-				}
-
-			case err := <-ret.watcher.Errors:
-				ret.log.Error().Err(err).Str("htpasswd-file", ret.filePath).Msg("failed to fsnotfy, got error while watching file")
-
-			case <-ctx.Done():
-				ret.log.Debug().Msg("htpasswd watcher terminating...")
-
-				return
-			}
-		}
-	}()
 
 	return ret, nil
 }
 
+// Run starts the watcher goroutine.
+func (s *HTPasswdWatcher) Run() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.ctx != nil {
+		return // Already running
+	}
+
+	// Create fresh fsnotify watcher for this run
+	watcher, err := fsnotify.NewWatcher()
+	if err != nil {
+		s.log.Error().Err(err).Msg("failed to create fsnotify watcher")
+
+		return
+	}
+
+	// Only add file to watcher if we have a file to watch
+	if s.filePath != "" {
+		err = watcher.Add(s.filePath)
+		if err != nil {
+			s.log.Error().Err(err).Str("htpasswd-file", s.filePath).Msg("failed to add file to watcher")
+			watcher.Close() //nolint: errcheck
+
+			return
+		}
+	}
+
+	// Create context and start goroutine
+	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
+	s.ctx = ctx
+	s.cancel = cancel
+	s.watcher = watcher
+
+	go func() {
+		defer func() {
+			s.mu.Lock()
+			defer s.mu.Unlock()
+
+			// Clean up watcher
+			if s.watcher != nil {
+				s.watcher.Close() //nolint: errcheck
+				s.watcher = nil
+			}
+
+			// Clear context to indicate not running
+			s.ctx = nil
+			s.cancel = nil
+		}()
+
+		for {
+			select {
+			case <-ctx.Done():
+				s.log.Debug().Msg("htpasswd watcher terminating...")
+
+				return
+
+			case ev := <-watcher.Events:
+				if ev.Op != fsnotify.Write {
+					continue
+				}
+
+				s.log.Info().Str("htpasswd-file", s.filePath).Msg("htpasswd file changed, trying to reload config")
+
+				err := s.htp.Reload(s.filePath)
+				if err != nil {
+					s.log.Warn().Err(err).Str("htpasswd-file", s.filePath).Msg("failed to reload file")
+				}
+
+			case err := <-watcher.Errors:
+				// Only log errors if we're actually watching a file
+				if s.filePath != "" {
+					s.log.Error().Err(err).Str("htpasswd-file", s.filePath).Msg("failed to fsnotfy, got error while watching file")
+				}
+			}
+		}
+	}()
+}
+
 // ChangeFile changes monitored file. Empty string clears store.
 func (s *HTPasswdWatcher) ChangeFile(filePath string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	// If watcher is not running, just update the filePath for when Run() is called
+	if s.watcher == nil {
+		s.filePath = filePath
+		if filePath == "" {
+			s.htp.Clear()
+		} else {
+			return s.htp.Reload(filePath)
+		}
+
+		return nil
+	}
+
+	// Remove old file if it exists
 	if s.filePath != "" {
-		err := s.watcher.Remove(s.filePath)
-		if err != nil {
+		if err := s.watcher.Remove(s.filePath); err != nil && !errors.Is(err, fsnotify.ErrNonExistentWatch) {
+			// Ignore "can't remove non-existent watch" errors as they can happen
+			// due to race conditions or files being removed externally
 			return err
 		}
 	}
@@ -192,7 +245,21 @@ func (s *HTPasswdWatcher) ChangeFile(filePath string) error {
 }
 
 func (s *HTPasswdWatcher) Close() error {
-	s.cancel()
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.ctx == nil {
+		return nil // Already closed/not running
+	}
+
+	// Cancel context to signal goroutine to stop
+	if s.cancel != nil {
+		s.cancel()
+	}
+
+	// The goroutine will clean up s.ctx, s.cancel, and s.watcher in its defer
+	// We just need to wait for it to finish by checking if s.ctx becomes nil
+	// This is safe because the goroutine sets s.ctx = nil in its defer
 
 	return nil
 }

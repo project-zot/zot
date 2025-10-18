@@ -1296,7 +1296,9 @@ func TestScaleOutRequestProxy(t *testing.T) {
 			cm := test.NewControllerManager(ctrlr)
 			cm.StartAndWait(port)
 
-			defer cm.StopServer()
+			defer func(cm test.ControllerManager) {
+				cm.StopServer()
+			}(cm)
 		}
 
 		Convey("All 3 controllers should start up and respond without error", func() {
@@ -1393,7 +1395,9 @@ func TestScaleOutRequestProxy(t *testing.T) {
 			cm := test.NewControllerManager(ctrlr)
 			cm.StartAndWait(port)
 
-			defer cm.StopServer()
+			defer func(cm test.ControllerManager) {
+				cm.StopServer()
+			}(cm)
 		}
 
 		Convey("All 3 controllers should start up and respond without error", func() {
@@ -1470,7 +1474,9 @@ func TestScaleOutRequestProxy(t *testing.T) {
 			cm := test.NewControllerManager(ctrlr)
 			cm.StartAndWait(port)
 
-			defer cm.StopServer()
+			defer func(cm test.ControllerManager) {
+				cm.StopServer()
+			}(cm)
 		}
 
 		caCert, err := os.ReadFile(CACert)
@@ -1534,7 +1540,9 @@ func TestScaleOutRequestProxy(t *testing.T) {
 			cm := test.NewControllerManager(ctrlr)
 			cm.StartAndWait(port)
 
-			defer cm.StopServer()
+			defer func(cm test.ControllerManager) {
+				cm.StopServer()
+			}(cm)
 		}
 
 		caCert, err := os.ReadFile(CACert)
@@ -1599,7 +1607,9 @@ func TestScaleOutRequestProxy(t *testing.T) {
 			cm := test.NewControllerManager(ctrlr)
 			cm.StartAndWait(port)
 
-			defer cm.StopServer()
+			defer func(cm test.ControllerManager) {
+				cm.StopServer()
+			}(cm)
 		}
 
 		caCert, err := os.ReadFile(CACert)
@@ -7171,6 +7181,8 @@ func TestCrossRepoMount(t *testing.T) {
 		ctlr.Config.Storage.Dedupe = true
 		ctlr.Config.Storage.GC = false
 		ctlr.Config.Storage.RootDirectory = newDir
+
+		ctlr = api.NewController(ctlr.Config)
 		cm = test.NewControllerManager(ctlr) //nolint: varnamelen
 		cm.StartAndWait(port)
 

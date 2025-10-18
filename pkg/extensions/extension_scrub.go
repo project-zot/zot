@@ -4,8 +4,6 @@
 package extensions
 
 import (
-	"time"
-
 	"zotregistry.dev/zot/v2/pkg/api/config"
 	"zotregistry.dev/zot/v2/pkg/extensions/scrub"
 	"zotregistry.dev/zot/v2/pkg/log"
@@ -18,15 +16,10 @@ import (
 func EnableScrubExtension(config *config.Config, log log.Logger, storeController storage.StoreController,
 	sch *scheduler.Scheduler,
 ) {
-	if config.Extensions.Scrub != nil &&
-		*config.Extensions.Scrub.Enable {
-		minScrubInterval, _ := time.ParseDuration("2h")
-
-		if config.Extensions.Scrub.Interval < minScrubInterval {
-			config.Extensions.Scrub.Interval = minScrubInterval
-
-			log.Warn().Msg("scrub interval set to too-short interval < 2h, changing scrub duration to 2 hours and continuing.") //nolint:lll // gofumpt conflicts with lll
-		}
+	// Get extensions config safely
+	extensionsConfig := config.CopyExtensionsConfig()
+	if extensionsConfig.IsScrubEnabled() {
+		scrubInterval := extensionsConfig.GetScrubInterval()
 
 		processedRepos := make(map[string]struct{})
 
@@ -36,10 +29,12 @@ func EnableScrubExtension(config *config.Config, log log.Logger, storeController
 			processedRepos: processedRepos,
 		}
 
-		sch.SubmitGenerator(generator, config.Extensions.Scrub.Interval, scheduler.LowPriority)
+		sch.SubmitGenerator(generator, scrubInterval, scheduler.LowPriority)
 
-		if config.Storage.SubPaths != nil {
-			for route := range config.Storage.SubPaths {
+		// Get storage config safely
+		storageConfig := config.CopyStorageConfig()
+		if storageConfig.SubPaths != nil {
+			for route := range storageConfig.SubPaths {
 				processedRepos := make(map[string]struct{})
 
 				generator := &taskGenerator{
@@ -48,7 +43,7 @@ func EnableScrubExtension(config *config.Config, log log.Logger, storeController
 					processedRepos: processedRepos,
 				}
 
-				sch.SubmitGenerator(generator, config.Extensions.Scrub.Interval, scheduler.LowPriority)
+				sch.SubmitGenerator(generator, scrubInterval, scheduler.LowPriority)
 			}
 		}
 	} else {

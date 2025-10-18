@@ -22,15 +22,14 @@ import (
 	"zotregistry.dev/zot/v2/pkg/api/config"
 	"zotregistry.dev/zot/v2/pkg/common"
 	ext "zotregistry.dev/zot/v2/pkg/extensions"
-	extconf "zotregistry.dev/zot/v2/pkg/extensions/config"
-	"zotregistry.dev/zot/v2/pkg/extensions/events"
-	"zotregistry.dev/zot/v2/pkg/extensions/monitoring"
-	"zotregistry.dev/zot/v2/pkg/log"
-	"zotregistry.dev/zot/v2/pkg/meta"
+	events "zotregistry.dev/zot/v2/pkg/extensions/events"
+	monitoring "zotregistry.dev/zot/v2/pkg/extensions/monitoring"
+	log "zotregistry.dev/zot/v2/pkg/log"
+	meta "zotregistry.dev/zot/v2/pkg/meta"
 	mTypes "zotregistry.dev/zot/v2/pkg/meta/types"
-	"zotregistry.dev/zot/v2/pkg/scheduler"
-	"zotregistry.dev/zot/v2/pkg/storage"
-	"zotregistry.dev/zot/v2/pkg/storage/gc"
+	scheduler "zotregistry.dev/zot/v2/pkg/scheduler"
+	storage "zotregistry.dev/zot/v2/pkg/storage"
+	gc "zotregistry.dev/zot/v2/pkg/storage/gc"
 )
 
 const (
@@ -139,12 +138,13 @@ func (c *Controller) Run() error {
 	engine := mux.NewRouter()
 
 	// rate-limit HTTP requests if enabled
-	if c.Config.HTTP.Ratelimit != nil {
-		if c.Config.HTTP.Ratelimit.Rate != nil {
-			engine.Use(RateLimiter(c, *c.Config.HTTP.Ratelimit.Rate))
+	ratelimitConfig := c.Config.CopyRatelimit()
+	if ratelimitConfig != nil {
+		if ratelimitConfig.Rate != nil {
+			engine.Use(RateLimiter(c, *ratelimitConfig.Rate))
 		}
 
-		for _, mrlim := range c.Config.HTTP.Ratelimit.Methods {
+		for _, mrlim := range ratelimitConfig.Methods {
 			engine.Use(MethodRateLimiter(c, mrlim.Method, mrlim.Rate))
 		}
 	}
@@ -161,13 +161,14 @@ func (c *Controller) Run() error {
 	c.Router = engine
 	c.Router.UseEncodedPath()
 
-	monitoring.SetServerInfo(c.Metrics, c.Config.Commit, c.Config.BinaryType, c.Config.GoVersion,
-		c.Config.DistSpecVersion)
+	commit, binaryType, goVersion, distSpecVersion := c.Config.GetVersionInfo()
+	monitoring.SetServerInfo(c.Metrics, commit, binaryType, goVersion, distSpecVersion)
 
 	//nolint: contextcheck
 	_ = NewRouteHandler(c)
 
-	addr := fmt.Sprintf("%s:%s", c.Config.HTTP.Address, c.Config.HTTP.Port)
+	port := c.Config.GetHTTPPort()
+	addr := fmt.Sprintf("%s:%s", c.Config.GetHTTPAddress(), port)
 	server := &http.Server{
 		Addr:              addr,
 		Handler:           c.Router,
@@ -182,10 +183,10 @@ func (c *Controller) Run() error {
 		return err
 	}
 
-	if c.Config.HTTP.Port == "0" || c.Config.HTTP.Port == "" {
+	if port == "0" || port == "" {
 		chosenAddr, ok := listener.Addr().(*net.TCPAddr)
 		if !ok {
-			c.Log.Error().Str("port", c.Config.HTTP.Port).Msg("invalid addr type")
+			c.Log.Error().Str("port", port).Msg("invalid addr type")
 
 			return errors.ErrBadType
 		}
@@ -196,12 +197,13 @@ func (c *Controller) Run() error {
 			"port is unspecified, listening on kernel chosen port",
 		)
 	} else {
-		chosenPort, _ := strconv.ParseInt(c.Config.HTTP.Port, 10, 64)
+		chosenPort, _ := strconv.ParseInt(port, 10, 32)
 
 		c.chosenPort = int(chosenPort)
 	}
 
-	if c.Config.HTTP.TLS != nil && c.Config.HTTP.TLS.Key != "" && c.Config.HTTP.TLS.Cert != "" {
+	tlsConfig := c.Config.CopyTLSConfig()
+	if tlsConfig != nil && tlsConfig.Key != "" && tlsConfig.Cert != "" {
 		server.TLSConfig = &tls.Config{
 			CipherSuites: []uint16{
 				tls.TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,
@@ -219,15 +221,15 @@ func (c *Controller) Run() error {
 			MinVersion:               tls.VersionTLS12,
 		}
 
-		if c.Config.HTTP.TLS.CACert != "" {
+		if tlsConfig.CACert != "" {
 			clientAuth := tls.VerifyClientCertIfGiven
 			if c.Config.IsMTLSAuthEnabled() {
 				clientAuth = tls.RequireAndVerifyClientCert
 			}
 
-			caCert, err := os.ReadFile(c.Config.HTTP.TLS.CACert)
+			caCert, err := os.ReadFile(tlsConfig.CACert)
 			if err != nil {
-				c.Log.Error().Err(err).Str("caCert", c.Config.HTTP.TLS.CACert).Msg("failed to read file")
+				c.Log.Error().Err(err).Str("caCert", tlsConfig.CACert).Msg("failed to read file")
 
 				return err
 			}
@@ -246,7 +248,7 @@ func (c *Controller) Run() error {
 
 		c.Healthz.Ready()
 
-		return server.ServeTLS(listener, c.Config.HTTP.TLS.Cert, c.Config.HTTP.TLS.Key)
+		return server.ServeTLS(listener, tlsConfig.Cert, tlsConfig.Key)
 	}
 
 	c.Healthz.Ready()
@@ -267,10 +269,9 @@ func (c *Controller) Init() error {
 	DumpRuntimeParams(c.Log)
 
 	var enabled bool
-	if c.Config != nil &&
-		c.Config.Extensions != nil &&
-		c.Config.Extensions.Metrics != nil &&
-		*c.Config.Extensions.Metrics.Enable {
+	extensionsConfig := c.Config.CopyExtensionsConfig()
+
+	if extensionsConfig.IsMetricsEnabled() {
 		enabled = true
 	}
 
@@ -291,8 +292,10 @@ func (c *Controller) Init() error {
 	c.InitCVEInfo()
 	c.Healthz.Started()
 
-	if c.Config.IsHtpasswdAuthEnabled() {
-		err := c.HTPasswdWatcher.ChangeFile(c.Config.HTTP.Auth.HTPasswd.Path)
+	// Get auth config safely
+	authConfig := c.Config.CopyAuthConfig()
+	if authConfig.IsHtpasswdAuthEnabled() {
+		err := c.HTPasswdWatcher.ChangeFile(authConfig.HTPasswd.Path)
 		if err != nil {
 			return err
 		}
@@ -303,9 +306,7 @@ func (c *Controller) Init() error {
 
 func (c *Controller) InitCVEInfo() {
 	// Enable CVE extension if extension config is provided
-	if c.Config != nil && c.Config.Extensions != nil {
-		c.CveScanner = ext.GetCveScanner(c.Config, c.StoreController, c.MetaDB, c.Log)
-	}
+	c.CveScanner = ext.GetCveScanner(c.Config, c.StoreController, c.MetaDB, c.Log)
 }
 
 func (c *Controller) InitImageStore() error {
@@ -323,11 +324,12 @@ func (c *Controller) InitImageStore() error {
 
 func (c *Controller) initCookieStore() error {
 	// setup sessions cookie store used to preserve logged in user in web sessions
-	if c.Config.IsBasicAuthnEnabled() {
+	if c.Config.HTTP.Auth.IsBasicAuthnEnabled() {
 		if c.Config.HTTP.Auth.SessionHashKey == nil {
 			c.Log.Warn().Msg("hashKey is not set in config, generating a random one")
 
-			c.Config.HTTP.Auth.SessionHashKey = securecookie.GenerateRandomKey(64) //nolint: gomnd
+			key := securecookie.GenerateRandomKey(64) //nolint: gomnd
+			c.Config.HTTP.Auth.SessionHashKey = key
 		}
 
 		cookieStore, err := NewCookieStore(c.Config.HTTP.Auth, c.StoreController, c.Log)
@@ -343,9 +345,16 @@ func (c *Controller) initCookieStore() error {
 
 func (c *Controller) InitMetaDB() error {
 	// init metaDB if search is enabled or we need to store user profiles, api keys or signatures
-	if c.Config.IsSearchEnabled() || c.Config.IsBasicAuthnEnabled() || c.Config.IsImageTrustEnabled() ||
+	// Get auth config safely
+	authConfig := c.Config.CopyAuthConfig()
+	extensionsConfig := c.Config.CopyExtensionsConfig()
+
+	if extensionsConfig.IsSearchEnabled() || authConfig.IsBasicAuthnEnabled() || extensionsConfig.IsImageTrustEnabled() ||
 		c.Config.IsRetentionEnabled() {
-		driver, err := meta.New(c.Config.Storage.StorageConfig, c.Log) //nolint:contextcheck
+		// Get storage config safely
+		storageConfig := c.Config.CopyStorageConfig()
+
+		driver, err := meta.New(storageConfig.StorageConfig, c.Log) //nolint:contextcheck
 		if err != nil {
 			return err
 		}
@@ -383,74 +392,25 @@ func (c *Controller) InitEventRecorder() error {
 }
 
 func (c *Controller) LoadNewConfig(newConfig *config.Config) {
-	// reload access control config
-	c.Config.HTTP.AccessControl = newConfig.HTTP.AccessControl
+	// Update only reloadable config fields atomically
+	c.Config.UpdateReloadableConfig(newConfig)
 
-	if c.Config.HTTP.Auth != nil {
-		c.Config.HTTP.Auth.HTPasswd = newConfig.HTTP.Auth.HTPasswd
-		c.Config.HTTP.Auth.LDAP = newConfig.HTTP.Auth.LDAP
-
-		err := c.HTPasswdWatcher.ChangeFile(c.Config.HTTP.Auth.HTPasswd.Path)
+	// Operations that need to happen after config update
+	authConfig := c.Config.CopyAuthConfig()
+	if authConfig.IsHtpasswdAuthEnabled() {
+		err := c.HTPasswdWatcher.ChangeFile(authConfig.HTPasswd.Path)
 		if err != nil {
 			c.Log.Error().Err(err).Msg("failed to change watched htpasswd file")
-		}
-
-		if c.LDAPClient != nil {
-			c.LDAPClient.lock.Lock()
-			c.LDAPClient.BindDN = newConfig.HTTP.Auth.LDAP.BindDN()
-			c.LDAPClient.BindPassword = newConfig.HTTP.Auth.LDAP.BindPassword()
-			c.LDAPClient.lock.Unlock()
 		}
 	} else {
 		_ = c.HTPasswdWatcher.ChangeFile("")
 	}
 
-	// reload periodical gc config
-	c.Config.Storage.GC = newConfig.Storage.GC
-	c.Config.Storage.Dedupe = newConfig.Storage.Dedupe
-	c.Config.Storage.GCDelay = newConfig.Storage.GCDelay
-	c.Config.Storage.GCInterval = newConfig.Storage.GCInterval
-	// only if we have a metaDB already in place
-	if c.Config.IsRetentionEnabled() {
-		c.Config.Storage.Retention = newConfig.Storage.Retention
-	}
-
-	for subPath, storageConfig := range newConfig.Storage.SubPaths {
-		subPathConfig, ok := c.Config.Storage.SubPaths[subPath]
-		if ok {
-			subPathConfig.GC = storageConfig.GC
-			subPathConfig.Dedupe = storageConfig.Dedupe
-			subPathConfig.GCDelay = storageConfig.GCDelay
-			subPathConfig.GCInterval = storageConfig.GCInterval
-			// only if we have a metaDB already in place
-			if c.Config.IsRetentionEnabled() {
-				subPathConfig.Retention = storageConfig.Retention
-			}
-
-			c.Config.Storage.SubPaths[subPath] = subPathConfig
-		}
-	}
-
-	// reload background tasks
-	if newConfig.Extensions != nil {
-		if c.Config.Extensions == nil {
-			c.Config.Extensions = &extconf.ExtensionConfig{}
-		}
-
-		// reload sync extension
-		c.Config.Extensions.Sync = newConfig.Extensions.Sync
-
-		// reload only if search is enabled and reloaded config has search extension (can't setup routes at this stage)
-		if c.Config.Extensions.Search != nil && *c.Config.Extensions.Search.Enable {
-			if newConfig.Extensions.Search != nil {
-				c.Config.Extensions.Search.CVE = newConfig.Extensions.Search.CVE
-			}
-		}
-
-		// reload scrub extension
-		c.Config.Extensions.Scrub = newConfig.Extensions.Scrub
-	} else {
-		c.Config.Extensions = nil
+	if c.LDAPClient != nil && authConfig.IsLdapAuthEnabled() {
+		c.LDAPClient.lock.Lock()
+		c.LDAPClient.BindDN = authConfig.LDAP.BindDN()
+		c.LDAPClient.BindPassword = authConfig.LDAP.BindPassword()
+		c.LDAPClient.lock.Unlock()
 	}
 
 	c.InitCVEInfo()
@@ -462,6 +422,11 @@ func (c *Controller) LoadNewConfig(newConfig *config.Config) {
 func (c *Controller) Shutdown() {
 	// stop all background tasks
 	c.StopBackgroundTasks()
+
+	// Stop metrics server to prevent resource leaks (only during full shutdown)
+	if c.Metrics != nil {
+		c.Metrics.Stop()
+	}
 
 	if c.Server != nil {
 		ctx := context.Background()
@@ -479,73 +444,90 @@ func (c *Controller) StopBackgroundTasks() {
 	if c.taskScheduler != nil {
 		c.taskScheduler.Shutdown()
 	}
+
+	// Close HTPasswdWatcher to prevent resource leaks
+	if c.HTPasswdWatcher != nil {
+		_ = c.HTPasswdWatcher.Close()
+	}
 }
 
 func (c *Controller) StartBackgroundTasks() {
 	c.taskScheduler = scheduler.NewScheduler(c.Config, c.Metrics, c.Log)
 	c.taskScheduler.RunScheduler()
 
+	// Start HTPasswdWatcher goroutine
+	if c.HTPasswdWatcher != nil {
+		c.HTPasswdWatcher.Run()
+	}
+
 	// Enable running garbage-collect periodically for DefaultStore
-	if c.Config.Storage.GC {
+	storageConfig := c.Config.CopyStorageConfig()
+	if storageConfig.GC {
 		gc := gc.NewGarbageCollect(c.StoreController.DefaultStore, c.MetaDB, gc.Options{
-			Delay:          c.Config.Storage.GCDelay,
-			ImageRetention: c.Config.Storage.Retention,
+			Delay:          storageConfig.GCDelay,
+			ImageRetention: storageConfig.Retention,
 		}, c.Audit, c.Log)
 
-		gc.CleanImageStorePeriodically(c.Config.Storage.GCInterval, c.taskScheduler)
+		gc.CleanImageStorePeriodically(storageConfig.GCInterval, c.taskScheduler)
 	}
 
 	// Enable running dedupe blobs both ways (dedupe or restore deduped blobs)
 	c.StoreController.DefaultStore.RunDedupeBlobs(time.Duration(0), c.taskScheduler)
 
 	// Enable extensions if extension config is provided for DefaultStore
-	if c.Config != nil && c.Config.Extensions != nil {
-		ext.EnableMetricsExtension(c.Config, c.Log, c.Config.Storage.RootDirectory)
-		ext.EnableSearchExtension(c.Config, c.StoreController, c.MetaDB, c.taskScheduler, c.CveScanner, c.Log)
-	}
+	extensionsConfig := c.Config.CopyExtensionsConfig()
+
+	// Always call EnableSearchExtension to ensure proper logging, even when search is disabled
+	ext.EnableSearchExtension(c.Config, c.StoreController, c.MetaDB, c.taskScheduler, c.CveScanner, c.Log)
+
+	// Always call EnableMetricsExtension to ensure proper logging, even when metrics is disabled
+	ext.EnableMetricsExtension(c.Config, c.Log, storageConfig.RootDirectory)
+
 	// runs once if metrics are enabled & imagestore is local
-	if c.Config.IsMetricsEnabled() && c.Config.Storage.StorageDriver == nil {
+	if extensionsConfig.IsMetricsEnabled() && storageConfig.StorageDriver == nil {
 		c.StoreController.DefaultStore.PopulateStorageMetrics(time.Duration(0), c.taskScheduler)
 	}
 
-	if c.Config.Storage.SubPaths != nil {
-		for route, storageConfig := range c.Config.Storage.SubPaths {
+	if storageConfig.SubPaths != nil {
+		for route, subStorageConfig := range storageConfig.SubPaths {
 			// Enable running garbage-collect periodically for subImageStore
-			if storageConfig.GC {
+			if subStorageConfig.GC {
 				gc := gc.NewGarbageCollect(c.StoreController.SubStore[route], c.MetaDB,
 					gc.Options{
-						Delay:          storageConfig.GCDelay,
-						ImageRetention: storageConfig.Retention,
+						Delay:          subStorageConfig.GCDelay,
+						ImageRetention: subStorageConfig.Retention,
 					}, c.Audit, c.Log)
 
-				gc.CleanImageStorePeriodically(storageConfig.GCInterval, c.taskScheduler)
+				gc.CleanImageStorePeriodically(subStorageConfig.GCInterval, c.taskScheduler)
 			}
 
 			// Enable extensions if extension config is provided for subImageStore
-			if c.Config != nil && c.Config.Extensions != nil {
-				ext.EnableMetricsExtension(c.Config, c.Log, storageConfig.RootDirectory)
-			}
+			ext.EnableMetricsExtension(c.Config, c.Log, subStorageConfig.RootDirectory)
 
 			// Enable running dedupe blobs both ways (dedupe or restore deduped blobs) for subpaths
 			substore := c.StoreController.SubStore[route]
 			if substore != nil {
 				substore.RunDedupeBlobs(time.Duration(0), c.taskScheduler)
 
-				if c.Config.IsMetricsEnabled() && c.Config.Storage.StorageDriver == nil {
+				if extensionsConfig.IsMetricsEnabled() && storageConfig.StorageDriver == nil {
 					substore.PopulateStorageMetrics(time.Duration(0), c.taskScheduler)
 				}
 			}
 		}
 	}
 
-	if c.Config.Extensions != nil {
-		ext.EnableScrubExtension(c.Config, c.Log, c.StoreController, c.taskScheduler)
-		//nolint: contextcheck
-		syncOnDemand, err := ext.EnableSyncExtension(c.Config, c.MetaDB, c.StoreController, c.taskScheduler, c.Log)
-		if err != nil {
-			c.Log.Error().Err(err).Msg("failed to start sync extension")
-		}
+	// Always call EnableScrubExtension to ensure proper logging, even when scrub is disabled
+	ext.EnableScrubExtension(c.Config, c.Log, c.StoreController, c.taskScheduler)
 
+	// Always call EnableSyncExtension to ensure proper logging, even when sync is disabled
+	//nolint: contextcheck
+	syncOnDemand, err := ext.EnableSyncExtension(c.Config, c.MetaDB, c.StoreController, c.taskScheduler, c.Log)
+	if err != nil {
+		c.Log.Error().Err(err).Msg("failed to start sync extension")
+	}
+
+	// Only set SyncOnDemand if sync is actually enabled
+	if extensionsConfig.IsSyncEnabled() {
 		c.SyncOnDemand = syncOnDemand
 	}
 

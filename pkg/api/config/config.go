@@ -3,9 +3,11 @@ package config
 import (
 	"encoding/json"
 	"os"
+	"sync"
 	"time"
 
 	distspec "github.com/opencontainers/distribution-spec/specs-go"
+	"github.com/tiendc/go-deepcopy"
 
 	"zotregistry.dev/zot/v2/pkg/compat"
 	extconf "zotregistry.dev/zot/v2/pkg/extensions/config"
@@ -78,6 +80,59 @@ type AuthConfig struct {
 	SessionHashKey    []byte         `json:"-"`
 	SessionEncryptKey []byte         `json:"-"`
 	SessionDriver     map[string]any `mapstructure:",omitempty"`
+}
+
+// IsLdapAuthEnabled checks if LDAP authentication is enabled in this auth config.
+func (a *AuthConfig) IsLdapAuthEnabled() bool {
+	return a != nil && a.LDAP != nil
+}
+
+// IsHtpasswdAuthEnabled checks if HTPasswd authentication is enabled in this auth config.
+func (a *AuthConfig) IsHtpasswdAuthEnabled() bool {
+	return a != nil && a.HTPasswd.Path != ""
+}
+
+// IsBearerAuthEnabled checks if Bearer authentication is enabled in this auth config.
+func (a *AuthConfig) IsBearerAuthEnabled() bool {
+	return a != nil && a.Bearer != nil && a.Bearer.Cert != "" && a.Bearer.Realm != "" && a.Bearer.Service != ""
+}
+
+// IsOpenIDAuthEnabled checks if OpenID authentication is enabled in this auth config.
+func (a *AuthConfig) IsOpenIDAuthEnabled() bool {
+	if a == nil || a.OpenID == nil {
+		return false
+	}
+
+	for provider := range a.OpenID.Providers {
+		if IsOpenIDSupported(provider) || IsOauth2Supported(provider) {
+			return true
+		}
+	}
+
+	return false
+}
+
+// IsAPIKeyEnabled checks if API Key authentication is enabled in this auth config.
+func (a *AuthConfig) IsAPIKeyEnabled() bool {
+	return a != nil && a.APIKey
+}
+
+// IsBasicAuthnEnabled checks if any basic authentication method is enabled in this auth config.
+func (a *AuthConfig) IsBasicAuthnEnabled() bool {
+	if a == nil {
+		return false
+	}
+
+	return a.IsHtpasswdAuthEnabled() || a.IsLdapAuthEnabled() || a.IsOpenIDAuthEnabled() || a.IsAPIKeyEnabled()
+}
+
+// GetFailDelay returns the configured fail delay for authentication attempts.
+func (a *AuthConfig) GetFailDelay() int {
+	if a == nil {
+		return 0
+	}
+
+	return a.FailDelay
 }
 
 type BearerConfig struct {
@@ -156,6 +211,11 @@ type ClusterConfig struct {
 	Proxy *ClusterRequestProxyConfig `json:"-" mapstructure:"-"`
 }
 
+// IsClustered returns true if the cluster configuration represents a multi-node cluster.
+func (c *ClusterConfig) IsClustered() bool {
+	return c != nil && len(c.Members) > 1
+}
+
 type ClusterRequestProxyConfig struct {
 	// holds the cluster socket (IP:port) derived from the host's
 	// interface configuration and the listening port of the HTTP server.
@@ -187,20 +247,34 @@ type LDAPConfig struct {
 }
 
 func (ldapConf *LDAPConfig) BindDN() string {
+	if ldapConf == nil {
+		return ""
+	}
+
 	return ldapConf.bindDN
 }
 
 func (ldapConf *LDAPConfig) SetBindDN(bindDN string) *LDAPConfig {
+	if ldapConf == nil {
+		return nil
+	}
 	ldapConf.bindDN = bindDN
 
 	return ldapConf
 }
 
 func (ldapConf *LDAPConfig) BindPassword() string {
+	if ldapConf == nil {
+		return ""
+	}
+
 	return ldapConf.bindPassword
 }
 
 func (ldapConf *LDAPConfig) SetBindPassword(bindPassword string) *LDAPConfig {
+	if ldapConf == nil {
+		return nil
+	}
 	ldapConf.bindPassword = bindPassword
 
 	return ldapConf
@@ -224,6 +298,11 @@ type AccessControlConfig struct {
 	Metrics      Metrics
 }
 
+// IsAuthzEnabled checks if authorization is enabled (access control is configured).
+func (config *AccessControlConfig) IsAuthzEnabled() bool {
+	return config != nil
+}
+
 func (config *AccessControlConfig) AnonymousPolicyExists() bool {
 	if config == nil {
 		return false
@@ -236,6 +315,89 @@ func (config *AccessControlConfig) AnonymousPolicyExists() bool {
 	}
 
 	return false
+}
+
+// ContainsOnlyAnonymousPolicy checks if the access control configuration contains only anonymous policies.
+func (config *AccessControlConfig) ContainsOnlyAnonymousPolicy() bool {
+	if config == nil {
+		return true
+	}
+
+	// Check if admin policy has any actions or users
+	if len(config.AdminPolicy.Actions)+len(config.AdminPolicy.Users) > 0 {
+		return false
+	}
+
+	anonymousPolicyPresent := false
+
+	for _, repository := range config.Repositories {
+		// Check if repository has default policy
+		if len(repository.DefaultPolicy) > 0 {
+			return false
+		}
+
+		// Check if repository has anonymous policy
+		if len(repository.AnonymousPolicy) > 0 {
+			anonymousPolicyPresent = true
+		}
+
+		// Check if repository has any non-empty policies
+		for _, policy := range repository.Policies {
+			if len(policy.Actions)+len(policy.Users) > 0 {
+				return false
+			}
+		}
+	}
+
+	return anonymousPolicyPresent
+}
+
+// GetRepositories safely gets a copy of the repositories configuration.
+func (config *AccessControlConfig) GetRepositories() Repositories {
+	if config == nil {
+		return nil
+	}
+
+	// Return a copy to avoid race conditions
+	reposCopy := make(Repositories)
+	for k, v := range config.Repositories {
+		reposCopy[k] = v
+	}
+
+	return reposCopy
+}
+
+// GetAdminPolicy safely gets a copy of the admin policy.
+func (config *AccessControlConfig) GetAdminPolicy() Policy {
+	if config == nil {
+		return Policy{}
+	}
+
+	return config.AdminPolicy
+}
+
+// GetMetrics safely gets a copy of the metrics configuration.
+func (config *AccessControlConfig) GetMetrics() Metrics {
+	if config == nil {
+		return Metrics{}
+	}
+
+	return config.Metrics
+}
+
+// GetGroups safely gets a copy of the groups configuration.
+func (config *AccessControlConfig) GetGroups() Groups {
+	if config == nil {
+		return nil
+	}
+
+	// Return a copy to avoid race conditions
+	groupsCopy := make(Groups)
+	for k, v := range config.Groups {
+		groupsCopy[k] = v
+	}
+
+	return groupsCopy
 }
 
 type (
@@ -275,6 +437,9 @@ type Config struct {
 	Extensions      *extconf.ExtensionConfig
 	Scheduler       *SchedulerConfig `json:"scheduler" mapstructure:",omitempty"`
 	Cluster         *ClusterConfig   `json:"cluster"   mapstructure:",omitempty"`
+
+	// Mutex to protect concurrent access to config fields
+	mu sync.RWMutex
 }
 
 func New() *Config {
@@ -303,35 +468,107 @@ func (expConfig StorageConfig) ParamsEqual(actConfig StorageConfig) bool {
 		expConfig.GCDelay == actConfig.GCDelay && expConfig.GCInterval == actConfig.GCInterval
 }
 
-// SameFile compare two files.
-// This method will first do the stat of two file and compare using os.SameFile method.
-func SameFile(str1, str2 string) (bool, error) {
-	sFile, err := os.Stat(str1)
-	if err != nil {
-		return false, err
+// isRetentionEnabledInternal checks if retention is enabled without acquiring a lock (internal use only).
+func (c *Config) isRetentionEnabledInternal() bool {
+	if c == nil {
+		return false
 	}
 
-	tFile, err := os.Stat(str2)
-	if err != nil {
-		return false, err
+	var needsMetaDB bool
+
+	for _, retentionPolicy := range c.Storage.Retention.Policies {
+		for _, tagRetentionPolicy := range retentionPolicy.KeepTags {
+			if c.isTagsRetentionEnabled(tagRetentionPolicy) {
+				needsMetaDB = true
+			}
+		}
 	}
 
-	return os.SameFile(sFile, tFile), nil
+	for _, subpath := range c.Storage.SubPaths {
+		for _, retentionPolicy := range subpath.Retention.Policies {
+			for _, tagRetentionPolicy := range retentionPolicy.KeepTags {
+				if c.isTagsRetentionEnabled(tagRetentionPolicy) {
+					needsMetaDB = true
+				}
+			}
+		}
+	}
+
+	return needsMetaDB
 }
 
-func DeepCopy(src, dst interface{}) error {
-	bytes, err := json.Marshal(src)
-	if err != nil {
-		return err
+// isTagsRetentionEnabled checks if tags retention is enabled for a specific policy (internal use only).
+func (c *Config) isTagsRetentionEnabled(tagRetentionPolicy KeepTagsPolicy) bool {
+	if tagRetentionPolicy.MostRecentlyPulledCount != 0 ||
+		tagRetentionPolicy.MostRecentlyPushedCount != 0 ||
+		tagRetentionPolicy.PulledWithin != nil ||
+		tagRetentionPolicy.PushedWithin != nil {
+		return true
 	}
 
-	err = json.Unmarshal(bytes, dst)
+	return false
+}
 
-	return err
+// isBasicAuthnEnabled checks if any basic authentication method is enabled (internal, no locking).
+func (c *Config) isBasicAuthnEnabled() bool {
+	if c == nil {
+		return false
+	}
+
+	// Check HTPasswd
+	if c.HTTP.Auth != nil && c.HTTP.Auth.HTPasswd.Path != "" {
+		return true
+	}
+
+	// Check LDAP
+	if c.HTTP.Auth != nil && c.HTTP.Auth.LDAP != nil {
+		return true
+	}
+
+	// Check API Key
+	if c.HTTP.Auth != nil && c.HTTP.Auth.APIKey {
+		return true
+	}
+
+	// Check OpenID
+	if c.HTTP.Auth != nil && c.HTTP.Auth.OpenID != nil {
+		for provider := range c.HTTP.Auth.OpenID.Providers {
+			if isOpenIDAuthProviderEnabled(c, provider) {
+				return true
+			}
+		}
+	}
+
+	return false
+}
+
+// isOpenIDAuthProviderEnabled checks if a specific OpenID provider is enabled (internal use only).
+func isOpenIDAuthProviderEnabled(config *Config, provider string) bool {
+	if providerConfig, ok := config.HTTP.Auth.OpenID.Providers[provider]; ok {
+		if IsOpenIDSupported(provider) {
+			if providerConfig.ClientID != "" || providerConfig.Issuer != "" ||
+				len(providerConfig.Scopes) > 0 {
+				return true
+			}
+		} else if IsOauth2Supported(provider) {
+			if providerConfig.ClientID != "" || len(providerConfig.Scopes) > 0 {
+				return true
+			}
+		}
+	}
+
+	return false
 }
 
 // Sanitize makes a sanitized copy of the config removing any secrets.
 func (c *Config) Sanitize() *Config {
+	if c == nil {
+		return nil
+	}
+
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
 	sanitizedConfig := &Config{}
 
 	if err := DeepCopy(c, sanitizedConfig); err != nil {
@@ -370,7 +607,7 @@ func (c *Config) Sanitize() *Config {
 		}
 	}
 
-	if c.IsEventRecorderEnabled() {
+	if c.Extensions.IsEventRecorderEnabled() {
 		for i, sink := range c.Extensions.Events.Sinks {
 			if sink.Credentials == nil {
 				continue
@@ -387,24 +624,367 @@ func (c *Config) Sanitize() *Config {
 	return sanitizedConfig
 }
 
-func (c *Config) IsLdapAuthEnabled() bool {
-	if c.HTTP.Auth != nil && c.HTTP.Auth.LDAP != nil {
-		return true
+// UpdateReloadableConfig updates only the fields that can be reloaded at runtime.
+func (c *Config) UpdateReloadableConfig(newConfig *Config) {
+	if c == nil {
+		return
 	}
 
-	return false
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	// Update storage configuration
+	c.Storage.GC = newConfig.Storage.GC
+	c.Storage.Dedupe = newConfig.Storage.Dedupe
+	c.Storage.GCDelay = newConfig.Storage.GCDelay
+	c.Storage.GCInterval = newConfig.Storage.GCInterval
+
+	// Only update retention if we have a metaDB already in place
+	if c.isRetentionEnabledInternal() {
+		c.Storage.Retention = newConfig.Storage.Retention
+	}
+
+	// Update storage subpaths configuration
+	for subPath, storageConfig := range newConfig.Storage.SubPaths {
+		subPathConfig, ok := c.Storage.SubPaths[subPath]
+		if !ok {
+			continue
+		}
+
+		subPathConfig.GC = storageConfig.GC
+		subPathConfig.Dedupe = storageConfig.Dedupe
+		subPathConfig.GCDelay = storageConfig.GCDelay
+		subPathConfig.GCInterval = storageConfig.GCInterval
+
+		// Only update retention if we have a metaDB already in place
+		if c.isRetentionEnabledInternal() {
+			subPathConfig.Retention = storageConfig.Retention
+		}
+
+		c.Storage.SubPaths[subPath] = subPathConfig
+	}
+
+	// Update authentication configuration
+	if c.HTTP.Auth != nil && newConfig.HTTP.Auth != nil {
+		c.HTTP.Auth.HTPasswd = newConfig.HTTP.Auth.HTPasswd
+		c.HTTP.Auth.LDAP = newConfig.HTTP.Auth.LDAP
+		c.HTTP.Auth.APIKey = newConfig.HTTP.Auth.APIKey
+		c.HTTP.Auth.OpenID = newConfig.HTTP.Auth.OpenID
+	}
+
+	// Initialize and update AccessControlConfig
+	if newConfig.HTTP.AccessControl != nil && c.HTTP.AccessControl == nil {
+		c.HTTP.AccessControl = &AccessControlConfig{}
+	}
+
+	if newConfig.HTTP.AccessControl == nil {
+		c.HTTP.AccessControl = nil
+	} else {
+		// Update AccessControlConfig fields directly
+		c.HTTP.AccessControl.Repositories = newConfig.HTTP.AccessControl.Repositories
+		c.HTTP.AccessControl.AdminPolicy = newConfig.HTTP.AccessControl.AdminPolicy
+		c.HTTP.AccessControl.Metrics = newConfig.HTTP.AccessControl.Metrics
+		c.HTTP.AccessControl.Groups = newConfig.HTTP.AccessControl.Groups
+	}
+
+	// Initialize and update ExtensionConfig
+	if newConfig.Extensions != nil && c.Extensions == nil {
+		c.Extensions = &extconf.ExtensionConfig{}
+	}
+
+	if newConfig.Extensions == nil {
+		c.Extensions = nil
+	} else if c.Extensions != nil {
+		// Update sync extension
+		c.Extensions.Sync = newConfig.Extensions.Sync
+
+		// Update search extension
+		if newConfig.Extensions.Search != nil && newConfig.Extensions.Search.CVE != nil {
+			// Only update if search is enabled
+			if c.Extensions.IsSearchEnabled() {
+				if c.Extensions.Search != nil {
+					c.Extensions.Search.CVE = newConfig.Extensions.Search.CVE
+				}
+			}
+		} else {
+			// Remove search CVE config if not present in new config
+			if c.Extensions.Search != nil {
+				c.Extensions.Search.CVE = nil
+			}
+		}
+
+		// Update scrub extension
+		c.Extensions.Scrub = newConfig.Extensions.Scrub
+	}
 }
 
-func (c *Config) IsAuthzEnabled() bool {
-	return c.HTTP.AccessControl != nil
+// CopyAuthConfig returns a copy of the auth config if it exists.
+func (c *Config) CopyAuthConfig() *AuthConfig {
+	if c == nil {
+		return nil
+	}
+
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	if c.HTTP.Auth == nil {
+		return nil
+	}
+
+	// Return a deep copy using tiendc/go-deepcopy to avoid race conditions
+	authCopy := &AuthConfig{}
+	_ = deepcopy.Copy(authCopy, c.HTTP.Auth)
+
+	return authCopy
 }
 
+// CopyAccessControlConfig returns a copy of the access control config if it exists.
+func (c *Config) CopyAccessControlConfig() *AccessControlConfig {
+	if c == nil {
+		return nil
+	}
+
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	if c.HTTP.AccessControl == nil {
+		return nil
+	}
+
+	// Return a deep copy using tiendc/go-deepcopy to avoid race conditions
+	accessControlCopy := &AccessControlConfig{}
+	_ = deepcopy.Copy(accessControlCopy, c.HTTP.AccessControl)
+
+	return accessControlCopy
+}
+
+// CopyStorageConfig returns a copy of the storage config.
+func (c *Config) CopyStorageConfig() GlobalStorageConfig {
+	if c == nil {
+		return GlobalStorageConfig{}
+	}
+
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	// Return a deep copy using tiendc/go-deepcopy to avoid race conditions
+	storageCopy := GlobalStorageConfig{}
+	_ = deepcopy.Copy(&storageCopy, &c.Storage)
+
+	return storageCopy
+}
+
+// CopyExtensionsConfig returns a copy of the extensions config if it exists.
+func (c *Config) CopyExtensionsConfig() *extconf.ExtensionConfig {
+	if c == nil {
+		return nil
+	}
+
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	if c.Extensions == nil {
+		return nil
+	}
+
+	// Return a deep copy using tiendc/go-deepcopy to avoid race conditions
+	extensionsCopy := &extconf.ExtensionConfig{}
+	_ = deepcopy.Copy(extensionsCopy, c.Extensions)
+
+	return extensionsCopy
+}
+
+// CopyLogConfig returns a copy of the log config if it exists.
+func (c *Config) CopyLogConfig() *LogConfig {
+	if c == nil {
+		return nil
+	}
+
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	if c.Log == nil {
+		return nil
+	}
+
+	// Return a copy to avoid race conditions
+	logCopy := *c.Log
+
+	return &logCopy
+}
+
+// CopyClusterConfig returns a copy of the cluster config if it exists.
+func (c *Config) CopyClusterConfig() *ClusterConfig {
+	if c == nil {
+		return nil
+	}
+
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	if c.Cluster == nil {
+		return nil
+	}
+
+	// Return a deep copy using tiendc/go-deepcopy to avoid race conditions
+	clusterCopy := &ClusterConfig{}
+	_ = deepcopy.Copy(clusterCopy, c.Cluster)
+
+	return clusterCopy
+}
+
+// CopySchedulerConfig returns a copy of the scheduler config if it exists.
+func (c *Config) CopySchedulerConfig() *SchedulerConfig {
+	if c == nil {
+		return nil
+	}
+
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	if c.Scheduler == nil {
+		return nil
+	}
+
+	// Return a copy to avoid race conditions
+	schedulerCopy := *c.Scheduler
+
+	return &schedulerCopy
+}
+
+// CopyTLSConfig returns a copy of the TLS config.
+func (c *Config) CopyTLSConfig() *TLSConfig {
+	if c == nil {
+		return nil
+	}
+
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	if c.HTTP.TLS == nil {
+		return nil
+	}
+
+	// Return a copy to avoid race conditions
+	tlsCopy := *c.HTTP.TLS
+
+	return &tlsCopy
+}
+
+// CopyRatelimit returns a copy of the rate limit config.
+func (c *Config) CopyRatelimit() *RatelimitConfig {
+	if c == nil {
+		return nil
+	}
+
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	if c.HTTP.Ratelimit == nil {
+		return nil
+	}
+
+	// Return a deep copy using tiendc/go-deepcopy to avoid race conditions
+	ratelimitCopy := &RatelimitConfig{}
+	_ = deepcopy.Copy(ratelimitCopy, c.HTTP.Ratelimit)
+
+	return ratelimitCopy
+}
+
+// GetVersionInfo returns version information (read-only, safe to access directly).
+func (c *Config) GetVersionInfo() (string, string, string, string) {
+	if c == nil {
+		return "", "", "", ""
+	}
+
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	return c.Commit, c.BinaryType, c.GoVersion, c.DistSpecVersion
+}
+
+// GetRealm returns the HTTP realm value.
+func (c *Config) GetRealm() string {
+	if c == nil {
+		return ""
+	}
+
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	return c.HTTP.Realm
+}
+
+// GetCompat returns a copy of the compatibility config.
+func (c *Config) GetCompat() []compat.MediaCompatibility {
+	if c == nil {
+		return nil
+	}
+
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	if c.HTTP.Compat == nil {
+		return nil
+	}
+
+	// Return a copy to avoid race conditions
+	compatCopy := make([]compat.MediaCompatibility, len(c.HTTP.Compat))
+	copy(compatCopy, c.HTTP.Compat)
+
+	return compatCopy
+}
+
+// GetHTTPAddress returns the HTTP address.
+func (c *Config) GetHTTPAddress() string {
+	if c == nil {
+		return ""
+	}
+
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	return c.HTTP.Address
+}
+
+// GetHTTPPort returns the HTTP port.
+func (c *Config) GetHTTPPort() string {
+	if c == nil {
+		return ""
+	}
+
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	return c.HTTP.Port
+}
+
+// GetAllowOrigin returns the CORS allow origin configuration.
+func (c *Config) GetAllowOrigin() string {
+	if c == nil {
+		return ""
+	}
+
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	return c.HTTP.AllowOrigin
+}
+
+// IsMTLSAuthEnabled checks if mTLS authentication is enabled.
 func (c *Config) IsMTLSAuthEnabled() bool {
+	if c == nil {
+		return false
+	}
+
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
 	if c.HTTP.TLS != nil &&
 		c.HTTP.TLS.Key != "" &&
 		c.HTTP.TLS.Cert != "" &&
 		c.HTTP.TLS.CACert != "" &&
-		!c.IsBasicAuthnEnabled() &&
+		!c.isBasicAuthnEnabled() &&
 		!c.HTTP.AccessControl.AnonymousPolicyExists() {
 		return true
 	}
@@ -412,157 +992,31 @@ func (c *Config) IsMTLSAuthEnabled() bool {
 	return false
 }
 
-func (c *Config) IsHtpasswdAuthEnabled() bool {
-	if c.HTTP.Auth != nil && c.HTTP.Auth.HTPasswd.Path != "" {
-		return true
-	}
-
-	return false
-}
-
-func (c *Config) IsBearerAuthEnabled() bool {
-	if c.HTTP.Auth != nil &&
-		c.HTTP.Auth.Bearer != nil &&
-		c.HTTP.Auth.Bearer.Cert != "" &&
-		c.HTTP.Auth.Bearer.Realm != "" &&
-		c.HTTP.Auth.Bearer.Service != "" {
-		return true
-	}
-
-	return false
-}
-
-func (c *Config) IsOpenIDAuthEnabled() bool {
-	if c.HTTP.Auth != nil &&
-		c.HTTP.Auth.OpenID != nil {
-		for provider := range c.HTTP.Auth.OpenID.Providers {
-			if isOpenIDAuthProviderEnabled(c, provider) {
-				return true
-			}
-		}
-	}
-
-	return false
-}
-
-func (c *Config) IsAPIKeyEnabled() bool {
-	if c.HTTP.Auth != nil && c.HTTP.Auth.APIKey {
-		return true
-	}
-
-	return false
-}
-
-func (c *Config) IsBasicAuthnEnabled() bool {
-	if c.IsHtpasswdAuthEnabled() || c.IsLdapAuthEnabled() ||
-		c.IsOpenIDAuthEnabled() || c.IsAPIKeyEnabled() {
-		return true
-	}
-
-	return false
-}
-
-func isOpenIDAuthProviderEnabled(config *Config, provider string) bool {
-	if providerConfig, ok := config.HTTP.Auth.OpenID.Providers[provider]; ok {
-		if IsOpenIDSupported(provider) {
-			if providerConfig.ClientID != "" || providerConfig.Issuer != "" ||
-				len(providerConfig.Scopes) > 0 {
-				return true
-			}
-		} else if IsOauth2Supported(provider) {
-			if providerConfig.ClientID != "" || len(providerConfig.Scopes) > 0 {
-				return true
-			}
-		}
-	}
-
-	return false
-}
-
-func (c *Config) IsMetricsEnabled() bool {
-	return c.Extensions != nil && c.Extensions.Metrics != nil && *c.Extensions.Metrics.Enable
-}
-
-func (c *Config) IsSearchEnabled() bool {
-	return c.Extensions != nil && c.Extensions.Search != nil && *c.Extensions.Search.Enable
-}
-
-func (c *Config) IsCveScanningEnabled() bool {
-	return c.IsSearchEnabled() && c.Extensions.Search.CVE != nil
-}
-
-func (c *Config) IsUIEnabled() bool {
-	return c.Extensions != nil && c.Extensions.UI != nil && *c.Extensions.UI.Enable
-}
-
-func (c *Config) AreUserPrefsEnabled() bool {
-	return c.IsSearchEnabled() && c.IsUIEnabled()
-}
-
-func (c *Config) IsMgmtEnabled() bool {
-	return c.IsSearchEnabled()
-}
-
-func (c *Config) IsImageTrustEnabled() bool {
-	return c.Extensions != nil && c.Extensions.Trust != nil && *c.Extensions.Trust.Enable
-}
-
-// check if tags retention is enabled.
+// IsRetentionEnabled checks if tags retention is enabled.
 func (c *Config) IsRetentionEnabled() bool {
-	var needsMetaDB bool
-
-	for _, retentionPolicy := range c.Storage.Retention.Policies {
-		for _, tagRetentionPolicy := range retentionPolicy.KeepTags {
-			if c.isTagsRetentionEnabled(tagRetentionPolicy) {
-				needsMetaDB = true
-			}
-		}
+	if c == nil {
+		return false
 	}
 
-	for _, subpath := range c.Storage.SubPaths {
-		for _, retentionPolicy := range subpath.Retention.Policies {
-			for _, tagRetentionPolicy := range retentionPolicy.KeepTags {
-				if c.isTagsRetentionEnabled(tagRetentionPolicy) {
-					needsMetaDB = true
-				}
-			}
-		}
-	}
+	c.mu.RLock()
+	defer c.mu.RUnlock()
 
-	return needsMetaDB
+	return c.isRetentionEnabledInternal()
 }
 
-func (c *Config) isTagsRetentionEnabled(tagRetentionPolicy KeepTagsPolicy) bool {
-	if tagRetentionPolicy.MostRecentlyPulledCount != 0 ||
-		tagRetentionPolicy.MostRecentlyPushedCount != 0 ||
-		tagRetentionPolicy.PulledWithin != nil ||
-		tagRetentionPolicy.PushedWithin != nil {
-		return true
-	}
-
-	return false
-}
-
-func (c *Config) IsCosignEnabled() bool {
-	return c.IsImageTrustEnabled() && c.Extensions.Trust.Cosign
-}
-
-func (c *Config) IsNotationEnabled() bool {
-	return c.IsImageTrustEnabled() && c.Extensions.Trust.Notation
-}
-
-func (c *Config) IsSyncEnabled() bool {
-	return c.Extensions != nil && c.Extensions.Sync != nil && *c.Extensions.Sync.Enable
-}
-
+// IsCompatEnabled checks if compatibility mode is enabled.
 func (c *Config) IsCompatEnabled() bool {
+	if c == nil {
+		return false
+	}
+
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
 	return len(c.HTTP.Compat) > 0
 }
 
-func (c *Config) IsEventRecorderEnabled() bool {
-	return c.Extensions != nil && c.Extensions.Events != nil && *c.Extensions.Events.Enable
-}
-
+// IsOpenIDSupported checks if the provider supports OpenID.
 func IsOpenIDSupported(provider string) bool {
 	for _, supportedProvider := range openIDSupportedProviders {
 		if supportedProvider == provider {
@@ -573,6 +1027,7 @@ func IsOpenIDSupported(provider string) bool {
 	return false
 }
 
+// IsOauth2Supported checks if the provider supports OAuth2.
 func IsOauth2Supported(provider string) bool {
 	for _, supportedProvider := range oauth2SupportedProviders {
 		if supportedProvider == provider {
@@ -581,4 +1036,32 @@ func IsOauth2Supported(provider string) bool {
 	}
 
 	return false
+}
+
+// SameFile compare two files.
+// This method will first do the stat of two file and compare using os.SameFile method.
+func SameFile(str1, str2 string) (bool, error) {
+	sFile, err := os.Stat(str1)
+	if err != nil {
+		return false, err
+	}
+
+	tFile, err := os.Stat(str2)
+	if err != nil {
+		return false, err
+	}
+
+	return os.SameFile(sFile, tFile), nil
+}
+
+// DeepCopy performs a deep copy of src into dst using JSON marshaling/unmarshaling.
+func DeepCopy(src, dst interface{}) error {
+	bytes, err := json.Marshal(src)
+	if err != nil {
+		return err
+	}
+
+	err = json.Unmarshal(bytes, dst)
+
+	return err
 }
