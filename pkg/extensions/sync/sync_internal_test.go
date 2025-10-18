@@ -125,17 +125,18 @@ func TestService(t *testing.T) {
 	Convey("test syncImage ReferrerList error with OnlySigned", t, func() {
 		onlySigned := true
 		conf := syncconf.RegistryConfig{
-			URLs:       []string{"http://invalid-registry-that-does-not-exist:9999"},
+			URLs:       []string{"http://localhost"},
 			OnlySigned: &onlySigned,
 		}
 
 		service, err := New(conf, "", nil, os.TempDir(), storage.StoreController{}, mocks.MetaDBMock{}, log.NewTestLogger())
 		So(err, ShouldBeNil)
 
-		// Create a mock remote that returns necessary data
+		// Create a mock remote that returns an invalid reference to trigger ReferrerList error
 		mockRemote := &mocks.SyncRemoteMock{
 			GetImageReferenceFn: func(repo string, tag string) (ref.Ref, error) {
-				return ref.New("invalid-registry-that-does-not-exist:9999/" + repo + ":" + tag)
+				// Return an invalid reference that will cause ReferrerList to fail with "ref is not set" error
+				return ref.Ref{}, nil
 			},
 			GetDigestFn: func(ctx context.Context, repo, tag string) (godigest.Digest, error) {
 				return godigest.Digest("sha256:abc123"), nil
@@ -154,8 +155,9 @@ func TestService(t *testing.T) {
 		ctx := context.Background()
 		err = service.syncImage(ctx, "localrepo", "remoterepo", "tag1", []string{}, true)
 
-		// We expect an error when ReferrerList fails (network/connection error in this case)
+		// We expect an error when ReferrerList fails with "ref is not set" error
 		So(err, ShouldNotBeNil)
+		So(err.Error(), ShouldContainSubstring, "ref is not set")
 	})
 
 	Convey("test LoadOrStore continue path by pre-populating requestStore", t, func() {
