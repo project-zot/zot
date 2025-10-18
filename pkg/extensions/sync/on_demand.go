@@ -48,8 +48,10 @@ func (onDemand *BaseOnDemand) SyncImage(ctx context.Context, repo, reference str
 		reference: reference,
 	}
 
-	val, found := onDemand.requestStore.Load(req)
-	if found {
+	syncResult := make(chan error)
+	val, loaded := onDemand.requestStore.LoadOrStore(req, syncResult)
+
+	if loaded {
 		onDemand.log.Info().Str("repo", repo).Str("reference", reference).
 			Msg("image already demanded, waiting on channel")
 
@@ -59,9 +61,6 @@ func (onDemand *BaseOnDemand) SyncImage(ctx context.Context, repo, reference str
 
 		return err
 	}
-
-	syncResult := make(chan error)
-	onDemand.requestStore.Store(req, syncResult)
 
 	defer onDemand.requestStore.Delete(req)
 
@@ -80,8 +79,10 @@ func (onDemand *BaseOnDemand) SyncReferrers(ctx context.Context, repo string,
 		reference: subjectDigestStr,
 	}
 
-	val, found := onDemand.requestStore.Load(req)
-	if found {
+	syncResult := make(chan error)
+	val, loaded := onDemand.requestStore.LoadOrStore(req, syncResult)
+
+	if loaded {
 		onDemand.log.Info().Str("repo", repo).Str("reference", subjectDigestStr).
 			Msg("referrers for image already demanded, waiting on channel")
 
@@ -91,9 +92,6 @@ func (onDemand *BaseOnDemand) SyncReferrers(ctx context.Context, repo string,
 
 		return err
 	}
-
-	syncResult := make(chan error)
-	onDemand.requestStore.Store(req, syncResult)
 
 	defer onDemand.requestStore.Delete(req)
 

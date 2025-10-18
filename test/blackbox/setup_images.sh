@@ -13,6 +13,7 @@ IMAGES=(
     "natsio/nats-box:latest"
     "python:3"
     "redis:latest"
+    "ghcr.io/project-zot/test-images/busybox-docker:1.37"
 )
 
 # Function to download an image if not already present

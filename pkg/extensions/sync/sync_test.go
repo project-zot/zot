@@ -4686,7 +4686,8 @@ func TestSignatures(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
-		sbomDigest := godigest.FromBytes(resp.Body())
+		sbomManifestBlob := resp.Body()
+		sbomDigest := godigest.FromBytes(sbomManifestBlob)
 
 		// sign sbom
 		So(func() { signImage(tdir, srcPort, repoName, sbomDigest) }, ShouldNotPanic)
@@ -4702,7 +4703,7 @@ func TestSignatures(t *testing.T) {
 			Subject: &ispec.Descriptor{
 				MediaType: ispec.MediaTypeImageManifest,
 				Digest:    sbomDigest,
-				Size:      int64(len(resp.Body())),
+				Size:      int64(len(sbomManifestBlob)),
 			},
 			Config: ispec.Descriptor{
 				MediaType: ispec.MediaTypeEmptyJSON,
@@ -4822,7 +4823,8 @@ func TestSignatures(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeEmpty)
 		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
-		So(godigest.FromBytes(resp.Body()), ShouldEqual, sbomDigest)
+		syncedSbomManifestBlob := resp.Body()
+		So(godigest.FromBytes(syncedSbomManifestBlob), ShouldEqual, sbomDigest)
 
 		// verify sbom signature
 		sbom := fmt.Sprintf("localhost:%s/%s@%s", destPort, repoName, sbomDigest)

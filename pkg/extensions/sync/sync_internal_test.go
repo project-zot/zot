@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"testing"
 	"time"
@@ -125,17 +126,18 @@ func TestService(t *testing.T) {
 	Convey("test syncImage ReferrerList error with OnlySigned", t, func() {
 		onlySigned := true
 		conf := syncconf.RegistryConfig{
-			URLs:       []string{"http://invalid-registry-that-does-not-exist:9999"},
+			URLs:       []string{"http://localhost"},
 			OnlySigned: &onlySigned,
 		}
 
 		service, err := New(conf, "", nil, os.TempDir(), storage.StoreController{}, mocks.MetaDBMock{}, log.NewTestLogger())
 		So(err, ShouldBeNil)
 
-		// Create a mock remote that returns necessary data
+		// Create a mock remote that returns an invalid reference to trigger ReferrerList error
 		mockRemote := &mocks.SyncRemoteMock{
 			GetImageReferenceFn: func(repo string, tag string) (ref.Ref, error) {
-				return ref.New("invalid-registry-that-does-not-exist:9999/" + repo + ":" + tag)
+				// Return an invalid reference that will cause ReferrerList to fail with "ref is not set" error
+				return ref.Ref{}, nil
 			},
 			GetDigestFn: func(ctx context.Context, repo, tag string) (godigest.Digest, error) {
 				return godigest.Digest("sha256:abc123"), nil
@@ -154,8 +156,9 @@ func TestService(t *testing.T) {
 		ctx := context.Background()
 		err = service.syncImage(ctx, "localrepo", "remoterepo", "tag1", []string{}, true)
 
-		// We expect an error when ReferrerList fails (network/connection error in this case)
+		// We expect an error when ReferrerList fails with "ref is not set" error
 		So(err, ShouldNotBeNil)
+		So(err.Error(), ShouldContainSubstring, "ref is not set")
 	})
 
 	Convey("test LoadOrStore continue path by pre-populating requestStore", t, func() {
@@ -741,6 +744,132 @@ func TestDestinationRegistry(t *testing.T) {
 
 			err = registry.CommitAll(repoName, imageReference)
 			So(err, ShouldNotBeNil)
+		})
+
+		Convey("trigger GetBlobContent error on manifest within image index in copyManifest()", func() {
+			// This test specifically targets the error where GetBlobContent fails for a manifest
+			// that is part of an image index.
+
+			// Create a destination registry using the existing syncImgStore as temp storage
+			storeController := storage.StoreController{DefaultStore: syncImgStore}
+			registry := NewDestinationRegistry(storeController, storeController, nil, log)
+
+			// Get an image reference - this will create a temp session directory
+			imageReference, err := registry.GetImageReference(repoName, "test-index")
+			So(err, ShouldBeNil)
+
+			// Get the temp image store from the image reference
+			tempImgStore := getImageStoreFromImageReference(repoName, imageReference, log)
+
+			// Create an image index with multiple manifests
+			var index ispec.Index
+			index.SchemaVersion = 2
+			index.MediaType = ispec.MediaTypeImageIndex
+
+			// Create child manifests
+			for i := 0; i < 2; i++ {
+				// Create blob content
+				content := []byte(fmt.Sprintf("this is blob %d", i))
+				buf := bytes.NewBuffer(content)
+				buflen := buf.Len()
+				digest := godigest.FromBytes(content)
+				So(digest, ShouldNotBeNil)
+
+				// Upload blob
+				upload, err := tempImgStore.NewBlobUpload(repoName)
+				So(err, ShouldBeNil)
+				So(upload, ShouldNotBeEmpty)
+
+				blob, err := tempImgStore.PutBlobChunkStreamed(repoName, upload, buf)
+				So(err, ShouldBeNil)
+				So(blob, ShouldEqual, buflen)
+
+				err = tempImgStore.FinishBlobUpload(repoName, upload, buf, digest)
+				So(err, ShouldBeNil)
+
+				// Create config blob
+				cblob := []byte(fmt.Sprintf(`{"architecture":"amd64","os":"linux","config":{"User":"test%d"}}`, i))
+				cdigest := godigest.FromBytes(cblob)
+				So(cdigest, ShouldNotBeNil)
+
+				upload, err = tempImgStore.NewBlobUpload(repoName)
+				So(err, ShouldBeNil)
+				So(upload, ShouldNotBeEmpty)
+
+				cbuf := bytes.NewBuffer(cblob)
+				blob, err = tempImgStore.PutBlobChunkStreamed(repoName, upload, cbuf)
+				So(err, ShouldBeNil)
+				So(blob, ShouldEqual, len(cblob))
+
+				err = tempImgStore.FinishBlobUpload(repoName, upload, cbuf, cdigest)
+				So(err, ShouldBeNil)
+
+				// Create a manifest
+				manifest := ispec.Manifest{
+					Config: ispec.Descriptor{
+						MediaType: ispec.MediaTypeImageConfig,
+						Digest:    cdigest,
+						Size:      int64(len(cblob)),
+					},
+					Layers: []ispec.Descriptor{
+						{
+							MediaType: ispec.MediaTypeImageLayer,
+							Digest:    digest,
+							Size:      int64(buflen),
+						},
+					},
+				}
+				manifest.SchemaVersion = 2
+
+				manifestContent, err := json.Marshal(manifest)
+				So(err, ShouldBeNil)
+				manifestDigest := godigest.FromBytes(manifestContent)
+				So(manifestDigest, ShouldNotBeNil)
+
+				// Store the manifest in the temp image store
+				_, _, err = tempImgStore.PutImageManifest(repoName, manifestDigest.String(), ispec.MediaTypeImageManifest, manifestContent)
+				So(err, ShouldBeNil)
+
+				// Add to index
+				index.Manifests = append(index.Manifests, ispec.Descriptor{
+					Digest:    manifestDigest,
+					MediaType: ispec.MediaTypeImageManifest,
+					Size:      int64(len(manifestContent)),
+				})
+			}
+
+			// Create the index manifest
+			indexContent, err := json.Marshal(index)
+			So(err, ShouldBeNil)
+			indexDigest := godigest.FromBytes(indexContent)
+			So(indexDigest, ShouldNotBeNil)
+
+			// Store the index manifest in the temp image store
+			_, _, err = tempImgStore.PutImageManifest(repoName, indexDigest.String(), ispec.MediaTypeImageIndex, indexContent)
+			So(err, ShouldBeNil)
+
+			// Now remove one of the child manifest blobs to trigger the error
+			childManifestDigest := index.Manifests[1].Digest
+			err = os.Remove(tempImgStore.BlobPath(repoName, childManifestDigest))
+			So(err, ShouldBeNil)
+
+			// Create a descriptor for the index manifest
+			desc := ispec.Descriptor{
+				Digest:    indexDigest,
+				MediaType: ispec.MediaTypeImageIndex,
+				Size:      int64(len(indexContent)),
+			}
+
+			// Initialize the seen slice
+			seen := &[]godigest.Digest{}
+
+			// Call copyManifest directly with the index manifest - this should trigger the error path at lines 234-239
+			// when it tries to get blob content for the child manifest with the removed blob
+			err = registry.(*DestinationRegistry).copyManifest(repoName, desc, indexDigest.String(), tempImgStore, seen)
+
+			// Verify the error is returned and contains the expected message
+			So(err, ShouldNotBeNil)
+			So(err.Error(), ShouldContainSubstring, "blob not found")
 		})
 
 		Convey("push image", func() {

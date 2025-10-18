@@ -70,7 +70,7 @@ function teardown_file() {
     zot_port=`cat ${BATS_FILE_TMPDIR}/zot.port`
     zot_root_dir=${BATS_FILE_TMPDIR}/zot
     cat > Dockerfile <<EOF
-    FROM public.ecr.aws/docker/library/busybox:latest
+    FROM ghcr.io/project-zot/test-images/busybox-docker:1.37
     RUN echo "hello world" > /testfile
 EOF
     docker build -f Dockerfile . -t localhost:${zot_port}/test:latest

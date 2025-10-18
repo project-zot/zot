@@ -377,7 +377,7 @@ EOF
 @test "push docker image" {
     zot_port=`cat ${BATS_FILE_TMPDIR}/zot.port`
     cat > Dockerfile <<EOF
-    FROM public.ecr.aws/docker/library/busybox:latest
+    FROM ghcr.io/project-zot/test-images/busybox-docker:1.37
     RUN echo "hello world" > /testfile
 EOF
     docker build -f Dockerfile . -t localhost:${zot_port}/test
