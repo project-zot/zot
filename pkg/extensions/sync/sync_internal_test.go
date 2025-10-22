@@ -161,6 +161,47 @@ func TestService(t *testing.T) {
 		So(err.Error(), ShouldContainSubstring, "ref is not set")
 	})
 
+	Convey("test syncReferrers ReferrerList error", t, func() {
+		conf := syncconf.RegistryConfig{
+			URLs: []string{"http://localhost"},
+		}
+
+		service, err := New(conf, "", nil, os.TempDir(), storage.StoreController{}, mocks.MetaDBMock{}, log.NewTestLogger())
+		So(err, ShouldBeNil)
+
+		// Create a mock remote that returns valid references
+		mockRemote := &mocks.SyncRemoteMock{
+			GetImageReferenceFn: func(repo string, tag string) (ref.Ref, error) {
+				return ref.New(repo + ":" + tag)
+			},
+			GetDigestFn: func(ctx context.Context, repo, tag string) (godigest.Digest, error) {
+				return godigest.Digest("sha256:abc123"), nil
+			},
+		}
+		service.remote = mockRemote
+
+		// Create a mock destination
+		mockDest := &mocks.SyncDestinationMock{
+			GetImageReferenceFn: func(repo string, tag string) (ref.Ref, error) {
+				return ref.New("local/" + repo + ":" + tag)
+			},
+		}
+		service.destination = mockDest
+
+		ctx := context.Background()
+		localImageRef, err := ref.New("local/repo:tag")
+		So(err, ShouldBeNil)
+
+		// Create an invalid remote reference that will cause ReferrerList to fail with "ref is not set" error
+		remoteImageRef := ref.Ref{}
+
+		err = service.syncReferrers(ctx, []string{"tag"}, "localrepo", "remoterepo", localImageRef, remoteImageRef)
+
+		// The error should be "ref is not set" as defined in regclient ReferrerList function
+		So(err, ShouldNotBeNil)
+		So(err.Error(), ShouldContainSubstring, "ref is not set")
+	})
+
 	Convey("test LoadOrStore continue path by pre-populating requestStore", t, func() {
 		// Strategy: Pre-populate requestStore to force LoadOrStore to return true
 		maxRetries := 2
