@@ -39,6 +39,13 @@ OS ?= $(shell go env GOOS)
 ARCH ?= $(shell go env GOARCH)
 GREP_BIN_PATH ?= $(shell which grep)
 
+MODULE_PATH := $(shell go list -m)
+CONFIG_PACKAGE := $(MODULE_PATH)/pkg/api/config
+CONFIG_RELEASE_TAG := $(CONFIG_PACKAGE).ReleaseTag
+CONFIG_COMMIT := $(CONFIG_PACKAGE).Commit
+CONFIG_BINARY_TYPE := $(CONFIG_PACKAGE).BinaryType
+CONFIG_GO_VERSION := $(CONFIG_PACKAGE).GoVersion
+
 PROTOC := $(TOOLSDIR)/bin/protoc
 PROTOC_VERSION := 24.4
 GO_PROTOC_VERSION := 1.31.0
@@ -173,25 +180,25 @@ gen-protobuf: $(PROTOC)
 .PHONY: binary-minimal
 binary-minimal: EXTENSIONS=
 binary-minimal: modcheck build-metadata
-	env CGO_ENABLED=0 GOOS=$(OS) GOARCH=$(ARCH) go build -o bin/zot-$(OS)-$(ARCH)-minimal$(BIN_EXT) $(BUILDMODE_FLAGS) -v -trimpath -ldflags "-X zotregistry.dev/zot/pkg/api/config.ReleaseTag=${RELEASE_TAG} -X zotregistry.dev/zot/pkg/api/config.Commit=${COMMIT} -X zotregistry.dev/zot/pkg/api/config.BinaryType=minimal -X zotregistry.dev/zot/pkg/api/config.GoVersion=${GO_VERSION} -s -w" ./cmd/zot
+	env CGO_ENABLED=0 GOOS=$(OS) GOARCH=$(ARCH) go build -o bin/zot-$(OS)-$(ARCH)-minimal$(BIN_EXT) $(BUILDMODE_FLAGS) -v -trimpath -ldflags "-X $(CONFIG_RELEASE_TAG)=${RELEASE_TAG} -X $(CONFIG_COMMIT)=${COMMIT} -X $(CONFIG_BINARY_TYPE)=minimal -X $(CONFIG_GO_VERSION)=${GO_VERSION} -s -w" ./cmd/zot
 
 .PHONY: binary
 binary: $(if $(findstring ui,$(BUILD_LABELS)), ui)
 binary: modcheck build-metadata
-	env CGO_ENABLED=0 GOOS=$(OS) GOARCH=$(ARCH) go build -o bin/zot-$(OS)-$(ARCH)$(BIN_EXT) $(BUILDMODE_FLAGS) $(GO_CMD_TAGS) -v -trimpath -ldflags "-X zotregistry.dev/zot/pkg/api/config.ReleaseTag=${RELEASE_TAG} -X zotregistry.dev/zot/pkg/api/config.Commit=${COMMIT} -X zotregistry.dev/zot/pkg/api/config.BinaryType=$(extended-name) -X zotregistry.dev/zot/pkg/api/config.GoVersion=${GO_VERSION} -s -w" ./cmd/zot
+	env CGO_ENABLED=0 GOOS=$(OS) GOARCH=$(ARCH) go build -o bin/zot-$(OS)-$(ARCH)$(BIN_EXT) $(BUILDMODE_FLAGS) $(GO_CMD_TAGS) -v -trimpath -ldflags "-X $(CONFIG_RELEASE_TAG)=${RELEASE_TAG} -X $(CONFIG_COMMIT)=${COMMIT} -X $(CONFIG_BINARY_TYPE)=$(extended-name) -X $(CONFIG_GO_VERSION)=${GO_VERSION} -s -w" ./cmd/zot
 
 .PHONY: binary-debug
 binary-debug: $(if $(findstring ui,$(BUILD_LABELS)), ui)
 binary-debug: modcheck swaggercheck build-metadata
-	env CGO_ENABLED=0 GOOS=$(OS) GOARCH=$(ARCH) go build -o bin/zot-$(OS)-$(ARCH)-debug$(BIN_EXT) $(BUILDMODE_FLAGS) -tags $(BUILD_LABELS),debug -v -gcflags all='-N -l' -ldflags "-X zotregistry.dev/zot/pkg/api/config.ReleaseTag=${RELEASE_TAG} -X zotregistry.dev/zot/pkg/api/config.Commit=${COMMIT} -X zotregistry.dev/zot/pkg/api/config.BinaryType=$(extended-name) -X zotregistry.dev/zot/pkg/api/config.GoVersion=${GO_VERSION}" ./cmd/zot
+	env CGO_ENABLED=0 GOOS=$(OS) GOARCH=$(ARCH) go build -o bin/zot-$(OS)-$(ARCH)-debug$(BIN_EXT) $(BUILDMODE_FLAGS) -tags $(BUILD_LABELS),debug -v -gcflags all='-N -l' -ldflags "-X $(CONFIG_RELEASE_TAG)=${RELEASE_TAG} -X $(CONFIG_COMMIT)=${COMMIT} -X $(CONFIG_BINARY_TYPE)=$(extended-name) -X $(CONFIG_GO_VERSION)=${GO_VERSION}" ./cmd/zot
 
 .PHONY: cli
 cli: modcheck build-metadata
-	env CGO_ENABLED=0 GOOS=$(OS) GOARCH=$(ARCH) go build -o bin/zli-$(OS)-$(ARCH)$(BIN_EXT) $(BUILDMODE_FLAGS) -tags $(BUILD_LABELS),search -v -trimpath -ldflags "-X zotregistry.dev/zot/pkg/api/config.Commit=${COMMIT} -X zotregistry.dev/zot/pkg/api/config.BinaryType=$(extended-name) -X zotregistry.dev/zot/pkg/api/config.GoVersion=${GO_VERSION} -s -w" ./cmd/zli
+	env CGO_ENABLED=0 GOOS=$(OS) GOARCH=$(ARCH) go build -o bin/zli-$(OS)-$(ARCH)$(BIN_EXT) $(BUILDMODE_FLAGS) -tags $(BUILD_LABELS),search -v -trimpath -ldflags "-X $(CONFIG_COMMIT)=${COMMIT} -X $(CONFIG_BINARY_TYPE)=$(extended-name) -X $(CONFIG_GO_VERSION)=${GO_VERSION} -s -w" ./cmd/zli
 
 .PHONY: bench
 bench: modcheck build-metadata
-	env CGO_ENABLED=0 GOOS=$(OS) GOARCH=$(ARCH) go build -o bin/zb-$(OS)-$(ARCH)$(BIN_EXT) $(BUILDMODE_FLAGS) $(GO_CMD_TAGS) -v -trimpath -ldflags "-X zotregistry.dev/zot/pkg/api/config.Commit=${COMMIT} -X zotregistry.dev/zot/pkg/api/config.BinaryType=$(extended-name) -X zotregistry.dev/zot/pkg/api/config.GoVersion=${GO_VERSION} -s -w" ./cmd/zb
+	env CGO_ENABLED=0 GOOS=$(OS) GOARCH=$(ARCH) go build -o bin/zb-$(OS)-$(ARCH)$(BIN_EXT) $(BUILDMODE_FLAGS) $(GO_CMD_TAGS) -v -trimpath -ldflags "-X $(CONFIG_COMMIT)=${COMMIT} -X $(CONFIG_BINARY_TYPE)=$(extended-name) -X $(CONFIG_GO_VERSION)=${GO_VERSION} -s -w" ./cmd/zb
 
 .PHONY: exporter-minimal
 exporter-minimal: EXTENSIONS=
