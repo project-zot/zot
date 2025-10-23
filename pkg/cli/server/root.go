@@ -220,6 +220,8 @@ func NewServerRootCmd() *cobra.Command {
 	rootCmd.AddCommand(newVerifyCmd(conf))
 	// "scrub"
 	rootCmd.AddCommand(newScrubCmd(conf))
+	// "retention-check"
+	rootCmd.AddCommand(newRetentionCheckCmd(conf))
 	// "version"
 	rootCmd.Flags().BoolVarP(&showVersion, "version", "v", false, "show the version and exit")
 

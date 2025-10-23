@@ -37,6 +37,10 @@ type Options struct {
 	// will garbage collect blobs older than Delay
 	Delay time.Duration
 
+	// MaxSchedulerDelay is the maximum random delay for GC task scheduling
+	// Defaults to 30 seconds if not specified
+	MaxSchedulerDelay time.Duration
+
 	ImageRetention config.ImageRetention
 }
 
@@ -69,10 +73,16 @@ given an interval and a Scheduler.
 func (gc GarbageCollect) CleanImageStorePeriodically(interval time.Duration, sch *scheduler.Scheduler) {
 	processedRepos := make(map[string]struct{})
 
+	maxDelay := gc.opts.MaxSchedulerDelay
+	if maxDelay <= 0 {
+		maxDelay = 30 * time.Second // default value
+	}
+
 	generator := &GCTaskGenerator{
 		imgStore:       gc.imgStore,
 		gc:             gc,
 		processedRepos: processedRepos,
+		maxDelay:       maxDelay,
 	}
 
 	sch.SubmitGenerator(generator, interval, scheduler.MediumPriority)
@@ -808,12 +818,19 @@ type GCTaskGenerator struct {
 	nextRun        time.Time
 	done           bool
 	rand           *rand.Rand
+	maxDelay       time.Duration
 }
 
-func (gen *GCTaskGenerator) getRandomDelay() int {
-	maxDelay := 30
+func (gen *GCTaskGenerator) getRandomDelay() time.Duration {
+	maxDelay := gen.maxDelay
+	if maxDelay <= 0 {
+		maxDelay = 30 * time.Second // default fallback
+	}
 
-	return gen.rand.Intn(maxDelay)
+	// Generate random delay with nanosecond precision by working directly with
+	// time.Duration's internal representation (nanoseconds as int64).
+	// This supports sub-second delays (milliseconds, microseconds).
+	return time.Duration(gen.rand.Int63n(int64(maxDelay)))
 }
 
 func (gen *GCTaskGenerator) Name() string {
@@ -827,7 +844,7 @@ func (gen *GCTaskGenerator) Next() (scheduler.Task, error) {
 
 	delay := gen.getRandomDelay()
 
-	gen.nextRun = time.Now().Add(time.Duration(delay) * time.Second)
+	gen.nextRun = time.Now().Add(delay)
 
 	repo, err := gen.imgStore.GetNextRepository(gen.processedRepos)
 	if err != nil {
