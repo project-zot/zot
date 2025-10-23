@@ -460,47 +460,27 @@ func (c *Controller) StartBackgroundTasks() {
 		c.HTPasswdWatcher.Run()
 	}
 
-	// Enable running garbage-collect periodically for DefaultStore
-	storageConfig := c.Config.CopyStorageConfig()
-	if storageConfig.GC {
-		gc := gc.NewGarbageCollect(c.StoreController.DefaultStore, c.MetaDB, gc.Options{
-			Delay:          storageConfig.GCDelay,
-			ImageRetention: storageConfig.Retention,
-		}, c.Audit, c.Log)
-
-		gc.CleanImageStorePeriodically(storageConfig.GCInterval, c.taskScheduler)
-	}
+	// Run GC and retention tasks
+	RunGCTasks(c.Config, c.StoreController, c.MetaDB, c.taskScheduler, c.Log, c.Audit)
 
 	// Enable running dedupe blobs both ways (dedupe or restore deduped blobs)
 	c.StoreController.DefaultStore.RunDedupeBlobs(time.Duration(0), c.taskScheduler)
-
-	// Enable extensions if extension config is provided for DefaultStore
-	extensionsConfig := c.Config.CopyExtensionsConfig()
 
 	// Always call EnableSearchExtension to ensure proper logging, even when search is disabled
 	ext.EnableSearchExtension(c.Config, c.StoreController, c.MetaDB, c.taskScheduler, c.CveScanner, c.Log)
 
 	// Always call EnableMetricsExtension to ensure proper logging, even when metrics is disabled
+	storageConfig := c.Config.CopyStorageConfig()
 	ext.EnableMetricsExtension(c.Config, c.Log, storageConfig.RootDirectory)
 
 	// runs once if metrics are enabled & imagestore is local
+	extensionsConfig := c.Config.CopyExtensionsConfig()
 	if extensionsConfig.IsMetricsEnabled() && storageConfig.StorageDriver == nil {
 		c.StoreController.DefaultStore.PopulateStorageMetrics(time.Duration(0), c.taskScheduler)
 	}
 
 	if storageConfig.SubPaths != nil {
 		for route, subStorageConfig := range storageConfig.SubPaths {
-			// Enable running garbage-collect periodically for subImageStore
-			if subStorageConfig.GC {
-				gc := gc.NewGarbageCollect(c.StoreController.SubStore[route], c.MetaDB,
-					gc.Options{
-						Delay:          subStorageConfig.GCDelay,
-						ImageRetention: subStorageConfig.Retention,
-					}, c.Audit, c.Log)
-
-				gc.CleanImageStorePeriodically(subStorageConfig.GCInterval, c.taskScheduler)
-			}
-
 			// Enable extensions if extension config is provided for subImageStore
 			ext.EnableMetricsExtension(c.Config, c.Log, subStorageConfig.RootDirectory)
 
@@ -537,6 +517,40 @@ func (c *Controller) StartBackgroundTasks() {
 
 	// we can later move enabling the other scheduled tasks inside the call below
 	ext.EnableScheduledTasks(c.Config, c.taskScheduler, c.MetaDB, c.Log) //nolint: contextcheck
+}
+
+// RunGCTasks runs minimal GC and retention tasks without full controller.
+func RunGCTasks(conf *config.Config, storeController storage.StoreController, metaDB mTypes.MetaDB,
+	taskScheduler *scheduler.Scheduler, logger log.Logger, audit *log.Logger,
+) {
+	// Enable running garbage-collect periodically for DefaultStore
+	storageConfig := conf.CopyStorageConfig()
+	if storageConfig.GC {
+		gc := gc.NewGarbageCollect(storeController.DefaultStore, metaDB, gc.Options{
+			Delay:             storageConfig.GCDelay,
+			ImageRetention:    storageConfig.Retention,
+			MaxSchedulerDelay: storageConfig.GCMaxSchedulerDelay,
+		}, audit, logger)
+
+		gc.CleanImageStorePeriodically(storageConfig.GCInterval, taskScheduler)
+	}
+
+	// Handle subpaths
+	if storageConfig.SubPaths != nil {
+		for route, subStorageConfig := range storageConfig.SubPaths {
+			// Enable running garbage-collect periodically for subImageStore
+			if subStorageConfig.GC {
+				gc := gc.NewGarbageCollect(storeController.SubStore[route], metaDB,
+					gc.Options{
+						Delay:             subStorageConfig.GCDelay,
+						ImageRetention:    subStorageConfig.Retention,
+						MaxSchedulerDelay: subStorageConfig.GCMaxSchedulerDelay,
+					}, audit, logger)
+
+				gc.CleanImageStorePeriodically(subStorageConfig.GCInterval, taskScheduler)
+			}
+		}
+	}
 }
 
 type SyncOnDemand interface {

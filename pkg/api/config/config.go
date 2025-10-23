@@ -36,6 +36,10 @@ type StorageConfig struct {
 	Retention     ImageRetention
 	StorageDriver map[string]interface{} `mapstructure:",omitempty"`
 	CacheDriver   map[string]interface{} `mapstructure:",omitempty"`
+
+	// GCMaxSchedulerDelay is the maximum random delay for GC task scheduling
+	// This field is not configurable by the end user
+	GCMaxSchedulerDelay time.Duration `yaml:"-"`
 }
 
 type ImageRetention struct {
