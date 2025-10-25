@@ -1989,6 +1989,83 @@ func TestConfig(t *testing.T) {
 			So(cfg.IsMTLSAuthEnabled(), ShouldBeTrue) // No basic auth, so mTLS enabled
 		})
 
+		Convey("Test UseSecureSession()", func() {
+			// Test with nil Config
+			var cfg *config.Config = nil
+
+			So(cfg.UseSecureSession(), ShouldBeFalse)
+
+			// Test with Config but no TLS and no Auth
+			cfg = &config.Config{
+				HTTP: config.HTTPConfig{
+					TLS:  nil,
+					Auth: nil,
+				},
+			}
+			So(cfg.UseSecureSession(), ShouldBeFalse)
+
+			// Test with TLS configured (should return true)
+			cfg = &config.Config{
+				HTTP: config.HTTPConfig{
+					TLS: &config.TLSConfig{
+						Cert: "/path/to/cert.pem",
+						Key:  "/path/to/key.pem",
+					},
+				},
+			}
+			So(cfg.UseSecureSession(), ShouldBeTrue)
+
+			// Test with no TLS but SecureSession explicitly set to true
+			secureTrue := true
+			cfg = &config.Config{
+				HTTP: config.HTTPConfig{
+					TLS: nil,
+					Auth: &config.AuthConfig{
+						SecureSession: &secureTrue,
+					},
+				},
+			}
+			So(cfg.UseSecureSession(), ShouldBeTrue)
+
+			// Test with no TLS but SecureSession explicitly set to false
+			secureFalse := false
+			cfg = &config.Config{
+				HTTP: config.HTTPConfig{
+					TLS: nil,
+					Auth: &config.AuthConfig{
+						SecureSession: &secureFalse,
+					},
+				},
+			}
+			So(cfg.UseSecureSession(), ShouldBeFalse)
+
+			// Test with no TLS and Auth but SecureSession not set
+			cfg = &config.Config{
+				HTTP: config.HTTPConfig{
+					TLS: nil,
+					Auth: &config.AuthConfig{
+						APIKey: true,
+					},
+				},
+			}
+			So(cfg.UseSecureSession(), ShouldBeFalse)
+
+			// Test with TLS configured and SecureSession set (TLS should take precedence)
+			secureTrue = true
+			cfg = &config.Config{
+				HTTP: config.HTTPConfig{
+					TLS: &config.TLSConfig{
+						Cert: "/path/to/cert.pem",
+						Key:  "/path/to/key.pem",
+					},
+					Auth: &config.AuthConfig{
+						SecureSession: &secureTrue,
+					},
+				},
+			}
+			So(cfg.UseSecureSession(), ShouldBeTrue) // TLS takes precedence
+		})
+
 		Convey("Test IsCompatEnabled()", func() {
 			// Test with nil Config
 			var cfg *config.Config = nil
