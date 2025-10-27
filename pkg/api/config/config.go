@@ -80,6 +80,7 @@ type AuthConfig struct {
 	SessionHashKey    []byte         `json:"-"`
 	SessionEncryptKey []byte         `json:"-"`
 	SessionDriver     map[string]any `mapstructure:",omitempty"`
+	SecureSession     *bool          `json:"secureSession,omitempty" mapstructure:"secureSession,omitempty"`
 }
 
 // IsLdapAuthEnabled checks if LDAP authentication is enabled in this auth config.
@@ -670,6 +671,7 @@ func (c *Config) UpdateReloadableConfig(newConfig *Config) {
 		c.HTTP.Auth.LDAP = newConfig.HTTP.Auth.LDAP
 		c.HTTP.Auth.APIKey = newConfig.HTTP.Auth.APIKey
 		c.HTTP.Auth.OpenID = newConfig.HTTP.Auth.OpenID
+		c.HTTP.Auth.SecureSession = newConfig.HTTP.Auth.SecureSession
 	}
 
 	// Initialize and update AccessControlConfig
@@ -1014,6 +1016,31 @@ func (c *Config) IsCompatEnabled() bool {
 	defer c.mu.RUnlock()
 
 	return len(c.HTTP.Compat) > 0
+}
+
+// UseSecureSession returns whether cookies should have the Secure flag set.
+// If TLS is configured, always returns true. Otherwise, returns the value
+// of SecureSession if set, or false by default.
+func (c *Config) UseSecureSession() bool {
+	if c == nil {
+		return false
+	}
+
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	// If TLS is configured, cookies should be secure
+	if c.HTTP.TLS != nil {
+		return true
+	}
+
+	// If TLS is not configured, check if SecureSession is explicitly set in auth config
+	if c.HTTP.Auth != nil && c.HTTP.Auth.SecureSession != nil {
+		return *c.HTTP.Auth.SecureSession
+	}
+
+	// Default to false if TLS is not configured and no explicit setting
+	return false
 }
 
 // IsOpenIDSupported checks if the provider supports OpenID.

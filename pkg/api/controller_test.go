@@ -5779,10 +5779,12 @@ func TestAuthnSessionErrors(t *testing.T) {
 			})
 
 			Convey("web request without cookies", func() {
-				client.SetCookie(&http.Cookie{})
+				// Create a new client without cookies to test unauthorized access
+				clientWithoutCookies := resty.New()
+				clientWithoutCookies.SetHeader(constants.SessionClientHeaderName, constants.SessionClientHeaderValue)
 
-				// call endpoint with session (added to client after previous request)
-				resp, err = client.R().
+				// call endpoint without session cookies
+				resp, err = clientWithoutCookies.R().
 					SetHeader(constants.SessionClientHeaderName, constants.SessionClientHeaderValue).
 					Get(baseURL + "/v2/_catalog")
 				So(err, ShouldBeNil)

@@ -135,7 +135,8 @@ func (amw *AuthnMiddleware) basicAuthn(ctlr *Controller, userAc *reqCtx.UserAcce
 
 		// saved logged session only if the request comes from web (has UI session header value)
 		if hasSessionHeader(request) {
-			if err := saveUserLoggedSession(cookieStore, response, request, identity, ctlr.Log); err != nil {
+			secure := ctlr.Config.UseSecureSession()
+			if err := saveUserLoggedSession(cookieStore, response, request, identity, secure, ctlr.Log); err != nil {
 				return false, err
 			}
 		}
@@ -173,7 +174,8 @@ func (amw *AuthnMiddleware) basicAuthn(ctlr *Controller, userAc *reqCtx.UserAcce
 
 			// saved logged session only if the request comes from web (has UI session header value)
 			if hasSessionHeader(request) {
-				if err := saveUserLoggedSession(cookieStore, response, request, identity, ctlr.Log); err != nil {
+				secure := ctlr.Config.UseSecureSession()
+				if err := saveUserLoggedSession(cookieStore, response, request, identity, secure, ctlr.Log); err != nil {
 					return false, err
 				}
 			}
@@ -787,11 +789,11 @@ func GetGithubUserInfo(ctx context.Context, client *github.Client, log log.Logge
 }
 
 func saveUserLoggedSession(cookieStore sessions.Store, response http.ResponseWriter,
-	request *http.Request, identity string, log log.Logger,
+	request *http.Request, identity string, secure bool, log log.Logger,
 ) error {
 	session, _ := cookieStore.Get(request, "session")
 
-	session.Options.Secure = true
+	session.Options.Secure = secure
 	session.Options.HttpOnly = true
 	session.Options.SameSite = http.SameSiteDefaultMode
 	session.Values["authStatus"] = true
@@ -806,7 +808,7 @@ func saveUserLoggedSession(cookieStore sessions.Store, response http.ResponseWri
 	}
 
 	userInfoCookie := sessions.NewCookie("user", identity, &sessions.Options{
-		Secure:   true,
+		Secure:   secure,
 		HttpOnly: false,
 		MaxAge:   cookiesMaxAge,
 		SameSite: http.SameSiteDefaultMode,
@@ -846,7 +848,8 @@ func OAuth2Callback(ctlr *Controller, w http.ResponseWriter, r *http.Request, st
 
 	// if this line has been reached, then a new session should be created
 	// if the `session` key is already on the cookie, it's not a valid one
-	if err := saveUserLoggedSession(ctlr.CookieStore, w, r, email, ctlr.Log); err != nil {
+	secure := ctlr.Config.UseSecureSession()
+	if err := saveUserLoggedSession(ctlr.CookieStore, w, r, email, secure, ctlr.Log); err != nil {
 		return "", err
 	}
 

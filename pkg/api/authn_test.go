@@ -5,6 +5,8 @@ package api_test
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"errors"
 	"io/fs"
@@ -41,6 +43,11 @@ import (
 )
 
 var ErrUnexpectedError = errors.New("error: unexpected error")
+
+const (
+	sessionCookieName = "session"
+	userCookieName    = "user"
+)
 
 type (
 	apiKeyResponse struct {
@@ -237,18 +244,21 @@ func TestAPIKeys(t *testing.T) {
 			client := resty.New()
 			client.SetRedirectPolicy(test.CustomRedirectPolicy(20))
 
-			// first login user
+			// first login user - in OAuth2 flow, redirect policy automatically follows and gets cookies
 			resp, err := client.R().
 				SetHeader(constants.SessionClientHeaderName, constants.SessionClientHeaderValue).
 				SetQueryParam("provider", "oidc").
 				Get(baseURL + constants.LoginPath)
 			So(err, ShouldBeNil)
 			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
 
 			cookies := resp.Cookies()
 
-			// call endpoint without session
-			resp, err = client.R().
+			// call endpoint without session - use a new client without cookies
+			clientWithoutSession := resty.New()
+			resp, err = clientWithoutSession.R().
+				SetBody(reqBody).
 				SetHeader(constants.SessionClientHeaderName, constants.SessionClientHeaderValue).
 				Post(baseURL + constants.APIKeyPath)
 			So(err, ShouldBeNil)
@@ -388,7 +398,10 @@ func TestAPIKeys(t *testing.T) {
 			So(resp, ShouldNotBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
 
-			client.SetCookies(resp.Cookies())
+			cookies := resp.Cookies()
+			verifySessionCookiesSecureFlag(cookies, false) // No TLS configured
+
+			client.SetCookies(cookies)
 
 			// call endpoint with session ( added to client after previous request)
 			resp, err = client.R().
@@ -518,7 +531,10 @@ func TestAPIKeys(t *testing.T) {
 			So(resp, ShouldNotBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
 
-			client.SetCookies(resp.Cookies())
+			cookies = resp.Cookies()
+			verifySessionCookiesSecureFlag(cookies, false) // No TLS configured
+
+			client.SetCookies(cookies)
 
 			resp, err = client.R().
 				SetBody(reqBody).
@@ -782,7 +798,10 @@ func TestAPIKeys(t *testing.T) {
 			So(resp, ShouldNotBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
 
-			client.SetCookies(resp.Cookies())
+			cookies := resp.Cookies()
+			verifySessionCookiesSecureFlag(cookies, false) // No TLS configured
+
+			client.SetCookies(cookies)
 
 			// call endpoint with session ( added to client after previous request)
 			resp, err = client.R().
@@ -817,7 +836,10 @@ func TestAPIKeys(t *testing.T) {
 			So(resp, ShouldNotBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
 
-			client.SetCookies(resp.Cookies())
+			cookies := resp.Cookies()
+			verifySessionCookiesSecureFlag(cookies, false) // No TLS configured
+
+			client.SetCookies(cookies)
 
 			// call endpoint with session ( added to client after previous request)
 			resp, err = client.R().
@@ -1112,6 +1134,159 @@ func TestCookiestoreCleanup(t *testing.T) {
 	})
 }
 
+func TestCookieSecureFlag(t *testing.T) {
+	Convey("Test cookie Secure flag based on configuration", t, func() {
+		const (
+			serverCertPath = "../../test/data/server.cert"
+			serverKeyPath  = "../../test/data/server.key"
+			caCertPath     = "../../test/data/ca.crt"
+		)
+
+		mockOIDCServer, err := authutils.MockOIDCRun()
+		So(err, ShouldBeNil)
+
+		defer func() {
+			err := mockOIDCServer.Shutdown()
+			So(err, ShouldBeNil)
+		}()
+
+		username, _ := test.GenerateRandomString()
+		password, _ := test.GenerateRandomString()
+		htpasswdPath := test.MakeHtpasswdFileFromString(test.GetCredString(username, password))
+
+		defer os.Remove(htpasswdPath)
+
+		mockOIDCConfig := mockOIDCServer.Config()
+		defaultVal := true
+
+		Convey("Test with TLS configured - cookies should be Secure=true", func() {
+			conf := config.New()
+			port := test.GetFreePort()
+			baseURL := test.GetSecureBaseURL(port)
+
+			conf.HTTP.Port = port
+			conf.HTTP.TLS = &config.TLSConfig{
+				Cert: serverCertPath,
+				Key:  serverKeyPath,
+			}
+			conf.HTTP.Auth = &config.AuthConfig{
+				HTPasswd: config.AuthHTPasswd{
+					Path: htpasswdPath,
+				},
+				OpenID: &config.OpenIDConfig{
+					Providers: map[string]config.OpenIDProviderConfig{
+						"oidc": {
+							ClientID:     mockOIDCConfig.ClientID,
+							ClientSecret: mockOIDCConfig.ClientSecret,
+							KeyPath:      "",
+							Issuer:       mockOIDCConfig.Issuer,
+							Scopes:       []string{"openid", "email", "groups"},
+						},
+					},
+				},
+				APIKey: defaultVal,
+			}
+
+			ctlr := api.NewController(conf)
+			ctlr.Config.Storage.RootDirectory = t.TempDir()
+
+			cm := test.NewControllerManager(ctlr)
+
+			cm.StartServer()
+
+			defer cm.StopServer()
+
+			// Load CA certificate for proper TLS verification
+			caCert, err := os.ReadFile(caCertPath)
+			So(err, ShouldBeNil)
+
+			caCertPool := x509.NewCertPool()
+			caCertPool.AppendCertsFromPEM(caCert)
+
+			client := resty.New()
+			client.SetRedirectPolicy(test.CustomRedirectPolicy(20))
+			client.SetTLSClientConfig(&tls.Config{RootCAs: caCertPool, MinVersion: tls.VersionTLS12})
+
+			for {
+				if _, err := client.R().Get(baseURL); err == nil {
+					break
+				}
+
+				// wait for server to be ready
+				time.Sleep(test.SleepTime)
+			}
+
+			resp, err := client.R().
+				SetHeader(constants.SessionClientHeaderName, constants.SessionClientHeaderValue).
+				SetQueryParam("provider", "oidc").
+				Get(baseURL + constants.LoginPath)
+			So(err, ShouldBeNil)
+			So(resp, ShouldNotBeNil)
+
+			cookies := resp.Cookies()
+			So(len(cookies), ShouldBeGreaterThan, 0)
+
+			// Verify cookies have Secure=true when TLS is configured
+			verifySessionCookiesSecureFlag(cookies, true)
+		})
+
+		Convey("Test with SecureSession=true configured - cookies should be Secure=true", func() {
+			secureTrue := true
+			conf := config.New()
+			port := test.GetFreePort()
+			baseURL := test.GetBaseURL(port)
+
+			conf.HTTP.Port = port
+			conf.HTTP.TLS = nil // No TLS
+			conf.HTTP.Auth = &config.AuthConfig{
+				HTPasswd: config.AuthHTPasswd{
+					Path: htpasswdPath,
+				},
+				OpenID: &config.OpenIDConfig{
+					Providers: map[string]config.OpenIDProviderConfig{
+						"oidc": {
+							ClientID:     mockOIDCConfig.ClientID,
+							ClientSecret: mockOIDCConfig.ClientSecret,
+							KeyPath:      "",
+							Issuer:       mockOIDCConfig.Issuer,
+							Scopes:       []string{"openid", "email", "groups"},
+						},
+					},
+				},
+				APIKey:        defaultVal,
+				SecureSession: &secureTrue,
+			}
+
+			ctlr := api.NewController(conf)
+			ctlr.Config.Storage.RootDirectory = t.TempDir()
+
+			cm := test.NewControllerManager(ctlr)
+
+			cm.StartServer()
+
+			defer cm.StopServer()
+			test.WaitTillServerReady(baseURL)
+
+			client := resty.New()
+			client.SetRedirectPolicy(test.CustomRedirectPolicy(20))
+
+			// login user
+			resp, err := client.R().
+				SetHeader(constants.SessionClientHeaderName, constants.SessionClientHeaderValue).
+				SetQueryParam("provider", "oidc").
+				Get(baseURL + constants.LoginPath)
+			So(err, ShouldBeNil)
+			So(resp, ShouldNotBeNil)
+
+			cookies := resp.Cookies()
+			So(len(cookies), ShouldBeGreaterThan, 0)
+
+			// Verify cookies have Secure=true when SecureSession is set to true
+			verifySessionCookiesSecureFlag(cookies, true)
+		})
+	})
+}
+
 func TestRedisCookieStore(t *testing.T) {
 	log := log.Logger{}
 
@@ -1267,4 +1442,22 @@ func (di badDirInfo) Name() string {
 
 func (di badDirInfo) String() string {
 	return fs.FormatDirEntry(di)
+}
+
+func verifySessionCookiesSecureFlag(cookies []*http.Cookie, expectedSecure bool) {
+	var sessionCookie, userCookie *http.Cookie
+
+	for _, cookie := range cookies {
+		if cookie.Name == sessionCookieName {
+			sessionCookie = cookie
+		} else if cookie.Name == userCookieName {
+			userCookie = cookie
+		}
+	}
+
+	// Verify both cookies exist and have correct Secure flag
+	So(sessionCookie, ShouldNotBeNil)
+	So(userCookie, ShouldNotBeNil)
+	So(sessionCookie.Secure, ShouldEqual, expectedSecure)
+	So(userCookie.Secure, ShouldEqual, expectedSecure)
 }
