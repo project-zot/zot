@@ -105,7 +105,7 @@ jobs:
         run: |
           find /tmp/zot-ft-logs -name '*.log' -print0 | xargs -0 cat
       - name: Upload DynamoDB zot logs as build artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         if: always()
         with:
           name: zot-scale-out-dynamodb-logs
@@ -143,7 +143,7 @@ jobs:
         run: |
           find /tmp/zot-ft-logs/redis -name '*.log' -print0 | xargs -0 cat
       - name: Upload Redis zot logs as build artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         if: always()
         with:
           name: zot-scale-out-redis-logs
@@ -168,7 +168,7 @@ jobs:
           echo "Redis scale-out tests failed"
           exit 1
       - name: Upload zb test results zip as build artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         if: always()
         with:
           name: zb-cloud-scale-out-functional-results-${{ github.sha }}
