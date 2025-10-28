@@ -189,6 +189,19 @@ func newVerifyCmd(conf *config.Config) *cobra.Command {
 	return verifyCmd
 }
 
+func newVerifyFeatureCmd(conf *config.Config) *cobra.Command {
+	verifyFeatureCmd := &cobra.Command{
+		Use:   "verify-feature",
+		Short: "`verify-feature` validates specific zot features",
+		Long:  "`verify-feature` validates specific zot features",
+	}
+
+	// Add subcommands
+	verifyFeatureCmd.AddCommand(newVerifyFeatureRetentionCmd(conf))
+
+	return verifyFeatureCmd
+}
+
 // "zot" - registry server.
 func NewServerRootCmd() *cobra.Command {
 	showVersion := false
@@ -220,6 +233,8 @@ func NewServerRootCmd() *cobra.Command {
 	rootCmd.AddCommand(newVerifyCmd(conf))
 	// "scrub"
 	rootCmd.AddCommand(newScrubCmd(conf))
+	// "verify-feature"
+	rootCmd.AddCommand(newVerifyFeatureCmd(conf))
 	// "version"
 	rootCmd.Flags().BoolVarP(&showVersion, "version", "v", false, "show the version and exit")
 
