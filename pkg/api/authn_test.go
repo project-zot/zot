@@ -1288,7 +1288,7 @@ func TestCookieSecureFlag(t *testing.T) {
 }
 
 func TestRedisCookieStore(t *testing.T) {
-	log := log.Logger{}
+	log := log.NewTestLogger()
 
 	testRedis := miniredis.RunT(t)
 
