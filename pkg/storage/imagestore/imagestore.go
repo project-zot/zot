@@ -1082,17 +1082,31 @@ func (is *ImageStore) FullBlobUpload(repo string, body io.Reader, dstDigest godi
 		return "", -1, zerr.ErrUploadNotFound
 	}
 
-	defer blobFile.Close()
-
 	mw := io.MultiWriter(blobFile, digester)
 
 	nbytes, err := io.Copy(mw, body)
 	if err != nil {
+		_ = blobFile.Close()
+
+		is.log.Error().Err(err).Str("blob", src).Msg("failed to write blob")
+
 		return "", -1, err
 	}
 
 	if err := blobFile.Commit(context.Background()); err != nil {
+		_ = blobFile.Close()
+
 		is.log.Error().Err(err).Str("blob", src).Msg("failed to commit blob")
+
+		return "", -1, err
+	}
+
+	// Close explicitly before returning so the subsequent move/rename can succeed on Windows.
+	// - Windows does not allow renaming/moving a file while there is any open handle to it.
+	// - If we relied on a deferred close, the handle would be released only when the function returns,
+	// which would prevent the move/rename operation from succeeding on Windows.
+	if err := blobFile.Close(); err != nil {
+		is.log.Error().Err(err).Msg("failed to close blob")
 
 		return "", -1, err
 	}
