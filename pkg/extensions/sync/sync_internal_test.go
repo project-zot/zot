@@ -586,6 +586,7 @@ func TestDestinationRegistry(t *testing.T) {
 
 		log := log.NewTestLogger()
 		metrics := monitoring.NewMetricsServer(false, log)
+		defer metrics.Stop() // Clean up metrics server to prevent resource leaks
 		cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
 			RootDir:     dir,
 			Name:        "cache",

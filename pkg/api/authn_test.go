@@ -959,6 +959,8 @@ func TestCookiestoreCleanup(t *testing.T) {
 	log := log.NewTestLogger()
 	metrics := monitoring.NewMetricsServer(true, log)
 
+	defer metrics.Stop() // Clean up metrics server to prevent resource leaks
+
 	authCfgTestCases := []struct {
 		name string
 		cfg  config.AuthConfig
