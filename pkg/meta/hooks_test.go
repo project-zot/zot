@@ -26,6 +26,8 @@ func TestOnUpdateManifest(t *testing.T) {
 		storeController := storage.StoreController{}
 		log := log.NewTestLogger()
 		metrics := monitoring.NewMetricsServer(false, log)
+
+		defer metrics.Stop() // Clean up metrics server to prevent resource leaks
 		storeController.DefaultStore = local.NewImageStore(rootDir, true, true, log, metrics, nil, nil, nil, nil)
 
 		params := boltdb.DBParameters{

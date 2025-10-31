@@ -41,6 +41,7 @@ func TestGarbageCollectManifestErrors(t *testing.T) {
 		audit := zlog.NewAuditLogger("debug", "")
 
 		metrics := monitoring.NewMetricsServer(false, log)
+		defer metrics.Stop() // Clean up metrics server to prevent resource leaks
 
 		cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
 			RootDir:     dir,
@@ -166,6 +167,7 @@ func TestGarbageCollectIndexErrors(t *testing.T) {
 		audit := zlog.NewAuditLogger("debug", "")
 
 		metrics := monitoring.NewMetricsServer(false, log)
+		defer metrics.Stop() // Clean up metrics server to prevent resource leaks
 		cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
 			RootDir:     dir,
 			Name:        "cache",

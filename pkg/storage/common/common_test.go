@@ -31,6 +31,8 @@ func TestValidateManifest(t *testing.T) {
 
 		log := log.NewTestLogger()
 		metrics := monitoring.NewMetricsServer(false, log)
+
+		defer metrics.Stop() // Clean up metrics server to prevent resource leaks
 		cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
 			RootDir:     dir,
 			Name:        "cache",
@@ -192,6 +194,8 @@ func TestGetReferrersErrors(t *testing.T) {
 
 		log := log.NewTestLogger()
 		metrics := monitoring.NewMetricsServer(false, log)
+
+		defer metrics.Stop() // Clean up metrics server to prevent resource leaks
 		cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
 			RootDir:     dir,
 			Name:        "cache",
@@ -409,6 +413,8 @@ func TestGetImageIndexErrors(t *testing.T) {
 func TestGetBlobDescriptorFromRepo(t *testing.T) {
 	log := log.NewTestLogger()
 	metrics := monitoring.NewMetricsServer(false, log)
+
+	defer metrics.Stop() // Clean up metrics server to prevent resource leaks
 
 	tdir := t.TempDir()
 	cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
