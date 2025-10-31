@@ -340,3 +340,85 @@ func TestNewAuditLogger(t *testing.T) {
 		}, ShouldPanic)
 	})
 }
+
+func TestCallerFunction(t *testing.T) {
+	var buf bytes.Buffer
+	logger := log.NewLoggerWithWriter("debug", &buf)
+
+	// Test case 1: Simple log without chaining
+	logger.Info().Msg("test message 1")
+	output1 := buf.String()
+
+	if !strings.Contains(output1, "test message 1") {
+		t.Errorf("Expected output to contain 'test message 1', got: %s", output1)
+	}
+
+	if !strings.Contains(output1, "TestCallerFunction") {
+		t.Errorf("Expected output to contain 'TestCallerFunction', got: %s", output1)
+	}
+
+	if strings.Contains(output1, "(*Event).Str") {
+		t.Errorf("Expected output NOT to contain '(*Event).Str', got: %s", output1)
+	}
+
+	// Reset buffer
+	buf.Reset()
+
+	// Test case 2: Log with Str() chaining (this was the problematic case)
+	logger.Info().Str("module", "test").Msg("test message 2")
+	output2 := buf.String()
+
+	if !strings.Contains(output2, "test message 2") {
+		t.Errorf("Expected output to contain 'test message 2', got: %s", output2)
+	}
+
+	if !strings.Contains(output2, "module") {
+		t.Errorf("Expected output to contain 'module', got: %s", output2)
+	}
+
+	if !strings.Contains(output2, "TestCallerFunction") {
+		t.Errorf("Expected output to contain 'TestCallerFunction', got: %s", output2)
+	}
+
+	if strings.Contains(output2, "(*Event).Str") {
+		t.Errorf("Expected output NOT to contain '(*Event).Str', got: %s", output2)
+	}
+
+	// Reset buffer
+	buf.Reset()
+
+	// Test case 3: Log with multiple chainings
+	logger.Error().Str("module", "test").Str("error", "something").Msg("test error message")
+	output3 := buf.String()
+
+	if !strings.Contains(output3, "test error message") {
+		t.Errorf("Expected output to contain 'test error message', got: %s", output3)
+	}
+
+	if !strings.Contains(output3, "TestCallerFunction") {
+		t.Errorf("Expected output to contain 'TestCallerFunction', got: %s", output3)
+	}
+
+	if strings.Contains(output3, "(*Event).Str") {
+		t.Errorf("Expected output NOT to contain '(*Event).Str', got: %s", output3)
+	}
+
+	// Reset buffer
+	buf.Reset()
+
+	// Test case 4: Debug with Int
+	logger.Debug().Int("count", 42).Msg("test debug message")
+	output4 := buf.String()
+
+	if !strings.Contains(output4, "test debug message") {
+		t.Errorf("Expected output to contain 'test debug message', got: %s", output4)
+	}
+
+	if !strings.Contains(output4, "TestCallerFunction") {
+		t.Errorf("Expected output to contain 'TestCallerFunction', got: %s", output4)
+	}
+
+	if strings.Contains(output4, "(*Event).Int") {
+		t.Errorf("Expected output NOT to contain '(*Event).Int', got: %s", output4)
+	}
+}

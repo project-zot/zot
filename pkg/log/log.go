@@ -15,9 +15,10 @@ import (
 )
 
 const (
-	defaultPerms         = 0o0600
-	messageKey           = "message"
-	callerSkipFrameCount = 5
+	defaultPerms = 0o0600
+	messageKey   = "message"
+	// Skip: runtime.Callers(0), newEvent(1), Info/Error/etc(2), actual caller(3).
+	callerSkipFrameCount = 3
 )
 
 // Logger extends slog's Logger with zerolog-compatible API.
@@ -27,45 +28,72 @@ type Logger struct {
 
 // Event represents a log event, mimicking zerolog.Event.
 type Event struct {
-	logger  *Logger
-	level   slog.Level
-	attrs   []slog.Attr
-	isPanic bool
+	logger   *Logger
+	level    slog.Level
+	attrs    []slog.Attr
+	isPanic  bool
+	caller   string
+	function string
+}
+
+// newEvent creates a new log event with caller information captured at the point of creation.
+func (l Logger) newEvent(level slog.Level, isPanic bool) *Event {
+	var caller, function string
+
+	// Get the program counter at the caller's location
+	pc := make([]uintptr, 1)
+	n := runtime.Callers(callerSkipFrameCount, pc)
+
+	if n > 0 {
+		frames := runtime.CallersFrames(pc)
+		frame, _ := frames.Next()
+		caller = fmt.Sprintf("%s:%d", frame.File, frame.Line)
+		function = frame.Function
+	}
+
+	return &Event{
+		logger:   &l,
+		level:    level,
+		attrs:    []slog.Attr{},
+		isPanic:  isPanic,
+		caller:   caller,
+		function: function,
+	}
 }
 
 // Info returns an event for info level logging.
 func (l Logger) Info() *Event {
-	return &Event{logger: &l, level: slog.LevelInfo, attrs: []slog.Attr{}}
+	return l.newEvent(slog.LevelInfo, false)
 }
 
 // Debug returns an event for debug level logging.
 func (l Logger) Debug() *Event {
-	return &Event{logger: &l, level: slog.LevelDebug, attrs: []slog.Attr{}}
+	return l.newEvent(slog.LevelDebug, false)
 }
 
 // Error returns an event for error level logging.
 func (l Logger) Error() *Event {
-	return &Event{logger: &l, level: slog.LevelError, attrs: []slog.Attr{}}
+	return l.newEvent(slog.LevelError, false)
 }
 
 // Warn returns an event for warn level logging.
 func (l Logger) Warn() *Event {
-	return &Event{logger: &l, level: slog.LevelWarn, attrs: []slog.Attr{}}
+	return l.newEvent(slog.LevelWarn, false)
 }
 
 // Panic returns an event for panic level logging (maps to error + panic).
 func (l Logger) Panic() *Event {
-	return &Event{logger: &l, level: slog.LevelError, attrs: []slog.Attr{}, isPanic: true}
+	return l.newEvent(slog.LevelError, true)
 }
 
 // Fatal returns an event for fatal level logging (maps to error + panic).
 func (l Logger) Fatal() *Event {
-	return &Event{logger: &l, level: slog.LevelError, attrs: []slog.Attr{}, isPanic: true}
+	return l.newEvent(slog.LevelError, true)
 }
 
 // Err logs an error directly on the logger (convenience method).
 func (l Logger) Err(err error) *Event {
-	event := l.Error()
+	event := l.newEvent(slog.LevelError, false)
 	if err != nil {
 		event.attrs = append(event.attrs, slog.String("error", err.Error()))
 	}
@@ -75,7 +103,7 @@ func (l Logger) Err(err error) *Event {
 
 // With returns a logger with additional context.
 func (l Logger) With() *Event {
-	return &Event{logger: &l, level: slog.LevelInfo, attrs: []slog.Attr{}}
+	return l.newEvent(slog.LevelInfo, false)
 }
 
 // Logger returns the logger from an event (for method chaining).
@@ -188,7 +216,20 @@ func NewTestLoggerPtr() *Logger {
 // Msgf logs the event with a formatted message.
 func (e *Event) Msgf(format string, args ...interface{}) {
 	msg := fmt.Sprintf(format, args...)
-	e.logger.LogAttrs(nil, e.level, msg, e.attrs...)
+
+	// Create a new slice to avoid modifying the original
+	attrs := make([]slog.Attr, len(e.attrs), len(e.attrs)+2)
+	copy(attrs, e.attrs)
+
+	if e.caller != "" {
+		attrs = append(attrs, slog.String("caller", e.caller))
+	}
+
+	if e.function != "" {
+		attrs = append(attrs, slog.String("func", e.function))
+	}
+
+	e.logger.LogAttrs(nil, e.level, msg, attrs...)
 
 	if e.isPanic {
 		panic(msg)
@@ -197,7 +238,20 @@ func (e *Event) Msgf(format string, args ...interface{}) {
 
 // Msg logs the event with a simple message.
 func (e *Event) Msg(msg string) {
-	e.logger.LogAttrs(nil, e.level, msg, e.attrs...)
+	// Add caller and function info to attributes if captured
+	// Create a new slice to avoid modifying the original
+	attrs := make([]slog.Attr, len(e.attrs), len(e.attrs)+2)
+	copy(attrs, e.attrs)
+
+	if e.caller != "" {
+		attrs = append(attrs, slog.String("caller", e.caller))
+	}
+
+	if e.function != "" {
+		attrs = append(attrs, slog.String("func", e.function))
+	}
+
+	e.logger.LogAttrs(nil, e.level, msg, attrs...)
 
 	if e.isPanic {
 		panic(msg)
@@ -330,18 +384,8 @@ func (h *CallerHandler) Enabled(ctx context.Context, level slog.Level) bool {
 }
 
 func (h *CallerHandler) Handle(ctx context.Context, record slog.Record) error {
-	// Add caller information
-	if pc, file, line, ok := runtime.Caller(callerSkipFrameCount); ok { // Adjust stack depth as needed
-		frame := runtime.CallersFrames([]uintptr{pc})
-		f, _ := frame.Next()
-
-		record.Add("caller", fmt.Sprintf("%s:%d", file, line))
-
-		if f.Function != "" {
-			record.Add("func", f.Function)
-		}
-	}
-
+	// Caller information is now added directly in Event.Msg/Msgf methods
+	// This handler is kept for compatibility but no longer modifies the record
 	return h.handler.Handle(ctx, record)
 }
 
