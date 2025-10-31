@@ -40,8 +40,8 @@ func TestUserData(t *testing.T) {
 		simpleUser := "test"
 		simpleUserPassword := "test123"
 
-		content := test.GetCredString(adminUser, adminPassword) +
-			test.GetCredString(simpleUser, simpleUserPassword)
+		content := test.GetBcryptCredString(adminUser, adminPassword) +
+			test.GetBcryptCredString(simpleUser, simpleUserPassword)
 
 		htpasswdPath := test.MakeHtpasswdFileFromString(content)
 		defer os.Remove(htpasswdPath)
@@ -455,7 +455,7 @@ func TestChangingRepoState(t *testing.T) {
 	forbiddenRepo := "forbidden"
 	accesibleRepo := "accesible"
 
-	htpasswdPath := test.MakeHtpasswdFileFromString(test.GetCredString(simpleUser, simpleUserPassword))
+	htpasswdPath := test.MakeHtpasswdFileFromString(test.GetBcryptCredString(simpleUser, simpleUserPassword))
 	defer os.Remove(htpasswdPath)
 
 	conf := config.New()
@@ -606,7 +606,7 @@ func TestGlobalSearchWithUserPrefFiltering(t *testing.T) {
 		simpleUser := "simpleUser"
 		simpleUserPassword := "simpleUserPass"
 
-		htpasswdPath := test.MakeHtpasswdFileFromString(test.GetCredString(simpleUser, simpleUserPassword))
+		htpasswdPath := test.MakeHtpasswdFileFromString(test.GetBcryptCredString(simpleUser, simpleUserPassword))
 		defer os.Remove(htpasswdPath)
 
 		conf.HTTP.Auth = &config.AuthConfig{
@@ -801,7 +801,7 @@ func TestExpandedRepoInfoWithUserPrefs(t *testing.T) {
 		simpleUser := "simpleUser"
 		simpleUserPassword := "simpleUserPass"
 
-		htpasswdPath := test.MakeHtpasswdFileFromString(test.GetCredString(simpleUser, simpleUserPassword))
+		htpasswdPath := test.MakeHtpasswdFileFromString(test.GetBcryptCredString(simpleUser, simpleUserPassword))
 		defer os.Remove(htpasswdPath)
 
 		conf.HTTP.Auth = &config.AuthConfig{

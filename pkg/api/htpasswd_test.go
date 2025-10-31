@@ -158,7 +158,8 @@ func TestHTPasswdWatcher(t *testing.T) {
 			So(present, ShouldBeTrue)
 
 			// Test multiple users
-			multiUserContent := test.GetBcryptCredString(username1, password1) + "\n" + test.GetBcryptCredString(username2, password2)
+			multiUserContent := test.GetBcryptCredString(username1, password1) +
+				"\n" + test.GetBcryptCredString(username2, password2)
 			err = os.WriteFile(htpasswdPath1, []byte(multiUserContent), 0o600)
 			So(err, ShouldBeNil)
 			time.Sleep(100 * time.Millisecond)

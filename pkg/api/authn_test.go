@@ -99,7 +99,7 @@ func TestAPIKeys(t *testing.T) {
 
 		username, seedUser := test.GenerateRandomString()
 		password, seedPass := test.GenerateRandomString()
-		htpasswdPath := test.MakeHtpasswdFileFromString(test.GetCredString(username, password))
+		htpasswdPath := test.MakeHtpasswdFileFromString(test.GetBcryptCredString(username, password))
 
 		defer os.Remove(htpasswdPath)
 
@@ -871,7 +871,7 @@ func TestAPIKeysOpenDBError(t *testing.T) {
 		conf := config.New()
 		username, seedUser := test.GenerateRandomString()
 		password, seedPass := test.GenerateRandomString()
-		htpasswdPath := test.MakeHtpasswdFileFromString(test.GetCredString(username, password))
+		htpasswdPath := test.MakeHtpasswdFileFromString(test.GetBcryptCredString(username, password))
 
 		defer os.Remove(htpasswdPath)
 
@@ -1152,7 +1152,7 @@ func TestCookieSecureFlag(t *testing.T) {
 
 		username, _ := test.GenerateRandomString()
 		password, _ := test.GenerateRandomString()
-		htpasswdPath := test.MakeHtpasswdFileFromString(test.GetCredString(username, password))
+		htpasswdPath := test.MakeHtpasswdFileFromString(test.GetBcryptCredString(username, password))
 
 		defer os.Remove(htpasswdPath)
 

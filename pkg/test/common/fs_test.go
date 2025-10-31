@@ -268,8 +268,8 @@ func TestGetProjectRootDir(t *testing.T) {
 	})
 }
 
-func TestGetCredString(t *testing.T) {
-	Convey("GetCredString panics", t, func() {
+func TestGetBcryptCredString(t *testing.T) {
+	Convey("GetBcryptCredString panics", t, func() {
 		passwordSize := 100
 		pass := make([]byte, passwordSize)
 

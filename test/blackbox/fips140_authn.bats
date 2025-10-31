@@ -97,7 +97,7 @@ function teardown_file() {
     zot_stop_all
 }
 
-@test "push image with regclient" {
+@test "push image with regclient (bcrypt)" {
     zot_port=`cat ${BATS_FILE_TMPDIR}/zot.port`
     run regctl registry set localhost:${zot_port} --tls disabled
     run regctl registry login localhost:${zot_port} -u ${AUTH_USER} -p ${AUTH_PASS}
@@ -106,7 +106,7 @@ function teardown_file() {
     [ "$status" -eq 0 ]
 }
 
-@test "pull image with regclient" {
+@test "pull image with regclient (bcrypt)" {
     zot_port=`cat ${BATS_FILE_TMPDIR}/zot.port`
     run regctl image copy localhost:${zot_port}/test-regclient ocidir://${TEST_DATA_DIR}/busybox:latest
     [ "$status" -eq 0 ]
