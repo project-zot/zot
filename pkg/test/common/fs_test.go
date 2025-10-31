@@ -277,7 +277,7 @@ func TestGetCredString(t *testing.T) {
 			pass[i] = 'Y'
 		}
 
-		f := func() { tcommon.GetCredString("testUser", string(pass)) }
+		f := func() { tcommon.GetBcryptCredString("testUser", string(pass)) }
 		So(f, ShouldPanicWith, bcrypt.ErrPasswordTooLong)
 	})
 }

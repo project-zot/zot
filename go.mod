@@ -4,6 +4,7 @@ go 1.24.4
 
 require (
 	github.com/99designs/gqlgen v0.17.81
+	github.com/GehirnInc/crypt v0.0.0-20230320061759-8cc1b52080c5
 	github.com/Masterminds/semver v1.5.0
 	github.com/alicebob/miniredis/v2 v2.35.0
 	github.com/aquasecurity/trivy v0.65.0
@@ -69,6 +70,7 @@ require (
 	github.com/stretchr/testify v1.11.1
 	github.com/swaggo/http-swagger v1.3.4
 	github.com/swaggo/swag v1.16.6
+	github.com/tg123/go-htpasswd v1.2.4
 	github.com/tiendc/go-deepcopy v1.7.1
 	github.com/vektah/gqlparser/v2 v2.5.30
 	github.com/zitadel/oidc/v3 v3.45.0

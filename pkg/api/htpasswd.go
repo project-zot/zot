@@ -3,6 +3,7 @@ package api
 import (
 	"bufio"
 	"context"
+	"crypto/fips140"
 	"errors"
 	"os"
 	"os/signal"
@@ -11,8 +12,10 @@ import (
 	"syscall"
 
 	"github.com/fsnotify/fsnotify"
+	"github.com/tg123/go-htpasswd"
 	"golang.org/x/crypto/bcrypt"
 
+	zerr "zotregistry.dev/zot/v2/errors"
 	"zotregistry.dev/zot/v2/pkg/log"
 )
 
@@ -87,13 +90,34 @@ func (s *HTPasswd) Authenticate(username, passphrase string) (ok, present bool) 
 		return false, false
 	}
 
-	err := bcrypt.CompareHashAndPassword([]byte(passphraseHash), []byte(passphrase))
-	ok = err == nil
+	err := zerr.ErrInvalidCred
 
-	if err != nil && !errors.Is(err, bcrypt.ErrMismatchedHashAndPassword) {
-		// Log that user's hash has unsupported format. Better than silently return 401.
-		s.log.Warn().Err(err).Str("username", username).Msg("htpasswd bcrypt compare failed")
+	if strings.HasPrefix(passphraseHash, "$2a$") || strings.HasPrefix(passphraseHash, "$2b$") ||
+		strings.HasPrefix(passphraseHash, "$2y$") {
+
+		err = bcrypt.CompareHashAndPassword([]byte(passphraseHash), []byte(passphrase))
+
+		if err != nil && !errors.Is(err, bcrypt.ErrMismatchedHashAndPassword) {
+			// Log that user's hash has unsupported format. Better than silently return 401.
+			s.log.Warn().Err(err).Str("username", username).Msg("htpasswd bcrypt compare failed")
+		}
+
+		if fips140.Enabled() {
+			s.log.Warn().Str("username", username).Msg("htpasswd bcrypt failed since fips140 is enabled")
+
+			err = zerr.ErrInvalidCred // bcrypt is not a fips140 approved algo
+		}
+	} else {
+		ep, err := htpasswd.AcceptCryptSha(passphraseHash) // sha256 or sha512
+		if err != nil {
+			// Log that user's hash has unsupported format. Better than silently return 401.
+			s.log.Warn().Err(err).Str("username", username).Msg("htpasswd crypt parsing failed")
+		}
+
+		ok = ep.MatchesPassword(passphrase)
 	}
+
+	ok = err == nil
 
 	return
 }
