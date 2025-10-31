@@ -143,7 +143,7 @@ func TestMgmtExtension(t *testing.T) {
 	Convey("Verify mgmt auth info route enabled with htpasswd", t, func() {
 		username, seedUser := test.GenerateRandomString()
 		password, seedPass := test.GenerateRandomString()
-		htpasswdPath := test.MakeHtpasswdFileFromString(test.GetCredString(username, password))
+		htpasswdPath := test.MakeHtpasswdFileFromString(test.GetBcryptCredString(username, password))
 
 		defer func() {
 			conf.HTTP.Auth.HTPasswd.Path = ""
@@ -362,7 +362,7 @@ func TestMgmtExtension(t *testing.T) {
 	Convey("Verify mgmt auth info route enabled with htpasswd + ldap", t, func() {
 		username, seedUser := test.GenerateRandomString()
 		password, seedPass := test.GenerateRandomString()
-		htpasswdPath := test.MakeHtpasswdFileFromString(test.GetCredString(username, password))
+		htpasswdPath := test.MakeHtpasswdFileFromString(test.GetBcryptCredString(username, password))
 
 		defer func() {
 			conf.HTTP.Auth.HTPasswd.Path = ""
@@ -448,7 +448,7 @@ func TestMgmtExtension(t *testing.T) {
 	Convey("Verify mgmt auth info route enabled with htpasswd + ldap + bearer", t, func() {
 		username, seedUser := test.GenerateRandomString()
 		password, seedPass := test.GenerateRandomString()
-		htpasswdPath := test.MakeHtpasswdFileFromString(test.GetCredString(username, password))
+		htpasswdPath := test.MakeHtpasswdFileFromString(test.GetBcryptCredString(username, password))
 
 		defer func() {
 			conf.HTTP.Auth.HTPasswd.Path = ""
@@ -734,7 +734,7 @@ func TestMgmtExtension(t *testing.T) {
 	Convey("Verify mgmt auth info route enabled with empty openID provider list", t, func() {
 		username, seedUser := test.GenerateRandomString()
 		password, seedPass := test.GenerateRandomString()
-		htpasswdPath := test.MakeHtpasswdFileFromString(test.GetCredString(username, password))
+		htpasswdPath := test.MakeHtpasswdFileFromString(test.GetBcryptCredString(username, password))
 
 		defer func() {
 			conf.HTTP.Auth.HTPasswd.Path = ""

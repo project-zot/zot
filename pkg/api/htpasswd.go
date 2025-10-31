@@ -3,6 +3,7 @@ package api
 import (
 	"bufio"
 	"context"
+	"crypto/fips140"
 	"errors"
 	"os"
 	"os/signal"
@@ -11,6 +12,7 @@ import (
 	"syscall"
 
 	"github.com/fsnotify/fsnotify"
+	cpass "github.com/nathanaelle/password"
 	"golang.org/x/crypto/bcrypt"
 
 	"zotregistry.dev/zot/v2/pkg/log"
@@ -87,15 +89,51 @@ func (s *HTPasswd) Authenticate(username, passphrase string) (ok, present bool) 
 		return false, false
 	}
 
-	err := bcrypt.CompareHashAndPassword([]byte(passphraseHash), []byte(passphrase))
-	ok = err == nil
+	// first try bcrypt (although disabled if fips140 mode is enabled)
+	if strings.HasPrefix(passphraseHash, "$2a$") || strings.HasPrefix(passphraseHash, "$2b$") ||
+		strings.HasPrefix(passphraseHash, "$2y$") {
+		if fips140.Enabled() {
+			s.log.Warn().Str("username", username).Msg("htpasswd bcrypt failed since fips140 is enabled")
 
-	if err != nil && !errors.Is(err, bcrypt.ErrMismatchedHashAndPassword) {
-		// Log that user's hash has unsupported format. Better than silently return 401.
-		s.log.Warn().Err(err).Str("username", username).Msg("htpasswd bcrypt compare failed")
+			return false, present
+		}
+
+		err := bcrypt.CompareHashAndPassword([]byte(passphraseHash), []byte(passphrase))
+		if err != nil {
+			// Log that user's hash has unsupported format. Better than silently return 401.
+			s.log.Warn().Err(err).Str("username", username).Msg("htpasswd bcrypt compare failed")
+
+			return false, present
+		}
+
+		return true, present // success: bcrypt
 	}
 
-	return
+	var crypter cpass.Crypter
+
+	if strings.HasPrefix(passphraseHash, "$5$") { //nolint:gocritic // errorslint conflicts with gocritic:IfElseChain
+		crypter, ok = cpass.SHA256.CrypterFound(passphraseHash)
+	} else if strings.HasPrefix(passphraseHash, "$6$") {
+		crypter, ok = cpass.SHA512.CrypterFound(passphraseHash)
+	} else {
+		s.log.Warn().Str("username", username).Msg("htpasswd entry has unsupported hash type")
+
+		return false, present
+	}
+
+	if !ok {
+		s.log.Warn().Str("username", username).Msg("htpasswd entry parsing failed")
+
+		return false, present
+	}
+
+	if !crypter.Verify([]byte(passphrase)) {
+		s.log.Warn().Str("username", username).Msg("htpasswd sha compare failed")
+
+		return false, present
+	}
+
+	return true, present // success: sha
 }
 
 // HTPasswdWatcher helper which triggers htpasswd reload on file change event.

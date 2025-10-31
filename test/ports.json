@@ -408,5 +408,11 @@
       "begin": 11430,
       "end": 11439
     }
+  },
+  "blackbox/fips140_authn.bats": {
+    "zot": {
+      "begin": 11440,
+      "end": 11449
+    }
   }
 }

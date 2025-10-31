@@ -2,6 +2,8 @@ package common
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"io"
@@ -12,6 +14,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/GehirnInc/crypt"
+	_ "github.com/GehirnInc/crypt/sha256_crypt"
+	_ "github.com/GehirnInc/crypt/sha512_crypt"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -213,13 +218,92 @@ func ReadLogFileAndCountStringOccurence(logPath string, stringToMatch string,
 	}
 }
 
-func GetCredString(username, password string) string {
+func GetBcryptCredString(username, password string) string {
 	hash, err := bcrypt.GenerateFromPassword([]byte(password), 10)
 	if err != nil {
 		panic(err)
 	}
 
 	usernameAndHash := fmt.Sprintf("%s:%s\n", username, string(hash))
+
+	return usernameAndHash
+}
+
+const (
+	PrefixCryptSha256 = "$5$"
+	PrefixCryptSha512 = "$6$"
+	Separator         = "$"
+)
+
+// generateSecureRandomString should only be used in tests with length = 16.
+func generateSecureRandomString(length int) (string, error) {
+	bytes := make([]byte, length)
+
+	_, err := rand.Read(bytes)
+	if err != nil {
+		return "", err
+	}
+
+	return base64.URLEncoding.EncodeToString(bytes)[:length], nil
+}
+
+func shaCrypt(password string, rounds string, salt string, prefix string) string {
+	var ret string
+
+	var strb strings.Builder
+
+	strb.WriteString(prefix)
+
+	if len(rounds) > 0 {
+		strb.WriteString(rounds)
+		strb.WriteString(Separator)
+	}
+
+	strb.WriteString(salt)
+	totalSalt := strb.String()
+
+	var err error
+
+	switch prefix {
+	case PrefixCryptSha256:
+		crypter := crypt.SHA256.New()
+		ret, err = crypter.Generate([]byte(password), []byte(totalSalt))
+	case PrefixCryptSha512:
+		crypter := crypt.SHA512.New()
+		ret, err = crypter.Generate([]byte(password), []byte(totalSalt))
+	default:
+		panic("unsupported password hash")
+	}
+
+	if err != nil {
+		panic(err)
+	}
+
+	return ret
+}
+
+func GetSHA256CredString(username, password string) string {
+	saltstr, err := generateSecureRandomString(16)
+	if err != nil {
+		panic(err)
+	}
+
+	hash := shaCrypt(password, "rounds=5000", saltstr, PrefixCryptSha256)
+
+	usernameAndHash := fmt.Sprintf("%s:%s\n", username, hash)
+
+	return usernameAndHash
+}
+
+func GetSHA512CredString(username, password string) string {
+	saltstr, err := generateSecureRandomString(16)
+	if err != nil {
+		panic(err)
+	}
+
+	hash := shaCrypt(password, "rounds=5000", saltstr, PrefixCryptSha512)
+
+	usernameAndHash := fmt.Sprintf("%s:%s\n", username, hash)
 
 	return usernameAndHash
 }

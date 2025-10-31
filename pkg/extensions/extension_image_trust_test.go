@@ -743,7 +743,7 @@ func RunSignatureUploadAndVerificationTests(t *testing.T, cacheDriverParams map[
 	Convey("Verify uploading cosign public keys with auth configured", func() {
 		globalDir := t.TempDir()
 		port := test.GetFreePort()
-		testCreds := test.GetCredString("admin", "admin") + "\n" + test.GetCredString("test", "test")
+		testCreds := test.GetBcryptCredString("admin", "admin") + "\n" + test.GetBcryptCredString("test", "test")
 
 		htpasswdPath := test.MakeHtpasswdFileFromString(testCreds)
 		defer os.Remove(htpasswdPath)
