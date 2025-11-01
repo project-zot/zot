@@ -28,8 +28,8 @@ func TestProfilingAuthz(t *testing.T) {
 		password, seedPass := test.GenerateRandomString()
 		authorizationAllRepos := test.AuthorizationAllRepos
 
-		testCreds := test.GetCredString(adminUsername, adminPassword) +
-			test.GetCredString(username, password)
+		testCreds := test.GetBcryptCredString(adminUsername, adminPassword) +
+			test.GetBcryptCredString(username, password)
 		htpasswdPath := test.MakeHtpasswdFileFromString(testCreds)
 
 		defer os.Remove(htpasswdPath)

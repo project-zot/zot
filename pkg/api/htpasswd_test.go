@@ -19,7 +19,7 @@ func TestHTPasswdWatcherOriginal(t *testing.T) {
 		username, _ := test.GenerateRandomString()
 		password1, _ := test.GenerateRandomString()
 		password2, _ := test.GenerateRandomString()
-		htpasswdPath := test.MakeHtpasswdFileFromString(test.GetCredString(username, password1))
+		htpasswdPath := test.MakeHtpasswdFileFromString(test.GetBcryptCredString(username, password1))
 
 		defer os.Remove(htpasswdPath)
 
@@ -49,7 +49,7 @@ func TestHTPasswdWatcherOriginal(t *testing.T) {
 		So(present, ShouldBeTrue)
 
 		// 2. Change file
-		err = os.WriteFile(htpasswdPath, []byte(test.GetCredString(username, password2)), 0o600)
+		err = os.WriteFile(htpasswdPath, []byte(test.GetBcryptCredString(username, password2)), 0o600)
 		So(err, ShouldBeNil)
 
 		// 3. Give some time for the background task
@@ -98,8 +98,8 @@ func TestHTPasswdWatcher(t *testing.T) {
 			username2, _ := test.GenerateRandomString()
 			password2, _ := test.GenerateRandomString()
 
-			htpasswdPath1 := test.MakeHtpasswdFileFromString(test.GetCredString(username1, password1))
-			htpasswdPath2 := test.MakeHtpasswdFileFromString(test.GetCredString(username2, password2))
+			htpasswdPath1 := test.MakeHtpasswdFileFromString(test.GetBcryptCredString(username1, password1))
+			htpasswdPath2 := test.MakeHtpasswdFileFromString(test.GetBcryptCredString(username2, password2))
 
 			defer os.Remove(htpasswdPath1)
 			defer os.Remove(htpasswdPath2)
@@ -150,7 +150,7 @@ func TestHTPasswdWatcher(t *testing.T) {
 			So(present, ShouldBeTrue)
 
 			// Change file content and verify automatic reload
-			err = os.WriteFile(htpasswdPath1, []byte(test.GetCredString(username1, password2)), 0o600)
+			err = os.WriteFile(htpasswdPath1, []byte(test.GetBcryptCredString(username1, password2)), 0o600)
 			So(err, ShouldBeNil)
 			time.Sleep(100 * time.Millisecond)
 			ok, present = htp.Authenticate(username1, password2)
@@ -158,7 +158,8 @@ func TestHTPasswdWatcher(t *testing.T) {
 			So(present, ShouldBeTrue)
 
 			// Test multiple users
-			multiUserContent := test.GetCredString(username1, password1) + "\n" + test.GetCredString(username2, password2)
+			multiUserContent := test.GetBcryptCredString(username1, password1) +
+				"\n" + test.GetBcryptCredString(username2, password2)
 			err = os.WriteFile(htpasswdPath1, []byte(multiUserContent), 0o600)
 			So(err, ShouldBeNil)
 			time.Sleep(100 * time.Millisecond)
@@ -194,8 +195,8 @@ func TestHTPasswdWatcher(t *testing.T) {
 			username2, _ := test.GenerateRandomString()
 			password2, _ := test.GenerateRandomString()
 
-			htpasswdPath1 := test.MakeHtpasswdFileFromString(test.GetCredString(username1, password1))
-			htpasswdPath2 := test.MakeHtpasswdFileFromString(test.GetCredString(username2, password2))
+			htpasswdPath1 := test.MakeHtpasswdFileFromString(test.GetBcryptCredString(username1, password1))
+			htpasswdPath2 := test.MakeHtpasswdFileFromString(test.GetBcryptCredString(username2, password2))
 
 			defer os.Remove(htpasswdPath1)
 			defer os.Remove(htpasswdPath2)
@@ -236,7 +237,7 @@ func TestHTPasswdWatcher(t *testing.T) {
 			So(present, ShouldBeTrue)
 
 			// Test file rename (should not trigger reload)
-			htpasswdPath3 := test.MakeHtpasswdFileFromString(test.GetCredString(username1, password1))
+			htpasswdPath3 := test.MakeHtpasswdFileFromString(test.GetBcryptCredString(username1, password1))
 			defer os.Remove(htpasswdPath3)
 			err = htw.ChangeFile(htpasswdPath3)
 			So(err, ShouldBeNil)
@@ -302,8 +303,8 @@ func TestHTPasswdWatcher(t *testing.T) {
 			username2, _ := test.GenerateRandomString()
 			password2, _ := test.GenerateRandomString()
 
-			htpasswdPath1 := test.MakeHtpasswdFileFromString(test.GetCredString(username1, password1))
-			htpasswdPath2 := test.MakeHtpasswdFileFromString(test.GetCredString(username2, password2))
+			htpasswdPath1 := test.MakeHtpasswdFileFromString(test.GetBcryptCredString(username1, password1))
+			htpasswdPath2 := test.MakeHtpasswdFileFromString(test.GetBcryptCredString(username2, password2))
 
 			defer os.Remove(htpasswdPath1)
 			defer os.Remove(htpasswdPath2)
@@ -408,7 +409,7 @@ func TestHTPasswdWatcher(t *testing.T) {
 			// Test 2: File watching with fsnotify resources cleanup
 			username, _ := test.GenerateRandomString()
 			password, _ := test.GenerateRandomString()
-			htpasswdPath := test.MakeHtpasswdFileFromString(test.GetCredString(username, password))
+			htpasswdPath := test.MakeHtpasswdFileFromString(test.GetBcryptCredString(username, password))
 
 			defer os.Remove(htpasswdPath)
 
@@ -490,7 +491,7 @@ func TestHTPasswdWatcher(t *testing.T) {
 			So(test.WaitForLogMessages(logBuffer, "htpasswd watcher terminating...", 1, 5*time.Second), ShouldBeTrue)
 
 			// Test file with empty lines and comments
-			content := "\n\n" + test.GetCredString(username, password) + "\n# comment\n"
+			content := "\n\n" + test.GetBcryptCredString(username, password) + "\n# comment\n"
 			commentedPath := test.MakeHtpasswdFileFromString(content)
 
 			defer os.Remove(commentedPath)
@@ -520,7 +521,7 @@ func TestHTPasswdWatcher(t *testing.T) {
 			So(err, ShouldBeNil)
 
 			// Load some initial data
-			htpasswdPath := test.MakeHtpasswdFileFromString(test.GetCredString(username, password))
+			htpasswdPath := test.MakeHtpasswdFileFromString(test.GetBcryptCredString(username, password))
 			defer os.Remove(htpasswdPath)
 
 			// Load initial file (this will populate the store)

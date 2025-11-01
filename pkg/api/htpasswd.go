@@ -3,6 +3,7 @@ package api
 import (
 	"bufio"
 	"context"
+	"crypto/fips140"
 	"errors"
 	"os"
 	"os/signal"
@@ -11,6 +12,7 @@ import (
 	"syscall"
 
 	"github.com/fsnotify/fsnotify"
+	"github.com/tg123/go-htpasswd"
 	"golang.org/x/crypto/bcrypt"
 
 	"zotregistry.dev/zot/v2/pkg/log"
@@ -87,15 +89,41 @@ func (s *HTPasswd) Authenticate(username, passphrase string) (ok, present bool) 
 		return false, false
 	}
 
-	err := bcrypt.CompareHashAndPassword([]byte(passphraseHash), []byte(passphrase))
-	ok = err == nil
+	if strings.HasPrefix(passphraseHash, "$2a$") || strings.HasPrefix(passphraseHash, "$2b$") ||
+		strings.HasPrefix(passphraseHash, "$2y$") {
+		if fips140.Enabled() {
+			s.log.Warn().Str("username", username).Msg("htpasswd bcrypt failed since fips140 is enabled")
 
-	if err != nil && !errors.Is(err, bcrypt.ErrMismatchedHashAndPassword) {
-		// Log that user's hash has unsupported format. Better than silently return 401.
-		s.log.Warn().Err(err).Str("username", username).Msg("htpasswd bcrypt compare failed")
+			return false, present
+		}
+
+		err := bcrypt.CompareHashAndPassword([]byte(passphraseHash), []byte(passphrase))
+		if err != nil && !errors.Is(err, bcrypt.ErrMismatchedHashAndPassword) {
+			// Log that user's hash has unsupported format. Better than silently return 401.
+			s.log.Warn().Err(err).Str("username", username).Msg("htpasswd bcrypt compare failed")
+
+			return false, present
+		}
+
+		return true, present // success: bcrypt
+	} else {
+		accept, err := htpasswd.AcceptCryptSha(passphraseHash) // sha256 or sha512
+		if err != nil {
+			// Log that user's hash has unsupported format. Better than silently return 401.
+			s.log.Warn().Err(err).Str("username", username).Msg("htpasswd crypt parsing failed")
+
+			return false, present
+		}
+
+		ok = accept.MatchesPassword(passphrase)
+		if !ok {
+			s.log.Warn().Err(err).Str("username", username).Msg("htpasswd sha compare failed")
+
+			return false, present
+		}
+
+		return true, present // success: sha
 	}
-
-	return
 }
 
 // HTPasswdWatcher helper which triggers htpasswd reload on file change event.

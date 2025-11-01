@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/GehirnInc/crypt"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -213,13 +214,61 @@ func ReadLogFileAndCountStringOccurence(logPath string, stringToMatch string,
 	}
 }
 
-func GetCredString(username, password string) string {
+func GetBcryptCredString(username, password string) string {
 	hash, err := bcrypt.GenerateFromPassword([]byte(password), 10)
 	if err != nil {
 		panic(err)
 	}
 
 	usernameAndHash := fmt.Sprintf("%s:%s\n", username, string(hash))
+
+	return usernameAndHash
+}
+
+const (
+	PrefixCryptSha256 = "$5$"
+	PrefixCryptSha512 = "$6$"
+	Separator         = "$"
+)
+
+func shaCrypt(password string, rounds string, salt string, prefix string) string {
+	var ret string
+
+	var strb strings.Builder
+
+	strb.WriteString(prefix)
+
+	if len(rounds) > 0 {
+		strb.WriteString(rounds)
+		strb.WriteString(Separator)
+	}
+
+	strb.WriteString(salt)
+	totalSalt := strb.String()
+
+	if prefix == PrefixCryptSha512 {
+		crypt := crypt.SHA512.New()
+		ret, _ = crypt.Generate([]byte(password), []byte(totalSalt))
+	} else if prefix == PrefixCryptSha256 {
+		crypt := crypt.SHA256.New()
+		ret, _ = crypt.Generate([]byte(password), []byte(totalSalt))
+	}
+
+	return ret[len(totalSalt)+1:]
+}
+
+func GetSHA256CredString(username, password string) string {
+	hash := shaCrypt(password, "rounds=5000", "saltstring", PrefixCryptSha256)
+
+	usernameAndHash := fmt.Sprintf("%s:%s\n", username, hash)
+
+	return usernameAndHash
+}
+
+func GetSHA512CredString(username, password string) string {
+	hash := shaCrypt(password, "rounds=5000", "saltstring", PrefixCryptSha512)
+
+	usernameAndHash := fmt.Sprintf("%s:%s\n", username, hash)
 
 	return usernameAndHash
 }

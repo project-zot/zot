@@ -178,7 +178,7 @@ func TestUploadImage(t *testing.T) {
 
 		user1 := "test"
 		password1 := "test"
-		testString1 := tcommon.GetCredString(user1, password1)
+		testString1 := tcommon.GetBcryptCredString(user1, password1)
 
 		htpasswdPath := tcommon.MakeHtpasswdFileFromString(testString1)
 		defer os.Remove(htpasswdPath)
@@ -495,7 +495,7 @@ func TestInjectUploadImageWithBasicAuth(t *testing.T) {
 
 		user := "user"
 		password := "password"
-		testString := tcommon.GetCredString(user, password)
+		testString := tcommon.GetBcryptCredString(user, password)
 
 		htpasswdPath := tcommon.MakeHtpasswdFileFromString(testString)
 		defer os.Remove(htpasswdPath)

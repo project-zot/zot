@@ -722,8 +722,8 @@ func TestHtpasswdSingleCred(t *testing.T) {
 		singleCredtests := []string{}
 		user, seedUser := test.GenerateRandomString()
 		password, seedPass := test.GenerateRandomString()
-		singleCredtests = append(singleCredtests, test.GetCredString(user, password))
-		singleCredtests = append(singleCredtests, test.GetCredString(user, password))
+		singleCredtests = append(singleCredtests, test.GetBcryptCredString(user, password))
+		singleCredtests = append(singleCredtests, test.GetBcryptCredString(user, password))
 
 		for _, testString := range singleCredtests {
 			func() {
@@ -783,7 +783,7 @@ func TestAllowMethodsHeader(t *testing.T) {
 
 		simpleUser := "simpleUser"
 		simpleUserPassword := "simpleUserPass"
-		htpasswdPath := test.MakeHtpasswdFileFromString(test.GetCredString(simpleUser, simpleUserPassword))
+		htpasswdPath := test.MakeHtpasswdFileFromString(test.GetBcryptCredString(simpleUser, simpleUserPassword))
 
 		defer os.Remove(htpasswdPath)
 
@@ -860,14 +860,14 @@ func TestHtpasswdTwoCreds(t *testing.T) {
 		password1 := "aliciapassword"
 		user2 := "bob"
 		password2 := "robert"
-		twoCredTests = append(twoCredTests, test.GetCredString(user1, password1)+"\n"+
-			test.GetCredString(user2, password2))
+		twoCredTests = append(twoCredTests, test.GetBcryptCredString(user1, password1)+"\n"+
+			test.GetBcryptCredString(user2, password2))
 
-		twoCredTests = append(twoCredTests, test.GetCredString(user1, password1)+"\n"+
-			test.GetCredString(user2, password2)+"\n")
+		twoCredTests = append(twoCredTests, test.GetBcryptCredString(user1, password1)+"\n"+
+			test.GetBcryptCredString(user2, password2)+"\n")
 
-		twoCredTests = append(twoCredTests, test.GetCredString(user1, password1)+"\n\n"+
-			test.GetCredString(user2, password2)+"\n\n")
+		twoCredTests = append(twoCredTests, test.GetBcryptCredString(user1, password1)+"\n\n"+
+			test.GetBcryptCredString(user2, password2)+"\n\n")
 
 		for _, testString := range twoCredTests {
 			func() {
@@ -920,7 +920,7 @@ func TestHtpasswdFiveCreds(t *testing.T) {
 		credString := strings.Builder{}
 
 		for key, val := range tests {
-			credString.WriteString(test.GetCredString(key, val) + "\n")
+			credString.WriteString(test.GetBcryptCredString(key, val) + "\n")
 		}
 
 		func() {
@@ -1074,7 +1074,7 @@ func TestBasicAuth(t *testing.T) {
 		username, seedUser := test.GenerateRandomString()
 		password, seedPass := test.GenerateRandomString()
 
-		htpasswdPath := test.MakeHtpasswdFileFromString(test.GetCredString(username, password))
+		htpasswdPath := test.MakeHtpasswdFileFromString(test.GetBcryptCredString(username, password))
 
 		defer os.Remove(htpasswdPath)
 
@@ -1363,7 +1363,7 @@ func TestScaleOutRequestProxy(t *testing.T) {
 
 		username, _ := test.GenerateRandomString()
 		password, _ := test.GenerateRandomString()
-		htpasswdPath := test.MakeHtpasswdFileFromString(test.GetCredString(username, password))
+		htpasswdPath := test.MakeHtpasswdFileFromString(test.GetBcryptCredString(username, password))
 
 		defer os.Remove(htpasswdPath)
 
@@ -1935,7 +1935,7 @@ func TestMultipleInstance(t *testing.T) {
 		username, seedUser := test.GenerateRandomString()
 		password, seedPass := test.GenerateRandomString()
 
-		htpasswdPath := test.MakeHtpasswdFileFromString(test.GetCredString(username, password))
+		htpasswdPath := test.MakeHtpasswdFileFromString(test.GetBcryptCredString(username, password))
 
 		defer os.Remove(htpasswdPath)
 
@@ -1979,7 +1979,7 @@ func TestMultipleInstance(t *testing.T) {
 		username, seedUser := test.GenerateRandomString()
 		password, seedPass := test.GenerateRandomString()
 
-		htpasswdPath := test.MakeHtpasswdFileFromString(test.GetCredString(username, password))
+		htpasswdPath := test.MakeHtpasswdFileFromString(test.GetBcryptCredString(username, password))
 
 		defer os.Remove(htpasswdPath)
 
@@ -2029,7 +2029,7 @@ func TestMultipleInstance(t *testing.T) {
 		username, seedUser := test.GenerateRandomString()
 		password, seedPass := test.GenerateRandomString()
 
-		htpasswdPath := test.MakeHtpasswdFileFromString(test.GetCredString(username, password))
+		htpasswdPath := test.MakeHtpasswdFileFromString(test.GetBcryptCredString(username, password))
 
 		defer os.Remove(htpasswdPath)
 
@@ -2083,7 +2083,7 @@ func TestTLSWithBasicAuth(t *testing.T) {
 		username, seedUser := test.GenerateRandomString()
 		password, seedPass := test.GenerateRandomString()
 
-		htpasswdPath := test.MakeHtpasswdFileFromString(test.GetCredString(username, password))
+		htpasswdPath := test.MakeHtpasswdFileFromString(test.GetBcryptCredString(username, password))
 
 		defer os.Remove(htpasswdPath)
 
@@ -2154,7 +2154,7 @@ func TestTLSWithBasicAuthAllowReadAccess(t *testing.T) {
 		username, seedUser := test.GenerateRandomString()
 		password, seedPass := test.GenerateRandomString()
 
-		htpasswdPath := test.MakeHtpasswdFileFromString(test.GetCredString(username, password))
+		htpasswdPath := test.MakeHtpasswdFileFromString(test.GetBcryptCredString(username, password))
 
 		defer os.Remove(htpasswdPath)
 
@@ -2826,7 +2826,7 @@ func TestTLSMutualAndBasicAuth(t *testing.T) {
 		username, seedUser := test.GenerateRandomString()
 		password, seedPass := test.GenerateRandomString()
 
-		htpasswdPath := test.MakeHtpasswdFileFromString(test.GetCredString(username, password))
+		htpasswdPath := test.MakeHtpasswdFileFromString(test.GetBcryptCredString(username, password))
 
 		defer os.Remove(htpasswdPath)
 
@@ -2913,7 +2913,7 @@ func TestTLSMutualAndBasicAuthAllowReadAccess(t *testing.T) {
 		username, seedUser := test.GenerateRandomString()
 		password, seedPass := test.GenerateRandomString()
 
-		htpasswdPath := test.MakeHtpasswdFileFromString(test.GetCredString(username, password))
+		htpasswdPath := test.MakeHtpasswdFileFromString(test.GetBcryptCredString(username, password))
 
 		defer os.Remove(htpasswdPath)
 
@@ -4579,7 +4579,7 @@ func TestOpenIDMiddleware(t *testing.T) {
 	// need a username different than ldap one, to test both logic
 	htpasswdUsername, seedUser := test.GenerateRandomString()
 	htpasswdPassword, seedPass := test.GenerateRandomString()
-	htpasswdPath := test.MakeHtpasswdFileFromString(test.GetCredString(htpasswdUsername, htpasswdPassword))
+	htpasswdPath := test.MakeHtpasswdFileFromString(test.GetBcryptCredString(htpasswdUsername, htpasswdPassword))
 
 	defer os.Remove(htpasswdPath)
 
@@ -4995,7 +4995,7 @@ func TestOpenIDMiddlewareWithRedisSessionDriver(t *testing.T) {
 	// need a username different than ldap one, to test both logic
 	htpasswdUsername, seedUser := test.GenerateRandomString()
 	htpasswdPassword, seedPass := test.GenerateRandomString()
-	htpasswdPath := test.MakeHtpasswdFileFromString(test.GetCredString(htpasswdUsername, htpasswdPassword))
+	htpasswdPath := test.MakeHtpasswdFileFromString(test.GetBcryptCredString(htpasswdUsername, htpasswdPassword))
 
 	defer os.Remove(htpasswdPath)
 
@@ -5481,7 +5481,7 @@ func TestAuthnSessionErrors(t *testing.T) {
 		htpasswdUsername, seedUser := test.GenerateRandomString()
 		htpasswdPassword, seedPass := test.GenerateRandomString()
 
-		htpasswdPath := test.MakeHtpasswdFileFromString(test.GetCredString(htpasswdUsername, htpasswdPassword))
+		htpasswdPath := test.MakeHtpasswdFileFromString(test.GetBcryptCredString(htpasswdUsername, htpasswdPassword))
 
 		defer os.Remove(htpasswdPath)
 
@@ -5886,7 +5886,7 @@ func TestAuthnMetaDBErrors(t *testing.T) {
 		username, seedUser := test.GenerateRandomString()
 		password, seedPass := test.GenerateRandomString()
 
-		htpasswdPath := test.MakeHtpasswdFileFromString(test.GetCredString(username, password))
+		htpasswdPath := test.MakeHtpasswdFileFromString(test.GetBcryptCredString(username, password))
 
 		defer os.Remove(htpasswdPath)
 
@@ -5999,7 +5999,7 @@ func TestAuthorization(t *testing.T) {
 		conf.HTTP.Port = port
 		username, seedUser := test.GenerateRandomString()
 		password, seedPass := test.GenerateRandomString()
-		htpasswdPath := test.MakeHtpasswdFileFromString(test.GetCredString(username, password))
+		htpasswdPath := test.MakeHtpasswdFileFromString(test.GetBcryptCredString(username, password))
 
 		defer os.Remove(htpasswdPath)
 
@@ -6119,7 +6119,7 @@ func TestGetUsername(t *testing.T) {
 
 		username, seedUser := test.GenerateRandomString()
 		password, seedPass := test.GenerateRandomString()
-		htpasswdPath := test.MakeHtpasswdFileFromString(test.GetCredString(username, password))
+		htpasswdPath := test.MakeHtpasswdFileFromString(test.GetBcryptCredString(username, password))
 
 		defer os.Remove(htpasswdPath)
 
@@ -6190,7 +6190,7 @@ func TestAuthorizationMountBlob(t *testing.T) {
 		username1 = strings.ToLower(username1)
 		username2 = strings.ToLower(username2)
 
-		content := test.GetCredString(username1, password1) + test.GetCredString(username2, password2)
+		content := test.GetBcryptCredString(username1, password1) + test.GetBcryptCredString(username2, password2)
 
 		htpasswdPath := test.MakeHtpasswdFileFromString(content)
 
@@ -6548,7 +6548,7 @@ func TestAuthorizationWithAnonymousPolicyBasicAuthAndSessionHeader(t *testing.T)
 		badpassphrase := "bad"
 		htpasswdUsername, seedUser := test.GenerateRandomString()
 		htpasswdPassword, seedPass := test.GenerateRandomString()
-		htpasswdPath := test.MakeHtpasswdFileFromString(test.GetCredString(htpasswdUsername, htpasswdPassword))
+		htpasswdPath := test.MakeHtpasswdFileFromString(test.GetBcryptCredString(htpasswdUsername, htpasswdPassword))
 
 		defer os.Remove(htpasswdPath)
 
@@ -6758,7 +6758,7 @@ func TestAuthorizationWithMultiplePolicies(t *testing.T) {
 		password1, seedPass1 := test.GenerateRandomString()
 		username2, seedUser2 := test.GenerateRandomString()
 		password2, seedPass2 := test.GenerateRandomString()
-		content := test.GetCredString(username1, password1) + test.GetCredString(username2, password2)
+		content := test.GetBcryptCredString(username1, password1) + test.GetBcryptCredString(username2, password2)
 
 		htpasswdPath := test.MakeHtpasswdFileFromString(content)
 
@@ -6917,7 +6917,7 @@ func TestInvalidCases(t *testing.T) {
 		username, seedUser := test.GenerateRandomString()
 		password, seedPass := test.GenerateRandomString()
 
-		htpasswdPath := test.MakeHtpasswdFileFromString(test.GetCredString(username, password))
+		htpasswdPath := test.MakeHtpasswdFileFromString(test.GetBcryptCredString(username, password))
 
 		defer os.Remove(htpasswdPath)
 
@@ -6977,8 +6977,8 @@ func TestHTTPReadOnly(t *testing.T) {
 		singleCredtests := []string{}
 		user, seedUser := test.GenerateRandomString()
 		password, seedPass := test.GenerateRandomString()
-		singleCredtests = append(singleCredtests, test.GetCredString(user, password))
-		singleCredtests = append(singleCredtests, test.GetCredString(user, password)+"\n")
+		singleCredtests = append(singleCredtests, test.GetBcryptCredString(user, password))
+		singleCredtests = append(singleCredtests, test.GetBcryptCredString(user, password)+"\n")
 
 		port := test.GetFreePort()
 		baseURL := test.GetBaseURL(port)
@@ -7048,7 +7048,7 @@ func TestCrossRepoMount(t *testing.T) {
 		conf.HTTP.Port = port
 		username, seedUser := test.GenerateRandomString()
 		password, seedPass := test.GenerateRandomString()
-		htpasswdPath := test.MakeHtpasswdFileFromString(test.GetCredString(username, password))
+		htpasswdPath := test.MakeHtpasswdFileFromString(test.GetBcryptCredString(username, password))
 
 		defer os.Remove(htpasswdPath)
 
@@ -7263,7 +7263,7 @@ func TestCrossRepoMount(t *testing.T) {
 
 		conf := config.New()
 		conf.HTTP.Port = port
-		htpasswdPath := test.MakeHtpasswdFileFromString(test.GetCredString(username, password))
+		htpasswdPath := test.MakeHtpasswdFileFromString(test.GetBcryptCredString(username, password))
 
 		defer os.Remove(htpasswdPath)
 
@@ -7407,7 +7407,7 @@ func TestParallelRequests(t *testing.T) {
 	conf.HTTP.Port = port
 	username, seedUser := test.GenerateRandomString()
 	password, seedPass := test.GenerateRandomString()
-	htpasswdPath := test.MakeHtpasswdFileFromString(test.GetCredString(username, password))
+	htpasswdPath := test.MakeHtpasswdFileFromString(test.GetBcryptCredString(username, password))
 
 	t.Cleanup(func() {
 		os.Remove(htpasswdPath)
@@ -8971,7 +8971,7 @@ func TestPagedRepositoriesWithAuthorization(t *testing.T) {
 	conf.HTTP.Port = port
 	username, _ := test.GenerateRandomString()
 	password, _ := test.GenerateRandomString()
-	htpasswdPath := test.MakeHtpasswdFileFromString(test.GetCredString(username, password))
+	htpasswdPath := test.MakeHtpasswdFileFromString(test.GetBcryptCredString(username, password))
 
 	defer os.Remove(htpasswdPath)
 
@@ -12380,7 +12380,7 @@ func TestSearchRoutes(t *testing.T) {
 
 			user1 := "test"
 			password1 := "test"
-			testString1 := test.GetCredString(user1, password1)
+			testString1 := test.GetBcryptCredString(user1, password1)
 
 			htpasswdPath := test.MakeHtpasswdFileFromString(testString1)
 
@@ -12523,7 +12523,7 @@ func TestSearchRoutes(t *testing.T) {
 			user1 := "test1"
 			password1 := "test1"
 			group1 := "testgroup3"
-			testString1 := test.GetCredString(user1, password1)
+			testString1 := test.GetBcryptCredString(user1, password1)
 
 			htpasswdPath := test.MakeHtpasswdFileFromString(testString1)
 
@@ -12611,7 +12611,7 @@ func TestSearchRoutes(t *testing.T) {
 			password1 := "test2"
 			group1 := "testgroup1"
 			group2 := "secondtestgroup"
-			testString1 := test.GetCredString(user1, password1)
+			testString1 := test.GetBcryptCredString(user1, password1)
 			htpasswdPath := test.MakeHtpasswdFileFromString(testString1)
 
 			defer os.Remove(htpasswdPath)
@@ -12681,7 +12681,7 @@ func TestSearchRoutes(t *testing.T) {
 			user1 := "test3"
 			password1 := "test3"
 			group1 := "testgroup"
-			testString1 := test.GetCredString(user1, password1)
+			testString1 := test.GetBcryptCredString(user1, password1)
 			htpasswdPath := test.MakeHtpasswdFileFromString(testString1)
 
 			defer os.Remove(htpasswdPath)
@@ -12751,7 +12751,7 @@ func TestSearchRoutes(t *testing.T) {
 			user1 := "test4"
 			password1 := "test4"
 			group1 := "testgroup1"
-			testString1 := test.GetCredString(user1, password1)
+			testString1 := test.GetBcryptCredString(user1, password1)
 
 			htpasswdPath := test.MakeHtpasswdFileFromString(testString1)
 
@@ -12823,7 +12823,7 @@ func TestSearchRoutes(t *testing.T) {
 			user1 := "test5"
 			password1 := "test5"
 			group1 := "testgroup2"
-			testString1 := test.GetCredString(user1, password1)
+			testString1 := test.GetBcryptCredString(user1, password1)
 			htpasswdPath := test.MakeHtpasswdFileFromString(testString1)
 
 			defer os.Remove(htpasswdPath)
@@ -12883,7 +12883,7 @@ func TestSearchRoutes(t *testing.T) {
 			user1, seedUser1 := test.GenerateRandomString()
 			password1, seedPass1 := test.GenerateRandomString()
 
-			htpasswdPath := test.MakeHtpasswdFileFromString(test.GetCredString(user1, password1))
+			htpasswdPath := test.MakeHtpasswdFileFromString(test.GetBcryptCredString(user1, password1))
 			defer os.Remove(htpasswdPath)
 
 			conf.HTTP.Auth = &config.AuthConfig{

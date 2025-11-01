@@ -137,7 +137,7 @@ func makeUpstreamServer(
 
 	var htpasswdPath string
 	if basicAuth {
-		htpasswdPath = test.MakeHtpasswdFileFromString(test.GetCredString(username, password))
+		htpasswdPath = test.MakeHtpasswdFileFromString(test.GetBcryptCredString(username, password))
 		srcConfig.HTTP.Auth = &config.AuthConfig{
 			HTPasswd: config.AuthHTPasswd{
 				Path: htpasswdPath,
