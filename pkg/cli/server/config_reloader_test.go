@@ -494,11 +494,13 @@ func TestConfigReloader(t *testing.T) {
 		// wait for config reload
 		time.Sleep(5 * time.Second)
 
+		// Wait for the async trivy download to fail and log the error
 		found, err := test.ReadLogFileAndSearchString(logFile.Name(),
 			"failed to download trivy-db to destination dir", 30*time.Second)
 		So(err, ShouldBeNil)
 		So(found, ShouldBeTrue)
 
+		// Now read the file once and check all the expected log content
 		data, err := os.ReadFile(logFile.Name())
 		So(err, ShouldBeNil)
 		t.Logf("log file: %s", data)
@@ -508,9 +510,12 @@ func TestConfigReloader(t *testing.T) {
 		So(string(data), ShouldContainSubstring, "\"UpdateInterval\":18000000000000")
 		So(string(data), ShouldContainSubstring, "\"Scrub\":null")
 		So(string(data), ShouldContainSubstring, "\"DBRepository\":\"another/unreachable/trivy/url2\"")
-		// matching log message when it errors out, test that indeed the download will try the second url
+
+		// Just verify the new URL appears in the logs to confirm config reload worked and ignore
+		// the order of json message formatting that can change independent of this functional
+		// test.
 		found, err = test.ReadLogFileAndSearchString(logFile.Name(),
-			"\"dbRepository\":\"index.docker.io/another/unreachable/trivy/url2:2\",\"goroutine", 1*time.Minute)
+			"index.docker.io/another/unreachable/trivy/url2", 1*time.Minute)
 		So(err, ShouldBeNil)
 		So(found, ShouldBeTrue)
 	})
