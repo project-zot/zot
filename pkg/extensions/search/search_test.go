@@ -7406,6 +7406,98 @@ type repoRef struct {
 	Tag  string
 }
 
+func TestSearchWithMissingManifest(t *testing.T) {
+	Convey("Search with missing manifest", t, func() {
+		dir := t.TempDir()
+
+		// 1. Write the image to the disk
+		log := log.NewTestLogger()
+		storeCtlr := ociutils.GetDefaultStoreController(dir, log)
+
+		// Create a multiarch image with exactly 2 manifests
+		multiarchImage := CreateMultiarchWith().RandomImages(2).Build()
+
+		// Write the multiarch image to filesystem
+		err := WriteMultiArchImageToFileSystem(multiarchImage, "testrepo", "latest", storeCtlr)
+		So(err, ShouldBeNil)
+
+		// Get the image store to access index and manifests
+		imageStore := storeCtlr.GetDefaultImageStore()
+
+		// Get the index content to find all manifest digests
+		indexBlob, err := imageStore.GetIndexContent("testrepo")
+		So(err, ShouldBeNil)
+
+		var indexContent ispec.Index
+		err = json.Unmarshal(indexBlob, &indexContent)
+		So(err, ShouldBeNil)
+
+		So(len(indexContent.Manifests), ShouldBeGreaterThanOrEqualTo, 2)
+
+		// Get the first manifest digest to delete
+		firstManifestDigest := indexContent.Manifests[0].Digest
+
+		// Get the second manifest digest (should remain valid)
+		secondManifestDigest := indexContent.Manifests[1].Digest
+
+		// 2. Delete the manifest from the disk
+		manifestBlobPath := path.Join(dir, "testrepo", "blobs", "sha256", firstManifestDigest.Encoded())
+		err = os.Remove(manifestBlobPath)
+		So(err, ShouldBeNil)
+
+		// 3. Start the controller (MetaDB parsing would be done in the background)
+		port := GetFreePort()
+		baseURL := GetBaseURL(port)
+		conf := config.New()
+		conf.HTTP.Port = port
+		conf.Storage.RootDirectory = dir
+		defaultVal := true
+		conf.Extensions = &extconf.ExtensionConfig{
+			Search: &extconf.SearchConfig{BaseConfig: extconf.BaseConfig{Enable: &defaultVal}},
+		}
+
+		conf.Extensions.Search.CVE = nil
+
+		ctlr := api.NewController(conf)
+
+		ctlrManager := NewControllerManager(ctlr)
+		ctlrManager.StartAndWait(port)
+		defer ctlrManager.StopServer()
+
+		// Search for the repository
+		query := `
+		{
+			GlobalSearch(query:"testrepo:latest"){
+				Images {
+					RepoName Tag
+					Manifests {
+						Digest
+					}
+				}
+			}
+		}`
+
+		resp, err := resty.R().Get(baseURL + graphqlQueryPrefix + "?query=" + url.QueryEscape(query))
+		So(resp, ShouldNotBeNil)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+		responseStruct := &zcommon.GlobalSearchResultResp{}
+		err = json.Unmarshal(resp.Body(), responseStruct)
+		So(err, ShouldBeNil)
+
+		// Verify we found the image
+		So(responseStruct.GlobalSearchResult.GlobalSearch.Images, ShouldNotBeEmpty)
+		foundImage := responseStruct.GlobalSearchResult.GlobalSearch.Images[0]
+		So(foundImage.RepoName, ShouldEqual, "testrepo")
+		So(foundImage.Tag, ShouldEqual, "latest")
+
+		// Verify only the valid manifest is found in search results (missing one was skipped by ParseStorage)
+		So(len(foundImage.Manifests), ShouldEqual, 1)
+		So(foundImage.Manifests[0].Digest, ShouldEqual, secondManifestDigest.String())
+	})
+}
+
 func deleteUsedImages(repoTags []repoRef, baseURL string) {
 	for _, image := range repoTags {
 		status, err := DeleteImage(image.Repo, image.Tag, baseURL)

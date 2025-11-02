@@ -572,6 +572,75 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 			So(fullImageMeta.Digest.String(), ShouldResemble, multi.DigestStr())
 		})
 
+		Convey("GetFullImageMeta with nested index missing manifests", func() {
+			// Create a nested index structure:
+			// - Top-level index contains a nested index and a manifest
+			// - The nested index references manifests that are missing from MetaDB
+			// - The manifest in the top-level index exists
+			// Create a valid manifest
+			validImage := CreateDefaultImage()
+			validImageMeta := validImage.AsImageMeta()
+			err := metaDB.SetImageMeta(validImageMeta.Digest, validImageMeta)
+			So(err, ShouldBeNil)
+
+			// Create a nested index that references missing manifests
+			nestedIndex := CreateMultiarchWith().Images([]Image{CreateRandomImage()}).Build()
+			nestedIndexMeta := nestedIndex.AsImageMeta()
+			// Store the nested index metadata (but not its manifests - they're missing)
+			err = metaDB.SetImageMeta(nestedIndexMeta.Digest, nestedIndexMeta)
+			So(err, ShouldBeNil)
+
+			// Create a top-level index that contains:
+			// 1. The nested index (with missing manifests)
+			// 2. The valid manifest
+			topLevelIndexContent := ispec.Index{
+				Versioned: specs.Versioned{SchemaVersion: 2},
+				MediaType: ispec.MediaTypeImageIndex,
+				Manifests: []ispec.Descriptor{
+					{
+						MediaType: ispec.MediaTypeImageManifest,
+						Digest:    validImageMeta.Digest,
+						Size:      validImageMeta.Size,
+					},
+					{
+						MediaType: ispec.MediaTypeImageIndex,
+						Digest:    nestedIndexMeta.Digest,
+						Size:      nestedIndexMeta.Size,
+					},
+				},
+			}
+
+			// Create and store the top-level index metadata
+			topLevelIndexBlob, err := json.Marshal(topLevelIndexContent)
+			So(err, ShouldBeNil)
+
+			// Calculate digest from the index content
+			topLevelIndexDigest := godigest.FromBytes(topLevelIndexBlob)
+
+			topLevelIndexMeta := mTypes.ImageMeta{
+				MediaType: ispec.MediaTypeImageIndex,
+				Digest:    topLevelIndexDigest,
+				Size:      int64(len(topLevelIndexBlob)),
+				Index:     &topLevelIndexContent,
+				Manifests: []mTypes.ManifestMeta{},
+			}
+
+			err = metaDB.SetImageMeta(topLevelIndexMeta.Digest, topLevelIndexMeta)
+			So(err, ShouldBeNil)
+
+			err = metaDB.SetRepoReference(ctx, "repo", "tag", topLevelIndexMeta)
+			So(err, ShouldBeNil)
+
+			// GetFullImageMeta should succeed, skipping the nested index with missing manifests
+			// but including the valid manifest from the top-level index
+			fullImageMeta, err := metaDB.GetFullImageMeta(ctx, "repo", "tag")
+			So(err, ShouldBeNil)
+			// Should have the valid manifest from the top-level index
+			// The nested index with missing manifests should be skipped
+			So(len(fullImageMeta.Manifests), ShouldEqual, 1)
+			So(fullImageMeta.Manifests[0].Digest, ShouldEqual, validImageMeta.Digest)
+		})
+
 		Convey("Set/Get RepoMeta", func() {
 			err := metaDB.SetRepoMeta("repo", mTypes.RepoMeta{
 				Name: "repo",

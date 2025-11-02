@@ -857,23 +857,56 @@ func TestWrapperErrors(t *testing.T) {
 				So(err, ShouldNotBeNil)
 			})
 
-			Convey("image is index, fail to get manifests", func() {
+			Convey("image is index, missing manifests are skipped gracefully", func() {
+				err := metaDB.SetRepoReference(ctx, "repo", "tag", multiarchImageMeta)
+				So(err, ShouldBeNil)
+
+				// Missing manifests are skipped gracefully, so GetFullImageMeta succeeds
+				// but returns an index with no manifests
+				fullImageMeta, err := metaDB.GetFullImageMeta(ctx, "repo", "tag")
+				So(err, ShouldBeNil)
+				So(len(fullImageMeta.Manifests), ShouldEqual, 0)
+			})
+
+			Convey("image is index, corrupted manifest data returns error", func() {
+				// Create a multiarch image with multiple manifests
+				multiarchImage := CreateMultiarchWith().RandomImages(2).Build()
+				multiarchImageMeta := multiarchImage.AsImageMeta()
 				err := metaDB.SetImageMeta(multiarchImageMeta.Digest, multiarchImageMeta)
 				So(err, ShouldBeNil)
 
-				err = metaDB.SetRepoMeta("repo", mTypes.RepoMeta{
-					Name: "repo",
-					Tags: map[mTypes.Tag]mTypes.Descriptor{
-						"tag": {
-							MediaType: ispec.MediaTypeImageIndex,
-							Digest:    multiarchImageMeta.Digest.String(),
-						},
-					},
-				})
+				// Store the first manifest normally
+				firstManifest := multiarchImage.Images[0]
+				firstManifestMeta := firstManifest.AsImageMeta()
+				err = metaDB.SetImageMeta(firstManifestMeta.Digest, firstManifestMeta)
 				So(err, ShouldBeNil)
 
-				_, err = metaDB.GetFullImageMeta(ctx, "repo", "tag")
+				// Store the second manifest normally first, then corrupt it
+				secondManifest := multiarchImage.Images[1]
+				secondManifestMeta := secondManifest.AsImageMeta()
+				err = metaDB.SetImageMeta(secondManifestMeta.Digest, secondManifestMeta)
+				So(err, ShouldBeNil)
+
+				secondManifestDigest := secondManifest.ManifestDescriptor.Digest
+
+				// Corrupt the data for the second manifest by storing invalid protobuf data
+				// This will cause getProtoImageMeta to return an unmarshaling error
+				// which is not ErrImageMetaNotFound, so it will propagate through getAllContainedMeta
+				corruptedData := []byte("invalid protobuf data")
+
+				// Access Redis directly to corrupt the data using the helper function pattern
+				err = setImageMeta(secondManifestDigest, corruptedData, client)
+				So(err, ShouldBeNil)
+
+				err = metaDB.SetRepoReference(ctx, "repo", "tag", multiarchImageMeta)
+				So(err, ShouldBeNil)
+
+				// GetFullImageMeta should return an error due to corrupted manifest data
+				// The error from getAllContainedMeta should propagate
+				fullImageMeta, err := metaDB.GetFullImageMeta(ctx, "repo", "tag")
 				So(err, ShouldNotBeNil)
+				// Should still return a FullImageMeta object (even with error)
+				So(fullImageMeta, ShouldNotBeNil)
 			})
 		})
 

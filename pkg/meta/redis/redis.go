@@ -2197,6 +2197,11 @@ func (rc *RedisDB) getAllContainedMeta(ctx context.Context, imageIndexData *prot
 
 		imageManifestData, err := rc.getProtoImageMeta(ctx, manifest.Digest)
 		if err != nil {
+			// Skip manifests that don't have MetaDB entries (missing from storage)
+			if errors.Is(err, zerr.ErrImageMetaNotFound) {
+				continue
+			}
+
 			return imageMetaList, manifestDataList, err
 		}
 
@@ -2208,6 +2213,8 @@ func (rc *RedisDB) getAllContainedMeta(ctx context.Context, imageIndexData *prot
 			compat.IsCompatibleManifestListMediaType(imageManifestData.MediaType) {
 			partialImageDataList, partialManifestDataList, err := rc.getAllContainedMeta(ctx, imageManifestData)
 			if err != nil {
+				// getAllContainedMeta skips missing items internally, so any error returned
+				// is a real error that should be propagated
 				return imageMetaList, manifestDataList, err
 			}
 

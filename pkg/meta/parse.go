@@ -6,6 +6,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/distribution/distribution/v3/registry/storage/driver"
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 
@@ -143,8 +144,17 @@ func ParseRepo(repo string, metaDB mTypes.MetaDB, storeController stypes.StoreCo
 			continue
 		}
 
-		manifestBlob, _, _, err := imageStore.GetImageManifest(repo, manifest.Digest.String())
+		manifestBlob, err := imageStore.GetBlobContent(repo, manifest.Digest)
 		if err != nil {
+			// Handle missing blobs gracefully - log warning and continue with other manifests
+			var pathNotFoundErr driver.PathNotFoundError
+			if errors.Is(err, zerr.ErrBlobNotFound) || errors.As(err, &pathNotFoundErr) {
+				log.Warn().Err(err).Str("repository", repo).Str("digest", manifest.Digest.String()).
+					Msg("skipping missing manifest blob, continuing repo parse")
+
+				continue
+			}
+
 			log.Error().Err(err).Str("repository", repo).Str("digest", manifest.Digest.String()).
 				Msg("failed to get blob for image")
 

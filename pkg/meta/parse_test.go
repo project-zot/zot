@@ -16,6 +16,7 @@ import (
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	. "github.com/smartystreets/goconvey/convey"
 
+	zerr "zotregistry.dev/zot/v2/errors"
 	rediscfg "zotregistry.dev/zot/v2/pkg/api/config/redis"
 	zcommon "zotregistry.dev/zot/v2/pkg/common"
 	"zotregistry.dev/zot/v2/pkg/extensions/monitoring"
@@ -165,13 +166,14 @@ func TestParseStorageErrors(t *testing.T) {
 			So(err, ShouldBeNil)
 		})
 
-		Convey("imageStore.GetImageManifest errors", func() {
+		Convey("imageStore.GetBlobContent non-missing error", func() {
+			manifestDigest := godigest.FromString("digest")
 			imageStore.GetIndexContentFn = func(repo string) ([]byte, error) {
 				return getIndexBlob(ispec.Index{
 					Manifests: []ispec.Descriptor{
 						{
 							MediaType: ispec.MediaTypeImageManifest,
-							Digest:    godigest.FromString("digest"),
+							Digest:    manifestDigest,
 							Annotations: map[string]string{
 								ispec.AnnotationRefName: "tag",
 							},
@@ -179,11 +181,75 @@ func TestParseStorageErrors(t *testing.T) {
 					},
 				}), nil
 			}
-			imageStore.GetImageManifestFn = func(repo, reference string) ([]byte, godigest.Digest, string, error) {
-				return nil, "", "", ErrTestError
+			imageStore.GetBlobContentFn = func(repo string, digest godigest.Digest) ([]byte, error) {
+				// Return a non-missing error (not ErrBlobNotFound or PathNotFoundError)
+				return nil, ErrTestError
 			}
 			err := meta.ParseRepo("repo", metaDB, storeController, log)
 			So(err, ShouldNotBeNil)
+			So(err, ShouldEqual, ErrTestError)
+		})
+
+		Convey("imageStore.GetImageManifest missing blob - graceful handling", func() {
+			digest1 := godigest.FromString("digest1")
+			digest2 := godigest.FromString("digest2")
+			imageStore.GetIndexContentFn = func(repo string) ([]byte, error) {
+				return getIndexBlob(ispec.Index{
+					Manifests: []ispec.Descriptor{
+						{
+							MediaType: ispec.MediaTypeImageManifest,
+							Digest:    digest1,
+							Annotations: map[string]string{
+								ispec.AnnotationRefName: "tag1",
+							},
+						},
+						{
+							MediaType: ispec.MediaTypeImageManifest,
+							Digest:    digest2,
+							Annotations: map[string]string{
+								ispec.AnnotationRefName: "tag2",
+							},
+						},
+					},
+				}), nil
+			}
+			callCount := 0
+			setRepoRefCount := 0
+			// Create a valid image for the second manifest
+			validImage := CreateRandomImage()
+			manifestBlob, _ := json.Marshal(validImage.Manifest)
+			configBlob, _ := json.Marshal(validImage.Config)
+			imageStore.GetBlobContentFn = func(repo string, digest godigest.Digest) ([]byte, error) {
+				callCount++
+				// First manifest is missing, second one succeeds
+				if digest == digest1 {
+					return nil, zerr.ErrBlobNotFound
+				}
+
+				if digest == digest2 {
+					// Return valid manifest for second one
+					return manifestBlob, nil
+				}
+				// Return config blob when requested
+				if digest == validImage.ConfigDescriptor.Digest {
+					return configBlob, nil
+				}
+
+				return nil, zerr.ErrBlobNotFound
+			}
+			metaDB.SetRepoReferenceFn = func(ctx context.Context, repo, reference string, imageMeta mTypes.ImageMeta) error {
+				setRepoRefCount++
+				// Verify it's only called for tag2 (the second manifest)
+				So(reference, ShouldEqual, "tag2")
+
+				return nil
+			}
+			err := meta.ParseRepo("repo", metaDB, storeController, log)
+			So(err, ShouldBeNil)
+			// Should have called GetBlobContent for both manifests (and config)
+			So(callCount, ShouldEqual, 3)
+			// Should have called SetRepoReference only once for the second manifest (first was skipped)
+			So(setRepoRefCount, ShouldEqual, 1)
 		})
 
 		Convey("manifestMetaIsPresent true", func() {

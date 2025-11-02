@@ -12,6 +12,7 @@ import (
 	"path"
 	"strings"
 
+	"github.com/distribution/distribution/v3/registry/storage/driver"
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/regclient/regclient/types/mediatype"
@@ -227,11 +228,27 @@ func (registry *DestinationRegistry) copyManifest(repo string, desc ispec.Descri
 			return err
 		}
 
+		var firstMissingErr error
+
 		for _, manifest := range indexManifest.Manifests {
 			reference := GetDescriptorReference(manifest)
 
 			manifestBuf, err := tempImageStore.GetBlobContent(repo, manifest.Digest)
 			if err != nil {
+				// Handle missing manifest blobs gracefully - log warning and continue with other manifests
+				var pathNotFoundErr driver.PathNotFoundError
+				if errors.Is(err, zerr.ErrBlobNotFound) || errors.As(err, &pathNotFoundErr) {
+					if firstMissingErr == nil {
+						firstMissingErr = err
+					}
+
+					registry.log.Warn().Err(err).Str("dir", path.Join(tempImageStore.RootDir(), repo)).
+						Str("digest", manifest.Digest.String()).
+						Msg("skipping missing manifest blob in image index, continuing sync with other manifests")
+
+					continue
+				}
+
 				registry.log.Error().Str("errorType", common.TypeOf(err)).
 					Err(err).Str("dir", path.Join(tempImageStore.RootDir(), repo)).Str("digest", manifest.Digest.String()).
 					Msg("failed find manifest which is part of an image index")
@@ -252,6 +269,11 @@ func (registry *DestinationRegistry) copyManifest(repo string, desc ispec.Descri
 
 				return err
 			}
+		}
+
+		// Return error if we encountered any missing manifests
+		if firstMissingErr != nil {
+			return firstMissingErr
 		}
 
 		_, _, err := imageStore.PutImageManifest(repo, reference, desc.MediaType, manifestContent)

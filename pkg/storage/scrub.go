@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/distribution/distribution/v3/registry/storage/driver"
 	"github.com/olekukonko/tablewriter"
 	"github.com/olekukonko/tablewriter/tw"
 	godigest "github.com/opencontainers/go-digest"
@@ -31,6 +32,9 @@ const (
 	statusWidth       = 8
 	affectedBlobWidth = 64
 	errorWidth        = 8
+
+	statusAffected = "affected"
+	statusOK       = "ok"
 )
 
 type ScrubImageResult struct {
@@ -116,8 +120,14 @@ func CheckRepo(ctx context.Context, imageName string, imgStore storageTypes.Imag
 		layers, err := checkImage(manifest, imgStore, imageName, tag, scrubbedManifests)
 		if err == nil && len(layers) > 0 {
 			// CheckLayers doesn't use locks
+			// Only update result if current status is not "affected" to preserve subject/blob issues
+			currentRes, exists := scrubbedManifests[manifest.Digest]
+
 			imgRes := CheckLayers(imageName, tag, layers, imgStore)
-			scrubbedManifests[manifest.Digest] = imgRes
+
+			if !exists || currentRes.Status != statusAffected {
+				scrubbedManifests[manifest.Digest] = imgRes
+			}
 		}
 
 		// ignore the manifest if it isn't found
@@ -197,9 +207,24 @@ func scrubManifest(
 		}
 
 		// check all manifests
+		indexAffected := false
+
 		for _, man := range idx.Manifests {
 			buf, err := imgStore.GetBlobContent(imageName, man.Digest)
 			if err != nil {
+				// Handle missing blobs gracefully - mark as affected but continue processing
+				var pathNotFoundErr driver.PathNotFoundError
+				if errors.Is(err, zerr.ErrBlobNotFound) || errors.As(err, &pathNotFoundErr) {
+					imgRes := getResult(imageName, tag, man.Digest, err)
+					scrubbedManifests[man.Digest] = imgRes
+					scrubbedManifests[manifest.Digest] = imgRes
+					indexAffected = true
+
+					// Continue checking other manifests instead of returning
+					continue
+				}
+
+				// For other errors, mark as affected and return
 				imgRes := getResult(imageName, tag, man.Digest, zerr.ErrBadBlobDigest)
 				scrubbedManifests[man.Digest] = imgRes
 				scrubbedManifests[manifest.Digest] = imgRes
@@ -223,14 +248,28 @@ func scrubManifest(
 			}
 		}
 
-		// at this point, before starting to check the subject we can consider the index is ok
-		scrubbedManifests[manifest.Digest] = getResult(imageName, tag, "", nil)
+		// at this point, before starting to check the subject, mark index as ok only if not affected
+		// Also check if result was already set to avoid overwriting "affected" status
+		currentIndexRes, indexResExists := scrubbedManifests[manifest.Digest]
+		if !indexAffected && (!indexResExists || currentIndexRes.Status != statusAffected) {
+			scrubbedManifests[manifest.Digest] = getResult(imageName, tag, "", nil)
+		}
 
 		// check subject if exists
 		if idx.Subject != nil {
 			buf, err := imgStore.GetBlobContent(imageName, idx.Subject.Digest)
 			if err != nil {
-				imgRes := getResult(imageName, tag, idx.Subject.Digest, zerr.ErrBadBlobDigest)
+				// Handle missing blobs gracefully - mark as affected but continue processing
+				var pathNotFoundErr driver.PathNotFoundError
+
+				resultErr := err
+
+				if !errors.Is(err, zerr.ErrBlobNotFound) && !errors.As(err, &pathNotFoundErr) {
+					// For other errors, use generic error
+					resultErr = zerr.ErrBadBlobDigest
+				}
+
+				imgRes := getResult(imageName, tag, idx.Subject.Digest, resultErr)
 				scrubbedManifests[idx.Subject.Digest] = imgRes
 				scrubbedManifests[manifest.Digest] = imgRes
 
@@ -244,8 +283,12 @@ func scrubManifest(
 
 			subjectRes := scrubbedManifests[idx.Subject.Digest]
 
-			scrubbedManifests[manifest.Digest] = newScrubImageResult(imageName, tag, subjectRes.Status,
-				subjectRes.AffectedBlob, subjectRes.Error)
+			// Only update index status if it's not already "affected" to preserve missing manifest/blob issues
+			currentIndexRes, indexResExists := scrubbedManifests[manifest.Digest]
+			if !indexResExists || currentIndexRes.Status != statusAffected {
+				scrubbedManifests[manifest.Digest] = newScrubImageResult(imageName, tag, subjectRes.Status,
+					subjectRes.AffectedBlob, subjectRes.Error)
+			}
 
 			return layers, err
 		}
@@ -263,7 +306,17 @@ func scrubManifest(
 		if err == nil && man.Subject != nil {
 			buf, err := imgStore.GetBlobContent(imageName, man.Subject.Digest)
 			if err != nil {
-				imgRes := getResult(imageName, tag, man.Subject.Digest, zerr.ErrBadBlobDigest)
+				// Handle missing blobs gracefully - mark as affected but continue processing
+				var pathNotFoundErr driver.PathNotFoundError
+
+				resultErr := err
+
+				if !errors.Is(err, zerr.ErrBlobNotFound) && !errors.As(err, &pathNotFoundErr) {
+					// For other errors, use generic error
+					resultErr = zerr.ErrBadBlobDigest
+				}
+
+				imgRes := getResult(imageName, tag, man.Subject.Digest, resultErr)
 				scrubbedManifests[man.Subject.Digest] = imgRes
 				scrubbedManifests[manifest.Digest] = imgRes
 
@@ -340,10 +393,10 @@ func CheckLayers(
 
 func getResult(imageName, tag string, affectedBlobDigest godigest.Digest, err error) ScrubImageResult {
 	if err != nil {
-		return newScrubImageResult(imageName, tag, "affected", affectedBlobDigest.Encoded(), err.Error())
+		return newScrubImageResult(imageName, tag, statusAffected, affectedBlobDigest.Encoded(), err.Error())
 	}
 
-	return newScrubImageResult(imageName, tag, "ok", "", "")
+	return newScrubImageResult(imageName, tag, statusOK, "", "")
 }
 
 func newScrubImageResult(imageName, tag, status, affectedBlob, err string) ScrubImageResult {

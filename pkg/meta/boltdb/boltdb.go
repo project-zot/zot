@@ -500,6 +500,11 @@ func getAllContainedMeta(imageBuck *bbolt.Bucket, imageIndexData *proto_go.Image
 
 		imageManifestData, err := getProtoImageMeta(imageBuck, manifest.Digest)
 		if err != nil {
+			// Skip manifests that don't have MetaDB entries (missing from storage)
+			if errors.Is(err, zerr.ErrImageMetaNotFound) {
+				continue
+			}
+
 			return imageMetaList, manifestDataList, err
 		}
 
@@ -511,6 +516,8 @@ func getAllContainedMeta(imageBuck *bbolt.Bucket, imageIndexData *proto_go.Image
 			compat.IsCompatibleManifestListMediaType(imageManifestData.MediaType) {
 			partialImageDataList, partialManifestDataList, err := getAllContainedMeta(imageBuck, imageManifestData)
 			if err != nil {
+				// getAllContainedMeta skips missing items internally, so any error returned
+				// is a real error that should be propagated
 				return imageMetaList, manifestDataList, err
 			}
 

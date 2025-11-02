@@ -1504,7 +1504,7 @@ func TestDeleteBlobsInUse(t *testing.T) {
 						So(err, ShouldBeNil)
 
 						ok, err := storageCommon.IsBlobReferenced(imgStore, repoName, unusedDigest, log)
-						So(err, ShouldNotBeNil)
+						So(err, ShouldBeNil)
 						So(ok, ShouldBeFalse)
 					})
 				}

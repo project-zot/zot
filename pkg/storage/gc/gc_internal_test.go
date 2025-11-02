@@ -14,6 +14,7 @@ import (
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	. "github.com/smartystreets/goconvey/convey"
 
+	zerr "zotregistry.dev/zot/v2/errors"
 	"zotregistry.dev/zot/v2/pkg/api/config"
 	zcommon "zotregistry.dev/zot/v2/pkg/common"
 	"zotregistry.dev/zot/v2/pkg/extensions/monitoring"
@@ -63,7 +64,8 @@ func TestGarbageCollectManifestErrors(t *testing.T) {
 			},
 		}, audit, log)
 
-		Convey("trigger repo not found in addImageIndexBlobsToReferences()", func() {
+		Convey("trigger missing blob in addImageIndexBlobsToReferences()", func() {
+			// GC should continue when blobs are missing (not found), not return an error
 			err := gc.addIndexBlobsToReferences(repoName, ispec.Index{
 				Manifests: []ispec.Descriptor{
 					{
@@ -72,10 +74,11 @@ func TestGarbageCollectManifestErrors(t *testing.T) {
 					},
 				},
 			}, map[string]bool{})
-			So(err, ShouldNotBeNil)
+			So(err, ShouldBeNil)
 		})
 
-		Convey("trigger repo not found in addImageManifestBlobsToReferences()", func() {
+		Convey("trigger missing blob in addImageManifestBlobsToReferences()", func() {
+			// GC should continue when blobs are missing (not found), not return an error
 			err := gc.addIndexBlobsToReferences(repoName, ispec.Index{
 				Manifests: []ispec.Descriptor{
 					{
@@ -84,7 +87,7 @@ func TestGarbageCollectManifestErrors(t *testing.T) {
 					},
 				},
 			}, map[string]bool{})
-			So(err, ShouldNotBeNil)
+			So(err, ShouldBeNil)
 		})
 
 		content := []byte("this is a blob")
@@ -137,8 +140,12 @@ func TestGarbageCollectManifestErrors(t *testing.T) {
 				So(err, ShouldBeNil)
 			}()
 
+			// Note: Permission denied from Stat() is converted to ErrBlobNotFound in originalBlobInfo,
+			// so we can't distinguish it from missing blobs. GC treats missing blobs gracefully,
+			// so permission denied from Stat() will also be treated as missing (return nil).
+			// Permission denied from ReadFile() will still return an error.
 			err = gc.addIndexBlobsToReferences(repoName, index, map[string]bool{})
-			So(err, ShouldNotBeNil)
+			So(err, ShouldBeNil)
 		})
 
 		Convey("trigger GetImageManifest error in AddIndexBlobsToReferences", func() {
@@ -705,6 +712,75 @@ func TestGarbageCollectWithMockedImageStore(t *testing.T) {
 				},
 			})
 			So(err, ShouldNotBeNil)
+		})
+
+		Convey("Missing nested index blob in removeIndexReferrers is skipped gracefully", func() {
+			// Create a top-level index that contains a nested index
+			// The nested index blob will be missing
+			topLevelIndex := ispec.Index{
+				MediaType: ispec.MediaTypeImageIndex,
+				Manifests: []ispec.Descriptor{
+					{
+						MediaType: ispec.MediaTypeImageIndex,
+						Digest:    godigest.FromString("missing-nested-index"),
+						Size:      100,
+					},
+				},
+			}
+
+			imgStore := mocks.MockedImageStore{
+				GetBlobContentFn: func(repo string, digest godigest.Digest) ([]byte, error) {
+					// Return ErrBlobNotFound for the missing nested index
+					return nil, zerr.ErrBlobNotFound
+				},
+			}
+
+			gcOptions.ImageRetention = config.ImageRetention{
+				Policies: []config.RetentionPolicy{
+					{
+						Repositories:    []string{"**"},
+						DeleteReferrers: true,
+					},
+				},
+			}
+
+			gc := NewGarbageCollect(imgStore, mocks.MetaDBMock{}, gcOptions, audit, log)
+
+			// removeIndexReferrers should skip the missing nested index and continue
+			gced, err := gc.removeIndexReferrers(repoName, &topLevelIndex, topLevelIndex)
+			So(err, ShouldBeNil)
+			So(gced, ShouldBeFalse)
+		})
+
+		Convey("Missing nested index blob in identifyManifestsReferencedInIndex is skipped gracefully", func() {
+			// Create a top-level index that contains a nested index
+			// The nested index blob will be missing
+			topLevelIndex := ispec.Index{
+				MediaType: ispec.MediaTypeImageIndex,
+				Manifests: []ispec.Descriptor{
+					{
+						MediaType: ispec.MediaTypeImageIndex,
+						Digest:    godigest.FromString("missing-nested-index"),
+						Size:      100,
+					},
+				},
+			}
+
+			imgStore := mocks.MockedImageStore{
+				GetBlobContentFn: func(repo string, digest godigest.Digest) ([]byte, error) {
+					// Return ErrBlobNotFound for the missing nested index
+					return nil, zerr.ErrBlobNotFound
+				},
+			}
+
+			gc := NewGarbageCollect(imgStore, mocks.MetaDBMock{}, gcOptions, audit, log)
+
+			// identifyManifestsReferencedInIndex should skip the missing nested index and continue
+			referenced := make(map[godigest.Digest]bool)
+			err := gc.identifyManifestsReferencedInIndex(topLevelIndex, repoName, referenced)
+			So(err, ShouldBeNil)
+			// No manifests should be marked as referenced since the nested index is missing
+			So(len(referenced), ShouldEqual, 0)
 		})
 	})
 }
