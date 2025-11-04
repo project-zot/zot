@@ -119,6 +119,8 @@ func TestConfig(t *testing.T) {
 							Name:         "GitHub",
 							ClientID:     "github-client-id",
 							ClientSecret: "github-client-secret",
+							AuthURL:      "github-auth-url",
+							TokenURL:     "github-token-url",
 							Scopes:       []string{"user:email"},
 						},
 					},
@@ -143,6 +145,8 @@ func TestConfig(t *testing.T) {
 			// Verify original config is not modified
 			So(conf.HTTP.Auth.OpenID.Providers["google"].ClientSecret, ShouldEqual, "google-client-secret")
 			So(conf.HTTP.Auth.OpenID.Providers["github"].ClientSecret, ShouldEqual, "github-client-secret")
+			So(conf.HTTP.Auth.OpenID.Providers["github"].AuthURL, ShouldEqual, "github-auth-url")
+			So(conf.HTTP.Auth.OpenID.Providers["github"].TokenURL, ShouldEqual, "github-token-url")
 		})
 
 		Convey("Test Sanitize() with Event sink credentials", func() {

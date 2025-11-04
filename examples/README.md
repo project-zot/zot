@@ -346,7 +346,7 @@ In the case of running zot with openid enabled behind a proxy/load balancer http
   "http": {
     "address": "0.0.0.0",
     "port": "8080",
-    "externalUrl: "https://zot.example.com",
+    "externalUrl": "https://zot.example.com",
     "auth": {
       "openid": {
         "providers": {
@@ -361,6 +361,40 @@ In the case of running zot with openid enabled behind a proxy/load balancer http
   }
 ```
 This config value will be used by oauth2/openid clients to redirect back to zot.
+
+### OpenID/OAuth2 Social Login with Custom URLs (Self-Hosted Providers)
+
+#### Use Cases
+- GitHub Enterprise Server (on-premises GitHub)
+- GitLab Self-Managed instances
+- Custom corporate OAuth2/OIDC providers
+
+When integrating zot with self-hosted OAuth2 providers like GitHub Enterprise Server, GitLab Self-Managed, 
+or custom OIDC implementations, you must specify custom authentication and token endpoints since 
+the default public endpoints won't work.
+
+```
+  "http": {
+    "address": "0.0.0.0",
+    "port": "8080",
+    "externalUrl": "https://zot.example.com",
+    "auth": {
+      "openid": {
+        "providers": {
+          "github": {
+            "clientid": <client_id>,
+            "clientsecret": <client_secret>,
+            "authurl": "https://github.company.com/login/oauth/authorize",     // Custom GHE authorization endpoint
+            "tokenurl": "https://github.company.com/login/oauth/access_token", // Custom GHE token endpoint
+            "scopes": ["read:org", "user", "repo"]
+          }
+        }
+      }
+    }
+  }
+```
+
+Without `authurl`/`tokenurl`, zot assumes public GitHub.com endpoints.
 
 ### Session based login
 
