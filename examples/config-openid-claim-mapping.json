@@ -1,0 +1,54 @@
+{
+  "distSpecVersion": "1.1.1",
+  "storage": {
+    "rootDirectory": "/tmp/zot",
+    "dedupe": true
+  },
+  "http": {
+    "address": "127.0.0.1",
+    "port": "8080",
+    "externalUrl": "http://127.0.0.1:8080",
+    "realm": "zot",
+    "auth": {
+      "sessionKeysFile": "examples/sessionKeys.json",
+      "openid": {
+        "providers": {
+          "oidc": {
+            "name": "Zitadel",
+            "issuer": "https://iam.example.com",
+            "credentialsFile": "examples/config-openid-oidc-credentials.json",
+            "scopes": ["openid", "profile", "email", "groups"],
+            "claimMapping": {
+              "username": "preferred_username"
+            }
+          }
+        }
+      },
+      "failDelay": 5
+    },
+    "accessControl": {
+      "repositories": {
+        "**": {
+          "policies": [
+            {
+              "users": [
+                "admin"
+              ],
+              "actions": [
+                "read",
+                "create",
+                "update",
+                "delete"
+              ]
+            }
+          ],
+          "defaultPolicy": ["read"]
+        }
+      }
+    }
+  },
+  "log": {
+    "level": "debug"
+  },
+  "extensions": {}
+}
