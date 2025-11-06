@@ -90,7 +90,7 @@ func (rh *RouteHandler) SetupRoutes() {
 					rp.CodeExchangeHandler(rh.GithubCodeExchangeCallback(), relyingParty))
 			} else if config.IsOpenIDSupported(provider) {
 				rh.c.Router.HandleFunc(constants.CallbackBasePath+"/"+provider,
-					rp.CodeExchangeHandler(rp.UserinfoCallback(rh.OpenIDCodeExchangeCallback()), relyingParty))
+					rp.CodeExchangeHandler(rp.UserinfoCallback(rh.OpenIDCodeExchangeCallbackWithProvider(provider)), relyingParty))
 			}
 		}
 	}
@@ -1998,17 +1998,69 @@ func (rh *RouteHandler) GithubCodeExchangeCallback() rp.CodeExchangeCallback[*oi
 	}
 }
 
-// Openid CodeExchange callback.
+// Openid CodeExchange callback (legacy, kept for compatibility).
 func (rh *RouteHandler) OpenIDCodeExchangeCallback() rp.CodeExchangeUserinfoCallback[
+	*oidc.IDTokenClaims,
+	*oidc.UserInfo,
+] {
+	return rh.OpenIDCodeExchangeCallbackWithProvider("")
+}
+
+// Openid CodeExchange callback with provider name for claim mapping support.
+func (rh *RouteHandler) OpenIDCodeExchangeCallbackWithProvider(providerName string) rp.CodeExchangeUserinfoCallback[
 	*oidc.IDTokenClaims,
 	*oidc.UserInfo,
 ] {
 	return func(w http.ResponseWriter, r *http.Request, tokens *oidc.Tokens[*oidc.IDTokenClaims], state string,
 		relyingParty rp.RelyingParty, info *oidc.UserInfo,
 	) {
-		email := info.UserInfoEmail.Email
-		if email == "" {
-			rh.c.Log.Error().Msg("failed to set user record for empty email value")
+		// Extract username based on claim mapping configuration
+		var username string
+		authConfig := rh.c.Config.CopyAuthConfig()
+
+		if authConfig != nil && authConfig.OpenID != nil && providerName != "" {
+			if providerConfig, ok := authConfig.OpenID.Providers[providerName]; ok {
+				// Check if claim mapping is configured
+				if providerConfig.ClaimMapping != nil && providerConfig.ClaimMapping.Username != "" {
+					claimName := providerConfig.ClaimMapping.Username
+
+					// Use the configured claim
+					switch claimName {
+					case "preferred_username":
+						username = info.PreferredUsername
+					case "email":
+						username = info.UserInfoEmail.Email
+					case "sub":
+						username = info.Subject
+					case "name":
+						username = info.Name
+					default:
+						// Try to get from custom claims in UserInfo
+						if val, ok := info.Claims[claimName].(string); ok {
+							username = val
+						}
+					}
+
+					rh.c.Log.Debug().
+						Str("provider", providerName).
+						Str("claim", claimName).
+						Str("username", username).
+						Msg("extracted username from configured claim")
+				}
+			}
+		}
+
+		// Fallback to email if no username was extracted
+		if username == "" {
+			username = info.UserInfoEmail.Email
+			rh.c.Log.Debug().
+				Str("provider", providerName).
+				Str("username", username).
+				Msg("using email as username (fallback)")
+		}
+
+		if username == "" {
+			rh.c.Log.Error().Msg("failed to set user record for empty username value")
 			w.WriteHeader(http.StatusUnauthorized)
 
 			return
@@ -2018,7 +2070,7 @@ func (rh *RouteHandler) OpenIDCodeExchangeCallback() rp.CodeExchangeUserinfoCall
 
 		val, ok := info.Claims["groups"].([]interface{})
 		if !ok {
-			rh.c.Log.Info().Msgf("failed to find any 'groups' claim for user %s in UserInfo", email)
+			rh.c.Log.Info().Msgf("failed to find any 'groups' claim for user %s in UserInfo", username)
 		}
 
 		for _, group := range val {
@@ -2027,7 +2079,7 @@ func (rh *RouteHandler) OpenIDCodeExchangeCallback() rp.CodeExchangeUserinfoCall
 
 		val, ok = tokens.IDTokenClaims.Claims["groups"].([]interface{})
 		if !ok {
-			rh.c.Log.Info().Msgf("failed to find any 'groups' claim for user %s in IDTokenClaimsToken", email)
+			rh.c.Log.Info().Msgf("failed to find any 'groups' claim for user %s in IDTokenClaimsToken", username)
 		}
 
 		for _, group := range val {
@@ -2037,7 +2089,7 @@ func (rh *RouteHandler) OpenIDCodeExchangeCallback() rp.CodeExchangeUserinfoCall
 		slices.Sort(groups)
 		groups = slices.Compact(groups)
 
-		callbackUI, err := OAuth2Callback(rh.c, w, r, state, email, groups)
+		callbackUI, err := OAuth2Callback(rh.c, w, r, state, username, groups)
 		if err != nil {
 			if errors.Is(err, zerr.ErrInvalidStateCookie) {
 				w.WriteHeader(http.StatusUnauthorized)
