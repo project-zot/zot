@@ -49,6 +49,7 @@ type Controller struct {
 	EventRecorder   events.Recorder
 	CveScanner      ext.CveScanner
 	SyncOnDemand    SyncOnDemand
+	StreamProxyMgr  *StreamProxyManager
 	RelyingParties  map[string]rp.RelyingParty
 	CookieStore     *CookieStore
 	HTPasswd        *HTPasswd
@@ -285,6 +286,10 @@ func (c *Controller) Init() error {
 		return err
 	}
 
+	if err := c.InitStreamProxy(); err != nil {
+		return err
+	}
+
 	if err := c.InitMetaDB(); err != nil {
 		return err
 	}
@@ -318,6 +323,29 @@ func (c *Controller) InitImageStore() error {
 	}
 
 	c.StoreController = storeController
+
+	return nil
+}
+
+func (c *Controller) InitStreamProxy() error {
+	// Initialisiere StreamProxyManager nur wenn Extensions aktiviert sind
+	extensionsConfig := c.Config.CopyExtensionsConfig()
+	if extensionsConfig == nil || extensionsConfig.Sync == nil {
+		c.Log.Debug().Msg("sync extension not configured, skipping stream proxy initialization")
+		return nil
+	}
+
+	streamProxyMgr, err := NewStreamProxyManager(extensionsConfig.Sync, c.StoreController, c.Log)
+	if err != nil {
+		c.Log.Error().Err(err).Msg("failed to initialize stream proxy manager")
+		return err
+	}
+
+	c.StreamProxyMgr = streamProxyMgr
+
+	if streamProxyMgr != nil {
+		c.Log.Info().Msg("stream proxy manager initialized successfully")
+	}
 
 	return nil
 }
