@@ -13,12 +13,12 @@ import (
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/regclient/regclient"
 	"github.com/regclient/regclient/config"
+	"github.com/regclient/regclient/scheme"
 	"github.com/regclient/regclient/types/descriptor"
 	"github.com/regclient/regclient/types/errs"
 	"github.com/regclient/regclient/types/manifest"
 	"github.com/regclient/regclient/types/mediatype"
 	"github.com/regclient/regclient/types/ref"
-	"github.com/regclient/regclient/types/repo"
 
 	zerr "zotregistry.dev/zot/v2/errors"
 	"zotregistry.dev/zot/v2/pkg/common"
@@ -51,20 +51,54 @@ func (registry *RemoteRegistry) GetHostName() string {
 func (registry *RemoteRegistry) GetRepositories(ctx context.Context) ([]string, error) {
 	var err error
 
-	var repoList *repo.RepoList
+	var repoList []string
 
 	for _, host := range registry.hosts {
-		repoList, err = registry.client.RepoList(ctx, host.Hostname)
+		repoList, err = registry.getRepoList(ctx, host.Hostname)
 		if err != nil {
 			registry.log.Error().Err(err).Str("remote", host.Name).Msg("failed to list repositories in remote registry")
 
 			continue
 		}
 
-		return repoList.Repositories, nil
+		return repoList, nil
 	}
 
 	return []string{}, err
+}
+
+func (registry *RemoteRegistry) getRepoList(ctx context.Context, hostname string) ([]string, error) {
+	repositories := []string{}
+
+	last := ""
+
+	for {
+		repoOpts := []scheme.RepoOpts{}
+
+		if last != "" {
+			repoOpts = append(repoOpts, scheme.WithRepoLast(last))
+		}
+
+		clientRepoList, err := registry.client.RepoList(ctx, hostname, repoOpts...)
+		if err != nil {
+			return repositories, err
+		}
+
+		repoList, err := clientRepoList.GetRepos()
+		if err != nil {
+			return repositories, err
+		}
+
+		if len(repoList) == 0 || last == repoList[len(repoList)-1] {
+			break
+		}
+
+		repositories = append(repositories, repoList...)
+
+		last = repoList[len(repoList)-1]
+	}
+
+	return repositories, nil
 }
 
 func (registry *RemoteRegistry) GetImageReference(repo, reference string) (ref.Ref, error) {
