@@ -1134,7 +1134,7 @@ func (rh *RouteHandler) GetBlob(response http.ResponseWriter, request *http.Requ
 
 	var blen, bsize int64
 
-	// Bei Partial Requests kein Stream-Cache (erst mal)
+	// No stream cache for partial requests (for now)
 	if partial {
 		repo, blen, bsize, err = imgStore.GetBlobPartial(name, digest, mediaType, from, to)
 		if err != nil {
@@ -2141,10 +2141,10 @@ func (rh *RouteHandler) getImageStore(name string) storageTypes.ImageStore {
 	return rh.c.StoreController.GetImageStore(name)
 }
 
-// tryStreamProxy versucht, einen Blob über den Stream-Proxy zu laden
+// tryStreamProxy attempts to load a blob via the stream proxy
 func (rh *RouteHandler) tryStreamProxy(response http.ResponseWriter, request *http.Request,
 	repo string, digest godigest.Digest, mediaType string) bool {
-	// Prüfe, ob StreamProxyManager verfügbar ist
+	// Check if StreamProxyManager is available
 	if rh.c.StreamProxyMgr == nil {
 		return false
 	}
@@ -2154,7 +2154,7 @@ func (rh *RouteHandler) tryStreamProxy(response http.ResponseWriter, request *ht
 		return false
 	}
 
-	// Prüfe zuerst im Cache
+	// Check cache first
 	if hasBlob, _ := cache.HasBlob(digest); hasBlob {
 		rh.c.Log.Info().
 			Str("digest", digest.String()).
@@ -2179,7 +2179,7 @@ func (rh *RouteHandler) tryStreamProxy(response http.ResponseWriter, request *ht
 			return false
 		}
 
-		// Starte asynchronen Import
+		// Start asynchronous import
 		go func() {
 			imgStore := rh.getImageStore(repo)
 			ctx := context.Background()
@@ -2195,8 +2195,8 @@ func (rh *RouteHandler) tryStreamProxy(response http.ResponseWriter, request *ht
 		return true
 	}
 
-	// Nicht im Cache - prüfe ob Stream-Proxy für Registry konfiguriert ist
-	// Hole den ersten verfügbaren Proxy (vereinfacht - in Produktion sollte basierend auf Repo gewählt werden)
+	// Not in cache - check if stream proxy is configured for registry
+	// Get first available proxy (simplified - in production should be chosen based on repo)
 	var firstProxy interface{}
 	rh.c.StreamProxyMgr.mu.RLock()
 	for url := range rh.c.StreamProxyMgr.proxies {
@@ -2212,7 +2212,7 @@ func (rh *RouteHandler) tryStreamProxy(response http.ResponseWriter, request *ht
 		return false
 	}
 
-	// Type assertion für StreamProxy
+	// Type assertion for StreamProxy
 	streamProxy, ok := firstProxy.(interface {
 		ProxyBlob(ctx context.Context, repo string, digest godigest.Digest, mediaType string, response http.ResponseWriter) (int64, error)
 	})
@@ -2220,7 +2220,7 @@ func (rh *RouteHandler) tryStreamProxy(response http.ResponseWriter, request *ht
 		return false
 	}
 
-	// Versuche Blob über Proxy zu laden
+	// Attempt to load blob via proxy
 	ctx := request.Context()
 	_, err := streamProxy.ProxyBlob(ctx, repo, digest, mediaType, response)
 	if err != nil {
@@ -2241,20 +2241,20 @@ func getImageManifest(ctx context.Context, routeHandler *RouteHandler, imgStore 
 	syncEnabled := isSyncOnDemandEnabled(*routeHandler.c)
 	streamCacheEnabled := routeHandler.c.StreamProxyMgr != nil && routeHandler.c.StreamProxyMgr.IsEnabled()
 
-	// Versuche zuerst aus lokalem Storage zu laden
+	// Try to load from local storage first
 	content, digest, mediaType, err := imgStore.GetImageManifest(name, reference)
 	if err == nil {
-		// Manifest gefunden, gebe es zurück
+		// Manifest found, return it
 		return content, digest, mediaType, nil
 	}
 
-	// Manifest nicht lokal vorhanden
-	// Bei Stream-Cache: Manifest direkt von Remote laden (OHNE komplettes Sync)
+	// Manifest not available locally
+	// With stream cache: Load manifest directly from remote (WITHOUT full sync)
 	if streamCacheEnabled && (errors.Is(err, zerr.ErrManifestNotFound) || errors.Is(err, zerr.ErrRepoNotFound)) {
 		routeHandler.c.Log.Info().Str("repository", name).Str("reference", reference).
 			Msg("stream cache mode - fetching manifest directly from remote, blobs will be streamed on-demand")
 
-		// Hole ersten verfügbaren Proxy
+		// Get first available proxy
 		var proxy interface{}
 		routeHandler.c.StreamProxyMgr.mu.RLock()
 		for url := range routeHandler.c.StreamProxyMgr.proxies {
@@ -2267,21 +2267,21 @@ func getImageManifest(ctx context.Context, routeHandler *RouteHandler, imgStore 
 		routeHandler.c.StreamProxyMgr.mu.RUnlock()
 
 		if proxy != nil {
-			// Type assertion für Manifest-Fetch
+			// Type assertion for manifest fetch
 			type ManifestFetcher interface {
 				FetchManifestFromRemote(ctx context.Context, repo, ref string) ([]byte, godigest.Digest, string, error)
 				StoreManifest(ctx context.Context, repo, ref, mediaType string, data []byte) error
 			}
 
 			if fetcher, ok := proxy.(ManifestFetcher); ok {
-				// Lade Manifest von Remote
+				// Load manifest from remote
 				manifestBytes, manifestDigest, manifestMediaType, fetchErr := fetcher.FetchManifestFromRemote(ctx, name, reference)
 				if fetchErr != nil {
 					routeHandler.c.Log.Error().Err(fetchErr).
 						Str("repo", name).
 						Str("ref", reference).
 						Msg("failed to fetch manifest from remote")
-					// Gebe ursprünglichen Fehler zurück
+					// Return original error
 					return nil, "", "", err
 				}
 
@@ -2291,7 +2291,7 @@ func getImageManifest(ctx context.Context, routeHandler *RouteHandler, imgStore 
 					Str("digest", manifestDigest.String()).
 					Msg("successfully fetched manifest from remote via stream cache")
 
-				// Speichere Manifest lokal (asynchron im Hintergrund)
+				// Store manifest locally (asynchronously in background)
 				go func() {
 					storeErr := fetcher.StoreManifest(context.Background(), name, reference, manifestMediaType, manifestBytes)
 					if storeErr != nil {
@@ -2307,7 +2307,7 @@ func getImageManifest(ctx context.Context, routeHandler *RouteHandler, imgStore 
 					}
 				}()
 
-				// Gebe Manifest sofort zurück
+				// Return manifest immediately
 				return manifestBytes, manifestDigest, manifestMediaType, nil
 			}
 
@@ -2317,7 +2317,7 @@ func getImageManifest(ctx context.Context, routeHandler *RouteHandler, imgStore 
 		}
 	}
 
-	// Normales Sync (nur wenn Stream-Cache NICHT aktiv oder als Fallback)
+	// Normal sync (only if stream cache is NOT active or as fallback)
 	if syncEnabled && !streamCacheEnabled {
 		routeHandler.c.Log.Info().Str("repository", name).Str("reference", reference).
 			Msg("trying to get updated image by syncing on demand")
@@ -2327,11 +2327,11 @@ func getImageManifest(ctx context.Context, routeHandler *RouteHandler, imgStore 
 				Msg("failed to sync image")
 		}
 
-		// Versuche erneut nach Sync
+		// Try again after sync
 		return imgStore.GetImageManifest(name, reference)
 	}
 
-	// Kein Sync möglich, gebe Fehler zurück
+	// No sync possible, return error
 	return nil, "", "", err
 }
 

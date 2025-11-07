@@ -18,33 +18,33 @@ import (
 	storageTypes "zotregistry.dev/zot/v2/pkg/storage/types"
 )
 
-// StreamCache verwaltet einen temporären Cache für gestreamte Blobs
+// StreamCache manages a temporary cache for streamed blobs
 type StreamCache struct {
 	cacheDir  string
 	maxSize   int64
 	log       log.Logger
 	cacheLock sync.RWMutex
-	// Map von Digest zu CacheEntry
+	// Map from digest to CacheEntry
 	entries map[godigest.Digest]*CacheEntry
-	// Map von Digest zu laufenden Downloads
+	// Map from digest to active downloads
 	activeDownloads map[godigest.Digest]*ActiveDownload
 	// Cleanup ticker
 	cleanupTicker *time.Ticker
 	cleanupStop   chan struct{}
 }
 
-// CacheEntry repräsentiert einen Cache-Eintrag
+// CacheEntry represents a cache entry
 type CacheEntry struct {
 	Digest      godigest.Digest
 	FilePath    string
 	Size        int64
 	CreatedAt   time.Time
-	Imported    bool // Wurde bereits in persistenten Storage importiert
+	Imported    bool // Has been imported to persistent storage
 	ImportError error
 	mu          sync.RWMutex
 }
 
-// ActiveDownload repräsentiert einen laufenden Download
+// ActiveDownload represents an ongoing download
 type ActiveDownload struct {
 	Digest   godigest.Digest
 	Progress int64
@@ -53,7 +53,7 @@ type ActiveDownload struct {
 	mu       sync.RWMutex
 }
 
-// NewStreamCache erstellt einen neuen Stream-Cache
+// NewStreamCache creates a new stream cache
 func NewStreamCache(cacheDir string, maxSize int64, log log.Logger) (*StreamCache, error) {
 	if err := os.MkdirAll(cacheDir, 0o755); err != nil {
 		return nil, fmt.Errorf("failed to create cache directory: %w", err)
@@ -68,19 +68,19 @@ func NewStreamCache(cacheDir string, maxSize int64, log log.Logger) (*StreamCach
 		cleanupStop:     make(chan struct{}),
 	}
 
-	// Lade existierende Cache-Einträge beim Start
+	// Load existing cache entries on startup
 	if err := sc.loadExistingEntries(); err != nil {
 		log.Warn().Err(err).Msg("failed to load existing cache entries")
 	}
 
-	// Starte periodisches Cleanup (alle 5 Minuten)
+	// Start periodic cleanup (every 5 minutes)
 	sc.cleanupTicker = time.NewTicker(5 * time.Minute)
 	go sc.periodicCleanup()
 
 	return sc, nil
 }
 
-// loadExistingEntries lädt existierende Cache-Einträge aus dem Verzeichnis
+// loadExistingEntries loads existing cache entries from the directory
 func (sc *StreamCache) loadExistingEntries() error {
 	entries, err := os.ReadDir(sc.cacheDir)
 	if err != nil {
@@ -99,7 +99,7 @@ func (sc *StreamCache) loadExistingEntries() error {
 			continue
 		}
 
-		// Versuche Digest aus Dateinamen zu extrahieren
+		// Try to extract digest from filename
 		digest := godigest.Digest(entry.Name())
 		if err := digest.Validate(); err != nil {
 			sc.log.Warn().Str("file", entry.Name()).Msg("invalid digest in filename, skipping")
@@ -121,7 +121,7 @@ func (sc *StreamCache) loadExistingEntries() error {
 	return nil
 }
 
-// HasBlob prüft, ob ein Blob bereits im Cache vorhanden ist
+// HasBlob checks if a blob is already present in the cache
 func (sc *StreamCache) HasBlob(digest godigest.Digest) (bool, int64) {
 	sc.cacheLock.RLock()
 	defer sc.cacheLock.RUnlock()
@@ -135,7 +135,7 @@ func (sc *StreamCache) HasBlob(digest godigest.Digest) (bool, int64) {
 	return false, 0
 }
 
-// GetBlob gibt einen Reader für einen Blob aus dem Cache zurück
+// GetBlob returns a reader for a blob from the cache
 func (sc *StreamCache) GetBlob(digest godigest.Digest) (io.ReadCloser, int64, error) {
 	sc.cacheLock.RLock()
 	entry, exists := sc.entries[digest]
@@ -158,7 +158,7 @@ func (sc *StreamCache) GetBlob(digest godigest.Digest) (io.ReadCloser, int64, er
 	return file, size, nil
 }
 
-// TeeReader erstellt einen Multi-Writer, der gleichzeitig an den Client streamt und cached
+// TeeReader creates a multi-writer that streams to client and caches simultaneously
 type TeeReader struct {
 	source      io.ReadCloser
 	destination *os.File
@@ -170,21 +170,21 @@ type TeeReader struct {
 	mu          sync.Mutex
 }
 
-// Read implementiert io.Reader und schreibt gleichzeitig in Cache und zum Client
+// Read implements io.Reader and writes simultaneously to cache and client
 func (tr *TeeReader) Read(p []byte) (n int, err error) {
 	n, err = tr.source.Read(p)
 	if n > 0 {
-		// Schreibe zum Client
+		// Write to client
 		if _, writeErr := tr.client.Write(p[:n]); writeErr != nil {
 			return n, writeErr
 		}
 
-		// Schreibe in Cache-Datei
+		// Write to cache file
 		if _, writeErr := tr.destination.Write(p[:n]); writeErr != nil {
 			tr.cache.log.Error().Err(writeErr).Msg("failed to write to cache")
 		}
 
-		// Update Hasher
+		// Update hasher
 		tr.hasher.Hash().Write(p[:n])
 
 		tr.mu.Lock()
@@ -195,15 +195,15 @@ func (tr *TeeReader) Read(p []byte) (n int, err error) {
 	return n, err
 }
 
-// Close schließt den TeeReader und finalisiert den Cache-Eintrag
+// Close closes the TeeReader and finalizes the cache entry
 func (tr *TeeReader) Close() error {
 	sourceErr := tr.source.Close()
 	destErr := tr.destination.Close()
 
-	// Verifiziere Digest
+	// Verify digest
 	calculatedDigest := tr.hasher.Digest()
 	if calculatedDigest != tr.digest {
-		// Digest stimmt nicht überein, lösche Cache-Datei
+		// Digest mismatch, delete cache file
 		tr.cache.log.Error().
 			Str("expected", tr.digest.String()).
 			Str("calculated", calculatedDigest.String()).
@@ -220,7 +220,7 @@ func (tr *TeeReader) Close() error {
 	return destErr
 }
 
-// StreamAndCache streamt einen Blob zum Client und cached ihn gleichzeitig
+// StreamAndCache streams a blob to the client and caches it simultaneously
 func (sc *StreamCache) StreamAndCache(
 	_ context.Context,
 	digest godigest.Digest,
@@ -229,10 +229,10 @@ func (sc *StreamCache) StreamAndCache(
 ) (int64, error) {
 	sc.cacheLock.Lock()
 
-	// Prüfe, ob bereits ein Download läuft
+	// Check if a download is already in progress
 	if activeDownload, exists := sc.activeDownloads[digest]; exists {
 		sc.cacheLock.Unlock()
-		// Warte auf den laufenden Download
+		// Wait for the ongoing download
 		<-activeDownload.Done
 		activeDownload.mu.RLock()
 		err := activeDownload.Error
@@ -240,11 +240,11 @@ func (sc *StreamCache) StreamAndCache(
 		if err != nil {
 			return 0, err
 		}
-		// Download abgeschlossen, serviere aus Cache
+		// Download completed, serve from cache
 		return sc.serveFromCache(digest, client)
 	}
 
-	// Erstelle neuen ActiveDownload
+	// Create new ActiveDownload
 	activeDownload := &ActiveDownload{
 		Digest: digest,
 		Done:   make(chan struct{}),
@@ -252,7 +252,7 @@ func (sc *StreamCache) StreamAndCache(
 	sc.activeDownloads[digest] = activeDownload
 	sc.cacheLock.Unlock()
 
-	// Cleanup nach Abschluss
+	// Cleanup after completion
 	defer func() {
 		close(activeDownload.Done)
 		sc.cacheLock.Lock()
@@ -260,7 +260,7 @@ func (sc *StreamCache) StreamAndCache(
 		sc.cacheLock.Unlock()
 	}()
 
-	// Erstelle Cache-Datei
+	// Create cache file
 	cacheFilePath := sc.getCacheFilePath(digest)
 	cacheFile, err := os.Create(cacheFilePath)
 	if err != nil {
@@ -270,7 +270,7 @@ func (sc *StreamCache) StreamAndCache(
 		return 0, activeDownload.Error
 	}
 
-	// Erstelle TeeReader für gleichzeitiges Streaming und Caching
+	// Create TeeReader for simultaneous streaming and caching
 	teeReader := &TeeReader{
 		source:      source,
 		destination: cacheFile,
@@ -280,7 +280,7 @@ func (sc *StreamCache) StreamAndCache(
 		hasher:      digest.Algorithm().Digester(),
 	}
 
-	// Kopiere Daten
+	// Copy data
 	written, err := io.Copy(io.Discard, teeReader)
 	closeErr := teeReader.Close()
 
@@ -300,7 +300,7 @@ func (sc *StreamCache) StreamAndCache(
 		return written, closeErr
 	}
 
-	// Erstelle Cache-Entry
+	// Create cache entry
 	entry := &CacheEntry{
 		Digest:    digest,
 		FilePath:  cacheFilePath,
@@ -321,7 +321,7 @@ func (sc *StreamCache) StreamAndCache(
 	return written, nil
 }
 
-// serveFromCache serviert einen Blob aus dem Cache
+// serveFromCache serves a blob from the cache
 func (sc *StreamCache) serveFromCache(digest godigest.Digest, client io.Writer) (int64, error) {
 	reader, _, err := sc.GetBlob(digest)
 	if err != nil {
@@ -333,12 +333,12 @@ func (sc *StreamCache) serveFromCache(digest godigest.Digest, client io.Writer) 
 	return written, err
 }
 
-// getCacheFilePath generiert den Dateipfad für einen Cache-Eintrag
+// getCacheFilePath generates the file path for a cache entry
 func (sc *StreamCache) getCacheFilePath(digest godigest.Digest) string {
 	return filepath.Join(sc.cacheDir, digest.String())
 }
 
-// removeCacheEntry entfernt einen Cache-Eintrag
+// removeCacheEntry removes a cache entry
 func (sc *StreamCache) removeCacheEntry(digest godigest.Digest) {
 	sc.cacheLock.Lock()
 	defer sc.cacheLock.Unlock()
@@ -350,7 +350,7 @@ func (sc *StreamCache) removeCacheEntry(digest godigest.Digest) {
 	}
 }
 
-// ImportToStorage importiert einen Blob aus dem Cache in den persistenten Storage
+// ImportToStorage imports a blob from cache to persistent storage
 func (sc *StreamCache) ImportToStorage(
 	_ context.Context,
 	digest godigest.Digest,
@@ -373,14 +373,14 @@ func (sc *StreamCache) ImportToStorage(
 	}
 	entry.mu.Unlock()
 
-	// Öffne Cache-Datei
+	// Open cache file
 	file, err := os.Open(entry.FilePath)
 	if err != nil {
 		return fmt.Errorf("failed to open cache file: %w", err)
 	}
 	defer file.Close()
 
-	// Importiere in Storage
+	// Import to storage
 	sc.log.Info().
 		Str("digest", digest.String()).
 		Str("repo", repo).
@@ -394,7 +394,7 @@ func (sc *StreamCache) ImportToStorage(
 		return fmt.Errorf("failed to import blob to storage: %w", err)
 	}
 
-	// Markiere als importiert
+	// Mark as imported
 	entry.mu.Lock()
 	entry.Imported = true
 	entry.mu.Unlock()
@@ -404,9 +404,9 @@ func (sc *StreamCache) ImportToStorage(
 		Str("repo", repo).
 		Msg("blob imported successfully")
 
-	// Cleanup: Entferne Cache-Datei nach erfolgreichem Import
+	// Cleanup: Remove cache file after successful import
 	go func() {
-		time.Sleep(5 * time.Second) // Warte kurz für mögliche parallele Zugriffe
+		time.Sleep(5 * time.Second) // Wait briefly for potential parallel accesses
 		sc.removeCacheEntry(digest)
 		sc.log.Debug().Str("digest", digest.String()).Msg("cleaned up cache entry after import")
 	}()
@@ -414,7 +414,7 @@ func (sc *StreamCache) ImportToStorage(
 	return nil
 }
 
-// CleanupImportedEntries entfernt erfolgreich importierte Cache-Einträge
+// CleanupImportedEntries removes successfully imported cache entries
 func (sc *StreamCache) CleanupImportedEntries() {
 	sc.cacheLock.Lock()
 	defer sc.cacheLock.Unlock()
@@ -433,7 +433,7 @@ func (sc *StreamCache) CleanupImportedEntries() {
 	}
 }
 
-// GetPendingImports gibt eine Liste von Blobs zurück, die noch importiert werden müssen
+// GetPendingImports returns a list of blobs that still need to be imported
 func (sc *StreamCache) GetPendingImports() []godigest.Digest {
 	sc.cacheLock.RLock()
 	defer sc.cacheLock.RUnlock()
@@ -452,7 +452,7 @@ func (sc *StreamCache) GetPendingImports() []godigest.Digest {
 	return pending
 }
 
-// generateCacheKey generiert einen eindeutigen Cache-Key
+// generateCacheKey generates a unique cache key
 func generateCacheKey(repo string, digest godigest.Digest) string {
 	h := sha256.New()
 	h.Write([]byte(repo))
@@ -460,20 +460,20 @@ func generateCacheKey(repo string, digest godigest.Digest) string {
 	return hex.EncodeToString(h.Sum(nil))
 }
 
-// periodicCleanup führt regelmäßig Cleanup-Aufgaben aus
+// periodicCleanup runs cleanup tasks regularly
 func (sc *StreamCache) periodicCleanup() {
 	for {
 		select {
 		case <-sc.cleanupTicker.C:
 			sc.log.Debug().Msg("running periodic cache cleanup")
 
-			// Entferne importierte Einträge
+			// Remove imported entries
 			sc.CleanupImportedEntries()
 
-			// Entferne alte Einträge (älter als 24h)
+			// Remove old entries (older than 24h)
 			sc.cleanupOldEntries(24 * time.Hour)
 
-			// Prüfe Cache-Größe
+			// Check cache size
 			sc.enforceSizeLimit()
 
 		case <-sc.cleanupStop:
@@ -483,12 +483,12 @@ func (sc *StreamCache) periodicCleanup() {
 	}
 }
 
-// Stop stoppt den Cache und das periodische Cleanup
+// Stop stops the cache and periodic cleanup
 func (sc *StreamCache) Stop() {
 	close(sc.cleanupStop)
 }
 
-// cleanupOldEntries entfernt Cache-Einträge älter als die angegebene Duration
+// cleanupOldEntries removes cache entries older than the specified duration
 func (sc *StreamCache) cleanupOldEntries(maxAge time.Duration) {
 	sc.cacheLock.Lock()
 	defer sc.cacheLock.Unlock()
@@ -511,16 +511,16 @@ func (sc *StreamCache) cleanupOldEntries(maxAge time.Duration) {
 	}
 }
 
-// enforceSizeLimit stellt sicher, dass der Cache nicht größer als maxSize wird
+// enforceSizeLimit ensures the cache does not exceed maxSize
 func (sc *StreamCache) enforceSizeLimit() {
 	if sc.maxSize <= 0 {
-		return // Kein Limit
+		return // No limit
 	}
 
 	sc.cacheLock.Lock()
 	defer sc.cacheLock.Unlock()
 
-	// Berechne aktuelle Cache-Größe
+	// Calculate current cache size
 	var totalSize int64
 	type entryWithAge struct {
 		digest godigest.Digest
@@ -538,7 +538,7 @@ func (sc *StreamCache) enforceSizeLimit() {
 		entry.mu.RUnlock()
 
 		if imported {
-			continue // Überspringe bereits importierte
+			continue // Skip already imported entries
 		}
 
 		totalSize += size
@@ -550,15 +550,15 @@ func (sc *StreamCache) enforceSizeLimit() {
 	}
 
 	if totalSize <= sc.maxSize {
-		return // Unter Limit
+		return // Under limit
 	}
 
-	// Sortiere nach Alter (älteste zuerst)
+	// Sort by age (oldest first)
 	sort.Slice(entriesWithAge, func(i, j int) bool {
 		return entriesWithAge[i].age > entriesWithAge[j].age
 	})
 
-	// Entferne älteste Einträge bis unter Limit
+	// Remove oldest entries until under limit
 	for _, e := range entriesWithAge {
 		if totalSize <= sc.maxSize {
 			break
@@ -584,7 +584,7 @@ func (sc *StreamCache) enforceSizeLimit() {
 	}
 }
 
-// GetCacheStats gibt Statistiken über den Cache zurück
+// GetCacheStats returns statistics about the cache
 func (sc *StreamCache) GetCacheStats() map[string]interface{} {
 	sc.cacheLock.RLock()
 	defer sc.cacheLock.RUnlock()

@@ -10,7 +10,7 @@ import (
 	"zotregistry.dev/zot/v2/pkg/storage/streamcache"
 )
 
-// StreamProxyManager verwaltet Stream-Proxies für verschiedene Registries
+// StreamProxyManager manages stream proxies for different registries
 type StreamProxyManager struct {
 	proxies         map[string]*streamcache.StreamProxy
 	cache           *streamcache.StreamCache
@@ -19,7 +19,7 @@ type StreamProxyManager struct {
 	mu              sync.RWMutex
 }
 
-// NewStreamProxyManager erstellt einen neuen StreamProxyManager
+// NewStreamProxyManager creates a new StreamProxyManager
 func NewStreamProxyManager(
 	syncConfig *syncconf.Config,
 	storeController storage.StoreController,
@@ -35,7 +35,7 @@ func NewStreamProxyManager(
 		log:             log,
 	}
 
-	// Prüfe, ob Stream-Cache für irgendeine Registry aktiviert ist
+	// Check if stream cache is enabled for any registry
 	var streamCacheEnabled bool
 	var cacheDir string
 	var maxSize int64
@@ -54,7 +54,7 @@ func NewStreamProxyManager(
 		return nil, nil
 	}
 
-	// Erstelle globalen Cache
+	// Create global cache
 	cache, err := streamcache.NewStreamCache(cacheDir, maxSize, log)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create stream cache: %w", err)
@@ -62,7 +62,7 @@ func NewStreamProxyManager(
 
 	mgr.cache = cache
 
-	// Erstelle Proxies für jede Registry mit aktiviertem Stream-Cache
+	// Create proxies for each registry with stream cache enabled
 	credentialsFile, err := getCredentialsFile(syncConfig.CredentialsFile, log)
 	if err != nil {
 		log.Warn().Err(err).Msg("failed to load credentials file")
@@ -106,7 +106,7 @@ func NewStreamProxyManager(
 	return mgr, nil
 }
 
-// GetProxy gibt den Proxy für eine bestimmte Registry-URL zurück
+// GetProxy returns the proxy for a specific registry URL
 func (mgr *StreamProxyManager) GetProxy(registryURL string) (*streamcache.StreamProxy, bool) {
 	if mgr == nil {
 		return nil, false
@@ -119,7 +119,7 @@ func (mgr *StreamProxyManager) GetProxy(registryURL string) (*streamcache.Stream
 	return proxy, exists
 }
 
-// HasProxy prüft, ob ein Proxy für die angegebene Registry existiert
+// HasProxy checks if a proxy exists for the specified registry
 func (mgr *StreamProxyManager) HasProxy(registryURL string) bool {
 	if mgr == nil {
 		return false
@@ -132,12 +132,12 @@ func (mgr *StreamProxyManager) HasProxy(registryURL string) bool {
 	return exists
 }
 
-// IsEnabled prüft, ob Stream-Proxy-Manager aktiv ist
+// IsEnabled checks if the stream proxy manager is active
 func (mgr *StreamProxyManager) IsEnabled() bool {
 	return mgr != nil && len(mgr.proxies) > 0
 }
 
-// GetCache gibt den Stream-Cache zurück
+// GetCache returns the stream cache
 func (mgr *StreamProxyManager) GetCache() *streamcache.StreamCache {
 	if mgr == nil {
 		return nil
@@ -145,14 +145,14 @@ func (mgr *StreamProxyManager) GetCache() *streamcache.StreamCache {
 	return mgr.cache
 }
 
-// getCredentialsFile lädt Credentials aus Datei
+// getCredentialsFile loads credentials from file
 func getCredentialsFile(credentialsPath string, log log.Logger) (map[string]syncconf.Credentials, error) {
 	if credentialsPath == "" {
 		return nil, nil
 	}
 
-	// Diese Funktion müsste die Credentials laden - für jetzt vereinfacht
-	// In der echten Implementierung würde hier die Datei geladen
+	// This function would need to load credentials - simplified for now
+	// In the real implementation this would load the file
 	log.Debug().Str("path", credentialsPath).Msg("loading credentials file")
 	return make(map[string]syncconf.Credentials), nil
 }
