@@ -51,8 +51,10 @@ func (registry *RemoteRegistry) GetHostName() string {
 func (registry *RemoteRegistry) GetRepositories(ctx context.Context) ([]string, error) {
 	var err error
 
+	var repoList []string
+
 	for _, host := range registry.hosts {
-		repoList, err := registry.getRepoList(ctx, host.Hostname)
+		repoList, err = registry.getRepoList(ctx, host.Hostname)
 		if err != nil {
 			registry.log.Error().Err(err).Str("remote", host.Name).Msg("failed to list repositories in remote registry")
 
