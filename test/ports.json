@@ -408,5 +408,27 @@
       "begin": 11430,
       "end": 11439
     }
+  },
+  "blackbox/openid_claim_mapping.bats": {
+    "dex": {
+      "begin": 20040,
+      "end": 20049
+    },
+    "zot_preferred_username": {
+      "begin": 20060,
+      "end": 20069
+    },
+    "zot_email": {
+      "begin": 20080,
+      "end": 20089
+    },
+    "zot_sub": {
+      "begin": 21000,
+      "end": 21009
+    },
+    "zot_default": {
+      "begin": 21020,
+      "end": 21029
+    }
   }
 }
