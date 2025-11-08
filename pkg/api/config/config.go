@@ -170,6 +170,11 @@ type OpenIDProviderConfig struct {
 	AuthURL         string
 	TokenURL        string
 	Scopes          []string
+	ClaimMapping    *ClaimMapping `mapstructure:",omitempty"`
+}
+
+type ClaimMapping struct {
+	Username string `mapstructure:"username,omitempty"`
 }
 
 type MethodRatelimitConfig struct {
@@ -611,6 +616,7 @@ func (c *Config) Sanitize() *Config {
 					AuthURL:      config.AuthURL,
 					TokenURL:     config.TokenURL,
 					Scopes:       config.Scopes,
+					ClaimMapping: config.ClaimMapping,
 				}
 			}
 		}
