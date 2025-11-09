@@ -2410,6 +2410,58 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 			So(referrerInfo[0].Digest, ShouldResemble, referrerWantedType.DigestStr())
 		})
 
+		Convey("GetReferrersInfo deduplication", func() {
+			image := CreateRandomImage()
+			referrer := CreateRandomImageWith().Subject(image.DescriptorRef()).Build()
+
+			err := metaDB.SetRepoReference(ctx, "repo", "tag", image.AsImageMeta())
+			So(err, ShouldBeNil)
+
+			// Add same referrer multiple times with different tags (simulating duplicates)
+			err = metaDB.SetRepoReference(ctx, "repo", "ref-tag1", referrer.AsImageMeta())
+			So(err, ShouldBeNil)
+
+			err = metaDB.SetRepoReference(ctx, "repo", "ref-tag2", referrer.AsImageMeta())
+			So(err, ShouldBeNil)
+
+			err = metaDB.SetRepoReference(ctx, "repo", referrer.DigestStr(), referrer.AsImageMeta())
+			So(err, ShouldBeNil)
+
+			// GetReferrersInfo should return only one instance despite multiple tags
+			referrers, err := metaDB.GetReferrersInfo("repo", image.Digest(), []string{})
+			So(err, ShouldBeNil)
+			So(len(referrers), ShouldEqual, 1)
+			So(referrers[0].Digest, ShouldEqual, referrer.DigestStr())
+
+			// Now manually add duplicate entries to test the deduplication logic in GetReferrersInfo
+			// This simulates a scenario where duplicates might exist (e.g., from migration or data corruption)
+			repoMeta, err := metaDB.GetRepoMeta(ctx, "repo")
+			So(err, ShouldBeNil)
+
+			// Add duplicate referrer entries manually
+			duplicateReferrer := mTypes.ReferrerInfo{
+				Digest:       referrer.DigestStr(),
+				MediaType:    referrer.Manifest.MediaType,
+				ArtifactType: zcommon.GetManifestArtifactType(referrer.Manifest),
+				Size:         int(referrer.ManifestDescriptor.Size),
+				Annotations:  referrer.Manifest.Annotations,
+			}
+			repoMeta.Referrers[image.Digest().String()] = append(
+				repoMeta.Referrers[image.Digest().String()],
+				duplicateReferrer,
+				duplicateReferrer,
+			)
+
+			err = metaDB.SetRepoMeta("repo", repoMeta)
+			So(err, ShouldBeNil)
+
+			// GetReferrersInfo should still return only one instance despite duplicates in the data
+			referrers, err = metaDB.GetReferrersInfo("repo", image.Digest(), []string{})
+			So(err, ShouldBeNil)
+			So(len(referrers), ShouldEqual, 1)
+			So(referrers[0].Digest, ShouldEqual, referrer.DigestStr())
+		})
+
 		Convey("FilterImageMeta", func() {
 			repo := "repo"
 			tag := "tag"

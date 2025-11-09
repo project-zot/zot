@@ -1117,11 +1117,18 @@ func (dwr *DynamoDB) GetReferrersInfo(repo string, referredDigest godigest.Diges
 	referrersInfo := repoMeta.Referrers[referredDigest.String()]
 
 	filteredResults := make([]mTypes.ReferrerInfo, 0, len(referrersInfo))
+	seenDigests := make(map[string]struct{})
 
 	for _, referrerInfo := range referrersInfo {
 		if !common.MatchesArtifactTypes(referrerInfo.ArtifactType, artifactTypes) {
 			continue
 		}
+
+		if _, seen := seenDigests[referrerInfo.Digest]; seen {
+			continue
+		}
+
+		seenDigests[referrerInfo.Digest] = struct{}{}
 
 		filteredResults = append(filteredResults, referrerInfo)
 	}

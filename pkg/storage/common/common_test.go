@@ -373,6 +373,86 @@ func TestGetReferrersErrors(t *testing.T) {
 	})
 }
 
+func TestGetReferrersDeduplication(t *testing.T) {
+	Convey("Test GetReferrers deduplication", t, func(c C) {
+		dir := t.TempDir()
+
+		log := log.NewTestLogger()
+		metrics := monitoring.NewMetricsServer(false, log)
+
+		defer metrics.Stop() // Clean up metrics server to prevent resource leaks
+		cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
+			RootDir:     dir,
+			Name:        "cache",
+			UseRelPaths: true,
+		}, log)
+
+		imgStore := local.NewImageStore(dir, false, true, log, metrics, nil, cacheDriver, nil, nil)
+		storageCtlr := storage.StoreController{DefaultStore: imgStore}
+
+		// Create subject image
+		subjectImage := CreateDefaultImage()
+		err := WriteImageToFileSystem(subjectImage, "test-repo", "subject-tag", storageCtlr)
+		So(err, ShouldBeNil)
+
+		subjectDigest := subjectImage.Digest()
+
+		// Create referrer image using builder pattern
+		referrerImage := CreateImageWith().
+			DefaultLayers().
+			DefaultConfig().
+			Subject(subjectImage.DescriptorRef()).
+			Annotations(map[string]string{
+				"test": "referrer",
+			}).
+			Build()
+
+		// Write referrer image to filesystem (this will add it to index once)
+		err = WriteImageToFileSystem(referrerImage, "test-repo", referrerImage.DigestStr(), storageCtlr)
+		So(err, ShouldBeNil)
+
+		referrerDigest := referrerImage.Digest()
+
+		// Add referrer manifest to index multiple times (simulating tagging)
+		index, err := common.GetIndex(imgStore, "test-repo", log)
+		So(err, ShouldBeNil)
+
+		// Add same referrer with different tags (simulating duplicates)
+		desc1 := ispec.Descriptor{
+			MediaType: ispec.MediaTypeImageManifest,
+			Digest:    referrerDigest,
+			Size:      referrerImage.ManifestDescriptor.Size,
+			Annotations: map[string]string{
+				ispec.AnnotationRefName: "tag1",
+			},
+		}
+		desc2 := ispec.Descriptor{
+			MediaType: ispec.MediaTypeImageManifest,
+			Digest:    referrerDigest,
+			Size:      referrerImage.ManifestDescriptor.Size,
+			Annotations: map[string]string{
+				ispec.AnnotationRefName: "tag2",
+			},
+		}
+		desc3 := ispec.Descriptor{
+			MediaType: ispec.MediaTypeImageManifest,
+			Digest:    referrerDigest,
+			Size:      referrerImage.ManifestDescriptor.Size,
+		}
+
+		index.Manifests = append(index.Manifests, desc1, desc2, desc3)
+
+		err = imgStore.PutIndexContent("test-repo", index)
+		So(err, ShouldBeNil)
+
+		// Get referrers - should return only one instance despite multiple entries
+		referrers, err := common.GetReferrers(imgStore, "test-repo", subjectDigest, []string{}, log)
+		So(err, ShouldBeNil)
+		So(len(referrers.Manifests), ShouldEqual, 1)
+		So(referrers.Manifests[0].Digest, ShouldEqual, referrerDigest)
+	})
+}
+
 func TestGetImageIndexErrors(t *testing.T) {
 	log := log.NewTestLogger()
 

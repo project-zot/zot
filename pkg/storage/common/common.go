@@ -666,11 +666,20 @@ func GetReferrers(imgStore storageTypes.ImageStore, repo string, gdigest godiges
 	}
 
 	result := []ispec.Descriptor{}
+	seenDigests := make(map[godigest.Digest]struct{})
 
 	for _, descriptor := range index.Manifests {
 		if descriptor.Digest == gdigest {
 			continue
 		}
+
+		// Skip if we've already processed this digest
+		if _, seen := seenDigests[descriptor.Digest]; seen {
+			continue
+		}
+
+		// Mark as seen early to avoid processing duplicates
+		seenDigests[descriptor.Digest] = struct{}{}
 
 		buf, err := imgStore.GetBlobContent(repo, descriptor.Digest)
 		if err != nil {
