@@ -53,7 +53,7 @@ func TestAuditLogMessages(t *testing.T) {
 
 		username, seedUser := test.GenerateRandomString()
 		password, seedPass := test.GenerateRandomString()
-		htpasswdPath := test.MakeHtpasswdFileFromString(test.GetCredString(username, password))
+		htpasswdPath := test.MakeHtpasswdFileFromString(test.GetBcryptCredString(username, password))
 
 		defer os.Remove(htpasswdPath)
 

@@ -31,7 +31,7 @@ func TestConfigReloader(t *testing.T) {
 		username := "alice"
 		password := "alice"
 
-		htpasswdPath := test.MakeHtpasswdFileFromString(test.GetCredString(username, password))
+		htpasswdPath := test.MakeHtpasswdFileFromString(test.GetBcryptCredString(username, password))
 		defer os.Remove(htpasswdPath)
 
 		defer os.Remove(logFile.Name()) // clean up

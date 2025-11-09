@@ -4,6 +4,7 @@ go 1.24.4
 
 require (
 	github.com/99designs/gqlgen v0.17.81
+	github.com/GehirnInc/crypt v0.0.0-20230320061759-8cc1b52080c5
 	github.com/Masterminds/semver v1.5.0
 	github.com/alicebob/miniredis/v2 v2.35.0
 	github.com/aquasecurity/trivy v0.65.0
@@ -43,6 +44,7 @@ require (
 	github.com/json-iterator/go v1.1.12
 	github.com/migueleliasweb/go-github-mock v1.4.0
 	github.com/mitchellh/mapstructure v1.5.1-0.20231216201459-8508981c8b6c
+	github.com/nathanaelle/password v1.0.0
 	github.com/nats-io/nats-server/v2 v2.12.1
 	github.com/nats-io/nats.go v1.47.0
 	github.com/nmcclain/ldap v0.0.0-20210720162743-7f8d1e44eeba

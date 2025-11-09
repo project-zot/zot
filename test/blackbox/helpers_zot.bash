@@ -8,6 +8,15 @@ ZB_PATH=${ROOT_DIR}/bin/zb-${OS}-${ARCH}
 TEST_DATA_DIR=${BATS_FILE_TMPDIR}/test/data
 AUTH_USER=poweruser
 AUTH_PASS=sup*rSecr9T
+# additional creds for sha256/sha512 based password hashes
+AUTH_USER2=poweruser2
+AUTH_PASS2=sup*rSecr2T
+AUTH_USER3=poweruser3
+AUTH_PASS3=sup*rSecr3T
+AUTH_USER4=poweruser4
+AUTH_PASS4=sup*rSecr4T
+AUTH_USER5=poweruser5
+AUTH_PASS5=sup*rSecr5T
 
 mkdir -p ${TEST_DATA_DIR}
 

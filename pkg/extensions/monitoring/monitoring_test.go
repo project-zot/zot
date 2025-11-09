@@ -171,7 +171,7 @@ func TestMetricsAuthentication(t *testing.T) {
 		password := generateRandomString()
 		metricsuser := generateRandomString()
 		metricspass := generateRandomString()
-		content := test.GetCredString(username, password) + "\n" + test.GetCredString(metricsuser, metricspass)
+		content := test.GetBcryptCredString(username, password) + "\n" + test.GetBcryptCredString(metricsuser, metricspass)
 
 		htpasswdPath := test.MakeHtpasswdFileFromString(content)
 		defer os.Remove(htpasswdPath)
@@ -236,7 +236,7 @@ func TestMetricsAuthorization(t *testing.T) {
 		password := generateRandomString()
 		metricsuser := generateRandomString()
 		metricspass := generateRandomString()
-		content := test.GetCredString(username, password) + "\n" + test.GetCredString(metricsuser, metricspass)
+		content := test.GetBcryptCredString(username, password) + "\n" + test.GetBcryptCredString(metricsuser, metricspass)
 
 		htpasswdPath := test.MakeHtpasswdFileFromString(content)
 		defer os.Remove(htpasswdPath)
