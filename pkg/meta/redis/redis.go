@@ -1704,11 +1704,18 @@ func (rc *RedisDB) GetReferrersInfo(repo string, referredDigest godigest.Digest,
 	}
 
 	referrersInfo := protoRepoMeta.Referrers[referredDigest.String()].List
+	seenDigests := make(map[string]struct{})
 
 	for i := range referrersInfo {
 		if !common.MatchesArtifactTypes(referrersInfo[i].ArtifactType, artifactTypes) {
 			continue
 		}
+
+		if _, seen := seenDigests[referrersInfo[i].Digest]; seen {
+			continue
+		}
+
+		seenDigests[referrersInfo[i].Digest] = struct{}{}
 
 		referrersInfoResult = append(referrersInfoResult, mTypes.ReferrerInfo{
 			Digest:       referrersInfo[i].Digest,
