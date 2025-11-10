@@ -42,7 +42,7 @@ require (
 	github.com/gorilla/sessions v1.4.0
 	github.com/hashicorp/golang-lru/v2 v2.0.7
 	github.com/json-iterator/go v1.1.12
-	github.com/migueleliasweb/go-github-mock v1.4.0
+	github.com/migueleliasweb/go-github-mock v1.5.0
 	github.com/mitchellh/mapstructure v1.5.1-0.20231216201459-8508981c8b6c
 	github.com/nathanaelle/password v1.0.0
 	github.com/nats-io/nats-server/v2 v2.12.1
