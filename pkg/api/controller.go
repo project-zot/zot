@@ -204,21 +204,39 @@ func (c *Controller) Run() error {
 
 	tlsConfig := c.Config.CopyTLSConfig()
 	if tlsConfig != nil && tlsConfig.Key != "" && tlsConfig.Cert != "" {
-		server.TLSConfig = &tls.Config{
-			CipherSuites: []uint16{
-				tls.TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,
-				tls.TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,
+		// These are the same as the cipher suites in defaultCipherSuitesFIPS for TLS 1.2
+		// see https://cs.opensource.google/go/go/+/refs/tags/go1.24.9:src/crypto/tls/defaults.go;l=123
+		// Note: Order doesn't matter - Go 1.17+ automatically orders cipher suites based on
+		// hardware capabilities and security properties. See https://go.dev/blog/tls-cipher-suites
+		cipherSuites := []uint16{
+			tls.TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,
+			tls.TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,
+			tls.TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,
+			tls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
+		}
+		if !fips140.Enabled() {
+			// CHACHA20_POLY1305 is not FIPS-compliant
+			cipherSuites = append(cipherSuites,
 				tls.TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305,
 				tls.TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305,
-				tls.TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,
-				tls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
-			},
-			CurvePreferences: []tls.CurveID{
-				tls.CurveP256,
-				tls.X25519,
-			},
-			PreferServerCipherSuites: true,
-			MinVersion:               tls.VersionTLS12,
+			)
+		}
+
+		// This is a subset of the default curve preferences in defaultCurvePreferencesFIPS for TLS 1.2
+		// see https://cs.opensource.google/go/go/+/refs/tags/go1.24.9:src/crypto/tls/defaults.go;l=106
+		curvePreferences := []tls.CurveID{
+			tls.CurveP256,
+		}
+		if !fips140.Enabled() {
+			// X25519 is not FIPS-compliant
+			curvePreferences = append(curvePreferences, tls.X25519)
+		}
+
+		server.TLSConfig = &tls.Config{
+			CipherSuites:     cipherSuites,
+			CurvePreferences: curvePreferences,
+			// PreferServerCipherSuites is ignored in Go 1.17+ - Go automatically orders cipher suites
+			MinVersion: tls.VersionTLS12,
 		}
 
 		if tlsConfig.CACert != "" {
