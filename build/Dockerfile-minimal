@@ -1,4 +1,14 @@
 # ---
+# Global ARGs for FROM statements
+# This needs to be declared in the global scope otherwise the build will fail in Docker & Podman.
+# Docker:
+#   WARNING: UndefinedArgInFrom - https://docs.docker.com/go/dockerfile/rule/undefined-arg-in-from/
+#   FROM argument 'BASE_IMAGE' is not declared
+# Podman: Error: determining starting point for build: no FROM statement found
+# ---
+ARG BASE_IMAGE
+
+# ---
 # Stage 1: Install certs, build binary, create default config file
 # ---
 FROM --platform=$BUILDPLATFORM ghcr.io/project-zot/golang:1.24 AS builder
@@ -27,7 +37,6 @@ RUN echo '{\n\
 # ---
 # Stage 2: Final image with nothing but certs, binary, and default config file
 # ---
-ARG BASE_IMAGE
 FROM $BASE_IMAGE AS final
 ARG TARGETOS
 ARG TARGETARCH
