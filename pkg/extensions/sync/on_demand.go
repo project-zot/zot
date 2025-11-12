@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"sync"
+	"time"
 
 	zerr "zotregistry.dev/zot/v2/errors"
 	"zotregistry.dev/zot/v2/pkg/common"
@@ -64,7 +65,7 @@ func (onDemand *BaseOnDemand) SyncImage(ctx context.Context, repo, reference str
 
 	defer onDemand.requestStore.Delete(req)
 
-	go onDemand.syncImage(ctx, repo, reference, syncResult)
+	go onDemand.syncImage(repo, reference, syncResult)
 
 	err := <-syncResult
 
@@ -95,21 +96,37 @@ func (onDemand *BaseOnDemand) SyncReferrers(ctx context.Context, repo string,
 
 	defer onDemand.requestStore.Delete(req)
 
-	go onDemand.syncReferrers(ctx, repo, subjectDigestStr, referenceTypes, syncResult)
+	go onDemand.syncReferrers(repo, subjectDigestStr, referenceTypes, syncResult)
 
 	err := <-syncResult
 
 	return err
 }
 
-func (onDemand *BaseOnDemand) syncReferrers(ctx context.Context, repo, subjectDigestStr string,
+func (onDemand *BaseOnDemand) syncReferrers(repo, subjectDigestStr string,
 	referenceTypes []string, syncResult chan error,
 ) {
 	defer close(syncResult)
 
 	var err error
+
 	for serviceID, service := range onDemand.services {
-		err = service.SyncReferrers(ctx, repo, subjectDigestStr, referenceTypes)
+		timeout := service.GetSyncTimeout()
+
+		onDemand.log.Debug().
+			Str("repo", repo).
+			Str("reference", subjectDigestStr).
+			Int("serviceID", serviceID).
+			Dur("timeout", timeout).
+			Msg("starting on-demand referrer sync")
+
+		// Create a detached context with timeout to ensure sync completes even if HTTP client disconnects.
+		// This prevents Kubernetes timeout/retries from aborting in-progress referrer downloads.
+		syncCtx, cancel := context.WithTimeout(context.Background(), timeout)
+		err = service.SyncReferrers(syncCtx, repo, subjectDigestStr, referenceTypes)
+
+		cancel()
+
 		if err != nil {
 			if errors.Is(err, zerr.ErrManifestNotFound) ||
 				errors.Is(err, zerr.ErrSyncImageFilteredOut) ||
@@ -132,8 +149,10 @@ func (onDemand *BaseOnDemand) syncReferrers(ctx context.Context, repo, subjectDi
 			}
 
 			if service.CanRetryOnError() {
+				retryErr := err
+
 				// retry in background
-				go func(service Service) {
+				go func(service Service, serviceTimeout time.Duration) {
 					// remove image after syncing
 					defer func() {
 						onDemand.requestStore.Delete(req)
@@ -141,15 +160,19 @@ func (onDemand *BaseOnDemand) syncReferrers(ctx context.Context, repo, subjectDi
 							Msg("sync routine for image exited")
 					}()
 
-					onDemand.log.Info().Str("repo", repo).Str("reference", subjectDigestStr).Str("err", err.Error()).
+					onDemand.log.Info().Str("repo", repo).Str("reference", subjectDigestStr).Str("err", retryErr.Error()).
 						Msg("sync routine: starting routine to copy image, because of error")
 
-					err := service.SyncReferrers(context.Background(), repo, subjectDigestStr, referenceTypes)
+					// Use detached context with timeout for background retry
+					retryCtx, cancel := context.WithTimeout(context.Background(), serviceTimeout)
+					defer cancel()
+
+					err := service.SyncReferrers(retryCtx, repo, subjectDigestStr, referenceTypes)
 					if err != nil {
 						onDemand.log.Error().Str("errorType", common.TypeOf(err)).Str("repo", repo).Str("reference", subjectDigestStr).
 							Err(err).Msg("sync routine: starting routine to retry copy image due to error")
 					}
-				}(service)
+				}(service, timeout)
 			}
 		} else {
 			break
@@ -159,13 +182,28 @@ func (onDemand *BaseOnDemand) syncReferrers(ctx context.Context, repo, subjectDi
 	syncResult <- err
 }
 
-func (onDemand *BaseOnDemand) syncImage(ctx context.Context, repo, reference string, syncResult chan error) {
+func (onDemand *BaseOnDemand) syncImage(repo, reference string, syncResult chan error) {
 	defer close(syncResult)
 
 	var err error
 
 	for serviceID, service := range onDemand.services {
-		err = service.SyncImage(ctx, repo, reference)
+		timeout := service.GetSyncTimeout()
+
+		onDemand.log.Debug().
+			Str("repo", repo).
+			Str("reference", reference).
+			Int("serviceID", serviceID).
+			Dur("timeout", timeout).
+			Msg("starting on-demand image sync")
+
+		// Create a detached context with timeout to ensure sync completes even if HTTP client disconnects.
+		// This prevents Kubernetes timeout/retries from aborting in-progress image downloads.
+		syncCtx, cancel := context.WithTimeout(context.Background(), timeout)
+		err = service.SyncImage(syncCtx, repo, reference)
+
+		cancel()
+
 		if err != nil {
 			if errors.Is(err, zerr.ErrManifestNotFound) ||
 				errors.Is(err, zerr.ErrSyncImageFilteredOut) ||
@@ -191,7 +229,7 @@ func (onDemand *BaseOnDemand) syncImage(ctx context.Context, repo, reference str
 				retryErr := err
 
 				// retry in background
-				go func(service Service) {
+				go func(service Service, serviceTimeout time.Duration) {
 					// remove image after syncing
 					defer func() {
 						onDemand.requestStore.Delete(req)
@@ -202,12 +240,16 @@ func (onDemand *BaseOnDemand) syncImage(ctx context.Context, repo, reference str
 					onDemand.log.Info().Str("repo", repo).Str("reference", reference).Str("err", retryErr.Error()).
 						Msg("sync routine: starting routine to retry copy image due to error")
 
-					err := service.SyncImage(context.Background(), repo, reference)
+					// Use detached context with timeout for background retry
+					retryCtx, cancel := context.WithTimeout(context.Background(), serviceTimeout)
+					defer cancel()
+
+					err := service.SyncImage(retryCtx, repo, reference)
 					if err != nil {
 						onDemand.log.Error().Str("errorType", common.TypeOf(err)).Str("repo", repo).Str("reference", reference).
 							Err(err).Msg("sync routine: error while copying image")
 					}
-				}(service)
+				}(service, timeout)
 			}
 		} else {
 			break

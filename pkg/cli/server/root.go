@@ -663,9 +663,15 @@ func applyDefaultValues(config *config.Config, viperInstance *viper.Viper, logge
 				config.Extensions.Sync.Enable = &defaultVal
 			}
 
-			for id, regCfg := range config.Extensions.Sync.Registries {
+			defaultSyncTimeout := 3 * time.Hour
+
+			for idx, regCfg := range config.Extensions.Sync.Registries {
 				if regCfg.TLSVerify == nil {
-					config.Extensions.Sync.Registries[id].TLSVerify = &defaultVal
+					config.Extensions.Sync.Registries[idx].TLSVerify = &defaultVal
+				}
+
+				if config.Extensions.Sync.Registries[idx].SyncTimeout == 0 {
+					config.Extensions.Sync.Registries[idx].SyncTimeout = defaultSyncTimeout
 				}
 			}
 		}
