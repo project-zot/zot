@@ -216,7 +216,7 @@ func TestService(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		onDemand := NewOnDemand(log.NewTestLogger())
-		onDemand.Add(service)
+		onDemand.Add(service, 30*time.Minute)
 		ctx := context.Background()
 
 		// Step 1: Verify empty requestStore initially
@@ -347,8 +347,8 @@ func TestService(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		onDemand := NewOnDemand(log.NewTestLogger())
-		onDemand.Add(service1) // First service will return ErrSyncImageFilteredOut
-		onDemand.Add(service2) // Second service will process normally but error on network
+		onDemand.Add(service1, 30*time.Minute) // First service will return ErrSyncImageFilteredOut
+		onDemand.Add(service2, 30*time.Minute) // Second service will process normally but error on network
 
 		// Test ErrSyncImageFilteredOut continue path in SyncImage
 		// The first service returns ErrSyncImageFilteredOut (causes continue), second service processes but errors
@@ -379,7 +379,7 @@ func TestService(t *testing.T) {
 			So(err, ShouldBeNil)
 
 			onDemand := NewOnDemand(log.NewTestLogger())
-			onDemand.Add(service)
+			onDemand.Add(service, 30*time.Minute)
 			return service, onDemand
 		}
 
@@ -419,7 +419,7 @@ func TestService(t *testing.T) {
 			So(err, ShouldBeNil)
 
 			onDemand := NewOnDemand(log.NewTestLogger())
-			onDemand.Add(service)
+			onDemand.Add(service, 30*time.Minute)
 			return service, onDemand, retryDelay
 		}
 

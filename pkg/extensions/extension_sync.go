@@ -72,7 +72,7 @@ func EnableSyncExtension(config *config.Config, metaDB mTypes.MetaDB,
 
 			if isOnDemand {
 				// onDemand services used in routes.go
-				onDemand.Add(service)
+				onDemand.Add(service, registryConfig.SyncTimeout)
 			}
 		}
 
