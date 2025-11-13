@@ -7,7 +7,6 @@ import (
 	"context"
 	"errors"
 	"sync"
-
 	"time"
 
 	zerr "zotregistry.dev/zot/v2/errors"
@@ -18,7 +17,7 @@ import (
 const (
 	// syncOperationTimeout is the maximum time allowed for a sync operation to complete.
 	// This is independent of HTTP client timeouts to ensure sync completes even if clients disconnect.
-	syncOperationTimeout = 180 * time.Minute
+	syncOperationTimeout = 3 * time.Hour
 )
 
 type request struct {
@@ -58,7 +57,7 @@ func (onDemand *BaseOnDemand) Add(service Service, syncTimeout time.Duration) {
 	onDemand.log.Info().
 		Int("serviceID", serviceID).
 		Str("syncTimeout", syncTimeout.String()).
-		Msg("registering on-demand sync service with timeout")
+		Msg("registering on-demand sync service")
 
 	onDemand.services = append(onDemand.services, service)
 	onDemand.syncTimeouts = append(onDemand.syncTimeouts, syncTimeout)
@@ -130,6 +129,7 @@ func (onDemand *BaseOnDemand) syncReferrers(repo, subjectDigestStr string,
 	defer close(syncResult)
 
 	var err error
+
 	for serviceID, service := range onDemand.services {
 		// Get timeout for this service, fallback to default if not set
 		timeout := syncOperationTimeout
@@ -137,18 +137,19 @@ func (onDemand *BaseOnDemand) syncReferrers(repo, subjectDigestStr string,
 			timeout = onDemand.syncTimeouts[serviceID]
 		}
 
-		onDemand.log.Info().
+		onDemand.log.Debug().
 			Str("repo", repo).
 			Str("reference", subjectDigestStr).
 			Int("serviceID", serviceID).
 			Dur("timeout", timeout).
-			Msg("starting on-demand referrer sync with timeout")
+			Msg("starting on-demand referrer sync")
 
 		// Create a detached context with timeout to ensure sync completes even if HTTP client disconnects.
 		// This prevents Kubernetes timeout/retries from aborting in-progress referrer downloads.
 		syncCtx, cancel := context.WithTimeout(context.Background(), timeout)
-		defer cancel()
 		err = service.SyncReferrers(syncCtx, repo, subjectDigestStr, referenceTypes)
+		cancel()
+
 		if err != nil {
 			if errors.Is(err, zerr.ErrManifestNotFound) ||
 				errors.Is(err, zerr.ErrSyncImageFilteredOut) ||
@@ -216,18 +217,19 @@ func (onDemand *BaseOnDemand) syncImage(repo, reference string, syncResult chan 
 			timeout = onDemand.syncTimeouts[serviceID]
 		}
 
-		onDemand.log.Info().
+		onDemand.log.Debug().
 			Str("repo", repo).
 			Str("reference", reference).
 			Int("serviceID", serviceID).
 			Dur("timeout", timeout).
-			Msg("starting on-demand image sync with timeout")
+			Msg("starting on-demand image sync")
 
 		// Create a detached context with timeout to ensure sync completes even if HTTP client disconnects.
 		// This prevents Kubernetes timeout/retries from aborting in-progress image downloads.
 		syncCtx, cancel := context.WithTimeout(context.Background(), timeout)
-		defer cancel()
 		err = service.SyncImage(syncCtx, repo, reference)
+		cancel()
+
 		if err != nil {
 			if errors.Is(err, zerr.ErrManifestNotFound) ||
 				errors.Is(err, zerr.ErrSyncImageFilteredOut) ||

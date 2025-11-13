@@ -34,7 +34,7 @@ type RegistryConfig struct {
 	OnlySigned       *bool
 	CredentialHelper string
 	PreserveDigest   bool          // sync without converting
-	SyncTimeout      time.Duration // timeout for on-demand sync operations (default: 3 hours)
+	SyncTimeout      time.Duration // timeout for on-demand sync operations; if zero or unset, defaults to 3 hours
 }
 
 type Content struct {
