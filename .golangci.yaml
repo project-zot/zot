@@ -29,6 +29,7 @@ linters:
     - staticcheck
     - usetesting
     - wrapcheck
+    - wsl
   settings:
     cyclop:
       max-complexity: 40
@@ -68,9 +69,14 @@ linters:
         - l *ldap.Conn
         - w http.ResponseWriter
         - r *http.Request
-    wsl:
-      allow-assign-and-anything: true
-      force-err-cuddling: true
+    wsl_v5:
+      allow-first-in-block: true
+      allow-whole-block: false
+      branch-max-lines: 2
+      enable:
+        - err
+      disable:
+        - assign
   exclusions:
     generated: lax
     presets:
