@@ -69,6 +69,11 @@ connectors:
   - type: mockCallback
     id: mock
     name: Example
+    config:
+        username: "mockuser" # The preferred_username to be returned
+        email: "mockuser@example.com"
+        userID: "mock-user-id"
+        groups: ["mock-group"]
 
 enablePasswordDB: true
 EOF
