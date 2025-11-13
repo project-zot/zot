@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"path"
 	"regexp"
 	"strings"
@@ -347,6 +348,122 @@ func RunCheckAllBlobsIntegrityTests( //nolint: thelper
 			So(actual, ShouldContainSubstring, fmt.Sprintf("test 1.0 affected %s blob not found", layerDig))
 		})
 
+		Convey("Scrub index with missing manifest blob - graceful handling", func() {
+			// Create a multiarch image with multiple manifests
+			multiarchImage := CreateMultiarchWith().RandomImages(2).Build()
+			err = WriteMultiArchImageToFileSystem(multiarchImage, repoName, "2.0", storeCtlr)
+			So(err, ShouldBeNil)
+
+			// Get the index to find the index manifest digest
+			idx, err := common.GetIndex(imgStore, repoName, log)
+			So(err, ShouldBeNil)
+
+			// Find the index manifest
+			var indexManifestDesc ispec.Descriptor
+
+			for _, desc := range idx.Manifests {
+				if desc.MediaType == ispec.MediaTypeImageIndex {
+					indexManifestDesc = desc
+
+					break
+				}
+			}
+
+			// Get the index content to find the manifest digests within it
+			indexBlob, err := imgStore.GetBlobContent(repoName, indexManifestDesc.Digest)
+			So(err, ShouldBeNil)
+
+			var indexContent ispec.Index
+			err = json.Unmarshal(indexBlob, &indexContent)
+			So(err, ShouldBeNil)
+
+			// Delete one of the manifest blobs within the index (but not all)
+			missingManifestDig := indexContent.Manifests[0].Digest.Encoded()
+			missingManifestFile := path.Join(imgStore.RootDir(), repoName, "/blobs/sha256", missingManifestDig)
+			err = driver.Delete(missingManifestFile)
+			So(err, ShouldBeNil)
+
+			buff := bytes.NewBufferString("")
+
+			res, err := storeCtlr.CheckAllBlobsIntegrity(context.Background())
+			res.PrintScrubResults(buff)
+			So(err, ShouldBeNil)
+
+			space := regexp.MustCompile(`\s+`)
+			str := space.ReplaceAllString(buff.String(), " ")
+			actual := strings.TrimSpace(str)
+
+			// Should mark the index as affected due to missing manifest
+			So(actual, ShouldContainSubstring, "REPOSITORY TAG STATUS AFFECTED BLOB ERROR")
+			So(actual, ShouldContainSubstring, "test 2.0 affected")
+			// Should continue processing and report the missing manifest
+			So(actual, ShouldContainSubstring, missingManifestDig)
+		})
+
+		Convey("Scrub index with non-missing error on manifest blob via file permissions", func() {
+			// Skip for non-local storage (S3/DynamoDB) since we can't chmod remote files
+			if driver.Name() != storageConstants.LocalStorageDriverName {
+				return
+			}
+
+			// Create a multiarch image with multiple manifests
+			multiarchImage := CreateMultiarchWith().RandomImages(2).Build()
+			err = WriteMultiArchImageToFileSystem(multiarchImage, repoName, "2.1", storeCtlr)
+			So(err, ShouldBeNil)
+
+			// Get the index to find the index manifest digest
+			idx, err := common.GetIndex(imgStore, repoName, log)
+			So(err, ShouldBeNil)
+
+			// Find the index manifest
+			var indexManifestDesc ispec.Descriptor
+
+			for _, desc := range idx.Manifests {
+				if desc.MediaType == ispec.MediaTypeImageIndex {
+					indexManifestDesc = desc
+
+					break
+				}
+			}
+
+			// Get the index content to find the manifest digests within it
+			indexBlob, err := imgStore.GetBlobContent(repoName, indexManifestDesc.Digest)
+			So(err, ShouldBeNil)
+
+			var indexContent ispec.Index
+			err = json.Unmarshal(indexBlob, &indexContent)
+			So(err, ShouldBeNil)
+
+			// Remove read permissions on one of the manifest blobs to cause a permission denied error (non-missing error)
+			manifestDig := indexContent.Manifests[0].Digest.Encoded()
+			manifestFile := path.Join(imgStore.RootDir(), repoName, "/blobs/sha256", manifestDig)
+			err = os.Chmod(manifestFile, 0o000)
+			So(err, ShouldBeNil)
+
+			// Restore permissions after test
+			defer func() {
+				_ = os.Chmod(manifestFile, 0o644)
+			}()
+
+			buff := bytes.NewBufferString("")
+
+			res, err := storeCtlr.CheckAllBlobsIntegrity(context.Background())
+			res.PrintScrubResults(buff)
+			So(err, ShouldBeNil)
+
+			space := regexp.MustCompile(`\s+`)
+			str := space.ReplaceAllString(buff.String(), " ")
+			actual := strings.TrimSpace(str)
+
+			// Should mark the index as affected due to non-missing error on manifest
+			So(actual, ShouldContainSubstring, "REPOSITORY TAG STATUS AFFECTED BLOB ERROR")
+			So(actual, ShouldContainSubstring, "test 2.1 affected")
+			// Should report the manifest digest as affected blob
+			So(actual, ShouldContainSubstring, manifestDig)
+			// Should have "bad blob digest" error
+			So(actual, ShouldContainSubstring, "bad blob digest")
+		})
+
 		Convey("Scrub index", func() {
 			newImage := CreateRandomImage()
 			newManifestDigest := newImage.ManifestDescriptor.Digest
@@ -544,6 +661,41 @@ func RunCheckAllBlobsIntegrityTests( //nolint: thelper
 			So(actual, ShouldContainSubstring, "test 0.0.1 ok")
 		})
 
+		Convey("preserve affected status when CheckLayers would overwrite it", func() {
+			// Create an image with a subject
+			index, err := common.GetIndex(imgStore, repoName, log)
+			So(err, ShouldBeNil)
+
+			manifestDescriptor, ok := common.GetManifestDescByReference(index, image.ManifestDescriptor.Digest.String())
+			So(ok, ShouldBeTrue)
+
+			subjectImage := CreateDefaultImageWith().Subject(&manifestDescriptor).Build()
+			err = WriteImageToFileSystem(subjectImage, repoName, "0.0.3", storeCtlr)
+			So(err, ShouldBeNil)
+
+			// Delete the subject manifest to mark it as affected
+			subjectManifestDig := manifestDescriptor.Digest.Encoded()
+			subjectManifestFile := path.Join(imgStore.RootDir(), repoName, "/blobs/sha256", subjectManifestDig)
+			err = driver.Delete(subjectManifestFile)
+			So(err, ShouldBeNil)
+
+			buff := bytes.NewBufferString("")
+
+			res, err := storeCtlr.CheckAllBlobsIntegrity(context.Background())
+			res.PrintScrubResults(buff)
+			So(err, ShouldBeNil)
+
+			space := regexp.MustCompile(`\s+`)
+			str := space.ReplaceAllString(buff.String(), " ")
+			actual := strings.TrimSpace(str)
+
+			// The manifest with the missing subject should be marked as affected
+			So(actual, ShouldContainSubstring, "REPOSITORY TAG STATUS AFFECTED BLOB ERROR")
+			So(actual, ShouldContainSubstring, "test 0.0.3 affected")
+			// Even if CheckLayers would pass, the affected status from the missing subject should be preserved
+			So(actual, ShouldContainSubstring, subjectManifestDig)
+		})
+
 		Convey("the subject of the current manifest doesn't exist", func() {
 			index, err := common.GetIndex(imgStore, repoName, log)
 			So(err, ShouldBeNil)
@@ -623,75 +775,173 @@ func RunCheckAllBlobsIntegrityTests( //nolint: thelper
 			So(actual, ShouldContainSubstring, "REPOSITORY TAG STATUS AFFECTED BLOB ERROR")
 			So(actual, ShouldContainSubstring, "test 0.0.2 affected")
 		})
-	})
 
-	Convey("test errors", func() {
-		mockedImgStore := mocks.MockedImageStore{
-			GetRepositoriesFn: func() ([]string, error) {
-				return []string{repoName}, nil
-			},
-			ValidateRepoFn: func(name string) (bool, error) {
-				return false, nil
-			},
-		}
+		Convey("test errors", func() {
+			mockedImgStore := mocks.MockedImageStore{
+				GetRepositoriesFn: func() ([]string, error) {
+					return []string{repoName}, nil
+				},
+				ValidateRepoFn: func(name string) (bool, error) {
+					return false, nil
+				},
+			}
 
-		storeController := storage.StoreController{}
-		storeController.DefaultStore = mockedImgStore
+			storeController := storage.StoreController{}
+			storeController.DefaultStore = mockedImgStore
 
-		_, err := storeController.CheckAllBlobsIntegrity(context.Background())
-		So(err, ShouldNotBeNil)
-		So(err, ShouldEqual, zerr.ErrRepoBadLayout)
+			_, err := storeController.CheckAllBlobsIntegrity(context.Background())
+			So(err, ShouldNotBeNil)
+			So(err, ShouldEqual, zerr.ErrRepoBadLayout)
 
-		mockedImgStore = mocks.MockedImageStore{
-			GetRepositoriesFn: func() ([]string, error) {
-				return []string{repoName}, nil
-			},
-			GetIndexContentFn: func(repo string) ([]byte, error) {
-				return []byte{}, errUnexpectedError
-			},
-		}
+			mockedImgStore = mocks.MockedImageStore{
+				GetRepositoriesFn: func() ([]string, error) {
+					return []string{repoName}, nil
+				},
+				GetIndexContentFn: func(repo string) ([]byte, error) {
+					return []byte{}, errUnexpectedError
+				},
+			}
 
-		storeController.DefaultStore = mockedImgStore
+			storeController.DefaultStore = mockedImgStore
 
-		_, err = storeController.CheckAllBlobsIntegrity(context.Background())
-		So(err, ShouldNotBeNil)
-		So(err, ShouldEqual, errUnexpectedError)
+			_, err = storeController.CheckAllBlobsIntegrity(context.Background())
+			So(err, ShouldNotBeNil)
+			So(err, ShouldEqual, errUnexpectedError)
 
-		manifestDigest := godigest.FromString("abcd")
+			manifestDigest := godigest.FromString("abcd")
 
-		mockedImgStore = mocks.MockedImageStore{
-			GetRepositoriesFn: func() ([]string, error) {
-				return []string{repoName}, nil
-			},
-			GetIndexContentFn: func(repo string) ([]byte, error) {
-				var index ispec.Index
-				index.SchemaVersion = 2
-				index.Manifests = []ispec.Descriptor{
-					{
-						MediaType:   "InvalidMediaType",
-						Digest:      manifestDigest,
-						Size:        int64(100),
-						Annotations: map[string]string{ispec.AnnotationRefName: "1.0"},
-					},
-				}
+			mockedImgStore = mocks.MockedImageStore{
+				GetRepositoriesFn: func() ([]string, error) {
+					return []string{repoName}, nil
+				},
+				GetIndexContentFn: func(repo string) ([]byte, error) {
+					var index ispec.Index
+					index.SchemaVersion = 2
+					index.Manifests = []ispec.Descriptor{
+						{
+							MediaType:   "InvalidMediaType",
+							Digest:      manifestDigest,
+							Size:        int64(100),
+							Annotations: map[string]string{ispec.AnnotationRefName: "1.0"},
+						},
+					}
 
-				return json.Marshal(index)
-			},
-		}
+					return json.Marshal(index)
+				},
+			}
 
-		storeController.DefaultStore = mockedImgStore
+			storeController.DefaultStore = mockedImgStore
 
-		res, err := storeController.CheckAllBlobsIntegrity(context.Background())
-		So(err, ShouldBeNil)
+			res, err := storeController.CheckAllBlobsIntegrity(context.Background())
+			So(err, ShouldBeNil)
 
-		buff := bytes.NewBufferString("")
-		res.PrintScrubResults(buff)
+			buff := bytes.NewBufferString("")
+			res.PrintScrubResults(buff)
 
-		space := regexp.MustCompile(`\s+`)
-		str := space.ReplaceAllString(buff.String(), " ")
-		actual := strings.TrimSpace(str)
-		So(actual, ShouldContainSubstring, "REPOSITORY TAG STATUS AFFECTED BLOB ERROR")
-		So(actual, ShouldContainSubstring, fmt.Sprintf("%s 1.0 affected %s invalid manifest content",
-			repoName, manifestDigest.Encoded()))
+			space := regexp.MustCompile(`\s+`)
+			str := space.ReplaceAllString(buff.String(), " ")
+			actual := strings.TrimSpace(str)
+			So(actual, ShouldContainSubstring, "REPOSITORY TAG STATUS AFFECTED BLOB ERROR")
+			So(actual, ShouldContainSubstring, fmt.Sprintf("%s 1.0 affected %s invalid manifest content",
+				repoName, manifestDigest.Encoded()))
+		})
+
+		Convey("scrub with non-missing error on manifest subject blob via file permissions", func() {
+			// Skip for non-local storage (S3/DynamoDB) since we can't chmod remote files
+			if driver.Name() != storageConstants.LocalStorageDriverName {
+				return
+			}
+
+			index, err := common.GetIndex(imgStore, repoName, log)
+			So(err, ShouldBeNil)
+
+			manifestDescriptor, ok := common.GetManifestDescByReference(index, image.ManifestDescriptor.Digest.String())
+			So(ok, ShouldBeTrue)
+
+			// Create an image with a subject
+			subjectImage := CreateDefaultImageWith().Subject(&manifestDescriptor).Build()
+			err = WriteImageToFileSystem(subjectImage, repoName, "0.0.6", storeCtlr)
+			So(err, ShouldBeNil)
+
+			// Get the subject manifest digest
+			subjectManifestDig := manifestDescriptor.Digest.Encoded()
+			subjectManifestFile := path.Join(imgStore.RootDir(), repoName, "/blobs/sha256", subjectManifestDig)
+
+			// Remove read permissions to cause a permission denied error (non-missing error)
+			err = os.Chmod(subjectManifestFile, 0o000)
+			So(err, ShouldBeNil)
+
+			// Restore permissions after test
+			defer func() {
+				_ = os.Chmod(subjectManifestFile, 0o644)
+			}()
+
+			buff := bytes.NewBufferString("")
+
+			res, err := storeCtlr.CheckAllBlobsIntegrity(context.Background())
+			res.PrintScrubResults(buff)
+			So(err, ShouldBeNil)
+
+			space := regexp.MustCompile(`\s+`)
+			str := space.ReplaceAllString(buff.String(), " ")
+			actual := strings.TrimSpace(str)
+
+			// Should mark the manifest as affected due to non-missing error on subject
+			So(actual, ShouldContainSubstring, "REPOSITORY TAG STATUS AFFECTED BLOB ERROR")
+			So(actual, ShouldContainSubstring, "test 0.0.6 affected")
+			// Should report the subject digest as affected blob
+			So(actual, ShouldContainSubstring, subjectManifestDig)
+			// Should have "bad blob digest" error
+			So(actual, ShouldContainSubstring, "bad blob digest")
+		})
+
+		Convey("scrub with non-missing error on index subject blob via file permissions", func() {
+			// Skip for non-local storage (S3/DynamoDB) since we can't chmod remote files
+			if driver.Name() != storageConstants.LocalStorageDriverName {
+				return
+			}
+
+			index, err := common.GetIndex(imgStore, repoName, log)
+			So(err, ShouldBeNil)
+
+			manifestDescriptor, ok := common.GetManifestDescByReference(index, image.ManifestDescriptor.Digest.String())
+			So(ok, ShouldBeTrue)
+
+			// Create a multiarch image with a subject
+			err = WriteMultiArchImageToFileSystem(CreateMultiarchWith().RandomImages(1).Subject(&manifestDescriptor).Build(),
+				repoName, "0.0.7", storeCtlr)
+			So(err, ShouldBeNil)
+
+			// Get the subject manifest digest
+			subjectManifestDig := manifestDescriptor.Digest.Encoded()
+			subjectManifestFile := path.Join(imgStore.RootDir(), repoName, "/blobs/sha256", subjectManifestDig)
+
+			// Remove read permissions to cause a permission denied error (non-missing error)
+			err = os.Chmod(subjectManifestFile, 0o000)
+			So(err, ShouldBeNil)
+
+			// Restore permissions after test
+			defer func() {
+				_ = os.Chmod(subjectManifestFile, 0o644)
+			}()
+
+			buff := bytes.NewBufferString("")
+
+			res, err := storeCtlr.CheckAllBlobsIntegrity(context.Background())
+			res.PrintScrubResults(buff)
+			So(err, ShouldBeNil)
+
+			space := regexp.MustCompile(`\s+`)
+			str := space.ReplaceAllString(buff.String(), " ")
+			actual := strings.TrimSpace(str)
+
+			// Should mark the index as affected due to non-missing error on subject
+			So(actual, ShouldContainSubstring, "REPOSITORY TAG STATUS AFFECTED BLOB ERROR")
+			So(actual, ShouldContainSubstring, "test 0.0.7 affected")
+			// Should report the subject digest as affected blob
+			So(actual, ShouldContainSubstring, subjectManifestDig)
+			// Should have "bad blob digest" error
+			So(actual, ShouldContainSubstring, "bad blob digest")
+		})
 	})
 }

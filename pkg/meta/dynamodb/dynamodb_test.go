@@ -383,12 +383,15 @@ func TestWrapperErrors(t *testing.T) {
 				_, err := dynamoWrapper.GetImageMeta(testDigest)
 				So(err, ShouldNotBeNil)
 			})
-			Convey("image index, get manifest meta fails", func() {
+			Convey("image index, missing manifests are skipped gracefully", func() {
 				err := dynamoWrapper.SetRepoReference(ctx, "repo", "tag", multiarchImageMeta)
 				So(err, ShouldBeNil)
 
-				_, err = dynamoWrapper.GetImageMeta(multiarchImageMeta.Digest) //nolint: contextcheck
-				So(err, ShouldNotBeNil)
+				// Missing manifests are skipped gracefully, so GetImageMeta succeeds
+				// but returns an index with no manifests
+				imageMeta, err := dynamoWrapper.GetImageMeta(multiarchImageMeta.Digest) //nolint: contextcheck
+				So(err, ShouldBeNil)
+				So(len(imageMeta.Manifests), ShouldEqual, 0)
 			})
 		})
 		Convey("GetFullImageMeta", func() {
@@ -429,7 +432,7 @@ func TestWrapperErrors(t *testing.T) {
 				So(err, ShouldNotBeNil)
 			})
 
-			Convey("image is index, fail to get manifests", func() {
+			Convey("image is index, missing manifests are skipped gracefully", func() {
 				err := dynamoWrapper.SetImageMeta(multiarchImageMeta.Digest, multiarchImageMeta) //nolint: contextcheck
 				So(err, ShouldBeNil)
 
@@ -444,8 +447,11 @@ func TestWrapperErrors(t *testing.T) {
 				})
 				So(err, ShouldBeNil)
 
-				_, err = dynamoWrapper.GetFullImageMeta(ctx, "repo", "tag")
-				So(err, ShouldNotBeNil)
+				// Missing manifests are skipped gracefully, so GetFullImageMeta succeeds
+				// but returns an index with no manifests
+				fullImageMeta, err := dynamoWrapper.GetFullImageMeta(ctx, "repo", "tag")
+				So(err, ShouldBeNil)
+				So(len(fullImageMeta.Manifests), ShouldEqual, 0)
 			})
 		})
 

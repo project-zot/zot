@@ -1358,6 +1358,27 @@ func (dwr *DynamoDB) FilterImageMeta(ctx context.Context, digests []string,
 		return nil, err
 	}
 
+	// Check if all requested digests were found
+	// FilterImageMeta should return an error if any digest is missing (unlike getAllContainedMeta)
+	if len(imageMetaAttributes) != len(digests) {
+		// Build a map of found digests to identify which ones are missing
+		foundDigests := make(map[string]bool)
+
+		for _, attributes := range imageMetaAttributes {
+			var digest string
+			if err := attributevalue.Unmarshal(attributes["TableKey"], &digest); err == nil {
+				foundDigests[digest] = true
+			}
+		}
+
+		// Find the first missing digest
+		for _, digest := range digests {
+			if !foundDigests[digest] {
+				return nil, fmt.Errorf("%w for digest %s", zerr.ErrImageMetaNotFound, digest)
+			}
+		}
+	}
+
 	results := map[string]mTypes.ImageMeta{}
 
 	for _, attributes := range imageMetaAttributes {
@@ -2021,10 +2042,7 @@ func (dwr *DynamoDB) fetchImageMetaAttributesByDigest(ctx context.Context, diges
 			return nil, err
 		}
 
-		if len(resp.Responses[dwr.ImageMetaTablename]) != size {
-			return nil, zerr.ErrImageMetaNotFound
-		}
-
+		// Missing manifests are allowed - append whatever was found
 		batchedResp = append(batchedResp, resp.Responses[dwr.ImageMetaTablename]...)
 		start = end
 	}
@@ -2045,13 +2063,12 @@ func (dwr *DynamoDB) fetchImageMetaAttributesByDigest(ctx context.Context, diges
 		respMap[digest] = item
 	}
 
+	// Only include digests that were actually found (missing ones are skipped gracefully)
 	for _, digest := range digests {
 		imageMeta, ok := respMap[digest]
-		if !ok {
-			return nil, fmt.Errorf("%w for digest %s", zerr.ErrImageMetaNotFound, digest)
+		if ok {
+			orderedResp = append(orderedResp, imageMeta)
 		}
-
-		orderedResp = append(orderedResp, imageMeta)
 	}
 
 	return orderedResp, nil
@@ -2228,30 +2245,28 @@ func (dwr *DynamoDB) createVersionTable() error {
 		return err
 	}
 
-	if err == nil {
-		mdAttributeValue, err := attributevalue.Marshal(version.CurrentVersion)
-		if err != nil {
-			return err
-		}
+	mdAttributeValue, err := attributevalue.Marshal(version.CurrentVersion)
+	if err != nil {
+		return err
+	}
 
-		_, err = dwr.Client.UpdateItem(context.TODO(), &dynamodb.UpdateItemInput{
-			ExpressionAttributeNames: map[string]string{
-				"#V": "Version",
+	_, err = dwr.Client.UpdateItem(context.TODO(), &dynamodb.UpdateItemInput{
+		ExpressionAttributeNames: map[string]string{
+			"#V": "Version",
+		},
+		ExpressionAttributeValues: map[string]types.AttributeValue{
+			":Version": mdAttributeValue,
+		},
+		Key: map[string]types.AttributeValue{
+			"TableKey": &types.AttributeValueMemberS{
+				Value: version.DBVersionKey,
 			},
-			ExpressionAttributeValues: map[string]types.AttributeValue{
-				":Version": mdAttributeValue,
-			},
-			Key: map[string]types.AttributeValue{
-				"TableKey": &types.AttributeValueMemberS{
-					Value: version.DBVersionKey,
-				},
-			},
-			TableName:        aws.String(dwr.VersionTablename),
-			UpdateExpression: aws.String("SET #V = :Version"),
-		})
-		if err != nil {
-			return err
-		}
+		},
+		TableName:        aws.String(dwr.VersionTablename),
+		UpdateExpression: aws.String("SET #V = :Version"),
+	})
+	if err != nil {
+		return err
 	}
 
 	return nil

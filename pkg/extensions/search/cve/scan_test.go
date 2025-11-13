@@ -384,6 +384,11 @@ func TestScanGeneratorWithMockedData(t *testing.T) { //nolint: gocyclo
 					return false, err
 				}
 
+				// If all manifests are missing (e.g., from an index), Manifests will be empty
+				if len(manifestData.Manifests) == 0 {
+					return false, nil
+				}
+
 				for _, imageLayer := range manifestData.Manifests[0].Manifest.Layers {
 					switch imageLayer.MediaType {
 					case ispec.MediaTypeImageLayerGzip, ispec.MediaTypeImageLayer, string(regTypes.DockerLayer):

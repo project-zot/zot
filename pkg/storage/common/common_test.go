@@ -610,3 +610,163 @@ func TestDedupeGeneratorErrors(t *testing.T) {
 		So(task, ShouldBeNil)
 	})
 }
+
+func TestPruneImageManifestsFromIndexMissingIndex(t *testing.T) {
+	log := log.NewTestLogger()
+
+	Convey("Missing nested index blob is skipped gracefully", t, func(c C) {
+		// Create a main index
+		mainIndexDigest := godigest.FromString("main-index")
+		manifest1Digest := godigest.FromString("manifest1")
+		mainIndex := ispec.Index{
+			Manifests: []ispec.Descriptor{
+				{
+					MediaType: ispec.MediaTypeImageManifest,
+					Digest:    manifest1Digest,
+				},
+			},
+		}
+		mainIndexBlob, err := json.Marshal(mainIndex)
+		So(err, ShouldBeNil)
+
+		// Create other indexes list with one missing index
+		// The missing index would have referenced manifest1, but since it's missing,
+		// manifest1 should still be pruned (removed) if it has no tag
+		otherImgIndexes := []ispec.Descriptor{
+			{
+				MediaType: ispec.MediaTypeImageIndex,
+				Digest:    godigest.FromString("missing-index"),
+				Size:      100,
+			},
+		}
+
+		imgStore := &mocks.MockedImageStore{
+			GetBlobContentFn: func(repo string, digest godigest.Digest) ([]byte, error) {
+				if digest == mainIndexDigest {
+					return mainIndexBlob, nil
+				}
+				// Return ErrBlobNotFound for the missing nested index
+				return nil, zerr.ErrBlobNotFound
+			},
+		}
+
+		// PruneImageManifestsFromIndex should skip the missing nested index and continue
+		// outIndex contains a manifest without a tag, so it should be pruned
+		outIndex := ispec.Index{
+			Manifests: []ispec.Descriptor{
+				{
+					MediaType: ispec.MediaTypeImageManifest,
+					Digest:    manifest1Digest,
+					// No tag annotation, so it will be pruned
+				},
+			},
+		}
+
+		prunedManifests, err := common.PruneImageManifestsFromIndex(
+			imgStore, "repo", mainIndexDigest, outIndex, otherImgIndexes, log)
+		So(err, ShouldBeNil)
+		// The manifest should be pruned (removed) since it has no tag and the missing index
+		// couldn't be checked to see if it references this manifest
+		// The important thing is that the function succeeded (didn't error) despite the missing index
+		So(len(prunedManifests), ShouldEqual, 0)
+	})
+}
+
+func TestIsBlobReferencedInImageManifestMissingManifest(t *testing.T) {
+	log := log.NewTestLogger()
+
+	Convey("Missing manifest blob is treated as not referenced", t, func(c C) {
+		blobDigest := godigest.FromString("blob-digest")
+		missingManifestDigest := godigest.FromString("missing-manifest")
+
+		imgStore := &mocks.MockedImageStore{
+			GetBlobContentFn: func(repo string, digest godigest.Digest) ([]byte, error) {
+				// Return ErrBlobNotFound for the missing manifest
+				return nil, zerr.ErrBlobNotFound
+			},
+		}
+
+		// Create an index with a manifest descriptor pointing to a missing manifest
+		// IsBlobReferencedInImageIndex will call isBlobReferencedInImageManifest internally
+		index := ispec.Index{
+			Manifests: []ispec.Descriptor{
+				{
+					MediaType: ispec.MediaTypeImageManifest,
+					Digest:    missingManifestDigest,
+					Size:      100,
+				},
+			},
+		}
+
+		// isBlobReferencedInImageManifest should treat missing manifest as not referenced
+		referenced, err := common.IsBlobReferencedInImageIndex(imgStore, "repo", blobDigest, index, log)
+		So(err, ShouldBeNil)
+		So(referenced, ShouldBeFalse)
+	})
+}
+
+func TestIsBlobReferencedInImageIndexNonMissingError(t *testing.T) {
+	log := log.NewTestLogger()
+
+	Convey("Non-missing error when reading nested index returns error", t, func(c C) {
+		blobDigest := godigest.FromString("blob-digest")
+		nestedIndexDigest := godigest.FromString("nested-index")
+
+		// Create an index with a nested index descriptor
+		index := ispec.Index{
+			Manifests: []ispec.Descriptor{
+				{
+					MediaType: ispec.MediaTypeImageIndex,
+					Digest:    nestedIndexDigest,
+					Size:      100,
+				},
+			},
+		}
+
+		imgStore := &mocks.MockedImageStore{
+			GetBlobContentFn: func(repo string, digest godigest.Digest) ([]byte, error) {
+				// Return a non-missing error (not ErrBlobNotFound or PathNotFoundError)
+				return nil, ErrTestError
+			},
+		}
+
+		// IsBlobReferencedInImageIndex should return the error (not skip it)
+		referenced, err := common.IsBlobReferencedInImageIndex(imgStore, "repo", blobDigest, index, log)
+		So(err, ShouldNotBeNil)
+		So(err, ShouldEqual, ErrTestError)
+		So(referenced, ShouldBeFalse)
+	})
+}
+
+func TestGetBlobDescriptorFromIndexMissingNestedIndex(t *testing.T) {
+	log := log.NewTestLogger()
+
+	Convey("Missing nested index blob is skipped gracefully", t, func(c C) {
+		blobDigest := godigest.FromString("blob-digest")
+		missingIndexDigest := godigest.FromString("missing-nested-index")
+
+		// Create an index that contains a nested index (which will be missing)
+		topLevelIndex := ispec.Index{
+			Manifests: []ispec.Descriptor{
+				{
+					MediaType: ispec.MediaTypeImageIndex,
+					Digest:    missingIndexDigest,
+					Size:      100,
+				},
+			},
+		}
+
+		imgStore := &mocks.MockedImageStore{
+			GetBlobContentFn: func(repo string, digest godigest.Digest) ([]byte, error) {
+				// Return ErrBlobNotFound for the missing nested index
+				return nil, zerr.ErrBlobNotFound
+			},
+		}
+
+		// GetBlobDescriptorFromIndex should skip the missing nested index and continue
+		// Since the blob is not found, it should return ErrBlobNotFound
+		_, err := common.GetBlobDescriptorFromIndex(imgStore, topLevelIndex, "repo", blobDigest, log)
+		So(err, ShouldNotBeNil)
+		So(err, ShouldEqual, zerr.ErrBlobNotFound)
+	})
+}

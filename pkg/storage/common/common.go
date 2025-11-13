@@ -464,6 +464,15 @@ func PruneImageManifestsFromIndex(imgStore storageTypes.ImageStore, repo string,
 	for _, otherIndex := range otherImgIndexes {
 		oindex, err := GetImageIndex(imgStore, repo, otherIndex.Digest, log)
 		if err != nil {
+			// Handle missing blobs gracefully - log warning and continue with other indexes
+			var pathNotFoundErr driver.PathNotFoundError
+			if errors.Is(err, zerr.ErrBlobNotFound) || errors.As(err, &pathNotFoundErr) {
+				log.Warn().Err(err).Str("repository", repo).Str("digest", otherIndex.Digest.String()).
+					Msg("skipping missing image index blob, continuing with other indexes")
+
+				continue
+			}
+
 			return nil, err
 		}
 
@@ -520,6 +529,15 @@ func isBlobReferencedInImageManifest(imgStore storageTypes.ImageStore, repo stri
 
 	manifestContent, err := GetImageManifest(imgStore, repo, mdigest, log)
 	if err != nil {
+		// Handle missing blobs gracefully - treat as not referenced and continue
+		var pathNotFoundErr driver.PathNotFoundError
+		if errors.Is(err, zerr.ErrBlobNotFound) || errors.As(err, &pathNotFoundErr) {
+			log.Warn().Err(err).Str("repo", repo).Str("digest", mdigest.String()).Str("component", "gc").
+				Msg("skipping missing manifest blob, treating as not referenced")
+
+			return false, nil
+		}
+
 		log.Error().Err(err).Str("repo", repo).Str("digest", mdigest.String()).Str("component", "gc").
 			Msg("failed to read manifest image")
 
@@ -554,6 +572,15 @@ func IsBlobReferencedInImageIndex(imgStore storageTypes.ImageStore, repo string,
 
 			indexImage, err := GetImageIndex(imgStore, repo, desc.Digest, log)
 			if err != nil {
+				// Handle missing blobs gracefully - treat as not referenced and continue
+				var pathNotFoundErr driver.PathNotFoundError
+				if errors.Is(err, zerr.ErrBlobNotFound) || errors.As(err, &pathNotFoundErr) {
+					log.Warn().Err(err).Str("repository", repo).Str("digest", desc.Digest.String()).
+						Msg("skipping missing image index blob, treating as not referenced")
+
+					continue
+				}
+
 				log.Error().Err(err).Str("repository", repo).Str("digest", desc.Digest.String()).
 					Msg("failed to read multiarch(index) image")
 
@@ -787,6 +814,15 @@ func GetBlobDescriptorFromIndex(imgStore storageTypes.ImageStore, index ispec.In
 		case ispec.MediaTypeImageIndex:
 			indexImage, err := GetImageIndex(imgStore, repo, desc.Digest, log)
 			if err != nil {
+				// Handle missing blobs gracefully - skip this index and continue searching
+				var pathNotFoundErr driver.PathNotFoundError
+				if errors.Is(err, zerr.ErrBlobNotFound) || errors.As(err, &pathNotFoundErr) {
+					log.Warn().Err(err).Str("repository", repo).Str("digest", desc.Digest.String()).
+						Msg("skipping missing image index blob, continuing search for blob descriptor")
+
+					continue
+				}
+
 				return ispec.Descriptor{}, err
 			}
 

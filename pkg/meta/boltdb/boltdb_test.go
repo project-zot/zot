@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/base64"
+	"errors"
 	"math"
 	"testing"
 	"time"
@@ -31,6 +32,8 @@ func (its imgTrustStore) VerifySignature(
 ) (mTypes.Author, mTypes.ExpiryDate, mTypes.Validity, error) {
 	return "", time.Time{}, false, nil
 }
+
+var errImageMetaBucketNotFound = errors.New("ImageMeta bucket not found")
 
 func TestWrapperErrors(t *testing.T) {
 	image := CreateDefaultImage()
@@ -302,23 +305,63 @@ func TestWrapperErrors(t *testing.T) {
 				So(err, ShouldNotBeNil)
 			})
 
-			Convey("image is index, fail to get manifests", func() {
+			Convey("image is index, missing manifests are skipped gracefully", func() {
+				err := boltdbWrapper.SetRepoReference(ctx, "repo", "tag", multiarchImageMeta)
+				So(err, ShouldBeNil)
+
+				// Missing manifests are skipped gracefully, so GetFullImageMeta succeeds
+				// but returns an index with no manifests
+				fullImageMeta, err := boltdbWrapper.GetFullImageMeta(ctx, "repo", "tag")
+				So(err, ShouldBeNil)
+				So(len(fullImageMeta.Manifests), ShouldEqual, 0)
+			})
+
+			Convey("image is index, corrupted manifest data returns error", func() {
+				// Create a multiarch image with multiple manifests
+				multiarchImage := CreateMultiarchWith().RandomImages(2).Build()
+				multiarchImageMeta := multiarchImage.AsImageMeta()
 				err := boltdbWrapper.SetImageMeta(multiarchImageMeta.Digest, multiarchImageMeta)
 				So(err, ShouldBeNil)
 
-				err = boltdbWrapper.SetRepoMeta("repo", mTypes.RepoMeta{
-					Name: "repo",
-					Tags: map[mTypes.Tag]mTypes.Descriptor{
-						"tag": {
-							MediaType: ispec.MediaTypeImageIndex,
-							Digest:    multiarchImageMeta.Digest.String(),
-						},
-					},
+				// Store the first manifest normally
+				firstManifest := multiarchImage.Images[0]
+				firstManifestMeta := firstManifest.AsImageMeta()
+				err = boltdbWrapper.SetImageMeta(firstManifestMeta.Digest, firstManifestMeta)
+				So(err, ShouldBeNil)
+
+				// Store the second manifest normally first, then corrupt it
+				secondManifest := multiarchImage.Images[1]
+				secondManifestMeta := secondManifest.AsImageMeta()
+				err = boltdbWrapper.SetImageMeta(secondManifestMeta.Digest, secondManifestMeta)
+				So(err, ShouldBeNil)
+
+				secondManifestDigest := secondManifest.ManifestDescriptor.Digest
+
+				// Corrupt the data for the second manifest by storing invalid protobuf data
+				// This will cause getProtoImageMeta to return an unmarshaling error
+				// which is not ErrImageMetaNotFound, so it will propagate through getAllContainedMeta
+				corruptedData := []byte("invalid protobuf data")
+
+				// Access BoltDB directly to corrupt the data
+				err = boltdbWrapper.DB.Update(func(tx *bbolt.Tx) error {
+					imageBuck := tx.Bucket([]byte(boltdb.ImageMetaBuck))
+					if imageBuck == nil {
+						return errImageMetaBucketNotFound
+					}
+					// Store corrupted protobuf data
+					return imageBuck.Put([]byte(secondManifestDigest.String()), corruptedData)
 				})
 				So(err, ShouldBeNil)
 
-				_, err = boltdbWrapper.GetFullImageMeta(ctx, "repo", "tag")
+				err = boltdbWrapper.SetRepoReference(ctx, "repo", "tag", multiarchImageMeta)
+				So(err, ShouldBeNil)
+
+				// GetFullImageMeta should return an error due to corrupted manifest data
+				// The error from getAllContainedMeta should propagate
+				fullImageMeta, err := boltdbWrapper.GetFullImageMeta(ctx, "repo", "tag")
 				So(err, ShouldNotBeNil)
+				// Should still return a FullImageMeta object (even with error)
+				So(fullImageMeta, ShouldNotBeNil)
 			})
 		})
 
@@ -443,6 +486,54 @@ func TestWrapperErrors(t *testing.T) {
 				_, err = boltdbWrapper.FilterTags(ctx, mTypes.AcceptAllRepoTag, mTypes.AcceptAllImageMeta)
 				So(err, ShouldBeNil)
 			})
+
+			Convey("getAllContainedMeta error for index is joined and processing continues", func() {
+				// Create a multiarch image with multiple manifests
+				multiarchImage := CreateMultiarchWith().RandomImages(2).Build()
+				multiarchImageMeta := multiarchImage.AsImageMeta()
+				err := boltdbWrapper.SetImageMeta(multiarchImageMeta.Digest, multiarchImageMeta)
+				So(err, ShouldBeNil)
+
+				// Store the first manifest normally
+				firstManifest := multiarchImage.Images[0]
+				firstManifestMeta := firstManifest.AsImageMeta()
+				err = boltdbWrapper.SetImageMeta(firstManifestMeta.Digest, firstManifestMeta)
+				So(err, ShouldBeNil)
+
+				// Store the second manifest normally first, then corrupt it
+				secondManifest := multiarchImage.Images[1]
+				secondManifestMeta := secondManifest.AsImageMeta()
+				err = boltdbWrapper.SetImageMeta(secondManifestMeta.Digest, secondManifestMeta)
+				So(err, ShouldBeNil)
+
+				secondManifestDigest := secondManifest.ManifestDescriptor.Digest
+
+				// Corrupt the data for the second manifest by storing invalid protobuf data
+				// This will cause getProtoImageMeta to return an unmarshaling error
+				// which is not ErrImageMetaNotFound, so it will propagate through getAllContainedMeta
+				corruptedData := []byte("invalid protobuf data")
+
+				// Access BoltDB directly to corrupt the data
+				err = boltdbWrapper.DB.Update(func(tx *bbolt.Tx) error {
+					imageBuck := tx.Bucket([]byte(boltdb.ImageMetaBuck))
+					if imageBuck == nil {
+						return errImageMetaBucketNotFound
+					}
+					// Store corrupted protobuf data
+					return imageBuck.Put([]byte(secondManifestDigest.String()), corruptedData)
+				})
+				So(err, ShouldBeNil)
+
+				err = boltdbWrapper.SetRepoReference(ctx, "repo", "tag", multiarchImageMeta)
+				So(err, ShouldBeNil)
+
+				// FilterTags should return an error due to corrupted manifest data
+				// The error from getAllContainedMeta should be joined with viewError
+				images, err := boltdbWrapper.FilterTags(ctx, mTypes.AcceptAllRepoTag, mTypes.AcceptAllImageMeta)
+				So(err, ShouldNotBeNil)
+				// Should still return some images (the first valid manifest might be processed)
+				So(images, ShouldNotBeNil)
+			})
 		})
 
 		Convey("SearchRepos", func() {
@@ -467,6 +558,53 @@ func TestWrapperErrors(t *testing.T) {
 				// manifests are missing
 				_, err = boltdbWrapper.FilterImageMeta(ctx, []string{multiarchImageMeta.Digest.String()})
 				So(err, ShouldNotBeNil)
+			})
+		})
+
+		Convey("GetImageMeta", func() {
+			Convey("image is index, getAllContainedMeta error returns error", func() {
+				// Create a multiarch image with multiple manifests
+				multiarchImage := CreateMultiarchWith().RandomImages(2).Build()
+				multiarchImageMeta := multiarchImage.AsImageMeta()
+				err := boltdbWrapper.SetImageMeta(multiarchImageMeta.Digest, multiarchImageMeta)
+				So(err, ShouldBeNil)
+
+				// Store the first manifest normally
+				firstManifest := multiarchImage.Images[0]
+				firstManifestMeta := firstManifest.AsImageMeta()
+				err = boltdbWrapper.SetImageMeta(firstManifestMeta.Digest, firstManifestMeta)
+				So(err, ShouldBeNil)
+
+				// Store the second manifest normally first, then corrupt it
+				secondManifest := multiarchImage.Images[1]
+				secondManifestMeta := secondManifest.AsImageMeta()
+				err = boltdbWrapper.SetImageMeta(secondManifestMeta.Digest, secondManifestMeta)
+				So(err, ShouldBeNil)
+
+				secondManifestDigest := secondManifest.ManifestDescriptor.Digest
+
+				// Corrupt the data for the second manifest by storing invalid protobuf data
+				// This will cause getProtoImageMeta to return an unmarshaling error
+				// which is not ErrImageMetaNotFound, so it will propagate through getAllContainedMeta
+				corruptedData := []byte("invalid protobuf data")
+
+				// Access BoltDB directly to corrupt the data
+				err = boltdbWrapper.DB.Update(func(tx *bbolt.Tx) error {
+					imageBuck := tx.Bucket([]byte(boltdb.ImageMetaBuck))
+					if imageBuck == nil {
+						return errImageMetaBucketNotFound
+					}
+					// Store corrupted protobuf data
+					return imageBuck.Put([]byte(secondManifestDigest.String()), corruptedData)
+				})
+				So(err, ShouldBeNil)
+
+				// GetImageMeta should return an error due to corrupted manifest data
+				// The error from getAllContainedMeta should propagate
+				imageMeta, err := boltdbWrapper.GetImageMeta(multiarchImageMeta.Digest)
+				So(err, ShouldNotBeNil)
+				// Should still return an ImageMeta object (even with error)
+				So(imageMeta, ShouldNotBeNil)
 			})
 		})
 

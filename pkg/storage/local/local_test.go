@@ -1969,7 +1969,7 @@ func TestGarbageCollectForImageStore(t *testing.T) {
 
 		ctx := context.Background()
 
-		Convey("Garbage collect error for repo with config removed", func() {
+		Convey("Garbage collect continues when manifest blob is missing", func() {
 			logFile, _ := os.CreateTemp("", "zot-log*.txt")
 
 			defer os.Remove(logFile.Name()) // clean up
@@ -2006,15 +2006,18 @@ func TestGarbageCollectForImageStore(t *testing.T) {
 				panic(err)
 			}
 
+			// GC should succeed (return nil) when manifest blobs are missing
+			// This is the expected behavior - GC continues gracefully when blobs are not found
 			err = gc.CleanRepo(ctx, repoName)
-			So(err, ShouldNotBeNil)
+			So(err, ShouldBeNil)
 
 			time.Sleep(500 * time.Millisecond)
 
 			data, err := os.ReadFile(logFile.Name())
 			So(err, ShouldBeNil)
-			So(string(data), ShouldContainSubstring,
-				"failed to run GC for "+path.Join(imgStore.RootDir(), repoName))
+			// Verify that GC logged a warning about skipping the missing manifest
+			So(string(data), ShouldContainSubstring, "skipping missing")
+			So(string(data), ShouldContainSubstring, manifestDigest.String())
 		})
 
 		Convey("Garbage collect error - not enough permissions to access index.json", func() {

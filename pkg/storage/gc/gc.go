@@ -236,6 +236,15 @@ func (gc GarbageCollect) removeIndexReferrers(repo string, rootIndex *ispec.Inde
 		if (desc.MediaType == ispec.MediaTypeImageIndex) || compat.IsCompatibleManifestListMediaType(desc.MediaType) {
 			indexImage, err := common.GetImageIndex(gc.imgStore, repo, desc.Digest, gc.log)
 			if err != nil {
+				// Handle missing blobs (not found) gracefully
+				var pathNotFoundErr driver.PathNotFoundError
+				if errors.Is(err, zerr.ErrBlobNotFound) || errors.As(err, &pathNotFoundErr) {
+					gc.log.Warn().Err(err).Str("module", "gc").Str("repository", repo).Str("digest", desc.Digest.String()).
+						Msg("skipping missing image index blob, continuing GC")
+
+					continue
+				}
+
 				gc.log.Error().Err(err).Str("module", "gc").Str("repository", repo).Str("digest", desc.Digest.String()).
 					Msg("failed to read multiarch(index) image")
 
@@ -265,6 +274,15 @@ func (gc GarbageCollect) removeIndexReferrers(repo string, rootIndex *ispec.Inde
 		} else if (desc.MediaType == ispec.MediaTypeImageManifest) || compat.IsCompatibleManifestMediaType(desc.MediaType) {
 			image, err := common.GetImageManifest(gc.imgStore, repo, desc.Digest, gc.log)
 			if err != nil {
+				// Handle missing blobs (not found) gracefully
+				var pathNotFoundErr driver.PathNotFoundError
+				if errors.Is(err, zerr.ErrBlobNotFound) || errors.As(err, &pathNotFoundErr) {
+					gc.log.Warn().Err(err).Str("module", "gc").Str("repo", repo).Str("digest", desc.Digest.String()).
+						Msg("skipping missing image manifest blob, continuing GC")
+
+					continue
+				}
+
 				gc.log.Error().Err(err).Str("module", "gc").Str("repo", repo).Str("digest", desc.Digest.String()).
 					Msg("failed to read manifest image")
 
@@ -536,6 +554,15 @@ func (gc GarbageCollect) identifyManifestsReferencedInIndex(index ispec.Index, r
 		if (desc.MediaType == ispec.MediaTypeImageIndex) || compat.IsCompatibleManifestListMediaType(desc.MediaType) {
 			indexImage, err := common.GetImageIndex(gc.imgStore, repo, desc.Digest, gc.log)
 			if err != nil {
+				// Handle missing blobs (not found) gracefully
+				var pathNotFoundErr driver.PathNotFoundError
+				if errors.Is(err, zerr.ErrBlobNotFound) || errors.As(err, &pathNotFoundErr) {
+					gc.log.Warn().Err(err).Str("module", "gc").Str("repository", repo).
+						Str("digest", desc.Digest.String()).Msg("skipping missing image index blob, continuing GC")
+
+					continue
+				}
+
 				gc.log.Error().Err(err).Str("module", "gc").Str("repository", repo).
 					Str("digest", desc.Digest.String()).Msg("failed to read multiarch(index) image")
 
@@ -556,6 +583,15 @@ func (gc GarbageCollect) identifyManifestsReferencedInIndex(index ispec.Index, r
 		} else if (desc.MediaType == ispec.MediaTypeImageManifest) || compat.IsCompatibleManifestMediaType(desc.MediaType) {
 			image, err := common.GetImageManifest(gc.imgStore, repo, desc.Digest, gc.log)
 			if err != nil {
+				// Handle missing blobs (not found) gracefully
+				var pathNotFoundErr driver.PathNotFoundError
+				if errors.Is(err, zerr.ErrBlobNotFound) || errors.As(err, &pathNotFoundErr) {
+					gc.log.Warn().Err(err).Str("module", "gc").Str("repo", repo).
+						Str("digest", desc.Digest.String()).Msg("skipping missing image manifest blob, continuing GC")
+
+					continue
+				}
+
 				gc.log.Error().Err(err).Str("module", "gc").Str("repo", repo).
 					Str("digest", desc.Digest.String()).Msg("failed to read manifest image")
 
@@ -718,6 +754,15 @@ func (gc GarbageCollect) addImageIndexBlobsToReferences(repo string, mdigest god
 ) error {
 	index, err := common.GetImageIndex(gc.imgStore, repo, mdigest, gc.log)
 	if err != nil {
+		// Handle missing blobs (not found) gracefully
+		var pathNotFoundErr driver.PathNotFoundError
+		if errors.Is(err, zerr.ErrBlobNotFound) || errors.As(err, &pathNotFoundErr) {
+			gc.log.Warn().Err(err).Str("module", "gc").Str("repository", repo).Str("digest", mdigest.String()).
+				Msg("skipping missing image index blob, continuing GC")
+
+			return nil
+		}
+
 		gc.log.Error().Err(err).Str("module", "gc").Str("repository", repo).Str("digest", mdigest.String()).
 			Msg("failed to read manifest image")
 
@@ -743,6 +788,15 @@ func (gc GarbageCollect) addImageManifestBlobsToReferences(repo string, mdigest 
 ) error {
 	manifestContent, err := common.GetImageManifest(gc.imgStore, repo, mdigest, gc.log)
 	if err != nil {
+		// Handle missing blobs (not found) gracefully
+		var pathNotFoundErr driver.PathNotFoundError
+		if errors.Is(err, zerr.ErrBlobNotFound) || errors.As(err, &pathNotFoundErr) {
+			gc.log.Warn().Err(err).Str("module", "gc").Str("repository", repo).
+				Str("digest", mdigest.String()).Msg("skipping missing image manifest blob, continuing GC")
+
+			return nil
+		}
+
 		gc.log.Error().Err(err).Str("module", "gc").Str("repository", repo).
 			Str("digest", mdigest.String()).Msg("failed to read manifest image")
 
